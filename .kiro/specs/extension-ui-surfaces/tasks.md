@@ -58,7 +58,7 @@
   - _Boundary: PiChat_
   - _Depends: 1.2, 2.1, 2.2, 2.3, 3.1_
 
-- [ ] 3.3 app-shell 装配点切换到默认 PiChat
+- [x] 3.3 app-shell 装配点切换到默认 PiChat
   - 应用聊天装配点导入由旧富组件名切换为默认 `PiChat`,沿用既有会话装配与 extensionUI 注入
   - 观察完成态:本地启动后默认聊天界面为富版本并可完成一次基本对话
   - _Requirements: 7.4_

@@ -1,28 +1,27 @@
 /**
- * chat-app assembly: the session-active branch renders the rich chat UI
- * (<PiChatPro>) rather than the basic <PiChat>, while preserving the same
- * session/controls/extensionUI wiring driven by the @pi-web/react hooks
- * (Req 11.3). The ~/.pi/agent config + session-assembly chain is unchanged;
- * only the chat UI component is swapped.
+ * chat-app assembly: the session-active branch renders the default rich chat UI
+ * <PiChat> (formerly <PiChatPro>, now the convergent default), while preserving
+ * the same session/controls/extensionUI wiring driven by the @pi-web/react hooks
+ * (Req 7.4). The ~/.pi/agent config + session-assembly chain is unchanged; only
+ * the chat UI component name is updated to the converged default.
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 
 // Capture the props passed to whichever chat component chat-app renders so we
-// can assert the rich variant is used and that wiring is forwarded intact.
-const piChatProSpy =
-  vi.fn<(props: Record<string, unknown>) => void>();
+// can assert the default rich <PiChat> is used and that wiring is forwarded.
 const piChatSpy = vi.fn<(props: Record<string, unknown>) => void>();
+const piChatBasicSpy = vi.fn<(props: Record<string, unknown>) => void>();
 
 vi.mock("@pi-web/ui", () => ({
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
     return <div data-test-pi-chat />;
   },
-  PiChatPro: (props: Record<string, unknown>): React.JSX.Element => {
-    piChatProSpy(props);
-    return <div data-test-pi-chat-pro />;
+  PiChatBasic: (props: Record<string, unknown>): React.JSX.Element => {
+    piChatBasicSpy(props);
+    return <div data-test-pi-chat-basic />;
   },
 }));
 
@@ -52,11 +51,11 @@ import { ChatApp } from "@/components/chat-app";
 
 afterEach(() => {
   cleanup();
-  piChatProSpy.mockClear();
   piChatSpy.mockClear();
+  piChatBasicSpy.mockClear();
 });
 
-describe("ChatApp (session-active) renders the rich chat UI", () => {
+describe("ChatApp (session-active) renders the default rich chat UI", () => {
   function startSession(): void {
     render(
       <ChatApp
@@ -70,18 +69,18 @@ describe("ChatApp (session-active) renders the rich chat UI", () => {
     fireEvent.click(submit as Element);
   }
 
-  it("renders <PiChatPro> (not <PiChat>) once a session is active", () => {
+  it("renders the default <PiChat> (not the minimal <PiChatBasic>) once a session is active", () => {
     startSession();
-    expect(document.querySelector("[data-test-pi-chat-pro]")).not.toBeNull();
-    expect(document.querySelector("[data-test-pi-chat]")).toBeNull();
-    expect(piChatProSpy).toHaveBeenCalled();
-    expect(piChatSpy).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-test-pi-chat]")).not.toBeNull();
+    expect(document.querySelector("[data-test-pi-chat-basic]")).toBeNull();
+    expect(piChatSpy).toHaveBeenCalled();
+    expect(piChatBasicSpy).not.toHaveBeenCalled();
   });
 
-  it("forwards the same session/controls/extensionUI wiring to <PiChatPro>", () => {
+  it("forwards the same session/controls/extensionUI wiring to <PiChat>", () => {
     startSession();
-    expect(piChatProSpy).toHaveBeenCalled();
-    const props = piChatProSpy.mock.calls[0]?.[0];
+    expect(piChatSpy).toHaveBeenCalled();
+    const props = piChatSpy.mock.calls[0]?.[0];
     expect(props).toBeDefined();
     expect(props?.session).toBe(fakeSession);
     expect(props?.controls).toBe(fakeControls);
