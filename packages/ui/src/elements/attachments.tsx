@@ -13,7 +13,7 @@
  * file input 带 `aria-label`,dropzone 可访问(Req 11.4)。
  */
 import * as React from "react";
-import { X, ImagePlus } from "lucide-react";
+import { X, ImagePlus, Paperclip } from "lucide-react";
 import type { PendingAttachment } from "@pi-web/react";
 import { cn } from "../lib/cn.js";
 
@@ -28,6 +28,12 @@ export interface AttachmentsProps {
   readonly onRemove: (id: string) => void;
   /** 上层拒收的非图片文件名;非空时展示"暂不支持"提示(Req 3.4)。 */
   readonly rejected?: ReadonlyArray<string>;
+  /**
+   * 布局变体:
+   *  - "panel"(默认):虚线 dropzone(拖拽/粘贴/点击)+ chips,适合独立附件区。
+   *  - "compact":仅一个 paperclip 图标按钮(点击选择)+ chips,适合嵌入输入框工具条。
+   */
+  readonly variant?: "panel" | "compact";
   /** dropzone 提示文案,默认中文。 */
   readonly hint?: string;
   /** 不支持类型的提示前缀,默认中文。 */
@@ -50,6 +56,7 @@ export function Attachments({
   onAdd,
   onRemove,
   rejected,
+  variant = "panel",
   hint = "拖拽、粘贴或点击添加图片",
   rejectedLabel = "暂不支持该类型附件",
   addLabel = "添加图片附件",
@@ -94,6 +101,71 @@ export function Attachments({
   };
 
   const hasRejected = rejected !== undefined && rejected.length > 0;
+
+  // compact:仅 paperclip 图标按钮(点击选择)+ chips,嵌入输入框工具条用。
+  if (variant === "compact") {
+    return (
+      <div
+        className={cn("flex flex-wrap items-center gap-2", className)}
+        data-pi-attachments
+        data-pi-attachments-variant="compact"
+      >
+        <button
+          type="button"
+          aria-label={addLabel}
+          onClick={() => inputRef.current?.click()}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          data-pi-attachments-add
+        >
+          <Paperclip className="h-4 w-4" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            aria-label={addLabel}
+            onChange={handleChange}
+            className="hidden"
+            data-pi-attachments-input
+          />
+        </button>
+        {items.map((it) => (
+          <span
+            key={it.id}
+            className="relative inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] py-1 pl-1 pr-2 text-xs text-[hsl(var(--foreground))]"
+            data-pi-attachment-chip
+          >
+            <img
+              src={it.dataUrl}
+              alt={it.name}
+              className="h-6 w-6 shrink-0 rounded-full object-cover"
+            />
+            <span className="max-w-[8rem] truncate" title={it.name}>
+              {it.name}
+            </span>
+            <button
+              type="button"
+              aria-label={removeLabel(it.name)}
+              onClick={() => onRemove(it.id)}
+              className="ml-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              data-pi-attachment-remove
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        {hasRejected ? (
+          <span
+            role="alert"
+            className="text-xs text-[hsl(var(--destructive))]"
+            data-pi-attachments-rejected
+          >
+            {rejectedLabel}: {rejected!.join("、")}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div

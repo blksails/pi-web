@@ -11,7 +11,7 @@
  * 主题经 shadcn CSS 变量(既有 Button 基元 + cn),无硬编码颜色(Req 11.5)。
  */
 import * as React from "react";
-import { ChevronsUpDown, Check } from "lucide-react";
+import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
 import type { ModelGroup, ModelSelection } from "@pi-web/react";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
@@ -155,9 +155,10 @@ export function ModelSelector({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={toggle}
-        className="gap-1.5"
+        className="gap-1.5 rounded-full"
         data-pi-model-trigger
       >
+        <Sparkles className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
         <span className="max-w-[12rem] truncate">
           {triggerText(current, groups, triggerLabel)}
         </span>

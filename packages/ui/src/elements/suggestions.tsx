@@ -19,6 +19,12 @@ export interface SuggestionsProps {
   readonly onFill: (value: string) => void;
   /** mode==="send" 的项被点击时回传其 value(直接发送)。 */
   readonly onSend: (value: string) => void;
+  /**
+   * 布局变体:
+   *  - "bubbles"(默认):横向自动换行的小圆角气泡(会话进行中的紧凑建议)。
+   *  - "grid":2 列大圆角卡片网格(空态欢迎页的 starter 提示)。
+   */
+  readonly layout?: "bubbles" | "grid";
   readonly className?: string;
 }
 
@@ -26,11 +32,42 @@ export function Suggestions({
   items,
   onFill,
   onSend,
+  layout = "bubbles",
   className,
 }: SuggestionsProps): React.JSX.Element | null {
   // 无建议项 → 不渲染建议区域(Req 10.3)。
   if (items.length === 0) {
     return null;
+  }
+
+  const dispatch = (item: Suggestion): void => {
+    // 按 mode 分发(Req 10.2)。
+    if (item.mode === "send") {
+      onSend(item.value);
+    } else {
+      onFill(item.value);
+    }
+  };
+
+  if (layout === "grid") {
+    return (
+      <div
+        className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}
+        data-pi-suggestions
+        data-pi-suggestions-layout="grid"
+      >
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => dispatch(item)}
+            className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-4 text-center text-sm text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -42,14 +79,7 @@ export function Suggestions({
         <button
           key={item.id}
           type="button"
-          onClick={() => {
-            // 按 mode 分发(Req 10.2)。
-            if (item.mode === "send") {
-              onSend(item.value);
-            } else {
-              onFill(item.value);
-            }
-          }}
+          onClick={() => dispatch(item)}
           className="inline-flex items-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-3 py-1 text-sm text-[hsl(var(--secondary-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
         >
           {item.label}

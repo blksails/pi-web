@@ -38,9 +38,9 @@ describe("PiChatPro 装配", () => {
     expect(
       screen.getByRole("button", { name: /联网/ }),
     ).toBeInTheDocument();
-    // 附件 dropzone (Req 3.1)
+    // 附件入口:工具条内 compact paperclip 按钮 (Req 3.1)
     expect(
-      screen.getByTestId("pi-attachments-dropzone"),
+      screen.getByRole("button", { name: /添加图片附件|附件|attach/i }),
     ).toBeInTheDocument();
   });
 

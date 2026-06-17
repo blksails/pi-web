@@ -76,11 +76,54 @@ export interface PiChatProProps {
   readonly suggestionsPresets?: ReadonlyArray<Suggestion>;
   /** 输入框占位符,覆盖默认值(Req 1.5)。 */
   readonly placeholder?: string;
+  /** 空态欢迎页主标题,覆盖默认值。 */
+  readonly emptyTitle?: string;
+  /** 空态欢迎页副标题,覆盖默认值。 */
+  readonly emptySubtitle?: string;
+  /**
+   * 空态欢迎页的 starter 建议卡片(2×2 网格)。当真实 suggestions(commands∪presets)
+   * 为空时展示这些可配置的起始提示。默认提供一组通用示例,可由调用方覆盖。
+   */
+  readonly starters?: ReadonlyArray<Suggestion>;
   readonly className?: string;
 }
 
 /** 联网意图随消息传达的提示前缀(pi 无对应能力时仅作提示,不报错,Req 6.3/6.4)。 */
 const WEB_SEARCH_HINT = "[web-search] 请在回答前进行联网搜索。";
+
+/** 默认占位符(空态/会话态输入框)。 */
+const DEFAULT_PLACEHOLDER = "Ask anything…";
+/** 默认空态欢迎文案。 */
+const DEFAULT_EMPTY_TITLE = "What can I help with?";
+const DEFAULT_EMPTY_SUBTITLE = "Ask a question, write code, or explore ideas.";
+
+/** 默认 starter 建议卡片(可由 props.starters 覆盖);点击填入输入框(mode "fill")。 */
+const DEFAULT_STARTERS: ReadonlyArray<Suggestion> = [
+  {
+    id: "starter-nextjs",
+    label: "What are the advantages of using Next.js?",
+    value: "What are the advantages of using Next.js?",
+    mode: "fill",
+  },
+  {
+    id: "starter-dijkstra",
+    label: "Write code to demonstrate Dijkstra's algorithm",
+    value: "Write code to demonstrate Dijkstra's algorithm",
+    mode: "fill",
+  },
+  {
+    id: "starter-essay",
+    label: "Help me write an essay about Silicon Valley",
+    value: "Help me write an essay about Silicon Valley",
+    mode: "fill",
+  },
+  {
+    id: "starter-weather",
+    label: "What is the weather in San Francisco?",
+    value: "What is the weather in San Francisco?",
+    mode: "fill",
+  },
+];
 
 /** 从 data-source(s) part 的 data 中规整出 Source[](展示元件不依赖 pi 协议形状)。 */
 function sourcesFromData(data: unknown): Source[] {
@@ -121,6 +164,9 @@ export function PiChatPro({
   slots,
   suggestionsPresets,
   placeholder,
+  emptyTitle = DEFAULT_EMPTY_TITLE,
+  emptySubtitle = DEFAULT_EMPTY_SUBTITLE,
+  starters = DEFAULT_STARTERS,
   className,
 }: PiChatProProps): React.JSX.Element {
   const transport = session.transport;
@@ -255,8 +301,21 @@ export function PiChatPro({
     [doSend],
   );
 
+  const isEmpty = messages.length === 0;
+  // 空态网格优先展示真实 suggestions(commands∪presets);为空时回落到 starter 卡片。
+  const gridItems = suggestions.items.length > 0 ? suggestions.items : starters;
+
+  // 工具条:左 paperclip 附件(compact)+ 模型选择器 + 语音 + 联网开关,右侧发送按钮。
   const toolbar = (
     <>
+      <Attachments
+        variant="compact"
+        items={attachments.items}
+        supported={attachments.supported}
+        onAdd={onAddAttachments}
+        onRemove={attachments.remove}
+        rejected={rejected}
+      />
       <ModelSelector
         groups={models.groups}
         current={models.current}
@@ -279,6 +338,21 @@ export function PiChatPro({
     </>
   );
 
+  // 大圆角输入框(空态居中、会话态置底共用)。
+  const promptInput = (
+    <PromptInput
+      value={input}
+      onChange={setInput}
+      onSubmit={onSubmit}
+      disabled={transport === undefined}
+      toolbar={toolbar}
+      rows={3}
+      placeholder={placeholder ?? DEFAULT_PLACEHOLDER}
+      className="rounded-3xl border-[hsl(var(--border))] px-4 py-3 shadow-sm"
+      textareaClassName="px-2 text-base"
+    />
+  );
+
   return (
     <div
       className={cn(
@@ -286,6 +360,7 @@ export function PiChatPro({
         className,
       )}
       data-pi-chat-pro
+      data-pi-chat-empty={isEmpty ? "true" : "false"}
     >
       {slots?.sidebar !== undefined ? (
         <aside className="shrink-0" data-pi-chat-sidebar>
@@ -298,72 +373,96 @@ export function PiChatPro({
           <header data-pi-chat-header>{slots.header}</header>
         ) : null}
 
-        <Conversation className="flex-1">
-          <div className="space-y-4 py-3" data-pi-chat-messages>
-            {messages.map((message: UIMessage) => {
-              const branch = branches.branchOf(message.id);
-              const branchProps =
-                branch !== undefined && branch.total > 1
-                  ? {
-                      branch,
-                      onPrev: () =>
-                        void branches
-                          .select(message.id, branch.index - 1)
-                          .catch(() => undefined),
-                      onNext: () =>
-                        void branches
-                          .select(message.id, branch.index + 1)
-                          .catch(() => undefined),
-                    }
-                  : {};
-              return (
-                <Message key={message.id} role={message.role} {...branchProps}>
-                  <div className="space-y-2">
-                    {message.parts.map((part, i) => (
-                      <PartRenderer
-                        key={`${message.id}-${i}`}
-                        part={part}
-                        message={message}
-                        registry={registry}
-                      />
-                    ))}
-                    {slots?.messageActions !== undefined ? (
-                      <div data-pi-message-actions>
-                        {slots.messageActions(message)}
-                      </div>
-                    ) : null}
-                  </div>
-                </Message>
-              );
-            })}
+        {isEmpty ? (
+          // 空态欢迎页:居中大标题 + 副标题 + 2×2 starter 卡片网格 + 大输入框。
+          <div
+            className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8"
+            data-pi-chat-welcome
+          >
+            <div className="w-full max-w-3xl">
+              <div className="mb-12 text-center">
+                <h1 className="text-4xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
+                  {emptyTitle}
+                </h1>
+                <p className="mt-3 text-base text-[hsl(var(--muted-foreground))]">
+                  {emptySubtitle}
+                </p>
+              </div>
+
+              <div className="mb-4" data-pi-chat-suggestions>
+                <Suggestions
+                  items={gridItems}
+                  layout="grid"
+                  onFill={onSuggestionFill}
+                  onSend={onSuggestionSend}
+                />
+              </div>
+
+              {promptInput}
+            </div>
           </div>
-        </Conversation>
+        ) : (
+          // 会话态:滚动消息区 + 紧凑建议气泡 + 置底输入框。
+          <>
+            <Conversation className="flex-1">
+              <div className="mx-auto w-full max-w-3xl space-y-4 py-3" data-pi-chat-messages>
+                {messages.map((message: UIMessage) => {
+                  const branch = branches.branchOf(message.id);
+                  const branchProps =
+                    branch !== undefined && branch.total > 1
+                      ? {
+                          branch,
+                          onPrev: () =>
+                            void branches
+                              .select(message.id, branch.index - 1)
+                              .catch(() => undefined),
+                          onNext: () =>
+                            void branches
+                              .select(message.id, branch.index + 1)
+                              .catch(() => undefined),
+                        }
+                      : {};
+                  return (
+                    <Message
+                      key={message.id}
+                      role={message.role}
+                      {...branchProps}
+                    >
+                      <div className="space-y-2">
+                        {message.parts.map((part, i) => (
+                          <PartRenderer
+                            key={`${message.id}-${i}`}
+                            part={part}
+                            message={message}
+                            registry={registry}
+                          />
+                        ))}
+                        {slots?.messageActions !== undefined ? (
+                          <div data-pi-message-actions>
+                            {slots.messageActions(message)}
+                          </div>
+                        ) : null}
+                      </div>
+                    </Message>
+                  );
+                })}
+              </div>
+            </Conversation>
 
-        {/* 建议气泡(Req 10):空则元件自身不渲染。 */}
-        <div className="py-2" data-pi-chat-suggestions>
-          <Suggestions
-            items={suggestions.items}
-            onFill={onSuggestionFill}
-            onSend={onSuggestionSend}
-          />
-        </div>
+            <div className="mx-auto w-full max-w-3xl">
+              {/* 建议气泡(Req 10):空则元件自身不渲染。 */}
+              <div className="py-2" data-pi-chat-suggestions>
+                <Suggestions
+                  items={suggestions.items}
+                  onFill={onSuggestionFill}
+                  onSend={onSuggestionSend}
+                />
+              </div>
 
-        <PromptInput
-          value={input}
-          onChange={setInput}
-          onSubmit={onSubmit}
-          disabled={transport === undefined}
-          toolbar={toolbar}
-          {...(placeholder !== undefined ? { placeholder } : {})}
-        >
-          <Attachments
-            items={attachments.items}
-            supported={attachments.supported}
-            onAdd={onAddAttachments}
-            onRemove={attachments.remove}
-            rejected={rejected}
-          />
-        </PromptInput>
+              {promptInput}
+            </div>
+          </>
+        )}
 
         {slots?.footer !== undefined ? (
           <footer data-pi-chat-footer>{slots.footer}</footer>
