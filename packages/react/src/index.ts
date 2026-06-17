@@ -79,3 +79,9 @@ export {
   type UseAttachmentsResult,
   type PendingAttachment,
 } from "./hooks/use-attachments.js";
+export {
+  useBranches,
+  type UseBranchesOptions,
+  type UseBranchesResult,
+  type BranchInfo,
+} from "./hooks/use-branches.js";

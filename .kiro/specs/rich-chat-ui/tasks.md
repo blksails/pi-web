@@ -47,7 +47,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
   - _Boundary: useAttachments_
 
-- [ ] 2.3 (P) 消息分支 hook
+- [x] 2.3 (P) 消息分支 hook
   - 经 fork 创建同级版本,经 fork 消息加载分支序列并暴露"第 N/共 M"信息;`available=false` 时方法 no-op
   - 观察完成态:mock client 下 createBranch/select 调用正确端点、不可用时 no-op,单测通过
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
@@ -175,3 +175,6 @@
   - 观察完成态:全量测试与 typecheck 全绿,基线 483 测试 + 新增测试均通过
   - _Requirements: 11.2, 11.5_
   - _Depends: 5.1, 5.2, 5.3_
+
+## Implementation Notes
+- 2.3: useBranches.select 会 getForkMessages 但当前未对外暴露 messages;任务 4.1 装配分支视图刷新时,需扩展 useBranches 暴露已加载分支消息(或在 PiChatPro 中处理),以满足 Req 8.3「更新对话视图」。e2e 5.3 验证分支切换确实刷新视图。
