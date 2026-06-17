@@ -1,0 +1,93 @@
+# Implementation Plan
+
+- [ ] 1. 基础:模块骨架、测试基座与共享类型/错误
+- [ ] 1.1 建立会话层类型与错误定义
+  - 定义 `SessionId`、`SessionStatus`、`SessionEndReason`、`SubscribeHandle`、`CachedState`、`SessionDescriptor`、`CreateSessionInput`
+  - 定义 `SessionStoppedError`、`SessionNotFoundError`、`UnknownExtensionUIError`、`MissingInputError`
+  - 从 `@pi-web/protocol` 引入帧/事件/响应类型别名,从 rpc-channel 引入 `PiRpcChannel`、从 agent-source-resolver 引入 `ResolvedSource`(仅类型导入)
+  - 完成态:类型与错误文件通过 `tsc` 编译,无 `any`,可被后续模块导入
+  - _Requirements: 1.3, 1.5, 2.4, 3.2, 5.3, 6.3, 7.6, 9.5_
+  - _Boundary: session.types.ts, session.errors.ts_
+- [ ] 1.2 配置测试基座
+  - 配置 `vitest`,确保单一命令 `vitest run` 可运行 `lib/pi/session/__tests__/` 全部测试
+  - 提供 mock `PiRpcChannel` 测试替身(可手工触发 `onEvent`/`onExtensionUIRequest`/`onExit`、记录 `send` 与命令调用)
+  - 完成态:`vitest run` 可执行并发现一个占位通过用例;mock channel 可被各单测复用
+  - _Requirements: 10.2, 10.6_
+
+- [ ] 2. 核心:事件→UIMessage 纯函数翻译层
+- [ ] 2.1 (P) 实现翻译上下文 TranslationContext
+  - 实现 `createTranslationContext()` 与 partId 分配、step/text/reasoning 开闭状态推进(纯,返回新快照不变更入参)
+  - 实现乱序/重复 `*_start`/`*_end` 的确定容错分支
+  - 完成态:`translation-context.test.ts` 通过,断言 partId 单调分配、上下文不可变、乱序容错
+  - _Requirements: 4.3, 4.12, 10.1_
+  - _Boundary: translation-context.ts_
+- [ ] 2.2 实现 translateEvent 纯函数与逐事件映射
+  - 实现 `translateEvent(event, ctx) -> { frames, ctx }`,按 PLAN §4 映射表逐子类型翻译为 protocol 定义的 `SseFrame`
+  - 覆盖 `agent_start`/`agent_end`/`turn_end`、`message_update.text_*`、`message_update.thinking_*`、`tool_execution_start|update|end`、`compaction_*`/`auto_retry_*`/`queue_update`、`extension_ui_request`(旁路 control)、未知事件(确定处理不抛)
+  - 每个产出帧携带 `protocolVersion` 且符合 protocol `SseFrameSchema`;`tool_execution_update` 用累积替换语义;函数无副作用
+  - 完成态:`translate-event.table.test.ts` 表驱动用例对每种事件断言帧种类/字段/`protocolVersion` 全部通过
+  - _Requirements: 4.1, 4.2, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 4.10, 4.11, 4.12, 10.1, 10.3_
+  - _Boundary: translate-event.ts_
+  - _Depends: 2.1_
+
+- [ ] 3. 核心:会话存储接口与内存实现
+- [ ] 3.1 (P) 实现 SessionStore 接口与 InMemorySessionStore
+  - 定义 `SessionStore` 接口(`create`/`get`/`delete`/`list`)与挂 `globalThis` 的内存实现
+  - `get` 未命中返回 `undefined`;`create` 后可 `get` 检索;`delete` 后 `get` 返回 `undefined`
+  - 完成态:`session-store.test.ts` 通过 create/get/delete/list 与未找到语义断言
+  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6_
+  - _Boundary: session-store.ts_
+
+- [ ] 4. 核心:PiSession 有状态外壳
+- [ ] 4.1 实现 PiSession 构造与事件广播
+  - 构造时持有注入的 `PiRpcChannel`+`ResolvedSource`,订阅 `onEvent`/`onExtensionUIRequest`/`onExit`,记录 `mode`/`trust`
+  - 事件经 `translateEvent` 翻译后经 `EventEmitter` 广播给所有订阅者(同序);`subscribe()` 返回可独立取消句柄;订阅者回调异常 try/catch 隔离
+  - 完成态:`pi-session.broadcast.test.ts` 通过——多订阅者同序一致、取消独立、回调异常隔离
+  - _Requirements: 1.2, 1.3, 3.1, 3.2, 3.3, 3.4, 3.5_
+  - _Boundary: pi-session.ts_
+  - _Depends: 1.1, 2.2_
+- [ ] 4.2 实现命令转发与最近状态缓存
+  - 实现对齐 rpc-channel 的命令转发方法(prompt/steer/follow_up/abort/set_model/cycle_model/get_available_models/set_thinking_level/get_state/get_messages/get_session_stats/get_commands),仅转发不改写语义
+  - 状态类响应刷新缓存;`getCachedState` 返回最近值不发命令,无缓存时返回明确空;已停止会话命令以 `SessionStoppedError` 拒绝
+  - 完成态:`pi-session.commands.test.ts` 通过——转发返回通道结果、缓存刷新与读取、停止后拒绝
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 6.1, 6.2, 6.3_
+  - _Boundary: pi-session.ts_
+- [ ] 4.3 实现 extension UI 挂起表与往返
+  - `extension_ui_request` 登记挂起表并广播旁路 control 帧;`respondExtensionUI(id, resp)` 经通道写回并移除;未知/已回复 ID 抛 `UnknownExtensionUIError`
+  - 完成态:`pi-session.extension-ui.test.ts` 通过——登记+广播、往返写回+移除、未知 ID 拒绝
+  - _Requirements: 5.1, 5.2, 5.3_
+  - _Boundary: pi-session.ts_
+- [ ] 4.4 实现生命周期:idle 回收、崩溃清理、stop 幂等、onClosed 去注册回调
+  - 实现统一清理原语(关通道+清挂起表/缓存+广播 end+在末尾调用注入的 `onClosed(id, reason)` 回调一次);idle 计时(活动重置)超时触发停止;`onExit`/崩溃以 `crashed` reason 走清理;`stop()` 状态机保证幂等;停止后拒绝命令/订阅;停止/崩溃清空挂起表
+  - PiSession 不持有 store;去注册经 `onClosed` 回调上移给 manager(由 5.1/5.2 接线)
+  - 完成态:`pi-session.lifecycle.test.ts`(假计时器 + spy `onClosed`)通过——idle 回收触发一次 `onClosed`、活动重置、崩溃清理+错误广播+`onClosed("crashed")`、`stop()` 多次幂等且 `onClosed` 只触发一次
+  - _Requirements: 5.4, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
+  - _Boundary: pi-session.ts_
+  - _Depends: 4.3_
+
+- [ ] 5. 集成:SessionManager 创建编排与优雅停机
+- [ ] 5.1 实现 createSession 编排与去注册接线
+  - `createSession(input)` 生成 `sessionId`、构造 `PiSession`(注入通道+resolved+`onClosed` 回调)、经 `SessionStore` 登记并返回;缺 `resolved`/`channel` 抛 `MissingInputError`;不 spawn/不解析(仅编排注入依赖)
+  - 在注入的 `onClosed(id)` 回调内执行 `store.delete(id)`,使会话经 stop/idle/crash 任一路径进入 stopped 时从 store 移除(跨边界去注册由 manager 拥有)
+  - 完成态:`session-manager.test.ts` 的创建用例通过——会话可经 `store.get(sessionId)` 检索;触发会话 idle/crash/stop 后 `store.get(sessionId)` 返回 `undefined`;缺入参拒绝
+  - _Requirements: 1.1, 1.4, 1.5, 7.5, 9.3, 9.4, 9.6_
+  - _Boundary: session-manager.ts_
+  - _Depends: 3.1, 4.4_
+- [ ] 5.2 实现 SIGTERM 优雅停机
+  - `shutdown()` 停止接受新会话、遍历 `store.list()` 逐一广播 end + `session.stop("shutdown")`、完成后 store 为空且无残留挂起;单会话 `stop` 抛错被隔离继续
+  - 完成态:`session-manager.test.ts` 的停机用例通过——停所有会话、store 清空、单失败隔离不中止整体
+  - _Requirements: 8.1, 8.2, 8.3, 8.4_
+  - _Boundary: session-manager.ts_
+  - _Depends: 5.1, 4.4_
+
+- [ ] 6. 验证:集成与端到端
+- [ ] 6.1 集成测试:真实通道 + stub agent
+  - 用 rpc-channel 真实 `PiRpcProcess` spawn stub agent 构造 `PiSession`;多订阅者在一轮 prompt 后收到一致帧序列;`extension_ui_request` → 订阅者收 control 帧 → `respondExtensionUI` 往返成功并清挂起
+  - 完成态:`session.integration.test.ts` 通过——多订阅者一致 + 扩展 UI 往返
+  - _Requirements: 10.4_
+  - _Depends: 4.3, 5.1_
+- [ ] 6.2 端到端测试:create→prompt→完整流→stats
+  - `createSession`(真实通道+stub/真实 pi)→ `prompt` → 单订阅者收到完整 UIMessage 流(`start`→`start-step`→`text-delta…`→`finish-step`→`finish`)→ `getSessionStats()` 可取统计 → `stop()` 后通道关闭、store 移除、再次 `stop()` 幂等
+  - 完成态:`session.e2e.test.ts` 通过,并以单一命令 `vitest run` 连同全部单元/集成测试一并通过并产出可验证结果
+  - _Requirements: 10.5, 10.6_
+  - _Depends: 6.1, 5.2_

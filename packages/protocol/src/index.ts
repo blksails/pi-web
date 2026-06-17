@@ -1,0 +1,25 @@
+/**
+ * @pi-web/protocol — 聚合导出面(下游唯一导入面)。
+ *
+ * 从 version、rpc/*、transport/* re-export 全部 schema、由 z.infer 推导的类型与
+ * protocolVersion。pi 原生派生(rpc/*)与 pi-web 自定义传输层(transport/*)分文件,
+ * 来源可辨识、可分别演进。禁止 rpc/transport 反向导入本入口。
+ */
+
+// 版本常量
+export { protocolVersion, type ProtocolVersion } from "./version.js";
+
+// rpc 层(pi 原生派生,对齐 pi 0.79.x)
+export * from "./rpc/model.js";
+export * from "./rpc/command.js";
+export * from "./rpc/response.js";
+export * from "./rpc/event.js";
+export * from "./rpc/extension-ui.js";
+export * from "./rpc/session-state.js";
+
+// transport 层(pi-web 自定义)
+export * from "./transport/spawn.js";
+export * from "./transport/data-part.js";
+export * from "./transport/ui-message-chunk.js";
+export * from "./transport/sse-frame.js";
+export * from "./transport/rest-dto.js";

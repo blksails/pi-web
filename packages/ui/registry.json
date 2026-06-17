@@ -1,0 +1,109 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "pi-web",
+  "homepage": "https://github.com/earendil-works/pi-web",
+  "items": [
+    {
+      "name": "chat",
+      "type": "registry:block",
+      "title": "PiChat",
+      "description": "拖入式 pi 聊天组件:useChat(PiTransport) + part 分派 + 控制面板 + 权限弹窗 + 插槽。",
+      "dependencies": [
+        "@pi-web/react",
+        "ai",
+        "@ai-sdk/react",
+        "streamdown",
+        "lucide-react",
+        "@radix-ui/react-dialog",
+        "@radix-ui/react-select",
+        "class-variance-authority",
+        "clsx",
+        "tailwind-merge"
+      ],
+      "files": [
+        { "path": "src/chat/pi-chat.tsx", "type": "registry:component" },
+        { "path": "src/chat/part-renderer.tsx", "type": "registry:component" },
+        { "path": "src/chat/slots.ts", "type": "registry:lib" },
+        { "path": "src/parts/pi-tool-part.tsx", "type": "registry:component" },
+        { "path": "src/parts/pi-reasoning.tsx", "type": "registry:component" },
+        { "path": "src/dialog/pi-permission-dialog.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-model-selector.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-thinking-level.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-session-stats.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-command-palette.tsx", "type": "registry:component" },
+        { "path": "src/registry/renderer-registry.ts", "type": "registry:lib" },
+        { "path": "src/ui/button.tsx", "type": "registry:ui" },
+        { "path": "src/ui/card.tsx", "type": "registry:ui" },
+        { "path": "src/ui/dialog.tsx", "type": "registry:ui" },
+        { "path": "src/ui/select.tsx", "type": "registry:ui" },
+        { "path": "src/ui/response.tsx", "type": "registry:ui" },
+        { "path": "src/lib/cn.ts", "type": "registry:lib" },
+        { "path": "src/styles.css", "type": "registry:style" }
+      ]
+    },
+    {
+      "name": "pi-tool-part",
+      "type": "registry:component",
+      "title": "PiToolPart",
+      "description": "工具卡(start/update/end 三态)。",
+      "dependencies": ["ai", "lucide-react", "clsx", "tailwind-merge"],
+      "files": [
+        { "path": "src/parts/pi-tool-part.tsx", "type": "registry:component" },
+        { "path": "src/ui/card.tsx", "type": "registry:ui" },
+        { "path": "src/lib/cn.ts", "type": "registry:lib" }
+      ]
+    },
+    {
+      "name": "pi-reasoning",
+      "type": "registry:component",
+      "title": "PiReasoning",
+      "description": "可折叠思考块。",
+      "dependencies": ["ai", "lucide-react", "clsx", "tailwind-merge"],
+      "files": [
+        { "path": "src/parts/pi-reasoning.tsx", "type": "registry:component" },
+        { "path": "src/lib/cn.ts", "type": "registry:lib" }
+      ]
+    },
+    {
+      "name": "pi-permission-dialog",
+      "type": "registry:component",
+      "title": "PiPermissionDialog",
+      "description": "扩展 UI 弹窗(select/confirm/input/editor)。",
+      "dependencies": [
+        "@pi-web/react",
+        "@radix-ui/react-dialog",
+        "lucide-react",
+        "clsx",
+        "tailwind-merge"
+      ],
+      "files": [
+        { "path": "src/dialog/pi-permission-dialog.tsx", "type": "registry:component" },
+        { "path": "src/ui/dialog.tsx", "type": "registry:ui" },
+        { "path": "src/ui/button.tsx", "type": "registry:ui" },
+        { "path": "src/lib/cn.ts", "type": "registry:lib" }
+      ]
+    },
+    {
+      "name": "pi-controls",
+      "type": "registry:component",
+      "title": "Pi controls",
+      "description": "PiModelSelector / PiThinkingLevel / PiSessionStats / PiCommandPalette。",
+      "dependencies": [
+        "@pi-web/react",
+        "@radix-ui/react-select",
+        "lucide-react",
+        "clsx",
+        "tailwind-merge"
+      ],
+      "files": [
+        { "path": "src/controls/pi-model-selector.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-thinking-level.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-session-stats.tsx", "type": "registry:component" },
+        { "path": "src/controls/pi-command-palette.tsx", "type": "registry:component" },
+        { "path": "src/ui/select.tsx", "type": "registry:ui" },
+        { "path": "src/ui/card.tsx", "type": "registry:ui" },
+        { "path": "src/lib/cn.ts", "type": "registry:lib" }
+      ]
+    }
+  ]
+}

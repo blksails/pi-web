@@ -1,0 +1,15 @@
+{
+  "_note": "REPRESENTATIVE, NOT CAPTURED LIVE. These SSE frames are derived from the documented SSE frame contract (transport/sse-frame.ts, PLAN.md §4/§13.2) — the UIMessage chunks + bypass control events a real pi-web SSE stream would emit while translating the rpc-sample-frames.jsonl chain. Set ANTHROPIC_API_KEY and run scripts/capture-pi-frames.ts to refresh from live frames. The `frames` array is validated frame-by-frame by the contract test.",
+  "protocolVersion": "0.1.0",
+  "frames": [
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-start", "id": "msg-1" } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-delta", "id": "msg-1", "delta": "Let me" } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-delta", "id": "msg-1", "delta": " list the files." } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-end", "id": "msg-1" } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "tool-input-available", "toolCallId": "toolu_01abc", "toolName": "bash", "input": { "command": "ls -1" } } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "data-pi-tool-partial", "data": { "toolCallId": "toolu_01abc", "toolName": "bash", "partialResult": "PLAN.md\nCLAUDE.md\n" } } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "tool-output-available", "toolCallId": "toolu_01abc", "output": "PLAN.md\nCLAUDE.md\npackage.json\n", "isError": false } },
+    { "kind": "control", "protocolVersion": "0.1.0", "payload": { "control": "queue", "steering": [], "followUp": [] } },
+    { "kind": "control", "protocolVersion": "0.1.0", "payload": { "control": "stats", "stats": { "cost": 0.0012, "totalTokens": 58 } } }
+  ]
+}

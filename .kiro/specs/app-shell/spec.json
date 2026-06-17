@@ -1,0 +1,22 @@
+{
+  "feature_name": "app-shell",
+  "created_at": "2026-06-17T07:54:50Z",
+  "updated_at": "2026-06-17T07:57:30Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

@@ -1,0 +1,45 @@
+{
+  "name": "pi-web",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "test:app": "vitest run",
+    "e2e": "playwright test",
+    "e2e:build": "next build && playwright test",
+    "e2e:node": "PI_WEB_STUB_AGENT=1 vitest run -c vitest.node-e2e.config.ts",
+    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pi-web/protocol": "workspace:*",
+    "@pi-web/react": "workspace:*",
+    "@pi-web/server": "workspace:*",
+    "@pi-web/ui": "workspace:*",
+    "@ai-sdk/react": "^2.0.0",
+    "ai": "^5.0.0",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
