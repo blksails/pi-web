@@ -15,7 +15,7 @@ import type {
 } from "@pi-web/react";
 
 /**
- * PiChatPro 富交互集成测试(任务 5.2)。
+ * PiChat 富交互集成测试(任务 5.2)。
  *
  * 与任务 4.1 的装配冒烟测试(真实 hooks + MockTransport)互补:这里按 design.md
  * 「Testing Strategy → Integration Tests」(「mock hooks」)mock `@ai-sdk/react` 的
@@ -34,7 +34,7 @@ import type {
 
 // ---- useChat mock(可在每个用例前重置返回值) -------------------------------
 
-/** sendMessage 的最小观测形状(PiChatPro 传 { text } 与可选 { body })。 */
+/** sendMessage 的最小观测形状(PiChat 传 { text } 与可选 { body })。 */
 interface SendMessageArg {
   readonly text?: string;
 }
@@ -57,7 +57,7 @@ vi.mock("@ai-sdk/react", () => ({
     status: chatState.status,
     sendMessage: sendMessageMock,
     stop: stopMock,
-    // PiChatPro 仅用 messages/sendMessage/status/stop;其余以宽松占位满足类型。
+    // PiChat 仅用 messages/sendMessage/status/stop;其余以宽松占位满足类型。
     id: "chat-mock",
     error: undefined,
     setMessages: vi.fn(),
@@ -91,7 +91,7 @@ vi.mock("@pi-web/react", () => ({
 
 // 被测组件须在 mock 声明之后导入(vi.mock 被提升,故静态导入亦安全;
 // 显式延后引入以表达依赖顺序)。
-import { PiChatPro } from "../../src/chat/pi-chat-pro.js";
+import { PiChat } from "../../src/chat/pi-chat.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
 
 // ---- 默认 hook 结果工厂 -----------------------------------------------------
@@ -141,14 +141,14 @@ function makeSuggestions(
   return { items: [], pending: false, ...over };
 }
 
-// 一个最小的会话 prop:PiChatPro 仅读 transport/sessionId/client 接线 hooks;
+// 一个最小的会话 prop:PiChat 仅读 transport/sessionId/client 接线 hooks;
 // 这些 hooks 已被 mock,故此处只需结构占位。
-function fakeSession(): React.ComponentProps<typeof PiChatPro>["session"] {
+function fakeSession(): React.ComponentProps<typeof PiChat>["session"] {
   return {
     sessionId: "sess-1",
     status: "open",
     transport: {} as React.ComponentProps<
-      typeof PiChatPro
+      typeof PiChat
     >["session"]["transport"],
     connection: undefined,
     client: undefined,
@@ -167,7 +167,7 @@ beforeEach(() => {
   suggestionsResult = makeSuggestions();
 });
 
-describe("PiChatPro 富交互(mock hooks)", () => {
+describe("PiChat 富交互(mock hooks)", () => {
   // -- 模型选择器:打开 / 搜索 / 选择 (Req 4.2, 11.4) -----------------------
   it("模型选择器打开触发 ensureLoaded,搜索过滤,选择触发 useModels.select", async () => {
     const user = userEvent.setup();
@@ -188,7 +188,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     ];
     modelsResult = makeModels({ available: true, groups });
 
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     // 会话就绪即主动加载一次(修复后);onOpen 仍可再次触发(幂等,不破坏)。
     const beforeOpen = ensureLoadedMock.mock.calls.length;
@@ -224,7 +224,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     const { waitFor } = await import("@testing-library/react");
     // 不点击任何东西:仅挂载即应触发一次主动加载。
     modelsResult = makeModels({ available: false });
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     await waitFor(() => expect(ensureLoadedMock).toHaveBeenCalledTimes(1));
   });
 
@@ -232,7 +232,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     modelsResult = makeModels({ available: false });
     const session = fakeSession();
     (session as { sessionId: string | undefined }).sessionId = undefined;
-    render(<PiChatPro session={session} />);
+    render(<PiChat session={session} />);
     expect(ensureLoadedMock).not.toHaveBeenCalled();
   });
 
@@ -245,7 +245,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
       },
     ];
     modelsResult = makeModels({ available: true, groups });
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     const trigger = screen.getByRole("button", { name: "模型" });
     expect(trigger).toBeInTheDocument();
     await user.click(trigger);
@@ -258,7 +258,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
 
   it("模型不可用时选择器不渲染(降级,Req 4.4)", () => {
     modelsResult = makeModels({ available: false });
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     expect(
       screen.queryByRole("button", { name: "模型" }),
     ).not.toBeInTheDocument();
@@ -282,7 +282,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
       branchOf: (id) => (id === "m-assistant" ? branch : undefined),
     });
 
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     // 指示文本「第 2 / 共 3」(index 0-based → 显示 index+1)。
     expect(screen.getByText(/第\s*2\s*\/\s*共\s*3/)).toBeInTheDocument();
@@ -310,7 +310,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     branchesResult = makeBranches({
       branchOf: () => ({ entryId: "m1", index: 0, total: 1 }),
     });
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     expect(
       screen.queryByRole("button", { name: "上一个版本" }),
     ).not.toBeInTheDocument();
@@ -335,7 +335,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
       status: "streaming",
       messages: [reasoningMessage("思考中", "streaming")],
     };
-    const { rerender } = render(<PiChatPro session={fakeSession()} />);
+    const { rerender } = render(<PiChat session={fakeSession()} />);
 
     // 默认折叠:内容不可见,折叠头 aria-expanded=false(Req 9.1)。
     const toggle = screen.getByRole("button", { name: /Reasoning/ });
@@ -353,7 +353,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
       status: "streaming",
       messages: [reasoningMessage("思考中…再想想", "streaming")],
     };
-    rerender(<PiChatPro session={fakeSession()} />);
+    rerender(<PiChat session={fakeSession()} />);
     expect(screen.getByText("思考中…再想想")).toBeInTheDocument();
 
     // 完成态:state 转 done,最终增量保留,Thinking 指示消失。
@@ -361,7 +361,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
       status: "ready",
       messages: [reasoningMessage("思考中…再想想…完成", "done")],
     };
-    rerender(<PiChatPro session={fakeSession()} />);
+    rerender(<PiChat session={fakeSession()} />);
     expect(screen.getByText("思考中…再想想…完成")).toBeInTheDocument();
     expect(
       screen.queryByRole("status", { name: "Thinking" }),
@@ -379,7 +379,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
         } as UIMessage,
       ],
     };
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     expect(
       screen.queryByRole("button", { name: /Reasoning/ }),
     ).not.toBeInTheDocument();
@@ -396,7 +396,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     // 先以空消息挂载:装配的 useEffect 向注入注册表注册 source data-part 渲染器。
     chatState = { status: "ready", messages: [] };
     const { rerender } = render(
-      <PiChatPro session={fakeSession()} registry={registry} />,
+      <PiChat session={fakeSession()} registry={registry} />,
     );
     // 注册器已就位(模拟「来源在会话进行中到达」)。
     expect(registry.resolveDataPartRenderer("data-source")).toBeDefined();
@@ -422,7 +422,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
         } as UIMessage,
       ],
     };
-    rerender(<PiChatPro session={fakeSession()} registry={registry} />);
+    rerender(<PiChat session={fakeSession()} registry={registry} />);
 
     // 折叠头出现且默认折叠(Req 9.3);来源数=2。
     const srcToggle = screen.getByRole("button", { name: /Sources/ });
@@ -452,7 +452,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     };
     attachmentsResult = makeAttachments({ items: [item] });
 
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     // chip 显示文件名。
     expect(screen.getByText("shot.png")).toBeInTheDocument();
@@ -467,7 +467,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
   it("status=submitted/streaming 显示停止态,点击触发 useChat stop", async () => {
     const user = userEvent.setup();
     chatState = { status: "streaming", messages: [] };
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     const stop = screen.getByRole("button", { name: /停止/ });
     expect(stop).toHaveAttribute("data-pi-submit-state", "stop");
@@ -477,7 +477,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
 
   it("status=submitted 同样显示停止态", () => {
     chatState = { status: "submitted", messages: [] };
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     expect(screen.getByRole("button", { name: /停止/ })).toHaveAttribute(
       "data-pi-submit-state",
       "stop",
@@ -487,7 +487,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
   it("status=error 显示错误/重试态,有内容时可点击重试触发发送", async () => {
     const user = userEvent.setup();
     chatState = { status: "error", messages: [] };
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     const retry = screen.getByRole("button", { name: /重试/ });
     expect(retry).toHaveAttribute("data-pi-submit-state", "error");
@@ -516,7 +516,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     };
     suggestionsResult = makeSuggestions({ items: [sugg] });
 
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
 
     await user.click(screen.getByRole("button", { name: "/help" }));
     const textarea = screen.getByRole("textbox", {
@@ -537,7 +537,7 @@ describe("PiChatPro 富交互(mock hooks)", () => {
         { id: "p1", label: "总结", value: "请总结", mode: "send" },
       ],
     });
-    render(<PiChatPro session={fakeSession()} />);
+    render(<PiChat session={fakeSession()} />);
     await user.click(screen.getByRole("button", { name: "总结" }));
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock.mock.calls[0]?.[0]?.text).toContain("请总结");

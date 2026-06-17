@@ -43,7 +43,7 @@
   - _Depends: 1.1_
 
 - [ ] 3. Integration:PiChat 收敛与 ambient 接线
-- [ ] 3.1 富组件收敛为默认 PiChat,最小组件改名,保留废弃别名
+- [x] 3.1 富组件收敛为默认 PiChat,最小组件改名,保留废弃别名
   - 富聊天组件成为默认导出 `PiChat`;原最小组件以 `PiChatBasic` 非破坏保留;保留 `PiChatPro` 作为指向新 `PiChat` 的废弃别名(带 deprecated 说明)
   - 更新组件库索引导出三者;迁移既有富组件测试以新名引用
   - 观察完成态:`pnpm --filter @pi-web/ui test typecheck` 通过;可从 `@pi-web/ui` 导入 `PiChat`(富)/`PiChatBasic`(最小)/`PiChatPro`(别名),三者渲染不报错

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import * as React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { PiChat } from "../../src/chat/pi-chat.js";
+import { PiChatBasic } from "../../src/chat/pi-chat-basic.js";
 import type { UseExtensionUIResult } from "@pi-web/react";
 import {
   mockSession,
@@ -14,13 +14,13 @@ import {
 import { streamWithToolAndReasoning } from "../fixtures/ui-message-fixtures.js";
 
 /**
- * e2e(组件级):mock 会话/mock transport 驱动 <PiChat>,断言跨组件完整交互。
+ * e2e(组件级):mock 会话/mock transport 驱动 <PiChatBasic>(最小组件),断言跨组件完整交互。
  *   (a) 流式文本逐步出现
  *   (b) 工具卡 start→end 呈现
  *   (c) 思考块可展开
  *   (d) 权限弹窗出现→作答→经 respond 回传并关闭
  */
-describe("PiChat e2e (mock 会话)", () => {
+describe("PiChatBasic e2e (mock 会话)", () => {
   it("流式文本 + 工具卡 + 思考块 + 权限弹窗完整交互", async () => {
     const user = userEvent.setup();
 
@@ -50,7 +50,7 @@ describe("PiChat e2e (mock 会话)", () => {
           >
             trigger
           </button>
-          <PiChat
+          <PiChatBasic
             session={session}
             controls={mockControls()}
             extensionUI={ext}
