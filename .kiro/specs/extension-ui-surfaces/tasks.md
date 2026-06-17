@@ -35,7 +35,7 @@
   - _Boundary: StatusBar_
   - _Depends: 1.1_
 
-- [ ] 2.3 (P) Widget 区元件(Widgets)
+- [x] 2.3 (P) Widget 区元件(Widgets)
   - 按放置位(上方/下方)筛选并逐行渲染 widget 文本;无匹配项不渲染
   - 观察完成态:组件单测验证空/无匹配 placement 不渲染、仅渲染匹配 placement、多行渲染、主题经 CSS 变量
   - _Requirements: 3.1, 3.2, 3.5, 8.1_
