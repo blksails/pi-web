@@ -15,9 +15,12 @@
  *   GET  /sessions/:id/commands            —                    → GetCommandsResponse
  *   POST /sessions/:id/ui-response         ExtensionUIResponse  → CommandAck
  *   DELETE /sessions/:id                   —                    → CommandAck
+ *   GET  /sessions/:id/models              —                    → GetAvailableModelsResponse
+ *   POST /sessions/:id/fork                ForkRequest          → ForkResponse
+ *   GET  /sessions/:id/fork-messages       —                    → GetForkMessagesResponse
  */
 import { z } from "zod";
-import { ImageContentSchema, ThinkingLevelSchema } from "../rpc/model.js";
+import { ImageContentSchema, ModelSchema, ThinkingLevelSchema } from "../rpc/model.js";
 import {
   RpcSessionStateSchema,
   RpcSlashCommandSchema,
@@ -99,3 +102,49 @@ export type GetCommandsResponse = z.infer<typeof GetCommandsResponseSchema>;
 /** ui-response 请求体即 pi 的 RpcExtensionUIResponse。 */
 export const UiResponseRequestSchema = RpcExtensionUIResponseSchema;
 export type UiResponseRequest = z.infer<typeof UiResponseRequestSchema>;
+
+/**
+ * GET /sessions/:id/models 响应 —— 复用既有 `Model` schema。
+ * 对齐 RpcCommand `get_available_models` 的成功响应 `{ models: Model[] }`(见 rpc/response.ts)。
+ * 模型列表仅来自 pi,不含写死项;空列表合法(对应"模型选择器降级"语义,见 Requirement 4.4/4.5)。
+ */
+export const GetAvailableModelsResponseSchema = z.object({
+  models: z.array(ModelSchema),
+});
+export type GetAvailableModelsResponse = z.infer<
+  typeof GetAvailableModelsResponseSchema
+>;
+
+/**
+ * POST /sessions/:id/fork 请求 —— 复用既有 entryId 形状。
+ * 对齐 RpcCommand `fork`(`{ type: "fork", entryId }`)。
+ */
+export const ForkRequestSchema = z.object({
+  entryId: z.string(),
+});
+export type ForkRequest = z.infer<typeof ForkRequestSchema>;
+
+/**
+ * POST /sessions/:id/fork 响应。
+ * 对齐 RpcCommand `fork` 的成功响应 `{ text, cancelled }`(见 rpc/response.ts);
+ * 两字段在 REST 透传面均为可选(取消时可仅返回 `cancelled`)。
+ */
+export const ForkResponseSchema = z.object({
+  text: z.string().optional(),
+  cancelled: z.boolean().optional(),
+});
+export type ForkResponse = z.infer<typeof ForkResponseSchema>;
+
+/**
+ * GET /sessions/:id/fork-messages 响应。
+ * 对齐 RpcCommand `get_fork_messages` 的成功响应 `{ messages: { entryId, text }[] }`
+ * (见 rpc/response.ts)。
+ */
+export const GetForkMessagesResponseSchema = z.object({
+  messages: z.array(
+    z.object({ entryId: z.string(), text: z.string() }),
+  ),
+});
+export type GetForkMessagesResponse = z.infer<
+  typeof GetForkMessagesResponseSchema
+>;
