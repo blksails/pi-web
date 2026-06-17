@@ -18,7 +18,7 @@
   - _Boundary: PiSession, Server HTTP routes_
   - _Depends: 1.1_
 
-- [ ] 1.3 在 react 客户端新增三能力 REST 方法
+- [x] 1.3 在 react 客户端新增三能力 REST 方法
   - `PiClient` 新增 `getAvailableModels` / `fork` / `getForkMessages`,用协议契约解析响应;端点缺失(404)抛可识别错误供上层降级
   - 观察完成态:三方法的路径/HTTP 方法/响应解析单测通过,404 抛出可识别错误
   - _Requirements: 4.1, 8.1, 8.2, 8.3_

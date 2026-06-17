@@ -152,3 +152,83 @@ describe("createPiClient request shaping", () => {
     );
   });
 });
+
+/** 一个通过 ModelSchema 的最小合法 Model(字段取自 protocol rpc/model)。 */
+const sampleModel = {
+  id: "claude-x",
+  name: "Claude X",
+  api: "anthropic",
+  provider: "anthropic",
+  baseUrl: "https://api.anthropic.com",
+  reasoning: true,
+  input: ["text"],
+  cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 200000,
+  maxTokens: 8192,
+};
+
+describe("createPiClient three-capability REST methods", () => {
+  it("getAvailableModels GETs /sessions/:id/models and parses via schema", async () => {
+    const { fetch, calls } = mockFetch(
+      makeJsonResponse({ models: [sampleModel] }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    const res = await client.getAvailableModels("s 1");
+    expect(calls[0]?.method).toBe("GET");
+    expect(calls[0]?.url).toBe("http://api.test/sessions/s%201/models");
+    expect(calls[0]?.body).toBeUndefined();
+    expect(res.models).toHaveLength(1);
+    expect(res.models[0]?.id).toBe("claude-x");
+  });
+
+  it("fork POSTs ForkRequest to /sessions/:id/fork and parses via schema", async () => {
+    const { fetch, calls } = mockFetch(
+      makeJsonResponse({ text: "forked", cancelled: false }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    const res = await client.fork("s1", { entryId: "e1" });
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toBe("http://api.test/sessions/s1/fork");
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ entryId: "e1" });
+    expect(calls[0]?.headers.get("content-type")).toBe("application/json");
+    expect(res).toEqual({ text: "forked", cancelled: false });
+  });
+
+  it("getForkMessages GETs /sessions/:id/fork-messages and parses via schema", async () => {
+    const { fetch, calls } = mockFetch(
+      makeJsonResponse({ messages: [{ entryId: "e1", text: "hi" }] }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    const res = await client.getForkMessages("s1");
+    expect(calls[0]?.method).toBe("GET");
+    expect(calls[0]?.url).toBe("http://api.test/sessions/s1/fork-messages");
+    expect(calls[0]?.body).toBeUndefined();
+    expect(res.messages).toEqual([{ entryId: "e1", text: "hi" }]);
+  });
+
+  it("404 on any of the three endpoints throws an identifiable PiHttpError (status 404)", async () => {
+    const make404 = () =>
+      createPiClient("http://api.test", mockFetch(makeJsonResponse({}, 404)).fetch);
+
+    await expect(make404().getAvailableModels("s1")).rejects.toBeInstanceOf(
+      PiHttpError,
+    );
+    await expect(make404().getAvailableModels("s1")).rejects.toMatchObject({
+      status: 404,
+    });
+    await expect(
+      make404().fork("s1", { entryId: "e1" }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(make404().getForkMessages("s1")).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+
+  it("rejects when response payload violates the protocol schema", async () => {
+    const { fetch } = mockFetch(
+      makeJsonResponse({ models: [{ id: 123 }] }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    await expect(client.getAvailableModels("s1")).rejects.toThrow();
+  });
+});

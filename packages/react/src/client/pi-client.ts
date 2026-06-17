@@ -19,6 +19,15 @@ import type {
   GetMessagesResponse,
   GetCommandsResponse,
   CommandAck,
+  GetAvailableModelsResponse,
+  ForkRequest,
+  ForkResponse,
+  GetForkMessagesResponse,
+} from "@pi-web/protocol";
+import {
+  GetAvailableModelsResponseSchema,
+  ForkResponseSchema,
+  GetForkMessagesResponseSchema,
 } from "@pi-web/protocol";
 import { sendRequest, type FetchLike } from "./request.js";
 
@@ -42,6 +51,23 @@ export interface PiClient {
   getStats(id: string): Promise<GetStatsResponse>;
   getMessages(id: string): Promise<GetMessagesResponse>;
   getCommands(id: string): Promise<GetCommandsResponse>;
+
+  /**
+   * GET /sessions/:id/models —— 拉取可用模型列表(对齐 RpcCommand get_available_models)。
+   * 响应经 GetAvailableModelsResponseSchema 解析;端点缺失(404)→ PiHttpError(status===404),
+   * 供上层(useModels)识别并降级隐藏模型选择器(Req 4.4)。
+   */
+  getAvailableModels(id: string): Promise<GetAvailableModelsResponse>;
+  /**
+   * POST /sessions/:id/fork —— 创建同级版本(对齐 RpcCommand fork)。
+   * 响应经 ForkResponseSchema 解析;端点缺失(404)→ PiHttpError(status===404),供上层降级(Req 8.4)。
+   */
+  fork(id: string, req: ForkRequest): Promise<ForkResponse>;
+  /**
+   * GET /sessions/:id/fork-messages —— 加载分支消息序列(对齐 RpcCommand get_fork_messages)。
+   * 响应经 GetForkMessagesResponseSchema 解析;端点缺失(404)→ PiHttpError(status===404),供上层降级(Req 8.4)。
+   */
+  getForkMessages(id: string): Promise<GetForkMessagesResponse>;
 
   deleteSession(id: string): Promise<CommandAck>;
 }
@@ -89,6 +115,19 @@ export function createPiClient(
       get<GetMessagesResponse>(`/sessions/${enc(id)}/messages`),
     getCommands: (id) =>
       get<GetCommandsResponse>(`/sessions/${enc(id)}/commands`),
+
+    getAvailableModels: async (id) =>
+      GetAvailableModelsResponseSchema.parse(
+        await get<unknown>(`/sessions/${enc(id)}/models`),
+      ),
+    fork: async (id, req) =>
+      ForkResponseSchema.parse(
+        await post<unknown>(`/sessions/${enc(id)}/fork`, req),
+      ),
+    getForkMessages: async (id) =>
+      GetForkMessagesResponseSchema.parse(
+        await get<unknown>(`/sessions/${enc(id)}/fork-messages`),
+      ),
 
     deleteSession: (id) =>
       sendRequest<CommandAck>(baseUrl, f, {
