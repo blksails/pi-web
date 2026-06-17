@@ -85,3 +85,9 @@ export {
   type UseBranchesResult,
   type BranchInfo,
 } from "./hooks/use-branches.js";
+export {
+  useSuggestions,
+  type UseSuggestionsOptions,
+  type UseSuggestionsResult,
+  type Suggestion,
+} from "./hooks/use-suggestions.js";

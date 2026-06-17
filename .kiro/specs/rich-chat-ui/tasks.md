@@ -54,7 +54,7 @@
   - _Boundary: useBranches_
   - _Depends: 1.3_
 
-- [ ] 2.4 (P) 建议来源 hook
+- [x] 2.4 (P) 建议来源 hook
   - 合并 pi 命令(复用既有 getCommands/commands)与可配置预设为建议项;无命令且无预设时返回空
   - 观察完成态:mock controls 下 items 为命令∪预设、空源返回 [],单测通过
   - _Requirements: 10.1, 10.3_
@@ -178,3 +178,4 @@
 
 ## Implementation Notes
 - 2.3: useBranches.select 会 getForkMessages 但当前未对外暴露 messages;任务 4.1 装配分支视图刷新时,需扩展 useBranches 暴露已加载分支消息(或在 PiChatPro 中处理),以满足 Req 8.3「更新对话视图」。e2e 5.3 验证分支切换确实刷新视图。
+- 2.4: useSuggestions 不自动触发 getCommands;任务 4.1 装配 PiChatPro 时须调用 controls.getCommands() 以填充 commands 状态,建议气泡方能显示(Req 10.1)。
