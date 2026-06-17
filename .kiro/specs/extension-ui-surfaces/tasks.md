@@ -2,7 +2,7 @@
 
 > 边界总览见 design.md「Boundary Commitments / File Structure Plan」。依赖方向 protocol → react → ui → app,只向左依赖。零协议/server 改动。
 
-- [ ] 1. Foundation:react 数据层(ambient 分流 + hook 暴露)
+- [x] 1. Foundation:react 数据层(ambient 分流 + hook 暴露)
 - [x] 1.1 ControlStore 推送类分流为 ambient 状态
   - 在控制旁路 store 的快照中新增 ambient 切片:通知列表、键控状态映射、键控 widget 映射、会话标题、写入输入框的一次性信号(含单调递增计数)
   - 入帧分流:`notify` 追加通知并归一通知级别;`setStatus` 置/替换键,文本未提供即删该键;`setWidget` 置/替换键(归一放置位),行未提供即删该键;`setTitle` 置/替换标题;`set_editor_text` 写入文本并自增计数
@@ -19,7 +19,7 @@
   - _Boundary: useExtensionUI, react index_
   - _Depends: 1.1_
 
-- [ ] 2. Core:UI 无状态展示元件(主题走 shadcn CSS 变量,基本键盘/aria)
+- [x] 2. Core:UI 无状态展示元件(主题走 shadcn CSS 变量,基本键盘/aria)
 - [x] 2.1 (P) 通知浮层元件(Notifications/toasts)
   - 堆叠展示通知,按级别(info/warning/error)以 CSS 变量配色;每条挂载后定时自动消失并支持手动关闭(均回调移除)
   - error 用 alert 角色、info/warning 用 status 角色;关闭按钮带 aria-label;空列表不渲染
@@ -42,7 +42,7 @@
   - _Boundary: Widgets_
   - _Depends: 1.1_
 
-- [ ] 3. Integration:PiChat 收敛与 ambient 接线
+- [x] 3. Integration:PiChat 收敛与 ambient 接线
 - [x] 3.1 富组件收敛为默认 PiChat,最小组件改名,保留废弃别名
   - 富聊天组件成为默认导出 `PiChat`;原最小组件以 `PiChatBasic` 非破坏保留;保留 `PiChatPro` 作为指向新 `PiChat` 的废弃别名(带 deprecated 说明)
   - 更新组件库索引导出三者;迁移既有富组件测试以新名引用
@@ -65,7 +65,7 @@
   - _Boundary: app chat 装配点_
   - _Depends: 3.1_
 
-- [ ] 4. Validation:单测、集成、端到端与基线回归
+- [x] 4. Validation:单测、集成、端到端与基线回归
 - [x] 4.1 (P) ControlStore 分流单测
   - 验证五类推送帧 → 对应 ambient 切片(通知追加+级别归一+堆叠、状态置/替换/删、widget 置/替换/删+placement 归一、标题置/替换、写入信号计数单调递增);交互类四方法仍入对话框队列且不进 ambient;推送类不进队列(防阻塞回归);移除通知与软上限生效
   - 观察完成态:`pnpm --filter @pi-web/react test` 通过且覆盖上述分支
@@ -94,7 +94,7 @@
   - _Boundary: e2e, stub-agent-process_
   - _Depends: 3.3_
 
-- [ ] 4.5 基线回归与类型检查
+- [x] 4.5 基线回归与类型检查
   - 运行全量 `pnpm test` 与 `pnpm typecheck`,确认无回归、无类型错误,无硬编码颜色、无 any
   - 观察完成态:全量测试与 typecheck 全绿,既有基线用例与新增用例均通过
   - _Requirements: 8.3_
