@@ -190,9 +190,11 @@ describe("PiChatPro 富交互(mock hooks)", () => {
 
     render(<PiChatPro session={fakeSession()} />);
 
-    // 打开 → onOpen 触发 ensureLoaded(懒加载)。
+    // 会话就绪即主动加载一次(修复后);onOpen 仍可再次触发(幂等,不破坏)。
+    const beforeOpen = ensureLoadedMock.mock.calls.length;
+    expect(beforeOpen).toBeGreaterThanOrEqual(1);
     await user.click(screen.getByRole("button", { name: "模型" }));
-    expect(ensureLoadedMock).toHaveBeenCalledTimes(1);
+    expect(ensureLoadedMock.mock.calls.length).toBeGreaterThan(beforeOpen);
 
     // 打开后 listbox 出现,三个模型项可见(a11y:role=option)。
     const list = screen.getByRole("listbox", { name: "模型" });
@@ -214,6 +216,44 @@ describe("PiChatPro 富交互(mock hooks)", () => {
     expect(
       screen.queryByRole("listbox", { name: "模型" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("会话就绪后主动调用 models.ensureLoaded(无需先点开选择器,Req 4.1)", async () => {
+    // 缺陷回归:available 初始为 false 时选择器隐藏,唯一触发 ensureLoaded 的
+    // onOpen 永不可达 → 死锁。修复后装配应在会话就绪时主动拉取模型。
+    const { waitFor } = await import("@testing-library/react");
+    // 不点击任何东西:仅挂载即应触发一次主动加载。
+    modelsResult = makeModels({ available: false });
+    render(<PiChatPro session={fakeSession()} />);
+    await waitFor(() => expect(ensureLoadedMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("无 sessionId 时不主动调用 ensureLoaded(会话未就绪)", () => {
+    modelsResult = makeModels({ available: false });
+    const session = fakeSession();
+    (session as { sessionId: string | undefined }).sessionId = undefined;
+    render(<PiChatPro session={session} />);
+    expect(ensureLoadedMock).not.toHaveBeenCalled();
+  });
+
+  it("非空 groups + available=true 时选择器渲染(可见、可开/选,Req 4.1/4.2/4.3)", async () => {
+    const user = userEvent.setup();
+    const groups: ModelGroup[] = [
+      {
+        provider: "openai",
+        models: [{ provider: "openai", modelId: "gpt-4o", label: "GPT-4o" }],
+      },
+    ];
+    modelsResult = makeModels({ available: true, groups });
+    render(<PiChatPro session={fakeSession()} />);
+    const trigger = screen.getByRole("button", { name: "模型" });
+    expect(trigger).toBeInTheDocument();
+    await user.click(trigger);
+    expect(
+      within(screen.getByRole("listbox", { name: "模型" })).getAllByRole(
+        "option",
+      ),
+    ).toHaveLength(1);
   });
 
   it("模型不可用时选择器不渲染(降级,Req 4.4)", () => {

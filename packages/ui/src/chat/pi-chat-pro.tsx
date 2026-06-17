@@ -174,6 +174,20 @@ export function PiChatPro({
     void controls.getCommands().catch(() => undefined);
   }, [controls, sessionId]);
 
+  // 会话就绪后主动加载可用模型(useModels 不自动触发;ModelSelector 在
+  // available=false 时隐藏,而 onOpen 是唯一懒加载触发点 → 形成死锁,选择器永不渲染)。
+  // 此处镜像 commandsLoadedRef 模式,每会话仅触发一次,使 available 反映真实模型可用性:
+  // 有模型 → 选择器渲染并可交互;get_available_models 不可用/空 → 选择器仍隐藏(Req 4.4 降级)。
+  // 加载幂等(useModels.loadedRef 已防重复),onOpen 仍可再次调用而不破坏。
+  const modelsLoadedRef = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (sessionId === undefined || modelsLoadedRef.current === sessionId) {
+      return;
+    }
+    modelsLoadedRef.current = sessionId;
+    void models.ensureLoaded().catch(() => undefined);
+  }, [sessionId, models]);
+
   const isBusy = status === "submitted" || status === "streaming";
   const canSubmit =
     transport !== undefined &&
