@@ -102,6 +102,13 @@ export function mockExtensionUI(
     respond: vi.fn(async () => undefined),
     error: undefined,
     pending: false,
+    // ambient 推送类(extension-ui-surfaces):默认空态,可经 overrides 注入。
+    notifications: [],
+    statuses: {},
+    widgets: {},
+    title: undefined,
+    editorText: undefined,
+    dismissNotification: vi.fn(() => undefined),
     ...overrides,
   };
 }
