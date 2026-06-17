@@ -742,4 +742,54 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     expect(container.querySelector("[data-pi-status-bar]")).toBeNull();
     expect(container.querySelector("[data-pi-widgets]")).toBeNull();
   });
+
+  // -- 推送面与交互对话框共存且互不阻塞 (Req 6.2, 6.4, 8.4) -----------------
+  it("推送类 ambient 态与交互类 confirm 请求并存时:对话框正常弹出且推送面同时可见(未被阻塞)", () => {
+    // 设计语义:推送类(notify/setStatus/setWidget/setTitle)不入交互队列,
+    // 故 `current` 为交互类 confirm 请求时,PiPermissionDialog 应正常弹出,
+    // 而 notifications / statuses 等推送面同时渲染——二者互不阻塞/不干扰。
+    const confirmRequest = {
+      type: "extension_ui_request" as const,
+      id: "c1",
+      method: "confirm" as const,
+      title: "Proceed?",
+      message: "ok?",
+    };
+    const notifications: ExtensionNotification[] = [
+      { id: "n1", message: "构建完成", notifyType: "info" },
+    ];
+    const { container } = render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({
+          // 交互类:current + queue 同时持有该 confirm 请求,respond 为 vi.fn。
+          current: confirmRequest,
+          queue: [confirmRequest],
+          respond: vi.fn(async () => undefined),
+          // 推送类 ambient:通知 + 状态 + 标题。
+          notifications,
+          statuses: { branch: "main" },
+          title: "My Session Title",
+        })}
+        notificationsAutoDismissMs={0}
+      />,
+    );
+
+    // 权限对话框可见(真实 PiPermissionDialog,根 data 属性 data-pi-permission-dialog)。
+    // Radix Dialog 经 portal 渲染至 document.body,故经 document 而非 render container 查询。
+    const dialog = document.querySelector("[data-pi-permission-dialog]");
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    // confirm 方法专属:确认 / 取消按钮可见,标题/消息渲染。
+    expect(dialog?.getAttribute("data-pi-permission-method")).toBe("confirm");
+    expect(screen.getByText("Proceed?")).toBeInTheDocument();
+    expect(screen.getByText("ok?")).toBeInTheDocument();
+
+    // 同时:推送面(通知浮层 + 状态条)可见 —— 未被交互对话框阻塞。
+    expect(container.querySelector("[data-pi-notifications]")).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-status-bar]")).toBeInTheDocument();
+    expect(screen.getByText("构建完成")).toBeInTheDocument();
+    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(screen.getByText("My Session Title")).toBeInTheDocument();
+  });
 });

@@ -66,21 +66,21 @@
   - _Depends: 3.1_
 
 - [ ] 4. Validation:单测、集成、端到端与基线回归
-- [ ] 4.1 (P) ControlStore 分流单测
+- [x] 4.1 (P) ControlStore 分流单测
   - 验证五类推送帧 → 对应 ambient 切片(通知追加+级别归一+堆叠、状态置/替换/删、widget 置/替换/删+placement 归一、标题置/替换、写入信号计数单调递增);交互类四方法仍入对话框队列且不进 ambient;推送类不进队列(防阻塞回归);移除通知与软上限生效
   - 观察完成态:`pnpm --filter @pi-web/react test` 通过且覆盖上述分支
   - _Requirements: 1.1, 1.2, 1.5, 2.1, 2.2, 2.3, 3.1, 3.3, 3.4, 4.1, 4.2, 5.1, 5.2, 6.1, 6.3_
   - _Boundary: ControlStore test_
   - _Depends: 1.1_
 
-- [ ] 4.2 (P) 三个展示元件单测
+- [x] 4.2 (P) 三个展示元件单测
   - 覆盖 Notifications/StatusBar/Widgets 的空态不渲染、增删、级别配色与角色、placement 过滤、自动消失/手动关闭、键序稳定、CSS 变量主题
   - 观察完成态:`pnpm --filter @pi-web/ui test` 中三元件用例通过
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6, 2.1, 2.4, 2.5, 3.1, 3.2, 3.5, 8.1, 8.2_
   - _Boundary: elements test_
   - _Depends: 2.1, 2.2, 2.3_
 
-- [ ] 4.3 PiChat 集成测试(渲染面 + 不阻塞 + 收敛)
+- [x] 4.3 PiChat 集成测试(渲染面 + 不阻塞 + 收敛)
   - 用 mock extensionUI 注入推送态:各面渲染、标题进头部、输入框被写入(最新优先);推送类与交互类同时存在时权限对话框仍弹出(队列未被阻塞);`PiChat`=富、`PiChatBasic` 可渲染、`PiChatPro` 别名等价
   - 观察完成态:`pnpm --filter @pi-web/ui test` 中 PiChat 集成用例通过,覆盖各面与不阻塞断言
   - _Requirements: 4.1, 5.1, 5.2, 6.1, 6.2, 6.4, 7.1, 7.2, 7.3, 8.4_
