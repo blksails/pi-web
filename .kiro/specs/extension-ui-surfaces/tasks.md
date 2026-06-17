@@ -87,7 +87,7 @@
   - _Boundary: PiChat test_
   - _Depends: 3.2_
 
-- [ ] 4.4 浏览器端到端验证(确定性 stub 发推送帧)
+- [x] 4.4 浏览器端到端验证(确定性 stub 发推送帧)
   - 确定性 stub 在权限(confirm)帧之前增发 notify/setStatus/setWidget/setTitle/set_editor_text 帧;e2e 断言 toast 文本、状态项、widget 行、头部标题、输入框文本均出现,且 confirm 对话框随后仍可见并可应答(证明未被推送阻塞)
   - 观察完成态:`pnpm e2e` 中该用例通过,完成"推送呈现 + 交互不阻塞"闭环
   - _Requirements: 1.1, 2.1, 3.1, 4.1, 5.1, 6.2_
