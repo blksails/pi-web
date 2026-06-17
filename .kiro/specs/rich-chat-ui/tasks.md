@@ -25,7 +25,7 @@
   - _Boundary: PiClient_
   - _Depends: 1.1_
 
-- [ ] 1.4 (P) 在传输层映射图片附件到 prompt
+- [x] 1.4 (P) 在传输层映射图片附件到 prompt
   - `PiTransport.sendMessages` 将消息携带的图片附件映射为 prompt 的 `images`;无附件时行为与现状一致
   - 观察完成态:transport 含/不含图片两路单测通过(含图片时请求负载带 `images`,不含时与现状一致)
   - _Requirements: 3.1, 3.2_

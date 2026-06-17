@@ -7,6 +7,7 @@ import {
   makeSseResponse,
   makeJsonResponse,
 } from "../fixtures/sse-samples.js";
+import type { ImageContent } from "@pi-web/protocol";
 import type { UIMessage, UIMessageChunk } from "ai";
 
 async function drain(
@@ -92,6 +93,75 @@ describe("PiTransport.sendMessages", () => {
       .map((c) => ("delta" in c ? c.delta : ""));
     expect(deltas.join("")).toBe("Hi");
     expect(chunks.at(-1)?.type).toBe("finish");
+  });
+
+  it("maps image attachments from body to PromptRequest.images", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    const images: ImageContent[] = [
+      { type: "image", data: "AAAA", mimeType: "image/png" },
+      { type: "image", data: "BBBB", mimeType: "image/jpeg" },
+    ];
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("look at this")],
+      abortSignal: undefined,
+      body: { images },
+    });
+    expect(routed.postedMessages).toHaveLength(1);
+    expect(routed.postedMessages[0]?.body).toEqual({
+      message: "look at this",
+      images,
+    });
+  });
+
+  it("maps image attachments from metadata to PromptRequest.images", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    const images: ImageContent[] = [
+      { type: "image", data: "CCCC", mimeType: "image/webp" },
+    ];
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("look")],
+      abortSignal: undefined,
+      metadata: { images },
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({
+      message: "look",
+      images,
+    });
+  });
+
+  it("omits images when no attachments are provided (unchanged behavior)", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("plain text")],
+      abortSignal: undefined,
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({ message: "plain text" });
+    expect(
+      (routed.postedMessages[0]?.body as Record<string, unknown>).images,
+    ).toBeUndefined();
+  });
+
+  it("does not forward unrelated body fields into the prompt payload", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("hello")],
+      abortSignal: undefined,
+      body: { foo: "bar", images: undefined },
+    });
+    // 仅映射 message(+ images);不透传任意 body 字段。
+    expect(routed.postedMessages[0]?.body).toEqual({ message: "hello" });
   });
 
   it("forwards custom headers to the stream subscription", async () => {
