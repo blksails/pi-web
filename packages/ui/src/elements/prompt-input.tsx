@@ -1,0 +1,131 @@
+/**
+ * PromptInput — 无状态的富输入外壳。
+ *
+ * 提供一个受控多行文本框与若干子控件插槽位;真正的附件/模型/语音/发送等子控件由装配层
+ * (PiChatPro)注入,本组件只负责展示、本地键盘交互与插槽布局:
+ *  - textarea:Enter 提交(调 onSubmit 并阻止默认换行)(Req 1.2);Shift+Enter 换行不提交
+ *    (Req 1.4);value 为空或仅空白时不触发提交(Req 1.3)。
+ *  - 受控 props:value/onChange/onSubmit/placeholder/disabled;placeholder 等可由调用方覆盖
+ *    默认值(Req 1.5)。
+ *  - 子控件插槽:toolbar(动作栏)/ leftSlot / rightSlot / children,供装配层注入附件菜单、
+ *    模型选择器、语音、联网开关、发送按钮等(Req 1.1)。
+ *
+ * 本组件不持有任何 pi 接线逻辑。主题经 shadcn CSS 变量(cn),无硬编码颜色(Req 11.5);
+ * textarea 始终带 `aria-label` 以满足无障碍(Req 11.4)。
+ */
+import * as React from "react";
+import { cn } from "../lib/cn.js";
+
+export interface PromptInputProps {
+  /** 受控文本值。 */
+  readonly value: string;
+  /** 文本变化回调,接收新的完整文本。 */
+  readonly onChange: (value: string) => void;
+  /** 提交回调(Enter 或外部发送按钮触发);value 为空/仅空白或 disabled 时不会被调用。 */
+  readonly onSubmit: () => void;
+  /** 占位符,默认中文;可由调用方覆盖(Req 1.5)。 */
+  readonly placeholder?: string;
+  /** 是否禁用输入与提交。 */
+  readonly disabled?: boolean;
+  /** textarea 行数,默认 2。 */
+  readonly rows?: number;
+  /** textarea 的无障碍标签,默认中文"消息输入"。 */
+  readonly textareaLabel?: string;
+  /** 动作栏插槽(通常承载附件/模型/语音/联网开关/发送按钮)。 */
+  readonly toolbar?: React.ReactNode;
+  /** 文本框左侧插槽。 */
+  readonly leftSlot?: React.ReactNode;
+  /** 文本框右侧插槽。 */
+  readonly rightSlot?: React.ReactNode;
+  /** 额外内容插槽(如附件 chips 区),渲染于文本行上方。 */
+  readonly children?: React.ReactNode;
+  readonly className?: string;
+  /** textarea 区域的额外 className。 */
+  readonly textareaClassName?: string;
+}
+
+/** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
+function isBlank(value: string): boolean {
+  return value.trim().length === 0;
+}
+
+export function PromptInput({
+  value,
+  onChange,
+  onSubmit,
+  placeholder = "输入消息…",
+  disabled = false,
+  rows = 2,
+  textareaLabel = "消息输入",
+  toolbar,
+  leftSlot,
+  rightSlot,
+  children,
+  className,
+  textareaClassName,
+}: PromptInputProps): React.JSX.Element {
+  const canSubmit = !disabled && !isBlank(value);
+
+  const handleKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ): void => {
+    // Shift+Enter:换行,不提交(Req 1.4)——交由浏览器默认行为插入换行。
+    if (event.key !== "Enter" || event.shiftKey) return;
+    // Enter:阻止默认换行并提交(Req 1.2);空/仅空白或禁用时不提交(Req 1.3)。
+    event.preventDefault();
+    if (!canSubmit) return;
+    onSubmit();
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2",
+        className,
+      )}
+      data-pi-prompt-input
+    >
+      {children !== undefined ? (
+        <div data-pi-prompt-input-extra>{children}</div>
+      ) : null}
+
+      <div className="flex items-end gap-2">
+        {leftSlot !== undefined ? (
+          <div className="shrink-0" data-pi-prompt-input-left>
+            {leftSlot}
+          </div>
+        ) : null}
+
+        <textarea
+          aria-label={textareaLabel}
+          value={value}
+          disabled={disabled}
+          rows={rows}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            "min-w-0 flex-1 resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+            textareaClassName,
+          )}
+          data-pi-input-textarea
+        />
+
+        {rightSlot !== undefined ? (
+          <div className="shrink-0" data-pi-prompt-input-right>
+            {rightSlot}
+          </div>
+        ) : null}
+      </div>
+
+      {toolbar !== undefined ? (
+        <div
+          className="flex items-center gap-2"
+          data-pi-prompt-input-toolbar
+        >
+          {toolbar}
+        </div>
+      ) : null}
+    </div>
+  );
+}

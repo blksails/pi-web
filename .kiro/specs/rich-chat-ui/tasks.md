@@ -73,7 +73,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 1.3_
   - _Boundary: SubmitButton_
 
-- [ ] 3.3 (P) 富输入外壳
+- [x] 3.3 (P) 富输入外壳
   - 多行文本框:Enter 提交、Shift+Enter 换行、空内容禁用提交;提供动作菜单与子控件插槽
   - 观察完成态:组件单测验证 Enter/Shift+Enter 行为与空内容禁用
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 11.5_
