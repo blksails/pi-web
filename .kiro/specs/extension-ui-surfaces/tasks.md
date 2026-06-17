@@ -28,7 +28,7 @@
   - _Boundary: Notifications_
   - _Depends: 1.1_
 
-- [ ] 2.2 (P) 状态条元件(StatusBar)
+- [x] 2.2 (P) 状态条元件(StatusBar)
   - 并列展示键控状态项(小 pill),键序稳定;空状态不渲染
   - 观察完成态:组件单测验证空态不渲染、多键并列、键序稳定、主题经 CSS 变量
   - _Requirements: 2.1, 2.4, 2.5, 8.1_

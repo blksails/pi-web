@@ -26,3 +26,4 @@ export {
   Notifications,
   type NotificationsProps,
 } from "./notifications.js";
+export { StatusBar, type StatusBarProps } from "./status-bar.js";
