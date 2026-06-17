@@ -8,10 +8,13 @@ import type {
   UseAttachmentsResult,
   UseBranchesResult,
   UseSuggestionsResult,
+  UseExtensionUIResult,
   ModelGroup,
   BranchInfo,
   Suggestion,
   PendingAttachment,
+  ExtensionNotification,
+  ExtensionWidget,
 } from "@pi-web/react";
 
 /**
@@ -139,6 +142,28 @@ function makeSuggestions(
   over: Partial<UseSuggestionsResult> = {},
 ): UseSuggestionsResult {
   return { items: [], pending: false, ...over };
+}
+
+const dismissNotificationMock = vi.fn((_id: string) => undefined);
+
+/** ambient extensionUI 结果工厂(推送类切片默认空,可逐用例覆盖)。 */
+function mockExtensionUI(
+  over: Partial<UseExtensionUIResult> = {},
+): UseExtensionUIResult {
+  return {
+    queue: [],
+    current: undefined,
+    respond: vi.fn(async () => undefined),
+    error: undefined,
+    pending: false,
+    notifications: [],
+    statuses: {},
+    widgets: {},
+    title: undefined,
+    editorText: undefined,
+    dismissNotification: dismissNotificationMock,
+    ...over,
+  };
 }
 
 // 一个最小的会话 prop:PiChat 仅读 transport/sessionId/client 接线 hooks;
@@ -541,5 +566,180 @@ describe("PiChat 富交互(mock hooks)", () => {
     await user.click(screen.getByRole("button", { name: "总结" }));
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock.mock.calls[0]?.[0]?.text).toContain("请总结");
+  });
+});
+
+// ---- ambient 面接线(Task 3.2) ---------------------------------------------
+
+describe("PiChat ambient 面(extensionUI 接线)", () => {
+  // -- 通知浮层 (Req 1.x / 8.4) ---------------------------------------------
+  it("注入 notifications → toast 文本可见且根容器 relative", () => {
+    const notifications: ExtensionNotification[] = [
+      { id: "n1", message: "构建完成", notifyType: "info" },
+      { id: "n2", message: "出错了", notifyType: "error" },
+    ];
+    const { container } = render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ notifications })}
+        notificationsAutoDismissMs={0}
+      />,
+    );
+    expect(screen.getByText("构建完成")).toBeInTheDocument();
+    expect(screen.getByText("出错了")).toBeInTheDocument();
+    // 根容器需 relative 定位(承载固定/绝对叠加层)。
+    const root = container.querySelector("[data-pi-chat-pro]");
+    expect(root?.className).toContain("relative");
+  });
+
+  // -- 状态条 (Req 2.x) -----------------------------------------------------
+  it("注入 statuses → 状态项可见(StatusBar)", () => {
+    render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({
+          statuses: { branch: "main", env: "prod" },
+        })}
+      />,
+    );
+    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(screen.getByText("prod")).toBeInTheDocument();
+  });
+
+  // -- widget 区上/下方 (Req 3.x) -------------------------------------------
+  it("注入 widgets(above/below)→ widget 行可见且位置正确(空态)", () => {
+    const widgets: Readonly<Record<string, ExtensionWidget>> = {
+      top: { lines: ["above-line-1"], placement: "aboveEditor" },
+      bottom: { lines: ["below-line-1"], placement: "belowEditor" },
+    };
+    const { container } = render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ widgets })}
+      />,
+    );
+    expect(screen.getByText("above-line-1")).toBeInTheDocument();
+    expect(screen.getByText("below-line-1")).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-pi-widget-placement="aboveEditor"]'),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelector('[data-pi-widget-placement="belowEditor"]'),
+    ).toBeInTheDocument();
+  });
+
+  it("注入 widgets 在会话态也渲染上/下方", () => {
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hi" }],
+        } as UIMessage,
+      ],
+    };
+    const widgets: Readonly<Record<string, ExtensionWidget>> = {
+      top: { lines: ["conv-above"], placement: "aboveEditor" },
+      bottom: { lines: ["conv-below"], placement: "belowEditor" },
+    };
+    render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ widgets })}
+      />,
+    );
+    expect(screen.getByText("conv-above")).toBeInTheDocument();
+    expect(screen.getByText("conv-below")).toBeInTheDocument();
+  });
+
+  // -- 内部头部标题 (Req 4.1/4.2/4.3) ---------------------------------------
+  it("注入 title → 头部标题文本可见", () => {
+    render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ title: "My Session Title" })}
+      />,
+    );
+    expect(screen.getByText("My Session Title")).toBeInTheDocument();
+  });
+
+  it("未设 title 且无 statuses → 不渲染内部扩展头部(Req 4.3)", () => {
+    const { container } = render(
+      <PiChat session={fakeSession()} extensionUI={mockExtensionUI()} />,
+    );
+    expect(
+      container.querySelector("[data-pi-extension-header]"),
+    ).not.toBeInTheDocument();
+  });
+
+  // -- set_editor_text → 输入框 (Req 5.1/5.2/5.4) ---------------------------
+  it("注入 editorText → textarea 值变为该文本;提升 seq 取最新", () => {
+    const { rerender } = render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ editorText: { text: "first", seq: 1 } })}
+      />,
+    );
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("first");
+
+    // 提升 seq + 新文本 → 取最新。
+    rerender(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ editorText: { text: "second", seq: 2 } })}
+      />,
+    );
+    expect(textarea.value).toBe("second");
+  });
+
+  it("同一 seq 重渲染不回灌:applied 后用户改了 input,相同 seq rerender 保留用户输入(Req 5.3/5.4)", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ editorText: { text: "seed", seq: 1 } })}
+      />,
+    );
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+    expect(textarea.value).toBe("seed");
+
+    // 用户继续编辑。
+    await user.type(textarea, "-edited");
+    expect(textarea.value).toBe("seed-edited");
+
+    // 相同 seq 重渲染:不应回灌覆盖用户输入。
+    rerender(
+      <PiChat
+        session={fakeSession()}
+        extensionUI={mockExtensionUI({ editorText: { text: "seed", seq: 1 } })}
+      />,
+    );
+    expect(textarea.value).toBe("seed-edited");
+  });
+
+  // -- 降级:无 extensionUI / 空 ambient (Req 6.1) --------------------------
+  it("无 extensionUI → ambient 面不渲染,既有界面正常", () => {
+    const { container } = render(<PiChat session={fakeSession()} />);
+    expect(container.querySelector("[data-pi-notifications]")).toBeNull();
+    expect(container.querySelector("[data-pi-status-bar]")).toBeNull();
+    expect(container.querySelector("[data-pi-widgets]")).toBeNull();
+    expect(container.querySelector("[data-pi-extension-header]")).toBeNull();
+    // 既有界面仍渲染(空态欢迎)。
+    expect(container.querySelector("[data-pi-chat-welcome]")).toBeInTheDocument();
+  });
+
+  it("空 ambient(全空切片)→ ambient 面不渲染(降级)", () => {
+    const { container } = render(
+      <PiChat session={fakeSession()} extensionUI={mockExtensionUI()} />,
+    );
+    expect(container.querySelector("[data-pi-notifications]")).toBeNull();
+    expect(container.querySelector("[data-pi-status-bar]")).toBeNull();
+    expect(container.querySelector("[data-pi-widgets]")).toBeNull();
   });
 });

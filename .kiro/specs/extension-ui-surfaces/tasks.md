@@ -50,7 +50,7 @@
   - _Requirements: 7.1, 7.2, 7.3_
   - _Boundary: pi-chat chat module, ui index_
 
-- [ ] 3.2 PiChat 装配渲染 ambient 面并接线 title/editorText
+- [x] 3.2 PiChat 装配渲染 ambient 面并接线 title/editorText
   - 渲染通知浮层(叠加层)+ 状态条与扩展标题(内部头部)+ widget 区(输入框上/下方,空态与会话态共用);把键控 widget 映射派生为数组传入元件
   - 写入输入框:监听一次性信号计数变化时把输入框内容设为该文本;仅在收到推送时写入,不改写用户后续编辑;无 extensionUI 时各面不渲染(降级)
   - 观察完成态:集成测试注入五类推送帧后各面在 PiChat 中可见(通知/状态/widget/标题渲染、输入框被写入);新文本以最新为准

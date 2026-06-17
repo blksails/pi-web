@@ -55,6 +55,10 @@ import {
   Suggestions,
   Sources,
   type Source,
+  Notifications,
+  StatusBar,
+  Widgets,
+  type WidgetItem,
 } from "../elements/index.js";
 import {
   defaultRendererRegistry,
@@ -86,11 +90,17 @@ export interface PiChatProps {
    * 为空时展示这些可配置的起始提示。默认提供一组通用示例,可由调用方覆盖。
    */
   readonly starters?: ReadonlyArray<Suggestion>;
+  /** 通知浮层自动消失时长(毫秒),透传给 Notifications(<=0 关闭自动消失);默认走元件默认值。 */
+  readonly notificationsAutoDismissMs?: number;
   readonly className?: string;
 }
 
 /** 联网意图随消息传达的提示前缀(pi 无对应能力时仅作提示,不报错,Req 6.3/6.4)。 */
 const WEB_SEARCH_HINT = "[web-search] 请在回答前进行联网搜索。";
+
+/** ambient 切片的稳定空回落引用(无 extensionUI 时各面不渲染)。 */
+const EMPTY_NOTIFICATIONS: UseExtensionUIResult["notifications"] = [];
+const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
 
 /** 默认占位符(空态/会话态输入框)。 */
 const DEFAULT_PLACEHOLDER = "Ask anything…";
@@ -168,6 +178,7 @@ export function PiChat({
   emptyTitle = DEFAULT_EMPTY_TITLE,
   emptySubtitle = DEFAULT_EMPTY_SUBTITLE,
   starters = DEFAULT_STARTERS,
+  notificationsAutoDismissMs,
   className,
 }: PiChatProps): React.JSX.Element {
   const transport = session.transport;
@@ -186,6 +197,34 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+
+  // ambient 推送类切片(无 extensionUI 时安全回落为空,各面不渲染 → 降级,Req 6.1)。
+  const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
+  const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
+  const ambientTitle = extensionUI?.title;
+  const dismissNotification = extensionUI?.dismissNotification;
+
+  // 键控 widget 映射派生为数组(key 内联),供无状态 Widgets 元件按 placement 过滤渲染。
+  const widgetItems = React.useMemo<WidgetItem[]>(() => {
+    const map = extensionUI?.widgets;
+    if (map === undefined) return [];
+    return Object.entries(map).map(([key, widget]) => ({
+      key,
+      lines: widget.lines,
+      placement: widget.placement,
+    }));
+  }, [extensionUI?.widgets]);
+
+  // set_editor_text → setInput:仅在一次性信号 seq 变化时写入一次(去重),
+  // 不在无信号时改写用户输入(Req 5.1/5.2/5.4);用户后续可继续编辑(Req 5.3,天然成立)。
+  const appliedEditorSeqRef = React.useRef<number | undefined>(undefined);
+  const editorText = extensionUI?.editorText;
+  React.useEffect(() => {
+    if (editorText === undefined) return;
+    if (appliedEditorSeqRef.current === editorText.seq) return;
+    appliedEditorSeqRef.current = editorText.seq;
+    setInput(editorText.text);
+  }, [editorText]);
 
   // 数据 hooks 接线。
   const models = useModels({
@@ -354,15 +393,61 @@ export function PiChat({
     />
   );
 
+  // widget 区(上方)+ 输入框 + widget 区(下方)的复用片段:空态与会话态两分支共用,
+  // 避免重复(Widgets 元件按 placement 过滤,无匹配自身返回 null)。
+  const inputWithWidgets = (
+    <>
+      <Widgets widgets={widgetItems} placement="aboveEditor" />
+      {promptInput}
+      <Widgets widgets={widgetItems} placement="belowEditor" />
+    </>
+  );
+
+  // 内部扩展头部:title 存在或 statuses 非空时渲染(独立于 slots.header)。
+  // title 进头部(Req 4.1/4.2);未设 title 时不因此改变默认头部(Req 4.3)。
+  const hasExtensionHeader =
+    ambientTitle !== undefined || Object.keys(statuses).length > 0;
+  const extensionHeader = hasExtensionHeader ? (
+    <div
+      data-pi-extension-header
+      className="flex flex-wrap items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-2"
+    >
+      {ambientTitle !== undefined ? (
+        <span
+          data-pi-extension-title
+          className="text-sm font-medium text-[hsl(var(--foreground))]"
+        >
+          {ambientTitle}
+        </span>
+      ) : null}
+      <StatusBar statuses={statuses} />
+    </div>
+  ) : null;
+
   return (
     <div
       className={cn(
-        "flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
+        "relative flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
         className,
       )}
       data-pi-chat-pro
       data-pi-chat-empty={isEmpty ? "true" : "false"}
     >
+      {/* 通知浮层叠加层:固定定位,不占布局流,避免与对话框/输入框干扰(Req 8.4)。 */}
+      {dismissNotification !== undefined ? (
+        <div className="pointer-events-none absolute right-4 top-4 z-50 flex w-full max-w-sm flex-col gap-2">
+          <div className="pointer-events-auto">
+            <Notifications
+              notifications={notifications}
+              onDismiss={dismissNotification}
+              {...(notificationsAutoDismissMs !== undefined
+                ? { autoDismissMs: notificationsAutoDismissMs }
+                : {})}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {slots?.sidebar !== undefined ? (
         <aside className="shrink-0" data-pi-chat-sidebar>
           {slots.sidebar}
@@ -373,6 +458,8 @@ export function PiChat({
         {slots?.header !== undefined ? (
           <header data-pi-chat-header>{slots.header}</header>
         ) : null}
+
+        {extensionHeader}
 
         {isEmpty ? (
           // 空态欢迎页:居中大标题 + 副标题 + 2×2 starter 卡片网格 + 大输入框。
@@ -399,7 +486,7 @@ export function PiChat({
                 />
               </div>
 
-              {promptInput}
+              {inputWithWidgets}
             </div>
           </div>
         ) : (
@@ -469,7 +556,7 @@ export function PiChat({
                 />
               </div>
 
-              {promptInput}
+              {inputWithWidgets}
             </div>
           </>
         )}
