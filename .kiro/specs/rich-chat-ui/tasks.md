@@ -141,7 +141,7 @@
   - _Boundary: ui index, react index_
   - _Depends: 4.1_
 
-- [ ] 4.3 app-shell 切换到 PiChatPro
+- [x] 4.3 app-shell 切换到 PiChatPro
   - 根 app 的 chat 组件渲染 `<PiChatPro>` 取代 `<PiChat>`,沿用 `~/.pi/agent` 配置与现有会话装配
   - 观察完成态:本地启动后默认聊天界面为富版本并可完成一次基本对话
   - _Requirements: 11.3_

@@ -8,13 +8,13 @@ import {
   useExtensionUI,
   type UsePiSessionResult,
 } from "@pi-web/react";
-import { PiChat } from "@pi-web/ui";
+import { PiChatPro } from "@pi-web/ui";
 import type { CreateSessionRequest } from "@pi-web/protocol";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 
 /**
  * ChatApp — the client-side assembly: pick source → create session → render
- * <PiChat> with controls + permission dialog.
+ * the rich chat UI <PiChatPro> with controls + permission dialog.
  *
  * Until a session is created it renders <AgentSourcePicker>. On submit it builds
  * a CreateSessionRequest (source + default cwd/model) and drives the connection
@@ -146,11 +146,10 @@ function SessionView({
         </button>
       </div>
       <div className="min-h-0 flex-1 px-4 py-2">
-        <PiChat
+        <PiChatPro
           session={session}
           controls={controls}
           extensionUI={extensionUI}
-          showControls
         />
       </div>
     </div>
