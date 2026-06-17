@@ -3,6 +3,7 @@
  * (Req 3.x,10.1)。
  */
 import { describe, expect, it } from "vitest";
+import type { RpcResponse } from "@pi-web/protocol";
 import {
   SessionStoppedError,
   UnknownExtensionUIError,
@@ -112,6 +113,61 @@ describe("command routes", () => {
   it("missing session → 404", async () => {
     const { handler } = setup();
     const res = await handler(post("/sessions/missing/messages", { message: "x" }));
+    expect(res.status).toBe(404);
+  });
+
+  it("fork forwards entryId and returns the fork contract payload (200)", async () => {
+    const { handler, session } = setup();
+    session.setResponse(
+      () =>
+        ({
+          type: "response",
+          command: "fork",
+          success: true,
+          data: { text: "branched", cancelled: false },
+        }) as unknown as RpcResponse,
+    );
+    const res = await handler(post("/sessions/sess-1/fork", { entryId: "e-9" }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { text?: string; cancelled?: boolean };
+    expect(body.text).toBe("branched");
+    expect(body.cancelled).toBe(false);
+    const fork = session.calls.find((c) => c.method === "fork");
+    expect(fork?.args[0]).toBe("e-9");
+  });
+
+  it("fork → 400 on validation failure, not forwarded", async () => {
+    const { handler, session } = setup();
+    const res = await handler(post("/sessions/sess-1/fork", { entryId: 5 }));
+    expect(res.status).toBe(400);
+    expect(session.calls.some((c) => c.method === "fork")).toBe(false);
+  });
+
+  it("fork on stopped session → 409 (error-map)", async () => {
+    const { handler, session } = setup();
+    session.throwOn.set("fork", new SessionStoppedError("sess-1"));
+    const res = await handler(post("/sessions/sess-1/fork", { entryId: "e" }));
+    expect(res.status).toBe(409);
+  });
+
+  it("fork upstream failure → 502", async () => {
+    const { handler, session } = setup();
+    session.setResponse(
+      () =>
+        ({
+          type: "response",
+          command: "fork",
+          success: false,
+          error: "boom",
+        }) as unknown as RpcResponse,
+    );
+    const res = await handler(post("/sessions/sess-1/fork", { entryId: "e" }));
+    expect(res.status).toBe(502);
+  });
+
+  it("fork on missing session → 404", async () => {
+    const { handler } = setup();
+    const res = await handler(post("/sessions/missing/fork", { entryId: "e" }));
     expect(res.status).toBe(404);
   });
 });

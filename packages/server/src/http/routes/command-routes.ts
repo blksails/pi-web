@@ -6,7 +6,9 @@
  * 校验失败→400(不转发);已停止会话→409;未知 ui-response ID→409(经 error-map)。
  */
 import {
+  ForkRequestSchema,
   PromptRequestSchema,
+  type RpcResponse,
   SetModelRequestSchema,
   SetThinkingRequestSchema,
   SteerRequestSchema,
@@ -14,12 +16,27 @@ import {
 } from "@pi-web/protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
-import { jsonResponse, mapEngineError } from "../error-map.js";
+import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
 import { validateBody } from "../validate.js";
 
 function ack(): Response {
   return jsonResponse(200, { ok: true });
+}
+
+/** 提取成功响应的 data;失败→统一 502 上游错误(镜像 query-routes)。 */
+function dataOrError<T>(
+  res: RpcResponse,
+): { ok: true; data: T } | { ok: false; response: Response } {
+  if (res.success && "data" in res) {
+    return { ok: true, data: (res as { data: T }).data };
+  }
+  const message =
+    !res.success && "error" in res ? res.error : "Upstream command failed.";
+  return {
+    ok: false,
+    response: errorResponse(502, "UPSTREAM_ERROR", message),
+  };
 }
 
 function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
@@ -130,6 +147,27 @@ export function makeThinkingHandler(store: SessionStore): RouteHandler {
       const session = requireSession(store, ctx);
       await session.setThinkingLevel(parsed.value.level);
       return ack();
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
+/** POST /sessions/:id/fork → PiSession.fork(entryId)。返回 fork 协议契约负载(Req 8.2)。 */
+export function makeForkHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    const parsed = await validateBody(ctx.req, ForkRequestSchema);
+    if (!parsed.ok) return parsed.response;
+    try {
+      const session = requireSession(store, ctx);
+      const res = await session.fork(parsed.value.entryId);
+      const extracted = dataOrError<{ text?: string; cancelled?: boolean }>(res);
+      if (!extracted.ok) return extracted.response;
+      const payload: { text?: string; cancelled?: boolean } = {};
+      if (extracted.data.text !== undefined) payload.text = extracted.data.text;
+      if (extracted.data.cancelled !== undefined)
+        payload.cancelled = extracted.data.cancelled;
+      return jsonResponse(200, payload);
     } catch (err) {
       return mapEngineError(err);
     }

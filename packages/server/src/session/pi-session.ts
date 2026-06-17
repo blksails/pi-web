@@ -261,6 +261,16 @@ export class PiSession {
     return this.forward(() => this.channel.getCommands());
   }
 
+  /** 经 `fork` 命令在给定 entry 处创建同级版本(纯转发,Req 8.2)。 */
+  fork(entryId: string): Promise<RpcResponse> {
+    return this.forward(() => this.channel.fork(entryId));
+  }
+
+  /** 经 `get_fork_messages` 命令加载分支消息序列(纯转发,Req 8.3)。 */
+  getForkMessages(): Promise<RpcResponse> {
+    return this.forward(() => this.channel.getForkMessages());
+  }
+
   // ───────────────────────── 最近状态缓存(Req 6.x） ─────────────────────────
 
   /** 由状态类响应刷新缓存(Req 2.3 / 6.1)。仅在成功且带 data 时刷新对应字段。 */

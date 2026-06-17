@@ -91,6 +91,68 @@ describe("query routes", () => {
     expect(body.commands).toHaveLength(1);
   });
 
+  it("GET models → { models }", async () => {
+    const handler = setup((s) =>
+      s.setResponse(
+        () =>
+          ({
+            type: "response",
+            command: "get_available_models",
+            success: true,
+            data: { models: [{ id: "m1" }, { id: "m2" }] },
+          }) as unknown as RpcResponse,
+      ),
+    );
+    const res = await handler(get("/sessions/sess-1/models"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: unknown[] };
+    expect(body.models).toHaveLength(2);
+  });
+
+  it("GET fork-messages → { messages }", async () => {
+    const handler = setup((s) =>
+      s.setResponse(
+        () =>
+          ({
+            type: "response",
+            command: "get_fork_messages",
+            success: true,
+            data: { messages: [{ entryId: "e1", text: "t1" }] },
+          }) as unknown as RpcResponse,
+      ),
+    );
+    const res = await handler(get("/sessions/sess-1/fork-messages"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      messages: { entryId: string; text: string }[];
+    };
+    expect(body.messages).toEqual([{ entryId: "e1", text: "t1" }]);
+  });
+
+  it("GET models upstream failure → 502", async () => {
+    const handler = setup((s) =>
+      s.setResponse(
+        () =>
+          ({
+            type: "response",
+            command: "get_available_models",
+            success: false,
+            error: "boom",
+          }) as unknown as RpcResponse,
+      ),
+    );
+    const res = await handler(get("/sessions/sess-1/models"));
+    expect(res.status).toBe(502);
+  });
+
+  it("missing session → 404 (models / fork-messages)", async () => {
+    const handler = setup(() => undefined);
+    expect((await handler(get("/sessions/missing/models"))).status).toBe(404);
+    expect(
+      (await handler(get("/sessions/missing/fork-messages"))).status,
+    ).toBe(404);
+  });
+
   it("missing session → 404", async () => {
     const handler = setup(() => undefined);
     const res = await handler(get("/sessions/missing/state"));

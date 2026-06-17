@@ -517,6 +517,10 @@ export class PiRpcProcess implements PiRpcChannel {
     return this.sendCommand<"fork">({ type: "fork", entryId });
   }
 
+  getForkMessages(): Promise<ResponseFor<"get_fork_messages">> {
+    return this.sendCommand<"get_fork_messages">({ type: "get_fork_messages" });
+  }
+
   clone(): Promise<ResponseFor<"clone">> {
     return this.sendCommand<"clone">({ type: "clone" });
   }

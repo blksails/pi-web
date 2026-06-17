@@ -10,7 +10,7 @@
   - _Requirements: 4.1, 4.5, 8.1, 8.2, 8.3_
   - _Boundary: Protocol REST DTO_
 
-- [ ] 1.2 在服务端会话与路由暴露三能力(镜像 set_model / commands 范本)
+- [x] 1.2 在服务端会话与路由暴露三能力(镜像 set_model / commands 范本)
   - `PiSession` 新增三个透传方法,向底层 RpcChannel 发送对应 command 并解析返回
   - 注册路由:`GET /sessions/:id/models`、`POST /sessions/:id/fork`、`GET /sessions/:id/fork-messages`,沿用既有 `dataOrError` + `jsonResponse` + `error-map`
   - 观察完成态:三路由可经 handler 返回 200 + 协议契约负载,错误经既有 error-map 映射;不改既有路由与会话语义

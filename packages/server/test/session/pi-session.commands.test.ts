@@ -41,6 +41,8 @@ describe("PiSession command forwarding", () => {
     await s.setThinkingLevel("high");
     await s.getMessages();
     await s.getCommands();
+    await s.fork("entry-1");
+    await s.getForkMessages();
     const methods = ch.calls.map((c) => c.method);
     expect(methods).toEqual([
       "steer",
@@ -52,7 +54,51 @@ describe("PiSession command forwarding", () => {
       "set_thinking_level",
       "get_messages",
       "get_commands",
+      "fork",
+      "get_fork_messages",
     ]);
+  });
+
+  it("forwards fork(entryId) to the channel with its entryId and returns the result unchanged", async () => {
+    const ch = new MockChannel();
+    const res: RpcResponse = {
+      type: "response",
+      id: "1",
+      command: "fork",
+      success: true,
+      data: { text: "branched", cancelled: false },
+    } as RpcResponse;
+    ch.responseFor = () => res;
+    const s = newSession(ch);
+    const out = await s.fork("entry-42");
+    expect(out).toBe(res);
+    expect(ch.calls[0]).toMatchObject({ method: "fork" });
+    expect(ch.calls[0]?.args[0]).toBe("entry-42");
+  });
+
+  it("forwards getForkMessages() to the channel and returns the result unchanged", async () => {
+    const ch = new MockChannel();
+    const res: RpcResponse = {
+      type: "response",
+      id: "1",
+      command: "get_fork_messages",
+      success: true,
+      data: { messages: [{ entryId: "e1", text: "t1" }] },
+    } as RpcResponse;
+    ch.responseFor = () => res;
+    const s = newSession(ch);
+    const out = await s.getForkMessages();
+    expect(out).toBe(res);
+    expect(ch.calls[0]).toMatchObject({ method: "get_fork_messages" });
+  });
+
+  it("rejects fork / getForkMessages on a stopped session (Req 2.4)", async () => {
+    const ch = new MockChannel();
+    const s = newSession(ch);
+    await s.stop();
+    await expect(s.fork("e")).rejects.toBeInstanceOf(SessionStoppedError);
+    await expect(s.getForkMessages()).rejects.toBeInstanceOf(SessionStoppedError);
+    expect(ch.calls).toHaveLength(0);
   });
 
   it("refreshes cache from get_state / get_session_stats responses", async () => {

@@ -138,6 +138,12 @@ export class MockChannel implements SessionChannel {
   getCommands(): Promise<RpcResponse> {
     return this.record("get_commands", []);
   }
+  fork(entryId: string): Promise<RpcResponse> {
+    return this.record("fork", [entryId]);
+  }
+  getForkMessages(): Promise<RpcResponse> {
+    return this.record("get_fork_messages", []);
+  }
 
   // ── 测试触发器 ──
   emitEvent(event: AgentEvent): void {

@@ -78,6 +78,8 @@ export interface SessionChannel extends PiRpcChannel {
   getMessages(): Promise<import("@pi-web/protocol").RpcResponse>;
   getSessionStats(): Promise<import("@pi-web/protocol").RpcResponse>;
   getCommands(): Promise<import("@pi-web/protocol").RpcResponse>;
+  fork(entryId: string): Promise<import("@pi-web/protocol").RpcResponse>;
+  getForkMessages(): Promise<import("@pi-web/protocol").RpcResponse>;
 }
 
 /**

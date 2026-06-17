@@ -19,6 +19,7 @@ import { makeCreateSessionHandler } from "./routes/create-session.js";
 import {
   makeAbortHandler,
   makeFollowUpHandler,
+  makeForkHandler,
   makeMessagesHandler,
   makeModelHandler,
   makeSteerHandler,
@@ -28,7 +29,9 @@ import {
 import { makeDeleteSessionHandler } from "./routes/delete-session.js";
 import {
   makeCommandsHandler,
+  makeForkMessagesHandler,
   makeMessagesQueryHandler,
+  makeModelsHandler,
   makeStateHandler,
   makeStatsHandler,
 } from "./routes/query-routes.js";
@@ -98,6 +101,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       handler: makeUiResponseHandler(store),
     },
     {
+      method: "POST",
+      path: "/sessions/:id/fork",
+      handler: makeForkHandler(store),
+    },
+    {
       method: "GET",
       path: "/sessions/:id/state",
       handler: makeStateHandler(store),
@@ -116,6 +124,16 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "GET",
       path: "/sessions/:id/commands",
       handler: makeCommandsHandler(store),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/models",
+      handler: makeModelsHandler(store),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/fork-messages",
+      handler: makeForkMessagesHandler(store),
     },
     {
       method: "GET",

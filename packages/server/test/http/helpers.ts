@@ -121,6 +121,15 @@ export class MockSession {
   getCommands(): Promise<RpcResponse> {
     return this.call("getCommands", []);
   }
+  getAvailableModels(): Promise<RpcResponse> {
+    return this.call("getAvailableModels", []);
+  }
+  fork(entryId: string): Promise<RpcResponse> {
+    return this.call("fork", [entryId]);
+  }
+  getForkMessages(): Promise<RpcResponse> {
+    return this.call("getForkMessages", []);
+  }
   respondExtensionUI(id: string, response: unknown): void {
     this.calls.push({ method: "respondExtensionUI", args: [id, response] });
     const err = this.throwOn.get("respondExtensionUI");

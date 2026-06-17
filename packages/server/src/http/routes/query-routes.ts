@@ -94,3 +94,33 @@ export function makeCommandsHandler(store: SessionStore): RouteHandler {
     }
   };
 }
+
+/** GET /sessions/:id/models → get_available_models 的 `{ models }`(Req 4.1)。 */
+export function makeModelsHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    try {
+      const session = requireSession(store, ctx);
+      const res = await session.getAvailableModels();
+      const extracted = dataOrError<{ models: unknown[] }>(res);
+      if (!extracted.ok) return extracted.response;
+      return jsonResponse(200, { models: extracted.data.models });
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
+/** GET /sessions/:id/fork-messages → get_fork_messages 的 `{ messages }`(Req 8.3)。 */
+export function makeForkMessagesHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    try {
+      const session = requireSession(store, ctx);
+      const res = await session.getForkMessages();
+      const extracted = dataOrError<{ messages: unknown[] }>(res);
+      if (!extracted.ok) return extracted.response;
+      return jsonResponse(200, { messages: extracted.data.messages });
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
