@@ -19,3 +19,4 @@ export {
   WebSearchToggle,
   type WebSearchToggleProps,
 } from "./web-search-toggle.js";
+export { Sources, type SourcesProps, type Source } from "./sources.js";
