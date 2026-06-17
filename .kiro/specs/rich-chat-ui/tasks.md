@@ -2,7 +2,7 @@
 
 > 边界总览见 design.md「Boundary Commitments / File Structure Plan」。依赖方向:protocol → server / react → ui → app,只向左依赖。
 
-- [ ] 1. Foundation:REST 薄透传(暴露已存在 RpcCommand)
+- [x] 1. Foundation:REST 薄透传(暴露已存在 RpcCommand)
 - [x] 1.1 在协议包新增模型列表、fork、fork 消息三组 REST 传输契约
   - 复用既有 `Model` / `ImageContent` / entryId schema,新增"可用模型响应""fork 请求/响应""fork 消息响应"三组 zod 契约
   - 与 `RpcCommand` 中 `get_available_models` / `fork` / `get_fork_messages` 形状对齐
@@ -31,7 +31,7 @@
   - _Requirements: 3.1, 3.2_
   - _Boundary: PiTransport_
 
-- [ ] 2. Core:react 数据 hooks
+- [x] 2. Core:react 数据 hooks
 - [x] 2.1 (P) 模型列表与切换 hook
   - 懒加载可用模型并按 provider 分组;经既有 setModel 切换并维护当前选中;空/报错时置 `available=false`
   - 模型项仅来自 `get_available_models`,不含任何写死项
@@ -60,7 +60,7 @@
   - _Requirements: 10.1, 10.3_
   - _Boundary: useSuggestions_
 
-- [ ] 3. Core:UI 元件层(无状态,主题走 shadcn CSS 变量,基本键盘/aria)
+- [x] 3. Core:UI 元件层(无状态,主题走 shadcn CSS 变量,基本键盘/aria)
 - [x] 3.1 (P) 会话滚动容器与自动滚动
   - 贴底时新内容/流式增量自动滚动;离底显示"回到底部"按钮(带 aria-label);点击平滑滚动并恢复自动滚动
   - 观察完成态:组件单测验证贴底自动滚动、离底显示按钮、点击回到底部三态
@@ -126,7 +126,7 @@
   - _Boundary: Message_
   - _Depends: 2.3_
 
-- [ ] 4. Integration:富装配与 app 接入
+- [x] 4. Integration:富装配与 app 接入
 - [x] 4.1 装配富聊天组件 PiChatPro
   - 用会话 transport 驱动 useChat,组合上述元件与 useModels/useAttachments/useBranches/useSuggestions;复用 PartRenderer/PiReasoning/PiToolPart 与渲染器注册表;停止态按钮接线到 `usePiControls.abort` + useChat stop(2.3);经注册表注册 source 类 data-part 渲染器(承接 3.8 的 Sources 组件);联网开关意图随消息传达(pi 无能力时仅作提示,不报错);思考折叠复用既有 PiReasoning
   - 观察完成态:`<PiChatPro>` 可渲染完整富界面并发送一条带文本(可含图片)的消息;停止态点击触发中断;组件冒烟测试通过
@@ -148,7 +148,7 @@
   - _Boundary: app chat-app_
   - _Depends: 4.2_
 
-- [ ] 5. Validation:集成、端到端与基线回归
+- [x] 5. Validation:集成、端到端与基线回归
 - [x] 5.1 (P) 服务端透传集成测试
   - 验证三个 `PiSession` 透传方法经 RpcChannel(mock)发送正确 command 并解析;三路由的请求校验、成功响应与错误映射
   - 观察完成态:`pnpm --filter @pi-web/server test` 通过且覆盖三能力的成功与错误路径
@@ -170,7 +170,7 @@
   - _Boundary: e2e_
   - _Depends: 4.3_
 
-- [ ] 5.4 基线回归与类型检查
+- [x] 5.4 基线回归与类型检查
   - 运行全量 `pnpm test` 与 `pnpm typecheck`,确认基线测试无回归、无类型错误,主题继承 CSS 变量未引入硬编码
   - 观察完成态:全量测试与 typecheck 全绿,基线 483 测试 + 新增测试均通过
   - _Requirements: 11.2, 11.5_
