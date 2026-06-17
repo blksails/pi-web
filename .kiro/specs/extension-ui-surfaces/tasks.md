@@ -20,7 +20,7 @@
   - _Depends: 1.1_
 
 - [ ] 2. Core:UI 无状态展示元件(主题走 shadcn CSS 变量,基本键盘/aria)
-- [ ] 2.1 (P) 通知浮层元件(Notifications/toasts)
+- [x] 2.1 (P) 通知浮层元件(Notifications/toasts)
   - 堆叠展示通知,按级别(info/warning/error)以 CSS 变量配色;每条挂载后定时自动消失并支持手动关闭(均回调移除)
   - error 用 alert 角色、info/warning 用 status 角色;关闭按钮带 aria-label;空列表不渲染
   - 观察完成态:组件单测验证空态不渲染、多条堆叠并存、手动关闭与自动消失(fake timers)各触发移除回调、级别对应角色与样式

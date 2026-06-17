@@ -22,3 +22,7 @@ export {
 } from "./web-search-toggle.js";
 export { Sources, type SourcesProps, type Source } from "./sources.js";
 export { Suggestions, type SuggestionsProps } from "./suggestions.js";
+export {
+  Notifications,
+  type NotificationsProps,
+} from "./notifications.js";
