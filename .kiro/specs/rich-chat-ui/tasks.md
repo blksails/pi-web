@@ -32,7 +32,7 @@
   - _Boundary: PiTransport_
 
 - [ ] 2. Core:react 数据 hooks
-- [ ] 2.1 (P) 模型列表与切换 hook
+- [x] 2.1 (P) 模型列表与切换 hook
   - 懒加载可用模型并按 provider 分组;经既有 setModel 切换并维护当前选中;空/报错时置 `available=false`
   - 模型项仅来自 `get_available_models`,不含任何写死项
   - 观察完成态:hook 在 mock client 下返回分组、`select` 触发 setModel、不可用时降级标志为真,单测通过

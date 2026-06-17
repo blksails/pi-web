@@ -65,3 +65,11 @@ export {
   type UseExtensionUIOptions,
   type UseExtensionUIResult,
 } from "./hooks/use-extension-ui.js";
+export {
+  useModels,
+  type UseModelsOptions,
+  type UseModelsResult,
+  type ModelGroup,
+  type ModelItem,
+  type ModelSelection,
+} from "./hooks/use-models.js";
