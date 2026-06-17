@@ -40,7 +40,7 @@
   - _Boundary: useModels_
   - _Depends: 1.3_
 
-- [ ] 2.2 (P) 图片附件状态 hook
+- [x] 2.2 (P) 图片附件状态 hook
   - 维护待发送图片附件列表(拖拽/粘贴/选择来源无关),仅接受图片类型,非图片记入 rejected;提供移除/清空与 base64→ImageContent 输出
   - 当会话/agent 不支持图片输入时置 `supported=false`
   - 观察完成态:mock 下添加图片入列、非图片进 rejected、`toImageContents` 产出正确编码,单测通过

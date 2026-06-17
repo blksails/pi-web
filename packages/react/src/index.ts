@@ -73,3 +73,9 @@ export {
   type ModelItem,
   type ModelSelection,
 } from "./hooks/use-models.js";
+export {
+  useAttachments,
+  type UseAttachmentsOptions,
+  type UseAttachmentsResult,
+  type PendingAttachment,
+} from "./hooks/use-attachments.js";
