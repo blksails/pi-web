@@ -86,7 +86,7 @@
   - _Boundary: Attachments_
   - _Depends: 2.2_
 
-- [ ] 3.5 (P) 模型选择器(自定义轻量 popover)
+- [x] 3.5 (P) 模型选择器(自定义轻量 popover)
   - button + 受控面板 + 点击外部/Esc 关闭;搜索框过滤 + provider 分组列表 + 选中勾选;`available=false` 时隐藏
   - 不渲染任何与 pi 无关的写死模型项
   - 观察完成态:组件单测验证打开/关闭、搜索过滤、选择触发回调、不可用隐藏与 aria-expanded
