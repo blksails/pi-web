@@ -14,3 +14,4 @@ export { SubmitButton, type SubmitButtonProps } from "./submit-button.js";
 export { PromptInput, type PromptInputProps } from "./prompt-input.js";
 export { Attachments, type AttachmentsProps } from "./attachments.js";
 export { ModelSelector, type ModelSelectorProps } from "./model-selector.js";
+export { SpeechInput, type SpeechInputProps } from "./speech-input.js";

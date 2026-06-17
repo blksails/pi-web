@@ -94,7 +94,7 @@
   - _Boundary: ModelSelector_
   - _Depends: 2.1_
 
-- [ ] 3.6 (P) 语音输入按钮
+- [x] 3.6 (P) 语音输入按钮
   - feature-detect Web Speech;讲话转写追加到输入,再次点击停止并保留文本;不支持或拒权时隐藏/禁用并给可读提示
   - 观察完成态:组件单测在 mock SpeechRecognition 下验证转写填入与不支持降级
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 11.4_
