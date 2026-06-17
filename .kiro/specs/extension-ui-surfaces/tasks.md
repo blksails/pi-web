@@ -3,7 +3,7 @@
 > 边界总览见 design.md「Boundary Commitments / File Structure Plan」。依赖方向 protocol → react → ui → app,只向左依赖。零协议/server 改动。
 
 - [ ] 1. Foundation:react 数据层(ambient 分流 + hook 暴露)
-- [ ] 1.1 ControlStore 推送类分流为 ambient 状态
+- [x] 1.1 ControlStore 推送类分流为 ambient 状态
   - 在控制旁路 store 的快照中新增 ambient 切片:通知列表、键控状态映射、键控 widget 映射、会话标题、写入输入框的一次性信号(含单调递增计数)
   - 入帧分流:`notify` 追加通知并归一通知级别;`setStatus` 置/替换键,文本未提供即删该键;`setWidget` 置/替换键(归一放置位),行未提供即删该键;`setTitle` 置/替换标题;`set_editor_text` 写入文本并自增计数
   - 交互类四方法仍按原样进入对话框 FIFO 队列,推送类绝不进入该队列;新增按 id 移除通知的方法;通知列表设软上限防御增长

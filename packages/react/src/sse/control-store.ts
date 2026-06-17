@@ -25,6 +25,43 @@ export interface SessionErrorSnapshot {
   readonly code: string | undefined;
 }
 
+/** 推送类 notify 帧派生的通知项(帧 notifyType 缺省归一为 "info")。 */
+export interface ExtensionNotification {
+  /** 帧 id。 */
+  readonly id: string;
+  readonly message: string;
+  readonly notifyType: "info" | "warning" | "error";
+}
+
+/** 推送类 setWidget 帧派生的 widget 项(帧 widgetPlacement 缺省归一为 "aboveEditor")。 */
+export interface ExtensionWidget {
+  readonly lines: readonly string[];
+  readonly placement: "aboveEditor" | "belowEditor";
+}
+
+/** 推送类 set_editor_text 帧派生的一次性写入信号(seq 单调递增,消费方据变化触发一次)。 */
+export interface EditorTextSignal {
+  readonly text: string;
+  readonly seq: number;
+}
+
+/** 推送类 5 方法分流出的 ambient 状态切片(无回包,不入对话框队列)。 */
+export interface AmbientUiSnapshot {
+  /** 有序通知列表(追加 + 按 id 移除,软上限保留最近 100)。 */
+  readonly notifications: readonly ExtensionNotification[];
+  /** 键控状态映射(statusKey → statusText),undefined 文本即删键。 */
+  readonly statuses: Readonly<Record<string, string>>;
+  /** 键控 widget 映射(widgetKey → widget),undefined lines 即删键。 */
+  readonly widgets: Readonly<Record<string, ExtensionWidget>>;
+  /** 会话标题(setTitle),未设置为 undefined。 */
+  readonly title: string | undefined;
+  /** 写入输入框的一次性信号(set_editor_text),未设置为 undefined。 */
+  readonly editorText: EditorTextSignal | undefined;
+}
+
+/** 通知列表软上限:保留最近 100 条,防御非挂载场景下无限增长。 */
+const NOTIFICATIONS_SOFT_CAP = 100;
+
 /** control store 的不可变快照。 */
 export interface ControlSnapshot {
   readonly queue: QueueSnapshot;
@@ -33,15 +70,26 @@ export interface ControlSnapshot {
   readonly error: SessionErrorSnapshot | null;
   /** 待处理扩展 UI 请求(FIFO,不丢弃)。 */
   readonly extensionUiQueue: readonly RpcExtensionUIRequest[];
+  /** 推送类方法分流出的 ambient 状态。 */
+  readonly ambient: AmbientUiSnapshot;
 }
 
 const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
+
+const EMPTY_AMBIENT: AmbientUiSnapshot = {
+  notifications: [],
+  statuses: {},
+  widgets: {},
+  title: undefined,
+  editorText: undefined,
+};
 
 const INITIAL_SNAPSHOT: ControlSnapshot = {
   queue: EMPTY_QUEUE,
   stats: undefined,
   error: null,
   extensionUiQueue: [],
+  ambient: EMPTY_AMBIENT,
 };
 
 type Listener = () => void;
@@ -50,6 +98,8 @@ type Listener = () => void;
 export class ControlStore {
   private snapshot: ControlSnapshot = INITIAL_SNAPSHOT;
   private readonly listeners = new Set<Listener>();
+  /** editorText 信号计数器(单调递增,从 1 起)。 */
+  private editorTextSeq = 0;
 
   /** 订阅变更(useSyncExternalStore 用)。返回取消订阅函数。 */
   readonly subscribe = (listener: Listener): (() => void) => {
@@ -89,7 +139,7 @@ export class ControlStore {
         });
         break;
       case "extension-ui":
-        this.enqueueExtensionUi(
+        this.routeExtensionUi(
           payload.request as unknown as RpcExtensionUIRequest,
         );
         break;
@@ -99,6 +149,125 @@ export class ControlStore {
         break;
       }
     }
+  }
+
+  /**
+   * 按 method 分流扩展 UI 请求:交互类(select/confirm/input/editor)入对话框
+   * FIFO 队列(需回包);推送类(notify/setStatus/setWidget/setTitle/
+   * set_editor_text)写入键控/列表 ambient 切片(无回包)。
+   *
+   * 关键不变量:推送类绝不进入 extensionUiQueue(修复推送阻塞交互对话框缺陷),
+   * 交互类绝不进入 ambient。
+   */
+  private routeExtensionUi(request: RpcExtensionUIRequest): void {
+    switch (request.method) {
+      case "select":
+      case "confirm":
+      case "input":
+      case "editor":
+        this.enqueueExtensionUi(request);
+        break;
+      case "notify":
+        this.appendNotification({
+          id: request.id,
+          message: request.message,
+          notifyType: request.notifyType ?? "info",
+        });
+        break;
+      case "setStatus":
+        this.setStatus(request.statusKey, request.statusText);
+        break;
+      case "setWidget":
+        this.setWidget(
+          request.widgetKey,
+          request.widgetLines,
+          request.widgetPlacement ?? "aboveEditor",
+        );
+        break;
+      case "setTitle":
+        this.setTitle(request.title);
+        break;
+      case "set_editor_text":
+        this.pushEditorText(request.text);
+        break;
+      default: {
+        const _exhaustive: never = request;
+        void _exhaustive;
+        break;
+      }
+    }
+  }
+
+  /** 以新 ambient 切片发射(浅合并到既有快照)。 */
+  private emitAmbient(ambient: AmbientUiSnapshot): void {
+    this.emit({ ...this.snapshot, ambient });
+  }
+
+  /** 追加通知,超出软上限时丢弃最旧的,只保留最近 NOTIFICATIONS_SOFT_CAP 条。 */
+  private appendNotification(notification: ExtensionNotification): void {
+    const next = [...this.snapshot.ambient.notifications, notification];
+    const capped =
+      next.length > NOTIFICATIONS_SOFT_CAP
+        ? next.slice(next.length - NOTIFICATIONS_SOFT_CAP)
+        : next;
+    this.emitAmbient({ ...this.snapshot.ambient, notifications: capped });
+  }
+
+  /** 置/替换键控状态;text 为 undefined 即删该键(不存在则 no-op,不换引用)。 */
+  private setStatus(key: string, text: string | undefined): void {
+    const { statuses } = this.snapshot.ambient;
+    if (text === undefined) {
+      if (!(key in statuses)) return;
+      const next = { ...statuses };
+      delete next[key];
+      this.emitAmbient({ ...this.snapshot.ambient, statuses: next });
+      return;
+    }
+    this.emitAmbient({
+      ...this.snapshot.ambient,
+      statuses: { ...statuses, [key]: text },
+    });
+  }
+
+  /** 置/替换键控 widget;lines 为 undefined 即删该键(不存在则 no-op,不换引用)。 */
+  private setWidget(
+    key: string,
+    lines: readonly string[] | undefined,
+    placement: "aboveEditor" | "belowEditor",
+  ): void {
+    const { widgets } = this.snapshot.ambient;
+    if (lines === undefined) {
+      if (!(key in widgets)) return;
+      const next = { ...widgets };
+      delete next[key];
+      this.emitAmbient({ ...this.snapshot.ambient, widgets: next });
+      return;
+    }
+    this.emitAmbient({
+      ...this.snapshot.ambient,
+      widgets: { ...widgets, [key]: { lines, placement } },
+    });
+  }
+
+  /** 置/替换会话标题。 */
+  private setTitle(title: string): void {
+    this.emitAmbient({ ...this.snapshot.ambient, title });
+  }
+
+  /** 写入输入框一次性信号,seq 单调递增(从 1 起)。 */
+  private pushEditorText(text: string): void {
+    this.editorTextSeq += 1;
+    this.emitAmbient({
+      ...this.snapshot.ambient,
+      editorText: { text, seq: this.editorTextSeq },
+    });
+  }
+
+  /** 按 id 移除通知(不存在则 no-op,不换引用)。 */
+  dismissNotification(id: string): void {
+    const next = this.snapshot.ambient.notifications.filter((n) => n.id !== id);
+    if (next.length === this.snapshot.ambient.notifications.length) return;
+    this.emitAmbient({ ...this.snapshot.ambient, notifications: next });
   }
 
   /** 扩展 UI 请求入队(FIFO,末尾追加)。 */
