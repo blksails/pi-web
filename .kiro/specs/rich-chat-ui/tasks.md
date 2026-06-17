@@ -67,7 +67,7 @@
   - _Requirements: 7.1, 7.2, 7.3, 11.4, 11.5_
   - _Boundary: Conversation, useAutoScroll_
 
-- [ ] 3.2 (P) 状态化发送/停止按钮
+- [x] 3.2 (P) 状态化发送/停止按钮
   - 依 useChat 状态切换:ready→发送(仅有可发送内容时可用)、submitted/streaming→停止、error→错误态;停止态点击触发中断
   - 观察完成态:组件单测覆盖四态渲染与停止回调
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 1.3_

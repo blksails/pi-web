@@ -10,3 +10,4 @@ export {
   type UseAutoScrollOptions,
   type UseAutoScrollResult,
 } from "./use-auto-scroll.js";
+export { SubmitButton, type SubmitButtonProps } from "./submit-button.js";
