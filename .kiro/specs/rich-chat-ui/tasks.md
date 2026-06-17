@@ -127,7 +127,7 @@
   - _Depends: 2.3_
 
 - [ ] 4. Integration:富装配与 app 接入
-- [ ] 4.1 装配富聊天组件 PiChatPro
+- [x] 4.1 装配富聊天组件 PiChatPro
   - 用会话 transport 驱动 useChat,组合上述元件与 useModels/useAttachments/useBranches/useSuggestions;复用 PartRenderer/PiReasoning/PiToolPart 与渲染器注册表;停止态按钮接线到 `usePiControls.abort` + useChat stop(2.3);经注册表注册 source 类 data-part 渲染器(承接 3.8 的 Sources 组件);联网开关意图随消息传达(pi 无能力时仅作提示,不报错);思考折叠复用既有 PiReasoning
   - 观察完成态:`<PiChatPro>` 可渲染完整富界面并发送一条带文本(可含图片)的消息;停止态点击触发中断;组件冒烟测试通过
   - _Requirements: 1.1, 1.5, 2.3, 6.3, 6.4, 9.1, 9.2, 11.1_
