@@ -24,9 +24,9 @@ test("custom agent: streaming reply, tool card, reasoning, permission dialog", a
   const input = page.locator("[data-pi-input-textarea]");
   await expect(input).toBeVisible();
 
-  // Submit a prompt.
+  // Submit a prompt via PiChatPro's stateful send button.
   await input.fill("say hello");
-  await page.locator("[data-pi-send]").click();
+  await page.locator('[data-pi-submit-state="send"]').click();
 
   // Incremental streamed markdown text appears in an assistant message.
   const messages = page.locator("[data-pi-chat-messages]");
@@ -47,6 +47,12 @@ test("custom agent: streaming reply, tool card, reasoning, permission dialog", a
   await expect(dialog).toBeHidden();
   await expect(messages).toContainText("Continuing");
 
-  // Controls present (model selector + session stats side-channel).
+  // The rich prompt-input toolbar is present (stateful submit affordance).
+  await expect(page.locator("[data-pi-prompt-input-toolbar]")).toBeVisible();
+
+  // ModelSelector is now VISIBLE: PiChatPro eagerly loads models on session-ready
+  // (no longer deadlocked on open), and the stub returns get_available_models, so
+  // `available` is true and the selector renders. The full open/group/select flow
+  // is covered in rich-chat.e2e.ts (Req 4).
   await expect(page.locator("[data-pi-model-selector]")).toBeVisible();
 });
