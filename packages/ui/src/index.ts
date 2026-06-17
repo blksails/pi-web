@@ -9,6 +9,12 @@
 export { PiChat, type PiChatProps } from "./chat/pi-chat.js";
 export type { PiChatSlots } from "./chat/slots.js";
 
+// 富装配聊天组件
+export { PiChatPro, type PiChatProProps } from "./chat/pi-chat-pro.js";
+
+// 无状态元件层(elements/*)
+export * from "./elements/index.js";
+
 // part 分派
 export { PartRenderer, type PartRendererProps } from "./chat/part-renderer.js";
 

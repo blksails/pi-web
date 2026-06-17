@@ -134,7 +134,7 @@
   - _Boundary: PiChatPro_
   - _Depends: 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10_
 
-- [ ] 4.2 导出新组件与 hooks
+- [x] 4.2 导出新组件与 hooks
   - ui 包导出 `PiChatPro` 与元件层;react 包导出四个新 hooks;保留现有 `<PiChat>` 导出不变
   - 观察完成态:外部可从 `@pi-web/ui` / `@pi-web/react` 导入新符号,两包 typecheck 通过
   - _Requirements: 11.1_
