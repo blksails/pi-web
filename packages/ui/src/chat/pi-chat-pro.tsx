@@ -422,10 +422,19 @@ export function PiChatPro({
                               .catch(() => undefined),
                         }
                       : {};
+                  const copyText = message.parts
+                    .map((part) =>
+                      part.type === "text" && typeof part.text === "string"
+                        ? part.text
+                        : "",
+                    )
+                    .join("")
+                    .trim();
                   return (
                     <Message
                       key={message.id}
                       role={message.role}
+                      {...(copyText.length > 0 ? { copyText } : {})}
                       {...branchProps}
                     >
                       <div className="space-y-2">
