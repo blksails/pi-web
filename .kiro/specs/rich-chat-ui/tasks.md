@@ -119,7 +119,7 @@
   - _Boundary: Suggestions_
   - _Depends: 2.4_
 
-- [ ] 3.10 (P) 消息气泡与分支切换控件
+- [x] 3.10 (P) 消息气泡与分支切换控件
   - 消息气泡布局;存在多版本时渲染"‹ N/M ›"分支控件并触发切换;无多版本或分支不可用时不渲染控件
   - 观察完成态:组件单测验证多版本显示控件、单版本/不可用隐藏、切换回调
   - _Requirements: 8.1, 8.3, 8.4, 11.4_
@@ -179,3 +179,4 @@
 ## Implementation Notes
 - 2.3: useBranches.select 会 getForkMessages 但当前未对外暴露 messages;任务 4.1 装配分支视图刷新时,需扩展 useBranches 暴露已加载分支消息(或在 PiChatPro 中处理),以满足 Req 8.3「更新对话视图」。e2e 5.3 验证分支切换确实刷新视图。
 - 2.4: useSuggestions 不自动触发 getCommands;任务 4.1 装配 PiChatPro 时须调用 controls.getCommands() 以填充 commands 状态,建议气泡方能显示(Req 10.1)。
+- 3.10: Message 用 onPrev/onNext 回调式接口;任务 4.1 须把 onPrev→useBranches.select(entryId,index-1)、onNext→select(entryId,index+1) 接线,并将 useBranches 加载的分支消息回灌对话视图(配合 2.3 备注)。

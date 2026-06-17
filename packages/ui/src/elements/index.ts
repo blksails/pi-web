@@ -5,6 +5,7 @@
  */
 
 export { Conversation, type ConversationProps } from "./conversation.js";
+export { Message, type MessageProps } from "./message.js";
 export {
   useAutoScroll,
   type UseAutoScrollOptions,
