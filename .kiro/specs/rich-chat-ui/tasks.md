@@ -149,7 +149,7 @@
   - _Depends: 4.2_
 
 - [ ] 5. Validation:集成、端到端与基线回归
-- [ ] 5.1 (P) 服务端透传集成测试
+- [x] 5.1 (P) 服务端透传集成测试
   - 验证三个 `PiSession` 透传方法经 RpcChannel(mock)发送正确 command 并解析;三路由的请求校验、成功响应与错误映射
   - 观察完成态:`pnpm --filter @pi-web/server test` 通过且覆盖三能力的成功与错误路径
   - _Requirements: 4.1, 8.1, 8.2, 8.3_

@@ -6,6 +6,7 @@ import type { RpcResponse } from "@pi-web/protocol";
 import { createPiWebHandler } from "../../src/http/create-handler.js";
 import { SessionManager } from "../../src/session/session-manager.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
+import { SessionStoppedError } from "../../src/session/index.js";
 import { asPiSession, MockSession } from "./helpers.js";
 
 function setup(configure: (s: MockSession) => void): (req: Request) => Promise<Response> {
@@ -143,6 +144,38 @@ describe("query routes", () => {
     );
     const res = await handler(get("/sessions/sess-1/models"));
     expect(res.status).toBe(502);
+  });
+
+  it("GET models on stopped session → 409 (error-map)", async () => {
+    const handler = setup((s) =>
+      s.throwOn.set("getAvailableModels", new SessionStoppedError("sess-1")),
+    );
+    const res = await handler(get("/sessions/sess-1/models"));
+    expect(res.status).toBe(409);
+  });
+
+  it("GET fork-messages upstream failure → 502", async () => {
+    const handler = setup((s) =>
+      s.setResponse(
+        () =>
+          ({
+            type: "response",
+            command: "get_fork_messages",
+            success: false,
+            error: "boom",
+          }) as unknown as RpcResponse,
+      ),
+    );
+    const res = await handler(get("/sessions/sess-1/fork-messages"));
+    expect(res.status).toBe(502);
+  });
+
+  it("GET fork-messages on stopped session → 409 (error-map)", async () => {
+    const handler = setup((s) =>
+      s.throwOn.set("getForkMessages", new SessionStoppedError("sess-1")),
+    );
+    const res = await handler(get("/sessions/sess-1/fork-messages"));
+    expect(res.status).toBe(409);
   });
 
   it("missing session → 404 (models / fork-messages)", async () => {
