@@ -11,6 +11,11 @@ import type {
 } from "@pi-web/protocol";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";
+import type {
+  EditorTextSignal,
+  ExtensionNotification,
+  ExtensionWidget,
+} from "../sse/control-store.js";
 import { usePiContext } from "../provider/pi-provider.js";
 import { createPiClient } from "../client/pi-client.js";
 
@@ -22,14 +27,26 @@ export interface UseExtensionUIOptions {
 }
 
 export interface UseExtensionUIResult {
+  // 既有(交互类,不变):
   readonly queue: readonly RpcExtensionUIRequest[];
   readonly current: RpcExtensionUIRequest | undefined;
   respond(requestId: string, response: UiResponseRequest): Promise<void>;
   readonly error: unknown;
   readonly pending: boolean;
+  // 新增(推送类 ambient,只读 + 一个本地操作):
+  readonly notifications: readonly ExtensionNotification[];
+  readonly statuses: Readonly<Record<string, string>>;
+  readonly widgets: Readonly<Record<string, ExtensionWidget>>;
+  readonly title: string | undefined;
+  readonly editorText: EditorTextSignal | undefined;
+  dismissNotification(id: string): void;
 }
 
 const EMPTY: readonly RpcExtensionUIRequest[] = [];
+// 无连接 / 无快照时的稳定回落引用(每渲染不换引用,避免下游误判变更)。
+const EMPTY_NOTIFICATIONS: readonly ExtensionNotification[] = [];
+const EMPTY_STATUSES: Readonly<Record<string, string>> = {};
+const EMPTY_WIDGETS: Readonly<Record<string, ExtensionWidget>> = {};
 const NO_SUBSCRIBE = (): (() => void) => () => undefined;
 
 export function useExtensionUI(
@@ -53,6 +70,13 @@ export function useExtensionUI(
       ((): undefined => undefined),
   );
   const queue = snapshot?.extensionUiQueue ?? EMPTY;
+  // 从快照读出 ambient 切片(纯增字段,向后兼容);快照缺失时安全回落为稳定空常量 / undefined。
+  const ambient = snapshot?.ambient;
+  const notifications = ambient?.notifications ?? EMPTY_NOTIFICATIONS;
+  const statuses = ambient?.statuses ?? EMPTY_STATUSES;
+  const widgets = ambient?.widgets ?? EMPTY_WIDGETS;
+  const title = ambient?.title;
+  const editorText = ambient?.editorText;
 
   const [error, setError] = useState<unknown>(undefined);
   const [pending, setPending] = useState(false);
@@ -79,11 +103,25 @@ export function useExtensionUI(
     [client, opts.sessionId, connection],
   );
 
+  // 委托 store 移除通知;无连接时 no-op。
+  const dismissNotification = useCallback(
+    (id: string): void => {
+      connection?.controlStore.dismissNotification(id);
+    },
+    [connection],
+  );
+
   return {
     queue,
     current: queue[0],
     respond,
     error,
     pending,
+    notifications,
+    statuses,
+    widgets,
+    title,
+    editorText,
+    dismissNotification,
   };
 }

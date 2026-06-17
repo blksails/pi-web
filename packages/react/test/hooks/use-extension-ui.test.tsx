@@ -16,6 +16,20 @@ function extReq(id: string): RpcExtensionUIRequest {
   };
 }
 
+function notifyReq(
+  id: string,
+  message: string,
+  notifyType?: "info" | "warning" | "error",
+): RpcExtensionUIRequest {
+  return {
+    type: "extension_ui_request",
+    id,
+    method: "notify",
+    message,
+    notifyType,
+  };
+}
+
 function setup(respondOk = true) {
   const f = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
@@ -101,5 +115,116 @@ describe("useExtensionUI", () => {
     });
     expect(result.current.queue).toHaveLength(1); // 保留
     expect(result.current.error).toBeDefined();
+  });
+
+  it("exposes ambient state from the snapshot (notifications/statuses/widgets/title/editorText)", async () => {
+    const { client, connection } = setup();
+    const { result } = renderHook(() =>
+      useExtensionUI({ sessionId: "s1", connection, client }),
+    );
+    act(() => {
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: notifyReq("n1", "hello", "warning"),
+      });
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: {
+          type: "extension_ui_request",
+          id: "x1",
+          method: "setStatus",
+          statusKey: "branch",
+          statusText: "main",
+        },
+      });
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: {
+          type: "extension_ui_request",
+          id: "x2",
+          method: "setWidget",
+          widgetKey: "w",
+          widgetLines: ["l1", "l2"],
+          widgetPlacement: "belowEditor",
+        },
+      });
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: {
+          type: "extension_ui_request",
+          id: "x3",
+          method: "setTitle",
+          title: "Session A",
+        },
+      });
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: {
+          type: "extension_ui_request",
+          id: "x4",
+          method: "set_editor_text",
+          text: "draft",
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.notifications).toHaveLength(1),
+    );
+    expect(result.current.notifications[0]).toMatchObject({
+      id: "n1",
+      message: "hello",
+      notifyType: "warning",
+    });
+    expect(result.current.statuses).toEqual({ branch: "main" });
+    expect(result.current.widgets).toEqual({
+      w: { lines: ["l1", "l2"], placement: "belowEditor" },
+    });
+    expect(result.current.title).toBe("Session A");
+    expect(result.current.editorText).toMatchObject({ text: "draft", seq: 1 });
+    // 推送类不入交互队列(防阻塞回归)。
+    expect(result.current.queue).toHaveLength(0);
+  });
+
+  it("dismissNotification removes the notification through the store", async () => {
+    const { client, connection } = setup();
+    const { result } = renderHook(() =>
+      useExtensionUI({ sessionId: "s1", connection, client }),
+    );
+    act(() => {
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: notifyReq("n1", "a"),
+      });
+      connection.controlStore.applyControlFrame({
+        control: "extension-ui",
+        request: notifyReq("n2", "b"),
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.notifications).toHaveLength(2),
+    );
+    act(() => {
+      result.current.dismissNotification("n1");
+    });
+    await waitFor(() =>
+      expect(result.current.notifications).toHaveLength(1),
+    );
+    expect(result.current.notifications.map((n) => n.id)).toEqual(["n2"]);
+  });
+
+  it("falls back to empty ambient state and no-op dismiss without a connection", () => {
+    const { client } = setup();
+    const { result } = renderHook(() =>
+      useExtensionUI({ sessionId: "s1", connection: undefined, client }),
+    );
+    expect(result.current.notifications).toEqual([]);
+    expect(result.current.statuses).toEqual({});
+    expect(result.current.widgets).toEqual({});
+    expect(result.current.title).toBeUndefined();
+    expect(result.current.editorText).toBeUndefined();
+    // 无连接时引用稳定。
+    const first = result.current.notifications;
+    expect(() => result.current.dismissNotification("nope")).not.toThrow();
+    expect(result.current.notifications).toBe(first);
   });
 });

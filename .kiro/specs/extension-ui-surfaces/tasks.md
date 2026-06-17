@@ -11,7 +11,7 @@
   - _Requirements: 1.1, 1.2, 1.5, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 5.1, 5.2, 6.1, 6.3_
   - _Boundary: ControlStore_
 
-- [ ] 1.2 useExtensionUI 暴露 ambient 状态并导出类型
+- [x] 1.2 useExtensionUI 暴露 ambient 状态并导出类型
   - 从快照读出通知/状态/widget/标题/写入信号并入 hook 返回值(纯增字段,向后兼容);提供移除通知操作委托 store;推送类不调用 uiResponse
   - 无连接时 ambient 字段回落为空、移除操作为 no-op;react 包导出新增 ambient 类型
   - 观察完成态:`pnpm --filter @pi-web/react test typecheck` 通过;外部可从 `@pi-web/react` 导入新 ambient 类型与扩展后的结果类型
@@ -104,3 +104,4 @@
 - 1.1:`set_editor_text` 用 `{text, seq}` 一次性信号,装配层据 seq 变化触发一次 setInput(Req 5.2/5.4);statuses/widgets 删除语义经 `undefined` 表达(Req 2.3/3.4)。
 - 3.1:收敛改名涉及文件移动(最小→PiChatBasic、富→PiChat、新建别名文件);仓库内 PiChatPro 无包内引用,影响集中在 ui index 与 app 装配点。
 - 3.2:widget 区在空态与会话态两分支共用,抽到包裹输入框的小片段以免重复;通知浮层需容器根 relative 定位。
+- 1.2 连带:`UseExtensionUIResult` 新增必填 ambient 字段后,ui 包共享夹具 `packages/ui/test/fixtures/mock-session.ts` 的 extensionUI mock 需提供 ambient 默认值(空数组/空对象/undefined + dismissNotification no-op),否则 `pnpm --filter @pi-web/ui typecheck` 会红。已在 ui 元件任务前由父统一修复夹具。

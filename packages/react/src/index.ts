@@ -27,6 +27,10 @@ export {
   type ControlSnapshot,
   type QueueSnapshot,
   type SessionErrorSnapshot,
+  type ExtensionNotification,
+  type ExtensionWidget,
+  type EditorTextSignal,
+  type AmbientUiSnapshot,
 } from "./sse/control-store.js";
 export { parseSse, type ParsedSseEvent, type ParseSseResult } from "./sse/parse-sse.js";
 export { decodeUiMessageChunk } from "./sse/decode-chunk.js";
