@@ -156,7 +156,7 @@
   - _Boundary: PiSession, Server HTTP routes_
   - _Depends: 1.2_
 
-- [ ] 5.2 (P) PiChatPro 组件集成测试
+- [x] 5.2 (P) PiChatPro 组件集成测试
   - 用 testing-library + jsdom 与 mock hooks 验证:提交文本、附件 chip 增删、模型选择器打开/搜索/选择、建议点击、SubmitButton 随状态切换(含停止触发中断)、分支控件出现/切换、思考折叠随流式增量更新、来源折叠
   - 观察完成态:组件集成测试通过,覆盖各富交互的可观察结果(含 reasoning 流式增量断言)
   - _Requirements: 1.2, 2.1, 2.3, 3.1, 4.2, 7.1, 8.1, 9.1, 9.2, 9.3, 10.2, 11.4_
