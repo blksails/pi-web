@@ -12,3 +12,4 @@ export {
 } from "./use-auto-scroll.js";
 export { SubmitButton, type SubmitButtonProps } from "./submit-button.js";
 export { PromptInput, type PromptInputProps } from "./prompt-input.js";
+export { Attachments, type AttachmentsProps } from "./attachments.js";
