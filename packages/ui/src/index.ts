@@ -71,5 +71,23 @@ export {
   type DataPartRenderer,
 } from "./registry/renderer-registry.js";
 
+// server-driven UI(自定义渲染扩展):data-pi-ui 渲染器 + 沙箱解释器 + 组件注册表
+export { PiUiPart } from "./parts/pi-ui-part.js";
+export {
+  SandboxRenderer,
+  type SandboxRendererProps,
+} from "./components/sandbox-renderer.js";
+export {
+  createUiComponentRegistry,
+  defaultUiComponentRegistry,
+  registerUiComponent,
+  type UiComponentRegistry,
+  type UiComponent,
+} from "./components/ui-component-registry.js";
+export {
+  builtinUiComponents,
+  registerBuiltinUiComponents,
+} from "./components/builtin-components.js";
+
 // className 合并工具(供宿主复用)
 export { cn } from "./lib/cn.js";

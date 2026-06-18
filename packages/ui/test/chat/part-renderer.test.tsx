@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PartRenderer } from "../../src/chat/part-renderer.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
+import { PiUiPart } from "../../src/parts/pi-ui-part.js";
 import {
   assistantMessage,
   textPart,
@@ -56,6 +57,24 @@ describe("PartRenderer 分派", () => {
     );
     expect(screen.getByTestId("custom-tool")).toBeInTheDocument();
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+
+  it("data-pi-ui → 注册 PiUiPart 经注册表分派渲染(server-driven UI)", () => {
+    const registry = createRendererRegistry();
+    registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
+    render(
+      <PartRenderer
+        part={dataPart("pi-ui", {
+          kind: "builtin",
+          component: "metric",
+          props: { label: "L", value: "V" },
+        })}
+        message={msg}
+        registry={registry}
+      />,
+    );
+    expect(screen.getByText("L")).toBeInTheDocument();
+    expect(screen.getByText("V")).toBeInTheDocument();
   });
 
   it("注册自定义 data-part 渲染器命中覆盖默认", () => {

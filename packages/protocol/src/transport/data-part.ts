@@ -7,11 +7,13 @@
  *   - data-pi-compaction   ← compaction_start/end(顶部状态条)
  *   - data-pi-auto-retry   ← auto_retry_start/end(顶部状态条)
  *   - data-pi-tool-partial ← tool_execution_update(累积 partialResult)
+ *   - data-pi-ui           ← agent 声明的 server-driven UI(UiSpec,见 ui-spec.ts)
  *
  * 每类带可辨识 `type`,供前端按类型分发渲染器(registerDataPartRenderer)。
  * 这是 pi-web 自定义契约(非 pi 原生派生),与 rpc/* 分层。
  */
 import { z } from "zod";
+import { UiSpecSchema } from "./ui-spec.js";
 
 export const QueueDataPartSchema = z.object({
   type: z.literal("data-pi-queue"),
@@ -57,11 +59,19 @@ export const ToolPartialDataPartSchema = z.object({
 });
 export type ToolPartialDataPart = z.infer<typeof ToolPartialDataPartSchema>;
 
+/** agent 声明的 server-driven UI(承载 UiSpec:内置白名单组件 / 沙箱组件)。 */
+export const UiDataPartSchema = z.object({
+  type: z.literal("data-pi-ui"),
+  data: UiSpecSchema,
+});
+export type UiDataPart = z.infer<typeof UiDataPartSchema>;
+
 /** pi 特有 data-part 联合,以 `type`(data-pi-*)判别。 */
 export const DataPartSchema = z.discriminatedUnion("type", [
   QueueDataPartSchema,
   CompactionDataPartSchema,
   AutoRetryDataPartSchema,
   ToolPartialDataPartSchema,
+  UiDataPartSchema,
 ]);
 export type DataPart = z.infer<typeof DataPartSchema>;

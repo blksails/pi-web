@@ -14,6 +14,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@pi-web/protocol": "workspace:*"
+  },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "^0.79.6"
   },

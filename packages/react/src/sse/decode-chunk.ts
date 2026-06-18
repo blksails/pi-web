@@ -90,6 +90,7 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
     case "data-pi-compaction":
     case "data-pi-auto-retry":
     case "data-pi-tool-partial":
+    case "data-pi-ui":
       return { type: chunk.type, data: chunk.data };
 
     default: {
