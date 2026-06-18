@@ -16,7 +16,7 @@
  *   - message_update.thinking_start|delta|end    → reasoning-start | reasoning-delta | reasoning-end
  *   - message_update.error                        → abort(reason=aborted)| error(否则,带 errorText)
  *   - tool_execution_start                        → tool-input-available
- *   - tool_execution_update                       → data-pi-tool-partial(累积替换)
+ *   - tool_execution_update                       → data-pi-ui(details 携 UiSpec)| data-pi-tool-partial(累积替换)
  *   - tool_execution_end                          → tool-output-available
  *   - queue_update                                → data-pi-queue
  *   - compaction_start|end                        → data-pi-compaction
@@ -31,7 +31,11 @@
  * → finish(turn 边界以 start-step/finish-step 包裹)。
  */
 import type { AgentEvent } from "@pi-web/protocol";
-import { makeControlFrame, makeUiMessageChunkFrame } from "@pi-web/protocol";
+import {
+  extractToolDetailsUiSpec,
+  makeControlFrame,
+  makeUiMessageChunkFrame,
+} from "@pi-web/protocol";
 import type { TranslateResult } from "./translate.types.js";
 import {
   closeReasoningPart,
@@ -213,7 +217,17 @@ export function translateEvent(
         ctx,
       };
 
-    case "tool_execution_update":
+    case "tool_execution_update": {
+      // server-driven UI 产帧通道:工具经 onUpdate 在 partialResult.details 携带 UiSpec
+      // (约定 key,见 protocol PI_UI_TOOL_DETAILS_KEY / agent-kit emitUi)→ 产出 data-pi-ui;
+      // 否则维持默认的 data-pi-tool-partial(累积替换)语义。
+      const uiSpec = extractToolDetailsUiSpec(event.partialResult);
+      if (uiSpec !== undefined) {
+        return {
+          frames: [makeUiMessageChunkFrame({ type: "data-pi-ui", data: uiSpec })],
+          ctx,
+        };
+      }
       return {
         frames: [
           makeUiMessageChunkFrame({
@@ -227,6 +241,7 @@ export function translateEvent(
         ],
         ctx,
       };
+    }
 
     case "tool_execution_end":
       return {

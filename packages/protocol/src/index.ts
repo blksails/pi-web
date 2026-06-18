@@ -19,6 +19,7 @@ export * from "./rpc/session-state.js";
 
 // transport 层(pi-web 自定义)
 export * from "./transport/spawn.js";
+export * from "./transport/ui-spec.js";
 export * from "./transport/data-part.js";
 export * from "./transport/ui-message-chunk.js";
 export * from "./transport/sse-frame.js";

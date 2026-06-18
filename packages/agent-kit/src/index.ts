@@ -42,3 +42,7 @@ export function defineAgent(def: AgentDefinition): AgentDefinition {
 }
 
 export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";
+
+// server-driven UI:在工具 execute 内经 onUpdate 发出 data-pi-ui 部件。
+export { emitUi } from "./emit-ui.js";
+export type { UiSpec, UiNode } from "@pi-web/protocol";

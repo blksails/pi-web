@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AgentEvent,
   type AssistantMessage,
+  PI_UI_TOOL_DETAILS_KEY,
   protocolVersion,
   SseFrameSchema,
 } from "@pi-web/protocol";
@@ -226,6 +227,42 @@ describe("translateEvent — schema-valid frames per event", () => {
       type: "data-pi-tool-partial",
       data: { toolCallId: "t1", toolName: "bash", partialResult: { lines: 3 } },
     });
+  });
+
+  it("tool_execution_update(details 携 UiSpec)→ data-pi-ui(server-driven UI 产帧通道)", () => {
+    const spec = {
+      kind: "builtin",
+      component: "metric",
+      props: { label: "活跃", value: "1,284" },
+    };
+    const r = translateEvent(
+      {
+        type: "tool_execution_update",
+        toolCallId: "t1",
+        toolName: "show_dashboard",
+        args: {},
+        partialResult: { content: [], details: { [PI_UI_TOOL_DETAILS_KEY]: spec } },
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkAt(r.frames)).toMatchObject({ type: "data-pi-ui", data: spec });
+  });
+
+  it("tool_execution_update(details 非法 UiSpec)→ 回退 data-pi-tool-partial", () => {
+    const r = translateEvent(
+      {
+        type: "tool_execution_update",
+        toolCallId: "t1",
+        toolName: "show_dashboard",
+        args: {},
+        // kind 缺失 → UiSpecSchema 校验失败 → 不应误判为 data-pi-ui。
+        partialResult: { content: [], details: { [PI_UI_TOOL_DETAILS_KEY]: { component: "metric" } } },
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkAt(r.frames)).toMatchObject({ type: "data-pi-tool-partial" });
   });
 
   it("tool_execution_end → tool-output-available with result/isError", () => {

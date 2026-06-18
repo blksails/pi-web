@@ -74,6 +74,10 @@ importers:
         version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
 
   packages/agent-kit:
+    dependencies:
+      '@pi-web/protocol':
+        specifier: workspace:*
+        version: link:../protocol
     devDependencies:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.79.6

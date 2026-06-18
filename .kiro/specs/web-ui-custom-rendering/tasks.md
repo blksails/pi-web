@@ -1,0 +1,99 @@
+# Implementation Plan
+
+- [x] 1. 协议层:UiSpec 契约与 data-pi-ui part
+- [x] 1.1 新增 `transport/ui-spec.ts`(UiStyle/UiNode/UiSpec schema)
+  - 定义令牌枚举(tone/size)、`.strict()` 的 `UiStyle`、安全 href/image refine;`UiNodeSchema` 用 `z.lazy + discriminatedUnion("el")` 表达递归(仅 box 递归);`UiSpecSchema` 用 `discriminatedUnion("kind")`(builtin/sandbox)
+  - 完成判据:导出 `UiSpec`/`UiNode`/`UiStyle` 等 schema 与类型;`tsc --noEmit`(protocol)通过,无 any
+  - _Requirements: 1.1, 1.2, 3.2, 3.3, 4.5_
+  - _Boundary: packages/protocol/src/transport/ui-spec.ts_
+- [x] 1.2 将 `UiDataPartSchema` 并入 `DataPartSchema` 并导出
+  - `data-part.ts` 新增 `UiDataPartSchema`({type:"data-pi-ui",data:UiSpec})并入判别联合;`protocol/src/index.ts` 导出 ui-spec
+  - 完成判据:`DataPartSchema` 可解析 data-pi-ui 且不破坏既有四类;safeParse 对非法 data 返回失败
+  - _Requirements: 1.1, 1.3, 1.4, 1.5, 5.3_
+  - _Boundary: packages/protocol/src/transport/data-part.ts, packages/protocol/src/index.ts_
+  - _Depends: 1.1_
+- [x] 1.3 协议层单测
+  - 覆盖 builtin/sandbox 合法解析、非法 kind/el 拒绝、危险 href 拒绝、UiStyle 额外字段拒绝、DataPartSchema 含 data-pi-ui 不破坏既有
+  - 完成判据:`pnpm --filter @pi-web/protocol test` 新增用例全绿(新鲜运行)
+  - _Requirements: 7.1_
+  - _Depends: 1.2_
+
+- [x] 2. UI 层:组件注册表与设计令牌
+- [x] 2.1 新增 `components/ui-component-registry.ts`
+  - 与 RendererRegistry 同构:create 工厂 + 默认单例 + registerUiComponent;resolve/list/reset;覆盖语义
+  - 完成判据:`tsc --noEmit`(ui)通过
+  - _Requirements: 2.1, 2.2, 2.5, 6.1_
+  - _Boundary: packages/ui/src/components/ui-component-registry.ts_
+- [x] 2.2 新增 `components/ui-tokens.ts`(令牌→固定类名映射)
+  - tone/size/align/weight/gap/pad 映射;textStyleClasses/boxStyleClasses/toneSoft/toneText;未知令牌回退默认,不拼接任意 CSS
+  - 完成判据:`tsc --noEmit`(ui)通过
+  - _Requirements: 3.3_
+  - _Boundary: packages/ui/src/components/ui-tokens.ts_
+- [x] 2.3 注册表单测
+  - 注册/解析/覆盖/未命中/list/reset
+  - 完成判据:`pnpm --filter @pi-web/ui test`(注册表)全绿
+  - _Requirements: 7.1_
+  - _Depends: 2.1_
+
+- [x] 3. UI 层:沙箱解释器与内置组件
+- [x] 3.1 新增 `components/sandbox-renderer.tsx`
+  - 白名单元素解释器:switch(el) 渲染 box/text/heading/badge/divider/code/link/list/keyValue/table;文本走 React 文本节点;link 渲染前 isSafeHref 二次校验 + rel=noopener;无事件处理器;MAX_DEPTH 截断;未知 el 返回 null
+  - 完成判据:`tsc --noEmit`(ui)通过;无 dangerouslySetInnerHTML
+  - _Requirements: 3.1, 3.2, 3.4, 4.1, 4.2, 4.3, 4.4, 4.5_
+  - _Boundary: packages/ui/src/components/sandbox-renderer.tsx_
+- [x] 3.2 新增 `components/builtin-components.tsx`
+  - metric/keyValue/table/alert/progress;props 容错提取(str/num/tone/cell);registerBuiltinUiComponents 注入
+  - 完成判据:`tsc --noEmit`(ui)通过
+  - _Requirements: 2.3, 2.4_
+  - _Boundary: packages/ui/src/components/builtin-components.tsx_
+- [x] 3.3 沙箱与内置组件单测
+  - 沙箱:各元素渲染、危险 href 降级 span、深度截断、文本转义、无 script、无事件;内置:正常渲染 + props 容错不崩溃
+  - 完成判据:`pnpm --filter @pi-web/ui test`(沙箱/内置)全绿(新鲜运行)
+  - _Requirements: 7.1_
+  - _Depends: 3.1, 3.2_
+
+- [x] 4. UI 层:part 渲染器与接入
+- [x] 4.1 新增 `parts/pi-ui-part.tsx`
+  - DataPartRenderer:渲染前 UiSpecSchema.safeParse;builtin→resolve(命中渲染/未命中占位);sandbox→SandboxRenderer;title 容器;模块加载时 seed 内置组件到默认单例
+  - 完成判据:`tsc --noEmit`(ui)通过
+  - _Requirements: 2.1, 2.2, 3.1, 5.2_
+  - _Boundary: packages/ui/src/parts/pi-ui-part.tsx_
+  - _Depends: 2.1, 3.1, 3.2_
+- [x] 4.2 `pi-chat.tsx` 自动注册 data-pi-ui 渲染器
+  - 既有注册 Sources 的 useEffect 内追加 registerDataPartRenderer("data-pi-ui", PiUiPart)(幂等)
+  - 完成判据:挂载 PiChat 后 data-pi-ui 命中 PiUiPart;`tsc --noEmit`(ui)通过
+  - _Requirements: 5.1, 5.3_
+  - _Boundary: packages/ui/src/chat/pi-chat.tsx_
+  - _Depends: 4.1_
+- [x] 4.3 `ui/src/index.ts` 导出新 API
+  - 导出 PiUiPart/SandboxRenderer/注册表 API/内置组件
+  - 完成判据:`tsc --noEmit`(ui)通过;index-exports 测试不回归
+  - _Requirements: 6.1_
+  - _Boundary: packages/ui/src/index.ts_
+  - _Depends: 4.1_
+- [x] 4.4 分派单测(扩展 part-renderer.test.tsx)
+  - data-pi-ui(builtin 命中/未命中、sandbox)经注册表分派
+  - 完成判据:`pnpm --filter @pi-web/ui test`(分派)全绿
+  - _Requirements: 7.1_
+  - _Depends: 4.1_
+
+- [x] 5. e2e 与全量验证
+- [x] 5.1 e2e 测试(pi-ui.e2e.test.tsx)
+  - PiChat 注入含 data-pi-ui 消息:断言 builtin metric 卡与 sandbox 表格渲染;危险 href 不产出 <a>
+  - 完成判据:`pnpm --filter @pi-web/ui test`(e2e)全绿(新鲜运行)
+  - _Requirements: 7.2_
+  - _Depends: 4.2, 4.3_
+- [x] 5.2 全量回归与类型校验
+  - protocol + ui 全量 test + 两包 typecheck
+  - 完成判据:两包 test 与 typecheck 均以新鲜运行输出通过
+  - _Requirements: 7.3_
+  - _Depends: 1.3, 2.3, 3.3, 4.4, 5.1_
+
+## Notes
+
+- **连带改动(协议新增变体)**:`@pi-web/react` 的 `sse/decode-chunk.ts` 对 UIMessageChunk 做穷尽 switch;`data-pi-ui` 并入 `DataPartSchema` 后,该 switch 需新增 `case "data-pi-ui"` 否则 `never` 编译错误。已补,react 包 109 测试无回归。此为协议新增 data-part 的必然连带,不在原边界但合理。
+- **后续增强(沙箱 image + 内置组件)**:沙箱新增 `image` 节点(src 仅 http/https/data:image,双重校验,`loading="lazy"`,危险源降级 alt);内置组件新增 `card`、`codeBlock`。已同步 requirements 3.2/3.5、design 元素与组件列表,并补协议/沙箱/内置测试。
+- **后端产帧通道(打通 agent→data-pi-ui,Req 8)**:agent-kit 新增 `emitUi`(依赖 protocol);protocol 新增 `PI_UI_TOOL_DETAILS_KEY` + `extractToolDetailsUiSpec`;server `translate-event.ts` 在 `tool_execution_update` 识别约定 key → 产 `data-pi-ui`(否则回退 `data-pi-tool-partial`)。复用既有事件、零 pi SDK 改动。新增 `examples/server-driven-ui-agent`(可运行示例)。已同步 requirements R8、design 数据流/Boundary。补 server translate 表驱动用例(命中/非法回退)与 agent-kit emitUi 端到端契约测试。
+- **新鲜验证证据**(worktree 内,五包):
+  - typecheck:protocol / agent-kit / server / react / ui 五包 `tsc --noEmit` 均 Done。
+  - test:protocol 97、agent-kit 12、server 388(+5 skip)、react 109、ui 235 全绿(含 image schema、沙箱 image、内置 card/codeBlock、translate data-pi-ui、emitUi 契约等新增用例)。

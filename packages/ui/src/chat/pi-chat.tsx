@@ -41,6 +41,7 @@ import {
   useSuggestions,
 } from "@pi-web/react";
 import { PartRenderer } from "./part-renderer.js";
+import { PiUiPart } from "../parts/pi-ui-part.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiPermissionDialog } from "../dialog/pi-permission-dialog.js";
 import {
@@ -191,6 +192,8 @@ export function PiChat({
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
+    // server-driven UI:agent 声明的 data-pi-ui 自动接 PiUiPart(零配置)。
+    registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
   }, [registry]);
 
   const chat = useChat(transport === undefined ? {} : { transport });
