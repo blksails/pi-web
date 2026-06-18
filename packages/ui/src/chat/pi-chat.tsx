@@ -587,15 +587,6 @@ export function PiChat({
             </Conversation>
 
             <div className="mx-auto w-full max-w-3xl">
-              {/* 建议气泡(Req 10):空则元件自身不渲染。 */}
-              <div className="py-2" data-pi-chat-suggestions>
-                <Suggestions
-                  items={suggestions.items}
-                  onFill={onSuggestionFill}
-                  onSend={onSuggestionSend}
-                />
-              </div>
-
               {inputWithWidgets}
             </div>
           </>

@@ -1109,3 +1109,79 @@ describe("PiChat 命令补全浮层接线(Task 2.1)", () => {
     });
   });
 });
+
+// ---- 建议气泡退化(Task 2.3, Req 5.1/5.2/5.3) --------------------------------
+
+describe("PiChat 建议气泡退化(会话态不渲染,空态保留)", () => {
+  it("会话态(messages 非空)不渲染会话态建议气泡区块(Req 5.2)", () => {
+    // 注入一条助手消息,使 isEmpty === false。
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hello" }],
+        } as import("ai").UIMessage,
+      ],
+    };
+    // 提供建议项,确保即使有数据也不在会话态渲染气泡。
+    suggestionsResult = makeSuggestions({
+      items: [{ id: "cmd:help", label: "/help", value: "/help", mode: "fill" }],
+    });
+
+    const { container } = render(<PiChat session={fakeSession()} />);
+
+    // 会话态时,空态欢迎页(data-pi-chat-welcome)不渲染。
+    expect(container.querySelector("[data-pi-chat-welcome]")).not.toBeInTheDocument();
+
+    // 会话态分支(messages 非空)的建议区块已被移除:
+    // 整个页面内不应存在任何 data-pi-chat-suggestions 元素
+    // (因 isEmpty===false,空态欢迎页也不渲染)。
+    expect(
+      container.querySelector("[data-pi-chat-suggestions]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("空态(messages 为空)仍渲染建议网格(Req 5.1)", () => {
+    chatState = { status: "ready", messages: [] };
+    suggestionsResult = makeSuggestions({
+      items: [
+        { id: "cmd:help", label: "/help", value: "/help", mode: "fill" },
+        { id: "cmd:model", label: "/model", value: "/model", mode: "fill" },
+      ],
+    });
+
+    render(<PiChat session={fakeSession()} />);
+
+    // 空态欢迎页应存在(data-pi-chat-welcome)。
+    expect(document.querySelector("[data-pi-chat-welcome]")).toBeInTheDocument();
+
+    // 空态的建议网格中应有建议项按钮。
+    const welcomeEl = document.querySelector("[data-pi-chat-welcome]");
+    const suggButtons = welcomeEl?.querySelectorAll(
+      "[data-pi-chat-suggestions] button",
+    );
+    expect(suggButtons?.length).toBeGreaterThan(0);
+  });
+
+  it("会话态仍拉取一次 getCommands(Req 5.3)", async () => {
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hello" }],
+        } as import("ai").UIMessage,
+      ],
+    };
+    const controls = mockControls({ commands: sampleCommands() });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    await waitFor(() => {
+      expect(controls.getCommands).toHaveBeenCalledTimes(1);
+    });
+  });
+});
