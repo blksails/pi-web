@@ -352,6 +352,52 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(ae.frames)).toEqual(["finish"]);
   });
 
+  it("agent_end {willRetry:false, error w/ errorMessage} → error chunk w/ real errorText", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [
+          { ...PARTIAL, stopReason: "error", errorMessage: "Connection error." },
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe("Connection error.");
+  });
+
+  it("agent_end {willRetry:false, aborted} → abort chunk", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [{ ...PARTIAL, stopReason: "aborted" }],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["abort"]);
+  });
+
+  it("agent_end {willRetry:true, error} → finish (no error chunk)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: true,
+        messages: [
+          { ...PARTIAL, stopReason: "error", errorMessage: "Connection error." },
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+  });
+
   it("message_update.error (reason=error) → error chunk with errorText", () => {
     const r = translateEvent(
       messageUpdate({ type: "error", reason: "error", error: PARTIAL }),
