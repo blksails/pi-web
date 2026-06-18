@@ -21,6 +21,11 @@ import {
 import type { AgentContext } from "./agent-definition.js";
 import { loadAgentDefinition } from "./agent-loader.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
+import {
+  createSessionEntryStore,
+  mirrorSessionManagerToStore,
+  sessionStoreConfigFromEnv,
+} from "../session-store/index.js";
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -103,6 +108,23 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const factory = await loadAgentDefinition(args.agent, ctx, trust);
 
   const sessionManager = SessionManager.create(args.cwd);
+
+  // 可选:把会话镜像到配置的 SessionEntryStore(sqlite/postgres)。fs 由 pi 原生负责,
+  // 不镜像(否则双写同一文件)。镜像是 best-effort 旁路,初始化失败不影响 agent。
+  const storeConfig = sessionStoreConfigFromEnv();
+  if (storeConfig.kind !== "fs") {
+    try {
+      const store = await createSessionEntryStore(storeConfig);
+      await mirrorSessionManagerToStore(sessionManager, store, (err) =>
+        process.stderr.write(`runner: session-store mirror error: ${String(err)}\n`),
+      );
+    } catch (err) {
+      process.stderr.write(
+        `runner: failed to init session store (${storeConfig.kind}): ${String(err)}\n`,
+      );
+    }
+  }
+
   const runtime = await createAgentSessionRuntime(factory, {
     cwd: args.cwd,
     agentDir,

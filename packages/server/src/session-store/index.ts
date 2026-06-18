@@ -48,3 +48,10 @@ export {
 export { FsSessionEntryStore, defaultSessionsRoot } from "./fs-store.js";
 export { SqliteSessionEntryStore } from "./sqlite-store.js";
 export { PostgresSessionEntryStore } from "./postgres-store.js";
+export {
+  createSessionEntryStore,
+  sessionStoreConfigFromEnv,
+  type SessionStoreConfig,
+  type SessionStoreKind,
+} from "./factory.js";
+export { mirrorSessionManagerToStore, type SessionMirror } from "./mirror.js";
