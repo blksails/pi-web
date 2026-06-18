@@ -1,97 +1,97 @@
 # Implementation Plan
 
-- [ ] 1. 基础:类型契约与测试基础设施
-- [ ] 1.1 定义共享类型与插件接口(对齐 @pi-web/protocol)
+- [x] 1. 基础:类型契约与测试基础设施
+- [x] 1.1 定义共享类型与插件接口(对齐 @pi-web/protocol)
   - 在 `lib/pi/source/types.ts` 定义 `ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`GitSource`、`EntryProbe`、`SourceResolverPlugin`;`SpawnSpec` 必须经 `import type { SpawnSpec } from "@pi-web/protocol"` 复用(protocol-contract 为上游拥有者),**不得**在本地定义或重声明。
   - 经公共入口(`agent-source.ts` 及包级 barrel)再导出 `ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`SourceResolverPlugin` 与 `applyTrust`,使 `extension-management` 可从公共面导入;`SpawnSpec` 不在本特性公共面重导出。
   - 完成条件:`tsc --noEmit` 通过;`ResolvedSource` 含 `{ mode, spawnSpec, cwd, trust }` 且 `spawnSpec` 形状为 `{ cmd:string, args:string[], cwd:string, env:Record<string,string> }`;`TrustFragment` 为 `{ extraArgs:string[], extraEnv:Record<string,string> }`;公共面可导入 `TrustDecision`/`TrustFragment`/`applyTrust`。
   - _Requirements: 4.3, 5.8, 8.1, 8.2, 8.3_
   - _Boundary: source/types.ts, agent-source.ts (公共面再导出)_
-- [ ] 1.2 搭建测试运行器与 git 远端 mock 夹具
+- [x] 1.2 搭建测试运行器与 git 远端 mock 夹具
   - 配置单一测试命令的测试运行器(vitest);提供创建本地 bare repo 与临时目录 fixture 的测试辅助。
   - 完成条件:`pnpm test`(或等价单一命令)可运行并报告 0 用例;辅助函数能在 tmp 下建出含 commit 的 bare repo 供后续集成测试 clone,全程离线。
   - _Requirements: 9.4, 9.6_
   - _Depends: 1.1_
 
-- [ ] 2. 核心:源类型识别与 git 缓存
-- [ ] 2.1 (P) 实现源类型识别 + sourceResolver 插件分发
+- [x] 2. 核心:源类型识别与 git 缓存
+- [x] 2.1 (P) 实现源类型识别 + sourceResolver 插件分发
   - 在 `identify.ts` 识别 abs/rel 目录与 git 三形态(`git:host/user/repo@ref`、`https://...@ref`、`ssh://...`),解析 host/url/ref;缺 `@ref` 用默认 ref 并标明;不可识别抛 `SourceKindError`(含原始 source);source 缺省走默认 cwd + 无入口路径;注册的 `sourceResolver` 插件在内置之外分发。
   - 完成条件:针对各形态与默认 ref、不可识别、缺省 source 的单测全绿;本地目录来源标记为直接使用(不入缓存)。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 6.4, 8.1_
   - _Boundary: source/identify.ts_
   - _Depends: 1.1_
-- [ ] 2.2 实现 git 非交互执行适配器
+- [x] 2.2 实现 git 非交互执行适配器
   - 在 `git-runner.ts` 用 `node:child_process` 执行 git,强制注入 `GIT_TERMINAL_PROMPT=0` 与 ssh BatchMode;错误摘要剥离 env 敏感值。
   - 完成条件:对本地 bare repo 的 clone/checkout 经该适配器成功;断言执行 env 含非交互标志;错误信息不含敏感值。
   - _Requirements: 2.3, 7.3_
   - _Boundary: source/git-runner.ts_
   - _Depends: 1.1_
-- [ ] 2.3 实现 git 缓存:克隆/复用/去重/损坏重建
+- [x] 2.3 实现 git 缓存:克隆/复用/去重/损坏重建
   - 在 `git-cache.ts` 按归一化 `source@ref` 派生缓存路径(`~/.pi-web/agents/git/<host>/<path>@<ref>`),克隆/更新并检出 pinned ref;命中复用;in-flight `Map` 去重并发;缺失/损坏(缺 `.git`)重建;git 失败抛 `GitResolveError`(含 source、ref、原因)不产 spawnSpec。
   - 完成条件:集成测试用本地 bare repo 验证 clone-to-cache、ref 定位、二次解析复用、删坏后重建、并发两请求只触发一次克隆,全程离线零交互。
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 2.6, 6.1, 6.2, 6.3_
   - _Boundary: source/git-cache.ts, source/git-runner.ts_
   - _Depends: 2.2_
 
-- [ ] 3. 核心:入口探测与双模式判定
-- [ ] 3.1 (P) 实现入口探测 + pi-web.entry 覆盖
+- [x] 3. 核心:入口探测与双模式判定
+- [x] 3.1 (P) 实现入口探测 + pi-web.entry 覆盖
   - 在 `probe-entry.ts` 按 `index.ts`>`index.js`>`index.mjs` 取首个存在者并返回绝对路径;读取 `package.json#pi-web.entry` 覆盖默认探测,覆盖文件不存在抛 `EntryOverrideError`(含被覆盖路径,不静默回退);均无则返回 `none`。
   - 完成条件:仅 js、三者皆在取 ts、无入口→none、entry 覆盖生效、覆盖无效→错误 的单测全绿。
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
   - _Boundary: source/probe-entry.ts_
   - _Depends: 1.1_
-- [ ] 3.2 (P) 实现模式判定(纯函数)
+- [x] 3.2 (P) 实现模式判定(纯函数)
   - 在 `decide-mode.ts` 由 `EntryProbe` 判定:有入口→`"custom"`,无入口(含缺省 source)→`"cli"`。
   - 完成条件:两分支单测全绿。
   - _Requirements: 4.1, 4.2, 1.6_
   - _Boundary: source/decide-mode.ts_
   - _Depends: 1.1_
 
-- [ ] 4. 核心:信任策略与 spawnSpec 装配
-- [ ] 4.1 (P) 实现 trustPolicy(默认 ask)与注入点
+- [x] 4. 核心:信任策略与 spawnSpec 装配
+- [x] 4.1 (P) 实现 trustPolicy(默认 ask)与注入点
   - 在 `trust-policy.ts` 提供默认 `trustPolicy(source)` 返回 `"ask"`;`ResolveOptions.trustPolicy` 可覆盖。
   - 完成条件:默认返回 `ask`、自定义策略被采用 的单测全绿。
   - _Requirements: 5.1, 5.2, 8.2_
   - _Boundary: source/trust-policy.ts_
   - _Depends: 1.1_
-- [ ] 4.2 实现 trust→spawnSpec 映射矩阵(纯函数)
+- [x] 4.2 实现 trust→spawnSpec 映射矩阵(纯函数)
   - 在 `trust-apply.ts` 实现 `applyTrust(mode, trust)` → `{ extraArgs, extraEnv }`:cli/always→`--approve`、cli/never→`--no-approve`、cli/ask→无标志;custom/always→经 arg/env 向 runner 传信任决策、custom/never|ask→不传放行信号;任何取值都不抑制 context/全局扩展、不产生交互提示。
   - 完成条件:六格决策矩阵(cli/custom × always/never/ask)逐格单测全绿,显式断言 headless `ask`→无任何信任标志/放行 env。
   - _Requirements: 5.3, 5.4, 5.5, 5.6, 5.7_
   - _Boundary: source/trust-apply.ts_
   - _Depends: 1.1_
-- [ ] 4.3 实现 spawnSpec 装配(纯函数)
+- [x] 4.3 实现 spawnSpec 装配(纯函数)
   - 在 `assemble-spawn.ts` 按模式装配 `SpawnSpec`:custom→`node --import jiti/register <runnerEntry> --agent <entry> --cwd <work>`;cli→`node <piCliEntry> --mode rpc --cwd <source>`;并入 `applyTrust` 片段;`env` 合并基础 env + `PI_CODING_AGENT_DIR`(来自 `agentDir`)+ 额外 env(不覆盖隔离关键变量);保证 `spawnSpec.cwd === 顶层 cwd`。
   - 完成条件:两模式 spawnSpec 结构单测全绿;`spawnSpec.cwd` 与传入 cwd 一致;`PI_CODING_AGENT_DIR` 正确注入且额外 env 不覆盖它。
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 7.1, 7.2_
   - _Boundary: source/assemble-spawn.ts_
   - _Depends: 4.2_
 
-- [ ] 5. 集成:解析器编排入口
-- [ ] 5.1 实现 AgentSourceResolver.resolve 编排
+- [x] 5. 集成:解析器编排入口
+- [x] 5.1 实现 AgentSourceResolver.resolve 编排
   - 在 `agent-source.ts` 按 identify→(git ensure)→probe→decideMode→trustPolicy→applyTrust→assemble 编排,返回 `ResolvedSource`;任一阶段错误早退不产 spawnSpec;保留 `trust` 取值;不 spawn、不载入用户代码;错误不含 env 敏感值。
   - 完成条件:对"含 index 本地目录"得 custom + runner spawnSpec、对"不含 index 本地目录"得 cli spawnSpec 的集成测试全绿;`resolve` 为单一对外入口返回四元组。
   - _Requirements: 4.5, 5.8, 7.3, 8.3, 9.3_
   - _Boundary: agent-source.ts_
   - _Depends: 2.1, 2.3, 3.1, 3.2, 4.1, 4.2, 4.3_
 
-- [ ] 6. 测试与跨 spec 健全性(硬性)
-- [ ] 6.1 单元测试套件:识别/探测/模式/信任矩阵/env
+- [x] 6. 测试与跨 spec 健全性(硬性)
+- [x] 6.1 单元测试套件:识别/探测/模式/信任矩阵/env
   - 汇总并补齐源类型识别、入口优先级与 entry 覆盖、双模式判定、trustPolicy 六格矩阵(含 headless `ask`→忽略 `.pi/`)、env 合并/隔离与敏感值不外泄的纯函数单测。
   - 完成条件:全部单测在单一命令下通过;trust 矩阵显式覆盖 `ask`→无放行信号用例。
   - _Requirements: 9.1, 9.2_
   - _Depends: 2.1, 3.1, 3.2, 4.1, 4.2, 4.3_
-- [ ] 6.2 集成测试套件:本地目录两态 + git bare repo mock
+- [x] 6.2 集成测试套件:本地目录两态 + git bare repo mock
   - 含 index / 不含 index 本地目录 → 正确 mode+spawnSpec;本地 bare repo 作远端验证 clone-to-cache、ref 定位、复用、损坏重建,全程离线零交互。
   - 完成条件:两类本地目录与 git 缓存集成测试在单一命令下通过,不访问外部网络。
   - _Requirements: 9.3, 9.4_
   - _Depends: 5.1, 2.3_
-- [ ]* 6.3 E2E 跨 spec 健全性:spawnSpec 形状可被 rpc-channel 拉起
+- [x]* 6.3 E2E 跨 spec 健全性:spawnSpec 形状可被 rpc-channel 拉起
   - 对两种 fixture 目录,断言产出 `spawnSpec` 满足 `rpc-channel` local 通道契约——`{ cmd:"node", args:string[], cwd:string, env:Record<string,string> }` 可作 `child_process.spawn(cmd,args,{cwd,env})` 合法入参;以结构断言 + 轻量可执行性探测验证,不长期运行 agent 子进程。
   - 完成条件:两 fixture 的 spawnSpec 形状健全性断言通过;明确不实际拉起长驻 agent。
   - _Requirements: 9.5, 4.3_
   - _Depends: 5.1_
-- [ ] 6.4 单一命令运行全部测试并产出证据
+- [x] 6.4 单一命令运行全部测试并产出证据
   - 配置 `pnpm test`(或等价单一命令)运行单元 + 集成 + e2e 健全性全部用例。
   - 完成条件:单一命令一次运行覆盖全部测试并产出可验证结果(通过计数/报告)。
   - _Requirements: 9.6_

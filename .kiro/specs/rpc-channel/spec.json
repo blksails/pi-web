@@ -1,9 +1,9 @@
 {
   "feature_name": "rpc-channel",
   "created_at": "2026-06-17T07:04:14Z",
-  "updated_at": "2026-06-17T07:10:00Z",
+  "updated_at": "2026-06-18T00:00:00Z",
   "language": "zh",
-  "phase": "tasks-generated",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,

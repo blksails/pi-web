@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. agent-kit 公共表面与最小化预设
+- [x] 1. agent-kit 公共表面与最小化预设
 - [x] 1.1 在 AgentDefinition 公共表面新增系统扩展白名单声明
   - 在 agent-kit 的 `AgentDefinition` 增加可选的 `allowExtensions: string[]` 字段,独立于仅"追加"语义的 `extensions`
   - JSDoc 说明三态语义:缺省=SDK 默认发现全部;`[]`=关闭全部 disk 发现的系统扩展;`["a"]`=仅保留命名项
@@ -20,7 +20,7 @@
   - _Requirements: 1.2, 1.3, 1.4, 4.1, 4.2, 4.4, 5.4_
   - _Depends: 1.2_
 
-- [ ] 2. server 运行时映射
+- [x] 2. server 运行时映射
 - [x] 2.1 在 server 镜像类型同步新增白名单字段 (P)
   - 在 server 的 `AgentDefinition` 结构镜像增加可选 `allowExtensions: string[]`,与 agent-kit 表面保持结构一致
   - 完成判据:`tsc --noEmit`(server)通过,经 `defineAgent(...)` 含 `allowExtensions` 的定义可赋值给镜像类型
@@ -45,7 +45,7 @@
 - 因补救轮已实现原 2.3 计划的全部 override 调用级行为断言(keep/drop/inline/explicit/missing + errors/runtime 透传),2.3 与 2.2 在同一测试文件中一并完成,故同批标记完成。
 - 教训:行为型任务的测试必须**调用**被测函数返回的回调/钩子并断言其输出,仅断言"返回了函数"会留下存活变异体。
 
-- [ ] 3. 示例与回归验证
+- [x] 3. 示例与回归验证
 - [x] 3.1 新增最小基线示例 agent (P)
   - 在 `examples/` 下新增最小基线示例,用预设(或工厂)声明工具/skills/系统扩展全关,并附说明注释区别于 hello-agent 的更彻底基线
   - 完成判据:示例 `index.ts` 通过类型检查,默认导出为合法 `AgentDefinition`

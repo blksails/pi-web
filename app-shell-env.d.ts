@@ -16,3 +16,14 @@ declare namespace NodeJS {
     NODE_ENV?: "development" | "production" | "test";
   }
 }
+
+/**
+ * Side-effect CSS imports (e.g. `import "./globals.css"` in `app/layout.tsx`).
+ *
+ * Next's webpack pipeline resolves global CSS at build time, but the standalone
+ * `tsc --noEmit` typecheck has no declaration for `*.css` side-effect imports
+ * and otherwise fails with TS2882. Declaring the module ambiently — scoped to
+ * the app tsconfig only — keeps `pnpm typecheck` green without affecting the
+ * packages, which never import CSS as a side effect.
+ */
+declare module "*.css";

@@ -3,132 +3,132 @@
 > 语言:zh。本计划覆盖 `@pi-web/react` 全部组件与硬性测试(单元 / 组件-集成 / e2e)。
 > 依赖方向:`@pi-web/protocol` + `http-api` 契约 + AI SDK ← `@pi-web/react`。仅浏览器环境,经 HTTP/SSE 消费,不依赖后端内部对象。
 
-- [ ] 1. 基础设施:包脚手架与测试环境
-- [ ] 1.1 初始化 `@pi-web/react` 包与构建/类型配置
+- [x] 1. 基础设施:包脚手架与测试环境
+- [x] 1.1 初始化 `@pi-web/react` 包与构建/类型配置
   - 创建 `packages/react/package.json`(name `@pi-web/react`、`sideEffects:false`、deps `@pi-web/protocol`/`ai`、peerDeps `react`/`@ai-sdk/react`)、`tsconfig.json`(strict、DOM lib、ES2022)
   - 建立 `src/` 目录骨架(client / sse / transport / hooks / provider / version)与空 `index.ts` 聚合导出占位
   - 观察完成:`tsc --noEmit` 在空骨架下通过,包可被 workspace 解析到 `@pi-web/protocol` 类型
   - _Requirements: 9.1_
-- [ ] 1.2 配置 vitest 测试环境与单一运行命令
+- [x] 1.2 配置 vitest 测试环境与单一运行命令
   - 创建 `vitest.config.ts`(DOM 环境 jsdom/happy-dom 供组件测试)、`package.json` 的 `test` 脚本(`vitest run`)
   - 建立 `test/fixtures/sse-samples.ts` mock SSE 文本帧样本(text-delta / reasoning / tool / data-pi-* / 各类 control / 半帧跨 chunk)
   - 观察完成:`vitest run` 可执行(空套件或占位用例)并产出结果;fixtures 可被测试 import
   - _Requirements: 10.8_
 
-- [ ] 2. 核心纯逻辑层(无 React 依赖,可独立单测)
-- [ ] 2.1 定义错误类型 errors.ts
+- [x] 2. 核心纯逻辑层(无 React 依赖,可独立单测)
+- [x] 2.1 定义错误类型 errors.ts
   - 定义 `PiHttpError`(状态码 + 协议错误体 `{ code, message, fields? }`)与 `PiProtocolVersionError`,作为下游请求层与版本层共享的错误面
   - 观察完成:两类错误可被 import 并携带其字段;后续 2.4/2.5/3.1 不再各自重定义错误形状
   - _Requirements: 4.5, 9.3_
   - _Boundary: errors.ts_
-- [ ] 2.2 (P) 实现 SSE 帧解析器(纯函数)
+- [x] 2.2 (P) 实现 SSE 帧解析器(纯函数)
   - 实现按 `\n` 切分、剥 `\r`、合并多行 `data:`、解析 `id:`/`event:`、半帧跨 chunk 经残余缓冲留存的解析,产出 `SseFrame[]` 与 `rest`
   - 观察完成:`parse-sse.test.ts` 通过——半帧跨两次输入能正确拼回、多行 data 合并、`uiMessageChunk` 与 `control` 帧被正确切出
   - _Requirements: 2.6, 8.5, 10.1_
   - _Boundary: parse-sse.ts_
-- [ ] 2.3 (P) 实现 uiMessageChunk → AI SDK UIMessageChunk 解码映射
+- [x] 2.3 (P) 实现 uiMessageChunk → AI SDK UIMessageChunk 解码映射
   - 以 `@pi-web/protocol` 的 `UiMessageChunkSchema`/`DataPartSchema` 为来源,映射 text(start/delta/end)、reasoning(start/delta/end)、tool(input/output-available)、`data-pi-*` data-part 为对应 AI SDK chunk
   - 观察完成:`decode-chunk.test.ts` 通过——四类帧各产出正确 `type` 的 `UIMessageChunk`;无法按 schema 解析的帧不产出污染数据
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 10.1_
   - _Boundary: decode-chunk.ts_
-- [ ] 2.4 (P) 实现 control 旁路 store
+- [x] 2.4 (P) 实现 control 旁路 store
   - 实现 `useSyncExternalStore` 兼容的可订阅 `ControlStore`,持快照 `{ queue, stats, error, extensionUiQueue }`;`applyControlFrame` 按子类型(extension-ui/queue/stats/error)更新;扩展 UI `enqueue`/`dequeue`(FIFO,不丢弃)
   - 观察完成:`control-store.test.ts` 通过——FIFO 入队/出队不丢弃、各 control 子类型经 `applyControlFrame` 正确更新快照、`getSnapshot` 返回不可变快照
   - _Requirements: 7.1, 7.2, 7.4, 8.2, 8.3, 8.4, 10.1_
   - _Boundary: control-store.ts_
-- [ ] 2.5 (P) 实现 REST 请求发送与错误归一
+- [x] 2.5 (P) 实现 REST 请求发送与错误归一
   - 实现 URL 拼接、JSON body、`headers` 透传、注入 `fetch` 的请求发送;非 2xx → `PiHttpError`(复用 2.1)
   - 观察完成:针对 mock fetch 的发送与错误归一被 `pi-client.test.ts` 覆盖;注入的 `fetch` 被实际调用而非全局 fetch
   - _Requirements: 4.5_
   - _Boundary: request.ts_
   - _Depends: 2.1_
-- [ ] 2.6 (P) 实现 protocolVersion 兼容判定
+- [x] 2.6 (P) 实现 protocolVersion 兼容判定
   - 以 `@pi-web/protocol` 的 `protocolVersion` 为唯一基准,对 SSE 帧/REST 响应携带的版本做兼容判定;不兼容 → `PiProtocolVersionError`(复用 2.1)
   - 观察完成:兼容/不兼容判定有确定结果;不兼容时抛 `PiProtocolVersionError`,被 `pi-client.test.ts` 覆盖
   - _Requirements: 9.1, 9.2, 9.3_
   - _Boundary: version.ts_
   - _Depends: 2.1_
 
-- [ ] 3. REST 客户端
-- [ ] 3.1 实现 createPiClient 全部端点方法
+- [x] 3. REST 客户端
+- [x] 3.1 实现 createPiClient 全部端点方法
   - 基于 2.4/2.5,实现 `createSession`/`prompt`/`steer`/`followUp`/`abort`/`setModel`/`setThinking`/`uiResponse`/`getState`/`getStats`/`getMessages`/`getCommands`/`deleteSession`,形状取自 `@pi-web/protocol` REST DTO 与 `http-api` 端点路径
   - 观察完成:`pi-client.test.ts` 通过——每个方法对 mock fetch 断言正确 method/path/body;建会话返回 `{ sessionId }`;查询返回协议响应 DTO;`fetch` 注入生效
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.6, 9.2, 9.3, 10.3_
   - _Boundary: pi-client.ts_
   - _Depends: 2.5, 2.6_
 
-- [ ] 4. 单订阅连接对象
-- [ ] 4.1 实现 PiSessionConnection 单订阅与帧分流
+- [x] 4. 单订阅连接对象
+- [x] 4.1 实现 PiSessionConnection 单订阅与帧分流
   - 用注入 fetch 订阅 `GET /sessions/:id/stream`(可带 `headers`/`Last-Event-ID`),经 `TextDecoder`+`parseSse`(2.1)切帧,按 `kind` 分流:`uiMessageChunk`→`decodeUiMessageChunk`(2.2)入可读流;`control`→`ControlStore`(2.3);记录 `lastEventId`;结束帧 close;`close()` abort reader + 清监听
   - 观察完成:`connection.test.ts` 通过——注入 mock SSE 后 uiMessageChunk 进可读流、control 进 store、结束帧关闭流、`close()` 释放 reader、同会话仅一条订阅
   - _Requirements: 1.3, 1.4, 2.5, 2.6, 3.2, 3.4, 5.4, 8.1, 8.5, 10.1_
   - _Boundary: connection.ts_
   - _Depends: 2.2, 2.3, 2.4_
 
-- [ ] 5. ChatTransport 适配
-- [ ] 5.1 实现 PiTransport.sendMessages 与 abort
+- [x] 5. ChatTransport 适配
+- [x] 5.1 实现 PiTransport.sendMessages 与 abort
   - 实现 `ChatTransport`:`sendMessages` 经 client `prompt` POST `/messages`、确保连接订阅 `/stream`、返回连接的 `UIMessageChunk` 可读流;透传 `headers`/`body`;`abortSignal` 取消 reader 并 close 流
   - 观察完成:`pi-transport.test.ts` 通过——mock fetch 下 POST `/messages` 被调用、返回流随 SSE `text-delta` 逐字推进、`abortSignal` 触发后流收束、`headers` 透传
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 2.5, 10.1_
   - _Boundary: pi-transport.ts_
   - _Depends: 3.1, 4.1_
-- [ ] 5.2 实现 PiTransport.reconnectToStream 续流
+- [x] 5.2 实现 PiTransport.reconnectToStream 续流
   - 基于连接记录的 `lastEventId`,带 `Last-Event-ID` 重订阅 `/stream` 续推后续帧;会话已结束/不存在 → 返回 `null` 不挂起
   - 观察完成:`reconnect.test.ts` 通过——续流从断点恢复后续帧;会话已结束时 `reconnectToStream` 返回 `null`
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 10.2_
   - _Boundary: pi-transport.ts_
   - _Depends: 4.1_
 
-- [ ] 6. headless hooks 与可选 Provider
-- [ ] 6.1 实现可选 PiProvider 与 context
+- [x] 6. headless hooks 与可选 Provider
+- [x] 6.1 实现可选 PiProvider 与 context
   - 实现 `PiProvider`(注入共享 `baseUrl`/`fetch`/`client`)与 `usePiContext`;hooks 未显式传 client 时回退 context;不强制使用
   - 观察完成:在 `PiProvider` 内/外均可获取 client(context 命中或显式注入),经 hook 测试间接验证
   - _Requirements: 4.1_
   - _Boundary: pi-provider.tsx_
   - _Depends: 3.1_
-- [ ] 6.2 实现 usePiSession 连接生命周期
+- [x] 6.2 实现 usePiSession 连接生命周期
   - 经 client `createSession` 建会话暴露 `sessionId`;装配 `PiSessionConnection`+`PiTransport` 并暴露 `transport`;暴露连接态 `status`;卸载/显式 `close` 释放订阅;失败暴露 `error` 不抛未捕获
   - 观察完成:`use-pi-session.test.tsx` 通过——状态机在 connecting→open→closed/ended 迁移、卸载时连接被 close、建会话失败暴露 error 态
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 10.5_
   - _Boundary: use-pi-session.ts_
   - _Depends: 4.1, 5.1, 5.2, 6.1_
-- [ ] 6.3 (P) 实现 usePiControls 控制操作
+- [x] 6.3 (P) 实现 usePiControls 控制操作
   - 暴露 `setModel`/`setThinking`/`abort`/`steer`/`followUp`/`getStats`/`getCommands`,经 client 调 REST;暴露各操作 `pending/success/error` 态;stats 兼合 SSE 旁路快照;控制不写入消息流
   - 观察完成:`use-pi-controls.test.tsx` 通过——各操作触发对应 client 调用并反映操作态;控制操作不出现在 useChat 消息;端点错误暴露 error 态
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 8.1, 10.5_
   - _Boundary: use-pi-controls.ts_
   - _Depends: 3.1, 2.4_
-- [ ] 6.4 (P) 实现 useExtensionUI 扩展 UI 队列与回传
+- [x] 6.4 (P) 实现 useExtensionUI 扩展 UI 队列与回传
   - 订阅 `ControlStore.extensionUiQueue` 暴露待处理项(队列语义);`respond` 经 client `uiResponse` 回传成功后出队;失败保留项 + 暴露 error 允许重试;扩展 UI 不入消息流
   - 观察完成:`use-extension-ui.test.tsx` 通过——extension-ui 帧入队后经 hook 暴露、respond 成功出队、回传失败时该项保留且 error 暴露
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 10.5_
   - _Boundary: use-extension-ui.ts_
   - _Depends: 3.1, 2.4_
 
-- [ ] 7. 聚合导出与组件集成验证
-- [ ] 7.1 完成 index.ts 聚合导出
+- [x] 7. 聚合导出与组件集成验证
+- [x] 7.1 完成 index.ts 聚合导出
   - 从各层 re-export `PiTransport`/`createPiClient`/`usePiSession`/`usePiControls`/`useExtensionUI`/`PiProvider` 及公开类型,作为 `@pi-web/react` 唯一导入面
   - 观察完成:外部按 `import { PiTransport, usePiSession } from "@pi-web/react"` 可解析;`tsc --noEmit` 通过
   - _Requirements: 9.1_
   - _Depends: 5.1, 5.2, 6.2, 6.3, 6.4_
-- [ ] 7.2 组件/集成测试:useChat 对 mock server 流式更新
+- [x] 7.2 组件/集成测试:useChat 对 mock server 流式更新
   - 用 `@testing-library/react` 跑 `useChat({ transport: PiTransport })` 对 mock server,触发发送后断言 `messages` 随 SSE `text-delta` 流式更新直至 finish;断言 control 帧不进入 `messages`
   - 观察完成:`integration/use-chat.test.tsx` 通过——渲染中 message 文本随帧增长、扩展 UI/queue/stats 不出现在消息流
   - _Requirements: 10.4, 1.1, 2.1, 8.1_
   - _Depends: 7.1_
 
-- [ ] 8. 端到端验证(硬性,接真实 http-api + stub agent)
-- [ ] 8.1 e2e:hook 驱动 prompt → 流式回复
+- [x] 8. 端到端验证(硬性,接真实 http-api + stub agent)
+- [x] 8.1 e2e:hook 驱动 prompt → 流式回复
   - 起真实 `http-api`(`session-engine` + rpc-channel 的 stub agent),经 `usePiSession` 建会话 + `useChat({ transport })` 驱动一轮 prompt,接收逐字流式回复直至结束
   - 观察完成:`e2e/prompt-stream.e2e.test.tsx` 通过——真实 SSE 链路下消息逐字到达并以 finish 收束;新鲜运行输出证明通过
   - _Requirements: 10.6, 1.1, 1.2, 1.3, 2.1, 2.5_
   - _Depends: 7.1_
-- [ ] 8.2 e2e:扩展 UI 经 useExtensionUI 冒泡与回传
+- [x] 8.2 e2e:扩展 UI 经 useExtensionUI 冒泡与回传
   - 同真实链路下 stub agent 触发 extension UI 请求,断言其经 `useExtensionUI` 队列冒泡;`respond` 经 `/ui-response` 回传后出队
   - 观察完成:`e2e/extension-ui.e2e.test.tsx` 通过——扩展 UI 请求出现在队列、回传后被会话确认并出队;扩展 UI 不污染消息流
   - _Requirements: 10.7, 7.1, 7.3, 7.4_
   - _Depends: 7.1_
-- [ ] 8.3 汇总测试运行与覆盖确认
+- [x] 8.3 汇总测试运行与覆盖确认
   - 以单一命令 `vitest run` 运行全部单元/组件-集成/e2e;确认所有需求映射的测试存在并通过(e2e 在真实 pi 不可用时回退 stub 进程)
   - 观察完成:单条命令产出全部用例通过的可验证结果;需求 1-10 均有对应通过测试
   - _Requirements: 10.8_

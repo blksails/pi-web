@@ -1,92 +1,92 @@
 # Implementation Plan
 
-- [ ] 1. 基础:协议包脚手架与测试基础设施
-- [ ] 1.1 初始化 `@pi-web/protocol` 包骨架与构建/同构约束
+- [x] 1. 基础:协议包脚手架与测试基础设施
+- [x] 1.1 初始化 `@pi-web/protocol` 包骨架与构建/同构约束
   - 创建包清单(`name` 为 `@pi-web/protocol`、`exports` 单一入口、`sideEffects: false`)、TypeScript strict 配置(同构 target,不引入环境专有副作用)。
   - 运行时依赖仅声明 `zod`;`@earendil-works/pi-coding-agent` `0.79.x` 仅作开发/派生参考置于 dev 范围。
   - 完成条件:`tsc --noEmit` 在空骨架下通过,且依赖清单中运行时依赖只有 `zod`。
   - _Requirements: 6.1, 6.2, 6.3_
-- [ ] 1.2 搭建测试运行器与契约样本目录
+- [x] 1.2 搭建测试运行器与契约样本目录
   - 配置单一测试命令的测试运行器;创建 fixtures 与契约测试目录占位。
   - 完成条件:`pnpm test`(或等价单一命令)可运行并报告 0 用例(基础设施就绪),后续所有单测/契约测试纳入同一命令。
   - _Requirements: 7.6_
 
-- [ ] 2. 核心:pi 原生 RPC 契约本地化(schema + 推导类型)
-- [ ] 2.1 (P) 定义 AgentEvent 可辨识联合 schema 与类型
+- [x] 2. 核心:pi 原生 RPC 契约本地化(schema + 推导类型)
+- [x] 2.1 (P) 定义 AgentEvent 可辨识联合 schema 与类型
   - 以 `type` 为判别键覆盖 `agent_start`/`agent_end`/`turn_end`、`message_update` 各子事件(`text_start`/`text_delta`/`text_end`/`thinking_*`)、`tool_execution_start`/`update`(累积 `partialResult`)/`end`、`compaction_*`、`auto_retry_*`、`queue_update`、`extension_ui_request`。
   - 静态类型由 schema 推导(单一事实来源);文件头注释来源 d.ts 路径与对齐 `pi 0.79.x`。
   - 完成条件:合法各子类型事件 `parse` 通过、未知 `type` 或缺字段事件 `safeParse` 返回 `success:false` 且错误含字段路径。
   - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6_
   - _Boundary: rpc/event.ts_
-- [ ] 2.2 (P) 定义命令/响应/扩展UI/会话状态/模型/消息 schema 与类型
+- [x] 2.2 (P) 定义命令/响应/扩展UI/会话状态/模型/消息 schema 与类型
   - 重建 `RpcCommand`/`RpcResponse`/`RpcExtensionUIRequest`/`RpcExtensionUIResponse`/`RpcSessionState`/`Model`/`AgentMessage` 为 zod schema,类型由 `z.infer` 推导。
   - 各文件头注释来源 d.ts 路径与 `pi 0.79.x`。
   - 完成条件:合法对象 `parse` 通过、非法对象 `safeParse` 返回 `success:false` 且错误含字段路径。
   - _Requirements: 1.1, 1.3, 1.4, 1.5, 1.6_
   - _Boundary: rpc/command.ts, rpc/response.ts, rpc/extension-ui.ts, rpc/session-state.ts, rpc/model.ts_
 
-- [ ] 3. 核心:版本常量与 pi-web 自定义传输层契约
-- [ ] 3.1 (P) 定义 protocolVersion 版本常量
+- [x] 3. 核心:版本常量与 pi-web 自定义传输层契约
+- [x] 3.1 (P) 定义 protocolVersion 版本常量
   - 导出 `protocolVersion`(语义化版本字符串)及其类型;供 SSE 帧与握手引用。
   - 完成条件:`protocolVersion` 可被导入,值为合法 SemVer 字符串。
   - _Requirements: 5.1_
   - _Boundary: version.ts_
-- [ ] 3.2 (P) 定义 UIMessage data-part schema(pi 特有)
+- [x] 3.2 (P) 定义 UIMessage data-part schema(pi 特有)
   - 以可辨识 `type`(`data-pi-*`)覆盖 queue、compaction、auto-retry、tool partialResult 四类。
   - 完成条件:合法 data-part `parse` 通过、未知 `type` 或字段不符 `safeParse` 拒绝。
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: transport/data-part.ts_
-- [ ] 3.3 定义 SSE 顶层帧 schema(两类 + 版本承载)
+- [x] 3.3 定义 SSE 顶层帧 schema(两类 + 版本承载)
   - 以 `kind` 判别 `uiMessageChunk`(内嵌 text/reasoning/tool/data-part 负载)与 `control`(覆盖 extension-ui/queue/stats/error);帧含 `protocolVersion` 字段引用版本常量。
   - 完成条件:合法帧 `parse` 通过且类别可由判别字段判定;类别与负载不匹配的帧 `safeParse` 拒绝;帧含 `protocolVersion` 字段。
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 5.3_
   - _Depends: 3.1, 3.2_
   - _Boundary: transport/sse-frame.ts, transport/ui-message-chunk.ts_
-- [ ] 3.4 (P) 定义 REST DTO schema(建会话 + 各命令请求/响应)
+- [x] 3.4 (P) 定义 REST DTO schema(建会话 + 各命令请求/响应)
   - 建会话请求形状 `{source,cwd?,model?,env?}`(`source` 必填);各命令(prompt/steer/follow_up/abort、model/thinking、state/stats/messages/commands、ui-response、删除会话)请求/响应 DTO。
   - 完成条件:合法 DTO `parse` 通过;缺 `source` 的建会话请求 `safeParse` 拒绝。
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
   - _Boundary: transport/rest-dto.ts_
-- [ ] 3.5 (P) 定义 SpawnSpec schema(子进程启动规格,跨层契约)
+- [x] 3.5 (P) 定义 SpawnSpec schema(子进程启动规格,跨层契约)
   - 形状 `{ cmd: string, args: string[], cwd: string, env: Record<string, string> }`(四字段均必填);导出 `SpawnSpecSchema` 与 `z.infer` 推导的 `SpawnSpec` 类型。供 `agent-source-resolver` 产出、`rpc-channel` 消费;与建会话请求 DTO 是不同契约,不复用其形状。
   - 完成条件:四字段齐全的对象 `parse` 通过;缺任一字段或类型不符的对象 `safeParse` 返回 `success:false` 且错误含字段路径。
   - _Requirements: 4.5_
   - _Boundary: transport/spawn.ts_
 
-- [ ] 4. 集成:契约分层与聚合导出面
-- [ ] 4.1 实现集中入口聚合导出并校验契约分层
+- [x] 4. 集成:契约分层与聚合导出面
+- [x] 4.1 实现集中入口聚合导出并校验契约分层
   - 从版本、rpc、transport 各模块 re-export 全部 schema、推导类型与 `protocolVersion`,形成下游唯一导入面;确认 pi 原生与自定义 DTO 分文件、依赖方向不反向。
   - 完成条件:下游可通过单一导入面取得全部公共类型/schema/版本常量;`tsc` 通过且无 `rpc`/`transport` 反向导入聚合入口。
   - _Requirements: 5.2, 5.4_
   - _Depends: 2.1, 2.2, 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 5. 校验:单元测试(每个 schema 正反例 + 版本)
-- [ ] 5.1 (P) 编写 rpc 层 schema 正反例单测
+- [x] 5. 校验:单元测试(每个 schema 正反例 + 版本)
+- [x] 5.1 (P) 编写 rpc 层 schema 正反例单测
   - 覆盖 AgentEvent 各子类型与命令/响应/扩展UI/状态/模型/消息 schema 的 `parse` 正例与 `safeParse` 反例(含字段路径断言)。
   - 完成条件:测试运行输出显示 rpc 层全部正反例用例通过。
   - _Requirements: 7.1, 1.3, 1.4_
   - _Boundary: test/rpc_
   - _Depends: 2.1, 2.2_
-- [ ] 5.2 (P) 编写 transport 层 schema 正反例单测
+- [x] 5.2 (P) 编写 transport 层 schema 正反例单测
   - 覆盖 SSE 帧两类判别、data-part、REST DTO、SpawnSpec 的 `parse` 正例与 `safeParse` 反例;断言 SSE 帧含 `protocolVersion`、建会话缺 `source` 被拒、SpawnSpec 缺任一必填字段被拒。
   - 完成条件:测试运行输出显示 transport 层全部正反例用例通过。
   - _Requirements: 7.1, 2.4, 2.5, 2.6, 3.3, 3.4, 4.3, 4.4, 4.5_
   - _Boundary: test/transport_
   - _Depends: 3.2, 3.3, 3.4, 3.5_
-- [ ] 5.3 (P) 编写 protocolVersion 存在性与 SemVer 合法性单测
+- [x] 5.3 (P) 编写 protocolVersion 存在性与 SemVer 合法性单测
   - 断言 `protocolVersion` 已导出且为合法 SemVer 字符串。
   - 完成条件:测试运行输出显示版本断言通过。
   - _Requirements: 7.2, 5.1_
   - _Boundary: test/version.test.ts_
   - _Depends: 3.1_
 
-- [ ] 6. 校验:e2e 契约校验(防 schema 与真实协议漂移,硬性)
-- [ ] 6.1 实现真实 pi 帧采集脚本并落仓样本 fixtures
+- [x] 6. 校验:e2e 契约校验(防 schema 与真实协议漂移,硬性)
+- [x] 6.1 实现真实 pi 帧采集脚本并落仓样本 fixtures
   - 编写采集脚本驱动真实 `pi --mode rpc`,录制 `prompt → text_delta → tool_execution start/update/end → agent_end` 链路样本与真实 SSE 样本到 fixtures(脚本属开发夹具,不进入包运行时依赖)。
   - 完成条件:fixtures 目录含可重放的真实 RPC 帧序列与 SSE 样本文件,且脚本可再生这些样本。
   - _Requirements: 7.3, 7.4_
   - _Depends: 4.1_
-- [ ] 6.2 编写 RPC 与 SSE 真实样本逐帧契约校验测试
+- [x] 6.2 编写 RPC 与 SSE 真实样本逐帧契约校验测试
   - 读取 fixtures,逐帧用对应 schema `safeParse`,断言全部 `success:true`;任一失败则测试失败并报告未通过帧及其字段路径(暴露漂移)。
   - 完成条件:契约测试在已落仓 fixtures 上全部通过,且对人为篡改的样本会失败并打印漂移帧路径;契约测试纳入单一测试命令。
   - _Requirements: 7.3, 7.4, 7.5, 7.6_

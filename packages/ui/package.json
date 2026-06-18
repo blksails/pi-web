@@ -13,7 +13,9 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@pi-web/protocol": "workspace:*",
@@ -34,17 +36,24 @@
   },
   "devDependencies": {
     "@ai-sdk/react": "^2.0.0",
+    "@storybook/react-vite": "^10",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4",
     "ai": "^5.0.0",
+    "autoprefixer": "^10",
     "jsdom": "^25.0.1",
+    "postcss": "^8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "storybook": "^10",
+    "tailwindcss": "^3",
     "typescript": "^5.6.3",
+    "vite": "^6",
     "vitest": "^2.1.8"
   }
 }
