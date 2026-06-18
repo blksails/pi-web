@@ -997,6 +997,86 @@ describe("PiChat 命令补全浮层接线(Task 2.1)", () => {
     expect(paletteWrapper?.className).toContain("bottom-full");
   });
 
+  it("命令模式且有候选时按 Enter 不触发 sendMessage(suppressEnterSubmit 让位, R4.2)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+
+    // 输入 "/" 进入命令模式,sampleCommands 返回 help/model/clear 三条候选
+    await user.type(textarea, "/");
+
+    // 等待浮层渲染(有候选,commandCapturing 应为 true)
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // 此时按 Enter — 应被 suppress,不触发 sendMessage
+    await user.keyboard("{Enter}");
+
+    // sendMessage 不被调用
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("无候选(输入 /zzz 过滤为空)时按 Enter 不抑制,onSubmit 路径正常(R4 防死键)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(), // help/model/clear — 无 zzz
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+
+    // 输入 "/zzz" — 有候选(初始) → 命令模式开始过滤,无 zzz 命中 → capturing=false
+    await user.type(textarea, "/zzz");
+
+    // 等待浮层出现(value 以 / 开头,palette 渲染但候选为空)
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // 候选为空,空态("No commands")可见,capturing=false → Enter 不抑制
+    expect(document.querySelector("[data-pi-command-empty]")).toBeInTheDocument();
+
+    // 按 Enter → 不应被抑制,onSubmit 应调用 sendMessage
+    await user.keyboard("{Enter}");
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageMock.mock.calls[0]?.[0]?.text).toBe("/zzz");
+  });
+
+  it("不提供 controls 时不渲染浮层且聊天功能正常(降级,R7.1 — 沿用 2.1 验证)", async () => {
+    const user = userEvent.setup();
+
+    render(<PiChat session={fakeSession()} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    expect(
+      document.querySelector("[data-pi-command-palette]"),
+    ).not.toBeInTheDocument();
+
+    // 聊天仍可用:按 Enter 调 sendMessage
+    await user.keyboard("{Enter}");
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+  });
+
   it("会话态下浮层在两分支中均可触发(空态也能触发)", async () => {
     // 会话态(messages 非空)
     chatState = {

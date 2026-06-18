@@ -209,6 +209,8 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+  // 命令模式 Enter 让位:palette 上报"命令模式且有候选"态,由此决定是否抑制 Enter 提交(R4.2)。
+  const [commandCapturing, setCommandCapturing] = React.useState<boolean>(false);
 
   // ambient 推送类切片(无 extensionUI 时安全回落为空,各面不渲染 → 降级,Req 6.1)。
   const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
@@ -402,6 +404,7 @@ export function PiChat({
       placeholder={placeholder ?? DEFAULT_PLACEHOLDER}
       className="rounded-3xl border-[hsl(var(--border))] px-4 py-3 shadow-sm"
       textareaClassName="px-2 text-base"
+      suppressEnterSubmit={commandCapturing}
     />
   );
 
@@ -416,6 +419,7 @@ export function PiChat({
             controls={controls}
             value={input}
             onChange={setInput}
+            onCaptureChange={setCommandCapturing}
           />
         </div>
       ) : null}
