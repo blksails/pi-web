@@ -352,17 +352,79 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(ae.frames)).toEqual(["finish"]);
   });
 
-  it("message_update.error (reason=error) → error chunk with errorText", () => {
+  it("agent_end {willRetry:false, error w/ errorMessage} → error chunk w/ real errorText", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [
+          { ...PARTIAL, stopReason: "error", errorMessage: "Connection error." },
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe("Connection error.");
+  });
+
+  it("agent_end {willRetry:false, aborted} → abort chunk", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [{ ...PARTIAL, stopReason: "aborted" }],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["abort"]);
+  });
+
+  it("agent_end {willRetry:true, error} → finish (no error chunk)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: true,
+        messages: [
+          { ...PARTIAL, stopReason: "error", errorMessage: "Connection error." },
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+  });
+
+  it("message_update.error (reason=error) → error chunk with real errorText (not hardcoded)", () => {
+    const r = translateEvent(
+      messageUpdate({
+        type: "error",
+        reason: "error",
+        error: { ...PARTIAL, stopReason: "error", errorMessage: "X" },
+      }),
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe("X");
+  });
+
+  it("message_update.error (reason=error) without errorMessage → fallback errorText", () => {
     const r = translateEvent(
       messageUpdate({ type: "error", reason: "error", error: PARTIAL }),
       createTranslationContext(),
     );
     expectValidFrames(r.frames);
     expect(chunkTypes(r.frames)).toEqual(["error"]);
-    expect(chunkAt(r.frames)).toMatchObject({ type: "error" });
     const c = chunkAt(r.frames);
     if (c.type !== "error") throw new Error("expected error chunk");
     expect(typeof c.errorText).toBe("string");
+    expect(c.errorText.length).toBeGreaterThan(0);
   });
 
   it("message_update.error (reason=aborted) → abort chunk", () => {
@@ -415,6 +477,153 @@ describe("translateEvent — schema-valid frames per event", () => {
       "finish-step",
       "finish",
     ]);
+  });
+
+  // 回退常量:须与源码 translate-event.ts 的 FALLBACK_ERROR_TEXT 字面量保持一致。
+  // 源码未导出该常量,故此处以相同字面量断言;若源码改文案,本断言应随之同步。
+  const FALLBACK_ERROR_TEXT = "对话失败,但运行时未提供具体错误信息。";
+
+  it("agent_end {willRetry:false, error w/o errorMessage} → error chunk w/ fallback errorText (Req 2.2)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        // stopReason:"error" 但无 errorMessage → 应回退到常量文案。
+        messages: [{ ...PARTIAL, stopReason: "error" }],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe(FALLBACK_ERROR_TEXT);
+  });
+
+  it("agent_end {willRetry:false, assistant stopReason:'stop'} → finish, no error chunk (Req 5.1)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [{ ...PARTIAL, stopReason: "stop" }],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+    // 不得混入 error/abort 帧。
+    expect(chunkTypes(r.frames)).not.toContain("error");
+    expect(chunkTypes(r.frames)).not.toContain("abort");
+  });
+
+  it("agent_end last item is toolResult, prior assistant stopReason:'stop' → finish (Req 5.1, scan back to nearest assistant)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        // 末项是 toolResult(非 assistant);更前的 assistant 为正常 stop → finish。
+        messages: [
+          { ...PARTIAL, stopReason: "stop" },
+          // toolResult 末项:role 非 "assistant",应被向前查找逻辑跳过。
+          { role: "toolResult", content: [], timestamp: 0 } as never,
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+  });
+
+  it("agent_end last item is toolResult, prior assistant stopReason:'error' → error (Req 5.1, skip non-assistant tail, hit error)", () => {
+    const r = translateEvent(
+      {
+        type: "agent_end",
+        willRetry: false,
+        messages: [
+          { ...PARTIAL, stopReason: "error", errorMessage: "Upstream failed." },
+          // 跳过末项 toolResult,向前命中 assistant(error)。
+          { role: "toolResult", content: [], timestamp: 0 } as never,
+        ],
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe("Upstream failed.");
+  });
+
+  it("mid-stream open text part then agent_end error → error chunk and no half-open part remains (Req 1.4)", () => {
+    let ctx: TranslationContext = createTranslationContext();
+    const all: import("@pi-web/protocol").SseFrame[] = [];
+    const push = (e: AgentEvent): void => {
+      const r = translateEvent(e, ctx);
+      ctx = r.ctx;
+      all.push(...r.frames);
+    };
+    // 开启一个 text part(start + delta),使其处于"半开"状态。
+    push(messageUpdate({ type: "text_start", contentIndex: 0, partial: PARTIAL }));
+    push(
+      messageUpdate({
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "partial...",
+        partial: PARTIAL,
+      }),
+    );
+    expect(ctx.openTextPartId).toBeDefined(); // 前置:确有半开 part。
+    // 中途终态错误收尾。
+    push({
+      type: "agent_end",
+      willRetry: false,
+      messages: [{ ...PARTIAL, stopReason: "error", errorMessage: "boom" }],
+    });
+    expectValidFrames(all);
+    const types = chunkTypes(all);
+    // 序列以 error 帧收束(Req 1.4:仍产出用户可见错误信号)。
+    expect(types[types.length - 1]).toBe("error");
+    expect(types).toEqual(["text-start", "text-delta", "error"]);
+    const last = chunkAt(all, all.length - 1);
+    if (last.type !== "error") throw new Error("expected trailing error chunk");
+    expect(last.errorText).toBe("boom");
+    // 关键:收尾后不残留半开 text part(Req 1.4 "不残留半开状态")。
+    expect(ctx.openTextPartId).toBeUndefined();
+  });
+
+  it("auto_retry_start → data-pi-auto-retry (phase:start) feedback regression (Req 3.1)", () => {
+    const r = translateEvent(
+      {
+        type: "auto_retry_start",
+        attempt: 2,
+        maxAttempts: 3,
+        delayMs: 250,
+        errorMessage: "transient",
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["data-pi-auto-retry"]);
+    expect(chunkAt(r.frames)).toMatchObject({
+      type: "data-pi-auto-retry",
+      data: { phase: "start", attempt: 2 },
+    });
+    // 重试反馈不得被误报为终态错误。
+    expect(chunkTypes(r.frames)).not.toContain("error");
+  });
+
+  it("auto_retry_end → data-pi-auto-retry (phase:end) feedback regression (Req 3.1)", () => {
+    const r = translateEvent(
+      { type: "auto_retry_end", success: true, attempt: 2 },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["data-pi-auto-retry"]);
+    expect(chunkAt(r.frames)).toMatchObject({
+      type: "data-pi-auto-retry",
+      data: { phase: "end", success: true },
+    });
+    expect(chunkTypes(r.frames)).not.toContain("error");
   });
 
   it("unknown / non-translatable event → deterministic empty frames, no throw", () => {

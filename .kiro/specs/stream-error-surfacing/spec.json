@@ -1,9 +1,9 @@
 {
-  "feature_name": "agent-minimal-preset",
+  "feature_name": "stream-error-surfacing",
   "created_at": "2026-06-18T00:00:00Z",
   "updated_at": "2026-06-18T00:00:00Z",
   "language": "zh",
-  "phase": "implemented",
+  "phase": "tasks-generated",
   "approvals": {
     "requirements": {
       "generated": true,

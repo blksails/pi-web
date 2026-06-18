@@ -10,6 +10,7 @@
  * and assembles a `CreateAgentSessionRuntimeFactory`. Optional fields that are
  * absent are never injected, preserving pi's default discovery behaviour.
  */
+import { basename, extname } from "node:path";
 import type { AgentDefinition, AgentModel } from "./agent-definition.js";
 import {
   type AgentSessionServices,
@@ -28,6 +29,22 @@ type ResourceLoaderOptions = NonNullable<
 >;
 
 type SessionModel = NonNullable<CreateAgentSessionFromServicesOptions["model"]>;
+
+/** The SDK `LoadExtensionsResult` — the `base` type passed to `extensionsOverride`. */
+type LoadExtensionsResult = Parameters<
+  NonNullable<ResourceLoaderOptions["extensionsOverride"]>
+>[0];
+/** A single loaded extension as carried by `LoadExtensionsResult.extensions`. */
+type LoadedExtension = LoadExtensionsResult["extensions"][number];
+
+/**
+ * Derive an extension's name from its `path`: the basename without extension.
+ * Compared against `allowExtensions` entries. Kept as a small in-file helper to
+ * ease unit testing and calibration against real extension samples.
+ */
+function extensionName(ext: LoadedExtension): string {
+  return basename(ext.path, extname(ext.path));
+}
 
 /**
  * Result of mapping the resource-class fields of an {@link AgentDefinition}.
@@ -94,6 +111,39 @@ export function mapResourceLoaderOptions(
     }
     if (factories.length > 0) {
       resourceLoaderOptions.extensionFactories = factories;
+    }
+  }
+
+  // allowExtensions: close-all / whitelist semantics for disk-discovered system
+  // extensions. Absent → not injected (SDK default discovery preserved).
+  //
+  // KNOWN LIMITATION (research.md R-1): a NON-EMPTY allowExtensions still loads
+  // every discovered extension first, then filters via `extensionsOverride` — so
+  // a closed extension's module code runs once before being dropped. For strong
+  // isolation (discovery skipped entirely, no closed-extension code executed),
+  // use `allowExtensions: []`, which maps to `noExtensions = true`.
+  if (def.allowExtensions !== undefined) {
+    const allow = new Set(def.allowExtensions);
+    if (allow.size === 0) {
+      // Close all: skip discovery; closed-extension code never runs. Explicitly
+      // appended items are still preserved by the SDK.
+      resourceLoaderOptions.noExtensions = true;
+    } else {
+      // Whitelist: discover, then keep named extensions + explicitly appended ones.
+      const explicitPaths = new Set(
+        (def.extensions ?? [])
+          .filter((e): e is string => typeof e === "string")
+          .map((p) => basename(p)),
+      );
+      resourceLoaderOptions.extensionsOverride = (base) => ({
+        // `...base` preserves `errors` and `runtime` untouched.
+        ...base,
+        extensions: base.extensions.filter((ext) => {
+          if (ext.path.startsWith("<inline:")) return true; // factory-appended item
+          if (explicitPaths.has(basename(ext.path))) return true; // string-path appended item
+          return allow.has(extensionName(ext)); // named whitelist
+        }),
+      });
     }
   }
 

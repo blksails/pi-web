@@ -47,6 +47,42 @@ function none(ctx: TranslationContext): TranslateResult {
   return { frames: [], ctx };
 }
 
+/** 回退文案:仅当运行时确无具体错误信息时使用(Req 2.2)。 */
+const FALLBACK_ERROR_TEXT = "对话失败,但运行时未提供具体错误信息。";
+
+/** 从 agent_end.messages 末尾取最近 assistant 的终态信号(纯)。 */
+type TerminalSignal =
+  | { kind: "error"; errorText: string }
+  | { kind: "aborted" }
+  | undefined;
+
+/** assistant 消息的窄读视图(从 AgentMessage 联合按 role 收窄,勿用 any)。 */
+interface AssistantMessageView {
+  readonly role?: string;
+  readonly stopReason?: string;
+  readonly errorMessage?: string;
+}
+
+/**
+ * 从 `agent_end.messages` 末尾找最近 `role==="assistant"` 的消息并判定终态信号:
+ *   - `stopReason==="error"` → `{kind:"error", errorText: errorMessage ?? 回退}`
+ *   - `stopReason==="aborted"` → `{kind:"aborted"}`
+ *   - 其它(含末项非 assistant、其它 stopReason)→ `undefined`(正常 finish)
+ */
+function terminalSignalFrom(
+  messages: Extract<AgentEvent, { type: "agent_end" }>["messages"],
+): TerminalSignal {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as AssistantMessageView;
+    if (m.role !== "assistant") continue;
+    if (m.stopReason === "error")
+      return { kind: "error", errorText: m.errorMessage ?? FALLBACK_ERROR_TEXT };
+    if (m.stopReason === "aborted") return { kind: "aborted" };
+    return undefined; // 最近 assistant 非错误终态 → 正常 finish
+  }
+  return undefined;
+}
+
 /** 翻译 message_update 携带的 assistantMessageEvent 子事件。 */
 function translateAssistantMessageEvent(
   ame: Extract<AgentEvent, { type: "message_update" }>["assistantMessageEvent"],
@@ -133,7 +169,7 @@ function translateAssistantMessageEvent(
         frames: [
           makeUiMessageChunkFrame({
             type: "error",
-            errorText: "assistant message stream error",
+            errorText: ame.error.errorMessage ?? FALLBACK_ERROR_TEXT,
           }),
         ],
         ctx,
@@ -303,12 +339,40 @@ export function translateEvent(
         ctx: closeReasoningPart(closeTextPart(ctx)),
       };
 
-    case "agent_end":
-      // finish 块终结 assistant message;关闭悬挂 part 以收尾(容错)。
+    case "agent_end": {
+      // 终结 assistant message;三种情况都先关闭悬挂 part 以收尾(容错,Req 1.4)。
+      const closed = closeReasoningPart(closeTextPart(ctx));
+      // 重试中维持现状(finish);重试反馈走 data-pi-auto-retry(Req 3.2/3.3)。
+      if (event.willRetry === true) {
+        return {
+          frames: [makeUiMessageChunkFrame({ type: "finish" })],
+          ctx: closed,
+        };
+      }
+      const signal = terminalSignalFrom(event.messages);
+      if (signal?.kind === "error") {
+        return {
+          frames: [
+            makeUiMessageChunkFrame({
+              type: "error",
+              errorText: signal.errorText,
+            }),
+          ],
+          ctx: closed,
+        };
+      }
+      if (signal?.kind === "aborted") {
+        return {
+          frames: [makeUiMessageChunkFrame({ type: "abort" })],
+          ctx: closed,
+        };
+      }
+      // 正常完成 / 末项非错误终态 → finish(维持现状,Req 5.1)。
       return {
         frames: [makeUiMessageChunkFrame({ type: "finish" })],
-        ctx: closeReasoningPart(closeTextPart(ctx)),
+        ctx: closed,
       };
+    }
 
     case "message_start":
     case "message_end":
