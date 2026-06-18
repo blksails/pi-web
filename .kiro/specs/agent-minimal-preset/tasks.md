@@ -13,7 +13,7 @@
   - 完成判据:`import { minimalAgentPreset, defineMinimalAgent } from "@pi-web/agent-kit"` 可解析,预设对象三处关闭字段均存在
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 4.4_
   - _Depends: 1.1_
-- [ ] 1.3 为预设与工厂补充单元测试
+- [x] 1.3 为预设与工厂补充单元测试
   - 断言 `minimalAgentPreset` 的 `noTools:"all"`、`skills` 空覆盖(调用返回 `skills:[]` 且回传 diagnostics)、`allowExtensions:[]`
   - 断言 `defineMinimalAgent({ model, systemPrompt, customTools })` 保留覆盖字段且不丢失关闭语义;`{ allowExtensions:["foo"] }` 覆盖白名单
   - 完成判据:`pnpm --filter @pi-web/agent-kit test` 新增用例全绿(新鲜运行输出)
