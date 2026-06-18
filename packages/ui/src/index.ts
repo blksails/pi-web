@@ -71,5 +71,11 @@ export {
   type DataPartRenderer,
 } from "./registry/renderer-registry.js";
 
+// 配置表单层(由 object schema 生成配置 UI)
+export * from "./config/index.js";
+
+// 文本输入基元
+export { Input, type InputProps } from "./ui/input.js";
+
 // className 合并工具(供宿主复用)
 export { cn } from "./lib/cn.js";
