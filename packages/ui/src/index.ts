@@ -16,7 +16,8 @@ export { PiChatBasic, type PiChatBasicProps } from "./chat/pi-chat-basic.js";
 // 废弃别名:PiChatPro → PiChat
 export { PiChatPro, type PiChatProProps } from "./chat/pi-chat-pro.js";
 
-// 无状态元件层(elements/*)
+// 无状态元件层(elements/*)— 含 ChatError(错误提示元件,message 空不渲染,
+// 非空 destructive 配色 + role="alert")
 export * from "./elements/index.js";
 
 // part 分派

@@ -33,5 +33,6 @@ export {
   Notifications,
   type NotificationsProps,
 } from "./notifications.js";
+export { ChatError, type ChatErrorProps } from "./chat-error.js";
 export { StatusBar, type StatusBarProps } from "./status-bar.js";
 export { Widgets, type WidgetsProps, type WidgetItem } from "./widgets.js";
