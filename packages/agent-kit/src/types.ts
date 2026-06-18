@@ -71,6 +71,16 @@ export interface AgentDefinition {
    * function items are treated as in-process extension factories.
    */
   extensions?: Array<string | ExtensionFactory>;
+  /**
+   * System extension allowlist (close semantics). Independent of the
+   * append-only `extensions` field.
+   * - Absent: keep the SDK default — discover and load all system extensions.
+   * - `[]`: disable all disk-discovered system extensions (explicit
+   *   `extensions` append items are unaffected).
+   * - `["a", ...]`: keep only the named discovered extensions enabled; close
+   *   the rest.
+   */
+  allowExtensions?: string[];
   /** Override hook for the resolved skill set. */
   skills?: SkillsOverride;
   /** Override hook for the resolved prompt templates. */

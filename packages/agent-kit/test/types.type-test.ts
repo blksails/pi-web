@@ -39,3 +39,22 @@ defineAgent({
   // @ts-expect-error — "some" is not "all" | "builtin".
   noTools: "some",
 });
+
+// `allowExtensions` accepts a string[] (the allowlist) ...
+export const withAllow: AgentDefinition = defineAgent({
+  allowExtensions: ["foo", "bar"],
+});
+
+// ... an empty array (close all) ...
+export const withAllowEmpty: AgentDefinition = defineAgent({
+  allowExtensions: [],
+});
+
+// ... and is optional (may be omitted entirely).
+export const withoutAllow: AgentDefinition = defineAgent({});
+
+// Wrong type for `allowExtensions` is rejected.
+defineAgent({
+  // @ts-expect-error — `allowExtensions` must be string[], not string.
+  allowExtensions: "foo",
+});
