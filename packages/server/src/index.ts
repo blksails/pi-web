@@ -10,6 +10,7 @@ export {};
 export * from "./rpc-channel/index.js";
 export * from "./agent-source/index.js";
 export * from "./session/index.js";
+export * from "./session-store/index.js";
 export * from "./http/index.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
