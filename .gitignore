@@ -10,3 +10,6 @@ playwright-report/
 tsconfig.tsbuildinfo
 next-env.d.ts
 .kiro/*.png
+
+.claude/
+!.claude/skills/
