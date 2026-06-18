@@ -40,3 +40,5 @@ import type { AgentDefinition } from "./types.js";
 export function defineAgent(def: AgentDefinition): AgentDefinition {
   return def;
 }
+
+export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";

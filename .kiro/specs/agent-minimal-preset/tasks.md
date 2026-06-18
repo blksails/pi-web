@@ -6,7 +6,7 @@
   - JSDoc 说明三态语义:缺省=SDK 默认发现全部;`[]`=关闭全部 disk 发现的系统扩展;`["a"]`=仅保留命名项
   - 完成判据:`tsc --noEmit` 通过,字段在类型测试中可被赋值且为可选
   - _Requirements: 2.1, 3.1_
-- [ ] 1.2 实现最小化预设常量与一行启用工厂并从入口导出
+- [x] 1.2 实现最小化预设常量与一行启用工厂并从入口导出
   - 提供 `minimalAgentPreset`(显式声明 `noTools: "all"` + skills 空覆盖保留 diagnostics + `allowExtensions: []`)
   - 提供 `defineMinimalAgent(overrides?)`,在预设上浅合并作者覆盖(overrides 优先)并返回定义
   - 从包入口 re-export 两个产物
