@@ -57,6 +57,16 @@ export interface AgentDefinition {
   customTools?: ToolDefinition[];
   systemPrompt?: SystemPromptValue;
   extensions?: Array<string | ExtensionFactory>;
+  /**
+   * System extension allowlist (close semantics). Independent of the
+   * append-only `extensions` field.
+   * - Absent: keep the SDK default — discover and load all system extensions.
+   * - `[]`: disable all disk-discovered system extensions (explicit
+   *   `extensions` append items are unaffected).
+   * - `["a", ...]`: keep only the named discovered extensions enabled; close
+   *   the rest.
+   */
+  allowExtensions?: string[];
   skills?: SkillsOverride;
   promptTemplates?: PromptsOverride;
   contextFiles?: AgentsFilesOverride;

@@ -21,7 +21,7 @@
   - _Depends: 1.2_
 
 - [ ] 2. server 运行时映射
-- [ ] 2.1 在 server 镜像类型同步新增白名单字段 (P)
+- [x] 2.1 在 server 镜像类型同步新增白名单字段 (P)
   - 在 server 的 `AgentDefinition` 结构镜像增加可选 `allowExtensions: string[]`,与 agent-kit 表面保持结构一致
   - 完成判据:`tsc --noEmit`(server)通过,经 `defineAgent(...)` 含 `allowExtensions` 的定义可赋值给镜像类型
   - _Requirements: 2.5_
