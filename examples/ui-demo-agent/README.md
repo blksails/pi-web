@@ -32,12 +32,12 @@ pi-web ./examples/ui-demo-agent
 ```
 
 Then try:
-- *"deploy"* → pops an environment selector, then a confirm dialog.
+- *"deploy"* → shows an inline environment selector, then an inline confirm card.
 - *"create a project"* → pops an input for the name, then the author, shows progress in the status bar, and toasts the result.
 
 ## Front-end wiring
 
-Zero-config: `@pi-web/react`'s `useExtensionUI` + `<PiChat extensionUI={…}>` renders all of the above (dialogs via `<PiPermissionDialog>`, plus the status bar and notification toasts).
+Zero-config: `@pi-web/react`'s `useExtensionUI` + `<PiChat extensionUI={…}>` renders all of the above (interactions as inline `<PiInteraction>` cards in the message stream, plus the status bar and notification toasts).
 
 ## Model
 
