@@ -1,16 +1,20 @@
 /**
- * file-session-agent — 演示「文件存储会话」的最小 example agent。
+ * file-session-agent — 配合「文件存储会话」演示的最小 example agent。
  *
- * 这个 agent 本身和 hello-agent 一样是一个普通 {@link AgentDefinition}(由 bootstrap
- * runner 经 jiti 载入到 pi 会话运行时)。它的特别之处在于**会话如何被持久化**:
+ * ⚠️ 重要澄清:`AgentDefinition` **没有、也不该有**会话存储配置。会话存到哪里是
+ * **运行时**的事,不是 agent 定义能表达的——本文件里看不到任何 file 存储配置是正常的。
+ * 文件存储配置的真正落点见同目录 `README.md`,简述如下:
+ *   1. 运行时由 pi SDK 的 `SessionManager` 决定持久化方式;runner 默认
+ *      `SessionManager.create(cwd)` → 以 append-only JSONL **文件** 写到
+ *      `<agentDir>/sessions/--<cwd 编码>--/<时间戳>_<id>.jsonl`。
+ *   2. **存哪个目录**由 runner 的 `--agent-dir <dir>` 控制(→ `<dir>/sessions`);
+ *      要改为不落盘则注入 `SessionManager.inMemory()`。
+ *   3. `@pi-web/server` 的 `FsSessionEntryStore` 以**完全兼容**该布局读写同一批文件,
+ *      因此本 agent 跑出来的会话文件可被 `FsSessionEntryStore` 直接 `list`/`read` 回来。
  *
- *   pi 运行时的会话由第三方 SDK 的 `SessionManager` 以 append-only 的 JSONL **文件**
- *   持久化到 `<agentDir>/sessions/--<cwd 编码>--/<时间戳>_<id>.jsonl`。`@pi-web/server`
- *   的 `FsSessionEntryStore` 正是以**完全兼容**该布局的方式读写同一批文件——因此本
- *   agent 跑出来的会话文件,可以被 `FsSessionEntryStore` 直接 `list`/`read` 回来(并在
- *   领域层重建事件树)。
- *
- * 对应的端到端验证见:
+ * 本 agent 自身只是一个普通的、与存储无关的 {@link AgentDefinition}(由 bootstrap runner
+ * 经 jiti 载入);它存在的意义是作为「真实 agent 产出文件 → FsSessionEntryStore 回读」
+ * 端到端验证的目标。验证见:
  *   packages/server/test/session-store/file-session-agent.e2e.test.ts
  *
  * NOTE: `model` 故意省略 → 继承 `~/.pi/agent/settings.json` 的 defaultProvider/
