@@ -15,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <div className="flex h-screen w-screen flex-col bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
+        <div className="flex h-dvh w-full flex-col overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
           {children}
         </div>
       </body>

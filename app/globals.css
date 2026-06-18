@@ -8,6 +8,9 @@
 html,
 body {
   height: 100%;
+  /* 应用为全屏布局:文档自身永不滚动,滚动只发生在对话视口(<Conversation>)内部。
+     这可避免经典(非 overlay)滚动条下 100vw/100vh 互相触发、出现重复滚动条。 */
+  overflow: hidden;
 }
 
 body {
