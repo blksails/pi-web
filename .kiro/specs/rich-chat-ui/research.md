@@ -58,6 +58,12 @@
 - **Selected Approach**: 在 `packages/ui/src/elements/` 用既有依赖实现等价无状态元件;模型选择器用自定义轻量 popover(button + 受控面板 + 点击外部关闭),避免新增 `@radix-ui/react-popover`。
 - **Rationale**: 离线可控、依赖稳定、不引入新基础设施。
 
+### Decision: 附件呈现增强(Req 12)对齐 AI Elements `attachments`,但借模式不借包
+- **Selected Approach**: 在既有 `elements/attachments.tsx` **增量**实现悬停预览、布局变体(inline/grid/list)、类型标签与占位图标;悬停浮层沿用 model-selector 的**自定义轻量浮层**范式,**不引入 `@radix-ui/react-hover-card`**;`getMediaCategory`/`getAttachmentLabel` 为内联纯函数。
+- **Rationale**: AI Elements 走 shadcn registry「拷源码」分发,直接照搬会带入 `@/` 别名假设、额外 Radix 依赖与第二套主题 token,破坏 `@pi-web/ui` 作为**可发布 npm 包 + 零硬编码主题 + 不新增运行时依赖**的既定约束(见 `## Design Decisions › AI Elements 等价元件自实现`)。故借其 API/交互模式,自实现适配。
+- **Backward-compat**: `variant` 扩展为并集,`panel`/`compact` 行为与快照不变;`hoverPreview` 可选默认开;`PendingAttachment` 形状不改(类型从 name/mime 推导),不越界到 `react-client`。
+- **Boundary**: 真实附件处理边界不变(仅图片入列,非图片降级);多媒体真实上传仍属 Out of Boundary。
+
 ### Decision: Sources 经 DataPartRenderer 接入,缺失则隐藏
 - **Selected Approach**: 注册 `source` 类 data-part 渲染器;协议无 source chunk 时仅渲染已有 data-part,无则隐藏。源 chunk 的协议支持记为**可选 upstream**(Req 9.3 为 optional feature,降级可接受)。
 

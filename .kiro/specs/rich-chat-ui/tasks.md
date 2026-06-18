@@ -176,6 +176,32 @@
   - _Requirements: 11.2, 11.5_
   - _Depends: 5.1, 5.2, 5.3_
 
+- [x] 6. Enhancement:附件呈现增强(Req 12)
+- [x] 6.1 attachments 元件呈现增强(悬停预览/布局变体/类型标签/占位图标)
+  - 在既有 `elements/attachments.tsx` 增量实现:`variant` 扩展为 `panel|compact|inline|grid|list`(panel/compact 行为与既有完全一致,向后兼容);`hoverPreview` 可选(默认开)经**自定义轻量浮层**(受控 hovered 态 + 绝对定位预览层,指针 enter/leave + 键盘 focus/blur 触发,移开/失焦关闭),**不引入 `@radix-ui/react-hover-card`**
+  - 内联纯函数 `getMediaCategory`(从 name 后缀 / dataUrl mime 推导 image|video|audio|file)与 `getAttachmentLabel`;有 dataUrl 渲染缩略图,缺失则以该类别 lucide 图标占位,仍保留文件名与移除按钮;呈现可读类型标签
+  - 不改 Req 3 处理边界:非图片仍走 rejected 降级、不入列、不阻断;增强仅作用于已入列项呈现
+  - 主题经 shadcn CSS 变量、无硬编码;预览浮层与布局切换键盘可达 + aria 标注
+  - 观察完成态:`pnpm --filter @pi-web/ui typecheck` 通过;组件在五个 variant 下均可渲染且 panel/compact 无行为/快照变化
+  - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
+  - _Boundary: Attachments_
+  - _Depends: 3.4_
+
+- [x] 6.2 attachments 增强组件单测
+  - 用 testing-library + jsdom 断言:各 variant 渲染对应容器结构且 panel/compact 与既有一致;hoverPreview 开时悬停/聚焦出现预览浮层、移开/失焦消失;缺 dataUrl 项渲染占位图标且仍有文件名+移除按钮;呈现类型标签;非图片经 rejected 提示不入列;`getMediaCategory`/`getAttachmentLabel` 对 image/video/audio/file 分类正确
+  - 观察完成态:`pnpm --filter @pi-web/ui test` 通过,覆盖 12.1–12.6 可观察结果
+  - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
+  - _Boundary: Attachments tests_
+  - _Depends: 6.1_
+
+- [x] 6.3 e2e 增量验证与基线回归
+  - 扩展 `e2e/rich-chat.spec.ts` 附件用例:悬停某图片附件出现放大预览浮层、移开消失;断言附件项呈现类型标签
+  - 运行全量 `pnpm test` + `pnpm typecheck` + `pnpm e2e`,确认基线无回归、无类型错误、无硬编码颜色
+  - 观察完成态:e2e 该断言通过;全量测试与 typecheck 全绿(基线 + 新增)
+  - _Requirements: 12.1, 12.2, 11.2, 11.5_
+  - _Boundary: e2e_
+  - _Depends: 6.1, 5.4_
+
 ## Implementation Notes
 - 2.3: useBranches.select 会 getForkMessages 但当前未对外暴露 messages;任务 4.1 装配分支视图刷新时,需扩展 useBranches 暴露已加载分支消息(或在 PiChatPro 中处理),以满足 Req 8.3「更新对话视图」。e2e 5.3 验证分支切换确实刷新视图。
 - 2.4: useSuggestions 不自动触发 getCommands;任务 4.1 装配 PiChatPro 时须调用 controls.getCommands() 以填充 commands 状态,建议气泡方能显示(Req 10.1)。

@@ -8,6 +8,7 @@
 
 - **In scope**:
   - 在 `@pi-web/ui` 落地 AI Elements 风格无状态元件(attachments / model-selector / conversation / message(+branch) / reasoning / sources / suggestions / prompt-input / speech-input)。
+  - 附件呈现增强(对齐 AI Elements `attachments`):图片缩略图的悬停大图预览、可切换布局变体(紧凑 inline / 网格 grid / 列表 list)、附件名称与类型标签呈现;真实附件处理仍仅限图片(承接 Req 3,非图片维持降级提示)。
   - 富装配组件 `<PiChatPro>`,接线 `@pi-web/react` 的数据 hooks 与现有渲染器注册表。
   - `@pi-web/react` 新增数据 hooks:模型列表、附件(图片)、消息分支、建议(commands)。
   - app-shell 切换到 `<PiChatPro>`;组件/集成单测 + 浏览器 e2e。
@@ -121,3 +122,14 @@
 3. While app-shell 加载, the app shall 渲染 `<PiChatPro>` 作为默认聊天界面并完成一次基本对话(浏览器 e2e 可验证)。
 4. The PiChatPro 及其元件 shall 支持键盘操作与基本 ARIA 语义(尤其对话框、模型选择器、分支切换、建议气泡)。
 5. The PiChatPro shall 通过宿主的 shadcn CSS 变量获取主题,不硬编码颜色主题。
+
+### Requirement 12: 附件呈现增强(悬停预览、布局变体与元信息)
+**Objective:** 作为终端用户,我想要附件以更可读的方式呈现——悬停查看大图、在不同位置以合适布局展示、看到文件名与类型——以便在输入区与已发送消息中都能清晰辨识附件,而不改变本期"仅图片"的处理边界。
+
+#### Acceptance Criteria
+1. While 待发送列表或已发送消息中存在图片附件, the Attachments 元件 shall 呈现其缩略图、文件名与可读的附件类型标签。
+2. Where 宿主启用悬停预览, when 用户将指针悬停于某图片附件缩略图或经键盘聚焦该附件, the Attachments 元件 shall 展示该图片的放大预览,并在指针移开或失焦时关闭该预览。
+3. Where 宿主指定布局变体(紧凑 inline / 网格 grid / 列表 list), the Attachments 元件 shall 按该变体排列附件项;While 宿主未指定变体, the Attachments 元件 shall 采用其默认变体并保持与现有 `panel`/`compact` 用法向后兼容。
+4. If 某附件缺少可用缩略图而无法生成预览, the Attachments 元件 shall 以代表该附件类型的占位图标替代缩略图,并仍呈现其文件名与移除按钮。
+5. The 附件呈现增强 shall 不改变 Requirement 3 的处理边界——仅图片被真实加入发送列表,非图片维持"暂不支持该类型附件"的降级提示且不入列、不阻断已有图片或文本的发送。
+6. The Attachments 元件的悬停预览、移除与布局切换 shall 保持键盘可达与基本 ARIA 语义,并经宿主 shadcn CSS 变量取色、不硬编码颜色。

@@ -2,7 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import type { PendingAttachment } from "@pi-web/react";
-import { Attachments } from "../../src/elements/attachments.js";
+import {
+  Attachments,
+  getMediaCategory,
+  getAttachmentLabel,
+} from "../../src/elements/attachments.js";
 
 /**
  * Attachments 无状态展示元件测试(Req 3.1/3.3/3.4/3.5、11.4)。
@@ -137,5 +141,157 @@ describe("Attachments 附件展示与拖拽/粘贴", () => {
       screen.queryByTestId("pi-attachments-dropzone"),
     ).not.toBeInTheDocument();
     expect(container.querySelector('input[type="file"]')).toBeNull();
+  });
+});
+
+describe("Attachments 呈现增强(Req 12)", () => {
+  it("getMediaCategory/getAttachmentLabel 按 mimeType 与后缀分类 (Req 12.1)", () => {
+    expect(getMediaCategory(item({ mimeType: "image/png" }))).toBe("image");
+    expect(getMediaCategory(item({ mimeType: "video/mp4" }))).toBe("video");
+    expect(getMediaCategory(item({ mimeType: "audio/mpeg" }))).toBe("audio");
+    expect(
+      getMediaCategory(item({ mimeType: "", name: "report.pdf" })),
+    ).toBe("file");
+    // mimeType 缺失时回退到文件名后缀
+    expect(getMediaCategory(item({ mimeType: "", name: "clip.webm" }))).toBe(
+      "video",
+    );
+    expect(getAttachmentLabel(item({ mimeType: "image/png" }))).toBe("图片");
+    expect(getAttachmentLabel(item({ mimeType: "video/mp4" }))).toBe("视频");
+  });
+
+  it("呈现可读类型标签 (Req 12.1)", () => {
+    render(
+      <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
+    );
+    expect(screen.getByText("图片")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["panel", "panel"],
+    ["compact", "compact"],
+    ["inline", "inline"],
+    ["grid", "grid"],
+    ["list", "list"],
+  ] as const)(
+    "variant=%s 渲染对应布局容器 (Req 12.3)",
+    (variant, expected) => {
+      const { container } = render(
+        <Attachments
+          items={[item()]}
+          supported
+          variant={variant}
+          onAdd={vi.fn()}
+          onRemove={vi.fn()}
+        />,
+      );
+      expect(
+        container.querySelector(
+          `[data-pi-attachments-variant="${expected}"]`,
+        ),
+      ).not.toBeNull();
+    },
+  );
+
+  it("panel/compact 向后兼容:默认 variant 仍渲染 dropzone 与缩略图 (Req 12.3)", () => {
+    render(
+      <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
+    );
+    expect(screen.getByTestId("pi-attachments-dropzone")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /pic\.png/i }),
+    ).toHaveAttribute("src", "data:image/png;base64,AAAA");
+  });
+
+  it("展示变体(inline)在 supported=false 时仍展示已有附件 (Req 12.3)", () => {
+    const { container } = render(
+      <Attachments
+        items={[item()]}
+        supported={false}
+        variant="inline"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(
+      container.querySelector('[data-pi-attachments-variant="inline"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("pic.png")).toBeInTheDocument();
+  });
+
+  it("悬停图片缩略图出现放大预览、移开消失 (Req 12.2)", () => {
+    render(
+      <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
+    );
+    // 默认态无预览浮层(避免出现第二个同名 img)
+    expect(screen.queryByTestId("pi-attachment-preview")).not.toBeInTheDocument();
+    const thumb = screen.getByLabelText("预览 pic.png");
+    fireEvent.mouseEnter(thumb);
+    expect(screen.getByTestId("pi-attachment-preview")).toBeInTheDocument();
+    fireEvent.mouseLeave(thumb);
+    expect(screen.queryByTestId("pi-attachment-preview")).not.toBeInTheDocument();
+  });
+
+  it("键盘聚焦/失焦同样开合预览 (Req 12.2/12.6)", () => {
+    render(
+      <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
+    );
+    const thumb = screen.getByLabelText("预览 pic.png");
+    fireEvent.focus(thumb);
+    expect(screen.getByTestId("pi-attachment-preview")).toBeInTheDocument();
+    fireEvent.blur(thumb);
+    expect(screen.queryByTestId("pi-attachment-preview")).not.toBeInTheDocument();
+  });
+
+  it("hoverPreview=false 时不开启预览 (Req 12.2)", () => {
+    render(
+      <Attachments
+        items={[item()]}
+        supported
+        hoverPreview={false}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("预览 pic.png")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pi-attachment-preview")).not.toBeInTheDocument();
+  });
+
+  it("无缩略图时以占位图标降级,仍保留文件名与移除按钮 (Req 12.4)", () => {
+    const onRemove = vi.fn();
+    const { container } = render(
+      <Attachments
+        items={[item({ id: "v1", name: "clip.mp4", mimeType: "video/mp4", dataUrl: "" })]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={onRemove}
+      />,
+    );
+    // 无真实图片(占位图标分支)
+    expect(container.querySelector("img[src]")).toBeNull();
+    // 占位以 role=img + 文件名 aria-label 暴露
+    expect(screen.getByRole("img", { name: "clip.mp4" })).toBeInTheDocument();
+    expect(screen.getByText("clip.mp4")).toBeInTheDocument();
+    expect(screen.getByText("视频")).toBeInTheDocument();
+    const btn = screen.getByRole("button", { name: /移除附件 clip\.mp4/ });
+    fireEvent.click(btn);
+    expect(onRemove).toHaveBeenCalledWith("v1");
+  });
+
+  it("不改 Req 3 边界:非图片仍走 rejected 提示且不入列 (Req 12.5)", () => {
+    render(
+      <Attachments
+        items={[]}
+        supported
+        rejected={["notes.txt"]}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/暂不支持该类型附件/)).toBeInTheDocument();
+    // 未入列:无附件 chip
+    expect(
+      document.querySelector("[data-pi-attachment-chip]"),
+    ).toBeNull();
   });
 });

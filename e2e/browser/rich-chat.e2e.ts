@@ -162,6 +162,16 @@ test("rich chat: image attachment becomes a chip and is sent with the prompt (Re
   await expect(chip).toBeVisible();
   await expect(page.locator("[data-pi-attachment-remove]").first()).toBeVisible();
 
+  // Req 12.1 — the chip shows a readable media-type label.
+  await expect(chip.locator("[data-pi-attachment-type]")).toHaveText("图片");
+
+  // Req 12.2 — hovering the thumbnail opens an enlarged preview; leaving closes it.
+  await expect(page.locator("[data-pi-attachment-preview]")).toHaveCount(0);
+  await chip.locator("[data-pi-attachment-thumb]").first().hover();
+  await expect(page.locator("[data-pi-attachment-preview]")).toBeVisible();
+  await page.mouse.move(0, 0);
+  await expect(page.locator("[data-pi-attachment-preview]")).toHaveCount(0);
+
   // Req 3.2 — submitting sends the prompt with the image. The stub streams its
   // reply (the image rides body.images → prompt.images); we observe the reply.
   await page.locator("[data-pi-input-textarea]").fill("describe this image");

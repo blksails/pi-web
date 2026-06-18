@@ -23,6 +23,7 @@
 
 ### This Spec Owns
 - **UI 元件层**(`@pi-web/ui/src/elements/*`):无状态 AI Elements 等价组件(conversation/message+branch/prompt-input/attachments/model-selector/speech-input/web-search-toggle/sources/suggestions/submit-button)。
+  - 其中 **attachments 呈现增强**(Req 12):图片缩略图的悬停大图预览、布局变体(inline/grid/list)、附件类型标签与无缩略图时的占位图标降级;真实处理边界不变(仍仅图片入列,承接 Req 3)。
 - **UI 装配层**(`@pi-web/ui/src/chat/pi-chat-pro.tsx`):`<PiChatPro>` 组合元件 + hooks + 渲染器注册表。
 - **数据 hooks**(`@pi-web/react/src/hooks/*`):`useModels`/`useAttachments`/`useBranches`/`useSuggestions`。
 - **REST 薄透传**:三个已存在 RpcCommand 的暴露面 —— protocol REST DTO、`PiSession` 透传方法、HTTP 路由、`PiClient` 方法。
@@ -44,6 +45,8 @@
 - `PiSession`/HTTP 路由签名变化 → react `PiClient` + hooks 重校。
 - `RendererRegistry` 或 `PiChatSlots` 契约变化 → `<PiChatPro>` 重校。
 - `PromptRequest.images` 形状或 `PiTransport.sendMessages` 契约变化 → `useAttachments` + transport 映射重校。
+- `PendingAttachment` 形状(`@pi-web/react`)新增/变更字段(如携带 mime/size)→ attachments 类型标签与占位图标推导(Req 12)重校。
+- 若未来引入 `radix-hover-card` 取代自定义悬停浮层 → attachments 悬停预览(Req 12.2)与依赖约束重校。
 
 ## Architecture
 
@@ -119,7 +122,7 @@ packages/ui/src/
 │   ├── use-auto-scroll.ts          # 自动滚动 hook (Req 7)
 │   ├── message.tsx                 # 消息气泡 + 分支切换控件 UI (Req 8)
 │   ├── prompt-input.tsx            # 富输入外壳(组合下列子控件)(Req 1,2)
-│   ├── attachments.tsx             # 附件 chips + dropzone/paste (Req 3)
+│   ├── attachments.tsx             # 附件 chips + dropzone/paste (Req 3);悬停预览/布局变体/类型标签 (Req 12)
 │   ├── model-selector.tsx          # 可搜索 + provider 分组 popover (Req 4)
 │   ├── speech-input.tsx            # Web Speech 按钮 (Req 5)
 │   ├── web-search-toggle.tsx       # 联网开关 (Req 6)
@@ -218,6 +221,7 @@ sequenceDiagram
 | 9.1–9.4 | 思考/来源折叠 | PiReasoning(既有), Sources, RendererRegistry | DataPartRenderer | — |
 | 10.1–10.3 | 建议气泡 | Suggestions, useSuggestions | `useSuggestions`, `getCommands` | — |
 | 11.1–11.5 | 共存/集成/a11y | PiChatPro, ui index, chat-app | `PiChatProProps` | — |
+| 12.1–12.6 | 附件呈现增强(悬停/变体/元信息) | Attachments, `getMediaCategory` | `AttachmentsProps`(`variant`/`hoverPreview`)、`PendingAttachment` | — |
 
 ## Components and Interfaces
 
@@ -227,7 +231,7 @@ sequenceDiagram
 | Conversation | UI 元件 | 滚动容器+回到底部 | 7 | useAutoScroll (P0) | State |
 | Message | UI 元件 | 气泡+分支切换 UI | 8 | useBranches (P1) | — |
 | PromptInput | UI 元件 | 富输入外壳 | 1,2 | 子控件 (P0) | — |
-| Attachments | UI 元件 | 图片附件 chips/dropzone | 3 | useAttachments (P0) | — |
+| Attachments | UI 元件 | 图片附件 chips/dropzone + 悬停预览/布局变体/类型标签 | 3, 12 | useAttachments (P0) | — |
 | ModelSelector | UI 元件 | 分组可搜索模型选择 | 4 | useModels (P0) | — |
 | SpeechInput | UI 元件 | 语音转写填入 | 5 | Web Speech (P1) | — |
 | WebSearchToggle | UI 元件 | 联网开关 | 6 | — | — |
@@ -394,7 +398,12 @@ const GetForkMessagesResponse = z.object({
 - **Conversation**(`elements/conversation.tsx` + `use-auto-scroll.ts`):监测是否贴底;贴底时新内容自动滚动(Req 7.1),离底显示"回到底部"(7.2),点击平滑滚动并恢复(7.3)。a11y:按钮 `aria-label`。
 - **Message**(`elements/message.tsx`):气泡布局;当 `useBranches.branchOf(entryId)` 存在多版本时渲染"‹ N/M ›"分支控件(Req 8.1),按钮触发 `select`。
 - **PromptInput**(`elements/prompt-input.tsx`):textarea(Shift+Enter 换行 1.4、Enter 提交 1.2)+ 动作菜单 + 子控件插槽;空内容禁用提交(1.3)。
-- **Attachments**(`elements/attachments.tsx`):dropzone + paste + 选择;chips + 移除;非图片提示(Req 3)。
+- **Attachments**(`elements/attachments.tsx`):dropzone + paste + 选择;chips + 移除;非图片提示(Req 3)。**呈现增强(Req 12)**:
+  - **悬停预览(12.2)**:沿用 model-selector 的**自定义轻量浮层**范式(受控 `hovered` 态 + 绝对定位预览层),**不引入 `radix-hover-card`**,守住"不新增 npm 运行时依赖"约束。指针 `onMouseEnter/Leave` 与键盘 `onFocus/Blur` 双触发,移开/失焦关闭;经可选 prop `hoverPreview`(默认开)开关。
+  - **布局变体(12.3)**:`variant` 扩展为 `"panel" | "compact" | "inline" | "grid" | "list"`;`panel`/`compact` 行为与既有完全一致(向后兼容),`inline`(紧凑徽章排)/`grid`(缩略图网格)/`list`(带元信息的行)为新增分支,仅切换容器/项 className,不改数据流。
+  - **类型标签 + 占位图标(12.1/12.4)**:内联纯函数 `getMediaCategory(att): "image" | "video" | "audio" | "file"`(从 `name` 后缀 / `dataUrl` 的 mime 前缀推导;本期入列恒为 image,函数为未来非图片留口)与 `getAttachmentLabel(att)`;有 `dataUrl` 渲染 `<img>` 缩略图,缺失时以该类别的 lucide 图标(`ImageIcon`/`FileVideo`/`FileAudio`/`File`)占位,仍保留文件名与移除按钮。
+  - **边界(12.5)**:不改 Req 3 处理 —— 非图片仍走 `rejected` 降级提示、不入列、不阻断;增强仅作用于已入列项的呈现。
+  - **a11y/主题(12.6)**:预览浮层 `role`/`aria` 标注、键盘可达;全部经 shadcn CSS 变量取色,无硬编码。
 - **ModelSelector**(`elements/model-selector.tsx`):自定义轻量 popover(button + 受控面板 + 点击外部/Esc 关闭),搜索框 + provider 分组列表 + 选中勾选(Req 4);`available=false` 隐藏。
 - **SpeechInput**(`elements/speech-input.tsx`):feature-detect `SpeechRecognition`;转写追加到输入(Req 5);不支持/拒权隐藏或禁用。
 - **WebSearchToggle**(`elements/web-search-toggle.tsx`):受控开关,默认关闭(Req 6)。
@@ -443,6 +452,7 @@ interface PiChatProProps {
 ### Unit Tests
 - `useModels`:懒加载分组、`select` 调 setModel、不可用降级(mock PiClient)。
 - `useAttachments`:仅图片入列、非图片进 rejected、`toImageContents` 编码、remove/clear。
+- `Attachments`(组件,@testing-library/react,Req 12):各 `variant`(panel/compact/inline/grid/list)渲染对应容器结构且 panel/compact 与既有快照一致(向后兼容 12.3);`hoverPreview` 开时悬停/聚焦出现预览浮层、移开/失焦消失(12.2);缺 `dataUrl` 项渲染占位图标且仍有文件名+移除按钮(12.4);渲染类型标签(12.1);非图片仍经 `rejected` 提示、不入列(12.5);`getMediaCategory`/`getAttachmentLabel` 纯函数对 image/video/audio/file 的分类(可独立单测)。
 - `useBranches`:createBranch/select 调用正确端点、`available=false` no-op。
 - `useSuggestions`:commands ∪ presets、空则 []。
 - `PiClient`:三新方法的路径/方法/DTO 解析;404 抛可识别错误。
@@ -458,7 +468,7 @@ interface PiChatProProps {
 - `e2e/rich-chat.spec.ts`(用 `~/.pi/agent` 真实配置):
   1. 基本对话:输入→发送→收到流式回复(关键路径,对应既有 e2e 升级到 PiChatPro)。
   2. 模型选择器:打开→看到来自 `get_available_models` 的分组→搜索过滤→选择→切换成功。
-  3. 附件:粘贴/选择图片→出现 chip→发送(断言请求含 images);非图片→提示且不入列。
+  3. 附件:粘贴/选择图片→出现 chip→发送(断言请求含 images);非图片→提示且不入列。悬停某图片附件→出现放大预览浮层、移开消失(Req 12.2);附件项呈现类型标签(12.1)。
   4. 建议气泡:出现来自 `get_commands` 的项→点击填入/发送。
   - 分支切换作为可用即验证项(若会话支持 fork);不支持则断言控件隐藏(降级)。
 - **基线保护**:运行 `pnpm test` + `pnpm typecheck`,确认基线 483 测试无回归(Req 11.2)。
