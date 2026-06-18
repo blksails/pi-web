@@ -1,0 +1,22 @@
+{
+  "feature_name": "slash-command-palette",
+  "created_at": "2026-06-18T07:12:31Z",
+  "updated_at": "2026-06-18T07:15:00Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
