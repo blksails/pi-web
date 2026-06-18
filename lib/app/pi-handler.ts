@@ -24,6 +24,7 @@ import {
   AgentSourceResolver,
   resolvePiCliEntry,
   runnerBootstrapPath,
+  createConfigRoutes,
   type ResolvedSource,
   type SessionChannel,
 } from "@pi-web/server";
@@ -134,8 +135,12 @@ function buildSingleton(): HandlerSingleton {
     // createChannel, but resolve() still runs without throwing.
     resolver: makeRealResolver(config),
     createChannel,
-    // The app mounts the handler under `/api/sessions/**`; the handler's
-    // internal routes are `/sessions/**`, so strip the `/api` prefix.
+    // Inject config endpoints (GET/PUT /config/:domain) — schema-driven settings
+    // UI persistence for ~/.pi/agent/auth.json + settings.json. The codec reads
+    // PI_WEB_AGENT_DIR (default ~/.pi/agent); adminPolicy defaults to allow (P0).
+    routes: createConfigRoutes({ rootDir: config.agentDir }),
+    // The app mounts the handler under `/api/**`; the handler's internal routes
+    // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.
     sse: { basePath: "/api" },
   });
 

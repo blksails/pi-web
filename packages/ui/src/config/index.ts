@@ -1,0 +1,15 @@
+/**
+ * @pi-web/ui — config 子面(由 FormSchema 渲染的配置表单层)。
+ */
+export {
+  type FieldProps,
+  type FieldRegistry,
+  type FieldRendererComponent,
+  createFieldRegistry,
+  defaultFieldRegistry,
+  registerFieldRendererByKey,
+  registerFieldRendererByKind,
+} from "./field-registry.js";
+export { FieldRenderer, type FieldRendererProps } from "./field-renderer.js";
+export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
+export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";

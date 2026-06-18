@@ -1,0 +1,120 @@
+# Implementation Plan — schema-config-ui(P0:auth + settings)
+
+> 范围:P0 端到端(auth.json / settings.json 配置 UI + 前端设置系统注册机制)。
+> 内核字段类型实现到 P0 所需(string/secret/enum/record),其余 kind 留接缝,P1/P2 后续。
+> 依赖方向:protocol → react → ui → app。
+
+- [x] 1. 基础:protocol 配置契约与表单 IR
+- [x] 1.1 定义表单 IR 类型与 UI 元数据解析
+  - 在 protocol 新增 `FieldDescriptor` / `FormSchema` 类型与 `FieldKind` 联合;定义 `UIMeta` 与 `parseDescribeMeta()`(解析 `.describe()` 承载的 JSON 元数据,非法/缺省时安全回退)
+  - 完成态:protocol 导出上述类型与 `parseDescribeMeta`;`pnpm --filter @pi-web/protocol typecheck` 通过;元数据解析正反例单测通过
+  - _Requirements: 1.3, 6.1_
+  - _Boundary: @pi-web/protocol config 子面_
+- [x] 1.2 实现 zod → 表单 IR 适配器
+  - 实现 `zodToFormSchema(schema, opts?)`:遍历 object shape,按 zod 类型推 `kind`(string/secret/number/boolean/enum/stringList/object/record),据 `isOptional`/`default` 推 `required`/`default`,合并 `parseDescribeMeta` 的 UI 元数据;secret 经元数据或命名约定识别
+  - 完成态:给定示例 zod schema 产出结构正确的 `FormSchema`;各 kind 映射、required/default 推断、secret 识别均有单测通过
+  - _Requirements: 1.1, 1.2, 6.1_
+  - _Depends: 1.1_
+  - _Boundary: protocol config adapter_
+- [x] 1.3 定义 auth 与 settings 配置域 schema 与聚合导出
+  - `authConfigSchema`:`record(provider → { apiKey(secret,必填), baseURL?(可选) })` + passthrough 保留未知;`KNOWN_PROVIDERS` 依据已知 provider key 命名;`settingsConfigSchema`:`defaultProvider?/defaultModel?/defaultThinkingLevel?(枚举)/theme(枚举,默认 system)`;各字段附 `.describe()` 元数据;导出经 adapter 的 `authFormSchema`/`settingsFormSchema`
+  - 完成态:protocol 导出两域 schema 与对应 FormSchema;secret 字段在 FormSchema 中标记正确;两域 schema 正反例单测通过
+  - _Requirements: 4.1, 6.1_
+  - _Depends: 1.1, 1.2_
+  - _Boundary: protocol config domains_
+
+- [x] 2. 核心:渲染层(@pi-web/ui)
+- [x] 2.1 (P) 字段渲染器注册表
+  - 实现 `fieldRendererRegistry`:`registerFieldRenderer(kindOrKey, Component)` / `resolveFieldRenderer(descriptor)`(先按 fieldKey 覆盖、再按 kind 默认回退);模块级单例 + `createFieldRegistry()` 工厂(测试隔离)——复刻既有 `renderer-registry` 语义
+  - 完成态:注册后可解析到自定义渲染器,未注册回退默认;工厂实例互不污染;单测通过
+  - _Requirements: 5.1_
+  - _Depends: 1.1_
+  - _Boundary: ui field-registry_
+- [x] 2.2 (P) 基础字段控件(string/secret/enum/record)
+  - 实现统一 `FieldProps`(descriptor/value/onChange/error/disabled);string→input、secret→password+掩码态、enum→Select(复用 ui/select)、record→可增删键的键值行(子项复用 string/secret);错误就地呈现(复用 pi-permission-dialog 错误样式)
+  - 完成态:四类控件渲染并受控触发 onChange;secret 显示为掩码且可切换覆盖/清除;record 可增删键;各控件组件测试通过
+  - _Requirements: 1.2, 4.2_
+  - _Depends: 1.1_
+  - _Boundary: ui fields/*_
+- [x] 2.3 字段分派器 `<FieldRenderer>`
+  - 按 `descriptor.widget`(注册表覆盖)优先、否则按 `descriptor.kind` 默认回退分派到控件;未知 kind 安全降级(只读 JSON 文本 + 提示)
+  - 完成态:同一 descriptor 在有/无注册覆盖时分别命中自定义/默认控件;未知 kind 不崩溃;单测通过
+  - _Requirements: 1.1, 5.1, 7.1_
+  - _Depends: 2.1, 2.2_
+  - _Boundary: ui field-renderer_
+- [x] 2.4 装配 `<SchemaForm>`(受控)
+  - 遍历 `FormSchema.fields`,按 group/order 分区,逐字段经 `<FieldRenderer>` 渲染;受控 props `values/onChange(path,value)/errors`;不内嵌传输逻辑
+  - 完成态:给定 FormSchema + values 渲染出完整分组表单;改值触发 onChange;errors 映射到对应字段;组件测试通过
+  - _Requirements: 1.1, 1.3, 2.2_
+  - _Depends: 2.3_
+  - _Boundary: ui schema-form_
+
+- [x] 3. 核心:状态与校验(@pi-web/react)
+- [x] 3.1 实现 `useSchemaForm`
+  - 受控值 + 点路径 `setValue`(支持 object/record 嵌套)+ dirty 标记;`submit()` 用该域 zod schema `safeParse`,将 `ZodError.issues` 按 path 映射到 `errors`;非法不提交
+  - 完成态:提交非法值时返回字段级 errors 且不产出值;合法时返回校验后的值;嵌套路径 setValue 与 error 映射单测通过
+  - _Requirements: 2.1, 2.2_
+  - _Depends: 1.1_
+  - _Boundary: react use-schema-form_
+
+- [x] 4. 核心:持久化(server + 端点)
+- [x] 4.1 配置 codec:读写 `~/.pi/agent/*.json` 且保留未知字段
+  - 基于 `PI_WEB_AGENT_DIR`(默认 `~/.pi/agent`)实现 `load(domain)`/`save(domain, values)`;写时与磁盘原内容合并,只覆盖已知字段,未知字段/未知 provider 保留;文件权限 `0600`、目录 `0700`(可行时)
+  - 完成态:load/save 往返一致;预置含未知字段的文件,保存后未知字段仍在;写出文件权限为 0600;单测通过
+  - _Requirements: 3.1, 3.2_
+  - _Boundary: server config-codec_
+- [x] 4.2 secret 仅写合并与掩码
+  - 读取时对 secret 字段产出掩码占位(不含明文,如末位提示或布尔"已设置");写入时:空哨兵→保持原值、新值→覆盖、清除标记→删除该键;校验/错误消息不含明文
+  - 完成态:GET 路径产物不含任何明文密钥;PUT 空哨兵保留原密钥、新值覆盖、清除删除;单测断言无明文外泄
+  - _Requirements: 4.1, 4.2_
+  - _Depends: 4.1_
+  - _Boundary: server secret-merge_
+- [x] 4.3 配置端点 `GET/PUT /config/:domain` 与路由注入
+  - GET 返回 `{ formSchema, values(掩码) }`;PUT 用域 zod schema 校验(失败映射 4xx 错误)、经 secret 合并写回;加入 `adminPolicy(auth)=>boolean` 接缝(P0 默认放行);经 http-api 路由注入接缝注册
+  - 完成态:对 auth/settings 的 GET 返回 schema+掩码值;PUT 非法 4xx、合法写回;注入自定义 adminPolicy 可拒绝;集成测试通过
+  - _Requirements: 3.1, 4.1, 6.2_
+  - _Depends: 4.1, 4.2, 1.3_
+  - _Boundary: server config-routes_
+
+- [x] 5. 集成:前端设置系统与注册机制
+- [x] 5.1 设置面板注册表(@pi-web/react)
+  - 实现 `SettingsPanelDescriptor`(id/title/order/icon?/formSchema/load/save)与 `settingsRegistry`(registerPanel/resolvePanel/listPanels 按 order);模块级单例 `defaultSettingsRegistry` + `createSettingsRegistry()` 工厂
+  - 完成态:注册多个面板后 `listPanels()` 按 order 返回;`resolvePanel(id)` 命中;工厂实例隔离;单测通过
+  - _Requirements: 5.1, 5.2_
+  - _Depends: 1.1_
+  - _Boundary: react settings-registry_
+- [x] 5.2 `useConfigDomain` 与 `makeConfigDomainIO`(@pi-web/react)
+  - `makeConfigDomainIO(domain)` 产出基于 `/api/config/:domain` 的 `load/save`;`useConfigDomain(panel)` 组合 `panel.load()` 初值 + `useSchemaForm` + `panel.save()`,统一 loading/error/dirty/saved 状态机
+  - 完成态:注入 mock IO 时 load 填值、save 调用、错误置 error 态;状态机各态单测通过
+  - _Requirements: 3.1, 6.2_
+  - _Depends: 3.1, 5.1_
+  - _Boundary: react use-config-domain_
+- [x] 5.3 设置外壳 `<SettingsShell>`(@pi-web/ui)
+  - 左侧导航 `listPanels()`(title/icon,按 order)、右侧当前面板经 `useConfigDomain` 驱动 `<SchemaForm>`;加载/保存/错误态呈现;保存按钮校验通过后调 `save`
+  - 完成态:渲染导航并可切换面板;编辑后保存触发校验+save;校验失败显示字段错误且不保存;以 mock registry 的组件测试通过
+  - _Requirements: 5.2, 2.2_
+  - _Depends: 2.4, 5.1, 5.2_
+  - _Boundary: ui settings-shell_
+- [x] 5.4 应用装配:注册面板 + `/settings` 路由 + 聊天入口
+  - 新增 `lib/settings/register-panels`(注册 auth/settings 两面板,经 `makeConfigDomainIO`);`app/settings/page.tsx` 先 import 注册再渲染 `<SettingsShell>`;`chat-app` 头部加"设置"入口跳转 `/settings`
+  - 完成态:访问 `/settings` 渲染出"凭证""通用"两面板并可读写;聊天头部"设置"可跳转;注册仅 import 一次即生效
+  - _Requirements: 5.2, 6.2_
+  - _Depends: 5.3, 4.3, 1.3_
+  - _Boundary: app settings 装配_
+
+- [x] 6. 验证:集成、端到端与回归
+- [x] 6.1 持久化集成测试(往返 + secret + 未知字段)
+  - 经端点对 auth/settings 读写往返:写新值→读回(secret 掩码、明文不外泄);secret 空哨兵保留、清除删除;未知字段保留
+  - 完成态:单条命令运行该集成测试全绿,断言覆盖往返/secret 仅写/未知字段保留
+  - _Requirements: 3.1, 3.2, 4.1, 4.2_
+  - _Depends: 4.3_
+- [x] 6.2 设置系统端到端/组件测试
+  - 驱动 `/settings`(或 `<SettingsShell>` 接 mock/真实端点):渲染面板→编辑→触发校验错误→修正→保存成功;断言注册表驱动导航与面板切换
+  - 完成态:测试覆盖渲染→校验失败→保存成功全链路并通过
+  - _Requirements: 1.1, 2.1, 2.2, 5.2_
+  - _Depends: 5.4_
+- [x] 6.3 全量回归与类型校验
+  - 运行全量 `typecheck` + 各包 `test` + 受影响包构建(ui storybook 若涉及)+ app typecheck;修复回归
+  - 完成态:单次运行输出全部 typecheck 与测试通过的新鲜证据,无失败/无跳过硬性用例
+  - _Requirements: 6.1, 6.2_
+  - _Depends: 6.1, 6.2_

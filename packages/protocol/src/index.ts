@@ -23,3 +23,6 @@ export * from "./transport/data-part.js";
 export * from "./transport/ui-message-chunk.js";
 export * from "./transport/sse-frame.js";
 export * from "./transport/rest-dto.js";
+
+// config 层(由 object schema 生成配置 UI 的契约:表单 IR + adapter + 配置域)
+export * from "./config/index.js";

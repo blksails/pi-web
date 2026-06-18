@@ -5,6 +5,9 @@
  * useExtensionUI / PiProvider 及公开类型。无样式、无 JSX 组件(那归 ui-components)。
  */
 
+// config(配置表单状态 + 设置面板注册表 + 域 IO)
+export * from "./config/index.js";
+
 // transport
 export { PiTransport, type PiTransportOptions } from "./transport/pi-transport.js";
 

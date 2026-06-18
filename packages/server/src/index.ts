@@ -14,3 +14,4 @@ export * from "./session-store/index.js";
 export * from "./http/index.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
+export * from "./config/index.js";
