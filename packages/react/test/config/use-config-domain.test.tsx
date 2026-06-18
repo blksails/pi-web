@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { settingsConfigSchema } from "@pi-web/protocol";
-import { zodValidator } from "../../src/config/use-schema-form.js";
+import { settingsConfigSchema, authConfigSchema, secretSet } from "@pi-web/protocol";
+import {
+  zodValidator,
+  secretAwareValidator,
+} from "../../src/config/use-schema-form.js";
 import {
   useConfigDomain,
   makeConfigDomainIO,
@@ -42,6 +45,31 @@ describe("useConfigDomain", () => {
     });
     expect(save).not.toHaveBeenCalled();
     expect(result.current.form.errors.theme).toBeDefined();
+  });
+
+  it("auth(secret 域)保存不被客户端校验拦截,且以 SecretWrite 提交(C1 回归)", async () => {
+    const save = vi.fn(async () => undefined);
+    const panel = {
+      load: async () => ({}),
+      save,
+      validate: secretAwareValidator(authConfigSchema),
+    };
+    const { result } = renderHook(() => useConfigDomain(panel));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() =>
+      result.current.form.setValues({
+        anthropic: { apiKey: secretSet("sk-new") },
+      }),
+    );
+    await act(async () => {
+      await result.current.save();
+    });
+    // 校验未拦截(C1 前:authConfigSchema 期望 string 会拒绝 SecretWrite)
+    expect(save).toHaveBeenCalledTimes(1);
+    // 提交的是 SecretWrite,交服务端权威合并
+    expect(save).toHaveBeenCalledWith({
+      anthropic: { apiKey: { __secret: true, action: "set", value: "sk-new" } },
+    });
   });
 
   it("加载错误置 loadError", async () => {

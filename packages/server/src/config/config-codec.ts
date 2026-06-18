@@ -89,19 +89,24 @@ export class ConfigCodec {
   }
 
   /**
-   * 保存域配置:将 `values` 深合并到磁盘已有内容,保留未知字段。
+   * 保存域配置。
+   * - 默认(merge:true):将 `values` 深合并到磁盘已有内容,保留未知字段(增量补丁语义)。
+   * - merge:false:`values` 已是权威全量对象(如经 `mergeSecrets` 合并出,含删除),
+   *   直接覆盖写入。不可再对磁盘 deepMerge,否则已删除的键(secret clear / provider 删除)
+   *   会从磁盘原值复活。
    * 写入权限 0600,目录 0700(递归创建)。
    */
   async save(
     domain: ConfigDomainId,
     values: Record<string, unknown>,
+    opts: { readonly merge?: boolean } = {},
   ): Promise<void> {
     // 确保目录存在(0700)。
     await fs.mkdir(this.rootDir, { recursive: true, mode: 0o700 });
 
-    // 读取磁盘现有内容,合并。
-    const existing = await this.load(domain);
-    const merged = deepMerge(existing, values);
+    // 增量补丁默认与磁盘合并;权威全量则覆盖(保留删除)。
+    const merged =
+      opts.merge === false ? values : deepMerge(await this.load(domain), values);
 
     const path = this.filePath(domain);
     const json = JSON.stringify(merged, null, 2);

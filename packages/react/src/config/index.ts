@@ -4,6 +4,7 @@
 export {
   useSchemaForm,
   zodValidator,
+  secretAwareValidator,
   type FormValues,
   type ValidationResult,
   type Validator,

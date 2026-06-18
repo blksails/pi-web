@@ -8,6 +8,7 @@ import {
   registerSettingsPanel,
   makeConfigDomainIO,
   zodValidator,
+  secretAwareValidator,
 } from "@pi-web/react";
 import {
   authFormSchema,
@@ -29,7 +30,8 @@ export function registerConfigPanels(): void {
     order: 1,
     icon: "key-round",
     formSchema: authFormSchema,
-    validate: zodValidator(authConfigSchema),
+    // auth 含 secret 字段(apiKey),表单值是 SecretWrite/掩码对象,故用 secret 感知校验器。
+    validate: secretAwareValidator(authConfigSchema),
     ...makeConfigDomainIO("auth"),
   });
 

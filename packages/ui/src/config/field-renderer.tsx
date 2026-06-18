@@ -44,5 +44,6 @@ export function FieldRenderer({
   const Override = registry.resolve(props.descriptor);
   const Default = DEFAULTS[props.descriptor.kind] ?? FallbackField;
   const Component = Override ?? Default;
-  return <Component {...props} />;
+  // 透传生效的注册表,使容器字段(record/object)的嵌套渲染沿用宿主的覆盖。
+  return <Component {...props} registry={registry} />;
 }

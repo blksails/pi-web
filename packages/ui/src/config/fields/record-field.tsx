@@ -24,9 +24,11 @@ export function RecordField({
   path,
   errors,
   disabled,
+  registry,
 }: FieldProps): React.JSX.Element {
   const record = asRecord(value);
-  const entries = Object.entries(record);
+  // 已删除条目以 null 标记保留在值中(显式删除意图),不渲染。
+  const entries = Object.entries(record).filter(([, v]) => v !== null);
   const subFields = descriptor.fields ?? [];
   const [newKey, setNewKey] = React.useState("");
 
@@ -34,9 +36,9 @@ export function RecordField({
     onChange({ ...record, [key]: next });
   };
   const removeEntry = (key: string): void => {
-    const copy = { ...record };
-    delete copy[key];
-    onChange(copy);
+    // 置 null 而非删除键:表单代表完整期望态,null 让服务端按删除标记移除该条目
+    // (omit 会被合并语义当作"保留")。
+    onChange({ ...record, [key]: null });
   };
   const addEntry = (): void => {
     const key = newKey.trim();
@@ -77,6 +79,7 @@ export function RecordField({
                 path={[...path, entryKey, sub.key]}
                 errors={errors}
                 disabled={disabled}
+                registry={registry}
               />
             ))}
           </Card>

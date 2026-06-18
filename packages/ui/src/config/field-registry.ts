@@ -19,6 +19,8 @@ export interface FieldProps<V = unknown> {
   /** 点路径 → 错误消息。 */
   readonly errors: Readonly<Record<string, string>>;
   readonly disabled?: boolean;
+  /** 当前生效的字段注册表(容器字段须透传给嵌套渲染,以保留宿主的覆盖)。 */
+  readonly registry?: FieldRegistry;
 }
 
 export type FieldRendererComponent = ComponentType<FieldProps>;

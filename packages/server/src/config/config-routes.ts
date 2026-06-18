@@ -139,7 +139,9 @@ export function createConfigRoutes(
       return errorResponse(422, "SCHEMA_VALIDATION_FAILED", "Config values failed schema validation.", fields);
     }
 
-    await codec.save(domain, merged);
+    // `merged` 已是 mergeSecrets 合并出的权威全量对象(已读盘保留未知字段并应用删除)。
+    // 覆盖写入,避免 codec 再对磁盘 deepMerge 复活已清除的密钥/provider(C2)。
+    await codec.save(domain, merged, { merge: false });
 
     return jsonResponse(200, { ok: true });
   };

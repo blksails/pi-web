@@ -3,6 +3,10 @@ import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { authFormSchema, settingsFormSchema } from "@pi-web/protocol";
 import { SchemaForm } from "../../src/config/schema-form.js";
+import {
+  createFieldRegistry,
+  type FieldRendererComponent,
+} from "../../src/config/field-registry.js";
 
 describe("SchemaForm — settings(object + 分组)", () => {
   it("渲染分组标题与字段标签", () => {
@@ -76,5 +80,23 @@ describe("SchemaForm — auth(顶层 record + secret)", () => {
     await user.click(screen.getByText("添加"));
     const last = onChange.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(last.openai).toEqual({});
+  });
+
+  it("自定义字段注册表覆盖能透传到 record 嵌套子字段(I2 回归)", () => {
+    const registry = createFieldRegistry();
+    const Custom: FieldRendererComponent = ({ descriptor }) => (
+      <div data-custom-widget={descriptor.key}>custom:{descriptor.key}</div>
+    );
+    registry.registerByKey("apiKey", Custom);
+    render(
+      <SchemaForm
+        formSchema={authFormSchema}
+        values={{ anthropic: { apiKey: { __secret: true, set: true } } }}
+        onChange={() => undefined}
+        registry={registry}
+      />,
+    );
+    // record 条目内的 apiKey 子字段应使用宿主注册的自定义渲染器
+    expect(screen.getByText("custom:apiKey")).toBeInTheDocument();
   });
 });

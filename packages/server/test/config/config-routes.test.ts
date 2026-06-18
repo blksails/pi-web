@@ -216,6 +216,39 @@ describe("PUT /config/:domain", () => {
     const saved = JSON.parse(text) as Record<string, unknown>;
     expect((saved["anthropic"] as Record<string, unknown>)["apiKey"]).toBe("sk-brand-new");
   });
+
+  it("provider 删除(null)经路由后磁盘上确实被移除,不被 codec 复活(C2 回归)", async () => {
+    await fs.writeFile(
+      join(tmpDir, "auth.json"),
+      JSON.stringify({
+        anthropic: { apiKey: "sk-keep" },
+        openai: { apiKey: "sk-remove" },
+      }),
+    );
+    const handler = makeHandler();
+    // 删除 openai(provider=null);anthropic 保留(掩码 keep)。
+    const res = await handler(
+      new Request("http://x/config/auth", {
+        method: "PUT",
+        body: JSON.stringify({
+          values: {
+            anthropic: { apiKey: { __secret: true, action: "keep" } },
+            openai: null,
+          },
+        }),
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    const saved = JSON.parse(
+      await fs.readFile(join(tmpDir, "auth.json"), "utf8"),
+    ) as Record<string, Record<string, unknown>>;
+    // openai 已删除,不会从磁盘原值复活。
+    expect(saved["openai"]).toBeUndefined();
+    // anthropic 保留原 apiKey。
+    expect(saved["anthropic"]?.["apiKey"]).toBe("sk-keep");
+  });
 });
 
 // ─── adminPolicy ─────────────────────────────────────────────────────────────
