@@ -1,64 +1,64 @@
 # Implementation Plan
 
-- [ ] 1. 基础:模块骨架、类型与测试基座
-- [ ] 1.1 建立处理器类型与鉴权接缝接口
+- [x] 1. 基础:模块骨架、类型与测试基座
+- [x] 1.1 建立处理器类型与鉴权接缝接口
   - 定义 `PiWebHandlerOptions`(`manager`/`store`/可选 `authResolver`/`authorizeSession`/可选 `routes`(外部路由注入接缝 `ReadonlyArray<{ method, path, handler: RouteHandler }>`)/可选 `sse`)、`PiWebHandler`、`RequestContext`、`RouteHandler`(`handler.types.ts`)
   - 定义 `AuthContext`、`AuthResolver`、`AuthorizeSession` 接缝接口与 `default-allow.ts` 默认放行实现(`auth/`)
   - 从 `@pi-web/protocol` 引入 REST DTO / `SseFrame` / `protocolVersion`(仅类型/常量),从 `session-engine` 引入 `SessionManager`/`SessionStore`/`PiSession`/错误类型(仅类型导入)
   - 完成态:类型与默认放行文件通过 `tsc`,无 `any`;`auth/default-allow` 可被导入且默认 resolver 返回匿名上下文、默认 authorize 返回 true;`PiWebHandlerOptions.routes` 接缝类型复用 `RouteHandler`(`RequestContext` 契约)
   - _Requirements: 1.3, 1.6, 1.7, 8.1, 8.2, 8.3, 8.6_
   - _Boundary: handler.types.ts, auth/auth.types.ts, auth/default-allow.ts_
-- [ ] 1.2 配置测试基座与测试替身
+- [x] 1.2 配置测试基座与测试替身
   - 配置 `vitest`,确保单一命令 `vitest run` 运行 `lib/pi/http/__tests__/` 全部测试
   - 提供 mock `SessionManager` 与 mock `PiSession`(可断言 `createSession`/命令转发/`subscribe` 调用、可手工触发 `onFrame`/`onEnd`、可抛 `SessionStoppedError` 等)
   - 完成态:`vitest run` 可执行并发现一个占位通过用例;mock 可被各单测复用
   - _Requirements: 10.1, 10.6_
 
-- [ ] 2. 横切:校验、错误映射、版本、响应构造
-- [ ] 2.1 (P) 实现请求校验 validate.ts
+- [x] 2. 横切:校验、错误映射、版本、响应构造
+- [x] 2.1 (P) 实现请求校验 validate.ts
   - 用 `@pi-web/protocol` DTO `safeParse` 校验请求体/参数,失败返回带字段路径的校验错误,成功返回 typed body
   - 完成态:`validate.test.ts` 通过——缺 `source`/类型错产出含字段路径的错误,合法体返回 typed 结果
   - _Requirements: 2.2, 3.3, 4.5_
   - _Boundary: http/validate.ts_
-- [ ] 2.2 (P) 实现错误映射 error-map.ts
+- [x] 2.2 (P) 实现错误映射 error-map.ts
   - 把 `session-engine` 错误映射 HTTP 状态码:`SessionStoppedError`→409、`SessionNotFoundError`→404、`UnknownExtensionUIError`→404/409、`MissingInputError`→400、未知→500
   - 完成态:`error-map.test.ts` 对每类错误断言对应状态码,未知错误→500 且不含敏感字段
   - _Requirements: 3.4, 3.5, 9.1, 9.2, 9.3_
   - _Boundary: http/error-map.ts_
-- [ ] 2.3 (P) 实现 protocolVersion 握手 version.ts
+- [x] 2.3 (P) 实现 protocolVersion 握手 version.ts
   - 以 `@pi-web/protocol` 的 `protocolVersion` 为唯一来源;提供承载到响应/帧的能力与请求版本兼容判定(不兼容→426/400 协商)
   - 完成态:`version.test.ts` 通过——承载版本、不兼容请求产出协商错误、版本来源为协议包常量
   - _Requirements: 7.1, 7.2, 7.3_
   - _Boundary: http/version.ts_
-- [ ] 2.4 实现响应构造 responses.ts
+- [x] 2.4 实现响应构造 responses.ts
   - JSON 成功响应与统一错误响应结构 `{ error: { code, message, fields? } }`,注入 `protocolVersion` 响应头/体;500 兜底不泄露 env/凭据/堆栈
   - 完成态:成功/错误响应构造经 `error-map`/`version` 复用,被各 route 单测覆盖;500 响应体断言不含敏感字段
   - _Requirements: 9.1, 9.3, 7.1_
   - _Boundary: http/responses.ts_
   - _Depends: 2.2, 2.3_
 
-- [ ] 3. SSE:帧编码与长连接响应
-- [ ] 3.1 (P) 实现 SSE 帧编码 sse-encoder.ts
+- [x] 3. SSE:帧编码与长连接响应
+- [x] 3.1 (P) 实现 SSE 帧编码 sse-encoder.ts
   - 把 `SseFrame`(`uiMessageChunk`/`control` 两类)+ 单调序号编码为 `text/event-stream` 文本(`event:`/`data:`/`id:` 行,多行 data 按规范拆分);每帧承载 `protocolVersion`;会话结束帧编码为 control 结束/错误帧;纯函数无 I/O
   - 完成态:`sse-encoder.test.ts` 通过——两类帧文本格式、`id:` 单调、心跳注释帧分隔、`protocolVersion` 字段
   - _Requirements: 5.2, 5.5, 6.1, 6.4, 7.1_
   - _Boundary: sse/sse-encoder.ts_
   - _Depends: 2.3_
-- [ ] 3.2 实现 SSE 响应构造 sse-response.ts
+- [x] 3.2 实现 SSE 响应构造 sse-response.ts
   - 用 Web `ReadableStream` 构造 SSE `Response`:`start` 时 `PiSession.subscribe(onFrame,onEnd)`→经编码器 `enqueue`,`onEnd` 写结束帧并 `close`;`node:timers` 周期心跳注释帧;响应头设 `Content-Type: text/event-stream`、`Cache-Control: no-cache`、`X-Accel-Buffering: no`、禁压缩;`cancel`(断开)清心跳 + `unsubscribe` 不影响他者
   - 完成态:`stream-route.test.ts`/`sse` 单测断言 SSE 响应头、帧推送、心跳、断开触发 unsubscribe
   - _Requirements: 5.1, 5.3, 5.4, 5.5, 5.6_
   - _Boundary: sse/sse-response.ts_
   - _Depends: 3.1_
-- [ ] 3.3 实现重连续流 reconnect.ts
+- [x] 3.3 实现重连续流 reconnect.ts
   - 解析 `Last-Event-ID`;会话存活→重新 `subscribe()` 续推后续帧;会话已结束→返回明确结束/不存在响应不挂起;续流保持 `protocolVersion` 一致
   - 完成态:单测断言带 `Last-Event-ID` 重连存活会话→续订阅,已结束会话→明确响应
   - _Requirements: 6.2, 6.3, 6.4_
   - _Boundary: sse/reconnect.ts_
   - _Depends: 3.2_
 
-- [ ] 4. 路由:方法+路径分发与鉴权调用点
-- [ ] 4.1 实现 Router 分发与 auth 调用点
+- [x] 4. 路由:方法+路径分发与鉴权调用点
+- [x] 4.1 实现 Router 分发与 auth 调用点
   - 解析方法+路径(去 `basePath`)匹配端点表,提取 `:id` 注入 `RequestContext`;不匹配→404,方法不符→405;`:id` 端点经 `store.get` 校验存在(不存在→404);分发前调用 `authResolver`(拒绝→401)与 `authorizeSession`(false→403),未注入→默认放行
   - 合并 `opts.routes` 外部注入路由与内置端点表:精确 `path`+`method` 冲突时**内置路由优先**,外部路由不能覆盖/遮蔽内置端点;匹配到的外部路由经与内置端点相同的 `RequestContext`/auth 接缝分发
   - 完成态:`router.test.ts` 通过——匹配/`:id` 提取/404/405/auth 拒绝路径(401/403)/默认放行;**注入的外部路由可达(被调用并返回其 `Response`),且与内置端点精确 `path`+`method` 冲突时内置优先、外部不能遮蔽**
@@ -66,49 +66,49 @@
   - _Boundary: router.ts_
   - _Depends: 1.1, 2.4_
 
-- [ ] 5. 端点处理器
-- [ ] 5.1 实现建会话与删除端点
+- [x] 5. 端点处理器
+- [x] 5.1 实现建会话与删除端点
   - `POST /sessions`:校验建会话 DTO→`SessionManager.createSession`→`{ sessionId }`;停机标志置位→503;缺 `source`→400
   - `DELETE /sessions/:id`:触发 `PiSession.stop()`(上游经 `onClosed` 从 store 移除)→ack
   - 完成态:`create-session.test.ts`/`delete-session` 单测通过——建会话成功、缺 source 400、停机 503、删除 ack
   - _Requirements: 2.1, 2.2, 2.3, 2.5_
   - _Boundary: routes/create-session.ts, routes/delete-session.ts_
   - _Depends: 2.1, 2.4, 4.1_
-- [ ] 5.2 实现命令转发端点
+- [x] 5.2 实现命令转发端点
   - `POST messages/steer/follow_up/abort/model/thinking/ui-response`:校验对应 DTO→转发 `PiSession` 命令方法(prompt/steer/followUp/abort/setModel/setThinkingLevel/respondExtensionUI)→ack;仅转发不改写语义
   - 校验失败→400 不转发;已停止会话→409;未知 ui-response ID→404/409(经 error-map)
   - 完成态:`command-routes.test.ts` 通过——各命令 ack、校验 400、已停止 409、未知 ui-response 映射
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
   - _Boundary: routes/command-routes.ts_
   - _Depends: 2.1, 2.2, 2.4, 4.1_
-- [ ] 5.3 实现查询端点
+- [x] 5.3 实现查询端点
   - `GET state/stats/messages/commands`:转发 `PiSession` 对应查询方法→以 `@pi-web/protocol` 响应 DTO 形状返回
   - 完成态:`query-routes.test.ts` 通过——四个端点返回对应响应 DTO,会话不存在→404
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _Boundary: routes/query-routes.ts_
   - _Depends: 2.4, 4.1_
-- [ ] 5.4 实现 SSE 流端点
+- [x] 5.4 实现 SSE 流端点
   - `GET /sessions/:id/stream`:会话存在→经 `sse-response.ts` 订阅并返回 `text/event-stream` 长连接;带 `Last-Event-ID` 走 `reconnect.ts` 续流;不存在→404
   - 完成态:`stream-route.test.ts` 通过——SSE 头/帧推送/断开 unsubscribe/不存在 404/重连续流
   - _Requirements: 5.1, 5.7, 6.2_
   - _Boundary: routes/stream-route.ts_
   - _Depends: 3.2, 3.3, 4.1_
 
-- [ ] 6. 装配:框架无关入口
-- [ ] 6.1 实现 createPiWebHandler 工厂
+- [x] 6. 装配:框架无关入口
+- [x] 6.1 实现 createPiWebHandler 工厂
   - 组装 `Router` + 注入 `opts`(manager/store/auth 接缝/外部 `routes`/sse 调参),返回 `(req: Request) => Promise<Response>`;把 `opts.routes` 传给 `Router` 合并(内置优先);外层 try/catch 兜底→500(不泄敏感);透传上游 `shutdown()` 供宿主 SIGTERM 调用;不 spawn/不解析/不持有会话状态
   - 完成态:经各 route 单测间接覆盖;可用一个最小 mock manager/store 实例化 handler 并对任意 Request 返回 Response(404 兜底可达);经 `opts.routes` 注入的外部路由可达
   - _Requirements: 1.1, 1.3, 1.6, 1.7, 9.3, 9.4_
   - _Boundary: create-handler.ts_
   - _Depends: 4.1, 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 7. 集成与 e2e(硬性)
-- [ ] 7.1 集成测试:真实 engine + stub agent
+- [x] 7. 集成与 e2e(硬性)
+- [x] 7.1 集成测试:真实 engine + stub agent
   - 用 `session-engine` 经 rpc-channel 起真实 `PiSession`(stub agent),装配 `createPiWebHandler`;`POST /sessions`→`GET /stream`→`POST /sessions/:id/messages`,断言命令经引擎转发且 SSE 上收到对应帧序列一致
   - 完成态:`http.integration.test.ts` 通过——命令转发与 SSE 帧推送一致
   - _Requirements: 10.2_
   - _Depends: 6.1_
-- [ ] 7.2 e2e 测试:全链路流式 + abort + 重连续流
+- [x] 7.2 e2e 测试:全链路流式 + abort + 重连续流
   - HTTP `POST /sessions`→`GET /sessions/:id/stream`→`POST /sessions/:id/messages` 后在 SSE 上接收逐字 `text-delta` 直至 `finish`
   - `POST /sessions/:id/abort` 后流以结束信号收束;断开 SSE 后携带 `Last-Event-ID` 重连 `GET /stream` 恢复后续帧;`DELETE /sessions/:id` 后会话移除
   - 完成态:`http.e2e.test.ts` 通过——逐字 delta 至 finish、abort 收束、重连续流;`vitest run` 单一命令运行全部单元/集成/e2e

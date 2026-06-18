@@ -1,84 +1,84 @@
 # Implementation Plan
 
-- [ ] 1. 基础:Next.js 应用骨架与测试基座
-- [ ] 1.1 搭建 Next.js 应用骨架与构建配置
+- [x] 1. 基础:Next.js 应用骨架与测试基座
+- [x] 1.1 搭建 Next.js 应用骨架与构建配置
   - 建立 `package.json`(依赖上游 `@pi-web/*` 包 + `ai`/`@ai-sdk/react` + `jiti`;scripts:`dev`/`build`/`start`/`test`/`test:e2e`)、`tsconfig.json`(strict、`@/` 路径别名、Node+DOM lib)、`next.config.ts`(transpile 上游包、Node runtime 相关)
   - 完成态:`next build` 可成功产出构建、`next dev` 可启动且根路径返回 200(此时页面可为占位)
   - _Requirements: 1.4_
-- [ ] 1.2 建立根布局与全局样式
+- [x] 1.2 建立根布局与全局样式
   - `app/layout.tsx` 渲染 html/body、引入 `app/globals.css` 与主题容器;`app/globals.css` 写入 Tailwind 指令 + shadcn CSS 变量主题 tokens(无硬编码颜色)
   - 完成态:访问根路径渲染带主题样式的布局壳;`<PiChat>` 后续可继承该主题
   - _Requirements: 1.1, 1.2_
-- [ ] 1.3 配置测试基座(vitest + Playwright)
+- [x] 1.3 配置测试基座(vitest + Playwright)
   - 配置 `vitest.config.ts`(node + jsdom 分项)使集成 / 渲染测试经 `vitest run` 单命令运行;配置 `playwright.config.ts` 的 `webServer`(启动应用、设 `baseURL`、读取 e2e stub 开关),使 e2e 经 `playwright test` 单命令运行
   - 完成态:`vitest run` 与 `playwright test` 各能执行并发现至少一个占位用例;e2e webServer 能拉起应用
   - _Requirements: 10.7, 10.8_
 
-- [ ] 2. 配置层:env 读取与注入
-- [ ] 2.1 实现配置加载与默认值
+- [x] 2. 配置层:env 读取与注入
+- [x] 2.1 实现配置加载与默认值
   - 从 `process.env` 读取 provider key(含 `ANTHROPIC_API_KEY`)、默认 provider / model、默认 agent 源、默认工作区、e2e stub 开关,产出只读 typed 配置;缺必需 provider key 时抛可辨识配置错误且错误消息不含 key 明文;敏感值不进日志 / 序列化
   - 编写 `.env.local.example` 样例,列出上述全部配置项
   - 完成态:注入 env 后配置默认值生效;缺必需 key 抛错且断言错误不含 key 明文;`.env.local.example` 覆盖全部项
   - _Requirements: 3.2, 3.3, 3.4, 3.5, 4.3, 8.4, 10.7_
   - _Boundary: lib/app/config.ts, .env.local.example_
 
-- [ ] 3. API 装配:单例 handler 与 catch-all 路由
-- [ ] 3.1 实现 handler 单例工厂
+- [x] 3. API 装配:单例 handler 与 catch-all 路由
+- [x] 3.1 实现 handler 单例工厂
   - 首次调用组装上游会话依赖 + 经配置注入默认 provider/model/源/工作区/env(provider key 透传给会话装配),构造 `createPiWebHandler`;挂 `globalThis` 单例跨请求 / 热重载复用;不注入鉴权(默认放行)、敏感配置不回显
   - 完成态:重复调用返回同一 handler 实例;手动启动后会话依赖跨请求驻留(同一实例服务多请求)
   - _Requirements: 2.1, 2.5, 3.1, 3.3, 3.5_
   - _Boundary: lib/app/pi-handler.ts_
   - _Depends: 2.1_
-- [ ] 3.2 实现 catch-all 会话路由委托
+- [x] 3.2 实现 catch-all 会话路由委托
   - `app/api/sessions/[[...path]]/route.ts` 导出 `runtime="nodejs"`、`dynamic="force-dynamic"` 与 `GET`/`POST`/`DELETE`,各无损委托 `getHandler()(req)`、原样回传 `Response`(含 SSE 流 body),不改写状态码 / 头 / 体、不缓冲整段
   - 完成态:对 `POST /api/sessions`、`GET /api/sessions/:id/stream`、`DELETE /api/sessions/:id` 的请求被转发并原样回传;stream 端点返回 `text/event-stream` 长连接
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 9.3_
   - _Boundary: app/api/sessions/[[...path]]/route.ts_
 
-- [ ] 4. 前端装配:选源、建会话、聊天
-- [ ] 4.1 (P) 实现 agent 源选择器视图
+- [x] 4. 前端装配:选源、建会话、聊天
+- [x] 4.1 (P) 实现 agent 源选择器视图
   - `components/agent-source-picker.tsx`:接受 `agent-source-resolver` 支持的 `source`(本地目录 / git)文本输入 + 「用默认源」选项 + 提交回调;建会话进行中显示 loading;失败显示可辨识错误并允许重选
   - 完成态:组件渲染源输入与默认源选项;提交触发回调;loading 与错误态可见且错误后可重选
   - _Requirements: 1.5, 4.1, 4.4, 4.5_
   - _Boundary: components/agent-source-picker.tsx_
-- [ ] 4.2 装配主页面(选源 → 建会话 → PiChat + 控制 + 弹窗)
+- [x] 4.2 装配主页面(选源 → 建会话 → PiChat + 控制 + 弹窗)
   - `app/page.tsx`:未建会话渲染 `<AgentSourcePicker>`;提交后以 `source`(+ 配置默认 `cwd`/`model`/`env`)经 `usePiSession`(指向本站 `/api/sessions`)建会话取标识,建会话进行中指示、失败回退选源态;成功后渲染 `<PiChat>` 并装配 `usePiControls`(abort/切模型/stats)与 `useExtensionUI`(权限弹窗);控制 / 弹窗经 hooks 旁路不入消息流
   - 完成态:页面从选源切到聊天界面;`<PiChat>` 渲染并由本站连接驱动消息流;控制面与权限弹窗在场;通用 CLI 与自定义 agent 模式复用同一页面无操作差异
   - _Requirements: 1.3, 4.2, 4.3, 4.5, 5.1, 5.2, 6.1, 6.2, 6.3, 6.4, 7.1, 9.2, 9.3_
   - _Boundary: app/page.tsx_
   - _Depends: 3.2, 4.1_
 
-- [ ] 5. 示例 agent 与 e2e fixture
-- [ ] 5.1 (P) 编写示例自定义 agent 与 .pi 资源样例
+- [x] 5. 示例 agent 与 e2e fixture
+- [x] 5.1 (P) 编写示例自定义 agent 与 .pi 资源样例
   - `examples/hello-agent/index.ts`:用 `defineAgent` 定义 model(e2e 下经 stub / 低成本切换)+ 一个工具 + 可产出思考与 Markdown 文本的路径;`examples/hello-agent/.pi/extensions/confirm-demo.ts` 在执行时发起扩展 UI(confirm/select)请求以驱动权限弹窗闭环
   - 完成态:示例目录被装配链路识别为含入口的自定义 agent 源;运行时产生工具调用、思考 / Markdown 文本与一次扩展 UI 请求
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
   - _Boundary: examples/hello-agent/_
-- [ ] 5.2 (P) 准备通用 CLI 回退 fixture
+- [x] 5.2 (P) 准备通用 CLI 回退 fixture
   - `e2e/fixtures/cli-project/`:无入口普通目录(含一个 README),作为通用 CLI 模式回退源 fixture
   - 完成态:该目录无任何入口文件,可被装配链路判定为通用 CLI 模式
   - _Requirements: 9.1_
   - _Boundary: e2e/fixtures/cli-project/_
 
-- [ ] 6. 集成测试:路由转发与页面渲染
-- [ ] 6.1 编写 API 路由转发与配置注入集成测试
+- [x] 6. 集成测试:路由转发与页面渲染
+- [x] 6.1 编写 API 路由转发与配置注入集成测试
   - `app/api/sessions/__tests__/route.integration.test.ts`:以 mock / 轻量会话依赖装配 handler,经 `fetch` 打 `POST /api/sessions`、`GET /api/sessions/:id/stream`、`DELETE /api/sessions/:id`,断言请求转发到 handler 且响应原样回传(stream 返回 `text/event-stream`、不缓冲);并断言配置注入默认值生效、缺 key 错误不含明文
   - 完成态:`vitest run` 通过,断言三类端点转发与回传一致、stream 为事件流、配置错误不泄密钥
   - _Requirements: 10.1, 2.1, 2.3, 2.4, 3.3, 3.4, 3.5_
   - _Depends: 3.1, 3.2_
-- [ ] 6.2 编写主页面渲染冒烟测试
+- [x] 6.2 编写主页面渲染冒烟测试
   - 渲染 `app/page.tsx`(未建会话态),断言 `<AgentSourcePicker>` 在场、无崩溃
   - 完成态:`vitest run` 通过,页面在未建会话态渲染选源入口
   - _Requirements: 10.1, 1.3, 1.5_
   - _Depends: 4.2_
 
-- [ ] 7. 端到端验证(Playwright,硬性)
-- [ ] 7.1 全链路自定义 agent e2e
+- [x] 7. 端到端验证(Playwright,硬性)
+- [x] 7.1 全链路自定义 agent e2e
   - `e2e/custom-agent.e2e.ts`:经 stub / 低成本 webServer 启动 → 选 `examples/hello-agent` 源 → 输入 prompt → 断言浏览器内逐字流式 Markdown;断言工具调用卡片(start→end)与思考可折叠块;触发 abort 使流收束、切模型反映当前模型、stats 显示并刷新;触发权限弹窗 → 选择 → 弹窗关闭且 agent 继续输出
   - 完成态:`playwright test` 该用例通过,逐字流式、工具卡、思考折叠、abort / 切模型 / stats、权限弹窗闭环均被断言
   - _Requirements: 10.2, 10.3, 10.4, 10.5, 5.3, 5.4, 5.5, 5.6, 6.1, 6.2, 6.3, 7.2, 7.3, 7.4_
   - _Depends: 4.2, 5.1, 6.1_
-- [ ] 7.2 通用 CLI 回退 e2e
+- [x] 7.2 通用 CLI 回退 e2e
   - `e2e/cli-fallback.e2e.ts`:选 `e2e/fixtures/cli-project`(无入口)源 → 输入 prompt → 断言浏览器内逐字流式回复,验证回退路径与自定义模式表现一致
   - 完成态:`playwright test` 该用例通过,无入口目录经通用 CLI 模式逐字流式回复
   - _Requirements: 10.6, 9.1, 9.2_
