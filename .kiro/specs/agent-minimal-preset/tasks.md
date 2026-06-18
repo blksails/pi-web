@@ -52,7 +52,7 @@
   - _Requirements: 1.1, 1.4_
   - _Boundary: examples/minimal-agent_
   - _Depends: 1.2_
-- [ ] 3.2 全量回归与类型一致性校验
+- [x] 3.2 全量回归与类型一致性校验
   - 运行 agent-kit 与 server 两包既有 + 新增测试,确认全绿;`examples/hello-agent` 语义不变
   - 运行两包 `tsc --noEmit`,守护 agent-kit↔server 镜像结构一致(`defineAgent` 定义可被运行时消费)
   - 完成判据:两包 `test` 与 `typecheck` 命令均以新鲜运行输出证明通过,`defineAgent` 恒等性测试仍绿
