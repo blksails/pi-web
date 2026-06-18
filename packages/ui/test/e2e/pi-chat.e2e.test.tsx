@@ -85,13 +85,24 @@ describe("PiChatBasic e2e (mock 会话)", () => {
     expect(reasoningToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(/Let me think/)).toBeInTheDocument();
 
-    // (d) 权限弹窗出现→作答→回传并关闭
+    // (d) 交互内联卡出现→作答→经 respond 回传,active 卡转为只读留痕
     await user.click(screen.getByTestId("trigger-ext"));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    const active = await waitFor(() => {
+      const el = document.querySelector("[data-pi-interaction-active]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // 非模态:不弹 dialog。
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(active.getAttribute("data-pi-interaction-method")).toBe("select");
     await user.click(screen.getByLabelText("alpha"));
-    await user.click(screen.getByText("Submit"));
+    await user.click(document.querySelector("[data-pi-interaction-submit]")!);
+    // 应答后:active 卡消失(出队),留痕「已选择：alpha」可见。
     await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      expect(
+        document.querySelector("[data-pi-interaction-active]"),
+      ).toBeNull(),
     );
+    expect(screen.getByText("已选择：alpha")).toBeInTheDocument();
   });
 });

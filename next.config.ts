@@ -17,6 +17,10 @@ interface WebpackConfig {
  * them through its own toolchain so the app can consume them directly.
  */
 const nextConfig: NextConfig = {
+  // Allow an isolated build output dir (e.g. for browser e2e) so a production
+  // build never clobbers a concurrently running `next dev` .next cache.
+  // Defaults to ".next" — unchanged behavior unless NEXT_DIST_DIR is set.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // App code is type-checked by `pnpm typecheck` (root `tsc -p tsconfig.json`
   // which excludes `packages/`). The workspace packages are type-checked by
   // their own configs (green). Next's build-time pass would otherwise re-check

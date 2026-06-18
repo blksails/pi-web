@@ -131,4 +131,91 @@ describe("PromptInput 富输入外壳", () => {
     expect(textarea).toHaveAttribute("aria-label");
     expect(textarea).toHaveAttribute("placeholder");
   });
+
+  describe("suppressEnterSubmit 命令模式 Enter 让位 (Req 4.1/4.3/4.4)", () => {
+    it("suppressEnterSubmit=true 时 Enter 不调用 onSubmit 且 preventDefault (Req 4.1)", () => {
+      const onSubmit = vi.fn();
+      const { getByRole } = render(
+        <PromptInput
+          value="/foo"
+          onChange={vi.fn()}
+          onSubmit={onSubmit}
+          suppressEnterSubmit
+        />,
+      );
+      const textarea = getByRole("textbox");
+      textarea.focus();
+      const prevented = !textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(prevented).toBe(true);
+    });
+
+    it("suppressEnterSubmit=true 时 Shift+Enter 不调用 onSubmit (Req 4.4)", () => {
+      const onSubmit = vi.fn();
+      const { getByRole } = render(
+        <PromptInput
+          value="/foo"
+          onChange={vi.fn()}
+          onSubmit={onSubmit}
+          suppressEnterSubmit
+        />,
+      );
+      const textarea = getByRole("textbox");
+      textarea.focus();
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          shiftKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it("suppressEnterSubmit=false(默认)时 Enter 照常调用 onSubmit (Req 4.3)", () => {
+      const onSubmit = vi.fn();
+      const { getByRole } = render(
+        <PromptInput
+          value="hello"
+          onChange={vi.fn()}
+          onSubmit={onSubmit}
+          suppressEnterSubmit={false}
+        />,
+      );
+      const textarea = getByRole("textbox");
+      textarea.focus();
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("suppressEnterSubmit prop 缺省时 Enter 照常调用 onSubmit (Req 4.3)", () => {
+      const onSubmit = vi.fn();
+      const { getByRole } = render(
+        <PromptInput value="hello" onChange={vi.fn()} onSubmit={onSubmit} />,
+      );
+      const textarea = getByRole("textbox");
+      textarea.focus();
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+  });
 });

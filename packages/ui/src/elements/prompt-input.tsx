@@ -42,6 +42,12 @@ export interface PromptInputProps {
   readonly className?: string;
   /** textarea 区域的额外 className。 */
   readonly textareaClassName?: string;
+  /**
+   * 命令模式激活时禁用 textarea 的 Enter 提交(Enter 让位给命令浮层选中)。默认 false。
+   * 为真时 Enter(非 Shift)`preventDefault` 且不调用 `onSubmit`;Shift+Enter 仍换行不提交。
+   * (Req 4.1/4.4)
+   */
+  readonly suppressEnterSubmit?: boolean;
 }
 
 /** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
@@ -63,6 +69,7 @@ export function PromptInput({
   children,
   className,
   textareaClassName,
+  suppressEnterSubmit = false,
 }: PromptInputProps): React.JSX.Element {
   const canSubmit = !disabled && !isBlank(value);
 
@@ -71,6 +78,11 @@ export function PromptInput({
   ): void => {
     // Shift+Enter:换行,不提交(Req 1.4)——交由浏览器默认行为插入换行。
     if (event.key !== "Enter" || event.shiftKey) return;
+    // 命令模式激活时:阻止默认换行并让位给命令浮层(Req 4.1);不调用 onSubmit。
+    if (suppressEnterSubmit) {
+      event.preventDefault();
+      return;
+    }
     // Enter:阻止默认换行并提交(Req 1.2);空/仅空白或禁用时不提交(Req 1.3)。
     event.preventDefault();
     if (!canSubmit) return;

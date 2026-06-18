@@ -54,11 +54,11 @@ export {
   type PiCommandPaletteProps,
 } from "./controls/pi-command-palette.js";
 
-// dialog 层
+// interaction 层(原 dialog/PiPermissionDialog 重命名为 elements/PiInteraction)
 export {
-  PiPermissionDialog,
-  type PiPermissionDialogProps,
-} from "./dialog/pi-permission-dialog.js";
+  PiInteraction,
+  type PiInteractionProps,
+} from "./elements/pi-interaction.js";
 
 // 渲染器注册表
 export {

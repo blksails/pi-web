@@ -3,7 +3,7 @@
  *
  * 从 `usePiSession` 取 `transport` 喂 `useChat({ transport })` 驱动消息流;按 part 类型经
  * `PartRenderer` 分派渲染;经 PromptInput 提交追加用户消息;流式进行中指示 + 中止入口
- * (usePiControls.abort);内嵌 `<PiPermissionDialog>`(useExtensionUI);可选内置控制面板;
+ * (usePiControls.abort);内嵌内联交互卡 `<PiInteraction>`(useExtensionUI);可选内置控制面板;
  * 暴露 header/footer/sidebar/messageActions 插槽。本组件不实现任何 REST/SSE 传输逻辑。
  */
 import * as React from "react";
@@ -17,7 +17,7 @@ import type {
 } from "@pi-web/react";
 import { PartRenderer } from "./part-renderer.js";
 import type { PiChatSlots } from "./slots.js";
-import { PiPermissionDialog } from "../dialog/pi-permission-dialog.js";
+import { PiInteraction } from "../elements/pi-interaction.js";
 import { PiModelSelector } from "../controls/pi-model-selector.js";
 import { PiThinkingLevel } from "../controls/pi-thinking-level.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
@@ -143,6 +143,10 @@ export function PiChatBasic({
               Generating…
             </div>
           ) : null}
+          {/* 扩展 UI 交互内联卡(取代模态弹窗):渲染于消息流末尾,随流滚动。 */}
+          {extensionUI !== undefined ? (
+            <PiInteraction extensionUI={extensionUI} />
+          ) : null}
         </div>
 
         <form
@@ -193,10 +197,6 @@ export function PiChatBasic({
           <footer data-pi-chat-footer>{slots.footer}</footer>
         ) : null}
       </div>
-
-      {extensionUI !== undefined ? (
-        <PiPermissionDialog extensionUI={extensionUI} />
-      ) : null}
     </div>
   );
 }

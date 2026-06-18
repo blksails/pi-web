@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import type { UIMessage, ChatStatus } from "ai";
 import type {
@@ -99,6 +99,7 @@ vi.mock("@pi-web/react", () => ({
 // 显式延后引入以表达依赖顺序)。
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
+import { mockControls, sampleCommands } from "../fixtures/mock-session.js";
 
 // ---- 默认 hook 结果工厂 -----------------------------------------------------
 
@@ -833,10 +834,10 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     expect(container.querySelector("[data-pi-widgets]")).toBeNull();
   });
 
-  // -- 推送面与交互对话框共存且互不阻塞 (Req 6.2, 6.4, 8.4) -----------------
-  it("推送类 ambient 态与交互类 confirm 请求并存时:对话框正常弹出且推送面同时可见(未被阻塞)", () => {
+  // -- 推送面与交互内联卡共存且互不阻塞 (Req 6.2, 6.4, 8.4) -----------------
+  it("推送类 ambient 态与交互类 confirm 请求并存时:内联卡正常呈现且推送面同时可见(未被阻塞)", () => {
     // 设计语义:推送类(notify/setStatus/setWidget/setTitle)不入交互队列,
-    // 故 `current` 为交互类 confirm 请求时,PiPermissionDialog 应正常弹出,
+    // 故 `current` 为交互类 confirm 请求时,PiInteraction 内联卡应正常呈现于消息流,
     // 而 notifications / statuses 等推送面同时渲染——二者互不阻塞/不干扰。
     const confirmRequest = {
       type: "extension_ui_request" as const,
@@ -865,13 +866,14 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
       />,
     );
 
-    // 权限对话框可见(真实 PiPermissionDialog,根 data 属性 data-pi-permission-dialog)。
-    // Radix Dialog 经 portal 渲染至 document.body,故经 document 而非 render container 查询。
-    const dialog = document.querySelector("[data-pi-permission-dialog]");
-    expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    // confirm 方法专属:确认 / 取消按钮可见,标题/消息渲染。
-    expect(dialog?.getAttribute("data-pi-permission-method")).toBe("confirm");
+    // 交互内联卡可见(消息流内 data-pi-interaction,非模态)。
+    const interaction = container.querySelector("[data-pi-interaction]");
+    expect(interaction).toBeInTheDocument();
+    // 非模态:不应渲染对话框 role。
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // confirm 方法专属:active 卡 method=confirm,标题/消息渲染。
+    const active = container.querySelector("[data-pi-interaction-active]");
+    expect(active?.getAttribute("data-pi-interaction-method")).toBe("confirm");
     expect(screen.getByText("Proceed?")).toBeInTheDocument();
     expect(screen.getByText("ok?")).toBeInTheDocument();
 
@@ -881,5 +883,305 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     expect(screen.getByText("构建完成")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
     expect(screen.getByText("My Session Title")).toBeInTheDocument();
+  });
+});
+
+// ---- 命令补全浮层接线 (Task 2.1) -------------------------------------------
+
+describe("PiChat 命令补全浮层接线(Task 2.1)", () => {
+  it("提供 controls 且 input 以 / 开头时渲染 PiCommandPalette", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    // 初始:浮层未渲染
+    expect(
+      document.querySelector("[data-pi-command-palette]"),
+    ).not.toBeInTheDocument();
+
+    // 输入 / 触发命令模式
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    // 浮层渲染
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("不提供 controls 时不渲染浮层(降级,R7.1)", async () => {
+    const user = userEvent.setup();
+
+    render(<PiChat session={fakeSession()} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    expect(
+      document.querySelector("[data-pi-command-palette]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("选中候选项填入输入框 value 为 /name 且未发送(R3.1)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+
+    // 输入 / 触发命令模式
+    await user.type(textarea, "/");
+
+    // 等待浮层渲染
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // 点击第一个候选项(help)
+    const helpItem = document.querySelector('[data-pi-command-item="help"]');
+    expect(helpItem).toBeInTheDocument();
+    await user.click(helpItem as Element);
+
+    // 输入框 value 变为 "/help "
+    expect(textarea.value).toBe("/help ");
+
+    // sendMessage 未被调用(仅填充,不发送)
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("浮层容器具备 relative 定位,palette 具备 absolute bottom-full(R6.1/6.2)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    const { container } = render(
+      <PiChat session={fakeSession()} controls={controls} />,
+    );
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // wrapper 应包含 relative class
+    const wrapper = container.querySelector("[data-pi-input-wrapper]");
+    expect(wrapper?.className).toContain("relative");
+
+    // palette 父容器应有 absolute 与 bottom-full class
+    const palette = document.querySelector("[data-pi-command-palette]");
+    const paletteWrapper = palette?.parentElement;
+    expect(paletteWrapper?.className).toContain("absolute");
+    expect(paletteWrapper?.className).toContain("bottom-full");
+  });
+
+  it("命令模式且有候选时按 Enter 不触发 sendMessage(suppressEnterSubmit 让位, R4.2)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+
+    // 输入 "/" 进入命令模式,sampleCommands 返回 help/model/clear 三条候选
+    await user.type(textarea, "/");
+
+    // 等待浮层渲染(有候选,commandCapturing 应为 true)
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // 此时按 Enter — 应被 suppress,不触发 sendMessage
+    await user.keyboard("{Enter}");
+
+    // sendMessage 不被调用
+    expect(sendMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("无候选(输入 /zzz 过滤为空)时按 Enter 不抑制,onSubmit 路径正常(R4 防死键)", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(), // help/model/clear — 无 zzz
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    }) as HTMLTextAreaElement;
+
+    // 输入 "/zzz" — 有候选(初始) → 命令模式开始过滤,无 zzz 命中 → capturing=false
+    await user.type(textarea, "/zzz");
+
+    // 等待浮层出现(value 以 / 开头,palette 渲染但候选为空)
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+
+    // 候选为空,空态("No commands")可见,capturing=false → Enter 不抑制
+    expect(document.querySelector("[data-pi-command-empty]")).toBeInTheDocument();
+
+    // 按 Enter → 不应被抑制,onSubmit 应调用 sendMessage
+    await user.keyboard("{Enter}");
+
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+    expect(sendMessageMock.mock.calls[0]?.[0]?.text).toBe("/zzz");
+  });
+
+  it("不提供 controls 时不渲染浮层且聊天功能正常(降级,R7.1 — 沿用 2.1 验证)", async () => {
+    const user = userEvent.setup();
+
+    render(<PiChat session={fakeSession()} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    expect(
+      document.querySelector("[data-pi-command-palette]"),
+    ).not.toBeInTheDocument();
+
+    // 聊天仍可用:按 Enter 调 sendMessage
+    await user.keyboard("{Enter}");
+    expect(sendMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("会话态下浮层在两分支中均可触发(空态也能触发)", async () => {
+    // 会话态(messages 非空)
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hello" }],
+        } as import("ai").UIMessage,
+      ],
+    };
+
+    const user = userEvent.setup();
+    const controls = mockControls({
+      commands: sampleCommands(),
+    });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    const textarea = screen.getByRole("textbox", {
+      name: /消息输入|message/i,
+    });
+    await user.type(textarea, "/");
+
+    await waitFor(() => {
+      expect(
+        document.querySelector("[data-pi-command-palette]"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+// ---- 建议气泡退化(Task 2.3, Req 5.1/5.2/5.3) --------------------------------
+
+describe("PiChat 建议气泡退化(会话态不渲染,空态保留)", () => {
+  it("会话态(messages 非空)不渲染会话态建议气泡区块(Req 5.2)", () => {
+    // 注入一条助手消息,使 isEmpty === false。
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hello" }],
+        } as import("ai").UIMessage,
+      ],
+    };
+    // 提供建议项,确保即使有数据也不在会话态渲染气泡。
+    suggestionsResult = makeSuggestions({
+      items: [{ id: "cmd:help", label: "/help", value: "/help", mode: "fill" }],
+    });
+
+    const { container } = render(<PiChat session={fakeSession()} />);
+
+    // 会话态时,空态欢迎页(data-pi-chat-welcome)不渲染。
+    expect(container.querySelector("[data-pi-chat-welcome]")).not.toBeInTheDocument();
+
+    // 会话态分支(messages 非空)的建议区块已被移除:
+    // 整个页面内不应存在任何 data-pi-chat-suggestions 元素
+    // (因 isEmpty===false,空态欢迎页也不渲染)。
+    expect(
+      container.querySelector("[data-pi-chat-suggestions]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("空态(messages 为空)仍渲染建议网格(Req 5.1)", () => {
+    chatState = { status: "ready", messages: [] };
+    suggestionsResult = makeSuggestions({
+      items: [
+        { id: "cmd:help", label: "/help", value: "/help", mode: "fill" },
+        { id: "cmd:model", label: "/model", value: "/model", mode: "fill" },
+      ],
+    });
+
+    render(<PiChat session={fakeSession()} />);
+
+    // 空态欢迎页应存在(data-pi-chat-welcome)。
+    expect(document.querySelector("[data-pi-chat-welcome]")).toBeInTheDocument();
+
+    // 空态的建议网格中应有建议项按钮。
+    const welcomeEl = document.querySelector("[data-pi-chat-welcome]");
+    const suggButtons = welcomeEl?.querySelectorAll(
+      "[data-pi-chat-suggestions] button",
+    );
+    expect(suggButtons?.length).toBeGreaterThan(0);
+  });
+
+  it("会话态仍拉取一次 getCommands(Req 5.3)", async () => {
+    chatState = {
+      status: "ready",
+      messages: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", text: "hello" }],
+        } as import("ai").UIMessage,
+      ],
+    };
+    const controls = mockControls({ commands: sampleCommands() });
+
+    render(<PiChat session={fakeSession()} controls={controls} />);
+
+    await waitFor(() => {
+      expect(controls.getCommands).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -93,4 +93,91 @@ describe("PiCommandPalette", () => {
     render(<PiCommandPalette controls={controls} value="/" onChange={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("fetch failed");
   });
+
+  describe("onCaptureChange", () => {
+    it("有候选时回调 true", async () => {
+      const onCaptureChange = vi.fn();
+      const controls = mockControls({ commands: sampleCommands() });
+      render(
+        <PiCommandPalette
+          controls={controls}
+          value="/"
+          onChange={vi.fn()}
+          onCaptureChange={onCaptureChange}
+        />,
+      );
+      await screen.findByRole("listbox");
+      expect(onCaptureChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it("过滤到无候选时回调 false", async () => {
+      const user = userEvent.setup();
+      const onCaptureChange = vi.fn();
+      const controls = mockControls({ commands: sampleCommands() });
+
+      function HarnessCapture(): React.JSX.Element {
+        const [value, setValue] = React.useState("/");
+        return (
+          <div>
+            <input
+              aria-label="prompt"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <PiCommandPalette
+              controls={controls}
+              value={value}
+              onChange={setValue}
+              onCaptureChange={onCaptureChange}
+            />
+          </div>
+        );
+      }
+
+      render(<HarnessCapture />);
+      await screen.findByRole("listbox");
+      // 输入无匹配的查询
+      await user.type(screen.getByLabelText("prompt"), "zzz");
+      expect(onCaptureChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it("退出命令模式(Esc)时回调 false", async () => {
+      const user = userEvent.setup();
+      const onCaptureChange = vi.fn();
+      const controls = mockControls({ commands: sampleCommands() });
+
+      function HarnessEsc(): React.JSX.Element {
+        const [value, setValue] = React.useState("/");
+        return (
+          <div>
+            <input
+              aria-label="prompt"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <PiCommandPalette
+              controls={controls}
+              value={value}
+              onChange={setValue}
+              onCaptureChange={onCaptureChange}
+            />
+          </div>
+        );
+      }
+
+      render(<HarnessEsc />);
+      const input = screen.getByLabelText("prompt");
+      input.focus();
+      await screen.findByRole("listbox");
+      expect(onCaptureChange).toHaveBeenLastCalledWith(true);
+      await user.keyboard("{Escape}");
+      expect(onCaptureChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it("未提供 onCaptureChange 时行为与现状完全一致(无错误)", async () => {
+      const controls = mockControls({ commands: sampleCommands() });
+      render(<PiCommandPalette controls={controls} value="/" onChange={vi.fn()} />);
+      expect(await screen.findByRole("listbox")).toBeInTheDocument();
+    });
+  });
 });

@@ -38,4 +38,15 @@ export default defineAgent({
   // model omitted → inherits ~/.pi/agent/settings.json defaultProvider/defaultModel.
   systemPrompt: "You are hello-agent, a minimal pi-web example agent.",
   customTools: [echo],
+  // Self-contained: do NOT pull in the system's built-in tools or disk-discovered
+  // skills (e.g. ~/.pi, ~/.claude/skills). The agent runs with ONLY what this file
+  // declares.
+  //
+  // `noTools: "builtin"` disables the default built-in toolset while keeping
+  // custom (`echo`) and extension tools (`.pi/extensions/*`).
+  noTools: "builtin",
+  // `skills` is an override hook receiving the resolved (disk-discovered) skill
+  // set; returning an empty list drops every system skill. Diagnostics are
+  // preserved so resolution warnings still surface.
+  skills: ({ diagnostics }) => ({ skills: [], diagnostics }),
 });

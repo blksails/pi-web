@@ -1,7 +1,11 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "preserve",
@@ -11,27 +15,38 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
-    "next-env.d.ts",
+    ".next/types/**/*.ts",
     "app-shell-env.d.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
-    "lib/**/*.ts",
-    "test/**/*.ts",
-    "test/**/*.tsx",
     "e2e/**/*.ts",
+    "lib/**/*.ts",
+    "next-env.d.ts",
     "next.config.ts",
     "playwright.config.ts",
+    "test/**/*.ts",
+    "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next/types/**/*.ts"
+    ".next-e2e/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "packages", "examples"]
+  "exclude": [
+    "node_modules",
+    "packages",
+    "examples"
+  ]
 }

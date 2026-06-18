@@ -6,10 +6,10 @@ import { test, expect } from "@playwright/test";
  * Real browser → real Next server (PI_WEB_STUB_AGENT=1) → real handler/session/
  * SSE chain. Picks the hello-agent source, prompts, and asserts incremental
  * streamed markdown, a tool card, a collapsible reasoning block, and the
- * permission-dialog closed loop (answer → dialog closes → agent continues).
+ * inline-interaction closed loop (answer → card resolves to a trace → agent continues).
  * Also exercises the controls (stats / model selector / abort affordances).
  */
-test("custom agent: streaming reply, tool card, reasoning, permission dialog", async ({
+test("custom agent: streaming reply, tool card, reasoning, inline interaction", async ({
   page,
 }) => {
   await page.goto("/");
@@ -38,13 +38,14 @@ test("custom agent: streaming reply, tool card, reasoning, permission dialog", a
   // Collapsible reasoning block rendered.
   await expect(page.locator("[data-pi-reasoning]").first()).toBeVisible();
 
-  // Permission dialog (extension UI) appears.
-  const dialog = page.locator("[data-pi-permission-dialog]");
-  await expect(dialog).toBeVisible();
+  // Inline interaction card (extension UI) appears in the message stream.
+  const interaction = page.locator("[data-pi-interaction-active]");
+  await expect(interaction).toBeVisible();
 
-  // Answer it → dialog closes and the agent continues streaming.
+  // Answer it → the card resolves to a read-only trace and the agent continues.
   await page.locator("[data-pi-confirm-ok]").click();
-  await expect(dialog).toBeHidden();
+  await expect(interaction).toBeHidden();
+  await expect(page.locator("[data-pi-interaction-resolved]")).toBeVisible();
   await expect(messages).toContainText("Continuing");
 
   // The rich prompt-input toolbar is present (stateful submit affordance).

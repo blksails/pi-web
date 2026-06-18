@@ -74,12 +74,13 @@ test("extension-ui: sentinel prompt pushes ambient surfaces without blocking the
     "prefilled-by-extension",
   );
 
-  // Req 6.2 — the interactive confirm dialog is NOT blocked by the pushes: it
+  // Req 6.2 — the interactive confirm card is NOT blocked by the pushes: it
   // remains visible and answerable, and the conversation continues afterwards.
-  const dialog = page.locator("[data-pi-permission-dialog]");
-  await expect(dialog).toBeVisible();
+  const interaction = page.locator("[data-pi-interaction-active]");
+  await expect(interaction).toBeVisible();
   await page.locator("[data-pi-confirm-ok]").click();
-  await expect(dialog).toBeHidden();
+  await expect(interaction).toBeHidden();
+  await expect(page.locator("[data-pi-interaction-resolved]")).toBeVisible();
   await expect(page.locator("[data-pi-chat-messages]")).toContainText(
     "Continuing",
   );
