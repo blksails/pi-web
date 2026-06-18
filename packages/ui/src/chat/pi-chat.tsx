@@ -44,6 +44,7 @@ import { PartRenderer } from "./part-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiPermissionDialog } from "../dialog/pi-permission-dialog.js";
 import {
+  ChatError,
   Conversation,
   Message,
   PromptInput,
@@ -193,7 +194,17 @@ export function PiChat({
   }, [registry]);
 
   const chat = useChat(transport === undefined ? {} : { transport });
-  const { messages, sendMessage, status, stop } = chat;
+  const { messages, sendMessage, status, stop, error } = chat;
+
+  // 错误态呈现文本:AI SDK 的 `chat.error` 为 `Error | undefined`,其 `.message` 即真实
+  // 错误信息;`status==="error"` 同样表示错误态。用户中止(abort)不置 `chat.error`,
+  // 故此处仅在确有错误时取文本,中止/正常态保持 undefined(ChatError 自身对空 message 不渲染)。
+  const errorMessage: string | undefined =
+    error !== undefined
+      ? error.message
+      : status === "error"
+        ? "An error occurred."
+        : undefined;
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
@@ -543,6 +554,9 @@ export function PiChat({
                     </Message>
                   );
                 })}
+                {/* 错误态呈现:仅在 chat.error 存在(或 status==="error")时渲染,
+                    中止/正常态 errorMessage 为 undefined → ChatError 自身返回 null(Req 1.2/4.2)。 */}
+                <ChatError message={errorMessage} />
               </div>
             </Conversation>
 

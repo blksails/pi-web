@@ -24,7 +24,7 @@
   - 完成判据:元件单测覆盖"空→不渲染""非空→alert 角色+文本";`tsc --noEmit`(ui)通过
   - _Requirements: 1.2, 2.4, 4.2_
   - _Boundary: packages/ui/src/elements/chat-error.tsx_
-- [ ] 2.2 在 pi-chat 接线 useChat 错误态到错误元件
+- [x] 2.2 在 pi-chat 接线 useChat 错误态到错误元件
   - 从 `useChat` 取错误态(`error`/`status`),把错误信息传入错误元件并接入既有布局;中止态不进入错误呈现
   - 完成判据:错误态存在时渲染错误元件且文本为错误信息;无错误/中止态时不渲染;`tsc --noEmit`(ui)通过
   - _Requirements: 1.2, 4.2_
