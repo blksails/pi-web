@@ -51,11 +51,12 @@ test("rich chat: basic conversation streams a reply (Req 11.3)", async ({
   const messages = page.locator("[data-pi-chat-messages]");
   await expect(messages).toContainText("Hello");
 
-  // The stub pauses the turn awaiting the permission answer → finish the loop.
-  const dialog = page.locator("[data-pi-permission-dialog]");
-  await expect(dialog).toBeVisible();
+  // The stub pauses the turn awaiting the interaction answer → finish the loop.
+  const interaction = page.locator("[data-pi-interaction-active]");
+  await expect(interaction).toBeVisible();
   await page.locator("[data-pi-confirm-ok]").click();
-  await expect(dialog).toBeHidden();
+  await expect(interaction).toBeHidden();
+  await expect(page.locator("[data-pi-interaction-resolved]")).toBeVisible();
   await expect(messages).toContainText("Continuing");
 });
 
@@ -184,10 +185,10 @@ test("rich chat: image attachment becomes a chip and is sent with the prompt (Re
   await expect(page.locator("[data-pi-attachment-chip]")).toHaveCount(0);
 
   // Finish the paused turn.
-  const dialog = page.locator("[data-pi-permission-dialog]");
-  await expect(dialog).toBeVisible();
+  const interaction = page.locator("[data-pi-interaction-active]");
+  await expect(interaction).toBeVisible();
   await page.locator("[data-pi-confirm-ok]").click();
-  await expect(dialog).toBeHidden();
+  await expect(interaction).toBeHidden();
 });
 
 test("rich chat: fork unavailable → branch controls hidden, conversation stays linear (Req 8.4)", async ({

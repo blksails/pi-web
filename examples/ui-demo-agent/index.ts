@@ -13,7 +13,7 @@
  *     - ctx.ui.setStatus(key, text|undefined)  → 顶部状态条;传 undefined 清除该 key(不阻塞)
  *     - ctx.ui.notify(message, type?)          → 通知浮层 info|warning|error(不阻塞)
  *
- * 在 pi-web 里:交互类经 RPC 发 `extension_ui_request` 帧 → 前端弹 <PiPermissionDialog> →
+ * 在 pi-web 里:交互类经 RPC 发 `extension_ui_request` 帧 → 前端在消息流末尾内联呈现 <PiInteraction> →
  * 应答经 `ui-response` 回传;ambient 类(notify/setStatus)推送到前端通知浮层 / 状态条。
  * 在 pi CLI 里则渲染成终端弹窗 / 状态行 / 通知。同一份 agent 两端通用。
  *

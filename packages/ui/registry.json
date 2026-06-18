@@ -7,7 +7,7 @@
       "name": "chat",
       "type": "registry:block",
       "title": "PiChat",
-      "description": "拖入式 pi 聊天组件:useChat(PiTransport) + part 分派 + 控制面板 + 权限弹窗 + 插槽。",
+      "description": "拖入式 pi 聊天组件:useChat(PiTransport) + part 分派 + 控制面板 + 内联交互卡 + 插槽。",
       "dependencies": [
         "@pi-web/react",
         "ai",
@@ -26,7 +26,7 @@
         { "path": "src/chat/slots.ts", "type": "registry:lib" },
         { "path": "src/parts/pi-tool-part.tsx", "type": "registry:component" },
         { "path": "src/parts/pi-reasoning.tsx", "type": "registry:component" },
-        { "path": "src/dialog/pi-permission-dialog.tsx", "type": "registry:component" },
+        { "path": "src/elements/pi-interaction.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-model-selector.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-thinking-level.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-session-stats.tsx", "type": "registry:component" },
@@ -65,20 +65,19 @@
       ]
     },
     {
-      "name": "pi-permission-dialog",
+      "name": "pi-interaction",
       "type": "registry:component",
-      "title": "PiPermissionDialog",
-      "description": "扩展 UI 弹窗(select/confirm/input/editor)。",
+      "title": "PiInteraction",
+      "description": "扩展 UI 交互内联卡(select/confirm/input/editor + 应答留痕),渲染于消息流末尾。",
       "dependencies": [
         "@pi-web/react",
-        "@radix-ui/react-dialog",
         "lucide-react",
         "clsx",
         "tailwind-merge"
       ],
       "files": [
-        { "path": "src/dialog/pi-permission-dialog.tsx", "type": "registry:component" },
-        { "path": "src/ui/dialog.tsx", "type": "registry:ui" },
+        { "path": "src/elements/pi-interaction.tsx", "type": "registry:component" },
+        { "path": "src/ui/card.tsx", "type": "registry:ui" },
         { "path": "src/ui/button.tsx", "type": "registry:ui" },
         { "path": "src/lib/cn.ts", "type": "registry:lib" }
       ]

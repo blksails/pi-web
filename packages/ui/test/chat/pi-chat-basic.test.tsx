@@ -28,15 +28,18 @@ describe("PiChatBasic 装配", () => {
     ).toBeInTheDocument();
   });
 
-  it("extensionUI.current 存在时弹出权限弹窗", () => {
-    render(
+  it("extensionUI.current 存在时呈现内联交互卡(非模态)", () => {
+    const { container } = render(
       <PiChatBasic
         session={mockSession()}
         extensionUI={mockExtensionUI({ current: selectRequest() })}
         showControls={false}
       />,
     );
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      container.querySelector("[data-pi-interaction-active]"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("渲染 header/footer/sidebar/messageActions 插槽", () => {

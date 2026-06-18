@@ -45,7 +45,7 @@ describe("@pi-web/ui public exports", () => {
     expect(typeof ui.PiThinkingLevel).toBe("function");
     expect(typeof ui.PiSessionStats).toBe("function");
     expect(typeof ui.PiCommandPalette).toBe("function");
-    expect(typeof ui.PiPermissionDialog).toBe("function");
+    expect(typeof ui.PiInteraction).toBe("function");
     expect(typeof ui.createRendererRegistry).toBe("function");
     expect(typeof ui.cn).toBe("function");
   });

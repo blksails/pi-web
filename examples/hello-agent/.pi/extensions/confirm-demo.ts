@@ -1,11 +1,11 @@
 /**
- * confirm-demo — a `.pi/` resource sample that drives the permission-dialog
+ * confirm-demo — a `.pi/` resource sample that drives the inline-interaction
  * (extension UI) closed loop.
  *
  * When activated, the extension asks the host for a `confirm` decision before
  * proceeding. The pi-web server forwards this as an `extension_ui_request`
- * frame; the browser renders <PiPermissionDialog>, the user answers, and the
- * response is posted back to the session so the agent continues (Req 7 / 8.3).
+ * frame; the browser renders an inline <PiInteraction> card, the user answers,
+ * and the response is posted back to the session so the agent continues (Req 7 / 8.3).
  *
  * This sample documents the authoring shape for real mode. The deterministic
  * e2e drives the same closed loop through the stub agent (lib/app/
