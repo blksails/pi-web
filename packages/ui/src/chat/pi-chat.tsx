@@ -42,7 +42,6 @@ import {
 } from "@pi-web/react";
 import { PartRenderer } from "./part-renderer.js";
 import type { PiChatSlots } from "./slots.js";
-import { PiPermissionDialog } from "../dialog/pi-permission-dialog.js";
 import {
   ChatError,
   Conversation,
@@ -60,12 +59,14 @@ import {
   StatusBar,
   Widgets,
   type WidgetItem,
+  PiInteraction,
 } from "../elements/index.js";
 import {
   defaultRendererRegistry,
   type RendererRegistry,
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
+import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { cn } from "../lib/cn.js";
 
 export interface PiChatProps {
@@ -406,12 +407,22 @@ export function PiChat({
 
   // widget 区(上方)+ 输入框 + widget 区(下方)的复用片段:空态与会话态两分支共用,
   // 避免重复(Widgets 元件按 placement 过滤,无匹配自身返回 null)。
+  // 外包 relative 容器以承载命令补全浮层的 absolute 叠加(R6.1/6.2)。
   const inputWithWidgets = (
-    <>
+    <div className="relative" data-pi-input-wrapper>
+      {controls !== undefined ? (
+        <div className="absolute bottom-full left-0 right-0 z-40">
+          <PiCommandPalette
+            controls={controls}
+            value={input}
+            onChange={setInput}
+          />
+        </div>
+      ) : null}
       <Widgets widgets={widgetItems} placement="aboveEditor" />
       {promptInput}
       <Widgets widgets={widgetItems} placement="belowEditor" />
-    </>
+    </div>
   );
 
   // 内部扩展头部:title 存在或 statuses 非空时渲染(独立于 slots.header)。
@@ -497,6 +508,13 @@ export function PiChat({
                 />
               </div>
 
+              {/* 空态兜底:交互请求亦可在欢迎页内联呈现。 */}
+              {extensionUI !== undefined ? (
+                <div className="mb-4">
+                  <PiInteraction extensionUI={extensionUI} />
+                </div>
+              ) : null}
+
               {inputWithWidgets}
             </div>
           </div>
@@ -557,6 +575,10 @@ export function PiChat({
                 {/* 错误态呈现:仅在 chat.error 存在(或 status==="error")时渲染,
                     中止/正常态 errorMessage 为 undefined → ChatError 自身返回 null(Req 1.2/4.2)。 */}
                 <ChatError message={errorMessage} />
+                {/* 扩展 UI 交互内联卡(取代模态弹窗):渲染于消息流末尾,随流滚动。 */}
+                {extensionUI !== undefined ? (
+                  <PiInteraction extensionUI={extensionUI} />
+                ) : null}
               </div>
             </Conversation>
 
@@ -579,10 +601,6 @@ export function PiChat({
           <footer data-pi-chat-footer>{slots.footer}</footer>
         ) : null}
       </div>
-
-      {extensionUI !== undefined ? (
-        <PiPermissionDialog extensionUI={extensionUI} />
-      ) : null}
 
       {/* isBusy 标记供宿主/测试观察流式态(也由 SubmitButton 反映)。 */}
       <span hidden data-pi-busy={isBusy ? "true" : "false"} />

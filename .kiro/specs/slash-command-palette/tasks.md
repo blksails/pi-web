@@ -17,7 +17,7 @@
   - _Boundary: PiCommandPalette_
 
 - [ ] 2. 在富聊天装配层接入与协调
-- [ ] 2.1 接入命令补全浮层并完成触发、导航、选中填充与执行沿用
+- [x] 2.1 接入命令补全浮层并完成触发、导航、选中填充与执行沿用
   - 在 `PiChat` 共享输入区上方以绝对定位叠加渲染命令补全浮层,不占布局流、不顶高输入框;层级取 `z-40`(低于通知浮层 `z-50`、高于内容)使其可见可交互;仅在控制能力可用时渲染。
   - 输入以 "/" 开头进入命令模式;会话就绪后经既有拉取得到候选并按输入过滤展示;复用浮层既有键盘/鼠标导航与 ARIA。
   - 选中命令时把输入框填充为 `"/name "`(命令名后带空格)且不发送;用户补参后按 Enter 正常提交;以 "/" 开头的消息原样发出,不在 web 端解析或展开。
@@ -58,3 +58,6 @@
   - 完成态:新增 e2e 规约通过,既有 `e2e/browser/rich-chat.e2e.ts` 不回归。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.2, 3.3, 4.2, 5.1, 5.2, 6.1, 6.2, 7.2, 7.3, 8.1_
   - _Depends: 2.1, 2.2, 2.3_
+
+## Implementation Notes
+- 2.1:本特性与并行特性 `extension-ui-inline-interaction`(`PiPermissionDialog`→`PiInteraction` 重命名)共享 `pi-chat.tsx` 工作树。该重构遗漏了 `packages/ui/src/index.ts` 的 `PiInteraction` 顶层导出,致 `@pi-web/ui` typecheck/测试一度 RED;已按用户指向(`ui.PiInteraction`)补上该导出使包恢复绿色(221/221)。重构文件(`index.ts`、`pi-chat-basic.tsx`、`elements/pi-interaction.tsx`)属并行特性、未纳入本 spec 的任务提交,由其所有者提交。
