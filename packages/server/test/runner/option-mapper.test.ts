@@ -68,6 +68,112 @@ describe("mapResourceLoaderOptions (resource-class fields, Req 3.1)", () => {
   });
 });
 
+describe("mapResourceLoaderOptions allowExtensions (Req 2.2/2.3/2.4/3.2/3.4/5.2)", () => {
+  it("maps empty allowExtensions to noExtensions=true without extensionsOverride (Req 2.2/2.3/3.4)", () => {
+    const { resourceLoaderOptions } = mapResourceLoaderOptions({ allowExtensions: [] });
+    expect(resourceLoaderOptions.noExtensions).toBe(true);
+    expect("extensionsOverride" in resourceLoaderOptions).toBe(false);
+  });
+
+  it("maps non-empty allowExtensions to an extensionsOverride function without noExtensions (Req 3.2)", () => {
+    const { resourceLoaderOptions } = mapResourceLoaderOptions({ allowExtensions: ["keep"] });
+    expect(typeof resourceLoaderOptions.extensionsOverride).toBe("function");
+    expect("noExtensions" in resourceLoaderOptions).toBe(false);
+  });
+
+  it("injects neither key when allowExtensions is absent (Req 5.2 — preserve SDK defaults)", () => {
+    const { resourceLoaderOptions } = mapResourceLoaderOptions({});
+    expect("noExtensions" in resourceLoaderOptions).toBe(false);
+    expect("extensionsOverride" in resourceLoaderOptions).toBe(false);
+  });
+
+  // --- Behavior of the override returned for a non-empty whitelist ---
+  // These tests actually CALL extensionsOverride(base) and assert the filtered
+  // result, so that mutants like "filter → false" (drop all) or "drop ...base"
+  // (lose errors/runtime) are killed.
+
+  type LoadExtensionsResult = Parameters<
+    NonNullable<
+      NonNullable<
+        ReturnType<typeof mapResourceLoaderOptions>["resourceLoaderOptions"]["extensionsOverride"]
+      >
+    >
+  >[0];
+
+  /** Minimal controlled fake of a single discovered extension (only `path` is read). */
+  function fakeExtension(path: string): LoadExtensionsResult["extensions"][number] {
+    return { path } as unknown as LoadExtensionsResult["extensions"][number];
+  }
+
+  /** Minimal controlled fake of a LoadExtensionsResult with sentinel errors/runtime. */
+  function fakeBase(
+    paths: string[],
+    extra: { errors?: unknown; runtime?: unknown } = {},
+  ): LoadExtensionsResult {
+    return {
+      extensions: paths.map(fakeExtension),
+      errors: extra.errors,
+      runtime: extra.runtime,
+    } as unknown as LoadExtensionsResult;
+  }
+
+  it("override keeps whitelisted + inline + explicit, drops the rest, and passes errors/runtime through (Req 3.2/3.3/2.4)", () => {
+    const errorsSentinel = [{ path: "x", error: "e" }];
+    const runtimeSentinel = { __runtime: Symbol("runtime") };
+
+    const { resourceLoaderOptions } = mapResourceLoaderOptions({
+      allowExtensions: ["keep"],
+      extensions: ["./explicit.js"],
+    });
+    const override = resourceLoaderOptions.extensionsOverride;
+    expect(typeof override).toBe("function");
+
+    const base = fakeBase(
+      [
+        "/some/dir/keep.js",
+        "/some/dir/drop.js",
+        "<inline:1>",
+        "/other/dir/explicit.js",
+      ],
+      { errors: errorsSentinel, runtime: runtimeSentinel },
+    );
+
+    const result = override!(base);
+
+    const keptPaths = result.extensions.map((e) => e.path);
+    expect(keptPaths).toEqual([
+      "/some/dir/keep.js", // named whitelist match
+      "<inline:1>", // factory-appended item
+      "/other/dir/explicit.js", // explicit string-path appended item
+    ]);
+    expect(keptPaths).not.toContain("/some/dir/drop.js"); // dropped
+
+    // errors/runtime threaded through untouched (kills "drop ...base" mutant).
+    expect(result.errors).toBe(errorsSentinel);
+    expect(result.runtime).toBe(runtimeSentinel);
+  });
+
+  it("override yields an empty extensions list (and does not throw) when nothing matches the whitelist (Req 3.5)", () => {
+    const { resourceLoaderOptions } = mapResourceLoaderOptions({
+      allowExtensions: ["missing"],
+    });
+    const override = resourceLoaderOptions.extensionsOverride;
+    expect(typeof override).toBe("function");
+
+    const base = fakeBase([
+      "/some/dir/alpha.js",
+      "/some/dir/beta.js",
+      "/some/dir/gamma.js",
+    ]);
+
+    let result!: LoadExtensionsResult;
+    expect(() => {
+      result = override!(base);
+    }).not.toThrow();
+    expect(result.extensions).toEqual([]);
+  });
+});
+
 describe("mapSessionFields (session-class fields, Req 3.2/3.3)", () => {
   it("threads every provided session field through unchanged", () => {
     const def: AgentDefinition = {
