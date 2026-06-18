@@ -212,6 +212,19 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+
+  // 浮动底栏(会话态):测其实时高度,给滚动消息区补等量底部留白,使末条消息能滚到
+  // 输入框下方而非被永久遮挡。callback ref + ResizeObserver 自适应多行/附件/widget 撑高。
+  const [dockHeight, setDockHeight] = React.useState<number>(0);
+  const dockObserverRef = React.useRef<ResizeObserver | null>(null);
+  const dockRef = React.useCallback((el: HTMLDivElement | null): void => {
+    dockObserverRef.current?.disconnect();
+    if (el === null) return;
+    setDockHeight(el.offsetHeight);
+    const ro = new ResizeObserver(() => setDockHeight(el.offsetHeight));
+    ro.observe(el);
+    dockObserverRef.current = ro;
+  }, []);
   // 命令模式 Enter 让位:palette 上报"命令模式且有候选"态,由此决定是否抑制 Enter 提交(R4.2)。
   const [commandCapturing, setCommandCapturing] = React.useState<boolean>(false);
 
@@ -405,7 +418,9 @@ export function PiChat({
       toolbar={toolbar}
       rows={3}
       placeholder={placeholder ?? DEFAULT_PLACEHOLDER}
-      className="rounded-3xl border-[hsl(var(--border))] px-4 py-3 shadow-sm"
+      // 浮动底栏观感:半透明 + 背景模糊(消息从其下方滚过时透出模糊残影)+ 抬高阴影。
+      // bg-*/65 经 twMerge 覆盖 PromptInput 基础的不透明 bg;无 backdrop-filter 时回落 /80。
+      className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
     />
@@ -526,11 +541,15 @@ export function PiChat({
             </div>
           </div>
         ) : (
-          // 会话态:滚动消息区 + 紧凑建议气泡 + 置底输入框。
-          <>
-            <Conversation className="flex-1" fadeBottom>
-              {/* pb-8:底部留白,使末条消息滚到底部时不硬贴输入框(配合 Conversation 的渐隐遮罩)。 */}
-              <div className="mx-auto w-full max-w-3xl space-y-4 pt-3 pb-8" data-pi-chat-messages>
+          // 会话态:全高滚动消息区 + 浮动底部输入栏(半透明模糊,叠在对话之上,消息滚到其下方)。
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <Conversation className="flex-1">
+              {/* paddingBottom 动态等于浮动底栏高度 + 间距:末条消息可滚到输入框下方,不被永久遮挡。 */}
+              <div
+                className="mx-auto w-full max-w-3xl space-y-4 pt-3"
+                data-pi-chat-messages
+                style={{ paddingBottom: dockHeight + 16 }}
+              >
                 {messages.map((message: UIMessage) => {
                   const branch = branches.branchOf(message.id);
                   const branchProps =
@@ -590,11 +609,22 @@ export function PiChat({
               </div>
             </Conversation>
 
-            {/* pt-2:与对话区留 8px 间距,弱化输入框与消息的硬衔接。 */}
-            <div className="mx-auto w-full max-w-3xl pt-2">
-              {inputWithWidgets}
+            {/* 浮动底部输入栏:absolute 叠在对话之上;容器 pointer-events-none 让两侧留白可点透到
+                消息,仅输入框本身 pointer-events-auto。上沿渐隐遮罩让消息进入输入框前柔和淡出。 */}
+            <div
+              ref={dockRef}
+              data-pi-input-dock
+              className="pointer-events-none absolute inset-x-0 bottom-0"
+            >
+              <div
+                aria-hidden="true"
+                className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
+              />
+              <div className="pointer-events-auto mx-auto w-full max-w-3xl pb-2">
+                {inputWithWidgets}
+              </div>
             </div>
-          </>
+          </div>
         )}
 
         {slots?.footer !== undefined ? (
