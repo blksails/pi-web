@@ -169,7 +169,7 @@ function translateAssistantMessageEvent(
         frames: [
           makeUiMessageChunkFrame({
             type: "error",
-            errorText: "assistant message stream error",
+            errorText: ame.error.errorMessage ?? FALLBACK_ERROR_TEXT,
           }),
         ],
         ctx,

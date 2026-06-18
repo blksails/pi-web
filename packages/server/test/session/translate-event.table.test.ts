@@ -398,17 +398,33 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(r.frames)).toEqual(["finish"]);
   });
 
-  it("message_update.error (reason=error) → error chunk with errorText", () => {
+  it("message_update.error (reason=error) → error chunk with real errorText (not hardcoded)", () => {
+    const r = translateEvent(
+      messageUpdate({
+        type: "error",
+        reason: "error",
+        error: { ...PARTIAL, stopReason: "error", errorMessage: "X" },
+      }),
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error"]);
+    const c = chunkAt(r.frames);
+    if (c.type !== "error") throw new Error("expected error chunk");
+    expect(c.errorText).toBe("X");
+  });
+
+  it("message_update.error (reason=error) without errorMessage → fallback errorText", () => {
     const r = translateEvent(
       messageUpdate({ type: "error", reason: "error", error: PARTIAL }),
       createTranslationContext(),
     );
     expectValidFrames(r.frames);
     expect(chunkTypes(r.frames)).toEqual(["error"]);
-    expect(chunkAt(r.frames)).toMatchObject({ type: "error" });
     const c = chunkAt(r.frames);
     if (c.type !== "error") throw new Error("expected error chunk");
     expect(typeof c.errorText).toBe("string");
+    expect(c.errorText.length).toBeGreaterThan(0);
   });
 
   it("message_update.error (reason=aborted) → abort chunk", () => {

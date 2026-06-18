@@ -7,7 +7,7 @@
   - `willRetry===true` 维持现状(重试反馈由既有 auto-retry 数据部件承载)
   - 完成判据:对 error/aborted/正常 三类 agent_end 输入产出对应的"错误/中止/正常结束"帧,error 帧文本等于消息的真实 `errorMessage`;`tsc --noEmit`(server)通过,无 any
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 3.2, 3.3, 4.1, 4.3, 5.1, 5.2_
-- [ ] 1.2 在 message_update 错误子事件中透传真实错误信息
+- [x] 1.2 在 message_update 错误子事件中透传真实错误信息
   - `reason==="error"` 时用子事件携带的真实 `errorMessage`(缺省用回退常量)取代硬编码文案;`reason==="aborted"` 维持中止翻译
   - 完成判据:对带 `errorMessage` 的错误子事件,产出的错误帧文本为该真实信息而非恒定占位
   - _Requirements: 2.3, 4.1_
