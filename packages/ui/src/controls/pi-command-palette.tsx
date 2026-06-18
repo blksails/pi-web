@@ -19,6 +19,8 @@ export interface PiCommandPaletteProps {
   readonly onChange: (next: string) => void;
   /** 可选:回车确认时提交(默认仅填充)。 */
   readonly onSubmit?: (command: RpcSlashCommand) => void;
+  /** 可选:命令浮层是否正在捕获按键(open && filtered.length > 0)。 */
+  readonly onCaptureChange?: (capturing: boolean) => void;
   readonly className?: string;
 }
 
@@ -35,6 +37,7 @@ export function PiCommandPalette({
   value,
   onChange,
   onSubmit,
+  onCaptureChange,
   className,
 }: PiCommandPaletteProps): React.JSX.Element | null {
   const open = isCommandMode(value);
@@ -80,6 +83,19 @@ export function PiCommandPalette({
   React.useEffect(() => {
     setActive(0);
   }, [query, open]);
+
+  // 上报捕获状态:open && 有候选 → true;否则 false。
+  // 放在早返回 `if (!open) return null` 之前以遵守 hooks 规则。
+  const onCaptureChangeRef = React.useRef(onCaptureChange);
+  onCaptureChangeRef.current = onCaptureChange;
+  const capturing = open && filtered.length > 0;
+  const prevCapturingRef = React.useRef<boolean | undefined>(undefined);
+  React.useEffect(() => {
+    if (prevCapturingRef.current !== capturing) {
+      prevCapturingRef.current = capturing;
+      onCaptureChangeRef.current?.(capturing);
+    }
+  }, [capturing]);
 
   const select = React.useCallback(
     (cmd: RpcSlashCommand): void => {
