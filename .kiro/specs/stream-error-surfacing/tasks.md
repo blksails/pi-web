@@ -12,7 +12,7 @@
   - 完成判据:对带 `errorMessage` 的错误子事件,产出的错误帧文本为该真实信息而非恒定占位
   - _Requirements: 2.3, 4.1_
   - _Depends: 1.1_
-- [ ] 1.3 为翻译层错误/中止/重试/成功补充单元测试
+- [x] 1.3 为翻译层错误/中止/重试/成功补充单元测试
   - 覆盖:终态错误产出携真实文案的错误帧、`errorMessage` 缺省时用回退、中止产出中止帧而非错误、`willRetry===true` 与 `stopReason==="stop"`/末项 toolResult 维持正常结束、已开启 text part 时失败先收尾、message_update 错误子事件透传真实文案与中止分支、auto-retry 事件仍产出重试反馈帧
   - 完成判据:`pnpm --filter @pi-web/server test`(翻译层相关)新增用例全绿;既有表驱动用例不回归(新鲜运行输出)
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1, 4.3, 5.1, 5.2, 5.4_
