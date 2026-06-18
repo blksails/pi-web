@@ -50,6 +50,8 @@ const stopMock = vi.fn(() => undefined);
 interface ChatState {
   messages: UIMessage[];
   status: ChatStatus;
+  /** 可注入的 useChat 错误(AI SDK 形状:Error | undefined);默认无错误。 */
+  error?: Error;
 }
 
 let chatState: ChatState = { messages: [], status: "ready" };
@@ -60,9 +62,10 @@ vi.mock("@ai-sdk/react", () => ({
     status: chatState.status,
     sendMessage: sendMessageMock,
     stop: stopMock,
-    // PiChat 仅用 messages/sendMessage/status/stop;其余以宽松占位满足类型。
+    // PiChat 仅用 messages/sendMessage/status/stop/error;其余以宽松占位满足类型。
     id: "chat-mock",
-    error: undefined,
+    // error 不再硬编码 undefined:由 chatState 注入,驱动 ChatError 错误态用例。
+    error: chatState.error,
     setMessages: vi.fn(),
     regenerate: vi.fn(),
     resumeStream: vi.fn(),
@@ -566,6 +569,93 @@ describe("PiChat 富交互(mock hooks)", () => {
     await user.click(screen.getByRole("button", { name: "总结" }));
     expect(sendMessageMock).toHaveBeenCalledTimes(1);
     expect(sendMessageMock.mock.calls[0]?.[0]?.text).toContain("请总结");
+  });
+});
+
+// ---- 错误呈现 + R-1 部分消息保留(Task 2.3) -------------------------------
+
+describe("PiChat 错误呈现(ChatError 接线 + R-1)", () => {
+  /** 含部分文本的助手消息(模拟错误前已流式 append 的内容)。 */
+  function partialAssistant(text: string): UIMessage {
+    return {
+      id: "m-assistant",
+      role: "assistant",
+      parts: [{ type: "text", text, state: "streaming" }],
+    } as UIMessage;
+  }
+
+  // -- 错误态(error 为含 message 的 Error)→ 渲染 ChatError(Req 1.2/2.4) ---
+  // 注:ChatError 接于会话态(非空消息)消息流末尾,这正是错误发生的真实场景
+  //(错误总在一次发送后到达,messages 至少含此前的用户/助手消息)。
+  it("error 为含 message 的 Error → 渲染 role=alert 且文本为该错误信息", () => {
+    chatState = {
+      status: "error",
+      messages: [partialAssistant("partial before error")],
+      error: new Error("Upstream model timed out"),
+    };
+    render(<PiChat session={fakeSession()} />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveAttribute("data-pi-chat-error");
+    expect(alert).toHaveTextContent("Upstream model timed out");
+  });
+
+  // -- 错误态(status==="error",无 error 对象)→ 仍渲染 ChatError(Req 1.2) -
+  it("status=error 且无 error 对象 → 仍渲染 ChatError(role=alert)", () => {
+    chatState = {
+      status: "error",
+      messages: [partialAssistant("partial before error")],
+    };
+    render(<PiChat session={fakeSession()} />);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+
+  // -- R-1:错误态不抹掉已流式的部分助手消息(关键风险)(Req 1.4) ---------
+  it("R-1:错误态下已存在的部分助手消息文本仍可见(错误呈现不丢弃部分消息)", () => {
+    chatState = {
+      status: "error",
+      messages: [partialAssistant("Here is the partial ans")],
+      error: new Error("Stream failed mid-response"),
+    };
+    render(<PiChat session={fakeSession()} />);
+
+    // 错误块出现。
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Stream failed mid-response");
+    // 关键断言:已流式的部分文本仍渲染于消息区(未被错误信号抹掉)。
+    expect(screen.getByText("Here is the partial ans")).toBeInTheDocument();
+  });
+
+  // -- 无错误态(streaming,无 error)→ 不渲染 ChatError(Req 4.2 推论) -----
+  it("无错误态(streaming,error 为 undefined)→ 不渲染 ChatError(无 alert)", () => {
+    chatState = {
+      status: "streaming",
+      messages: [partialAssistant("streaming content")],
+    };
+    render(<PiChat session={fakeSession()} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // 流式内容正常可见。
+    expect(screen.getByText("streaming content")).toBeInTheDocument();
+  });
+
+  it("无错误态(ready 空会话)→ 不渲染 ChatError(无 alert)", () => {
+    chatState = { status: "ready", messages: [] };
+    render(<PiChat session={fakeSession()} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // -- 中止态(用户停止;error undefined 且 status 非 error)→ 不渲染(R4.2) -
+  it("中止态(error undefined 且 status=ready)→ 不渲染 ChatError(R4.2)", () => {
+    // 用户停止后:AI SDK 不置 chat.error,status 回落非 error(此处 ready),
+    // 已流式的部分内容保留但不呈现错误。
+    chatState = {
+      status: "ready",
+      messages: [partialAssistant("aborted partway")],
+    };
+    render(<PiChat session={fakeSession()} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // 中止保留的部分内容仍可见。
+    expect(screen.getByText("aborted partway")).toBeInTheDocument();
   });
 });
 
