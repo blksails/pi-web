@@ -528,8 +528,9 @@ export function PiChat({
         ) : (
           // 会话态:滚动消息区 + 紧凑建议气泡 + 置底输入框。
           <>
-            <Conversation className="flex-1">
-              <div className="mx-auto w-full max-w-3xl space-y-4 py-3" data-pi-chat-messages>
+            <Conversation className="flex-1" fadeBottom>
+              {/* pb-8:底部留白,使末条消息滚到底部时不硬贴输入框(配合 Conversation 的渐隐遮罩)。 */}
+              <div className="mx-auto w-full max-w-3xl space-y-4 pt-3 pb-8" data-pi-chat-messages>
                 {messages.map((message: UIMessage) => {
                   const branch = branches.branchOf(message.id);
                   const branchProps =
@@ -589,7 +590,8 @@ export function PiChat({
               </div>
             </Conversation>
 
-            <div className="mx-auto w-full max-w-3xl">
+            {/* pt-2:与对话区留 8px 间距,弱化输入框与消息的硬衔接。 */}
+            <div className="mx-auto w-full max-w-3xl pt-2">
               {inputWithWidgets}
             </div>
           </>

@@ -24,6 +24,12 @@ export interface ConversationProps {
   readonly className?: string;
   /** 视口区域的额外 className。 */
   readonly viewportClassName?: string;
+  /**
+   * 在视口底边叠加一道「背景色 → 透明」的渐隐遮罩,让滚动中的消息在贴近底部
+   * (输入框上沿)时优雅淡出,避免末条消息硬贴输入框。默认 false(不改变既有用法)。
+   * 遮罩为 `pointer-events-none` 且渲染于「回到底部」按钮之下,不影响交互与按钮可见性。
+   */
+  readonly fadeBottom?: boolean;
 }
 
 export function Conversation({
@@ -32,6 +38,7 @@ export function Conversation({
   threshold,
   className,
   viewportClassName,
+  fadeBottom = false,
 }: ConversationProps): React.JSX.Element {
   const { ref, atBottom, scrollToBottom } = useAutoScroll(
     children,
@@ -55,6 +62,15 @@ export function Conversation({
       >
         {children}
       </div>
+
+      {/* 底边渐隐遮罩:置于视口之后、按钮之前 → 盖住滚动消息底缘但不遮挡"回到底部"按钮。 */}
+      {fadeBottom ? (
+        <div
+          aria-hidden="true"
+          data-pi-conversation-fade
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
+        />
+      ) : null}
 
       {!atBottom ? (
         <div
