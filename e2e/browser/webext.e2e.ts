@@ -35,6 +35,17 @@ test("webext background: 选 source 后自定义背景渲染在消息层之下",
   const bg = page.locator("[data-pi-chat-background] .pw-webext-background-aurora");
   await expect(bg).toBeAttached();
   await expect(page.locator(".pw-webext-background-blob-a")).toBeAttached();
+
+  // 回归守卫:背景层用 -z-10,其容器必须建立独立 stacking context(isolation:isolate),
+  // 否则负 z-index 逃逸到根上下文、被 app-shell 不透明壳底(bg-background)遮挡 →
+  // 极光在 DOM 中存在却视觉上不可见(本守卫即针对该已修复 bug)。
+  const containerIsolation = await page
+    .locator("[data-pi-chat-background]")
+    .evaluate((el) => {
+      const parent = el.parentElement;
+      return parent ? getComputedStyle(parent).isolation : "no-parent";
+    });
+  expect(containerIsolation).toBe("isolate");
 });
 
 test("webext declarative: 纯声明 source 不渲染扩展区域(零 bundle, 回退默认)", async ({

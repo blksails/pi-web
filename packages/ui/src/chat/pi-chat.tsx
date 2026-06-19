@@ -803,7 +803,9 @@ export function PiChat({
         className="hidden shrink-0 md:block"
       />
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
+          app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。 */}
+      <div className="relative isolate flex min-w-0 flex-1 flex-col">
         {backgroundLayer}
 
         {slots?.header !== undefined ? (
