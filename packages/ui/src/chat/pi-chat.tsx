@@ -651,6 +651,9 @@ export function PiChat({
         <SlotHost ext={extension} slot="background" />
       </div>
     ) : null;
+  // 是否有自定义会话背景(扩展/宿主提供)。决定底栏渐隐遮罩是否渲染:遮罩硬编码
+  // fade 到不透明 hsl(var(--background)),在自定义背景上会露出一条违和的纯色矩形带。
+  const hasCustomBackground = backgroundLayer !== null;
 
   // 空态:slots.empty 优先,否则 components.EmptyState ?? 默认 EmptyState(Req 4.2/9.1)。
   const EmptyComp = components?.EmptyState ?? EmptyState;
@@ -755,10 +758,15 @@ export function PiChat({
         data-pi-input-dock
         className="pointer-events-none absolute inset-x-0 bottom-0"
       >
-        <div
-          aria-hidden="true"
-          className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
-        />
+        {/* 渐隐遮罩:仅默认背景下渲染(fade 到不透明壳底色)。自定义背景在场时省略,
+            否则不透明色带会盖住背景;输入框自身的 frosted backdrop-blur 已提供分隔。 */}
+        {hasCustomBackground ? null : (
+          <div
+            aria-hidden="true"
+            data-pi-input-dock-fade
+            className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
+          />
+        )}
         <div className={cn("pointer-events-auto pb-2", lay.content)}>
           {inputWithWidgets}
         </div>
