@@ -6,7 +6,7 @@ import {
   resolveTrustPolicy,
 } from "../../src/agent-source/trust-policy.js";
 import { assemble } from "../../src/agent-source/assemble-spawn.js";
-import type { TrustDecision } from "../../src/agent-source/types.js";
+import type { TrustDecision, TrustPolicyInput } from "../../src/agent-source/types.js";
 
 describe("decideMode", () => {
   it("custom when entry present", () => {
@@ -22,13 +22,14 @@ describe("trustPolicy", () => {
     expect(defaultTrustPolicy("anything")).toBe("ask");
   });
   it("resolveTrustPolicy returns default when none injected", () => {
-    expect(resolveTrustPolicy({})("s")).toBe("ask");
+    expect(resolveTrustPolicy({})({ dir: "/s", source: "s" })).toBe("ask");
   });
   it("resolveTrustPolicy uses injected policy", () => {
-    const policy = (s: string): TrustDecision => (s === "trusted" ? "always" : "never");
+    const policy = (input: TrustPolicyInput): TrustDecision =>
+      input.dir === "trusted" ? "always" : "never";
     const fn = resolveTrustPolicy({ trustPolicy: policy });
-    expect(fn("trusted")).toBe("always");
-    expect(fn("other")).toBe("never");
+    expect(fn({ dir: "trusted", source: "s" })).toBe("always");
+    expect(fn({ dir: "other", source: "s" })).toBe("never");
   });
 });
 

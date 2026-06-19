@@ -16,6 +16,7 @@
  */
 import * as React from "react";
 import { Mic } from "lucide-react";
+import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -108,6 +109,7 @@ export function SpeechInput({
   const recognitionRef = React.useRef<SpeechRecognitionInstance | null>(null);
   const [recording, setRecording] = React.useState(false);
   const [denied, setDenied] = React.useState(false);
+  const MicIcon = useIcon("speech", Mic);
 
   // 卸载时确保停止监听,避免悬挂的识别会话。
   React.useEffect(() => {
@@ -198,7 +200,7 @@ export function SpeechInput({
         data-pi-speech-button
         data-recording={recording ? "true" : "false"}
       >
-        <Mic className="h-4 w-4" aria-hidden="true" />
+        <MicIcon className="h-4 w-4" aria-hidden="true" />
       </Button>
       {denied ? (
         <span role="alert" data-pi-speech-denied>

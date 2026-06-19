@@ -52,7 +52,16 @@ export function PiChatBasic({
   const transport = session.transport;
 
   const chat = useChat(
-    transport === undefined ? {} : { transport },
+    transport === undefined
+      ? {}
+      : {
+          transport,
+          // 恢复模式:用历史消息初始化(PiChat 仅在 transport 就绪后首次挂载,
+          // 此时 initialMessages 已就绪,见 usePiSession 的装配顺序)。
+          ...(session.initialMessages !== undefined
+            ? { messages: session.initialMessages }
+            : {}),
+        },
   );
   const { messages, sendMessage, status } = chat;
   const [input, setInput] = React.useState<string>("");

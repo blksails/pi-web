@@ -16,6 +16,8 @@ export type {
   RouteHandler,
   InjectedRoute,
   SseOptions,
+  CreateChannelOpts,
+  ResumeMeta,
 } from "./handler.types.js";
 export {
   type AuthContext,

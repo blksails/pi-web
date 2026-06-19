@@ -13,7 +13,7 @@ registerConfigPanels();
 
 export default function SettingsPage(): React.JSX.Element {
   return (
-    <main className="mx-auto flex h-full w-full max-w-3xl flex-col gap-6 p-6">
+    <main className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-6 overflow-y-auto p-6">
       <header className="flex items-center gap-3">
         <h1 className="text-xl font-semibold">设置</h1>
         <a

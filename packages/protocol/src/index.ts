@@ -27,3 +27,6 @@ export * from "./transport/rest-dto.js";
 
 // config 层(由 object schema 生成配置 UI 的契约:表单 IR + adapter + 配置域)
 export * from "./config/index.js";
+
+// web-ext 层(agent-web-extension UI 控制层契约:manifest / ui-rpc / descriptor / artifact)
+export * from "./web-ext/index.js";

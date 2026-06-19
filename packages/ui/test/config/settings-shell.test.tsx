@@ -66,4 +66,51 @@ describe("SettingsShell", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(save).toHaveBeenCalled());
   });
+
+  it("同 group 的面板合并为一个菜单项 + Tab 切换", async () => {
+    const user = userEvent.setup();
+    const globalLoad = vi.fn(async () => ({ theme: "dark" }));
+    const projectLoad = vi.fn(async () => ({ theme: "light" }));
+    const r = createSettingsRegistry();
+    r.registerPanel(
+      makePanel({
+        id: "sandbox",
+        title: "沙箱",
+        group: "sandbox",
+        groupTitle: "沙箱",
+        groupOrder: 3,
+        tabLabel: "全局",
+        tabOrder: 1,
+        load: globalLoad,
+      }),
+    );
+    r.registerPanel(
+      makePanel({
+        id: "sandbox-project",
+        title: "沙箱",
+        group: "sandbox",
+        groupTitle: "沙箱",
+        groupOrder: 3,
+        tabLabel: "项目",
+        tabOrder: 2,
+        load: projectLoad,
+      }),
+    );
+    render(<SettingsShell registry={r} />);
+
+    // 左侧仅一个「沙箱」菜单项(不是两个),Tab 才是「全局/项目」。
+    expect(screen.getByRole("button", { name: "沙箱" })).toBeInTheDocument();
+    const globalTab = screen.getByRole("tab", { name: "全局" });
+    const projectTab = screen.getByRole("tab", { name: "项目" });
+    expect(globalTab).toHaveAttribute("aria-selected", "true");
+    expect(projectTab).toHaveAttribute("aria-selected", "false");
+
+    // 默认加载全局面板。
+    await waitFor(() => expect(globalLoad).toHaveBeenCalled());
+
+    // 切到「项目」Tab → 加载项目面板。
+    await user.click(projectTab);
+    expect(projectTab).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => expect(projectLoad).toHaveBeenCalled());
+  });
 });

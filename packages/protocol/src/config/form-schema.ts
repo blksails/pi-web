@@ -15,7 +15,8 @@ export type FieldKind =
   | "multiEnum"
   | "stringList"
   | "object"
-  | "record";
+  | "record"
+  | "objectList";
 
 /** 全部已知 FieldKind(运行期可枚举,供分派/校验)。 */
 export const FIELD_KINDS: readonly FieldKind[] = [
@@ -28,7 +29,19 @@ export const FIELD_KINDS: readonly FieldKind[] = [
   "stringList",
   "object",
   "record",
+  "objectList",
 ];
+
+/** oneOf 多态:按判别键在多个对象形状间切换(用于 objectList 项或 object 字段)。 */
+export interface FieldVariants {
+  /** 判别键(各分支共有的 const 字段,如 "type")。 */
+  readonly discriminator: string;
+  readonly cases: ReadonlyArray<{
+    readonly value: string;
+    readonly label?: string;
+    readonly fields: readonly FieldDescriptor[];
+  }>;
+}
 
 /** enum / multiEnum 的可选项。 */
 export interface EnumOption {
@@ -55,6 +68,10 @@ export interface FieldDescriptor {
   readonly step?: number;
   /** object 子字段;record 值为对象时,作为每条记录的子字段模板。 */
   readonly fields?: readonly FieldDescriptor[];
+  /** objectList:每个数组项(单一对象形状时)的字段模板。 */
+  readonly itemFields?: readonly FieldDescriptor[];
+  /** oneOf 多态(objectList 项或 object 字段的多形状判别)。 */
+  readonly variants?: FieldVariants;
   /** stringList / record 标量值的元素类型。 */
   readonly itemKind?: FieldKind;
   /** 渲染覆盖:指定自定义渲染器(覆盖默认 kind→控件)。 */

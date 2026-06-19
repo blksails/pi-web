@@ -6,6 +6,7 @@
  * 失败暴露 error(不抛未捕获)。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { UIMessage } from "ai";
 import type { CreateSessionRequest } from "@pi-web/protocol";
 import {
   createPiClient,
@@ -14,6 +15,7 @@ import {
 } from "../client/pi-client.js";
 import { PiSessionConnection } from "../sse/connection.js";
 import { PiTransport } from "../transport/pi-transport.js";
+import { agentMessagesToUiMessages } from "../transport/agent-message-to-ui.js";
 import { PiHttpError, PiProtocolVersionError } from "../client/errors.js";
 import { usePiContext } from "../provider/pi-provider.js";
 
@@ -38,6 +40,13 @@ export interface UsePiSessionOptions {
   readonly headers?: Record<string, string> | Headers;
   /** 是否在挂载时自动建会话(默认 true)。 */
   readonly autoStart?: boolean;
+  /**
+   * 恢复模式:提供已有会话标识则恢复该会话(冷恢复并续聊)而非新建;同时拉取历史消息
+   * 经 transport 装配前暴露为 {@link UsePiSessionResult.initialMessages}。
+   */
+  readonly resumeId?: string;
+  /** 会话标识就绪回调(用于将浏览器地址同步为 /session/:id)。 */
+  readonly onSessionId?: (id: string) => void;
 }
 
 export interface UsePiSessionResult {
@@ -47,6 +56,8 @@ export interface UsePiSessionResult {
   readonly connection: PiSessionConnection | undefined;
   readonly client: PiClient | undefined;
   readonly error: PiHttpError | PiProtocolVersionError | Error | undefined;
+  /** 恢复模式下的历史初始消息(供 useChat 初始化渲染);新建会话时为 undefined。 */
+  readonly initialMessages?: UIMessage[];
   readonly start: () => void;
   readonly close: () => void;
 }
@@ -61,6 +72,9 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
   const [transport, setTransport] = useState<PiTransport | undefined>(
     undefined,
   );
+  const [initialMessages, setInitialMessages] = useState<
+    UIMessage[] | undefined
+  >(undefined);
 
   const connectionRef = useRef<PiSessionConnection | undefined>(undefined);
   const clientRef = useRef<PiClient | undefined>(undefined);
@@ -95,10 +109,27 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
       try {
         const client = resolveClient();
         clientRef.current = client;
-        const res = await client.createSession(opts.create);
+        const createReq =
+          opts.resumeId !== undefined
+            ? { ...opts.create, resumeId: opts.resumeId }
+            : opts.create;
+        const res = await client.createSession(createReq);
         if (cancelled) return;
         const id = res.sessionId;
         setSessionId(id);
+        opts.onSessionId?.(id);
+
+        // 恢复模式:在装配 transport 之前拉取历史并转换为初始消息,确保 PiChat 首次
+        // 挂载(transport 就绪)时即带历史;失败不阻断续聊连接。
+        if (opts.resumeId !== undefined) {
+          try {
+            const history = await client.getMessages(id);
+            if (cancelled) return;
+            setInitialMessages(agentMessagesToUiMessages(history.messages));
+          } catch {
+            // 历史拉取失败:仍以空历史继续连接。
+          }
+        }
 
         const baseUrl = client.baseUrl;
         const connection = new PiSessionConnection({
@@ -122,7 +153,15 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
 
     // 注:start 的取消由组件卸载 effect 统一处理。
     void cancelled;
-  }, [resolveClient, opts.create, opts.fetch, opts.headers, ctx]);
+  }, [
+    resolveClient,
+    opts.create,
+    opts.fetch,
+    opts.headers,
+    opts.resumeId,
+    opts.onSessionId,
+    ctx,
+  ]);
 
   useEffect(() => {
     if (opts.autoStart !== false) start();
@@ -140,6 +179,7 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
     connection: connectionRef.current,
     client: clientRef.current,
     error,
+    initialMessages,
     start,
     close,
   };

@@ -149,6 +149,10 @@ export class MockChannel implements SessionChannel {
   emitEvent(event: AgentEvent): void {
     for (const cb of this.eventCbs) cb(event);
   }
+  /** 模拟 agent 输出一条原始 stdout 行(用于 ui-rpc 等原始行约定)。 */
+  emitLine(line: string): void {
+    for (const cb of this.lineCbs) cb(line);
+  }
   emitExtensionUIRequest(req: RpcExtensionUIRequest): void {
     for (const cb of this.extCbs) cb(req);
   }

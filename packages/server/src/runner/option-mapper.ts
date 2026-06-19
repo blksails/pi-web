@@ -86,8 +86,14 @@ export function isModelRef(
  */
 export function mapResourceLoaderOptions(
   def: AgentDefinition,
+  opts: { forcedExtensionPaths?: readonly string[] } = {},
 ): MappedResourceLoaderOptions {
   const resourceLoaderOptions: ResourceLoaderOptions = {};
+  // 强制注入路径(如 pi-sandbox):不论 agent 的 extensions/allowExtensions 如何,
+  // 始终随会话加载。SDK 在 noExtensions 下仍加载 additionalExtensionPaths;whitelist
+  // (extensionsOverride)分支须额外放行其 basename(见下)。
+  const forced = (opts.forcedExtensionPaths ?? []).filter((p) => p.length > 0);
+  const forcedBasenames = new Set(forced.map((p) => basename(p)));
 
   if (def.systemPrompt !== undefined) {
     const prompt =
@@ -96,22 +102,22 @@ export function mapResourceLoaderOptions(
     resourceLoaderOptions.systemPromptOverride = () => prompt;
   }
 
+  const additionalPaths: string[] = [...forced];
   if (def.extensions !== undefined) {
-    const paths: string[] = [];
     const factories: ExtensionFactory[] = [];
     for (const item of def.extensions) {
       if (typeof item === "string") {
-        paths.push(item);
+        additionalPaths.push(item);
       } else {
         factories.push(item);
       }
     }
-    if (paths.length > 0) {
-      resourceLoaderOptions.additionalExtensionPaths = paths;
-    }
     if (factories.length > 0) {
       resourceLoaderOptions.extensionFactories = factories;
     }
+  }
+  if (additionalPaths.length > 0) {
+    resourceLoaderOptions.additionalExtensionPaths = additionalPaths;
   }
 
   // allowExtensions: close-all / whitelist semantics for disk-discovered system
@@ -140,6 +146,7 @@ export function mapResourceLoaderOptions(
         ...base,
         extensions: base.extensions.filter((ext) => {
           if (ext.path.startsWith("<inline:")) return true; // factory-appended item
+          if (forcedBasenames.has(basename(ext.path))) return true; // 强制注入(沙箱)豁免白名单
           if (explicitPaths.has(basename(ext.path))) return true; // string-path appended item
           return allow.has(extensionName(ext)); // named whitelist
         }),
@@ -203,7 +210,12 @@ export function buildRuntimeFactory(
   def: AgentDefinition,
   trust: ResolveProjectTrust,
 ): CreateAgentSessionRuntimeFactory {
-  const { resourceLoaderOptions } = mapResourceLoaderOptions(def);
+  // 强制注入入口经 env `PI_WEB_SANDBOX_ENTRY` 由主进程下传(custom 模式);
+  // 为空则不注入(行为不变)。这是"沙箱 enforcement 不依赖默认发现"的 custom 侧落地。
+  const sandboxEntry = process.env["PI_WEB_SANDBOX_ENTRY"];
+  const forcedExtensionPaths =
+    sandboxEntry !== undefined && sandboxEntry.length > 0 ? [sandboxEntry] : [];
+  const { resourceLoaderOptions } = mapResourceLoaderOptions(def, { forcedExtensionPaths });
   const session = mapSessionFields(def);
 
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {

@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pi-web/protocol": "workspace:*"
+    "@pi-web/protocol": "workspace:*",
+    "@pi-web/web-kit": "workspace:*"
   },
   "peerDependencies": {
     "@ai-sdk/react": "^2.0.0",

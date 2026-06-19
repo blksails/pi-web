@@ -6,13 +6,14 @@
  *   - kind: "control"        → 旁路控制事件,覆盖 extension-ui / queue / stats / error(内层以 `control` 再判别)。
  *
  * 每帧含 `protocolVersion` 字段(引用 version.ts 的 protocolVersion),供前后端握手与流式协商。
- * 依赖方向:transport 仅可依赖 version 与 zod(不依赖 rpc 业务字段)。
+ * 依赖方向:transport 仅可依赖 version、zod 与 web-ext 的 ui-rpc 控制载荷(Tier3 下行响应)。
  */
 import { z } from "zod";
 import { protocolVersion } from "../version.js";
 import { UiMessageChunkSchema } from "./ui-message-chunk.js";
+import { UiRpcControlPayloadSchema } from "../web-ext/ui-rpc.js";
 
-/** control 帧负载:四类旁路控制事件,以 `control` 判别。 */
+/** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
   // extension UI 请求走旁路(非 UIMessage),前端弹 dialog 后回 /ui-response。
   z.object({
@@ -33,6 +34,8 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
     message: z.string(),
     code: z.string().optional(),
   }),
+  // Tier3 UI↔agent RPC 下行响应(按 correlationId 配对上行 REST 请求)。
+  UiRpcControlPayloadSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

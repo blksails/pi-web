@@ -27,6 +27,7 @@ import {
   File as FileIcon,
 } from "lucide-react";
 import type { PendingAttachment } from "@pi-web/react";
+import { useIcon } from "../customization/icons.js";
 import { cn } from "../lib/cn.js";
 
 /** 附件媒体类别(本期入列恒为 image,其余为未来非图片留口)。 */
@@ -237,6 +238,7 @@ function RemoveButton({
   readonly onRemove: (id: string) => void;
   readonly removeLabel: (name: string) => string;
 }): React.JSX.Element {
+  const RemoveIcon = useIcon("removeAttachment", X);
   return (
     <button
       type="button"
@@ -245,7 +247,7 @@ function RemoveButton({
       className="ml-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
       data-pi-attachment-remove
     >
-      <X className="h-3.5 w-3.5" aria-hidden="true" />
+      <RemoveIcon className="h-3.5 w-3.5" aria-hidden="true" />
     </button>
   );
 }
@@ -265,6 +267,7 @@ export function Attachments({
   className,
 }: AttachmentsProps): React.JSX.Element | null {
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const AttachIcon = useIcon("attach", Paperclip);
 
   const isDisplayOnly = DISPLAY_VARIANTS.includes(variant);
 
@@ -330,7 +333,7 @@ export function Attachments({
           className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           data-pi-attachments-add
         >
-          <Paperclip className="h-4 w-4" aria-hidden="true" />
+          <AttachIcon className="h-4 w-4" aria-hidden="true" />
           <input
             ref={inputRef}
             type="file"

@@ -5,7 +5,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./trust": "./src/trust/index.ts"
   },
   "engines": {
     "node": ">=22.19.0"

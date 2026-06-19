@@ -9,9 +9,17 @@
 export {};
 export * from "./rpc-channel/index.js";
 export * from "./agent-source/index.js";
+// trust 策略仍经子路径 `@pi-web/server/trust` 导出(消费方 pi-handler 据此导入)。
+// 历史原因是 `project-trust-policy` 曾值导入 `@earendil-works/pi-coding-agent`(其 dist 拉入
+// pi-ai 的 `node:fs/os/path` + 表达式 require),经 barrel `export *` 会令 Next external 失效、
+// 把整套 pi SDK 打进路由 bundle。**该耦合已解除**:trust 现由本地 `FsProjectTrustStore`
+// (node:fs only,见 `./trust/trust-store.ts`)直接读写 `<agentDir>/trust.json`,零 pi SDK 依赖。
+// 子路径导出予以保留(稳定的显式信任面),但不再是 external 正确性的必要条件。
 export * from "./session/index.js";
 export * from "./session-store/index.js";
 export * from "./http/index.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 export * from "./config/index.js";
+// sandbox 强制注入入口解析(仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出)。
+export { resolveSandboxEntry } from "./sandbox/entry.js";

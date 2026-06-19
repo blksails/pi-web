@@ -11,6 +11,7 @@ import type {
   ControlPayload,
   RpcExtensionUIRequest,
   SessionStats,
+  UiRpcResponse,
 } from "@pi-web/protocol";
 
 /** steering / followUp 队列快照(来自 queue control 帧)。 */
@@ -100,6 +101,16 @@ export class ControlStore {
   private readonly listeners = new Set<Listener>();
   /** editorText 信号计数器(单调递增,从 1 起)。 */
   private editorTextSeq = 0;
+  /** ui-rpc 下行响应监听(use-ui-rpc 订阅,按 correlationId 配对)。 */
+  private readonly uiRpcListeners = new Set<(r: UiRpcResponse) => void>();
+
+  /** 订阅 ui-rpc 下行响应。返回取消订阅函数。 */
+  readonly onUiRpcResponse = (cb: (r: UiRpcResponse) => void): (() => void) => {
+    this.uiRpcListeners.add(cb);
+    return () => {
+      this.uiRpcListeners.delete(cb);
+    };
+  };
 
   /** 订阅变更(useSyncExternalStore 用)。返回取消订阅函数。 */
   readonly subscribe = (listener: Listener): (() => void) => {
@@ -142,6 +153,10 @@ export class ControlStore {
         this.routeExtensionUi(
           payload.request as unknown as RpcExtensionUIRequest,
         );
+        break;
+      case "ui-rpc":
+        // Tier3 下行响应:不入快照,直接派发给 use-ui-rpc 监听(按 correlationId 配对)。
+        for (const cb of this.uiRpcListeners) cb(payload.response);
         break;
       default: {
         const _exhaustive: never = payload;

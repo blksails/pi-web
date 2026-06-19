@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+.next-e2e/
 coverage/
 *.log
 .DS_Store
@@ -16,3 +17,5 @@ next-env.d.ts
 
 # Storybook build output
 storybook-static
+
+/.pi/

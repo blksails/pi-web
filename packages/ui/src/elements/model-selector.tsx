@@ -13,6 +13,7 @@
 import * as React from "react";
 import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
 import type { ModelGroup, ModelSelection } from "@pi-web/react";
+import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -114,6 +115,9 @@ export function ModelSelector({
     if (open) searchRef.current?.focus();
   }, [open]);
 
+  const ModelIcon = useIcon("model", ChevronsUpDown);
+  const CheckIcon = useIcon("modelCheck", Check);
+
   // available=false:整个选择器不渲染(Req 4.4)。
   if (!available) return null;
 
@@ -162,7 +166,7 @@ export function ModelSelector({
         <span className="max-w-[12rem] truncate">
           {triggerText(current, groups, triggerLabel)}
         </span>
-        <ChevronsUpDown
+        <ModelIcon
           className="h-3.5 w-3.5 opacity-60"
           aria-hidden="true"
         />
@@ -227,7 +231,7 @@ export function ModelSelector({
                         )}
                         data-pi-model-option
                       >
-                        <Check
+                        <CheckIcon
                           className={cn(
                             "h-3.5 w-3.5 shrink-0",
                             selected ? "opacity-100" : "opacity-0",

@@ -1,0 +1,37 @@
+{
+  "name": "@pi-web/web-kit",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./build": "./build/index.ts"
+  },
+  "bin": {
+    "pi-web": "./build/cli.ts"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@pi-web/protocol": "workspace:*",
+    "esbuild": "^0.24.0"
+  },
+  "peerDependencies": {
+    "ai": "^5.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "ai": "^5.0.0",
+    "react": "^19.0.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

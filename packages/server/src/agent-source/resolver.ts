@@ -60,7 +60,11 @@ export async function resolve(
   const entry = await probeEntry(dir);
   const mode = decideMode(entry);
 
-  const trust = resolveTrustPolicy(opts)(policySource);
+  const trust = resolveTrustPolicy(opts)({
+    dir,
+    source: policySource,
+    requestTrust: opts.requestTrust,
+  });
   const fragment = applyTrust(mode, trust);
 
   const spawnSpec =

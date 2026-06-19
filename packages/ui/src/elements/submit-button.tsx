@@ -14,6 +14,7 @@
 import * as React from "react";
 import { type ChatStatus } from "ai";
 import { ArrowUp, Square, RotateCcw } from "lucide-react";
+import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -46,6 +47,10 @@ export function SubmitButton({
   const isBusy = status === "submitted" || status === "streaming";
   const isError = status === "error";
 
+  const SendIcon = useIcon("send", ArrowUp);
+  const StopIcon = useIcon("stop", Square);
+  const RetryIcon = useIcon("retry", RotateCcw);
+
   if (isBusy) {
     return (
       <Button
@@ -57,7 +62,7 @@ export function SubmitButton({
         className={cn("rounded-full", className)}
         data-pi-submit-state="stop"
       >
-        <Square className="h-4 w-4 fill-current" aria-hidden="true" />
+        <StopIcon className="h-4 w-4 fill-current" aria-hidden="true" />
       </Button>
     );
   }
@@ -76,9 +81,9 @@ export function SubmitButton({
       data-pi-submit-state={isError ? "error" : "send"}
     >
       {isError ? (
-        <RotateCcw className="h-4 w-4" aria-hidden="true" />
+        <RetryIcon className="h-4 w-4" aria-hidden="true" />
       ) : (
-        <ArrowUp className="h-4 w-4" aria-hidden="true" />
+        <SendIcon className="h-4 w-4" aria-hidden="true" />
       )}
     </Button>
   );

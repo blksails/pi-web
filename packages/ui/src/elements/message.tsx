@@ -15,16 +15,12 @@
  * 分支与操作按钮均带 aria-label(Req 11.4)。
  */
 import * as React from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
-  Copy,
-  Check,
-  ThumbsUp,
-  ThumbsDown,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import type { BranchInfo } from "@pi-web/react";
+import {
+  MessageActions as DefaultMessageActions,
+  type MessageActionsProps,
+} from "./message-actions.js";
 import { cn } from "../lib/cn.js";
 
 export interface MessageProps {
@@ -40,6 +36,8 @@ export interface MessageProps {
   readonly showActions?: boolean;
   /** 反馈回调(赞/踩);可选,无后端时仅本地切换视觉态。 */
   readonly onFeedback?: (value: "up" | "down") => void;
+  /** 操作区元件实现;默认内置复制/赞/踩。由装配层注入覆盖(components.MessageActions)。 */
+  readonly messageActions?: React.ComponentType<MessageActionsProps>;
   /** 分支信息(来自 useBranches.branchOf);total<=1 或缺省时不渲染分支控件(Req 8.4)。 */
   readonly branch?: BranchInfo;
   /** 切换到上一个版本(Req 8.1/8.3)。 */
@@ -47,80 +45,6 @@ export interface MessageProps {
   /** 切换到下一个版本(Req 8.1/8.3)。 */
   readonly onNext?: () => void;
   readonly className?: string;
-}
-
-const ACTION_BTN =
-  "inline-flex h-7 w-7 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:pointer-events-none disabled:opacity-50";
-
-function MessageActions({
-  copyText,
-  onFeedback,
-}: {
-  copyText?: string;
-  onFeedback?: (value: "up" | "down") => void;
-}): React.JSX.Element {
-  const [copied, setCopied] = React.useState(false);
-  const [feedback, setFeedback] = React.useState<"up" | "down" | null>(null);
-
-  const handleCopy = (): void => {
-    if (copyText === undefined) return;
-    void (async () => {
-      try {
-        await navigator.clipboard?.writeText(copyText);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      } catch {
-        // 复制失败静默降级,不阻断。
-      }
-    })();
-  };
-
-  const pick = (value: "up" | "down"): void => {
-    setFeedback((prev) => (prev === value ? null : value));
-    onFeedback?.(value);
-  };
-
-  return (
-    <div
-      className="flex items-center gap-0.5"
-      data-pi-message-actions-builtin
-    >
-      <button
-        type="button"
-        onClick={handleCopy}
-        disabled={copyText === undefined}
-        aria-label="复制"
-        className={ACTION_BTN}
-        data-pi-message-copy
-      >
-        {copied ? (
-          <Check className="h-4 w-4" aria-hidden="true" />
-        ) : (
-          <Copy className="h-4 w-4" aria-hidden="true" />
-        )}
-      </button>
-      <button
-        type="button"
-        onClick={() => pick("up")}
-        aria-label="赞"
-        aria-pressed={feedback === "up"}
-        className={cn(ACTION_BTN, feedback === "up" && "text-[hsl(var(--foreground))]")}
-        data-pi-message-like
-      >
-        <ThumbsUp className="h-4 w-4" aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        onClick={() => pick("down")}
-        aria-label="踩"
-        aria-pressed={feedback === "down"}
-        className={cn(ACTION_BTN, feedback === "down" && "text-[hsl(var(--foreground))]")}
-        data-pi-message-dislike
-      >
-        <ThumbsDown className="h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
-  );
 }
 
 function BranchControl({
@@ -173,6 +97,7 @@ export function Message({
   copyText,
   showActions,
   onFeedback,
+  messageActions,
   branch,
   onPrev,
   onNext,
@@ -183,6 +108,8 @@ export function Message({
   const showBranch = branch !== undefined && branch.total > 1;
   // 默认非用户消息展示操作行;可由 showActions 覆盖。
   const withActions = showActions ?? !isUser;
+  // 操作区元件:默认内置;可由装配层注入覆盖(components.MessageActions)。
+  const Actions = messageActions ?? DefaultMessageActions;
 
   if (isUser) {
     // 用户:右对齐浅灰圆角气泡。
@@ -233,7 +160,7 @@ export function Message({
         {withActions || showBranch ? (
           <div className="flex items-center gap-2">
             {withActions ? (
-              <MessageActions
+              <Actions
                 {...(copyText !== undefined ? { copyText } : {})}
                 {...(onFeedback ? { onFeedback } : {})}
               />

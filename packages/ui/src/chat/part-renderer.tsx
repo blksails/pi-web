@@ -11,7 +11,12 @@
 import * as React from "react";
 import type { UIMessage } from "ai";
 import { Response } from "../ui/response.js";
-import { PiReasoning, type ReasoningPart } from "../parts/pi-reasoning.js";
+import type { MarkdownProps } from "../elements/markdown.js";
+import {
+  PiReasoning,
+  type ReasoningPart,
+  type PiReasoningProps,
+} from "../parts/pi-reasoning.js";
 import { PiToolPart, type ToolPart } from "../parts/pi-tool-part.js";
 import {
   defaultRendererRegistry,
@@ -25,6 +30,10 @@ export interface PartRendererProps {
   readonly message: UIMessage;
   /** 可注入隔离的注册表实例;默认用模块级单例。 */
   readonly registry?: RendererRegistry;
+  /** 文本 part 的 Markdown 渲染实现;默认 Response。可由 components.Markdown 覆盖。 */
+  readonly markdown?: React.ComponentType<MarkdownProps>;
+  /** reasoning part 的渲染实现;默认 PiReasoning。可由 components.Reasoning 覆盖。 */
+  readonly reasoning?: React.ComponentType<PiReasoningProps>;
 }
 
 function isToolPart(part: AnyPart): part is ToolPart {
@@ -65,13 +74,17 @@ export function PartRenderer({
   part,
   message,
   registry = defaultRendererRegistry,
+  markdown,
+  reasoning,
 }: PartRendererProps): React.JSX.Element | null {
   if (part.type === "text") {
-    return <Response>{part.text}</Response>;
+    const Md = markdown ?? Response;
+    return <Md>{part.text}</Md>;
   }
 
   if (part.type === "reasoning") {
-    return <PiReasoning part={part as ReasoningPart} />;
+    const Reasoning = reasoning ?? PiReasoning;
+    return <Reasoning part={part as ReasoningPart} />;
   }
 
   if (isToolPart(part)) {

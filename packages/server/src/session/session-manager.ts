@@ -65,7 +65,7 @@ export class SessionManager {
       throw new MissingInputError("channel");
     }
 
-    const sessionId = this.idFactory();
+    const sessionId = input.id ?? this.idFactory();
     const idleMs = input.idleMs ?? this.idleMs;
     const session = new PiSession({
       id: sessionId,

@@ -15,6 +15,19 @@ export type AgentMode = "custom" | "cli";
 /** 信任决策:是否信任 `.pi/` 项目资源。 */
 export type TrustDecision = "always" | "never" | "ask";
 
+/** 信任策略输入。trust 以解析后的本地工作目录 `dir`(= spawnSpec.cwd,`.pi/` 所在)为主键。 */
+export interface TrustPolicyInput {
+  /** 解析后的本地工作目录(绝对路径)。`.pi/` 在此目录下,trust 据此判定与记忆。 */
+  dir: string;
+  /** 来源标识(原始 source 或缺省 cwd),供"按来源记忆信任"的策略使用。 */
+  source: string;
+  /** 按请求的显式信任意图(来自建会话 DTO 的 `trust` 字段);未指定为 undefined。 */
+  requestTrust?: boolean;
+}
+
+/** 信任策略:输入 → 决策。默认实现返回 "ask"(headless 安全默认)。 */
+export type TrustPolicy = (input: TrustPolicyInput) => TrustDecision;
+
 /** applyTrust 产出的信任片段,合并进 spawnSpec 的 args/env。 */
 export interface TrustFragment {
   extraArgs: string[];
@@ -73,8 +86,10 @@ export interface ResolveOptions {
   env?: Record<string, string>;
   /** 注入的基础 env(默认 {} —— 本模块不读取 process.env)。 */
   baseEnv?: Record<string, string>;
-  /** 信任策略;默认返回 "ask"。 */
-  trustPolicy?: (source: string) => TrustDecision;
+  /** 信任策略;默认返回 "ask"(headless 安全默认)。以解析后的本地 dir 为主键。 */
+  trustPolicy?: TrustPolicy;
+  /** 按请求的显式信任意图(来自建会话 DTO 的 `trust`);透传给 trustPolicy.requestTrust。 */
+  requestTrust?: boolean;
   /** 扩展源类型。 */
   sourceResolver?: SourceResolverPlugin;
   /** bootstrap runner 路径(custom 模式 spawnSpec 目标;本模块不提供 runner 本体)。 */

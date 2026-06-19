@@ -19,8 +19,9 @@ import type {
   RpcResponse,
   SseFrame,
   ThinkingLevel,
+  UiRpcRequest,
 } from "@pi-web/protocol";
-import { makeControlFrame } from "@pi-web/protocol";
+import { makeControlFrame, UiRpcResponseSchema } from "@pi-web/protocol";
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import {
@@ -86,6 +87,8 @@ export class PiSession {
         this.handleExtensionUIRequest(req),
       ),
       this.channel.onExit((info) => this.handleExit(info)),
+      // 原始行:识别 agent 侧 ui-rpc 响应约定(Tier3,Req 4.1)。
+      this.channel.onLine((line) => this.handleRawLine(line)),
     );
 
     this.touch();
@@ -153,6 +156,47 @@ export class PiSession {
     for (const frame of frames) {
       this.emitter.emit(FRAME_EVENT, frame);
     }
+  }
+
+  /**
+   * 原始行处理(Tier3 ui-rpc 下行约定):agent 以 `{"type":"ui_rpc_response","response":{...}}`
+   * 应答 ui-rpc;识别后翻译为 `control: ui-rpc` 帧广播(按 correlationId 由客户端配对)。
+   * 其余行已由 onEvent/onExtensionUIRequest 路径处理,这里忽略。
+   */
+  private handleRawLine(line: string): void {
+    if (this._status !== "active") return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      return; // 非 JSON 行忽略
+    }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      (parsed as { type?: unknown }).type !== "ui_rpc_response"
+    ) {
+      return;
+    }
+    const res = UiRpcResponseSchema.safeParse(
+      (parsed as { response?: unknown }).response,
+    );
+    if (!res.success) return; // 非法响应丢弃(Req 4.5)
+    this.emitter.emit(
+      FRAME_EVENT,
+      makeControlFrame({ control: "ui-rpc", response: res.data }),
+    );
+  }
+
+  /**
+   * Tier3 UI↔agent RPC 上行(Req 4.1):把请求经原始行约定发给 agent
+   * (`{"type":"ui_rpc","request":{...}}`)。响应经 agent 的 `ui_rpc_response` 行回流,
+   * 由 handleRawLine 翻译为 control 帧下行(本方法仅发送,不等待)。
+   */
+  uiRpc(request: UiRpcRequest): void {
+    this.assertActive();
+    this.touch();
+    this.channel.send(JSON.stringify({ type: "ui_rpc", request }));
   }
 
   // ───────────────────────── 命令转发(Req 2.x） ─────────────────────────

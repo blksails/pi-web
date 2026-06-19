@@ -51,6 +51,69 @@ describe("PiCommandPalette", () => {
     expect(screen.queryByText("/help")).not.toBeInTheDocument();
   });
 
+  describe("extensionCommands 策略", () => {
+    const sourceInfo = {
+      path: "/builtin/x",
+      source: "builtin",
+      scope: "user" as const,
+      origin: "top-level" as const,
+    };
+    const promptCmd = {
+      name: "help",
+      description: "Show help",
+      source: "prompt" as const,
+      sourceInfo,
+    };
+    const extCmd = (name: string) => ({
+      name,
+      description: `ext ${name}`,
+      source: "extension" as const,
+      sourceInfo,
+    });
+
+    it("默认隐藏所有 extension 命令(web 端会永久卡 pending)", async () => {
+      const controls = mockControls({
+        commands: [promptCmd, extCmd("sandbox")],
+      });
+      // Harness 不传 extensionCommands → 默认隐藏。
+      render(<Harness controls={controls} />);
+      expect(await screen.findByText("/help")).toBeInTheDocument();
+      expect(screen.queryByText("/sandbox")).not.toBeInTheDocument();
+    });
+
+    it("allowlist 按名放行指定 extension 命令,其余仍隐藏", async () => {
+      const controls = mockControls({
+        commands: [extCmd("sandbox"), extCmd("danger")],
+      });
+      render(
+        <PiCommandPalette
+          controls={controls}
+          value="/"
+          onChange={vi.fn()}
+          extensionCommands={{ allowlist: ["sandbox"] }}
+        />,
+      );
+      expect(await screen.findByText("/sandbox")).toBeInTheDocument();
+      expect(screen.queryByText("/danger")).not.toBeInTheDocument();
+    });
+
+    it("enabled 放行所有 extension 命令", async () => {
+      const controls = mockControls({
+        commands: [extCmd("sandbox"), extCmd("danger")],
+      });
+      render(
+        <PiCommandPalette
+          controls={controls}
+          value="/"
+          onChange={vi.fn()}
+          extensionCommands={{ enabled: true }}
+        />,
+      );
+      expect(await screen.findByText("/sandbox")).toBeInTheDocument();
+      expect(screen.getByText("/danger")).toBeInTheDocument();
+    });
+  });
+
   it("选择命令填充到输入区", async () => {
     const user = userEvent.setup();
     const controls = mockControls({ commands: sampleCommands() });

@@ -25,6 +25,19 @@ export interface SettingsPanelDescriptor extends ConfigDomainIO {
   readonly validate?: (values: FormValues) =>
     | { ok: true; values: FormValues }
     | { ok: false; errors: Readonly<Record<string, string>> };
+  /**
+   * 分组(可选):同 `group` 的多个面板合并为左侧**一个**菜单项,进入后以 Tab 切换。
+   * 缺省时该面板自成一组(行为不变)。典型:沙箱/扩展的「全局」「项目」两面板同组。
+   */
+  readonly group?: string;
+  /** 该组在左侧菜单的标题(同组取任一非空者)。缺省回退到面板 title。 */
+  readonly groupTitle?: string;
+  /** 该组在左侧菜单的排序(同组取任一)。缺省回退到面板 order。 */
+  readonly groupOrder?: number;
+  /** 组内 Tab 标签(如「全局」「项目」)。 */
+  readonly tabLabel?: string;
+  /** 组内 Tab 排序。 */
+  readonly tabOrder?: number;
 }
 
 export interface SettingsRegistry {

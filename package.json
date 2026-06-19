@@ -22,6 +22,7 @@
     "@pi-web/react": "workspace:*",
     "@pi-web/server": "workspace:*",
     "@pi-web/ui": "workspace:*",
+    "@pi-web/web-kit": "workspace:*",
     "@ai-sdk/react": "^2.0.0",
     "ai": "^5.0.0",
     "next": "^15.1.0",

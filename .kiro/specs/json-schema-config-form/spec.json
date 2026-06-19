@@ -1,0 +1,13 @@
+{
+  "feature_name": "json-schema-config-form",
+  "created_at": "2026-06-19T09:15:29Z",
+  "updated_at": "2026-06-19T09:15:29Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": { "generated": true, "approved": true },
+    "design": { "generated": true, "approved": true },
+    "tasks": { "generated": true, "approved": true }
+  },
+  "ready_for_implementation": true
+}

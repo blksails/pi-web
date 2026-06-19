@@ -28,7 +28,11 @@ export function applyTrust(mode: AgentMode, trust: TrustDecision): TrustFragment
     return fragment;
   }
 
-  // custom 模式:仅 always 向 runner 传放行信号;never/ask 不传。
+  // custom 模式:仅 always 向 runner 传放行信号。经 spawnSpec.env 注入
+  // PI_WEB_TRUST_PROJECT=1,runner(startRunner)读取后设 makeResolveProjectTrust(true)
+  // → SDK 才加载项目级 .pi/;never/ask 不传(默认不信任)。
+  // 注:applyTrust 同时被扩展安装/重载的 trust-landing 子系统复用,故此处保持 env
+  // 信号不变(改 CLI 参数会波及该子系统)。
   if (trust === "always") {
     fragment.extraEnv["PI_WEB_TRUST_PROJECT"] = "1";
   }

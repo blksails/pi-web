@@ -13,6 +13,7 @@
  */
 import * as React from "react";
 import { Globe } from "lucide-react";
+import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -35,6 +36,7 @@ export function WebSearchToggle({
   disabled = false,
   className,
 }: WebSearchToggleProps): React.JSX.Element {
+  const GlobeIcon = useIcon("webSearch", Globe);
   const handleClick = (): void => {
     // 受控:仅回传取反目标态,自身不持有状态(Req 6.2)。
     onToggle(!enabled);
@@ -53,7 +55,7 @@ export function WebSearchToggle({
       data-pi-web-search-toggle
       data-enabled={enabled ? "true" : "false"}
     >
-      <Globe className="h-4 w-4" aria-hidden="true" />
+      <GlobeIcon className="h-4 w-4" aria-hidden="true" />
     </Button>
   );
 }

@@ -22,18 +22,60 @@ export interface SettingsShellProps {
   readonly className?: string;
 }
 
+/** 一组(左侧一个菜单项):含 1+ 个面板,>1 时以 Tab 切换。 */
+interface PanelGroup {
+  readonly id: string;
+  readonly title: string;
+  readonly order: number;
+  readonly panels: readonly SettingsPanelDescriptor[];
+}
+
+/** 把已排序的扁平面板列表按 `group` 聚合为分组(组内按 tabOrder 排序、组间按 groupOrder)。 */
+function buildGroups(panels: readonly SettingsPanelDescriptor[]): PanelGroup[] {
+  const map = new Map<string, { title: string; order: number; panels: SettingsPanelDescriptor[] }>();
+  const seen: string[] = [];
+  for (const p of panels) {
+    const gid = p.group ?? p.id;
+    let g = map.get(gid);
+    if (g === undefined) {
+      g = { title: p.groupTitle ?? p.title, order: p.groupOrder ?? p.order ?? Number.MAX_SAFE_INTEGER, panels: [] };
+      map.set(gid, g);
+      seen.push(gid);
+    }
+    if (p.groupTitle !== undefined) g.title = p.groupTitle;
+    if (p.groupOrder !== undefined) g.order = p.groupOrder;
+    g.panels.push(p);
+  }
+  return seen
+    .map((id) => {
+      const g = map.get(id)!;
+      const sorted = [...g.panels].sort(
+        (a, b) => (a.tabOrder ?? 0) - (b.tabOrder ?? 0),
+      );
+      return { id, title: g.title, order: g.order, panels: sorted };
+    })
+    .sort((a, b) => (a.order === b.order ? 0 : a.order - b.order));
+}
+
 export function SettingsShell({
   registry = defaultSettingsRegistry,
   fieldRegistry,
   className,
 }: SettingsShellProps): React.JSX.Element {
-  const panels = registry.listPanels();
-  const [activeId, setActiveId] = React.useState<string | undefined>(
-    panels[0]?.id,
+  const groups = buildGroups(registry.listPanels());
+  const [activeGroupId, setActiveGroupId] = React.useState<string | undefined>(
+    groups[0]?.id,
   );
-  const active = panels.find((p) => p.id === activeId) ?? panels[0];
+  const activeGroup = groups.find((g) => g.id === activeGroupId) ?? groups[0];
 
-  if (active === undefined) {
+  // 组内当前 Tab(面板 id);切组时回退到该组首个面板。
+  const [activeTabId, setActiveTabId] = React.useState<string | undefined>(
+    activeGroup?.panels[0]?.id,
+  );
+  const activePanel =
+    activeGroup?.panels.find((p) => p.id === activeTabId) ?? activeGroup?.panels[0];
+
+  if (activeGroup === undefined || activePanel === undefined) {
     return (
       <div className={cn("p-6 text-sm text-[hsl(var(--muted-foreground))]", className)}>
         无可用设置面板
@@ -41,29 +83,60 @@ export function SettingsShell({
     );
   }
 
+  const selectGroup = (g: PanelGroup): void => {
+    setActiveGroupId(g.id);
+    setActiveTabId(g.panels[0]?.id);
+  };
+
   return (
     <div className={cn("flex gap-6", className)} data-pi-settings-shell>
       <nav className="flex w-48 shrink-0 flex-col gap-1" aria-label="设置分区">
-        {panels.map((p) => (
+        {groups.map((g) => (
           <button
-            key={p.id}
+            key={g.id}
             type="button"
-            data-pi-settings-nav={p.id}
-            aria-current={p.id === active.id}
-            onClick={() => setActiveId(p.id)}
+            data-pi-settings-nav={g.id}
+            aria-current={g.id === activeGroup.id}
+            onClick={() => selectGroup(g)}
             className={cn(
               "rounded-md px-3 py-2 text-left text-sm transition-colors",
-              p.id === active.id
+              g.id === activeGroup.id
                 ? "bg-[hsl(var(--secondary))] font-medium text-[hsl(var(--secondary-foreground))]"
                 : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
             )}
           >
-            {p.title}
+            {g.title}
           </button>
         ))}
       </nav>
       <div className="min-w-0 flex-1">
-        <ConfigPanelView key={active.id} panel={active} fieldRegistry={fieldRegistry} />
+        {activeGroup.panels.length > 1 ? (
+          <div
+            role="tablist"
+            aria-label={`${activeGroup.title} 范围`}
+            className="mb-4 inline-flex gap-1 rounded-lg bg-[hsl(var(--muted))] p-1"
+          >
+            {activeGroup.panels.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                role="tab"
+                aria-selected={p.id === activePanel.id}
+                data-pi-settings-tab={p.id}
+                onClick={() => setActiveTabId(p.id)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-sm transition-colors",
+                  p.id === activePanel.id
+                    ? "bg-[hsl(var(--background))] font-medium text-[hsl(var(--foreground))] shadow-sm"
+                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]",
+                )}
+              >
+                {p.tabLabel ?? p.title}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <ConfigPanelView key={activePanel.id} panel={activePanel} fieldRegistry={fieldRegistry} />
       </div>
     </div>
   );

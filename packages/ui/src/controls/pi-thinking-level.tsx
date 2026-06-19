@@ -4,6 +4,7 @@
  * 展示可选思考等级;选择后经 `setThinking` 提交。不向 useChat 消息流写入。
  */
 import * as React from "react";
+import { Brain } from "lucide-react";
 import type { UsePiControlsResult } from "@pi-web/react";
 import type { ThinkingLevel } from "@pi-web/protocol";
 import {
@@ -11,7 +12,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "../ui/select.js";
 import { cn } from "../lib/cn.js";
 
@@ -52,12 +52,22 @@ export function PiThinkingLevel({
 
   return (
     <div
-      className={cn("flex flex-col gap-1", className)}
+      className={cn("inline-flex flex-col gap-1", className)}
       data-pi-thinking-level
     >
       <Select onValueChange={onValueChange} disabled={op.pending}>
-        <SelectTrigger aria-label="Select thinking level" aria-busy={op.pending}>
-          <SelectValue placeholder={op.pending ? "Switching…" : "Thinking"} />
+        {/* 纯图标触发器:方圆按钮只显示 Brain 图标;隐藏 SelectTrigger 内置的下拉箭头
+            ([&>svg:last-child]:hidden),避免在工具条里占用过宽。当前等级经 title/aria 暴露。 */}
+        <SelectTrigger
+          aria-label="Select thinking level"
+          aria-busy={op.pending}
+          title={op.pending ? "Switching…" : "Thinking level"}
+          className="h-8 w-8 justify-center gap-0 rounded-full p-0 [&>svg:last-child]:hidden"
+        >
+          <Brain
+            className={cn("h-4 w-4 opacity-70", op.pending && "animate-pulse")}
+            aria-hidden="true"
+          />
         </SelectTrigger>
         <SelectContent>
           {levels.map((l) => (

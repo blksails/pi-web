@@ -13,6 +13,7 @@ import {
   SetThinkingRequestSchema,
   SteerRequestSchema,
   UiResponseRequestSchema,
+  UiRpcRequestSchema,
 } from "@pi-web/protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
@@ -182,6 +183,21 @@ export function makeUiResponseHandler(store: SessionStore): RouteHandler {
     try {
       const session = requireSession(store, ctx);
       session.respondExtensionUI(parsed.value.id, parsed.value);
+      return ack();
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
+/** POST /sessions/:id/ui-rpc → PiSession.uiRpc(Tier3,响应经 SSE control 帧回流) */
+export function makeUiRpcHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    const parsed = await validateBody(ctx.req, UiRpcRequestSchema);
+    if (!parsed.ok) return parsed.response;
+    try {
+      const session = requireSession(store, ctx);
+      session.uiRpc(parsed.value);
       return ack();
     } catch (err) {
       return mapEngineError(err);

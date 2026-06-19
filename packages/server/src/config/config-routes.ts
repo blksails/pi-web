@@ -14,6 +14,7 @@ import {
   CONFIG_FORM_SCHEMAS,
   authConfigSchema,
   settingsConfigSchema,
+  sandboxConfigSchema,
 } from "@pi-web/protocol";
 import type { ConfigDomainId } from "@pi-web/protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
@@ -26,6 +27,8 @@ import { maskSecrets, mergeSecrets } from "./secret-merge.js";
 const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   auth: authConfigSchema,
   settings: settingsConfigSchema,
+  // 全局沙箱策略(方案 A):写 `<agentDir>/sandbox.json`,即 pi-sandbox 读取的全局配置。
+  sandbox: sandboxConfigSchema,
 };
 
 /** PUT body 形状。 */

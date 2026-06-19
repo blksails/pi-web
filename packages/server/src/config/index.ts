@@ -13,3 +13,15 @@ export {
   type ConfigRoutesOptions,
   type ConfigAdminPolicy,
 } from "./config-routes.js";
+export {
+  createSandboxProjectRoutes,
+  type SandboxProjectRoutesOptions,
+  type SandboxAdminPolicy,
+} from "./sandbox-project-routes.js";
+export {
+  createExtensionsConfigRoutes,
+  settingsToForm,
+  applyFormToSettings,
+  type ExtensionsConfigRoutesOptions,
+  type ExtensionsAdminPolicy,
+} from "./extensions-config-routes.js";

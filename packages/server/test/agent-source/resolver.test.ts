@@ -7,6 +7,7 @@ import { resolve, AgentSourceResolver } from "../../src/agent-source/resolver.js
 import { SpawnSpecSchema } from "@pi-web/protocol";
 import { createBareRepo, mkTmpDir, type BareRepoFixture } from "./helpers.js";
 import { __resetInFlightForTest } from "../../src/agent-source/git-clone.js";
+import { makeProjectTrustPolicy } from "../../src/trust/index.js";
 
 const RUNNER = "/opt/pi-web/runner.js";
 const PI_CLI = "/opt/pi/dist/cli.js";
@@ -82,6 +83,34 @@ describe("resolve — trust landing", () => {
     const dir = await tmp();
     await fs.writeFile(path.join(dir, "index.ts"), "export default {};\n");
     const r = await resolve(dir, { runnerEntry: RUNNER, trustPolicy: () => "always" });
+    expect(r.spawnSpec.env["PI_WEB_TRUST_PROJECT"]).toBe("1");
+  });
+
+  // 端到端(C-P1~P4):DTO trust → requestTrust → ProjectTrustPolicy("always")
+  // → applyTrust(custom) → spawnSpec.env.PI_WEB_TRUST_PROJECT。runner 读该 env 后放行 .pi/。
+  it("custom + requestTrust:true(经 ProjectTrustPolicy)→ PI_WEB_TRUST_PROJECT env", async () => {
+    const dir = await tmp();
+    await fs.writeFile(path.join(dir, "index.ts"), "export default {};\n");
+    const agentDir = await tmp(); // 临时信任库,不污染 ~/.pi/agent
+    const trustPolicy = makeProjectTrustPolicy({ agentDir });
+    const r = await resolve(dir, {
+      runnerEntry: RUNNER,
+      trustPolicy,
+      requestTrust: true,
+    });
+    expect(r.trust).toBe("always");
+    expect(r.spawnSpec.env["PI_WEB_TRUST_PROJECT"]).toBe("1");
+  });
+
+  // 生产路径(无 DTO trust 时):trustedRoots 命中 dir → 放行,复刻 makeRealResolver
+  // 读 PI_WEB_TRUSTED_ROOTS 的接线。证明不依赖显式 trust 也能放行受信目录。
+  it("custom + trustedRoots 含 dir(无 requestTrust)→ PI_WEB_TRUST_PROJECT env", async () => {
+    const dir = await tmp();
+    await fs.writeFile(path.join(dir, "index.ts"), "export default {};\n");
+    const agentDir = await tmp();
+    const trustPolicy = makeProjectTrustPolicy({ agentDir, trustedRoots: [dir] });
+    const r = await resolve(dir, { runnerEntry: RUNNER, trustPolicy });
+    expect(r.trust).toBe("always");
     expect(r.spawnSpec.env["PI_WEB_TRUST_PROJECT"]).toBe("1");
   });
 });

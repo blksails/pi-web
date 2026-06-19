@@ -52,6 +52,7 @@ export {
 export {
   PiCommandPalette,
   type PiCommandPaletteProps,
+  type ExtensionCommandPolicy,
 } from "./controls/pi-command-palette.js";
 
 // interaction 层(原 dialog/PiPermissionDialog 重命名为 elements/PiInteraction)
@@ -97,3 +98,45 @@ export {
 
 // className 合并工具(供宿主复用)
 export { cn } from "./lib/cn.js";
+
+// 定制契约(pi-chat-customization):四维定制公开 API
+export type { ToolbarControl } from "./chat/pi-chat.js";
+export {
+  IconsProvider,
+  useIcon,
+  type IconProps,
+  type IconComponent,
+  type IconSlot,
+  type IconTheme,
+  type IconsProviderProps,
+  layoutClassNames,
+  type LayoutPreset,
+  type LayoutClassNames,
+  resolveComponent,
+  type ComponentOverrides,
+  type MessageRole,
+} from "./customization/index.js";
+export {
+  ThemeProvider,
+  useTheme,
+  type ThemeMode,
+  type ThemeProviderProps,
+  type UseThemeResult,
+} from "./theme/index.js";
+
+// web-ext(agent-web-extension):宿主 UI 集成(Tier1 区域插槽 / Tier4 artifact / Tier3 贡献点)
+export {
+  SlotHost,
+  applyExtensionRenderers,
+  resolveSlot,
+  type SlotHostProps,
+} from "./web-ext/apply-extension.js";
+export { ExtErrorBoundary } from "./web-ext/ext-error-boundary.js";
+export {
+  ArtifactSurface,
+  type ArtifactSurfaceProps,
+} from "./web-ext/artifact-surface.js";
+export {
+  createContributionsController,
+  type ContributionsController,
+} from "./web-ext/contributions-controller.js";

@@ -12,6 +12,7 @@ import { PiRpcProcess } from "../rpc-channel/index.js";
 import type { SessionChannel } from "../session/index.js";
 import { errorResponse } from "./error-map.js";
 import type {
+  CreateChannelOpts,
   PiWebHandler,
   PiWebHandlerOptions,
 } from "./handler.types.js";
@@ -25,6 +26,7 @@ import {
   makeSteerHandler,
   makeThinkingHandler,
   makeUiResponseHandler,
+  makeUiRpcHandler,
 } from "./routes/command-routes.js";
 import { makeDeleteSessionHandler } from "./routes/delete-session.js";
 import {
@@ -38,8 +40,14 @@ import {
 import { makeStreamHandler } from "./routes/stream-route.js";
 import { Router, type RouteSpec } from "./router.js";
 
-/** 默认通道工厂:经 rpc-channel 本地通道按 spawnSpec 起子进程。 */
-function defaultCreateChannel(resolved: ResolvedSource): SessionChannel {
+/**
+ * 默认通道工厂:经 rpc-channel 本地通道按 spawnSpec 起子进程。
+ * 默认实现不消费 `opts`(会话标识对齐 / 元数据由装配层注入的 createChannel 处理)。
+ */
+function defaultCreateChannel(
+  resolved: ResolvedSource,
+  _opts?: CreateChannelOpts,
+): SessionChannel {
   return new PiRpcProcess(resolved.spawnSpec) satisfies SessionChannel;
 }
 
@@ -63,6 +71,9 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
         manager,
         ...(opts.resolver !== undefined ? { resolver: opts.resolver } : {}),
         createChannel,
+        ...(opts.loadResumeMeta !== undefined
+          ? { loadResumeMeta: opts.loadResumeMeta }
+          : {}),
       }),
     },
     {
@@ -99,6 +110,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "POST",
       path: "/sessions/:id/ui-response",
       handler: makeUiResponseHandler(store),
+    },
+    {
+      method: "POST",
+      path: "/sessions/:id/ui-rpc",
+      handler: makeUiRpcHandler(store),
     },
     {
       method: "POST",

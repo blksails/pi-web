@@ -11,6 +11,10 @@ import { StringField } from "./fields/string-field.js";
 import { SecretField } from "./fields/secret-field.js";
 import { EnumField } from "./fields/enum-field.js";
 import { RecordField } from "./fields/record-field.js";
+import { BooleanField } from "./fields/boolean-field.js";
+import { StringListField } from "./fields/string-list-field.js";
+import { ObjectField } from "./fields/object-field.js";
+import { ObjectListField } from "./fields/object-list-field.js";
 import { FieldShell } from "./fields/field-shell.js";
 
 export interface FieldRendererProps extends FieldProps {
@@ -35,6 +39,10 @@ const DEFAULTS: Partial<
   secret: SecretField,
   enum: EnumField,
   record: RecordField,
+  boolean: BooleanField,
+  stringList: StringListField,
+  object: ObjectField,
+  objectList: ObjectListField,
 };
 
 export function FieldRenderer({

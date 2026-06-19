@@ -98,3 +98,27 @@ export {
   type UseSuggestionsResult,
   type Suggestion,
 } from "./hooks/use-suggestions.js";
+
+// web-ext(agent-web-extension):宿主侧加载器 + 安全门 + UI↔agent RPC client
+export {
+  verifyExtension,
+  verifyIntegrity,
+  verifySignature,
+  isApiCompatible,
+  computeSri,
+  type GateOptions,
+  type GateResult,
+} from "./web-ext/extension-gate.js";
+export {
+  loadExtension,
+  browserLoaderDeps,
+  buildImportMap,
+  type LoaderDeps,
+  type LoadOutcome,
+  type LoadExtensionInput,
+} from "./web-ext/extension-loader.js";
+export {
+  createUiRpcBus,
+  type UiRpcBus,
+  type UiRpcBusOptions,
+} from "./web-ext/ui-rpc-bus.js";

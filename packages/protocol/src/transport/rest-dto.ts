@@ -30,7 +30,9 @@ import { AgentMessageSchema } from "../rpc/model.js";
 import { RpcExtensionUIResponseSchema } from "../rpc/extension-ui.js";
 
 /**
- * 建会话请求:`{ source, cwd?, model?, env? }`。`source` 必填(agent 源标识)。
+ * 建会话请求:`{ source, cwd?, model?, env?, resumeId? }`。`source` 必填(agent 源标识)。
+ * `resumeId` 存在即"恢复已有会话"而非新建——服务端据其从持久化存储读取创建元数据
+ * (source/cwd/model)并以该标识恢复会话;缺失即新建。
  * 注意:与 SpawnSpec(四字段必填的启动规格)是不同契约,见 transport/spawn.ts。
  */
 export const CreateSessionRequestSchema = z.object({
@@ -38,6 +40,13 @@ export const CreateSessionRequestSchema = z.object({
   cwd: z.string().optional(),
   model: z.string().optional(),
   env: z.record(z.string(), z.string()).optional(),
+  resumeId: z.string().optional(),
+  /**
+   * 按请求的显式项目信任意图(门控工作目录下 `.pi/` 扩展/子代理/技能的加载)。
+   * `true` → 信任并放行(并跨会话记住);`false` → 拒绝;缺省 → 由服务端信任策略
+   * (持久化信任库 / trustedRoots / 安全默认)决定。
+   */
+  trust: z.boolean().optional(),
 });
 export type CreateSessionRequest = z.infer<typeof CreateSessionRequestSchema>;
 

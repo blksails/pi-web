@@ -1,0 +1,154 @@
+/**
+ * agentMessagesToUiMessages 单测:覆盖 user/assistant/toolResult 映射、toolResult 关联、
+ * 孤立 toolResult 降级、未知 role 跳过、空输入、id 稳定性。
+ */
+import { describe, it, expect } from "vitest";
+import type { AgentMessage } from "@pi-web/protocol";
+import { agentMessagesToUiMessages } from "../../src/transport/agent-message-to-ui.js";
+
+/** 构造测试消息(放宽类型,聚焦转换逻辑)。 */
+function msgs(list: unknown[]): readonly AgentMessage[] {
+  return list as unknown as readonly AgentMessage[];
+}
+
+describe("agentMessagesToUiMessages", () => {
+  it("空输入返回空数组", () => {
+    expect(agentMessagesToUiMessages(msgs([]))).toEqual([]);
+  });
+
+  it("user string content → 单个 text part;id 稳定为 msg-<i>", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([{ role: "user", content: "hello" }]),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.id).toBe("msg-0");
+    expect(out[0]?.role).toBe("user");
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "hello", state: "done" },
+    ]);
+  });
+
+  it("user 数组 content → text + file(image)parts", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "look" },
+            { type: "image", mimeType: "image/png", data: "AAAA" },
+          ],
+        },
+      ]),
+    );
+    const parts = out[0]?.parts ?? [];
+    expect(parts[0]).toEqual({ type: "text", text: "look", state: "done" });
+    expect(parts[1]).toMatchObject({
+      type: "file",
+      mediaType: "image/png",
+      url: "data:image/png;base64,AAAA",
+    });
+  });
+
+  it("assistant text/thinking/toolCall → text/reasoning/dynamic-tool parts", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "hmm" },
+            { type: "text", text: "answer" },
+            { type: "toolCall", id: "t1", name: "echo", arguments: { x: 1 } },
+          ],
+        },
+      ]),
+    );
+    const parts = out[0]?.parts ?? [];
+    expect(parts[0]).toEqual({ type: "reasoning", text: "hmm", state: "done" });
+    expect(parts[1]).toEqual({ type: "text", text: "answer", state: "done" });
+    expect(parts[2]).toMatchObject({
+      type: "dynamic-tool",
+      toolName: "echo",
+      toolCallId: "t1",
+      state: "input-available",
+      input: { x: 1 },
+    });
+  });
+
+  it("toolResult 并入对应 tool part(output-available)", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "t1", name: "echo", arguments: {} }],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "echo",
+          content: [{ type: "text", text: "ok" }],
+          isError: false,
+        },
+      ]),
+    );
+    // toolResult 不产生新 UIMessage,而是回填 assistant 的 tool part。
+    expect(out).toHaveLength(1);
+    const tool = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(tool.state).toBe("output-available");
+    expect(tool.output).toEqual([{ type: "text", text: "ok" }]);
+  });
+
+  it("toolResult isError → output-error + errorText", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [{ type: "toolCall", id: "t1", name: "echo", arguments: {} }],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "echo",
+          content: [{ type: "text", text: "boom" }],
+          isError: true,
+        },
+      ]),
+    );
+    const tool = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(tool.state).toBe("output-error");
+    expect(tool.errorText).toBe("boom");
+  });
+
+  it("孤立 toolResult → 独立 assistant message", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "toolResult",
+          toolCallId: "orphan",
+          toolName: "echo",
+          content: [{ type: "text", text: "late" }],
+          isError: false,
+        },
+      ]),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.role).toBe("assistant");
+    expect((out[0]?.parts ?? [])[0]).toMatchObject({
+      type: "dynamic-tool",
+      toolCallId: "orphan",
+      state: "output-available",
+    });
+  });
+
+  it("未知 role 被跳过", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        { role: "system", content: "x" },
+        { role: "user", content: "hi" },
+      ]),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.role).toBe("user");
+    // id 仍按原下标生成,保证与原始序列对齐。
+    expect(out[0]?.id).toBe("msg-1");
+  });
+});

@@ -40,3 +40,16 @@ export {
   PiInteraction,
   type PiInteractionProps,
 } from "./pi-interaction.js";
+
+// 可覆盖元件位(pi-chat-customization):抽出/新增的细粒度组件位。
+export {
+  MessageActions,
+  type MessageActionsProps,
+} from "./message-actions.js";
+export { Markdown, type MarkdownProps } from "./markdown.js";
+export {
+  ConversationBackground,
+  type ConversationBackgroundProps,
+} from "./conversation-background.js";
+export { EmptyState, type EmptyStateProps } from "./empty-state.js";
+export { StarterCard, type StarterCardProps } from "./starter-card.js";

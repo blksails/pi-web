@@ -11,5 +11,7 @@ export {
   registerFieldRendererByKind,
 } from "./field-registry.js";
 export { FieldRenderer, type FieldRendererProps } from "./field-renderer.js";
+export { ExtensionsKvField } from "./fields/extensions-kv-field.js";
+export { ConfigFilesField } from "./fields/config-files-field.js";
 export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
 export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";

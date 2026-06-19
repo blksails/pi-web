@@ -34,6 +34,17 @@ export interface RunnerArgs {
   agentDir?: string;
   /** External trust decision (default: untrusted). */
   trusted: boolean;
+  /**
+   * Explicit session id. Mirrors pi CLI semantics (main.js:255-261): if a session
+   * with this id already exists it is opened (history loaded); otherwise a new
+   * session is created with this id — aligning the persisted file id with the
+   * host's sessionId for URL-based resume.
+   */
+  sessionId?: string;
+  /** Model id recorded into the piweb.session creation metadata. */
+  model?: string;
+  /** Agent source recorded into the piweb.session creation metadata (for cold resume). */
+  sourceMeta?: string;
 }
 
 /** Raised for missing/invalid CLI arguments. */
@@ -46,14 +57,17 @@ export class RunnerArgsError extends Error {
 
 /**
  * Parse runner argv (the portion after `node script.js`). Recognizes
- * `--agent`, `--cwd`, `--agent-dir`, `--trusted`. Throws {@link RunnerArgsError}
- * when `--agent` is missing.
+ * `--agent`, `--cwd`, `--agent-dir`, `--trusted`, `--session-id`, `--model`,
+ * `--source-meta`. Throws {@link RunnerArgsError} when `--agent` is missing.
  */
 export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   let agent: string | undefined;
   let cwd: string | undefined;
   let agentDir: string | undefined;
   let trusted = false;
+  let sessionId: string | undefined;
+  let model: string | undefined;
+  let sourceMeta: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -73,6 +87,12 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
       cwd = takeValue("--cwd");
     } else if (arg === "--agent-dir" || arg!.startsWith("--agent-dir=")) {
       agentDir = takeValue("--agent-dir");
+    } else if (arg === "--session-id" || arg!.startsWith("--session-id=")) {
+      sessionId = takeValue("--session-id");
+    } else if (arg === "--model" || arg!.startsWith("--model=")) {
+      model = takeValue("--model");
+    } else if (arg === "--source-meta" || arg!.startsWith("--source-meta=")) {
+      sourceMeta = takeValue("--source-meta");
     } else if (arg === "--trusted" || arg!.startsWith("--trusted=")) {
       if (arg === "--trusted") {
         trusted = true;
@@ -89,6 +109,9 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   const resolvedCwd = cwd ?? process.cwd();
   const result: RunnerArgs = { agent, cwd: resolvedCwd, trusted };
   if (agentDir !== undefined) result.agentDir = agentDir;
+  if (sessionId !== undefined) result.sessionId = sessionId;
+  if (model !== undefined) result.model = model;
+  if (sourceMeta !== undefined) result.sourceMeta = sourceMeta;
   return result;
 }
 
@@ -104,10 +127,33 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     env: process.env,
   };
 
-  const trust = makeResolveProjectTrust(args.trusted);
+  // 信任来源:`--trusted` CLI 参数,或 custom 模式经 spawnSpec.env 注入的
+  // PI_WEB_TRUST_PROJECT=1(agent-source/trust-apply 的 custom + always 信号)。
+  // 二者任一为真即放行项目级 `.pi/`(extensions/agents/skills)。
+  const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
+  const trust = makeResolveProjectTrust(trusted);
   const factory = await loadAgentDefinition(args.agent, ctx, trust);
 
-  const sessionManager = SessionManager.create(args.cwd);
+  // open-or-create by id(对齐 pi CLI main.js:255-261):给定 --session-id 时,若该 id 的
+  // 会话文件已存在则 open 加载历史(恢复),否则以该 id 新建——使持久化文件 id 与主进程
+  // sessionId 对齐,支撑 URL 冷恢复。未给 id 则保持既有行为(随机新建)。
+  let sessionManager: SessionManager;
+  let isNewSession = true;
+  if (args.sessionId !== undefined) {
+    const existing = (await SessionManager.list(args.cwd)).find(
+      (s) => s.id === args.sessionId,
+    );
+    if (existing !== undefined) {
+      sessionManager = SessionManager.open(existing.path, undefined, args.cwd);
+      isNewSession = false;
+    } else {
+      sessionManager = SessionManager.create(args.cwd, undefined, {
+        id: args.sessionId,
+      });
+    }
+  } else {
+    sessionManager = SessionManager.create(args.cwd);
+  }
 
   // 可选:把会话镜像到配置的 SessionEntryStore(sqlite/postgres)。fs 由 pi 原生负责,
   // 不镜像(否则双写同一文件)。镜像是 best-effort 旁路,初始化失败不影响 agent。
@@ -121,6 +167,22 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       process.stderr.write(
         `runner: failed to init session store (${storeConfig.kind}): ${String(err)}\n`,
+      );
+    }
+  }
+
+  // 仅新建会话时写入 pi-web 创建元数据(source/cwd/model),供主进程冷恢复读取(custom 模式)。
+  // 放在 mirror 装配之后,使 sqlite/postgres 后端也镜像到这条 custom entry;fs 由 pi 原生写。
+  if (isNewSession) {
+    try {
+      sessionManager.appendCustomEntry("piweb.session", {
+        source: args.sourceMeta,
+        cwd: args.cwd,
+        ...(args.model !== undefined ? { model: args.model } : {}),
+      });
+    } catch (err) {
+      process.stderr.write(
+        `runner: failed to write piweb.session metadata: ${String(err)}\n`,
       );
     }
   }

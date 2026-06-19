@@ -116,6 +116,8 @@ export interface CreateSessionInput {
   readonly resolved: ResolvedSource;
   readonly channel: SessionChannel;
   readonly idleMs?: number;
+  /** 显式会话标识;提供时优先于 idFactory(用于主进程 id 与持久化文件 id 对齐 / 恢复)。 */
+  readonly id?: SessionId;
 }
 
 /** 默认空闲回收阈值(毫秒)。 */
