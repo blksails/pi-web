@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><title>artifact</title></head>
+  <body style="font-family: system-ui; margin: 0; padding: 12px">
+    <div id="root">webext-artifact-agent · sandboxed artifact</div>
+    <script>
+      // 加载后向宿主报告 ready 与高度(postMessage 契约)。
+      parent.postMessage({ kind: "ready", manifestId: "webext-artifact" }, "*");
+      parent.postMessage({ kind: "resize", height: document.body.scrollHeight }, "*");
+    </script>
+  </body>
+</html>

@@ -162,6 +162,62 @@ export class PiSessionConnection {
   }
 
   /**
+   * 开一条持久的「仅 ui-rpc 控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,
+   * 见 sse-response「不影响同会话其他订阅者」)。仅把 `control: ui-rpc` 帧应用到 controlStore
+   * (派发给 ui-rpc 监听,按 correlationId 配对),其余帧(消息块 / 其他 control 子类)丢弃——
+   * 故不会与 per-prompt 流重复应用 ambient(extension-ui)帧;ui-rpc 帧即便双发也按 correlationId
+   * 去重(未知 id 丢弃)。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递。
+   * 返回 close 函数。
+   */
+  openControlOnlyStream(): () => void {
+    const abort = new AbortController();
+    const headers = mergeHeaders(this.baseHeaders, undefined, undefined);
+    const url = joinUrl(
+      this.baseUrl,
+      `/sessions/${encodeURIComponent(this.sessionId)}/stream`,
+    );
+    const pump = async (): Promise<void> => {
+      try {
+        const res = await this.fetchImpl(url, {
+          method: "GET",
+          headers,
+          signal: abort.signal,
+        });
+        if (!res.ok || res.body === null) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const { frames, rest } = parseSse(buffer);
+          buffer = rest;
+          for (const ev of frames) {
+            if (ev.data === "") continue;
+            let json: unknown;
+            try {
+              json = JSON.parse(ev.data);
+            } catch {
+              continue;
+            }
+            const result = SseFrameSchema.safeParse(json);
+            if (!result.success) continue;
+            const frame = result.data;
+            if (frame.kind === "control" && frame.payload.control === "ui-rpc") {
+              this.controlStore.applyControlFrame(frame.payload);
+            }
+          }
+        }
+      } catch {
+        // abort / 网络中断:静默(空闲控制流,不影响主流程)。
+      }
+    };
+    void pump();
+    return () => abort.abort();
+  }
+
+  /**
    * 处理单个解析出的 SSE 事件。返回 true 表示遇结束帧、流已关闭(应停止读取)。
    */
   private handleEvent(

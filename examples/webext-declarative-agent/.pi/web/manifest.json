@@ -1,0 +1,11 @@
+{
+  "id": "webext-declarative",
+  "targetApiVersion": "^0.1.0",
+  "capabilities": ["config"],
+  "config": {
+    "theme": {
+      "--pw-webext-declarative-accent": "#7c3aed"
+    },
+    "layout": "split"
+  }
+}

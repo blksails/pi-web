@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f3;
+      color: #1a1a18;
+      padding: 2rem;
+      line-height: 1.7;
+    }
+
+    /* ── Hero ─────────────────────────────────────────── */
+    .hero {
+      background: #ffffff;
+      border: 0.5px solid rgba(0,0,0,0.12);
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #e6f1fb;
+      color: #185fa5;
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero p {
+      font-size: 15px;
+      color: #555;
+      max-width: 480px;
+      margin: 0 auto 1.5rem;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 10px 24px;
+      border-radius: 8px;
+      border: 0.5px solid rgba(0,0,0,0.25);
+      background: transparent;
+      color: #1a1a18;
+      font-size: 14px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: #f0efea; }
+
+    .btn-primary {
+      background: #1a1a18;
+      color: #ffffff;
+      border-color: transparent;
+      margin-right: 8px;
+    }
+    .btn-primary:hover { opacity: 0.85; }
+
+    /* ── Stats ────────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat {
+      background: #eeede8;
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 22px;
+      font-weight: 500;
+    }
+
+    /* ── Cards ────────────────────────────────────────── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 1.5rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 0.5px solid rgba(0,0,0,0.12);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+
+    .card-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .card h3 {
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+
+    .card p {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.6;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: #aaa;
+      padding-top: 1rem;
+      border-top: 0.5px solid rgba(0,0,0,0.1);
+    }
+
+    /* ── Responsive ───────────────────────────────────── */
+    @media (max-width: 640px) {
+      .stats  { grid-template-columns: repeat(2, 1fr); }
+      .cards  { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <span class="badge">v1.0.0 · Demo</span>
+    <h1>Welcome to Demo</h1>
+    <p>这是一个简洁、现代的 HTML 演示页面，展示常见的 UI 组件和布局模式。</p>
+    <a class="btn btn-primary" href="#">快速开始</a>
+    <a class="btn" href="#">查看文档</a>
+  </section>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-label">用户数</div>
+      <div class="stat-value">12,480</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">项目数</div>
+      <div class="stat-value">3,210</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">成功率</div>
+      <div class="stat-value">99.8%</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">响应时间</div>
+      <div class="stat-value">42ms</div>
+    </div>
+  </div>
+
+  <!-- Feature Cards -->
+  <div class="cards">
+    <div class="card">
+      <div class="card-icon" style="background:#e6f1fb;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <rect x="2" y="2" width="5" height="5" rx="1" fill="#185FA5"/>
+          <rect x="9" y="2" width="5" height="5" rx="1" fill="#185FA5"/>
+          <rect x="2" y="9" width="5" height="5" rx="1" fill="#185FA5"/>
+          <rect x="9" y="9" width="5" height="5" rx="1" fill="#185FA5"/>
+        </svg>
+      </div>
+      <h3>模块化设计</h3>
+      <p>基于组件的架构，方便扩展和复用，保持一致的设计风格。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#eaf3de;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M8 2L14 5V11L8 14L2 11V5L8 2Z" stroke="#3B6D11" stroke-width="1.5" fill="none"/>
+          <circle cx="8" cy="8" r="2" fill="#3B6D11"/>
+        </svg>
+      </div>
+      <h3>安全可靠</h3>
+      <p>内置安全机制，数据加密传输，多层次权限控制保障系统安全。</p>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:#faeeda;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 12L6 6L9 9L11 5L14 12"
+                stroke="#854F0B" stroke-width="1.5"
+                fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>高性能</h3>
+      <p>经过深度优化的渲染引擎，毫秒级响应，支持大规模并发访问。</p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    demo.html &nbsp;·&nbsp; 使用现代 HTML/CSS 构建 &nbsp;·&nbsp; 2026
+  </footer>
+
+</body>
+</html>

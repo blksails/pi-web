@@ -1,31 +1,7 @@
 "use client";
 /**
- * PiChat — 富聊天装配组件(默认聊天组件,对标 AI Elements 参考示例;原名 `PiChatPro`)。
- *
- * 最小组件已改名为 `PiChatBasic`;`PiChatPro` 现为指向本组件的废弃别名。
- * 用会话 transport 驱动 `useChat`,组合无状态元件层
- * (Conversation/Message/PromptInput/Attachments/ModelSelector/SpeechInput/WebSearchToggle/
- * SubmitButton/Suggestions)与 `@pi-web/react` 数据 hooks(useModels/useAttachments/
- * useBranches/useSuggestions),复用既有 `PartRenderer`/`PiReasoning`/`PiToolPart` 与渲染器
- * 注册表。所有能力接到 pi 真实 RPC,能力缺失时优雅降级。
- *
- * 接线要点(见 design.md「PiChatPro(装配)」与累积 Implementation Notes):
- *  - 建议:useSuggestions 不自动触发 getCommands —— 会话就绪后此处调 `controls.getCommands()`
- *    填充 commands(Req 10.1)。
- *  - 分支:Message 的 onPrev/onNext → `useBranches.select(entryId, index∓1)`;数据来自
- *    `useBranches.branchOf(entryId)`(Req 8.1/8.3)。完整分支消息回灌视图越界(useBranches/
- *    react 包),本组件仅接好控件与 N/M 指示,见 CONCERNS。
- *  - 停止/中断:SubmitButton onStop → `controls.abort()` + useChat `stop()`(Req 2.3)。
- *  - 附件:useAttachments 收集图片;发送时 `toImageContents()` 经 useChat `sendMessage` 的
- *    `body.images` 传入(transport 从 body.images 提取),发送后 `clear()`(Req 3.2)。
- *  - 模型:ModelSelector 接 useModels(onOpen→ensureLoaded,onSelect→select);available=false
- *    元件自身隐藏(Req 4)。
- *  - 联网开关:受控 state 在此持有;开启时把意图随消息以提示文本传达;pi 无能力则仅附加提示,
- *    不报错(Req 6.3/6.4)。
- *  - 来源/思考:经注册表注册 `source` data-part 渲染器用 Sources 元件(Req 9.3);reasoning 复用
- *    既有 PiReasoning(经 PartRenderer)(Req 9.1/9.2)。
- *
- * 本组件不实现任何 REST/SSE 传输逻辑。主题经宿主 shadcn CSS 变量(cn),无硬编码颜色。
+ * PiChat — 富聊天装配组件。四维定制(主题/slots/components/layout+icons)在装配点解析:
+ * slots(整块) > components(细粒度) > 默认。缺省时与定制引入前行为一致。
  */
 import * as React from "react";
 import { useChat } from "@ai-sdk/react";
@@ -39,6 +15,7 @@ import {
   useAttachments,
   useBranches,
   useSuggestions,
+  createUiRpcBus,
 } from "@pi-web/react";
 import { PartRenderer } from "./part-renderer.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
@@ -47,13 +24,14 @@ import {
   ChatError,
   Conversation,
   Message,
+  type MessageProps,
   PromptInput,
   Attachments,
   ModelSelector,
   SpeechInput,
   WebSearchToggle,
   SubmitButton,
-  Suggestions,
+  EmptyState,
   Sources,
   type Source,
   Notifications,
@@ -62,56 +40,90 @@ import {
   type WidgetItem,
   PiInteraction,
 } from "../elements/index.js";
+import { IconsProvider, type IconTheme } from "../customization/icons.js";
+import {
+  resolveComponent,
+  type ComponentOverrides,
+  type MessageRole,
+} from "../customization/component-overrides.js";
+import {
+  layoutClassNames,
+  type LayoutPreset,
+} from "../customization/layout.js";
+import { ThemeProvider, type ThemeMode } from "../theme/theme-provider.js";
 import {
   defaultRendererRegistry,
   type RendererRegistry,
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
+import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
+import { PiMentionPopover } from "../controls/pi-mention-popover.js";
+import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { cn } from "../lib/cn.js";
+import type { WebExtension } from "@pi-web/web-kit";
+import {
+  SlotHost,
+  applyExtensionRenderers,
+} from "../web-ext/apply-extension.js";
+import { ExtSlotRegion } from "../web-ext/extension-slots.js";
+import { ArtifactSurface } from "../web-ext/artifact-surface.js";
+
+export type ToolbarControl =
+  | "attachments"
+  | "model"
+  | "speech"
+  | "webSearch"
+  | "submit";
 
 export interface PiChatProps {
-  /** 来自 usePiSession;提供绑定的 transport / sessionId / client / 连接态。 */
   readonly session: UsePiSessionResult;
-  /** 来自 usePiControls;驱动 abort/setModel/getCommands 等。 */
   readonly controls?: UsePiControlsResult;
-  /** 来自 useExtensionUI;驱动权限弹窗。 */
   readonly extensionUI?: UseExtensionUIResult;
-  /** 可注入隔离的渲染器注册表(默认用模块级单例);source data-part 渲染器注册于此。 */
   readonly registry?: RendererRegistry;
+  /** agent source 加载的 UI 扩展(Tier1 区域插槽 + Tier2 渲染器),缺省即现行为。 */
+  readonly extension?: WebExtension;
+  /** 扩展产物基址(解析 artifact 等相对资源 URL);缺省不渲染需基址的资源。 */
+  readonly extensionBaseUrl?: string;
   readonly slots?: PiChatSlots;
-  /** 建议气泡预设(与 pi commands 合并)。 */
   readonly suggestionsPresets?: ReadonlyArray<Suggestion>;
-  /** 输入框占位符,覆盖默认值(Req 1.5)。 */
   readonly placeholder?: string;
-  /** 空态欢迎页主标题,覆盖默认值。 */
   readonly emptyTitle?: string;
-  /** 空态欢迎页副标题,覆盖默认值。 */
   readonly emptySubtitle?: string;
-  /**
-   * 空态欢迎页的 starter 建议卡片(2×2 网格)。当真实 suggestions(commands∪presets)
-   * 为空时展示这些可配置的起始提示。默认提供一组通用示例,可由调用方覆盖。
-   */
   readonly starters?: ReadonlyArray<Suggestion>;
-  /** 通知浮层自动消失时长(毫秒),透传给 Notifications(<=0 关闭自动消失);默认走元件默认值。 */
   readonly notificationsAutoDismissMs?: number;
+  /** 细粒度组件覆盖表(Req 5)。 */
+  readonly components?: ComponentOverrides;
+  /** 图标主题(Req 8)。 */
+  readonly icons?: IconTheme;
+  /** 布局预设(Req 7);缺省等价现行版面。 */
+  readonly layout?: LayoutPreset;
+  /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
+  readonly theme?: ThemeMode;
+  /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
+  readonly toolbarOrder?: ReadonlyArray<ToolbarControl>;
+  /** 扩展命令补全可见策略(全局开关 + 白名单);默认隐藏所有扩展命令。 */
+  readonly extensionCommands?: ExtensionCommandPolicy;
   readonly className?: string;
 }
 
-/** 联网意图随消息传达的提示前缀(pi 无对应能力时仅作提示,不报错,Req 6.3/6.4)。 */
 const WEB_SEARCH_HINT = "[web-search] 请在回答前进行联网搜索。";
 
-/** ambient 切片的稳定空回落引用(无 extensionUI 时各面不渲染)。 */
 const EMPTY_NOTIFICATIONS: UseExtensionUIResult["notifications"] = [];
 const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
 
-/** 默认占位符(空态/会话态输入框)。 */
 const DEFAULT_PLACEHOLDER = "Ask anything…";
-/** 默认空态欢迎文案。 */
 const DEFAULT_EMPTY_TITLE = "What can I help with?";
 const DEFAULT_EMPTY_SUBTITLE = "Ask a question, write code, or explore ideas.";
 
-/** 默认 starter 建议卡片(可由 props.starters 覆盖);点击填入输入框(mode "fill")。 */
+const DEFAULT_TOOLBAR_ORDER: ReadonlyArray<ToolbarControl> = [
+  "attachments",
+  "model",
+  "speech",
+  "webSearch",
+  "submit",
+];
+
 const DEFAULT_STARTERS: ReadonlyArray<Suggestion> = [
   {
     id: "starter-nextjs",
@@ -139,7 +151,6 @@ const DEFAULT_STARTERS: ReadonlyArray<Suggestion> = [
   },
 ];
 
-/** 从 data-source(s) part 的 data 中规整出 Source[](展示元件不依赖 pi 协议形状)。 */
 function sourcesFromData(data: unknown): Source[] {
   const raw = Array.isArray(data)
     ? data
@@ -163,7 +174,6 @@ function sourcesFromData(data: unknown): Source[] {
   return result;
 }
 
-/** Sources data-part 渲染器:把注册表 part.data 规整成 Source[] 交给 Sources 元件(Req 9.3)。 */
 const SourcesDataPartRenderer: DataPartRenderer = ({ part }) => {
   const data = "data" in part ? part.data : undefined;
   const sources = sourcesFromData(data);
@@ -175,6 +185,8 @@ export function PiChat({
   controls,
   extensionUI,
   registry = defaultRendererRegistry,
+  extension,
+  extensionBaseUrl,
   slots,
   suggestionsPresets,
   placeholder,
@@ -182,27 +194,58 @@ export function PiChat({
   emptySubtitle = DEFAULT_EMPTY_SUBTITLE,
   starters = DEFAULT_STARTERS,
   notificationsAutoDismissMs,
+  components,
+  icons,
+  layout,
+  theme,
+  toolbarOrder,
+  extensionCommands,
   className,
 }: PiChatProps): React.JSX.Element {
   const transport = session.transport;
   const sessionId = session.sessionId;
   const client = session.client;
+  const connection = session.connection;
 
-  // 注册 source 类 data-part 渲染器(承接 Sources 元件);幂等(覆盖语义)。
-  // 注册而非修改注册表模块,符合任务边界。
+  // Tier3 ui-rpc 客户端总线(贡献点回 agent 的通道);会话/连接就绪时构造,卸载时释放。
+  const uiRpc = React.useMemo(() => {
+    if (client === undefined || sessionId === undefined || connection === undefined) {
+      return undefined;
+    }
+    return createUiRpcBus({
+      send: (req) => client.uiRpc(sessionId, req).then(() => undefined),
+      subscribeResponse: connection.controlStore.onUiRpcResponse,
+    });
+  }, [client, sessionId, connection]);
+  React.useEffect(() => {
+    return () => uiRpc?.dispose();
+  }, [uiRpc]);
+
+
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
-    // server-driven UI:agent 声明的 data-pi-ui 自动接 PiUiPart(零配置)。
     registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
   }, [registry]);
 
-  const chat = useChat(transport === undefined ? {} : { transport });
+  // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
+  React.useEffect(() => {
+    if (extension === undefined) return;
+    return applyExtensionRenderers(registry, extension);
+  }, [registry, extension]);
+
+  const chat = useChat(
+    transport === undefined
+      ? {}
+      : {
+          transport,
+          ...(session.initialMessages !== undefined
+            ? { messages: session.initialMessages }
+            : {}),
+        },
+  );
   const { messages, sendMessage, status, stop, error } = chat;
 
-  // 错误态呈现文本:AI SDK 的 `chat.error` 为 `Error | undefined`,其 `.message` 即真实
-  // 错误信息;`status==="error"` 同样表示错误态。用户中止(abort)不置 `chat.error`,
-  // 故此处仅在确有错误时取文本,中止/正常态保持 undefined(ChatError 自身对空 message 不渲染)。
   const errorMessage: string | undefined =
     error !== undefined
       ? error.message
@@ -213,8 +256,6 @@ export function PiChat({
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
 
-  // 浮动底栏(会话态):测其实时高度,给滚动消息区补等量底部留白,使末条消息能滚到
-  // 输入框下方而非被永久遮挡。callback ref + ResizeObserver 自适应多行/附件/widget 撑高。
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
   const dockRef = React.useCallback((el: HTMLDivElement | null): void => {
@@ -225,16 +266,14 @@ export function PiChat({
     ro.observe(el);
     dockObserverRef.current = ro;
   }, []);
-  // 命令模式 Enter 让位:palette 上报"命令模式且有候选"态,由此决定是否抑制 Enter 提交(R4.2)。
-  const [commandCapturing, setCommandCapturing] = React.useState<boolean>(false);
+  const [commandCapturing, setCommandCapturing] =
+    React.useState<boolean>(false);
 
-  // ambient 推送类切片(无 extensionUI 时安全回落为空,各面不渲染 → 降级,Req 6.1)。
   const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
   const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
   const ambientTitle = extensionUI?.title;
   const dismissNotification = extensionUI?.dismissNotification;
 
-  // 键控 widget 映射派生为数组(key 内联),供无状态 Widgets 元件按 placement 过滤渲染。
   const widgetItems = React.useMemo<WidgetItem[]>(() => {
     const map = extensionUI?.widgets;
     if (map === undefined) return [];
@@ -245,8 +284,6 @@ export function PiChat({
     }));
   }, [extensionUI?.widgets]);
 
-  // set_editor_text → setInput:仅在一次性信号 seq 变化时写入一次(去重),
-  // 不在无信号时改写用户输入(Req 5.1/5.2/5.4);用户后续可继续编辑(Req 5.3,天然成立)。
   const appliedEditorSeqRef = React.useRef<number | undefined>(undefined);
   const editorText = extensionUI?.editorText;
   React.useEffect(() => {
@@ -256,7 +293,6 @@ export function PiChat({
     setInput(editorText.text);
   }, [editorText]);
 
-  // 数据 hooks 接线。
   const models = useModels({
     sessionId,
     ...(client !== undefined ? { client } : {}),
@@ -266,7 +302,6 @@ export function PiChat({
   const branches = useBranches({
     sessionId,
     ...(client !== undefined ? { client } : {}),
-    // fork/get_fork_messages 能力是否可用由会话决定;无 client 时不可用。
     available: client !== undefined,
   });
   const suggestions = useSuggestions({
@@ -276,7 +311,6 @@ export function PiChat({
 
   const [rejected, setRejected] = React.useState<ReadonlyArray<string>>([]);
 
-  // 会话就绪后拉取 commands 填充建议(useSuggestions 不自动触发,Req 10.1)。
   const commandsLoadedRef = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (
@@ -290,11 +324,6 @@ export function PiChat({
     void controls.getCommands().catch(() => undefined);
   }, [controls, sessionId]);
 
-  // 会话就绪后主动加载可用模型(useModels 不自动触发;ModelSelector 在
-  // available=false 时隐藏,而 onOpen 是唯一懒加载触发点 → 形成死锁,选择器永不渲染)。
-  // 此处镜像 commandsLoadedRef 模式,每会话仅触发一次,使 available 反映真实模型可用性:
-  // 有模型 → 选择器渲染并可交互;get_available_models 不可用/空 → 选择器仍隐藏(Req 4.4 降级)。
-  // 加载幂等(useModels.loadedRef 已防重复),onOpen 仍可再次调用而不破坏。
   const modelsLoadedRef = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
     if (sessionId === undefined || modelsLoadedRef.current === sessionId) {
@@ -305,6 +334,16 @@ export function PiChat({
   }, [sessionId, models]);
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  // 空闲期 Tier3 贡献点(slash/mention/autocomplete)需持久控制通道:per-prompt 消息流仅在发送时
+  // 打开。故仅当**扩展声明了 contributions**(需 ui-rpc)且**空闲时**才另开一条「仅 ui-rpc」订阅
+  // ——无贡献点的 agent 不开(零干扰),prompt 期关闭(由 per-prompt 流处理 control 帧),
+  // 避免与 per-prompt 流并存导致流冲突。使 idle 输入 "/"/"@" 触发的 ui-rpc 回包能投递(R10/R11/R20)。
+  const hasContributions = extension?.contributions !== undefined;
+  React.useEffect(() => {
+    if (connection === undefined || isBusy || !hasContributions) return;
+    return connection.openControlOnlyStream();
+  }, [connection, isBusy, hasContributions]);
   const canSubmit =
     transport !== undefined &&
     (input.trim().length > 0 || attachments.items.length > 0);
@@ -316,7 +355,6 @@ export function PiChat({
       const hasAttachments = attachments.items.length > 0;
       if (trimmed.length === 0 && !hasAttachments) return;
 
-      // 联网开关开启时把意图随消息传达(以 prompt 提示形式;pi 无能力仅作提示,Req 6.3/6.4)。
       const outgoing = !webSearch
         ? trimmed
         : trimmed.length > 0
@@ -342,7 +380,6 @@ export function PiChat({
   }, [doSend, input]);
 
   const onStop = React.useCallback((): void => {
-    // 优先经 pi 控制层中止;同时停止本地流(Req 2.3)。
     if (controls !== undefined) void controls.abort().catch(() => undefined);
     stop();
   }, [controls, stop]);
@@ -372,43 +409,129 @@ export function PiChat({
   );
 
   const isEmpty = messages.length === 0;
-  // 空态网格优先展示真实 suggestions(commands∪presets);为空时回落到 starter 卡片。
   const gridItems = suggestions.items.length > 0 ? suggestions.items : starters;
 
-  // 工具条:左 paperclip 附件(compact)+ 模型选择器 + 语音 + 联网开关,右侧发送按钮。
+  const lay = layoutClassNames(layout);
+
+  // 控件解析(components 覆盖 vs 默认;可移除控件支持 null)。
+  const SubmitC = resolveComponent(components?.SubmitButton, SubmitButton);
+  const AttachC = resolveComponent(components?.Attachments, Attachments);
+  const ModelC = resolveComponent(components?.ModelSelector, ModelSelector);
+  const SpeechC = resolveComponent(components?.SpeechInput, SpeechInput);
+  const WebC = resolveComponent(components?.WebSearchToggle, WebSearchToggle);
+
+  const controlNodes: Record<ToolbarControl, React.ReactNode> = {
+    attachments:
+      AttachC === null ? null : (
+        <AttachC
+          variant="compact"
+          items={attachments.items}
+          supported={attachments.supported}
+          onAdd={onAddAttachments}
+          onRemove={attachments.remove}
+          rejected={rejected}
+        />
+      ),
+    model:
+      ModelC === null ? null : (
+        <ModelC
+          groups={models.groups}
+          current={models.current}
+          available={models.available}
+          onOpen={() => void models.ensureLoaded()}
+          onSelect={(provider, modelId) =>
+            void models.select(provider, modelId).catch(() => undefined)
+          }
+        />
+      ),
+    speech:
+      SpeechC === null ? null : <SpeechC onTranscript={onSpeechTranscript} />,
+    webSearch:
+      WebC === null ? null : (
+        <WebC enabled={webSearch} onToggle={setWebSearch} />
+      ),
+    submit:
+      SubmitC === null ? null : (
+        <div className="ml-auto">
+          <SubmitC
+            status={status}
+            canSubmit={canSubmit}
+            onSubmit={onSubmit}
+            onStop={onStop}
+          />
+        </div>
+      ),
+  };
+
+  const order = toolbarOrder ?? DEFAULT_TOOLBAR_ORDER;
   const toolbar = (
     <>
-      <Attachments
-        variant="compact"
-        items={attachments.items}
-        supported={attachments.supported}
-        onAdd={onAddAttachments}
-        onRemove={attachments.remove}
-        rejected={rejected}
-      />
-      <ModelSelector
-        groups={models.groups}
-        current={models.current}
-        available={models.available}
-        onOpen={() => void models.ensureLoaded()}
-        onSelect={(provider, modelId) =>
-          void models.select(provider, modelId).catch(() => undefined)
-        }
-      />
-      <SpeechInput onTranscript={onSpeechTranscript} />
-      <WebSearchToggle enabled={webSearch} onToggle={setWebSearch} />
-      <div className="ml-auto">
-        <SubmitButton
-          status={status}
-          canSubmit={canSubmit}
-          onSubmit={onSubmit}
-          onStop={onStop}
-        />
-      </div>
+      {order.map((key) => (
+        <React.Fragment key={key}>{controlNodes[key]}</React.Fragment>
+      ))}
     </>
   );
 
-  // 大圆角输入框(空态居中、会话态置底共用)。
+  // inlineComplete ghost(R20):非 slash/mention 输入时经 ui-rpc 取后缀建议,Tab 接受。
+  const inlineComplete = extension?.contributions?.inlineComplete;
+  const [ghostSuffix, setGhostSuffix] = React.useState<string>("");
+  React.useEffect(() => {
+    const active =
+      input.trim().length > 0 &&
+      !input.startsWith("/") &&
+      !/@\S*$/.test(input);
+    if (inlineComplete === undefined || uiRpc === undefined || !active) {
+      setGhostSuffix("");
+      return;
+    }
+    let cancelled = false;
+    void inlineComplete
+      .complete(input, uiRpc)
+      .then((s) => {
+        if (!cancelled) setGhostSuffix(typeof s === "string" ? s : "");
+      })
+      .catch(() => {
+        if (!cancelled) setGhostSuffix("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [input, inlineComplete, uiRpc]);
+
+  // keybindings(R20):扩展声明 combo→commandId;会话作用域 keydown 匹配后填充 /commandId(可见效果)。
+  const keybindings = extension?.contributions?.keybindings;
+  React.useEffect(() => {
+    if (keybindings === undefined || keybindings.length === 0) return;
+    const matches = (e: KeyboardEvent, combo: string): boolean => {
+      const parts = combo.toLowerCase().split("+").map((p) => p.trim());
+      const key = parts[parts.length - 1];
+      const needMod =
+        parts.includes("mod") ||
+        parts.includes("ctrl") ||
+        parts.includes("cmd") ||
+        parts.includes("meta");
+      const needShift = parts.includes("shift");
+      const needAlt = parts.includes("alt");
+      return (
+        e.key.toLowerCase() === key &&
+        needMod === (e.metaKey || e.ctrlKey) &&
+        needShift === e.shiftKey &&
+        needAlt === e.altKey
+      );
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      for (const kb of keybindings) {
+        if (matches(e, kb.combo)) {
+          e.preventDefault();
+          setInput(`/${kb.commandId} `);
+          return;
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [keybindings]);
+
   const promptInput = (
     <PromptInput
       value={input}
@@ -418,17 +541,14 @@ export function PiChat({
       toolbar={toolbar}
       rows={3}
       placeholder={placeholder ?? DEFAULT_PLACEHOLDER}
-      // 浮动底栏观感:半透明 + 背景模糊(消息从其下方滚过时透出模糊残影)+ 抬高阴影。
-      // bg-*/65 经 twMerge 覆盖 PromptInput 基础的不透明 bg;无 backdrop-filter 时回落 /80。
       className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
+      ghostSuffix={ghostSuffix}
+      onAcceptGhost={() => setInput(input + ghostSuffix)}
     />
   );
 
-  // widget 区(上方)+ 输入框 + widget 区(下方)的复用片段:空态与会话态两分支共用,
-  // 避免重复(Widgets 元件按 placement 过滤,无匹配自身返回 null)。
-  // 外包 relative 容器以承载命令补全浮层的 absolute 叠加(R6.1/6.2)。
   const inputWithWidgets = (
     <div className="relative" data-pi-input-wrapper>
       {controls !== undefined ? (
@@ -438,17 +558,63 @@ export function PiChat({
             value={input}
             onChange={setInput}
             onCaptureChange={setCommandCapturing}
+            extensionCommands={extensionCommands}
+            {...(extension?.contributions?.slash !== undefined
+              ? { slashContribution: extension.contributions.slash }
+              : {})}
+            {...(uiRpc !== undefined ? { uiRpc } : {})}
           />
         </div>
       ) : null}
+      {extension?.contributions?.mention !== undefined && uiRpc !== undefined ? (
+        <div className="absolute bottom-full left-0 right-0 z-40">
+          <PiMentionPopover
+            value={input}
+            onChange={setInput}
+            contribution={extension.contributions.mention}
+            uiRpc={uiRpc}
+            onCaptureChange={setCommandCapturing}
+          />
+        </div>
+      ) : null}
+      {extension?.contributions?.autocomplete !== undefined &&
+      uiRpc !== undefined ? (
+        <div className="absolute bottom-full left-0 right-0 z-30">
+          <PiAutocompletePopover
+            value={input}
+            onChange={setInput}
+            contribution={extension.contributions.autocomplete}
+            uiRpc={uiRpc}
+          />
+        </div>
+      ) : null}
+      {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
+      <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />
       <Widgets widgets={widgetItems} placement="aboveEditor" />
-      {promptInput}
+      {/* promptInput 装饰为绝对覆盖、不移除内核 textarea;inline 配件为绝对定位不挤压输入。 */}
+      <div className="relative">
+        <ExtSlotRegion
+          ext={extension}
+          slot="promptInput"
+          className="pointer-events-none absolute inset-0 z-10"
+        />
+        <ExtSlotRegion
+          ext={extension}
+          slot="accessoryInlineLeft"
+          className="absolute left-2 top-1/2 z-20 -translate-y-1/2"
+        />
+        <ExtSlotRegion
+          ext={extension}
+          slot="accessoryInlineRight"
+          className="absolute right-2 top-1/2 z-20 -translate-y-1/2"
+        />
+        {promptInput}
+      </div>
       <Widgets widgets={widgetItems} placement="belowEditor" />
+      <ExtSlotRegion ext={extension} slot="accessoryBelowEditor" />
     </div>
   );
 
-  // 内部扩展头部:title 存在或 statuses 非空时渲染(独立于 slots.header)。
-  // title 进头部(Req 4.1/4.2);未设 title 时不因此改变默认头部(Req 4.3)。
   const hasExtensionHeader =
     ambientTitle !== undefined || Object.keys(statuses).length > 0;
   const extensionHeader = hasExtensionHeader ? (
@@ -468,7 +634,139 @@ export function PiChat({
     </div>
   ) : null;
 
-  return (
+  // 背景层:slots.background 优先,否则 components.ConversationBackground(Req 9.1)。
+  const BgComp = components?.ConversationBackground;
+  const backgroundLayer =
+    slots?.background !== undefined ? (
+      <div className="absolute inset-0 -z-10" data-pi-chat-background>
+        {slots.background}
+      </div>
+    ) : BgComp !== undefined ? (
+      <div className="absolute inset-0 -z-10" data-pi-chat-background>
+        <BgComp />
+      </div>
+    ) : extension?.slots?.background !== undefined ? (
+      // Tier1:扩展背景(宿主 slots/components 未提供时)。
+      <div className="absolute inset-0 -z-10" data-pi-chat-background>
+        <SlotHost ext={extension} slot="background" />
+      </div>
+    ) : null;
+
+  // 空态:slots.empty 优先,否则 components.EmptyState ?? 默认 EmptyState(Req 4.2/9.1)。
+  const EmptyComp = components?.EmptyState ?? EmptyState;
+  const emptyBody =
+    slots?.empty !== undefined ? (
+      slots.empty
+    ) : (
+      <EmptyComp
+        title={emptyTitle}
+        subtitle={emptySubtitle}
+        starters={gridItems}
+        onFill={onSuggestionFill}
+        onSend={onSuggestionSend}
+        className={lay.content}
+        {...(components?.StarterCard !== undefined
+          ? { StarterCard: components.StarterCard }
+          : {})}
+        {...(extensionUI !== undefined
+          ? { interaction: <PiInteraction extensionUI={extensionUI} /> }
+          : {})}
+        input={inputWithWidgets}
+      />
+    );
+
+  const conversationBody = (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <Conversation className="flex-1">
+        <div
+          className={cn(lay.content, "space-y-4 pt-3")}
+          data-pi-chat-messages
+          style={{ paddingBottom: dockHeight + 16 }}
+        >
+          {messages.map((message: UIMessage) => {
+            const branch = branches.branchOf(message.id);
+            const branchProps =
+              branch !== undefined && branch.total > 1
+                ? {
+                    branch,
+                    onPrev: () =>
+                      void branches
+                        .select(message.id, branch.index - 1)
+                        .catch(() => undefined),
+                    onNext: () =>
+                      void branches
+                        .select(message.id, branch.index + 1)
+                        .catch(() => undefined),
+                  }
+                : {};
+            const copyText = message.parts
+              .map((part) =>
+                part.type === "text" && typeof part.text === "string"
+                  ? part.text
+                  : "",
+              )
+              .join("")
+              .trim();
+            const MessageComp: React.ComponentType<MessageProps> =
+              components?.Message?.[message.role as MessageRole] ?? Message;
+            const body = (
+              <div className="space-y-2">
+                {message.parts.map((part, i) => (
+                  <PartRenderer
+                    key={`${message.id}-${i}`}
+                    part={part}
+                    message={message}
+                    registry={registry}
+                    {...(components?.Markdown !== undefined
+                      ? { markdown: components.Markdown }
+                      : {})}
+                    {...(components?.Reasoning !== undefined
+                      ? { reasoning: components.Reasoning }
+                      : {})}
+                  />
+                ))}
+                {slots?.messageActions !== undefined ? (
+                  <div data-pi-message-actions>
+                    {slots.messageActions(message)}
+                  </div>
+                ) : null}
+              </div>
+            );
+            const messageProps: MessageProps = {
+              role: message.role,
+              children: body,
+              ...(copyText.length > 0 ? { copyText } : {}),
+              ...(components?.MessageActions !== undefined
+                ? { messageActions: components.MessageActions }
+                : {}),
+              ...branchProps,
+            };
+            return <MessageComp key={message.id} {...messageProps} />;
+          })}
+          <ChatError message={errorMessage} />
+          {extensionUI !== undefined ? (
+            <PiInteraction extensionUI={extensionUI} />
+          ) : null}
+        </div>
+      </Conversation>
+
+      <div
+        ref={dockRef}
+        data-pi-input-dock
+        className="pointer-events-none absolute inset-x-0 bottom-0"
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
+        />
+        <div className={cn("pointer-events-auto pb-2", lay.content)}>
+          {inputWithWidgets}
+        </div>
+      </div>
+    </div>
+  );
+
+  const tree = (
     <div
       className={cn(
         "relative flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
@@ -477,7 +775,6 @@ export function PiChat({
       data-pi-chat-pro
       data-pi-chat-empty={isEmpty ? "true" : "false"}
     >
-      {/* 通知浮层叠加层:固定定位,不占布局流,避免与对话框/输入框干扰(Req 8.4)。 */}
       {dismissNotification !== undefined ? (
         <div className="pointer-events-none absolute right-4 top-4 z-50 flex w-full max-w-sm flex-col gap-2">
           <div className="pointer-events-auto">
@@ -498,142 +795,119 @@ export function PiChat({
         </aside>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* Tier1 保留插槽:扩展左栏(独立于 basic sidebar)。 */}
+      <ExtSlotRegion
+        ext={extension}
+        slot="sidebarLeft"
+        as="aside"
+        className="hidden shrink-0 md:block"
+      />
+
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        {backgroundLayer}
+
         {slots?.header !== undefined ? (
           <header data-pi-chat-header>{slots.header}</header>
+        ) : extension?.slots?.headerCenter !== undefined ||
+          extension?.slots?.headerLeft !== undefined ||
+          extension?.slots?.headerRight !== undefined ? (
+          // Tier1:扩展 header 三区。
+          <header
+            data-pi-chat-header
+            data-pi-ext-header
+            className="flex items-center gap-2 px-4 py-2"
+          >
+            <SlotHost ext={extension} slot="headerLeft" />
+            <div className="flex-1">
+              <SlotHost ext={extension} slot="headerCenter" />
+            </div>
+            <SlotHost ext={extension} slot="headerRight" />
+          </header>
         ) : null}
 
         {extensionHeader}
 
+        {/* Tier1 保留插槽:扩展状态栏(与 ambient StatusBar 共存)+ 工具条。 */}
+        <ExtSlotRegion ext={extension} slot="statusBar" />
+        <ExtSlotRegion ext={extension} slot="toolbar" />
+
         {isEmpty ? (
-          // 空态欢迎页:居中大标题 + 副标题 + 2×2 starter 卡片网格 + 大输入框。
           <div
             className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8"
             data-pi-chat-welcome
           >
-            <div className="w-full max-w-3xl">
-              <div className="mb-12 text-center">
-                <h1 className="text-4xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
-                  {emptyTitle}
-                </h1>
-                <p className="mt-3 text-base text-[hsl(var(--muted-foreground))]">
-                  {emptySubtitle}
-                </p>
-              </div>
-
-              <div className="mb-4" data-pi-chat-suggestions>
-                <Suggestions
-                  items={gridItems}
-                  layout="grid"
-                  onFill={onSuggestionFill}
-                  onSend={onSuggestionSend}
-                />
-              </div>
-
-              {/* 空态兜底:交互请求亦可在欢迎页内联呈现。 */}
-              {extensionUI !== undefined ? (
-                <div className="mb-4">
-                  <PiInteraction extensionUI={extensionUI} />
-                </div>
-              ) : null}
-
-              {inputWithWidgets}
-            </div>
+            {emptyBody}
+            {/* Tier1 保留插槽:扩展空态(追加,不替换默认空态)。 */}
+            <ExtSlotRegion ext={extension} slot="empty" />
           </div>
         ) : (
-          // 会话态:全高滚动消息区 + 浮动底部输入栏(半透明模糊,叠在对话之上,消息滚到其下方)。
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            <Conversation className="flex-1">
-              {/* paddingBottom 动态等于浮动底栏高度 + 间距:末条消息可滚到输入框下方,不被永久遮挡。 */}
-              <div
-                className="mx-auto w-full max-w-3xl space-y-4 pt-3"
-                data-pi-chat-messages
-                style={{ paddingBottom: dockHeight + 16 }}
-              >
-                {messages.map((message: UIMessage) => {
-                  const branch = branches.branchOf(message.id);
-                  const branchProps =
-                    branch !== undefined && branch.total > 1
-                      ? {
-                          branch,
-                          onPrev: () =>
-                            void branches
-                              .select(message.id, branch.index - 1)
-                              .catch(() => undefined),
-                          onNext: () =>
-                            void branches
-                              .select(message.id, branch.index + 1)
-                              .catch(() => undefined),
-                        }
-                      : {};
-                  const copyText = message.parts
-                    .map((part) =>
-                      part.type === "text" && typeof part.text === "string"
-                        ? part.text
-                        : "",
-                    )
-                    .join("")
-                    .trim();
-                  return (
-                    <Message
-                      key={message.id}
-                      role={message.role}
-                      {...(copyText.length > 0 ? { copyText } : {})}
-                      {...branchProps}
-                    >
-                      <div className="space-y-2">
-                        {message.parts.map((part, i) => (
-                          <PartRenderer
-                            key={`${message.id}-${i}`}
-                            part={part}
-                            message={message}
-                            registry={registry}
-                          />
-                        ))}
-                        {slots?.messageActions !== undefined ? (
-                          <div data-pi-message-actions>
-                            {slots.messageActions(message)}
-                          </div>
-                        ) : null}
-                      </div>
-                    </Message>
-                  );
-                })}
-                {/* 错误态呈现:仅在 chat.error 存在(或 status==="error")时渲染,
-                    中止/正常态 errorMessage 为 undefined → ChatError 自身返回 null(Req 1.2/4.2)。 */}
-                <ChatError message={errorMessage} />
-                {/* 扩展 UI 交互内联卡(取代模态弹窗):渲染于消息流末尾,随流滚动。 */}
-                {extensionUI !== undefined ? (
-                  <PiInteraction extensionUI={extensionUI} />
-                ) : null}
-              </div>
-            </Conversation>
-
-            {/* 浮动底部输入栏:absolute 叠在对话之上;容器 pointer-events-none 让两侧留白可点透到
-                消息,仅输入框本身 pointer-events-auto。上沿渐隐遮罩让消息进入输入框前柔和淡出。 */}
-            <div
-              ref={dockRef}
-              data-pi-input-dock
-              className="pointer-events-none absolute inset-x-0 bottom-0"
-            >
-              <div
-                aria-hidden="true"
-                className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
-              />
-              <div className="pointer-events-auto mx-auto w-full max-w-3xl pb-2">
-                {inputWithWidgets}
-              </div>
-            </div>
-          </div>
+          conversationBody
         )}
+
+        {/* Tier1 保留插槽:扩展 artifact 表面(独立于 panelRight artifact)。 */}
+        <ExtSlotRegion ext={extension} slot="artifactSurface" />
 
         {slots?.footer !== undefined ? (
           <footer data-pi-chat-footer>{slots.footer}</footer>
+        ) : extension?.slots?.footer !== undefined ? (
+          <footer data-pi-chat-footer data-pi-ext-footer>
+            <SlotHost ext={extension} slot="footer" />
+          </footer>
         ) : null}
       </div>
 
-      {/* isBusy 标记供宿主/测试观察流式态(也由 SubmitButton 反映)。 */}
+      {extension?.slots?.panelRight !== undefined ||
+      (extension?.artifact !== undefined && extensionBaseUrl !== undefined) ? (
+        // Tier1 panelRight + Tier4 artifact(独立 origin sandbox iframe)。
+        <aside
+          className="hidden w-96 shrink-0 lg:block"
+          data-pi-chat-aside
+          {...(extension?.slots?.panelRight !== undefined
+            ? { "data-pi-ext-panel-right": "" }
+            : {})}
+        >
+          {extension?.slots?.panelRight !== undefined ? (
+            <SlotHost ext={extension} slot="panelRight" />
+          ) : null}
+          {extension?.artifact !== undefined && extensionBaseUrl !== undefined ? (
+            <ArtifactSurface
+              src={`${extensionBaseUrl.replace(/\/$/, "")}/${extension.artifact.entry}`}
+              {...(extension.artifact.initialHeight !== undefined
+                ? { initialHeight: extension.artifact.initialHeight }
+                : {})}
+            />
+          ) : null}
+        </aside>
+      ) : lay.hasAside ? (
+        <aside className="hidden w-96 shrink-0 lg:block" data-pi-chat-aside />
+      ) : null}
+
+      {/* Tier1 保留插槽:扩展通知(与 ambient Notifications 共存)。 */}
+      <ExtSlotRegion ext={extension} slot="notifications" />
+      {/* Tier1 保留插槽:扩展对话框层(附加 overlay,不拦截 PiInteraction 的内核交互)。 */}
+      <ExtSlotRegion
+        ext={extension}
+        slot="dialogLayer"
+        className="pointer-events-none fixed inset-0 z-[60]"
+      />
+
+      {keybindings !== undefined && keybindings.length > 0 ? (
+        <span
+          hidden
+          data-pi-keybindings={keybindings.map((k) => k.combo).join(",")}
+        />
+      ) : null}
+
       <span hidden data-pi-busy={isBusy ? "true" : "false"} />
     </div>
+  );
+
+  const withIcons =
+    icons !== undefined ? <IconsProvider icons={icons}>{tree}</IconsProvider> : tree;
+
+  return theme !== undefined ? (
+    <ThemeProvider mode={theme}>{withIcons}</ThemeProvider>
+  ) : (
+    withIcons
   );
 }

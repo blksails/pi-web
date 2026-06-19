@@ -48,6 +48,10 @@ export interface PromptInputProps {
    * (Req 4.1/4.4)
    */
   readonly suppressEnterSubmit?: boolean;
+  /** inlineComplete 的灰字 ghost 后缀(Tier3 贡献点 R20);Tab 接受。 */
+  readonly ghostSuffix?: string;
+  /** Tab 接受 ghost 后缀时回调(通常把 value 拼上 ghostSuffix)。 */
+  readonly onAcceptGhost?: () => void;
 }
 
 /** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
@@ -70,12 +74,24 @@ export function PromptInput({
   className,
   textareaClassName,
   suppressEnterSubmit = false,
+  ghostSuffix,
+  onAcceptGhost,
 }: PromptInputProps): React.JSX.Element {
   const canSubmit = !disabled && !isBlank(value);
+  const hasGhost =
+    ghostSuffix !== undefined &&
+    ghostSuffix.length > 0 &&
+    onAcceptGhost !== undefined;
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
+    // Tab:接受 inlineComplete ghost 后缀(R20)。
+    if (event.key === "Tab" && hasGhost) {
+      event.preventDefault();
+      onAcceptGhost();
+      return;
+    }
     // Shift+Enter:换行,不提交(Req 1.4)——交由浏览器默认行为插入换行。
     if (event.key !== "Enter" || event.shiftKey) return;
     // 命令模式激活时:阻止默认换行并让位给命令浮层(Req 4.1);不调用 onSubmit。
@@ -108,20 +124,38 @@ export function PromptInput({
           </div>
         ) : null}
 
-        <textarea
-          aria-label={textareaLabel}
-          value={value}
-          disabled={disabled}
-          rows={rows}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className={cn(
-            "min-w-0 flex-1 resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-            textareaClassName,
-          )}
-          data-pi-input-textarea
-        />
+        <div className="relative min-w-0 flex-1">
+          {hasGhost ? (
+            // inlineComplete ghost:与 textarea 同字号/内边距,value 透明占位 + 后缀灰字。
+            <div
+              aria-hidden="true"
+              data-pi-inline-complete={ghostSuffix}
+              className={cn(
+                "pointer-events-none absolute inset-0 whitespace-pre-wrap break-words p-1 text-sm",
+                textareaClassName,
+              )}
+            >
+              <span className="invisible">{value}</span>
+              <span className="text-[hsl(var(--muted-foreground))]">
+                {ghostSuffix}
+              </span>
+            </div>
+          ) : null}
+          <textarea
+            aria-label={textareaLabel}
+            value={value}
+            disabled={disabled}
+            rows={rows}
+            placeholder={placeholder}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              "relative min-w-0 w-full resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              textareaClassName,
+            )}
+            data-pi-input-textarea
+          />
+        </div>
 
         {rightSlot !== undefined ? (
           <div className="shrink-0" data-pi-prompt-input-right>

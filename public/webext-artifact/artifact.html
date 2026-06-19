@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>artifact</title>
+  </head>
+  <body style="font-family: system-ui; margin: 0; padding: 12px; background: #f5f3ff">
+    <div id="root">webext-artifact-agent · sandboxed artifact</div>
+    <p id="status">loading…</p>
+    <script>
+      // 加载后向宿主报告 ready 与高度(postMessage 契约,见 protocol parseArtifactMessage)。
+      parent.postMessage({ kind: "ready", manifestId: "webext-artifact" }, "*");
+      // 主动 resize 到 360(区别 initialHeight 240),供 R22 验证高度随 postMessage 变化。
+      parent.postMessage({ kind: "resize", height: 360 }, "*");
+      document.getElementById("status").textContent = "ready · resized to 360";
+    </script>
+  </body>
+</html>

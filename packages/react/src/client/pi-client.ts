@@ -23,6 +23,7 @@ import type {
   ForkRequest,
   ForkResponse,
   GetForkMessagesResponse,
+  UiRpcRequest,
 } from "@pi-web/protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -46,6 +47,8 @@ export interface PiClient {
   setModel(id: string, req: SetModelRequest): Promise<CommandAck>;
   setThinking(id: string, req: SetThinkingRequest): Promise<CommandAck>;
   uiResponse(id: string, req: UiResponseRequest): Promise<CommandAck>;
+  /** POST /sessions/:id/ui-rpc —— Tier3 贡献点上行(仅 ack;响应经 SSE control:ui-rpc 回流)。 */
+  uiRpc(id: string, req: UiRpcRequest): Promise<CommandAck>;
 
   getState(id: string): Promise<GetStateResponse>;
   getStats(id: string): Promise<GetStatsResponse>;
@@ -108,6 +111,8 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/thinking`, req),
     uiResponse: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/ui-response`, req),
+    uiRpc: (id, req) =>
+      post<CommandAck>(`/sessions/${enc(id)}/ui-rpc`, req),
 
     getState: (id) => get<GetStateResponse>(`/sessions/${enc(id)}/state`),
     getStats: (id) => get<GetStatsResponse>(`/sessions/${enc(id)}/stats`),
