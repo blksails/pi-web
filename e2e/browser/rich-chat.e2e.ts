@@ -1,17 +1,17 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Rich-chat (PiChatPro) browser e2e — full closed loop against the real Next
+ * Rich-chat (PiChat) browser e2e — full closed loop against the real Next
  * server with the deterministic offline stub agent (PI_WEB_STUB_AGENT=1).
  *
  * Covers (requirements.md):
- *  - Req 11.3 — app renders <PiChatPro> as the default chat surface and completes
+ *  - Req 11.3 — app renders <PiChat> as the default chat surface and completes
  *               one basic conversation (input → send → streamed reply).
  *  - Req 3.2  — image attachment becomes a chip and is sent with the prompt
  *               (images/ImageContent base64) — exercised via the hidden file input.
  *  - Req 4 (incl. 4.1/4.2/4.3/4.5) — model data comes from get_available_models
  *               grouped by provider; searching filters; selecting a model switches
- *               the session model via setModel. PiChatPro eagerly loads models on
+ *               the session model via setModel. PiChat eagerly loads models on
  *               session-ready, so the selector RENDERS and is driven through the
  *               real UI (trigger → panel → provider groups → search → select), with
  *               the REST boundary (GET /models, POST /model) corroborating the data.
@@ -80,7 +80,7 @@ test("rich chat: model selector renders, groups by provider, searches, and selec
   expect(providers.has("anthropic")).toBe(true);
   expect(providers.has("openai")).toBe(true);
 
-  // Req 4.4 (no longer degraded) — PiChatPro eagerly loads models on session-ready,
+  // Req 4.4 (no longer degraded) — PiChat eagerly loads models on session-ready,
   // so `available` is true and the selector RENDERS in the default chat surface.
   const selector = page.locator("[data-pi-model-selector]");
   await expect(selector).toBeVisible();

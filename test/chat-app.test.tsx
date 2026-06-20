@@ -1,6 +1,6 @@
 /**
  * chat-app assembly: the session-active branch renders the default rich chat UI
- * <PiChat> (formerly <PiChatPro>, now the convergent default), while preserving
+ * <PiChat> (formerly <PiChat>, now the convergent default), while preserving
  * the same session/controls/extensionUI wiring driven by the @pi-web/react hooks
  * (Req 7.4). The ~/.pi/agent config + session-assembly chain is unchanged; only
  * the chat UI component name is updated to the converged default.

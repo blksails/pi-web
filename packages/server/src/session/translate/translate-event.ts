@@ -16,8 +16,8 @@
  *   - message_update.thinking_start|delta|end    → reasoning-start | reasoning-delta | reasoning-end
  *   - message_update.error                        → abort(reason=aborted)| error(否则,带 errorText)
  *   - tool_execution_start                        → tool-input-available
- *   - tool_execution_update                       → data-pi-ui(details 携 UiSpec)| data-pi-tool-partial(累积替换)
- *   - tool_execution_end                          → tool-output-available
+ *   - tool_execution_update                       → data-pi-ui(details 携 UiSpec)| tool-output-available(preliminary,累积替换)
+ *   - tool_execution_end                          → tool-output-available(最终)
  *   - queue_update                                → data-pi-queue
  *   - compaction_start|end                        → data-pi-compaction
  *   - auto_retry_start|end                        → data-pi-auto-retry
@@ -220,7 +220,9 @@ export function translateEvent(
     case "tool_execution_update": {
       // server-driven UI 产帧通道:工具经 onUpdate 在 partialResult.details 携带 UiSpec
       // (约定 key,见 protocol PI_UI_TOOL_DETAILS_KEY / agent-kit emitUi)→ 产出 data-pi-ui;
-      // 否则维持默认的 data-pi-tool-partial(累积替换)语义。
+      // 否则把累积 partialResult 作为 tool-output-available 的中间产出(preliminary)喂进
+      // 同一工具卡(AI SDK 按 toolCallId 复用 part,后续帧替换前序产出),最终 tool_execution_end
+      // 的输出(无 preliminary)覆盖之 —— 避免在消息流里堆叠裸 JSON data part。
       const uiSpec = extractToolDetailsUiSpec(event.partialResult);
       if (uiSpec !== undefined) {
         return {
@@ -231,12 +233,10 @@ export function translateEvent(
       return {
         frames: [
           makeUiMessageChunkFrame({
-            type: "data-pi-tool-partial",
-            data: {
-              toolCallId: event.toolCallId,
-              toolName: event.toolName,
-              partialResult: event.partialResult,
-            },
+            type: "tool-output-available",
+            toolCallId: event.toolCallId,
+            output: event.partialResult,
+            preliminary: true,
           }),
         ],
         ctx,

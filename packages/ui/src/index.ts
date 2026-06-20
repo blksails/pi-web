@@ -2,7 +2,7 @@
  * @pi-web/ui — shadcn/AI-Elements 有样式组件层(npm 聚合导出面)。
  *
  * 默认拖入组件 `<PiChat>`(富装配)+ 最小组件 `<PiChatBasic>` + 细粒度组件 +
- * 渲染器注册表 + 公开类型。`PiChatPro` 为指向 `PiChat` 的废弃别名。
+ * 渲染器注册表 + 公开类型。
  * 主题经 shadcn CSS 变量(见 ./styles.css),继承宿主主题。
  */
 
@@ -12,9 +12,6 @@ export type { PiChatSlots } from "./chat/slots.js";
 
 // 最小拖入聊天组件
 export { PiChatBasic, type PiChatBasicProps } from "./chat/pi-chat-basic.js";
-
-// 废弃别名:PiChatPro → PiChat
-export { PiChatPro, type PiChatProProps } from "./chat/pi-chat-pro.js";
 
 // 无状态元件层(elements/*)— 含 ChatError(错误提示元件,message 空不渲染,
 // 非空 destructive 配色 + role="alert")
@@ -28,6 +25,16 @@ export {
   PiToolPart,
   type PiToolPartProps,
   type ToolPart,
+  type ToolPhase,
+  // 复合子组件(可独立装配/替换)
+  ToolHeader,
+  type ToolHeaderProps,
+  ToolContent,
+  type ToolContentProps,
+  ToolInput,
+  type ToolInputProps,
+  ToolOutput,
+  type ToolOutputProps,
 } from "./parts/pi-tool-part.js";
 export {
   PiReasoning,

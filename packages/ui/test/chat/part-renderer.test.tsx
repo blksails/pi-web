@@ -59,6 +59,41 @@ describe("PartRenderer 分派", () => {
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
   });
 
+  it("仅 components.ToolPart 覆盖 → 用宿主覆盖替代默认", () => {
+    const ToolOverride = () => (
+      <div data-testid="override-tool">OVERRIDE</div>
+    );
+    render(
+      <PartRenderer
+        part={toolEndPart("search", {}, { ok: true })}
+        message={msg}
+        toolPart={ToolOverride}
+      />,
+    );
+    expect(screen.getByTestId("override-tool")).toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+
+  it("注册器与 ToolPart 覆盖同时存在 → 注册器优先", () => {
+    const registry = createRendererRegistry();
+    registry.registerToolRenderer("search", () => (
+      <div data-testid="registry-tool">REGISTRY</div>
+    ));
+    const ToolOverride = () => (
+      <div data-testid="override-tool">OVERRIDE</div>
+    );
+    render(
+      <PartRenderer
+        part={toolEndPart("search", {}, { ok: true })}
+        message={msg}
+        registry={registry}
+        toolPart={ToolOverride}
+      />,
+    );
+    expect(screen.getByTestId("registry-tool")).toBeInTheDocument();
+    expect(screen.queryByTestId("override-tool")).not.toBeInTheDocument();
+  });
+
   it("data-pi-ui → 注册 PiUiPart 经注册表分派渲染(server-driven UI)", () => {
     const registry = createRendererRegistry();
     registry.registerDataPartRenderer("data-pi-ui", PiUiPart);

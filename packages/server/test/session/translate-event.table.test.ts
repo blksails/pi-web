@@ -211,7 +211,7 @@ describe("translateEvent — schema-valid frames per event", () => {
     });
   });
 
-  it("tool_execution_update → data-pi-tool-partial (cumulative partialResult)", () => {
+  it("tool_execution_update → tool-output-available preliminary (累积 partialResult 喂同卡)", () => {
     const r = translateEvent(
       {
         type: "tool_execution_update",
@@ -224,8 +224,10 @@ describe("translateEvent — schema-valid frames per event", () => {
     );
     expectValidFrames(r.frames);
     expect(chunkAt(r.frames)).toMatchObject({
-      type: "data-pi-tool-partial",
-      data: { toolCallId: "t1", toolName: "bash", partialResult: { lines: 3 } },
+      type: "tool-output-available",
+      toolCallId: "t1",
+      output: { lines: 3 },
+      preliminary: true,
     });
   });
 
@@ -249,7 +251,8 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkAt(r.frames)).toMatchObject({ type: "data-pi-ui", data: spec });
   });
 
-  it("tool_execution_update(details 非法 UiSpec)→ 回退 data-pi-tool-partial", () => {
+  it("tool_execution_update(details 非法 UiSpec)→ 回退 tool-output-available preliminary", () => {
+    const partial = { content: [], details: { [PI_UI_TOOL_DETAILS_KEY]: { component: "metric" } } };
     const r = translateEvent(
       {
         type: "tool_execution_update",
@@ -257,12 +260,17 @@ describe("translateEvent — schema-valid frames per event", () => {
         toolName: "show_dashboard",
         args: {},
         // kind 缺失 → UiSpecSchema 校验失败 → 不应误判为 data-pi-ui。
-        partialResult: { content: [], details: { [PI_UI_TOOL_DETAILS_KEY]: { component: "metric" } } },
+        partialResult: partial,
       },
       createTranslationContext(),
     );
     expectValidFrames(r.frames);
-    expect(chunkAt(r.frames)).toMatchObject({ type: "data-pi-tool-partial" });
+    expect(chunkAt(r.frames)).toMatchObject({
+      type: "tool-output-available",
+      toolCallId: "t1",
+      output: partial,
+      preliminary: true,
+    });
   });
 
   it("tool_execution_end → tool-output-available with result/isError", () => {

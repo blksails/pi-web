@@ -55,6 +55,20 @@ describe("decodeUiMessageChunk", () => {
       toolCallId: "c1",
       output: "done",
     });
+    // preliminary(累积中间产出)透传,前端据此渲染 update/Streaming 态。
+    expect(
+      decodeUiMessageChunk({
+        type: "tool-output-available",
+        toolCallId: "c1",
+        output: { lines: 3 },
+        preliminary: true,
+      }),
+    ).toEqual({
+      type: "tool-output-available",
+      toolCallId: "c1",
+      output: { lines: 3 },
+      preliminary: true,
+    });
   });
 
   it("maps data-pi-* data parts", () => {
@@ -67,13 +81,13 @@ describe("decodeUiMessageChunk", () => {
       data: { steering: ["a"], followUp: ["b"] },
     });
 
-    const toolPartial: UiMessageChunk = {
-      type: "data-pi-tool-partial",
-      data: { toolCallId: "c1", toolName: "bash", partialResult: "..." },
+    const ui: UiMessageChunk = {
+      type: "data-pi-ui",
+      data: { kind: "builtin", component: "metric", props: { label: "x", value: "1" } },
     };
-    expect(decodeUiMessageChunk(toolPartial)).toEqual({
-      type: "data-pi-tool-partial",
-      data: { toolCallId: "c1", toolName: "bash", partialResult: "..." },
+    expect(decodeUiMessageChunk(ui)).toEqual({
+      type: "data-pi-ui",
+      data: { kind: "builtin", component: "metric", props: { label: "x", value: "1" } },
     });
   });
 

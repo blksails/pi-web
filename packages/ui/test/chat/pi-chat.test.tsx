@@ -3,7 +3,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import type { UIMessage } from "ai";
 import { PiChat } from "../../src/chat/pi-chat.js";
-import { PiChatPro } from "../../src/chat/pi-chat-pro.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
 import {
   mockSession,
@@ -12,11 +11,10 @@ import {
 } from "../fixtures/mock-session.js";
 
 /**
- * PiChat(富装配,默认组件)集成冒烟测试(原 PiChatPro,任务 4.1)。
+ * PiChat(富装配,默认组件)集成冒烟测试(任务 4.1)。
  *
  * 覆盖:渲染富界面、发送文本(可含图片附件)消息、停止态点击触发 abort + stop、
  * 模型/建议/附件/分支控件的存在与交互、source data-part 渲染器注册、联网开关。
- * 另含废弃别名等价断言:`PiChatPro` 别名 import 与 `PiChat` 为同一引用。
  *
  * 不触达真实后端;mock session/transport/controls 形状来自 @pi-web/react。
  */
@@ -24,10 +22,6 @@ import {
 describe("PiChat 装配(富)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it("废弃别名 PiChatPro 与 PiChat 为同一引用", () => {
-    expect(PiChatPro).toBe(PiChat);
   });
 
   it("渲染富界面:输入区(textarea)、发送按钮、联网开关、附件入口", () => {

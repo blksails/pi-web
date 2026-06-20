@@ -23,10 +23,19 @@ describe("DataPartSchema", () => {
     ).toBe("data-pi-auto-retry");
     expect(
       DataPartSchema.parse({
+        type: "data-pi-ui",
+        data: { kind: "builtin", component: "metric", props: { label: "x", value: "1" } },
+      }).type,
+    ).toBe("data-pi-ui");
+  });
+
+  it("rejects data-pi-tool-partial (partial 改走 tool-output-available preliminary)", () => {
+    expect(
+      DataPartSchema.safeParse({
         type: "data-pi-tool-partial",
         data: { toolCallId: "t1", toolName: "bash", partialResult: "out" },
-      }).type,
-    ).toBe("data-pi-tool-partial");
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects an unknown type", () => {

@@ -2,7 +2,7 @@
  * PromptInput — 无状态的富输入外壳。
  *
  * 提供一个受控多行文本框与若干子控件插槽位;真正的附件/模型/语音/发送等子控件由装配层
- * (PiChatPro)注入,本组件只负责展示、本地键盘交互与插槽布局:
+ * (PiChat)注入,本组件只负责展示、本地键盘交互与插槽布局:
  *  - textarea:Enter 提交(调 onSubmit 并阻止默认换行)(Req 1.2);Shift+Enter 换行不提交
  *    (Req 1.4);value 为空或仅空白时不触发提交(Req 1.3)。
  *  - 受控 props:value/onChange/onSubmit/placeholder/disabled;placeholder 等可由调用方覆盖

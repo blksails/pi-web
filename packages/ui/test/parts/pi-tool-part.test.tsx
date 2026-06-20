@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { PiToolPart } from "../../src/parts/pi-tool-part.js";
+import {
+  PiToolPart,
+  ToolHeader,
+  ToolContent,
+  ToolInput,
+  ToolOutput,
+} from "../../src/parts/pi-tool-part.js";
 import {
   toolStartPart,
   toolUpdatePart,
@@ -9,47 +15,107 @@ import {
   toolErrorPart,
 } from "../fixtures/ui-message-fixtures.js";
 
-describe("PiToolPart 三态", () => {
-  it("start 态显示工具名与入参", () => {
-    render(<PiToolPart part={toolStartPart("search", { q: "pi" })} />);
+describe("PiToolPart 四态", () => {
+  it("start 态:Running 徽章 + 工具名;默认折叠,显式展开后显示入参", () => {
+    // 默认折叠(start 态)→ 徽章与工具名可见,明细不可见。
+    const { rerender } = render(
+      <PiToolPart part={toolStartPart("search", { q: "pi" })} />,
+    );
     const card = screen.getByText("search").closest("[data-pi-tool]");
     expect(card).toHaveAttribute("data-pi-tool-phase", "start");
-    expect(screen.getByText(/"q": "pi"/)).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(card?.querySelector("[data-pi-tool-detail]")).toBeNull();
+    // 显式展开后入参以 JSON 呈现。
+    rerender(
+      <PiToolPart
+        part={toolStartPart("search", { q: "pi" })}
+        defaultOpen={true}
+      />,
+    );
+    const detail = screen
+      .getByText("search")
+      .closest("[data-pi-tool]")
+      ?.querySelector("[data-pi-tool-detail]");
+    expect(detail).not.toBeNull();
+    expect(detail?.textContent).toContain('"q": "pi"');
+    expect(detail?.querySelector("code.language-json")).not.toBeNull();
   });
 
-  it("update 态用最新累积值替换显示", () => {
+  it("update 态:Streaming 徽章 + 旋转图标;显式展开显示累积值", () => {
     render(
       <PiToolPart
         part={toolUpdatePart("search", { q: "pi" }, { partial: 1 })}
+        defaultOpen={true}
       />,
     );
     const card = screen.getByText("search").closest("[data-pi-tool]");
     expect(card).toHaveAttribute("data-pi-tool-phase", "update");
-    expect(screen.getByText(/"partial": 1/)).toBeInTheDocument();
+    expect(screen.getByText("Streaming")).toBeInTheDocument();
+    // Streaming 徽章含旋转图标。
+    expect(
+      card?.querySelector("[data-pi-tool-status] .animate-spin"),
+    ).not.toBeNull();
+    expect(
+      card?.querySelector("[data-pi-tool-detail]")?.textContent,
+    ).toContain('"partial": 1');
   });
 
-  it("end 态显示结果", () => {
-    render(
-      <PiToolPart part={toolEndPart("search", { q: "pi" }, { hits: 3 })} />,
-    );
+  it("end 态:Completed 徽章;默认展开显示结果", () => {
+    render(<PiToolPart part={toolEndPart("search", { q: "pi" }, { hits: 3 })} />);
     const card = screen.getByText("search").closest("[data-pi-tool]");
     expect(card).toHaveAttribute("data-pi-tool-phase", "end");
-    expect(screen.getByText(/"hits": 3/)).toBeInTheDocument();
     expect(screen.getByText("Completed")).toBeInTheDocument();
+    // end 态默认展开(无需显式 defaultOpen)。
+    const detail = card?.querySelector("[data-pi-tool-detail]");
+    expect(detail).not.toBeNull();
+    expect(detail?.textContent).toContain('"hits": 3');
   });
 
-  it("error 态以错误样式呈现", () => {
-    render(
-      <PiToolPart part={toolErrorPart("search", { q: "pi" }, "boom")} />,
-    );
+  it("error 态:Error 徽章 + destructive;默认展开显示错误文本", () => {
+    render(<PiToolPart part={toolErrorPart("search", { q: "pi" }, "boom")} />);
     const card = screen.getByText("search").closest("[data-pi-tool]");
     expect(card).toHaveAttribute("data-pi-tool-phase", "error");
-    expect(screen.getByText("boom")).toBeInTheDocument();
     expect(screen.getByText("Error")).toBeInTheDocument();
+    // error 态默认展开,错误文本可见。
+    expect(screen.getByText("boom")).toBeInTheDocument();
+    // destructive 边框(根容器)。
+    expect(card?.className).toContain("--destructive");
   });
 
-  it("折叠区可键盘展开且带 aria 状态", async () => {
+  it("字符串型 output 经富渲染原语呈现(同步文本)", () => {
+    render(
+      <PiToolPart
+        part={toolEndPart("echo", {}, "hello result")}
+        defaultOpen={true}
+      />,
+    );
+    expect(screen.getByText("hello result")).toBeInTheDocument();
+  });
+
+  it("保留全部 data 属性:tool / phase / name / status / detail", () => {
+    render(<PiToolPart part={toolEndPart("search", {}, { hits: 3 })} />);
+    const card = screen.getByText("search").closest("[data-pi-tool]");
+    expect(card).toHaveAttribute("data-pi-tool-phase", "end");
+    expect(card).toHaveAttribute("data-pi-tool-name", "search");
+    expect(card?.querySelector("[data-pi-tool-status]")).not.toBeNull();
+    expect(card?.querySelector("[data-pi-tool-detail]")).not.toBeNull();
+  });
+
+  it("按状态默认展开:start/update 折叠、end/error 展开;显式 defaultOpen 覆盖", () => {
+    const { rerender } = render(
+      <PiToolPart part={toolStartPart("t", {})} />,
+    );
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    rerender(<PiToolPart part={toolEndPart("t", {}, { ok: 1 })} />);
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    // 显式覆盖:end 态强制折叠。
+    rerender(
+      <PiToolPart part={toolEndPart("t", {}, { ok: 1 })} defaultOpen={false} />,
+    );
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("折叠区可键盘展开且带 aria 状态;aria-controls 指向明细 id", async () => {
     const user = userEvent.setup();
     render(
       <PiToolPart
@@ -59,9 +125,70 @@ describe("PiToolPart 三态", () => {
     );
     const toggle = screen.getByRole("button");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const controls = toggle.getAttribute("aria-controls");
+    expect(controls).toBeTruthy();
     toggle.focus();
     await user.keyboard("{Enter}");
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(/"hits": 3/)).toBeInTheDocument();
+    const detail = document.getElementById(controls as string);
+    expect(detail).toHaveAttribute("data-pi-tool-detail");
+    expect(detail?.textContent).toContain('"hits": 3');
+  });
+});
+
+describe("复合子组件可独立渲染", () => {
+  it("ToolHeader 独立渲染徽章与触发器", () => {
+    let toggled = false;
+    render(
+      <ToolHeader
+        name="deploy"
+        phase="error"
+        open={false}
+        contentId="c1"
+        onToggle={() => {
+          toggled = true;
+        }}
+      />,
+    );
+    expect(screen.getByText("deploy")).toBeInTheDocument();
+    expect(screen.getByText("Error")).toBeInTheDocument();
+    const btn = screen.getByRole("button");
+    expect(btn).toHaveAttribute("aria-controls", "c1");
+    btn.click();
+    expect(toggled).toBe(true);
+  });
+
+  it("ToolContent 折叠时不渲染、展开时承载 detail 与 id", () => {
+    const { rerender } = render(
+      <ToolContent id="c2" open={false}>
+        body
+      </ToolContent>,
+    );
+    expect(screen.queryByText("body")).toBeNull();
+    rerender(
+      <ToolContent id="c2" open={true}>
+        body
+      </ToolContent>,
+    );
+    const el = screen.getByText("body");
+    expect(el).toHaveAttribute("id", "c2");
+    expect(el).toHaveAttribute("data-pi-tool-detail");
+  });
+
+  it("ToolInput 渲染 language-json 代码块并同步高亮 JSON token", () => {
+    const { container } = render(<ToolInput input={{ a: 1, ok: true }} />);
+    expect(container.querySelector("code.language-json")).not.toBeNull();
+    // 完整文本保留(textContent 可断言)。
+    expect(container.textContent).toContain('"a": 1');
+    // 同步 token 高亮:key / number / bool 各自包 span 着色(非无色纯文本)。
+    expect(container.querySelector(".pi-json-key")).not.toBeNull();
+    expect(container.querySelector(".pi-json-number")).not.toBeNull();
+    expect(container.querySelector(".pi-json-bool")).not.toBeNull();
+  });
+
+  it("ToolOutput 渲染错误文本优先于 output", () => {
+    render(<ToolOutput output={<span>ok</span>} errorText="bad" />);
+    expect(screen.getByText("bad")).toBeInTheDocument();
+    expect(screen.queryByText("ok")).toBeNull();
   });
 });

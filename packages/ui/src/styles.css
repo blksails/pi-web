@@ -26,6 +26,11 @@
   --input: 240 5.9% 90%;
   --ring: 240 10% 3.9%;
   --radius: 0.5rem;
+  /* 工具卡 JSON 同步高亮 token 配色(亮主题)。 */
+  --pi-json-key: 221 70% 48%;
+  --pi-json-string: 142 45% 36%;
+  --pi-json-number: 24 75% 45%;
+  --pi-json-bool: 280 55% 52%;
 }
 
 .dark {
@@ -48,4 +53,27 @@
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
   --ring: 240 4.9% 83.9%;
+  /* 工具卡 JSON 同步高亮 token 配色(暗主题,提亮)。 */
+  --pi-json-key: 213 90% 72%;
+  --pi-json-string: 142 50% 62%;
+  --pi-json-number: 28 85% 66%;
+  --pi-json-bool: 280 70% 76%;
+}
+
+/* 工具卡 JSON 同步高亮 token(由 PiToolPart 的 highlightJson 生成 span)。 */
+.pi-json-key {
+  color: hsl(var(--pi-json-key));
+}
+.pi-json-string {
+  color: hsl(var(--pi-json-string));
+}
+.pi-json-number {
+  color: hsl(var(--pi-json-number));
+}
+.pi-json-bool,
+.pi-json-null {
+  color: hsl(var(--pi-json-bool));
+}
+.pi-json-punct {
+  color: hsl(var(--muted-foreground));
 }

@@ -1,0 +1,22 @@
+{
+  "feature_name": "tool-call-ui-redesign",
+  "created_at": "2026-06-20T07:13:21Z",
+  "updated_at": "2026-06-20T07:55:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

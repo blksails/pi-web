@@ -7,12 +7,63 @@
   <body style="font-family: system-ui; margin: 0; padding: 12px; background: #f5f3ff">
     <div id="root">webext-artifact-agent · sandboxed artifact</div>
     <p id="status">loading…</p>
+    <!-- 对话 → artifact(正向):宿主把最新 assistant 文本经 event 推入,这里实时渲染。 -->
+    <div
+      id="agent-output"
+      data-pi-artifact-agent-output
+      style="margin-top: 8px; padding: 8px; background: #ede9fe; border-radius: 6px; color: #4c1d95; min-height: 20px; white-space: pre-wrap"
+    >
+      (等待对话输出…)
+    </div>
+    <!-- artifact → 对话回调:点击经 rpc 回 agent;agent 响应经宿主 event 回灌后修改本表面。 -->
+    <button id="ping" data-pi-artifact-rpc style="margin-top: 8px; padding: 6px 12px; cursor: pointer">
+      通知 agent(rpc)
+    </button>
+    <pre id="reply" data-pi-artifact-reply style="margin-top: 8px; color: #4c1d95"></pre>
     <script>
       // 加载后向宿主报告 ready 与高度(postMessage 契约,见 protocol parseArtifactMessage)。
       parent.postMessage({ kind: "ready", manifestId: "webext-artifact" }, "*");
       // 主动 resize 到 360(区别 initialHeight 240),供 R22 验证高度随 postMessage 变化。
       parent.postMessage({ kind: "resize", height: 360 }, "*");
       document.getElementById("status").textContent = "ready · resized to 360";
+
+      var clicks = 0;
+      // 点击 → 经 rpc 回 agent。request 须满足 UiRpcRequestSchema(correlationId/point/action/
+      // payload/protocolVersion);宿主会丢弃此处 correlationId/protocolVersion 另行生成,但 schema 要求其存在。
+      document.getElementById("ping").addEventListener("click", function () {
+        clicks += 1;
+        document.getElementById("status").textContent =
+          "rpc 已发送(#" + clicks + ")…等待 agent 响应";
+        parent.postMessage(
+          {
+            kind: "rpc",
+            request: {
+              correlationId: "artifact-local-" + clicks,
+              point: "custom",
+              action: "execute",
+              payload: { from: "artifact", clicks: clicks },
+              protocolVersion: "0",
+            },
+          },
+          "*"
+        );
+      });
+
+      // 监听宿主回灌的 event:
+      //   rpc:response      → artifact 发起 rpc 后的 agent 响应(回调闭环)
+      //   assistant-message → 对话/LLM 最新输出推入(正向「对话修改 artifact」)
+      window.addEventListener("message", function (ev) {
+        var msg = ev && ev.data;
+        if (!msg || msg.kind !== "event") return;
+        if (msg.name === "rpc:response") {
+          document.getElementById("status").textContent = "agent 已响应 · artifact 已更新";
+          document.getElementById("reply").textContent = JSON.stringify(msg.data, null, 2);
+        } else if (msg.name === "assistant-message") {
+          var text = msg.data && msg.data.text ? String(msg.data.text) : "";
+          document.getElementById("status").textContent = "对话已更新 artifact";
+          document.getElementById("agent-output").textContent = text;
+        }
+      });
     </script>
   </body>
 </html>

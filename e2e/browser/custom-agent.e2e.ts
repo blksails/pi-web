@@ -24,7 +24,7 @@ test("custom agent: streaming reply, tool card, reasoning, inline interaction", 
   const input = page.locator("[data-pi-input-textarea]");
   await expect(input).toBeVisible();
 
-  // Submit a prompt via PiChatPro's stateful send button.
+  // Submit a prompt via PiChat's stateful send button.
   await input.fill("say hello");
   await page.locator('[data-pi-submit-state="send"]').click();
 
@@ -51,7 +51,7 @@ test("custom agent: streaming reply, tool card, reasoning, inline interaction", 
   // The rich prompt-input toolbar is present (stateful submit affordance).
   await expect(page.locator("[data-pi-prompt-input-toolbar]")).toBeVisible();
 
-  // ModelSelector is now VISIBLE: PiChatPro eagerly loads models on session-ready
+  // ModelSelector is now VISIBLE: PiChat eagerly loads models on session-ready
   // (no longer deadlocked on open), and the stub returns get_available_models, so
   // `available` is true and the selector renders. The full open/group/select flow
   // is covered in rich-chat.e2e.ts (Req 4).

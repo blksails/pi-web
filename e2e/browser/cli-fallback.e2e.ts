@@ -19,7 +19,7 @@ test("cli fallback: no-index dir streams a reply", async ({ page }) => {
   await expect(input).toBeVisible();
 
   await input.fill("hello cli");
-  // PiChatPro's stateful send button (data-pi-submit-state="send"), replacing
+  // PiChat's stateful send button (data-pi-submit-state="send"), replacing
   // the legacy <PiChat> data-pi-send affordance.
   await page.locator('[data-pi-submit-state="send"]').click();
 

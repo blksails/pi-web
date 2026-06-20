@@ -17,7 +17,11 @@ import {
   type ReasoningPart,
   type PiReasoningProps,
 } from "../parts/pi-reasoning.js";
-import { PiToolPart, type ToolPart } from "../parts/pi-tool-part.js";
+import {
+  PiToolPart,
+  type ToolPart,
+  type PiToolPartProps,
+} from "../parts/pi-tool-part.js";
 import {
   defaultRendererRegistry,
   type RendererRegistry,
@@ -34,6 +38,9 @@ export interface PartRendererProps {
   readonly markdown?: React.ComponentType<MarkdownProps>;
   /** reasoning part 的渲染实现;默认 PiReasoning。可由 components.Reasoning 覆盖。 */
   readonly reasoning?: React.ComponentType<PiReasoningProps>;
+  /** 工具 part 的整卡渲染实现;默认 PiToolPart。可由 components.ToolPart 覆盖。
+   *  优先级低于按工具名注册的渲染器(registry)。 */
+  readonly toolPart?: React.ComponentType<PiToolPartProps>;
 }
 
 function isToolPart(part: AnyPart): part is ToolPart {
@@ -76,6 +83,7 @@ export function PartRenderer({
   registry = defaultRendererRegistry,
   markdown,
   reasoning,
+  toolPart,
 }: PartRendererProps): React.JSX.Element | null {
   if (part.type === "text") {
     const Md = markdown ?? Response;
@@ -89,11 +97,13 @@ export function PartRenderer({
 
   if (isToolPart(part)) {
     const name = toolNameOf(part);
+    // 解析优先级:注册表(按工具名,含 webext 扩展) > 宿主 components.ToolPart > 默认 PiToolPart。
     const Custom = registry.resolveToolRenderer(name);
     if (Custom !== undefined) {
       return <Custom part={part} message={message} />;
     }
-    return <PiToolPart part={part} message={message} />;
+    const ToolComp = toolPart ?? PiToolPart;
+    return <ToolComp part={part} message={message} />;
   }
 
   if (isDataPart(part)) {

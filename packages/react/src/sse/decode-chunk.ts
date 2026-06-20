@@ -77,6 +77,9 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
         type: "tool-output-available",
         toolCallId: chunk.toolCallId,
         output: chunk.output,
+        // preliminary(tool_execution_update 中间产出)透传 → AI SDK 按 toolCallId
+        // 复用 part 并标记 preliminary,前端据此渲染 update/Streaming 态。
+        ...(chunk.preliminary === true ? { preliminary: true } : {}),
       };
     case "tool-output-error":
       return {
@@ -89,7 +92,6 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
     case "data-pi-queue":
     case "data-pi-compaction":
     case "data-pi-auto-retry":
-    case "data-pi-tool-partial":
     case "data-pi-ui":
       return { type: chunk.type, data: chunk.data };
 

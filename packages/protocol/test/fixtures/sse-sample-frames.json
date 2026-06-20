@@ -7,7 +7,7 @@
     { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-delta", "id": "msg-1", "delta": " list the files." } },
     { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "text-end", "id": "msg-1" } },
     { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "tool-input-available", "toolCallId": "toolu_01abc", "toolName": "bash", "input": { "command": "ls -1" } } },
-    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "data-pi-tool-partial", "data": { "toolCallId": "toolu_01abc", "toolName": "bash", "partialResult": "PLAN.md\nCLAUDE.md\n" } } },
+    { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "tool-output-available", "toolCallId": "toolu_01abc", "output": "PLAN.md\nCLAUDE.md\n", "preliminary": true } },
     { "kind": "uiMessageChunk", "protocolVersion": "0.1.0", "chunk": { "type": "tool-output-available", "toolCallId": "toolu_01abc", "output": "PLAN.md\nCLAUDE.md\npackage.json\n", "isError": false } },
     { "kind": "control", "protocolVersion": "0.1.0", "payload": { "control": "queue", "steering": [], "followUp": [] } },
     { "kind": "control", "protocolVersion": "0.1.0", "payload": { "control": "stats", "stats": { "cost": 0.0012, "totalTokens": 58 } } }

@@ -9,7 +9,7 @@
  * 受控态、`aria-label` 满足无障碍;`disabled` 时禁用且不回传。主题经 shadcn CSS 变量(cn +
  * 既有基元),无硬编码颜色(Req 11.5)。
  *
- * 本元件无 pi 接线逻辑:联网意图的传达由装配层(PiChatPro,Req 6.3/6.4)处理。
+ * 本元件无 pi 接线逻辑:联网意图的传达由装配层(PiChat,Req 6.3/6.4)处理。
  */
 import * as React from "react";
 import { Globe } from "lucide-react";

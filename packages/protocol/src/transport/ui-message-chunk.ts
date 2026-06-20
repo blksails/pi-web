@@ -68,6 +68,9 @@ const ToolChunkSchema = z.discriminatedUnion("type", [
     toolCallId: z.string(),
     output: z.unknown(),
     isError: z.boolean().optional(),
+    // 中间产出(tool_execution_update 的累积 partialResult)标记;true 时前端按
+    // update/Streaming 态渲染,最终 tool_execution_end 的输出(无此标记)覆盖之。
+    preliminary: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("tool-output-error"),

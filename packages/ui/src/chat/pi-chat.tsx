@@ -345,10 +345,16 @@ export function PiChat({
   // ——无贡献点的 agent 不开(零干扰),prompt 期关闭(由 per-prompt 流处理 control 帧),
   // 避免与 per-prompt 流并存导致流冲突。使 idle 输入 "/"/"@" 触发的 ui-rpc 回包能投递(R10/R11/R20)。
   const hasContributions = extension?.contributions !== undefined;
+  // artifact 的 rpc 回调(iframe→agent)同样依赖空闲下行通道配对响应;与 contributions 同理需要
+  // 持久控制流。原 prompt-流回归仅针对**完全不需要 ui-rpc** 的 agent(既无 contributions 也无
+  // artifact),故对带 artifact 的 agent 开通是正确的,不重蹈该回归。
+  const hasArtifactRpc =
+    extension?.artifact !== undefined && extensionBaseUrl !== undefined;
+  const needsIdleControl = hasContributions || hasArtifactRpc;
   React.useEffect(() => {
-    if (connection === undefined || isBusy || !hasContributions) return;
+    if (connection === undefined || isBusy || !needsIdleControl) return;
     return connection.openControlOnlyStream();
-  }, [connection, isBusy, hasContributions]);
+  }, [connection, isBusy, needsIdleControl]);
   const canSubmit =
     transport !== undefined &&
     (input.trim().length > 0 || attachments.items.length > 0);
@@ -415,6 +421,21 @@ export function PiChat({
 
   const isEmpty = messages.length === 0;
   const gridItems = suggestions.items.length > 0 ? suggestions.items : starters;
+
+  // 对话 → artifact 推送(正向):取最新 assistant 文本,经 ArtifactSurface 的 push 通道
+  // postMessage 进 iframe,使对话/LLM 输出实时驱动并修改 artifact 表面(流式逐帧更新)。
+  const latestAssistantText = React.useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const m = messages[i];
+      if (m?.role !== "assistant") continue;
+      const text = m.parts
+        .map((p) => (p.type === "text" && typeof p.text === "string" ? p.text : ""))
+        .join("")
+        .trim();
+      return text.length > 0 ? text : undefined;
+    }
+    return undefined;
+  }, [messages]);
 
   const lay = layoutClassNames(layout);
 
@@ -731,6 +752,9 @@ export function PiChat({
                     {...(components?.Reasoning !== undefined
                       ? { reasoning: components.Reasoning }
                       : {})}
+                    {...(components?.ToolPart !== undefined
+                      ? { toolPart: components.ToolPart }
+                      : {})}
                   />
                 ))}
                 {slots?.messageActions !== undefined ? (
@@ -889,6 +913,15 @@ export function PiChat({
               src={`${extensionBaseUrl.replace(/\/$/, "")}/${extension.artifact.entry}`}
               {...(extension.artifact.initialHeight !== undefined
                 ? { initialHeight: extension.artifact.initialHeight }
+                : {})}
+              {...(uiRpc !== undefined ? { rpc: uiRpc } : {})}
+              {...(latestAssistantText !== undefined
+                ? {
+                    push: {
+                      name: "assistant-message",
+                      data: { text: latestAssistantText },
+                    },
+                  }
                 : {})}
             />
           ) : null}

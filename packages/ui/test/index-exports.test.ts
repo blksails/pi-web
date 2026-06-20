@@ -1,8 +1,7 @@
 /**
  * @pi-web/ui 公开导出面存在性断言。
  *
- * 守护:默认 `PiChat`(富,收敛后)/ `PiChatBasic`(最小)/ `PiChatPro`(废弃别名)
- * 与 `elements/*` 导出存在;`PiChatPro` 与 `PiChat` 为同一引用(别名等价)。
+ * 守护:默认 `PiChat`(富,收敛后)/ `PiChatBasic`(最小)与 `elements/*` 导出存在。
  * 仅校验符号可从包根导入(运行时值 + 类型),不校验组件行为。
  */
 import { describe, it, expect } from "vitest";
@@ -15,11 +14,6 @@ describe("@pi-web/ui public exports", () => {
 
   it("最小组件 PiChatBasic 可导入且为函数组件", () => {
     expect(typeof ui.PiChatBasic).toBe("function");
-  });
-
-  it("废弃别名 PiChatPro 可导入且与 PiChat 为同一引用", () => {
-    expect(typeof ui.PiChatPro).toBe("function");
-    expect(ui.PiChatPro).toBe(ui.PiChat);
   });
 
   it("元件层(elements/*)经包根 barrel 暴露", () => {
@@ -48,5 +42,12 @@ describe("@pi-web/ui public exports", () => {
     expect(typeof ui.PiInteraction).toBe("function");
     expect(typeof ui.createRendererRegistry).toBe("function");
     expect(typeof ui.cn).toBe("function");
+  });
+
+  it("工具卡复合子组件经包根 barrel 暴露", () => {
+    expect(typeof ui.ToolHeader).toBe("function");
+    expect(typeof ui.ToolContent).toBe("function");
+    expect(typeof ui.ToolInput).toBe("function");
+    expect(typeof ui.ToolOutput).toBe("function");
   });
 });

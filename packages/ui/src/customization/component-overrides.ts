@@ -23,6 +23,7 @@ import type {
   ConversationBackgroundProps,
 } from "../elements/index.js";
 import type { PiReasoningProps } from "../parts/pi-reasoning.js";
+import type { PiToolPartProps } from "../parts/pi-tool-part.js";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -39,6 +40,8 @@ export interface ComponentOverrides {
   readonly Markdown?: ComponentType<MarkdownProps>;
   /** 思考块(reasoning part)外观;默认 PiReasoning,可整体替换(参考 ai-sdk Reasoning)。 */
   readonly Reasoning?: ComponentType<PiReasoningProps>;
+  /** 工具卡(tool part)整体外观;默认 PiToolPart。按工具名注册的渲染器优先级高于本覆盖。 */
+  readonly ToolPart?: ComponentType<PiToolPartProps>;
   readonly EmptyState?: ComponentType<EmptyStateProps>;
   readonly StarterCard?: ComponentType<StarterCardProps>;
   readonly ConversationBackground?: ComponentType<ConversationBackgroundProps>;

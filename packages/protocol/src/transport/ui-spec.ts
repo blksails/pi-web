@@ -172,13 +172,13 @@ export type UiSpec = z.infer<typeof UiSpecSchema>;
  *
  * agent 工具在 `execute` 内经 `onUpdate({ content: [], details: { [PI_UI_TOOL_DETAILS_KEY]: UiSpec } })`
  * 发出 UI;pi SDK 据此产生 `tool_execution_update` 事件,server 翻译层识别此 key 后
- * 产出 `data-pi-ui` 帧(而非默认的 `data-pi-tool-partial`)。详见 agent-kit 的 `emitUi` 助手。
+ * 产出 `data-pi-ui` 帧(而非默认的 `tool-output-available` preliminary)。详见 agent-kit 的 `emitUi` 助手。
  */
 export const PI_UI_TOOL_DETAILS_KEY = "__piWebUi" as const;
 
 /**
  * 从 `tool_execution_update.partialResult` 中提取并校验 UiSpec(server 翻译层用)。
- * 形状不符或未携带约定 key 时返回 undefined(回退到 data-pi-tool-partial)。
+ * 形状不符或未携带约定 key 时返回 undefined(回退到 tool-output-available preliminary)。
  */
 export function extractToolDetailsUiSpec(partialResult: unknown): UiSpec | undefined {
   if (partialResult === null || typeof partialResult !== "object") return undefined;
