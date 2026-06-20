@@ -100,8 +100,9 @@ flowchart LR
 - `packages/protocol/test/web-ext/config-empty.test.ts` — `empty` schema parse/拒绝非法值。
 - `packages/react/test/hooks/use-suggestions.test.ts` — 若已存在则补充 merge 用例,否则新建。
 - `packages/ui/test/chat/pi-chat-suggestions-merge.test.tsx` — `suggestionsMerge` 透传与渲染顺序;`emptyTitle/Subtitle` 来自 props 的渲染。
-- `examples/webext-empty-config-agent/.pi/web/web.config.ts`(或就近复用既有示例)— 纯声明式 `empty` 配置范例,供 e2e 加载。
-- `e2e/browser/webext-empty-config.e2e.ts` — 浏览器端验收。
+- `examples/webext-slots-agent/.pi/web/web.config.tsx` — 在既有「全槽展示」示例上整合 `config.empty`(title/subtitle/starters + `mergeCommands: "prepend"`),不再新增独立空态示例 agent;e2e 直接复用该 source。
+- `e2e/browser/webext-full.e2e.ts` — 在既有 slots-agent 验收中增补 Tier5 空态配置断言(标题/副标题/建议项 + prepend 合并)与默认回归;不单列 e2e 文件。
+  - 注:`replace` 合并模式由 `useSuggestions` 单测覆盖(e2e 单 agent 单 mergeCommands,演示 `prepend` 与命令的合并)。
 
 ## System Flows
 

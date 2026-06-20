@@ -54,14 +54,14 @@
   - _Depends: 1.1, 3.1_
 
 - [x] 5. 验收资产与端到端测试
-- [x] 5.1 新增纯声明式 empty 配置示例 agent
-  - 提供一个无代码 bundle、仅靠声明式配置设置 empty(title/subtitle/starters + 一种 mergeCommands)的示例 agent,供 e2e 加载。
-  - 观测完成:该示例可被扩展加载链路当作纯声明式配置解析并合成运行时配置。
+- [x] 5.1 在既有 webext-slots-agent 整合 empty 配置示例
+  - 在「全槽展示」示例 webext-slots-agent 的 web.config 上增补 config.empty(title/subtitle/starters + mergeCommands: prepend),供 e2e 加载;不新增独立空态示例 agent。
+  - 观测完成:该示例可被扩展加载链路解析为含 config.empty 的运行时配置。
   - _Requirements: 1.1, 2.1, 3.1_
   - _Boundary: examples (assets)_
   - _Depends: 1.1_
-- [x] 5.2 浏览器端 e2e 验收
-  - 加载示例 agent,断言空状态展示配置的 title/subtitle 与 starters 按钮;prepend 时配置项在命令前;replace 时无命令按钮。
+- [x] 5.2 浏览器端 e2e 验收(并入 webext-full.e2e.ts)
+  - 加载 webext-slots-agent,断言空状态展示配置的 title/subtitle 与 starters 按钮;prepend 时配置项在命令前;replace 由单测覆盖。
   - 加入一条回归:不带 empty 的默认 agent 空状态与现状一致。
   - 采用隔离 build 惯例(NEXT_DIST_DIR=.next-e2e + external server),不污染 dev。
   - 观测完成:e2e 全部通过并产出可复核证据(截图/断言日志)。
