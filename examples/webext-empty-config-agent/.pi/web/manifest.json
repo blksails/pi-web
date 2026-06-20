@@ -1,0 +1,26 @@
+{
+  "id": "webext-empty-config",
+  "targetApiVersion": "^0.1.0",
+  "capabilities": ["config"],
+  "config": {
+    "empty": {
+      "title": "需要我帮忙吗?",
+      "subtitle": "选择一个起点,或直接提问。",
+      "starters": [
+        {
+          "id": "empty-explain",
+          "label": "解释这个项目的结构",
+          "value": "请解释这个项目的结构",
+          "mode": "fill"
+        },
+        {
+          "id": "empty-test",
+          "label": "生成单元测试",
+          "value": "为当前模块生成单元测试",
+          "mode": "send"
+        }
+      ],
+      "mergeCommands": "prepend"
+    }
+  }
+}

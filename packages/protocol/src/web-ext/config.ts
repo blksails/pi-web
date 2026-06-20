@@ -13,9 +13,36 @@ export type ThemeTokens = z.infer<typeof ThemeTokensSchema>;
 export const LayoutPresetSchema = z.string();
 export type LayoutPreset = z.infer<typeof LayoutPresetSchema>;
 
+/**
+ * 空态建议项(可序列化)。字段与 `@pi-web/react` 的 `Suggestion` 对齐:
+ * protocol 不可依赖 react,故在此独立定义;宿主透传时类型相容直接作为 suggestionsPresets。
+ */
+export const EmptySuggestionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  value: z.string(),
+  /** "fill" 填入输入框;"send" 直接发送。 */
+  mode: z.enum(["fill", "send"]),
+});
+export type EmptySuggestion = z.infer<typeof EmptySuggestionSchema>;
+
+/**
+ * 空态(EmptyState)声明式配置。
+ * mergeCommands 控制 starters 与 agent slash 命令的合并:
+ * append(默认,命令在前)/prepend(配置在前)/replace(仅配置,空则回落命令)。
+ */
+export const EmptyConfigSchema = z.object({
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  starters: z.array(EmptySuggestionSchema).optional(),
+  mergeCommands: z.enum(["append", "prepend", "replace"]).optional(),
+});
+export type EmptyConfig = z.infer<typeof EmptyConfigSchema>;
+
 /** 声明式配置(零代码路径可仅靠此,内联于 manifest)。 */
 export const WebExtConfigSchema = z.object({
   theme: ThemeTokensSchema.optional(),
   layout: LayoutPresetSchema.optional(),
+  empty: EmptyConfigSchema.optional(),
 });
 export type WebExtConfig = z.infer<typeof WebExtConfigSchema>;

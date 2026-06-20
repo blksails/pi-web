@@ -11,6 +11,7 @@ import {
   type UsePiControlsResult,
   type UseExtensionUIResult,
   type Suggestion,
+  type SuggestionMerge,
   useModels,
   useAttachments,
   useBranches,
@@ -87,6 +88,8 @@ export interface PiChatProps {
   readonly extensionBaseUrl?: string;
   readonly slots?: PiChatSlots;
   readonly suggestionsPresets?: ReadonlyArray<Suggestion>;
+  /** suggestionsPresets 与 agent 命令的合并策略;默认 "append"(命令在前)。 */
+  readonly suggestionsMerge?: SuggestionMerge;
   readonly placeholder?: string;
   readonly emptyTitle?: string;
   readonly emptySubtitle?: string;
@@ -189,6 +192,7 @@ export function PiChat({
   extensionBaseUrl,
   slots,
   suggestionsPresets,
+  suggestionsMerge,
   placeholder,
   emptyTitle = DEFAULT_EMPTY_TITLE,
   emptySubtitle = DEFAULT_EMPTY_SUBTITLE,
@@ -307,6 +311,7 @@ export function PiChat({
   const suggestions = useSuggestions({
     ...(controls !== undefined ? { controls } : {}),
     ...(suggestionsPresets !== undefined ? { presets: suggestionsPresets } : {}),
+    ...(suggestionsMerge !== undefined ? { merge: suggestionsMerge } : {}),
   });
 
   const [rejected, setRejected] = React.useState<ReadonlyArray<string>>([]);

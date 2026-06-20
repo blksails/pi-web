@@ -1,0 +1,70 @@
+# Implementation Plan
+
+- [x] 1. 协议层:WebExtConfig 增加 empty 声明式配置
+- [x] 1.1 定义 empty 配置 schema 与类型 (P)
+  - 在声明式配置契约中新增 `empty`,含可选 title、subtitle、starters、mergeCommands。
+  - starters 每项要求 id/label/value 字符串与 mode 枚举(fill/send);mergeCommands 枚举 append/prepend/replace。
+  - 导出对应类型,保证字段与既有可序列化 Suggestion 结构对齐。
+  - 观测完成:非法 mode 与非法 mergeCommands 的配置被 schema 拒绝;省略 empty 时整体配置仍解析通过。
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+  - _Boundary: EmptyConfigSchema (protocol)_
+- [x] 1.2 schema 单元测试 (P)
+  - 覆盖:合法 empty 解析成功;非法 mode 被拒;非法 mergeCommands 被拒;无 empty 的旧配置解析不受影响。
+  - 观测完成:新增测试在 protocol 包内通过。
+  - _Requirements: 1.1, 1.4, 1.5, 1.6, 6.3_
+  - _Boundary: EmptyConfigSchema (protocol)_
+  - _Depends: 1.1_
+
+- [x] 2. 客户端层:建议项合并策略
+- [x] 2.1 为建议项合并增加策略入参 (P)
+  - 合并逻辑支持 append(默认)/prepend/replace;默认 append 保持现有"命令在前、预设在后"的顺序不变。
+  - replace 且预设为空时回落为命令,避免空状态无任何建议。
+  - 观测完成:不传策略时输出与改动前逐项一致;三种策略各自产出预期顺序。
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 6.2_
+  - _Boundary: useSuggestions (react)_
+- [x] 2.2 合并策略单元测试 (P)
+  - 覆盖四种情形:append/缺省、prepend、replace+非空、replace+空回落。
+  - 观测完成:新增测试在 react 包内通过。
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 6.2_
+  - _Boundary: useSuggestions (react)_
+  - _Depends: 2.1_
+
+- [x] 3. UI 层:PiChat 透传合并策略
+- [x] 3.1 PiChat 增加 suggestionsMerge 透传 prop
+  - 新增可选 prop 并透传给建议项合并逻辑;不改动 EmptyState 组件。
+  - 既有 emptyTitle/emptySubtitle/suggestionsPresets prop 不新增,仅确认可被填充并渲染。
+  - 观测完成:传入不同 suggestionsMerge 时空状态建议按钮顺序相应变化;传入 emptyTitle/emptySubtitle 渲染到标题/副标题。
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 3.1, 4.4_
+  - _Boundary: PiChat (ui)_
+  - _Depends: 2.1_
+- [x] 3.2 PiChat 透传与渲染单元测试
+  - 覆盖:suggestionsMerge 影响 grid DOM 顺序;emptyTitle/emptySubtitle props 渲染;点击 fill/send 行为正确。
+  - 观测完成:新增测试在 ui 包内通过。
+  - _Requirements: 2.1, 2.2, 2.5, 3.2, 3.3, 4.5_
+  - _Boundary: PiChat (ui)_
+  - _Depends: 3.1_
+
+- [x] 4. 宿主集成:chat-app 消费 config.empty
+- [x] 4.1 在宿主把 extension.config.empty 翻译为 PiChat props
+  - 仿 theme/layout 的条件展开,把 title/subtitle/starters/mergeCommands 映射为 emptyTitle/emptySubtitle/suggestionsPresets/suggestionsMerge。
+  - 未声明 empty 时不注入任何空状态相关 prop;既有 empty slot 优先级链路保持不变。
+  - 观测完成:加载带 empty 配置的扩展时空状态按配置渲染;无配置时空状态与改动前一致。
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 6.1_
+  - _Boundary: chat-app (host)_
+  - _Depends: 1.1, 3.1_
+
+- [x] 5. 验收资产与端到端测试
+- [x] 5.1 新增纯声明式 empty 配置示例 agent
+  - 提供一个无代码 bundle、仅靠声明式配置设置 empty(title/subtitle/starters + 一种 mergeCommands)的示例 agent,供 e2e 加载。
+  - 观测完成:该示例可被扩展加载链路当作纯声明式配置解析并合成运行时配置。
+  - _Requirements: 1.1, 2.1, 3.1_
+  - _Boundary: examples (assets)_
+  - _Depends: 1.1_
+- [x] 5.2 浏览器端 e2e 验收
+  - 加载示例 agent,断言空状态展示配置的 title/subtitle 与 starters 按钮;prepend 时配置项在命令前;replace 时无命令按钮。
+  - 加入一条回归:不带 empty 的默认 agent 空状态与现状一致。
+  - 采用隔离 build 惯例(NEXT_DIST_DIR=.next-e2e + external server),不污染 dev。
+  - 观测完成:e2e 全部通过并产出可复核证据(截图/断言日志)。
+  - _Requirements: 2.1, 2.3, 3.1, 4.2, 4.3, 6.1_
+  - _Boundary: e2e (validation)_
+  - _Depends: 4.1, 5.1_

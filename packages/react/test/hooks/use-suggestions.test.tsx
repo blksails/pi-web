@@ -131,3 +131,58 @@ describe("useSuggestions", () => {
     expect(result.current.pending).toBe(false);
   });
 });
+
+describe("useSuggestions merge strategies", () => {
+  const preset: Suggestion = {
+    id: "p1",
+    label: "Summarize",
+    value: "Please summarize",
+    mode: "send",
+  };
+  const cmdSuggestion: Suggestion = {
+    id: "cmd:compact",
+    label: "/compact",
+    value: "/compact",
+    mode: "fill",
+  };
+
+  it("default (no merge) keeps commands before presets — backward compatible", () => {
+    const controls = makeControls({ commands: [CMD_A] });
+    const { result } = renderHook(() =>
+      useSuggestions({ controls, presets: [preset] }),
+    );
+    expect(result.current.items).toEqual([cmdSuggestion, preset]);
+  });
+
+  it("append: commands before presets", () => {
+    const controls = makeControls({ commands: [CMD_A] });
+    const { result } = renderHook(() =>
+      useSuggestions({ controls, presets: [preset], merge: "append" }),
+    );
+    expect(result.current.items).toEqual([cmdSuggestion, preset]);
+  });
+
+  it("prepend: presets before commands", () => {
+    const controls = makeControls({ commands: [CMD_A] });
+    const { result } = renderHook(() =>
+      useSuggestions({ controls, presets: [preset], merge: "prepend" }),
+    );
+    expect(result.current.items).toEqual([preset, cmdSuggestion]);
+  });
+
+  it("replace: presets only, commands dropped", () => {
+    const controls = makeControls({ commands: [CMD_A, CMD_B] });
+    const { result } = renderHook(() =>
+      useSuggestions({ controls, presets: [preset], merge: "replace" }),
+    );
+    expect(result.current.items).toEqual([preset]);
+  });
+
+  it("replace with empty presets falls back to commands (no empty state)", () => {
+    const controls = makeControls({ commands: [CMD_A] });
+    const { result } = renderHook(() =>
+      useSuggestions({ controls, presets: [], merge: "replace" }),
+    );
+    expect(result.current.items).toEqual([cmdSuggestion]);
+  });
+});

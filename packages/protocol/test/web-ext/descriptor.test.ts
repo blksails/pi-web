@@ -3,6 +3,8 @@ import {
   SlotKeySchema,
   WebExtConfigSchema,
   WebExtensionDescriptorMetaSchema,
+  EmptyConfigSchema,
+  EmptySuggestionSchema,
 } from "../../src/web-ext/descriptor.js";
 
 describe("SlotKey", () => {
@@ -23,6 +25,23 @@ describe("WebExtConfig (Tier 5 declarative)", () => {
       layout: "split",
     });
     expect(r.success).toBe(true);
+  });
+
+  it("re-exports empty config schemas through the descriptor barrel", () => {
+    expect(
+      EmptySuggestionSchema.safeParse({
+        id: "s1",
+        label: "Hi",
+        value: "Hi",
+        mode: "fill",
+      }).success,
+    ).toBe(true);
+    expect(
+      EmptyConfigSchema.safeParse({ mergeCommands: "append" }).success,
+    ).toBe(true);
+    expect(
+      WebExtConfigSchema.safeParse({ empty: { title: "Hi" } }).success,
+    ).toBe(true);
   });
 });
 
