@@ -1,0 +1,22 @@
+{
+  "feature_name": "system-resource-toggle-fix",
+  "created_at": "2026-06-20T14:01:04Z",
+  "updated_at": "2026-06-20T14:15:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

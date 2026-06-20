@@ -45,6 +45,16 @@ export interface RunnerArgs {
   model?: string;
   /** Agent source recorded into the piweb.session creation metadata (for cold resume). */
   sourceMeta?: string;
+  /**
+   * `--no-skills`:`true` → 不载入系统/包/内置 skills(对齐 pi CLI `--no-skills`)。
+   * `undefined`(未传)→ 按默认载入。`--no-skills=false` → 显式开启(`false`)。
+   */
+  noSkills?: boolean;
+  /**
+   * `--no-extensions`:`true` → 不载入系统/包 extensions(经强制注入路径提供的扩展
+   * 如 pi-sandbox 仍加载)。语义与 `noSkills` 对称,二者相互独立。
+   */
+  noExtensions?: boolean;
 }
 
 /** Raised for missing/invalid CLI arguments. */
@@ -68,6 +78,8 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   let sessionId: string | undefined;
   let model: string | undefined;
   let sourceMeta: string | undefined;
+  let noSkills: boolean | undefined;
+  let noExtensions: boolean | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -99,6 +111,12 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
       } else {
         trusted = takeValue("--trusted") !== "false";
       }
+    } else if (arg === "--no-skills" || arg!.startsWith("--no-skills=")) {
+      // 系统资源开关:裸 flag → true(关闭);`=false` → 显式开启。与 `--trusted` 同款。
+      noSkills = arg === "--no-skills" ? true : takeValue("--no-skills") !== "false";
+    } else if (arg === "--no-extensions" || arg!.startsWith("--no-extensions=")) {
+      noExtensions =
+        arg === "--no-extensions" ? true : takeValue("--no-extensions") !== "false";
     }
   }
 
@@ -112,6 +130,8 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   if (sessionId !== undefined) result.sessionId = sessionId;
   if (model !== undefined) result.model = model;
   if (sourceMeta !== undefined) result.sourceMeta = sourceMeta;
+  if (noSkills !== undefined) result.noSkills = noSkills;
+  if (noExtensions !== undefined) result.noExtensions = noExtensions;
   return result;
 }
 
@@ -132,7 +152,11 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // 二者任一为真即放行项目级 `.pi/`(extensions/agents/skills)。
   const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
   const trust = makeResolveProjectTrust(trusted);
-  const factory = await loadAgentDefinition(args.agent, ctx, trust);
+  // 「扩展 → 系统资源」开关透传:custom 模式(shape a/b)据此清空 skills / 关闭系统 extensions。
+  const factory = await loadAgentDefinition(args.agent, ctx, trust, {
+    ...(args.noSkills !== undefined ? { noSkills: args.noSkills } : {}),
+    ...(args.noExtensions !== undefined ? { noExtensions: args.noExtensions } : {}),
+  });
 
   // open-or-create by id(对齐 pi CLI main.js:255-261):给定 --session-id 时,若该 id 的
   // 会话文件已存在则 open 加载历史(恢复),否则以该 id 新建——使持久化文件 id 与主进程
