@@ -56,7 +56,8 @@ agent 工具 execute(_id,_params,_signal, onUpdate)
         ▼  pi SDK 产出 tool_execution_update { partialResult }
   server translate-event(tool_execution_update)          [server]
         │  extractToolDetailsUiSpec(partialResult) 命中 → 产 data-pi-ui 帧
-        │  (未命中 → 维持 data-pi-tool-partial)
+        │  (未命中 → 产 tool-output-available preliminary,喂同一工具卡)
+        │   〔更新 2026-06-20:原回退为 data-pi-tool-partial,该 data-part 已移除〕
         ▼  既有: SSE /stream → PiTransport → decode-chunk → useChat → messages[]
   PartRenderer  ── data-* 分派 ──► registry.resolveDataPartRenderer("data-pi-ui")
         ▼

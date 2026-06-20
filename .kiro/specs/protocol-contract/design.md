@@ -294,7 +294,9 @@ sequenceDiagram
 
 #### DataPartSchema(transport/data-part.ts)
 
-**Full block 简述**:pi 特有 data-part 联合,judged by `type`(如 `data-pi-queue`、`data-pi-compaction`、`data-pi-auto-retry`、`data-pi-tool-partial`)。覆盖 3.1–3.4。Contracts: Event。下游 `react-client` 按 `type` 分发渲染器。
+**Full block 简述**:pi 特有 data-part 联合,judged by `type`(如 `data-pi-queue`、`data-pi-compaction`、`data-pi-auto-retry`、`data-pi-ui`)。覆盖 3.1–3.4。Contracts: Event。下游 `react-client` 按 `type` 分发渲染器。
+
+> 注(2026-06-20):原成员 `data-pi-tool-partial` 已移除。`tool_execution_update` 的累积 `partialResult` 不再产独立 data-part,改翻译为 `tool-output-available` + `preliminary: true`(标准 tool chunk,新增可选 `preliminary` 字段)喂进同一工具卡;详见 `web-ui-custom-rendering` 与 `tool-call-ui-redesign` spec。
 
 #### RestDtoSchema 系列(transport/rest-dto.ts)
 

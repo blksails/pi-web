@@ -25,7 +25,7 @@
   - 图表等需第三方库的复杂可视化(留作宿主经 `registerUiComponent` 自行扩展)。
 - **Adjacent expectations**:
   - 主题继承宿主 shadcn CSS 变量;不引入硬编码颜色。
-  - 不破坏既有 4 类 data-part(queue/compaction/auto-retry/tool-partial)与默认 JSON 回退。
+  - 不破坏既有 data-part(queue/compaction/auto-retry)与默认 JSON 回退。(注 2026-06-20:原第 4 类 `tool-partial` data-part 已移除,partial 改走 `tool-output-available` preliminary;见下 R8 验收 3。)
 
 ## Requirements
 
@@ -98,6 +98,6 @@
 #### Acceptance Criteria
 1. The `@pi-web/agent-kit` shall 提供 `emitUi(onUpdate, spec)`,把 `UiSpec` 经工具 `onUpdate` 的 `partialResult.details[PI_UI_TOOL_DETAILS_KEY]` 发出。
 2. When 工具经 `emitUi` 发出合法 `UiSpec`, the server translate 层 shall 在翻译 `tool_execution_update` 时识别约定 key 并产出 `data-pi-ui` 帧。
-3. If `partialResult.details` 未携带约定 key 或 `UiSpec` 非法, then the server shall 维持既有 `data-pi-tool-partial` 翻译(不破坏工具部分结果语义)。
+3. If `partialResult.details` 未携带约定 key 或 `UiSpec` 非法, then the server shall 把累积 `partialResult` 翻译为 `tool-output-available`(`preliminary: true`)喂进同一工具卡(不破坏工具部分结果语义)。〔更新 2026-06-20:原文为「维持既有 `data-pi-tool-partial` 翻译」;该 data-part 已移除,回退路径改为 preliminary 工具产出帧。〕
 4. The 通道 shall 复用既有 `tool_execution_update` 事件,不修改 pi SDK、不新增 RPC 旁路。
 5. The `emitUi` shall 在 `onUpdate` 缺失或非函数时安全无操作。

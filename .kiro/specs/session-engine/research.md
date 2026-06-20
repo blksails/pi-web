@@ -12,7 +12,7 @@
 |-----------|------------------|----------|
 | protocol-contract | `AgentEvent` 可辨识联合 | 判别键 `type`;子类 `agent_start`/`agent_end`/`turn_end`/`message_update`(子事件 `text_*`/`thinking_*`)/`tool_execution_start|update|end`/`compaction_*`/`auto_retry_*`/`queue_update`/`extension_ui_request` |
 | protocol-contract | SSE 帧 `SseFrameSchema` | `kind=uiMessageChunk|control`;`uiMessageChunk` 内嵌 text/reasoning/tool/data-part;`control` 内含 extension-ui/queue/stats/error;含 `protocolVersion` |
-| protocol-contract | data-part `DataPartSchema` | `data-pi-queue`/`data-pi-compaction`/`data-pi-auto-retry`/`data-pi-tool-partial` |
+| protocol-contract | data-part `DataPartSchema` | `data-pi-queue`/`data-pi-compaction`/`data-pi-auto-retry`/`data-pi-ui`(原 `data-pi-tool-partial` 已于 2026-06-20 移除,partial 改走 `tool-output-available` preliminary) |
 | rpc-channel | `PiRpcChannel` 接口 | `send`/`onLine`/`close`/`health`;`PiRpcProcess` 另暴露 `onEvent`/`onExtensionUIRequest`/`respondExtensionUI`/`onStderr`/`onExit` 与 18 个命令方法 |
 | agent-source-resolver | `ResolvedSource` | `{ mode, spawnSpec, cwd, trust }` |
 

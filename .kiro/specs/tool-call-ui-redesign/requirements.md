@@ -7,7 +7,7 @@
 
 ## Boundary Context
 - **In scope**：`PiToolPart` 复合化与子组件公开导出；状态徽章 4 态渲染；按状态的默认展开/折叠策略；输入 JSON 语法高亮与输出富渲染（复用既有 `Response`）；新增 `ComponentOverrides.ToolPart` 宿主覆盖入口；`PartRenderer` 的工具渲染器解析优先级；保留全部 data 属性、流式态、注册回退链、无障碍；单测与一条浏览器 e2e 验收。
-- **Out of scope**：工具调用数据来源改造（数据仅来自 message parts，不引入 RPC 拉取）；`data-pi-tool-partial` 自定义 part 与 `PiToolPart` 之间既有的消费割裂；协议层 `tool-*` chunk schema；`PartRenderer` 中 `isToolPart` 的 part 判别规则；webext 子部件级注入（仅替换 `ToolOutput` 等单个子件）。
+- **Out of scope**：工具调用数据来源改造（数据仅来自 message parts，不引入 RPC 拉取）；~~`data-pi-tool-partial` 自定义 part 与 `PiToolPart` 之间既有的消费割裂~~（**已于 2026-06-20 后续协议/翻译层改动修复**：partial 改走 `tool-output-available` preliminary 喂同卡,`data-pi-tool-partial` part 移除；详见 design.md Non-Goals）；协议层 `tool-*` chunk schema（注:割裂修复仅给 `tool-output-available` 增可选 `preliminary` 字段）；`PartRenderer` 中 `isToolPart` 的 part 判别规则；webext 子部件级注入（仅替换 `ToolOutput` 等单个子件）。
 - **Adjacent expectations**：依赖既有 `RendererRegistry`（按 toolName 覆盖 + extId 命名空间隔离）、webext `applyExtensionRenderers`（`renderers.tools` 整卡替换）、`Response`（streamdown + 内置 shiki 高亮）保持现有契约不变；本特性不拥有这些模块的内部实现，只复用其公开能力。
 
 ## Requirements
