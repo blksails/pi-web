@@ -97,6 +97,7 @@ export {
   type UseSuggestionsOptions,
   type UseSuggestionsResult,
   type Suggestion,
+  type SuggestionMerge,
 } from "./hooks/use-suggestions.js";
 
 // web-ext(agent-web-extension):宿主侧加载器 + 安全门 + UI↔agent RPC client

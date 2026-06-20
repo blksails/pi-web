@@ -14,6 +14,10 @@ export {
   type ThemeTokens,
   LayoutPresetSchema,
   type LayoutPreset,
+  EmptySuggestionSchema,
+  type EmptySuggestion,
+  EmptyConfigSchema,
+  type EmptyConfig,
   WebExtConfigSchema,
   type WebExtConfig,
 } from "./config.js";

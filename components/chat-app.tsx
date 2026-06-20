@@ -257,6 +257,9 @@ function SessionView({
             }
           : {})}
       >
+        {/* Tier5 空态声明式配置(config.empty)→ PiChat props,与上方 theme/layout 同构。
+            优先级契约在 PiChat 边界:PiChat 不读 extension.config,只认显式 props,故显式 props
+            天然胜出;本宿主若未来叠加自身显式空态 props,须置于这些条件展开之后以让宿主值胜出。 */}
         <PiChat
           session={session}
           controls={controls}
@@ -266,6 +269,18 @@ function SessionView({
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
+            : {})}
+          {...(extension?.config?.empty?.title !== undefined
+            ? { emptyTitle: extension.config.empty.title }
+            : {})}
+          {...(extension?.config?.empty?.subtitle !== undefined
+            ? { emptySubtitle: extension.config.empty.subtitle }
+            : {})}
+          {...(extension?.config?.empty?.starters !== undefined
+            ? { suggestionsPresets: extension.config.empty.starters }
+            : {})}
+          {...(extension?.config?.empty?.mergeCommands !== undefined
+            ? { suggestionsMerge: extension.config.empty.mergeCommands }
             : {})}
           {...(process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL !== undefined
             ? { extensionBaseUrl: process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL }
