@@ -117,6 +117,33 @@ describe("assemble — env merge & isolation", () => {
     expect(spec.env["PI_CODING_AGENT_DIR"]).toBe("/iso/agentdir");
   });
 
+  it("opts.extraArgs 追加到 custom 模式 argv 末尾(如 --no-skills/--no-extensions)", () => {
+    const spec = assemble(
+      { mode: "custom", cwd: "/work", entryPath: "/work/index.ts" },
+      { extraArgs: [], extraEnv: {} },
+      {
+        runnerEntry: "/runner-bootstrap.mjs",
+        extraArgs: ["--no-skills", "--no-extensions"],
+      },
+    );
+    expect(spec.args.slice(-2)).toEqual(["--no-skills", "--no-extensions"]);
+  });
+
+  it("opts.extraArgs 追加到 cli 模式 argv 末尾", () => {
+    const spec = assemble(
+      { mode: "cli", cwd: "/proj" },
+      { extraArgs: [], extraEnv: {} },
+      { piCliEntry: "/cli.js", extraArgs: ["--no-skills", "--no-extensions"] },
+    );
+    expect(spec.args).toEqual([
+      "/cli.js",
+      "--mode",
+      "rpc",
+      "--no-skills",
+      "--no-extensions",
+    ]);
+  });
+
   it("cli mode spawnSpec shape with pi cli + --mode rpc", () => {
     const spec = assemble(
       { mode: "cli", cwd: "/proj" },

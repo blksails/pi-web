@@ -40,10 +40,11 @@ function makeHandler() {
 }
 
 describe("互映纯函数", () => {
-  it("settingsToForm:提取 commands + 顶层 per-扩展 KV,排除保留键", () => {
+  it("settingsToForm:每扩展带 enabled/spec/params;disabled 来自 disabledPackages;排除保留键", () => {
     const settings = {
       lastChangelogVersion: "0.79.6",
       packages: ["npm:pi-sandbox"],
+      disabledPackages: ["npm:pi-web-access"],
       defaultProvider: "openrouter",
       theme: "dark",
       commands: { deny: ["dangerous"] },
@@ -51,37 +52,89 @@ describe("互映纯函数", () => {
     };
     const form = settingsToForm(settings);
     expect(form.commands).toEqual({ deny: ["dangerous"] });
-    // 已有 KV 块 + 已安装扩展(pi-sandbox)作为空 KV 分组占位。
-    expect(form.extensions?.["@alexgorbatchev/pi-env"]).toEqual({ HTTP_PROXY: "http://localhost:1080" });
-    expect(form.extensions?.["pi-sandbox"]).toEqual({});
-    // 保留键不进 extensions
+    // 启用 package:带 spec + 空 params。
+    expect(form.extensions?.["pi-sandbox"]).toEqual({
+      enabled: true,
+      spec: "npm:pi-sandbox",
+      params: {},
+    });
+    // 禁用 package(来自 disabledPackages):enabled=false。
+    expect(form.extensions?.["pi-web-access"]).toEqual({
+      enabled: false,
+      spec: "npm:pi-web-access",
+      params: {},
+    });
+    // 手动 KV 块:无 spec、恒启用。
+    expect(form.extensions?.["@alexgorbatchev/pi-env"]).toEqual({
+      enabled: true,
+      params: { HTTP_PROXY: "http://localhost:1080" },
+    });
+    // 保留键不进 extensions。
     expect(Object.keys(form.extensions ?? {})).not.toContain("packages");
+    expect(Object.keys(form.extensions ?? {})).not.toContain("disabledPackages");
     expect(Object.keys(form.extensions ?? {})).not.toContain("theme");
   });
 
-  it("applyFormToSettings:保留既有键,非空整体替换,空 KV 删除", () => {
+  it("applyFormToSettings:据 enabled 重建 packages/disabledPackages;KV 非空替换、空删除", () => {
     const settings = {
-      packages: ["npm:pi-sandbox"],
+      packages: ["npm:pi-sandbox", "npm:pi-web-access"],
       defaultProvider: "openrouter",
       "@alexgorbatchev/pi-env": { HTTP_PROXY: "old", EXTRA: "keep" },
-      "@other/ext": { A: "1" },
-      "@empty/ext": { OLD: "x" },
     };
     const merged = applyFormToSettings(settings, {
       commands: { allow: ["help"] },
       extensions: {
-        "@alexgorbatchev/pi-env": { HTTP_PROXY: "new" },
-        "pi-sandbox": {}, // 已列出但未配置 → 不写空块
-        "@empty/ext": {}, // 清空 → 删除既有块
+        // 保持启用 + 改 KV。
+        "pi-sandbox": { enabled: true, spec: "npm:pi-sandbox", params: { LOG: "1" } },
+        // 禁用 → 移入 disabledPackages。
+        "pi-web-access": { enabled: false, spec: "npm:pi-web-access", params: {} },
+        // 手动 KV(无 spec)→ 不进 packages,KV 整体替换。
+        "@alexgorbatchev/pi-env": { enabled: true, params: { HTTP_PROXY: "new" } },
       },
     });
-    expect(merged["packages"]).toEqual(["npm:pi-sandbox"]); // 保留
+    expect(merged["packages"]).toEqual(["npm:pi-sandbox"]); // 仅启用项
+    expect(merged["disabledPackages"]).toEqual(["npm:pi-web-access"]); // 禁用项
     expect(merged["defaultProvider"]).toBe("openrouter"); // 保留
     expect(merged["commands"]).toEqual({ allow: ["help"] }); // 写入
+    expect(merged["pi-sandbox"]).toEqual({ LOG: "1" }); // KV 写入
     expect(merged["@alexgorbatchev/pi-env"]).toEqual({ HTTP_PROXY: "new" }); // 整体替换
-    expect(merged["@other/ext"]).toEqual({ A: "1" }); // 未出现 → 不动
-    expect("pi-sandbox" in merged).toBe(false); // 空 → 不写
-    expect("@empty/ext" in merged).toBe(false); // 空 → 删除
+  });
+
+  it("applyFormToSettings:全部启用时移除 disabledPackages 键(保持干净)", () => {
+    const merged = applyFormToSettings(
+      { packages: ["npm:a"], disabledPackages: ["npm:b"] },
+      {
+        extensions: {
+          a: { enabled: true, spec: "npm:a", params: {} },
+          b: { enabled: true, spec: "npm:b", params: {} },
+        },
+      },
+    );
+    expect(merged["packages"]).toEqual(["npm:a", "npm:b"]);
+    expect("disabledPackages" in merged).toBe(false);
+  });
+
+  it("loadSystemResources:缺省视作 true,显式 false 关闭;不混入 extensions 分组", () => {
+    // 缺省 → 表单 true(默认载入系统资源)。
+    expect(settingsToForm({}).loadSystemResources).toBe(true);
+    // 顶层 false → 表单 false。
+    expect(settingsToForm({ loadSystemResources: false }).loadSystemResources).toBe(false);
+    // 保留键:不作为 per-扩展 KV 分组出现。
+    expect(
+      Object.keys(settingsToForm({ loadSystemResources: false }).extensions ?? {}),
+    ).not.toContain("loadSystemResources");
+  });
+
+  it("applyFormToSettings:仅 false 落键,true 删除该键(保持默认干净)", () => {
+    // false → 写入 loadSystemResources:false。
+    const off = applyFormToSettings({}, { loadSystemResources: false });
+    expect(off["loadSystemResources"]).toBe(false);
+    // true → 删除既有键(回到默认载入)。
+    const on = applyFormToSettings({ loadSystemResources: false }, { loadSystemResources: true });
+    expect("loadSystemResources" in on).toBe(false);
+    // 未出现 → 不动既有键。
+    const keep = applyFormToSettings({ loadSystemResources: false }, {});
+    expect(keep["loadSystemResources"]).toBe(false);
   });
 });
 
@@ -97,13 +150,20 @@ describe("全局 /config/extensions/global", () => {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          values: { commands: { deny: ["x"] }, extensions: { "@a/b": { K: "v" } } },
+          values: {
+            commands: { deny: ["x"] },
+            // 权威全量:保留启用的 pi-sandbox(带 spec)+ 一个手动 KV 条目。
+            extensions: {
+              "pi-sandbox": { enabled: true, spec: "npm:pi-sandbox", params: {} },
+              "@a/b": { enabled: true, params: { K: "v" } },
+            },
+          },
         }),
       }),
     );
     expect(put.status).toBe(200);
     const onDisk = JSON.parse(await fs.readFile(join(tmpDir, "settings.json"), "utf8"));
-    expect(onDisk.packages).toEqual(["npm:pi-sandbox"]); // 保留
+    expect(onDisk.packages).toEqual(["npm:pi-sandbox"]); // 启用项重建
     expect(onDisk.theme).toBe("dark"); // 保留
     expect(onDisk.commands).toEqual({ deny: ["x"] });
     expect(onDisk["@a/b"]).toEqual({ K: "v" });
@@ -112,8 +172,8 @@ describe("全局 /config/extensions/global", () => {
     const body = await readJson(get);
     const values = body["values"] as Record<string, unknown>;
     const exts = values["extensions"] as Record<string, unknown>;
-    expect(exts["@a/b"]).toEqual({ K: "v" });
-    expect(exts["pi-sandbox"]).toEqual({}); // 已安装扩展作为分组占位
+    expect(exts["@a/b"]).toEqual({ enabled: true, params: { K: "v" } });
+    expect(exts["pi-sandbox"]).toEqual({ enabled: true, spec: "npm:pi-sandbox", params: {} });
     expect(values["commands"]).toEqual({ deny: ["x"] });
   });
 
@@ -123,7 +183,7 @@ describe("全局 /config/extensions/global", () => {
       new Request("http://x/config/extensions/global", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ values: { extensions: { "@a/b": { K: 123 } } } }),
+        body: JSON.stringify({ values: { extensions: { "@a/b": { params: { K: 123 } } } } }),
       }),
     );
     expect(res.status).toBe(422);

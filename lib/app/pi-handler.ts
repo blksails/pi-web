@@ -39,6 +39,7 @@ import { makeProjectTrustPolicy } from "@pi-web/server/trust";
 import type { SpawnSpec } from "@pi-web/protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
+import { systemResourceArgs } from "./system-resource-args.js";
 
 /**
  * Real-mode resolver wrapper.
@@ -93,9 +94,12 @@ function makeRealResolver(config: AppConfig): {
     trustedRoots,
   });
   return {
-    resolve: (source, opts) =>
-      AgentSourceResolver.resolve(source, {
-        cwd: opts?.cwd ?? config.defaultCwd,
+    resolve: async (source, opts) => {
+      const cwd = opts?.cwd ?? config.defaultCwd;
+      // 「扩展」面板开关:关闭系统 skills/extensions → 注入 --no-skills/--no-extensions。
+      const extraArgs = await systemResourceArgs(agentDir, cwd);
+      return AgentSourceResolver.resolve(source, {
+        cwd,
         runnerEntry,
         piCliEntry,
         agentDir,
@@ -103,7 +107,9 @@ function makeRealResolver(config: AppConfig): {
         trustPolicy,
         // DTO `trust` → 显式信任意图;缺省时由 trustPolicy(信任库/trustedRoots/默认)决定。
         ...(opts?.trust !== undefined ? { requestTrust: opts.trust } : {}),
-      }),
+        ...(extraArgs.length > 0 ? { extraArgs } : {}),
+      });
+    },
   };
 }
 

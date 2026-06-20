@@ -98,6 +98,12 @@ export interface ResolveOptions {
   piCliEntry?: string;
   /** git 缓存根目录(默认 ~/.pi-web/agents/git)。 */
   gitCacheRoot?: string;
+  /**
+   * 追加到 agent 进程 argv 末尾的额外 CLI 参数(custom 与 cli 两模式)。调用方据上层
+   * 配置注入,如 `--no-skills`/`--no-extensions`(关闭系统 skills/extensions 载入)。
+   * 本模块不解释其含义,仅原样透传给 assemble-spawn。
+   */
+  extraArgs?: readonly string[];
 }
 
 export interface AgentSourceResolver {

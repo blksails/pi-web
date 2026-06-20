@@ -29,12 +29,25 @@ const RESERVED_KEYS: ReadonlySet<string> = new Set([
   "theme",
   "commands",
   "frontend",
+  "loadSystemResources",
+  "disabledPackages",
 ]);
 
 type Settings = Record<string, unknown>;
+/** 单个扩展条目:启用态 + 原始 packages 规格 + per-扩展 KV 参数。 */
+type ExtEntry = {
+  /** 启用(在 `packages[]`);`disabledPackages[]` 中为 false。无 spec 的手动 KV 条目恒 true。 */
+  enabled: boolean;
+  /** 原始 packages 规格(含 `npm:`/`git:`/`local:` 前缀),用于在两数组间搬移。手动 KV 条目无。 */
+  spec?: string;
+  /** per-扩展 KV 参数。 */
+  params: Record<string, string>;
+};
 type FormValue = {
+  /** pi-web 自有:是否载入系统(全局)skills/extensions(默认 true;false → 仅项目 .pi/)。 */
+  loadSystemResources?: boolean;
   commands?: Record<string, unknown>;
-  extensions?: Record<string, Record<string, string>>;
+  extensions?: Record<string, ExtEntry>;
   /** 独立配置文件:文件名 → 原始 JSON 内容。 */
   files?: Record<string, unknown>;
 };
@@ -64,56 +77,105 @@ export function extIdFromPackage(pkg: string): string {
   return colon === -1 ? pkg : pkg.slice(colon + 1);
 }
 
+/** 读某 extId 的顶层 KV 块(仅保留字符串值;不存在 → {})。 */
+function kvBlockOf(settings: Settings, extId: string): Record<string, string> {
+  const block = settings[extId];
+  if (!isPlainObject(block)) return {};
+  const kv: Record<string, string> = {};
+  for (const [k, v] of Object.entries(block)) {
+    if (typeof v === "string") kv[k] = v;
+  }
+  return kv;
+}
+
+/** settings 中的字符串数组(过滤非字符串项)。 */
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((x): x is string => typeof x === "string")
+    : [];
+}
+
 /**
- * settings.json → 表单视图({ commands, extensions })。
+ * settings.json → 表单视图({ commands, extensions, … })。
  *
- * `extensions` 以**已安装扩展**(`packages[]`)为分组主键:每个已安装扩展都出现(无配置则空 KV),
- * 叠加 settings.json 顶层已有的 per-扩展 KV 块;不在 packages[] 的顶层 KV 块(手动条目)也保留。
+ * `extensions` 以扩展 id 为主键,每项带启用态:`packages[]` → enabled、`disabledPackages[]`
+ * (pi-web 自有)→ disabled,二者均带原始 `spec`(供回写搬移);不在二者中的顶层 KV 块为
+ * 手动条目(无 spec、恒启用)。同 id 优先 packages[]。
  */
 export function settingsToForm(settings: Settings): FormValue {
   const form: FormValue = {};
+  // 默认载入(键缺省或非 false 视作 true),仅显式 false 关闭 → 开关如实反映当前行为。
+  form.loadSystemResources = settings["loadSystemResources"] !== false;
   if (isPlainObject(settings["commands"])) {
     form.commands = settings["commands"];
   }
-  const extensions: Record<string, Record<string, string>> = {};
-  // 1) 顶层已有的 per-扩展 KV 块(排除保留键)。
+
+  const extensions: Record<string, ExtEntry> = {};
+  // 1) 启用:packages[]。
+  for (const pkg of stringArray(settings["packages"])) {
+    const id = extIdFromPackage(pkg);
+    if (id.length > 0 && !(id in extensions)) {
+      extensions[id] = { enabled: true, spec: pkg, params: kvBlockOf(settings, id) };
+    }
+  }
+  // 2) 禁用:disabledPackages[](pi-web 自有,pi 忽略)。
+  for (const pkg of stringArray(settings["disabledPackages"])) {
+    const id = extIdFromPackage(pkg);
+    if (id.length > 0 && !(id in extensions)) {
+      extensions[id] = { enabled: false, spec: pkg, params: kvBlockOf(settings, id) };
+    }
+  }
+  // 3) 顶层手动 KV 块(排除保留键、未被 package 覆盖)→ 无 spec、恒启用。
   for (const [key, value] of Object.entries(settings)) {
     if (RESERVED_KEYS.has(key)) continue;
     if (!isPlainObject(value)) continue;
-    const kv: Record<string, string> = {};
-    for (const [k, v] of Object.entries(value)) {
-      if (typeof v === "string") kv[k] = v;
-    }
-    extensions[key] = kv;
+    if (key in extensions) continue;
+    extensions[key] = { enabled: true, params: kvBlockOf(settings, key) };
   }
-  // 2) 已安装扩展并入为分组(无配置 → 空 KV 占位)。
-  const packages = Array.isArray(settings["packages"]) ? settings["packages"] : [];
-  for (const pkg of packages) {
-    if (typeof pkg !== "string") continue;
-    const id = extIdFromPackage(pkg);
-    if (id.length > 0 && !(id in extensions)) extensions[id] = {};
-  }
+
   if (Object.keys(extensions).length > 0) form.extensions = extensions;
   return form;
 }
 
 /**
  * 表单视图 → 合并进既有 settings.json(非破坏)。
- * 对每个出现的扩展:非空 KV → 整体替换其顶层块(支持组内删键);**空 KV → 删除**该顶层块
- * (避免为"已列出但未配置"的扩展占位写入空对象,且支持清空即移除)。未出现的扩展键不动。
+ *
+ * 当 `extensions` 出现时**整体重建** `packages[]`(启用项)与 `disabledPackages[]`(禁用项,
+ * 仅 package 条目即带 spec 者参与);per-扩展 KV:非空 → 整体替换顶层块(支持组内删键),空 →
+ * 删除该块。`disabledPackages[]` 为空则移除。`extensions` 未出现则三者均不动。
  */
 export function applyFormToSettings(settings: Settings, form: FormValue): Settings {
   const result: Settings = { ...settings };
+  // 仅在显式关闭时落键(`false`);默认开则移除该键,保持 settings.json 干净。
+  if (form.loadSystemResources === false) {
+    result["loadSystemResources"] = false;
+  } else if (form.loadSystemResources === true) {
+    delete result["loadSystemResources"];
+  }
   if (form.commands !== undefined) {
     result["commands"] = form.commands;
   }
   if (form.extensions !== undefined) {
-    for (const [extId, kv] of Object.entries(form.extensions)) {
-      if (kv !== null && typeof kv === "object" && Object.keys(kv).length > 0) {
-        result[extId] = kv;
+    const packages: string[] = [];
+    const disabled: string[] = [];
+    for (const [extId, entry] of Object.entries(form.extensions)) {
+      // per-扩展 KV:非空整体替换,空则删除顶层块。
+      const params = entry.params ?? {};
+      if (Object.keys(params).length > 0) {
+        result[extId] = params;
       } else {
         delete result[extId];
       }
+      // 成员归属:仅带 spec(真实 package)条目参与 packages/disabledPackages 重建。
+      if (typeof entry.spec === "string" && entry.spec.length > 0) {
+        (entry.enabled === false ? disabled : packages).push(entry.spec);
+      }
+    }
+    result["packages"] = packages;
+    if (disabled.length > 0) {
+      result["disabledPackages"] = disabled;
+    } else {
+      delete result["disabledPackages"];
     }
   }
   return result;

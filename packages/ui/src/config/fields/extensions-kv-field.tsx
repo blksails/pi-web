@@ -1,10 +1,11 @@
 /**
- * ExtensionsKvField — per-扩展 KV 控件(widget:"extensionsKv")。
+ * ExtensionsKvField — per-扩展控件(widget:"extensionsKv")。
  *
- * 编辑 `Record<extId, Record<string,string>>`:两级动态增删——
- *  - 外层「扩展条目」:key=扩展 id(新增经输入框;条目 id 创建后只读,改名=删后重加)。
- *  - 内层「键值对」:每行可编辑 key/value,支持增删。
- * 值缺省视为 `{}`。内层经 entries 重建对象(重复键以末值为准,空键允许其一)。
+ * 编辑 `Record<extId, { enabled, spec?, params }>`:
+ *  - 每个「扩展条目」头部:**启用开关**(仅 package 条目即带 spec 者可切;关 → 回写时移入
+ *    `disabledPackages[]`,可重新开启)+ 删除。
+ *  - 「键值对」两级:每行可编辑 key/value,支持增删(绑定到 `params`)。
+ * 新增条目为手动 KV(无 spec、恒启用)。值缺省视为空。
  */
 import * as React from "react";
 import type { FieldProps } from "../field-registry.js";
@@ -13,19 +14,31 @@ import { Button } from "../../ui/button.js";
 import { Card } from "../../ui/card.js";
 import { FieldShell } from "./field-shell.js";
 
-type ExtMap = Record<string, Record<string, string>>;
+type ExtEntry = {
+  enabled: boolean;
+  spec?: string;
+  params: Record<string, string>;
+};
+type ExtMap = Record<string, ExtEntry>;
 
 function asExtMap(value: unknown): ExtMap {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
   const out: ExtMap = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === "object" && v !== null && !Array.isArray(v)) {
-      const kv: Record<string, string> = {};
-      for (const [ik, iv] of Object.entries(v as Record<string, unknown>)) {
-        kv[ik] = typeof iv === "string" ? iv : String(iv);
+    if (typeof v !== "object" || v === null || Array.isArray(v)) continue;
+    const entry = v as Record<string, unknown>;
+    const rawParams = entry["params"];
+    const params: Record<string, string> = {};
+    if (typeof rawParams === "object" && rawParams !== null && !Array.isArray(rawParams)) {
+      for (const [ik, iv] of Object.entries(rawParams as Record<string, unknown>)) {
+        params[ik] = typeof iv === "string" ? iv : String(iv);
       }
-      out[k] = kv;
     }
+    out[k] = {
+      enabled: entry["enabled"] !== false,
+      ...(typeof entry["spec"] === "string" ? { spec: entry["spec"] } : {}),
+      params,
+    };
   }
   return out;
 }
@@ -106,8 +119,8 @@ export function ExtensionsKvField({
   const exts = Object.entries(map);
   const [newExt, setNewExt] = React.useState("");
 
-  const setExt = (extId: string, kv: Record<string, string>): void =>
-    onChange({ ...map, [extId]: kv });
+  const patchExt = (extId: string, patch: Partial<ExtEntry>): void =>
+    onChange({ ...map, [extId]: { ...map[extId]!, ...patch } });
   const removeExt = (extId: string): void => {
     const next = { ...map };
     delete next[extId];
@@ -116,7 +129,7 @@ export function ExtensionsKvField({
   const addExt = (): void => {
     const id = newExt.trim();
     if (id.length === 0 || id in map) return;
-    onChange({ ...map, [id]: {} });
+    onChange({ ...map, [id]: { enabled: true, params: {} } });
     setNewExt("");
   };
 
@@ -126,21 +139,45 @@ export function ExtensionsKvField({
         {exts.length === 0 ? (
           <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无扩展条目</p>
         ) : null}
-        {exts.map(([extId, kv]) => (
-          <Card key={extId} className="flex flex-col gap-3 p-3" data-pi-ext-entry={extId}>
-            <div className="flex items-center justify-between">
+        {exts.map(([extId, entry]) => (
+          <Card
+            key={extId}
+            className="flex flex-col gap-3 p-3"
+            data-pi-ext-entry={extId}
+            data-pi-ext-enabled={entry.enabled}
+          >
+            <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-semibold">{extId}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={disabled}
-                onClick={() => removeExt(extId)}
-              >
-                删除
-              </Button>
+              <div className="flex items-center gap-3">
+                {entry.spec !== undefined ? (
+                  <label className="flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]">
+                    <input
+                      type="checkbox"
+                      checked={entry.enabled}
+                      disabled={disabled}
+                      data-pi-ext-toggle={extId}
+                      onChange={(e) => patchExt(extId, { enabled: e.target.checked })}
+                      className="h-4 w-4 rounded border-[hsl(var(--input))]"
+                    />
+                    {entry.enabled ? "已启用" : "已禁用"}
+                  </label>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={disabled}
+                  onClick={() => removeExt(extId)}
+                >
+                  删除
+                </Button>
+              </div>
             </div>
-            <KvEditor kv={kv} onChange={(next) => setExt(extId, next)} disabled={disabled} />
+            <KvEditor
+              kv={entry.params}
+              onChange={(next) => patchExt(extId, { params: next })}
+              disabled={disabled}
+            />
           </Card>
         ))}
         <div className="flex items-center gap-2">
