@@ -49,6 +49,14 @@ export interface ChatAppProps {
   readonly defaultCwd: string;
   /** When set, resume this existing session (cold-resume + continue) instead of picking a source. */
   readonly resumeId?: string;
+  /**
+   * Recovered agent source for a resumed session (= the session's persisted
+   * agent cwd). Lets the build-time webext registry re-resolve the source's UI
+   * extension on cold load / reload of `/session/:id`; without it `create.source`
+   * would fall back to `"."` and the extension (region slots, background, …)
+   * would silently vanish after refresh.
+   */
+  readonly resumeSource?: string;
 }
 
 interface ActiveSession {
@@ -107,7 +115,10 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
   const [session, setSession] = React.useState<ActiveSession | undefined>(
     props.resumeId !== undefined
       ? {
-          create: buildCreate(props, props.defaultSource ?? "."),
+          create: buildCreate(
+            props,
+            props.resumeSource ?? props.defaultSource ?? ".",
+          ),
           resumeId: props.resumeId,
         }
       : undefined,
@@ -160,10 +171,22 @@ function SessionView({
     create,
     ...(resumeId !== undefined ? { resumeId } : {}),
     // Sync the browser address to /session/:id once the id is known (new or
-    // resumed). No full navigation — keeps the live session intact.
+    // resumed). No full navigation — keeps the live session intact. The URL
+    // stays clean (no file path): instead we record sessionId → source in an
+    // app-level map so a cold load / reload can re-resolve the build-time webext
+    // extension by id — even for a brand-new, message-less session whose agent
+    // header is not persisted yet (the resume-meta fallback cannot recover it).
     onSessionId: (id) => {
-      if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", `/session/${id}`);
+      if (typeof window === "undefined") return;
+      window.history.replaceState(null, "", `/session/${id}`);
+      if (create.source.length > 0 && create.source !== ".") {
+        void fetch("/api/session-source", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id, source: create.source }),
+        }).catch(() => {
+          // best-effort:映射失败时冷加载退回持久化 header.cwd 兜底。
+        });
       }
     },
   });

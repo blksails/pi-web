@@ -17,6 +17,7 @@ import { zodToFormSchema } from "../zod-to-form-schema.js";
 import type { FieldGroup } from "../form-schema.js";
 
 export const EXTENSIONS_GROUPS: readonly FieldGroup[] = [
+  { id: "system", title: "系统资源", order: 0 },
   { id: "commands", title: "Slash 命令", order: 1 },
   { id: "ext", title: "扩展参数", order: 2 },
   { id: "files", title: "独立配置文件", order: 3 },
@@ -50,20 +51,44 @@ export const commandsAvailabilitySchema = z
 
 export const extensionsConfigSchema = z
   .object({
-    commands: commandsAvailabilitySchema
-      .optional()
-      .describe(JSON.stringify({ label: "Slash 命令", group: "commands", order: 1 })),
-    // per-扩展 KV:extId → { key: value }。自定义 widget "extensionsKv" 渲染两级动态增删。
-    extensions: z
-      .record(z.record(z.string()))
+    // pi-web 自有开关(写 settings.json 顶层 `loadSystemResources`,pi 忽略未知键)。关闭 →
+    // 建会话时 pi-web 给 agent 注入 `--no-skills --no-extensions`,只载入项目 `.pi/` 资源。
+    loadSystemResources: z
+      .boolean()
       .optional()
       .describe(
         JSON.stringify({
-          label: "扩展参数",
+          label: "载入系统 skills/extensions",
+          group: "system",
+          order: 1,
+          description:
+            "默认开。关闭后本会话只载入项目 .pi/ 下的 skills/extensions,不再自动载入 ~/.pi/agent 的全局技能/扩展(经 --no-skills/--no-extensions 生效)。",
+        }),
+      ),
+    commands: commandsAvailabilitySchema
+      .optional()
+      .describe(JSON.stringify({ label: "Slash 命令", group: "commands", order: 1 })),
+    // per-扩展:extId → { enabled, spec, params }。自定义 widget "extensionsKv" 渲染
+    // 每扩展「启用开关 + 两级 KV 增删」。enabled→packages[]/disabledPackages[] 成员关系;
+    // spec 为原始 packages 规格(回写搬移用);params 为 settings.json 顶层 per-扩展 KV。
+    extensions: z
+      .record(
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            spec: z.string().optional(),
+            params: z.record(z.string()).optional(),
+          })
+          .passthrough(),
+      )
+      .optional()
+      .describe(
+        JSON.stringify({
+          label: "扩展",
           group: "ext",
           order: 1,
           widget: "extensionsKv",
-          description: "存于 settings.json 键的扩展 KV 配置(如 @alexgorbatchev/pi-env → HTTP_PROXY)",
+          description: "逐个扩展的启用开关与 KV 参数(关闭 → 移入 disabledPackages,可重新开启)",
         }),
       ),
     // 独立配置文件:文件名 → 原始 JSON 内容(如 proxy.json)。自定义 widget "configFiles"。

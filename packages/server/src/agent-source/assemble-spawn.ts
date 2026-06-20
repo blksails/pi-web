@@ -66,6 +66,7 @@ export function assemble(
       params.cwd,
       ...(opts.agentDir !== undefined ? ["--agent-dir", opts.agentDir] : []),
       ...fragment.extraArgs,
+      ...(opts.extraArgs ?? []),
     ];
     return { cmd: "node", args, cwd: params.cwd, env };
   }
@@ -80,6 +81,12 @@ export function assemble(
   // NOTE: the pi CLI has NO `--cwd` flag (it reads the process working dir).
   // The working dir is set via spawnSpec.cwd below; passing `--cwd` makes pi
   // exit with "Unknown option: --cwd" → channel crash → session deleted → 404.
-  const args = [piCliEntry, "--mode", "rpc", ...fragment.extraArgs];
+  const args = [
+    piCliEntry,
+    "--mode",
+    "rpc",
+    ...fragment.extraArgs,
+    ...(opts.extraArgs ?? []),
+  ];
   return { cmd: "node", args, cwd: params.cwd, env };
 }

@@ -54,7 +54,9 @@ async function sendAndFinishTurn(
 test("persist → URL → cold-resume → continue", async ({ page }) => {
   const id = await startSession(page);
 
-  // Req 2.1 — new session reflects /session/:id in the URL.
+  // Req 2.1 — new session reflects /session/:id in the URL (clean, no query;
+  // the agent source is recovered by id from the app-level source map, not the
+  // URL, so a reload can still re-resolve any webext extension).
   await expect(page).toHaveURL(new RegExp(`/session/${id}$`));
 
   // One full turn (the stub pauses awaiting the permission answer).
