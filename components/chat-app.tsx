@@ -237,7 +237,7 @@ function SessionView({
         <ThemeToggleButton />
       </div>
       <div
-        className="min-h-0 flex-1 px-4 py-2"
+        className="min-h-0 flex-1"
         {...(extension?.config?.theme !== undefined
           ? {
               "data-pi-ext-theme": "",
