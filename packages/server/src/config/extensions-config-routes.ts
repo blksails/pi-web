@@ -30,6 +30,8 @@ const RESERVED_KEYS: ReadonlySet<string> = new Set([
   "commands",
   "frontend",
   "loadSystemResources",
+  "loadSystemSkills",
+  "loadSystemExtensions",
   "disabledPackages",
 ]);
 
@@ -44,8 +46,10 @@ type ExtEntry = {
   params: Record<string, string>;
 };
 type FormValue = {
-  /** pi-web 自有:是否载入系统(全局)skills/extensions(默认 true;false → 仅项目 .pi/)。 */
-  loadSystemResources?: boolean;
+  /** pi-web 自有:是否载入系统(全局/包/内置)skills(默认 true;false → --no-skills)。 */
+  loadSystemSkills?: boolean;
+  /** pi-web 自有:是否载入系统(全局/包)extensions(默认 true;false → --no-extensions)。 */
+  loadSystemExtensions?: boolean;
   commands?: Record<string, unknown>;
   extensions?: Record<string, ExtEntry>;
   /** 独立配置文件:文件名 → 原始 JSON 内容。 */
@@ -104,8 +108,16 @@ function stringArray(value: unknown): string[] {
  */
 export function settingsToForm(settings: Settings): FormValue {
   const form: FormValue = {};
-  // 默认载入(键缺省或非 false 视作 true),仅显式 false 关闭 → 开关如实反映当前行为。
-  form.loadSystemResources = settings["loadSystemResources"] !== false;
+  // 默认载入(键缺省/非 false 视作 true);各自独立,并兼容旧版合一键 loadSystemResources。
+  const legacyOff = settings["loadSystemResources"] === false;
+  form.loadSystemSkills =
+    "loadSystemSkills" in settings
+      ? settings["loadSystemSkills"] !== false
+      : !legacyOff;
+  form.loadSystemExtensions =
+    "loadSystemExtensions" in settings
+      ? settings["loadSystemExtensions"] !== false
+      : !legacyOff;
   if (isPlainObject(settings["commands"])) {
     form.commands = settings["commands"];
   }
@@ -146,10 +158,15 @@ export function settingsToForm(settings: Settings): FormValue {
  */
 export function applyFormToSettings(settings: Settings, form: FormValue): Settings {
   const result: Settings = { ...settings };
-  // 仅在显式关闭时落键(`false`);默认开则移除该键,保持 settings.json 干净。
-  if (form.loadSystemResources === false) {
-    result["loadSystemResources"] = false;
-  } else if (form.loadSystemResources === true) {
+  // 仅在显式关闭时落键(`false`);默认开则移除该键,保持 settings.json 干净。逐键独立。
+  // 同时清理旧版合一键 loadSystemResources(迁移到两个独立键)。
+  const applyBool = (key: keyof FormValue, settingsKey: string): void => {
+    if (form[key] === false) result[settingsKey] = false;
+    else if (form[key] === true) delete result[settingsKey];
+  };
+  applyBool("loadSystemSkills", "loadSystemSkills");
+  applyBool("loadSystemExtensions", "loadSystemExtensions");
+  if (form.loadSystemSkills !== undefined || form.loadSystemExtensions !== undefined) {
     delete result["loadSystemResources"];
   }
   if (form.commands !== undefined) {

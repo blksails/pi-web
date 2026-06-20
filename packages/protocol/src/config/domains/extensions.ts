@@ -51,18 +51,30 @@ export const commandsAvailabilitySchema = z
 
 export const extensionsConfigSchema = z
   .object({
-    // pi-web 自有开关(写 settings.json 顶层 `loadSystemResources`,pi 忽略未知键)。关闭 →
-    // 建会话时 pi-web 给 agent 注入 `--no-skills --no-extensions`,只载入项目 `.pi/` 资源。
-    loadSystemResources: z
+    // pi-web 自有开关(写 settings.json 顶层键,pi 忽略未知键)。各自独立:关闭 → 建会话时
+    // 给 agent 注入对应的 `--no-skills` / `--no-extensions`。默认开。
+    loadSystemSkills: z
       .boolean()
       .optional()
       .describe(
         JSON.stringify({
-          label: "载入系统 skills/extensions",
+          label: "载入系统 skills",
           group: "system",
           order: 1,
           description:
-            "默认开。关闭后本会话只载入项目 .pi/ 下的 skills/extensions,不再自动载入 ~/.pi/agent 的全局技能/扩展(经 --no-skills/--no-extensions 生效)。",
+            "默认开。关闭后本会话不载入系统/包/内置 skills(经 --no-skills 生效;extensions 不受影响)。",
+        }),
+      ),
+    loadSystemExtensions: z
+      .boolean()
+      .optional()
+      .describe(
+        JSON.stringify({
+          label: "载入系统 extensions",
+          group: "system",
+          order: 2,
+          description:
+            "默认开。关闭后本会话不载入系统/包 extensions(经 --no-extensions 生效;skills 不受影响)。",
         }),
       ),
     commands: commandsAvailabilitySchema

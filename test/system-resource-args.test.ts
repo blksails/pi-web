@@ -35,30 +35,34 @@ describe("systemResourceArgs", () => {
     expect(await systemResourceArgs(agentDir, cwd)).toEqual([]);
   });
 
-  it("全局 false → 注入 --no-skills/--no-extensions", async () => {
-    await writeSettings(agentDir, { loadSystemResources: false });
+  it("仅关 skills → 只注入 --no-skills(extensions 不受影响)", async () => {
+    await writeSettings(agentDir, { loadSystemSkills: false });
+    expect(await systemResourceArgs(agentDir, cwd)).toEqual(["--no-skills"]);
+  });
+
+  it("仅关 extensions → 只注入 --no-extensions", async () => {
+    await writeSettings(agentDir, { loadSystemExtensions: false });
+    expect(await systemResourceArgs(agentDir, cwd)).toEqual(["--no-extensions"]);
+  });
+
+  it("两者都关 → 同时注入", async () => {
+    await writeSettings(agentDir, { loadSystemSkills: false, loadSystemExtensions: false });
     expect(await systemResourceArgs(agentDir, cwd)).toEqual(OFF);
   });
 
-  it("全局 true(显式)→ 载入([])", async () => {
-    await writeSettings(agentDir, { loadSystemResources: true });
+  it("显式 true → 载入([])", async () => {
+    await writeSettings(agentDir, { loadSystemSkills: true, loadSystemExtensions: true });
     expect(await systemResourceArgs(agentDir, cwd)).toEqual([]);
   });
 
-  it("项目 false 覆盖全局缺省 → 关闭", async () => {
-    await writeSettings(path.join(cwd, ".pi"), { loadSystemResources: false });
-    expect(await systemResourceArgs(agentDir, cwd)).toEqual(OFF);
+  it("项目逐键覆盖全局(项目关 skills 覆盖全局开)", async () => {
+    await writeSettings(agentDir, { loadSystemSkills: true });
+    await writeSettings(path.join(cwd, ".pi"), { loadSystemSkills: false });
+    expect(await systemResourceArgs(agentDir, cwd)).toEqual(["--no-skills"]);
   });
 
-  it("项目 true 覆盖全局 false → 载入([])", async () => {
+  it("兼容旧版合一键 loadSystemResources:false → 两者皆关", async () => {
     await writeSettings(agentDir, { loadSystemResources: false });
-    await writeSettings(path.join(cwd, ".pi"), { loadSystemResources: true });
-    expect(await systemResourceArgs(agentDir, cwd)).toEqual([]);
-  });
-
-  it("项目缺省该键 → 回退全局 false", async () => {
-    await writeSettings(agentDir, { loadSystemResources: false });
-    await writeSettings(path.join(cwd, ".pi"), { other: 1 });
     expect(await systemResourceArgs(agentDir, cwd)).toEqual(OFF);
   });
 

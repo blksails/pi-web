@@ -114,27 +114,37 @@ describe("互映纯函数", () => {
     expect("disabledPackages" in merged).toBe(false);
   });
 
-  it("loadSystemResources:缺省视作 true,显式 false 关闭;不混入 extensions 分组", () => {
-    // 缺省 → 表单 true(默认载入系统资源)。
-    expect(settingsToForm({}).loadSystemResources).toBe(true);
-    // 顶层 false → 表单 false。
-    expect(settingsToForm({ loadSystemResources: false }).loadSystemResources).toBe(false);
-    // 保留键:不作为 per-扩展 KV 分组出现。
+  it("loadSystemSkills/Extensions:缺省 true;各自独立;兼容旧版合一键", () => {
+    // 缺省 → 两者皆 true。
+    const def = settingsToForm({});
+    expect(def.loadSystemSkills).toBe(true);
+    expect(def.loadSystemExtensions).toBe(true);
+    // 各自独立:仅关 skills。
+    const skillsOff = settingsToForm({ loadSystemSkills: false });
+    expect(skillsOff.loadSystemSkills).toBe(false);
+    expect(skillsOff.loadSystemExtensions).toBe(true);
+    // 旧版合一键 false → 两者都视作关闭(迁移兼容)。
+    const legacy = settingsToForm({ loadSystemResources: false });
+    expect(legacy.loadSystemSkills).toBe(false);
+    expect(legacy.loadSystemExtensions).toBe(false);
+    // 保留键不混入 extensions 分组。
     expect(
-      Object.keys(settingsToForm({ loadSystemResources: false }).extensions ?? {}),
-    ).not.toContain("loadSystemResources");
+      Object.keys(settingsToForm({ loadSystemSkills: false }).extensions ?? {}),
+    ).not.toContain("loadSystemSkills");
   });
 
-  it("applyFormToSettings:仅 false 落键,true 删除该键(保持默认干净)", () => {
-    // false → 写入 loadSystemResources:false。
-    const off = applyFormToSettings({}, { loadSystemResources: false });
-    expect(off["loadSystemResources"]).toBe(false);
-    // true → 删除既有键(回到默认载入)。
-    const on = applyFormToSettings({ loadSystemResources: false }, { loadSystemResources: true });
-    expect("loadSystemResources" in on).toBe(false);
-    // 未出现 → 不动既有键。
-    const keep = applyFormToSettings({ loadSystemResources: false }, {});
-    expect(keep["loadSystemResources"]).toBe(false);
+  it("applyFormToSettings:逐键 false 落键、true 删键;并清理旧合一键", () => {
+    // 仅关 skills → 写 loadSystemSkills:false,不动 extensions。
+    const skillsOff = applyFormToSettings({}, { loadSystemSkills: false, loadSystemExtensions: true });
+    expect(skillsOff["loadSystemSkills"]).toBe(false);
+    expect("loadSystemExtensions" in skillsOff).toBe(false);
+    // true → 删除既有键。
+    const on = applyFormToSettings({ loadSystemSkills: false }, { loadSystemSkills: true });
+    expect("loadSystemSkills" in on).toBe(false);
+    // 写任一新键时,清理旧版合一键。
+    const migrated = applyFormToSettings({ loadSystemResources: false }, { loadSystemSkills: false });
+    expect("loadSystemResources" in migrated).toBe(false);
+    expect(migrated["loadSystemSkills"]).toBe(false);
   });
 });
 
