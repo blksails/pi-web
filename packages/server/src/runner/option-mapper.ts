@@ -55,6 +55,15 @@ export interface MappedResourceLoaderOptions {
 }
 
 /**
+ * pi-web「扩展 → 系统资源」面板开关,由 runner `--no-skills`/`--no-extensions` 透传至此。
+ * `true` = 关闭(不载入);`undefined` = 默认载入。二者相互独立。
+ */
+export interface SystemResourceOverrides {
+  readonly noSkills?: boolean;
+  readonly noExtensions?: boolean;
+}
+
+/**
  * Result of mapping the session-class fields of an {@link AgentDefinition}.
  * Models are intentionally left unresolved here (still `AgentModel`); the
  * factory resolves `{ provider, modelId }` refs against the registry once
@@ -86,7 +95,13 @@ export function isModelRef(
  */
 export function mapResourceLoaderOptions(
   def: AgentDefinition,
-  opts: { forcedExtensionPaths?: readonly string[] } = {},
+  opts: {
+    forcedExtensionPaths?: readonly string[];
+    /** 系统资源开关 `--no-skills`:`true` → 清空 skills 覆盖(优先于 `def.skills`)。 */
+    noSkills?: boolean;
+    /** 系统资源开关 `--no-extensions`:`true` → `noExtensions=true`(强制注入路径仍载入)。 */
+    noExtensions?: boolean;
+  } = {},
 ): MappedResourceLoaderOptions {
   const resourceLoaderOptions: ResourceLoaderOptions = {};
   // 强制注入路径(如 pi-sandbox):不论 agent 的 extensions/allowExtensions 如何,
@@ -164,6 +179,19 @@ export function mapResourceLoaderOptions(
     resourceLoaderOptions.agentsFilesOverride = def.contextFiles;
   }
 
+  // 系统资源开关(pi-web「扩展 → 系统资源」面板,经 runner `--no-skills`/`--no-extensions`)。
+  // 置于 def.* 映射之后,使「关闭」无条件优先于 agent 自声明(对齐 pi CLI 行为)。
+  if (opts.noSkills === true) {
+    // 清空 skills 覆盖:返回空集(保留 diagnostics)。优先于 def.skills(Req 1.4)。
+    resourceLoaderOptions.skillsOverride = ({ diagnostics }) => ({ skills: [], diagnostics });
+  }
+  if (opts.noExtensions === true) {
+    // 跳过磁盘发现的系统/包 extensions;additionalExtensionPaths(强制注入的沙箱)仍由
+    // SDK 加载,沙箱安全门不破(Req 2.3)。白名单 extensionsOverride 在「全关」下无意义,清除。
+    resourceLoaderOptions.noExtensions = true;
+    delete resourceLoaderOptions.extensionsOverride;
+  }
+
   return { resourceLoaderOptions };
 }
 
@@ -209,13 +237,20 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
 export function buildRuntimeFactory(
   def: AgentDefinition,
   trust: ResolveProjectTrust,
+  systemResources: SystemResourceOverrides = {},
 ): CreateAgentSessionRuntimeFactory {
   // 强制注入入口经 env `PI_WEB_SANDBOX_ENTRY` 由主进程下传(custom 模式);
   // 为空则不注入(行为不变)。这是"沙箱 enforcement 不依赖默认发现"的 custom 侧落地。
   const sandboxEntry = process.env["PI_WEB_SANDBOX_ENTRY"];
   const forcedExtensionPaths =
     sandboxEntry !== undefined && sandboxEntry.length > 0 ? [sandboxEntry] : [];
-  const { resourceLoaderOptions } = mapResourceLoaderOptions(def, { forcedExtensionPaths });
+  const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
+    forcedExtensionPaths,
+    ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
+    ...(systemResources.noExtensions !== undefined
+      ? { noExtensions: systemResources.noExtensions }
+      : {}),
+  });
   const session = mapSessionFields(def);
 
   return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {

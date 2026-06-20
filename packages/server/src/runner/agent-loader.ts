@@ -19,6 +19,7 @@ import type { AgentContext, AgentDefinition } from "./agent-definition.js";
 import { createJiti } from "jiti";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import { buildRuntimeFactory } from "./option-mapper.js";
+import type { SystemResourceOverrides } from "./option-mapper.js";
 import type { ResolveProjectTrust } from "./project-trust.js";
 
 /** Normalized internal representation shared by all three shapes. */
@@ -174,11 +175,14 @@ function locatePackageDir(spec: string, fromPath: string): string | undefined {
  * @param agentPath Absolute or jiti-resolvable path to the user entry module.
  * @param ctx       Context handed to shape-(b) factories.
  * @param trust     Trust hook wired into the resource loader for shapes a/b.
+ * @param systemResources 「扩展 → 系统资源」开关(`--no-skills`/`--no-extensions`),
+ *        应用于 shape (a)/(b)。shape (c) 自建运行时,不适用(作者自负资源载入)。
  */
 export async function loadAgentDefinition(
   agentPath: string,
   ctx: AgentContext,
   trust: ResolveProjectTrust,
+  systemResources: SystemResourceOverrides = {},
 ): Promise<NormalizedAgentRuntimeFactory> {
   const jiti = createJiti(import.meta.url, { alias: buildResolutionAliases() });
 
@@ -225,12 +229,12 @@ export async function loadAgentDefinition(
         `factory function returned a non-definition value (got ${produced === null ? "null" : typeof produced})`,
       );
     }
-    return buildRuntimeFactory(produced, trust);
+    return buildRuntimeFactory(produced, trust, systemResources);
   }
 
   // Shape (a): a definition object.
   if (isDefinitionObject(def)) {
-    return buildRuntimeFactory(def, trust);
+    return buildRuntimeFactory(def, trust, systemResources);
   }
 
   throw new InvalidAgentDefinitionError(
