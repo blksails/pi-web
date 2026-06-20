@@ -38,7 +38,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 | 2 | webext-slots-agent | Tier1 12 保留插槽 | 12 个 `data-pi-ext-*` 全渲染；**追加不替换**内核输入/消息面 | ✅ |
 | 3 | webext-background-agent | Tier1 自定义背景 | 极光背景在消息层之下；会话态浮动底栏**无**纯色渐隐带 | ⚠️ 需进会话态 |
 | 4 | webext-renderer-agent | 自定义消息渲染器 | 自定义 part 渲染 | ⚠️ 需有消息 |
-| 5 | webext-artifact-agent | artifact surface | `data-pi-ext-artifact-surface` 插槽 | ✅（内容随交互） |
+| 5 | webext-artifact-agent | Tier4 artifact iframe | **仅当设了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 才挂载 `<ArtifactSurface>` iframe**；裸 dev 无 iframe/无 `data-pi-ext-artifact-surface` 是**正确门控**（别误判）。见 [[webext-artifact-base-url-gate]] | ⚠️ 需配 base-url |
 | 6 | webext-declarative-agent | 纯声明(theme/layout) | **零 bundle、无扩展面板、回退默认聊天**（预期"像默认"，别误判为没加载） | ✅ |
 | 7 | webext-contrib-agent | Tier3 ui-rpc 贡献点 | slash/mention/autocomplete/keybinding 贡献 | ⚠️ 仅 `hasContributions && !isBusy` 时开，见 [[pi-web-uirpc-idle-control-stream]] |
 
