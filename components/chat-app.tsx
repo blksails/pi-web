@@ -110,6 +110,18 @@ function narrowLayoutPreset(
     : undefined;
 }
 
+/**
+ * 从 agent source 派生默认标签页标题:取路径/URL 末段名(去尾斜杠与 `.git` 后缀)。
+ * 源为空或裸 cwd("." )时返回 undefined —— 没有有意义的名字,保留宿主默认标题。
+ * 仅作 `config.documentTitle` 未显式声明时的回落。
+ */
+function deriveSourceTitle(source: string): string | undefined {
+  if (source.length === 0 || source === ".") return undefined;
+  const trimmed = source.replace(/[/\\]+$/, "");
+  const base = (trimmed.split(/[/\\]/).pop() ?? trimmed).replace(/\.git$/, "");
+  return base.length > 0 ? base : undefined;
+}
+
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
   // Resume mode: enter SessionView immediately (skip the picker).
   const [session, setSession] = React.useState<ActiveSession | undefined>(
@@ -206,6 +218,24 @@ function SessionView({
     () => resolveExtensionForSource(create.source),
     [create.source],
   );
+
+  // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
+  // 未显式声明则回落到由 source 派生的名字(deriveSourceTitle)。cleanup 还原为载入前标题
+  // —— 故回选源页(SessionView 卸载)或切换 source 时自动复位。Next.js 静态 metadata 只在
+  // 服务端,运行时标题须由客户端 effect 接管。
+  React.useEffect(() => {
+    const declared = extension?.config?.documentTitle;
+    const title =
+      declared !== undefined && declared.length > 0
+        ? declared
+        : deriveSourceTitle(create.source);
+    if (title === undefined) return;
+    const previous = document.title;
+    document.title = title;
+    return () => {
+      document.title = previous;
+    };
+  }, [extension, create.source]);
 
   // Session creation failed → recognizable error + re-pick (Req 4.5).
   if (session.error !== undefined && session.status === "closed") {

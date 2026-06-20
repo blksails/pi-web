@@ -27,6 +27,7 @@
     }
   },
   "include": [
+    ".next-e2e/types/**/*.ts",
     ".next/types/**/*.ts",
     "app-shell-env.d.ts",
     "app/**/*.ts",
@@ -42,7 +43,7 @@
     "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next-e2e/types/**/*.ts"
+    ".next-stub/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

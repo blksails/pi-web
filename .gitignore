@@ -19,3 +19,5 @@ next-env.d.ts
 storybook-static
 
 /.pi/
+# pi-team 主控台状态(本地)
+.pi-team/

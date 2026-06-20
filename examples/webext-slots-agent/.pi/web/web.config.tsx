@@ -33,6 +33,9 @@ export default defineWebExtension({
   // 并以 mergeCommands="prepend" 让配置建议项排在 agent slash 命令之前。
   // 与下面的 Tier1 `empty` 槽(additive 的 "Ext Empty State" fixture)并存、不冲突。
   config: {
+    // Tier5 声明式浏览器标签页标题:载入本 source 后宿主把 document.title 同步为此值,
+    // 回选源页或切到别的 source 时自动还原。
+    documentTitle: "Slots Agent · pi-web",
     empty: {
       title: "Slots Agent · 自定义空态",
       subtitle: "标题/副标题/下面这两个建议项均来自声明式 config.empty。",

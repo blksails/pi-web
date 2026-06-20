@@ -44,5 +44,10 @@ export const WebExtConfigSchema = z.object({
   theme: ThemeTokensSchema.optional(),
   layout: LayoutPresetSchema.optional(),
   empty: EmptyConfigSchema.optional(),
+  /**
+   * 浏览器标签页标题(document.title)。agent source 载入后由宿主同步;
+   * 会话卸载(回选源页)或切到无此声明的 source 时还原为载入前的标题。
+   */
+  documentTitle: z.string().optional(),
 });
 export type WebExtConfig = z.infer<typeof WebExtConfigSchema>;

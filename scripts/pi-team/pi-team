@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+#
+# pi-team — pi-web 开发用「主控台」:任务队列 + git worktree 隔离 + gtmux 多 tab 编排
+#
+# 模型:
+#   - 每个任务 = 一段给 Claude 的 prompt。
+#   - 派发时:为任务建一个独立 git worktree(分支 pi-team/<id>),用 gtmux claim 领一个
+#     Ghostty tab,在该 worktree 里启动**交互式 claude** 并预载 prompt(可随时介入)。
+#   - 主控台维护并发上限,展示各任务/各 tab 状态,可 attach / peek / done / rm。
+#
+# 用法:
+#   pi-team add "<prompt>" [--title T] [--base <ref>]   把任务压入队列
+#   pi-team ls                                          列出所有任务
+#   pi-team start [--max N] [--no-send]                 一次性派发到并发上限
+#   pi-team console [--max N] [--interval S] [--peek]   实时主控台(自动派发+刷新)
+#   pi-team attach <id>                                 把该任务的 tab 切到前台
+#   pi-team peek <id> [-n N]                            读该任务 tab 的最后 N 行
+#   pi-team send <id> "<text>"                          往该任务 tab 追加输入(交互介入)
+#   pi-team done <id>                                   标记完成(释放并发名额,保留 tab/worktree)
+#   pi-team rm <id> [--keep-branch] [--keep-tab]        拆除:关 tab + 删 worktree + 删分支
+#   pi-team clean                                       拆除所有 done/failed 任务
+#
+set -euo pipefail
+PROG="$(basename "$0")"
+die() { echo "$PROG: $*" >&2; exit 1; }
+
+# ---- 解析 gtmux ----
+GTMUX="${GTMUX:-$(command -v gtmux 2>/dev/null || true)}"
+if [ -z "$GTMUX" ]; then
+  for p in \
+    "$HOME/.claude/plugins/marketplaces/ghostty-ctl/plugins/ghostty-ctl/bin/gtmux" \
+    "$HOME/Projects/ghostty-ctl/plugins/ghostty-ctl/bin/gtmux"; do
+    [ -x "$p" ] && GTMUX="$p" && break
+  done
+fi
+[ -n "$GTMUX" ] || die "找不到 gtmux(装 ghostty-ctl 插件,或设 GTMUX=/path/to/gtmux)"
+
+# ---- 解析仓库 / 状态目录 / worktree 根 ----
+# 默认作用于本脚本所在 repo(scripts/pi-team/ 的上两级);可用 PI_TEAM_REPO 覆盖
+SELF="$(cd "$(dirname "$0")" && pwd)"
+REPO="${PI_TEAM_REPO:-$(git -C "$SELF" rev-parse --show-toplevel 2>/dev/null || true)}"
+[ -n "$REPO" ] || die "无法定位 git 仓库(设 PI_TEAM_REPO=/path/to/pi-web)"
+STATE="$REPO/.pi-team"
+TASKS="$STATE/tasks"
+WORKTREES="$(dirname "$REPO")/.pi-team-worktrees"
+mkdir -p "$TASKS" "$WORKTREES"
+LAYOUT="${PI_TEAM_LAYOUT:-tab}"   # tab=每任务一个 tab;split=一个 tab 内分屏并排
+
+# ---- 任务字段读写(每字段一个文件,免转义)----
+tf() { echo "$TASKS/$1/$2"; }                       # 任务字段文件路径
+get() { cat "$(tf "$1" "$2")" 2>/dev/null || true; }
+set_() { mkdir -p "$TASKS/$1"; printf '%s' "$3" > "$(tf "$1" "$2")"; }
+task_ids() { ls -1 "$TASKS" 2>/dev/null | sort; }    # id 含时间戳,字典序=时间序
+running_count() { local n=0 id; for id in $(task_ids); do [ "$(get "$id" status)" = running ] && n=$((n+1)); done; echo "$n"; }
+
+new_id() {
+  # 形如 250620-181530-7f;同秒并发用 $RANDOM 去重
+  local r; r=$(printf '%02x' $(( RANDOM % 256 )))
+  echo "$(date +%y%m%d-%H%M%S)-$r"
+}
+
+# ============ 子命令 ============
+
+cmd_add() {
+  local title="" base="main" prompt=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --title) title="$2"; shift 2 ;;
+      --title=*) title="${1#*=}"; shift ;;
+      --base) base="$2"; shift 2 ;;
+      --base=*) base="${1#*=}"; shift ;;
+      *) prompt="${prompt:+$prompt }$1"; shift ;;
+    esac
+  done
+  [ -n "$prompt" ] || die "需要 prompt:pi-team add \"<prompt>\" [--title T]"
+  [ -n "$title" ] || title="$(printf '%s' "$prompt" | cut -c1-40)"
+  local id; id="$(new_id)"
+  set_ "$id" title "$title"
+  set_ "$id" status pending
+  set_ "$id" base "$base"
+  set_ "$id" created "$(date +%s)"
+  printf '%s' "$prompt" > "$(tf "$id" prompt)"
+  echo "已入队 $id  «${title}»  (base=${base})"
+}
+
+# 让 worktree 共用主仓依赖(JS 项目 worktree 不自带 node_modules;各 worktree 各自 .next,互不冲突)
+link_deps() {
+  local wt="$1" d rel
+  [ -d "$REPO/node_modules" ] && [ ! -e "$wt/node_modules" ] && ln -s "$REPO/node_modules" "$wt/node_modules" 2>/dev/null || true
+  for d in "$REPO"/packages/*/ "$REPO"/apps/*/; do
+    [ -d "${d}node_modules" ] || continue
+    rel="${d#$REPO/}"
+    [ -d "$wt/$rel" ] && [ ! -e "$wt/${rel}node_modules" ] && ln -s "${d}node_modules" "$wt/${rel}node_modules" 2>/dev/null || true
+  done
+}
+
+# 派发单个任务:worktree + tab + 交互式 claude
+provision() {
+  local id="$1" send="${2:-1}" delay="${3:-5}"
+  local title branch wt base
+  title="$(get "$id" title)"; base="$(get "$id" base)"; [ -n "$base" ] || base=main
+  branch="pi-team/$id"; wt="$WORKTREES/$id"
+
+  if [ ! -d "$wt" ]; then
+    if ! git -C "$REPO" worktree add -b "$branch" "$wt" "$base" >/dev/null 2>&1; then
+      set_ "$id" status failed; set_ "$id" error "worktree add 失败(base=$base?)"
+      echo "  [$id] ✗ worktree 失败"; return 1
+    fi
+  fi
+  set_ "$id" branch "$branch"; set_ "$id" worktree "$wt"
+  link_deps "$wt"
+
+  # 安排 tab/分屏:本批第一个任务开专属团队窗口(pane1);其余按 LAYOUT 并入
+  local sel seljson
+  if [ "$(running_count)" = 0 ]; then
+    seljson="$("$GTMUX" claim --new-window --cwd "$wt" --title "pi:$title")" || { set_ "$id" status failed; return 1; }
+    sel="$(printf '%s' "$seljson" | sed -E 's/.*"selector":"([^"]+)".*/\1/')"
+    printf '%s' "$sel" > "$STATE/team-anchor"
+  elif [ "$LAYOUT" = split ]; then
+    # 在团队 tab 里,从上一个 pane 向右分屏出新 pane
+    local anchor ntty; anchor="$(cat "$STATE/team-anchor" 2>/dev/null || true)"
+    "$GTMUX" split "$anchor" --dir right >/dev/null 2>&1 || true
+    sleep 0.4
+    ntty="$(osascript -e 'tell application "Ghostty" to return tty of focused terminal of selected tab of front window')"
+    sel="tty:$ntty"
+    "$GTMUX" action "$sel" equalize_splits >/dev/null 2>&1 || true
+    "$GTMUX" title "$sel" "pi:$title" >/dev/null 2>&1 || true
+    printf '%s' "$sel" > "$STATE/team-anchor"
+  else
+    seljson="$("$GTMUX" claim --cwd "$wt" --title "pi:$title")" || { set_ "$id" status failed; return 1; }
+    sel="$(printf '%s' "$seljson" | sed -E 's/.*"selector":"([^"]+)".*/\1/')"
+  fi
+  set_ "$id" selector "$sel"
+
+  # 在 tab 里启动交互式 claude,预载 prompt(运行时 cat 出 prompt 文件,免转义)
+  # PI_TEAM_CMD 可替换执行体(默认 claude;测试/换 runner 时有用)
+  local pf cmd; pf="$(tf "$id" prompt)"; cmd="${PI_TEAM_CMD:-claude}"
+  "$GTMUX" run "$sel" "cd $(printf '%q' "$wt") && $cmd \"\$(cat $(printf '%q' "$pf"))\""
+  set_ "$id" status running
+  # 可选:延时后自动回车提交首条 prompt(给 claude 启动留时间)
+  if [ "$send" = 1 ]; then ( sleep "$delay"; "$GTMUX" key "$sel" enter >/dev/null 2>&1 ) & fi
+  echo "  [$id] ▸ running  $sel  «${title}»"
+}
+
+dispatch() {  # 把 pending 派到并发上限
+  local max="$1" send="$2" delay="$3" id run
+  run="$(running_count)"
+  for id in $(task_ids); do
+    [ "$(get "$id" status)" = pending ] || continue
+    [ "$run" -ge "$max" ] && break
+    provision "$id" "$send" "$delay" && run=$((run+1))
+  done
+}
+
+cmd_start() {
+  local max=3 send=1 delay=5
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --max) max="$2"; shift 2 ;; --max=*) max="${1#*=}"; shift ;;
+      --no-send) send=0; shift ;;
+      --split) LAYOUT=split; shift ;;
+      --tabs) LAYOUT=tab; shift ;;
+      --delay) delay="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  echo "派发(并发上限 $max,布局 $LAYOUT):"
+  dispatch "$max" "$send" "$delay"
+  echo "完成。pi-team ls 看状态,pi-team console 进主控台。"
+}
+
+render() {  # 渲染状态表
+  local peek="$1" id status title sel branch
+  local p=0 r=0 d=0 f=0
+  printf '%-20s %-8s %-22s %-26s %s\n' "ID" "STATUS" "TITLE" "TAB" "BRANCH"
+  printf '%s\n' "--------------------------------------------------------------------------------------------"
+  for id in $(task_ids); do
+    status="$(get "$id" status)"; title="$(get "$id" title)"; sel="$(get "$id" selector)"; branch="$(get "$id" branch)"
+    case "$status" in pending) p=$((p+1)); st="· pending";; running) r=$((r+1)); st="▸ running";; done) d=$((d+1)); st="✓ done";; failed) f=$((f+1)); st="✗ failed";; *) st="$status";; esac
+    printf '%-20s %-8s %-22s %-26s %s\n' "$id" "$st" "$(printf '%s' "$title" | cut -c1-22)" "${sel:-—}" "${branch:-—}"
+    if [ "$peek" = 1 ] && [ "$status" = running ] && [ -n "$sel" ]; then
+      local last; last="$("$GTMUX" read "$sel" 2>/dev/null | grep -v '^[[:space:]]*$' | tail -1 | cut -c1-86)"
+      [ -n "$last" ] && printf '    └ %s\n' "$last"
+    fi
+  done
+  printf '%s\n' "--------------------------------------------------------------------------------------------"
+  printf 'pending %d   running %d   done %d   failed %d   |  repo=%s\n' "$p" "$r" "$d" "$f" "${REPO/#$HOME/~}"
+}
+
+cmd_ls() { render 0; }
+
+cmd_console() {
+  local max=3 interval=4 peek=0 send=1 delay=5
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --max) max="$2"; shift 2 ;; --max=*) max="${1#*=}"; shift ;;
+      --interval) interval="$2"; shift 2 ;;
+      --peek) peek=1; shift ;;
+      --no-send) send=0; shift ;;
+      --split) LAYOUT=split; shift ;;
+      --tabs) LAYOUT=tab; shift ;;
+      *) shift ;;
+    esac
+  done
+  trap 'printf "\n主控台退出(任务/tab 仍在运行)。\n"; exit 0' INT
+  while :; do
+    dispatch "$max" "$send" "$delay" >/dev/null
+    clear
+    printf '═══ pi-team 主控台  (并发上限 %s, 每 %ss 刷新, Ctrl-C 退出) ═══\n\n' "$max" "$interval"
+    render "$peek"
+    printf '\n命令: pi-team add "…" | attach <id> | peek <id> | send <id> "…" | done <id> | rm <id>\n'
+    sleep "$interval"
+  done
+}
+
+need_sel() { local s; s="$(get "$1" selector)"; [ -n "$s" ] || die "任务 $1 没有 tab(未派发?)"; echo "$s"; }
+
+cmd_attach() { local id="${1:?需要任务 id}"; "$GTMUX" focus "$(need_sel "$id")"; echo "已切到 $id 的 tab"; }
+
+cmd_peek() {
+  local id="${1:?需要任务 id}"; shift || true
+  local n=20; [ "${1:-}" = "-n" ] && n="$2"
+  "$GTMUX" read "$(need_sel "$id")" | tail -n "$n"
+}
+
+cmd_send() {
+  local id="${1:?需要任务 id}"; shift
+  local sel; sel="$(need_sel "$id")"
+  "$GTMUX" send "$sel" "$*"; "$GTMUX" key "$sel" enter
+  echo "已发往 $id"
+}
+
+cmd_done() { local id="${1:?需要任务 id}"; set_ "$id" status done; echo "$id 标记 done(名额已释放,tab/worktree 保留;rm 可彻底拆除)"; }
+
+cmd_rm() {
+  local id="" keep_branch=0 keep_tab=0
+  for a in "$@"; do case "$a" in --keep-branch) keep_branch=1 ;; --keep-tab) keep_tab=1 ;; *) id="$a" ;; esac; done
+  [ -n "$id" ] || die "需要任务 id"
+  local sel wt branch; sel="$(get "$id" selector)"; wt="$(get "$id" worktree)"; branch="$(get "$id" branch)"
+  # 关掉该 agent 的 pane:先杀 pane 内前台进程(claude),避开 Ghostty 关闭确认框,
+  # 再用 gtmux close(关 terminal/pane;split 里只关这一个分屏,单 pane tab 则关 tab)
+  if [ "$keep_tab" = 0 ] && [ -n "$sel" ]; then
+    local tty="${sel#tty:}" pid
+    pid="$(osascript -e "tell application \"Ghostty\" to return pid of (first terminal whose tty is \"$tty\")" 2>/dev/null || true)"
+    [ -n "$pid" ] && [ "$pid" -gt 0 ] 2>/dev/null && kill "$pid" 2>/dev/null || true
+    sleep 0.3
+    "$GTMUX" close "$sel" 2>/dev/null || true
+  fi
+  # 删 worktree
+  if [ -n "$wt" ] && [ -d "$wt" ]; then git -C "$REPO" worktree remove --force "$wt" 2>/dev/null || rm -rf "$wt"; fi
+  # 删分支
+  if [ "$keep_branch" = 0 ] && [ -n "$branch" ]; then git -C "$REPO" branch -D "$branch" 2>/dev/null || true; fi
+  rm -rf "$TASKS/$id"
+  echo "$id 已拆除${keep_branch:+}"
+}
+
+cmd_clean() {
+  local id st
+  for id in $(task_ids); do
+    st="$(get "$id" status)"
+    if [ "$st" = done ] || [ "$st" = failed ]; then cmd_rm "$id"; fi
+  done
+  git -C "$REPO" worktree prune 2>/dev/null || true
+  echo "已清理 done/failed 任务。"
+}
+
+usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# ============ 分发 ============
+[ $# -gt 0 ] || { usage; exit 0; }
+sub="$1"; shift || true
+case "$sub" in
+  add)     cmd_add "$@" ;;
+  ls|status) cmd_ls ;;
+  start)   cmd_start "$@" ;;
+  console) cmd_console "$@" ;;
+  attach)  cmd_attach "$@" ;;
+  peek)    cmd_peek "$@" ;;
+  send)    cmd_send "$@" ;;
+  done)    cmd_done "$@" ;;
+  rm)      cmd_rm "$@" ;;
+  clean)   cmd_clean ;;
+  -h|--help|help) usage ;;
+  *) die "未知子命令: $sub(pi-team --help)" ;;
+esac
