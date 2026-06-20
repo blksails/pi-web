@@ -37,7 +37,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 | 1 | webext-layout-agent | Tier1 区域插槽 | panelRight「领域检视面板」+ header 三区(Nav/Layout Agent/Help) + footer | ✅ |
 | 2 | webext-slots-agent | Tier1 12 保留插槽 | 12 个 `data-pi-ext-*` 全渲染；**追加不替换**内核输入/消息面 | ✅ |
 | 3 | webext-background-agent | Tier1 自定义背景 | 极光背景在消息层之下；会话态浮动底栏**无**纯色渐隐带 | ⚠️ 需进会话态 |
-| 4 | webext-renderer-agent | 自定义消息渲染器 | 自定义 part 渲染 | ⚠️ 需有消息 |
+| 4 | webext-renderer-agent | 自定义工具/消息渲染器 | 发 `echo the text: ...` → 真实 LLM 调 `echo` 工具 → 命中 `EchoToolRenderer`（`data-testid="echo-tool-card"`，默认 `[data-pi-tool]`=0=注册表覆盖）。见 [[webext-renderer-stub-trigger]] | ⚠️ 需发 echo 指令驱动一轮 |
 | 5 | webext-artifact-agent | Tier4 artifact iframe | **仅当设了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 才挂载 `<ArtifactSurface>` iframe**；裸 dev 无 iframe/无 `data-pi-ext-artifact-surface` 是**正确门控**（别误判）。见 [[webext-artifact-base-url-gate]] | ⚠️ 需配 base-url |
 | 6 | webext-declarative-agent | 纯声明(theme/layout) | **零 bundle、无扩展面板、回退默认聊天**（预期"像默认"，别误判为没加载） | ✅ |
 | 7 | webext-contrib-agent | Tier3 ui-rpc 贡献点 | slash/mention/autocomplete/keybinding 贡献 | ⚠️ 仅 `hasContributions && !isBusy` 时开，见 [[pi-web-uirpc-idle-control-stream]] |
@@ -69,7 +69,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 
 ## 3. 验收注意事项
 
-- **3 / 4 / 7 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条 stub 消息。
+- **3 / 4 / 7 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条消息。其中 **4 发 `echo the text: ...`** 让真实 LLM 调 echo 工具（3 发任意消息进会话态、7 打 `/` 触发 ui-rpc）。
 - **刷新不丢扩展**（已修复）：source 经 app 级 `sessionId→source` 映射按 id 恢复，URL 保持纯净 `/session/:id`，不暴露文件路径。验收时刷新一个 fresh 会话应仍见扩展。见 [[webext-review-checklist]] 关联的 resume 修复。
 - **declarative 的"无扩展"是正确结果**，不是 bug。
 - 改了注入路由 / 配置域后需重启 dev（handler 单例 pin 在 globalThis）。见 [[pi-web-handler-singleton-restart]]。
