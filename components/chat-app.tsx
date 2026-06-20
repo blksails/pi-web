@@ -8,15 +8,26 @@ import {
   useExtensionUI,
   type UsePiSessionResult,
 } from "@pi-web/react";
-import { PiChat, type ExtensionCommandPolicy } from "@pi-web/ui";
+import {
+  PiChat,
+  type ExtensionCommandPolicy,
+  type ComponentOverrides,
+} from "@pi-web/ui";
 import type { CreateSessionRequest } from "@pi-web/protocol";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
+import { ChatReasoning } from "./chat-reasoning.js";
+
+/**
+ * 细粒度组件覆盖:用 AI Elements 风格的 Reasoning(流式自动展开 + "Thought for Ns")
+ * 替换默认 PiReasoning。模块级常量(引用稳定,避免每渲染新对象使下游 useMemo 失效)。
+ */
+const PI_CHAT_COMPONENTS: ComponentOverrides = { Reasoning: ChatReasoning };
 
 /**
  * ChatApp — the client-side assembly: pick source → create session → render
- * the rich chat UI <PiChat> (default rich component; formerly <PiChatPro>) with
+ * the rich chat UI <PiChat> (default rich component; formerly <PiChat>) with
  * controls + permission dialog.
  *
  * Until a session is created it renders <AgentSourcePicker>. On submit it builds
@@ -250,6 +261,7 @@ function SessionView({
           session={session}
           controls={controls}
           extensionUI={extensionUI}
+          components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
