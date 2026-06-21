@@ -38,7 +38,7 @@
   - _Requirements: 1.1, 1.5, 1.6, 1.8_
   - _Boundary: BlobStore_
 
-- [ ] 2.2 实现本地文件系统后端 `LocalFsBlobBackend`
+- [x] 2.2 实现本地文件系统后端 `LocalFsBlobBackend`
   - 实现 `BlobStore` 端口:字节落盘到约定目录、按 key 读为可读流并返回 mime/size、查询元信息、删除;读不存在抛未找到错误。
   - 字节以流式写读避免大文件全量入内存;本切片存储 key 等于公开 id(去重为 future);盘上布局为 `<root>/<key>`(平铺,冻结为跨 spec 契约)。
   - 可达 URL 签发委托 URL 签名器产出 `/attachments/:id/raw?exp&sig` 形态(与 S3 presign 同形)。

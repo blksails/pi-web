@@ -17,3 +17,4 @@ export {
   type BlobStore,
   type BlobMeta,
 } from "./blob-store.js";
+export { LocalFsBlobBackend } from "./local-fs-backend.js";
