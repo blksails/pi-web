@@ -106,7 +106,7 @@
   - _Depends: 1.1_
   - _Boundary: uploadAttachment_
 
-- [ ] 4.2 重构 `useAttachments`:上传拿正式 id + 状态机
+- [x] 4.2 重构 `useAttachments`:上传拿正式 id + 状态机
   - 改 `add()` 为异步:本地预览后置「上传中」态、调用上传函数,成功置「就绪」并记 server 返回的正式公开 id 与展示 URL,失败置「错误」态;仅正式 id 视为已落库引用;保留 `toImageContents()`(vision 维持现状)。
   - 扩展待提交附件结构以承载状态、正式 id、展示 URL,且保持对既有调用方向后兼容。
   - 观察完成:单元测试断言添加后经历 uploading→ready 并带正式 id/展示 URL;上传失败置 error 且该项不计入可提交的已落库引用;前端不自造正式 id。

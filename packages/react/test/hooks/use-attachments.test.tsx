@@ -1,10 +1,32 @@
-import { describe, it, expect } from "vitest";
-import { renderHook, act } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { useAttachments } from "../../src/hooks/use-attachments.js";
+import type { UploadAttachmentResponse } from "@pi-web/protocol";
 
 /** 构造一个带指定 mimeType 与字节内容的 File(jsdom 真实 File/Blob)。 */
 function makeFile(name: string, mimeType: string, bytes: number[]): File {
   return new File([new Uint8Array(bytes)], name, { type: mimeType });
+}
+
+/** 构造一个 mock 的上传成功响应描述符(server 铸造的正式 id + 展示 URL)。 */
+function makeUploadResponse(
+  id: string,
+  name: string,
+  mimeType: string,
+  displayUrl: string,
+): UploadAttachmentResponse {
+  return {
+    attachment: {
+      id,
+      name,
+      mimeType,
+      size: 8,
+      origin: "upload",
+      sessionId: "sess-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    },
+    displayUrl,
+  };
 }
 
 /** PNG 魔数前缀(任意字节即可,这里用可辨识的序列)。 */
@@ -12,15 +34,40 @@ const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 // base64("\x89PNG\r\n\x1a\n") = "iVBORw0KGgo="
 const PNG_BASE64 = "iVBORw0KGgo=";
 
+/**
+ * 默认注入选项:成功的 upload mock(server 铸造正式 id `att_<name>` + 展示 URL)。
+ * 每次按文件名回传可辨识的正式 id/URL,便于断言。
+ */
+function okOptions(): {
+  baseUrl: string;
+  sessionId: string;
+  upload: ReturnType<typeof vi.fn>;
+} {
+  const upload = vi.fn(
+    async (
+      _baseUrl: string,
+      _sessionId: string,
+      file: File,
+    ): Promise<UploadAttachmentResponse> =>
+      makeUploadResponse(
+        `att_${file.name}`,
+        file.name,
+        file.type,
+        `/attachments/att_${file.name}/raw?exp=1&sig=x`,
+      ),
+  );
+  return { baseUrl: "/api", sessionId: "sess-1", upload };
+}
+
 describe("useAttachments", () => {
   it("starts empty and supported by default", () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     expect(result.current.items).toEqual([]);
     expect(result.current.supported).toBe(true);
   });
 
   it("adds image files to items and returns no rejected", async () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     let rejected: string[] = [];
     await act(async () => {
       const res = await result.current.add([
@@ -29,6 +76,9 @@ describe("useAttachments", () => {
       rejected = res.rejected;
     });
     expect(rejected).toEqual([]);
+    await waitFor(() =>
+      expect(result.current.items[0]?.status).toBe("ready"),
+    );
     expect(result.current.items).toHaveLength(1);
     const item = result.current.items[0];
     expect(item?.name).toBe("a.png");
@@ -38,8 +88,105 @@ describe("useAttachments", () => {
     expect(item?.id).not.toBe("");
   });
 
+  it("transitions an added attachment uploading -> ready with server-minted id and displayUrl", async () => {
+    const opts = okOptions();
+    const { result } = renderHook(() => useAttachments(opts));
+
+    // 用一个延迟的 upload,捕捉 uploading 中间态。
+    let resolveUpload!: (r: UploadAttachmentResponse) => void;
+    opts.upload.mockImplementationOnce(
+      () =>
+        new Promise<UploadAttachmentResponse>((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+
+    await act(async () => {
+      await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+    });
+
+    // 上传尚未完成:处于 uploading 态,无正式 id/展示 URL。
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0]?.status).toBe("uploading");
+    expect(result.current.items[0]?.attachmentId).toBeUndefined();
+    expect(result.current.items[0]?.displayUrl).toBeUndefined();
+
+    await act(async () => {
+      resolveUpload(
+        makeUploadResponse(
+          "att_official_1",
+          "a.png",
+          "image/png",
+          "/attachments/att_official_1/raw?exp=1&sig=x",
+        ),
+      );
+    });
+
+    await waitFor(() =>
+      expect(result.current.items[0]?.status).toBe("ready"),
+    );
+    expect(result.current.items[0]?.attachmentId).toBe("att_official_1");
+    expect(result.current.items[0]?.displayUrl).toBe(
+      "/attachments/att_official_1/raw?exp=1&sig=x",
+    );
+    // 调用方未自造正式 id:正式 id 来自 mock 上传返回。
+    expect(opts.upload).toHaveBeenCalledTimes(1);
+    expect(opts.upload).toHaveBeenCalledWith(
+      "/api",
+      "sess-1",
+      expect.any(File),
+    );
+  });
+
+  it("marks an attachment error on upload failure and does not count it as a committed reference", async () => {
+    const opts = okOptions();
+    opts.upload.mockRejectedValueOnce(new Error("network down"));
+    const { result } = renderHook(() => useAttachments(opts));
+
+    await act(async () => {
+      await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+    });
+
+    await waitFor(() =>
+      expect(result.current.items[0]?.status).toBe("error"),
+    );
+    // 失败项仍在列表(以呈现错误),但无正式 id、不计入可提交引用。
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0]?.attachmentId).toBeUndefined();
+    expect(result.current.referenceIds!()).toEqual([]);
+  });
+
+  it("referenceIds returns only server-minted ids of ready attachments", async () => {
+    const opts = okOptions();
+    // 第一项成功、第二项失败。
+    opts.upload
+      .mockImplementationOnce(async (_b, _s, file: File) =>
+        makeUploadResponse(
+          "att_ok",
+          file.name,
+          file.type,
+          "/attachments/att_ok/raw?exp=1&sig=x",
+        ),
+      )
+      .mockRejectedValueOnce(new Error("boom"));
+    const { result } = renderHook(() => useAttachments(opts));
+
+    await act(async () => {
+      await result.current.add([
+        makeFile("a.png", "image/png", PNG_BYTES),
+        makeFile("b.png", "image/png", PNG_BYTES),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.items[0]?.status).toBe("ready");
+      expect(result.current.items[1]?.status).toBe("error");
+    });
+    expect(result.current.referenceIds!()).toEqual(["att_ok"]);
+  });
+
   it("rejects non-image files by name and does not add them", async () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     let rejected: string[] = [];
     await act(async () => {
       const res = await result.current.add([
@@ -54,7 +201,7 @@ describe("useAttachments", () => {
   });
 
   it("remove drops a single attachment by id", async () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     await act(async () => {
       await result.current.add([
         makeFile("a.png", "image/png", PNG_BYTES),
@@ -71,7 +218,7 @@ describe("useAttachments", () => {
   });
 
   it("clear removes all attachments", async () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     await act(async () => {
       await result.current.add([
         makeFile("a.png", "image/png", PNG_BYTES),
@@ -86,12 +233,15 @@ describe("useAttachments", () => {
   });
 
   it("toImageContents produces ImageContent with raw base64 (no data URL prefix)", async () => {
-    const { result } = renderHook(() => useAttachments());
+    const { result } = renderHook(() => useAttachments(okOptions()));
     await act(async () => {
       await result.current.add([
         makeFile("a.png", "image/png", PNG_BYTES),
       ]);
     });
+    await waitFor(() =>
+      expect(result.current.items[0]?.status).toBe("ready"),
+    );
     const contents = result.current.toImageContents();
     expect(contents).toHaveLength(1);
     expect(contents[0]).toEqual({
@@ -102,12 +252,15 @@ describe("useAttachments", () => {
   });
 
   it("supported=false when options disable image input", () => {
-    const { result } = renderHook(() => useAttachments({ supported: false }));
+    const { result } = renderHook(() =>
+      useAttachments({ ...okOptions(), supported: false }),
+    );
     expect(result.current.supported).toBe(false);
   });
 
   it("does not add anything while supported=false and reports files as rejected", async () => {
-    const { result } = renderHook(() => useAttachments({ supported: false }));
+    const opts = { ...okOptions(), supported: false };
+    const { result } = renderHook(() => useAttachments(opts));
     let rejected: string[] = [];
     await act(async () => {
       const res = await result.current.add([
@@ -117,5 +270,6 @@ describe("useAttachments", () => {
     });
     expect(result.current.items).toEqual([]);
     expect(rejected).toEqual(["a.png"]);
+    expect(opts.upload).not.toHaveBeenCalled();
   });
 });

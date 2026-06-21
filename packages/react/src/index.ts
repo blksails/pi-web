@@ -86,6 +86,8 @@ export {
   type UseAttachmentsOptions,
   type UseAttachmentsResult,
   type PendingAttachment,
+  type PendingAttachmentStatus,
+  type UploadAttachmentFn,
 } from "./hooks/use-attachments.js";
 export {
   useBranches,
