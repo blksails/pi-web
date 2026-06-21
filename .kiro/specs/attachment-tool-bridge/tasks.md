@@ -12,7 +12,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: createChildAttachmentStore（复用上游 AttachmentStore 门面，不重定义类型）_
 
-- [ ] 1.2 校验 runner 子进程已收到 store 下发的存储 env(verification-only,不编辑 spawn env)
+- [x] 1.2 校验 runner 子进程已收到 store 下发的存储 env(verification-only,不编辑 spawn env)
   - **不编辑** `lib/app/pi-handler.ts` 的 spawn env:`PI_WEB_ATTACHMENT_DIR` + `PI_WEB_ATTACHMENT_SECRET` 由 attachment-store 全权下发(透传归其拥有)
   - 仅校验/断言 runner 子进程进程内已收到 store 下发的 DIR + SECRET env,且据此构造的子进程 store 与主进程指向同一目录、secret 一致
   - 确认 e2e/隔离场景下该 env 也覆盖到 runner 子进程路径
