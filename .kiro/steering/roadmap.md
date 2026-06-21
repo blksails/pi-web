@@ -27,6 +27,22 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
 - [x] **ui-components** — `@pi-web/ui`:AI Elements 装配(`<PiChat>`/Tool/Reasoning/PromptInput)+ 渲染器注册表 + 模型/思考/stats 控制面板 + 权限弹窗 + shadcn registry。_Depends on: react-client_
 - [x] **app-shell** — Next.js 整站闭环:layout/page + 装配 api routes + `<PiChat>` + agent 源选择;**承载全链路 e2e**(选源→prompt→浏览器内流式回复)。_Depends on: ui-components, http-api_
 
+## 附件系统(新增波次 · 2026-06-21 discovery)
+
+> 背景:支持两类附件场景 —— ① base64 给 LLM 识别(现状已有,仅图片);② 保存为文件给 server 端 tool 用(图像编辑/生成),且产出物回流。
+> 核心设计:分层(L0 Blob Store/VFS · L1 引用 `att_id` · L2 投影 resolve · L3 context 闸门)+ pipeline 两回环(轮内工具回环、跨轮产出物回环)+ 三不变式(单一身份 / 先落库后引用 / base64 仅具名出口物化)。
+> 关键约束:pi `AgentTool.content` 仅 `text|image`(base64),**无文件引用原语**;tool `execute` 在 **runner 子进程**(非 pi-web 主进程,且 pi 不走 MCP),故 store 须**双进程实例化、指向同一后端**(本地=共享目录经 spawn env 下发;S3=子进程持凭证)。
+
+### 决策(2026-06-21)
+- 分解:两个垂直切片 spec(下方 dependency order)。
+- 第一版**不做智能意图路由**:上传图维持 base64→LLM(vision);给 tool 的文件走**显式 `attachmentId` 参数**。智能省 context 留待 future。
+- 存储后端**先本地 LocalFs**,接口按 **S3 风格**预留;S3 实现留 future。
+- 公开 id = `att_<nanoid>`(URL-safe、不可枚举);存储 key 可后置内容哈希去重(第一版可不做)。
+
+### Specs (dependency order)
+- [x] **attachment-store** — L0 对象存储(可插拔后端 + LocalFs)+ L1 描述符&id 生成 + 上传 `POST /attachments`(multipart)+ 分发 `GET /attachments/:id/raw`(签名防越权)+ 前端 `useAttachments` 改"上传拿 id、URL 展示",历史回显由 base64 改 URL 引用。_Depends on: http-api, react-client, ui-components, session-engine_ — 21 任务实现 + 浏览器 e2e 通过(2026-06-22)。
+- [x] **attachment-tool-bridge** — L2 `resolve` 句柄(path/url/bytes,S3 localPath 懒下载)+ runner 子进程 store 实例化 + `AgentTool` 接入(description 必填、base64 先 await)+ `beforeToolCall` 属主校验 + `afterToolCall` base64 剥离 + 文本引用注入 + tool-output 落库回流(同一 id 空间,闭合跨轮回环)。_Depends on: attachment-store, agent-runner_ — 14 任务实现 + 浏览器 e2e 通过(2026-06-22)。
+
 ## Future / Out of MVP scope(不进入本批次,仅作排序与一致性意识)
 
 - `embed-integrations` — `@pi-web/embed`:Web Component `<pi-web-chat>` + iframe widget(非 React 集成)。
