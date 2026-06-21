@@ -90,7 +90,7 @@
   - _Depends: 2.4_
   - _Boundary: attachment-routes(分发)_
 
-- [ ] 3.3 暴露注入路由工厂并从协议/服务包导出
+- [x] 3.3 暴露注入路由工厂并从协议/服务包导出
   - 提供 `createAttachmentRoutes(store)` 返回注入路由数组(上传+分发),与既有 `createConfigRoutes` 同范式;经服务包 barrel 导出工厂、store 类型/配置工厂,以及受认可的复用面 `AttachmentStore`(门面类型)/`PutInput`/`BlobStore`/`AttachmentRegistry`/`LocalFsBlobBackend`/`BlobMeta`/`UrlSigner`/`attachmentStoreConfigFromEnv` 供下游在子进程内组合实例化。
   - 观察完成:可从 `@pi-web/server` 导入 `createAttachmentRoutes`、store 配置工厂与上述复用面类型/类,返回的路由可直接放入 `createPiWebHandler({ routes })`。
   - _Requirements: 1.8, 7.1_

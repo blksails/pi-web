@@ -28,7 +28,11 @@
 import type { AttachmentStore } from "../../attachment/index.js";
 import { BlobNotFoundError } from "../../attachment/index.js";
 import { errorResponse, jsonResponse } from "../error-map.js";
-import type { RequestContext, RouteHandler } from "../handler.types.js";
+import type {
+  InjectedRoute,
+  RequestContext,
+  RouteHandler,
+} from "../handler.types.js";
 import { Readable } from "node:stream";
 
 /** 默认上传大小上限(字节)。可经 handler 选项覆盖。 */
@@ -218,4 +222,37 @@ export function makeRawAttachmentHandler(store: AttachmentStore): RouteHandler {
 /** 未授权响应:签名缺失/无效/过期统一为此响应(防枚举,不暴露 id 是否存在)。 */
 function unauthorized(): Response {
   return errorResponse(401, "INVALID_SIGNATURE", "Invalid or missing signature.");
+}
+
+/**
+ * 上传端点路由模板:`/sessions/:id/attachments`。
+ *
+ * 用 `:id` 参数名以**复用** Router 的会话解析 + 鉴权门控(会话不存在 404、越权 403、
+ * 未鉴权 401);命中上传 handler 时 `ctx.sessionId` 即已校验的会话属主(Req 3.3)。
+ */
+export const UPLOAD_ATTACHMENT_ROUTE = "/sessions/:id/attachments";
+
+/**
+ * 构造附件注入路由数组(上传 + 分发),与既有 `createConfigRoutes` 同范式:
+ * 返回值可直接传入 `createPiWebHandler({ routes })` 的 `routes?` 注入接缝。
+ *
+ * - 上传:`POST {@link UPLOAD_ATTACHMENT_ROUTE}`(`:id` → 会话门控,Req 3.1/3.3)。
+ * - 分发:`GET {@link RAW_ATTACHMENT_ROUTE}`(`:attachmentId` → **不**绑会话,靠签名自洽鉴权,
+ *   Req 4.x;切勿改用 `:id`,否则 Router 会把附件 id 当 sessionId 触发会话存在性 404)。
+ */
+export function createAttachmentRoutes(
+  store: AttachmentStore,
+): InjectedRoute[] {
+  return [
+    {
+      method: "POST",
+      path: UPLOAD_ATTACHMENT_ROUTE,
+      handler: makeUploadAttachmentHandler(store),
+    },
+    {
+      method: "GET",
+      path: RAW_ATTACHMENT_ROUTE,
+      handler: makeRawAttachmentHandler(store),
+    },
+  ];
 }

@@ -42,3 +42,12 @@ export {
 } from "./error-map.js";
 export { checkVersion, isCompatible } from "./version.js";
 export { Router, type RouterDeps, type RouteSpec } from "./router.js";
+export {
+  createAttachmentRoutes,
+  makeUploadAttachmentHandler,
+  makeRawAttachmentHandler,
+  RAW_ATTACHMENT_ROUTE,
+  UPLOAD_ATTACHMENT_ROUTE,
+  DEFAULT_MAX_UPLOAD_BYTES,
+  type UploadHandlerOptions,
+} from "./routes/attachment-routes.js";

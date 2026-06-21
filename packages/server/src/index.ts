@@ -18,6 +18,10 @@ export * from "./agent-source/index.js";
 export * from "./session/index.js";
 export * from "./session-store/index.js";
 export * from "./http/index.js";
+// attachment-store(L0+L1):门面 / 配置工厂 / 受认可的复用面(BlobStore / LocalFsBlobBackend /
+// AttachmentRegistry / UrlSigner / BlobMeta / PutInput),供下游 attachment-tool-bridge 在子进程内
+// 组合实例化。纯 node builtins(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
+export * from "./attachment/index.js";
 export * from "./completion/index.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
