@@ -1,0 +1,8 @@
+/**
+ * attachment-store · 模块公共出口(barrel)。
+ *
+ * 随波次推进逐步补齐:本切片首批仅导出公开 id 铸造工具;
+ * 后续任务在此追加 BlobStore / LocalFsBlobBackend / AttachmentRegistry /
+ * UrlSigner / AttachmentStore / attachmentStoreConfigFromEnv 等复用面导出。
+ */
+export { mintAttachmentId } from "./id.js";
