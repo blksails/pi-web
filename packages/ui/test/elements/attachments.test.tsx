@@ -295,3 +295,137 @@ describe("Attachments 呈现增强(Req 12)", () => {
     ).toBeNull();
   });
 });
+
+describe("Attachments 展示 URL 与上传状态呈现(Req 5.2/5.4/5.5)", () => {
+  it("就绪附件以网络展示 URL 为图片源(非内联 base64) (Req 5.2)", () => {
+    render(
+      <Attachments
+        items={[
+          item({
+            status: "ready",
+            displayUrl: "https://cdn.example/att-1.png",
+            attachmentId: "att_x",
+          }),
+        ]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const img = screen.getByRole("img", { name: /pic\.png/i });
+    expect(img).toHaveAttribute("src", "https://cdn.example/att-1.png");
+    // 断言图片源非 data: base64 内联
+    expect(img.getAttribute("src")).not.toMatch(/^data:/);
+  });
+
+  it("无 displayUrl(上传中)回退本地预览 dataUrl (Req 5.2/5.4)", () => {
+    render(
+      <Attachments
+        items={[item({ status: "uploading", displayUrl: undefined })]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const img = screen.getByRole("img", { name: /pic\.png/i });
+    expect(img).toHaveAttribute("src", "data:image/png;base64,AAAA");
+  });
+
+  it("悬停预览浮层也优先使用展示 URL (Req 5.2)", () => {
+    render(
+      <Attachments
+        items={[
+          item({
+            status: "ready",
+            displayUrl: "https://cdn.example/att-1.png",
+            attachmentId: "att_x",
+          }),
+        ]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const thumb = screen.getByLabelText("预览 pic.png");
+    fireEvent.mouseEnter(thumb);
+    const preview = screen.getByTestId("pi-attachment-preview");
+    const previewImg = preview.querySelector("img") as HTMLImageElement;
+    expect(previewImg).not.toBeNull();
+    expect(previewImg.getAttribute("src")).toBe(
+      "https://cdn.example/att-1.png",
+    );
+  });
+
+  it("上传中呈现可感知进行态标记 (Req 5.4)", () => {
+    render(
+      <Attachments
+        items={[item({ status: "uploading", displayUrl: undefined })]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const status = screen.getByTestId("pi-attachment-status-uploading");
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveAttribute("aria-label");
+    // chip 暴露 data-pi-attachment-status="uploading"
+    expect(
+      document.querySelector('[data-pi-attachment-status="uploading"]'),
+    ).not.toBeNull();
+  });
+
+  it("失败呈现错误标记 (Req 5.5)", () => {
+    render(
+      <Attachments
+        items={[item({ status: "error", displayUrl: undefined })]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const status = screen.getByTestId("pi-attachment-status-error");
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveAttribute("aria-label");
+    expect(
+      document.querySelector('[data-pi-attachment-status="error"]'),
+    ).not.toBeNull();
+  });
+
+  it("就绪态不呈现上传中/失败标记 (Req 5.4/5.5)", () => {
+    render(
+      <Attachments
+        items={[
+          item({
+            status: "ready",
+            displayUrl: "https://cdn.example/att-1.png",
+            attachmentId: "att_x",
+          }),
+        ]}
+        supported
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByTestId("pi-attachment-status-uploading"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("pi-attachment-status-error"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("缺省 status(向后兼容字面量)不呈现状态标记且用 dataUrl (Req 5.2)", () => {
+    render(
+      <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
+    );
+    expect(
+      screen.queryByTestId("pi-attachment-status-uploading"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("pi-attachment-status-error"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /pic\.png/i }),
+    ).toHaveAttribute("src", "data:image/png;base64,AAAA");
+  });
+});

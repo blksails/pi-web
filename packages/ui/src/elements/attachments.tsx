@@ -3,7 +3,9 @@
  *
  * 本元件不持有任何附件状态或编码逻辑(实际图片过滤/base64 编码在 `useAttachments`)。
  * 它负责展示与本地交互:
- *  - 展示待发送/已发送附件:缩略图(dataUrl)、文件名、可读类型标签、移除按钮(Req 3.1/3.3、12.1)。
+ *  - 展示待发送/已发送附件:缩略图、文件名、可读类型标签、移除按钮(Req 3.1/3.3、12.1)。
+ *    缩略图/悬浮预览就绪后用网络展示 URL(`displayUrl`),上传中回退本地预览 `dataUrl`(Req 5.2)。
+ *  - 对上传中(`status="uploading"`)呈现进行态、失败(`status="error"`)呈现错误标记(Req 5.4/5.5)。
  *  - dropzone:拖拽 drop、粘贴 paste、点击选择(file input)→ 调 `onAdd(files)`(Req 3.1)。
  *  - 展示上层 `useAttachments.add` 返回的 `rejected` 非图片文件名,提示"暂不支持该类型附件";
  *    不入列、不阻断已有图片或文本的发送(Req 3.4、12.5)。
@@ -25,6 +27,8 @@ import {
   FileVideo,
   FileAudio,
   File as FileIcon,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import type { PendingAttachment } from "@pi-web/react";
 import { useIcon } from "../customization/icons.js";
@@ -140,9 +144,56 @@ function filesFrom(list: FileList | null | undefined): FileList | null {
 }
 
 /**
- * 附件缩略图 + 占位图标 + 悬停预览浮层(Req 12.2/12.4)。
+ * 缩略图/预览图片源:就绪后优先用 server 返回的网络展示 URL(`displayUrl`),
+ * 上传中(尚无 displayUrl)回退本地预览 `dataUrl`(Req 5.2/5.4,design.md 行 443)。
+ */
+function imageSrc(att: PendingAttachment): string {
+  return att.displayUrl ?? att.dataUrl;
+}
+
+/**
+ * 上传中(uploading)/失败(error)的可感知状态覆盖标记(Req 5.4/5.5)。
+ * 绝对定位叠加于缩略图右下角;ready/缺省 status 不渲染。
+ */
+function StatusOverlay({
+  att,
+}: {
+  readonly att: PendingAttachment;
+}): React.JSX.Element | null {
+  if (att.status === "uploading") {
+    return (
+      <span
+        data-testid="pi-attachment-status-uploading"
+        data-pi-attachment-status="uploading"
+        role="status"
+        aria-label={`${att.name} 上传中`}
+        className="absolute inset-0 flex items-center justify-center rounded-[calc(var(--radius)-2px)] bg-[hsl(var(--background)/0.6)] text-[hsl(var(--muted-foreground))]"
+      >
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+      </span>
+    );
+  }
+  if (att.status === "error") {
+    return (
+      <span
+        data-testid="pi-attachment-status-error"
+        data-pi-attachment-status="error"
+        role="alert"
+        aria-label={`${att.name} 上传失败`}
+        className="absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
+      >
+        <AlertCircle className="h-3 w-3" aria-hidden="true" />
+      </span>
+    );
+  }
+  return null;
+}
+
+/**
+ * 附件缩略图 + 占位图标 + 悬停预览浮层(Req 12.2/12.4)+ 上传状态覆盖(Req 5.4/5.5)。
  * 自定义轻量浮层:受控 hovered 态 + 绝对定位预览层;指针 enter/leave 与键盘 focus/blur 双触发,
  * 移开/失焦关闭。预览图仅在 hovered 时条件渲染,避免默认态出现第二个同名 `img`。
+ * 图片源就绪后用网络展示 URL(displayUrl),上传中回退本地 dataUrl(Req 5.2)。
  */
 function AttachmentThumb({
   att,
@@ -154,7 +205,8 @@ function AttachmentThumb({
   readonly hoverPreview: boolean;
 }): React.JSX.Element {
   const cat = getMediaCategory(att);
-  const hasImage = cat === "image" && Boolean(att.dataUrl);
+  const src = imageSrc(att);
+  const hasImage = cat === "image" && Boolean(src);
   const previewable = hoverPreview && hasImage;
   const [hovered, setHovered] = React.useState(false);
   const Icon = categoryIcon(cat);
@@ -176,7 +228,7 @@ function AttachmentThumb({
     >
       {hasImage ? (
         <img
-          src={att.dataUrl}
+          src={src}
           alt={att.name}
           className={cn(dim, "rounded-[calc(var(--radius)-2px)] object-cover")}
         />
@@ -192,6 +244,7 @@ function AttachmentThumb({
           <Icon className="h-4 w-4" aria-hidden="true" />
         </span>
       )}
+      <StatusOverlay att={att} />
       {previewable && hovered ? (
         <span
           role="tooltip"
@@ -200,7 +253,7 @@ function AttachmentThumb({
           className="absolute bottom-full left-0 z-50 mb-2 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1 shadow-md"
         >
           <img
-            src={att.dataUrl}
+            src={src}
             alt={`${att.name} 预览`}
             className="max-h-48 max-w-[12rem] rounded-[calc(var(--radius)-2px)] object-contain"
           />
