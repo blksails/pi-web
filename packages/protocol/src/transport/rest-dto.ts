@@ -68,6 +68,12 @@ export const PromptRequestSchema = z.object({
   message: z.string(),
   images: z.array(ImageContentSchema).optional(),
   streamingBehavior: z.enum(["steer", "followUp"]).optional(),
+  /**
+   * 该消息附带的已落库附件的公开 id 列表(`att_<nanoid>`),由前端提交。
+   * 服务端据此查元数据并以结构化文本引用注入用户消息文本(attachment-tool-bridge,
+   * Req 8.1);与 `images`/vision base64 并存,不替代、不内联字节(Req 9.1)。
+   */
+  attachmentIds: z.array(z.string()).optional(),
 });
 export type PromptRequest = z.infer<typeof PromptRequestSchema>;
 

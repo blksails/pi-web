@@ -6,6 +6,7 @@
  * 校验失败→400(不转发);已停止会话→409;未知 ui-response ID→409(经 error-map)。
  */
 import {
+  type Attachment,
   ForkRequestSchema,
   PromptRequestSchema,
   type RpcResponse,
@@ -21,6 +22,7 @@ import {
   resolveCompletions,
   type CompletionRegistry,
 } from "../../completion/index.js";
+import { injectAttachmentRefs } from "../../attachment-bridge/reference-injection.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
 import { validateBody } from "../validate.js";
@@ -53,17 +55,51 @@ function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
   return session;
 }
 
-/** POST /sessions/:id/messages → PiSession.prompt(发送前解析补全 token) */
+/**
+ * 主进程附件元数据源(attachment-tool-bridge,Req 8.1)。
+ *
+ * `makeMessagesHandler` 运行在主进程,据前端提交的 `attachmentIds` 取 `{id,mimeType,name}`
+ * 以构造结构化文本引用标记。仅依赖只读 `head(id)` 访问器,与主进程 `AttachmentStore` 门面
+ * 同形(`Pick<AttachmentStore, "head">`),由装配层注入既有主进程 store(勿新造下发)。
+ */
+export interface AttachmentMetaSource {
+  /** 按公开 id 取描述符(不含字节);不存在返回 `undefined`。 */
+  head(id: string): Promise<Attachment | undefined>;
+}
+
+/**
+ * 据 `attachmentIds` 经主进程 store 解析出已落库附件描述符,保留提交顺序、跳过未知 id。
+ * 仅取元数据(不取字节),供 `injectAttachmentRefs` 构造文本引用(Req 8.1/9.1)。
+ */
+async function resolveAttachments(
+  attachmentIds: readonly string[] | undefined,
+  store: AttachmentMetaSource | undefined,
+): Promise<Attachment[]> {
+  if (
+    store === undefined ||
+    attachmentIds === undefined ||
+    attachmentIds.length === 0
+  ) {
+    return [];
+  }
+  const resolved = await Promise.all(
+    attachmentIds.map((id) => store.head(id)),
+  );
+  return resolved.filter((a): a is Attachment => a !== undefined);
+}
+
+/** POST /sessions/:id/messages → PiSession.prompt(发送前解析补全 token + 注入附件引用) */
 export function makeMessagesHandler(
   store: SessionStore,
   completion?: CompletionRegistry,
+  attachmentStore?: AttachmentMetaSource,
 ): RouteHandler {
   return async (ctx): Promise<Response> => {
     const parsed = await validateBody(ctx.req, PromptRequestSchema);
     if (!parsed.ok) return parsed.response;
     try {
       const session = requireSession(store, ctx);
-      const { images, streamingBehavior } = parsed.value;
+      const { images, streamingBehavior, attachmentIds } = parsed.value;
       let message = parsed.value.message;
       // completion-provider-framework:提交期把 @file:… 等 token 解析为上下文文本。
       if (completion !== undefined) {
@@ -77,6 +113,11 @@ export function makeMessagesHandler(
           completion,
         );
       }
+      // attachment-tool-bridge(Req 8.1/9.1):与 resolveCompletions 同一文本组装链路,
+      // 在 prompt 之前把已落库附件以结构化文本引用注入用户消息文本(仅文本,不内联字节;
+      // 与下方 images/vision base64 并存,不替代)。
+      const attachments = await resolveAttachments(attachmentIds, attachmentStore);
+      message = injectAttachmentRefs(message, attachments);
       const options: {
         images?: typeof images;
         streamingBehavior?: typeof streamingBehavior;

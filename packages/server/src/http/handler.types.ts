@@ -13,6 +13,7 @@ import type { ResolvedSource } from "../agent-source/index.js";
 import type { AuthContext, AuthResolver, AuthorizeSession } from "./auth.js";
 import type { AgentSourceResolverType } from "../agent-source/index.js";
 import type { CompletionProvider } from "../completion/index.js";
+import type { AttachmentMetaSource } from "./routes/command-routes.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
 export interface RequestContext {
@@ -99,6 +100,13 @@ export interface PiWebHandlerOptions {
    * 仅经注册即在通用补全端点与前端浮层生效(零端点/协议改动)。
    */
   readonly completionProviders?: readonly CompletionProvider[];
+  /**
+   * 可选:主进程附件元数据源(attachment-tool-bridge)。注入既有主进程 `AttachmentStore`
+   * 门面(仅用其只读 `head(id)`),使 `POST /sessions/:id/messages` 据前端提交的
+   * `attachmentIds` 把已落库附件以结构化文本引用注入用户消息文本(Req 8.1/9.1)。
+   * 未注入时不做引用注入(与 `images`/vision 现状无关,互不影响)。
+   */
+  readonly attachmentStore?: AttachmentMetaSource;
 }
 
 /** 框架无关的标准 Web Fetch 处理器签名(Req 1.1)。 */

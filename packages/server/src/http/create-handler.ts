@@ -92,7 +92,7 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     {
       method: "POST",
       path: "/sessions/:id/messages",
-      handler: makeMessagesHandler(store, completion),
+      handler: makeMessagesHandler(store, completion, opts.attachmentStore),
     },
     {
       method: "POST",
