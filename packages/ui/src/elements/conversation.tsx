@@ -74,7 +74,7 @@ export function Conversation({
 
       {!atBottom ? (
         <div
-          className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center"
+          className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-end pr-3"
           data-pi-conversation-scroll-anchor
         >
           <Button
