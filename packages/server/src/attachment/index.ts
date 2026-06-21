@@ -6,3 +6,9 @@
  * UrlSigner / AttachmentStore / attachmentStoreConfigFromEnv 等复用面导出。
  */
 export { mintAttachmentId } from "./id.js";
+export {
+  createUrlSigner,
+  resolveAttachmentSecret,
+  ATTACHMENT_SECRET_ENV,
+  type UrlSigner,
+} from "./url-signer.js";

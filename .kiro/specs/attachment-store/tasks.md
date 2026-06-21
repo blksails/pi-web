@@ -21,7 +21,7 @@
   - _Requirements: 2.3_
   - _Boundary: AttachmentStore(id 工具)_
 
-- [ ] 1.3 (P) 实现 URL 签名器(HMAC 签发/校验/过期)
+- [x] 1.3 (P) 实现 URL 签名器(HMAC 签发/校验/过期)
   - 提供按公开 id + 过期时刻签发 HMAC 签名、并以常量时间比较校验签名与过期的能力。
   - secret 取自稳定来源 `PI_WEB_ATTACHMENT_SECRET` 环境变量;仅纯单进程无共享场景可回退进程启动随机(该回退在子进程共享场景不可用,需主/子进程一致);secret 与签名不写日志。
   - 观察完成:单元测试断言有效签名校验通过;篡改 id/过期戳/签名或已过期均校验失败(常量时间比较);相同 secret 构造的两个 signer 互验通过。
