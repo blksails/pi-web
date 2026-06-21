@@ -154,7 +154,7 @@
 
 ## 6. 验证:e2e 与回归
 
-- [ ] 6.1 浏览器 e2e:添加→上传落库→URL 展示全链路
+- [x] 6.1 浏览器 e2e:添加→上传落库→URL 展示全链路
   - 在隔离 build(独立 dist 目录)+ external server 模式下,验证添加附件经历上传中态、落库后缩略图以分发 URL 展示(图片源指向分发端点且网络请求 200),不污染 dev 默认构建产物。
   - 观察完成:新鲜运行的浏览器 e2e 通过,断言展示用网络 URL(非 `data:` base64)且 `/attachments/.../raw` 返回 200。
   - _Requirements: 5.1, 5.2, 8.2, 8.3_
@@ -178,3 +178,4 @@
 ## Implementation Notes
 
 - task 5.1:design 的 Modified Files 漏列了 Next.js catch-all route。`/api/sessions/**`(含上传)走既有 `app/api/sessions/[[...path]]/route.ts`,但**分发端点** `/api/attachments/:id/raw` 在 Next 层无 file-route 会 404。已补 `app/api/attachments/[[...path]]/route.ts`(GET 转发 `getHandler`,runtime nodejs)以满足「两端点 /api/** 可达」。e2e(6.x)依赖此文件。
+- task 6.1:e2e 抓到两处真实接线缺陷并修复——(1) `components/chat-app.tsx` 渲染 `<PiChat>` 未传 `attachmentBaseUrl`,致 useAttachments baseUrl 回退 `""`、上传走根路径 404;已传 `attachmentBaseUrl="/api"`。(2) 服务端 `presignUrl` 签发根相对 `/attachments/:id/raw`,但 Next 只在 `/api/...` 服务;已在展示侧 `useAttachments.resolveDisplayUrl` 用 baseUrl 前缀解析为 `/api/...`(`/api` 前缀**不进 HMAC 签名**,校验侧从 `/api/attachments/:attachmentId/raw` 解析裸 id)。历史回显路径(agent-message-to-ui)的同类前缀在 6.2 处理。
