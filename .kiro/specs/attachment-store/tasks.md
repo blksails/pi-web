@@ -54,7 +54,7 @@
   - _Requirements: 2.1, 2.2, 2.5, 2.7_
   - _Boundary: AttachmentRegistry_
 
-- [ ] 2.4 实现 `AttachmentStore` 门面(写路径铸造 id + 组合)
+- [x] 2.4 实现 `AttachmentStore` 门面(写路径铸造 id + 组合)
   - 组合对象存储、描述符注册表与 URL 签名器;`put` 在写路径内铸造公开 id、落盘字节、写描述符(记 `origin`/`sessionId`/`size`/`createdAt`),返回不含字节的描述符。store 不对 `origin` 取值设限(前端上传路径仅产 `"upload"`,`origin` 由调用方传入;`tool-output` 由下游 `attachment-tool-bridge` 经**同一** `put` 写入)。
   - 暴露按 id 取描述符、取读流(meta 用导出的 `BlobMeta`)、签发可达 URL、校验 URL、删除;并新增两个一等只读访问器 `localPath(id)`(盘上绝对路径,委托 LocalFs 后端)与 `listBySession(sessionId)`(由 Registry 提升到门面),冻结为跨 spec 复用契约。先落 blob 再写描述符,描述符写失败不暴露半落库引用。
   - 导出受认可的复用面 `AttachmentStore`(门面类型)/`PutInput`/`BlobStore`/`AttachmentRegistry`/`LocalFsBlobBackend`/`BlobMeta`/`UrlSigner` 供下游在子进程内组合实例化。

@@ -19,3 +19,8 @@ export {
 } from "./blob-store.js";
 export { LocalFsBlobBackend } from "./local-fs-backend.js";
 export { AttachmentRegistry } from "./attachment-registry.js";
+export {
+  AttachmentStore,
+  type PutInput,
+  type AttachmentStoreDeps,
+} from "./attachment-store.js";
