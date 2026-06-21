@@ -127,6 +127,32 @@ function stubAgentPath(): string {
   );
 }
 
+/**
+ * Attachment spawn-env passthrough (attachment-store, Req 7.3/7.4).
+ *
+ * Build the env entries the main process downstreams to a session child so a
+ * FUTURE runner child can share the SAME local backend: the storage-dir
+ * convention `PI_WEB_ATTACHMENT_DIR` AND the signing secret
+ * `PI_WEB_ATTACHMENT_SECRET`. Both values are taken from the MAIN-process
+ * attachment store config (`attachmentStoreConfigFromEnv()`'s `dir`/`secret`),
+ * NOT recomputed — so the child points at the same directory and holds the same
+ * HMAC secret (otherwise a child-produced tool-output `/raw` signed URL would
+ * 401 in the main process).
+ *
+ * This slice ONLY downstreams the convention + secret. It does NOT instantiate
+ * a store in the child nor do any cross-process resolve — that is owned by the
+ * downstream `attachment-tool-bridge` spec, which must not edit this passthrough
+ * (it only verifies the child received both vars). The secret is never logged.
+ */
+function attachmentSpawnEnv(
+  attachment: { dir: string; secret: string },
+): Record<string, string> {
+  return {
+    PI_WEB_ATTACHMENT_DIR: attachment.dir,
+    PI_WEB_ATTACHMENT_SECRET: attachment.secret,
+  };
+}
+
 interface HandlerSingleton {
   readonly handler: PiWebHandler;
   readonly manager: SessionManager;
@@ -151,6 +177,7 @@ function stubSpawnSpec(
   config: AppConfig,
   opts: CreateChannelOpts,
   sessionCwd: string,
+  attachment: { dir: string; secret: string },
 ): SpawnSpec {
   // Run with cwd = @pi-web/server package dir so `--import jiti/register`
   // resolves jiti from the server package (pnpm does not hoist it to the app
@@ -164,6 +191,9 @@ function stubSpawnSpec(
     env: {
       ...process.env,
       ...config.providerKeys,
+      // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
+      // 配置,保证主/子进程一致;最后写入,防止被 process.env 既有同名变量遮蔽。
+      ...attachmentSpawnEnv(attachment),
       PI_WEB_STUB_SESSION_ID: opts.sessionId,
       PI_WEB_STUB_CWD: sessionCwd,
       ...(opts.source !== undefined ? { PI_WEB_STUB_SOURCE: opts.source } : {}),
@@ -189,7 +219,15 @@ function buildSingleton(): HandlerSingleton {
   // store 随 handler 单例 pin 在 globalThis(此函数仅首次调用),故读(上传落库)/写(分发取流)
   // 两路径共用同一主进程实例。下游 attachment-tool-bridge 的 spawn env 透传(目录+secret)归
   // task 5.2,不在此装配。
-  const { store: attachmentStore } = attachmentStoreConfigFromEnv();
+  // 同时取出 dir/secret(task 5.2,Req 7.3/7.4):经 spawn env 下发给子进程,
+  // 为未来 runner 子进程共享同一本地后端预留接缝,并保证签名 secret 主/子进程一致。
+  // 仅下发——本切片不在子进程实例化 store(那是 attachment-tool-bridge)。
+  const {
+    store: attachmentStore,
+    dir: attachmentDir,
+    secret: attachmentSecret,
+  } = attachmentStoreConfigFromEnv();
+  const attachmentEnv = { dir: attachmentDir, secret: attachmentSecret };
 
   const createChannel = (
     resolved: ResolvedSource,
@@ -199,7 +237,7 @@ function buildSingleton(): HandlerSingleton {
       // Deterministic offline agent: reuse the real channel over the stub spec,
       // threading session identity + metadata via env (resolved cwd kept aligned).
       return new PiRpcProcess(
-        stubSpawnSpec(config, opts, resolved.spawnSpec.cwd),
+        stubSpawnSpec(config, opts, resolved.spawnSpec.cwd, attachmentEnv),
       );
     }
     // Real mode: append session-alignment args by source mode. Both modes take
@@ -222,6 +260,9 @@ function buildSingleton(): HandlerSingleton {
         ...config.providerKeys,
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
+        // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
+        // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
+        ...attachmentSpawnEnv(attachmentEnv),
       },
     };
     return new PiRpcProcess(spec);

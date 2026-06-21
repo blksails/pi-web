@@ -144,7 +144,7 @@
   - _Depends: 3.3_
   - _Boundary: 主进程 handler 装配_
 
-- [ ] 5.2 经 spawn 环境下发存储目录约定与签名 secret(仅下发)
+- [x] 5.2 经 spawn 环境下发存储目录约定与签名 secret(仅下发)
   - 在子进程 spawn 环境中**同时**透传附件存储目录约定 `PI_WEB_ATTACHMENT_DIR` **与**签名 secret `PI_WEB_ATTACHMENT_SECRET`(类比会话工作目录下发),为未来 runner 子进程共享同一本地后端预留接缝并保证签名 secret 主/子进程一致(否则子进程产出的 tool-output `/raw` 签名 URL 会在主进程 401);本切片仅下发约定与 secret,不在子进程实例化 store 或做跨进程 resolve。
   - 此 spawn env 透传(目录 + secret)整体归本 spec(attachment-store)拥有;下游 `attachment-tool-bridge` 不编辑该 spawn env,只校验子进程已收到。
   - 观察完成:测试/检查断言 spawn 环境**同时**包含目录与 secret 两变量且值与主进程 store 一致;子进程侧无 store 实例化代码(边界守住)。
