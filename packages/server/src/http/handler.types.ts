@@ -12,6 +12,7 @@ import type {
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { AuthContext, AuthResolver, AuthorizeSession } from "./auth.js";
 import type { AgentSourceResolverType } from "../agent-source/index.js";
+import type { CompletionProvider } from "../completion/index.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
 export interface RequestContext {
@@ -93,6 +94,11 @@ export interface PiWebHandlerOptions {
   readonly routes?: ReadonlyArray<InjectedRoute>;
   /** 可选 SSE 调参与路由前缀。 */
   readonly sse?: SseOptions;
+  /**
+   * 可选:除内置 file provider 外追加的补全 provider(completion-provider-framework)。
+   * 仅经注册即在通用补全端点与前端浮层生效(零端点/协议改动)。
+   */
+  readonly completionProviders?: readonly CompletionProvider[];
 }
 
 /** 框架无关的标准 Web Fetch 处理器签名(Req 1.1)。 */

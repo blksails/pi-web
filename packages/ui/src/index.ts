@@ -17,6 +17,9 @@ export { PiChatBasic, type PiChatBasicProps } from "./chat/pi-chat-basic.js";
 // 非空 destructive 配色 + role="alert")
 export * from "./elements/index.js";
 
+// completion-provider-framework(前端 core 触发符补全)
+export * from "./completion/index.js";
+
 // part 分派
 export { PartRenderer, type PartRendererProps } from "./chat/part-renderer.js";
 

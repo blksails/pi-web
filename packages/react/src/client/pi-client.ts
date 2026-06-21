@@ -24,6 +24,8 @@ import type {
   ForkResponse,
   GetForkMessagesResponse,
   UiRpcRequest,
+  CompletionResponse,
+  CompletionTriggersResponse,
 } from "@pi-web/protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -54,6 +56,15 @@ export interface PiClient {
   getStats(id: string): Promise<GetStatsResponse>;
   getMessages(id: string): Promise<GetMessagesResponse>;
   getCommands(id: string): Promise<GetCommandsResponse>;
+
+  /** GET /sessions/:id/completion/triggers —— 活跃触发符并集(completion-provider-framework)。 */
+  getCompletionTriggers(id: string): Promise<CompletionTriggersResponse>;
+  /** GET /sessions/:id/completion?trigger=&q= —— 触发符补全候选。 */
+  getCompletion(
+    id: string,
+    trigger: string,
+    query: string,
+  ): Promise<CompletionResponse>;
 
   /**
    * GET /sessions/:id/models —— 拉取可用模型列表(对齐 RpcCommand get_available_models)。
@@ -120,6 +131,14 @@ export function createPiClient(
       get<GetMessagesResponse>(`/sessions/${enc(id)}/messages`),
     getCommands: (id) =>
       get<GetCommandsResponse>(`/sessions/${enc(id)}/commands`),
+    getCompletionTriggers: (id) =>
+      get<CompletionTriggersResponse>(
+        `/sessions/${enc(id)}/completion/triggers`,
+      ),
+    getCompletion: (id, trigger, query) =>
+      get<CompletionResponse>(
+        `/sessions/${enc(id)}/completion?trigger=${encodeURIComponent(trigger)}&q=${encodeURIComponent(query)}`,
+      ),
 
     getAvailableModels: async (id) =>
       GetAvailableModelsResponseSchema.parse(

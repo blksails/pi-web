@@ -17,6 +17,10 @@ import {
 } from "@pi-web/protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
+import {
+  resolveCompletions,
+  type CompletionRegistry,
+} from "../../completion/index.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
 import { validateBody } from "../validate.js";
@@ -49,14 +53,30 @@ function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
   return session;
 }
 
-/** POST /sessions/:id/messages → PiSession.prompt */
-export function makeMessagesHandler(store: SessionStore): RouteHandler {
+/** POST /sessions/:id/messages → PiSession.prompt(发送前解析补全 token) */
+export function makeMessagesHandler(
+  store: SessionStore,
+  completion?: CompletionRegistry,
+): RouteHandler {
   return async (ctx): Promise<Response> => {
     const parsed = await validateBody(ctx.req, PromptRequestSchema);
     if (!parsed.ok) return parsed.response;
     try {
       const session = requireSession(store, ctx);
-      const { message, images, streamingBehavior } = parsed.value;
+      const { images, streamingBehavior } = parsed.value;
+      let message = parsed.value.message;
+      // completion-provider-framework:提交期把 @file:… 等 token 解析为上下文文本。
+      if (completion !== undefined) {
+        message = await resolveCompletions(
+          message,
+          {
+            sessionId: session.id,
+            cwd: session.cwd,
+            userId: ctx.auth.userId ?? "",
+          },
+          completion,
+        );
+      }
       const options: {
         images?: typeof images;
         streamingBehavior?: typeof streamingBehavior;

@@ -61,6 +61,7 @@ import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
+import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension } from "@pi-web/web-kit";
 import {
@@ -592,7 +593,23 @@ export function PiChat({
           />
         </div>
       ) : null}
-      {extension?.contributions?.mention !== undefined && uiRpc !== undefined ? (
+      {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。 */}
+      {client !== undefined && sessionId !== undefined ? (
+        <div className="absolute bottom-full left-0 right-0 z-50">
+          <PiCompletionPopover
+            value={input}
+            cursor={input.length}
+            onChange={setInput}
+            client={client}
+            sessionId={sessionId}
+            onCaptureChange={setCommandCapturing}
+          />
+        </div>
+      ) : null}
+      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。 */}
+      {extension?.contributions?.mention !== undefined &&
+      uiRpc !== undefined &&
+      !(client !== undefined && sessionId !== undefined) ? (
         <div className="absolute bottom-full left-0 right-0 z-40">
           <PiMentionPopover
             value={input}

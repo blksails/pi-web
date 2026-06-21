@@ -54,6 +54,8 @@ export class PiSession {
   readonly id: SessionId;
   readonly mode: ResolvedSource["mode"];
   readonly trust: ResolvedSource["trust"];
+  /** 会话工作目录(与 spawnSpec.cwd 一致),供补全 file provider 等限定枚举范围。 */
+  readonly cwd: ResolvedSource["cwd"];
 
   private readonly channel: SessionChannel;
   private readonly idleMs: number;
@@ -74,6 +76,7 @@ export class PiSession {
     this.channel = opts.channel;
     this.mode = opts.resolved.mode;
     this.trust = opts.resolved.trust;
+    this.cwd = opts.resolved.cwd;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
 

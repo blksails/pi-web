@@ -38,6 +38,14 @@ import {
   makeStatsHandler,
 } from "./routes/query-routes.js";
 import { makeStreamHandler } from "./routes/stream-route.js";
+import {
+  makeCompletionHandler,
+  makeCompletionTriggersHandler,
+} from "./routes/completion-routes.js";
+import {
+  createCompletionRegistry,
+  createFileProvider,
+} from "../completion/index.js";
 import { Router, type RouteSpec } from "./router.js";
 
 /**
@@ -63,6 +71,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
   const heartbeatMs = opts.sse?.heartbeatMs;
   const createChannel = opts.createChannel ?? defaultCreateChannel;
 
+  // completion-provider-framework:注册表 + 内置 file provider + 追加 providers。
+  const completion = createCompletionRegistry();
+  completion.register(createFileProvider());
+  for (const p of opts.completionProviders ?? []) completion.register(p);
+
   const builtins: RouteSpec[] = [
     {
       method: "POST",
@@ -79,7 +92,7 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     {
       method: "POST",
       path: "/sessions/:id/messages",
-      handler: makeMessagesHandler(store),
+      handler: makeMessagesHandler(store, completion),
     },
     {
       method: "POST",
@@ -140,6 +153,16 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "GET",
       path: "/sessions/:id/commands",
       handler: makeCommandsHandler(store),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/completion/triggers",
+      handler: makeCompletionTriggersHandler(store, completion),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/completion",
+      handler: makeCompletionHandler(store, completion),
     },
     {
       method: "GET",
