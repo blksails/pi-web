@@ -319,6 +319,7 @@ function SessionView({
           extensionUI={extensionUI}
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
+          attachmentBaseUrl="/api"
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }

@@ -20,6 +20,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ImageContent, UploadAttachmentResponse } from "@pi-web/protocol";
 import { uploadAttachment as defaultUploadAttachment } from "../transport/attachment-upload.js";
+import { joinUrl } from "../client/request.js";
 
 /** 待提交附件的上传状态机。 */
 export type PendingAttachmentStatus = "uploading" | "ready" | "error";
@@ -119,6 +120,21 @@ function toFileArray(files: FileList | File[]): File[] {
   return Array.isArray(files) ? files : Array.from(files);
 }
 
+/**
+ * 把 server 返回的展示 URL 解析为前端可达 URL。
+ * server 回传的是「根相对」路径(如 `/attachments/:id/raw?exp&sig`);需用 hook 的
+ * baseUrl(如 `/api`)前缀为 `/api/attachments/:id/raw?exp&sig`,否则前端走根路径 404。
+ * 仅当 displayUrl 是根相对(以 `/` 开头且非 http(s))时前缀 baseUrl;已是绝对 http(s)
+ * 则原样返回。baseUrl 仅作展示前缀,不进 HMAC 签名输入(签名只覆盖裸 id,校验侧解析
+ * `/attachments/:attachmentId/raw` 拿裸 id,前缀不影响校验)。
+ */
+function resolveDisplayUrl(baseUrl: string, displayUrl: string): string {
+  if (/^https?:\/\//i.test(displayUrl)) return displayUrl;
+  if (!displayUrl.startsWith("/")) return displayUrl;
+  if (baseUrl === "") return displayUrl;
+  return joinUrl(baseUrl, displayUrl);
+}
+
 export function useAttachments(
   opts: UseAttachmentsOptions = {},
 ): UseAttachmentsResult {
@@ -154,7 +170,8 @@ export function useAttachments(
                 ...it,
                 status: "ready",
                 attachmentId: res.attachment.id,
-                displayUrl: res.displayUrl,
+                // 展示侧把根相对 displayUrl 用 baseUrl 解析为可达 URL(如 /api/...)。
+                displayUrl: resolveDisplayUrl(baseUrlRef.current, res.displayUrl),
               }
             : it,
         ),

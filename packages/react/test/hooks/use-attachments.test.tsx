@@ -126,8 +126,10 @@ describe("useAttachments", () => {
       expect(result.current.items[0]?.status).toBe("ready"),
     );
     expect(result.current.items[0]?.attachmentId).toBe("att_official_1");
+    // 展示侧用 hook 的 baseUrl(此处 "/api")把根相对 displayUrl 解析为带前缀的可达 URL;
+    // baseUrl 仅作展示前缀,不进 HMAC 签名输入(签名只覆盖裸 id)。
     expect(result.current.items[0]?.displayUrl).toBe(
-      "/attachments/att_official_1/raw?exp=1&sig=x",
+      "/api/attachments/att_official_1/raw?exp=1&sig=x",
     );
     // 调用方未自造正式 id:正式 id 来自 mock 上传返回。
     expect(opts.upload).toHaveBeenCalledTimes(1);
@@ -135,6 +137,28 @@ describe("useAttachments", () => {
       "/api",
       "sess-1",
       expect.any(File),
+    );
+  });
+
+  it("leaves an already-absolute displayUrl unchanged (no baseUrl prefix)", async () => {
+    const opts = okOptions();
+    opts.upload.mockImplementationOnce(async (_b, _s, file: File) =>
+      makeUploadResponse(
+        "att_abs",
+        file.name,
+        file.type,
+        "https://cdn.example.com/attachments/att_abs/raw?exp=1&sig=x",
+      ),
+    );
+    const { result } = renderHook(() => useAttachments(opts));
+
+    await act(async () => {
+      await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+    });
+
+    await waitFor(() => expect(result.current.items[0]?.status).toBe("ready"));
+    expect(result.current.items[0]?.displayUrl).toBe(
+      "https://cdn.example.com/attachments/att_abs/raw?exp=1&sig=x",
     );
   });
 
