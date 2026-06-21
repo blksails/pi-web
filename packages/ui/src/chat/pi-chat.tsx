@@ -61,6 +61,7 @@ import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
+import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension } from "@pi-web/web-kit";
@@ -108,6 +109,8 @@ export interface PiChatProps {
   readonly toolbarOrder?: ReadonlyArray<ToolbarControl>;
   /** 扩展命令补全可见策略(全局开关 + 白名单);默认隐藏所有扩展命令。 */
   readonly extensionCommands?: ExtensionCommandPolicy;
+  /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
+  readonly showSessionStats?: boolean;
   readonly className?: string;
 }
 
@@ -205,6 +208,7 @@ export function PiChat({
   theme,
   toolbarOrder,
   extensionCommands,
+  showSessionStats = true,
   className,
 }: PiChatProps): React.JSX.Element {
   const transport = session.transport;
@@ -340,6 +344,23 @@ export function PiChat({
   }, [sessionId, models]);
 
   const isBusy = status === "submitted" || status === "streaming";
+
+  // 内核用量区数据填充:服务端不主动推送 stats 控制帧,故按"重新拉取"策略
+  // (需求 3.1)填充 controls.stats —— 会话就绪拉取一次,每轮回复结束
+  // (streaming → idle)再拉取一次,保持用量(tokens/cost/messages/toolCalls)最新。
+  const statsWasBusyRef = React.useRef<boolean>(false);
+  const statsSessionRef = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (showSessionStats && controls !== undefined && sessionId !== undefined) {
+      const firstForSession = statsSessionRef.current !== sessionId;
+      const turnJustEnded = statsWasBusyRef.current && !isBusy;
+      if (firstForSession || turnJustEnded) {
+        statsSessionRef.current = sessionId;
+        void controls.getStats().catch(() => undefined);
+      }
+    }
+    statsWasBusyRef.current = isBusy;
+  }, [showSessionStats, controls, sessionId, isBusy]);
 
   // 空闲期 Tier3 贡献点(slash/mention/autocomplete)需持久控制通道:per-prompt 消息流仅在发送时
   // 打开。故仅当**扩展声明了 contributions**(需 ui-rpc)且**空闲时**才另开一条「仅 ui-rpc」订阅
@@ -694,9 +715,6 @@ export function PiChat({
         <SlotHost ext={extension} slot="background" />
       </div>
     ) : null;
-  // 是否有自定义会话背景(扩展/宿主提供)。决定底栏渐隐遮罩是否渲染:遮罩硬编码
-  // fade 到不透明 hsl(var(--background)),在自定义背景上会露出一条违和的纯色矩形带。
-  const hasCustomBackground = backgroundLayer !== null;
 
   // 空态:slots.empty 优先,否则 components.EmptyState ?? 默认 EmptyState(Req 4.2/9.1)。
   const EmptyComp = components?.EmptyState ?? EmptyState;
@@ -804,17 +822,19 @@ export function PiChat({
         data-pi-input-dock
         className="pointer-events-none absolute inset-x-0 bottom-0"
       >
-        {/* 渐隐遮罩:仅默认背景下渲染(fade 到不透明壳底色)。自定义背景在场时省略,
-            否则不透明色带会盖住背景;输入框自身的 frosted backdrop-blur 已提供分隔。 */}
-        {hasCustomBackground ? null : (
-          <div
-            aria-hidden="true"
-            data-pi-input-dock-fade
-            className="pointer-events-none h-10 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
-          />
-        )}
         <div className={cn("pointer-events-auto pb-2", lay.content)}>
           {inputWithWidgets}
+          {/* 内核自有会话用量条(非 webext slot):随输入 dock 底部固定,置于输入框下方,
+              与输入框同宽同居中(共用 lay.content),不增列高、不溢出;与顶部 webext
+              statusBar(:887)错开并存。 */}
+          {showSessionStats && controls !== undefined ? (
+            <div
+              data-pi-session-stats-region
+              className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+            >
+              <PiSessionStats controls={controls} />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
