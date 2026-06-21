@@ -30,3 +30,9 @@ export {
   RunnerArgsError,
   startRunner,
 } from "./runner.js";
+export {
+  wireAttachmentBridge,
+  ATTACHMENT_TOOL_CONTEXT_KEY,
+  type WireAttachmentBridgeInput,
+  type AttachmentBridgeWiring,
+} from "./attachment-wiring.js";

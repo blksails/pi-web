@@ -26,6 +26,7 @@ import {
   mirrorSessionManagerToStore,
   sessionStoreConfigFromEnv,
 } from "../session-store/index.js";
+import { wireAttachmentBridge } from "./attachment-wiring.js";
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -216,6 +217,29 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     agentDir,
     sessionManager,
   });
+
+  // attachment-tool-bridge 装配(task 5.1):实例化子进程 store、把属主校验闸门接到
+  // 执行前 hook、把 base64 剥离闸门接到结果出口 hook、把 tool 接入上下文经 globalThis seam
+  // 透给运行在本子进程的 customTools;store env 缺失时优雅降级(闸门 fail-closed / ctx
+  // available:false),不崩溃。env 由 attachment-store 经 spawn env 下发(DIR + SECRET)。
+  const attachmentWiring = wireAttachmentBridge(runtime, {
+    env: process.env,
+    sessionId: runtime.session.sessionId,
+  });
+
+  // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
+  // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为
+  // 旁路 best-effort 在同样的终止信号上触发(幂等、吞错不抛,不阻断 rpc-mode 收尾)。
+  const runSessionCleanup = (): void => {
+    void attachmentWiring.cleanup().catch((err) => {
+      process.stderr.write(
+        `runner: attachment session cleanup error: ${String(err)}\n`,
+      );
+    });
+  };
+  process.once("SIGTERM", runSessionCleanup);
+  process.once("SIGINT", runSessionCleanup);
+  process.once("beforeExit", runSessionCleanup);
 
   return runRpcMode(runtime);
 }
