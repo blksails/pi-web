@@ -125,7 +125,13 @@ export function usePiSession(opts: UsePiSessionOptions): UsePiSessionResult {
           try {
             const history = await client.getMessages(id);
             if (cancelled) return;
-            setInitialMessages(agentMessagesToUiMessages(history.messages));
+            // 历史项的根相对分发 URL(/attachments/:id/raw)需经 client.baseUrl(如 /api)
+            // 前缀为可达 URL,否则 Next 根相对会 404(与 useAttachments.resolveDisplayUrl 同策略)。
+            setInitialMessages(
+              agentMessagesToUiMessages(history.messages, {
+                baseUrl: client.baseUrl,
+              }),
+            );
           } catch {
             // 历史拉取失败:仍以空历史继续连接。
           }

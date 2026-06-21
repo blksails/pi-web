@@ -163,6 +163,72 @@ describe("agentMessagesToUiMessages", () => {
     expect(String(part.url).startsWith("data:")).toBe(false);
   });
 
+  it("历史 image 带公开 id(attachmentId)+ baseUrl(/api)→ url 前缀为 /api/attachments/:id/raw", () => {
+    // 与 useAttachments.resolveDisplayUrl 同策略:根相对历史 URL 经 baseUrl 前缀为可达 URL,
+    // 否则 Next 只在 /api/attachments/:id/raw 服务,根相对会 404。
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "AAAA",
+              attachmentId: "att_abc123",
+            },
+          ],
+        },
+      ]),
+      { baseUrl: "/api" },
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.type).toBe("file");
+    // 前缀为 /api/attachments/:id/raw(根相对走 baseUrl 前缀)。
+    expect(part.url).toBe("/api/attachments/att_abc123/raw");
+    expect(String(part.url).startsWith("data:")).toBe(false);
+  });
+
+  it("历史 image 带绝对 displayUrl(http(s))+ baseUrl → displayUrl 原样不前缀", () => {
+    // 已是绝对 http(s) 的 displayUrl 不应被 baseUrl 前缀(仅根相对才前缀)。
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "AAAA",
+              displayUrl:
+                "https://example.test/attachments/att_xyz/raw?exp=1&sig=deadbeef",
+            },
+          ],
+        },
+      ]),
+      { baseUrl: "/api" },
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.url).toBe(
+      "https://example.test/attachments/att_xyz/raw?exp=1&sig=deadbeef",
+    );
+  });
+
+  it("遗留无 id 内联 base64 image + baseUrl → 仍渲染 data: 不前缀(防回归)", () => {
+    // data: URL 不是根相对,baseUrl 不应影响它(防回归)。
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [{ type: "image", mimeType: "image/png", data: "AAAA" }],
+        },
+      ]),
+      { baseUrl: "/api" },
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.url).toBe("data:image/png;base64,AAAA");
+  });
+
   it("历史 image 带分发 displayUrl(http(s))→ 原样作为分发 URL", () => {
     const out = agentMessagesToUiMessages(
       msgs([

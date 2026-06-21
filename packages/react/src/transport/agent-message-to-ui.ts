@@ -17,8 +17,32 @@
  */
 import type { UIMessage } from "ai";
 import type { AgentMessage } from "@pi-web/protocol";
+import { joinUrl } from "../client/request.js";
 
 type UIPart = UIMessage["parts"][number];
+
+/** 翻译选项。`baseUrl`(如 `/api`)用于把根相对的分发 URL 前缀为可达 URL。 */
+export interface AgentMessagesToUiOptions {
+  /**
+   * http-api 根地址(如 `/api`)。历史项的分发 URL 由 `attachmentId` 构造为**根相对**
+   * `/attachments/:id/raw`,但 Next 只在 `/api/attachments/:id/raw` 服务,根相对会 404;
+   * 故展示侧用 `baseUrl` 前缀(与 `useAttachments.resolveDisplayUrl` 同策略)。
+   * 仅根相对(以 `/` 开头且非 http(s))才前缀;绝对 http(s) 与 `data:` 原样。
+   * baseUrl 仅作展示前缀,不进 HMAC 签名输入。
+   */
+  readonly baseUrl?: string;
+}
+
+/**
+ * 把根相对的展示 URL 用 baseUrl 解析为前端可达 URL(与 useAttachments.resolveDisplayUrl
+ * 同策略):绝对 http(s) 原样;`data:`/相对非 `/` 原样;仅根相对(`/` 开头)经 joinUrl 前缀。
+ */
+function resolveDisplayUrl(baseUrl: string, url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  if (!url.startsWith("/")) return url;
+  if (baseUrl === "") return url;
+  return joinUrl(baseUrl, url);
+}
 
 /** 可变的 dynamic-tool part 句柄,供 toolResult 回填 output/state。 */
 interface MutableToolPart {
@@ -48,20 +72,21 @@ interface ContentItem {
 
 /**
  * 把历史 image content 解析为可渲染 URL(Req 6.1/6.2/6.3):
- *  - 带分发 `displayUrl`(http(s))→ 原样作为分发 URL;
- *  - 带公开 `attachmentId`(`att_…`)→ 构造分发端点路径 `/attachments/:id/raw`;
- *  - 否则(遗留无 id 的内联 base64)→ 重建 `data:` 内联 URL(防回归)。
+ *  - 带分发 `displayUrl`(http(s) 原样 / 根相对经 baseUrl 前缀)→ 作为分发 URL;
+ *  - 带公开 `attachmentId`(`att_…`)→ 构造分发端点路径 `/attachments/:id/raw` 后经
+ *    baseUrl 前缀为 `/api/attachments/:id/raw`(否则 Next 根相对会 404);
+ *  - 否则(遗留无 id 的内联 base64)→ 重建 `data:` 内联 URL(防回归,baseUrl 不前缀)。
  */
-function imageUrl(raw: ContentItem): string {
+function imageUrl(raw: ContentItem, baseUrl: string): string {
   const displayUrl = raw.displayUrl;
   if (typeof displayUrl === "string" && displayUrl !== "") {
-    return displayUrl;
+    return resolveDisplayUrl(baseUrl, displayUrl);
   }
   const attachmentId = raw.attachmentId;
   if (typeof attachmentId === "string" && attachmentId !== "") {
-    return `/attachments/${attachmentId}/raw`;
+    return resolveDisplayUrl(baseUrl, `/attachments/${attachmentId}/raw`);
   }
-  // 遗留:无公开 id,重建内联 data: URL。
+  // 遗留:无公开 id,重建内联 data: URL(非根相对,baseUrl 不前缀)。
   return `data:${String(raw.mimeType ?? "")};base64,${String(raw.data ?? "")}`;
 }
 
@@ -74,7 +99,7 @@ function joinText(content: readonly ContentItem[]): string {
 }
 
 /** user 消息内容 → UI parts(text / file)。 */
-function userParts(content: unknown): UIPart[] {
+function userParts(content: unknown, baseUrl: string): UIPart[] {
   if (typeof content === "string") {
     return [{ type: "text", text: content, state: "done" } as UIPart];
   }
@@ -87,7 +112,7 @@ function userParts(content: unknown): UIPart[] {
       parts.push({
         type: "file",
         mediaType: String(raw.mimeType ?? "application/octet-stream"),
-        url: imageUrl(raw),
+        url: imageUrl(raw, baseUrl),
       } as UIPart);
     }
   }
@@ -97,7 +122,9 @@ function userParts(content: unknown): UIPart[] {
 /** 转换历史 AgentMessage 序列为 UIMessage 序列。 */
 export function agentMessagesToUiMessages(
   messages: ReadonlyArray<AgentMessage>,
+  options: AgentMessagesToUiOptions = {},
 ): UIMessage[] {
+  const baseUrl = options.baseUrl ?? "";
   const out: UIMessage[] = [];
   // toolCallId → 句柄(同一对象同时放入 parts 数组,回填即生效)。
   const toolParts = new Map<string, MutableToolPart>();
@@ -108,7 +135,7 @@ export function agentMessagesToUiMessages(
     const id = `msg-${index}`;
 
     if (role === "user") {
-      out.push({ id, role: "user", parts: userParts(m["content"]) });
+      out.push({ id, role: "user", parts: userParts(m["content"], baseUrl) });
       return;
     }
 
