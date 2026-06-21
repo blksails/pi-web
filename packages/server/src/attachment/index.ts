@@ -24,3 +24,10 @@ export {
   type PutInput,
   type AttachmentStoreDeps,
 } from "./attachment-store.js";
+export {
+  attachmentStoreConfigFromEnv,
+  resolveAttachmentDir,
+  defaultAttachmentDir,
+  ATTACHMENT_DIR_ENV,
+  type AttachmentStoreConfig,
+} from "./config.js";
