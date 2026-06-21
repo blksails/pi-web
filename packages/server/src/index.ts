@@ -22,6 +22,10 @@ export * from "./http/index.js";
 // AttachmentRegistry / UrlSigner / BlobMeta / PutInput),供下游 attachment-tool-bridge 在子进程内
 // 组合实例化。纯 node builtins(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
 export * from "./attachment/index.js";
+// attachment-tool-bridge(L2 投影 + 子进程 store + 闸门 + 回流 + 注入):本切片(task 1.1)
+// 导出子进程 store 客户端工厂 createChildAttachmentStore + ChildAttachmentStore(上游门面别名)。
+// 纯 node builtins + attachment-store 复用面(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
+export * from "./attachment-bridge/index.js";
 export * from "./completion/index.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";

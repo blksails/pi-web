@@ -1,0 +1,11 @@
+/**
+ * attachment-tool-bridge · 模块公共出口(barrel)。
+ *
+ * 随波次推进逐步补齐:本切片(task 1.1)首批导出子进程 store 客户端工厂与门面别名类型;
+ * 后续任务在此追加 AttachmentHandle/resolve、TempFileTracker、ownership-guard、base64-gate、
+ * tool-output、reference-injection、tool-context 等。
+ */
+export {
+  createChildAttachmentStore,
+  type ChildAttachmentStore,
+} from "./child-store.js";
