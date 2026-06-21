@@ -20,3 +20,8 @@ export {
   AttachmentLocalPathUnavailableError,
 } from "./attachment-handle.js";
 export { resolveAttachment, AttachmentResolveError } from "./resolve.js";
+export {
+  makeBeforeToolCall,
+  type ToolCallGuardEvent,
+  type ToolCallGuardResult,
+} from "./ownership-guard.js";
