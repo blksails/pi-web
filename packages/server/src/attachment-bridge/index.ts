@@ -34,3 +34,9 @@ export {
   type TextContent,
   type ImageContent,
 } from "./base64-gate.js";
+export {
+  putToolOutput,
+  ToolOutputPutError,
+  type PutToolOutputInput,
+  type ToolOutputRef,
+} from "./tool-output.js";
