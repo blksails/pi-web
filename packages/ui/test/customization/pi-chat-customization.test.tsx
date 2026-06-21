@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
+import type { WebExtension } from "@pi-web/web-kit";
 
 function withMessages(msgs: UIMessage[]) {
   return mockSession({
@@ -126,9 +127,21 @@ describe("layout 预设 (Req 7.2/10.4)", () => {
     expect(container?.className).toContain("max-w-5xl");
   });
 
-  it("split 划出让位区占位", () => {
+  it("split 无让位区内容时不渲染空 aside(避免右侧空白浮动区域)", () => {
+    // 仅设 layout="split" 而无 panelRight/artifact 等让位区内容:不应留出空 aside,
+    // 否则 lg 视口下右侧出现一整列 384px 空白、内容被挤向左(回归:声明式扩展 split 空白)。
     render(<PiChat session={mockSession()} layout="split" />);
+    expect(document.querySelector("[data-pi-chat-aside]")).toBeNull();
+  });
+
+  it("split + panelRight 让位区内容时渲染 aside", () => {
+    const ext: WebExtension = {
+      manifestId: "split-with-panel",
+      slots: { panelRight: <div data-testid="split-panel" /> },
+    };
+    render(<PiChat session={mockSession()} layout="split" extension={ext} />);
     expect(document.querySelector("[data-pi-chat-aside]")).not.toBeNull();
+    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
   });
 });
 

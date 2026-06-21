@@ -985,9 +985,12 @@ export function PiChat({
             />
           ) : null}
         </aside>
-      ) : lay.hasAside ? (
-        <aside className="hidden w-96 shrink-0 lg:block" data-pi-chat-aside />
       ) : null}
+      {/* split 让位区:仅在有实际内容(panelRight/artifact,见上)时渲染 aside。
+          无内容时不再渲染空的占位 <aside> —— 否则 lg 视口下会留出一整列 384px 空白
+          (内容被挤向左、右侧出现「分离的空白浮动区域」)。典型触发:声明式扩展仅设
+          config.layout="split" 却无 panelRight 可填充让位区。split 缺内容时优雅退化为
+          居中版面(content 宽度本就与 centered 同为 max-w-3xl),不留空白。 */}
 
       {/* Tier1 保留插槽:扩展通知(与 ambient Notifications 共存)。 */}
       <ExtSlotRegion ext={extension} slot="notifications" />
