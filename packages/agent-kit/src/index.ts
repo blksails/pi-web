@@ -46,3 +46,13 @@ export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";
 // server-driven UI:在工具 execute 内经 onUpdate 发出 data-pi-ui 部件。
 export { emitUi } from "./emit-ui.js";
 export type { UiSpec, UiNode } from "@pi-web/protocol";
+
+// attachment-tool-bridge(task 4.1):tool 接入上下文的**作者面类型契约**。
+// 仅类型,无值导入 —— 构造(createAttachmentToolContext)与运行期句柄留在 @pi-web/server
+// 子进程侧,故本包不因此获得到 server 的运行时依赖边(不破坏 webpack externals 边界)。
+export type {
+  AttachmentToolContext,
+  AttachmentToolHandle,
+  PutOutputInput,
+  ToolOutputRef,
+} from "./attachment.js";

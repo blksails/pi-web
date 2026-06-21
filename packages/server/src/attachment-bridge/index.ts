@@ -44,3 +44,9 @@ export {
   buildAttachmentRefs,
   injectAttachmentRefs,
 } from "./reference-injection.js";
+export {
+  createAttachmentToolContext,
+  AttachmentCapabilityUnavailableError,
+  type AttachmentToolContext,
+  type PutOutputInput,
+} from "./tool-context.js";
