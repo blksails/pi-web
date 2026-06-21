@@ -29,7 +29,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
   - _Boundary: TempFileTracker_
 
-- [ ] 2.2 (P) AttachmentHandle 与 resolve(四形态投影)
+- [x] 2.2 (P) AttachmentHandle 与 resolve(四形态投影)
   - 实现按公开 id 解析出携带元数据且提供原始字节、可读流、本地路径、网络 URL 四种访问形态的句柄;句柄不暴露 base64 形态
   - 本地后端本地路径**委托上游门面 `localPath(id)`** 直返落盘路径 `<root>/<id>`(不复制,依赖已冻结盘上布局,不绕过门面抠后端);远程后端本地路径经临时文件登记器懒下载(接口预留可切换,本切片不落地远程实现);URL 形态复用既有分发签名同形;`meta` 复用上游 `Attachment`、`stream()` 的 meta 复用上游 `BlobMeta`,不内联重定义
   - 不存在/不可读时抛可按类型识别的解析错误,不返回空当成功

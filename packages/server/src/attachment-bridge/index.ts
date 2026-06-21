@@ -14,3 +14,9 @@ export {
   type TempFileTracker,
   type TempFileTrackerOptions,
 } from "./temp-files.js";
+export {
+  type AttachmentHandle,
+  createAttachmentHandle,
+  AttachmentLocalPathUnavailableError,
+} from "./attachment-handle.js";
+export { resolveAttachment, AttachmentResolveError } from "./resolve.js";
