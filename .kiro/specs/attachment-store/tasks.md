@@ -99,7 +99,7 @@
 
 ## 4. 前端:上传摄入与 URL 展示
 
-- [ ] 4.1 实现客户端上传函数(react transport)
+- [x] 4.1 实现客户端上传函数(react transport)
   - 提供向会话上传端点发起 multipart 上传、解析并 zod 校验响应描述符的客户端函数;经 react 包导出。
   - 观察完成:单元测试(或 mock fetch)断言上传成功解析出 `attachment`+`displayUrl`;失败响应抛错供 hook 捕获。
   - _Requirements: 5.1, 3.5_

@@ -10,6 +10,7 @@ export * from "./config/index.js";
 
 // transport
 export { PiTransport, type PiTransportOptions } from "./transport/pi-transport.js";
+export { uploadAttachment } from "./transport/attachment-upload.js";
 
 // client
 export {
