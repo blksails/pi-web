@@ -18,3 +18,4 @@ export {
   type BlobMeta,
 } from "./blob-store.js";
 export { LocalFsBlobBackend } from "./local-fs-backend.js";
+export { AttachmentRegistry } from "./attachment-registry.js";

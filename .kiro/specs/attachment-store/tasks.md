@@ -48,7 +48,7 @@
   - _Depends: 2.1, 1.3_
   - _Boundary: LocalFsBlobBackend_
 
-- [ ] 2.3 (P) 实现描述符注册表 `AttachmentRegistry`
+- [x] 2.3 (P) 实现描述符注册表 `AttachmentRegistry`
   - 持久化与查询不含字节的 `Attachment` 描述符:按 id 保存/读取、按会话列出(`listBySession`,后续由门面提升为一等只读访问器);保证同一 id 仅一条描述符(单一身份)。
   - 观察完成:单元/集成测试断言保存后可按 id 取回完整描述符(不含字节)、`listBySession` 仅返回该会话附件、重复 id 不产生第二条。
   - _Requirements: 2.1, 2.2, 2.5, 2.7_
