@@ -77,7 +77,7 @@
   - _Boundary: AttachmentToolContext, agent-kit_
   - _Depends: 1.1, 2.2, 3.3_
 
-- [ ] 4.2 端到端示例 AgentTool(协议兼容 + 三种 resolve 用法 + 回流)
+- [x] 4.2 端到端示例 AgentTool(协议兼容 + 三种 resolve 用法 + 回流)
   - 实现至少一个示例图像工具:以显式 `attachmentId` 参数承载输入引用;在执行内演示本地路径、网络 URL、原始字节三种解析用法;产出新文件经落库回流
   - 满足 pi 协议:描述与结构化结果明细必填;若回图,图像数据字段为已等待求值的字符串(裸 base64),不是未求值的 Promise
   - 观察完成:示例工具被装配为 customTool;集成测试在子进程内跑通"解析→处理→落库→回引用",回图数据为字符串
@@ -115,3 +115,8 @@
   - 观察完成:Playwright e2e 新鲜运行通过,断言分发 URL 200 且 tool result 不含 base64,产出 id 可在下一轮再次引用
   - _Requirements: 7.2, 10.2, 10.3, 10.4_
   - _Depends: 6.1_
+
+## Implementation Notes
+
+- task 4.2 → 5.1 接线门:示例 agent tool(examples/attachment-tool-agent/tools/edit-image-tool.ts)在 jiti 装载期拿不到闭包,故经 `globalThis.__piWebAttachmentToolContext__` 取 `AttachmentToolContext`,缺失时降级 `available:false`。**task 5.1 runner 装配必须**在 customTools 组装时把闭包绑定的 ctx 设到该 key(或将示例工具改为工厂闭包注入),否则 e2e(6.2)示例工具静默跑在"能力不可用"模式。server 侧 createEditImageTool(ctx) 用的是 design 规定的工厂闭包注入(无此问题)。
+- 闸门同形解耦(task 3.1/3.2):pi 内层 `AgentLoopConfig.beforeToolCall/afterToolCall` 类型不可达(仓库只依赖 @earendil-works/pi-coding-agent 公开面),闸门实现为纯函数 + 与公开 `ToolCallEventResult`/`(TextContent|ImageContent)[]` 同形的本地接口。**task 5.1** 接 runner 实际 hook 时需做一次 narrowing 适配(零阻抗,字段同形)。
