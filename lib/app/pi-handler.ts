@@ -271,6 +271,10 @@ function buildSingleton(): HandlerSingleton {
   const handler = createPiWebHandler({
     manager,
     store,
+    // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
+    // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
+    // 与 vision/images base64 并存,不内联字节。
+    attachmentStore,
     // Inject the real-mode entries (bootstrap runner + pi CLI) so resolved
     // custom/cli spawn specs are cwd-independent and never crash on a
     // placeholder path. In stub mode the resolved spec is discarded by
