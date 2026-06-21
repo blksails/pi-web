@@ -26,6 +26,9 @@ export * from "./transport/sse-frame.js";
 export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";
 
+// attachment 层(attachment-store 描述符 + 上传响应 DTO)
+export * from "./attachment/attachment-dto.js";
+
 // config 层(由 object schema 生成配置 UI 的契约:表单 IR + adapter + 配置域)
 export * from "./config/index.js";
 
