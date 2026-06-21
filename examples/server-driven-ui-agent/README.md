@@ -40,7 +40,7 @@ const showDashboard = defineTool({
 tool.execute → emitUi(onUpdate, spec)
   → onUpdate({ content: [], details: { __piWebUi: spec } })   (agent-kit)
   → pi SDK emits tool_execution_update { partialResult }
-  → server translate-event detects the marker → data-pi-ui frame   (instead of data-pi-tool-partial)
+  → server translate-event detects the marker → data-pi-ui frame   (no marker → tool-output-available preliminary, fed into the same tool card)
   → SSE → useChat → message part { type: "data-pi-ui", data: spec }
   → <PiChat> → PiUiPart → builtin component | sandbox interpreter
 ```

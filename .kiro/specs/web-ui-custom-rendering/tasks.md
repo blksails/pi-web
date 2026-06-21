@@ -93,7 +93,7 @@
 
 - **连带改动(协议新增变体)**:`@pi-web/react` 的 `sse/decode-chunk.ts` 对 UIMessageChunk 做穷尽 switch;`data-pi-ui` 并入 `DataPartSchema` 后,该 switch 需新增 `case "data-pi-ui"` 否则 `never` 编译错误。已补,react 包 109 测试无回归。此为协议新增 data-part 的必然连带,不在原边界但合理。
 - **后续增强(沙箱 image + 内置组件)**:沙箱新增 `image` 节点(src 仅 http/https/data:image,双重校验,`loading="lazy"`,危险源降级 alt);内置组件新增 `card`、`codeBlock`。已同步 requirements 3.2/3.5、design 元素与组件列表,并补协议/沙箱/内置测试。
-- **后端产帧通道(打通 agent→data-pi-ui,Req 8)**:agent-kit 新增 `emitUi`(依赖 protocol);protocol 新增 `PI_UI_TOOL_DETAILS_KEY` + `extractToolDetailsUiSpec`;server `translate-event.ts` 在 `tool_execution_update` 识别约定 key → 产 `data-pi-ui`(否则回退 `data-pi-tool-partial`)。复用既有事件、零 pi SDK 改动。新增 `examples/server-driven-ui-agent`(可运行示例)。已同步 requirements R8、design 数据流/Boundary。补 server translate 表驱动用例(命中/非法回退)与 agent-kit emitUi 端到端契约测试。
+- **后端产帧通道(打通 agent→data-pi-ui,Req 8)**:agent-kit 新增 `emitUi`(依赖 protocol);protocol 新增 `PI_UI_TOOL_DETAILS_KEY` + `extractToolDetailsUiSpec`;server `translate-event.ts` 在 `tool_execution_update` 识别约定 key → 产 `data-pi-ui`(否则回退 `tool-output-available` preliminary;原回退 `data-pi-tool-partial` 已于 2026-06-20 移除)。复用既有事件、零 pi SDK 改动。新增 `examples/server-driven-ui-agent`(可运行示例)。已同步 requirements R8、design 数据流/Boundary。补 server translate 表驱动用例(命中/非法回退)与 agent-kit emitUi 端到端契约测试。
 - **新鲜验证证据**(worktree 内,五包):
   - typecheck:protocol / agent-kit / server / react / ui 五包 `tsc --noEmit` 均 Done。
   - test:protocol 97、agent-kit 12、server 388(+5 skip)、react 109、ui 235 全绿(含 image schema、沙箱 image、内置 card/codeBlock、translate data-pi-ui、emitUi 契约等新增用例)。

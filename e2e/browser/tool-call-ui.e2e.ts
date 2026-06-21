@@ -53,6 +53,36 @@ test("工具卡:完成态默认展开 + 状态徽章 + 折叠/展开交互", asy
   await expect(card.locator("[data-pi-tool-detail]")).toHaveCount(1);
 });
 
+test("工具卡:累积 partialResult 喂同一工具卡(无裸 JSON data 卡堆叠)", async ({
+  page,
+}) => {
+  // `tool-stream` sentinel → stub 在 echo 工具的 start/end 之间发两帧
+  // tool_execution_update(累积 partialResult,无 __piWebUi)。修复后这些中间帧经
+  // tool-output-available preliminary 喂进同一工具卡,而非另起 data-pi-tool-partial 裸卡。
+  // 单 prompt(sentinel)即触发,不复用 startSession 的 "say hello"(避免二次提交)。
+  await page.goto("/");
+  await expect(page.locator("[data-agent-source-picker]")).toBeVisible();
+  await page.locator("[data-agent-source-input]").fill("./examples/hello-agent");
+  await page.locator("[data-agent-source-submit]").click();
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+  const input = page.locator("[data-pi-input-textarea]");
+  await expect(input).toBeVisible();
+  await input.fill("tool-stream please");
+  await page.locator('[data-pi-submit-state="send"]').click();
+
+  const card = page.locator("[data-pi-tool]");
+  // 全程只有一张工具卡(echo,toolCallId 复用),partial 帧不堆叠出新卡。
+  await expect(card).toHaveCount(1);
+  await expect(card.first()).toHaveAttribute("data-pi-tool-phase", "end");
+  await expect(card.first().locator("[data-pi-tool-status]")).toContainText(
+    "Completed",
+  );
+  // 关键回归点:partial 不再落到默认 data-part 渲染器(裸 JSON 卡)。
+  await expect(
+    page.locator('[data-pi-data-part="data-pi-tool-partial"]'),
+  ).toHaveCount(0);
+});
+
 test("工具卡:webext 自定义渲染器经注册表覆盖默认工具卡", async ({ page }) => {
   await startSession(page, "./examples/webext-renderer-agent");
 

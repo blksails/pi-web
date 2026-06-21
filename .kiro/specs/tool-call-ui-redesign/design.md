@@ -15,8 +15,8 @@
 
 ### Non-Goals
 - 工具数据来源改造（不引入 RPC 拉取；数据仍仅来自 message parts）。
-- 修复 `data-pi-tool-partial` 与 `PiToolPart` 既有消费割裂。
-- 改动协议层 `tool-*` chunk schema 或 `isToolPart` 判别规则。
+- ~~修复 `data-pi-tool-partial` 与 `PiToolPart` 既有消费割裂。~~ **已解决(2026-06-20,后续协议/翻译层改动)**：`tool_execution_update` 的累积 `partialResult` 不再产独立 `data-pi-tool-partial` data part(此 part 已从协议移除),改翻译为 `tool-output-available` + `preliminary: true` 喂进同一工具卡(AI SDK 按 `toolCallId` 复用 part,后续帧替换前序产出),由 `PiToolPart` 的 `update` 态消费。本 UI 重构本身不含此改动,但其 phase 状态机(`output-available preliminary → update`)正是该修复的消费端。
+- 改动协议层 `tool-*` chunk schema 或 `isToolPart` 判别规则。（注:上述割裂修复给 `tool-output-available` chunk 增了可选 `preliminary` 字段,属最小增量,不影响既有判别。）
 - webext 子部件级注入（仅替换 `ToolOutput` 等单个子件）—— 留作后续。
 
 ## Boundary Commitments

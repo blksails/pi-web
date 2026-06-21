@@ -307,13 +307,15 @@ flowchart TD
 | `message_update.text_end` | `uiMessageChunk: text-end` | ctx 关闭该 text part |
 | `message_update.thinking_start|delta|end` | `uiMessageChunk: reasoning-start|delta|end` | 驱动 `<Reasoning>` |
 | `tool_execution_start` | `uiMessageChunk: tool-input-available`(toolCallId/toolName/args) | 驱动 `<Tool>` |
-| `tool_execution_update` | `uiMessageChunk: data-part(data-pi-tool-partial)`(累积 partialResult,替换) | partialResult 为累积值 |
+| `tool_execution_update` | `uiMessageChunk: tool-output-available`(preliminary=true,output=累积 partialResult)¹ | partialResult 为累积值;AI SDK 按 toolCallId 复用 part 替换 |
 | `tool_execution_end` | `uiMessageChunk: tool-output-available`(result/isError) | |
 | `turn_end` | `uiMessageChunk: finish-step` | |
 | `agent_end` | `uiMessageChunk: finish` | 一轮结束 |
 | `compaction_*` / `auto_retry_*` | `control: data-pi-compaction / data-pi-auto-retry` | 顶部状态条旁路 |
 | `queue_update` | `control: data-pi-queue` | steering/followUp 队列 |
 | `extension_ui_request` | `control: extension-ui` 旁路帧 | 非 UIMessage;前端弹 dialog |
+
+> ¹ 更新(2026-06-20):`tool_execution_update` 原产 `data-part(data-pi-tool-partial)`;该 data-part 已移除,改产 `tool-output-available`(增可选 `preliminary` 字段)喂同一工具卡,避免在消息流里堆叠裸 JSON 卡。例外:当 `partialResult.details` 携约定 key `__piWebUi`(UiSpec)时仍产 `data-pi-ui`(server-driven UI 通道)。详见 `tool-call-ui-redesign` spec。
 
 **Dependencies**
 - External: `@pi-web/protocol` — `AgentEvent`/`SseFrame`/`DataPart`/`protocolVersion` 类型与帧形状 (P0)
