@@ -12,3 +12,8 @@ export {
   ATTACHMENT_SECRET_ENV,
   type UrlSigner,
 } from "./url-signer.js";
+export {
+  BlobNotFoundError,
+  type BlobStore,
+  type BlobMeta,
+} from "./blob-store.js";
