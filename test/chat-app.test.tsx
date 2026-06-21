@@ -86,4 +86,29 @@ describe("ChatApp (session-active) renders the default rich chat UI", () => {
     expect(props?.controls).toBe(fakeControls);
     expect(props?.extensionUI).toBe(fakeExtensionUI);
   });
+
+  // new-by-agent-source(任务 2.1)
+  it("点击「切换源」退回 agent 源选择器 (2.1/2.2)", () => {
+    startSession();
+    expect(document.querySelector("[data-session-active]")).not.toBeNull();
+    const switchBtn = document.querySelector("[data-switch-source]");
+    expect(switchBtn).not.toBeNull();
+    fireEvent.click(switchBtn as Element);
+    // 退回选择器:picker 出现、会话态消失。
+    expect(document.querySelector("[data-agent-source-picker]")).not.toBeNull();
+    expect(document.querySelector("[data-session-active]")).toBeNull();
+  });
+
+  it("点击 New session 同源新建:仍停留会话(不回选择器)且 SessionView 重挂 (1.1)", () => {
+    startSession();
+    const callsBefore = piChatSpy.mock.calls.length;
+    const newBtn = document.querySelector("[data-new-session]");
+    expect(newBtn).not.toBeNull();
+    fireEvent.click(newBtn as Element);
+    // 不回选择器:仍是会话态,picker 不出现。
+    expect(document.querySelector("[data-agent-source-picker]")).toBeNull();
+    expect(document.querySelector("[data-session-active]")).not.toBeNull();
+    // key 变化使 SessionView 重挂 → PiChat 再次渲染(调用次数增加),佐证同源新建触发新会话装配。
+    expect(piChatSpy.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
 });

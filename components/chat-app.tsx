@@ -135,6 +135,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
         }
       : undefined,
   );
+  // 同源新建计数:bump 后变更 SessionView 的 key 以强制重挂(见 onNewByAgentSource)。
+  const [nonce, setNonce] = React.useState<number>(0);
 
   const onSubmit = (source: string): void => {
     const resolved = source.length > 0 ? source : (props.defaultSource ?? ".");
@@ -150,6 +152,15 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
     }
   };
 
+  // 同源新建:保持当前 agent source、丢弃 resumeId(恢复模式下避免重挂为"再次恢复旧会话"),
+  // 并 bump nonce 以变更 SessionView 的 key —— 强制 React 卸载+重挂,使 usePiSession 以
+  // 新实例(startedRef 复位)用同一 source 重新 createSession,得到全新会话。
+  // (usePiSession 不响应 create 变化重建,故必须靠 key 重挂;见 spec design。)
+  const onNewByAgentSource = (): void => {
+    setSession((s) => (s === undefined ? s : { create: s.create }));
+    setNonce((n) => n + 1);
+  };
+
   return (
     <PiProvider baseUrl="/api">
       {session === undefined ? (
@@ -159,11 +170,13 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
         />
       ) : (
         <SessionView
+          key={`${session.create.source}#${nonce}`}
           create={session.create}
           {...(session.resumeId !== undefined
             ? { resumeId: session.resumeId }
             : {})}
           onReset={onReset}
+          onNewByAgentSource={onNewByAgentSource}
         />
       )}
     </PiProvider>
@@ -174,10 +187,12 @@ function SessionView({
   create,
   resumeId,
   onReset,
+  onNewByAgentSource,
 }: {
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
   readonly onReset: () => void;
+  readonly onNewByAgentSource: () => void;
 }): React.JSX.Element {
   const session: UsePiSessionResult = usePiSession({
     create,
@@ -286,10 +301,19 @@ function SessionView({
         </span>
         <button
           type="button"
-          onClick={onReset}
+          onClick={onNewByAgentSource}
           className="ml-auto rounded-md border border-[hsl(var(--border))] px-3 py-1 text-xs"
+          data-new-session
         >
           New session
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded-md border border-[hsl(var(--border))] px-3 py-1 text-xs"
+          data-switch-source
+        >
+          切换源
         </button>
         <a
           href="/settings"
