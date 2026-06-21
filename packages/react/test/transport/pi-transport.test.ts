@@ -164,6 +164,98 @@ describe("PiTransport.sendMessages", () => {
     expect(routed.postedMessages[0]?.body).toEqual({ message: "hello" });
   });
 
+  it("maps attachmentIds from body to PromptRequest.attachmentIds", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("see file")],
+      abortSignal: undefined,
+      body: { attachmentIds: ["att_a", "att_b"] },
+    });
+    expect(routed.postedMessages).toHaveLength(1);
+    expect(routed.postedMessages[0]?.body).toEqual({
+      message: "see file",
+      attachmentIds: ["att_a", "att_b"],
+    });
+  });
+
+  it("maps attachmentIds from metadata to PromptRequest.attachmentIds", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("see file")],
+      abortSignal: undefined,
+      metadata: { attachmentIds: ["att_x"] },
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({
+      message: "see file",
+      attachmentIds: ["att_x"],
+    });
+  });
+
+  it("carries both images and attachmentIds together (vision + bridge coexist)", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    const images: ImageContent[] = [
+      { type: "image", data: "AAAA", mimeType: "image/png" },
+    ];
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("both")],
+      abortSignal: undefined,
+      body: { images, attachmentIds: ["att_a"] },
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({
+      message: "both",
+      images,
+      attachmentIds: ["att_a"],
+    });
+  });
+
+  it("omits attachmentIds when none are provided (unchanged behavior)", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("plain")],
+      abortSignal: undefined,
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({ message: "plain" });
+    expect(
+      (routed.postedMessages[0]?.body as Record<string, unknown>).attachmentIds,
+    ).toBeUndefined();
+  });
+
+  it("omits attachmentIds for empty array or non-string-array values", async () => {
+    const { transport, routed } = build(textStreamFrames("Hi"));
+    await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("empty")],
+      abortSignal: undefined,
+      body: { attachmentIds: [] },
+    });
+    expect(routed.postedMessages[0]?.body).toEqual({ message: "empty" });
+
+    const { transport: t2, routed: r2 } = build(textStreamFrames("Hi"));
+    await t2.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("bad")],
+      abortSignal: undefined,
+      body: { attachmentIds: [1, 2, 3] },
+    });
+    expect(r2.postedMessages[0]?.body).toEqual({ message: "bad" });
+  });
+
   it("forwards custom headers to the stream subscription", async () => {
     const { transport, routed } = build(textStreamFrames("x"));
     await transport.sendMessages({

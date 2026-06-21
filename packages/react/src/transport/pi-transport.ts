@@ -62,6 +62,32 @@ function extractImages(
   return undefined;
 }
 
+/**
+ * 从 useChat 透传的 body/metadata 中提取正式附件 id 列表,映射为 pi 的 `attachmentIds`。
+ *
+ * 来源约定:正式落库附件的公开 id(`att_<nanoid>`)经 useChat `sendMessage` 的
+ * `body.attachmentIds` 或 `metadata.attachmentIds` 传入。优先 body,其次 metadata;
+ * 校验为非空 `string[]`,非法/缺失/空数组 → 不带 `attachmentIds`。与 `images`/vision 并存。
+ */
+function extractAttachmentIds(
+  body: object | undefined,
+  metadata: unknown,
+): string[] | undefined {
+  for (const source of [body, metadata]) {
+    if (source === null || typeof source !== "object") continue;
+    const raw = (source as { attachmentIds?: unknown }).attachmentIds;
+    if (raw === undefined) continue;
+    if (
+      Array.isArray(raw) &&
+      raw.length > 0 &&
+      raw.every((id) => typeof id === "string")
+    ) {
+      return raw as string[];
+    }
+  }
+  return undefined;
+}
+
 /** 从 UIMessage 数组取最后一条 user message 的纯文本。 */
 function extractPromptText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -94,6 +120,7 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
   ): Promise<ReadableStream<UIMessageChunk>> => {
     const message = extractPromptText(options.messages);
     const images = extractImages(options.body, options.metadata);
+    const attachmentIds = extractAttachmentIds(options.body, options.metadata);
 
     // 先建立 /stream 订阅,再 POST prompt,避免错过早到的帧。
     const stream = this.connection.openChunkStream(
@@ -115,6 +142,7 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
     await this.client.prompt(this.sessionId, {
       message,
       ...(images === undefined ? {} : { images }),
+      ...(attachmentIds === undefined ? {} : { attachmentIds }),
     });
 
     return stream;

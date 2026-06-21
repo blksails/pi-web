@@ -55,6 +55,19 @@ describe("createPiClient request shaping", () => {
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({ message: "hi" });
   });
 
+  it("prompt serializes attachmentIds into the JSON body", async () => {
+    const { fetch, calls } = mockFetch(makeJsonResponse({ ok: true }));
+    const client = createPiClient("http://api.test", fetch);
+    await client.prompt("s1", {
+      message: "see file",
+      attachmentIds: ["att_a", "att_b"],
+    });
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+      message: "see file",
+      attachmentIds: ["att_a", "att_b"],
+    });
+  });
+
   it("steer / followUp hit distinct endpoints", async () => {
     const { fetch, calls } = mockFetch(makeJsonResponse({ ok: true }));
     const client = createPiClient("http://api.test", fetch);
