@@ -14,6 +14,7 @@ import {
   type SuggestionMerge,
   useModels,
   useAttachments,
+  type UploadAttachmentFn,
   useBranches,
   useSuggestions,
   createUiRpcBus,
@@ -111,6 +112,10 @@ export interface PiChatProps {
   readonly extensionCommands?: ExtensionCommandPolicy;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
+  /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
+  readonly attachmentBaseUrl?: string;
+  /** 可注入的附件上传函数(默认 `@pi-web/react` 的 `uploadAttachment`);测试用以 mock。 */
+  readonly uploadAttachment?: UploadAttachmentFn;
   readonly className?: string;
 }
 
@@ -209,6 +214,8 @@ export function PiChat({
   toolbarOrder,
   extensionCommands,
   showSessionStats = true,
+  attachmentBaseUrl,
+  uploadAttachment,
   className,
 }: PiChatProps): React.JSX.Element {
   const transport = session.transport;
@@ -307,7 +314,12 @@ export function PiChat({
     ...(client !== undefined ? { client } : {}),
     ...(controls !== undefined ? { controls } : {}),
   });
-  const attachments = useAttachments();
+  // 附件摄入接异步上传:add 回调经 useAttachments 落库换正式 id(发消息只带引用)。
+  const attachments = useAttachments({
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    ...(attachmentBaseUrl !== undefined ? { baseUrl: attachmentBaseUrl } : {}),
+    ...(uploadAttachment !== undefined ? { upload: uploadAttachment } : {}),
+  });
   const branches = useBranches({
     sessionId,
     ...(client !== undefined ? { client } : {}),
@@ -394,11 +406,21 @@ export function PiChat({
           ? `${trimmed}\n\n${WEB_SEARCH_HINT}`
           : WEB_SEARCH_HINT;
 
+      // vision 现状:仍按 base64 发图(toImageContents);不动 prompt({images}) 链路。
       const images = hasAttachments ? attachments.toImageContents() : [];
+      // 引用提交:以 server 铸造的正式公开 id(att_…)作为附件标识(先落库后引用),
+      // 发消息不要求把附件字节内联到列表/提交身份(Req 5.3/3.5)。仅 ready 项计入。
+      const attachmentIds = hasAttachments
+        ? (attachments.referenceIds?.() ?? [])
+        : [];
+
+      const body: Record<string, unknown> = {};
+      if (images.length > 0) body.images = images;
+      if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
 
       void sendMessage(
         { text: outgoing },
-        images.length > 0 ? { body: { images } } : undefined,
+        Object.keys(body).length > 0 ? { body } : undefined,
       );
 
       setInput("");

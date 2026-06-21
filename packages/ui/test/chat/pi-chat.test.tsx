@@ -126,6 +126,65 @@ describe("PiChat 装配(富)", () => {
     expect(opts.body?.images?.length).toBe(1);
   });
 
+  it("添加附件触发异步上传 → 提交携带正式 id 引用(attachmentIds)且保留 base64 images,不内联落库字节 (Req 5.3/3.5)", async () => {
+    const user = userEvent.setup();
+    const transport = new MockTransport([{ type: "finish" }]);
+    const sendSpy = vi.spyOn(transport, "sendMessages");
+    const session = mockSession({
+      transport: transport as unknown as ReturnType<
+        typeof mockSession
+      >["transport"],
+    });
+
+    // 注入 mock 上传:断言「添加触发上传」,并回传 server 铸造的正式公开 id 与展示 URL。
+    const uploadAttachment = vi.fn(async (_b: string, _s: string, f: File) => ({
+      attachment: {
+        id: "att_minted123",
+        name: f.name,
+        mimeType: f.type,
+        size: 7,
+        origin: "upload" as const,
+        sessionId: "sess-1",
+        createdAt: "2026-06-21T00:00:00.000Z",
+      },
+      displayUrl: "/api/attachments/att_minted123/raw?exp=1&sig=abc",
+    }));
+
+    const { container } = render(
+      <PiChat
+        session={session}
+        controls={mockControls()}
+        uploadAttachment={uploadAttachment}
+      />,
+    );
+
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["imgdata"], "shot.png", { type: "image/png" });
+    await user.upload(input, file);
+
+    // 添加 → 触发上传(异步上传 mock 被调用)。
+    await waitFor(() => expect(uploadAttachment).toHaveBeenCalledTimes(1));
+    await screen.findByText("shot.png");
+
+    await user.type(
+      screen.getByRole("textbox", { name: /消息输入|message/i }),
+      "look",
+    );
+    await user.click(screen.getByRole("button", { name: /发送/ }));
+
+    await waitFor(() => expect(sendSpy).toHaveBeenCalledTimes(1));
+    const opts = (sendSpy.mock.calls[0] as unknown[])[0] as {
+      body?: { images?: unknown[]; attachmentIds?: unknown[] };
+    };
+    // 提交携带正式 id 引用(server 铸造的 att_…),不内联落库字节为身份。
+    expect(opts.body?.attachmentIds).toEqual(["att_minted123"]);
+    // 现状 vision base64 链路不回归:仍携带 images(裸 base64)。
+    expect(opts.body?.images).toBeDefined();
+    expect(opts.body?.images?.length).toBe(1);
+  });
+
   it("会话就绪后调用 controls.getCommands 以填充建议 (Req 10.1)", async () => {
     const controls = mockControls();
     render(<PiChat session={mockSession()} controls={controls} />);
