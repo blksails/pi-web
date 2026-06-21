@@ -83,7 +83,7 @@
   - _Depends: 2.4_
   - _Boundary: attachment-routes(上传)_
 
-- [ ] 3.2 实现分发端点 handler(签名校验、缓存、防枚举)
+- [x] 3.2 实现分发端点 handler(签名校验、缓存、防枚举)
   - 经注入接缝提供 `GET /attachments/:id/raw?exp&sig`:校验签名与过期后以正确 mime 流式返回字节并带缓存头;签名缺失/无效/过期返回未授权;id 不存在返回未找到且不泄露存在性差异(防枚举)。
   - 观察完成:集成测试断言有效签名返回正确 `Content-Type`+`Cache-Control`+字节;无/过期签名返回 401;不存在 id 返回 404 且与签名失败响应不可区分语义。
   - _Requirements: 4.1, 4.2, 4.3, 4.4_

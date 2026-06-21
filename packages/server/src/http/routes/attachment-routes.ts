@@ -14,11 +14,22 @@
  * - 设上传大小上限并对超限以客户端错误(413)拒绝,不全量入内存:
  *   先按 `Content-Length` 头提前拒绝(不读 body);缺失/不可信时再按解析出的文件大小拒绝(Req 3.x/不全量入内存)。
  *
- * `createAttachmentRoutes` 工厂(上传 + 分发完整导出)留给 task 3.3;本文件聚焦上传 handler。
+ * 分发端点 handler(task 3.2;Req 4.1/4.2/4.3/4.4):
+ *
+ *   GET /attachments/:id/raw?exp&sig   → 字节流(`Content-Type`=附件 mime,`Cache-Control`)
+ *
+ * 读路径**不**绑会话:靠签名自洽鉴权,故注入路由用**非 `id`** 参数名(`:attachmentId`),
+ * 避免 Router 把附件 id 当作 sessionId 触发会话存在性 404 门控;handler 自行从 URL 路径
+ * 解析附件 id。防枚举关键:**先校验签名**(无/无效/过期一律 401,不查存在性),仅签名有效
+ * 才查描述符,查不到才 404 —— 攻击者无法据响应区分某 id 是否存在(Req 4.4)。
+ *
+ * `createAttachmentRoutes` 工厂(上传 + 分发完整导出)留给 task 3.3;本文件聚焦两个 handler。
  */
 import type { AttachmentStore } from "../../attachment/index.js";
+import { BlobNotFoundError } from "../../attachment/index.js";
 import { errorResponse, jsonResponse } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
+import { Readable } from "node:stream";
 
 /** 默认上传大小上限(字节)。可经 handler 选项覆盖。 */
 export const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MiB
@@ -118,4 +129,93 @@ export function makeUploadAttachmentHandler(
       return errorResponse(500, "INTERNAL", "Failed to store attachment.");
     }
   };
+}
+
+/**
+ * 分发端点路由模板:`/attachments/:attachmentId/raw`。
+ *
+ * 用**非 `id`** 参数名以**避开** Router 的 `:id` 会话门控(会话存在性 404):读路径不绑会话,
+ * 靠签名自洽鉴权。handler 自行从 URL 路径解析附件 id(Router 不传非 `id` 参数)。
+ */
+export const RAW_ATTACHMENT_ROUTE = "/attachments/:attachmentId/raw";
+
+/** 分发响应缓存头:私有可缓存(签名 URL 含过期窗口,重复展示可客户端缓存,Req 4.2)。 */
+const RAW_CACHE_CONTROL = "private, max-age=300";
+
+/**
+ * 从 `/attachments/<id>/raw` 形态的 URL 路径中解析附件 id(末段为 `raw`,其前一段为 id)。
+ *
+ * 不依赖 Router 的 `:id` 注入(那会触发会话门控);对任意 basePath 前缀健壮(只看 `…/<id>/raw` 尾部)。
+ * 解析不出返回 `undefined`(handler 据此返回 404,与签名失败语义对齐防枚举)。
+ */
+function parseAttachmentId(url: URL): string | undefined {
+  const segments = url.pathname.split("/").filter((s) => s.length > 0);
+  const rawIdx = segments.lastIndexOf("raw");
+  if (rawIdx < 1) return undefined;
+  const id = segments[rawIdx - 1];
+  if (id === undefined || id.length === 0) return undefined;
+  return decodeURIComponent(id);
+}
+
+/** Node 可读流 → Web ReadableStream(用于流式 `Response` 体,避免全量入内存)。 */
+function toWebStream(node: NodeJS.ReadableStream): ReadableStream<Uint8Array> {
+  return Readable.toWeb(node as Readable) as ReadableStream<Uint8Array>;
+}
+
+/**
+ * 构造分发端点 handler `GET /attachments/:id/raw?exp&sig`。
+ *
+ * 流程(防枚举,design.md §System Flows 读路径):
+ *  1) 解析路径附件 id 与查询 `exp`/`sig`;缺失/不可解析的签名参数 → 401(与无效签名同语义)。
+ *  2) **先校验签名**(`store.verifyUrl`,常量时间 + 过期检查);失败一律 401,**不查存在性**
+ *     —— 攻击者无法据响应区分该 id 是否存在(Req 4.3/4.4)。
+ *  3) 仅签名有效才取读流;`BlobNotFoundError` → 404(此分支才暴露「不存在」,但需有效签名方可触达)。
+ *  4) 成功 → 流式 `Response`,`Content-Type` = 附件 mime,带 `Cache-Control`(Req 4.1/4.2)。
+ */
+export function makeRawAttachmentHandler(store: AttachmentStore): RouteHandler {
+  return async (ctx: RequestContext): Promise<Response> => {
+    const id = parseAttachmentId(ctx.url);
+    const expRaw = ctx.url.searchParams.get("exp");
+    const sig = ctx.url.searchParams.get("sig");
+
+    // 1) 签名参数缺失/不可解析 → 401(与无效签名同响应,不泄露 id 解析结果)。
+    if (id === undefined || expRaw === null || sig === null) {
+      return unauthorized();
+    }
+    const exp = Number(expRaw);
+    if (!Number.isFinite(exp)) {
+      return unauthorized();
+    }
+
+    // 2) 先校验签名(常量时间 + 过期);失败一律 401,不查存在性(防枚举,Req 4.3/4.4)。
+    if (!store.verifyUrl(id, exp, sig)) {
+      return unauthorized();
+    }
+
+    // 3) 签名有效才取字节;不存在 → 404(此分支需有效签名方可触达)。
+    let stream: NodeJS.ReadableStream;
+    let mimeType: string;
+    try {
+      const read = await store.getReadStream(id);
+      stream = read.stream;
+      mimeType = read.meta.mimeType;
+    } catch (err) {
+      if (err instanceof BlobNotFoundError) {
+        return errorResponse(404, "ATTACHMENT_NOT_FOUND", "Attachment not found.");
+      }
+      // 读流 IO 失败 → 500(不泄露内部细节)。
+      return errorResponse(500, "INTERNAL", "Failed to read attachment.");
+    }
+
+    // 4) 流式返回字节,正确 mime + 缓存头(Req 4.1/4.2)。
+    const headers = new Headers();
+    headers.set("Content-Type", mimeType);
+    headers.set("Cache-Control", RAW_CACHE_CONTROL);
+    return new Response(toWebStream(stream), { status: 200, headers });
+  };
+}
+
+/** 未授权响应:签名缺失/无效/过期统一为此响应(防枚举,不暴露 id 是否存在)。 */
+function unauthorized(): Response {
+  return errorResponse(401, "INVALID_SIGNATURE", "Invalid or missing signature.");
 }
