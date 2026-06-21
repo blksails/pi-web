@@ -25,3 +25,12 @@ export {
   type ToolCallGuardEvent,
   type ToolCallGuardResult,
 } from "./ownership-guard.js";
+export {
+  KEEP_INLINE_FLAG,
+  makeAfterToolCall,
+  type AfterToolCallGuardEvent,
+  type AfterToolCallGuardResult,
+  type ToolResultContent,
+  type TextContent,
+  type ImageContent,
+} from "./base64-gate.js";
