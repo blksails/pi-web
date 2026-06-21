@@ -4,6 +4,8 @@
  *
  * 映射(对齐 `PartRenderer` 消费的 part 类型):
  *  - user:`content` 为 string → 单个 text part;数组 → text / file(image)parts。
+ *    image part 的 url 按引用解析:带 `displayUrl`/公开 `attachmentId` → 分发端点 URL;
+ *    遗留无 id 的内联 base64 → 重建 `data:` URL(防回归,见 `imageUrl`)。
  *  - assistant:`text` → text part;`thinking` → reasoning part;`toolCall` → dynamic-tool
  *    part(state `input-available`,携带 input)。
  *  - toolResult:按 `toolCallId` 并入此前 assistant 的对应 tool part(置 `output-available`
@@ -38,6 +40,29 @@ interface ContentItem {
   arguments?: unknown;
   mimeType?: unknown;
   data?: unknown;
+  /** 已落库附件的公开 id(`att_<nanoid>`),历史回显据此走分发 URL。 */
+  attachmentId?: unknown;
+  /** server 即时签发的分发展示 URL(`/attachments/:id/raw?exp&sig`)。 */
+  displayUrl?: unknown;
+}
+
+/**
+ * 把历史 image content 解析为可渲染 URL(Req 6.1/6.2/6.3):
+ *  - 带分发 `displayUrl`(http(s))→ 原样作为分发 URL;
+ *  - 带公开 `attachmentId`(`att_…`)→ 构造分发端点路径 `/attachments/:id/raw`;
+ *  - 否则(遗留无 id 的内联 base64)→ 重建 `data:` 内联 URL(防回归)。
+ */
+function imageUrl(raw: ContentItem): string {
+  const displayUrl = raw.displayUrl;
+  if (typeof displayUrl === "string" && displayUrl !== "") {
+    return displayUrl;
+  }
+  const attachmentId = raw.attachmentId;
+  if (typeof attachmentId === "string" && attachmentId !== "") {
+    return `/attachments/${attachmentId}/raw`;
+  }
+  // 遗留:无公开 id,重建内联 data: URL。
+  return `data:${String(raw.mimeType ?? "")};base64,${String(raw.data ?? "")}`;
 }
 
 /** 把内容数组中的文本拼接为一个字符串(用于 tool 错误文本)。 */
@@ -62,7 +87,7 @@ function userParts(content: unknown): UIPart[] {
       parts.push({
         type: "file",
         mediaType: String(raw.mimeType ?? "application/octet-stream"),
-        url: `data:${String(raw.mimeType ?? "")};base64,${String(raw.data ?? "")}`,
+        url: imageUrl(raw),
       } as UIPart);
     }
   }

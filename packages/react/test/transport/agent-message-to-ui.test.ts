@@ -139,6 +139,72 @@ describe("agentMessagesToUiMessages", () => {
     });
   });
 
+  it("历史 image 带公开 id(attachmentId)→ url 指向分发端点(非 data:)", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "AAAA",
+              attachmentId: "att_abc123",
+            },
+          ],
+        },
+      ]),
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.type).toBe("file");
+    expect(part.mediaType).toBe("image/png");
+    // 指向分发端点而非内联 base64。
+    expect(String(part.url)).toContain("/attachments/att_abc123/raw");
+    expect(String(part.url).startsWith("data:")).toBe(false);
+  });
+
+  it("历史 image 带分发 displayUrl(http(s))→ 原样作为分发 URL", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "AAAA",
+              displayUrl:
+                "https://example.test/attachments/att_xyz/raw?exp=1&sig=deadbeef",
+            },
+          ],
+        },
+      ]),
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.type).toBe("file");
+    expect(part.url).toBe(
+      "https://example.test/attachments/att_xyz/raw?exp=1&sig=deadbeef",
+    );
+    expect(String(part.url).startsWith("data:")).toBe(false);
+  });
+
+  it("遗留无 id 内联 base64 image → 仍重建 data: 内联 URL(防回归)", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: [
+            { type: "image", mimeType: "image/png", data: "AAAA" },
+          ],
+        },
+      ]),
+    );
+    const part = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(part.type).toBe("file");
+    expect(part.mediaType).toBe("image/png");
+    expect(part.url).toBe("data:image/png;base64,AAAA");
+  });
+
   it("未知 role 被跳过", () => {
     const out = agentMessagesToUiMessages(
       msgs([
