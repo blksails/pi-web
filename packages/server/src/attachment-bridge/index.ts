@@ -40,3 +40,7 @@ export {
   type PutToolOutputInput,
   type ToolOutputRef,
 } from "./tool-output.js";
+export {
+  buildAttachmentRefs,
+  injectAttachmentRefs,
+} from "./reference-injection.js";
