@@ -74,7 +74,7 @@
 
 ## 3. 核心:HTTP 上传(写)与分发(读)端点
 
-- [ ] 3.1 实现上传端点 handler(multipart 落库,会话域)
+- [x] 3.1 实现上传端点 handler(multipart 落库,会话域)
   - 经 http-api 注入接缝提供 `POST /sessions/:id/attachments`:解析 multipart 取文件,记会话属主与 `origin=upload`,落库并以 `{ attachment, displayUrl }` 响应;无有效文件部分返回客户端错误。
   - 复用 http-api 既有的 `:id` 会话解析与鉴权门控(会话不存在 404、越权 403、未鉴权 401),不绕开既有访问控制。
   - 设上传大小上限并对超限以客户端错误拒绝(不全量入内存)。
