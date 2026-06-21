@@ -137,7 +137,7 @@
 
 ## 5. 集成:主进程装配与目录约定下发
 
-- [ ] 5.1 在应用 handler 装配中实例化 store 并注入路由
+- [x] 5.1 在应用 handler 装配中实例化 store 并注入路由
   - 在 server 主进程的 handler 装配处实例化附件 store(经配置工厂)并把上传/分发路由注入 `createPiWebHandler({ routes })`,使两端点在 `/api/**` 下可达。
   - 观察完成:应用启动后上传端点接受 multipart 落库、分发端点按签名 URL 返回字节;store 在主进程单例化服务读写两路径。
   - _Requirements: 7.1_
@@ -174,3 +174,7 @@
   - _Requirements: 8.1, 8.4_
   - _Depends: 2.4, 3.1, 3.2_
   - _Boundary: 测试套件_
+
+## Implementation Notes
+
+- task 5.1:design 的 Modified Files 漏列了 Next.js catch-all route。`/api/sessions/**`(含上传)走既有 `app/api/sessions/[[...path]]/route.ts`,但**分发端点** `/api/attachments/:id/raw` 在 Next 层无 file-route 会 404。已补 `app/api/attachments/[[...path]]/route.ts`(GET 转发 `getHandler`,runtime nodejs)以满足「两端点 /api/** 可达」。e2e(6.x)依赖此文件。

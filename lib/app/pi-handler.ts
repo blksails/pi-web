@@ -27,6 +27,8 @@ import {
   createConfigRoutes,
   createSandboxProjectRoutes,
   createExtensionsConfigRoutes,
+  createAttachmentRoutes,
+  attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   type ResolvedSource,
@@ -182,6 +184,13 @@ function buildSingleton(): HandlerSingleton {
   // 未安装时为 undefined → 跳过注入(不报错,行为回退到默认发现)。
   const sandboxEntry = resolveSandboxEntry(config.agentDir);
 
+  // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
+  // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
+  // store 随 handler 单例 pin 在 globalThis(此函数仅首次调用),故读(上传落库)/写(分发取流)
+  // 两路径共用同一主进程实例。下游 attachment-tool-bridge 的 spawn env 透传(目录+secret)归
+  // task 5.2,不在此装配。
+  const { store: attachmentStore } = attachmentStoreConfigFromEnv();
+
   const createChannel = (
     resolved: ResolvedSource,
     opts: CreateChannelOpts,
@@ -245,6 +254,10 @@ function buildSingleton(): HandlerSingleton {
         agentDir: config.agentDir,
         defaultCwd: config.defaultCwd,
       }),
+      // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
+      // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
+      // 在 /api/** 下可达(Req 7.1)。
+      ...createAttachmentRoutes(attachmentStore),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.
