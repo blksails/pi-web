@@ -9,3 +9,8 @@ export {
   createChildAttachmentStore,
   type ChildAttachmentStore,
 } from "./child-store.js";
+export {
+  createTempFileTracker,
+  type TempFileTracker,
+  type TempFileTrackerOptions,
+} from "./temp-files.js";
