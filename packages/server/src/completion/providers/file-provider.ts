@@ -16,6 +16,7 @@ import type {
   ResolvedContext,
 } from "../types.js";
 import { serializeToken } from "../token.js";
+import { compileGlobs } from "../glob.js";
 
 export const FILE_PROVIDER_ID = "file";
 export const FILE_KIND = "file";
@@ -43,6 +44,25 @@ export interface FileProviderOptions {
   readonly priority?: number;
   /** 注入时钟(测试用);默认 Date.now。 */
   readonly now?: () => number;
+  /** provider id 覆盖(注册多个 file provider 时用),默认 "file"。 */
+  readonly id?: string;
+  /** 触发符覆盖,默认 "@"。 */
+  readonly trigger?: string;
+  /** kind 覆盖(分组/去重/token 类型),默认 "file"。 */
+  readonly kind?: string;
+  /** 正向 glob(cwd 相对);文件须命中 ≥1 条。缺省=全部允许。 */
+  readonly includes?: readonly string[];
+  /** 反向 glob(cwd 相对);命中即剔除,叠加在重目录跳过与 .gitignore 之上。 */
+  readonly excludes?: readonly string[];
+  /** 是否尊重 cwd 下的 .gitignore,默认 true。 */
+  readonly respectGitignore?: boolean;
+}
+
+/** 候选过滤器(由 includes/excludes/gitignore 合成,随 listing 一次)。 */
+interface FileFilter {
+  readonly include: ((rel: string) => boolean) | null;
+  readonly exclude: ((rel: string) => boolean) | null;
+  readonly gitignore: (rel: string) => boolean;
 }
 
 interface CacheEntry {
@@ -97,12 +117,15 @@ async function loadGitignore(cwd: string): Promise<(rel: string) => boolean> {
   }
 }
 
-/** 遍历 cwd 收集相对 posix 路径(跳过重目录/被忽略项/符号链接;上限截断)。 */
+/**
+ * 遍历 cwd 收集 cwd 相对 posix 路径。过滤优先级:重目录跳过 > excludes > .gitignore >
+ * includes。不跟随符号链接(挡逃逸);超上限截断。
+ */
 async function walkFiles(
   cwd: string,
   cap: number,
+  filter: FileFilter,
 ): Promise<{ files: string[]; truncated: boolean }> {
-  const ignore = await loadGitignore(cwd);
   const files: string[] = [];
   let truncated = false;
   const stack: string[] = [""]; // 相对目录(posix)
@@ -120,10 +143,13 @@ async function walkFiles(
       const rel = relDir === "" ? ent.name : `${relDir}/${ent.name}`;
       if (ent.isDirectory()) {
         if (ALWAYS_SKIP_DIRS.has(ent.name)) continue;
-        if (ignore(rel)) continue;
+        if (filter.gitignore(rel)) continue;
+        if (filter.exclude?.(rel)) continue; // dir 级剪枝(命中 excludes 的目录)
         stack.push(rel);
       } else if (ent.isFile()) {
-        if (ignore(rel)) continue;
+        if (filter.gitignore(rel)) continue;
+        if (filter.exclude?.(rel)) continue;
+        if (filter.include !== null && !filter.include(rel)) continue;
         if (files.length >= cap) {
           truncated = true;
           return { files, truncated };
@@ -164,21 +190,34 @@ export function createFileProvider(
   const resultLimit = opts.resultLimit ?? DEFAULT_RESULT_LIMIT;
   const ttl = opts.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const now = opts.now ?? (() => Date.now());
+  const id = opts.id ?? FILE_PROVIDER_ID;
+  const trigger = opts.trigger ?? "@";
+  const kind = opts.kind ?? FILE_KIND;
+  const respectGitignore = opts.respectGitignore ?? true;
+  const include = compileGlobs(opts.includes);
+  const exclude = compileGlobs(opts.excludes);
   const cache = new Map<string, CacheEntry>();
 
   async function listing(cwd: string): Promise<CacheEntry> {
     const hit = cache.get(cwd);
     if (hit !== undefined && hit.expires > now()) return hit;
-    const { files, truncated } = await walkFiles(cwd, walkCap);
+    const gitignore = respectGitignore
+      ? await loadGitignore(cwd)
+      : (): boolean => false;
+    const { files, truncated } = await walkFiles(cwd, walkCap, {
+      include,
+      exclude,
+      gitignore,
+    });
     const entry: CacheEntry = { expires: now() + ttl, files, truncated };
     cache.set(cwd, entry);
     return entry;
   }
 
   return {
-    id: FILE_PROVIDER_ID,
-    trigger: "@",
-    kind: FILE_KIND,
+    id,
+    trigger,
+    kind,
     extract: "wordTail",
     priority: opts.priority ?? 0,
 
@@ -194,17 +233,17 @@ export function createFileProvider(
       );
       const top = scored.slice(0, resultLimit);
       const items: CompletionItem[] = top.map(({ rel, score }) => ({
-        providerId: FILE_PROVIDER_ID,
-        kind: FILE_KIND,
+        providerId: id,
+        kind,
         id: rel,
         label: rel,
-        insertText: serializeToken({ trigger: "@", kind: FILE_KIND, id: rel }),
+        insertText: serializeToken({ trigger, kind, id: rel }),
         score,
       }));
       if (truncated && items.length > 0) {
         items.push({
-          providerId: FILE_PROVIDER_ID,
-          kind: FILE_KIND,
+          providerId: id,
+          kind,
           id: "__truncated__",
           label: "…(结果已截断,请细化查询)",
           detail: "file listing truncated",

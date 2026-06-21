@@ -346,3 +346,34 @@ export const TriggersResponseSchema = z.object({
 ## Performance & Scalability
 - file 清单 TTL 内存缓存(键=cwd)+ walk 上限 + 候选 top-K,避免每 keystroke 全树遍历(5.4/5.5/R-1)。
 - 前端防抖;端点 per-provider 超时,慢 provider 不阻塞整体(4.3/R-3)。
+
+---
+
+## 增强:file provider 可配置 includes / excludes / glob(已实现)
+
+> 讨论结论:**不引入 `root`**。cwd 内子目录用 `includes:["src/**"]` 即可表达且性能等价(walker 目录级剪枝);`root` 唯一独有能力是指向 cwd 之外——正是高危项。去掉 root 同时消除了"外部根 trust 门控"与"root 相对↔cwd 相对路径转换"两处复杂度,路径**始终 cwd 相对**,token/resolve 天然正确。指向外部资源应做成**独立 provider**(自带受信任来源),而非给 file provider 开绕过 cwd 的口子。
+
+### 配置(`FileProviderOptions` 新增,全部可选,默认=原行为)
+| 字段 | 含义 | 默认 |
+|---|---|---|
+| `includes?: string[]` | 正向 glob(cwd 相对),文件须命中 ≥1 条 | 全部允许 |
+| `excludes?: string[]` | 反向 glob(cwd 相对),命中即剔除 | 无 |
+| `respectGitignore?: boolean` | 是否尊重 cwd 的 .gitignore | true |
+| `id?/trigger?/kind?` | 覆盖,供注册多个 file provider(不同目录/触发符) | file/@/file |
+
+### glob 引擎
+零依赖自研 `completion/glob.ts`(`compileGlobs`):glob→RegExp,支持 `**`(跨目录;作目录前缀为零或多层)、`*`(段内)、`?`、`{a,b}`。统一替代正/反向匹配(.gitignore 仍用既有近似 matcher)。选型理由:picomatch 无自带类型且需装包;需求子集小,自研可控且与既有自包含风格一致。
+
+### 过滤管线(优先级 高→低)
+内置重目录跳过(dir 级剪枝) > `excludes`(dir 级亦剪枝) > `.gitignore`(可关) > `includes`。安全门(realpath 前缀,基准始终 cwd)与 symlink 不跟随不变;候选/插入路径恒 cwd 相对。
+
+### 多目录共存(框架原生)
+注册多个 file provider 即可,合并/优先级/去重由 registry+merge 处理,零端点改动:
+```ts
+register(createFileProvider());                                   // @ → cwd 全量
+register(createFileProvider({ id:"src", kind:"src", includes:["src/**/*.ts"], excludes:["**/*.test.ts"] }));
+register(createFileProvider({ id:"docs", trigger:"#", kind:"docs", includes:["**/*.md"] })); // # → 文档
+```
+
+### 测试(已加)
+`compileGlobs`(`**/*.ts`/`src/**`/顶层 `*.json`/`{a,b}`/空→null);file provider(includes 仅 ts + excludes 剔 test、excludes 胜 includes、respectGitignore=false 放行、id/trigger/kind 覆盖产出新 kind 与 `#docs:b.md` token)。server 全套 519 通过,默认行为零回归。

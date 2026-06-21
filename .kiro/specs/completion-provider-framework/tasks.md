@@ -139,3 +139,13 @@
 - **cursor 限制(v1)**:`PromptInput` 不暴露光标,core 浮层用 `cursor=input.length`,故仅光标在末尾时触发;规格验收流均在末尾输入,v1 可接受;后续若要中段编辑需让 PromptInput 暴露 selection。
 - **onCaptureChange 共享**:命令面板/补全浮层/webext mention 共用 `setCommandCapturing`;默认单 `@` provider 不冲突,但将来注册重叠触发符(如 `/` provider)需改为合并/OR 的捕获信号以防竞态。
 - **e2e 跑法**:浏览器 e2e 用外部 server 模式避免 webServer 双实例 120s 超时——`NEXT_DIST_DIR=.next-e2e pnpm build` 后,自起 `next start -p 3100`(stub env + SESSION_STORE=fs),再 `PI_WEB_E2E_EXTERNAL_SERVER=1 PI_WEB_E2E_FS_ROOT=$root pnpm exec playwright test ... --project=fs`。
+
+## 5. 增强(file provider includes/excludes/glob;root 已评估去除)
+
+- [x] 5.1 零依赖 glob 匹配器 + file provider includes/excludes/respectGitignore/override
+  - `completion/glob.ts`(`compileGlobs`:glob→RegExp,支持 `**`/`*`/`?`/`{a,b}`)
+  - `FileProviderOptions` 加 includes/excludes/respectGitignore + id/trigger/kind 覆盖;过滤管线
+    重目录跳过 > excludes(dir 级剪枝) > .gitignore(可关) > includes;路径恒 cwd 相对;安全门不变
+  - 决策:不引入 root(子目录用 includes 表达且性能等价;root 唯一独有=指向 cwd 外=高危)
+  - 观察完成:glob 单测 5 + file provider 选项单测 4 通过;server 全套 519 通过,默认行为零回归
+  - _Requirements: 5.2, 5.3, 9.2_

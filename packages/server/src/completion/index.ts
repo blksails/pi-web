@@ -16,6 +16,7 @@ export {
 export { mergeCompletions } from "./merge.js";
 export { normalizeTrigger } from "./normalize.js";
 export { serializeToken, parseTokens } from "./token.js";
+export { compileGlobs } from "./glob.js";
 export { resolveCompletions } from "./resolve.js";
 export {
   createFileProvider,

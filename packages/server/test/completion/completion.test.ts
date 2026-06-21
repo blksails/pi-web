@@ -322,3 +322,96 @@ describe("file provider", () => {
     expect(r).toBeNull();
   });
 });
+
+import { compileGlobs } from "../../src/completion/glob.js";
+
+describe("compileGlobs", () => {
+  it("**/*.ts 跨层匹配 ts;不匹配非 ts", () => {
+    const m = compileGlobs(["**/*.ts"])!;
+    expect(m("app.ts")).toBe(true);
+    expect(m("src/a/b.ts")).toBe(true);
+    expect(m("README.md")).toBe(false);
+  });
+  it("src/** 仅匹配 src 下", () => {
+    const m = compileGlobs(["src/**"])!;
+    expect(m("src/app.ts")).toBe(true);
+    expect(m("src/a/b.ts")).toBe(true);
+    expect(m("lib/app.ts")).toBe(false);
+  });
+  it("顶层 *.json 不跨目录", () => {
+    const m = compileGlobs(["*.json"])!;
+    expect(m("package.json")).toBe(true);
+    expect(m("packages/x/package.json")).toBe(false);
+  });
+  it("{a,b} 分支", () => {
+    const m = compileGlobs(["{src,lib}/**/*.ts"])!;
+    expect(m("src/a.ts")).toBe(true);
+    expect(m("lib/a.ts")).toBe(true);
+    expect(m("test/a.ts")).toBe(false);
+  });
+  it("空/未定义 → null", () => {
+    expect(compileGlobs(undefined)).toBeNull();
+    expect(compileGlobs([])).toBeNull();
+  });
+});
+
+describe("file provider 选项(includes/excludes/respectGitignore/override)", () => {
+  let dir: string;
+  beforeAll(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "cpf-opt-"));
+    await fs.writeFile(path.join(dir, "a.ts"), "x");
+    await fs.writeFile(path.join(dir, "a.test.ts"), "x");
+    await fs.writeFile(path.join(dir, "b.md"), "x");
+    await fs.mkdir(path.join(dir, "sub"));
+    await fs.writeFile(path.join(dir, "sub", "c.ts"), "x");
+    await fs.writeFile(path.join(dir, ".gitignore"), "ign.ts\n");
+    await fs.writeFile(path.join(dir, "ign.ts"), "x");
+  });
+  afterAll(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  const ctx = (): CompletionCtx => ({ sessionId: "s", cwd: dir, userId: "u" });
+  const ids = async (fp: ReturnType<typeof createFileProvider>): Promise<string[]> =>
+    (await fp.complete({ query: "", ctx: ctx() })).map((i) => i.id);
+
+  it("includes 仅 ts + excludes 剔除 test", async () => {
+    const fp = createFileProvider({
+      includes: ["**/*.ts"],
+      excludes: ["**/*.test.ts"],
+    });
+    const got = await ids(fp);
+    expect(got).toContain("a.ts");
+    expect(got).toContain("sub/c.ts");
+    expect(got).not.toContain("a.test.ts");
+    expect(got).not.toContain("b.md");
+  });
+
+  it("excludes 胜 includes", async () => {
+    const fp = createFileProvider({ includes: ["**/*.ts"], excludes: ["a.ts"] });
+    const got = await ids(fp);
+    expect(got).not.toContain("a.ts");
+    expect(got).toContain("sub/c.ts");
+  });
+
+  it("respectGitignore=false 放行被忽略文件", async () => {
+    const on = await ids(createFileProvider({ includes: ["**/*.ts"] }));
+    expect(on).not.toContain("ign.ts");
+    const off = await ids(
+      createFileProvider({ includes: ["**/*.ts"], respectGitignore: false }),
+    );
+    expect(off).toContain("ign.ts");
+  });
+
+  it("id/trigger/kind 覆盖 → 候选带新 kind 与 token", async () => {
+    const fp = createFileProvider({
+      id: "docs",
+      trigger: "#",
+      kind: "docs",
+      includes: ["**/*.md"],
+    });
+    expect(fp.trigger).toBe("#");
+    const items = await fp.complete({ query: "", ctx: ctx() });
+    expect(items.every((i) => i.kind === "docs")).toBe(true);
+    expect(items.find((i) => i.id === "b.md")?.insertText).toBe("#docs:b.md");
+  });
+});
