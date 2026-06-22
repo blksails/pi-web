@@ -171,6 +171,10 @@ export function agentMessagesToUiMessages(
         ? (m["content"] as ContentItem[])
         : [];
       const isError = m["isError"] === true;
+      // 历史 toolResult 同样携带 details(pi 持久化保留;含 assets/displayUrl)。透传以与即时
+      // streaming 的 output(translate-event 透传 event.result = { content, details })对齐,
+      // 消除即时/历史在工具卡片上的展示差异。无 details 时退回纯 content(行为不变)。
+      const details = m["details"];
       const existing = toolParts.get(toolCallId);
       if (existing !== undefined) {
         if (isError) {
@@ -178,7 +182,8 @@ export function agentMessagesToUiMessages(
           existing.errorText = joinText(content);
         } else {
           existing.state = "output-available";
-          existing.output = content;
+          existing.output =
+            details !== undefined ? { content, details } : content;
         }
         return;
       }
@@ -189,7 +194,11 @@ export function agentMessagesToUiMessages(
         toolCallId,
         state: isError ? "output-error" : "output-available",
         input: {},
-        ...(isError ? { errorText: joinText(content) } : { output: content }),
+        ...(isError
+          ? { errorText: joinText(content) }
+          : {
+              output: details !== undefined ? { content, details } : content,
+            }),
       };
       out.push({ id, role: "assistant", parts: [tp as unknown as UIPart] });
     }

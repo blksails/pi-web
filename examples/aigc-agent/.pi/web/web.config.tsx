@@ -25,9 +25,10 @@ function joinTextParts(parts: ReadonlyArray<unknown>): string {
 
 /**
  * 把 tool part 的 output 归一为 markdown 文本(含 `![](displayUrl)`),兼容两条路径的形态:
- *  - 即时 streaming:output = 工具结果完整对象 `{ content, details }`(translate-event 透传
- *    `event.result`)→ 优先用 `details.assets[].displayUrl`;
- *  - 历史回放:output = `content` 数组(agent-message-to-ui 仅取 `m.content`)→ 合并其 text;
+ *  - 即时 streaming 与历史回放现已同构:output = 工具结果对象 `{ content, details }`
+ *    (即时经 translate-event 透传 event.result;历史经 agent-message-to-ui 透传 m.details
+ *    —— pi 持久化历史**确实保留** details)→ 优先用 `details.assets[].displayUrl`;
+ *  - 纯 `content` 数组(无 details 的工具 / 旧消息)→ 合并其 text;
  *  - string:原样。
  */
 function extractText(output: unknown): string {

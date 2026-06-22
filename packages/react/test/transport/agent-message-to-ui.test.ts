@@ -97,6 +97,40 @@ describe("agentMessagesToUiMessages", () => {
     expect(tool.output).toEqual([{ type: "text", text: "ok" }]);
   });
 
+  it("toolResult 含 details → output 透传 { content, details }(对齐即时 streaming)", () => {
+    const details = {
+      ok: true,
+      assets: [
+        { attachmentId: "att_x", displayUrl: "/api/attachments/att_x/raw?sig=y" },
+      ],
+    };
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [
+            { type: "toolCall", id: "t1", name: "text_to_image", arguments: {} },
+          ],
+        },
+        {
+          role: "toolResult",
+          toolCallId: "t1",
+          toolName: "text_to_image",
+          content: [{ type: "text", text: "生成成功" }],
+          details,
+          isError: false,
+        },
+      ]),
+    );
+    const tool = (out[0]?.parts ?? [])[0] as Record<string, unknown>;
+    expect(tool.state).toBe("output-available");
+    // 历史也透传 details(pi 持久化保留),与即时 streaming 的 { content, details } 同构。
+    expect(tool.output).toEqual({
+      content: [{ type: "text", text: "生成成功" }],
+      details,
+    });
+  });
+
   it("toolResult isError → output-error + errorText", () => {
     const out = agentMessagesToUiMessages(
       msgs([
