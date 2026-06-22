@@ -8,7 +8,8 @@ pi-web 是 **pi 自定义 Agent 的即时 Web UI**:给定一个目录或 git 仓
 - **双模式载入**:有 `index.[js|ts]` → 用 SDK `runRpcMode` 跑自定义 agent;无入口 → 回退通用 `pi --mode rpc`。两者对外是同一套 RPC 协议。
 - **流式对话 UI**:基于 Next.js + shadcn/ui + Vercel AI Elements,经 SSE + AI SDK v5 自定义 `ChatTransport` 渲染文本/思考/工具调用。
 - **pi 资源体系直通**:extensions / skills / prompt templates 自动发现 + 声明式注入,权限弹窗经 extension UI 子协议。
-- **开放可集成**:分层 npm 包(protocol/server/react/ui/embed)+ 语言无关 HTTP/SSE 协议 + 渲染器注册表,可嵌入任意 Web 项目。
+- **附件系统**:图片/文件上传经对象存储(可插拔后端,先本地)落库 + 签名分发 URL 展示。两条消费路径:**base64 喂 LLM 识别**,以及**文件交 server 端 tool**(图像编辑/生成)经 `attachmentId` 解析执行、产出回流并可被下一轮再次引用。
+- **开放可集成**:分层 npm 包(protocol/server/react/ui/agent-kit;embed 规划中)+ 语言无关 HTTP/SSE 协议 + 渲染器注册表,可嵌入任意 Web 项目。
 
 ## 目标使用场景
 

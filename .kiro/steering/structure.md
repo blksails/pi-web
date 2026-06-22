@@ -41,7 +41,7 @@ import { translate } from './event-to-uimessage'        // 相对(同模块)
 
 ## 代码组织原则
 
-- **传输/隔离用接口隔开**:`PiRpcChannel`、`agentHostProvider`、`SessionStore` 是为未来(e2b/edge/device)预留的接缝,M1 即按接口写。
+- **传输/隔离/存储用接口隔开**:`PiRpcChannel`、`agentHostProvider`、`SessionStore`、`BlobStore`(附件对象存储,LocalFs→S3)是为未来(e2b/edge/device、对象存储)预留的接缝,按接口写、后端经配置切换。附件能力按 L0 存储 / L1 引用 / L2 投影(resolve) / L3 context 闸门分层,模块在 `@pi-web/server` 的 `attachment/`(存储)与 `attachment-bridge/`(tool 桥接)。
 - **协议是稳定契约**:`@pi-web/protocol` 的类型/schema 改动需语义化版本;SSE 帧带 `protocolVersion`。
 - **安全是可替换策略而非硬编码**:沙箱、信任(`trustPolicy`)、鉴权(`authResolver`)做成插件点。
 - **spec 边界 = 包/层边界**:从内核到外围拆分,每层可独立测试 + e2e。
