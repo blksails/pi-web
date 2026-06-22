@@ -81,9 +81,12 @@ function AigcImageRenderer({
   const [view, setView] = React.useState<"image" | "json">("image");
 
   // image:把 output 换成 markdown(含 `![](displayUrl)`),由 PiToolPart 的 Response 渲成图;
-  // json:原样展示完整 output(含 details/assets);历史也透传 details(见 agent-message-to-ui),
-  // 故即时/历史两路径在 JSON 视图下同样完整且一致。
-  const output = view === "image" ? extractText(part.output) : part.output;
+  // json:展示**完整工具调用**——输入参数 input(prompt/model 等)+ 输出 output(含 details/assets)。
+  //   PiToolPart 在完成态只渲染 output,故把 input 一并并入 output 对象,使调用参数可见。
+  const output =
+    view === "image"
+      ? extractText(part.output)
+      : { input: part.input, output: part.output };
   const patched = { ...part, output };
 
   return (
