@@ -121,10 +121,15 @@ function makeRealResolver(config: AppConfig): {
  * how this module is bundled. Overridable via PI_WEB_STUB_AGENT_PATH.
  */
 function stubAgentPath(): string {
-  return (
-    process.env.PI_WEB_STUB_AGENT_PATH ??
-    path.join(process.cwd(), "lib", "app", "stub-agent-process.mjs")
-  );
+  const override = process.env.PI_WEB_STUB_AGENT_PATH;
+  if (override !== undefined && override !== "") {
+    // Resolve against the project root (`process.cwd()`, where the Next server
+    // runs) so a RELATIVE override works regardless of the stub's spawn cwd
+    // (= the `@pi-web/server` package dir). `path.resolve` passes an absolute
+    // override through unchanged.
+    return path.resolve(process.cwd(), override);
+  }
+  return path.join(process.cwd(), "lib", "app", "stub-agent-process.mjs");
 }
 
 /**
