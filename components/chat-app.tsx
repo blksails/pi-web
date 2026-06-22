@@ -291,10 +291,10 @@ function SessionView({
 
   return (
     <div className="flex h-full w-full flex-col" data-session-active>
-      <div className="flex items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-2">
-        <span className="text-sm font-medium">pi-web</span>
+      <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 sm:gap-3 sm:px-4">
+        <span className="shrink-0 text-sm font-medium">pi-web</span>
         <span
-          className="text-xs text-[hsl(var(--muted-foreground))]"
+          className="hidden truncate text-xs text-[hsl(var(--muted-foreground))] sm:inline"
           data-session-id
         >
           session: {session.sessionId}
@@ -302,7 +302,7 @@ function SessionView({
         <button
           type="button"
           onClick={onNewByAgentSource}
-          className="ml-auto rounded-md border border-[hsl(var(--border))] px-3 py-1 text-xs"
+          className="ml-auto shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-new-session
         >
           New session
@@ -310,14 +310,14 @@ function SessionView({
         <button
           type="button"
           onClick={onReset}
-          className="rounded-md border border-[hsl(var(--border))] px-3 py-1 text-xs"
+          className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-switch-source
         >
           切换源
         </button>
         <a
           href="/settings"
-          className="rounded-md border border-[hsl(var(--border))] px-3 py-1 text-xs"
+          className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-settings-link
         >
           设置

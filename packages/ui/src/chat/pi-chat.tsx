@@ -765,7 +765,7 @@ export function PiChat({
     <div className="relative flex min-h-0 flex-1 flex-col">
       <Conversation className="flex-1">
         <div
-          className={cn(lay.content, "space-y-4 pt-3")}
+          className={cn(lay.content, "space-y-4 px-3 pt-3 md:px-0")}
           data-pi-chat-messages
           style={{ paddingBottom: dockHeight + 16 }}
         >
@@ -844,7 +844,7 @@ export function PiChat({
         data-pi-input-dock
         className="pointer-events-none absolute inset-x-0 bottom-0"
       >
-        <div className={cn("pointer-events-auto pb-2", lay.content)}>
+        <div className={cn("pointer-events-auto px-3 pb-2 md:px-0", lay.content)}>
           {inputWithWidgets}
           {/* 内核自有会话用量条(非 webext slot):随输入 dock 底部固定,置于输入框下方,
               与输入框同宽同居中(共用 lay.content),不增列高、不溢出;与顶部 webext
@@ -872,7 +872,7 @@ export function PiChat({
       data-pi-chat-empty={isEmpty ? "true" : "false"}
     >
       {dismissNotification !== undefined ? (
-        <div className="pointer-events-none absolute right-4 top-4 z-50 flex w-full max-w-sm flex-col gap-2">
+        <div className="pointer-events-none absolute right-4 top-4 z-50 flex w-full max-w-[calc(100vw-2rem)] flex-col gap-2 sm:max-w-sm">
           <div className="pointer-events-auto">
             <Notifications
               notifications={notifications}

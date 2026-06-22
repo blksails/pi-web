@@ -120,7 +120,7 @@ export function Message({
         data-pi-message-role={role}
       >
         <div
-          className="max-w-[80%] rounded-2xl bg-[hsl(var(--muted))] px-4 py-2.5 text-sm text-[hsl(var(--foreground))]"
+          className="max-w-[88%] rounded-2xl bg-[hsl(var(--muted))] px-3.5 py-2.5 text-sm text-[hsl(var(--foreground))] sm:max-w-[80%] sm:px-4"
           data-pi-message-content
         >
           {children}

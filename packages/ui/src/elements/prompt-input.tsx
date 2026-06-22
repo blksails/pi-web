@@ -166,7 +166,7 @@ export function PromptInput({
 
       {toolbar !== undefined ? (
         <div
-          className="flex items-center gap-2"
+          className="flex flex-wrap items-center gap-2"
           data-pi-prompt-input-toolbar
         >
           {toolbar}
