@@ -70,23 +70,6 @@ function tabStyle(active: boolean): React.CSSProperties {
   };
 }
 
-/**
- * 归一 output 为 `content` 数组,消除即时(`{ content, details }`)与历史(`content[]`)
- * 的展示差异 —— 即时独有的 `details`(tool 内部明细,历史不持久化)在 JSON 视图剥掉,
- * 使两条路径在图片/JSON 两个视图下展示一致。
- */
-function normalizeContent(output: unknown): unknown {
-  if (
-    output &&
-    typeof output === "object" &&
-    !Array.isArray(output) &&
-    "content" in output
-  ) {
-    return (output as { content?: unknown }).content;
-  }
-  return output;
-}
-
 function AigcImageRenderer({
   part,
   message,
@@ -98,9 +81,9 @@ function AigcImageRenderer({
   const [view, setView] = React.useState<"image" | "json">("image");
 
   // image:把 output 换成 markdown(含 `![](displayUrl)`),由 PiToolPart 的 Response 渲成图;
-  // json:归一为 content 数组(剥即时独有 details)交给 PiToolPart → JsonBlock,两路径展示一致。
-  const output =
-    view === "image" ? extractText(part.output) : normalizeContent(part.output);
+  // json:原样展示完整 output(含 details/assets);历史也透传 details(见 agent-message-to-ui),
+  // 故即时/历史两路径在 JSON 视图下同样完整且一致。
+  const output = view === "image" ? extractText(part.output) : part.output;
   const patched = { ...part, output };
 
   return (
