@@ -41,6 +41,9 @@ function resolveDisplayUrl(baseUrl: string, url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
   if (!url.startsWith("/")) return url;
   if (baseUrl === "") return url;
+  // 已含 baseUrl 前缀(displayUrl 可能已是完整 `/api/attachments/...`)→ 不重复 prepend,
+  // 避免 `/api/api/...` 双前缀 404。仅纯根相对(如 attachmentId 构造的 `/attachments/...`)才前缀。
+  if (url === baseUrl || url.startsWith(`${baseUrl}/`)) return url;
   return joinUrl(baseUrl, url);
 }
 
