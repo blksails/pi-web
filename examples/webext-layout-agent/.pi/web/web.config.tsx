@@ -13,7 +13,12 @@ function InfoPanel(): React.JSX.Element {
 
 export default defineWebExtension({
   manifestId: "webext-layout",
-  capabilities: ["slots"],
+  capabilities: ["slots", "config"],
+  // Tier5 声明式:panelRight 初始让位比例 3:7(对话 30% / 领域检视面板 70%)。
+  // 宿主据此渲染右下角段控切换器,运行时可在 居中 / 2:1 / 3:7 间动态切换。
+  config: {
+    panelRatio: "3:7",
+  },
   slots: {
     headerLeft: <span data-testid="layout-header-left">◧ Nav</span>,
     headerCenter: <span data-testid="layout-header">Layout Agent</span>,

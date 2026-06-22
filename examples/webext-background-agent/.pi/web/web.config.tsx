@@ -9,13 +9,19 @@
 import * as React from "react";
 import { defineWebExtension } from "@pi-web/web-kit";
 
+// 极光背景对「会话态」做出反应:宿主在 chat 根挂 `data-pi-chat-empty="true|false"`
+// (空屏 vs 已有消息)。本扩展据此在自己的 CSS 里切换观感 —— 无需宿主改动、无需把
+// 消息状态传进组件:用祖先属性选择器即可。空屏=静谧(低不饱和、缓慢、聚拢);
+// 交互后=鲜明(更亮、铺开、加一道居中辉光),并以过渡平滑切换,直观体现两态差异。
 const CSS = `
 .pw-webext-background-aurora {
   position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  transition: background 1.2s ease;
 }
 .pw-webext-background-blob {
   position: absolute; width: 48vmax; height: 48vmax; border-radius: 50%;
-  filter: blur(80px); opacity: 0.45; will-change: transform;
+  filter: blur(80px); opacity: 0.30; will-change: transform, opacity;
+  transition: opacity 1.2s ease, filter 1.2s ease, transform 1.2s ease;
 }
 .pw-webext-background-blob-a {
   top: -12%; left: -10%;
@@ -32,6 +38,24 @@ const CSS = `
   background: radial-gradient(circle, #db2777, transparent 62%);
   animation: pw-webext-background-drift-c 30s ease-in-out infinite alternate;
 }
+/* 居中辉光:仅交互态淡入,强化「对话已开始」的氛围。 */
+.pw-webext-background-glow {
+  position: absolute; left: 50%; top: 42%; width: 70vmax; height: 70vmax;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(124,58,237,0.18), transparent 60%);
+  opacity: 0; transition: opacity 1.4s ease; will-change: opacity;
+}
+
+/* —— 空屏(默认):静谧。低不饱和、聚拢、漂移更慢。 */
+.pw-webext-background-aurora { filter: saturate(0.72); }
+
+/* —— 交互后:鲜明。祖先 [data-pi-chat-empty="false"] 命中即整体提亮、铺开。 */
+[data-pi-chat-empty="false"] .pw-webext-background-aurora { filter: saturate(1.15); }
+[data-pi-chat-empty="false"] .pw-webext-background-blob { opacity: 0.62; filter: blur(64px); }
+[data-pi-chat-empty="false"] .pw-webext-background-blob-a { transform: translate(4vw, 2vh) scale(1.12); }
+[data-pi-chat-empty="false"] .pw-webext-background-blob-b { transform: translate(-4vw, -2vh) scale(1.12); }
+[data-pi-chat-empty="false"] .pw-webext-background-glow { opacity: 1; }
+
 @keyframes pw-webext-background-drift-a {
   from { transform: translate(0,0) scale(1); } to { transform: translate(18vw,14vh) scale(1.2); }
 }
@@ -53,6 +77,7 @@ function Aurora(): React.JSX.Element {
       <span className="pw-webext-background-blob pw-webext-background-blob-a" />
       <span className="pw-webext-background-blob pw-webext-background-blob-b" />
       <span className="pw-webext-background-blob pw-webext-background-blob-c" />
+      <span className="pw-webext-background-glow" />
     </div>
   );
 }

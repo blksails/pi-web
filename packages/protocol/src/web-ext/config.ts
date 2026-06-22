@@ -14,6 +14,16 @@ export const LayoutPresetSchema = z.string();
 export type LayoutPreset = z.infer<typeof LayoutPresetSchema>;
 
 /**
+ * panelRight 让位比例(对话区 : 右侧领域检视面板)。声明的是「初始」比例;
+ * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在三档间动态切换:
+ * - `centered` 收起面板、对话居中(经典版面);
+ * - `2:1` 对话 ~66% / 面板 ~33%;
+ * - `3:7` 对话 30% / 面板 70%(面板为主,适合检视/仪表盘型 agent)。
+ */
+export const PanelRatioSchema = z.enum(["centered", "2:1", "3:7"]);
+export type PanelRatio = z.infer<typeof PanelRatioSchema>;
+
+/**
  * 空态建议项(可序列化)。字段与 `@pi-web/react` 的 `Suggestion` 对齐:
  * protocol 不可依赖 react,故在此独立定义;宿主透传时类型相容直接作为 suggestionsPresets。
  */
@@ -43,6 +53,8 @@ export type EmptyConfig = z.infer<typeof EmptyConfigSchema>;
 export const WebExtConfigSchema = z.object({
   theme: ThemeTokensSchema.optional(),
   layout: LayoutPresetSchema.optional(),
+  /** panelRight 让位的初始比例(运行时可由宿主切换器改写)。 */
+  panelRatio: PanelRatioSchema.optional(),
   empty: EmptyConfigSchema.optional(),
   /**
    * 浏览器标签页标题(document.title)。agent source 载入后由宿主同步;

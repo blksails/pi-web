@@ -56,14 +56,26 @@ export default defineWebExtension({
       mergeCommands: "prepend",
     },
   },
+  // Tier1 协议保留插槽「全集」(18 槽,对齐 protocol SlotKeySchema)。每槽一个带
+  // data-testid 的可见 fixture,逐项验收宿主让位点是否全部接通。
   slots: {
+    // 背景层(宿主渲染于 absolute inset-0 -z-10、消息层之下;容器仅挂 data-pi-chat-background,
+    // 不发 data-pi-ext-*,故此 fixture 在左上角可见即证明 background 槽已接通)。
+    background: <Slot id="background" label="Ext Background" />,
+    // header 三区(宿主合并到单个 [data-pi-ext-header] 容器,Left/Center/Right 横向排布)。
+    headerLeft: <Slot id="header-left" label="Header L" />,
+    headerCenter: <Slot id="header-center" label="Header C" />,
+    headerRight: <Slot id="header-right" label="Header R" />,
     sidebarLeft: <Slot id="sidebar-left" label="Sidebar L" />,
+    // 右侧领域检视面板([data-pi-ext-panel-right],lg 断点显示)。
+    panelRight: <Slot id="panel-right" label="Panel Right" />,
     toolbar: <Slot id="toolbar" label="Toolbar" />,
     accessoryAboveEditor: <Slot id="accessory-above" label="Above Editor" />,
     accessoryBelowEditor: <Slot id="accessory-below" label="Below Editor" />,
     accessoryInlineLeft: <Slot id="accessory-inline-left" label="◀" />,
     accessoryInlineRight: <Slot id="accessory-inline-right" label="▶" />,
     empty: <Slot id="empty" label="Ext Empty State" />,
+    footer: <Slot id="footer" label="Ext Footer" />,
     notifications: <Slot id="notifications" label="Ext Notification" />,
     statusBar: <Slot id="status-bar" label="Ext Status" />,
     artifactSurface: <Slot id="artifact-surface" label="Artifact Surface" />,

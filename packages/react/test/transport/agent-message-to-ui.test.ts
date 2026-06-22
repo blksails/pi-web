@@ -28,6 +28,59 @@ describe("agentMessagesToUiMessages", () => {
     ]);
   });
 
+  it("user string content 含附件引用占位符 → 剥离占位符,只留用户文本", () => {
+    // 复刻 server 端 injectAttachmentRefs 的注入形态:占位符块在前、空行分隔、原文本在后。
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content:
+            "[attachment id=att_-ELR9OCaib2J8DK4jIbPsg type=image/jpeg name=4A532F59-8139-4DF4-B8C0-A41197503462_1_105_c.jpeg]\n\n看到什么",
+        },
+      ]),
+    );
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "看到什么", state: "done" },
+    ]);
+  });
+
+  it("user string content 多个占位符 + 文本 → 全部剥离,只留文本", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content:
+            "[attachment id=att_a type=image/png name=a.png]\n[attachment id=att_b type=application/pdf name=b.pdf]\n\n看看这两个",
+        },
+      ]),
+    );
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "看看这两个", state: "done" },
+    ]);
+  });
+
+  it("user string content 纯附件无文本 → 不产生空 text part", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "user",
+          content: "[attachment id=att_a type=image/png name=a.png]\n\n",
+        },
+      ]),
+    );
+    expect(out[0]?.role).toBe("user");
+    expect(out[0]?.parts).toEqual([]);
+  });
+
+  it("user string content 无占位符 → 原样保留(不误伤普通方括号文本)", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([{ role: "user", content: "数组写作 a[0] 看 [TODO] 项" }]),
+    );
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "数组写作 a[0] 看 [TODO] 项", state: "done" },
+    ]);
+  });
+
   it("user 数组 content → text + file(image)parts", () => {
     const out = agentMessagesToUiMessages(
       msgs([

@@ -14,6 +14,8 @@ export {
   type ThemeTokens,
   LayoutPresetSchema,
   type LayoutPreset,
+  PanelRatioSchema,
+  type PanelRatio,
   EmptySuggestionSchema,
   type EmptySuggestion,
   EmptyConfigSchema,

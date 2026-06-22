@@ -7,6 +7,31 @@
 
 export type LayoutPreset = "centered" | "wide" | "full" | "split";
 
+/**
+ * panelRight 让位比例(对话区 : 右侧面板)。运行时可由宿主段控切换器在三档间切换。
+ * 与 protocol `PanelRatio` 同形(此处独立声明,避免 customization 反向依赖契约枚举值)。
+ */
+export type PanelRatio = "centered" | "2:1" | "3:7";
+
+export const PANEL_RATIOS: ReadonlyArray<PanelRatio> = ["centered", "2:1", "3:7"];
+
+/** 段控切换器上的可读标签。 */
+export const PANEL_RATIO_LABEL: Record<PanelRatio, string> = {
+  centered: "居中",
+  "2:1": "2:1",
+  "3:7": "3:7",
+};
+
+/**
+ * 各比例下右侧 aside 的宽度(占容器百分比);对话列为 flex-1 自动吃掉余量。
+ * `centered` 收起 aside(返回 undefined),由对话列独占并经 lay.content 居中。
+ */
+export const PANEL_RATIO_ASIDE_WIDTH: Record<PanelRatio, string | undefined> = {
+  centered: undefined,
+  "2:1": "33.333%",
+  "3:7": "70%",
+};
+
 export interface LayoutClassNames {
   /** 外层容器附加类。 */
   readonly root: string;

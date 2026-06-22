@@ -34,12 +34,12 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 
 | # | source（`./examples/…`） | Tier / 能力 | 验收要点 | 首屏可见？ |
 |---|---|---|---|---|
-| 1 | webext-layout-agent | Tier1 区域插槽 | panelRight「领域检视面板」+ header 三区(Nav/Layout Agent/Help) + footer | ✅ |
-| 2 | webext-slots-agent | Tier1 12 保留插槽 | 12 个 `data-pi-ext-*` 全渲染；**追加不替换**内核输入/消息面 | ✅ |
-| 3 | webext-background-agent | Tier1 自定义背景 | 极光背景在消息层之下；会话态浮动底栏**无**纯色渐隐带 | ⚠️ 需进会话态 |
-| 4 | webext-renderer-agent | 自定义工具/消息渲染器 | 发 `echo the text: ...` → 真实 LLM 调 `echo` 工具 → 命中 `EchoToolRenderer`（`data-testid="echo-tool-card"`，默认 `[data-pi-tool]`=0=注册表覆盖）。见 [[webext-renderer-stub-trigger]] | ⚠️ 需发 echo 指令驱动一轮 |
-| 5 | webext-artifact-agent | Tier4 artifact iframe | **仅当设了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 才挂载 `<ArtifactSurface>` iframe**；裸 dev 无 iframe/无 `data-pi-ext-artifact-surface` 是**正确门控**（别误判）。见 [[webext-artifact-base-url-gate]] | ⚠️ 需配 base-url |
-| 6 | webext-declarative-agent | 纯声明(theme/layout) | **零 bundle、无扩展面板、回退默认聊天**（预期"像默认"，别误判为没加载） | ✅ |
+| 1 | webext-layout-agent | Tier1 区域插槽 + 比例切换 | panelRight「领域检视面板」+ header 三区(Nav/Layout Agent/Help) + footer；**初始 3:7**(对话 30%/面板 70%)+ 右下角段控切换器(居中/2:1/3:7)运行时动态切换 | ✅ |
+| 2 | webext-slots-agent | Tier1 18 保留插槽全集 | **15 个** `data-pi-ext-*` 全渲染(12 RESERVED + header/footer/panel-right) + `background` fixture(`[data-testid=slot-background]`,**不发** `data-pi-ext-*`)；**追加不替换**内核输入/消息面 | ✅ |
+| 3 | webext-background-agent | Tier1 自定义背景(空/活两态) | 极光背景在消息层之下；会话态浮动底栏**无**纯色渐隐带。**空屏 vs 交互后两态**:背景靠祖先 `[data-pi-chat-empty]` 自切观感(空屏=静谧 `saturate(0.72)`/光斑 opacity 0.30/无辉光;交互后=鲜明 `saturate(1.15)`/0.62/居中辉光淡入),发首条消息即 1.2s 过渡 | ⚠️ 需进会话态(对比两态) |
+| 4 | webext-renderer-agent | 自定义工具/消息渲染器 | 发 `echo the text: ...` → 真实 LLM 调 `echo` 工具 → 命中 `EchoToolRenderer`（`data-testid="echo-tool-card"`，默认 `[data-pi-tool]`=0=注册表覆盖）。**富卡片**:读 `part.input/output/state`,渲染「头部+状态徽标(运行中/完成/出错) + 输入·text(`[data-testid=echo-input]`) + 输出·echoed(`[data-testid=echo-output]`)」三段,配色取宿主主题 token。见 [[webext-renderer-stub-trigger]] | ⚠️ 需发 echo 指令驱动一轮 |
+| 5 | webext-artifact-agent | Tier4 artifact iframe | **仅当设了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 才挂载 `<ArtifactSurface>` iframe**(挂载后 iframe 带 `data-pi-artifact`,在 `aside[data-pi-chat-aside]` 内,src=`webext-artifact/artifact.html`)。**注:`.env.local` 现已配置 base-url → 默认走「门控 ON」侧、有 iframe**；裸环境(未配)无 iframe 才是 OFF 侧正确门控。见 [[webext-artifact-base-url-gate]] | ⚠️ 取决于 base-url 是否配置 |
+| 6 | webext-declarative-agent | 纯声明(theme/layout/empty) | **零 bundle、无扩展面板**,但有**可见的零代码效果**(别再误判"像默认没加载"):紫主题(`--primary: 262 83% 58%` 重着色发送键/焦点环)+ `layout:wide`(对话列 max-w-5xl 更宽)+ 自定义空态(标题「纯声明式扩展 · 零代码」+ 副标题 + 3 建议项)+ 标签页标题「Declarative · pi-web」。仍 `extCount===1`(仅 `data-pi-ext-theme`)、`panelRight===false` | ✅ |
 | 7 | webext-contrib-agent | Tier3 ui-rpc 贡献点 | slash/mention/autocomplete/keybinding 贡献 | ⚠️ 仅 `hasContributions && !isBusy` 时开，见 [[pi-web-uirpc-idle-control-stream]] |
 
 ---
@@ -63,15 +63,44 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
               sessionActive: !!document.querySelector('[data-session-active]') };
    }
    ```
-   - slots → `extCount===12`；layout → panelRight/footer 在；declarative → 仅 `data-pi-ext-theme` 一个包裹（`extCount===1`、`panelRight===false`，符合预期：声明式只应用主题/布局，无 slot 面板）。
+   - slots → `extCount===15`(18 槽全集:12 RESERVED + header/footer/panel-right;`background` 走 fixture 不计入 `data-pi-ext-*`)；layout → panelRight/footer 在,且 `[data-pi-panel-ratio-switch]` 初始 `3:7`、aside `style.width:70%`；declarative → 仅 `data-pi-ext-theme` 一个包裹（`extCount===1`、`panelRight===false`，符合预期：声明式只应用主题/布局，无 slot 面板）。
+
+   **比例切换验收(仅 layout/slots 这类有 panelRight 的源)**:右下角 `[data-pi-panel-ratio-switch]` 段控,点 `[data-pi-ratio-option="2:1"|"3:7"|"centered"]`:
+   - `3:7` → aside `style.width==="70%"`、`[data-pi-panel-ratio]="3:7"`;
+   - `2:1` → `33.333%`;
+   - `centered` → 收起 aside(`[data-pi-chat-aside]` 与 `[data-pi-ext-panel-right]` 均消失),但切换器仍在场,可切回。
+   初始档由扩展 `config.panelRatio` 声明(layout-agent=`3:7`),缺省 `2:1`。
+
+6. **三处演示增强的核对**(对应各 source 的"丰富度"验收):
+   ```js
+   // background:发一条消息前后各跑一次,对比应不同
+   () => {
+     const a = document.querySelector('.pw-webext-background-aurora');
+     const b = document.querySelector('.pw-webext-background-blob-a');
+     const g = document.querySelector('.pw-webext-background-glow');
+     const empty = document.querySelector('[data-pi-chat-empty]')?.getAttribute('data-pi-chat-empty');
+     return { empty, saturate: getComputedStyle(a).filter,
+              blobOpacity: getComputedStyle(b).opacity, glow: getComputedStyle(g).opacity };
+     // 空屏 → {empty:"true",  saturate:"saturate(0.72)", blobOpacity:"0.3",  glow:"0"}
+     // 交互 → {empty:"false", saturate:"saturate(1.15)", blobOpacity:"0.62", glow:"1"}
+   }
+   // renderer:echo 富卡片三段齐全
+   () => ({ card: document.querySelectorAll('[data-testid="echo-tool-card"]').length,
+            input: !!document.querySelector('[data-testid="echo-input"]'),
+            output: !!document.querySelector('[data-testid="echo-output"]') })  // {1,true,true}
+   // declarative:紫主题 + 宽布局 + 空态 + 标题
+   () => ({ primary: getComputedStyle(document.querySelector('[data-pi-ext-theme]')).getPropertyValue('--primary').trim(),
+            wide: !!document.querySelector('[data-pi-chat-pro] .max-w-5xl'),
+            title: document.title })  // {"262 83% 58%", true, "Declarative · pi-web"}
+   ```
 
 ---
 
 ## 3. 验收注意事项
 
-- **3 / 4 / 7 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条消息。其中 **4 发 `echo the text: ...`** 让真实 LLM 调 echo 工具（3 发任意消息进会话态、7 打 `/` 触发 ui-rpc）。
+- **3 / 4 / 7 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条消息。其中 **4 发 `echo the text: ...`** 让真实 LLM 调 echo 工具（**3 发任意消息进会话态——发前发后各看一次背景,对比空/活两态**、7 打 `/` 触发 ui-rpc）。
 - **刷新不丢扩展**（已修复）：source 经 app 级 `sessionId→source` 映射按 id 恢复，URL 保持纯净 `/session/:id`，不暴露文件路径。验收时刷新一个 fresh 会话应仍见扩展。见 [[webext-review-checklist]] 关联的 resume 修复。
-- **declarative 的"无扩展"是正确结果**，不是 bug。
+- **declarative 仍是"无扩展面板"(零 bundle)**,但**有可见的零代码效果**(紫主题/宽布局/自定义空态/标签页标题)—— 不要再当成"像默认没加载"误判;`extCount===1`(仅 theme 包裹)是正确结果。
 - 改了注入路由 / 配置域后需重启 dev（handler 单例 pin 在 globalThis）。见 [[pi-web-handler-singleton-restart]]。
 - 背景层负 z-index 需 `isolation:isolate` 逃逸壳底遮挡。见 [[pi-web-bg-slot-isolate]]。
 

@@ -4,6 +4,8 @@
  *
  * 映射(对齐 `PartRenderer` 消费的 part 类型):
  *  - user:`content` 为 string → 单个 text part;数组 → text / file(image)parts。
+ *    text 经 `stripAttachmentRefs` 剥离 server 端 `injectAttachmentRefs` 注入的
+ *    `[attachment id=… type=… name=…]` 占位符(对偶单向注入),避免历史回放把占位符当乱码显示。
  *    image part 的 url 按引用解析:带 `displayUrl`/公开 `attachmentId` → 分发端点 URL;
  *    遗留无 id 的内联 base64 → 重建 `data:` URL(防回归,见 `imageUrl`)。
  *  - assistant:`text` → text part;`thinking` → reasoning part;`toolCall` → dynamic-tool
@@ -98,16 +100,43 @@ function joinText(content: readonly ContentItem[]): string {
     .join("");
 }
 
-/** user 消息内容 → UI parts(text / file)。 */
+/**
+ * 剥离注入到用户消息文本里的附件引用占位符块(与 server 端 `injectAttachmentRefs`
+ * 对偶):每个 `[attachment id=att_… type=<mime> name=<name>]` 标记连同其行尾换行一并移除,
+ * 再去掉块后残留的前导空行,只保留用户真正输入的文本。
+ *
+ * 背景:`injectAttachmentRefs`(`packages/server/src/attachment-bridge/reference-injection.ts`)
+ * 把这些占位符注入用户消息文本以**送给模型**抄 id 调 tool;它是单向的。历史回放经
+ * `get_messages` 取出的 user `content` 已含占位符,若直接当文本渲染会把 `[attachment …]`
+ * 当作可见乱码显示给用户(刷新后才暴露,与发送当下只见纯文本不一致)。此处做反向剥离,
+ * 使历史里的用户气泡与发送当下一致——只显示用户输入文本。
+ *
+ * 仅匹配 `[attachment id=… type=… name=…]` 这一稳定形态,不误伤用户输入的普通方括号文本。
+ */
+const ATTACHMENT_REF_RE = /\[attachment id=\S+ type=\S+ name=[^\]]*\]\n?/g;
+function stripAttachmentRefs(text: string): string {
+  if (!text.includes("[attachment id=")) return text;
+  return text.replace(ATTACHMENT_REF_RE, "").replace(/^\n+/, "");
+}
+
+/** user 消息内容 → UI parts(text / file);剥离附件引用占位符(见 stripAttachmentRefs)。 */
 function userParts(content: unknown, baseUrl: string): UIPart[] {
   if (typeof content === "string") {
-    return [{ type: "text", text: content, state: "done" } as UIPart];
+    const text = stripAttachmentRefs(content);
+    // 纯附件消息(占位符剥离后无真实文本)→ 不产生空 text part。
+    if (content.includes("[attachment id=") && text === "") return [];
+    return [{ type: "text", text, state: "done" } as UIPart];
   }
   if (!Array.isArray(content)) return [];
   const parts: UIPart[] = [];
   for (const raw of content as ContentItem[]) {
     if (raw.type === "text") {
-      parts.push({ type: "text", text: String(raw.text ?? ""), state: "done" } as UIPart);
+      const original = String(raw.text ?? "");
+      const text = stripAttachmentRefs(original);
+      // 纯附件 text item(占位符剥离后无真实文本)→ 跳过,避免空 text part;
+      // 不含占位符的(含原本就空的)保持既有行为,原样产出。
+      if (original.includes("[attachment id=") && text === "") continue;
+      parts.push({ type: "text", text, state: "done" } as UIPart);
     } else if (raw.type === "image") {
       parts.push({
         type: "file",

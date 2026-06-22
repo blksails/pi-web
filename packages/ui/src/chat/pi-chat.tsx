@@ -51,6 +51,10 @@ import {
 import {
   layoutClassNames,
   type LayoutPreset,
+  type PanelRatio,
+  PANEL_RATIOS,
+  PANEL_RATIO_LABEL,
+  PANEL_RATIO_ASIDE_WIDTH,
 } from "../customization/layout.js";
 import { ThemeProvider, type ThemeMode } from "../theme/theme-provider.js";
 import {
@@ -104,6 +108,11 @@ export interface PiChatProps {
   readonly icons?: IconTheme;
   /** 布局预设(Req 7);缺省等价现行版面。 */
   readonly layout?: LayoutPreset;
+  /**
+   * panelRight 让位的「初始」比例(对话区 : 右侧面板);仅在扩展声明 panelRight 时生效。
+   * 宿主据此渲染段控切换器,运行时可在 居中/2:1/3:7 间动态切换;缺省 `2:1`(≈现行 w-96)。
+   */
+  readonly panelRatio?: PanelRatio;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
@@ -210,6 +219,7 @@ export function PiChat({
   components,
   icons,
   layout,
+  panelRatio: panelRatioInitial,
   theme,
   toolbarOrder,
   extensionCommands,
@@ -271,6 +281,15 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+
+  // panelRight 让位比例:以扩展声明的初始值播种,运行时由段控切换器改写。
+  // 换 source(扩展声明的初始比例变化)时重置回新声明值。
+  const [panelRatio, setPanelRatio] = React.useState<PanelRatio>(
+    panelRatioInitial ?? "2:1",
+  );
+  React.useEffect(() => {
+    setPanelRatio(panelRatioInitial ?? "2:1");
+  }, [panelRatioInitial]);
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -482,6 +501,18 @@ export function PiChat({
   }, [messages]);
 
   const lay = layoutClassNames(layout);
+
+  // panelRight 让位比例解析:仅扩展声明 panelRight 时启用切换器;artifact-only aside 沿用固定 w-96。
+  const hasPanelRight = extension?.slots?.panelRight !== undefined;
+  const hasArtifactAside =
+    extension?.artifact !== undefined && extensionBaseUrl !== undefined;
+  const panelRatioActive = hasPanelRight;
+  // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
+  const showPanelRight = hasPanelRight && panelRatio !== "centered";
+  const showAside = showPanelRight || hasArtifactAside;
+  const asideWidth = panelRatioActive
+    ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
+    : undefined;
 
   // 控件解析(components 覆盖 vs 默认;可移除控件支持 null)。
   const SubmitC = resolveComponent(components?.SubmitButton, SubmitButton);
@@ -954,17 +985,22 @@ export function PiChat({
         ) : null}
       </div>
 
-      {extension?.slots?.panelRight !== undefined ||
-      (extension?.artifact !== undefined && extensionBaseUrl !== undefined) ? (
+      {showAside ? (
         // Tier1 panelRight + Tier4 artifact(独立 origin sandbox iframe)。
+        // panelRatioActive 时宽度由比例百分比驱动(对话列 flex-1 吃余量);否则沿用固定 w-96。
         <aside
-          className="hidden w-96 shrink-0 lg:block"
+          className={cn(
+            "hidden shrink-0 lg:block",
+            panelRatioActive ? "" : "w-96",
+          )}
+          {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
           data-pi-chat-aside
-          {...(extension?.slots?.panelRight !== undefined
-            ? { "data-pi-ext-panel-right": "" }
+          {...(panelRatioActive
+            ? { "data-pi-panel-ratio": panelRatio }
             : {})}
+          {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {extension?.slots?.panelRight !== undefined ? (
+          {showPanelRight ? (
             <SlotHost ext={extension} slot="panelRight" />
           ) : null}
           {extension?.artifact !== undefined && extensionBaseUrl !== undefined ? (
@@ -985,6 +1021,34 @@ export function PiChat({
             />
           ) : null}
         </aside>
+      ) : null}
+
+      {/* panelRight 比例切换器:有 panelRight 时常驻右下角(lg+),运行时在 居中/2:1/3:7 间切换。
+          置于 aside 之外、tree(relative)内,使 centered 收起面板后仍可切回。 */}
+      {panelRatioActive ? (
+        <div
+          data-pi-panel-ratio-switch={panelRatio}
+          className="absolute bottom-4 right-4 z-40 hidden items-center gap-0.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 p-0.5 shadow-sm backdrop-blur lg:flex"
+        >
+          {PANEL_RATIOS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              data-pi-ratio-option={r}
+              data-active={r === panelRatio ? "true" : "false"}
+              aria-pressed={r === panelRatio}
+              onClick={() => setPanelRatio(r)}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+                r === panelRatio
+                  ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
+              )}
+            >
+              {PANEL_RATIO_LABEL[r]}
+            </button>
+          ))}
+        </div>
       ) : null}
       {/* split 让位区:仅在有实际内容(panelRight/artifact,见上)时渲染 aside。
           无内容时不再渲染空的占位 <aside> —— 否则 lg 视口下会留出一整列 384px 空白

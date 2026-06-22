@@ -103,7 +103,7 @@ export function PartRenderer({
       return <Custom part={part} message={message} />;
     }
     const ToolComp = toolPart ?? PiToolPart;
-    return <ToolComp part={part} message={message} />;
+    return <ToolComp part={part} message={message} markdown={markdown} />;
   }
 
   if (isDataPart(part)) {

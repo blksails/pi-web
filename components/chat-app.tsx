@@ -348,6 +348,9 @@ function SessionView({
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
             : {})}
+          {...(extension?.config?.panelRatio !== undefined
+            ? { panelRatio: extension.config.panelRatio }
+            : {})}
           {...(extension?.config?.empty?.title !== undefined
             ? { emptyTitle: extension.config.empty.title }
             : {})}
