@@ -13,6 +13,7 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
+import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 
 const DECLARATIVE: WebExtension = {
   manifestId: "webext-declarative",
@@ -27,6 +28,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
+  // aigc-agent:Tier2 工具渲染器,把 text_to_image / image_edit 产物渲染为 <img>。
+  { match: "aigc-agent", ext: aigcExt },
   { match: "webext-declarative-agent", ext: DECLARATIVE },
 ];
 

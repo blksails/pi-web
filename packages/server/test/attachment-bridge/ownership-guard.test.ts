@@ -127,4 +127,58 @@ describe("makeBeforeToolCall — 属主校验闸门(Req 5.1-5.4)", () => {
 
     expect(result).toBeUndefined();
   });
+
+  // ── 非 `attachmentId` 字段承载的附件引用(image_edit 用 image_url/mask_url/
+  //    reference_image_urls)同样必须被属主校验,防越权漏网(回归保护,Req 5.2)。
+  it("他会话 att_id 承载在 image_url 字段(非 attachmentId)→ block(越权漏网防护)", async () => {
+    const otherId = await putFor("sess-other");
+    const guard = makeBeforeToolCall(store, "sess-current");
+
+    const result = await guard(
+      toolCallEvent({ instruction: "edit", image_url: otherId }),
+    );
+
+    expect(result?.block).toBe(true);
+  });
+
+  it("他会话 att_id 嵌在 reference_image_urls 数组里 → block(递归扫描)", async () => {
+    const ownId = await putFor("sess-current");
+    const otherId = await putFor("sess-other");
+    const guard = makeBeforeToolCall(store, "sess-current");
+
+    const result = await guard(
+      toolCallEvent({
+        instruction: "edit",
+        image_url: ownId,
+        reference_image_urls: [ownId, otherId],
+      }),
+    );
+
+    expect(result?.block).toBe(true);
+  });
+
+  it("本会话 att_id 承载在 image_url 字段 → 放行(Req 5.1)", async () => {
+    const ownId = await putFor("sess-current");
+    const guard = makeBeforeToolCall(store, "sess-current");
+
+    const result = await guard(
+      toolCallEvent({ instruction: "edit", image_url: ownId }),
+    );
+
+    expect(result).toBeUndefined();
+  });
+
+  it("data URI / https 值不被误判为附件引用 → 放行(只匹配整串 att_ 形态)", async () => {
+    const guard = makeBeforeToolCall(store, "sess-current");
+
+    const result = await guard(
+      toolCallEvent({
+        instruction: "edit",
+        image_url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+        reference: "https://example.com/att_looks_like_one.png",
+      }),
+    );
+
+    expect(result).toBeUndefined();
+  });
 });

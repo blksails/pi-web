@@ -46,16 +46,26 @@ export interface ToolCallGuardResult {
   reason?: string;
 }
 
-/** 工具参数中承载输入附件引用的约定参数键(design §AttachmentToolContext / Req 4.2)。 */
-const ATTACHMENT_ID_ARG = "attachmentId";
+/**
+ * 附件公开 id 形态(`att_<nanoid>`)。属主校验**不依赖特定参数名**(如 `attachmentId`):
+ * 不同工具用不同字段承载附件引用(例如 `image_edit` 用 `image_url` / `mask_url` /
+ * `reference_image_urls`),若只认 `attachmentId` 字段会让这些工具的输入附件**绕过**属主
+ * 校验(越权漏网)。故按**值形态**递归扫描所有参数,逐个校验属主。
+ */
+const ATTACHMENT_ID_RE = /^att_[A-Za-z0-9_-]+$/;
 
 /**
- * 从已校验的工具参数对象中提取 `attachmentId`(string);
- * 缺失或类型不符 → `undefined`(视为「与附件无关」)。
+ * 递归收集工具参数中所有形如 `att_<id>` 的附件引用(字符串值 / 数组 / 嵌套对象)。
+ * 仅匹配**整串**为 att_ 形态者:`data:`/`https` URL、含 `att_` 子串的 base64 不会误命中。
  */
-function extractAttachmentId(input: Record<string, unknown>): string | undefined {
-  const value = input[ATTACHMENT_ID_ARG];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+function collectAttachmentIds(value: unknown, acc: Set<string>): void {
+  if (typeof value === "string") {
+    if (ATTACHMENT_ID_RE.test(value)) acc.add(value);
+  } else if (Array.isArray(value)) {
+    for (const v of value) collectAttachmentIds(v, acc);
+  } else if (value !== null && typeof value === "object") {
+    for (const v of Object.values(value)) collectAttachmentIds(v, acc);
+  }
 }
 
 /**
@@ -71,39 +81,43 @@ export function makeBeforeToolCall(
   sessionId: string,
 ): (event: ToolCallGuardEvent) => Promise<ToolCallGuardResult | undefined> {
   return async (event) => {
-    const attachmentId = extractAttachmentId(event.input);
+    const ids = new Set<string>();
+    collectAttachmentIds(event.input, ids);
 
     // 无附件引用 → 放行,不因属主校验阻断与附件无关的 tool(Req 5.4)。
-    if (attachmentId === undefined) return undefined;
+    if (ids.size === 0) return undefined;
 
-    // 含附件引用但 store 不可用 → 无法校验属主,fail-closed 阻断(不越权解析)。
-    if (store === undefined) {
-      return {
-        block: true,
-        reason: `Attachment storage unavailable; cannot verify ownership of ${attachmentId}.`,
-      };
+    // 逐个校验:任一越权 / 不存在 / 无法校验 → 阻断整个调用(fail-closed)。
+    for (const attachmentId of ids) {
+      // 含附件引用但 store 不可用 → 无法校验属主,fail-closed 阻断(不越权解析)。
+      if (store === undefined) {
+        return {
+          block: true,
+          reason: `Attachment storage unavailable; cannot verify ownership of ${attachmentId}.`,
+        };
+      }
+
+      // 查属主:head 返回描述符(含属主 sessionId)或 undefined(不存在)。
+      const head = await store.head(attachmentId);
+
+      // 不存在 → 阻断,不把不存在引用当作可解析(Req 5.3)。
+      if (head === undefined) {
+        return {
+          block: true,
+          reason: `Attachment ${attachmentId} does not exist.`,
+        };
+      }
+
+      // 越权:被引用附件属于他会话 → 阻断,使 tool 不进 execute(Req 5.2)。
+      if (head.sessionId !== sessionId) {
+        return {
+          block: true,
+          reason: `Attachment ${attachmentId} is not owned by the current session.`,
+        };
+      }
     }
 
-    // 查属主:head 返回描述符(含属主 sessionId)或 undefined(不存在)。
-    const head = await store.head(attachmentId);
-
-    // 不存在 → 阻断,不把不存在引用当作可解析(Req 5.3)。
-    if (head === undefined) {
-      return {
-        block: true,
-        reason: `Attachment ${attachmentId} does not exist.`,
-      };
-    }
-
-    // 越权:被引用附件属于他会话 → 阻断,使 tool 不进 execute(Req 5.2)。
-    if (head.sessionId !== sessionId) {
-      return {
-        block: true,
-        reason: `Attachment ${attachmentId} is not owned by the current session.`,
-      };
-    }
-
-    // 本会话拥有 → 放行(Req 5.1)。
+    // 全部本会话拥有 → 放行(Req 5.1)。
     return undefined;
   };
 }
