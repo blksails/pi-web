@@ -56,6 +56,19 @@ function extractText(output: unknown): string {
   return "";
 }
 
+/** 取工具结果的 content(剥 details);content 数组 / string 原样。 */
+function contentOf(output: unknown): unknown {
+  if (
+    output &&
+    typeof output === "object" &&
+    !Array.isArray(output) &&
+    "content" in output
+  ) {
+    return (output as { content?: unknown }).content;
+  }
+  return output;
+}
+
 /** 视图切换按钮样式(active 高亮)。 */
 function tabStyle(active: boolean): React.CSSProperties {
   return {
@@ -81,12 +94,14 @@ function AigcImageRenderer({
   const [view, setView] = React.useState<"image" | "json">("image");
 
   // image:把 output 换成 markdown(含 `![](displayUrl)`),由 PiToolPart 的 Response 渲成图;
-  // json:展示**完整工具调用**——输入参数 input(prompt/model 等)+ 输出 output(含 details/assets)。
-  //   PiToolPart 在完成态只渲染 output,故把 input 一并并入 output 对象,使调用参数可见。
+  // json:展示工具调用——输入参数 input(prompt/model 等)+ 输出 content。
+  //   PiToolPart 在完成态只渲染 output,故把 input 一并并入,使调用参数可见。
+  // TODO(设置选项):output 的 details(ok/variant/assets/displayUrl)暂不显示(冗余,图已呈现);
+  //   未来在设置里加「显示工具明细 details」开关再放出完整 { input, output }。
   const output =
     view === "image"
       ? extractText(part.output)
-      : { input: part.input, output: part.output };
+      : { input: part.input, output: contentOf(part.output) };
   const patched = { ...part, output };
 
   return (
