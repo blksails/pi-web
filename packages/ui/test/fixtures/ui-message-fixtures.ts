@@ -63,6 +63,20 @@ export function dataPart(name: string, data: unknown) {
   return { type: `data-${name}` as const, data };
 }
 
+/** file part 样本(用户消息里的图片等)。 */
+export function filePart(
+  url: string,
+  mediaType: string,
+  filename?: string,
+) {
+  return {
+    type: "file" as const,
+    url,
+    mediaType,
+    ...(filename !== undefined ? { filename } : {}),
+  };
+}
+
 export function assistantMessage(
   parts: UIMessage["parts"],
   id = "m-assistant",

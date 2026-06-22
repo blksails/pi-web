@@ -127,6 +127,69 @@ describe("agentMessagesToUiMessages", () => {
     });
   });
 
+  it("assistant stopReason=error(content 空)→ 追加 data-pi-error part 承载 errorMessage", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [],
+          stopReason: "error",
+          errorMessage: "400 Provider returned error: Could not process image",
+        },
+      ]),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]?.role).toBe("assistant");
+    expect(out[0]?.parts).toEqual([
+      {
+        type: "data-pi-error",
+        data: {
+          errorText: "400 Provider returned error: Could not process image",
+        },
+      },
+    ]);
+  });
+
+  it("assistant stopReason=error 但 errorMessage 缺失 → 用兜底文案", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([{ role: "assistant", content: [], stopReason: "error" }]),
+    );
+    expect(out[0]?.parts).toEqual([
+      {
+        type: "data-pi-error",
+        data: { errorText: "对话失败,但运行时未提供具体错误信息。" },
+      },
+    ]);
+  });
+
+  it("assistant stopReason=error 且有 content → content parts 在前,错误 part 在后", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "部分回答" }],
+          stopReason: "error",
+          errorMessage: "中途失败",
+        },
+      ]),
+    );
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "部分回答", state: "done" },
+      { type: "data-pi-error", data: { errorText: "中途失败" } },
+    ]);
+  });
+
+  it("assistant stopReason=stop → 不产生 data-pi-error part(仅 error 才补)", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([
+        { role: "assistant", content: [{ type: "text", text: "ok" }], stopReason: "stop" },
+      ]),
+    );
+    expect(out[0]?.parts).toEqual([
+      { type: "text", text: "ok", state: "done" },
+    ]);
+  });
+
   it("toolResult 并入对应 tool part(output-available)", () => {
     const out = agentMessagesToUiMessages(
       msgs([

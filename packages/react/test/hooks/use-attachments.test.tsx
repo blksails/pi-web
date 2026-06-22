@@ -275,6 +275,37 @@ describe("useAttachments", () => {
     });
   });
 
+  it("toFileParts 在落库前用本地 dataUrl(uploading 态),便于乐观消息即时显示", async () => {
+    // 上传永不 resolve → 状态停在 uploading,displayUrl 尚无,toFileParts 应回退 dataUrl。
+    const pendingUpload = vi.fn(
+      () => new Promise<UploadAttachmentResponse>(() => undefined),
+    );
+    const { result } = renderHook(() =>
+      useAttachments({ baseUrl: "/api", sessionId: "sess-1", upload: pendingUpload }),
+    );
+    await act(async () => {
+      await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+    });
+    expect(result.current.items[0]?.status).toBe("uploading");
+    const parts = result.current.toFileParts!();
+    expect(parts).toHaveLength(1);
+    expect(parts[0]?.type).toBe("file");
+    expect(parts[0]?.mediaType).toBe("image/png");
+    expect(parts[0]?.filename).toBe("a.png");
+    expect(parts[0]?.url).toBe(`data:image/png;base64,${PNG_BASE64}`);
+  });
+
+  it("toFileParts 落库就绪后优先用 displayUrl(轻量分发 URL)", async () => {
+    const opts = okOptions();
+    const { result } = renderHook(() => useAttachments(opts));
+    await act(async () => {
+      await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+    });
+    await waitFor(() => expect(result.current.items[0]?.status).toBe("ready"));
+    const parts = result.current.toFileParts!();
+    expect(parts[0]?.url).toBe("/api/attachments/att_a.png/raw?exp=1&sig=x");
+  });
+
   it("supported=false when options disable image input", () => {
     const { result } = renderHook(() =>
       useAttachments({ ...okOptions(), supported: false }),

@@ -26,6 +26,7 @@ import {
   defaultRendererRegistry,
   type RendererRegistry,
 } from "../registry/renderer-registry.js";
+import { ChatError } from "../elements/chat-error.js";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -102,8 +103,23 @@ export function PartRenderer({
     if (Custom !== undefined) {
       return <Custom part={part} message={message} />;
     }
+    // 注:PiToolPart(及 components.ToolPart 覆盖,均为 PiToolPartProps)不接受 markdown——
+    // 工具字符串输出固定走 Response 富渲染;markdown 覆盖仅作用于 text 分支。
     const ToolComp = toolPart ?? PiToolPart;
-    return <ToolComp part={part} message={message} markdown={markdown} />;
+    return <ToolComp part={part} message={message} />;
+  }
+
+  // data-pi-error:历史回放里 stopReason==="error" 的 assistant 消息(见
+  // agent-message-to-ui)内联展示该次失败,复用 ChatError 的 destructive 样式;
+  // 包一层 data-pi-message-error 以与底部全局 ChatError 区分(便于 e2e 定位)。
+  if (part.type === "data-pi-error") {
+    const data = "data" in part ? (part.data as { errorText?: unknown }) : undefined;
+    const text = typeof data?.errorText === "string" ? data.errorText : "";
+    return (
+      <div data-pi-message-error>
+        <ChatError message={text} />
+      </div>
+    );
   }
 
   if (isDataPart(part)) {
@@ -114,6 +130,37 @@ export function PartRenderer({
     return <DefaultDataPart part={part} />;
   }
 
-  // step-start / file / source 等:本层不专门渲染,返回 null。
+  // file(image):用户消息里发送的图片在历史回放时为 file part(见 agent-message-to-ui
+  // 的 userParts → imageUrl),此前本层 return null 故不显示。仅渲染 image/* 媒体;
+  // 非图片 file 与 step-start / source 等仍返回 null,行为不变。
+  if (part.type === "file") {
+    const filePart = part as {
+      type: "file";
+      url?: unknown;
+      mediaType?: unknown;
+      filename?: unknown;
+    };
+    const url = typeof filePart.url === "string" ? filePart.url : "";
+    const mediaType =
+      typeof filePart.mediaType === "string" ? filePart.mediaType : "";
+    if (url !== "" && mediaType.startsWith("image/")) {
+      const alt =
+        typeof filePart.filename === "string" && filePart.filename !== ""
+          ? filePart.filename
+          : "image";
+      return (
+        // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image;与 attachments.tsx 一致
+        <img
+          src={url}
+          alt={alt}
+          data-pi-message-image
+          className="max-h-80 max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
+        />
+      );
+    }
+    return null;
+  }
+
+  // step-start / source 等:本层不专门渲染,返回 null。
   return null;
 }

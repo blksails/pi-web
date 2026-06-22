@@ -10,6 +10,7 @@ import {
   toolStartPart,
   toolEndPart,
   dataPart,
+  filePart,
 } from "../fixtures/ui-message-fixtures.js";
 
 const msg = assistantMessage([]);
@@ -41,6 +42,68 @@ describe("PartRenderer 分派", () => {
     expect(
       container.querySelector('[data-pi-data-part="data-pi-plan"]'),
     ).not.toBeNull();
+  });
+
+  it("file(image/*)→ 渲染 <img>(用户消息图片历史回放)", () => {
+    const { container } = render(
+      <PartRenderer
+        part={filePart("data:image/png;base64,AAAA", "image/png", "pi-e2e-attach.png")}
+        message={msg}
+      />,
+    );
+    const img = container.querySelector("img[data-pi-message-image]");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
+    expect(img?.getAttribute("alt")).toBe("pi-e2e-attach.png");
+  });
+
+  it("file(image/*)无 filename → alt 兜底为 image", () => {
+    const { container } = render(
+      <PartRenderer
+        part={filePart("/api/attachments/att_x/raw", "image/png")}
+        message={msg}
+      />,
+    );
+    expect(
+      container.querySelector("img[data-pi-message-image]")?.getAttribute("alt"),
+    ).toBe("image");
+  });
+
+  it("file(非 image,如 pdf)→ 仍返回 null,不渲染 <img>", () => {
+    const { container } = render(
+      <PartRenderer
+        part={filePart("/api/attachments/att_x/raw", "application/pdf", "a.pdf")}
+        message={msg}
+      />,
+    );
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("data-pi-error → 内联 ChatError 红块(复用 destructive 样式,带 data-pi-message-error)", () => {
+    const { container } = render(
+      <PartRenderer
+        part={dataPart("pi-error", { errorText: "Could not process image" })}
+        message={msg}
+      />,
+    );
+    const wrap = container.querySelector("[data-pi-message-error]");
+    expect(wrap).not.toBeNull();
+    expect(wrap?.querySelector("[data-pi-chat-error]")).not.toBeNull();
+    expect(screen.getByText("Could not process image")).toBeInTheDocument();
+    // 不应落入默认 data-part 的 JSON 兜底渲染。
+    expect(
+      container.querySelector('[data-pi-data-part="data-pi-error"]'),
+    ).toBeNull();
+  });
+
+  it("data-pi-error 空 errorText → ChatError 返回 null,不渲染红块", () => {
+    const { container } = render(
+      <PartRenderer part={dataPart("pi-error", { errorText: "" })} message={msg} />,
+    );
+    // 包裹层仍在,但内部 ChatError 为空不渲染。
+    expect(
+      container.querySelector("[data-pi-message-error] [data-pi-chat-error]"),
+    ).toBeNull();
   });
 
   it("注册自定义工具渲染器命中覆盖默认", () => {

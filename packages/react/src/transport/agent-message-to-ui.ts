@@ -9,7 +9,9 @@
  *    image part 的 url 按引用解析:带 `displayUrl`/公开 `attachmentId` → 分发端点 URL;
  *    遗留无 id 的内联 base64 → 重建 `data:` URL(防回归,见 `imageUrl`)。
  *  - assistant:`text` → text part;`thinking` → reasoning part;`toolCall` → dynamic-tool
- *    part(state `input-available`,携带 input)。
+ *    part(state `input-available`,携带 input)。`stopReason === "error"` → 追加一个
+ *    `data-pi-error` part 承载 `errorMessage`,使历史回放也能内联展示该次失败(实时流式
+ *    经 SSE `error` 帧走全局 ChatError,但 `get_messages` 历史路径此前丢弃错误故空白回放)。
  *  - toolResult:按 `toolCallId` 并入此前 assistant 的对应 tool part(置 `output-available`
  *    / `output-error`);找不到对应 tool part 时降级为独立的 dynamic-tool part。
  *  - 其它(自定义 passthrough role):跳过。
@@ -22,6 +24,13 @@ import type { AgentMessage } from "@pi-web/protocol";
 import { joinUrl } from "../client/request.js";
 
 type UIPart = UIMessage["parts"][number];
+
+/**
+ * assistant `stopReason === "error"` 但 `errorMessage` 缺失时的兜底文案。
+ * 与 server 端 `translate-event.ts` 的 `FALLBACK_ERROR_TEXT` 保持一致,使历史回放
+ * 与实时流式的错误占位文案统一。
+ */
+const FALLBACK_ERROR_TEXT = "对话失败,但运行时未提供具体错误信息。";
 
 /** 翻译选项。`baseUrl`(如 `/api`)用于把根相对的分发 URL 前缀为可达 URL。 */
 export interface AgentMessagesToUiOptions {
@@ -189,6 +198,17 @@ export function agentMessagesToUiMessages(
           toolParts.set(tp.toolCallId, tp);
           parts.push(tp as unknown as UIPart);
         }
+      }
+      // stopReason === "error":content 常为空,追加错误部件承载 errorMessage,
+      // 否则历史回放只剩空气泡(实时流式靠 SSE error 帧,历史路径此前丢弃)。
+      if (m["stopReason"] === "error") {
+        const raw = m["errorMessage"];
+        const errorText =
+          typeof raw === "string" && raw !== "" ? raw : FALLBACK_ERROR_TEXT;
+        parts.push({
+          type: "data-pi-error",
+          data: { errorText },
+        } as unknown as UIPart);
       }
       out.push({ id, role: "assistant", parts });
       return;

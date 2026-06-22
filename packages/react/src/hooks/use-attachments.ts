@@ -18,6 +18,7 @@
  * base64(`toImageContents()`),不内联进列表项展示。
  */
 import { useCallback, useMemo, useRef, useState } from "react";
+import type { FileUIPart } from "ai";
 import type { ImageContent, UploadAttachmentResponse } from "@pi-web/protocol";
 import { uploadAttachment as defaultUploadAttachment } from "../transport/attachment-upload.js";
 import { joinUrl } from "../client/request.js";
@@ -79,6 +80,18 @@ export interface UseAttachmentsResult {
   clear(): void;
   /** 把 items 映射为 pi 的 ImageContent[](data 为裸 base64)。 */
   toImageContents(): ImageContent[];
+  /**
+   * 把 items 映射为 AI SDK `FileUIPart[]`,用于给乐观 user 消息挂上图片 part 以**实时内联显示**
+   * 用户自己发的图(由 PartRenderer 的 file 分支渲染)。url 优先用落库后的 `displayUrl`
+   * (轻量分发 URL),未就绪则回退本地预览 `dataUrl`(当场可得,无需暂存/网络)。
+   *
+   * 纯前端展示用途:`PiTransport.sendMessages` 不序列化 message.parts,上行仍走
+   * `body.images`/`attachmentIds`,故挂 file part 零协议影响。刷新后由 `get_messages` 历史
+   * (`agentMessagesToUiMessages`)重建图片 part,无需前端按序号对齐或 IndexedDB 暂存。
+   *
+   * 始终由 hook 提供;声明为可选仅为对既有 mock(尚未带 toFileParts)向后兼容。
+   */
+  toFileParts?(): FileUIPart[];
   /**
    * 仅 status="ready" 且带 server 铸造 attachmentId 的可提交已落库引用 id(Req 5.3/5.6)。
    * hook 始终提供此实现;声明为可选仅为对既有 UseAttachmentsResult 结构 mock(尚未带
@@ -263,6 +276,16 @@ export function useAttachments(
     }));
   }, []);
 
+  const toFileParts = useCallback((): FileUIPart[] => {
+    return itemsRef.current.map((it) => ({
+      type: "file",
+      mediaType: it.mimeType,
+      filename: it.name,
+      // 优先落库分发 URL(轻量);未就绪回退本地预览 dataUrl(当场可得)。
+      url: it.displayUrl ?? it.dataUrl,
+    }));
+  }, []);
+
   const referenceIds = useCallback((): string[] => {
     const ids: string[] = [];
     for (const it of itemsRef.current) {
@@ -282,8 +305,18 @@ export function useAttachments(
       remove,
       clear,
       toImageContents,
+      toFileParts,
       referenceIds,
     }),
-    [items, supported, add, remove, clear, toImageContents, referenceIds],
+    [
+      items,
+      supported,
+      add,
+      remove,
+      clear,
+      toImageContents,
+      toFileParts,
+      referenceIds,
+    ],
   );
 }

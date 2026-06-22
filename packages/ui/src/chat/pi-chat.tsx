@@ -437,8 +437,13 @@ export function PiChat({
       if (images.length > 0) body.images = images;
       if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
 
+      // 给乐观 user 消息挂上图片 file part,实时内联显示用户自己发的图(PartRenderer file 分支)。
+      // 纯前端展示:上行仍只走 body.images/attachmentIds(transport 不序列化 parts);刷新后由
+      // get_messages 历史重建图片 part。故无需会话序号对齐或 IndexedDB 暂存(见 toFileParts 注释)。
+      const files = hasAttachments ? (attachments.toFileParts?.() ?? []) : [];
+
       void sendMessage(
-        { text: outgoing },
+        files.length > 0 ? { text: outgoing, files } : { text: outgoing },
         Object.keys(body).length > 0 ? { body } : undefined,
       );
 
