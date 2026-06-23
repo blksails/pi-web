@@ -29,6 +29,26 @@ describe("resolveVars", () => {
     expect(resolveVars("${TEST_VAR_A}-${TEST_VAR_A}")).toBe("hello-hello");
   });
 
+  it("${VAR:-default}: env 缺失时回落默认值(default 可含 :// 与 /)", () => {
+    delete process.env["TEST_BASE"];
+    expect(
+      resolveVars("${TEST_BASE:-https://default.example.com/api/v1}/x"),
+    ).toBe("https://default.example.com/api/v1/x");
+  });
+
+  it("${VAR:-default}: env 有值时用 env 值(忽略默认)", () => {
+    process.env["TEST_BASE"] = "https://custom.example.com/v2";
+    expect(resolveVars("${TEST_BASE:-https://default.example.com}/x")).toBe(
+      "https://custom.example.com/v2/x",
+    );
+    delete process.env["TEST_BASE"];
+  });
+
+  it("${VAR}(无默认值)缺失仍抛错", () => {
+    delete process.env["TEST_VAR_MISSING"];
+    expect(() => resolveVars("${TEST_VAR_MISSING}")).toThrow(/Missing env/);
+  });
+
   it("returns the template unchanged when no placeholders", () => {
     expect(resolveVars("no-placeholders")).toBe("no-placeholders");
   });

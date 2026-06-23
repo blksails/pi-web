@@ -1,6 +1,6 @@
 import type * as React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import type { UIMessage, ChatStatus } from "ai";
 import type {
@@ -225,26 +225,20 @@ describe("PiChat 富交互(mock hooks)", () => {
     await user.click(screen.getByRole("button", { name: "模型" }));
     expect(ensureLoadedMock.mock.calls.length).toBeGreaterThan(beforeOpen);
 
-    // 打开后 listbox 出现,三个模型项可见(a11y:role=option)。
-    const list = screen.getByRole("listbox", { name: "模型" });
-    expect(within(list).getAllByRole("option")).toHaveLength(3);
+    // 打开后三个模型项可见(shadcn Combobox:cmdk item role=option)。
+    expect(screen.getAllByRole("option")).toHaveLength(3);
 
-    // 搜索 "claude" → 仅 anthropic 组的 Claude 3 命中。
-    await user.type(screen.getByRole("searchbox"), "claude");
-    const filtered = screen.getByRole("listbox", { name: "模型" });
-    const opts = within(filtered).getAllByRole("option");
+    // 搜索 "claude" → 仅 anthropic 组的 Claude 3 命中(cmdk 按 value 过滤)。
+    await user.type(screen.getByPlaceholderText(/搜索模型/), "claude");
+    const opts = screen.getAllByRole("option");
     expect(opts).toHaveLength(1);
-    const claudeOption = within(filtered).getByRole("option", {
-      name: /Claude 3/,
-    });
+    const claudeOption = screen.getByRole("option", { name: /Claude 3/ });
 
     // 选择 → onSelect 透传 provider/modelId 给 useModels.select。
     await user.click(claudeOption);
     expect(modelSelectMock).toHaveBeenCalledWith("anthropic", "claude-3");
-    // 选择后面板关闭。
-    expect(
-      screen.queryByRole("listbox", { name: "模型" }),
-    ).not.toBeInTheDocument();
+    // 选择后面板关闭(Popover 收起,选项不再在文档中)。
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
   });
 
   it("会话就绪后主动调用 models.ensureLoaded(无需先点开选择器,Req 4.1)", async () => {
@@ -278,11 +272,7 @@ describe("PiChat 富交互(mock hooks)", () => {
     const trigger = screen.getByRole("button", { name: "模型" });
     expect(trigger).toBeInTheDocument();
     await user.click(trigger);
-    expect(
-      within(screen.getByRole("listbox", { name: "模型" })).getAllByRole(
-        "option",
-      ),
-    ).toHaveLength(1);
+    expect(screen.getAllByRole("option")).toHaveLength(1);
   });
 
   it("模型不可用时选择器不渲染(降级,Req 4.4)", () => {

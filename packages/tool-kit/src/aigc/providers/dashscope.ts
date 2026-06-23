@@ -89,7 +89,7 @@ function buildAsyncT2IBody(model: string) {
         ...(a.negative_prompt ? { negative_prompt: a.negative_prompt } : {}),
       },
       parameters: {
-        size: a.size ?? "1024*1024",
+        size: (a.size ?? "1024*1024").replace(/[x×]/g, "*"),
         n: a.n ?? 1,
         watermark: false,
         ...(typeof a.seed === "number" && a.seed >= 0 ? { seed: a.seed } : {}),
@@ -127,7 +127,7 @@ function buildSyncT2IBody(model: string) {
       model,
       input: { messages: [{ role: "user", content }] },
       parameters: {
-        size: a.size ?? "1024*1024",
+        size: (a.size ?? "1024*1024").replace(/[x×]/g, "*"),
         n: a.n ?? 1,
         ...(typeof a.seed === "number" && a.seed >= 0 ? { seed: a.seed } : {}),
       },
@@ -181,7 +181,7 @@ function buildImageEditBody(model: string) {
       model,
       input: { messages: [{ role: "user", content }] },
       parameters: {
-        size: a.size ?? "1024*1024",
+        size: (a.size ?? "1024*1024").replace(/[x×]/g, "*"),
         n: a.n ?? 1,
         ...(typeof a.seed === "number" && a.seed >= 0 ? { seed: a.seed } : {}),
       },
@@ -313,6 +313,7 @@ export const DASHSCOPE_MODELS = {
   qwen20: "qwen-image-2.0",
   /** Wan 2.6 T2I 写实同步(¥0.20/张)。 */
   wan26T2I: "wan2.6-t2i",
+  wan27ImagePro: "wan2.7-image-pro",
   /** Qwen Image Edit Max:最高质量局部重绘(¥0.50/张)。 */
   qwenImageEditMax: "qwen-image-edit-max",
 } as const;

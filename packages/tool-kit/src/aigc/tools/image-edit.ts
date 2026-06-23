@@ -4,8 +4,8 @@
  * 纯数据声明,无值导入运行时库:可从主入口安全导出(守 webpack externals 边界)。
  *
  * model 路由(本轮):
- *  - `qwen-image-edit-max` DashScope(默认)—— 最高保真,支持 mask 局部重绘
- *  - `gpt-image-2`         NewAPI —— OpenAI 兼容 edits(整图改写)
+ *  - `gpt-image-2`         NewAPI(默认)—— OpenAI 兼容 edits(整图改写),经验证可用
+ *  - `qwen-image-edit-max` DashScope —— 最高保真,支持 mask 局部重绘
  *
  * 参数对齐 OpenAI Images edits:`image`/`prompt`(必填)+ `mask`/`n`/`size`/`response_format`;
  * 另保留 `reference_images`(DashScope 风格/角色一致)。`image`/`mask`/`reference_images` 的
@@ -18,6 +18,12 @@ import {
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
 import { createNewApiImageEdit } from "../providers/newapi.js";
+
+// token plan(阿里云百炼)图像编辑 —— 同样走 DashScope **原生** messages/content 格式 + 同一
+// multimodal-generation 端点(非 OpenAI /images/edits)。base 经 env DASHSCOPE_TOKENPLAN_BASE_URL
+// 可配。token plan key(DASHSCOPE_API_KEY)对官方 dashscope 端点无效,故打 token plan 末端。
+const TOKEN_PLAN_MULTIMODAL_URL =
+  "${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation";
 
 export const imageEdit: ToolSpec = {
   name: "image_edit",
@@ -86,7 +92,7 @@ export const imageEdit: ToolSpec = {
     additionalProperties: false,
   },
 
-  defaultModel: "qwen-image-edit-max",
+  defaultModel: "gpt-image-2",
 
   // 业务必选项:缺失时经 ctx.ui 交互补全(model/size 选择,prompt 输入)。
   requiredParams: [
@@ -107,7 +113,18 @@ export const imageEdit: ToolSpec = {
   ],
 
   models: [
-    // ── DashScope mask-aware(局部重绘精准;默认)──────────────────────────────
+    // ── NewAPI(OpenAI 兼容 edits;整图改写;默认,经验证可用)──────────────────
+    createNewApiImageEdit(
+      {
+        model: "gpt-image-2",
+        label: "GPT Image 2 · NewAPI",
+        description:
+          "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
+      },
+      { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+    ),
+
+    // ── DashScope mask-aware(局部重绘精准)────────────────────────────────────
     createDashscopeImageEdit(
       {
         model: "qwen-image-edit-max",
@@ -119,15 +136,18 @@ export const imageEdit: ToolSpec = {
       { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
     ),
 
-    // ── NewAPI(OpenAI 兼容 edits;整图改写)────────────────────────────────────
-    createNewApiImageEdit(
+    // ── token plan(阿里云百炼 multimodal-generation 原生格式;末端 url 切换到 token plan)──
+    // token plan 仅开通 wan2.7-image-pro(multimodal:t2i + 带图编辑统一);curl 实测它支持图像编辑。
+    createDashscopeImageEdit(
       {
-        model: "gpt-image-2",
-        label: "GPT Image 2 · NewAPI",
+        model: "wan2.7-image-edit-bailian",
+        label: "Wan 2.7 Image Edit · token plan",
         description:
-          "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
+          "Wan 2.7 Image Pro 带图编辑 via token plan multimodal-generation (DashScope 原生 messages/content). " +
+          "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
+        providerModel: DASHSCOPE_MODELS.wan27ImagePro,
       },
-      { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+      { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.3, currency: "CNY", unit: "image" } },
     ),
   ],
 };

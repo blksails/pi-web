@@ -1,20 +1,28 @@
 /**
  * ModelSelector — 无状态的可搜索、按 provider 分组的富模型选择器。
  *
- * 自定义轻量 popover(不引入 @radix-ui/react-popover):button(显示当前模型,
- * `aria-haspopup`/`aria-expanded`)+ 受控展开面板;点击外部 / Esc 关闭(Req 11.4)。
- * 面板内:搜索框(本地过滤 groups 内 modelId/label/provider,Req 4.2)+ 按 provider
- * 分组列表 + 当前选中项打勾(lucide Check,Req 4.1);选择项 → onSelect 并关闭(Req 4.3)。
+ * shadcn 推荐的 Combobox 实现:Popover(向上弹出 side=top,自动避让)+ Command(cmdk
+ * 内建模糊搜索/键盘导航/分组/空态)。trigger 显示当前模型(`aria-haspopup`/`aria-expanded`);
+ * 面板内搜索框(按 modelId/label/provider 过滤,Req 4.2)+ 按 provider 分组列表 + 当前项
+ * 打勾(Req 4.1);选择 → onSelect 并关闭(Req 4.3)。
  *
- * 本元件无状态展示:不持有 pi 接线逻辑,所有模型项来自 props.groups(Req 4.5),
- * 不渲染任何写死模型项。`available=false` → 整个选择器不渲染(返回 null,Req 4.4)。
- * 主题经 shadcn CSS 变量(既有 Button 基元 + cn),无硬编码颜色(Req 11.5)。
+ * 无状态展示:不持 pi 接线,所有模型项来自 props.groups(Req 4.5),不渲染写死项。
+ * `available=false` → 整个选择器不渲染(返回 null,Req 4.4)。主题经 shadcn CSS 变量。
  */
 import * as React from "react";
 import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
 import type { ModelGroup, ModelSelection } from "@pi-web/react";
 import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../ui/command.js";
 import { cn } from "../lib/cn.js";
 
 export interface ModelSelectorProps {
@@ -34,6 +42,10 @@ export interface ModelSelectorProps {
   readonly searchPlaceholder?: string;
   /** 无匹配提示,默认中文。 */
   readonly emptyLabel?: string;
+  /** 禁用触发器(如外部进行中态);禁用时不可打开。 */
+  readonly disabled?: boolean;
+  /** 触发器 aria-busy(如 setModel 进行中);仅无障碍提示,不阻断。 */
+  readonly busy?: boolean;
   readonly className?: string;
 }
 
@@ -42,25 +54,9 @@ function labelOf(m: ModelGroup["models"][number]): string {
   return m.label ?? m.modelId;
 }
 
-/** 本地过滤:按 modelId / label / provider 大小写不敏感匹配。 */
-function filterGroups(
-  groups: ReadonlyArray<ModelGroup>,
-  query: string,
-): ReadonlyArray<ModelGroup> {
-  const q = query.trim().toLowerCase();
-  if (q === "") return groups;
-  const result: ModelGroup[] = [];
-  for (const g of groups) {
-    const models = g.models.filter(
-      (m) =>
-        m.modelId.toLowerCase().includes(q) ||
-        (m.label ?? "").toLowerCase().includes(q) ||
-        m.provider.toLowerCase().includes(q) ||
-        g.provider.toLowerCase().includes(q),
-    );
-    if (models.length > 0) result.push({ provider: g.provider, models });
-  }
-  return result;
+/** cmdk 过滤键:拼 provider/modelId/label,使三者任一可被搜索命中(Req 4.2)。 */
+function filterValue(m: ModelGroup["models"][number]): string {
+  return `${m.provider} ${m.modelId} ${labelOf(m)}`;
 }
 
 function triggerText(
@@ -88,32 +84,11 @@ export function ModelSelector({
   triggerLabel = "模型",
   searchPlaceholder = "搜索模型…",
   emptyLabel = "无匹配模型",
+  disabled,
+  busy,
   className,
 }: ModelSelectorProps): React.JSX.Element | null {
   const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
-  const rootRef = React.useRef<HTMLDivElement>(null);
-  const searchRef = React.useRef<HTMLInputElement>(null);
-
-  // 点击外部关闭(jsdom 下经 document mousedown 监听可触发)。
-  React.useEffect(() => {
-    if (!open) return;
-    const onMouseDown = (event: MouseEvent): void => {
-      if (
-        rootRef.current !== null &&
-        !rootRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [open]);
-
-  // 打开时聚焦搜索框,提升键盘可达性(Req 11.4)。
-  React.useEffect(() => {
-    if (open) searchRef.current?.focus();
-  }, [open]);
 
   const ModelIcon = useIcon("model", ChevronsUpDown);
   const CheckIcon = useIcon("modelCheck", Check);
@@ -121,15 +96,9 @@ export function ModelSelector({
   // available=false:整个选择器不渲染(Req 4.4)。
   if (!available) return null;
 
-  const toggle = (): void => {
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        setQuery("");
-        onOpen?.();
-      }
-      return next;
-    });
+  const handleOpenChange = (next: boolean): void => {
+    setOpen(next);
+    if (next) onOpen?.(); // 打开时触发懒加载(Req 4.1)。
   };
 
   const choose = (provider: string, modelId: string): void => {
@@ -137,117 +106,79 @@ export function ModelSelector({
     setOpen(false);
   };
 
-  const filtered = filterGroups(groups, query);
-
   return (
-    <div
-      ref={rootRef}
-      className={cn("relative inline-block", className)}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && open) {
-          event.stopPropagation();
-          setOpen(false);
-        }
-      }}
-      data-pi-model-selector
-    >
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        aria-label={triggerLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={toggle}
-        className="gap-1.5 rounded-full"
-        data-pi-model-trigger
-      >
-        <Sparkles className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
-        <span className="max-w-[12rem] truncate">
-          {triggerText(current, groups, triggerLabel)}
-        </span>
-        <ModelIcon
-          className="h-3.5 w-3.5 opacity-60"
-          aria-hidden="true"
-        />
-      </Button>
-
-      {open ? (
-        <div
-          className="absolute z-50 mt-1 w-64 overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover,var(--background)))] text-[hsl(var(--popover-foreground,var(--foreground)))] shadow-md"
-          data-pi-model-panel
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-label={triggerLabel}
+          aria-busy={busy === true ? true : undefined}
+          disabled={disabled}
+          className={cn("gap-1.5 rounded-full", className)}
+          data-pi-model-selector
+          data-pi-model-trigger
         >
-          <div className="border-b border-[hsl(var(--border))] p-2">
-            <input
-              ref={searchRef}
-              type="search"
-              role="searchbox"
-              aria-label={searchPlaceholder}
-              placeholder={searchPlaceholder}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="w-full rounded-[calc(var(--radius)-2px)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-sm text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-              data-pi-model-search
-            />
-          </div>
+          <Sparkles className="h-3.5 w-3.5 opacity-70" aria-hidden="true" />
+          <span className="max-w-[12rem] truncate">
+            {triggerText(current, groups, triggerLabel)}
+          </span>
+          <ModelIcon className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
 
-          {filtered.length === 0 ? (
-            <p
-              className="px-3 py-4 text-center text-sm text-[hsl(var(--muted-foreground))]"
-              data-pi-model-empty
-            >
-              {emptyLabel}
-            </p>
-          ) : (
-            <ul
-              role="listbox"
-              aria-label={triggerLabel}
-              className="max-h-72 overflow-y-auto py-1"
-              data-pi-model-list
-            >
-              {filtered.map((g) => (
-                <li key={g.provider} role="group" aria-label={g.provider}>
-                  <p
-                    className="px-3 pb-1 pt-2 text-xs font-medium text-[hsl(var(--muted-foreground))]"
-                    data-pi-model-group
-                  >
-                    {g.provider}
-                  </p>
-                  {g.models.map((m) => {
-                    const selected =
-                      current !== undefined &&
-                      current.provider === m.provider &&
-                      current.modelId === m.modelId;
-                    return (
-                      <button
-                        key={`${m.provider}:${m.modelId}`}
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        onClick={() => choose(m.provider, m.modelId)}
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-64 p-0"
+        data-pi-model-panel
+      >
+        <Command>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            data-pi-model-search
+          />
+          <CommandList aria-label={triggerLabel} data-pi-model-list>
+            <CommandEmpty data-pi-model-empty>{emptyLabel}</CommandEmpty>
+            {groups.map((g) => (
+              <CommandGroup
+                key={g.provider}
+                heading={g.provider}
+                data-pi-model-group
+              >
+                {g.models.map((m) => {
+                  const selected =
+                    current !== undefined &&
+                    current.provider === m.provider &&
+                    current.modelId === m.modelId;
+                  return (
+                    <CommandItem
+                      key={`${m.provider}:${m.modelId}`}
+                      value={filterValue(m)}
+                      onSelect={() => choose(m.provider, m.modelId)}
+                      data-pi-model-option
+                      {...(selected
+                        ? { "data-pi-model-current": "true" }
+                        : {})}
+                    >
+                      <CheckIcon
                         className={cn(
-                          "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--accent))] focus-visible:bg-[hsl(var(--accent))] focus-visible:outline-none",
-                          selected && "font-medium",
+                          "h-3.5 w-3.5 shrink-0",
+                          selected ? "opacity-100" : "opacity-0",
                         )}
-                        data-pi-model-option
-                      >
-                        <CheckIcon
-                          className={cn(
-                            "h-3.5 w-3.5 shrink-0",
-                            selected ? "opacity-100" : "opacity-0",
-                          )}
-                          aria-hidden="true"
-                        />
-                        <span className="truncate">{labelOf(m)}</span>
-                      </button>
-                    );
-                  })}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
-    </div>
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{labelOf(m)}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -45,6 +45,8 @@ import {
 import {
   createCompletionRegistry,
   createFileProvider,
+  createAttachmentProvider,
+  type AttachmentLister,
 } from "../completion/index.js";
 import { Router, type RouteSpec } from "./router.js";
 
@@ -74,6 +76,17 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
   // completion-provider-framework:注册表 + 内置 file provider + 追加 providers。
   const completion = createCompletionRegistry();
   completion.register(createFileProvider());
+  // attachment-mention-completion:仅当注入的附件门面具备 listBySession 能力(能力探测)
+  // 时,无 `as` 断言地重建 AttachmentLister 并注册附件补全 provider。head-only 门面
+  // (仅供 messages handler)不在此注册。
+  const attachmentStore = opts.attachmentStore;
+  if (attachmentStore?.listBySession) {
+    const lister: AttachmentLister = {
+      head: (id) => attachmentStore.head(id),
+      listBySession: (sessionId) => attachmentStore.listBySession!(sessionId),
+    };
+    completion.register(createAttachmentProvider(lister));
+  }
   for (const p of opts.completionProviders ?? []) completion.register(p);
 
   const builtins: RouteSpec[] = [

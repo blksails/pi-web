@@ -24,7 +24,7 @@ describe("PiChatBasic 装配", () => {
       />,
     );
     expect(
-      screen.getByRole("combobox", { name: /select model/i }),
+      screen.getByRole("button", { name: /select model/i }),
     ).toBeInTheDocument();
   });
 

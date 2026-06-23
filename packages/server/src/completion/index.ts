@@ -24,3 +24,9 @@ export {
   FILE_KIND,
   type FileProviderOptions,
 } from "./providers/file-provider.js";
+export {
+  createAttachmentProvider,
+  ATTACHMENT_PROVIDER_ID,
+  ATTACHMENT_KIND,
+  type AttachmentLister,
+} from "./providers/attachment-provider.js";

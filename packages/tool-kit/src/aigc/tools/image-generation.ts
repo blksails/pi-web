@@ -20,6 +20,14 @@ import {
 } from "../providers/dashscope.js";
 import { createNewApiImage } from "../providers/newapi.js";
 
+// token plan(阿里云百炼)multimodal-generation 端点 —— 复用 DashScope **原生** input/parameters
+// 格式(百炼图像不走 OpenAI /images),把末端 url 换成 token plan 域。路径与官方一致:
+// `/api/v1/services/aigc/multimodal-generation/generation`(curl 实测通;compatible-mode 路径报
+// url error)。base 经 env DASHSCOPE_TOKENPLAN_BASE_URL 可配,缺省 token plan /api/v1。token plan
+// key(DASHSCOPE_API_KEY)对官方 dashscope.aliyuncs.com 无效,故必须打 token plan 末端。
+const TOKEN_PLAN_MULTIMODAL_URL =
+  "${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation";
+
 export const imageGeneration: ToolSpec = {
   name: "image_generation",
   label: "Text → image",
@@ -113,24 +121,26 @@ export const imageGeneration: ToolSpec = {
     // ── DashScope sync(multimodal-generation)──────────────────────────────────
     createDashscopeSyncT2I(
       {
-        model: "qwen-image-pro",
-        label: "Qwen Image 2.0 Pro · sync",
+        model: "wan2.7-image-pro",
+        label: "Wan 2.7 Image Pro",
         description:
-          "Best for text-in-image and posters. Highest quality DashScope sync variant. Needs DASHSCOPE_API_KEY.",
-        providerModel: DASHSCOPE_MODELS.qwen20Pro,
+          "Wan 2.7 旗舰文生图（multimodal-generation, sync; 10–30s）,  Needs DASHSCOPE_API_KEY.",
+        providerModel: DASHSCOPE_MODELS.wan27ImagePro,
       },
       { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
     ),
 
+    // ── token plan(阿里云百炼 multimodal-generation 原生格式;末端 url 切换到 token plan)──
     createDashscopeSyncT2I(
       {
-        model: "wan2.6-t2i",
-        label: "Wan 2.6 T2I · sync",
+        model: "wan2.7-image-pro-bailian",
+        label: "Wan 2.7 Image Pro · token plan",
         description:
-          "Photoreal Wan 2.6 flagship via multimodal-generation. Needs DASHSCOPE_API_KEY.",
-        providerModel: DASHSCOPE_MODELS.wan26T2I,
+          "Wan 2.7 Image Pro via token plan multimodal-generation (DashScope 原生 input/parameters). " +
+          "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_COMPAT_BASE_URL 可配。",
+        providerModel: DASHSCOPE_MODELS.wan27ImagePro,
       },
-      { pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
+      { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
     ),
   ],
 };
