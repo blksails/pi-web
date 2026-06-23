@@ -1,17 +1,28 @@
 /**
- * ModelSelectField — provider/model 可搜索下拉(widget:"providerSelect"/"modelSelect")。
+ * ModelSelectField — provider/model 选择(widget:"providerSelect"/"modelSelect")。
  *
+ * shadcn 推荐 Combobox(Popover + Command/cmdk):trigger 显示当前值,面板内搜索 + 列表选择。
  * 选项来自 GET /api/config/models(已配置凭证的可用 provider/模型,含 models.json 自定义
- * provider)。自实现轻量 combobox(无 cmdk/popover 依赖):输入即过滤、点击即选,且**允许
- * 自由输入** —— 兼容列表外的值(pi 的 fuzzy model pattern)及端点为空时的降级(退化为
- * 文本框)。这正是「257 项纯滚动 Select」问题的解法。
+ * provider)。
+ *
+ * 注:本版改为**从列表选**(与全站 ModelSelector 统一);不再支持列表外自由输入 / fuzzy
+ * pattern。存量自定义值仍会在 trigger 上原样显示(可见),但只能改选为列表内选项。
  *
  * 取数按模块级 Promise 缓存(整页一次);测试经 __setModelOptionsFetchImpl /
  * __resetModelOptionsCache 注入与复位。
  */
 import * as React from "react";
+import { Check, ChevronsUpDown } from "lucide-react";
 import type { FieldProps } from "../field-registry.js";
-import { Input } from "../../ui/input.js";
+import { Button } from "../../ui/button.js";
+import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover.js";
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "../../ui/command.js";
 import { cn } from "../../lib/cn.js";
 import { FieldShell, errorAt } from "./field-shell.js";
 
@@ -79,8 +90,6 @@ function buildOptions(widget: string | undefined, data: ModelOptionsResponse): O
   return out;
 }
 
-const MAX_VISIBLE = 50;
-
 export function ModelSelectField({
   descriptor,
   value,
@@ -94,8 +103,7 @@ export function ModelSelectField({
   const current = typeof value === "string" ? value : "";
   const [options, setOptions] = React.useState<readonly Opt[]>([]);
   const [open, setOpen] = React.useState(false);
-  // undefined = 未编辑(展示当前值);string = 正在输入的查询。
-  const [query, setQuery] = React.useState<string | undefined>(undefined);
+  const isDisabled = disabled ?? descriptor.readOnly ?? false;
 
   React.useEffect(() => {
     let alive = true;
@@ -107,86 +115,73 @@ export function ModelSelectField({
     };
   }, [descriptor.widget]);
 
-  const text = query ?? current;
-  const filtered = React.useMemo(() => {
-    const q = text.trim().toLowerCase();
-    const matched =
-      q.length === 0
-        ? options
-        : options.filter(
-            (o) =>
-              o.value.toLowerCase().includes(q) || o.label.toLowerCase().includes(q),
-          );
-    return { items: matched.slice(0, MAX_VISIBLE), total: matched.length };
-  }, [options, text]);
+  const selectedLabel = options.find((o) => o.value === current)?.label;
+  const triggerText =
+    current.length > 0
+      ? (selectedLabel ?? current)
+      : (descriptor.placeholder ?? "选择…");
 
   const commit = (v: string): void => {
     onChange(v);
-    setQuery(undefined);
     setOpen(false);
   };
 
   return (
     <FieldShell descriptor={descriptor} htmlFor={id} error={error}>
-      <div className="relative" data-pi-model-select={descriptor.widget}>
-        <Input
-          id={id}
-          value={text}
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={`${id}-listbox`}
-          autoComplete="off"
-          spellCheck={false}
-          disabled={disabled ?? descriptor.readOnly}
-          placeholder={descriptor.placeholder ?? "输入以搜索…"}
-          aria-invalid={error !== undefined}
-          onFocus={() => setOpen(true)}
-          onBlur={() => window.setTimeout(() => setOpen(false), 120)}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            onChange(e.target.value);
-            setOpen(true);
-          }}
-        />
-        {open && options.length > 0 ? (
-          <ul
-            id={`${id}-listbox`}
-            role="listbox"
-            className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-1 shadow-md"
+      <div data-pi-model-select={descriptor.widget}>
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              id={id}
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              aria-invalid={error !== undefined}
+              disabled={isDisabled}
+              className={cn(
+                "w-full justify-between font-normal",
+                current.length === 0 && "text-[hsl(var(--muted-foreground))]",
+              )}
+            >
+              <span className="truncate">{triggerText}</span>
+              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            className="w-[var(--radix-popover-trigger-width)] p-0"
+            align="start"
           >
-            {filtered.items.length === 0 ? (
-              <li className="px-2 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                无匹配 · 可直接输入自定义值
-              </li>
-            ) : (
-              filtered.items.map((o) => (
-                <li key={o.value} role="option" aria-selected={o.value === current}>
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      commit(o.value);
-                    }}
-                    className={cn(
-                      "flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
-                      o.value === current
-                        ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
-                        : "hover:bg-[hsl(var(--muted))]",
-                    )}
-                  >
-                    {o.label}
-                  </button>
-                </li>
-              ))
-            )}
-            {filtered.total > MAX_VISIBLE ? (
-              <li className="px-2 py-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                显示前 {MAX_VISIBLE} / 共 {filtered.total} 项 · 继续输入以缩小范围
-              </li>
-            ) : null}
-          </ul>
-        ) : null}
+            <Command>
+              <CommandInput
+                placeholder={descriptor.placeholder ?? "搜索…"}
+                aria-label={descriptor.label ?? "搜索"}
+              />
+              <CommandList>
+                <CommandEmpty>无匹配</CommandEmpty>
+                {options.map((o) => {
+                  const selected = o.value === current;
+                  return (
+                    <CommandItem
+                      key={o.value}
+                      value={`${o.value} ${o.label}`}
+                      onSelect={() => commit(o.value)}
+                    >
+                      <Check
+                        className={cn(
+                          "h-4 w-4 shrink-0",
+                          selected ? "opacity-100" : "opacity-0",
+                        )}
+                        aria-hidden="true"
+                      />
+                      <span className="truncate">{o.label}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
     </FieldShell>
   );

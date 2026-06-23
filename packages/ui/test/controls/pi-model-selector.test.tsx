@@ -13,7 +13,7 @@ describe("PiModelSelector", () => {
   it("渲染并展示模型选择触发器", () => {
     render(<PiModelSelector controls={mockControls()} models={models} />);
     expect(
-      screen.getByRole("combobox", { name: /select model/i }),
+      screen.getByRole("button", { name: /select model/i }),
     ).toBeInTheDocument();
   });
 
@@ -21,7 +21,7 @@ describe("PiModelSelector", () => {
     const user = userEvent.setup();
     const controls = mockControls();
     render(<PiModelSelector controls={controls} models={models} />);
-    await user.click(screen.getByRole("combobox", { name: /select model/i }));
+    await user.click(screen.getByRole("button", { name: /select model/i }));
     await user.click(await screen.findByText("GPT"));
     expect(controls.setModel).toHaveBeenCalledWith({
       provider: "openai",
@@ -37,7 +37,7 @@ describe("PiModelSelector", () => {
     };
     render(<PiModelSelector controls={controls} models={models} />);
     expect(
-      screen.getByRole("combobox", { name: /select model/i }),
+      screen.getByRole("button", { name: /select model/i }),
     ).toHaveAttribute("aria-busy", "true");
   });
 
