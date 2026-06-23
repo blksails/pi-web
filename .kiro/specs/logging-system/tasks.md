@@ -47,7 +47,7 @@
   - _Boundary: protocol config_
   - _Depends: 1.4_
 
-- [ ] 2.3 [P0] 服务端 stderr 解析与会话环形缓冲
+- [x] 2.3 [P0] 服务端 stderr 解析与会话环形缓冲
   - 实现行缓冲的 stderr 日志解析器（sentinel 行→LogEntry、分配单调 id）与每会话定容 ring buffer（满则淘汰最旧、支持 level/limit/since 过滤）
   - 完成态：喂入混合 stderr 文本时仅 sentinel 行成为带 id 的 LogEntry 入库，超上限淘汰最旧，过滤查询返回正确子集
   - _Requirements: 2.5, 4.1, 4.3, 4.4, 9.2_
@@ -154,3 +154,7 @@
   - 完成态：E2E 用例全部通过且不污染开发服务器共享构建产物，以实际运行输出与截图为证
   - _Requirements: 5.2, 5.3, 5.4, 5.6, 6.4, 6.5, 6.6, 9.3, 9.4_
   - _Depends: 5.4_
+
+## Implementation Notes
+- 任务 2.2 给 protocol `ConfigDomainId` 加了 `"logging"`，导致 server `packages/server/src/config/config-routes.ts` 的 `DOMAIN_SCHEMAS: Record<ConfigDomainId, ...>` 缺 `logging` 键而 typecheck 报 TS2741（过渡性破坏）。**任务 3.1 必须在 DOMAIN_SCHEMAS 加入 `logging: loggingConfigSchema` 修复此错**，届时 server typecheck 才会恢复绿。在 3.1 完成前，`pnpm -F @pi-web/server typecheck` 预期仅有这一个错误。
+- harness 编辑器 LSP 对新建未跟踪文件常报 "Cannot find module .../X.js" 与级联的 implicit-any 假阳性；以各包 `pnpm -F <pkg> typecheck`/`test` 实际退出码为准。

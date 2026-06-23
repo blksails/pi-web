@@ -165,6 +165,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.79.6
         version: 0.79.6(ws@8.21.0)(zod@3.25.76)
+      '@pi-web/logger':
+        specifier: workspace:*
+        version: link:../logger
       '@pi-web/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -6716,6 +6719,14 @@ snapshots:
     optionalDependencies:
       vite: 5.4.21(@types/node@22.19.21)
 
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@25.9.3))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@25.9.3)
+
   '@vitest/pretty-format@2.1.9':
     dependencies:
       tinyrainbow: 1.2.0
@@ -9389,7 +9400,7 @@ snapshots:
   vitest@2.1.9(@types/node@25.9.3)(jsdom@25.0.1):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.21))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@25.9.3))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9
