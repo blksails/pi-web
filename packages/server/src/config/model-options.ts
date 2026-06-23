@@ -15,6 +15,13 @@ import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { ModelOptions } from "./model-options.types.js";
 
+// 经本(`./model-options`)子路径转出 provider 排除过滤(纯函数,定义在不引 pi SDK 的
+// model-options-filter),便于 handler 装配层与取数一并 import。
+export {
+  parseHiddenProviders,
+  excludeProviders,
+} from "./model-options-filter.js";
+
 /**
  * 列出 `<agentDir>` 下已配置凭证的可用模型。
  * 同步:AuthStorage/ModelRegistry 的构造与 getAvailable() 均不触发网络/OAuth 刷新。
