@@ -39,7 +39,13 @@ import {
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@pi-web/server/trust";
 // listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
-import { listModelOptions } from "@pi-web/server/model-options";
+// parseHiddenProviders/excludeProviders 为纯函数,经同一子路径转出,用于按
+// PI_WEB_HIDE_PROVIDERS 部署期开关从下拉中剔除指定 provider 的模型。
+import {
+  listModelOptions,
+  parseHiddenProviders,
+  excludeProviders,
+} from "@pi-web/server/model-options";
 import type { SpawnSpec } from "@pi-web/protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -308,7 +314,11 @@ function buildSingleton(): HandlerSingleton {
         rootDir: config.agentDir,
         // settings 域:把 defaultProvider/defaultModel 升级为运行时下拉(选项 = 该
         // agentDir 下已配置凭证的可用模型,含 models.json 自定义 provider)。
-        listModelOptions: () => listModelOptions(config.agentDir),
+        // 经 PI_WEB_HIDE_PROVIDERS(逗号分隔)剔除部署期不想暴露的 provider 及其模型。
+        listModelOptions: () => {
+          const hidden = parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS);
+          return excludeProviders(listModelOptions(config.agentDir), hidden);
+        },
       }),
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
       ...createExtensionsConfigRoutes({
