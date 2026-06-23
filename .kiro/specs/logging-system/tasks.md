@@ -39,7 +39,7 @@
   - _Boundary: protocol transport_
   - _Depends: 1.4_
 
-- [ ] 2.2 [P0] (P) logging 配置域 schema
+- [x] 2.2 [P0] (P) logging 配置域 schema
   - 新增 loggingConfigSchema（passthrough）：enabled、level、namespaces（record<boolean>，widget logNamespaceToggles）、outputs（console/file{enabled,path,maxSizeMb,maxFiles}/panelVisible）、panelDefaultLevel，并经 zodToFormSchema 生成静态 FormSchema 与分组
   - 在 config index 导出该域、ConfigDomainId 加 `logging`、CONFIG_FORM_SCHEMAS 加入 logging
   - 完成态：CONFIG_FORM_SCHEMAS.logging 含按命名空间开关字段且标记自定义 widget
