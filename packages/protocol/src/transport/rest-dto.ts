@@ -28,6 +28,7 @@ import {
 } from "../rpc/session-state.js";
 import { AgentMessageSchema } from "../rpc/model.js";
 import { RpcExtensionUIResponseSchema } from "../rpc/extension-ui.js";
+import { LogEntrySchema, LogLevelSchema } from "../logging/log-entry.js";
 
 /**
  * 建会话请求:`{ source, cwd?, model?, env?, resumeId? }`。`source` 必填(agent 源标识)。
@@ -163,3 +164,24 @@ export const GetForkMessagesResponseSchema = z.object({
 export type GetForkMessagesResponse = z.infer<
   typeof GetForkMessagesResponseSchema
 >;
+
+/**
+ * GET /sessions/:id/logs 响应 —— 返回结构化日志条目列表。
+ * 对应 Requirement 3.3 / design Event Contract: control:logs。
+ */
+export const GetLogsResponseSchema = z.object({
+  entries: z.array(LogEntrySchema),
+});
+export type GetLogsResponse = z.infer<typeof GetLogsResponseSchema>;
+
+/**
+ * GET /sessions/:id/logs 查询参数 schema。
+ * 所有字段可选:level 过滤级别、limit 最大条数、since 起始 epoch ms。
+ * 对应 Requirement 4.1 (REST 日志端点查询参数)。
+ */
+export const GetLogsQuerySchema = z.object({
+  level: LogLevelSchema.optional(),
+  limit: z.number().optional(),
+  since: z.number().optional(),
+});
+export type GetLogsQuery = z.infer<typeof GetLogsQuerySchema>;

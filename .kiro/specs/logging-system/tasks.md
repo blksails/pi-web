@@ -32,7 +32,7 @@
 
 ## 2. Core：契约扩展、服务端汇聚、前端聚合、面板（P0）
 
-- [ ] 2.1 [P0] (P) SSE 帧与 REST DTO 扩展
+- [x] 2.1 [P0] (P) SSE 帧与 REST DTO 扩展
   - 在 ControlPayload 判别联合追加 `control:"logs"` 分支（entries 为 LogEntry 数组）；新增 GetLogsResponse DTO 与查询参数类型
   - 完成态：可用既有 makeControlFrame 构造 logs 帧并通过 schema 校验；既有 extension-ui/queue/stats/error/ui-rpc 分支不受影响
   - _Requirements: 3.1, 3.3, 4.1, 9.1_
