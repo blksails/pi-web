@@ -4,7 +4,7 @@
 
 ## 1. Foundation：日志库与契约根
 
-- [ ] 1.1 新建 `@pi-web/logger` 包骨架
+- [x] 1.1 新建 `@pi-web/logger` 包骨架
   - 在 packages 下创建零运行时依赖的同构包，配置 package.json（name `@pi-web/logger`、双入口 exports、type module）、tsconfig，并纳入 pnpm workspace 与根 tsconfig 引用
   - 包可被 `pnpm -F @pi-web/logger build`（或 tsc）成功构建，导出占位入口可被其他包 import
   - _Requirements: 1.1_
