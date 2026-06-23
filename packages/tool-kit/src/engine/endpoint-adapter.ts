@@ -94,8 +94,10 @@ export async function runEndpoint(
   if (submitErr) throw new Error(submitErr);
 
   const asyncSpec = behavior.async;
-  const statusUrl = asyncSpec.statusUrl(submit);
-  const responseUrl = asyncSpec.responseUrl(submit);
+  // statusUrl/responseUrl 经 resolveVars 展开 `${VAR}`/`${VAR:-default}` 占位
+  // (使按 base 切换的端点在异步轮询路径也生效);无占位时原样返回。
+  const statusUrl = resolveVars(asyncSpec.statusUrl(submit));
+  const responseUrl = resolveVars(asyncSpec.responseUrl(submit));
   const deadline = Date.now() + (asyncSpec.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const pollMs = asyncSpec.pollMs ?? DEFAULT_POLL_MS;
 

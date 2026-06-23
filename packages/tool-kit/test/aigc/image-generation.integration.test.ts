@@ -136,7 +136,7 @@ describe("image_generation integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("sync model (qwen-image-pro): prompt → 2 images → persistPicked → details.ok true + 2 assets", async () => {
+  it("sync model (wan2.7-image-pro): prompt → 2 images → persistPicked → details.ok true + 2 assets", async () => {
     const imageUrls = [
       "https://dashscope-result.aliyuncs.com/img1.png",
       "https://dashscope-result.aliyuncs.com/img2.png",
@@ -148,7 +148,7 @@ describe("image_generation integration", () => {
     const tool = compileTool(imageGeneration, deps);
     const result = await tool.execute(
       "call-sync",
-      { prompt: "mountain lake", model: "qwen-image-pro" },
+      { prompt: "mountain lake", model: "wan2.7-image-pro" },
       undefined,
       undefined,
       {} as never,
@@ -160,7 +160,7 @@ describe("image_generation integration", () => {
       assets?: { attachmentId: string; mimeType: string }[];
     };
     expect(details.ok).toBe(true);
-    expect(details.model).toBe("qwen-image-pro");
+    expect(details.model).toBe("wan2.7-image-pro");
     expect(details.assets).toBeDefined();
     expect(details.assets?.length).toBe(2);
     expect(details.assets?.[0]?.attachmentId).toMatch(/^att_/);

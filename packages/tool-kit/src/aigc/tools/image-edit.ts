@@ -19,6 +19,12 @@ import {
 } from "../providers/dashscope.js";
 import { createNewApiImageEdit } from "../providers/newapi.js";
 
+// token plan(阿里云百炼)图像编辑 —— 同样走 DashScope **原生** messages/content 格式 + 同一
+// multimodal-generation 端点(非 OpenAI /images/edits)。base 经 env DASHSCOPE_TOKENPLAN_BASE_URL
+// 可配。token plan key(DASHSCOPE_API_KEY)对官方 dashscope 端点无效,故打 token plan 末端。
+const TOKEN_PLAN_MULTIMODAL_URL =
+  "${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation";
+
 export const imageEdit: ToolSpec = {
   name: "image_edit",
   label: "Image edit",
@@ -128,6 +134,20 @@ export const imageEdit: ToolSpec = {
         providerModel: DASHSCOPE_MODELS.qwenImageEditMax,
       },
       { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
+    ),
+
+    // ── token plan(阿里云百炼 multimodal-generation 原生格式;末端 url 切换到 token plan)──
+    // token plan 仅开通 wan2.7-image-pro(multimodal:t2i + 带图编辑统一);curl 实测它支持图像编辑。
+    createDashscopeImageEdit(
+      {
+        model: "wan2.7-image-edit-bailian",
+        label: "Wan 2.7 Image Edit · token plan",
+        description:
+          "Wan 2.7 Image Pro 带图编辑 via token plan multimodal-generation (DashScope 原生 messages/content). " +
+          "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
+        providerModel: DASHSCOPE_MODELS.wan27ImagePro,
+      },
+      { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.3, currency: "CNY", unit: "image" } },
     ),
   ],
 };
