@@ -14,6 +14,7 @@ import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
 import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
+import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -76,6 +77,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
   { match: "aigc-agent", ext: aigcExt },
   { match: "webext-declarative-agent", ext: DECLARATIVE },
+  // logging-demo-agent:浏览器侧 webext 日志总线验收(webext:logging-demo 命名空间)。
+  { match: "logging-demo-agent", ext: loggingDemoExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */
