@@ -123,7 +123,7 @@
 
 ## 5. Validation：测试与端到端
 
-- [ ] 5.1 (P) 单元测试：库与契约
+- [x] 5.1 (P) 单元测试：库与契约
   - 覆盖 logger 门控真值表（enabled/level/namespace）、child 拼接、sink 选择、浏览器总线定容；parseLogLine 正反例；loggingConfigSchema↔FormSchema 字段/分组/widget；构建产物扫描确认浏览器侧无 `node:` 引用
   - 完成态：上述单测通过并以实际运行输出为证
   - _Requirements: 1.3, 1.5, 1.6, 1.7, 2.5, 6.2, 6.7_
