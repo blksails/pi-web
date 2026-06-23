@@ -5,6 +5,7 @@
  * 状态/transport,只用此窄面:回 agent 的 RPC client、当前主题 token、扩展自身 id。
  */
 import type { UiRpcClient } from "./rpc-client.js";
+import type { Logger } from "@pi-web/logger";
 
 export interface WebExtHostContext {
   /** 当前扩展 id(CSS/registry 命名空间根)。 */
@@ -13,4 +14,10 @@ export interface WebExtHostContext {
   readonly rpc: UiRpcClient;
   /** 只读的宿主主题 token 快照(扩展只读,不可覆写)。 */
   readonly theme: Readonly<Record<string, string>>;
+  /**
+   * Structured logger for the webext (browser sink → browser log bus).
+   * Namespace is prefixed with the extension id by convention.
+   * Provided by the host; webext components read it via WebExtHostContext.
+   */
+  readonly logger: Logger;
 }

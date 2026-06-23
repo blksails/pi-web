@@ -18,6 +18,7 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { createLogger } from "@pi-web/logger";
 import type { AgentContext } from "./agent-definition.js";
 import { loadAgentDefinition } from "./agent-loader.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
@@ -142,10 +143,19 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
  */
 export async function startRunner(args: RunnerArgs): Promise<never> {
   const agentDir = args.agentDir ?? getAgentDir();
+  // Derive a namespace from the agent path: use the basename without extension,
+  // fall back to "agent" when the path produces an empty string.
+  const agentBasename = args.agent
+    .replace(/\\/g, "/")
+    .split("/")
+    .pop()
+    ?.replace(/\.[^.]+$/, "") ?? "agent";
+  const agentNamespace = `agent:${agentBasename || "agent"}`;
   const ctx: AgentContext = {
     cwd: args.cwd,
     agentDir,
     env: process.env,
+    logger: createLogger({ namespace: agentNamespace }),
   };
 
   // 信任来源:`--trusted` CLI 参数,或 custom 模式经 spawnSpec.env 注入的

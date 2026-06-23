@@ -84,7 +84,7 @@
   - _Boundary: react sse, react client_
   - _Depends: 2.4, 2.1_
 
-- [ ] 3.3 [P0] 三类组件注入面与 logs slot key
+- [x] 3.3 [P0] 三类组件注入面与 logs slot key
   - agent-kit 的 AgentContext 增加 logger 接缝并由 runner 注入按 agent 命名的 Logger；web-kit host context 注入 logger；descriptor SlotKey 追加 `logs`、web-kit SLOTS 增加 logs
   - 完成态：agent source 可经上下文取得 Logger 打日志；扩展可直接 import createLogger 打日志；webext 可声明填充 logs slot
   - _Requirements: 2.1, 2.3, 2.4_
