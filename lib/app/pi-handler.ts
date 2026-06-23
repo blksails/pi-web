@@ -31,10 +31,12 @@ import {
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
+  ConfigCodec,
   type ResolvedSource,
   type SessionChannel,
   type CreateChannelOpts,
 } from "@pi-web/server";
+import { loggingConfigSchema } from "@pi-web/protocol";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@pi-web/server/trust";
@@ -216,7 +218,25 @@ function buildSingleton(): HandlerSingleton {
   const config = loadConfig();
 
   const store = new InMemorySessionStore(true);
-  const manager = new SessionManager({ store, idleMs: 0 });
+
+  // 日志门控 provider（Req 6.4/6.5/6.6 / task 4.4）：每次新会话创建时读取最新配置。
+  // 缺文件/空配置/读失败 → 全开 debug（与 PiSession 的 GATE_DEFAULT 一致，新装机默认可见全部
+  // 日志、行为可预测）；有内容 → parse(raw) 应用用户已保存的 enabled/level/namespaces。
+  const FULL_OPEN = { enabled: true, level: "debug" as const };
+  const loggingConfigProvider = async () => {
+    try {
+      const codec = new ConfigCodec(config.agentDir);
+      const raw = await codec.load("logging");
+      if (raw === null || typeof raw !== "object" || Object.keys(raw).length === 0) {
+        return loggingConfigSchema.parse(FULL_OPEN);
+      }
+      return loggingConfigSchema.parse(raw);
+    } catch {
+      return loggingConfigSchema.parse(FULL_OPEN);
+    }
+  };
+
+  const manager = new SessionManager({ store, idleMs: 0, loggingConfigProvider });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。
   // 使沙箱 enforcement **不依赖** pi 默认扩展发现:cli 模式经 `-e <entry>` 显式加载;

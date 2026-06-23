@@ -121,6 +121,13 @@
   - _Boundary: server logging_
   - _Depends: 2.3, 3.1_
 
+- [x] 4.4 [P1] Node 侧日志配置门控（服务端权威门控）
+  - feature 验证发现：settings 改 enabled/level/namespaces 仅对浏览器日志生效；agent/扩展的 Node 日志恒以默认产出（initConfigFromEnv 读 PI_WEB_LOG_* 但无写入方；pi-session.handleStderr 无门控）。落实 design「服务端权威门控」：pi-session 在会话启动读 logging 配置（ConfigCodec.load("logging")），在 handleStderr 入 ring buffer/产帧前按 enabled/level/namespace 过滤 Node 日志条目（复用 @pi-web/logger 的 isLevelEnabled/isNamespaceEnabled）。
+  - 完成态：关闭全局 enabled 或某命名空间开关或调高 level 后，**新会话**的 agent/扩展 Node 日志按配置被丢弃/过滤（与浏览器侧一致）；不影响既有帧；集成测试断言"改 logging 配置→新会话→Node 日志按配置变化"。
+  - _Requirements: 6.4, 6.5, 6.6, 9.3_
+  - _Boundary: server logging, server session, server config_
+  - _Depends: 3.1_
+
 ## 5. Validation：测试与端到端
 
 - [x] 5.1 (P) 单元测试：库与契约

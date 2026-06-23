@@ -15,6 +15,7 @@ import type {
   AgentEvent,
   ImageContent,
   LogEntry,
+  LoggingConfig,
   LogLevel,
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
@@ -24,6 +25,7 @@ import type {
   UiRpcRequest,
 } from "@pi-web/protocol";
 import { makeControlFrame, UiRpcResponseSchema } from "@pi-web/protocol";
+import { isLevelEnabled, isNamespaceEnabled } from "@pi-web/logger";
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import { LogRingBuffer } from "../logging/log-ring-buffer.js";
@@ -54,6 +56,18 @@ import {
 const FRAME_EVENT = "frame";
 const END_EVENT = "end";
 
+/**
+ * 安全默认日志门控配置：全开（enabled:true / debug / 全命名空间）。
+ * 用于：(a) 无 loggingConfigProvider 注入时；(b) 配置加载失败时的 fallback。
+ * 保证向后兼容（Req 6.4/6.5/6.6 / task 4.4）。
+ */
+const GATE_DEFAULT: LoggingConfig = {
+  enabled: true,
+  level: "debug",
+  namespaces: undefined,
+  panelDefaultLevel: "info",
+};
+
 export class PiSession {
   readonly id: SessionId;
   readonly mode: ResolvedSource["mode"];
@@ -79,6 +93,18 @@ export class PiSession {
   private readonly logParser = new StderrLogParser();
   private readonly logBuffer = new LogRingBuffer();
 
+  /**
+   * 服务端权威日志门控（Req 6.4/6.5/6.6 / task 4.4）。
+   * - `gateConfig` 在 loggingConfigProvider 解析前为 `undefined`（表示"待加载"）。
+   * - 首条 stderr chunk 到来时触发异步加载；期间 chunk 入 `pendingStderr` 缓冲队列。
+   * - 配置加载完成后回放缓冲队列（按门控过滤），之后 chunk 直接过门控。
+   * - 无 provider 时（默认/生产默认）同步设为 GATE_DEFAULT（全开，向后兼容）。
+   */
+  private gateConfig: LoggingConfig | undefined;
+  private gateLoading = false;
+  private readonly pendingStderr: string[] = [];
+  private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
+
   constructor(opts: PiSessionOptions) {
     this.id = opts.id;
     this.channel = opts.channel;
@@ -87,6 +113,12 @@ export class PiSession {
     this.cwd = opts.resolved.cwd;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
+    this.loggingConfigProvider = opts.loggingConfigProvider;
+
+    // 无 provider 时直接使用安全默认（全开，无 async 延迟）。
+    if (!this.loggingConfigProvider) {
+      this.gateConfig = GATE_DEFAULT;
+    }
 
     // EventEmitter 默认 maxListeners=10,多订阅者场景放宽。
     this.emitter.setMaxListeners(0);
@@ -205,15 +237,64 @@ export class PiSession {
    * stderr 日志管道(Req 2.5 / 3.1):喂 chunk 给 parser → 得到 LogEntry[] →
    * 每条存入 ring buffer(分配 id)→ 合并成一帧经帧 emitter 广播。
    * 非 sentinel 的非空文本行由 parser 包装为 proc:stderr 原始日志(Req 4.3)；空白行丢弃。
+   *
+   * 服务端权威门控（Req 6.4/6.5/6.6 / task 4.4）：
+   * 若配置未加载，将 chunk 入队；配置加载完成后回放队列并按门控过滤。
+   * 若配置已加载，直接按门控过滤后入 buffer/产帧。
    */
   private handleStderr(chunk: string): void {
     if (this._status !== "active") return;
+
+    // 门控配置未就绪：缓冲 chunk，按需触发一次异步加载。
+    if (this.gateConfig === undefined) {
+      this.pendingStderr.push(chunk);
+      if (!this.gateLoading) {
+        this.gateLoading = true;
+        const provider = this.loggingConfigProvider!;
+        provider()
+          .catch(() => GATE_DEFAULT)
+          .then((config) => {
+            this.gateConfig = config;
+            // 回放缓冲队列（按门控过滤）。
+            const pending = this.pendingStderr.splice(0);
+            for (const c of pending) {
+              this.processStderrChunk(c);
+            }
+          })
+          .catch(() => {
+            // 极端情况（processStderrChunk 内部抛出），吞错不崩。
+          });
+      }
+      return;
+    }
+
+    // 门控配置已就绪：直接过滤处理。
+    this.processStderrChunk(chunk);
+  }
+
+  /**
+   * 实际处理 stderr chunk：解析 → 按 gateConfig 过滤 → 入 buffer → 产帧。
+   * 调用前必须确保 `gateConfig` 已就绪（非 undefined）。
+   */
+  private processStderrChunk(chunk: string): void {
+    if (this._status !== "active") return;
+    const gate = this.gateConfig!;
     const raw = this.logParser.ingestChunk(chunk);
     if (raw.length === 0) return;
+
     const entries: (LogEntry & { id: string })[] = [];
     for (const entry of raw) {
+      // 门控过滤（Req 6.4 / 6.5 / 6.6）：
+      //  1. 全局开关关闭 → 全丢。
+      //  2. 条目 level 低于配置 level → 丢。
+      //  3. 命名空间显式关闭 → 丢。
+      if (!gate.enabled) continue;
+      if (!isLevelEnabled(entry.level, gate.level)) continue;
+      if (!isNamespaceEnabled(entry.ns, gate.namespaces)) continue;
       entries.push(this.logBuffer.ingest(entry));
     }
+
+    if (entries.length === 0) return;
     this.emitter.emit(
       FRAME_EVENT,
       makeControlFrame({ control: "logs", entries }),

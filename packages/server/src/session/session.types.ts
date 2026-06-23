@@ -7,6 +7,7 @@
  */
 import type {
   AgentEvent,
+  LoggingConfig,
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   SseFrame,
@@ -111,6 +112,12 @@ export interface PiSessionOptions {
   readonly channel: SessionChannel;
   readonly idleMs?: number;
   readonly onClosed?: (id: SessionId, reason: SessionEndReason) => void;
+  /**
+   * 服务端权威日志门控配置提供器（Req 6.4/6.5/6.6 / task 4.4）。
+   * 返回该会话应用的 logging 配置；每会话读取一次（构造时触发）。
+   * 省略时使用安全默认（全开，向后兼容）。
+   */
+  readonly loggingConfigProvider?: () => Promise<LoggingConfig>;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */
