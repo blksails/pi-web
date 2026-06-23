@@ -61,7 +61,7 @@
   - _Boundary: react logging_
   - _Depends: 2.1_
 
-- [ ] 2.5 [P0] 日志面板组件
+- [x] 2.5 [P0] 日志面板组件
   - 实现 LogsPanel：按时间顺序展示级别与命名空间、级别下拉、命名空间过滤、搜索框、自动滚动（到底跟随、上滚暂停）；容器 `data-pi-logs-region`、行 `data-pi-log-level`/`data-pi-log-ns`
   - 完成态：面板随 logsStore 新增条目渲染新行；切换过滤/搜索即时改变可见行；上滚时停止自动跟随
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_

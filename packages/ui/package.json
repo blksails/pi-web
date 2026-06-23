@@ -18,6 +18,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@pi-web/logger": "workspace:*",
     "@pi-web/protocol": "workspace:*",
     "@pi-web/react": "workspace:*",
     "@pi-web/web-kit": "workspace:*",
