@@ -24,8 +24,21 @@ import { isAbsolute, join, resolve } from "node:path";
 import { BlobNotFoundError, type BlobMeta, type BlobStore } from "./blob-store.js";
 import type { UrlSigner } from "./url-signer.js";
 
-/** 默认可达 URL 过期窗口(ms);调用方可经 `presignUrl` opts 覆盖。 */
-const DEFAULT_URL_TTL_MS = 5 * 60_000;
+/**
+ * 默认可达 URL 过期窗口(ms)。调用方可经 `presignUrl` opts 覆盖;默认值亦可经
+ * env `PI_WEB_ATTACHMENT_URL_TTL_MS` 覆盖。
+ *
+ * 取**很长**窗口(默认 10 年):历史消息持久化的是**生成那一刻**签发的签名 URL,
+ * 短 TTL 会让历史回放时签名过期 → raw 端点 401 → 图片加载不出(本次修复目标)。
+ * 长 TTL 使历史回放的图片长期可达;`sig` 仍需有效,防枚举不变(代价:签名 URL 长期有效,
+ * 本地/低敏感场景可接受)。
+ */
+function resolveDefaultUrlTtlMs(): number {
+  const raw = process.env["PI_WEB_ATTACHMENT_URL_TTL_MS"];
+  const n = raw !== undefined && raw !== "" ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 10 * 365 * 24 * 60 * 60_000;
+}
+const DEFAULT_URL_TTL_MS = resolveDefaultUrlTtlMs();
 
 /** meta 旁路文件后缀(`<root>/<key>.meta.json`)。 */
 const META_SUFFIX = ".meta.json";
