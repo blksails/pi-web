@@ -16,6 +16,10 @@
 import * as React from "react";
 import { cn } from "../lib/cn.js";
 
+/** SSR 安全的 layout effect:服务端退化为 useEffect,避免 useLayoutEffect 警告。 */
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
 export interface PromptInputProps {
   /** 受控文本值。 */
   readonly value: string;
@@ -27,8 +31,10 @@ export interface PromptInputProps {
   readonly placeholder?: string;
   /** 是否禁用输入与提交。 */
   readonly disabled?: boolean;
-  /** textarea 行数,默认 2。 */
+  /** textarea 初始/最小行数,默认 2。内容增多时自动增高,至多 maxRows 行。 */
   readonly rows?: number;
+  /** textarea 最大行数,内容超过后固定高度并内部滚动,默认 10。 */
+  readonly maxRows?: number;
   /** textarea 的无障碍标签,默认中文"消息输入"。 */
   readonly textareaLabel?: string;
   /** 动作栏插槽(通常承载附件/模型/语音/联网开关/发送按钮)。 */
@@ -66,6 +72,7 @@ export function PromptInput({
   placeholder = "输入消息…",
   disabled = false,
   rows = 2,
+  maxRows = 10,
   textareaLabel = "消息输入",
   toolbar,
   leftSlot,
@@ -82,6 +89,34 @@ export function PromptInput({
     ghostSuffix !== undefined &&
     ghostSuffix.length > 0 &&
     onAcceptGhost !== undefined;
+
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // 自动增高:把 textarea 高度贴合内容,夹在 [rows, maxRows] 行之间;达 maxRows 后固定
+  // 高度并内部滚动(overflowY auto,配 pi-scrollbar-thin 细滚动条)。行高/内边距经
+  // getComputedStyle 实测,故 textareaClassName 覆盖字号(如 text-base)也能算准。
+  const resize = React.useCallback((): void => {
+    const el = textareaRef.current;
+    if (el === null) return;
+    el.style.height = "auto"; // 先归零,使 scrollHeight 反映真实内容高度(支持收缩回弹)。
+    const cs = window.getComputedStyle(el);
+    const lineHeight =
+      parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5;
+    const padV = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const minH = lineHeight * Math.max(1, rows) + padV;
+    const maxH = lineHeight * Math.max(rows, maxRows) + padV;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, minH), maxH)}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? "auto" : "hidden";
+  }, [rows, maxRows]);
+
+  // value 变化(含程序化填充/清空)与挂载时同步高度;窗口尺寸变化致换行改变时重算。
+  useIsomorphicLayoutEffect(() => {
+    resize();
+  }, [value, resize]);
+  React.useEffect(() => {
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [resize]);
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -142,6 +177,7 @@ export function PromptInput({
             </div>
           ) : null}
           <textarea
+            ref={textareaRef}
             aria-label={textareaLabel}
             value={value}
             disabled={disabled}
@@ -150,7 +186,7 @@ export function PromptInput({
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={handleKeyDown}
             className={cn(
-              "relative min-w-0 w-full resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+              "pi-scrollbar-thin relative min-w-0 w-full resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
               textareaClassName,
             )}
             data-pi-input-textarea
