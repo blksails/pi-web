@@ -4,8 +4,8 @@
  * 纯数据声明,无值导入运行时库:可从主入口安全导出(守 webpack externals 边界)。
  *
  * model 路由(本轮):
- *  - `qwen-image-edit-max` DashScope(默认)—— 最高保真,支持 mask 局部重绘
- *  - `gpt-image-2`         NewAPI —— OpenAI 兼容 edits(整图改写)
+ *  - `gpt-image-2`         NewAPI(默认)—— OpenAI 兼容 edits(整图改写),经验证可用
+ *  - `qwen-image-edit-max` DashScope —— 最高保真,支持 mask 局部重绘
  *
  * 参数对齐 OpenAI Images edits:`image`/`prompt`(必填)+ `mask`/`n`/`size`/`response_format`;
  * 另保留 `reference_images`(DashScope 风格/角色一致)。`image`/`mask`/`reference_images` 的
@@ -86,7 +86,7 @@ export const imageEdit: ToolSpec = {
     additionalProperties: false,
   },
 
-  defaultModel: "qwen-image-edit-max",
+  defaultModel: "gpt-image-2",
 
   // 业务必选项:缺失时经 ctx.ui 交互补全(model/size 选择,prompt 输入)。
   requiredParams: [
@@ -107,7 +107,18 @@ export const imageEdit: ToolSpec = {
   ],
 
   models: [
-    // ── DashScope mask-aware(局部重绘精准;默认)──────────────────────────────
+    // ── NewAPI(OpenAI 兼容 edits;整图改写;默认,经验证可用)──────────────────
+    createNewApiImageEdit(
+      {
+        model: "gpt-image-2",
+        label: "GPT Image 2 · NewAPI",
+        description:
+          "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
+      },
+      { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+    ),
+
+    // ── DashScope mask-aware(局部重绘精准)────────────────────────────────────
     createDashscopeImageEdit(
       {
         model: "qwen-image-edit-max",
@@ -117,17 +128,6 @@ export const imageEdit: ToolSpec = {
         providerModel: DASHSCOPE_MODELS.qwenImageEditMax,
       },
       { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
-    ),
-
-    // ── NewAPI(OpenAI 兼容 edits;整图改写)────────────────────────────────────
-    createNewApiImageEdit(
-      {
-        model: "gpt-image-2",
-        label: "GPT Image 2 · NewAPI",
-        description:
-          "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
-      },
-      { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
     ),
   ],
 };

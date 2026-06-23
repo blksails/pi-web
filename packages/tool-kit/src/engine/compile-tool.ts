@@ -26,6 +26,7 @@ import type {
 import type { AttachmentToolContext } from "@pi-web/agent-kit";
 import { checkRequiredVars } from "./var-resolver.js";
 import { runEndpoint } from "./endpoint-adapter.js";
+import { normalizeImageDataUri } from "./normalize-image.js";
 import { getAttachmentToolContext } from "../attachment/seam.js";
 import { persistPicked, resolveInputToDataUri } from "../attachment/persist.js";
 import type {
@@ -225,8 +226,8 @@ async function resolveMediaFields(
 
     if (prop.type === "string" && isImageProp) {
       const val = merged[name];
-      if (typeof val === "string" && val.startsWith("att_")) {
-        merged[name] = await resolveInputToDataUri(val, ctx);
+      if (typeof val === "string") {
+        merged[name] = await resolveAndNormalizeImage(val, ctx);
       }
     } else if (prop.type === "array") {
       // 数组类型:看 prop 或 items 是否有 image mediaKind
@@ -235,17 +236,31 @@ async function resolveMediaFields(
         const arr = merged[name];
         if (Array.isArray(arr)) {
           merged[name] = await Promise.all(
-            arr.map(async (elem) => {
-              if (typeof elem === "string" && elem.startsWith("att_")) {
-                return resolveInputToDataUri(elem, ctx);
-              }
-              return elem;
-            }),
+            arr.map(async (elem) =>
+              typeof elem === "string"
+                ? resolveAndNormalizeImage(elem, ctx)
+                : elem,
+            ),
           );
         }
       }
     }
   }
+}
+
+/**
+ * 解析图像输入并规范化:`att_` → data URI;随后对 data URI 剥元数据/烘焙方向/控尺寸
+ * (见 {@link normalizeImageDataUri},失败回退),以规避网关对 iPhone 多图 JPEG(AMPF/EXIF)
+ * 的渠道选择失败。非 `att_`、非 data: 的输入(如 https URL)原样透传。
+ */
+async function resolveAndNormalizeImage(
+  val: string,
+  ctx: AttachmentToolContext,
+): Promise<string> {
+  const resolved = val.startsWith("att_")
+    ? await resolveInputToDataUri(val, ctx)
+    : val;
+  return normalizeImageDataUri(resolved);
 }
 
 // ── 必选项交互补全(aigc-tools-interactive-params) ────────────────────────────

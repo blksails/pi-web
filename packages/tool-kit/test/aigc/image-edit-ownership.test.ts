@@ -11,8 +11,8 @@ import type { AttachmentToolContext } from "@pi-web/agent-kit";
 
 describe("image_edit · 输入越权/无效降级(Req 2.4)", () => {
   it("ctx.resolve 抛错 → ok:false 且未调用 putOutput(不泄漏)", async () => {
-    const saved = process.env["DASHSCOPE_API_KEY"];
-    process.env["DASHSCOPE_API_KEY"] = "test-key";
+    const saved = process.env["NEWAPI_API_KEY"];
+    process.env["NEWAPI_API_KEY"] = "test-key";
 
     const putOutput = vi.fn(async () => {
       throw new Error("putOutput must not be called on ownership failure");
@@ -55,8 +55,8 @@ describe("image_edit · 输入越权/无效降级(Req 2.4)", () => {
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(putOutput).not.toHaveBeenCalled();
     } finally {
-      if (saved !== undefined) process.env["DASHSCOPE_API_KEY"] = saved;
-      else delete process.env["DASHSCOPE_API_KEY"];
+      if (saved !== undefined) process.env["NEWAPI_API_KEY"] = saved;
+      else delete process.env["NEWAPI_API_KEY"];
     }
   });
 });

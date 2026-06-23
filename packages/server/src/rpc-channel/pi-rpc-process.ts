@@ -38,6 +38,10 @@ import {
   SpawnError,
   type Diagnostic,
 } from "./pi-rpc-process.errors.js";
+import {
+  registerForHotReload,
+  type HotReloadTarget,
+} from "./hot-reload.js";
 
 /** 内部状态机(见 design 关闭与生命周期图)。 */
 type Status = "spawning" | "ready" | "closing" | "exited";
@@ -77,9 +81,13 @@ type ResponseFor<C extends RpcResponse["command"]> = RpcResponse extends infer R
     : never
   : never;
 
-export class PiRpcProcess implements PiRpcChannel {
-  private readonly child: ChildProcessWithoutNullStreams;
-  private readonly reader = new JsonlLineReader();
+export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
+  /** 当前子进程;dev 热重载时 restart() 会替换为新进程(故非 readonly)。 */
+  private child!: ChildProcessWithoutNullStreams;
+  /** 行缓冲;每次重启换新实例,避免旧进程残行串到新进程。 */
+  private reader = new JsonlLineReader();
+  /** spawn 规格,供 restart() 用同一会话 id / env 重 spawn(续上对话)。 */
+  private readonly spec: SpawnSpec;
 
   // 两张待决表(进程内内存,close/exit 时清空并拒绝)。
   private readonly pendingCommands = new Map<string, PendingCommand>();
@@ -101,50 +109,71 @@ export class PiRpcProcess implements PiRpcChannel {
   /** close() 的幂等 Promise(确保子进程退出后才 resolve,Req 6.6)。 */
   private closePromise: Promise<void> | null = null;
 
+  // ── dev 热重载状态(见 hot-reload.ts)──────────────────────────────────────
+  /** 正在重启:旧子进程的 exit/error 事件不视为崩溃、不 finalize。 */
+  private restarting = false;
+  /** 重启请求落在忙时(有待决命令)→ 标记,待空闲再重启。 */
+  private pendingRestart = false;
+  /** 热重载注册的注销函数(未启用时为空操作)。 */
+  private hotReloadUnregister?: () => void;
+
   /**
    * 按给定 SpawnSpec 以 detached:false spawn 子进程并接管 stdio(Req 2.1–2.3)。
    * spawn 失败经子进程 `error` 事件异步传播(Req 2.4)。
    */
   constructor(spec: SpawnSpec) {
+    this.spec = spec;
+    this.spawnChild(); // 同步 spawn + 接管 stdio;同步失败抛 SpawnError
+    // dev-only:注册到热重载 watcher(未启用时为空操作)。
+    this.hotReloadUnregister = registerForHotReload(this);
+  }
+
+  /**
+   * 按 `this.spec` spawn 子进程并接管 stdio + 接线事件。同步 spawn 失败抛 SpawnError。
+   * 构造与 restart() 共用;监听器集合挂在 `this` 上,故重启后无需重新订阅。
+   */
+  private spawnChild(): void {
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = spawn(spec.cmd, spec.args, {
-        cwd: spec.cwd,
-        env: spec.env,
+      child = spawn(this.spec.cmd, this.spec.args, {
+        cwd: this.spec.cwd,
+        env: this.spec.env,
         detached: false, // 父进程退出时连带清理子进程(Req 2.2)
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (err) {
       // 极少数同步 spawn 失败(如参数非法)。
       this.status = "exited";
-      throw new SpawnError(`Failed to spawn "${spec.cmd}"`, err);
+      throw new SpawnError(`Failed to spawn "${this.spec.cmd}"`, err);
     }
     this.child = child;
 
-    this.child.stdout.setEncoding("utf8");
-    this.child.stderr.setEncoding("utf8");
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
 
-    this.child.on("spawn", () => {
+    child.on("spawn", () => {
       if (this.status === "spawning") {
         this.status = "ready";
       }
     });
 
-    this.child.stdout.on("data", (chunk: string) => {
+    child.stdout.on("data", (chunk: string) => {
       this.handleStdout(chunk);
     });
 
-    this.child.stderr.on("data", (chunk: string) => {
+    child.stderr.on("data", (chunk: string) => {
       this.stderrBuffer += chunk;
       for (const cb of this.stderrListeners) cb(chunk);
     });
 
     // spawn 失败(命令不存在/无法执行)经 error 事件到达(Req 2.4 / 6.5)。
-    this.child.on("error", (err: Error) => {
+    child.on("error", (err: Error) => {
+      if (this.restarting) return; // 重启中:旧进程的 error 不视为崩溃
       this.finalize(null, null, new SpawnError(err.message, err));
     });
 
-    this.child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
+    child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
+      if (this.restarting) return; // 重启中:旧进程退出由 doRestart 处理重生
       // 子进程退出/崩溃:发信号 + 拒绝待决(Req 6.2 / 6.5)。
       const crash =
         this.status === "closing"
@@ -152,6 +181,74 @@ export class PiRpcProcess implements PiRpcChannel {
           : new ChildCrashError(code, signal);
       this.finalize(code, signal, crash);
     });
+  }
+
+  // ───────────────────────── dev 热重载(restart)─────────────────────────
+
+  /**
+   * 热重载触发({@link HotReloadTarget}):空闲(无待决命令)则立即重启子进程;
+   * 忙则标记,待当前命令全部结算后重启。已退出/关闭则忽略。
+   */
+  requestRestart(): void {
+    if (this.status === "exited" || this.status === "closing") return;
+    if (this.pendingCommands.size > 0) {
+      this.pendingRestart = true;
+      return;
+    }
+    void this.doRestart();
+  }
+
+  /**
+   * 杀掉当前子进程并用同一 spawnSpec 重 spawn(复用同一通道实例与全部监听器)。
+   * 新进程经全新 jiti 重读源码;会话 id 复用 → 从持久化 jsonl 续上对话。
+   */
+  private async doRestart(): Promise<void> {
+    if (this.restarting) return;
+    if (this.status === "exited" || this.status === "closing") return;
+    this.restarting = true;
+    const old = this.child;
+    try {
+      await new Promise<void>((res) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          res();
+        };
+        old.once("exit", done);
+        try {
+          old.kill("SIGTERM");
+        } catch {
+          done();
+          return;
+        }
+        const t = setTimeout(() => {
+          try {
+            old.kill("SIGKILL");
+          } catch {
+            /* 已退出 */
+          }
+        }, 2000);
+        if (typeof t.unref === "function") t.unref();
+        old.once("exit", () => clearTimeout(t));
+      });
+      // 重置每子进程的瞬时状态(监听器与待决表挂在 this 上,此刻待决已空)。
+      this.reader = new JsonlLineReader();
+      this.stderrBuffer = "";
+      this.status = "spawning";
+      this.restarting = false;
+      this.spawnChild();
+      process.stderr.write("[runner-hot-reload] runner restarted\n");
+    } catch (err) {
+      this.restarting = false;
+      this.finalize(
+        null,
+        null,
+        err instanceof Error
+          ? new SpawnError(err.message, err)
+          : new SpawnError(String(err), err),
+      );
+    }
   }
 
   // ───────────────────────── PiRpcChannel 端口成员 ─────────────────────────
@@ -379,6 +476,12 @@ export class PiRpcProcess implements PiRpcChannel {
     }
     this.pendingCommands.delete(id);
     pending.resolve(response);
+
+    // dev 热重载:忙时延迟的重启,在命令全部结算(空闲)后执行。
+    if (this.pendingRestart && this.pendingCommands.size === 0) {
+      this.pendingRestart = false;
+      void this.doRestart();
+    }
   }
 
   private handleExtensionUIRequest(req: RpcExtensionUIRequest): void {
@@ -561,6 +664,9 @@ export class PiRpcProcess implements PiRpcChannel {
     this.status = "exited";
     this.exitCode = code;
     this.exitSignal = signal;
+
+    // dev 热重载:终态时注销 watcher 目标(幂等)。
+    this.hotReloadUnregister?.();
 
     this.rejectAllPending(rejectionError);
     this.pendingExtensionUI.clear();
