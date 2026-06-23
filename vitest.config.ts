@@ -15,6 +15,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "."),
       "@pi-web/logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
+      "@pi-web/agent-kit": path.resolve(__dirname, "packages/agent-kit/src/index.ts"),
     },
   },
   test: {

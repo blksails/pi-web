@@ -26,6 +26,9 @@
       ],
       "@pi-web/logger": [
         "./packages/logger/src/index.ts"
+      ],
+      "@pi-web/agent-kit": [
+        "./packages/agent-kit/src/index.ts"
       ]
     }
   },

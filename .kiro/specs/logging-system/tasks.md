@@ -143,7 +143,7 @@
   - _Requirements: 2.2, 2.3, 2.4, 4.2, 6.3, 9.1_
   - _Depends: 3.1, 3.2, 3.3_
 
-- [ ] 5.4 端到端验证用示例源
+- [x] 5.4 端到端验证用示例源
   - 新增 logging-demo-agent：agent 用上下文 logger 打多级别日志；附带扩展直接 import logger 打日志；可选 webext 打浏览器日志
   - 完成态：选择该源运行时可在面板观察到来自 agent、扩展（及 webext）的不同命名空间日志
   - _Requirements: 2.1, 2.3, 5.2_

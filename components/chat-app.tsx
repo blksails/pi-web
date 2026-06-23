@@ -21,6 +21,37 @@ import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 
 /**
+ * useLogsPanelVisible — fetches logging.outputs.panelVisible from the config API.
+ *
+ * Returns true (safe default) until the config loads. Silently falls back to
+ * true on any error so a broken config endpoint never hides the log panel
+ * when the user expects it (Req 6.6).
+ */
+function useLogsPanelVisible(): boolean {
+  const [panelVisible, setPanelVisible] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/config/logging", { method: "GET" });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          values?: { outputs?: { panelVisible?: boolean } };
+        };
+        const v = json.values?.outputs?.panelVisible;
+        if (typeof v === "boolean") {
+          setPanelVisible(v);
+        }
+      } catch {
+        // Silent fallback: keep panelVisible=true.
+      }
+    })();
+  }, []);
+
+  return panelVisible;
+}
+
+/**
  * 细粒度组件覆盖:用 AI Elements 风格的 Reasoning(流式自动展开 + "Thought for Ns")
  * 替换默认 PiReasoning。模块级常量(引用稳定,避免每渲染新对象使下游 useMemo 失效)。
  */
@@ -124,6 +155,9 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
+  // Logging panel visibility (Req 6.6): default true, overridden by config.
+  const logsPanelVisible = useLogsPanelVisible();
+
   // Resume mode: enter SessionView immediately (skip the picker).
   const [session, setSession] = React.useState<ActiveSession | undefined>(
     props.resumeId !== undefined
@@ -180,6 +214,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
             : {})}
           onReset={onReset}
           onNewByAgentSource={onNewByAgentSource}
+          logsPanelVisible={logsPanelVisible}
         />
       )}
     </PiProvider>
@@ -191,11 +226,14 @@ function SessionView({
   resumeId,
   onReset,
   onNewByAgentSource,
+  logsPanelVisible,
 }: {
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
   readonly onReset: () => void;
   readonly onNewByAgentSource: () => void;
+  /** Controls LogsPanel visibility per logging config (Req 6.6). */
+  readonly logsPanelVisible?: boolean;
 }): React.JSX.Element {
   const session: UsePiSessionResult = usePiSession({
     create,
@@ -347,6 +385,8 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           attachmentBaseUrl="/api"
+          showLogs={true}
+          logsPanelVisible={logsPanelVisible ?? true}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
