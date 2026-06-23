@@ -34,7 +34,7 @@
 1. The 日志库 shall 导出 `createLogger({ namespace, level })`，返回提供 `debug` / `info` / `warn` / `error` 四个方法及 `child(namespace)` 派生方法的 Logger 实例。
 2. When 调用任一日志方法, the 日志库 shall 产出一条包含级别、命名空间、消息、可选结构化数据与时间戳的结构化日志条目。
 3. When 调用 `child(subNamespace)`, the 日志库 shall 返回一个命名空间为父子拼接（如 `agent:hello:tool`）的新 Logger，且继承父级配置。
-4. While 运行在 Node 子进程环境, the 日志库 shall 将日志条目序列化为单行 JSON 并写入子进程标准输出，作为与主进程约定的日志通道。
+4. While 运行在 Node 子进程环境, the 日志库 shall 将日志条目序列化为单行 JSON 并写入子进程标准错误输出（stderr，带 sentinel 标记），作为与主进程约定的日志通道（避开被 pi SDK RPC 独占的标准输出，详见 design 与 research）。
 5. While 运行在浏览器环境, the 日志库 shall 将日志条目写入浏览器侧的内存环形缓冲并派发给订阅方，而不写入标准输出。
 6. The 日志库 shall 保证浏览器构建产物中不包含任何仅限 Node 的模块引用（如文件系统模块），以免污染浏览器打包。
 7. If 当前级别配置高于某条日志的级别, the 日志库 shall 丢弃该条日志且不产出任何条目。

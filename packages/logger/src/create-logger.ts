@@ -16,9 +16,7 @@
 import type { Logger, LogEntry, LogLevel, Sink } from "./types.js";
 import { getRuntimeConfig } from "./config.js";
 import { isLevelEnabled, isNamespaceEnabled } from "./level.js";
-
-/** No-op sink used as the default when no sink is injected. */
-const NOOP_SINK: Sink = () => undefined;
+import { getDefaultSink } from "./sink.js";
 
 /** Options accepted by createLogger. */
 export interface CreateLoggerOptions {
@@ -41,7 +39,7 @@ export interface CreateLoggerOptions {
  * `configureLogger()` changes take effect immediately without recreating loggers.
  */
 export function createLogger(opts: CreateLoggerOptions): Logger {
-  const { namespace, level: staticLevel, sink = NOOP_SINK } = opts;
+  const { namespace, level: staticLevel, sink = getDefaultSink() } = opts;
 
   function emit(level: LogLevel, msg: string, data?: unknown): void {
     // ── Gate 1: global enabled ──────────────────────────────────────────────

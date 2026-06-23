@@ -15,7 +15,7 @@
   - 完成态：低于当前 level 或命名空间关闭的日志被丢弃且不产出任何条目；child 命名空间为父子拼接
   - _Requirements: 1.1, 1.2, 1.3, 1.7_
 
-- [ ] 1.3 实现双 sink 与运行时配置
+- [x] 1.3 实现双 sink 与运行时配置
   - 实现 Node sink（写 `LOG_SENTINEL` 前缀单行 JSON 到进程 stderr）、浏览器 sink（模块级定容 ring buffer + 订阅总线 subscribe/emit/get），按运行环境自动选择 sink
   - 实现 configureLogger（运行时覆盖 enabled/level/namespaces）与从环境变量初始化 Node 端配置
   - 完成态：Node 环境日志写入 stderr 且 stdout 无输出；浏览器环境日志进入总线并通知订阅者、超上限淘汰最旧；浏览器构建产物不含任何 `node:` 模块引用
