@@ -36,7 +36,7 @@
   - _Depends: 1.3_
   - _Boundary: create-handler 注册接线, handler.types 选项类型_
 
-- [ ] 3. 验证
+- [x] 3. 验证
 - [x] 3.1 (P) Provider 单元测试
   - 用附件存储只读存根覆盖 complete：候选类型/标签/插入文本/副信息、空会话空集、带查询收敛与空查询全量
   - 覆盖 resolve：同会话命中产出规范标记、id 不存在与跨会话归属失配返回空
@@ -45,7 +45,7 @@
   - _Depends: 1.1, 1.2_
   - _Boundary: AttachmentCompletionProvider 测试_
 
-- [ ] 3.2 节点端 E2E 测试
+- [x] 3.2 节点端 E2E 测试
   - 预置会话附件后，查询触发符 `@` 的补全结果含 attachment 分组与候选，候选插入文本形如 `@attachment:<id>`
   - 提交包含该令牌的消息后，令牌被改写为规范附件引用标记
   - 同一路径下验证文件 provider 的既有候选与 `@file:` 解析行为不退化
