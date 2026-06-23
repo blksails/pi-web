@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   parseHiddenProviders,
   excludeProviders,
+  excludeProviderModels,
 } from "../../src/config/model-options-filter.js";
 import type { ModelOptions } from "../../src/config/model-options.types.js";
 
@@ -72,5 +73,40 @@ describe("excludeProviders", () => {
     const before = JSON.stringify(SAMPLE);
     excludeProviders(SAMPLE, new Set(["openai"]));
     expect(JSON.stringify(SAMPLE)).toBe(before);
+  });
+});
+
+describe("excludeProviderModels(会话 RPC 模型列表,形状宽松)", () => {
+  const MODELS = [
+    { id: "claude-opus", provider: "openrouter", name: "Claude Opus" },
+    { id: "qwen-max", provider: "dashscope", name: "Qwen Max" },
+    { id: "gpt-5", provider: "apiservices", name: "GPT 5" },
+  ];
+
+  it("剔除指定 provider 的模型", () => {
+    const out = excludeProviderModels(MODELS, new Set(["openrouter"]));
+    expect(out.map((m) => m.id)).toEqual(["qwen-max", "gpt-5"]);
+    expect(out.some((m) => m.provider === "openrouter")).toBe(false);
+  });
+
+  it("空名单 → 原样返回(零拷贝快路径)", () => {
+    const out = excludeProviderModels(MODELS, new Set());
+    expect(out).toBe(MODELS);
+  });
+
+  it("无 provider 字段或非字符串的项 → 保守保留", () => {
+    const loose = [
+      { id: "a", provider: "openrouter" },
+      { id: "b" },
+      { id: "c", provider: 123 },
+    ];
+    const out = excludeProviderModels(loose, new Set(["openrouter"]));
+    expect(out.map((m) => m.id)).toEqual(["b", "c"]);
+  });
+
+  it("不改原入参数组(纯函数)", () => {
+    const before = JSON.stringify(MODELS);
+    excludeProviderModels(MODELS, new Set(["dashscope"]));
+    expect(JSON.stringify(MODELS)).toBe(before);
   });
 });

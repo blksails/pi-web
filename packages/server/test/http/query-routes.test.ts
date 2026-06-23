@@ -110,6 +110,40 @@ describe("query routes", () => {
     expect(body.models).toHaveLength(2);
   });
 
+  it("GET models 按 PI_WEB_HIDE_PROVIDERS 剔除指定 provider 的模型", async () => {
+    const prev = process.env["PI_WEB_HIDE_PROVIDERS"];
+    process.env["PI_WEB_HIDE_PROVIDERS"] = "openrouter";
+    try {
+      const handler = setup((s) =>
+        s.setResponse(
+          () =>
+            ({
+              type: "response",
+              command: "get_available_models",
+              success: true,
+              data: {
+                models: [
+                  { id: "a", provider: "openrouter" },
+                  { id: "b", provider: "dashscope" },
+                  { id: "c", provider: "openrouter" },
+                ],
+              },
+            }) as unknown as RpcResponse,
+        ),
+      );
+      const res = await handler(get("/sessions/sess-1/models"));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        models: Array<{ id: string; provider: string }>;
+      };
+      expect(body.models.map((m) => m.id)).toEqual(["b"]);
+      expect(body.models.some((m) => m.provider === "openrouter")).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env["PI_WEB_HIDE_PROVIDERS"];
+      else process.env["PI_WEB_HIDE_PROVIDERS"] = prev;
+    }
+  });
+
   it("GET fork-messages → { messages }", async () => {
     const handler = setup((s) =>
       s.setResponse(

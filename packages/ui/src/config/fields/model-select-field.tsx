@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../ui/popover.js";
 import {
   Command,
   CommandEmpty,
+  CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
@@ -66,28 +67,60 @@ interface Opt {
   readonly value: string;
   readonly label: string;
 }
+/** 选项分组:`provider === ""` 表示无分组标题的平铺组(providerSelect 用)。 */
+interface OptGroup {
+  readonly provider: string;
+  readonly options: readonly Opt[];
+}
 
-/** 由响应按 widget 构造去重后的选项(modelSelect→models,providerSelect→providers)。 */
-function buildOptions(widget: string | undefined, data: ModelOptionsResponse): Opt[] {
-  const seen = new Set<string>();
-  const out: Opt[] = [];
+/**
+ * 由响应按 widget 构造分组选项:
+ * - providerSelect → 单个无标题平铺组(选项即 provider 名,去重)。
+ * - modelSelect → 按 provider 分组(每组标题为 provider,组内项 label 用裸 id、value 用裸
+ *   id 兼容存量值;组内按 id 去重,保持出现顺序)。
+ */
+function buildGroups(widget: string | undefined, data: ModelOptionsResponse): OptGroup[] {
   if (widget === "providerSelect") {
+    const seen = new Set<string>();
+    const opts: Opt[] = [];
     for (const p of data.providers) {
       if (p.length > 0 && !seen.has(p)) {
         seen.add(p);
-        out.push({ value: p, label: p });
+        opts.push({ value: p, label: p });
       }
     }
-    return out;
+    return [{ provider: "", options: opts }];
   }
-  // modelSelect:value 用裸 id(兼容存量值),label 附 provider 消歧;按 id 去重。
+  const order: string[] = [];
+  const map = new Map<string, Opt[]>();
   for (const m of data.models) {
-    if (m.id.length > 0 && !seen.has(m.id)) {
-      seen.add(m.id);
-      out.push({ value: m.id, label: `${m.id} · ${m.provider}` });
+    if (m.id.length === 0) continue;
+    let bucket = map.get(m.provider);
+    if (bucket === undefined) {
+      bucket = [];
+      map.set(m.provider, bucket);
+      order.push(m.provider);
+    }
+    if (!bucket.some((o) => o.value === m.id)) {
+      bucket.push({ value: m.id, label: m.id });
     }
   }
-  return out;
+  return order.map((provider) => ({ provider, options: map.get(provider) ?? [] }));
+}
+
+/** 当前选中值在分组中的展示文案:模型项附 ` · provider` 消歧,provider 项即其名。 */
+function triggerLabelFor(
+  groups: readonly OptGroup[],
+  current: string,
+): string | undefined {
+  for (const g of groups) {
+    for (const o of g.options) {
+      if (o.value === current) {
+        return g.provider.length > 0 ? `${o.label} · ${g.provider}` : o.label;
+      }
+    }
+  }
+  return undefined;
 }
 
 export function ModelSelectField({
@@ -101,21 +134,21 @@ export function ModelSelectField({
   const id = React.useId();
   const error = errorAt(errors, path);
   const current = typeof value === "string" ? value : "";
-  const [options, setOptions] = React.useState<readonly Opt[]>([]);
+  const [groups, setGroups] = React.useState<readonly OptGroup[]>([]);
   const [open, setOpen] = React.useState(false);
   const isDisabled = disabled ?? descriptor.readOnly ?? false;
 
   React.useEffect(() => {
     let alive = true;
     void loadModelOptions().then((d) => {
-      if (alive) setOptions(buildOptions(descriptor.widget, d));
+      if (alive) setGroups(buildGroups(descriptor.widget, d));
     });
     return () => {
       alive = false;
     };
   }, [descriptor.widget]);
 
-  const selectedLabel = options.find((o) => o.value === current)?.label;
+  const selectedLabel = triggerLabelFor(groups, current);
   const triggerText =
     current.length > 0
       ? (selectedLabel ?? current)
@@ -159,23 +192,33 @@ export function ModelSelectField({
               />
               <CommandList>
                 <CommandEmpty>无匹配</CommandEmpty>
-                {options.map((o) => {
-                  const selected = o.value === current;
-                  return (
-                    <CommandItem
-                      key={o.value}
-                      value={`${o.value} ${o.label}`}
-                      onSelect={() => commit(o.value)}
-                    >
-                      <Check
-                        className={cn(
-                          "h-4 w-4 shrink-0",
-                          selected ? "opacity-100" : "opacity-0",
-                        )}
-                        aria-hidden="true"
-                      />
-                      <span className="truncate">{o.label}</span>
-                    </CommandItem>
+                {groups.map((g) => {
+                  const items = g.options.map((o) => {
+                    const selected = o.value === current;
+                    return (
+                      <CommandItem
+                        key={`${g.provider}:${o.value}`}
+                        value={`${o.value} ${g.provider}`}
+                        onSelect={() => commit(o.value)}
+                      >
+                        <Check
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            selected ? "opacity-100" : "opacity-0",
+                          )}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate">{o.label}</span>
+                      </CommandItem>
+                    );
+                  });
+                  // provider === "" 表示无分组标题(providerSelect),平铺渲染。
+                  return g.provider.length > 0 ? (
+                    <CommandGroup key={g.provider} heading={g.provider}>
+                      {items}
+                    </CommandGroup>
+                  ) : (
+                    <React.Fragment key="__flat">{items}</React.Fragment>
                   );
                 })}
               </CommandList>

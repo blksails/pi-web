@@ -10,6 +10,10 @@ import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
+import {
+  parseHiddenProviders,
+  excludeProviderModels,
+} from "../../config/model-options-filter.js";
 
 function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
   const id = ctx.sessionId ?? "";
@@ -95,15 +99,28 @@ export function makeCommandsHandler(store: SessionStore): RouteHandler {
   };
 }
 
-/** GET /sessions/:id/models → get_available_models 的 `{ models }`(Req 4.1)。 */
-export function makeModelsHandler(store: SessionStore): RouteHandler {
+/**
+ * GET /sessions/:id/models → get_available_models 的 `{ models }`(Req 4.1)。
+ *
+ * 与 `/config/models` 同样尊重 `PI_WEB_HIDE_PROVIDERS`(逗号分隔)部署期开关:剔除被隐藏
+ * provider 的模型,使聊天区模型选择器与设置页下拉对齐(同一隐藏名单)。env 可注入便于测试。
+ */
+export function makeModelsHandler(
+  store: SessionStore,
+  env: NodeJS.ProcessEnv = process.env,
+): RouteHandler {
+  const hidden = parseHiddenProviders(env["PI_WEB_HIDE_PROVIDERS"]);
   return async (ctx): Promise<Response> => {
     try {
       const session = requireSession(store, ctx);
       const res = await session.getAvailableModels();
-      const extracted = dataOrError<{ models: unknown[] }>(res);
+      const extracted = dataOrError<{
+        models: ReadonlyArray<{ readonly provider?: unknown }>;
+      }>(res);
       if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { models: extracted.data.models });
+      return jsonResponse(200, {
+        models: excludeProviderModels(extracted.data.models, hidden),
+      });
     } catch (err) {
       return mapEngineError(err);
     }

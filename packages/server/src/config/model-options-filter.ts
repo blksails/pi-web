@@ -40,3 +40,18 @@ export function excludeProviders(
     models: options.models.filter((m) => !hidden.has(m.provider)),
   };
 }
+
+/**
+ * 从一组带 `provider` 字段的模型中剔除 `hidden` 列出的 provider。形状宽松(供会话 RPC
+ * `get_available_models` 的 `{ models }` 复用,其元素结构由 agent 决定);无 `provider`
+ * 字段(或非字符串)的项保守保留。`hidden` 为空 → 原样返回(零拷贝快路径)。纯函数,不改入参。
+ */
+export function excludeProviderModels<T extends { readonly provider?: unknown }>(
+  models: readonly T[],
+  hidden: ReadonlySet<string>,
+): readonly T[] {
+  if (hidden.size === 0) return models;
+  return models.filter(
+    (m) => typeof m.provider !== "string" || !hidden.has(m.provider),
+  );
+}
