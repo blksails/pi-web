@@ -18,6 +18,9 @@ import {
   useBranches,
   useSuggestions,
   createUiRpcBus,
+  createLogsStore,
+  useLogs,
+  type LogHistoryFetcher,
 } from "@pi-web/react";
 import { PartRenderer } from "./part-renderer.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
@@ -67,6 +70,7 @@ import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
+import { LogsPanel } from "../logs/logs-panel.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension } from "@pi-web/web-kit";
@@ -121,6 +125,14 @@ export interface PiChatProps {
   readonly extensionCommands?: ExtensionCommandPolicy;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
+  /** 是否展示日志面板(LogsPanel);默认 false。 */
+  readonly showLogs?: boolean;
+  /**
+   * 是否根据 logging 配置的 outputs.panelVisible 控制日志面板可见性。
+   * 当 panelVisible=false 时即使 showLogs=true 也不显示面板（Req 6.6）。
+   * 默认 true（面板可见）。
+   */
+  readonly logsPanelVisible?: boolean;
   /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
   readonly attachmentBaseUrl?: string;
   /** 可注入的附件上传函数(默认 `@pi-web/react` 的 `uploadAttachment`);测试用以 mock。 */
@@ -224,6 +236,8 @@ export function PiChat({
   toolbarOrder,
   extensionCommands,
   showSessionStats = true,
+  showLogs = false,
+  logsPanelVisible = true,
   attachmentBaseUrl,
   uploadAttachment,
   className,
@@ -247,6 +261,40 @@ export function PiChat({
     return () => uiRpc?.dispose();
   }, [uiRpc]);
 
+
+  // 日志面板:per-session logsStore + control:logs 帧接线（Req 3.4）。
+  // 一个 useMemo 保证每次 sessionId 变更时重建 store（新会话新 store，不跨会话混日志）。
+  const logsStore = React.useMemo(
+    () => (showLogs ? createLogsStore() : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showLogs, sessionId],
+  );
+
+  // 订阅 control:logs 帧 → logsStore.applyLogsFrame（实时链路 3.2→3.4）。
+  React.useEffect(() => {
+    if (logsStore === undefined || connection === undefined) return;
+    return connection.controlStore.onLogsFrame((entries) => {
+      logsStore.applyLogsFrame(entries);
+    });
+  }, [logsStore, connection]);
+
+  // getLogs 历史拉取器（4.2 链路），仅在 showLogs 且 client+sessionId 就绪时注入。
+  // LogHistoryFetcher 的 level 是 string（宽类型）；client.getLogs 的 level 是 LogLevel
+  // 严类型——做桥接时把 string 向下转型为 LogLevel（调用侧已从枚举传入，运行时安全）。
+  const logsFetcher = React.useMemo((): LogHistoryFetcher | undefined => {
+    if (!showLogs || client === undefined || sessionId === undefined) return undefined;
+    const capturedClient = client;
+    const capturedSessionId = sessionId;
+    return (query) =>
+      capturedClient.getLogs(capturedSessionId, query as Parameters<typeof capturedClient.getLogs>[1]);
+  }, [showLogs, client, sessionId]);
+
+  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 showLogs 时启用）。
+  const logsResult = useLogs(
+    logsStore !== undefined
+      ? { store: logsStore, ...(logsFetcher !== undefined ? { fetcher: logsFetcher } : {}) }
+      : { store: createLogsStore() },
+  );
 
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
@@ -891,6 +939,14 @@ export function PiChat({
               className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
             >
               <PiSessionStats controls={controls} />
+            </div>
+          ) : null}
+          {showLogs && logsPanelVisible ? (
+            <div
+              data-pi-logs-region
+              className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+            >
+              <LogsPanel logsResult={logsResult} />
             </div>
           ) : null}
         </div>

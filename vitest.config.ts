@@ -14,6 +14,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      "@pi-web/logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
     },
   },
   test: {

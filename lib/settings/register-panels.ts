@@ -21,12 +21,15 @@ import {
   sandboxConfigSchema,
   extensionsFormSchema,
   extensionsConfigSchema,
+  loggingFormSchema,
+  loggingConfigSchema,
 } from "@pi-web/protocol";
 import {
   registerFieldRendererByKey,
   ExtensionsKvField,
   ConfigFilesField,
   ModelSelectField,
+  NamespaceTogglesField,
 } from "@pi-web/ui";
 
 let registered = false;
@@ -128,6 +131,8 @@ export function registerConfigPanels(): void {
   // settings 的 provider/model 可搜索下拉(选项来自 GET /api/config/models)。
   registerFieldRendererByKey("providerSelect", ModelSelectField);
   registerFieldRendererByKey("modelSelect", ModelSelectField);
+  // logging 命名空间开关自定义控件（logNamespaceToggles widget 键）。
+  registerFieldRendererByKey("logNamespaceToggles", NamespaceTogglesField);
 
   // 扩展:一个「扩展」菜单项 + 全局/项目 Tab。固定区=Slash 命令可用性,KV 区=per-扩展参数。
   // - 全局:写 `~/.pi/agent/settings.json`。
@@ -158,5 +163,16 @@ export function registerConfigPanels(): void {
     formSchema: { ...extensionsFormSchema, domain: "extensions-project" },
     validate: zodValidator(extensionsConfigSchema),
     ...makeUrlIO("/api/config/extensions/project", "项目扩展配置"),
+  });
+
+  // 日志:写 `~/.pi/agent/logging.json`，控制日志开关/级别/命名空间/面板可见性。
+  registerSettingsPanel({
+    id: "logging",
+    title: "日志",
+    order: 5,
+    icon: "terminal",
+    formSchema: loggingFormSchema,
+    validate: zodValidator(loggingConfigSchema),
+    ...makeConfigDomainIO("logging"),
   });
 }

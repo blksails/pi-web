@@ -18,6 +18,7 @@ import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { ChatReasoning } from "./chat-reasoning.js";
+import { LoggingConfigLoader } from "./logging-config-loader.js";
 
 /**
  * 细粒度组件覆盖:用 AI Elements 风格的 Reasoning(流式自动展开 + "Thought for Ns")
@@ -163,6 +164,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
 
   return (
     <PiProvider baseUrl="/api">
+      {/* 日志配置加载器：mount 时拉取 /api/config/logging → configureLogger（Req 6.4/6.5/6.6）*/}
+      <LoggingConfigLoader />
       {session === undefined ? (
         <AgentSourcePicker
           onSubmit={onSubmit}

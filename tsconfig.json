@@ -23,6 +23,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@pi-web/logger": [
+        "./packages/logger/src/index.ts"
       ]
     }
   },

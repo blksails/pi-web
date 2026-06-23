@@ -91,7 +91,7 @@
   - _Boundary: agent-kit, web-kit, protocol web-ext, server runner_
   - _Depends: 1.2, 1.3_
 
-- [ ] 3.4 [P0] 面板挂载与配置接线
+- [x] 3.4 [P0] 面板挂载与配置接线
   - 在 PiChat 挂载 LogsPanel 区域（showLogs，且受 logging.outputs.panelVisible 调控）并渲染 logs slot 贡献；实现 namespace-toggles 自定义字段渲染器并在 settings 注册 logging 面板与该 renderer；app 侧加载 /config/logging 后调 configureLogger 应用到浏览器总线
   - 完成态：设置页出现"日志"分组可保存；保存后浏览器端按新 enabled/level/namespace 产出或丢弃日志；panelVisible 控制面板显隐
   - _Requirements: 6.1, 6.4, 6.5, 6.6, 6.7_
@@ -159,3 +159,5 @@
 - 任务 2.2 给 protocol `ConfigDomainId` 加了 `"logging"`，导致 server `packages/server/src/config/config-routes.ts` 的 `DOMAIN_SCHEMAS: Record<ConfigDomainId, ...>` 缺 `logging` 键而 typecheck 报 TS2741（过渡性破坏）。**任务 3.1 必须在 DOMAIN_SCHEMAS 加入 `logging: loggingConfigSchema` 修复此错**，届时 server typecheck 才会恢复绿。在 3.1 完成前，`pnpm -F @pi-web/server typecheck` 预期仅有这一个错误。
 - harness 编辑器 LSP 对新建未跟踪文件常报 "Cannot find module .../X.js" 与级联的 implicit-any 假阳性；以各包 `pnpm -F <pkg> typecheck`/`test` 实际退出码为准。
 - 任务 2.1 给 SSE ControlPayload 加了 `control:"logs"` 分支，导致 react `packages/react/src/sse/control-store.ts` 的 `applyControlFrame` switch 未处理该分支而 typecheck 报 TS2322（收窄到 never）。**任务 3.2 必须在 applyControlFrame 增加 `case "logs"` 调 logsStore.applyLogsFrame 修复此错**。在 3.2 完成前，`pnpm -F @pi-web/react typecheck` 预期仅有 control-store.ts 这一个错误。
+- 既有失败（与本 spec 无关，勿误判）：`test/attachment-handler-assembly.test.ts` 2 个用例在 worktree 基线（main 4bef7c7）即失败——displayUrl 期望 `/attachments/.../raw?exp=&sig=` 实得 `/api/attachments/att_...`（attachment 签名 URL 格式，属其它 spec）。已用 stash 复跑确认 3.3 baseline 同样失败。logging-system 全部任务**未触碰** attachment 代码，最终验证应排除此既有失败。
+- 3.4 交付了 PiChat 的 showLogs/logsPanelVisible prop 契约 + logsStore/onLogsFrame 接线 + configureLogger，但 `components/chat-app.tsx` 尚未向 `<PiChat>` 传 `showLogs=true` 并把 `logging.outputs.panelVisible`→`logsPanelVisible`（边界推迟）。**任务 5.4/5.5（demo agent + e2e）落地时需在 chat-app 接入 showLogs 并映射 panelVisible**，否则运行 app 中面板不挂载、e2e 抓不到 data-pi-logs-region。
