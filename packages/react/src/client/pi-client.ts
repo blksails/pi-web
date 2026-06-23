@@ -26,12 +26,16 @@ import type {
   UiRpcRequest,
   CompletionResponse,
   CompletionTriggersResponse,
+  GetLogsResponse,
+  LogLevel,
 } from "@pi-web/protocol";
 import {
   GetAvailableModelsResponseSchema,
   ForkResponseSchema,
   GetForkMessagesResponseSchema,
+  GetLogsResponseSchema,
 } from "@pi-web/protocol";
+import type { LogEntry } from "@pi-web/logger";
 import { sendRequest, type FetchLike } from "./request.js";
 
 export type { FetchLike };
@@ -84,6 +88,16 @@ export interface PiClient {
   getForkMessages(id: string): Promise<GetForkMessagesResponse>;
 
   deleteSession(id: string): Promise<CommandAck>;
+
+  /**
+   * GET /sessions/:id/logs?level=&limit=&since= —— 拉取历史日志条目(Req 4.2)。
+   * 响应经 GetLogsResponseSchema 解析;返回 entries 数组。
+   * 查询参数均可选:level 最低级别、limit 最大条数、since 起始 epoch ms。
+   */
+  getLogs(
+    sessionId: string,
+    query?: { level?: LogLevel; limit?: number; since?: number },
+  ): Promise<LogEntry[]>;
 }
 
 const enc = encodeURIComponent;
@@ -158,5 +172,17 @@ export function createPiClient(
         method: "DELETE",
         path: `/sessions/${enc(id)}`,
       }),
+
+    getLogs: async (sessionId, query?) => {
+      const params = new URLSearchParams();
+      if (query?.level !== undefined) params.set("level", query.level);
+      if (query?.limit !== undefined) params.set("limit", String(query.limit));
+      if (query?.since !== undefined) params.set("since", String(query.since));
+      const qs = params.toString();
+      const path = `/sessions/${enc(sessionId)}/logs${qs !== "" ? `?${qs}` : ""}`;
+      const raw = await get<GetLogsResponse>(path);
+      const parsed = GetLogsResponseSchema.parse(raw);
+      return parsed.entries as LogEntry[];
+    },
   };
 }

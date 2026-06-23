@@ -77,7 +77,7 @@
   - _Boundary: server logging, server http, server config_
   - _Depends: 2.1, 2.2, 2.3_
 
-- [ ] 3.2 [P0] 前端连接路由与 REST 客户端
+- [x] 3.2 [P0] 前端连接路由与 REST 客户端
   - 在 SSE 连接处把 `control:"logs"` 帧路由到 ControlStore.applyLogsFrame；REST 客户端新增 getLogs(sessionId, query)
   - 完成态：收到 logs 帧后 logsStore 增长；getLogs 能拉取历史并交给 logsStore 合并
   - _Requirements: 3.2, 4.2_
