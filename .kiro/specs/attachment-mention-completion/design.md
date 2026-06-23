@@ -41,6 +41,7 @@
 - 依赖方向：`completion/providers/attachment-provider` → `attachment-bridge`(格式) + `attachment`(store 类型)；不得反向。
 
 ### Revalidation Triggers
+- handler 选项 `attachmentStore` 声明类型变更（本 spec 将其由 `AttachmentMetaSource` 加宽为含 `listBySession`；若再变更影响 provider 与 messages handler 两消费者）。
 - `CompletionProvider`/`CompletionCtx` 契约变更（尤其 `ctx.sessionId` 移除/语义变更）。
 - `buildAttachmentRefs` 输出标记格式变更（影响 R6.2 一致性）。
 - token 文法（`<trigger><kind>:<id>`）或 `resolveCompletions` 分发语义变更。
@@ -113,6 +114,7 @@ packages/server/src/completion/
 ### Modified Files
 - `packages/server/src/completion/index.ts` — 追加导出 `createAttachmentProvider`、`ATTACHMENT_PROVIDER_ID`、`ATTACHMENT_KIND`。
 - `packages/server/src/http/create-handler.ts` — 在注册 file-provider 之后、循环注册 `opts.completionProviders` 之前，当 `opts.attachmentStore` 存在时 `completion.register(createAttachmentProvider(opts.attachmentStore))`。
+- `packages/server/src/http/handler.types.ts` — 加宽 handler 选项 `attachmentStore` 的声明类型。**契约修正（实现期发现）**：仓库现状把该选项窄化声明为 `AttachmentMetaSource`（= `Pick<AttachmentStore,"head">`，仅 messages handler 所需的 `head`），而附件 provider 需要 `listBySession`。修正为 `AttachmentMetaSource & Partial<Pick<AttachmentStore, "listBySession">>`：`listBySession` 作为**可选第二能力**叠加，既不改 `AttachmentMetaSource` 自身语义、也不破坏既有仅注入 `head` 的消费者（如 messages-handler 单测的 head-only 注入仍合法）。注册接线以运行时 `listBySession` 在场与否为守卫——store 不支持列举时不注册附件补全 provider，符合 Req 2.x「未注入/不支持列举则不提供附件补全」语义。不放宽为 `any`。此为契约形状变更，列入 Revalidation Triggers。
 
 ### New Files
 - `packages/server/src/completion/providers/attachment-provider.ts` — 本功能核心（`complete()` + `resolve()`）。
@@ -231,9 +233,8 @@ export function createAttachmentProvider(
 | Requirements | 2.1, 2.2, 2.3 |
 
 **Responsibilities & Constraints**
-- 在 `completion.register(createFileProvider())` 之后、`opts.completionProviders` 循环之前插入：
-  `if (opts.attachmentStore) completion.register(createAttachmentProvider(opts.attachmentStore));`
-- 不改注册表/端点契约；不改 file-provider；无 attachmentStore 时行为与现状完全一致。
+- 在 `completion.register(createFileProvider())` 之后、`opts.completionProviders` 循环之前，以运行时 `listBySession` 在场为守卫注册：当 `opts.attachmentStore?.listBySession` 存在时，构造一个 `AttachmentLister`（`head` + `listBySession`，无 `as` 断言）并 `completion.register(createAttachmentProvider(lister))`。
+- 不改注册表/端点契约；不改 file-provider；无 attachmentStore 或其不支持 `listBySession` 时行为与现状完全一致（不注册附件补全）。
 
 **Contracts**: 无新增对外契约。
 

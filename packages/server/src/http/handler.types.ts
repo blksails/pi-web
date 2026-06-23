@@ -14,6 +14,7 @@ import type { AuthContext, AuthResolver, AuthorizeSession } from "./auth.js";
 import type { AgentSourceResolverType } from "../agent-source/index.js";
 import type { CompletionProvider } from "../completion/index.js";
 import type { AttachmentMetaSource } from "./routes/command-routes.js";
+import type { AttachmentStore } from "../attachment/index.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
 export interface RequestContext {
@@ -101,12 +102,21 @@ export interface PiWebHandlerOptions {
    */
   readonly completionProviders?: readonly CompletionProvider[];
   /**
-   * 可选:主进程附件元数据源(attachment-tool-bridge)。注入既有主进程 `AttachmentStore`
-   * 门面(仅用其只读 `head(id)`),使 `POST /sessions/:id/messages` 据前端提交的
-   * `attachmentIds` 把已落库附件以结构化文本引用注入用户消息文本(Req 8.1/9.1)。
-   * 未注入时不做引用注入(与 `images`/vision 现状无关,互不影响)。
+   * 可选:主进程附件存储门面(注入既有 `AttachmentStore`)。现由两个消费者共用,
+   * 各自只依赖自身所需的最小能力:
+   * - messages handler(attachment-tool-bridge):仅用只读 `head(id)`,使
+   *   `POST /sessions/:id/messages` 据前端提交的 `attachmentIds` 把已落库附件以结构化
+   *   文本引用注入用户消息文本(Req 8.1/9.1)。head-only 门面即可满足该消费者。
+   * - attachment completion provider(attachment-mention-completion):需 `listBySession`
+   *   按会话列出附件供 `@` 引用补全(Req 2.x)。
+   * 故契约在 `AttachmentMetaSource`(head,messages handler 窄契约不变)之上,以
+   * `Partial<Pick<AttachmentStore, "listBySession">>` 追加「可选第二能力」:listBySession
+   * 在场(能力探测命中)时 create-handler 才重建 `AttachmentLister` 并注册附件补全 provider;
+   * head-only 注入(仅满足 messages handler)仍合法,不注册补全。
+   * 未注入时不做引用注入,也不注册附件补全 provider(与 `images`/vision 现状无关,互不影响)。
    */
-  readonly attachmentStore?: AttachmentMetaSource;
+  readonly attachmentStore?: AttachmentMetaSource &
+    Partial<Pick<AttachmentStore, "listBySession">>;
 }
 
 /** 框架无关的标准 Web Fetch 处理器签名(Req 1.1)。 */

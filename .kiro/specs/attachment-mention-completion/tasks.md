@@ -25,15 +25,16 @@
   - _Requirements: 2.1_
   - _Boundary: AttachmentCompletionProvider_
 
-- [ ] 2. 集成：注册接线
-- [ ] 2.1 在处理器构造期条件注册附件 Provider
+- [x] 2. 集成：注册接线
+- [x] 2.1 在处理器构造期条件注册附件 Provider
   - 在注册内置文件 provider 之后、注册外部注入 provider 之前，当附件存储可用时把附件 provider 注册进补全注册表
   - 不改动注册表/端点契约，不改动文件 provider；附件存储不可用时行为与现状完全一致
   - 合并后的 file 与 attachment 候选受框架统一结果上限约束
   - 完成判据：附件存储可用时，触发符 `@` 的补全在同一查询下同时返回 file 与 attachment 两个分组且总数不超过框架上限；triggers 端点对 `@` 的暴露不退化
+  - 注：实现期发现 handler 选项 `attachmentStore` 被窄化声明为 `AttachmentMetaSource`（仅 `head`），需同步加宽为含 `listBySession`（见 design.md Modified Files 契约修正）
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 4.3_
   - _Depends: 1.3_
-  - _Boundary: create-handler 注册接线_
+  - _Boundary: create-handler 注册接线, handler.types 选项类型_
 
 - [ ] 3. 验证
 - [x] 3.1 (P) Provider 单元测试
