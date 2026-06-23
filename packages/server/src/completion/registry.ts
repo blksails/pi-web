@@ -14,6 +14,8 @@ import type { CompletionCtx, CompletionProvider } from "./types.js";
 import { providerKind } from "./types.js";
 import { normalizeTrigger } from "./normalize.js";
 import { mergeCompletions } from "./merge.js";
+import { createLogger } from "@pi-web/logger";
+import type { Sink } from "@pi-web/logger";
 
 /** 注册表可调参数(均有保守默认)。 */
 export interface CompletionRegistryOptions {
@@ -21,8 +23,15 @@ export interface CompletionRegistryOptions {
   readonly providerTimeoutMs?: number;
   /** 合并后候选总量上限。 */
   readonly limit?: number;
-  /** 告警钩子(默认 console.warn);便于测试注入。 */
+  /**
+   * 告警钩子(可注入覆盖,向后兼容);若提供则优先使用覆盖而非默认 logger。
+   * 默认经 createLogger({ namespace: "core:completion" }).warn 产出。
+   */
   readonly onWarn?: (message: string) => void;
+  /**
+   * 注入 logger 的 sink(仅测试用);未注入时使用默认 sink (node: stderr / browser: bus)。
+   */
+  readonly loggerSink?: Sink;
 }
 
 const DEFAULT_TIMEOUT_MS = 800;
@@ -79,7 +88,14 @@ export function createCompletionRegistry(
 ): CompletionRegistry {
   const timeoutMs = opts.providerTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   const limit = opts.limit ?? DEFAULT_LIMIT;
-  const warn = opts.onWarn ?? ((m: string) => console.warn(m));
+  const _logger = createLogger({
+    namespace: "core:completion",
+    ...(opts.loggerSink !== undefined ? { sink: opts.loggerSink } : {}),
+  });
+  const warn =
+    opts.onWarn !== undefined
+      ? opts.onWarn
+      : (m: string) => _logger.warn(m);
 
   const byId = new Map<string, CompletionProvider>();
 

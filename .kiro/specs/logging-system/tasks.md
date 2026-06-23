@@ -107,7 +107,7 @@
   - _Boundary: @pi-web/logger, server config_
   - _Depends: 1.3, 2.2_
 
-- [ ] 4.2 [P1] 收编内核现有日志钩子
+- [x] 4.2 [P1] 收编内核现有日志钩子
   - 将补全注册表 onWarn、附件桥 onError、SSE 连接 onError 改为经 logger 产出（命名空间 core:completion / core:attachment / core:sse），遵循统一配置门控
   - 完成态：触发上述告警/错误时，条目以对应命名空间出现在日志通道，且不改变这些功能原有对外可观察行为
   - _Requirements: 8.1, 8.2, 8.3_

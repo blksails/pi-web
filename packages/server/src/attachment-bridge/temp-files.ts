@@ -9,7 +9,7 @@
  * 设计约束(design.md §TempFileTracker / §Error Handling):
  * - **本地后端不登记**:LocalFs `localPath()` 直返落盘文件路径(`<root>/<id>`),无临时文件、无需回收;
  *   调用方对本地后端**不调用 `track`**,故未登记的本地落盘文件不会被任何回收入口删除(no-op,Req 2.4)。
- * - **吞错不阻断**:回收时单个文件删除失败(不存在/权限等)**吞错记日志**(默认 `console.warn`),
+ * - **吞错不阻断**:回收时单个文件删除失败(不存在/权限等)**吞错记日志**(默认经 @pi-web/logger `core:attachment` 命名空间 .error),
  *   不抛出、不阻断同批其它文件回收,也不阻断主流程(尽力回收,design §Error Handling「临时文件回收失败」)。
  * - **本切片 LocalFs 落地**:S3 懒下载真实实现 future;本登记器为可切换接口预留,逻辑与后端无关
  *   (登记什么删什么),故本地后端只要不 `track` 即天然 no-op。
@@ -18,6 +18,8 @@
  * 仍捕获其它异常(权限等)走吞错路径。
  */
 import { rm } from "node:fs/promises";
+import { createLogger } from "@pi-web/logger";
+import type { Sink } from "@pi-web/logger";
 
 /** 临时文件登记与两级回收(design.md §TempFileTracker 契约)。 */
 export interface TempFileTracker {
@@ -43,10 +45,15 @@ interface TempEntry {
 /** {@link createTempFileTracker} 选项。 */
 export interface TempFileTrackerOptions {
   /**
-   * 回收失败时的日志钩子(吞错记日志,不阻断)。默认 `console.warn`。便于测试注入断言。
+   * 回收失败时的日志钩子(可注入覆盖,向后兼容);若提供则优先使用覆盖而非默认 logger。
+   * 默认经 createLogger({ namespace: "core:attachment" }).error 产出。
    * design §Error Handling:「`cleanup` 内部吞错 + 记日志,不阻断主流程」。
    */
   onError?: (message: string, error: unknown) => void;
+  /**
+   * 注入 logger 的 sink(仅测试用);未注入时使用默认 sink (node: stderr / browser: bus)。
+   */
+  loggerSink?: Sink;
 }
 
 /**
@@ -58,12 +65,17 @@ export interface TempFileTrackerOptions {
 export function createTempFileTracker(
   options: TempFileTrackerOptions = {},
 ): TempFileTracker {
+  const _logger = createLogger({
+    namespace: "core:attachment",
+    ...(options.loggerSink !== undefined ? { sink: options.loggerSink } : {}),
+  });
   const onError =
-    options.onError ??
-    ((message: string, error: unknown) => {
-      // 吞错记日志(不抛、不阻断);不打印文件内容,仅路径与错因。
-      console.warn(message, error);
-    });
+    options.onError !== undefined
+      ? options.onError
+      : (message: string, error: unknown) => {
+          // 吞错记日志(不抛、不阻断);不打印文件内容,仅路径与错因。
+          _logger.error(message, error);
+        };
 
   // 按两维度索引同一批记录,使按调用/按会话回收都能 O(命中) 定位。
   const byCall = new Map<string, TempEntry[]>();

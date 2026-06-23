@@ -16,14 +16,23 @@ import { ControlStore } from "./control-store.js";
 import { assertProtocolVersion } from "../version.js";
 import type { FetchLike } from "../client/request.js";
 import { joinUrl } from "../client/request.js";
+import { createLogger } from "@pi-web/logger";
+import type { Sink } from "@pi-web/logger";
 
 export interface PiSessionConnectionOptions {
   readonly baseUrl: string;
   readonly sessionId: string;
   readonly fetchImpl?: FetchLike;
   readonly headers?: Record<string, string> | Headers;
-  /** 解析/版本错误上报(可观测);默认 console.error。 */
+  /**
+   * 解析/版本/网络错误上报(可注入覆盖,向后兼容);若提供则优先使用覆盖而非默认 logger。
+   * 默认经 createLogger({ namespace: "core:sse" }).error 产出(浏览器 sink→总线→面板)。
+   */
   readonly onError?: (error: unknown) => void;
+  /**
+   * 注入 logger 的 sink(仅测试用);未注入时使用默认 sink (node: stderr / browser: bus)。
+   */
+  readonly loggerSink?: Sink;
 }
 
 interface OpenStreamOptions {
@@ -70,12 +79,20 @@ export class PiSessionConnection {
     this.fetchImpl =
       opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.baseHeaders = opts.headers;
-    this.onError =
-      opts.onError ??
-      ((e: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("[pi-web/react] SSE error", e);
+    if (opts.onError !== undefined) {
+      this.onError = opts.onError;
+    } else {
+      const _logger = createLogger({
+        namespace: "core:sse",
+        ...(opts.loggerSink !== undefined ? { sink: opts.loggerSink } : {}),
       });
+      this.onError = (e: unknown) => {
+        _logger.error(
+          e instanceof Error ? e.message : "[pi-web/react] SSE error",
+          e,
+        );
+      };
+    }
   }
 
   get lastEventId(): string | undefined {
