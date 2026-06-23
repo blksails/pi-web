@@ -22,7 +22,7 @@
   - _Requirements: 1.4, 1.5, 1.6, 3.4_
   - _Boundary: @pi-web/logger_
 
-- [ ] 1.4 protocol 日志数据契约
+- [x] 1.4 protocol 日志数据契约
   - 新增 LogLevelSchema、LogEntrySchema（zod，data 为 unknown）、LOG_SENTINEL 常量、parseLogLine（仅对 sentinel 行解析并校验，失败返回 null）；并从 protocol 主入口导出
   - protocol 以 type-only 方式复用 logger 的 LogEntry 形状，保持 wire 与库一致且不形成运行时依赖环
   - 完成态：parseLogLine 对合法 sentinel 行返回 LogEntry、对非 sentinel/非法行返回 null
