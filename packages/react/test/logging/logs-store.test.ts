@@ -118,6 +118,52 @@ describe("LogsStore — deduplication", () => {
     const ids = snap.entries.map((e) => e.id);
     expect(ids[0]).not.toBe(ids[1]);
   });
+
+  // ── dedup tie-break: first-arrival wins ───────────────────────────────────
+  // Req 4.5: "不产生重复条目". When the same id arrives twice with DIFFERENT data,
+  // the implementation keeps the first arrival (addEntry returns early on duplicate).
+  // Existing tests only verify count=1 but never assert which data (first vs latest) wins.
+  // This test locks down the first-wins semantic so a future refactor cannot silently
+  // reverse the tie-break without a failing test.
+
+  it("dedup tie-break: first arrival data is preserved when same id ingested again", () => {
+    const store = createLogsStore();
+    const first = entry({ id: "tie-1", msg: "original" });
+    const second = entry({ id: "tie-1", msg: "overwrite-attempt" });
+
+    store.applyLogsFrame([first]);
+    store.applyLogsFrame([second]); // same id, different msg
+
+    const snap = store.getSnapshot();
+    expect(snap.entries).toHaveLength(1);
+    expect(snap.entries[0]!.msg).toBe("original"); // first-arrival wins
+  });
+
+  // ── insertion order stability ─────────────────────────────────────────────
+  // Req 4.5 / LogsSnapshot.entries: "ordered by insertion time (oldest first)".
+  // Existing tests check that entries are present but do not assert their order.
+  // When entries arrive across multiple applyLogsFrame calls the order must be stable.
+
+  it("entries are in insertion order across multiple applyLogsFrame calls", () => {
+    const store = createLogsStore();
+    store.applyLogsFrame([entry({ id: "ord-1", ts: 1000 })]);
+    store.applyLogsFrame([entry({ id: "ord-2", ts: 2000 })]);
+    store.mergeHistory([entry({ id: "ord-3", ts: 3000 })]);
+
+    const ids = store.getSnapshot().entries.map((e) => e.id);
+    expect(ids).toEqual(["ord-1", "ord-2", "ord-3"]);
+  });
+
+  it("mergeHistory does not reorder existing entries", () => {
+    const store = createLogsStore();
+    store.applyLogsFrame([entry({ id: "a", ts: 1 }), entry({ id: "b", ts: 2 })]);
+    // mergeHistory adds 'a' (dup, ignored) and 'c' (new)
+    store.mergeHistory([entry({ id: "a", ts: 1 }), entry({ id: "c", ts: 3 })]);
+
+    const ids = store.getSnapshot().entries.map((e) => e.id);
+    // 'a' and 'b' retain their original positions; 'c' appended at end
+    expect(ids).toEqual(["a", "b", "c"]);
+  });
 });
 
 // ── filter derivation ──────────────────────────────────────────────────────────
@@ -214,6 +260,33 @@ describe("LogsStore — filter derivation", () => {
     const entries = store.getSnapshot().filteredEntries;
     expect(entries.every((e) => e.ns.startsWith("ext") || e.ns === "ext")).toBe(true);
     expect(entries.every((e) => e.level === "warn" || e.level === "error")).toBe(true);
+  });
+
+  // ── combined: all three filters simultaneously ────────────────────────────
+  // Req 5.3/5.4/5.5: each filter is tested in isolation above. This tests them
+  // combined (level + namespace + text all active at once).
+  // The existing tests only combine level+namespace; triple combination is not covered.
+
+  it("combined level+namespace+text: only entries matching all three filters appear", () => {
+    // Entries from beforeEach:
+    //   d1: debug, agent:hello, "debug msg"
+    //   i1: info,  agent:hello, "info msg"
+    //   w1: warn,  ext:probe,   "warn msg"
+    //   e1: error, ext:probe,   "error msg"
+    //   i2: info,  agentx:other,"agentx msg"
+    //
+    // level=warn, namespace=ext, text=error → only e1 matches all three
+    store.setFilters({ level: "warn", namespace: "ext", text: "error" });
+    const entries = store.getSnapshot().filteredEntries;
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.id).toBe("e1");
+  });
+
+  it("combined level+namespace+text: zero results when text matches but level does not", () => {
+    // text="debug msg" matches d1, but d1 is debug — level=info filter cuts it
+    store.setFilters({ level: "info", namespace: "agent", text: "debug" });
+    const entries = store.getSnapshot().filteredEntries;
+    expect(entries).toHaveLength(0);
   });
 });
 

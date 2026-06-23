@@ -130,7 +130,7 @@
   - _Boundary: @pi-web/logger, protocol_
   - _Depends: 1.3, 1.4, 2.2_
 
-- [ ] 5.2 (P) 单元测试：服务端缓冲与前端存储
+- [x] 5.2 (P) 单元测试：服务端缓冲与前端存储
   - 覆盖 ring buffer 容量淘汰与 level/limit/since 过滤；logsStore 三源按 id 去重合并与过滤派生
   - 完成态：上述单测通过并以实际运行输出为证
   - _Requirements: 4.3, 4.4, 4.5, 5.3, 5.4, 5.5_

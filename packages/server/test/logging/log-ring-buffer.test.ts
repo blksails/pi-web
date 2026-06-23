@@ -248,4 +248,85 @@ describe("LogRingBuffer", () => {
       expect(defaultBuf.getLogs({})).toHaveLength(1);
     });
   });
+
+  // ── boundary: since inclusivity ───────────────────────────────────────────
+  // Req 4.3: "ts ≥ since" — an entry whose ts equals the since value must be INCLUDED.
+  // The existing "since" tests use since=250 where no entry has ts===250, so the
+  // exact boundary (ts === since) was never directly asserted.
+
+  describe("getLogs — since boundary (ts === since is inclusive)", () => {
+    it("entry with ts exactly equal to since is included", () => {
+      buf.ingest(makeEntry("info", 100));
+      buf.ingest(makeEntry("info", 200)); // ts === since
+      buf.ingest(makeEntry("info", 300));
+
+      const results = buf.getLogs({ since: 200 });
+      expect(results).toHaveLength(2);
+      const tss = results.map((e) => e.ts);
+      expect(tss).toContain(200); // boundary entry must be present
+      expect(tss).toContain(300);
+      expect(tss).not.toContain(100);
+    });
+
+    it("entry with ts exactly one below since is excluded", () => {
+      buf.ingest(makeEntry("info", 199));
+      buf.ingest(makeEntry("info", 200));
+      const results = buf.getLogs({ since: 200 });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.ts).toBe(200);
+    });
+  });
+
+  // ── boundary: capacity = 1 ────────────────────────────────────────────────
+  // Req 4.4: capacity-1 is an extreme that stresses the eviction path every ingest.
+  // Not covered by existing tests (smallest capacity tested is 3).
+
+  describe("capacity = 1 extreme", () => {
+    it("buffer of capacity 1 always keeps only the latest entry", () => {
+      const tiny = new LogRingBuffer(1);
+      tiny.ingest(makeEntry("info", 1, "first"));
+      tiny.ingest(makeEntry("warn", 2, "second"));
+      tiny.ingest(makeEntry("error", 3, "third"));
+
+      const all = tiny.getLogs({});
+      expect(all).toHaveLength(1);
+      expect(all[0]!.msg).toBe("third");
+    });
+
+    it("capacity=1 with level filter on sole entry", () => {
+      const tiny = new LogRingBuffer(1);
+      tiny.ingest(makeEntry("debug", 1, "debug-only"));
+
+      // Only entry is debug; filter to info → nothing survives
+      expect(tiny.getLogs({ level: "info" })).toHaveLength(0);
+      // Filter to debug → sole entry survives
+      expect(tiny.getLogs({ level: "debug" })).toHaveLength(1);
+    });
+  });
+
+  // ── boundary: level filter exact boundary (entry level === filter level) ──
+  // Req 4.3: severity filter is "≥ selected level" (inclusive). The existing tests
+  // assert count but do not isolate the exact boundary entry where
+  // entry.level === filter.level (e.g. a single "warn" with filter="warn").
+  // This test verifies inclusion, not just that higher levels appear.
+
+  describe("getLogs — level filter exact boundary", () => {
+    it("entry whose level equals the filter level is included", () => {
+      buf.ingest(makeEntry("info", 1, "info-msg"));
+      buf.ingest(makeEntry("warn", 2, "warn-msg"));
+
+      // filter=warn: the entry with level==="warn" (exactly equal) must appear
+      const results = buf.getLogs({ level: "warn" });
+      expect(results.map((e) => e.msg)).toContain("warn-msg");
+    });
+
+    it("entry whose level is one rank below filter level is excluded", () => {
+      buf.ingest(makeEntry("info", 1, "info-msg")); // rank 1
+      buf.ingest(makeEntry("warn", 2, "warn-msg")); // rank 2
+
+      // filter=warn excludes info (rank 1 < rank 2)
+      const results = buf.getLogs({ level: "warn" });
+      expect(results.map((e) => e.msg)).not.toContain("info-msg");
+    });
+  });
 });
