@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./trust": "./src/trust/index.ts"
+    "./trust": "./src/trust/index.ts",
+    "./model-options": "./src/config/model-options.ts"
   },
   "engines": {
     "node": ">=22.19.0"

@@ -25,6 +25,8 @@ export const settingsConfigSchema = z
           group: "model",
           order: 1,
           placeholder: "如 anthropic / openrouter",
+          // 可搜索下拉(选项来自 GET /api/config/models);未注册渲染器时回退文本框。
+          widget: "providerSelect",
         }),
       ),
     defaultModel: z
@@ -36,6 +38,8 @@ export const settingsConfigSchema = z
           group: "model",
           order: 2,
           placeholder: "如 anthropic/claude-sonnet-4.6",
+          // 可搜索下拉(选项来自 GET /api/config/models);未注册渲染器时回退文本框。
+          widget: "modelSelect",
         }),
       ),
     defaultThinkingLevel: ThinkingLevelSchema.optional().describe(

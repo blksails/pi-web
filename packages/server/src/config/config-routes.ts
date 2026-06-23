@@ -22,6 +22,7 @@ import type { InjectedRoute, RequestContext } from "../http/index.js";
 import type { AuthContext } from "../http/index.js";
 import { ConfigCodec } from "./config-codec.js";
 import { maskSecrets, mergeSecrets } from "./secret-merge.js";
+import type { ModelOptions } from "./model-options.types.js";
 
 /** 已知域的 zod 校验 schema 表。 */
 const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
@@ -47,6 +48,12 @@ export interface ConfigRoutesOptions {
   readonly rootDir?: string;
   /** 可选:管理员鉴权接缝,默认放行。 */
   readonly adminPolicy?: ConfigAdminPolicy;
+  /**
+   * 可选:运行时列模型接缝。提供时挂载数据端点 GET /config/models,前端的
+   * provider/model 可搜索下拉(widget)据此渲染。省略则该端点返回空集(前端回退
+   * 自由文本输入)。经依赖注入而非直接调用 pi SDK,使本模块测试与 pi SDK 解耦。
+   */
+  readonly listModelOptions?: () => ModelOptions | Promise<ModelOptions>;
 }
 
 /** 从 URL pathname 提取 `/config/:domain` 中的 domain 段。 */
@@ -90,6 +97,29 @@ export function createConfigRoutes(
     const values = maskSecrets(domain, rawValues, formSchema);
 
     return jsonResponse(200, { formSchema, values });
+  };
+
+  // GET /config/models — 列出已配置凭证的可用 provider/模型,供 settings 的
+  // provider/model 可搜索下拉(widget)渲染。无 listModelOptions 接缝或取数抛错时
+  // 返回空集(前端回退自由文本输入),绝不阻断。
+  const modelsHandler = async (ctx: RequestContext): Promise<Response> => {
+    if (!adminPolicy(ctx.auth)) {
+      return ctx.auth.anonymous
+        ? errorResponse(401, "UNAUTHORIZED", "Authentication required.")
+        : errorResponse(403, "FORBIDDEN", "Config access denied.");
+    }
+    if (opts.listModelOptions === undefined) {
+      return jsonResponse(200, { providers: [], models: [] });
+    }
+    try {
+      const modelOptions = await opts.listModelOptions();
+      return jsonResponse(200, {
+        providers: modelOptions.providers,
+        models: modelOptions.models,
+      });
+    } catch {
+      return jsonResponse(200, { providers: [], models: [] });
+    }
   };
 
   const putHandler = async (ctx: RequestContext): Promise<Response> => {
@@ -149,7 +179,10 @@ export function createConfigRoutes(
     return jsonResponse(200, { ok: true });
   };
 
+  // 注意顺序:`/config/models` 必须排在 `/config/:domain` 之前 —— 二者段数相等,
+  // router 按数组顺序匹配(字面段 vs :param),否则 "models" 会被当成未知域 → 404。
   return [
+    { method: "GET", path: "/config/models", handler: modelsHandler },
     { method: "GET", path: "/config/:domain", handler: getHandler },
     { method: "PUT", path: "/config/:domain", handler: putHandler },
   ];

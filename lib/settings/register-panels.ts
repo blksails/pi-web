@@ -22,7 +22,12 @@ import {
   extensionsFormSchema,
   extensionsConfigSchema,
 } from "@pi-web/protocol";
-import { registerFieldRendererByKey, ExtensionsKvField, ConfigFilesField } from "@pi-web/ui";
+import {
+  registerFieldRendererByKey,
+  ExtensionsKvField,
+  ConfigFilesField,
+  ModelSelectField,
+} from "@pi-web/ui";
 
 let registered = false;
 
@@ -120,6 +125,9 @@ export function registerConfigPanels(): void {
   // 自定义控件:per-扩展 KV 编辑器 + 独立配置文件(原始 JSON)编辑器。
   registerFieldRendererByKey("extensionsKv", ExtensionsKvField);
   registerFieldRendererByKey("configFiles", ConfigFilesField);
+  // settings 的 provider/model 可搜索下拉(选项来自 GET /api/config/models)。
+  registerFieldRendererByKey("providerSelect", ModelSelectField);
+  registerFieldRendererByKey("modelSelect", ModelSelectField);
 
   // 扩展:一个「扩展」菜单项 + 全局/项目 Tab。固定区=Slash 命令可用性,KV 区=per-扩展参数。
   // - 全局:写 `~/.pi/agent/settings.json`。

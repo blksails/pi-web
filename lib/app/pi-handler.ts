@@ -38,6 +38,8 @@ import {
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@pi-web/server/trust";
+// listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
+import { listModelOptions } from "@pi-web/server/model-options";
 import type { SpawnSpec } from "@pi-web/protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -298,7 +300,12 @@ function buildSingleton(): HandlerSingleton {
     //  - GET/PUT /config/extensions/{global,project} → settings.json 的 commands +
     //    顶层 per-扩展 KV 互映(全局 <agentDir>/settings.json,项目 <cwd>/.pi/settings.json)。
     routes: [
-      ...createConfigRoutes({ rootDir: config.agentDir }),
+      ...createConfigRoutes({
+        rootDir: config.agentDir,
+        // settings 域:把 defaultProvider/defaultModel 升级为运行时下拉(选项 = 该
+        // agentDir 下已配置凭证的可用模型,含 models.json 自定义 provider)。
+        listModelOptions: () => listModelOptions(config.agentDir),
+      }),
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
       ...createExtensionsConfigRoutes({
         agentDir: config.agentDir,
