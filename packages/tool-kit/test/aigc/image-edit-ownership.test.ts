@@ -42,7 +42,7 @@ describe("image_edit · 输入越权/无效降级(Req 2.4)", () => {
 
       const result = await tool.execute(
         "tc-owner",
-        { instruction: "make it red", image_url: "att_other_session" },
+        { prompt: "make it red", image: "att_other_session" },
         undefined,
         undefined,
         {} as never,

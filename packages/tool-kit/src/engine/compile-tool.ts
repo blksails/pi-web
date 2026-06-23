@@ -1,30 +1,40 @@
 /**
- * `@pi-web/tool-kit` Category 编译器 — 把声明式 Category 包装成 pi ToolDefinition。
+ * `@pi-web/tool-kit` 工具编译器 — 把声明式 {@link ToolSpec} 包装成 pi ToolDefinition。
  *
  * 本文件属于 **runtime 入口**(`./runtime` 子入口),禁止从主入口 `src/index.ts`
  * 直接/间接引入。原因:它导入 `@earendil-works/pi-coding-agent`(`defineTool`)与
  * `@earendil-works/pi-ai`(`Type`),两者含 node-only 运行时依赖,不得进 Next/webpack
- * 前端 bundle(守 design Boundary / Req 6.3)。
+ * 前端 bundle(守 design Boundary / Req 6.1)。
  *
- * 执行语义:
- *   1. 参数 schema 映射:inputSchema → pi Type.* 对象参数,追加可选 `model` 变体选择器。
- *   2. 默认变体:LLM args.model 有效 → 对应变体;否则 category.defaultVariant。
- *   3. 参数合并(高→低):LLM args(去 model)> userParam 默认。
- *   4. 降级检查:requiredVars 缺失 || ctx.available===false → { ok:false, error } 不抛。
- *   5. 成功路径:runEndpoint → persistPicked → 组装 content+details。
- *   6. 顶层 try/catch:任何错误 → { ok:false, error },不崩溃子进程(Req 1.6/7.x)。
+ * 执行语义(由 variants 重构拍平而来):
+ *   1. 参数 schema 映射:inputSchema → pi Type.* 对象参数,追加可选 `model` 枚举选择器
+ *      (enum = 各 ModelRoute.model)。
+ *   2. model 路由:LLM args.model 命中 → 对应 ModelRoute;否则 tool.defaultModel;再兜底首项。
+ *   3. 降级检查:requiredVars 缺失 || ctx.available===false → { ok:false, error } 不抛。
+ *   4. 成功路径:runEndpoint → persistPicked → 组装 content+details。
+ *   5. 顶层 try/catch:任何错误 → { ok:false, error },不崩溃子进程(Req 1.6/6.x)。
  */
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import type { TSchema } from "@earendil-works/pi-ai";
-import type { ToolDefinition, AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type {
+  ToolDefinition,
+  AgentToolResult,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { AttachmentToolContext } from "@pi-web/agent-kit";
 import { checkRequiredVars } from "./var-resolver.js";
 import { runEndpoint } from "./endpoint-adapter.js";
 import { getAttachmentToolContext } from "../attachment/seam.js";
 import { persistPicked, resolveInputToDataUri } from "../attachment/persist.js";
-import type { Category, JsonSchemaProp, MediaKind, Variant } from "./types.js";
+import type {
+  ToolSpec,
+  JsonSchemaProp,
+  MediaKind,
+  ModelRoute,
+  InteractionSpec,
+} from "./types.js";
 
 /** 编译依赖注入:测试注入 mock ctx / fetch;生产走默认 seam + proxyFetch。 */
 export interface CompileDeps {
@@ -93,120 +103,72 @@ function jsonSchemaToType(prop: JsonSchemaProp, required: boolean): TSchema {
 }
 
 /**
- * 把 Category.inputSchema 映射成 pi Type.Object,
- * 额外追加可选 `model` 参数(变体选择器,Req 4.1/4.3)。
+ * 把 ToolSpec.inputSchema 映射成 pi Type.Object,
+ * 额外追加可选 `model` 枚举参数(model 路由选择器)。
  */
-function buildParameters(category: Category): TSchema {
+function buildParameters(tool: ToolSpec): TSchema {
   const props: Record<string, TSchema> = {};
-  const required = new Set(category.inputSchema.required ?? []);
+  const required = new Set(tool.inputSchema.required ?? []);
 
-  for (const [name, prop] of Object.entries(category.inputSchema.properties)) {
+  for (const [name, prop] of Object.entries(tool.inputSchema.properties)) {
     props[name] = jsonSchemaToType(prop, required.has(name));
   }
 
-  // 追加可选 model 参数(LLM 变体选择器)
-  const variantNames = category.variants.map((v) => v.name);
-  const summary = variantNames.join(" | ");
-  props.model = Type.Optional(
-    Type.String({
-      description: `Variant/model to use. Omit to use the default (${category.defaultVariant}). Options: ${summary}`,
-    }),
-  );
+  // 追加可选 model 枚举(LLM 路由选择器,enum = 各 ModelRoute.model)
+  const models = tool.models.map((m) => m.model);
+  const desc = `Model to use. Omit for default (${tool.defaultModel}). Options: ${models.join(" | ")}`;
+  const literals = models.map((m) => Type.Literal(m, { description: m }));
+  const base: TSchema =
+    literals.length === 1
+      ? Type.Literal(models[0] as string, { description: desc })
+      : Type.Union(
+          literals as unknown as [TSchema, TSchema, ...TSchema[]],
+          { description: desc },
+        );
+  props.model = Type.Optional(base);
 
   return Type.Object(props);
 }
 
-// ── 变体查找 ───────────────────────────────────────────────────────────────────
+// ── model 路由查找 ─────────────────────────────────────────────────────────────
 
-/** 精确名称匹配变体;未命中返回 undefined。 */
-function findVariant(
-  category: Category,
-  name: string,
-): Variant | undefined {
-  return category.variants.find((v) => v.name === name);
+/** 精确名称匹配 model 路由;未命中返回 undefined。 */
+function findRoute(tool: ToolSpec, model: string): ModelRoute | undefined {
+  return tool.models.find((m) => m.model === model);
 }
 
-/** 按优先级选取 active 变体:args.model > defaultVariant > 首项兜底。 */
-function selectVariant(
-  category: Category,
+/** 按优先级选取 active 路由:args.model > defaultModel > 首项兜底。 */
+function selectModelRoute(
+  tool: ToolSpec,
   modelArg: string | undefined,
-): Variant {
+): ModelRoute {
   if (modelArg) {
-    const found = findVariant(category, modelArg);
+    const found = findRoute(tool, modelArg);
     if (found) return found;
-    // LLM 传了无效 variant name → 警告降级
+    // LLM 传了无效 model → 警告降级
     console.warn(
-      `[compileCategory] unknown variant "${modelArg}" for ${category.name}; falling back to default`,
+      `[compileTool] unknown model "${modelArg}" for ${tool.name}; falling back to default`,
     );
   }
-  const def = findVariant(category, category.defaultVariant);
+  const def = findRoute(tool, tool.defaultModel);
   if (def) return def;
-  const first = category.variants[0];
-  if (!first) throw new Error(`Category "${category.name}" has no variants`);
+  const first = tool.models[0];
+  if (!first) throw new Error(`Tool "${tool.name}" has no models`);
   return first;
-}
-
-// ── userParam 默认值收集 ──────────────────────────────────────────────────────
-
-function collectUserParamDefaults(
-  category: Category,
-): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
-  for (const p of category.userParams ?? []) {
-    out[p.name] = p.default;
-  }
-  return out;
-}
-
-// ── 参数校验(min/max/options) ─────────────────────────────────────────────────
-
-/**
- * 对 userParams 声明的约束做简单运行时校验。
- * 越界/非法 → 返回错误字符串;通过 → 返回 undefined。
- */
-function validateUserParams(
-  category: Category,
-  merged: Record<string, unknown>,
-): string | undefined {
-  for (const p of category.userParams ?? []) {
-    const val = merged[p.name];
-    if (val === undefined || val === null) continue;
-
-    if (p.type === "integer" || p.type === "number") {
-      const n = Number(val);
-      if (Number.isNaN(n)) {
-        return `参数 "${p.name}" 期望数字,实际收到 "${String(val)}"`;
-      }
-      if (p.min !== undefined && n < p.min) {
-        return `参数 "${p.name}" 最小值为 ${p.min},实际收到 ${n}`;
-      }
-      if (p.max !== undefined && n > p.max) {
-        return `参数 "${p.name}" 最大值为 ${p.max},实际收到 ${n}`;
-      }
-    }
-
-    if (p.type === "select" && p.options && p.options.length > 0) {
-      const allowed = p.options.map((o) => o.value);
-      if (!allowed.includes(val as string | number)) {
-        return `参数 "${p.name}" 允许值为 [${allowed.join(", ")}],实际收到 "${String(val)}"`;
-      }
-    }
-  }
-  return undefined;
 }
 
 // ── 工具描述构造 ──────────────────────────────────────────────────────────────
 
-function buildDescription(category: Category): string {
-  const lines = category.variants.map((v) => {
-    const star = v.name === category.defaultVariant ? " (default)" : "";
-    const desc = v.description ? ` — ${v.description}` : "";
-    return `- \`${v.name}\`${star}: ${v.label}${desc}`;
+function buildDescription(tool: ToolSpec): string {
+  const lines = tool.models.map((m) => {
+    const star = m.model === tool.defaultModel ? " (default)" : "";
+    const desc = m.description ? ` — ${m.description}` : "";
+    return `- \`${m.model}\`${star}: ${m.label}${desc}`;
   });
   return [
-    category.description.trim(),
+    tool.description.trim(),
     "",
-    `Available variants (pass \`model: "<id>"\` to choose; omit for default):`,
+    'Available models (pass `model: "<id>"` to choose; omit for default):',
     ...lines,
   ].join("\n");
 }
@@ -217,7 +179,7 @@ function buildDescription(category: Category): string {
 export type ToolExecuteDetails =
   | {
       ok: true;
-      variant: string;
+      model: string;
       assets: {
         attachmentId: string;
         displayUrl: string;
@@ -252,11 +214,11 @@ function hasImageMediaKind(
  *  - resolve 失败 → 抛出,由 runExecute 的 try/catch 捕获并返回 ok:false
  */
 async function resolveMediaFields(
-  category: Category,
+  tool: ToolSpec,
   merged: Record<string, unknown>,
   ctx: AttachmentToolContext,
 ): Promise<void> {
-  const { properties } = category.inputSchema;
+  const { properties } = tool.inputSchema;
 
   for (const [name, prop] of Object.entries(properties)) {
     const isImageProp = hasImageMediaKind(prop.mediaKind);
@@ -286,42 +248,101 @@ async function resolveMediaFields(
   }
 }
 
+// ── 必选项交互补全(aigc-tools-interactive-params) ────────────────────────────
+
+/** 交互补全结果:成功或带可读原因的失败(取消 / 无 UI 缺无兜底项)。 */
+type ResolveOutcome = { ok: true } | { ok: false; error: string };
+
+/** 展开 select 选项:哨兵 "$models" → tool.models 的 model 集合;其余原样。 */
+function expandOptions(spec: InteractionSpec, tool: ToolSpec): string[] {
+  const out: string[] = [];
+  for (const o of spec.options ?? []) {
+    if (o === "$models") out.push(...tool.models.map((m) => m.model));
+    else out.push(o);
+  }
+  return out;
+}
+
+/**
+ * 对 tool.requiredParams 声明的业务必选项逐一补全(在 provider 调用前):
+ *  - 已有非空值 → 跳过(R7);
+ *  - 有交互 UI(ext.hasUI && ext.ui)→ select(model/size)/ input(prompt);取消(undefined/空)→ ok:false(R5);
+ *  - 无交互 UI → fallback 优先;param==="model" 退回 defaultModel;否则缺失 → ok:false(R6)。
+ * 直接在 merged 上写回补全值。
+ */
+async function resolveRequiredParams(
+  tool: ToolSpec,
+  merged: Record<string, unknown>,
+  ext: ExtensionContext | undefined,
+): Promise<ResolveOutcome> {
+  const specs = tool.requiredParams;
+  if (!specs || specs.length === 0) return { ok: true };
+
+  const hasUI = ext?.hasUI === true && ext.ui != null;
+
+  for (const spec of specs) {
+    const cur = merged[spec.param];
+    if (cur !== undefined && cur !== null && cur !== "") continue;
+
+    if (hasUI) {
+      const value =
+        spec.via === "select"
+          ? await ext!.ui.select(spec.title, expandOptions(spec, tool))
+          : await ext!.ui.input(spec.title, spec.placeholder);
+      if (value === undefined || value === "") {
+        return { ok: false, error: `已取消:未提供必选项「${spec.param}」` };
+      }
+      merged[spec.param] = value;
+    } else if (spec.fallback !== undefined) {
+      merged[spec.param] = spec.fallback;
+    } else if (spec.param === "model") {
+      merged[spec.param] = tool.defaultModel;
+    } else {
+      return {
+        ok: false,
+        error: `缺少必选项「${spec.param}」且当前环境无可交互 UI`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
 // ── 执行核心函数(便于 execute 保持简洁) ─────────────────────────────────────
 
 async function runExecute(
-  category: Category,
+  tool: ToolSpec,
   deps: CompileDeps | undefined,
   params: Record<string, unknown>,
   signal: AbortSignal | undefined,
-  userParamDefaults: Record<string, string | number>,
+  ext: ExtensionContext | undefined,
 ): Promise<ExecuteResult> {
-  // ── 提取 model 选择器,其余参数进合并 ───────────────────────────────────────
-  const { model: modelArg, ...llmArgsWithoutModel } = params as Record<
-    string,
-    unknown
-  > & { model?: string };
-
-  const variant = selectVariant(category, modelArg);
-
-  // ── 参数合并:LLM args > userParam 默认 ─────────────────────────────────────
-  const merged: Record<string, unknown> = {
-    ...userParamDefaults,
-    ...llmArgsWithoutModel,
+  // ── 提取 model 选择器,其余参数进合并;model 一并纳入必选项补全候选 ──────────
+  const { model: modelArg, ...llmArgs } = params as Record<string, unknown> & {
+    model?: string;
   };
+  const merged: Record<string, unknown> = { ...llmArgs };
+  if (typeof modelArg === "string" && modelArg !== "") merged.model = modelArg;
 
-  // ── 参数越界校验 ──────────────────────────────────────────────────────────
-  const paramError = validateUserParams(category, merged);
-  if (paramError) {
+  // ── 必选项交互补全(model/size/prompt;缺失才触发,在 provider 调用前)─────────
+  const fill = await resolveRequiredParams(tool, merged, ext);
+  if (!fill.ok) {
     return {
-      content: [{ type: "text", text: `参数错误:${paramError}` }],
-      details: { ok: false, error: paramError },
+      content: [{ type: "text", text: fill.error }],
+      details: { ok: false, error: fill.error },
     };
   }
 
+  // ── model 路由(merged.model 已补全或仍缺→默认);model 是路由键,不作 buildBody 入参 ──
+  const route = selectModelRoute(
+    tool,
+    typeof merged.model === "string" ? merged.model : undefined,
+  );
+  delete merged.model;
+
   // ── 降级检查:requiredVars ──────────────────────────────────────────────
-  const varCheck = checkRequiredVars(variant.requiredVars);
+  const varCheck = checkRequiredVars(route.requiredVars);
   if (!varCheck.ok) {
-    const error = `能力不可用:缺少环境变量 ${varCheck.missing.join(", ")} (variant="${variant.name}")`;
+    const error = `能力不可用:缺少环境变量 ${varCheck.missing.join(", ")} (model="${route.model}")`;
     return {
       content: [{ type: "text", text: error }],
       details: { ok: false, error },
@@ -342,16 +363,16 @@ async function runExecute(
   // ── 执行 ────────────────────────────────────────────────────────────────
   try {
     // att_id → data URI:在 buildBody 前解析 inputSchema 中 mediaKind:image 字段
-    await resolveMediaFields(category, merged, ctx);
+    await resolveMediaFields(tool, merged, ctx);
 
-    const picked = await runEndpoint(variant, merged, {
+    const picked = await runEndpoint(route, merged, {
       signal,
       fetchImpl: deps?.fetchImpl,
     });
 
     const assets = await persistPicked(picked, ctx, {
       fetchImpl: deps?.fetchImpl,
-      namePrefix: category.name,
+      namePrefix: tool.name,
     });
 
     // 无落库产物(provider 返回 raw/空 url,实为解析失败)→ 报失败而非误导性 ok:true。
@@ -377,7 +398,7 @@ async function runExecute(
       content: [{ type: "text", text: summaryLines.join("\n") }],
       details: {
         ok: true,
-        variant: variant.name,
+        model: route.model,
         assets: assets.map((a) => ({
           attachmentId: a.attachmentId,
           displayUrl: a.displayUrl,
@@ -398,30 +419,31 @@ async function runExecute(
 // ── 主编译函数 ────────────────────────────────────────────────────────────────
 
 /**
- * 把 `Category` 编译成 pi `ToolDefinition`。
+ * 把 {@link ToolSpec} 编译成 pi `ToolDefinition`。
  *
- * @param category  工具声明(纯数据,无值导入运行时)。
- * @param deps      可选注入依赖(测试 mock);省略则走生产默认。
+ * @param tool  工具声明(纯数据,无值导入运行时)。
+ * @param deps  可选注入依赖(测试 mock);省略则走生产默认。
  */
-export function compileCategory(
-  category: Category,
+export function compileTool(
+  tool: ToolSpec,
   deps?: CompileDeps,
 ): ToolDefinition<TSchema, ToolExecuteDetails> {
-  const parameters = buildParameters(category);
-  const userParamDefaults = collectUserParamDefaults(category);
+  const parameters = buildParameters(tool);
 
   return defineTool<TSchema, ToolExecuteDetails>({
-    name: category.name,
-    label: category.ui?.label ?? category.name,
-    description: buildDescription(category),
+    name: tool.name,
+    label: tool.label ?? tool.name,
+    description: buildDescription(tool),
     parameters,
 
     async execute(
       _toolCallId: string,
       params: Record<string, unknown>,
       signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      ext: ExtensionContext,
     ): Promise<ExecuteResult> {
-      return runExecute(category, deps, params, signal, userParamDefaults);
+      return runExecute(tool, deps, params, signal, ext);
     },
   });
 }

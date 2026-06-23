@@ -1,19 +1,21 @@
 /**
- * text_to_image 集成测试。
+ * image_generation 集成测试。
  *
  * 覆盖:
- *  - sync 变体:prompt → runEndpoint(mock sync fetch) → persistPicked → details.ok===true 含 2 assets
- *  - async 变体:mock fetch 第一次返回 task_id,polling 返回 SUCCEEDED+results → 同流程
- *  - buildAigcTools() 产出数组含 text_to_image ToolDefinition
+ *  - sync model:prompt → runEndpoint(mock sync fetch) → persistPicked → details.ok===true 含 2 assets
+ *  - async model:用 createDashscopeAsyncT2I 自建临时工具,mock fetch 提交 task_id,polling 返回
+ *    SUCCEEDED+results → 同流程(覆盖 DashScope 异步形态保留,Req 4.2)
+ *  - buildAigcTools() 产出数组含 image_generation ToolDefinition
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { compileCategory } from "../../src/engine/compile-category.js";
+import { compileTool } from "../../src/engine/compile-tool.js";
 import { buildAigcTools } from "../../src/aigc/index.js";
-import { textToImage } from "../../src/aigc/categories/text-to-image.js";
-import type { CompileDeps } from "../../src/engine/compile-category.js";
+import { imageGeneration } from "../../src/aigc/tools/image-generation.js";
+import { createDashscopeAsyncT2I } from "../../src/aigc/providers/dashscope.js";
+import type { CompileDeps } from "../../src/engine/compile-tool.js";
 import type { AttachmentToolContext } from "@pi-web/agent-kit";
-import type { Category } from "../../src/engine/types.js";
+import type { ToolSpec } from "../../src/engine/types.js";
 
 // ── Mock 工具 ────────────────────────────────────────────────────────────────
 
@@ -124,7 +126,7 @@ function makeAsyncFetch(imageUrls: string[]) {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe("text_to_image integration", () => {
+describe("image_generation integration", () => {
   beforeEach(() => {
     process.env.DASHSCOPE_API_KEY = "test-dashscope-key";
   });
@@ -134,7 +136,7 @@ describe("text_to_image integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("sync 变体 (qwen-image): prompt → 2 images → persistPicked → details.ok true + 2 assets", async () => {
+  it("sync model (qwen-image-pro): prompt → 2 images → persistPicked → details.ok true + 2 assets", async () => {
     const imageUrls = [
       "https://dashscope-result.aliyuncs.com/img1.png",
       "https://dashscope-result.aliyuncs.com/img2.png",
@@ -143,10 +145,10 @@ describe("text_to_image integration", () => {
     const fetchImpl = makeSyncFetch(imageUrls) as typeof fetch;
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
-    const tool = compileCategory(textToImage, deps);
+    const tool = compileTool(imageGeneration, deps);
     const result = await tool.execute(
       "call-sync",
-      { prompt: "mountain lake", model: "qwen-image" },
+      { prompt: "mountain lake", model: "qwen-image-pro" },
       undefined,
       undefined,
       {} as never,
@@ -154,36 +156,51 @@ describe("text_to_image integration", () => {
 
     const details = result.details as {
       ok: boolean;
+      model?: string;
       assets?: { attachmentId: string; mimeType: string }[];
     };
     expect(details.ok).toBe(true);
+    expect(details.model).toBe("qwen-image-pro");
     expect(details.assets).toBeDefined();
     expect(details.assets?.length).toBe(2);
     expect(details.assets?.[0]?.attachmentId).toMatch(/^att_/);
   });
 
-  it("async 变体 (wanx-turbo): task_id → SUCCEEDED + results → details.ok true", async () => {
+  it("async model: 自建工具 task_id → SUCCEEDED + results → details.ok true(Req 4.2)", async () => {
     const imageUrls = [
       "https://dashscope-result.aliyuncs.com/wanx1.png",
     ];
     const ctx = makeMockCtx();
     const fetchImpl = makeAsyncFetch(imageUrls) as typeof fetch;
 
-    // 用加速了 pollMs 的变体构造 category,避免测试超时
-    const fastAsyncCategory: Category = {
-      ...textToImage,
-      variants: textToImage.variants.map((v) =>
-        v.name === "wanx-turbo" && v.async !== undefined
-          ? { ...v, async: { ...v.async, pollMs: 50, timeoutMs: 10_000 } }
-          : v,
-      ),
+    // 用 createDashscopeAsyncT2I 自建临时工具,加速 pollMs 避免超时。
+    const asyncRoute = createDashscopeAsyncT2I({
+      model: "wanx-async",
+      label: "Wanx Async",
+      description: "test async polling",
+      providerModel: "wanx2.0-t2i-turbo",
+    });
+    const fastRoute = {
+      ...asyncRoute,
+      async: { ...asyncRoute.async!, pollMs: 50, timeoutMs: 10_000 },
+    };
+    const asyncTool: ToolSpec = {
+      name: "async_gen_test",
+      description: "async test tool",
+      inputSchema: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "prompt" } },
+        required: ["prompt"],
+      },
+      defaultModel: "wanx-async",
+      models: [fastRoute],
     };
 
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
-    const tool = compileCategory(fastAsyncCategory, deps);
+    const tool = compileTool(asyncTool, deps);
     const result = await tool.execute(
       "call-async",
-      { prompt: "snowy mountains", model: "wanx-turbo" },
+      { prompt: "snowy mountains" },
       undefined,
       undefined,
       {} as never,
@@ -191,27 +208,27 @@ describe("text_to_image integration", () => {
 
     const details = result.details as {
       ok: boolean;
-      variant?: string;
+      model?: string;
       assets?: { attachmentId: string }[];
     };
     expect(details.ok).toBe(true);
-    expect(details.variant).toBe("wanx-turbo");
+    expect(details.model).toBe("wanx-async");
     expect(details.assets?.length).toBe(1);
   }, 15_000);
 
-  it("buildAigcTools() 返回数组含 text_to_image ToolDefinition", () => {
+  it("buildAigcTools() 返回数组含 image_generation ToolDefinition", () => {
     const tools = buildAigcTools();
     expect(Array.isArray(tools)).toBe(true);
     expect(tools.length).toBeGreaterThan(0);
-    const t2iTool = tools.find((t) => t.name === "text_to_image");
-    expect(t2iTool).toBeDefined();
-    expect(typeof t2iTool?.execute).toBe("function");
+    const genTool = tools.find((t) => t.name === "image_generation");
+    expect(genTool).toBeDefined();
+    expect(typeof genTool?.execute).toBe("function");
   });
 
-  it("buildAigcTools({ include: ['text_to_image'] }) 精确过滤", () => {
-    const tools = buildAigcTools({ include: ["text_to_image"] });
+  it("buildAigcTools({ include: ['image_generation'] }) 精确过滤", () => {
+    const tools = buildAigcTools({ include: ["image_generation"] });
     expect(tools.length).toBe(1);
-    expect(tools[0]?.name).toBe("text_to_image");
+    expect(tools[0]?.name).toBe("image_generation");
   });
 
   it("buildAigcTools({ include: ['nonexistent'] }) 返回空数组", () => {

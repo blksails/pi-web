@@ -10,6 +10,8 @@
  *  - Proxy fetch:      `proxyFetch`
  *  - Attachment seam:  `getAttachmentToolContext`, `SEAM_KEY`
  *  - Attachment store: `persistPicked`, `resolveInputToDataUri`, `PersistedAsset`
+ *  - Tool 编译器:      `compileTool`, `CompileDeps`, `ToolExecuteDetails`
+ *  - AIGC 工具集:      `buildAigcTools`, `AIGC_TOOLS`, `BuildAigcToolsOptions`
  */
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -30,10 +32,10 @@ export { getAttachmentToolContext, SEAM_KEY } from "./attachment/seam.js";
 export { persistPicked, resolveInputToDataUri } from "./attachment/persist.js";
 export type { PersistedAsset } from "./attachment/persist.js";
 
-// ── Category 编译器 (node-only — 含 pi SDK 值导入) ────────────────────────────
-export { compileCategory } from "./engine/compile-category.js";
-export type { CompileDeps } from "./engine/compile-category.js";
+// ── Tool 编译器 (node-only — 含 pi SDK 值导入) ────────────────────────────────
+export { compileTool } from "./engine/compile-tool.js";
+export type { CompileDeps, ToolExecuteDetails } from "./engine/compile-tool.js";
 
 // ── AIGC 工具集 ───────────────────────────────────────────────────────────────
-export { buildAigcTools, AIGC_CATEGORIES } from "./aigc/index.js";
+export { buildAigcTools, AIGC_TOOLS } from "./aigc/index.js";
 export type { BuildAigcToolsOptions } from "./aigc/index.js";

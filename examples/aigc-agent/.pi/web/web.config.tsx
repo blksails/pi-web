@@ -143,7 +143,7 @@ export default defineWebExtension({
   capabilities: ["renderers"],
   renderers: {
     tools: {
-      text_to_image: AigcImageRenderer as never,
+      image_generation: AigcImageRenderer as never,
       image_edit: AigcImageRenderer as never,
     },
   },

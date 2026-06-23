@@ -1,18 +1,21 @@
 /**
- * compile-category 单元测试。
+ * compile-tool 单元测试。
  *
  * 覆盖:
- *  - 默认变体选取(无 model 参数)
- *  - LLM model 参数覆盖变体
- *  - 参数越界返回 ok:false(不抛)
- *  - checkRequiredVars 失败 → 降级 ok:false
- *  - ctx.available===false → 降级 ok:false
+ *  - model 入参注入为 models 枚举(1.1)
+ *  - 默认 model 选取(无 model 参数,1.3)
+ *  - LLM model 参数覆盖路由(1.2)
+ *  - 非法 model 回退默认(不抛,1.4)
+ *  - 执行明细记录实际 model(1.5)
+ *  - checkRequiredVars 失败 → 降级 ok:false(6.2/6.3)
+ *  - ctx.available===false → 降级 ok:false(6.2)
+ *  - 成功路径返回 ok:true 含 assets
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { compileCategory } from "../../src/engine/compile-category.js";
-import type { CompileDeps } from "../../src/engine/compile-category.js";
-import type { Category, PickedResult } from "../../src/engine/types.js";
+import { compileTool } from "../../src/engine/compile-tool.js";
+import type { CompileDeps } from "../../src/engine/compile-tool.js";
+import type { ToolSpec, PickedResult } from "../../src/engine/types.js";
 import type { AttachmentToolContext } from "@pi-web/agent-kit";
 
 // ── Mock AttachmentToolContext ────────────────────────────────────────────────
@@ -78,9 +81,9 @@ function makeImageFetch(imageUrl = "https://example.com/img.png") {
   });
 }
 
-// ── 最简测试用 Category ───────────────────────────────────────────────────────
+// ── 最简测试用 ToolSpec ───────────────────────────────────────────────────────
 
-const MOCK_CATEGORY: Category = {
+const MOCK_TOOL: ToolSpec = {
   name: "test_tool",
   description: "test",
   inputSchema: {
@@ -90,14 +93,11 @@ const MOCK_CATEGORY: Category = {
     },
     required: ["prompt"],
   },
-  userParams: [
-    { name: "n", label: "N", type: "integer", default: 1, min: 1, max: 4 },
-  ],
-  defaultVariant: "variant-a",
-  variants: [
+  defaultModel: "model-a",
+  models: [
     {
-      name: "variant-a",
-      label: "Variant A",
+      model: "model-a",
+      label: "Model A",
       description: "First",
       url: "https://example.com/multimodal-generation",
       headers: { authorization: "Bearer ${TEST_KEY}" },
@@ -109,8 +109,8 @@ const MOCK_CATEGORY: Category = {
       } as PickedResult),
     },
     {
-      name: "variant-b",
-      label: "Variant B",
+      model: "model-b",
+      label: "Model B",
       description: "Second",
       url: "https://example.com/multimodal-generation",
       headers: { authorization: "Bearer ${TEST_KEY}" },
@@ -127,17 +127,17 @@ const MOCK_CATEGORY: Category = {
 // ── 辅助:调用 execute ─────────────────────────────────────────────────────────
 
 async function callExecute(
-  category: Category,
+  tool: ToolSpec,
   params: Record<string, unknown>,
   deps: CompileDeps,
 ) {
-  const tool = compileCategory(category, deps);
-  return tool.execute("call-id", params, undefined, undefined, {} as never);
+  const compiled = compileTool(tool, deps);
+  return compiled.execute("call-id", params, undefined, undefined, {} as never);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("compileCategory", () => {
+describe("compileTool", () => {
   beforeEach(() => {
     // 注入 TEST_KEY 环境变量
     process.env.TEST_KEY = "test-secret";
@@ -148,57 +148,57 @@ describe("compileCategory", () => {
     vi.restoreAllMocks();
   });
 
-  it("默认选取 defaultVariant 执行", async () => {
+  it("model 入参注入为 models 枚举", () => {
+    const tool = compileTool(MOCK_TOOL, {
+      getCtx: () => makeMockCtx(true),
+      fetchImpl: makeImageFetch(),
+    });
+    const modelSchema = (
+      tool.parameters as { properties: { model: { anyOf?: { const?: unknown }[] } } }
+    ).properties.model;
+    const consts = (modelSchema.anyOf ?? []).map((s) => s.const);
+    expect(consts).toEqual(["model-a", "model-b"]);
+  });
+
+  it("默认选取 defaultModel 执行", async () => {
     const ctx = makeMockCtx(true);
     const fetchImpl = makeImageFetch();
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
-    const result = await callExecute(MOCK_CATEGORY, { prompt: "hello" }, deps);
+    const result = await callExecute(MOCK_TOOL, { prompt: "hello" }, deps);
     expect(result.details).toMatchObject({ ok: true });
-    const details = result.details as { ok: true; variant: string };
-    expect(details.variant).toBe("variant-a");
+    const details = result.details as { ok: true; model: string };
+    expect(details.model).toBe("model-a");
   });
 
-  it("LLM model 参数覆盖选取对应变体", async () => {
+  it("LLM model 参数覆盖选取对应路由", async () => {
     const ctx = makeMockCtx(true);
     const fetchImpl = makeImageFetch("https://example.com/img-b.png");
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
     const result = await callExecute(
-      MOCK_CATEGORY,
-      { prompt: "hello", model: "variant-b" },
+      MOCK_TOOL,
+      { prompt: "hello", model: "model-b" },
       deps,
     );
     expect(result.details).toMatchObject({ ok: true });
-    const details = result.details as { ok: true; variant: string };
-    expect(details.variant).toBe("variant-b");
+    const details = result.details as { ok: true; model: string };
+    expect(details.model).toBe("model-b");
   });
 
-  it("userParam n 越界(>max)返回 ok:false 不抛", async () => {
+  it("非法 model 回退默认(不抛)", async () => {
     const ctx = makeMockCtx(true);
     const fetchImpl = makeImageFetch();
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
     const result = await callExecute(
-      MOCK_CATEGORY,
-      { prompt: "hello", n: 99 },
+      MOCK_TOOL,
+      { prompt: "hello", model: "nonexistent" },
       deps,
     );
-    expect(result.details).toMatchObject({ ok: false });
-    expect((result.details as { ok: false; error: string }).error).toContain("4");
-  });
-
-  it("userParam n 越界(<min)返回 ok:false 不抛", async () => {
-    const ctx = makeMockCtx(true);
-    const fetchImpl = makeImageFetch();
-    const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
-
-    const result = await callExecute(
-      MOCK_CATEGORY,
-      { prompt: "hello", n: 0 },
-      deps,
-    );
-    expect(result.details).toMatchObject({ ok: false });
+    expect(result.details).toMatchObject({ ok: true });
+    const details = result.details as { ok: true; model: string };
+    expect(details.model).toBe("model-a");
   });
 
   it("checkRequiredVars 失败 → 降级 ok:false(不抛)", async () => {
@@ -208,7 +208,7 @@ describe("compileCategory", () => {
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
     const result = await callExecute(
-      MOCK_CATEGORY,
+      MOCK_TOOL,
       { prompt: "hello" },
       deps,
     );
@@ -223,7 +223,7 @@ describe("compileCategory", () => {
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
     const result = await callExecute(
-      MOCK_CATEGORY,
+      MOCK_TOOL,
       { prompt: "hello" },
       deps,
     );
@@ -232,22 +232,23 @@ describe("compileCategory", () => {
     expect(error).toMatch(/attachment/);
   });
 
-  it("成功路径返回 ok:true 含 assets", async () => {
+  it("成功路径返回 ok:true 含 assets 与实际 model", async () => {
     const ctx = makeMockCtx(true);
     const fetchImpl = makeImageFetch();
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
     const result = await callExecute(
-      MOCK_CATEGORY,
+      MOCK_TOOL,
       { prompt: "test prompt" },
       deps,
     );
     const details = result.details as {
       ok: true;
-      variant: string;
+      model: string;
       assets: { attachmentId: string }[];
     };
     expect(details.ok).toBe(true);
+    expect(details.model).toBe("model-a");
     expect(details.assets.length).toBeGreaterThan(0);
     expect(details.assets[0]?.attachmentId).toBe("att_test01");
   });

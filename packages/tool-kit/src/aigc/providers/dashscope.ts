@@ -1,14 +1,16 @@
 /**
  * DashScope provider 工厂 — `@pi-web/tool-kit` 版(精简移植自 pi-labs)。
  *
- * 仅实现 Wave 1 所需的 T2I 两类:
+ * 提供 model 路由项工厂(返回 {@link ModelRoute}):
  *  - async wanx:  POST text2image/image-synthesis → `x-dashscope-async:enable` → poll `/tasks/<id>`
  *  - sync multimodal: POST multimodal-generation/generation → 单次响应
+ *  - image edit: multimodal-generation 同步端点,支持 mask 局部重绘
  *
+ * `model` 为 LLM 可见路由键;`providerModel`(缺省 = model)为实际发往 DashScope 的 model 名。
  * 密钥从 `${DASHSCOPE_API_KEY}` env 占位读取(var-resolver 在 runEndpoint 时展开)。
  */
 
-import type { Variant } from "../../engine/types.js";
+import type { ModelRoute } from "../../engine/types.js";
 
 // ── Endpoint URLs ─────────────────────────────────────────────────────────────
 
@@ -135,15 +137,15 @@ function buildSyncT2IBody(model: string) {
 
 // ── Image-edit body builder ───────────────────────────────────────────────────
 
-/** image_edit 用 args 形态。 */
+/** image_edit 用 args 形态(OpenAI 化字段)。 */
 interface ImageEditArgs {
-  instruction: string;
+  prompt: string;
   /** 主图(已解析为 data URI 或 https URL)。 */
-  image_url: string;
+  image: string;
   /** 可选 B/W mask;白色区域重绘。 */
-  mask_url?: string;
+  mask?: string;
   /** 可选参考图(数组,已解析)。 */
-  reference_image_urls?: string[];
+  reference_images?: string[];
   n?: number;
   size?: string;
   seed?: number;
@@ -156,24 +158,24 @@ const IMAGE_EDIT_MAX_IMAGES = 3;
  * DashScope qwen-image-edit 系列图像编辑请求体。
  *
  * content 顺序: 主图 → mask(若有)→ 参考图 → text 指令。
- * 有 mask 时在 instruction 前加局部重绘提示,让模型理解图2是遮罩区域。
+ * 有 mask 时在 prompt 前加局部重绘提示,让模型理解图2是遮罩区域。
  */
 function buildImageEditBody(model: string) {
   return (args: Record<string, unknown>) => {
     const a = args as unknown as ImageEditArgs;
-    const refs = a.reference_image_urls ?? [];
-    const totalImages = 1 + (a.mask_url ? 1 : 0) + refs.length;
+    const refs = a.reference_images ?? [];
+    const totalImages = 1 + (a.mask ? 1 : 0) + refs.length;
     if (totalImages > IMAGE_EDIT_MAX_IMAGES) {
       throw new Error(
-        `image_edit 总图数超过上限:主图 + ${a.mask_url ? "mask + " : ""}${refs.length} 张参考图 = ${totalImages},最多 ${IMAGE_EDIT_MAX_IMAGES} 张。`,
+        `image_edit 总图数超过上限:主图 + ${a.mask ? "mask + " : ""}${refs.length} 张参考图 = ${totalImages},最多 ${IMAGE_EDIT_MAX_IMAGES} 张。`,
       );
     }
-    const content: Record<string, unknown>[] = [{ image: a.image_url }];
-    if (a.mask_url) content.push({ image: a.mask_url });
+    const content: Record<string, unknown>[] = [{ image: a.image }];
+    if (a.mask) content.push({ image: a.mask });
     for (const url of refs) content.push({ image: url });
-    const textInstruction = a.mask_url
-      ? `请对图2中白色遮罩区域进行局部重绘:${a.instruction}`
-      : a.instruction;
+    const textInstruction = a.mask
+      ? `请对图2中白色遮罩区域进行局部重绘:${a.prompt}`
+      : a.prompt;
     content.push({ text: textInstruction });
     return {
       model,
@@ -217,40 +219,36 @@ const detectSyncError = (r: unknown) => {
   return code ? ((r as SyncResponse).message ?? code) : undefined;
 };
 
-// ── Variant 工厂函数(公开 API) ────────────────────────────────────────────────
+// ── model 路由项工厂入参 ────────────────────────────────────────────────────────
 
-/** 工厂入参:最小元数据 + model id。 */
-export interface DashscopeVariantArgs {
-  name: string;
+/** 工厂入参:LLM 可见 model(路由键)+ 元数据;providerModel 缺省 = model。 */
+export interface DashscopeModelArgs {
+  /** LLM 可见路由键(进 model 枚举)。 */
+  model: string;
   label: string;
   description: string;
-  model: string;
+  /** 实际发往 DashScope 的 model 名(缺省 = model)。 */
+  providerModel?: string;
 }
 
+// ── 公开工厂 ─────────────────────────────────────────────────────────────────
+
 /**
- * 创建 DashScope Wanx 系列异步文生图变体(POST → 轮询)。
- *
- * @example
- * ```ts
- * const v = createDashscopeAsyncT2I({
- *   name: "wanx-turbo",
- *   label: "Wanx 2.0 Turbo",
- *   description: "...",
- *   model: "wanx2.0-t2i-turbo",
- * });
- * ```
+ * 创建 DashScope Wanx 系列异步文生图路由项(POST → 轮询)。本轮工具未引用,保留备用。
  */
 export function createDashscopeAsyncT2I(
-  args: DashscopeVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: DashscopeModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    ...args,
+    model: args.model,
+    label: args.label,
+    description: args.description,
     url: ASYNC_T2I_URL,
     headers: ASYNC_HEADERS,
     requiredVars: [...REQUIRED_VARS],
     async: taskPolling,
-    buildBody: buildAsyncT2IBody(args.model),
+    buildBody: buildAsyncT2IBody(args.providerModel ?? args.model),
     pickResult: pickAsyncT2I,
     detectError: detectAsyncError,
     ...extras,
@@ -258,28 +256,20 @@ export function createDashscopeAsyncT2I(
 }
 
 /**
- * 创建 DashScope 同步多模态文生图变体(单次 POST 拿结果)。
- *
- * @example
- * ```ts
- * const v = createDashscopeSyncT2I({
- *   name: "qwen-image-pro",
- *   label: "Qwen Image 2.0 Pro",
- *   description: "...",
- *   model: "qwen-vl-max",
- * });
- * ```
+ * 创建 DashScope 同步多模态文生图路由项(单次 POST 拿结果)。
  */
 export function createDashscopeSyncT2I(
-  args: DashscopeVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: DashscopeModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    ...args,
+    model: args.model,
+    label: args.label,
+    description: args.description,
     url: SYNC_T2I_URL,
     headers: SYNC_HEADERS,
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildSyncT2IBody(args.model),
+    buildBody: buildSyncT2IBody(args.providerModel ?? args.model),
     pickResult: pickSync,
     detectError: detectSyncError,
     ...extras,
@@ -287,30 +277,22 @@ export function createDashscopeSyncT2I(
 }
 
 /**
- * 创建 DashScope 图像编辑变体(qwen-image-edit-max / qwen-image-2.0)。
+ * 创建 DashScope 图像编辑路由项(qwen-image-edit-max / qwen-image-2.0)。
  *
  * 走 multimodal-generation 同步端点,支持 mask 局部重绘。
- *
- * @example
- * ```ts
- * const v = createDashscopeImageEdit({
- *   name: "qwen-image-edit-max",
- *   label: "Qwen Image Edit Max · sync",
- *   description: "...",
- *   model: "qwen-image-edit-max",
- * });
- * ```
  */
 export function createDashscopeImageEdit(
-  args: DashscopeVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: DashscopeModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    ...args,
+    model: args.model,
+    label: args.label,
+    description: args.description,
     url: SYNC_T2I_URL,
     headers: SYNC_HEADERS,
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildImageEditBody(args.model),
+    buildBody: buildImageEditBody(args.providerModel ?? args.model),
     pickResult: pickSync,
     detectError: detectSyncError,
     ...extras,

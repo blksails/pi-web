@@ -1,13 +1,17 @@
 /**
- * `@pi-web/tool-kit` 声明式工具引擎的类型契约(移植自 pi-labs `lib/aigc/types.ts` 的精简版)。
+ * `@pi-web/tool-kit` 声明式工具引擎的类型契约。
  *
  * 本文件是**纯类型**模块:零运行时代码、零值导入,可从主入口 `@pi-web/tool-kit` 安全导出
  * 而不把任何 node/SDK 运行时拉进前端 bundle(守 webpack externals 边界,design Boundary)。
  *
- * 三层模型:
- *  - {@link Category}  一个工具(LLM 可见的 name/description/inputSchema)+ 多个 provider 变体;
- *  - {@link Variant}   单一 provider/model 的执行声明(= {@link EndpointBehavior} + 元数据);
- *  - {@link EndpointBehavior}  一次调用如何发起(HTTP 同步 / 异步轮询 / 本地执行)与如何取结果。
+ * 两层模型(由 variants 重构拍平而来):
+ *  - {@link ToolSpec}        一个 LLM 工具(snake_case name/description/inputSchema)+ 一张 model 路由表;
+ *  - {@link ModelRoute}      单一 model 的执行声明(= {@link EndpointBehavior} + 路由元数据);
+ *  - {@link EndpointBehavior} 一次调用如何发起(HTTP 同步 / 异步轮询 / 本地执行)与如何取结果。
+ *
+ * `model` 作为 LLM 可见入参(enum,取值 = 各 ModelRoute.model),运行时按其值路由到对应
+ * ModelRoute;省略时回退 {@link ToolSpec.defaultModel}。OpenAI Images 专属参数
+ * (background/moderation/quality/style 等)对非 OpenAI model 由各自 buildBody 静默忽略。
  */
 
 /** JSON Schema 属性(LLM 入参 schema 的子集)。 */
@@ -38,31 +42,6 @@ export interface Pricing {
   currency: "CNY" | "USD";
   unit: "image" | "task" | "second" | "1k_tokens";
   note?: string;
-}
-
-/** 单参数的 per-variant 覆盖(隐藏 / 禁用某些取值 / 改默认)。 */
-export interface ParamOverride {
-  /** 对该 variant 隐藏此参数(从 UI / schema 暴露中移除;静默丢弃 LLM 传值)。 */
-  hidden?: boolean;
-  /** 对该 variant 禁用的取值(UI 灰显;传入则报参数错误)。 */
-  disabledOptions?: ReadonlyArray<string | number>;
-  /** 覆盖默认值。 */
-  default?: string | number;
-}
-
-/** 面板侧栏参数声明(不暴露给 LLM;Wave 1 不渲染面板,保留以备后续 Wave)。 */
-export interface UserParamSpec {
-  name: string;
-  label: string;
-  description?: string;
-  type: "string" | "integer" | "number" | "select" | "size";
-  options?: ReadonlyArray<{ value: string | number; label: string }>;
-  default: string | number;
-  min?: number;
-  max?: number;
-  presets?: ReadonlyArray<{ value: string; label: string }>;
-  stepSize?: { width: number; height: number };
-  additional?: boolean;
 }
 
 /** 工具产出的规范化形态(LLM/宿主消费;Wave 1 主要 image / image-set)。 */
@@ -149,51 +128,72 @@ export interface EndpointBehavior {
   proxy?: string;
   /** 价格元数据。 */
   pricing?: Pricing;
-  /** per-variant 参数覆盖。 */
-  paramOverrides?: Record<string, ParamOverride>;
   /** 本地执行钩子(与 url+pickResult 互斥;Wave 1 不用)。 */
   runLocal?: LocalExecuteHook;
 }
 
-/** 同一 model 的备选 provider 路由(浅合并覆盖 EndpointBehavior 字段)。 */
-export type ProviderOption = Partial<EndpointBehavior> & {
-  providerId: string;
-  providerLabel: string;
-  pricing?: Pricing;
-  description?: string;
-};
-
-/** 单一 provider/model 变体(= EndpointBehavior + 元数据)。 */
-export type Variant = EndpointBehavior & {
-  /** 稳定变体 id(LLM `model` 参数 / 面板选中据此匹配)。 */
-  name: string;
+/**
+ * 单一 model 的执行路由项(= EndpointBehavior + 路由元数据)。
+ *
+ * 替代旧 `Variant`:`model` 既是 LLM 可见入参 enum 的取值,也是运行时路由键。
+ * 由 variants 重构而来——多 provider 能力仍由各 ModelRoute 的 EndpointBehavior 承载
+ * (DashScope 异步轮询 / OpenRouter chat / NewAPI OpenAI 兼容)。
+ */
+export type ModelRoute = EndpointBehavior & {
+  /** LLM 可见 model 值 + 运行时路由键(如 "gpt-image-1" / "wanx2.1-turbo")。 */
+  model: string;
   /** 展示标签。 */
   label: string;
   description?: string;
-  /** 备选 provider 路由。 */
-  altProviders?: ReadonlyArray<ProviderOption>;
 };
 
-/** UI 元数据(可序列化;Wave 1 不下发前端,保留供后续 Wave)。 */
-export interface CategoryUi {
-  icon?: string;
-  label?: string;
-  placement?: "editor" | "panel" | "both";
+/**
+ * 业务必选项的交互补全声明(aigc-tools-interactive-params)。
+ *
+ * 某参数虽对成图必需,但**不在 inputSchema 标 required**(避免 LLM 漏传被参数校验拦截);
+ * 改由编译器在执行时检测缺失,经 pi 宿主交互能力(`ctx.ui`)补全:
+ *  - `via:"select"` 弹选择器(options;含哨兵 `"$models"` 时展开为该工具 models 的 model 集合);
+ *  - `via:"input"`  弹文本输入(placeholder)。
+ * 无交互 UI 时:有 `fallback` 用之;`param==="model"` 退回 `defaultModel`;否则该项缺失 → ok:false。
+ */
+export interface InteractionSpec {
+  /** 目标参数名(如 "model" / "size" / "prompt")。 */
+  param: string;
+  /** 交互方式:枚举选择 / 文本输入。 */
+  via: "select" | "input";
+  /** 弹窗标题(用户可见)。 */
+  title: string;
+  /** input 占位文本。 */
+  placeholder?: string;
+  /** select 选项;含哨兵 "$models" 时运行时展开为 tool.models 的 model 集合。 */
+  options?: ReadonlyArray<string>;
+  /** 无交互 UI 时的兜底值;省略则该项无兜底(缺失 → ok:false)。 */
+  fallback?: string;
 }
 
-/** 一个工具:LLM 可见声明 + 多个 provider 变体。 */
-export interface Category {
-  /** 工具名(LLM 可见,作为 tool name)。 */
+/**
+ * 一个 LLM 工具:snake_case 声明 + 一张 model 路由表。
+ *
+ * 替代旧 `Category`(去 variants/defaultVariant/ui 抽象):
+ *  - `inputSchema` 不含 model;编译器据 `models` 自动注入 `model` enum 参数。
+ *  - `models` 非空;运行时按 LLM `model` 入参选路由,省略则用 `defaultModel`。
+ */
+export interface ToolSpec {
+  /** 工具名(LLM 可见,snake_case;作为 tool name)。 */
   name: string;
   /** 工具描述(LLM 可见)。 */
   description: string;
-  ui?: CategoryUi;
-  /** LLM 可见入参 schema。 */
+  /** 工具展示名(给 defineTool 的 label;省略回退 name)。 */
+  label?: string;
+  /** LLM 可见入参 schema(不含 model;由 models 派生注入)。 */
   inputSchema: EndpointInputSchema;
-  /** 面板侧栏参数(不暴露 LLM;Wave 1 仅用其 default 作参数兜底)。 */
-  userParams?: ReadonlyArray<UserParamSpec>;
-  /** provider 变体(非空)。 */
-  variants: ReadonlyArray<Variant>;
-  /** 无 LLM `model` 指定时的默认变体名(必须存在于 variants)。 */
-  defaultVariant: string;
+  /** model 路由表(非空)。 */
+  models: ReadonlyArray<ModelRoute>;
+  /** 无 LLM `model` 指定时的默认 model(必须存在于 models)。 */
+  defaultModel: string;
+  /**
+   * 业务必选项的交互补全声明(缺失时经 ctx.ui 补全,而非在 schema 标 required)。
+   * 顺序即补全顺序。
+   */
+  requiredParams?: ReadonlyArray<InteractionSpec>;
 }

@@ -27,9 +27,9 @@ export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。
   systemPrompt: [
     "You are aigc-agent, a pi-web example exposing AIGC generation tools.",
-    "- Use `text_to_image` to generate one or more images from a text prompt.",
+    "- Use `image_generation` to generate one or more images from a text prompt.",
     "- Use `image_edit` to edit an uploaded image: copy the public id from the",
-    "  [attachment id=att_… …] marker verbatim into the tool's `image_url` parameter.",
+    "  [attachment id=att_… …] marker verbatim into the tool's `image` parameter.",
     "Each tool persists its output as an attachment and returns a reference; report the",
     "produced attachment id back to the user. Keep replies concise.",
   ].join("\n"),

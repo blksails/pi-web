@@ -47,7 +47,7 @@ async function startAigcSession(
 }
 
 /**
- * Send a prompt that triggers text_to_image and wait for the tool card to
+ * Send a prompt that triggers image_generation and wait for the tool card to
  * reach phase "end" (success or degradation).
  */
 async function sendGenerationPrompt(
@@ -82,18 +82,18 @@ test.describe("aigc-generation browser e2e", () => {
 
   /**
    * Degradation path (no DASHSCOPE_API_KEY):
-   * When the agent is started without provider credentials, the text_to_image
+   * When the agent is started without provider credentials, the image_generation
    * tool should still be callable but return a degradation message (ok:false).
    * The session must not crash or show an unhandled error (Req 5.3).
    *
    * This test passes WITHOUT real credentials.
    */
-  test("degradation: text_to_image tool card shows failure without credentials", async ({
+  test("degradation: image_generation tool card shows failure without credentials", async ({
     page,
   }) => {
     await startAigcSession(page);
 
-    // Prompt the LLM (or stub) to call text_to_image.
+    // Prompt the LLM (or stub) to call image_generation.
     // Without credentials, the tool returns ok:false + degradation text.
     const card = await sendGenerationPrompt(
       page,
@@ -112,17 +112,17 @@ test.describe("aigc-generation browser e2e", () => {
 
   /**
    * Real generation path (requires DASHSCOPE_API_KEY):
-   * When the env variable is present, text_to_image should produce an att_ ref
+   * When the env variable is present, image_generation should produce an att_ ref
    * and the display URL should be reachable (200 image/png).
    *
    * Skip this test if DASHSCOPE_API_KEY is not set.
    */
-  test("real generation: text_to_image produces att_ ref and reachable display URL", async ({
+  test("real generation: image_generation produces att_ ref and reachable display URL", async ({
     page,
   }) => {
     // Skip if no credentials available.
-    if (!process.env.DASHSCOPE_API_KEY) {
-      test.skip(true, "DASHSCOPE_API_KEY not set — skipping real generation test");
+    if (!process.env.NEWAPI_API_KEY) {
+      test.skip(true, "NEWAPI_API_KEY not set — skipping real generation test");
       return;
     }
 
@@ -130,7 +130,7 @@ test.describe("aigc-generation browser e2e", () => {
 
     const card = await sendGenerationPrompt(
       page,
-      "Generate a simple 1024x1024 image of a blue sky with white clouds. Use variant qwen-image.",
+      "Generate a simple 1024x1024 image of a blue sky with white clouds. Use model gpt-image-2.",
       0,
     );
 
@@ -200,7 +200,7 @@ test.describe("aigc-generation browser e2e", () => {
     );
     await page.locator('[data-pi-submit-state="send"]').click();
 
-    // A tool card (text_to_image or image_edit) should appear in the chat.
+    // A tool card (image_generation or image_edit) should appear in the chat.
     const card = page.locator("[data-pi-tool]").first();
     await expect(card).toBeVisible({ timeout: 10_000 });
 

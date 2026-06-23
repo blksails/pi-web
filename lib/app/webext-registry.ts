@@ -28,7 +28,7 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:Tier2 工具渲染器,把 text_to_image / image_edit 产物渲染为 <img>。
+  // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
   { match: "aigc-agent", ext: aigcExt },
   { match: "webext-declarative-agent", ext: DECLARATIVE },
 ];

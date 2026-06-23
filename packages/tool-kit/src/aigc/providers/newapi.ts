@@ -1,22 +1,22 @@
 /**
  * NewAPI(OpenAI 兼容聚合网关)provider 工厂 — `@pi-web/tool-kit` 版。
  *
- * 提供两类工厂:
- *  - createNewApiImage:    文生图(T2I),走 /v1/images/generations
+ * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
+ *  - createNewApiImage:    文生图,走 /v1/images/generations
  *  - createNewApiImageEdit: 图像编辑,走 /v1/images/edits(multipart FormData)
  *
- * base URL 来自 `NEWAPI_BASE_URL` env;默认 apiservices.top。
- * key 走 `${NEWAPI_API_KEY}` 占位(var-resolver 运行时展开)。
+ * `model` 为 LLM 可见路由键;`providerModel`(缺省 = model)为实际发往网关的 model 名。
+ * base URL 暂为编译期常量;key 走 `${NEWAPI_API_KEY}` 占位(var-resolver 运行时展开)。
  * 国内网关**不挂 proxy**,避免增加延迟或触发安全策略。
  */
 
-import type { Variant, PickedResult, BuildBodyContext } from "../../engine/types.js";
+import type { ModelRoute, PickedResult, BuildBodyContext } from "../../engine/types.js";
 
 // ── Base URL ────────────────────────────────────────────────────────────────────
 
-// NewAPI 网关 base 暂为**编译期常量**:本模块经 category 声明从主入口(前端安全)导出,
+// NewAPI 网关 base 暂为**编译期常量**:本模块经 tool 声明从主入口(前端安全)导出,
 // 模块顶层**不得**读 `process.env`(浏览器 bundle eval 时 `process` 可能未定义,破坏双入口
-// 边界 / Req 6.3)。如需可配置 base,Wave 2 经 var-resolver `${VAR}` 占位在运行时解析。
+// 边界 / Req 6.1)。如需可配置 base,后续经 var-resolver `${VAR}` 占位在运行时解析。
 const BASE_URL = "https://www.apiservices.top/v1";
 const IMAGES_URL = `${BASE_URL}/images/generations`;
 const IMAGES_EDIT_URL = `${BASE_URL}/images/edits`;
@@ -29,7 +29,7 @@ interface NewApiResp {
   error?: { code?: number | string; message?: string };
 }
 
-// ── T2I args ──────────────────────────────────────────────────────────────────
+// ── T2I args(对齐 OpenAI Images generations)─────────────────────────────────
 
 interface T2IArgs {
   prompt: string;
@@ -37,18 +37,28 @@ interface T2IArgs {
   n?: number;
   /** 前端格式 "1024*1024"(* / × 分隔);转成 OpenAI 的 "1024x1024"。 */
   size?: string;
+  /** gpt-image 专属:transparent | opaque | auto。 */
+  background?: string;
+  /** OpenAI 专属:生成质量。 */
+  quality?: string;
+  /** gpt-image 专属:low | auto 内容审核级别。 */
+  moderation?: string;
 }
 
-// ── 图像编辑 args ─────────────────────────────────────────────────────────────
+// ── 图像编辑 args(对齐 OpenAI Images edits)───────────────────────────────────
 
 interface ImageEditArgs {
-  instruction: string;
+  prompt: string;
   /** 主图(已解析为 data URI 或 https URL)。 */
-  image_url: string;
-  mask_url?: string;
+  image: string;
+  /** 可选 B/W 遮罩(已解析)。 */
+  mask?: string;
   /** 参考图(可选,已解析)。 */
-  reference_image_urls?: string[];
+  reference_images?: string[];
   n?: number;
+  size?: string;
+  /** url | b64_json。 */
+  response_format?: string;
 }
 
 // ── pickResult & detectError(T2I 和 image-edit 共用)─────────────────────────
@@ -97,6 +107,10 @@ function buildT2IBody(model: string) {
     };
     const size = toOpenAiSize(a.size);
     if (size) body.size = size;
+    // OpenAI gpt-image 专属参数透传(非 gpt-image model 由网关忽略)。
+    if (a.background) body.background = a.background;
+    if (a.quality) body.quality = a.quality;
+    if (a.moderation) body.moderation = a.moderation;
     return body;
   };
 }
@@ -156,57 +170,58 @@ async function fetchImagePart(url: string): Promise<{ blob: Blob; filename: stri
 function buildImageEditBody(model: string) {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<FormData> => {
     const a = args as unknown as ImageEditArgs;
-    const sources = [a.image_url, ...(a.reference_image_urls ?? [])].filter(
+    const sources = [a.image, ...(a.reference_images ?? [])].filter(
       (u): u is string => typeof u === "string" && u.length > 0,
     );
     const parts = await Promise.all(sources.map((u) => fetchImagePart(u)));
     const form = new FormData();
     form.append("model", model);
-    form.append("prompt", a.instruction);
+    form.append("prompt", a.prompt);
     form.append("n", String(a.n ?? 1));
+    const size = toOpenAiSize(a.size);
+    if (size) form.append("size", size);
+    if (a.response_format) form.append("response_format", a.response_format);
     for (const p of parts) {
       form.append("image[]", p.blob, p.filename);
+    }
+    // 可选 B/W 遮罩(OpenAI edits 的 mask 字段)。
+    if (a.mask) {
+      const maskPart = await fetchImagePart(a.mask);
+      form.append("mask", maskPart.blob, maskPart.filename);
     }
     return form;
   };
 }
 
-// ── Variant 工厂入参 ─────────────────────────────────────────────────────────
+// ── model 路由项工厂入参 ────────────────────────────────────────────────────────
 
-export interface NewApiVariantArgs {
-  name: string;
+/** 工厂入参:LLM 可见 model(路由键)+ 元数据;providerModel 缺省 = model。 */
+export interface NewApiModelArgs {
+  /** LLM 可见路由键(进 model 枚举)。 */
+  model: string;
   label: string;
   description: string;
-  model: string;
+  /** 实际发往网关的 model 名(缺省 = model)。 */
+  providerModel?: string;
 }
 
 // ── 公开工厂 ─────────────────────────────────────────────────────────────────
 
 /**
- * 创建 NewAPI 文生图(T2I)变体。
- *
- * @example
- * ```ts
- * createNewApiImage({
- *   name: "newapi-gpt-image-1",
- *   label: "GPT Image 1 · NewAPI",
- *   description: "...",
- *   model: "gpt-image-1",
- * })
- * ```
+ * 创建 NewAPI 文生图路由项(走 /v1/images/generations)。
  */
 export function createNewApiImage(
-  args: NewApiVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: NewApiModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    name: args.name,
+    model: args.model,
     label: args.label,
     description: args.description,
     url: IMAGES_URL,
     headers: { authorization: "Bearer ${NEWAPI_API_KEY}" },
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildT2IBody(args.model),
+    buildBody: buildT2IBody(args.providerModel ?? args.model),
     pickResult,
     detectError,
     ...extras,
@@ -214,30 +229,20 @@ export function createNewApiImage(
 }
 
 /**
- * 创建 NewAPI 图像编辑变体(走 /v1/images/edits multipart)。
- *
- * @example
- * ```ts
- * createNewApiImageEdit({
- *   name: "newapi-gpt-image-2",
- *   label: "GPT Image 2 · NewAPI",
- *   description: "...",
- *   model: "gpt-image-2",
- * })
- * ```
+ * 创建 NewAPI 图像编辑路由项(走 /v1/images/edits multipart)。
  */
 export function createNewApiImageEdit(
-  args: NewApiVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: NewApiModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    name: args.name,
+    model: args.model,
     label: args.label,
     description: args.description,
     url: IMAGES_EDIT_URL,
     headers: { authorization: "Bearer ${NEWAPI_API_KEY}" },
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildImageEditBody(args.model),
+    buildBody: buildImageEditBody(args.providerModel ?? args.model),
     pickResult,
     detectError,
     ...extras,

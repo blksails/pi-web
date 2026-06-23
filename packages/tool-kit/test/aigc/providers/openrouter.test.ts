@@ -3,7 +3,7 @@
  *
  * 覆盖:
  *  - createOpenRouterImage: buildBody 形态 + pickResult 提取
- *  - createOpenRouterImageEdit: buildBody 形态(无 mask inline)+ pickResult
+ *  - createOpenRouterImageEdit: buildBody 形态(OpenAI 化字段 prompt/image,无 mask inline)+ pickResult
  */
 
 import { describe, it, expect } from "vitest";
@@ -16,14 +16,13 @@ import type { BuildBodyContext } from "../../../src/engine/types.js";
 const ctx: BuildBodyContext = {};
 
 describe("createOpenRouterImage", () => {
-  it("返回正确的 variant 元数据", () => {
+  it("返回正确的 model 路由元数据", () => {
     const v = createOpenRouterImage({
-      name: "or-test",
+      model: "google/test-model",
       label: "OR Test",
       description: "desc",
-      model: "google/test-model",
     });
-    expect(v.name).toBe("or-test");
+    expect(v.model).toBe("google/test-model");
     expect(v.url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(v.requiredVars).toContain("OPENROUTER_API_KEY");
     expect(v.headers?.["authorization"]).toContain("${OPENROUTER_API_KEY}");
@@ -32,10 +31,9 @@ describe("createOpenRouterImage", () => {
 
   it("buildBody 生成含 modalities 和 messages 的 body", async () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini-flash",
       label: "OR T2I",
       description: "desc",
-      model: "google/gemini-flash",
     });
     const body = await v.buildBody?.({ prompt: "a sunset", n: 1 }, ctx) as Record<string, unknown>;
     expect(body.model).toBe("google/gemini-flash");
@@ -49,10 +47,9 @@ describe("createOpenRouterImage", () => {
 
   it("带 negative_prompt 时文本包含 Avoid: 段", async () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini-flash",
       label: "OR T2I",
       description: "desc",
-      model: "google/gemini-flash",
     });
     const body = await v.buildBody?.(
       { prompt: "mountain lake", negative_prompt: "blur, fog" },
@@ -66,10 +63,9 @@ describe("createOpenRouterImage", () => {
 
   it("pickResult 从 choices[].message.images 提取 URL", () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini",
       label: "L",
       description: "d",
-      model: "google/gemini",
     });
     const response = {
       choices: [
@@ -92,10 +88,9 @@ describe("createOpenRouterImage", () => {
 
   it("pickResult: 单张图 → kind:image", () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini",
       label: "L",
       description: "d",
-      model: "google/gemini",
     });
     const response = {
       choices: [
@@ -108,10 +103,9 @@ describe("createOpenRouterImage", () => {
 
   it("pickResult: 无图 → kind:raw", () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini",
       label: "L",
       description: "d",
-      model: "google/gemini",
     });
     const picked = v.pickResult!({ choices: [] });
     expect(picked.kind).toBe("raw");
@@ -119,10 +113,9 @@ describe("createOpenRouterImage", () => {
 
   it("detectError 提取 error.message", () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini",
       label: "L",
       description: "d",
-      model: "google/gemini",
     });
     const err = v.detectError!({ error: { message: "rate limited", code: 429 } });
     expect(err).toBe("rate limited");
@@ -130,10 +123,9 @@ describe("createOpenRouterImage", () => {
 
   it("detectError: 无错误 → undefined", () => {
     const v = createOpenRouterImage({
-      name: "or-t2i",
+      model: "google/gemini",
       label: "L",
       description: "d",
-      model: "google/gemini",
     });
     const err = v.detectError!({ choices: [] });
     expect(err).toBeUndefined();
@@ -141,29 +133,27 @@ describe("createOpenRouterImage", () => {
 });
 
 describe("createOpenRouterImageEdit", () => {
-  it("返回正确的 variant 元数据", () => {
+  it("返回正确的 model 路由元数据", () => {
     const v = createOpenRouterImageEdit({
-      name: "or-edit",
+      model: "openai/gpt-5-image",
       label: "OR Edit",
       description: "desc",
-      model: "openai/gpt-5-image",
     });
-    expect(v.name).toBe("or-edit");
+    expect(v.model).toBe("openai/gpt-5-image");
     expect(v.url).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(v.requiredVars).toContain("OPENROUTER_API_KEY");
   });
 
-  it("buildBody 图像编辑: instruction + image_url → multi-part content", async () => {
+  it("buildBody 图像编辑: prompt + image → multi-part content", async () => {
     const v = createOpenRouterImageEdit({
-      name: "or-edit",
+      model: "openai/gpt-5-image",
       label: "OR Edit",
       description: "d",
-      model: "openai/gpt-5-image",
     });
-    // image_url 已经是 data URI(模拟编译器解析后的结果)
+    // image 已经是 data URI(模拟编译器解析后的结果)
     const dataUri = "data:image/png;base64,aGVsbG8=";
     const body = await v.buildBody?.(
-      { instruction: "add stars to sky", image_url: dataUri },
+      { prompt: "add stars to sky", image: dataUri },
       ctx,
     ) as Record<string, unknown>;
     expect(body.modalities).toEqual(["image", "text"]);

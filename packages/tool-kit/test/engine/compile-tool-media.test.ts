@@ -1,5 +1,5 @@
 /**
- * compile-category 媒体字段解析测试。
+ * compile-tool 媒体字段解析测试。
  *
  * 覆盖:
  *  - att_id → resolveInputToDataUri 替换(单值 string 字段)
@@ -10,9 +10,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { compileCategory } from "../../src/engine/compile-category.js";
-import type { CompileDeps } from "../../src/engine/compile-category.js";
-import type { Category, PickedResult } from "../../src/engine/types.js";
+import { compileTool } from "../../src/engine/compile-tool.js";
+import type { CompileDeps } from "../../src/engine/compile-tool.js";
+import type { ToolSpec, PickedResult } from "../../src/engine/types.js";
 import type { AttachmentToolContext, AttachmentToolHandle } from "@pi-web/agent-kit";
 
 // ── Mock 附件上下文 ────────────────────────────────────────────────────────────
@@ -52,52 +52,52 @@ function makeMockCtx(resolveImpl?: (id: string) => Promise<AttachmentToolHandle>
   };
 }
 
-// ── 图像编辑 Category 定义 ────────────────────────────────────────────────────
+// ── 图像编辑 ToolSpec 定义(OpenAI 化字段)──────────────────────────────────────
 
 /**
- * 带 mediaKind:image 字段的 mock category。
- * buildBody 把 image_url 原样包进 body 以便断言是否被解析。
+ * 带 mediaKind:image 字段的 mock 工具。
+ * buildBody 把 image 原样包进 body 以便断言是否被解析。
  */
-const IMAGE_EDIT_CATEGORY: Category = {
+const IMAGE_EDIT_TOOL: ToolSpec = {
   name: "mock_image_edit",
   description: "test",
   inputSchema: {
     type: "object",
     properties: {
-      instruction: { type: "string", description: "instruction" },
-      image_url: {
+      prompt: { type: "string", description: "prompt" },
+      image: {
         type: "string",
         description: "main image",
         mediaKind: "image",
       },
-      mask_url: {
+      mask: {
         type: "string",
         description: "optional mask",
         mediaKind: "image",
       },
-      reference_image_urls: {
+      reference_images: {
         type: "array",
         description: "reference images",
         items: { type: "string", mediaKind: "image" },
         mediaKind: "image",
       },
     },
-    required: ["instruction", "image_url"],
+    required: ["prompt", "image"],
   },
-  defaultVariant: "test-edit",
-  variants: [
+  defaultModel: "test-edit",
+  models: [
     {
-      name: "test-edit",
+      model: "test-edit",
       label: "Test Edit",
       description: "test",
       url: "https://example.com/edit",
       headers: { authorization: "Bearer ${TEST_EDIT_KEY}" },
       requiredVars: ["TEST_EDIT_KEY"],
       buildBody: (args) => ({
-        instruction: (args as { instruction: string }).instruction,
-        image_url: (args as { image_url: string }).image_url,
-        mask_url: (args as { mask_url?: string }).mask_url,
-        reference_image_urls: (args as { reference_image_urls?: string[] }).reference_image_urls,
+        prompt: (args as { prompt: string }).prompt,
+        image: (args as { image: string }).image,
+        mask: (args as { mask?: string }).mask,
+        reference_images: (args as { reference_images?: string[] }).reference_images,
       }),
       pickResult: (): PickedResult => ({
         kind: "image",
@@ -107,8 +107,8 @@ const IMAGE_EDIT_CATEGORY: Category = {
   ],
 };
 
-/** 无 mediaKind 字段的 mock category(回归测试)。 */
-const TEXT_ONLY_CATEGORY: Category = {
+/** 无 mediaKind 字段的 mock 工具(回归测试)。 */
+const TEXT_ONLY_TOOL: ToolSpec = {
   name: "mock_text_only",
   description: "test",
   inputSchema: {
@@ -118,10 +118,10 @@ const TEXT_ONLY_CATEGORY: Category = {
     },
     required: ["prompt"],
   },
-  defaultVariant: "text-v",
-  variants: [
+  defaultModel: "text-v",
+  models: [
     {
-      name: "text-v",
+      model: "text-v",
       label: "Text V",
       description: "test",
       url: "https://example.com/text",
@@ -164,7 +164,7 @@ function makeEditFetch() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("compile-category 媒体字段解析", () => {
+describe("compileTool 媒体字段解析", () => {
   beforeEach(() => {
     process.env.TEST_EDIT_KEY = "test-key";
   });
@@ -182,15 +182,15 @@ describe("compile-category 媒体字段解析", () => {
     const spyResolve = vi.fn().mockImplementation(origResolve);
     const spyCtx: AttachmentToolContext = { ...ctx, resolve: spyResolve };
 
-    let capturedImageUrl: unknown;
-    const category: Category = {
-      ...IMAGE_EDIT_CATEGORY,
-      variants: [
+    let capturedImage: unknown;
+    const tool: ToolSpec = {
+      ...IMAGE_EDIT_TOOL,
+      models: [
         {
-          ...IMAGE_EDIT_CATEGORY.variants[0]!,
+          ...IMAGE_EDIT_TOOL.models[0]!,
           buildBody: (args) => {
-            capturedImageUrl = (args as { image_url: string }).image_url;
-            return { image_url: capturedImageUrl };
+            capturedImage = (args as { image: string }).image;
+            return { image: capturedImage };
           },
         },
       ],
@@ -198,19 +198,19 @@ describe("compile-category 媒体字段解析", () => {
 
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => spyCtx, fetchImpl };
-    const tool = compileCategory(category, deps);
-    await tool.execute(
+    const compiled = compileTool(tool, deps);
+    await compiled.execute(
       "call-1",
-      { instruction: "add stars", image_url: "att_abc123" },
+      { prompt: "add stars", image: "att_abc123" },
       undefined,
       undefined,
       {} as never,
     );
 
     expect(spyResolve).toHaveBeenCalledWith("att_abc123");
-    // buildBody 收到的 image_url 应该是 data URI
-    expect(String(capturedImageUrl)).toMatch(/^data:image\/png;base64,/);
-    resolvedValues.push(String(capturedImageUrl));
+    // buildBody 收到的 image 应该是 data URI
+    expect(String(capturedImage)).toMatch(/^data:image\/png;base64,/);
+    resolvedValues.push(String(capturedImage));
   });
 
   it("已是 data: URI → 透传不调用 resolve", async () => {
@@ -221,10 +221,10 @@ describe("compile-category 媒体字段解析", () => {
     const dataUri = "data:image/png;base64,aGVsbG8=";
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => spyCtx, fetchImpl };
-    const tool = compileCategory(IMAGE_EDIT_CATEGORY, deps);
-    await tool.execute(
+    const compiled = compileTool(IMAGE_EDIT_TOOL, deps);
+    await compiled.execute(
       "call-2",
-      { instruction: "test", image_url: dataUri },
+      { prompt: "test", image: dataUri },
       undefined,
       undefined,
       {} as never,
@@ -240,10 +240,10 @@ describe("compile-category 媒体字段解析", () => {
 
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => spyCtx, fetchImpl };
-    const tool = compileCategory(IMAGE_EDIT_CATEGORY, deps);
-    await tool.execute(
+    const compiled = compileTool(IMAGE_EDIT_TOOL, deps);
+    await compiled.execute(
       "call-3",
-      { instruction: "test", image_url: "https://cdn.example.com/img.png" },
+      { prompt: "test", image: "https://cdn.example.com/img.png" },
       undefined,
       undefined,
       {} as never,
@@ -261,14 +261,14 @@ describe("compile-category 媒体字段解析", () => {
     const spyCtx: AttachmentToolContext = { ...ctx, resolve: spyResolve };
 
     let capturedRefs: unknown;
-    const category: Category = {
-      ...IMAGE_EDIT_CATEGORY,
-      variants: [
+    const tool: ToolSpec = {
+      ...IMAGE_EDIT_TOOL,
+      models: [
         {
-          ...IMAGE_EDIT_CATEGORY.variants[0]!,
+          ...IMAGE_EDIT_TOOL.models[0]!,
           buildBody: (args) => {
-            capturedRefs = (args as { reference_image_urls?: unknown }).reference_image_urls;
-            return { instruction: (args as { instruction: string }).instruction };
+            capturedRefs = (args as { reference_images?: unknown }).reference_images;
+            return { prompt: (args as { prompt: string }).prompt };
           },
         },
       ],
@@ -276,13 +276,13 @@ describe("compile-category 媒体字段解析", () => {
 
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => spyCtx, fetchImpl };
-    const tool = compileCategory(category, deps);
-    await tool.execute(
+    const compiled = compileTool(tool, deps);
+    await compiled.execute(
       "call-4",
       {
-        instruction: "test",
-        image_url: "https://example.com/main.png",
-        reference_image_urls: ["att_ref1", "att_ref2"],
+        prompt: "test",
+        image: "https://example.com/main.png",
+        reference_images: ["att_ref1", "att_ref2"],
       },
       undefined,
       undefined,
@@ -305,10 +305,10 @@ describe("compile-category 媒体字段解析", () => {
 
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
-    const tool = compileCategory(IMAGE_EDIT_CATEGORY, deps);
-    const result = await tool.execute(
+    const compiled = compileTool(IMAGE_EDIT_TOOL, deps);
+    const result = await compiled.execute(
       "call-5",
-      { instruction: "test", image_url: "att_nonexistent" },
+      { prompt: "test", image: "att_nonexistent" },
       undefined,
       undefined,
       {} as never,
@@ -324,8 +324,8 @@ describe("compile-category 媒体字段解析", () => {
 
     const fetchImpl = makeEditFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => spyCtx, fetchImpl };
-    const tool = compileCategory(TEXT_ONLY_CATEGORY, deps);
-    await tool.execute(
+    const compiled = compileTool(TEXT_ONLY_TOOL, deps);
+    await compiled.execute(
       "call-6",
       { prompt: "a mountain" },
       undefined,

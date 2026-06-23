@@ -2,7 +2,7 @@
  * AIGC generation tools — Node e2e test (Req 7.1, 7.2, 3.1–3.4, 5.2–5.3).
  *
  * Proves the full chain:
- *   buildAigcTools (text_to_image, qwen-image sync variant)
+ *   buildAigcTools (image_generation, qwen-image sync variant)
  *   → mocked provider fetch returns inline 1×1 PNG bytes
  *   → persistPicked fetches image URL → ctx.putOutput → att_ ref
  *   → store.head / getReadStream verify real on-disk write
@@ -15,7 +15,7 @@
  *  - Strict TypeScript, no `any`.
  *  - Mock fetch injected via deps.fetchImpl — does NOT hit the network.
  *  - DASHSCOPE_API_KEY set to "test-key" so requiredVars check passes.
- *  - Sync DashScope variant ("qwen-image") used to avoid polling complexity.
+ *  - Sync DashScope variant ("qwen-image-pro") used to avoid polling complexity.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -51,7 +51,7 @@ type AigcAsset = {
   name: string;
 };
 type AigcDetails =
-  | { ok: true; variant?: string; assets: AigcAsset[] }
+  | { ok: true; model?: string; assets: AigcAsset[] }
   | { ok: false; error: string };
 
 /** 把工具结果的 unknown details 断言为 AigcDetails(集中收口断言)。 */
@@ -221,12 +221,12 @@ function getTextToImageTool(
   mockFetch: typeof fetch,
 ): ToolDef {
   const tools = buildAigcTools({
-    include: ["text_to_image"],
+    include: ["image_generation"],
     deps: { getCtx: () => ctx, fetchImpl: mockFetch },
   });
-  const tool = tools.find((t) => t.name === "text_to_image");
+  const tool = tools.find((t) => t.name === "image_generation");
   if (!tool) {
-    throw new Error("text_to_image tool not found in buildAigcTools output");
+    throw new Error("image_generation tool not found in buildAigcTools output");
   }
   return tool;
 }
@@ -234,13 +234,13 @@ function getTextToImageTool(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("aigc-generation-tools node e2e", () => {
-  describe("text_to_image — sync qwen-image variant — happy path (Req 1.1, 3.1–3.3)", () => {
+  describe("image_generation — sync qwen-image variant — happy path (Req 1.1, 3.1–3.3)", () => {
     it("execute returns ok=true, assets non-empty, attachmentId starts with att_", async () => {
       const ctx = buildCtx(store, "sess-e2e-1");
       (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
       const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
 
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
       const details = detailsOf(result);
 
       expect(details.ok).toBe(true);
@@ -258,7 +258,7 @@ describe("aigc-generation-tools node e2e", () => {
       (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
       const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
 
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
 
@@ -275,7 +275,7 @@ describe("aigc-generation-tools node e2e", () => {
       (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
       const tool = getTextToImageTool(ctx, buildMockFetch(pngBytes));
 
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
 
@@ -293,7 +293,7 @@ describe("aigc-generation-tools node e2e", () => {
       (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
       const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
 
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
 
@@ -314,12 +314,12 @@ describe("aigc-generation-tools node e2e", () => {
 
       // 仅经 globalThis 注入 ctx — 不传 deps.getCtx,走真实 seam 读取。
       const tools = buildAigcTools({
-        include: ["text_to_image"],
+        include: ["image_generation"],
         deps: { fetchImpl: buildMockFetch(minimalPng()) },
       });
-      const tool = tools.find((t) => t.name === "text_to_image")!;
+      const tool = tools.find((t) => t.name === "image_generation")!;
 
-      const result = await runTool(tool, { prompt: "seam test", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "seam test", model: "qwen-image-pro" });
       const details = detailsOf(result);
       expect(details.ok).toBe(true);
       if (!details.ok) throw new Error("details.ok must be true (seam path)");
@@ -340,12 +340,12 @@ describe("aigc-generation-tools node e2e", () => {
       };
 
       const tools = buildAigcTools({
-        include: ["text_to_image"],
+        include: ["image_generation"],
         deps: { getCtx: () => unavailableCtx, fetchImpl: buildMockFetch(minimalPng()) },
       });
-      const tool = tools.find((t) => t.name === "text_to_image")!;
+      const tool = tools.find((t) => t.name === "image_generation")!;
 
-      const result = await runTool(tool, { prompt: "degrade test", model: "qwen-image" });
+      const result = await runTool(tool, { prompt: "degrade test", model: "qwen-image-pro" });
       const details = detailsOf(result);
       expect(details.ok).toBe(false);
       if (details.ok) throw new Error("expected ok=false for unavailable ctx");
@@ -359,12 +359,12 @@ describe("aigc-generation-tools node e2e", () => {
       try {
         const ctx = buildCtx(store, "sess-e2e-nokey");
         const tools = buildAigcTools({
-          include: ["text_to_image"],
+          include: ["image_generation"],
           deps: { getCtx: () => ctx, fetchImpl: buildMockFetch(minimalPng()) },
         });
-        const tool = tools.find((t) => t.name === "text_to_image")!;
+        const tool = tools.find((t) => t.name === "image_generation")!;
 
-        const result = await runTool(tool, { prompt: "no key test", model: "qwen-image" });
+        const result = await runTool(tool, { prompt: "no key test", model: "qwen-image-pro" });
         const details = detailsOf(result);
         expect(details.ok).toBe(false);
         if (details.ok) throw new Error("expected ok=false for missing API key");
@@ -376,16 +376,16 @@ describe("aigc-generation-tools node e2e", () => {
   });
 
   describe("buildAigcTools toolset structure (Req 6.1 / 6.2)", () => {
-    it("buildAigcTools returns both text_to_image and image_edit tools", () => {
+    it("buildAigcTools returns both image_generation and image_edit tools", () => {
       const names = buildAigcTools().map((t) => t.name);
-      expect(names).toContain("text_to_image");
+      expect(names).toContain("image_generation");
       expect(names).toContain("image_edit");
     });
 
     it("include filter restricts to specified tools", () => {
-      const tools = buildAigcTools({ include: ["text_to_image"] });
+      const tools = buildAigcTools({ include: ["image_generation"] });
       expect(tools).toHaveLength(1);
-      expect(tools[0]!.name).toBe("text_to_image");
+      expect(tools[0]!.name).toBe("image_generation");
     });
 
     it("each tool has name, description, and execute function", () => {

@@ -1,19 +1,18 @@
 /**
- * image_edit category 集成测试。
+ * image_edit ToolSpec 集成测试。
  *
  * 覆盖:
- *  - imageEdit category 声明基本字段
- *  - DashScope mask-aware variant: instruction + image_url(att_id) → resolve → edit → persist → image ref
- *  - mask 路径: mask_url(att_id) 被解析; instruction 含局部重绘前缀
+ *  - imageEdit 工具声明基本字段(OpenAI 化:prompt/image/mask/reference_images)
+ *  - DashScope mask-aware model: prompt + image(att_id) → resolve → edit → persist → image ref
  *  - buildAigcTools() 含 image_edit 工具
  *  - include filter 仅返回指定工具
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { imageEdit } from "../../../src/aigc/categories/image-edit.js";
-import { compileCategory } from "../../../src/engine/compile-category.js";
+import { imageEdit } from "../../../src/aigc/tools/image-edit.js";
+import { compileTool } from "../../../src/engine/compile-tool.js";
 import { buildAigcTools } from "../../../src/aigc/index.js";
-import type { CompileDeps } from "../../../src/engine/compile-category.js";
+import type { CompileDeps } from "../../../src/engine/compile-tool.js";
 import type { AttachmentToolContext, AttachmentToolHandle } from "@pi-web/agent-kit";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
@@ -85,52 +84,52 @@ function makeDashScopeFetch(resultUrl = "https://dashscope-result.aliyuncs.com/e
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("imageEdit category 声明", () => {
+describe("imageEdit 工具声明", () => {
   it("name === 'image_edit'", () => {
     expect(imageEdit.name).toBe("image_edit");
   });
 
-  it("inputSchema 含 instruction / image_url / mask_url / reference_image_urls", () => {
+  it("inputSchema 含 prompt / image / mask / reference_images", () => {
     const props = imageEdit.inputSchema.properties;
-    expect(props).toHaveProperty("instruction");
-    expect(props).toHaveProperty("image_url");
-    expect(props).toHaveProperty("mask_url");
-    expect(props).toHaveProperty("reference_image_urls");
+    expect(props).toHaveProperty("prompt");
+    expect(props).toHaveProperty("image");
+    expect(props).toHaveProperty("mask");
+    expect(props).toHaveProperty("reference_images");
   });
 
-  it("image_url 和 mask_url 有 mediaKind:image", () => {
+  it("image 和 mask 有 mediaKind:image", () => {
     const props = imageEdit.inputSchema.properties;
-    expect(props["image_url"]?.mediaKind).toBe("image");
-    expect(props["mask_url"]?.mediaKind).toBe("image");
+    expect(props["image"]?.mediaKind).toBe("image");
+    expect(props["mask"]?.mediaKind).toBe("image");
   });
 
-  it("reference_image_urls.items 有 mediaKind:image", () => {
-    const refProp = imageEdit.inputSchema.properties["reference_image_urls"];
+  it("reference_images.items 有 mediaKind:image", () => {
+    const refProp = imageEdit.inputSchema.properties["reference_images"];
     expect(refProp?.items?.mediaKind).toBe("image");
   });
 
-  it("required 包含 instruction 和 image_url", () => {
-    expect(imageEdit.inputSchema.required).toContain("instruction");
-    expect(imageEdit.inputSchema.required).toContain("image_url");
+  it("required 包含 image 和 prompt", () => {
+    expect(imageEdit.inputSchema.required).toContain("image");
+    expect(imageEdit.inputSchema.required).toContain("prompt");
   });
 
-  it("variants 非空，含 DashScope 和 OpenRouter 变体", () => {
-    expect(imageEdit.variants.length).toBeGreaterThan(1);
-    const names = imageEdit.variants.map((v) => v.name);
-    // 至少有一个 DashScope 变体和一个 OpenRouter/NewAPI 变体
+  it("models 非空，含 DashScope 和 NewAPI 路由", () => {
+    expect(imageEdit.models.length).toBeGreaterThan(1);
+    const names = imageEdit.models.map((m) => m.model);
+    // 至少有一个 DashScope model 和一个 NewAPI(gpt-image)model
     const hasDashscope = names.some((n) => n.includes("qwen") || n.includes("dashscope"));
-    const hasOtherProvider = names.some((n) => n.includes("openrouter") || n.includes("newapi") || n.includes("gpt") || n.includes("gemini"));
+    const hasNewapi = names.some((n) => n.includes("gpt"));
     expect(hasDashscope).toBe(true);
-    expect(hasOtherProvider).toBe(true);
+    expect(hasNewapi).toBe(true);
   });
 
-  it("defaultVariant 存在于 variants", () => {
-    const variantNames = imageEdit.variants.map((v) => v.name);
-    expect(variantNames).toContain(imageEdit.defaultVariant);
+  it("defaultModel 存在于 models", () => {
+    const modelNames = imageEdit.models.map((m) => m.model);
+    expect(modelNames).toContain(imageEdit.defaultModel);
   });
 });
 
-describe("imageEdit 执行(DashScope 无 mask)", () => {
+describe("imageEdit 执行(DashScope)", () => {
   beforeEach(() => {
     process.env.DASHSCOPE_API_KEY = "test-dashscope-key";
   });
@@ -140,31 +139,31 @@ describe("imageEdit 执行(DashScope 无 mask)", () => {
     vi.restoreAllMocks();
   });
 
-  it("instruction + image_url(att_id) → resolve → edit → persist → ok:true + asset", async () => {
+  it("prompt + image(att_id) → resolve → edit → persist → ok:true + asset", async () => {
     const ctx = makeMockCtx();
     const resolveSpy = vi.spyOn(ctx, "resolve");
     const fetchImpl = makeDashScopeFetch() as typeof fetch;
     const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
 
-    // 选 DashScope qwen-image-edit 变体
-    const dashscopeVariant = imageEdit.variants.find((v) => v.name.includes("qwen-image-edit") || v.name.includes("qwen-image"));
-    const categoryWithDashscope = dashscopeVariant
-      ? { ...imageEdit, defaultVariant: dashscopeVariant.name }
+    // 选 DashScope qwen-image-edit 路由作默认
+    const dashscopeModel = imageEdit.models.find((m) => m.model.includes("qwen"));
+    const toolWithDashscope = dashscopeModel
+      ? { ...imageEdit, defaultModel: dashscopeModel.model }
       : imageEdit;
 
-    const tool = compileCategory(categoryWithDashscope, deps);
-    const result = await tool.execute(
+    const compiled = compileTool(toolWithDashscope, deps);
+    const result = await compiled.execute(
       "call-edit-1",
       {
-        instruction: "add stars to the sky",
-        image_url: "att_main123",
+        prompt: "add stars to the sky",
+        image: "att_main123",
       },
       undefined,
       undefined,
       {} as never,
     );
 
-    // image_url att_id 应被 resolve
+    // image att_id 应被 resolve
     expect(resolveSpy).toHaveBeenCalledWith("att_main123");
 
     const details = result.details as { ok: boolean; assets?: { attachmentId: string }[] };
@@ -188,15 +187,15 @@ describe("buildAigcTools 含 image_edit", () => {
     expect(tools[0]?.name).toBe("image_edit");
   });
 
-  it("buildAigcTools({ include: ['text_to_image'] }) 不含 image_edit", () => {
-    const tools = buildAigcTools({ include: ["text_to_image"] });
+  it("buildAigcTools({ include: ['image_generation'] }) 不含 image_edit", () => {
+    const tools = buildAigcTools({ include: ["image_generation"] });
     expect(tools.find((t) => t.name === "image_edit")).toBeUndefined();
   });
 
-  it("buildAigcTools() 含 text_to_image 和 image_edit 两个工具", () => {
+  it("buildAigcTools() 含 image_generation 和 image_edit 两个工具", () => {
     const tools = buildAigcTools();
     const names = tools.map((t) => t.name);
-    expect(names).toContain("text_to_image");
+    expect(names).toContain("image_generation");
     expect(names).toContain("image_edit");
   });
 });

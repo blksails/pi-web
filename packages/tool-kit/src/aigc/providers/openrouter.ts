@@ -1,17 +1,16 @@
 /**
  * OpenRouter image-modality provider 工厂 — `@pi-web/tool-kit` 版。
  *
- * 提供两类工厂:
+ * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
  *  - createOpenRouterImage:    文生图(T2I);content 可为字符串或 multi-part 数组
  *  - createOpenRouterImageEdit: 图像编辑;content 永远是 multi-part(含图像 part)
  *
- * 与 pi-labs 实现的差异:
- *  - **不**调用 inlineRemoteImage — 编译器在 buildBody 前已把 att_id 解析为 data URI,
- *    非 att_id 的 https:// URL 由调用方保证可达(境内 CDN / 已内联)。
- *  - 不依赖 inlineAll / fetchImageBytes,保持零运行时外部依赖。
+ * 本轮工具声明**不引用** OpenRouter 的 model(Req 4.4),工厂保留以备后续扩充。
+ * `model` 为 LLM 可见路由键;`providerModel`(缺省 = model)为实际发往 OpenRouter 的 model 名。
+ * 编译器在 buildBody 前已把 att_id 解析为 data URI,故此处不内联远程图。
  */
 
-import type { Variant, PickedResult, BuildBodyContext } from "../../engine/types.js";
+import type { ModelRoute, PickedResult, BuildBodyContext } from "../../engine/types.js";
 
 // ── Endpoint & 共用常量 ────────────────────────────────────────────────────────
 
@@ -37,20 +36,20 @@ interface T2IArgs {
   negative_prompt?: string;
   n?: number;
   /** 参考图(已解析为 data URI 或 https URL)。 */
-  image_urls?: string[];
+  reference_images?: string[];
   size?: string;
 }
 
-// ── 图像编辑 args ─────────────────────────────────────────────────────────────
+// ── 图像编辑 args(OpenAI 化字段)──────────────────────────────────────────────
 
 interface ImageEditArgs {
-  instruction: string;
+  prompt: string;
   /** 主图(已解析为 data URI 或 https URL)。 */
-  image_url: string;
+  image: string;
   /** mask — OpenRouter 不支持 mask 概念,静默忽略。 */
-  mask_url?: string;
+  mask?: string;
   /** 参考图(可选,已解析)。 */
-  reference_image_urls?: string[];
+  reference_images?: string[];
   n?: number;
   size?: string;
 }
@@ -89,7 +88,7 @@ function buildT2IBody(model: string) {
     const userText = a.negative_prompt
       ? `${a.prompt}\n\nAvoid: ${a.negative_prompt}`
       : a.prompt;
-    const refs = a.image_urls ?? [];
+    const refs = a.reference_images ?? [];
 
     const content: unknown =
       refs.length === 0
@@ -116,14 +115,14 @@ function buildT2IBody(model: string) {
 
 /**
  * 图像编辑 body 构造器。
- *  - content 永远是 multi-part:text instruction + 主图 + 参考图
- *  - mask_url 不进 payload(OpenRouter 无 mask 概念)
+ *  - content 永远是 multi-part:text prompt + 主图 + 参考图
+ *  - mask 不进 payload(OpenRouter 无 mask 概念)
  */
 function buildImageEditBody(model: string) {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<unknown> => {
     const a = args as unknown as ImageEditArgs;
-    // 主图永远是第一张;额外 refs 跟后;mask_url 静默忽略
-    const images = [a.image_url, ...(a.reference_image_urls ?? [])];
+    // 主图永远是第一张;额外 refs 跟后;mask 静默忽略
+    const images = [a.image, ...(a.reference_images ?? [])];
 
     const body: Record<string, unknown> = {
       model,
@@ -133,7 +132,7 @@ function buildImageEditBody(model: string) {
         {
           role: "user",
           content: [
-            { type: "text", text: a.instruction },
+            { type: "text", text: a.prompt },
             ...images.map((u) => ({
               type: "image_url",
               image_url: { url: u },
@@ -146,43 +145,36 @@ function buildImageEditBody(model: string) {
   };
 }
 
-// ── Variant 工厂入参 ─────────────────────────────────────────────────────────
+// ── model 路由项工厂入参 ────────────────────────────────────────────────────────
 
-export interface OpenRouterVariantArgs {
-  name: string;
+/** 工厂入参:LLM 可见 model(路由键)+ 元数据;providerModel 缺省 = model。 */
+export interface OpenRouterModelArgs {
+  /** LLM 可见路由键(进 model 枚举)。 */
+  model: string;
   label: string;
   description: string;
-  model: string;
+  /** 实际发往 OpenRouter 的 model 名(缺省 = model)。 */
+  providerModel?: string;
 }
 
 // ── 公开工厂 ─────────────────────────────────────────────────────────────────
 
 /**
- * 创建 OpenRouter 图像生成(T2I)变体。
- *
- * @example
- * ```ts
- * createOpenRouterImage({
- *   name: "gemini-flash-image",
- *   label: "Gemini 2.5 Flash Image · OpenRouter",
- *   description: "...",
- *   model: "google/gemini-2.5-flash-image",
- * })
- * ```
+ * 创建 OpenRouter 图像生成(T2I)路由项。本轮工具未引用,保留备用。
  */
 export function createOpenRouterImage(
-  args: OpenRouterVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: OpenRouterModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    name: args.name,
+    model: args.model,
     label: args.label,
     description: args.description,
     url: OR_URL,
     headers: { authorization: "Bearer ${OPENROUTER_API_KEY}" },
     proxy: "${OPENROUTER_PROXY}",
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildT2IBody(args.model),
+    buildBody: buildT2IBody(args.providerModel ?? args.model),
     pickResult,
     detectError,
     ...extras,
@@ -190,31 +182,21 @@ export function createOpenRouterImage(
 }
 
 /**
- * 创建 OpenRouter 图像编辑变体(无 mask)。
- *
- * @example
- * ```ts
- * createOpenRouterImageEdit({
- *   name: "openai-gpt5-image",
- *   label: "GPT-5 Image · OpenRouter",
- *   description: "...",
- *   model: "openai/gpt-5-image",
- * })
- * ```
+ * 创建 OpenRouter 图像编辑路由项(无 mask)。本轮工具未引用,保留备用。
  */
 export function createOpenRouterImageEdit(
-  args: OpenRouterVariantArgs,
-  extras: Partial<Variant> = {},
-): Variant {
+  args: OpenRouterModelArgs,
+  extras: Partial<ModelRoute> = {},
+): ModelRoute {
   return {
-    name: args.name,
+    model: args.model,
     label: args.label,
     description: args.description,
     url: OR_URL,
     headers: { authorization: "Bearer ${OPENROUTER_API_KEY}" },
     proxy: "${OPENROUTER_PROXY}",
     requiredVars: [...REQUIRED_VARS],
-    buildBody: buildImageEditBody(args.model),
+    buildBody: buildImageEditBody(args.providerModel ?? args.model),
     pickResult,
     detectError,
     ...extras,
