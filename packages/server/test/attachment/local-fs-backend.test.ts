@@ -117,6 +117,16 @@ describe("LocalFsBlobBackend(Req 1.2/1.3/1.4/1.6/1.7/2.6)", () => {
     expect(createUrlSigner(SECRET).verify("att_url", exp, sig)).toBe(true);
   });
 
+  it("presignUrl 默认 TTL 为长窗口(历史回放不过期;方案 C)", async () => {
+    const backend = makeBackend();
+    // 不传 expiresInMs → 落到 DEFAULT_URL_TTL_MS(默认 10 年)。
+    const url = await backend.presignUrl("att_longttl");
+    const exp = Number(new URL(url, "http://x").searchParams.get("exp"));
+    // exp 应远大于 now + 1 年,确认不是旧的 5 分钟短窗口。
+    const oneYearMs = 365 * 24 * 60 * 60_000;
+    expect(exp).toBeGreaterThan(Date.now() + oneYearMs);
+  });
+
   it("delete 移除字节与 meta 旁路;不存在为幂等(不抛)", async () => {
     const backend = makeBackend();
     await backend.put("att_del", Buffer.from("x"), { mimeType: "text/plain", size: 1 });
