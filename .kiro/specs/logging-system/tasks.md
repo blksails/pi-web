@@ -137,7 +137,7 @@
   - _Boundary: server logging, react logging_
   - _Depends: 2.3, 2.4_
 
-- [ ] 5.3 集成测试：子进程日志通道与回归
+- [x] 5.3 集成测试：子进程日志通道与回归
   - 对真实子进程验证：agent 经上下文 logger 打日志→stderr→解析→ring buffer→logs 帧；扩展直接 import logger 打日志同通道汇聚；GET /sessions/:id/logs 过滤返回；既有 notify/stats/queue/ui-rpc 控制帧行为不变；logging 配置 PUT/GET 往返与未知字段保留
   - 完成态：集成测试通过，证明日志端到端在后端打通且既有帧无回归
   - _Requirements: 2.2, 2.3, 2.4, 4.2, 6.3, 9.1_

@@ -204,7 +204,7 @@ export class PiSession {
   /**
    * stderr 日志管道(Req 2.5 / 3.1):喂 chunk 给 parser → 得到 LogEntry[] →
    * 每条存入 ring buffer(分配 id)→ 合并成一帧经帧 emitter 广播。
-   * 非 sentinel 行由 parser 静默丢弃，不产出任何帧。
+   * 非 sentinel 的非空文本行由 parser 包装为 proc:stderr 原始日志(Req 4.3)；空白行丢弃。
    */
   private handleStderr(chunk: string): void {
     if (this._status !== "active") return;
