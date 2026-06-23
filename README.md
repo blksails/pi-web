@@ -73,6 +73,7 @@ Credentials and defaults come from `~/.pi/agent` by default (no env key required
 | --- | --- |
 | `PI_WEB_AGENT_DIR` / `PI_CODING_AGENT_DIR` | Override the pi config dir (default `~/.pi/agent`). |
 | `PI_WEB_DEFAULT_PROVIDER` / `PI_WEB_DEFAULT_MODEL` | Force a provider/model (else `settings.json` decides). |
+| `PI_WEB_HIDE_PROVIDERS` | Comma-separated provider names to hide from the settings model/provider dropdown (their models are filtered out of `GET /config/models`). |
 | `PI_WEB_DEFAULT_SOURCE` | Default agent source offered by the picker. |
 | `PI_WEB_DEFAULT_CWD` | Default working directory for sessions. |
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, … | Optional additive passthrough to override `auth.json`. |

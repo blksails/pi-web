@@ -73,6 +73,7 @@ pnpm dev          # next dev —— http://localhost:3000
 | --- | --- |
 | `PI_WEB_AGENT_DIR` / `PI_CODING_AGENT_DIR` | 覆盖 pi 配置目录(默认 `~/.pi/agent`)。 |
 | `PI_WEB_DEFAULT_PROVIDER` / `PI_WEB_DEFAULT_MODEL` | 强制指定 provider/模型(否则由 `settings.json` 决定)。 |
+| `PI_WEB_HIDE_PROVIDERS` | 逗号分隔的 provider 名,从 settings 的模型/provider 下拉中隐藏(其模型会被从 `GET /config/models` 过滤掉)。 |
 | `PI_WEB_DEFAULT_SOURCE` | 选择器默认提供的 agent 源。 |
 | `PI_WEB_DEFAULT_CWD` | 会话默认工作目录。 |
 | `ANTHROPIC_API_KEY`、`OPENAI_API_KEY` 等 | 可选,叠加透传以覆盖 `auth.json`。 |
