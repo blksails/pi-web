@@ -32,6 +32,7 @@ import { makeDeleteSessionHandler } from "./routes/delete-session.js";
 import {
   makeCommandsHandler,
   makeForkMessagesHandler,
+  makeLogsHandler,
   makeMessagesQueryHandler,
   makeModelsHandler,
   makeStateHandler,
@@ -173,6 +174,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "GET",
       path: "/sessions/:id/fork-messages",
       handler: makeForkMessagesHandler(store),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/logs",
+      handler: makeLogsHandler(store),
     },
     {
       method: "GET",

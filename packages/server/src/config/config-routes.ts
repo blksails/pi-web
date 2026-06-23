@@ -13,6 +13,7 @@ import { z } from "zod";
 import {
   CONFIG_FORM_SCHEMAS,
   authConfigSchema,
+  loggingConfigSchema,
   settingsConfigSchema,
   sandboxConfigSchema,
 } from "@pi-web/protocol";
@@ -30,6 +31,8 @@ const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   settings: settingsConfigSchema,
   // 全局沙箱策略(方案 A):写 `<agentDir>/sandbox.json`,即 pi-sandbox 读取的全局配置。
   sandbox: sandboxConfigSchema,
+  // 日志系统配置域(Req 6.1 / 6.3)。
+  logging: loggingConfigSchema,
 };
 
 /** PUT body 形状。 */

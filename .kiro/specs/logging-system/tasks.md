@@ -70,7 +70,7 @@
 
 ## 3. Integration：装配、注入、路由、配置接线（P0）
 
-- [ ] 3.1 [P0] 服务端会话装配与路由
+- [x] 3.1 [P0] 服务端会话装配与路由
   - 在会话装配处订阅子进程 stderr → 解析器 → ring buffer，并经既有帧 emitter 产出 `control:"logs"` 帧（可短窗批量）；注册 `GET /sessions/:id/logs` 路由读取 ring buffer；在配置路由 DOMAIN_SCHEMAS 注册 logging 域
   - 完成态：agent 经 stderr 打出的日志进入 ring buffer 并推送一帧；GET /sessions/:id/logs 返回过滤后的条目；PUT/GET /config/logging 往返成功且保留未知字段
   - _Requirements: 2.2, 3.1, 4.2, 6.1, 6.3_

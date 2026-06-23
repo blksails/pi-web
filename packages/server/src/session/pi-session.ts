@@ -14,6 +14,8 @@ import { EventEmitter } from "node:events";
 import type {
   AgentEvent,
   ImageContent,
+  LogEntry,
+  LogLevel,
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   RpcResponse,
@@ -24,6 +26,8 @@ import type {
 import { makeControlFrame, UiRpcResponseSchema } from "@pi-web/protocol";
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
+import { LogRingBuffer } from "../logging/log-ring-buffer.js";
+import { StderrLogParser } from "../logging/stderr-log-parser.js";
 import {
   SessionStoppedError,
   UnknownExtensionUIError,
@@ -71,6 +75,10 @@ export class PiSession {
 
   private readonly unsubs: Unsubscribe[] = [];
 
+  /** 每会话 stderr 日志解析管道（Req 2.5 / 3.1）。 */
+  private readonly logParser = new StderrLogParser();
+  private readonly logBuffer = new LogRingBuffer();
+
   constructor(opts: PiSessionOptions) {
     this.id = opts.id;
     this.channel = opts.channel;
@@ -92,6 +100,8 @@ export class PiSession {
       this.channel.onExit((info) => this.handleExit(info)),
       // 原始行:识别 agent 侧 ui-rpc 响应约定(Tier3,Req 4.1)。
       this.channel.onLine((line) => this.handleRawLine(line)),
+      // stderr 日志管道:sentinel 行→解析→ring buffer→control:"logs" 帧(Req 3.1)。
+      this.channel.onStderr((chunk) => this.handleStderr(chunk)),
     );
 
     this.touch();
@@ -189,6 +199,37 @@ export class PiSession {
       FRAME_EVENT,
       makeControlFrame({ control: "ui-rpc", response: res.data }),
     );
+  }
+
+  /**
+   * stderr 日志管道(Req 2.5 / 3.1):喂 chunk 给 parser → 得到 LogEntry[] →
+   * 每条存入 ring buffer(分配 id)→ 合并成一帧经帧 emitter 广播。
+   * 非 sentinel 行由 parser 静默丢弃，不产出任何帧。
+   */
+  private handleStderr(chunk: string): void {
+    if (this._status !== "active") return;
+    const raw = this.logParser.ingestChunk(chunk);
+    if (raw.length === 0) return;
+    const entries: (LogEntry & { id: string })[] = [];
+    for (const entry of raw) {
+      entries.push(this.logBuffer.ingest(entry));
+    }
+    this.emitter.emit(
+      FRAME_EVENT,
+      makeControlFrame({ control: "logs", entries }),
+    );
+  }
+
+  /**
+   * 查询会话日志 ring buffer（Req 4.2 / 4.3）。
+   * 供 REST 路由调用；不发 RPC 命令。
+   */
+  getLogs(query: {
+    level?: LogLevel;
+    limit?: number;
+    since?: number;
+  }): (LogEntry & { id: string })[] {
+    return this.logBuffer.getLogs(query);
   }
 
   /**

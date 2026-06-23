@@ -5,7 +5,8 @@
  * 把成功 `RpcResponse.data` 投影为 `@pi-web/protocol` 的对应响应 DTO 形状返回。
  * 不重定义响应形状(Req 4.5)。会话不存在→404(router 已校验,此处兜底)。
  */
-import type { RpcResponse } from "@pi-web/protocol";
+import type { LogLevel, RpcResponse } from "@pi-web/protocol";
+import { LogLevelSchema } from "@pi-web/protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
@@ -119,6 +120,59 @@ export function makeForkMessagesHandler(store: SessionStore): RouteHandler {
       const extracted = dataOrError<{ messages: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
       return jsonResponse(200, { messages: extracted.data.messages });
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
+/**
+ * GET /sessions/:id/logs?level=&limit=&since=
+ * 读取会话 ring buffer，返回 GetLogsResponse `{ entries }`（Req 4.2 / 4.3）。
+ * 查询参数全部可选:level(LogLevel)、limit(integer)、since(epoch ms)。
+ * 会话不存在 → 404。
+ */
+export function makeLogsHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    try {
+      const session = requireSession(store, ctx);
+      const params = ctx.url.searchParams;
+
+      // Parse level.
+      let level: LogLevel | undefined;
+      const levelRaw = params.get("level");
+      if (levelRaw !== null) {
+        const parsed = LogLevelSchema.safeParse(levelRaw);
+        if (!parsed.success) {
+          return errorResponse(400, "INVALID_PARAM", `Invalid level: "${levelRaw}".`);
+        }
+        level = parsed.data;
+      }
+
+      // Parse limit.
+      let limit: number | undefined;
+      const limitRaw = params.get("limit");
+      if (limitRaw !== null) {
+        const n = Number(limitRaw);
+        if (!Number.isInteger(n) || n < 0) {
+          return errorResponse(400, "INVALID_PARAM", `Invalid limit: "${limitRaw}".`);
+        }
+        limit = n;
+      }
+
+      // Parse since.
+      let since: number | undefined;
+      const sinceRaw = params.get("since");
+      if (sinceRaw !== null) {
+        const n = Number(sinceRaw);
+        if (!Number.isFinite(n)) {
+          return errorResponse(400, "INVALID_PARAM", `Invalid since: "${sinceRaw}".`);
+        }
+        since = n;
+      }
+
+      const entries = session.getLogs({ level, limit, since });
+      return jsonResponse(200, { entries });
     } catch (err) {
       return mapEngineError(err);
     }

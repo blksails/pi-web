@@ -47,6 +47,8 @@ export interface SessionChannel extends PiRpcChannel {
   onEvent(cb: (event: AgentEvent) => void): Unsubscribe;
   onExtensionUIRequest(cb: (req: RpcExtensionUIRequest) => void): Unsubscribe;
   onExit(cb: (info: ExitInfo) => void): Unsubscribe;
+  /** 订阅子进程 stderr 原始文本块(Req 2.5 / 3.1)。 */
+  onStderr(cb: (chunk: string) => void): Unsubscribe;
   respondExtensionUI(id: string, response: RpcExtensionUIResponse): void;
 
   prompt(

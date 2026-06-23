@@ -8,3 +8,7 @@
  */
 export { LogLevelSchema, LogEntrySchema, parseLogLine } from "./log-entry.js";
 export type { LogLevel } from "./log-entry.js";
+// Convenience type alias: inferred shape of the wire-level log entry schema.
+import type { z } from "zod";
+import { LogEntrySchema } from "./log-entry.js";
+export type LogEntry = z.infer<typeof LogEntrySchema>;

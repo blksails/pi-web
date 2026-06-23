@@ -130,6 +130,9 @@ export class MockSession {
   getForkMessages(): Promise<RpcResponse> {
     return this.call("getForkMessages", []);
   }
+  getLogs(_query: { level?: string; limit?: number; since?: number }): unknown[] {
+    return [];
+  }
   respondExtensionUI(id: string, response: unknown): void {
     this.calls.push({ method: "respondExtensionUI", args: [id, response] });
     const err = this.throwOn.get("respondExtensionUI");

@@ -23,6 +23,7 @@ import type { SessionChannel } from "../../src/session/session.types.js";
 type EventCb = (event: AgentEvent) => void;
 type ExtCb = (req: RpcExtensionUIRequest) => void;
 type ExitCb = (info: ExitInfo) => void;
+type StderrCb = (chunk: string) => void;
 
 export interface CommandCall {
   readonly method: string;
@@ -39,6 +40,7 @@ export class MockChannel implements SessionChannel {
   private readonly eventCbs = new Set<EventCb>();
   private readonly extCbs = new Set<ExtCb>();
   private readonly exitCbs = new Set<ExitCb>();
+  private readonly stderrCbs = new Set<StderrCb>();
   private readonly lineCbs = new Set<LineListener>();
 
   /** 每个命令方法返回的响应工厂(默认通用 success)。 */
@@ -80,6 +82,10 @@ export class MockChannel implements SessionChannel {
   onExit(cb: ExitCb): Unsubscribe {
     this.exitCbs.add(cb);
     return () => this.exitCbs.delete(cb);
+  }
+  onStderr(cb: StderrCb): Unsubscribe {
+    this.stderrCbs.add(cb);
+    return () => this.stderrCbs.delete(cb);
   }
   respondExtensionUI(id: string, response: RpcExtensionUIResponse): void {
     this.responded.push({ id, response });
@@ -159,5 +165,9 @@ export class MockChannel implements SessionChannel {
   emitExit(info: ExitInfo): void {
     this.alive = false;
     for (const cb of this.exitCbs) cb(info);
+  }
+  /** 模拟子进程写出一段 stderr 文本。 */
+  emitStderr(chunk: string): void {
+    for (const cb of this.stderrCbs) cb(chunk);
   }
 }
