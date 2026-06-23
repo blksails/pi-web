@@ -2,11 +2,12 @@
  * Unit tests for StderrLogParser (packages/server/src/logging/stderr-log-parser.ts)
  *
  * Covers:
- *  - Sentinel lines are parsed into LogEntry objects
- *  - Non-sentinel / plain text stderr lines are ignored (return empty)
+ *  - Sentinel lines are parsed into LogEntry objects (original ns preserved)
+ *  - Non-sentinel / plain text stderr lines are wrapped as proc:stderr entries (Req 4.3)
+ *  - Empty / whitespace-only lines produce no output (noise suppression)
  *  - Multiple lines in one chunk produce multiple LogEntry results
  *  - Cross-chunk boundary: half-line buffered and completed on next chunk
- *  - RPC/protocol lines are not confused for log lines (Req 2.5)
+ *  - Mixed sentinel + plain text lines: each goes to the correct ns, in order
  *
  * Requirements: 2.5, 4.3
  */
@@ -76,36 +77,56 @@ describe("StderrLogParser", () => {
     });
   });
 
-  // ── non-sentinel lines ignored ────────────────────────────────────────────
+  // ── non-sentinel lines wrapped as proc:stderr (Req 4.3) ──────────────────
 
-  describe("non-sentinel line suppression (Req 2.5)", () => {
-    it("ignores a plain text stderr line (returns empty array)", () => {
+  describe("non-sentinel line wrapping (Req 4.3)", () => {
+    it("wraps a plain text stderr line as proc:stderr entry", () => {
       const results = parser.ingestChunk("some debug text from node\n");
-      expect(results).toHaveLength(0);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.ns).toBe("proc:stderr");
+      expect(results[0]!.level).toBe("warn");
+      expect(results[0]!.msg).toBe("some debug text from node");
+      expect(typeof results[0]!.ts).toBe("number");
     });
 
-    it("ignores a valid JSON line that lacks the sentinel prefix", () => {
+    it("wraps a valid JSON line (no sentinel) as proc:stderr entry", () => {
       const jsonLine = JSON.stringify({ level: "info", ns: "x", msg: "y", ts: 1 }) + "\n";
-      expect(parser.ingestChunk(jsonLine)).toHaveLength(0);
+      const results = parser.ingestChunk(jsonLine);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.ns).toBe("proc:stderr");
+      // The raw JSON text becomes the msg (not parsed as structured)
+      expect(results[0]!.msg).toContain('"msg":"y"');
     });
 
-    it("ignores an RPC-like JSONL line (stdout RPC format, no sentinel)", () => {
+    it("wraps an RPC-like JSONL line (no sentinel) as proc:stderr entry", () => {
       const rpcLine = JSON.stringify({ type: "response", id: "abc", result: {} }) + "\n";
-      expect(parser.ingestChunk(rpcLine)).toHaveLength(0);
+      const results = parser.ingestChunk(rpcLine);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.ns).toBe("proc:stderr");
     });
 
-    it("ignores an invalid JSON line with sentinel prefix (parse failure)", () => {
+    it("ignores an invalid JSON line with sentinel prefix (malformed sentinel → dropped)", () => {
       const badLine = `${LOG_SENTINEL}not-valid-json\n`;
       expect(parser.ingestChunk(badLine)).toHaveLength(0);
     });
 
-    it("ignores a sentinel line with invalid schema (missing required fields)", () => {
+    it("ignores a sentinel line with invalid schema (missing required fields → dropped)", () => {
       const badEntry = JSON.stringify({ level: "info" }); // missing ns, msg, ts
       const line = `${LOG_SENTINEL}${badEntry}\n`;
       expect(parser.ingestChunk(line)).toHaveLength(0);
     });
 
-    it("mixed chunk: only sentinel lines produce entries", () => {
+    it("ignores empty lines (no proc:stderr noise)", () => {
+      const results = parser.ingestChunk("\n\n\n");
+      expect(results).toHaveLength(0);
+    });
+
+    it("ignores whitespace-only lines (no proc:stderr noise)", () => {
+      const results = parser.ingestChunk("   \n\t\n");
+      expect(results).toHaveLength(0);
+    });
+
+    it("mixed chunk: sentinel lines → original ns, plain lines → proc:stderr, order preserved", () => {
       const chunk = [
         "plain stderr text\n",
         makeSentinelLine("info", "picked up") + "\n",
@@ -115,9 +136,18 @@ describe("StderrLogParser", () => {
       ].join("");
 
       const results = parser.ingestChunk(chunk);
-      expect(results).toHaveLength(2);
-      expect(results[0]!.msg).toBe("picked up");
-      expect(results[1]!.msg).toBe("also picked up");
+      // 5 lines: plain | sentinel | rpc-json | sentinel | plain → 5 entries
+      // (all non-empty non-sentinel lines become proc:stderr)
+      expect(results).toHaveLength(5);
+      expect(results[0]!.ns).toBe("proc:stderr");
+      expect(results[0]!.msg).toBe("plain stderr text");
+      expect(results[1]!.ns).toBe("test:ns");   // sentinel preserves ns
+      expect(results[1]!.msg).toBe("picked up");
+      expect(results[2]!.ns).toBe("proc:stderr"); // rpc JSON line → proc:stderr
+      expect(results[3]!.ns).toBe("test:ns");   // sentinel preserves ns
+      expect(results[3]!.msg).toBe("also picked up");
+      expect(results[4]!.ns).toBe("proc:stderr");
+      expect(results[4]!.msg).toBe("another plain line");
     });
   });
 
@@ -229,8 +259,10 @@ describe("StderrLogParser", () => {
       const half = makeSentinelLine("info", "from-p1");
       p1.ingestChunk(half); // no newline yet → buffered in p1
 
-      // p2 should be empty
-      expect(p2.ingestChunk("irrelevant\n")).toHaveLength(0);
+      // p2 produces a proc:stderr entry for the plain line, but no sentinel entry
+      const p2Results = p2.ingestChunk("irrelevant\n");
+      expect(p2Results).toHaveLength(1);
+      expect(p2Results[0]!.ns).toBe("proc:stderr");
 
       // Complete p1's line
       const r1 = p1.ingestChunk("\n");

@@ -114,7 +114,7 @@
   - _Boundary: server completion, server attachment-bridge, react sse_
   - _Depends: 3.1, 3.2_
 
-- [ ] 4.3 [P1] 非结构化 stderr 包装为原始日志
+- [x] 4.3 [P1] 非结构化 stderr 包装为原始日志
   - 解析器把非 sentinel 的纯文本 stderr 行包装为 `proc:stderr` 命名空间的原始日志条目，纳入同一汇聚通道
   - 完成态：子进程纯文本 stderr 行作为 proc:stderr 日志出现在面板，且不干扰 sentinel 结构化日志
   - _Requirements: 8.1, 9.2_

@@ -3,9 +3,12 @@
  *
  * Stateful line-buffered parser for a subprocess stderr stream.
  *
- * Contract (Req 2.5):
- *  - Sentinel lines (prefix LOG_SENTINEL from @pi-web/logger) → parsed as LogEntry.
- *  - All other lines (plain text, RPC JSONL, etc.) → silently ignored.
+ * Contract (Req 2.5, 4.3):
+ *  - Sentinel lines (prefix LOG_SENTINEL from @pi-web/logger) → parsed as LogEntry
+ *    with their original namespace preserved (e.g. "agent:*").
+ *  - Non-sentinel non-empty text lines → wrapped as LogEntry with ns="proc:stderr",
+ *    level="warn", and ts=Date.now() (Req 4.3, R1 proc:stderr wrapping).
+ *  - Empty / whitespace-only lines → silently ignored (no noise).
  *  - Handles cross-chunk boundaries: a partial line is retained in the internal
  *    buffer until the next chunk supplies its newline.
  *
@@ -17,6 +20,7 @@
  */
 
 import { parseLogLine, LogEntrySchema } from "@pi-web/protocol";
+import { LOG_SENTINEL } from "@pi-web/logger";
 import type { z } from "zod";
 
 /** Inferred wire-level LogEntry type (id is optional). */
@@ -51,10 +55,23 @@ export class StderrLogParser {
     this.lineBuffer = parts[parts.length - 1] ?? "";
 
     for (const line of completedLines) {
-      const entry = parseLogLine(line);
-      if (entry !== null) {
-        results.push(entry);
+      if (line.startsWith(LOG_SENTINEL)) {
+        // Sentinel line: parse as structured LogEntry (preserves original ns).
+        const entry = parseLogLine(line);
+        if (entry !== null) {
+          results.push(entry);
+        }
+        // Malformed sentinel (invalid JSON / schema) → silently dropped.
+      } else if (line.trim().length > 0) {
+        // Non-sentinel non-empty line: wrap as a raw proc:stderr entry.
+        results.push({
+          level: "warn",
+          ns: "proc:stderr",
+          msg: line,
+          ts: Date.now(),
+        });
       }
+      // Empty / whitespace-only lines are silently ignored.
     }
 
     return results;

@@ -1,10 +1,10 @@
 /**
- * PiSession 日志管道集成测试（任务 3.1）。
+ * PiSession 日志管道集成测试（任务 3.1 + 4.3）。
  *
  * 覆盖：
  *  - stderr sentinel 行 → ring buffer（带 id）→ control:"logs" 帧
+ *  - 非 sentinel 非空行 → proc:stderr LogEntry → ring buffer → control:"logs" 帧（Req 4.3）
  *  - getLogs() 委托 ring buffer（含过滤）
- *  - 非 sentinel 行忽略（不产帧）
  *  - 既有帧回归：logs 帧与 event 帧互不干扰
  */
 import { describe, it, expect } from "vitest";
@@ -50,7 +50,7 @@ describe("PiSession logging pipeline", () => {
     expect(payload.entries[0]!.ns).toBe("agent:test");
   });
 
-  it("non-sentinel stderr line does not produce a logs frame", () => {
+  it("non-sentinel stderr line is wrapped as proc:stderr and produces a logs frame (Req 4.3)", () => {
     const { session, channel } = makeSession();
     const frames: SseFrame[] = [];
     session.subscribe((f) => frames.push(f));
@@ -61,7 +61,44 @@ describe("PiSession logging pipeline", () => {
     const logsFrames = frames.filter(
       (f) => f.kind === "control" && (f as { payload?: { control?: string } }).payload?.control === "logs",
     );
-    expect(logsFrames).toHaveLength(0);
+    // Both plain-text lines become proc:stderr entries → ring buffer → logs frames.
+    expect(logsFrames.length).toBeGreaterThanOrEqual(1);
+
+    // All entries in the frames must be proc:stderr namespace.
+    const allEntries = logsFrames.flatMap(
+      (f) => (f as { payload: { entries: LogEntry[] } }).payload.entries,
+    );
+    expect(allEntries.length).toBeGreaterThanOrEqual(1);
+    for (const entry of allEntries) {
+      expect(entry.ns).toBe("proc:stderr");
+    }
+  });
+
+  it("non-sentinel stderr line does not mix sentinel namespace into proc:stderr output", () => {
+    const { session, channel } = makeSession();
+    const frames: SseFrame[] = [];
+    session.subscribe((f) => frames.push(f));
+
+    // Emit one sentinel and one plain text line.
+    const entry = { level: "info" as const, ns: "agent:core", msg: "structured", ts: 1000 };
+    channel.emitStderr(makeLogLine(entry) + "\n");
+    channel.emitStderr("raw noise line\n");
+
+    const logsFrames = frames.filter(
+      (f) => f.kind === "control" && (f as { payload?: { control?: string } }).payload?.control === "logs",
+    );
+    expect(logsFrames.length).toBeGreaterThanOrEqual(1);
+
+    const allEntries = logsFrames.flatMap(
+      (f) => (f as { payload: { entries: LogEntry[] } }).payload.entries,
+    );
+    // Should have at least one sentinel entry (ns=agent:core) and one proc:stderr entry.
+    const sentinelEntries = allEntries.filter((e) => e.ns === "agent:core");
+    const procEntries = allEntries.filter((e) => e.ns === "proc:stderr");
+    expect(sentinelEntries.length).toBeGreaterThanOrEqual(1);
+    expect(procEntries.length).toBeGreaterThanOrEqual(1);
+    // Sentinel entry must NOT be overwritten to proc:stderr.
+    expect(sentinelEntries[0]!.msg).toBe("structured");
   });
 
   it("getLogs returns ring buffer entries", () => {
