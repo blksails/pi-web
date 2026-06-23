@@ -145,6 +145,11 @@ function resolveDisplayUrl(baseUrl: string, displayUrl: string): string {
   if (/^https?:\/\//i.test(displayUrl)) return displayUrl;
   if (!displayUrl.startsWith("/")) return displayUrl;
   if (baseUrl === "") return displayUrl;
+  // 已含 baseUrl 前缀(displayUrl 可能已是完整 `/api/attachments/...`)→ 不重复 prepend,
+  // 避免 `/api/api/...` 双前缀 404。
+  if (displayUrl === baseUrl || displayUrl.startsWith(`${baseUrl}/`)) {
+    return displayUrl;
+  }
   return joinUrl(baseUrl, displayUrl);
 }
 

@@ -13,6 +13,7 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
+import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -72,6 +73,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
+  // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
+  { match: "aigc-agent", ext: aigcExt },
   { match: "webext-declarative-agent", ext: DECLARATIVE },
 ];
 

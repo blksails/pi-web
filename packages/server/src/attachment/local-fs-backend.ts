@@ -44,6 +44,13 @@ export class LocalFsBlobBackend implements BlobStore {
   constructor(
     root: string,
     private readonly signer: UrlSigner,
+    /**
+     * 分发 URL 的 base path 前缀。pi-web app 把附件分发端点挂在 `/api/**` 下
+     * (见 pi-handler `sse.basePath: "/api"`),故**经 config 构造**的主/子进程 store
+     * 用 `/api`,使签名 URL 直接可达;缺省 `""`(直接构造的单测/独立场景不加前缀,
+     * 与既有 `/attachments/:id/raw` 形态一致,签名校验不依赖前缀)。
+     */
+    private readonly urlBasePath: string = "",
   ) {
     // 归一化为绝对路径,使 diskPath 永远返回稳定的绝对路径(Req 1.7)。
     this.root = isAbsolute(root) ? root : resolve(root);
@@ -122,7 +129,7 @@ export class LocalFsBlobBackend implements BlobStore {
   async presignUrl(key: string, opts?: { expiresInMs?: number }): Promise<string> {
     const { exp, sig } = this.signer.sign(key, opts?.expiresInMs ?? DEFAULT_URL_TTL_MS);
     const params = new URLSearchParams({ exp: String(exp), sig });
-    return `/attachments/${encodeURIComponent(key)}/raw?${params.toString()}`;
+    return `${this.urlBasePath}/attachments/${encodeURIComponent(key)}/raw?${params.toString()}`;
   }
 
   /** 删除字节与 meta 旁路;不存在为幂等(不抛,Req 1.1 端口契约)。 */

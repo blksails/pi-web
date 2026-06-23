@@ -157,6 +157,9 @@ function attachmentSpawnEnv(
   return {
     PI_WEB_ATTACHMENT_DIR: attachment.dir,
     PI_WEB_ATTACHMENT_SECRET: attachment.secret,
+    // 分发 URL base path:子进程产出的 tool-output 签名 URL 需带 app 挂载前缀 `/api`
+    // 才直接可达(与主进程一致;否则前端取该签名 URL 会 404)。
+    PI_WEB_ATTACHMENT_URL_BASE: "/api",
   };
 }
 
@@ -233,7 +236,8 @@ function buildSingleton(): HandlerSingleton {
     store: attachmentStore,
     dir: attachmentDir,
     secret: attachmentSecret,
-  } = attachmentStoreConfigFromEnv();
+    // 主进程 store 也用 `/api` 前缀(上传端点返回的 displayUrl 与 tool-output 一致可达)。
+  } = attachmentStoreConfigFromEnv(process.env, { urlBasePath: "/api" });
   const attachmentEnv = { dir: attachmentDir, secret: attachmentSecret };
 
   const createChannel = (

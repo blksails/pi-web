@@ -140,6 +140,30 @@ describe("useAttachments", () => {
     );
   });
 
+  it("displayUrl 已含 baseUrl 前缀时不重复 prepend(避免 /api/api 双前缀)", async () => {
+    const opts = okOptions();
+    opts.upload.mockImplementationOnce(async () =>
+      makeUploadResponse(
+        "att_official_2",
+        "b.png",
+        "image/png",
+        // server 返回已含 /api 前缀的完整 displayUrl(presignUrl 经 config 注入 /api)。
+        "/api/attachments/att_official_2/raw?exp=1&sig=x",
+      ),
+    );
+    const { result } = renderHook(() => useAttachments(opts));
+    await act(async () => {
+      await result.current.add([makeFile("b.png", "image/png", PNG_BYTES)]);
+    });
+    await waitFor(() =>
+      expect(result.current.items[0]?.status).toBe("ready"),
+    );
+    // 不双前缀:保持单 /api,而非 /api/api/attachments。
+    expect(result.current.items[0]?.displayUrl).toBe(
+      "/api/attachments/att_official_2/raw?exp=1&sig=x",
+    );
+  });
+
   it("leaves an already-absolute displayUrl unchanged (no baseUrl prefix)", async () => {
     const opts = okOptions();
     opts.upload.mockImplementationOnce(async (_b, _s, file: File) =>

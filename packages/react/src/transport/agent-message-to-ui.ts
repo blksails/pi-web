@@ -52,6 +52,9 @@ function resolveDisplayUrl(baseUrl: string, url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
   if (!url.startsWith("/")) return url;
   if (baseUrl === "") return url;
+  // 已含 baseUrl 前缀(displayUrl 可能已是完整 `/api/attachments/...`)→ 不重复 prepend,
+  // 避免 `/api/api/...` 双前缀 404。仅纯根相对(如 attachmentId 构造的 `/attachments/...`)才前缀。
+  if (url === baseUrl || url.startsWith(`${baseUrl}/`)) return url;
   return joinUrl(baseUrl, url);
 }
 
@@ -220,6 +223,10 @@ export function agentMessagesToUiMessages(
         ? (m["content"] as ContentItem[])
         : [];
       const isError = m["isError"] === true;
+      // 历史 toolResult 同样携带 details(pi 持久化保留;含 assets/displayUrl)。透传以与即时
+      // streaming 的 output(translate-event 透传 event.result = { content, details })对齐,
+      // 消除即时/历史在工具卡片上的展示差异。无 details 时退回纯 content(行为不变)。
+      const details = m["details"];
       const existing = toolParts.get(toolCallId);
       if (existing !== undefined) {
         if (isError) {
@@ -227,7 +234,8 @@ export function agentMessagesToUiMessages(
           existing.errorText = joinText(content);
         } else {
           existing.state = "output-available";
-          existing.output = content;
+          existing.output =
+            details !== undefined ? { content, details } : content;
         }
         return;
       }
@@ -238,7 +246,11 @@ export function agentMessagesToUiMessages(
         toolCallId,
         state: isError ? "output-error" : "output-available",
         input: {},
-        ...(isError ? { errorText: joinText(content) } : { output: content }),
+        ...(isError
+          ? { errorText: joinText(content) }
+          : {
+              output: details !== undefined ? { content, details } : content,
+            }),
       };
       out.push({ id, role: "assistant", parts: [tp as unknown as UIPart] });
     }

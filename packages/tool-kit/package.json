@@ -1,0 +1,35 @@
+{
+  "name": "@pi-web/tool-kit",
+  "version": "0.1.0",
+  "private": false,
+  "description": "pi-web 通用工具套件:声明式工具引擎 + 首批 AIGC 生成工具集。主入口零运行时依赖(声明,前端安全);./runtime 子入口为 node-only 执行层(pi SDK + undici)。",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pi-web/agent-kit": "workspace:*",
+    "undici": "^6.21.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.79.6",
+    "@earendil-works/pi-coding-agent": "^0.79.6"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.79.6",
+    "@earendil-works/pi-coding-agent": "^0.79.6",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

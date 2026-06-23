@@ -88,14 +88,20 @@ export interface AttachmentStoreConfig {
  */
 export function attachmentStoreConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
+  options: { urlBasePath?: string } = {},
 ): AttachmentStoreConfig {
   const dir = resolveAttachmentDir(env);
   // 稳定 secret 来源(Req 4.6);缺省仅纯单进程可回退随机(子进程共享场景需稳定且一致)。
   const secret = resolveAttachmentSecret(env);
 
   const signer = createUrlSigner(secret);
+  // 分发 URL base path 前缀由**挂载方**决定(pi-handler 把端点挂在 `/api/**` 下 → 传 "/api");
+  // 优先级:显式 options > env `PI_WEB_ATTACHMENT_URL_BASE`(经 spawn env 下发给子进程)> ""。
+  // 缺省 ""(集成测试/直接构造不加前缀,签名校验不依赖前缀,既有 `/attachments/:id/raw` 形态不变)。
+  const urlBasePath =
+    options.urlBasePath ?? env["PI_WEB_ATTACHMENT_URL_BASE"] ?? "";
   // 后端经配置选择:本切片 = LocalFs(为 S3 留缝);blob 与 backend 同一实例,使 localPath 可委托。
-  const backend = new LocalFsBlobBackend(dir, signer);
+  const backend = new LocalFsBlobBackend(dir, signer, urlBasePath);
   const registry = new AttachmentRegistry(dir);
   const store = new AttachmentStore({ blob: backend, registry, signer, backend });
 
