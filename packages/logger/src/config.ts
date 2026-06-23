@@ -4,10 +4,19 @@
  * Module-level singleton holding the current LoggerRuntimeConfig.
  * Mutated via configureLogger(); read by create-logger.ts on every log call.
  *
- * Zero runtime dependencies. No Node-specific or browser-specific imports.
+ * Also owns the optional file-output sink reference (configureFileOutput /
+ * getFileSink), wired in here so create-logger can pick it up via the
+ * default-sink path without a circular dependency.
+ *
+ * Zero runtime dependencies. No Node-specific or browser-specific imports
+ * (file-sink.ts itself guards all fs access).
  */
 
-import type { LoggerRuntimeConfig, LogLevel } from "./types.js";
+import type { LoggerRuntimeConfig, LogLevel, Sink } from "./types.js";
+import type { FileOutputConfig } from "./file-sink.js";
+import { createFileSink } from "./file-sink.js";
+
+// ── Logger runtime config ─────────────────────────────────────────────────
 
 const _config: LoggerRuntimeConfig = {
   enabled: true,
@@ -89,4 +98,52 @@ export function initConfigFromEnv(): void {
   }
 
   configureLogger(partial);
+
+  // ── File output from env ────────────────────────────────────────────────
+  // PI_WEB_LOG_FILE         — absolute path to log file (enables file output)
+  // PI_WEB_LOG_FILE_MAXSIZE — max file size in MB before rotation (default: 10)
+  // PI_WEB_LOG_FILE_MAXFILES — max number of rotated backup files (default: 5)
+  const rawFile = env["PI_WEB_LOG_FILE"];
+  if (rawFile !== undefined && rawFile.trim().length > 0) {
+    const maxSizeMbRaw = env["PI_WEB_LOG_FILE_MAXSIZE"];
+    const maxFilesRaw = env["PI_WEB_LOG_FILE_MAXFILES"];
+    const maxSizeMb = maxSizeMbRaw !== undefined ? parseFloat(maxSizeMbRaw) : 10;
+    const maxFiles = maxFilesRaw !== undefined ? parseInt(maxFilesRaw, 10) : 5;
+    configureFileOutput({
+      enabled: true,
+      path: rawFile.trim(),
+      maxSizeMb: isFinite(maxSizeMb) && maxSizeMb > 0 ? maxSizeMb : 10,
+      maxFiles: isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 5,
+    });
+  }
+}
+
+// ── File output configuration ─────────────────────────────────────────────
+//
+// A module-level reference to the currently configured file sink.
+// Null means file output is disabled or not yet configured.
+// Created/replaced by configureFileOutput(); read by getFileSink().
+
+let _fileSink: Sink | null = null;
+
+/**
+ * Configure the global file-output sink.
+ *
+ * When `config.enabled` is true and a valid `path` is provided, subsequent
+ * log calls (from loggers that use the default sink) will also be written to
+ * the configured file.  Calling with `enabled: false` disables file output.
+ *
+ * This function is safe to call in any environment; file-sink's own guards
+ * ensure no Node-specific API is touched in a browser context.
+ */
+export function configureFileOutput(config: FileOutputConfig): void {
+  _fileSink = createFileSink(config);
+}
+
+/**
+ * Return the currently configured file sink, or null when file output is
+ * not configured or disabled.
+ */
+export function getFileSink(): Sink | null {
+  return _fileSink;
 }

@@ -14,7 +14,7 @@
  */
 
 import type { Logger, LogEntry, LogLevel, Sink } from "./types.js";
-import { getRuntimeConfig } from "./config.js";
+import { getRuntimeConfig, getFileSink } from "./config.js";
 import { isLevelEnabled, isNamespaceEnabled } from "./level.js";
 import { getDefaultSink } from "./sink.js";
 
@@ -39,7 +39,10 @@ export interface CreateLoggerOptions {
  * `configureLogger()` changes take effect immediately without recreating loggers.
  */
 export function createLogger(opts: CreateLoggerOptions): Logger {
-  const { namespace, level: staticLevel, sink = getDefaultSink() } = opts;
+  const { namespace, level: staticLevel } = opts;
+  // Track whether the caller supplied an explicit sink or we should use the default.
+  const explicitSink: Sink | undefined = opts.sink;
+  const sink: Sink = explicitSink ?? getDefaultSink();
 
   function emit(level: LogLevel, msg: string, data?: unknown): void {
     // ── Gate 1: global enabled ──────────────────────────────────────────────
@@ -67,6 +70,19 @@ export function createLogger(opts: CreateLoggerOptions): Logger {
       // Sink errors must never propagate — graceful degradation (R7.4 / error strategy).
       // Use console.error to avoid recursion into the logger itself.
       console.error("[pi-web/logger] sink threw an error", entry);
+    }
+
+    // ── File output (additive, only when using default sink) ───────────────
+    // When the caller did not inject an explicit sink we also forward the entry
+    // to the globally configured file sink (if any).  Explicit-sink loggers are
+    // test-/tool-specific and are intentionally not forwarded.
+    if (explicitSink === undefined) {
+      try {
+        getFileSink()?.(entry);
+      } catch {
+        // File sink errors must never propagate (R7.4).
+        console.error("[pi-web/logger] file sink threw an error", entry);
+      }
     }
   }
 

@@ -18,7 +18,7 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import { createLogger } from "@pi-web/logger";
+import { createLogger, initConfigFromEnv } from "@pi-web/logger";
 import type { AgentContext } from "./agent-definition.js";
 import { loadAgentDefinition } from "./agent-loader.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
@@ -142,6 +142,20 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
  * from `runRpcMode`. Separated from {@link main} for testability.
  */
 export async function startRunner(args: RunnerArgs): Promise<never> {
+  // Populate the globalThis.__PI_WEB_FS__ seam used by @pi-web/logger's file-sink.
+  // file-sink.ts itself contains zero built-in specifier references (R1.6); instead
+  // it reads fs from this seam which is filled here, in the Node-only runner, before
+  // any logger call so file output is ready from the first log line.
+  {
+    const _fs = await import("node:fs");
+    (globalThis as Record<string, unknown>)["__PI_WEB_FS__"] ??=
+      (_fs as { default?: unknown }).default ?? _fs;
+  }
+
+  // Apply logger configuration from environment variables (including file output).
+  // Must be called before any logger is created so config is in place.
+  initConfigFromEnv();
+
   const agentDir = args.agentDir ?? getAgentDir();
   // Derive a namespace from the agent path: use the basename without extension,
   // fall back to "agent" when the path produces an empty string.
