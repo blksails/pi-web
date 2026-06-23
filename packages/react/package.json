@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@pi-web/logger": "workspace:*",
     "@pi-web/protocol": "workspace:*",
     "@pi-web/web-kit": "workspace:*"
   },

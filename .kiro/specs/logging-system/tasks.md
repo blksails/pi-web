@@ -54,7 +54,7 @@
   - _Boundary: server logging_
   - _Depends: 1.4_
 
-- [ ] 2.4 [P0] 前端日志存储与合并去重
+- [x] 2.4 [P0] 前端日志存储与合并去重
   - 实现 logsStore：订阅浏览器总线、applyLogsFrame、历史合并，按 id 去重三源（本地/实时/历史）；实现 use-logs hook 暴露过滤后日志与过滤器状态、fetchHistory、自动滚动状态
   - 完成态：同一 id 的实时帧与历史条目合并后不重复；级别/命名空间/文本过滤派生正确
   - _Requirements: 3.2, 4.5, 5.3, 5.4, 5.5_
@@ -158,3 +158,4 @@
 ## Implementation Notes
 - 任务 2.2 给 protocol `ConfigDomainId` 加了 `"logging"`，导致 server `packages/server/src/config/config-routes.ts` 的 `DOMAIN_SCHEMAS: Record<ConfigDomainId, ...>` 缺 `logging` 键而 typecheck 报 TS2741（过渡性破坏）。**任务 3.1 必须在 DOMAIN_SCHEMAS 加入 `logging: loggingConfigSchema` 修复此错**，届时 server typecheck 才会恢复绿。在 3.1 完成前，`pnpm -F @pi-web/server typecheck` 预期仅有这一个错误。
 - harness 编辑器 LSP 对新建未跟踪文件常报 "Cannot find module .../X.js" 与级联的 implicit-any 假阳性；以各包 `pnpm -F <pkg> typecheck`/`test` 实际退出码为准。
+- 任务 2.1 给 SSE ControlPayload 加了 `control:"logs"` 分支，导致 react `packages/react/src/sse/control-store.ts` 的 `applyControlFrame` switch 未处理该分支而 typecheck 报 TS2322（收窄到 never）。**任务 3.2 必须在 applyControlFrame 增加 `case "logs"` 调 logsStore.applyLogsFrame 修复此错**。在 3.2 完成前，`pnpm -F @pi-web/react typecheck` 预期仅有 control-store.ts 这一个错误。
