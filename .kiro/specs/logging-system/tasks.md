@@ -9,7 +9,7 @@
   - 包可被 `pnpm -F @pi-web/logger build`（或 tsc）成功构建，导出占位入口可被其他包 import
   - _Requirements: 1.1_
 
-- [ ] 1.2 实现 logger 核心 API 与门控
+- [x] 1.2 实现 logger 核心 API 与门控
   - 定义 LogLevel、LogEntry、Logger、LoggerRuntimeConfig 类型；实现级别序比较与命名空间前缀匹配（父含子）
   - 实现 createLogger（debug/info/warn/error）、child（命名空间拼接、继承配置）、以及 enabled/level/namespace 三道门控
   - 完成态：低于当前 level 或命名空间关闭的日志被丢弃且不产出任何条目；child 命名空间为父子拼接
