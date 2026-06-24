@@ -201,3 +201,10 @@
   - 完成态：选源起会话后，面板显示 agent 启动期日志（factory/started/warn/error）+ 实时日志，无重复。
   - _Requirements: 4.5, 5.2_
   - _Boundary: react logging, ui chat_
+
+- [x] 7.3 服务端 SSE 订阅时回填日志 ring buffer（确定性修复早期日志竞争）
+  - 真实 agent 实测发现：agent 启动期日志在子进程 spawn 期间产出（浏览器 stream 连上之前），实时帧收不到；7.2 的挂载一次性历史拉取又常在日志入库前触发（返回空）→ agent 启动日志进不了面板（虽在服务端 ring buffer）。
+  - 改：pi-session 在**新订阅者订阅**（subscribe）时，立即向该订阅者发送当前 ring buffer 内容作为一帧 `control:"logs"`（回填），不广播给既有订阅者。浏览器 SSE stream 连上即得到连接前已缓冲的全部日志（客户端按 id 去重）。
+  - 完成态：真实 agent 起会话后，面板显示 agent 启动期日志（agent:<源名> 的 factory/started/warn/error）+ 扩展 + webext，无重复；既有帧/订阅行为不破坏。
+  - _Requirements: 4.5, 5.2, 3.1_
+  - _Boundary: server session_

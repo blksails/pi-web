@@ -179,6 +179,15 @@ export class PiSession {
     };
     this.emitter.on(FRAME_EVENT, frameWrap);
     this.emitter.on(END_EVENT, endWrap);
+
+    // 回填：若 ring buffer 非空，立即向该新订阅者发送一帧 control:"logs"，
+    // 内容为当前缓冲的全部条目（Req 4.5/5.2/3.1，task 7.3）。
+    // 只向刚订阅的 onFrame 发送，不广播（避免重复/打扰既有订阅者）。
+    const buffered = this.logBuffer.getLogs({});
+    if (buffered.length > 0) {
+      frameWrap(makeControlFrame({ control: "logs", entries: buffered }));
+    }
+
     return {
       unsubscribe: () => {
         this.emitter.off(FRAME_EVENT, frameWrap);
