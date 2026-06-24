@@ -71,9 +71,25 @@ const nextConfig: NextConfig = {
       "./packages/server/runner-bootstrap.mjs",
       "./packages/server/src/**/*",
       "./packages/server/node_modules/@earendil-works/**/*",
+      // pi SDK 的 `.pnpm` 规范副本:pack-standalone 把会话激活解析点(子进程从
+      // `packages/server/node_modules/@earendil-works/*`)relink 到此处,使 pi SDK 的
+      // 传递依赖经同级符号链接可解析。relink 后 cli 模式(`pi --mode rpc`)用的 `dist/cli.js`
+      // 等全量文件须落在此规范副本里,故显式全量纳入(nft 默认只部分追踪)。
+      "./node_modules/.pnpm/@earendil-works+*/node_modules/@earendil-works/**/*",
       "./packages/server/node_modules/jiti/**/*",
       "./packages/agent-kit/**/*",
       "./packages/tool-kit/**/*",
+      // runner 子进程(bootstrap jiti)在 runner.ts 顶层 import 这两个 workspace 包:
+      // logger(日志系统,server/agent-kit/protocol 的依赖)与 protocol(契约根)。
+      // 二者经 jiti 动态加载,nft 静态追踪不到,须显式纳入,否则 standalone real 模式
+      // 会话起不来(`Cannot find module '@blksails/pi-web-logger'`)。
+      "./packages/logger/**/*",
+      "./packages/protocol/**/*",
+      // zod:server src(扩展/配置 schema 校验)的运行时依赖,经 jiti 在子进程加载。
+      // nft 把 zod 打进主进程 bundle 后只增量追踪了 `.pnpm/zod` 的部分文件(缺 index.js
+      // /index.cjs/src),pack-standalone 据此 hoist 的顶层 `node_modules/zod` 会解析到残缺
+      // 副本。全量纳入 `.pnpm` 规范副本,使 hoist 目标完整。
+      "./node_modules/.pnpm/zod@*/node_modules/zod/**/*",
       "./examples/**/*",
     ],
   },
