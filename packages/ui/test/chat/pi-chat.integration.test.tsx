@@ -88,11 +88,27 @@ let attachmentsResult: UseAttachmentsResult;
 let branchesResult: UseBranchesResult;
 let suggestionsResult: UseSuggestionsResult;
 
+// Minimal logs store stub for useLogs/createLogsStore used by pi-chat.
+const _emptyLogsSnapshot = { entries: [], filteredEntries: [], filters: { level: "debug", namespace: "", text: "" } };
+const _logsStoreSub = vi.fn(() => () => {});
+const _logsStoreSnap = vi.fn(() => _emptyLogsSnapshot);
+const _mockLogsStore = { subscribe: _logsStoreSub, getSnapshot: _logsStoreSnap, applyLogsFrame: vi.fn(), mergeHistory: vi.fn(), setFilters: vi.fn(), _pushBrowserEntry: vi.fn() };
+
 vi.mock("@blksails/pi-web-react", () => ({
   useModels: (): UseModelsResult => modelsResult,
   useAttachments: (): UseAttachmentsResult => attachmentsResult,
   useBranches: (): UseBranchesResult => branchesResult,
   useSuggestions: (): UseSuggestionsResult => suggestionsResult,
+  createLogsStore: () => _mockLogsStore,
+  useLogs: () => ({
+    entries: [],
+    filters: { level: "debug", namespace: "", text: "" },
+    setFilters: vi.fn(),
+    fetchHistory: vi.fn(async () => undefined),
+    autoscroll: true,
+    setAutoscroll: vi.fn(),
+  }),
+  createUiRpcBus: vi.fn(() => ({ dispose: vi.fn() })),
 }));
 
 // 被测组件须在 mock 声明之后导入(vi.mock 被提升,故静态导入亦安全;

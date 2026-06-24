@@ -15,6 +15,7 @@ import type {
   ExtensionFactory,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import type { Logger } from "@blksails/pi-web-logger";
 
 /** A resolved pi model (from the public from-services options). */
 export type Model = NonNullable<CreateAgentSessionFromServicesOptions["model"]>;
@@ -42,6 +43,11 @@ export interface AgentContext {
   cwd: string;
   agentDir?: string;
   env: Record<string, string | undefined>;
+  /**
+   * Structured logger for the agent (Node sink → stderr → main process pipeline).
+   * Namespace is prefixed with "agent:" followed by the agent identifier.
+   */
+  logger?: Logger;
 }
 
 /** Model reference: a resolved pi Model or a lightweight `{ provider, modelId }`. */

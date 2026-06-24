@@ -18,6 +18,7 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "./agent-definition.js";
 import { loadAgentDefinition } from "./agent-loader.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
@@ -137,15 +138,76 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
 }
 
 /**
+ * Generic entry-point basenames that should fall back to parent directory name.
+ * Extend this set when additional conventional entry names are found in the wild.
+ */
+const GENERIC_ENTRY_NAMES = new Set(["index", "main", "mod", "entry"]);
+
+/**
+ * Derive the logger namespace for a runner agent from its entry-file path.
+ *
+ * Rules (in priority order):
+ * 1. Strip the file extension from the basename.
+ * 2. If that basename is a generic entry name (index, main, mod, entry …),
+ *    fall back to the **parent directory** name.
+ * 3. If the result is still empty, fall back to the literal string "agent".
+ * 4. The returned value is always prefixed with "agent:".
+ *
+ * @example
+ *   deriveAgentNamespace("./examples/logging-demo-agent/index.ts")
+ *   // → "agent:logging-demo-agent"
+ *   deriveAgentNamespace("/path/to/my-agent.ts")
+ *   // → "agent:my-agent"
+ */
+export function deriveAgentNamespace(agentPath: string): string {
+  // Normalise separators so we can use a single split strategy.
+  const normalised = agentPath.replace(/\\/g, "/");
+  const parts = normalised.split("/").filter((p) => p !== "");
+
+  // basename without extension (last non-empty segment).
+  const rawBasename = parts[parts.length - 1] ?? "";
+  const basename = rawBasename.replace(/\.[^.]+$/, "");
+
+  let name: string;
+  if (GENERIC_ENTRY_NAMES.has(basename) || basename === "") {
+    // Fall back to parent directory name.
+    name = parts[parts.length - 2] ?? "";
+  } else {
+    name = basename;
+  }
+
+  return `agent:${name || "agent"}`;
+}
+
+/**
  * Build the runtime and enter RPC mode. Returns the (never-resolving) promise
  * from `runRpcMode`. Separated from {@link main} for testability.
  */
 export async function startRunner(args: RunnerArgs): Promise<never> {
+  // Populate the globalThis.__PI_WEB_FS__ seam used by @blksails/pi-web-logger's file-sink.
+  // file-sink.ts itself contains zero built-in specifier references (R1.6); instead
+  // it reads fs from this seam which is filled here, in the Node-only runner, before
+  // any logger call so file output is ready from the first log line.
+  {
+    const _fs = await import("node:fs");
+    (globalThis as Record<string, unknown>)["__PI_WEB_FS__"] ??=
+      (_fs as { default?: unknown }).default ?? _fs;
+  }
+
+  // Apply logger configuration from environment variables (including file output).
+  // Must be called before any logger is created so config is in place.
+  initConfigFromEnv();
+
   const agentDir = args.agentDir ?? getAgentDir();
+  // Derive a namespace from the agent path. Generic entry names (index, main …)
+  // fall back to the parent directory name so `logging-demo-agent/index.ts`
+  // gets namespace `agent:logging-demo-agent` instead of `agent:index`.
+  const agentNamespace = deriveAgentNamespace(args.agent);
   const ctx: AgentContext = {
     cwd: args.cwd,
     agentDir,
     env: process.env,
+    logger: createLogger({ namespace: agentNamespace }),
   };
 
   // 信任来源:`--trusted` CLI 参数,或 custom 模式经 spawnSpec.env 注入的

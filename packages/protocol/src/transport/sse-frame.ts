@@ -12,6 +12,7 @@ import { z } from "zod";
 import { protocolVersion } from "../version.js";
 import { UiMessageChunkSchema } from "./ui-message-chunk.js";
 import { UiRpcControlPayloadSchema } from "../web-ext/ui-rpc.js";
+import { LogEntrySchema } from "../logging/log-entry.js";
 
 /** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
@@ -36,6 +37,11 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   }),
   // Tier3 UI↔agent RPC 下行响应(按 correlationId 配对上行 REST 请求)。
   UiRpcControlPayloadSchema,
+  // Logging: server-push batch of structured log entries to the frontend.
+  z.object({
+    control: z.literal("logs"),
+    entries: z.array(LogEntrySchema),
+  }),
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

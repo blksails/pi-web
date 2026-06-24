@@ -44,6 +44,7 @@ export const SlotKeySchema = z.enum([
   "statusBar",
   "artifactSurface",
   "dialogLayer",
+  "logs",
 ]);
 export type SlotKey = z.infer<typeof SlotKeySchema>;
 

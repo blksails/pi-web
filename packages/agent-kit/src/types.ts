@@ -8,6 +8,7 @@ import type {
   ThinkingLevel,
   ToolDefinition,
 } from "./sdk-types.js";
+import type { Logger } from "@blksails/pi-web-logger";
 
 /**
  * Context passed to a factory-style agent definition (shape b).
@@ -24,6 +25,11 @@ export interface AgentContext {
   agentDir?: string;
   /** Snapshot of the process environment. */
   env: Record<string, string | undefined>;
+  /**
+   * Structured logger for the agent (Node sink → stderr → main process pipeline).
+   * Namespace is prefixed with "agent:" followed by the agent identifier.
+   */
+  logger?: Logger;
 }
 
 /**

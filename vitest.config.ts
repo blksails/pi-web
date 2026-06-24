@@ -4,7 +4,7 @@ import path from "node:path";
 /**
  * Vitest config for app integration + page-render tests.
  *
- * `jsdom` for RTL page-render smoke; resolves `@/` and the raw-TS `@pi-web/*`
+ * `jsdom` for RTL page-render smoke; resolves `@/` and the raw-TS `@blksails/pi-web-*`
  * packages (the `.js` import specifiers map to `.ts` via vitest's resolver).
  */
 export default defineConfig({
@@ -14,6 +14,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      "@blksails/pi-web-logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
+      "@blksails/pi-web-agent-kit": path.resolve(__dirname, "packages/agent-kit/src/index.ts"),
     },
   },
   test: {

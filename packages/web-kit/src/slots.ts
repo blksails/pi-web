@@ -24,4 +24,5 @@ export const SLOTS = {
   statusBar: "statusBar",
   artifactSurface: "artifactSurface",
   dialogLayer: "dialogLayer",
+  logs: "logs",
 } as const satisfies Record<string, SlotKey>;

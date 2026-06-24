@@ -12,6 +12,7 @@ import { SecretField } from "./fields/secret-field.js";
 import { EnumField } from "./fields/enum-field.js";
 import { RecordField } from "./fields/record-field.js";
 import { BooleanField } from "./fields/boolean-field.js";
+import { NumberField } from "./fields/number-field.js";
 import { StringListField } from "./fields/string-list-field.js";
 import { ObjectField } from "./fields/object-field.js";
 import { ObjectListField } from "./fields/object-list-field.js";
@@ -40,6 +41,7 @@ const DEFAULTS: Partial<
   enum: EnumField,
   record: RecordField,
   boolean: BooleanField,
+  number: NumberField,
   stringList: StringListField,
   object: ObjectField,
   objectList: ObjectListField,

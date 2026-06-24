@@ -23,7 +23,9 @@ export function EnumField({
   const id = React.useId();
   const error = errorAt(errors, path);
   const options = descriptor.enumOptions ?? [];
-  const current = typeof value === "string" ? value : undefined;
+  // value=undefined 时回显 descriptor.default（如有且为字符串）
+  const effective = value === undefined ? descriptor.default : value;
+  const current = typeof effective === "string" ? effective : undefined;
 
   return (
     <FieldShell descriptor={descriptor} htmlFor={id} error={error}>

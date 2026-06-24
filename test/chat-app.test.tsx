@@ -23,6 +23,7 @@ vi.mock("@blksails/pi-web-ui", () => ({
     piChatBasicSpy(props);
     return <div data-test-pi-chat-basic />;
   },
+  SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
 }));
 
 // Drive the assembly straight into the session-active branch: a session with a
@@ -45,6 +46,7 @@ vi.mock("@blksails/pi-web-react", () => ({
   usePiSession: () => fakeSession,
   usePiControls: () => fakeControls,
   useExtensionUI: () => fakeExtensionUI,
+  createPiClient: () => ({ listSessions: vi.fn() }),
 }));
 
 import { ChatApp } from "@/components/chat-app";

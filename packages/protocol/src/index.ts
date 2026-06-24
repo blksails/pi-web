@@ -34,3 +34,6 @@ export * from "./config/index.js";
 
 // web-ext 层(agent-web-extension UI 控制层契约:manifest / ui-rpc / descriptor / artifact)
 export * from "./web-ext/index.js";
+
+// logging 层(日志数据契约:LogLevelSchema / LogEntrySchema / parseLogLine)
+export * from "./logging/index.js";

@@ -13,6 +13,7 @@ import type {
   SessionStats,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
+import type { LogEntry } from "@blksails/pi-web-logger";
 
 /** steering / followUp 队列快照(来自 queue control 帧)。 */
 export interface QueueSnapshot {
@@ -103,6 +104,16 @@ export class ControlStore {
   private editorTextSeq = 0;
   /** ui-rpc 下行响应监听(use-ui-rpc 订阅,按 correlationId 配对)。 */
   private readonly uiRpcListeners = new Set<(r: UiRpcResponse) => void>();
+  /** control:"logs" 帧转发回调(由装配方注入,转交 logsStore.applyLogsFrame)。 */
+  private _onLogsFrame: ((entries: LogEntry[]) => void) | undefined;
+
+  /** 注册 control:"logs" 帧处理回调(由 logsStore 在装配时注入)。返回取消注册函数。 */
+  readonly onLogsFrame = (cb: (entries: LogEntry[]) => void): (() => void) => {
+    this._onLogsFrame = cb;
+    return () => {
+      if (this._onLogsFrame === cb) this._onLogsFrame = undefined;
+    };
+  };
 
   /** 订阅 ui-rpc 下行响应。返回取消订阅函数。 */
   readonly onUiRpcResponse = (cb: (r: UiRpcResponse) => void): (() => void) => {
@@ -157,6 +168,12 @@ export class ControlStore {
       case "ui-rpc":
         // Tier3 下行响应:不入快照,直接派发给 use-ui-rpc 监听(按 correlationId 配对)。
         for (const cb of this.uiRpcListeners) cb(payload.response);
+        break;
+      case "logs":
+        // 实时 Node 日志帧:转发给注入的 logsStore 回调,不进 ControlSnapshot。
+        if (this._onLogsFrame !== undefined) {
+          this._onLogsFrame(payload.entries as LogEntry[]);
+        }
         break;
       default: {
         const _exhaustive: never = payload;

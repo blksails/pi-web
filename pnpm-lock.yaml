@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^2.0.0
         version: 2.0.206(react@19.2.7)(zod@3.25.76)
+      '@blksails/pi-web-kit':
+        specifier: workspace:*
+        version: link:packages/web-kit
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:packages/protocol
@@ -23,9 +26,6 @@ importers:
       '@blksails/pi-web-ui':
         specifier: workspace:*
         version: link:packages/ui
-      '@blksails/pi-web-kit':
-        specifier: workspace:*
-        version: link:packages/web-kit
       ai:
         specifier: ^5.0.0
         version: 5.0.204(zod@3.25.76)
@@ -78,6 +78,9 @@ importers:
 
   packages/agent-kit:
     dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -92,8 +95,20 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@25.9.3)(jsdom@25.0.1)
 
+  packages/logger:
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@25.9.3)(jsdom@25.0.1)
+
   packages/protocol:
     dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -104,12 +119,15 @@ importers:
 
   packages/react:
     dependencies:
-      '@blksails/pi-web-protocol':
-        specifier: workspace:*
-        version: link:../protocol
       '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:../web-kit
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
     devDependencies:
       '@ai-sdk/react':
         specifier: ^2.0.0
@@ -147,6 +165,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -209,15 +230,18 @@ importers:
 
   packages/ui:
     dependencies:
+      '@blksails/pi-web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
       '@blksails/pi-web-react':
         specifier: workspace:*
         version: link:../react
-      '@blksails/pi-web-kit':
-        specifier: workspace:*
-        version: link:../web-kit
       '@radix-ui/react-dialog':
         specifier: ^1.1.0
         version: 1.1.17(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -309,6 +333,9 @@ importers:
 
   packages/web-kit:
     dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol

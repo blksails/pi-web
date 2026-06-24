@@ -21,6 +21,62 @@ import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { ChatReasoning } from "./chat-reasoning.js";
+import { LoggingConfigLoader } from "./logging-config-loader.js";
+
+type LogsPanelConfig = {
+  readonly panelVisible: boolean;
+  readonly panelPosition: "bottom" | "right" | "drawer";
+};
+
+/**
+ * useLogsPanelConfig — fetches logging.outputs.panelVisible and
+ * logging.outputs.panelPosition from the config API in a single request.
+ *
+ * Returns safe defaults until the config loads. Silently falls back to
+ * defaults on any error so a broken config endpoint never hides the log panel
+ * when the user expects it (Req 6.6).
+ */
+function useLogsPanelConfig(): LogsPanelConfig {
+  const [config, setConfig] = React.useState<LogsPanelConfig>({
+    panelVisible: true,
+    panelPosition: "bottom",
+  });
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/config/logging", { method: "GET" });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          values?: {
+            outputs?: {
+              panelVisible?: boolean;
+              panelPosition?: "bottom" | "right" | "drawer";
+            };
+          };
+        };
+        const outputs = json.values?.outputs;
+        setConfig((prev) => {
+          const panelVisible =
+            typeof outputs?.panelVisible === "boolean"
+              ? outputs.panelVisible
+              : prev.panelVisible;
+          const panelPosition =
+            outputs?.panelPosition === "bottom" ||
+            outputs?.panelPosition === "right" ||
+            outputs?.panelPosition === "drawer"
+              ? outputs.panelPosition
+              : prev.panelPosition;
+          return { panelVisible, panelPosition };
+        });
+      } catch {
+        // Silent fallback: keep safe defaults.
+      }
+    })();
+  }, []);
+
+  return config;
+}
 
 /**
  * 细粒度组件覆盖:用 AI Elements 风格的 Reasoning(流式自动展开 + "Thought for Ns")
@@ -173,6 +229,9 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
+  // Logging panel config (Req 6.6 + 6.1/6.2): defaults until config loads.
+  const logsPanelConfig = useLogsPanelConfig();
+
   // Resume mode (resumeId) or CLI autostart (source already determined): enter
   // SessionView immediately and skip the picker.
   const [session, setSession] = React.useState<ActiveSession | undefined>(
@@ -216,6 +275,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
 
   return (
     <PiProvider baseUrl="/api">
+      {/* 日志配置加载器：mount 时拉取 /api/config/logging → configureLogger（Req 6.4/6.5/6.6）*/}
+      <LoggingConfigLoader />
       {session === undefined ? (
         <AgentSourcePicker
           onSubmit={onSubmit}
@@ -230,6 +291,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
             : {})}
           onReset={onReset}
           onNewByAgentSource={onNewByAgentSource}
+          logsPanelVisible={logsPanelConfig.panelVisible}
+          logsPanelPosition={logsPanelConfig.panelPosition}
         />
       )}
     </PiProvider>
@@ -241,11 +304,17 @@ function SessionView({
   resumeId,
   onReset,
   onNewByAgentSource,
+  logsPanelVisible,
+  logsPanelPosition,
 }: {
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
   readonly onReset: () => void;
   readonly onNewByAgentSource: () => void;
+  /** Controls LogsPanel visibility per logging config (Req 6.6). */
+  readonly logsPanelVisible?: boolean;
+  /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
+  readonly logsPanelPosition?: "bottom" | "right" | "drawer";
 }): React.JSX.Element {
   const session: UsePiSessionResult = usePiSession({
     create,
@@ -423,6 +492,9 @@ function SessionView({
           extensionCommands={EXTENSION_COMMAND_POLICY}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
+          showLogs={true}
+          logsPanelVisible={logsPanelVisible ?? true}
+          logsPanelPosition={logsPanelPosition ?? "bottom"}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }

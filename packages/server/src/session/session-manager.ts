@@ -17,6 +17,7 @@ import type {
   CreateSessionInput,
   SessionId,
 } from "./session.types.js";
+import type { LoggingConfig } from "@blksails/pi-web-protocol";
 
 export interface SessionManagerOptions {
   /** 注入存储实现;缺省为 InMemorySessionStore(Req 9.6)。 */
@@ -25,18 +26,25 @@ export interface SessionManagerOptions {
   readonly idleMs?: number;
   /** sessionId 生成器(测试可注入确定性实现)。 */
   readonly idFactory?: () => SessionId;
+  /**
+   * 服务端权威日志门控配置提供器（Req 6.4/6.5/6.6 / task 4.4）。
+   * 每次 createSession 时透传给 PiSession；省略时 PiSession 使用安全默认（全开）。
+   */
+  readonly loggingConfigProvider?: () => Promise<LoggingConfig>;
 }
 
 export class SessionManager {
   private readonly store: SessionStore;
   private readonly idleMs: number | undefined;
   private readonly idFactory: () => SessionId;
+  private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
   private acceptingNew = true;
 
   constructor(opts: SessionManagerOptions = {}) {
     this.store = opts.store ?? new InMemorySessionStore();
     this.idleMs = opts.idleMs;
     this.idFactory = opts.idFactory ?? (() => randomUUID());
+    this.loggingConfigProvider = opts.loggingConfigProvider;
   }
 
   /** 暴露存储(供上层经接口检索/列出)。 */
@@ -72,6 +80,10 @@ export class SessionManager {
       resolved: input.resolved,
       channel: input.channel,
       ...(idleMs !== undefined ? { idleMs } : {}),
+      // 日志门控:从 manager 透传 provider（Req 6.4/6.5/6.6 / task 4.4）。
+      ...(this.loggingConfigProvider !== undefined
+        ? { loggingConfigProvider: this.loggingConfigProvider }
+        : {}),
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
       onClosed: (id) => {
         this.store.delete(id);

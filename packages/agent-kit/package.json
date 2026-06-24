@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*"
   },
   "peerDependencies": {

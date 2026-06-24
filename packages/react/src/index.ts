@@ -103,6 +103,21 @@ export {
   type SuggestionMerge,
 } from "./hooks/use-suggestions.js";
 
+// logging: logsStore + use-logs hook (task 2.4)
+export {
+  createLogsStore,
+  type LogsStore,
+  type LogFilters,
+  type LogsSnapshot,
+} from "./logging/logs-store.js";
+export {
+  useLogs,
+  type UseLogsOptions,
+  type UseLogsResult,
+  type HistoryQuery,
+  type LogHistoryFetcher,
+} from "./hooks/use-logs.js";
+
 // web-ext(agent-web-extension):宿主侧加载器 + 安全门 + UI↔agent RPC client
 export {
   verifyExtension,
