@@ -244,6 +244,7 @@ export function PiChat({
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
+  logsPanelPosition = "bottom",
   attachmentBaseUrl,
   uploadAttachment,
   className,
@@ -357,6 +358,9 @@ export function PiChat({
   }, []);
   const [commandCapturing, setCommandCapturing] =
     React.useState<boolean>(false);
+
+  // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
+  const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
 
   const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
   const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
@@ -568,7 +572,9 @@ export function PiChat({
   const panelRatioActive = hasPanelRight;
   // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
-  const showAside = showPanelRight || hasArtifactAside;
+  // 日志 right 位置：showLogs && logsPanelVisible && position="right" 时 aside 也需打开。
+  const showLogsRight = showLogs && logsPanelVisible && logsPanelPosition === "right";
+  const showAside = showPanelRight || hasArtifactAside || showLogsRight;
   const asideWidth = panelRatioActive
     ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
     : undefined;
@@ -947,13 +953,37 @@ export function PiChat({
               <PiSessionStats controls={controls} />
             </div>
           ) : null}
-          {showLogs && logsPanelVisible ? (
+          {/* bottom 位置（默认）：dock 下方渲染日志面板 */}
+          {showLogs && logsPanelVisible && logsPanelPosition === "bottom" ? (
             <div
               data-pi-logs-region
               className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
             >
               <LogsPanel logsResult={logsResult} />
             </div>
+          ) : null}
+          {/* drawer 位置：toggle 按钮（showLogs && logsPanelVisible 门控）+ 底部抽屉覆盖层 */}
+          {showLogs && logsPanelVisible && logsPanelPosition === "drawer" ? (
+            <>
+              <button
+                type="button"
+                data-pi-logs-drawer-toggle
+                aria-label={drawerOpen ? "收起日志抽屉" : "展开日志抽屉"}
+                aria-expanded={drawerOpen}
+                onClick={() => setDrawerOpen((v) => !v)}
+                className="mt-1.5 text-xs px-2.5 py-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-md text-[hsl(var(--foreground))] opacity-70 hover:opacity-100 transition-opacity"
+              >
+                日志
+              </button>
+              {drawerOpen ? (
+                <div
+                  data-pi-logs-region
+                  className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
+                >
+                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
@@ -1069,6 +1099,15 @@ export function PiChat({
         >
           {showPanelRight ? (
             <SlotHost ext={extension} slot="panelRight" />
+          ) : null}
+          {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）*/}
+          {showLogsRight ? (
+            <div
+              data-pi-logs-region
+              className="p-2 overflow-y-auto"
+            >
+              <LogsPanel logsResult={logsResult} />
+            </div>
           ) : null}
           {extension?.artifact !== undefined && extensionBaseUrl !== undefined ? (
             <ArtifactSurface

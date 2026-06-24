@@ -217,7 +217,7 @@
   - _Requirements: 6.1, 6.2_
   - _Boundary: protocol config, app chat_
 
-- [ ] 8.2 PiChat 按位置渲染 LogsPanel（bottom/right/drawer）
+- [x] 8.2 PiChat 按位置渲染 LogsPanel（bottom/right/drawer）
   - PiChat 新增 logsPanelPosition prop，按值渲染：bottom=现状(输入框下)、right=右侧 aside(与 panelRight/artifact 区共存)、drawer=顶栏「日志」按钮 + 底部抽屉(开合状态)。panelVisible 仍门控显隐；保留 data-pi-logs-region 选择器（各位置容器都带）。
   - 完成态：切换 position 配置→面板出现在对应位置；drawer 默认收起、点按钮展开；既有 e2e/单测不破坏（默认 bottom）。
   - _Requirements: 5.1, 6.6_
