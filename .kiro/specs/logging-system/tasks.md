@@ -224,7 +224,7 @@
   - _Boundary: ui chat_
   - _Depends: 8.1_
 
-- [ ] 8.3 接通 logs webext slot + demo
+- [x] 8.3 接通 logs webext slot + demo
   - 在日志区渲染 ExtSlotRegion slot="logs"，webext slots.logs 贡献与内核 LogsPanel 并存、随 panelPosition 位置显示；给 logging-demo-agent 的 .pi/web 加一个 slots.logs demo（如一行自定义日志摘要）验证。
   - 完成态：填充 slots.logs 的 webext 其内容出现在日志区；不破坏内核面板。
   - _Requirements: 5.1_

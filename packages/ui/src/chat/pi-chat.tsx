@@ -955,12 +955,16 @@ export function PiChat({
           ) : null}
           {/* bottom 位置（默认）：dock 下方渲染日志面板 */}
           {showLogs && logsPanelVisible && logsPanelPosition === "bottom" ? (
-            <div
-              data-pi-logs-region
-              className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
-            >
-              <LogsPanel logsResult={logsResult} />
-            </div>
+            <>
+              <div
+                data-pi-logs-region
+                className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+              >
+                <LogsPanel logsResult={logsResult} />
+              </div>
+              {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
+              <ExtSlotRegion ext={extension} slot="logs" />
+            </>
           ) : null}
           {/* drawer 位置：toggle 按钮（showLogs && logsPanelVisible 门控）+ 底部抽屉覆盖层 */}
           {showLogs && logsPanelVisible && logsPanelPosition === "drawer" ? (
@@ -981,6 +985,8 @@ export function PiChat({
                   className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
                 >
                   <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+                  {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
+                  <ExtSlotRegion ext={extension} slot="logs" />
                 </div>
               ) : null}
             </>
@@ -1107,6 +1113,8 @@ export function PiChat({
               className="p-2 overflow-y-auto"
             >
               <LogsPanel logsResult={logsResult} />
+              {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
+              <ExtSlotRegion ext={extension} slot="logs" />
             </div>
           ) : null}
           {extension?.artifact !== undefined && extensionBaseUrl !== undefined ? (

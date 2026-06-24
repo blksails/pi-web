@@ -32,6 +32,23 @@ function LoggingDemoHeader(): React.JSX.Element {
   );
 }
 
+function LoggingDemoLogsSlot(): React.JSX.Element {
+  return (
+    <div
+      data-testid="logging-demo-logs-slot"
+      style={{
+        fontSize: 11,
+        opacity: 0.8,
+        padding: "4px 8px",
+        borderTop: "1px solid currentColor",
+        marginTop: 4,
+      }}
+    >
+      📋 logging-demo webext logs slot
+    </div>
+  );
+}
+
 export default defineWebExtension({
   manifestId: "logging-demo",
   capabilities: ["slots", "config"],
@@ -40,5 +57,6 @@ export default defineWebExtension({
   },
   slots: {
     headerCenter: <LoggingDemoHeader />,
+    logs: <LoggingDemoLogsSlot />,
   },
 });

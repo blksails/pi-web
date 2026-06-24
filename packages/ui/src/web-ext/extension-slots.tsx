@@ -24,6 +24,7 @@ const RESERVED_SLOT_DATA_ATTR: Partial<Record<SlotKey, string>> = {
   artifactSurface: "data-pi-ext-artifact-surface",
   promptInput: "data-pi-ext-prompt-input",
   dialogLayer: "data-pi-ext-dialog-layer",
+  logs: "data-pi-ext-logs",
 };
 
 export interface ExtSlotRegionProps {
