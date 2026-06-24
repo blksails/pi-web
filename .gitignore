@@ -14,6 +14,9 @@ tsconfig.tsbuildinfo
 next-env.d.ts
 .kiro/*.png
 
+# webext 视觉验收证据(大量截图,本地保留,不入库)
+.kiro/specs/agent-web-extension-visual-acceptance/evidence/
+
 .claude/
 !.claude/skills/
 
