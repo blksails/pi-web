@@ -277,15 +277,58 @@ export function createMyImageTool(ctx: AttachmentToolContext) {
 
 ---
 
-## 9. @ 引用补全
+## 9. 触发符补全框架 / @ 引附件
 
-`attachment-mention-completion` spec 在补全框架中注册了一个 attachment provider（工厂 `createAttachmentProvider(store)`，id `"attachment"`、触发符 `@`、kind `attachment`）：
+附件落库后，用户还需要一种轻量方式在输入框里**引用**它们——不必每次重新上传或手抄 `att_<id>`。pi-web 为此提供了一套通用的**触发符补全框架**（spec `completion-provider-framework`），附件引用（spec `attachment-mention-completion`）是它之上的第一个内置 provider，与内置的 `@file` 文件引用并存于同一个 `@` 触发符下。
 
-- `complete`:触发符 `@` → `store.listBySession(ctx.sessionId)` 列举本会话已有附件，按附件名子序列模糊匹配，映射为候选。
-- token 形态:`@attachment:<id>`（由 `serializeToken({ trigger: "@", kind: "attachment", id })` 产出）。
-- `resolve`:仅当 `head(id)` 命中且 `att.sessionId === ctx.sessionId` 时复用 `buildAttachmentRefs([att])` 产出与上传/剥离路径完全一致的规范引用标记;否则返回 `null`（框架保留原文降级，杜绝跨会话枚举）。框架级解析入口为 `resolveCompletions`（`packages/server/src/completion/resolve.ts`）。
+### 9.1 框架是什么
 
-Provider 源文件:`packages/server/src/completion/providers/attachment-provider.ts`。
+补全框架把"输入触发符 → 拉候选 → 选中插入 token → 提交期解析为上下文文本"抽象成一组可插拔的 **CompletionProvider**。一个 provider 对应一种触发符语义；多触发符能力靠注册多个 provider 达成，而非单 provider 声明数组。
+
+| 概念 | 位置 | 职责 |
+|------|------|------|
+| `CompletionProvider` 契约 | `packages/server/src/completion/types.ts:36` | `id` / 单字符 `trigger` / `kind` / `priority` / `extract`（token 提取规则）+ `complete()` + 可选 `resolve()` |
+| `CompletionRegistry` | `packages/server/src/completion/registry.ts:86` | 注册（校验单字符触发符、同 id 覆盖告警）、活跃触发符并集、按归一化触发符并发分发 `complete`（per-provider 超时降级）、合并去重、按 `kind` 反查 provider 供 `resolve` |
+| `resolveCompletions()` | `packages/server/src/completion/resolve.ts:13` | 提交期扫描消息中的 token，按 `kind` 分发 `resolve`，把 token 替换为上下文文本；无 provider / 无 resolve / 抛错 / 返回 `null` → 保留原 token，绝不阻断发送 |
+| 线协议 DTO | `packages/protocol/src/transport/completion-dto.ts` | `CompletionItem` / `CompletionResponse` / `CompletionTriggersResponse`（含函数的 provider 契约是服务端内部类型，不进协议层） |
+
+provider 在 `createHandler` 装配期注册（`packages/server/src/http/create-handler.ts:79`）：内置 `createFileProvider()` 始终注册，附件存储就绪时再注册 `createAttachmentProvider(lister)`，宿主还可经 `opts.completionProviders` 追加自定义 provider。
+
+### 9.2 HTTP 端点
+
+补全走两个会话级只读端点（`packages/server/src/http/routes/completion-routes.ts`），均经 `requireSession` 复用会话门控（不存在/越权 → 404，镜像 query 路由）：
+
+```
+GET /sessions/:id/completion/triggers          → { triggers: [{ trigger, extract }] }
+GET /sessions/:id/completion?trigger=@&q=<查询>  → { items, groups }
+```
+
+- `/triggers` 返回所有已注册 provider 的触发符并集 + 提取规则，前端据此决定哪些字符要触发补全弹层。
+- `/completion` 按归一化触发符分发到匹配 provider，并发拉候选后合并、去重、限量（默认上限 30、单 provider 超时 800 ms 降级），返回候选 + 按 `kind` 的分组摘要。
+- `CompletionCtx`（`sessionId` / `cwd` / `userId`）由服务端从会话 + 鉴权组装注入，**provider 不得自前端取**——这是会话隔离的根。
+
+### 9.3 内置 file provider 与 realpath 安全门
+
+`createFileProvider()`（`packages/server/src/completion/providers/file-provider.ts`）让用户用 `@` 引当前会话 `cwd` 下的工作区文件：
+
+- `complete`:遍历 `ctx.cwd`（尊重 `.gitignore`、跳过 `.git`/`node_modules`/`dist` 等重目录、遍历上限 + TTL 缓存、不跟随符号链接），按查询模糊评分排序限量，产出 `@file:<相对路径>` 候选。
+- `resolve`（提交期）:把 `@file:<rel>` 规约为 LLM 友好的 `@<rel>`（v1 不读文件内容）。关键安全门——经 `fs.realpath` 把目标解析为真实路径，断言它落在 `cwd` 的 realpath 前缀内；`../` 越界、symlink 逃逸、目标不存在 → 返回 `null`，框架保留原文，杜绝把 `cwd` 之外的路径注入上下文（`file-provider.ts:257`）。
+
+### 9.4 @ 引附件全链路（complete → 候选 → resolve）
+
+`createAttachmentProvider(store)`（`packages/server/src/completion/providers/attachment-provider.ts`，id `"attachment"`、触发符 `@`、kind `attachment`）把已落库附件接到同一个 `@` 触发符：
+
+1. **complete**:用户敲 `@` → 框架命中触发符 → 调 provider。provider 以 `store.listBySession(ctx.sessionId)` 只列**本会话**附件（origin `upload` 与 `tool-output` 皆可），按附件名子序列模糊匹配，每个候选带 `label`（附件名）、`detail`（`mimeType · 人类可读大小`）。列举抛错/空会话 → 返回空数组，补全降级但不阻断 UI。
+2. **候选与 token**:选中候选插入 token `@attachment:<id>`（由 `serializeToken({ trigger: "@", kind: "attachment", id })` 产出）。它与 `@file:<rel>` 共享 `@` 触发符——同一弹层里 file 与 attachment 候选按 `kind` 分组并列。
+3. **resolve（提交期）**:发送时 `POST /sessions/:id/messages` 先经 `resolveCompletions` 解析 token（`packages/server/src/http/routes/command-routes.ts:104`）。attachment provider 的 `resolve` 仅当 `head(id)` 命中**且** `att.sessionId === ctx.sessionId` 时，复用 `buildAttachmentRefs([att])` 产出与上传注入/base64 剥离路径**完全一致**的规范引用标记 `[attachment id=… type=… name=…]`；否则返回 `null`，框架保留原 token——既防跨会话引用，也防经补全枚举他人附件。
+
+### 9.5 与附件系统的衔接
+
+`resolve` 出口刻意复用 §6 的 `buildAttachmentRefs()`：无论附件是经"先落库后引用"（§6.2 步骤 2 的 `injectAttachmentRefs`）还是经 `@` 补全引入，注入用户消息的文本标记形态**统一**，下游 `beforeToolCall` 属主校验、tool `execute` 内的 `ctx.resolve` 取句柄、跨轮回环（§6.2 步骤 8）全部沿用同一条链路，无需为补全单开分支。补全只是给附件系统多开了一个**用户侧引用入口**，没有引入新的物化或新的 id 来源——三条不变式（§1）原样成立。
+
+### 9.6 实践参考
+
+端到端可运行形态见 `examples/attachment-tool-agent`：上传图片落库后，在输入框敲 `@` 即可从弹层选中刚上传的附件，选中插入 `@attachment:<id>`，发送时被解析为规范引用标记交给 `edit_image` 工具消费（与 §8「跑通这个示例」同一 agent 源，浏览器 e2e 覆盖整链路）。补全框架本身的契约与端点行为，另见 [09 扩展与 Skills](./09-extensions-and-skills.md) 中触发符补全框架的扩展点说明。
 
 ---
 
@@ -307,7 +350,7 @@ Provider 源文件:`packages/server/src/completion/providers/attachment-provider
 ## 下一步 / 相关
 
 - AIGC 图像工具如何调用附件系统 → [11 AIGC 工具](./11-aigc-tools.md)
-- @ 触发符补全框架 → [09 扩展与 Skills](./09-extensions-and-skills.md)
+- 触发符补全框架 / @ 引附件 → 本文 [§9](#9-触发符补全框架--引附件)；扩展点另见 [09 扩展与 Skills](./09-extensions-and-skills.md)
 - HTTP API 完整端点列表（含 `/attachments`） → [13 HTTP API 参考](./13-http-api-reference.md)
 - 系统整体架构与进程边界 → [03 架构](./03-architecture.md)
 - 部署时的环境变量配置 → [15 部署](./15-deployment.md)

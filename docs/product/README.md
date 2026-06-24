@@ -10,6 +10,8 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 
 **最快上手**：仓库根 `pnpm install && pnpm dev`，浏览器开 http://localhost:3000，在 agent source 选择器里填入 `examples/hello-agent` 的绝对路径即可进会话。完整步骤见 [01 快速开始](./01-quickstart.md)。
 
+> 想找一个能直接跑的例子上手？仓库 `examples/` 提供了**按能力分类的可跑示例索引** → [examples 总索引](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
+
 ## 文档地图
 
 按角色选择阅读路径：
@@ -17,8 +19,8 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 我是… | 推荐顺序 |
 | --- | --- |
 | **第一次接触（评估/试用）** | [00 产品概述](./00-product-overview.md) → [01 快速开始](./01-quickstart.md) → [02 核心概念](./02-core-concepts.md) |
-| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [07 自定义 Agent 开发](./07-agent-development.md) → [08 附件系统](./08-attachment-system.md) → [10 Web UI 扩展](./10-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-tools.md) |
-| **集成方**（把 pi-web 嵌进自己的栈） | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [13 HTTP/SSE API 参考](./13-http-api-reference.md) → [12 配置 UI](./12-config-ui.md) |
+| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [07 自定义 Agent 开发](./07-agent-development.md) → [08 附件系统](./08-attachment-system.md) → [21 会话列表](./21-sessions-list.md) → [10 Web UI 扩展](./10-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-tools.md) |
+| **集成方**（把 pi-web 嵌进自己的栈） | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [13 HTTP/SSE API 参考](./13-http-api-reference.md) → [21 会话列表](./21-sessions-list.md) → [12 配置 UI](./12-config-ui.md) |
 | **运维 / 部署** | [05 配置参考](./05-configuration.md) → [14 CLI](./14-cli.md) → [15 部署与运维](./15-deployment.md) → [16 日志系统](./16-logging.md) |
 | **贡献者** | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [17 开发规范与测试](./17-development-and-testing.md) → [19 路线图](./19-roadmap.md) |
 
@@ -47,6 +49,7 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 18 | [故障排查 / FAQ](./18-troubleshooting-faq.md) | 常见报错与对策 |
 | 19 | [路线图](./19-roadmap.md) | 能力矩阵与规划 |
 | 20 | [术语表](./20-glossary.md) | 关键术语定义 |
+| 21 | [会话列表](./21-sessions-list.md) | 浏览历史会话并一键恢复 |
 
 ## 约定
 

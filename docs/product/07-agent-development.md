@@ -2,6 +2,8 @@
 
 本章说明如何从零编写一个可被 pi-web runner 载入的自定义 agent，覆盖入口契约、工具定义、模型继承、examples 目录索引和开发期热重载。
 
+> **边学边跑**：本章每个关键概念都配有一个可运行示例，散落在仓库 `examples/` 下。推荐学习路径（从易到难）：`minimal-agent` → `hello-agent` → `builtin-tools-agent` → `file-session-agent` → `server-driven-ui-agent` → `system-status-agent` → `ui-demo-agent`。各示例定位与跑法总索引见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)，章末「示例索引（学习路径）」小节也有速查表。
+
 ---
 
 ## 核心概念
@@ -26,7 +28,7 @@ Runner bootstrap（`packages/server/runner-bootstrap.mjs`）通过 jiti 载入 `
 
 - **`defineAgent(def)`** — 恒等函数，仅用于编译期类型推断，运行时原样返回入参。不用此包写出的等价 `AgentDefinition` 对象同样能被 runner 载入。
 - **`defineMinimalAgent(overrides?)`** — 在 `minimalAgentPreset`（`noTools: "all"` + 空 skills + `allowExtensions: []`）之上浅合并作者覆盖，一行得到零能力基线。
-- **`emitUi(onUpdate, spec)`** — 在工具 `execute` 内发出 `UiSpec`，触发 server-driven UI 渲染。
+- **`emitUi(onUpdate, spec)`** — 在工具 `execute` 内发出 `UiSpec`，触发 server-driven UI 渲染（对应实践见 `examples/server-driven-ui-agent`：内置白名单组件 + 沙箱节点树两条信任路径；与 ambient 状态/通知组合的形态见 `examples/system-status-agent`）。
 - 类型导出：`AgentDefinition`、`AgentContext`、`AgentModel`、`ToolDefinition`、`AttachmentToolContext` 等（均为纯类型，无值依赖）。
 
 ```ts
@@ -48,6 +50,8 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 | `tools` | `string[]` | 内置/扩展工具名许可名单 |
 | `excludeTools` | `string[]` | 工具排除名单（在 `tools` 之后应用） |
 | `noTools` | `"all" \| "builtin"` | `"builtin"` 关闭内置工具集（保留 custom/extension）；`"all"` 全关 |
+
+> 三种工具姿态各有一个可跑示例对照：`noTools: "all"`（零能力基线）见 `examples/minimal-agent`；`noTools: "builtin"`（仅留自定义工具）见 `examples/hello-agent`；用 `tools` allowlist 显式启用 pi 内置文件系统/shell 工具集见 `examples/builtin-tools-agent`。
 | `extensions` | `Array<string \| ExtensionFactory>` | 追加加载的扩展（路径或工厂） |
 | `allowExtensions` | `string[] \| undefined` | 系统扩展许可名单；`[]` = 关闭所有磁盘发现的系统扩展 |
 | `skills` | `SkillsOverride \| undefined` | 覆盖 hook，接收已发现的 skill 集并返回过滤后的集合 |
@@ -61,7 +65,7 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 
 ### hello-agent（推荐入门参考）
 
-来源：`examples/hello-agent/index.ts`
+来源：`examples/hello-agent/index.ts`（同时是集成 / e2e 的目标 agent）
 
 ```ts
 import { defineAgent } from "@blksails/pi-web-agent-kit";
@@ -139,7 +143,7 @@ export default async function (ctx: AgentContext) {
 
 ## examples/ 目录索引
 
-仓库路径：`examples/`
+仓库路径：`examples/`（总索引与各示例跑法见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)）
 
 | 子目录 | 一句话说明 |
 |--------|-----------|
@@ -159,7 +163,23 @@ export default async function (ctx: AgentContext) {
 | `webext-declarative-agent` | Tier 5 纯声明示例：`.pi/web/manifest.json` 内联 theme token + layout，零代码 UI 扩展 |
 | `webext-layout-agent` | Tier 1 区域插槽示例：填充 `panelRight` 与 `headerCenter` 区域 |
 | `webext-renderer-agent` | Tier 2 渲染器示例：注册自定义 `data-metric` data-part 渲染器 + `echo` 工具 |
-| `webext-slots-agent` | 验收 fixture：声明全部 18 个协议保留插槽（`SlotKeySchema`），验证宿主已为各插槽接线 `SlotHost` |
+| `webext-slots-agent` | 验收 fixture：声明 18 个区域插槽（协议 `SlotKeySchema` 共 19 槽，fixture 暂未含 `logs`），验证宿主已为各插槽接线 `SlotHost` |
+
+### 学习路径（从易到难）
+
+下表把上面"自定义 agent 开发"涉及的核心概念串成一条由浅入深的实践路线，逐个对应一个可跑示例。建议按顺序跑通：
+
+| 顺序 | 示例 | 你将学到的概念 | 对应本章小节 |
+|------|------|---------------|-------------|
+| 1 | `examples/minimal-agent` | `defineMinimalAgent` preset / `noTools: "all"` 零能力基线 | 核心概念、最小基线 |
+| 2 | `examples/hello-agent` | 自定义 `defineTool` + `systemPrompt`，`noTools: "builtin"`（e2e 目标） | hello-agent 范例 |
+| 3 | `examples/builtin-tools-agent` | 用 `tools` allowlist 启用 pi 内置文件系统/shell 工具集 | `noTools` / `tools` 字段 |
+| 4 | `examples/file-session-agent` | 会话存储是**运行时**配置，不在 `AgentDefinition` 中 | `AgentDefinition` 字段速查 |
+| 5 | `examples/server-driven-ui-agent` | `emitUi(onUpdate, spec)` 发 `data-pi-ui`，前端零配置渲染 | `emitUi` |
+| 6 | `examples/system-status-agent` | server-driven UI + ambient 状态/通知组合（`ctx.ui.setStatus/notify`） | `emitUi` |
+| 7 | `examples/ui-demo-agent` | extension UI 交互 surface：`ctx.ui.select/confirm/input` | — |
+
+> 上表是「自定义 agent 开发」主线的推荐顺序；`aigc-agent`、`attachment-tool-agent`、`pi-probe-agent` 与 `webext-*` 系列属于专题方向，分别详见 [11 · AIGC 工具](11-aigc-tools.md)、[08 · 附件系统](08-attachment-system.md)、[09 · 扩展与 Skills](09-extensions-and-skills.md) 与 [10 · Web UI 扩展](10-web-ui-extension.md)。完整清单与各自跑法见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
 
 ---
 
@@ -229,7 +249,7 @@ pi-web 后端进程
 
 ## 开发步骤
 
-从空目录到跑通一个自定义 agent，端到端如下。每步都给出预期结果，便于独立验证。
+从空目录到跑通一个自定义 agent，端到端如下。每步都给出预期结果，便于独立验证。若想直接照着可跑的最小工程起步，先看 `examples/minimal-agent`（零能力基线）或 `examples/hello-agent`（带一个自定义工具）。
 
 1. **创建 agent 目录**，在其中新建 `index.ts`：
 
