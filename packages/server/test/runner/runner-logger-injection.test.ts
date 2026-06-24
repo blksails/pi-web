@@ -39,6 +39,8 @@ describe("AgentContext shape (task 3.3)", () => {
 
 // ── Namespace derivation from agent path ─────────────────────────────────────
 
+import { deriveAgentNamespace } from "../../src/runner/runner.js";
+
 describe("runner logger namespace derivation (task 3.3)", () => {
   it("derives namespace from agent basename (no extension)", () => {
     const args = parseRunnerArgs(["--agent", "/path/to/my-agent.ts"]);
@@ -77,6 +79,42 @@ describe("runner logger namespace derivation (task 3.3)", () => {
         ?.replace(/\.[^.]+$/, "") ?? "agent";
     const ns = `agent:${agentBasename || "agent"}`;
     expect(ns).toBe("agent:agent");
+  });
+});
+
+// ── deriveAgentNamespace pure function (task 7.1) ────────────────────────────
+
+describe("deriveAgentNamespace (task 7.1)", () => {
+  it("uses basename when it is not a generic entry name", () => {
+    expect(deriveAgentNamespace("/path/to/my-agent.ts")).toBe("agent:my-agent");
+  });
+
+  it("falls back to parent dir name when basename is 'index'", () => {
+    expect(deriveAgentNamespace("./examples/logging-demo-agent/index.ts")).toBe(
+      "agent:logging-demo-agent",
+    );
+  });
+
+  it("falls back to parent dir name when basename is 'main'", () => {
+    expect(deriveAgentNamespace("/some/cool-agent/main.js")).toBe("agent:cool-agent");
+  });
+
+  it("uses non-generic basename even inside a directory", () => {
+    expect(deriveAgentNamespace("/agents/my-agent/agent.ts")).toBe("agent:agent");
+  });
+
+  it("falls back to 'agent' when everything is empty (bare 'index.ts')", () => {
+    // bare filename with generic name, no parent dir
+    expect(deriveAgentNamespace("index.ts")).toBe("agent:agent");
+  });
+
+  it("uses directory name for trailing-slash pathological input", () => {
+    // /dir/ has no file component; the last non-empty segment is 'dir'.
+    expect(deriveAgentNamespace("/dir/")).toBe("agent:dir");
+  });
+
+  it("handles Windows-style backslash paths for 'index'", () => {
+    expect(deriveAgentNamespace("C:\\agents\\my-bot\\index.ts")).toBe("agent:my-bot");
   });
 });
 
