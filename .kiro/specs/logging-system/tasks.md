@@ -168,3 +168,21 @@
 - 任务 2.1 给 SSE ControlPayload 加了 `control:"logs"` 分支，导致 react `packages/react/src/sse/control-store.ts` 的 `applyControlFrame` switch 未处理该分支而 typecheck 报 TS2322（收窄到 never）。**任务 3.2 必须在 applyControlFrame 增加 `case "logs"` 调 logsStore.applyLogsFrame 修复此错**。在 3.2 完成前，`pnpm -F @pi-web/react typecheck` 预期仅有 control-store.ts 这一个错误。
 - 既有失败（与本 spec 无关，勿误判）：`test/attachment-handler-assembly.test.ts` 2 个用例在 worktree 基线（main 4bef7c7）即失败——displayUrl 期望 `/attachments/.../raw?exp=&sig=` 实得 `/api/attachments/att_...`（attachment 签名 URL 格式，属其它 spec）。已用 stash 复跑确认 3.3 baseline 同样失败。logging-system 全部任务**未触碰** attachment 代码，最终验证应排除此既有失败。
 - 3.4 交付了 PiChat 的 showLogs/logsPanelVisible prop 契约 + logsStore/onLogsFrame 接线 + configureLogger，但 `components/chat-app.tsx` 尚未向 `<PiChat>` 传 `showLogs=true` 并把 `logging.outputs.panelVisible`→`logsPanelVisible`（边界推迟）。**任务 5.4/5.5（demo agent + e2e）落地时需在 chat-app 接入 showLogs 并映射 panelVisible**，否则运行 app 中面板不挂载、e2e 抓不到 data-pi-logs-region。
+
+## 6. UI 优化（Chrome 实测反馈）
+
+- [x] 6.1 LogsPanel 视觉重构 + 挂载
+  - 加面板标题栏("日志" + 条目计数 + 折叠/展开 toggle，折叠态只留标题条省空间)、容器边界(边框/背景区分于聊天区)、给合理默认高度的可滚动区；保留所有 data-* 选择器不破坏 e2e。
+  - 每行加时间戳列(entry.ts→HH:MM:SS.mmm)；级别用配色 chip(debug 灰/info 蓝或前景/warn 黄/error 红)而非仅行文字色。
+  - _Requirements: 5.1, 5.2, 5.6_
+  - _Boundary: ui logs, ui chat_
+
+- [x] 6.2 demo 日志消息去命名空间冗余
+  - examples/logging-demo-agent 的 webext(web.config.tsx)/agent(index.ts)/扩展(log-probe.ts) 日志消息文本不再以自身 ns 开头(ns 已由面板列显示)，消除重复。
+  - _Requirements: 5.2_
+  - _Boundary: examples/logging-demo-agent_
+
+- [x] 6.3 设置表单默认回显 + null 显示修复
+  - 配置字段渲染：number 字段值为 null/undefined 时显示空/占位符，不显示字面 "null"；缺配置时 bool/enum/number 字段回显 FieldDescriptor.default(schema 默认)而非空/未勾选。须不破坏既有 auth/settings/sandbox 域行为与既有 config e2e。
+  - _Requirements: 6.2, 6.6_
+  - _Boundary: ui config_

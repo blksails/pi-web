@@ -15,7 +15,9 @@ export function BooleanField({
 }: FieldProps): React.JSX.Element {
   const id = React.useId();
   const error = errorAt(errors, path);
-  const checked = value === true;
+  // value=undefined 时回显 descriptor.default（如有），否则视为 false
+  const effective = value === undefined ? descriptor.default : value;
+  const checked = effective === true;
   return (
     <FieldShell descriptor={descriptor} htmlFor={id} error={error}>
       <label className="flex items-center gap-2 text-sm">
