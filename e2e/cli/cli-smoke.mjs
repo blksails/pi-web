@@ -84,10 +84,11 @@ async function main() {
     browser = await chromium.launch();
     const page = await browser.newPage();
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
-    // 默认 source 已由 CLI 注入并预填 → 直接 Start session
-    await page.getByRole("button", { name: "Start session" }).click();
-    await page.waitForSelector("[data-pi-input-textarea]", { timeout: 15_000 });
-    check("默认 agent source 激活会话(Req 3.2)", /\/session\//.test(page.url()));
+    // CLI 固定注入 PI_WEB_AUTOSTART=1 + 默认 source(bin/pi-web.mjs)→ 前端跳过选源页,
+    // 直接用 defaultSource 建会话进入会话界面(见 docs/product/14-cli.md「直接进会话」)。
+    // 故此处不点「Start session」选源按钮(autostart 下不存在),直接等待会话输入框出现。
+    await page.waitForSelector("[data-pi-input-textarea]", { timeout: 20_000 });
+    check("默认 agent source 自动激活会话(autostart, Req 3.2)", /\/session\//.test(page.url()));
     await page.fill("[data-pi-input-textarea]", "CLI smoke test");
     await page.getByRole("button", { name: "发送" }).click();
     await page.waitForFunction(
