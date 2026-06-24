@@ -53,3 +53,7 @@ export {
 } from "./conversation-background.js";
 export { EmptyState, type EmptyStateProps } from "./empty-state.js";
 export { StarterCard, type StarterCardProps } from "./starter-card.js";
+export {
+  SessionListPanel,
+  type SessionListPanelProps,
+} from "./session-list-panel.js";

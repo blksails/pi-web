@@ -54,8 +54,11 @@ const nextConfig: NextConfig = {
   // Defaults to ".next" — unchanged behavior unless NEXT_DIST_DIR is set.
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // 自包含产物(spec pi-web-cli):产出 `<distDir>/standalone` 一份可脱离 monorepo
-  // 源码树运行的最小化 server。仅 build 期生效,不改 `next dev`/`next start` 行为。
-  output: "standalone",
+  // 源码树运行的最小化 server。注意:standalone 产物与 `next start` 不兼容(后者拒绝
+  // 服务 standalone build)。浏览器 e2e 须经 `next start` 起服,故经 PI_WEB_DISABLE_STANDALONE=1
+  // 关闭 standalone(默认仍产 standalone,CLI 打包行为不变)。
+  output:
+    process.env.PI_WEB_DISABLE_STANDALONE === "1" ? undefined : "standalone",
   // monorepo 追踪根:锚到 app 根(= workspace 根),确保 `packages/**` 与 pnpm 嵌套
   // 依赖被纳入文件追踪。与既有 `path.resolve("packages/...")` 一致,cwd=app 根。
   outputFileTracingRoot: path.resolve(),

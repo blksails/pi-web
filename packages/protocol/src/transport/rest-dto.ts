@@ -163,3 +163,53 @@ export const GetForkMessagesResponseSchema = z.object({
 export type GetForkMessagesResponse = z.infer<
   typeof GetForkMessagesResponseSchema
 >;
+
+/**
+ * GET /sessions 列表端点 —— 请求/响应/列表项契约(sessions-list)。
+ *
+ *   GET /sessions?scope=cwd|all&cwd=&limit=&cursor=  → ListSessionsResponse
+ *
+ * 仅基于会话头部轻量元数据(不读正文)。`scope=all`(系统/全机器视图)受部署门控,
+ * 默认关闭;关闭时端点拒绝该 scope。分页用不透明游标 `cursor`,按
+ * `updatedAt ?? createdAt` 倒序的 keyset 续取,保证不重复已返回会话。
+ */
+export const ListSessionsRequestSchema = z.object({
+  /** 视图范围:`cwd`(当前目录,默认)| `all`(系统全机器,受门控)。 */
+  scope: z.enum(["cwd", "all"]).optional(),
+  /** `scope=cwd` 的目标工作目录;缺省由服务端取默认 cwd。 */
+  cwd: z.string().optional(),
+  /**
+   * `scope=cwd` 时以该会话的持久化 cwd 作为目标目录(优先于 `cwd` 参数),用于
+   * 「当前会话所在目录」——前端无法可靠推断 agent 解析后的真实 cwd,故交由服务端
+   * 从会话头部解析;会话不存在时回退到 `cwd`/默认 cwd。
+   */
+  sessionId: z.string().optional(),
+  /** 单页上限;缺省由服务端取默认值并 clamp 到上限。 */
+  limit: z.number().int().positive().optional(),
+  /** 续取游标(不透明);缺省取首页。 */
+  cursor: z.string().optional(),
+});
+export type ListSessionsRequest = z.infer<typeof ListSessionsRequestSchema>;
+
+/** 列表项 —— 会话头部轻量元数据投影(无正文/无消息数)。 */
+export const SessionListItemSchema = z.object({
+  sessionId: z.string(),
+  name: z.string().optional(),
+  cwd: z.string(),
+  /** ISO 创建时间(来自 header.timestamp)。 */
+  createdAt: z.string(),
+  /** ISO 最近更新时间(可得则填;部分存储后端无此值)。 */
+  updatedAt: z.string().optional(),
+});
+export type SessionListItem = z.infer<typeof SessionListItemSchema>;
+
+export const ListSessionsResponseSchema = z.object({
+  sessions: z.array(SessionListItemSchema),
+  /** 缺省表示无更多页。 */
+  nextCursor: z.string().optional(),
+  /** 回显生效的视图范围。 */
+  scope: z.enum(["cwd", "all"]),
+  /** 系统(全机器)视图是否启用,供前端确认入口可用性。 */
+  globalEnabled: z.boolean(),
+});
+export type ListSessionsResponse = z.infer<typeof ListSessionsResponseSchema>;

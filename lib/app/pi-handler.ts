@@ -28,6 +28,7 @@ import {
   createSandboxProjectRoutes,
   createExtensionsConfigRoutes,
   createAttachmentRoutes,
+  createSessionListRoutes,
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
@@ -323,6 +324,17 @@ function buildSingleton(): HandlerSingleton {
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
       ...createExtensionsConfigRoutes({
         agentDir: config.agentDir,
+        defaultCwd: config.defaultCwd,
+      }),
+      // 会话列表(sessions-list):GET /sessions 只读列表端点。复用与冷恢复同一存储
+      // 配置来源(sessionStoreConfigFromEnv),保证读到同一后端。系统(全机器)视图经
+      // NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL 门控,默认关闭——关闭时 scope=all 返回 403、
+      // 不触达存储(同名 NEXT_PUBLIC_ 变量前端亦读取以隐藏「全部」Tab,两端一致)。
+      ...createSessionListRoutes({
+        storeConfig: sessionStoreConfigFromEnv(),
+        globalEnabled:
+          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
+          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
         defaultCwd: config.defaultCwd,
       }),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发

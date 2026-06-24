@@ -6,12 +6,15 @@ import {
   usePiSession,
   usePiControls,
   useExtensionUI,
+  createPiClient,
   type UsePiSessionResult,
 } from "@pi-web/react";
 import {
   PiChat,
+  SessionListPanel,
   type ExtensionCommandPolicy,
   type ComponentOverrides,
+  type PiChatSlots,
 } from "@pi-web/ui";
 import type { CreateSessionRequest } from "@pi-web/protocol";
 import { AgentSourcePicker } from "./agent-source-picker.js";
@@ -102,6 +105,47 @@ const EXTENSION_COMMAND_POLICY: ExtensionCommandPolicy = {
     .map((s) => s.trim())
     .filter((s) => s.length > 0),
 };
+
+/**
+ * 会话列表(sessions-list)宿主配置(client 端读 NEXT_PUBLIC_*,构建期内联):
+ *   NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true|1  → 显示「全部」(系统/全机器)Tab(默认关闭)
+ *   NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=sidebar|header|footer|empty → 展示位置(默认 sidebar)
+ * 与后端门控同名(NEXT_PUBLIC_ 变量两端可读),两端对系统视图是否启用保持一致。
+ * 模块级常量:引用稳定,避免每渲染新对象。
+ */
+const SESSIONS_GLOBAL_ENABLED =
+  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
+  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1";
+
+/** 允许的宿主插槽子集(PiChatSlots 中可承载块级面板的 key)。 */
+type SessionsSlotKey = "sidebar" | "header" | "footer" | "empty";
+const ALLOWED_SESSIONS_SLOTS: readonly SessionsSlotKey[] = [
+  "sidebar",
+  "header",
+  "footer",
+  "empty",
+];
+const SESSIONS_SLOT: SessionsSlotKey = ((): SessionsSlotKey => {
+  const v = process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT;
+  return v !== undefined && (ALLOWED_SESSIONS_SLOTS as readonly string[]).includes(v)
+    ? (v as SessionsSlotKey)
+    : "sidebar";
+})();
+
+/** 把会话列表面板放入选定的宿主插槽(类型安全;默认 sidebar)。 */
+function sessionListSlots(node: React.ReactNode): PiChatSlots {
+  switch (SESSIONS_SLOT) {
+    case "header":
+      return { header: node };
+    case "footer":
+      return { footer: node };
+    case "empty":
+      return { empty: node };
+    case "sidebar":
+    default:
+      return { sidebar: node };
+  }
+}
 
 /** 声明式 layout preset 白名单收窄(R27);返回类型绑定到 PiChat 的 layout prop。 */
 const LAYOUT_PRESETS: readonly string[] = ["centered", "wide", "full", "split"];
@@ -243,6 +287,31 @@ function SessionView({
     [create.source],
   );
 
+  // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
+  // 列表数据经 client.listSessions 注入(面板不持 pi 接线);恢复复用 /session/:id 成熟链路
+  // (冷恢复 + 历史回放 + source 反查),失败时由该路由的 SessionView 错误态提示。
+  const piClient = React.useMemo(() => createPiClient("/api"), []);
+  const onResumeSession = React.useCallback((id: string): void => {
+    if (typeof window !== "undefined") {
+      window.location.assign(`/session/${id}`);
+    }
+  }, []);
+  const sessionListSlot = React.useMemo<PiChatSlots>(
+    () =>
+      sessionListSlots(
+        <SessionListPanel
+          {...(session.sessionId !== undefined
+            ? { currentSessionId: session.sessionId }
+            : {})}
+          currentCwd={create.cwd ?? "."}
+          globalEnabled={SESSIONS_GLOBAL_ENABLED}
+          listSessions={piClient.listSessions}
+          onResume={onResumeSession}
+        />,
+      ),
+    [session.sessionId, create.cwd, piClient, onResumeSession],
+  );
+
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
   // 未显式声明则回落到由 source 派生的名字(deriveSourceTitle)。cleanup 还原为载入前标题
   // —— 故回选源页(SessionView 卸载)或切换 source 时自动复位。Next.js 静态 metadata 只在
@@ -353,6 +422,7 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           attachmentBaseUrl="/api"
+          slots={sessionListSlot}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }

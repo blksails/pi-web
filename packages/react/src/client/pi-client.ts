@@ -26,11 +26,14 @@ import type {
   UiRpcRequest,
   CompletionResponse,
   CompletionTriggersResponse,
+  ListSessionsRequest,
+  ListSessionsResponse,
 } from "@pi-web/protocol";
 import {
   GetAvailableModelsResponseSchema,
   ForkResponseSchema,
   GetForkMessagesResponseSchema,
+  ListSessionsResponseSchema,
 } from "@pi-web/protocol";
 import { sendRequest, type FetchLike } from "./request.js";
 
@@ -41,6 +44,11 @@ export interface PiClient {
   readonly baseUrl: string;
 
   createSession(req: CreateSessionRequest): Promise<CreateSessionResponse>;
+  /**
+   * GET /sessions —— 列出会话(sessions-list)。`scope=cwd`(默认,当前目录)| `all`
+   * (系统/全机器,受部署门控)。响应经 ListSessionsResponseSchema 解析;空结果返回空数组。
+   */
+  listSessions(req: ListSessionsRequest): Promise<ListSessionsResponse>;
   prompt(id: string, req: PromptRequest): Promise<CommandAck>;
   steer(id: string, req: SteerRequest): Promise<CommandAck>;
   /** follow_up 端点;请求体形状同 SteerRequest(见 protocol rest-dto)。 */
@@ -108,6 +116,18 @@ export function createPiClient(
 
     createSession: (req) =>
       post<CreateSessionResponse>("/sessions", req),
+    listSessions: async (req) => {
+      const p = new URLSearchParams();
+      if (req.scope !== undefined) p.set("scope", req.scope);
+      if (req.cwd !== undefined) p.set("cwd", req.cwd);
+      if (req.sessionId !== undefined) p.set("sessionId", req.sessionId);
+      if (req.limit !== undefined) p.set("limit", String(req.limit));
+      if (req.cursor !== undefined) p.set("cursor", req.cursor);
+      const qs = p.toString();
+      return ListSessionsResponseSchema.parse(
+        await get<unknown>(`/sessions${qs.length > 0 ? `?${qs}` : ""}`),
+      );
+    },
     prompt: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/messages`, req),
     steer: (id, req) =>
