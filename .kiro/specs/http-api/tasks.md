@@ -4,7 +4,7 @@
 - [x] 1.1 建立处理器类型与鉴权接缝接口
   - 定义 `PiWebHandlerOptions`(`manager`/`store`/可选 `authResolver`/`authorizeSession`/可选 `routes`(外部路由注入接缝 `ReadonlyArray<{ method, path, handler: RouteHandler }>`)/可选 `sse`)、`PiWebHandler`、`RequestContext`、`RouteHandler`(`handler.types.ts`)
   - 定义 `AuthContext`、`AuthResolver`、`AuthorizeSession` 接缝接口与 `default-allow.ts` 默认放行实现(`auth/`)
-  - 从 `@blksails/protocol` 引入 REST DTO / `SseFrame` / `protocolVersion`(仅类型/常量),从 `session-engine` 引入 `SessionManager`/`SessionStore`/`PiSession`/错误类型(仅类型导入)
+  - 从 `@blksails/pi-web-protocol` 引入 REST DTO / `SseFrame` / `protocolVersion`(仅类型/常量),从 `session-engine` 引入 `SessionManager`/`SessionStore`/`PiSession`/错误类型(仅类型导入)
   - 完成态:类型与默认放行文件通过 `tsc`,无 `any`;`auth/default-allow` 可被导入且默认 resolver 返回匿名上下文、默认 authorize 返回 true;`PiWebHandlerOptions.routes` 接缝类型复用 `RouteHandler`(`RequestContext` 契约)
   - _Requirements: 1.3, 1.6, 1.7, 8.1, 8.2, 8.3, 8.6_
   - _Boundary: handler.types.ts, auth/auth.types.ts, auth/default-allow.ts_
@@ -16,7 +16,7 @@
 
 - [x] 2. 横切:校验、错误映射、版本、响应构造
 - [x] 2.1 (P) 实现请求校验 validate.ts
-  - 用 `@blksails/protocol` DTO `safeParse` 校验请求体/参数,失败返回带字段路径的校验错误,成功返回 typed body
+  - 用 `@blksails/pi-web-protocol` DTO `safeParse` 校验请求体/参数,失败返回带字段路径的校验错误,成功返回 typed body
   - 完成态:`validate.test.ts` 通过——缺 `source`/类型错产出含字段路径的错误,合法体返回 typed 结果
   - _Requirements: 2.2, 3.3, 4.5_
   - _Boundary: http/validate.ts_
@@ -26,7 +26,7 @@
   - _Requirements: 3.4, 3.5, 9.1, 9.2, 9.3_
   - _Boundary: http/error-map.ts_
 - [x] 2.3 (P) 实现 protocolVersion 握手 version.ts
-  - 以 `@blksails/protocol` 的 `protocolVersion` 为唯一来源;提供承载到响应/帧的能力与请求版本兼容判定(不兼容→426/400 协商)
+  - 以 `@blksails/pi-web-protocol` 的 `protocolVersion` 为唯一来源;提供承载到响应/帧的能力与请求版本兼容判定(不兼容→426/400 协商)
   - 完成态:`version.test.ts` 通过——承载版本、不兼容请求产出协商错误、版本来源为协议包常量
   - _Requirements: 7.1, 7.2, 7.3_
   - _Boundary: http/version.ts_
@@ -82,7 +82,7 @@
   - _Boundary: routes/command-routes.ts_
   - _Depends: 2.1, 2.2, 2.4, 4.1_
 - [x] 5.3 实现查询端点
-  - `GET state/stats/messages/commands`:转发 `PiSession` 对应查询方法→以 `@blksails/protocol` 响应 DTO 形状返回
+  - `GET state/stats/messages/commands`:转发 `PiSession` 对应查询方法→以 `@blksails/pi-web-protocol` 响应 DTO 形状返回
   - 完成态:`query-routes.test.ts` 通过——四个端点返回对应响应 DTO,会话不存在→404
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _Boundary: routes/query-routes.ts_

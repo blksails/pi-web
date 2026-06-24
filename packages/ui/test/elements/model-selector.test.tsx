@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { ModelGroup, ModelSelection } from "@blksails/react";
+import type { ModelGroup, ModelSelection } from "@blksails/pi-web-react";
 import { ModelSelector } from "../../src/elements/model-selector.js";
 
 /**

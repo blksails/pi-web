@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentEventSchema, RpcResponseSchema } from "@blksails/protocol";
+import { AgentEventSchema, RpcResponseSchema } from "@blksails/pi-web-protocol";
 
 /**
  * Integration + e2e for the bootstrap runner (Req 7.2, 7.3, 6.1–6.3).

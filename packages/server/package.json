@@ -1,5 +1,5 @@
 {
-  "name": "@blksails/server",
+  "name": "@blksails/pi-web-server",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@blksails/protocol": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
     "@earendil-works/pi-ai": "^0.79.6",
     "@earendil-works/pi-coding-agent": "^0.79.6",
     "jiti": "^2.7.0",

@@ -7,7 +7,7 @@ import {
   resolveSlot,
 } from "../../src/web-ext/apply-extension.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
-import type { WebExtension } from "@blksails/web-kit";
+import type { WebExtension } from "@blksails/pi-web-kit";
 
 function Dummy(): null {
   return null;

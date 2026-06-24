@@ -42,7 +42,7 @@ pi-web 双模式:有入口→**custom**(spawn runner bootstrap);无入口/缺省
 - SSE 流、translateEvent、权限对话等既有链路语义(不改)。
 
 ### Allowed Dependencies
-- `@blksails/protocol`(DTO)、`@blksails/server`(SessionEntryStore / factory / SessionManager / http handler)、`@earendil-works/pi-coding-agent`(SessionManager.create/open、appendCustomEntry)、`@ai-sdk/react`(UIMessage)。
+- `@blksails/pi-web-protocol`(DTO)、`@blksails/pi-web-server`(SessionEntryStore / factory / SessionManager / http handler)、`@earendil-works/pi-coding-agent`(SessionManager.create/open、appendCustomEntry)、`@ai-sdk/react`(UIMessage)。
 - 依赖方向保持:`protocol ← server`;`protocol ← react ← ui`;`app/lib/app → server/react/ui`。不得反向。
 
 ### Revalidation Triggers
@@ -102,7 +102,7 @@ graph TB
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend | Next.js 15 App Router、`@ai-sdk/react` useChat | `/session/[id]` 路由、历史初始化、URL 同步 | `UIMessage` parts-based |
-| Backend | `@blksails/server`(http handler / SessionManager / SessionEntryStore) | 恢复编排、id 对齐、元数据读 | 复用 factory + mirror |
+| Backend | `@blksails/pi-web-server`(http handler / SessionManager / SessionEntryStore) | 恢复编排、id 对齐、元数据读 | 复用 factory + mirror |
 | Agent runtime | `@earendil-works/pi-coding-agent` SessionManager | `create({id})` / `open(path)` / `appendCustomEntry` | 真实模式;stub 不用 |
 | Data / Storage | fs JSONL / node:sqlite(既有 adapters) | 会话事件 + 元数据持久化 | 由 `SESSION_STORE` 选择 |
 | Runtime | Node ≥22.19、`jiti` | stub 注入 `--import jiti/register` 以 import TS 包 | 失败回退内联存储 |

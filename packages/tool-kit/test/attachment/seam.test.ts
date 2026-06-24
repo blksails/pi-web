@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { getAttachmentToolContext, SEAM_KEY } from "../../src/attachment/seam.js";
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 describe("getAttachmentToolContext", () => {
   it("returns UNAVAILABLE_CTX when scope is empty", () => {

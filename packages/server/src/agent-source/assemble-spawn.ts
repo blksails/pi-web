@@ -3,7 +3,7 @@
  *
  * - custom:`node <runnerEntry> --agent <entry> --cwd <work>`,其中 `runnerEntry`
  *   是 cwd-无关的引导脚本(packages/server/runner-bootstrap.mjs)的绝对路径。
- *   引导脚本自身在 @blksails/server 包内,负责构造 jiti 并以 jiti 解析 TS runner
+ *   引导脚本自身在 @blksails/pi-web-server 包内,负责构造 jiti 并以 jiti 解析 TS runner
  *   及 pi SDK——因此无需 `--import jiti/register`,模块解析不依赖 spawnSpec.cwd。
  * - cli:`node <piCliEntry> --mode rpc --cwd <source>`。
  * - env 合并:base + PI_CODING_AGENT_DIR(来自 agentDir) + 额外 env + trust 片段;

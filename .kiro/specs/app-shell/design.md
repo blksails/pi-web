@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**:本特性交付 pi-web 的**整站闭环装配**——一个可直接运行、可部署、可作分层参考实现的 Next.js 应用。它把已就绪的各层装配起来:把 `http-api` 的 `createPiWebHandler` 挂到 `app/api/sessions/**` 的 REST + SSE 路由;在 `app/page.tsx` 用 `@blksails/react` 的 hooks 建立指向本站 API 的连接并渲染 `@blksails/ui` 的 `<PiChat>`;提供 agent 源选择器(按 `agent-source-resolver` 的输入形状传源);从 `.env.local` 注入默认 provider/model/agent 源/工作区/密钥;附一个用 `defineAgent` 写的示例 agent 与 `.pi/` 资源样例供端到端验证。
+**Purpose**:本特性交付 pi-web 的**整站闭环装配**——一个可直接运行、可部署、可作分层参考实现的 Next.js 应用。它把已就绪的各层装配起来:把 `http-api` 的 `createPiWebHandler` 挂到 `app/api/sessions/**` 的 REST + SSE 路由;在 `app/page.tsx` 用 `@blksails/pi-web-react` 的 hooks 建立指向本站 API 的连接并渲染 `@blksails/pi-web-ui` 的 `<PiChat>`;提供 agent 源选择器(按 `agent-source-resolver` 的输入形状传源);从 `.env.local` 注入默认 provider/model/agent 源/工作区/密钥;附一个用 `defineAgent` 写的示例 agent 与 `.pi/` 资源样例供端到端验证。
 
 **Users**:想直接部署 pi-web 整站、或想要一份装配参考实现的使用者;以及本项目自身——本 spec **承载全链路 e2e**(项目最高价值验收点)。
 
@@ -49,8 +49,8 @@
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`http-api` 的 `createPiWebHandler` 与会话依赖装配工厂;`@blksails/react` 的 `usePiSession`/`usePiControls`/`useExtensionUI`/`PiProvider`/`PiTransport`/`createPiClient`;`@blksails/ui` 的 `<PiChat>` 及导出;`@blksails/agent-kit` 的 `defineAgent`(示例 agent 用);经上游间接的 `@blksails/protocol` 类型。
-- **外部运行时**:Next.js 15(App Router,Node runtime)、React 18+、AI SDK v5 + AI Elements + shadcn/Tailwind v4(经 `@blksails/ui` 装配)。
+- **上游 spec(运行时)**:`http-api` 的 `createPiWebHandler` 与会话依赖装配工厂;`@blksails/pi-web-react` 的 `usePiSession`/`usePiControls`/`useExtensionUI`/`PiProvider`/`PiTransport`/`createPiClient`;`@blksails/pi-web-ui` 的 `<PiChat>` 及导出;`@blksails/pi-web-agent-kit` 的 `defineAgent`(示例 agent 用);经上游间接的 `@blksails/pi-web-protocol` 类型。
+- **外部运行时**:Next.js 15(App Router,Node runtime)、React 18+、AI SDK v5 + AI Elements + shadcn/Tailwind v4(经 `@blksails/pi-web-ui` 装配)。
 - **运行时前提**:Node `>=22.19.0`、长驻服务(非 Edge/Serverless);可用 provider API key(e2e 可低成本 / stub)。
 - **依赖方向**:`http-api`/`react-client`/`ui-components`/`agent-source-resolver`/`protocol-contract`/`agent-kit` ← `app-shell`(最外围,无下游)。禁止反向。
 - **开发 / 测试**:`vitest`(API 路由集成 + 页面渲染)、`@playwright/test`(e2e);e2e 经环境开关用 stub / 低成本模型。
@@ -125,10 +125,10 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Frontend / CLI | TypeScript strict;Next.js 15(App Router/RSC);React 18+ | 应用骨架、页面、源选择器视图;经 `@blksails/ui` 渲染 `<PiChat>` | 浏览器 + RSC;主题经 shadcn CSS 变量 |
+| Frontend / CLI | TypeScript strict;Next.js 15(App Router/RSC);React 18+ | 应用骨架、页面、源选择器视图;经 `@blksails/pi-web-ui` 渲染 `<PiChat>` | 浏览器 + RSC;主题经 shadcn CSS 变量 |
 | Backend / Services | Next.js Route Handler(Node runtime);`createPiWebHandler`(http-api,消费) | catch-all 委托 + 单例驻留 + 配置注入 | 薄转发,不实现 handler 本体 |
 | Data / Storage | 无(会话状态在 handler 背后的 session-engine / 通道);仅 `globalThis` 单例引用 + 进程内配置 | — | §14.1③:状态不在 shell |
-| Messaging / Events | SSE(经 handler 的 `text/event-stream`);前端经 `@blksails/react` transport 消费 | 流式聊天主链路 | shell 不编码 / 不解码 SSE |
+| Messaging / Events | SSE(经 handler 的 `text/event-stream`);前端经 `@blksails/pi-web-react` transport 消费 | 流式聊天主链路 | shell 不编码 / 不解码 SSE |
 | Infrastructure / Runtime | Node `>=22.19.0`;长驻 `next start`(非 Edge);`.env.local`(配置注入);`vitest`(集成 + 页面渲染)、`@playwright/test`(e2e);e2e stub / 低成本模型 | 运行、配置、测试 | 反代关闭缓冲(部署提示,handler 设 `X-Accel-Buffering: no`) |
 
 ## File Structure Plan
@@ -297,13 +297,13 @@ flowchart TD
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
 | app/layout.tsx | app | 根布局 + 全局样式 + 主题容器 | 1.1, 1.2 | globals.css (P0) | State |
-| app/page.tsx | app | 选源 → 建会话 → 渲染 PiChat + 控制 + 弹窗 | 1.3,1.5,4.2,4.3,4.5,5.1,5.2,6.x,7.1 | @blksails/react (P0), @blksails/ui (P0), agent-source-picker (P0) | Service, State |
+| app/page.tsx | app | 选源 → 建会话 → 渲染 PiChat + 控制 + 弹窗 | 1.3,1.5,4.2,4.3,4.5,5.1,5.2,6.x,7.1 | @blksails/pi-web-react (P0), @blksails/pi-web-ui (P0), agent-source-picker (P0) | Service, State |
 | app/globals.css | app | shadcn CSS 变量主题 tokens | 1.2 | shadcn token (P0) | — |
 | app/api/sessions/[[...path]]/route.ts | api | catch-all 委托单例 handler 转发 | 1.4,2.1-2.4,9.1,9.3 | pi-handler (P0) | API |
 | lib/app/pi-handler.ts | lib | 组装会话依赖 + 注入 config + handler 单例 | 2.1,2.5,3.1,3.3,3.5 | createPiWebHandler (P0), config (P0), session-engine 装配 (P0) | Service |
 | lib/app/config.ts | lib | env → typed 配置 + 默认值 + 密钥不外泄 | 3.2-3.5,4.3,8.4,10.7 | process.env (P0) | Service |
-| components/agent-source-picker.tsx | components | 源输入 + 提交 + 进行 / 错误态 | 1.5,4.1,4.4,4.5 | @blksails/react (P1) | Service, State |
-| examples/hello-agent/index.ts | examples | defineAgent 示例(工具 + 思考 / MD,e2e fixture) | 8.1,8.2,8.4 | @blksails/agent-kit (P0) | Service |
+| components/agent-source-picker.tsx | components | 源输入 + 提交 + 进行 / 错误态 | 1.5,4.1,4.4,4.5 | @blksails/pi-web-react (P1) | Service, State |
+| examples/hello-agent/index.ts | examples | defineAgent 示例(工具 + 思考 / MD,e2e fixture) | 8.1,8.2,8.4 | @blksails/pi-web-agent-kit (P0) | Service |
 | examples/hello-agent/.pi/** | examples | .pi 资源样例触发扩展 UI | 8.3 | pi 资源约定 (P0) | — |
 | e2e/fixtures/cli-project/ | fixtures | 无入口目录(CLI 回退 fixture) | 9.1 | — | — |
 | route.integration.test.ts | test | 路由转发 + 页面渲染集成 | 10.1 | vitest (P0), pi-handler mock (P0) | — |
@@ -415,7 +415,7 @@ export function loadConfig(): AppConfig; // 缺必需项→抛可辨识配置错
 - `components/agent-source-picker.tsx`:文本输入接受 `agent-source-resolver` 支持的 `source`(目录 / git)+ 「用默认源」选项 + 提交回调;建会话进行中显示 loading、失败显示可辨识错误并允许重选(Req 1.5/4.1/4.4/4.5)。
 - `app/page.tsx`:未建会话时渲染 `<AgentSourcePicker>`(Req 1.5);提交后以 `source`(+ `loadConfig` 默认 `cwd`/`model`/`env`)经 `usePiSession`(指向本站 `/api/sessions`)建会话、取 `sessionId`(Req 4.2/4.3);进行中指示、成功后渲染 `<PiChat session controls extensionUI showControls />`,装配 `usePiControls`(abort/切模型/stats,Req 6.x)与 `useExtensionUI`(权限弹窗,Req 7.1);控制 / 弹窗经 hooks 旁路不入消息流(Req 6.4);流式 / 工具卡 / 思考折叠 / 权限回传 / 继续由 `<PiChat>` 完成(Req 5.x/7.2/7.3/7.4,消费 ui-components)。通用 CLI 模式与自定义 agent 模式复用同一页面与连接,无操作差异(Req 9.2/9.3)。
 
-**Contracts**: Service / State。**Implementation Notes**:`page.tsx` 不直接发起 fetch/SSE(经 `@blksails/react`);`AgentSourcePicker` 仅产出 `source` 字符串与提交意图。Validation:页面渲染冒烟(`route.integration.test.ts` 或单独渲染测试)+ e2e 全覆盖交互。
+**Contracts**: Service / State。**Implementation Notes**:`page.tsx` 不直接发起 fetch/SSE(经 `@blksails/pi-web-react`);`AgentSourcePicker` 仅产出 `source` 字符串与提交意图。Validation:页面渲染冒烟(`route.integration.test.ts` 或单独渲染测试)+ e2e 全覆盖交互。
 
 ### examples / e2e 层
 
@@ -435,7 +435,7 @@ export function loadConfig(): AppConfig; // 缺必需项→抛可辨识配置错
 
 ### Data Contracts & Integration
 
-- **核心消费契约**:REST/SSE 端点与帧形状一律来自上游(`createPiWebHandler` + `@blksails/protocol`),本 spec 不定义、只委托与连接。
+- **核心消费契约**:REST/SSE 端点与帧形状一律来自上游(`createPiWebHandler` + `@blksails/pi-web-protocol`),本 spec 不定义、只委托与连接。
 - **本 spec 自有数据**:仅 `AppConfig`(进程内只读配置,敏感值不外泄)与 `globalThis` 上的 handler 单例引用;无持久化(会话状态在 handler 背后,§14.1③)。
 - **agent 源输入**:`source: string`(本地目录 abs/rel 或 git 形态),形状由 `agent-source-resolver` 定义,本 spec 透传不解析。
 - **配置注入**:provider key 经 `env` 透传给会话装配;默认 provider/model/源/工作区作为会话创建默认值;e2e stub 开关切换示例 agent 运行成本。

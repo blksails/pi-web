@@ -2,7 +2,7 @@
  * Extension UI:挂起登记 + 广播 control 帧 + 回复往返 + 未知 ID 拒绝 + 停止清空(Req 5.x, 10.2)。
  */
 import { describe, expect, it } from "vitest";
-import type { RpcExtensionUIRequest, SseFrame } from "@blksails/protocol";
+import type { RpcExtensionUIRequest, SseFrame } from "@blksails/pi-web-protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { UnknownExtensionUIError } from "../../src/session/session.errors.js";
 import { MockChannel } from "./mock-channel.js";

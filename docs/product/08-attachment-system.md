@@ -73,7 +73,7 @@ $PI_WEB_ATTACHMENT_DIR/
 | `createAttachmentToolContext()` | `packages/server/src/attachment-bridge/tool-context.ts` | 构造 tool `execute` 内的 store 句柄接入面（`available/resolve/putOutput`）|
 | `wireAttachmentBridge()` | `packages/server/src/runner/attachment-wiring.ts` | runner 子进程把 store + 两闸门接到 pi `agent.beforeToolCall/afterToolCall`，并经 globalThis seam 透 ctx 给 customTools |
 
-> 类型契约 `AttachmentToolContext` / `AttachmentToolHandle` 由 `@blksails/agent-kit` 暴露给 tool 作者（仅类型，无值导入）；构造函数 `createAttachmentToolContext()`（值）留在 `@blksails/server`。
+> 类型契约 `AttachmentToolContext` / `AttachmentToolHandle` 由 `@blksails/pi-web-agent-kit` 暴露给 tool 作者（仅类型，无值导入）；构造函数 `createAttachmentToolContext()`（值）留在 `@blksails/pi-web-server`。
 
 ---
 
@@ -171,7 +171,7 @@ GET /attachments/:attachmentId/raw?exp=<timestamp>&sig=<hmac>
 ### 7.1 useAttachments hook
 
 ```ts
-import { useAttachments } from "@blksails/react";
+import { useAttachments } from "@blksails/pi-web-react";
 
 const { items, add, remove, clear, toImageContents, referenceIds } =
   useAttachments({
@@ -195,7 +195,7 @@ await add(fileList);
 ### 7.2 手动调用上传
 
 ```ts
-import { uploadAttachment } from "@blksails/react";
+import { uploadAttachment } from "@blksails/pi-web-react";
 
 const { attachment, displayUrl } = await uploadAttachment(
   "/api",
@@ -212,7 +212,7 @@ const { attachment, displayUrl } = await uploadAttachment(
 ```ts
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 // 参数用 pi-ai 的 Type.Object 声明（defineTool 期望 TypeBox schema，非裸对象）
 const EditImageParameters = Type.Object({

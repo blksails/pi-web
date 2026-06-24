@@ -12,7 +12,7 @@
  * 经 `registerBuiltinUiComponents` 注入注册表;宿主可再注册自有组件覆盖/扩展。
  */
 import * as React from "react";
-import type { UiTone } from "@blksails/protocol";
+import type { UiTone } from "@blksails/pi-web-protocol";
 import { Card } from "../ui/card.js";
 import { cn } from "../lib/cn.js";
 import { toneSoft, toneText } from "./ui-tokens.js";

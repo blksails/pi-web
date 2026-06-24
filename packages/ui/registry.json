@@ -9,7 +9,7 @@
       "title": "PiChat",
       "description": "拖入式 pi 聊天组件:useChat(PiTransport) + part 分派 + 控制面板 + 内联交互卡 + 插槽。",
       "dependencies": [
-        "@blksails/react",
+        "@blksails/pi-web-react",
         "ai",
         "@ai-sdk/react",
         "streamdown",
@@ -70,7 +70,7 @@
       "title": "PiInteraction",
       "description": "扩展 UI 交互内联卡(select/confirm/input/editor + 应答留痕),渲染于消息流末尾。",
       "dependencies": [
-        "@blksails/react",
+        "@blksails/pi-web-react",
         "lucide-react",
         "clsx",
         "tailwind-merge"
@@ -88,7 +88,7 @@
       "title": "Pi controls",
       "description": "PiModelSelector / PiThinkingLevel / PiSessionStats / PiCommandPalette。",
       "dependencies": [
-        "@blksails/react",
+        "@blksails/pi-web-react",
         "@radix-ui/react-select",
         "lucide-react",
         "clsx",

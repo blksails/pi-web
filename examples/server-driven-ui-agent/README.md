@@ -14,7 +14,7 @@ The agent declares UI as data; the web UI renders it without any per-agent front
 There is no separate "send UI" RPC. UI is emitted from inside a tool via the tool's `onUpdate` callback, using the `emitUi` helper:
 
 ```ts
-import { defineAgent, emitUi } from "@blksails/agent-kit";
+import { defineAgent, emitUi } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 
@@ -58,8 +58,8 @@ Then ask it to *"show the dashboard"*. You'll see a metric card, a status table,
 ## See also
 
 - `ui-demo-agent` — interactive extension UI (`select`/`confirm`/`input`/`notify`/`setStatus`).
-- Protocol: `@blksails/protocol` `UiSpec` / `PI_UI_TOOL_DETAILS_KEY` / `extractToolDetailsUiSpec`.
-- Front-end: `@blksails/ui` `PiUiPart` / `SandboxRenderer` / `registerUiComponent`.
+- Protocol: `@blksails/pi-web-protocol` `UiSpec` / `PI_UI_TOOL_DETAILS_KEY` / `extractToolDetailsUiSpec`.
+- Front-end: `@blksails/pi-web-ui` `PiUiPart` / `SandboxRenderer` / `registerUiComponent`.
 
 ## Model
 

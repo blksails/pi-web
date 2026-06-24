@@ -82,11 +82,11 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   transpilePackages: [
-    "@blksails/protocol",
-    "@blksails/react",
-    "@blksails/ui",
-    "@blksails/server",
-    "@blksails/web-kit",
+    "@blksails/pi-web-protocol",
+    "@blksails/pi-web-react",
+    "@blksails/pi-web-ui",
+    "@blksails/pi-web-server",
+    "@blksails/pi-web-kit",
   ],
   // The session API routes spawn child processes (agent runtime) and hold SSE
   // long-connections — they must run on the Node runtime, never Edge.
@@ -141,7 +141,7 @@ const nextConfig: NextConfig = {
     };
     // 在 server 编译里手动把整个 pi SDK 命名空间外置为 ESM `module`(运行时 import,
     // 匹配其 import-only exports)。原因:dev 模式 `serverExternalPackages` 对
-    // transpilePackages(@blksails/server)内 import 的 pnpm 嵌套 ESM 包不生效,会把整套
+    // transpilePackages(@blksails/pi-web-server)内 import 的 pnpm 嵌套 ESM 包不生效,会把整套
     // pi SDK(含 pi-ai 的 `node:fs/os/path`)打进路由 bundle 致解析失败;手动 externals
     // 复刻 production 的外置行为,dev/prod 一致。
     if (isServer) {

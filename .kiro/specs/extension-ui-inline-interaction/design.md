@@ -15,7 +15,7 @@
 - 富聊天与基础聊天两个装配行为一致；扩展 UI 协议、ambient 能力、Suggestion 组件均不受影响。
 
 ### Non-Goals
-- 不改 `@blksails/protocol` 请求/响应结构与 `useExtensionUI` hook。
+- 不改 `@blksails/pi-web-protocol` 请求/响应结构与 `useExtensionUI` hook。
 - 不改 ambient 能力（notify / status / widget / title / 编辑器文本注入）与 Suggestion 组件。
 - 不做交互留痕的跨会话/持久化保存（刷新即清空）。
 - 不做多请求并发应答（保持 FIFO 串行）。
@@ -34,16 +34,16 @@
 - 交互留痕的持久化 —— 明确不做。
 
 ### Allowed Dependencies
-- `@blksails/react`：`UseExtensionUIResult`（`queue`/`current`/`respond`/`error`/`pending`）。
-- `@blksails/protocol`：`RpcExtensionUIRequest`、`UiResponseRequest`（仅类型消费）。
-- `@blksails/ui` 内部：`ui/card.tsx`、`ui/button.tsx`、`lib/cn.ts`、`lucide-react` 图标。
+- `@blksails/pi-web-react`：`UseExtensionUIResult`（`queue`/`current`/`respond`/`error`/`pending`）。
+- `@blksails/pi-web-protocol`：`RpcExtensionUIRequest`、`UiResponseRequest`（仅类型消费）。
+- `@blksails/pi-web-ui` 内部：`ui/card.tsx`、`ui/button.tsx`、`lib/cn.ts`、`lucide-react` 图标。
 - 约束：不得反向依赖 `chat/` 装配层；不得新增对 transport/server/协议的运行时依赖。
 
 ### Revalidation Triggers
 - `RpcExtensionUIRequest` 的 method 集合或字段形状变化（新增交互类型 / 改字段）。
 - `UiResponseRequest` 响应判别式（`value`/`confirmed`/`cancelled`）变化。
 - `useExtensionUI` 暴露面（`queue`/`current`/`respond`/`error`/`pending`）变化。
-- `@blksails/ui` 公开入口移除/重命名 `PiInteraction` 导出。
+- `@blksails/pi-web-ui` 公开入口移除/重命名 `PiInteraction` 导出。
 
 ## Architecture
 
@@ -89,10 +89,10 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Frontend | React 18/19 + `@blksails/ui`（shadcn Card/Button + Tailwind v4） | 内联交互卡渲染 | 复用既有等价层，不引入 AI Elements 包 |
+| Frontend | React 18/19 + `@blksails/pi-web-ui`（shadcn Card/Button + Tailwind v4） | 内联交互卡渲染 | 复用既有等价层，不引入 AI Elements 包 |
 | Frontend | `lucide-react` | 终态/请求图标 | 既有依赖 |
-| 数据 | `@blksails/react` `useExtensionUI` | 请求队列与回传（不改） | 仅消费 |
-| 类型 | `@blksails/protocol` | 请求/响应类型（不改） | 仅类型导入 |
+| 数据 | `@blksails/pi-web-react` `useExtensionUI` | 请求队列与回传（不改） | 仅消费 |
+| 类型 | `@blksails/pi-web-protocol` | 请求/响应类型（不改） | 仅类型导入 |
 
 ## File Structure Plan
 
@@ -206,8 +206,8 @@ sequenceDiagram
 import type {
   RpcExtensionUIRequest,
   UiResponseRequest,
-} from "@blksails/protocol";
-import type { UseExtensionUIResult } from "@blksails/react";
+} from "@blksails/pi-web-protocol";
+import type { UseExtensionUIResult } from "@blksails/pi-web-react";
 
 /** 交互类请求(沿用旧定义:四类 method)。 */
 type InteractiveRequest = Extract<

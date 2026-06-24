@@ -8,7 +8,7 @@ pi-web 把任何用 [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/pa
 
 📖 **文档站:** [pi-web.blksails.ai](https://pi-web.blksails.ai) —— 完整产品文档(概述、快速开始、架构、API、部署)。
 
-> npm 包统一在 **`@blksails/*`** scope 下发布(`@blksails/protocol`、`@blksails/server`、`@blksails/react`、`@blksails/ui`、`@blksails/agent-kit`、`@blksails/tool-kit`、`@blksails/web-kit`)。
+> npm 包统一在 **`@blksails/*`** scope 下发布(`@blksails/pi-web-protocol`、`@blksails/pi-web-server`、`@blksails/pi-web-react`、`@blksails/pi-web-ui`、`@blksails/pi-web-agent-kit`、`@blksails/pi-web-tool-kit`、`@blksails/pi-web-kit`)。
 
 ## 核心能力
 
@@ -42,12 +42,12 @@ Agent 子进程  — bootstrap runner `runRpcMode`  或  `pi --mode rpc`
 
 | 包 | 职责 |
 | --- | --- |
-| `@blksails/protocol` | 稳定契约:RPC 类型/schema、配置表单 IR。改动需语义化版本;SSE 帧带 `protocolVersion`。 |
-| `@blksails/server` | 后端引擎:agent 源解析、bootstrap runner、RPC 通道、会话注册与翻译、配置/附件路由。 |
-| `@blksails/react` | 无样式的 headless hooks 与 transport。 |
-| `@blksails/ui` | shadcn/ui + AI Elements 组件,以及 schema 驱动的配置 UI。 |
-| `@blksails/agent-kit` | 写 `index.ts` 用的 `defineAgent()` 类型帮助。 |
-| `@blksails/tool-kit`、`@blksails/web-kit` | 工具与 Web 集成的配套套件。 |
+| `@blksails/pi-web-protocol` | 稳定契约:RPC 类型/schema、配置表单 IR。改动需语义化版本;SSE 帧带 `protocolVersion`。 |
+| `@blksails/pi-web-server` | 后端引擎:agent 源解析、bootstrap runner、RPC 通道、会话注册与翻译、配置/附件路由。 |
+| `@blksails/pi-web-react` | 无样式的 headless hooks 与 transport。 |
+| `@blksails/pi-web-ui` | shadcn/ui + AI Elements 组件,以及 schema 驱动的配置 UI。 |
+| `@blksails/pi-web-agent-kit` | 写 `index.ts` 用的 `defineAgent()` 类型帮助。 |
+| `@blksails/pi-web-tool-kit`、`@blksails/pi-web-kit` | 工具与 Web 集成的配套套件。 |
 
 ## 快速开始
 

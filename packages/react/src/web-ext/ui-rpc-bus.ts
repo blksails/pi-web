@@ -10,9 +10,9 @@
 import type {
   UiRpcRequest,
   UiRpcResponse,
-} from "@blksails/protocol";
-import { protocolVersion } from "@blksails/protocol";
-import type { UiRpcClient, UiRpcCall } from "@blksails/web-kit";
+} from "@blksails/pi-web-protocol";
+import { protocolVersion } from "@blksails/pi-web-protocol";
+import type { UiRpcClient, UiRpcCall } from "@blksails/pi-web-kit";
 
 export interface UiRpcBusOptions {
   /** 上行发送(POST ui-rpc,返回 ack)。 */

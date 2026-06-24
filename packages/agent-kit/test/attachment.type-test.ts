@@ -2,7 +2,7 @@
  * Compile-time type tests for the author-facing attachment tool context
  * (attachment-tool-bridge task 4.1; Req 4.1). Validated by `tsc --noEmit`
  * (the package `typecheck` script): asserts a tool author can reference the
- * `AttachmentToolContext` / `AttachmentToolHandle` types via `@blksails/agent-kit`
+ * `AttachmentToolContext` / `AttachmentToolHandle` types via `@blksails/pi-web-agent-kit`
  * and that the structural contract (available / resolve / putOutput) holds.
  *
  * Type-level only — no runtime test cases. Lives in test/ so it is type-checked.
@@ -12,7 +12,7 @@ import type {
   AttachmentToolHandle,
   ToolOutputRef,
 } from "../src/index.js";
-import type { Attachment } from "@blksails/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 
 // A tool author types the injected context via the agent-kit re-export.
 declare const ctx: AttachmentToolContext;

@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { compileTool } from "../../src/engine/compile-tool.js";
 import type { CompileDeps } from "../../src/engine/compile-tool.js";
 import type { ToolSpec, PickedResult } from "../../src/engine/types.js";
-import type { AttachmentToolContext, AttachmentToolHandle } from "@blksails/agent-kit";
+import type { AttachmentToolContext, AttachmentToolHandle } from "@blksails/pi-web-agent-kit";
 
 // ── Mock 附件上下文 ────────────────────────────────────────────────────────────
 

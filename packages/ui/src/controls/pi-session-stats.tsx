@@ -5,7 +5,7 @@
  * 保留 data-pi-session-stats / data-pi-stat 锚点与货币格式以稳定测试与 e2e。
  */
 import * as React from "react";
-import type { UsePiControlsResult } from "@blksails/react";
+import type { UsePiControlsResult } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
 
 export interface PiSessionStatsProps {

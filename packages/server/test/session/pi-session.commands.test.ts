@@ -2,7 +2,7 @@
  * 命令转发 + 状态缓存刷新 + 已停止拒绝(Req 2.x, 6.x, 10.2)。
  */
 import { describe, expect, it } from "vitest";
-import type { RpcResponse } from "@blksails/protocol";
+import type { RpcResponse } from "@blksails/pi-web-protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { SessionStoppedError } from "../../src/session/session.errors.js";
 import { MockChannel } from "./mock-channel.js";

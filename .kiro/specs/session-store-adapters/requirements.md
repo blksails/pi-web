@@ -2,11 +2,11 @@
 
 ## Introduction
 
-session-store-adapters 为 pi-web 后端(`@blksails/server`)引入一个**可插拔的会话事件存储抽象 `SessionEntryStore`**,把 pi 会话的"append-only 事件树"持久化能力从具体存储介质中解耦出来,并交付 **fs / sqlite / postgres** 三种 adapter。
+session-store-adapters 为 pi-web 后端(`@blksails/pi-web-server`)引入一个**可插拔的会话事件存储抽象 `SessionEntryStore`**,把 pi 会话的"append-only 事件树"持久化能力从具体存储介质中解耦出来,并交付 **fs / sqlite / postgres** 三种 adapter。
 
 会话以"append-only 事件树"建模:每条 entry 含 `id` 与 `parentId` 构成树,叶子到根的路径即一段对话上下文;entry 类型含 `message`(user/assistant/toolResult/bashExecution)、`model_change`、`thinking_level_change`、`compaction`、`branch_summary`、`label`、`session_info`、`custom`/`custom_message`,并由文件头 `session`(含 `version`、`cwd`)起始。本特性只负责**条目的存取(IO)**;"从叶子回溯重建上下文、分支"等**树运算属领域层,不进存储接口**。
 
-第三方包 `@earendil-works/pi-coding-agent` 内置的 `SessionManager` 仅作为**数据格式与布局的参照与兼容目标**,本特性**不修改其任何代码**;`@blksails/server` 内实现一套独立、可异步、可换后端的存储。
+第三方包 `@earendil-works/pi-coding-agent` 内置的 `SessionManager` 仅作为**数据格式与布局的参照与兼容目标**,本特性**不修改其任何代码**;`@blksails/pi-web-server` 内实现一套独立、可异步、可换后端的存储。
 
 ## Boundary Context
 
@@ -182,6 +182,6 @@ session-store-adapters 为 pi-web 后端(`@blksails/server`)引入一个**可插
 #### Acceptance Criteria
 
 1. The session-store-adapters 特性 shall 不修改 `@earendil-works/pi-coding-agent` 的任何源码。
-2. The session-store-adapters 特性 shall 落在 `@blksails/server` 包内,且其代码满足 TypeScript strict、不使用 `any`。
+2. The session-store-adapters 特性 shall 落在 `@blksails/pi-web-server` 包内,且其代码满足 TypeScript strict、不使用 `any`。
 3. The session-store-adapters 特性 shall 为每个 adapter 提供单元/集成测试,覆盖 create/append/read/list/delete、未找到语义、幂等与并发分叉,并以实际运行的测试输出作为通过证据。
 4. Where adapter 需要外部依赖(SQLite/PostgreSQL 运行环境), the session-store-adapters 特性 shall 使其测试可在本项目既有测试运行方式下执行(具体驱动与测试夹具选型在设计阶段确定)。

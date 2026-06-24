@@ -1,7 +1,7 @@
 /**
  * pi-web build — 编排(任务 2.2 / Req 6.1, 9.3)。
  *
- * 用 esbuild 把 `.pi/web` 入口打成自包含 ESM,react/react-dom/@blksails/web-kit/ai 全部
+ * 用 esbuild 把 `.pi/web` 入口打成自包含 ESM,react/react-dom/@blksails/pi-web-kit/ai 全部
  * external(运行时经宿主 import map 解析单例)。随后:externals 守卫 → CSS scoping →
  * 计算 SRI 产出 manifest。产物写入 outDir(`web-extension.mjs` + 可选 `ext.css` + `manifest.json`)。
  */
@@ -9,7 +9,7 @@ import { build as esbuild } from "esbuild";
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { join } from "node:path";
 import { Buffer } from "node:buffer";
-import type { WebExtensionCapability, WebExtensionManifest } from "@blksails/protocol";
+import type { WebExtensionCapability, WebExtensionManifest } from "@blksails/pi-web-protocol";
 import { assertNoBundledSingletons } from "./externals-guard.js";
 import { scopeCss } from "./css-scope-plugin.js";
 import { emitManifest } from "./manifest-emit.js";
@@ -21,7 +21,7 @@ export const EXTERNAL_SINGLETONS: readonly string[] = [
   "react/jsx-runtime",
   "react/jsx-dev-runtime",
   "ai",
-  "@blksails/web-kit",
+  "@blksails/pi-web-kit",
 ];
 
 export interface BuildOptions {

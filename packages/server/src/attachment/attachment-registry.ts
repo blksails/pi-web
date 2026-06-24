@@ -18,7 +18,7 @@
  */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Attachment } from "@blksails/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 
 /** 描述符旁路文件后缀(`<root>/<id>.att.json`)。 */
 const DESCRIPTOR_SUFFIX = ".att.json";

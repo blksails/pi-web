@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useAttachments } from "../../src/hooks/use-attachments.js";
-import type { UploadAttachmentResponse } from "@blksails/protocol";
+import type { UploadAttachmentResponse } from "@blksails/pi-web-protocol";
 
 /** 构造一个带指定 mimeType 与字节内容的 File(jsdom 真实 File/Blob)。 */
 function makeFile(name: string, mimeType: string, bytes: number[]): File {

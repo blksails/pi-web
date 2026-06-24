@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { Buffer } from "node:buffer";
 import { loadExtension, type LoaderDeps } from "../../src/web-ext/extension-loader.js";
 import { computeSri } from "../../src/web-ext/extension-gate.js";
-import type { WebExtensionManifest } from "@blksails/protocol";
+import type { WebExtensionManifest } from "@blksails/pi-web-protocol";
 
 const opts = { whitelist: [], requireSignature: false, hostApiVersion: "0.1.0" };
 const bytes = Buffer.from("export default {manifestId:'acme'}", "utf8");

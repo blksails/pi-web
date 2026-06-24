@@ -34,7 +34,7 @@
 - **Sources Consulted**:
   - `packages/server/src/runner/runner.ts`(`startRunner` → `loadAgentDefinition` → `createAgentSessionRuntime` → `runRpcMode`;读 `process.env`,有 `AgentContext{cwd,agentDir,env}`)。
   - `packages/server/src/runner/option-mapper.ts`(`mapSessionFields`:`def.customTools` 透传;`buildRuntimeFactory`:`fromServices.customTools = session.customTools`;已有 `process.env["PI_WEB_SANDBOX_ENTRY"]` 读取先例)。
-  - `packages/server/src/runner/agent-loader.ts`(jiti 载入 + `@blksails/agent-kit` 别名指向 workspace `packages/agent-kit/src/index.ts`)。
+  - `packages/server/src/runner/agent-loader.ts`(jiti 载入 + `@blksails/pi-web-agent-kit` 别名指向 workspace `packages/agent-kit/src/index.ts`)。
   - `packages/server/src/agent-source/assemble-spawn.ts`(`buildEnv(opts,fragment)`:`baseEnv + env + fragment.extraEnv`,`PI_CODING_AGENT_DIR` 末写防覆盖)。
   - `lib/app/pi-handler.ts`(`makeRealResolver` 传 `baseEnv=process.env`;`createChannel` 在 `spawnSpec.env` 追加 `config.providerKeys` 与 `PI_WEB_SANDBOX_ENTRY`)。
 - **Findings**:

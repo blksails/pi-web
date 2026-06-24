@@ -1,6 +1,6 @@
 # 11 · AIGC 图像工具
 
-`@blksails/tool-kit` 提供两个内置 AIGC 图像工具：`image_generation`（文生图）与 `image_edit`（图像编辑），由 agent 以 `customTools` 形式挂载，LLM 通过工具参数驱动，产出自动落入附件存储并以签名 URL 回流对话。
+`@blksails/pi-web-tool-kit` 提供两个内置 AIGC 图像工具：`image_generation`（文生图）与 `image_edit`（图像编辑），由 agent 以 `customTools` 形式挂载，LLM 通过工具参数驱动，产出自动落入附件存储并以签名 URL 回流对话。
 
 ---
 
@@ -26,8 +26,8 @@
 ```jsonc
 {
   "dependencies": {
-    "@blksails/tool-kit": "workspace:*",
-    "@blksails/agent-kit": "workspace:*"
+    "@blksails/pi-web-tool-kit": "workspace:*",
+    "@blksails/pi-web-agent-kit": "workspace:*"
   }
 }
 ```
@@ -38,8 +38,8 @@
 
 ```ts
 // examples/aigc-agent/index.ts
-import { defineAgent } from "@blksails/agent-kit";
-import { buildAigcTools } from "@blksails/tool-kit/runtime";  // 注意：走 /runtime 子入口
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+import { buildAigcTools } from "@blksails/pi-web-tool-kit/runtime";  // 注意：走 /runtime 子入口
 
 export default defineAgent({
   systemPrompt: [
@@ -56,7 +56,7 @@ export default defineAgent({
 });
 ```
 
-> **重要**：`buildAigcTools` 必须从 `@blksails/tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/tool-kit` 只导出引擎类型与纯数据 `ToolSpec` 声明（`AIGC_TOOLS` / `imageGeneration` / `imageEdit`），不顶层 import pi SDK / undici，对前端 bundle 安全。
+> **重要**：`buildAigcTools` 必须从 `@blksails/pi-web-tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出引擎类型与纯数据 `ToolSpec` 声明（`AIGC_TOOLS` / `imageGeneration` / `imageEdit`），不顶层 import pi SDK / undici，对前端 bundle 安全。
 
 ### 3. 配置环境变量
 

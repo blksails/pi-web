@@ -35,8 +35,8 @@
 - `extension-management` 的安装/卸载路由。
 
 ### Allowed Dependencies
-- `@blksails/protocol`(FormSchema/zodToFormSchema/secret 契约)、`@blksails/server`(http/config/runner)、
-  `@blksails/react`(settings-registry/use-config-domain)、`@blksails/ui`(SchemaForm/field-registry)。
+- `@blksails/pi-web-protocol`(FormSchema/zodToFormSchema/secret 契约)、`@blksails/pi-web-server`(http/config/runner)、
+  `@blksails/pi-web-react`(settings-registry/use-config-domain)、`@blksails/pi-web-ui`(SchemaForm/field-registry)。
 - pi SDK `@earendil-works/pi-coding-agent`(扩展加载语义:`-e`、`additionalExtensionPaths`、`extensionsOverride`)。
 
 ### Revalidation Triggers

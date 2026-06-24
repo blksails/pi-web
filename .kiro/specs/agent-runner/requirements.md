@@ -4,7 +4,7 @@
 
 在自定义 agent 模式下,pi-web 为每个会话 spawn 一个 **bootstrap runner** 子进程。编写自定义 agent 的用户用 pi SDK 写一个 `index.[ts|js]` 入口,但目前没有标准的载入方式,也没有把"用户定义"变成 `AgentSessionRuntime` 再跑 `runRpcMode` 的桥。本特性提供:
 
-- **`@blksails/agent-kit`**:导出 `defineAgent(def)` 类型帮助函数与 `AgentDefinition` 类型(`model/thinkingLevel/tools/customTools/excludeTools/noTools/systemPrompt/extensions/skills/promptTemplates/contextFiles/scopedModels` 等),运行时不强制依赖。
+- **`@blksails/pi-web-agent-kit`**:导出 `defineAgent(def)` 类型帮助函数与 `AgentDefinition` 类型(`model/thinkingLevel/tools/customTools/excludeTools/noTools/systemPrompt/extensions/skills/promptTemplates/contextFiles/scopedModels` 等),运行时不强制依赖。
 - **agent-loader**:用 `jiti` import `<agentPath>`,把 default export 归一化为三种形态:(a) 定义对象、(b) `(ctx) => 定义` 工厂、(c) 直接 `createRuntime`(`CreateAgentSessionRuntimeFactory`)工厂。
 - **runner.ts**(子进程入口):解析 `--agent/--cwd/--agent-dir` 参数,把 `AgentDefinition` 映射为 `createAgentSessionServices`(`resourceLoaderOptions`:systemPrompt/extensions/skills/prompts/contextFiles) + `createAgentSessionFromServices`(model/tools/customTools 等)组装出 `CreateAgentSessionRuntimeFactory`,经 `createAgentSessionRuntime(...)` 得到 runtime,最后 `await runRpcMode(runtime)`。
 - 处理 `resolveProjectTrust` 钩子(承接 agent-source 的信任决策)。
@@ -21,9 +21,9 @@
 
 #### Acceptance Criteria
 
-1. The `@blksails/agent-kit` package shall 导出 `AgentDefinition` 类型,覆盖字段 `model`、`thinkingLevel`、`tools`、`customTools`、`excludeTools`、`noTools`、`systemPrompt`、`extensions`、`skills`、`promptTemplates`、`contextFiles`、`scopedModels`。
-2. When 用户以一个 `AgentDefinition` 对象为参数调用 `defineAgent(def)`,the `@blksails/agent-kit` package shall 原样返回该对象且不改变其运行时行为(仅提供类型推导)。
-3. The `@blksails/agent-kit` package shall 不引入任何强制运行时依赖,使得未导入 `@blksails/agent-kit` 但 default export 结构匹配的 `index.ts` 仍能被 runner 正确载入。
+1. The `@blksails/pi-web-agent-kit` package shall 导出 `AgentDefinition` 类型,覆盖字段 `model`、`thinkingLevel`、`tools`、`customTools`、`excludeTools`、`noTools`、`systemPrompt`、`extensions`、`skills`、`promptTemplates`、`contextFiles`、`scopedModels`。
+2. When 用户以一个 `AgentDefinition` 对象为参数调用 `defineAgent(def)`,the `@blksails/pi-web-agent-kit` package shall 原样返回该对象且不改变其运行时行为(仅提供类型推导)。
+3. The `@blksails/pi-web-agent-kit` package shall 不引入任何强制运行时依赖,使得未导入 `@blksails/pi-web-agent-kit` 但 default export 结构匹配的 `index.ts` 仍能被 runner 正确载入。
 4. Where 用户在 `index.ts` 提供了不符合 `AgentDefinition` 类型的字段,the TypeScript 编译器 shall 在编译期报告类型错误。
 
 ### Requirement 2: agent-loader 三形态归一化
@@ -96,6 +96,6 @@
 
 ## Boundary Context
 
-- **In scope**: `@blksails/agent-kit`(`defineAgent`/`AgentDefinition` 类型);agent-loader(jiti import + 三形态归一化);runner.ts(参数解析 + 选项映射 + `createAgentSessionRuntime` + `runRpcMode`);`resolveProjectTrust` 钩子接线;示例 `examples/hello-agent/index.ts`;上述对应的单元/集成/e2e 测试。
+- **In scope**: `@blksails/pi-web-agent-kit`(`defineAgent`/`AgentDefinition` 类型);agent-loader(jiti import + 三形态归一化);runner.ts(参数解析 + 选项映射 + `createAgentSessionRuntime` + `runRpcMode`);`resolveProjectTrust` 钩子接线;示例 `examples/hello-agent/index.ts`;上述对应的单元/集成/e2e 测试。
 - **Out of scope**: agent 源解析与入口探测、双模式判定、信任策略生成(归 `agent-source-resolver`);从服务端 spawn 子进程与 JSONL framing、三类消息分发(归 `rpc-channel` 的 `PiRpcProcess`);CLI 回退模式(`pi --mode rpc`)不经过 runner;事件→UIMessage 翻译(归 `session-engine`);协议类型/schema 定义本身(归 `protocol-contract`)。
 - **Adjacent expectations**: 依赖 `protocol-contract` 提供的 schema 做帧校验(契约根);信任决策的"来源→是否信任"的策略判定由 `agent-source-resolver` 给出,runner 只负责把该决策作用到 `resolveProjectTrust`;运行环境 Node `>=22.19.0`;jiti 载入用户代码等同 RCE,须运行在受信/沙箱环境(PLAN.md §11.2)。

@@ -13,7 +13,7 @@
 
 1. **解析**目录或 git → 本地工作目录；
 2. **入口探测**（`entry-probe.ts`）— 优先 `package.json#pi-web.entry` 覆盖，否则按 `index.ts` > `index.js` > `index.mjs` 取首个存在者；都没有则无入口；
-3. **双模式判定** + 信任策略 → 生成一份 `spawnSpec`（子进程怎么起，由 `@blksails/protocol` 定义类型）。
+3. **双模式判定** + 信任策略 → 生成一份 `spawnSpec`（子进程怎么起，由 `@blksails/pi-web-protocol` 定义类型）。
 
 ## 双模式载入（Dual-mode）
 
@@ -53,7 +53,7 @@ interface PiRpcChannel {
 ```
 
 - `PiRpcProcess`（`packages/server/src/rpc-channel/pi-rpc-process.ts`）是它的 **local 实现**（基于 `node:child_process` spawn）；
-- `SpawnSpec`（子进程怎么起）由 `@blksails/protocol` 拥有并导出，是单一事实来源；
+- `SpawnSpec`（子进程怎么起）由 `@blksails/pi-web-protocol` 拥有并导出，是单一事实来源；
 - 通道抽象为未来 e2b / ssh / device 等远程 host 预留。
 
 子进程通信用 **JSONL framing**：严格按 `\n` 切、剥 `\r`，**禁用 Node `readline`**（它会误切 `U+2028/2029`）。消息分三类：`response`（命令应答）、`event`（流式事件）、`extension_ui_request`（扩展 UI 请求，如权限弹窗）。
@@ -69,7 +69,7 @@ interface PiRpcChannel {
 
 ## SSE 帧与 `protocolVersion`
 
-前后端经 **SSE（Server-Sent Events）** 传流式数据，每帧携带 `protocolVersion`。`@blksails/protocol` 是稳定契约，类型/schema 改动需语义化版本管理。详见 [13 HTTP/SSE API 参考](./13-http-api-reference.md)。
+前后端经 **SSE（Server-Sent Events）** 传流式数据，每帧携带 `protocolVersion`。`@blksails/pi-web-protocol` 是稳定契约，类型/schema 改动需语义化版本管理。详见 [13 HTTP/SSE API 参考](./13-http-api-reference.md)。
 
 ## 附件的两条路径（概念预览）
 
@@ -101,7 +101,7 @@ interface PiRpcChannel {
 ## 下一步 / 相关
 
 - 这些概念如何落到层与数据流上 → [03 系统架构](./03-architecture.md)
-- 提到的 `@blksails/protocol`、`@blksails/server` 等包边界 → [04 分层包](./04-packages.md)
+- 提到的 `@blksails/pi-web-protocol`、`@blksails/pi-web-server` 等包边界 → [04 分层包](./04-packages.md)
 - 给自己的 agent 套 UI（custom 模式入口）→ [07 自定义 Agent 开发](./07-agent-development.md)
 - 把通用 pi agent 当 Web 服务起（cli 模式 / `pi-web` 命令）→ [14 CLI](./14-cli.md)
 - 附件三不变式的完整实现 → [08 附件系统](./08-attachment-system.md)

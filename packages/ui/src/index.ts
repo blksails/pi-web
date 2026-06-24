@@ -1,5 +1,5 @@
 /**
- * @blksails/ui — shadcn/AI-Elements 有样式组件层(npm 聚合导出面)。
+ * @blksails/pi-web-ui — shadcn/AI-Elements 有样式组件层(npm 聚合导出面)。
  *
  * 默认拖入组件 `<PiChat>`(富装配)+ 最小组件 `<PiChatBasic>` + 细粒度组件 +
  * 渲染器注册表 + 公开类型。

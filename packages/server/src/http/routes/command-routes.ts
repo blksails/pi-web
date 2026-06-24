@@ -15,7 +15,7 @@ import {
   SteerRequestSchema,
   UiResponseRequestSchema,
   UiRpcRequestSchema,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import {

@@ -1,7 +1,7 @@
 /**
  * uiMessageChunk 帧负载 → AI SDK v5 UIMessageChunk 映射。
  *
- * 来源:@blksails/protocol 的 UiMessageChunk(z.infer),其形状已对齐 AI SDK v5
+ * 来源:@blksails/pi-web-protocol 的 UiMessageChunk(z.infer),其形状已对齐 AI SDK v5
  * UIMessageChunk 联合(text/reasoning/tool/data-pi-* + lifecycle)。本函数做"协议块 →
  * AI SDK 块"的显式映射,确保字段名与 AI SDK 约定一致(text/reasoning 用 id+delta;
  * tool 用 toolCallId/toolName/input/output;data-pi-* 透传为 data-${type} part)。
@@ -9,7 +9,7 @@
  * 纯函数、无副作用。不可解析的输入由上游 connection 层经 SseFrameSchema.safeParse 拦截,
  * 不会进入本函数。
  */
-import type { UiMessageChunk } from "@blksails/protocol";
+import type { UiMessageChunk } from "@blksails/pi-web-protocol";
 import type { UIMessageChunk } from "ai";
 
 /**

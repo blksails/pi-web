@@ -11,7 +11,7 @@ import {
   secretAwareValidator,
   type ConfigDomainIO,
   type FormValues,
-} from "@blksails/react";
+} from "@blksails/pi-web-react";
 import {
   authFormSchema,
   authConfigSchema,
@@ -21,13 +21,13 @@ import {
   sandboxConfigSchema,
   extensionsFormSchema,
   extensionsConfigSchema,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 import {
   registerFieldRendererByKey,
   ExtensionsKvField,
   ConfigFilesField,
   ModelSelectField,
-} from "@blksails/ui";
+} from "@blksails/pi-web-ui";
 
 let registered = false;
 

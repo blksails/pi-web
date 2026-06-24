@@ -1,7 +1,7 @@
 /**
  * http-api — SSE 帧编码器(纯函数,无 I/O,Req 5.2/5.5/6.1/6.4/7.1)。
  *
- * 把单个 `SseFrame`(@blksails/protocol,`uiMessageChunk` 与 `control` 两类)+ 单调
+ * 把单个 `SseFrame`(@blksails/pi-web-protocol,`uiMessageChunk` 与 `control` 两类)+ 单调
  * 序号编码为符合 SSE 规范的 `text/event-stream` 文本块:
  *   event: <kind>\n
  *   id: <seq>\n
@@ -10,7 +10,7 @@
  *
  * 每帧 JSON 承载 `protocolVersion`(取自帧自身,续流保持一致)。
  */
-import type { SseFrame } from "@blksails/protocol";
+import type { SseFrame } from "@blksails/pi-web-protocol";
 
 /** 把可能含换行的 data 文本拆成多条 `data:` 行(SSE 规范)。 */
 function dataLines(json: string): string {

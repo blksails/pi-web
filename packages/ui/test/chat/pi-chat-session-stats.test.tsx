@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
-import type { WebExtension } from "@blksails/web-kit";
+import type { WebExtension } from "@blksails/pi-web-kit";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession, mockControls, sampleStats } from "../fixtures/mock-session.js";
 
@@ -16,7 +16,7 @@ import { mockSession, mockControls, sampleStats } from "../fixtures/mock-session
  *  - 4.3            — 用量区不进 panelRight(aside)
  *
  * 用量条随输入 dock 渲染,仅在会话态(非空)出现;故各用例用 initialMessages 进入会话态。
- * 不触达真实后端;mock session/controls 形状来自 @blksails/react。
+ * 不触达真实后端;mock session/controls 形状来自 @blksails/pi-web-react。
  */
 const CONVO: UIMessage[] = [
   { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },

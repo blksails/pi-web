@@ -10,7 +10,7 @@
  * - resolve:跨会话 → null(7.2)
  */
 import { describe, expect, it } from "vitest";
-import type { Attachment } from "@blksails/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 import {
   createAttachmentProvider,
   ATTACHMENT_PROVIDER_ID,

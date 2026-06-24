@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { buildAigcTools } from "../../src/aigc/index.js";
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 describe("image_edit · 输入越权/无效降级(Req 2.4)", () => {
   it("ctx.resolve 抛错 → ok:false 且未调用 putOutput(不泄漏)", async () => {

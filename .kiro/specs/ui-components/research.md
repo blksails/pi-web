@@ -2,13 +2,13 @@
 
 ## Discovery Scope
 
-Greenfield React 组件库(`@blksails/ui`)。Discovery 类型:**Full(新特性)**,但因上游契约(`@blksails/react`、`@blksails/protocol`)与权威设计(`PLAN.md`)已稳定,研究聚焦"如何在既定契约上装配 AI Elements + 落地扩展点",而非外部技术选型探索。
+Greenfield React 组件库(`@blksails/pi-web-ui`)。Discovery 类型:**Full(新特性)**,但因上游契约(`@blksails/pi-web-react`、`@blksails/pi-web-protocol`)与权威设计(`PLAN.md`)已稳定,研究聚焦"如何在既定契约上装配 AI Elements + 落地扩展点",而非外部技术选型探索。
 
 ## Key Findings
 
 ### 1. 上游契约已定,本层只装配与呈现
 - `react-client/design.md` 已确定 `usePiSession`(暴露 `transport`/`status`/`error`/`close`)、`usePiControls`(`setModel`/`setThinking`/`abort`/`steer`/`followUp`/`getStats`/`getCommands` + `stats`/`commands`/操作态)、`useExtensionUI`(`queue`/`current`/`respond`/`error`)、`PiTransport`、`createPiClient`、可选 `PiProvider`。
-- 结论:`@blksails/ui` 通过 props 接收这些 hooks 结果(或经 `PiProvider`),不重定义其行为;消息流来自 `useChat({ transport })`。
+- 结论:`@blksails/pi-web-ui` 通过 props 接收这些 hooks 结果(或经 `PiProvider`),不重定义其行为;消息流来自 `useChat({ transport })`。
 
 ### 2. part 渲染映射来自 PLAN.md §4
 - pi 事件已由 `session-engine` 翻译为 AI SDK `UIMessage` chunk:`text-*`→`Response`;`reasoning-*`→`<Reasoning>`;`tool-input-available`/`tool-output-available`→`<Tool>`;工具增量与 `compaction`/`auto_retry`/`queue` 为 `data-pi-*` part;`extension_ui_request` 走旁路(非 UIMessage)。
@@ -27,8 +27,8 @@ Greenfield React 组件库(`@blksails/ui`)。Discovery 类型:**Full(新特性)*
 
 - **Pattern**:Headless 消费 + 装配组件 + part 分派渲染 + 注册表扩展点。理由见 design.md「Architecture Integration」。
 - **Build vs adopt**:文本/思考/工具/输入/操作的底层视觉采用 Vercel AI Elements(adopt),本层只做 pi 特化装配与三态/折叠/弹窗/控制(build)。避免重造 Markdown 流式渲染与 Radix primitives。
-- **Boundary**:不绑定后端/路由(`app-shell`),不做非 React 嵌入(`embed-integrations`),仅依赖 `@blksails/react` + shadcn/AI Elements(brief 约束)。
-- **类型来源**:协议派生类型(`ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type)从 `@blksails/react` re-export 消费,避免本层直接耦合 `@blksails/protocol`,保持单向依赖与单一上游接口。
+- **Boundary**:不绑定后端/路由(`app-shell`),不做非 React 嵌入(`embed-integrations`),仅依赖 `@blksails/pi-web-react` + shadcn/AI Elements(brief 约束)。
+- **类型来源**:协议派生类型(`ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type)从 `@blksails/pi-web-react` re-export 消费,避免本层直接耦合 `@blksails/pi-web-protocol`,保持单向依赖与单一上游接口。
 
 ## Synthesis Outcomes
 

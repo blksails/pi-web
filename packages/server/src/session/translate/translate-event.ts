@@ -30,12 +30,12 @@
  * 一次完整流为 start → start-step → text-start → text-delta… → text-end → finish-step
  * → finish(turn 边界以 start-step/finish-step 包裹)。
  */
-import type { AgentEvent } from "@blksails/protocol";
+import type { AgentEvent } from "@blksails/pi-web-protocol";
 import {
   extractToolDetailsUiSpec,
   makeControlFrame,
   makeUiMessageChunkFrame,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 import type { TranslateResult } from "./translate.types.js";
 import {
   closeReasoningPart,

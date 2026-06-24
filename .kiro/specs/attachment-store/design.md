@@ -47,7 +47,7 @@
 ### Allowed Dependencies
 - **http-api**:`createPiWebHandler({ routes })` 注入接缝、`Router` 的 `:id` 会话解析 + `authResolver`/`authorizeSession` 门控、`RequestContext`/`InjectedRoute`/`RouteHandler` 契约。
 - **session-engine**:`SessionStore.get(id)`(属主校验)、`PiSession.cwd`(会话工作目录,作目录归属参考)。
-- **protocol**:zod DTO 风格(`@blksails/protocol`,新增 `Attachment`/上传响应 DTO)。
+- **protocol**:zod DTO 风格(`@blksails/pi-web-protocol`,新增 `Attachment`/上传响应 DTO)。
 - **react-client / ui-components**:`useAttachments`、`attachments.tsx`、`pi-chat.tsx`、`agent-message-to-ui.ts`(在其上重构)。
 - **session-store-adapters**:仅**接口风格对齐**(异步 `verb+noun`、`instanceof` 错误、后端经配置选择),不复用其存储实例。
 - **node:crypto**:`randomBytes`(id)、`createHmac`/`timingSafeEqual`(签名)。零新第三方依赖(不引入 nanoid)。
@@ -118,8 +118,8 @@ flowchart TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Frontend / CLI | `@blksails/react`(useAttachments)+ `@blksails/ui`(attachments.tsx/pi-chat) | 上传摄入 + URL 展示 + 历史回显 | 保留 `toImageContents()` 发 base64 |
-| Backend / Services | `@blksails/server`(新增 `attachment/` 模块 + `http/routes/attachment-routes.ts`)| 对象存储 + 上传/分发路由 | 经 `createPiWebHandler({routes})` 注入 |
+| Frontend / CLI | `@blksails/pi-web-react`(useAttachments)+ `@blksails/pi-web-ui`(attachments.tsx/pi-chat) | 上传摄入 + URL 展示 + 历史回显 | 保留 `toImageContents()` 发 base64 |
+| Backend / Services | `@blksails/pi-web-server`(新增 `attachment/` 模块 + `http/routes/attachment-routes.ts`)| 对象存储 + 上传/分发路由 | 经 `createPiWebHandler({routes})` 注入 |
 | Data / Storage | `LocalFsBlobBackend`(node:fs/promises)+ Registry(JSON 旁路)| 字节落盘 + 描述符持久化 | S3 端口预留,`key=id`(本切片不去重) |
 | Messaging / Events | — | — | 无 |
 | Infrastructure / Runtime | `node:crypto`(randomBytes/HMAC)、Web `Request.formData()` | id 生成 + 签名 + multipart 解析 | 零新第三方依赖 |

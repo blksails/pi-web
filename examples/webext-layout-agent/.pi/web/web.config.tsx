@@ -1,6 +1,6 @@
 /** webext-layout-agent UI 扩展:Tier 1 区域插槽(panelRight / headerCenter)。 */
 import * as React from "react";
-import { defineWebExtension } from "@blksails/web-kit";
+import { defineWebExtension } from "@blksails/pi-web-kit";
 
 function InfoPanel(): React.JSX.Element {
   return (

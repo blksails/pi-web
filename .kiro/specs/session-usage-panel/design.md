@@ -32,7 +32,7 @@
 - `PiChatBasic` 的既有用量展示。
 
 ### Allowed Dependencies
-- `usePiControls`（`@blksails/react`）→ 提供 `controls.stats`（`SessionStats`）。
+- `usePiControls`（`@blksails/pi-web-react`）→ 提供 `controls.stats`（`SessionStats`）。
 - 既有组件 `PiSessionStats`（`packages/ui/src/controls/pi-session-stats.js`）。
 - 既有 webext slot 机制（仅作为「并存」对照，不被本特性借用承载内核用量）。
 - 依赖方向遵循 steering：`ui` 依赖 `react`/`protocol`，不反向依赖 server。
@@ -75,8 +75,8 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Frontend | React 19 + shadcn/ui（既有） | 渲染内核用量状态区，复用 `PiSessionStats` | 仅 `@blksails/ui` 包内 |
-| Data | `usePiControls.stats`（`@blksails/react`，既有） | 提供 `SessionStats` | 不新增数据源 |
+| Frontend | React 19 + shadcn/ui（既有） | 渲染内核用量状态区，复用 `PiSessionStats` | 仅 `@blksails/pi-web-ui` 包内 |
+| Data | `usePiControls.stats`（`@blksails/pi-web-react`，既有） | 提供 `SessionStats` | 不新增数据源 |
 | Test | Vitest + Testing Library（组件）、Playwright/隔离 build（e2e） | 验收 | e2e 用 `NEXT_DIST_DIR=.next-e2e` + external server |
 
 ## File Structure Plan

@@ -130,8 +130,8 @@ runner 通过 `AgentContext.logger` 向 agent source 注入已绑定命名空间
 
 ```typescript
 // examples/logging-demo-agent/index.ts（节选）
-import type { AgentContext, AgentDefinition } from "@blksails/agent-kit";
-import { defineAgent } from "@blksails/agent-kit";
+import type { AgentContext, AgentDefinition } from "@blksails/pi-web-agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 
 export default function (ctx: AgentContext): AgentDefinition {
   const logger = ctx.logger;                        // runner 注入，命名空间取 agent 源目录名

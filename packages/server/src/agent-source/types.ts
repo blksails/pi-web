@@ -1,11 +1,11 @@
 /**
  * agent-source-resolver — 共享类型与插件接口。
  *
- * `SpawnSpec` 由上游 `@blksails/protocol`(protocol-contract)拥有,本模块经
- * `import type { SpawnSpec } from "@blksails/protocol"` 复用,绝不在本地定义/重声明。
+ * `SpawnSpec` 由上游 `@blksails/pi-web-protocol`(protocol-contract)拥有,本模块经
+ * `import type { SpawnSpec } from "@blksails/pi-web-protocol"` 复用,绝不在本地定义/重声明。
  * `TrustFragment`(applyTrust 的返回形状)在此定义并导出。
  */
-import type { SpawnSpec } from "@blksails/protocol";
+import type { SpawnSpec } from "@blksails/pi-web-protocol";
 
 export type { SpawnSpec };
 

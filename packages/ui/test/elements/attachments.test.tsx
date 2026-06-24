@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { PendingAttachment } from "@blksails/react";
+import type { PendingAttachment } from "@blksails/pi-web-react";
 import {
   Attachments,
   getMediaCategory,

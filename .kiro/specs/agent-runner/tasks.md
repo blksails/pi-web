@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [x] 1. 基础:包脚手架与测试设施
-- [x] 1.1 创建 `@blksails/agent-kit` 包脚手架与 TypeScript strict 配置
+- [x] 1.1 创建 `@blksails/pi-web-agent-kit` 包脚手架与 TypeScript strict 配置
   - 建立 `packages/agent-kit/`(`package.json` 标注零强制运行时依赖、pi SDK 类型为 peer/dev、`tsconfig.json` strict)
   - 观察完成:`tsc --noEmit` 在空包脚手架上通过,包可被 workspace 解析
   - _Requirements: 1.3_
@@ -9,7 +9,7 @@
 
 - [x] 1.2 建立 `lib/pi/` 与 vitest 测试设施
   - 配置 vitest,使单元/集成/e2e 测试可由单一命令运行
-  - 安装运行时依赖(pi SDK、jiti),测试依赖(`@blksails/protocol`、vitest)
+  - 安装运行时依赖(pi SDK、jiti),测试依赖(`@blksails/pi-web-protocol`、vitest)
   - 观察完成:`pnpm test` 在空测试集上成功运行并报告 0 失败
   - _Requirements: 7.4_
 
@@ -96,7 +96,7 @@
   - _Depends: 5.1, 5.2_
 
 - [x] 7.2 e2e 测试:stdin prompt → stdout 帧 + protocol schema 校验
-  - 向 runner stdin 写入 `{"type":"prompt"}`,收集 stdout 帧,断言出现 `message_update`(`text_delta`)与 `agent_end`;每帧用 `@blksails/protocol` 的 `AgentEvent`/`RpcResponse` schema `safeParse` 全部通过(即与 CLI `pi --mode rpc` 同形)
+  - 向 runner stdin 写入 `{"type":"prompt"}`,收集 stdout 帧,断言出现 `message_update`(`text_delta`)与 `agent_end`;每帧用 `@blksails/pi-web-protocol` 的 `AgentEvent`/`RpcResponse` schema `safeParse` 全部通过(即与 CLI `pi --mode rpc` 同形)
   - 观察完成:e2e 测试通过,全部帧通过 schema 校验
   - _Requirements: 7.3, 6.1, 6.2, 6.3_
   - _Boundary: runner_

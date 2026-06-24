@@ -1,5 +1,5 @@
 {
-  "name": "@blksails/ui",
+  "name": "@blksails/pi-web-ui",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -18,9 +18,9 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@blksails/protocol": "workspace:*",
-    "@blksails/react": "workspace:*",
-    "@blksails/web-kit": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-react": "workspace:*",
+    "@blksails/pi-web-kit": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-popover": "^1.1.17",
     "@radix-ui/react-select": "^2.1.0",

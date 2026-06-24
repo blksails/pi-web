@@ -14,7 +14,7 @@ import {
   type ResumeMeta,
   type SessionEntryStore,
   type SessionStoreConfig,
-} from "@blksails/server";
+} from "@blksails/pi-web-server";
 
 /** runner / stub 写入创建元数据所用的 custom entry 类型标识。 */
 export const PIWEB_SESSION_CUSTOM_TYPE = "piweb.session";

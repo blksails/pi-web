@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* shadcn CSS variable theme tokens consumed by <PiChat> and its children. */
-@import "@blksails/ui/styles.css";
+@import "@blksails/pi-web-ui/styles.css";
 
 html,
 body {

@@ -18,7 +18,7 @@
 | `noFallthroughCasesInSwitch` | `true` |
 | `isolatedModules` | `true` |
 
-**RPC 协议类型处理规则**：RPC 层契约（`RpcCommand` / `RpcResponse` / `AgentEvent` / `RpcExtensionUIRequest` / `RpcExtensionUIResponse` 等）的单一事实来源是 `@blksails/protocol` 包，由其 `src/index.ts` 统一 re-export（`packages/protocol/src/rpc/*.ts`、`packages/protocol/src/transport/*.ts`）。这些类型最初是从上游 pi SDK 的 `@earendil-works/pi-coding-agent/dist/modes/rpc/rpc-types.d.ts` 派生而来（上游未在 `exports` 导出其 RPC 层类型），现已收敛进 protocol 包集中维护。**业务代码只 import 消费，禁止在本地重新声明**这些类型或 `SpawnSpec`（早期 `PLAN.md` 提到的本地 `rpc-types.ts` 复制方案已被 protocol-contract 取代）。`SpawnSpec` 同样由 `@blksails/protocol` 导出，定义于 `packages/protocol/src/transport/spawn.ts`（`SpawnSpecSchema`），字段为 `{ cmd, args, cwd, env }` 且四字段全必填。
+**RPC 协议类型处理规则**：RPC 层契约（`RpcCommand` / `RpcResponse` / `AgentEvent` / `RpcExtensionUIRequest` / `RpcExtensionUIResponse` 等）的单一事实来源是 `@blksails/pi-web-protocol` 包，由其 `src/index.ts` 统一 re-export（`packages/protocol/src/rpc/*.ts`、`packages/protocol/src/transport/*.ts`）。这些类型最初是从上游 pi SDK 的 `@earendil-works/pi-coding-agent/dist/modes/rpc/rpc-types.d.ts` 派生而来（上游未在 `exports` 导出其 RPC 层类型），现已收敛进 protocol 包集中维护。**业务代码只 import 消费，禁止在本地重新声明**这些类型或 `SpawnSpec`（早期 `PLAN.md` 提到的本地 `rpc-types.ts` 复制方案已被 protocol-contract 取代）。`SpawnSpec` 同样由 `@blksails/pi-web-protocol` 导出，定义于 `packages/protocol/src/transport/spawn.ts`（`SpawnSpecSchema`），字段为 `{ cmd, args, cwd, env }` 且四字段全必填。
 
 类型检查命令（同时递归检查所有 workspace 包）：
 

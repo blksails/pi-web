@@ -5,7 +5,7 @@ import type {
   RpcResponse,
   SpawnSpec,
   SseFrame,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 import { fileURLToPath } from "node:url";
 import { PiRpcProcess } from "../../src/rpc-channel/index.js";
 import { PiSession } from "../../src/session/pi-session.js";

@@ -6,7 +6,7 @@
  * 由装配层按"core 已接管触发符"让位。失败/空安全收敛(不渲染)。
  */
 import * as React from "react";
-import type { CompletionItem } from "@blksails/protocol";
+import type { CompletionItem } from "@blksails/pi-web-protocol";
 import { cn } from "../lib/cn.js";
 import {
   useCompletion,

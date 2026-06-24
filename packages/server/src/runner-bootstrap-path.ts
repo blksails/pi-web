@@ -1,6 +1,6 @@
 /**
  * Resolve the absolute path to the real-mode runner bootstrap script
- * (`runner-bootstrap.mjs`) that lives at the root of the `@blksails/server`
+ * (`runner-bootstrap.mjs`) that lives at the root of the `@blksails/pi-web-server`
  * package.
  *
  * This module computes the path from ITS OWN location (`import.meta.url`), so

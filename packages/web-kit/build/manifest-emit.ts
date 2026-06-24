@@ -9,7 +9,7 @@ import {
   canonicalManifestBytes,
   type WebExtensionManifest,
   type WebExtensionCapability,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 
 export { canonicalManifestBytes };
 

@@ -1,5 +1,5 @@
 {
-  "name": "@blksails/web-kit",
+  "name": "@blksails/pi-web-kit",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -19,7 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@blksails/protocol": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
     "esbuild": "^0.24.0"
   },
   "peerDependencies": {

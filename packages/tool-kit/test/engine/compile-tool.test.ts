@@ -16,7 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { compileTool } from "../../src/engine/compile-tool.js";
 import type { CompileDeps } from "../../src/engine/compile-tool.js";
 import type { ToolSpec, PickedResult } from "../../src/engine/types.js";
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 // ── Mock AttachmentToolContext ────────────────────────────────────────────────
 

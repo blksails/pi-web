@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { decodeUiMessageChunk } from "../../src/sse/decode-chunk.js";
-import type { UiMessageChunk } from "@blksails/protocol";
+import type { UiMessageChunk } from "@blksails/pi-web-protocol";
 
 describe("decodeUiMessageChunk", () => {
   it("maps text chunks (start/delta/end)", () => {

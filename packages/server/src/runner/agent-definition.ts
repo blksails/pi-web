@@ -1,7 +1,7 @@
 /**
- * Server-internal mirror of the `@blksails/agent-kit` public type surface.
+ * Server-internal mirror of the `@blksails/pi-web-agent-kit` public type surface.
  *
- * `@blksails/server` intentionally does NOT depend on `@blksails/agent-kit`
+ * `@blksails/pi-web-server` intentionally does NOT depend on `@blksails/pi-web-agent-kit`
  * (the kit is a zero-forced-dependency, types-only authoring package, and the
  * loader normalizes user exports by structural duck-typing rather than by
  * import). To map a normalized definition the runner still needs the *type*, so

@@ -2,7 +2,7 @@
  * mock 会话夹具 — mock usePiSession / usePiControls / useExtensionUI 结果与
  * 可脚本化推送 chunk 的 mock ChatTransport(实现 AI SDK ChatTransport 接口)。
  *
- * 本层只消费 @blksails/react 的接口形状;mock 不触达真实后端/SSE。
+ * 本层只消费 @blksails/pi-web-react 的接口形状;mock 不触达真实后端/SSE。
  */
 import { vi } from "vitest";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
@@ -12,12 +12,12 @@ import type {
   UseExtensionUIResult,
   OperationState,
   ControlOperation,
-} from "@blksails/react";
+} from "@blksails/pi-web-react";
 import type {
   RpcSlashCommand,
   SessionStats,
   RpcExtensionUIRequest,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 
 const IDLE: OperationState = { pending: false, error: undefined };
 

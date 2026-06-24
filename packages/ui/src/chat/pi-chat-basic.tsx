@@ -14,7 +14,7 @@ import type {
   UsePiSessionResult,
   UsePiControlsResult,
   UseExtensionUIResult,
-} from "@blksails/react";
+} from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiInteraction } from "../elements/pi-interaction.js";

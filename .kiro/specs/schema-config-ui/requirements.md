@@ -34,8 +34,8 @@
 - 5.2 THE 系统 SHALL 允许新增配置域而无需改动渲染内核;前端设置系统 SHALL 提供面板注册表,使新增配置域以注册一个面板的方式纳入,设置外壳零改动。
 
 ### R6 分层与同构契约
-- 6.1 THE 表单 IR 类型与各配置域 schema SHALL 定义在 `@blksails/protocol`(零运行时依赖,除 zod),供前后端共用。
-- 6.2 THE 渲染层 SHALL 位于 `@blksails/ui`,状态/校验 hook 位于 `@blksails/react`,持久化端点位于 server/app,遵循 protocol→react→ui→app 单向依赖。
+- 6.1 THE 表单 IR 类型与各配置域 schema SHALL 定义在 `@blksails/pi-web-protocol`(零运行时依赖,除 zod),供前后端共用。
+- 6.2 THE 渲染层 SHALL 位于 `@blksails/pi-web-ui`,状态/校验 hook 位于 `@blksails/pi-web-react`,持久化端点位于 server/app,遵循 protocol→react→ui→app 单向依赖。
 
 ### R7 复用既有先例
 - 7.1 THE 设计 SHALL 在结构上复用并推广现有「描述符→UI」先例(`RpcExtensionUIRequest` + `PiPermissionDialog` 按 method 渲染),把"按 method 判别"推广为"按字段类型/描述符判别"。

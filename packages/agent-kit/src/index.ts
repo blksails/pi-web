@@ -1,5 +1,5 @@
 /**
- * `@blksails/agent-kit` — lightweight, zero-forced-runtime-dependency helpers for
+ * `@blksails/pi-web-agent-kit` — lightweight, zero-forced-runtime-dependency helpers for
  * authoring pi-web custom agents.
  *
  * Authors write an `index.ts` whose default export is an {@link AgentDefinition}
@@ -45,10 +45,10 @@ export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";
 
 // server-driven UI:在工具 execute 内经 onUpdate 发出 data-pi-ui 部件。
 export { emitUi } from "./emit-ui.js";
-export type { UiSpec, UiNode } from "@blksails/protocol";
+export type { UiSpec, UiNode } from "@blksails/pi-web-protocol";
 
 // attachment-tool-bridge(task 4.1):tool 接入上下文的**作者面类型契约**。
-// 仅类型,无值导入 —— 构造(createAttachmentToolContext)与运行期句柄留在 @blksails/server
+// 仅类型,无值导入 —— 构造(createAttachmentToolContext)与运行期句柄留在 @blksails/pi-web-server
 // 子进程侧,故本包不因此获得到 server 的运行时依赖边(不破坏 webpack externals 边界)。
 export type {
   AttachmentToolContext,

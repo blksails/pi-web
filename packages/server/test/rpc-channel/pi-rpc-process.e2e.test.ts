@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import type { SpawnSpec, AgentEvent } from "@blksails/protocol";
+import type { SpawnSpec, AgentEvent } from "@blksails/pi-web-protocol";
 
 const STUB = fileURLToPath(
   new URL("./fixtures/rpc-stub-process.mjs", import.meta.url),

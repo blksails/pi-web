@@ -2,15 +2,15 @@
 
 ## Overview
 
-**Purpose**:本特性交付 pi-web "自定义 agent 模式"的载入与 RPC 桥:一个被 spawn 的 **bootstrap runner** 子进程入口,加上轻量的 `@blksails/agent-kit` 类型包。它把用户用 pi SDK 写的 `index.[ts|js]`(default export 为 `AgentDefinition` 或工厂)载入、归一化、映射为 pi SDK 的会话运行时,并以 `runRpcMode` 暴露为与 CLI 逐字节一致的标准 RPC 端点。
+**Purpose**:本特性交付 pi-web "自定义 agent 模式"的载入与 RPC 桥:一个被 spawn 的 **bootstrap runner** 子进程入口,加上轻量的 `@blksails/pi-web-agent-kit` 类型包。它把用户用 pi SDK 写的 `index.[ts|js]`(default export 为 `AgentDefinition` 或工厂)载入、归一化、映射为 pi SDK 的会话运行时,并以 `runRpcMode` 暴露为与 CLI 逐字节一致的标准 RPC 端点。
 
-**Users**:编写自定义 agent 的用户(通过 `@blksails/agent-kit` 的 `defineAgent()` 获得类型提示);下游 `rpc-channel`(spawn 本 runner)与 `session-engine`(消费 runner 的 RPC 帧)。
+**Users**:编写自定义 agent 的用户(通过 `@blksails/pi-web-agent-kit` 的 `defineAgent()` 获得类型提示);下游 `rpc-channel`(spawn 本 runner)与 `session-engine`(消费 runner 的 RPC 帧)。
 
 **Impact**:把"用户写好一个 pi agent"到"它能作为纯 RPC 子进程被 pi-web 驱动"之间的桥补齐。后端不在自身进程内执行用户代码(隔离),所有 agent 能力声明被映射到 pi 原生资源体系。
 
 ### Goals
 
-- 提供 `@blksails/agent-kit`:`defineAgent()` 类型帮助 + `AgentDefinition` 类型,运行时零强制依赖。
+- 提供 `@blksails/pi-web-agent-kit`:`defineAgent()` 类型帮助 + `AgentDefinition` 类型,运行时零强制依赖。
 - 提供 agent-loader:jiti import + default export 三形态(对象 / `(ctx)=>定义` / `createRuntime`)归一化为单一 `CreateAgentSessionRuntimeFactory`。
 - 提供 runner.ts:参数解析 → 选项映射 → `createAgentSessionRuntime` → `runRpcMode`,并接线 `resolveProjectTrust`。
 - runner RPC 输出与 CLI `pi --mode rpc` 逐字节一致,且通过 protocol-contract schema 校验。
@@ -27,7 +27,7 @@
 
 ### This Spec Owns
 
-- `@blksails/agent-kit`:`AgentDefinition` 类型与 `defineAgent()`(恒等返回 + 类型推导)。
+- `@blksails/pi-web-agent-kit`:`AgentDefinition` 类型与 `defineAgent()`(恒等返回 + 类型推导)。
 - agent-loader:jiti import、default export 三形态归一化、`NormalizedAgentRuntimeFactory` 的产出、无效定义的错误表面。
 - AgentDefinition → SDK 选项的映射逻辑(资源类 → `resourceLoaderOptions`;会话类 → `createAgentSessionFromServices` 入参)。
 - runner.ts 子进程入口:`--agent/--cwd/--agent-dir` 参数解析、组装 `createAgentSessionRuntime`、创建 `SessionManager`、`await runRpcMode(runtime)`。
@@ -46,8 +46,8 @@
 ### Allowed Dependencies
 
 - **运行时**:`@earendil-works/pi-coding-agent` SDK(`createAgentSessionServices`/`createAgentSessionFromServices`/`createAgentSessionRuntime`/`runRpcMode`/`SessionManager`);`jiti`(载入用户代码)。
-- **类型 / 校验**:`@blksails/protocol`(仅测试中用其 schema 做帧校验)。
-- **`@blksails/agent-kit`**:零强制运行时依赖(纯类型 + 恒等函数)。
+- **类型 / 校验**:`@blksails/pi-web-protocol`(仅测试中用其 schema 做帧校验)。
+- **`@blksails/pi-web-agent-kit`**:零强制运行时依赖(纯类型 + 恒等函数)。
 - **依赖方向约束**:`agent-runner → protocol`(仅测试)、`→ pi SDK`、`→ jiti`;禁止依赖 `rpc-channel` / `agent-source-resolver` / `session-engine`(单向收敛)。
 
 ### Revalidation Triggers
@@ -102,8 +102,8 @@ graph TB
 |-------|------------------|-----------------|-------|
 | Agent runtime | `@earendil-works/pi-coding-agent`(pi `0.79.x`)SDK | `createAgentSessionServices` / `createAgentSessionFromServices` / `createAgentSessionRuntime` / `runRpcMode` / `SessionManager` | 协议单一来源,运行时依赖 |
 | Agent 载入 | `jiti` | 运行时直接 import 用户 `index.[ts|js]` | 载入即执行 = RCE,须受信/沙箱 |
-| 类型包 | `@blksails/agent-kit`(TS,零强制运行时依赖) | `defineAgent()` + `AgentDefinition` 类型 | 用户 `index.ts` 用 |
-| 校验(仅测试) | `@blksails/protocol`(zod schema) | e2e/集成对 runner 帧做 schema 校验 | 不进入运行时依赖 |
+| 类型包 | `@blksails/pi-web-agent-kit`(TS,零强制运行时依赖) | `defineAgent()` + `AgentDefinition` 类型 | 用户 `index.ts` 用 |
+| 校验(仅测试) | `@blksails/pi-web-protocol`(zod schema) | e2e/集成对 runner 帧做 schema 校验 | 不进入运行时依赖 |
 | Runtime | Node `>=22.19.0` | 子进程入口 `node --import jiti/register runner.ts` | 镜像 `node:24-bookworm-slim` |
 | 测试 | vitest | 单元/集成/e2e | 单一命令运行全部 |
 
@@ -119,7 +119,7 @@ lib/pi/
 └── project-trust.ts          # resolveProjectTrust 钩子接线(承接外部信任布尔)
 
 packages/agent-kit/
-├── package.json              # name @blksails/agent-kit;无强制运行时依赖;peer/dev: pi SDK 类型
+├── package.json              # name @blksails/pi-web-agent-kit;无强制运行时依赖;peer/dev: pi SDK 类型
 ├── tsconfig.json             # strict
 └── src/
     ├── index.ts              # 导出 defineAgent + AgentDefinition 等类型
@@ -433,7 +433,7 @@ export function makeResolveProjectTrust(trusted: boolean): ResolveProjectTrust;
 ##### Event Contract
 - 输出:`runRpcMode` 在 stdout 产出 RPC JSONL 帧(`response` / `AgentEvent`),与 CLI `pi --mode rpc` 逐字节一致(Req 6.1)。
 - 输入:stdin 接收 RPC 命令(如 `prompt`);收到 `prompt` 后产出 `message_update`(`text_delta`)与 `agent_end` 序列(Req 6.2)。
-- 校验:每帧可被 `@blksails/protocol` 的 `AgentEvent` / `RpcResponse` schema 校验通过(Req 6.3,测试侧)。
+- 校验:每帧可被 `@blksails/pi-web-protocol` 的 `AgentEvent` / `RpcResponse` schema 校验通过(Req 6.3,测试侧)。
 - 排序/交付:由 SDK `runRpcMode` 保证,本 spec 不重排。
 
 **Implementation Notes**
@@ -447,7 +447,7 @@ export function makeResolveProjectTrust(trusted: boolean): ResolveProjectTrust;
 
 - **序列化格式**:RPC 走 JSONL(LF 分隔);本 spec 不实现 framing(归 rpc-channel),只通过 `runRpcMode` 产出。
 - **内部表示**:`AgentDefinition`(归一化输入)→ `NormalizedAgentRuntimeFactory`(`CreateAgentSessionRuntimeFactory`,统一中间表示)→ pi 运行时。
-- **类型对齐**:`AgentDefinition` 字段类型对齐 pi SDK `createAgentSession*` 入参,禁止 `any`;协议帧形状以 `@blksails/protocol` 为准。
+- **类型对齐**:`AgentDefinition` 字段类型对齐 pi SDK `createAgentSession*` 入参,禁止 `any`;协议帧形状以 `@blksails/pi-web-protocol` 为准。
 - **来源可追溯**:映射表(资源/会话字段)源自 PLAN.md §3.0.3 / §10.0.B。
 
 ## Error Handling
@@ -488,7 +488,7 @@ export function makeResolveProjectTrust(trusted: boolean): ResolveProjectTrust;
 - 信任接线集成:在 agent 源放 `.pi/` 资源,信任=false 时不加载、=true 时加载(可观测差异)。(5.2, 5.3)
 
 ### E2E Tests(硬性)
-- 启动 runner 进程,向 stdin 写入 `{"type":"prompt"}`,从 stdout 收集帧:断言出现 `message_update`(含 `text_delta` 子事件)与 `agent_end`;并对每一帧用 `@blksails/protocol` 的 `AgentEvent`/`RpcResponse` schema `safeParse`,全部必须通过。(7.3, 6.2, 6.3)
+- 启动 runner 进程,向 stdin 写入 `{"type":"prompt"}`,从 stdout 收集帧:断言出现 `message_update`(含 `text_delta` 子事件)与 `agent_end`;并对每一帧用 `@blksails/pi-web-protocol` 的 `AgentEvent`/`RpcResponse` schema `safeParse`,全部必须通过。(7.3, 6.2, 6.3)
 - 协议一致性回归:runner 帧通过 protocol schema 即视为与 CLI `pi --mode rpc` 同形(同 `runRpcMode` 实现)。(6.1, 6.3)
 
 ### 运行约定

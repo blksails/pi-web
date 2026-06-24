@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=22.19.0"
@@ -29,11 +29,11 @@
     "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@blksails/protocol": "workspace:*",
-    "@blksails/react": "workspace:*",
-    "@blksails/server": "workspace:*",
-    "@blksails/ui": "workspace:*",
-    "@blksails/web-kit": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-react": "workspace:*",
+    "@blksails/pi-web-server": "workspace:*",
+    "@blksails/pi-web-ui": "workspace:*",
+    "@blksails/pi-web-kit": "workspace:*",
     "@ai-sdk/react": "^2.0.0",
     "ai": "^5.0.0",
     "next": "^15.1.0",

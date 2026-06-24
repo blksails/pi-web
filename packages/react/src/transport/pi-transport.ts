@@ -8,8 +8,8 @@
  *
  * 仅依赖 Web Fetch 与 AI SDK 类型;不持服务端真值状态。
  */
-import type { ImageContent } from "@blksails/protocol";
-import { ImageContentSchema } from "@blksails/protocol";
+import type { ImageContent } from "@blksails/pi-web-protocol";
+import { ImageContentSchema } from "@blksails/pi-web-protocol";
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";

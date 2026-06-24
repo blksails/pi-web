@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**: 为 `@blksails/ui` 的 `PiChat` 提供一套面向集成方开发者的「四维可定制契约」(主题、slots、components、layout/icons),使其在**不修改 `@blksails/ui` 源码**的前提下完成外观与装配定制。
+**Purpose**: 为 `@blksails/pi-web-ui` 的 `PiChat` 提供一套面向集成方开发者的「四维可定制契约」(主题、slots、components、layout/icons),使其在**不修改 `@blksails/pi-web-ui` 源码**的前提下完成外观与装配定制。
 
 **Users**: 集成方开发者将通过 `PiChat` 的公开 props 与一个 `ThemeProvider`、一份 Tailwind preset 接入定制能力;agent 作者不受影响(外观不再由 agent 驱动)。
 
@@ -17,7 +17,7 @@
 
 ### Non-Goals
 - agent 驱动外观(`emitAppearance`/`ambient.appearance`/agent 自带组件)—— 不实现。
-- 协议层 / server 层 / `@blksails/react` / `@blksails/agent-kit` 改动 —— 不涉及。
+- 协议层 / server 层 / `@blksails/pi-web-react` / `@blksails/pi-web-agent-kit` 改动 —— 不涉及。
 - 多 PiChat 实例打包形态(工厂/预设变体/preset 对象)—— 本期搁置。
 - Artifact 分栏专属功能 —— `split` 仅提供让位区骨架,内容由现有 slots/children 承接。
 - 任意自定义 grid template / 任意 CSS 注入 —— 超范围。
@@ -28,7 +28,7 @@
 - `PiChat` 新增公开 props 的契约:`components`、`icons`、`layout`、`theme` 透传,以及 `slots.background` / `slots.empty`。
 - 定制解析逻辑:`resolveComponent` 的 `slots > components > 默认` 优先级。
 - `ThemeProvider` / `useTheme` 的运行时主题行为(明暗 + 跟随系统)。
-- `@blksails/ui/tailwind-preset` 导出物。
+- `@blksails/pi-web-ui/tailwind-preset` 导出物。
 - `IconTheme` 契约与 `useIcon` 注入机制;各 element 的图标取值方式。
 - 上述能力的公共 TypeScript 契约类型导出。
 
@@ -52,7 +52,7 @@
 ## Architecture
 
 ### Existing Architecture Analysis
-- `PiChat` 是无状态装配层:用 `useChat` + `@blksails/react` hooks 取数据,组合 element 层并以固定 props 接线。定制只需在**装配点**替换实现,不动 hooks。
+- `PiChat` 是无状态装配层:用 `useChat` + `@blksails/pi-web-react` hooks 取数据,组合 element 层并以固定 props 接线。定制只需在**装配点**替换实现,不动 hooks。
 - 主题为 shadcn 约定:`darkMode:"class"` + `hsl(var(--token))`;缺运行时切换与 preset 导出。
 - 既有扩展点:`slots`(整块)、`RendererRegistry`(按 part 类型)。本设计新增第三种粒度——`components`(按组件位),三者同构共存。
 

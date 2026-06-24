@@ -1,11 +1,11 @@
 # Implementation Plan
 
-> 语言:zh。boundary 锚定 design.md「Boundary Commitments」。仅依赖 `@blksails/react` + shadcn/AI Elements;不实现传输/后端/路由/非 React 嵌入。
+> 语言:zh。boundary 锚定 design.md「Boundary Commitments」。仅依赖 `@blksails/pi-web-react` + shadcn/AI Elements;不实现传输/后端/路由/非 React 嵌入。
 > 硬性:每个对外组件含 `@testing-library/react` 组件测试;含 e2e(mock 会话驱动 `<PiChat>`)。单一命令运行全部。
 
 - [x] 1. 包脚手架与底座(AI Elements + shadcn)
-- [x] 1.1 创建 `@blksails/ui` 包骨架与构建/测试配置
-  - 创建 `packages/ui/package.json`(name `@blksails/ui`;peerDeps:`react`、`@blksails/react`、`ai`、`@ai-sdk/react`;不含后端依赖;`scripts.test = vitest run`)、`tsconfig.json`(strict、DOM lib、`jsx: react-jsx`、ES2022)、`vitest.config.ts`(DOM 环境 jsdom/happy-dom + `@testing-library/jest-dom` setup)
+- [x] 1.1 创建 `@blksails/pi-web-ui` 包骨架与构建/测试配置
+  - 创建 `packages/ui/package.json`(name `@blksails/pi-web-ui`;peerDeps:`react`、`@blksails/pi-web-react`、`ai`、`@ai-sdk/react`;不含后端依赖;`scripts.test = vitest run`)、`tsconfig.json`(strict、DOM lib、`jsx: react-jsx`、ES2022)、`vitest.config.ts`(DOM 环境 jsdom/happy-dom + `@testing-library/jest-dom` setup)
   - 创建 `src/lib/cn.ts`(clsx + tailwind-merge 合并工具)
   - 观察完成:`vitest run` 在空/占位测试下可启动并通过;`tsc --noEmit` 通过
   - _Requirements: 9.1, 9.4, 11.7_

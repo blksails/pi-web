@@ -4,7 +4,7 @@ import {
   PI_UI_TOOL_DETAILS_KEY,
   extractToolDetailsUiSpec,
   type UiSpec,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 
 describe("emitUi", () => {
   const spec: UiSpec = {

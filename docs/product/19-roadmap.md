@@ -12,15 +12,15 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 
 | 波次 | Spec | 关键交付物 |
 |------|------|-----------|
-| 协议根 | `protocol-contract` | `@blksails/protocol`：RPC 类型、SSE 帧、UIMessage data-part schema、zod 校验 |
+| 协议根 | `protocol-contract` | `@blksails/pi-web-protocol`：RPC 类型、SSE 帧、UIMessage data-part schema、zod 校验 |
 | 传输层 | `rpc-channel` | `PiRpcChannel` 接口 + `PiRpcProcess`（JSONL over stdio） |
 | 源解析 | `agent-source-resolver` | 目录/git 入口探测、custom/cli 双模式判定、spawnSpec |
-| 运行时 | `agent-runner` | bootstrap runner（jiti 载入 `index.ts` → `runRpcMode`）+ `@blksails/agent-kit` |
+| 运行时 | `agent-runner` | bootstrap runner（jiti 载入 `index.ts` → `runRpcMode`）+ `@blksails/pi-web-agent-kit` |
 | 会话引擎 | `session-engine` | `PiSession` 广播/生命周期/扩展 UI 挂起 + `SessionStore` 接口 |
 | HTTP 层 | `http-api` | REST + SSE Route Handlers + `createPiWebHandler(Web Fetch)` |
 | 前端 | `react-client` | `PiTransport`（AI SDK v5 `ChatTransport`）+ `usePiSession`/`usePiControls`/`useExtensionUI` |
 | 扩展管理 | `extension-management` | 安装/列出/卸载 + 信任策略 + `get_commands` 命令面板 |
-| UI 组件 | `ui-components` | `@blksails/ui`：`<PiChat>`/Tool/Reasoning/PromptInput + 渲染器注册表 |
+| UI 组件 | `ui-components` | `@blksails/pi-web-ui`：`<PiChat>`/Tool/Reasoning/PromptInput + 渲染器注册表 |
 | 整站闭环 | `app-shell` | Next.js 全链路 e2e（选源→prompt→浏览器流式回复） |
 
 ### 附件系统波次（2026-06-21，已 e2e 通过）
@@ -59,7 +59,7 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 - `mountPiChat(el, opts)` 命令式挂载 API
 - 样式通过 CSS 变量和 Shadow DOM part 穿透
 
-**复用基础**：`@blksails/server` 的 REST/SSE 协议已稳定（`POST /sessions`、`GET /sessions/:id/stream` 等），embed 包只是该协议的浏览器端封装，无需改动服务端。
+**复用基础**：`@blksails/pi-web-server` 的 REST/SSE 协议已稳定（`POST /sessions`、`GET /sessions/:id/stream` 等），embed 包只是该协议的浏览器端封装，无需改动服务端。
 
 ### host-provider-remote — 远程 agent 宿主
 
@@ -95,7 +95,7 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 
 ### pi-cloud-orchestration — 多 agent 云编排
 
-**目标**：在 `@blksails/server` 之上构建云层（可能是 `@blksails/cloud` 包），实现多 agent 管理与计费纳管。
+**目标**：在 `@blksails/pi-web-server` 之上构建云层（可能是 `@blksails/cloud` 包），实现多 agent 管理与计费纳管。
 
 规划功能：
 - `AgentCatalog`：多个 `AgentDefinition`/源的注册、版本管理、权限与分享

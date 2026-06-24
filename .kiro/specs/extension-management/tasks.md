@@ -9,7 +9,7 @@
   - 创建模块目录与 `vitest` 测试入口,使本特性测试可由单一命令运行(真实 `pi` 不可用时可回退受控替身)
   - 定义本层类型:扩展来源判别联合(npm/git/local)、白名单配置与决策结果、安装参数结构、审计记录、模块装配选项
   - `TrustDecision`/`TrustFragment` 与 `applyTrust` 从 `agent-source-resolver` 的 PUBLIC 包入口导入(非 `source/types` 等 deep path),不在本层重定义
-  - 对外 DTO(扩展列表 / 安装请求)优先从 `@blksails/protocol` 导入;上游未导出时本地按一致命名定义并注明对齐来源;命令清单 DTO 归 `http-api`,本层不定义
+  - 对外 DTO(扩展列表 / 安装请求)优先从 `@blksails/pi-web-protocol` 导入;上游未导出时本地按一致命名定义并注明对齐来源;命令清单 DTO 归 `http-api`,本层不定义
   - 观察完成:`vitest run` 可发现并运行本模块(空)测试;类型在 strict 下零 `any` 编译通过
   - _Requirements: 1.5, 10.4_
   - _Boundary: ext.types.ts_

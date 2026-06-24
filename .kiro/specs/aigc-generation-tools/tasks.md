@@ -1,13 +1,13 @@
 # Implementation Plan — aigc-generation-tools
 
-> Wave 1:text_to_image + image_edit,纯执行→落库→默认卡片闭环。引擎承载于新建 `@blksails/tool-kit`(双入口)。
+> Wave 1:text_to_image + image_edit,纯执行→落库→默认卡片闭环。引擎承载于新建 `@blksails/pi-web-tool-kit`(双入口)。
 > spike-first:**任务 4** 是首个端到端可验证点(text_to_image + 单 provider 跑通),据此确认「移植精简引擎」策略;任务 5 起再扩展。
 
-- [ ] 1. Foundation:`@blksails/tool-kit` 包脚手架与引擎类型
-- [x] 1.1 创建 `@blksails/tool-kit` 包骨架(双入口)并接入 workspace
+- [ ] 1. Foundation:`@blksails/pi-web-tool-kit` 包脚手架与引擎类型
+- [x] 1.1 创建 `@blksails/pi-web-tool-kit` 包骨架(双入口)并接入 workspace
   - 新建包目录,配置 `package.json`:主入口(声明,零运行时依赖)+ `./runtime` 子入口(node-only);`peerDependencies` 含 pi SDK / pi-ai,`dependencies` 含 undici 与 type-only 的 agent-kit
   - 配置 tsconfig(strict,禁 any)、build、vitest;主入口构建产物中**不得**出现 pi SDK / undici 值导入
-  - 在仓库根 `pnpm install` 后,其它包可解析 `@blksails/tool-kit` 与 `@blksails/tool-kit/runtime`;`pnpm -F @blksails/tool-kit build` 成功
+  - 在仓库根 `pnpm install` 后,其它包可解析 `@blksails/pi-web-tool-kit` 与 `@blksails/pi-web-tool-kit/runtime`;`pnpm -F @blksails/pi-web-tool-kit build` 成功
   - _Requirements: 6.1, 6.3_
 - [x] 1.2 定义引擎类型契约
   - 移植精简引擎类型:`Category`/`Variant`/`EndpointBehavior`/`PickedResult`/`UserParamSpec`/`AsyncSpec`/`EndpointInputSchema`

@@ -5,9 +5,9 @@
  * 导出面导入(非 deep path);`AuthContext`/`RouteHandler`/`RequestContext` 取自 `../http/`;
  * `SessionManager`/`SessionStore`/`PiSession` 取自 `../session/`。
  *
- * 对外 DTO(扩展列表 / 安装请求 / 安装结果):`@blksails/protocol` 尚未导出 extension-management
+ * 对外 DTO(扩展列表 / 安装请求 / 安装结果):`@blksails/pi-web-protocol` 尚未导出 extension-management
  * 的 DTO,故在此以与 protocol 一致的命名风格本地定义,并注明对齐来源(Req 1.5);一旦上游
- * 导出对应 schema,应改为从 `@blksails/protocol` 导入并移除本地定义。命令清单 DTO 归 `http-api`
+ * 导出对应 schema,应改为从 `@blksails/pi-web-protocol` 导入并移除本地定义。命令清单 DTO 归 `http-api`
  * 的 `GET /sessions/:id/commands`,本层不定义。
  */
 import type { AuthContext } from "../http/index.js";

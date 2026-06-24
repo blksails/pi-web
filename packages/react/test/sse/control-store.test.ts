@@ -3,7 +3,7 @@ import { ControlStore } from "../../src/sse/control-store.js";
 import type {
   ControlPayload,
   RpcExtensionUIRequest,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 
 function makeExtReq(id: string): RpcExtensionUIRequest {
   return {

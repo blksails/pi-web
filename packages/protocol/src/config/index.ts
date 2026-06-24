@@ -1,8 +1,8 @@
 /**
- * @blksails/protocol — config 子面聚合导出(由 object schema 生成配置 UI 的契约根)。
+ * @blksails/pi-web-protocol — config 子面聚合导出(由 object schema 生成配置 UI 的契约根)。
  *
  * 表单 IR 类型 + UI 元数据 + zod→IR 适配器 + 各配置域 schema/FormSchema。
- * 下游(react/ui/server)经 @blksails/protocol 主入口消费。
+ * 下游(react/ui/server)经 @blksails/pi-web-protocol 主入口消费。
  */
 export * from "./form-schema.js";
 export * from "./meta.js";

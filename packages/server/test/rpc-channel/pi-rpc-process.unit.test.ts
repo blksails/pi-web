@@ -10,7 +10,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { fileURLToPath } from "node:url";
 import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import type { SpawnSpec } from "@blksails/protocol";
+import type { SpawnSpec } from "@blksails/pi-web-protocol";
 
 const ECHO = fileURLToPath(
   new URL("./fixtures/echo-process.mjs", import.meta.url),

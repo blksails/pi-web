@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**:本特性交付 `@blksails/protocol`——pi-web 全项目的唯一契约根。它是一个零运行时依赖(除校验库)、同构(Node + 浏览器)、纯 TypeScript 的协议包,集中定义并以 zod schema 在运行时校验所有跨层契约。
+**Purpose**:本特性交付 `@blksails/pi-web-protocol`——pi-web 全项目的唯一契约根。它是一个零运行时依赖(除校验库)、同构(Node + 浏览器)、纯 TypeScript 的协议包,集中定义并以 zod schema 在运行时校验所有跨层契约。
 
 **Users**:后端引擎(`rpc-channel`/`agent-source-resolver`/`agent-runner`/`session-engine`)、HTTP 层(`http-api`)、前端(`react-client`/`ui-components`)以及任意语言/框架的第三方集成方,都通过本包获取类型、schema 与版本常量。
 
@@ -114,7 +114,7 @@ graph TB
 
 ```
 packages/protocol/
-├── package.json                  # name @blksails/protocol, exports, deps 仅 zod;sideEffects false
+├── package.json                  # name @blksails/pi-web-protocol, exports, deps 仅 zod;sideEffects false
 ├── tsconfig.json                 # strict, 同构 target(ES2022, lib 不含 DOM 专有副作用)
 ├── vitest.config.ts              # 测试配置
 └── src/

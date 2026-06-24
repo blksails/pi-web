@@ -6,7 +6,7 @@
  * 与 slash 浮层(PiCommandPalette)逻辑隔离(各自触发字符)。缺贡献点/客户端时不渲染。
  */
 import * as React from "react";
-import type { UiRpcClient } from "@blksails/web-kit";
+import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
 
 export interface MentionItem {

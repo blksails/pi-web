@@ -8,7 +8,7 @@
  * type-exhaustive-safe and return an empty array to avoid breaking new variants
  * that may not yet produce imagery.
  */
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import type { PickedResult } from "../engine/types.js";
 
 /** Stable reference to a persisted generation asset. */

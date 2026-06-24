@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   createSessionEntryStore,
   sessionStoreConfigFromEnv,
-} from "@blksails/server";
+} from "@blksails/pi-web-server";
 
 type Route = {
   GET: (req: Request) => Promise<Response>;

@@ -7,7 +7,7 @@
   - 解析器是**纯规格生产者**:产出 `{ mode, spawnSpec, cwd, trust }`,不 spawn、不载入用户代码;spawn 归 `rpc-channel`,runner 本体归 `agent-runner`(PLAN §3.0.0/§3.0.3,brief 范围外)。
   - headless(`--mode rpc`)下 pi **不弹信任提示**,`defaultProjectTrust` 默认 `"ask"` → **静默忽略** `.pi/` 项目资源;必须由本特性显式表态(cli 加 `--approve`/`--no-approve`,custom 传 runner 决策)。这是项目最易踩坑点(PLAN §10.0.C)。
   - 信任 = 自动执行项目内任意扩展代码 = RCE;故信任做成**可插拔、按来源**的 `trustPolicy(source)`,默认 `"ask"`,绝不无脑全开(PLAN §11.2、§13.4)。
-  - spawnSpec 形状须与 `@blksails/protocol` 对齐并满足 `rpc-channel` local 通道(child_process)直接拉起需求;agentDir 隔离 env 名是 `PI_CODING_AGENT_DIR`(非 `PI_AGENT_DIR`)。
+  - spawnSpec 形状须与 `@blksails/pi-web-protocol` 对齐并满足 `rpc-channel` local 通道(child_process)直接拉起需求;agentDir 隔离 env 名是 `PI_CODING_AGENT_DIR`(非 `PI_AGENT_DIR`)。
 
 ## Research Log
 
@@ -38,7 +38,7 @@
 ### 与上游 protocol-contract 的契约消费
 - **Context**:spawnSpec/DTO 类型来源。
 - **Sources Consulted**:`protocol-contract/design.md`(REST DTO:建会话 `{source, cwd?, model?, env?}`)。
-- **Findings**:protocol 的 `CreateSessionRequest` 提供入参形状;`SpawnSpec { cmd, args, cwd, env }` 由上游 `@blksails/protocol`(protocol-contract)**拥有**,本 spec 经 `import type { SpawnSpec } from "@blksails/protocol"` 复用,不在本地定义或重声明该类型。
+- **Findings**:protocol 的 `CreateSessionRequest` 提供入参形状;`SpawnSpec { cmd, args, cwd, env }` 由上游 `@blksails/pi-web-protocol`(protocol-contract)**拥有**,本 spec 经 `import type { SpawnSpec } from "@blksails/pi-web-protocol"` 复用,不在本地定义或重声明该类型。
 - **Implications**:依赖方向单向(本 spec → protocol);`SpawnSpec` 已被多 spec(本 spec、`rpc-channel` 等)共享,其单一来源在 protocol-contract;该类型形状/命名变化作为 revalidation trigger。
 
 ## Architecture Pattern Evaluation

@@ -15,14 +15,14 @@ import type {
   PendingAttachment,
   ExtensionNotification,
   ExtensionWidget,
-} from "@blksails/react";
+} from "@blksails/pi-web-react";
 
 /**
  * PiChat 富交互集成测试(任务 5.2)。
  *
  * 与任务 4.1 的装配冒烟测试(真实 hooks + MockTransport)互补:这里按 design.md
  * 「Testing Strategy → Integration Tests」(「mock hooks」)mock `@ai-sdk/react` 的
- * useChat 与 `@blksails/react` 数据 hooks,以**可控**地驱动 4.1 难以到达的富交互:
+ * useChat 与 `@blksails/pi-web-react` 数据 hooks,以**可控**地驱动 4.1 难以到达的富交互:
  *  - 模型选择器:打开(onOpen→ensureLoaded)/搜索过滤/选择(onSelect→useModels.select)(Req 4.2)
  *  - 分支控件:多版本时 Message 显示「第 N / 共 M」+ 切换调 useBranches.select(Req 8.1)
  *  - 思考折叠随流式增量:reasoning part state streaming→complete + text 增量实时反映(Req 9.1/9.2)
@@ -32,7 +32,7 @@ import type {
  *  - 建议点击填入 + 提交文本(Req 10.2 / 1.2)
  *  - a11y:模型选择器 listbox / 分支按钮 aria-label / 折叠 aria-expanded(Req 11.4)
  *
- * mock 不触达真实后端;hook 形状取自 @blksails/react 公共类型。
+ * mock 不触达真实后端;hook 形状取自 @blksails/pi-web-react 公共类型。
  */
 
 // ---- useChat mock(可在每个用例前重置返回值) -------------------------------
@@ -75,7 +75,7 @@ vi.mock("@ai-sdk/react", () => ({
   }),
 }));
 
-// ---- @blksails/react hooks mock(逐用例覆盖返回值) ---------------------------
+// ---- @blksails/pi-web-react hooks mock(逐用例覆盖返回值) ---------------------------
 
 const ensureLoadedMock = vi.fn(async () => undefined);
 const modelSelectMock = vi.fn(async () => undefined);
@@ -88,7 +88,7 @@ let attachmentsResult: UseAttachmentsResult;
 let branchesResult: UseBranchesResult;
 let suggestionsResult: UseSuggestionsResult;
 
-vi.mock("@blksails/react", () => ({
+vi.mock("@blksails/pi-web-react", () => ({
   useModels: (): UseModelsResult => modelsResult,
   useAttachments: (): UseAttachmentsResult => attachmentsResult,
   useBranches: (): UseBranchesResult => branchesResult,

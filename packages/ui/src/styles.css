@@ -1,5 +1,5 @@
 /**
- * @blksails/ui — shadcn CSS 变量主题层。
+ * @blksails/pi-web-ui — shadcn CSS 变量主题层。
  *
  * 全部样式 token 经 shadcn CSS 变量定义,无硬编码颜色,使组件继承宿主主题。
  * 宿主若已声明这些变量(shadcn/ui 约定),组件随宿主主题切换;此处提供默认回退值。

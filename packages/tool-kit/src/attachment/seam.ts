@@ -1,15 +1,15 @@
 /**
- * `@blksails/tool-kit` attachment seam — reads the runner-injected
+ * `@blksails/pi-web-tool-kit` attachment seam — reads the runner-injected
  * `AttachmentToolContext` from `globalThis` (or an injected scope).
  *
- * Convention: the runner (`@blksails/server`) places the context under this key
+ * Convention: the runner (`@blksails/pi-web-server`) places the context under this key
  * before executing tool `execute` callbacks.  Tools call
  * `getAttachmentToolContext()` to obtain the live context; if the runner has
  * not injected it (e.g. dev without attachment bridge wired, or tests), a safe
  * `UNAVAILABLE_CTX` is returned so the tool can degrade gracefully instead of
  * crashing (Req 5.3).
  */
-import type { AttachmentToolContext } from "@blksails/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 /** Agreement constant shared between runner (injector) and tools (readers). */
 export const SEAM_KEY = "__piWebAttachmentToolContext__";

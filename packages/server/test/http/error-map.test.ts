@@ -9,7 +9,7 @@ import {
   UnknownExtensionUIError,
 } from "../../src/session/index.js";
 import { mapEngineError, type ErrorBody } from "../../src/http/error-map.js";
-import { protocolVersion } from "@blksails/protocol";
+import { protocolVersion } from "@blksails/pi-web-protocol";
 
 describe("mapEngineError", () => {
   it("SessionStoppedError → 409", async () => {

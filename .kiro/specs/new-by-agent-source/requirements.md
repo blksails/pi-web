@@ -9,7 +9,7 @@
 ## Boundary Context
 
 - **In scope**：`SessionView` 顶栏的"同源新建"与"切换源"两个按钮及其行为；`ChatApp` 触发同源会话重建的逻辑；对应组件/集成测试与浏览器 e2e。
-- **Out of scope**：`@blksails/ui` 的 `PiChat`、`usePiSession` hook、REST/SSE 协议均不改；不触碰 session-usage-panel 等其它特性；不改 `AgentSourcePicker` 自身。
+- **Out of scope**：`@blksails/pi-web-ui` 的 `PiChat`、`usePiSession` hook、REST/SSE 协议均不改；不触碰 session-usage-panel 等其它特性；不改 `AgentSourcePicker` 自身。
 - **Adjacent expectations**：依赖 `usePiSession` 现有「挂载即按 create 建会话」语义；依赖会话 id 就绪后的 URL 同步与 source 映射副作用（`onSessionId`）保持不变。
 
 ## Requirements
@@ -38,7 +38,7 @@
 **Objective:** As a 维护者, I want 本次改动不破坏既有会话流程, so that 现有功能与测试保持稳定。
 
 #### Acceptance Criteria
-1. The 改动 shall 不改变 `@blksails/ui` 的 `PiChat`、`usePiSession` hook 与 REST/SSE 协议。
+1. The 改动 shall 不改变 `@blksails/pi-web-ui` 的 `PiChat`、`usePiSession` hook 与 REST/SSE 协议。
 2. The 改动 shall 不改变会话错误态（创建失败）下"重新选择源"的现有恢复入口行为。
 3. When 经 `/session/:id` 冷加载（恢复模式）进入, the SessionView shall 保持既有恢复行为不受影响。
 

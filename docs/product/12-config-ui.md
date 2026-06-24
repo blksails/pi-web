@@ -19,7 +19,7 @@
 ## 2. 核心架构
 
 ```
-@blksails/protocol(零运行时依赖，除 zod)
+@blksails/pi-web-protocol(零运行时依赖，除 zod)
   form-schema.ts        → FieldDescriptor / FormSchema 类型
   meta.ts               → UIMeta + parseDescribeMeta()
   zod-to-form-schema.ts → zodToFormSchema(domain, zodSchema) → FormSchema
@@ -27,13 +27,13 @@
   config/domains/
     auth.ts      settings.ts     sandbox.ts     extensions.ts
            ↓
-@blksails/react
+@blksails/pi-web-react
   use-schema-form.ts    → useSchemaForm(formSchema, { validate }) — 受控值 + zod 校验
   use-config-domain.ts  → useConfigDomain(panel)  — load/save + 状态机
   settings-registry.ts  → defaultSettingsRegistry  — 面板注册表(单例 + 工厂)
   makeConfigDomainIO()  → 基于 /api/config/:domain 的 load/save
            ↓
-@blksails/ui
+@blksails/pi-web-ui
   config/schema-form.tsx    → <SchemaForm>
   config/field-renderer.tsx → <FieldRenderer>  — 按 widget/kind 分派
   config/field-registry.ts  → defaultFieldRegistry  — 渲染器注册表
@@ -179,7 +179,7 @@ PUT /api/config/:domain
 
 ---
 
-## 6. 渲染层组件（`@blksails/ui`）
+## 6. 渲染层组件（`@blksails/pi-web-ui`）
 
 ### `<SchemaForm>`（`packages/ui/src/config/schema-form.tsx`）
 
@@ -319,9 +319,9 @@ export function createSettingsRegistry(): SettingsRegistry; // 工厂
 
 ```tsx
 // 自定义文件，如 lib/fields/color-picker-field.tsx
-import type { FieldProps } from "@blksails/ui";
+import type { FieldProps } from "@blksails/pi-web-ui";
 
-// 注：内置控件复用的 `FieldShell` 是包内相对模块，未从 @blksails/ui 导出；
+// 注：内置控件复用的 `FieldShell` 是包内相对模块，未从 @blksails/pi-web-ui 导出；
 // 包外自定义 widget 自行渲染 label / 错误即可。errors 以「点路径」为键，
 // 用 path.join(".") 取本字段错误。
 export function ColorPickerField({ descriptor, value, onChange, path, errors }: FieldProps) {
@@ -359,7 +359,7 @@ accentColor: z.string().optional().describe(
 **步骤 3**：在 `lib/settings/register-panels.ts`（或应用入口）注册 widget：
 
 ```ts
-import { registerFieldRendererByKey } from "@blksails/ui";
+import { registerFieldRendererByKey } from "@blksails/pi-web-ui";
 import { ColorPickerField } from "../fields/color-picker-field";
 
 registerFieldRendererByKey("colorPicker", ColorPickerField);
@@ -368,8 +368,8 @@ registerFieldRendererByKey("colorPicker", ColorPickerField);
 **步骤 4**（可选，新增配置域时）：注册面板：
 
 ```ts
-import { registerSettingsPanel, makeConfigDomainIO, zodValidator } from "@blksails/react";
-import { yourDomainFormSchema, yourDomainConfigSchema } from "@blksails/protocol";
+import { registerSettingsPanel, makeConfigDomainIO, zodValidator } from "@blksails/pi-web-react";
+import { yourDomainFormSchema, yourDomainConfigSchema } from "@blksails/pi-web-protocol";
 
 registerSettingsPanel({
   id: "your-domain",
@@ -401,7 +401,7 @@ registerSettingsPanel({
 2. 经 `jsonSchemaToFormSchema()`（`packages/protocol/src/config/json-schema-to-form-schema.ts`，前后端共享）转为 `FormSchema` IR，支持 object / string / number|integer / boolean / array（标量 → `stringList`、enum → `multiEnum`、对象/oneOf → `objectList`）/ oneOf-const 判别（`variants`）/ `#/$defs|definitions/<name>` 内部 `$ref`；不支持的构造降级为 `string`，不抛错。
 3. 有 schema 时用 `<SchemaForm>` 渲染结构化表单；无 `$schema` 或拉取/解析失败则回退原始 JSON 文本编辑（解析失败就地报错、不回写），不致整体失败。
 
-> **架构注**：schema 拉取走客户端是 `json-schema-config-form` spec 的明确交付决策（适配器在 `@blksails/protocol` 前后端共享，浏览器直接 fetch 文件自带的 `$schema`），目的是避免服务端对任意 URL 的 SSRF 面、也避免把 schema 透传穿过 `useConfigDomain → SchemaForm` 管线。
+> **架构注**：schema 拉取走客户端是 `json-schema-config-form` spec 的明确交付决策（适配器在 `@blksails/pi-web-protocol` 前后端共享，浏览器直接 fetch 文件自带的 `$schema`），目的是避免服务端对任意 URL 的 SSRF 面、也避免把 schema 透传穿过 `useConfigDomain → SchemaForm` 管线。
 >
 > **规划中/未实现**：服务端拉取（`schema-fetch.ts` 的 `createSchemaFetcher({ allowHosts })` host 白名单 + GET 注入 `fileSchemas`）在 spec 中保留为可选注入接缝（task 5 标记 `[~]`，未接入主链路），当前无对应源文件，扩展配置响应也不返回 `fileSchemas`。
 

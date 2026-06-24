@@ -4,7 +4,7 @@ import { useExtensionUI } from "../../src/hooks/use-extension-ui.js";
 import { createPiClient } from "../../src/client/pi-client.js";
 import { PiSessionConnection } from "../../src/sse/connection.js";
 import { makeJsonResponse } from "../fixtures/sse-samples.js";
-import type { RpcExtensionUIRequest } from "@blksails/protocol";
+import type { RpcExtensionUIRequest } from "@blksails/pi-web-protocol";
 
 function extReq(id: string): RpcExtensionUIRequest {
   return {

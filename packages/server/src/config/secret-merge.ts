@@ -2,7 +2,7 @@
  * secret-merge — secret 字段掩码(GET 路径)与仅写合并(PUT 路径)。
  *
  * ### 掩码占位形状(读)
- * 使用 @blksails/protocol 的 SecretMask:
+ * 使用 @blksails/pi-web-protocol 的 SecretMask:
  * ```ts
  * { __secret: true, set: boolean, hint?: string }
  * ```
@@ -10,7 +10,7 @@
  * - `set: false` → 磁盘中无此键。
  *
  * ### PUT 写语义(写,secret 字段)
- * 使用 @blksails/protocol 的 SecretWrite 显式三态:
+ * 使用 @blksails/pi-web-protocol 的 SecretWrite 显式三态:
  * - `{ __secret:true, action:"keep" }`          → 保留磁盘原值不变。
  * - `{ __secret:true, action:"clear" }`         → 删除磁盘中该键。
  * - `{ __secret:true, action:"set", value:"…" }` → 覆盖磁盘值。
@@ -25,14 +25,14 @@
  * 按 FormSchema 子字段的 secret 标记处理。
  * 对 provider 本身(而非子字段):null → 删除 provider,undefined → 跳过。
  */
-import type { ConfigDomainId, FieldDescriptor, FormSchema } from "@blksails/protocol";
+import type { ConfigDomainId, FieldDescriptor, FormSchema } from "@blksails/pi-web-protocol";
 import {
   type SecretMask,
   type SecretWrite,
   isSecretMask,
   isSecretWrite,
   CONFIG_FORM_SCHEMAS,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 
 export type { SecretMask, SecretWrite };
 export { isSecretMask, isSecretWrite };

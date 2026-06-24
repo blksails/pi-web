@@ -2,7 +2,7 @@
  * query-routes 单测:state/stats/messages/commands 返回响应 DTO 形状(Req 4.x,10.1)。
  */
 import { describe, expect, it } from "vitest";
-import type { RpcResponse } from "@blksails/protocol";
+import type { RpcResponse } from "@blksails/pi-web-protocol";
 import { createPiWebHandler } from "../../src/http/create-handler.js";
 import { SessionManager } from "../../src/session/session-manager.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";

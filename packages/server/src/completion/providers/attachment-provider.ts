@@ -9,7 +9,7 @@
  * 会话隔离:complete/resolve 均以 `ctx.sessionId` 为唯一会话来源;resolve 额外校验归属,
  * 杜绝跨会话引用/枚举。仅产出文本标记,绝不内联附件字节(守「base64 仅具名出口」不变式)。
  */
-import type { Attachment, CompletionItem } from "@blksails/protocol";
+import type { Attachment, CompletionItem } from "@blksails/pi-web-protocol";
 import type {
   CompletionCtx,
   CompletionProvider,

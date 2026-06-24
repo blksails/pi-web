@@ -6,7 +6,7 @@
 
 任何语言/框架的客户端(浏览器前端、Python/Go 客户端)都通过这套 HTTP/SSE 契约对接,无需理解 pi 原生事件或内部对象。SSE 帧分两类:**UIMessage chunks**(可直接喂 AI SDK)与**旁路 control 事件**(extension UI / queue / stats / error),并以心跳注释帧防断、`X-Accel-Buffering: no` 抑制反代缓冲。契约携带 `protocolVersion` 用于前后端握手与漂移防护。
 
-本 spec **消费而非重定义**上游契约:REST DTO、SSE 帧 schema、`protocolVersion` 取自 `@blksails/protocol`;`PiSession` API、`SessionStore`、`subscribe()`、命令转发取自 `session-engine`。权威设计见 `PLAN.md` §3.3(端点表)、§13.2(`createPiWebHandler`/协议)、§11.5(SSE 反代)、§14.1③(控制面/数据面分离)、§13.4(可插拔鉴权点)。
+本 spec **消费而非重定义**上游契约:REST DTO、SSE 帧 schema、`protocolVersion` 取自 `@blksails/pi-web-protocol`;`PiSession` API、`SessionStore`、`subscribe()`、命令转发取自 `session-engine`。权威设计见 `PLAN.md` §3.3(端点表)、§13.2(`createPiWebHandler`/协议)、§11.5(SSE 反代)、§14.1③(控制面/数据面分离)、§13.4(可插拔鉴权点)。
 
 ## Boundary Context
 
@@ -15,7 +15,7 @@
   - 外部路由注入接缝 `opts.routes`:供下游 spec(如 `extension-management`)挂载额外路由;内置路由对精确 `path`+`method` 冲突优先,外部路由不能遮蔽内置端点。
   - SSE 端点:`GET /sessions/:id/stream`——把 `PiSession.subscribe()` 的 UIMessage chunk 帧 + 旁路 control 帧编码为 `text/event-stream`,含心跳注释帧与 `X-Accel-Buffering: no`。
   - 框架无关入口 `createPiWebHandler(opts)`:返回 `(req: Request) => Promise<Response>`;内部路由方法+路径到对应处理器。
-  - 每个处理器的请求边界校验(用 `@blksails/protocol` DTO `safeParse`)与统一错误码/错误响应体。
+  - 每个处理器的请求边界校验(用 `@blksails/pi-web-protocol` DTO `safeParse`)与统一错误码/错误响应体。
   - SSE 帧编码(`SseFrame` → `text/event-stream` 文本)与重连续流(`Last-Event-ID` / 重新 subscribe)。
   - `protocolVersion` 握手:响应/帧携带版本;客户端版本不兼容时的协商响应。
   - 可插拔鉴权接缝(**仅接口,默认放行**):`authResolver(req)`、`authorizeSession(ctx)`(§13.4)。
@@ -57,7 +57,7 @@
 
 #### Acceptance Criteria
 
-1. When 收到 `POST /sessions` 且请求体经 `@blksails/protocol` 的建会话 DTO 校验通过(含必填 `source`,可选 `cwd`/`model`/`env`),the http-api shall 经上游创建会话并返回 `{ sessionId }`(`200/201`)。
+1. When 收到 `POST /sessions` 且请求体经 `@blksails/pi-web-protocol` 的建会话 DTO 校验通过(含必填 `source`,可选 `cwd`/`model`/`env`),the http-api shall 经上游创建会话并返回 `{ sessionId }`(`200/201`)。
 2. If `POST /sessions` 请求体缺 `source` 或字段类型不符,then the http-api shall 返回 `400` 且响应体包含错误码与可定位出错字段的信息。
 3. When 收到 `DELETE /sessions/:id` 且会话存在,the http-api shall 触发该会话停止(关闭通道、从 store 移除)并返回 ack(`200/204`)。
 4. When 任一携带 `:id` 的端点收到的 `sessionId` 在 store 中不存在,the http-api shall 返回 `404` 且响应体为统一错误结构。
@@ -86,7 +86,7 @@
 2. When 收到 `GET /sessions/:id/stats`,the http-api shall 返回该会话的 token/cost 统计响应 DTO。
 3. When 收到 `GET /sessions/:id/messages`,the http-api shall 返回该会话的消息历史响应 DTO。
 4. When 收到 `GET /sessions/:id/commands`,the http-api shall 返回该会话的可用命令响应 DTO。该端点为纯 `PiSession` 查询(无安装/信任治理),由 http-api 独占拥有;下游 spec(如 `extension-management`)消费此端点而非重新实现。
-5. The http-api shall 对查询端点的响应体形状以 `@blksails/protocol` 的对应响应 DTO 为准,不重定义形状。
+5. The http-api shall 对查询端点的响应体形状以 `@blksails/pi-web-protocol` 的对应响应 DTO 为准,不重定义形状。
 
 ### Requirement 5: SSE 流式端点与帧编码
 
@@ -119,9 +119,9 @@
 
 #### Acceptance Criteria
 
-1. The http-api shall 在响应(REST 响应头/响应体与 SSE 帧)中携带来自 `@blksails/protocol` 的 `protocolVersion`。
+1. The http-api shall 在响应(REST 响应头/响应体与 SSE 帧)中携带来自 `@blksails/pi-web-protocol` 的 `protocolVersion`。
 2. When 客户端在请求中声明了不兼容的 `protocolVersion`,the http-api shall 返回明确的版本协商错误(如 `426`/`400` 类)而非静默继续。
-3. The http-api shall 以 `@blksails/protocol` 导出的 `protocolVersion` 为唯一版本来源,不自定义版本号。
+3. The http-api shall 以 `@blksails/pi-web-protocol` 导出的 `protocolVersion` 为唯一版本来源,不自定义版本号。
 
 ### Requirement 8: 可插拔鉴权接缝(接口优先,默认放行)
 

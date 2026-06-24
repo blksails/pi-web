@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createContributionsController } from "../../src/web-ext/contributions-controller.js";
-import type { WebExtension, UiRpcClient } from "@blksails/web-kit";
+import type { WebExtension, UiRpcClient } from "@blksails/pi-web-kit";
 
 const rpc: UiRpcClient = {
   request: vi.fn(async () => ({ correlationId: "x", ok: true, result: [] })),

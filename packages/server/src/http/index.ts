@@ -2,7 +2,7 @@
  * http-api — 公共导出面。
  *
  * 框架无关入口 `createPiWebHandler(opts)` 返回标准 Web Fetch 处理器;消费 session-engine
- * 的会话抽象与 @blksails/protocol 的 REST DTO / SSE 帧 / protocolVersion,不重定义上游契约。
+ * 的会话抽象与 @blksails/pi-web-protocol 的 REST DTO / SSE 帧 / protocolVersion,不重定义上游契约。
  */
 export {
   createPiWebHandler,

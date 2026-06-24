@@ -1,13 +1,13 @@
 /**
  * Author-facing attachment tool context contract (attachment-tool-bridge task 4.1; Req 4.1).
  *
- * `@blksails/agent-kit` exposes only the **type** contract a server-side tool author
+ * `@blksails/pi-web-agent-kit` exposes only the **type** contract a server-side tool author
  * references when authoring an attachment-aware tool. The concrete construction
  * (`createAttachmentToolContext`) and the runtime store handle live in
- * `@blksails/server` (runner sub-process side) — keeping construction out of
+ * `@blksails/pi-web-server` (runner sub-process side) — keeping construction out of
  * agent-kit means this package never gains a runtime dependency edge into the
  * server bundle (which would break the Next/webpack externals boundary). These
- * are pure `type` declarations derived from the public `@blksails/protocol`
+ * are pure `type` declarations derived from the public `@blksails/pi-web-protocol`
  * descriptor surface, structurally compatible with the server-side
  * `AttachmentToolContext` implementation a tool actually receives at runtime.
  *
@@ -18,7 +18,7 @@
  * `localPath` / `url`). The server `AttachmentHandle` (a superset) remains
  * assignable to {@link AttachmentToolHandle}.
  */
-import type { Attachment } from "@blksails/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 
 /**
  * tool-output 回流引用:不含字节,仅承载公开 id 与展示 URL(及类型/文件名)。
@@ -72,8 +72,8 @@ export interface PutOutputInput {
 /**
  * tool 接入上下文:工具在其 `execute` 逻辑内取得子进程 store 句柄的接入面(Req 4.1)。
  *
- * 由 `@blksails/server` 的 `createAttachmentToolContext(store, sessionId)` 构造并经
- * runner 装配注入到 tool;tool 作者经 `@blksails/agent-kit` 引用本类型。
+ * 由 `@blksails/pi-web-server` 的 `createAttachmentToolContext(store, sessionId)` 构造并经
+ * runner 装配注入到 tool;tool 作者经 `@blksails/pi-web-agent-kit` 引用本类型。
  *
  * - `available`:存储能力是否可用。env 缺失/未配置附件存储时为 `false`(Req 3.4);
  *   此时 `resolve`/`putOutput` 安全拒绝(抛可识别错误),tool 据此报「附件能力不可用」。

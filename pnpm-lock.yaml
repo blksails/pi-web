@@ -11,19 +11,19 @@ importers:
       '@ai-sdk/react':
         specifier: ^2.0.0
         version: 2.0.206(react@19.2.7)(zod@3.25.76)
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:packages/protocol
-      '@blksails/react':
+      '@blksails/pi-web-react':
         specifier: workspace:*
         version: link:packages/react
-      '@blksails/server':
+      '@blksails/pi-web-server':
         specifier: workspace:*
         version: link:packages/server
-      '@blksails/ui':
+      '@blksails/pi-web-ui':
         specifier: workspace:*
         version: link:packages/ui
-      '@blksails/web-kit':
+      '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:packages/web-kit
       ai:
@@ -78,7 +78,7 @@ importers:
 
   packages/agent-kit:
     dependencies:
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
     devDependencies:
@@ -104,10 +104,10 @@ importers:
 
   packages/react:
     dependencies:
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@blksails/web-kit':
+      '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:../web-kit
     devDependencies:
@@ -147,7 +147,7 @@ importers:
 
   packages/server:
     dependencies:
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
       '@earendil-works/pi-ai':
@@ -184,7 +184,7 @@ importers:
 
   packages/tool-kit:
     dependencies:
-      '@blksails/agent-kit':
+      '@blksails/pi-web-agent-kit':
         specifier: workspace:*
         version: link:../agent-kit
       undici:
@@ -209,13 +209,13 @@ importers:
 
   packages/ui:
     dependencies:
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
-      '@blksails/react':
+      '@blksails/pi-web-react':
         specifier: workspace:*
         version: link:../react
-      '@blksails/web-kit':
+      '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:../web-kit
       '@radix-ui/react-dialog':
@@ -309,7 +309,7 @@ importers:
 
   packages/web-kit:
     dependencies:
-      '@blksails/protocol':
+      '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
       esbuild:

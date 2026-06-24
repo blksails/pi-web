@@ -2,7 +2,7 @@
 
 > 状态:草案(供评审)
 > 范围:Tier 1 —— 利用 pi-web 附件存储接缝的内置媒体工具
-> 关联:`attachment-store` / `attachment-tool-bridge` 两个 spec;`@blksails/server` runner 子进程
+> 关联:`attachment-store` / `attachment-tool-bridge` 两个 spec;`@blksails/pi-web-server` runner 子进程
 
 ---
 
@@ -61,11 +61,11 @@ wireAttachmentBridge(runtime, { env, sessionId })                            ←
 
 **决策:内置工具同样在 execute 内延迟读取 ctx**,不在装配时接收 ctx。每个内置工具构造时只接收一个 `getCtx: () => AttachmentToolContext | undefined`(读 seam),不持有 ctx 本身。
 
-> 内置工具是 `@blksails/server` 自带代码(不经 jiti 装载),理论上也可走"可变 ctx holder + 装配后回填"的方案绕开 seam。但**复用现有 seam 约定**(`ATTACHMENT_TOOL_CONTEXT_KEY`)更简单、与示例工具单一约定一致,不引入第二套时序机制。
+> 内置工具是 `@blksails/pi-web-server` 自带代码(不经 jiti 装载),理论上也可走"可变 ctx holder + 装配后回填"的方案绕开 seam。但**复用现有 seam 约定**(`ATTACHMENT_TOOL_CONTEXT_KEY`)更简单、与示例工具单一约定一致,不引入第二套时序机制。
 
 ### 2.2 装配点:runner 直接合并进 customTools
 
-内置工具住在 `@blksails/server`,runner 子进程**直接 import** 并合并进 `customTools`,无需作者在 `index.ts` 写一行。合并发生在工厂内(`option-mapper.ts` 的 `buildRuntimeFactory`):
+内置工具住在 `@blksails/pi-web-server`,runner 子进程**直接 import** 并合并进 `customTools`,无需作者在 `index.ts` 写一行。合并发生在工厂内(`option-mapper.ts` 的 `buildRuntimeFactory`):
 
 ```ts
 // option-mapper.ts buildRuntimeFactory 内,装配 fromServices 时:

@@ -1,4 +1,4 @@
-{"_note":"REPRESENTATIVE, NOT CAPTURED LIVE. These frames were generated from the documented frame shapes (rpc-types.d.ts / pi-agent-core types.d.ts / pi 0.79.x, PLAN.md). Set ANTHROPIC_API_KEY and run `pnpm --filter @blksails/protocol exec tsx scripts/capture-pi-frames.ts` to refresh with live-captured frames. Lines beginning with _note are skipped by the contract test."}
+{"_note":"REPRESENTATIVE, NOT CAPTURED LIVE. These frames were generated from the documented frame shapes (rpc-types.d.ts / pi-agent-core types.d.ts / pi 0.79.x, PLAN.md). Set ANTHROPIC_API_KEY and run `pnpm --filter @blksails/pi-web-protocol exec tsx scripts/capture-pi-frames.ts` to refresh with live-captured frames. Lines beginning with _note are skipped by the contract test."}
 {"id":"1","type":"response","command":"prompt","success":true}
 {"type":"agent_start"}
 {"type":"turn_start"}

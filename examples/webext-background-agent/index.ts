@@ -4,7 +4,7 @@
  * agent 本体最小;`.pi/web` 预构建一个 WebExtension,用 `background` 插槽渲染一层
  * 动画极光背景(scoped CSS,渲染于消息层之下、不拦截交互)。
  */
-import { defineAgent } from "@blksails/agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 
 export default defineAgent({
   systemPrompt:

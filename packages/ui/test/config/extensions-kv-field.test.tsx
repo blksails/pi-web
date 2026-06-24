@@ -2,7 +2,7 @@ import * as React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { FieldDescriptor } from "@blksails/protocol";
+import type { FieldDescriptor } from "@blksails/pi-web-protocol";
 import { ExtensionsKvField } from "../../src/config/fields/extensions-kv-field.js";
 import type { FieldProps } from "../../src/config/field-registry.js";
 

@@ -2,9 +2,9 @@
 
 ## Overview
 
-**Purpose**:本特性为 `@blksails/server` 交付一个**可插拔的会话事件存储 `SessionEntryStore`**:把 pi 会话的 "append-only 事件树" 持久化能力从存储介质中解耦,并提供 **fs / sqlite / postgres** 三种 adapter。它只承担**条目存取(IO)**,把「从叶子回溯重建上下文、分支选择」等树运算留给调用方(领域层)。
+**Purpose**:本特性为 `@blksails/pi-web-server` 交付一个**可插拔的会话事件存储 `SessionEntryStore`**:把 pi 会话的 "append-only 事件树" 持久化能力从存储介质中解耦,并提供 **fs / sqlite / postgres** 三种 adapter。它只承担**条目存取(IO)**,把「从叶子回溯重建上下文、分支选择」等树运算留给调用方(领域层)。
 
-**Users**:`@blksails/server` 内的会话领域层(及未来的 http-api/会话引擎)经 `SessionEntryStore` 接口创建会话、追加条目、读回条目(在内存重建树)、按工作目录或全局检索会话、整会话删除。三种 adapter 覆盖单机文件兼容(fs)、单机结构化(sqlite)、多实例共享(postgres)三类部署。
+**Users**:`@blksails/pi-web-server` 内的会话领域层(及未来的 http-api/会话引擎)经 `SessionEntryStore` 接口创建会话、追加条目、读回条目(在内存重建树)、按工作目录或全局检索会话、整会话删除。三种 adapter 覆盖单机文件兼容(fs)、单机结构化(sqlite)、多实例共享(postgres)三类部署。
 
 **Impact**:在 `packages/server/src/session-store/` 新增一个独立模块;**不修改**第三方 `@earendil-works/pi-coding-agent` 任何代码,仅把其 JSONL 布局/version 语义作为兼容目标。新增运行时依赖 `pg`(仅 postgres adapter 惰性引用)、测试依赖 `pg-mem`;sqlite 用 Node 内置 `node:sqlite`,无新增运行时依赖。
 
@@ -48,7 +48,7 @@
 ## Architecture
 
 ### Existing Architecture Analysis
-- `@blksails/server` 已确立 "传输/隔离用接口隔开" 原则(`PiRpcChannel`、`SessionStore` 等接缝),本模块沿用同一范式新增 `SessionEntryStore` 接缝。
+- `@blksails/pi-web-server` 已确立 "传输/隔离用接口隔开" 原则(`PiRpcChannel`、`SessionStore` 等接缝),本模块沿用同一范式新增 `SessionEntryStore` 接缝。
 - 第三方 `SessionManager` 的存储收口(写口 `_persist`、读口 `loadEntriesFromFile`、桶编码、文件名编码)是 fs adapter 的格式参照;领域树逻辑(`buildSessionContext`)证明 "只抽 IO" 切法成立。
 - 测试遵循既有 `packages/server/test/<feature>/*.{unit,integration,e2e}.test.ts` 约定;源码在 `src/`。
 

@@ -12,7 +12,7 @@ import {
   secretClear,
   secretSet,
   type SecretMask,
-} from "@blksails/protocol";
+} from "@blksails/pi-web-protocol";
 import type { FieldProps } from "../field-registry.js";
 import { Input } from "../../ui/input.js";
 import { Button } from "../../ui/button.js";

@@ -4,7 +4,7 @@
  * 各触发符的提取规则不同:`wordTail`(@/$ 词尾非空白)、`lineStart`(/ 行首)。
  * 服务端只下发"触发符 + 规则名",前端按名执行,得出查询串与替换区间。
  */
-import type { CompletionTriggerSpec } from "@blksails/protocol";
+import type { CompletionTriggerSpec } from "@blksails/pi-web-protocol";
 
 export interface ActiveToken {
   readonly trigger: string;

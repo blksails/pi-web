@@ -1,5 +1,5 @@
 /**
- * DashScope provider 工厂 — `@blksails/tool-kit` 版(精简移植自 pi-labs)。
+ * DashScope provider 工厂 — `@blksails/pi-web-tool-kit` 版(精简移植自 pi-labs)。
  *
  * 提供 model 路由项工厂(返回 {@link ModelRoute}):
  *  - async wanx:  POST text2image/image-synthesis → `x-dashscope-async:enable` → poll `/tasks/<id>`

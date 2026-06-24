@@ -5,10 +5,10 @@
 ## 问题
 - **谁**:自定义 agent 模式下被 spawn 的子进程,以及编写自定义 agent 的用户。
 - **现状**:用户用 pi SDK 写的 `index.ts` 无标准载入方式;没有把"用户定义"变成 `AgentSessionRuntime` 再跑 `runRpcMode` 的桥。
-- **改变**:提供 bootstrap runner(子进程入口)+ `@blksails/agent-kit`(`defineAgent()` 类型),把任意自定义 agent 暴露为标准 RPC。
+- **改变**:提供 bootstrap runner(子进程入口)+ `@blksails/pi-web-agent-kit`(`defineAgent()` 类型),把任意自定义 agent 暴露为标准 RPC。
 
 ## 方法 / 范围
-- **`@blksails/agent-kit`**:`defineAgent(def)` 与 `AgentDefinition` 类型(`model/thinkingLevel/tools/customTools/excludeTools/noTools/systemPrompt/extensions/skills/promptTemplates/contextFiles/scopedModels`);运行时不强制依赖。
+- **`@blksails/pi-web-agent-kit`**:`defineAgent(def)` 与 `AgentDefinition` 类型(`model/thinkingLevel/tools/customTools/excludeTools/noTools/systemPrompt/extensions/skills/promptTemplates/contextFiles/scopedModels`);运行时不强制依赖。
 - **agent-loader**:jiti import `<agentPath>` → 归一化 default export 三形态:(a) 定义对象、(b) `(ctx)=>定义`、(c) 直接 `createRuntime` 工厂。
 - **runner.ts**(子进程入口):解析 `--agent/--cwd/--agent-dir` → 用 `createAgentSessionServices`(`resourceLoaderOptions` 映射 systemPrompt/extensions/skills/prompts/contextFiles)+ `createAgentSessionFromServices`(model/tools/customTools 等)组装 `CreateAgentSessionRuntimeFactory` → `createAgentSessionRuntime(...)` → `await runRpcMode(runtime)`。
 - 处理 `resolveProjectTrust`(承接 agent-source 的信任决策)。

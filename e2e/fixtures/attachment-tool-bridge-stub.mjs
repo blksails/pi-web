@@ -41,10 +41,10 @@
  * tool result, and the produced id is re-referenceable in the next turn (回环 B).
  *
  * Speaks the pi RPC JSONL protocol over stdio exactly like the production stub
- * (so the whole rpc-channel → session-engine → SSE → @blksails/react → <PiChat>
+ * (so the whole rpc-channel → session-engine → SSE → @blksails/pi-web-react → <PiChat>
  * chain runs unchanged), and persists to the same SessionEntryStore for resume.
- * Loaded via `--import jiti/register` (cwd = @blksails/server pkg dir) so it can
- * import the TS-source `@blksails/server` attachment-bridge.
+ * Loaded via `--import jiti/register` (cwd = @blksails/pi-web-server pkg dir) so it can
+ * import the TS-source `@blksails/pi-web-server` attachment-bridge.
  */
 import process from "node:process";
 import { randomBytes } from "node:crypto";
@@ -53,8 +53,8 @@ import path from "node:path";
 
 // This fixture lives at <repo>/e2e/fixtures/attachment-tool-bridge-stub.mjs.
 // Resolve the repo root from its own location so subpath imports into
-// @blksails/server source are cwd-independent (the stub runs with cwd = the
-// @blksails/server package dir, so a bare relative path would be ambiguous).
+// @blksails/pi-web-server source are cwd-independent (the stub runs with cwd = the
+// @blksails/pi-web-server package dir, so a bare relative path would be ambiguous).
 const FIXTURE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(FIXTURE_DIR, "..", "..");
 const EXAMPLE_TOOL_PATH = path.join(
@@ -72,7 +72,7 @@ function write(obj) {
 
 /** Unwrap jiti's CJS-interop `.default` fold of `export *` named exports. */
 async function loadServerApi() {
-  const mod = await import("@blksails/server");
+  const mod = await import("@blksails/pi-web-server");
   return mod.default ?? mod;
 }
 
@@ -202,7 +202,7 @@ let bridge = null; // { ctx, tool, afterGate, available }
 async function getBridge() {
   if (bridge !== null) return bridge;
   const api = await loadServerApi();
-  // The example-tool factory is intentionally NOT in the @blksails/server barrel
+  // The example-tool factory is intentionally NOT in the @blksails/pi-web-server barrel
   // (it value-imports the pi SDK; kept out to protect the app's webpack
   // externals). The stub runs under jiti, so import the TS source by absolute
   // path (resolved from this fixture's own location, see EXAMPLE_TOOL_PATH).

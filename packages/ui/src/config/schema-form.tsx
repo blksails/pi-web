@@ -6,7 +6,7 @@
  * 顶层 record 特例(如 auth):单 record 字段 key===domain 时直接绑定根对象。
  */
 import * as React from "react";
-import type { FormSchema, FieldDescriptor } from "@blksails/protocol";
+import type { FormSchema, FieldDescriptor } from "@blksails/pi-web-protocol";
 import { FieldRenderer } from "./field-renderer.js";
 import type { FieldRegistry } from "./field-registry.js";
 import { cn } from "../lib/cn.js";

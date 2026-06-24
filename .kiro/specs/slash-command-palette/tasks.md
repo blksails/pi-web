@@ -60,4 +60,4 @@
   - _Depends: 2.1, 2.2, 2.3_
 
 ## Implementation Notes
-- 2.1:本特性与并行特性 `extension-ui-inline-interaction`(`PiPermissionDialog`→`PiInteraction` 重命名)共享 `pi-chat.tsx` 工作树。该重构遗漏了 `packages/ui/src/index.ts` 的 `PiInteraction` 顶层导出,致 `@blksails/ui` typecheck/测试一度 RED;已按用户指向(`ui.PiInteraction`)补上该导出使包恢复绿色(221/221)。重构文件(`index.ts`、`pi-chat-basic.tsx`、`elements/pi-interaction.tsx`)属并行特性、未纳入本 spec 的任务提交,由其所有者提交。
+- 2.1:本特性与并行特性 `extension-ui-inline-interaction`(`PiPermissionDialog`→`PiInteraction` 重命名)共享 `pi-chat.tsx` 工作树。该重构遗漏了 `packages/ui/src/index.ts` 的 `PiInteraction` 顶层导出,致 `@blksails/pi-web-ui` typecheck/测试一度 RED;已按用户指向(`ui.PiInteraction`)补上该导出使包恢复绿色(221/221)。重构文件(`index.ts`、`pi-chat-basic.tsx`、`elements/pi-interaction.tsx`)属并行特性、未纳入本 spec 的任务提交,由其所有者提交。

@@ -1,10 +1,10 @@
 /**
- * http-api — protocolVersion 握手/承载(单一来源:@blksails/protocol,Req 7.3)。
+ * http-api — protocolVersion 握手/承载(单一来源:@blksails/pi-web-protocol,Req 7.3)。
  *
  * 客户端可经 `X-Pi-Protocol-Version` 请求头声明期望版本;不兼容时返回协商错误
  * (426,Req 7.2)。兼容判定:按 SemVer 主版本一致即兼容(MAJOR 相同)。
  */
-import { protocolVersion } from "@blksails/protocol";
+import { protocolVersion } from "@blksails/pi-web-protocol";
 import { errorResponse, PROTOCOL_VERSION_HEADER } from "./error-map.js";
 
 function major(version: string): string | undefined {

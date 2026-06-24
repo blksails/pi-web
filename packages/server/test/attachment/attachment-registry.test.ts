@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Attachment } from "@blksails/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 import { AttachmentRegistry } from "../../src/attachment/attachment-registry.js";
 
 function makeAttachment(over: Partial<Attachment> = {}): Attachment {

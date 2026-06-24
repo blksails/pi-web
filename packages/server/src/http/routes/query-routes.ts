@@ -2,10 +2,10 @@
  * http-api — 查询端点(Req 4.x)。
  *
  * `GET /sessions/:id/{state,stats,messages,commands}`:转发 `PiSession` 查询方法,
- * 把成功 `RpcResponse.data` 投影为 `@blksails/protocol` 的对应响应 DTO 形状返回。
+ * 把成功 `RpcResponse.data` 投影为 `@blksails/pi-web-protocol` 的对应响应 DTO 形状返回。
  * 不重定义响应形状(Req 4.5)。会话不存在→404(router 已校验,此处兜底)。
  */
-import type { RpcResponse } from "@blksails/protocol";
+import type { RpcResponse } from "@blksails/pi-web-protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";

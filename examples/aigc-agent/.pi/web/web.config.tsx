@@ -9,8 +9,8 @@
  * 之所以从 content 取 URL 而非 details:pi 的 tool result 消息流只携带 content,details 不到前端。
  */
 import * as React from "react";
-import { defineWebExtension } from "@blksails/web-kit";
-import { PiToolPart } from "@blksails/ui";
+import { defineWebExtension } from "@blksails/pi-web-kit";
+import { PiToolPart } from "@blksails/pi-web-ui";
 
 /** content 数组 → 合并各 text part 的文本。 */
 function joinTextParts(parts: ReadonlyArray<unknown>): string {

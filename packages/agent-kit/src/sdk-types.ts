@@ -1,7 +1,7 @@
 /**
  * Thin re-exports / derivations of pi SDK types used by {@link AgentDefinition}.
  *
- * `@blksails/agent-kit` keeps the pi SDK as a peer/dev dependency only: these are
+ * `@blksails/pi-web-agent-kit` keeps the pi SDK as a peer/dev dependency only: these are
  * pure `type` imports and never produce a runtime dependency edge. To stay
  * resolvable from a package that only depends on `@earendil-works/pi-coding-agent`
  * (and not its transitive `pi-ai` / `pi-agent-core` packages directly), every
