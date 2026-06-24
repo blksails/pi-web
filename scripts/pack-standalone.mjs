@@ -11,7 +11,7 @@
  * 复制为覆盖式,可重复执行。布局假设 `outputFileTracingRoot` = app 根(= workspace 根),
  * 故 standalone 内 app 文件在根、`server.js` 在 standalone 根。
  */
-import { existsSync, cpSync } from "node:fs";
+import { existsSync, cpSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const distDir = process.env.NEXT_DIST_DIR ?? ".next-cli";
@@ -41,6 +41,33 @@ const publicDest = join(standalone, "public");
 if (existsSync(publicSrc)) {
   cpSync(publicSrc, publicDest, { recursive: true });
   console.log(`[pack-standalone] public → ${publicDest}`);
+}
+
+// 瘦身:CLI 包是 standalone 自包含产物,无需 test/docs/source-map/markdown 等开发文件(spec pi-web-cli 发布形态)。
+const PRUNE_DIRS = new Set([
+  "test", "tests", "__tests__", "docs", "doc", "example", "examples",
+  ".github", ".vite", ".cache", "coverage", "stories", ".nyc_output", "man",
+  // 纯 test/e2e 库:内部包 devDep 经 outputFileTracingIncludes 捎进来,运行时不需要
+  "vitest", "vite", "@vitest", "tinypool", "tinyspy", "tinybench",
+  "jsdom", "happy-dom", "@testing-library", "playwright", "playwright-core", "@playwright",
+]);
+const PRUNE_FILE = /\.(md|markdown|map|flow|tsbuildinfo)$|\.d\.ts$|^(changelog|authors|contributors|\.npmignore|\.editorconfig|\.prettierrc.*|\.eslintrc.*)$/i;
+function prune(dir) {
+  let n = 0;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) {
+      if (PRUNE_DIRS.has(e.name)) { rmSync(p, { recursive: true, force: true }); n++; }
+      else n += prune(p);
+    } else if (PRUNE_FILE.test(e.name)) { rmSync(p, { force: true }); n++; }
+  }
+  return n;
+}
+if (!process.env.PACK_NO_PRUNE) {
+  const pruned = prune(standalone);
+  console.log(`[pack-standalone] 瘦身:清理 ${pruned} 个开发文件/目录(test/docs/*.map/*.md…)`);
+} else {
+  console.log(`[pack-standalone] 跳过瘦身(PACK_NO_PRUNE=1)`);
 }
 
 console.log(`[pack-standalone] 完成。standalone server: ${serverJs}`);
