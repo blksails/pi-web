@@ -122,7 +122,8 @@ describe("LogsPanel — 渲染（5.1/5.2）", () => {
 
     render(<LogsPanel />);
     const row = screen.getAllByRole("listitem")[0]!;
-    expect(row.textContent).toContain("error");
+    // Badge text is uppercase; check case-insensitively
+    expect(row.textContent?.toLowerCase()).toContain("error");
     expect(row.textContent).toContain("core:attach");
     expect(row.textContent).toContain("broken");
   });
@@ -287,5 +288,135 @@ describe("LogsPanel — 自动滚动（5.6）", () => {
 
     // scrollIntoView should have been called on the last entry
     expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+});
+
+// ── 视觉重构新增测试（任务 6.1）──────────────────────────────────────────────
+
+describe("LogsPanel — 标题栏与折叠（任务 6.1）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("渲染含 '日志' 文本的标题栏", () => {
+    mockLogsResult = makeResult();
+    render(<LogsPanel />);
+    // Title bar should contain the text "日志"
+    expect(screen.getByText(/日志/)).toBeInTheDocument();
+  });
+
+  it("标题栏包含折叠/展开 toggle 按钮", () => {
+    mockLogsResult = makeResult();
+    const { container } = render(<LogsPanel />);
+    const toggle = container.querySelector("[data-pi-logs-collapse-toggle]");
+    expect(toggle).not.toBeNull();
+  });
+
+  it("默认展开：data-pi-logs-region 可见，日志行渲染", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "visible msg" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    // Scroll region exists and log rows are rendered
+    expect(container.querySelector("[data-pi-logs-region]")).not.toBeNull();
+    expect(container.querySelectorAll("[data-pi-log-level]")).toHaveLength(1);
+  });
+
+  it("折叠 toggle 点击后日志行隐藏", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+
+    const toggle = container.querySelector("[data-pi-logs-collapse-toggle]") as HTMLElement;
+    fireEvent.click(toggle);
+
+    // After collapsing, rows should not be visible (hidden or not rendered)
+    const rows = container.querySelectorAll("[data-pi-log-level]");
+    expect(rows).toHaveLength(0);
+  });
+
+  it("折叠后再次点击 toggle 恢复展开，行再次出现", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+
+    const toggle = container.querySelector("[data-pi-logs-collapse-toggle]") as HTMLElement;
+    // Collapse
+    fireEvent.click(toggle);
+    expect(container.querySelectorAll("[data-pi-log-level]")).toHaveLength(0);
+    // Expand again
+    fireEvent.click(toggle);
+    expect(container.querySelectorAll("[data-pi-log-level]")).toHaveLength(1);
+  });
+
+  it("标题栏显示当前条目计数", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+      makeEntry({ id: "2", level: "warn", ns: "b", msg: "msg2" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    // Title bar should contain the count "· 2"
+    const titleBar = container.querySelector("[data-pi-logs-collapse-toggle]")?.closest("div");
+    expect(titleBar?.textContent).toContain("2");
+  });
+});
+
+describe("LogsPanel — 时间戳列与级别徽章（任务 6.1）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("每行渲染时间戳（HH:MM:SS 格式）", () => {
+    // Use a fixed ts to check timestamp format
+    const ts = new Date("2024-01-15T10:30:45.123").getTime();
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg", ts }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+
+    const row = container.querySelector("[data-pi-log-level]")!;
+    // Should contain a time-like string matching HH:MM:SS
+    expect(row.textContent).toMatch(/\d{2}:\d{2}:\d{2}/);
+  });
+
+  it("每行渲染级别徽章（data-pi-log-level 仍在）", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "error", ns: "a", msg: "err msg" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+
+    const row = container.querySelector("[data-pi-log-level]")!;
+    expect(row).toHaveAttribute("data-pi-log-level", "error");
+    // Badge should contain uppercase level text
+    const badge = row.querySelector("[data-pi-log-level-badge]");
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toContain("ERROR");
+  });
+
+  it("debug 级别徽章有灰色相关样式", () => {
+    const entries: LogEntry[] = [makeEntry({ id: "1", level: "debug", ns: "a", msg: "d" })];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const badge = container.querySelector("[data-pi-log-level-badge]")!;
+    expect(badge).not.toBeNull();
+    // Badge text should be DEBUG
+    expect(badge.textContent).toContain("DEBUG");
+  });
+
+  it("warn 级别徽章有琥珀/黄色相关样式", () => {
+    const entries: LogEntry[] = [makeEntry({ id: "1", level: "warn", ns: "a", msg: "w" })];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const badge = container.querySelector("[data-pi-log-level-badge]")!;
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toContain("WARN");
   });
 });

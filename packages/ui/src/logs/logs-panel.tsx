@@ -4,8 +4,9 @@
  * 消费 useLogs（来自 @pi-web/react），渲染结构化日志条目并提供过滤控件。
  *
  * 特性：
+ *  - 标题栏：左侧"日志"标题+条目计数，右侧折叠/展开 toggle（默认展开）
  *  - 容器带 data-pi-logs-region（供 e2e/测试定位）
- *  - 按时间顺序渲染日志行；每行带 data-pi-log-level={level} 与 data-pi-log-ns={ns}
+ *  - 按时间顺序渲染日志行；每行带时间戳列、级别徽章、data-pi-log-level/data-pi-log-ns
  *  - 控件：级别下拉（debug/info/warn/error）、命名空间过滤、搜索框
  *  - 自动滚动：新日志到达且处于底部 → 滚到底；用户上滚 → 暂停
  *
@@ -16,7 +17,7 @@
  */
 
 import * as React from "react";
-import { useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { LogEntry, LogLevel } from "@pi-web/logger";
 import { useLogs, createLogsStore, type UseLogsResult } from "@pi-web/react";
 import { cn } from "../lib/cn.js";
@@ -45,6 +46,30 @@ function getDefaultStore(): ReturnType<typeof createLogsStore> {
   return _defaultStore;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Format epoch milliseconds to local time string HH:MM:SS.mmm.
+ * Pure synchronous — safe in jsdom.
+ */
+function formatTimestamp(ts: number): string {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${hh}:${mm}:${ss}.${ms}`;
+}
+
+// ── Level badge styles ────────────────────────────────────────────────────────
+
+const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
+  debug: "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
+  info:  "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  warn:  "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  error: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 /** Single log row. Pure element rendering — no async highlights. */
@@ -53,16 +78,28 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
     <li
       data-pi-log-level={entry.level}
       data-pi-log-ns={entry.ns}
-      className={cn(
-        "flex gap-2 px-3 py-0.5 text-xs font-mono leading-5 hover:bg-[hsl(var(--accent)/0.4)]",
-        entry.level === "debug" && "text-[hsl(var(--muted-foreground))]",
-        entry.level === "info" && "text-[hsl(var(--foreground))]",
-        entry.level === "warn" && "text-amber-600 dark:text-amber-400",
-        entry.level === "error" && "text-destructive",
-      )}
+      className="flex gap-2 px-3 py-0.5 text-xs font-mono leading-5 hover:bg-[hsl(var(--accent)/0.4)]"
     >
-      <span className="shrink-0 w-10 opacity-70 uppercase">{entry.level}</span>
+      {/* Timestamp column */}
+      <span className="shrink-0 w-28 opacity-60 tabular-nums">
+        {formatTimestamp(entry.ts)}
+      </span>
+
+      {/* Level badge */}
+      <span
+        data-pi-log-level-badge
+        className={cn(
+          "shrink-0 inline-flex items-center px-1.5 rounded text-[10px] font-semibold uppercase leading-4",
+          LEVEL_BADGE_CLASS[entry.level] ?? LEVEL_BADGE_CLASS.debug,
+        )}
+      >
+        {entry.level.toUpperCase()}
+      </span>
+
+      {/* Namespace */}
       <span className="shrink-0 max-w-[160px] truncate opacity-60">{entry.ns}</span>
+
+      {/* Message */}
       <span className="flex-1 break-all">{entry.msg}</span>
     </li>
   );
@@ -91,6 +128,9 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
   const logs = logsResult ?? internal;
 
   const { entries, filters, setFilters, autoscroll, setAutoscroll } = logs;
+
+  // Collapsed/expanded state — default expanded so e2e can see the panel.
+  const [expanded, setExpanded] = useState(true);
 
   // Ref to the scroll sentinel at the bottom of the list.
   const sentinelRef = useRef<HTMLLIElement>(null);
@@ -124,66 +164,98 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
     [setFilters],
   );
 
+  // ── Collapse toggle ───────────────────────────────────────────────────────
+
+  const handleToggle = useCallback(() => {
+    setExpanded((prev) => !prev);
+  }, []);
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div
       className={cn(
-        "flex flex-col h-full min-h-0 bg-[hsl(var(--background))] text-[hsl(var(--foreground))]",
+        "flex flex-col min-h-0 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))] rounded-lg overflow-hidden",
         className,
       )}
     >
-      {/* Controls bar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] shrink-0">
-        {/* Level filter dropdown */}
-        <Select value={filters.level} onValueChange={handleLevelChange}>
-          <SelectTrigger
-            className="h-7 w-24 text-xs"
-            data-pi-logs-level-filter
-          >
-            <SelectValue placeholder="Level" />
-          </SelectTrigger>
-          <SelectContent>
-            {LOG_LEVELS.map((lvl) => (
-              <SelectItem key={lvl} value={lvl} className="text-xs">
-                {lvl}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {/* Namespace filter */}
-        <Input
-          className="h-7 text-xs flex-1"
-          placeholder="namespace filter…"
-          value={filters.namespace}
-          onChange={(e) => setFilters({ namespace: e.target.value })}
-          data-pi-logs-ns-filter
-        />
-
-        {/* Text search */}
-        <Input
-          className="h-7 text-xs flex-1"
-          placeholder="search…"
-          value={filters.text}
-          onChange={(e) => setFilters({ text: e.target.value })}
-          data-pi-logs-text-filter
-        />
+      {/* Title bar */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[hsl(var(--border))] shrink-0 bg-[hsl(var(--muted)/0.4)]">
+        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
+          {"日志"}
+          {entries.length > 0 && (
+            <span className="ml-1.5 opacity-60">{`· ${entries.length}`}</span>
+          )}
+        </span>
+        <button
+          type="button"
+          data-pi-logs-collapse-toggle
+          aria-label={expanded ? "折叠日志面板" : "展开日志面板"}
+          aria-expanded={expanded}
+          onClick={handleToggle}
+          className="text-xs px-1.5 py-0.5 rounded hover:bg-[hsl(var(--accent))] opacity-60 hover:opacity-100 transition-opacity"
+        >
+          {expanded ? "▲" : "▼"}
+        </button>
       </div>
 
-      {/* Scrollable log container — also the data-pi-logs-region anchor */}
+      {/* Controls bar — only shown when expanded */}
+      {expanded && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] shrink-0">
+          {/* Level filter dropdown */}
+          <Select value={filters.level} onValueChange={handleLevelChange}>
+            <SelectTrigger
+              className="h-7 w-24 text-xs"
+              data-pi-logs-level-filter
+            >
+              <SelectValue placeholder="Level" />
+            </SelectTrigger>
+            <SelectContent>
+              {LOG_LEVELS.map((lvl) => (
+                <SelectItem key={lvl} value={lvl} className="text-xs">
+                  {lvl}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Namespace filter */}
+          <Input
+            className="h-7 text-xs flex-1"
+            placeholder="namespace filter…"
+            value={filters.namespace}
+            onChange={(e) => setFilters({ namespace: e.target.value })}
+            data-pi-logs-ns-filter
+          />
+
+          {/* Text search */}
+          <Input
+            className="h-7 text-xs flex-1"
+            placeholder="search…"
+            value={filters.text}
+            onChange={(e) => setFilters({ text: e.target.value })}
+            data-pi-logs-text-filter
+          />
+        </div>
+      )}
+
+      {/* Scrollable log container — data-pi-logs-region anchor (always rendered) */}
       <ul
         data-pi-logs-region
-        className="flex-1 overflow-y-auto overflow-x-hidden py-1 list-none"
-        onScroll={handleScroll}
+        className={cn(
+          "overflow-y-auto overflow-x-hidden py-1 list-none",
+          expanded ? "flex-1 min-h-[120px] max-h-64" : "h-0 overflow-hidden",
+        )}
+        onScroll={expanded ? handleScroll : undefined}
         role="list"
       >
-        {entries.map((entry, idx) => (
-          <LogRow
-            key={entry.id ?? `${entry.ts}-${idx}`}
-            entry={entry}
-          />
-        ))}
+        {expanded &&
+          entries.map((entry, idx) => (
+            <LogRow
+              key={entry.id ?? `${entry.ts}-${idx}`}
+              entry={entry}
+            />
+          ))}
         {/* Scroll sentinel — always rendered at the bottom of the list */}
         <li
           ref={sentinelRef}
