@@ -230,3 +230,9 @@
   - _Requirements: 5.1_
   - _Boundary: ui chat, ui web-ext, examples/logging-demo-agent_
   - _Depends: 8.2_
+
+- [x] 8.4 修复右侧窄列日志行布局（自适应换行）
+  - LogRow 改 CSS 自适应：flex-wrap + 消息 flex-[1_1_12rem] break-words（去 break-all）+ 时间戳列收窄到 5.5rem + ns 加 title。宽容器单行、窄容器（右侧栏）消息换整行全宽按词换行，消除逐字竖排。无需 prop/容器查询，对 bottom/right/drawer 自适应。
+  - 完成态：右侧位置日志可读（两行式：meta 行 + 消息整行）；451 ui 测试绿、Chrome 实测确认。
+  - _Requirements: 5.1, 5.2_
+  - _Boundary: ui logs_

@@ -78,10 +78,12 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
     <li
       data-pi-log-level={entry.level}
       data-pi-log-ns={entry.ns}
-      className="flex gap-2 px-3 py-0.5 text-xs font-mono leading-5 hover:bg-[hsl(var(--accent)/0.4)]"
+      // 自适应行布局:宽容器 4 列单行;窄容器(如右侧栏)消息以 12rem 最小宽触发 flex-wrap,
+      // 换到整行全宽并按词换行(break-words),避免固定列把消息挤成逐字竖排(break-all)。
+      className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-0.5 text-xs font-mono leading-5 hover:bg-[hsl(var(--accent)/0.4)]"
     >
       {/* Timestamp column */}
-      <span className="shrink-0 w-28 opacity-60 tabular-nums">
+      <span className="shrink-0 w-[5.5rem] opacity-60 tabular-nums">
         {formatTimestamp(entry.ts)}
       </span>
 
@@ -97,10 +99,12 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
       </span>
 
       {/* Namespace */}
-      <span className="shrink-0 max-w-[160px] truncate opacity-60">{entry.ns}</span>
+      <span className="shrink-0 max-w-[160px] truncate opacity-60" title={entry.ns}>
+        {entry.ns}
+      </span>
 
-      {/* Message */}
-      <span className="flex-1 break-all">{entry.msg}</span>
+      {/* Message — grows to fill the line; min-width 12rem forces wrap-to-own-line in narrow containers. */}
+      <span className="flex-[1_1_12rem] min-w-0 break-words">{entry.msg}</span>
     </li>
   );
 }
