@@ -208,3 +208,25 @@
   - 完成态：真实 agent 起会话后，面板显示 agent 启动期日志（agent:<源名> 的 factory/started/warn/error）+ 扩展 + webext，无重复；既有帧/订阅行为不破坏。
   - _Requirements: 4.5, 5.2, 3.1_
   - _Boundary: server session_
+
+## 8. 日志面板位置控制（C 配置位置 + D webext logs slot）
+
+- [x] 8.1 logging 配置加 panelPosition 字段 + 透传
+  - logging 配置 outputs 加 `panelPosition` enum：bottom(默认)/right/drawer；与既有 panelVisible(显隐)正交。chat-app 读取并经新 prop 传给 PiChat（仿 logsPanelVisible）。
+  - 完成态：CONFIG_FORM_SCHEMAS.logging 含 panelPosition enum 字段；缺配置默认 bottom；chat-app 把 position 传入 PiChat。
+  - _Requirements: 6.1, 6.2_
+  - _Boundary: protocol config, app chat_
+
+- [ ] 8.2 PiChat 按位置渲染 LogsPanel（bottom/right/drawer）
+  - PiChat 新增 logsPanelPosition prop，按值渲染：bottom=现状(输入框下)、right=右侧 aside(与 panelRight/artifact 区共存)、drawer=顶栏「日志」按钮 + 底部抽屉(开合状态)。panelVisible 仍门控显隐；保留 data-pi-logs-region 选择器（各位置容器都带）。
+  - 完成态：切换 position 配置→面板出现在对应位置；drawer 默认收起、点按钮展开；既有 e2e/单测不破坏（默认 bottom）。
+  - _Requirements: 5.1, 6.6_
+  - _Boundary: ui chat_
+  - _Depends: 8.1_
+
+- [ ] 8.3 接通 logs webext slot + demo
+  - 在日志区渲染 ExtSlotRegion slot="logs"，webext slots.logs 贡献与内核 LogsPanel 并存、随 panelPosition 位置显示；给 logging-demo-agent 的 .pi/web 加一个 slots.logs demo（如一行自定义日志摘要）验证。
+  - 完成态：填充 slots.logs 的 webext 其内容出现在日志区；不破坏内核面板。
+  - _Requirements: 5.1_
+  - _Boundary: ui chat, ui web-ext, examples/logging-demo-agent_
+  - _Depends: 8.2_

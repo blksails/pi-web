@@ -35,6 +35,11 @@ describe("loggingConfigSchema — 默认值", () => {
     const parsed = loggingConfigSchema.parse({ outputs: {} });
     expect(parsed.outputs?.panelVisible).toBe(true);
   });
+
+  it("outputs.panelPosition 默认 bottom（当 outputs 被提供时）", () => {
+    const parsed = loggingConfigSchema.parse({ outputs: {} });
+    expect(parsed.outputs?.panelPosition).toBe("bottom");
+  });
 });
 
 describe("loggingConfigSchema — 枚举校验", () => {
@@ -52,6 +57,23 @@ describe("loggingConfigSchema — 枚举校验", () => {
   it("非法 panelDefaultLevel 被拒", () => {
     expect(
       loggingConfigSchema.safeParse({ panelDefaultLevel: "verbose" }).success,
+    ).toBe(false);
+  });
+
+  it("outputs.panelPosition 接受 bottom/right/drawer", () => {
+    for (const pos of ["bottom", "right", "drawer"]) {
+      expect(
+        loggingConfigSchema.safeParse({ outputs: { panelPosition: pos } }).success,
+      ).toBe(true);
+    }
+  });
+
+  it("outputs.panelPosition 拒绝非法值", () => {
+    expect(
+      loggingConfigSchema.safeParse({ outputs: { panelPosition: "top" } }).success,
+    ).toBe(false);
+    expect(
+      loggingConfigSchema.safeParse({ outputs: { panelPosition: "float" } }).success,
     ).toBe(false);
   });
 });
@@ -147,5 +169,23 @@ describe("CONFIG_FORM_SCHEMAS", () => {
     );
     expect(ns).toBeDefined();
     expect(ns?.widget).toBe("logNamespaceToggles");
+  });
+
+  it("outputs 字段含 panelPosition enum（enumOptions 包含 bottom/right/drawer）", () => {
+    const outputs = CONFIG_FORM_SCHEMAS.logging.fields.find(
+      (f) => f.key === "outputs",
+    );
+    expect(outputs).toBeDefined();
+    expect(outputs?.kind).toBe("object");
+    // panelPosition is a nested field inside outputs.fields
+    const panelPosition = (outputs?.fields ?? []).find(
+      (f) => f.key === "panelPosition",
+    );
+    expect(panelPosition).toBeDefined();
+    expect(panelPosition?.kind).toBe("enum");
+    const values = (panelPosition?.enumOptions ?? []).map((o) => o.value);
+    expect(values).toContain("bottom");
+    expect(values).toContain("right");
+    expect(values).toContain("drawer");
   });
 });

@@ -20,15 +20,24 @@ import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 
+type LogsPanelConfig = {
+  readonly panelVisible: boolean;
+  readonly panelPosition: "bottom" | "right" | "drawer";
+};
+
 /**
- * useLogsPanelVisible — fetches logging.outputs.panelVisible from the config API.
+ * useLogsPanelConfig — fetches logging.outputs.panelVisible and
+ * logging.outputs.panelPosition from the config API in a single request.
  *
- * Returns true (safe default) until the config loads. Silently falls back to
- * true on any error so a broken config endpoint never hides the log panel
+ * Returns safe defaults until the config loads. Silently falls back to
+ * defaults on any error so a broken config endpoint never hides the log panel
  * when the user expects it (Req 6.6).
  */
-function useLogsPanelVisible(): boolean {
-  const [panelVisible, setPanelVisible] = React.useState<boolean>(true);
+function useLogsPanelConfig(): LogsPanelConfig {
+  const [config, setConfig] = React.useState<LogsPanelConfig>({
+    panelVisible: true,
+    panelPosition: "bottom",
+  });
 
   React.useEffect(() => {
     void (async () => {
@@ -36,19 +45,34 @@ function useLogsPanelVisible(): boolean {
         const res = await fetch("/api/config/logging", { method: "GET" });
         if (!res.ok) return;
         const json = (await res.json()) as {
-          values?: { outputs?: { panelVisible?: boolean } };
+          values?: {
+            outputs?: {
+              panelVisible?: boolean;
+              panelPosition?: "bottom" | "right" | "drawer";
+            };
+          };
         };
-        const v = json.values?.outputs?.panelVisible;
-        if (typeof v === "boolean") {
-          setPanelVisible(v);
-        }
+        const outputs = json.values?.outputs;
+        setConfig((prev) => {
+          const panelVisible =
+            typeof outputs?.panelVisible === "boolean"
+              ? outputs.panelVisible
+              : prev.panelVisible;
+          const panelPosition =
+            outputs?.panelPosition === "bottom" ||
+            outputs?.panelPosition === "right" ||
+            outputs?.panelPosition === "drawer"
+              ? outputs.panelPosition
+              : prev.panelPosition;
+          return { panelVisible, panelPosition };
+        });
       } catch {
-        // Silent fallback: keep panelVisible=true.
+        // Silent fallback: keep safe defaults.
       }
     })();
   }, []);
 
-  return panelVisible;
+  return config;
 }
 
 /**
@@ -155,8 +179,8 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
-  // Logging panel visibility (Req 6.6): default true, overridden by config.
-  const logsPanelVisible = useLogsPanelVisible();
+  // Logging panel config (Req 6.6 + 6.1/6.2): defaults until config loads.
+  const logsPanelConfig = useLogsPanelConfig();
 
   // Resume mode: enter SessionView immediately (skip the picker).
   const [session, setSession] = React.useState<ActiveSession | undefined>(
@@ -214,7 +238,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
             : {})}
           onReset={onReset}
           onNewByAgentSource={onNewByAgentSource}
-          logsPanelVisible={logsPanelVisible}
+          logsPanelVisible={logsPanelConfig.panelVisible}
+          logsPanelPosition={logsPanelConfig.panelPosition}
         />
       )}
     </PiProvider>
@@ -227,6 +252,7 @@ function SessionView({
   onReset,
   onNewByAgentSource,
   logsPanelVisible,
+  logsPanelPosition,
 }: {
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
@@ -234,6 +260,8 @@ function SessionView({
   readonly onNewByAgentSource: () => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
   readonly logsPanelVisible?: boolean;
+  /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
+  readonly logsPanelPosition?: "bottom" | "right" | "drawer";
 }): React.JSX.Element {
   const session: UsePiSessionResult = usePiSession({
     create,
@@ -387,6 +415,7 @@ function SessionView({
           attachmentBaseUrl="/api"
           showLogs={true}
           logsPanelVisible={logsPanelVisible ?? true}
+          logsPanelPosition={logsPanelPosition ?? "bottom"}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }

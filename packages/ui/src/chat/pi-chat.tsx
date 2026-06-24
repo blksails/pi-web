@@ -133,6 +133,12 @@ export interface PiChatProps {
    * 默认 true（面板可见）。
    */
   readonly logsPanelVisible?: boolean;
+  /**
+   * 日志面板位置，对应 logging 配置的 outputs.panelPosition（Req 6.1/6.2）。
+   * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式。
+   * 本任务占位声明，渲染逻辑在 8.2 实现。
+   */
+  readonly logsPanelPosition?: "bottom" | "right" | "drawer";
   /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
   readonly attachmentBaseUrl?: string;
   /** 可注入的附件上传函数(默认 `@pi-web/react` 的 `uploadAttachment`);测试用以 mock。 */

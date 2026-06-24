@@ -41,7 +41,7 @@ vi.mock("@pi-web/react", () => ({
 
 // Helper to stub /api/config/logging fetch response.
 function stubLoggingConfig(config: {
-  outputs?: { panelVisible?: boolean };
+  outputs?: { panelVisible?: boolean; panelPosition?: string };
 } | null): void {
   if (config === null) {
     vi.stubGlobal(
@@ -129,5 +129,51 @@ describe("ChatApp × showLogs wiring（Req 6.6）", () => {
     const lastProps = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
     // Falls back to true (safe default).
     expect(lastProps?.logsPanelVisible).toBe(true);
+  });
+});
+
+describe("ChatApp × logsPanelPosition wiring（Req 6.1/6.2）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("panelPosition 未配置时 PiChat 收到 logsPanelPosition=bottom（默认值）", async () => {
+    stubLoggingConfig({ outputs: {} });
+    await startSession();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const lastProps = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(lastProps?.logsPanelPosition).toBe("bottom");
+  });
+
+  it("panelPosition=right 时 PiChat 收到 logsPanelPosition=right", async () => {
+    stubLoggingConfig({ outputs: { panelPosition: "right" } });
+    await startSession();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const lastProps = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(lastProps?.logsPanelPosition).toBe("right");
+  });
+
+  it("panelPosition=drawer 时 PiChat 收到 logsPanelPosition=drawer", async () => {
+    stubLoggingConfig({ outputs: { panelPosition: "drawer" } });
+    await startSession();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const lastProps = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(lastProps?.logsPanelPosition).toBe("drawer");
+  });
+
+  it("配置加载失败时默认 logsPanelPosition=bottom（安全兜底）", async () => {
+    stubLoggingConfig(null);
+    await startSession();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const lastProps = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(lastProps?.logsPanelPosition).toBe("bottom");
   });
 });
