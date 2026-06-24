@@ -4,6 +4,7 @@ dist/
 .next-e2e/
 .next-stub/
 .next-test/
+.next-cli/
 coverage/
 *.log
 .DS_Store
@@ -16,6 +17,8 @@ next-env.d.ts
 
 # webext 视觉验收证据(大量截图,本地保留,不入库)
 .kiro/specs/agent-web-extension-visual-acceptance/evidence/
+# pi-web-cli e2e 证据截图(本地保留,不入库)
+.kiro/specs/pi-web-cli/evidence/
 
 .claude/
 !.claude/skills/

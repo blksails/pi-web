@@ -1,0 +1,22 @@
+{
+  "feature_name": "pi-web-cli",
+  "created_at": "2026-06-24T04:05:51Z",
+  "updated_at": "2026-06-24T05:10:00Z",
+  "language": "zh-CN",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

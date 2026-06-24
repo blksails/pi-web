@@ -22,6 +22,9 @@ export interface HotReloadTarget {
 
 /** dev + 显式开关 才启用。 */
 export function isHotReloadEnabled(): boolean {
+  // CLI `pi-web --watch` 经 PI_WEB_WATCH 显式启用:不受 dev 门控限制,在 production
+  // standalone 下也生效(仅当用户主动 --watch,不改默认行为)。见 spec pi-web-cli Req 8。
+  if (process.env["PI_WEB_WATCH"] === "1") return true;
   return (
     process.env["NODE_ENV"] !== "production" &&
     process.env["PI_RUNNER_HOT_RELOAD"] === "1"

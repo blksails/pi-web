@@ -33,6 +33,12 @@ export interface AppConfig {
   readonly defaultCwd: string;
   /** When true, sessions run against a deterministic stub agent (e2e). */
   readonly stubAgent: boolean;
+  /**
+   * When true, auto-create a session from `defaultSource` on first load and skip
+   * the agent-source picker. Set by the CLI (`PI_WEB_AUTOSTART=1`) since it has
+   * already determined the source; the user can still switch source in-session.
+   */
+  readonly autoStart: boolean;
 }
 
 /** Recognizable configuration error; its message never includes secret values. */
@@ -88,5 +94,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     defaultSource: env.PI_WEB_DEFAULT_SOURCE,
     defaultCwd: env.PI_WEB_DEFAULT_CWD ?? process.cwd(),
     stubAgent,
+    autoStart: isTruthy(env.PI_WEB_AUTOSTART),
   });
 }

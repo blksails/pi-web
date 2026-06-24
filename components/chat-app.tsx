@@ -57,6 +57,12 @@ export interface ChatAppProps {
    * would silently vanish after refresh.
    */
   readonly resumeSource?: string;
+  /**
+   * When true, auto-create a session from `defaultSource` on mount and skip the
+   * agent-source picker. Set by the CLI which has already determined the source.
+   * The user can still leave via "切换源" (onReset) to reach the picker.
+   */
+  readonly autoStart?: boolean;
 }
 
 interface ActiveSession {
@@ -123,7 +129,8 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
-  // Resume mode: enter SessionView immediately (skip the picker).
+  // Resume mode (resumeId) or CLI autostart (source already determined): enter
+  // SessionView immediately and skip the picker.
   const [session, setSession] = React.useState<ActiveSession | undefined>(
     props.resumeId !== undefined
       ? {
@@ -133,7 +140,9 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
           ),
           resumeId: props.resumeId,
         }
-      : undefined,
+      : props.autoStart
+        ? { create: buildCreate(props, props.defaultSource ?? ".") }
+        : undefined,
   );
   // 同源新建计数:bump 后变更 SessionView 的 key 以强制重挂(见 onNewByAgentSource)。
   const [nonce, setNonce] = React.useState<number>(0);

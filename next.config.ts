@@ -53,6 +53,27 @@ const nextConfig: NextConfig = {
   // build never clobbers a concurrently running `next dev` .next cache.
   // Defaults to ".next" — unchanged behavior unless NEXT_DIST_DIR is set.
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // 自包含产物(spec pi-web-cli):产出 `<distDir>/standalone` 一份可脱离 monorepo
+  // 源码树运行的最小化 server。仅 build 期生效,不改 `next dev`/`next start` 行为。
+  output: "standalone",
+  // monorepo 追踪根:锚到 app 根(= workspace 根),确保 `packages/**` 与 pnpm 嵌套
+  // 依赖被纳入文件追踪。与既有 `path.resolve("packages/...")` 一致,cwd=app 根。
+  outputFileTracingRoot: path.resolve(),
+  // ★ 关键(spec pi-web-cli research §2.3):会话激活时主进程 spawn 的子进程
+  // —— custom 模式经 jiti 跑 `packages/server/runner-bootstrap.mjs` + runner 源码,
+  // cli 模式跑 pi SDK 的 `dist/cli.js` —— 是运行时动态进程,不在 server bundle 内,
+  // nft 默认追踪不到(jiti 运行时 import)。显式纳入,否则 standalone 下真实会话起不来。
+  outputFileTracingIncludes: {
+    "/**/*": [
+      "./packages/server/runner-bootstrap.mjs",
+      "./packages/server/src/**/*",
+      "./packages/server/node_modules/@earendil-works/**/*",
+      "./packages/server/node_modules/jiti/**/*",
+      "./packages/agent-kit/**/*",
+      "./packages/tool-kit/**/*",
+      "./examples/**/*",
+    ],
+  },
   // App code is type-checked by `pnpm typecheck` (root `tsc -p tsconfig.json`
   // which excludes `packages/`). The workspace packages are type-checked by
   // their own configs (green). Next's build-time pass would otherwise re-check

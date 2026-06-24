@@ -112,8 +112,14 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
   // ── dev 热重载状态(见 hot-reload.ts)──────────────────────────────────────
   /** 正在重启:旧子进程的 exit/error 事件不视为崩溃、不 finalize。 */
   private restarting = false;
-  /** 重启请求落在忙时(有待决命令)→ 标记,待空闲再重启。 */
+  /** 重启请求落在忙时(有待决命令或回合进行中)→ 标记,待空闲再重启。 */
   private pendingRestart = false;
+  /**
+   * 回合活跃:agent_start..agent_end 之间为 true。热重载将其视为"忙"——回合进行中
+   * (流式 token / 工具调用 / 等待 extension_ui 应答)重启会杀子进程致信息中断、丢失,
+   * 故延迟到回合结束。仅靠 pendingCommands 不够:prompt 立即 ack,增量全走 event 流。
+   */
+  private turnActive = false;
   /** 热重载注册的注销函数(未启用时为空操作)。 */
   private hotReloadUnregister?: () => void;
 
@@ -191,11 +197,24 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
    */
   requestRestart(): void {
     if (this.status === "exited" || this.status === "closing") return;
-    if (this.pendingCommands.size > 0) {
+    // 忙 = 有待决命令 OR 回合进行中(见 turnActive)。两者皆空闲才立即重启。
+    if (this.pendingCommands.size > 0 || this.turnActive) {
       this.pendingRestart = true;
       return;
     }
     void this.doRestart();
+  }
+
+  /** 空闲(无待决命令且回合结束)时执行此前因忙而延迟的热重启。 */
+  private maybeRestartWhenIdle(): void {
+    if (
+      this.pendingRestart &&
+      this.pendingCommands.size === 0 &&
+      !this.turnActive
+    ) {
+      this.pendingRestart = false;
+      void this.doRestart();
+    }
   }
 
   /**
@@ -477,11 +496,8 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     this.pendingCommands.delete(id);
     pending.resolve(response);
 
-    // dev 热重载:忙时延迟的重启,在命令全部结算(空闲)后执行。
-    if (this.pendingRestart && this.pendingCommands.size === 0) {
-      this.pendingRestart = false;
-      void this.doRestart();
-    }
+    // 热重载:忙时延迟的重启,在空闲(命令结算 + 回合结束)后执行。
+    this.maybeRestartWhenIdle();
   }
 
   private handleExtensionUIRequest(req: RpcExtensionUIRequest): void {
@@ -491,7 +507,11 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
   }
 
   private broadcastEvent(event: AgentEvent): void {
+    // 跟踪回合活跃区间,供热重载判断"空闲"。agent_end 后若有待重启请求则结算。
+    if (event.type === "agent_start") this.turnActive = true;
+    else if (event.type === "agent_end") this.turnActive = false;
     for (const cb of this.eventListeners) cb(event);
+    if (event.type === "agent_end") this.maybeRestartWhenIdle();
   }
 
   private emitDiagnostic(diag: Diagnostic): void {

@@ -6,10 +6,22 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "bin": {
+    "pi-web": "bin/pi-web.mjs"
+  },
+  "files": [
+    "bin",
+    ".next-cli/standalone",
+    "next.config.ts"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "build:cli": "NEXT_DIST_DIR=.next-cli next build && NEXT_DIST_DIR=.next-cli node scripts/pack-standalone.mjs",
+    "start:cli": "node bin/pi-web.mjs",
+    "e2e:cli": "node e2e/cli/cli-smoke.mjs",
+    "e2e:cli:watch": "node e2e/cli/cli-watch.mjs",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "test:app": "vitest run",
     "e2e": "playwright test",

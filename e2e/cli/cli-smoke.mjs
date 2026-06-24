@@ -1,0 +1,112 @@
+#!/usr/bin/env node
+/**
+ * CLI 启动链路 e2e 冒烟(spec pi-web-cli, Task 4.1 + 3.2)。可重复运行,产出新鲜证据。
+ *
+ * 前置:已构建自包含产物 —— `NEXT_DIST_DIR=.next-cli pnpm build:cli`。
+ * 跑法:`NEXT_DIST_DIR=.next-cli node e2e/cli/cli-smoke.mjs`(或 `pnpm e2e:cli`)。
+ *
+ * 覆盖:
+ *   - 产物完整性(server.js / runner-bootstrap / pi SDK cli.js / jiti)——P0(research §2.3)
+ *   - 参数路径:--help/--version 零退出;未知参数非零退出且不启动(Req 5.1-5.3)
+ *   - stub 启动 → 浏览器加载 → 默认 source 激活会话 → 发消息 → stub 流式回包(Req 7.2, 1.4, 3.1, 3.3)
+ */
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { get as httpGet } from "node:http";
+import { chromium } from "@playwright/test";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
+const BIN = join(ROOT, "bin", "pi-web.mjs");
+const PORT = 3457;
+const BASE = `http://127.0.0.1:${PORT}`;
+const EVIDENCE = join(ROOT, ".kiro/specs/pi-web-cli/evidence/cli-smoke-repeatable.png");
+
+const failures = [];
+const check = (name, ok) => {
+  console.log(`${ok ? "✓" : "✗"} ${name}`);
+  if (!ok) failures.push(name);
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function waitReady(timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((res, rej) => {
+    const tick = () => {
+      const req = httpGet(`${BASE}/`, (r) => {
+        r.resume();
+        res();
+      });
+      req.on("error", () =>
+        Date.now() > deadline ? rej(new Error("就绪超时")) : setTimeout(tick, 300),
+      );
+    };
+    tick();
+  });
+}
+
+async function main() {
+  // 1) 产物完整性(Task 3.2 / P0)
+  const SA = join(ROOT, DIST, "standalone");
+  for (const f of [
+    "server.js",
+    "packages/server/runner-bootstrap.mjs",
+    "packages/server/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+    "packages/server/node_modules/jiti",
+  ]) {
+    check(`产物存在: ${f}`, existsSync(join(SA, f)));
+  }
+  if (!existsSync(join(SA, "server.js"))) {
+    console.error("产物缺失,请先 `NEXT_DIST_DIR=.next-cli pnpm build:cli`");
+    process.exit(1);
+  }
+
+  // 2) 参数路径(Req 5.1-5.3)
+  const help = spawnSync("node", [BIN, "--help"], { encoding: "utf8" });
+  check("--help 退出0且含用法", help.status === 0 && /用法:/.test(help.stdout));
+  const ver = spawnSync("node", [BIN, "--version"], { encoding: "utf8" });
+  check("--version 退出0且含版本号", ver.status === 0 && /\d+\.\d+\.\d+/.test(ver.stdout));
+  const bad = spawnSync("node", [BIN, "--bogus"], { encoding: "utf8" });
+  check("未知参数 退出非0", bad.status !== 0);
+
+  // 3) stub 启动 + 浏览器冒烟(Req 7.2)
+  const cli = spawn("node", [BIN, "./examples/hello-agent", "--stub", "-p", String(PORT)], {
+    cwd: ROOT,
+    env: { ...process.env, NEXT_DIST_DIR: DIST },
+    stdio: "inherit",
+  });
+  let browser;
+  try {
+    await waitReady(60_000);
+    check("CLI 启动 standalone 并就绪(Req 3.1, 1.4)", true);
+    browser = await chromium.launch();
+    const page = await browser.newPage();
+    await page.goto(BASE, { waitUntil: "domcontentloaded" });
+    // 默认 source 已由 CLI 注入并预填 → 直接 Start session
+    await page.getByRole("button", { name: "Start session" }).click();
+    await page.waitForSelector("[data-pi-input-textarea]", { timeout: 15_000 });
+    check("默认 agent source 激活会话(Req 3.2)", /\/session\//.test(page.url()));
+    await page.fill("[data-pi-input-textarea]", "CLI smoke test");
+    await page.getByRole("button", { name: "发送" }).click();
+    await page.waitForFunction(
+      () => /stub agent/i.test(document.body.innerText),
+      { timeout: 15_000 },
+    );
+    check("收到 stub 流式回包(Req 7.2)", true);
+    await page.screenshot({ path: EVIDENCE, fullPage: true });
+    console.log(`证据截图: ${EVIDENCE}`);
+  } catch (err) {
+    check(`浏览器冒烟: ${err.message}`, false);
+  } finally {
+    if (browser) await browser.close();
+    cli.kill("SIGINT");
+    await sleep(500);
+  }
+
+  console.log(failures.length ? `\nFAIL: ${failures.length} 项` : "\nPASS: 全部通过");
+  process.exit(failures.length ? 1 : 0);
+}
+
+main();
