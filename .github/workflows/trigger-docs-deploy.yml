@@ -1,0 +1,25 @@
+name: Trigger docs site deploy
+
+# 文档（docs/product）变更后，跨仓通知 blksails/pi-web-site 重新构建+部署文档站。
+# 需要仓库 secret：DOCS_DEPLOY_TOKEN —— 一个对 blksails/pi-web-site 有
+# "Contents: read-only" + "Metadata: read" 不够，需 repository_dispatch 权限：
+# 用 fine-grained PAT，授予 pi-web-site 仓库的 "Contents: Read and write" 即可触发 dispatch。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/product/**"
+  workflow_dispatch:
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify pi-web-site to redeploy
+        run: |
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${{ secrets.DOCS_DEPLOY_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/blksails/pi-web-site/dispatches \
+            -d '{"event_type":"docs-updated"}'
