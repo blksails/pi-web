@@ -18,13 +18,13 @@ export default function (ctx: AgentContext): AgentDefinition {
   // Emit startup logs at all levels so they appear in the log panel immediately
   // after the agent source is selected and the session begins (Req 2.1/2.2).
   if (logger !== undefined) {
-    logger.debug("logging-demo-agent factory invoked", { cwd: ctx.cwd });
-    logger.info("logging-demo-agent started", { env: Object.keys(ctx.env).length });
-    logger.warn("this is a sample warn from logging-demo-agent");
-    logger.error("this is a sample error from logging-demo-agent (not a real error)");
+    logger.debug("factory invoked", { cwd: ctx.cwd });
+    logger.info("started", { env: Object.keys(ctx.env).length });
+    logger.warn("this is a sample warn");
+    logger.error("this is a sample error (not a real error)");
 
     const childLogger = logger.child("tool");
-    childLogger.info("child logger created with namespace agent:logging-demo:tool");
+    childLogger.info("child logger created with namespace :tool");
   }
 
   return defineAgent({

@@ -21,8 +21,8 @@ const webextLogger = createLogger({
 
 function LoggingDemoHeader(): React.JSX.Element {
   React.useEffect(() => {
-    webextLogger.info("webext:logging-demo mounted — browser log bus active");
-    webextLogger.debug("webext:logging-demo debug detail", { source: "web.config.tsx" });
+    webextLogger.info("mounted — browser log bus active");
+    webextLogger.debug("debug detail", { source: "web.config.tsx" });
   }, []);
 
   return (
