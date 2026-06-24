@@ -1,5 +1,5 @@
 /**
- * env-only `${VAR}` placeholder resolver for `@pi-web/tool-kit`.
+ * env-only `${VAR}` placeholder resolver for `@blksails/pi-web-tool-kit`.
  *
  * Pure `process.env` — no DB / effective-key resolver (pi-labs carries that
  * complexity for multi-tenant key management; tool-kit Wave 1 is env-only).

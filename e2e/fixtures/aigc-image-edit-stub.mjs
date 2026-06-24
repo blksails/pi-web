@@ -19,7 +19,7 @@
  *
  * "调用"由确定性脚手架触发,但 resolve+规范化+真打网关+落库+回流全是 REAL,且在真实
  * 子进程/后端里跑。讲 pi RPC JSONL 协议(同生产 stub),经 --import jiti/register 加载
- * (cwd = @pi-web/server 包目录)以 import TS 源。
+ * (cwd = @blksails/pi-web-server 包目录)以 import TS 源。
  *
  * 需 NEWAPI_API_KEY(经 spawn env 下发);缺失则工具降级 ok:false,spec 应 skip。
  */
@@ -37,7 +37,7 @@ function write(obj) {
 }
 
 async function loadServerApi() {
-  const mod = await import("@pi-web/server");
+  const mod = await import("@blksails/pi-web-server");
   return mod.default ?? mod;
 }
 async function loadToolkit() {

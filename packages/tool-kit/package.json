@@ -1,5 +1,5 @@
 {
-  "name": "@pi-web/tool-kit",
+  "name": "@blksails/pi-web-tool-kit",
   "version": "0.1.0",
   "private": false,
   "description": "pi-web 通用工具套件:声明式工具引擎 + 首批 AIGC 生成工具集。主入口零运行时依赖(声明,前端安全);./runtime 子入口为 node-only 执行层(pi SDK + undici)。",
@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@pi-web/agent-kit": "workspace:*",
+    "@blksails/pi-web-agent-kit": "workspace:*",
     "undici": "^6.21.0"
   },
   "peerDependencies": {
@@ -31,5 +31,11 @@
     "@types/node": "^22.10.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src"
+  ]
 }

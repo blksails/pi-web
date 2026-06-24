@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { uploadAttachment } from "../../src/transport/attachment-upload.js";
-import type { UploadAttachmentResponse } from "@pi-web/protocol";
+import type { UploadAttachmentResponse } from "@blksails/pi-web-protocol";
 
 function makeFile(name = "pic.png", type = "image/png"): File {
   return new File([new Uint8Array([1, 2, 3, 4])], name, { type });

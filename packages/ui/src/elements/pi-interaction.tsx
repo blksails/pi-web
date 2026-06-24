@@ -15,11 +15,11 @@
  */
 import * as React from "react";
 import { Check, X, Ban } from "lucide-react";
-import type { UseExtensionUIResult } from "@pi-web/react";
+import type { UseExtensionUIResult } from "@blksails/pi-web-react";
 import type {
   RpcExtensionUIRequest,
   UiResponseRequest,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import { Card } from "../ui/card.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";

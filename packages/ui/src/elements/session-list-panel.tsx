@@ -14,7 +14,7 @@ import type {
   ListSessionsRequest,
   ListSessionsResponse,
   SessionListItem,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 

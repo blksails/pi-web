@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PiChat } from "../../src/chat/pi-chat.js";
-import type { Suggestion } from "@pi-web/react";
-import type { RpcSlashCommand } from "@pi-web/protocol";
+import type { Suggestion } from "@blksails/pi-web-react";
+import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import { mockSession, mockControls } from "../fixtures/mock-session.js";
 
 const CMD: RpcSlashCommand = {

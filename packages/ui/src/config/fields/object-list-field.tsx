@@ -7,7 +7,7 @@
  * 子字段经 `FieldRenderer` 递归(支持嵌套 objectList,如 switchRules)。支持增/删项。
  */
 import * as React from "react";
-import type { FieldDescriptor } from "@pi-web/protocol";
+import type { FieldDescriptor } from "@blksails/pi-web-protocol";
 import type { FieldProps } from "../field-registry.js";
 import { FieldRenderer } from "../field-renderer.js";
 import { Card } from "../../ui/card.js";

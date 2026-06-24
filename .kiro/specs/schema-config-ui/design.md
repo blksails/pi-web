@@ -29,7 +29,7 @@
 ## 3. 架构总览
 
 ```
-            ┌────────────────────── @pi-web/protocol(零运行时依赖,除 zod) ──────────────────────┐
+            ┌────────────────────── @blksails/pi-web-protocol(零运行时依赖,除 zod) ──────────────────────┐
             │  配置域 zod schema(authConfigSchema / settingsConfigSchema / ...)                  │
             │  + UI 元数据(经 .describe() 承载的 JSON,或并行 fieldMeta 注册)                      │
             │  表单 IR 类型:FormSchema / FieldDescriptor(与 zod 解耦的归一化描述)                 │
@@ -37,13 +37,13 @@
             └───────────────┬───────────────────────────────────────────────┬──────────────────┘
                             │ (类型 + IR + adapter,同构可在前后端跑)         │
         ┌───────────────────▼────────────────┐               ┌──────────────▼───────────────────┐
-        │ @pi-web/react                       │               │ server / app(持久化)             │
+        │ @blksails/pi-web-react                       │               │ server / app(持久化)             │
         │  useSchemaForm(formSchema, initial) │               │  GET/PUT /api/config/:domain      │
         │   - 受控值 + 脏标记 + zod 校验       │               │  codec:读写 ~/.pi/agent/*.json    │
         │   - field error 映射                │               │  secret 掩码/合并(不回传明文)      │
         └───────────────────┬────────────────┘               └───────────────────────────────────┘
         ┌───────────────────▼────────────────────────────────────────────────────────────────────┐
-        │ @pi-web/ui                                                                               │
+        │ @blksails/pi-web-ui                                                                               │
         │  <SchemaForm formSchema values onChange errors/>                                          │
         │   └─ <FieldRenderer descriptor/>  ──按 descriptor.kind 分派──►  字段控件                  │
         │        (复用 shadcn 基元 input/select/checkbox/textarea + 既有 dialog 内的渲染逻辑)        │
@@ -60,7 +60,7 @@
 不让渲染器直接吃 zod 内部结构(zod 3 无 `z.toJSONSchema()`,内部 `_def` 不稳定),而是定义一个**归一化中间表示**。它也可由 JSON Schema 或手写产生,从而解耦 zod 版本与来源。
 
 ```ts
-// @pi-web/protocol/src/config/form-schema.ts(类型;运行期可选 zod 校验)
+// @blksails/pi-web-protocol/src/config/form-schema.ts(类型;运行期可选 zod 校验)
 export type FieldKind =
   | "string" | "secret" | "number" | "boolean"
   | "enum"   | "multiEnum" | "stringList"
@@ -146,7 +146,7 @@ export interface FormSchema {
 
 ---
 
-## 7. 渲染层组件(@pi-web/ui)
+## 7. 渲染层组件(@blksails/pi-web-ui)
 
 ```
 src/config/
@@ -176,7 +176,7 @@ export interface FieldProps<V = unknown> {
 
 ---
 
-## 8. 状态与校验 hook(@pi-web/react)
+## 8. 状态与校验 hook(@blksails/pi-web-react)
 
 ```ts
 useSchemaForm(formSchema, { initialValues, validate }) → {
@@ -229,7 +229,7 @@ PUT  /api/config/:domain          ← { values }               // 服务端 zod 
 ## 11. 文件结构与边界(File Structure Plan)
 
 ```
-@pi-web/protocol  src/config/
+@blksails/pi-web-protocol  src/config/
   form-schema.ts            // FieldDescriptor / FormSchema 类型(+ 可选 zod 校验)
   meta.ts                   // UIMeta 类型 + parseDescribeMeta()
   zod-to-form-schema.ts     // adapter:zod → FormSchema
@@ -238,11 +238,11 @@ PUT  /api/config/:domain          ← { values }               // 服务端 zod 
     settings.ts             // settingsConfigSchema + meta
   index.ts                  // 聚合导出(config 子面)
 
-@pi-web/react     src/config/
+@blksails/pi-web-react     src/config/
   use-schema-form.ts        // 受控值 + zod 校验 + error 映射
   use-config-domain.ts      // 加载/保存某域(调 REST 端点)
 
-@pi-web/ui        src/config/
+@blksails/pi-web-ui        src/config/
   schema-form.tsx  field-renderer.tsx  field-registry.ts  fields/*
 
 server            src/config/
@@ -283,7 +283,7 @@ P0 不仅渲染表单,还要让配置域**可注册**进一个可扩展的设置
 ### 14.1 设置面板描述符与注册表
 
 ```ts
-// @pi-web/react  src/config/settings-registry.ts
+// @blksails/pi-web-react  src/config/settings-registry.ts
 export interface SettingsPanelDescriptor {
   id: string;                 // "auth" | "settings" | ...(域 id)
   title: string;              // 导航显示名
@@ -311,9 +311,9 @@ export function createSettingsRegistry(): SettingsRegistry; // 工厂(测试隔�
 
 ```ts
 // app  lib/settings/register-panels.ts(应用启动期 import 一次)
-import { defaultSettingsRegistry } from "@pi-web/react";
-import { authFormSchema, settingsFormSchema } from "@pi-web/protocol/config";
-import { makeConfigDomainIO } from "@pi-web/react"; // 基于 /api/config/:domain
+import { defaultSettingsRegistry } from "@blksails/pi-web-react";
+import { authFormSchema, settingsFormSchema } from "@blksails/pi-web-protocol/config";
+import { makeConfigDomainIO } from "@blksails/pi-web-react"; // 基于 /api/config/:domain
 
 defaultSettingsRegistry.registerPanel({
   id: "auth", title: "凭证", order: 1, icon: "key-round",
@@ -330,7 +330,7 @@ defaultSettingsRegistry.registerPanel({
 ### 14.3 设置外壳
 
 ```
-@pi-web/ui  src/config/settings-shell.tsx
+@blksails/pi-web-ui  src/config/settings-shell.tsx
   <SettingsShell registry?={SettingsRegistry}>
     左侧:listPanels() → 导航项(title/icon,按 order)
     右侧:当前面板 → useConfigDomain(panel) 驱动的 <SchemaForm>

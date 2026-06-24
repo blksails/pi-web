@@ -10,7 +10,7 @@
  * 注:`data-metric` data-part 渲染器目前无产出点(示例缺陷,非测试问题);
  * model 省略 → 继承 ~/.pi/agent/settings.json 的 defaultProvider/defaultModel。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

@@ -1,4 +1,4 @@
-// @pi-web/server — 聚合导出(各模块实现后在此 re-export)。
+// @blksails/pi-web-server — 聚合导出(各模块实现后在此 re-export)。
 //
 // 注意:不再从此主入口 re-export `./runner/index.js`。runner 模块在加载时即
 // 静态导入完整 pi SDK(@earendil-works/pi-coding-agent / pi-ai)与 jiti——一旦
@@ -9,7 +9,7 @@
 export {};
 export * from "./rpc-channel/index.js";
 export * from "./agent-source/index.js";
-// trust 策略仍经子路径 `@pi-web/server/trust` 导出(消费方 pi-handler 据此导入)。
+// trust 策略仍经子路径 `@blksails/pi-web-server/trust` 导出(消费方 pi-handler 据此导入)。
 // 历史原因是 `project-trust-policy` 曾值导入 `@earendil-works/pi-coding-agent`(其 dist 拉入
 // pi-ai 的 `node:fs/os/path` + 表达式 require),经 barrel `export *` 会令 Next external 失效、
 // 把整套 pi SDK 打进路由 bundle。**该耦合已解除**:trust 现由本地 `FsProjectTrustStore`

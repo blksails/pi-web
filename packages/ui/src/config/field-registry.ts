@@ -7,7 +7,7 @@
  * 工厂供测试隔离。
  */
 import type { ComponentType } from "react";
-import type { FieldDescriptor, FieldKind } from "@pi-web/protocol";
+import type { FieldDescriptor, FieldKind } from "@blksails/pi-web-protocol";
 
 /** 字段控件统一 props。 */
 export interface FieldProps<V = unknown> {

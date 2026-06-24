@@ -90,10 +90,10 @@ function getDefaultExport(mod: unknown): unknown {
 
 /**
  * Build jiti `alias` entries so a user entry can `import` the pi SDK (and,
- * optionally, `@pi-web/agent-kit`) regardless of where the entry file lives.
+ * optionally, `@blksails/pi-web-agent-kit`) regardless of where the entry file lives.
  *
  * The runner's location can resolve these packages (they are workspace deps of
- * `@pi-web/server`); a user `examples/` file generally cannot. Aliasing maps
+ * `@blksails/pi-web-server`); a user `examples/` file generally cannot. Aliasing maps
  * the bare specifiers to absolute package locations resolvable from here.
  */
 export function buildResolutionAliases(): Record<string, string> {
@@ -117,7 +117,7 @@ export function buildResolutionAliases(): Record<string, string> {
       }
     }
   }
-  // `@pi-web/agent-kit` is a types-only workspace package that may not be a
+  // `@blksails/pi-web-agent-kit` is a types-only workspace package that may not be a
   // declared dependency of the runner (so it is not symlinked into
   // node_modules). Locate the workspace package directory directly so example/
   // user entries authored with `defineAgent` resolve regardless of location.
@@ -128,7 +128,7 @@ export function buildResolutionAliases(): Record<string, string> {
   if (kitDir !== undefined) {
     // Alias to the entry source file directly (agent-kit's `exports` maps "."
     // → "./src/index.ts"); jiti loads the TS entry without package resolution.
-    alias["@pi-web/agent-kit"] = join(kitDir, "src", "index.ts");
+    alias["@blksails/pi-web-agent-kit"] = join(kitDir, "src", "index.ts");
   }
 
   return alias;

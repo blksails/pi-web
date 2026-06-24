@@ -3,7 +3,7 @@
  *
  * 下游(如 extension-management)应从此公共面导入 TrustDecision / TrustFragment /
  * applyTrust 等,而非深层实现路径。`SpawnSpec` 不在此重导出——下游应直接从
- * `@pi-web/protocol`(其拥有者)导入。
+ * `@blksails/pi-web-protocol`(其拥有者)导入。
  */
 export { AgentSourceResolver, resolve } from "./resolver.js";
 export { applyTrust } from "./trust-apply.js";

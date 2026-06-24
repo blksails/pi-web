@@ -11,12 +11,12 @@
  * 见 design.md §customTools 注入)。在 5.1 落地前/装配缺失时,`getAttachmentToolContext()` 返回一个
  * `available:false` 的安全降级上下文,使本工具仍可加载并报「附件能力不可用」,而非崩溃(Req 3.4)。
  *
- * 类型契约经 `@pi-web/agent-kit` 引用(仅类型,无值依赖到 `@pi-web/server`,守 webpack external 边界)。
+ * 类型契约经 `@blksails/pi-web-agent-kit` 引用(仅类型,无值依赖到 `@blksails/pi-web-server`,守 webpack external 边界)。
  */
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { AttachmentToolContext } from "@pi-web/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 
 /**
  * runner 装配(task 5.1)在子进程内把闭包绑定的 {@link AttachmentToolContext} 挂到该约定 key 上;

@@ -16,7 +16,7 @@
  * - `bytes()`/`stream()` 经门面 `getReadStream` 读后端字节(不另开后端读路径)。
  * - `url()` 复用门面 `presignUrl`(与 attachment-store 分发签名同形,Req 1.5)。
  */
-import type { Attachment } from "@pi-web/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 import type { BlobMeta } from "../attachment/blob-store.js";
 import type { ChildAttachmentStore } from "./child-store.js";
 

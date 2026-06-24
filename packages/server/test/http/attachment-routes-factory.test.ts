@@ -5,7 +5,7 @@
  *  - 工厂返回上传 + 分发两条注入路由,可直接放入 createPiWebHandler({ routes })。
  *  - 上传路由走 `/sessions/:id/attachments`(带会话门控):会话存在 + 带文件 → 200 origin=upload。
  *  - 分发路由走 RAW_ATTACHMENT_ROUTE(`:attachmentId`,不绑会话):有效签名 + 无会话 → 200 字节。
- *  - 受认可的复用面与工厂/配置工厂可从服务包根 barrel `@pi-web/server` 顶层 import(类型层)。
+ *  - 受认可的复用面与工厂/配置工厂可从服务包根 barrel `@blksails/pi-web-server` 顶层 import(类型层)。
  *
  * 关键(task 3.2 的属性必须保持):分发路由必须用 RAW_ATTACHMENT_ROUTE(非 `:id`),
  * 否则 Router 会把附件 id 当 sessionId 触发会话存在性 404 门控,破坏读路径不绑会话。
@@ -154,7 +154,7 @@ describe("createAttachmentRoutes (full assembly)", () => {
   });
 });
 
-describe("@pi-web/server 根 barrel 复用面导出", () => {
+describe("@blksails/pi-web-server 根 barrel 复用面导出", () => {
   it("工厂 / 配置工厂 / 复用面类型与类可从顶层 import", () => {
     // 值导出:工厂、配置工厂、可 new 的复用面类。
     expect(typeof createAttachmentRoutesFromBarrel).toBe("function");

@@ -1,7 +1,7 @@
 /**
  * chat-app assembly: the session-active branch renders the default rich chat UI
  * <PiChat> (formerly <PiChat>, now the convergent default), while preserving
- * the same session/controls/extensionUI wiring driven by the @pi-web/react hooks
+ * the same session/controls/extensionUI wiring driven by the @blksails/pi-web-react hooks
  * (Req 7.4). The ~/.pi/agent config + session-assembly chain is unchanged; only
  * the chat UI component name is updated to the converged default.
  */
@@ -14,7 +14,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 const piChatSpy = vi.fn<(props: Record<string, unknown>) => void>();
 const piChatBasicSpy = vi.fn<(props: Record<string, unknown>) => void>();
 
-vi.mock("@pi-web/ui", () => ({
+vi.mock("@blksails/pi-web-ui", () => ({
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
     return <div data-test-pi-chat />;
@@ -38,7 +38,7 @@ const fakeSession = {
 const fakeControls = { kind: "controls" };
 const fakeExtensionUI = { kind: "extension-ui" };
 
-vi.mock("@pi-web/react", () => ({
+vi.mock("@blksails/pi-web-react", () => ({
   PiProvider: ({ children }: { children: React.ReactNode }): React.JSX.Element => (
     <>{children}</>
   ),

@@ -2,7 +2,7 @@
 
 ## Discovery 范围
 
-- 类型:Extension(在既有 `@pi-web/agent-kit` + `@pi-web/server` 上扩展能力),light discovery。
+- 类型:Extension(在既有 `@blksails/pi-web-agent-kit` + `@blksails/pi-web-server` 上扩展能力),light discovery。
 - 目标:确认"关闭工具/skills/系统扩展"在现有公共表面与运行时映射中的真实可行性,定位映射落点与扩展身份识别方式。
 
 ## 关键调查与发现

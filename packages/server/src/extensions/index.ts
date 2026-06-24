@@ -4,7 +4,7 @@
  * 经 http-api `createPiWebHandler` 的 `routes?` 注入接缝挂载的受控扩展管理路由集
  * (`GET/POST /extensions`、`DELETE /extensions/:extId`、`POST /sessions/:id/reload`),
  * 以及治理纯函数核心、CLI 适配器与安全接缝。消费上游契约(http-api / session-engine /
- * agent-source-resolver / @pi-web/protocol),不重定义。
+ * agent-source-resolver / @blksails/pi-web-protocol),不重定义。
  */
 export { createExtensionRoutes } from "./routes.js";
 

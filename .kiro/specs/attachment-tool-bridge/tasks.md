@@ -71,7 +71,7 @@
 
 - [ ] 4. tool 接入范式与示例 tool
 - [x] 4.1 tool 接入上下文(暴露 store 句柄给 tool 作者)
-  - 实现让工具在其执行逻辑内取得子进程 store 句柄的接入上下文(解析输入附件、落库产出附件、可用性标记);经 agent-kit 暴露类型给工具作者按 `@pi-web/agent-kit` 引用
+  - 实现让工具在其执行逻辑内取得子进程 store 句柄的接入上下文(解析输入附件、落库产出附件、可用性标记);经 agent-kit 暴露类型给工具作者按 `@blksails/pi-web-agent-kit` 引用
   - 观察完成:工具作者可经 agent-kit 引用上下文类型;上下文在存储能力不可用时 available 为 false
   - _Requirements: 4.1_
   - _Boundary: AttachmentToolContext, agent-kit_

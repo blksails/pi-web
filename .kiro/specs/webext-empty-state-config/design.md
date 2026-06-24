@@ -56,16 +56,16 @@
 ### Architecture Pattern & Boundary Map
 ```mermaid
 flowchart LR
-  subgraph protocol["@pi-web/protocol"]
+  subgraph protocol["@blksails/pi-web-protocol"]
     schema["WebExtConfigSchema\n+ empty"]
   end
-  subgraph loader["@pi-web/react · extension-loader"]
+  subgraph loader["@blksails/pi-web-react · extension-loader"]
     cfg["WebExtension.config.empty"]
   end
-  subgraph react["@pi-web/react · useSuggestions"]
+  subgraph react["@blksails/pi-web-react · useSuggestions"]
     merge["merge 排序\nappend/prepend/replace"]
   end
-  subgraph ui["@pi-web/ui · PiChat"]
+  subgraph ui["@blksails/pi-web-ui · PiChat"]
     prop["suggestionsMerge prop\n+ 既有 emptyTitle/Subtitle/presets"]
     empty["EmptyState (不改)"]
   end
@@ -166,7 +166,7 @@ export type EmptyConfig = z.infer<typeof EmptyConfigSchema>;
 ```
 - Preconditions:`empty` 可省略;省略时整体校验不受影响(Req 1.6/6.3)。
 - Postconditions:非法 `mode`/`mergeCommands` 触发 Zod 校验失败(Req 1.4/1.5)。
-- Invariants:`EmptySuggestion` 与 `@pi-web/react` 的 `Suggestion` 结构字段对齐(可直接作为 `suggestionsPresets`)。
+- Invariants:`EmptySuggestion` 与 `@blksails/pi-web-react` 的 `Suggestion` 结构字段对齐(可直接作为 `suggestionsPresets`)。
 
 > 注:`EmptySuggestion` 与 `Suggestion` 形状一致但定义在 protocol(不可依赖 react),为契约对齐而独立定义;宿主映射时类型相容直接透传。
 

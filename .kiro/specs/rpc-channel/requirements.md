@@ -4,7 +4,7 @@
 
 本特性交付 pi-web 后端的 **传输无关 RPC 通道**:一个 `PiRpcChannel` 接口(`send` / `onLine` / `close` / `health`)与其本地实现 `PiRpcProcess`(基于 `child_process.spawn`)。它是后端会话引擎与 agent 子进程之间唯一的双向通信枢纽,负责严格的 JSONL 成帧、stdout 三类消息(`response` / `event` / `extension_ui_request`)的分发、与包 `RpcClient` 对齐的命令方法封装,以及子进程生命周期(stderr 收集、exit 监听、错误传播、干净退出)管理。
 
-通道对外是同一套 RPC JSONL 协议,因此无论上游给出的 spawnSpec 指向 bootstrap runner(`runRpcMode`)还是 `pi --mode rpc`(`node <pkg>/dist/cli.js --mode rpc`),通道实现完全复用。所有跨层协议类型(`RpcCommand` / `RpcResponse` / `AgentEvent` / `RpcExtensionUIRequest` / `RpcExtensionUIResponse` 等)以及 `SpawnSpec`(`{ cmd, args, cwd, env }`)由上游 `protocol-contract`(`@pi-web/protocol`)拥有并导出,本特性只经 `import type … from "@pi-web/protocol"` 消费,不重定义(单一事实来源)。
+通道对外是同一套 RPC JSONL 协议,因此无论上游给出的 spawnSpec 指向 bootstrap runner(`runRpcMode`)还是 `pi --mode rpc`(`node <pkg>/dist/cli.js --mode rpc`),通道实现完全复用。所有跨层协议类型(`RpcCommand` / `RpcResponse` / `AgentEvent` / `RpcExtensionUIRequest` / `RpcExtensionUIResponse` 等)以及 `SpawnSpec`(`{ cmd, args, cwd, env }`)由上游 `protocol-contract`(`@blksails/pi-web-protocol`)拥有并导出,本特性只经 `import type … from "@blksails/pi-web-protocol"` 消费,不重定义(单一事实来源)。
 
 `PiRpcChannel` 接口是 §14.1① 明确要求"现在就预留"的接缝:`PiRpcProcess` 只是 `local` 实现,未来 e2b / ssh / device / websocket 都是同接口的另一实现。
 

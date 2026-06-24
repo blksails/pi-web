@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   CreateSessionRequestSchema,
   PromptRequestSchema,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import { validateBody } from "../../src/http/validate.js";
 import type { ErrorBody } from "../../src/http/error-map.js";
 

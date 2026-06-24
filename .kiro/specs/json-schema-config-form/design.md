@@ -9,7 +9,7 @@
   `itemFields`、`variants`);`server` 远端 schema 拉取(`config/schema-fetch.ts`)+ 扩展 GET 注入 `fileSchemas`;
   `ui` `object-list-field.tsx` 控件 + `config-files-field.tsx` 结构化/原始 JSON 分支。
 - **Out**:完整 JSON Schema 规范;扩展配置文件发现(沿用 config-ui-sandbox-extensions)。
-- **Deps**:`@pi-web/protocol` IR、`SchemaForm`、Node `fetch`(服务端拉取)。
+- **Deps**:`@blksails/pi-web-protocol` IR、`SchemaForm`、Node `fetch`(服务端拉取)。
 - **Revalidation**:IR 渲染契约变化;JSON Schema 用到 in-scope 之外的构造。
 
 ## File Structure Plan
@@ -59,7 +59,7 @@ FieldDescriptor += {
   拉取按 URL 在模块级 Map 缓存;状态为「加载中 / 表单 / 原始 JSON 回退」。
 
 > **交付决策**:schema 拉取放**客户端**(在 ConfigFilesField 内),而非服务端注入 `fileSchemas`——
-> 适配器在 `@pi-web/protocol`(前后端共享),浏览器直接 fetch 文件自带的 `$schema`(githubusercontent 允许 CORS),
+> 适配器在 `@blksails/pi-web-protocol`(前后端共享),浏览器直接 fetch 文件自带的 `$schema`(githubusercontent 允许 CORS),
 > 避免把 `fileSchemas` 透传穿过 useConfigDomain→SchemaForm→FieldRenderer 的管线,也避免服务端对任意 URL 的
 > SSRF 面。Requirement 2 的「缓存/失败回退/host 校验」在客户端拉取处实现(host 校验为软性:失败即回退)。
 > 服务端 `schema-fetch.ts` 仍保留为可选注入接缝(便于将来改服务端拉取与单测),但 MVP 走客户端。

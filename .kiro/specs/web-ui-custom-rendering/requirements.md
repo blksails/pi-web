@@ -14,8 +14,8 @@
 ## Boundary Context
 
 - **In scope**:
-  - `@pi-web/protocol` 新增 `data-pi-ui` data-part 与 `UiSpec`/`UiNode`/`UiStyle` schema(`transport/ui-spec.ts`)。
-  - `@pi-web/ui` 新增:内置白名单组件库(metric/keyValue/table/alert/progress)、可扩展的 `UiComponentRegistry`、设计令牌映射、沙箱解释器 `SandboxRenderer`、`data-pi-ui` 渲染器 `PiUiPart`。
+  - `@blksails/pi-web-protocol` 新增 `data-pi-ui` data-part 与 `UiSpec`/`UiNode`/`UiStyle` schema(`transport/ui-spec.ts`)。
+  - `@blksails/pi-web-ui` 新增:内置白名单组件库(metric/keyValue/table/alert/progress)、可扩展的 `UiComponentRegistry`、设计令牌映射、沙箱解释器 `SandboxRenderer`、`data-pi-ui` 渲染器 `PiUiPart`。
   - `<PiChat>` 零配置自动注册 `data-pi-ui` 渲染器(沿用 Sources data-part 注册范式)。
   - 单元测试(schema / 注册表 / 沙箱安全 / 分派 / 内置组件)与 e2e 测试(端到端渲染 + 安全降级)。
 - **Out of scope**:
@@ -81,8 +81,8 @@
 **Objective:** 作为宿主开发者,我想要导出的注册表与组件 API,以便扩展自有可视化组件并复用沙箱能力。
 
 #### Acceptance Criteria
-1. The `@pi-web/ui` 包 shall 导出:`PiUiPart`、`SandboxRenderer`、`UiComponentRegistry` 类型与工厂、`defaultUiComponentRegistry`、`registerUiComponent`、内置组件与 `registerBuiltinUiComponents`。
-2. The `@pi-web/protocol` 包 shall 导出:`UiSpec`/`UiNode`/`UiStyle` 等 schema 与类型、`UiDataPartSchema`。
+1. The `@blksails/pi-web-ui` 包 shall 导出:`PiUiPart`、`SandboxRenderer`、`UiComponentRegistry` 类型与工厂、`defaultUiComponentRegistry`、`registerUiComponent`、内置组件与 `registerBuiltinUiComponents`。
+2. The `@blksails/pi-web-protocol` 包 shall 导出:`UiSpec`/`UiNode`/`UiStyle` 等 schema 与类型、`UiDataPartSchema`。
 
 ### Requirement 7: 测试与验证
 **Objective:** 作为质量负责人,我想要单元与 e2e 测试,以便确认功能与安全保证以新鲜证据成立。
@@ -96,7 +96,7 @@
 **Objective:** 作为 agent 作者,我想要从工具内一行代码发出 UI,以便后端驱动前端渲染而无需新协议或前端改动。
 
 #### Acceptance Criteria
-1. The `@pi-web/agent-kit` shall 提供 `emitUi(onUpdate, spec)`,把 `UiSpec` 经工具 `onUpdate` 的 `partialResult.details[PI_UI_TOOL_DETAILS_KEY]` 发出。
+1. The `@blksails/pi-web-agent-kit` shall 提供 `emitUi(onUpdate, spec)`,把 `UiSpec` 经工具 `onUpdate` 的 `partialResult.details[PI_UI_TOOL_DETAILS_KEY]` 发出。
 2. When 工具经 `emitUi` 发出合法 `UiSpec`, the server translate 层 shall 在翻译 `tool_execution_update` 时识别约定 key 并产出 `data-pi-ui` 帧。
 3. If `partialResult.details` 未携带约定 key 或 `UiSpec` 非法, then the server shall 把累积 `partialResult` 翻译为 `tool-output-available`(`preliminary: true`)喂进同一工具卡(不破坏工具部分结果语义)。〔更新 2026-06-20:原文为「维持既有 `data-pi-tool-partial` 翻译」;该 data-part 已移除,回退路径改为 preliminary 工具产出帧。〕
 4. The 通道 shall 复用既有 `tool_execution_update` 事件,不修改 pi SDK、不新增 RPC 旁路。

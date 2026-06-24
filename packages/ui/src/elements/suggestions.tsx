@@ -9,7 +9,7 @@
  * 主题经 shadcn CSS 变量(cn),无硬编码颜色;无障碍:每个气泡为可访问 <button>(Req 11.4)。
  */
 import * as React from "react";
-import type { Suggestion } from "@pi-web/react";
+import type { Suggestion } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
 
 export interface SuggestionsProps {

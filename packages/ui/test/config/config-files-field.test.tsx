@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import type { FieldDescriptor } from "@pi-web/protocol";
+import type { FieldDescriptor } from "@blksails/pi-web-protocol";
 import {
   ConfigFilesField,
   __setSchemaFetchImpl,

@@ -2,16 +2,16 @@
 
 - [x] 1. 基础设施:模块骨架、协议类型接线与测试运行器
 - [x] 1.1 接通上游协议类型并搭建测试运行器
-  - 在模块中接入 `@pi-web/protocol` 导出的命令/响应/事件/扩展 UI 类型以及 `SpawnSpec`,确认可被 import 且 strict 编译通过(不重定义任何协议类型或 `SpawnSpec`)
+  - 在模块中接入 `@blksails/pi-web-protocol` 导出的命令/响应/事件/扩展 UI 类型以及 `SpawnSpec`,确认可被 import 且 strict 编译通过(不重定义任何协议类型或 `SpawnSpec`)
   - 配置 `vitest`,使单一命令 `vitest run` 能发现并运行后续全部测试目录
-  - 观察完成条件:`vitest run` 在空测试集下成功退出,且一个引用 `@pi-web/protocol` 类型的占位文件通过 `tsc --noEmit`
+  - 观察完成条件:`vitest run` 在空测试集下成功退出,且一个引用 `@blksails/pi-web-protocol` 类型的占位文件通过 `tsc --noEmit`
   - _Requirements: 5.3, 7.6_
 
 - [x] 1.2 定义传输无关通道端口与输入契约类型
   - 声明 `PiRpcChannel` 接口(发送一行、订阅行、关闭、健康查询)与 `ChannelHealth` 形状
-  - `SpawnSpec`(命令/参数/cwd/env)不在本模块定义,而是 `import type { SpawnSpec } from "@pi-web/protocol"`(protocol-contract 拥有并导出,单一事实来源);确认其字段为 `{ cmd, args, cwd, env }`
+  - `SpawnSpec`(命令/参数/cwd/env)不在本模块定义,而是 `import type { SpawnSpec } from "@blksails/pi-web-protocol"`(protocol-contract 拥有并导出,单一事实来源);确认其字段为 `{ cmd, args, cwd, env }`
   - 确保接口签名不出现任何子进程/管道/流的专有类型
-  - 观察完成条件:端口接口与类型文件通过 strict 编译;`SpawnSpec` 解析自 `@pi-web/protocol` 而非本地声明;一个最小 mock 实现该接口即可编译,无需任何 Node 进程类型
+  - 观察完成条件:端口接口与类型文件通过 strict 编译;`SpawnSpec` 解析自 `@blksails/pi-web-protocol` 而非本地声明;一个最小 mock 实现该接口即可编译,无需任何 Node 进程类型
   - _Requirements: 1.1, 1.3, 1.5, 6.4_
   - _Boundary: PiRpcChannel_
 
@@ -50,7 +50,7 @@
 
 - [x] 3.3 实现命令方法封装与订阅/回复接口
   - 暴露 18 个与 `RpcClient` 对齐的命令方法(prompt/steer/followUp/abort、setModel/cycleModel/getAvailableModels、setThinkingLevel、getState/getMessages/getSessionStats/getCommands、compact/fork/clone/newSession、bash/abortBash):各生成唯一 `id`、构造命令帧 `send` 写出、返回待决 Promise
-  - 暴露 `onEvent()` 订阅事件与 `respondExtensionUI(id, …)` 回复扩展 UI;输入输出类型取自 `@pi-web/protocol`;待决期间不阻塞其他命令或事件
+  - 暴露 `onEvent()` 订阅事件与 `respondExtensionUI(id, …)` 回复扩展 UI;输入输出类型取自 `@blksails/pi-web-protocol`;待决期间不阻塞其他命令或事件
   - 观察完成条件:任一命令方法被调用后写出含唯一 `id` 的帧并返回待决 Promise,该 Promise 在同 `id` 响应到达时兑现;多个命令并发待决互不阻塞
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 4.1_
   - _Boundary: PiRpcProcess_

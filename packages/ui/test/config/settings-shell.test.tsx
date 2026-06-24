@@ -5,12 +5,12 @@ import {
   createSettingsRegistry,
   zodValidator,
   type SettingsPanelDescriptor,
-} from "@pi-web/react";
+} from "@blksails/pi-web-react";
 import {
   settingsFormSchema,
   settingsConfigSchema,
   authFormSchema,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import { SettingsShell } from "../../src/config/settings-shell.js";
 
 function makePanel(

@@ -6,12 +6,12 @@
 
 **Users**:`react-client`(`PiTransport`)、第三方语言无关客户端、以及任意把 pi-web 挂到 Next.js Route Handler / Hono / Express 的集成方。它们只面向 HTTP/SSE 契约,不接触 pi 原生事件或内部对象。
 
-**Impact**:把 `PLAN.md` §3.3 的 Route Handlers、§13.2 的 `createPiWebHandler`、§11.5 的 SSE 反代要点、§14.1③ 的"网关只转发、状态在通道背后"收敛为边界清晰、可单测的 HTTP 层。本 spec **消费**上游契约(`@pi-web/protocol` 的 DTO/SSE 帧/`protocolVersion`、`session-engine` 的 `PiSession` API),不重定义。
+**Impact**:把 `PLAN.md` §3.3 的 Route Handlers、§13.2 的 `createPiWebHandler`、§11.5 的 SSE 反代要点、§14.1③ 的"网关只转发、状态在通道背后"收敛为边界清晰、可单测的 HTTP 层。本 spec **消费**上游契约(`@blksails/pi-web-protocol` 的 DTO/SSE 帧/`protocolVersion`、`session-engine` 的 `PiSession` API),不重定义。
 
 ### Goals
 
 - 提供 `createPiWebHandler(opts)`:标准 Web Fetch 处理器,内部方法+路径路由到端点处理器;可挂 Next.js/Hono/Express(adapter)。
-- 实现全部 REST 端点(创建/命令转发/查询/删除)与 SSE 流端点,边界处用 `@pi-web/protocol` DTO `safeParse` 校验,失败映射统一错误码。
+- 实现全部 REST 端点(创建/命令转发/查询/删除)与 SSE 流端点,边界处用 `@blksails/pi-web-protocol` DTO `safeParse` 校验,失败映射统一错误码。
 - 实现 `SseFrame` → `text/event-stream` 编码:`data:`/`event:`/`id:` 行 + 心跳注释帧 + `X-Accel-Buffering: no` + 禁压缩。
 - 支持断线重连续流(`id:` 行 + `Last-Event-ID` 重新 `subscribe()`)。
 - 在响应/帧承载 `protocolVersion`,提供版本握手/协商。
@@ -34,7 +34,7 @@
 
 - 框架无关入口 `createPiWebHandler(opts)`:Web Fetch 处理器、内部路由(方法+路径 → 端点处理器)、`opts` 注入面(会话依赖 + 可选鉴权接缝 + 可选 SSE 调参)。
 - 全部端点处理器:`POST /sessions`;`POST /sessions/:id/{messages,steer,follow_up,abort,model,thinking,ui-response}`;`GET /sessions/:id/{state,stats,messages,commands}`;`GET /sessions/:id/stream`(SSE);`DELETE /sessions/:id`。其中 `GET /sessions/:id/commands` 是**纯 `PiSession` 查询**(返回会话当前可用命令列表),无任何安装/信任治理语义,故由 http-api **独占拥有**;`extension-management` 等下游 spec **消费**该端点而非重新实现,避免端点重复定义。
-- 请求边界校验(用 `@pi-web/protocol` DTO `safeParse`)与统一错误响应结构 + HTTP 状态码映射。
+- 请求边界校验(用 `@blksails/pi-web-protocol` DTO `safeParse`)与统一错误响应结构 + HTTP 状态码映射。
 - SSE 帧编码器:`SseFrame` → `text/event-stream` 文本(`data:`/`event:`/`id:` 行)、心跳注释帧、`X-Accel-Buffering: no`、禁压缩、连接关闭与订阅清理。
 - 断线重连续流接线(`id:` 行 + `Last-Event-ID` → 重新 `subscribe()`)。
 - `protocolVersion` 在响应/帧的承载与握手/协商响应。
@@ -51,14 +51,14 @@
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`@pi-web/protocol`(REST DTO schema、`SseFrameSchema`、`protocolVersion`,单一事实来源 + 边界校验);`session-engine` 的 `SessionManager`/`SessionStore` 接口与 `PiSession` 对外契约(`subscribe`/命令转发方法/`stop`/`getCachedState`)与错误类型(`SessionStoppedError`/`SessionNotFoundError`/`UnknownExtensionUIError`/`MissingInputError`)。
+- **上游 spec(运行时)**:`@blksails/pi-web-protocol`(REST DTO schema、`SseFrameSchema`、`protocolVersion`,单一事实来源 + 边界校验);`session-engine` 的 `SessionManager`/`SessionStore` 接口与 `PiSession` 对外契约(`subscribe`/命令转发方法/`stop`/`getCachedState`)与错误类型(`SessionStoppedError`/`SessionNotFoundError`/`UnknownExtensionUIError`/`MissingInputError`)。
 - **运行时**:Web 标准 `Request`/`Response`/`ReadableStream`/`TextEncoder`/`URL`(同构,Node `>=22.19.0` 原生支持);**仅 Node runtime**(子进程驻留 + 长连接)。可用 `node:timers` 做心跳。
 - **依赖方向**:`protocol-contract ← http-api`;`session-engine ← http-api`;`http-api ← react-client`、`http-api ← extension-management`(下游)。禁止反向。
 - **开发/测试**:`vitest`;集成/e2e 经 `session-engine` + rpc-channel 的 stub agent(`rpc-stub-process.mjs`)或真实 `pi --mode rpc`——不进运行时依赖。
 
 ### Revalidation Triggers
 
-- `@pi-web/protocol` 的 REST DTO / `SseFrameSchema` / `protocolVersion` 承载约定变更。
+- `@blksails/pi-web-protocol` 的 REST DTO / `SseFrameSchema` / `protocolVersion` 承载约定变更。
 - `session-engine` 的 `SessionManager`/`SessionStore`/`PiSession` 对外签名或错误类型变更。
 - 端点路径/方法、错误码映射、SSE 帧编码格式或重连续流约定变更。
 - `createPiWebHandler(opts)` 的注入面(会话依赖、鉴权接缝、SSE 调参)变更。
@@ -120,7 +120,7 @@ graph TB
 | Frontend / CLI | — | 产出 HTTP/SSE 契约供前端/第三方消费 | 不含前端代码 |
 | Backend / Services | TypeScript strict;Web Fetch 标准(`Request`/`Response`/`ReadableStream`/`TextEncoder`/`URL`) | 处理器工厂、路由、端点、SSE 编码 | 仅 Web 标准 + 注入依赖,框架无关 |
 | Data / Storage | 无(网关无状态;会话状态在 `session-engine`/通道背后) | — | §14.1③:状态不在网关 |
-| Messaging / Events | SSE(`text/event-stream`);消费 `PiSession.subscribe()` 的 `SseFrame` 流 | 把帧编码为 event-stream,心跳防断,`id:` 重连 | 帧形状由 `@pi-web/protocol` 定义 |
+| Messaging / Events | SSE(`text/event-stream`);消费 `PiSession.subscribe()` 的 `SseFrame` 流 | 把帧编码为 event-stream,心跳防断,`id:` 重连 | 帧形状由 `@blksails/pi-web-protocol` 定义 |
 | Infrastructure / Runtime | **Node `>=22.19.0` only**(子进程驻留 + 长连接,NOT Edge/Serverless);`node:timers`(心跳);`vitest`(测试);`session-engine` + rpc-channel stub(集成/e2e) | 运行、心跳、测试 | 反代需关闭缓冲/禁压缩/长超时(§11.5) |
 
 ## File Structure Plan
@@ -143,7 +143,7 @@ lib/pi/http/
 │   ├── sse-response.ts        # 构造 SSE Response:ReadableStream 桥接 subscribe、心跳定时器、连接关闭→unsubscribe、响应头(X-Accel-Buffering:no/禁压缩)
 │   └── reconnect.ts           # Last-Event-ID 解析 + 重连续流策略(重新 subscribe;会话已结束→明确结束响应)
 ├── http/
-│   ├── validate.ts            # 用 @pi-web/protocol DTO safeParse 校验请求体/参数;返回校验错误或 typed body
+│   ├── validate.ts            # 用 @blksails/pi-web-protocol DTO safeParse 校验请求体/参数;返回校验错误或 typed body
 │   ├── responses.ts           # JSON 响应构造、统一错误响应结构、protocolVersion 响应头/体注入
 │   ├── error-map.ts           # session-engine 错误 → HTTP 状态码映射(Stopped→409, NotFound→404, UnknownExtensionUI→404/409, MissingInput→400, 未知→500)
 │   └── version.ts             # protocolVersion 握手:请求版本兼容判定 + 不兼容协商响应(426/400)
@@ -172,7 +172,7 @@ lib/pi/http/__tests__/
 
 ### Modified Files
 
-- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@pi-web/protocol` + `session-engine` 模块与 `vitest` 纳入依赖——接线随仓库初始化处理,本 spec 创建模块自身文件与测试。宿主挂载示例(Next.js Route Handler / Hono / Express adapter)作为文档/示例随上层装配,不属本模块运行时文件。
+- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@blksails/pi-web-protocol` + `session-engine` 模块与 `vitest` 纳入依赖——接线随仓库初始化处理,本 spec 创建模块自身文件与测试。宿主挂载示例(Next.js Route Handler / Hono / Express adapter)作为文档/示例随上层装配,不属本模块运行时文件。
 
 > 每文件单一职责。`sse/` 集中唯一的有状态长连接逻辑(其余处理器为请求-响应纯转发);`http/` 为横切纯函数(校验/错误映射/版本/响应构造),直接驱动单测。
 
@@ -283,7 +283,7 @@ flowchart TD
 | 6.4 | 续流保持 protocolVersion 一致 | sse-encoder.ts, version.ts | `protocolVersion` | 重连续流 |
 | 7.1 | 响应/帧携带 protocolVersion | version.ts, responses.ts, sse-encoder.ts | `protocolVersion` | — |
 | 7.2 | 不兼容版本→协商错误(426/400) | version.ts | 兼容判定 | 错误映射 |
-| 7.3 | protocolVersion 单一来源 | version.ts | `@pi-web/protocol` | — |
+| 7.3 | protocolVersion 单一来源 | version.ts | `@blksails/pi-web-protocol` | — |
 | 8.1 | authResolver 接口 | auth.types.ts, create-handler.ts | `AuthResolver` | 错误映射 |
 | 8.2 | authorizeSession 接口 | auth.types.ts | `AuthorizeSession` | 错误映射 |
 | 8.3 | 未配置默认放行 | default-allow.ts | 默认实现 | — |
@@ -312,13 +312,13 @@ flowchart TD
 | routes/query-routes.ts | routes | 查询端点 | 4.1–4.5 | PiSession (P0) | API |
 | routes/stream-route.ts | routes | SSE 流端点 | 5.1,5.7,6.2 | PiSession.subscribe (P0), sse-response (P0) | API, Event |
 | routes/delete-session.ts | routes | 删除会话端点 | 2.3 | PiSession/store (P0) | API |
-| sse/sse-encoder.ts | sse | 帧→event-stream 文本编码 | 5.2,5.5,6.1,6.4,7.1 | @pi-web/protocol (P0) | Event |
+| sse/sse-encoder.ts | sse | 帧→event-stream 文本编码 | 5.2,5.5,6.1,6.4,7.1 | @blksails/pi-web-protocol (P0) | Event |
 | sse/sse-response.ts | sse | SSE Response 构造 + 心跳 + 关闭清理 | 5.1,5.3,5.4,5.5,5.6 | sse-encoder (P0), node:timers (P1) | Event |
 | sse/reconnect.ts | sse | Last-Event-ID 续流策略 | 6.2,6.3 | PiSession (P0) | Service |
-| http/validate.ts | http | protocol DTO safeParse 校验 | 2.2,3.3,4.5 | @pi-web/protocol (P0) | Service |
+| http/validate.ts | http | protocol DTO safeParse 校验 | 2.2,3.3,4.5 | @blksails/pi-web-protocol (P0) | Service |
 | http/responses.ts | http | JSON/错误响应构造 + 版本承载 | 9.1,9.3,7.1 | version (P1) | Service |
 | http/error-map.ts | http | 引擎错误→HTTP 状态码 | 3.4,3.5,9.1,9.2,9.3 | session-engine errors (P0) | Service |
-| http/version.ts | http | protocolVersion 握手/承载 | 7.1,7.2,7.3,6.4 | @pi-web/protocol (P0) | Service |
+| http/version.ts | http | protocolVersion 握手/承载 | 7.1,7.2,7.3,6.4 | @blksails/pi-web-protocol (P0) | Service |
 | auth/auth.types.ts · default-allow.ts | auth | 鉴权接缝接口 + 默认放行 | 8.1–8.6 | handler.types (P1) | Service |
 
 ### handler 层
@@ -414,7 +414,7 @@ export type RouteHandler = (ctx: RequestContext) => Promise<Response>;
 
 #### create-session.ts / command-routes.ts / query-routes.ts / delete-session.ts
 
-**Summary-only**:各端点处理器在边界用 `validate.ts`(`@pi-web/protocol` DTO `safeParse`)校验请求体/参数,失败→400(附字段路径);通过后转发到注入的 `SessionManager.createSession` 或 `PiSession` 的命令/查询方法,把结果用 `responses.ts` 序列化为带 `protocolVersion` 的 `Response`;引擎抛出的已知错误经 `error-map.ts` 映射状态码。`create-session` 在停机标志置位时返回 503(Req 2.5);`delete-session` 触发 `PiSession.stop()` 并依赖上游经 `onClosed` 从 store 移除。Contracts: API。覆盖 Req 2.x、3.x、4.x。
+**Summary-only**:各端点处理器在边界用 `validate.ts`(`@blksails/pi-web-protocol` DTO `safeParse`)校验请求体/参数,失败→400(附字段路径);通过后转发到注入的 `SessionManager.createSession` 或 `PiSession` 的命令/查询方法,把结果用 `responses.ts` 序列化为带 `protocolVersion` 的 `Response`;引擎抛出的已知错误经 `error-map.ts` 映射状态码。`create-session` 在停机标志置位时返回 503(Req 2.5);`delete-session` 触发 `PiSession.stop()` 并依赖上游经 `onClosed` 从 store 移除。Contracts: API。覆盖 Req 2.x、3.x、4.x。
 
 ##### API Contract(端点汇总)
 | Method | Endpoint | Request(protocol DTO) | Success | Errors |
@@ -434,7 +434,7 @@ export type RouteHandler = (ctx: RequestContext) => Promise<Response>;
 | GET | /sessions/:id/stream | — (SSE) | 200 text/event-stream | 404 |
 | DELETE | /sessions/:id | — | 200/204 ack | 404 |
 
-> 所有 DTO 形状取自 `@pi-web/protocol`;命令负载子类型取自其 `RpcCommand`/REST DTO。命令端点不重定义负载形状。
+> 所有 DTO 形状取自 `@blksails/pi-web-protocol`;命令负载子类型取自其 `RpcCommand`/REST DTO。命令端点不重定义负载形状。
 >
 > `GET /sessions/:id/commands` 由 http-api **独占拥有**(纯 `PiSession` 查询,无安装/信任治理);`extension-management` 等下游 spec **消费**此端点而非重新实现,以防跨 spec 端点重复定义。
 
@@ -448,7 +448,7 @@ export type RouteHandler = (ctx: RequestContext) => Promise<Response>;
 | Requirements | 5.2, 5.5, 6.1, 6.4, 7.1 |
 
 **Responsibilities & Constraints**
-- 输入 `SseFrame`(`@pi-web/protocol`,`uiMessageChunk` 与 `control` 两类)+ 单调帧序号;输出 `text/event-stream` 文本块:`event:`(可选,按帧类别)、`data: <json>`、`id: <seq>`,以空行分隔(Req 5.2/6.1)。
+- 输入 `SseFrame`(`@blksails/pi-web-protocol`,`uiMessageChunk` 与 `control` 两类)+ 单调帧序号;输出 `text/event-stream` 文本块:`event:`(可选,按帧类别)、`data: <json>`、`id: <seq>`,以空行分隔(Req 5.2/6.1)。
 - 每帧 JSON 承载 `protocolVersion`(取自帧或由 `version.ts` 注入),续流保持一致(Req 6.4/7.1)。
 - 会话结束帧编码为 control 结束/错误帧(Req 5.5)。
 - 纯函数:无 I/O、不启计时器、确定输出,直接单测。
@@ -474,10 +474,10 @@ export type RouteHandler = (ctx: RequestContext) => Promise<Response>;
 #### validate.ts / responses.ts / error-map.ts / version.ts
 
 **Summary-only**:
-- `validate.ts`:对请求体/参数调用 `@pi-web/protocol` DTO `safeParse`,失败返回带字段路径的校验错误,成功返回 typed body(Req 2.2/3.3/4.5)。
+- `validate.ts`:对请求体/参数调用 `@blksails/pi-web-protocol` DTO `safeParse`,失败返回带字段路径的校验错误,成功返回 typed body(Req 2.2/3.3/4.5)。
 - `responses.ts`:JSON 成功响应与统一错误响应结构(`{ error: { code, message, fields? } }`)构造,注入 `protocolVersion` 响应头/体;500 兜底不泄露 env/凭据/堆栈(Req 9.1/9.3/7.1)。
 - `error-map.ts`:把 `session-engine` 错误映射 HTTP 状态码——`SessionStoppedError`→409、`SessionNotFoundError`→404、`UnknownExtensionUIError`→404/409、`MissingInputError`→400、未知→500(Req 3.4/3.5/9.2)。
-- `version.ts`:以 `@pi-web/protocol` 的 `protocolVersion` 为唯一来源(Req 7.3),承载到响应/帧(Req 7.1),请求声明不兼容版本时产出 426/400 协商响应(Req 7.2)。
+- `version.ts`:以 `@blksails/pi-web-protocol` 的 `protocolVersion` 为唯一来源(Req 7.3),承载到响应/帧(Req 7.1),请求声明不兼容版本时产出 426/400 协商响应(Req 7.2)。
 
 Contracts: Service。
 
@@ -497,9 +497,9 @@ export type AuthorizeSession = (input: { auth: AuthContext; sessionId: string; r
 
 ### Data Contracts & Integration
 
-- **核心对外契约**:REST 端点(请求/响应 DTO)与 SSE 帧——形状一律取自 `@pi-web/protocol`(`CreateSessionRequest`/各命令 DTO/各响应 DTO/`SseFrame`),本 spec 不重定义(单一事实来源,Req 4.5)。
+- **核心对外契约**:REST 端点(请求/响应 DTO)与 SSE 帧——形状一律取自 `@blksails/pi-web-protocol`(`CreateSessionRequest`/各命令 DTO/各响应 DTO/`SseFrame`),本 spec 不重定义(单一事实来源,Req 4.5)。
 - **序列化格式**:REST 走 JSON;SSE 走 `text/event-stream`(`data:`/`event:`/`id:` 行 + 心跳注释帧)。
-- **版本**:`protocolVersion`(`@pi-web/protocol`)承载于 REST 响应头/体与每个 SSE 帧,供前后端协商(Req 7.x);唯一来源,网关不自定义。
+- **版本**:`protocolVersion`(`@blksails/pi-web-protocol`)承载于 REST 响应头/体与每个 SSE 帧,供前后端协商(Req 7.x);唯一来源,网关不自定义。
 - **网关无状态**:不持久化会话状态(§14.1③);`sessionId` 仅作 `store.get` 检索键;SSE 重连经 `Last-Event-ID` 重新订阅,网关不缓存历史帧(Req 6.2)。
 - **错误体**:统一 `{ error: { code, message, fields? } }`(Req 9.1)。
 
@@ -531,7 +531,7 @@ export type AuthorizeSession = (input: { auth: AuthContext; sessionId: string; r
 - **路由**(`router.test.ts`):方法+路径匹配、`:id` 提取、未知路径 404、方法不允许 405、auth 接缝拒绝路径(401/403);注入的外部路由可达,且与内置端点精确 `path`+`method` 冲突时内置优先(外部不能遮蔽)。(1.2,1.4,1.5,1.7,8.4,8.5)
 - **请求校验**(`validate.test.ts`):各端点请求体/参数 `safeParse` 正反例;缺 `source`/类型错→400 且 `fields` 含字段路径。(2.2,3.3,4.5,10.1)
 - **错误映射**(`error-map.test.ts`):`SessionStoppedError`→409、`SessionNotFoundError`→404、`UnknownExtensionUIError`→404/409、`MissingInputError`→400、未知→500(不泄敏感)。(3.4,3.5,9.1,9.2,9.3,10.1)
-- **版本**(`version.test.ts`):响应/帧承载 `protocolVersion`;不兼容请求→协商错误;来源为 `@pi-web/protocol`。(7.1,7.2,7.3)
+- **版本**(`version.test.ts`):响应/帧承载 `protocolVersion`;不兼容请求→协商错误;来源为 `@blksails/pi-web-protocol`。(7.1,7.2,7.3)
 - **鉴权接缝**(`auth.test.ts`):未注入→默认放行;`authResolver` 拒绝→401;`authorizeSession` false→403。(8.1–8.6)
 - **SSE 编码**(`sse-encoder.test.ts`):两类帧→`data:`/`event:`/`id:` 文本;心跳注释帧;每帧含 `protocolVersion`;`id` 单调。(5.2,5.4,6.1,7.1,10.1)
 - **端点处理器**(`create-session/command-routes/query-routes/stream-route.test.ts`,mock manager/PiSession):建会话成功/缺 source 400/停机 503;各命令转发 ack + 校验 400 + 已停止 409 + 未知 ui-response;查询返回响应 DTO;SSE 头/帧推送/断开 unsubscribe/不存在 404。(2.x,3.x,4.x,5.1,5.3,5.5,5.6,5.7,10.1)

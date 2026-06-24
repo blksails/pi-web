@@ -1,5 +1,5 @@
 /**
- * @pi-web/react — headless 客户端层(transport + REST client + hooks)。
+ * @blksails/pi-web-react — headless 客户端层(transport + REST client + hooks)。
  *
  * 唯一公开导入面:PiTransport / createPiClient / usePiSession / usePiControls /
  * useExtensionUI / PiProvider 及公开类型。无样式、无 JSX 组件(那归 ui-components)。

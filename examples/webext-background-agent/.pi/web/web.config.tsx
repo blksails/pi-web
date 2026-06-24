@@ -7,7 +7,7 @@
  * 加载车道下都能直接生效(无需单独注入扩展 CSS)。
  */
 import * as React from "react";
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/pi-web-kit";
 
 // 极光背景对「会话态」做出反应:宿主在 chat 根挂 `data-pi-chat-empty="true|false"`
 // (空屏 vs 已有消息)。本扩展据此在自己的 CSS 里切换观感 —— 无需宿主改动、无需把

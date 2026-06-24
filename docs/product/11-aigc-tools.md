@@ -1,0 +1,314 @@
+# 11 · AIGC 图像工具
+
+`@blksails/pi-web-tool-kit` 提供两个内置 AIGC 图像工具：`image_generation`（文生图）与 `image_edit`（图像编辑），由 agent 以 `customTools` 形式挂载，LLM 通过工具参数驱动，产出自动落入附件存储并以签名 URL 回流对话。
+
+---
+
+## 工具一览
+
+| 工具名 | 功能 | 必填参数 | 默认 model |
+|---|---|---|---|
+| `image_generation` | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
+| `image_edit` | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
+
+两个工具声明在 `packages/tool-kit/src/aigc/tools/`，聚合入口为 `packages/tool-kit/src/aigc/index.ts`（`AIGC_TOOLS` 常量 + `buildAigcTools()` 工厂）。
+
+---
+
+## 接入方式
+
+> 跟着做最快的路径：仓库自带 `examples/aigc-agent/`（仅一个 `index.ts`，靠 monorepo workspace 解析依赖），可直接 `pi-web ./examples/aigc-agent --open` 跑起来（见文末「完整示例」一节）。下面三步是从零接入到**自己的** agent 包时的做法。
+
+### 1. 安装依赖
+
+仅当你新建独立 agent 包（不在本 monorepo 内）时需要——在该包 `package.json` 的 `dependencies` 中加入：
+
+```jsonc
+{
+  "dependencies": {
+    "@blksails/pi-web-tool-kit": "workspace:*",
+    "@blksails/pi-web-agent-kit": "workspace:*"
+  }
+}
+```
+
+> monorepo 内的 `examples/aigc-agent` 无需此步：它没有 `package.json`，`@blksails/*` 由工作区直接解析。
+
+### 2. 在 agent 中挂载工具
+
+```ts
+// examples/aigc-agent/index.ts
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+import { buildAigcTools } from "@blksails/pi-web-tool-kit/runtime";  // 注意：走 /runtime 子入口
+
+export default defineAgent({
+  systemPrompt: [
+    "You are aigc-agent, a pi-web example exposing AIGC generation tools.",
+    "- Use `image_generation` to generate one or more images from a text prompt.",
+    "- Use `image_edit` to edit an uploaded image: copy the public id from the",
+    "  [attachment id=att_… …] marker verbatim into the tool's `image` parameter.",
+    "Each tool persists its output as an attachment and returns a reference; report the",
+    "produced attachment id back to the user. Keep replies concise.",
+  ].join("\n"),
+  customTools: buildAigcTools(),
+  noTools: "builtin",    // 关掉内置工具，仅暴露 AIGC 工具
+  skills: ({ diagnostics }) => ({ skills: [], diagnostics }),
+});
+```
+
+> **重要**：`buildAigcTools` 必须从 `@blksails/pi-web-tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出引擎类型与纯数据 `ToolSpec` 声明（`AIGC_TOOLS` / `imageGeneration` / `imageEdit`），不顶层 import pi SDK / undici，对前端 bundle 安全。
+
+### 3. 配置环境变量
+
+工具启动时检查 `requiredVars`；缺失变量时返回 `ok:false` 降级，不崩溃子进程。
+
+| 变量名 | 用途 | 必填条件 |
+|---|---|---|
+| `NEWAPI_API_KEY` | NewAPI 网关（默认 `gpt-image-2` 路由） | 使用 gpt-image-2 时必填 |
+| `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一个变量名**读取密钥 | 使用 DashScope / token plan 模型时必填 |
+| `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan 端点 base（可选，缺省 `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`） | 覆盖 token plan 域时配置 |
+
+> **注意**：官方 `dashscope.aliyuncs.com` 路由（`wan2.7-image-pro` / `qwen-image-edit-max`）与 token plan 路由（`*-bailian`）都从同一个 `DASHSCOPE_API_KEY` 读取密钥，但两套密钥**不通用**——token plan key 打官方端点返回 401，反之亦然。同一进程内 `DASHSCOPE_API_KEY` 只能配一个值，故二选一：要么走官方路由用官方 key，要么走 `*-bailian` 路由用 token plan key。遇到 401 或"渠道不存在"先按此排查，详细对策见 [18 · 故障排查 FAQ §2.1](18-troubleshooting-faq.md)。
+
+```bash
+# .env.local 示例
+NEWAPI_API_KEY=sk-xxxxxxxx
+DASHSCOPE_API_KEY=sk-xxxxxxxx
+# token plan 端点（默认已内置，通常无需配置）
+# DASHSCOPE_TOKENPLAN_BASE_URL=https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1
+```
+
+---
+
+## 工具参数详解
+
+### image_generation
+
+```jsonc
+{
+  "prompt": "极光下的雪山，胶片质感",   // 必填；不要翻译为英文
+  "n": 1,                                // 图片数量 1–10，部分 model 仅支持 1
+  "size": "1024x1024",                   // 或 1536x1024 / 1024x1536 / auto
+  "negative_prompt": "模糊, 水印",       // DashScope/OpenRouter 有效
+  "background": "transparent",           // gpt-image 专属
+  "quality": "high",                     // OpenAI 专属
+  "moderation": "low",                   // gpt-image 专属
+  "model": "gpt-image-2"                 // 省略则用 defaultModel
+}
+```
+
+### image_edit
+
+```jsonc
+{
+  "image": "att_abc123",    // 附件 id（att_前缀）或 https URL；必填
+  "prompt": "把背景换成夕阳下的海滩",  // 编辑指令；必填
+  "mask": "att_def456",     // 可选 B/W 遮罩：白色区域重绘
+  "reference_images": ["att_xyz"],  // 可选参考图（主图+mask+参考图 ≤ 3）
+  "n": 1,
+  "size": "1024x1024",
+  "model": "gpt-image-2"
+}
+```
+
+`att_` 前缀 id 由编译器在调用前自动解析为 data URI（经附件存储权限校验），LLM 只需原样传入对话中显示的附件引用。
+
+---
+
+## 可用 model 路由
+
+### image_generation 可用模型
+
+| model id | 标签 | provider | 端点 | 价格参考 |
+|---|---|---|---|---|
+| `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | `POST /v1/images/generations` | $0.04/张 |
+| `wan2.7-image-pro` | Wan 2.7 Image Pro | DashScope 官方 | `POST /api/v1/services/aigc/multimodal-generation/generation`（同步） | ¥0.5/张 |
+| `wan2.7-image-pro-bailian` | Wan 2.7 Image Pro · token plan | 阿里云百炼 token plan | 同 DashScope 路径，base 切换到 token plan 域 | ¥0.2/张 |
+
+### image_edit 可用模型
+
+| model id | 标签 | provider | 特性 |
+|---|---|---|---|
+| `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | 整图改写；multipart FormData |
+| `qwen-image-edit-max` | Qwen Image Edit Max · sync | DashScope 官方 | 最高保真；支持 mask 局部重绘 |
+| `wan2.7-image-edit-bailian` | Wan 2.7 Image Edit · token plan | 阿里云百炼 token plan | DashScope 原生 messages/content；支持带图编辑 |
+
+---
+
+## 交互式参数补全（aigc-tools-interactive-params）
+
+`model`、`size`、`prompt` 三个参数对成图质量至关重要，但不在 `inputSchema.required` 中声明——若 LLM 漏传，不会被参数校验拦截，而是由工具执行层经 `ctx.ui` 弹窗让用户补全。
+
+**补全逻辑**（声明在 `ToolSpec.requiredParams`，实现在 `packages/tool-kit/src/engine/compile-tool.ts:resolveRequiredParams`）：
+
+1. 已有非空值 → 直接跳过，不弹窗（正常流不受干扰）
+2. 有交互 UI（`ext.hasUI === true`）：
+   - `via: "select"` → 调用 `ctx.ui.select(title, options)` 弹选择器
+   - `via: "input"` → 调用 `ctx.ui.input(title, placeholder)` 弹文本框
+   - 用户取消（返回 `undefined` 或空字符串）→ 返回 `ok:false`，不发起 provider 调用
+3. 无交互 UI 时：
+   - 有 `fallback` 声明 → 使用 fallback 值继续
+   - `param === "model"` → 回退到 `defaultModel`
+   - `prompt` 无兜底 → 返回 `ok:false`
+
+`options` 中的哨兵值 `"$models"` 在运行时自动展开为该工具的所有 `model` 枚举值。
+
+---
+
+## 图像规范化：iPhone 多图 JPEG 问题
+
+**问题**：iPhone 拍摄的 JPEG 内含 `APP2/MPF`（Multi-Picture Format）索引 + 主图 `EOI` 后追加的 HDR gain map，发往 NewAPI 网关会触发误导性错误："可用渠道不存在 / This token has no access to model（model 名为空）"。
+
+**解决方案**：纯 JS 无损规范化，实现于 `packages/tool-kit/src/engine/normalize-image.ts`，导出 `normalizeImageDataUri(input: string): string`。
+
+**处理策略**：
+- 仅处理 `data:image/jpeg` 格式（其他格式原样返回）
+- 定位并跳过 `APP2/MPF` 段（以 `4d 50 46 00` 魔数识别，区别于需保留的 ICC_PROFILE APP2）
+- 在主图首个 `EOI`（`FF D9`）处截断，丢弃追加的 gain map
+- 零重编码、零缩放，保留 EXIF 方向等其他元数据
+- 解析失败或无 MPF 内容时原样返回，不阻断工具调用
+
+编译器在 `resolveMediaFields` 中对所有 `mediaKind: "image"` 字段自动调用此规范化，无需工具作者手动处理。
+
+> 仍遇到"空 model 名 / 渠道不存在"且确认是 iPhone 多图照片？见 [18 · 故障排查 FAQ §2.2](18-troubleshooting-faq.md)，含 ImageMagick 手动取主图的临时绕过命令。
+
+---
+
+## Provider 端点差异速查
+
+使用不同 provider 时需注意以下端点与参数形态差异：
+
+### NewAPI（gpt-image-2，默认）
+
+- 文生图端点：`POST https://www.apiservices.top/v1/images/generations`
+- 图像编辑端点：`POST https://www.apiservices.top/v1/images/edits`（multipart FormData）
+- 请求体：OpenAI 兼容格式（`{ model, prompt, n, size, ... }`）
+- 密钥：`Authorization: Bearer ${NEWAPI_API_KEY}`
+
+### DashScope 官方（wan2.7-image-pro / qwen-image-edit-max）
+
+- 端点：`POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
+- 请求体：DashScope **原生** `input/parameters` 格式（非 OpenAI `/images` 格式）
+  ```json
+  {
+    "model": "wan2.7-image-pro",
+    "input": { "messages": [{ "role": "user", "content": [{ "text": "..." }] }] },
+    "parameters": { "size": "1024*1024", "n": 1 }
+  }
+  ```
+- `size` 格式：`width*height`（星号分隔，如 `1024*1024`），而非 OpenAI 的 `1024x1024`；实现中自动转换
+- 密钥：`Authorization: Bearer ${DASHSCOPE_API_KEY}`
+- **注意**：`DASHSCOPE_API_KEY`（token plan key）对官方 `dashscope.aliyuncs.com` 端点无效（返回 401），两套 key 不通用
+
+### 阿里云百炼 token plan（wan2.7-image-pro-bailian / wan2.7-image-edit-bailian）
+
+- 端点：`https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`（可经 `DASHSCOPE_TOKENPLAN_BASE_URL` 环境变量覆盖）
+- 请求体格式与 DashScope 原生相同（复用 `createDashscopeSyncT2I` / `createDashscopeImageEdit` 工厂，仅切换 base URL）
+- **坑**：不要使用 `compatible-mode/aigc` 路径，会报 URL error；正确路径为 `maas/**api/v1/services/aigc/multimodal-generation**`
+- token plan 目前仅开通 `wan2.7-image-pro`（文生图 + 图像编辑统一 model）
+
+---
+
+## 声明式引擎结构
+
+工具采用两层声明式设计，便于低成本扩展新工具或新 provider：
+
+```
+ToolSpec（tools/image-generation.ts）
+  ├── inputSchema          — LLM 可见参数 schema（不含 model）
+  ├── defaultModel         — 省略 model 时的回退
+  ├── requiredParams[]     — 业务必选项交互补全声明
+  └── models[]             — ModelRoute 路由表
+        ├── model          — LLM 可见路由键（同时是枚举值）
+        ├── url            — 端点 URL（支持 ${VAR} 占位）
+        ├── headers        — 请求头（支持 ${VAR} 占位，运行时展开）
+        ├── buildBody      — 请求体构造函数
+        ├── pickResult     — 响应解析函数
+        ├── detectError    — 业务错误检测函数
+        ├── async?         — 异步轮询声明（省略为同步）
+        └── requiredVars[] — 所需环境变量（缺失则降级）
+```
+
+`compileTool`（`packages/tool-kit/src/engine/compile-tool.ts`）在运行时将 `ToolSpec` 编译为 pi `ToolDefinition`，自动注入 `model` 枚举参数。
+
+---
+
+## 执行流程
+
+一次成功的图像生成调用经历以下步骤：
+
+1. LLM 调用工具，传入 `prompt`（及可选参数）
+2. 编译器检查 `requiredParams`，对缺失项触发交互补全
+3. 按 `model` 参数（或 `defaultModel`）路由到对应 `ModelRoute`
+4. 检查 `requiredVars` 是否可解析；缺失则返回 `ok:false` 降级
+5. 检查 attachment ctx 是否注入（runner 装配）
+6. 对 `mediaKind: "image"` 字段：`att_id → data URI → normalizeImageDataUri`
+7. 调用 `runEndpoint`：构造请求体 → HTTP POST → 解析响应（同步 / 异步轮询）
+8. `persistPicked`：将图像产物写入附件存储，获得 `att_<id>` 引用
+9. 组装工具结果：`![name](signedDisplayUrl)` markdown + `details.assets`
+
+---
+
+## 完整示例：aigc-agent
+
+`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `buildAigcTools()` 装配到生成全链路。
+
+**启动方式**：
+
+```bash
+# 配置密钥
+export NEWAPI_API_KEY=sk-xxxxxxxx
+
+# 以 aigc-agent 为 agent 源启动 pi-web（source 是位置参数，不是 --agent 标志）
+pi-web ./examples/aigc-agent --open
+
+# 改 examples/aigc-agent/index.ts 后自动重载会话
+pi-web ./examples/aigc-agent --watch
+```
+
+**对话示例**：
+
+```
+用户：帮我生成一张极光下的雪山，胶片质感
+助手：[调用 image_generation { prompt: "极光下的雪山，胶片质感", model: "gpt-image-2", size: "1024x1024" }]
+      生成成功：1 张图像已保存 (att_abc123)。
+      ![image_generation_0](https://pi-web.local/api/attachments/att_abc123/display?sig=...)
+
+用户：[上传图片，对话中显示 [attachment id=att_def456 ...]]
+用户：把这张图的背景换成夕阳下的海滩
+助手：[调用 image_edit { image: "att_def456", prompt: "把背景换成夕阳下的海滩" }]
+      生成成功：1 张图像已保存 (att_ghi789)。
+```
+
+---
+
+## 扩展：添加新 provider
+
+在 `packages/tool-kit/src/aigc/tools/image-generation.ts` 的 `models` 数组追加新路由项即可，不影响其他工具执行路径：
+
+```ts
+import { createNewApiImage } from "../providers/newapi.js";
+
+// 在 imageGeneration.models 中追加：
+createNewApiImage(
+  {
+    model: "my-custom-model",
+    label: "My Model · NewAPI",
+    description: "Custom model via NewAPI. Needs NEWAPI_API_KEY.",
+  },
+  { pricing: { amount: 0.05, currency: "USD", unit: "image" } },
+),
+```
+
+如需新 provider 类型，参考 `packages/tool-kit/src/aigc/providers/` 下的 `dashscope.ts` 与 `newapi.ts` 实现工厂函数，返回 `ModelRoute`。
+
+---
+
+## 下一步 / 相关
+
+- [08 · 附件系统](08-attachment-system.md) — 工具产物落库与 `att_<id>` 引用机制
+- [09 · 扩展与 Skills](09-extensions-and-skills.md) — 如何在 agent 中装配工具与扩展
+- [05 · 配置](05-configuration.md) — 环境变量配置说明
+- [06 · Providers 与 Models](06-providers-and-models.md) — NewAPI / DashScope provider 接入
+- [07 · Agent 开发](07-agent-development.md) — `defineAgent` 与 `customTools` 用法
+- [18 · 故障排查 FAQ](18-troubleshooting-faq.md) — 401／"渠道不存在"（§2.1）、iPhone 多图 JPEG 报错（§2.2）

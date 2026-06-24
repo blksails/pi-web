@@ -9,7 +9,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import type { SpawnSpec } from "@pi-web/protocol";
+import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { PiRpcProcess } from "../../src/rpc-channel/index.js";
 import { PiSession } from "../../src/session/pi-session.js";

@@ -1,5 +1,5 @@
 /**
- * Execution engine for `@pi-web/tool-kit`.
+ * Execution engine for `@blksails/pi-web-tool-kit`.
  *
  * `runEndpoint` handles three paths:
  *  (a) `behavior.runLocal`  → delegate to local hook (Wave 1 minimal pass-through).

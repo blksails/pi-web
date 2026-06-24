@@ -8,8 +8,8 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
-import type { SpawnSpec, SseFrame } from "@pi-web/protocol";
-import { protocolVersion, SseFrameSchema } from "@pi-web/protocol";
+import type { SpawnSpec, SseFrame } from "@blksails/pi-web-protocol";
+import { protocolVersion, SseFrameSchema } from "@blksails/pi-web-protocol";
 import { PiRpcProcess } from "../../src/rpc-channel/index.js";
 import { SessionManager } from "../../src/session/session-manager.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";

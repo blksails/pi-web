@@ -22,7 +22,7 @@
  *
  * 注意(类型来源,沿用 bridge 3.1 经验):design 以 `NonNullable<AgentLoopConfig["afterToolCall"]>`
  * 描述签名,但 `AgentLoopConfig` 属 pi 内层包(`@earendil-works/pi-agent-core`),本仓库刻意不直接
- * 依赖、其内层 `AfterToolCallResult` 类型不可达(见 `@pi-web/agent-kit` sdk-types 约定)。本闸门
+ * 依赖、其内层 `AfterToolCallResult` 类型不可达(见 `@blksails/pi-web-agent-kit` sdk-types 约定)。本闸门
  * 以 pi 公开面**同形**的本地接口描述 tool result content 形状(`(TextContent|ImageContent)[]`,
  * 字段与 `@earendil-works/pi-ai` `types.d.ts` 完全一致)与 hook 返回形状(`AfterToolCallResult
  * { content?, details?, isError?, terminate? }`),保持纯函数;runner 接线(task 5.1)适配。

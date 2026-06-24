@@ -53,7 +53,7 @@
 - **Rationale**: 贴合既有 FIFO 队列语义与命令式调用约定（用户决策），避免乱序应答破坏 agent 预期；最小组件面。
 
 ### Decision: 删除 `PiPermissionDialog`，两装配改挂内联组件
-- **Selected Approach**: 删除 `dialog/pi-permission-dialog.tsx` 及其在 `@pi-web/ui` 入口的导出；`PiChat`/`PiChatBasic` 移除 Dialog import 与挂载，改在消息流末尾挂 `PiInteraction`。
+- **Selected Approach**: 删除 `dialog/pi-permission-dialog.tsx` 及其在 `@blksails/pi-web-ui` 入口的导出；`PiChat`/`PiChatBasic` 移除 Dialog import 与挂载，改在消息流末尾挂 `PiInteraction`。
 - **Rationale**: 用户确认直接删除；模态与内联两条渲染路径并存无必要。
 
 ## Risks & Mitigations

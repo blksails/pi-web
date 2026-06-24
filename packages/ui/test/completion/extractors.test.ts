@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { findActiveToken } from "../../src/completion/extractors.js";
-import type { CompletionTriggerSpec } from "@pi-web/protocol";
+import type { CompletionTriggerSpec } from "@blksails/pi-web-protocol";
 
 const AT: CompletionTriggerSpec = { trigger: "@", extract: "wordTail" };
 const SLASH: CompletionTriggerSpec = { trigger: "/", extract: "lineStart" };

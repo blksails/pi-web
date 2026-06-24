@@ -6,8 +6,8 @@
  * 设计定义的位置挂载,使 pi-chat 只做编排、不持插槽细节。
  */
 import * as React from "react";
-import type { SlotKey } from "@pi-web/protocol";
-import type { WebExtension } from "@pi-web/web-kit";
+import type { SlotKey } from "@blksails/pi-web-protocol";
+import type { WebExtension } from "@blksails/pi-web-kit";
 import { SlotHost, resolveSlot } from "./apply-extension.js";
 
 /** 12 个协议保留插槽 → 浏览器可见 data 属性(与 design 插槽表一一对应)。 */

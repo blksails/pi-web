@@ -10,9 +10,9 @@
  * 依赖注入:`LoaderDeps` 让 fetch/import 可在测试中替身;`browserLoaderDeps()` 提供
  * 真实浏览器实现(动态 import 经 `new Function` 规避打包器静态改写)。
  */
-import type { WebExtensionManifest } from "@pi-web/protocol";
-import { isDeclarativeOnly } from "@pi-web/protocol";
-import type { WebExtension } from "@pi-web/web-kit";
+import type { WebExtensionManifest } from "@blksails/pi-web-protocol";
+import { isDeclarativeOnly } from "@blksails/pi-web-protocol";
+import type { WebExtension } from "@blksails/pi-web-kit";
 import { verifyExtension, type GateOptions } from "./extension-gate.js";
 
 export interface LoaderDeps {

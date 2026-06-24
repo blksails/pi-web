@@ -9,7 +9,7 @@
  *      `<agentDir>/sessions/--<cwd 编码>--/<时间戳>_<id>.jsonl`。
  *   2. **存哪个目录**由 runner 的 `--agent-dir <dir>` 控制(→ `<dir>/sessions`);
  *      要改为不落盘则注入 `SessionManager.inMemory()`。
- *   3. `@pi-web/server` 的 `FsSessionEntryStore` 以**完全兼容**该布局读写同一批文件,
+ *   3. `@blksails/pi-web-server` 的 `FsSessionEntryStore` 以**完全兼容**该布局读写同一批文件,
  *      因此本 agent 跑出来的会话文件可被 `FsSessionEntryStore` 直接 `list`/`read` 回来。
  *
  * 本 agent 自身只是一个普通的、与存储无关的 {@link AgentDefinition}(由 bootstrap runner
@@ -20,7 +20,7 @@
  * NOTE: `model` 故意省略 → 继承 `~/.pi/agent/settings.json` 的 defaultProvider/
  * defaultModel,并从 `~/.pi/agent/auth.json` 解析凭证,开箱即用于任意 pi 登录。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

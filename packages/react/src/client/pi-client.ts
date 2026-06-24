@@ -1,7 +1,7 @@
 /**
  * createPiClient(baseUrl, fetch?) — 封装 http-api 全部 REST 调用。
  *
- * 端点路径与 DTO 形状取自 @pi-web/protocol(rest-dto)与 http-api 约定,不重定义。
+ * 端点路径与 DTO 形状取自 @blksails/pi-web-protocol(rest-dto)与 http-api 约定,不重定义。
  * 非 2xx → PiHttpError;protocolVersion 不兼容 → PiProtocolVersionError(均经 request 层归一)。
  *
  * 仅依赖标准 Web Fetch;fetch 可注入(默认全局 fetch)。
@@ -28,18 +28,18 @@ import type {
   CompletionTriggersResponse,
   ListSessionsRequest,
   ListSessionsResponse,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import {
   GetAvailableModelsResponseSchema,
   ForkResponseSchema,
   GetForkMessagesResponseSchema,
   ListSessionsResponseSchema,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import { sendRequest, type FetchLike } from "./request.js";
 
 export type { FetchLike };
 
-/** http-api REST 客户端面。形状与端点均取自 @pi-web/protocol + http-api 约定。 */
+/** http-api REST 客户端面。形状与端点均取自 @blksails/pi-web-protocol + http-api 约定。 */
 export interface PiClient {
   readonly baseUrl: string;
 

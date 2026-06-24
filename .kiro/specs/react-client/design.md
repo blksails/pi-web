@@ -2,11 +2,11 @@
 
 ## Overview
 
-**Purpose**:本特性交付 `@pi-web/react`——pi-web 的**无样式 headless React 层**。它把 `http-api` 暴露的 REST + SSE 契约,封装为一个 AI SDK v5 `ChatTransport`(`PiTransport`)、一个 REST 客户端(`createPiClient`)与三个 headless hooks(`usePiSession` / `usePiControls` / `useExtensionUI`),使 `useChat` 与 pi 控制在任意 React/Next 项目中开箱即用。
+**Purpose**:本特性交付 `@blksails/pi-web-react`——pi-web 的**无样式 headless React 层**。它把 `http-api` 暴露的 REST + SSE 契约,封装为一个 AI SDK v5 `ChatTransport`(`PiTransport`)、一个 REST 客户端(`createPiClient`)与三个 headless hooks(`usePiSession` / `usePiControls` / `useExtensionUI`),使 `useChat` 与 pi 控制在任意 React/Next 项目中开箱即用。
 
 **Users**:本项目的 `ui-components`(在本层之上装配有样式组件),以及任何已有自研 UI、UI 全自控的第三方 React 项目(§13.3 集成方式 B)。
 
-**Impact**:把 `PLAN.md` §4 的 ChatTransport 双连接模型、§13.1 的 `@pi-web/react` 导出面、§13.3 B 的 headless hooks 收敛为一个边界清晰、可单测、零样式的前端契约消费层。本 spec **消费**上游契约(`@pi-web/protocol` 的 `SseFrame`/`UiMessageChunk`/data-part/REST DTO/`protocolVersion`、`http-api` 的 REST/SSE 端点、AI SDK 的 `ChatTransport`/`UIMessageChunk`),不重定义、不触达后端内部对象。
+**Impact**:把 `PLAN.md` §4 的 ChatTransport 双连接模型、§13.1 的 `@blksails/pi-web-react` 导出面、§13.3 B 的 headless hooks 收敛为一个边界清晰、可单测、零样式的前端契约消费层。本 spec **消费**上游契约(`@blksails/pi-web-protocol` 的 `SseFrame`/`UiMessageChunk`/data-part/REST DTO/`protocolVersion`、`http-api` 的 REST/SSE 端点、AI SDK 的 `ChatTransport`/`UIMessageChunk`),不重定义、不触达后端内部对象。
 
 ### Goals
 
@@ -36,7 +36,7 @@
 - headless hooks:`usePiSession` / `usePiControls` / `useExtensionUI`,各暴露状态机与操作函数,且控制/扩展 UI 不写入消息流。
 - 可选 `PiProvider`(注入共享 client/baseUrl/fetch,非强制)。
 - 前端派生 UI 状态:连接态、control 快照、扩展 UI 待办队列、控制操作进行中/成功/失败态。
-- `protocolVersion` 兼容判定(以 `@pi-web/protocol` 为基准)。
+- `protocolVersion` 兼容判定(以 `@blksails/pi-web-protocol` 为基准)。
 
 ### Out of Boundary
 
@@ -49,14 +49,14 @@
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`@pi-web/protocol`(`SseFrameSchema`/`UiMessageChunkSchema`/`DataPartSchema`/REST DTO schema 与 `z.infer` 类型、`protocolVersion`,单一事实来源 + 边界 `safeParse`)。
+- **上游 spec(运行时)**:`@blksails/pi-web-protocol`(`SseFrameSchema`/`UiMessageChunkSchema`/`DataPartSchema`/REST DTO schema 与 `z.infer` 类型、`protocolVersion`,单一事实来源 + 边界 `safeParse`)。
 - **外部运行时**:AI SDK v5(`ai` 的 `ChatTransport`/`UIMessageChunk` 类型;`@ai-sdk/react` 的 `useChat`——后者仅由消费方使用,本层只实现 transport 接口并被传入);React 18+(hooks、`useSyncExternalStore`);标准 Web Fetch(`fetch`/`ReadableStream`/`TextDecoder`/`AbortController`/`URL`)。
-- **依赖方向**:`protocol-contract ← react-client`;`http-api`(HTTP/SSE 契约)← `react-client`;`react-client ← ui-components`(下游)。禁止反向。本层**不**依赖 `@pi-web/server`/`session-engine` 的任何运行时对象(只经 HTTP)。
+- **依赖方向**:`protocol-contract ← react-client`;`http-api`(HTTP/SSE 契约)← `react-client`;`react-client ← ui-components`(下游)。禁止反向。本层**不**依赖 `@blksails/pi-web-server`/`session-engine` 的任何运行时对象(只经 HTTP)。
 - **开发/测试**:`vitest`、`@testing-library/react`、`jsdom`/`happy-dom`(组件测试 DOM);e2e 经真实 `http-api` + `session-engine` 的 stub agent——不进运行时依赖。
 
 ### Revalidation Triggers
 
-- `@pi-web/protocol` 的 `SseFrame`/`UiMessageChunk`/data-part/REST DTO/`protocolVersion` 形状或承载约定变更。
+- `@blksails/pi-web-protocol` 的 `SseFrame`/`UiMessageChunk`/data-part/REST DTO/`protocolVersion` 形状或承载约定变更。
 - `http-api` 的端点路径/方法、SSE 帧编码格式、`Last-Event-ID` 续流约定、错误响应结构变更。
 - AI SDK `ChatTransport` 接口或 `UIMessageChunk` 联合形状的大版本变更。
 - 帧分流策略(单订阅模型)或 hooks 公开签名变更。
@@ -116,7 +116,7 @@ graph TB
 - **Domain/feature boundaries**:`client`(REST 拼装)、`sse`(解析 + 分流 + 连接)、`transport`(ChatTransport 适配)、`hooks`(派生 UI 状态)、`provider`(可选注入)五块职责分离,经类型契约衔接;无业务真值状态。
 - **Dependency direction**:`protocol + http-api 契约 + AI SDK ← react-client ← ui-components`。`client`/`sse`/`transport` 为无 React 依赖的纯逻辑(可在 node 单测);`hooks`/`provider` 依赖 React。`hooks → conn/client/transport`,不反向。
 - **New components rationale**:`createPiClient`(REST 单点)、`parseSse`(纯函数解析,可测)、`decodeUiMessageChunk`(映射表)、`PiSessionConnection`(唯一订阅 + 分流 + 双出口)、`PiTransport`(AI SDK 适配)、三 hook(派生状态)——各单一职责。
-- **Steering compliance**:TypeScript strict、禁 `any`;浏览器环境;headless 无样式(structure.md);协议为稳定契约,以 `@pi-web/protocol` 为唯一来源 + `protocolVersion` 协商(structure.md/§13.5);前后端经协议解耦,不依赖后端实现细节(roadmap/tech.md)。
+- **Steering compliance**:TypeScript strict、禁 `any`;浏览器环境;headless 无样式(structure.md);协议为稳定契约,以 `@blksails/pi-web-protocol` 为唯一来源 + `protocolVersion` 协商(structure.md/§13.5);前后端经协议解耦,不依赖后端实现细节(roadmap/tech.md)。
 
 ### Technology Stack
 
@@ -125,8 +125,8 @@ graph TB
 | Frontend / CLI | TypeScript strict;React 18+(hooks、`useSyncExternalStore`) | headless hooks + transport + REST 客户端 | 浏览器环境,无样式 |
 | Backend / Services | — | 本层不含后端;经 HTTP 消费 `http-api` | 不依赖后端内部对象 |
 | Data / Storage | 无服务端状态;仅前端派生 UI 状态(连接态/control 快照/扩展 UI 队列) | hooks 暴露状态切片 | 真值在通道背后 |
-| Messaging / Events | SSE(`text/event-stream`)消费 + AI SDK `UIMessageChunk` 可读流 | 单订阅分流;`Last-Event-ID` 续流 | 帧形状取自 `@pi-web/protocol` |
-| Infrastructure / Runtime | 标准 Web Fetch(`fetch`/`ReadableStream`/`TextDecoder`/`AbortController`);AI SDK v5(`ai`/`@ai-sdk/react`);`@pi-web/protocol`;`vitest` + `@testing-library/react` + DOM 环境(测试) | 运行与测试 | fetch 可注入(`createPiClient(baseUrl, fetch?)`) |
+| Messaging / Events | SSE(`text/event-stream`)消费 + AI SDK `UIMessageChunk` 可读流 | 单订阅分流;`Last-Event-ID` 续流 | 帧形状取自 `@blksails/pi-web-protocol` |
+| Infrastructure / Runtime | 标准 Web Fetch(`fetch`/`ReadableStream`/`TextDecoder`/`AbortController`);AI SDK v5(`ai`/`@ai-sdk/react`);`@blksails/pi-web-protocol`;`vitest` + `@testing-library/react` + DOM 环境(测试) | 运行与测试 | fetch 可注入(`createPiClient(baseUrl, fetch?)`) |
 
 ## File Structure Plan
 
@@ -134,7 +134,7 @@ graph TB
 
 ```
 packages/react/
-├── package.json                  # name @pi-web/react;deps: @pi-web/protocol, ai;peerDeps: react, @ai-sdk/react;sideEffects false
+├── package.json                  # name @blksails/pi-web-react;deps: @blksails/pi-web-protocol, ai;peerDeps: react, @ai-sdk/react;sideEffects false
 ├── tsconfig.json                 # strict;DOM lib;target ES2022
 ├── vitest.config.ts              # 测试配置:DOM 环境(jsdom/happy-dom)+ 单一 test 命令
 └── src/
@@ -156,7 +156,7 @@ packages/react/
     │   └── use-extension-ui.ts   # 订阅 ControlStore 的扩展 UI 队列 + respond 回传
     ├── provider/
     │   └── pi-provider.tsx       # 可选 PiProvider + usePiContext:注入共享 client/baseUrl/fetch
-    └── version.ts                # 以 @pi-web/protocol 的 protocolVersion 为基准的兼容判定工具
+    └── version.ts                # 以 @blksails/pi-web-protocol 的 protocolVersion 为基准的兼容判定工具
 └── test/
     ├── sse/parse-sse.test.ts             # 半帧跨 chunk、多行 data、剥 \r、双类帧切分(Req 2.x,8.5,10.1)
     ├── sse/decode-chunk.test.ts          # text/reasoning/tool/data-part → UIMessageChunk;非法帧不污染(Req 2.1-2.4,2.6,10.1)
@@ -176,7 +176,7 @@ packages/react/
 
 ### Modified Files
 
-- 无(greenfield 新包)。若 monorepo workspace 已存在,需将 `packages/react` 纳入 workspace 并接入 `@pi-web/protocol`、`ai`、`react`、`@ai-sdk/react`——接线随仓库初始化处理,本 spec 创建包自身文件与测试。
+- 无(greenfield 新包)。若 monorepo workspace 已存在,需将 `packages/react` 纳入 workspace 并接入 `@blksails/pi-web-protocol`、`ai`、`react`、`@ai-sdk/react`——接线随仓库初始化处理,本 spec 创建包自身文件与测试。
 
 > 每文件单一职责。`sse/` 与 `client/` 为无 React 依赖的纯逻辑(node 可单测);`hooks/`/`provider/` 为 React 绑定层。
 
@@ -304,10 +304,10 @@ flowchart TD
 
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
-| client/pi-client.ts | client | REST 封装(建会话/命令/查询/ui-response/删除) | 4.1-4.6,5.1,6.1-6.3,7.3 | @pi-web/protocol (P0), request/errors (P0), fetch (P0) | Service, API |
+| client/pi-client.ts | client | REST 封装(建会话/命令/查询/ui-response/删除) | 4.1-4.6,5.1,6.1-6.3,7.3 | @blksails/pi-web-protocol (P0), request/errors (P0), fetch (P0) | Service, API |
 | client/request.ts · errors.ts | client | 请求发送 + 错误归一 + 版本判定 | 4.5,9.3 | fetch (P0), version (P1) | Service |
 | sse/parse-sse.ts | sse | SSE 字节流→帧解析(纯函数) | 2.6,8.5,10.1 | — (纯函数) | Service |
-| sse/decode-chunk.ts | sse | uiMessageChunk→UIMessageChunk 映射 | 2.1-2.4,2.6 | @pi-web/protocol (P0), ai (P0) | Event |
+| sse/decode-chunk.ts | sse | uiMessageChunk→UIMessageChunk 映射 | 2.1-2.4,2.6 | @blksails/pi-web-protocol (P0), ai (P0) | Event |
 | sse/connection.ts | sse | 单订阅分流 + 双出口 + close | 1.3,1.4,2.5,3.2,3.4,5.4,8.1,8.5 | parse-sse/decode-chunk (P0), control-store (P0), http-api SSE (P0) | Event, Service |
 | sse/control-store.ts | sse | control 旁路可订阅 store + 扩展 UI 队列 | 7.1,7.2,7.4,8.2,8.3,8.4 | — | State, Event |
 | transport/pi-transport.ts | transport | ChatTransport 适配:send/reconnect/abort | 1.1-1.6,2.5,3.1-3.3 | connection (P0), pi-client (P0), ai (P0) | Service |
@@ -315,7 +315,7 @@ flowchart TD
 | hooks/use-pi-controls.ts | hooks | pi 控制操作 + 操作态 | 6.1-6.6,8.1 | pi-client (P0), React (P0) | Service, State |
 | hooks/use-extension-ui.ts | hooks | 扩展 UI 队列 + 回传 | 7.1-7.5 | control-store/pi-client (P0), React (P0) | State, Service |
 | provider/pi-provider.tsx | provider | 可选注入共享 client | 4.1 | pi-client (P0), React (P0) | State |
-| version.ts | version | protocolVersion 兼容判定 | 9.1-9.3 | @pi-web/protocol (P0) | Service |
+| version.ts | version | protocolVersion 兼容判定 | 9.1-9.3 | @blksails/pi-web-protocol (P0) | Service |
 
 ### transport 层
 
@@ -393,7 +393,7 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
 
 **Responsibilities & Constraints**
 - 用 fetch 订阅 `GET /sessions/:id/stream`(可带 `headers`、`Last-Event-ID`),读取 `ReadableStream` 经 `TextDecoder` + `parseSse` 切帧(Req 8.5)。
-- 对每帧用 `@pi-web/protocol` `SseFrameSchema.safeParse`;`success` 后按 `kind` 分流:`uiMessageChunk`→`decodeUiMessageChunk`→enqueue 到 `ChunkStream`;`control`→写入 `ControlStore`(Req 8.1)。解析失败帧不注入可读流并上报(Req 2.6)。
+- 对每帧用 `@blksails/pi-web-protocol` `SseFrameSchema.safeParse`;`success` 后按 `kind` 分流:`uiMessageChunk`→`decodeUiMessageChunk`→enqueue 到 `ChunkStream`;`control`→写入 `ControlStore`(Req 8.1)。解析失败帧不注入可读流并上报(Req 2.6)。
 - 记录 `lastEventId`(取 `id:` 行)供重连(Req 3.4);结束帧→`close` 可读流(Req 2.5);`close()`→abort reader + 清监听(Req 1.4/5.4)。
 - **唯一订阅**:同会话不重复订阅;`PiTransport` 与 hooks 共享本对象(Req 8.5)。
 
@@ -428,7 +428,7 @@ export interface PiSessionConnection {
 - `control-store.ts`:`ControlStore`——`useSyncExternalStore` 兼容的可订阅 store,持快照 `{ queue, stats, error, extensionUiQueue }`;`applyControlFrame(frame)` 按子类型更新;`enqueueExtensionUi`/`dequeueExtensionUi`(Req 7.1/7.2/7.4/8.2/8.3/8.4)。Contracts: State, Event。
 
 ##### ControlStore State Management
-- State model:`{ queue: QueueSnapshot; stats: StatsSnapshot; error: SessionErrorSnapshot | null; extensionUiQueue: ExtensionUIRequest[] }`(类型取自 `@pi-web/protocol`)。
+- State model:`{ queue: QueueSnapshot; stats: StatsSnapshot; error: SessionErrorSnapshot | null; extensionUiQueue: ExtensionUIRequest[] }`(类型取自 `@blksails/pi-web-protocol`)。
 - Persistence & consistency:仅内存前端派生态;`extensionUiQueue` FIFO,respond 成功才出队(Req 7.2/7.3)。
 - Concurrency:单订阅串行写入;读经 `getSnapshot` 不可变快照,配合 `useSyncExternalStore` 防撕裂。
 
@@ -443,7 +443,7 @@ export interface PiSessionConnection {
 
 **Responsibilities & Constraints**
 - `createPiClient(baseUrl, fetch?)` 返回绑定客户端;Where 提供 `fetch` 则用之(Req 4.1)。
-- 方法形状以 `@pi-web/protocol` REST DTO 与 `http-api` 端点路径为准,不重定义(Req 4.6)。
+- 方法形状以 `@blksails/pi-web-protocol` REST DTO 与 `http-api` 端点路径为准,不重定义(Req 4.6)。
 - 非 2xx → `PiHttpError`(状态码 + 协议错误体 `{ code, message, fields? }`)(Req 4.5);不静默吞错。
 
 **Contracts**: Service [x] / API [x]
@@ -454,7 +454,7 @@ import type {
   CreateSessionRequest, PromptRequest, SteerRequest, FollowUpRequest,
   SetModelRequest, SetThinkingRequest, ExtensionUIResponse,
   StateResponse, StatsResponse, MessagesResponse, CommandsResponse,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 
 export type FetchLike = typeof fetch;
 
@@ -479,7 +479,7 @@ export function createPiClient(baseUrl: string, fetchImpl?: FetchLike): PiClient
 ```
 - Preconditions:`baseUrl` 指向 `http-api` 挂载根。
 - Postconditions:成功返回协议响应 DTO;失败抛 `PiHttpError`。
-- Invariants:请求/响应形状仅来自 `@pi-web/protocol`。
+- Invariants:请求/响应形状仅来自 `@blksails/pi-web-protocol`。
 
 **Implementation Notes**
 - Integration:`request.ts` 统一拼 URL、JSON、headers 透传、注入 fetch;`errors.ts` 归一错误与版本判定。
@@ -518,7 +518,7 @@ export interface UsePiControlsResult {
   state: Record<string, { pending: boolean; error?: unknown }>;
 }
 export interface UseExtensionUIResult {
-  queue: ExtensionUIRequest[];               // 类型取自 @pi-web/protocol
+  queue: ExtensionUIRequest[];               // 类型取自 @blksails/pi-web-protocol
   current: ExtensionUIRequest | undefined;
   respond(requestId: string, response: ExtensionUIResponse): Promise<void>;
   error: unknown;
@@ -534,13 +534,13 @@ export interface UseExtensionUIResult {
 
 **Summary-only**:
 - `provider/pi-provider.tsx`:可选 `PiProvider`(注入共享 `baseUrl`/`fetch`/`client`)+ `usePiContext`;hooks 未显式传 client 时回退到 context(Req 4.1)。非强制——hooks 也接受显式注入。Contracts: State。
-- `version.ts`:以 `@pi-web/protocol` 的 `protocolVersion` 为唯一基准(Req 9.1);对 SSE 帧/REST 响应携带的 `protocolVersion` 做兼容判定(Req 9.2);不兼容 → `PiProtocolVersionError` 显式暴露(Req 9.3)。Contracts: Service。
+- `version.ts`:以 `@blksails/pi-web-protocol` 的 `protocolVersion` 为唯一基准(Req 9.1);对 SSE 帧/REST 响应携带的 `protocolVersion` 做兼容判定(Req 9.2);不兼容 → `PiProtocolVersionError` 显式暴露(Req 9.3)。Contracts: Service。
 
 ## Data Models
 
 ### Data Contracts & Integration
 
-- **核心消费契约**:`SseFrame`(`kind` 判别)、`UiMessageChunk` 负载、`data-pi-*` data-part、REST 请求/响应 DTO、`protocolVersion`——一律取自 `@pi-web/protocol`,本层不重定义(Req 9.1)。
+- **核心消费契约**:`SseFrame`(`kind` 判别)、`UiMessageChunk` 负载、`data-pi-*` data-part、REST 请求/响应 DTO、`protocolVersion`——一律取自 `@blksails/pi-web-protocol`,本层不重定义(Req 9.1)。
 - **解码映射**:`uiMessageChunk` 帧 → AI SDK `UIMessageChunk` 的对应关系集中于 `decode-chunk.ts`(text/reasoning/tool/data-part);`data-pi-*` 按 `type` 透传为 AI SDK `data-*` part。
 - **前端派生状态**(本层唯一持有):连接态、`ControlStore` 快照(queue/stats/error/extensionUiQueue)、控制操作态——均为 UI 派生,非服务端真值。
 - **序列化**:REST 走 JSON;SSE 文本帧经 `parseSse` 解为 `SseFrame` 对象;`Last-Event-ID` 取自帧 `id:` 行。

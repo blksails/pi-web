@@ -1,6 +1,6 @@
 /** webext-renderer-agent UI 扩展:Tier 2 自定义 data-part 渲染器。 */
 import * as React from "react";
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/pi-web-kit";
 
 function MetricRenderer({ part }: { part: { data?: unknown } }): React.JSX.Element {
   const data = (part.data ?? {}) as { label?: string; value?: number };

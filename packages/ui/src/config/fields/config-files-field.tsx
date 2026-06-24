@@ -8,7 +8,7 @@
  * 拉取按 URL 模块级缓存。文件来自磁盘扫描,不支持增删。
  */
 import * as React from "react";
-import { jsonSchemaToFormSchema, type FormSchema } from "@pi-web/protocol";
+import { jsonSchemaToFormSchema, type FormSchema } from "@blksails/pi-web-protocol";
 import type { FieldProps, FieldRegistry } from "../field-registry.js";
 import { SchemaForm } from "../schema-form.js";
 import { Card } from "../../ui/card.js";

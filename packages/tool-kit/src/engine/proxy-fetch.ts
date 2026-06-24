@@ -1,5 +1,5 @@
 /**
- * Proxied `fetch` wrapper for `@pi-web/tool-kit` runtime.
+ * Proxied `fetch` wrapper for `@blksails/pi-web-tool-kit` runtime.
  *
  * Per-request design: `proxyUrl` is threaded in per call (not read from global
  * env).  Each `EndpointBehavior.proxy` declares its own proxy URL (or a

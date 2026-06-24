@@ -38,7 +38,7 @@
   - `attachments.tsx` 用 `item.dataUrl` 渲染缩略图/hover 预览;`pi-chat.tsx` 在 `onAddAttachments` 调 `add()`,提交时 `toImageContents()` → `{body:{images}}`。
   - `agent-message-to-ui.ts`:`raw.type==="image"` → `{type:"file", mediaType, url:"data:...;base64,..."}`。
 - **Implications**:
-  - `useAttachments` 需接受一个 `upload(file)→Promise<Attachment>` 注入(由 `@pi-web/react` 客户端提供,指向 `POST /sessions/:id/attachments`),`add()` 改为异步上传、置 `uploading` 态、成功后存 `att_<nanoid>` + 展示 URL(Req 5.1/5.4/5.5)。
+  - `useAttachments` 需接受一个 `upload(file)→Promise<Attachment>` 注入(由 `@blksails/pi-web-react` 客户端提供,指向 `POST /sessions/:id/attachments`),`add()` 改为异步上传、置 `uploading` 态、成功后存 `att_<nanoid>` + 展示 URL(Req 5.1/5.4/5.5)。
   - `PendingAttachment` 扩展:增 `attachmentId?`(正式 id)、`status:"uploading"|"ready"|"error"`、`displayUrl`(分发 URL,替代 `dataUrl` 用于展示)。`dataUrl` 保留作上传前本地预览与 `toImageContents()`(vision 维持现状)。
   - `agent-message-to-ui.ts`:`image` part 若带公开 id(未来 wire 形态)→ 渲染分发 URL;**遗留**无 id 的内联 base64 仍重建 `data:` URL(Req 6.3 防回归)。本切片不改 wire 协议中 image part 形态(那属 LLM/transcript 域),仅在「描述符可得时」走 URL;实际 URL 化主要体现在输入区与上传回显。
 

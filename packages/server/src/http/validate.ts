@@ -1,5 +1,5 @@
 /**
- * http-api — 请求体边界校验(用 @pi-web/protocol DTO `safeParse`,Req 2.2/3.3/4.5)。
+ * http-api — 请求体边界校验(用 @blksails/pi-web-protocol DTO `safeParse`,Req 2.2/3.3/4.5)。
  *
  * 成功返回 typed body;失败返回带字段路径的统一 400 错误响应,且不向会话转发。
  */

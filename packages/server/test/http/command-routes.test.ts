@@ -3,7 +3,7 @@
  * (Req 3.x,10.1)。
  */
 import { describe, expect, it } from "vitest";
-import type { Attachment, RpcResponse } from "@pi-web/protocol";
+import type { Attachment, RpcResponse } from "@blksails/pi-web-protocol";
 import {
   SessionStoppedError,
   UnknownExtensionUIError,

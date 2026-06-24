@@ -46,12 +46,12 @@ process.env.PI_WEB_STUB_AGENT_PATH = path.join(
 );
 
 // Capture every SpawnSpec the handler hands to PiRpcProcess, while keeping all
-// other @pi-web/server exports real (the handler relies on them).
+// other @blksails/pi-web-server exports real (the handler relies on them).
 type CapturedSpec = { env?: Record<string, string>; args: string[] };
 const capturedSpecs: CapturedSpec[] = [];
-vi.mock("@pi-web/server", async () => {
+vi.mock("@blksails/pi-web-server", async () => {
   const actual =
-    await vi.importActual<typeof import("@pi-web/server")>("@pi-web/server");
+    await vi.importActual<typeof import("@blksails/pi-web-server")>("@blksails/pi-web-server");
   const RealPiRpcProcess = actual.PiRpcProcess as unknown as new (
     spec: CapturedSpec,
   ) => object;
@@ -65,7 +65,7 @@ vi.mock("@pi-web/server", async () => {
 });
 
 const { getHandler, shutdownHandler } = await import("@/lib/app/pi-handler");
-const { attachmentStoreConfigFromEnv } = await import("@pi-web/server");
+const { attachmentStoreConfigFromEnv } = await import("@blksails/pi-web-server");
 
 function req(pathname: string, init?: RequestInit): Request {
   return new Request(`http://localhost${pathname}`, init);

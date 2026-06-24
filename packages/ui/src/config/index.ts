@@ -1,5 +1,5 @@
 /**
- * @pi-web/ui — config 子面(由 FormSchema 渲染的配置表单层)。
+ * @blksails/pi-web-ui — config 子面(由 FormSchema 渲染的配置表单层)。
  */
 export {
   type FieldProps,

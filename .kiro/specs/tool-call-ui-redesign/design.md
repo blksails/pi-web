@@ -1,7 +1,7 @@
 # Design Document — tool-call-ui-redesign
 
 ## Overview
-**Purpose**: 将 `@pi-web/ui` 的工具调用渲染 `PiToolPart` 由单体卡片复合化为一组可装配、可独立替换的子组件（`ToolHeader` / `ToolContent` / `ToolInput` / `ToolOutput`），对齐 AI SDK Elements `Tool` 的视觉与交互（状态徽章、按状态展开、输入语法高亮、输出富渲染），并为宿主新增 `ComponentOverrides.ToolPart` 整体替换入口。
+**Purpose**: 将 `@blksails/pi-web-ui` 的工具调用渲染 `PiToolPart` 由单体卡片复合化为一组可装配、可独立替换的子组件（`ToolHeader` / `ToolContent` / `ToolInput` / `ToolOutput`），对齐 AI SDK Elements `Tool` 的视觉与交互（状态徽章、按状态展开、输入语法高亮、输出富渲染），并为宿主新增 `ComponentOverrides.ToolPart` 整体替换入口。
 
 **Users**: 最终用户在会话中看到更易读的工具卡；宿主应用作者可整体替换工具卡；agent source 的 `.pi/web` 扩展作者继续通过 `renderers.tools` 按工具名整卡替换。
 

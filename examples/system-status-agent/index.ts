@@ -15,7 +15,7 @@
  *
  * 注:emitUi / ctx.ui 仅在工具执行期间有效;model 省略 → 继承 ~/.pi/agent/settings.json。
  */
-import { defineAgent, emitUi } from "@pi-web/agent-kit";
+import { defineAgent, emitUi } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

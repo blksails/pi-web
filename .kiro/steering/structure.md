@@ -8,7 +8,7 @@
 ## 目录模式
 
 ### 后端引擎(Node)
-**位置**:`lib/pi/`(或 `@pi-web/server` 包)
+**位置**:`lib/pi/`(或 `@blksails/pi-web-server` 包)
 **职责**:agent 源解析、bootstrap runner、RPC 通道、会话注册与翻译。
 **示例**:`agent-source.ts`(目录|git + 模式检测)、`runner.ts`(jiti + `runRpcMode`)、`agent-loader.ts`、`pi-rpc-process.ts`(`PiRpcChannel` 的 local 实现)、`rpc-types.ts`、`session.ts`、`registry.ts`、`event-to-uimessage.ts`。
 
@@ -41,8 +41,8 @@ import { translate } from './event-to-uimessage'        // 相对(同模块)
 
 ## 代码组织原则
 
-- **传输/隔离/存储用接口隔开**:`PiRpcChannel`、`agentHostProvider`、`SessionStore`、`BlobStore`(附件对象存储,LocalFs→S3)是为未来(e2b/edge/device、对象存储)预留的接缝,按接口写、后端经配置切换。附件能力按 L0 存储 / L1 引用 / L2 投影(resolve) / L3 context 闸门分层,模块在 `@pi-web/server` 的 `attachment/`(存储)与 `attachment-bridge/`(tool 桥接)。
-- **协议是稳定契约**:`@pi-web/protocol` 的类型/schema 改动需语义化版本;SSE 帧带 `protocolVersion`。
+- **传输/隔离/存储用接口隔开**:`PiRpcChannel`、`agentHostProvider`、`SessionStore`、`BlobStore`(附件对象存储,LocalFs→S3)是为未来(e2b/edge/device、对象存储)预留的接缝,按接口写、后端经配置切换。附件能力按 L0 存储 / L1 引用 / L2 投影(resolve) / L3 context 闸门分层,模块在 `@blksails/pi-web-server` 的 `attachment/`(存储)与 `attachment-bridge/`(tool 桥接)。
+- **协议是稳定契约**:`@blksails/pi-web-protocol` 的类型/schema 改动需语义化版本;SSE 帧带 `protocolVersion`。
 - **安全是可替换策略而非硬编码**:沙箱、信任(`trustPolicy`)、鉴权(`authResolver`)做成插件点。
 - **spec 边界 = 包/层边界**:从内核到外围拆分,每层可独立测试 + e2e。
 

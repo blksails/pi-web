@@ -6,14 +6,14 @@
 - **Key Findings**:
   - `PiChat` 已具备四维定制(`slots` / `components`(ComponentOverrides ~13)/ `registry`(`createRendererRegistry` 工厂已存在)/ `layout|icons|theme|toolbarOrder`),但全部经宿主 React props 在装配点喂入。本特性把「喂入源」从宿主代码迁移到 agent source 的 `.pi/web` 声明 + 运行时加载,**不重造定制维度**。
   - `renderer-registry.ts` 已导出 `createRendererRegistry()` 工厂与模块级 `defaultRendererRegistry` 单例;per-session 化只需停用单例默认、改由会话作用域注入工厂实例 + key 命名空间,属采纳改造而非重建。
-  - 现有 transport 已有版本化 SSE 帧(`uiMessageChunk` / `control`)与 REST DTO(`@pi-web/protocol`)。Tier 3 的 UI↔agent RPC 应**复用 control 帧(下行)+ REST 命令(上行)**,新增 `ui-rpc` 控制载荷与 `/sessions/:id/ui-rpc` 端点,而非另起传输。
+  - 现有 transport 已有版本化 SSE 帧(`uiMessageChunk` / `control`)与 REST DTO(`@blksails/pi-web-protocol`)。Tier 3 的 UI↔agent RPC 应**复用 control 帧(下行)+ REST 命令(上行)**,新增 `ui-rpc` 控制载荷与 `/sessions/:id/ui-rpc` 端点,而非另起传输。
   - server-driven UI 已有 `SandboxRenderer` + 白名单组件(受限节点树),正是 Tier 2 内联渲染「只许声明式」的现成承载。
 
 ## Research Log
 
 ### 共享单例约束(React / web-kit external)
 - **Context**: 独立预构建 bundle 若自带 React 会触发 "invalid hook call"。
-- **Findings**: 浏览器原生 ESM + import map 可把裸 specifier(`react`/`react-dom`/`@pi-web/web-kit`/设计系统)映射到宿主已加载的单例 URL;`pi-web build` 须把这些标 external 并在产物校验阶段拒绝内联副本。
+- **Findings**: 浏览器原生 ESM + import map 可把裸 specifier(`react`/`react-dom`/`@blksails/pi-web-kit`/设计系统)映射到宿主已加载的单例 URL;`pi-web build` 须把这些标 external 并在产物校验阶段拒绝内联副本。
 - **Implications**: 这与前期 pi SDK 的 `serverExternalPackages` 是同一原理(重型单例不可重复打包),复用同一心智模型。
 
 ### git source 加载同源 bundle 的风险面

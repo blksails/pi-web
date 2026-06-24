@@ -10,7 +10,7 @@
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { ConfigDomainId } from "@pi-web/protocol";
+import type { ConfigDomainId } from "@blksails/pi-web-protocol";
 
 function resolveDefaultRoot(): string {
   const fromEnv = process.env["PI_WEB_AGENT_DIR"];

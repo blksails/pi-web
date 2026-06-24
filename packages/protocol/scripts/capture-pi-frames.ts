@@ -7,7 +7,7 @@
  * 样本帧写入 test/fixtures/sse-sample-frames.json。
  *
  * 用法(需要真实 pi 环境 + provider key):
- *   ANTHROPIC_API_KEY=sk-... pnpm --filter @pi-web/protocol exec \
+ *   ANTHROPIC_API_KEY=sk-... pnpm --filter @blksails/pi-web-protocol exec \
  *     tsx scripts/capture-pi-frames.ts            # 或 node --loader 等
  *
  * 若未设置 API key,脚本会拒绝运行(不静默生成伪造帧)——已落仓的 fixtures 此时为

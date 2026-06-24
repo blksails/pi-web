@@ -2,7 +2,7 @@
 
 ## Introduction
 
-本规格为 pi-web 的 `PiChat` 建立一套面向集成方开发者的「四维可定制契约」,使其在不修改 `@pi-web/ui` 源码的前提下完成外观与装配的定制。四个维度为:(1) 主题与 CSS 变量;(2) 整块区域插槽 slots;(3) 细粒度组件覆盖 components;(4) 布局预设 layout 与图标主题 icons。
+本规格为 pi-web 的 `PiChat` 建立一套面向集成方开发者的「四维可定制契约」,使其在不修改 `@blksails/pi-web-ui` 源码的前提下完成外观与装配的定制。四个维度为:(1) 主题与 CSS 变量;(2) 整块区域插槽 slots;(3) 细粒度组件覆盖 components;(4) 布局预设 layout 与图标主题 icons。
 
 架构边界已与干系人确认:外观定制完全归属前端,agent source 不参与外观驱动;agent 仅负责内容/语义/交互流(server-driven UI 与 `ctx.ui` 交互),其行为不受本规格影响。本规格只定义「单个 PiChat 的可定制契约」,作为后续任意「多实例打包形态」的稳定地基;多实例打包本期不实现。
 
@@ -11,13 +11,13 @@
 ## Boundary Context
 
 - **In scope**:
-  - `@pi-web/ui` 包内,单个 `PiChat` 的主题、slots、components、layout、icons 五类公开定制入口(归为四维)。
+  - `@blksails/pi-web-ui` 包内,单个 `PiChat` 的主题、slots、components、layout、icons 五类公开定制入口(归为四维)。
   - 全部以非破坏式新增方式提供:现有 `slots`(header/footer/sidebar/messageActions)、三个渲染注册表、CSS 变量用法保持原状仍可运行。
   - 可由下游 Tailwind 配置一行引用的样式预设导出。
   - 覆盖关键定制路径的端到端测试。
 - **Out of scope**:
   - 由 agent source 驱动外观的任何机制(如 `emitAppearance`、`ambient.appearance`、agent 自带 React 组件、运行时加载 agent 前端包)。
-  - 协议层 / server 层 / `@pi-web/react` / `@pi-web/agent-kit` 的改动。
+  - 协议层 / server 层 / `@blksails/pi-web-react` / `@blksails/pi-web-agent-kit` 的改动。
   - 多 PiChat 实例的打包形态(工厂 / 预设变体 / preset 对象)。
   - Artifact 分栏的完整功能实现;`split` 仅作为布局骨架预设提供让位区域,区域内容由现有插槽/子节点承接。
 - **Adjacent expectations**:
@@ -53,7 +53,7 @@
 #### Acceptance Criteria
 1. The PiChat shall 通过既有 CSS 变量(颜色、圆角等令牌)驱动全部组件配色,使集成方覆盖变量即可全局换肤而无需改组件代码。
 2. Where 集成方覆盖品牌令牌(如主色、圆角), the PiChat shall 在亮色与暗色下分别采用集成方提供的对应取值。
-3. The `@pi-web/ui` 包 shall 导出一份样式预设,使下游构建配置能够以一行引用方式获得本包的令牌到工具类映射,而无需手工重复声明该映射。
+3. The `@blksails/pi-web-ui` 包 shall 导出一份样式预设,使下游构建配置能够以一行引用方式获得本包的令牌到工具类映射,而无需手工重复声明该映射。
 
 ### Requirement 4: 整块区域插槽扩展(background 与 empty)
 

@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * @pi-web/ui Tailwind 预设(pi-chat-customization 任务 1.6)。
+ * @blksails/pi-web-ui Tailwind 预设(pi-chat-customization 任务 1.6)。
  *
  * 将 shadcn CSS 变量到工具类的令牌映射抽为可复用预设,下游 Tailwind 配置经
  * `presets: [piWebPreset]` 一行接入,无需手工重复声明该映射(Req 3.3)。

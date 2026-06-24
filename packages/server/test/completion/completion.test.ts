@@ -19,7 +19,7 @@ import {
   type CompletionProvider,
   type CompletionCtx,
 } from "../../src/completion/index.js";
-import type { CompletionItem } from "@pi-web/protocol";
+import type { CompletionItem } from "@blksails/pi-web-protocol";
 
 function item(p: Partial<CompletionItem> & { id: string }): CompletionItem {
   return {

@@ -14,7 +14,7 @@
  * NOTE: `model` 故意省略 → 继承 ~/.pi/agent/settings.json 的 defaultProvider/defaultModel,
  * 开箱即用于任意 pi 登录(与 hello-agent 同姿态)。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { editImageTool } from "./tools/edit-image-tool.js";
 
 export default defineAgent({

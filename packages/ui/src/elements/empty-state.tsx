@@ -8,7 +8,7 @@
  * 或 slots.empty 替换(Req 4.2)。
  */
 import * as React from "react";
-import type { Suggestion } from "@pi-web/react";
+import type { Suggestion } from "@blksails/pi-web-react";
 import { Suggestions } from "./suggestions.js";
 import type { StarterCardProps } from "./starter-card.js";
 import { cn } from "../lib/cn.js";

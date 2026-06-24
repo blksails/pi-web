@@ -2,7 +2,7 @@
  * pi-handler — the singleton `createPiWebHandler` assembly.
  *
  * First call assembles the session dependencies (SessionManager + SessionStore
- * from @pi-web/server) plus a `createChannel` seam, injects config defaults,
+ * from @blksails/pi-web-server) plus a `createChannel` seam, injects config defaults,
  * and constructs `createPiWebHandler`. The instance is pinned on `globalThis`
  * so it survives Next dev hot-reload and is reused across requests (Req 2.5).
  *
@@ -35,10 +35,10 @@ import {
   type ResolvedSource,
   type SessionChannel,
   type CreateChannelOpts,
-} from "@pi-web/server";
+} from "@blksails/pi-web-server";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
-import { makeProjectTrustPolicy } from "@pi-web/server/trust";
+import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
 // listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
 // parseHiddenProviders/excludeProviders 为纯函数,经同一子路径转出,用于按
 // PI_WEB_HIDE_PROVIDERS 部署期开关从下拉中剔除指定 provider 的模型。
@@ -46,8 +46,8 @@ import {
   listModelOptions,
   parseHiddenProviders,
   excludeProviders,
-} from "@pi-web/server/model-options";
-import type { SpawnSpec } from "@pi-web/protocol";
+} from "@blksails/pi-web-server/model-options";
+import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -134,7 +134,7 @@ function stubAgentPath(): string {
   if (override !== undefined && override !== "") {
     // Resolve against the project root (`process.cwd()`, where the Next server
     // runs) so a RELATIVE override works regardless of the stub's spawn cwd
-    // (= the `@pi-web/server` package dir). `path.resolve` passes an absolute
+    // (= the `@blksails/pi-web-server` package dir). `path.resolve` passes an absolute
     // override through unchanged.
     return path.resolve(process.cwd(), override);
   }
@@ -184,7 +184,7 @@ type GlobalWithHandler = typeof globalThis & {
 /**
  * Build the stub spawn spec (local node + stub script), inheriting env.
  *
- * `--import jiti/register` lets the stub `.mjs` import the TS-source `@pi-web/server`
+ * `--import jiti/register` lets the stub `.mjs` import the TS-source `@blksails/pi-web-server`
  * (no dist build) so it can persist/resume via the shared `SessionEntryStore`.
  * Session identity + creation metadata are passed via `PI_WEB_STUB_*` env so the
  * stub aligns its persisted session id with the host sessionId and can cold-resume.
@@ -196,7 +196,7 @@ function stubSpawnSpec(
   sessionCwd: string,
   attachment: { dir: string; secret: string },
 ): SpawnSpec {
-  // Run with cwd = @pi-web/server package dir so `--import jiti/register`
+  // Run with cwd = @blksails/pi-web-server package dir so `--import jiti/register`
   // resolves jiti from the server package (pnpm does not hoist it to the app
   // root). The session cwd is conveyed separately via PI_WEB_STUB_CWD (used by
   // the stub to write the session header / piweb.session metadata).

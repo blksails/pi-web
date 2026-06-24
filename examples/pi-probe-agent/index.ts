@@ -17,7 +17,7 @@
  * 当前 trust 未打通(见 `docs/pi-trust-loading-design.md` 的 P1/P2/P3),预期
  * `.pi/` **加载不到**;此夹具同时是「修复前复现 / 修复后验证」的回归夹具。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

@@ -12,7 +12,7 @@
  * stub-agent-process.mjs), which emits the identical `extension_ui_request`
  * frame without any API cost.
  */
-import type { ExtensionFactory } from "@pi-web/agent-kit";
+import type { ExtensionFactory } from "@blksails/pi-web-agent-kit";
 
 const confirmDemo: ExtensionFactory = (ctx) => ({
   name: "confirm-demo",

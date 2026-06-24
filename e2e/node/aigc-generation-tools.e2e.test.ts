@@ -29,7 +29,7 @@ import { LocalFsBlobBackend } from "../../packages/server/src/attachment/local-f
 import { AttachmentRegistry } from "../../packages/server/src/attachment/attachment-registry.js";
 import { AttachmentStore } from "../../packages/server/src/attachment/attachment-store.js";
 
-// ── tool-kit runtime imports (relative — @pi-web/tool-kit not in root node_modules) ──
+// ── tool-kit runtime imports (relative — @blksails/pi-web-tool-kit not in root node_modules) ──
 import { buildAigcTools, SEAM_KEY } from "../../packages/tool-kit/src/runtime.js";
 import type {
   AttachmentToolContext,

@@ -54,10 +54,10 @@ node --import jiti/register packages/server/src/runner/runner.ts \
 
 ## 3. pi-web 侧读写同一批文件:`FsSessionEntryStore`
 
-`@pi-web/server` 的 `FsSessionEntryStore` 以**完全兼容**上述布局的方式读写会话文件:
+`@blksails/pi-web-server` 的 `FsSessionEntryStore` 以**完全兼容**上述布局的方式读写会话文件:
 
 ```ts
-import { FsSessionEntryStore } from "@pi-web/server";
+import { FsSessionEntryStore } from "@blksails/pi-web-server";
 
 // root = sessions 根目录(即 <agentDir>/sessions)
 const store = new FsSessionEntryStore("/tmp/my-sessions/sessions");

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-`@pi-web/protocol` 是 pi-web 全项目的**唯一契约根**:一个零运行时依赖、同构可用(Node + 浏览器)、纯 TypeScript 的协议包。它集中定义并以 zod schema 在运行时校验所有跨层契约——包括从 `@earendil-works/pi-coding-agent`(pi `0.79.x`)`dist/**/*.d.ts` 派生并本地化的 pi 原生 RPC 类型、pi-web 自定义的 SSE 帧、UIMessage data-part、REST DTO,并导出语义化版本常量 `protocolVersion` 用于握手与漂移防护。
+`@blksails/pi-web-protocol` 是 pi-web 全项目的**唯一契约根**:一个零运行时依赖、同构可用(Node + 浏览器)、纯 TypeScript 的协议包。它集中定义并以 zod schema 在运行时校验所有跨层契约——包括从 `@earendil-works/pi-coding-agent`(pi `0.79.x`)`dist/**/*.d.ts` 派生并本地化的 pi 原生 RPC 类型、pi-web 自定义的 SSE 帧、UIMessage data-part、REST DTO,并导出语义化版本常量 `protocolVersion` 用于握手与漂移防护。
 
 本协议包是依赖图最底层(`protocol ← 所有`),后端引擎、HTTP 层、前端、第三方集成方均依赖它,因此其正确性、稳定性与可校验性直接决定全链路契约一致性。权威设计见 `PLAN.md` §3.1、§4、§13.1–13.2、§14.1①。
 

@@ -21,7 +21,7 @@ export interface SessionStore {
 }
 
 /** 挂 globalThis 的单机 Map,抗 Next dev 热重载(PLAN §3.2)。 */
-const GLOBAL_KEY = Symbol.for("@pi-web/server:InMemorySessionStore");
+const GLOBAL_KEY = Symbol.for("@blksails/pi-web-server:InMemorySessionStore");
 
 interface GlobalWithStore {
   [GLOBAL_KEY]?: Map<SessionId, PiSession>;

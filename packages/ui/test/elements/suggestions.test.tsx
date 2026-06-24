@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { Suggestions } from "../../src/elements/suggestions.js";
-import type { Suggestion } from "@pi-web/react";
+import type { Suggestion } from "@blksails/pi-web-react";
 
 /**
  * Suggestions 建议气泡测试(Req 10.1/10.2/10.3、11.4)。

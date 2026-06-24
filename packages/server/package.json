@@ -1,5 +1,5 @@
 {
-  "name": "@pi-web/server",
+  "name": "@blksails/pi-web-server",
   "version": "0.1.0",
   "private": false,
   "type": "module",
@@ -17,7 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@pi-web/protocol": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
     "@earendil-works/pi-ai": "^0.79.6",
     "@earendil-works/pi-coding-agent": "^0.79.6",
     "jiti": "^2.7.0",
@@ -30,5 +30,12 @@
     "pg-mem": "^3.0.5",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "runner-bootstrap.mjs"
+  ]
 }

@@ -21,15 +21,15 @@
   - 定义 `WebExtension` 描述符(slots/renderers/contributions/config/artifact)与 `SlotKey` 联合
   - 定义 `UiRpcRequest`/`UiRpcResponse` 与 `control` 帧 `ui-rpc` 载荷;定义 `ArtifactMessage` 联合;均带 `protocolVersion`
   - 经 protocol barrel 导出;新增 schema 的合法/非法样例可被 zod 校验通过/拒绝
-  - 完成态:`pnpm --filter @pi-web/protocol test` 含新 schema 单测且通过
+  - 完成态:`pnpm --filter @blksails/pi-web-protocol test` 含新 schema 单测且通过
   - _Requirements: 1.3, 2.1, 4.1, 4.6, 5.4, 6.1_
   - _Boundary: protocol web-ext schema_
 
-- [x] 1.2 脚手架 `@pi-web/web-kit` 工作区包
-  - 新建包 `package.json`(exports `.` 与 `./build`,bin `pi-web`,依赖 `@pi-web/protocol`、esbuild)、tsconfig、空 barrel
+- [x] 1.2 脚手架 `@blksails/pi-web-kit` 工作区包
+  - 新建包 `package.json`(exports `.` 与 `./build`,bin `pi-web`,依赖 `@blksails/pi-web-protocol`、esbuild)、tsconfig、空 barrel
   - 仅依赖 protocol,不依赖 server 内部;`pnpm install` 后包可被解析、`typecheck` 通过(空实现占位)
-  - 确立示例 `.pi/web` 如何解析 `@pi-web/web-kit`:示例经 standalone `pi-web build` 构建(不纳入 `pnpm-workspace.yaml`),避免后续 (P) 示例任务争用共享工作区配置
-  - 完成态:`pnpm --filter @pi-web/web-kit typecheck` EXIT 0;示例构建解析路径已文档化
+  - 确立示例 `.pi/web` 如何解析 `@blksails/pi-web-kit`:示例经 standalone `pi-web build` 构建(不纳入 `pnpm-workspace.yaml`),避免后续 (P) 示例任务争用共享工作区配置
+  - 完成态:`pnpm --filter @blksails/pi-web-kit typecheck` EXIT 0;示例构建解析路径已文档化
   - _Requirements: 9.1, 9.4_
   - _Boundary: web-kit package scaffold_
 
@@ -46,7 +46,7 @@
 - [x] 2.1 (P) 实现 web-kit 作者 SDK 面
   - `defineWebExtension()` identity + 编译期类型校验;`UiRpcClient` 接口与经宿主注入桥的实现
   - `host-context`(从宿主取 registry/bus/theme)与受控设计原语 re-export;`slots` key 常量与 protocol 对齐
-  - 与 `@pi-web/agent-kit` 的 `defineAgent` 使用范式对称
+  - 与 `@blksails/pi-web-agent-kit` 的 `defineAgent` 使用范式对称
   - 公共 API 遵循语义化版本,在导出面明确标注稳定核与 experimental 区(experimental 入口加显式标记/命名空间)
   - 完成态:示例性 `.pi/web/web.config.ts` 能以类型安全方式书写并通过 typecheck;导出面区分稳定/experimental
   - _Requirements: 9.1, 9.2, 9.4, 9.5_
@@ -54,7 +54,7 @@
   - _Depends: 1.1, 1.2_
 
 - [x] 2.2 (P) 实现 `pi-web build` 编排与 externals 强制
-  - esbuild 编排:将 `react`/`react-dom`/`@pi-web/web-kit`/设计系统标 external,产出自包含 ESM
+  - esbuild 编排:将 `react`/`react-dom`/`@blksails/pi-web-kit`/设计系统标 external,产出自包含 ESM
   - `externals-guard`:扫描产物,内联了上述任一单例则 `exit 1` 并报告
   - 完成态:对内联 React 的样例输入 build 失败;对正确 external 的输入产出 `.mjs`
   - _Requirements: 6.1, 6.4, 9.3_

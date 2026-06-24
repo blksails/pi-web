@@ -5,14 +5,14 @@
  * UiRpcClient 绑定,暴露宿主可直接调用的方法。控制器只编排:调用扩展 provider(其内部
  * 经 rpc 回 agent),返回候选/结果。错误被收敛为安全空结果,不抛(Req 4.5)。
  */
-import type { WebExtension } from "@pi-web/web-kit";
-import type { UiRpcClient } from "@pi-web/web-kit";
+import type { WebExtension } from "@blksails/pi-web-kit";
+import type { UiRpcClient } from "@blksails/pi-web-kit";
 import type {
   SlashCommandItem,
   MentionItem,
   CompletionItem,
   Keybinding,
-} from "@pi-web/web-kit";
+} from "@blksails/pi-web-kit";
 
 export interface ContributionsController {
   readonly hasSlash: boolean;

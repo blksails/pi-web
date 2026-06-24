@@ -8,8 +8,8 @@
  * 本模块是隔离单元:不依赖 PiChat;在 chat 内的实际挂载由 pi-chat.tsx(任务 5.2)完成。
  */
 import * as React from "react";
-import type { SlotKey } from "@pi-web/protocol";
-import type { WebExtension, SlotContribution } from "@pi-web/web-kit";
+import type { SlotKey } from "@blksails/pi-web-protocol";
+import type { WebExtension, SlotContribution } from "@blksails/pi-web-kit";
 import type {
   RendererRegistry,
   ToolRenderer,

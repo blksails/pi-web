@@ -15,8 +15,8 @@ import {
   authConfigSchema,
   settingsConfigSchema,
   sandboxConfigSchema,
-} from "@pi-web/protocol";
-import type { ConfigDomainId } from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
+import type { ConfigDomainId } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { InjectedRoute, RequestContext } from "../http/index.js";
 import type { AuthContext } from "../http/index.js";

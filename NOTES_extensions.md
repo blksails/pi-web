@@ -68,7 +68,7 @@
 - ✅ **`agent-source/entry-probe.ts`**:已重写为 `async probeEntry(dir): Promise<EntryProbe>`。优先 `package.json#pi-web.entry`(覆盖文件缺失抛 `EntryOverrideError`,不静默回退),否则按 `index.ts > index.js > index.mjs` 取首个**确为文件**者;循环写法正确(命中才 return)。**旧的"只检查第一个约定名"循环 bug 已不存在**。注意:约定名收窄,不再支持 `agent.ts`/`*.mts`。
 - ✅ **`runner/runner.ts`**:`parseRunnerArgs` 解析 `--agent/--cwd/--agent-dir/--trusted/--session-id/--model` 等;`--trusted` 默认 `false`;`startRunner` → `makeResolveProjectTrust(args.trusted)` → `loadAgentDefinition` → `createAgentSessionRuntime`。解析与接线正确。
 - ✅ **`runner/option-mapper.ts` `buildRuntimeFactory`**:把 trust 接到 `createAgentSessionServices({ ..., resourceLoaderReloadOptions:{ resolveProjectTrust: trust } })`(SDK 契约不变,接线正确)。
-- ✅ **`runner/agent-loader.ts`**:`buildResolutionAliases()` 给 jiti 配 alias,把 `@pi-web/agent-kit`(→`packages/agent-kit/src/index.ts`)与 SDK 按 **runner 自身位置**解析 → agent 文件**位置无关**即可被加载(无需是 workspace 包、无需本地 node_modules)。
+- ✅ **`runner/agent-loader.ts`**:`buildResolutionAliases()` 给 jiti 配 alias,把 `@blksails/pi-web-agent-kit`(→`packages/agent-kit/src/index.ts`)与 SDK 按 **runner 自身位置**解析 → agent 文件**位置无关**即可被加载(无需是 workspace 包、无需本地 node_modules)。
 - ✅ **`lib/app/pi-handler.ts` `makeRealResolver`**:已注入 `runnerEntry`(`runnerBootstrapPath()`)、`piCliEntry`(`resolvePiCliEntry()`)、`agentDir`、`baseEnv`(透传 `process.env`,否则子进程连 `node` 都找不到 → spawn 失败 → 404)。**custom 模式不会再抛 `MISSING_RUNNER_ENTRY`**。
 
 ## B2. 阻断点(原分析,均已修复 → 见 §0 与 `docs/pi-trust-loading-design.md` §9)

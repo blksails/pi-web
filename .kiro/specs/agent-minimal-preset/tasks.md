@@ -10,13 +10,13 @@
   - 提供 `minimalAgentPreset`(显式声明 `noTools: "all"` + skills 空覆盖保留 diagnostics + `allowExtensions: []`)
   - 提供 `defineMinimalAgent(overrides?)`,在预设上浅合并作者覆盖(overrides 优先)并返回定义
   - 从包入口 re-export 两个产物
-  - 完成判据:`import { minimalAgentPreset, defineMinimalAgent } from "@pi-web/agent-kit"` 可解析,预设对象三处关闭字段均存在
+  - 完成判据:`import { minimalAgentPreset, defineMinimalAgent } from "@blksails/pi-web-agent-kit"` 可解析,预设对象三处关闭字段均存在
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 4.4_
   - _Depends: 1.1_
 - [x] 1.3 为预设与工厂补充单元测试
   - 断言 `minimalAgentPreset` 的 `noTools:"all"`、`skills` 空覆盖(调用返回 `skills:[]` 且回传 diagnostics)、`allowExtensions:[]`
   - 断言 `defineMinimalAgent({ model, systemPrompt, customTools })` 保留覆盖字段且不丢失关闭语义;`{ allowExtensions:["foo"] }` 覆盖白名单
-  - 完成判据:`pnpm --filter @pi-web/agent-kit test` 新增用例全绿(新鲜运行输出)
+  - 完成判据:`pnpm --filter @blksails/pi-web-agent-kit test` 新增用例全绿(新鲜运行输出)
   - _Requirements: 1.2, 1.3, 1.4, 4.1, 4.2, 4.4, 5.4_
   - _Depends: 1.2_
 
@@ -36,7 +36,7 @@
 - [x] 2.3 为映射逻辑补充集成测试
   - `allowExtensions: []` → 设 `noExtensions === true` 且不设覆盖钩子;缺省 → 二者均不注入
   - `allowExtensions: ["keep"]` → 以伪造扩展集合(发现项 keep/drop、工厂 `<inline:1>`、显式路径项)断言保留 keep+内联+显式路径、丢弃 drop、透传 errors/runtime;`["missing"]` → 过滤后无项且不抛错
-  - 完成判据:`pnpm --filter @pi-web/server test`(映射相关)新增用例全绿(新鲜运行输出)
+  - 完成判据:`pnpm --filter @blksails/pi-web-server test`(映射相关)新增用例全绿(新鲜运行输出)
   - _Requirements: 2.2, 2.3, 2.4, 3.2, 3.3, 3.4, 3.5, 5.4_
   - _Depends: 2.2_
 

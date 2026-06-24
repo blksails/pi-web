@@ -13,7 +13,7 @@
  */
 import * as React from "react";
 import { X } from "lucide-react";
-import type { ExtensionNotification } from "@pi-web/react";
+import type { ExtensionNotification } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
 
 export interface NotificationsProps {

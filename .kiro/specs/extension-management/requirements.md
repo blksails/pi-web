@@ -43,7 +43,7 @@
 2. Where 同时存在全局与项目级扩展, the Extension Management Service shall 在响应中区分并标注各条目的作用域。
 3. If `pi list` 调用失败或 settings 不可读, the Extension Management Service shall 返回明确的错误响应(非 500 的可识别错误码或带原因摘要的 500),且不泄露 env 敏感值。
 4. When 没有任何已安装扩展, the Extension Management Service shall 返回空列表而非错误。
-5. The Extension Management Service shall 使响应形状以 `@pi-web/protocol` 定义的扩展列表 DTO 为准,不自定义字段命名。
+5. The Extension Management Service shall 使响应形状以 `@blksails/pi-web-protocol` 定义的扩展列表 DTO 为准,不自定义字段命名。
 
 ### Requirement 2: 受控扩展安装(POST /extensions)
 
@@ -86,13 +86,13 @@
 
 **Objective:** 作为本特性,我想要把命令面板数据源对齐到 `http-api` 拥有的 `GET /sessions/:id/commands`,以便安装/重载扩展后能验证该会话的 `/命令`(extension / prompt / skill)正确出现;该路由本身由 `http-api` 实现,本特性不重复实现。
 
-> 注:`GET /sessions/:id/commands` 的路由处理器、`PiSession.getCommands()`/RPC `get_commands` 透传、命令清单 DTO 形状均归 `http-api`(及其下游 `session-engine`/`@pi-web/protocol`)。本特性**仅消费**该路由的输出作为命令面板数据源,不拥有该端点。
+> 注:`GET /sessions/:id/commands` 的路由处理器、`PiSession.getCommands()`/RPC `get_commands` 透传、命令清单 DTO 形状均归 `http-api`(及其下游 `session-engine`/`@blksails/pi-web-protocol`)。本特性**仅消费**该路由的输出作为命令面板数据源,不拥有该端点。
 
 #### Acceptance Criteria
 
 1. The Extension Management Service shall 把命令面板数据源对齐到 `http-api` 拥有的 `GET /sessions/:id/commands`,而不在本特性内实现该路由或重复定义其命令清单 DTO。
 2. When 一次安装后经新会话或 `POST /sessions/:id/reload` 使扩展生效, the Extension Management Service shall 经消费 `http-api` 的 `GET /sessions/:id/commands` 在集成/e2e 中验证该扩展注册的 `/命令` 出现(来源 extension/prompt/skill)。
-3. The Extension Management Service shall 不实现命令展开、命令清单 DTO 形状定义或 "/" 命令面板的 UI 渲染(分别归 `http-api`/`@pi-web/protocol`/`ui-components`)。
+3. The Extension Management Service shall 不实现命令展开、命令清单 DTO 形状定义或 "/" 命令面板的 UI 渲染(分别归 `http-api`/`@blksails/pi-web-protocol`/`ui-components`)。
 
 ### Requirement 6: 信任策略落地(.pi/ 项目资源)
 

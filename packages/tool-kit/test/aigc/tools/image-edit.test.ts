@@ -13,7 +13,7 @@ import { imageEdit } from "../../../src/aigc/tools/image-edit.js";
 import { compileTool } from "../../../src/engine/compile-tool.js";
 import { buildAigcTools } from "../../../src/aigc/index.js";
 import type { CompileDeps } from "../../../src/engine/compile-tool.js";
-import type { AttachmentToolContext, AttachmentToolHandle } from "@pi-web/agent-kit";
+import type { AttachmentToolContext, AttachmentToolHandle } from "@blksails/pi-web-agent-kit";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 

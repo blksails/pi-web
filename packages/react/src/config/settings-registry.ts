@@ -4,7 +4,7 @@
  * 复刻 renderer-registry 语义:模块级单例供宿主在挂载前注册面板;`createSettingsRegistry()`
  * 工厂供测试隔离。新增配置域 = 注册一个面板,设置外壳零改动即纳入。
  */
-import type { FormSchema } from "@pi-web/protocol";
+import type { FormSchema } from "@blksails/pi-web-protocol";
 import type { FormValues } from "./use-schema-form.js";
 
 /** 面板的数据源(与持久化端点解耦,便于测试注入 mock)。 */

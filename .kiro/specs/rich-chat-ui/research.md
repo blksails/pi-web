@@ -2,12 +2,12 @@
 
 ## Summary
 - **Feature**: `rich-chat-ui`
-- **Discovery Scope**: Extension(扩展 `@pi-web/ui` + `@pi-web/react`,并薄透传扩展 `@pi-web/protocol` + `@pi-web/server`)
+- **Discovery Scope**: Extension(扩展 `@blksails/pi-web-ui` + `@blksails/pi-web-react`,并薄透传扩展 `@blksails/pi-web-protocol` + `@blksails/pi-web-server`)
 - **Key Findings**:
-  - `@pi-web/ui` 已有 `<PiChat>`、`PartRenderer`、`RendererRegistry`(单例+工厂)、`PiChatSlots`(header/footer/sidebar/messageActions)、`cn()`、自建 button/card/dialog/select 与 `streamdown` 的 `<Response>`、`PiReasoning`、`PiToolPart`。依赖已含 radix-dialog/radix-select、cva、clsx、lucide、streamdown、tailwind-merge —— **无需新增 npm 依赖**即可实现 AI Elements 等价元件。
-  - `@pi-web/react` 已有 `usePiSession`/`usePiControls`/`useExtensionUI`、`PiTransport`、`createPiClient`、`ControlStore`(SSE 旁路 stats/extensionUiQueue)。`usePiControls` 已暴露 `getCommands()`+`commands` 状态。`PiClient` 已有 `getCommands/getMessages/getStats/getState` 与 `setModel/abort/...` 写方法,但**缺** `getAvailableModels/fork/getForkMessages`。
-  - `@pi-web/protocol` 的 `RpcCommand` 已定义 `get_available_models`/`fork`/`get_fork_messages`/`get_commands`;`PromptRequest` 已支持 `images?: ImageContent[]`(`{type:"image",data,mimeType}`)。但缺这三者的 **REST DTO**。
-  - `@pi-web/server` HTTP 路由为**逐命令显式注册**(`create-handler.ts` 注册表 + `routes/{command,query}-routes.ts`,每能力一个 `PiSession` 方法)。`set_model`→`POST /sessions/:id/model`、`commands`→`GET /sessions/:id/commands` 为既有范本。**无通用 control 透传端点**。
+  - `@blksails/pi-web-ui` 已有 `<PiChat>`、`PartRenderer`、`RendererRegistry`(单例+工厂)、`PiChatSlots`(header/footer/sidebar/messageActions)、`cn()`、自建 button/card/dialog/select 与 `streamdown` 的 `<Response>`、`PiReasoning`、`PiToolPart`。依赖已含 radix-dialog/radix-select、cva、clsx、lucide、streamdown、tailwind-merge —— **无需新增 npm 依赖**即可实现 AI Elements 等价元件。
+  - `@blksails/pi-web-react` 已有 `usePiSession`/`usePiControls`/`useExtensionUI`、`PiTransport`、`createPiClient`、`ControlStore`(SSE 旁路 stats/extensionUiQueue)。`usePiControls` 已暴露 `getCommands()`+`commands` 状态。`PiClient` 已有 `getCommands/getMessages/getStats/getState` 与 `setModel/abort/...` 写方法,但**缺** `getAvailableModels/fork/getForkMessages`。
+  - `@blksails/pi-web-protocol` 的 `RpcCommand` 已定义 `get_available_models`/`fork`/`get_fork_messages`/`get_commands`;`PromptRequest` 已支持 `images?: ImageContent[]`(`{type:"image",data,mimeType}`)。但缺这三者的 **REST DTO**。
+  - `@blksails/pi-web-server` HTTP 路由为**逐命令显式注册**(`create-handler.ts` 注册表 + `routes/{command,query}-routes.ts`,每能力一个 `PiSession` 方法)。`set_model`→`POST /sessions/:id/model`、`commands`→`GET /sessions/:id/commands` 为既有范本。**无通用 control 透传端点**。
   - 因此"模型选择器(Req 4)"与"消息分支(Req 8)"要端到端可用,必须补齐 REST 薄透传(DTO + PiSession 方法 + 路由 + PiClient 方法)。
 
 ## Research Log
@@ -33,7 +33,7 @@
 ## Architecture Pattern Evaluation
 | Option | Description | Strengths | Risks / Limitations | Notes |
 |--------|-------------|-----------|---------------------|-------|
-| A. 富组件进 `@pi-web/ui` + 薄透传补齐后端(选用) | 元件层 + `<PiChatPro>` 装配层 + react 数据 hooks + protocol/server REST 薄透传 | 可复用、端到端可用、符合 §13.1 分层开放包 | 触及 4 个包,但均为低风险镜像式扩展 | brief 决策 A |
+| A. 富组件进 `@blksails/pi-web-ui` + 薄透传补齐后端(选用) | 元件层 + `<PiChatPro>` 装配层 + react 数据 hooks + protocol/server REST 薄透传 | 可复用、端到端可用、符合 §13.1 分层开放包 | 触及 4 个包,但均为低风险镜像式扩展 | brief 决策 A |
 | B. 仅在 Next app `components/ai-elements` 组装 | 最快、最贴近示例 | 不进共享包、复用性差;模型/分支仍缺后端 | 不满足开放包目标 | 被否 |
 | C. 仅 UI/react 层,模型/分支全部降级隐藏 | 边界最小 | Req 4/8 失效,不满足"完成" | —— | 被否 |
 
@@ -47,11 +47,11 @@
   3. 镜像 `setModel`/`commands` 范本,逐能力补 REST 薄透传(选用)。
 - **Selected Approach**: rich-chat-ui 拥有这三能力的 REST 表面(protocol DTO + `PiSession` 方法 + 路由 + `PiClient` 方法 + react hook + ui 组件)。
 - **Rationale**: RpcCommand 已存在,透传纯属"暴露"而非"新增能力";风险低且与现有范式一致;使特性端到端可交付。
-- **Trade-offs**: 触及 `@pi-web/server`/`PiSession`(超出 brief 原列的 ui/react),但仅加镜像式方法,不改会话语义。
+- **Trade-offs**: 触及 `@blksails/pi-web-server`/`PiSession`(超出 brief 原列的 ui/react),但仅加镜像式方法,不改会话语义。
 - **Follow-up**: 实现时确认 `PiSession` 底层 RpcChannel 能直接发送这三 command;e2e 验证模型切换与分支切换。
 
 ### Decision: 新增 `<PiChatPro>` 与现有 `<PiChat>` 并存
-- **Selected Approach**: `@pi-web/ui` 新增导出 `<PiChatPro>`;`<PiChat>` 保持不变;app-shell 切到 `<PiChatPro>`。
+- **Selected Approach**: `@blksails/pi-web-ui` 新增导出 `<PiChatPro>`;`<PiChat>` 保持不变;app-shell 切到 `<PiChatPro>`。
 - **Rationale**: 非破坏,保基线 483 测试全绿。
 
 ### Decision: AI Elements 等价元件自实现(不依赖 registry/CLI 联网)
@@ -60,7 +60,7 @@
 
 ### Decision: 附件呈现增强(Req 12)对齐 AI Elements `attachments`,但借模式不借包
 - **Selected Approach**: 在既有 `elements/attachments.tsx` **增量**实现悬停预览、布局变体(inline/grid/list)、类型标签与占位图标;悬停浮层沿用 model-selector 的**自定义轻量浮层**范式,**不引入 `@radix-ui/react-hover-card`**;`getMediaCategory`/`getAttachmentLabel` 为内联纯函数。
-- **Rationale**: AI Elements 走 shadcn registry「拷源码」分发,直接照搬会带入 `@/` 别名假设、额外 Radix 依赖与第二套主题 token,破坏 `@pi-web/ui` 作为**可发布 npm 包 + 零硬编码主题 + 不新增运行时依赖**的既定约束(见 `## Design Decisions › AI Elements 等价元件自实现`)。故借其 API/交互模式,自实现适配。
+- **Rationale**: AI Elements 走 shadcn registry「拷源码」分发,直接照搬会带入 `@/` 别名假设、额外 Radix 依赖与第二套主题 token,破坏 `@blksails/pi-web-ui` 作为**可发布 npm 包 + 零硬编码主题 + 不新增运行时依赖**的既定约束(见 `## Design Decisions › AI Elements 等价元件自实现`)。故借其 API/交互模式,自实现适配。
 - **Backward-compat**: `variant` 扩展为并集,`panel`/`compact` 行为与快照不变;`hoverPreview` 可选默认开;`PendingAttachment` 形状不改(类型从 name/mime 推导),不越界到 `react-client`。
 - **Boundary**: 真实附件处理边界不变(仅图片入列,非图片降级);多媒体真实上传仍属 Out of Boundary。
 
@@ -77,5 +77,5 @@
 ## References
 - `PLAN.md` §1/§4/§13.1/§13.4 —— 分层开放包与事件→UIMessage 设计权威来源
 - `.kiro/specs/rich-chat-ui/brief.md` —— discovery 决策(Decisions 1–5)
-- AI SDK v5 `useChat` / `ChatTransport` —— 流式态与消息发送契约(已在 `@pi-web/react` 实现)
+- AI SDK v5 `useChat` / `ChatTransport` —— 流式态与消息发送契约(已在 `@blksails/pi-web-react` 实现)
 - Web Speech API(MDN)—— 浏览器本地转写,运行时 feature-detect

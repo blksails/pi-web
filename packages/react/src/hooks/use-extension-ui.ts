@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import type {
   RpcExtensionUIRequest,
   UiResponseRequest,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";
 import type {

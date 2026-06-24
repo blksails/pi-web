@@ -14,7 +14,7 @@ import { buildAigcTools } from "../../src/aigc/index.js";
 import { imageGeneration } from "../../src/aigc/tools/image-generation.js";
 import { createDashscopeAsyncT2I } from "../../src/aigc/providers/dashscope.js";
 import type { CompileDeps } from "../../src/engine/compile-tool.js";
-import type { AttachmentToolContext } from "@pi-web/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import type { ToolSpec } from "../../src/engine/types.js";
 
 // ── Mock 工具 ────────────────────────────────────────────────────────────────

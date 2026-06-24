@@ -16,7 +16,7 @@
  * `makeMessagesHandler` 内、`session.prompt(message, options)` 之前调用 `injectAttachmentRefs`
  * 把标记块拼到用户消息文本(与既有 `images`/vision base64 并存,不替代、不内联字节)。
  */
-import type { Attachment } from "@pi-web/protocol";
+import type { Attachment } from "@blksails/pi-web-protocol";
 
 /**
  * 把一组已落库附件构造成稳定的结构化文本标记块:每个附件一行

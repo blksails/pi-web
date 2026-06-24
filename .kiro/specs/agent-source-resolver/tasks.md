@@ -1,8 +1,8 @@
 # Implementation Plan
 
 - [x] 1. 基础:类型契约与测试基础设施
-- [x] 1.1 定义共享类型与插件接口(对齐 @pi-web/protocol)
-  - 在 `lib/pi/source/types.ts` 定义 `ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`GitSource`、`EntryProbe`、`SourceResolverPlugin`;`SpawnSpec` 必须经 `import type { SpawnSpec } from "@pi-web/protocol"` 复用(protocol-contract 为上游拥有者),**不得**在本地定义或重声明。
+- [x] 1.1 定义共享类型与插件接口(对齐 @blksails/pi-web-protocol)
+  - 在 `lib/pi/source/types.ts` 定义 `ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`GitSource`、`EntryProbe`、`SourceResolverPlugin`;`SpawnSpec` 必须经 `import type { SpawnSpec } from "@blksails/pi-web-protocol"` 复用(protocol-contract 为上游拥有者),**不得**在本地定义或重声明。
   - 经公共入口(`agent-source.ts` 及包级 barrel)再导出 `ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`SourceResolverPlugin` 与 `applyTrust`,使 `extension-management` 可从公共面导入;`SpawnSpec` 不在本特性公共面重导出。
   - 完成条件:`tsc --noEmit` 通过;`ResolvedSource` 含 `{ mode, spawnSpec, cwd, trust }` 且 `spawnSpec` 形状为 `{ cmd:string, args:string[], cwd:string, env:Record<string,string> }`;`TrustFragment` 为 `{ extraArgs:string[], extraEnv:Record<string,string> }`;公共面可导入 `TrustDecision`/`TrustFragment`/`applyTrust`。
   - _Requirements: 4.3, 5.8, 8.1, 8.2, 8.3_

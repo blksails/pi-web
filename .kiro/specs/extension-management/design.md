@@ -6,7 +6,7 @@
 
 **Users**:运维/管理员经管理端调用安装/卸载/重载;前端命令面板(由 `ui-components` 渲染)消费由 `http-api` 拥有的 `GET /sessions/:id/commands` 数据(本 spec 不实现该路由);`http-api` 宿主经 `createPiWebHandler` 的 `routes?` 注入接缝把本 spec 提供的路由并入路由表。
 
-**Impact**:把 `PLAN.md` §10.1.2 的扩展管理 route 表、§10.1.3 的 RCE 治理、§10.0.C 的信任落地收敛为边界清晰、可单测的薄层。本 spec **消费**上游契约(`http-api` 的 handler/路由注入接缝/鉴权接缝、`session-engine` 的 `PiSession` 与 `SessionManager`、`agent-source-resolver` 的 `trustPolicy`、`@pi-web/protocol` 的 DTO),**不重定义**。命令面板数据源 `GET /sessions/:id/commands` 由 `http-api` 拥有,本 spec 仅在文档/集成场景**消费**其输出,不实现该路由。
+**Impact**:把 `PLAN.md` §10.1.2 的扩展管理 route 表、§10.1.3 的 RCE 治理、§10.0.C 的信任落地收敛为边界清晰、可单测的薄层。本 spec **消费**上游契约(`http-api` 的 handler/路由注入接缝/鉴权接缝、`session-engine` 的 `PiSession` 与 `SessionManager`、`agent-source-resolver` 的 `trustPolicy`、`@blksails/pi-web-protocol` 的 DTO),**不重定义**。命令面板数据源 `GET /sessions/:id/commands` 由 `http-api` 拥有,本 spec 仅在文档/集成场景**消费**其输出,不实现该路由。
 
 ### Goals
 
@@ -49,7 +49,7 @@
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`http-api`——`RouteHandler`/`RequestContext`/`AuthContext` 类型、统一错误响应构造(`responses.ts`)、错误映射(`error-map.ts`)、`validate.ts`(protocol DTO `safeParse`)、`createPiWebHandler` 的 `routes?` 注入接缝(`PiWebHandlerOptions.routes: ReadonlyArray<{method,path,handler}>`)、`GET /sessions/:id/commands` 路由(本 spec 消费其输出作为命令面板数据源);`session-engine`——`SessionManager`(重建会话)、`SessionStore.get`、`PiSession`(`status`/`stop`);`agent-source-resolver`——经其 PUBLIC 包入口暴露的 `TrustDecision`/`TrustFragment` 类型与 `applyTrust`(落地约定),不经 `source/types` 等 deep path;`@pi-web/protocol`——扩展列表 DTO、安装/卸载请求 DTO、`protocolVersion`(单一事实来源 + 边界校验)。
+- **上游 spec(运行时)**:`http-api`——`RouteHandler`/`RequestContext`/`AuthContext` 类型、统一错误响应构造(`responses.ts`)、错误映射(`error-map.ts`)、`validate.ts`(protocol DTO `safeParse`)、`createPiWebHandler` 的 `routes?` 注入接缝(`PiWebHandlerOptions.routes: ReadonlyArray<{method,path,handler}>`)、`GET /sessions/:id/commands` 路由(本 spec 消费其输出作为命令面板数据源);`session-engine`——`SessionManager`(重建会话)、`SessionStore.get`、`PiSession`(`status`/`stop`);`agent-source-resolver`——经其 PUBLIC 包入口暴露的 `TrustDecision`/`TrustFragment` 类型与 `applyTrust`(落地约定),不经 `source/types` 等 deep path;`@blksails/pi-web-protocol`——扩展列表 DTO、安装/卸载请求 DTO、`protocolVersion`(单一事实来源 + 边界校验)。
 - **运行时**:Node `>=22.19.0`;`node:child_process`(执行 `pi`/git,仅 CLI 适配器内)、`node:timers`(子进程超时);系统 `pi` CLI 与 `git`。**仅 Node runtime**。
 - **依赖方向**:`protocol-contract ← http-api ← extension-management`;`session-engine ← extension-management`;`agent-source-resolver ← extension-management`。禁止反向(本 spec 不被任何 spec 依赖)。
 - **开发/测试**:`vitest`;集成/e2e 用本地 fixture 扩展 + `session-engine` 经 rpc-channel 的 stub agent 或真实 `pi --mode rpc`;CLI 适配器在单元/集成测试中以受控替身或真实 `pi` 替换——不进运行时依赖。
@@ -60,7 +60,7 @@
 - `http-api` 的 `RouteHandler`/`RequestContext`/`AuthContext`/错误响应/`createPiWebHandler` 的 `routes?` 注入接缝(`PiWebHandlerOptions.routes`)/`GET /sessions/:id/commands` 路由契约变更。
 - `session-engine` 的 `SessionManager` 重建语义、`PiSession.status`/`stop` 签名变更。
 - `agent-source-resolver` 的 PUBLIC 包入口对 `trustPolicy`/`TrustDecision`/`TrustFragment`/`applyTrust` 的导出契约或信任落地映射(CLI 标志、custom 信号、env 名)变更。
-- `@pi-web/protocol` 的扩展列表/命令清单/安装请求 DTO 或 `protocolVersion` 承载约定变更。
+- `@blksails/pi-web-protocol` 的扩展列表/命令清单/安装请求 DTO 或 `protocolVersion` 承载约定变更。
 - 来源白名单策略 / 版本固定规则 / 管理员判定接缝约定变更。
 
 ## Architecture
@@ -122,7 +122,7 @@ graph TB
 | Frontend / CLI | — | 产出扩展列表/命令清单 DTO 供前端命令面板消费 | UI 渲染归 `ui-components` |
 | Backend / Services | TypeScript strict;经 `createPiWebHandler` `routes?` 接缝挂载于 `http-api` 的 `RouteHandler`;治理纯函数核心 | 四端点处理器、白名单/版本固定/参数装配/信任落地、管理员门控、审计 | 仅 Node 标准 + 注入依赖 |
 | Data / Storage | 无持久化(扩展状态由 pi `settings.json` 拥有;审计默认结构化输出,持久化留接缝) | 经 `pi list`/settings 读取扩展;`onAudit` 默认输出 | §11.7 审计落库归生产 |
-| Messaging / Events | 消费 `http-api` 拥有的 `GET /sessions/:id/commands`(其内部透传 `PiSession.getCommands()`/RPC `get_commands`)作为命令面板数据源 | 命令面板数据源(本 spec 不实现该路由) | 帧/DTO 由 `@pi-web/protocol` 定义 |
+| Messaging / Events | 消费 `http-api` 拥有的 `GET /sessions/:id/commands`(其内部透传 `PiSession.getCommands()`/RPC `get_commands`)作为命令面板数据源 | 命令面板数据源(本 spec 不实现该路由) | 帧/DTO 由 `@blksails/pi-web-protocol` 定义 |
 | Infrastructure / Runtime | **Node `>=22.19.0` only**;`node:child_process`(执行 `pi`/git)、`node:timers`(超时);系统 `pi` CLI + `git`;`vitest`(测试);fixture 扩展 + rpc-channel stub(集成/e2e) | 子进程执行、超时、测试 | 非交互 env:`GIT_TERMINAL_PROMPT=0`、`GIT_SSH_COMMAND` BatchMode、`--ignore-scripts`(§10.1.3) |
 
 ## File Structure Plan
@@ -170,7 +170,7 @@ lib/pi/extensions/__tests__/
 ### Modified Files
 
 - `http-api` 路由注册点:本 spec 导出的 `routes.ts` 由 `http-api` 宿主在装配 `createPiWebHandler` 时经其 `routes?` 注入接缝(`PiWebHandlerOptions.routes: ReadonlyArray<{method,path,handler}>`)并入路由表(接线随上层装配处理)。本 spec 创建自身模块文件与测试,不修改 `http-api` 内部实现,也不实现 `http-api` 拥有的 `GET /sessions/:id/commands`。
-- 若 monorepo 已存在 `package.json`,需将 `http-api`/`session-engine`/`agent-source-resolver`/`@pi-web/protocol` 模块与 `vitest` 纳入依赖——接线随仓库初始化处理。
+- 若 monorepo 已存在 `package.json`,需将 `http-api`/`session-engine`/`agent-source-resolver`/`@blksails/pi-web-protocol` 模块与 `vitest` 纳入依赖——接线随仓库初始化处理。
 
 > 每文件单一职责。`install/` 全为纯函数(白名单/参数/信任落地),直接驱动单测;唯一子进程 IO 集中在 `cli/pi-cli.ts`;安全策略(`admin-policy`/`audit`)为可替换接缝。命令面板数据源路由(`GET /sessions/:id/commands`)不在本结构内——归 `http-api`。
 
@@ -292,7 +292,7 @@ flowchart TD
 | cli/pi-cli.ts | cli (IO shell) | 执行 pi list/install/remove 单点 IO | 1.1,2.6,3.3,9.2,9.3,9.4,10.5 | node:child_process/timers (P0) | Service |
 | security/admin-policy.ts | security | 管理员判定接缝 + 显式默认 | 7.1–7.5 | http-api AuthContext (P0) | Service |
 | security/audit.ts | security | 审计接缝 + 脱敏默认输出 | 8.1–8.4,9.3 | ext.types (P1) | Service, Event |
-| ext.types.ts | types | 本层类型与判别联合 | 1.5,2.x,8.1 | @pi-web/protocol (P1), agent-source-resolver 公共入口 (P1) | State |
+| ext.types.ts | types | 本层类型与判别联合 | 1.5,2.x,8.1 | @blksails/pi-web-protocol (P1), agent-source-resolver 公共入口 (P1) | State |
 
 ### routes 层
 
@@ -365,7 +365,7 @@ export function createExtensionRoutes(
 | DELETE | /extensions/:id | — | 200/204 ack | 401, 403, 404, 500(脱敏) |
 | POST | /sessions/:id/reload | (空/ReloadRequest) | 200 ack | 401, 403, 404, 409 |
 
-> 上表为本 spec 拥有的四端点。`GET /sessions/:id/commands`(命令面板数据源)归 `http-api`,本 spec 不实现,仅消费其输出。所有 DTO 形状取自 `@pi-web/protocol`(扩展列表 / 安装请求);本 spec 不重定义。错误码经 `http-api` `error-map`/`responses` 构造;白名单/版本固定拒绝映射为一个明确的客户端错误码(422 或等价,由 `http-api` 错误结构承载)。
+> 上表为本 spec 拥有的四端点。`GET /sessions/:id/commands`(命令面板数据源)归 `http-api`,本 spec 不实现,仅消费其输出。所有 DTO 形状取自 `@blksails/pi-web-protocol`(扩展列表 / 安装请求);本 spec 不重定义。错误码经 `http-api` `error-map`/`responses` 构造;白名单/版本固定拒绝映射为一个明确的客户端错误码(422 或等价,由 `http-api` 错误结构承载)。
 
 #### routes/list-extensions.ts · remove-extension.ts · reload-session.ts
 
@@ -500,13 +500,13 @@ Contracts: Service / Event。
 
 #### ext.types.ts
 
-**Summary-only**:导出 `ExtSource`(npm/git/local 判别联合)、`AllowlistConfig`/`AllowlistDecision`、`InstallArgs`(`{args,env}`)、`AuditRecord`、`ExtManagementOptions`。`TrustDecision`/`TrustFragment` 不在此本地定义——从 `agent-source-resolver` 的 PUBLIC 包入口 re-export/导入(非 deep path)。扩展列表 / 安装请求的对外 DTO 形状优先从 `@pi-web/protocol` 导入;若上游尚未导出,则在此以与 protocol 一致命名本地定义并注明对齐来源(Req 1.5)。命令清单 DTO 归 `http-api` 的 commands 路由消费,本 spec 不在此定义。Contracts: State。
+**Summary-only**:导出 `ExtSource`(npm/git/local 判别联合)、`AllowlistConfig`/`AllowlistDecision`、`InstallArgs`(`{args,env}`)、`AuditRecord`、`ExtManagementOptions`。`TrustDecision`/`TrustFragment` 不在此本地定义——从 `agent-source-resolver` 的 PUBLIC 包入口 re-export/导入(非 deep path)。扩展列表 / 安装请求的对外 DTO 形状优先从 `@blksails/pi-web-protocol` 导入;若上游尚未导出,则在此以与 protocol 一致命名本地定义并注明对齐来源(Req 1.5)。命令清单 DTO 归 `http-api` 的 commands 路由消费,本 spec 不在此定义。Contracts: State。
 
 ## Data Models
 
 ### Data Contracts & Integration
 
-- **核心对外契约**:`GET /extensions` 的扩展列表 DTO、`POST /extensions` 的安装请求/结果 DTO——形状一律取自 `@pi-web/protocol`,本 spec 不重定义(单一事实来源,Req 1.5)。命令清单 DTO 归 `http-api` 的 `GET /sessions/:id/commands` 路由承载,本 spec 仅消费(Req 5.1)。
+- **核心对外契约**:`GET /extensions` 的扩展列表 DTO、`POST /extensions` 的安装请求/结果 DTO——形状一律取自 `@blksails/pi-web-protocol`,本 spec 不重定义(单一事实来源,Req 1.5)。命令清单 DTO 归 `http-api` 的 `GET /sessions/:id/commands` 路由承载,本 spec 仅消费(Req 5.1)。
 - **扩展状态所有权**:已安装扩展的真实状态由 pi 的 `settings.json` 拥有;本 spec 经 `pi list`/settings **读取**,经 `pi install/remove` **变更**,不维护独立状态库。
 - **审计数据**:`AuditRecord`(脱敏);默认结构化输出,持久化经 `onAudit` 接缝替换(§11.7,留接缝)。
 - **信任片段**:`TrustFragment { extraArgs, extraEnv }`,消费 `agent-source-resolver` 的 `applyTrust` 产出,随会话重建传给子进程。

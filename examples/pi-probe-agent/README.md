@@ -68,5 +68,5 @@ node packages/server/runner-bootstrap.mjs \
 
 - 本示例**自包含**:`.pi/` 探针就在本目录下,与仓库根的 `.pi/`(若有)互不影响。
 - examples 不是 workspace 包、被根 `tsconfig` 排除;`index.ts` / `.pi/*.ts` 在 IDE 里对
-  `@pi-web/agent-kit` / `@earendil-works/*` / `typebox` 的 "Cannot find module" 属预期编辑器噪音——
+  `@blksails/pi-web-agent-kit` / `@earendil-works/*` / `typebox` 的 "Cannot find module" 属预期编辑器噪音——
   运行时由 runner 的 jiti alias / SDK 扩展加载器解析(已实测可加载),不影响 CI/构建/运行。

@@ -11,7 +11,7 @@
  * 经 `createSessionListRoutes(opts)` 返回 `ReadonlyArray<InjectedRoute>`,直接传入
  * `createPiWebHandler({ routes })` 的 `routes?` 注入接缝(与 createConfigRoutes 同构)。
  */
-import type { ListSessionsResponse, SessionListItem } from "@pi-web/protocol";
+import type { ListSessionsResponse, SessionListItem } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { InjectedRoute } from "../http/index.js";
 import {

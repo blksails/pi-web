@@ -3,7 +3,7 @@
  * `defineAgent` 对称的 identity 助手,纯编译期类型检查,无运行时副作用)。
  *
  * 这里承载携带 React 组件的运行时面(slots/renderers/contributions);可序列化的
- * 清单/SlotKey/声明式 config 在 `@pi-web/protocol`。
+ * 清单/SlotKey/声明式 config 在 `@blksails/pi-web-protocol`。
  */
 import type { ComponentType, ReactNode } from "react";
 import type { UIMessage } from "ai";
@@ -12,7 +12,7 @@ import type {
   WebExtConfig,
   ArtifactDeclaration,
   WebExtensionCapability,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "./rpc-client.js";
 
 /** 插槽贡献:静态节点或受 props 的组件。 */

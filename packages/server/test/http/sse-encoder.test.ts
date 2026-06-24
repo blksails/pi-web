@@ -7,7 +7,7 @@ import {
   makeControlFrame,
   makeUiMessageChunkFrame,
   protocolVersion,
-} from "@pi-web/protocol";
+} from "@blksails/pi-web-protocol";
 import {
   encodeFrame,
   encodeHeartbeat,

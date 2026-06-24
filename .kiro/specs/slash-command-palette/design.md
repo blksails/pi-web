@@ -45,7 +45,7 @@
 - `PiChat` 是富聊天装配层:受控 `input` 状态、`doSend`/`onSubmit`、`controls?`(可选)、会话就绪后拉一次 `getCommands`(`pi-chat.tsx:260`)。
 - 输入区由共享片段 `inputWithWidgets`(`pi-chat.tsx:409`)承载,空态(`:500`)与会话态(`:573`)两分支复用。
 - `PromptInput` 是无状态输入外壳,自身处理 Enter 提交 / Shift+Enter 换行(`prompt-input.tsx` `handleKeyDown`)。
-- `PiCommandPalette` 已完整实现"/"补全:命令模式判定、子串过滤、↑↓/Enter/Esc、listbox/option ARIA、空态/错误态;经 `document` keydown 全局监听捕获导航键。已从 `@pi-web/ui` 导出(`index.ts:53`)。
+- `PiCommandPalette` 已完整实现"/"补全:命令模式判定、子串过滤、↑↓/Enter/Esc、listbox/option ARIA、空态/错误态;经 `document` keydown 全局监听捕获导航键。已从 `@blksails/pi-web-ui` 导出(`index.ts:53`)。
 
 **根因(Enter 双触发)**:React 把 textarea 的 `onKeyDown` 挂在 root 容器(在 `document` 之下)。Enter 冒泡顺序为 textarea → React root(先执行 `PromptInput.onSubmit` → 发出 `/foo`)→ `document`(palette 才 `preventDefault`)。palette 的 `preventDefault` 无法撤销已执行的 React 提交。故须在 `PromptInput` 源头按 `suppressEnterSubmit` 拦截。
 

@@ -15,9 +15,9 @@
  * prompt / skill 类命令走 LLM 一轮,正常发 agent_end,不受影响。
  */
 import * as React from "react";
-import type { UsePiControlsResult } from "@pi-web/react";
-import type { RpcSlashCommand } from "@pi-web/protocol";
-import type { UiRpcClient } from "@pi-web/web-kit";
+import type { UsePiControlsResult } from "@blksails/pi-web-react";
+import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
+import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
 
 /** 扩展贡献的 slash 候选(经 ui-rpc 回 agent 取),与内核命令并列展示。 */

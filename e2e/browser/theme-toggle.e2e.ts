@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * Theme toggle browser e2e (pi-chat-customization Req 2.1/2.2/10.2).
  *
- * 主题切换控件(data-pi-theme-toggle)放在会话头部、与"设置"并排,经 @pi-web/ui
+ * 主题切换控件(data-pi-theme-toggle)放在会话头部、与"设置"并排,经 @blksails/pi-web-ui
  * ThemeProvider 切换 <html> 的 `dark` 类。先创建会话进入会话态,再点击切换。
  */
 const SOURCE = "./examples/hello-agent";

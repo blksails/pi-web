@@ -20,7 +20,7 @@
  * `Record` 访问字段。纯函数:消息 id 由下标稳定生成(`msg-<i>`),无模块级可变状态。
  */
 import type { UIMessage } from "ai";
-import type { AgentMessage } from "@pi-web/protocol";
+import type { AgentMessage } from "@blksails/pi-web-protocol";
 import { joinUrl } from "../client/request.js";
 
 type UIPart = UIMessage["parts"][number];

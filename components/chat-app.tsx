@@ -8,15 +8,15 @@ import {
   useExtensionUI,
   createPiClient,
   type UsePiSessionResult,
-} from "@pi-web/react";
+} from "@blksails/pi-web-react";
 import {
   PiChat,
   SessionListPanel,
   type ExtensionCommandPolicy,
   type ComponentOverrides,
   type PiChatSlots,
-} from "@pi-web/ui";
-import type { CreateSessionRequest } from "@pi-web/protocol";
+} from "@blksails/pi-web-ui";
+import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
@@ -35,7 +35,7 @@ const PI_CHAT_COMPONENTS: ComponentOverrides = { Reasoning: ChatReasoning };
  *
  * Until a session is created it renders <AgentSourcePicker>. On submit it builds
  * a CreateSessionRequest (source + default cwd/model) and drives the connection
- * via @pi-web/react hooks pointed at this site's `/api/sessions`. Controls and
+ * via @blksails/pi-web-react hooks pointed at this site's `/api/sessions`. Controls and
  * the permission dialog ride hook side-channels — they never enter the message
  * stream (Req 6.4). Both custom-agent and general-CLI modes reuse this same
  * page (Req 9.3).

@@ -2,7 +2,7 @@
  * Real-mode runner bootstrap (cwd-independent).
  *
  * Plain ESM JS that needs NO jiti to *start*. It lives at the root of the
- * `@pi-web/server` package, so the bare `jiti` import below resolves against
+ * `@blksails/pi-web-server` package, so the bare `jiti` import below resolves against
  * the server package's `node_modules` regardless of where the subprocess is
  * spawned (the agent's working directory, which has no `node_modules`).
  *
@@ -28,7 +28,7 @@ const here = fileURLToPath(import.meta.url);
 const serverPkgDir = dirname(here);
 
 // Root jiti at the server package dir: resolves jiti's own deps, the pi SDK
-// (@earendil-works/pi-coding-agent, @pi-web/agent-kit, @earendil-works/pi-ai)
+// (@earendil-works/pi-coding-agent, @blksails/pi-web-agent-kit, @earendil-works/pi-ai)
 // and the runner TS against the server package, never the agent's cwd.
 const jiti = createJiti(here);
 

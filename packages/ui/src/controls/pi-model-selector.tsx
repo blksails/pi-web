@@ -7,8 +7,8 @@
  * 不向 useChat 消息流写入。
  */
 import * as React from "react";
-import type { UsePiControlsResult } from "@pi-web/react";
-import type { ModelGroup } from "@pi-web/react";
+import type { UsePiControlsResult } from "@blksails/pi-web-react";
+import type { ModelGroup } from "@blksails/pi-web-react";
 import { ModelSelector } from "../elements/model-selector.js";
 import { cn } from "../lib/cn.js";
 

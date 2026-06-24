@@ -5,10 +5,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ThemeProvider, type ThemeMode } from "@pi-web/ui";
+import { ThemeProvider, type ThemeMode } from "@blksails/pi-web-ui";
 
 /**
- * 应用级主题接入:`ThemeControls` 用 @pi-web/ui 的 ThemeProvider 包裹全局并经 context
+ * 应用级主题接入:`ThemeControls` 用 @blksails/pi-web-ui 的 ThemeProvider 包裹全局并经 context
  * 暴露亮/暗切换;`ThemeToggleButton` 是放置在头部(与"设置"并排)的图标控件,
  * 带 data-pi-theme-toggle 供浏览器 e2e 使用。
  */

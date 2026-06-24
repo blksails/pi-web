@@ -12,7 +12,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
-import type { PiReasoningProps } from "@pi-web/ui";
+import type { PiReasoningProps } from "@blksails/pi-web-ui";
 
 export function ChatReasoning({ part }: PiReasoningProps): React.JSX.Element {
   const isStreaming = part.state === "streaming";

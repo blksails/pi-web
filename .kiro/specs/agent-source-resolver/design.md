@@ -4,14 +4,14 @@
 
 **Purpose**:本特性交付 `agent-source-resolver`——pi-web 后端引擎中的 **agent 源解析器**。它把会话创建入参 `source` 解析为一个统一的、可被下游直接消费的结果:`ResolvedSource = { mode, spawnSpec, cwd, trust }`。它集中处理三件易踩坑的事:目录/git 两类来源的统一化、有/无入口文件两类模式的判定、以及 headless 下 `.pi/` 项目资源默认被静默忽略的信任门控。
 
-**Users**:`session-engine` 在创建会话时以单次调用获取 `ResolvedSource`;`rpc-channel` 的 local 通道据 `spawnSpec` 拉起子进程;`agent-runner` 据 `mode` 与传入的信任决策决定加载行为。本特性消费上游 `@pi-web/protocol` 的 spawnSpec/DTO 类型,处于依赖图内核层(`Depends on: protocol-contract`)。
+**Users**:`session-engine` 在创建会话时以单次调用获取 `ResolvedSource`;`rpc-channel` 的 local 通道据 `spawnSpec` 拉起子进程;`agent-runner` 据 `mode` 与传入的信任决策决定加载行为。本特性消费上游 `@blksails/pi-web-protocol` 的 spawnSpec/DTO 类型,处于依赖图内核层(`Depends on: protocol-contract`)。
 
 **Impact**:把分散在"目录解析 / git 克隆 / 入口探测 / 模式判定 / 信任决策"的隐性逻辑收敛为一个边界清晰、可单测、可插拔的解析器,并把 §10.0.C 的信任门控显式化,消除"扩展明明在却没加载"的静默失败。
 
 ### Goals
 - 把任意受支持的 `source`(本地目录 / git 三形态)解析为统一的本地工作目录与四元组结果。
 - 以确定的优先级探测入口(`index.ts` > `index.js` > `index.mjs`,可被 `package.json#pi-web.entry` 覆盖)并据此判定 `mode ∈ {"custom","cli"}`。
-- 产出形状稳定、与 `@pi-web/protocol` 对齐的 `spawnSpec = { cmd, args, cwd, env }`,满足 `rpc-channel` local 通道拉起契约。
+- 产出形状稳定、与 `@blksails/pi-web-protocol` 对齐的 `spawnSpec = { cmd, args, cwd, env }`,满足 `rpc-channel` local 通道拉起契约。
 - 以可插拔、按来源的 `trustPolicy(source)`(默认 `"ask"`)显式决定 `.pi/` 信任,并正确映射到两种模式的落地方式。
 - 提供 git 缓存复用与并发去重、非交互安全。
 - 满足"测试 + e2e(硬性)":单元 + 集成(本地 bare repo mock)+ 跨 spec spawnSpec 形状健全性。
@@ -42,7 +42,7 @@
 - protocol 类型/schema 定义(`protocol-contract`)。
 
 ### Allowed Dependencies
-- **上游 spec**:`@pi-web/protocol`(protocol-contract)——**拥有** `SpawnSpec { cmd, args, cwd, env }` 及 DTO 类型与命名(单向依赖);本 spec 经 `import type { SpawnSpec } from "@pi-web/protocol"` 复用,绝不在本地定义该类型。
+- **上游 spec**:`@blksails/pi-web-protocol`(protocol-contract)——**拥有** `SpawnSpec { cmd, args, cwd, env }` 及 DTO 类型与命名(单向依赖);本 spec 经 `import type { SpawnSpec } from "@blksails/pi-web-protocol"` 复用,绝不在本地定义该类型。
 - **运行时**:Node `>=22.19.0`;Node 内置 `node:child_process`(仅用于执行 git 命令)、`node:fs`/`node:path`(探测与缓存)。**禁止**在本层 spawn agent 子进程或载入用户代码。
 - **外部工具**:系统 `git`(经非交互 env 执行)。
 - **开发/测试**:`vitest`;集成测试以本地 bare repo 作 git 远端 mock。
@@ -84,7 +84,7 @@ graph TB
 **Architecture Integration**:
 - **Selected pattern**:分阶段管道 + 插件接缝。理由:每阶段单一职责、可独立单测;IO 隔离便于以 bare repo mock 做集成测试。
 - **Domain/feature boundaries**:`source/` 子域负责识别+获取+探测+判定;`trust/` 子域负责策略与落地映射;`spawn/` 负责 spawnSpec 装配。三者经类型契约衔接,不互相内联实现细节。
-- **Dependency direction**:`agent-source-resolver → @pi-web/protocol`(单向);本 spec 不被 `rpc-channel`/`agent-runner` 反向依赖,只产出它们消费的数据。
+- **Dependency direction**:`agent-source-resolver → @blksails/pi-web-protocol`(单向);本 spec 不被 `rpc-channel`/`agent-runner` 反向依赖,只产出它们消费的数据。
 - **New components rationale**:解析器是双模式与信任门控的唯一权威落点(PLAN §3.0.0 明确"检测逻辑放在 `agent-source.ts`")。
 - **Steering compliance**:TypeScript strict、禁 `any`;安全做成可替换策略(`trustPolicy`/`sourceResolver` 插件点,structure.md);spec 边界 = 层边界。
 
@@ -93,7 +93,7 @@ graph TB
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend / CLI | — | 不适用(后端引擎组件) | |
-| Backend / Services | TypeScript strict;Node `>=22.19.0` | 解析逻辑、git 适配、入口探测、信任映射、spawnSpec 装配 | 位于 `lib/pi/`(或 `@pi-web/server`) |
+| Backend / Services | TypeScript strict;Node `>=22.19.0` | 解析逻辑、git 适配、入口探测、信任映射、spawnSpec 装配 | 位于 `lib/pi/`(或 `@blksails/pi-web-server`) |
 | Data / Storage | 文件系统缓存 `~/.pi-web/agents/git/...` | git 源克隆缓存 | 本地目录来源不入缓存 |
 | Messaging / Events | — | 不直接产生事件;产出 spawnSpec 供下游拉起 | |
 | Infrastructure / Runtime | `node:child_process`(执行 git)、`node:fs`/`node:path`;系统 `git`;`vitest` | git 操作、探测、缓存、测试 | git 经 `GIT_TERMINAL_PROMPT=0` + ssh BatchMode 非交互执行 |
@@ -105,7 +105,7 @@ graph TB
 lib/pi/
 ├── agent-source.ts              # ★ 公共入口:AgentSourceResolver.resolve()，编排各阶段，返回 ResolvedSource
 └── source/
-    ├── types.ts                 # ResolvedSource、SpawnSpec(对齐 @pi-web/protocol)、SourceKind、TrustDecision、ResolveOptions、插件接口
+    ├── types.ts                 # ResolvedSource、SpawnSpec(对齐 @blksails/pi-web-protocol)、SourceKind、TrustDecision、ResolveOptions、插件接口
     ├── identify.ts              # 源类型识别(dir/git 三形态解析出 host/url/ref)+ sourceResolver 插件分发
     ├── git-cache.ts             # git clone/pull 到缓存(非交互 env)、缓存键派生、缓存损坏检测/重建、in-flight 去重
     ├── git-runner.ts            # node:child_process 执行 git 的薄适配器(注入非交互 env;唯一可被 mock 的 IO 点)
@@ -117,15 +117,15 @@ lib/pi/
 ```
 
 ### Modified Files
-- 无（greenfield）。若存在 monorepo workspace，本组件归入 `@pi-web/server` 包;接线属仓库初始化,本 spec 只创建组件文件。
+- 无（greenfield）。若存在 monorepo workspace，本组件归入 `@blksails/pi-web-server` 包;接线属仓库初始化,本 spec 只创建组件文件。
 
 > 每文件单一职责。IO 仅集中于 `git-runner.ts`（git 执行）与 `git-cache.ts`/`probe-entry.ts`（fs 读取），其余为纯函数，直接驱动单测。
 
 ### Public Exports（公共入口面）
-本特性的公共入口 `agent-source.ts`（连同包级 barrel，如 `@pi-web/server` 的 index）**必须**再导出以下公共符号,使 `extension-management` 等下游可从公共面（而非深层 `source/types`）导入:
+本特性的公共入口 `agent-source.ts`（连同包级 barrel，如 `@blksails/pi-web-server` 的 index）**必须**再导出以下公共符号,使 `extension-management` 等下游可从公共面（而非深层 `source/types`）导入:
 - 类型:`ResolvedSource`、`AgentMode`、`TrustDecision`、`TrustFragment`、`ResolveOptions`、`SourceResolverPlugin`。
 - 函数:`AgentSourceResolver.resolve`（主入口）与 `applyTrust`（信任片段计算,供下游对齐信任落地映射复用）。
-`SpawnSpec` 不在本特性公共面重新导出,下游应直接从 `@pi-web/protocol`（其拥有者）导入。深层路径 `source/types` 仅作内部实现细节,不作为下游稳定导入路径。
+`SpawnSpec` 不在本特性公共面重新导出,下游应直接从 `@blksails/pi-web-protocol`（其拥有者）导入。深层路径 `source/types` 仅作内部实现细节,不作为下游稳定导入路径。
 
 ## System Flows
 
@@ -200,7 +200,7 @@ stateDiagram-v2
 | 3.4 | 无入口判定 | probe-entry.ts | `probeEntry()` | 主流程 |
 | 4.1 | custom 模式 + runner spawnSpec | decide-mode.ts, assemble-spawn.ts | `decideMode()`/`assemble()` | 主流程 |
 | 4.2 | cli 模式 + pi CLI spawnSpec | decide-mode.ts, assemble-spawn.ts | `assemble()` | 主流程 |
-| 4.3 | 统一 spawnSpec 形状(`SpawnSpec` 从 @pi-web/protocol 导入复用,不本地定义) | types.ts, assemble-spawn.ts | `import type { SpawnSpec }` | — |
+| 4.3 | 统一 spawnSpec 形状(`SpawnSpec` 从 @blksails/pi-web-protocol 导入复用,不本地定义) | types.ts, assemble-spawn.ts | `import type { SpawnSpec }` | — |
 | 4.4 | cwd 一致(顶层与 spawnSpec) | assemble-spawn.ts | `assemble()` | 主流程 |
 | 4.5 | 不 spawn / 不载入用户代码 | agent-source.ts | 边界约束 | — |
 | 5.1, 5.2 | trustPolicy(默认 ask) | trust-policy.ts | `trustPolicy()` | 主流程 |
@@ -220,7 +220,7 @@ stateDiagram-v2
 
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
-| agent-source.ts | engine | 公共入口,编排管道,返回 ResolvedSource | 4.5, 5.8, 7.3, 8.3, 9.* | source/* (P0), @pi-web/protocol (P1) | Service |
+| agent-source.ts | engine | 公共入口,编排管道,返回 ResolvedSource | 4.5, 5.8, 7.3, 8.3, 9.* | source/* (P0), @blksails/pi-web-protocol (P1) | Service |
 | source/identify.ts | source | 源类型识别 + 插件分发 | 1.1–1.6, 6.4, 8.1 | types (P0) | Service |
 | source/git-cache.ts · git-runner.ts | source | git 克隆/缓存/去重/非交互执行 | 2.1–2.6, 6.1–6.3, 7.3 | node:child_process/fs (P0) | Service |
 | source/probe-entry.ts | source | 入口探测 + entry 覆盖 | 3.1–3.5 | node:fs (P0) | Service |
@@ -228,7 +228,7 @@ stateDiagram-v2
 | source/trust-policy.ts | trust | 默认 + 注入 trustPolicy | 5.1, 5.2, 8.2 | types (P0) | Service |
 | source/trust-apply.ts | trust | trust→`TrustFragment` 映射(纯);经公共面导出 `applyTrust` | 5.3–5.7 | types (P0) | Service |
 | source/assemble-spawn.ts | spawn | 装配 SpawnSpec(纯) | 4.1–4.4, 7.1, 7.2 | types (P0) | Service |
-| source/types.ts | types | 共享类型/插件接口;`SpawnSpec` 从 @pi-web/protocol 导入复用,`TrustFragment` 本地定义并导出 | 4.3, 5.8, 8.1, 8.2 | @pi-web/protocol (P1) | State |
+| source/types.ts | types | 共享类型/插件接口;`SpawnSpec` 从 @blksails/pi-web-protocol 导入复用,`TrustFragment` 本地定义并导出 | 4.3, 5.8, 8.1, 8.2 | @blksails/pi-web-protocol (P1) | State |
 
 ### engine
 
@@ -247,14 +247,14 @@ stateDiagram-v2
 **Dependencies**
 - Inbound: `session-engine` — 会话创建时调用 (P0)
 - Outbound: `source/*` 各阶段 — 编排 (P0)
-- External: `@pi-web/protocol` — `SpawnSpec`/DTO 类型 (P1)
+- External: `@blksails/pi-web-protocol` — `SpawnSpec`/DTO 类型 (P1)
 
 **Contracts**: Service [x]
 
 ##### Service Interface
 ```typescript
-// SpawnSpec 由 @pi-web/protocol 拥有（protocol-contract 为上游单一来源）；本 spec 仅导入复用，不在本地定义
-import type { SpawnSpec } from "@pi-web/protocol";
+// SpawnSpec 由 @blksails/pi-web-protocol 拥有（protocol-contract 为上游单一来源）；本 spec 仅导入复用，不在本地定义
+import type { SpawnSpec } from "@blksails/pi-web-protocol";
 
 export type AgentMode = "custom" | "cli";
 export type TrustDecision = "always" | "never" | "ask";
@@ -373,13 +373,13 @@ export interface SourceResolverPlugin {
   resolve(source: string, opts: ResolveOptions): Promise<{ localDir: string }>; // 返回供探测的本地目录
 }
 ```
-`SpawnSpec` 由上游 `@pi-web/protocol`（protocol-contract）拥有,本 spec **必须** `import type { SpawnSpec } from "@pi-web/protocol"` 复用,**不得**在本地定义或重声明该类型（Req 4.3）。`TrustFragment`（即 `applyTrust` 的返回形状 `{ extraArgs: string[]; extraEnv: Record<string,string> }`）在此处定义并导出。
+`SpawnSpec` 由上游 `@blksails/pi-web-protocol`（protocol-contract）拥有,本 spec **必须** `import type { SpawnSpec } from "@blksails/pi-web-protocol"` 复用,**不得**在本地定义或重声明该类型（Req 4.3）。`TrustFragment`（即 `applyTrust` 的返回形状 `{ extraArgs: string[]; extraEnv: Record<string,string> }`）在此处定义并导出。
 
 ## Data Models
 
 ### Data Contracts & Integration
 - **核心契约**：`ResolvedSource = { mode, spawnSpec, cwd, trust }`，是本 spec 对外的唯一数据契约，被 `rpc-channel`（读 spawnSpec）、`session-engine`（读全部）、`agent-runner`（读 mode + custom 模式信任传递）消费。
-- **spawnSpec**：`{ cmd, args, cwd, env }`，命名对齐 `@pi-web/protocol`；序列化为可被 `node:child_process.spawn(cmd, args, { cwd, env })` 直接使用的形状（Req 9.5 形状契约）。
+- **spawnSpec**：`{ cmd, args, cwd, env }`，命名对齐 `@blksails/pi-web-protocol`；序列化为可被 `node:child_process.spawn(cmd, args, { cwd, env })` 直接使用的形状（Req 9.5 形状契约）。
 - **缓存数据**：git 工作树缓存目录，键为归一化 `source@ref`；本地目录来源无持久数据。
 - **trust**：`"always"|"never"|"ask"`，随结果返回供审计（Req 5.8）。
 

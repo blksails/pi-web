@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Purpose**: 将 `@pi-web/tool-kit` 的 AIGC 工具从 `Category`+`variants[]` 双层抽象**拍平**为 `ToolSpec`+`models[]` 单层 model 路由,使 `model` 成为 LLM 可见的枚举入参并对齐 OpenAI Images API。
+**Purpose**: 将 `@blksails/pi-web-tool-kit` 的 AIGC 工具从 `Category`+`variants[]` 双层抽象**拍平**为 `ToolSpec`+`models[]` 单层 model 路由,使 `model` 成为 LLM 可见的枚举入参并对齐 OpenAI Images API。
 
 **Users**: LLM agent(选 model、传 OpenAI 风格参数)与集成开发者(装配工具、消费导出 API)。
 
@@ -34,7 +34,7 @@
 - pi tool result 消息流是否携带 `details` 的协议事实(不变)。
 
 ### Allowed Dependencies
-- `@pi-web/agent-kit`(`AttachmentToolContext` 类型);`@earendil-works/pi-coding-agent`(`defineTool`)、`@earendil-works/pi-ai`(`Type`)—— 仅 runtime 层。
+- `@blksails/pi-web-agent-kit`(`AttachmentToolContext` 类型);`@earendil-works/pi-coding-agent`(`defineTool`)、`@earendil-works/pi-ai`(`Type`)—— 仅 runtime 层。
 - attachment seam(globalThis `AttachmentToolContext`)。
 
 ### Revalidation Triggers
@@ -70,7 +70,7 @@ Types  →  Providers  →  Tools  →  Assembly
 |-------|------------------|-----------------|-------|
 | 声明层 | TypeScript(源直引) | 纯类型 + 数据声明 | 前端安全,主入口导出 |
 | 执行层 | `@earendil-works/pi-coding-agent` `defineTool` / `pi-ai` `Type` | 编译为 pi ToolDefinition | 仅 runtime 子入口 |
-| 存储接缝 | `@pi-web/agent-kit` `AttachmentToolContext` | 产物落库 / 输入解析 | globalThis seam(复用) |
+| 存储接缝 | `@blksails/pi-web-agent-kit` `AttachmentToolContext` | 产物落库 / 输入解析 | globalThis seam(复用) |
 
 ## File Structure Plan
 

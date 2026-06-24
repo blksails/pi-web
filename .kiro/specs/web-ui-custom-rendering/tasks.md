@@ -14,7 +14,7 @@
   - _Depends: 1.1_
 - [x] 1.3 协议层单测
   - 覆盖 builtin/sandbox 合法解析、非法 kind/el 拒绝、危险 href 拒绝、UiStyle 额外字段拒绝、DataPartSchema 含 data-pi-ui 不破坏既有
-  - 完成判据:`pnpm --filter @pi-web/protocol test` 新增用例全绿(新鲜运行)
+  - 完成判据:`pnpm --filter @blksails/pi-web-protocol test` 新增用例全绿(新鲜运行)
   - _Requirements: 7.1_
   - _Depends: 1.2_
 
@@ -31,7 +31,7 @@
   - _Boundary: packages/ui/src/components/ui-tokens.ts_
 - [x] 2.3 注册表单测
   - 注册/解析/覆盖/未命中/list/reset
-  - 完成判据:`pnpm --filter @pi-web/ui test`(注册表)全绿
+  - 完成判据:`pnpm --filter @blksails/pi-web-ui test`(注册表)全绿
   - _Requirements: 7.1_
   - _Depends: 2.1_
 
@@ -48,7 +48,7 @@
   - _Boundary: packages/ui/src/components/builtin-components.tsx_
 - [x] 3.3 沙箱与内置组件单测
   - 沙箱:各元素渲染、危险 href 降级 span、深度截断、文本转义、无 script、无事件;内置:正常渲染 + props 容错不崩溃
-  - 完成判据:`pnpm --filter @pi-web/ui test`(沙箱/内置)全绿(新鲜运行)
+  - 完成判据:`pnpm --filter @blksails/pi-web-ui test`(沙箱/内置)全绿(新鲜运行)
   - _Requirements: 7.1_
   - _Depends: 3.1, 3.2_
 
@@ -73,14 +73,14 @@
   - _Depends: 4.1_
 - [x] 4.4 分派单测(扩展 part-renderer.test.tsx)
   - data-pi-ui(builtin 命中/未命中、sandbox)经注册表分派
-  - 完成判据:`pnpm --filter @pi-web/ui test`(分派)全绿
+  - 完成判据:`pnpm --filter @blksails/pi-web-ui test`(分派)全绿
   - _Requirements: 7.1_
   - _Depends: 4.1_
 
 - [x] 5. e2e 与全量验证
 - [x] 5.1 e2e 测试(pi-ui.e2e.test.tsx)
   - PiChat 注入含 data-pi-ui 消息:断言 builtin metric 卡与 sandbox 表格渲染;危险 href 不产出 <a>
-  - 完成判据:`pnpm --filter @pi-web/ui test`(e2e)全绿(新鲜运行)
+  - 完成判据:`pnpm --filter @blksails/pi-web-ui test`(e2e)全绿(新鲜运行)
   - _Requirements: 7.2_
   - _Depends: 4.2, 4.3_
 - [x] 5.2 全量回归与类型校验
@@ -91,7 +91,7 @@
 
 ## Notes
 
-- **连带改动(协议新增变体)**:`@pi-web/react` 的 `sse/decode-chunk.ts` 对 UIMessageChunk 做穷尽 switch;`data-pi-ui` 并入 `DataPartSchema` 后,该 switch 需新增 `case "data-pi-ui"` 否则 `never` 编译错误。已补,react 包 109 测试无回归。此为协议新增 data-part 的必然连带,不在原边界但合理。
+- **连带改动(协议新增变体)**:`@blksails/pi-web-react` 的 `sse/decode-chunk.ts` 对 UIMessageChunk 做穷尽 switch;`data-pi-ui` 并入 `DataPartSchema` 后,该 switch 需新增 `case "data-pi-ui"` 否则 `never` 编译错误。已补,react 包 109 测试无回归。此为协议新增 data-part 的必然连带,不在原边界但合理。
 - **后续增强(沙箱 image + 内置组件)**:沙箱新增 `image` 节点(src 仅 http/https/data:image,双重校验,`loading="lazy"`,危险源降级 alt);内置组件新增 `card`、`codeBlock`。已同步 requirements 3.2/3.5、design 元素与组件列表,并补协议/沙箱/内置测试。
 - **后端产帧通道(打通 agent→data-pi-ui,Req 8)**:agent-kit 新增 `emitUi`(依赖 protocol);protocol 新增 `PI_UI_TOOL_DETAILS_KEY` + `extractToolDetailsUiSpec`;server `translate-event.ts` 在 `tool_execution_update` 识别约定 key → 产 `data-pi-ui`(否则回退 `tool-output-available` preliminary;原回退 `data-pi-tool-partial` 已于 2026-06-20 移除)。复用既有事件、零 pi SDK 改动。新增 `examples/server-driven-ui-agent`(可运行示例)。已同步 requirements R8、design 数据流/Boundary。补 server translate 表驱动用例(命中/非法回退)与 agent-kit emitUi 端到端契约测试。
 - **新鲜验证证据**(worktree 内,五包):

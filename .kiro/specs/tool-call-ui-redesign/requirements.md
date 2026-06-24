@@ -1,7 +1,7 @@
 # Requirements Document
 
 ## Introduction
-本特性重构 `@pi-web/ui` 的工具调用渲染层 `PiToolPart`，参考 AI SDK Elements `Tool` 组件设计，将其由单体卡片复合化为一组可装配、可独立替换的子组件，并对齐参考视觉（状态徽章、按状态展开、输入语法高亮、输出富渲染）。同时为宿主与 web 扩展（webext）新增更细的定制入口，但严格保留既有的数据属性契约、流式态语义、渲染器注册回退链与无障碍能力，确保现有单测与浏览器 e2e 不回归。
+本特性重构 `@blksails/pi-web-ui` 的工具调用渲染层 `PiToolPart`，参考 AI SDK Elements `Tool` 组件设计，将其由单体卡片复合化为一组可装配、可独立替换的子组件，并对齐参考视觉（状态徽章、按状态展开、输入语法高亮、输出富渲染）。同时为宿主与 web 扩展（webext）新增更细的定制入口，但严格保留既有的数据属性契约、流式态语义、渲染器注册回退链与无障碍能力，确保现有单测与浏览器 e2e 不回归。
 
 本特性面向两类使用者：**最终用户**（在会话中看到工具调用卡片）与**集成开发者**（宿主应用作者、agent source 的 `.pi/web` 扩展作者），后者需要按工具名或整体替换工具卡渲染。
 
@@ -18,7 +18,7 @@
 #### Acceptance Criteria
 1. The 工具卡渲染层 shall 导出 `ToolHeader`、`ToolContent`、`ToolInput`、`ToolOutput` 四个子组件及其 props 类型。
 2. The `PiToolPart` shall 作为装配壳，由上述子组件组合而成，并保持其对外 props（`part`、`message?`、`defaultOpen?`、`className?`）向后兼容。
-3. When 集成开发者从 `@pi-web/ui` 包根导入，the 包导出面 shall 暴露这些子组件与 `PiToolPart`，且不破坏既有 `PiToolPart` / `ToolPart` / `PiToolPartProps` 导出。
+3. When 集成开发者从 `@blksails/pi-web-ui` 包根导入，the 包导出面 shall 暴露这些子组件与 `PiToolPart`，且不破坏既有 `PiToolPart` / `ToolPart` / `PiToolPartProps` 导出。
 4. Where 子组件被单独使用，the 子组件 shall 在缺省装配壳的情况下也能独立渲染其负责的区域（头部 / 内容容器 / 输入 / 输出）。
 
 ### Requirement 2: 状态徽章与流式态渲染

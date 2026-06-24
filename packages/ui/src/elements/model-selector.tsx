@@ -11,7 +11,7 @@
  */
 import * as React from "react";
 import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
-import type { ModelGroup, ModelSelection } from "@pi-web/react";
+import type { ModelGroup, ModelSelection } from "@blksails/pi-web-react";
 import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";

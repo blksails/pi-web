@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import { authFormSchema, settingsFormSchema } from "@pi-web/protocol";
+import { authFormSchema, settingsFormSchema } from "@blksails/pi-web-protocol";
 import { SchemaForm } from "../../src/config/schema-form.js";
 import {
   createFieldRegistry,

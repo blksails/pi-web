@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
 import { mockSession, mockControls } from "../fixtures/mock-session.js";
-import type { WebExtension } from "@pi-web/web-kit";
+import type { WebExtension } from "@blksails/pi-web-kit";
 
 /**
  * PiChat 接入 WebExtension(任务 5.2):

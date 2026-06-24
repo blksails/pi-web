@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { compileTool } from "../../src/engine/compile-tool.js";
 import type { ToolSpec, PickedResult, ModelRoute } from "../../src/engine/types.js";
-import type { AttachmentToolContext } from "@pi-web/agent-kit";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 // ── 捕获 buildBody 收到的参数(验证补全值流入)──────────────────────────────────

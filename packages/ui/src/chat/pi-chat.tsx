@@ -18,7 +18,7 @@ import {
   useBranches,
   useSuggestions,
   createUiRpcBus,
-} from "@pi-web/react";
+} from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
 import type { PiChatSlots } from "./slots.js";
@@ -69,7 +69,7 @@ import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
-import type { WebExtension } from "@pi-web/web-kit";
+import type { WebExtension } from "@blksails/pi-web-kit";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -123,7 +123,7 @@ export interface PiChatProps {
   readonly showSessionStats?: boolean;
   /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
   readonly attachmentBaseUrl?: string;
-  /** 可注入的附件上传函数(默认 `@pi-web/react` 的 `uploadAttachment`);测试用以 mock。 */
+  /** 可注入的附件上传函数(默认 `@blksails/pi-web-react` 的 `uploadAttachment`);测试用以 mock。 */
   readonly uploadAttachment?: UploadAttachmentFn;
   readonly className?: string;
 }

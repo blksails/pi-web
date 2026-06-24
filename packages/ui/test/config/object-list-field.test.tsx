@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { FieldDescriptor } from "@pi-web/protocol";
+import type { FieldDescriptor } from "@blksails/pi-web-protocol";
 import { ObjectListField } from "../../src/config/fields/object-list-field.js";
 import type { FieldProps } from "../../src/config/field-registry.js";
 

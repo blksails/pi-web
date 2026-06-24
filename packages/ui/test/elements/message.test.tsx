@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
-import type { BranchInfo } from "@pi-web/react";
+import type { BranchInfo } from "@blksails/pi-web-react";
 import { Message } from "../../src/elements/message.js";
 
 /**

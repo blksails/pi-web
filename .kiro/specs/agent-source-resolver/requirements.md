@@ -14,7 +14,7 @@
 
 - **In scope**:源类型识别(本地目录 abs/rel、git 三种 URL 形态);git 源克隆/更新到缓存(pinned ref、非交互);本地目录直接使用;入口文件探测与优先级;`package.json#pi-web.entry` 覆盖;双模式(custom/cli)判定;按来源的信任策略 `trustPolicy(source)` 与其在两种模式下的落地映射;同 `source@ref` 缓存复用与并发去重;产出 `{ mode, spawnSpec, cwd, trust }`。
 - **Out of scope**:spawn / 启动子进程(归 `rpc-channel`);bootstrap runner 本体与 `index.ts` 的 jiti 载入(归 `agent-runner`);RPC JSONL framing、SSE、HTTP 端点;会话注册与生命周期(归 `session-engine` / `http-api`);扩展安装(`pi install`,归 `extension-management`);沙箱/容器隔离实现(归生产硬化);protocol 类型与 zod schema 的定义(归 `protocol-contract`,本特性只消费)。
-- **Adjacent expectations**:解析结果 `spawnSpec` 的形状必须满足 `rpc-channel` 的 `local` 通道(child_process)直接拉起的需求;`mode`/`trust` 语义须可被 `session-engine` 与 `agent-runner` 一致消费;spawnSpec/DTO 类型来自 `@pi-web/protocol`。
+- **Adjacent expectations**:解析结果 `spawnSpec` 的形状必须满足 `rpc-channel` 的 `local` 通道(child_process)直接拉起的需求;`mode`/`trust` 语义须可被 `session-engine` 与 `agent-runner` 一致消费;spawnSpec/DTO 类型来自 `@blksails/pi-web-protocol`。
 
 ## Requirements
 
@@ -56,7 +56,7 @@
 #### Acceptance Criteria
 1. When 目标目录存在有效入口, the AgentSourceResolver shall 判定 `mode = "custom"`,并产出以 bootstrap runner 为目标的 spawnSpec(`node --import jiti/register <runner> --agent <入口路径> --cwd <work>` 语义)。
 2. When 目标目录无入口(含 source 缺省情形), the AgentSourceResolver shall 判定 `mode = "cli"`,并产出以通用 pi CLI 为目标的 spawnSpec(`node <pkg>/dist/cli.js --mode rpc --cwd <source>` 语义)。
-3. The AgentSourceResolver shall 产出统一形状的 `spawnSpec = { cmd, args, cwd, env }`,其类型与 `@pi-web/protocol` 定义一致。
+3. The AgentSourceResolver shall 产出统一形状的 `spawnSpec = { cmd, args, cwd, env }`,其类型与 `@blksails/pi-web-protocol` 定义一致。
 4. When 产出任一模式的 spawnSpec, the AgentSourceResolver shall 将解析得到的工作目录写入 `spawnSpec.cwd` 与结果顶层 `cwd`,二者一致。
 5. The AgentSourceResolver shall 不在自身进程内执行 spawnSpec,也不载入或执行入口文件代码——只产出规格供下游拉起。
 

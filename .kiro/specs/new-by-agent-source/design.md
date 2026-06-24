@@ -6,7 +6,7 @@
 
 **Users**：使用 pi-web 产品界面（`components/chat-app.tsx`）的开发者/用户。
 
-**Impact**：仅改 app 层 `ChatApp` / `SessionView`。复用既有 `usePiSession` 的「挂载即建会话」语义与 `onSessionId` 的 URL/源映射副作用；不改 `@pi-web/ui`、不改 hook、不改协议。
+**Impact**：仅改 app 层 `ChatApp` / `SessionView`。复用既有 `usePiSession` 的「挂载即建会话」语义与 `onSessionId` 的 URL/源映射副作用；不改 `@blksails/pi-web-ui`、不改 hook、不改协议。
 
 ### Goals
 - "New session" → 同源新建（新 sessionId、源不变、非恢复模式、URL 切到 `/session/:newId`）。
@@ -29,7 +29,7 @@
 - `PiChat` 内部、协议层。
 
 ### Allowed Dependencies
-- `usePiSession`（`@pi-web/react`）现有契约：组件挂载时按 `create` 建会话（`startedRef` 守卫 + `[]` 自动启动）。
+- `usePiSession`（`@blksails/pi-web-react`）现有契约：组件挂载时按 `create` 建会话（`startedRef` 守卫 + `[]` 自动启动）。
 - 既有 `buildCreate(props, source)`、`AgentSourcePicker`、`onSessionId` 副作用。
 
 ### Revalidation Triggers

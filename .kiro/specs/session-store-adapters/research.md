@@ -2,7 +2,7 @@
 
 ## Summary
 - **Feature**: `session-store-adapters`
-- **Discovery Scope**: Extension(向既有 `@pi-web/server` 增量加入存储模块)
+- **Discovery Scope**: Extension(向既有 `@blksails/pi-web-server` 增量加入存储模块)
 - **Key Findings**:
   - 第三方 `pi-coding-agent` 的 `SessionManager` 把树逻辑(`buildSessionContext` 纯内存)与文件 IO 收口耦合,但收口极干净:写口唯一(`_persist`)、读口为 `loadEntriesFromFile` + 列举 `readdir`、桶编码在 `session-manager.js:223`。可作为格式参照,**无需且不会修改**它。
   - `node:sqlite`(`DatabaseSync`)在本机 Node v22.22.0 内置可用(experimental,带一次性警告),sqlite adapter 因此**零新增运行时依赖**。

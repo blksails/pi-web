@@ -1,5 +1,5 @@
 /**
- * @pi-web/react — config 子面(配置表单状态 + 设置面板注册表 + 域 IO)。
+ * @blksails/pi-web-react — config 子面(配置表单状态 + 设置面板注册表 + 域 IO)。
  */
 export {
   useSchemaForm,
