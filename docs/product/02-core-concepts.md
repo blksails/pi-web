@@ -38,6 +38,8 @@
 
 > 一会话一进程 + SSE 长连接 = **有状态服务**。这是 pi-web 不能跑 Serverless/Edge、横向扩容需按 `sessionId` 粘性路由的根本原因。详见 [03 系统架构](./03-architecture.md)。
 
+> 历史会话可在 **会话列表**里浏览并一键恢复（按 `sessionId` 重新订阅其事件流），详见 [21 会话列表](./21-sessions-list.md)。
+
 ## RPC 通道（`PiRpcChannel`）
 
 后端核心是一条**传输无关的 RPC 通道**：

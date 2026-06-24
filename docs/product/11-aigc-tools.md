@@ -11,7 +11,7 @@
 | `image_generation` | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
 | `image_edit` | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
 
-两个工具声明在 `packages/tool-kit/src/aigc/tools/`，聚合入口为 `packages/tool-kit/src/aigc/index.ts`（`AIGC_TOOLS` 常量 + `buildAigcTools()` 工厂）。
+两个工具声明在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts:31` 的 `imageGeneration`、`image-edit.ts:28` 的 `imageEdit`，二者 ToolSpec `name` 分别为 `image_generation` / `image_edit`），聚合入口为 `packages/tool-kit/src/aigc/index.ts:17`（`AIGC_TOOLS` 常量 + `buildAigcTools()` 工厂）。
 
 ---
 
@@ -68,7 +68,7 @@ export default defineAgent({
 | `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一个变量名**读取密钥 | 使用 DashScope / token plan 模型时必填 |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan 端点 base（可选，缺省 `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`） | 覆盖 token plan 域时配置 |
 
-> **注意**：官方 `dashscope.aliyuncs.com` 路由（`wan2.7-image-pro` / `qwen-image-edit-max`）与 token plan 路由（`*-bailian`）都从同一个 `DASHSCOPE_API_KEY` 读取密钥，但两套密钥**不通用**——token plan key 打官方端点返回 401，反之亦然。同一进程内 `DASHSCOPE_API_KEY` 只能配一个值，故二选一：要么走官方路由用官方 key，要么走 `*-bailian` 路由用 token plan key。遇到 401 或"渠道不存在"先按此排查，详细对策见 [18 · 故障排查 FAQ §2.1](18-troubleshooting-faq.md)。
+> **注意**：官方 `dashscope.aliyuncs.com` 路由（`wan2.7-image-pro` / `qwen-image-edit-max`）与 token plan 路由（`*-bailian`）都从同一个 `DASHSCOPE_API_KEY` 读取密钥，但两套密钥**不通用**——token plan key 打官方端点返回 401，反之亦然。同一进程内 `DASHSCOPE_API_KEY` 只能配一个值，故二选一：要么走官方路由用官方 key，要么走 `*-bailian` 路由用 token plan key。遇到 401 或"渠道不存在"先按此排查，详细对策见 [18 · 故障排查 FAQ §2.1](18-troubleshooting-faq.md#21-自定义-provider-鉴权-401)。
 
 ```bash
 # .env.local 示例
@@ -104,7 +104,7 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
   "image": "att_abc123",    // 附件 id（att_前缀）或 https URL；必填
   "prompt": "把背景换成夕阳下的海滩",  // 编辑指令；必填
   "mask": "att_def456",     // 可选 B/W 遮罩：白色区域重绘
-  "reference_images": ["att_xyz"],  // 可选参考图（主图+mask+参考图 ≤ 3）
+  "reference_images": ["att_xyz"],  // 可选参考图；主图+mask+参考图总数 ≤ 3（dashscope.ts:155 IMAGE_EDIT_MAX_IMAGES，超限抛错）
   "n": 1,
   "size": "1024x1024",
   "model": "gpt-image-2"
@@ -137,21 +137,21 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 
 ## 交互式参数补全（aigc-tools-interactive-params）
 
-`model`、`size`、`prompt` 三个参数对成图质量至关重要，但不在 `inputSchema.required` 中声明——若 LLM 漏传，不会被参数校验拦截，而是由工具执行层经 `ctx.ui` 弹窗让用户补全。
+`model`、`size`、`prompt` 三个参数对成图质量至关重要，但不在 `inputSchema.required` 中声明——若 LLM 漏传，不会被参数校验拦截，而是由工具执行层经扩展上下文的 `ext.ui`（`ExtensionContext.ui`，区别于负责附件落库的 attachment `ctx`）弹窗让用户补全。
 
-**补全逻辑**（声明在 `ToolSpec.requiredParams`，实现在 `packages/tool-kit/src/engine/compile-tool.ts:resolveRequiredParams`）：
+**补全逻辑**（声明在 `ToolSpec.requiredParams`，见 `image-generation.ts:92` / `image-edit.ts:98`；实现在 `packages/tool-kit/src/engine/compile-tool.ts:288` 的 `resolveRequiredParams`，由 `runExecute` 在路由与 provider 调用之前调用于 `compile-tool.ts:342`）：
 
-1. 已有非空值 → 直接跳过，不弹窗（正常流不受干扰）
-2. 有交互 UI（`ext.hasUI === true`）：
-   - `via: "select"` → 调用 `ctx.ui.select(title, options)` 弹选择器
-   - `via: "input"` → 调用 `ctx.ui.input(title, placeholder)` 弹文本框
+1. 已有非空值（`cur !== undefined && cur !== null && cur !== ""`）→ 直接跳过，不弹窗（正常流不受干扰）
+2. 有交互 UI（`ext?.hasUI === true && ext.ui != null`）：
+   - `via: "select"` → 调用 `ext.ui.select(title, options)` 弹选择器
+   - `via: "input"` → 调用 `ext.ui.input(title, placeholder)` 弹文本框
    - 用户取消（返回 `undefined` 或空字符串）→ 返回 `ok:false`，不发起 provider 调用
 3. 无交互 UI 时：
    - 有 `fallback` 声明 → 使用 fallback 值继续
    - `param === "model"` → 回退到 `defaultModel`
    - `prompt` 无兜底 → 返回 `ok:false`
 
-`options` 中的哨兵值 `"$models"` 在运行时自动展开为该工具的所有 `model` 枚举值。
+`options` 中的哨兵值 `"$models"` 在运行时由 `expandOptions`（`compile-tool.ts:275`）自动展开为该工具 `models[]` 的所有 `model` 路由键。
 
 ---
 
@@ -168,9 +168,9 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 - 零重编码、零缩放，保留 EXIF 方向等其他元数据
 - 解析失败或无 MPF 内容时原样返回，不阻断工具调用
 
-编译器在 `resolveMediaFields` 中对所有 `mediaKind: "image"` 字段自动调用此规范化，无需工具作者手动处理。
+编译器 `resolveMediaFields`（`compile-tool.ts:217`）遍历 `inputSchema.properties`，对所有 `mediaKind: "image"` 字段（含数组型如 `reference_images`）经 `resolveAndNormalizeImage`（`compile-tool.ts:256`）解析：`att_` 前缀 → `resolveInputToDataUri` 转 data URI → 再喂入 `normalizeImageDataUri`；非 `att_`/非 `data:` 的 https URL 原样透传。整条链在 `buildBody` 之前完成，工具作者无需手动处理。
 
-> 仍遇到"空 model 名 / 渠道不存在"且确认是 iPhone 多图照片？见 [18 · 故障排查 FAQ §2.2](18-troubleshooting-faq.md)，含 ImageMagick 手动取主图的临时绕过命令。
+> 仍遇到"空 model 名 / 渠道不存在"且确认是 iPhone 多图照片？见 [18 · 故障排查 FAQ §2.2](18-troubleshooting-faq.md#22-iphone-多图-jpeg-上传致网关报错空-model-名或渠道不存在)，含 ImageMagick 手动取主图的临时绕过命令。
 
 ---
 
@@ -202,10 +202,10 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 
 ### 阿里云百炼 token plan（wan2.7-image-pro-bailian / wan2.7-image-edit-bailian）
 
-- 端点：`https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`（可经 `DASHSCOPE_TOKENPLAN_BASE_URL` 环境变量覆盖）
-- 请求体格式与 DashScope 原生相同（复用 `createDashscopeSyncT2I` / `createDashscopeImageEdit` 工厂，仅切换 base URL）
+- 端点：`https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`。URL 在工具声明里以占位常量 `${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation` 写死（`image-generation.ts:28` / `image-edit.ts:25`），`${VAR:-default}` 缺省语法由 `var-resolver.ts:20` 在 `runEndpoint` 时展开——设了 `DASHSCOPE_TOKENPLAN_BASE_URL` 即覆盖 base，否则回落到 token plan 默认域
+- 请求体格式与 DashScope 原生相同（复用 `createDashscopeSyncT2I` / `createDashscopeImageEdit` 工厂，仅经 `extras.url` 覆盖 base URL）
 - **坑**：不要使用 `compatible-mode/aigc` 路径，会报 URL error；正确路径为 `maas/**api/v1/services/aigc/multimodal-generation**`
-- token plan 目前仅开通 `wan2.7-image-pro`（文生图 + 图像编辑统一 model）
+- token plan 路由用 `*-bailian` 后缀的 model id 区分（`wan2.7-image-pro-bailian` 走 image_generation、`wan2.7-image-edit-bailian` 走 image_edit），二者底层 `providerModel` 同为 `DASHSCOPE_MODELS.wan27ImagePro`——token plan 实际仅开通 Wan 2.7 Image Pro 一个模型（文生图 + 带图编辑统一），文生图/编辑只是拆成两个独立路由键。`*-bailian` 才是 token plan 专用路由；不带后缀的 `wan2.7-image-pro` / `qwen-image-edit-max` 为 DashScope 官方路由
 
 ---
 
@@ -237,15 +237,15 @@ ToolSpec（tools/image-generation.ts）
 
 一次成功的图像生成调用经历以下步骤：
 
-1. LLM 调用工具，传入 `prompt`（及可选参数）
-2. 编译器检查 `requiredParams`，对缺失项触发交互补全
-3. 按 `model` 参数（或 `defaultModel`）路由到对应 `ModelRoute`
-4. 检查 `requiredVars` 是否可解析；缺失则返回 `ok:false` 降级
-5. 检查 attachment ctx 是否注入（runner 装配）
-6. 对 `mediaKind: "image"` 字段：`att_id → data URI → normalizeImageDataUri`
+1. LLM 调用工具，传入 `prompt`（及可选参数）；`model` 被剥出作路由键，不进 `buildBody`
+2. `resolveRequiredParams` 检查 `requiredParams`，对缺失项触发交互补全（用户取消 → `ok:false`）
+3. `selectModelRoute` 按 `model` 参数（或 `defaultModel`，再兜底 `models[0]`）路由到对应 `ModelRoute`
+4. `checkRequiredVars` 检查 `requiredVars` 是否可解析；缺失则返回 `ok:false` 降级（不崩溃）
+5. 检查 attachment ctx 是否注入（`ctx.available`，runner 装配）；未注入则 `ok:false` 降级
+6. `resolveMediaFields` 对 `mediaKind: "image"` 字段：`att_id → data URI → normalizeImageDataUri`
 7. 调用 `runEndpoint`：构造请求体 → HTTP POST → 解析响应（同步 / 异步轮询）
-8. `persistPicked`：将图像产物写入附件存储，获得 `att_<id>` 引用
-9. 组装工具结果：`![name](signedDisplayUrl)` markdown + `details.assets`
+8. `persistPicked`：将图像产物写入附件存储，获得 `att_<id>` 引用；**零产物**（provider 返回 raw/空 url）→ 报 `ok:false` 失败而非误导性成功（`compile-tool.ts:394`）
+9. 组装工具结果：文本说明 + `![name](signedDisplayUrl)` markdown（displayUrl 随 content 走，前端 renderer 据此渲染 `<img>`）+ `details.assets`
 
 ---
 
@@ -311,4 +311,4 @@ createNewApiImage(
 - [05 · 配置](05-configuration.md) — 环境变量配置说明
 - [06 · Providers 与 Models](06-providers-and-models.md) — NewAPI / DashScope provider 接入
 - [07 · Agent 开发](07-agent-development.md) — `defineAgent` 与 `customTools` 用法
-- [18 · 故障排查 FAQ](18-troubleshooting-faq.md) — 401／"渠道不存在"（§2.1）、iPhone 多图 JPEG 报错（§2.2）
+- [18 · 故障排查 FAQ](18-troubleshooting-faq.md#2-provider--模型问题) — 401／"渠道不存在"（[§2.1](18-troubleshooting-faq.md#21-自定义-provider-鉴权-401)）、iPhone 多图 JPEG 报错（[§2.2](18-troubleshooting-faq.md#22-iphone-多图-jpeg-上传致网关报错空-model-名或渠道不存在)）

@@ -88,7 +88,7 @@ PI_WEB_DEFAULT_MODEL=anthropic/claude-opus-4-5
 PI_WEB_HIDE_PROVIDERS=anthropic,openai,google
 ```
 
-实现见 `packages/server/src/config/model-options-filter.ts`(导出 `parseHiddenProviders` / `excludeProviders`)与 `lib/app/pi-handler.ts:319`。前端经 `GET /api/config/models` 取数。
+实现见 `packages/server/src/config/model-options-filter.ts`(导出 `parseHiddenProviders` / `excludeProviders`)与 `lib/app/pi-handler.ts:338`(`/config/models` 路由内调用 `parseHiddenProviders` + `excludeProviders`);会话内 `get_available_models` RPC 也应用同一过滤(`packages/server/src/http/routes/query-routes.ts:113`),保证下拉与运行时可选集一致。前端经 `GET /api/config/models` 取数。详见 [06 · Provider 与模型](06-providers-and-models.md#42-隐藏指定-provider)。
 
 ---
 
@@ -163,6 +163,48 @@ SESSION_STORE_PATH=/data/pi-web-sessions.db
 
 ---
 
+### 九、会话列表视图（sessions-list）
+
+会话列表面板的可见性与展示位置由两个 `NEXT_PUBLIC_*` 变量控制。`NEXT_PUBLIC_*` 在构建期内联进客户端 bundle，**两端可读**（前端读以决定渲染，后端读以门控 `scope=all` 请求），务必让两端取值一致。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | （未设，关闭） | 取 `true` / `1` 时显示「全部」（系统 / 全机器）会话 Tab；关闭时后端对 `scope=all` 直接返回 `403 SESSIONS_GLOBAL_DISABLED`、不触达存储 |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | 会话列表面板的宿主插槽：`sidebar` / `header` / `footer` / `empty`；非法值回落 `sidebar` |
+
+> 前端读取逻辑见 `components/chat-app.tsx:172`（`SESSIONS_GLOBAL_ENABLED`）与 `components/chat-app.tsx:184`（`SESSIONS_SLOT`）；后端门控见 `packages/server/src/session-list/session-list-routes.ts:136`（`scope=all && !globalEnabled` → 403）。完整说明见 [21 · 会话列表](./21-sessions-list.md)。
+
+```bash
+# 启用系统会话视图并把列表移到顶栏
+NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=1
+NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
+```
+
+---
+
+### 十、日志
+
+日志由同构包 `packages/logger` 解析以下 env 配置（解析逻辑见 `packages/logger/src/config.ts:48`），客户端与服务端共用同一套变量名。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `PI_WEB_LOG_ENABLED` | （启用） | 取 `false` 时禁用日志输出；其余任何值视为启用 |
+| `PI_WEB_LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
+| `PI_WEB_LOG_NAMESPACES` | （全部） | 逗号分隔的命名空间白名单（如 `agent,ext`），仅启用列出的命名空间 |
+| `PI_WEB_LOG_FILE` | （未设，不写文件） | 日志文件绝对路径；设置后启用文件输出 |
+| `PI_WEB_LOG_FILE_MAXSIZE` | `10` | 单文件滚动阈值（MB） |
+| `PI_WEB_LOG_FILE_MAXFILES` | `5` | 滚动备份文件最大数量 |
+
+```bash
+PI_WEB_LOG_LEVEL=debug
+PI_WEB_LOG_NAMESPACES=agent,ext
+PI_WEB_LOG_FILE=/var/log/pi-web/app.log
+```
+
+> 日志系统的级别语义、命名空间分层与 Node/浏览器双端差异详见 [16 · 日志](./16-logging.md)。
+
+---
+
 ## `~/.pi/agent` 目录结构与优先级
 
 ```
@@ -207,3 +249,4 @@ PI_WEB_ATTACHMENT_SECRET=stable-secret-at-least-32-chars-here
 - [14 · CLI](14-cli.md) — `pi-web` 命令行参数与 `--watch` 热重载
 - [16 · 日志](16-logging.md) — 日志级别环境变量
 - [17 · 开发与测试](17-development-and-testing.md) — e2e 隔离构建约定
+- [21 · 会话列表](21-sessions-list.md) — 系统会话视图开关与展示位置

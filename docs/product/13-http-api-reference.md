@@ -37,6 +37,7 @@ Next.js Route Handler (app/api/*/route.ts)
 | 用途 | 端点 |
 |---|---|
 | 会话生命周期 | `POST /sessions`、`DELETE /sessions/:id` |
+| 会话列表 | `GET /sessions`（列出历史会话，分页） |
 | 事件订阅 | `GET /sessions/:id/stream`（SSE） |
 | 发消息 / 引导 | `POST /sessions/:id/messages`、`/steer`、`/follow_up`、`/abort` |
 | 会话控制 | `POST /sessions/:id/model`、`/thinking`、`/fork`、`/ui-response`、`/ui-rpc` |
@@ -144,6 +145,58 @@ curl -X POST http://localhost:3010/api/sessions \
   -H "Content-Type: application/json" \
   -d '{"source": "/path/to/.pi", "cwd": "/workspace"}'
 ```
+
+---
+
+### GET /api/sessions — 列出历史会话
+
+列出本机持久化的历史会话（仅会话头部轻量元数据，不读正文），用于会话列表面板的浏览与恢复。经 `routes:` 注入接缝挂载（`createSessionListRoutes()`），与内置 sessions 端点共存。按 `updatedAt ?? createdAt` 倒序、keyset 游标分页。
+
+**查询参数** (`ListSessionsRequestSchema`，见 `packages/protocol/src/transport/rest-dto.ts:177`)：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `scope` | `"cwd"` \| `"all"` | 否 | 缺省 `cwd`（当前目录）；`all`（系统/全机器）受全局门控 |
+| `cwd` | string | 否 | `scope=cwd` 的目标目录（`sessionId` 不可用时的回退） |
+| `sessionId` | string | 否 | `scope=cwd` 时优先以该会话的持久化 cwd 为目标目录 |
+| `limit` | 正整数 | 否 | 单页上限，默认 50，硬 clamp 到 200 |
+| `cursor` | string | 否 | 不透明 keyset 游标（`base64url(JSON.stringify({ ts, id }))`），续取下一页 |
+
+**成功响应** 200（`ListSessionsResponse`，见 `rest-dto.ts:207`）：
+
+```jsonc
+{
+  "sessions": [
+    {
+      "sessionId": "550e8400-...",
+      "name": "重构 auth 模块",   // 可选
+      "cwd": "/workspace",
+      "createdAt": "2025-06-01T08:00:00.000Z",
+      "updatedAt": "2025-06-01T09:30:00.000Z"  // 可选（部分存储后端无此值）
+    }
+  ],
+  "nextCursor": "eyJ0cyI6...",  // 缺省表示无更多页
+  "scope": "cwd",                // 回显生效的 scope
+  "globalEnabled": true,         // 系统视图是否启用，供前端确认入口可用性
+  "protocolVersion": "0.1.0"
+}
+```
+
+**错误**：
+
+| 状态 | code | 触发 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | `scope` / `limit` / `cursor` 非法（响应含出错字段） |
+| 403 | `SESSIONS_GLOBAL_DISABLED` | `scope=all` 但系统视图未启用（不触达存储，不返回任何会话数据） |
+| 500 | `INTERNAL` | 存储读取异常 |
+
+```bash
+curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
+```
+
+> 系统视图（`scope=all`）默认关闭，需部署方设 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`。分页、门控、前端三态与重定位等完整机制详见 [21 · 会话列表](21-sessions-list.md)。
+>
+> **实现参考**：`packages/server/src/session-list/session-list-routes.ts`
 
 ---
 

@@ -173,9 +173,9 @@ GET /api/config/models
 PI_WEB_HIDE_PROVIDERS=anthropic,openai  pnpm dev
 ```
 
-过滤逻辑在 `packages/server/src/config/model-options-filter.ts:excludeProviders`，精确匹配 provider 名（大小写敏感），同时从 `providers` 名单和 `models` 列表中剔除。`PI_WEB_HIDE_PROVIDERS` 为空时不过滤（零拷贝快路径）。
+过滤逻辑在 `packages/server/src/config/model-options-filter.ts:33`（`excludeProviders`），精确匹配 provider 名（大小写敏感），同时从 `providers` 名单和 `models` 列表中剔除。`PI_WEB_HIDE_PROVIDERS` 为空时不过滤（零拷贝快路径）。`/config/models` 路由侧的调用入口见 `lib/app/pi-handler.ts:338`。
 
-会话内 `get_available_models` RPC 也应用同一过滤（`excludeProviderModels`），保证下拉与运行时可选集一致。
+会话内 `get_available_models` RPC（`GET /sessions/:id/models`）也应用同一开关——经姊妹函数 `excludeProviderModels`（`model-options-filter.ts:49`）剔除，调用点在 `packages/server/src/http/routes/query-routes.ts:113`，保证下拉与运行时可选集一致。
 
 ---
 

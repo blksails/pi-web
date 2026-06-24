@@ -25,9 +25,20 @@ pnpm dev          # next dev — http://localhost:3000
 - **任意目录** → 通用 CLI 模式（`pi --mode rpc`）；
 - **git 源** → 解析后同上。
 
+## 从 examples/ 选一个上手
+
+仓库 `examples/` 内置了多个**可直接指向**的示例，并按能力分类整理在 [examples 总索引](https://github.com/blksails/pi-web/blob/main/examples/README.md)。第一次跑通，推荐从下面两个入门示例任选其一：
+
+| 示例 | 适合 | 说明 |
+| --- | --- | --- |
+| `examples/hello-agent` | 第一次跑通 | 自包含的最小自定义 agent，只暴露一个 `echo` 工具，不加载系统工具与磁盘 skills。 |
+| `examples/minimal-agent` | 看最精简入口 | 仅 `defineAgent()` 必需字段的骨架，便于对照自己写入口。 |
+
+更多按能力（附件、AIGC、Web UI 扩展等）分类的示例见 [examples 总索引](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
+
 ## 5 分钟跑通示例 agent
 
-仓库 `examples/` 内置了多个可直接指向的示例。最小例子是 `examples/hello-agent`：
+下面以最小例子 `examples/hello-agent` 为例：
 
 ```ts
 // examples/hello-agent/index.ts（节选）

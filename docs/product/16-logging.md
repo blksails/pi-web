@@ -1,7 +1,6 @@
 # 16 · 日志系统
 
-> **注意：该特性位于 `feat/logging-system` 分支，尚未合并到 main。**
-> 本章描述的所有路径、API 和配置均基于该分支的实现（spec `.kiro/specs/logging-system`，phase=implemented，全部任务勾选完成，含隔离构建 E2E），在合并前不可在主干直接使用。
+> 该特性已合并到 main（spec `.kiro/specs/logging-system`，phase=implemented，全部任务勾选完成，含隔离构建 E2E）。
 
 日志系统为 pi-web 的 agent source、pi extension 和 webext 三类组件提供统一的结构化日志能力，从子进程 stderr 汇聚到主进程，经会话流实时推送到浏览器日志面板，并支持按需拉取历史记录。
 
@@ -21,7 +20,8 @@ agent source / pi extension（Node 子进程）
                                         │
                               LogsStore（合并/去重三源条目）
                                         │
-                                   LogsPanel（面板）
+                   内核 PiChat 按 panelPosition 渲染 LogsPanel
+                   （bottom / right / drawer，旁挂 webext logs slot）
 
 webext（浏览器）
   └─ createLogger() → browserSink → 内存环形缓冲（2000 条）→ LogsStore
@@ -38,7 +38,7 @@ webext（浏览器）
 ## `@blksails/logger` 包
 
 **包名**：`@blksails/logger`  
-**位置**：`packages/logger/`（`feat/logging-system` 分支）
+**位置**：`packages/logger/`
 
 ### 核心 API
 
@@ -207,21 +207,34 @@ export default function ChatShell({ children }) {
 
 ## 日志面板（LogsPanel）
 
-面板作为独立 slot 挂载在会话界面，支持三种位置：
+面板由内核 `PiChat` 直接渲染（`packages/ui/src/chat/pi-chat.tsx`），不是独立 slot。`PiChat` 据 `showLogs` / `logsPanelVisible`（对应 `outputs.panelVisible`）/ `logsPanelPosition`（对应 `outputs.panelPosition`）三项 props 决定是否及在何处挂载面板，三种位置各自渲染一个带 `data-pi-logs-region` 标记的容器：
 
-| `panelPosition` | 效果 |
-|-----------------|------|
-| `bottom`（默认）| 聊天区下方水平面板 |
-| `right` | 右侧分栏 |
-| `drawer` | 可折叠抽屉 |
+| `panelPosition` | 渲染位置 | 行为 |
+|-----------------|----------|------|
+| `bottom`（默认）| 输入 dock 下方（`pi-chat.tsx:960`）| 与会话用量条同列堆叠的水平面板 |
+| `right` | 右侧 `aside` 内的独立区块（`pi-chat.tsx:1112`）| 与 `panelRight` / artifact 共存于同一 aside |
+| `drawer` | 固定底部覆盖层（`pi-chat.tsx:974`）| 由 `data-pi-logs-drawer-toggle` 的「日志」按钮开合，`fixed` 抽屉 `max-h-[40vh]` |
+
+每个位置的内核 `LogsPanel` 旁都并存一个 webext `logs` 插槽（`ExtSlotRegion slot="logs"`，`pi-chat.tsx:966 / 989 / 1117`）：扩展对 `logs` slot 的贡献以**追加语义**渲染在内核面板之后，二者并存而非替换。示例见 `examples/*` 中 webext 的 `slots.logs`（task 8.3 接入）。
 
 面板功能（过滤逻辑在 `LogsStore`，`packages/react/src/logging/logs-store.ts`，面板仅消费其结果）：
 
 - 按级别过滤（下拉选 `debug / info / warn / error`，最低级别含义）
 - 按命名空间过滤（冒号分段前缀匹配，自动含子命名空间，如 `agent:hello` 命中 `agent:hello:tool`，但不命中 `agentx:other`）
 - 文本搜索（对 `msg` 做**大小写敏感**子串匹配，即 `e.msg.includes(filterText)`）
-- 自动滚动（用户向上翻阅时暂停，回到底部时恢复）
 - 历史日志自动拉取（面板 mount 时触发 `fetchHistory`，命中上文 REST 端点）
+
+### Smart-follow（智能跟随 + 未读跳转）
+
+自动滚动由 `LogsPanel` 自身实现（`packages/ui/src/logs/logs-panel.tsx`），其 `handleScroll` 用 `scrollTop + clientHeight >= scrollHeight - SCROLL_BOTTOM_THRESHOLD` 判贴底（`logs-panel.tsx:178`）——与对话区通用的 `use-auto-scroll.ts` 钩子各自独立，面板未复用该钩子：
+
+- **贴底跟随** — 处于底部时新条目到达即把 `ul.scrollTop = ul.scrollHeight` 续随，`unreadCount` 清零（`logs-panel.tsx:157`）。
+- **向上暂停** — 用户上翻离底即暂停跟随；其间新条目按正向增量累计为未读数，过滤导致的条目减少（负增量）不计入（`logs-panel.tsx:164`）。
+- **未读跳转按钮** — 暂停且 `unreadCount > 0` 时，面板右下角浮出 `data-pi-logs-jump-latest` 按钮，文案 `↓ N 新日志`；点击回到底部、恢复跟随并清零未读（`logs-panel.tsx:190 / 305`）。
+
+### 窄列自适应换行
+
+`LogRow` 采用自适应行布局（`logs-panel.tsx:81`）：宽容器下时间/级别/命名空间/消息四列单行排布；在窄容器（如 `right` 右侧栏）中，消息列以 `min-w` 12rem 触发 `flex-wrap` 换到整行全宽并按词换行（`break-words`），避免固定列把消息挤成逐字竖排。
 
 ---
 
@@ -241,25 +254,19 @@ export default function ChatShell({ children }) {
 
 ## 快速验证步骤
 
-> 以下步骤基于 `feat/logging-system` 分支。
+> 动手实践见 [`examples/logging-demo-agent`](https://github.com/blksails/pi-web/tree/main/examples/logging-demo-agent/)（含独立 README）：它把上文三条路径——agent 注入式 `ctx.logger`、pi extension 直接 `createLogger`、webext 浏览器 log bus——汇成同一个日志面板，是对照三源日志最快的入口。下述步骤即以该示例为操作对象。
 
-1. 切换到该分支：
-
-   ```bash
-   git checkout feat/logging-system
-   ```
-
-2. 启动开发服务器：
+1. 启动开发服务器：
 
    ```bash
    pnpm dev
    ```
 
-3. 在浏览器打开 pi-web，选择 `logging-demo-agent`（位于 `examples/logging-demo-agent/`）发起会话。
+2. 在浏览器打开 pi-web，选择 `logging-demo-agent`（位于 `examples/logging-demo-agent/`）发起会话。
 
-4. 会话建立后，日志面板应立即显示 demo agent 在 factory 阶段输出的启动日志：四条主命名空间条目（`debug / info / warn / error`）加一条子命名空间 `<agent>:tool` 的 `info` 条目。
+3. 会话建立后，日志面板应立即显示 demo agent 在 factory 阶段输出的启动日志：四条主命名空间条目（`debug / info / warn / error`）加一条子命名空间 `<agent>:tool` 的 `info` 条目。
 
-5. 验证 env 门控：
+4. 验证 env 门控：
 
    ```bash
    PI_WEB_LOG_LEVEL=warn pnpm dev
@@ -276,7 +283,7 @@ export default function ChatShell({ children }) {
 
 **若面板始终为空**，按以下顺序排查：
 
-- 确认当前在 `feat/logging-system` 分支（`git branch --show-current`）——main 上无此特性。
+- 确认面板未被隐藏或挪走：Settings 中 `outputs.panelVisible` 为 `true`（否则即使 `showLogs` 也不渲染），`outputs.panelPosition` 为 `drawer` 时面板默认收起，需点「日志」按钮（`data-pi-logs-drawer-toggle`）展开。
 - 确认未通过 env 或 Settings 把日志关掉：`PI_WEB_LOG_ENABLED` 不为 `false`，且 `PI_WEB_LOG_LEVEL` 未高于 demo agent 输出的最低级别（demo 会发 `debug`，若设为 `warn` 则 `debug/info` 两条被门控）。
 - 服务端门控独立于浏览器（见上文「服务端：权威门控」）：env 提级会在「入 ring buffer」前就把低级别条目滤掉，面板也就收不到。
 - 仍无输出时参见 [18 · 故障排查 FAQ](./18-troubleshooting-faq.md)。
