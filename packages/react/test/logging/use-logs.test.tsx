@@ -69,11 +69,14 @@ describe("useLogs", () => {
 
     const { result } = renderHook(() => useLogs({ store, fetcher }));
 
+    // Auto-fetch fires on mount; manual call is additional — total ≥ 1 call.
     await act(async () => {
       await result.current.fetchHistory({});
     });
 
-    expect(fetcher).toHaveBeenCalledOnce();
+    // Auto-fetch (mount) + manual call = 2 total calls. The fetcher is called.
+    expect(fetcher).toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledWith({});
     const ids = result.current.entries.map((e) => e.id);
     expect(ids).toContain("live-1");
     expect(ids).toContain("hist-1");
@@ -124,5 +127,90 @@ describe("useLogs", () => {
 
     expect(result.current.entries).toHaveLength(1);
     expect(result.current.entries[0]!.id).toBe("live-new");
+  });
+
+  // ── Auto-fetch on mount (task 7.2) ────────────────────────────────────────────
+
+  it("auto-fetches history on mount when fetcher is provided", async () => {
+    const store = createLogsStore();
+    const histEntries = [entry("hist-auto-1"), entry("hist-auto-2")];
+    const fetcher = vi.fn().mockResolvedValue(histEntries);
+
+    await act(async () => {
+      renderHook(() => useLogs({ store, fetcher }));
+    });
+
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledWith({});
+    const snap = store.getSnapshot();
+    const ids = snap.entries.map((e) => e.id);
+    expect(ids).toContain("hist-auto-1");
+    expect(ids).toContain("hist-auto-2");
+  });
+
+  it("does not auto-fetch when no fetcher is provided", async () => {
+    const store = createLogsStore();
+
+    await act(async () => {
+      renderHook(() => useLogs({ store }));
+    });
+
+    // No fetcher — store should remain empty; no error thrown.
+    expect(store.getSnapshot().entries).toHaveLength(0);
+  });
+
+  it("re-fetches history when fetcher reference changes (new session)", async () => {
+    const store = createLogsStore();
+
+    const fetcher1 = vi.fn().mockResolvedValue([entry("sess1-hist")]);
+    const fetcher2 = vi.fn().mockResolvedValue([entry("sess2-hist")]);
+
+    let currentFetcher = fetcher1;
+
+    const { rerender } = renderHook(() => useLogs({ store, fetcher: currentFetcher }));
+
+    await act(async () => {});
+
+    expect(fetcher1).toHaveBeenCalledOnce();
+
+    // Simulate new session: swap fetcher reference.
+    currentFetcher = fetcher2;
+    await act(async () => {
+      rerender();
+    });
+
+    expect(fetcher2).toHaveBeenCalledOnce();
+    const ids = store.getSnapshot().entries.map((e) => e.id);
+    expect(ids).toContain("sess1-hist");
+    expect(ids).toContain("sess2-hist");
+  });
+
+  it("auto-fetch deduplicates: live entries already in store not duplicated", async () => {
+    const store = createLogsStore();
+    // Pre-load a live entry.
+    store.applyLogsFrame([entry("live-dup")]);
+
+    // Fetcher returns the same entry plus a new one.
+    const fetcher = vi.fn().mockResolvedValue([entry("live-dup"), entry("hist-only")]);
+
+    await act(async () => {
+      renderHook(() => useLogs({ store, fetcher }));
+    });
+
+    const ids = store.getSnapshot().entries.map((e) => e.id);
+    expect(ids.filter((id) => id === "live-dup")).toHaveLength(1);
+    expect(ids).toContain("hist-only");
+  });
+
+  it("auto-fetch swallows errors without crashing", async () => {
+    const store = createLogsStore();
+    const fetcher = vi.fn().mockRejectedValue(new Error("network error"));
+
+    await act(async () => {
+      renderHook(() => useLogs({ store, fetcher }));
+    });
+
+    // Hook should still render without throwing; store unchanged.
+    expect(store.getSnapshot().entries).toHaveLength(0);
   });
 });

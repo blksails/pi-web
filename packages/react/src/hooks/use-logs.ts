@@ -15,7 +15,7 @@
  * Requirements: 5.3–5.5 (filter derivation), 4.5 (history merge), 5.6 (autoscroll flag)
  */
 
-import { useSyncExternalStore, useState, useCallback } from "react";
+import { useSyncExternalStore, useState, useCallback, useEffect } from "react";
 import type { LogsStore, LogFilters } from "../logging/logs-store.js";
 import type { LogEntry } from "@pi-web/logger";
 
@@ -84,6 +84,24 @@ export function useLogs({ store, fetcher }: UseLogsOptions): UseLogsResult {
     },
     [store, fetcher],
   );
+
+  // Auto-fetch history on mount and whenever the fetcher changes (new session).
+  // Errors are swallowed to avoid crashing the panel if the REST endpoint is
+  // temporarily unavailable.
+  useEffect(() => {
+    if (!fetcher) return;
+    let cancelled = false;
+    fetcher({})
+      .then((entries) => {
+        if (!cancelled) store.mergeHistory(entries);
+      })
+      .catch(() => {
+        // Silently ignore history fetch errors.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetcher, store]);
 
   return {
     entries: snapshot.filteredEntries,

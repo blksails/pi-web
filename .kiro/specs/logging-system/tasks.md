@@ -186,3 +186,18 @@
   - 配置字段渲染：number 字段值为 null/undefined 时显示空/占位符，不显示字面 "null"；缺配置时 bool/enum/number 字段回显 FieldDescriptor.default(schema 默认)而非空/未勾选。须不破坏既有 auth/settings/sandbox 域行为与既有 config e2e。
   - _Requirements: 6.2, 6.6_
   - _Boundary: ui config_
+
+## 7. 真实 agent 实测发现的缺陷修复
+
+- [x] 7.1 修 runner agent 日志命名空间（取源目录名而非入口文件名）
+  - 现状：runner.ts 用入口文件 basename 去扩展做命名空间，index.ts→`agent:index`。应取 agent **源目录名**（如 logging-demo-agent→`agent:logging-demo-agent`）；当 basename 为 index/main 等通用入口名时，回退用其父目录名。
+  - 完成态：agent source 的 ctx.logger 日志命名空间反映 agent 名（非 "index"）；单测覆盖 index.ts 入口推导出目录名。
+  - _Requirements: 2.1_
+  - _Boundary: server runner_
+
+- [x] 7.2 面板挂载时自动拉取历史日志
+  - 现状：use-logs 暴露 fetchHistory 但无人在挂载时调用，导致浏览器连上之前产生的 agent 启动期日志（已在服务端 ring buffer）不显示在面板。
+  - 改：在 use-logs（fetcher 就绪时）或 pi-chat 挂载时自动调用 fetchHistory({}) 拉取历史并 mergeHistory（按 id 去重，与实时帧合并无重复）；新会话（fetcher/store 变更）时重新拉取。
+  - 完成态：选源起会话后，面板显示 agent 启动期日志（factory/started/warn/error）+ 实时日志，无重复。
+  - _Requirements: 4.5, 5.2_
+  - _Boundary: react logging, ui chat_
