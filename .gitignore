@@ -20,7 +20,7 @@ next-env.d.ts
 # pi-web-cli e2e 证据截图(本地保留,不入库)
 .kiro/specs/pi-web-cli/evidence/
 
-.claude/
+.claude/*
 !.claude/skills/
 
 # Storybook build output
