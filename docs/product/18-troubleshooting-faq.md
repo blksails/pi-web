@@ -63,7 +63,7 @@
    ],
    ```
 2. 同时确认 webpack `externals` 的 `piSdkExternal` 函数对 `@earendil-works/pi-coding-agent` 返回 `module <absolute-path>` 形式（`next.config.ts:148`，绝对路径由 `piSdkEntryAbsPath()` 解析）。
-3. 任何在主进程（路由 handler）中引入 pi SDK 的代码，必须走子路径导入（如 `@pi-web/server/trust`、`@pi-web/server/model-options`），不能经 barrel 让 webpack 把 pi SDK 打进 bundle。
+3. 任何在主进程（路由 handler）中引入 pi SDK 的代码，必须走子路径导入（如 `@blksails/server/trust`、`@blksails/server/model-options`），不能经 barrel 让 webpack 把 pi SDK 打进 bundle。
 
 ---
 
@@ -168,7 +168,7 @@ echo 'NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:3000' >> .env.local
 **对策**：若确实需要分栏右侧内容，把内容放进 `panelRight` 插槽——真实配置 API 是 `defineWebExtension`，`layout`（`LayoutPreset`，定义见 `packages/ui/src/chat/pi-chat.tsx:110`）与 `panelRatio` 在 `config` 字段下，`panelRight` 在 `slots` 字段下。可运行参考：`examples/webext-layout-agent/.pi/web/web.config.tsx`（该例用 `config.panelRatio: "3:7"` + `slots.panelRight`，宿主据此渲染分栏让位区）。下面是带 `layout: "split"` 的等价写法：
 ```tsx
 // .pi/web/web.config.tsx
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/web-kit";
 
 export default defineWebExtension({
   manifestId: "my-ext",

@@ -12,15 +12,15 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 
 | 波次 | Spec | 关键交付物 |
 |------|------|-----------|
-| 协议根 | `protocol-contract` | `@pi-web/protocol`：RPC 类型、SSE 帧、UIMessage data-part schema、zod 校验 |
+| 协议根 | `protocol-contract` | `@blksails/protocol`：RPC 类型、SSE 帧、UIMessage data-part schema、zod 校验 |
 | 传输层 | `rpc-channel` | `PiRpcChannel` 接口 + `PiRpcProcess`（JSONL over stdio） |
 | 源解析 | `agent-source-resolver` | 目录/git 入口探测、custom/cli 双模式判定、spawnSpec |
-| 运行时 | `agent-runner` | bootstrap runner（jiti 载入 `index.ts` → `runRpcMode`）+ `@pi-web/agent-kit` |
+| 运行时 | `agent-runner` | bootstrap runner（jiti 载入 `index.ts` → `runRpcMode`）+ `@blksails/agent-kit` |
 | 会话引擎 | `session-engine` | `PiSession` 广播/生命周期/扩展 UI 挂起 + `SessionStore` 接口 |
 | HTTP 层 | `http-api` | REST + SSE Route Handlers + `createPiWebHandler(Web Fetch)` |
 | 前端 | `react-client` | `PiTransport`（AI SDK v5 `ChatTransport`）+ `usePiSession`/`usePiControls`/`useExtensionUI` |
 | 扩展管理 | `extension-management` | 安装/列出/卸载 + 信任策略 + `get_commands` 命令面板 |
-| UI 组件 | `ui-components` | `@pi-web/ui`：`<PiChat>`/Tool/Reasoning/PromptInput + 渲染器注册表 |
+| UI 组件 | `ui-components` | `@blksails/ui`：`<PiChat>`/Tool/Reasoning/PromptInput + 渲染器注册表 |
 | 整站闭环 | `app-shell` | Next.js 全链路 e2e（选源→prompt→浏览器流式回复） |
 
 ### 附件系统波次（2026-06-21，已 e2e 通过）
@@ -52,14 +52,14 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 
 ### embed-integrations — 非 React 嵌入集成
 
-**目标**：`@pi-web/embed` 包，让任意技术栈（Vue/Svelte/纯 HTML/后台系统）零侵入接入 pi-web。
+**目标**：`@blksails/embed` 包，让任意技术栈（Vue/Svelte/纯 HTML/后台系统）零侵入接入 pi-web。
 
 核心交付：
 - `<pi-web-chat src endpoint token>` Web Component 自定义元素
 - `mountPiChat(el, opts)` 命令式挂载 API
 - 样式通过 CSS 变量和 Shadow DOM part 穿透
 
-**复用基础**：`@pi-web/server` 的 REST/SSE 协议已稳定（`POST /sessions`、`GET /sessions/:id/stream` 等），embed 包只是该协议的浏览器端封装，无需改动服务端。
+**复用基础**：`@blksails/server` 的 REST/SSE 协议已稳定（`POST /sessions`、`GET /sessions/:id/stream` 等），embed 包只是该协议的浏览器端封装，无需改动服务端。
 
 ### host-provider-remote — 远程 agent 宿主
 
@@ -95,7 +95,7 @@ pi-web 的演进路径：从单机 Web UI 到云原生多 agent 协作平台。
 
 ### pi-cloud-orchestration — 多 agent 云编排
 
-**目标**：在 `@pi-web/server` 之上构建云层（可能是 `@pi-web/cloud` 包），实现多 agent 管理与计费纳管。
+**目标**：在 `@blksails/server` 之上构建云层（可能是 `@blksails/cloud` 包），实现多 agent 管理与计费纳管。
 
 规划功能：
 - `AgentCatalog`：多个 `AgentDefinition`/源的注册、版本管理、权限与分享
@@ -162,7 +162,7 @@ agentHostProvider    — 远程宿主工厂，按 channel 类型返回 PiRpcChan
 ## 下一步 / 相关
 
 - [03 · 系统架构](./03-architecture.md) — RPC 通道与接缝的当前实现细节
-- [04 · 包结构](./04-packages.md) — `@pi-web/embed` 预计位置与包依赖图
+- [04 · 包结构](./04-packages.md) — `@blksails/embed` 预计位置与包依赖图
 - [07 · Agent 开发](./07-agent-development.md) — `AgentDefinition` 定义与本地宿主当前用法
 - [08 · 附件系统](./08-attachment-system.md) — 已实现的附件两 spec 详解
 - [15 · 部署](./15-deployment.md) — 当前单机部署方案与容器化参考

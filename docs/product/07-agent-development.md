@@ -18,11 +18,11 @@ Runner bootstrap（`packages/server/runner-bootstrap.mjs`）通过 jiti 载入 `
 
 ---
 
-## `@pi-web/agent-kit`
+## `@blksails/agent-kit`
 
 包路径：`packages/agent-kit/src/index.ts`
 
-`@pi-web/agent-kit` 是**零运行时强依赖**的轻量辅助包：
+`@blksails/agent-kit` 是**零运行时强依赖**的轻量辅助包：
 
 - **`defineAgent(def)`** — 恒等函数，仅用于编译期类型推断，运行时原样返回入参。不用此包写出的等价 `AgentDefinition` 对象同样能被 runner 载入。
 - **`defineMinimalAgent(overrides?)`** — 在 `minimalAgentPreset`（`noTools: "all"` + 空 skills + `allowExtensions: []`）之上浅合并作者覆盖，一行得到零能力基线。
@@ -30,7 +30,7 @@ Runner bootstrap（`packages/server/runner-bootstrap.mjs`）通过 jiti 载入 `
 - 类型导出：`AgentDefinition`、`AgentContext`、`AgentModel`、`ToolDefinition`、`AttachmentToolContext` 等（均为纯类型，无值依赖）。
 
 ```ts
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 ```
 
 ---
@@ -64,7 +64,7 @@ import { defineAgent } from "@pi-web/agent-kit";
 来源：`examples/hello-agent/index.ts`
 
 ```ts
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 
@@ -104,7 +104,7 @@ export default defineAgent({
 来源：`examples/minimal-agent/index.ts`
 
 ```ts
-import { defineMinimalAgent } from "@pi-web/agent-kit";
+import { defineMinimalAgent } from "@blksails/agent-kit";
 
 export default defineMinimalAgent({
   // model 省略 → 继承配置
@@ -118,8 +118,8 @@ export default defineMinimalAgent({
 当 agent 需要读取运行时环境（如 `cwd`、`env`）时，使用工厂函数：
 
 ```ts
-import { defineAgent } from "@pi-web/agent-kit";
-import type { AgentContext } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
+import type { AgentContext } from "@blksails/agent-kit";
 
 export default async function (ctx: AgentContext) {
   const apiKey = ctx.env["MY_API_KEY"];
@@ -206,7 +206,7 @@ pi-web 后端进程
   └─ spawn node runner-bootstrap.mjs
        --agent <entry>  --cwd <work>  [--agent-dir <dir>]  [--session-id <id>]
          │
-         ├─ createJiti(here)              # jiti 根锚定在 @pi-web/server 包目录
+         ├─ createJiti(here)              # jiti 根锚定在 @blksails/server 包目录
          ├─ jiti.import("src/runner/runner.ts")
          └─ runner.ts: main(argv)
               ├─ parseRunnerArgs(argv)    # 解析 --agent / --cwd / --agent-dir 等
@@ -241,7 +241,7 @@ pi-web 后端进程
 
    ```ts
    // /path/to/my-agent/index.ts
-   import { defineAgent } from "@pi-web/agent-kit";
+   import { defineAgent } from "@blksails/agent-kit";
    export default defineAgent({
      systemPrompt: "You are my custom agent.",
    });

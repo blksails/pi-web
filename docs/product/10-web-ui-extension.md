@@ -31,7 +31,7 @@
 3. **写自己的扩展** — 在你自己的 agent source 下建 `.pi/web/web.config.tsx`，`export default defineWebExtension({...})`（见下文「最简 Tier1 示例」）。
 4. **装 SDK 并构建** — 在该 agent source 根目录执行：
    ```bash
-   pnpm add -D @pi-web/web-kit
+   pnpm add -D @blksails/web-kit
    pnpm pi-web build --id <extId> --api "^0.1.0" --dir .pi/web --out .pi/web/dist
    ```
    成功时终端打印 `[pi-web build] <extId> → … (integrity=sha384-…)`，并在 `.pi/web/dist/` 生成 `web-extension.mjs` + `manifest.json`。该 `dist/` 产物供「独立预构建」车道（外部 source）加载与校验。
@@ -103,7 +103,7 @@
 ### 安装作者侧 SDK
 
 ```bash
-pnpm add -D @pi-web/web-kit
+pnpm add -D @blksails/web-kit
 ```
 
 ### 最简 Tier1 示例（区域插槽）
@@ -113,7 +113,7 @@ pnpm add -D @pi-web/web-kit
 ```tsx
 // .pi/web/web.config.tsx
 import * as React from "react";
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/web-kit";
 
 function InfoPanel(): React.JSX.Element {
   return (
@@ -138,7 +138,7 @@ export default defineWebExtension({
 ### 构建
 
 ```bash
-# 在 agent source 根目录执行（@pi-web/web-kit 的 bin 名即 pi-web → build/cli.ts）
+# 在 agent source 根目录执行（@blksails/web-kit 的 bin 名即 pi-web → build/cli.ts）
 pnpm pi-web build \
   --id my-agent-ext \
   --api "^0.1.0" \
@@ -253,7 +253,7 @@ UiRpcBus 按 correlationId 配对 → resolve Promise
 ### 注册贡献点
 
 ```tsx
-import { defineWebExtension, type UiRpcClient } from "@pi-web/web-kit";
+import { defineWebExtension, type UiRpcClient } from "@blksails/web-kit";
 
 export default defineWebExtension({
   manifestId: "webext-contrib",
@@ -307,7 +307,7 @@ React.useEffect(() => {
 
 1. 扩展在描述符中声明 `artifact.entry`（相对于 `.pi/web/dist/` 的路径）。
 2. 宿主用 `<ArtifactSurface src="…" sandbox="allow-scripts">` 加载（**不含** `allow-same-origin`），iframe 获得不透明 origin，无法访问宿主 cookie/DOM/凭证。
-3. 双向通信经 postMessage，消息结构由 `@pi-web/protocol` 的 `ArtifactMessage` 类型约束：
+3. 双向通信经 postMessage，消息结构由 `@blksails/protocol` 的 `ArtifactMessage` 类型约束：
 
 ```typescript
 type ArtifactMessage =
@@ -400,7 +400,7 @@ NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:3000
   │    是 → 仅校验版本，从 manifest.config 合成描述符（Tier5，零 bundle）
   │    否 → fetch entry 字节 → SRI + 签名 + 版本校验
   │            ↓ 通过
-  │         注入 import map（react/react-dom/@pi-web/web-kit → 宿主单例 URL）
+  │         注入 import map（react/react-dom/@blksails/web-kit → 宿主单例 URL）
   │         动态 import(entryUrl) → 取 default export WebExtension 描述符
   │
   ▼

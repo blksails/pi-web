@@ -575,7 +575,7 @@ import {
   createPiWebHandler,
   createConfigRoutes,
   createAttachmentRoutes,
-} from "@pi-web/server";
+} from "@blksails/server";
 
 // Next.js Route Handler
 const handler = createPiWebHandler({
@@ -610,7 +610,7 @@ export const DELETE = handler;
 
 ## SSE 帧完整参考
 
-SSE 流包含两类顶层帧，由 `@pi-web/protocol` 的 `SseFrameSchema` 定义：
+SSE 流包含两类顶层帧，由 `@blksails/protocol` 的 `SseFrameSchema` 定义：
 
 ### kind: uiMessageChunk
 

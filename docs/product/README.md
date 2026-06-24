@@ -30,7 +30,7 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 01 | [快速开始](./01-quickstart.md) | 装好环境到跑通第一个 agent |
 | 02 | [核心概念](./02-core-concepts.md) | Agent Source / 双模式 / Session / RPC / 翻译层 |
 | 03 | [系统架构](./03-architecture.md) | 数据流、传输无关通道、有状态约束、扩展接缝 |
-| 04 | [分层包](./04-packages.md) | 7 个 `@pi-web/*` 包的职责与依赖方向 |
+| 04 | [分层包](./04-packages.md) | 7 个 `@blksails/*` 包的职责与依赖方向 |
 | 05 | [配置参考](./05-configuration.md) | 环境变量、`~/.pi/agent`、隐藏 provider |
 | 06 | [Provider 与模型](./06-providers-and-models.md) | 内置与自定义 OpenAI-compatible 网关接入 |
 | 07 | [自定义 Agent 开发](./07-agent-development.md) | `defineAgent()`、`index.ts` 契约、示例索引、热重载 |

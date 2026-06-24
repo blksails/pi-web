@@ -31,19 +31,19 @@ webext（浏览器）
 
 1. **Node 子进程** — `nodeSink` 将每条 `LogEntry` 序列化为 JSON 并以 `LOG_SENTINEL`（`\x02PILOG\x03 `）为前缀写入 stderr，主进程 `parseLogLine` 识别前缀后反序列化并路由到对应 `PiSession`。
 2. **浏览器 webext** — `browserSink` 将条目写入内存环形缓冲（`BROWSER_LOG_CAPACITY = 2000`），订阅方（`LogsStore`）收到通知后更新状态。
-3. **同构 `@pi-web/logger` 包** — 零运行时依赖，无静态 Node 模块引用，可在 Node 与浏览器两端安全导入。
+3. **同构 `@blksails/logger` 包** — 零运行时依赖，无静态 Node 模块引用，可在 Node 与浏览器两端安全导入。
 
 ---
 
-## `@pi-web/logger` 包
+## `@blksails/logger` 包
 
-**包名**：`@pi-web/logger`  
+**包名**：`@blksails/logger`  
 **位置**：`packages/logger/`（`feat/logging-system` 分支）
 
 ### 核心 API
 
 ```typescript
-import { createLogger, configureLogger, initConfigFromEnv } from "@pi-web/logger";
+import { createLogger, configureLogger, initConfigFromEnv } from "@blksails/logger";
 
 // 创建 logger（Node 子进程侧）
 const logger = createLogger({ namespace: "agent:hello", level: "debug" });
@@ -130,8 +130,8 @@ runner 通过 `AgentContext.logger` 向 agent source 注入已绑定命名空间
 
 ```typescript
 // examples/logging-demo-agent/index.ts（节选）
-import type { AgentContext, AgentDefinition } from "@pi-web/agent-kit";
-import { defineAgent } from "@pi-web/agent-kit";
+import type { AgentContext, AgentDefinition } from "@blksails/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 
 export default function (ctx: AgentContext): AgentDefinition {
   const logger = ctx.logger;                        // runner 注入，命名空间取 agent 源目录名
@@ -154,7 +154,7 @@ pi extension 可直接引用本包，无需依赖 pi SDK：
 
 ```typescript
 // .pi/extensions/my-ext.ts
-import { createLogger } from "@pi-web/logger";
+import { createLogger } from "@blksails/logger";
 const log = createLogger({ namespace: "ext:my-ext" });
 log.info("extension loaded");
 ```
@@ -176,7 +176,7 @@ PiSession.processStderrChunk — 按门控逐条过滤后入 LogRingBuffer，再
 
 1. **runner bootstrap** — runner 启动时调用 `initConfigFromEnv()`，从 `PI_WEB_LOG_*` env 初始化 Node 侧 logger 配置（`packages/server/src/runner/runner.ts:199`）。
 2. **PiSession 门控** — `handleStderr` 在会话激活时经注入的 `loggingConfigProvider` 加载 logging 配置；配置就绪前先缓冲 stderr chunk，就绪后回放并过滤。
-3. **逐条过滤 + 入库** — `processStderrChunk` 对每条 `LogEntry` 依次套用 `gate.enabled` / `isLevelEnabled` / `isNamespaceEnabled`（来自 `@pi-web/logger`），通过者经 `LogRingBuffer.ingest` 分配 id 入会话环形缓冲，再合并为 `control:logs` 帧广播（`packages/server/src/session/pi-session.ts`）。
+3. **逐条过滤 + 入库** — `processStderrChunk` 对每条 `LogEntry` 依次套用 `gate.enabled` / `isLevelEnabled` / `isNamespaceEnabled`（来自 `@blksails/logger`），通过者经 `LogRingBuffer.ingest` 分配 id 入会话环形缓冲，再合并为 `control:logs` 帧广播（`packages/server/src/session/pi-session.ts`）。
 4. **SSE 回填** — 浏览器订阅建立时，`PiSession` 先把 ring buffer 已有条目以一帧 `control:logs` 回填（避免早期日志竞争），后续新条目实时推送。
 
 REST 端点（历史拉取）：`GET /api/sessions/[sessionId]/logs?level=info&limit=200&since=<ts>`（内部 handler 路由 `/sessions/:id/logs`，见 `packages/server/src/http/routes/query-routes.ts`，返回 `{ entries }`）。

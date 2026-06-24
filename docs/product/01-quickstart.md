@@ -31,7 +31,7 @@ pnpm dev          # next dev — http://localhost:3000
 
 ```ts
 // examples/hello-agent/index.ts（节选）
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

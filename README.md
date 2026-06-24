@@ -6,6 +6,10 @@
 
 pi-web turns any agent written with the [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) SDK into a UI-equipped product with near-zero extra work. It also serves the general-purpose pi coding agent as a web service, and is designed as the kernel + open layer for a future "pi cloud".
 
+📖 **Documentation:** [pi-web.blksails.ai](https://pi-web.blksails.ai) — full product docs (overview, quickstart, architecture, API, deployment).
+
+> Packages are published under the **`@blksails/*`** scope (`@blksails/protocol`, `@blksails/server`, `@blksails/react`, `@blksails/ui`, `@blksails/agent-kit`, `@blksails/tool-kit`, `@blksails/web-kit`).
+
 ## Features
 
 - **Dual-mode loading** — a source with `index.[js|ts]` runs your custom agent via the SDK's `runRpcMode`; a source without an entry falls back to the general `pi --mode rpc`. Both speak the same RPC protocol to the frontend.
@@ -38,12 +42,12 @@ Layered, independently-publishable packages with a single dependency direction (
 
 | Package | Role |
 | --- | --- |
-| `@pi-web/protocol` | Stable contract: RPC types/schemas, config form-schema IR. Changes are semver-gated; SSE frames carry `protocolVersion`. |
-| `@pi-web/server` | Backend engine: agent-source resolution, bootstrap runner, RPC channel, session registry & translation, config/attachment routes. |
-| `@pi-web/react` | Headless hooks & transport (unstyled). |
-| `@pi-web/ui` | shadcn/ui + AI Elements components and the schema-driven config UI. |
-| `@pi-web/agent-kit` | `defineAgent()` typing helper for writing your `index.ts`. |
-| `@pi-web/tool-kit`, `@pi-web/web-kit` | Supporting kits for tools and web integration. |
+| `@blksails/protocol` | Stable contract: RPC types/schemas, config form-schema IR. Changes are semver-gated; SSE frames carry `protocolVersion`. |
+| `@blksails/server` | Backend engine: agent-source resolution, bootstrap runner, RPC channel, session registry & translation, config/attachment routes. |
+| `@blksails/react` | Headless hooks & transport (unstyled). |
+| `@blksails/ui` | shadcn/ui + AI Elements components and the schema-driven config UI. |
+| `@blksails/agent-kit` | `defineAgent()` typing helper for writing your `index.ts`. |
+| `@blksails/tool-kit`, `@blksails/web-kit` | Supporting kits for tools and web integration. |
 
 ## Getting Started
 

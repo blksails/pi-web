@@ -1,43 +1,43 @@
 # 04 · 包结构与依赖关系
 
-pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@pi-web/protocol` 是契约根，所有包向它单方向依赖，后端与前端之间不存在反向引用。
+pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@blksails/protocol` 是契约根，所有包向它单方向依赖，后端与前端之间不存在反向引用。
 
 ---
 
 ## 依赖关系总览
 
 ```
-@pi-web/protocol  (契约根，零运行时依赖)
-    ├── @pi-web/server          (Node only)
-    ├── @pi-web/agent-kit       (Node only，轻量型帮助)
-    │       └── @pi-web/tool-kit        (声明层 + 运行层)
-    └── @pi-web/web-kit         (作者侧 UI 控制层 SDK)
-            └── @pi-web/react   (headless hooks)
-                    └── @pi-web/ui      (AI Elements 组件库)
+@blksails/protocol  (契约根，零运行时依赖)
+    ├── @blksails/server          (Node only)
+    ├── @blksails/agent-kit       (Node only，轻量型帮助)
+    │       └── @blksails/tool-kit        (声明层 + 运行层)
+    └── @blksails/web-kit         (作者侧 UI 控制层 SDK)
+            └── @blksails/react   (headless hooks)
+                    └── @blksails/ui      (AI Elements 组件库)
 ```
 
 各包核心属性如下：
 
 | 包名 | 目录 | 运行环境 | 发布形态 | 状态 |
 |---|---|---|---|---|
-| `@pi-web/protocol` | `packages/protocol/` | 同构(浏览器/Node) | ✅ | 已实现 |
-| `@pi-web/server` | `packages/server/` | Node ≥22.19 | ✅ | 已实现 |
-| `@pi-web/react` | `packages/react/` | 浏览器(SSR 安全) | ✅ | 已实现 |
-| `@pi-web/ui` | `packages/ui/` | 浏览器(SSR 安全) | ✅ | 已实现 |
-| `@pi-web/agent-kit` | `packages/agent-kit/` | Node(dev/运行时可选) | ✅ | 已实现 |
-| `@pi-web/tool-kit` | `packages/tool-kit/` | 主入口同构 / `./runtime` Node only | ✅ | 已实现 |
-| `@pi-web/web-kit` | `packages/web-kit/` | 浏览器(构建时) | ✅ | 已实现 |
-| `@pi-web/embed` | _(未建)_ | 浏览器 | 🔲 | 规划中 |
+| `@blksails/protocol` | `packages/protocol/` | 同构(浏览器/Node) | ✅ | 已实现 |
+| `@blksails/server` | `packages/server/` | Node ≥22.19 | ✅ | 已实现 |
+| `@blksails/react` | `packages/react/` | 浏览器(SSR 安全) | ✅ | 已实现 |
+| `@blksails/ui` | `packages/ui/` | 浏览器(SSR 安全) | ✅ | 已实现 |
+| `@blksails/agent-kit` | `packages/agent-kit/` | Node(dev/运行时可选) | ✅ | 已实现 |
+| `@blksails/tool-kit` | `packages/tool-kit/` | 主入口同构 / `./runtime` Node only | ✅ | 已实现 |
+| `@blksails/web-kit` | `packages/web-kit/` | 浏览器(构建时) | ✅ | 已实现 |
+| `@blksails/embed` | _(未建)_ | 浏览器 | 🔲 | 规划中 |
 
-> **发布形态说明**：表中 ✅ 表示该包面向公开发布（`package.json` 非 `private`），但当前 7 个包**均尚未发布到 npm**，仓库内部一律经 pnpm `workspace:*` 互相消费，版本统一为 `0.1.0`。发布所需的 `publishConfig`（`dist` 构建产物 + `types`/`import` 映射）目前**仅 `@pi-web/protocol` 已完整配置**，其余包发布前仍需补齐。
+> **发布形态说明**：表中 ✅ 表示该包面向公开发布（`package.json` 非 `private`），但当前 7 个包**均尚未发布到 npm**，仓库内部一律经 pnpm `workspace:*` 互相消费，版本统一为 `0.1.0`。发布所需的 `publishConfig`（`dist` 构建产物 + `types`/`import` 映射）目前**仅 `@blksails/protocol` 已完整配置**，其余包发布前仍需补齐。
 >
-> `@pi-web/embed`（Web Component `<pi-web-chat>` + iframe widget）列于 roadmap `embed-integrations`，尚未进入本批次实现。
+> `@blksails/embed`（Web Component `<pi-web-chat>` + iframe widget）列于 roadmap `embed-integrations`，尚未进入本批次实现。
 
 ---
 
 ## 各包详解
 
-### @pi-web/protocol
+### @blksails/protocol
 
 **职责**：全项目唯一契约根。定义 RPC 类型/Schema、SSE 帧、UIMessage data-part、REST DTO、附件描述符、配置表单 IR（`config/`）、agent-web-extension 控制层契约（`web-ext/`）。
 
@@ -66,11 +66,11 @@ pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@
 
 ---
 
-### @pi-web/server
+### @blksails/server
 
 **职责**：后端引擎。包含 agent 源解析、bootstrap runner 路径解析、RPC 通道、会话注册与翻译、HTTP 路由处理器抽象、附件存储（L0/L1）、附件 tool-bridge（L2）、补全接口、扩展管理等六大模块。
 
-**运行时依赖**：`@pi-web/protocol`、`@earendil-works/pi-ai`（≥0.79.6）、`@earendil-works/pi-coding-agent`（≥0.79.6）、`jiti`、`pg`、`zod`。Node ≥22.19 only。
+**运行时依赖**：`@blksails/protocol`、`@earendil-works/pi-ai`（≥0.79.6）、`@earendil-works/pi-coding-agent`（≥0.79.6）、`jiti`、`pg`、`zod`。Node ≥22.19 only。
 
 **exports 字段**（三个导出子路径）：
 
@@ -108,11 +108,11 @@ pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@
 
 ---
 
-### @pi-web/react
+### @blksails/react
 
 **职责**：headless 客户端层。提供 transport、REST client、SSE 连接管理、React hooks，无样式/无 JSX 组件。
 
-**依赖**：`@pi-web/protocol`、`@pi-web/web-kit`；peer deps: `react`、`ai`（AI SDK v5）、`@ai-sdk/react`。
+**依赖**：`@blksails/protocol`、`@blksails/web-kit`；peer deps: `react`、`ai`（AI SDK v5）、`@ai-sdk/react`。
 
 **主要导出**：
 
@@ -134,11 +134,11 @@ pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@
 
 ---
 
-### @pi-web/ui
+### @blksails/ui
 
 **职责**：AI Elements 组件库（有样式）。基于 shadcn/ui + Tailwind CSS，提供 `<PiChat>`、工具部件、推理块、提示输入框、模型/思考/stats 控制面板、权限弹窗，以及 schema-driven 配置 UI（渲染器注册表 + 可搜索下拉）。
 
-**依赖**：`@pi-web/protocol`、`@pi-web/react`、`@pi-web/web-kit`；外部 UI 库：`@radix-ui/*`、`cmdk`、`lucide-react`、`streamdown`、`clsx`、`tailwind-merge`。
+**依赖**：`@blksails/protocol`、`@blksails/react`、`@blksails/web-kit`；外部 UI 库：`@radix-ui/*`、`cmdk`、`lucide-react`、`streamdown`、`clsx`、`tailwind-merge`。
 
 **exports 字段**：
 
@@ -149,17 +149,17 @@ pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@
 }
 ```
 
-> 消费方需同时导入 `@pi-web/ui/styles.css`（Tailwind 样式入口）。
+> 消费方需同时导入 `@blksails/ui/styles.css`（Tailwind 样式入口）。
 
-支持 Storybook 开发：`pnpm --filter @pi-web/ui storybook`（端口 6006）。
+支持 Storybook 开发：`pnpm --filter @blksails/ui storybook`（端口 6006）。
 
 ---
 
-### @pi-web/agent-kit
+### @blksails/agent-kit
 
 **职责**：给自定义 agent 作者使用的轻量型帮助包。`defineAgent()` 是纯 identity 函数，仅提供编译期类型检查，零运行时副作用——即使不使用本包，定义的 `AgentDefinition` 结构与 runner 的要求完全兼容。
 
-**依赖**：`@pi-web/protocol`；peer dep: `@earendil-works/pi-coding-agent`（仅类型）。
+**依赖**：`@blksails/protocol`；peer dep: `@earendil-works/pi-coding-agent`（仅类型）。
 
 **主要导出**：
 
@@ -175,7 +175,7 @@ export type { ToolDefinition, SystemPromptValue, ThinkingLevel, ... }
 export { defineMinimalAgent, minimalAgentPreset }
 export { emitUi }                    // 工具内发出 data-pi-ui 部件
 
-// 附件 tool 上下文（仅类型，运行期构造在 @pi-web/server）
+// 附件 tool 上下文（仅类型，运行期构造在 @blksails/server）
 export type { AttachmentToolContext, AttachmentToolHandle, ... }
 ```
 
@@ -183,7 +183,7 @@ export type { AttachmentToolContext, AttachmentToolHandle, ... }
 
 ```typescript
 // <agent-dir>/index.ts
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 
 export default defineAgent({
   // 省略 model → 继承 ~/.pi/agent/settings.json 的默认 provider/model，开箱即用。
@@ -197,11 +197,11 @@ export default defineAgent({
 
 ---
 
-### @pi-web/tool-kit
+### @blksails/tool-kit
 
 **职责**：通用工具套件。分为两层——主入口（前端安全声明层）和 `./runtime` 子入口（Node only 执行层）。
 
-**依赖**：`@pi-web/agent-kit`、`undici`（运行层）；peer deps: `@earendil-works/pi-ai`、`@earendil-works/pi-coding-agent`。
+**依赖**：`@blksails/agent-kit`、`undici`（运行层）；peer deps: `@earendil-works/pi-ai`、`@earendil-works/pi-coding-agent`。
 
 **exports 字段**：
 
@@ -232,11 +232,11 @@ export { AIGC_TOOLS, imageGeneration, imageEdit }  // AIGC 工具声明
 
 ---
 
-### @pi-web/web-kit
+### @blksails/web-kit
 
-**职责**：agent source `.pi/web` 的作者侧 SDK（UI 控制层），与 `@pi-web/agent-kit` 对称——`defineAgent()` 对应 `defineWebExtension()`。作者写 `.pi/web` 入口，默认导出 `WebExtension`；随包发布的 `pi-web build` CLI 预构建为 ESM bundle + manifest。
+**职责**：agent source `.pi/web` 的作者侧 SDK（UI 控制层），与 `@blksails/agent-kit` 对称——`defineAgent()` 对应 `defineWebExtension()`。作者写 `.pi/web` 入口，默认导出 `WebExtension`；随包发布的 `pi-web build` CLI 预构建为 ESM bundle + manifest。
 
-**依赖**：`@pi-web/protocol`、`esbuild`（构建工具）；peer deps: `react`、`ai`。
+**依赖**：`@blksails/protocol`、`esbuild`（构建工具）；peer deps: `react`、`ai`。
 
 **exports 字段**：
 
@@ -265,7 +265,7 @@ export type { SlotKey, WebExtConfig, ArtifactDeclaration, UiRpcPoint, ... }
 
 ```tsx
 // <agent-dir>/.pi/web/web.config.tsx
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/web-kit";
 
 export default defineWebExtension({
   manifestId: "my-ext",            // 必填:扩展唯一标识
@@ -286,20 +286,20 @@ export default defineWebExtension({
 
 | 包名 | 规划 spec | 说明 |
 |---|---|---|
-| `@pi-web/embed` | `embed-integrations` | Web Component `<pi-web-chat>` + iframe widget，支持非 React 项目嵌入 |
+| `@blksails/embed` | `embed-integrations` | Web Component `<pi-web-chat>` + iframe widget，支持非 React 项目嵌入 |
 
 ---
 
 ## 依赖方向速查
 
 ```
-@pi-web/protocol  ←──────── 所有包
-@pi-web/server    ────依赖──→ @pi-web/protocol 只
-@pi-web/agent-kit ────依赖──→ @pi-web/protocol 只
-@pi-web/tool-kit  ────依赖──→ @pi-web/agent-kit
-@pi-web/web-kit   ────依赖──→ @pi-web/protocol
-@pi-web/react     ────依赖──→ @pi-web/protocol + @pi-web/web-kit
-@pi-web/ui        ────依赖──→ @pi-web/protocol + @pi-web/react + @pi-web/web-kit
+@blksails/protocol  ←──────── 所有包
+@blksails/server    ────依赖──→ @blksails/protocol 只
+@blksails/agent-kit ────依赖──→ @blksails/protocol 只
+@blksails/tool-kit  ────依赖──→ @blksails/agent-kit
+@blksails/web-kit   ────依赖──→ @blksails/protocol
+@blksails/react     ────依赖──→ @blksails/protocol + @blksails/web-kit
+@blksails/ui        ────依赖──→ @blksails/protocol + @blksails/react + @blksails/web-kit
 
 禁止：server ↔ react/ui（后端与前端不互相依赖）
 禁止：protocol 反向依赖任何包
@@ -310,8 +310,8 @@ export default defineWebExtension({
 ## 下一步 / 相关文档
 
 - [03 · 架构总览](03-architecture.md) — 各包在运行时的拓扑与进程边界
-- [05 · 配置参考](05-configuration.md) — `@pi-web/server/model-options` 与环境变量
-- [07 · Agent 开发](07-agent-development.md) — `@pi-web/agent-kit` 与 `defineAgent()` 的详细用法
-- [09 · 扩展与技能](09-extensions-and-skills.md) — `@pi-web/web-kit` 与 `defineWebExtension()`
-- [11 · AIGC 工具](11-aigc-tools.md) — `@pi-web/tool-kit/runtime` 的 `buildAigcTools`
-- [13 · HTTP API 参考](13-http-api-reference.md) — `@pi-web/server` HTTP 模块的路由约定
+- [05 · 配置参考](05-configuration.md) — `@blksails/server/model-options` 与环境变量
+- [07 · Agent 开发](07-agent-development.md) — `@blksails/agent-kit` 与 `defineAgent()` 的详细用法
+- [09 · 扩展与技能](09-extensions-and-skills.md) — `@blksails/web-kit` 与 `defineWebExtension()`
+- [11 · AIGC 工具](11-aigc-tools.md) — `@blksails/tool-kit/runtime` 的 `buildAigcTools`
+- [13 · HTTP API 参考](13-http-api-reference.md) — `@blksails/server` HTTP 模块的路由约定
