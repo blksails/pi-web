@@ -1,12 +1,230 @@
 <!doctype html>
-<html>
-  <head><meta charset="utf-8" /><title>artifact</title></head>
-  <body style="font-family: system-ui; margin: 0; padding: 12px">
-    <div id="root">webext-artifact-agent · sandboxed artifact</div>
-    <script>
-      // 加载后向宿主报告 ready 与高度(postMessage 契约)。
-      parent.postMessage({ kind: "ready", manifestId: "webext-artifact" }, "*");
-      parent.postMessage({ kind: "resize", height: document.body.scrollHeight }, "*");
-    </script>
-  </body>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>消息中心</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #e0e0e0;
+      padding: 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(20px);
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 24px 28px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #a78bfa, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .header p {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .messages {
+      padding: 16px 20px;
+      max-height: 340px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+    .msg {
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.5;
+      animation: slideIn 0.35s ease-out;
+      max-width: 88%;
+      word-break: break-word;
+    }
+
+    .msg.in {
+      align-self: flex-start;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-bottom-left-radius: 4px;
+    }
+
+    .msg.out {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .msg .time {
+      font-size: 11px;
+      opacity: 0.5;
+      margin-top: 4px;
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .input-area {
+      padding: 16px 20px 20px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-area input {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: #e0e0e0;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-area input::placeholder { color: #666; }
+    .input-area input:focus { border-color: rgba(139,92,246,0.6); }
+
+    .input-area button {
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: none;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+    }
+
+    .input-area button:hover {
+      transform: scale(1.04);
+      box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+    }
+
+    .input-area button:active { transform: scale(0.97); }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1>💬 消息中心</h1>
+    <p>向工件发送消息，实时展示</p>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="msg in">
+      👋 你好！我是工件，请给我发一条消息吧。
+      <span class="time">刚刚</span>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <input type="text" id="msgInput" placeholder="输入消息…" autocomplete="off" />
+    <button id="sendBtn">发送</button>
+  </div>
+</div>
+
+<script>
+  /* ── postMessage 契约：向宿主报告 ready 与高度 ── */
+  parent.postMessage({ kind: "ready", manifestId: "webext-artifact" }, "*");
+
+  const messagesEl = document.getElementById('messages');
+  const input = document.getElementById('msgInput');
+  const sendBtn = document.getElementById('sendBtn');
+
+  const replies = [
+    '收到你的消息了！✨',
+    '有意思，继续说～',
+    '我理解了 🤔',
+    '好的，已记录！📝',
+    '这很棒！🎉',
+    '让我想想…💭',
+    '没问题！👍',
+    '收到，正在处理中…⚙️',
+    '感谢你的消息！🙏',
+    '太有趣了！🚀',
+  ];
+
+  function timeStr() {
+    const d = new Date();
+    return d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  }
+
+  function notifyResize() {
+    parent.postMessage({ kind: "resize", height: document.body.scrollHeight }, "*");
+  }
+
+  function addMsg(text, type) {
+    const div = document.createElement('div');
+    div.className = 'msg ' + type;
+    div.innerHTML = text + '<span class="time">' + timeStr() + '</span>';
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    requestAnimationFrame(notifyResize);
+  }
+
+  function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    addMsg(text, 'out');
+    input.value = '';
+
+    // 监听来自宿主的消息
+    setTimeout(() => {
+      const reply = replies[Math.floor(Math.random() * replies.length)];
+      addMsg(reply, 'in');
+    }, 600 + Math.random() * 800);
+  }
+
+  /* ── 接收宿主通过 postMessage 发来的消息 ── */
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.kind === 'incoming-message' && e.data.text) {
+      addMsg(e.data.text, 'in');
+    }
+  });
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  input.focus();
+
+  // 初始高度通知
+  requestAnimationFrame(notifyResize);
+</script>
+
+</body>
 </html>

@@ -1,8 +1,8 @@
-# 检阅 · webext 多源批量验收清单
+# 检阅 · webext / aigc 多源批量验收清单
 
-> **检阅** = 用 chrome-devtools 同时打开多个 tab，每个 tab 加载一个 webext 相关的
+> **检阅** = 用 chrome-devtools 同时打开多个 tab，每个 tab 加载一个示例
 > agent source，完成「最简首次步骤」（选 source → 会话激活），供人工逐项验收。
-> 一次覆盖全部 webext 示例，对照各自的 Tier 能力。
+> 一次覆盖全部 webext 示例 + **aigc-agent(图像生成/编辑)**，对照各自的 Tier 能力。
 
 ---
 
@@ -30,7 +30,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 
 ---
 
-## 1. 检阅对象 · 7 个 webext source 与验收要点
+## 1. 检阅对象 · 7 个 webext source + 1 个 aigc source 与验收要点
 
 | # | source（`./examples/…`） | Tier / 能力 | 验收要点 | 首屏可见？ |
 |---|---|---|---|---|
@@ -41,6 +41,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 | 5 | webext-artifact-agent | Tier4 artifact iframe | **仅当设了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 才挂载 `<ArtifactSurface>` iframe**(挂载后 iframe 带 `data-pi-artifact`,在 `aside[data-pi-chat-aside]` 内,src=`webext-artifact/artifact.html`)。**注:`.env.local` 现已配置 base-url → 默认走「门控 ON」侧、有 iframe**；裸环境(未配)无 iframe 才是 OFF 侧正确门控。见 [[webext-artifact-base-url-gate]] | ⚠️ 取决于 base-url 是否配置 |
 | 6 | webext-declarative-agent | 纯声明(theme/layout/empty) | **零 bundle、无扩展面板**,但有**可见的零代码效果**(别再误判"像默认没加载"):紫主题(`--primary: 262 83% 58%` 重着色发送键/焦点环)+ `layout:wide`(对话列 max-w-5xl 更宽)+ 自定义空态(标题「纯声明式扩展 · 零代码」+ 副标题 + 3 建议项)+ 标签页标题「Declarative · pi-web」。仍 `extCount===1`(仅 `data-pi-ext-theme`)、`panelRight===false` | ✅ |
 | 7 | webext-contrib-agent | Tier3 ui-rpc 贡献点 | slash/mention/autocomplete/keybinding 贡献 | ⚠️ 仅 `hasContributions && !isBusy` 时开，见 [[pi-web-uirpc-idle-control-stream]] |
+| 8 | aigc-agent | `@pi-web/tool-kit` AIGC 工具 + Tier2 媒体渲染器 | **两条端到端流程**:**①图像生成**(发文本 prompt → LLM 调 `image_generation` → provider 生成 → 产物落 attachment store → 回 `att_<id>`,渲成图片卡片);**②图像编辑**(上传图 → LLM 把 `att_…` 抄进 `image_edit({instruction,image})` → 编辑 → 回引用)。两工具产物均命中自定义渲染器 `[data-testid=aigc-tool-card]`(复用 `PiToolPart` 壳,output 换成 `![](displayUrl)` markdown → `<img>`),带**图片/JSON 视图切换**(`[data-testid=aigc-view-image]` / `[data-testid=aigc-view-json]`)。默认变体 `gpt-image-2`(NewAPI),**需 `NEWAPI_API_KEY`**;缺密钥工具仍加载但返回「能力不可用/缺少配置」降级,不崩溃 | ⚠️ 需驱动一轮 + 配置 provider 密钥(详见 §2.5) |
 
 ---
 
@@ -96,9 +97,48 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 
 ---
 
+## 2.5 aigc-agent · 图像生成 / 图像编辑两条流程（chrome-devtools）
+
+> source = `./examples/aigc-agent`。与 webext 不同,aigc 是**真实 LLM + 真实 provider 调用**:
+> 必须先配好 provider 密钥,再各驱动一轮。两工具产物都命中同一自定义渲染器
+> `[data-testid=aigc-tool-card]`,无需看 `data-pi-ext-*`(aigc 走 Tier2 `renderers.tools`,**非** slot 扩展)。
+
+### 前置:provider 密钥
+- 默认变体 `gpt-image-2`(NewAPI),`runner` 子进程经环境变量读 **`NEWAPI_API_KEY`**(其它变体:`DASHSCOPE_API_KEY` token plan / `OPENROUTER_API_KEY`)。
+- **缺密钥不是 bug**:工具仍加载,调用时返回「能力不可用 / 缺少配置」可读降级(Req 5.3),会话不中断。验收「降级路径」时可故意不配 key,看是否优雅返回而非崩溃。
+- 改了密钥 / 注入域后需**重启 dev**(handler 单例 pin 在 globalThis,见 [[pi-web-handler-singleton-restart]])。
+
+### 流程 ①:图像生成（image_generation）
+1. `new_page` → `localhost:3000/` → `take_snapshot` → `fill` picker textbox=`./examples/aigc-agent` → `click` submit → 落 `/session/<id>`。
+2. 驱动一轮:`fill` `[data-pi-input-textarea]` = 例如 `生成一张赛博朋克城市夜景` → 点 `[data-pi-submit-state="send"]`(或「发送」)。
+3. 等工具跑完(provider 同步/异步轮询都可能数秒~数十秒;`wait_for` 文本或轮询 DOM)。
+4. **验收**(`evaluate_script`):
+   ```js
+   () => {
+     const card = document.querySelector('[data-testid="aigc-tool-card"]');
+     return {
+       hasCard: !!card,
+       img: !!card?.querySelector('img'),                                  // 图片视图渲出 <img>
+       imgSrc: card?.querySelector('img')?.getAttribute('src')?.slice(0,40), // /api 前缀的带签名 displayUrl
+       viewToggle: !!document.querySelector('[data-testid="aigc-view-image"]')
+                && !!document.querySelector('[data-testid="aigc-view-json"]'),
+     }; // 期望 { hasCard:true, img:true, imgSrc:"/api/...", viewToggle:true }
+   }
+   ```
+5. 点 `[data-testid="aigc-view-json"]` → 卡片切到调用明细(`{ input, output }`,可见 prompt/model 与 content);点 `[data-testid="aigc-view-image"]` 切回图片。
+
+### 流程 ②:图像编辑（image_edit）
+1. 同上进入 aigc-agent 会话(可复用 ① 的 tab 续聊,或新开)。
+2. **上传输入图**:`take_snapshot` 找到隐藏 file input `[data-pi-attachments-input]`(`accept=image/*`;入口为 compact paperclip 按钮 `[data-pi-attachments-add]` 或 panel dropzone `[data-testid=pi-attachments-dropzone]`)→ chrome-devtools `upload_file` 把本地图片喂给该 input 的 uid。上传后输入区出现附件 chip(`[data-pi-attachment-thumb]`);主进程发送时注入 `[attachment id=att_… …]` 引用。
+3. 驱动一轮:`fill` `[data-pi-input-textarea]` = 例如 `把背景换成雪山` → 发送。LLM 应把 `att_…` id 抄进 `image_edit({ instruction, image })`。
+4. **验收**:同 ① 的 `evaluate_script`,期望最新一张 `[data-testid=aigc-tool-card]` 内 `<img>` 为**编辑后**的图(与输入不同);属主校验失败 / 引用无效时应返回可读错误而非越权(Req 2.3/2.4)。
+
+---
+
 ## 3. 验收注意事项
 
-- **3 / 4 / 7 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条消息。其中 **4 发 `echo the text: ...`** 让真实 LLM 调 echo 工具（**3 发任意消息进会话态——发前发后各看一次背景,对比空/活两态**、7 打 `/` 触发 ui-rpc）。
+- **3 / 4 / 7 / 8 需驱动一轮**才显形：`fill [data-pi-input-textarea]` + 点 `[data-pi-submit-state="send"]`（或 `发送`）发一条消息。其中 **4 发 `echo the text: ...`** 让真实 LLM 调 echo 工具（**3 发任意消息进会话态——发前发后各看一次背景,对比空/活两态**、7 打 `/` 触发 ui-rpc、**8 见 §2.5:① 发文本 prompt 触发 `image_generation`、② 先 `upload_file` 上传图再发编辑指令触发 `image_edit`**）。
+- **8(aigc)是真实 provider 调用,非 stub**:需先配 `NEWAPI_API_KEY`(默认 `gpt-image-2`),生成耗时数秒~数十秒,验收用 `wait_for`/轮询;缺密钥时优雅降级是正确行为(见 §2.5)。
 - **刷新不丢扩展**（已修复）：source 经 app 级 `sessionId→source` 映射按 id 恢复，URL 保持纯净 `/session/:id`，不暴露文件路径。验收时刷新一个 fresh 会话应仍见扩展。见 [[webext-review-checklist]] 关联的 resume 修复。
 - **declarative 仍是"无扩展面板"(零 bundle)**,但**有可见的零代码效果**(紫主题/宽布局/自定义空态/标签页标题)—— 不要再当成"像默认没加载"误判;`extCount===1`(仅 theme 包裹)是正确结果。
 - 改了注入路由 / 配置域后需重启 dev（handler 单例 pin 在 globalThis）。见 [[pi-web-handler-singleton-restart]]。
