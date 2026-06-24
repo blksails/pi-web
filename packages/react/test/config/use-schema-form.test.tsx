@@ -6,7 +6,7 @@ import {
   secretSet,
   secretKeep,
   secretClear,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import {
   useSchemaForm,
   zodValidator,

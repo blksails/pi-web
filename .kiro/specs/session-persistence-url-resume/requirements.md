@@ -18,7 +18,7 @@
 2. `MessageEntry.message` 与 `GetMessagesResponse.messages[]` 同构(`AgentMessage`),存读无需转换;但前端 `useChat`(AI SDK v5)用 `UIMessage`(parts-based),与 `AgentMessage` 不同构、无现成转换函数——需新写。
 3. 冷会话恢复应复用 **`POST /sessions { resumeId }`**(`/sessions/:id/resume` 会被 `router.ts:168` 的 `:id` 存在性校验 404)。
 4. 主进程 `sessionId`(`randomUUID`)当前与 agent 持久化文件 id **不一致**,需用 `create(cwd, dir, { id })` 对齐。
-5. `@pi-web/server` exports 指向 `src/index.ts`(纯 TS、无 dist);stub 是裸 node `.mjs` 无 TS loader,复用 `SessionEntryStore` 需注入 `--import jiti/register`,否则内联存储。
+5. `@blksails/server` exports 指向 `src/index.ts`(纯 TS、无 dist);stub 是裸 node `.mjs` 无 TS loader,复用 `SessionEntryStore` 需注入 `--import jiti/register`,否则内联存储。
 
 ## Introduction
 

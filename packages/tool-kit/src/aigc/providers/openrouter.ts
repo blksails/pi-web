@@ -1,5 +1,5 @@
 /**
- * OpenRouter image-modality provider 工厂 — `@pi-web/tool-kit` 版。
+ * OpenRouter image-modality provider 工厂 — `@blksails/tool-kit` 版。
  *
  * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
  *  - createOpenRouterImage:    文生图(T2I);content 可为字符串或 multi-part 数组

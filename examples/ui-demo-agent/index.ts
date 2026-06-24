@@ -22,7 +22,7 @@
  *
  * 注:pi SDK 的 select/confirm/input 是**位置参数**(非对象);model 省略 → 继承 pi 配置。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

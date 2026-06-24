@@ -3,7 +3,7 @@
  * uiRpc 发原始 `ui_rpc` 行;agent 的 `ui_rpc_response` 行被翻译为 control:ui-rpc 帧广播。
  */
 import { describe, expect, it } from "vitest";
-import type { SseFrame } from "@pi-web/protocol";
+import type { SseFrame } from "@blksails/protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { SessionStoppedError } from "../../src/session/session.errors.js";
 import { MockChannel } from "./mock-channel.js";

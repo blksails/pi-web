@@ -20,8 +20,8 @@ import type {
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
-} from "@pi-web/protocol";
-import { makeControlFrame, UiRpcResponseSchema } from "@pi-web/protocol";
+} from "@blksails/protocol";
+import { makeControlFrame, UiRpcResponseSchema } from "@blksails/protocol";
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import {

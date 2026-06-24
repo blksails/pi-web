@@ -7,9 +7,9 @@
 - [x] 1. 基础:protocol 配置契约与表单 IR
 - [x] 1.1 定义表单 IR 类型与 UI 元数据解析
   - 在 protocol 新增 `FieldDescriptor` / `FormSchema` 类型与 `FieldKind` 联合;定义 `UIMeta` 与 `parseDescribeMeta()`(解析 `.describe()` 承载的 JSON 元数据,非法/缺省时安全回退)
-  - 完成态:protocol 导出上述类型与 `parseDescribeMeta`;`pnpm --filter @pi-web/protocol typecheck` 通过;元数据解析正反例单测通过
+  - 完成态:protocol 导出上述类型与 `parseDescribeMeta`;`pnpm --filter @blksails/protocol typecheck` 通过;元数据解析正反例单测通过
   - _Requirements: 1.3, 6.1_
-  - _Boundary: @pi-web/protocol config 子面_
+  - _Boundary: @blksails/protocol config 子面_
 - [x] 1.2 实现 zod → 表单 IR 适配器
   - 实现 `zodToFormSchema(schema, opts?)`:遍历 object shape,按 zod 类型推 `kind`(string/secret/number/boolean/enum/stringList/object/record),据 `isOptional`/`default` 推 `required`/`default`,合并 `parseDescribeMeta` 的 UI 元数据;secret 经元数据或命名约定识别
   - 完成态:给定示例 zod schema 产出结构正确的 `FormSchema`;各 kind 映射、required/default 推断、secret 识别均有单测通过
@@ -23,7 +23,7 @@
   - _Depends: 1.1, 1.2_
   - _Boundary: protocol config domains_
 
-- [x] 2. 核心:渲染层(@pi-web/ui)
+- [x] 2. 核心:渲染层(@blksails/ui)
 - [x] 2.1 (P) 字段渲染器注册表
   - 实现 `fieldRendererRegistry`:`registerFieldRenderer(kindOrKey, Component)` / `resolveFieldRenderer(descriptor)`(先按 fieldKey 覆盖、再按 kind 默认回退);模块级单例 + `createFieldRegistry()` 工厂(测试隔离)——复刻既有 `renderer-registry` 语义
   - 完成态:注册后可解析到自定义渲染器,未注册回退默认;工厂实例互不污染;单测通过
@@ -49,7 +49,7 @@
   - _Depends: 2.3_
   - _Boundary: ui schema-form_
 
-- [x] 3. 核心:状态与校验(@pi-web/react)
+- [x] 3. 核心:状态与校验(@blksails/react)
 - [x] 3.1 实现 `useSchemaForm`
   - 受控值 + 点路径 `setValue`(支持 object/record 嵌套)+ dirty 标记;`submit()` 用该域 zod schema `safeParse`,将 `ZodError.issues` 按 path 映射到 `errors`;非法不提交
   - 完成态:提交非法值时返回字段级 errors 且不产出值;合法时返回校验后的值;嵌套路径 setValue 与 error 映射单测通过
@@ -77,19 +77,19 @@
   - _Boundary: server config-routes_
 
 - [x] 5. 集成:前端设置系统与注册机制
-- [x] 5.1 设置面板注册表(@pi-web/react)
+- [x] 5.1 设置面板注册表(@blksails/react)
   - 实现 `SettingsPanelDescriptor`(id/title/order/icon?/formSchema/load/save)与 `settingsRegistry`(registerPanel/resolvePanel/listPanels 按 order);模块级单例 `defaultSettingsRegistry` + `createSettingsRegistry()` 工厂
   - 完成态:注册多个面板后 `listPanels()` 按 order 返回;`resolvePanel(id)` 命中;工厂实例隔离;单测通过
   - _Requirements: 5.1, 5.2_
   - _Depends: 1.1_
   - _Boundary: react settings-registry_
-- [x] 5.2 `useConfigDomain` 与 `makeConfigDomainIO`(@pi-web/react)
+- [x] 5.2 `useConfigDomain` 与 `makeConfigDomainIO`(@blksails/react)
   - `makeConfigDomainIO(domain)` 产出基于 `/api/config/:domain` 的 `load/save`;`useConfigDomain(panel)` 组合 `panel.load()` 初值 + `useSchemaForm` + `panel.save()`,统一 loading/error/dirty/saved 状态机
   - 完成态:注入 mock IO 时 load 填值、save 调用、错误置 error 态;状态机各态单测通过
   - _Requirements: 3.1, 6.2_
   - _Depends: 3.1, 5.1_
   - _Boundary: react use-config-domain_
-- [x] 5.3 设置外壳 `<SettingsShell>`(@pi-web/ui)
+- [x] 5.3 设置外壳 `<SettingsShell>`(@blksails/ui)
   - 左侧导航 `listPanels()`(title/icon,按 order)、右侧当前面板经 `useConfigDomain` 驱动 `<SchemaForm>`;加载/保存/错误态呈现;保存按钮校验通过后调 `save`
   - 完成态:渲染导航并可切换面板;编辑后保存触发校验+save;校验失败显示字段错误且不保存;以 mock registry 的组件测试通过
   - _Requirements: 5.2, 2.2_

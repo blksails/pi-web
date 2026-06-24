@@ -13,7 +13,7 @@
 - **In scope**:
   - `.pi/web` 目录契约与声明式 manifest(`web.config`)的发现、校验与加载。
   - Tier 1 区域插槽、Tier 2 渲染插槽(registry,per-session 作用域)、Tier 3 贡献点 + UI↔agent RPC 总线、Tier 4 artifact iframe 隔离表面、Tier 5 纯声明配置。
-  - `@pi-web/web-kit` 包(`defineWebExtension` + RPC client + 复用组件 + 类型)与 `pi-web build` 工具(强制 externals、CSS scoping、剥全局样式、产出 manifest + SRI)。
+  - `@blksails/web-kit` 包(`defineWebExtension` + RPC client + 复用组件 + 类型)与 `pi-web build` 工具(强制 externals、CSS scoping、剥全局样式、产出 manifest + SRI)。
   - 运行时 import-map 加载、per-session 懒加载、能力(targetApiVersion)协商。
   - 安全围栏:签名 + 白名单 + CSP;以及对 git source bundle 的加载门控。
   - 一组示例 agent source(携带 `.pi/web`)与覆盖 Tier 1~5 的单元/集成/浏览器 e2e 验证。
@@ -22,7 +22,7 @@
   - module federation 运行时;Shadow DOM 隔离方案。
   - agent 掌管整页 / 自带 `index.html` / 接管 React 根。
 - **Adjacent expectations**:
-  - 宿主既有 `@pi-web/protocol` 契约为 RPC/传输根;本特性新增的 UI↔agent 消息须沿用其版本化与校验约定。
+  - 宿主既有 `@blksails/protocol` 契约为 RPC/传输根;本特性新增的 UI↔agent 消息须沿用其版本化与校验约定。
   - 现有 `PiChat` 四维定制(slots/components/registry/presets)由本特性从「宿主 props 喂入」演进为「agent source 声明 + 运行时加载」,既有宿主直接装配方式须保持可用(向后兼容)。
 
 ## Requirements
@@ -70,7 +70,7 @@
 3. When 用户触发某贡献点(如输入 `/` 或 `@`),the 宿主 shall 经 RPC 总线向 agent 请求候选/执行,并渲染返回结果。
 4. While 等待 RPC 响应,the 宿主 shall 不阻塞输入,并在响应到达或超时后给出可观察的状态。
 5. If RPC 请求失败或超时,the 宿主 shall 向用户呈现可恢复的错误状态且不崩溃当前会话。
-6. The UI↔agent RPC 消息 shall 携带协议版本,且与 `@pi-web/protocol` 的校验约定一致。
+6. The UI↔agent RPC 消息 shall 携带协议版本,且与 `@blksails/protocol` 的校验约定一致。
 
 ### Requirement 5: Artifact 隔离表面(Tier 4)
 
@@ -87,7 +87,7 @@
 **Objective:** 作为 agent source 作者,我想把 `.pi/web` 独立预构建为可移植的 WebExtension 产物,以便随 agent source(含 git)分发,宿主无需重新部署即可加载。
 
 #### Acceptance Criteria
-1. The WebExtension 产物 shall 为自包含 ESM bundle,且将 `react`、`react-dom`、`@pi-web/web-kit`、设计系统标记为 external。
+1. The WebExtension 产物 shall 为自包含 ESM bundle,且将 `react`、`react-dom`、`@blksails/web-kit`、设计系统标记为 external。
 2. When 宿主加载扩展,the WebExtension 加载器 shall 经 import map 将这些裸 specifier 解析到宿主已加载的单例实例,再以动态 `import()` 加载入口。
 3. The 宿主 shall 仅在某 agent source 的会话激活时加载其 WebExtension(per-session 懒加载),不在首屏加载全部扩展。
 4. If 扩展 bundle 内打入了应被 external 的 React/web-kit 副本,the WebExtension 加载器 shall 检测并拒绝加载以避免运行时 hook 冲突。
@@ -117,16 +117,16 @@
 5. The `pi-web build` 工具 shall 要求扩展自定义 CSS 变量使用 `--pw-<extId>-*` 前缀,允许读取宿主 token 但禁止覆写。
 6. The `pi-web build` 工具 shall 将扩展资源 URL 改写为经 `import.meta.url` 解析的相对引用。
 
-### Requirement 9: `@pi-web/web-kit` 包与 `pi-web build` 工具
+### Requirement 9: `@blksails/web-kit` 包与 `pi-web build` 工具
 
 **Objective:** 作为 agent source 作者,我想用一个独立的作者侧 SDK 与构建命令编写并打包 `.pi/web`,以便有稳定、类型安全的扩展编写契约。
 
 #### Acceptance Criteria
-1. The `@pi-web/web-kit` 包 shall 导出 `defineWebExtension()`、回 agent 的 RPC client、可复用设计原语/组件、类型定义与 `targetApiVersion`。
-2. The `@pi-web/web-kit` 公共 API shall 遵循语义化版本,并标注稳定核与 experimental 区。
+1. The `@blksails/web-kit` 包 shall 导出 `defineWebExtension()`、回 agent 的 RPC client、可复用设计原语/组件、类型定义与 `targetApiVersion`。
+2. The `@blksails/web-kit` 公共 API shall 遵循语义化版本,并标注稳定核与 experimental 区。
 3. The `pi-web build` 工具 shall 强制 externals(打入自有 React/web-kit 副本则拒绝出包)、执行 CSS scoping(见 Requirement 8)、产出 manifest 与 SRI。
-4. The `@pi-web/web-kit` shall 与后端解耦,仅经 `@pi-web/protocol` 契约/RPC 与 agent 通信,不依赖 server 内部实现。
-5. The `@pi-web/web-kit` 的扩展定义入口 shall 与现有 `@pi-web/agent-kit` 的 `defineAgent()` 在使用范式上保持对称。
+4. The `@blksails/web-kit` shall 与后端解耦,仅经 `@blksails/protocol` 契约/RPC 与 agent 通信,不依赖 server 内部实现。
+5. The `@blksails/web-kit` 的扩展定义入口 shall 与现有 `@blksails/agent-kit` 的 `defineAgent()` 在使用范式上保持对称。
 
 ### Requirement 10: 内核不可变边界(模型 A)
 

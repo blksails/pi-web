@@ -39,7 +39,7 @@
 
 - [x] 4. 验收与新鲜证据
 - [x] 4.1 运行单测 + e2e，收集验收证据
-  - 跑 `pnpm --filter @pi-web/ui test`（或等价）确认组件测试通过；跑隔离 build e2e 确认 3.1 通过。
+  - 跑 `pnpm --filter @blksails/ui test`（或等价）确认组件测试通过；跑隔离 build e2e 确认 3.1 通过。
   - 不在 dev 运行时执行 `next build`（隔离 build 用 `.next-e2e`，避免污染共享 `.next`）。
   - 观察完成：贴出 vitest 与 playwright 的实际通过输出（新鲜证据），参照 `kiro-verify-completion`。
   - _Requirements: 6.1, 6.2, 6.3, 6.4_

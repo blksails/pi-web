@@ -16,7 +16,7 @@
  */
 import * as React from "react";
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import type { BranchInfo } from "@pi-web/react";
+import type { BranchInfo } from "@blksails/react";
 import {
   MessageActions as DefaultMessageActions,
   type MessageActionsProps,

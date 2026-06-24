@@ -1,7 +1,7 @@
 /**
  * session-engine — 会话层共享类型(不重定义上游契约)。
  *
- * 帧/事件/响应类型一律取自 `@pi-web/protocol`(单一事实来源);`PiRpcChannel` 与
+ * 帧/事件/响应类型一律取自 `@blksails/protocol`(单一事实来源);`PiRpcChannel` 与
  * 通道命令/事件/扩展 UI 能力来自 `../rpc-channel/`;`ResolvedSource` 来自
  * `../agent-source/`。本文件仅定义会话层自有的标识、状态、句柄与构造入参形状。
  */
@@ -10,7 +10,7 @@ import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   SseFrame,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type {
   ExitInfo,
   PiRpcChannel,
@@ -52,34 +52,34 @@ export interface SessionChannel extends PiRpcChannel {
   prompt(
     message: string,
     options?: {
-      images?: readonly import("@pi-web/protocol").ImageContent[];
+      images?: readonly import("@blksails/protocol").ImageContent[];
       streamingBehavior?: "steer" | "followUp";
     },
-  ): Promise<import("@pi-web/protocol").RpcResponse>;
+  ): Promise<import("@blksails/protocol").RpcResponse>;
   steer(
     message: string,
-    options?: { images?: readonly import("@pi-web/protocol").ImageContent[] },
-  ): Promise<import("@pi-web/protocol").RpcResponse>;
+    options?: { images?: readonly import("@blksails/protocol").ImageContent[] },
+  ): Promise<import("@blksails/protocol").RpcResponse>;
   followUp(
     message: string,
-    options?: { images?: readonly import("@pi-web/protocol").ImageContent[] },
-  ): Promise<import("@pi-web/protocol").RpcResponse>;
-  abort(): Promise<import("@pi-web/protocol").RpcResponse>;
+    options?: { images?: readonly import("@blksails/protocol").ImageContent[] },
+  ): Promise<import("@blksails/protocol").RpcResponse>;
+  abort(): Promise<import("@blksails/protocol").RpcResponse>;
   setModel(
     provider: string,
     modelId: string,
-  ): Promise<import("@pi-web/protocol").RpcResponse>;
-  cycleModel(): Promise<import("@pi-web/protocol").RpcResponse>;
-  getAvailableModels(): Promise<import("@pi-web/protocol").RpcResponse>;
+  ): Promise<import("@blksails/protocol").RpcResponse>;
+  cycleModel(): Promise<import("@blksails/protocol").RpcResponse>;
+  getAvailableModels(): Promise<import("@blksails/protocol").RpcResponse>;
   setThinkingLevel(
-    level: import("@pi-web/protocol").ThinkingLevel,
-  ): Promise<import("@pi-web/protocol").RpcResponse>;
-  getState(): Promise<import("@pi-web/protocol").RpcResponse>;
-  getMessages(): Promise<import("@pi-web/protocol").RpcResponse>;
-  getSessionStats(): Promise<import("@pi-web/protocol").RpcResponse>;
-  getCommands(): Promise<import("@pi-web/protocol").RpcResponse>;
-  fork(entryId: string): Promise<import("@pi-web/protocol").RpcResponse>;
-  getForkMessages(): Promise<import("@pi-web/protocol").RpcResponse>;
+    level: import("@blksails/protocol").ThinkingLevel,
+  ): Promise<import("@blksails/protocol").RpcResponse>;
+  getState(): Promise<import("@blksails/protocol").RpcResponse>;
+  getMessages(): Promise<import("@blksails/protocol").RpcResponse>;
+  getSessionStats(): Promise<import("@blksails/protocol").RpcResponse>;
+  getCommands(): Promise<import("@blksails/protocol").RpcResponse>;
+  fork(entryId: string): Promise<import("@blksails/protocol").RpcResponse>;
+  getForkMessages(): Promise<import("@blksails/protocol").RpcResponse>;
 }
 
 /**

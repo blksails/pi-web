@@ -2,12 +2,12 @@
 
 ## Discovery Scope
 
-Greenfield 包 `@pi-web/react`(headless React 层)。发现聚焦于三处既定契约的消费,而非重定义:
+Greenfield 包 `@blksails/react`(headless React 层)。发现聚焦于三处既定契约的消费,而非重定义:
 1. AI SDK v5 `ChatTransport` / `useChat` 接口形状(本层实现的目标接口)。
-2. `@pi-web/protocol` 的 `SseFrame` / `UiMessageChunk` / data-part / REST DTO / `protocolVersion`(解码与拼装的唯一来源)。
+2. `@blksails/protocol` 的 `SseFrame` / `UiMessageChunk` / data-part / REST DTO / `protocolVersion`(解码与拼装的唯一来源)。
 3. `http-api` 的 REST + SSE 契约(本层调用的对象)。
 
-权威设计来源:`PLAN.md` §4(事件→UIMessage 翻译表 + ChatTransport 双连接模型)、§13.1(`@pi-web/react` 导出面)、§13.3 B(headless hooks 集成方式)、`.kiro/specs/protocol-contract/design.md`、`.kiro/specs/http-api/design.md`。
+权威设计来源:`PLAN.md` §4(事件→UIMessage 翻译表 + ChatTransport 双连接模型)、§13.1(`@blksails/react` 导出面)、§13.3 B(headless hooks 集成方式)、`.kiro/specs/protocol-contract/design.md`、`.kiro/specs/http-api/design.md`。
 
 ## 关键发现
 
@@ -33,11 +33,11 @@ Greenfield 包 `@pi-web/react`(headless React 层)。发现聚焦于三处既定
 - **决策**:采用 **fetch + 手写 SSE 帧解析器**。理由:(a) Req 1.5 要求透传 `headers`(鉴权);(b) Req 10.1/10.2 要求对 mock SSE 流单测,fetch 注入比 EventSource 更可控;(c) 与 `createPiClient(baseUrl, fetch?)` 的自定义 fetch 注入一致。SSE 解析器是纯函数(行缓冲 → 帧),独立单测。
 
 ### F5. headless 与样式严格分离(§13.1 / §13.3 B / structure.md)
-- `@pi-web/react` 仅导出 `PiProvider`(可选)、`usePiSession`、`usePiControls`、`useExtensionUI`、`PiTransport`、`createPiClient`。无任何 JSX 组件/样式(归 `ui-components`)。
+- `@blksails/react` 仅导出 `PiProvider`(可选)、`usePiSession`、`usePiControls`、`useExtensionUI`、`PiTransport`、`createPiClient`。无任何 JSX 组件/样式(归 `ui-components`)。
 - **Implication**:hooks 返回纯状态对象与操作函数;扩展 UI 经队列冒泡,由上层决定如何弹窗。本层不渲染。
 
 ### F6. 协议版本一致性
-- `SseFrame` 与 REST 响应带 `protocolVersion`(protocol/http-api)。本层以 `@pi-web/protocol` 导出的 `protocolVersion` 为基准比对,不兼容时显式暴露(Req 9.3),不静默按错误形状解析。
+- `SseFrame` 与 REST 响应带 `protocolVersion`(protocol/http-api)。本层以 `@blksails/protocol` 导出的 `protocolVersion` 为基准比对,不兼容时显式暴露(Req 9.3),不静默按错误形状解析。
 
 ## 架构模式评估
 

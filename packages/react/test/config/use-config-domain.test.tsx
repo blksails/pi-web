@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { settingsConfigSchema, authConfigSchema, secretSet } from "@pi-web/protocol";
+import { settingsConfigSchema, authConfigSchema, secretSet } from "@blksails/protocol";
 import {
   zodValidator,
   secretAwareValidator,

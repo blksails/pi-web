@@ -7,7 +7,7 @@ import {
   makeSseResponse,
   makeJsonResponse,
 } from "../fixtures/sse-samples.js";
-import type { ImageContent } from "@pi-web/protocol";
+import type { ImageContent } from "@blksails/protocol";
 import type { UIMessage, UIMessageChunk } from "ai";
 
 async function drain(

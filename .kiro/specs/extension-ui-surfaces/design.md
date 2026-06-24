@@ -17,7 +17,7 @@
 - 全程不回归既有测试与类型检查。
 
 ### Non-Goals
-- 不改 `@pi-web/protocol` 契约与 `@pi-web/server` 路由(5 方法已解析、无回包)。
+- 不改 `@blksails/protocol` 契约与 `@blksails/server` 路由(5 方法已解析、无回包)。
 - 不实现仅存在于 TUI、不可序列化的富 `Component`(`custom`/`setFooter`/`setHeader`/`setEditorComponent`/autocomplete)。
 - 不做推送类状态的持久化或跨会话恢复。
 
@@ -28,7 +28,7 @@
 - `useExtensionUI` 对上述 ambient 状态的只读暴露与 `dismissNotification` 操作。
 - 三个无状态展示元件:`Notifications`(通知浮层 / toasts)、`StatusBar`、`Widgets`。
 - `PiChat`(由原 `PiChatPro` 收敛而来)对上述元件的装配渲染与 `set_editor_text → setInput`、`setTitle → 头部` 接线。
-- `@pi-web/ui` 的 `PiChat` / `PiChatBasic` / `PiChatPro`(别名)导出收敛。
+- `@blksails/ui` 的 `PiChat` / `PiChatBasic` / `PiChatPro`(别名)导出收敛。
 
 ### Out of Boundary
 - 协议 schema、SSE 帧结构、server 路由与会话引擎(均无需改动)。
@@ -36,7 +36,7 @@
 - TUI-only 富组件能力(后续 Tier)。
 
 ### Allowed Dependencies
-- 上游:`@pi-web/protocol`(`RpcExtensionUIRequest` 类型,只读消费)、`@pi-web/react`(`ControlStore` / `useExtensionUI` / 连接)、`@pi-web/ui` 既有元件与 `cn`。
+- 上游:`@blksails/protocol`(`RpcExtensionUIRequest` 类型,只读消费)、`@blksails/react`(`ControlStore` / `useExtensionUI` / 连接)、`@blksails/ui` 既有元件与 `cn`。
 - 依赖方向保持 `protocol → react → ui → app`,只向左依赖。
 
 ### Revalidation Triggers

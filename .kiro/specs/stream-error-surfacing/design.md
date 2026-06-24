@@ -69,9 +69,9 @@ flowchart LR
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Backend / Services | `@pi-web/server`(TS strict) | `translate-event` 终态错误翻译 | 纯函数,禁 any |
-| Frontend / UI | `@pi-web/ui`(React + shadcn) | `pi-chat` 呈现 `chat.error` | 无状态元件,destructive 变量 |
-| Protocol | `@pi-web/protocol` | 复用 `error`/`abort` 块与事件字段 | 不新增类型 |
+| Backend / Services | `@blksails/server`(TS strict) | `translate-event` 终态错误翻译 | 纯函数,禁 any |
+| Frontend / UI | `@blksails/ui`(React + shadcn) | `pi-chat` 呈现 `chat.error` | 无状态元件,destructive 变量 |
+| Protocol | `@blksails/protocol` | 复用 `error`/`abort` 块与事件字段 | 不新增类型 |
 | Frontend state | AI SDK v5 `@ai-sdk/react` `useChat` | 错误态来源 | `error`/`status` |
 
 ## File Structure Plan
@@ -182,7 +182,7 @@ export interface ChatErrorProps {
   readonly className?: string;
 }
 ```
-- 无状态;`message` 为空返回 `null`;非空以 destructive 配色 + `role="alert"` 展示文本(允许必要截断,不替换为无意义占位)。从 `@pi-web/ui` 导出。
+- 无状态;`message` 为空返回 `null`;非空以 destructive 配色 + `role="alert"` 展示文本(允许必要截断,不替换为无意义占位)。从 `@blksails/ui` 导出。
 
 ### UI — pi-chat(修改)
 
@@ -214,7 +214,7 @@ export interface ChatErrorProps {
 
 ### Regression
 - `translate-event.table.test.ts` 既有用例(成功/文本/思考/工具/步骤/队列/压缩/auto-retry)保持全绿(Req 5.2)。
-- `@pi-web/server` 与 `@pi-web/ui` 既有测试 + `tsc --noEmit` 通过(Req 5.4)。
+- `@blksails/server` 与 `@blksails/ui` 既有测试 + `tsc --noEmit` 通过(Req 5.4)。
 
 ### 验证 R-1(关键)
 - 组件测试须断言:错误态出现时,先前已 append 的助手消息文本仍可见(证明 AI SDK `error` 块不丢弃部分消息);若证伪,触发 research.md R-1 降级方案(改内联 `data-pi-error` 数据部件)并回到设计修订。

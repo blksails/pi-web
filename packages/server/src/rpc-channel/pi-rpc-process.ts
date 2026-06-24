@@ -10,7 +10,7 @@
  *  - 与包 RpcClient 对齐的 18 个命令方法封装(生成唯一 id + send + 等待响应)。
  *  - stderr 收集、exit/error 监听与传播、close() 干净退出与待决统一拒绝。
  *
- * 所有协议类型(命令/响应/事件/扩展 UI)与 SpawnSpec 一律 import 自 @pi-web/protocol,
+ * 所有协议类型(命令/响应/事件/扩展 UI)与 SpawnSpec 一律 import 自 @blksails/protocol,
  * 本模块不重定义(单一事实来源)。接口签名不泄漏 child_process/管道概念(Req 1.3)。
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -24,7 +24,7 @@ import type {
   RpcResponse,
   SpawnSpec,
   ThinkingLevel,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type {
   ChannelHealth,
   LineListener,

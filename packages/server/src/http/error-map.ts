@@ -8,9 +8,9 @@
  *   MissingInputError        → 400
  *   未知                      → 500(不泄露 env/凭据/堆栈,Req 9.3)
  *
- * 协议版本承载于响应头/体(Req 7.1)。版本来源唯一为 `@pi-web/protocol`(Req 7.3)。
+ * 协议版本承载于响应头/体(Req 7.1)。版本来源唯一为 `@blksails/protocol`(Req 7.3)。
  */
-import { protocolVersion } from "@pi-web/protocol";
+import { protocolVersion } from "@blksails/protocol";
 import {
   MissingInputError,
   SessionNotFoundError,

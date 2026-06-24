@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
-import type { WebExtension } from "@pi-web/web-kit";
+import type { WebExtension } from "@blksails/web-kit";
 
 function withMessages(msgs: UIMessage[]) {
   return mockSession({

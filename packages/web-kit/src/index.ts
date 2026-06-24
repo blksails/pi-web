@@ -1,7 +1,7 @@
 /**
- * `@pi-web/web-kit` — agent source `.pi/web` 的作者侧 SDK(UI 控制层)。
+ * `@blksails/web-kit` — agent source `.pi/web` 的作者侧 SDK(UI 控制层)。
  *
- * 与 `@pi-web/agent-kit` 对称:`defineAgent` ↔ `defineWebExtension`。作者写一个
+ * 与 `@blksails/agent-kit` 对称:`defineAgent` ↔ `defineWebExtension`。作者写一个
  * `.pi/web` 入口,默认导出 {@link WebExtension};经随包发布的 `pi-web build`
  * 预构建为 ESM bundle + manifest(react/web-kit external)。
  *
@@ -44,4 +44,4 @@ export type {
   UiRpcAction,
   UiRpcRequest,
   UiRpcResponse,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";

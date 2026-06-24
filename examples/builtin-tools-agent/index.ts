@@ -17,7 +17,7 @@
  * NOTE: `model` 故意省略 → 继承 `~/.pi/agent/settings.json` 的 defaultProvider/
  * defaultModel,并从 `~/.pi/agent/auth.json` 解析凭证,开箱即用于任意 pi 登录。
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 
 export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 的 defaultProvider/defaultModel。

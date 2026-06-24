@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { persistPicked, resolveInputToDataUri } from "../../src/attachment/persist.js";
-import type { AttachmentToolContext, AttachmentToolHandle, ToolOutputRef } from "@pi-web/agent-kit";
+import type { AttachmentToolContext, AttachmentToolHandle, ToolOutputRef } from "@blksails/agent-kit";
 import type { PickedResult } from "../../src/engine/types.js";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────

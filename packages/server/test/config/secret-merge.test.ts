@@ -1,7 +1,7 @@
 /**
  * 单元:secret-merge — GET 路径掩码 + PUT 路径仅写合并。
  *
- * PUT secret 字段使用 @pi-web/protocol 的 SecretWrite 三态:
+ * PUT secret 字段使用 @blksails/protocol 的 SecretWrite 三态:
  *   keep  → { __secret:true, action:"keep" }
  *   clear → { __secret:true, action:"clear" }
  *   set   → { __secret:true, action:"set", value:"..." }
@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { maskSecrets, mergeSecrets, isSecretMask } from "../../src/config/secret-merge.js";
-import { secretKeep, secretClear, secretSet } from "@pi-web/protocol";
+import { secretKeep, secretClear, secretSet } from "@blksails/protocol";
 
 // ─── GET path: maskSecrets ────────────────────────────────────────────────────
 

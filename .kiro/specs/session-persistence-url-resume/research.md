@@ -23,7 +23,7 @@
 
 ### 冷恢复路由与进程模型
 - **Context**:恢复请求如何不被 404 拦截;stub 不落盘问题。
-- **Findings**:`router.ts:168` 对含 `:id` 端点先 `store.get(id)`→未命中 404;`@pi-web/server` exports 指向 `src/index.ts`(纯 TS,无 dist),stub 是裸 node `.mjs` 无 TS loader。
+- **Findings**:`router.ts:168` 对含 `:id` 端点先 `store.get(id)`→未命中 404;`@blksails/server` exports 指向 `src/index.ts`(纯 TS,无 dist),stub 是裸 node `.mjs` 无 TS loader。
 - **Implications**:恢复复用 `POST /sessions {resumeId}`(无 `:id` 段);stub 复用 `SessionEntryStore` 需注入 `--import jiti/register`,否则内联。
 
 ## Architecture Pattern Evaluation

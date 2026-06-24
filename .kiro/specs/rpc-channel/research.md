@@ -5,7 +5,7 @@
 - **Discovery Scope**: New Feature(greenfield)+ 对单一上游 `protocol-contract` 的 Complex Integration
 - **Key Findings**:
   - 不复用包内 `RpcClient`:它写死 spawn `pi --mode rpc`、未暴露 extension UI 子协议、基于 Node `readline`(会在 `U+2028`/`U+2029` 误切)——三处都与本特性硬性要求冲突。
-  - 协议类型已由上游 `protocol-contract`(`@pi-web/protocol`)集中导出(`RpcCommand`/`RpcResponse`/`AgentEvent`/`RpcExtensionUIRequest`/`RpcExtensionUIResponse` 等),本特性只 import 消费,不在本地重建 `rpc-types.ts`(PLAN.md 早期方案已被 protocol-contract 取代)。
+  - 协议类型已由上游 `protocol-contract`(`@blksails/protocol`)集中导出(`RpcCommand`/`RpcResponse`/`AgentEvent`/`RpcExtensionUIRequest`/`RpcExtensionUIResponse` 等),本特性只 import 消费,不在本地重建 `rpc-types.ts`(PLAN.md 早期方案已被 protocol-contract 取代)。
   - `PiRpcChannel` 是 §14.1① 强制接缝:必须先有接口,`PiRpcProcess` 仅是 `local` 实现;命令封装层只依赖接口,可用纯 mock channel 做单测。
 
 ## Research Log
@@ -61,7 +61,7 @@
 
 ### Decision: 消费上游协议类型,不重建本地 `rpc-types.ts`
 - **Context**:PLAN.md §3.1 早期设想本地复制 d.ts;但 roadmap 已将协议契约收敛到 `protocol-contract`。
-- **Selected Approach**:从 `@pi-web/protocol` import `RpcCommand`/`RpcResponse`/`AgentEvent`/`RpcExtensionUIRequest`/`RpcExtensionUIResponse` 等。
+- **Selected Approach**:从 `@blksails/protocol` import `RpcCommand`/`RpcResponse`/`AgentEvent`/`RpcExtensionUIRequest`/`RpcExtensionUIResponse` 等。
 - **Rationale**:单一事实来源,避免类型分叉;依赖方向 `protocol ← rpc-channel` 单向收敛。
 - **Trade-offs**:运行依赖上游包就绪;由波次顺序(protocol-contract 先行)保证。
 - **Follow-up**:协议形状变更触发本特性重校验(Revalidation Trigger)。

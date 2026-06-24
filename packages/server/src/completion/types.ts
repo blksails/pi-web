@@ -1,13 +1,13 @@
 /**
  * completion-provider-framework — 服务端 provider 契约与上下文类型。
  *
- * 仅服务端可见(含函数,不可序列化)。线协议形状见 `@pi-web/protocol`
+ * 仅服务端可见(含函数,不可序列化)。线协议形状见 `@blksails/protocol`
  * 的 completion-dto(CompletionItem/CompletionResponse/TriggersResponse)。
  */
 import type {
   CompletionItem,
   CompletionExtractRule,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 /** 注入给 provider 的会话上下文(服务端组装,provider 不得自前端取)。 */
 export interface CompletionCtx {

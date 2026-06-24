@@ -94,7 +94,7 @@ graph TB
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Backend / Services | TypeScript (现有 `@pi-web/server`) | 新增 `AttachmentCompletionProvider` + 注册接线 | 复用现有框架，无新依赖 |
+| Backend / Services | TypeScript (现有 `@blksails/server`) | 新增 `AttachmentCompletionProvider` + 注册接线 | 复用现有框架，无新依赖 |
 | Data / Storage | 现有 `AttachmentStore` | 只读 `listBySession`/`head` | 不改存储 |
 | Frontend | 现有 `PiCompletionPopover`/`useCompletion` | 按 kind 通用渲染 attachment 候选 | 零改动承载 |
 
@@ -191,13 +191,13 @@ sequenceDiagram
 **Dependencies**
 - Outbound: `AttachmentStore.listBySession`/`head` — 读取本会话附件（P0）
 - Outbound: `buildAttachmentRefs` — 规范引用标记格式单一来源（P0）
-- External: `@pi-web/protocol` `CompletionItem` — 候选 DTO（P1）
+- External: `@blksails/protocol` `CompletionItem` — 候选 DTO（P1）
 
 **Contracts**: Service [x]
 
 ##### Service Interface
 ```typescript
-import type { Attachment } from "@pi-web/protocol";
+import type { Attachment } from "@blksails/protocol";
 
 /** 仅依赖 store 的只读子集，便于单测注入与窄化依赖。 */
 export interface AttachmentLister {

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-本特性交付 `@pi-web/react`——pi-web 的**无样式 headless React 层**。它面向两类用户:本项目的 `ui-components`(消费本层装配有样式组件),以及任何已有自研 UI 的第三方 React/Next 项目(只用本层、UI 全自控)。
+本特性交付 `@blksails/react`——pi-web 的**无样式 headless React 层**。它面向两类用户:本项目的 `ui-components`(消费本层装配有样式组件),以及任何已有自研 UI 的第三方 React/Next 项目(只用本层、UI 全自控)。
 
 现状是:`http-api` 已提供稳定的 REST + SSE 契约,但每个前端都要重复手写 SSE 订阅、把 SSE 帧喂进 AI SDK、调用各命令端点、管理扩展 UI 请求队列——重复且易错。本特性提供:
 
@@ -11,7 +11,7 @@
 - 一组 headless hooks:`usePiSession`(建/连会话 + 连接状态)、`usePiControls`(model/thinking/abort/steer/stats/commands)、`useExtensionUI`(扩展 UI 请求队列,冒泡给上层弹窗)。
 - 旁路 control 帧(extension-ui / queue / stats / error)分流到 hooks,**不污染** `useChat` 的消息流。
 
-本特性运行于浏览器环境,仅依赖 `@pi-web/protocol`(契约类型/schema)、AI SDK(`ai` / `@ai-sdk/react`)与 `http-api` 暴露的 HTTP/SSE 契约,**不依赖任何后端实现细节**。
+本特性运行于浏览器环境,仅依赖 `@blksails/protocol`(契约类型/schema)、AI SDK(`ai` / `@ai-sdk/react`)与 `http-api` 暴露的 HTTP/SSE 契约,**不依赖任何后端实现细节**。
 
 ## Boundary Context
 
@@ -29,7 +29,7 @@
 - **Adjacent expectations(对相邻系统/spec 的依赖与不拥有项)**:
   - 依赖 `http-api` 按既定契约提供 REST 端点与 SSE 流(`data:`/`event:`/`id:` 行、心跳、`Last-Event-ID` 重连、`protocolVersion` 承载)。
   - 依赖 `protocol-contract` 提供 `SseFrame` / `UiMessageChunk` / data-part / REST DTO 的类型与 `protocolVersion`,本层据此解码与拼装,不重定义形状。
-  - 依赖 AI SDK v5(`ai` / `@ai-sdk/react`)的 `ChatTransport` 接口与 `useChat` 行为;`UIMessageChunk` 类型以 AI SDK 与 `@pi-web/protocol` 的对齐为准。
+  - 依赖 AI SDK v5(`ai` / `@ai-sdk/react`)的 `ChatTransport` 接口与 `useChat` 行为;`UIMessageChunk` 类型以 AI SDK 与 `@blksails/protocol` 的对齐为准。
 
 ## Requirements
 
@@ -57,7 +57,7 @@
 3. When SSE 流推送 tool 类 uiMessageChunk 帧(tool-input-available / tool-output-available), the PiTransport shall 将其解码为对应的 tool `UIMessageChunk`。
 4. When SSE 流推送 data-part 类 uiMessageChunk 帧(`data-pi-*`,如累积工具输出), the PiTransport shall 将其解码为对应的 data-part `UIMessageChunk`。
 5. When SSE 流推送会话结束信号(finish / 结束 control 帧), the PiTransport shall 关闭返回的可读流。
-6. If SSE 帧无法按 `@pi-web/protocol` 的 schema 解析, then the PiTransport shall 不向可读流注入污染数据,并以可观测方式上报该解析错误(error 旁路或流错误)。
+6. If SSE 帧无法按 `@blksails/protocol` 的 schema 解析, then the PiTransport shall 不向可读流注入污染数据,并以可观测方式上报该解析错误(error 旁路或流错误)。
 
 ### Requirement 3: 断线重连续流
 
@@ -77,11 +77,11 @@
 #### Acceptance Criteria
 
 1. When 调用 `createPiClient(baseUrl, fetch?)`, the createPiClient shall 返回一个绑定到该 `baseUrl` 的客户端;Where 提供了自定义 `fetch`, the createPiClient shall 使用该 `fetch` 而非全局 fetch 发起请求。
-2. When 客户端的建会话方法被调用, the PiClient shall 按 `@pi-web/protocol` 的 `CreateSessionRequest` 形状向 `POST /sessions` 提交 `{ source, cwd?, model?, env? }` 并返回 `{ sessionId }`。
+2. When 客户端的建会话方法被调用, the PiClient shall 按 `@blksails/protocol` 的 `CreateSessionRequest` 形状向 `POST /sessions` 提交 `{ source, cwd?, model?, env? }` 并返回 `{ sessionId }`。
 3. When 客户端的命令方法(prompt / steer / follow_up / abort / model / thinking / ui-response)被调用, the PiClient shall 向对应的 `POST /sessions/:id/{...}` 端点提交符合协议 DTO 的请求体并返回该端点的响应。
 4. When 客户端的查询方法(state / stats / messages / commands)被调用, the PiClient shall 向对应的 `GET /sessions/:id/{...}` 端点发起请求并返回符合协议响应 DTO 的结果。
 5. If `http-api` 返回非 2xx 状态, then the PiClient shall 以可辨识的错误(含状态码与协议错误体字段)向调用方报告,而不静默吞错。
-6. The PiClient shall 仅依据 `@pi-web/protocol` 的 DTO 与端点路径拼装请求,不重定义请求/响应形状。
+6. The PiClient shall 仅依据 `@blksails/protocol` 的 DTO 与端点路径拼装请求,不重定义请求/响应形状。
 
 ### Requirement 5: usePiSession 会话生命周期与连接状态
 
@@ -138,9 +138,9 @@
 
 #### Acceptance Criteria
 
-1. The `@pi-web/react` shall 以 `@pi-web/protocol` 的类型与 schema 作为帧解码与 DTO 拼装的唯一来源,不内置并行的形状定义。
-2. When SSE 帧或 REST 响应携带 `protocolVersion`, the `@pi-web/react` shall 以 `@pi-web/protocol` 暴露的 `protocolVersion` 为基准进行兼容判定。
-3. If 收到的 `protocolVersion` 与本层基准不兼容, then the `@pi-web/react` shall 以可辨识的方式向调用方暴露版本不兼容,而不静默按错误形状解析。
+1. The `@blksails/react` shall 以 `@blksails/protocol` 的类型与 schema 作为帧解码与 DTO 拼装的唯一来源,不内置并行的形状定义。
+2. When SSE 帧或 REST 响应携带 `protocolVersion`, the `@blksails/react` shall 以 `@blksails/protocol` 暴露的 `protocolVersion` 为基准进行兼容判定。
+3. If 收到的 `protocolVersion` 与本层基准不兼容, then the `@blksails/react` shall 以可辨识的方式向调用方暴露版本不兼容,而不静默按错误形状解析。
 
 ### Requirement 10: 测试与端到端验证(硬性)
 

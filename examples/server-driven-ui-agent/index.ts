@@ -2,7 +2,7 @@
  * server-driven-ui-agent — 演示 server-driven UI(data-pi-ui)的 example agent。
  *
  * agent 从**后端**声明富 UI,前端零配置渲染。产帧通道:工具 `execute` 的第 4 个参数
- * `onUpdate` 经 `emitUi(onUpdate, spec)` 发出 UiSpec(见 @pi-web/agent-kit);pi SDK 产生
+ * `onUpdate` 经 `emitUi(onUpdate, spec)` 发出 UiSpec(见 @blksails/agent-kit);pi SDK 产生
  * `tool_execution_update` 事件,server 翻译层识别约定 key 后产出 `data-pi-ui` 帧,
  * 前端 <PiChat> 经注册的 PiUiPart 渲染(内置白名单组件 / 沙箱解释器)。
  *
@@ -12,7 +12,7 @@
  *
  * 注:emitUi 仅在工具执行期间有效 —— agent 想发 UI 就在某个工具里 emitUi。
  */
-import { defineAgent, emitUi } from "@pi-web/agent-kit";
+import { defineAgent, emitUi } from "@blksails/agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

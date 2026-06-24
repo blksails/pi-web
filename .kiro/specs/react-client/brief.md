@@ -1,6 +1,6 @@
 # Brief — react-client
 
-> 语言:zh。权威设计:`PLAN.md` §4(ChatTransport)、§13.1(`@pi-web/react`)、§13.3 B(headless hooks)。
+> 语言:zh。权威设计:`PLAN.md` §4(ChatTransport)、§13.1(`@blksails/react`)、§13.3 B(headless hooks)。
 
 ## 问题
 - **谁**:任何 React/Next 项目(含本项目 ui-components 与第三方自研 UI)。

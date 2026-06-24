@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SandboxRenderer } from "../../src/components/sandbox-renderer.js";
-import type { UiNode } from "@pi-web/protocol";
+import type { UiNode } from "@blksails/protocol";
 
 describe("SandboxRenderer", () => {
   it("渲染 box 嵌套文本", () => {

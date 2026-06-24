@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { FieldDescriptor } from "@pi-web/protocol";
+import type { FieldDescriptor } from "@blksails/protocol";
 import {
   createFieldRegistry,
   type FieldRendererComponent,

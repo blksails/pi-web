@@ -20,7 +20,7 @@
  * It is loaded by the bootstrap runner via jiti and mapped into a pi session
  * runtime.
  */
-import { defineMinimalAgent } from "@pi-web/agent-kit";
+import { defineMinimalAgent } from "@blksails/agent-kit";
 
 export default defineMinimalAgent({
   // model omitted → inherits ~/.pi/agent/settings.json defaultProvider/defaultModel.

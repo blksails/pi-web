@@ -2,7 +2,7 @@
  * web-ext 契约 — WebExtension manifest(agent source `.pi/web` 的可序列化清单)。
  *
  * 由作者侧 `pi-web build` 产出。宿主加载前据此做安全门校验(SRI/签名/版本)。
- * 纯数据 + zod,不依赖 React(运行时携带组件的描述符在 `@pi-web/web-kit`)。
+ * 纯数据 + zod,不依赖 React(运行时携带组件的描述符在 `@blksails/web-kit`)。
  *
  * 两类形态:
  *   - 代码扩展:含 `entry`(预构建 ESM)+ `integrity`(entry 的 SRI)。
@@ -25,7 +25,7 @@ export type WebExtensionCapability = z.infer<
 
 /**
  * WebExtension 清单。`id` 唯一(CSS/registry 命名空间根);`targetApiVersion` 为
- * 兼容的 `@pi-web/web-kit` semver range。entry 存在则 integrity 必填(加载前校验完整性)。
+ * 兼容的 `@blksails/web-kit` semver range。entry 存在则 integrity 必填(加载前校验完整性)。
  */
 export const WebExtensionManifestSchema = z
   .object({

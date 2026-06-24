@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { resolve, AgentSourceResolver } from "../../src/agent-source/resolver.js";
-import { SpawnSpecSchema } from "@pi-web/protocol";
+import { SpawnSpecSchema } from "@blksails/protocol";
 import { createBareRepo, mkTmpDir, type BareRepoFixture } from "./helpers.js";
 import { __resetInFlightForTest } from "../../src/agent-source/git-clone.js";
 import { makeProjectTrustPolicy } from "../../src/trust/index.js";
@@ -175,7 +175,7 @@ describe("e2e / cross-spec sanity — spawnSpec is launch-ready", () => {
     const cli = await resolve(noIdx, { runnerEntry: RUNNER, piCliEntry: PI_CLI });
 
     for (const r of [custom, cli]) {
-      // 1. matches @pi-web/protocol SpawnSpecSchema (the contract rpc-channel consumes)
+      // 1. matches @blksails/protocol SpawnSpecSchema (the contract rpc-channel consumes)
       expect(() => SpawnSpecSchema.parse(r.spawnSpec)).not.toThrow();
       // 2. structural shape matching PiRpcProcess: spawn(cmd, args, { cwd, env })
       const { cmd, args, cwd, env } = r.spawnSpec;

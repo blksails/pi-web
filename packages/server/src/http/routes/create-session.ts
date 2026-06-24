@@ -6,7 +6,7 @@
  * 缺 `source`/类型错 → 400(含字段路径)。http-api 不 spawn、不解析、不持有会话状态。
  */
 import { randomUUID } from "node:crypto";
-import { CreateSessionRequestSchema } from "@pi-web/protocol";
+import { CreateSessionRequestSchema } from "@blksails/protocol";
 import type { ResolvedSource } from "../../agent-source/index.js";
 import { AgentSourceResolver } from "../../agent-source/index.js";
 import type { SessionChannel, SessionManager } from "../../session/index.js";

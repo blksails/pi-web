@@ -1,6 +1,6 @@
 /** webext-slots-agent UI 扩展:Tier1 协议保留插槽全集(R6)。每槽一个带 data-testid 的可见 fixture。 */
 import * as React from "react";
-import { defineWebExtension } from "@pi-web/web-kit";
+import { defineWebExtension } from "@blksails/web-kit";
 
 function Slot({
   id,

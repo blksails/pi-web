@@ -1,9 +1,9 @@
 /**
- * web-kit — Tier 1 区域插槽 key 常量(与 @pi-web/protocol 的 SlotKey 对齐)。
+ * web-kit — Tier 1 区域插槽 key 常量(与 @blksails/protocol 的 SlotKey 对齐)。
  *
  * 作者用这些常量声明 `slots`,获得类型与命名一致性。
  */
-import type { SlotKey } from "@pi-web/protocol";
+import type { SlotKey } from "@blksails/protocol";
 
 export const SLOTS = {
   background: "background",

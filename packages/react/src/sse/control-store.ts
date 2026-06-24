@@ -5,14 +5,14 @@
  * 子类型(extension-ui / queue / stats / error)更新;扩展 UI 请求按 FIFO 入队 / 出队
  * (不丢弃)。读经 getSnapshot 返回稳定引用(无变更不换引用),配合 useSyncExternalStore 防撕裂。
  *
- * 类型取自 @pi-web/protocol(ControlPayload / RpcExtensionUIRequest / SessionStats)。
+ * 类型取自 @blksails/protocol(ControlPayload / RpcExtensionUIRequest / SessionStats)。
  */
 import type {
   ControlPayload,
   RpcExtensionUIRequest,
   SessionStats,
   UiRpcResponse,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 /** steering / followUp 队列快照(来自 queue control 帧)。 */
 export interface QueueSnapshot {

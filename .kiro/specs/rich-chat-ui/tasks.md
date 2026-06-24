@@ -6,7 +6,7 @@
 - [x] 1.1 在协议包新增模型列表、fork、fork 消息三组 REST 传输契约
   - 复用既有 `Model` / `ImageContent` / entryId schema,新增"可用模型响应""fork 请求/响应""fork 消息响应"三组 zod 契约
   - 与 `RpcCommand` 中 `get_available_models` / `fork` / `get_fork_messages` 形状对齐
-  - 观察完成态:协议包导出三组新契约且 `pnpm --filter @pi-web/protocol test typecheck` 通过(含三契约有效/无效负载解析单测)
+  - 观察完成态:协议包导出三组新契约且 `pnpm --filter @blksails/protocol test typecheck` 通过(含三契约有效/无效负载解析单测)
   - _Requirements: 4.1, 4.5, 8.1, 8.2, 8.3_
   - _Boundary: Protocol REST DTO_
 
@@ -136,7 +136,7 @@
 
 - [x] 4.2 导出新组件与 hooks
   - ui 包导出 `PiChatPro` 与元件层;react 包导出四个新 hooks;保留现有 `<PiChat>` 导出不变
-  - 观察完成态:外部可从 `@pi-web/ui` / `@pi-web/react` 导入新符号,两包 typecheck 通过
+  - 观察完成态:外部可从 `@blksails/ui` / `@blksails/react` 导入新符号,两包 typecheck 通过
   - _Requirements: 11.1_
   - _Boundary: ui index, react index_
   - _Depends: 4.1_
@@ -151,7 +151,7 @@
 - [x] 5. Validation:集成、端到端与基线回归
 - [x] 5.1 (P) 服务端透传集成测试
   - 验证三个 `PiSession` 透传方法经 RpcChannel(mock)发送正确 command 并解析;三路由的请求校验、成功响应与错误映射
-  - 观察完成态:`pnpm --filter @pi-web/server test` 通过且覆盖三能力的成功与错误路径
+  - 观察完成态:`pnpm --filter @blksails/server test` 通过且覆盖三能力的成功与错误路径
   - _Requirements: 4.1, 8.1, 8.2, 8.3_
   - _Boundary: PiSession, Server HTTP routes_
   - _Depends: 1.2_
@@ -182,14 +182,14 @@
   - 内联纯函数 `getMediaCategory`(从 name 后缀 / dataUrl mime 推导 image|video|audio|file)与 `getAttachmentLabel`;有 dataUrl 渲染缩略图,缺失则以该类别 lucide 图标占位,仍保留文件名与移除按钮;呈现可读类型标签
   - 不改 Req 3 处理边界:非图片仍走 rejected 降级、不入列、不阻断;增强仅作用于已入列项呈现
   - 主题经 shadcn CSS 变量、无硬编码;预览浮层与布局切换键盘可达 + aria 标注
-  - 观察完成态:`pnpm --filter @pi-web/ui typecheck` 通过;组件在五个 variant 下均可渲染且 panel/compact 无行为/快照变化
+  - 观察完成态:`pnpm --filter @blksails/ui typecheck` 通过;组件在五个 variant 下均可渲染且 panel/compact 无行为/快照变化
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
   - _Boundary: Attachments_
   - _Depends: 3.4_
 
 - [x] 6.2 attachments 增强组件单测
   - 用 testing-library + jsdom 断言:各 variant 渲染对应容器结构且 panel/compact 与既有一致;hoverPreview 开时悬停/聚焦出现预览浮层、移开/失焦消失;缺 dataUrl 项渲染占位图标且仍有文件名+移除按钮;呈现类型标签;非图片经 rejected 提示不入列;`getMediaCategory`/`getAttachmentLabel` 对 image/video/audio/file 分类正确
-  - 观察完成态:`pnpm --filter @pi-web/ui test` 通过,覆盖 12.1–12.6 可观察结果
+  - 观察完成态:`pnpm --filter @blksails/ui test` 通过,覆盖 12.1–12.6 可观察结果
   - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.6_
   - _Boundary: Attachments tests_
   - _Depends: 6.1_

@@ -6,7 +6,7 @@
  * 先注册 P0 配置面板(auth/settings),再渲染外壳;面板经 /api/config/:domain 读写。
  */
 import * as React from "react";
-import { SettingsShell } from "@pi-web/ui";
+import { SettingsShell } from "@blksails/ui";
 import { registerConfigPanels } from "@/lib/settings/register-panels";
 
 registerConfigPanels();

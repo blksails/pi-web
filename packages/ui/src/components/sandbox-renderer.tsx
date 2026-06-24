@@ -14,7 +14,7 @@
  * 由此:沙箱组件能表达任意布局/数据展示,却无法执行代码、发起网络、改写 DOM 或越权。
  */
 import * as React from "react";
-import type { UiNode } from "@pi-web/protocol";
+import type { UiNode } from "@blksails/protocol";
 import { cn } from "../lib/cn.js";
 import { boxStyleClasses, textStyleClasses, toneSoft } from "./ui-tokens.js";
 

@@ -10,7 +10,7 @@ import {
   defaultSettingsRegistry,
   type SettingsRegistry,
   type SettingsPanelDescriptor,
-} from "@pi-web/react";
+} from "@blksails/react";
 import { SchemaForm } from "./schema-form.js";
 import type { FieldRegistry } from "./field-registry.js";
 import { Button } from "../ui/button.js";

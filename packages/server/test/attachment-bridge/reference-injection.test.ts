@@ -12,7 +12,7 @@
  * 纯字符串构造:不落库、不查 store。
  */
 import { describe, expect, it } from "vitest";
-import type { Attachment } from "@pi-web/protocol";
+import type { Attachment } from "@blksails/protocol";
 import {
   buildAttachmentRefs,
   injectAttachmentRefs,

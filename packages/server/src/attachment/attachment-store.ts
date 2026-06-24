@@ -21,7 +21,7 @@
  * `AttachmentRegistry` / `LocalFsBlobBackend` / `BlobMeta` / `UrlSigner`),供 `attachment-tool-bridge`
  * 在 runner 子进程内组合实例化(避免下游另起内联类型)。
  */
-import type { Attachment, AttachmentOrigin } from "@pi-web/protocol";
+import type { Attachment, AttachmentOrigin } from "@blksails/protocol";
 import { mintAttachmentId } from "./id.js";
 import type { BlobMeta, BlobStore } from "./blob-store.js";
 import type { LocalFsBlobBackend } from "./local-fs-backend.js";

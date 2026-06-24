@@ -1,5 +1,5 @@
 /** webext-contrib-agent UI 扩展:Tier 3 slash + @mention 贡献点(经 ui-rpc 回 agent)。 */
-import { defineWebExtension, type UiRpcClient } from "@pi-web/web-kit";
+import { defineWebExtension, type UiRpcClient } from "@blksails/web-kit";
 
 export default defineWebExtension({
   manifestId: "webext-contrib",

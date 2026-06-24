@@ -12,7 +12,7 @@
  * - pending 反映 controls.getCommands 操作态(若提供 controls)。
  */
 import { useMemo } from "react";
-import type { RpcSlashCommand } from "@pi-web/protocol";
+import type { RpcSlashCommand } from "@blksails/protocol";
 import type { UsePiControlsResult } from "./use-pi-controls.js";
 
 export interface Suggestion {

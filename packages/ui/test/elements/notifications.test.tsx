@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, act, cleanup } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { Notifications } from "../../src/elements/notifications.js";
-import type { ExtensionNotification } from "@pi-web/react";
+import type { ExtensionNotification } from "@blksails/react";
 
 /**
  * Notifications 通知浮层(toasts)测试(Req 1.1/1.2/1.3/1.4/1.5/1.6、8.1/8.2)。

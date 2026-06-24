@@ -3,7 +3,7 @@
  * (Req 5.1,5.3,5.5,5.6,5.7,10.1)。
  */
 import { describe, expect, it } from "vitest";
-import { makeUiMessageChunkFrame, protocolVersion } from "@pi-web/protocol";
+import { makeUiMessageChunkFrame, protocolVersion } from "@blksails/protocol";
 import { createPiWebHandler } from "../../src/http/create-handler.js";
 import { SessionManager } from "../../src/session/session-manager.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";

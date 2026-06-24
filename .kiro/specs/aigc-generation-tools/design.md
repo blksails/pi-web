@@ -3,7 +3,7 @@
 ## Overview
 本特性在 pi-web 引入 AIGC 生成工具首批能力(Wave 1):**文生图(`text_to_image`)** 与 **图像编辑(`image_edit`)**。两工具以 pi `customTools` 形式由 agent 启用,LLM 经工具参数驱动生成;产物(provider 远程 URL)经 fetch 取字节后落入既有附件存储(`ctx.putOutput`)并以 `att_<id>` 引用回流,在对话中以**默认工具卡片**呈现。
 
-引擎承载于新建独立包 `@pi-web/tool-kit`(通用工具套件,AIGC 为首批工具集),移植 pi-labs aigc 引擎的精简版:保留零依赖的声明式 `Category/Variant/EndpointBehavior` 与执行内核,去除其 DB/S3 耦合,把"产物稳定化"接缝换成 pi-web 附件落库。
+引擎承载于新建独立包 `@blksails/tool-kit`(通用工具套件,AIGC 为首批工具集),移植 pi-labs aigc 引擎的精简版:保留零依赖的声明式 `Category/Variant/EndpointBehavior` 与执行内核,去除其 DB/S3 耦合,把"产物稳定化"接缝换成 pi-web 附件落库。
 
 **Impact**: 新增一个 workspace 包与一个示例 agent;不改 pi 协议、不改既有 attachment-bridge、不触碰 web-ext/前端。Wave 1 是纯后端执行链路。
 
@@ -11,7 +11,7 @@
 - 文生图、图像编辑两工具端到端可用:LLM 调用 → provider 生成 → 落库 → 默认卡片展示。
 - 同步与异步(轮询)两类 provider 均支持,含超时与取消。
 - 产物落附件存储、对话只存引用;缺密钥/失败优雅降级。
-- 建立可声明式扩展的 `@pi-web/tool-kit`,AIGC 工具集与未来工具集并列、互不影响内核。
+- 建立可声明式扩展的 `@blksails/tool-kit`,AIGC 工具集与未来工具集并列、互不影响内核。
 
 ### Non-Goals
 - web-ext `panelRight` 面板、自定义媒体卡片 renderer、面板状态跨进程通道(后续 Wave)。
@@ -23,7 +23,7 @@
 ## Boundary Commitments
 
 ### This Spec Owns
-- 新建包 `@pi-web/tool-kit`:声明式工具引擎(类型 + 执行内核 + env 变量解析)与 AIGC 首批工具集(`text_to_image`/`image_edit` 的 category 声明 + provider 变体)。
+- 新建包 `@blksails/tool-kit`:声明式工具引擎(类型 + 执行内核 + env 变量解析)与 AIGC 首批工具集(`text_to_image`/`image_edit` 的 category 声明 + provider 变体)。
 - 工具 `execute` 逻辑:参数合并/默认变体、调用 provider、产物落库回流、错误/超时/取消/降级。
 - 一个端到端示例 agent(`examples/aigc-agent`)用于 e2e。
 
@@ -34,19 +34,19 @@
 - pi 协议:不新增文件引用原语。
 
 ### Allowed Dependencies
-- `@pi-web/agent-kit`(**type-only**:`AttachmentToolContext`/`AttachmentToolHandle`/`ToolOutputRef`、`defineAgent`)。
-- `@pi-web/protocol`(经 agent-kit 间接,`Attachment` 类型)。
+- `@blksails/agent-kit`(**type-only**:`AttachmentToolContext`/`AttachmentToolHandle`/`ToolOutputRef`、`defineAgent`)。
+- `@blksails/protocol`(经 agent-kit 间接,`Attachment` 类型)。
 - peer:`@earendil-works/pi-coding-agent`(`defineTool`/`ToolDefinition`)、`@earendil-works/pi-ai`(`Type`)。
 - runtime:`undici`(代理 fetch)。
 - 运行期约定:globalThis seam `"__piWebAttachmentToolContext__"`(读 attachment ctx)、`process.env`(provider 密钥)。
-- **禁止**:`@pi-web/tool-kit` → `@pi-web/server` 的值依赖(仅约定常量同值);主入口禁止顶层 import pi SDK/undici。
+- **禁止**:`@blksails/tool-kit` → `@blksails/server` 的值依赖(仅约定常量同值);主入口禁止顶层 import pi SDK/undici。
 
 ### Revalidation Triggers
 - `AttachmentToolContext` 契约(resolve/putOutput/handle 形态)变化。
 - seam key 字符串约定变化。
 - attachment env 变量(`PI_WEB_ATTACHMENT_DIR`/`PI_WEB_ATTACHMENT_SECRET`)或子进程 store 行为变化。
 - pi `defineTool` / `ToolDefinition` / execute 签名变化。
-- 引入前端对 `@pi-web/tool-kit` 主入口的 import(触发元数据下发设计,后续 Wave)。
+- 引入前端对 `@blksails/tool-kit` 主入口的 import(触发元数据下发设计,后续 Wave)。
 
 ## Architecture
 
@@ -96,7 +96,7 @@ graph TB
 ### Technology Stack
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
-| Backend / Services | `@pi-web/tool-kit`(新包,TS strict) | 声明式引擎 + AIGC 工具集 | 双入口;主入口零运行时依赖 |
+| Backend / Services | `@blksails/tool-kit`(新包,TS strict) | 声明式引擎 + AIGC 工具集 | 双入口;主入口零运行时依赖 |
 | Agent runtime | `@earendil-works/pi-coding-agent` / `pi-ai`(peer) | `defineTool` / `Type` / `ToolDefinition` | 仅 runtime 入口值导入 |
 | 外部集成 | `undici` 8.x | 代理 fetch(provider 调用、产物取字节) | runtime 入口 |
 | Data / Storage | 既有 attachment-bridge(`ctx.putOutput`/`resolve`) | 产物落库与输入解析 | 复用,不改 |
@@ -105,8 +105,8 @@ graph TB
 
 ### Directory Structure
 ```
-packages/tool-kit/                       # 新建 @pi-web/tool-kit
-├── package.json                         # exports: "." 主入口 + "./runtime" 子入口; peerDeps: pi SDK/pi-ai; deps: undici, @pi-web/agent-kit
+packages/tool-kit/                       # 新建 @blksails/tool-kit
+├── package.json                         # exports: "." 主入口 + "./runtime" 子入口; peerDeps: pi SDK/pi-ai; deps: undici, @blksails/agent-kit
 ├── tsconfig.json / tsconfig.build.json / vitest.config.ts
 └── src/
     ├── index.ts                         # 主入口:re-export engine 类型 + aigc 声明(禁顶层 import SDK/undici)

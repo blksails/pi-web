@@ -16,7 +16,7 @@
 - **Sources Consulted**:`.kiro/specs/http-api/design.md`、`.kiro/specs/ui-components/design.md`、`.kiro/specs/agent-source-resolver/design.md`、`PLAN.md` §2/§5/§6/§8/§13。
 - **Findings**:
   - http-api:`createPiWebHandler(opts: { manager, store, authResolver?, authorizeSession?, sse? })` → `(req)=>Promise<Response>`;端点集为 `POST /sessions`、`POST /sessions/:id/{messages,steer,follow_up,abort,model,thinking,ui-response}`、`GET /sessions/:id/{state,stats,messages,commands,stream}`、`DELETE /sessions/:id`;鉴权接缝默认放行。
-  - ui-components:`<PiChat session controls extensionUI slots showControls className />`,内部用 `useChat(transport)` + AI Elements;`usePiSession`/`usePiControls`/`useExtensionUI` 来自 `@pi-web/react`。
+  - ui-components:`<PiChat session controls extensionUI slots showControls className />`,内部用 `useChat(transport)` + AI Elements;`usePiSession`/`usePiControls`/`useExtensionUI` 来自 `@blksails/react`。
   - agent-source-resolver:`source: string | undefined`(本地目录 abs/rel 或 git 三形态);双模式 custom/cli 由入口存在性自动判定;`ResolveOptions` 含 `cwd`/`agentDir`/`env`/默认工作区。
   - PLAN §5 目录:`app/{layout,page,globals.css}`、`app/api/sessions/**`、`examples/hello-agent/index.ts`、`.env.local.example`。
 - **Implications**:本 spec 文件 = 装配代码 + 配置 + 示例 + 测试;组件 / handler / hooks 全部 import 自上游包,本 spec 不含其源码。
@@ -39,7 +39,7 @@
 |--------|-------------|-----------|---------------------|-------|
 | 薄装配 + catch-all 委托(选定) | 单一 catch-all Route Handler 委托给单例 `createPiWebHandler`;page 用 hooks + `<PiChat>` | 零重实现、契约不漂移、测试面小 | 依赖上游契约稳定;单例驻留需处理热重载 | 与 PLAN §14.1③「网关只转发」一致 |
 | 逐端点 Route Handler 文件 | 为每个端点写独立 `route.ts` 转发 | 与 PLAN §5 文件树逐条对应 | 大量重复样板、易与 handler 内部路由重复定义、维护成本高 | handler 已自带路由,逐文件属重复 |
-| 在 page 内自建 fetch/SSE | 不用 `@pi-web/react`,页面直接消费 SSE | 控制力强 | 重实现 transport/hooks,严重越界 | 明确排除 |
+| 在 page 内自建 fetch/SSE | 不用 `@blksails/react`,页面直接消费 SSE | 控制力强 | 重实现 transport/hooks,严重越界 | 明确排除 |
 
 **选定**:薄装配 + catch-all 委托。保留 PLAN §5 的 `app/api/sessions/**` 目录语义,但用 catch-all 段实现以避免与 handler 内部路由重复。
 

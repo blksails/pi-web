@@ -1,5 +1,5 @@
 /**
- * @pi-web/protocol — 聚合导出面(下游唯一导入面)。
+ * @blksails/protocol — 聚合导出面(下游唯一导入面)。
  *
  * 从 version、rpc/*、transport/* re-export 全部 schema、由 z.infer 推导的类型与
  * protocolVersion。pi 原生派生(rpc/*)与 pi-web 自定义传输层(transport/*)分文件,

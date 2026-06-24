@@ -6,7 +6,7 @@
 
 **Users**: agent source 作者(写 `.pi/web`)、平台维护者(配置白名单/签名/CSP)、终端用户(获得领域化 UI)。
 
-**Impact**: 把 `PiChat` 既有四维定制(slots/components/registry/presets)的「喂入源」从宿主装配点的 React props 迁移为 agent source 声明 + 运行时加载;新增 `@pi-web/web-kit` 包与 `pi-web build` 工具;registry 从模块级单例改为 per-session 作用域;在既有 `@pi-web/protocol` 通道上新增 UI↔agent RPC 子协议。
+**Impact**: 把 `PiChat` 既有四维定制(slots/components/registry/presets)的「喂入源」从宿主装配点的 React props 迁移为 agent source 声明 + 运行时加载;新增 `@blksails/web-kit` 包与 `pi-web build` 工具;registry 从模块级单例改为 per-session 作用域;在既有 `@blksails/protocol` 通道上新增 UI↔agent RPC 子协议。
 
 ### Goals
 - 模型 A:宿主永远拥有 document/session/transport/安全边界,扩展只填具名插槽 / 注册贡献点 / 在 iframe 内自由渲染。
@@ -22,10 +22,10 @@
 ## Boundary Commitments
 
 ### This Spec Owns
-- `.pi/web` 目录契约、`WebExtensionManifest` 与 `WebExtension` 描述符(`@pi-web/protocol` + `@pi-web/web-kit`)。
+- `.pi/web` 目录契约、`WebExtensionManifest` 与 `WebExtension` 描述符(`@blksails/protocol` + `@blksails/web-kit`)。
 - 宿主侧 WebExtension 加载器(import-map 解析、懒加载、签名/白名单/SRI/版本门控)。
 - 宿主侧 Tier 1 区域插槽的统一注册面、Tier 2 per-session registry 改造、Tier 3 贡献点宿主实现 + UI↔agent RPC 总线、Tier 4 artifact iframe 宿主与 postMessage 契约。
-- `@pi-web/web-kit` 包与 `pi-web build` 工具(externals 强制、CSS scoping、剥全局样式、产出 manifest+SRI)。
+- `@blksails/web-kit` 包与 `pi-web build` 工具(externals 强制、CSS scoping、剥全局样式、产出 manifest+SRI)。
 - 示例 agent source(`examples/*/.pi/web`)与覆盖 Tier 1~5 的单元/集成/e2e。
 
 ### Out of Boundary
@@ -34,21 +34,21 @@
 - 鉴权身份体系(复用既有 `authResolver`/`authorizeSession` 接缝);本特性只新增「扩展签名白名单」这一加载门。
 
 ### Allowed Dependencies
-- `@pi-web/protocol`(契约根;新增 manifest/ui-rpc schema 于此)。
-- `@pi-web/react`(transport/hooks)、`@pi-web/ui`(PiChat 宿主)。
+- `@blksails/protocol`(契约根;新增 manifest/ui-rpc schema 于此)。
+- `@blksails/react`(transport/hooks)、`@blksails/ui`(PiChat 宿主)。
 - 浏览器原生 ESM / import map;`esbuild`(构建工具内部)。
 - 依赖方向恒为 `protocol ← {web-kit, react, ui, server}`;web-kit **不得**依赖 server 内部实现,仅经 protocol/RPC 通信。
 
 ### Revalidation Triggers
 - `WebExtensionManifest` 或 `WebExtension` 描述符形状变更 → 所有示例与 `pi-web build` 重校验。
 - UI↔agent RPC 载荷/端点契约变更 → react 客户端 + server 路由 + 示例 agent。
-- `@pi-web/web-kit` 公共 API 主版本变更 → 全量示例 bundle 重构建 + CI 冒烟。
+- `@blksails/web-kit` 公共 API 主版本变更 → 全量示例 bundle 重构建 + CI 冒烟。
 - registry 作用域/优先级语义变更 → 既有 PiChat 宿主装配路径。
 
 ## Architecture
 
 ### Existing Architecture Analysis
-- 分层:`protocol ← server`、`protocol ← react ← ui`、app 注入装配。SSE 帧分 `uiMessageChunk`/`control` 两类且带 `protocolVersion`;REST DTO 在 `@pi-web/protocol`。
+- 分层:`protocol ← server`、`protocol ← react ← ui`、app 注入装配。SSE 帧分 `uiMessageChunk`/`control` 两类且带 `protocolVersion`;REST DTO 在 `@blksails/protocol`。
 - `PiChat` 已支持 `slots`/`components`/`registry`/`layout|icons|theme|toolbarOrder`;`createRendererRegistry()` 工厂已存在但默认走模块级单例 `defaultRendererRegistry`。
 - server-driven UI 已有 `SandboxRenderer` + 白名单组件(受限节点树)。
 - 须维持的集成点:`PiChat` 现有 props 装配方式向后兼容;SSE/REST 契约版本化;`runtime="nodejs"` 路由。
@@ -99,10 +99,10 @@ graph TB
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend | React 19 + AI Elements + Tailwind 3 | 宿主 PiChat、插槽、registry、artifact 宿主 | 单例经 import map 共享给扩展 |
-| Author SDK | `@pi-web/web-kit`(新, workspace) | `defineWebExtension` + RPC client + 复用组件 + 类型 | 与 `@pi-web/agent-kit` 对称 |
+| Author SDK | `@blksails/web-kit`(新, workspace) | `defineWebExtension` + RPC client + 复用组件 + 类型 | 与 `@blksails/agent-kit` 对称 |
 | Build | `esbuild` ^0.24 + 自研 CSS scoping 插件 | `pi-web build`:externals/scoping/manifest/SRI | 随 web-kit 发布 |
-| Protocol | `@pi-web/protocol`(扩展)+ zod | manifest schema、ui-rpc schema、artifact 消息 schema | 带 protocolVersion |
-| Backend | `@pi-web/server`(扩展 http)| `/sessions/:id/ui-rpc` 端点 + control 帧 `ui-rpc` 载荷转发 | runtime nodejs |
+| Protocol | `@blksails/protocol`(扩展)+ zod | manifest schema、ui-rpc schema、artifact 消息 schema | 带 protocolVersion |
+| Backend | `@blksails/server`(扩展 http)| `/sessions/:id/ui-rpc` 端点 + control 帧 `ui-rpc` 载荷转发 | runtime nodejs |
 | Runtime | 浏览器原生 ESM + import map | 解析裸 specifier 到宿主单例后 `import()` | 非 MF |
 
 ## File Structure Plan
@@ -117,7 +117,7 @@ packages/
 │       ├── ui-rpc.ts                    # UI↔agent RPC 请求/响应 + control 载荷 schema
 │       ├── artifact.ts                  # artifact postMessage 消息 schema
 │       └── index.ts                     # barrel
-├── web-kit/                             # 新增包 @pi-web/web-kit(作者侧 SDK + build)
+├── web-kit/                             # 新增包 @blksails/web-kit(作者侧 SDK + build)
 │   ├── package.json                     # exports "." 与 "./build";bin: pi-web
 │   ├── src/
 │   │   ├── define-web-extension.ts      # defineWebExtension() identity + 类型校验
@@ -240,7 +240,7 @@ sequenceDiagram
 | artifact-surface | ui | Tier 4 iframe | 5 | artifact schema (P0) | Event |
 | examples/webext-* + e2e | examples/test | 验证 | 11 | 全部 (P0) | — |
 
-### Protocol — 契约(`@pi-web/protocol/web-ext`)
+### Protocol — 契约(`@blksails/protocol/web-ext`)
 
 #### WebExtensionManifest（Req 1.3, 6.1, 6.5, 7.2）
 ```typescript
@@ -305,7 +305,7 @@ type ArtifactMessage =
 ```
 - 宿主校验 `event.origin` 与结构,丢弃不符消息(Req 5.4);iframe `sandbox="allow-scripts"`,独立 origin,无同源凭证(Req 5.2)。
 
-### Author SDK — `@pi-web/web-kit`（Req 9）
+### Author SDK — `@blksails/web-kit`（Req 9）
 ```typescript
 function defineWebExtension(ext: WebExtension): WebExtension; // identity + 编译期类型校验
 interface UiRpcClient { request(req: Omit<UiRpcRequest,"protocolVersion">): Promise<UiRpcResponse>; }
@@ -314,13 +314,13 @@ interface UiRpcClient { request(req: Omit<UiRpcRequest,"protocolVersion">): Prom
 - `components` 仅 re-export 受控设计原语;不暴露宿主内部状态。
 
 ### Build — `pi-web build`（Req 6.4, 8, 9.3）
-- `externals-guard`: 产物 AST/字符串扫描,若内联了 `react`/`react-dom`/`@pi-web/web-kit` 则 `exit 1`。
+- `externals-guard`: 产物 AST/字符串扫描,若内联了 `react`/`react-dom`/`@blksails/web-kit` 则 `exit 1`。
 - `css-scope-plugin`: 前缀 `pw-<id>-<hash>`;剥/拒 `* html body :root` 顶层标签与 `@layer base`;命名空间 `@keyframes`/`@font-face`;拒 Tailwind preflight;`--pw-<id>-*` 变量前缀;资源 URL `import.meta.url` 化。
 - `manifest-emit`: 计算 entry SRI,写 `manifest.json`,可选用配置私钥签名。
 
 ### Host — 加载、安全门、集成
 - `extension-gate`(Req 7): `verify(manifest, opts)` → `Ok | Reject(reason)`;校验 SRI、签名 ∈ 白名单、`targetApiVersion` 兼容宿主 web-kit 主版本。
-- `extension-loader`(Req 6): 注入 import map(`react`/`react-dom`/`@pi-web/web-kit`/设计系统 → 宿主单例 URL)→ `import(entryUrl)` → 返回 `WebExtension`;失败回退默认 UI。
+- `extension-loader`(Req 6): 注入 import map(`react`/`react-dom`/`@blksails/web-kit`/设计系统 → 宿主单例 URL)→ `import(entryUrl)` → 返回 `WebExtension`;失败回退默认 UI。
 - `apply-extension`(Req 2,3,10): 把描述符并入 PiChat 的 per-session registry / slots / contributions;以 error boundary 隔离扩展渲染错误(Req 10.3)。
 - `slot-host`(Req 2): 渲染具名插槽;未声明用默认;保证 PromptInput 提交契约不被改语义(Req 2.4, 10.4)。
 - `artifact-surface`(Req 5): 宿主 iframe + postMessage 中转;LLM 输出强制走此(Req 5.3)。
@@ -331,7 +331,7 @@ interface UiRpcClient { request(req: Omit<UiRpcRequest,"protocolVersion">): Prom
 - Risks: 同源 bundle 无技术围栏 → 由 gate(签名/白名单)+ CSP + artifact iframe 兜底;高频 InlineComplete → 防抖+取消(use-ui-rpc)。
 
 ## Data Models
-- **WebExtensionManifest / WebExtension / UiRpc* / ArtifactMessage**: 见上,均 zod schema 推导类型,置于 `@pi-web/protocol/web-ext`,带 `protocolVersion`。
+- **WebExtensionManifest / WebExtension / UiRpc* / ArtifactMessage**: 见上,均 zod schema 推导类型,置于 `@blksails/protocol/web-ext`,带 `protocolVersion`。
 - **registry 状态**: per-session `Map<string, Renderer>`,key 形如 `<extId>:<type>`;会话结束清空(Req 3.5)。
 - **gate 配置**: `{ whitelist: PublicKey[]; requireSignature: boolean; csp: {...} }`,来源 env(`pi-handler` 注入)。
 

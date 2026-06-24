@@ -5,7 +5,7 @@
  * 以定制单卡外观(Req 5.1/5.2)。点击按 mode 分发(fill/send)。
  */
 import * as React from "react";
-import type { Suggestion } from "@pi-web/react";
+import type { Suggestion } from "@blksails/react";
 import { cn } from "../lib/cn.js";
 
 export interface StarterCardProps {

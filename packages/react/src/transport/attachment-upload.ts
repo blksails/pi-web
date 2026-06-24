@@ -13,7 +13,7 @@
 import {
   UploadAttachmentResponseSchema,
   type UploadAttachmentResponse,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import { joinUrl, type FetchLike } from "../client/request.js";
 
 export type { FetchLike };

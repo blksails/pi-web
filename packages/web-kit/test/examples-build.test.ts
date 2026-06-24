@@ -37,7 +37,7 @@ describe("webext 示例构建", () => {
       expect(result.manifest.id).toBe(ex.id);
       const code = await readFile(result.entryOut, "utf8");
       expect(findBundledSingletons(code)).toHaveLength(0);
-      expect(code).toContain("@pi-web/web-kit");
+      expect(code).toContain("@blksails/web-kit");
       expect(result.manifest.integrity).toBe(
         computeIntegrity(Buffer.from(code, "utf8")),
       );

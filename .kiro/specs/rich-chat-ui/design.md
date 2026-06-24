@@ -4,9 +4,9 @@
 
 **Purpose**: 把 pi-web 的聊天界面升级为对标 AI Elements 参考示例的富界面,在不破坏现有最小 `<PiChat>` 的前提下新增 `<PiChatPro>`,提供富 PromptInput(附件/模型选择器/语音/联网开关/状态化发送)与完整 Conversation(自动滚动/分支/折叠/建议),全部接到 pi 真实能力。
 
-**Users**: pi-web 终端用户(更现代的多模态对话交互)与集成方(可复用的 `@pi-web/ui` 富组件)。
+**Users**: pi-web 终端用户(更现代的多模态对话交互)与集成方(可复用的 `@blksails/ui` 富组件)。
 
-**Impact**: 在 `@pi-web/ui` 新增元件层与装配层;在 `@pi-web/react` 新增数据 hooks 与 transport 附件映射;在 `@pi-web/protocol`/`@pi-web/server` 补齐三个**已存在 RpcCommand**(`get_available_models`/`fork`/`get_fork_messages`)的 REST 薄透传;app-shell 切到 `<PiChatPro>`。
+**Impact**: 在 `@blksails/ui` 新增元件层与装配层;在 `@blksails/react` 新增数据 hooks 与 transport 附件映射;在 `@blksails/protocol`/`@blksails/server` 补齐三个**已存在 RpcCommand**(`get_available_models`/`fork`/`get_fork_messages`)的 REST 薄透传;app-shell 切到 `<PiChatPro>`。
 
 ### Goals
 - 富 PromptInput 与完整 Conversation,交互对齐参考示例。
@@ -22,10 +22,10 @@
 ## Boundary Commitments
 
 ### This Spec Owns
-- **UI 元件层**(`@pi-web/ui/src/elements/*`):无状态 AI Elements 等价组件(conversation/message+branch/prompt-input/attachments/model-selector/speech-input/web-search-toggle/sources/suggestions/submit-button)。
+- **UI 元件层**(`@blksails/ui/src/elements/*`):无状态 AI Elements 等价组件(conversation/message+branch/prompt-input/attachments/model-selector/speech-input/web-search-toggle/sources/suggestions/submit-button)。
   - 其中 **attachments 呈现增强**(Req 12):图片缩略图的悬停大图预览、布局变体(inline/grid/list)、附件类型标签与无缩略图时的占位图标降级;真实处理边界不变(仍仅图片入列,承接 Req 3)。
-- **UI 装配层**(`@pi-web/ui/src/chat/pi-chat-pro.tsx`):`<PiChatPro>` 组合元件 + hooks + 渲染器注册表。
-- **数据 hooks**(`@pi-web/react/src/hooks/*`):`useModels`/`useAttachments`/`useBranches`/`useSuggestions`。
+- **UI 装配层**(`@blksails/ui/src/chat/pi-chat-pro.tsx`):`<PiChatPro>` 组合元件 + hooks + 渲染器注册表。
+- **数据 hooks**(`@blksails/react/src/hooks/*`):`useModels`/`useAttachments`/`useBranches`/`useSuggestions`。
 - **REST 薄透传**:三个已存在 RpcCommand 的暴露面 —— protocol REST DTO、`PiSession` 透传方法、HTTP 路由、`PiClient` 方法。
 - **app 装配**:app-shell 切换到 `<PiChatPro>`;新增组件/集成单测与浏览器 e2e。
 
@@ -36,7 +36,7 @@
 - 现有 `<PiChat>` 的行为修改。
 
 ### Allowed Dependencies
-- 依赖方向:`@pi-web/protocol` → `@pi-web/server`;`@pi-web/protocol` → `@pi-web/react` → `@pi-web/ui` → app。各层只向左依赖,不得反向。
+- 依赖方向:`@blksails/protocol` → `@blksails/server`;`@blksails/protocol` → `@blksails/react` → `@blksails/ui` → app。各层只向左依赖,不得反向。
 - 复用既有:`RendererRegistry`、`PiChatSlots`、`usePiControls`、`PiTransport`、`createPiClient`、`cn()`、`button/card/dialog/select`、`streamdown`/`lucide`/`cva`/`clsx`/`tailwind-merge`、radix dialog/select。
 - 约束:**不新增 npm 运行时依赖**(模型选择器用自定义轻量 popover)。
 
@@ -45,7 +45,7 @@
 - `PiSession`/HTTP 路由签名变化 → react `PiClient` + hooks 重校。
 - `RendererRegistry` 或 `PiChatSlots` 契约变化 → `<PiChatPro>` 重校。
 - `PromptRequest.images` 形状或 `PiTransport.sendMessages` 契约变化 → `useAttachments` + transport 映射重校。
-- `PendingAttachment` 形状(`@pi-web/react`)新增/变更字段(如携带 mime/size)→ attachments 类型标签与占位图标推导(Req 12)重校。
+- `PendingAttachment` 形状(`@blksails/react`)新增/变更字段(如携带 mime/size)→ attachments 类型标签与占位图标推导(Req 12)重校。
 - 若未来引入 `radix-hover-card` 取代自定义悬停浮层 → attachments 悬停预览(Req 12.2)与依赖约束重校。
 
 ## Architecture
@@ -107,9 +107,9 @@ graph TB
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend (UI) | React 19 + Tailwind + 既有 radix dialog/select + lucide + streamdown + cva/clsx/tailwind-merge | 富元件与装配 | **无新增依赖**;模型选择器自定义 popover |
-| Frontend (data) | `@ai-sdk/react` useChat + `@pi-web/react` hooks | 流式态、附件、模型、分支、建议接线 | 复用既有 transport/controls |
-| Protocol | `@pi-web/protocol`(zod,零运行时依赖) | 新增三 REST DTO | 复用既有 `Model`/`ImageContent` schema |
-| Backend (server) | `@pi-web/server`(Node runtime) | 三透传方法 + 三路由 | 镜像 setModel/commands |
+| Frontend (data) | `@ai-sdk/react` useChat + `@blksails/react` hooks | 流式态、附件、模型、分支、建议接线 | 复用既有 transport/controls |
+| Protocol | `@blksails/protocol`(zod,零运行时依赖) | 新增三 REST DTO | 复用既有 `Model`/`ImageContent` schema |
+| Backend (server) | `@blksails/server`(Node runtime) | 三透传方法 + 三路由 | 镜像 setModel/commands |
 | Speech | 浏览器 Web Speech API | 本地语音转写 | feature-detect,降级隐藏 |
 
 ## File Structure Plan

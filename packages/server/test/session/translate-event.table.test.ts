@@ -9,7 +9,7 @@ import {
   PI_UI_TOOL_DETAILS_KEY,
   protocolVersion,
   SseFrameSchema,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import { translateEvent } from "../../src/session/translate/translate-event.js";
 import {
   createTranslationContext,
@@ -55,13 +55,13 @@ function expectValidFrames(
 }
 
 type Chunk = Extract<
-  import("@pi-web/protocol").SseFrame,
+  import("@blksails/protocol").SseFrame,
   { kind: "uiMessageChunk" }
 >["chunk"];
 
 /** 取第 i 个帧的 uiMessageChunk(断言其为 uiMessageChunk 帧)。 */
 function chunkAt(
-  frames: readonly import("@pi-web/protocol").SseFrame[],
+  frames: readonly import("@blksails/protocol").SseFrame[],
   i = 0,
 ): Chunk {
   const f = frames[i];
@@ -73,7 +73,7 @@ function chunkAt(
 }
 
 function chunkTypes(
-  frames: readonly import("@pi-web/protocol").SseFrame[],
+  frames: readonly import("@blksails/protocol").SseFrame[],
 ): string[] {
   return frames.map((f) => (f.kind === "uiMessageChunk" ? f.chunk.type : `control:${f.payload.control}`));
 }
@@ -483,7 +483,7 @@ describe("translateEvent — schema-valid frames per event", () => {
 
   it("full stream is start → start-step → text-start → text-delta → text-end → finish-step → finish", () => {
     let ctx = createTranslationContext();
-    const all: import("@pi-web/protocol").SseFrame[] = [];
+    const all: import("@blksails/protocol").SseFrame[] = [];
     const push = (e: AgentEvent): void => {
       const r = translateEvent(e, ctx);
       ctx = r.ctx;
@@ -601,7 +601,7 @@ describe("translateEvent — schema-valid frames per event", () => {
 
   it("mid-stream open text part then agent_end error → error chunk and no half-open part remains (Req 1.4)", () => {
     let ctx: TranslationContext = createTranslationContext();
-    const all: import("@pi-web/protocol").SseFrame[] = [];
+    const all: import("@blksails/protocol").SseFrame[] = [];
     const push = (e: AgentEvent): void => {
       const r = translateEvent(e, ctx);
       ctx = r.ctx;

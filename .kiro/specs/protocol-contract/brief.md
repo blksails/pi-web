@@ -6,7 +6,7 @@
 - **谁**:pi-web 的所有上下游层(后端引擎、HTTP、前端、第三方集成方)。
 - **现状**:pi 的 RPC 命令/响应/事件/扩展UI 类型只存在于 `@earendil-works/pi-coding-agent` 的 `dist/**/*.d.ts`,
   且未在包 `exports` 导出;AI SDK UIMessage 流、SSE 帧、REST DTO 尚无统一契约。
-- **改变**:建立一个**零运行时依赖、同构可用**的协议包 `@pi-web/protocol`,成为全项目唯一契约根。
+- **改变**:建立一个**零运行时依赖、同构可用**的协议包 `@blksails/protocol`,成为全项目唯一契约根。
 
 ## 方法 / 范围
 - 从 pi d.ts 派生并本地化:`RpcCommand` / `RpcResponse` / `AgentEvent`(message_update 各 delta、tool_execution_*、agent/turn 等)/ `RpcExtensionUIRequest` / `RpcExtensionUIResponse` / `RpcSessionState` / `Model` / `AgentMessage`。

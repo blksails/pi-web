@@ -11,7 +11,7 @@ import type {
   RpcExtensionUIResponse,
   RpcResponse,
   ThinkingLevel,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type {
   ChannelHealth,
   ExitInfo,

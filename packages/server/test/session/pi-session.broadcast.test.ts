@@ -2,7 +2,7 @@
  * 广播:多订阅者同序一致 + 取消独立 + 回调异常隔离(Req 3.x, 10.2)。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, SseFrame } from "@pi-web/protocol";
+import type { AgentEvent, SseFrame } from "@blksails/protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { MockChannel } from "./mock-channel.js";
 import { makeResolved } from "./fixtures.js";

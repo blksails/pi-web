@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useModels } from "../../src/hooks/use-models.js";
 import type { PiClient } from "../../src/client/pi-client.js";
-import type { Model } from "@pi-web/protocol";
+import type { Model } from "@blksails/protocol";
 
 function model(provider: string, id: string, name: string): Model {
   return {

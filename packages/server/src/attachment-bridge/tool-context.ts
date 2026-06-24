@@ -15,8 +15,8 @@
  * - **委托既有切片,不重定义**:`resolve` 委托 {@link resolveAttachment}(task 2.2);
  *   `putOutput` 委托 {@link putToolOutput}(task 3.3),`sessionId` 由上下文以当前会话闭包
  *   注入(`origin:"tool-output"` 固定、`size` 内部计算),作者入参不含 `sessionId`。
- * - **构造留在 server 侧**:类型契约经 `@pi-web/agent-kit` 暴露给 tool 作者(仅类型,无值导入);
- *   本工厂(值)留在 `@pi-web/server`,与作者面 `AttachmentToolContext` 结构兼容。
+ * - **构造留在 server 侧**:类型契约经 `@blksails/agent-kit` 暴露给 tool 作者(仅类型,无值导入);
+ *   本工厂(值)留在 `@blksails/server`,与作者面 `AttachmentToolContext` 结构兼容。
  */
 import type { ChildAttachmentStore } from "./child-store.js";
 import type { AttachmentHandle } from "./attachment-handle.js";
@@ -39,7 +39,7 @@ export interface PutOutputInput {
 /**
  * tool 接入上下文:工具在其 `execute` 内取得子进程 store 句柄的接入面(Req 4.1)。
  *
- * 与 `@pi-web/agent-kit` 暴露的作者面 `AttachmentToolContext` 结构兼容(此处的
+ * 与 `@blksails/agent-kit` 暴露的作者面 `AttachmentToolContext` 结构兼容(此处的
  * {@link AttachmentHandle} 是作者面 `AttachmentToolHandle` 的结构超集,含 `stream()`)。
  */
 export interface AttachmentToolContext {
@@ -77,7 +77,7 @@ export class AttachmentCapabilityUnavailableError extends Error {
  * @param store     子进程 store 客户端(上游门面),由 {@link createChildAttachmentStore} 实例化;
  *                  `undefined` 表示存储能力不可用(env 缺失降级)。
  * @param sessionId 当前会话 id(以闭包绑定,作为 `putOutput` 落库描述符属主)。
- * @returns 与作者面 `AttachmentToolContext`(`@pi-web/agent-kit`)结构兼容的上下文。
+ * @returns 与作者面 `AttachmentToolContext`(`@blksails/agent-kit`)结构兼容的上下文。
  */
 export function createAttachmentToolContext(
   store: ChildAttachmentStore | undefined,
@@ -111,7 +111,7 @@ export function createAttachmentToolContext(
 /**
  * 别名:作者面契约的服务端等价类型导出便利。
  *
- * 不与 `@pi-web/agent-kit` 的作者面类型混淆 —— server 不依赖 agent-kit,故此处自持
- * 结构兼容契约(`@pi-web/agent-kit` 侧独立声明同形作者面类型)。
+ * 不与 `@blksails/agent-kit` 的作者面类型混淆 —— server 不依赖 agent-kit,故此处自持
+ * 结构兼容契约(`@blksails/agent-kit` 侧独立声明同形作者面类型)。
  */
 export type { ToolOutputRef } from "./tool-output.js";

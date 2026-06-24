@@ -13,7 +13,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 14.1, 14.2_
 
 - [x] 1.2 引入 PostgreSQL 运行时依赖与测试依赖
-  - 在 `@pi-web/server` 增 `pg` 运行时依赖、`pg-mem` 与 `@types/pg` 测试依赖,`pnpm install` 成功。
+  - 在 `@blksails/server` 增 `pg` 运行时依赖、`pg-mem` 与 `@types/pg` 测试依赖,`pnpm install` 成功。
   - sqlite 使用 Node 内置 `node:sqlite`,本任务不新增其运行时依赖,仅确认本机 Node ≥22 可加载。
   - 观察完成:`pnpm install` 后测试代码可 `import` pg 与 pg-mem;lockfile 更新。
   - _Requirements: 12.1, 15.4_
@@ -67,10 +67,10 @@
 
 - [x] 5. Integration:模块导出与包集成
 
-- [x] 5.1 导出存储模块并接入 @pi-web/server 公共入口
+- [x] 5.1 导出存储模块并接入 @blksails/server 公共入口
   - 模块内统一导出接口、错误类型、三个 adapter 与 codec 公共纯函数。
-  - 在 `@pi-web/server` 包入口再导出,使外部可从包名导入。
-  - 观察完成:新增一个集成用断言/示例,从 `@pi-web/server` 导入 `SessionEntryStore` 与三个 adapter 并 typecheck 通过。
+  - 在 `@blksails/server` 包入口再导出,使外部可从包名导入。
+  - 观察完成:新增一个集成用断言/示例,从 `@blksails/server` 导入 `SessionEntryStore` 与三个 adapter 并 typecheck 通过。
   - _Requirements: 1.1, 1.3_
   - _Depends: 2.1, 3.1, 4.1_
 
@@ -78,7 +78,7 @@
 
 - [x] 6.1 验证三 adapter 行为一致并产出新鲜测试证据
   - 确认 fs/sqlite/postgres 三者跑同一契约工厂套件均全绿(条目顺序、头部、未找到、幂等、分叉语义一致)。
-  - 运行 `@pi-web/server` 全量单元/集成测试与 `typecheck`,确认 strict 无 `any`、未触碰第三方 `pi-coding-agent` 任何文件。
+  - 运行 `@blksails/server` 全量单元/集成测试与 `typecheck`,确认 strict 无 `any`、未触碰第三方 `pi-coding-agent` 任何文件。
   - 观察完成:贴出 `pnpm -C packages/server test` 与 `typecheck` 的实际通过输出作为证据(参考 kiro-verify-completion);git 变更仅限本 spec 范围内文件。
   - _Requirements: 13.1, 13.2, 15.1, 15.2, 15.3_
   - _Depends: 5.1_

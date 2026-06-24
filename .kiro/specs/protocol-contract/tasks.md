@@ -1,8 +1,8 @@
 # Implementation Plan
 
 - [x] 1. 基础:协议包脚手架与测试基础设施
-- [x] 1.1 初始化 `@pi-web/protocol` 包骨架与构建/同构约束
-  - 创建包清单(`name` 为 `@pi-web/protocol`、`exports` 单一入口、`sideEffects: false`)、TypeScript strict 配置(同构 target,不引入环境专有副作用)。
+- [x] 1.1 初始化 `@blksails/protocol` 包骨架与构建/同构约束
+  - 创建包清单(`name` 为 `@blksails/protocol`、`exports` 单一入口、`sideEffects: false`)、TypeScript strict 配置(同构 target,不引入环境专有副作用)。
   - 运行时依赖仅声明 `zod`;`@earendil-works/pi-coding-agent` `0.79.x` 仅作开发/派生参考置于 dev 范围。
   - 完成条件:`tsc --noEmit` 在空骨架下通过,且依赖清单中运行时依赖只有 `zod`。
   - _Requirements: 6.1, 6.2, 6.3_

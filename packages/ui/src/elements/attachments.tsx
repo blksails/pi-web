@@ -30,7 +30,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import type { PendingAttachment } from "@pi-web/react";
+import type { PendingAttachment } from "@blksails/react";
 import { useIcon } from "../customization/icons.js";
 import { cn } from "../lib/cn.js";
 

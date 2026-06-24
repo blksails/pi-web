@@ -9,7 +9,7 @@ import type {
   CompletionResponse,
   CompletionTriggerSpec,
   CompletionExtractRule,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type { CompletionCtx, CompletionProvider } from "./types.js";
 import { providerKind } from "./types.js";
 import { normalizeTrigger } from "./normalize.js";

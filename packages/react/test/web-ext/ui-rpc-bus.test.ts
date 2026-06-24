@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUiRpcBus } from "../../src/web-ext/ui-rpc-bus.js";
-import type { UiRpcResponse } from "@pi-web/protocol";
+import type { UiRpcResponse } from "@blksails/protocol";
 
 /** 受控下行:测试手动 push 响应。 */
 function makeHarness(opts: { send?: () => Promise<void> } = {}) {

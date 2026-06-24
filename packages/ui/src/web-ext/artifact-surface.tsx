@@ -7,8 +7,8 @@
  * `resize` 调整高度,`rpc` 经注入的 UiRpcClient 中转回 agent。LLM 输出一律走此表面。
  */
 import * as React from "react";
-import { parseArtifactMessage } from "@pi-web/protocol";
-import type { UiRpcClient } from "@pi-web/web-kit";
+import { parseArtifactMessage } from "@blksails/protocol";
+import type { UiRpcClient } from "@blksails/web-kit";
 
 export interface ArtifactSurfaceProps {
   /** artifact 入口 URL(独立 origin 加载)。与 srcDoc 二选一。 */

@@ -1,5 +1,5 @@
 /**
- * NewAPI(OpenAI 兼容聚合网关)provider 工厂 — `@pi-web/tool-kit` 版。
+ * NewAPI(OpenAI 兼容聚合网关)provider 工厂 — `@blksails/tool-kit` 版。
  *
  * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
  *  - createNewApiImage:    文生图,走 /v1/images/generations

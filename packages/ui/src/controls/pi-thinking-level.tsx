@@ -5,8 +5,8 @@
  */
 import * as React from "react";
 import { Brain } from "lucide-react";
-import type { UsePiControlsResult } from "@pi-web/react";
-import type { ThinkingLevel } from "@pi-web/protocol";
+import type { UsePiControlsResult } from "@blksails/react";
+import type { ThinkingLevel } from "@blksails/protocol";
 import {
   Select,
   SelectContent,

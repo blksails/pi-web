@@ -2,12 +2,12 @@
  * version 单测:protocolVersion 承载 + 不兼容协商(Req 7.1,7.2,7.3)。
  */
 import { describe, expect, it } from "vitest";
-import { protocolVersion } from "@pi-web/protocol";
+import { protocolVersion } from "@blksails/protocol";
 import { checkVersion, isCompatible } from "../../src/http/version.js";
 import { PROTOCOL_VERSION_HEADER } from "../../src/http/error-map.js";
 
 describe("version handshake", () => {
-  it("uses @pi-web/protocol as the single source", () => {
+  it("uses @blksails/protocol as the single source", () => {
     expect(protocolVersion).toMatch(/^\d+\.\d+\.\d+$/);
   });
 

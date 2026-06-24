@@ -1,7 +1,7 @@
 /**
  * Node e2e(agent-web-extension 任务 7.x):加载预构建的示例 WebExtension。
  *
- * 前置:`pnpm --filter @pi-web/web-kit test`(examples-build.test.ts)已把 4 个代码示例
+ * 前置:`pnpm --filter @blksails/web-kit test`(examples-build.test.ts)已把 4 个代码示例
  * 构建到各自 `.pi/web/dist/`。本测试用真实加载器 + 安全门从磁盘加载,证明:
  *  - 门控(SRI/版本)通过;原生 import esbuild ESM 可执行(externals 由 node_modules 解析)取得描述符;
  *  - 声明式示例(Tier5)走零 bundle 路径,config 生效。
@@ -11,8 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { readFile, access } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { loadExtension, verifyExtension, type LoaderDeps } from "@pi-web/react";
-import { type WebExtensionManifest } from "@pi-web/protocol";
+import { loadExtension, verifyExtension, type LoaderDeps } from "@blksails/react";
+import { type WebExtensionManifest } from "@blksails/protocol";
 
 /** 产物内联 React 的强特征(不应出现在 external 正确的 bundle 中)。 */
 function hasInlinedReact(code: string): boolean {
@@ -61,7 +61,7 @@ describe("webext examples: build artifacts gate + integrity (offline e2e)", () =
       const manifestPath = join(distAbs, "manifest.json");
       if (!(await exists(manifestPath))) {
         throw new Error(
-          `未找到 ${manifestPath}。请先运行 pnpm --filter @pi-web/web-kit test 构建示例。`,
+          `未找到 ${manifestPath}。请先运行 pnpm --filter @blksails/web-kit test 构建示例。`,
         );
       }
       const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as WebExtensionManifest;
@@ -74,7 +74,7 @@ describe("webext examples: build artifacts gate + integrity (offline e2e)", () =
       // externals 保留:未内联 React,bare import 仍在(运行时由 import map 解析单例)。
       const code = new TextDecoder().decode(entryBytes);
       expect(hasInlinedReact(code)).toBe(false);
-      expect(code).toContain("@pi-web/web-kit");
+      expect(code).toContain("@blksails/web-kit");
     });
   }
 

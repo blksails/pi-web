@@ -1,13 +1,13 @@
 # Implementation Plan
 
-> 语言:zh。本计划覆盖 `@pi-web/react` 全部组件与硬性测试(单元 / 组件-集成 / e2e)。
-> 依赖方向:`@pi-web/protocol` + `http-api` 契约 + AI SDK ← `@pi-web/react`。仅浏览器环境,经 HTTP/SSE 消费,不依赖后端内部对象。
+> 语言:zh。本计划覆盖 `@blksails/react` 全部组件与硬性测试(单元 / 组件-集成 / e2e)。
+> 依赖方向:`@blksails/protocol` + `http-api` 契约 + AI SDK ← `@blksails/react`。仅浏览器环境,经 HTTP/SSE 消费,不依赖后端内部对象。
 
 - [x] 1. 基础设施:包脚手架与测试环境
-- [x] 1.1 初始化 `@pi-web/react` 包与构建/类型配置
-  - 创建 `packages/react/package.json`(name `@pi-web/react`、`sideEffects:false`、deps `@pi-web/protocol`/`ai`、peerDeps `react`/`@ai-sdk/react`)、`tsconfig.json`(strict、DOM lib、ES2022)
+- [x] 1.1 初始化 `@blksails/react` 包与构建/类型配置
+  - 创建 `packages/react/package.json`(name `@blksails/react`、`sideEffects:false`、deps `@blksails/protocol`/`ai`、peerDeps `react`/`@ai-sdk/react`)、`tsconfig.json`(strict、DOM lib、ES2022)
   - 建立 `src/` 目录骨架(client / sse / transport / hooks / provider / version)与空 `index.ts` 聚合导出占位
-  - 观察完成:`tsc --noEmit` 在空骨架下通过,包可被 workspace 解析到 `@pi-web/protocol` 类型
+  - 观察完成:`tsc --noEmit` 在空骨架下通过,包可被 workspace 解析到 `@blksails/protocol` 类型
   - _Requirements: 9.1_
 - [x] 1.2 配置 vitest 测试环境与单一运行命令
   - 创建 `vitest.config.ts`(DOM 环境 jsdom/happy-dom 供组件测试)、`package.json` 的 `test` 脚本(`vitest run`)
@@ -27,7 +27,7 @@
   - _Requirements: 2.6, 8.5, 10.1_
   - _Boundary: parse-sse.ts_
 - [x] 2.3 (P) 实现 uiMessageChunk → AI SDK UIMessageChunk 解码映射
-  - 以 `@pi-web/protocol` 的 `UiMessageChunkSchema`/`DataPartSchema` 为来源,映射 text(start/delta/end)、reasoning(start/delta/end)、tool(input/output-available)、`data-pi-*` data-part 为对应 AI SDK chunk
+  - 以 `@blksails/protocol` 的 `UiMessageChunkSchema`/`DataPartSchema` 为来源,映射 text(start/delta/end)、reasoning(start/delta/end)、tool(input/output-available)、`data-pi-*` data-part 为对应 AI SDK chunk
   - 观察完成:`decode-chunk.test.ts` 通过——四类帧各产出正确 `type` 的 `UIMessageChunk`;无法按 schema 解析的帧不产出污染数据
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6, 10.1_
   - _Boundary: decode-chunk.ts_
@@ -43,7 +43,7 @@
   - _Boundary: request.ts_
   - _Depends: 2.1_
 - [x] 2.6 (P) 实现 protocolVersion 兼容判定
-  - 以 `@pi-web/protocol` 的 `protocolVersion` 为唯一基准,对 SSE 帧/REST 响应携带的版本做兼容判定;不兼容 → `PiProtocolVersionError`(复用 2.1)
+  - 以 `@blksails/protocol` 的 `protocolVersion` 为唯一基准,对 SSE 帧/REST 响应携带的版本做兼容判定;不兼容 → `PiProtocolVersionError`(复用 2.1)
   - 观察完成:兼容/不兼容判定有确定结果;不兼容时抛 `PiProtocolVersionError`,被 `pi-client.test.ts` 覆盖
   - _Requirements: 9.1, 9.2, 9.3_
   - _Boundary: version.ts_
@@ -51,7 +51,7 @@
 
 - [x] 3. REST 客户端
 - [x] 3.1 实现 createPiClient 全部端点方法
-  - 基于 2.4/2.5,实现 `createSession`/`prompt`/`steer`/`followUp`/`abort`/`setModel`/`setThinking`/`uiResponse`/`getState`/`getStats`/`getMessages`/`getCommands`/`deleteSession`,形状取自 `@pi-web/protocol` REST DTO 与 `http-api` 端点路径
+  - 基于 2.4/2.5,实现 `createSession`/`prompt`/`steer`/`followUp`/`abort`/`setModel`/`setThinking`/`uiResponse`/`getState`/`getStats`/`getMessages`/`getCommands`/`deleteSession`,形状取自 `@blksails/protocol` REST DTO 与 `http-api` 端点路径
   - 观察完成:`pi-client.test.ts` 通过——每个方法对 mock fetch 断言正确 method/path/body;建会话返回 `{ sessionId }`;查询返回协议响应 DTO;`fetch` 注入生效
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.6, 9.2, 9.3, 10.3_
   - _Boundary: pi-client.ts_
@@ -107,8 +107,8 @@
 
 - [x] 7. 聚合导出与组件集成验证
 - [x] 7.1 完成 index.ts 聚合导出
-  - 从各层 re-export `PiTransport`/`createPiClient`/`usePiSession`/`usePiControls`/`useExtensionUI`/`PiProvider` 及公开类型,作为 `@pi-web/react` 唯一导入面
-  - 观察完成:外部按 `import { PiTransport, usePiSession } from "@pi-web/react"` 可解析;`tsc --noEmit` 通过
+  - 从各层 re-export `PiTransport`/`createPiClient`/`usePiSession`/`usePiControls`/`useExtensionUI`/`PiProvider` 及公开类型,作为 `@blksails/react` 唯一导入面
+  - 观察完成:外部按 `import { PiTransport, usePiSession } from "@blksails/react"` 可解析;`tsc --noEmit` 通过
   - _Requirements: 9.1_
   - _Depends: 5.1, 5.2, 6.2, 6.3, 6.4_
 - [x] 7.2 组件/集成测试:useChat 对 mock server 流式更新

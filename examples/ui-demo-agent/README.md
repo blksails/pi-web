@@ -37,7 +37,7 @@ Then try:
 
 ## Front-end wiring
 
-Zero-config: `@pi-web/react`'s `useExtensionUI` + `<PiChat extensionUI={…}>` renders all of the above (interactions as inline `<PiInteraction>` cards in the message stream, plus the status bar and notification toasts).
+Zero-config: `@blksails/react`'s `useExtensionUI` + `<PiChat extensionUI={…}>` renders all of the above (interactions as inline `<PiInteraction>` cards in the message stream, plus the status bar and notification toasts).
 
 ## Model
 

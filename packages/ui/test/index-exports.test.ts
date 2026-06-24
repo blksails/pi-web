@@ -1,5 +1,5 @@
 /**
- * @pi-web/ui 公开导出面存在性断言。
+ * @blksails/ui 公开导出面存在性断言。
  *
  * 守护:默认 `PiChat`(富,收敛后)/ `PiChatBasic`(最小)与 `elements/*` 导出存在。
  * 仅校验符号可从包根导入(运行时值 + 类型),不校验组件行为。
@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import * as ui from "../src/index.js";
 
-describe("@pi-web/ui public exports", () => {
+describe("@blksails/ui public exports", () => {
   it("默认装配组件 PiChat(富)可导入且为函数组件", () => {
     expect(typeof ui.PiChat).toBe("function");
   });

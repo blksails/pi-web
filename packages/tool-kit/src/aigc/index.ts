@@ -32,7 +32,7 @@ export interface BuildAigcToolsOptions {
  *
  * 产物可直接放入 `defineAgent({ customTools: buildAigcTools() })`:
  * ```ts
- * import { buildAigcTools } from "@pi-web/tool-kit/runtime";
+ * import { buildAigcTools } from "@blksails/tool-kit/runtime";
  * const agent = defineAgent({ customTools: buildAigcTools(), ... });
  * ```
  */

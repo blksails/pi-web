@@ -2,11 +2,11 @@
 
 ## Overview
 
-**Purpose**:本特性交付 `@pi-web/ui`——pi-web 的**有样式、可主题化、可扩展**的浏览器组件层。它把 Vercel AI Elements(`Conversation/Message/Response/Reasoning/Tool/PromptInput/Actions`)与 `@pi-web/react` 的 headless 层(`PiTransport`/`usePiSession`/`usePiControls`/`useExtensionUI`/`createPiClient`)装配为一个可拖入的 `<PiChat>`,并提供细粒度组件、渲染器注册表与布局插槽。
+**Purpose**:本特性交付 `@blksails/ui`——pi-web 的**有样式、可主题化、可扩展**的浏览器组件层。它把 Vercel AI Elements(`Conversation/Message/Response/Reasoning/Tool/PromptInput/Actions`)与 `@blksails/react` 的 headless 层(`PiTransport`/`usePiSession`/`usePiControls`/`useExtensionUI`/`createPiClient`)装配为一个可拖入的 `<PiChat>`,并提供细粒度组件、渲染器注册表与布局插槽。
 
 **Users**:想快速拥有成品聊天 UI 的第三方 React/Next 集成方(§13.3 方式 A),以及本项目整站 `app-shell`(消费本层闭合全链路 e2e)。
 
-**Impact**:把 `PLAN.md` §1(AI Elements 装配)、§4(pi 事件→UIMessage 渲染映射)、§13.1(`@pi-web/ui` 导出面)、§13.4③(渲染器注册表/插槽)收敛为一个边界清晰、可单测、可主题化的有样式前端层。本 spec **消费**上游契约(`@pi-web/react` 的 transport/hooks、AI SDK v5 的 `useChat`/`UIMessage` part 结构、AI Elements 组件 API、shadcn/ui CSS 变量),不重定义、不触达后端。
+**Impact**:把 `PLAN.md` §1(AI Elements 装配)、§4(pi 事件→UIMessage 渲染映射)、§13.1(`@blksails/ui` 导出面)、§13.4③(渲染器注册表/插槽)收敛为一个边界清晰、可单测、可主题化的有样式前端层。本 spec **消费**上游契约(`@blksails/react` 的 transport/hooks、AI SDK v5 的 `useChat`/`UIMessage` part 结构、AI Elements 组件 API、shadcn/ui CSS 变量),不重定义、不触达后端。
 
 ### Goals
 
@@ -34,7 +34,7 @@
 - 细粒度有样式组件:`<PiToolPart>`(三态 + 折叠)、`<PiReasoning>`(折叠)、`<PiModelSelector>`、`<PiThinkingLevel>`、`<PiSessionStats>`、`<PiCommandPalette>`、`<PiPermissionDialog>`(四类)。
 - **渲染器注册表**:`registerToolRenderer`/`registerDataPartRenderer` 的注册存储与解析逻辑(`resolveToolRenderer`/`resolveDataPartRenderer`),默认回退与覆盖语义。
 - part → 组件的**前端渲染分派**(`text`→`Response`、`reasoning`→`<PiReasoning>`、`tool`→解析后的工具渲染器、`data-pi-*`→解析后的 data-part 渲染器),以 AI SDK `UIMessage.parts` 结构为输入。
-- 分发产物:`@pi-web/ui` 的 npm 聚合导出面;shadcn registry 清单(`registry.json` + 组件源条目);CSS 变量主题层。
+- 分发产物:`@blksails/ui` 的 npm 聚合导出面;shadcn registry 清单(`registry.json` + 组件源条目);CSS 变量主题层。
 - 前端 UI 局部状态:折叠开合、命令面板开/过滤/活动项、弹窗焦点态——均为视图态,非服务端真值。
 - 无障碍语义:键盘交互与 aria 角色/状态。
 
@@ -46,19 +46,19 @@
 - 具体后端地址/路由绑定、整站 layout/page、agent 源选择、全链路浏览器 e2e(`app-shell`)。
 - `get_commands`/扩展安装卸载后端(`extension-management`)。
 - 非 React 集成(`embed-integrations`)。
-- 服务端真值会话状态——本层只持视图态,消息/控制/扩展 UI 数据来自 `@pi-web/react` 派生状态。
+- 服务端真值会话状态——本层只持视图态,消息/控制/扩展 UI 数据来自 `@blksails/react` 派生状态。
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`@pi-web/react`(`usePiSession`/`usePiControls`/`useExtensionUI`/`PiTransport`/`createPiClient`/`PiProvider` 及其类型)。经它间接获得 `@pi-web/protocol` 的类型(如 `ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type),本层从 `@pi-web/react` re-export 的类型消费,不直接 `import @pi-web/protocol` 形状定义。
+- **上游 spec(运行时)**:`@blksails/react`(`usePiSession`/`usePiControls`/`useExtensionUI`/`PiTransport`/`createPiClient`/`PiProvider` 及其类型)。经它间接获得 `@blksails/protocol` 的类型(如 `ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type),本层从 `@blksails/react` re-export 的类型消费,不直接 `import @blksails/protocol` 形状定义。
 - **外部运行时**:React 18+;AI SDK v5(`ai` 的 `UIMessage`/part 类型、`@ai-sdk/react` 的 `useChat`——由 `<PiChat>` 内部调用);Vercel AI Elements(`Conversation`/`Message`/`Response`/`Reasoning`/`Tool`/`PromptInput`/`Actions`);shadcn/ui(Radix primitives + Tailwind v4)。
-- **依赖方向**:`react-client ← ui-components`;`ui-components ← app-shell`(下游)。禁止反向。本层**不**依赖 `@pi-web/server`/`session-engine`/`http-api` 的任何运行时对象。
+- **依赖方向**:`react-client ← ui-components`;`ui-components ← app-shell`(下游)。禁止反向。本层**不**依赖 `@blksails/server`/`session-engine`/`http-api` 的任何运行时对象。
 - **开发/测试**:`vitest`、`@testing-library/react`、`@testing-library/user-event`、`jsdom`/`happy-dom`;e2e 用 Storybook(或测试页)+ mock 会话/mock transport——不进运行时依赖。
 - **约束**:不引入后端依赖、不引入非 React 集成产物;主题不得硬编码颜色,必须经 shadcn CSS 变量。
 
 ### Revalidation Triggers
 
-- `@pi-web/react` 的 hooks 签名(`usePiSession`/`usePiControls`/`useExtensionUI`)、`PiTransport` 构造或 re-export 类型(`ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type)变更。
+- `@blksails/react` 的 hooks 签名(`usePiSession`/`usePiControls`/`useExtensionUI`)、`PiTransport` 构造或 re-export 类型(`ExtensionUIRequest`/`StatsResponse`/`CommandsResponse`/data-part type)变更。
 - AI SDK `UIMessage.parts` 结构或 part 判别字段(text/reasoning/tool/data-*)变更;`useChat` 大版本签名变更。
 - AI Elements 被装配组件(`Conversation`/`Message`/`Response`/`Reasoning`/`Tool`/`PromptInput`/`Actions`)的 API 变更。
 - shadcn registry 清单格式或 `npx pi-web add` 约定变更;shadcn CSS 变量 token 约定变更。
@@ -128,17 +128,17 @@ graph TB
 - **Domain/feature boundaries**:`chat`(装配 + 分派 + 插槽)、`parts`(工具/思考/data-part 默认渲染)、`controls`(模型/思考/stats/命令面板)、`dialog`(权限弹窗)、`registry`(注册表)、`theme`(CSS 变量)、`registry-dist`(shadcn 清单)分块,经类型契约衔接;无业务真值状态。
 - **Dependency direction**:`react-client(+AI SDK/AI Elements/shadcn) ← ui-components ← app-shell`。`registry`/部分纯渲染组件(`<PiToolPart>`/`<PiReasoning>`)不依赖 hooks,可独立渲染测试;`<PiChat>`/控制组件/弹窗依赖 hooks。
 - **New components rationale**:`<PiChat>`(单点装配)、`PartRenderer`(分派单点)、注册表(扩展点单点)、各细粒度组件(单一职责、可被宿主单独取用)、shadcn 清单(分发产物)。
-- **Steering compliance**:TypeScript strict、禁 `any`;浏览器环境;有样式但主题经 shadcn CSS 变量继承宿主(structure.md/§13.4);前后端经协议解耦,本层经 `@pi-web/react` 消费(roadmap/tech.md);仅依赖允许的上游(brief 约束)。
+- **Steering compliance**:TypeScript strict、禁 `any`;浏览器环境;有样式但主题经 shadcn CSS 变量继承宿主(structure.md/§13.4);前后端经协议解耦,本层经 `@blksails/react` 消费(roadmap/tech.md);仅依赖允许的上游(brief 约束)。
 
 ### Technology Stack
 
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend / CLI | TypeScript strict;React 18+ | 有样式组件 + 渲染分派 + 注册表 | 浏览器环境 |
-| Backend / Services | — | 本层不含后端;经 `@pi-web/react` 消费 | 不依赖后端对象 |
-| Data / Storage | 无服务端状态;仅前端视图态(折叠/面板/弹窗焦点) | 组件局部 state | 真值在 `@pi-web/react` 派生态 |
+| Backend / Services | — | 本层不含后端;经 `@blksails/react` 消费 | 不依赖后端对象 |
+| Data / Storage | 无服务端状态;仅前端视图态(折叠/面板/弹窗焦点) | 组件局部 state | 真值在 `@blksails/react` 派生态 |
 | Messaging / Events | 消费 `useChat` 的 `UIMessage.parts` 流式更新 + hooks 旁路态(扩展 UI/stats/commands) | part 分派渲染 + 控制呈现 | 不触达 SSE/REST |
-| Infrastructure / Runtime | AI SDK v5(`ai`/`@ai-sdk/react`);Vercel AI Elements;shadcn/ui(Radix + Tailwind v4);`@pi-web/react`;`vitest` + `@testing-library/react` + `@testing-library/user-event` + DOM 环境 + Storybook(e2e) | 运行与测试 | shadcn CSS 变量主题 |
+| Infrastructure / Runtime | AI SDK v5(`ai`/`@ai-sdk/react`);Vercel AI Elements;shadcn/ui(Radix + Tailwind v4);`@blksails/react`;`vitest` + `@testing-library/react` + `@testing-library/user-event` + DOM 环境 + Storybook(e2e) | 运行与测试 | shadcn CSS 变量主题 |
 
 ## File Structure Plan
 
@@ -146,7 +146,7 @@ graph TB
 
 ```
 packages/ui/
-├── package.json                  # name @pi-web/ui;deps: 无后端;peerDeps: react, @pi-web/react, ai, @ai-sdk/react;含 AI Elements/shadcn 生成的源(随 registry 分发);sideEffects 谨慎(注册表副作用经显式 API)
+├── package.json                  # name @blksails/ui;deps: 无后端;peerDeps: react, @blksails/react, ai, @ai-sdk/react;含 AI Elements/shadcn 生成的源(随 registry 分发);sideEffects 谨慎(注册表副作用经显式 API)
 ├── tsconfig.json                 # strict;DOM lib;target ES2022;jsx react-jsx
 ├── vitest.config.ts              # DOM 环境(jsdom/happy-dom)+ setup(testing-library/jest-dom)
 ├── registry.json                 # ★ shadcn registry 清单:chat 及各组件条目(npx pi-web add chat)
@@ -201,7 +201,7 @@ packages/ui/
 
 ### Modified Files
 
-- 无(greenfield 新包)。若 monorepo workspace 已存在,需将 `packages/ui` 纳入 workspace 并接入 `@pi-web/react`、`react`、`ai`、`@ai-sdk/react`、AI Elements、shadcn——接线随仓库初始化处理,本 spec 创建包自身文件与测试。
+- 无(greenfield 新包)。若 monorepo workspace 已存在,需将 `packages/ui` 纳入 workspace 并接入 `@blksails/react`、`react`、`ai`、`@ai-sdk/react`、AI Elements、shadcn——接线随仓库初始化处理,本 spec 创建包自身文件与测试。
 - AI Elements/shadcn 组件源(`Conversation`/`Message`/`Response`/`Reasoning`/`Tool`/`PromptInput`/`Actions` 及 Radix 封装)经 `npx ai-elements add` / `npx shadcn add` 生成并纳入包内,作为本层装配的底座;它们的生成属脚手架任务(见 tasks 1.x)。
 
 ## System Flows
@@ -238,7 +238,7 @@ sequenceDiagram
     end
 ```
 
-`<PiChat>` 不感知传输细节:它只读 `useChat` 的 `messages[].parts` 并交给 `PartRenderer`;part 的来源(SSE 解码)由 `@pi-web/react` 负责。
+`<PiChat>` 不感知传输细节:它只读 `useChat` 的 `messages[].parts` 并交给 `PartRenderer`;part 的来源(SSE 解码)由 `@blksails/react` 负责。
 
 ### 工具卡三态
 
@@ -266,7 +266,7 @@ flowchart TD
     Resp -->|失败| Keep[保留弹窗 显示错误 允许重试]
 ```
 
-队列入/出与回传端点由 `@pi-web/react` 拥有,本层只呈现首项并调用 `respond`。
+队列入/出与回传端点由 `@blksails/react` 拥有,本层只呈现首项并调用 `respond`。
 
 ## Requirements Traceability
 
@@ -337,7 +337,7 @@ flowchart TD
 
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
-| chat/pi-chat.tsx | chat | 装配 useChat(transport) + AI Elements + 插槽 + 内嵌弹窗/控制 | 1.1-1.7,8.1-8.5 | @pi-web/react (P0), @ai-sdk/react useChat (P0), AI Elements (P0), part-renderer (P0) | Service, State |
+| chat/pi-chat.tsx | chat | 装配 useChat(transport) + AI Elements + 插槽 + 内嵌弹窗/控制 | 1.1-1.7,8.1-8.5 | @blksails/react (P0), @ai-sdk/react useChat (P0), AI Elements (P0), part-renderer (P0) | Service, State |
 | chat/part-renderer.tsx | chat | 按 part 类型分派渲染 + 注册表解析 | 1.4,2.4,7.3-7.5 | renderer-registry (P0), parts/* (P0), AI Elements Response (P0) | Service |
 | chat/slots.ts | chat | 插槽类型与默认 | 8.1-8.5 | — | State |
 | parts/pi-tool-part.tsx | parts | 默认工具卡 start/update/end 三态 | 2.1-2.5 | AI Elements Tool (P0), cn (P1) | State |
@@ -372,7 +372,7 @@ flowchart TD
 **Dependencies**
 - Inbound: 宿主(`app-shell`/第三方)— 拖入使用 (P0)
 - Outbound: `PartRenderer`(P0)、`<PiPermissionDialog>`(P0)、控制组件(P1)
-- External: `@pi-web/react`(`usePiSession`/`usePiControls`/`useExtensionUI`)(P0)、`@ai-sdk/react` `useChat`(P0)、AI Elements(P0)
+- External: `@blksails/react`(`usePiSession`/`usePiControls`/`useExtensionUI`)(P0)、`@ai-sdk/react` `useChat`(P0)、AI Elements(P0)
 
 **Contracts**: Service [x] / State [x]
 
@@ -382,7 +382,7 @@ import type { ReactNode } from "react";
 import type { UIMessage } from "ai";
 import type {
   PiTransport, UsePiControlsResult, UseExtensionUIResult, UsePiSessionResult,
-} from "@pi-web/react";
+} from "@blksails/react";
 
 export interface PiChatSlots {
   readonly header?: ReactNode;
@@ -528,7 +528,7 @@ export interface PiReasoningProps { readonly part: ReasoningPart; readonly defau
 
 #### PiModelSelector / PiThinkingLevel / PiSessionStats / PiCommandPalette
 
-**Summary-only(有样式,接 `usePiControls`)**:四组件均经 `@pi-web/react` 的 `usePiControls` 操作/订阅,不向 `useChat` 消息流写入(Req 4.5)。
+**Summary-only(有样式,接 `usePiControls`)**:四组件均经 `@blksails/react` 的 `usePiControls` 操作/订阅,不向 `useChat` 消息流写入(Req 4.5)。
 - `pi-model-selector.tsx`:展示模型列表,选择经 `setModel` 提交;进行中态;失败显示可辨识错误不静默(Req 4.1/4.2)。基于 shadcn Select。
 - `pi-thinking-level.tsx`:展示思考等级,选择经 `setThinking` 提交(Req 4.3)。
 - `pi-session-stats.tsx`:展示 `usePiControls.stats`(用量/成本),更新刷新(Req 4.4)。
@@ -536,7 +536,7 @@ export interface PiReasoningProps { readonly part: ReasoningPart; readonly defau
 
 ##### Props(要点)
 ```typescript
-import type { UsePiControlsResult } from "@pi-web/react";
+import type { UsePiControlsResult } from "@blksails/react";
 export interface PiModelSelectorProps { readonly controls: UsePiControlsResult; readonly className?: string; }
 export interface PiThinkingLevelProps { readonly controls: UsePiControlsResult; readonly className?: string; }
 export interface PiSessionStatsProps { readonly controls: UsePiControlsResult; readonly className?: string; }
@@ -572,8 +572,8 @@ export interface PiCommandPaletteProps {
 
 ##### Service Interface
 ```typescript
-import type { UseExtensionUIResult } from "@pi-web/react";
-// ExtensionUIRequest 类型经 @pi-web/react re-export(源自 @pi-web/protocol)
+import type { UseExtensionUIResult } from "@blksails/react";
+// ExtensionUIRequest 类型经 @blksails/react re-export(源自 @blksails/protocol)
 export interface PiPermissionDialogProps {
   readonly extensionUI: UseExtensionUIResult;   // 提供 current/queue/respond/error
   readonly className?: string;
@@ -581,7 +581,7 @@ export interface PiPermissionDialogProps {
 export function PiPermissionDialog(props: PiPermissionDialogProps): JSX.Element | null;
 ```
 - Preconditions:`extensionUI.current` 存在时渲染弹窗,否则返回 `null`。
-- Postconditions:作答提交后经 `respond` 回传;成功由 `@pi-web/react` 出队后 `current` 变更关闭弹窗;失败保留。
+- Postconditions:作答提交后经 `respond` 回传;成功由 `@blksails/react` 出队后 `current` 变更关闭弹窗;失败保留。
 - Invariants:回传响应的 `requestId` 与当前请求匹配;不向消息流写入。
 
 **Implementation Notes**
@@ -594,13 +594,13 @@ export function PiPermissionDialog(props: PiPermissionDialogProps): JSX.Element 
 **Summary-only**:
 - `theme/pi-ui.css`:组件样式层全部以 shadcn CSS 变量(`--background`/`--foreground`/`--primary` 等)定义,无硬编码颜色,使组件继承宿主主题(Req 9.3)。
 - `registry.json` + `components.json`:shadcn registry 清单,使 `npx pi-web add chat` 把 `<PiChat>` 及其依赖组件源码加入宿主项目(Req 9.2)。条目覆盖 chat 及各细粒度组件 + 其 AI Elements/shadcn 依赖声明。
-- `index.ts`:npm 聚合导出 `<PiChat>`、各细粒度组件、`registerToolRenderer`/`registerDataPartRenderer`、`createRendererRegistry` 与公开类型(`PiChatProps`/`PiChatSlots`/各 Props/`ToolRenderer`/`DataPartRenderer`)(Req 9.1)。仅依赖 `@pi-web/react` + shadcn/AI Elements(Req 9.4,经 peerDeps 约束)。
+- `index.ts`:npm 聚合导出 `<PiChat>`、各细粒度组件、`registerToolRenderer`/`registerDataPartRenderer`、`createRendererRegistry` 与公开类型(`PiChatProps`/`PiChatSlots`/各 Props/`ToolRenderer`/`DataPartRenderer`)(Req 9.1)。仅依赖 `@blksails/react` + shadcn/AI Elements(Req 9.4,经 peerDeps 约束)。
 
 ## Data Models
 
 ### Data Contracts & Integration
 
-- **核心消费契约**:AI SDK `UIMessage` 与其 `parts`(text/reasoning/tool/`data-pi-*`)——由 `useChat` 提供,本层只读不重定义。扩展 UI 请求类型(`ExtensionUIRequest`)、统计(`StatsResponse`)、命令(`CommandsResponse`)经 `@pi-web/react` re-export(源自 `@pi-web/protocol`),本层从 `@pi-web/react` 消费。
+- **核心消费契约**:AI SDK `UIMessage` 与其 `parts`(text/reasoning/tool/`data-pi-*`)——由 `useChat` 提供,本层只读不重定义。扩展 UI 请求类型(`ExtensionUIRequest`)、统计(`StatsResponse`)、命令(`CommandsResponse`)经 `@blksails/react` re-export(源自 `@blksails/protocol`),本层从 `@blksails/react` 消费。
 - **part → 组件映射**:集中于 `PartRenderer`;工具/data-part 的可覆盖映射集中于 `renderer-registry`。
 - **前端视图态**(本层唯一持有):折叠开合、命令面板开/过滤/活动项、弹窗焦点态、控制操作进行/错误态(后者多来自 `usePiControls`,本层只呈现)——均为 UI 派生,非服务端真值。
 - **主题**:shadcn CSS 变量为样式契约;组件不硬编码颜色/间距 token。
@@ -612,7 +612,7 @@ export function PiPermissionDialog(props: PiPermissionDialogProps): JSX.Element 
 
 - **控制操作失败**(Req 4.2):`usePiControls` 暴露的操作错误态由 `<PiModelSelector>` 等以可辨识错误提示呈现,不静默。
 - **命令获取失败/为空**(Req 5.5):`<PiCommandPalette>` 显示空态/错误态而非崩溃。
-- **扩展 UI 回传失败**(Req 6.6):`<PiPermissionDialog>` 保留弹窗 + 显示错误 + 允许重试(出/入队由 `@pi-web/react` 拥有)。
+- **扩展 UI 回传失败**(Req 6.6):`<PiPermissionDialog>` 保留弹窗 + 显示错误 + 允许重试(出/入队由 `@blksails/react` 拥有)。
 - **未注册渲染器**(Req 7.5):`PartRenderer` 回退默认渲染器,不抛错。
 - **未提供插槽**(Req 8.5):`<PiChat>` 用合理默认或不渲染该区域,不报错。
 - **工具结果错误**(Req 2.3):`<PiToolPart>` 以错误样式呈现 `isError` 结果,而非崩溃。
@@ -644,6 +644,6 @@ export function PiPermissionDialog(props: PiPermissionDialogProps): JSX.Element 
 
 ## Security Considerations
 
-- 本层为浏览器展示层,不持久化凭据、不实现鉴权;所有数据经 `@pi-web/react` 的 hooks/transport 间接获得,本层不直接发起网络请求。
+- 本层为浏览器展示层,不持久化凭据、不实现鉴权;所有数据经 `@blksails/react` 的 hooks/transport 间接获得,本层不直接发起网络请求。
 - 渲染来自 agent 的内容(Markdown/工具结果)应经 AI Elements `Response` 的安全渲染路径,避免注入;自定义渲染器的安全由注册方负责(注册表只做分派)。
 - 扩展 UI 回传只携带与当前请求匹配的响应(`requestId` 匹配),避免错配。

@@ -3,7 +3,7 @@ import tailwindcss from "tailwindcss";
 import autoprefixer from "autoprefixer";
 
 /**
- * Storybook(react-vite)配置 — `@pi-web/ui` 可视化文档(ui-components 10.1)。
+ * Storybook(react-vite)配置 — `@blksails/ui` 可视化文档(ui-components 10.1)。
  *
  * UI 组件以原始 `.tsx` 携带 Tailwind 工具类发布,样式在宿主(app)的 Tailwind 管线生成。
  * 这里为 Storybook 单独接入 Tailwind/PostCSS(经 `viteFinal` 注入,作用域仅限本 SB 构建,

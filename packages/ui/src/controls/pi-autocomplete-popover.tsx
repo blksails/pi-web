@@ -6,7 +6,7 @@
  * 缺贡献点/客户端时不渲染;不抢占 Enter(仅建议,可继续发送)。
  */
 import * as React from "react";
-import type { UiRpcClient } from "@pi-web/web-kit";
+import type { UiRpcClient } from "@blksails/web-kit";
 import { cn } from "../lib/cn.js";
 
 export interface CompletionItem {

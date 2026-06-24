@@ -12,14 +12,14 @@
 import {
   canonicalManifestBytes,
   type WebExtensionManifest,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 export interface GateOptions {
   /** 受信签名密钥白名单(HMAC 共享密钥)。空数组 + requireSignature=false 时跳过验签。 */
   readonly whitelist: readonly string[];
   /** 是否强制要求签名(git source 加载代码 bundle 时应为 true)。 */
   readonly requireSignature: boolean;
-  /** 宿主 `@pi-web/web-kit` 版本(用于 targetApiVersion 兼容判定)。 */
+  /** 宿主 `@blksails/web-kit` 版本(用于 targetApiVersion 兼容判定)。 */
   readonly hostApiVersion: string;
 }
 

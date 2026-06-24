@@ -5,7 +5,7 @@
  * 经 shadcn CSS 变量主题化的固定类名。绝不拼接任意 CSS/className,确保 agent
  * 无法注入样式 —— 未知令牌一律回退默认。
  */
-import type { UiSize, UiStyle, UiTone } from "@pi-web/protocol";
+import type { UiSize, UiStyle, UiTone } from "@blksails/protocol";
 
 /** 文本语气 → 前景色类。 */
 const TONE_TEXT: Record<UiTone, string> = {

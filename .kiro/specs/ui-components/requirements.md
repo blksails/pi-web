@@ -2,16 +2,16 @@
 
 ## Introduction
 
-本特性交付 `@pi-web/ui`——pi-web 的**有样式、可主题化、可扩展**的浏览器组件层。它面向两类用户:想快速拥有成品聊天 UI 的第三方 React/Next 集成方,以及本项目整站(`app-shell`,消费本层组件闭合全链路)。
+本特性交付 `@blksails/ui`——pi-web 的**有样式、可主题化、可扩展**的浏览器组件层。它面向两类用户:想快速拥有成品聊天 UI 的第三方 React/Next 集成方,以及本项目整站(`app-shell`,消费本层组件闭合全链路)。
 
-现状是:`@pi-web/react` 已提供 headless 的 `PiTransport` / `createPiClient` 与三个 hooks(`usePiSession` / `usePiControls` / `useExtensionUI`),但每个前端仍要重复地把 Vercel AI Elements 装配成 pi 聊天界面、为 pi 特有部件(工具卡、思考块、权限弹窗、扩展 widget)手写渲染、并接线模型/思考等级/统计等控制面板。本特性提供:
+现状是:`@blksails/react` 已提供 headless 的 `PiTransport` / `createPiClient` 与三个 hooks(`usePiSession` / `usePiControls` / `useExtensionUI`),但每个前端仍要重复地把 Vercel AI Elements 装配成 pi 聊天界面、为 pi 特有部件(工具卡、思考块、权限弹窗、扩展 widget)手写渲染、并接线模型/思考等级/统计等控制面板。本特性提供:
 
 - `<PiChat>`:基于 AI Elements `Conversation/Message/Response/Reasoning/Tool/PromptInput/Actions` + `useChat(PiTransport)` 的**拖入组件**,一个组件即得到完整聊天界面。
 - 细粒度组件:`<PiToolPart>`、`<PiReasoning>`、`<PiModelSelector>`、`<PiThinkingLevel>`、`<PiSessionStats>`、`<PiCommandPalette>`(基于 `get_commands` 的 "/" 补全)、`<PiPermissionDialog>`(扩展 UI:select/confirm/input/editor)。
 - **渲染器注册表**:`registerToolRenderer(toolName, Component)` 与 `registerDataPartRenderer(type, Component)`,让 pi 扩展的自定义工具/部件映射到自定义 React UI;`<PiChat>` 暴露 header/footer/sidebar/messageActions 插槽。
 - **分发**:npm 包 + shadcn registry(`npx pi-web add chat`);主题全部走 shadcn CSS 变量,继承宿主项目主题。
 
-本特性运行于浏览器环境,**仅依赖** `@pi-web/react`(headless 层)与 shadcn/AI Elements;不依赖任何后端实现细节,不绑定具体后端/路由,不做非 React 嵌入。无障碍(键盘可达、aria 标注)基本达标。
+本特性运行于浏览器环境,**仅依赖** `@blksails/react`(headless 层)与 shadcn/AI Elements;不依赖任何后端实现细节,不绑定具体后端/路由,不做非 React 嵌入。无障碍(键盘可达、aria 标注)基本达标。
 
 ## Boundary Context
 
@@ -29,10 +29,10 @@
   - 扩展安装/卸载与 `get_commands` 后端实现(归 `extension-management`;本层仅消费 `usePiControls` 暴露的命令列表与 `useExtensionUI` 暴露的扩展 UI 队列)。
   - 非 React 集成(Web Component / iframe,归未来 `embed-integrations`)。
 - **Adjacent expectations(对相邻系统/spec 的依赖与不拥有项)**:
-  - 依赖 `@pi-web/react` 提供 `usePiSession`(暴露绑定的 `PiTransport` 与连接态)、`usePiControls`(model/thinking/abort/steer/follow_up/stats/commands)、`useExtensionUI`(扩展 UI 请求队列 + `respond` 回传)、`createPiClient`;本层不重定义这些行为,只装配与呈现。
+  - 依赖 `@blksails/react` 提供 `usePiSession`(暴露绑定的 `PiTransport` 与连接态)、`usePiControls`(model/thinking/abort/steer/follow_up/stats/commands)、`useExtensionUI`(扩展 UI 请求队列 + `respond` 回传)、`createPiClient`;本层不重定义这些行为,只装配与呈现。
   - 依赖 AI SDK v5 `@ai-sdk/react` 的 `useChat` 行为与消息 part 结构(text/reasoning/tool/data-part),以及 AI Elements 的 `Conversation/Message/Response/Reasoning/Tool/PromptInput/Actions` 组件 API。
   - 依赖 shadcn/ui(Radix + Tailwind v4)与其 CSS 变量主题约定;宿主提供 Tailwind 与 shadcn token。
-  - 不持有服务端真值;消息流、控制态、扩展 UI 队列均来自 `@pi-web/react` 的派生状态。
+  - 不持有服务端真值;消息流、控制态、扩展 UI 队列均来自 `@blksails/react` 的派生状态。
 
 ## Requirements
 
@@ -42,13 +42,13 @@
 
 #### Acceptance Criteria
 
-1. The `<PiChat>` 组件 shall 接收一个由 `@pi-web/react` 的 `usePiSession` 提供的会话/传输入参(或在内部经传入的会话配置建立),并用 `useChat({ transport })` 驱动消息流。
+1. The `<PiChat>` 组件 shall 接收一个由 `@blksails/react` 的 `usePiSession` 提供的会话/传输入参(或在内部经传入的会话配置建立),并用 `useChat({ transport })` 驱动消息流。
 2. When 会话产生流式文本增量, the `<PiChat>` 组件 shall 经 AI Elements `Conversation/Message/Response` 增量渲染助手消息的 Markdown 文本。
 3. When 用户在输入区提交内容, the `<PiChat>` 组件 shall 经 AI Elements `PromptInput` 发送 prompt 并在界面追加用户消息。
 4. When 单条消息同时包含文本、思考、工具调用与 data-part, the `<PiChat>` 组件 shall 按各 part 类型分派到对应渲染(文本→`Response`、思考→`<PiReasoning>`、工具→`<PiToolPart>`、data-part→注册的 data-part 渲染器)。
 5. While 会话处于流式生成中, the `<PiChat>` 组件 shall 提供可见的进行中指示并允许用户触发中止(经 `usePiControls.abort`)。
 6. When 出现扩展 UI 请求, the `<PiChat>` 组件 shall 弹出 `<PiPermissionDialog>` 并在用户作答后将响应回传(经 `useExtensionUI.respond`)。
-7. The `<PiChat>` 组件 shall 不实现任何 REST/SSE 传输逻辑,仅消费 `@pi-web/react` 暴露的 transport 与 hooks。
+7. The `<PiChat>` 组件 shall 不实现任何 REST/SSE 传输逻辑,仅消费 `@blksails/react` 暴露的 transport 与 hooks。
 
 ### Requirement 2: 工具卡组件 `<PiToolPart>`(start/update/end 三态)
 
@@ -84,7 +84,7 @@
 2. While 模型切换操作进行中, the `<PiModelSelector>` 组件 shall 显示进行中态;若操作失败, then the `<PiModelSelector>` 组件 shall 显示可辨识的错误提示且不静默失败。
 3. The `<PiThinkingLevel>` 组件 shall 展示可选思考等级并在用户选择后经 `usePiControls.setThinking` 提交。
 4. The `<PiSessionStats>` 组件 shall 展示来自 `usePiControls` 的会话统计(用量/成本等),并在统计更新时刷新显示。
-5. The 控制组件 shall 仅经 `@pi-web/react` 的 hooks 发起操作,不向 `useChat` 消息流写入内容。
+5. The 控制组件 shall 仅经 `@blksails/react` 的 hooks 发起操作,不向 `useChat` 消息流写入内容。
 
 ### Requirement 5: 命令面板 `<PiCommandPalette>`("/" 补全)
 
@@ -143,10 +143,10 @@
 
 #### Acceptance Criteria
 
-1. The `@pi-web/ui` 包 shall 提供聚合 npm 导出面,覆盖 `<PiChat>`、各细粒度组件、渲染器注册表 API 与相关类型。
-2. The `@pi-web/ui` shall 提供 shadcn registry 清单,使集成方可经 `npx pi-web add chat` 将组件源码加入其项目。
+1. The `@blksails/ui` 包 shall 提供聚合 npm 导出面,覆盖 `<PiChat>`、各细粒度组件、渲染器注册表 API 与相关类型。
+2. The `@blksails/ui` shall 提供 shadcn registry 清单,使集成方可经 `npx pi-web add chat` 将组件源码加入其项目。
 3. The 组件样式 shall 全部以 shadcn CSS 变量定义,使其继承宿主项目主题而无需修改组件源码。
-4. The `@pi-web/ui` shall 仅依赖 `@pi-web/react` 与 shadcn/AI Elements,不引入后端依赖或非 React 集成产物。
+4. The `@blksails/ui` shall 仅依赖 `@blksails/react` 与 shadcn/AI Elements,不引入后端依赖或非 React 集成产物。
 
 ### Requirement 10: 无障碍(键盘/aria)
 

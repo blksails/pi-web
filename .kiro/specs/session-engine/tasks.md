@@ -4,7 +4,7 @@
 - [x] 1.1 建立会话层类型与错误定义
   - 定义 `SessionId`、`SessionStatus`、`SessionEndReason`、`SubscribeHandle`、`CachedState`、`SessionDescriptor`、`CreateSessionInput`
   - 定义 `SessionStoppedError`、`SessionNotFoundError`、`UnknownExtensionUIError`、`MissingInputError`
-  - 从 `@pi-web/protocol` 引入帧/事件/响应类型别名,从 rpc-channel 引入 `PiRpcChannel`、从 agent-source-resolver 引入 `ResolvedSource`(仅类型导入)
+  - 从 `@blksails/protocol` 引入帧/事件/响应类型别名,从 rpc-channel 引入 `PiRpcChannel`、从 agent-source-resolver 引入 `ResolvedSource`(仅类型导入)
   - 完成态:类型与错误文件通过 `tsc` 编译,无 `any`,可被后续模块导入
   - _Requirements: 1.3, 1.5, 2.4, 3.2, 5.3, 6.3, 7.6, 9.5_
   - _Boundary: session.types.ts, session.errors.ts_

@@ -46,7 +46,7 @@
 - **Rationale**: 满足 R9 的确定优先级,且兼容既有 `slots`。
 
 ### Decision: 主题自建轻量 ThemeProvider,令牌 preset 导出
-- **Selected Approach**: `ThemeProvider{mode:"light"|"dark"|"system"}` 管理 `<html>.dark`;`system` 监听 `matchMedia` 并随变化更新。`@pi-web/ui/tailwind-preset` 导出 `theme.extend`。
+- **Selected Approach**: `ThemeProvider{mode:"light"|"dark"|"system"}` 管理 `<html>.dark`;`system` 监听 `matchMedia` 并随变化更新。`@blksails/ui/tailwind-preset` 导出 `theme.extend`。
 - **Rationale**: 不绑定框架、最小依赖、与 `settings.theme` 三值语义一致。
 
 ### Decision: 图标经 context 注入,默认回退既有 lucide

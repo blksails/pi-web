@@ -5,7 +5,7 @@
 > - **截图任务(15–21)说明**:视觉验证已实时执行(本横幅逐条记录 DOM 断言),但 `test-results/` 的 15 张 `va*.png` 被 playwright 每次运行清空;**关键能力 4 张已固化到 spec `evidence/`**(va6 slots / va10 slash / va21-22 artifact / va23-24 server-driven)。durable 回归改由上述 **13 条 e2e** 承担(强于易失截图)。故 15–21 以「验证已执行 + e2e 固化 + 关键 PNG 留存」计完成,不再对临时 build 重拍 29 张。
 >
 > **实施进度(2026-06-19,实时浏览器验证)**:
-> - ✅ **更正**:baseline **可构建可运行**(`next dev` 在 3000 返回 200,扩展管线正常)。此前"baseline 不可构建"系误读 LSP 噪声(陈旧 dist/project-reference + `ignoreBuildErrors:true` 下不阻断);`zod` 实为 pnpm 嵌套已装,`@pi-web/agent-kit` 不在 web app 构建路径。
+> - ✅ **更正**:baseline **可构建可运行**(`next dev` 在 3000 返回 200,扩展管线正常)。此前"baseline 不可构建"系误读 LSP 噪声(陈旧 dist/project-reference + `ignoreBuildErrors:true` 下不阻断);`zod` 实为 pnpm 嵌套已装,`@blksails/agent-kit` 不在 web app 构建路径。
 > - ✅ **已实现并实时验证(Chrome DevTools 截图存证)**:
 >   - T2 扩展插槽层 `packages/ui/src/web-ext/extension-slots.tsx`
 >   - T3/T4 `pi-chat.tsx` 挂载全部 **12 个保留插槽** → `webext-slots-agent` 会话内 12 槽全部渲染、内核完好(去重追加语义验证通过)→ `va6-tier1-reserved-slots.png`

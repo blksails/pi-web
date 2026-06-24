@@ -3,7 +3,7 @@
  * 复用 pi-permission-dialog 的错误展示风格(role="alert")。
  */
 import * as React from "react";
-import type { FieldDescriptor } from "@pi-web/protocol";
+import type { FieldDescriptor } from "@blksails/protocol";
 import { cn } from "../../lib/cn.js";
 
 export interface FieldShellProps {

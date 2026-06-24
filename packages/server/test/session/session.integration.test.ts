@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import type { SpawnSpec, SseFrame } from "@pi-web/protocol";
+import type { SpawnSpec, SseFrame } from "@blksails/protocol";
 import { PiRpcProcess } from "../../src/rpc-channel/index.js";
 import { PiSession } from "../../src/session/pi-session.js";
 import type { SessionChannel } from "../../src/session/session.types.js";

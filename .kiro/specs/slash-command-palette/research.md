@@ -4,7 +4,7 @@
 - **Feature**: `slash-command-palette`
 - **Discovery Scope**: Extension(接线已实现但未装配的组件)
 - **Key Findings**:
-  - `PiCommandPalette` 已完整实现 "/" 补全(过滤/键盘/ARIA/空错态)并从 `@pi-web/ui` 导出,但 grep 全仓零装配——是"建好未接线"的孤儿组件。
+  - `PiCommandPalette` 已完整实现 "/" 补全(过滤/键盘/ARIA/空错态)并从 `@blksails/ui` 导出,但 grep 全仓零装配——是"建好未接线"的孤儿组件。
   - Enter 双触发的根因是 React 事件挂载层级:textarea 的 `onKeyDown`(React root)先于 palette 的 `document` 监听执行,palette 的 `preventDefault` 救不回已发出的提交。
   - 现有 e2e「Req 10.2 建议气泡」测的是**空态**网格(`startSession` 后无消息),故移除会话态紧凑气泡不破坏它。
 

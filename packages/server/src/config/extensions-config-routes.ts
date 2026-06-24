@@ -12,7 +12,7 @@
  */
 import { promises as fs } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import { extensionsConfigSchema } from "@pi-web/protocol";
+import { extensionsConfigSchema } from "@blksails/protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
 

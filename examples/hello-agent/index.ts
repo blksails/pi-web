@@ -15,7 +15,7 @@
  * The default export is a plain {@link AgentDefinition} (shape a). It is loaded
  * by the bootstrap runner via jiti and mapped into a pi session runtime.
  */
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 

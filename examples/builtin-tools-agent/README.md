@@ -39,7 +39,7 @@ pi currently ships the following built-in tools:
 ## Usage
 
 ```ts
-import { defineAgent } from "@pi-web/agent-kit";
+import { defineAgent } from "@blksails/agent-kit";
 
 export default defineAgent({
   // model omitted → inherits defaultProvider/defaultModel from ~/.pi/agent/settings.json

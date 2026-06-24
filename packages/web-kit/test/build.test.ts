@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { buildWebExtension } from "../build/build.js";
 import { computeIntegrity } from "../build/manifest-emit.js";
 import { findBundledSingletons } from "../build/externals-guard.js";
-import { WebExtensionManifestSchema } from "@pi-web/protocol";
+import { WebExtensionManifestSchema } from "@blksails/protocol";
 
 const fixtureDir = fileURLToPath(new URL("./fixtures/ext-a", import.meta.url));
 
@@ -31,7 +31,7 @@ describe("buildWebExtension (集成)", () => {
       expect(findBundledSingletons(code)).toHaveLength(0);
       // external 保留为 import 语句(react / web-kit 不被打入)
       expect(code).toMatch(/from\s*["']react["']|from\s*["']react\/jsx-runtime["']/);
-      expect(code).toContain("@pi-web/web-kit");
+      expect(code).toContain("@blksails/web-kit");
 
       // integrity 与产物字节一致
       const recomputed = computeIntegrity(Buffer.from(code, "utf8"));

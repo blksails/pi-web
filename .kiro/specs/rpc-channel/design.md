@@ -13,7 +13,7 @@
 - 定义传输无关接口 `PiRpcChannel`,使本地与未来远程传输共享同一契约,命令封装层可对接口 mock 单测。
 - 实现协议正确的增量 JSONL reader:仅按 `\n` 切、剥尾随 `\r`、缓冲跨 chunk 行、跳空行、保留行内 `U+2028`/`U+2029`。
 - 正确分发 stdout 三类消息:`response`(按 `id` 关联 Promise)、`event`(广播)、`extension_ui_request`(挂起 + 回复)。
-- 暴露与包 `RpcClient` 对齐的命令方法封装,类型取自 `@pi-web/protocol`。
+- 暴露与包 `RpcClient` 对齐的命令方法封装,类型取自 `@blksails/protocol`。
 - 管理子进程生命周期:stderr 收集、exit/崩溃传播、`close()` 干净退出无僵尸、待决命令统一拒绝。
 
 ### Non-Goals
@@ -29,7 +29,7 @@
 ### This Spec Owns
 
 - `PiRpcChannel` 传输无关接口的定义(`send(line)` / `onLine(cb)` / `close()` / `health()`)。
-- `PiRpcProcess` 本地实现:按给定 spawnSpec(`SpawnSpec { cmd, args, cwd, env }`,类型自 `@pi-web/protocol` 导入)以 `detached:false` spawn 子进程并接管 stdio。
+- `PiRpcProcess` 本地实现:按给定 spawnSpec(`SpawnSpec { cmd, args, cwd, env }`,类型自 `@blksails/protocol` 导入)以 `detached:false` spawn 子进程并接管 stdio。
 - 增量 JSONL reader(`JsonlLineReader`):严格成帧与跨 chunk 缓冲。
 - stdout 三类消息分发与两张待决表(`pendingCommands` / `pendingExtensionUI`)。
 - 与 `RpcClient` 对齐的命令方法封装(基于 `send` + 等待 `response`),加 `onEvent()` 与 `respondExtensionUI(id, …)`。
@@ -45,7 +45,7 @@
 
 ### Allowed Dependencies
 
-- **运行时**:`@pi-web/protocol`(协议类型 + `SpawnSpec`,唯一跨包依赖;`SpawnSpec` 由 protocol-contract 拥有并导出,本特性经 `import type { SpawnSpec } from "@pi-web/protocol"` 消费,不本地定义);Node 内置 `child_process`、`node:events`、`node:stream`(仅 `local` 实现内部使用,不出现在接口签名)。
+- **运行时**:`@blksails/protocol`(协议类型 + `SpawnSpec`,唯一跨包依赖;`SpawnSpec` 由 protocol-contract 拥有并导出,本特性经 `import type { SpawnSpec } from "@blksails/protocol"` 消费,不本地定义);Node 内置 `child_process`、`node:events`、`node:stream`(仅 `local` 实现内部使用,不出现在接口签名)。
 - **依赖方向**:`protocol-contract ← rpc-channel`;`rpc-channel ← session-engine`。禁止反向。`PiRpcChannel` 接口签名不得泄漏 `child_process`/管道概念(Req 1.3)。
 - **开发/测试**:`vitest`;集成/e2e 可引用 `@earendil-works/pi-coding-agent`(spawn 真实 `pi --mode rpc`)或自带 stub 进程脚本——不进入运行时依赖。
 
@@ -105,7 +105,7 @@ graph TB
 | Backend / Services | TypeScript strict;Node `>=22.19.0` | 通道接口、本地实现、命令封装 | 接口签名不含 Node 专有类型 |
 | Data / Storage | — | 无持久化(待决表为进程内内存) | — |
 | Messaging / Events | `node:events`(EventEmitter,内部);JSONL over stdio | 事件广播、子进程 stdin/stdout 双向 | framing 自实现,禁 `readline` |
-| Infrastructure / Runtime | `child_process.spawn`(`detached:false`);`@pi-web/protocol`(类型);`vitest`(测试);`@earendil-works/pi-coding-agent`(dev/集成 spawn 真实 pi) | 子进程托管与协议类型 | pi 包不进运行时依赖 |
+| Infrastructure / Runtime | `child_process.spawn`(`detached:false`);`@blksails/protocol`(类型);`vitest`(测试);`@earendil-works/pi-coding-agent`(dev/集成 spawn 真实 pi) | 子进程托管与协议类型 | pi 包不进运行时依赖 |
 
 ## File Structure Plan
 
@@ -113,7 +113,7 @@ graph TB
 
 ```
 lib/pi/
-├── pi-rpc-channel.ts         # PiRpcChannel 端口接口 + ChannelHealth 类型(SpawnSpec 自 @pi-web/protocol 导入,不在此定义)
+├── pi-rpc-channel.ts         # PiRpcChannel 端口接口 + ChannelHealth 类型(SpawnSpec 自 @blksails/protocol 导入,不在此定义)
 ├── jsonl-line-reader.ts      # 增量 JSONL reader:push(chunk)->完整行[];CRLF/分片/空行/U+2028|2029
 ├── pi-rpc-process.ts         # PiRpcProcess:local 实现(spawn + 接 reader + 三类分发 + 命令封装 + 生命周期)
 └── pi-rpc-process.errors.ts  # 通道错误类型(spawn 失败 / 通道已关闭 / 子进程崩溃 / 解析失败诊断)
@@ -136,7 +136,7 @@ test/fixtures/
 
 ### Modified Files
 
-- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@pi-web/protocol` 与 `vitest` 纳入依赖——该接线随仓库初始化处理,本特性创建模块自身文件与测试。
+- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@blksails/protocol` 与 `vitest` 纳入依赖——该接线随仓库初始化处理,本特性创建模块自身文件与测试。
 
 ## System Flows
 
@@ -205,9 +205,9 @@ stateDiagram-v2
 | 1.3 | 接口不泄漏进程/管道概念 | pi-rpc-channel.ts | `PiRpcChannel` 签名 | — |
 | 1.4 | PiRpcProcess 实现接口全成员 | pi-rpc-process.ts | implements `PiRpcChannel` | — |
 | 1.5 | 接口可 mock,命令层免真进程测 | pi-rpc-channel.ts | 端口抽象 | — |
-| 2.1 | 按 spawnSpec spawn 接 stdio | pi-rpc-process.ts | `SpawnSpec`(自 @pi-web/protocol) | 生命周期流 |
+| 2.1 | 按 spawnSpec spawn 接 stdio | pi-rpc-process.ts | `SpawnSpec`(自 @blksails/protocol) | 生命周期流 |
 | 2.2 | detached:false 连带清理 | pi-rpc-process.ts | spawn 选项 | 生命周期流 |
-| 2.3 | 不内部决定 spawn 目标 | pi-rpc-process.ts | `SpawnSpec` 输入(自 @pi-web/protocol) | — |
+| 2.3 | 不内部决定 spawn 目标 | pi-rpc-process.ts | `SpawnSpec` 输入(自 @blksails/protocol) | — |
 | 2.4 | spawn 失败传播错误且不就绪 | pi-rpc-process.ts, errors.ts | `SpawnError` | 生命周期流 |
 | 3.1 | 仅按 \n 切、禁 readline | jsonl-line-reader.ts | `push` | 分发流 |
 | 3.2 | 剥尾随 \r(CRLF) | jsonl-line-reader.ts | `push` | — |
@@ -223,7 +223,7 @@ stateDiagram-v2
 | 4.6 | 不可解析行跳过记诊断 | pi-rpc-process.ts, jsonl-line-reader.ts | 诊断 | 分发流 |
 | 5.1 | 暴露 18 个对齐命令方法 | pi-rpc-process.ts | 命令方法集 | — |
 | 5.2 | 命令生成 id、send、返回 Promise | pi-rpc-process.ts | 命令方法 | 命令往返流 |
-| 5.3 | 输入输出用 protocol 类型 | pi-rpc-process.ts | `@pi-web/protocol` | — |
+| 5.3 | 输入输出用 protocol 类型 | pi-rpc-process.ts | `@blksails/protocol` | — |
 | 5.4 | 待决不阻塞其他命令/事件 | pi-rpc-process.ts | 异步分发 | 命令往返流 |
 | 5.5 | 暴露 onEvent / respondExtensionUI | pi-rpc-process.ts | 接口成员 | — |
 | 6.1 | 收集 stderr 供诊断 | pi-rpc-process.ts | stderr 缓冲 | 生命周期流 |
@@ -243,9 +243,9 @@ stateDiagram-v2
 
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
-| `PiRpcChannel`(pi-rpc-channel.ts) | port | 传输无关通道接口 + Health 类型(SpawnSpec 自 protocol 导入) | 1.1–1.5, 6.4 | @pi-web/protocol (P1) | Service |
+| `PiRpcChannel`(pi-rpc-channel.ts) | port | 传输无关通道接口 + Health 类型(SpawnSpec 自 protocol 导入) | 1.1–1.5, 6.4 | @blksails/protocol (P1) | Service |
 | `JsonlLineReader`(jsonl-line-reader.ts) | framing | 增量 JSONL 成帧 | 3.1–3.6, 1.2, 4.6, 7.1 | — | Service |
-| `PiRpcProcess`(pi-rpc-process.ts) | local adapter | spawn + 三类分发 + 命令封装 + 生命周期 | 2.x, 4.x, 5.x, 6.x | PiRpcChannel (P0), JsonlLineReader (P0), @pi-web/protocol (P0), child_process (P0) | Service, Event, State |
+| `PiRpcProcess`(pi-rpc-process.ts) | local adapter | spawn + 三类分发 + 命令封装 + 生命周期 | 2.x, 4.x, 5.x, 6.x | PiRpcChannel (P0), JsonlLineReader (P0), @blksails/protocol (P0), child_process (P0) | Service, Event, State |
 | 通道错误类型(pi-rpc-process.errors.ts) | local adapter | spawn 失败/通道关闭/崩溃/诊断 | 2.4, 4.5, 4.6, 6.5 | — | State |
 
 ### port layer
@@ -259,18 +259,18 @@ stateDiagram-v2
 
 **Responsibilities & Constraints**
 - 定义最小通道契约,签名仅使用字符串与协议无关的原始类型,不出现 `ChildProcess`/`Stream`/管道概念(Req 1.3)。
-- 同文件定义 `ChannelHealth`(健康状态形状,Req 6.4);`SpawnSpec`(`{ cmd, args, cwd, env }`)不在此定义,而是由 protocol-contract 拥有并导出,本特性经 `import type { SpawnSpec } from "@pi-web/protocol"` 消费(单一事实来源,见 Req 2.1)。
+- 同文件定义 `ChannelHealth`(健康状态形状,Req 6.4);`SpawnSpec`(`{ cmd, args, cwd, env }`)不在此定义,而是由 protocol-contract 拥有并导出,本特性经 `import type { SpawnSpec } from "@blksails/protocol"` 消费(单一事实来源,见 Req 2.1)。
 - 仅为类型/接口声明,无运行时行为,使其可被 mock 替换(Req 1.5)。
 
 **Dependencies**
-- External: `@pi-web/protocol` — 若 health 形状引用协议常量则消费,否则纯本地类型 (P1)
+- External: `@blksails/protocol` — 若 health 形状引用协议常量则消费,否则纯本地类型 (P1)
 
 **Contracts**: Service [x]
 
 ##### Service Interface
 ```typescript
 // SpawnSpec 由 protocol-contract 拥有并导出,本特性只消费、不重定义(单一事实来源)
-import type { SpawnSpec, /* RpcExtensionUIResponse 等 */ } from "@pi-web/protocol";
+import type { SpawnSpec, /* RpcExtensionUIResponse 等 */ } from "@blksails/protocol";
 
 export interface ChannelHealth {
   readonly alive: boolean;          // 子进程/连接是否存活
@@ -346,14 +346,14 @@ export class JsonlLineReader {
 - 子进程 stdout 设 UTF-8 → 经 `JsonlLineReader` 成行 → 每行 JSON 解析后分发(失败则记诊断跳过,Req 4.6)。
 - 维护两张待决表:`pendingCommands`(id → Promise resolver/rejecter)与 `pendingExtensionUI`(id → 请求快照)。
 - 三类分发:`response` 按 `id` 兑现并清表(无 id 对应则丢弃记诊断,Req 4.1/4.5);`event` 广播给 `onEvent` 监听器(Req 4.2);`extension_ui_request` 登记并通知上层(Req 4.3)。
-- 命令封装:18 个方法各生成唯一 `id`、构造命令帧经 `send` 写出、返回待决 Promise(Req 5.1/5.2);输入输出类型取自 `@pi-web/protocol`(Req 5.3);异步不阻塞(Req 5.4)。`onEvent()` 订阅事件,`respondExtensionUI(id, …)` 写回 stdin 并清待决(Req 5.5/4.4)。
+- 命令封装:18 个方法各生成唯一 `id`、构造命令帧经 `send` 写出、返回待决 Promise(Req 5.1/5.2);输入输出类型取自 `@blksails/protocol`(Req 5.3);异步不阻塞(Req 5.4)。`onEvent()` 订阅事件,`respondExtensionUI(id, …)` 写回 stdin 并清待决(Req 5.5/4.4)。
 - 生命周期:持续收集 stderr(Req 6.1);监听 `exit`/`error`,退出/崩溃时发可观察信号并拒绝全部 `pendingCommands`(Req 6.2/6.5);`close()` kill 子进程、关 stdin、停分发、以"通道已关闭"拒绝待决(Req 6.3),完成后无僵尸(Req 6.6);`health()` 在退出/关闭后报告不可用(Req 6.4)。
 
 **Dependencies**
 - Inbound: `session-engine` — 经 `PiRpcChannel` 发命令、订阅事件、回复扩展 UI (P0)
 - Inbound: `agent-source-resolver` — 提供 `SpawnSpec` 的值(旁路,经构造参数;其类型自 protocol 导入,resolver 不拥有该类型)(P0)
 - External: `child_process.spawn` — 启动本地子进程 (P0)
-- External: `@pi-web/protocol` — 命令/响应/事件/扩展 UI 类型,以及 `SpawnSpec` 类型(protocol-contract 拥有并导出) (P0)
+- External: `@blksails/protocol` — 命令/响应/事件/扩展 UI 类型,以及 `SpawnSpec` 类型(protocol-contract 拥有并导出) (P0)
 - Internal: `JsonlLineReader` — 成帧 (P0);通道错误类型 (P1)
 
 **Contracts**: Service [x] / Event [x] / State [x]
@@ -365,7 +365,7 @@ import type {
   RpcExtensionUIRequest, RpcExtensionUIResponse,
   SpawnSpec, // SpawnSpec 自 protocol 导入(protocol-contract 拥有并导出),不本地定义
   // 各命令/响应具体类型(prompt/steer/.../bash)均自 protocol 导入
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type { PiRpcChannel, ChannelHealth, Unsubscribe } from "./pi-rpc-channel";
 
 export class PiRpcProcess implements PiRpcChannel {
@@ -405,7 +405,7 @@ export class PiRpcProcess implements PiRpcChannel {
   abortBash(/* … */): Promise<RpcResponse>;
 }
 ```
-> 各命令方法的精确入参与返回子类型取自 `@pi-web/protocol` 的 `RpcCommand`/`RpcResponse` 判别联合;此处以 `RpcResponse` 占位表示按 `id` 关联后兑现的具体响应。命令帧的 `id` 生成与关联是本特性职责,命令负载形状是 protocol 职责。
+> 各命令方法的精确入参与返回子类型取自 `@blksails/protocol` 的 `RpcCommand`/`RpcResponse` 判别联合;此处以 `RpcResponse` 占位表示按 `id` 关联后兑现的具体响应。命令帧的 `id` 生成与关联是本特性职责,命令负载形状是 protocol 职责。
 
 - Preconditions:命令方法在通道未关闭时调用;否则立即以"通道已关闭"拒绝。
 - Postconditions:每个发出命令在收到同 `id` 响应时兑现,或在 close/exit 时被拒绝(无悬挂)。
@@ -434,10 +434,10 @@ export class PiRpcProcess implements PiRpcChannel {
 
 ### Data Contracts & Integration
 
-- **序列化格式**:JSON over JSONL(每行一个 JSON 对象);本特性负责成帧与 `id` 关联,负载形状由 `@pi-web/protocol` 定义。
+- **序列化格式**:JSON over JSONL(每行一个 JSON 对象);本特性负责成帧与 `id` 关联,负载形状由 `@blksails/protocol` 定义。
 - **id 关联**:命令方法生成唯一 `id`(实现自由选择,如自增计数器或 UUID),写入命令帧;响应携带同 `id` 时关联兑现。
 - **待决表**:`pendingCommands` 与 `pendingExtensionUI` 为进程内内存 `Map`,close/exit 时清空并拒绝。
-- **类型来源**:命令/响应/事件/扩展 UI 类型,以及 `SpawnSpec`,一律 import 自 `@pi-web/protocol`,本特性不重定义(单一事实来源);`SpawnSpec` 由 protocol-contract 拥有并导出。
+- **类型来源**:命令/响应/事件/扩展 UI 类型,以及 `SpawnSpec`,一律 import 自 `@blksails/protocol`,本特性不重定义(单一事实来源);`SpawnSpec` 由 protocol-contract 拥有并导出。
 
 ## Error Handling
 

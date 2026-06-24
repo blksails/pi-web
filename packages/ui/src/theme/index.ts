@@ -1,5 +1,5 @@
 /**
- * @pi-web/ui 主题域出口。
+ * @blksails/ui 主题域出口。
  */
 export {
   ThemeProvider,

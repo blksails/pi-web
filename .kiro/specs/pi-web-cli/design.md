@@ -31,7 +31,7 @@
 
 ### Out of Boundary
 - `loadConfig()` 既有字段的语义与 env 契约（`autoStart` 为本 spec 新增的小字段，不改既有字段含义）。
-- 会话引擎、agent 源解析、runner、协议、`@pi-web/ui` 组件库的任何行为；autostart 仅在 app-shell 装配层（`chat-app`/`page`）做极小接线，复用既有 resume 模式的「跳过 picker 直接进会话」机制。
+- 会话引擎、agent 源解析、runner、协议、`@blksails/ui` 组件库的任何行为；autostart 仅在 app-shell 装配层（`chat-app`/`page`）做极小接线，复用既有 resume 模式的「跳过 picker 直接进会话」机制。
 - **runner 热重载的核心逻辑**（watch→防抖→空闲重启→续会话）由既有 `hot-reload.ts` 拥有；本 spec 不重写，只扩展其启用门控并注入监视路径。
 - npm 发布与依赖内联（延后阶段）。
 
@@ -50,7 +50,7 @@
 ## Architecture
 
 ### Existing Architecture Analysis
-- app shell 经 `app/api/sessions/[[...path]]/route.ts` → `lib/app/pi-handler.ts` 的 `getHandler()`（globalThis 单例）服务会话；前端经 `@pi-web/react` 连本站 API。
+- app shell 经 `app/api/sessions/[[...path]]/route.ts` → `lib/app/pi-handler.ts` 的 `getHandler()`（globalThis 单例）服务会话；前端经 `@blksails/react` 连本站 API。
 - `@pi-web/*` 走 `transpilePackages` 编入 Next bundle；pi SDK（`@earendil-works/*`）+ `jiti` 走 `serverExternalPackages` + 自定义 webpack externals，运行时 Node `import`。
 - 会话激活时主进程 spawn 子进程（custom: `runner-bootstrap.mjs` 经 jiti 跑 runner 源码；cli: pi `dist/cli.js`）——**运行时动态进程，不在 server bundle 内**（见 research.md §2.3）。
 - 有状态长连接（SSE + 子进程），单机长驻，非 Serverless/Edge。

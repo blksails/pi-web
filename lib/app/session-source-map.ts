@@ -6,7 +6,7 @@
  * `create.source` 退化为 "." → 扩展区域插槽/背景全部消失)。
  *
  * 设计取舍:URL 保持纯净 `/session/:id`(不把文件路径塞进 query),且不改
- * `@pi-web/server` 的持久化 schema —— 故用本地旁路映射。每会话一个文件
+ * `@blksails/server` 的持久化 schema —— 故用本地旁路映射。每会话一个文件
  * (`<dir>/<id>`,内容即 source 字符串),天然规避并发读改写竞态,删除也简单。
  */
 import { promises as fs } from "node:fs";

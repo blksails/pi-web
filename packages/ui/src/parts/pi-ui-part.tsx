@@ -11,7 +11,7 @@
  * 模块加载即把内置组件 seed 到默认单例,实现 agent 零配置(无需宿主手动注册)。
  */
 import * as React from "react";
-import { UiSpecSchema } from "@pi-web/protocol";
+import { UiSpecSchema } from "@blksails/protocol";
 import type { DataPartRenderer } from "../registry/renderer-registry.js";
 import { defaultUiComponentRegistry } from "../components/ui-component-registry.js";
 import { registerBuiltinUiComponents } from "../components/builtin-components.js";

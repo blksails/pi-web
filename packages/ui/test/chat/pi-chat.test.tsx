@@ -16,7 +16,7 @@ import {
  * 覆盖:渲染富界面、发送文本(可含图片附件)消息、停止态点击触发 abort + stop、
  * 模型/建议/附件/分支控件的存在与交互、source data-part 渲染器注册、联网开关。
  *
- * 不触达真实后端;mock session/transport/controls 形状来自 @pi-web/react。
+ * 不触达真实后端;mock session/transport/controls 形状来自 @blksails/react。
  */
 
 describe("PiChat 装配(富)", () => {

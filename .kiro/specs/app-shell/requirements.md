@@ -2,7 +2,7 @@
 
 ## Introduction
 
-`app-shell` 是 pi-web 的**整站闭环装配层**:把已就绪的各层(`@pi-web/protocol` 协议、后端引擎、`http-api` 的 `createPiWebHandler`、`@pi-web/react` 的 hooks/transport、`@pi-web/ui` 的 `<PiChat>`)装配成一个**可直接运行、可部署、可作参考实现**的 Next.js 整站。它交付:主页面(agent 源选择 + 流式聊天)、把 `createPiWebHandler` 挂到 `app/api/sessions/**` 的 REST + SSE 路由、配置样例(`.env.local.example`)、一个供端到端验证用的示例 agent(`examples/hello-agent/index.ts` + `.pi/` 资源样例),并**承载本项目最高价值验收点——全链路 e2e 闭环**:启动应用 → 选含 `index.ts` 的 agent 源 → 输入 prompt → 浏览器内看到逐字流式回复(Markdown),工具调用显示为卡片、思考为折叠块,abort / 切模型 / stats 可用,危险操作触发权限弹窗、选择后 agent 继续;并另跑一遍通用 CLI 模式(无入口目录)e2e 验证回退路径同样流式。
+`app-shell` 是 pi-web 的**整站闭环装配层**:把已就绪的各层(`@blksails/protocol` 协议、后端引擎、`http-api` 的 `createPiWebHandler`、`@blksails/react` 的 hooks/transport、`@blksails/ui` 的 `<PiChat>`)装配成一个**可直接运行、可部署、可作参考实现**的 Next.js 整站。它交付:主页面(agent 源选择 + 流式聊天)、把 `createPiWebHandler` 挂到 `app/api/sessions/**` 的 REST + SSE 路由、配置样例(`.env.local.example`)、一个供端到端验证用的示例 agent(`examples/hello-agent/index.ts` + `.pi/` 资源样例),并**承载本项目最高价值验收点——全链路 e2e 闭环**:启动应用 → 选含 `index.ts` 的 agent 源 → 输入 prompt → 浏览器内看到逐字流式回复(Markdown),工具调用显示为卡片、思考为折叠块,abort / 切模型 / stats 可用,危险操作触发权限弹窗、选择后 agent 继续;并另跑一遍通用 CLI 模式(无入口目录)e2e 验证回退路径同样流式。
 
 本 spec **消费而非重定义**上游:`createPiWebHandler`(http-api)、`<PiChat>` 及其 hooks(ui-components / react-client)、agent 源输入形状(agent-source-resolver)、协议契约(protocol-contract)。权威设计见 `PLAN.md` §2(架构)、§5(目录结构)、§6(里程碑 M0/M2)、§8(验收标准 = MVP)。
 
@@ -14,7 +14,7 @@
   - Next.js 应用骨架:`app/layout.tsx`(根布局,引入主题/字体/全局样式)、`app/page.tsx`(agent 源选择器 + 聊天主页面)、`app/globals.css`(Tailwind + shadcn CSS 变量 tokens)。
   - API 装配:`app/api/sessions/**` 的 Route Handler——把 `createPiWebHandler` 实例挂到 REST + SSE 路径,声明 Node runtime,转发请求并回传响应/流。
   - 后端依赖装配:在应用进程内组装 `createPiWebHandler` 所需的会话依赖(经 http-api / session-engine 暴露的工厂),注入默认配置(provider / model / agent 源 / 工作区 / env),形成单例长驻装配。
-  - 前端装配:在 `app/page.tsx` 内用 `@pi-web/react` 的 hooks(`usePiSession`/`usePiControls`/`useExtensionUI`)建立指向本站 API 的连接,渲染 `<PiChat>`;agent 源选择器把用户输入的源(目录 / git)按 agent-source-resolver 的输入形状传给建会话请求。
+  - 前端装配:在 `app/page.tsx` 内用 `@blksails/react` 的 hooks(`usePiSession`/`usePiControls`/`useExtensionUI`)建立指向本站 API 的连接,渲染 `<PiChat>`;agent 源选择器把用户输入的源(目录 / git)按 agent-source-resolver 的输入形状传给建会话请求。
   - 配置:`.env.local.example` 列出 `ANTHROPIC_API_KEY` 等 provider key、默认 provider / model、默认 agent 源 / 工作区;应用启动时读取并注入装配。
   - 示例 agent:`examples/hello-agent/index.ts`(用 `defineAgent`)+ 一个 `.pi/` 资源样例(如 `.pi/extensions` 或 `.pi/prompts` 触发权限弹窗与工具/命令),作为 e2e fixture。
   - 测试:API 路由集成测试(正确转发到 handler、页面渲染)+ Playwright e2e(自定义 agent 全链路 + 通用 CLI 回退两条路径)。

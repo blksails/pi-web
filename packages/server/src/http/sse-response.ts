@@ -11,7 +11,7 @@
  * 重连续流(Req 6.x):`Last-Event-ID` 仅用作续号起点;网关不缓存历史帧,重连即重新
  * `subscribe()` 续推后续帧。会话已结束在 router/stream-route 层判定并返回明确响应。
  */
-import { makeControlFrame, protocolVersion, type SseFrame } from "@pi-web/protocol";
+import { makeControlFrame, protocolVersion, type SseFrame } from "@blksails/protocol";
 import type { PiSession } from "../session/index.js";
 import type { SessionEndReason } from "../session/index.js";
 import { PROTOCOL_VERSION_HEADER } from "./error-map.js";

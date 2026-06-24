@@ -1,5 +1,5 @@
 /**
- * `@pi-web/server` runner module — bootstrap runner public surface.
+ * `@blksails/server` runner module — bootstrap runner public surface.
  *
  * Re-exports the loader, option mapper, project-trust wiring and runner entry
  * helpers. The process entry lives in `runner.ts`.

@@ -7,7 +7,7 @@
  * 与类型无关:按归一化 trigger 经注册表分发到 provider。会话经 requireSession 解析
  * (不存在/越权→404,镜像 query-routes);CompletionCtx 由会话 cwd + 鉴权 userId 组装。
  */
-import type { CompletionResponse } from "@pi-web/protocol";
+import type { CompletionResponse } from "@blksails/protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import type { CompletionRegistry, CompletionCtx } from "../../completion/index.js";

@@ -12,7 +12,7 @@ import {
   ChildCrashError,
   SpawnError,
 } from "../../src/rpc-channel/pi-rpc-process.errors.js";
-import type { SpawnSpec } from "@pi-web/protocol";
+import type { SpawnSpec } from "@blksails/protocol";
 
 const ECHO = fileURLToPath(
   new URL("./fixtures/echo-process.mjs", import.meta.url),

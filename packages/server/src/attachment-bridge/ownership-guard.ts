@@ -20,7 +20,7 @@
  *
  * 注意(类型来源):design 以 `NonNullable<AgentLoopConfig["beforeToolCall"]>` 描述签名,
  * 该类型属 `@earendil-works/pi-agent-core`(本仓库刻意不直接依赖的 pi 内层包,见
- * `@pi-web/agent-kit` sdk-types 约定)。本切片在仓库**受认可**的 pi 公开面
+ * `@blksails/agent-kit` sdk-types 约定)。本切片在仓库**受认可**的 pi 公开面
  * `@earendil-works/pi-coding-agent` 上取**同形** `tool_call` 闸门契约
  * (`ToolCallEvent` / `ToolCallEventResult { block?, reason? }`,语义与 `BeforeToolCallResult` 一致)。
  */

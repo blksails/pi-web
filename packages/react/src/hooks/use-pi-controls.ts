@@ -19,7 +19,7 @@ import type {
   GetCommandsResponse,
   RpcSlashCommand,
   SessionStats,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";
 import { usePiContext } from "../provider/pi-provider.js";

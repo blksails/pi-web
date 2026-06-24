@@ -14,7 +14,7 @@
  *  - 历史/冷恢复(进来即非流式)保持折叠,由用户点击展开。
  */
 import * as React from "react";
-import { cn } from "@pi-web/ui";
+import { cn } from "@blksails/ui";
 
 /** 内联 Brain / ChevronDown 图标(lucide 路径),避免在 app 层引入 lucide-react 依赖。 */
 function BrainIcon({ className }: { readonly className?: string }): React.JSX.Element {

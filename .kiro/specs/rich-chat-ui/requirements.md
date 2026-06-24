@@ -2,15 +2,15 @@
 
 ## Introduction
 
-本特性把 `@pi-web/ui` 的聊天界面升级为对标 AI Elements 参考示例的**富聊天界面**。在不破坏现有最小 `<PiChat>` 的前提下,**新增** `<PiChatPro>` 组件(及其支撑的无状态元件与数据 hooks),提供:富 PromptInput(附件、模型选择器、语音输入、联网开关、随流式状态变化的发送按钮)与完整 Conversation(自动滚动与回到底部、消息分支/多版本切换、引用来源折叠、思考折叠、建议气泡)。所有能力**接到 pi 的真实 RPC 能力**(`get_available_models`/`setModel`/`fork`/`get_fork_messages`/`get_commands`/prompt `images`),不使用写死的 mock 数据。最终由 app-shell 消费 `<PiChatPro>`。权威设计与决策见 `.kiro/specs/rich-chat-ui/brief.md`(含已定稿 Decisions)与 `PLAN.md` §1/§4/§13.1/§13.4。
+本特性把 `@blksails/ui` 的聊天界面升级为对标 AI Elements 参考示例的**富聊天界面**。在不破坏现有最小 `<PiChat>` 的前提下,**新增** `<PiChatPro>` 组件(及其支撑的无状态元件与数据 hooks),提供:富 PromptInput(附件、模型选择器、语音输入、联网开关、随流式状态变化的发送按钮)与完整 Conversation(自动滚动与回到底部、消息分支/多版本切换、引用来源折叠、思考折叠、建议气泡)。所有能力**接到 pi 的真实 RPC 能力**(`get_available_models`/`setModel`/`fork`/`get_fork_messages`/`get_commands`/prompt `images`),不使用写死的 mock 数据。最终由 app-shell 消费 `<PiChatPro>`。权威设计与决策见 `.kiro/specs/rich-chat-ui/brief.md`(含已定稿 Decisions)与 `PLAN.md` §1/§4/§13.1/§13.4。
 
 ## Boundary Context
 
 - **In scope**:
-  - 在 `@pi-web/ui` 落地 AI Elements 风格无状态元件(attachments / model-selector / conversation / message(+branch) / reasoning / sources / suggestions / prompt-input / speech-input)。
+  - 在 `@blksails/ui` 落地 AI Elements 风格无状态元件(attachments / model-selector / conversation / message(+branch) / reasoning / sources / suggestions / prompt-input / speech-input)。
   - 附件呈现增强(对齐 AI Elements `attachments`):图片缩略图的悬停大图预览、可切换布局变体(紧凑 inline / 网格 grid / 列表 list)、附件名称与类型标签呈现;真实附件处理仍仅限图片(承接 Req 3,非图片维持降级提示)。
-  - 富装配组件 `<PiChatPro>`,接线 `@pi-web/react` 的数据 hooks 与现有渲染器注册表。
-  - `@pi-web/react` 新增数据 hooks:模型列表、附件(图片)、消息分支、建议(commands)。
+  - 富装配组件 `<PiChatPro>`,接线 `@blksails/react` 的数据 hooks 与现有渲染器注册表。
+  - `@blksails/react` 新增数据 hooks:模型列表、附件(图片)、消息分支、建议(commands)。
   - app-shell 切换到 `<PiChatPro>`;组件/集成单测 + 浏览器 e2e。
 - **Out of scope**:
   - 后端协议/会话引擎改动;仅当分支/附件确需新 chunk/DTO 时记为对 `protocol-contract`/会话引擎的 **upstream 依赖**,本特性不实现这些后端改动。
@@ -117,7 +117,7 @@
 **Objective:** 作为集成方/维护者,我想要新富组件与现有组件并存且可被宿主复用,以便平滑升级且不回归既有功能。
 
 #### Acceptance Criteria
-1. The 富组件 shall 作为 `@pi-web/ui` 的新增导出 `<PiChatPro>` 提供,且保留现有 `<PiChat>` 不变。
+1. The 富组件 shall 作为 `@blksails/ui` 的新增导出 `<PiChatPro>` 提供,且保留现有 `<PiChat>` 不变。
 2. When 现有测试套件(基线 483 测试)与类型检查运行, the 仓库 shall 保持全部通过(无回归)。
 3. While app-shell 加载, the app shall 渲染 `<PiChatPro>` 作为默认聊天界面并完成一次基本对话(浏览器 e2e 可验证)。
 4. The PiChatPro 及其元件 shall 支持键盘操作与基本 ARIA 语义(尤其对话框、模型选择器、分支切换、建议气泡)。

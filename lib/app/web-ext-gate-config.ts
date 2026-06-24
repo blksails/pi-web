@@ -8,7 +8,7 @@
  *
  * 该配置在 server 读取后随页面下发给客户端(由 app-shell 注入,见 awe-5)。
  */
-import type { GateOptions } from "@pi-web/react";
+import type { GateOptions } from "@blksails/react";
 
 export function buildGateOptionsFromEnv(
   env: NodeJS.ProcessEnv = process.env,

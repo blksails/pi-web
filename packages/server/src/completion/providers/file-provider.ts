@@ -8,7 +8,7 @@
  */
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
-import type { CompletionItem } from "@pi-web/protocol";
+import type { CompletionItem } from "@blksails/protocol";
 import type {
   CompletionCtx,
   CompletionProvider,

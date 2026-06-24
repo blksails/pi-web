@@ -14,13 +14,13 @@
   - _Depends: 1.1_
 - [x] 1.3 为翻译层错误/中止/重试/成功补充单元测试
   - 覆盖:终态错误产出携真实文案的错误帧、`errorMessage` 缺省时用回退、中止产出中止帧而非错误、`willRetry===true` 与 `stopReason==="stop"`/末项 toolResult 维持正常结束、已开启 text part 时失败先收尾、message_update 错误子事件透传真实文案与中止分支、auto-retry 事件仍产出重试反馈帧
-  - 完成判据:`pnpm --filter @pi-web/server test`(翻译层相关)新增用例全绿;既有表驱动用例不回归(新鲜运行输出)
+  - 完成判据:`pnpm --filter @blksails/server test`(翻译层相关)新增用例全绿;既有表驱动用例不回归(新鲜运行输出)
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1, 4.3, 5.1, 5.2, 5.4_
   - _Depends: 1.2_
 
 - [ ] 2. 前端:错误呈现
 - [x] 2.1 新增无状态错误提示元件并从 UI 包导出 (P)
-  - 新增展示型元件:接收错误信息文本,空则不渲染,非空以 destructive 配色 + `role="alert"` 展示文本(允许必要截断,不替换为无意义占位);从 `@pi-web/ui` 导出
+  - 新增展示型元件:接收错误信息文本,空则不渲染,非空以 destructive 配色 + `role="alert"` 展示文本(允许必要截断,不替换为无意义占位);从 `@blksails/ui` 导出
   - 完成判据:元件单测覆盖"空→不渲染""非空→alert 角色+文本";`tsc --noEmit`(ui)通过
   - _Requirements: 1.2, 2.4, 4.2_
   - _Boundary: packages/ui/src/elements/chat-error.tsx_
@@ -31,13 +31,13 @@
   - _Depends: 2.1_
 - [x] 2.3 为前端错误呈现补充组件测试(含部分消息保留验证)
   - 当会话处于错误态时断言:渲染错误元件且文本为错误信息;此前已渲染的助手消息内容仍可见(验证错误信号不丢弃部分消息);无错误态/中止态时不渲染错误
-  - 完成判据:`pnpm --filter @pi-web/ui test`(pi-chat 相关)新增用例全绿(新鲜运行输出)
+  - 完成判据:`pnpm --filter @blksails/ui test`(pi-chat 相关)新增用例全绿(新鲜运行输出)
   - _Requirements: 1.2, 1.4, 2.4, 4.2, 5.4_
   - _Depends: 2.2_
 
 - [ ] 3. 集成回归
 - [x] 3.1 全量回归与类型校验
-  - 运行 `@pi-web/server` 与 `@pi-web/ui` 全量测试 + 两包 `tsc --noEmit`,确认正常对话与其它事件翻译不回归
+  - 运行 `@blksails/server` 与 `@blksails/ui` 全量测试 + 两包 `tsc --noEmit`,确认正常对话与其它事件翻译不回归
   - 完成判据:两包 `test` 与 `typecheck` 均以新鲜运行输出证明通过
   - _Requirements: 5.1, 5.2, 5.4_
   - _Depends: 1.3, 2.3_

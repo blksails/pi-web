@@ -2,7 +2,7 @@
  * web-ext 契约 — 描述符的「可序列化」部分(SlotKey 枚举 + 声明式 config + artifact 声明)。
  *
  * 注意分层:携带 React 组件的运行时 `WebExtension`(slots/renderers/contributions 的实现)
- * 定义在 `@pi-web/web-kit`(可依赖 React);本文件只放与传输/校验相关、不含组件的形状。
+ * 定义在 `@blksails/web-kit`(可依赖 React);本文件只放与传输/校验相关、不含组件的形状。
  */
 import { z } from "zod";
 import { WebExtensionCapabilitySchema } from "./manifest.js";

@@ -5,7 +5,7 @@ import {
   emitManifest,
   signManifest,
 } from "../build/manifest-emit.js";
-import { WebExtensionManifestSchema } from "@pi-web/protocol";
+import { WebExtensionManifestSchema } from "@blksails/protocol";
 
 describe("manifest-emit", () => {
   it("computeIntegrity 产出 sha384- 前缀且确定", () => {

@@ -1,5 +1,5 @@
 /**
- * `@pi-web/tool-kit` 工具编译器 — 把声明式 {@link ToolSpec} 包装成 pi ToolDefinition。
+ * `@blksails/tool-kit` 工具编译器 — 把声明式 {@link ToolSpec} 包装成 pi ToolDefinition。
  *
  * 本文件属于 **runtime 入口**(`./runtime` 子入口),禁止从主入口 `src/index.ts`
  * 直接/间接引入。原因:它导入 `@earendil-works/pi-coding-agent`(`defineTool`)与
@@ -23,7 +23,7 @@ import type {
   AgentToolResult,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import type { AttachmentToolContext } from "@pi-web/agent-kit";
+import type { AttachmentToolContext } from "@blksails/agent-kit";
 import { checkRequiredVars } from "./var-resolver.js";
 import { runEndpoint } from "./endpoint-adapter.js";
 import { normalizeImageDataUri } from "./normalize-image.js";

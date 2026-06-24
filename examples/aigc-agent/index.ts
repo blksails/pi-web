@@ -1,5 +1,5 @@
 /**
- * aigc-agent — `@pi-web/tool-kit` AIGC 生成工具的**端到端示例 agent**(spec aigc-generation-tools,task 6)。
+ * aigc-agent — `@blksails/tool-kit` AIGC 生成工具的**端到端示例 agent**(spec aigc-generation-tools,task 6)。
  *
  * 装配 `buildAigcTools()` 产出的 customTools(`text_to_image` / `image_edit`)演示完整接入:
  *  - 用户发文本 prompt → 模型调 `text_to_image({ prompt })` → provider 生成 → 产物经 attachment
@@ -17,11 +17,11 @@
  * NOTE: `model` 故意省略 → 继承 ~/.pi/agent/settings.json 的 defaultProvider/defaultModel,
  * 开箱即用于任意 pi 登录(与 hello-agent 同姿态)。
  *
- * 工具执行层经 `@pi-web/tool-kit/runtime` 子入口引入(含 pi SDK 值导入,仅 jiti 子进程加载,
+ * 工具执行层经 `@blksails/tool-kit/runtime` 子入口引入(含 pi SDK 值导入,仅 jiti 子进程加载,
  * 不进 Next 服务端 bundle)。
  */
-import { defineAgent } from "@pi-web/agent-kit";
-import { buildAigcTools } from "@pi-web/tool-kit/runtime";
+import { defineAgent } from "@blksails/agent-kit";
+import { buildAigcTools } from "@blksails/tool-kit/runtime";
 
 export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。

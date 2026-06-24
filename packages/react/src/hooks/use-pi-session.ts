@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { UIMessage } from "ai";
-import type { CreateSessionRequest } from "@pi-web/protocol";
+import type { CreateSessionRequest } from "@blksails/protocol";
 import {
   createPiClient,
   type PiClient,

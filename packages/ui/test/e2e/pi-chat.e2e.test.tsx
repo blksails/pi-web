@@ -3,7 +3,7 @@ import * as React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { PiChatBasic } from "../../src/chat/pi-chat-basic.js";
-import type { UseExtensionUIResult } from "@pi-web/react";
+import type { UseExtensionUIResult } from "@blksails/react";
 import {
   mockSession,
   mockControls,

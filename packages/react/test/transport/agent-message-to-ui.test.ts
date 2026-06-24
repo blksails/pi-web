@@ -3,7 +3,7 @@
  * 孤立 toolResult 降级、未知 role 跳过、空输入、id 稳定性。
  */
 import { describe, it, expect } from "vitest";
-import type { AgentMessage } from "@pi-web/protocol";
+import type { AgentMessage } from "@blksails/protocol";
 import { agentMessagesToUiMessages } from "../../src/transport/agent-message-to-ui.js";
 
 /** 构造测试消息(放宽类型,聚焦转换逻辑)。 */

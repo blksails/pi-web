@@ -110,7 +110,7 @@ export default {
 2. `(ctx) => 定义对象` 函数 → 调用后映射。
 3. 直接 export `createRuntime`(`CreateAgentSessionRuntimeFactory`)→ 最大控制,直接使用。
 
-> 提供可选的 `defineAgent()` 帮助函数做类型提示(从 pi-web 的轻量 `@pi-web/agent-kit` 包导出),
+> 提供可选的 `defineAgent()` 帮助函数做类型提示(从 pi-web 的轻量 `@blksails/agent-kit` 包导出),
 > 但运行时**不强制依赖**——只要 default export 结构匹配即可。
 
 #### 3.0.3 Bootstrap Runner(`lib/pi/runner.ts`,被 spawn 的子进程入口)
@@ -470,11 +470,11 @@ pi 扩展是 **运行时加载的 TS 模块**(pi 内置 `jiti`,无需预编译),
 
 | 包 | 运行环境 | 职责 | 主要导出 |
 |---|---|---|---|
-| **`@pi-web/protocol`** | 同构(types) | 协议契约:RPC 类型、SSE 事件、UIMessage data-part schema、REST DTO | 纯 TS 类型 + zod schema,**零运行时依赖** |
-| **`@pi-web/agent-kit`** | Node(用户写 agent) | `defineAgent()` 类型帮助,给用户 `index.ts` 用 | `defineAgent`, `AgentDefinition` 类型 |
-| **`@pi-web/server`** | Node | 无框架后端引擎(spawn/桥/registry/源解析) | `PiRpcProcess`, `PiSession`, `SessionRegistry`, `AgentSourceResolver`, `createPiWebHandler`, `defineSandboxProvider` |
-| **`@pi-web/react`** | 浏览器 | headless React 层(hooks + transport),无样式 | `PiProvider`, `usePiSession`, `usePiControls`, `useExtensionUI`, `PiTransport`, `createPiClient` |
-| **`@pi-web/ui`** | 浏览器 | shadcn/AI-Elements 组件,有样式 | `<PiChat>` 及细粒度组件;同时发 **shadcn registry**(`npx pi-web add chat`) |
+| **`@blksails/protocol`** | 同构(types) | 协议契约:RPC 类型、SSE 事件、UIMessage data-part schema、REST DTO | 纯 TS 类型 + zod schema,**零运行时依赖** |
+| **`@blksails/agent-kit`** | Node(用户写 agent) | `defineAgent()` 类型帮助,给用户 `index.ts` 用 | `defineAgent`, `AgentDefinition` 类型 |
+| **`@blksails/server`** | Node | 无框架后端引擎(spawn/桥/registry/源解析) | `PiRpcProcess`, `PiSession`, `SessionRegistry`, `AgentSourceResolver`, `createPiWebHandler`, `defineSandboxProvider` |
+| **`@blksails/react`** | 浏览器 | headless React 层(hooks + transport),无样式 | `PiProvider`, `usePiSession`, `usePiControls`, `useExtensionUI`, `PiTransport`, `createPiClient` |
+| **`@blksails/ui`** | 浏览器 | shadcn/AI-Elements 组件,有样式 | `<PiChat>` 及细粒度组件;同时发 **shadcn registry**(`npx pi-web add chat`) |
 | **`@pi-web/embed`** | 浏览器 | 非 React 集成:Web Component + iframe widget | `<pi-web-chat>` 自定义元素、`mountPiChat(el, opts)` |
 | **`pi-web`(app)** | Node | 开箱即用的 Next.js 整站(消费上面所有包) | 可部署产品 / 参考实现 |
 
@@ -482,8 +482,8 @@ pi 扩展是 **运行时加载的 TS 模块**(pi 内置 `jiti`,无需预编译),
 > 这样后端可独立于前端,前端可独立于框架,协议可独立于实现。
 
 ### 13.2 语言无关的 HTTP/SSE 协议(最底层开放面)
-`@pi-web/server` 暴露的 REST + SSE(§3.3 的接口)**本身就是稳定契约**,任何语言/框架可直接对接,
-不需要用我们的前端。`@pi-web/protocol` 提供 OpenAPI + SSE 事件 schema。核心面:
+`@blksails/server` 暴露的 REST + SSE(§3.3 的接口)**本身就是稳定契约**,任何语言/框架可直接对接,
+不需要用我们的前端。`@blksails/protocol` 提供 OpenAPI + SSE 事件 schema。核心面:
 - `POST /sessions`、`GET /sessions/:id/stream`(SSE)、`POST /sessions/:id/{messages,steer,abort,...}`、
   `POST /sessions/:id/ui-response`、`GET /sessions/:id/{state,stats,messages,commands}`。
 - SSE 帧两类:**UIMessage chunks**(text/reasoning/tool/data-part,直接喂 AI SDK)+ **旁路控制事件**(extension UI、queue、stats、error)。
@@ -494,15 +494,15 @@ pi 扩展是 **运行时加载的 TS 模块**(pi 内置 `jiti`,无需预编译),
 
 | 方式 | 适用 | 怎么做 | 集成度/控制力 |
 |---|---|---|---|
-| **A. 组件级(React)** | React/Next 项目 | 装 `@pi-web/react`+`@pi-web/ui`,`<PiChat sessionUrl=.../>`;后端挂 `@pi-web/server` | 最高,主题/布局自定义 |
-| **B. Headless hooks** | 已有自研 UI 的 React 项目 | 只装 `@pi-web/react`,用 `usePiSession`+`PiTransport` 接自己组件 | 高,UI 全自控 |
+| **A. 组件级(React)** | React/Next 项目 | 装 `@blksails/react`+`@blksails/ui`,`<PiChat sessionUrl=.../>`;后端挂 `@blksails/server` | 最高,主题/布局自定义 |
+| **B. Headless hooks** | 已有自研 UI 的 React 项目 | 只装 `@blksails/react`,用 `usePiSession`+`PiTransport` 接自己组件 | 高,UI 全自控 |
 | **C. Web Component / iframe** | 非 React(Vue/Svelte/纯 HTML/后台系统) | `@pi-web/embed`:`<pi-web-chat src endpoint token>` 或 `<script>`+`mountPiChat()` | 中,样式靠 CSS 变量/部件穿透 |
-| **D. 纯协议** | 任意栈(Python/Go 前端) | 只用 `@pi-web/server` 的 REST/SSE,自建 UI | 后端复用,前端自建 |
+| **D. 纯协议** | 任意栈(Python/Go 前端) | 只用 `@blksails/server` 的 REST/SSE,自建 UI | 后端复用,前端自建 |
 | **E. 整站** | 想直接要产品 | 部署 `pi-web` app,配置 agent 源 | 开箱即用 |
 
 ### 13.4 pi-web 自身的扩展点(区别于"pi 扩展")
 
-**(1) 后端可插拔(`@pi-web/server` 选项 / 中间件):**
+**(1) 后端可插拔(`@blksails/server` 选项 / 中间件):**
 - `authResolver(req) → { userId, tenantId } | 401`:鉴权与多租户归属。
 - `authorizeSession(ctx) → boolean`:谁能对某 session 发命令。
 - **`agentHostProvider`**(★,原 `sandboxProvider` 泛化):可插拔的"agent 跑在哪 + RPC 通道怎么连"。
@@ -524,11 +524,11 @@ pi 扩展是 **运行时加载的 TS 模块**(pi 内置 `jiti`,无需预编译),
 - `slots`:`<PiChat>` 暴露 header/footer/sidebar/messageActions 等插槽。
 - 主题:全部走 shadcn CSS 变量,继承宿主项目主题。
 
-**(4) Agent 侧(已有,见 §3.0.2 / §10):** 用户用 `@pi-web/agent-kit` 的 `defineAgent()` 定义 model/tools/customTools/extensions/skills/prompts——这是"扩展 agent 能力"的主入口,与 pi 原生扩展体系完全一致。
+**(4) Agent 侧(已有,见 §3.0.2 / §10):** 用户用 `@blksails/agent-kit` 的 `defineAgent()` 定义 model/tools/customTools/extensions/skills/prompts——这是"扩展 agent 能力"的主入口,与 pi 原生扩展体系完全一致。
 
 ### 13.5 版本与稳定性
-- `@pi-web/protocol` 语义化版本即兼容契约;SSE 帧带 `protocolVersion`,前后端协商。
-- pi 协议本身随 `@earendil-works/pi-coding-agent` 演进 → `@pi-web/server` 锁定/适配 pi 版本范围,对上层屏蔽差异。
+- `@blksails/protocol` 语义化版本即兼容契约;SSE 帧带 `protocolVersion`,前后端协商。
+- pi 协议本身随 `@earendil-works/pi-coding-agent` 演进 → `@blksails/server` 锁定/适配 pi 版本范围,对上层屏蔽差异。
 
 ---
 
@@ -553,7 +553,7 @@ pi 扩展是 **运行时加载的 TS 模块**(pi 内置 `jiti`,无需预编译),
 现在 `createPiWebHandler` 的内部就按"网关只转发、状态在 channel 背后"组织,边界清晰即可。
 
 ### 14.2 多 agent 管理(在 §13 之上加一层 orchestration)
-- 新增 `AgentCatalog`(在 `@pi-web/server` 之上,可能是 `@pi-web/cloud`):多个 `AgentDefinition`/源的注册、版本、权限、分享。
+- 新增 `AgentCatalog`(在 `@blksails/server` 之上,可能是 `@pi-web/cloud`):多个 `AgentDefinition`/源的注册、版本、权限、分享。
 - UI:agent 切换器 + 多会话(fleet)面板;一个用户对多 agent、多 host 并发会话。
 - pi 已具备的基元可复用:`new_session`/`fork`/`clone`/`switch_session`、`get_session_stats`(计费)、`set_session_name`。
 

@@ -4,9 +4,9 @@
 
 **Purpose**:为 agent 作者提供一个可复用的「最小化默认预设」,一行即可让自定义 agent 以"无工具、无 skills、无系统扩展"的最小基线启动;并补齐当前缺失的"真正关闭系统扩展"能力,辅以 `allowExtensions` 白名单按名放行个别系统扩展。
 
-**Users**:用 pi SDK 编写 `index.ts` 自定义 agent 的作者,以及 `@pi-web/server` 运行时(消费 `AgentDefinition`)。
+**Users**:用 pi SDK 编写 `index.ts` 自定义 agent 的作者,以及 `@blksails/server` 运行时(消费 `AgentDefinition`)。
 
-**Impact**:在 `@pi-web/agent-kit` 公共表面新增预设产物与 `allowExtensions` 字段;在 `@pi-web/server` 运行时映射中落实扩展关闭/白名单语义。现状下 `extensions: []` 无法关闭 disk 发现的系统扩展,本特性修复该语义缺口。
+**Impact**:在 `@blksails/agent-kit` 公共表面新增预设产物与 `allowExtensions` 字段;在 `@blksails/server` 运行时映射中落实扩展关闭/白名单语义。现状下 `extensions: []` 无法关闭 disk 发现的系统扩展,本特性修复该语义缺口。
 
 ### Goals
 - 导出可复用的最小化预设(常量 + 工厂),一行启用且字段可覆盖。
@@ -23,8 +23,8 @@
 ## Boundary Commitments
 
 ### This Spec Owns
-- `@pi-web/agent-kit` 公共表面:最小化预设产物(`minimalAgentPreset`、`defineMinimalAgent`)与 `AgentDefinition.allowExtensions` 字段及其类型。
-- `@pi-web/server` 运行时:`allowExtensions` → SDK 资源加载层(`noExtensions` / `extensionsOverride`)的映射语义。
+- `@blksails/agent-kit` 公共表面:最小化预设产物(`minimalAgentPreset`、`defineMinimalAgent`)与 `AgentDefinition.allowExtensions` 字段及其类型。
+- `@blksails/server` 运行时:`allowExtensions` → SDK 资源加载层(`noExtensions` / `extensionsOverride`)的映射语义。
 - 上述能力的示例与单元/集成测试。
 
 ### Out of Boundary
@@ -44,8 +44,8 @@
 ## Architecture
 
 ### Existing Architecture Analysis
-- `@pi-web/agent-kit` 为**类型/数据声明包**,零强制运行时依赖;`AgentDefinition`(`src/types.ts`)是作者面向的公共契约,`defineAgent`(`src/index.ts`)为恒等帮助。
-- `@pi-web/server` **不依赖** agent-kit,通过结构镜像 `agent-definition.ts` 复刻同一形状,并在 `option-mapper.ts` 把定义拆为 `resourceLoaderOptions`(资源类)与 session 字段两路,组装 `buildRuntimeFactory`。
+- `@blksails/agent-kit` 为**类型/数据声明包**,零强制运行时依赖;`AgentDefinition`(`src/types.ts`)是作者面向的公共契约,`defineAgent`(`src/index.ts`)为恒等帮助。
+- `@blksails/server` **不依赖** agent-kit,通过结构镜像 `agent-definition.ts` 复刻同一形状,并在 `option-mapper.ts` 把定义拆为 `resourceLoaderOptions`(资源类)与 session 字段两路,组装 `buildRuntimeFactory`。
 - 现有缺口:`extensions` 仅"追加"(`additionalExtensionPaths`/`extensionFactories`),无关闭;SDK 实际支持 `noExtensions` 与 `extensionsOverride`,但未在公共表面暴露。
 
 ### Architecture Pattern & Boundary Map
@@ -70,8 +70,8 @@ flowchart LR
 | Layer | Choice / Version | Role in Feature | Notes |
 |-------|------------------|-----------------|-------|
 | Frontend / CLI | — | 不涉及 | |
-| Backend / Services | `@pi-web/server`(TS strict) | `allowExtensions` → `resourceLoaderOptions` 映射 | `option-mapper.ts` + 镜像类型 |
-| Agent 套件 | `@pi-web/agent-kit`(TS strict) | 预设产物 + `allowExtensions` 字段 | 零强制运行时依赖 |
+| Backend / Services | `@blksails/server`(TS strict) | `allowExtensions` → `resourceLoaderOptions` 映射 | `option-mapper.ts` + 镜像类型 |
+| Agent 套件 | `@blksails/agent-kit`(TS strict) | 预设产物 + `allowExtensions` 字段 | 零强制运行时依赖 |
 | Infrastructure / Runtime | `@earendil-works/pi-coding-agent` `^0.79.6` | 提供 `noExtensions`/`extensionsOverride` | peer 依赖 |
 
 ## File Structure Plan

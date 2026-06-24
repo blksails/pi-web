@@ -3,7 +3,7 @@ import { renderHook } from "@testing-library/react";
 import { useSuggestions } from "../../src/hooks/use-suggestions.js";
 import type { Suggestion } from "../../src/hooks/use-suggestions.js";
 import type { UsePiControlsResult } from "../../src/hooks/use-pi-controls.js";
-import type { RpcSlashCommand } from "@pi-web/protocol";
+import type { RpcSlashCommand } from "@blksails/protocol";
 
 function makeControls(
   overrides: Partial<UsePiControlsResult> = {},

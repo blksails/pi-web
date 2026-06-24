@@ -1,5 +1,5 @@
 {
-  "name": "@pi-web/protocol",
+  "name": "@blksails/protocol",
   "version": "0.1.0",
   "description": "pi-web 全项目唯一契约根:零运行时依赖(除 zod)、同构、纯 TypeScript 的协议包",
   "type": "module",
@@ -13,14 +13,7 @@
     "src"
   ],
   "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.ts",
-        "import": "./dist/index.js"
-      }
-    },
-    "main": "./dist/index.js",
-    "types": "./dist/index.d.ts"
+    "access": "public"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

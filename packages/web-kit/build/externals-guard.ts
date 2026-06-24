@@ -1,7 +1,7 @@
 /**
  * pi-web build — externals 强制(任务 2.2 / Req 6.4)。
  *
- * 产物必须把 react/react-dom/@pi-web/web-kit/ai 当 external(运行时经宿主 import map
+ * 产物必须把 react/react-dom/@blksails/web-kit/ai 当 external(运行时经宿主 import map
  * 解析到单例)。若 bundle 内联了这些单例,会触发运行时 "invalid hook call" 等灾难。
  * 本守卫扫描产物代码中的内联签名,命中即抛 `ExternalsGuardError`,build 失败。
  */

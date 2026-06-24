@@ -6,7 +6,7 @@
 
 **Users**:pi agent 作者(发结构化 UI 数据)、宿主集成者(挂 `<PiChat>` 即得)、宿主开发者(经注册表扩展自有组件)。
 
-**Impact**:在 pi-web 自有传输契约层(`transport/*`)新增一个 `data-pi-ui` part,复用既有 SSE/transport/`useChat`/`PartRenderer`/`RendererRegistry` 管线;在 `@pi-web/ui` 新增内置组件库 + 组件注册表 + 沙箱解释器 + part 渲染器。**不新增传输机制,不改 pi 原生 `extension-ui.ts`。**
+**Impact**:在 pi-web 自有传输契约层(`transport/*`)新增一个 `data-pi-ui` part,复用既有 SSE/transport/`useChat`/`PartRenderer`/`RendererRegistry` 管线;在 `@blksails/ui` 新增内置组件库 + 组件注册表 + 沙箱解释器 + part 渲染器。**不新增传输机制,不改 pi 原生 `extension-ui.ts`。**
 
 ### Goals
 - agent 经单一 `data-pi-ui` part 声明 UI,前端零配置渲染。
@@ -154,4 +154,4 @@ registry.registerDataPartRenderer("data-pi-ui", PiUiPart)
 - **分派单测**(扩展 `part-renderer.test.tsx`):`data-pi-ui`(builtin 命中/未命中、sandbox)经注册表分派。
 - **e2e**(`ui/test/e2e/pi-ui.e2e.test.tsx`):`<PiChat>` 注入含 `data-pi-ui` 的消息,断言内置 metric 卡与 sandbox 表格渲染,且危险 href 不产出 `<a>`。
 
-完成判据:worktree 内 `pnpm --filter @pi-web/protocol test`、`pnpm --filter @pi-web/ui test`、两包 `typecheck` 均以新鲜运行输出通过。
+完成判据:worktree 内 `pnpm --filter @blksails/protocol test`、`pnpm --filter @blksails/ui test`、两包 `typecheck` 均以新鲜运行输出通过。

@@ -1,7 +1,7 @@
 /**
- * `@pi-web/tool-kit` 声明式工具引擎的类型契约。
+ * `@blksails/tool-kit` 声明式工具引擎的类型契约。
  *
- * 本文件是**纯类型**模块:零运行时代码、零值导入,可从主入口 `@pi-web/tool-kit` 安全导出
+ * 本文件是**纯类型**模块:零运行时代码、零值导入,可从主入口 `@blksails/tool-kit` 安全导出
  * 而不把任何 node/SDK 运行时拉进前端 bundle(守 webpack externals 边界,design Boundary)。
  *
  * 两层模型(由 variants 重构拍平而来):

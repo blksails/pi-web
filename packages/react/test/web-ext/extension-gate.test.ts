@@ -11,7 +11,7 @@ import {
 import {
   canonicalManifestBytes,
   type WebExtensionManifest,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 function signWith(secret: string, m: Omit<WebExtensionManifest, "signature">): string {
   return createHmac("sha256", secret).update(canonicalManifestBytes(m)).digest("base64");

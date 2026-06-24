@@ -10,7 +10,7 @@
   - 在协议包新增 attachment DTO 模块:`Attachment{ id, name, mimeType, size, origin("upload"|"tool-output"), sessionId, createdAt }` 的 zod schema + 推导类型,以及上传响应 `{ attachment, displayUrl }` 的 schema/类型。
   - schema 强制 `size` 为非负整数、`createdAt` 为 ISO 字符串;`origin` 含 `tool-output` 取值(为下游预留)。
   - 经协议包 barrel 导出,沿用既有 `rest-dto.ts` 的 `zod schema + z.infer` 同风格。
-  - 观察完成:协议包通过 typecheck,可从 `@pi-web/protocol` 导入 `AttachmentSchema`/`Attachment` 与上传响应类型,schema 对缺字段/负 size 校验失败。
+  - 观察完成:协议包通过 typecheck,可从 `@blksails/protocol` 导入 `AttachmentSchema`/`Attachment` 与上传响应类型,schema 对缺字段/负 size 校验失败。
   - _Requirements: 2.1, 2.2, 3.2_
   - _Boundary: Attachment DTO_
 
@@ -92,7 +92,7 @@
 
 - [x] 3.3 暴露注入路由工厂并从协议/服务包导出
   - 提供 `createAttachmentRoutes(store)` 返回注入路由数组(上传+分发),与既有 `createConfigRoutes` 同范式;经服务包 barrel 导出工厂、store 类型/配置工厂,以及受认可的复用面 `AttachmentStore`(门面类型)/`PutInput`/`BlobStore`/`AttachmentRegistry`/`LocalFsBlobBackend`/`BlobMeta`/`UrlSigner`/`attachmentStoreConfigFromEnv` 供下游在子进程内组合实例化。
-  - 观察完成:可从 `@pi-web/server` 导入 `createAttachmentRoutes`、store 配置工厂与上述复用面类型/类,返回的路由可直接放入 `createPiWebHandler({ routes })`。
+  - 观察完成:可从 `@blksails/server` 导入 `createAttachmentRoutes`、store 配置工厂与上述复用面类型/类,返回的路由可直接放入 `createPiWebHandler({ routes })`。
   - _Requirements: 1.8, 7.1_
   - _Depends: 3.1, 3.2, 2.5_
   - _Boundary: attachment-routes_

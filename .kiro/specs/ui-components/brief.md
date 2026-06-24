@@ -1,11 +1,11 @@
 # Brief — ui-components
 
-> 语言:zh。权威设计:`PLAN.md` §1(AI Elements)、§4(渲染映射)、§13.1(`@pi-web/ui`)、§13.4(渲染器注册表/插槽)。
+> 语言:zh。权威设计:`PLAN.md` §1(AI Elements)、§4(渲染映射)、§13.1(`@blksails/ui`)、§13.4(渲染器注册表/插槽)。
 
 ## 问题
 - **谁**:想快速拥有成品聊天 UI 的集成方,以及本项目整站。
 - **现状**:有了 headless hooks/transport,但需要把 AI Elements 装配成可直接用的 pi 聊天组件,并能渲染 pi 特有部件(工具/思考/权限/widget)。
-- **改变**:提供有样式、可主题化、可扩展的 `@pi-web/ui` 组件集 + 渲染器注册表。
+- **改变**:提供有样式、可主题化、可扩展的 `@blksails/ui` 组件集 + 渲染器注册表。
 
 ## 方法 / 范围
 - **`<PiChat>`**:基于 AI Elements `Conversation/Message/Response/Reasoning/Tool/PromptInput/Actions` + `useChat(PiTransport)` 的拖入组件。

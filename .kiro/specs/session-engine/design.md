@@ -44,14 +44,14 @@
 
 ### Allowed Dependencies
 
-- **上游 spec(运行时)**:`@pi-web/protocol`(`AgentEvent`/`SseFrame`/`DataPart`/`protocolVersion` 类型,单一事实来源);`rpc-channel` 的 `PiRpcChannel` 接口与 `PiRpcProcess` 暴露的事件/命令能力;`agent-source-resolver` 的 `ResolvedSource` 类型。
+- **上游 spec(运行时)**:`@blksails/protocol`(`AgentEvent`/`SseFrame`/`DataPart`/`protocolVersion` 类型,单一事实来源);`rpc-channel` 的 `PiRpcChannel` 接口与 `PiRpcProcess` 暴露的事件/命令能力;`agent-source-resolver` 的 `ResolvedSource` 类型。
 - **运行时**:Node `>=22.19.0` 内置 `node:events`(`EventEmitter`)、`node:timers`(idle 计时)、`node:process`(`SIGTERM` 监听,仅 `SessionManager` 内)。
-- **依赖方向**:`protocol-contract ← rpc-channel ← session-engine`;`agent-source-resolver ← session-engine`;`session-engine ← http-api`。禁止反向。翻译层只依赖 `@pi-web/protocol` 与纯数据。
+- **依赖方向**:`protocol-contract ← rpc-channel ← session-engine`;`agent-source-resolver ← session-engine`;`session-engine ← http-api`。禁止反向。翻译层只依赖 `@blksails/protocol` 与纯数据。
 - **开发/测试**:`vitest`;集成/e2e 经 rpc-channel 的 stub agent 进程(`rpc-stub-process.mjs`)或真实 `pi --mode rpc`——不进运行时依赖。
 
 ### Revalidation Triggers
 
-- `@pi-web/protocol` 中 `AgentEvent` 子类型形状、SSE 帧/`data-part` 形状或 `protocolVersion` 承载约定变更。
+- `@blksails/protocol` 中 `AgentEvent` 子类型形状、SSE 帧/`data-part` 形状或 `protocolVersion` 承载约定变更。
 - `PiRpcChannel`/`PiRpcProcess` 的事件/命令/扩展 UI 成员签名变更。
 - `ResolvedSource` 形状变更。
 - `SessionStore` 接口成员或 `PiSession` 对外契约变更(影响 `http-api` 与未来远程存储实现)。
@@ -130,7 +130,7 @@ lib/pi/session/
 └── translate/
     ├── translate-event.ts     # ★ 纯函数:translateEvent(event, ctx) -> { frames, ctx }(逐事件→protocol SSE 帧)
     ├── translation-context.ts # TranslationContext 形状 + 初始化 + partId 分配 / step/text/reasoning 开闭状态推进(纯)
-    └── translate.types.ts      # 翻译层类型:TranslateResult、PartId、StepState(仅引用 @pi-web/protocol 帧类型)
+    └── translate.types.ts      # 翻译层类型:TranslateResult、PartId、StepState(仅引用 @blksails/protocol 帧类型)
 ```
 
 ### Test Structure
@@ -151,7 +151,7 @@ lib/pi/session/__tests__/
 
 ### Modified Files
 
-- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@pi-web/protocol` + rpc-channel + agent-source-resolver 模块与 `vitest` 纳入依赖——接线随仓库初始化处理,本 spec 创建模块自身文件与测试。
+- 无(greenfield 新模块)。若 monorepo 已存在 `package.json`,需将 `@blksails/protocol` + rpc-channel + agent-source-resolver 模块与 `vitest` 纳入依赖——接线随仓库初始化处理,本 spec 创建模块自身文件与测试。
 
 > 每文件单一职责。`translate/` 全为纯函数(无 I/O/进程/计时器),直接驱动表驱动单测;有状态逻辑集中在 `pi-session.ts` 与 `session-manager.ts`。
 
@@ -274,12 +274,12 @@ flowchart TD
 
 | Component | Layer | Intent | Req Coverage | Key Dependencies (P0/P1) | Contracts |
 |-----------|-------|--------|--------------|--------------------------|-----------|
-| translate-event.ts | translate (纯核心) | 单事件→protocol SSE 帧纯函数 | 4.1–4.12, 10.1 | @pi-web/protocol (P0) | Service |
-| translation-context.ts | translate (纯核心) | partId/step/text/reasoning 状态推进(纯) | 4.3, 4.12, 10.1 | @pi-web/protocol (P1) | State |
-| pi-session.ts | session (外壳) | 通道+广播+挂起表+缓存+转发+生命周期 | 1.2,1.3,2.x,3.x,5.x,6.x,7.x,10.2 | PiRpcChannel (P0), translateEvent (P0), @pi-web/protocol (P0), node:events/timers (P1) | Service, Event, State |
+| translate-event.ts | translate (纯核心) | 单事件→protocol SSE 帧纯函数 | 4.1–4.12, 10.1 | @blksails/protocol (P0) | Service |
+| translation-context.ts | translate (纯核心) | partId/step/text/reasoning 状态推进(纯) | 4.3, 4.12, 10.1 | @blksails/protocol (P1) | State |
+| pi-session.ts | session (外壳) | 通道+广播+挂起表+缓存+转发+生命周期 | 1.2,1.3,2.x,3.x,5.x,6.x,7.x,10.2 | PiRpcChannel (P0), translateEvent (P0), @blksails/protocol (P0), node:events/timers (P1) | Service, Event, State |
 | session-store.ts | store | 存储接口 + 内存实现 | 9.1–9.6 | session.types (P0) | Service, State |
 | session-manager.ts | manager | 创建编排 + SIGTERM 优雅停机 + idle 编排 | 1.1,1.4,1.5,8.x,9.3,9.4,9.6 | SessionStore (P0), PiSession (P0), ResolvedSource (P0), node:process (P1) | Service |
-| session.types.ts · session.errors.ts | session | 会话层类型与错误 | 1.3,1.5,2.4,3.2,5.3,6.3,9.5 | @pi-web/protocol (P1) | State |
+| session.types.ts · session.errors.ts | session | 会话层类型与错误 | 1.3,1.5,2.4,3.2,5.3,6.3,9.5 | @blksails/protocol (P1) | State |
 
 ### translate 层(纯函数核心)
 
@@ -318,13 +318,13 @@ flowchart TD
 > ¹ 更新(2026-06-20):`tool_execution_update` 原产 `data-part(data-pi-tool-partial)`;该 data-part 已移除,改产 `tool-output-available`(增可选 `preliminary` 字段)喂同一工具卡,避免在消息流里堆叠裸 JSON 卡。例外:当 `partialResult.details` 携约定 key `__piWebUi`(UiSpec)时仍产 `data-pi-ui`(server-driven UI 通道)。详见 `tool-call-ui-redesign` spec。
 
 **Dependencies**
-- External: `@pi-web/protocol` — `AgentEvent`/`SseFrame`/`DataPart`/`protocolVersion` 类型与帧形状 (P0)
+- External: `@blksails/protocol` — `AgentEvent`/`SseFrame`/`DataPart`/`protocolVersion` 类型与帧形状 (P0)
 
 **Contracts**: Service [x]
 
 ##### Service Interface
 ```typescript
-import type { AgentEvent, SseFrame } from "@pi-web/protocol";
+import type { AgentEvent, SseFrame } from "@blksails/protocol";
 import type { TranslationContext } from "./translation-context";
 
 export interface TranslateResult {
@@ -384,7 +384,7 @@ export function translateEvent(
 - Inbound: `http-api` — 订阅、命令转发、扩展 UI 回复 (P0)
 - Inbound: `SessionManager` — 构造、stop 编排 (P0)
 - External: `PiRpcChannel`(rpc-channel)— 命令/事件/扩展 UI/退出 (P0)
-- External: `@pi-web/protocol` — 帧/事件类型 (P0)
+- External: `@blksails/protocol` — 帧/事件类型 (P0)
 - Internal: `translateEvent` — 事件翻译 (P0);`node:events`/`node:timers` (P1)
 
 **Contracts**: Service [x] / Event [x] / State [x]
@@ -395,7 +395,7 @@ import type { PiRpcChannel } from "<rpc-channel>/pi-rpc-channel";
 import type { ResolvedSource } from "<agent-source-resolver>/source/types";
 import type {
   SseFrame, RpcResponse, RpcExtensionUIResponse,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 export type SessionId = string;
 export type SessionStatus = "active" | "stopping" | "stopped";
@@ -451,7 +451,7 @@ export interface CachedState {
   readonly updatedAt: number;
 }
 ```
-> 命令方法入参以 `unknown` 占位;精确入参/返回子类型取自 `@pi-web/protocol` 的 `RpcCommand`/`RpcResponse` 判别联合(由 rpc-channel 命令方法定义),`PiSession` 不重定义负载形状。
+> 命令方法入参以 `unknown` 占位;精确入参/返回子类型取自 `@blksails/protocol` 的 `RpcCommand`/`RpcResponse` 判别联合(由 rpc-channel 命令方法定义),`PiSession` 不重定义负载形状。
 
 - Preconditions:命令/订阅在 `status==="active"` 时有效;否则以 `SessionStoppedError` 拒绝。
 - Postconditions:`stop()` resolve 后 `status==="stopped"`、挂起表/缓存清空、通道已关闭、订阅者已收 end;再次 `stop()` 无副作用(Req 7.4)。
@@ -560,7 +560,7 @@ export interface SessionManager {
 ### Data Contracts & Integration
 
 - **核心对外契约**:`PiSession`(订阅/转发/生命周期)与 `SessionStore`(注册检索),是本 spec 对 `http-api` 的唯一接口面。
-- **帧形状**:翻译产出的 `SseFrame` 一律取自 `@pi-web/protocol`,本 spec 不重定义(单一事实来源);序列化/SSE 编码归 `http-api`。
+- **帧形状**:翻译产出的 `SseFrame` 一律取自 `@blksails/protocol`,本 spec 不重定义(单一事实来源);序列化/SSE 编码归 `http-api`。
 - **会话标识**:`sessionId`(字符串,manager 生成,实现自由如 UUID)。
 - **挂起表/缓存/翻译上下文**:进程内内存,随会话生命周期存在,停止即清空(Req 5.4/7.x)。
 - **存储数据**:`InMemorySessionStore` 的 `Map<sessionId, PiSession>`;未来远程实现同接口替换(Req 9.6)。

@@ -240,14 +240,14 @@
 > 本节记录已落地的代码改动。`pnpm -r typecheck` + app `tsc` 全绿;新增/既有 config 测试全过
 > (server config 49 / protocol config 19 / ui 298 / server http 74)。
 
-### 协议层(`@pi-web/protocol`)
+### 协议层(`@blksails/protocol`)
 - **新增** `src/config/domains/sandbox.ts`:`sandboxConfigSchema`(zod,嵌套 network/filesystem,
   全字段可选以支持稀疏覆盖)+ `sandboxFormSchema`(经 `zodToFormSchema`)。生成的字段:
   `enabled→boolean`、`network→object{allowedDomains,deniedDomains:stringList}`、
   `filesystem→object{allowRead,allowWrite,denyRead,denyWrite:stringList}`,分组 general/network/filesystem。
 - **改** `src/config/index.ts`:`ConfigDomainId += "sandbox"`,`CONFIG_FORM_SCHEMAS.sandbox`,导出 domain。
 
-### 服务层(`@pi-web/server`)
+### 服务层(`@blksails/server`)
 - **改** `src/config/config-routes.ts`:`DOMAIN_SCHEMAS.sandbox = sandboxConfigSchema` ——
   **方案 A**:通用 `GET/PUT /config/sandbox` 直接读写 `<agentDir>/sandbox.json`(= pi-sandbox 全局配置)。
 - **新增** `src/config/sandbox-project-routes.ts` `createSandboxProjectRoutes({defaultCwd, allowedRoots?, adminPolicy?})`——
@@ -262,7 +262,7 @@
 - app 既有 catch-all `app/api/config/[[...path]]/route.ts` 自动转发 `/api/config/sandbox` 与
   `/api/config/sandbox/project` 到 handler,无需改路由。
 
-### 前端表单层(`@pi-web/ui`)
+### 前端表单层(`@blksails/ui`)
 - **新增字段控件**(此前 `boolean/stringList/object` 无控件 → 会降级为只读 JSON):
   `src/config/fields/{boolean-field,string-list-field,object-field}.tsx`;在 `field-renderer.tsx`
   的 `DEFAULTS` 注册。`object-field` 经 `FieldRenderer` 递归渲染子字段。
@@ -385,7 +385,7 @@ rpc 下 `ctx.ui` 桥接为 `extension_ui_request`。当 agent 真的尝试越权
 - **控件**:`object-list-field.tsx`(对象数组增删 + oneOf 判别选择器 + 经 FieldRenderer 递归嵌套);
   `object-field.tsx` 增 variants 支持;`config-files-field.tsx` 改为——有 `$schema`(https)→ **客户端**拉取
   (按 URL 缓存,失败回退)→ `jsonSchemaToFormSchema` → `<SchemaForm>` 结构化渲染;否则原始 JSON。
-- **交付决策**:schema 拉取走**客户端**(适配器在 `@pi-web/protocol` 前后端共享;githubusercontent CORS `*` 已确认),
+- **交付决策**:schema 拉取走**客户端**(适配器在 `@blksails/protocol` 前后端共享;githubusercontent CORS `*` 已确认),
   避免服务端 SSRF 面与 `fileSchemas` 透传管线;`server/config/schema-fetch.ts` 作为可选服务端接缝保留(未接入)。
 - **活体验证**:真实 `proxy.json` schema → `profileConfig:objectList`,variants `type ⇒ proxy_server|autoSwitch`,
   `version:number / enabled:boolean / profileName:string`;`proxy.json` 在「独立配置文件」渲染为结构化表单

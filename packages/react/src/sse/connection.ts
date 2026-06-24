@@ -2,14 +2,14 @@
  * PiSessionConnection — 对每会话持有唯一 /stream fetch 订阅 + 帧分流。
  *
  * 用注入 fetch 订阅 GET /sessions/:id/stream(可带 headers / Last-Event-ID),经 TextDecoder
- * + parseSse 切帧,对每帧用 @pi-web/protocol SseFrameSchema.safeParse 校验:
+ * + parseSse 切帧,对每帧用 @blksails/protocol SseFrameSchema.safeParse 校验:
  *   - kind:"uiMessageChunk" → decodeUiMessageChunk → 写入 ChunkStream(喂 AI SDK useChat)
  *   - kind:"control"        → 写入 ControlStore(旁路,不污染消息流)
  * 记录 lastEventId(取 id: 行)供重连;结束帧(uiMessageChunk finish/abort)关闭 ChunkStream;
  * close() abort reader + 清理。同会话仅一条订阅。
  */
 import type { UIMessageChunk } from "ai";
-import { SseFrameSchema } from "@pi-web/protocol";
+import { SseFrameSchema } from "@blksails/protocol";
 import { parseSse } from "./parse-sse.js";
 import { decodeUiMessageChunk } from "./decode-chunk.js";
 import { ControlStore } from "./control-store.js";

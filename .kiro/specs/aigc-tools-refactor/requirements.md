@@ -2,7 +2,7 @@
 
 ## Introduction
 
-本规格重构 `@pi-web/tool-kit` 现有的 AIGC 生成工具(`aigc-generation-tools` spec 的产物)。原架构以 `Category` + `variants[]` 双层抽象承载工具与多 provider 变体,`model` 仅作自由字符串、`size`/`n` 等参数藏在不可见的 `userParams`。本次重构将其**拍平**:`model` 升为 LLM 可见的枚举入参并在运行时路由到对应执行声明;工具参数对齐 OpenAI Images API 并提升进可见 schema;工具按 OpenAI 端点拆分为 `image_generation` 与 `image_edit` 两个 snake_case 工具。多 provider 能力(DashScope / NewAPI / OpenRouter)保留,仅由以 `model` 为中心的路由表承载。
+本规格重构 `@blksails/tool-kit` 现有的 AIGC 生成工具(`aigc-generation-tools` spec 的产物)。原架构以 `Category` + `variants[]` 双层抽象承载工具与多 provider 变体,`model` 仅作自由字符串、`size`/`n` 等参数藏在不可见的 `userParams`。本次重构将其**拍平**:`model` 升为 LLM 可见的枚举入参并在运行时路由到对应执行声明;工具参数对齐 OpenAI Images API 并提升进可见 schema;工具按 OpenAI 端点拆分为 `image_generation` 与 `image_edit` 两个 snake_case 工具。多 provider 能力(DashScope / NewAPI / OpenRouter)保留,仅由以 `model` 为中心的路由表承载。
 
 消费者有两类:**LLM agent**(调用工具、选择 model、传参)与**集成开发者**(装配工具、消费导出 API)。两者的可观察契约——工具名、参数 schema、model 枚举、降级行为、导出符号——是本规格的需求对象。
 

@@ -1,6 +1,6 @@
 /**
  * Storybook 本地 mock 夹具 — 与 `test/fixtures/mock-session.ts` 等价,但不依赖 vitest
- * (`vi`),以便在 Storybook 运行时(浏览器)使用。消费 @pi-web/react 接口形状,不触达后端。
+ * (`vi`),以便在 Storybook 运行时(浏览器)使用。消费 @blksails/react 接口形状,不触达后端。
  */
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai";
 import type {
@@ -9,12 +9,12 @@ import type {
   UseExtensionUIResult,
   OperationState,
   ControlOperation,
-} from "@pi-web/react";
+} from "@blksails/react";
 import type {
   RpcSlashCommand,
   SessionStats,
   RpcExtensionUIRequest,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 const IDLE: OperationState = { pending: false, error: undefined };
 

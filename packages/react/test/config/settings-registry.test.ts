@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settingsFormSchema, authFormSchema } from "@pi-web/protocol";
+import { settingsFormSchema, authFormSchema } from "@blksails/protocol";
 import {
   createSettingsRegistry,
   type SettingsPanelDescriptor,

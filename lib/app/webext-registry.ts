@@ -6,7 +6,7 @@
  * 这是设计中「构建期集成」车道(对白名单/本地源),与「独立预构建 + import map」(对 git 源)
  * 并存;浏览器 e2e 走本车道以验证渲染闭环。
  */
-import type { WebExtension } from "@pi-web/web-kit";
+import type { WebExtension } from "@blksails/web-kit";
 import layoutExt from "../../examples/webext-layout-agent/.pi/web/web.config";
 import slotsExt from "../../examples/webext-slots-agent/.pi/web/web.config";
 import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config";

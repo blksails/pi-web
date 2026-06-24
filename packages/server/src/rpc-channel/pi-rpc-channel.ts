@@ -8,7 +8,7 @@
  * 最小 mock 替换以单测命令封装层(Req 1.5)。
  *
  * SpawnSpec 不在此定义,而是由 protocol-contract 拥有并导出
- * (`import type { SpawnSpec } from "@pi-web/protocol"`,单一事实来源)。
+ * (`import type { SpawnSpec } from "@blksails/protocol"`,单一事实来源)。
  */
 
 /** 通道健康状态(Req 6.4)。 */

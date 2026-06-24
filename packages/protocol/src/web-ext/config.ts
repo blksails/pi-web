@@ -24,7 +24,7 @@ export const PanelRatioSchema = z.enum(["centered", "2:1", "3:7"]);
 export type PanelRatio = z.infer<typeof PanelRatioSchema>;
 
 /**
- * 空态建议项(可序列化)。字段与 `@pi-web/react` 的 `Suggestion` 对齐:
+ * 空态建议项(可序列化)。字段与 `@blksails/react` 的 `Suggestion` 对齐:
  * protocol 不可依赖 react,故在此独立定义;宿主透传时类型相容直接作为 suggestionsPresets。
  */
 export const EmptySuggestionSchema = z.object({

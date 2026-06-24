@@ -1,7 +1,7 @@
 /**
  * mock SSE 文本帧样本 + 编码/Response 辅助。
  *
- * 用 @pi-web/protocol 的 makeUiMessageChunkFrame / makeControlFrame 构造合法帧,
+ * 用 @blksails/protocol 的 makeUiMessageChunkFrame / makeControlFrame 构造合法帧,
  * 再编码为 http-api 风格的 SSE 文本(`id:` + `data:` + 空行),供单测/集成测试驱动。
  */
 import {
@@ -10,7 +10,7 @@ import {
   type SseFrame,
   type UiMessageChunk,
   type ControlPayload,
-} from "@pi-web/protocol";
+} from "@blksails/protocol";
 
 /** 把一个 SseFrame 编码为 SSE 事件文本块(带可选 id)。 */
 export function encodeFrame(frame: SseFrame, id?: string): string {

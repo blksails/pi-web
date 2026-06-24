@@ -1,5 +1,5 @@
 /**
- * `@pi-web/tool-kit/runtime` sub-entry — **execution layer** (node-only).
+ * `@blksails/tool-kit/runtime` sub-entry — **execution layer** (node-only).
  *
  * Imports that pull in pi SDK, undici, or Node-only APIs belong here and
  * NEVER in `src/index.ts` (the main entry is front-end safe).
