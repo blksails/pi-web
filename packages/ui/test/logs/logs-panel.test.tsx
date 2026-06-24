@@ -267,18 +267,27 @@ describe("LogsPanel — 自动滚动（5.6）", () => {
     expect(mockSetAutoscroll).toHaveBeenCalledWith(false);
   });
 
-  it("autoscroll=true 时新 entries 到达触发滚到底（scrollIntoView 被调用）", () => {
-    const scrollIntoViewMock = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoViewMock;
-
+  it("autoscroll=true 时新 entries 到达触发滚到底（ul.scrollTop 设为 scrollHeight）", () => {
     const entries: LogEntry[] = [
       makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
     ];
     mockLogsResult = makeResult({ entries, autoscroll: true });
 
-    const { rerender } = render(<LogsPanel />);
+    const { rerender, container } = render(<LogsPanel />);
 
-    // Add new entry
+    const ul = container.querySelector("[data-pi-logs-region]") as HTMLElement;
+    expect(ul).not.toBeNull();
+
+    // Stub scrollHeight so the assignment can be verified
+    let capturedScrollTop = 0;
+    Object.defineProperty(ul, "scrollHeight", { value: 500, configurable: true });
+    Object.defineProperty(ul, "scrollTop", {
+      get: () => capturedScrollTop,
+      set: (v: number) => { capturedScrollTop = v; },
+      configurable: true,
+    });
+
+    // Add new entry → triggers useEffect with autoscroll=true
     const newEntries: LogEntry[] = [
       ...entries,
       makeEntry({ id: "2", level: "info", ns: "a", msg: "msg2" }),
@@ -286,8 +295,205 @@ describe("LogsPanel — 自动滚动（5.6）", () => {
     mockLogsResult = makeResult({ entries: newEntries, autoscroll: true });
     rerender(<LogsPanel />);
 
-    // scrollIntoView should have been called on the last entry
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    // ul.scrollTop should have been set to ul.scrollHeight
+    expect(capturedScrollTop).toBe(500);
+  });
+
+  it("autoscroll=true 时不显示跳转按钮", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+    ];
+    mockLogsResult = makeResult({ entries, autoscroll: true });
+    const { container } = render(<LogsPanel />);
+    expect(container.querySelector("[data-pi-logs-jump-latest]")).toBeNull();
+  });
+});
+
+// ── 智能跟随 / 未读计数 / 跳转（任务 8.5）────────────────────────────────────
+
+describe("LogsPanel — 智能跟随与未读跳转（任务 8.5）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Helper: stub a ul element's scrollHeight and capture scrollTop assignments.
+   */
+  function stubScrollDimensions(
+    ul: HTMLElement,
+    opts: { scrollHeight?: number; scrollTop?: number; clientHeight?: number } = {},
+  ): { getCapturedScrollTop: () => number } {
+    let capturedScrollTop = opts.scrollTop ?? 0;
+    Object.defineProperty(ul, "scrollHeight", {
+      value: opts.scrollHeight ?? 500,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(ul, "scrollTop", {
+      get: () => capturedScrollTop,
+      set: (v: number) => { capturedScrollTop = v; },
+      configurable: true,
+    });
+    Object.defineProperty(ul, "clientHeight", {
+      value: opts.clientHeight ?? 200,
+      configurable: true,
+    });
+    return { getCapturedScrollTop: () => capturedScrollTop };
+  }
+
+  it("上滚（atBottom=false）后新日志不自动置底，出现未读跳转按钮含数字", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+    ];
+    // autoscroll=false simulates user scrolled up
+    mockLogsResult = makeResult({ entries, autoscroll: false });
+    const { rerender, container } = render(<LogsPanel />);
+
+    const ul = container.querySelector("[data-pi-logs-region]") as HTMLElement;
+    const { getCapturedScrollTop } = stubScrollDimensions(ul, { scrollHeight: 500, scrollTop: 0, clientHeight: 200 });
+
+    // Simulate user scrolling up (fire scroll event with not-at-bottom dimensions)
+    fireEvent.scroll(ul);
+    // setAutoscroll(false) should have been called (ul dimensions make atBottom=false)
+    expect(mockSetAutoscroll).toHaveBeenCalledWith(false);
+
+    // Add new entries while autoscroll=false
+    const newEntries: LogEntry[] = [
+      ...entries,
+      makeEntry({ id: "2", level: "info", ns: "a", msg: "msg2" }),
+      makeEntry({ id: "3", level: "info", ns: "a", msg: "msg3" }),
+    ];
+    mockLogsResult = makeResult({ entries: newEntries, autoscroll: false });
+    rerender(<LogsPanel />);
+
+    // scrollTop should NOT have been set to scrollHeight (no auto-scroll)
+    expect(getCapturedScrollTop()).toBe(0);
+
+    // Jump button should appear
+    const jumpBtn = container.querySelector("[data-pi-logs-jump-latest]");
+    expect(jumpBtn).not.toBeNull();
+    // Button text should contain a number (unread count)
+    expect(jumpBtn!.textContent).toMatch(/\d+/);
+  });
+
+  it("点击跳转按钮置底、autoscroll 恢复、按钮消失", () => {
+    // Start with autoscroll=false and initial entries so prevLenRef is set.
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+    ];
+    mockLogsResult = makeResult({ entries, autoscroll: false });
+    const { container, rerender } = render(<LogsPanel />);
+
+    const ul = container.querySelector("[data-pi-logs-region]") as HTMLElement;
+    const { getCapturedScrollTop } = stubScrollDimensions(ul, { scrollHeight: 600, scrollTop: 0, clientHeight: 200 });
+
+    // Add more entries while autoscroll=false → unreadCount > 0 → button appears.
+    const moreEntries: LogEntry[] = [
+      ...entries,
+      makeEntry({ id: "2", level: "info", ns: "a", msg: "msg2" }),
+      makeEntry({ id: "3", level: "info", ns: "a", msg: "msg3" }),
+    ];
+    mockLogsResult = makeResult({ entries: moreEntries, autoscroll: false });
+    rerender(<LogsPanel />);
+
+    // Button should appear — assert it exists before clicking.
+    const jumpBtn = container.querySelector("[data-pi-logs-jump-latest]");
+    expect(jumpBtn).not.toBeNull();
+
+    // Click jump button
+    fireEvent.click(jumpBtn as HTMLElement);
+
+    // After click: setAutoscroll(true) called, scrollTop set to scrollHeight
+    expect(mockSetAutoscroll).toHaveBeenCalledWith(true);
+    expect(getCapturedScrollTop()).toBe(600);
+  });
+
+  it("滚到底恢复跟随时未读清零、按钮消失", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+      makeEntry({ id: "2", level: "info", ns: "a", msg: "msg2" }),
+    ];
+    // Start with autoscroll=false and 2 entries
+    mockLogsResult = makeResult({ entries, autoscroll: false });
+    const { rerender, container } = render(<LogsPanel />);
+
+    const ul = container.querySelector("[data-pi-logs-region]") as HTMLElement;
+
+    // Use getter/setter so scrollTop remains writable (needed when autoscroll=true resets scrollTop)
+    let scrollTopValue = 0;
+    Object.defineProperty(ul, "scrollTop", {
+      get: () => scrollTopValue,
+      set: (v: number) => { scrollTopValue = v; },
+      configurable: true,
+    });
+    Object.defineProperty(ul, "clientHeight", { value: 200, configurable: true });
+    Object.defineProperty(ul, "scrollHeight", { value: 500, configurable: true, writable: true });
+
+    // Add entry to trigger unread count
+    const moreEntries: LogEntry[] = [
+      ...entries,
+      makeEntry({ id: "3", level: "info", ns: "a", msg: "msg3" }),
+    ];
+    mockLogsResult = makeResult({ entries: moreEntries, autoscroll: false });
+    rerender(<LogsPanel />);
+
+    // Now simulate user scrolling back to bottom (atBottom=true)
+    scrollTopValue = 300; // simulate scroll position at bottom
+    fireEvent.scroll(ul);
+
+    // setAutoscroll(true) should be called
+    expect(mockSetAutoscroll).toHaveBeenCalledWith(true);
+
+    // Rerender with autoscroll=true → button should be gone
+    mockLogsResult = makeResult({ entries: moreEntries, autoscroll: true });
+    rerender(<LogsPanel />);
+
+    const jumpBtn = container.querySelector("[data-pi-logs-jump-latest]");
+    expect(jumpBtn).toBeNull();
+  });
+
+  it("过滤器变更导致 entries 减少时不累加负未读，不报错", () => {
+    const manyEntries: LogEntry[] = Array.from({ length: 10 }, (_, i) =>
+      makeEntry({ id: String(i), level: "info", ns: "a", msg: `msg${i}` }),
+    );
+    mockLogsResult = makeResult({ entries: manyEntries, autoscroll: false });
+    const { rerender, container } = render(<LogsPanel />);
+
+    // Simulate filter shrinking entries (e.g. level filter applied)
+    const fewEntries: LogEntry[] = [
+      makeEntry({ id: "0", level: "warn", ns: "a", msg: "msg0" }),
+    ];
+    mockLogsResult = makeResult({ entries: fewEntries, autoscroll: false });
+
+    // Should not throw
+    expect(() => rerender(<LogsPanel />)).not.toThrow();
+
+    // Jump button should NOT show negative count
+    const jumpBtn = container.querySelector("[data-pi-logs-jump-latest]");
+    if (jumpBtn) {
+      const text = jumpBtn.textContent ?? "";
+      const match = text.match(/-?\d+/);
+      if (match) {
+        expect(Number(match[0])).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("折叠状态下不显示跳转按钮", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", level: "info", ns: "a", msg: "msg1" }),
+      makeEntry({ id: "2", level: "info", ns: "a", msg: "msg2" }),
+    ];
+    mockLogsResult = makeResult({ entries, autoscroll: false });
+    const { container } = render(<LogsPanel />);
+
+    // Collapse panel
+    const toggle = container.querySelector("[data-pi-logs-collapse-toggle]") as HTMLElement;
+    fireEvent.click(toggle);
+
+    // Jump button should not appear even if autoscroll=false
+    const jumpBtn = container.querySelector("[data-pi-logs-jump-latest]");
+    expect(jumpBtn).toBeNull();
   });
 });
 

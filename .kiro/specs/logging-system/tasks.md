@@ -236,3 +236,10 @@
   - 完成态：右侧位置日志可读（两行式：meta 行 + 消息整行）；451 ui 测试绿、Chrome 实测确认。
   - _Requirements: 5.1, 5.2_
   - _Boundary: ui logs_
+
+- [x] 8.5 日志面板智能跟随（方案 A：scrollTop 置底 + 暂停未读跳转按钮）
+  - ①把自动滚动从 sentinel.scrollIntoView 改为对滚动容器 `el.scrollTop = el.scrollHeight`（只滚面板内部、不牵动整页）；保留"到底跟随/上滚暂停"状态机（onScroll 的 atBottom 判定）。
+  - ②暂停（autoscroll=false）期间统计新到达的（已过滤）日志条数；面板内浮出 "↓ N 新日志" 按钮（data-pi-logs-jump-latest），仅在暂停且有未读时显示；点击→置底+恢复跟随+清零未读。到底/恢复跟随时清零。
+  - 完成态：上滚看历史时新日志不打断、底部出现未读计数按钮、点击跳到最新并恢复跟随；默认到底跟随行为不变（e2e 自动滚动测试仍过）；bottom/right/drawer 通用。
+  - _Requirements: 5.6_
+  - _Boundary: ui logs（+必要时 react use-logs）_

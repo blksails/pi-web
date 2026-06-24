@@ -136,14 +136,37 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
   // Collapsed/expanded state — default expanded so e2e can see the panel.
   const [expanded, setExpanded] = useState(true);
 
-  // Ref to the scroll sentinel at the bottom of the list.
-  const sentinelRef = useRef<HTMLLIElement>(null);
+  // Ref to the scroll container <ul>.
+  const ulRef = useRef<HTMLUListElement>(null);
 
-  // ── Auto-scroll: scroll sentinel into view when autoscroll=true ───────────
+  // ── Unread count while autoscroll is paused ───────────────────────────────
+
+  const [unreadCount, setUnreadCount] = useState(0);
+  // Track previous entries length to compute delta.
+  const prevLenRef = useRef(entries.length);
+
+  // ── Auto-scroll: set ul.scrollTop = ul.scrollHeight when autoscroll=true ──
 
   useEffect(() => {
-    if (autoscroll && sentinelRef.current) {
-      sentinelRef.current.scrollIntoView({ behavior: "instant" });
+    const ul = ulRef.current;
+    const currentLen = entries.length;
+    const prevLen = prevLenRef.current;
+    const delta = currentLen - prevLen;
+    prevLenRef.current = currentLen;
+
+    if (autoscroll) {
+      // Scroll to bottom using direct scrollTop assignment (no page-level scroll).
+      if (ul) {
+        ul.scrollTop = ul.scrollHeight;
+      }
+      // Clear unread when following.
+      setUnreadCount(0);
+    } else {
+      // Paused: accumulate positive deltas as unread.
+      if (delta > 0) {
+        setUnreadCount((prev) => prev + delta);
+      }
+      // Negative delta (filter shrink) — do not modify unreadCount.
     }
   }, [autoscroll, entries]);
 
@@ -155,9 +178,23 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
       const atBottom =
         el.scrollTop + el.clientHeight >= el.scrollHeight - SCROLL_BOTTOM_THRESHOLD;
       setAutoscroll(atBottom);
+      if (atBottom) {
+        setUnreadCount(0);
+      }
     },
     [setAutoscroll],
   );
+
+  // ── Jump-to-latest handler ────────────────────────────────────────────────
+
+  const handleJumpLatest = useCallback(() => {
+    const ul = ulRef.current;
+    if (ul) {
+      ul.scrollTop = ul.scrollHeight;
+    }
+    setAutoscroll(true);
+    setUnreadCount(0);
+  }, [setAutoscroll]);
 
   // ── Level filter change ───────────────────────────────────────────────────
 
@@ -243,30 +280,39 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
         </div>
       )}
 
-      {/* Scrollable log container — data-pi-logs-region anchor (always rendered) */}
-      <ul
-        data-pi-logs-region
-        className={cn(
-          "overflow-y-auto overflow-x-hidden py-1 list-none",
-          expanded ? "flex-1 min-h-[120px] max-h-64" : "h-0 overflow-hidden",
+      {/* Scrollable log container with relative wrapper for jump button anchor */}
+      <div className="relative flex-1 min-h-0">
+        <ul
+          ref={ulRef}
+          data-pi-logs-region
+          className={cn(
+            "overflow-y-auto overflow-x-hidden py-1 list-none h-full",
+            expanded ? "min-h-[120px] max-h-64" : "h-0 overflow-hidden",
+          )}
+          onScroll={expanded ? handleScroll : undefined}
+          role="list"
+        >
+          {expanded &&
+            entries.map((entry, idx) => (
+              <LogRow
+                key={entry.id ?? `${entry.ts}-${idx}`}
+                entry={entry}
+              />
+            ))}
+        </ul>
+
+        {/* Jump-to-latest button — shown only when paused with unread entries */}
+        {expanded && !autoscroll && unreadCount > 0 && (
+          <button
+            type="button"
+            data-pi-logs-jump-latest
+            onClick={handleJumpLatest}
+            className="absolute bottom-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium shadow-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+          >
+            {`↓ ${unreadCount} 新日志`}
+          </button>
         )}
-        onScroll={expanded ? handleScroll : undefined}
-        role="list"
-      >
-        {expanded &&
-          entries.map((entry, idx) => (
-            <LogRow
-              key={entry.id ?? `${entry.ts}-${idx}`}
-              entry={entry}
-            />
-          ))}
-        {/* Scroll sentinel — always rendered at the bottom of the list */}
-        <li
-          ref={sentinelRef}
-          aria-hidden
-          className="h-0 w-0 overflow-hidden"
-        />
-      </ul>
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { test, expect } from "@playwright/test";
  *  5.2 — log entries carry data-pi-log-level and data-pi-log-ns attributes
  *  5.3 — level filter (≥ selected level only), namespace filter, text search
  *  5.4 — logging-demo-agent source + webext:logging-demo browser-side logs
- *  5.6 — auto-scroll: scroll container is accessible and sentinel is present
+ *  5.6 — auto-scroll: scroll container is accessible and panel is scrolled to bottom
  *  6.4 — LoggingConfigLoader is called from chat-app on mount
  *  6.5 — namespace toggles in settings affect log visibility
  *  6.6 — outputs.panelVisible=false hides the logs panel
@@ -451,20 +451,21 @@ test("logging-system: 自动滚动 — 面板存在且可滚动 (5.6)", async ({
   // The region must have actual dimensions.
   expect(scrollProps.clientHeight).toBeGreaterThan(0);
 
-  // Verify the scroll sentinel (aria-hidden li at bottom) is always present
-  // in the DOM — this is the element scrollIntoView is called on for
-  // auto-scroll (5.6). It renders even when entries is empty.
-  const sentinel = scrollRegion.locator("li[aria-hidden]");
-  await expect(sentinel).toBeAttached({ timeout: 5_000 });
-
-  // Verify the sentinel is the last element in the list.
-  const isSentinelLast = await scrollRegion.evaluate((el) => {
-    const items = el.querySelectorAll("li");
-    const last = items[items.length - 1];
-    if (last === undefined) return false;
-    return last.getAttribute("aria-hidden") === "true";
+  // Verify the scroll container is at the bottom after auto-scroll (5.6).
+  // The new mechanism sets ul.scrollTop = ul.scrollHeight directly (no sentinel).
+  // If content is too short to scroll (scrollHeight <= clientHeight), the panel
+  // is still "at bottom" by definition (scrollTop ≈ 0, no overflow).
+  const atBottom = await scrollRegion.evaluate((el) => {
+    const { scrollTop, clientHeight, scrollHeight } = el;
+    // Allow an 8px tolerance for sub-pixel rounding.
+    return scrollTop + clientHeight >= scrollHeight - 8;
   });
-  expect(isSentinelLast).toBe(true);
+  expect(atBottom).toBe(true);
+
+  // The jump-to-latest button must NOT be visible in the default auto-follow
+  // state (autoscroll=true, unread=0).
+  const jumpBtn = scrollRegion.locator("[data-pi-logs-jump-latest]");
+  await expect(jumpBtn).not.toBeAttached();
 
   // Simulate scroll to top (user browsing history — pauses auto-scroll).
   await scrollRegion.evaluate((el) => {
