@@ -573,6 +573,7 @@ function SessionView({
             sessionId={session.sessionId}
             onClose={() => setPluginPanelOpen(false)}
             onAfterChange={() => setWebextReloadNonce((n) => n + 1)}
+            refreshKey={webextReloadNonce}
           />
         ) : null}
       </div>

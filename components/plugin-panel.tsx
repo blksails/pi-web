@@ -14,6 +14,8 @@ export interface PluginPanelProps {
   readonly onClose: () => void;
   /** 装/卸成功后回调(宿主据此触发 webext 加载路径,与 runner 重载构成双路生效)。 */
   readonly onAfterChange?: () => void;
+  /** 外部刷新信号:变化即重取已装列表(如键入 /plugin install 由宿主分派安装后)。 */
+  readonly refreshKey?: number;
 }
 
 export function PluginPanel({
@@ -21,6 +23,7 @@ export function PluginPanel({
   sessionId,
   onClose,
   onAfterChange,
+  refreshKey,
 }: PluginPanelProps): React.JSX.Element {
   const [items, setItems] = React.useState<readonly InstalledExtensionInfo[]>([]);
   const [error, setError] = React.useState<string | undefined>(undefined);
@@ -39,7 +42,7 @@ export function PluginPanel({
 
   React.useEffect(() => {
     refresh();
-  }, [refresh]);
+  }, [refresh, refreshKey]);
 
   const reloadIfPossible = React.useCallback(async (): Promise<void> => {
     if (sessionId !== undefined) {
