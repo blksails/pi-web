@@ -29,6 +29,8 @@ import {
   createExtensionsConfigRoutes,
   createAttachmentRoutes,
   createSessionListRoutes,
+  createExtensionRoutes,
+  ChildProcessPiCli,
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
@@ -362,6 +364,18 @@ function buildSingleton(): HandlerSingleton {
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。
       ...createAttachmentRoutes(attachmentStore),
+      // 扩展安装管理(extension-management,builtin-plugin-command 任务 2.2):挂载既有
+      // GET/POST /extensions、DELETE /extensions/:extId、POST /sessions/:id/reload。
+      // 注入 SessionReloader:经 PiSession.restartRunner() 重 spawn runner 续会话、重解析
+      // 资源,使 /plugin 安装/卸载对运行中的会话生效(Req 4.1/5.x/6.1)。
+      ...createExtensionRoutes({
+        piCli: new ChildProcessPiCli(),
+        store,
+        manager,
+        reloadSession: async (session) => {
+          await session.restartRunner();
+        },
+      }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.

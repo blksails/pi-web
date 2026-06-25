@@ -29,6 +29,9 @@
       ],
       "@blksails/pi-web-agent-kit": [
         "./packages/agent-kit/src/index.ts"
+      ],
+      "@blksails/pi-web-tool-kit": [
+        "./packages/tool-kit/src/index.ts"
       ]
     }
   },

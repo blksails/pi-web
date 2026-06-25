@@ -52,6 +52,13 @@ export interface SessionChannel extends PiRpcChannel {
   onStderr(cb: (chunk: string) => void): Unsubscribe;
   respondExtensionUI(id: string, response: RpcExtensionUIResponse): void;
 
+  /**
+   * 请求重启底层 runner 子进程(以同一会话 id/env 重 spawn 续会话、重解析资源)。
+   * 用于安装/卸载扩展后使运行中的会话生效(builtin-plugin-command SessionReloader)。
+   * 可选:不支持重启的实现(如 stub)可省略。
+   */
+  requestRestart?(): void;
+
   prompt(
     message: string,
     options?: {

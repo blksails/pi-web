@@ -439,6 +439,21 @@ export class PiSession {
     return this.forward(() => this.channel.getCommands());
   }
 
+  /**
+   * 重启底层 runner 子进程(以同一会话 id/env 重 spawn、重解析资源),使安装/卸载的
+   * 扩展对运行中的会话生效(builtin-plugin-command 任务 2.1)。底层 channel 不支持重启时抛错,
+   * 由调用方(SessionReloader)按未配置处理。
+   */
+  restartRunner(): Promise<void> {
+    if (typeof this.channel.requestRestart !== "function") {
+      return Promise.reject(
+        new Error("当前会话通道不支持 runner 重启(requestRestart 未实现)"),
+      );
+    }
+    this.channel.requestRestart();
+    return Promise.resolve();
+  }
+
   /** 经 `fork` 命令在给定 entry 处创建同级版本(纯转发,Req 8.2)。 */
   fork(entryId: string): Promise<RpcResponse> {
     return this.forward(() => this.channel.fork(entryId));

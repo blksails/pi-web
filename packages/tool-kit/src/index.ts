@@ -13,3 +13,11 @@ export { AIGC_TOOLS } from "./aigc/index.js";
 export type { BuildAigcToolsOptions } from "./aigc/index.js";
 export { imageGeneration } from "./aigc/tools/image-generation.js";
 export { imageEdit } from "./aigc/tools/image-edit.js";
+
+// 内置斜杠命令声明(builtin-plugin-command);纯数据 + 类型,前端安全。
+export { BUILTIN_COMMANDS } from "./commands/builtin.js";
+export type {
+  BuiltinCommandSpec,
+  BuiltinCommandTarget,
+  BuiltinSubcommand,
+} from "./commands/types.js";
