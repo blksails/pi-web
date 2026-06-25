@@ -41,12 +41,13 @@ export const SourceInfoSchema = z.object({
 });
 export type SourceInfo = z.infer<typeof SourceInfoSchema>;
 
-/** pi: RpcSlashCommand */
+/** pi: RpcSlashCommand。`builtin` 为 harness 内置命令(builtin-plugin-command);
+ *  其无 agent 来源,故 `sourceInfo` 对内置命令省略(agent 命令仍恒带,向后兼容)。 */
 export const RpcSlashCommandSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
-  source: z.enum(["extension", "prompt", "skill"]),
-  sourceInfo: SourceInfoSchema,
+  source: z.enum(["extension", "prompt", "skill", "builtin"]),
+  sourceInfo: SourceInfoSchema.optional(),
 });
 export type RpcSlashCommand = z.infer<typeof RpcSlashCommandSchema>;
 

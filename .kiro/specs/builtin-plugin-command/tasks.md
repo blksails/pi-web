@@ -2,14 +2,14 @@
 
 - [ ] 1. 基础：声明层与协议
 
-- [ ] 1.1 (P) BuiltinCommandSpec 类型与默认集
+- [x] 1.1 (P) BuiltinCommandSpec 类型与默认集
   - 在 tool-kit 定义内置命令纯声明类型（name/description/argumentHint/aliases/target/subcommands/userOnly）
   - 提供默认集（含 `/plugin` 及其子命令 install/uninstall/list/enable/disable/update），纯数据导出
   - 完成态：从 tool-kit 主入口可导入 BUILTIN_COMMANDS，含 `/plugin` 且标 userOnly
   - _Requirements: 1.2, 3.1, 3.5, 7.1, 7.2_
   - _Boundary: BuiltinCommandSpec_
 
-- [ ] 1.2 (P) 命令来源枚举增 builtin
+- [x] 1.2 (P) 命令来源枚举增 builtin
   - 协议 RpcSlashCommand 的 source 枚举增加 `builtin`，结构不变
   - 完成态：source 可取 builtin，旧字段/结构兼容
   - _Requirements: 1.2, 1.5_
@@ -17,21 +17,21 @@
 
 - [ ] 2. 核心：服务端合流与重载
 
-- [ ] 2.1 runner 重启转发与 SessionReloader 注入
+- [x] 2.1 runner 重启转发与 SessionReloader 注入
   - 在会话对象上新增薄方法转发底层 runner 的 requestRestart（重 spawn 续会话、重解析资源）
   - 实现并准备注入的 SessionReloader（调该方法）
   - 完成态：单测显示该方法转发 requestRestart；reloader 调用不抛
   - _Requirements: 6.1, 6.2_
   - _Boundary: restartRunner, session reloader_
 
-- [ ] 2.2 挂载扩展安装路由并注入 reloader
+- [x] 2.2 挂载扩展安装路由并注入 reloader
   - 在宿主路由注入处调用既有 createExtensionRoutes，传入 piCli/store/管理员策略/审计，并注入上一步的 reloader
   - 完成态：GET/POST /extensions、DELETE /extensions/:extId、POST /sessions/:id/reload 四端点可达
   - _Requirements: 4.1, 4.3, 5.1, 5.3, 6.1_
   - _Depends: 2.1_
   - _Boundary: extension routes mount_
 
-- [ ] 2.3 (P) 命令合流
+- [x] 2.3 (P) 命令合流
   - GET 会话命令端点把内置命令映射为 source=builtin 并前置合流到 agent 命令前；同名内置优先
   - 完成态：单测显示返回列表内置前置、含 /plugin、同名以内置胜
   - _Requirements: 1.1, 1.2, 1.3, 1.5_
