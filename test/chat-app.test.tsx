@@ -47,6 +47,9 @@ vi.mock("@blksails/pi-web-react", () => ({
   usePiControls: () => fakeControls,
   useExtensionUI: () => fakeExtensionUI,
   createPiClient: () => ({ listSessions: vi.fn() }),
+  // 统一命令层:chat-app 构造自有 ui-rpc 总线 + 命令执行(mock 为惰性接缝)。
+  createUiRpcBus: () => ({ request: vi.fn(), dispose: vi.fn() }),
+  executeHostCommand: vi.fn(async () => ({ ok: true })),
 }));
 
 import { ChatApp } from "@/components/chat-app";

@@ -391,7 +391,13 @@ function SessionView({
     const client = session.client;
     const sid = session.sessionId;
     const conn = session.connection;
-    if (client === undefined || sid === undefined || conn === undefined) return undefined;
+    if (
+      client === undefined ||
+      sid === undefined ||
+      typeof conn?.controlStore?.onUiRpcResponse !== "function"
+    ) {
+      return undefined;
+    }
     return createUiRpcBus({
       send: (req) => client.uiRpc(sid, req).then(() => undefined),
       subscribeResponse: conn.controlStore.onUiRpcResponse,
