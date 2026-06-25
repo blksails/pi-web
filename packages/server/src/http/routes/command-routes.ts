@@ -272,7 +272,8 @@ export function makeUiRpcHandler(
     try {
       const session = requireSession(store, ctx);
 
-      // host 命令拦截:仅当 point=command/execute + 注册表命中。
+      // host 命令拦截:point=command/execute + 注册表命中 → **服务端同步执行**,结果直接在
+      // HTTP 响应体返回(不走 agent、不依赖 SSE 控制流,避免与 prompt 流冲突)。
       if (
         hostCommands !== undefined &&
         req.point === "command" &&
@@ -280,36 +281,22 @@ export function makeUiRpcHandler(
       ) {
         const payload = CommandExecutePayloadSchema.safeParse(req.payload);
         if (payload.success && hostCommands.has(payload.data.name)) {
-          // 不阻塞 ack:执行后经 control 帧回流(与 agent 回流同形)。
-          void hostCommands
-            .execute(payload.data.name, {
-              session,
-              argv: payload.data.argv ?? "",
-            })
-            .then((result) => {
-              // registry.execute 不抛:成功/可恢复失败均以 CommandResult 表达
-              // (失败转 effect:"notify" + message,UI 据此呈现错误反馈,Req 3.3)。
-              session.emitUiRpcResponse({
-                correlationId: req.correlationId,
-                ok: true,
-                result,
-              });
-            })
-            .catch((err: unknown) => {
-              session.emitUiRpcResponse({
-                correlationId: req.correlationId,
-                ok: false,
-                error: {
-                  code: "HOST_COMMAND_FAILED",
-                  message: err instanceof Error ? err.message : String(err),
-                },
-              });
-            });
-          return ack();
+          // registry.execute 不抛:成功/可恢复失败均以 CommandResult 表达(失败转 effect:"notify"
+          // + message,UI 据此呈现错误反馈,Req 3.3)。响应形如 UiRpcResponse(含 correlationId)。
+          const result = await hostCommands.execute(payload.data.name, {
+            session,
+            argv: payload.data.argv ?? "",
+          });
+          return jsonResponse(200, {
+            correlationId: req.correlationId,
+            ok: true,
+            result,
+            protocolVersion: req.protocolVersion,
+          });
         }
       }
 
-      // 既有路径:转发 agent。
+      // 既有路径:转发 agent(响应经 SSE control:ui-rpc 异步回流)。
       session.uiRpc(req);
       return ack();
     } catch (err) {

@@ -7,7 +7,6 @@ import {
   usePiControls,
   useExtensionUI,
   createPiClient,
-  createUiRpcBus,
   executeHostCommand,
   type CommandOutcome,
   type InstalledExtensionInfo,
@@ -384,27 +383,6 @@ function SessionView({
   >([]);
   const [pluginError, setPluginError] = React.useState<string | undefined>(undefined);
 
-  // 统一命令层(unified-command-result-layer):chat-app 自有 ui-rpc 总线,供面板内安装/卸载
-  // 经命令通道执行(host 命令 server 执行)。palette/键入分派由 PiChat 内部总线处理,结果经
-  // onCommandResult 回流到此。两条总线共用同一 control:ui-rpc 订阅,按 correlationId 各自配对。
-  const commandBus = React.useMemo(() => {
-    const client = session.client;
-    const sid = session.sessionId;
-    const conn = session.connection;
-    if (
-      client === undefined ||
-      sid === undefined ||
-      typeof conn?.controlStore?.onUiRpcResponse !== "function"
-    ) {
-      return undefined;
-    }
-    return createUiRpcBus({
-      send: (req) => client.uiRpc(sid, req).then(() => undefined),
-      subscribeResponse: conn.controlStore.onUiRpcResponse,
-    });
-  }, [session.client, session.sessionId, session.connection]);
-  React.useEffect(() => () => commandBus?.dispose(), [commandBus]);
-
   // 命令结果 → 事件驱动 UI(无 refreshKey/手动时序):effect 决定 开面板/刷新列表/通知。
   const applyCommandOutcome = React.useCallback(
     (name: string, outcome: CommandOutcome): void => {
@@ -416,7 +394,10 @@ function SessionView({
       const r = outcome.result;
       if (r === undefined) return;
       setPluginError(r.effect === "notify" ? r.message : undefined);
-      if (r.effect === "open-panel") setPluginPanelOpen(true);
+      // open-panel / panel-refresh 均确保面板可见(键入 /plugin install 直接执行时也呈现结果)。
+      if (r.effect === "open-panel" || r.effect === "panel-refresh") {
+        setPluginPanelOpen(true);
+      }
       const data = r.data;
       if (data !== null && typeof data === "object" && "extensions" in data) {
         setPluginItems(
@@ -429,15 +410,17 @@ function SessionView({
     [],
   );
 
-  // 面板内安装/卸载/刷新:经统一命令通道(非直调 REST)。
+  // 面板内安装/卸载/刷新:经统一命令通道(host 命令同步 HTTP 响应,非直调 /extensions REST)。
   const onPluginExecute = React.useCallback(
     (argv: string): void => {
-      if (commandBus === undefined) return;
-      void executeHostCommand(commandBus, "plugin", argv).then((o) =>
-        applyCommandOutcome("plugin", o),
+      const client = session.client;
+      const sid = session.sessionId;
+      if (client === undefined || sid === undefined) return;
+      void executeHostCommand((req) => client.uiRpcCommand(sid, req), "plugin", argv).then(
+        (o) => applyCommandOutcome("plugin", o),
       );
     },
-    [commandBus, applyCommandOutcome],
+    [session.client, session.sessionId, applyCommandOutcome],
   );
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。

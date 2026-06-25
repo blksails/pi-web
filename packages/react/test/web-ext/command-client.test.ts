@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { executeHostCommand, parseCustomUi } from "../../src/web-ext/command-client.js";
-import type { UiRpcClient, UiRpcCall } from "@blksails/pi-web-kit";
-import type { UiRpcResponse } from "@blksails/pi-web-protocol";
+import {
+  executeHostCommand,
+  parseCustomUi,
+  type CommandSender,
+} from "../../src/web-ext/command-client.js";
+import type { UiRpcRequest, UiRpcResponse } from "@blksails/pi-web-protocol";
 
-function busReturning(res: Omit<UiRpcResponse, "correlationId">): UiRpcClient & {
-  calls: UiRpcCall[];
+function busReturning(res: Omit<UiRpcResponse, "correlationId">): CommandSender & {
+  calls: UiRpcRequest[];
 } {
-  const calls: UiRpcCall[] = [];
-  return {
-    calls,
-    request: async (call: UiRpcCall): Promise<UiRpcResponse> => {
-      calls.push(call);
-      return { correlationId: "x", ...res };
-    },
+  const calls: UiRpcRequest[] = [];
+  const send = async (req: UiRpcRequest): Promise<UiRpcResponse> => {
+    calls.push(req);
+    return { correlationId: req.correlationId, ...res };
   };
+  return Object.assign(send, { calls });
 }
 
 describe("executeHostCommand", () => {

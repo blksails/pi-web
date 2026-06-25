@@ -148,4 +148,5 @@ export {
   executeHostCommand,
   parseCustomUi,
   type CommandOutcome,
+  type CommandSender,
 } from "./web-ext/command-client.js";

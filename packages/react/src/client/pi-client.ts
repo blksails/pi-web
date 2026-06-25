@@ -24,6 +24,7 @@ import type {
   ForkResponse,
   GetForkMessagesResponse,
   UiRpcRequest,
+  UiRpcResponse,
   CompletionResponse,
   CompletionTriggersResponse,
   ListSessionsRequest,
@@ -78,6 +79,11 @@ export interface PiClient {
   uiResponse(id: string, req: UiResponseRequest): Promise<CommandAck>;
   /** POST /sessions/:id/ui-rpc —— Tier3 贡献点上行(仅 ack;响应经 SSE control:ui-rpc 回流)。 */
   uiRpc(id: string, req: UiRpcRequest): Promise<CommandAck>;
+  /**
+   * POST /sessions/:id/ui-rpc(host 命令)—— 统一命令层:host 命令服务端**同步**执行,
+   * 结果直接在响应体返回(UiRpcResponse 形状),不依赖 SSE 控制流。
+   */
+  uiRpcCommand(id: string, req: UiRpcRequest): Promise<UiRpcResponse>;
 
   getState(id: string): Promise<GetStateResponse>;
   getStats(id: string): Promise<GetStatsResponse>;
@@ -184,6 +190,8 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/ui-response`, req),
     uiRpc: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/ui-rpc`, req),
+    uiRpcCommand: (id, req) =>
+      post<UiRpcResponse>(`/sessions/${enc(id)}/ui-rpc`, req),
 
     getState: (id) => get<GetStateResponse>(`/sessions/${enc(id)}/state`),
     getStats: (id) => get<GetStatsResponse>(`/sessions/${enc(id)}/stats`),

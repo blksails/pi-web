@@ -140,6 +140,12 @@ export class MockSession {
       throw err;
     }
   }
+  uiRpc(request: unknown): void {
+    this.calls.push({ method: "uiRpc", args: [request] });
+  }
+  emitUiRpcResponse(response: unknown): void {
+    this.calls.push({ method: "emitUiRpcResponse", args: [response] });
+  }
   stop(): Promise<void> {
     this.stopped = true;
     this.status = "stopped";

@@ -483,6 +483,8 @@ export function PiChat({
   // artifact),故对带 artifact 的 agent 开通是正确的,不重蹈该回归。
   const hasArtifactRpc =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
+  // 注:host/内置命令结果走**同步 HTTP 响应体**(POST /ui-rpc 直接返回),不依赖空闲控制流,
+  // 故此处不因内置命令开持久控制流(避免重蹈 prompt-流冲突回归)。
   const needsIdleControl = hasContributions || hasArtifactRpc;
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
@@ -539,15 +541,17 @@ export function PiChat({
   const dispatchBuiltin = React.useCallback(
     (cmd: RpcSlashCommand, rawValue: string): void => {
       const argv = rawValue.replace(/^\/\S+\s*/, ""); // 去掉前导 "/<name> "
-      if (uiRpc !== undefined && onCommandResult !== undefined) {
-        void executeHostCommand(uiRpc, cmd.name, argv).then((outcome) =>
-          onCommandResult(cmd.name, outcome),
+      if (client !== undefined && sessionId !== undefined && onCommandResult !== undefined) {
+        const sid = sessionId;
+        const c = client;
+        void executeHostCommand((req) => c.uiRpcCommand(sid, req), cmd.name, argv).then(
+          (outcome) => onCommandResult(cmd.name, outcome),
         );
         return;
       }
       onBuiltinSelect?.(cmd, rawValue);
     },
-    [uiRpc, onCommandResult, onBuiltinSelect],
+    [client, sessionId, onCommandResult, onBuiltinSelect],
   );
 
   const onSubmit = React.useCallback((): void => {

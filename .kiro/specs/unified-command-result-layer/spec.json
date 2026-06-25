@@ -1,9 +1,9 @@
 {
   "feature_name": "unified-command-result-layer",
   "created_at": "2026-06-25T13:21:22Z",
-  "updated_at": "2026-06-25T13:40:00Z",
+  "updated_at": "2026-06-25T14:30:00Z",
   "language": "zh",
-  "phase": "tasks-generated",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,

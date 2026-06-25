@@ -8,7 +8,7 @@
  * 前置:`NEXT_DIST_DIR=.next-cli pnpm build:cli`(须含放开门控后的 hot-reload)。
  * 跑法:`NEXT_DIST_DIR=.next-cli node e2e/cli/cli-watch.mjs`。
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

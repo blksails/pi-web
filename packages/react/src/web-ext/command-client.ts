@@ -10,11 +10,13 @@
 import {
   CommandResultSchema,
   CustomUiPayloadSchema,
+  protocolVersion,
   type CommandExecutePayload,
   type CommandResult,
   type CustomUiPayload,
+  type UiRpcRequest,
+  type UiRpcResponse,
 } from "@blksails/pi-web-protocol";
-import type { UiRpcClient } from "@blksails/pi-web-kit";
 
 export interface CommandOutcome {
   readonly ok: boolean;
@@ -22,33 +24,50 @@ export interface CommandOutcome {
   readonly error?: { code: string; message: string };
 }
 
+/** host 命令上行发送器:POST /ui-rpc 并返回**同步**响应体(= client.uiRpcCommand 绑定)。 */
+export type CommandSender = (req: UiRpcRequest) => Promise<UiRpcResponse>;
+
+let cmdCounter = 0;
+
 /**
- * 经 ui-rpc 总线执行一个 host 命令。返回结构化结果(ok + CommandResult | error)。
- * 失败/超时由总线以 ok:false 回填(不抛)。
+ * 执行一个 host 命令(point=command/execute)。host 命令服务端同步执行,结果直接在 HTTP
+ * 响应体返回(不依赖 SSE 控制流,避免与 prompt 流冲突)。返回结构化结果(ok + CommandResult | error)。
+ * 发送失败以 ok:false 回填(不抛)。
  */
 export async function executeHostCommand(
-  bus: UiRpcClient,
+  send: CommandSender,
   name: string,
   argv: string,
-  signal?: AbortSignal,
 ): Promise<CommandOutcome> {
-  const payload: CommandExecutePayload = { name, ...(argv.length > 0 ? { argv } : {}) };
-  const res = await bus.request({
+  const payload: CommandExecutePayload = {
+    name,
+    ...(argv.length > 0 ? { argv } : {}),
+  };
+  cmdCounter += 1;
+  const req: UiRpcRequest = {
+    correlationId: `cmd-${name}-${String(cmdCounter)}`,
     point: "command",
     action: "execute",
     payload,
-    ...(signal !== undefined ? { signal } : {}),
-  });
-  if (!res.ok) {
+    protocolVersion,
+  };
+  let res: UiRpcResponse;
+  try {
+    res = await send(req);
+  } catch (err) {
     return {
       ok: false,
-      ...(res.error !== undefined ? { error: res.error } : {}),
+      error: {
+        code: "SEND_FAILED",
+        message: err instanceof Error ? err.message : String(err),
+      },
     };
   }
+  if (!res.ok) {
+    return { ok: false, ...(res.error !== undefined ? { error: res.error } : {}) };
+  }
   const parsed = CommandResultSchema.safeParse(res.result);
-  return parsed.success
-    ? { ok: true, result: parsed.data }
-    : { ok: true };
+  return parsed.success ? { ok: true, result: parsed.data } : { ok: true };
 }
 
 /** 解析 point=custom 的渲染描述;非法返回 undefined。 */
