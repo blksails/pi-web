@@ -16,7 +16,13 @@ import {
   type ComponentOverrides,
   type PiChatSlots,
 } from "@blksails/pi-web-ui";
-import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
+import type {
+  CreateSessionRequest,
+  RpcSlashCommand,
+} from "@blksails/pi-web-protocol";
+import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
+import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
+import { PluginPanel } from "@/components/plugin-panel.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
@@ -363,6 +369,21 @@ function SessionView({
   );
   const extension = buildTimeExtension ?? runtimeWebext.extension;
 
+  // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
+  const builtinCommands = React.useMemo(
+    () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
+    [],
+  );
+  const pluginClient = React.useMemo(() => createPiClient("/api"), []);
+  const [pluginPanelOpen, setPluginPanelOpen] = React.useState(false);
+  const onBuiltinSelect = React.useCallback(
+    (cmd: RpcSlashCommand): void => {
+      // /plugin:打开管理面板(安装/卸载在面板内完成)。
+      if (cmd.name === "plugin") setPluginPanelOpen(true);
+    },
+    [],
+  );
+
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
   // 列表数据经 client.listSessions 注入(面板不持 pi 接线);恢复复用 /session/:id 成熟链路
   // (冷恢复 + 历史回放 + source 反查),失败时由该路由的 SessionView 错误态提示。
@@ -497,6 +518,8 @@ function SessionView({
           extensionUI={extensionUI}
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
+          builtinCommands={builtinCommands}
+          onBuiltinSelect={onBuiltinSelect}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           showLogs={true}
@@ -525,6 +548,13 @@ function SessionView({
             ? { extensionBaseUrl: process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL }
             : {})}
         />
+        {pluginPanelOpen ? (
+          <PluginPanel
+            client={pluginClient}
+            sessionId={session.sessionId}
+            onClose={() => setPluginPanelOpen(false)}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -39,13 +39,13 @@
 
 - [ ] 3. 核心：客户端分派与面板
 
-- [ ] 3.1 (P) 扩展安装 transport 方法
+- [x] 3.1 (P) 扩展安装 transport 方法
   - 前端 REST client 增 list/install/remove/reloadSession 方法，打既有 /extensions 与 /sessions/:id/reload
   - 完成态：方法以正确 method/path/body 发起请求（单测/契约校验）
   - _Requirements: 3.2, 3.3, 4.1, 8.1_
   - _Boundary: pi-client ext methods_
 
-- [ ] 3.2 客户端 handler 与面板分派
+- [x] 3.2 客户端 handler 与面板分派
   - /plugin 客户端 handler 注册表：install/uninstall/list/enable/disable/update 调 transport；无参开面板
   - 命令面板 select 按 source 分派：builtin 走 handler（不填输入框、不发提示），其余维持现状；内置命令带可区分徽标
   - 完成态：选中内置命令不向会话发送提示；选中 agent 命令仍填输入框
@@ -53,7 +53,7 @@
   - _Depends: 3.1_
   - _Boundary: client-handlers, palette dispatch_
 
-- [ ] 3.3 plugin 管理面板
+- [x] 3.3 plugin 管理面板
   - 面板列出已安装 plugin 及作用域、错误项；提供启用/禁用/卸载并刷新
   - 完成态：面板打开渲染已装列表;操作后刷新
   - _Requirements: 8.1, 8.2, 8.3_
@@ -62,7 +62,7 @@
 
 - [ ] 4. 集成
 
-- [ ] 4.1 app-shell 接线
+- [x] 4.1 app-shell 接线
   - 把面板挂到 ui-surface 插槽、把分派接入运行中的面板与会话上下文；安装/卸载后呈现生效或失败反馈
   - 完成态：从对话内 /plugin 可打开面板并执行装/卸，得到生效或失败反馈
   - _Requirements: 3.1, 6.2, 9.1, 9.2_
@@ -76,19 +76,19 @@
 
 - [ ] 5. 验证
 
-- [ ] 5.1 (P) 合流/重载/映射单元测试
+- [x] 5.1 (P) 合流/重载/映射单元测试
   - toRpcSlashCommand 映射、合流前置+同名优先、restartRunner 转发
   - 完成态：单测全绿
   - _Requirements: 1.1, 1.2, 1.3, 6.1_
   - _Boundary: commands merge, restartRunner_
 
-- [ ] 5.2 挂载与安装链集成测试
+- [x] 5.2 挂载与安装链集成测试
   - 挂载后四端点可达；install→reload 触发 restartRunner
   - 完成态：集成测试全绿
   - _Requirements: 4.1, 5.1, 6.1_
   - _Depends: 2.2_
 
-- [ ] 5.3 浏览器端到端验证
+- [x] 5.3 浏览器端到端验证
   - /plugin 出现在面板且带 builtin 徽标、无参开面板；选中内置命令不向会话发提示
   - 完成态：NEXT_DIST_DIR=.next-e2e external server 下 e2e 全绿
   - _Requirements: 1.1, 1.4, 2.1, 2.3, 3.1_

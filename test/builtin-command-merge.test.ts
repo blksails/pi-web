@@ -2,7 +2,7 @@
  * to-rpc-command — 映射与合流（builtin-plugin-command 任务 5.1）。
  */
 import { describe, it, expect } from "vitest";
-import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit";
+import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import {
   toRpcSlashCommand,
