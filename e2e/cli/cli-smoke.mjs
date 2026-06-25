@@ -84,6 +84,21 @@ async function main() {
     check("CLI 启动 standalone 并就绪(Req 3.1, 1.4)", true);
     browser = await chromium.launch();
     const page = await browser.newPage();
+    // 失败诊断:收集浏览器控制台与页面异常(跨 OS 排查 autostart 不进会话用)。
+    const consoleLogs = [];
+    page.on("console", (m) => consoleLogs.push(`[${m.type()}] ${m.text()}`));
+    page.on("pageerror", (e) => consoleLogs.push(`[pageerror] ${e.message}`));
+    page.on("requestfailed", (r) =>
+      consoleLogs.push(`[reqfail] ${r.url()} ${r.failure()?.errorText ?? ""}`),
+    );
+    page.on("response", async (r) => {
+      if (r.status() >= 400 && /\/api\//.test(r.url())) {
+        const t = await r.text().catch(() => "");
+        consoleLogs.push(`[http ${r.status()}] ${r.url()} ${t.slice(0, 300)}`);
+      }
+    });
+    globalThis.__consoleLogs = consoleLogs;
+    globalThis.__page = page;
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     // CLI 固定注入 PI_WEB_AUTOSTART=1 + 默认 source(bin/pi-web.mjs)→ 前端跳过选源页,
     // 直接用 defaultSource 建会话进入会话界面(见 docs/product/14-cli.md「直接进会话」)。
@@ -99,8 +114,21 @@ async function main() {
     check("收到 stub 流式回包(Req 7.2)", true);
     await page.screenshot({ path: EVIDENCE, fullPage: true });
     console.log(`证据截图: ${EVIDENCE}`);
-  } catch (err) {
+    } catch (err) {
     check(`浏览器冒烟: ${err.message}`, false);
+    // 失败诊断转储:URL + 控制台/页面错误 + body 片段 + 截图(供 CI artifact 上传)。
+    try {
+      const page = globalThis.__page;
+      if (page) {
+        console.error(`[diag] url=${page.url()}`);
+        const body = await page.evaluate(() => document.body?.innerText?.slice(0, 800) ?? "");
+        console.error(`[diag] body=${JSON.stringify(body)}`);
+        await page.screenshot({ path: EVIDENCE, fullPage: true }).catch(() => {});
+      }
+      for (const l of (globalThis.__consoleLogs ?? []).slice(-40)) console.error(`[diag] ${l}`);
+    } catch (e) {
+      console.error(`[diag] dump 失败: ${e.message}`);
+    }
   } finally {
     if (browser) await browser.close();
     cli.kill("SIGINT");
