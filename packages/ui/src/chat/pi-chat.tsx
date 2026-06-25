@@ -640,8 +640,13 @@ export function PiChat({
   const panelRatioActive = hasPanelRight;
   // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
-  // 日志 right 位置：showLogs && logsPanelVisible && position="right" 时 aside 也需打开。
-  const showLogsRight = showLogs && logsPanelVisible && logsPanelPosition === "right";
+  // 日志面板位置安全降级:"right"(aside 布局)当前有未根治的 React #185 渲染循环
+  // (LogsPanel 内 radix Select 在 aside 中 ref 抖动 → Maximum update depth → 整页崩),
+  // 暂降级为 "bottom" 防崩;待右侧布局重构后恢复。详见 spec 报告/记忆。
+  const effectiveLogsPosition: "bottom" | "drawer" =
+    logsPanelPosition === "right" ? "bottom" : logsPanelPosition;
+  // 日志 right 位置 aside:降级后恒关闭(right→bottom),保留 false 常量以便未来重构右侧布局后恢复。
+  const showLogsRight = false;
   const showAside = showPanelRight || hasArtifactAside || showLogsRight;
   const asideWidth = panelRatioActive
     ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
@@ -1026,7 +1031,7 @@ export function PiChat({
             </div>
           ) : null}
           {/* bottom 位置（默认）：dock 下方渲染日志面板 */}
-          {showLogs && logsPanelVisible && logsPanelPosition === "bottom" ? (
+          {showLogs && logsPanelVisible && effectiveLogsPosition === "bottom" ? (
             <>
               <div
                 data-pi-logs-region
@@ -1039,7 +1044,7 @@ export function PiChat({
             </>
           ) : null}
           {/* drawer 位置：toggle 按钮（showLogs && logsPanelVisible 门控）+ 底部抽屉覆盖层 */}
-          {showLogs && logsPanelVisible && logsPanelPosition === "drawer" ? (
+          {showLogs && logsPanelVisible && effectiveLogsPosition === "drawer" ? (
             <>
               <button
                 type="button"
