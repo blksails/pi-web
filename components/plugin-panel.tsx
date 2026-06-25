@@ -1,87 +1,41 @@
 "use client";
 /**
- * PluginPanel — `/plugin` 管理面板(builtin-plugin-command 任务 3.3)。
+ * PluginPanel — `/plugin` 管理面板(unified-command-result-layer 任务 6.2)。
  *
- * 列出已安装 plugin(及作用域)、支持以来源安装与卸载;装/卸后触发会话重载使其生效。
- * 经既有 /extensions 与 /sessions/:id/reload 端点(client transport)。失败呈现原因。
+ * 纯展示型:列出已安装 plugin、提供安装/卸载入口。**不直调 REST、不持 client、无 refreshKey**;
+ * 安装/卸载经 `onExecute(argv)` 走统一命令通道(host 命令在服务端执行),列表由命令结果
+ * (CommandResult.data.extensions)经 `items` 注入,事件驱动刷新。失败原因经 `error` 呈现。
  */
 import * as React from "react";
-import type { PiClient, InstalledExtensionInfo } from "@blksails/pi-web-react";
+import type { InstalledExtensionInfo } from "@blksails/pi-web-react";
 
 export interface PluginPanelProps {
-  readonly client: PiClient;
-  readonly sessionId: string | undefined;
+  /** 已装列表(由命令结果事件驱动注入)。 */
+  readonly items: readonly InstalledExtensionInfo[];
+  /** 失败/通知文案(命令结果 effect:notify 或 ok:false)。 */
+  readonly error?: string;
+  /** 执行中(pending 态,禁用操作)。 */
+  readonly busy?: boolean;
+  /** 经统一命令通道执行 `/plugin` 子命令(argv 如 "install <源>" / "uninstall <名>" / "list")。 */
+  readonly onExecute: (argv: string) => void;
   readonly onClose: () => void;
-  /** 装/卸成功后回调(宿主据此触发 webext 加载路径,与 runner 重载构成双路生效)。 */
-  readonly onAfterChange?: () => void;
-  /** 外部刷新信号:变化即重取已装列表(如键入 /plugin install 由宿主分派安装后)。 */
-  readonly refreshKey?: number;
 }
 
 export function PluginPanel({
-  client,
-  sessionId,
+  items,
+  error,
+  busy,
+  onExecute,
   onClose,
-  onAfterChange,
-  refreshKey,
 }: PluginPanelProps): React.JSX.Element {
-  const [items, setItems] = React.useState<readonly InstalledExtensionInfo[]>([]);
-  const [error, setError] = React.useState<string | undefined>(undefined);
-  const [busy, setBusy] = React.useState(false);
   const [source, setSource] = React.useState("");
 
-  const refresh = React.useCallback((): void => {
-    void client
-      .listExtensions()
-      .then((r) => {
-        setItems(r.extensions);
-        setError(undefined);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [client]);
-
-  React.useEffect(() => {
-    refresh();
-  }, [refresh, refreshKey]);
-
-  const reloadIfPossible = React.useCallback(async (): Promise<void> => {
-    if (sessionId !== undefined) {
-      await client.reloadSession(sessionId).catch(() => undefined);
-    }
-  }, [client, sessionId]);
-
-  const install = React.useCallback(async (): Promise<void> => {
-    if (source.trim().length === 0) return;
-    setBusy(true);
-    try {
-      await client.installExtension(source.trim());
-      await reloadIfPossible();
-      onAfterChange?.();
-      setSource("");
-      refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [client, source, reloadIfPossible, refresh, onAfterChange]);
-
-  const remove = React.useCallback(
-    async (extId: string): Promise<void> => {
-      setBusy(true);
-      try {
-        await client.removeExtension(extId);
-        await reloadIfPossible();
-        onAfterChange?.();
-        refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [client, reloadIfPossible, refresh, onAfterChange],
-  );
+  const install = React.useCallback((): void => {
+    const s = source.trim();
+    if (s.length === 0) return;
+    onExecute(`install ${s}`);
+    setSource("");
+  }, [source, onExecute]);
 
   return (
     <div
@@ -118,8 +72,8 @@ export function PluginPanel({
           <button
             type="button"
             data-testid="plugin-install-btn"
-            onClick={() => void install()}
-            disabled={busy}
+            onClick={install}
+            disabled={busy === true}
             className="rounded-sm bg-[hsl(var(--primary))] px-3 py-1 text-sm text-[hsl(var(--primary-foreground))] disabled:opacity-50"
           >
             安装
@@ -153,8 +107,8 @@ export function PluginPanel({
                 </span>
                 <button
                   type="button"
-                  onClick={() => void remove(x.id)}
-                  disabled={busy}
+                  onClick={() => onExecute(`uninstall ${x.id}`)}
+                  disabled={busy === true}
                   className="text-xs text-[hsl(var(--muted-foreground))] hover:text-[hsl(0_72%_51%)] disabled:opacity-50"
                 >
                   卸载

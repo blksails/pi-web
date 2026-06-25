@@ -7,6 +7,10 @@ import {
   usePiControls,
   useExtensionUI,
   createPiClient,
+  createUiRpcBus,
+  executeHostCommand,
+  type CommandOutcome,
+  type InstalledExtensionInfo,
   type UsePiSessionResult,
 } from "@blksails/pi-web-react";
 import {
@@ -16,10 +20,7 @@ import {
   type ComponentOverrides,
   type PiChatSlots,
 } from "@blksails/pi-web-ui";
-import type {
-  CreateSessionRequest,
-  RpcSlashCommand,
-} from "@blksails/pi-web-protocol";
+import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { PluginPanel } from "@/components/plugin-panel.js";
@@ -377,30 +378,60 @@ function SessionView({
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
     [],
   );
-  const pluginClient = React.useMemo(() => createPiClient("/api"), []);
   const [pluginPanelOpen, setPluginPanelOpen] = React.useState(false);
-  const onBuiltinSelect = React.useCallback(
-    (cmd: RpcSlashCommand, rawValue: string): void => {
-      if (cmd.name !== "plugin") return;
-      // 始终打开管理面板(提供上下文/列表);若键入了 install/uninstall 子命令则直接执行,
-      // 完成后触发 runner reload + webext 加载路径(装后双路生效)。
-      setPluginPanelOpen(true);
-      const args = rawValue.trim().split(/\s+/).slice(1); // 去掉 "/plugin"
-      const sub = args[0];
-      const target = args[1];
-      const afterChange = (): void => {
-        const sid = session.sessionId;
-        void (sid !== undefined ? pluginClient.reloadSession(sid) : Promise.resolve())
-          .catch(() => undefined)
-          .finally(() => setWebextReloadNonce((n) => n + 1));
-      };
-      if (sub === "install" && target !== undefined) {
-        void pluginClient.installExtension(target).then(afterChange).catch(() => undefined);
-      } else if (sub === "uninstall" && target !== undefined) {
-        void pluginClient.removeExtension(target).then(afterChange).catch(() => undefined);
+  const [pluginItems, setPluginItems] = React.useState<
+    readonly InstalledExtensionInfo[]
+  >([]);
+  const [pluginError, setPluginError] = React.useState<string | undefined>(undefined);
+
+  // 统一命令层(unified-command-result-layer):chat-app 自有 ui-rpc 总线,供面板内安装/卸载
+  // 经命令通道执行(host 命令 server 执行)。palette/键入分派由 PiChat 内部总线处理,结果经
+  // onCommandResult 回流到此。两条总线共用同一 control:ui-rpc 订阅,按 correlationId 各自配对。
+  const commandBus = React.useMemo(() => {
+    const client = session.client;
+    const sid = session.sessionId;
+    const conn = session.connection;
+    if (client === undefined || sid === undefined || conn === undefined) return undefined;
+    return createUiRpcBus({
+      send: (req) => client.uiRpc(sid, req).then(() => undefined),
+      subscribeResponse: conn.controlStore.onUiRpcResponse,
+    });
+  }, [session.client, session.sessionId, session.connection]);
+  React.useEffect(() => () => commandBus?.dispose(), [commandBus]);
+
+  // 命令结果 → 事件驱动 UI(无 refreshKey/手动时序):effect 决定 开面板/刷新列表/通知。
+  const applyCommandOutcome = React.useCallback(
+    (name: string, outcome: CommandOutcome): void => {
+      if (name !== "plugin") return;
+      if (!outcome.ok) {
+        setPluginError(outcome.error?.message ?? "命令执行失败");
+        return;
       }
+      const r = outcome.result;
+      if (r === undefined) return;
+      setPluginError(r.effect === "notify" ? r.message : undefined);
+      if (r.effect === "open-panel") setPluginPanelOpen(true);
+      const data = r.data;
+      if (data !== null && typeof data === "object" && "extensions" in data) {
+        setPluginItems(
+          (data as { extensions: readonly InstalledExtensionInfo[] }).extensions,
+        );
+      }
+      // 装/卸后触发 webext 加载路径(装后双路生效之一,保留)。
+      if (r.effect === "panel-refresh") setWebextReloadNonce((n) => n + 1);
     },
-    [pluginClient, session.sessionId],
+    [],
+  );
+
+  // 面板内安装/卸载/刷新:经统一命令通道(非直调 REST)。
+  const onPluginExecute = React.useCallback(
+    (argv: string): void => {
+      if (commandBus === undefined) return;
+      void executeHostCommand(commandBus, "plugin", argv).then((o) =>
+        applyCommandOutcome("plugin", o),
+      );
+    },
+    [commandBus, applyCommandOutcome],
   );
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
@@ -538,7 +569,7 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           builtinCommands={builtinCommands}
-          onBuiltinSelect={onBuiltinSelect}
+          onCommandResult={applyCommandOutcome}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           showLogs={true}
@@ -569,11 +600,10 @@ function SessionView({
         />
         {pluginPanelOpen ? (
           <PluginPanel
-            client={pluginClient}
-            sessionId={session.sessionId}
+            items={pluginItems}
+            {...(pluginError !== undefined ? { error: pluginError } : {})}
+            onExecute={onPluginExecute}
             onClose={() => setPluginPanelOpen(false)}
-            onAfterChange={() => setWebextReloadNonce((n) => n + 1)}
-            refreshKey={webextReloadNonce}
           />
         ) : null}
       </div>

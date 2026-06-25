@@ -18,12 +18,15 @@ import {
   useBranches,
   useSuggestions,
   createUiRpcBus,
+  executeHostCommand,
+  type CommandOutcome,
   createLogsStore,
   useLogs,
   type LogHistoryFetcher,
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
+import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import {
   ChatError,
@@ -126,8 +129,17 @@ export interface PiChatProps {
   readonly extensionCommands?: ExtensionCommandPolicy;
   /** harness 内置命令(source==="builtin");前置合流到命令面板(builtin-plugin-command)。 */
   readonly builtinCommands?: readonly RpcSlashCommand[];
-  /** 选中内置命令时的分派回调(执行 harness 逻辑,不进 LLM)。 */
+  /**
+   * 选中内置命令时的分派回调(执行 harness 逻辑,不进 LLM)。
+   * @deprecated 统一命令层(unified-command-result-layer):内置命令改经 ui-rpc command 通道
+   * 执行,结果经 `onCommandResult` 回调。仅在无 ui-rpc 总线/无 onCommandResult 时回退。
+   */
   readonly onBuiltinSelect?: (command: RpcSlashCommand, rawValue: string) => void;
+  /**
+   * 内置/host 命令经统一命令通道执行后的结果回调(事件驱动 UI:面板/通知/刷新)。
+   * 提供后,内置命令由 PiChat 经 ui-rpc 总线执行(point=command),不再走 onBuiltinSelect。
+   */
+  readonly onCommandResult?: (commandName: string, outcome: CommandOutcome) => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -248,6 +260,7 @@ export function PiChat({
   extensionCommands,
   builtinCommands,
   onBuiltinSelect,
+  onCommandResult,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -314,6 +327,8 @@ export function PiChat({
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
+    // 统一命令层:ctx.ui.custom 的声明式接收路径(注册名→组件;桥接为外部依赖,声明式兜底)。
+    registry.registerDataPartRenderer("data-pi-custom-ui", CustomUiDataPart);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -519,6 +534,22 @@ export function PiChat({
     [transport, attachments, webSearch, sendMessage],
   );
 
+  // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
+  // 结果经 onCommandResult 事件驱动 UI(不进 LLM)。无 bus/无 onCommandResult 时回退旧 onBuiltinSelect。
+  const dispatchBuiltin = React.useCallback(
+    (cmd: RpcSlashCommand, rawValue: string): void => {
+      const argv = rawValue.replace(/^\/\S+\s*/, ""); // 去掉前导 "/<name> "
+      if (uiRpc !== undefined && onCommandResult !== undefined) {
+        void executeHostCommand(uiRpc, cmd.name, argv).then((outcome) =>
+          onCommandResult(cmd.name, outcome),
+        );
+        return;
+      }
+      onBuiltinSelect?.(cmd, rawValue);
+    },
+    [uiRpc, onCommandResult, onBuiltinSelect],
+  );
+
   const onSubmit = React.useCallback((): void => {
     // 内置命令拦截:键入完整命令(如 "/plugin install x")回车时,按 source=builtin 分派,
     // **绝不发给 LLM**(builtin-plugin-command Req 2.3/7.x)。匹配首段命令名。
@@ -529,13 +560,13 @@ export function PiChat({
           ? builtinCommands.find((c) => c.name.toLowerCase() === name)
           : undefined;
       if (cmd !== undefined) {
-        onBuiltinSelect?.(cmd, input);
+        dispatchBuiltin(cmd, input);
         setInput("");
         return;
       }
     }
     doSend(input);
-  }, [doSend, input, builtinCommands, onBuiltinSelect]);
+  }, [doSend, input, builtinCommands, dispatchBuiltin]);
 
   const onStop = React.useCallback((): void => {
     if (controls !== undefined) void controls.abort().catch(() => undefined);
@@ -747,7 +778,9 @@ export function PiChat({
             onCaptureChange={setCommandCapturing}
             extensionCommands={extensionCommands}
             {...(builtinCommands !== undefined ? { builtinCommands } : {})}
-            {...(onBuiltinSelect !== undefined ? { onBuiltinSelect } : {})}
+            {...(builtinCommands !== undefined
+              ? { onBuiltinSelect: dispatchBuiltin }
+              : {})}
             {...(extension?.contributions?.slash !== undefined
               ? { slashContribution: extension.contributions.slash }
               : {})}

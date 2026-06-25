@@ -144,3 +144,8 @@ export {
   type UiRpcBus,
   type UiRpcBusOptions,
 } from "./web-ext/ui-rpc-bus.js";
+export {
+  executeHostCommand,
+  parseCustomUi,
+  type CommandOutcome,
+} from "./web-ext/command-client.js";
