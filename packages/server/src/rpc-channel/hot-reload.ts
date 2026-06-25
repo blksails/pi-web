@@ -47,8 +47,14 @@ function watchPaths(): string[] {
       .filter(Boolean);
   }
   // 本文件:packages/server/src/rpc-channel/hot-reload.ts → 仓库 packages/ 目录。
-  const here = dirname(fileURLToPath(import.meta.url));
-  const packagesDir = resolve(here, "..", "..", "..", "..");
+  // standalone bundle 里 import.meta.url 被内联成构建机路径,Windows 上 fileURLToPath 抛
+  // ERR_INVALID_FILE_URL_PATH;失败则回退运行时 cwd 下的 packages。
+  let packagesDir: string;
+  try {
+    packagesDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+  } catch {
+    packagesDir = resolve(process.cwd(), "packages");
+  }
   return [resolve(packagesDir, "tool-kit", "src")];
 }
 

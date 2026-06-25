@@ -9,6 +9,7 @@
  * 注:`node:sqlite` 为实验特性,导入/使用时会打印一次性 ExperimentalWarning。
  */
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { makeStoredEntryNormalizer, parseHeader, parseLine, serializeEntry, serializeHeader } from "./codec.js";
 import {
@@ -52,7 +53,10 @@ CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(session_id, parent_id);
  * (vite/webpack)对这个较新的内置模块做静态解析而失败。类型经 `import type` 擦除。
  */
 const loadNodeSqlite = (): typeof import("node:sqlite") =>
-  createRequire(import.meta.url)("node:sqlite");
+  // createRequire 的 base 仅需在**运行 OS** 上合法;node:sqlite 是内置,解析与 base 无关。
+  // 不用 import.meta.url:standalone 里被 webpack 内联成构建机绝对路径,Windows 上对该
+  // Linux URL 调 createRequire 会抛 ERR_INVALID_FILE_URL_PATH。cwd 是运行 OS 的合法绝对路径。
+  createRequire(join(process.cwd(), "noop.cjs"))("node:sqlite");
 
 export class SqliteSessionEntryStore implements SessionEntryStore {
   readonly #db: DatabaseSync;

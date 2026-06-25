@@ -16,9 +16,16 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const here = fileURLToPath(import.meta.url);
-// src/ -> package root
-const serverPkgDir = path.dirname(path.dirname(here));
+// standalone bundle 里 webpack 把 import.meta.url 内联成**构建机绝对路径**;在别的 OS
+// (尤其 Windows:Linux POSIX URL 被当作非绝对 Windows 路径)`fileURLToPath` 抛
+// ERR_INVALID_FILE_URL_PATH。故安全解析:失败置 undefined,运行时回退 cwd。
+let serverPkgDir: string | undefined;
+try {
+  // src/ -> package root
+  serverPkgDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+} catch {
+  serverPkgDir = undefined;
+}
 
 /**
  * Absolute path to `runner-bootstrap.mjs`.
@@ -30,12 +37,9 @@ const serverPkgDir = path.dirname(path.dirname(here));
  * 报清晰的 ENOENT)。
  */
 export function runnerBootstrapPath(): string {
-  const fromHere = path.join(serverPkgDir, "runner-bootstrap.mjs");
-  if (existsSync(fromHere)) return fromHere;
-  const fromCwd = path.join(
-    process.cwd(),
-    "packages/server/runner-bootstrap.mjs",
-  );
-  if (existsSync(fromCwd)) return fromCwd;
-  return fromHere;
+  if (serverPkgDir !== undefined) {
+    const fromHere = path.join(serverPkgDir, "runner-bootstrap.mjs");
+    if (existsSync(fromHere)) return fromHere;
+  }
+  return path.join(process.cwd(), "packages/server/runner-bootstrap.mjs");
 }

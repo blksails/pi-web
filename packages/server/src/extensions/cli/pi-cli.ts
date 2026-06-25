@@ -46,10 +46,15 @@ export function resolvePiCliEntry(): string {
   //  ② 运行时 cwd:standalone 产物以 cwd=产物根启动,命中顶层 node_modules/@earendil-works/pi-coding-agent。
   // ②必要,因 webpack 把 standalone bundle 里的 import.meta.url **内联成构建机绝对路径**,
   // 产物换机/换 OS 后①走的是不存在的构建路径(参见 pack-standalone 的可重定位处理)。
-  const bases = [
-    fileURLToPath(import.meta.url),
-    path.join(process.cwd(), "_"),
-  ];
+  // 且 Windows 上 `fileURLToPath` 对 Linux 内联 URL 直接抛 ERR_INVALID_FILE_URL_PATH,
+  // 故 try 包裹:抛错则跳过①,仅用②cwd。
+  const bases: string[] = [];
+  try {
+    bases.push(fileURLToPath(import.meta.url));
+  } catch {
+    /* Windows + Linux 内联 URL:跳过,用 cwd */
+  }
+  bases.push(path.join(process.cwd(), "_"));
   for (const base of bases) {
     const pkgDir = locatePackageDir(PI_PACKAGE, base);
     if (pkgDir !== undefined) {
