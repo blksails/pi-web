@@ -85,7 +85,7 @@
   - _Boundary: WebextLoadClient_
   - _Depends: 2.3, 1.1_
 
-- [ ] 4. 集成：宿主接线与装后反馈
+- [x] 4. 集成：宿主接线与装后反馈
 
 - [x] 4.1 app-shell 接入加载触发与 import map 注入
   - 在 app-shell 会话视图接入客户端加载编排触发点，并注入 import map
@@ -94,14 +94,14 @@
   - _Requirements: 1.5, 2.3, 3.1, 8.4_
   - _Depends: 3.1, 3.2_
 
-- [ ] 4.2 安装后双路生效反馈接线
+- [x] 4.2 安装后双路生效反馈接线
   - 经 builtin-plugin-command 的「安装完成」挂点触发 webext 加载；与 pi 资源会话重载两路并行
   - 加载失败向用户呈现明确失败反馈与原因，而非静默无变化
   - 完成态：安装同时含 pi 资源与 webext 的包后，会话重载与 webext 加载两路均发生；webext 失败有明确反馈
   - _Requirements: 8.1, 8.2, 8.3_
   - _Depends: 3.2_
 
-- [ ] 5. 验证
+- [x] 5. 验证
 
 - [x] 5.1 (P) 信任与门控单元测试
   - 注册表：根验签、过期/吊销、本地覆盖优先、拉取失败回退与不 fail-open
@@ -111,7 +111,7 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 10.2, 10.3, 10.4_
   - _Boundary: TrustedPublisherRegistry, WebextTrustService, extension-gate_
 
-- [ ] 5.2 (P) 解析端点与装后双路集成测试
+- [x] 5.2 (P) 解析端点与装后双路集成测试
   - 解析端点：纯声明/受信代码/不受信/无 webext 四种返回
   - 装后双路：含 pi 资源+webext 的包安装后 reload 与 webext load 均触发
   - 完成态：上述集成测试全绿
