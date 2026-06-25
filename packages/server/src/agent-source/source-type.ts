@@ -29,7 +29,14 @@ function isLocalDir(source: string): boolean {
     source.startsWith("./") ||
     source.startsWith("../") ||
     source === "." ||
-    source === ".."
+    source === ".." ||
+    // Windows 本地路径:盘符绝对(C:\ 或 C:/)、UNC(\\server\share)、反斜杠相对(.\ ..\)。
+    // 否则 CLI 在 Windows 上绝对化后的 source(如 D:\a\examples\hello-agent)会落空 →
+    // SourceKindError → 建会话 500。
+    /^[A-Za-z]:[\\/]/.test(source) ||
+    source.startsWith("\\\\") ||
+    source.startsWith(".\\") ||
+    source.startsWith("..\\")
   );
 }
 

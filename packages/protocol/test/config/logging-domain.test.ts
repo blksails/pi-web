@@ -11,9 +11,9 @@ import {
 } from "../../src/config/index.js";
 
 describe("loggingConfigSchema — 默认值", () => {
-  it("enabled 默认 true", () => {
+  it("enabled 默认 false（日志默认关闭，需在 Settings 开启）", () => {
     const parsed = loggingConfigSchema.parse({});
-    expect(parsed.enabled).toBe(true);
+    expect(parsed.enabled).toBe(false);
   });
 
   it("level 默认 info", () => {

@@ -13,13 +13,33 @@
  *          packages/server/runner-bootstrap.mjs          (target, one dir up)
  */
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const here = fileURLToPath(import.meta.url);
-// src/ -> package root
-const serverPkgDir = path.dirname(path.dirname(here));
+// standalone bundle 里 webpack 把 import.meta.url 内联成**构建机绝对路径**;在别的 OS
+// (尤其 Windows:Linux POSIX URL 被当作非绝对 Windows 路径)`fileURLToPath` 抛
+// ERR_INVALID_FILE_URL_PATH。故安全解析:失败置 undefined,运行时回退 cwd。
+let serverPkgDir: string | undefined;
+try {
+  // src/ -> package root
+  serverPkgDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+} catch {
+  serverPkgDir = undefined;
+}
 
-/** Absolute path to `runner-bootstrap.mjs` (the cwd-independent runner entry). */
+/**
+ * Absolute path to `runner-bootstrap.mjs`.
+ *
+ * 优先用本模块位置(`import.meta.url`)推算(dev:源码树;同路径 standalone 亦可)。
+ * 但 standalone 产物里 webpack 会把 `import.meta.url` **内联成构建机绝对路径**,产物
+ * 换机/换 OS 后该路径不存在 —— 此时回退到运行时 cwd(产物以 cwd=standalone 根启动),
+ * `runner-bootstrap.mjs` 落在 `packages/server/` 下。两者皆不存在才返回原计算值(让上层
+ * 报清晰的 ENOENT)。
+ */
 export function runnerBootstrapPath(): string {
-  return path.join(serverPkgDir, "runner-bootstrap.mjs");
+  if (serverPkgDir !== undefined) {
+    const fromHere = path.join(serverPkgDir, "runner-bootstrap.mjs");
+    if (existsSync(fromHere)) return fromHere;
+  }
+  return path.join(process.cwd(), "packages/server/runner-bootstrap.mjs");
 }

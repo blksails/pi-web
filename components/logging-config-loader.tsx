@@ -28,18 +28,25 @@ export function LoggingConfigLoader(): null {
     void (async () => {
       try {
         const res = await fetch("/api/config/logging", { method: "GET" });
-        if (!res.ok) return;
+        // 日志默认**关闭**：端点不可达时浏览器侧也保持关闭（不沿用库默认），
+        // 仅当用户在 Settings 显式保存 enabled=true 时才开启。
+        if (!res.ok) {
+          configureLogger({ enabled: false });
+          return;
+        }
         const json = (await res.json()) as { values?: LoggingConfig };
         const cfg = json.values ?? {};
         const partial: Parameters<typeof configureLogger>[0] = {};
-        if (typeof cfg.enabled === "boolean") partial.enabled = cfg.enabled;
+        // 配置缺失（values 为空 / 无 enabled 字段）→ 视为关闭，与 schema 默认值一致。
+        partial.enabled = cfg.enabled === true;
         if (typeof cfg.level === "string" && isLogLevel(cfg.level)) partial.level = cfg.level;
         if (typeof cfg.namespaces === "object" && cfg.namespaces !== null) {
           partial.namespaces = cfg.namespaces;
         }
         configureLogger(partial);
       } catch {
-        // 静默失败：日志配置加载失败不影响主流程
+        // 静默失败：保持默认关闭，不影响主流程
+        configureLogger({ enabled: false });
       }
     })();
   }, []);

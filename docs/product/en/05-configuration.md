@@ -188,7 +188,7 @@ Logging is handled by the isomorphic package `packages/logger`, which parses the
 
 | Variable | Default | Description |
 |---|---|---|
-| `PI_WEB_LOG_ENABLED` | (enabled) | When set to `false`, disables log output; any other value is treated as enabled |
+| `PI_WEB_LOG_ENABLED` | (unset = off) | **Logging is off by default**; set to any non-`false` value (e.g. `1`/`true`) to force-enable server-side log gating (no Settings needed); set to `false` to explicitly disable |
 | `PI_WEB_LOG_LEVEL` | `info` | Log level: `debug` / `info` / `warn` / `error` |
 | `PI_WEB_LOG_NAMESPACES` | (all) | Comma-separated namespace allowlist (e.g. `agent,ext`); only the listed namespaces are enabled |
 | `PI_WEB_LOG_FILE` | (unset, no file written) | Absolute path of the log file; setting it enables file output |

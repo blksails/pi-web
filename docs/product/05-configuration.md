@@ -188,7 +188,7 @@ NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `PI_WEB_LOG_ENABLED` | （启用） | 取 `false` 时禁用日志输出；其余任何值视为启用 |
+| `PI_WEB_LOG_ENABLED` | （未设 = 关闭） | **日志默认关闭**；设为非 `false` 值（如 `1`/`true`）强制开启服务端日志门控（无需经 Settings），取 `false` 显式禁用 |
 | `PI_WEB_LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
 | `PI_WEB_LOG_NAMESPACES` | （全部） | 逗号分隔的命名空间白名单（如 `agent,ext`），仅启用列出的命名空间 |
 | `PI_WEB_LOG_FILE` | （未设，不写文件） | 日志文件绝对路径；设置后启用文件输出 |

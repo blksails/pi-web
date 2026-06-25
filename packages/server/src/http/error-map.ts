@@ -89,5 +89,7 @@ export function mapEngineError(err: unknown): Response {
   if (err instanceof MissingInputError) {
     return errorResponse(400, err.code, err.message);
   }
+  // 未映射错误兜底 500。响应不泄露细节,但把根因打到**服务端 stderr**,否则线上/CI 无从排障。
+  console.error("[pi-web] 未映射的会话层错误:", err);
   return errorResponse(500, "INTERNAL", "Internal server error.");
 }

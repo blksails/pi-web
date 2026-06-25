@@ -224,8 +224,10 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
   return async (req: Request): Promise<Response> => {
     try {
       return await router.route(req);
-    } catch {
-      // 未预期异常兜底:500,不泄露 env/凭据/堆栈(Req 9.3)。
+    } catch (err) {
+      // 未预期异常兜底:500,响应不泄露 env/凭据/堆栈(Req 9.3)。
+      // 但把根因打到**服务端 stderr**(不进响应),否则线上/CI 排障无从下手。
+      console.error("[pi-web] 未处理的请求异常:", err);
       return errorResponse(500, "INTERNAL", "Internal server error.");
     }
   };

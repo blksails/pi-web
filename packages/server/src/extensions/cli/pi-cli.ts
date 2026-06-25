@@ -41,11 +41,27 @@ export class PiCliNotFoundError extends Error {
  * `dist/cli.js`。这是"经 `@earendil-works/pi-coding-agent` 解析"而非全局 `pi`。
  */
 export function resolvePiCliEntry(): string {
-  const pkgDir = locatePackageDir(PI_PACKAGE, fileURLToPath(import.meta.url));
-  if (pkgDir === undefined) {
-    throw new PiCliNotFoundError();
+  // 依次从多个基准向上定位包目录:
+  //  ① 本模块位置(import.meta.url):dev 命中 packages/server/node_modules;同路径 standalone 亦可。
+  //  ② 运行时 cwd:standalone 产物以 cwd=产物根启动,命中顶层 node_modules/@earendil-works/pi-coding-agent。
+  // ②必要,因 webpack 把 standalone bundle 里的 import.meta.url **内联成构建机绝对路径**,
+  // 产物换机/换 OS 后①走的是不存在的构建路径(参见 pack-standalone 的可重定位处理)。
+  // 且 Windows 上 `fileURLToPath` 对 Linux 内联 URL 直接抛 ERR_INVALID_FILE_URL_PATH,
+  // 故 try 包裹:抛错则跳过①,仅用②cwd。
+  const bases: string[] = [];
+  try {
+    bases.push(fileURLToPath(import.meta.url));
+  } catch {
+    /* Windows + Linux 内联 URL:跳过,用 cwd */
   }
-  return path.join(pkgDir, "dist", "cli.js");
+  bases.push(path.join(process.cwd(), "_"));
+  for (const base of bases) {
+    const pkgDir = locatePackageDir(PI_PACKAGE, base);
+    if (pkgDir !== undefined) {
+      return path.join(pkgDir, "dist", "cli.js");
+    }
+  }
+  throw new PiCliNotFoundError();
 }
 
 /** 从 `fromPath` 向上在各级 `node_modules` 中定位包目录。 */

@@ -51,6 +51,7 @@ import {
 } from "@blksails/pi-web-server/model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
+import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
@@ -227,19 +228,19 @@ function buildSingleton(): HandlerSingleton {
   const store = new InMemorySessionStore(true);
 
   // 日志门控 provider（Req 6.4/6.5/6.6 / task 4.4）：每次新会话创建时读取最新配置。
-  // 缺文件/空配置/读失败 → 全开 debug（与 PiSession 的 GATE_DEFAULT 一致，新装机默认可见全部
-  // 日志、行为可预测）；有内容 → parse(raw) 应用用户已保存的 enabled/level/namespaces。
-  const FULL_OPEN = { enabled: true, level: "debug" as const };
+  // 缺文件/空配置/读失败 → env 推导默认（日志默认**关闭**；`PI_WEB_LOG_ENABLED` 存在且
+  // 非 "false" 时强制开启，无需经 Settings；级别/命名空间一并取自 PI_WEB_LOG_* env，
+  // 见 resolveLoggingEnvDefault）。有内容 → parse(raw) 应用 Settings 已保存的配置。
   const loggingConfigProvider = async () => {
     try {
       const codec = new ConfigCodec(config.agentDir);
       const raw = await codec.load("logging");
       if (raw === null || typeof raw !== "object" || Object.keys(raw).length === 0) {
-        return loggingConfigSchema.parse(FULL_OPEN);
+        return loggingConfigSchema.parse(resolveLoggingEnvDefault());
       }
       return loggingConfigSchema.parse(raw);
     } catch {
-      return loggingConfigSchema.parse(FULL_OPEN);
+      return loggingConfigSchema.parse(resolveLoggingEnvDefault());
     }
   };
 

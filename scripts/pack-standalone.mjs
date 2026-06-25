@@ -17,8 +17,11 @@ import {
   readdirSync,
   rmSync,
   readFileSync,
+  writeFileSync,
   symlinkSync,
   mkdirSync,
+  lstatSync,
+  realpathSync,
 } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -117,6 +120,175 @@ function relinkPiSdkToPnpm() {
 }
 const relinked = relinkPiSdkToPnpm();
 console.log(`[pack-standalone] pi SDK relink:还原 ${relinked} 个 .pnpm 符号链接`);
+
+// 跨机重定位修复(主进程 pi SDK 依赖闭包自包含):config 域的 model-options 在**主进程**
+// value-import `@earendil-works/pi-coding-agent`(AuthStorage/ModelRegistry,供配置 UI 列
+// provider/model)。它经 pi-ai 拉入 partial-json 等传递依赖。nft 把 pi SDK 整体外置后**不
+// 追踪其传递依赖**,outputFileTracingIncludes 也只捎了 `@earendil-works/*` 本体,故这些传递
+// 依赖(及 `.pnpm` 里指向它们的同级符号链接)不在产物里。同机运行时 Node 会沿 node_modules
+// 一路向上「漏」到仓库根 node_modules 找到它们 —— 故本地一直「能跑」;一旦产物被搬到别的
+// 绝对路径(发布到 npm / 换机 / 换 OS),向上漏不到仓库根,即 `Cannot find package 'partial-json'`。
+//
+// 这里**沿 `.pnpm` 符号链接图遍历**,把 pi SDK 的完整闭包从仓库 `.pnpm` 复制进产物 `.pnpm`
+// (保留相对符号链接 ⇒ 产物自包含、可重定位)。跟随真实解析链接比静态解析 package.json 可靠。
+function copyPiSdkClosureToArtifact() {
+  const repoPnpm = join(root, "node_modules/.pnpm");
+  const saPnpm = join(standalone, "node_modules/.pnpm");
+  if (!existsSync(repoPnpm) || !existsSync(saPnpm)) {
+    console.warn(`[pack-standalone] 跳过 pi SDK 闭包复制(未找到 .pnpm)`);
+    return 0;
+  }
+  // 从某符号链接解析其指向的 `.pnpm/<dir>` 目录名(realpath 后取 `.pnpm` 后一段)。
+  const pnpmDirOfLink = (linkAbs) => {
+    let real;
+    try {
+      real = realpathSync(linkAbs);
+    } catch {
+      return null;
+    }
+    const segs = real.split(/[/\\]/);
+    const i = segs.lastIndexOf(".pnpm");
+    return i >= 0 && segs[i + 1] ? segs[i + 1] : null;
+  };
+  // 种子:pi-coding-agent 与 pi-ai 在仓库 `.pnpm` 的目录。
+  const seeds = readdirSync(repoPnpm).filter((d) =>
+    /^@earendil-works\+(pi-coding-agent|pi-ai)@/.test(d),
+  );
+  const queue = [...seeds];
+  const visited = new Set();
+  let copied = 0;
+  while (queue.length) {
+    const dir = queue.pop();
+    if (visited.has(dir)) continue;
+    visited.add(dir);
+    const src = join(repoPnpm, dir);
+    if (!existsSync(src)) continue;
+    // 先删目标再整目录复制(保留符号链接 verbatim)——避免 cpSync 在已存在目录上「合并」:
+    // includes 已捎来该 `.pnpm/<dir>` 的部分内容(拍平的实体目录),Node 22.19 的 cpSync
+    // 对 src 是符号链接 / dest 是实体目录(或反之)的冲突会抛 `EEXIST`(22.22 容忍,跨版本
+    // 不稳)。删后干净复制,无合并冲突。补齐被 includes 漏掉的同级 dep 链接与本体文件;
+    // 被复制回来的 dev 文件(*.md/*.d.ts…)由后续 prune 再清。
+    const dest = join(saPnpm, dir);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(src, dest, { recursive: true, verbatimSymlinks: true });
+    copied++;
+    // 遍历该包 node_modules 下的(scoped)符号链接,把它们指向的 `.pnpm` 目录入队。
+    const nm = join(src, "node_modules");
+    if (!existsSync(nm)) continue;
+    for (const e of readdirSync(nm, { withFileTypes: true })) {
+      const p = join(nm, e.name);
+      if (e.name.startsWith("@") && e.isDirectory()) {
+        for (const s of readdirSync(p, { withFileTypes: true })) {
+          const sp = join(p, s.name);
+          if (lstatSync(sp).isSymbolicLink()) {
+            const d = pnpmDirOfLink(sp);
+            if (d && !visited.has(d)) queue.push(d);
+          }
+        }
+      } else if (e.isSymbolicLink()) {
+        const d = pnpmDirOfLink(p);
+        if (d && !visited.has(d)) queue.push(d);
+      }
+    }
+  }
+  return copied;
+}
+const closureCopied = copyPiSdkClosureToArtifact();
+console.log(`[pack-standalone] pi SDK 闭包复制:${closureCopied} 个 .pnpm 目录(自包含,可重定位)`);
+
+// 跨机重定位修复:standalone 构建把 pi SDK external 出成**裸 specifier**
+// `@earendil-works/pi-coding-agent`(见 next.config.ts;旧实现用构建机绝对路径,
+// 产物一换机器/换 OS 运行就 `ERR_MODULE_NOT_FOUND`)。route.js 运行时沿 node_modules
+// 向上查找解析它,故在 standalone 顶层 `node_modules/@earendil-works/<name>` 建相对
+// 符号链接 → `.pnpm` 规范副本。相对链接 + 自包含的 `.pnpm` ⇒ 产物落在任意绝对路径都能解析。
+// 覆盖式、可重复执行;relink 后入口为符号链接时,readFileSync 跟随链接仍能读到版本。
+function hoistPiSdkTopLevel() {
+  const pnpmDir = join(standalone, "node_modules/.pnpm");
+  const scopeDir = join(
+    standalone,
+    "packages/server/node_modules/@earendil-works",
+  );
+  if (!existsSync(pnpmDir) || !existsSync(scopeDir)) {
+    console.warn(
+      `[pack-standalone] 跳过 pi SDK 顶层 hoist(未找到 ${existsSync(pnpmDir) ? scopeDir : pnpmDir})`,
+    );
+    return 0;
+  }
+  const topScope = join(standalone, "node_modules/@earendil-works");
+  mkdirSync(topScope, { recursive: true });
+  const pnpmEntries = readdirSync(pnpmDir);
+  let n = 0;
+  for (const name of readdirSync(scopeDir)) {
+    let version = "";
+    try {
+      version = JSON.parse(
+        readFileSync(join(scopeDir, name, "package.json"), "utf8"),
+      ).version;
+    } catch {
+      /* 无 package.json/版本则退化为前缀匹配 */
+    }
+    // 按版本精确匹配 `.pnpm` 规范副本(prefix 后须紧跟 `_` 或终止,避免 0.79.6 误配 0.79.60)。
+    const prefix = `@earendil-works+${name}@${version}`;
+    const match = pnpmEntries.find(
+      (d) =>
+        version &&
+        (d === prefix || d.startsWith(`${prefix}_`)) &&
+        existsSync(join(pnpmDir, d, "node_modules/@earendil-works", name)),
+    );
+    if (!match) {
+      console.warn(
+        `[pack-standalone] 未找到 @earendil-works/${name}@${version || "?"} 的 .pnpm 规范副本,跳过顶层 hoist`,
+      );
+      continue;
+    }
+    const canonical = join(pnpmDir, match, "node_modules/@earendil-works", name);
+    const linkPath = join(topScope, name);
+    rmSync(linkPath, { recursive: true, force: true });
+    const rel = relative(topScope, canonical);
+    symlinkSync(rel, linkPath, "dir");
+    console.log(`[pack-standalone] hoist pi SDK 顶层:@earendil-works/${name} → ${rel}`);
+    n++;
+  }
+  return n;
+}
+const piSdkHoisted = hoistPiSdkTopLevel();
+console.log(`[pack-standalone] pi SDK 顶层 hoist:${piSdkHoisted} 个`);
+
+// 跨机重定位修复(配合上面的顶层 hoist):next.config 把 pi-coding-agent 外置成**构建机
+// 绝对路径**(构建期 page-data 收集需可解析,裸 specifier 在 `.next/server/**` 处解析不到)。
+// 该绝对路径被烤进 standalone 的 route.js,换机/换 OS 运行即 `ERR_MODULE_NOT_FOUND`。
+// 这里把产物里的绝对入口路径**重写回裸 specifier**,运行时由顶层符号链接按 node_modules
+// 向上查找解析(机器无关)。仅改 standalone 内的 server 产物 .js,幂等可重复。
+function rewritePiSdkAbsToBare() {
+  const serverDir = join(standalone, distDir, "server");
+  if (!existsSync(serverDir)) return 0;
+  // 匹配引号包裹的、指向 `@earendil-works/pi-coding-agent` 包目录的绝对路径入口
+  // (形如 "/abs/.../node_modules/@earendil-works/pi-coding-agent/dist/index.js"),
+  // 整体替换为裸 specifier。`@earendil-works+pi-coding-agent`(`.pnpm` 的 `+` 形式)不匹配。
+  const RE =
+    /(["'])(?:\/|[A-Za-z]:[\\/])[^"']*?@earendil-works\/pi-coding-agent\/[^"']*?\1/g;
+  let files = 0;
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isSymbolicLink()) continue;
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith(".js")) {
+        const src = readFileSync(p, "utf8");
+        if (!src.includes("@earendil-works/pi-coding-agent")) continue;
+        const out = src.replace(RE, '"@earendil-works/pi-coding-agent"');
+        if (out !== src) {
+          writeFileSync(p, out);
+          files++;
+        }
+      }
+    }
+  };
+  walk(serverDir);
+  return files;
+}
+const rewritten = rewritePiSdkAbsToBare();
+console.log(`[pack-standalone] pi SDK 路径重写:${rewritten} 个 server 产物文件(绝对路径→裸 specifier)`);
 
 // Bug C 修复(logging-system 合入后暴露):runner 子进程经 bootstrap jiti 在 runner.ts
 // 顶层 import 一批 `@blksails/*` workspace 包(logger / protocol,以及 agent-loader 经
@@ -244,6 +416,99 @@ function hoistServerRuntimeDeps() {
 }
 const hoisted = hoistServerRuntimeDeps();
 console.log(`[pack-standalone] hoist server 运行时依赖:${hoisted} 个`);
+
+// ── 无符号链接产物(Windows 支持)──
+// Windows 上 Node `realpathSync` 对 tar/npm 解出的符号链接抛 EPERM(reparse point 权限),
+// 故 server.js 一启动解析 `node_modules/next` 即崩;且发布到 npm 后 Windows 用户解出的也是
+// 符号链接 → 同样崩。本步把产物彻底**扁平化为无符号链接**:
+//   1) 把每个 `.pnpm/<dir>/node_modules/<pkg>` 真实包 hoist 到顶层 `node_modules/<pkg>`。
+//      本闭包基本单版本(经统计仅极少数多版本),扁平解析与 pnpm 严格解析等价;多版本取先到
+//      版本(打印告警)。每个包真实副本只在其自身 `.pnpm` 目录,故基本无重复、体积≈原 .pnpm。
+//   2) @blksails 顶层符号链接换成源码实体副本(子进程 jiti 加载 TS 源码;其依赖经顶层解析)。
+//   3) 删除 `.pnpm` 与所有剩余符号链接 —— 顶层已含全部实体,任何 bare import 沿 node_modules
+//      向上查找命中顶层。产物成为纯实体目录树,Windows / npm 解包后无 realpath 隐患。
+function flattenSymlinkFree() {
+  const saNm = join(standalone, "node_modules");
+  const pnpmDir = join(saNm, ".pnpm");
+
+  const hoist = (realPkgDir, name) => {
+    const dest = join(saNm, name);
+    if (name.includes("/")) mkdirSync(join(saNm, name.split("/")[0]), { recursive: true });
+    let st;
+    try {
+      st = lstatSync(dest);
+    } catch {
+      st = undefined;
+    }
+    if (st && st.isDirectory() && !st.isSymbolicLink()) return "skip"; // 已有实体(多版本 first-wins)
+    rmSync(dest, { recursive: true, force: true }); // 删旧符号链接(若有)
+    cpSync(realPkgDir, dest, { recursive: true }); // 真实包目录自身无符号链接
+    return "hoist";
+  };
+
+  let hoisted = 0;
+  const conflicts = [];
+  if (existsSync(pnpmDir)) {
+    for (const d of readdirSync(pnpmDir)) {
+      const nm = join(pnpmDir, d, "node_modules");
+      if (!existsSync(nm)) continue;
+      for (const e of readdirSync(nm, { withFileTypes: true })) {
+        if (e.isSymbolicLink()) continue; // 依赖(各包真实副本在各自 .pnpm 目录)
+        if (e.name.startsWith("@") && e.isDirectory()) {
+          for (const s of readdirSync(join(nm, e.name), { withFileTypes: true })) {
+            if (s.isSymbolicLink() || !s.isDirectory()) continue;
+            const name = `${e.name}/${s.name}`;
+            if (hoist(join(nm, e.name, s.name), name) === "hoist") hoisted++;
+            else conflicts.push(name);
+          }
+        } else if (e.isDirectory()) {
+          if (hoist(join(nm, e.name), e.name) === "hoist") hoisted++;
+          else conflicts.push(e.name);
+        }
+      }
+    }
+  }
+
+  // @blksails 顶层符号链接 → 源码实体副本。
+  const blkScope = join(saNm, "@blksails");
+  if (existsSync(blkScope)) {
+    for (const e of readdirSync(blkScope, { withFileTypes: true })) {
+      const p = join(blkScope, e.name);
+      if (!e.isSymbolicLink()) continue;
+      const real = realpathSync(p);
+      rmSync(p, { recursive: true, force: true });
+      cpSync(real, p, { recursive: true, verbatimSymlinks: true });
+    }
+  }
+
+  // 删 .pnpm,再清所有剩余符号链接(顶层已含全部实体)。
+  rmSync(pnpmDir, { recursive: true, force: true });
+  const killLinks = (dir) => {
+    let k = 0;
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isSymbolicLink()) {
+        rmSync(p, { force: true });
+        k++;
+      } else if (e.isDirectory()) {
+        k += killLinks(p);
+      }
+    }
+    return k;
+  };
+  const killed = killLinks(standalone);
+
+  if (conflicts.length) {
+    console.warn(
+      `[pack-standalone] 扁平化多版本冲突(取先到版本): ${[...new Set(conflicts)].join(", ")}`,
+    );
+  }
+  console.log(
+    `[pack-standalone] 扁平化无符号链接:hoist ${hoisted} 个包到顶层, 清除 ${killed} 个符号链接, 删除 .pnpm`,
+  );
+  return hoisted;
+}
+flattenSymlinkFree();
 
 // 瘦身:CLI 包是 standalone 自包含产物,无需开发文件。
 //
