@@ -1,10 +1,16 @@
 name: CLI E2E (standalone · 多平台)
 
 # 生产模式(standalone 自包含产物)的多操作系统集成测试。
-# 每个平台各自 `pnpm build:cli`(nft 打包行为按平台不同 —— 这是被测对象本身),
-# 然后跑两层验收:
-#   - e2e:cli       stub 冒烟(产物完整性 + 参数路径 + 浏览器流式回包,无需凭据)
-#   - e2e:cli:real  真实 runner(mock openai-completions provider,验依赖解析/会话不崩)
+#
+# 设计:构建 / 运行分离 —— 贴近真实生产形态。
+#   - 产物只在 Linux 上 `build:cli` 构建一次(生产里产物也只在 Linux/macOS 构建后
+#     发布到 npm;Windows 从不是构建端,只是运行端;且 Next.js standalone 文件追踪
+#     在 Windows 上有上游级 EPERM 问题)。
+#   - 三个平台下载同一份产物,只跑运行期 e2e:
+#       e2e:cli       stub 冒烟(产物完整性 + 参数路径 + 浏览器流式回包)
+#       e2e:cli:real  真实 runner(mock openai-completions provider,验依赖解析/会话不崩)
+#     这才是按 OS 真正不同的部分:process.execPath spawn、路径分隔符、SIGINT、
+#     以及 pack-standalone 产物里的**符号链接**能否在 Windows 上正常解析。
 
 on:
   push:
@@ -12,53 +18,80 @@ on:
   pull_request:
   workflow_dispatch:
 
-# 同一分支并发取消旧跑,省 CI 额度。
 concurrency:
   group: cli-e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  cli-e2e:
-    name: ${{ matrix.os }} · node ${{ matrix.node }}
+  # ── 构建一次:在 Linux 上产出 standalone,打成保留符号链接的 tar 上传 ──
+  build:
+    name: build (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build standalone CLI
+        run: pnpm build:cli
+      # 自己打 tar(保留符号链接为链接,不 deref —— .pnpm 内有符号链接环,deref 会炸)。
+      # upload-artifact 默认不可靠地处理符号链接,故压成单个 tgz 传输。
+      - name: Archive standalone (preserve symlinks)
+        run: tar -czf standalone.tgz -C .next-cli standalone
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone-cli
+          path: standalone.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── 运行:三平台下载同一份产物,只跑运行期 e2e ──
+  run:
+    name: run · ${{ matrix.os }}
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ["22.19.0"]
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 9.12.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: "22.19.0"
           cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # 仅装 chromium(三个 e2e 都只用 chromium);Linux 上带系统依赖。
+      # 运行期需要仓库的 bin/ examples/ e2e/cli/ 以及 @playwright/test(从根 node_modules)。
+      # next build 不在此跑,故 Windows 上的构建 EPERM 不会触发。
+      - run: pnpm install --frozen-lockfile
       - name: Install Playwright chromium
         run: pnpm exec playwright install --with-deps chromium
-
-      # 生产产物:standalone build + 静态资源补全 + 瘦身(scripts/pack-standalone.mjs)。
-      - name: Build standalone CLI
-        run: pnpm build:cli
-
+      - uses: actions/download-artifact@v4
+        with:
+          name: standalone-cli
+      # 用 bash(三平台都可用:Windows 走 Git Bash)。Windows 上靠
+      # MSYS=winsymlinks:nativestrict 让 tar 解出**原生符号链接**
+      # (GH Windows runner 以管理员运行,具备 SeCreateSymbolicLinkPrivilege)。
+      # 非 Windows 上该环境变量被忽略,tar 正常解链接。
+      - name: Extract standalone (restore symlinks)
+        shell: bash
+        run: |
+          mkdir -p .next-cli
+          MSYS=winsymlinks:nativestrict tar -xzf standalone.tgz -C .next-cli
+          ls -la .next-cli/standalone/server.js
       - name: E2E · CLI stub 冒烟
         run: pnpm e2e:cli
-
       - name: E2E · CLI 真实模式(mock provider)
         run: pnpm e2e:cli:real
-
-      # 失败时上传证据截图,便于跨平台排查渲染/链路差异。
       - name: Upload evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4
