@@ -15,6 +15,7 @@ import type { AgentSourceResolverType } from "../agent-source/index.js";
 import type { CompletionProvider } from "../completion/index.js";
 import type { AttachmentMetaSource } from "./routes/command-routes.js";
 import type { AttachmentStore } from "../attachment/index.js";
+import type { HostCommandRegistry } from "../commands/host-command-registry.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
 export interface RequestContext {
@@ -117,6 +118,12 @@ export interface PiWebHandlerOptions {
    */
   readonly attachmentStore?: AttachmentMetaSource &
     Partial<Pick<AttachmentStore, "listBySession">>;
+  /**
+   * 可选:host 命令注册表(unified-command-result-layer,决策 A)。注入后,ui-rpc
+   * `point="command"` 且命令名已注册的请求在**服务端**执行(不转 agent),结果经
+   * `control:"ui-rpc"` 回流;未注册命令/其它 point 仍转发 agent(向后兼容)。
+   */
+  readonly hostCommands?: HostCommandRegistry;
 }
 
 /** 框架无关的标准 Web Fetch 处理器签名(Req 1.1)。 */

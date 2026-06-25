@@ -27,6 +27,7 @@ export * from "./attachment/index.js";
 // 纯 node builtins + attachment-store 复用面(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
 export * from "./attachment-bridge/index.js";
 export * from "./completion/index.js";
+export * from "./commands/host-command-registry.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 export * from "./config/index.js";

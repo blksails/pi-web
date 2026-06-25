@@ -15,8 +15,10 @@ import {
   SteerRequestSchema,
   UiResponseRequestSchema,
   UiRpcRequestSchema,
+  CommandExecutePayloadSchema,
 } from "@blksails/pi-web-protocol";
 import type { PiSession, SessionStore } from "../../session/index.js";
+import type { HostCommandRegistry } from "../../commands/host-command-registry.js";
 import { SessionNotFoundError } from "../../session/index.js";
 import {
   resolveCompletions,
@@ -251,14 +253,64 @@ export function makeUiResponseHandler(store: SessionStore): RouteHandler {
   };
 }
 
-/** POST /sessions/:id/ui-rpc → PiSession.uiRpc(Tier3,响应经 SSE control 帧回流) */
-export function makeUiRpcHandler(store: SessionStore): RouteHandler {
+/**
+ * POST /sessions/:id/ui-rpc → Tier3 ui-rpc 上行。
+ *
+ * unified-command-result-layer(决策 A):当注入了 host 命令注册表,且请求为
+ * `point="command"` / `action="execute"` 且命令名已注册时,**服务端执行**该命令并经
+ * `PiSession.emitUiRpcResponse` 合成 `control:"ui-rpc"` 结果帧回流(不转 agent)。
+ * 其余情况(非 host 命令 / 其它 point)保持既有 `PiSession.uiRpc` 转发(向后兼容)。
+ */
+export function makeUiRpcHandler(
+  store: SessionStore,
+  hostCommands?: HostCommandRegistry,
+): RouteHandler {
   return async (ctx): Promise<Response> => {
     const parsed = await validateBody(ctx.req, UiRpcRequestSchema);
     if (!parsed.ok) return parsed.response;
+    const req = parsed.value;
     try {
       const session = requireSession(store, ctx);
-      session.uiRpc(parsed.value);
+
+      // host 命令拦截:仅当 point=command/execute + 注册表命中。
+      if (
+        hostCommands !== undefined &&
+        req.point === "command" &&
+        req.action === "execute"
+      ) {
+        const payload = CommandExecutePayloadSchema.safeParse(req.payload);
+        if (payload.success && hostCommands.has(payload.data.name)) {
+          // 不阻塞 ack:执行后经 control 帧回流(与 agent 回流同形)。
+          void hostCommands
+            .execute(payload.data.name, {
+              session,
+              argv: payload.data.argv ?? "",
+            })
+            .then((result) => {
+              // registry.execute 不抛:成功/可恢复失败均以 CommandResult 表达
+              // (失败转 effect:"notify" + message,UI 据此呈现错误反馈,Req 3.3)。
+              session.emitUiRpcResponse({
+                correlationId: req.correlationId,
+                ok: true,
+                result,
+              });
+            })
+            .catch((err: unknown) => {
+              session.emitUiRpcResponse({
+                correlationId: req.correlationId,
+                ok: false,
+                error: {
+                  code: "HOST_COMMAND_FAILED",
+                  message: err instanceof Error ? err.message : String(err),
+                },
+              });
+            });
+          return ack();
+        }
+      }
+
+      // 既有路径:转发 agent。
+      session.uiRpc(req);
       return ack();
     } catch (err) {
       return mapEngineError(err);

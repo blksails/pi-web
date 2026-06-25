@@ -141,7 +141,7 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     {
       method: "POST",
       path: "/sessions/:id/ui-rpc",
-      handler: makeUiRpcHandler(store),
+      handler: makeUiRpcHandler(store, opts.hostCommands),
     },
     {
       method: "POST",

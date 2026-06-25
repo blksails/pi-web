@@ -23,6 +23,7 @@ import type {
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
+  UiRpcResponse,
 } from "@blksails/pi-web-protocol";
 import { makeControlFrame, UiRpcResponseSchema } from "@blksails/pi-web-protocol";
 import { isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
@@ -331,6 +332,20 @@ export class PiSession {
     this.assertActive();
     this.touch();
     this.channel.send(JSON.stringify({ type: "ui_rpc", request }));
+  }
+
+  /**
+   * 统一命令层(unified-command-result-layer)host 侧回流:服务端**主动合成** ui-rpc 响应帧,
+   * 经 `control:"ui-rpc"` 广播(与 handleRawLine 的 agent 回流同形,按 correlationId 客户端配对)。
+   * 用于 host 命令在服务端执行后回流结果,**不经 agent**。
+   */
+  emitUiRpcResponse(response: UiRpcResponse): void {
+    this.assertActive();
+    this.touch();
+    this.emitter.emit(
+      FRAME_EVENT,
+      makeControlFrame({ control: "ui-rpc", response }),
+    );
   }
 
   // ───────────────────────── 命令转发(Req 2.x） ─────────────────────────

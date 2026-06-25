@@ -30,6 +30,7 @@ import {
   createAttachmentRoutes,
   createSessionListRoutes,
   createExtensionRoutes,
+  createHostCommandRegistry,
   ChildProcessPiCli,
   DEFAULT_ALLOWLIST,
   attachmentStoreConfigFromEnv,
@@ -54,6 +55,7 @@ import {
 } from "@blksails/pi-web-server/model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
+import { createPluginHostCommand } from "./plugin-command/plugin-host-command.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -310,9 +312,33 @@ function buildSingleton(): HandlerSingleton {
     return new PiRpcProcess(spec);
   };
 
+  // extension-management + 统一命令层(unified-command-result-layer)共享的安装治理依赖。
+  // host 命令(/plugin)与 REST 路由复用同一 piCli/allowlist/reload + env 门控,保持一致。
+  const extPiCli = new ChildProcessPiCli();
+  const extAllowMutate = process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY === "1";
+  const extAllowlist =
+    process.env.PI_WEB_EXT_ALLOW_LOCAL === "1"
+      ? { ...DEFAULT_ALLOWLIST, allowLocal: true }
+      : DEFAULT_ALLOWLIST;
+  const reloadRunner = async (session: {
+    restartRunner(): Promise<void>;
+  }): Promise<void> => {
+    await session.restartRunner();
+  };
+
   const handler = createPiWebHandler({
     manager,
     store,
+    // 统一命令层(决策 A):host 命令在服务端执行(不转 agent),结果经 control:ui-rpc 回流。
+    // /plugin 经此通道驱动安装/卸载/列表 + 装后会话重载,替代前端 onBuiltinSelect 直调。
+    hostCommands: createHostCommandRegistry([
+      createPluginHostCommand({
+        piCli: extPiCli,
+        allowlist: extAllowlist,
+        allowMutate: extAllowMutate,
+        reload: reloadRunner,
+      }),
+    ]),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
     // 与 vision/images base64 并存,不内联字节。
@@ -370,22 +396,16 @@ function buildSingleton(): HandlerSingleton {
       // 注入 SessionReloader:经 PiSession.restartRunner() 重 spawn runner 续会话、重解析
       // 资源,使 /plugin 安装/卸载对运行中的会话生效(Req 4.1/5.x/6.1)。
       ...createExtensionRoutes({
-        piCli: new ChildProcessPiCli(),
+        piCli: extPiCli,
         store,
         manager,
         // 安装治理由 env 配置(运营者必需;默认沿用 extension-management 的安全默认:
         // 管理员门控拒绝匿名/非管理员、白名单仅 @pi-web/@earendil-works npm + github.com、禁本地)。
         //   PI_WEB_EXT_ADMIN_ALLOW_ANY=1  → 放行安装(dev/单用户自托管;生产应改用真实 adminPolicy)
-        //   PI_WEB_EXT_ALLOW_LOCAL=1      → 允许本地路径来源
-        ...(process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY === "1"
-          ? { adminPolicy: (): boolean => true }
-          : {}),
-        ...(process.env.PI_WEB_EXT_ALLOW_LOCAL === "1"
-          ? { allowlist: { ...DEFAULT_ALLOWLIST, allowLocal: true } }
-          : {}),
-        reloadSession: async (session) => {
-          await session.restartRunner();
-        },
+        //   PI_WEB_EXT_ALLOW_LOCAL=1      → 允许本地路径来源(与 host 命令共享 extAllowlist)
+        ...(extAllowMutate ? { adminPolicy: (): boolean => true } : {}),
+        allowlist: extAllowlist,
+        reloadSession: reloadRunner,
       }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
