@@ -14,7 +14,7 @@ import {
   isDeclarativeOnly,
   type WebExtensionManifest,
 } from "@blksails/pi-web-protocol";
-import { verifySignature, isApiCompatible } from "@blksails/pi-web-react";
+import { verifyManifestSignature, isApiCompatible } from "./server-gate.js";
 import type { TrustedPublisherRegistry } from "./trusted-publisher-registry.js";
 
 /** 服务端已验签、可安全下发浏览器的 manifest(去 signature,标记已预校验)。 */
@@ -74,7 +74,10 @@ export function createWebextTrustService(
       if (manifest.signature === undefined) {
         return { ok: false, reason: "代码 webext 未签名" };
       }
-      const trusted = await verifySignature(manifest, cfg.registry.publicKeys());
+      const trusted = await verifyManifestSignature(
+        manifest,
+        cfg.registry.publicKeys(),
+      );
       if (!trusted) {
         return {
           ok: false,

@@ -14,9 +14,23 @@ import {
   loadExtension,
   browserLoaderDeps,
   type LoadOutcome,
+  type GateOptions,
 } from "@blksails/pi-web-react";
 import type { WebExtension } from "@blksails/pi-web-kit";
-import { buildBrowserGateOptions } from "./web-ext-gate-config.js";
+
+/**
+ * 浏览器门控选项:不含验签材料(签名已服务端验)、signaturePreVerified、仅 SRI。
+ * 直接内联构造——不读 `process.env`(浏览器中整体访问 process.env 不可靠;仅具体
+ * NEXT_PUBLIC_* 成员会被 Next 内联),hostApiVersion 经 NEXT_PUBLIC 成员读取。
+ */
+function browserGateOptions(): GateOptions {
+  return {
+    whitelist: [],
+    requireSignature: false,
+    hostApiVersion: process.env.NEXT_PUBLIC_PI_WEB_KIT_VERSION ?? "0.1.0",
+    signaturePreVerified: true,
+  };
+}
 
 export interface RuntimeWebextState {
   readonly extension: WebExtension | undefined;
@@ -71,11 +85,25 @@ export function useRuntimeWebext(
           });
           return;
         }
+        // 声明式(无 entry)不需要动态 import deps;仅代码扩展才构造 browserLoaderDeps()
+        // (其内部 `new Function` 在禁 unsafe-eval 的 CSP 下会抛,声明式不应被连累)。
+        const isCode =
+          typeof (data.manifest as { entry?: unknown }).entry === "string";
+        const deps = isCode
+          ? browserLoaderDeps()
+          : {
+              fetchBytes: (): Promise<Uint8Array> => {
+                throw new Error("declarative ext needs no fetch");
+              },
+              importModule: (): Promise<{ default: WebExtension }> => {
+                throw new Error("declarative ext needs no import");
+              },
+            };
         const outcome: LoadOutcome = await loadExtension({
           manifest: data.manifest as never,
           baseUrl: data.baseUrl ?? "",
-          opts: buildBrowserGateOptions(),
-          deps: browserLoaderDeps(),
+          opts: browserGateOptions(),
+          deps,
         });
         if (cancelled) return;
         if (outcome.status === "loaded" || outcome.status === "declarative") {
@@ -88,12 +116,11 @@ export function useRuntimeWebext(
           });
         }
       } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error("[webext-load] failed:", reason);
         if (!cancelled) {
-          setState({
-            extension: undefined,
-            status: "rejected",
-            reason: err instanceof Error ? err.message : String(err),
-          });
+          setState({ extension: undefined, status: "rejected", reason });
         }
       }
     })();
