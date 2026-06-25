@@ -163,13 +163,14 @@ function copyPiSdkClosureToArtifact() {
     visited.add(dir);
     const src = join(repoPnpm, dir);
     if (!existsSync(src)) continue;
-    // 覆盖式复制整个 `.pnpm/<dir>`,保留符号链接(verbatim),补齐被 includes 漏掉的同级
-    // dep 链接与本体文件。被复制回来的 dev 文件(*.md/*.d.ts…)由后续 prune 再清。
-    cpSync(src, join(saPnpm, dir), {
-      recursive: true,
-      verbatimSymlinks: true,
-      force: true,
-    });
+    // 先删目标再整目录复制(保留符号链接 verbatim)——避免 cpSync 在已存在目录上「合并」:
+    // includes 已捎来该 `.pnpm/<dir>` 的部分内容(拍平的实体目录),Node 22.19 的 cpSync
+    // 对 src 是符号链接 / dest 是实体目录(或反之)的冲突会抛 `EEXIST`(22.22 容忍,跨版本
+    // 不稳)。删后干净复制,无合并冲突。补齐被 includes 漏掉的同级 dep 链接与本体文件;
+    // 被复制回来的 dev 文件(*.md/*.d.ts…)由后续 prune 再清。
+    const dest = join(saPnpm, dir);
+    rmSync(dest, { recursive: true, force: true });
+    cpSync(src, dest, { recursive: true, verbatimSymlinks: true });
     copied++;
     // 遍历该包 node_modules 下的(scoped)符号链接,把它们指向的 `.pnpm` 目录入队。
     const nm = join(src, "node_modules");
