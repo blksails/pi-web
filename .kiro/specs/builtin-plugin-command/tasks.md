@@ -68,7 +68,7 @@
   - _Requirements: 3.1, 6.2, 9.1, 9.2_
   - _Depends: 2.2, 3.2, 3.3_
 
-- [ ] 4.2 装后双路生效回填 webext
+- [x] 4.2 装后双路生效回填 webext
   - 安装完成挂点同时触发 webext 加载生效路径（实现在 webext-package-install），与资源重载并行
   - 完成态：安装含 webext 的包后资源重载与 webext 加载两路均发生（与 webext-package-install 联测）
   - _Requirements: 6.3_

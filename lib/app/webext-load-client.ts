@@ -52,6 +52,8 @@ interface ResolveResponse {
 export function useRuntimeWebext(
   source: string | undefined,
   skip: boolean,
+  /** 变化即重解析+重载(装后双路生效:builtin-plugin-command 4.2 触发 webext 路)。 */
+  reloadNonce = 0,
 ): RuntimeWebextState {
   const [state, setState] = React.useState<RuntimeWebextState>({
     extension: undefined,
@@ -128,7 +130,7 @@ export function useRuntimeWebext(
     return () => {
       cancelled = true;
     };
-  }, [source, skip]);
+  }, [source, skip, reloadNonce]);
 
   return state;
 }

@@ -12,12 +12,15 @@ export interface PluginPanelProps {
   readonly client: PiClient;
   readonly sessionId: string | undefined;
   readonly onClose: () => void;
+  /** 装/卸成功后回调(宿主据此触发 webext 加载路径,与 runner 重载构成双路生效)。 */
+  readonly onAfterChange?: () => void;
 }
 
 export function PluginPanel({
   client,
   sessionId,
   onClose,
+  onAfterChange,
 }: PluginPanelProps): React.JSX.Element {
   const [items, setItems] = React.useState<readonly InstalledExtensionInfo[]>([]);
   const [error, setError] = React.useState<string | undefined>(undefined);
@@ -50,6 +53,7 @@ export function PluginPanel({
     try {
       await client.installExtension(source.trim());
       await reloadIfPossible();
+      onAfterChange?.();
       setSource("");
       refresh();
     } catch (e) {
@@ -57,7 +61,7 @@ export function PluginPanel({
     } finally {
       setBusy(false);
     }
-  }, [client, source, reloadIfPossible, refresh]);
+  }, [client, source, reloadIfPossible, refresh, onAfterChange]);
 
   const remove = React.useCallback(
     async (extId: string): Promise<void> => {
@@ -65,6 +69,7 @@ export function PluginPanel({
       try {
         await client.removeExtension(extId);
         await reloadIfPossible();
+        onAfterChange?.();
         refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -72,7 +77,7 @@ export function PluginPanel({
         setBusy(false);
       }
     },
-    [client, reloadIfPossible, refresh],
+    [client, reloadIfPossible, refresh, onAfterChange],
   );
 
   return (
