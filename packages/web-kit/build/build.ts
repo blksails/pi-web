@@ -35,8 +35,8 @@ export interface BuildOptions {
   readonly outDir: string;
   /** 可选 CSS 文件名(相对 entryDir);缺省探测 styles.css。 */
   readonly cssFile?: string;
-  /** 提供则对 manifest 签名。 */
-  readonly signSecret?: string;
+  /** 提供则用 Ed25519 私钥(base64 pkcs8)对 manifest 签名。 */
+  readonly signKey?: string;
   readonly capabilities?: readonly WebExtensionCapability[];
 }
 
@@ -113,15 +113,15 @@ export async function buildWebExtension(opts: BuildOptions): Promise<BuildResult
     await writeFile(join(opts.outDir, cssOutName), scoped.css, "utf8");
   }
 
-  // 4) manifest + SRI(+ 可选签名)
-  const manifest = emitManifest({
+  // 4) manifest + SRI(+ 可选 Ed25519 签名)
+  const manifest = await emitManifest({
     id: opts.id,
     targetApiVersion: opts.targetApiVersion,
     entry: entryOutName,
     entryBytes,
     ...(cssOutName !== undefined ? { css: cssOutName } : {}),
     ...(opts.capabilities !== undefined ? { capabilities: opts.capabilities } : {}),
-    ...(opts.signSecret !== undefined ? { signSecret: opts.signSecret } : {}),
+    ...(opts.signKey !== undefined ? { signKey: opts.signKey } : {}),
   });
   await writeFile(
     join(opts.outDir, "manifest.json"),

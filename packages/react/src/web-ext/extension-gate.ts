@@ -1,13 +1,16 @@
 /**
- * extension-gate — 宿主侧扩展安全门(任务 3.1 / Req 1.5, 6.5, 7.x)。
+ * extension-gate — 宿主侧扩展安全门(任务 3.1 / Req 1.5, 6.5, 7.x;webext-package-install 任务 1.1)。
  *
  * 加载代码 bundle 前的强制校验:
- *   1. SRI 完整性:重算 entry 字节的 sha384,与 manifest.integrity 比对。
- *   2. 签名 ∈ 白名单:用白名单密钥重算 HMAC-SHA256 验签(任一命中即受信)。
+ *   1. SRI 完整性:重算 entry 字节的 sha384,与 manifest.integrity 比对(无需机密,浏览器侧执行)。
+ *   2. 签名 ∈ 白名单:用白名单 **Ed25519 公钥** 验证签名(任一命中即受信);因公钥验签
+ *      不暴露任何机密,且签名覆盖 integrity,故验签放在 **服务端**,浏览器侧以
+ *      `signaturePreVerified` 跳过本步、仅做 SRI。
  *   3. targetApiVersion 兼容宿主 web-kit 版本(caret/精确语义)。
  * 任一不通过返回带 reason 的拒绝;宿主据此回退默认 UI 并记审计。
  *
- * 跨运行时:使用 Web Crypto(`globalThis.crypto.subtle`),浏览器与 Node 22 均可用。
+ * 跨运行时:使用 Web Crypto(`globalThis.crypto.subtle`)。SRI(sha384)浏览器与 Node 均可用;
+ * Ed25519 验签在 Node(服务端)执行。
  */
 import {
   canonicalManifestBytes,
@@ -15,12 +18,18 @@ import {
 } from "@blksails/pi-web-protocol";
 
 export interface GateOptions {
-  /** 受信签名密钥白名单(HMAC 共享密钥)。空数组 + requireSignature=false 时跳过验签。 */
+  /** 受信发布者 Ed25519 公钥白名单(base64 raw)。空数组 + requireSignature=false 时跳过验签。 */
   readonly whitelist: readonly string[];
   /** 是否强制要求签名(git source 加载代码 bundle 时应为 true)。 */
   readonly requireSignature: boolean;
   /** 宿主 `@blksails/pi-web-kit` 版本(用于 targetApiVersion 兼容判定)。 */
   readonly hostApiVersion: string;
+  /**
+   * 签名已由服务端预先校验(浏览器侧应置 true):置 true 时跳过签名分支,但 **仍执行 SRI**。
+   * 用于「签名服务端验 / SRI 浏览器验」拆分:服务端验签后下发去签名的已背书 manifest,
+   * 浏览器仅凭 integrity 做 SRI,验签机密不入浏览器。
+   */
+  readonly signaturePreVerified?: boolean;
 }
 
 export type GateResult =
@@ -31,6 +40,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i] as number);
   return btoa(bin);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
 }
 
 async function sha384Base64(bytes: Uint8Array): Promise<string> {
@@ -51,27 +67,42 @@ export async function verifyIntegrity(
   return (await computeSri(entryBytes)) === manifest.integrity;
 }
 
-async function hmacBase64(secret: string, data: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
-  return bytesToBase64(new Uint8Array(sig));
-}
-
-/** 验签:白名单任一密钥重算 HMAC 命中即受信。 */
+/**
+ * 验签:白名单任一 **Ed25519 公钥**(base64 raw)验证 `manifest.signature`(base64)
+ * 对规范化字节(`canonicalManifestBytes`,排除 signature)的签名通过即受信。
+ * 公钥验签不暴露机密,应在服务端调用。
+ */
 export async function verifySignature(
   manifest: WebExtensionManifest,
   whitelist: readonly string[],
 ): Promise<boolean> {
   if (manifest.signature === undefined) return false;
-  const data = canonicalManifestBytes(manifest);
-  for (const secret of whitelist) {
-    if ((await hmacBase64(secret, data)) === manifest.signature) return true;
+  let sigBytes: Uint8Array;
+  try {
+    sigBytes = base64ToBytes(manifest.signature);
+  } catch {
+    return false;
+  }
+  const data = new TextEncoder().encode(canonicalManifestBytes(manifest));
+  for (const pub of whitelist) {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        base64ToBytes(pub) as unknown as BufferSource,
+        { name: "Ed25519" },
+        false,
+        ["verify"],
+      );
+      const ok = await crypto.subtle.verify(
+        { name: "Ed25519" },
+        key,
+        sigBytes as unknown as BufferSource,
+        data as unknown as BufferSource,
+      );
+      if (ok) return true;
+    } catch {
+      // 无效公钥/算法不支持 → 跳过该条
+    }
   }
   return false;
 }
@@ -145,12 +176,15 @@ export async function verifyExtension(input: {
     return { ok: false, reason: "SRI 完整性校验失败(integrity 与 entry 字节不一致)" };
   }
 
-  if (opts.requireSignature || manifest.signature !== undefined) {
-    if (manifest.signature === undefined) {
-      return { ok: false, reason: "要求签名但 manifest 未签名" };
-    }
-    if (!(await verifySignature(manifest, opts.whitelist))) {
-      return { ok: false, reason: "签名不在白名单内或验签失败" };
+  // 签名已由服务端预校验:跳过签名分支(SRI 已在上方执行)。
+  if (opts.signaturePreVerified !== true) {
+    if (opts.requireSignature || manifest.signature !== undefined) {
+      if (manifest.signature === undefined) {
+        return { ok: false, reason: "要求签名但 manifest 未签名" };
+      }
+      if (!(await verifySignature(manifest, opts.whitelist))) {
+        return { ok: false, reason: "签名不在白名单内或验签失败" };
+      }
     }
   }
 
