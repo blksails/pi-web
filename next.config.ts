@@ -172,6 +172,13 @@ const nextConfig: NextConfig = {
         // 仅外置 trust 直接 import 的 pi-coding-agent(主进程唯一的 pi SDK 入口)。
         // 外置后 webpack 不再进入它,故其传递依赖(pi-ai 等)不会被请求/打包,而在运行时
         // 由该包从自身位置的 node_modules 解析(pnpm 安全)。
+        //
+        // 这里外置为指向真实入口的**绝对路径**:构建期(含 `next build` 的 page-data 收集
+        // 会加载 route 模块)裸 specifier 在 `.next/server/**` 处解析不到(pnpm 把该包嵌在
+        // packages/server/node_modules,未 hoist 到 app 根)。绝对路径保证构建期可解析。
+        // 但绝对路径会把**构建机路径**烤进 standalone 产物,致换机/换 OS 运行时
+        // `ERR_MODULE_NOT_FOUND`。故 standalone 产物的可重定位由 pack-standalone 收尾:
+        // 把产物 route.js 里的绝对入口路径重写回裸 specifier + 在顶层 node_modules 建符号链接。
         if (req === "@earendil-works/pi-coding-agent") {
           const abs = piSdkEntryAbsPath(req);
           // 外置为指向真实入口的绝对路径 ESM module(运行时 import 该绝对文件);
