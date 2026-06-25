@@ -32,6 +32,25 @@ test("运行时声明式 webext:构建期未命中 → /api/webext/resolve 加�
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
 });
 
+test("运行时代码 webext:签名 .mjs 经 import map 单例动态加载并渲染 Tier1 slot", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator("[data-agent-source-input]")
+    .fill("./examples/webext-runtime-code-agent");
+  await page.locator("[data-agent-source-submit]").click();
+
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+  // 代码 .mjs 经服务端验签 → import map 单例 → 动态 import → applyExtension → slot 渲染。
+  await expect(page.getByTestId("runtime-code-panel")).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByTestId("runtime-code-header")).toContainText(
+    "Runtime Code Agent",
+  );
+});
+
 test("解析端点直查:运行时夹具返回 found + 已背书声明式 manifest", async ({
   request,
 }) => {

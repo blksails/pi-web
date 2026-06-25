@@ -74,13 +74,13 @@ export async function loadExtension(input: LoadExtensionInput): Promise<LoadOutc
 }
 
 /**
- * 真实浏览器 LoaderDeps。动态 import 经 `new Function` 规避打包器把 import() 静态改写
- * (使外部 URL 在运行时由浏览器解析,配合 document <head> 预装的 import map)。
+ * 真实浏览器 LoaderDeps。动态 import 用 `import(/* webpackIgnore: true *\/ url)` 让打包器
+ * **不改写**该 import()(保留为原生运行时 import,由浏览器解析外部 URL + import map),
+ * 同时**不需要 `unsafe-eval`**——区别于旧 `new Function` 方案(在生产 CSP 下被禁而抛错)。
  */
 export function browserLoaderDeps(): LoaderDeps {
-  const dynamicImport = new Function("u", "return import(u)") as (
-    u: string,
-  ) => Promise<{ default: WebExtension }>;
+  const dynamicImport = (u: string): Promise<{ default: WebExtension }> =>
+    import(/* webpackIgnore: true */ u) as Promise<{ default: WebExtension }>;
   return {
     async fetchBytes(url): Promise<Uint8Array> {
       const res = await fetch(url);
