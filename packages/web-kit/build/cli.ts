@@ -2,7 +2,7 @@
 /**
  * pi-web build — CLI(任务 2.4)。
  *
- * 用法:pi-web build --id <extId> --api <range> --dir <.pi/web> --out <dir> [--sign <secret>]
+ * 用法:pi-web build --id <extId> --api <range> --dir <.pi/web> --out <dir> [--sign <ed25519PrivateKeyBase64Pkcs8>]
  *
  * 注:本仓库以原生 TS 运行(无包构建步骤),示例与脚本可经 TS 运行时
  * (如 `node --import tsx`)执行本 CLI,或直接调用程序化 API `buildWebExtension`。
@@ -34,7 +34,7 @@ function parseArgs(argv: readonly string[]): Partial<BuildOptions> & { _cmd?: st
     ...(out.api !== undefined ? { targetApiVersion: out.api } : {}),
     ...(out.dir !== undefined ? { entryDir: out.dir } : {}),
     ...(out.out !== undefined ? { outDir: out.out } : {}),
-    ...(out.sign !== undefined ? { signSecret: out.sign } : {}),
+    ...(out.sign !== undefined ? { signKey: out.sign } : {}),
   };
 }
 
@@ -56,7 +56,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     targetApiVersion: args.targetApiVersion,
     entryDir: args.entryDir,
     outDir: args.outDir,
-    ...(args.signSecret !== undefined ? { signSecret: args.signSecret } : {}),
+    ...(args.signKey !== undefined ? { signKey: args.signKey } : {}),
   });
   // eslint-disable-next-line no-console
   console.log(`[pi-web build] ${args.id} → ${result.entryOut} (integrity=${result.manifest.integrity})`);
