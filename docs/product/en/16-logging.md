@@ -115,8 +115,8 @@ Rotation strategy: `app.log` → `app.log.1` → `app.log.2` … → `app.log.N`
 
 | Variable | Default | Description |
 |------|--------|------|
-| `PI_WEB_LOG_ENABLED` | `true` | Set to `false` to disable logging globally |
-| `PI_WEB_LOG_LEVEL` | `debug` | Global minimum level: `debug / info / warn / error` |
+| `PI_WEB_LOG_ENABLED` | (unset = off) | **Logging is off by default.** Set to any non-`false` value (e.g. `1`/`true`) to force-enable server-side log gating without going through Settings; set to `false` to explicitly disable. |
+| `PI_WEB_LOG_LEVEL` | `info` | Global minimum level: `debug / info / warn / error` (gating default when unconfigured) |
 | `PI_WEB_LOG_NAMESPACES` | —— | Comma-separated; enables the specified namespaces, e.g. `agent:hello,ext:probe` |
 | `PI_WEB_LOG_FILE` | —— | Absolute path of the log file (setting it enables file output) |
 | `PI_WEB_LOG_FILE_MAXSIZE` | `10` | Max MB per file |
@@ -165,6 +165,8 @@ log.info("extension loaded");
 
 > The design calls this "server-side authoritative gating" (design.md / task 4.4): changing enabled/level/namespaces in Settings affects not only the browser — Node subprocess logs are also filtered again by the server before they "enter the ring buffer / produce a frame," ensuring that the Node logs of agents and extensions are likewise controlled.
 
+> **Off by default**: when no logging config has been saved in Settings (no `logging.json`), `loggingConfigProvider` uses the result of `resolveLoggingEnvDefault()` (`lib/app/logging-default.ts`) — `enabled` defaults to `false`, and only force-enables when `PI_WEB_LOG_ENABLED` is present and not `"false"` (level/namespaces likewise come from `PI_WEB_LOG_*`). Note: the subprocess logger still emits to stderr per its library default; visibility is decided by this server-side gating — so by default the agent/extension logs are dropped by the gate and never reach the panel.
+
 ```
 runner bootstrap        — initConfigFromEnv() reads PI_WEB_LOG_* env (packages/server/src/runner/runner.ts)
         │
@@ -186,6 +188,8 @@ REST endpoint (history retrieval): `GET /api/sessions/[sessionId]/logs?level=inf
 ## Browser Side: LoggingConfigLoader
 
 `LoggingConfigLoader` (`components/logging-config-loader.tsx`) fetches the logging config from the config API when the client mounts, calls `configureLogger()` to sync the browser-side gating, renders nothing (returns `null`), and handles failures silently. In this branch it is mounted inside `components/chat-app.tsx` (the PiChat shell), sharing the lifecycle of the session UI.
+
+> **Off by default**: browser-side webext logs are off by default — the loader sets `enabled:true` only when the endpoint returns `values.enabled === true` (i.e. the user explicitly enabled it in Settings); when the config is absent or the endpoint is unreachable it always sets `enabled:false` rather than falling back to the library default. After saving in Settings, reload the page for the loader to re-fetch and take effect.
 
 ```tsx
 // Mount once in the app shell (e.g. chat-app.tsx)
@@ -244,11 +248,11 @@ The logging system registers a `logging` config domain on the Settings page (`pa
 
 | Group ID | Fields |
 |-------|------|
-| `general` | `enabled` (enable logging, the master switch), `level` (global level, default `info`) |
+| `general` | `enabled` (enable logging, the master switch, **default `false`**), `level` (global level, default `info`) |
 | `components` | `namespaces` (per-namespace toggles, custom widget `logNamespaceToggles`) |
 | `output` | `outputs` (nested object: `console` console, `file` file path/rotation, `panelVisible` panel visibility, `panelPosition` panel position), `panelDefaultLevel` (panel default level) |
 
-> Note: the config domain's `level` default is `info` (see the schema), whereas the Node-side library's `initConfigFromEnv` defaults internally to `debug` when `PI_WEB_LOG_LEVEL` is not read — these are default values at different layers.
+> Note: the config domain's `enabled` defaults to `false` (logging is off by default; enable it here or set `PI_WEB_LOG_ENABLED`); `level` defaults to `info` (see the schema), whereas the Node-side library's `initConfigFromEnv` defaults internally to `debug` when `PI_WEB_LOG_LEVEL` is not read — these are default values at different layers.
 
 ---
 
@@ -256,20 +260,22 @@ The logging system registers a `logging` config domain on the Settings page (`pa
 
 > For hands-on practice see [`examples/logging-demo-agent`](https://github.com/blksails/pi-web/tree/main/examples/logging-demo-agent/) (with its own README): it converges the three paths above — the agent-injected `ctx.logger`, the pi extension's direct `createLogger`, and the webext browser log bus — into a single logs panel, the fastest entry point for comparing logs from the three sources. The steps below operate on this example.
 
-1. Start the dev server:
+1. Start the dev server with logging enabled (**logging is off by default**; the env flag is the quickest way):
 
    ```bash
-   pnpm dev
+   PI_WEB_LOG_ENABLED=1 pnpm dev
    ```
+
+   Or run `pnpm dev`, then go to Settings → Logging, turn on "Enable logging" and save (the browser side needs a reload, the Node side needs a new session to take effect).
 
 2. Open pi-web in the browser, select `logging-demo-agent` (located at `examples/logging-demo-agent/`), and start a session.
 
-3. Once the session is established, the logs panel should immediately show the startup logs emitted by the demo agent during the factory phase: four main-namespace entries (`debug / info / warn / error`) plus one `info` entry from the child namespace `<agent>:tool`.
+3. Once the session is established, the logs panel should show the startup logs emitted by the demo agent during the factory phase: four main-namespace entries (`debug / info / warn / error`) plus one `info` entry from the child namespace `<agent>:tool`.
 
-4. Verify env gating:
+4. Verify env gating (force-enable, then raise the level):
 
    ```bash
-   PI_WEB_LOG_LEVEL=warn pnpm dev
+   PI_WEB_LOG_ENABLED=1 PI_WEB_LOG_LEVEL=warn pnpm dev
    ```
 
    The `debug` and `info` entries should not appear in the panel.
@@ -283,8 +289,9 @@ The logging system registers a `logging` config domain on the Settings page (`pa
 
 **If the panel stays empty**, troubleshoot in the following order:
 
+- **First confirm logging is enabled (off by default)**: "Enable logging" under Settings → Logging is `true` (after saving, reload the browser and start a new session for the Node side), or start with `PI_WEB_LOG_ENABLED=1`. When disabled, agent / extension / webext logs all stay out of the panel.
 - Confirm the panel is not hidden or moved: `outputs.panelVisible` is `true` in Settings (otherwise it does not render even with `showLogs`), and when `outputs.panelPosition` is `drawer` the panel is collapsed by default — click the "Logs" button (`data-pi-logs-drawer-toggle`) to expand it.
-- Confirm logging is not turned off via env or Settings: `PI_WEB_LOG_ENABLED` is not `false`, and `PI_WEB_LOG_LEVEL` is not higher than the lowest level the demo agent emits (the demo emits `debug`, so setting it to `warn` gates the two `debug/info` entries).
+- Confirm the level is not filtering entries out: `PI_WEB_LOG_LEVEL` is not higher than the lowest level the demo agent emits (the demo emits `debug`, so setting it to `warn` gates the two `debug/info` entries).
 - The server-side gating is independent of the browser (see "Server Side: Authoritative Gating" above): raising the level via env filters out the lower-level entries before they "enter the ring buffer," so the panel never receives them.
 - If there is still no output, see [18 · Troubleshooting FAQ](./18-troubleshooting-faq.md).
 

@@ -57,13 +57,13 @@ export const loggingConfigSchema = z
   .object({
     enabled: z
       .boolean()
-      .default(true)
+      .default(false)
       .describe(
         JSON.stringify({
           label: "启用日志",
           group: "general",
           order: 1,
-          description: "关闭后不采集任何日志",
+          description: "默认关闭；开启后才采集 agent / 扩展 / webext 日志",
         }),
       ),
     level: logLevelEnum

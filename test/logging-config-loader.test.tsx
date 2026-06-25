@@ -82,15 +82,43 @@ describe("LoggingConfigLoader", () => {
     expect(arg.namespaces).toEqual({ "agent:tool": true, "agent:http": false });
   });
 
-  it("fetch 失败时静默不抛出", async () => {
+  it("缺省 enabled（values 为空）→ 视为关闭（默认关闭）", async () => {
+    mockFetch({});
+    const { LoggingConfigLoader } = await import(
+      "@/components/logging-config-loader"
+    );
+    render(<LoggingConfigLoader />);
+    await vi.waitFor(() => {
+      expect(mockConfigureLogger).toHaveBeenCalled();
+    });
+    const arg = mockConfigureLogger.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.enabled).toBe(false);
+  });
+
+  it("fetch 失败时静默不抛出，且强制关闭（默认关闭兜底）", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network error")));
     const { LoggingConfigLoader } = await import(
       "@/components/logging-config-loader"
     );
     // Should not throw.
     expect(() => render(<LoggingConfigLoader />)).not.toThrow();
-    // Wait a tick for the async effect to settle without throwing.
-    await new Promise((r) => setTimeout(r, 10));
-    expect(mockConfigureLogger).not.toHaveBeenCalled();
+    // 失败兜底：configureLogger 被以 enabled:false 调用（不沿用库默认）。
+    await vi.waitFor(() => {
+      expect(mockConfigureLogger).toHaveBeenCalledWith({ enabled: false });
+    });
+  });
+
+  it("res 非 ok 时强制关闭（默认关闭兜底）", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }),
+    );
+    const { LoggingConfigLoader } = await import(
+      "@/components/logging-config-loader"
+    );
+    render(<LoggingConfigLoader />);
+    await vi.waitFor(() => {
+      expect(mockConfigureLogger).toHaveBeenCalledWith({ enabled: false });
+    });
   });
 });

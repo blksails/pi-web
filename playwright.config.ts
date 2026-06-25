@@ -40,10 +40,29 @@ const sqlitePath =
 process.env.PI_WEB_E2E_FS_ROOT = fsRoot;
 process.env.PI_WEB_E2E_SQLITE_PATH = sqlitePath;
 
+// Isolated pi agent config dir for the e2e servers (PI_WEB_AGENT_DIR override).
+// Two reasons:
+//  1. Tests that save config via the Settings UI (logging enabled/namespaces)
+//     write into this temp dir instead of polluting the real ~/.pi/agent.
+//  2. Logging now defaults to OFF; the logging e2e seeds logging.json with
+//     enabled:true here so the log-display assertions still exercise the
+//     "enabled" path (default-off behavior is covered by unit tests).
+const agentDir =
+  process.env.PI_WEB_E2E_AGENT_DIR ??
+  fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-agent-"));
+process.env.PI_WEB_E2E_AGENT_DIR = agentDir;
+fs.mkdirSync(agentDir, { recursive: true });
+fs.writeFileSync(
+  path.join(agentDir, "logging.json"),
+  JSON.stringify({ enabled: true, level: "debug" }, null, 2),
+  "utf8",
+);
+
 const stubEnv = {
   PI_WEB_STUB_AGENT: "1",
   PI_WEB_DEFAULT_SOURCE: "./examples/hello-agent",
   PI_WEB_DEFAULT_MODEL: "stub-model",
+  PI_WEB_AGENT_DIR: agentDir,
 };
 
 // Forward an isolated build dir to the servers so `next start` serves the

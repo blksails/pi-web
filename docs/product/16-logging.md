@@ -115,8 +115,8 @@ PI_WEB_LOG_FILE_MAXFILES=5    # 轮转备份数，默认 5
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PI_WEB_LOG_ENABLED` | `true` | 设为 `false` 全局禁用日志 |
-| `PI_WEB_LOG_LEVEL` | `debug` | 全局最低级别：`debug / info / warn / error` |
+| `PI_WEB_LOG_ENABLED` | （未设 = 关闭）| **日志默认关闭**。设为非 `false` 值（如 `1`/`true`）强制开启服务端日志门控，无需经 Settings；设为 `false` 显式禁用。 |
+| `PI_WEB_LOG_LEVEL` | `info` | 全局最低级别：`debug / info / warn / error`（无配置时门控默认值） |
 | `PI_WEB_LOG_NAMESPACES` | —— | 逗号分隔，启用指定命名空间，如 `agent:hello,ext:probe` |
 | `PI_WEB_LOG_FILE` | —— | 日志文件绝对路径（设置即启用文件输出） |
 | `PI_WEB_LOG_FILE_MAXSIZE` | `10` | 单文件最大 MB |
@@ -165,6 +165,8 @@ log.info("extension loaded");
 
 > 设计称之为「服务端权威门控」（design.md / task 4.4）：Settings 中改 enabled/level/namespaces 不仅作用于浏览器，Node 子进程日志在「入 ring buffer / 产帧」之前也由服务端再过滤一遍，确保 agent / 扩展的 Node 日志同样受控。
 
+> **默认关闭**：未在 Settings 保存过 logging 配置时（缺 `logging.json`），`loggingConfigProvider` 采用 `resolveLoggingEnvDefault()`（`lib/app/logging-default.ts`）的结果——`enabled` 默认 `false`，仅当 `PI_WEB_LOG_ENABLED` 存在且非 `"false"` 时强制开启（级别/命名空间同取自 `PI_WEB_LOG_*`）。注意：子进程 logger 仍按其库默认照常产出日志写 stderr，可见性由此服务端门控决定——故默认关闭时 agent / 扩展日志被门控丢弃，不进面板。
+
 ```
 runner bootstrap        — initConfigFromEnv() 读 PI_WEB_LOG_* env（packages/server/src/runner/runner.ts）
         │
@@ -186,6 +188,8 @@ REST 端点（历史拉取）：`GET /api/sessions/[sessionId]/logs?level=info&l
 ## 浏览器侧：LoggingConfigLoader
 
 `LoggingConfigLoader`（`components/logging-config-loader.tsx`）在客户端 mount 时从配置 API 拉取日志配置，调用 `configureLogger()` 同步浏览器侧门控，渲染透明（返回 `null`），失败静默处理。本分支中它挂在 `components/chat-app.tsx`（PiChat 外壳）内，与会话界面同生命周期。
+
+> **默认关闭**：浏览器侧 webext 日志默认关闭——仅当端点返回的 `values.enabled === true`（即用户在 Settings 显式开启）时 loader 才置 `enabled:true`；配置缺失或端点不可达时一律置 `enabled:false`，不沿用库默认。Settings 保存后需刷新页面 loader 才重新拉取生效。
 
 ```tsx
 // 在 app 外壳（如 chat-app.tsx）中挂载一次即可
@@ -244,11 +248,11 @@ export default function ChatShell({ children }) {
 
 | 组 ID | 字段 |
 |-------|------|
-| `general` | `enabled`（启用日志，总开关）、`level`（全局级别，默认 `info`）|
+| `general` | `enabled`（启用日志，总开关，**默认 `false`**）、`level`（全局级别，默认 `info`）|
 | `components` | `namespaces`（按命名空间开关，自定义 widget `logNamespaceToggles`）|
 | `output` | `outputs`（嵌套对象：`console` 控制台、`file` 文件路径/轮转、`panelVisible` 面板显隐、`panelPosition` 面板位置）、`panelDefaultLevel`（面板默认级别）|
 
-> 注意：配置域 `level` 默认值是 `info`（见 schema），而 Node 侧库 `initConfigFromEnv` 在未读到 `PI_WEB_LOG_LEVEL` 时的内部默认是 `debug`，二者是不同层的默认值。
+> 注意：配置域 `enabled` 默认 `false`（日志默认关闭，需在此开启或设 `PI_WEB_LOG_ENABLED`）；`level` 默认 `info`（见 schema），而 Node 侧库 `initConfigFromEnv` 在未读到 `PI_WEB_LOG_LEVEL` 时的内部默认是 `debug`，三者是不同层的默认值。
 
 ---
 
@@ -256,20 +260,22 @@ export default function ChatShell({ children }) {
 
 > 动手实践见 [`examples/logging-demo-agent`](https://github.com/blksails/pi-web/tree/main/examples/logging-demo-agent/)（含独立 README）：它把上文三条路径——agent 注入式 `ctx.logger`、pi extension 直接 `createLogger`、webext 浏览器 log bus——汇成同一个日志面板，是对照三源日志最快的入口。下述步骤即以该示例为操作对象。
 
-1. 启动开发服务器：
+1. 启动开发服务器并开启日志（**日志默认关闭**，用 env 强开最省事）：
 
    ```bash
-   pnpm dev
+   PI_WEB_LOG_ENABLED=1 pnpm dev
    ```
+
+   或 `pnpm dev` 后到 Settings → 日志，打开「启用日志」并保存（浏览器侧需刷新、Node 侧需新建会话才生效）。
 
 2. 在浏览器打开 pi-web，选择 `logging-demo-agent`（位于 `examples/logging-demo-agent/`）发起会话。
 
-3. 会话建立后，日志面板应立即显示 demo agent 在 factory 阶段输出的启动日志：四条主命名空间条目（`debug / info / warn / error`）加一条子命名空间 `<agent>:tool` 的 `info` 条目。
+3. 会话建立后，日志面板应显示 demo agent 在 factory 阶段输出的启动日志：四条主命名空间条目（`debug / info / warn / error`）加一条子命名空间 `<agent>:tool` 的 `info` 条目。
 
-4. 验证 env 门控：
+4. 验证 env 门控（强开后再提级别）：
 
    ```bash
-   PI_WEB_LOG_LEVEL=warn pnpm dev
+   PI_WEB_LOG_ENABLED=1 PI_WEB_LOG_LEVEL=warn pnpm dev
    ```
 
    面板中 `debug` 和 `info` 条目不应出现。
@@ -283,8 +289,9 @@ export default function ChatShell({ children }) {
 
 **若面板始终为空**，按以下顺序排查：
 
+- **首先确认已开启日志（默认关闭）**：Settings → 日志的「启用日志」为 `true`（保存后浏览器刷新、Node 侧新建会话生效），或启动时设 `PI_WEB_LOG_ENABLED=1`。未开启时 agent / 扩展 / webext 日志均不进面板。
 - 确认面板未被隐藏或挪走：Settings 中 `outputs.panelVisible` 为 `true`（否则即使 `showLogs` 也不渲染），`outputs.panelPosition` 为 `drawer` 时面板默认收起，需点「日志」按钮（`data-pi-logs-drawer-toggle`）展开。
-- 确认未通过 env 或 Settings 把日志关掉：`PI_WEB_LOG_ENABLED` 不为 `false`，且 `PI_WEB_LOG_LEVEL` 未高于 demo agent 输出的最低级别（demo 会发 `debug`，若设为 `warn` 则 `debug/info` 两条被门控）。
+- 确认级别未把条目滤掉：`PI_WEB_LOG_LEVEL` 未高于 demo agent 输出的最低级别（demo 会发 `debug`，若设为 `warn` 则 `debug/info` 两条被门控）。
 - 服务端门控独立于浏览器（见上文「服务端：权威门控」）：env 提级会在「入 ring buffer」前就把低级别条目滤掉，面板也就收不到。
 - 仍无输出时参见 [18 · 故障排查 FAQ](./18-troubleshooting-faq.md)。
 
