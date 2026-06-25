@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 基础：声明层与协议
+- [x] 1. 基础：声明层与协议
 
 - [x] 1.1 (P) BuiltinCommandSpec 类型与默认集
   - 在 tool-kit 定义内置命令纯声明类型（name/description/argumentHint/aliases/target/subcommands/userOnly）
@@ -15,7 +15,7 @@
   - _Requirements: 1.2, 1.5_
   - _Boundary: protocol RpcSlashCommand_
 
-- [ ] 2. 核心：服务端合流与重载
+- [x] 2. 核心：服务端合流与重载
 
 - [x] 2.1 runner 重启转发与 SessionReloader 注入
   - 在会话对象上新增薄方法转发底层 runner 的 requestRestart（重 spawn 续会话、重解析资源）
@@ -37,7 +37,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.5_
   - _Boundary: commands merge, toRpcSlashCommand_
 
-- [ ] 3. 核心：客户端分派与面板
+- [x] 3. 核心：客户端分派与面板
 
 - [x] 3.1 (P) 扩展安装 transport 方法
   - 前端 REST client 增 list/install/remove/reloadSession 方法，打既有 /extensions 与 /sessions/:id/reload
@@ -60,7 +60,7 @@
   - _Depends: 3.1_
   - _Boundary: plugin-panel_
 
-- [ ] 4. 集成
+- [x] 4. 集成
 
 - [x] 4.1 app-shell 接线
   - 把面板挂到 ui-surface 插槽、把分派接入运行中的面板与会话上下文；安装/卸载后呈现生效或失败反馈
@@ -74,7 +74,7 @@
   - _Requirements: 6.3_
   - _Depends: 2.2, 4.1_
 
-- [ ] 5. 验证
+- [x] 5. 验证
 
 - [x] 5.1 (P) 合流/重载/映射单元测试
   - toRpcSlashCommand 映射、合流前置+同名优先、restartRunner 转发
