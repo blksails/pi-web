@@ -215,7 +215,47 @@ curl http://localhost:3000/sessions/<sessionId>/commands
 # 返回 { commands: [{ name: "my-skill", description: "...", source: "skill", sourceInfo: { … } }, …] }
 ```
 
-命令面板仅消费该端点输出，不在前端解析或展开命令——斜杠文本经 `sendMessage` 原样发出，由 pi 后端识别并展开。
+命令面板仅消费该端点输出（agent 命令），不在前端解析或展开——斜杠文本经 `sendMessage` 原样发出，由 pi 后端识别并展开。
+
+---
+
+## 内置命令层与 `/plugin`（builtin-plugin-command）
+
+除 agent 注册的命令（`source: extension|prompt|skill`，选中即作 prompt 发给 LLM）外，harness 还提供一层**内置命令**（`source: "builtin"`），它**执行 harness 逻辑、不进 LLM**。首个成员是 `/plugin`，用于安装/管理 plugin（扩展包）。
+
+### 声明与合流
+
+- 内置命令以纯声明形式定义在 tool-kit 的前端安全子入口：`@blksails/pi-web-tool-kit/commands`（`BuiltinCommandSpec` / `BUILTIN_COMMANDS`）。声明含 `name / description / argumentHint / aliases / target / subcommands / userOnly`。
+- 前端合流：`mergeBuiltinCommands` 把内置命令映射为 `RpcSlashCommand{ source:"builtin" }`，**追加在 agent 命令之后**、同名以内置优先（保留既有「输入 `/` 默认选中」不变）。协议 `RpcSlashCommand.source` 枚举已加 `"builtin"`，`sourceInfo` 对内置命令省略（向后兼容）。
+- 命令面板对内置命令渲染「内置」徽标（`data-pi-command-source="builtin"`）。
+
+### 执行分派（不进 LLM）
+
+选中命令时 `PiCommandPalette.select` 按 `source` 分派：
+
+| source | 行为 |
+|---|---|
+| `extension` / `prompt` / `skill` | 填入 `"/<name> "`，作 prompt 发送（现状不变） |
+| `builtin` | 调 `onBuiltinSelect`，按 `target` 执行 harness 逻辑（`client` / `server-action` / `ui-surface`），**清空输入、不发送** |
+
+`/plugin`（`target: ui-surface`）选中即打开 plugin 管理面板（`components/plugin-panel.tsx`），不向会话发任何消息。
+
+### `/plugin` 命令形态
+
+| 命令 | 作用 |
+|---|---|
+| `/plugin` | 打开管理面板（已安装列表 / 错误项） |
+| `/plugin install <source>` | 以来源安装（npm / git / 本地）|
+| `/plugin uninstall <name>` | 卸载 |
+| `/plugin list` / `enable` / `disable` / `update` | 列出 / 启用 / 禁用 / 更新 |
+
+底层复用[扩展管理 REST API](#扩展管理-rest-api)（`GET/POST /extensions`、`DELETE /extensions/:extId`、`POST /sessions/:id/reload`，需在宿主路由注入处挂载 `createExtensionRoutes`）。装/卸后经注入的 `SessionReloader`（`PiSession.restartRunner()` → 底层 `requestRestart()` 重 spawn runner、重解析资源）使运行中的会话生效；若包内含 webext 产物，另触发 webext 加载路径（见 [10 · webext 包安装](10-web-ui-extension.md#webext-包安装与运行时加载webext-package-install)）构成双路生效。
+
+### 安全约束
+
+- **绝不可 model-invocable**：install/uninstall/enable/disable 仅用户可触发（`userOnly`），不暴露为模型工具。
+- **信任门**：安装复用 `extension-management` 的来源白名单 + 管理员门控 + `--ignore-scripts` + 审计（见[安装治理管线](#安装治理管线)），非零摩擦。
+- 改注入路由后 dev 必须重启（handler 单例 pin 在 `globalThis`）。
 
 ---
 
