@@ -65,6 +65,13 @@ export interface PiCommandPaletteProps {
   readonly slashContribution?: ExtensionSlashContribution;
   /** ui-rpc 客户端(扩展贡献回 agent 的通道);缺省则不取扩展候选。 */
   readonly uiRpc?: UiRpcClient;
+  /**
+   * harness 内置命令(source==="builtin",builtin-plugin-command):前置合流到 agent 命令前、
+   * 同名内置优先。选中时不填输入框/不发提示,改走 {@link onBuiltinSelect} 分派。
+   */
+  readonly builtinCommands?: readonly RpcSlashCommand[];
+  /** 选中内置命令时的分派回调(rawValue 为当前输入,供解析子命令/参数)。 */
+  readonly onBuiltinSelect?: (command: RpcSlashCommand, rawValue: string) => void;
   readonly className?: string;
 }
 
@@ -95,6 +102,8 @@ export function PiCommandPalette({
   extensionCommands,
   slashContribution,
   uiRpc,
+  builtinCommands,
+  onBuiltinSelect,
   className,
 }: PiCommandPaletteProps): React.JSX.Element | null {
   const open = isCommandMode(value);
@@ -130,16 +139,25 @@ export function PiCommandPalette({
     };
   }, [open, controls]);
 
+  // 内置命令前置合流到 agent 命令前;同名内置优先(builtin-plugin-command)。
+  const mergedCommands = React.useMemo(() => {
+    if (builtinCommands === undefined || builtinCommands.length === 0) {
+      return commands;
+    }
+    const names = new Set(builtinCommands.map((c) => c.name));
+    return [...builtinCommands, ...commands.filter((c) => !names.has(c.name))];
+  }, [builtinCommands, commands]);
+
   const query = queryOf(value).toLowerCase();
   const filtered = React.useMemo(
     () =>
-      commands.filter(
+      mergedCommands.filter(
         // extension 命令默认隐藏(web 端会卡死,永不发 agent_end);可经策略放行。
         (c) =>
           isCommandVisible(c, extensionCommands) &&
           c.name.toLowerCase().includes(query),
       ),
-    [commands, query, extensionCommands],
+    [mergedCommands, query, extensionCommands],
   );
 
   // R10:扩展 slash 贡献候选(经 ui-rpc 异步取,与内核命令并列)。
@@ -194,10 +212,16 @@ export function PiCommandPalette({
 
   const select = React.useCallback(
     (cmd: RpcSlashCommand): void => {
+      // 内置命令:执行 harness 逻辑,不填输入框、不发提示(builtin-plugin-command)。
+      if (cmd.source === "builtin") {
+        onBuiltinSelect?.(cmd, value);
+        onChange("");
+        return;
+      }
       onChange(`/${cmd.name} `);
       if (onSubmit !== undefined) onSubmit(cmd);
     },
-    [onChange, onSubmit],
+    [onChange, onSubmit, onBuiltinSelect, value],
   );
 
   const handleKey = React.useCallback(
@@ -315,8 +339,19 @@ export function PiCommandPalette({
                   : "",
               )}
               data-pi-command-item={cmd.name}
+              data-pi-command-source={cmd.source}
             >
-              <span className="font-medium">/{cmd.name}</span>
+              <span className="flex items-center gap-1.5 font-medium">
+                /{cmd.name}
+                {cmd.source === "builtin" ? (
+                  <span
+                    data-pi-command-builtin-badge
+                    className="rounded-sm bg-[hsl(var(--muted))] px-1 py-0.5 text-[10px] font-normal text-[hsl(var(--muted-foreground))]"
+                  >
+                    内置
+                  </span>
+                ) : null}
+              </span>
               {cmd.description !== undefined ? (
                 <span className="text-xs text-[hsl(var(--muted-foreground))]">
                   {cmd.description}

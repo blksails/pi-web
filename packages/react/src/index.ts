@@ -17,6 +17,9 @@ export {
   createPiClient,
   type PiClient,
   type FetchLike,
+  type InstalledExtensionInfo,
+  type ListExtensionsResponse,
+  type InstallExtensionResult,
 } from "./client/pi-client.js";
 export {
   PiHttpError,

@@ -44,6 +44,21 @@ import { sendRequest, type FetchLike } from "./request.js";
 export type { FetchLike };
 
 /** http-api REST 客户端面。形状与端点均取自 @blksails/pi-web-protocol + http-api 约定。 */
+/** 已安装扩展/plugin 信息(builtin-plugin-command;形状对齐服务端 InstalledExtension)。 */
+export interface InstalledExtensionInfo {
+  readonly id: string;
+  readonly kind: string;
+  readonly scope: string;
+  readonly version?: string;
+}
+export interface ListExtensionsResponse {
+  readonly extensions: readonly InstalledExtensionInfo[];
+}
+export interface InstallExtensionResult {
+  readonly ok: true;
+  readonly source: string;
+}
+
 export interface PiClient {
   readonly baseUrl: string;
 
@@ -68,6 +83,15 @@ export interface PiClient {
   getStats(id: string): Promise<GetStatsResponse>;
   getMessages(id: string): Promise<GetMessagesResponse>;
   getCommands(id: string): Promise<GetCommandsResponse>;
+
+  /** GET /extensions —— 已安装扩展/plugin 列表(builtin-plugin-command)。 */
+  listExtensions(): Promise<ListExtensionsResponse>;
+  /** POST /extensions —— 以来源安装 plugin。 */
+  installExtension(source: string): Promise<InstallExtensionResult>;
+  /** DELETE /extensions/:extId —— 卸载 plugin。 */
+  removeExtension(extId: string): Promise<unknown>;
+  /** POST /sessions/:id/reload —— 装/卸后重载会话 runner 使其生效。 */
+  reloadSession(id: string): Promise<unknown>;
 
   /** GET /sessions/:id/completion/triggers —— 活跃触发符并集(completion-provider-framework)。 */
   getCompletionTriggers(id: string): Promise<CompletionTriggersResponse>;
@@ -124,6 +148,8 @@ export function createPiClient(
     sendRequest<T>(baseUrl, f, { method: "POST", path, body });
   const get = <T>(path: string): Promise<T> =>
     sendRequest<T>(baseUrl, f, { method: "GET", path });
+  const del = <T>(path: string): Promise<T> =>
+    sendRequest<T>(baseUrl, f, { method: "DELETE", path });
 
   return {
     baseUrl,
@@ -165,6 +191,13 @@ export function createPiClient(
       get<GetMessagesResponse>(`/sessions/${enc(id)}/messages`),
     getCommands: (id) =>
       get<GetCommandsResponse>(`/sessions/${enc(id)}/commands`),
+
+    // 扩展安装管理(builtin-plugin-command):打既有 /extensions 与 /sessions/:id/reload。
+    listExtensions: () => get<ListExtensionsResponse>(`/extensions`),
+    installExtension: (source) =>
+      post<InstallExtensionResult>(`/extensions`, { source }),
+    removeExtension: (extId) => del<unknown>(`/extensions/${enc(extId)}`),
+    reloadSession: (id) => post<unknown>(`/sessions/${enc(id)}/reload`, {}),
     getCompletionTriggers: (id) =>
       get<CompletionTriggersResponse>(
         `/sessions/${enc(id)}/completion/triggers`,

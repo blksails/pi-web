@@ -67,6 +67,7 @@ import {
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
+import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
@@ -123,6 +124,10 @@ export interface PiChatProps {
   readonly toolbarOrder?: ReadonlyArray<ToolbarControl>;
   /** 扩展命令补全可见策略(全局开关 + 白名单);默认隐藏所有扩展命令。 */
   readonly extensionCommands?: ExtensionCommandPolicy;
+  /** harness 内置命令(source==="builtin");前置合流到命令面板(builtin-plugin-command)。 */
+  readonly builtinCommands?: readonly RpcSlashCommand[];
+  /** 选中内置命令时的分派回调(执行 harness 逻辑,不进 LLM)。 */
+  readonly onBuiltinSelect?: (command: RpcSlashCommand, rawValue: string) => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -241,6 +246,8 @@ export function PiChat({
   theme,
   toolbarOrder,
   extensionCommands,
+  builtinCommands,
+  onBuiltinSelect,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -725,6 +732,8 @@ export function PiChat({
             onChange={setInput}
             onCaptureChange={setCommandCapturing}
             extensionCommands={extensionCommands}
+            {...(builtinCommands !== undefined ? { builtinCommands } : {})}
+            {...(onBuiltinSelect !== undefined ? { onBuiltinSelect } : {})}
             {...(extension?.contributions?.slash !== undefined
               ? { slashContribution: extension.contributions.slash }
               : {})}

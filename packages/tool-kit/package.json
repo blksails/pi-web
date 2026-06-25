@@ -7,7 +7,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./commands": "./src/commands/index.ts"
   },
   "engines": {
     "node": ">=22.19.0"
