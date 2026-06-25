@@ -417,6 +417,99 @@ function hoistServerRuntimeDeps() {
 const hoisted = hoistServerRuntimeDeps();
 console.log(`[pack-standalone] hoist server 运行时依赖:${hoisted} 个`);
 
+// ── 无符号链接产物(Windows 支持)──
+// Windows 上 Node `realpathSync` 对 tar/npm 解出的符号链接抛 EPERM(reparse point 权限),
+// 故 server.js 一启动解析 `node_modules/next` 即崩;且发布到 npm 后 Windows 用户解出的也是
+// 符号链接 → 同样崩。本步把产物彻底**扁平化为无符号链接**:
+//   1) 把每个 `.pnpm/<dir>/node_modules/<pkg>` 真实包 hoist 到顶层 `node_modules/<pkg>`。
+//      本闭包基本单版本(经统计仅极少数多版本),扁平解析与 pnpm 严格解析等价;多版本取先到
+//      版本(打印告警)。每个包真实副本只在其自身 `.pnpm` 目录,故基本无重复、体积≈原 .pnpm。
+//   2) @blksails 顶层符号链接换成源码实体副本(子进程 jiti 加载 TS 源码;其依赖经顶层解析)。
+//   3) 删除 `.pnpm` 与所有剩余符号链接 —— 顶层已含全部实体,任何 bare import 沿 node_modules
+//      向上查找命中顶层。产物成为纯实体目录树,Windows / npm 解包后无 realpath 隐患。
+function flattenSymlinkFree() {
+  const saNm = join(standalone, "node_modules");
+  const pnpmDir = join(saNm, ".pnpm");
+
+  const hoist = (realPkgDir, name) => {
+    const dest = join(saNm, name);
+    if (name.includes("/")) mkdirSync(join(saNm, name.split("/")[0]), { recursive: true });
+    let st;
+    try {
+      st = lstatSync(dest);
+    } catch {
+      st = undefined;
+    }
+    if (st && st.isDirectory() && !st.isSymbolicLink()) return "skip"; // 已有实体(多版本 first-wins)
+    rmSync(dest, { recursive: true, force: true }); // 删旧符号链接(若有)
+    cpSync(realPkgDir, dest, { recursive: true }); // 真实包目录自身无符号链接
+    return "hoist";
+  };
+
+  let hoisted = 0;
+  const conflicts = [];
+  if (existsSync(pnpmDir)) {
+    for (const d of readdirSync(pnpmDir)) {
+      const nm = join(pnpmDir, d, "node_modules");
+      if (!existsSync(nm)) continue;
+      for (const e of readdirSync(nm, { withFileTypes: true })) {
+        if (e.isSymbolicLink()) continue; // 依赖(各包真实副本在各自 .pnpm 目录)
+        if (e.name.startsWith("@") && e.isDirectory()) {
+          for (const s of readdirSync(join(nm, e.name), { withFileTypes: true })) {
+            if (s.isSymbolicLink() || !s.isDirectory()) continue;
+            const name = `${e.name}/${s.name}`;
+            if (hoist(join(nm, e.name, s.name), name) === "hoist") hoisted++;
+            else conflicts.push(name);
+          }
+        } else if (e.isDirectory()) {
+          if (hoist(join(nm, e.name), e.name) === "hoist") hoisted++;
+          else conflicts.push(e.name);
+        }
+      }
+    }
+  }
+
+  // @blksails 顶层符号链接 → 源码实体副本。
+  const blkScope = join(saNm, "@blksails");
+  if (existsSync(blkScope)) {
+    for (const e of readdirSync(blkScope, { withFileTypes: true })) {
+      const p = join(blkScope, e.name);
+      if (!e.isSymbolicLink()) continue;
+      const real = realpathSync(p);
+      rmSync(p, { recursive: true, force: true });
+      cpSync(real, p, { recursive: true, verbatimSymlinks: true });
+    }
+  }
+
+  // 删 .pnpm,再清所有剩余符号链接(顶层已含全部实体)。
+  rmSync(pnpmDir, { recursive: true, force: true });
+  const killLinks = (dir) => {
+    let k = 0;
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isSymbolicLink()) {
+        rmSync(p, { force: true });
+        k++;
+      } else if (e.isDirectory()) {
+        k += killLinks(p);
+      }
+    }
+    return k;
+  };
+  const killed = killLinks(standalone);
+
+  if (conflicts.length) {
+    console.warn(
+      `[pack-standalone] 扁平化多版本冲突(取先到版本): ${[...new Set(conflicts)].join(", ")}`,
+    );
+  }
+  console.log(
+    `[pack-standalone] 扁平化无符号链接:hoist ${hoisted} 个包到顶层, 清除 ${killed} 个符号链接, 删除 .pnpm`,
+  );
+  return hoisted;
+}
+flattenSymlinkFree();
+
 // 瘦身:CLI 包是 standalone 自包含产物,无需开发文件。
 //
 // 关键(Bug B 修复):**只**删除"本身就是一个 dev 工具包"的目录 —— 即直接位于某个

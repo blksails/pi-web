@@ -50,11 +50,12 @@ function waitReady(timeoutMs) {
 async function main() {
   // 1) 产物完整性(Task 3.2 / P0)
   const SA = join(ROOT, DIST, "standalone");
+  // 无符号链接产物:pi SDK / jiti 经扁平化 hoist 到顶层 node_modules(见 pack-standalone)。
   for (const f of [
     "server.js",
     "packages/server/runner-bootstrap.mjs",
-    "packages/server/node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
-    "packages/server/node_modules/jiti",
+    "node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
+    "node_modules/jiti",
   ]) {
     check(`产物存在: ${f}`, existsSync(join(SA, f)));
   }
