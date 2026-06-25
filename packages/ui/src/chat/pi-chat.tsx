@@ -643,10 +643,10 @@ export function PiChat({
   // 日志面板位置安全降级:"right"(aside 布局)当前有未根治的 React #185 渲染循环
   // (LogsPanel 内 radix Select 在 aside 中 ref 抖动 → Maximum update depth → 整页崩),
   // 暂降级为 "bottom" 防崩;待右侧布局重构后恢复。详见 spec 报告/记忆。
-  const effectiveLogsPosition: "bottom" | "drawer" =
-    logsPanelPosition === "right" ? "bottom" : logsPanelPosition;
-  // 日志 right 位置 aside:降级后恒关闭(right→bottom),保留 false 常量以便未来重构右侧布局后恢复。
-  const showLogsRight = false;
+  const effectiveLogsPosition = logsPanelPosition;
+  // 日志 right 位置 aside(level 过滤已改原生 select,不再 #185)。
+  const showLogsRight =
+    showLogs && logsPanelVisible && effectiveLogsPosition === "right";
   const showAside = showPanelRight || hasArtifactAside || showLogsRight;
   const asideWidth = panelRatioActive
     ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
@@ -1170,7 +1170,9 @@ export function PiChat({
         // panelRatioActive 时宽度由比例百分比驱动(对话列 flex-1 吃余量);否则沿用固定 w-96。
         <aside
           className={cn(
-            "hidden shrink-0 lg:block",
+            // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
+            // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
+            "hidden min-h-0 shrink-0 lg:flex lg:flex-col",
             panelRatioActive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
@@ -1183,13 +1185,14 @@ export function PiChat({
           {showPanelRight ? (
             <SlotHost ext={extension} slot="panelRight" />
           ) : null}
-          {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）*/}
+          {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
+              flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}
           {showLogsRight ? (
             <div
               data-pi-logs-region
-              className="p-2 overflow-y-auto"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
             >
-              <LogsPanel logsResult={logsResult} />
+              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
             </div>

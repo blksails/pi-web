@@ -123,13 +123,10 @@ test("logging-system: 级别下拉过滤 — 只显示 ≥ 所选级别 (5.3)", 
   // Wait for at least one log entry before filtering.
   await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
 
-  // Open the level filter trigger and select "error" to hide all lower levels.
+  // 级别过滤为原生 <select>(修 right 位置 radix #185 后全位置改原生):用 selectOption 选 "error"。
   const trigger = page.locator("[data-pi-logs-level-filter]");
   await expect(trigger).toBeVisible();
-  await trigger.click();
-
-  // Select "error" from the dropdown.
-  await page.getByRole("option", { name: "error" }).click();
+  await trigger.selectOption("error");
 
   // After filtering to "error": debug/info/warn entries must not be visible.
   const debugEntries = page.locator('[data-pi-log-level="debug"]');
@@ -150,8 +147,7 @@ test("logging-system: 级别下拉过滤 — 只显示 ≥ 所选级别 (5.3)", 
   }
 
   // Reset to debug to restore all entries.
-  await trigger.click();
-  await page.getByRole("option", { name: "debug" }).click();
+  await trigger.selectOption("debug");
   // After reset, the trigger should still be visible (filter UI intact).
   await expect(trigger).toBeVisible();
 });

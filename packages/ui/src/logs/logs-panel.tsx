@@ -21,13 +21,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import type { LogEntry, LogLevel } from "@blksails/pi-web-logger";
 import { useLogs, createLogsStore, type UseLogsResult } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select.js";
 import { Input } from "../ui/input.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -243,22 +236,22 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
       {/* Controls bar — only shown when expanded */}
       {expanded && (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--border))] shrink-0">
-          {/* Level filter dropdown */}
-          <Select value={filters.level} onValueChange={handleLevelChange}>
-            <SelectTrigger
-              className="h-7 w-24 text-xs"
-              data-pi-logs-level-filter
-            >
-              <SelectValue placeholder="Level" />
-            </SelectTrigger>
-            <SelectContent>
-              {LOG_LEVELS.map((lvl) => (
-                <SelectItem key={lvl} value={lvl} className="text-xs">
-                  {lvl}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Level filter dropdown — 原生 <select>(非 radix):radix Select 在 right 的 aside
+              受限 flex/overflow 布局下 ref 反复挂卸致 React #185 整页崩;原生 select 无 Portal/
+              ref 组合,三种位置(bottom/right/drawer)均稳定。 */}
+          <select
+            value={filters.level}
+            onChange={(e) => handleLevelChange(e.target.value)}
+            data-pi-logs-level-filter
+            aria-label="日志级别过滤"
+            className="h-7 w-24 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-transparent px-2 text-xs"
+          >
+            {LOG_LEVELS.map((lvl) => (
+              <option key={lvl} value={lvl}>
+                {lvl}
+              </option>
+            ))}
+          </select>
 
           {/* Namespace filter */}
           <Input

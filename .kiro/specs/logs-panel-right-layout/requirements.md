@@ -52,4 +52,53 @@
 - 承接 logging-system(packages/logger + 面板 + 配置)的右侧位置;替换 unified-command-result-layer 调试期加的临时降级 clamp。
 
 ## Requirements
-<!-- Will be generated in /kiro-spec-requirements phase -->
+
+### Requirement 1：right 位置正常渲染、不崩溃
+
+**User Story:** 作为用户,当日志面板位置配置为 `right` 时,希望日志面板正常渲染在右侧,而不是整页崩溃。
+
+#### Acceptance Criteria
+1.1 WHEN `logsPanelPosition` 为 `"right"` 且 `showLogs && logsPanelVisible` 为真 THEN 系统 SHALL 在右侧 aside 区域渲染日志面板,且不发生 React「Maximum update depth exceeded」(#185)。
+1.2 WHEN 在 `right` 位置打开命令面板(输入 `/`)或与页面交互 THEN 系统 SHALL NOT 出现整页 client 崩溃("Application error")。
+1.3 WHEN 日志条目持续流入(stream) THEN 系统在 `right` 位置 SHALL 稳定渲染,不进入无限重渲染。
+
+### Requirement 2：移除临时降级
+
+**User Story:** 作为维护者,修好 right 后应移除调试期加的临时降级,使 `right` 走真实渲染路径。
+
+#### Acceptance Criteria
+2.1 WHEN right 修复完成 THEN 系统 SHALL 移除 `effectiveLogsPosition` 的 `right→bottom` 降级与 `showLogsRight = false` 恒关,使 `logsPanelPosition === "right"` 真实驱动右侧 aside。
+2.2 WHEN `logsPanelPosition` 为 `"right"` THEN 日志面板 SHALL 出现在右侧 aside(而非底部)。
+
+### Requirement 3：bottom / drawer 零回归
+
+**User Story:** 作为现有用户,修 right 不得影响 bottom 与 drawer 位置的既有行为。
+
+#### Acceptance Criteria
+3.1 WHEN `logsPanelPosition` 为 `"bottom"` THEN 日志面板 SHALL 与现状一致(随输入 dock 底部固定)。
+3.2 WHEN `logsPanelPosition` 为 `"drawer"` THEN 日志面板 SHALL 与现状一致(抽屉)。
+3.3 WHEN aside 同时承载 webext panelRight / artifact THEN 其行为 SHALL 不受本次右侧日志布局改动影响。
+
+### Requirement 4：日志面板交互完整
+
+**User Story:** 作为用户,右侧日志面板的功能(level 过滤、搜索、自动滚动)应与其它位置一致可用。
+
+#### Acceptance Criteria
+4.1 WHEN 在 `right` 位置使用 level 过滤下拉 THEN 系统 SHALL 正常切换日志级别,且不触发渲染循环。
+4.2 WHEN 在 `right` 位置滚动/有新日志 THEN 自动滚动与未读计数 SHALL 正常工作。
+4.3 IF level 过滤控件实现变更(如由 radix Select 改为原生控件) THEN 其在 bottom/drawer 位置 SHALL 同样正常工作(三位置一致)。
+
+### Requirement 5：防回归测试
+
+**User Story:** 作为维护者,需要自动化测试锁定 right 不再崩,防止 #185 回归。
+
+#### Acceptance Criteria
+5.1 WHEN 运行浏览器 e2e THEN SHALL 覆盖 `right` 位置:页面加载 + 打开命令面板不崩 + 日志面板在右侧可见。
+5.2 WHEN 运行 e2e THEN bottom/drawer 位置 SHALL 一并验证(或至少 bottom)不回归。
+5.3 WHEN 运行单元/组件测试 THEN LogsPanel 在受限/aside 布局上下文渲染 SHALL 不抛 #185(若可在 jsdom 复现)。
+
+### Requirement 6：运行/测试前置
+
+#### Acceptance Criteria
+6.1 WHEN 运行 e2e THEN 系统 SHALL 经 `NEXT_DIST_DIR=.next-e2e` external server 执行;验证以 prod build 为准(dev 对 monorepo 包热重载不可靠)。
+6.2 IF 决定把 `outputs.panelPosition` 纳入 logging config schema(使 right 用户可达) THEN 变更 SHALL 向后兼容。
