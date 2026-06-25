@@ -21,8 +21,15 @@ export type CommandExecutePayload = z.infer<typeof CommandExecutePayloadSchema>;
 /** host 命令结果(ui-rpc response.result 的一种形状);effect 数据驱动 UI 更新意图。 */
 export const CommandResultSchema = z.object({
   command: z.string(),
-  /** UI 渲染意图:刷新面板/通知/打开面板/无。不含组件(渲染由前端按 effect 决定)。 */
-  effect: z.enum(["panel-refresh", "notify", "open-panel", "none"]).optional(),
+  /**
+   * UI 渲染意图(数据驱动,不含组件):
+   * - panel-refresh / open-panel:打开并刷新管理面板(/plugin)
+   * - clear-transcript:清空聊天消息视图(/clear,与 agent 上下文清空一致)
+   * - notify:仅通知文案;none:无 UI 副作用
+   */
+  effect: z
+    .enum(["panel-refresh", "notify", "open-panel", "clear-transcript", "none"])
+    .optional(),
   message: z.string().optional(),
   /** 附带数据(如刷新用的列表快照)。 */
   data: z.unknown().optional(),

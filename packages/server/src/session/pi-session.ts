@@ -469,6 +469,18 @@ export class PiSession {
     return Promise.resolve();
   }
 
+  /**
+   * 清空当前对话上下文(统一命令层 `/clear` 的 agent 侧):经 pi RPC `new_session` 续用同一
+   * 通道开新上下文。底层通道不支持时为 no-op(best-effort:UI 视图清空仍由前端 effect 完成)。
+   */
+  async clearContext(): Promise<void> {
+    this.assertActive();
+    this.touch();
+    if (typeof this.channel.newSession === "function") {
+      await this.channel.newSession();
+    }
+  }
+
   /** 经 `fork` 命令在给定 entry 处创建同级版本(纯转发,Req 8.2)。 */
   fork(entryId: string): Promise<RpcResponse> {
     return this.forward(() => this.channel.fork(entryId));

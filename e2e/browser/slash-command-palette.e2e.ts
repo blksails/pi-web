@@ -68,22 +68,24 @@ test("slash palette: ArrowDown navigates and Enter selects, filling '/name ' wit
     "true",
   );
 
-  // Req 2.1 — ArrowDown moves the highlight to the next option (clear).
+  // Req 2.1 — ArrowDown moves the highlight to the next option (retry).
+  // 注:/clear 现为 host 内置命令(选中走分派、不填充),故此处用普通 agent 命令 retry
+  // 验证「导航+填充 /name 」;命令顺序为 [help, retry, plugin(内置), clear(内置)]。
   await page.keyboard.press("ArrowDown");
-  await expect(page.locator('[data-pi-command-item="clear"]')).toHaveAttribute(
+  await expect(page.locator('[data-pi-command-item="retry"]')).toHaveAttribute(
     "aria-selected",
     "true",
   );
 
-  // Req 2.2 / 3.1 — Enter selects the highlighted command, filling "/clear " and
+  // Req 2.2 / 3.1 — Enter selects the highlighted command, filling "/retry " and
   // NOT sending (no message appears, Enter was yielded to the palette).
   await page.keyboard.press("Enter");
-  await expect(input).toHaveValue("/clear ");
+  await expect(input).toHaveValue("/retry ");
   await expect(page.locator("[data-pi-chat-messages]")).toHaveCount(0);
-  // The value "/clear " still starts with "/", so the palette stays in command
+  // The value "/retry " still starts with "/", so the palette stays in command
   // mode but now matches no command name → empty state (Req 3.2 "re-match"; not a
   // send). No command items remain highlighted.
-  await expect(page.locator('[data-pi-command-item="clear"]')).toHaveCount(0);
+  await expect(page.locator('[data-pi-command-item="retry"]')).toHaveCount(0);
   await expect(page.locator("[data-pi-command-empty]")).toBeVisible();
 });
 

@@ -348,6 +348,10 @@ export function PiChat({
         },
   );
   const { messages, sendMessage, status, stop, error } = chat;
+  // 注:不在 render 期解构 `chat.setMessages`(ai-sdk v5 的 useChat 返回对象上某些字段读取会
+  // 触发额外重渲染,曾导致无限循环);/clear 的清空在 dispatchBuiltin 回调内按需访问 chat.setMessages。
+  const chatRef = React.useRef(chat);
+  chatRef.current = chat;
 
   const errorMessage: string | undefined =
     error !== undefined
@@ -541,11 +545,19 @@ export function PiChat({
   const dispatchBuiltin = React.useCallback(
     (cmd: RpcSlashCommand, rawValue: string): void => {
       const argv = rawValue.replace(/^\/\S+\s*/, ""); // 去掉前导 "/<name> "
-      if (client !== undefined && sessionId !== undefined && onCommandResult !== undefined) {
+      if (client !== undefined && sessionId !== undefined) {
         const sid = sessionId;
         const c = client;
         void executeHostCommand((req) => c.uiRpcCommand(sid, req), cmd.name, argv).then(
-          (outcome) => onCommandResult(cmd.name, outcome),
+          (outcome) => {
+            // chat 级 UI effect 由 PiChat 自身应用(它持有 chat.setMessages):
+            // clear-transcript → 清空聊天视图(与 agent 上下文清空一致,/clear)。
+            if (outcome.ok && outcome.result?.effect === "clear-transcript") {
+              chatRef.current.setMessages?.([]);
+            }
+            // app 级 effect(面板/通知等)交宿主处理。
+            onCommandResult?.(cmd.name, outcome);
+          },
         );
         return;
       }

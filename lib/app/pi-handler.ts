@@ -56,6 +56,7 @@ import {
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { createPluginHostCommand } from "./plugin-command/plugin-host-command.js";
+import { createClearHostCommand } from "./clear-host-command.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -338,6 +339,8 @@ function buildSingleton(): HandlerSingleton {
         allowMutate: extAllowMutate,
         reload: reloadRunner,
       }),
+      // /clear:agent 上下文清空(new_session)+ 前端 clear-transcript effect。
+      createClearHostCommand(),
     ]),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);

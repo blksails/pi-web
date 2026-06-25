@@ -59,6 +59,14 @@ export interface SessionChannel extends PiRpcChannel {
    */
   requestRestart?(): void;
 
+  /**
+   * 开新会话上下文(pi RPC `new_session`):清空当前对话上下文、续用同一通道。
+   * 用于统一命令层 `/clear` 的 agent 侧清空。可选:不支持的实现可省略(best-effort)。
+   */
+  newSession?(
+    parentSession?: string,
+  ): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
+
   prompt(
     message: string,
     options?: {
