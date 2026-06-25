@@ -5,7 +5,7 @@
  * 前置合流到 agent 命令前;同名以内置优先(过滤同名 agent 命令)。内置命令无 agent 来源,
  * 故省略 sourceInfo(协议已将其设为可选)。
  */
-import type { BuiltinCommandSpec } from "@blksails/pi-web-tool-kit";
+import type { BuiltinCommandSpec } from "@blksails/pi-web-tool-kit/commands";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 
 export function toRpcSlashCommand(spec: BuiltinCommandSpec): RpcSlashCommand {
