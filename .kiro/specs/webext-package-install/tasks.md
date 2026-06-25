@@ -27,7 +27,7 @@
   - _Requirements: 5.2, 6.1, 6.4, 10.4_
   - _Boundary: web-ext-gate-config_
 
-- [ ] 2. 核心：服务端信任与发现
+- [x] 2. 核心：服务端信任与发现
 
 - [x] 2.1 可信发布者注册表（中心列表 + 出厂快照 + 根验签 + 合并 + fail-safe）
   - 提供出厂钉死的根公钥，用其验证下载的中心可信发布者列表签名，验证失败则不采信
@@ -60,15 +60,15 @@
   - _Boundary: WebextResolveRoute, WebextDistStatic_
   - _Depends: 2.2_
 
-- [ ] 2.4 (P) 宿主单例 ESM 供给端点
+- [x] 2.4 (P) 宿主单例 ESM 供给端点
   - 以稳定 URL 暴露宿主的 React / React-DOM / web-kit 单例 ESM 模块
   - 完成态：访问稳定 URL 返回宿主同一单例实例的 ESM，可被 import map 引用
   - _Requirements: 3.2_
   - _Boundary: SingletonEsmRoute_
 
-- [ ] 3. 核心：浏览器侧加载
+- [x] 3. 核心：浏览器侧加载
 
-- [ ] 3.1 (P) import map 生成与注入
+- [x] 3.1 (P) import map 生成与注入
   - 在任何模块加载前于文档头注入单张 import map，把裸 specifier 映射到单例 ESM URL
   - 完成态：页面源含早于 hydration 的单张 import map，代码扩展加载时裸 specifier 解析到宿主单例
   - _Requirements: 3.2_
@@ -119,7 +119,7 @@
   - _Boundary: WebextResolveRoute, WebextLoadClient_
   - _Depends: 2.3, 4.2_
 
-- [ ] 5.3 浏览器端到端验证（隔离构建 external server）
+- [x] 5.3 浏览器端到端验证（隔离构建 external server）
   - Tier5：安装纯声明源→主题/布局/空态可见生效
   - Tier1-4：安装受信代码源→渲染器/插槽生效且使用宿主单例
   - 负路径：篡改字节→SRI 拒回退；不受信签名→拒
