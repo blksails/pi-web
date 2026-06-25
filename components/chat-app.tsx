@@ -20,6 +20,7 @@ import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
+import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 
@@ -351,10 +352,16 @@ function SessionView({
   });
 
   // 构建期集成:按 agent source 解析其 UI 扩展(.pi/web),传给 <PiChat>(Tier1/2)。
-  const extension = React.useMemo(
+  const buildTimeExtension = React.useMemo(
     () => resolveExtensionForSource(create.source),
     [create.source],
   );
+  // 运行时集成(webext-package-install):构建期未命中时,经 /api/webext/resolve 动态加载已装源 webext。
+  const runtimeWebext = useRuntimeWebext(
+    create.source,
+    buildTimeExtension !== undefined,
+  );
+  const extension = buildTimeExtension ?? runtimeWebext.extension;
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
   // 列表数据经 client.listSessions 注入(面板不持 pi 接线);恢复复用 /session/:id 成熟链路
