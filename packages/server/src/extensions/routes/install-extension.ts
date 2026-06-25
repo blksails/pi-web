@@ -5,7 +5,7 @@
  *   1) adminPolicy 管理员门控 → 非管理员 401/403 + "被拒绝"审计(Req 7.1/7.2/8.4)。
  *   2) protocol DTO 校验 source → 缺/非法 400(Req 2.2)。
  *   3) checkAllowlist 白名单 + 版本固定 → 拒绝即 422 + "被拒绝"审计(Req 2.3/2.4/8.4)。
- *   4) assembleInstallArgs(含 --ignore-scripts + 非交互 git env)→ pi-cli 执行(带超时)。
+ *   4) assembleInstallArgs(含 --no-approve + 非交互 git env)→ pi-cli 执行(带超时)。
  *   5) 非零/超时 → 500 失败(脱敏)+ 失败审计;成功 → 200 + 成功审计(Req 2.5/2.6/8.1)。
  *
  * 扩展安装 = RCE;沙箱/容器隔离为生产硬化关注点(§11.2),本层引用而不实现(Req 9.1)。

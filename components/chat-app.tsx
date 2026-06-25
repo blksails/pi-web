@@ -380,11 +380,27 @@ function SessionView({
   const pluginClient = React.useMemo(() => createPiClient("/api"), []);
   const [pluginPanelOpen, setPluginPanelOpen] = React.useState(false);
   const onBuiltinSelect = React.useCallback(
-    (cmd: RpcSlashCommand): void => {
-      // /plugin:打开管理面板(安装/卸载在面板内完成)。
-      if (cmd.name === "plugin") setPluginPanelOpen(true);
+    (cmd: RpcSlashCommand, rawValue: string): void => {
+      if (cmd.name !== "plugin") return;
+      // 始终打开管理面板(提供上下文/列表);若键入了 install/uninstall 子命令则直接执行,
+      // 完成后触发 runner reload + webext 加载路径(装后双路生效)。
+      setPluginPanelOpen(true);
+      const args = rawValue.trim().split(/\s+/).slice(1); // 去掉 "/plugin"
+      const sub = args[0];
+      const target = args[1];
+      const afterChange = (): void => {
+        const sid = session.sessionId;
+        void (sid !== undefined ? pluginClient.reloadSession(sid) : Promise.resolve())
+          .catch(() => undefined)
+          .finally(() => setWebextReloadNonce((n) => n + 1));
+      };
+      if (sub === "install" && target !== undefined) {
+        void pluginClient.installExtension(target).then(afterChange).catch(() => undefined);
+      } else if (sub === "uninstall" && target !== undefined) {
+        void pluginClient.removeExtension(target).then(afterChange).catch(() => undefined);
+      }
     },
-    [],
+    [pluginClient, session.sessionId],
   );
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。

@@ -31,6 +31,7 @@ import {
   createSessionListRoutes,
   createExtensionRoutes,
   ChildProcessPiCli,
+  DEFAULT_ALLOWLIST,
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
@@ -372,6 +373,16 @@ function buildSingleton(): HandlerSingleton {
         piCli: new ChildProcessPiCli(),
         store,
         manager,
+        // 安装治理由 env 配置(运营者必需;默认沿用 extension-management 的安全默认:
+        // 管理员门控拒绝匿名/非管理员、白名单仅 @pi-web/@earendil-works npm + github.com、禁本地)。
+        //   PI_WEB_EXT_ADMIN_ALLOW_ANY=1  → 放行安装(dev/单用户自托管;生产应改用真实 adminPolicy)
+        //   PI_WEB_EXT_ALLOW_LOCAL=1      → 允许本地路径来源
+        ...(process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY === "1"
+          ? { adminPolicy: (): boolean => true }
+          : {}),
+        ...(process.env.PI_WEB_EXT_ALLOW_LOCAL === "1"
+          ? { allowlist: { ...DEFAULT_ALLOWLIST, allowLocal: true } }
+          : {}),
         reloadSession: async (session) => {
           await session.restartRunner();
         },

@@ -49,9 +49,9 @@ describe("POST /extensions", () => {
     expect(res.status).toBe(200);
     const body = await readJson(res);
     expect(body["ok"]).toBe(true);
-    // 装配的命令含 --ignore-scripts。
+    // 装配的命令含 --no-approve(对齐 pi 0.79.6)。
     expect(cli.runCalls).toHaveLength(1);
-    expect(cli.runCalls[0]!.args).toContain("--ignore-scripts");
+    expect(cli.runCalls[0]!.args).toContain("--no-approve");
     expect(cli.runCalls[0]!.args[0]).toBe("install");
     expect(audit.records).toHaveLength(1);
     expect(audit.records[0]).toMatchObject({ outcome: "success", actor: "root" });

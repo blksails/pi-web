@@ -79,7 +79,7 @@ describe("extension-management integration", () => {
     );
     expect(installRes.status).toBe(200);
     const installCall = cli.runCalls.find((c) => c.args[0] === "install");
-    expect(installCall?.args).toContain("--ignore-scripts");
+    expect(installCall?.args).toContain("--no-approve");
 
     // list shows it
     const listRes = await handler(
@@ -87,12 +87,12 @@ describe("extension-management integration", () => {
     );
     const listBody = await readJson(listRes);
     const exts = listBody["extensions"] as Array<{ id: string }>;
-    expect(exts.some((e) => e.id === "@pi-web/sample@1.2.3")).toBe(true);
+    expect(exts.some((e) => e.id === "npm:@pi-web/sample@1.2.3")).toBe(true);
 
     // remove
     const rmRes = await handler(
       new Request(
-        `http://x/extensions/${encodeURIComponent("@pi-web/sample@1.2.3")}`,
+        `http://x/extensions/${encodeURIComponent("npm:@pi-web/sample@1.2.3")}`,
         { method: "DELETE" },
       ),
     );
@@ -104,7 +104,7 @@ describe("extension-management integration", () => {
       new Request("http://x/extensions", { method: "GET" }),
     );
     const exts2 = (await readJson(listRes2))["extensions"] as Array<{ id: string }>;
-    expect(exts2.some((e) => e.id === "@pi-web/sample@1.2.3")).toBe(false);
+    expect(exts2.some((e) => e.id === "npm:@pi-web/sample@1.2.3")).toBe(false);
 
     // 每次安装/卸载都产审计记录。
     expect(audit.records.filter((r) => r.action === "install")).toHaveLength(1);

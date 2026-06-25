@@ -9,7 +9,7 @@ import {
 import type { ExtSource } from "../../src/extensions/ext.types.js";
 
 describe("assembleInstallArgs", () => {
-  it("always includes --ignore-scripts for npm sources", () => {
+  it("npm 源:带 npm: scheme + --no-approve(对齐 pi 0.79.6)", () => {
     const src: ExtSource = {
       kind: "npm",
       scope: "@pi-web",
@@ -19,14 +19,14 @@ describe("assembleInstallArgs", () => {
     const { args, env } = assembleInstallArgs(src);
     expect(args).toEqual([
       "install",
-      "@pi-web/sample@1.2.3",
-      "--ignore-scripts",
+      "npm:@pi-web/sample@1.2.3",
+      "--no-approve",
     ]);
     // npm 源不注入 git env。
     expect(env).toEqual({});
   });
 
-  it("injects non-interactive git env for git sources and keeps --ignore-scripts", () => {
+  it("git 源:带 git: scheme@ref + --no-approve + 非交互 git env", () => {
     const src: ExtSource = {
       kind: "git",
       host: "github.com",
@@ -34,8 +34,11 @@ describe("assembleInstallArgs", () => {
       ref: "v1.0.0",
     };
     const { args, env } = assembleInstallArgs(src);
-    expect(args).toContain("--ignore-scripts");
-    expect(args[0]).toBe("install");
+    expect(args).toEqual([
+      "install",
+      "git:github.com/acme/ext@v1.0.0",
+      "--no-approve",
+    ]);
     expect(env["GIT_TERMINAL_PROMPT"]).toBe("0");
     expect(env["GIT_SSH_COMMAND"]).toMatch(/BatchMode=yes/);
     expect(env["GCM_INTERACTIVE"]).toBe("never");

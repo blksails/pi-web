@@ -520,8 +520,22 @@ export function PiChat({
   );
 
   const onSubmit = React.useCallback((): void => {
+    // 内置命令拦截:键入完整命令(如 "/plugin install x")回车时,按 source=builtin 分派,
+    // **绝不发给 LLM**(builtin-plugin-command Req 2.3/7.x)。匹配首段命令名。
+    if (builtinCommands !== undefined && input.startsWith("/")) {
+      const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
+      const cmd =
+        name !== undefined && name.length > 0
+          ? builtinCommands.find((c) => c.name.toLowerCase() === name)
+          : undefined;
+      if (cmd !== undefined) {
+        onBuiltinSelect?.(cmd, input);
+        setInput("");
+        return;
+      }
+    }
     doSend(input);
-  }, [doSend, input]);
+  }, [doSend, input, builtinCommands, onBuiltinSelect]);
 
   const onStop = React.useCallback((): void => {
     if (controls !== undefined) void controls.abort().catch(() => undefined);

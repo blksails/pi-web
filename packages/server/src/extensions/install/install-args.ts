@@ -1,7 +1,7 @@
 /**
  * extension-management — pi 命令参数装配 + 非交互 env(纯函数,Req 2.5/9.2/9.3/10.1)。
  *
- * - `pi install` 始终含 `--ignore-scripts`(禁 npm 生命周期脚本 RCE)。
+ * - `pi install` 用 `--no-approve`(非交互+不信任 project-local 文件;pi 0.79.6 无 --ignore-scripts)。
  * - `pi remove` 装配卸载参数。
  * - git 源注入非交互 env(`GIT_TERMINAL_PROMPT=0`、`GIT_SSH_COMMAND` BatchMode、
  *   `GCM_INTERACTIVE=never`)。
@@ -21,23 +21,30 @@ export function gitInstallEnv(): Record<string, string> {
   };
 }
 
-/** 把已规范化来源还原为传给 `pi install` 的来源标识。 */
+/**
+ * 把已规范化来源还原为传给 `pi install` 的来源标识。
+ * 形式对齐 pi 0.79.6 CLI:`npm:@scope/pkg@x.y.z` / `git:host/path@ref` / 本地路径。
+ */
 function sourceArg(source: ExtSource): string {
   switch (source.kind) {
     case "npm":
       return source.scope !== undefined
-        ? `${source.scope}/${source.name}@${source.version}`
-        : `${source.name}@${source.version}`;
+        ? `npm:${source.scope}/${source.name}@${source.version}`
+        : `npm:${source.name}@${source.version}`;
     case "git":
-      return `https://${source.host}/${source.repoPath}#${source.ref}`;
+      return `git:${source.host}/${source.repoPath}@${source.ref}`;
     case "local":
       return source.path;
   }
 }
 
-/** 装配 `pi install <source> --ignore-scripts`(+ git 源非交互 env)。 */
+/**
+ * 装配 `pi install <source> --no-approve`(+ git 源非交互 env)。
+ * pi 0.79.6 install 的实际 flags 为 `[-l] [--approve|--no-approve]`(无 `--ignore-scripts`)。
+ * `--no-approve`:非交互 + 不信任 project-local 文件(较安全默认);信任落地另由 trust-landing 处理。
+ */
 export function assembleInstallArgs(source: ExtSource): InstallArgs {
-  const args = ["install", sourceArg(source), "--ignore-scripts"];
+  const args = ["install", sourceArg(source), "--no-approve"];
   const env: Record<string, string> =
     source.kind === "git" ? gitInstallEnv() : {};
   return { args, env };
