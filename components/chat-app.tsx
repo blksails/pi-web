@@ -363,9 +363,12 @@ function SessionView({
     [create.source],
   );
   // 运行时集成(webext-package-install):构建期未命中时,经 /api/webext/resolve 动态加载已装源 webext。
+  // webextReloadNonce:装/卸 plugin 后 bump,触发 webext 加载路径(builtin-plugin-command 4.2 双路之一)。
+  const [webextReloadNonce, setWebextReloadNonce] = React.useState(0);
   const runtimeWebext = useRuntimeWebext(
     create.source,
     buildTimeExtension !== undefined,
+    webextReloadNonce,
   );
   const extension = buildTimeExtension ?? runtimeWebext.extension;
 
@@ -553,6 +556,7 @@ function SessionView({
             client={pluginClient}
             sessionId={session.sessionId}
             onClose={() => setPluginPanelOpen(false)}
+            onAfterChange={() => setWebextReloadNonce((n) => n + 1)}
           />
         ) : null}
       </div>

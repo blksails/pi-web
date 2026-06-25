@@ -1,9 +1,9 @@
 {
   "feature_name": "webext-package-install",
   "created_at": "2026-06-25T08:04:39Z",
-  "updated_at": "2026-06-25T08:45:00Z",
+  "updated_at": "2026-06-25T12:00:00Z",
   "language": "zh",
-  "phase": "tasks-generated",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
