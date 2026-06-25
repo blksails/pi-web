@@ -139,13 +139,13 @@ export function PiCommandPalette({
     };
   }, [open, controls]);
 
-  // 内置命令前置合流到 agent 命令前;同名内置优先(builtin-plugin-command)。
+  // 合流内置命令:同名以内置优先;追加在 agent 命令后(不改既有默认选中)(builtin-plugin-command)。
   const mergedCommands = React.useMemo(() => {
     if (builtinCommands === undefined || builtinCommands.length === 0) {
       return commands;
     }
     const names = new Set(builtinCommands.map((c) => c.name));
-    return [...builtinCommands, ...commands.filter((c) => !names.has(c.name))];
+    return [...commands.filter((c) => !names.has(c.name)), ...builtinCommands];
   }, [builtinCommands, commands]);
 
   const query = queryOf(value).toLowerCase();

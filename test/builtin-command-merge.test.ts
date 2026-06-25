@@ -25,11 +25,11 @@ describe("toRpcSlashCommand", () => {
 });
 
 describe("mergeBuiltinCommands", () => {
-  it("内置前置合流到 agent 命令前", () => {
+  it("内置命令追加在 agent 命令后（不改既有默认选中）", () => {
     const merged = mergeBuiltinCommands(BUILTIN_COMMANDS, [agentCmd("foo")]);
-    expect(merged[0]?.name).toBe("plugin");
-    expect(merged[0]?.source).toBe("builtin");
-    expect(merged.map((c) => c.name)).toContain("foo");
+    expect(merged[0]?.name).toBe("foo"); // 既有命令仍在前(默认选中不变)
+    const plugin = merged.find((c) => c.name === "plugin");
+    expect(plugin?.source).toBe("builtin");
   });
 
   it("同名内置优先（过滤同名 agent 命令）", () => {
