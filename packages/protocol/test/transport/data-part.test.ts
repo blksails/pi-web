@@ -27,6 +27,30 @@ describe("DataPartSchema", () => {
         data: { kind: "builtin", component: "metric", props: { label: "x", value: "1" } },
       }).type,
     ).toBe("data-pi-ui");
+    // spec ctx-ui-custom-bridge:ctx.ui.custom 的声明式渲染描述 data part。
+    expect(
+      DataPartSchema.parse({
+        type: "data-pi-custom-ui",
+        data: { component: "demo-metric-card", props: { label: "x", value: 1 } },
+      }).type,
+    ).toBe("data-pi-custom-ui");
+    expect(
+      DataPartSchema.parse({
+        type: "data-pi-custom-ui",
+        data: { component: "demo-callout" },
+      }).type,
+    ).toBe("data-pi-custom-ui");
+  });
+
+  it("rejects data-pi-custom-ui with empty component (field path)", () => {
+    const res = DataPartSchema.safeParse({
+      type: "data-pi-custom-ui",
+      data: { component: "" },
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues.some((i) => i.path.includes("component"))).toBe(true);
+    }
   });
 
   it("rejects data-pi-tool-partial (partial 改走 tool-output-available preliminary)", () => {

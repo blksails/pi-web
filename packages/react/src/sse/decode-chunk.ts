@@ -93,6 +93,8 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
     case "data-pi-compaction":
     case "data-pi-auto-retry":
     case "data-pi-ui":
+    // ctx.ui.custom 桥接(spec ctx-ui-custom-bridge):透传给已注册的 CustomUiDataPart 渲染。
+    case "data-pi-custom-ui":
       return { type: chunk.type, data: chunk.data };
 
     default: {

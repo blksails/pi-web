@@ -1,0 +1,91 @@
+# Implementation Plan
+
+> 依赖方向：协议为契约根（任务 1），其余 Core 任务（2.x）均依赖任务 1；Integration（3.x）把 Core 组件接入系统；Validation（4.x）端到端验证。pi SDK 全程只读消费、零改动。
+
+- [x] 1. Foundation：协议 schema 扩展（custom 请求帧 + custom data part）
+- [x] 1.1 扩展 extension_ui_request 协议接受 `method:"custom"`
+  - 在 `RpcExtensionUIRequestSchema` 判别联合新增 custom 分支：`type:"extension_ui_request"`, `id`, `method:"custom"`, `payload:{component:string(min1), props?:unknown}`
+  - 既有分支（select/confirm/notify/setStatus/setTitle 等）不变
+  - 单测：custom 帧校验通过；缺 `payload`/空 `component` 被拒；既有 method 仍通过（回归）
+  - 观察完成：`pnpm test` 中 protocol 包新增用例全绿，custom 请求帧可被 `safeParse` 接受
+  - _Requirements: 1.1, 1.2_
+- [x] 1.2 新增 `data-pi-custom-ui` data part schema 并并入联合
+  - 新增 `CustomUiDataPartSchema = {type:"data-pi-custom-ui", data:{component:string(min1), props?:unknown}}`，并入 `DataPartSchema`，从而被 `UiMessageChunkSchema` 接受
+  - data 形状在 transport 层内联定义（与 web-ext `CustomUiPayloadSchema` 对齐），不引入 transport→web-ext 反向依赖
+  - 单测：`makeUiMessageChunkFrame({type:"data-pi-custom-ui", data})` 通过校验；既有 data-pi-* 类型不受影响
+  - 观察完成：协议层允许产出 `data-pi-custom-ui` chunk（此前被封闭联合拒绝），用例全绿
+  - _Requirements: 1.2, 2.1_
+
+- [x] 2. Core：发帧、翻译、agent 约定、demo 组件
+- [x] 2.1 (P) 翻译层把 `method:"custom"` 转为 `data-pi-custom-ui` data part
+  - 在 `translateEvent` 的 `extension_ui_request` 分支按 `method==="custom"` 改产 `makeUiMessageChunkFrame({type:"data-pi-custom-ui", data:payload})`；payload 非法 → 空 frames（忽略）；其它 method 维持 `control:extension-ui`
+  - 保持纯函数、确定、不抛
+  - 单测：custom 请求 → 单个 data-pi-custom-ui 帧（含正确 payload）；非法 payload → 空 frames；notify/select 仍 → control:extension-ui（回归）
+  - 观察完成：给定 custom 事件，纯函数返回 data-pi-custom-ui chunk；既有 extension-ui 分支测试不回归
+  - _Requirements: 2.1, 2.2, 3.2, 5.3_
+  - _Boundary: translateEvent_
+  - _Depends: 1.1, 1.2_
+- [x] 2.2 (P) runner 侧 custom 委托：prototype-patch bindExtensions 覆盖 uiContext.custom
+  - 新建委托模块：patch `Object.getPrototypeOf(runtime.session).constructor.prototype.bindExtensions`，包装为先替换 `bindings.uiContext.custom` 为发帧实现再委托原始；patch 幂等（sentinel 标记）；prototype 不可达 → 优雅降级（不抛、不发帧、写 stderr 诊断）
+  - 覆盖的 `custom(factory, options)`：从 `options.__piWebCustomUi` 取 payload 并经协议校验；合法 → 单次 `stdout.write(JSON.stringify({type:"extension_ui_request",id,method:"custom",payload})+"\n")`，返回 `Promise.resolve(undefined)`；非法/缺失 → 返回 undefined（保持 pi 空操作语义）；不触碰其它 uiContext 方法
+  - 单测（stub session 带 prototype bindExtensions + 可注入 stdout/randomId）：bind 后调用 custom 写出正确单行 JSONL 帧；非法/缺失 payload 不发帧；patch 幂等；prototype 缺失降级；其它方法不受影响
+  - 观察完成：对 stub 运行时安装后，模拟一次 custom 调用即在注入 stdout 捕获到符合协议的 extension_ui_request 帧
+  - _Requirements: 1.1, 1.2, 1.4, 4.3, 5.1, 5.2_
+  - _Boundary: custom-ui-wiring_
+  - _Depends: 1.1_
+- [x] 2.3 (P) agent-kit `customUi` 助手 + 类型
+  - 提供 `customUi(ui, {component, props})`：以 pi 要求的 `(factory, options)` 形态调用被覆盖的 `ctx.ui.custom`，payload 经 `options.__piWebCustomUi` 透传；窄接口约束 ui，无 `any`；未启用桥接环境下安全无副作用（fire-and-forget）；从包入口导出
+  - 单测：以 mock ui 断言调用形态（传入 factory + options.__piWebCustomUi=payload）；类型层不使用 any
+  - 观察完成：示例代码 `customUi(ctx.ui, {...})` 通过 typecheck 且 mock 断言命中
+  - _Requirements: 1.1, 1.3_
+  - _Boundary: agent-kit customUi_
+  - _Depends: 1.1_
+- [x] 2.4 (P) demo 自定义组件 + `registerDemoCustomUi()`
+  - 提供 ≥2 个组件：`demo-callout`（display-only）、`demo-metric-card`（props 驱动，渲染 label/value）；`registerDemoCustomUi()` 内部 `registerCustomUi(name, comp)`；复用既有 `CustomUiRenderer`/`CustomUiDataPart`，不改渲染器
+  - 单测（复用既有渲染器测试基建）：注册后命中渲染并透传 props；未注册名 → `data-pi-custom-ui-fallback` 降级
+  - 观察完成：注册后 `CustomUiRenderer` 对 `demo-metric-card` 渲染出 props 内容，未注册名渲染降级占位
+  - _Requirements: 6.1, 3.1_
+  - _Boundary: ui custom-ui-demos_
+  - _Depends: 1.2_
+
+- [x] 3. Integration：接入 runner、示例 agent、app demo 注册、真 runner 集成
+- [x] 3.1 在 runner startRunner 中安装 custom 委托
+  - `runRpcMode(runtime)` 之前调用委托安装（紧邻 `wireAttachmentBridge`）；不改变既有 attachment/清理装配；安装失败按降级路径不阻断 rpc-mode
+  - 观察完成：真 runner 子进程启动后，agent 经 `customUi` 调用能令主进程收到 custom 帧（由 3.4 断言）
+  - _Requirements: 4.1, 4.2, 5.4_
+  - _Boundary: runner.ts startRunner_
+  - _Depends: 2.2_
+- [x] 3.2 示例 agent `ui-custom-ui-demo-agent` + examples 登记
+  - 示例 agent 暴露一个工具，在 `execute` 内 `customUi(ctx.ui, {component:"demo-metric-card", props:{...}})`，并演示一次未注册名（触发降级）；在 `examples/README.md` 登记一行，README 写运行/验证步骤
+  - 观察完成：运行该示例并触发工具后，前端出现 demo 组件；未注册名出现降级占位
+  - _Requirements: 6.2, 6.3, 6.4_
+  - _Boundary: examples/ui-custom-ui-demo-agent_
+  - _Depends: 2.3_
+- [x] 3.3 在聊天宿主初始化注册 demo 组件
+  - 在 app/聊天宿主初始化处调用 `registerDemoCustomUi()`，以 flag/路径隔离仅 demo/e2e 生效，不默认污染生产聊天
+  - 观察完成：demo 构建下打开聊天，`demo-callout`/`demo-metric-card` 已在前端注册表内可被渲染
+  - _Requirements: 6.4_
+  - _Boundary: app 聊天宿主_
+  - _Depends: 2.4_
+- [x] 3.4 集成测试：真 runner 子进程端到端帧
+  - 用真 runner（非 stub）跑示例 agent，断言主进程经 pi-rpc-process/pi-session/translateEvent 收到 `data-pi-custom-ui` SSE 帧且 payload 正确；断言既有 `ctx.ui.notify`/`select` 仍走 `control:extension-ui`（回归）
+  - 观察完成：集成测试捕获到 data-pi-custom-ui 帧，且 notify 回归用例同测全绿
+  - _Requirements: 7.1, 7.2, 5.3_
+  - _Depends: 3.1, 3.2_
+
+- [x] 4. Validation：e2e 与回归
+- [x] 4.1 e2e：端到端渲染 + 降级
+  - 隔离构建（`NEXT_DIST_DIR=.next-e2e`、external server）下选 `ui-custom-ui-demo-agent` → prompt 触发 → 断言前端渲染 `demo-metric-card`（`data-pi-custom-ui-name` + props 内容）；推送未注册名 → 断言 `data-pi-custom-ui-fallback` 出现且聊天流不崩
+  - 观察完成：Playwright 用例通过，截到 demo 组件与降级占位
+  - _Requirements: 2.3, 3.1, 3.3, 6.4, 7.2, 7.5_
+  - _Depends: 3.1, 3.2, 3.3_
+- [x] 4.2 e2e：跨会话 rebind 持续有效
+  - 在新建/切换会话后再次触发 custom 推送，断言仍渲染出 demo 组件（验证 prototype-patch 跨 rebind）
+  - 观察完成：切换会话后的二次推送仍渲染成功，用例通过
+  - _Requirements: 4.1, 4.2, 7.3_
+  - _Depends: 3.1, 3.2, 3.3_
+- [x] 4.3 回归：既有套件全绿 + 既有 UI 通道不变
+  - 运行 workspace 单测 + app 测试 + 既有 e2e；确认无回归；确认 `ctx.ui` 既有方法与既有渲染器/事件流行为不变；未调用 custom 时零额外副作用
+  - 观察完成：`pnpm test`、`pnpm test:app`、既有 `pnpm e2e` 全绿
+  - _Requirements: 3.3, 5.2, 5.3, 5.4, 7.4_
+  - _Depends: 4.1, 4.2_

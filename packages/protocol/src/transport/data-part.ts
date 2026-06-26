@@ -58,11 +58,27 @@ export const UiDataPartSchema = z.object({
 });
 export type UiDataPart = z.infer<typeof UiDataPartSchema>;
 
+/**
+ * ctx.ui.custom 的声明式渲染描述(注册名 + props)。
+ * ← extension_ui_request{method:"custom"} 经 translateEvent 转译(见 spec ctx-ui-custom-bridge)。
+ * 前端 CustomUiDataPart/CustomUiRenderer 按注册名查表渲染,未注册降级占位。
+ * data 形状与 web-ext CustomUiPayloadSchema 对齐(内联以避免 transport→web-ext 反向依赖)。
+ */
+export const CustomUiDataPartSchema = z.object({
+  type: z.literal("data-pi-custom-ui"),
+  data: z.object({
+    component: z.string().min(1),
+    props: z.unknown().optional(),
+  }),
+});
+export type CustomUiDataPart = z.infer<typeof CustomUiDataPartSchema>;
+
 /** pi 特有 data-part 联合,以 `type`(data-pi-*)判别。 */
 export const DataPartSchema = z.discriminatedUnion("type", [
   QueueDataPartSchema,
   CompactionDataPartSchema,
   AutoRetryDataPartSchema,
   UiDataPartSchema,
+  CustomUiDataPartSchema,
 ]);
 export type DataPart = z.infer<typeof DataPartSchema>;

@@ -47,6 +47,10 @@ export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";
 export { emitUi } from "./emit-ui.js";
 export type { UiSpec, UiNode } from "@blksails/pi-web-protocol";
 
+// ctx.ui.custom 桥接:推送注册名 + props 的自定义组件到 web 前端(spec ctx-ui-custom-bridge)。
+export { customUi } from "./custom-ui.js";
+export type { CustomUiPayload } from "./custom-ui.js";
+
 // attachment-tool-bridge(task 4.1):tool 接入上下文的**作者面类型契约**。
 // 仅类型,无值导入 —— 构造(createAttachmentToolContext)与运行期句柄留在 @blksails/pi-web-server
 // 子进程侧,故本包不因此获得到 server 的运行时依赖边(不破坏 webpack externals 边界)。

@@ -28,6 +28,7 @@ import {
   sessionStoreConfigFromEnv,
 } from "../session-store/index.js";
 import { wireAttachmentBridge } from "./attachment-wiring.js";
+// 注:`./custom-ui-wiring.js`(ctx.ui.custom 桥接注入)已撤销,不再 import — 见下方 startRunner 内说明。
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -288,6 +289,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     env: process.env,
     sessionId: runtime.session.sessionId,
   });
+
+  // ctx.ui.custom 桥接(spec ctx-ui-custom-bridge)注入**已撤销**:pi 标准里 `custom` 是 TUI 专属、
+  // RPC 模式下本应为 no-op(docs/rpc.md:`custom()` returns `undefined`,须以 `ctx.mode === "tui"` 守卫)。
+  // 用 prototype-patch 把它重新利用为 web 端发帧是**非标准**做法,暂不接入主路径。保留 wiring/翻译/
+  // 协议等代码为休眠态(不注入即不生效,custom 维持 pi 原生 no-op)。如需富交互应改对齐 dialog 子协议
+  // (select/confirm/input/editor + 自带 timeout)。
+  //   wireCustomUiBridge(runtime);  // ← 注入点(撤销)
 
   // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
   // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为

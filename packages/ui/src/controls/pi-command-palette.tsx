@@ -115,16 +115,19 @@ export function PiCommandPalette({
   const listId = React.useId();
 
   // 进入命令模式时拉取命令(若 hook 未已暴露)。
+  // 依赖只取稳定成员 controls.getCommands / controls.commands:usePiControls 返回的
+  // controls 对象每次渲染都是新引用(且 state 在 setOp 时真实变化),若依赖整个 controls,
+  // effect 会每渲染都触发→getCommands()→setOp→重渲染→…无限循环(React #185)。
+  const { commands: controlsCommands, getCommands } = controls;
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    if (controls.commands !== undefined) {
-      setCommands(controls.commands);
+    if (controlsCommands !== undefined) {
+      setCommands(controlsCommands);
       setError(undefined);
       return;
     }
-    void controls
-      .getCommands()
+    void getCommands()
       .then((res) => {
         if (cancelled) return;
         setCommands(res.commands);
@@ -137,7 +140,7 @@ export function PiCommandPalette({
     return () => {
       cancelled = true;
     };
-  }, [open, controls]);
+  }, [open, controlsCommands, getCommands]);
 
   // 合流内置命令:同名以内置优先;追加在 agent 命令后(不改既有默认选中)(builtin-plugin-command)。
   const mergedCommands = React.useMemo(() => {

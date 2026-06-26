@@ -78,6 +78,19 @@ export const RpcExtensionUIRequestSchema = z.discriminatedUnion("method", [
     method: z.literal("set_editor_text"),
     text: z.string(),
   }),
+  // pi-web 扩展(非 pi d.ts 派生):ctx.ui.custom 在 RPC 模式下是 pi 空操作,由
+  // pi-web runner 覆盖为发帧实现(见 spec ctx-ui-custom-bridge)。承载可序列化的
+  // 声明式组件描述(注册名 + props),替代不可跨进程序列化的 TUI 工厂。payload 形状
+  // 与 web-ext CustomUiPayloadSchema 对齐(此处内联以保持 rpc 层自包含,不反向依赖 web-ext)。
+  z.object({
+    type: z.literal("extension_ui_request"),
+    id: z.string(),
+    method: z.literal("custom"),
+    payload: z.object({
+      component: z.string().min(1),
+      props: z.unknown().optional(),
+    }),
+  }),
 ]);
 export type RpcExtensionUIRequest = z.infer<typeof RpcExtensionUIRequestSchema>;
 

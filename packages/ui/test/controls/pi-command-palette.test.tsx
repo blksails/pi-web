@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { PiCommandPalette } from "../../src/controls/pi-command-palette.js";
 import { mockControls, sampleCommands } from "../fixtures/mock-session.js";
+import type { GetCommandsResponse } from "@blksails/pi-web-protocol";
 
 function Harness({
   controls,
@@ -138,6 +139,30 @@ describe("PiCommandPalette", () => {
     );
     await user.keyboard("{Enter}");
     expect(screen.getByTestId("value")).toHaveTextContent("/model");
+  });
+
+  it("controls 引用每渲染都变化时不陷入无限 setState 循环(React #185 回归)", () => {
+    // 复现 usePiControls 的返回形状:controls 对象每渲染都是新引用(state 在 setOp 时
+    // 真实变化),但 getCommands 是稳定记忆引用。getCommands 触发宿主重渲染(模拟
+    // setOp 翻转 pending state)。旧实现 effect 依赖整个 controls → 每渲染都拉取 →
+    // setOp → 重渲染 → 无限循环。修复后 effect 只依赖稳定的 getCommands/commands。
+    let calls = 0;
+    function LoopHarness(): React.JSX.Element {
+      const [, force] = React.useReducer((x: number) => x + 1, 0);
+      const getCommands = React.useCallback(async (): Promise<GetCommandsResponse> => {
+        calls += 1;
+        force(); // 模拟 usePiControls.setOp 翻转 state 触发宿主重渲染
+        return { commands: [] };
+      }, []);
+      // 每渲染都新建 controls 对象,但 getCommands 引用稳定、commands 保持 undefined。
+      const controls = { ...mockControls({ commands: undefined }), getCommands };
+      return (
+        <PiCommandPalette controls={controls} value="/" onChange={vi.fn()} />
+      );
+    }
+    expect(() => render(<LoopHarness />)).not.toThrow();
+    // 修复后:effect 依赖稳定 → 仅拉取一次(force 触发的重渲染不再重跑 effect)。
+    expect(calls).toBeLessThanOrEqual(2);
   });
 
   it("命令列表为空显示空态不崩溃", () => {

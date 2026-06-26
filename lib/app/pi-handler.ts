@@ -37,6 +37,7 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
+  type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
   type CreateChannelOpts,
@@ -317,10 +318,14 @@ function buildSingleton(): HandlerSingleton {
   // host 命令(/plugin)与 REST 路由复用同一 piCli/allowlist/reload + env 门控,保持一致。
   const extPiCli = new ChildProcessPiCli();
   const extAllowMutate = process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY === "1";
-  const extAllowlist =
-    process.env.PI_WEB_EXT_ALLOW_LOCAL === "1"
-      ? { ...DEFAULT_ALLOWLIST, allowLocal: true }
-      : DEFAULT_ALLOWLIST;
+  // allowlist 放宽开关(各自独立、可叠加):
+  //   PI_WEB_EXT_ALLOW_LOCAL=1 → 放行 `local:<path>` 源
+  //   PI_WEB_EXT_ALLOW_NPM=1   → 放行任意 npm 包(含无 scope),仍要求精确版本固定
+  const extAllowlist: AllowlistConfig = {
+    ...DEFAULT_ALLOWLIST,
+    ...(process.env.PI_WEB_EXT_ALLOW_LOCAL === "1" ? { allowLocal: true } : {}),
+    ...(process.env.PI_WEB_EXT_ALLOW_NPM === "1" ? { allowAnyNpm: true } : {}),
+  };
   const reloadRunner = async (session: {
     restartRunner(): Promise<void>;
   }): Promise<void> => {

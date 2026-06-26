@@ -1,0 +1,22 @@
+{
+  "feature_name": "ctx-ui-custom-bridge",
+  "created_at": "2026-06-26T09:15:53Z",
+  "updated_at": "2026-06-26T09:19:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
