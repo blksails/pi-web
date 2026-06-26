@@ -140,6 +140,11 @@ export interface PiChatProps {
    * 提供后,内置命令由 PiChat 经 ui-rpc 总线执行(point=command),不再走 onBuiltinSelect。
    */
   readonly onCommandResult?: (commandName: string, outcome: CommandOutcome) => void;
+  /**
+   * 内置/host 命令**派发开始**时的回调(在同步 host 命令 await 之前触发)。供宿主显示
+   * 「执行中…」状态(如 /plugin install 跑 pi CLI 期间),避免阻塞期间静默无反应。
+   */
+  readonly onCommandStart?: (commandName: string) => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -261,6 +266,7 @@ export function PiChat({
   builtinCommands,
   onBuiltinSelect,
   onCommandResult,
+  onCommandStart,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -548,6 +554,8 @@ export function PiChat({
       if (client !== undefined && sessionId !== undefined) {
         const sid = sessionId;
         const c = client;
+        // 派发开始即通知宿主(显示「执行中…」),host 命令同步阻塞期间也有状态输出,不静默。
+        onCommandStart?.(cmd.name);
         void executeHostCommand((req) => c.uiRpcCommand(sid, req), cmd.name, argv).then(
           (outcome) => {
             // chat 级 UI effect 由 PiChat 自身应用(它持有 chat.setMessages):
@@ -563,7 +571,7 @@ export function PiChat({
       }
       onBuiltinSelect?.(cmd, rawValue);
     },
-    [client, sessionId, onCommandResult, onBuiltinSelect],
+    [client, sessionId, onCommandResult, onCommandStart, onBuiltinSelect],
   );
 
   const onSubmit = React.useCallback((): void => {

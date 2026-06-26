@@ -80,6 +80,18 @@ export function PluginPanel({
           </button>
         </div>
 
+        {busy === true ? (
+          <p
+            data-testid="plugin-busy"
+            role="status"
+            aria-live="polite"
+            className="mb-2 flex items-center gap-1.5 text-xs text-[hsl(var(--muted-foreground))]"
+          >
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            执行中…
+          </p>
+        ) : null}
+
         {error !== undefined ? (
           <p data-testid="plugin-error" className="mb-2 text-xs text-[hsl(0_72%_51%)]">
             {error}

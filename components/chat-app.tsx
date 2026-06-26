@@ -382,20 +382,39 @@ function SessionView({
     readonly InstalledExtensionInfo[]
   >([]);
   const [pluginError, setPluginError] = React.useState<string | undefined>(undefined);
+  // 执行中(pending):/plugin install/uninstall 是阻塞式 host 命令,期间显示「执行中…」状态。
+  const [pluginBusy, setPluginBusy] = React.useState(false);
+
+  // 命令派发开始(键入 /plugin … 回车 或 面板按钮):立即开面板 + 置 busy + 清旧错误,
+  // 让长任务(install 跑 pi CLI)有可见的「执行中…」状态输出,而非静默无反应。
+  const beginPluginCommand = React.useCallback((name: string): void => {
+    if (name !== "plugin") return;
+    setPluginPanelOpen(true);
+    setPluginBusy(true);
+    setPluginError(undefined);
+  }, []);
 
   // 命令结果 → 事件驱动 UI(无 refreshKey/手动时序):effect 决定 开面板/刷新列表/通知。
+  // 失败(传输 ok:false 或业务 notify)一律**开面板 + 呈现文案**,杜绝「没反应」(状态输出可见)。
   const applyCommandOutcome = React.useCallback(
     (name: string, outcome: CommandOutcome): void => {
       if (name !== "plugin") return;
+      setPluginBusy(false);
       if (!outcome.ok) {
+        // 传输失败(server 不可达/非 200/超时):必须可见 —— 开面板呈现错误。
+        setPluginPanelOpen(true);
         setPluginError(outcome.error?.message ?? "命令执行失败");
         return;
       }
       const r = outcome.result;
       if (r === undefined) return;
       setPluginError(r.effect === "notify" ? r.message : undefined);
-      // open-panel / panel-refresh 均确保面板可见(键入 /plugin install 直接执行时也呈现结果)。
-      if (r.effect === "open-panel" || r.effect === "panel-refresh") {
+      // 任意有结果文案/面板意图都确保面板可见(键入 /plugin install 直接执行、含 notify 失败时也呈现)。
+      if (
+        r.effect === "open-panel" ||
+        r.effect === "panel-refresh" ||
+        r.effect === "notify"
+      ) {
         setPluginPanelOpen(true);
       }
       const data = r.data;
@@ -416,11 +435,12 @@ function SessionView({
       const client = session.client;
       const sid = session.sessionId;
       if (client === undefined || sid === undefined) return;
+      beginPluginCommand("plugin"); // 置 busy + 清错误(面板已开)
       void executeHostCommand((req) => client.uiRpcCommand(sid, req), "plugin", argv).then(
         (o) => applyCommandOutcome("plugin", o),
       );
     },
-    [session.client, session.sessionId, applyCommandOutcome],
+    [session.client, session.sessionId, applyCommandOutcome, beginPluginCommand],
   );
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
@@ -558,6 +578,7 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           builtinCommands={builtinCommands}
+          onCommandStart={beginPluginCommand}
           onCommandResult={applyCommandOutcome}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
@@ -590,6 +611,7 @@ function SessionView({
         {pluginPanelOpen ? (
           <PluginPanel
             items={pluginItems}
+            busy={pluginBusy}
             {...(pluginError !== undefined ? { error: pluginError } : {})}
             onExecute={onPluginExecute}
             onClose={() => setPluginPanelOpen(false)}
