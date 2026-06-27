@@ -42,6 +42,36 @@ describe("PiCommandPalette", () => {
     expect(screen.getByText("/clear")).toBeInTheDocument();
   });
 
+  it("提供 inputRef 时经 caret 锚定 fixed 定位(与 @ 补全一致)", async () => {
+    const controls = mockControls({ commands: sampleCommands() });
+    function Anchored(): React.JSX.Element {
+      const [value, setValue] = React.useState("/");
+      const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+      return (
+        <div>
+          <textarea
+            ref={inputRef}
+            aria-label="prompt"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <PiCommandPalette
+            controls={controls}
+            value={value}
+            onChange={setValue}
+            inputRef={inputRef}
+          />
+        </div>
+      );
+    }
+    render(<Anchored />);
+    await screen.findByRole("listbox");
+    const palette = document.querySelector(
+      "[data-pi-command-palette]",
+    ) as HTMLElement | null;
+    expect(palette?.style.position).toBe("fixed");
+  });
+
   it("继续输入按命令名过滤", async () => {
     const user = userEvent.setup();
     const controls = mockControls({ commands: sampleCommands() });

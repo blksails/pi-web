@@ -19,6 +19,7 @@ import type { UsePiControlsResult } from "@blksails/pi-web-react";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
+import { useCaretAnchor } from "../completion/use-caret-anchor.js";
 
 /** 扩展贡献的 slash 候选(经 ui-rpc 回 agent 取),与内核命令并列展示。 */
 export interface ExtensionSlashItem {
@@ -72,6 +73,11 @@ export interface PiCommandPaletteProps {
   readonly builtinCommands?: readonly RpcSlashCommand[];
   /** 选中内置命令时的分派回调(rawValue 为当前输入,供解析子命令/参数)。 */
   readonly onBuiltinSelect?: (command: RpcSlashCommand, rawValue: string) => void;
+  /**
+   * 底层 textarea ref:用于把命令面板锚定到 `/` 光标(与 `@` 补全一致)。缺省时退化为
+   * 不锚定(由调用方自行定位)。
+   */
+  readonly inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   readonly className?: string;
 }
 
@@ -104,6 +110,7 @@ export function PiCommandPalette({
   uiRpc,
   builtinCommands,
   onBuiltinSelect,
+  inputRef,
   className,
 }: PiCommandPaletteProps): React.JSX.Element | null {
   const open = isCommandMode(value);
@@ -269,6 +276,15 @@ export function PiCommandPalette({
     return () => document.removeEventListener("keydown", listener);
   }, [open, handleKey]);
 
+  // 锚定到 `/` 光标(行首,offset 0),与 `@` 补全一致(completion-cursor-anchor)。
+  // inputRef 缺省时退化为不锚定(positionStyle 仍返回 fixed 左上安全位,由调用方包裹定位)。
+  const positionStyle = useCaretAnchor({
+    inputRef,
+    offset: 0,
+    active: open && inputRef !== undefined,
+    recomputeOn: value,
+  });
+
   if (!open) return null;
 
   const activeId = `${listId}-opt-${active}`;
@@ -276,9 +292,10 @@ export function PiCommandPalette({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
+        "z-50 min-w-[16rem] max-w-[24rem] rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
         className,
       )}
+      style={positionStyle ?? undefined}
       data-pi-command-palette
     >
       {error !== undefined ? (

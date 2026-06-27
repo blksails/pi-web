@@ -797,24 +797,24 @@ export function PiChat({
 
   const inputWithWidgets = (
     <div className="relative" data-pi-input-wrapper>
+      {/* `/` 命令面板:与 `@` 补全一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {controls !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiCommandPalette
-            controls={controls}
-            value={input}
-            onChange={setInput}
-            onCaptureChange={setCommandCapturing}
-            extensionCommands={extensionCommands}
-            {...(builtinCommands !== undefined ? { builtinCommands } : {})}
-            {...(builtinCommands !== undefined
-              ? { onBuiltinSelect: dispatchBuiltin }
-              : {})}
-            {...(extension?.contributions?.slash !== undefined
-              ? { slashContribution: extension.contributions.slash }
-              : {})}
-            {...(uiRpc !== undefined ? { uiRpc } : {})}
-          />
-        </div>
+        <PiCommandPalette
+          controls={controls}
+          value={input}
+          onChange={setInput}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+          extensionCommands={extensionCommands}
+          {...(builtinCommands !== undefined ? { builtinCommands } : {})}
+          {...(builtinCommands !== undefined
+            ? { onBuiltinSelect: dispatchBuiltin }
+            : {})}
+          {...(extension?.contributions?.slash !== undefined
+            ? { slashContribution: extension.contributions.slash }
+            : {})}
+          {...(uiRpc !== undefined ? { uiRpc } : {})}
+        />
       ) : null}
       {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。
           浮层内部按 caret 像素坐标 fixed 锚定,故此挂载点不再约束尺寸/位置。 */}

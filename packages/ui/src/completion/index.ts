@@ -27,3 +27,7 @@ export {
   isSelectable,
   nextActiveIndex,
 } from "./nav.js";
+export {
+  useCaretAnchor,
+  type UseCaretAnchorArgs,
+} from "./use-caret-anchor.js";

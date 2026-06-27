@@ -85,3 +85,12 @@
 3. The PiChat shall 不改变 `PiCommandPalette`（`/` 命令）与 webext mention/autocomplete 浮层的既有行为与让位关系。
 4. When 没有可用 `client`/`sessionId` 或无候选, the PiCompletionPopover shall 不渲染、不监听全局按键、不抛错（空安全收敛）。
 5. The 本功能 shall 不引入 `react-textarea-autocomplete` 或等价第三方补全/caret 依赖。
+
+### Requirement 6: `/` 命令面板与 `@` 补全呈现一致
+**Objective:** 作为用户，我希望同一输入框里 `/` 斜杠命令面板与 `@` 触发符补全采用一致的弹出方式（同样锚定光标、同样的浮层形态），避免两种割裂的视觉体验。
+
+#### Acceptance Criteria
+1. The pi-web-ui shall 把 caret 锚定定位逻辑抽为可复用单元（hook），供 `@` 补全浮层与 `/` 命令面板共用。
+2. The `/` 命令面板（PiCommandPalette）shall 经该 caret 锚定以 `position: fixed` 定位到 `/` 所在光标（行首），而非旧的全宽 `absolute bottom-full` 贴顶布局。
+3. The `/` 命令面板 shall 维持其既有键盘导航（↑↓/Enter/Esc）、过滤、内置/扩展命令合流与让位语义不变，仅改变定位呈现。
+4. When 未提供底层 textarea ref, the `/` 命令面板 shall 安全降级（不崩），不要求调用方一定接线锚定。

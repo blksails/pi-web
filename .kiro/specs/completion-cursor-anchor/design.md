@@ -62,6 +62,34 @@ export function getCaretCoordinates(
 - 用后即从 DOM 移除镜像（无残留）。
 - 多行：因镜像保留换行与 wrap，不同行偏移自然得到不同 `top`（满足 Req 2.5）。
 
+### 1b. `completion/use-caret-anchor.ts`（新增，共享 hook）
+
+把"caret 测量 + 定位换算 + 滚动/缩放重算 + layout effect"封装为 `useCaretAnchor`，
+返回浮层可直接铺用的 `position: fixed` 样式。`@` 补全（`PiCompletionPopover`，offset=
+活跃 token 起点）与 `/` 命令面板（`PiCommandPalette`，offset=0 行首）共用，保证两者呈现
+一致（Req 6.1）。
+
+```ts
+export function useCaretAnchor(args: {
+  inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  offset: number;        // 锚定字符偏移
+  active: boolean;       // 浮层是否可见
+  recomputeOn?: unknown; // 通常 `${value}:${cursor}`，变化即重定位
+}): React.CSSProperties | null;
+```
+
+`active=false` 返回 null；ref/测量未就绪首帧退化为安全位置（`fixed` 左上），不崩。
+
+### 1c. `controls/pi-command-palette.tsx`（改，Req 6）
+
+- 新增可选 prop `inputRef`；调用 `useCaretAnchor({ inputRef, offset: 0, active: open &&
+  inputRef!==undefined, recomputeOn: value })` 得 `position: fixed` 样式铺到面板容器
+  （`min-w-[16rem] max-w-[24rem] z-50`）。
+- `PiChat` 去掉原 `<div className="absolute bottom-full left-0 right-0 z-40">` 全宽包裹，
+  直接渲染 `PiCommandPalette` 并传 `inputRef`（Req 6.2）。
+- 既有命令拉取/过滤/键盘导航/让位（`onCaptureChange`）逻辑不变（Req 6.3）；`inputRef`
+  缺省时锚定让位、安全降级（Req 6.4）。
+
 ### 2. `completion/placement.ts`（新增，纯函数）
 
 把"视口几何 → 浮层定位样式"抽成纯函数以便单测（不依赖真实 layout）。

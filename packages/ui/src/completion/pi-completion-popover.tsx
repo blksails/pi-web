@@ -18,9 +18,8 @@ import {
   useCompletion,
   type CompletionClient,
 } from "./use-completion.js";
-import { getCaretCoordinates } from "./caret-coordinates.js";
-import { computePlacement, type PlacementStyle } from "./placement.js";
 import { flattenSelectable, isSelectable, nextActiveIndex } from "./nav.js";
+import { useCaretAnchor } from "./use-caret-anchor.js";
 
 export interface PiCompletionPopoverProps {
   readonly value: string;
@@ -33,13 +32,6 @@ export interface PiCompletionPopoverProps {
   readonly onCaptureChange?: (capturing: boolean) => void;
   readonly className?: string;
 }
-
-/** 浮层估高(max-h-64 = 16rem ≈ 256px),供翻转判断。 */
-const EST_POPOVER_HEIGHT = 256;
-
-/** SSR 安全的 layout effect。 */
-const useIsomorphicLayoutEffect =
-  typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
 
 export function PiCompletionPopover({
   value,
@@ -142,51 +134,15 @@ export function PiCompletionPopover({
     return () => document.removeEventListener("keydown", handleKey);
   }, [shouldRender, handleKey]);
 
-  // caret 锚定定位:按活跃 token 起点的 caret 像素坐标算 fixed 样式;滚动/缩放重算。
-  const [placement, setPlacement] = React.useState<PlacementStyle | null>(null);
-  const recompute = React.useCallback((): void => {
-    const el = inputRef?.current ?? null;
-    if (el === null || activeToken === null || typeof window === "undefined") {
-      return;
-    }
-    const caret = getCaretCoordinates(el, activeToken.start);
-    const rect = el.getBoundingClientRect();
-    setPlacement(
-      computePlacement({
-        rect: { top: rect.top, left: rect.left },
-        caret,
-        scrollTop: el.scrollTop,
-        scrollLeft: el.scrollLeft,
-        viewportHeight: window.innerHeight,
-        estPopoverHeight: EST_POPOVER_HEIGHT,
-      }),
-    );
-  }, [inputRef, activeToken]);
-
-  useIsomorphicLayoutEffect(() => {
-    if (shouldRender) recompute();
-  }, [shouldRender, value, cursor, recompute]);
-
-  React.useEffect(() => {
-    if (!shouldRender) return;
-    const onScrollOrResize = (): void => recompute();
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
-    return () => {
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
-    };
-  }, [shouldRender, recompute]);
+  // caret 锚定定位(与 / 命令面板共用):按活跃 token 起点锚定,value/cursor 变化重定位。
+  const positionStyle = useCaretAnchor({
+    inputRef,
+    offset: activeToken?.start ?? 0,
+    active: shouldRender,
+    recomputeOn: `${value}:${cursor}`,
+  });
 
   if (!shouldRender) return null;
-
-  // fixed 锚定样式;首帧 placement 未就绪时退化为安全位置(贴左上,不崩)。
-  const positionStyle: React.CSSProperties =
-    placement === null
-      ? { position: "fixed", left: 0, top: 0 }
-      : placement.flip
-        ? { position: "fixed", left: placement.left, bottom: placement.bottom }
-        : { position: "fixed", left: placement.left, top: placement.top };
 
   // 渲染:为各候选分配跨组的全局可选序号,驱动高亮与 aria-activedescendant。
   let selIndex = -1;
@@ -198,7 +154,7 @@ export function PiCompletionPopover({
         "z-50 min-w-[16rem] max-w-[24rem] rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
         className,
       )}
-      style={positionStyle}
+      style={positionStyle ?? undefined}
       data-pi-completion-popover
     >
       <ul
