@@ -69,6 +69,7 @@ import {
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
+import { createPluginArgProvider } from "../controls/plugin-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
@@ -389,6 +390,13 @@ export function PiChat({
   // textarea 当前 selectionStart,驱动 core 补全在文本任意位置激活与锚定。
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cursor, setCursor] = React.useState<number>(0);
+
+  // /plugin 子命令/参数补全 provider(plugin-subcommand-completion):有 client+sessionId 时
+  // 构造,经现成 GET /extensions 与 install-sources 端点取候选。
+  const commandArgProvider = React.useMemo(() => {
+    if (client === undefined || sessionId === undefined) return undefined;
+    return createPluginArgProvider({ baseUrl: client.baseUrl, sessionId });
+  }, [client, sessionId]);
 
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
   const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
@@ -863,6 +871,7 @@ export function PiChat({
           inputRef={inputRef}
           onCaptureChange={setCommandCapturing}
           extensionCommands={extensionCommands}
+          {...(commandArgProvider !== undefined ? { commandArgProvider } : {})}
           {...(builtinCommands !== undefined ? { builtinCommands } : {})}
           {...(builtinCommands !== undefined
             ? { onBuiltinSelect: dispatchBuiltin }
