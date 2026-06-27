@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
+import { useCaretAnchor } from "../completion/use-caret-anchor.js";
 
 export interface CompletionItem {
   readonly label: string;
@@ -23,6 +24,10 @@ export interface PiAutocompletePopoverProps {
   readonly onChange: (next: string) => void;
   readonly contribution?: AutocompleteContribution;
   readonly uiRpc?: UiRpcClient;
+  /** 当前光标(selectionStart),浮层锚定到此处;缺省退化为文本末尾。 */
+  readonly cursor?: number;
+  /** 底层 textarea ref:把浮层锚定到当前光标(与 @/`/` 一致)。 */
+  readonly inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   readonly className?: string;
 }
 
@@ -39,6 +44,8 @@ export function PiAutocompletePopover({
   onChange,
   contribution,
   uiRpc,
+  cursor,
+  inputRef,
   className,
 }: PiAutocompletePopoverProps): React.JSX.Element | null {
   const open =
@@ -66,14 +73,23 @@ export function PiAutocompletePopover({
     };
   }, [open, value, contribution, uiRpc]);
 
+  // caret 锚定(与 @/`/` 一致):锚定到当前光标(缺省退化为文本末尾)。
+  const positionStyle = useCaretAnchor({
+    inputRef,
+    offset: cursor ?? value.length,
+    active: open && items.length > 0,
+    recomputeOn: `${value}:${cursor ?? value.length}`,
+  });
+
   if (!open || items.length === 0) return null;
 
   return (
     <div
       className={cn(
-        "rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
+        "z-30 min-w-[16rem] max-w-[24rem] rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
         className,
       )}
+      style={positionStyle ?? undefined}
       data-pi-autocomplete
     >
       <ul

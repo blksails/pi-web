@@ -46,6 +46,15 @@
   - 单测:命令面板 fixed 定位 + 更新 pi-chat 集成断言;e2e:slash 面板 `position:fixed`;chrome 真机对比 `/` 与 `@` 一致(left=380/width=256)。
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
+- [x] 11. 全系统统一:webext 浮层也接 caret 锚定(Req 6.5/6.6/6.7)
+  - `PiMentionPopover` 加 `inputRef`,用 `useCaretAnchor`(offset=mention 起点) fixed 锚定。
+  - `PiAutocompletePopover` 加 `inputRef`+`cursor`,用 `useCaretAnchor`(offset=光标) fixed 锚定。
+  - `PiChat` 去掉这两个浮层的 `absolute bottom-full` 全宽容器并传 `inputRef`/`cursor`。
+  - 附件按钮下拉(attachments.tsx,锚定按钮)保持不变。
+  - 单测 `test/controls/webext-popover-anchor.test.tsx`:两浮层 position:fixed + 选中行为。
+  - 复查:src 中仅余附件按钮菜单用 bottom-full;四个触发符浮层全部 useCaretAnchor。
+  - _Requirements: 6.1, 6.5, 6.6, 6.7_
+
 - [x] 9. 浏览器 e2e
   - 扩展 `e2e/browser/completion.e2e.ts`：用例（a）键入 `@index` → 浮层 `position:fixed` 且锚定光标附近（非全宽贴顶）；（b）`↓` 高亮第二项后 `Enter` 选中插入 token；（c）中间位置 `hello @index world`（光标在 token 内）→ 仅替换 token、保留 `world`、光标在插入串后。
   - 用既有隔离 build 跑法（`NEXT_DIST_DIR=.next-e2e` + external server + `PI_WEB_STUB_AGENT=1`），留新鲜证据。

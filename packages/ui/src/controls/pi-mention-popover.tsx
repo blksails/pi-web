@@ -8,6 +8,7 @@
 import * as React from "react";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
+import { useCaretAnchor } from "../completion/use-caret-anchor.js";
 
 export interface MentionItem {
   readonly id: string;
@@ -26,6 +27,8 @@ export interface PiMentionPopoverProps {
   readonly contribution?: MentionContribution;
   readonly uiRpc?: UiRpcClient;
   readonly onCaptureChange?: (capturing: boolean) => void;
+  /** 底层 textarea ref:把浮层锚定到 mention 触发符光标(与 @/`/` 一致)。 */
+  readonly inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   readonly className?: string;
 }
 
@@ -47,6 +50,7 @@ export function PiMentionPopover({
   contribution,
   uiRpc,
   onCaptureChange,
+  inputRef,
   className,
 }: PiMentionPopoverProps): React.JSX.Element | null {
   const trigger = contribution?.trigger ?? "@";
@@ -88,6 +92,14 @@ export function PiMentionPopover({
     }
   }, [capturing]);
 
+  // caret 锚定(与 @/`/` 一致):锚定到 mention 触发符起点。
+  const positionStyle = useCaretAnchor({
+    inputRef,
+    offset: match?.start ?? 0,
+    active: open && match !== null && items.length > 0,
+    recomputeOn: value,
+  });
+
   if (!open || match === null || items.length === 0) return null;
 
   const select = (item: MentionItem): void => {
@@ -97,9 +109,10 @@ export function PiMentionPopover({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
+        "z-40 min-w-[16rem] max-w-[24rem] rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
         className,
       )}
+      style={positionStyle ?? undefined}
       data-pi-mention-popover
     >
       <ul

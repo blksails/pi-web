@@ -829,30 +829,31 @@ export function PiChat({
           onCaptureChange={setCommandCapturing}
         />
       ) : null}
-      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。 */}
+      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。
+          与 @/`/` 一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {extension?.contributions?.mention !== undefined &&
       uiRpc !== undefined &&
       !(client !== undefined && sessionId !== undefined) ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiMentionPopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.mention}
-            uiRpc={uiRpc}
-            onCaptureChange={setCommandCapturing}
-          />
-        </div>
+        <PiMentionPopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.mention}
+          uiRpc={uiRpc}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+        />
       ) : null}
+      {/* webext 通用 autocomplete:与 @/`/` 一致,经 caret 锚定 fixed 定位。 */}
       {extension?.contributions?.autocomplete !== undefined &&
       uiRpc !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-30">
-          <PiAutocompletePopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.autocomplete}
-            uiRpc={uiRpc}
-          />
-        </div>
+        <PiAutocompletePopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.autocomplete}
+          uiRpc={uiRpc}
+          cursor={cursor}
+          inputRef={inputRef}
+        />
       ) : null}
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />
