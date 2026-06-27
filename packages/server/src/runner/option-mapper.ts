@@ -239,11 +239,16 @@ export function buildRuntimeFactory(
   trust: ResolveProjectTrust,
   systemResources: SystemResourceOverrides = {},
 ): CreateAgentSessionRuntimeFactory {
-  // 强制注入入口经 env `PI_WEB_SANDBOX_ENTRY` 由主进程下传(custom 模式);
-  // 为空则不注入(行为不变)。这是"沙箱 enforcement 不依赖默认发现"的 custom 侧落地。
+  // 强制注入入口经 env 由主进程下传(custom 模式);为空则不注入(行为不变)。
+  //  - PI_WEB_SANDBOX_ENTRY:沙箱 enforcement(不依赖默认发现)。
+  //  - PI_WEB_EXT_TOOLS_ENTRY:pi-web 内置「扩展管理扩展」(install/uninstall/list 工具 +
+  //    reload-runtime 命令),对所有 agent 生效(spec extension-install-agent-tools)。
   const sandboxEntry = process.env["PI_WEB_SANDBOX_ENTRY"];
-  const forcedExtensionPaths =
-    sandboxEntry !== undefined && sandboxEntry.length > 0 ? [sandboxEntry] : [];
+  const extToolsEntry = process.env["PI_WEB_EXT_TOOLS_ENTRY"];
+  const forcedExtensionPaths = [
+    ...(sandboxEntry !== undefined && sandboxEntry.length > 0 ? [sandboxEntry] : []),
+    ...(extToolsEntry !== undefined && extToolsEntry.length > 0 ? [extToolsEntry] : []),
+  ];
   const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
     forcedExtensionPaths,
     ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),

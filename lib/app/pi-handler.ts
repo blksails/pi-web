@@ -56,7 +56,9 @@ import {
 } from "@blksails/pi-web-server/model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
-import { createPluginHostCommand } from "./plugin-command/plugin-host-command.js";
+// 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
+// spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
+import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -258,6 +260,9 @@ function buildSingleton(): HandlerSingleton {
   // custom 模式经 env `PI_WEB_SANDBOX_ENTRY` 由 runner option-mapper 追加到 additionalExtensionPaths。
   // 未安装时为 undefined → 跳过注入(不报错,行为回退到默认发现)。
   const sandboxEntry = resolveSandboxEntry(config.agentDir);
+  // 扩展管理扩展入口(spec extension-install-agent-tools):强制注入每个会话,经 spawn env
+  // 下发,runner option-mapper 加入 forcedExtensionPaths。解析不到(异常布局)→ undefined,跳过注入。
+  const extToolsEntry = extensionManagerEntryPath();
 
   // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
   // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
@@ -306,6 +311,8 @@ function buildSingleton(): HandlerSingleton {
         ...config.providerKeys,
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
+        // 扩展管理扩展入口 → runner forcedExtensionPaths(spec extension-install-agent-tools)。
+        ...(extToolsEntry !== undefined ? { PI_WEB_EXT_TOOLS_ENTRY: extToolsEntry } : {}),
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
         ...attachmentSpawnEnv(attachmentEnv),
@@ -335,18 +342,10 @@ function buildSingleton(): HandlerSingleton {
   const handler = createPiWebHandler({
     manager,
     store,
-    // 统一命令层(决策 A):host 命令在服务端执行(不转 agent),结果经 control:ui-rpc 回流。
-    // /plugin 经此通道驱动安装/卸载/列表 + 装后会话重载,替代前端 onBuiltinSelect 直调。
-    hostCommands: createHostCommandRegistry([
-      createPluginHostCommand({
-        piCli: extPiCli,
-        allowlist: extAllowlist,
-        allowMutate: extAllowMutate,
-        reload: reloadRunner,
-      }),
-      // /clear:agent 上下文清空(new_session)+ 前端 clear-transcript effect。
-      createClearHostCommand(),
-    ]),
+    // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/plugin 已迁出:扩展安装改为
+    // agent 回合内的内置工具(spec extension-install-agent-tools),用 ctx.ui 呈现,不再走
+    // host 命令 + 模态面板。此处仅保留 /clear(agent 上下文清空 + 前端 clear-transcript)。
+    hostCommands: createHostCommandRegistry([createClearHostCommand()]),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
     // 与 vision/images base64 并存,不内联字节。

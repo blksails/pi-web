@@ -35,6 +35,9 @@
       ],
       "@blksails/pi-web-tool-kit/commands": [
         "./packages/tool-kit/src/commands/index.ts"
+      ],
+      "@blksails/pi-web-tool-kit/extension-entry": [
+        "./packages/tool-kit/src/extension-tools/entry-path.ts"
       ]
     }
   },
