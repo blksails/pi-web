@@ -385,6 +385,11 @@ export function PiChat({
   const [commandCapturing, setCommandCapturing] =
     React.useState<boolean>(false);
 
+  // 真实光标接线(completion-cursor-anchor):inputRef 供 caret 测量/选区复位;cursor 为
+  // textarea 当前 selectionStart,驱动 core 补全在文本任意位置激活与锚定。
+  const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [cursor, setCursor] = React.useState<number>(0);
+
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
   const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
 
@@ -842,67 +847,70 @@ export function PiChat({
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
       onAcceptGhost={() => setInput(input + ghostSuffix)}
+      inputRef={inputRef}
+      onSelectionChange={setCursor}
     />
   );
 
   const inputWithWidgets = (
     <div className="relative" data-pi-input-wrapper>
+      {/* `/` 命令面板:与 `@` 补全一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {controls !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiCommandPalette
-            controls={controls}
-            value={input}
-            onChange={setInput}
-            onCaptureChange={setCommandCapturing}
-            extensionCommands={extensionCommands}
-            {...(builtinCommands !== undefined ? { builtinCommands } : {})}
-            {...(builtinCommands !== undefined
-              ? { onBuiltinSelect: dispatchBuiltin }
-              : {})}
-            {...(extension?.contributions?.slash !== undefined
-              ? { slashContribution: extension.contributions.slash }
-              : {})}
-            {...(uiRpc !== undefined ? { uiRpc } : {})}
-          />
-        </div>
+        <PiCommandPalette
+          controls={controls}
+          value={input}
+          onChange={setInput}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+          extensionCommands={extensionCommands}
+          {...(builtinCommands !== undefined ? { builtinCommands } : {})}
+          {...(builtinCommands !== undefined
+            ? { onBuiltinSelect: dispatchBuiltin }
+            : {})}
+          {...(extension?.contributions?.slash !== undefined
+            ? { slashContribution: extension.contributions.slash }
+            : {})}
+          {...(uiRpc !== undefined ? { uiRpc } : {})}
+        />
       ) : null}
-      {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。 */}
+      {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。
+          浮层内部按 caret 像素坐标 fixed 锚定,故此挂载点不再约束尺寸/位置。 */}
       {client !== undefined && sessionId !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-50">
-          <PiCompletionPopover
-            value={input}
-            cursor={input.length}
-            onChange={setInput}
-            client={client}
-            sessionId={sessionId}
-            onCaptureChange={setCommandCapturing}
-          />
-        </div>
+        <PiCompletionPopover
+          value={input}
+          cursor={cursor}
+          onChange={setInput}
+          client={client}
+          sessionId={sessionId}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+        />
       ) : null}
-      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。 */}
+      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。
+          与 @/`/` 一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {extension?.contributions?.mention !== undefined &&
       uiRpc !== undefined &&
       !(client !== undefined && sessionId !== undefined) ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiMentionPopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.mention}
-            uiRpc={uiRpc}
-            onCaptureChange={setCommandCapturing}
-          />
-        </div>
+        <PiMentionPopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.mention}
+          uiRpc={uiRpc}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+        />
       ) : null}
+      {/* webext 通用 autocomplete:与 @/`/` 一致,经 caret 锚定 fixed 定位。 */}
       {extension?.contributions?.autocomplete !== undefined &&
       uiRpc !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-30">
-          <PiAutocompletePopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.autocomplete}
-            uiRpc={uiRpc}
-          />
-        </div>
+        <PiAutocompletePopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.autocomplete}
+          uiRpc={uiRpc}
+          cursor={cursor}
+          inputRef={inputRef}
+        />
       ) : null}
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />

@@ -13,3 +13,21 @@ export {
   type CompletionGroupView,
 } from "./use-completion.js";
 export { findActiveToken, type ActiveToken } from "./extractors.js";
+export {
+  getCaretCoordinates,
+  type CaretCoordinates,
+} from "./caret-coordinates.js";
+export {
+  computePlacement,
+  type PlacementInput,
+  type PlacementStyle,
+} from "./placement.js";
+export {
+  flattenSelectable,
+  isSelectable,
+  nextActiveIndex,
+} from "./nav.js";
+export {
+  useCaretAnchor,
+  type UseCaretAnchorArgs,
+} from "./use-caret-anchor.js";

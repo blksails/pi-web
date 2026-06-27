@@ -58,6 +58,16 @@ export interface PromptInputProps {
   readonly ghostSuffix?: string;
   /** Tab 接受 ghost 后缀时回调(通常把 value 拼上 ghostSuffix)。 */
   readonly onAcceptGhost?: () => void;
+  /**
+   * 外部 textarea ref:与内部(自动增高用)ref 合并,供装配层读取真实光标 / 做 caret 测量
+   * 与选区复位(completion-cursor-anchor)。
+   */
+  readonly inputRef?: React.RefObject<HTMLTextAreaElement | null>;
+  /**
+   * 光标(selectionStart)变化上报:输入、点击、方向键移动、选区变化、聚焦时触发,使装配层
+   * 能用真实光标位置驱动补全(completion-cursor-anchor R1)。
+   */
+  readonly onSelectionChange?: (selectionStart: number) => void;
 }
 
 /** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
@@ -83,6 +93,8 @@ export function PromptInput({
   suppressEnterSubmit = false,
   ghostSuffix,
   onAcceptGhost,
+  inputRef,
+  onSelectionChange,
 }: PromptInputProps): React.JSX.Element {
   const canSubmit = !disabled && !isBlank(value);
   const hasGhost =
@@ -91,6 +103,24 @@ export function PromptInput({
     onAcceptGhost !== undefined;
 
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // 合并内部 ref(自动增高需要)与外部 inputRef(装配层读光标/做 caret 测量)。
+  const setTextareaRef = React.useCallback(
+    (el: HTMLTextAreaElement | null): void => {
+      textareaRef.current = el;
+      if (inputRef !== undefined) inputRef.current = el;
+    },
+    [inputRef],
+  );
+
+  // 上报当前光标(selectionStart);输入/点击/方向键/选区/聚焦时调用。
+  const onSelectionChangeRef = React.useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
+  const reportSelection = React.useCallback((): void => {
+    const el = textareaRef.current;
+    if (el === null) return;
+    onSelectionChangeRef.current?.(el.selectionStart);
+  }, []);
 
   // 自动增高:把 textarea 高度贴合内容,夹在 [rows, maxRows] 行之间;达 maxRows 后固定
   // 高度并内部滚动(overflowY auto,配 pi-scrollbar-thin 细滚动条)。行高/内边距经
@@ -177,14 +207,22 @@ export function PromptInput({
             </div>
           ) : null}
           <textarea
-            ref={textareaRef}
+            ref={setTextareaRef}
             aria-label={textareaLabel}
             value={value}
             disabled={disabled}
             rows={rows}
             placeholder={placeholder}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              onChange(e.target.value);
+              // 值变即上报光标,保证 value 与 cursor 同帧一致(供补全提取)。
+              onSelectionChangeRef.current?.(e.target.selectionStart);
+            }}
             onKeyDown={handleKeyDown}
+            onKeyUp={reportSelection}
+            onClick={reportSelection}
+            onSelect={reportSelection}
+            onFocus={reportSelection}
             className={cn(
               "pi-scrollbar-thin relative min-w-0 w-full resize-none bg-transparent p-1 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
               textareaClassName,

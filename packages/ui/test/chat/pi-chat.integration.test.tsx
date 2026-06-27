@@ -971,7 +971,7 @@ describe("PiChat 命令补全浮层接线(Task 2.1)", () => {
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
-  it("浮层容器具备 relative 定位,palette 具备 absolute bottom-full(R6.1/6.2)", async () => {
+  it("命令面板经 caret 锚定 fixed 定位(与 @ 补全一致,completion-cursor-anchor)", async () => {
     const user = userEvent.setup();
     const controls = mockControls({
       commands: sampleCommands(),
@@ -992,15 +992,15 @@ describe("PiChat 命令补全浮层接线(Task 2.1)", () => {
       ).toBeInTheDocument();
     });
 
-    // wrapper 应包含 relative class
+    // wrapper 仍为 relative 容器
     const wrapper = container.querySelector("[data-pi-input-wrapper]");
     expect(wrapper?.className).toContain("relative");
 
-    // palette 父容器应有 absolute 与 bottom-full class
-    const palette = document.querySelector("[data-pi-command-palette]");
-    const paletteWrapper = palette?.parentElement;
-    expect(paletteWrapper?.className).toContain("absolute");
-    expect(paletteWrapper?.className).toContain("bottom-full");
+    // 命令面板自身经 useCaretAnchor 锚定:position: fixed(不再全宽 absolute bottom-full)。
+    const palette = document.querySelector(
+      "[data-pi-command-palette]",
+    ) as HTMLElement | null;
+    expect(palette?.style.position).toBe("fixed");
   });
 
   it("命令模式且有候选时按 Enter 不触发 sendMessage(suppressEnterSubmit 让位, R4.2)", async () => {

@@ -47,6 +47,10 @@ test("slash palette: typing '/' opens the palette and filters by query (Req 1)",
   await expect(page.locator('[data-pi-command-item="help"]')).toBeVisible();
   await expect(page.locator('[data-pi-command-item="clear"]')).toBeVisible();
 
+  // completion-cursor-anchor — 命令面板与 @ 补全一致:经 caret 锚定 position:fixed
+  // (不再全宽 absolute bottom-full)。
+  await expect(palette).toHaveCSS("position", "fixed");
+
   // Req 1.4/1.5 — case-insensitive substring filter on name; "/h" keeps only help.
   await input.fill("/h");
   await expect(page.locator('[data-pi-command-item="help"]')).toBeVisible();
