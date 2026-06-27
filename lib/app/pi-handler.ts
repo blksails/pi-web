@@ -250,7 +250,14 @@ function buildSingleton(): HandlerSingleton {
     }
   };
 
-  const manager = new SessionManager({ store, idleMs: 0, loggingConfigProvider });
+  // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
+  // 使前端在 agent 真正就绪前门控发送、就绪通告经粘性 session-status 帧投递。可经 env 关闭以回退。
+  const manager = new SessionManager({
+    store,
+    idleMs: 0,
+    loggingConfigProvider,
+    readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
+  });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。
   // 使沙箱 enforcement **不依赖** pi 默认扩展发现:cli 模式经 `-e <entry>` 显式加载;

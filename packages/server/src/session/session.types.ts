@@ -60,6 +60,13 @@ export interface SessionChannel extends PiRpcChannel {
   requestRestart?(): void;
 
   /**
+   * 注册「runner 重生完成」回调:每次底层子进程重生后触发(含热重载与 requestRestart)。
+   * 供就绪握手在真实重生时机重新执行探针(spec session-readiness-handshake,Req 5.1)。
+   * 可选:不支持重启的实现(stub/mock)可省略,握手退回 best-effort settle 定时器。
+   */
+  onRestart?(cb: () => void): Unsubscribe;
+
+  /**
    * 开新会话上下文(pi RPC `new_session`):清空当前对话上下文、续用同一通道。
    * 用于统一命令层 `/clear` 的 agent 侧清空。可选:不支持的实现可省略(best-effort)。
    */
@@ -133,6 +140,15 @@ export interface PiSessionOptions {
    * 省略时使用安全默认（全开，向后兼容）。
    */
   readonly loggingConfigProvider?: () => Promise<LoggingConfig>;
+  /**
+   * 会话就绪握手开关(spec session-readiness-handshake)。
+   * 开启时:构造后发只读探针(getCommands)判定真实就绪、维护生命周期状态机、
+   * 广播并在订阅时回放 `control: session-status` 帧。**默认关**(向后兼容:不发任何
+   * 生命周期帧、不发探针,既有行为完全不变,Req 6.2)。生产由 app 接线开启。
+   */
+  readonly readinessHandshake?: boolean;
+  /** 就绪探针超时(毫秒),默认 30000;超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
+  readonly readinessProbeTimeoutMs?: number;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */
