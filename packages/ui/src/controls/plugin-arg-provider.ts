@@ -38,6 +38,15 @@ interface InstallSourceDto {
   readonly insertText: string;
 }
 
+/**
+ * 判断一个 `pi list` 解析出的 id 是否为可卸载目标:非空、不含空白(排除 "User packages:"
+ * 这类表头)、非绝对路径(排除 node_modules 完整路径)。
+ */
+function isUninstallTarget(id: string): boolean {
+  const s = id.trim();
+  return s.length > 0 && !/\s/.test(s) && !s.startsWith("/");
+}
+
 function join(baseUrl: string, path: string): string {
   const b = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
   return `${b}${path.startsWith("/") ? path : `/${path}`}`;
@@ -66,6 +75,9 @@ export function createPluginArgProvider(
     const data = (await res.json()) as { extensions?: InstalledExtensionDto[] };
     const q = query.toLowerCase();
     return (data.extensions ?? [])
+      // 过滤 `pi list` 解析出的噪声行(表头如 "User packages:"、绝对路径):卸载目标应为
+      // 形如 npm:/git: 的包标识,不含空白、非绝对路径。
+      .filter((e) => isUninstallTarget(e.id))
       .filter((e) => q.length === 0 || e.id.toLowerCase().includes(q))
       .map((e) => ({
         id: e.id,

@@ -38,6 +38,22 @@ describe("createPluginArgProvider", () => {
     expect(items[0]?.insertText).toBe("@b/tool");
   });
 
+  it("uninstall 过滤噪声行(表头/绝对路径),仅留包标识", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        extensions: [
+          { id: "User packages:", kind: "npm" },
+          { id: "npm:pi-web-access", kind: "npm" },
+          { id: "/Users/x/.pi/agent/npm/node_modules/pi-web-access", kind: "local" },
+          { id: "npm:pi-sandbox", kind: "npm" },
+        ],
+      }),
+    );
+    const p = createPluginArgProvider({ baseUrl: "http://x", sessionId: "s1", fetchImpl });
+    const items = await p.listArgs("plugin", "uninstall", "");
+    expect(items.map((i) => i.id)).toEqual(["npm:pi-web-access", "npm:pi-sandbox"]);
+  });
+
   it("install → GET /sessions/:id/install-sources,映射 local: insertText", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
