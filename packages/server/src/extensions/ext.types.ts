@@ -47,6 +47,12 @@ export interface AllowlistConfig {
   readonly gitHosts: readonly string[];
   /** 是否允许 `local:<path>` 源(默认仅受控环境开启)。 */
   readonly allowLocal: boolean;
+  /**
+   * 放宽 npm scope 白名单:开启后允许**任意** npm 包(含无 scope),
+   * 但**仍要求精确版本固定**(`@x.y.z`),保留供应链防护。
+   * 默认未开;供单用户自托管/管理员经 `PI_WEB_EXT_ALLOW_NPM=1` 开启。
+   */
+  readonly allowAnyNpm?: boolean;
 }
 
 /** 白名单 + 版本固定校验结果(纯函数产出)。 */

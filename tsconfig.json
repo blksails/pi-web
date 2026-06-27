@@ -35,10 +35,15 @@
       ],
       "@blksails/pi-web-tool-kit/commands": [
         "./packages/tool-kit/src/commands/index.ts"
+      ],
+      "@blksails/pi-web-tool-kit/extension-entry": [
+        "./packages/tool-kit/src/extension-tools/entry-path.ts"
       ]
     }
   },
   "include": [
+    ".next-clear-dev/types/**/*.ts",
+    ".next-cli/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
     ".next-stub/types/**/*.ts",
     ".next/types/**/*.ts",
@@ -56,7 +61,7 @@
     "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next-cli/types/**/*.ts"
+    ".next-ro-dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

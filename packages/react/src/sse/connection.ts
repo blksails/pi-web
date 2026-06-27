@@ -179,14 +179,19 @@ export class PiSessionConnection {
   }
 
   /**
-   * 开一条持久的「仅控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,
-   * 见 sse-response「不影响同会话其他订阅者」)。仅把 `control: ui-rpc`(Tier3 回包,按
-   * correlationId 配对)与 `control: session-status`(就绪握手粘性帧)应用到 controlStore,
-   * 其余帧(消息块 / 其他 control 子类)丢弃——故不会与 per-prompt 流重复应用 ambient
-   * (extension-ui)帧。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递,以及就绪
-   * 握手期会话状态的投递(使迟到订阅经粘性回放获知就绪)。返回 close 函数。
+   * 开一条持久的「控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,见 sse-response
+   * 「不影响同会话其他订阅者」)。默认把 `control: ui-rpc`(Tier3 回包,按 correlationId 配对)与
+   * `control: session-status`(就绪握手粘性帧)应用到 controlStore,其余帧(消息块 / 其他 control
+   * 子类)丢弃——故不会与 per-prompt 流重复应用 ambient(extension-ui)帧。用于**空闲期** Tier3
+   * 贡献点(slash/mention 等)的回包投递,以及就绪握手期会话状态的投递(使迟到订阅经粘性回放获知就绪)。
+   *
+   * `applyAmbient: true` 时额外应用 `control: extension-ui`(ctx.ui notify/status/widget)帧:用于
+   * **fire-and-forget 扩展命令**(/plugin 等)——它不开 per-prompt 流,故 ctx.ui 帧本无消费者;此时由本
+   * 流承载。调用方须保证仅在空闲期(无 per-prompt 流)启用,避免与 per-prompt 流重复应用 ambient 帧。
+   * 返回 close 函数。
    */
-  openControlOnlyStream(): () => void {
+  openControlOnlyStream(opts?: { applyAmbient?: boolean }): () => void {
+    const applyAmbient = opts?.applyAmbient === true;
     const abort = new AbortController();
     const headers = mergeHeaders(this.baseHeaders, undefined, undefined);
     const url = joinUrl(
@@ -221,12 +226,14 @@ export class PiSessionConnection {
             const result = SseFrameSchema.safeParse(json);
             if (!result.success) continue;
             const frame = result.data;
-            // 空闲控制流仅应用 ui-rpc(Tier3 回包)与 session-status(就绪握手粘性帧);
+            // 空闲控制流默认应用 ui-rpc(Tier3 回包)与 session-status(就绪握手粘性帧);
+            // applyAmbient 时额外应用 extension-ui(fire-and-forget 扩展命令的 ctx.ui 帧)。
             // 其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
             if (
               frame.kind === "control" &&
               (frame.payload.control === "ui-rpc" ||
-                frame.payload.control === "session-status")
+                frame.payload.control === "session-status" ||
+                (applyAmbient && frame.payload.control === "extension-ui"))
             ) {
               this.controlStore.applyControlFrame(frame.payload);
             }

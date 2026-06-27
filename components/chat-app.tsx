@@ -7,9 +7,6 @@ import {
   usePiControls,
   useExtensionUI,
   createPiClient,
-  executeHostCommand,
-  type CommandOutcome,
-  type InstalledExtensionInfo,
   type UsePiSessionResult,
 } from "@blksails/pi-web-react";
 import {
@@ -22,7 +19,6 @@ import {
 import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
-import { PluginPanel } from "@/components/plugin-panel.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
@@ -163,10 +159,17 @@ function buildCreate(props: ChatAppProps, source: string): CreateSessionRequest 
  */
 const EXTENSION_COMMAND_POLICY: ExtensionCommandPolicy = {
   enabled: process.env.NEXT_PUBLIC_PI_EXTENSION_COMMANDS === "all",
-  allowlist: (process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
+  allowlist: [
+    // 平台内置「扩展管理扩展」命令默认放行(spec extension-install-agent-tools):
+    // /plugin 经斜杠补全直接装/卸/列扩展;它们在 web 端不卡 pending —— PiChat onSubmit
+    // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
+    "plugin",
+    "reload-runtime",
+    ...(process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  ],
 };
 
 /**
@@ -377,51 +380,8 @@ function SessionView({
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
     [],
   );
-  const [pluginPanelOpen, setPluginPanelOpen] = React.useState(false);
-  const [pluginItems, setPluginItems] = React.useState<
-    readonly InstalledExtensionInfo[]
-  >([]);
-  const [pluginError, setPluginError] = React.useState<string | undefined>(undefined);
-
-  // 命令结果 → 事件驱动 UI(无 refreshKey/手动时序):effect 决定 开面板/刷新列表/通知。
-  const applyCommandOutcome = React.useCallback(
-    (name: string, outcome: CommandOutcome): void => {
-      if (name !== "plugin") return;
-      if (!outcome.ok) {
-        setPluginError(outcome.error?.message ?? "命令执行失败");
-        return;
-      }
-      const r = outcome.result;
-      if (r === undefined) return;
-      setPluginError(r.effect === "notify" ? r.message : undefined);
-      // open-panel / panel-refresh 均确保面板可见(键入 /plugin install 直接执行时也呈现结果)。
-      if (r.effect === "open-panel" || r.effect === "panel-refresh") {
-        setPluginPanelOpen(true);
-      }
-      const data = r.data;
-      if (data !== null && typeof data === "object" && "extensions" in data) {
-        setPluginItems(
-          (data as { extensions: readonly InstalledExtensionInfo[] }).extensions,
-        );
-      }
-      // 装/卸后触发 webext 加载路径(装后双路生效之一,保留)。
-      if (r.effect === "panel-refresh") setWebextReloadNonce((n) => n + 1);
-    },
-    [],
-  );
-
-  // 面板内安装/卸载/刷新:经统一命令通道(host 命令同步 HTTP 响应,非直调 /extensions REST)。
-  const onPluginExecute = React.useCallback(
-    (argv: string): void => {
-      const client = session.client;
-      const sid = session.sessionId;
-      if (client === undefined || sid === undefined) return;
-      void executeHostCommand((req) => client.uiRpcCommand(sid, req), "plugin", argv).then(
-        (o) => applyCommandOutcome("plugin", o),
-      );
-    },
-    [session.client, session.sessionId, applyCommandOutcome],
-  );
+  // 扩展安装已迁出为 agent 内置工具(spec extension-install-agent-tools),信息/进度走 ctx.ui
+  // (StatusBar/通知),不再有 plugin 模态面板与 host 命令结果回流。
 
   // 会话列表(sessions-list):宿主级 REST client + 列表面板,经选定宿主插槽注入 <PiChat>。
   // 列表数据经 client.listSessions 注入(面板不持 pi 接线);恢复复用 /session/:id 成熟链路
@@ -563,7 +523,6 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           builtinCommands={builtinCommands}
-          onCommandResult={applyCommandOutcome}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           showLogs={true}
@@ -592,14 +551,6 @@ function SessionView({
             ? { extensionBaseUrl: process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL }
             : {})}
         />
-        {pluginPanelOpen ? (
-          <PluginPanel
-            items={pluginItems}
-            {...(pluginError !== undefined ? { error: pluginError } : {})}
-            onExecute={onPluginExecute}
-            onClose={() => setPluginPanelOpen(false)}
-          />
-        ) : null}
       </div>
     </div>
   );

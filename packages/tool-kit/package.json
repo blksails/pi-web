@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./runtime": "./src/runtime.ts",
-    "./commands": "./src/commands/index.ts"
+    "./commands": "./src/commands/index.ts",
+    "./extension-entry": "./src/extension-tools/entry-path.ts"
   },
   "engines": {
     "node": ">=22.19.0"

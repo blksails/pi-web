@@ -332,6 +332,27 @@ export function translateEvent(
       };
 
     case "extension_ui_request":
+      // method==="custom"(spec ctx-ui-custom-bridge):ctx.ui.custom 经 pi-web runner 覆盖发帧,
+      // 在此转译为 data-pi-custom-ui data part 喂进 UIMessage 流(复用前端已注册的 CustomUiDataPart);
+      // payload 非法 → 确定丢弃(空 frames,前端无渲染)。其余 method 维持旁路 control:extension-ui。
+      if (event.method === "custom") {
+        const payload = event.payload;
+        if (
+          typeof payload?.component !== "string" ||
+          payload.component.length === 0
+        ) {
+          return none(ctx);
+        }
+        return {
+          frames: [
+            makeUiMessageChunkFrame({
+              type: "data-pi-custom-ui",
+              data: { component: payload.component, props: payload.props },
+            }),
+          ],
+          ctx,
+        };
+      }
       // 旁路 control 帧(非 UIMessage chunk),供前端弹 dialog(Req 4.10)。
       return {
         frames: [

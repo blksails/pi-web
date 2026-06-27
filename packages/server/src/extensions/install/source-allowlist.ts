@@ -174,6 +174,11 @@ export function checkAllowlist(
   if (source.startsWith("npm:")) {
     const parsed = parseNpm(source.slice("npm:".length));
     if ("error" in parsed) return { allowed: false, reason: parsed.error };
+    // allowAnyNpm:放宽 scope 白名单(含无 scope 包),仍保留版本固定——parseNpm 已强制
+    // 精确 `@x.y.z`,故此处放行不削弱供应链防护。供 PI_WEB_EXT_ALLOW_NPM=1 单用户自托管开启。
+    if (cfg.allowAnyNpm === true) {
+      return { allowed: true, source: parsed, canonical: canonicalize(parsed) };
+    }
     const scope = parsed.kind === "npm" ? parsed.scope : undefined;
     if (scope === undefined) {
       return {

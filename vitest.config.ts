@@ -17,6 +17,7 @@ export default defineConfig({
       "@blksails/pi-web-logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
       "@blksails/pi-web-agent-kit": path.resolve(__dirname, "packages/agent-kit/src/index.ts"),
       "@blksails/pi-web-tool-kit/commands": path.resolve(__dirname, "packages/tool-kit/src/commands/index.ts"),
+      "@blksails/pi-web-tool-kit/extension-entry": path.resolve(__dirname, "packages/tool-kit/src/extension-tools/entry-path.ts"),
       "@blksails/pi-web-tool-kit": path.resolve(__dirname, "packages/tool-kit/src/index.ts"),
     },
   },

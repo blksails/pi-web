@@ -15,6 +15,7 @@ import { DEFAULT_ALLOWLIST } from "./install/source-allowlist.js";
 import { defaultAdminPolicy } from "./security/admin-policy.js";
 import { defaultOnAudit } from "./security/audit.js";
 import { makeListExtensionsHandler } from "./routes/list-extensions.js";
+import { makeInstallSourcesHandler } from "./routes/install-sources.js";
 import { makeInstallExtensionHandler } from "./routes/install-extension.js";
 import { makeRemoveExtensionHandler } from "./routes/remove-extension.js";
 import {
@@ -34,6 +35,7 @@ export function createExtensionRoutes(
   const timeoutMs = opts.piInstallTimeoutMs;
 
   const listHandler = makeListExtensionsHandler(opts.piCli);
+  const installSourcesHandler = makeInstallSourcesHandler(opts.store);
   const installHandler = makeInstallExtensionHandler({
     piCli: opts.piCli,
     adminPolicy,
@@ -56,6 +58,11 @@ export function createExtensionRoutes(
 
   return [
     { method: "GET", path: "/extensions", handler: listHandler },
+    {
+      method: "GET",
+      path: "/sessions/:id/install-sources",
+      handler: installSourcesHandler,
+    },
     { method: "POST", path: "/extensions", handler: installHandler },
     { method: "DELETE", path: "/extensions/:extId", handler: removeHandler },
     { method: "POST", path: "/sessions/:id/reload", handler: reloadHandler },

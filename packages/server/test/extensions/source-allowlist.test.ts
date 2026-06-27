@@ -53,6 +53,44 @@ describe("checkAllowlist — npm", () => {
   });
 });
 
+describe("checkAllowlist — npm with allowAnyNpm", () => {
+  const anyNpm: AllowlistConfig = { ...cfg, allowAnyNpm: true };
+
+  it("accepts an unscoped npm package when allowAnyNpm is set (still pinned)", () => {
+    const d = checkAllowlist("npm:pi-schedule-prompt@0.4.1", anyNpm);
+    expect(d.allowed).toBe(true);
+    if (d.allowed) {
+      expect(d.source).toEqual({
+        kind: "npm",
+        name: "pi-schedule-prompt",
+        version: "0.4.1",
+      });
+      expect(d.canonical).toBe("npm:pi-schedule-prompt@0.4.1");
+    }
+  });
+
+  it("accepts a non-default scope when allowAnyNpm is set", () => {
+    expect(checkAllowlist("npm:@acme/x@1.0.0", anyNpm).allowed).toBe(true);
+  });
+
+  it("STILL requires an exact pinned version under allowAnyNpm", () => {
+    expect(checkAllowlist("npm:pi-schedule-prompt", anyNpm).allowed).toBe(false);
+    expect(checkAllowlist("npm:pi-schedule-prompt@latest", anyNpm).allowed).toBe(
+      false,
+    );
+    expect(checkAllowlist("npm:pi-schedule-prompt@^0.4.1", anyNpm).allowed).toBe(
+      false,
+    );
+  });
+
+  it("does not affect git/local gating (only relaxes npm scope)", () => {
+    expect(checkAllowlist("https://evil.example.com/x/y@v1.0.0", anyNpm).allowed).toBe(
+      false,
+    );
+    expect(checkAllowlist("local:/tmp/x", anyNpm).allowed).toBe(false);
+  });
+});
+
 describe("checkAllowlist — git", () => {
   it("accepts an allowlisted git host with a pinned tag", () => {
     const d = checkAllowlist("git:github.com/acme/ext@v1.0.0", cfg);

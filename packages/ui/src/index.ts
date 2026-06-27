@@ -64,6 +64,19 @@ export {
   type PiCommandPaletteProps,
   type ExtensionCommandPolicy,
 } from "./controls/pi-command-palette.js";
+export {
+  parseCommandStage,
+  findSubcommand,
+  type CommandArgItem,
+  type CommandArgProvider,
+  type CommandArgSpec,
+  type SubcommandSpec,
+  type CommandStage,
+} from "./controls/command-arg.js";
+export {
+  createPluginArgProvider,
+  type PluginArgProviderOptions,
+} from "./controls/plugin-arg-provider.js";
 
 // interaction 层(原 dialog/PiPermissionDialog 重命名为 elements/PiInteraction)
 export {

@@ -69,6 +69,7 @@ import {
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
+import { createPluginArgProvider } from "../controls/plugin-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
@@ -392,6 +393,18 @@ export function PiChat({
   const [commandCapturing, setCommandCapturing] =
     React.useState<boolean>(false);
 
+  // 真实光标接线(completion-cursor-anchor):inputRef 供 caret 测量/选区复位;cursor 为
+  // textarea 当前 selectionStart,驱动 core 补全在文本任意位置激活与锚定。
+  const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const [cursor, setCursor] = React.useState<number>(0);
+
+  // /plugin 子命令/参数补全 provider(plugin-subcommand-completion):有 client+sessionId 时
+  // 构造,经现成 GET /extensions 与 install-sources 端点取候选。
+  const commandArgProvider = React.useMemo(() => {
+    if (client === undefined || sessionId === undefined) return undefined;
+    return createPluginArgProvider({ baseUrl: client.baseUrl, sessionId });
+  }, [client, sessionId]);
+
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
   const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
 
@@ -503,14 +516,36 @@ export function PiChat({
   const sessionReady = !readinessGating || lifecycle?.state === "ready";
   const sessionReadinessError =
     readinessGating && lifecycle?.state === "error";
+  // agent 扩展命令(/plugin 等)经 fire-and-forget 投递、不开 per-prompt 消息流;其 ctx.ui 反馈
+  // (notify/setWidget)走控制帧,需有打开的下行流才能投递。故派发扩展命令时临时点亮此标志,
+  // 在有界窗口内开「仅控制」流承载反馈,窗口后自动熄灭(不变成对所有 agent 常开,避免 prompt-流回归)。
+  const [extCtrlActive, setExtCtrlActive] = React.useState(false);
+  const extCtrlTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const armExtControlStream = React.useCallback((): void => {
+    setExtCtrlActive(true);
+    if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
+    // 命令 + ctx.ui 通常数秒内完成(pi list 较慢约 10s+);给足窗口后熄灭。
+    extCtrlTimerRef.current = setTimeout(() => setExtCtrlActive(false), 30_000);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
+    },
+    [],
+  );
   // 就绪前需开空闲控制流以接收粘性 session-status 帧(仍受 !isBusy 门控;就绪前 isBusy 不可能为真,
-  // 故不与 per-prompt 流冲突)。就绪后若无其它需求自然关闭。
+  // 故不与 per-prompt 流冲突)。就绪后若无其它需求自然关闭。扩展命令窗口(extCtrlActive)同样需要。
   const needsIdleControl =
-    hasContributions || hasArtifactRpc || (readinessGating && !sessionReady);
+    hasContributions ||
+    hasArtifactRpc ||
+    (readinessGating && !sessionReady) ||
+    extCtrlActive;
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    return connection.openControlOnlyStream();
-  }, [connection, isBusy, needsIdleControl]);
+    // 扩展命令窗口内额外承载 ctx.ui(extension-ui)帧——fire-and-forget 命令无 per-prompt 流,
+    // 否则其 notify/status/widget 无消费者(空闲期无并发 per-prompt 流,不会重复应用 ambient)。
+    return connection.openControlOnlyStream({ applyAmbient: extCtrlActive });
+  }, [connection, isBusy, needsIdleControl, extCtrlActive]);
   const canSubmit =
     transport !== undefined &&
     sessionReady &&
@@ -585,7 +620,7 @@ export function PiChat({
   );
 
   const onSubmit = React.useCallback((): void => {
-    // 内置命令拦截:键入完整命令(如 "/plugin install x")回车时,按 source=builtin 分派,
+    // 内置命令拦截:键入完整命令(如 "/clear")回车时,按 source=builtin 分派,
     // **绝不发给 LLM**(builtin-plugin-command Req 2.3/7.x)。匹配首段命令名。
     if (builtinCommands !== undefined && input.startsWith("/")) {
       const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
@@ -599,8 +634,45 @@ export function PiChat({
         return;
       }
     }
+
+    // agent 扩展命令拦截(source==="extension",如 /plugin):**不走 useChat**。
+    // 扩展命令在 agent 进程内本地执行后提前返回,从不发任何 message 生命周期帧(实测命令轮
+    // 仅有 extension_ui_request);若经 useChat.sendMessage 发送,会永久等不到 finish 帧而卡 busy。
+    // 故经 client.prompt fire-and-forget 直接投递(agent 照常执行命令),反馈完全靠 ctx.ui
+    // (status/notify/widget 经独立控制流到达),输入区即时复位、不进 LLM、不卡 pending。
+    if (
+      input.startsWith("/") &&
+      client !== undefined &&
+      sessionId !== undefined &&
+      controls?.commands !== undefined
+    ) {
+      const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
+      const extCmd =
+        name !== undefined && name.length > 0
+          ? controls.commands.find(
+              (c) => c.name.toLowerCase() === name && c.source === "extension",
+            )
+          : undefined;
+      if (extCmd !== undefined) {
+        // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
+        armExtControlStream();
+        void client.prompt(sessionId, { message: input }).catch(() => undefined);
+        setInput("");
+        return;
+      }
+    }
+
     doSend(input);
-  }, [doSend, input, builtinCommands, dispatchBuiltin]);
+  }, [
+    doSend,
+    input,
+    builtinCommands,
+    dispatchBuiltin,
+    client,
+    sessionId,
+    controls?.commands,
+    armExtControlStream,
+  ]);
 
   const onStop = React.useCallback((): void => {
     if (controls !== undefined) void controls.abort().catch(() => undefined);
@@ -809,6 +881,8 @@ export function PiChat({
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
       onAcceptGhost={() => setInput(input + ghostSuffix)}
+      inputRef={inputRef}
+      onSelectionChange={setCursor}
     />
   );
 
@@ -845,62 +919,64 @@ export function PiChat({
   const inputWithWidgets = (
     <div className="relative" data-pi-input-wrapper>
       {readinessIndicator}
+      {/* `/` 命令面板:与 `@` 补全一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {controls !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiCommandPalette
-            controls={controls}
-            value={input}
-            onChange={setInput}
-            onCaptureChange={setCommandCapturing}
-            extensionCommands={extensionCommands}
-            {...(builtinCommands !== undefined ? { builtinCommands } : {})}
-            {...(builtinCommands !== undefined
-              ? { onBuiltinSelect: dispatchBuiltin }
-              : {})}
-            {...(extension?.contributions?.slash !== undefined
-              ? { slashContribution: extension.contributions.slash }
-              : {})}
-            {...(uiRpc !== undefined ? { uiRpc } : {})}
-          />
-        </div>
+        <PiCommandPalette
+          controls={controls}
+          value={input}
+          onChange={setInput}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+          extensionCommands={extensionCommands}
+          {...(commandArgProvider !== undefined ? { commandArgProvider } : {})}
+          {...(builtinCommands !== undefined ? { builtinCommands } : {})}
+          {...(builtinCommands !== undefined
+            ? { onBuiltinSelect: dispatchBuiltin }
+            : {})}
+          {...(extension?.contributions?.slash !== undefined
+            ? { slashContribution: extension.contributions.slash }
+            : {})}
+          {...(uiRpc !== undefined ? { uiRpc } : {})}
+        />
       ) : null}
-      {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。 */}
+      {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。
+          浮层内部按 caret 像素坐标 fixed 锚定,故此挂载点不再约束尺寸/位置。 */}
       {client !== undefined && sessionId !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-50">
-          <PiCompletionPopover
-            value={input}
-            cursor={input.length}
-            onChange={setInput}
-            client={client}
-            sessionId={sessionId}
-            onCaptureChange={setCommandCapturing}
-          />
-        </div>
+        <PiCompletionPopover
+          value={input}
+          cursor={cursor}
+          onChange={setInput}
+          client={client}
+          sessionId={sessionId}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+        />
       ) : null}
-      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。 */}
+      {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。
+          与 @/`/` 一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {extension?.contributions?.mention !== undefined &&
       uiRpc !== undefined &&
       !(client !== undefined && sessionId !== undefined) ? (
-        <div className="absolute bottom-full left-0 right-0 z-40">
-          <PiMentionPopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.mention}
-            uiRpc={uiRpc}
-            onCaptureChange={setCommandCapturing}
-          />
-        </div>
+        <PiMentionPopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.mention}
+          uiRpc={uiRpc}
+          inputRef={inputRef}
+          onCaptureChange={setCommandCapturing}
+        />
       ) : null}
+      {/* webext 通用 autocomplete:与 @/`/` 一致,经 caret 锚定 fixed 定位。 */}
       {extension?.contributions?.autocomplete !== undefined &&
       uiRpc !== undefined ? (
-        <div className="absolute bottom-full left-0 right-0 z-30">
-          <PiAutocompletePopover
-            value={input}
-            onChange={setInput}
-            contribution={extension.contributions.autocomplete}
-            uiRpc={uiRpc}
-          />
-        </div>
+        <PiAutocompletePopover
+          value={input}
+          onChange={setInput}
+          contribution={extension.contributions.autocomplete}
+          uiRpc={uiRpc}
+          cursor={cursor}
+          inputRef={inputRef}
+        />
       ) : null}
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />
