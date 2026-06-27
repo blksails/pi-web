@@ -169,7 +169,30 @@ export class PiSession {
     // 异步、不阻塞构造;关闭时完全 no-op(既有行为不变)。
     if (this.readinessHandshake) {
       this.startReadinessProbe();
+      // 重生完成信号(若通道支持):在**真实重生时机**复位 initializing 并重探针(Req 5.1),
+      // 覆盖热重载与显式 restart 两条路径,且探针确定落到重生后的新子进程(根除定时器猜测的
+      // 假就绪窗口)。通道不支持 onRestart 时退回 restartRunner 内的 best-effort settle 定时器。
+      if (typeof this.channel.onRestart === "function") {
+        this.unsubs.push(
+          this.channel.onRestart(() => this.handleRunnerRestarted()),
+        );
+      }
     }
+  }
+
+  /** 重生完成:复位 initializing 并以新子进程重新探针(由通道 onRestart 在真实重生后触发)。 */
+  private handleRunnerRestarted(): void {
+    if (!this.readinessHandshake || this._status !== "active") return;
+    if (this.probeTimer !== undefined) {
+      clearTimeout(this.probeTimer);
+      this.probeTimer = undefined;
+    }
+    if (this.restartSettleTimer !== undefined) {
+      clearTimeout(this.restartSettleTimer);
+      this.restartSettleTimer = undefined;
+    }
+    this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
+    this.startReadinessProbe();
   }
 
   get status(): SessionStatus {
@@ -595,23 +618,27 @@ export class PiSession {
       );
     }
     this.channel.requestRestart();
-    // 就绪握手:重启即重握手(Req 5.1)。复位 initializing 并广播 → 前端在重新就绪前重新门控;
-    // settle 延迟后重发探针(避免探针写入将死的旧 stdin,见 RESTART_PROBE_SETTLE_MS 说明)。
+    // 就绪握手:重启即重握手(Req 5.1)。立即复位 initializing 并广播 → 前端在重新就绪前**即刻**重新门控
+    //(不等真实重生,关闭过早发送窗口)。重新探针由通道 onRestart 在**真实重生时机**驱动
+    //(见 handleRunnerRestarted,确定落到新子进程);仅当通道不支持 onRestart 时,退回 settle 定时器
+    // best-effort 重探针(避免探针写入将死的旧 stdin,见 RESTART_PROBE_SETTLE_MS)。
     if (this.readinessHandshake) {
       if (this.probeTimer !== undefined) {
         clearTimeout(this.probeTimer);
         this.probeTimer = undefined;
       }
       this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
-      if (this.restartSettleTimer !== undefined) {
-        clearTimeout(this.restartSettleTimer);
+      if (typeof this.channel.onRestart !== "function") {
+        if (this.restartSettleTimer !== undefined) {
+          clearTimeout(this.restartSettleTimer);
+        }
+        const t = setTimeout(() => {
+          this.restartSettleTimer = undefined;
+          this.startReadinessProbe();
+        }, RESTART_PROBE_SETTLE_MS);
+        if (typeof t.unref === "function") t.unref();
+        this.restartSettleTimer = t;
       }
-      const t = setTimeout(() => {
-        this.restartSettleTimer = undefined;
-        this.startReadinessProbe();
-      }, RESTART_PROBE_SETTLE_MS);
-      if (typeof t.unref === "function") t.unref();
-      this.restartSettleTimer = t;
     }
     return Promise.resolve();
   }

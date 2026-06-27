@@ -100,6 +100,8 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
   private readonly stderrListeners = new Set<StderrListener>();
   private readonly exitListeners = new Set<ExitListener>();
   private readonly diagnosticListeners = new Set<DiagnosticListener>();
+  /** 重生完成监听:doRestart 重生新子进程后触发(供就绪握手重新探针,spec session-readiness-handshake)。 */
+  private readonly restartListeners = new Set<() => void>();
 
   private status: Status = "spawning";
   private exitCode: number | null = null;
@@ -258,6 +260,14 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
       this.restarting = false;
       this.spawnChild();
       process.stderr.write("[runner-hot-reload] runner restarted\n");
+      // 重生完成:通知就绪握手重新探针(此刻新子进程已 spawn、读循环将就绪,探针落到新进程)。
+      for (const cb of this.restartListeners) {
+        try {
+          cb();
+        } catch {
+          // 隔离监听器异常,不影响重启收尾。
+        }
+      }
     } catch (err) {
       this.restarting = false;
       this.finalize(
@@ -285,6 +295,17 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     this.lineListeners.add(cb);
     return () => {
       this.lineListeners.delete(cb);
+    };
+  }
+
+  /**
+   * 注册「重生完成」回调:每次 doRestart 重生新子进程后触发一次(含热重载与显式 restart)。
+   * 供就绪握手在真实重生时机(而非定时器猜测)重新发探针。返回取消订阅句柄。
+   */
+  onRestart(cb: () => void): Unsubscribe {
+    this.restartListeners.add(cb);
+    return () => {
+      this.restartListeners.delete(cb);
     };
   }
 

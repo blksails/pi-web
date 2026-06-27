@@ -113,6 +113,24 @@ describe("会话就绪握手 · 真实子进程集成 (Task 5.1)", () => {
     expect(statuses(late)).toEqual(["ready"]);
   });
 
+  it("runner 真实重生(onRestart)后重新握手:initializing → ready(5.1)", async () => {
+    const { session, channel } = makeSession();
+    await waitFor(() => session.lifecycle === "ready");
+
+    const frames: SseFrame[] = [];
+    session.subscribe((f) => frames.push(f));
+
+    // 真实重生:PiRpcProcess kill 旧子进程 + 重 spawn 新 stub;onRestart 在重生后驱动重探针。
+    (channel as unknown as { requestRestart: () => void }).requestRestart();
+
+    // 复位经历 initializing,再由新进程探针应答回到 ready。
+    await waitFor(() => statuses(frames).includes("initializing"));
+    await waitFor(() => session.lifecycle === "ready");
+    const seq = statuses(frames);
+    expect(seq).toContain("initializing");
+    expect(seq[seq.length - 1]).toBe("ready");
+  });
+
   it("子进程就绪前早退 → error{exit-before-ready}(4.2)", async () => {
     const { session } = makeSession("silent-exit");
     const frames: SseFrame[] = [];

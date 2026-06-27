@@ -60,6 +60,13 @@ export interface SessionChannel extends PiRpcChannel {
   requestRestart?(): void;
 
   /**
+   * 注册「runner 重生完成」回调:每次底层子进程重生后触发(含热重载与 requestRestart)。
+   * 供就绪握手在真实重生时机重新执行探针(spec session-readiness-handshake,Req 5.1)。
+   * 可选:不支持重启的实现(stub/mock)可省略,握手退回 best-effort settle 定时器。
+   */
+  onRestart?(cb: () => void): Unsubscribe;
+
+  /**
    * 开新会话上下文(pi RPC `new_session`):清空当前对话上下文、续用同一通道。
    * 用于统一命令层 `/clear` 的 agent 侧清空。可选:不支持的实现可省略(best-effort)。
    */
