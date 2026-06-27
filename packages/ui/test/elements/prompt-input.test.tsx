@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import * as React from "react";
 import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { PromptInput } from "../../src/elements/prompt-input.js";
@@ -130,6 +131,59 @@ describe("PromptInput 富输入外壳", () => {
     const textarea = screen.getByRole("textbox");
     expect(textarea).toHaveAttribute("aria-label");
     expect(textarea).toHaveAttribute("placeholder");
+  });
+
+  describe("光标接线 inputRef + onSelectionChange (completion-cursor-anchor R1.1)", () => {
+    it("外部 inputRef 指向真实 textarea", () => {
+      const ref = React.createRef<HTMLTextAreaElement>();
+      render(
+        <PromptInput
+          value="hi"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+          inputRef={ref}
+        />,
+      );
+      expect(ref.current).toBe(screen.getByRole("textbox"));
+    });
+
+    it("输入时上报 selectionStart", async () => {
+      const user = userEvent.setup();
+      const onSelectionChange = vi.fn();
+      function Controlled(): React.JSX.Element {
+        const [v, setV] = React.useState("");
+        return (
+          <PromptInput
+            value={v}
+            onChange={setV}
+            onSubmit={vi.fn()}
+            onSelectionChange={onSelectionChange}
+          />
+        );
+      }
+      render(<Controlled />);
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, "ab");
+      // 末次上报为 selectionStart=2(光标在 "ab" 之后)。
+      expect(onSelectionChange).toHaveBeenCalled();
+      expect(onSelectionChange).toHaveBeenLastCalledWith(2);
+    });
+
+    it("点击/聚焦上报当前光标", async () => {
+      const user = userEvent.setup();
+      const onSelectionChange = vi.fn();
+      render(
+        <PromptInput
+          value="hello"
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+          onSelectionChange={onSelectionChange}
+        />,
+      );
+      const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+      await user.click(textarea);
+      expect(onSelectionChange).toHaveBeenCalled();
+    });
   });
 
   describe("suppressEnterSubmit 命令模式 Enter 让位 (Req 4.1/4.3/4.4)", () => {
