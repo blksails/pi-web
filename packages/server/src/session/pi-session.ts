@@ -20,6 +20,7 @@ import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   RpcResponse,
+  SessionLifecycleState,
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
@@ -69,6 +70,16 @@ const GATE_DEFAULT: LoggingConfig = {
   panelDefaultLevel: "info",
 };
 
+/** 就绪探针默认超时(毫秒):超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
+const DEFAULT_READINESS_PROBE_TIMEOUT_MS = 30_000;
+
+/**
+ * restart 后重发探针前的 settle 延迟(毫秒):requestRestart 触发的子进程重生是异步的,
+ * 此间 stdin 仍指向将死的旧进程;延迟后再发 getCommands 使其落到重生后的子进程
+ * (避免写入旧 stdin 而永挂)。探针自身超时仍兜底真正失败的 restart。
+ */
+const RESTART_PROBE_SETTLE_MS = 500;
+
 export class PiSession {
   readonly id: SessionId;
   readonly mode: ResolvedSource["mode"];
@@ -87,6 +98,18 @@ export class PiSession {
 
   private _status: SessionStatus = "active";
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * 会话**业务就绪态**(spec session-readiness-handshake),与通道层活动态 `_status` 正交。
+   * 仅当 `readinessHandshake` 开启时驱动/广播;关闭时恒为 `initializing` 且不发任何帧。
+   */
+  private _lifecycle: SessionLifecycleState = "initializing";
+  private _lifecycleDetail: string | undefined;
+  private _lifecycleCode: string | undefined;
+  private readonly readinessHandshake: boolean;
+  private readonly readinessProbeTimeoutMs: number;
+  private probeTimer: ReturnType<typeof setTimeout> | undefined;
+  private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly unsubs: Unsubscribe[] = [];
 
@@ -115,6 +138,9 @@ export class PiSession {
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
     this.loggingConfigProvider = opts.loggingConfigProvider;
+    this.readinessHandshake = opts.readinessHandshake ?? false;
+    this.readinessProbeTimeoutMs =
+      opts.readinessProbeTimeoutMs ?? DEFAULT_READINESS_PROBE_TIMEOUT_MS;
 
     // 无 provider 时直接使用安全默认（全开，无 async 延迟）。
     if (!this.loggingConfigProvider) {
@@ -138,10 +164,21 @@ export class PiSession {
     );
 
     this.touch();
+
+    // 就绪握手(spec session-readiness-handshake):开启时发只读探针判定真实就绪(Req 1.3)。
+    // 异步、不阻塞构造;关闭时完全 no-op(既有行为不变)。
+    if (this.readinessHandshake) {
+      this.startReadinessProbe();
+    }
   }
 
   get status(): SessionStatus {
     return this._status;
+  }
+
+  /** 当前业务就绪态(spec session-readiness-handshake);未开启握手时恒为 `initializing`。 */
+  get lifecycle(): SessionLifecycleState {
+    return this._lifecycle;
   }
 
   describe(): SessionDescriptor {
@@ -151,6 +188,91 @@ export class PiSession {
       trust: this.trust,
       status: this._status,
     };
+  }
+
+  // ──────────────── 就绪握手 / 生命周期(spec session-readiness-handshake) ────────────────
+
+  /** 当前生命周期态的 `control: session-status` 帧(供广播与订阅回放复用)。 */
+  private lifecycleFrame(): SseFrame {
+    return makeControlFrame({
+      control: "session-status",
+      state: this._lifecycle,
+      ...(this._lifecycleDetail !== undefined
+        ? { detail: this._lifecycleDetail }
+        : {}),
+      ...(this._lifecycleCode !== undefined ? { code: this._lifecycleCode } : {}),
+    });
+  }
+
+  /**
+   * 生命周期态变更的**唯一入口**:守卫单向迁移 + 广播一帧(Req 1.5 / 2.1 / 5.3)。
+   * 单向规则:相同态 → no-op;已处终态(error/ended)非 restart 复位 → 拒绝;
+   * ready → initializing 非 restart 复位 → 拒绝。`forceReset` 仅由 restart 重握手使用。
+   * 未开启握手时整体 no-op(不发任何生命周期帧,既有行为不变)。
+   */
+  private setLifecycle(
+    state: SessionLifecycleState,
+    code?: string,
+    detail?: string,
+    opts?: { forceReset?: boolean },
+  ): void {
+    if (!this.readinessHandshake) return;
+    if (this._lifecycle === state) return;
+    const force = opts?.forceReset === true;
+    const isTerminal = this._lifecycle === "error" || this._lifecycle === "ended";
+    if (isTerminal && !force) return;
+    if (this._lifecycle === "ready" && state === "initializing" && !force) return;
+    this._lifecycle = state;
+    this._lifecycleCode = code;
+    this._lifecycleDetail = detail;
+    this.emitter.emit(FRAME_EVENT, this.lifecycleFrame());
+  }
+
+  /**
+   * 发起只读就绪探针(Req 1.3 / 1.4 / 4.1):以 `getCommands` 的**首条响应**为真实就绪锚点
+   * (有响应即证明 agent 读循环已起、session 已绑定);超时未响应 → error{probe-timeout};
+   * 通道拒绝 → error{probe-failed}。仅在 active 且 initializing 时生效;先后到达只认首个。
+   */
+  private startReadinessProbe(): void {
+    if (this._status !== "active" || this._lifecycle !== "initializing") return;
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      this.probeTimer = undefined;
+      this.setLifecycle("error", "probe-timeout", "readiness probe timed out");
+    }, this.readinessProbeTimeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
+    this.probeTimer = timer;
+
+    let probe: Promise<RpcResponse>;
+    try {
+      probe = this.channel.getCommands();
+    } catch (err) {
+      // 同步抛出(极少):归一为探针失败。
+      settled = true;
+      clearTimeout(timer);
+      this.probeTimer = undefined;
+      this.setLifecycle("error", "probe-failed", `readiness probe threw: ${String(err)}`);
+      return;
+    }
+    void probe.then(
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.probeTimer = undefined;
+        // 有响应(含 error 响应)即就绪:读循环已处理命令并回包(Req 1.4)。
+        this.setLifecycle("ready");
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.probeTimer = undefined;
+        this.setLifecycle("error", "probe-failed", "readiness probe rejected");
+      },
+    );
   }
 
   // ───────────────────────── 广播订阅(Req 3.x) ─────────────────────────
@@ -187,6 +309,13 @@ export class PiSession {
     const buffered = this.logBuffer.getLogs({});
     if (buffered.length > 0) {
       frameWrap(makeControlFrame({ control: "logs", entries: buffered }));
+    }
+
+    // 回放当前生命周期态(粘性,spec session-readiness-handshake,Req 2.2/2.4):仅向**刚订阅**
+    // 的 onFrame 发一帧 session-status,使迟到订阅(含 ready 先于订阅)不丢就绪通告。
+    // 与日志回填同范式;未开启握手时不发(既有行为不变)。
+    if (this.readinessHandshake) {
+      frameWrap(this.lifecycleFrame());
     }
 
     return {
@@ -466,6 +595,24 @@ export class PiSession {
       );
     }
     this.channel.requestRestart();
+    // 就绪握手:重启即重握手(Req 5.1)。复位 initializing 并广播 → 前端在重新就绪前重新门控;
+    // settle 延迟后重发探针(避免探针写入将死的旧 stdin,见 RESTART_PROBE_SETTLE_MS 说明)。
+    if (this.readinessHandshake) {
+      if (this.probeTimer !== undefined) {
+        clearTimeout(this.probeTimer);
+        this.probeTimer = undefined;
+      }
+      this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
+      if (this.restartSettleTimer !== undefined) {
+        clearTimeout(this.restartSettleTimer);
+      }
+      const t = setTimeout(() => {
+        this.restartSettleTimer = undefined;
+        this.startReadinessProbe();
+      }, RESTART_PROBE_SETTLE_MS);
+      if (typeof t.unref === "function") t.unref();
+      this.restartSettleTimer = t;
+    }
     return Promise.resolve();
   }
 
@@ -574,6 +721,15 @@ export class PiSession {
   /** 子进程退出/崩溃:走统一清理,以 crashed reason 广播(Req 7.5)。 */
   private handleExit(info: ExitInfo): void {
     if (this._status === "stopped" || this._status === "stopping") return;
+    // 就绪握手:子进程就绪前退出 → error{exit-before-ready},不停留 initializing(Req 4.2);
+    // 就绪后退出由 cleanup 统一置 ended。
+    if (this._lifecycle === "initializing") {
+      this.setLifecycle(
+        "error",
+        "exit-before-ready",
+        "agent exited before readiness",
+      );
+    }
     const reason: SessionEndReason =
       info.code === 0 ? "stopped" : "crashed";
     if (reason === "crashed") {
@@ -611,10 +767,21 @@ export class PiSession {
     this._status = "stopping";
 
     this.closingPromise = (async () => {
-      // 1) 清 idle 计时(Stopping 首步)。
+      // 0) 生命周期终态(spec session-readiness-handshake,Req 5.2):置 ended 并广播
+      //    (终态守卫:error/exit-before-ready 已是终态则保持不变;须在 removeAllListeners 前)。
+      this.setLifecycle("ended");
+      // 1) 清 idle 计时(Stopping 首步)+ 就绪握手计时器。
       if (this.idleTimer !== undefined) {
         clearTimeout(this.idleTimer);
         this.idleTimer = undefined;
+      }
+      if (this.probeTimer !== undefined) {
+        clearTimeout(this.probeTimer);
+        this.probeTimer = undefined;
+      }
+      if (this.restartSettleTimer !== undefined) {
+        clearTimeout(this.restartSettleTimer);
+        this.restartSettleTimer = undefined;
       }
       // 2) 退订通道信号。
       for (const u of this.unsubs) {

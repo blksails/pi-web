@@ -22,6 +22,7 @@ export * from "./transport/spawn.js";
 export * from "./transport/ui-spec.js";
 export * from "./transport/data-part.js";
 export * from "./transport/ui-message-chunk.js";
+export * from "./transport/session-status.js";
 export * from "./transport/sse-frame.js";
 export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";

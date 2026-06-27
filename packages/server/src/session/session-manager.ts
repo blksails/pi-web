@@ -31,6 +31,13 @@ export interface SessionManagerOptions {
    * 每次 createSession 时透传给 PiSession；省略时 PiSession 使用安全默认（全开）。
    */
   readonly loggingConfigProvider?: () => Promise<LoggingConfig>;
+  /**
+   * 会话就绪握手开关(spec session-readiness-handshake);透传给每个 PiSession。
+   * 默认关(向后兼容);生产 app 接线开启。
+   */
+  readonly readinessHandshake?: boolean;
+  /** 就绪探针超时(毫秒),透传给 PiSession;省略用 PiSession 默认。 */
+  readonly readinessProbeTimeoutMs?: number;
 }
 
 export class SessionManager {
@@ -38,6 +45,8 @@ export class SessionManager {
   private readonly idleMs: number | undefined;
   private readonly idFactory: () => SessionId;
   private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
+  private readonly readinessHandshake: boolean;
+  private readonly readinessProbeTimeoutMs: number | undefined;
   private acceptingNew = true;
 
   constructor(opts: SessionManagerOptions = {}) {
@@ -45,6 +54,8 @@ export class SessionManager {
     this.idleMs = opts.idleMs;
     this.idFactory = opts.idFactory ?? (() => randomUUID());
     this.loggingConfigProvider = opts.loggingConfigProvider;
+    this.readinessHandshake = opts.readinessHandshake ?? false;
+    this.readinessProbeTimeoutMs = opts.readinessProbeTimeoutMs;
   }
 
   /** 暴露存储(供上层经接口检索/列出)。 */
@@ -83,6 +94,11 @@ export class SessionManager {
       // 日志门控:从 manager 透传 provider（Req 6.4/6.5/6.6 / task 4.4）。
       ...(this.loggingConfigProvider !== undefined
         ? { loggingConfigProvider: this.loggingConfigProvider }
+        : {}),
+      // 就绪握手:从 manager 透传开关与探针超时(spec session-readiness-handshake)。
+      readinessHandshake: this.readinessHandshake,
+      ...(this.readinessProbeTimeoutMs !== undefined
+        ? { readinessProbeTimeoutMs: this.readinessProbeTimeoutMs }
         : {}),
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
       onClosed: (id) => {

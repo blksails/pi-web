@@ -367,4 +367,51 @@ describe("ControlStore", () => {
       expect(list[list.length - 1]?.id).toBe("n129");
     });
   });
+
+  // ── session-status 生命周期切片(spec session-readiness-handshake, Task 3.1) ──
+  describe("session-status lifecycle", () => {
+    it("初始 lifecycle 为 initializing(失败安全默认)", () => {
+      const store = new ControlStore();
+      expect(store.getSnapshot().lifecycle).toEqual({
+        state: "initializing",
+        detail: undefined,
+        code: undefined,
+      });
+    });
+
+    it("应用 session-status{ready} 更新 lifecycle 切片", () => {
+      const store = new ControlStore();
+      store.applyControlFrame({ control: "session-status", state: "ready" });
+      expect(store.getSnapshot().lifecycle.state).toBe("ready");
+    });
+
+    it("携带 detail/code 的 error 帧更新切片", () => {
+      const store = new ControlStore();
+      store.applyControlFrame({
+        control: "session-status",
+        state: "error",
+        detail: "probe timed out",
+        code: "probe-timeout",
+      });
+      const lc = store.getSnapshot().lifecycle;
+      expect(lc.state).toBe("error");
+      expect(lc.code).toBe("probe-timeout");
+      expect(lc.detail).toBe("probe timed out");
+    });
+
+    it("相同态不换快照引用(防 useSyncExternalStore 抖动)", () => {
+      const store = new ControlStore();
+      store.applyControlFrame({ control: "session-status", state: "ready" });
+      const s1 = store.getSnapshot();
+      store.applyControlFrame({ control: "session-status", state: "ready" });
+      expect(store.getSnapshot()).toBe(s1);
+    });
+
+    it("不影响其它切片(queue 引用稳定)", () => {
+      const store = new ControlStore();
+      const q0 = store.getSnapshot().queue;
+      store.applyControlFrame({ control: "session-status", state: "ready" });
+      expect(store.getSnapshot().queue).toBe(q0);
+    });
+  });
 });

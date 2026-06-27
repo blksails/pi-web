@@ -179,12 +179,12 @@ export class PiSessionConnection {
   }
 
   /**
-   * 开一条持久的「仅 ui-rpc 控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,
-   * 见 sse-response「不影响同会话其他订阅者」)。仅把 `control: ui-rpc` 帧应用到 controlStore
-   * (派发给 ui-rpc 监听,按 correlationId 配对),其余帧(消息块 / 其他 control 子类)丢弃——
-   * 故不会与 per-prompt 流重复应用 ambient(extension-ui)帧;ui-rpc 帧即便双发也按 correlationId
-   * 去重(未知 id 丢弃)。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递。
-   * 返回 close 函数。
+   * 开一条持久的「仅控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,
+   * 见 sse-response「不影响同会话其他订阅者」)。仅把 `control: ui-rpc`(Tier3 回包,按
+   * correlationId 配对)与 `control: session-status`(就绪握手粘性帧)应用到 controlStore,
+   * 其余帧(消息块 / 其他 control 子类)丢弃——故不会与 per-prompt 流重复应用 ambient
+   * (extension-ui)帧。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递,以及就绪
+   * 握手期会话状态的投递(使迟到订阅经粘性回放获知就绪)。返回 close 函数。
    */
   openControlOnlyStream(): () => void {
     const abort = new AbortController();
@@ -221,7 +221,13 @@ export class PiSessionConnection {
             const result = SseFrameSchema.safeParse(json);
             if (!result.success) continue;
             const frame = result.data;
-            if (frame.kind === "control" && frame.payload.control === "ui-rpc") {
+            // 空闲控制流仅应用 ui-rpc(Tier3 回包)与 session-status(就绪握手粘性帧);
+            // 其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
+            if (
+              frame.kind === "control" &&
+              (frame.payload.control === "ui-rpc" ||
+                frame.payload.control === "session-status")
+            ) {
               this.controlStore.applyControlFrame(frame.payload);
             }
           }

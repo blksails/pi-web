@@ -89,6 +89,7 @@ export function mockControls(
     stats: undefined,
     commands: undefined,
     state,
+    lifecycle: { state: "ready", detail: undefined, code: undefined },
     ...overrides,
   };
 }

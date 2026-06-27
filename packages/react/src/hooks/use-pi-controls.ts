@@ -22,8 +22,16 @@ import type {
 } from "@blksails/pi-web-protocol";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";
+import type { SessionLifecycleSnapshot } from "../sse/control-store.js";
 import { usePiContext } from "../provider/pi-provider.js";
 import { createPiClient } from "../client/pi-client.js";
+
+/** 会话未建立连接 / 未收到任何 session-status 帧时的失败安全默认(不可发送)。 */
+const DEFAULT_LIFECYCLE: SessionLifecycleSnapshot = {
+  state: "initializing",
+  detail: undefined,
+  code: undefined,
+};
 
 export interface OperationState {
   readonly pending: boolean;
@@ -61,6 +69,8 @@ export interface UsePiControlsResult {
   readonly stats: SessionStats | undefined;
   readonly commands: readonly RpcSlashCommand[] | undefined;
   readonly state: Readonly<Record<ControlOperation, OperationState>>;
+  /** 会话生命周期态(session-readiness-handshake);供门控发送/呈现连接态。 */
+  readonly lifecycle: SessionLifecycleSnapshot;
 }
 
 const NO_SUBSCRIBE = (): (() => void) => () => undefined;
@@ -210,6 +220,8 @@ export function usePiControls(
 
   // SSE 旁路 stats 优先于(更新于)REST 拉取的 stats。
   const stats = sseStats ?? restStats;
+  // 会话生命周期态:取自 control 旁路快照;无连接/无帧时回退失败安全默认(initializing)。
+  const lifecycle = controlSnapshot?.lifecycle ?? DEFAULT_LIFECYCLE;
 
   return {
     setModel,
@@ -222,5 +234,6 @@ export function usePiControls(
     stats,
     commands,
     state,
+    lifecycle,
   };
 }

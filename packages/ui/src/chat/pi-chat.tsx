@@ -102,6 +102,12 @@ export interface PiChatProps {
   /** 扩展产物基址(解析 artifact 等相对资源 URL);缺省不渲染需基址的资源。 */
   readonly extensionBaseUrl?: string;
   readonly slots?: PiChatSlots;
+  /**
+   * 会话就绪握手门控(spec session-readiness-handshake)。开启时:在收到会话 `ready` 前禁用发送、
+   * 呈现"连接中",并打开空闲控制流以接收粘性 session-status 帧;`error` 态呈现失败提示并保持禁用。
+   * **默认 false**(向后兼容:不门控,既有行为不变)。需与服务端 readinessHandshake 一致由 app 接线开启。
+   */
+  readonly gateUntilReady?: boolean;
   readonly suggestionsPresets?: ReadonlyArray<Suggestion>;
   /** suggestionsPresets 与 agent 命令的合并策略;默认 "append"(命令在前)。 */
   readonly suggestionsMerge?: SuggestionMerge;
@@ -244,6 +250,7 @@ export function PiChat({
   extension,
   extensionBaseUrl,
   slots,
+  gateUntilReady,
   suggestionsPresets,
   suggestionsMerge,
   placeholder,
@@ -489,13 +496,24 @@ export function PiChat({
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
   // 注:host/内置命令结果走**同步 HTTP 响应体**(POST /ui-rpc 直接返回),不依赖空闲控制流,
   // 故此处不因内置命令开持久控制流(避免重蹈 prompt-流冲突回归)。
-  const needsIdleControl = hasContributions || hasArtifactRpc;
+  // 就绪握手(spec session-readiness-handshake):仅当显式开启 gateUntilReady 且提供 controls 时门控
+  //(handshake-off 消费者/测试不设此 prop,行为完全不变)。sessionReady 取自 control 旁路的 lifecycle。
+  const lifecycle = controls?.lifecycle;
+  const readinessGating = gateUntilReady === true && controls !== undefined;
+  const sessionReady = !readinessGating || lifecycle?.state === "ready";
+  const sessionReadinessError =
+    readinessGating && lifecycle?.state === "error";
+  // 就绪前需开空闲控制流以接收粘性 session-status 帧(仍受 !isBusy 门控;就绪前 isBusy 不可能为真,
+  // 故不与 per-prompt 流冲突)。就绪后若无其它需求自然关闭。
+  const needsIdleControl =
+    hasContributions || hasArtifactRpc || (readinessGating && !sessionReady);
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
     return connection.openControlOnlyStream();
   }, [connection, isBusy, needsIdleControl]);
   const canSubmit =
     transport !== undefined &&
+    sessionReady &&
     (input.trim().length > 0 || attachments.items.length > 0);
 
   const doSend = React.useCallback(
@@ -771,15 +789,21 @@ export function PiChat({
     return () => document.removeEventListener("keydown", onKey);
   }, [keybindings]);
 
+  // 就绪握手:未就绪/错误时改写占位符,门控期禁用输入(Req 3.1/3.2/4.3)。
+  const readinessPlaceholder = sessionReadinessError
+    ? `会话连接失败${lifecycle?.detail ? `:${lifecycle.detail}` : ""}`
+    : readinessGating && !sessionReady
+      ? "连接中,请稍候…"
+      : undefined;
   const promptInput = (
     <PromptInput
       value={input}
       onChange={setInput}
       onSubmit={onSubmit}
-      disabled={transport === undefined}
+      disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
       rows={3}
-      placeholder={placeholder ?? DEFAULT_PLACEHOLDER}
+      placeholder={readinessPlaceholder ?? placeholder ?? DEFAULT_PLACEHOLDER}
       className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
@@ -788,8 +812,39 @@ export function PiChat({
     />
   );
 
+  // 就绪状态指示(spec session-readiness-handshake):门控开启时,就绪前显示"连接中",error 显示失败。
+  const readinessIndicator =
+    readinessGating && !sessionReady ? (
+      <div
+        className={`mb-2 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
+          sessionReadinessError
+            ? "bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
+            : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+        }`}
+        data-pi-session-readiness={
+          sessionReadinessError ? "error" : "connecting"
+        }
+        role="status"
+      >
+        <span
+          className={
+            sessionReadinessError
+              ? ""
+              : "inline-block h-2 w-2 animate-pulse rounded-full bg-current"
+          }
+          aria-hidden="true"
+        />
+        <span>
+          {sessionReadinessError
+            ? `会话连接失败${lifecycle?.detail ? `:${lifecycle.detail}` : ",请稍后重试"}`
+            : "正在连接 agent…"}
+        </span>
+      </div>
+    ) : null;
+
   const inputWithWidgets = (
     <div className="relative" data-pi-input-wrapper>
+      {readinessIndicator}
       {controls !== undefined ? (
         <div className="absolute bottom-full left-0 right-0 z-40">
           <PiCommandPalette

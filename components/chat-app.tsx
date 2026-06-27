@@ -555,6 +555,11 @@ function SessionView({
           session={session}
           controls={controls}
           extensionUI={extensionUI}
+          // 就绪握手(spec session-readiness-handshake):默认开启门控,与服务端 readinessHandshake 一致;
+          // 经公开 env 关闭(须与服务端 PI_WEB_DISABLE_READINESS_HANDSHAKE 同步)。
+          gateUntilReady={
+            process.env.NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1"
+          }
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           builtinCommands={builtinCommands}

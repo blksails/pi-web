@@ -133,6 +133,15 @@ export interface PiSessionOptions {
    * 省略时使用安全默认（全开，向后兼容）。
    */
   readonly loggingConfigProvider?: () => Promise<LoggingConfig>;
+  /**
+   * 会话就绪握手开关(spec session-readiness-handshake)。
+   * 开启时:构造后发只读探针(getCommands)判定真实就绪、维护生命周期状态机、
+   * 广播并在订阅时回放 `control: session-status` 帧。**默认关**(向后兼容:不发任何
+   * 生命周期帧、不发探针,既有行为完全不变,Req 6.2)。生产由 app 接线开启。
+   */
+  readonly readinessHandshake?: boolean;
+  /** 就绪探针超时(毫秒),默认 30000;超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
+  readonly readinessProbeTimeoutMs?: number;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */

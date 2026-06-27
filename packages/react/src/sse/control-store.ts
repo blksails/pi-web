@@ -10,6 +10,7 @@
 import type {
   ControlPayload,
   RpcExtensionUIRequest,
+  SessionLifecycleState,
   SessionStats,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
@@ -24,6 +25,16 @@ export interface QueueSnapshot {
 /** 会话级错误快照(来自 error control 帧)。 */
 export interface SessionErrorSnapshot {
   readonly message: string;
+  readonly code: string | undefined;
+}
+
+/**
+ * 会话生命周期快照(来自 session-status control 帧,spec session-readiness-handshake)。
+ * 初始 `initializing` 为**失败安全默认**:收到任何帧前默认不可发送,绝不抢跑。
+ */
+export interface SessionLifecycleSnapshot {
+  readonly state: SessionLifecycleState;
+  readonly detail: string | undefined;
   readonly code: string | undefined;
 }
 
@@ -74,9 +85,17 @@ export interface ControlSnapshot {
   readonly extensionUiQueue: readonly RpcExtensionUIRequest[];
   /** 推送类方法分流出的 ambient 状态。 */
   readonly ambient: AmbientUiSnapshot;
+  /** 会话生命周期态(session-readiness-handshake);初始 initializing(失败安全)。 */
+  readonly lifecycle: SessionLifecycleSnapshot;
 }
 
 const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
+
+const INITIAL_LIFECYCLE: SessionLifecycleSnapshot = {
+  state: "initializing",
+  detail: undefined,
+  code: undefined,
+};
 
 const EMPTY_AMBIENT: AmbientUiSnapshot = {
   notifications: [],
@@ -92,6 +111,7 @@ const INITIAL_SNAPSHOT: ControlSnapshot = {
   error: null,
   extensionUiQueue: [],
   ambient: EMPTY_AMBIENT,
+  lifecycle: INITIAL_LIFECYCLE,
 };
 
 type Listener = () => void;
@@ -173,6 +193,24 @@ export class ControlStore {
         // 实时 Node 日志帧:转发给注入的 logsStore 回调,不进 ControlSnapshot。
         if (this._onLogsFrame !== undefined) {
           this._onLogsFrame(payload.entries as LogEntry[]);
+        }
+        break;
+      case "session-status":
+        // 会话生命周期态(session-readiness-handshake):更新 lifecycle 切片。
+        // 相同态不换引用(防 useSyncExternalStore 抖动)。
+        if (
+          this.snapshot.lifecycle.state !== payload.state ||
+          this.snapshot.lifecycle.detail !== payload.detail ||
+          this.snapshot.lifecycle.code !== payload.code
+        ) {
+          this.emit({
+            ...this.snapshot,
+            lifecycle: {
+              state: payload.state,
+              detail: payload.detail,
+              code: payload.code,
+            },
+          });
         }
         break;
       default: {
