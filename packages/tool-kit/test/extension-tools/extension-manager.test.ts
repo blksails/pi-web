@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import extensionManager, { parseListLines } from "../../src/extension-tools/extension-manager.js";
+import extensionManager, { parseListLines, parseInstallArgs } from "../../src/extension-tools/extension-manager.js";
 import { gateInstall, gateMutate, checkAllowlist, DEFAULT_ALLOWLIST } from "../../src/extension-tools/gate.js";
 
 /** 捕获 registerTool/registerCommand 的假 pi（ExtensionAPI 子集）。 */
@@ -18,12 +18,13 @@ function makeFakePi() {
   return { pi, tools, commands, exec, sendUserMessage };
 }
 
-/** 假 ctx：ui spy。 */
+/** 假 ctx：ui spy + reload spy（命令 ctx 为 ExtensionCommandContext，可 reload）。 */
 function makeCtx() {
   const setStatus = vi.fn();
   const notify = vi.fn();
   const setWidget = vi.fn();
-  return { ctx: { ui: { setStatus, notify, setWidget } } as never, setStatus, notify, setWidget };
+  const reload = vi.fn(async () => {});
+  return { ctx: { ui: { setStatus, notify, setWidget }, reload } as never, setStatus, notify, setWidget, reload };
 }
 
 const ORIG = { ...process.env };
@@ -33,10 +34,12 @@ afterEach(() => {
 });
 
 describe("extension-manager 注册", () => {
-  it("注册三个工具 + reload-runtime 命令", () => {
+  it("注册三个工具 + reload-runtime + /plugin 用户向命令", () => {
     const { tools, commands } = makeFakePi();
     expect([...tools.keys()].sort()).toEqual(["install_extension", "list_extensions", "uninstall_extension"]);
-    expect(commands.has("reload-runtime")).toBe(true);
+    expect([...commands.keys()].sort()).toEqual(["plugin", "reload-runtime"]);
+    // /plugin 带子命令描述（斜杠补全面板展示）。
+    expect(commands.get("plugin").description).toContain("/plugin install");
   });
 
   it("reload-runtime 命令 handler 调 ctx.reload()", async () => {
@@ -44,6 +47,89 @@ describe("extension-manager 注册", () => {
     const reload = vi.fn(async () => {});
     await commands.get("reload-runtime").handler({}, { reload } as never);
     expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe("/plugin 用户向命令（斜杠补全面板，无面板，子命令式）", () => {
+  it("/plugin install：放行 → exec install + ctx.reload() 直接重载（不排队 followUp）", async () => {
+    process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY = "1";
+    process.env.PI_WEB_EXT_ALLOW_LOCAL = "1";
+    const { commands, exec, sendUserMessage } = makeFakePi();
+    const { ctx, setStatus, notify, reload } = makeCtx();
+
+    await commands.get("plugin").handler("install local:/tmp/x", ctx);
+
+    expect(setStatus).toHaveBeenNthCalledWith(1, "ext-install", "安装中: local:/tmp/x…");
+    expect(exec).toHaveBeenCalledWith("pi", ["install", "/tmp/x", "--no-approve"], expect.anything());
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("已安装"), "info");
+    // 命令直接 reload,不走工具的 followUp 排队。
+    expect(reload).toHaveBeenCalledOnce();
+    expect(sendUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("/plugin install … -l：解析 local 标志 → install … -l", async () => {
+    process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY = "1";
+    process.env.PI_WEB_EXT_ALLOW_LOCAL = "1";
+    const { commands, exec } = makeFakePi();
+    const { ctx } = makeCtx();
+    await commands.get("plugin").handler("install local:/tmp/x -l", ctx);
+    expect(exec).toHaveBeenCalledWith("pi", ["install", "/tmp/x", "--no-approve", "-l"], expect.anything());
+  });
+
+  it("/plugin install（缺来源）→ notify 提示来源，不 exec、不 reload", async () => {
+    process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY = "1";
+    const { commands, exec } = makeFakePi();
+    const { ctx, notify, reload } = makeCtx();
+    await commands.get("plugin").handler("install", ctx);
+    expect(exec).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("来源"), "error");
+  });
+
+  it("/plugin install：来源被拒 → 不 reload", async () => {
+    process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY = "1"; // local 未放行
+    const { commands, exec } = makeFakePi();
+    const { ctx, notify, reload } = makeCtx();
+    await commands.get("plugin").handler("install local:/tmp/x", ctx);
+    expect(exec).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("来源被拒"), "error");
+  });
+
+  it("/plugin uninstall：放行 → exec remove + ctx.reload()", async () => {
+    process.env.PI_WEB_EXT_ADMIN_ALLOW_ANY = "1";
+    const { commands, exec } = makeFakePi();
+    const { ctx, reload } = makeCtx();
+    await commands.get("plugin").handler("uninstall npm:pi-x", ctx);
+    expect(exec).toHaveBeenCalledWith("pi", ["remove", "npm:pi-x"], expect.anything());
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("/plugin list（及裸 /plugin）→ exec list → setWidget，不 reload", async () => {
+    const { commands, exec } = makeFakePi();
+    exec.mockResolvedValue({ stdout: "User packages:\n  ../pi-x", stderr: "", code: 0, killed: false });
+    const { ctx, setWidget, reload } = makeCtx();
+    await commands.get("plugin").handler("list", ctx);
+    expect(setWidget).toHaveBeenCalledWith("ext-list", expect.arrayContaining(["User packages:"]), expect.anything());
+    expect(reload).not.toHaveBeenCalled();
+    // 裸 /plugin 默认 list。
+    await commands.get("plugin").handler("", ctx);
+    expect(setWidget).toHaveBeenCalledTimes(2);
+  });
+
+  it("/plugin <未知子命令> → notify 提示用法，不 exec", async () => {
+    const { commands, exec } = makeFakePi();
+    const { ctx, notify } = makeCtx();
+    await commands.get("plugin").handler("frobnicate x", ctx);
+    expect(exec).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("未知子命令"), "error");
+  });
+
+  it("parseInstallArgs：拆来源与 -l/--local 标志", () => {
+    expect(parseInstallArgs("local:/tmp/x")).toEqual({ source: "local:/tmp/x", local: false });
+    expect(parseInstallArgs("local:/tmp/x -l")).toEqual({ source: "local:/tmp/x", local: true });
+    expect(parseInstallArgs("--local npm:@a/b@1.0.0")).toEqual({ source: "npm:@a/b@1.0.0", local: true });
+    expect(parseInstallArgs("  ")).toEqual({ source: "", local: false });
   });
 });
 

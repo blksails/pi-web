@@ -567,7 +567,7 @@ export function PiChat({
   );
 
   const onSubmit = React.useCallback((): void => {
-    // 内置命令拦截:键入完整命令(如 "/plugin install x")回车时,按 source=builtin 分派,
+    // 内置命令拦截:键入完整命令(如 "/clear")回车时,按 source=builtin 分派,
     // **绝不发给 LLM**(builtin-plugin-command Req 2.3/7.x)。匹配首段命令名。
     if (builtinCommands !== undefined && input.startsWith("/")) {
       const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
@@ -581,8 +581,34 @@ export function PiChat({
         return;
       }
     }
+
+    // agent 扩展命令拦截(source==="extension",如 /plugin):**不走 useChat**。
+    // 扩展命令在 agent 进程内本地执行后提前返回,从不发任何 message 生命周期帧(实测命令轮
+    // 仅有 extension_ui_request);若经 useChat.sendMessage 发送,会永久等不到 finish 帧而卡 busy。
+    // 故经 client.prompt fire-and-forget 直接投递(agent 照常执行命令),反馈完全靠 ctx.ui
+    // (status/notify/widget 经独立控制流到达),输入区即时复位、不进 LLM、不卡 pending。
+    if (
+      input.startsWith("/") &&
+      client !== undefined &&
+      sessionId !== undefined &&
+      controls?.commands !== undefined
+    ) {
+      const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
+      const extCmd =
+        name !== undefined && name.length > 0
+          ? controls.commands.find(
+              (c) => c.name.toLowerCase() === name && c.source === "extension",
+            )
+          : undefined;
+      if (extCmd !== undefined) {
+        void client.prompt(sessionId, { message: input }).catch(() => undefined);
+        setInput("");
+        return;
+      }
+    }
+
     doSend(input);
-  }, [doSend, input, builtinCommands, dispatchBuiltin]);
+  }, [doSend, input, builtinCommands, dispatchBuiltin, client, sessionId, controls?.commands]);
 
   const onStop = React.useCallback((): void => {
     if (controls !== undefined) void controls.abort().catch(() => undefined);

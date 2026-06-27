@@ -159,10 +159,17 @@ function buildCreate(props: ChatAppProps, source: string): CreateSessionRequest 
  */
 const EXTENSION_COMMAND_POLICY: ExtensionCommandPolicy = {
   enabled: process.env.NEXT_PUBLIC_PI_EXTENSION_COMMANDS === "all",
-  allowlist: (process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0),
+  allowlist: [
+    // 平台内置「扩展管理扩展」命令默认放行(spec extension-install-agent-tools):
+    // /plugin 经斜杠补全直接装/卸/列扩展;它们在 web 端不卡 pending —— PiChat onSubmit
+    // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
+    "plugin",
+    "reload-runtime",
+    ...(process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  ],
 };
 
 /**

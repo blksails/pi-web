@@ -190,11 +190,12 @@ export function toInstallArg(source: ExtSource): string {
   }
 }
 
-/** 门控 env 视图（便于测试注入）。 */
+/** 门控 env 视图（便于测试注入）。索引签名使 `process.env`(ProcessEnv) 可直接赋为缺省值。 */
 export interface GateEnv {
   readonly PI_WEB_EXT_ADMIN_ALLOW_ANY?: string;
   readonly PI_WEB_EXT_ALLOW_LOCAL?: string;
   readonly PI_WEB_EXT_ALLOW_NPM?: string;
+  readonly [key: string]: string | undefined;
 }
 
 export interface GateResult {
