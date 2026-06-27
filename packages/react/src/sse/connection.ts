@@ -179,14 +179,18 @@ export class PiSessionConnection {
   }
 
   /**
-   * 开一条持久的「仅 ui-rpc 控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,
-   * 见 sse-response「不影响同会话其他订阅者」)。仅把 `control: ui-rpc` 帧应用到 controlStore
-   * (派发给 ui-rpc 监听,按 correlationId 配对),其余帧(消息块 / 其他 control 子类)丢弃——
-   * 故不会与 per-prompt 流重复应用 ambient(extension-ui)帧;ui-rpc 帧即便双发也按 correlationId
-   * 去重(未知 id 丢弃)。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递。
+   * 开一条持久的「控制帧」订阅,与 per-prompt 消息流并存(服务端支持并发订阅,见 sse-response
+   * 「不影响同会话其他订阅者」)。默认仅把 `control: ui-rpc` 帧应用到 controlStore(派发给 ui-rpc
+   * 监听,按 correlationId 配对),其余帧(消息块 / 其他 control 子类)丢弃——故不会与 per-prompt
+   * 流重复应用 ambient(extension-ui)帧。用于**空闲期** Tier3 贡献点(slash/mention 等)的回包投递。
+   *
+   * `applyAmbient: true` 时额外应用 `control: extension-ui`(ctx.ui notify/status/widget)帧:用于
+   * **fire-and-forget 扩展命令**(/plugin 等)——它不开 per-prompt 流,故 ctx.ui 帧本无消费者;此时由本
+   * 流承载。调用方须保证仅在空闲期(无 per-prompt 流)启用,避免与 per-prompt 流重复应用 ambient 帧。
    * 返回 close 函数。
    */
-  openControlOnlyStream(): () => void {
+  openControlOnlyStream(opts?: { applyAmbient?: boolean }): () => void {
+    const applyAmbient = opts?.applyAmbient === true;
     const abort = new AbortController();
     const headers = mergeHeaders(this.baseHeaders, undefined, undefined);
     const url = joinUrl(
@@ -221,7 +225,11 @@ export class PiSessionConnection {
             const result = SseFrameSchema.safeParse(json);
             if (!result.success) continue;
             const frame = result.data;
-            if (frame.kind === "control" && frame.payload.control === "ui-rpc") {
+            if (
+              frame.kind === "control" &&
+              (frame.payload.control === "ui-rpc" ||
+                (applyAmbient && frame.payload.control === "extension-ui"))
+            ) {
               this.controlStore.applyControlFrame(frame.payload);
             }
           }

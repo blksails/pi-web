@@ -489,11 +489,31 @@ export function PiChat({
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
   // 注:host/内置命令结果走**同步 HTTP 响应体**(POST /ui-rpc 直接返回),不依赖空闲控制流,
   // 故此处不因内置命令开持久控制流(避免重蹈 prompt-流冲突回归)。
-  const needsIdleControl = hasContributions || hasArtifactRpc;
+  // agent 扩展命令(/plugin 等)经 fire-and-forget 投递、不开 per-prompt 消息流;其 ctx.ui 反馈
+  // (notify/setWidget)走控制帧,需有打开的下行流才能投递。故派发扩展命令时临时点亮此标志,
+  // 在有界窗口内开「仅控制」流承载反馈,窗口后自动熄灭(不变成对所有 agent 常开,避免 prompt-流回归)。
+  const [extCtrlActive, setExtCtrlActive] = React.useState(false);
+  const extCtrlTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const armExtControlStream = React.useCallback((): void => {
+    setExtCtrlActive(true);
+    if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
+    // 命令 + ctx.ui 通常数秒内完成(pi list 较慢约 10s+);给足窗口后熄灭。
+    extCtrlTimerRef.current = setTimeout(() => setExtCtrlActive(false), 30_000);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
+    },
+    [],
+  );
+
+  const needsIdleControl = hasContributions || hasArtifactRpc || extCtrlActive;
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    return connection.openControlOnlyStream();
-  }, [connection, isBusy, needsIdleControl]);
+    // 扩展命令窗口内额外承载 ctx.ui(extension-ui)帧——fire-and-forget 命令无 per-prompt 流,
+    // 否则其 notify/status/widget 无消费者(空闲期无并发 per-prompt 流,不会重复应用 ambient)。
+    return connection.openControlOnlyStream({ applyAmbient: extCtrlActive });
+  }, [connection, isBusy, needsIdleControl, extCtrlActive]);
   const canSubmit =
     transport !== undefined &&
     (input.trim().length > 0 || attachments.items.length > 0);
@@ -601,6 +621,8 @@ export function PiChat({
             )
           : undefined;
       if (extCmd !== undefined) {
+        // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
+        armExtControlStream();
         void client.prompt(sessionId, { message: input }).catch(() => undefined);
         setInput("");
         return;
@@ -608,7 +630,16 @@ export function PiChat({
     }
 
     doSend(input);
-  }, [doSend, input, builtinCommands, dispatchBuiltin, client, sessionId, controls?.commands]);
+  }, [
+    doSend,
+    input,
+    builtinCommands,
+    dispatchBuiltin,
+    client,
+    sessionId,
+    controls?.commands,
+    armExtControlStream,
+  ]);
 
   const onStop = React.useCallback((): void => {
     if (controls !== undefined) void controls.abort().catch(() => undefined);
