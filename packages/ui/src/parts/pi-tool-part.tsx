@@ -20,7 +20,7 @@
  * 字符串型 output 经 Response 富渲染。
  */
 import * as React from "react";
-import { ChevronDown, ChevronRight, Loader2, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Timer, Wrench } from "lucide-react";
 import type { UIMessage } from "ai";
 import { Card } from "../ui/card.js";
 import { Response } from "../ui/response.js";
@@ -59,6 +59,61 @@ export function phaseOf(part: ToolPart): ToolPhase {
     default:
       return "start";
   }
+}
+
+/**
+ * 把毫秒时长格式化为人读字符串。
+ * - settled=false(运行中):整秒跳动,`<秒>s`。
+ * - settled=true(已定格):精确到 0.1s,`<秒>.<十分位>s`。
+ * - ≥60s 一律用 `分:秒`(零填充秒)。
+ */
+export function formatDuration(ms: number, settled: boolean): string {
+  const totalSec = Math.max(0, ms) / 1000;
+  if (totalSec >= 60) {
+    const whole = Math.floor(totalSec);
+    const m = Math.floor(whole / 60);
+    const s = whole % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+  return settled ? `${totalSec.toFixed(1)}s` : `${Math.floor(totalSec)}s`;
+}
+
+/**
+ * 工具卡执行计时器。
+ *
+ * 仅当组件「挂载时即处于运行态(start/update)」才计时——惰性捕获开始时刻;历史
+ * 回放(直接以 end/error 态挂载)无开始锚点,返回 `label: null` 不显示。运行中每秒
+ * 驱动重渲染;进入终态时定格结束时刻,后续不再变化。
+ */
+function useToolTimer(phase: ToolPhase): {
+  label: string | null;
+  settled: boolean;
+} {
+  const isRunning = phase === "start" || phase === "update";
+  const [startedAt] = React.useState<number | null>(() =>
+    isRunning ? Date.now() : null,
+  );
+  const [endedAt, setEndedAt] = React.useState<number | null>(null);
+  const [, setNow] = React.useState(() => Date.now());
+
+  // 终态定格:有开始时刻且转入非运行态时,记录结束时刻一次。
+  React.useEffect(() => {
+    if (startedAt !== null && !isRunning && endedAt === null) {
+      setEndedAt(Date.now());
+    }
+  }, [startedAt, isRunning, endedAt]);
+
+  // 运行中每秒 tick(未计时或已定格则不开)。
+  React.useEffect(() => {
+    if (startedAt === null || !isRunning || endedAt !== null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt, isRunning, endedAt]);
+
+  if (startedAt === null) return { label: null, settled: false };
+  const settled = endedAt !== null;
+  const end = endedAt ?? Date.now();
+  return { label: formatDuration(end - startedAt, settled), settled };
 }
 
 function stringify(value: unknown): string {
@@ -136,9 +191,13 @@ export interface ToolHeaderProps {
   readonly contentId: string;
   readonly onToggle: () => void;
   readonly className?: string;
+  /** 计时器文案(运行中跳动 / 终态定格);null 不显示(如历史回放)。 */
+  readonly timerLabel?: string | null;
+  /** 计时器是否已定格(终态)。 */
+  readonly timerSettled?: boolean;
 }
 
-/** 工具卡头部:折叠触发器 + 工具名 + 状态徽章。 */
+/** 工具卡头部:折叠触发器 + 工具名 + 计时器 + 状态徽章。 */
 export function ToolHeader({
   name,
   phase,
@@ -146,6 +205,8 @@ export function ToolHeader({
   contentId,
   onToggle,
   className,
+  timerLabel,
+  timerSettled = false,
 }: ToolHeaderProps): React.JSX.Element {
   const isError = phase === "error";
   return (
@@ -168,19 +229,31 @@ export function ToolHeader({
       <span className="font-medium" data-pi-tool-name-label>
         {name}
       </span>
-      <span
-        className={cn(
-          "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs",
-          isError
-            ? "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
-            : "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]",
-        )}
-        data-pi-tool-status
-      >
-        {phase === "update" ? (
-          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+      <span className="ml-auto flex items-center gap-2">
+        {timerLabel != null ? (
+          <span
+            className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-[hsl(var(--muted-foreground))]"
+            data-pi-tool-timer
+            data-pi-tool-timer-settled={timerSettled ? "true" : "false"}
+          >
+            <Timer className="h-3 w-3" aria-hidden="true" />
+            {timerLabel}
+          </span>
         ) : null}
-        {PHASE_LABEL[phase]}
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs",
+            isError
+              ? "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
+              : "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]",
+          )}
+          data-pi-tool-status
+        >
+          {phase === "update" ? (
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+          ) : null}
+          {PHASE_LABEL[phase]}
+        </span>
       </span>
     </button>
   );
@@ -308,6 +381,8 @@ export function PiToolPart({
   const [userOverride, setUserOverride] = React.useState<boolean | null>(null);
   const open = userOverride ?? autoOpen;
   const onToggle = () => setUserOverride(!open);
+  // 执行计时:运行中逐秒跳动,终态定格总耗时;历史回放(直接终态挂载)不计时。
+  const timer = useToolTimer(phase);
 
   let detail: React.ReactNode;
   if (phase === "error") {
@@ -353,6 +428,8 @@ export function PiToolPart({
         open={open}
         contentId={contentId}
         onToggle={onToggle}
+        timerLabel={timer.label}
+        timerSettled={timer.settled}
       />
       <ToolContent id={contentId} open={open} isError={isError}>
         {detail}

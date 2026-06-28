@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, act } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import {
   PiToolPart,
@@ -7,6 +7,7 @@ import {
   ToolContent,
   ToolInput,
   ToolOutput,
+  formatDuration,
 } from "../../src/parts/pi-tool-part.js";
 import {
   toolStartPart,
@@ -133,6 +134,74 @@ describe("PiToolPart 四态", () => {
     const detail = document.getElementById(controls as string);
     expect(detail).toHaveAttribute("data-pi-tool-detail");
     expect(detail?.textContent).toContain('"hits": 3');
+  });
+});
+
+describe("formatDuration", () => {
+  it("运行中整秒,定格精确到 0.1s", () => {
+    expect(formatDuration(0, false)).toBe("0s");
+    expect(formatDuration(3400, false)).toBe("3s");
+    expect(formatDuration(3400, true)).toBe("3.4s");
+  });
+
+  it("≥60s 用 分:秒(零填充)", () => {
+    expect(formatDuration(65000, false)).toBe("1:05");
+    expect(formatDuration(125000, true)).toBe("2:05");
+  });
+
+  it("负值兜底为 0", () => {
+    expect(formatDuration(-100, false)).toBe("0s");
+  });
+});
+
+describe("PiToolPart 执行计时器", () => {
+  it("运行态:挂载显示 0s 并随时间逐秒跳动(未定格)", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(<PiToolPart part={toolStartPart("gen", {})} />);
+      const timer = container.querySelector("[data-pi-tool-timer]");
+      expect(timer).not.toBeNull();
+      expect(timer?.textContent).toContain("0s");
+      expect(timer).toHaveAttribute("data-pi-tool-timer-settled", "false");
+
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(
+        container.querySelector("[data-pi-tool-timer]")?.textContent,
+      ).toContain("3s");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("历史回放(直接以 end 态挂载)不计时", () => {
+    const { container } = render(
+      <PiToolPart part={toolEndPart("gen", {}, { ok: 1 })} />,
+    );
+    expect(container.querySelector("[data-pi-tool-timer]")).toBeNull();
+  });
+
+  it("start→end:计时定格总耗时(0.1s 精度)并标记 settled", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(
+        <PiToolPart part={toolStartPart("gen", {})} />,
+      );
+      act(() => {
+        vi.advanceTimersByTime(4200);
+      });
+      rerender(<PiToolPart part={toolEndPart("gen", {}, { ok: 1 })} />);
+      // 推进定格 effect。
+      act(() => {});
+
+      const timer = container.querySelector("[data-pi-tool-timer]");
+      expect(timer).not.toBeNull();
+      expect(timer).toHaveAttribute("data-pi-tool-timer-settled", "true");
+      expect(timer?.textContent).toContain("4.2s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
