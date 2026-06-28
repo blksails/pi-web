@@ -11,6 +11,7 @@ import type {
   ControlPayload,
   RpcExtensionUIRequest,
   SessionLifecycleState,
+  SessionSnapshot,
   SessionStats,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
@@ -87,6 +88,13 @@ export interface ControlSnapshot {
   readonly ambient: AmbientUiSnapshot;
   /** 会话生命周期态(session-readiness-handshake);初始 initializing(失败安全)。 */
   readonly lifecycle: SessionLifecycleSnapshot;
+  /**
+   * 服务端权威会话快照(session-snapshot-authority);收到 session-state 帧前为 undefined。
+   * 唯一权威投影:busy/stats 据此派生,前端不再从消息流 status 时序推断。
+   */
+  readonly session: SessionSnapshot | undefined;
+  /** 轮次是否进行中(权威 busy,来自 session.busy);无快照时为 false(失败安全)。 */
+  readonly busy: boolean;
 }
 
 const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
@@ -112,6 +120,8 @@ const INITIAL_SNAPSHOT: ControlSnapshot = {
   extensionUiQueue: [],
   ambient: EMPTY_AMBIENT,
   lifecycle: INITIAL_LIFECYCLE,
+  session: undefined,
+  busy: false,
 };
 
 type Listener = () => void;
@@ -213,6 +223,21 @@ export class ControlStore {
           });
         }
         break;
+      case "session-state": {
+        // 权威快照帧(session-snapshot-authority):吸收 snapshot 成为唯一权威投影。
+        // busy 来自 snapshot.busy(替代 useChat.status 时序推断);stats 据快照同步(单一来源,
+        // 不再 REST 双源 merge);lifecycle 的 detail/code 仍由 session-status 帧承载,过渡期一致,
+        // 故此处不覆写 lifecycle 切片。服务端仅在变更时广播本帧,直接 emit 即可。
+        const snap = payload.snapshot;
+        const nextStats = (snap.stats as SessionStats | undefined) ?? this.snapshot.stats;
+        this.emit({
+          ...this.snapshot,
+          session: snap,
+          busy: snap.busy,
+          stats: nextStats,
+        });
+        break;
+      }
       default: {
         const _exhaustive: never = payload;
         void _exhaustive;

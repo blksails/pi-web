@@ -25,8 +25,7 @@ import {
   type LogHistoryFetcher,
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
-import { PiUiPart } from "../parts/pi-ui-part.js";
-import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
+import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import type { PiChatSlots } from "./slots.js";
 import {
   ChatError,
@@ -334,9 +333,9 @@ export function PiChat({
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
-    registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
-    // 统一命令层:ctx.ui.custom 的声明式接收路径(注册名→组件;桥接为外部依赖,声明式兜底)。
-    registry.registerDataPartRenderer("data-pi-custom-ui", CustomUiDataPart);
+    // pi-web 自定义 data-part(data-pi-ui / data-pi-custom-ui)经单一真相源 PART_KINDS 遍历注册
+    //(session-snapshot-authority STEP4):不可能漏注册,孤儿渲染器由契约测试静态排除(Req 6.4/6.5)。
+    registerBuiltinDataPartRenderers(registry);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -478,11 +477,17 @@ export function PiChat({
     void models.ensureLoaded().catch(() => undefined);
   }, [sessionId, models]);
 
-  const isBusy = status === "submitted" || status === "streaming";
+  // 权威 busy(session-snapshot-authority):有 session-state 快照时取服务端权威 busy
+  //(纯投影,不再从 useChat.status 时序推断);无快照(legacy / 机制关闭)时回退到 status,
+  // 行为完全不变。这一改根治「扩展命令不发 agent_end → 永久卡 busy」(busy 由轮次边界权威派生)。
+  const isBusy =
+    controls?.session !== undefined
+      ? controls.busy
+      : status === "submitted" || status === "streaming";
 
-  // 内核用量区数据填充:服务端不主动推送 stats 控制帧,故按"重新拉取"策略
-  // (需求 3.1)填充 controls.stats —— 会话就绪拉取一次,每轮回复结束
-  // (streaming → idle)再拉取一次,保持用量(tokens/cost/messages/toolCalls)最新。
+  // 内核用量区数据填充:stats 的**读**单一取自权威快照(controls.stats,由 stats 帧 / session-state
+  // 同步喂),不再双源 merge;此处仅以**事件驱动**(会话就绪一次 + 轮次结束一次,非定时轮询)
+  // 触发 getStats 让 agent 刷新用量(随即经 session-state 广播给所有订阅者)。
   const statsWasBusyRef = React.useRef<boolean>(false);
   const statsSessionRef = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
