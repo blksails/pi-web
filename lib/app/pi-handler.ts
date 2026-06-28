@@ -257,6 +257,8 @@ function buildSingleton(): HandlerSingleton {
   // 使前端在 agent 真正就绪前门控发送、就绪通告经粘性 session-status 帧投递。可经 env 关闭以回退。
   // snapshotAuthority: 开启会话权威快照(spec session-snapshot-authority) —— 仅生产 app 接线开启,
   // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
+  // ⚠ 与 readinessHandshake 存在耦合:lifecycle 仅经 setLifecycle 入快照(后者在握手关闭时早返回),
+  // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
   const manager = new SessionManager({
     store,
     idleMs: 0,

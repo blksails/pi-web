@@ -226,13 +226,16 @@ export class PiSessionConnection {
             const result = SseFrameSchema.safeParse(json);
             if (!result.success) continue;
             const frame = result.data;
-            // 空闲控制流默认应用 ui-rpc(Tier3 回包)与 session-status(就绪握手粘性帧);
-            // applyAmbient 时额外应用 extension-ui(fire-and-forget 扩展命令的 ctx.ui 帧)。
-            // 其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
+            // 空闲控制流默认应用 ui-rpc(Tier3 回包)、session-status(就绪握手粘性帧)与
+            // session-state(权威快照粘性帧,session-snapshot-authority);applyAmbient 时额外应用
+            // extension-ui。其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
+            // session-state 安全可放:busy 转换主要经 per-prompt 流投递(handleEvent 应用全部 control
+            // 帧),空闲流转发仅为让就绪前/空闲/重连客户端经粘性回放收敛(检阅 P1,Req 4.1)。
             if (
               frame.kind === "control" &&
               (frame.payload.control === "ui-rpc" ||
                 frame.payload.control === "session-status" ||
+                frame.payload.control === "session-state" ||
                 (applyAmbient && frame.payload.control === "extension-ui"))
             ) {
               this.controlStore.applyControlFrame(frame.payload);

@@ -10,7 +10,10 @@
  * 注:consume:"stream" 的 kind(queue/compaction/auto-retry)由上层 UI 直接消费,不在此注册;
  * data-source/data-sources 为 AI SDK 标准 part(非 pi-web 自定义 PART_KINDS),仍由 pi-chat 单独注册。
  */
-import { REGISTRY_PART_KINDS, type PartKind } from "@blksails/pi-web-protocol";
+import {
+  REGISTRY_PART_KINDS,
+  type RegistryPartKind,
+} from "@blksails/pi-web-protocol";
 import type {
   DataPartRenderer,
   RendererRegistry,
@@ -20,13 +23,11 @@ import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
 
 /**
  * PART_KINDS 中 consume:"registry" 类 kind → 渲染组件的映射(单一真相源的前端对侧)。
- * 类型 `Record<...>` 要求覆盖全部 registry 类 kind:新增一个 registry kind 而忘记在此补渲染器,
- * 编译期(类型不全)或契约测试(运行期遍历)即报错。
+ * `Record<RegistryPartKind, …>` 在**编译期**强制覆盖全部 registry 类 kind:新增一个 registry
+ * kind 而忘记在此补渲染器 → tsc 报 missing property(STEP4 静态保证,Req 6.5);契约测试(运行期)
+ * 进一步双保险。
  */
-export const BUILTIN_DATA_PART_RENDERERS: Record<
-  (typeof REGISTRY_PART_KINDS)[number],
-  DataPartRenderer
-> = {
+export const BUILTIN_DATA_PART_RENDERERS: Record<RegistryPartKind, DataPartRenderer> = {
   "data-pi-ui": PiUiPart,
   "data-pi-custom-ui": CustomUiDataPart,
 };
@@ -34,9 +35,7 @@ export const BUILTIN_DATA_PART_RENDERERS: Record<
 /** 遍历 PART_KINDS 的 registry 类 kind,把内置渲染器注册进给定 registry(Req 6.4)。 */
 export function registerBuiltinDataPartRenderers(registry: RendererRegistry): void {
   for (const kind of REGISTRY_PART_KINDS) {
-    const renderer = BUILTIN_DATA_PART_RENDERERS[kind as PartKind];
-    if (renderer !== undefined) {
-      registry.registerDataPartRenderer(kind, renderer);
-    }
+    // RegistryPartKind 已由类型保证在映射中存在,直接注册(无需 undefined 守卫)。
+    registry.registerDataPartRenderer(kind, BUILTIN_DATA_PART_RENDERERS[kind]);
   }
 }

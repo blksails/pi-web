@@ -90,6 +90,9 @@ export function mockControls(
     commands: undefined,
     state,
     lifecycle: { state: "ready", detail: undefined, code: undefined },
+    // session-snapshot-authority:权威 busy/session 投影,默认空闲、无快照(可经 overrides 注入)。
+    busy: false,
+    session: undefined,
     ...overrides,
   };
 }

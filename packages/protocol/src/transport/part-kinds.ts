@@ -68,7 +68,16 @@ export const PART_KINDS = {
 /** 受检的 data-part kind 联合(由 PART_KINDS 键派生;拼错即编译期报错)。 */
 export type PartKind = keyof typeof PART_KINDS;
 
-/** 经渲染器注册表分发的 kind 列表(consume:"registry");契约测试据此断言无孤儿。 */
-export const REGISTRY_PART_KINDS: readonly PartKind[] = (
+/**
+ * consume:"registry" 的 kind 子集——**类型层收窄**(映射条件类型),不是运行期 filter。
+ * 用它给前端渲染器映射 `Record<RegistryPartKind, …>`,使「新增 registry kind 却忘记渲染器」
+ * 在**编译期**即报 missing property(STEP4 静态保证的方向正确性,Req 6.5)。
+ */
+export type RegistryPartKind = {
+  [K in PartKind]: (typeof PART_KINDS)[K]["consume"] extends "registry" ? K : never;
+}[PartKind];
+
+/** 经渲染器注册表分发的 kind 列表(运行期,供契约测试遍历);元素类型收窄为 RegistryPartKind。 */
+export const REGISTRY_PART_KINDS: readonly RegistryPartKind[] = (
   Object.keys(PART_KINDS) as PartKind[]
-).filter((k) => PART_KINDS[k].consume === "registry");
+).filter((k): k is RegistryPartKind => PART_KINDS[k].consume === "registry");

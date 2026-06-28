@@ -100,6 +100,20 @@ describe("PiSession snapshot authority", () => {
     expect(busyFalseAtEndIdx).toBeLessThan(finishIdx);
   });
 
+  it("resets busy=false on stop/cleanup mid-turn (crash/stop must not leave busy=true)", async () => {
+    // 检阅 MED:崩溃/中途停止不经 agent_end,若不显式复位,权威快照以 busy=true 收尾,
+    // 纯投影前端永久显示忙碌。cleanup 须把 busy 复位为 false。
+    const ch = new MockChannel();
+    const s = newSession(ch, true);
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+    ch.emitEvent(start); // busy=true
+    await s.stop();
+    const seq = sessionStateSnapshots(frames).map((snap) => snap.busy);
+    expect(seq).toContain(true); // 轮次曾开始
+    expect(seq.at(-1)).toBe(false); // 停止后末态 busy=false(不卡死)
+  });
+
   it("emits NO session-state frames when authority is off (legacy back-compat)", () => {
     const ch = new MockChannel();
     const s = newSession(ch, false);

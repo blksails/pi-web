@@ -304,7 +304,20 @@ export class PiSession {
    * 引用相同(纯归约返回原引用)或逐字段相等时为 no-op。
    */
   private applySnapshot(next: SessionSnapshot): void {
-    if (next === this._snapshot) return;
+    // 逐字段相等即 no-op(Req 1.2「字段变更才广播」):避免 getStats/setModel 等重复响应
+    // 产生冗余 session-state 帧 churn 前端投影。turn/stats/model 用引用比较(归约/缓存每次新对象)。
+    const cur = this._snapshot;
+    if (
+      next === cur ||
+      (next.lifecycle === cur.lifecycle &&
+        next.busy === cur.busy &&
+        next.turn === cur.turn &&
+        next.stats === cur.stats &&
+        next.model === cur.model &&
+        next.title === cur.title)
+    ) {
+      return;
+    }
     this._snapshot = next;
     // 始终维护内部权威态;仅在机制开启时广播帧 + 更新粘性表(关闭=legacy 零回归)。
     if (this.snapshotAuthority) {
@@ -749,8 +762,9 @@ export class PiSession {
         break;
       case "get_session_stats":
         this.cache = { ...(this.cache ?? {}), stats: data, updatedAt: now };
-        // 单一权威:stats 同步入快照(仅对象形态;非对象不污染,前端 safeParse 亦会拦)。
-        if (typeof data === "object" && data !== null) {
+        // 单一权威:stats 同步入快照(仅 plain object;数组/非对象不污染,否则前端 safeParse 会
+        // 连带丢掉整条 session-state 帧——含 busy/lifecycle,见检阅 MED)。
+        if (typeof data === "object" && data !== null && !Array.isArray(data)) {
           this.setSnapshot({ stats: data as Record<string, unknown> });
         }
         break;
@@ -874,6 +888,10 @@ export class PiSession {
       // 0) 生命周期终态(spec session-readiness-handshake,Req 5.2):置 ended 并广播
       //    (终态守卫:error/exit-before-ready 已是终态则保持不变;须在 removeAllListeners 前)。
       this.setLifecycle("ended");
+      // 0b) 权威 busy 终态复位(session-snapshot-authority,Req 2.2「轮次以任意方式结束→busy=false」):
+      //     崩溃/中途停止不经 handleEvent/reduceSnapshot(不会收到 agent_end),故此处显式复位,
+      //     避免最后一帧 session-state 以 busy=true 收尾让纯投影前端永久显示忙碌。须在 removeAllListeners 前。
+      this.setSnapshot({ busy: false });
       // 1) 清 idle 计时(Stopping 首步)+ 就绪握手计时器。
       if (this.idleTimer !== undefined) {
         clearTimeout(this.idleTimer);
