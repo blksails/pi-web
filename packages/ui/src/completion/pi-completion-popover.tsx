@@ -7,7 +7,7 @@
  *
  * completion-cursor-anchor:
  *  - 浮层按活跃触发符处的 caret 像素坐标 fixed 锚定(默认光标下方,空间不足翻转上方)。
- *  - 键盘导航 ↑↓/Enter/Esc(复用 PiCommandPalette 的 document keydown 捕获范式),跨 kind
+ *  - 键盘导航 ↑↓/Enter|Tab/Esc(复用 PiCommandPalette 的 document keydown 捕获范式),跨 kind
  *    分组维护单一线性高亮;Esc 经 dismiss 关闭(不清空输入),token 变化重新可弹。
  *  - 选中后按 accept() 的 nextCursor 经 setSelectionRange 复位光标(支持文本中间插入)。
  */
@@ -117,7 +117,7 @@ export function PiCompletionPopover({
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActive((i) => nextActiveIndex(i, selectable.length, -1));
-      } else if (e.key === "Enter") {
+      } else if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         const item = selectable[Math.min(activeClamped, selectable.length - 1)];
         if (item !== undefined) select(item);

@@ -171,6 +171,19 @@ describe("PiCommandPalette", () => {
     expect(screen.getByTestId("value")).toHaveTextContent("/model");
   });
 
+  it("Tab 与回车等价:确认当前高亮命令", async () => {
+    const user = userEvent.setup();
+    const controls = mockControls({ commands: sampleCommands() });
+    render(<Harness controls={controls} />);
+    const input = screen.getByLabelText("prompt");
+    input.focus();
+    const options = await screen.findAllByRole("option");
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Tab}");
+    expect(screen.getByTestId("value")).toHaveTextContent("/model");
+  });
+
   it("controls 引用每渲染都变化时不陷入无限 setState 循环(React #185 回归)", () => {
     // 复现 usePiControls 的返回形状:controls 对象每渲染都是新引用(state 在 setOp 时
     // 真实变化),但 getCommands 是稳定记忆引用。getCommands 触发宿主重渲染(模拟

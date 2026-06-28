@@ -150,6 +150,22 @@ describe("PiCompletionPopover 键盘导航", () => {
     expect(spy).toHaveBeenCalled();
   });
 
+  it("Tab 与 Enter 等价:选中当前高亮 → onChange 写回 token", async () => {
+    const client = makeClient([fileItem("alpha"), fileItem("beta")]);
+    const { getByTestId } = await renderOpen(client);
+    await flush();
+    const ta = getByTestId("ta") as HTMLTextAreaElement;
+
+    // 下移到第二项再 Tab。
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "ArrowDown" });
+    });
+    await act(async () => {
+      fireEvent.keyDown(document, { key: "Tab" });
+    });
+    expect(ta.value).toMatch(/@file:beta\s/);
+  });
+
   it("Esc 关闭浮层(不清空输入)", async () => {
     const client = makeClient([fileItem("alpha")]);
     const { container, getByTestId } = await renderOpen(client);
