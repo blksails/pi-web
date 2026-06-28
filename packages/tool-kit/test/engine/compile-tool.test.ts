@@ -252,4 +252,42 @@ describe("compileTool", () => {
     expect(details.assets.length).toBeGreaterThan(0);
     expect(details.assets[0]?.attachmentId).toBe("att_test01");
   });
+
+  it("出图后先发乐观预览 preliminary 帧(原始 URL),最终帧用签名 URL 覆盖", async () => {
+    const ctx = makeMockCtx(true);
+    const fetchImpl = makeImageFetch();
+    const deps: CompileDeps = { getCtx: () => ctx, fetchImpl };
+
+    const onUpdate = vi.fn();
+    const compiled = compileTool(MOCK_TOOL, deps);
+    const result = await compiled.execute(
+      "call-id",
+      { prompt: "hello" },
+      undefined,
+      onUpdate,
+      {} as never,
+    );
+
+    // 预览帧:provider 出图后、落库前发出一次,承载原始网关 URL、attachmentId 为空。
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    const preview = onUpdate.mock.calls[0]?.[0] as {
+      details: {
+        ok: true;
+        assets: { attachmentId: string; displayUrl: string }[];
+      };
+    };
+    expect(preview.details.ok).toBe(true);
+    expect(preview.details.assets[0]?.attachmentId).toBe("");
+    expect(preview.details.assets[0]?.displayUrl).toBe(
+      "https://example.com/img.png",
+    );
+
+    // 最终帧:真实 attachmentId + 签名 displayUrl 覆盖预览。
+    const details = result.details as {
+      ok: true;
+      assets: { attachmentId: string; displayUrl: string }[];
+    };
+    expect(details.assets[0]?.attachmentId).toBe("att_test01");
+    expect(details.assets[0]?.displayUrl).toBe("http://localhost/att/test01");
+  });
 });

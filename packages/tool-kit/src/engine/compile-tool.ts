@@ -28,7 +28,12 @@ import { checkRequiredVars } from "./var-resolver.js";
 import { runEndpoint } from "./endpoint-adapter.js";
 import { normalizeImageDataUri } from "./normalize-image.js";
 import { getAttachmentToolContext } from "../attachment/seam.js";
-import { persistPicked, resolveInputToDataUri } from "../attachment/persist.js";
+import {
+  persistPicked,
+  previewAssetsFromPicked,
+  resolveInputToDataUri,
+  type PersistedAsset,
+} from "../attachment/persist.js";
 import type {
   ToolSpec,
   JsonSchemaProp,
@@ -324,12 +329,47 @@ async function resolveRequiredParams(
 
 // ── 执行核心函数(便于 execute 保持简洁) ─────────────────────────────────────
 
+/**
+ * 把一组(预览/已落库)资产组装成成功的 {@link ExecuteResult}。
+ * preview=true 表示尚未落库(attachmentId 为空、displayUrl 是原始网关 URL),用于
+ * provider 出图后、persist 完成前的乐观预览中间帧;最终帧用签名 displayUrl 覆盖。
+ */
+function buildImageResult(
+  assets: PersistedAsset[],
+  model: string,
+  opts: { preview?: boolean } = {},
+): ExecuteResult {
+  const headline = opts.preview
+    ? `图像已生成:${assets.length} 张,正在保存…`
+    : `生成成功:${assets.length} 张图像已保存 (${assets
+        .map((a) => a.attachmentId)
+        .join(", ")})。`;
+  const summaryLines = [
+    headline,
+    ...assets.map((a) => `![${a.name}](${a.displayUrl})`),
+  ];
+  return {
+    content: [{ type: "text", text: summaryLines.join("\n") }],
+    details: {
+      ok: true,
+      model,
+      assets: assets.map((a) => ({
+        attachmentId: a.attachmentId,
+        displayUrl: a.displayUrl,
+        mimeType: a.mimeType,
+        name: a.name,
+      })),
+    },
+  };
+}
+
 async function runExecute(
   tool: ToolSpec,
   deps: CompileDeps | undefined,
   params: Record<string, unknown>,
   signal: AbortSignal | undefined,
   ext: ExtensionContext | undefined,
+  onUpdate?: (partial: ExecuteResult) => void,
 ): Promise<ExecuteResult> {
   // ── 提取 model 选择器,其余参数进合并;model 一并纳入必选项补全候选 ──────────
   const { model: modelArg, ...llmArgs } = params as Record<string, unknown> & {
@@ -385,6 +425,17 @@ async function runExecute(
       fetchImpl: deps?.fetchImpl,
     });
 
+    // 乐观预览 + 进度反馈:provider 已出图,persist(下载+落库+签名)是紧接着的额外
+    // 重活,会让"完成态"滞后于实际出图。出图后立刻发一个 preliminary 帧(原始网关
+    // URL),工具卡即翻 Streaming 并秒显图;随后 persist 完成,end 帧用签名 URL 覆盖。
+    // preliminary 帧只供 UI 流式展示,不进模型上下文,故承载会过期的网关 URL 是安全的。
+    if (onUpdate) {
+      const preview = previewAssetsFromPicked(picked, tool.name);
+      if (preview.length > 0) {
+        onUpdate(buildImageResult(preview, route.model, { preview: true }));
+      }
+    }
+
     const assets = await persistPicked(picked, ctx, {
       fetchImpl: deps?.fetchImpl,
       namePrefix: tool.name,
@@ -403,25 +454,7 @@ async function runExecute(
     // 注:displayUrl 须经 content 传到前端 —— pi 的 tool result 消息流只携带 content,
     // details(结构化明细)不进消息流到前端;故产物引用随 content 走,aigc web-ext renderer
     // 据此从 content 提取 displayUrl 渲染 <img>(默认卡片回退为 JSON/文本)。
-    const attIds = assets.map((a) => a.attachmentId).join(", ");
-    const summaryLines = [
-      `生成成功:${assets.length} 张图像已保存 (${attIds})。`,
-      ...assets.map((a) => `![${a.name}](${a.displayUrl})`),
-    ];
-
-    return {
-      content: [{ type: "text", text: summaryLines.join("\n") }],
-      details: {
-        ok: true,
-        model: route.model,
-        assets: assets.map((a) => ({
-          attachmentId: a.attachmentId,
-          displayUrl: a.displayUrl,
-          mimeType: a.mimeType,
-          name: a.name,
-        })),
-      },
-    };
+    return buildImageResult(assets, route.model);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -455,10 +488,17 @@ export function compileTool(
       _toolCallId: string,
       params: Record<string, unknown>,
       signal: AbortSignal | undefined,
-      _onUpdate: unknown,
+      onUpdate: unknown,
       ext: ExtensionContext,
     ): Promise<ExecuteResult> {
-      return runExecute(tool, deps, params, signal, ext);
+      // pi 把 onUpdate(partialResult)→ tool_execution_update 事件 → 前端 preliminary
+      // 工具帧。透传它,让出图与落库之间能流式反馈(见 runExecute 乐观预览)。
+      const emit =
+        typeof onUpdate === "function"
+          ? (partial: ExecuteResult) =>
+              (onUpdate as (p: ExecuteResult) => void)(partial)
+          : undefined;
+      return runExecute(tool, deps, params, signal, ext, emit);
     },
   });
 }

@@ -38,45 +38,62 @@ export async function persistPicked(
 ): Promise<PersistedAsset[]> {
   const { fetchImpl = globalThis.fetch, namePrefix = "aigc" } = opts;
 
-  // Normalise to a flat list of URLs for the kinds we handle in Wave 1.
-  let urls: ReadonlyArray<string>;
-  switch (picked.kind) {
-    case "image":
-      urls = [picked.url];
-      break;
-    case "image-set":
-      urls = picked.urls;
-      break;
-    // Wave 1: other kinds (video, audio, text, choices, raw) are not persisted.
-    default:
-      return [];
-  }
+  const urls = pickedImageUrls(picked);
+  // Wave 1: non-image kinds (video, audio, text, choices, raw) are not persisted.
+  if (urls === null) return [];
 
-  const assets: PersistedAsset[] = [];
+  // Parallel fetch + persist. Serial download made the per-image latency stack up,
+  // so the tool's completion lagged well behind the provider actually returning the
+  // images. Promise.all keeps result order aligned with input order (stable naming
+  // index); any rejection fails the whole call → caught by runExecute's top-level
+  // try/catch → no partial references are returned (Req 3.1).
+  return Promise.all(
+    urls.map(async (url, i) => {
+      const resp = await fetchImpl(url);
+      if (!resp.ok) {
+        throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
+      }
+      const mimeType = detectMimeType(resp, url);
+      const ext = extFromMime(mimeType);
+      const name = `${namePrefix}-${i}.${ext}`;
+      const bytes = new Uint8Array(await resp.arrayBuffer());
+      const ref = await ctx.putOutput({ bytes, name, mimeType });
+      return {
+        attachmentId: ref.attachmentId,
+        displayUrl: ref.displayUrl,
+        mimeType: ref.mimeType,
+        name: ref.name,
+      };
+    }),
+  );
+}
 
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i] as string;
-    const resp = await fetchImpl(url);
-    if (!resp.ok) {
-      throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
-    }
-
-    const mimeType = detectMimeType(resp, url);
+/**
+ * Optimistic-preview assets built straight from a picked result — the raw gateway
+ * URLs, BEFORE download + persist. Lets a tool emit a preliminary frame so the UI
+ * shows the freshly-generated image immediately while persistence runs in the
+ * background. The final {@link persistPicked} assets (signed `/api` displayUrls)
+ * replace these on completion.
+ *
+ * `attachmentId` is empty (not stored yet); `mimeType`/`name` are guessed from the
+ * URL. Returns `[]` for non-image kinds (nothing to preview).
+ */
+export function previewAssetsFromPicked(
+  picked: PickedResult,
+  namePrefix = "aigc",
+): PersistedAsset[] {
+  const urls = pickedImageUrls(picked);
+  if (urls === null) return [];
+  return urls.map((url, i) => {
+    const mimeType = mimeFromUrl(url);
     const ext = extFromMime(mimeType);
-    const name = `${namePrefix}-${i}.${ext}`;
-
-    const bytes = new Uint8Array(await resp.arrayBuffer());
-    const ref = await ctx.putOutput({ bytes, name, mimeType });
-
-    assets.push({
-      attachmentId: ref.attachmentId,
-      displayUrl: ref.displayUrl,
-      mimeType: ref.mimeType,
-      name: ref.name,
-    });
-  }
-
-  return assets;
+    return {
+      attachmentId: "",
+      displayUrl: url,
+      mimeType,
+      name: `${namePrefix}-${i}.${ext}`,
+    };
+  });
 }
 
 /**
@@ -96,6 +113,22 @@ export async function resolveInputToDataUri(
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Flatten a picked result to its image-URL list, or `null` for non-image kinds.
+ * Single source of truth for "which kinds carry persistable imagery", shared by
+ * {@link persistPicked} and {@link previewAssetsFromPicked}.
+ */
+function pickedImageUrls(picked: PickedResult): ReadonlyArray<string> | null {
+  switch (picked.kind) {
+    case "image":
+      return [picked.url];
+    case "image-set":
+      return picked.urls;
+    default:
+      return null;
+  }
+}
 
 function detectMimeType(resp: Response, url: string): string {
   const ct = resp.headers.get("content-type");

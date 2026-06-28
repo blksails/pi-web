@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { persistPicked, resolveInputToDataUri } from "../../src/attachment/persist.js";
+import {
+  persistPicked,
+  previewAssetsFromPicked,
+  resolveInputToDataUri,
+} from "../../src/attachment/persist.js";
 import type { AttachmentToolContext, AttachmentToolHandle, ToolOutputRef } from "@blksails/pi-web-agent-kit";
 import type { PickedResult } from "../../src/engine/types.js";
 
@@ -127,6 +131,83 @@ describe("persistPicked — image-set", () => {
     };
 
     await expect(persistPicked(picked, ctx, { fetchImpl })).rejects.toThrow("store failure");
+  });
+
+  it("fetches in parallel yet preserves input order on out-of-order completion", async () => {
+    const { ctx } = makeCtx();
+
+    // url[0] (a.png) resolves AFTER url[1] (b.jpg). A serial loop would only have
+    // issued the first fetch by now; Promise.all issues both up-front and still
+    // aligns results by index.
+    let resolveFirst!: (r: Response) => void;
+    const firstPending = new Promise<Response>((res) => {
+      resolveFirst = res;
+    });
+    const fetchImpl = vi
+      .fn()
+      .mockReturnValueOnce(firstPending)
+      .mockResolvedValueOnce(makeImageResponse("image/jpeg"));
+
+    const picked: PickedResult = {
+      kind: "image-set",
+      urls: ["https://cdn.example.com/a.png", "https://cdn.example.com/b.jpg"],
+    };
+
+    const promise = persistPicked(picked, ctx, { fetchImpl });
+
+    // Both fetches dispatched before either resolves → parallel (regression anchor:
+    // the old serial loop would be 1 here).
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+
+    resolveFirst(makeImageResponse("image/png"));
+    const assets = await promise;
+
+    expect(assets[0]?.name).toBe("aigc-0.png");
+    expect(assets[1]?.name).toBe("aigc-1.jpg");
+  });
+});
+
+describe("previewAssetsFromPicked", () => {
+  it("maps image-set urls to raw-url preview assets (empty attachmentId, ordered names)", () => {
+    const picked: PickedResult = {
+      kind: "image-set",
+      urls: ["https://cdn.example.com/a.png", "https://cdn.example.com/b.jpg"],
+    };
+
+    const assets = previewAssetsFromPicked(picked, "gen");
+
+    expect(assets).toHaveLength(2);
+    expect(assets[0]).toMatchObject({
+      attachmentId: "",
+      displayUrl: "https://cdn.example.com/a.png",
+      mimeType: "image/png",
+      name: "gen-0.png",
+    });
+    expect(assets[1]).toMatchObject({
+      attachmentId: "",
+      displayUrl: "https://cdn.example.com/b.jpg",
+      mimeType: "image/jpeg",
+      name: "gen-1.jpg",
+    });
+  });
+
+  it("handles a single image kind and guesses mime from the url", () => {
+    const assets = previewAssetsFromPicked({
+      kind: "image",
+      url: "https://cdn.example.com/y.webp",
+    });
+    expect(assets).toEqual([
+      {
+        attachmentId: "",
+        displayUrl: "https://cdn.example.com/y.webp",
+        mimeType: "image/webp",
+        name: "aigc-0.webp",
+      },
+    ]);
+  });
+
+  it("returns [] for non-image kinds", () => {
+    expect(previewAssetsFromPicked({ kind: "text", text: "hi" })).toEqual([]);
   });
 });
 
