@@ -255,11 +255,14 @@ function buildSingleton(): HandlerSingleton {
 
   // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
   // 使前端在 agent 真正就绪前门控发送、就绪通告经粘性 session-status 帧投递。可经 env 关闭以回退。
+  // snapshotAuthority: 开启会话权威快照(spec session-snapshot-authority) —— 仅生产 app 接线开启,
+  // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
   const manager = new SessionManager({
     store,
     idleMs: 0,
     loggingConfigProvider,
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
+    snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
   });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。

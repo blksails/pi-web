@@ -38,6 +38,11 @@ export interface SessionManagerOptions {
   readonly readinessHandshake?: boolean;
   /** 就绪探针超时(毫秒),透传给 PiSession;省略用 PiSession 默认。 */
   readonly readinessProbeTimeoutMs?: number;
+  /**
+   * 权威快照开关(session-snapshot-authority);透传给每个 PiSession。
+   * 默认关(向后兼容);生产 app 接线开启。
+   */
+  readonly snapshotAuthority?: boolean;
 }
 
 export class SessionManager {
@@ -47,6 +52,7 @@ export class SessionManager {
   private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
   private readonly readinessHandshake: boolean;
   private readonly readinessProbeTimeoutMs: number | undefined;
+  private readonly snapshotAuthority: boolean;
   private acceptingNew = true;
 
   constructor(opts: SessionManagerOptions = {}) {
@@ -56,6 +62,7 @@ export class SessionManager {
     this.loggingConfigProvider = opts.loggingConfigProvider;
     this.readinessHandshake = opts.readinessHandshake ?? false;
     this.readinessProbeTimeoutMs = opts.readinessProbeTimeoutMs;
+    this.snapshotAuthority = opts.snapshotAuthority ?? false;
   }
 
   /** 暴露存储(供上层经接口检索/列出)。 */
@@ -100,6 +107,8 @@ export class SessionManager {
       ...(this.readinessProbeTimeoutMs !== undefined
         ? { readinessProbeTimeoutMs: this.readinessProbeTimeoutMs }
         : {}),
+      // 权威快照:从 manager 透传开关(session-snapshot-authority)。
+      snapshotAuthority: this.snapshotAuthority,
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
       onClosed: (id) => {
         this.store.delete(id);

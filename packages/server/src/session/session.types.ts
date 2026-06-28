@@ -149,6 +149,12 @@ export interface PiSessionOptions {
   readonly readinessHandshake?: boolean;
   /** 就绪探针超时(毫秒),默认 30000;超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
   readonly readinessProbeTimeoutMs?: number;
+  /**
+   * 权威快照开关(session-snapshot-authority)。开启时:维护单一权威 `SessionSnapshot`
+   * (lifecycle/busy/turn/stats/model/title)、变更广播 `control: session-state` 帧、订阅时
+   * 回放当前快照。**默认关**(向后兼容:不发 session-state 帧,既有行为不变)。生产由 app 接线开启。
+   */
+  readonly snapshotAuthority?: boolean;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */
