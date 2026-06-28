@@ -14,6 +14,7 @@ import { UiMessageChunkSchema } from "./ui-message-chunk.js";
 import { UiRpcControlPayloadSchema } from "../web-ext/ui-rpc.js";
 import { LogEntrySchema } from "../logging/log-entry.js";
 import { SessionStatusControlSchema } from "./session-status.js";
+import { SessionStateControlSchema } from "./session-state.js";
 
 /** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
@@ -45,6 +46,8 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   }),
   // 会话生命周期态(session-readiness-handshake):粘性帧,订阅时回放当前态。
   SessionStatusControlSchema,
+  // 会话权威快照(session-snapshot-authority):粘性帧,承载 lifecycle/busy/turn/stats/model/title。
+  SessionStateControlSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

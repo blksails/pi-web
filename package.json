@@ -36,6 +36,7 @@
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-react": "workspace:*",
     "@blksails/pi-web-server": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:*",
     "@blksails/pi-web-ui": "workspace:*",
     "ai": "^5.0.0",
     "next": "^15.1.0",
