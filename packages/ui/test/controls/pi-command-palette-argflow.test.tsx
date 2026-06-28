@@ -95,6 +95,18 @@ describe("PiCommandPalette 子命令补全", () => {
     );
   });
 
+  it("Tab 与 Enter 等价:确认高亮子命令 → 填 /plugin install ", () => {
+    const provider = makeProvider(async () => []);
+    render(<Harness provider={provider} initial="/plugin " />);
+    // 默认高亮首个子命令(install);Tab 确认。
+    act(() => {
+      fireEvent.keyDown(document, { key: "Tab" });
+    });
+    expect((screen.getByTestId("value") as HTMLElement).textContent).toBe(
+      "/plugin install ",
+    );
+  });
+
   it("终态 list 就位(/plugin list )后浮层关闭(让 Enter 执行)", () => {
     const provider = makeProvider(async () => []);
     const { container } = render(

@@ -2,7 +2,7 @@
  * PiCommandPalette — "/" 斜杠命令补全。
  *
  * `value` 以 "/" 开头时进入命令模式:经 `controls.getCommands` 拉取候选,按输入过滤;
- * 方向键导航 / 回车确认 / Esc 关闭;选择把命令填充回输入区(经 onChange)。
+ * 方向键导航 / 回车或 Tab 确认 / Esc 关闭;选择把命令填充回输入区(经 onChange)。
  * aria 标注当前活动项(listbox/option + aria-activedescendant)。
  * 命令为空或获取失败 → 显示空态/错误态,不崩溃。
  *
@@ -386,7 +386,7 @@ export function PiCommandPalette({
           setActive((i) => (i - 1 + argNav.length) % argNav.length);
           return true;
         }
-        if (e.key === "Enter") {
+        if (e.key === "Enter" || e.key === "Tab") {
           e.preventDefault();
           argNav[active % argNav.length]?.select();
           return true;
@@ -416,7 +416,7 @@ export function PiCommandPalette({
         setActive((i) => (i - 1 + filtered.length) % filtered.length);
         return true;
       }
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         const cmd = filtered[active];
         if (cmd !== undefined) select(cmd);

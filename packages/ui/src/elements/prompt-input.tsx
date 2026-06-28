@@ -151,8 +151,9 @@ export function PromptInput({
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ): void => {
-    // Tab:接受 inlineComplete ghost 后缀(R20)。
-    if (event.key === "Tab" && hasGhost) {
+    // Tab:接受 inlineComplete ghost 后缀(R20)。命令/补全浮层捕获中时(suppressEnterSubmit)
+    // 让位给浮层——Tab 改由浮层确认选中项,避免与 ghost 接受双触发(完全清空条件外的自定义触发符)。
+    if (event.key === "Tab" && hasGhost && !suppressEnterSubmit) {
       event.preventDefault();
       onAcceptGhost();
       return;
