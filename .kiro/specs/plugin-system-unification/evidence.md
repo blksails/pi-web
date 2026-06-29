@@ -126,10 +126,25 @@ ui typecheck：Done
 - SDK RPC 模式 get_commands **确含** `session.resourceLoader.getSkills().skills → skill:<name>`（rpc-mode.js:519-527）。
 - 非时序（6s 等待仍空）。
 
-→ `resourceLoader.getSkills()` 仍为空,根因落在 **SDK/runner 子进程边界**。临时在 `runner.ts` 加 `[skill-debug]`
-打印 getSkills,但 dev 日志**没接住**（runner 子进程 stderr 路由 / 或 `module.createRequire failed parsing argument`
-暗示 custom runRpcMode 未执行/回退到 `pi --mode rpc`）。**下一步**：专门捕获 runner 子进程 stderr 的调试,
-确认运行模式与 getSkills 实际返回,再定位 SDK 内部成因。诊断代码已移除,不留库。
+**根因已定位（突破）**：之前查 dev 日志查错地方——`PiRpcProcess` 把 runner 子进程 stderr 收进
+`stderrBuffer` 并经 `stderr-log-parser` 包成 `proc:stderr`(warn)写**会话日志**(非 dev 日志)。在
+runner 加诊断 + 开 logging 查会话日志,得：
+```
+[skill-debug] runner.ts reached; cwd=.../plugin-code-review-agent;
+  skills={"count":4,"names":["code-review-skill","agent-browser","autoresearch-skill","find-skills"],...}
+```
+→ **skill 机制完全正常**:`getSkills()` 返回含 `code-review-skill` 的 4 个技能,RPC get_commands 正常出
+`skill:code-review-skill`。之前 0 个是因为用真实 `~/.pi/agent`(此处用临时空 agentDir 才显)。
+
+真因 = **两层叠加**：
+1. **cwd 读错**:`create-session` 未传 cwd → pi-handler `cwd = opts?.cwd ?? config.defaultCwd`(仓库根)
+   → `systemResourceArgs(agentDir, 仓库根)` 读仓库根 `.pi/settings.json`(无)→ 回退全局
+   `~/.pi/agent/settings.json` 的 **`loadSystemSkills:false`** → 注入 `--no-skills`。
+   **agent source 目录的 `.pi/settings.json` 覆盖从未被读**(故我加的项目级 `loadSystemSkills:true` 无效)。
+2. **`--no-skills` 过宽**:`option-mapper.ts:186` 用空 override 清**全部** skills(含项目 `.pi/skills`)。
+
+诊断代码已移除。修法见 R12 AC(systemResourceArgs 用 source cwd + `--no-skills` 按 scope 保留项目 skill)。
+示例 `.pi/settings.json {loadSystemSkills:true}` 保留(语义正确,Fix#1 落地后即生效)。
 
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。

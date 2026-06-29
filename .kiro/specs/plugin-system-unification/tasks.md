@@ -91,12 +91,17 @@
   - 状态：已立项（requirements+design），待评审后实现
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
-- [ ] 15. 增量（调查中）：项目 skill 加载与 `skill:` 命令暴露（R12）
-  - 已排除 app 层全部成因（见 evidence.md）；`resourceLoader.getSkills()` 仍空
-  - 下一步：捕获 runner 子进程 stderr 的专门调试，确认 custom runRpcMode 是否执行/回退（`module.createRequire failed` 线索），定位 `getSkills()` 为空的 SDK/runner 根因
-  - 示例已补 `.pi/skills/code-review/SKILL.md`（自运行路径,必要不充分）
-  - 状态：根因定位中,先查清再决定修法（不盲改 runner）
-  - _Requirements: 12.1, 12.2, 12.3_
+- [ ] 15. 增量（根因已定位，待实现修复）：项目/插件 skill 不被系统开关误清（R12）
+  - **根因（已证实）**：skill 机制正常（诊断证实 getSkills 返回含 code-review-skill 的 4 技能）；
+    真因两层：① `systemResourceArgs` 用 handler `defaultCwd`(仓库根)读 `.pi/settings.json`,忽略 agent
+    source 目录的 per-source `loadSystemSkills` 覆盖 → 全局 `loadSystemSkills:false` 永远生效注入 `--no-skills`;
+    ② `--no-skills`(option-mapper:186)空 override 清全部 skills 含项目 `.pi/skills`
+  - **修法**：① systemResourceArgs 读 source 实际 cwd（与 runner 发现一致）；② `--no-skills` 按
+    `sourceInfo.scope` 仅排除非项目 skill、保留项目 scope
+  - 示例已补 `.pi/skills/code-review/SKILL.md` + `.pi/settings.json{loadSystemSkills:true}`（Fix① 后生效）
+  - 验证：单测(systemResourceArgs cwd + scope 过滤) + 集成验 `skill:` 命令出现(即使全局 false)
+  - 状态：根因已定位（见 evidence.md），待评审后实现（注意与 system-resource-toggle-fix 的 `--no-skills` 语义协调）
+  - _Requirements: 12.1, 12.2, 12.3, 12.4_
 
 - [x] 11. 端到端验证（离线 stub + 隔离 build）
 - [x] 11.1 e2e：统一插件两层咬合
