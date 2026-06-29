@@ -112,6 +112,19 @@ describe("PiCommandPalette", () => {
       expect(screen.queryByText("/sandbox")).not.toBeInTheDocument();
     });
 
+    it("webVisible:true 的 extension 命令默认放行(pi-plugin.json web.commands opt-in),无需 allowlist", async () => {
+      const controls = mockControls({
+        commands: [
+          { ...extCmd("review"), webVisible: true },
+          extCmd("secret"),
+        ],
+      });
+      // 不传 extensionCommands(默认隐藏)→ review 仍因 webVisible 放行,secret 仍隐藏。
+      render(<Harness controls={controls} />);
+      expect(await screen.findByText("/review")).toBeInTheDocument();
+      expect(screen.queryByText("/secret")).not.toBeInTheDocument();
+    });
+
     it("allowlist 按名放行指定 extension 命令,其余仍隐藏", async () => {
       const controls = mockControls({
         commands: [extCmd("sandbox"), extCmd("danger")],

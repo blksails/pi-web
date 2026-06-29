@@ -16,6 +16,7 @@ const EXAMPLES = [
   "webext-contrib",
   "webext-artifact",
   "webext-background",
+  "plugin-code-review",
 ] as const;
 
 const idOf: Record<string, string> = {
@@ -24,6 +25,7 @@ const idOf: Record<string, string> = {
   "webext-contrib": "webext-contrib",
   "webext-artifact": "webext-artifact",
   "webext-background": "webext-background",
+  "plugin-code-review": "code-review",
 };
 
 async function main(): Promise<void> {

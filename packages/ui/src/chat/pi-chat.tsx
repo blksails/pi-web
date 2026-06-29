@@ -146,6 +146,11 @@ export interface PiChatProps {
    * 提供后,内置命令由 PiChat 经 ui-rpc 总线执行(point=command),不再走 onBuiltinSelect。
    */
   readonly onCommandResult?: (commandName: string, outcome: CommandOutcome) => void;
+  /**
+   * 装/卸插件命令(`/plugin`、`/reload-runtime`)提交时触发,供宿主驱动 webext 重载——
+   * 装后即时双路生效之路②(spec plugin-system-unification,Req 7;路①为 runner reload)。
+   */
+  readonly onRuntimeReloadRequested?: () => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -268,6 +273,7 @@ export function PiChat({
   builtinCommands,
   onBuiltinSelect,
   onCommandResult,
+  onRuntimeReloadRequested,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -547,10 +553,12 @@ export function PiChat({
     extCtrlActive;
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    // 扩展命令窗口内额外承载 ctx.ui(extension-ui)帧——fire-and-forget 命令无 per-prompt 流,
-    // 否则其 notify/status/widget 无消费者(空闲期无并发 per-prompt 流,不会重复应用 ambient)。
-    return connection.openControlOnlyStream({ applyAmbient: extCtrlActive });
-  }, [connection, isBusy, needsIdleControl, extCtrlActive]);
+    // 空闲控制流恒应用 ambient(notify/status/widget)帧:fire-and-forget 扩展命令无 per-prompt
+    // 流,其 ctx.ui 反馈只能由此流承载;空闲期无并发 per-prompt 流,不会重复应用(安全)。
+    // 注:此前 gate 到 extCtrlActive 会令"有 contributions、流已以 applyAmbient:false 打开"的
+    // 扩展(如统一插件)收不到命令的 notify——故改为恒 true(plugin-system-unification 修复)。
+    return connection.openControlOnlyStream({ applyAmbient: true });
+  }, [connection, isBusy, needsIdleControl]);
   const canSubmit =
     transport !== undefined &&
     sessionReady &&
@@ -662,6 +670,11 @@ export function PiChat({
         // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
         armExtControlStream();
         void client.prompt(sessionId, { message: input }).catch(() => undefined);
+        // 装/卸插件命令(/plugin、/reload-runtime)→ 驱动 webext 重载(双路生效路②)。
+        // pi 资源经 runner reload 生效为路①;此处通知宿主重解析 webext,避免"装了 UI 没变"。
+        if (name === "plugin" || name === "reload-runtime") {
+          onRuntimeReloadRequested?.();
+        }
         setInput("");
         return;
       }
@@ -677,6 +690,7 @@ export function PiChat({
     sessionId,
     controls?.commands,
     armExtControlStream,
+    onRuntimeReloadRequested,
   ]);
 
   const onStop = React.useCallback((): void => {
