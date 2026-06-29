@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "./agent-definition.js";
+import { wireCommandMarkerPersistence } from "./command-marker.js";
 import { loadAgentDefinition } from "./agent-loader.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
 import {
@@ -315,6 +316,18 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   process.once("SIGTERM", runSessionCleanup);
   process.once("SIGINT", runSessionCleanup);
   process.once("beforeExit", runSessionCleanup);
+
+  // 纯扩展命令历史持久化(spec plugin-system-unification R13):在进入 SDK 拥有的 RPC 循环前
+  // 包裹 session.prompt——纯命令(handler 跑完不留 message、不进 streaming)经 appendCustomEntry
+  // 持久化 LLM-clean 的 piweb.command 标记,服务端 GET /messages 据此合并 surfacing,使冷恢复
+  // 仍见 /review 气泡。best-effort:包裹失败不阻断会话启动。
+  try {
+    wireCommandMarkerPersistence(runtime.session, sessionManager);
+  } catch (err) {
+    process.stderr.write(
+      `runner: failed to wire command marker persistence: ${String(err)}\n`,
+    );
+  }
 
   return runRpcMode(runtime);
 }

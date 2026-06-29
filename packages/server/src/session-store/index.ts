@@ -55,3 +55,7 @@ export {
   type SessionStoreKind,
 } from "./factory.js";
 export { mirrorSessionManagerToStore, type SessionMirror } from "./mirror.js";
+export {
+  PIWEB_COMMAND_CUSTOM_TYPE,
+  type PiwebCommandMarkerData,
+} from "./piweb-entries.js";

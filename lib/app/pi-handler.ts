@@ -67,6 +67,7 @@ import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
+import { makeCommandMarkerLoader } from "./command-markers.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
 /**
@@ -402,6 +403,9 @@ function buildSingleton(): HandlerSingleton {
     // Cold-resume reader: POST /sessions { resumeId } loads {source, cwd, model}
     // from the configured SessionEntryStore (same SESSION_STORE backend) by id.
     loadResumeMeta: makeResumeMetaLoader(sessionStoreConfigFromEnv()),
+    // 纯扩展命令历史标记读取器(plugin-system-unification R13):GET /messages 据此把 runner 写入的
+    // piweb.command 标记按时间序合并进历史,使纯命令(/review 一类)冷恢复仍在转录区可见。
+    loadCommandMarkers: makeCommandMarkerLoader(sessionStoreConfigFromEnv()),
     // Inject config endpoints — schema-driven settings UI persistence.
     //  - GET/PUT /config/:domain → ~/.pi/agent/{auth,settings,sandbox}.json
     //    (sandbox = pi-sandbox 全局策略,方案 A)。codec 读 PI_WEB_AGENT_DIR

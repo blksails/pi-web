@@ -179,6 +179,44 @@ emit command-complete——A 需**上游 SDK 改动**(让 runRpcMode 发 prompt-
   经 doSend → 用户气泡 + notify 渲染 + 不卡死 + 转录区干净(合成裸 finish 不冒空助手气泡)。
 - 代价:纯命令输入 ~1.5s 窗口后解冻(无完成信号的固有取舍)。
 
+## 增量:纯扩展命令的历史持久化（R13 = 落地 R11-AC4，2026-06-29）
+
+### SDK 勘探(决定机制)
+- `get_messages` 返回 `session.messages`(= `agent.state.messages`,AgentMessage[] 带 ms `timestamp`)。
+- `appendCustomEntry` 写 session **文件条目** `type:"custom"`——**不在** `session.messages`、**不进** `convertToLlm`
+  (`messages.js`:`convertToLlm` 把 `role:"custom"` message 映射成 `role:"user"` 进上下文,故 message 级持久化
+  会污染 LLM 且纯命令后接真实 prompt → 连续 user 角色 provider 风险)。→ 选 appendCustomEntry + 服务端合并。
+- 命令 vs skill 两条路(`agent-session.js` prompt):`/review` 走 `_tryExecuteExtensionCommand` 即返回(不留 message);
+  `/skill:foo` 非扩展命令 → `_expandSkillCommand` 展开成 `<skill>` 块当 prompt 触发 turn → 自然进上下文+持久化(已一致,不触碰)。
+
+### 实现(三段)
+1. **持久化 seam**(`runner/command-marker.ts`):`runRpcMode` 前包裹 `session.prompt`——`runRpcMode` 在调用点
+   读 `session.prompt`(`rpc-mode.js` `let session=runtimeHost.session` + `session.prompt(...)`),故实例级 monkeypatch
+   生效。注册表无关检测:slash + prompt 后 `messages.length` 未变且 `!isStreaming` → 纯命令 →
+   `appendCustomEntry("piweb.command",{text})`。普通消息/skill 增 message、触发 turn 进 streaming 自动排除。
+2. **Surfacing**(`query-routes.makeMessagesQueryHandler` + `lib/app/command-markers.ts` 经 `loadCommandMarkers` 注入):
+   `GET /messages` 取 `get_messages` 后,经 `SessionEntryStore.read` 读 `piweb.command` 标记,`mergeCommandMarkers`
+   按 ts 稳定合并为 `role:"user"` 文本消息(同 ts 消息在前标记在后;缺 ts 退化追加末尾)。仅影响 web 历史响应。
+3. **前端零改**:合并出的标记即普通 `/review` user 气泡,与 R11 实时乐观气泡一致。
+4. stub 加 `/review` 纯命令 sentinel(不发 turn、写 piweb.command),镜像真实 runner seam,供离线 e2e。
+
+### 新鲜证据
+```
+server 单测:command-marker 6 + mergeCommandMarkers 6 = 12 passed
+server 全套(runner+http+session 等):418 passed | 5 skipped 无回归
+typecheck:root tsc EXIT=0(含 lib/app)+ 受影响包 Done
+浏览器 e2e(隔离 build .next-e2e + 外部 server,fs):
+  ✓ plugin-pure-command-history(R13):提交 /review → 实时气泡 → 删内存会话冷恢复 → /review 气泡仍在
+  ✓ 相邻无关无回归:plugin-system-unification 1 + tool-call-ui 3 + session-persistence(fs) 1
+```
+
+### 预存的、与 R13 无关的失败(诚实记录,已隔离确认)
+- `session-persistence.e2e.ts` 的 **sqlite project** 冷恢复("Failed to create session: pi http error 404")——
+  **注释掉 R13 的 `loadCommandMarkers` 注入后重建,仍同样失败**,证明属**预存问题**(sqlite 浏览器冷恢复路径,
+  与本特性无关;fs project 同测通过,sqlite-store 单测 + mirror sqlite e2e 在 node 层亦绿)。**不在 R13 范围**。
+- webext-runtime-install / webext-document-title 等 webext e2e:需特定 env(扩展 base-url / 验签),本次外部
+  server 未注入 → 环境性失败,非 R13 回归。
+
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。
 - examples 不纳入 workspace typecheck（根 tsconfig 排除 `examples`，与既有 webext 示例同约定）；其正确性由 webext 构建成功 + 浏览器 e2e 保障。

@@ -482,6 +482,48 @@ interface EffectOrchestrator {
 ### 不在 dev 运行时跑 build
 - e2e 用 `NEXT_DIST_DIR=.next-e2e` 隔离 + external server，绝不污染共享 `.next`。
 
+## R13 设计：纯扩展命令的历史持久化（落地 R11-AC4）
+
+**目标**：纯扩展命令（`/review` 一类，handler 跑完不留 message）冷恢复后仍在转录区可见，且 **LLM-clean**。
+
+**SDK 勘探结论（决定机制，见 evidence.md）**：
+- `get_messages` 返回 `session.messages`（= `agent.state.messages`，AgentMessage[] 带 `timestamp` ms）。
+- `appendCustomEntry(customType, data)` 写 session **文件条目** `type:"custom"`——**不在** `session.messages`、
+  **不进** `convertToLlm` → LLM-clean，但 `get_messages` 也看不到（须服务端额外 surfacing）。
+- `sendMessage(triggerTurn:false)` 造 `role:"custom"` message → 在 `get_messages`，但 `convertToLlm` 映射成
+  `role:"user"` **进 LLM 上下文**，且纯命令后接真实 prompt → 连续 user 角色（provider 风险）→ **弃用**。
+- 故选 **appendCustomEntry 持久化 + 服务端按 timestamp 合并 surfacing**。
+
+**三段机制**：
+
+1. **持久化 seam（runner，注册表无关检测）** — `packages/server/src/runner/command-marker.ts`：
+   `wireCommandMarkerPersistence(session, sessionManager)` 在 `runRpcMode` 前包裹 `session.prompt`：
+   - 仅当 `text.startsWith("/")`；记录 `before = session.messages.length`，`await` 原 `prompt`；
+   - 命令完成后若 `session.messages.length === before` 且 `!session.isStreaming` → 判为**纯命令**
+     （恰好覆盖"跑了但没留历史"集；skill/普通消息增 message、触发 turn 的命令进 streaming，自动排除）；
+   - `sessionManager.appendCustomEntry(PIWEB_COMMAND_CUSTOM_TYPE, { text })`（ISO timestamp 由 SDK 内置）。
+   - builtin（`/clear`）前端经 ui-rpc 派发、不抵达 runner，故不误标记（防御性：仅依赖前端路由不变量）。
+
+2. **Surfacing（服务端注入合并）** — `packages/server` + `lib/app`：
+   - 协议无关读取器经依赖注入（与既有 `loadResumeMeta` 同模式）：`opts.loadCommandMarkers?: (id) =>
+     Promise<ReadonlyArray<{ text: string; ts: number }>>`，由 `lib/app` 用 `SessionEntryStore.read(id)`
+     过滤 `customType === "piweb.command"`、`Date.parse(timestamp)` 实现（`makeCommandMarkerLoader`）。
+   - `makeMessagesQueryHandler(store, loadCommandMarkers?)`：取 `get_messages` 后，若 loader 在场则读标记、
+     转 `{ role:"user", content:[{type:"text",text}], timestamp:ts }`，与消息按 `timestamp` **稳定合并**
+     （同 ts：消息在前、标记在后；任一消息缺数值 ts → 退化为标记追加末尾，绝不丢失）。
+
+3. **前端零改** — `agent-message-to-ui` 已把 `role:"user"` string/text 渲染为用户气泡；合并出的标记即普通
+   `/review` 气泡，与 R11 实时乐观气泡一致。无需新 part 类型。
+
+**约束守恒**：合并仅作用于 web 历史响应，**不改写** agent message log（R13.4）；skill 经展开路径（R13 背景）不受影响；
+标记 LLM-clean（R13.2）。
+
+**Traceability 增补**：
+
+| Req | Summary | Components | Flows |
+|-----|---------|-----------|-------|
+| 13 | 纯命令历史持久化 | `runner/command-marker.ts`, `query-routes.ts`(合并), `lib/app` loader 注入, stub | e2e 冷恢复 |
+
 ## Security Considerations
 
 - 安装 = RCE：沿用 `extension-management` 四层防线（白名单 + 版本固定 + `--ignore-scripts` + 管理员门控 + 审计），本特性不放松。

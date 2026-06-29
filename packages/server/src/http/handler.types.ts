@@ -89,6 +89,15 @@ export interface PiWebHandlerOptions {
    * 恢复元数据;未找到返回 undefined。未注入时恢复请求一律视为"会话不存在"。
    */
   readonly loadResumeMeta?: (id: string) => Promise<ResumeMeta | undefined>;
+  /**
+   * 可选:纯扩展命令历史标记读取器(spec plugin-system-unification R13)。按会话标识返回该会话
+   * 持久化的 `piweb.command` 标记(`{ text, ts }`,ts 为 epoch ms)。注入后 `GET /messages` 会把
+   * 这些标记按时间序合并进消息序列,呈现为携带原始命令文本的用户气泡(使纯命令冷恢复仍可见)。
+   * 未注入则历史行为不变(不合并)。仅影响 web 历史响应,不改写 agent message log。
+   */
+  readonly loadCommandMarkers?: (
+    id: string,
+  ) => Promise<ReadonlyArray<{ readonly text: string; readonly ts: number }>>;
   /** 可选;未提供→默认放行(Req 8.3)。 */
   readonly authResolver?: AuthResolver;
   /** 可选;未提供→默认放行。 */

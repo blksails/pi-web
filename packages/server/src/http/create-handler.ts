@@ -161,7 +161,7 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     {
       method: "GET",
       path: "/sessions/:id/messages",
-      handler: makeMessagesQueryHandler(store),
+      handler: makeMessagesQueryHandler(store, opts.loadCommandMarkers),
     },
     {
       method: "GET",

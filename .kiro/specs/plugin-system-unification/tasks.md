@@ -129,3 +129,24 @@
   - stub 加 `code-review` sentinel 发 `code_review` 工具；`e2e/browser/plugin-system-unification.e2e.ts`：选 source → 发 code-review prompt → 断言 CodeReviewCard（`data-testid="code-review-card"` + 2 findings）
   - 完成证据：`PI_WEB_DISABLE_STANDALONE=1 NEXT_DIST_DIR=.next-e2e` 构建 + 外部 server 模式 → **1 passed (4.2s)**；相邻 webext/tool-call-ui 6 例无回归（见 evidence.md）
   - _Requirements: 8.1, 3.2_
+
+- [x] 17. 增量：纯扩展命令的历史持久化（R13 = 落地 R11-AC4）
+- [x] 17.1 持久化 seam：runner 包裹 `session.prompt` + 注册表无关纯命令检测
+  - 新 `packages/server/src/runner/command-marker.ts`：`wireCommandMarkerPersistence(session, sessionManager)`
+    包裹 `session.prompt`，`text.startsWith("/")` 且 `prompt` 后 `messages.length` 未变且 `!isStreaming`
+    → `appendCustomEntry("piweb.command", { text })`。导出 `PIWEB_COMMAND_CUSTOM_TYPE`。
+  - 在 `runner.ts` `runRpcMode` 前接线（best-effort，吞错不阻断）。
+  - 单测：纯命令 → 标记；普通消息/增 message → 不标记；streaming（turn 命令）→ 不标记；非斜杠 → 不标记。
+  - _Requirements: 13.1, 13.2, 13.5_
+- [x] 17.2 Surfacing：服务端按 timestamp 合并 `piweb.command` 进 `GET /messages`
+  - `lib/app`：`makeCommandMarkerLoader`（`SessionEntryStore.read` 过滤 `customType==="piweb.command"`
+    + `Date.parse(timestamp)` → `{text, ts}`）；在 `pi-handler` 经 `opts.loadCommandMarkers` 注入。
+  - `packages/server`：`PiWebHandlerOptions.loadCommandMarkers?`；`makeMessagesQueryHandler(store, loader?)`
+    取 `get_messages` 后稳定合并标记为 `role:"user"` 文本消息（同 ts 消息在前；缺 ts → 追加末尾）。
+  - 单测：合并排序（末尾 / 中间插入 / 缺 ts 退化）；无 loader 时行为不变。
+  - _Requirements: 13.3, 13.4_
+- [x] 17.3 e2e：纯命令冷恢复仍可见
+  - stub 加纯命令 sentinel（`/review` → 不发 turn、`appendEntry` `piweb.command`，经 SESSION_STORE）。
+  - `e2e`：提交 `/review` → 实时见气泡 → reload/重开会话 → 断言 `/review` 用户气泡仍在（修复前空白）。
+  - 完成证据：隔离 build + 外部 server，新例通过 + 相邻无回归。
+  - _Requirements: 13.6_
