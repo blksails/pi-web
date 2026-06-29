@@ -182,8 +182,15 @@ export function mapResourceLoaderOptions(
   // 系统资源开关(pi-web「扩展 → 系统资源」面板,经 runner `--no-skills`/`--no-extensions`)。
   // 置于 def.* 映射之后,使「关闭」无条件优先于 agent 自声明(对齐 pi CLI 行为)。
   if (opts.noSkills === true) {
-    // 清空 skills 覆盖:返回空集(保留 diagnostics)。优先于 def.skills(Req 1.4)。
-    resourceLoaderOptions.skillsOverride = ({ diagnostics }) => ({ skills: [], diagnostics });
+    // R12-AC2:关闭「系统 skill」(loadSystemSkills=false / --no-skills)时,**仅排除系统/用户/包 skill,
+    // 保留项目 scope 的 skill**(`<cwd>/.pi/skills`,origin top-level)——符合开关名义("系统"),避免误杀
+    // agent 自带 / 插件随包(被装后 .pi/skills)的技能。项目 skill 的 `sourceInfo.scope === "project"`
+    // (loadSkills 已填,见 SDK Skill 类型);用户/包 skill 为 "user",cli 注入为 "temporary",均排除。
+    // 优先于 def.skills(Req 1.4):agent 自声明的非项目 skill 同样被关。
+    resourceLoaderOptions.skillsOverride = ({ skills, diagnostics }) => ({
+      skills: skills.filter((s) => s.sourceInfo?.scope === "project"),
+      diagnostics,
+    });
   }
   if (opts.noExtensions === true) {
     // 跳过磁盘发现的系统/包 extensions;additionalExtensionPaths(强制注入的沙箱)仍由

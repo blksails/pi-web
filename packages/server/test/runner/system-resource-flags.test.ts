@@ -13,12 +13,13 @@ function parse(extra: readonly string[]) {
   return parseRunnerArgs(["--agent", "/x/index.ts", ...extra]);
 }
 
-/** 调用 skillsOverride 并取回其产出的 skills 集合。 */
-function callSkills(override: SkillsOverride): unknown {
-  // SkillsOverride 入参携带已发现的 base(skills + diagnostics);此处给出非空 base,
-  // 断言覆盖后结果为空,证明「清空」语义且优先于 def.skills。
-  const base = { skills: [{ name: "discovered-skill" }], diagnostics: [] } as never;
-  return (override(base) as { skills: unknown[] }).skills;
+/** 调用 skillsOverride 并取回其产出的 skills 集合(可传入自定义 base 测 scope 过滤)。 */
+function callSkills(
+  override: SkillsOverride,
+  base?: { skills: unknown[]; diagnostics: unknown[] },
+): unknown {
+  const b = (base ?? { skills: [{ name: "discovered-skill" }], diagnostics: [] }) as never;
+  return (override(b) as { skills: unknown[] }).skills;
 }
 
 describe("parseRunnerArgs — 系统资源开关识别(Req 1.1 / 3.1-3.4)", () => {
@@ -53,15 +54,24 @@ describe("parseRunnerArgs — 系统资源开关识别(Req 1.1 / 3.1-3.4)", () =
 });
 
 describe("mapResourceLoaderOptions — 开关映射为资源载入覆盖(Req 1.x / 2.x)", () => {
-  it("noSkills 时产出空 skills 覆盖,且优先于 def.skills(Req 1.1 / 1.4)", () => {
+  it("noSkills 仅排除非项目 skill、保留项目 scope(R12-AC2),且优先于 def.skills(Req 1.1/1.4/12.2)", () => {
     const defOwnSkills: SkillsOverride = (base) => base; // agent 自声明:原样保留
     const { resourceLoaderOptions } = mapResourceLoaderOptions(
       { skills: defOwnSkills },
       { noSkills: true },
     );
     expect(typeof resourceLoaderOptions.skillsOverride).toBe("function");
-    // 覆盖应清空,而非沿用 agent 自声明的「原样保留」。
-    expect(callSkills(resourceLoaderOptions.skillsOverride!)).toEqual([]);
+    // 仅项目 scope(<cwd>/.pi/skills)保留;用户/包(user)、无 scope、cli(temporary)均排除。
+    const kept = callSkills(resourceLoaderOptions.skillsOverride!, {
+      skills: [
+        { name: "proj", sourceInfo: { scope: "project" } },
+        { name: "usr", sourceInfo: { scope: "user" } },
+        { name: "tmp", sourceInfo: { scope: "temporary" } },
+        { name: "noscope" },
+      ],
+      diagnostics: [],
+    }) as Array<{ name: string }>;
+    expect(kept.map((s) => s.name)).toEqual(["proj"]);
   });
 
   it("noExtensions 时设 noExtensions=true,且强制注入路径仍保留(Req 2.1 / 2.3)", () => {

@@ -154,7 +154,13 @@ runner 加诊断 + 开 logging 查会话日志,得：
   skill:code-review-skill ✓ (+ review 命令 + 用户级 skill)
 ```
 → per-source `.pi/settings.json{loadSystemSkills:true}` 现在生效,示例 skill 加载。app typecheck 绿。
-剩 R12-AC2(`--no-skills` 按 scope 保留项目 skill)未做(skillsOverride 早于 sourceInfo 回填的复杂点,见 tasks)。
+### R12 AC2 已实现验证（2026-06-29）
+`option-mapper.ts`:`--no-skills` 不再空清,改为按 `sourceInfo.scope === "project"` 过滤(保留项目 skill,
+排除 user/包/temporary)。复杂点已解:SDK `Skill` 类型在 skillsOverride 输入即带 `sourceInfo.scope`
+(loadSkills 已填),无需 cwd/filePath 启发式。删除示例 `.pi/settings.json` 兜底(AC2 后项目 skill 自动保留)。
+证据:option-mapper 单测(proj 保留/usr·tmp·noscope 排除)+ runner 全套 **87 测试无回归**;**实机**——
+真实 agentDir(全局 `loadSystemSkills:false`)下,无项目覆盖,get_commands 仅 `skill:code-review-skill`(项目)
+加载,用户级 skill(agent-browser/find-skills 等)正确排除。
 
 ### R11-A 上游阻塞（2026-06-29）
 认真做方案 A(runner 发 command-complete)时撞到架构边界:pi-web `runner.ts:319` 把 RPC 循环**完全委托**

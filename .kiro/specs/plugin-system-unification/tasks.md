@@ -106,7 +106,7 @@
     `.pi/settings.json{loadSystemSkills:true}` 生效 → `skill:code-review-skill` 出现在 get_commands
   - _Requirements: 12.1, 12.3_
 
-- [ ] 15. 增量（根因已定位，待实现修复）：项目/插件 skill 不被系统开关误清（R12）
+- [x] 15. 增量（已实现）：项目/插件 skill 不被系统开关误清（R12 = Fix#1 + AC2）
   - **根因（已证实）**：skill 机制正常（诊断证实 getSkills 返回含 code-review-skill 的 4 技能）；
     真因两层：① `systemResourceArgs` 用 handler `defaultCwd`(仓库根)读 `.pi/settings.json`,忽略 agent
     source 目录的 per-source `loadSystemSkills` 覆盖 → 全局 `loadSystemSkills:false` 永远生效注入 `--no-skills`;
@@ -114,11 +114,14 @@
   - **修法**：① systemResourceArgs 读 source 实际 cwd（与 runner 发现一致）；② `--no-skills` 按
     `sourceInfo.scope` 仅排除非项目 skill、保留项目 scope
   - 示例已补 `.pi/skills/code-review/SKILL.md` + `.pi/settings.json{loadSystemSkills:true}`（Fix① 后生效）
-  - 验证：单测(systemResourceArgs cwd + scope 过滤) + 集成验 `skill:` 命令出现(即使全局 false)
-  - 状态：**Fix#1(cwd)已实现验证(task 16)**；剩 **AC2(`--no-skills` 按 scope 保留项目 skill)** 未做——
-    复杂点:skillsOverride 收到的 skills 在 sourceInfo(scope)回填**之前**(resource-loader.js:450 早于 451),
-    需按 filePath 是否在 `<cwd>/.pi/skills` 判 project,且 option-mapper 需拿到 cwd（plumbing）。待评审后实现。
-  - 已确认与 system-resource-toggle-fix 的 `--no-skills` 语义协调（用户批准"保留项目 skill"）
+  - **Fix#1(cwd,task 16)**:systemResourceArgs 读 agent source 自身目录 → per-source 覆盖生效。
+  - **AC2(scope 保留)**:option-mapper `--no-skills` 改为按 `sourceInfo.scope === "project"` 过滤
+    (保留项目 skill,排除 user/package/temporary)。复杂点已解:SDK `Skill` 类型在 override 输入即带
+    `sourceInfo.scope`(loadSkills 已填),无需 cwd/filePath 启发式。删除示例 `.pi/settings.json` 兜底
+    (AC2 后项目 skill 自动保留,demo 更干净)。
+  - 完成证据:option-mapper 单测(proj 保留 / usr·tmp·noscope 排除)+ runner 全套 87 测试无回归;
+    server typecheck 绿;**实机**——全局 `loadSystemSkills:false` 下仅 `skill:code-review-skill`(项目)加载,
+    用户级 skill(agent-browser 等)正确排除。与 system-resource-toggle-fix 语义协调(用户批准"保留项目 skill")。
   - _Requirements: 12.1, 12.2, 12.3, 12.4_
 
 - [x] 11. 端到端验证（离线 stub + 隔离 build）
