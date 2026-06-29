@@ -17,7 +17,7 @@
  */
 
 import * as React from "react";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { LogEntry, LogLevel } from "@blksails/pi-web-logger";
 import { useLogs, createLogsStore, type UseLogsResult } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
@@ -65,16 +65,57 @@ const LEVEL_BADGE_CLASS: Record<LogLevel, string> = {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-/** Single log row. Pure element rendering — no async highlights. */
+/**
+ * 把结构化 data 序列化为可读明细文本(同步,jsdom 安全)。
+ * 字符串原样;对象/数组 JSON.stringify(2 缩进);循环引用/BigInt 等 stringify 抛错 → String() 兜底。
+ */
+function formatDetail(data: unknown): string {
+  if (typeof data === "string") return data;
+  try {
+    return JSON.stringify(data, null, 2);
+  } catch {
+    return String(data);
+  }
+}
+
+/**
+ * Single log row. Pure element rendering — no async highlights.
+ * 有结构化 `data` 时,行首出现展开开关(▸/▾),展开后整行全宽同步渲染 JSON 明细(Req:明细展示态)。
+ */
 function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
+  const hasDetail = entry.data !== undefined && entry.data !== null;
+  const [expanded, setExpanded] = useState(false);
+  const detailText = useMemo(
+    () => (hasDetail ? formatDetail(entry.data) : ""),
+    [hasDetail, entry.data],
+  );
+  const toggle = useCallback(() => setExpanded((v) => !v), []);
+
   return (
     <li
       data-pi-log-level={entry.level}
       data-pi-log-ns={entry.ns}
+      {...(hasDetail ? { "data-pi-log-has-detail": "" } : {})}
       // 自适应行布局:宽容器 4 列单行;窄容器(如右侧栏)消息以 12rem 最小宽触发 flex-wrap,
       // 换到整行全宽并按词换行(break-words),避免固定列把消息挤成逐字竖排(break-all)。
       className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 py-0.5 text-xs font-mono leading-5 hover:bg-[hsl(var(--accent)/0.4)]"
     >
+      {/* Disclosure caret — 仅当有结构化明细;无明细时占位 spacer 保持列对齐。 */}
+      {hasDetail ? (
+        <button
+          type="button"
+          data-pi-log-detail-toggle
+          aria-expanded={expanded}
+          aria-label={expanded ? "收起日志明细" : "展开日志明细"}
+          onClick={toggle}
+          className="shrink-0 w-3 self-start leading-5 text-center opacity-50 hover:opacity-100 transition-opacity"
+        >
+          {expanded ? "▾" : "▸"}
+        </button>
+      ) : (
+        <span className="shrink-0 w-3" aria-hidden="true" />
+      )}
+
       {/* Timestamp column */}
       <span className="shrink-0 w-[5.5rem] opacity-60 tabular-nums">
         {formatTimestamp(entry.ts)}
@@ -98,6 +139,17 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
 
       {/* Message — grows to fill the line; min-width 12rem forces wrap-to-own-line in narrow containers. */}
       <span className="flex-[1_1_12rem] min-w-0 break-words">{entry.msg}</span>
+
+      {/* 明细态:展开时整行全宽(basis-full)同步渲染结构化 data 的 JSON;有界高度内可滚。
+          用纯 <pre>(非异步高亮组件)确保 jsdom 下 textContent 可断言(见项目教训)。 */}
+      {hasDetail && expanded ? (
+        <pre
+          data-pi-log-detail
+          className="basis-full mt-0.5 ml-3 max-h-60 overflow-auto rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.5)] px-2 py-1 text-[11px] leading-4 whitespace-pre-wrap break-words"
+        >
+          {detailText}
+        </pre>
+      ) : null}
     </li>
   );
 }
@@ -111,6 +163,12 @@ export interface LogsPanelProps {
    */
   readonly logsResult?: UseLogsResult;
   readonly className?: string;
+  /**
+   * 填充模式:滚动区填满有界父高度(用于 right 侧栏 / drawer 抽屉,父已给定高)而非
+   * 固定 max-h-64 上限(后者用于 bottom dock,内容定高防无限增长)。
+   * 默认 false(bottom dock 语义,保持既有行为)。
+   */
+  readonly fill?: boolean;
 }
 
 /**
@@ -119,7 +177,7 @@ export interface LogsPanelProps {
  * When `logsResult` is not provided, the component creates its own internal
  * store (useful for standalone usage; task 3.4 wires the real session store).
  */
-export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.Element {
+export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): React.JSX.Element {
   // Use injected result or fall back to internal hook driven by default store.
   const internal = useLogs({ store: getDefaultStore() });
   const logs = logsResult ?? internal;
@@ -280,7 +338,12 @@ export function LogsPanel({ logsResult, className }: LogsPanelProps): React.JSX.
           data-pi-logs-region
           className={cn(
             "overflow-y-auto overflow-x-hidden py-1 list-none h-full",
-            expanded ? "min-h-[120px] max-h-64" : "h-0 overflow-hidden",
+            // fill:填满有界父高度(right/drawer);否则固定 max-h-64 上限(bottom dock)。
+            expanded
+              ? fill
+                ? "min-h-0"
+                : "min-h-[120px] max-h-64"
+              : "h-0 overflow-hidden",
           )}
           onScroll={expanded ? handleScroll : undefined}
           role="list"

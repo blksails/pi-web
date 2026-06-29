@@ -5,6 +5,7 @@ dist/
 .next-stub/
 .next-test/
 .next-cli/
+.next-debug/
 coverage/
 *.log
 .DS_Store
@@ -27,6 +28,8 @@ next-env.d.ts
 storybook-static
 
 /.pi/
+# pi 调度运行时状态(任意 agent source 的 .pi/ 下,运行时生成,不入库)
+**/.pi/schedule-prompts.json
 # pi-team 主控台状态(本地)
 .pi-team/
 

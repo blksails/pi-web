@@ -69,13 +69,6 @@ export const CommandResultSchema = z.object({
   data: z.unknown().optional(),
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;
-
-/** point=custom 的渲染描述(声明式,替代不可序列化的工厂)。 */
-export const CustomUiPayloadSchema = z.object({
-  component: z.string().min(1), // 注册名
-  props: z.unknown().optional(),
-});
-export type CustomUiPayload = z.infer<typeof CustomUiPayloadSchema>;
 ```
 
 不改 `UiRpcRequest/Response/ControlPayload`（payload/result 仍为 unknown，新 schema 在消费侧细化）→ 满足 Req 7.1。
@@ -119,13 +112,11 @@ export function createHostCommandRegistry(handlers: HostCommandHandler[]): HostC
 // 经既有 bus.request({ point:"command", action:"execute", payload:{name, argv} })
 // 返回 UiRpcResponse(含 CommandResult);Promise 由 correlationId 配对(pending/success/error 天然可观测)。
 ```
-`point="custom"` 接收：ControlStore 已把 `control:ui-rpc` 派发给 `onUiRpcResponse`；custom 渲染经一个 `useCustomUi`/订阅，按 `CustomUiPayloadSchema` 取 component+props 查注册表。
 
 ### 5. UI 数据驱动分派 + 结果渲染（packages/ui）
 
 - `PiCommandPalette.select`：`source==="builtin"` 时不再回调 bespoke `onBuiltinSelect` 直调，而是 `onCommandExecute(cmd, argv)`（注入的统一执行回调）。键入完整命令回车（pi-chat onSubmit 拦截）同样走 `onCommandExecute`。
 - 命令结果渲染：host 命令结果按 `effect` 驱动（open-panel/panel-refresh/notify）。`notify` 复用 ambient notifications；面板刷新由结果事件触发（非 refreshKey）。
-- custom：`CustomUiRenderer`（注册表 component name→React 组件）。
 
 ### 6. 迁移接线（components/chat-app + lib/app）
 
@@ -136,7 +127,7 @@ export function createHostCommandRegistry(handlers: HostCommandHandler[]): HostC
 
 | 文件 | 动作 | 责任 |
 |---|---|---|
-| `packages/protocol/src/web-ext/command.ts` | 新增 | CommandExecutePayload / CommandResult / CustomUiPayload schema |
+| `packages/protocol/src/web-ext/command.ts` | 新增 | CommandExecutePayload / CommandResult schema |
 | `packages/protocol/src/index.ts` | 改 | 导出上述 |
 | `packages/server/src/session/pi-session.ts` | 改 | `emitUiRpcResponse()` |
 | `packages/server/src/commands/host-command-registry.ts` | 新增 | HostCommandRegistry + 类型 |

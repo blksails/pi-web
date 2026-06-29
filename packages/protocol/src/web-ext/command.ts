@@ -3,7 +3,6 @@
  *
  * 复用 Tier3 ui-rpc 传输:命令执行经 `point="command"`、`action="execute"`,payload 为
  * CommandExecutePayload;结果经 `control:"ui-rpc"` 的 response.result(CommandResult)回流。
- * ctx.ui.custom 经 `point="custom"` 携带 CustomUiPayload(声明式组件描述,替代不可序列化的工厂)。
  *
  * 这些 schema 在消费侧细化 ui-rpc 的 unknown payload/result,**不改** UiRpc* 结构本身(向后兼容)。
  */
@@ -35,11 +34,3 @@ export const CommandResultSchema = z.object({
   data: z.unknown().optional(),
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;
-
-/** point=custom 的渲染描述(声明式:注册名 + props)。 */
-export const CustomUiPayloadSchema = z.object({
-  /** 前端注册表中的组件名。 */
-  component: z.string().min(1),
-  props: z.unknown().optional(),
-});
-export type CustomUiPayload = z.infer<typeof CustomUiPayloadSchema>;

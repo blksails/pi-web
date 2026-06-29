@@ -1,7 +1,7 @@
 # Implementation Plan — unified-command-result-layer
 
-- [x] 1. 协议:命令/自定义 payload schema
-  - [x] 1.1 新增 `packages/protocol/src/web-ext/command.ts`:CommandExecutePayload / CommandResult / CustomUiPayload(zod)
+- [x] 1. 协议:命令 payload schema
+  - [x] 1.1 新增 `packages/protocol/src/web-ext/command.ts`:CommandExecutePayload / CommandResult(zod)
     - 完成态:三 schema + 类型导出;`safeParse` 对合法/非法样本符合预期
     - _Boundary: protocol_  _Requirements: 1.1, 1.3, 6.1, 7.1_
   - [x] 1.2 `packages/protocol/src/index.ts` 导出新 schema/类型;单测 `packages/protocol/test/web-ext/command.test.ts`

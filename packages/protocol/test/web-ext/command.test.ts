@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CommandExecutePayloadSchema,
   CommandResultSchema,
-  CustomUiPayloadSchema,
 } from "../../src/web-ext/command.js";
 
 describe("web-ext/command schema", () => {
@@ -23,12 +22,5 @@ describe("web-ext/command schema", () => {
     expect(
       CommandResultSchema.safeParse({ command: "plugin", effect: "bogus" }).success,
     ).toBe(false);
-  });
-
-  it("CustomUiPayload:component 必填", () => {
-    expect(CustomUiPayloadSchema.safeParse({ component: "chart", props: { a: 1 } }).success).toBe(
-      true,
-    );
-    expect(CustomUiPayloadSchema.safeParse({ component: "" }).success).toBe(false);
   });
 });

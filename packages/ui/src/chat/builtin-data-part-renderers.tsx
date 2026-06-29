@@ -19,7 +19,6 @@ import type {
   RendererRegistry,
 } from "../registry/renderer-registry.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
-import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
 
 /**
  * PART_KINDS 中 consume:"registry" 类 kind → 渲染组件的映射(单一真相源的前端对侧)。
@@ -29,7 +28,6 @@ import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
  */
 export const BUILTIN_DATA_PART_RENDERERS: Record<RegistryPartKind, DataPartRenderer> = {
   "data-pi-ui": PiUiPart,
-  "data-pi-custom-ui": CustomUiDataPart,
 };
 
 /** 遍历 PART_KINDS 的 registry 类 kind,把内置渲染器注册进给定 registry(Req 6.4)。 */

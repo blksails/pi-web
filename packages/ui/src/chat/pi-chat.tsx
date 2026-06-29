@@ -333,7 +333,7 @@ export function PiChat({
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
-    // pi-web 自定义 data-part(data-pi-ui / data-pi-custom-ui)经单一真相源 PART_KINDS 遍历注册
+    // pi-web 自定义 data-part(data-pi-ui)经单一真相源 PART_KINDS 遍历注册
     //(session-snapshot-authority STEP4):不可能漏注册,孤儿渲染器由契约测试静态排除(Req 6.4/6.5)。
     registerBuiltinDataPartRenderers(registry);
   }, [registry]);
@@ -1197,7 +1197,7 @@ export function PiChat({
                   data-pi-logs-region
                   className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
                 >
-                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
                   {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
                   <ExtSlotRegion ext={extension} slot="logs" />
                 </div>
@@ -1328,7 +1328,7 @@ export function PiChat({
               data-pi-logs-region
               className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
             >
-              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
             </div>

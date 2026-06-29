@@ -7,7 +7,7 @@
  *
  * 消费方式(consume):
  *   - "registry":经前端 renderer-registry(registerDataPartRenderer)按 type 分发到组件
- *     (data-pi-ui / data-pi-custom-ui)。这是「孤儿渲染器」风险所在——契约测试遍历断言
+ *     (data-pi-ui)。这是「孤儿渲染器」风险所在——契约测试遍历断言
  *     每个此类 kind 都有注册的渲染器(Req 6.5)。
  *   - "stream":由消息流上层 UI 直接消费(顶部状态条 / 队列视图),不经 renderer-registry
  *     (data-pi-queue / data-pi-compaction / data-pi-auto-retry)。
@@ -18,7 +18,6 @@ import type { z } from "zod";
 import {
   AutoRetryDataPartSchema,
   CompactionDataPartSchema,
-  CustomUiDataPartSchema,
   QueueDataPartSchema,
   UiDataPartSchema,
 } from "./data-part.js";
@@ -57,11 +56,6 @@ export const PART_KINDS = {
     schema: UiDataPartSchema,
     consume: "registry",
     fromEvent: "tool_execution_update.details(UiSpec)",
-  },
-  "data-pi-custom-ui": {
-    schema: CustomUiDataPartSchema,
-    consume: "registry",
-    fromEvent: "extension_ui_request:custom",
   },
 } as const satisfies Record<string, PartKindDef>;
 

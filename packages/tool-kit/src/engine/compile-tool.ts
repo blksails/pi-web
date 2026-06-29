@@ -17,6 +17,7 @@
 
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import { createLogger } from "@blksails/pi-web-logger";
 import type { TSchema } from "@earendil-works/pi-ai";
 import type {
   ToolDefinition,
@@ -41,6 +42,10 @@ import type {
   ModelRoute,
   InteractionSpec,
 } from "./types.js";
+
+// 执行层日志(node-only runtime 子入口;走 stderr sentinel,默认门控由 runner 的
+// initConfigFromEnv 决定)。命名空间 toolkit:tool —— 主时间线:provider 返回 / persist 耗时。
+const log = createLogger({ namespace: "toolkit:tool" });
 
 /** 编译依赖注入:测试注入 mock ctx / fetch;生产走默认 seam + proxyFetch。 */
 export interface CompileDeps {
@@ -151,10 +156,11 @@ function selectModelRoute(
   if (modelArg) {
     const found = findRoute(tool, modelArg);
     if (found) return found;
-    // LLM 传了无效 model → 警告降级
-    console.warn(
-      `[compileTool] unknown model "${modelArg}" for ${tool.name}; falling back to default`,
-    );
+    // LLM 传了无效 model → 警告降级(走日志系统,而非裸 console.warn 被降级为 proc:stderr)
+    log.warn("unknown model; falling back to default", {
+      tool: tool.name,
+      model: modelArg,
+    });
   }
   const def = findRoute(tool, tool.defaultModel);
   if (def) return def;
@@ -416,6 +422,8 @@ async function runExecute(
   }
 
   // ── 执行 ────────────────────────────────────────────────────────────────
+  const startedAt = Date.now();
+  log.debug("tool execute start", { tool: tool.name, model: route.model });
   try {
     // att_id → data URI:在 buildBody 前解析 inputSchema 中 mediaKind:image 字段
     await resolveMediaFields(tool, merged, ctx);
@@ -423,6 +431,14 @@ async function runExecute(
     const picked = await runEndpoint(route, merged, {
       signal,
       fetchImpl: deps?.fetchImpl,
+    });
+    // provider 已出图 —— 对照后台网关"已返回"的时刻;此后的 persist 才是前端继续等待的窗口。
+    const providerMs = Date.now() - startedAt;
+    log.info("provider returned", {
+      tool: tool.name,
+      model: route.model,
+      kind: picked.kind,
+      providerMs,
     });
 
     // 乐观预览 + 进度反馈:provider 已出图,persist(下载+落库+签名)是紧接着的额外
@@ -436,14 +452,22 @@ async function runExecute(
       }
     }
 
+    const persistStartedAt = Date.now();
     const assets = await persistPicked(picked, ctx, {
       fetchImpl: deps?.fetchImpl,
       namePrefix: tool.name,
+    });
+    log.info("assets persisted", {
+      tool: tool.name,
+      count: assets.length,
+      persistMs: Date.now() - persistStartedAt,
+      totalMs: Date.now() - startedAt,
     });
 
     // 无落库产物(provider 返回 raw/空 url,实为解析失败)→ 报失败而非误导性 ok:true。
     if (assets.length === 0) {
       const error = `provider 未返回有效图像产物 (kind=${picked.kind})`;
+      log.warn("no assets persisted", { tool: tool.name, kind: picked.kind });
       return {
         content: [{ type: "text", text: `生成失败:${error}` }],
         details: { ok: false, error },
@@ -457,6 +481,12 @@ async function runExecute(
     return buildImageResult(assets, route.model);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    log.error("tool execute failed", {
+      tool: tool.name,
+      model: route.model,
+      error: message,
+      ms: Date.now() - startedAt,
+    });
     return {
       content: [{ type: "text", text: `生成失败:${message}` }],
       details: { ok: false, error: message },

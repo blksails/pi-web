@@ -15,6 +15,11 @@
  * of constructing a new agent on every call.
  */
 
+import { createLogger } from "@blksails/pi-web-logger";
+
+// 命名空间 toolkit:proxy —— 代理传输不可用时的降级告警(走日志系统,非裸 console.warn)。
+const log = createLogger({ namespace: "toolkit:proxy" });
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Dispatcher = any;
 
@@ -61,13 +66,10 @@ async function getTransport(proxyUrl: string): Promise<CachedTransport | null> {
     transportCache.set(proxyUrl, transport);
     return transport;
   } catch (err) {
-    console.warn(
-      JSON.stringify({
-        event: "tool_kit_proxy_unavailable",
-        proxy: proxyUrl,
-        message: err instanceof Error ? err.message : String(err),
-      }),
-    );
+    log.warn("proxy transport unavailable; falling back to direct fetch", {
+      proxy: proxyUrl,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

@@ -17,7 +17,11 @@
  *   绝不回流半落库或不存在的引用(Req 7.4)。
  * - **origin 固定**:`origin:"tool-output"` 在此固定,不重定义上游 `PutInput`;`size` 由字节长度内部计算。
  */
+import { createLogger } from "@blksails/pi-web-logger";
 import type { AttachmentStore } from "../attachment/attachment-store.js";
+
+// 命名空间 attach:tool-output —— tool 产出落库+签名(runner 子进程内,经 sentinel 流到 UI)。
+const log = createLogger({ namespace: "attach:tool-output" });
 
 /**
  * `putToolOutput` 入参:产出字节 + 描述符元数据(`origin` 在内部固定为 `"tool-output"`,
@@ -81,6 +85,7 @@ export async function putToolOutput(
 ): Promise<ToolOutputRef> {
   // 1) 先落库:经同一门面 put 写入,origin 固定 tool-output、size 由字节长度计算。
   //    门面 put 保证先落 blob 后写描述符、失败回滚 → 此处不必处理半落库,仅在失败时不构造引用。
+  const startedAt = Date.now();
   let attachmentId: string;
   try {
     const att = await store.put({
@@ -94,11 +99,24 @@ export async function putToolOutput(
     attachmentId = att.id;
   } catch (cause) {
     // 落库失败 → 不构造引用,抛可识别失败(Req 7.4)。
+    log.error("tool output put failed", {
+      name: input.name,
+      mimeType: input.mimeType,
+      bytes: input.bytes.length,
+      error: cause instanceof Error ? cause.message : String(cause),
+    });
     throw new ToolOutputPutError(cause);
   }
 
   // 2) 后引用:已落库才签发展示 URL,以引用(不含字节)回流(Req 7.3)。
   const displayUrl = await store.presignUrl(attachmentId);
+  log.debug("tool output persisted", {
+    attachmentId,
+    name: input.name,
+    mimeType: input.mimeType,
+    bytes: input.bytes.length,
+    ms: Date.now() - startedAt,
+  });
   return {
     attachmentId,
     displayUrl,

@@ -7,14 +7,13 @@
  */
 import { z } from "zod";
 
-/** 贡献点类别(slash/@mention/补全/命令/自定义)。 */
+/** 贡献点类别(slash/@mention/补全/命令)。 */
 export const UiRpcPointSchema = z.enum([
   "slash",
   "mention",
   "autocomplete",
   "inlineComplete",
   "command",
-  "custom",
 ]);
 export type UiRpcPoint = z.infer<typeof UiRpcPointSchema>;
 

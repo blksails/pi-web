@@ -191,3 +191,51 @@ describe("assemble — env merge & isolation", () => {
     expect(spec.env["PI_WEB_TRUST_PROJECT"]).toBe("1");
   });
 });
+
+describe("assemble — PI_RUNNER_INSPECT 调试门控", () => {
+  function customWith(inspect: string | undefined) {
+    return assemble(
+      { mode: "custom", cwd: "/work", entryPath: "/work/index.ts" },
+      { extraArgs: [], extraEnv: {} },
+      {
+        runnerEntry: "/runner-bootstrap.mjs",
+        ...(inspect !== undefined ? { env: { PI_RUNNER_INSPECT: inspect } } : {}),
+      },
+    );
+  }
+
+  it("缺省(未设)不注入任何 inspector flag,argv[0] 仍是脚本路径", () => {
+    const spec = customWith(undefined);
+    expect(spec.args[0]).toBe("/runner-bootstrap.mjs");
+    expect(spec.args.some((a) => a.startsWith("--inspect"))).toBe(false);
+  });
+
+  it("PI_RUNNER_INSPECT=1 → --inspect 置于脚本路径之前(node 解析约束)", () => {
+    const spec = customWith("1");
+    expect(spec.args[0]).toBe("--inspect");
+    expect(spec.args[1]).toBe("/runner-bootstrap.mjs");
+  });
+
+  it("数字值 → --inspect=<port>", () => {
+    expect(customWith("9230").args[0]).toBe("--inspect=9230");
+  });
+
+  it("0 → --inspect=0(自动空闲端口)", () => {
+    expect(customWith("0").args[0]).toBe("--inspect=0");
+  });
+
+  it("brk / brk:<port> → --inspect-brk[=<port>]", () => {
+    expect(customWith("brk").args[0]).toBe("--inspect-brk");
+    expect(customWith("brk:9231").args[0]).toBe("--inspect-brk=9231");
+  });
+
+  it("cli 模式同样在 piCliEntry 之前注入", () => {
+    const spec = assemble(
+      { mode: "cli", cwd: "/proj" },
+      { extraArgs: [], extraEnv: {} },
+      { piCliEntry: "/cli.js", env: { PI_RUNNER_INSPECT: "1" } },
+    );
+    expect(spec.args[0]).toBe("--inspect");
+    expect(spec.args[1]).toBe("/cli.js");
+  });
+});

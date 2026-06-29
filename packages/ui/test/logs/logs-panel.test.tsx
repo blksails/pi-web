@@ -626,3 +626,95 @@ describe("LogsPanel — 时间戳列与级别徽章（任务 6.1）", () => {
     expect(badge.textContent).toContain("WARN");
   });
 });
+
+describe("LogsPanel — 结构化明细展示态", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("无 data 的行不渲染明细开关、不标记 has-detail", () => {
+    const entries: LogEntry[] = [makeEntry({ id: "1", msg: "plain" })];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const row = container.querySelector("[data-pi-log-level]")!;
+    expect(row).not.toHaveAttribute("data-pi-log-has-detail");
+    expect(row.querySelector("[data-pi-log-detail-toggle]")).toBeNull();
+  });
+
+  it("有 data 的行标记 has-detail 且渲染明细开关(初始折叠,无 <pre>)", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", msg: "with data", data: { foo: 1, bar: "x" } }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const row = container.querySelector("[data-pi-log-level]")!;
+    expect(row).toHaveAttribute("data-pi-log-has-detail");
+    const toggle = row.querySelector("[data-pi-log-detail-toggle]");
+    expect(toggle).not.toBeNull();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // 折叠态:明细 <pre> 不在场
+    expect(row.querySelector("[data-pi-log-detail]")).toBeNull();
+  });
+
+  it("点击开关展开 → 同步渲染对象 data 的 JSON 明细(textContent 可断言)", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", msg: "m", data: { foo: 1, nested: { ok: true } } }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const toggle = container.querySelector("[data-pi-log-detail-toggle]")!;
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const detail = container.querySelector("[data-pi-log-detail]")!;
+    expect(detail).not.toBeNull();
+    // 同步 <pre>:JSON 文本可断言(非异步高亮)
+    expect(detail.textContent).toContain('"foo": 1');
+    expect(detail.textContent).toContain('"nested"');
+    expect(detail.textContent).toContain('"ok": true');
+  });
+
+  it("再次点击 → 折叠,明细 <pre> 移除", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", msg: "m", data: { a: 1 } }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const toggle = container.querySelector("[data-pi-log-detail-toggle]")!;
+    fireEvent.click(toggle);
+    expect(container.querySelector("[data-pi-log-detail]")).not.toBeNull();
+    fireEvent.click(toggle);
+    expect(container.querySelector("[data-pi-log-detail]")).toBeNull();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("字符串 data 原样展示(不 JSON 包引号)", () => {
+    const entries: LogEntry[] = [
+      makeEntry({ id: "1", msg: "m", data: "raw string detail" }),
+    ];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    fireEvent.click(container.querySelector("[data-pi-log-detail-toggle]")!);
+    const detail = container.querySelector("[data-pi-log-detail]")!;
+    expect(detail.textContent).toBe("raw string detail");
+  });
+
+  it("循环引用 data 不抛错(String 兜底仍可展开)", () => {
+    const circular: Record<string, unknown> = { a: 1 };
+    circular.self = circular;
+    const entries: LogEntry[] = [makeEntry({ id: "1", msg: "m", data: circular })];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const toggle = container.querySelector("[data-pi-log-detail-toggle]")!;
+    expect(() => fireEvent.click(toggle)).not.toThrow();
+    expect(container.querySelector("[data-pi-log-detail]")).not.toBeNull();
+  });
+
+  it("data 为 null 视为无明细(不标记 has-detail)", () => {
+    const entries: LogEntry[] = [makeEntry({ id: "1", msg: "m", data: null })];
+    mockLogsResult = makeResult({ entries });
+    const { container } = render(<LogsPanel />);
+    const row = container.querySelector("[data-pi-log-level]")!;
+    expect(row).not.toHaveAttribute("data-pi-log-has-detail");
+  });
+});

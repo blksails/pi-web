@@ -56,7 +56,8 @@ describe("createNewApiImage", () => {
     expect(body.model).toBe("gpt-image-1");
     expect((body.prompt as string)).toContain("a mountain");
     expect(body.n).toBe(2);
-    expect(body.response_format).toBe("url");
+    // b64_json:图片字节内联返回,避免 persistPicked 二次下载 CDN url(完成滞后根因)。
+    expect(body.response_format).toBe("b64_json");
   });
 
   it("OpenAI 专属参数 background/quality/moderation 透传", async () => {
