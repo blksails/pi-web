@@ -138,6 +138,23 @@ describe("ControlStore", () => {
       expect(store.getSnapshot().extensionUiQueue).toEqual([]);
     });
 
+    it("notify 按 id 幂等去重:同一 notify 帧应用两次只保留一条(防双流重复显示)", () => {
+      const store = new ControlStore();
+      const frame = pushFrame({
+        type: "extension_ui_request",
+        id: "dup-1",
+        method: "notify",
+        message: "代码检视:发现 2 个问题",
+        notifyType: "warning",
+      });
+      // 同一帧(同 id)经 per-prompt 流 + 空闲控制流各应用一次。
+      store.applyControlFrame(frame);
+      store.applyControlFrame(frame);
+      expect(store.getSnapshot().ambient.notifications).toEqual([
+        { id: "dup-1", message: "代码检视:发现 2 个问题", notifyType: "warning" },
+      ]);
+    });
+
     it("setStatus sets / replaces a key and deletes on undefined statusText", () => {
       const store = new ControlStore();
       store.applyControlFrame(

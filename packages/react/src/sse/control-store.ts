@@ -300,6 +300,11 @@ export class ControlStore {
 
   /** 追加通知,超出软上限时丢弃最旧的,只保留最近 NOTIFICATIONS_SOFT_CAP 条。 */
   private appendNotification(notification: ExtensionNotification): void {
+    // 按 id 幂等:同一 notify 帧(一次 ctx.ui.notify emit)会广播到多条订阅流(per-prompt + 空闲控制流),
+    // 每条都 applyControlFrame → 若直接追加会重复显示同一通知。已存在同 id 则跳过(去重)。
+    if (this.snapshot.ambient.notifications.some((n) => n.id === notification.id)) {
+      return;
+    }
     const next = [...this.snapshot.ambient.notifications, notification];
     const capped =
       next.length > NOTIFICATIONS_SOFT_CAP

@@ -533,8 +533,10 @@ export function PiChat({
     hasContributions || hasArtifactRpc || (readinessGating && !sessionReady);
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    // 空闲控制流恒应用 ambient(notify/status/widget)帧:空闲期无并发 per-prompt 流,不重复应用。
-    // (此前 gate 到 extCtrlActive 会令"有 contributions、流已以 applyAmbient:false 打开"的扩展收不到
+    // 空闲控制流恒应用 ambient(notify/status/widget)帧。纯命令(无 agent_start)下服务端 busy 仍 false,
+    // 故此流与 per-prompt chunk 流可能并存且都应用同一 notify 帧——由 controlStore 按帧 id **幂等去重**
+    // 保证只显示一条(见 control-store.appendNotification),无需靠关流避免重复(关流会漏掉迟到 notify)。
+    // (此前 gate 到 extCtrlActive 会令"有 contributions、流已 applyAmbient:false 打开"的扩展收不到
     //  session_start 等 ctx.ui notify——故恒 true,plugin-system-unification R10 修复。)
     return connection.openControlOnlyStream({ applyAmbient: true });
   }, [connection, isBusy, needsIdleControl]);
