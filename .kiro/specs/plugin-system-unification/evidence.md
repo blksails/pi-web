@@ -162,7 +162,16 @@ runner 加诊断 + 开 logging 查会话日志,得：
 (解释 16ms 快速 ack)、**忽略 `session.prompt` 完成的 promise**。故 pi-web **无干净 seam** 在命令/turn 完成时
 emit command-complete——A 需**上游 SDK 改动**(让 runRpcMode 发 prompt-complete)。pi-web 单方可行的是
 **B-server**(PiSession 观察 agent 事件流:命令 prompt 后窗口内无 `agent_start`→判纯命令→合成 complete;
-`agent_start` 在 turn 起始即发,不切断真实 turn)。R11 待:提 SDK feature request 走 A,或采纳 B-server。
+`agent_start` 在 turn 起始即发,不切断真实 turn)。
+
+### R11 已实现（B-server，2026-06-29）
+- server `PiSession` 命令-turn watcher:斜杠命令 prompt 武装 1500ms 计时器;窗口内 `agent_start`→取消
+  (真 finish 收尾),无→合成 `finish` UiMessageChunk 帧。仅命令路径触发,普通消息零影响。
+- 前端命令改走正常 send(useChat):渲染 `/cmd` 气泡 + turn(实时↔历史一致),删 fire-and-forget +
+  `armExtControlStream` 整套机制。
+- 证据:watcher 单测 **3/3**;**session 全套 210 测试无回归**;server+ui typecheck 绿;浏览器实测 `/review`
+  经 doSend → 用户气泡 + notify 渲染 + 不卡死 + 转录区干净(合成裸 finish 不冒空助手气泡)。
+- 代价:纯命令输入 ~1.5s 窗口后解冻(无完成信号的固有取舍)。
 
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。

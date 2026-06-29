@@ -27,7 +27,11 @@ import type {
   UiRpcRequest,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
-import { makeControlFrame, UiRpcResponseSchema } from "@blksails/pi-web-protocol";
+import {
+  makeControlFrame,
+  makeUiMessageChunkFrame,
+  UiRpcResponseSchema,
+} from "@blksails/pi-web-protocol";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
 
 // 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
@@ -64,6 +68,13 @@ import {
 } from "./translate/translation-context.js";
 
 const FRAME_EVENT = "frame";
+
+/**
+ * R11：斜杠命令 prompt 到 `agent_start` 的等待窗口（毫秒）。窗口内无 agent_start → 视为纯命令，
+ * 合成 finish 收尾。需足够覆盖"命令处理器运行 + 触发 turn 的 followUp 排队到 agent_start"，
+ * 又不至于让纯命令输入卡太久（纯命令此窗口后才解除 streaming）。
+ */
+const COMMAND_TURN_WINDOW_MS = 1500;
 const END_EVENT = "end";
 
 /**
@@ -137,6 +148,14 @@ export class PiSession {
   private readonly snapshotAuthority: boolean;
   private probeTimer: ReturnType<typeof setTimeout> | undefined;
   private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * R11（扩展命令消息流一致性）：斜杠命令 prompt 后在窗口内观察是否有 `agent_start`（真 turn）。
+   * 有 → 真 turn，照常走到真 finish；窗口内无 → 纯命令（不发任何 message 生命周期帧）→ 合成一个
+   * `finish` 帧让前端 per-prompt 流干净收尾，避免 useChat 永久 streaming。**仅命令路径触发**
+   * （普通消息必有 agent_start，watcher 在 start 时即取消，对普通流零影响）。
+   */
+  private commandTurnTimer: ReturnType<typeof setTimeout> | undefined;
+  private awaitingCommandTurn = false;
 
   private readonly unsubs: Unsubscribe[] = [];
 
@@ -441,6 +460,10 @@ export class PiSession {
   private handleEvent(event: AgentEvent): void {
     if (this._status !== "active") return;
     this.touch();
+    // R11:真 turn 开始 → 取消命令-turn watcher,由真 finish 收尾(不合成,避免重复/早切)。
+    if (event.type === "agent_start" && this.awaitingCommandTurn) {
+      this.cancelCommandTurnWatcher();
+    }
     // 权威快照归约(session-snapshot-authority):busy/turn 由轮次边界派生,变更才广播。
     // **必须先于** translate 帧广播:agent_end 翻译出的 finish 帧触发前端关流;若 busy=false 的
     // session-state 帧排在 finish 之后,会在该 per-prompt 流被丢弃 → 前端 busy 永久卡 true
@@ -645,7 +668,32 @@ export class PiSession {
       streamingBehavior?: "steer" | "followUp";
     },
   ): Promise<RpcResponse> {
+    // R11:斜杠命令可能不触发 turn(纯 ctx.ui 命令)→ 武装 watcher;窗口内无 agent_start 则合成 finish
+    // 让前端 per-prompt 流收尾(否则纯命令永久 streaming)。真 turn 的 agent_start 会取消之。
+    if (message.startsWith("/")) this.armCommandTurnWatcher();
     return this.forward(() => this.channel.prompt(message, options));
+  }
+
+  /** R11:武装命令-turn watcher(见 `commandTurnTimer` 字段注释)。 */
+  private armCommandTurnWatcher(): void {
+    this.cancelCommandTurnWatcher();
+    this.awaitingCommandTurn = true;
+    this.commandTurnTimer = setTimeout(() => {
+      if (!this.awaitingCommandTurn || this._status !== "active") return;
+      this.awaitingCommandTurn = false;
+      this.commandTurnTimer = undefined;
+      // 纯命令:无 agent_start/agent_end → 合成 finish(等同 agent_end 的产出)收尾 per-prompt 流。
+      this.emitter.emit(FRAME_EVENT, makeUiMessageChunkFrame({ type: "finish" }));
+    }, COMMAND_TURN_WINDOW_MS);
+  }
+
+  /** R11:取消 watcher(收到 agent_start=真 turn,或会话收尾/重启时)。 */
+  private cancelCommandTurnWatcher(): void {
+    if (this.commandTurnTimer !== undefined) {
+      clearTimeout(this.commandTurnTimer);
+      this.commandTurnTimer = undefined;
+    }
+    this.awaitingCommandTurn = false;
   }
 
   steer(
@@ -938,6 +986,8 @@ export class PiSession {
         clearTimeout(this.restartSettleTimer);
         this.restartSettleTimer = undefined;
       }
+      // R11:清命令-turn watcher 计时器(收尾时不再合成 finish)。
+      this.cancelCommandTurnWatcher();
       // 2) 退订通道信号。
       for (const u of this.unsubs) {
         try {

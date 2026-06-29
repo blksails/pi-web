@@ -84,13 +84,19 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
   - _Boundary: packages/ui/src/chat, packages/ui/src/elements, examples/plugin-code-review-agent_
 
-- [ ] 14. 增量（**上游阻塞**）：扩展命令消息流 / 历史一致性（R11）
-  - **阻塞发现**：方案 A（runner 发 command-complete）需要上游 SDK 改动——pi-web 把 RPC 循环完全
-    委托给 SDK 的 `runRpcMode`（runner.ts:319），而 `runRpcMode` 的 prompt 处理只回 preflight ack、
-    **忽略命令/turn 完成的 promise**（rpc-mode.js:294-316），pi-web 无干净 seam emit command-complete。
-  - 可行替代：**B-server**——pi-web PiSession 侧观察 agent 事件流,命令 prompt 后窗口内无 `agent_start`
-    → 判为纯命令 → 合成 command-complete（`agent_start` 在 turn 起始即发,故不切断真实 turn,较 client 超时稳）。
-  - 状态：A 待上游 SDK 支持(可提 feature request);或采纳 B-server。待你定。
+- [x] 14. 增量（已实现 · B-server）：扩展命令消息流 / 历史一致性（R11）
+  - 背景:方案 A(runner 发 command-complete)受上游阻塞(pi-web 委托 SDK `runRpcMode`,无完成 seam)。
+    采纳 **B-server**(我们能控制的事)。
+  - **server**(`PiSession`):命令-turn watcher——斜杠命令 prompt 武装计时器,窗口(1500ms)内有
+    `agent_start`(真 turn)→ 取消(由真 finish 收尾);无 → 纯命令 → 合成一个 `finish` UiMessageChunk 帧
+    收尾 per-prompt 流。**仅命令路径触发**,普通消息(必有 agent_start)零影响;收尾/重启清计时器。
+  - **前端**(`pi-chat.tsx`):扩展命令改走**正常 send**(useChat)——渲染 `/cmd` 用户气泡 + 命令触发的
+    turn(实时↔历史一致),ctx.ui 由 per-prompt chunk 流承载。删除 fire-and-forget + `armExtControlStream`
+    整套机制(前端反而更简单);保留 `/plugin`·`/reload-runtime` 的 webext 重载触发。
+  - 完成证据:watcher 单测 3/3(`pi-session.command-turn.test.ts`:无 start 合成/有 start 取消/非斜杠不武装);
+    **session 全套 210 测试无回归**;server+ui typecheck 绿;**浏览器实测**——`/review` 经 doSend:显示用户
+    气泡 + notify 渲染 + 输入不卡死 + 转录区干净(合成裸 finish 不冒空助手气泡、无错误)。
+  - 代价:纯命令(`/plugin` 等)输入框 ~1.5s 窗口后才解冻(无完成信号的固有取舍,非结构脏)。
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
 
 - [x] 16. R12 Fix#1（已实现验证）：systemResourceArgs 读 agent source 自身目录

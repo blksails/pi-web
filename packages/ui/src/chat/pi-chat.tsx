@@ -527,36 +527,15 @@ export function PiChat({
   const sessionReady = !readinessGating || lifecycle?.state === "ready";
   const sessionReadinessError =
     readinessGating && lifecycle?.state === "error";
-  // agent 扩展命令(/plugin 等)经 fire-and-forget 投递、不开 per-prompt 消息流;其 ctx.ui 反馈
-  // (notify/setWidget)走控制帧,需有打开的下行流才能投递。故派发扩展命令时临时点亮此标志,
-  // 在有界窗口内开「仅控制」流承载反馈,窗口后自动熄灭(不变成对所有 agent 常开,避免 prompt-流回归)。
-  const [extCtrlActive, setExtCtrlActive] = React.useState(false);
-  const extCtrlTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const armExtControlStream = React.useCallback((): void => {
-    setExtCtrlActive(true);
-    if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
-    // 命令 + ctx.ui 通常数秒内完成(pi list 较慢约 10s+);给足窗口后熄灭。
-    extCtrlTimerRef.current = setTimeout(() => setExtCtrlActive(false), 30_000);
-  }, []);
-  React.useEffect(
-    () => () => {
-      if (extCtrlTimerRef.current !== undefined) clearTimeout(extCtrlTimerRef.current);
-    },
-    [],
-  );
-  // 就绪前需开空闲控制流以接收粘性 session-status 帧(仍受 !isBusy 门控;就绪前 isBusy 不可能为真,
-  // 故不与 per-prompt 流冲突)。就绪后若无其它需求自然关闭。扩展命令窗口(extCtrlActive)同样需要。
+  // 空闲控制流开启条件:有贡献点(Tier3 回包)/ artifact rpc / 就绪握手未就绪期(接粘性 session-status)。
+  // R11 后扩展命令走正常 send,其 ctx.ui 由 per-prompt chunk 流承载,不再需要"命令窗口"控制流。
   const needsIdleControl =
-    hasContributions ||
-    hasArtifactRpc ||
-    (readinessGating && !sessionReady) ||
-    extCtrlActive;
+    hasContributions || hasArtifactRpc || (readinessGating && !sessionReady);
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    // 空闲控制流恒应用 ambient(notify/status/widget)帧:fire-and-forget 扩展命令无 per-prompt
-    // 流,其 ctx.ui 反馈只能由此流承载;空闲期无并发 per-prompt 流,不会重复应用(安全)。
-    // 注:此前 gate 到 extCtrlActive 会令"有 contributions、流已以 applyAmbient:false 打开"的
-    // 扩展(如统一插件)收不到命令的 notify——故改为恒 true(plugin-system-unification 修复)。
+    // 空闲控制流恒应用 ambient(notify/status/widget)帧:空闲期无并发 per-prompt 流,不重复应用。
+    // (此前 gate 到 extCtrlActive 会令"有 contributions、流已以 applyAmbient:false 打开"的扩展收不到
+    //  session_start 等 ctx.ui notify——故恒 true,plugin-system-unification R10 修复。)
     return connection.openControlOnlyStream({ applyAmbient: true });
   }, [connection, isBusy, needsIdleControl]);
   const canSubmit =
@@ -648,17 +627,12 @@ export function PiChat({
       }
     }
 
-    // agent 扩展命令拦截(source==="extension",如 /plugin):**不走 useChat**。
-    // 扩展命令在 agent 进程内本地执行后提前返回,从不发任何 message 生命周期帧(实测命令轮
-    // 仅有 extension_ui_request);若经 useChat.sendMessage 发送,会永久等不到 finish 帧而卡 busy。
-    // 故经 client.prompt fire-and-forget 直接投递(agent 照常执行命令),反馈完全靠 ctx.ui
-    // (status/notify/widget 经独立控制流到达),输入区即时复位、不进 LLM、不卡 pending。
-    if (
-      input.startsWith("/") &&
-      client !== undefined &&
-      sessionId !== undefined &&
-      controls?.commands !== undefined
-    ) {
+    // agent 扩展命令(source==="extension",如 /plugin):走**正常 send**(R11 消息流一致性)。
+    // 命令触发的 turn 经 useChat per-prompt 流实时渲染(与历史回放一致);不产生 turn 的纯命令由
+    // server 命令-turn watcher 在窗口后合成 finish 收尾(见 PiSession),不再永久 streaming。
+    // 仍触发 webext 重载(装/卸 plugin)。此前 fire-and-forget 会令命令触发的 turn 实时不渲染、
+    // 重开会话才冒出——故改走正常 send。
+    if (input.startsWith("/") && controls?.commands !== undefined) {
       const name = input.slice(1).split(/\s+/)[0]?.toLowerCase();
       const extCmd =
         name !== undefined && name.length > 0
@@ -667,15 +641,11 @@ export function PiChat({
             )
           : undefined;
       if (extCmd !== undefined) {
-        // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
-        armExtControlStream();
-        void client.prompt(sessionId, { message: input }).catch(() => undefined);
         // 装/卸插件命令(/plugin、/reload-runtime)→ 驱动 webext 重载(双路生效路②)。
-        // pi 资源经 runner reload 生效为路①;此处通知宿主重解析 webext,避免"装了 UI 没变"。
         if (name === "plugin" || name === "reload-runtime") {
           onRuntimeReloadRequested?.();
         }
-        setInput("");
+        doSend(input);
         return;
       }
     }
@@ -686,10 +656,7 @@ export function PiChat({
     input,
     builtinCommands,
     dispatchBuiltin,
-    client,
-    sessionId,
     controls?.commands,
-    armExtControlStream,
     onRuntimeReloadRequested,
   ]);
 
