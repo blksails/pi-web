@@ -84,6 +84,20 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
   - _Boundary: packages/ui/src/chat, packages/ui/src/elements, examples/plugin-code-review-agent_
 
+- [ ] 14. 增量（待实现）：扩展命令消息流 / 历史一致性（R11）
+  - 命令派发改为订阅有界输出流渲染任何产出（turn/ambient），但不以 finish 帧门控输入（防 busy 回归）
+  - 可选：transcript 轻量"已执行 /xxx"系统标记（仅 UI）
+  - 验证：浏览器 e2e——纯命令不卡 busy + 触发 turn 的命令实时渲染并与冷恢复历史一致
+  - 状态：已立项（requirements+design），待评审后实现
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+
+- [ ] 15. 增量（调查中）：项目 skill 加载与 `skill:` 命令暴露（R12）
+  - 已排除 app 层全部成因（见 evidence.md）；`resourceLoader.getSkills()` 仍空
+  - 下一步：捕获 runner 子进程 stderr 的专门调试，确认 custom runRpcMode 是否执行/回退（`module.createRequire failed` 线索），定位 `getSkills()` 为空的 SDK/runner 根因
+  - 示例已补 `.pi/skills/code-review/SKILL.md`（自运行路径,必要不充分）
+  - 状态：根因定位中,先查清再决定修法（不盲改 runner）
+  - _Requirements: 12.1, 12.2, 12.3_
+
 - [x] 11. 端到端验证（离线 stub + 隔离 build）
 - [x] 11.1 e2e：统一插件两层咬合
   - stub 加 `code-review` sentinel 发 `code_review` 工具；`e2e/browser/plugin-system-unification.e2e.ts`：选 source → 发 code-review prompt → 断言 CodeReviewCard（`data-testid="code-review-card"` + 2 findings）

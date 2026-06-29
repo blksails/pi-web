@@ -102,6 +102,35 @@ ui typecheck：Done
   - 项目级 .pi/extensions 经 PI_WEB_TRUST_DEFAULT_CWD(默认开)开箱加载,无需 PI_WEB_TRUST_PROJECT
 ```
 
+## 调查：R11 命令消息流一致性 + R12 项目 skill 加载（2026-06-29 追加）
+
+### R11 消息流/历史一致性（实测）
+| 情形 | 实时 transcript | 持久化 GET /messages | 冷恢复 |
+|---|---|---|---|
+| 普通消息 | 乐观气泡+流式 | 全持久 | 一致 |
+| 纯 ctx.ui 命令（`/review`）| 无气泡（仅 ambient 通知）| **0 条** | 空 |
+| 触发 turn 的命令（followUp 版）| **实时无渲染** | followUp user+assistant+toolResult 全持久 | **回放冒出一轮** |
+
+根因：fire-and-forget 命令不开 per-prompt 流、不加乐观气泡（busy 修复所致）；agent 把斜杠命令当动作执行、
+不记普通命令文本。→ 触发 turn 的命令实时↔历史不一致（最尖锐）。修法（R11）：订阅有界输出流渲染产出、
+不以 finish 门控输入。**已立项，待实现。**
+
+### R12 项目 skill 不出 `skill:` 命令（深挖结论）
+实测：pi-web 下任何项目 skill 都不出现为 `skill:` 命令——连已知 `pi-probe-agent` 的探针 skill 也不出（systemic）。
+**逐层排除（全部应通过）**：
+- 示例 skill 已在 `.pi/skills/code-review/SKILL.md`（自运行 top-level 路径,与扩展同位）。
+- `def.skills` 未设（`defineAgent` 恒等函数,`skills?` 可选）→ option-mapper 不设 skillsOverride。
+- `loadSystemSkills` 默认 true → 不注入 `--no-skills`。
+- SDK `collectSkillEntries` 递归进子目录命中 `code-review/SKILL.md`；`isEnabledByOverrides` 默认 enabled=true。
+- `projectTrusted` 为真（同 gate 下扩展能加载;`trust:true` 显式也试过）。
+- SDK RPC 模式 get_commands **确含** `session.resourceLoader.getSkills().skills → skill:<name>`（rpc-mode.js:519-527）。
+- 非时序（6s 等待仍空）。
+
+→ `resourceLoader.getSkills()` 仍为空,根因落在 **SDK/runner 子进程边界**。临时在 `runner.ts` 加 `[skill-debug]`
+打印 getSkills,但 dev 日志**没接住**（runner 子进程 stderr 路由 / 或 `module.createRequire failed parsing argument`
+暗示 custom runRpcMode 未执行/回退到 `pi --mode rpc`）。**下一步**：专门捕获 runner 子进程 stderr 的调试,
+确认运行模式与 getSkills 实际返回,再定位 SDK 内部成因。诊断代码已移除,不留库。
+
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。
 - examples 不纳入 workspace typecheck（根 tsconfig 排除 `examples`，与既有 webext 示例同约定）；其正确性由 webext 构建成功 + 浏览器 e2e 保障。
