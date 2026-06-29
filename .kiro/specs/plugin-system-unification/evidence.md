@@ -146,6 +146,24 @@ runner 加诊断 + 开 logging 查会话日志,得：
 诊断代码已移除。修法见 R12 AC(systemResourceArgs 用 source cwd + `--no-skills` 按 scope 保留项目 skill)。
 示例 `.pi/settings.json {loadSystemSkills:true}` 保留(语义正确,Fix#1 落地后即生效)。
 
+### R12 Fix#1 已实现验证（2026-06-29）
+`lib/app/pi-handler.ts`：systemResourceArgs 改读 agent source 自身目录的 `.pi/settings.json`（本地目录源
+以自身为项目根,与 runner 发现 cwd 一致）。实机验证（真实 `~/.pi/agent` 全局 `loadSystemSkills:false`）：
+```
+建会话 ./examples/plugin-code-review-agent(裸请求)→ get_commands:
+  skill:code-review-skill ✓ (+ review 命令 + 用户级 skill)
+```
+→ per-source `.pi/settings.json{loadSystemSkills:true}` 现在生效,示例 skill 加载。app typecheck 绿。
+剩 R12-AC2(`--no-skills` 按 scope 保留项目 skill)未做(skillsOverride 早于 sourceInfo 回填的复杂点,见 tasks)。
+
+### R11-A 上游阻塞（2026-06-29）
+认真做方案 A(runner 发 command-complete)时撞到架构边界:pi-web `runner.ts:319` 把 RPC 循环**完全委托**
+给 SDK 的 `runRpcMode`;而 `runRpcMode` 的 `case "prompt"`(rpc-mode.js:294-316)**只在 preflight 成功时回 ack**
+(解释 16ms 快速 ack)、**忽略 `session.prompt` 完成的 promise**。故 pi-web **无干净 seam** 在命令/turn 完成时
+emit command-complete——A 需**上游 SDK 改动**(让 runRpcMode 发 prompt-complete)。pi-web 单方可行的是
+**B-server**(PiSession 观察 agent 事件流:命令 prompt 后窗口内无 `agent_start`→判纯命令→合成 complete;
+`agent_start` 在 turn 起始即发,不切断真实 turn)。R11 待:提 SDK feature request 走 A,或采纳 B-server。
+
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。
 - examples 不纳入 workspace typecheck（根 tsconfig 排除 `examples`，与既有 webext 示例同约定）；其正确性由 webext 构建成功 + 浏览器 e2e 保障。

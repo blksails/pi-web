@@ -84,12 +84,21 @@
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
   - _Boundary: packages/ui/src/chat, packages/ui/src/elements, examples/plugin-code-review-agent_
 
-- [ ] 14. 增量（待实现）：扩展命令消息流 / 历史一致性（R11）
-  - 命令派发改为订阅有界输出流渲染任何产出（turn/ambient），但不以 finish 帧门控输入（防 busy 回归）
-  - 可选：transcript 轻量"已执行 /xxx"系统标记（仅 UI）
-  - 验证：浏览器 e2e——纯命令不卡 busy + 触发 turn 的命令实时渲染并与冷恢复历史一致
-  - 状态：已立项（requirements+design），待评审后实现
+- [ ] 14. 增量（**上游阻塞**）：扩展命令消息流 / 历史一致性（R11）
+  - **阻塞发现**：方案 A（runner 发 command-complete）需要上游 SDK 改动——pi-web 把 RPC 循环完全
+    委托给 SDK 的 `runRpcMode`（runner.ts:319），而 `runRpcMode` 的 prompt 处理只回 preflight ack、
+    **忽略命令/turn 完成的 promise**（rpc-mode.js:294-316），pi-web 无干净 seam emit command-complete。
+  - 可行替代：**B-server**——pi-web PiSession 侧观察 agent 事件流,命令 prompt 后窗口内无 `agent_start`
+    → 判为纯命令 → 合成 command-complete（`agent_start` 在 turn 起始即发,故不切断真实 turn,较 client 超时稳）。
+  - 状态：A 待上游 SDK 支持(可提 feature request);或采纳 B-server。待你定。
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+
+- [x] 16. R12 Fix#1（已实现验证）：systemResourceArgs 读 agent source 自身目录
+  - `lib/app/pi-handler.ts`：本地目录源以其自身为项目根读 `.pi/settings.json`（与 runner 发现 cwd 一致），
+    git/cli 源回退 cwd → per-source `loadSystemSkills` 覆盖生效
+  - 完成证据：app typecheck 绿；**实机**——真实 agentDir(全局 `loadSystemSkills:false`)下,示例项目级
+    `.pi/settings.json{loadSystemSkills:true}` 生效 → `skill:code-review-skill` 出现在 get_commands
+  - _Requirements: 12.1, 12.3_
 
 - [ ] 15. 增量（根因已定位，待实现修复）：项目/插件 skill 不被系统开关误清（R12）
   - **根因（已证实）**：skill 机制正常（诊断证实 getSkills 返回含 code-review-skill 的 4 技能）；
@@ -100,7 +109,10 @@
     `sourceInfo.scope` 仅排除非项目 skill、保留项目 scope
   - 示例已补 `.pi/skills/code-review/SKILL.md` + `.pi/settings.json{loadSystemSkills:true}`（Fix① 后生效）
   - 验证：单测(systemResourceArgs cwd + scope 过滤) + 集成验 `skill:` 命令出现(即使全局 false)
-  - 状态：根因已定位（见 evidence.md），待评审后实现（注意与 system-resource-toggle-fix 的 `--no-skills` 语义协调）
+  - 状态：**Fix#1(cwd)已实现验证(task 16)**；剩 **AC2(`--no-skills` 按 scope 保留项目 skill)** 未做——
+    复杂点:skillsOverride 收到的 skills 在 sourceInfo(scope)回填**之前**(resource-loader.js:450 早于 451),
+    需按 filePath 是否在 `<cwd>/.pi/skills` 判 project,且 option-mapper 需拿到 cwd（plumbing）。待评审后实现。
+  - 已确认与 system-resource-toggle-fix 的 `--no-skills` 语义协调（用户批准"保留项目 skill"）
   - _Requirements: 12.1, 12.2, 12.3, 12.4_
 
 - [x] 11. 端到端验证（离线 stub + 隔离 build）

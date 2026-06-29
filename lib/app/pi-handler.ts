@@ -15,6 +15,7 @@
  * Provider keys are never logged or echoed (Req 3.5).
  */
 import path from "node:path";
+import fs from "node:fs";
 import {
   createPiWebHandler,
   type PiWebHandler,
@@ -124,7 +125,19 @@ function makeRealResolver(config: AppConfig): {
     resolve: async (source, opts) => {
       const cwd = opts?.cwd ?? config.defaultCwd;
       // 「扩展」面板开关:关闭系统 skills/extensions → 注入 --no-skills/--no-extensions。
-      const extraArgs = await systemResourceArgs(agentDir, cwd);
+      // 项目级开关须读 **agent source 自身目录** 的 .pi/settings.json(本地目录源即项目根,
+      // 与 runner 资源发现的 cwd 一致),否则被 handler defaultCwd 遮蔽 → per-source
+      // loadSystemSkills 覆盖失效(plugin-system-unification R12 Fix#1)。git/cli 源回退 cwd。
+      let resourceCwd = cwd;
+      if (typeof source === "string" && source.length > 0) {
+        try {
+          const abs = path.resolve(cwd, source);
+          if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) resourceCwd = abs;
+        } catch {
+          // 解析失败(非本地路径/权限)→ 保持 cwd。
+        }
+      }
+      const extraArgs = await systemResourceArgs(agentDir, resourceCwd);
       return AgentSourceResolver.resolve(source, {
         cwd,
         runnerEntry,
