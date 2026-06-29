@@ -96,6 +96,7 @@ export class PostgresSessionEntryStore implements SessionEntryStore {
       );
       let seq = Number(seqRes.rows[0]?.["m"] ?? 0);
       const localSeen = new Set<string>();
+      let latestName: string | undefined;
       for (const entry of entries) {
         if (localSeen.has(entry.id)) continue;
         localSeen.add(entry.id);
@@ -104,6 +105,16 @@ export class PostgresSessionEntryStore implements SessionEntryStore {
           "INSERT INTO entries (session_id, id, parent_id, seq, type, payload_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (session_id, id) DO NOTHING",
           [sessionId, entry.id, entry.parentId, seq, entry.type, serializeEntry(entry), entry.timestamp],
         );
+        // 维护去规范化的 name 列(spec auto-session-title, Req 8.4):session_info 即会话显示名,最新生效。
+        if (entry.type === "session_info") {
+          latestName = (entry as { name?: string }).name;
+        }
+      }
+      if (latestName !== undefined) {
+        await client.query("UPDATE sessions SET name = $1 WHERE session_id = $2", [
+          latestName,
+          sessionId,
+        ]);
       }
       await client.query("COMMIT");
     } catch (err) {

@@ -49,10 +49,10 @@ describe("ArtifactSurface", () => {
     const iframe = container.querySelector("iframe") as HTMLIFrameElement;
     postFromFrame(iframe.contentWindow, {
       kind: "rpc",
-      request: { correlationId: "x", point: "custom", action: "execute", payload: { a: 1 }, protocolVersion: "0.1.0" },
+      request: { correlationId: "x", point: "command", action: "execute", payload: { a: 1 }, protocolVersion: "0.1.0" },
     });
     expect(request).toHaveBeenCalledWith(
-      expect.objectContaining({ point: "custom", action: "execute" }),
+      expect.objectContaining({ point: "command", action: "execute" }),
     );
   });
 });

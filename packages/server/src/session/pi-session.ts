@@ -27,7 +27,12 @@ import type {
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
 import { makeControlFrame, UiRpcResponseSchema } from "@blksails/pi-web-protocol";
-import { isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
+import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
+
+// 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
+// 的时刻(对照 runner 内部 toolkit:* 计时,定位时间花在哪一段)。主进程日志落 server stderr,
+// 受 configureLogger(主进程门控)约束,默认关。
+const toolLog = createLogger({ namespace: "session:tool" });
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import { LogRingBuffer } from "../logging/log-ring-buffer.js";
@@ -357,11 +362,38 @@ export class PiSession {
   private handleEvent(event: AgentEvent): void {
     if (this._status !== "active") return;
     this.touch();
+    this.logToolEvent(event);
     // 纯函数翻译:推进上下文并广播产出帧(同序,Req 3.1 / 3.3)。
     const { frames, ctx } = translateEvent(event, this.translationCtx);
     this.translationCtx = ctx;
     for (const frame of frames) {
       this.emitter.emit(FRAME_EVENT, frame);
+    }
+  }
+
+  /**
+   * 工具调用边界日志:server 从 RPC 流收到 runner 的 tool_execution 事件即记一笔(start/end)。
+   * 与 runner 内部 toolkit:* 计时配合,可定位时间花在执行内部还是 RPC/翻译往返。仅 tool 事件,
+   * 其余事件(message_update 等)不记,避免噪声。
+   */
+  private logToolEvent(event: AgentEvent): void {
+    switch (event.type) {
+      case "tool_execution_start":
+        toolLog.info("tool start", {
+          session: this.id,
+          toolCallId: event.toolCallId,
+          tool: event.toolName,
+        });
+        break;
+      case "tool_execution_end":
+        toolLog.info("tool end", {
+          session: this.id,
+          toolCallId: event.toolCallId,
+          isError: event.isError === true,
+        });
+        break;
+      default:
+        break;
     }
   }
 

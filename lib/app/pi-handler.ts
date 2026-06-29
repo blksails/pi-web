@@ -43,6 +43,7 @@ import {
   type CreateChannelOpts,
 } from "@blksails/pi-web-server";
 import { loggingConfigSchema } from "@blksails/pi-web-protocol";
+import { configureLogger } from "@blksails/pi-web-logger";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
@@ -59,6 +60,9 @@ import { loadConfig, type AppConfig } from "./config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
+// 自动会话标题扩展文件路径解析(同样为纯路径模块,不拉 pi SDK):spec auto-session-title ——
+// 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
+import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -234,6 +238,13 @@ function stubSpawnSpec(
 function buildSingleton(): HandlerSingleton {
   const config = loadConfig();
 
+  // 主进程自身 logger 的 runtime 门控:主进程不像 runner 那样调 initConfigFromEnv,
+  // 库默认 enabled=true 会让 server 侧 createLogger(pi-session 等)无条件打到 server stderr。
+  // 在此按同一 env 默认(PI_WEB_LOG_*,默认关)对齐,避免未开日志时刷终端;PI_WEB_LOG_ENABLED=1
+  // 时主进程与 runner 同步开启。(注:此为主进程自身日志门控,runner 日志→UI 仍由
+  // loggingConfigProvider/gateConfig 单独控制。)
+  configureLogger(resolveLoggingEnvDefault());
+
   const store = new InMemorySessionStore(true);
 
   // 日志门控 provider（Req 6.4/6.5/6.6 / task 4.4）：每次新会话创建时读取最新配置。
@@ -270,6 +281,11 @@ function buildSingleton(): HandlerSingleton {
   // 扩展管理扩展入口(spec extension-install-agent-tools):强制注入每个会话,经 spawn env
   // 下发,runner option-mapper 加入 forcedExtensionPaths。解析不到(异常布局)→ undefined,跳过注入。
   const extToolsEntry = extensionManagerEntryPath();
+  // 自动会话标题扩展入口(spec auto-session-title):总开关 PI_WEB_AUTO_TITLE 默认开,
+  // 关闭(="0")时不解析、不下发 → 扩展根本不注入(服务端权威门控,零开销)。
+  // 解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
+  const autoTitleEnabled = process.env.PI_WEB_AUTO_TITLE !== "0";
+  const autoTitleEntry = autoTitleEnabled ? autoTitleEntryPath() : undefined;
 
   // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
   // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
@@ -320,6 +336,8 @@ function buildSingleton(): HandlerSingleton {
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
         // 扩展管理扩展入口 → runner forcedExtensionPaths(spec extension-install-agent-tools)。
         ...(extToolsEntry !== undefined ? { PI_WEB_EXT_TOOLS_ENTRY: extToolsEntry } : {}),
+        // 自动会话标题扩展入口 → runner forcedExtensionPaths(spec auto-session-title)。
+        ...(autoTitleEntry !== undefined ? { PI_WEB_AUTO_TITLE_ENTRY: autoTitleEntry } : {}),
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
         ...attachmentSpawnEnv(attachmentEnv),

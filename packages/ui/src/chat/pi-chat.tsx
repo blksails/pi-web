@@ -26,7 +26,6 @@ import {
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import { PiUiPart } from "../parts/pi-ui-part.js";
-import { CustomUiDataPart } from "../web-ext/custom-ui-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import {
   ChatError,
@@ -335,8 +334,6 @@ export function PiChat({
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
-    // 统一命令层:ctx.ui.custom 的声明式接收路径(注册名→组件;桥接为外部依赖,声明式兜底)。
-    registry.registerDataPartRenderer("data-pi-custom-ui", CustomUiDataPart);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -1192,7 +1189,7 @@ export function PiChat({
                   data-pi-logs-region
                   className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
                 >
-                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
                   {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
                   <ExtSlotRegion ext={extension} slot="logs" />
                 </div>
@@ -1323,7 +1320,7 @@ export function PiChat({
               data-pi-logs-region
               className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
             >
-              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" />
+              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
             </div>

@@ -29,6 +29,7 @@ import {
   type SessionEntry,
   type SessionEntryStore,
   type SessionHeader,
+  type SessionInfoEntry,
   type SessionMeta,
 } from "./types.js";
 
@@ -140,6 +141,25 @@ export class FsSessionEntryStore implements SessionEntryStore {
       this.#index.delete(sessionId);
       this.#seen.delete(sessionId);
     });
+  }
+
+  /**
+   * 取最新 `session_info` 的 name(spec auto-session-title, Req 8.4)。fs 后端的 `SessionMeta.name`
+   * 仅来自 header,故会话历史展示自动标题须经本方法扫文件派生。会话不存在 / 无 session_info → undefined。
+   * 全程吞错(best-effort 展示增强,绝不让列表失败)。
+   */
+  async displayName(sessionId: string): Promise<string | undefined> {
+    let name: string | undefined;
+    try {
+      for await (const entry of this.read(sessionId)) {
+        if (entry.type === "session_info") {
+          name = (entry as SessionInfoEntry).name;
+        }
+      }
+    } catch {
+      return undefined;
+    }
+    return name;
   }
 
   // ---- 内部 ----

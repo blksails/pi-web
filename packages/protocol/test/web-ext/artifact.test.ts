@@ -12,7 +12,7 @@ describe("ArtifactMessage", () => {
     expect(
       ArtifactMessageSchema.safeParse({
         kind: "rpc",
-        request: { correlationId: "c1", point: "custom", action: "execute", payload: {}, protocolVersion: "0.1.0" },
+        request: { correlationId: "c1", point: "command", action: "execute", payload: {}, protocolVersion: "0.1.0" },
       }).success,
     ).toBe(true);
   });

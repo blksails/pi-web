@@ -374,38 +374,6 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(r.frames)).toEqual(["control:extension-ui"]);
   });
 
-  // spec ctx-ui-custom-bridge:ctx.ui.custom 经 runner 覆盖发帧 → 转译为 data-pi-custom-ui data part。
-  it("extension_ui_request{method:custom} → data-pi-custom-ui chunk (not control bypass)", () => {
-    const r = translateEvent(
-      {
-        type: "extension_ui_request",
-        id: "u2",
-        method: "custom",
-        payload: { component: "demo-metric-card", props: { label: "x", value: 1 } },
-      },
-      createTranslationContext(),
-    );
-    expectValidFrames(r.frames);
-    expect(chunkTypes(r.frames)).toEqual(["data-pi-custom-ui"]);
-    expect(chunkAt(r.frames)).toMatchObject({
-      type: "data-pi-custom-ui",
-      data: { component: "demo-metric-card", props: { label: "x", value: 1 } },
-    });
-  });
-
-  it("extension_ui_request{method:custom} with empty component → deterministic empty frames", () => {
-    const r = translateEvent(
-      {
-        type: "extension_ui_request",
-        id: "u3",
-        method: "custom",
-        payload: { component: "" },
-      },
-      createTranslationContext(),
-    );
-    expect(r.frames).toEqual([]);
-  });
-
   it("turn_end → finish-step, agent_end → finish, close hanging parts", () => {
     // open a text part then turn_end should close it deterministically.
     let ctx = createTranslationContext();

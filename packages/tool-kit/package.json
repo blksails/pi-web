@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./runtime": "./src/runtime.ts",
     "./commands": "./src/commands/index.ts",
-    "./extension-entry": "./src/extension-tools/entry-path.ts"
+    "./extension-entry": "./src/extension-tools/entry-path.ts",
+    "./auto-title-entry": "./src/auto-title/entry-path.ts"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "@blksails/pi-web-agent-kit": "workspace:*",
+    "@blksails/pi-web-logger": "workspace:*",
     "undici": "^6.21.0"
   },
   "peerDependencies": {

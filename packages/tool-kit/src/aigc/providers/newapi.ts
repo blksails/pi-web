@@ -103,7 +103,11 @@ function buildT2IBody(model: string) {
       model,
       prompt,
       n: a.n ?? 1,
-      response_format: "url",
+      // b64_json:让网关把图片字节内联在 /images 响应里返回(gpt-image 原生格式),而不是
+      // 先返回一个 CDN url、再由 persistPicked 二次下载整张图。后者使工具完成明显滞后于
+      // 网关"已返回"的时刻(后台日志显示 19s 已出图,前端却还在转——那段就是二次下载)。
+      // 内联后 persistPicked 走本地解码,无第二次网络往返;pickResult 已支持 b64_json。
+      response_format: "b64_json",
     };
     const size = toOpenAiSize(a.size);
     if (size) body.size = size;

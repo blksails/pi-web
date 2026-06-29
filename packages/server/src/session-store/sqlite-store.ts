@@ -106,11 +106,20 @@ export class SqliteSessionEntryStore implements SessionEntryStore {
         "INSERT INTO entries (session_id, id, parent_id, seq, type, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(session_id, id) DO NOTHING",
       );
       const localSeen = new Set<string>();
+      let latestName: string | undefined;
       for (const entry of entries) {
         if (localSeen.has(entry.id)) continue;
         localSeen.add(entry.id);
         seq += 1;
         insert.run(sessionId, entry.id, entry.parentId, seq, entry.type, serializeEntry(entry), entry.timestamp);
+        // 维护去规范化的 name 列(spec auto-session-title, Req 8.4):session_info 即会话显示名,
+        // 最新生效 → 列表 SessionMeta.name 据此显示自动标题,无需读侧扫 entries。
+        if (entry.type === "session_info") {
+          latestName = (entry as { name?: string }).name;
+        }
+      }
+      if (latestName !== undefined) {
+        db.prepare("UPDATE sessions SET name = ? WHERE session_id = ?").run(latestName, sessionId);
       }
       db.exec("COMMIT");
     } catch (err) {

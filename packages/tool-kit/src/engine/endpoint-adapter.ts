@@ -14,9 +14,13 @@
  *  - AbortSignal fired            → throws `AbortError`.
  */
 
+import { createLogger } from "@blksails/pi-web-logger";
 import { resolveVars, resolveVarsOptional } from "./var-resolver.js";
 import { proxyFetch } from "./proxy-fetch.js";
 import type { EndpointBehavior, PickedResult, RunStage, ToolProgress } from "./types.js";
+
+// 命名空间 toolkit:endpoint —— provider HTTP 调用耗时(对照后台网关报告的"用时")。
+const log = createLogger({ namespace: "toolkit:endpoint" });
 
 export interface RunEndpointOptions {
   signal?: AbortSignal;
@@ -77,7 +81,9 @@ export async function runEndpoint(
   // ── (b) Sync single request ──────────────────────────────────────────────
   if (!behavior.async) {
     onProgress?.("submitting" as RunStage);
+    const startedAt = Date.now();
     const response = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal);
+    log.debug("sync request returned", { url, ms: Date.now() - startedAt });
     const errMsg = behavior.detectError?.(response);
     if (errMsg) throw new Error(errMsg);
     onProgress?.("complete" as RunStage);
@@ -86,6 +92,7 @@ export async function runEndpoint(
 
   // ── (c) Async submit + poll ──────────────────────────────────────────────
   onProgress?.("submitting" as RunStage);
+  const asyncStartedAt = Date.now();
   const submit = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal);
 
   // submit 即错(HTTP 200 带业务 error,如配额/鉴权失败)→ 立即暴露可读错误,避免对
@@ -143,6 +150,7 @@ export async function runEndpoint(
       const finalJson = await parseJsonOrThrow(finalResp, responseUrl);
       const errMsg = behavior.detectError?.(finalJson);
       if (errMsg) throw new Error(errMsg);
+      log.info("async job complete", { url, ms: Date.now() - asyncStartedAt });
       onProgress?.("complete" as RunStage);
       return behavior.pickResult(finalJson);
     }
@@ -150,6 +158,10 @@ export async function runEndpoint(
     onProgress?.("running" as RunStage);
   }
 
+  log.warn("async job timed out", {
+    url,
+    timeoutMs: asyncSpec.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  });
   throw new Error(
     `job timed out after ${asyncSpec.timeoutMs ?? DEFAULT_TIMEOUT_MS}ms`,
   );

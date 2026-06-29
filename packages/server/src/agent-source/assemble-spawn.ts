@@ -12,6 +12,9 @@
  *
  * `runnerEntry`(custom)与 `piCliEntry`(cli)必须由调用方注入真实绝对路径;
  * 缺省即抛错(而非静默指向占位路径导致子进程秒崩 → 会话丢失 → 404)。
+ *
+ * 调试:env `PI_RUNNER_INSPECT` 开启时,在脚本路径前注入 Node inspector flag
+ * (`--inspect[=port]` / `--inspect-brk`),仅作用于 runner 子进程(见 {@link inspectFlag})。
  */
 import { AgentSourceError } from "./errors.js";
 import type { ResolveOptions, SpawnSpec, TrustFragment } from "./types.js";
@@ -28,6 +31,31 @@ export interface AssembleCliParams {
 }
 
 export type AssembleParams = AssembleCustomParams | AssembleCliParams;
+
+/**
+ * 调试门控:`PI_RUNNER_INSPECT` → 为 runner 子进程注入 Node inspector flag
+ * (必须置于脚本路径之前,node 解析约束)。只作用于 runner 子进程,主进程不受影响
+ * (故不能用 NODE_OPTIONS——那会被子进程继承并与主进程抢同一端口报 EADDRINUSE)。
+ *
+ * 空/未设 → 不注入。否则(值大小写不敏感):
+ *   "1" | "true" | "on"   → --inspect(127.0.0.1:9229,chrome://inspect 自动发现)
+ *   "0"                   → --inspect=0(自动空闲端口;多会话并发不冲突,从子进程
+ *                           stderr 的 "Debugger listening on ws://…" 读实际端口)
+ *   "<port>"(如 "9230")  → --inspect=<port>
+ *   "brk" | "brk:<port>"  → --inspect-brk[=<port>](首行即断住,用于调 runner 启动链路)
+ *
+ * 注:每会话 spawn 一个 runner;固定端口下并发会话会抢占同端口,调试时建议一次只开一个
+ * 会话,或用 PI_RUNNER_INSPECT=0 让每个子进程自动取空闲端口。
+ */
+function inspectFlag(env: Record<string, string>): string | undefined {
+  const raw = (env["PI_RUNNER_INSPECT"] ?? "").trim().toLowerCase();
+  if (raw === "") return undefined;
+  const brk = raw === "brk" || raw.startsWith("brk:") || raw.startsWith("brk=");
+  const base = brk ? "--inspect-brk" : "--inspect";
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "brk") return base;
+  const port = raw.match(/(\d+)$/)?.[1];
+  return port !== undefined ? `${base}=${port}` : base;
+}
 
 /** 合并 env,保证隔离关键变量不被覆盖。 */
 function buildEnv(opts: ResolveOptions, fragment: TrustFragment): Record<string, string> {
@@ -49,6 +77,9 @@ export function assemble(
   opts: ResolveOptions,
 ): SpawnSpec {
   const env = buildEnv(opts, fragment);
+  // 调试:置于脚本路径前的 node inspector flag(由 PI_RUNNER_INSPECT 门控,缺省无)。
+  const inspect = inspectFlag(env);
+  const nodeArgs = inspect !== undefined ? [inspect] : [];
 
   if (params.mode === "custom") {
     const runnerEntry = opts.runnerEntry;
@@ -59,6 +90,7 @@ export function assemble(
       );
     }
     const args = [
+      ...nodeArgs,
       runnerEntry,
       "--agent",
       params.entryPath,
@@ -82,6 +114,7 @@ export function assemble(
   // The working dir is set via spawnSpec.cwd below; passing `--cwd` makes pi
   // exit with "Unknown option: --cwd" → channel crash → session deleted → 404.
   const args = [
+    ...nodeArgs,
     piCliEntry,
     "--mode",
     "rpc",

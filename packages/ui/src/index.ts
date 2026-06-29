@@ -119,15 +119,6 @@ export {
   registerBuiltinUiComponents,
 } from "./components/builtin-components.js";
 
-// 统一命令层(unified-command-result-layer):ctx.ui.custom 注册式渲染
-export {
-  CustomUiRenderer,
-  CustomUiDataPart,
-  registerCustomUi,
-  getCustomUi,
-  type CustomUiComponent,
-} from "./web-ext/custom-ui-renderer.js";
-
 // className 合并工具(供宿主复用)
 export { cn } from "./lib/cn.js";
 

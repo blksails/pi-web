@@ -136,6 +136,14 @@ export interface SessionEntryStore {
   listAll(): Promise<SessionMeta[]>;
   /** 删除整会话;不存在抛 {@link SessionStoreNotFoundError}(Req 7.1/7.2)。 */
   delete(sessionId: string): Promise<void>;
+  /**
+   * 可选:取会话的「显示名」——即最新 `session_info` 条目的 name(spec auto-session-title, Req 8.4)。
+   * 用于会话历史展示自动标题:`list/listAll` 的 `SessionMeta.name` 仅来自创建时 header,**不**随
+   * `session_info` 追加更新;故对 header 未命名的会话,列表侧按需经本方法派生最新名(fs 后端扫文件,
+   * 调用方应仅对**分页返回的那一页**未命名项调用以限成本)。无 session_info / 会话不存在 → undefined。
+   * sqlite/postgres 在 append session_info 时即维护 name 列,其 `list.name` 已正确,无需本方法。
+   */
+  displayName?(sessionId: string): Promise<string | undefined>;
 }
 
 /** 会话不存在(append/read/readHeader/delete 命中,Req 3.3/5.4/7.2)。 */

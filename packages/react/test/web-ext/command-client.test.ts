@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   executeHostCommand,
-  parseCustomUi,
   type CommandSender,
 } from "../../src/web-ext/command-client.js";
 import type { UiRpcRequest, UiRpcResponse } from "@blksails/pi-web-protocol";
@@ -48,18 +47,5 @@ describe("executeHostCommand", () => {
     const out = await executeHostCommand(bus, "plugin", "");
     expect(out.ok).toBe(true);
     expect(out.result).toBeUndefined();
-  });
-});
-
-describe("parseCustomUi", () => {
-  it("合法 payload 解析出 component+props", () => {
-    expect(parseCustomUi({ component: "chart", props: { a: 1 } })).toEqual({
-      component: "chart",
-      props: { a: 1 },
-    });
-  });
-  it("非法 payload → undefined", () => {
-    expect(parseCustomUi({ props: {} })).toBeUndefined();
-    expect(parseCustomUi(null)).toBeUndefined();
   });
 });

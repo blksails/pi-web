@@ -38,6 +38,9 @@
       ],
       "@blksails/pi-web-tool-kit/extension-entry": [
         "./packages/tool-kit/src/extension-tools/entry-path.ts"
+      ],
+      "@blksails/pi-web-tool-kit/auto-title-entry": [
+        "./packages/tool-kit/src/auto-title/entry-path.ts"
       ]
     }
   },
@@ -45,6 +48,7 @@
     ".next-clear-dev/types/**/*.ts",
     ".next-cli/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
+    ".next-ro-dev/types/**/*.ts",
     ".next-stub/types/**/*.ts",
     ".next/types/**/*.ts",
     "app-shell-env.d.ts",
@@ -61,7 +65,7 @@
     "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next-ro-dev/types/**/*.ts"
+    ".next-debug/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

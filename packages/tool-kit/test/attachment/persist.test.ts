@@ -106,6 +106,25 @@ describe("persistPicked — image-set", () => {
     expect(assets).toEqual([]);
   });
 
+  it("decodes inline data: URIs locally — no network fetch (gpt-image b64_json path)", async () => {
+    const { ctx, putOutputCalls } = makeCtx();
+    const fetchImpl = vi.fn(); // must NOT be called for data: URIs
+
+    // "PNG" → base64 "UE5H"; mime carried by the URI itself.
+    const picked: PickedResult = {
+      kind: "image",
+      url: "data:image/jpeg;base64,UE5H",
+    };
+
+    const assets = await persistPicked(picked, ctx, { fetchImpl });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(putOutputCalls).toHaveLength(1);
+    expect(putOutputCalls[0]?.mimeType).toBe("image/jpeg");
+    expect(Array.from(putOutputCalls[0]?.bytes ?? [])).toEqual([0x50, 0x4e, 0x47]);
+    expect(assets[0]?.name).toBe("aigc-0.jpg");
+  });
+
   it("throws immediately if putOutput fails (no partial refs)", async () => {
     const fetchImpl = vi
       .fn()
@@ -208,6 +227,22 @@ describe("previewAssetsFromPicked", () => {
 
   it("returns [] for non-image kinds", () => {
     expect(previewAssetsFromPicked({ kind: "text", text: "hi" })).toEqual([]);
+  });
+
+  it("skips inline data: URIs (already in hand; not worth an SSE preview frame)", () => {
+    expect(
+      previewAssetsFromPicked({
+        kind: "image",
+        url: "data:image/png;base64,UE5H",
+      }),
+    ).toEqual([]);
+    // image-set with mixed remote + data: → only the remote one is previewed.
+    const mixed = previewAssetsFromPicked({
+      kind: "image-set",
+      urls: ["https://cdn.example.com/a.png", "data:image/png;base64,UE5H"],
+    });
+    expect(mixed).toHaveLength(1);
+    expect(mixed[0]?.displayUrl).toBe("https://cdn.example.com/a.png");
   });
 });
 

@@ -260,11 +260,6 @@ export class ControlStore {
       case "set_editor_text":
         this.pushEditorText(request.text);
         break;
-      case "custom":
-        // ctx.ui.custom(spec ctx-ui-custom-bridge):服务端 translateEvent 已把它转译为
-        // data-pi-custom-ui data part(经 CustomUiDataPart 渲染),不会作为 control:extension-ui
-        // 帧到达此处;此分支仅为类型穷尽性兜底,确定无操作。
-        break;
       default: {
         const _exhaustive: never = request;
         void _exhaustive;

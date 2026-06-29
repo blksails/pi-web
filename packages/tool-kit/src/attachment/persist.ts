@@ -8,8 +8,12 @@
  * type-exhaustive-safe and return an empty array to avoid breaking new variants
  * that may not yet produce imagery.
  */
+import { createLogger } from "@blksails/pi-web-logger";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import type { PickedResult } from "../engine/types.js";
+
+// 命名空间 toolkit:persist —— 每张图落库:inline(本地解码)还是 download(远程下载)+ 耗时。
+const log = createLogger({ namespace: "toolkit:persist" });
 
 /** Stable reference to a persisted generation asset. */
 export interface PersistedAsset {
@@ -49,15 +53,34 @@ export async function persistPicked(
   // try/catch → no partial references are returned (Req 3.1).
   return Promise.all(
     urls.map(async (url, i) => {
-      const resp = await fetchImpl(url);
-      if (!resp.ok) {
-        throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
+      // Inline `data:` images (e.g. gpt-image `b64_json`) decode locally — no second
+      // network round-trip. Providers that hand back a remote URL (DashScope, or
+      // OpenAI `response_format:url`) still get one fetch here; that download is the
+      // window where the tool lagged behind the gateway's already-returned response.
+      const startedAt = Date.now();
+      let bytes: Uint8Array;
+      let mimeType: string;
+      const inline = url.startsWith("data:");
+      if (inline) {
+        ({ bytes, mimeType } = decodeDataUri(url));
+      } else {
+        const resp = await fetchImpl(url);
+        if (!resp.ok) {
+          throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
+        }
+        mimeType = detectMimeType(resp, url);
+        bytes = new Uint8Array(await resp.arrayBuffer());
       }
-      const mimeType = detectMimeType(resp, url);
       const ext = extFromMime(mimeType);
       const name = `${namePrefix}-${i}.${ext}`;
-      const bytes = new Uint8Array(await resp.arrayBuffer());
       const ref = await ctx.putOutput({ bytes, name, mimeType });
+      log.debug("image persisted", {
+        index: i,
+        source: inline ? "inline" : "download",
+        mimeType,
+        bytes: bytes.length,
+        ms: Date.now() - startedAt,
+      });
       return {
         attachmentId: ref.attachmentId,
         displayUrl: ref.displayUrl,
@@ -84,16 +107,23 @@ export function previewAssetsFromPicked(
 ): PersistedAsset[] {
   const urls = pickedImageUrls(picked);
   if (urls === null) return [];
-  return urls.map((url, i) => {
-    const mimeType = mimeFromUrl(url);
-    const ext = extFromMime(mimeType);
-    return {
-      attachmentId: "",
-      displayUrl: url,
-      mimeType,
-      name: `${namePrefix}-${i}.${ext}`,
-    };
-  });
+  return (
+    urls
+      // Only remote URLs are worth optimistically previewing: a `data:` URI is
+      // already in hand (persist decodes it locally, no gap to fill) and inlining a
+      // multi-MB base64 string into a preliminary SSE frame would be pure waste.
+      .filter((url) => !url.startsWith("data:"))
+      .map((url, i) => {
+        const mimeType = mimeFromUrl(url);
+        const ext = extFromMime(mimeType);
+        return {
+          attachmentId: "",
+          displayUrl: url,
+          mimeType,
+          name: `${namePrefix}-${i}.${ext}`,
+        };
+      })
+  );
 }
 
 /**
@@ -128,6 +158,18 @@ function pickedImageUrls(picked: PickedResult): ReadonlyArray<string> | null {
     default:
       return null;
   }
+}
+
+/** Decode a `data:<mime>;base64,<b64>` (or percent-encoded) URI to bytes + mime, locally. */
+function decodeDataUri(url: string): { bytes: Uint8Array; mimeType: string } {
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url);
+  if (!m) throw new Error("persistPicked: malformed data URI");
+  const mimeType = m[1] ?? "image/png";
+  const body = m[3] ?? "";
+  const buf = m[2]
+    ? Buffer.from(body, "base64")
+    : Buffer.from(decodeURIComponent(body), "utf8");
+  return { bytes: new Uint8Array(buf), mimeType };
 }
 
 function detectMimeType(resp: Response, url: string): string {

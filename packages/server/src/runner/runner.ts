@@ -28,7 +28,7 @@ import {
   sessionStoreConfigFromEnv,
 } from "../session-store/index.js";
 import { wireAttachmentBridge } from "./attachment-wiring.js";
-// 注:`./custom-ui-wiring.js`(ctx.ui.custom 桥接注入)已撤销,不再 import — 见下方 startRunner 内说明。
+import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -290,12 +290,17 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId: runtime.session.sessionId,
   });
 
-  // ctx.ui.custom 桥接(spec ctx-ui-custom-bridge)注入**已撤销**:pi 标准里 `custom` 是 TUI 专属、
-  // RPC 模式下本应为 no-op(docs/rpc.md:`custom()` returns `undefined`,须以 `ctx.mode === "tui"` 守卫)。
-  // 用 prototype-patch 把它重新利用为 web 端发帧是**非标准**做法,暂不接入主路径。保留 wiring/翻译/
-  // 协议等代码为休眠态(不注入即不生效,custom 维持 pi 原生 no-op)。如需富交互应改对齐 dialog 子协议
-  // (select/confirm/input/editor + 自带 timeout)。
-  //   wireCustomUiBridge(runtime);  // ← 注入点(撤销)
+  // 标题持久化(spec auto-session-title, Req 8):包装 uiContext.setTitle,使经 ctx.ui.setTitle
+  // 设置的标题在原展示(ambient.title 帧)之外,持久化为会话名(appendSessionInfo)→ 经既有镜像
+  // 落 store + pi 原生 fs,使会话历史显示标题并冷恢复后保留。best-effort,失败不阻塞会话。
+  //
+  // 取**当前被绑定 session 的** sessionManager(而非启动时捕获的 `sessionManager` 变量):
+  // 进程内 `new_session`/`switchSession`/`fork` 会换新 SessionManager(新会话 id/文件),
+  // 必须按 bind 时的 session 取,标题才写进**当前**会话(否则写回旧会话,新会话无名)。
+  wireSessionTitlePersistence(runtime, (title, boundSession) => {
+    const sm = (boundSession as { sessionManager?: SessionManager } | null)?.sessionManager;
+    (sm ?? sessionManager).appendSessionInfo(title);
+  });
 
   // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
   // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为

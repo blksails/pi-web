@@ -88,6 +88,29 @@ function decodeCursor(raw: string): CursorPayload | undefined {
   }
 }
 
+/**
+ * 对一页会话 meta 富集显示名(spec auto-session-title, Req 8.4):仅对 header 未命名项调用
+ * `store.displayName`(若实现)派生最新 session_info 名。已命名项与 store 不支持 displayName 时原样返回。
+ * 任一项派生失败静默忽略(展示增强,绝不让列表请求失败)。
+ */
+async function enrichDisplayNames(
+  store: SessionEntryStore,
+  page: readonly SessionMeta[],
+): Promise<SessionMeta[]> {
+  if (typeof store.displayName !== "function") return [...page];
+  return Promise.all(
+    page.map(async (m) => {
+      if (m.name !== undefined && m.name.length > 0) return m;
+      try {
+        const name = await store.displayName!(m.sessionId);
+        return name !== undefined && name.length > 0 ? { ...m, name } : m;
+      } catch {
+        return m;
+      }
+    }),
+  );
+}
+
 function toItem(m: SessionMeta): SessionListItem {
   return {
     sessionId: m.sessionId,
@@ -186,8 +209,13 @@ export function createSessionListRoutes(
         const nextCursor =
           hasMore && last !== undefined ? encodeCursor(last) : undefined;
 
+        // 自动标题展示(spec auto-session-title, Req 8.4):header 未命名的会话,按需经
+        // store.displayName 派生最新 session_info 名,**仅对当前页未命名项**调用以限成本(fs 扫文件)。
+        // sqlite/postgres 已在 append 时维护 name 列,其 SessionMeta.name 已正确 → 跳过、不重复查。
+        const enriched = await enrichDisplayNames(store, page);
+
         const body: ListSessionsResponse = {
-          sessions: page.map(toItem),
+          sessions: enriched.map(toItem),
           scope,
           globalEnabled: opts.globalEnabled,
           ...(nextCursor !== undefined ? { nextCursor } : {}),

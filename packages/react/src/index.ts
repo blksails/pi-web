@@ -146,7 +146,6 @@ export {
 } from "./web-ext/ui-rpc-bus.js";
 export {
   executeHostCommand,
-  parseCustomUi,
   type CommandOutcome,
   type CommandSender,
 } from "./web-ext/command-client.js";

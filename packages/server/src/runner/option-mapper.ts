@@ -227,6 +227,23 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
 }
 
 /**
+ * 从 env 收集强制注入扩展入口路径(custom 模式经 spawn env 下传;空则不注入,行为不变):
+ *  - `PI_WEB_SANDBOX_ENTRY`:沙箱 enforcement(不依赖默认发现)。
+ *  - `PI_WEB_EXT_TOOLS_ENTRY`:内置「扩展管理扩展」(spec extension-install-agent-tools)。
+ *  - `PI_WEB_AUTO_TITLE_ENTRY`:内置「自动会话标题扩展」,由主进程按总开关 PI_WEB_AUTO_TITLE
+ *    门控下发(spec auto-session-title)。
+ *
+ * 纯函数(env 注入,不读全局),便于单测;顺序固定:sandbox → ext-tools → auto-title。
+ */
+export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[] {
+  return [
+    env["PI_WEB_SANDBOX_ENTRY"],
+    env["PI_WEB_EXT_TOOLS_ENTRY"],
+    env["PI_WEB_AUTO_TITLE_ENTRY"],
+  ].filter((p): p is string => p !== undefined && p.length > 0);
+}
+
+/**
  * Build a `CreateAgentSessionRuntimeFactory` from a normalized definition.
  *
  * The factory, when invoked by `createAgentSessionRuntime`, creates cwd-bound
@@ -239,16 +256,7 @@ export function buildRuntimeFactory(
   trust: ResolveProjectTrust,
   systemResources: SystemResourceOverrides = {},
 ): CreateAgentSessionRuntimeFactory {
-  // 强制注入入口经 env 由主进程下传(custom 模式);为空则不注入(行为不变)。
-  //  - PI_WEB_SANDBOX_ENTRY:沙箱 enforcement(不依赖默认发现)。
-  //  - PI_WEB_EXT_TOOLS_ENTRY:pi-web 内置「扩展管理扩展」(install/uninstall/list 工具 +
-  //    reload-runtime 命令),对所有 agent 生效(spec extension-install-agent-tools)。
-  const sandboxEntry = process.env["PI_WEB_SANDBOX_ENTRY"];
-  const extToolsEntry = process.env["PI_WEB_EXT_TOOLS_ENTRY"];
-  const forcedExtensionPaths = [
-    ...(sandboxEntry !== undefined && sandboxEntry.length > 0 ? [sandboxEntry] : []),
-    ...(extToolsEntry !== undefined && extToolsEntry.length > 0 ? [extToolsEntry] : []),
-  ];
+  const forcedExtensionPaths = collectForcedExtensionPaths(process.env);
   const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
     forcedExtensionPaths,
     ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
