@@ -27,6 +27,7 @@ import {
   createConfigRoutes,
   createSandboxProjectRoutes,
   createExtensionsConfigRoutes,
+  createMcpConfigRoutes,
   createAttachmentRoutes,
   createSessionListRoutes,
   createExtensionRoutes,
@@ -393,6 +394,9 @@ function buildSingleton(): HandlerSingleton {
     //  - GET/PUT /config/extensions/{global,project} → settings.json 的 commands +
     //    顶层 per-扩展 KV 互映(全局 <agentDir>/settings.json,项目 <cwd>/.pi/settings.json)。
     routes: [
+      // 独立「MCP」配置域:GET·PUT /config/mcp → <agentDir>/mcp.json(pi-mcp-adapter)。
+      // 必须排在通用 /config/:domain **之前**,否则 2 段路径被 :domain 抢匹配致 DOMAIN_NOT_FOUND。
+      ...createMcpConfigRoutes({ agentDir: config.agentDir }),
       ...createConfigRoutes({
         rootDir: config.agentDir,
         // settings 域:把 defaultProvider/defaultModel 升级为运行时下拉(选项 = 该

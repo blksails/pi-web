@@ -149,7 +149,7 @@ function ConfigPanelView({
   readonly panel: SettingsPanelDescriptor;
   readonly fieldRegistry?: FieldRegistry;
 }): React.JSX.Element {
-  const { form, loading, loadError, saving, saveError, saved, save } =
+  const { form, loading, loadError, saving, saveError, saved, save, fileSchemas } =
     useConfigDomain(panel);
 
   return (
@@ -173,6 +173,7 @@ function ConfigPanelView({
             errors={form.errors}
             registry={fieldRegistry}
             disabled={saving}
+            fileSchemas={fileSchemas}
           />
           <div className="flex items-center gap-3">
             <Button type="button" onClick={() => void save()} disabled={saving || !form.dirty}>

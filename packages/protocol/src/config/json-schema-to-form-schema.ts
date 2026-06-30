@@ -1,7 +1,8 @@
 /**
  * 适配器 — 由 JSON Schema(Draft-07 子集)推导 `FormSchema`(表单 IR)。
  *
- * 支持:object/properties/required、string(+enum)、number|integer(+const)、boolean、
+ * 支持:object/properties/required、动态键 map(`additionalProperties`/`patternProperties` 且无固定
+ * `properties` → record)、string(+enum)、number|integer(+const)、boolean、
  * array(标量→stringList、enum→multiEnum、对象/oneOf→objectList)、oneOf-对象-const判别→variants、
  * 内部 `$ref`(`#/$defs|definitions/<name>`)。不支持的构造降级为 string(不抛)。
  *
@@ -41,6 +42,36 @@ function typeOf(node: JsonSchema): string | undefined {
   if (typeof t === "string") return t;
   if (Array.isArray(t)) return t.find((x) => x !== "null") as string | undefined;
   return undefined;
+}
+
+/** 节点是否有固定命名字段(非空 `properties`)。 */
+function hasNamedProps(node: JsonSchema): boolean {
+  return isObject(node["properties"]) && Object.keys(node["properties"] as JsonSchema).length > 0;
+}
+
+/**
+ * 取动态键 map 的「值模板」schema:
+ *  - `additionalProperties` 为对象 schema → 用之;
+ *  - 否则 `patternProperties` 取首个模式的值 schema;
+ *  - `additionalProperties` 为 false/true(布尔) 或缺省 → 非 map(返回 undefined)。
+ */
+function recordValueSchema(node: JsonSchema): JsonSchema | undefined {
+  const ap = node["additionalProperties"];
+  if (isObject(ap)) return ap;
+  const pp = node["patternProperties"];
+  if (isObject(pp)) {
+    const first = Object.values(pp).find((v) => isObject(v));
+    if (isObject(first)) return first;
+  }
+  return undefined;
+}
+
+/** 标量节点 → record 的元素类型(itemKind)。 */
+function scalarKindOf(node: JsonSchema): FieldKind {
+  const t = typeOf(node);
+  if (t === "number" || t === "integer") return "number";
+  if (t === "boolean") return "boolean";
+  return "string";
 }
 
 function enumValues(node: JsonSchema): string[] | undefined {
@@ -170,6 +201,22 @@ export function nodeToField(
       };
     }
     return { ...baseDescriptor(key, node, "stringList", required), itemKind: "string" };
+  }
+
+  // 动态键 map(无固定 properties,且 additionalProperties/patternProperties 给出值模板)→ record。
+  // 有固定 properties 的对象优先按 object 渲染(命名字段占主导)。
+  if (!hasNamedProps(node)) {
+    const recVal = recordValueSchema(node);
+    if (recVal !== undefined) {
+      const valNode = resolveRef(recVal, root);
+      if (typeOf(valNode) === "object" || isObject(valNode["properties"])) {
+        return {
+          ...baseDescriptor(key, node, "record", required),
+          fields: fieldsFromObject(valNode, root),
+        };
+      }
+      return { ...baseDescriptor(key, node, "record", required), itemKind: scalarKindOf(valNode) };
+    }
   }
 
   if (t === "object" || isObject(node["properties"])) {

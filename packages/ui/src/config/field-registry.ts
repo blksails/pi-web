@@ -21,6 +21,11 @@ export interface FieldProps<V = unknown> {
   readonly disabled?: boolean;
   /** 当前生效的字段注册表(容器字段须透传给嵌套渲染,以保留宿主的覆盖)。 */
   readonly registry?: FieldRegistry;
+  /**
+   * 文件名 → 服务端已解析的原始 JSON Schema(仅扩展配置域的 configFiles 控件用)。
+   * 控件据此优先采用服务端结果(免客户端远端拉取);其余字段忽略。
+   */
+  readonly fileSchemas?: Record<string, unknown>;
 }
 
 export type FieldRendererComponent = ComponentType<FieldProps>;

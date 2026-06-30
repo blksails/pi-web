@@ -102,3 +102,90 @@ describe("jsonSchemaToFormSchema", () => {
     expect((sr.itemFields ?? []).map((f) => f.key)).toEqual(["note", "profileName"]);
   });
 });
+
+/** 近似 pi-mcp-adapter 的 mcp.json schema(含动态键 map mcpServers)。 */
+const MCP_SCHEMA = {
+  title: "pi-mcp-adapter Config",
+  type: "object",
+  properties: {
+    settings: {
+      type: "object",
+      properties: {
+        toolPrefix: { type: "string" },
+        idleTimeout: { type: "number" },
+      },
+    },
+    mcpServers: {
+      type: "object",
+      // 动态键:服务器名 → 配置对象
+      additionalProperties: {
+        type: "object",
+        properties: {
+          command: { type: "string" },
+          args: { type: "array", items: { type: "string" } },
+          debug: { type: "boolean" },
+        },
+      },
+    },
+    imports: { type: "array", items: { type: "string" } },
+  },
+};
+
+function byKeyTop(fields: readonly FieldDescriptor[], key: string): FieldDescriptor {
+  const f = fields.find((x) => x.key === key);
+  if (f === undefined) throw new Error(`no field ${key}`);
+  return f;
+}
+
+describe("record 支持(动态键 map)", () => {
+  it("additionalProperties 为对象 → record + 以值对象字段为子字段模板", () => {
+    const form = jsonSchemaToFormSchema(MCP_SCHEMA);
+    const servers = byKeyTop(form.fields, "mcpServers");
+    expect(servers.kind).toBe("record");
+    expect((servers.fields ?? []).map((f) => f.key)).toEqual(["command", "args", "debug"]);
+    // 固定 properties 对象不被误判为 record
+    expect(byKeyTop(form.fields, "settings").kind).toBe("object");
+    // 标量数组仍为 stringList
+    expect(byKeyTop(form.fields, "imports").kind).toBe("stringList");
+  });
+
+  it("additionalProperties 为标量 → record + itemKind", () => {
+    const form = jsonSchemaToFormSchema({
+      type: "object",
+      properties: { env: { type: "object", additionalProperties: { type: "string" } } },
+    });
+    const env = byKeyTop(form.fields, "env");
+    expect(env.kind).toBe("record");
+    expect(env.itemKind).toBe("string");
+    expect(env.fields).toBeUndefined();
+  });
+
+  it("patternProperties → record(取首个模式值 schema)", () => {
+    const form = jsonSchemaToFormSchema({
+      type: "object",
+      properties: {
+        hosts: {
+          type: "object",
+          patternProperties: { "^.*$": { type: "object", properties: { port: { type: "number" } } } },
+        },
+      },
+    });
+    const hosts = byKeyTop(form.fields, "hosts");
+    expect(hosts.kind).toBe("record");
+    expect((hosts.fields ?? []).map((f) => f.key)).toEqual(["port"]);
+  });
+
+  it("additionalProperties: false / true(布尔) 不触发 record", () => {
+    const formFalse = jsonSchemaToFormSchema({
+      type: "object",
+      properties: { a: { type: "object", additionalProperties: false, properties: { x: { type: "string" } } } },
+    });
+    expect(byKeyTop(formFalse.fields, "a").kind).toBe("object");
+    const formTrue = jsonSchemaToFormSchema({
+      type: "object",
+      properties: { b: { type: "object", additionalProperties: true } },
+    });
+    // 无固定字段、additionalProperties 为 true(布尔)→ 退回 object(空)而非 record
+    expect(byKeyTop(formTrue.fields, "b").kind).toBe("object");
+  });
+});

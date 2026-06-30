@@ -11,7 +11,11 @@ import {
   type UseSchemaFormResult,
   type Validator,
 } from "./use-schema-form.js";
-import type { ConfigDomainIO, SettingsPanelDescriptor } from "./settings-registry.js";
+import {
+  normalizeConfigDomainData,
+  type ConfigDomainIO,
+  type SettingsPanelDescriptor,
+} from "./settings-registry.js";
 
 export interface MakeConfigDomainIOOptions {
   /** REST 基址,默认 "/api"。 */
@@ -64,6 +68,8 @@ export interface UseConfigDomainResult {
   readonly saved: boolean;
   readonly save: () => Promise<void>;
   readonly reload: () => Promise<void>;
+  /** 服务端随加载回传的「文件名 → 原始 JSON Schema」(仅扩展配置域);供 configFiles 控件优先采用。 */
+  readonly fileSchemas: Record<string, unknown> | undefined;
 }
 
 export function useConfigDomain(
@@ -75,6 +81,7 @@ export function useConfigDomain(
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const [saved, setSaved] = useState(false);
+  const [fileSchemas, setFileSchemas] = useState<Record<string, unknown> | undefined>(undefined);
   const resetRef = useRef(form.reset);
   resetRef.current = form.reset;
 
@@ -83,8 +90,9 @@ export function useConfigDomain(
     setLoadError(undefined);
     setSaved(false);
     try {
-      const values = await panel.load();
-      resetRef.current(values);
+      const data = normalizeConfigDomainData(await panel.load());
+      resetRef.current(data.values);
+      setFileSchemas(data.fileSchemas);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -112,5 +120,5 @@ export function useConfigDomain(
     }
   }, [form, panel]);
 
-  return { form, loading, loadError, saving, saveError, saved, save, reload };
+  return { form, loading, loadError, saving, saveError, saved, save, reload, fileSchemas };
 }

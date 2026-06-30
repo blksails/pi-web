@@ -7,12 +7,44 @@
 import type { FormSchema } from "@blksails/pi-web-protocol";
 import type { FormValues } from "./use-schema-form.js";
 
+/**
+ * 加载结果:可为裸表单值(现状),或 `{ values, fileSchemas }` 包裹形态。
+ * fileSchemas = 文件名 → 服务端已解析的原始 JSON Schema(供 configFiles 控件优先采用,
+ * 免客户端远端拉取);仅扩展配置域会回传。判别安全:各配置域值对象均无顶层 `values` 键。
+ */
+export interface ConfigDomainData {
+  readonly values: FormValues;
+  readonly fileSchemas?: Record<string, unknown>;
+}
+
 /** 面板的数据源(与持久化端点解耦,便于测试注入 mock)。 */
 export interface ConfigDomainIO {
-  /** 取当前值(secret 已掩码)。 */
-  readonly load: () => Promise<FormValues>;
+  /** 取当前值(secret 已掩码);可附带 fileSchemas。 */
+  readonly load: () => Promise<FormValues | ConfigDomainData>;
   /** 写回合法值。 */
   readonly save: (values: FormValues) => Promise<void>;
+}
+
+/**
+ * 归一化 load() 结果为 `{ values, fileSchemas }`。裸表单值(任意配置域值对象)无 fileSchemas。
+ * 判别为 wrapper 的条件:顶层键**恰好**是 `values`(+可选 `fileSchemas`)且 `values` 为对象——
+ * 避免把恰含名为 `values` 的 provider 的 auth 域裸值误判为 wrapper(否则丢其余 provider)。
+ */
+export function normalizeConfigDomainData(
+  result: FormValues | ConfigDomainData,
+): ConfigDomainData {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    !Array.isArray(result) &&
+    "values" in result &&
+    typeof (result as ConfigDomainData).values === "object" &&
+    (result as ConfigDomainData).values !== null &&
+    Object.keys(result).every((k) => k === "values" || k === "fileSchemas")
+  ) {
+    return result as ConfigDomainData;
+  }
+  return { values: result as FormValues };
 }
 
 export interface SettingsPanelDescriptor extends ConfigDomainIO {

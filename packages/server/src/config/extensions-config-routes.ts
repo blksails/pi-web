@@ -15,6 +15,8 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { extensionsConfigSchema } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
+import { resolveInstalledExtensionSchemas } from "./schema-resolver.js";
+import { createSchemaRegistry, type SchemaRegistry } from "./schema-registry.js";
 
 export type ExtensionsAdminPolicy = (auth: AuthContext) => boolean;
 const defaultAdminPolicy: ExtensionsAdminPolicy = () => true;
@@ -221,6 +223,21 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await fs.writeFile(path, JSON.stringify(value, null, 2) + "\n", { encoding: "utf8" });
 }
 
+/** 空对象(无键)或 null/undefined → true。 */
+function isEmptyObject(v: unknown): boolean {
+  if (v === null || v === undefined) return true;
+  return isPlainObject(v) && Object.keys(v).length === 0;
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await fs.access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 扫描目录下的扩展独立配置文件(顶层 `*.json`,排除保留文件)→ { 文件名: 内容 }。 */
 async function scanConfigFiles(dir: string): Promise<Record<string, unknown>> {
   let names: string[];
@@ -261,6 +278,8 @@ export interface ExtensionsConfigRoutesOptions {
   /** 允许写入的项目根白名单(及子树);缺省 [defaultCwd]。 */
   readonly allowedRoots?: readonly string[];
   readonly adminPolicy?: ExtensionsAdminPolicy;
+  /** 第三方 schema registry(注入便于测试);缺省内置快照 + `PI_WEB_SCHEMA_REGISTRY_URL` 远端。 */
+  readonly schemaRegistry?: SchemaRegistry;
 }
 
 /** 解析并校验 PUT body 的表单值(支持 `{values}` 包裹或裸对象)。 */
@@ -274,6 +293,9 @@ export function createExtensionsConfigRoutes(
   opts: ExtensionsConfigRoutesOptions,
 ): ReadonlyArray<InjectedRoute> {
   const adminPolicy = opts.adminPolicy ?? defaultAdminPolicy;
+  const registry =
+    opts.schemaRegistry ??
+    createSchemaRegistry({ remoteUrl: process.env["PI_WEB_SCHEMA_REGISTRY_URL"] });
   const allowedRoots =
     opts.allowedRoots !== undefined && opts.allowedRoots.length > 0
       ? opts.allowedRoots
@@ -292,6 +314,15 @@ export function createExtensionsConfigRoutes(
     const settings = (await readJsonObject(settingsPath)) ?? {};
     const form = settingsToForm(settings);
     const files = await scanConfigFiles(dir);
+    // 三源解析已安装扩展的 schema(install 门控);补「声明了 schema 但盘上不存在」的空占位以供新建。
+    // 包树恒在全局 <agentDir>/npm|git(即便项目作用域读 <cwd>/.pi/settings.json),故解析根用 opts.agentDir。
+    const resolved = await resolveInstalledExtensionSchemas(settings, files, {
+      agentDir: opts.agentDir,
+      registry,
+    });
+    for (const f of resolved.missingFiles) {
+      if (!(f in files)) files[f] = {};
+    }
     if (Object.keys(files).length > 0) form.files = files;
     // 去重:已有独立配置文件(经 $schema 关联)的扩展,不再在"扩展参数"里显示为空 KV 占位,
     // 避免同一扩展同时出现在两个区。仅移除**空**占位(有真实 settings KV 的不动)。
@@ -310,7 +341,9 @@ export function createExtensionsConfigRoutes(
         }
       }
     }
-    return jsonResponse(200, { dir, path: settingsPath, values: form });
+    const fileSchemas =
+      Object.keys(resolved.fileSchemas).length > 0 ? resolved.fileSchemas : undefined;
+    return jsonResponse(200, { dir, path: settingsPath, values: form, fileSchemas });
   };
 
   // 写回:settings.json(commands + KV,非破坏)+ 各独立配置文件(原始 JSON 覆盖)。
@@ -338,10 +371,13 @@ export function createExtensionsConfigRoutes(
     await writeJson(settingsPath, applyFormToSettings(existing, form));
 
     // 独立配置文件:仅写安全文件名(防穿越/保留文件),原始 JSON 覆盖。
+    // 「空且原不存在」的文件(服务端为新建渲染的空占位、用户未填写)不落盘,避免生成空文件。
     if (form.files !== undefined) {
       for (const [name, content] of Object.entries(form.files)) {
         if (!isSafeConfigFileName(name)) continue;
-        await writeJson(join(dir, name), content);
+        const target = join(dir, name);
+        if (isEmptyObject(content) && !(await fileExists(target))) continue;
+        await writeJson(target, content);
       }
     }
     return jsonResponse(200, { ok: true, path: settingsPath });
