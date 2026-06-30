@@ -31,6 +31,12 @@ export interface SessionListPanelProps {
   ) => Promise<ListSessionsResponse>;
   /** 触发恢复某会话(由宿主走 resumeId 链路,Req 4.1)。 */
   readonly onResume: (sessionId: string) => void;
+  /**
+   * 外部刷新信号:值变化时重拉**当前 scope** 首页(保留用户所在 Tab,沿用竞态守卫)。
+   * 面板自身只在 scope/数据源变化时加载,无法感知「新会话落库」「自动标题(auto_title)持久化」
+   * 等发生在加载之后的服务端变更;宿主在「一轮 agent 运行结束」等时机 bump 此值,使列表及时刷新。
+   */
+  readonly refreshSignal?: unknown;
   /** 单页上限(透传给端点;缺省由端点取默认)。 */
   readonly pageSize?: number;
   readonly className?: string;
@@ -64,6 +70,7 @@ export function SessionListPanel(
     globalEnabled,
     listSessions,
     onResume,
+    refreshSignal,
     pageSize,
     className,
     title = "会话历史",
@@ -119,10 +126,11 @@ export function SessionListPanel(
     [listSessions, currentSessionId, currentCwd, pageSize],
   );
 
-  // 切 scope(或 cwd/数据源变化)→ 重置并加载首页。
+  // 切 scope(或 cwd/数据源变化)→ 重置并加载首页;宿主 bump `refreshSignal` 时亦重拉当前 scope 首页
+  //(覆盖加载之后的服务端变更:新会话落库、auto_title 自动标题持久化)。竞态守卫保证仅最新响应可写。
   React.useEffect(() => {
     void fetchPage(scope, undefined, "reset");
-  }, [scope, fetchPage]);
+  }, [scope, fetchPage, refreshSignal]);
 
   const showTabs = globalEnabled;
   const isInitialLoading = status === "loading" && items.length === 0;

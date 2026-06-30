@@ -392,6 +392,13 @@ function SessionView({
       window.location.assign(`/session/${id}`);
     }
   }, []);
+  // 会话列表刷新信号:面板自身只在 scope/数据源变化时加载,感知不到「加载之后」的服务端变更
+  // (新会话镜像落库、auto_title 自动标题持久化都发生在 agent_end 时)。故每轮 agent 运行结束
+  // (PiChat onTurnEnd)bump 此计数 → 面板重拉当前 scope 首页,及时反映新会话与最新标题。
+  const [sessionListRefreshKey, setSessionListRefreshKey] = React.useState(0);
+  const onTurnEnd = React.useCallback((): void => {
+    setSessionListRefreshKey((n) => n + 1);
+  }, []);
   const sessionListSlot = React.useMemo<PiChatSlots>(
     () =>
       sessionListSlots(
@@ -403,9 +410,16 @@ function SessionView({
           globalEnabled={SESSIONS_GLOBAL_ENABLED}
           listSessions={piClient.listSessions}
           onResume={onResumeSession}
+          refreshSignal={sessionListRefreshKey}
         />,
       ),
-    [session.sessionId, create.cwd, piClient, onResumeSession],
+    [
+      session.sessionId,
+      create.cwd,
+      piClient,
+      onResumeSession,
+      sessionListRefreshKey,
+    ],
   );
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
@@ -525,6 +539,7 @@ function SessionView({
           builtinCommands={builtinCommands}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
+          onTurnEnd={onTurnEnd}
           showLogs={true}
           logsPanelVisible={logsPanelVisible ?? true}
           logsPanelPosition={logsPanelPosition ?? "bottom"}

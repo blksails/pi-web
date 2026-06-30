@@ -78,6 +78,7 @@ import { LogsPanel } from "../logs/logs-panel.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension } from "@blksails/pi-web-kit";
+import { createWebExtStateAccess } from "@blksails/pi-web-kit";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -146,6 +147,12 @@ export interface PiChatProps {
    * 提供后,内置命令由 PiChat 经 ui-rpc 总线执行(point=command),不再走 onBuiltinSelect。
    */
   readonly onCommandResult?: (commandName: string, outcome: CommandOutcome) => void;
+  /**
+   * 一轮 agent 运行结束(submitted/streaming → idle 边沿)回调。宿主据此做「每轮收尾」副作用,
+   * 典型为刷新会话历史列表:新会话镜像落库与 auto_title 自动标题持久化均在 `agent_end` 时完成,
+   * 故每轮结束后重拉列表即可及时反映新会话与最新标题(与内核 stats 的「每轮结束重拉」同构)。
+   */
+  readonly onTurnEnd?: () => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -268,6 +275,7 @@ export function PiChat({
   builtinCommands,
   onBuiltinSelect,
   onCommandResult,
+  onTurnEnd,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -291,6 +299,23 @@ export function PiChat({
       subscribeResponse: connection.controlStore.onUiRpcResponse,
     });
   }, [client, sessionId, connection]);
+  // 状态注入桥(state-injection-bridge):webext 共享状态接入,接到前端 ControlStore.states +
+  // client.setState 写回。经 prop 透给 slot 组件(见 SlotHost.state)。会话/连接就绪时构造。
+  const webextState = React.useMemo(() => {
+    if (client === undefined || sessionId === undefined || connection === undefined) {
+      return undefined;
+    }
+    const cs = connection.controlStore;
+    const sid = sessionId;
+    const c = client;
+    return createWebExtStateAccess({
+      read: (key) => cs.getSnapshot().states[key]?.value,
+      subscribe: (listener) => cs.subscribe(listener),
+      write: (key, value, op) =>
+        c.setState(sid, { key, value, op }).then(() => undefined),
+    });
+  }, [client, sessionId, connection]);
+
   React.useEffect(() => {
     return () => uiRpc?.dispose();
   }, [uiRpc]);
@@ -493,6 +518,14 @@ export function PiChat({
     }
     statsWasBusyRef.current = isBusy;
   }, [showSessionStats, controls, sessionId, isBusy]);
+
+  // 一轮运行结束(submitted/streaming → idle 边沿)→ 通知宿主做每轮收尾副作用(如刷新会话历史)。
+  // 与上方 stats「每轮结束重拉」同构,但不受 showSessionStats 门控:无论是否展示用量区都广播。
+  const turnEndWasBusyRef = React.useRef<boolean>(false);
+  React.useEffect(() => {
+    if (turnEndWasBusyRef.current && !isBusy) onTurnEnd?.();
+    turnEndWasBusyRef.current = isBusy;
+  }, [isBusy, onTurnEnd]);
 
   // 空闲期 Tier3 贡献点(slash/mention/autocomplete)需持久控制通道:per-prompt 消息流仅在发送时
   // 打开。故仅当**扩展声明了 contributions**(需 ui-rpc)且**空闲时**才另开一条「仅 ui-rpc」订阅
@@ -1035,7 +1068,7 @@ export function PiChat({
     ) : extension?.slots?.background !== undefined ? (
       // Tier1:扩展背景(宿主 slots/components 未提供时)。
       <div className="absolute inset-0 -z-10" data-pi-chat-background>
-        <SlotHost ext={extension} slot="background" />
+        <SlotHost ext={extension} slot="background" state={webextState} />
       </div>
     ) : null;
 
@@ -1254,11 +1287,11 @@ export function PiChat({
             data-pi-ext-header
             className="flex items-center gap-2 px-4 py-2"
           >
-            <SlotHost ext={extension} slot="headerLeft" />
+            <SlotHost ext={extension} slot="headerLeft" state={webextState} />
             <div className="flex-1">
-              <SlotHost ext={extension} slot="headerCenter" />
+              <SlotHost ext={extension} slot="headerCenter" state={webextState} />
             </div>
-            <SlotHost ext={extension} slot="headerRight" />
+            <SlotHost ext={extension} slot="headerRight" state={webextState} />
           </header>
         ) : null}
 
@@ -1288,7 +1321,7 @@ export function PiChat({
           <footer data-pi-chat-footer>{slots.footer}</footer>
         ) : extension?.slots?.footer !== undefined ? (
           <footer data-pi-chat-footer data-pi-ext-footer>
-            <SlotHost ext={extension} slot="footer" />
+            <SlotHost ext={extension} slot="footer" state={webextState} />
           </footer>
         ) : null}
       </div>
@@ -1311,7 +1344,7 @@ export function PiChat({
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
           {showPanelRight ? (
-            <SlotHost ext={extension} slot="panelRight" />
+            <SlotHost ext={extension} slot="panelRight" state={webextState} />
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
               flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}
