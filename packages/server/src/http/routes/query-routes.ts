@@ -71,91 +71,15 @@ export function makeStatsHandler(store: SessionStore): RouteHandler {
   };
 }
 
-/** 命令标记读取器:按会话标识返回 `piweb.command` 标记(epoch ms `ts` + 原始命令 `text`)。 */
-export type CommandMarkerLoader = (
-  id: string,
-) => Promise<ReadonlyArray<{ readonly text: string; readonly ts: number }>>;
-
-/** 把命令标记 `text` 包装为一条 user AgentMessage(与历史 user 消息同形,前端渲染为普通气泡)。 */
-function markerToMessage(text: string, ts: number): Record<string, unknown> {
-  return {
-    role: "user",
-    content: [{ type: "text", text }],
-    timestamp: ts,
-  };
-}
-
-/** 取消息的数值 timestamp(epoch ms);缺失/非数值→undefined(交由调用方退化处理)。 */
-function messageTimestamp(msg: unknown): number | undefined {
-  const t = (msg as { timestamp?: unknown } | null)?.timestamp;
-  return typeof t === "number" && Number.isFinite(t) ? t : undefined;
-}
-
-/**
- * 把命令标记按 timestamp **稳定合并**进消息序列(R13.3):
- *  - 全部消息均带数值 ts → 升序稳定合并;同 ts 时消息在前、标记在后(命令在该消息之后执行)。
- *  - 任一消息缺数值 ts(无法可靠定位)→ 退化为把全部标记追加到末尾(绝不丢失标记,顺序退化但安全)。
- * 仅影响返回序列,不改写底层 message log。
- */
-export function mergeCommandMarkers(
-  messages: readonly unknown[],
-  markers: ReadonlyArray<{ readonly text: string; readonly ts: number }>,
-): unknown[] {
-  if (markers.length === 0) return [...messages];
-
-  const allHaveTs = messages.every((m) => messageTimestamp(m) !== undefined);
-  if (!allHaveTs) {
-    // 退化:无法可靠按 ts 定位 → 标记追加末尾(按 ts 升序保持彼此相对序)。
-    const tail = [...markers]
-      .sort((a, b) => a.ts - b.ts)
-      .map((mk) => markerToMessage(mk.text, mk.ts));
-    return [...messages, ...tail];
-  }
-
-  // kind:0=消息(同 ts 在前),kind:1=标记(同 ts 在后);seq 保持各自相对稳定序。
-  type Row = { t: number; kind: 0 | 1; seq: number; item: unknown };
-  const rows: Row[] = [];
-  messages.forEach((m, i) =>
-    rows.push({ t: messageTimestamp(m)!, kind: 0, seq: i, item: m }),
-  );
-  markers.forEach((mk, j) =>
-    rows.push({
-      t: mk.ts,
-      kind: 1,
-      seq: j,
-      item: markerToMessage(mk.text, mk.ts),
-    }),
-  );
-  rows.sort((a, b) => a.t - b.t || a.kind - b.kind || a.seq - b.seq);
-  return rows.map((r) => r.item);
-}
-
-/**
- * GET /sessions/:id/messages
- * 转发 `get_messages`;若注入了 `loadCommandMarkers`,把该会话的 `piweb.command` 标记按时间序
- * 合并进返回序列(plugin-system-unification R13——纯命令冷恢复仍可见)。标记读取失败不致命:
- * 退化为仅返回 agent 消息(历史不因审计读失败而 500)。
- */
-export function makeMessagesQueryHandler(
-  store: SessionStore,
-  loadCommandMarkers?: CommandMarkerLoader,
-): RouteHandler {
+/** GET /sessions/:id/messages */
+export function makeMessagesQueryHandler(store: SessionStore): RouteHandler {
   return async (ctx): Promise<Response> => {
     try {
       const session = requireSession(store, ctx);
       const res = await session.getMessages();
       const extracted = dataOrError<{ messages: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
-      let messages = extracted.data.messages;
-      if (loadCommandMarkers !== undefined) {
-        try {
-          const markers = await loadCommandMarkers(ctx.sessionId ?? "");
-          messages = mergeCommandMarkers(messages, markers);
-        } catch {
-          // 审计标记读取失败 → 退化为仅 agent 消息(不影响主历史)。
-        }
-      }
-      return jsonResponse(200, { messages });
+      return jsonResponse(200, { messages: extracted.data.messages });
     } catch (err) {
       return mapEngineError(err);
     }

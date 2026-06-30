@@ -1,23 +1,22 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * 纯扩展命令的历史持久化(plugin-system-unification R13)浏览器验收。
+ * registerCommand 扩展命令 = 动作:无气泡、不进历史(plugin-system-unification R15)。
  *
  * 真实浏览器 → 真实 Next server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
- * 纯扩展命令(`/review`,只经 ctx.ui 反馈、不触发对话轮)此前 0 持久化:实时有乐观气泡、刷新即消失。
- * R13 让纯命令落 LLM-clean 的 `piweb.command` 标记,服务端 `GET /messages` 按时间序合并 surfacing,
- * 使冷恢复后该 `/review` 气泡仍在转录区——与实时一致。
+ * registerCommand 命令(`/review`,只经 ctx.ui 反馈、不触发对话轮)是**动作**而非对话:前端对 source=
+ * "extension" 命令 fire-and-forget 投递(不经 useChat)——**不渲染用户气泡、不进消息历史**;反馈仅靠
+ * ctx.ui(notify 经临时控制流渲染)。冷恢复后转录区无任何命令痕迹。
  *
- * 流程:建会话 → 提交 `/review`(stub 纯命令 sentinel:不发 turn、写 piweb.command)→ 实时见气泡
- * → 删内存会话强制冷恢复 → 重开 /session/:id → 断言 `/review` 用户气泡仍在(修复前为空白)。
+ * 流程:建会话 → 提交 `/review` → 断言①ctx.ui notify 出现 ②转录区**无** `/review` 气泡 → 删内存会话
+ * 冷恢复 → 断言转录区仍**无** `/review`(动作不留历史)。
  *
- * 默认 fs 后端(playwright.config.ts 的 fs project)。surfacing 经 SessionEntryStore 抽象,后端无关。
+ * stub:COMMANDS 暴露 `review`(source:"extension");handlePrompt `/review` 分支只发 notify、不持久、不发 turn。
  */
 
 const SOURCE = "./examples/plugin-code-review-agent";
 
-test("纯扩展命令 /review:实时可见 → 冷恢复历史仍可见(R13)", async ({ page }) => {
-  // 建会话。
+test("registerCommand /review:无气泡 + ctx.ui 反馈 + 不进历史(R15)", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("[data-agent-source-picker]")).toBeVisible();
   await page.locator("[data-agent-source-input]").fill(SOURCE);
@@ -29,25 +28,26 @@ test("纯扩展命令 /review:实时可见 → 冷恢复历史仍可见(R13)", a
   const id = (text ?? "").replace("session: ", "").trim();
   expect(id.length).toBeGreaterThan(0);
 
-  // 提交纯命令 /review。doSend 经 useChat 加乐观用户气泡;stub 不发 turn,server 的 R11
-  // 命令-turn watcher 在窗口后合成 finish 解冻输入框(不冒空助手气泡)。
+  // 提交 registerCommand 命令 /review(source:"extension")→ 前端 fire-and-forget,无气泡。
   await page.locator("[data-pi-input-textarea]").fill("/review");
   await page.locator('[data-pi-submit-state="send"]').click();
 
-  const messages = page.locator("[data-pi-chat-messages]");
-  await expect(messages).toContainText("/review"); // 实时乐观气泡
+  // ① ctx.ui notify 渲染(经临时控制流);② 转录区**无任何消息气泡**——命令是动作不是消息,
+  // 故 data-pi-chat-empty 仍为 "true"(注:"/review" 会作为命令建议按钮出现在 suggestions 区,
+  // 不是用户气泡,故不能用字符串缺席断言;用空转录区标记精确判定)。
+  await expect(page.getByText("代码检视完成:发现 2 个问题")).toBeVisible();
+  await expect(
+    page.locator('[data-pi-chat-pro][data-pi-chat-empty="true"]'),
+  ).toBeVisible();
 
-  // 输入框解冻(R11 finish 合成)→ 可再次发送状态回到 send。
-  await expect(page.locator('[data-pi-submit-state="send"]')).toBeVisible();
-
-  // 删内存会话强制冷恢复路径。
+  // 冷恢复:删内存会话 → 重开 → 转录区仍空(动作不留历史痕迹)。
   const del = await page.request.delete(`/api/sessions/${id}`);
   expect(del.ok()).toBeTruthy();
-
-  // 冷恢复:重开 URL → server 经 loadCommandMarkers 把 piweb.command 标记合并进历史。
   await page.goto(`/session/${id}`);
   await expect(page.locator("[data-session-active]")).toBeVisible();
-  await expect(messages).toContainText("/review"); // 修复前此处为空白(0 持久化)
+  await expect(
+    page.locator('[data-pi-chat-pro][data-pi-chat-empty="true"]'),
+  ).toBeVisible();
 });
 
 /**

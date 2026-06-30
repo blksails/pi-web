@@ -241,6 +241,40 @@ react 全套:281 passed(32 文件)无回归;react typecheck 绿
   ✓ R13 同文件 + 相邻无关无回归(plugin-system-unification 1 / tool-call-ui 3 / session-persistence fs 1)
 ```
 
+## 增量:registerCommand 命令是动作——无气泡、不进历史（R15，取代 R13 + 回退 R11 气泡，2026-06-30）
+
+### 决策与背景（用户）
+用户审视 R13(把命令标记塞进历史)后判定方向相反:**registerCommand 扩展命令是动作,不进历史、实时也无气泡**;
+**skills/template 是对话,进历史有气況(R14)**。并就唯一取舍选「简单回退」:触发 turn 的 registerCommand 命令
+那一轮不实时渲染(R11 原修的不一致),按「命令是动作」可接受。
+
+### 实现
+- **前端回退 R11**(`pi-chat.tsx`):`source==="extension"` 命令 → `client.prompt` fire-and-forget(无气泡、输入即时复位);
+  复原 `armExtControlStream`/`extCtrlActive` 点亮临时「仅控制」流承载 ctx.ui 反馈(无 webext 纯 registerCommand
+  扩展尤需,否则 `needsIdleControl` 为 false notify 丢);保留 R10 `applyAmbient:true` + `/plugin`·`/reload-runtime` 重载触发。
+- **撤销 R13 全链**:删 runner `command-marker.ts`+接线 / `session-store/piweb-entries.ts`+导出 /
+  `handler.types.loadCommandMarkers` / `create-handler` 传参 / `query-routes` 合并+`mergeCommandMarkers` /
+  `lib/app/command-markers.ts`+注入 / stub `/review` piweb.command 分支 / 两个 R13 单测。
+- **保留 R14**;skills/template 非 registerCommand,不命中 fire-and-forget 分支 → 仍进历史有气泡(R14 折叠)。
+- stub:COMMANDS 暴露 `review`(source:"extension");`/review` 只发 ctx.ui notify、不持久、不发 turn。
+
+### 新鲜证据
+```
+typecheck:root tsc EXIT=0 + 全包 Done
+单测:server 406 passed | 5 skipped(R13 单测已删,无回归);ui 535 passed;react 全套 281 passed(R14 折叠 28 含)
+浏览器 e2e(隔离 build .next-e2e + 外部 server,fs):
+  ✓ registerCommand /review(R15):提交 → ctx.ui notify「代码检视完成:发现 2 个问题」出现 +
+    转录区**无** /review 气泡 → 删内存会话冷恢复 → 转录区仍**无** /review(动作不留痕迹)
+  ✓ skill /skill:(R14)折叠 + 相邻无关无回归(plugin-system-unification/tool-call-ui/session-persistence fs)
+```
+
+### ctx.ui 兼容性核对（回答用户「第三方命令会不会 block」）
+逐项核对 ctx.ui 全能力面 vs pi-web(见对话):**第三方 registerCommand 命令不会因 ctx.ui 而 block**——
+SDK 的 RPC-mode uiContext 已把 TUI 富渲染类降级为不阻塞(`custom()`→立即 `undefined`、`setFooter/setHeader/
+setWorkingMessage` 等 no-op、`getEditorText`→同步 `""`、`setWidget` 组件工厂忽略);真正 await host 应答的只有
+`select/confirm/input/editor` 四个,pi-web `PiInteraction` 全桥接(内联交互卡 + 取消路径),且 select/confirm/input
+透传 `opts.timeout`/`signal`。残留理论风险:未来 SDK 新增的阻塞型方法若不在协议判别联合则会卡——当前无缺口。
+
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。
 - examples 不纳入 workspace typecheck（根 tsconfig 排除 `examples`，与既有 webext 示例同约定）；其正确性由 webext 构建成功 + 浏览器 e2e 保障。

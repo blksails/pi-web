@@ -482,7 +482,30 @@ interface EffectOrchestrator {
 ### 不在 dev 运行时跑 build
 - e2e 用 `NEXT_DIST_DIR=.next-e2e` 隔离 + external server，绝不污染共享 `.next`。
 
-## R13 设计：纯扩展命令的历史持久化（落地 R11-AC4）
+## R15 设计：registerCommand 命令是动作——无气泡、不进历史（取代 R13 + 回退 R11 气泡）
+
+**决策**：registerCommand 扩展命令是**动作**，不进消息历史、实时也不显示气泡；skills/template 是对话，进历史有气泡（R14）。
+
+**实现（回退 R11 前端 + 撤销 R13）**：
+- `pi-chat.tsx` onSubmit：`source==="extension"` 命令 → `client.prompt(sessionId, {message})` **fire-and-forget**
+  （不经 useChat → 无乐观气泡）；`setInput("")` 即时复位；先 `armExtControlStream()` 点亮临时「仅控制」流
+  （`extCtrlActive` → `needsIdleControl`）承载命令的 ctx.ui 反馈——**无 webext 的纯 registerCommand 扩展尤需**
+  （否则 `needsIdleControl` 为 false，notify 丢失）。保留 R10 的 `applyAmbient:true`。`/plugin`·`/reload-runtime`
+  仍触发 webext 重载。
+- 撤销 R13 全链（runner seam / server surfacing / lib loader / stub sentinel / 测试 / e2e）。
+- skills/template 非 `source==="extension"`（前者 source 为 skill/prompt）→ 不命中分支 → 走 doSend → 进历史有气泡（R14 折叠）。
+
+**取舍**：fire-and-forget 不开 per-prompt 流，故**触发 turn 的** registerCommand 命令那一轮不实时渲染（R11 原修的不一致）；
+按「命令是动作」定调，用户已选「简单回退」接受之。R11 的 server 命令-turn watcher 变为 vestigial（fire-and-forget 下
+无 per-prompt 流消费其合成 finish，控制流忽略 chunk 帧 → 无害），保留以减少改动面。
+
+**Traceability 增补**：
+
+| Req | Summary | Components | Flows |
+|-----|---------|-----------|-------|
+| 15 | registerCommand 命令=动作(无气泡/不进历史) | `pi-chat.tsx`(fire-and-forget + armExtControlStream), stub `/review` notify | e2e 无痕迹 |
+
+## R13 设计（已撤销，被 R15 取代）：纯扩展命令的历史持久化（落地 R11-AC4）
 
 **目标**：纯扩展命令（`/review` 一类，handler 跑完不留 message）冷恢复后仍在转录区可见，且 **LLM-clean**。
 

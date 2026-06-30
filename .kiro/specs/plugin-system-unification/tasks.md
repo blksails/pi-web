@@ -130,7 +130,8 @@
   - 完成证据：`PI_WEB_DISABLE_STANDALONE=1 NEXT_DIST_DIR=.next-e2e` 构建 + 外部 server 模式 → **1 passed (4.2s)**；相邻 webext/tool-call-ui 6 例无回归（见 evidence.md）
   - _Requirements: 8.1, 3.2_
 
-- [x] 17. 增量：纯扩展命令的历史持久化（R13 = 落地 R11-AC4）
+- [~] 17. （已撤销，被 R15/task 19 取代）增量：纯扩展命令的历史持久化（R13 = 落地 R11-AC4）
+  - 用户审视后判定方向相反：registerCommand 命令是动作、不进历史。R13 整体撤销，见 task 19。
 - [x] 17.1 持久化 seam：runner 包裹 `session.prompt` + 注册表无关纯命令检测
   - 新 `packages/server/src/runner/command-marker.ts`：`wireCommandMarkerPersistence(session, sessionManager)`
     包裹 `session.prompt`，`text.startsWith("/")` 且 `prompt` 后 `messages.length` 未变且 `!isStreaming`
@@ -158,3 +159,17 @@
   - 完成证据：react 单测（string/数组/带 args/普通文本不误折叠/畸形降级）28 passed；react typecheck 绿；
     浏览器 e2e：提交 `/skill:` → 实时短命令 + 不显示展开正文 → 冷恢复仍折叠为短命令。
   - _Requirements: 14.1, 14.2, 14.3, 14.4_
+
+- [x] 19. 增量：registerCommand 命令是动作——无气泡、不进历史（R15，取代 R13 + 回退 R11 气泡）
+  - **前端**(`pi-chat.tsx`)：回退 R11——`source==="extension"` 命令改回 fire-and-forget(`client.prompt`)：
+    无气泡、输入即时复位；复原 `armExtControlStream`/`extCtrlActive`（点亮临时控制流承载 ctx.ui 反馈，
+    无 webext 的纯 registerCommand 扩展尤需，否则 `needsIdleControl` 为 false）；保留 `/plugin`·`/reload-runtime`
+    的 webext 重载触发。
+  - **撤销 R13**：删 runner `command-marker.ts` + 接线 / `session-store/piweb-entries.ts` + 导出 /
+    `handler.types.loadCommandMarkers` / `create-handler` 传参 / `query-routes` 合并 + `mergeCommandMarkers` /
+    `lib/app/command-markers.ts` + 注入 / stub `/review` piweb.command 分支 / 两个 R13 单测。
+  - **保留 R14**（skills 折叠）；skills/template 非 registerCommand，不命中 fire-and-forget 分支 → 仍进历史有气泡。
+  - stub：COMMANDS 暴露 `review`(source:"extension")；handlePrompt `/review` 只发 ctx.ui notify、不持久、不发 turn。
+  - 完成证据：root tsc 绿；server 406 / ui 535 单测无回归；浏览器 e2e：`/review` 无气泡 + notify 出现 +
+    冷恢复无痕迹；R14 skill + 相邻无关无回归。
+  - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6_
