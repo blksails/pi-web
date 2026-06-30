@@ -17,7 +17,8 @@
  * Modeled after: e2e/browser/attachment-tool-bridge.e2e.ts
  *
  * Reference agent source: examples/aigc-agent
- * The aigc-agent calls buildAigcTools() in its defineAgent({ customTools }).
+ * The aigc-agent loads aigcExtension via defineAgent({ extensions: [aigcExtension] })
+ * (detoolspec-unify-builtin-tools).
  */
 
 import { test, expect } from "@playwright/test";

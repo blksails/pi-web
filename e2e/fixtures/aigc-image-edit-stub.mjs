@@ -106,7 +106,12 @@ async function getBridge() {
   const toolkit = await loadToolkit();
   const childStore = api.createChildAttachmentStore(process.env);
   const ctx = api.createAttachmentToolContext(childStore, SESSION_ID ?? "stub");
-  const tools = toolkit.buildAigcTools({ include: ["image_edit"], deps: { getCtx: () => ctx } });
+  // detoolspec:工具改为 pi.registerTool extension 形态(无 deps.getCtx)。经 globalThis seam
+  // 注入子进程 ctx,再用 fake pi 收集 aigcExtension 注册的 image_edit 工具。
+  globalThis[toolkit.SEAM_KEY] = ctx;
+  const tools = [];
+  const pi = { registerTool: (d) => tools.push(d), registerCommand: () => {} };
+  toolkit.aigcExtension(pi);
   const tool = tools.find((t) => t.name === "image_edit");
   bridge = { tool, available: childStore !== undefined && tool !== undefined };
   return bridge;

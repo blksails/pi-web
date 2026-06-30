@@ -8,10 +8,12 @@
  *  - Engine execution: `runEndpoint`, `RunEndpointOptions`
  *  - Env resolver:     `resolveVars`, `resolveVarsOptional`, `checkRequiredVars`
  *  - Proxy fetch:      `proxyFetch`
+ *  - Image normalize:  `normalizeImageDataUri`
  *  - Attachment seam:  `getAttachmentToolContext`, `SEAM_KEY`
- *  - Attachment store: `persistPicked`, `resolveInputToDataUri`, `PersistedAsset`
- *  - Tool 编译器:      `compileTool`, `CompileDeps`, `ToolExecuteDetails`
- *  - AIGC 工具集:      `buildAigcTools`, `AIGC_TOOLS`, `BuildAigcToolsOptions`
+ *  - Attachment store: `persistPicked`, `previewAssetsFromPicked`, `resolveInputToDataUri`, `PersistedAsset`
+ *  - AIGC extension:   `aigcExtension`, `registerImageGeneration`, `registerImageEdit`
+ *  - Image tool orchestrator (复用):`runImageTool`, `buildModelsDescription`, `optionalModelEnum`
+ *  - Execution-layer & route types
  */
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -26,16 +28,39 @@ export {
 
 export { proxyFetch } from "./engine/proxy-fetch.js";
 
+export { normalizeImageDataUri } from "./engine/normalize-image.js";
+
+export type {
+  EndpointBehavior,
+  PickedResult,
+  Pricing,
+  RunStage,
+  ToolProgress,
+  BuildBodyContext,
+  AsyncSpec,
+  LocalExecuteHook,
+} from "./engine/endpoint-types.js";
+
 // ── Attachment ────────────────────────────────────────────────────────────────
 export { getAttachmentToolContext, SEAM_KEY } from "./attachment/seam.js";
 
-export { persistPicked, resolveInputToDataUri } from "./attachment/persist.js";
+export {
+  persistPicked,
+  previewAssetsFromPicked,
+  resolveInputToDataUri,
+} from "./attachment/persist.js";
 export type { PersistedAsset } from "./attachment/persist.js";
 
-// ── Tool 编译器 (node-only — 含 pi SDK 值导入) ────────────────────────────────
-export { compileTool } from "./engine/compile-tool.js";
-export type { CompileDeps, ToolExecuteDetails } from "./engine/compile-tool.js";
+// ── AIGC extension(进程内 ExtensionFactory)───────────────────────────────────
+export { aigcExtension } from "./aigc/extension.js";
+export { registerImageGeneration } from "./aigc/tools/image-generation.js";
+export { registerImageEdit } from "./aigc/tools/image-edit.js";
 
-// ── AIGC 工具集 ───────────────────────────────────────────────────────────────
-export { buildAigcTools, AIGC_TOOLS } from "./aigc/index.js";
-export type { BuildAigcToolsOptions } from "./aigc/index.js";
+// ── Image-tool orchestrator(供自定义图像工具复用)──────────────────────────────
+export {
+  runImageTool,
+  buildModelsDescription,
+  optionalModelEnum,
+} from "./aigc/run-image-tool.js";
+export type { RunImageToolOptions, RunImageToolDeps } from "./aigc/run-image-tool.js";
+export type { ImageRoute, InteractionParam, ToolExecuteDetails } from "./aigc/types.js";

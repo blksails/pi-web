@@ -21,7 +21,7 @@
  * 不进 Next 服务端 bundle)。
  */
 import { defineAgent } from "@blksails/pi-web-agent-kit";
-import { buildAigcTools } from "@blksails/pi-web-tool-kit/runtime";
+import { aigcExtension } from "@blksails/pi-web-tool-kit/runtime";
 
 export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。
@@ -33,8 +33,9 @@ export default defineAgent({
     "Each tool persists its output as an attachment and returns a reference; report the",
     "produced attachment id back to the user. Keep replies concise.",
   ].join("\n"),
-  customTools: buildAigcTools(),
-  // Self-contained:关掉内置工具,仅暴露 AIGC 生成工具(+ 扩展工具)。
+  // AIGC 工具经进程内 ExtensionFactory 装载(detoolspec-unify-builtin-tools)。
+  extensions: [aigcExtension],
+  // Self-contained:关掉内置工具,仅暴露 AIGC 扩展工具。
   noTools: "builtin",
   // 关掉磁盘发现的系统 skills,保持示例 hermetic。
   skills: ({ diagnostics }) => ({ skills: [], diagnostics }),

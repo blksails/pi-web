@@ -5,7 +5,7 @@ import {
   resolveInputToDataUri,
 } from "../../src/attachment/persist.js";
 import type { AttachmentToolContext, AttachmentToolHandle, ToolOutputRef } from "@blksails/pi-web-agent-kit";
-import type { PickedResult } from "../../src/engine/types.js";
+import type { PickedResult } from "../../src/engine/endpoint-types.js";
 
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 

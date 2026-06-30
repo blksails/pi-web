@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { runEndpoint } from "../../src/engine/endpoint-adapter.js";
-import type { EndpointBehavior, PickedResult } from "../../src/engine/types.js";
+import type { EndpointBehavior, PickedResult } from "../../src/engine/endpoint-types.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

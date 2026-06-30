@@ -1,24 +1,24 @@
 /**
- * AIGC generation tools — Node e2e test (Req 7.1, 7.2, 3.1–3.4, 5.2–5.3).
+ * AIGC generation tools — Node e2e test (detoolspec-unify-builtin-tools task 4.5; Req 1.x, 2.x, 5.x).
  *
- * Proves the full chain:
- *   buildAigcTools (image_generation, qwen-image sync variant)
- *   → mocked provider fetch returns inline 1×1 PNG bytes
- *   → persistPicked fetches image URL → ctx.putOutput → att_ ref
+ * Proves the full chain via the **extension** form (post-detoolspec):
+ *   aigcExtension → pi.registerTool(image_generation/image_edit)
+ *   → execute → runImageTool → mocked DashScope sync provider returns image URL
+ *   → persistPicked fetches image URL → real AttachmentStore.put → att_ ref
  *   → store.head / getReadStream verify real on-disk write
- *   → store.verifyUrl passes (Req 3.3)
- *   → degradation: ctx.available=false → ok:false, no throw (Req 5.3/3.4)
+ *   → store.verifyUrl passes
+ *   → degradation: ctx.available=false / missing DASHSCOPE_API_KEY → ok:false, no throw
  *
  * Constraints:
  *  - No external LLM/provider credentials.
  *  - Real LocalFsBlobBackend + AttachmentStore (temp dir, afterAll cleanup).
  *  - Strict TypeScript, no `any`.
- *  - Mock fetch injected via deps.fetchImpl — does NOT hit the network.
- *  - DASHSCOPE_API_KEY set to "test-key" so requiredVars check passes.
- *  - Sync DashScope variant ("qwen-image-pro") used to avoid polling complexity.
+ *  - Mock fetch installed on globalThis — does NOT hit the network.
+ *  - attachment ctx injected via globalThis SEAM_KEY (the real runner seam).
+ *  - Model "wan2.7-image-pro" (DashScope sync) avoids polling complexity.
  */
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,7 +30,7 @@ import { AttachmentRegistry } from "../../packages/server/src/attachment/attachm
 import { AttachmentStore } from "../../packages/server/src/attachment/attachment-store.js";
 
 // ── tool-kit runtime imports (relative — @blksails/pi-web-tool-kit not in root node_modules) ──
-import { buildAigcTools, SEAM_KEY } from "../../packages/tool-kit/src/runtime.js";
+import { aigcExtension, SEAM_KEY } from "../../packages/tool-kit/src/runtime.js";
 import type {
   AttachmentToolContext,
   AttachmentToolHandle,
@@ -39,11 +39,31 @@ import type {
 } from "../../packages/agent-kit/src/attachment.js";
 import type { Attachment } from "../../packages/protocol/src/attachment/attachment-dto.js";
 
-// 工具定义类型从 buildAigcTools 的返回推断,避免在 root tsconfig 下直接 import
-// `@earendil-works/pi-coding-agent`(root node_modules 不含该 peer 依赖)。
-type ToolDef = ReturnType<typeof buildAigcTools>[number];
+// 工具定义的本地结构(避免在 root tsconfig 下 import `@earendil-works/pi-coding-agent`,
+// root node_modules 不含该 peer 依赖)。
+interface ToolDef {
+  name: string;
+  description: string;
+  execute: (
+    toolCallId: string,
+    params: Record<string, unknown>,
+    signal: unknown,
+    onUpdate: unknown,
+    ctx: unknown,
+  ) => Promise<{ details: unknown }>;
+}
 
-// 工具 details 的判别联合(对齐 compile-category 的结构化结果)。
+/** 用 fake pi 收集 aigcExtension 注册的工具(等价于真实会话装载)。 */
+function collectAigcTools(): ToolDef[] {
+  const tools: ToolDef[] = [];
+  const pi = {
+    registerTool: (def: ToolDef) => tools.push(def),
+    registerCommand: () => {},
+  };
+  (aigcExtension as unknown as (pi: unknown) => void)(pi);
+  return tools;
+}
+
 type AigcAsset = {
   attachmentId: string;
   displayUrl: string;
@@ -54,28 +74,22 @@ type AigcDetails =
   | { ok: true; model?: string; assets: AigcAsset[] }
   | { ok: false; error: string };
 
-/** 把工具结果的 unknown details 断言为 AigcDetails(集中收口断言)。 */
 function detailsOf(result: { details: unknown }): AigcDetails {
   return result.details as AigcDetails;
 }
 
-/** pi `ToolDefinition.execute` 形参为 5 个(toolCallId, params, signal, onUpdate, ctx);
- *  本测试只用前两个,其余以兼容值占位。 */
-function runTool(
-  tool: ToolDef,
-  params: Record<string, unknown>,
-): Promise<{ details: unknown }> {
-  return tool.execute(
-    "tc",
-    params,
-    undefined,
-    undefined,
-    {} as never,
-  ) as Promise<{ details: unknown }>;
+/** execute(toolCallId, params, signal, onUpdate, ctx);ctx={} → 无 UI,走默认 seam。 */
+function runTool(tool: ToolDef, params: Record<string, unknown>): Promise<{ details: unknown }> {
+  return tool.execute("tc", params, undefined, undefined, {});
+}
+
+function imageGenerationTool(): ToolDef {
+  const tool = collectAigcTools().find((t) => t.name === "image_generation");
+  if (!tool) throw new Error("image_generation not registered by aigcExtension");
+  return tool;
 }
 
 // ── 1×1 minimal PNG constant ─────────────────────────────────────────────────
-// The smallest valid PNG: 1×1 transparent pixel.
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC";
 
@@ -84,47 +98,36 @@ function minimalPng(): Uint8Array {
 }
 
 // ── Shared store state ────────────────────────────────────────────────────────
-
 const SECRET = "e2e-test-secret-stable";
 let tmpRoot: string;
 let store: AttachmentStore;
+let originalFetch: typeof fetch;
 
 // ── AttachmentToolContext adapter (strictly typed) ─────────────────────────────
-
-/**
- * Build a real AttachmentToolContext from the real store.
- * No `any` — all types are structurally explicit.
- */
 function buildCtx(s: AttachmentStore, sessionId: string): AttachmentToolContext {
   return {
     available: true,
-
     async resolve(id: string): Promise<AttachmentToolHandle> {
       const meta = await s.head(id);
       if (!meta) throw new Error(`resolve: attachment not found: ${id}`);
-
       return {
         meta: meta as Attachment,
-
         async bytes(): Promise<Uint8Array> {
           const { stream } = await s.getReadStream(id);
           const chunks: Buffer[] = [];
           for await (const chunk of stream) chunks.push(Buffer.from(chunk));
           return new Uint8Array(Buffer.concat(chunks));
         },
-
         async localPath(): Promise<string> {
           const p = await s.localPath(id);
           if (!p) throw new Error(`localPath: no local path for ${id}`);
           return p;
         },
-
         async url(opts?: { expiresInMs?: number }): Promise<string> {
           return s.presignUrl(id, opts);
         },
       };
     },
-
     async putOutput(input: PutOutputInput): Promise<ToolOutputRef> {
       const att = await s.put({
         bytes: input.bytes,
@@ -135,74 +138,45 @@ function buildCtx(s: AttachmentStore, sessionId: string): AttachmentToolContext 
         origin: "tool-output",
       });
       const displayUrl = await s.presignUrl(att.id);
-      return {
-        attachmentId: att.id,
-        displayUrl,
-        name: att.name,
-        mimeType: att.mimeType,
-      };
+      return { attachmentId: att.id, displayUrl, name: att.name, mimeType: att.mimeType };
     },
   };
 }
 
-// ── Mock fetch factory ───────────────────────────────────────────────────────
+function installSeam(ctx: AttachmentToolContext): void {
+  (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
+}
 
-/**
- * Build a DashScope sync mock fetch.
- *
- * The sync variant (qwen-image / multimodal-generation) sends one POST and
- * expects a JSON body shaped like:
- *   { output: { choices: [{ message: { content: [{ image: "<url>" }] } }] } }
- *
- * persistPicked then fetches that image URL to get the raw bytes.
- */
+// ── Mock fetch factory (DashScope sync multimodal) ────────────────────────────
 const SYNC_T2I_URL =
   "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
 const MOCK_IMAGE_URL = "https://mock-image-host/generated/img-0.png";
 
-function buildMockFetch(imageBytes: Uint8Array): typeof fetch {
-  return vi.fn(
-    async (input: string | URL | Request): Promise<Response> => {
-      const url =
-        input instanceof Request
-          ? input.url
-          : typeof input === "string"
-            ? input
-            : input.toString();
-
-      if (url === SYNC_T2I_URL) {
-        const body = JSON.stringify({
-          output: {
-            choices: [{ message: { content: [{ image: MOCK_IMAGE_URL }] } }],
-          },
-        });
-        return new Response(body, {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-
-      if (url === MOCK_IMAGE_URL) {
-        // Uint8Array → BodyInit:在严格 lib 下 Uint8Array 泛型与 BodyInit 不直接兼容,
-        // 经 ArrayBuffer 视图传入(运行时为原始字节)。
-        return new Response(imageBytes.buffer as ArrayBuffer, {
-          status: 200,
-          headers: { "content-type": "image/png" },
-        });
-      }
-
-      throw new Error(`[mockFetch] unexpected URL: ${url}`);
-    },
-  ) as unknown as typeof fetch;
+function installMockFetch(imageBytes: Uint8Array): void {
+  const mock = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+    const url = input instanceof Request ? input.url : typeof input === "string" ? input : input.toString();
+    if (url === SYNC_T2I_URL) {
+      const body = JSON.stringify({
+        output: { choices: [{ message: { content: [{ image: MOCK_IMAGE_URL }] } }] },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url === MOCK_IMAGE_URL) {
+      return new Response(imageBytes.buffer as ArrayBuffer, {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      });
+    }
+    throw new Error(`[mockFetch] unexpected URL: ${url}`);
+  });
+  globalThis.fetch = mock as unknown as typeof fetch;
 }
 
 // ── Setup / Teardown ──────────────────────────────────────────────────────────
-
 beforeAll(async () => {
   process.env["DASHSCOPE_API_KEY"] = "test-key";
-
+  originalFetch = globalThis.fetch;
   tmpRoot = await mkdtemp(join(tmpdir(), "aigc-e2e-"));
-
   const signer = createUrlSigner(SECRET);
   const backend = new LocalFsBlobBackend(tmpRoot, signer);
   const registry = new AttachmentRegistry(tmpRoot);
@@ -211,42 +185,29 @@ beforeAll(async () => {
 
 afterAll(async () => {
   delete process.env["DASHSCOPE_API_KEY"];
+  globalThis.fetch = originalFetch;
   await rm(tmpRoot, { recursive: true, force: true });
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  delete (globalThis as Record<string, unknown>)[SEAM_KEY];
+  vi.restoreAllMocks();
+});
 
-function getTextToImageTool(
-  ctx: AttachmentToolContext,
-  mockFetch: typeof fetch,
-): ToolDef {
-  const tools = buildAigcTools({
-    include: ["image_generation"],
-    deps: { getCtx: () => ctx, fetchImpl: mockFetch },
-  });
-  const tool = tools.find((t) => t.name === "image_generation");
-  if (!tool) {
-    throw new Error("image_generation tool not found in buildAigcTools output");
-  }
-  return tool;
-}
+const GEN_PARAMS = { prompt: "a test image", model: "wan2.7-image-pro" } as const;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe("aigc-generation-tools node e2e", () => {
-  describe("image_generation — sync qwen-image variant — happy path (Req 1.1, 3.1–3.3)", () => {
+describe("aigc-generation-tools node e2e (extension form)", () => {
+  describe("image_generation — DashScope sync — happy path (Req 1.2, 1.4)", () => {
     it("execute returns ok=true, assets non-empty, attachmentId starts with att_", async () => {
-      const ctx = buildCtx(store, "sess-e2e-1");
-      (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
-      const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
-
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
+      installSeam(buildCtx(store, "sess-e2e-1"));
+      installMockFetch(minimalPng());
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
-
       expect(details.ok).toBe(true);
       if (!details.ok) throw new Error("details.ok must be true");
       expect(details.assets.length).toBeGreaterThan(0);
-
       const asset = details.assets[0]!;
       expect(asset.attachmentId).toMatch(/^att_[A-Za-z0-9_-]+$/);
       expect(asset.displayUrl).toBeTruthy();
@@ -254,14 +215,11 @@ describe("aigc-generation-tools node e2e", () => {
     });
 
     it("store.head finds the produced attachment with origin tool-output and mime image/*", async () => {
-      const ctx = buildCtx(store, "sess-e2e-2");
-      (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
-      const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
-
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
+      installSeam(buildCtx(store, "sess-e2e-2"));
+      installMockFetch(minimalPng());
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
-
       const head = await store.head(details.assets[0]!.attachmentId);
       expect(head).toBeDefined();
       expect(head!.origin).toBe("tool-output");
@@ -269,57 +227,41 @@ describe("aigc-generation-tools node e2e", () => {
       expect(head!.sessionId).toBe("sess-e2e-2");
     });
 
-    it("store.getReadStream bytes === injected PNG bytes (proves real disk write + read, Req 3.1)", async () => {
+    it("store.getReadStream bytes === injected PNG bytes (proves real disk write + read)", async () => {
       const pngBytes = minimalPng();
-      const ctx = buildCtx(store, "sess-e2e-3");
-      (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
-      const tool = getTextToImageTool(ctx, buildMockFetch(pngBytes));
-
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
+      installSeam(buildCtx(store, "sess-e2e-3"));
+      installMockFetch(pngBytes);
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
-
       const { stream } = await store.getReadStream(details.assets[0]!.attachmentId);
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk));
       const readBytes = new Uint8Array(Buffer.concat(chunks));
-
       expect(readBytes.length).toBe(pngBytes.length);
       expect([...readBytes]).toEqual([...pngBytes]);
     });
 
-    it("store.verifyUrl passes for the produced displayUrl (Req 3.3)", async () => {
-      const ctx = buildCtx(store, "sess-e2e-4");
-      (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
-      const tool = getTextToImageTool(ctx, buildMockFetch(minimalPng()));
-
-      const result = await runTool(tool, { prompt: "a test image", model: "qwen-image-pro" });
+    it("store.verifyUrl passes for the produced displayUrl", async () => {
+      installSeam(buildCtx(store, "sess-e2e-4"));
+      installMockFetch(minimalPng());
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
       if (!details.ok) throw new Error("details.ok must be true");
-
       const { attachmentId, displayUrl } = details.assets[0]!;
       const parsedUrl = new URL(displayUrl, "http://x");
       const exp = Number(parsedUrl.searchParams.get("exp"));
       const sig = parsedUrl.searchParams.get("sig") ?? "";
-
       expect(store.verifyUrl(attachmentId, exp, sig)).toBe(true);
       expect(store.verifyUrl(attachmentId, exp, "tampered")).toBe(false);
     });
   });
 
-  describe("globalThis seam injection (Req 5.3 / design seam)", () => {
-    it("ctx injected via globalThis seam is read by getAttachmentToolContext", async () => {
-      const ctx = buildCtx(store, "sess-e2e-seam");
-      (globalThis as Record<string, unknown>)[SEAM_KEY] = ctx;
-
-      // 仅经 globalThis 注入 ctx — 不传 deps.getCtx,走真实 seam 读取。
-      const tools = buildAigcTools({
-        include: ["image_generation"],
-        deps: { fetchImpl: buildMockFetch(minimalPng()) },
-      });
-      const tool = tools.find((t) => t.name === "image_generation")!;
-
-      const result = await runTool(tool, { prompt: "seam test", model: "qwen-image-pro" });
+  describe("globalThis seam injection (Req 5.x / design seam)", () => {
+    it("ctx injected via globalThis seam is read by execute (no deps)", async () => {
+      installSeam(buildCtx(store, "sess-e2e-seam"));
+      installMockFetch(minimalPng());
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
       expect(details.ok).toBe(true);
       if (!details.ok) throw new Error("details.ok must be true (seam path)");
@@ -327,7 +269,7 @@ describe("aigc-generation-tools node e2e", () => {
     });
   });
 
-  describe("degradation path (Req 5.3 / 3.4)", () => {
+  describe("degradation path (Req 5.4 / 5.5)", () => {
     it("ctx with available:false → execute returns ok=false without throwing", async () => {
       const unavailableCtx: AttachmentToolContext = {
         available: false,
@@ -338,33 +280,22 @@ describe("aigc-generation-tools node e2e", () => {
           throw new Error("attachment capability unavailable: context not injected");
         },
       };
-
-      const tools = buildAigcTools({
-        include: ["image_generation"],
-        deps: { getCtx: () => unavailableCtx, fetchImpl: buildMockFetch(minimalPng()) },
-      });
-      const tool = tools.find((t) => t.name === "image_generation")!;
-
-      const result = await runTool(tool, { prompt: "degrade test", model: "qwen-image-pro" });
+      installSeam(unavailableCtx);
+      installMockFetch(minimalPng());
+      const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
       const details = detailsOf(result);
       expect(details.ok).toBe(false);
       if (details.ok) throw new Error("expected ok=false for unavailable ctx");
       expect(details.error).toBeTruthy();
     });
 
-    it("missing DASHSCOPE_API_KEY → execute returns ok=false without throwing (Req 5.2)", async () => {
+    it("missing DASHSCOPE_API_KEY → execute returns ok=false without throwing", async () => {
       const savedKey = process.env["DASHSCOPE_API_KEY"];
       delete process.env["DASHSCOPE_API_KEY"];
-
       try {
-        const ctx = buildCtx(store, "sess-e2e-nokey");
-        const tools = buildAigcTools({
-          include: ["image_generation"],
-          deps: { getCtx: () => ctx, fetchImpl: buildMockFetch(minimalPng()) },
-        });
-        const tool = tools.find((t) => t.name === "image_generation")!;
-
-        const result = await runTool(tool, { prompt: "no key test", model: "qwen-image-pro" });
+        installSeam(buildCtx(store, "sess-e2e-nokey"));
+        installMockFetch(minimalPng());
+        const result = await runTool(imageGenerationTool(), { ...GEN_PARAMS });
         const details = detailsOf(result);
         expect(details.ok).toBe(false);
         if (details.ok) throw new Error("expected ok=false for missing API key");
@@ -375,21 +306,15 @@ describe("aigc-generation-tools node e2e", () => {
     });
   });
 
-  describe("buildAigcTools toolset structure (Req 6.1 / 6.2)", () => {
-    it("buildAigcTools returns both image_generation and image_edit tools", () => {
-      const names = buildAigcTools().map((t) => t.name);
+  describe("aigcExtension toolset structure (Req 2.1, 2.5)", () => {
+    it("registers both image_generation and image_edit tools", () => {
+      const names = collectAigcTools().map((t) => t.name);
       expect(names).toContain("image_generation");
       expect(names).toContain("image_edit");
     });
 
-    it("include filter restricts to specified tools", () => {
-      const tools = buildAigcTools({ include: ["image_generation"] });
-      expect(tools).toHaveLength(1);
-      expect(tools[0]!.name).toBe("image_generation");
-    });
-
-    it("each tool has name, description, and execute function", () => {
-      for (const tool of buildAigcTools()) {
+    it("each registered tool has name, description, and execute function", () => {
+      for (const tool of collectAigcTools()) {
         expect(typeof tool.name).toBe("string");
         expect(tool.name.length).toBeGreaterThan(0);
         expect(typeof tool.execute).toBe("function");

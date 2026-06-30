@@ -12,7 +12,7 @@ import {
   createNewApiImage,
   createNewApiImageEdit,
 } from "../../../src/aigc/providers/newapi.js";
-import type { BuildBodyContext } from "../../../src/engine/types.js";
+import type { BuildBodyContext } from "../../../src/engine/endpoint-types.js";
 
 const ctx: BuildBodyContext = {};
 

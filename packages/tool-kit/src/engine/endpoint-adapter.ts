@@ -17,7 +17,7 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import { resolveVars, resolveVarsOptional } from "./var-resolver.js";
 import { proxyFetch } from "./proxy-fetch.js";
-import type { EndpointBehavior, PickedResult, RunStage, ToolProgress } from "./types.js";
+import type { EndpointBehavior, PickedResult, RunStage, ToolProgress } from "./endpoint-types.js";
 
 // 命名空间 toolkit:endpoint —— provider HTTP 调用耗时(对照后台网关报告的"用时")。
 const log = createLogger({ namespace: "toolkit:endpoint" });
