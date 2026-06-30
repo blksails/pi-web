@@ -15,6 +15,7 @@
 |----|------|------|
 | pi 扩展 | `extensions/code-review.ts` | 注册 `code_review` 工具 + `/review` 命令;包根真身 |
 | pi 扩展(自运行转发) | `.pi/extensions/code-review.ts` | 薄 re-export,让 SDK top-level 发现路径指向包根 |
+| pi 提示模板 | `prompts/*.md` | `/review-snippet`、`/review-staged`、`/review-security` 三个斜杠命令,展开成调用 `code_review` 工具的提示 |
 | Web 渲染器 | `.pi/web/web.config.tsx` | `renderers.tools.code_review` → `CodeReviewCard` 富卡 |
 | Web 贡献点 | 同上 | `contributions.slash` 接入 `/review` 命令补全 |
 | 清单绑定 | `pi-plugin.json` → `bindings.tools` | 声明 `code_review` 为对外契约 |
@@ -31,13 +32,38 @@ plugin-code-review-agent/
 ├── skills/
 │   └── code-review/
 │       └── SKILL.md        # 指导 LLM 调用 code_review 工具
+├── prompts/                # 提示模板真身(被安装时扫此)
+│   ├── review-snippet.md   # /review-snippet <code>
+│   ├── review-staged.md    # /review-staged [关注点]
+│   └── review-security.md  # /review-security [路径]
 └── .pi/
     ├── extensions/
     │   └── code-review.ts  # 自运行转发:re-export 包根真身
+    ├── prompts/            # 自运行副本(markdown 无法 re-export,与 .pi/skills 同理两处各一份)
+    │   ├── review-snippet.md
+    │   ├── review-staged.md
+    │   └── review-security.md
     └── web/
         ├── web.config.tsx  # Tier2 渲染器 + Tier3 slash 贡献点
         └── dist/           # 构建产物(build-webext-examples.ts 生成)
 ```
+
+## 提示模板(prompts)
+
+`prompts/*.md` 是 pi 原生「提示模板」——每个 `.md` 即一个斜杠命令,选用后把正文(含
+`$1`/`$ARGUMENTS`/`${1:-默认}` 参数替换)展开为发给 LLM 的提示。本插件提供三个:
+
+| 命令 | 说明 | 演示的替换语法 |
+|------|------|---------------|
+| `/review-snippet <code>` | 检视粘贴的代码片段 | `$ARGUMENTS`(全部参数) |
+| `/review-staged [关注点]` | 检视 Git 暂存区改动 | `$ARGUMENTS`(可空尾随) |
+| `/review-security [路径]` | 安全审计视角检视 | `${1:-默认值}`(缺省回退) |
+
+三者都引导 agent 调用 `code_review` 工具,以富卡呈现结果(与 skill 同一渲染路径)。
+
+> 与扩展 / skill 一样,提示模板也分两处:被安装(`origin:package`)时扫**包根** `prompts/`
+> 并由 `pi-plugin.json` 的 `pi.prompts` 声明;自运行(`origin:top-level`)时 SDK 扫 `.pi/prompts/`。
+> markdown 无法像扩展那样 re-export,故两处各放一份(与 `.pi/skills` 样板同理)。
 
 ## 运行
 
