@@ -11,7 +11,7 @@
 | `image_generation` | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
 | `image_edit` | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
 
-两个工具声明在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts:31` 的 `imageGeneration`、`image-edit.ts:28` 的 `imageEdit`，二者 ToolSpec `name` 分别为 `image_generation` / `image_edit`），聚合入口为 `packages/tool-kit/src/aigc/index.ts:17`（`AIGC_TOOLS` 常量 + `buildAigcTools()` 工厂）。
+两个工具的注册函数在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts` 的 `registerImageGeneration(pi)`、`image-edit.ts` 的 `registerImageEdit(pi)`,各以 `pi.registerTool` 注册,工具 `name` 分别为 `image_generation` / `image_edit`),聚合为进程内 `ExtensionFactory`:`packages/tool-kit/src/aigc/extension.ts` 的 `aigcExtension`。
 
 ---
 
@@ -253,7 +253,7 @@ ToolSpec（tools/image-generation.ts）
 
 ## 完整示例：aigc-agent
 
-`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `buildAigcTools()` 装配到生成全链路。
+`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `extensions: [aigcExtension]` 装载到生成全链路。
 
 **启动方式**：
 

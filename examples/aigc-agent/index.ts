@@ -1,11 +1,12 @@
 /**
  * aigc-agent — `@blksails/pi-web-tool-kit` AIGC 生成工具的**端到端示例 agent**(spec aigc-generation-tools,task 6)。
  *
- * 装配 `buildAigcTools()` 产出的 customTools(`text_to_image` / `image_edit`)演示完整接入:
- *  - 用户发文本 prompt → 模型调 `text_to_image({ prompt })` → provider 生成 → 产物经 attachment
+ * 经 `extensions: [aigcExtension]` 装载 AIGC 工具(`image_generation` / `image_edit`,pi.registerTool
+ * 形态)演示完整接入:
+ *  - 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment
  *    store 落库 → 工具回 `att_<id>` 引用,默认工具卡片展示;
  *  - 用户上传图(主进程注入 `[attachment id=att_… …]` 引用)→ 模型把 att_id 抄进
- *    `image_edit({ instruction, image_url })` → 编辑器解析输入附件为 data URI → provider 编辑 →
+ *    `image_edit({ image, prompt })` → 编辑器解析输入附件为 data URI → provider 编辑 →
  *    产物落库回引用。
  *
  * 工具在 runner 子进程内经注入的 AttachmentToolContext(globalThis seam)落库;装配缺失 / provider

@@ -4,7 +4,7 @@
 
 ## 它演示什么
 
-装配 `buildAigcTools()` 产出的 customTools（`image_generation` / `image_edit`），演示「生成 / 编辑图像 → 产物落库 → 回引用 → 富渲染」整链路：
+经 `extensions: [aigcExtension]` 装载（`image_generation` / `image_edit`），演示「生成 / 编辑图像 → 产物落库 → 回引用 → 富渲染」整链路：
 
 | 场景 | 链路 |
 |---|---|
