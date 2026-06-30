@@ -28,6 +28,7 @@ import {
   createSandboxProjectRoutes,
   createExtensionsConfigRoutes,
   createAttachmentRoutes,
+  createBashRoutes,
   createSessionListRoutes,
   createExtensionRoutes,
   createHostCommandRegistry,
@@ -47,6 +48,7 @@ import { configureLogger } from "@blksails/pi-web-logger";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
+import { resolveBashEnabled } from "./bash-default.js";
 // listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
 // parseHiddenProviders/excludeProviders 为纯函数,经同一子路径转出,用于按
 // PI_WEB_HIDE_PROVIDERS 部署期开关从下拉中剔除指定 provider 的模型。
@@ -428,6 +430,10 @@ function buildSingleton(): HandlerSingleton {
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。
       ...createAttachmentRoutes(attachmentStore),
+      // bang shell 命令(spec bang-shell-command):POST /sessions/:id/bash。
+      // 服务端权威门控——默认关闭(secure by default),仅 PI_WEB_BASH_ENABLED 显式开启;
+      // 关闭时端点返回 404(任意 shell 执行属高危,远程/多用户环境必须默认关)。
+      ...createBashRoutes(store, { enabled: resolveBashEnabled() }),
       // 扩展安装管理(extension-management,builtin-plugin-command 任务 2.2):挂载既有
       // GET/POST /extensions、DELETE /extensions/:extId、POST /sessions/:id/reload。
       // 注入 SessionReloader:经 PiSession.restartRunner() 重 spawn runner 续会话、重解析

@@ -26,6 +26,7 @@ import {
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
+import { BashResultRenderer } from "./bash-result-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import {
   ChatError,
@@ -151,6 +152,13 @@ export interface PiChatProps {
   /** 是否展示日志面板(LogsPanel);默认 false。 */
   readonly showLogs?: boolean;
   /**
+   * 是否启用 bang(`!`)shell 命令的**前端体验**(spec bang-shell-command,Req 5.5/6.4);默认 false。
+   * 开启时:输入以 `!`/`!!` 开头被识别为 bash 命令(经 client.bash 执行、不进 LLM),输入框显示
+   * bash 模式视觉提示。关闭时:`!` 文本按普通消息发送给 LLM,且无视觉提示。
+   * 注:这是体验开关;服务端权威门控独立(`PI_WEB_BASH_ENABLED`),关闭时端点返回 404。
+   */
+  readonly enableBash?: boolean;
+  /**
    * 是否根据 logging 配置的 outputs.panelVisible 控制日志面板可见性。
    * 当 panelVisible=false 时即使 showLogs=true 也不显示面板（Req 6.6）。
    * 默认 true（面板可见）。
@@ -270,6 +278,7 @@ export function PiChat({
   onCommandResult,
   showSessionStats = true,
   showLogs = false,
+  enableBash = false,
   logsPanelVisible = true,
   logsPanelPosition = "bottom",
   attachmentBaseUrl,
@@ -336,6 +345,8 @@ export function PiChat({
     // pi-web 自定义 data-part(data-pi-ui)经单一真相源 PART_KINDS 遍历注册
     //(session-snapshot-authority STEP4):不可能漏注册,孤儿渲染器由契约测试静态排除(Req 6.4/6.5)。
     registerBuiltinDataPartRenderers(registry);
+    // bang shell 命令结果卡片(spec bang-shell-command,Req 4.x)。
+    registry.registerDataPartRenderer("data-bash-result", BashResultRenderer);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -624,7 +635,78 @@ export function PiChat({
     [client, sessionId, onCommandResult, onBuiltinSelect],
   );
 
+  // bang shell 命令(spec bang-shell-command):执行 bash 并把命令+结果注入聊天流。
+  // 走同步 HTTP 响应体(client.bash)+ chatRef.setMessages 注入,**不经 useChat / 不进 LLM**
+  // (回显机制见 design;setMessages 仅在回调内经 chatRef 访问,避开 render 期解构无限循环坑)。
+  const runBash = React.useCallback(
+    async (command: string, excludeFromContext: boolean): Promise<void> => {
+      if (client === undefined || sessionId === undefined) return;
+      const prefix = excludeFromContext ? "!!" : "!";
+      const userMsg: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        parts: [{ type: "text", text: `${prefix}${command}` }],
+      };
+      const append = (card: UIMessage): void => {
+        chatRef.current.setMessages?.((prev) => [...prev, userMsg, card]);
+      };
+      try {
+        const result = await client.bash(sessionId, {
+          command,
+          excludeFromContext,
+        });
+        append({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: [
+            {
+              type: "data-bash-result",
+              data: { command, excludeFromContext, ...result },
+            },
+          ],
+        });
+      } catch {
+        // 失败(端点禁用 404 / 网络 / 服务端错误)→ 注入可见错误卡片(Req 7.1/7.2)。
+        append({
+          id: crypto.randomUUID(),
+          role: "assistant",
+          parts: [
+            {
+              type: "data-bash-result",
+              data: {
+                command,
+                excludeFromContext,
+                output: "命令执行失败:shell 命令未启用或服务端错误。",
+                cancelled: false,
+                truncated: false,
+              },
+            },
+          ],
+        });
+      }
+    },
+    [client, sessionId],
+  );
+
   const onSubmit = React.useCallback((): void => {
+    // bang shell 命令(spec bang-shell-command):前端体验开启且以 `!` 开头 → 作为 bash 命令分流,
+    // 不发给 LLM;`!!` → 输出不进上下文。去前缀去空白后为空则忽略(不请求/不写消息,Req 1.3);
+    // 提交即清空输入框(Req 7.4)。置于斜杠命令分支之前,使 `!` 与 `/` 互不干扰(Req 1.5)。
+    if (
+      enableBash &&
+      client !== undefined &&
+      sessionId !== undefined &&
+      input.trimStart().startsWith("!")
+    ) {
+      const trimmedBang = input.trimStart();
+      const excludeFromContext = trimmedBang.startsWith("!!");
+      const command = trimmedBang.slice(excludeFromContext ? 2 : 1).trim();
+      setInput("");
+      if (command.length === 0) return;
+      void runBash(command, excludeFromContext);
+      return;
+    }
+
     // 内置命令拦截:键入完整命令(如 "/clear")回车时,按 source=builtin 分派,
     // **绝不发给 LLM**(builtin-plugin-command Req 2.3/7.x)。匹配首段命令名。
     if (builtinCommands !== undefined && input.startsWith("/")) {
@@ -677,6 +759,8 @@ export function PiChat({
     sessionId,
     controls?.commands,
     armExtControlStream,
+    enableBash,
+    runBash,
   ]);
 
   const onStop = React.useCallback((): void => {
@@ -872,11 +956,20 @@ export function PiChat({
     : readinessGating && !sessionReady
       ? "连接中,请稍候…"
       : undefined;
+  // bash 模式视觉提示(spec bang-shell-command,Req 6.x):仅前端体验开启且以 `!` 开头时点亮;
+  // `!!` → 不进上下文态。关闭或非 `!` 前缀 → undefined(常规外观)。
+  const bashMode: "bash" | "bash-no-context" | undefined =
+    enableBash && input.trimStart().startsWith("!")
+      ? input.trimStart().startsWith("!!")
+        ? "bash-no-context"
+        : "bash"
+      : undefined;
   const promptInput = (
     <PromptInput
       value={input}
       onChange={setInput}
       onSubmit={onSubmit}
+      mode={bashMode}
       disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
       rows={3}
