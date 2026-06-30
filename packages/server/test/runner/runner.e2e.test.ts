@@ -30,6 +30,8 @@ const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
 // the agent's working directory, which has no node_modules.
 const bootstrapEntry = join(serverPkgDir, "runner-bootstrap.mjs");
 const exampleAgent = join(serverPkgDir, "..", "..", "examples", "hello-agent");
+// agent-slash-completion fixture: declares slashCompletions (no pi SDK tools).
+const slashAgent = join(serverPkgDir, "test", "runner", "fixtures", "slash-agent");
 
 const hasApiKey =
   typeof process.env.ANTHROPIC_API_KEY === "string" &&
@@ -55,13 +57,16 @@ interface LaunchOptions {
    *   cwd=<agent work dir> to prove cwd-independent module resolution.
    */
   mode?: "jiti" | "bootstrap";
+  /** Agent entry to load (default: the hello-agent example). */
+  agent?: string;
 }
 
 function launchRunner(opts: LaunchOptions = {}): RunnerHandle {
   const mode = opts.mode ?? "jiti";
   const cwd = mkdtempSync(join(tmpdir(), "runner-cwd-"));
   const agentDir = mkdtempSync(join(tmpdir(), "runner-agentdir-"));
-  const runnerArgs = ["--agent", exampleAgent, "--cwd", cwd, "--agent-dir", agentDir];
+  const agent = opts.agent ?? exampleAgent;
+  const runnerArgs = ["--agent", agent, "--cwd", cwd, "--agent-dir", agentDir];
   const spawnArgs =
     mode === "bootstrap"
       ? [bootstrapEntry, ...runnerArgs]
@@ -205,6 +210,37 @@ describe("runner subprocess — boot + non-LLM RPC round-trip (Req 7.2, 6.3)", (
     expect(frame.command).toBe("get_state");
     expect(frame.success).toBe(true);
     expect(RpcResponseSchema.safeParse(frame).success).toBe(true);
+  });
+});
+
+describe("runner subprocess — slash_completions assembly frame (agent-slash-completion, R1)", () => {
+  let handle: RunnerHandle | undefined;
+  afterEach(() => {
+    handle?.dispose();
+    handle = undefined;
+  });
+
+  it("声明 slashCompletions 的 agent:装配期发 slash_completions 帧,且 RPC 仍正常(不破坏 runRpcMode)", async () => {
+    handle = launchRunner({ agent: slashAgent });
+    // 1) 装配期帧写到 stdout(在 runRpcMode 接管前)。
+    const frame = (await handle.waitForFrame(
+      (f) =>
+        typeof f === "object" &&
+        f !== null &&
+        (f as { type?: string }).type === "slash_completions",
+    )) as { items: Array<{ name: string }> };
+    expect(frame.items.map((i) => i.name)).toEqual(["img-gen", "img-edit"]);
+
+    // 2) RPC 仍正常应答(前置帧未破坏 pi SDK runRpcMode 的 stdout 流) — R1。
+    handle.send({ id: "s1", type: "get_state" });
+    const resp = (await handle.waitForFrame(
+      (f) =>
+        typeof f === "object" &&
+        f !== null &&
+        (f as { id?: string }).id === "s1",
+    )) as { command: string; success: boolean };
+    expect(resp.command).toBe("get_state");
+    expect(resp.success).toBe(true);
   });
 });
 

@@ -26,6 +26,7 @@ export * from "./transport/session-status.js";
 export * from "./transport/sse-frame.js";
 export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";
+export * from "./transport/slash-completion.js";
 
 // attachment 层(attachment-store 描述符 + 上传响应 DTO)
 export * from "./attachment/attachment-dto.js";

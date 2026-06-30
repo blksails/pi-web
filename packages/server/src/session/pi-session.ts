@@ -21,12 +21,17 @@ import type {
   RpcExtensionUIResponse,
   RpcResponse,
   SessionLifecycleState,
+  SlashCompletionDecl,
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
-import { makeControlFrame, UiRpcResponseSchema } from "@blksails/pi-web-protocol";
+import {
+  makeControlFrame,
+  SlashCompletionsFrameSchema,
+  UiRpcResponseSchema,
+} from "@blksails/pi-web-protocol";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
 
 // 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
@@ -100,6 +105,11 @@ export class PiSession {
   private readonly pendingExtensionUI = new Map<string, RpcExtensionUIRequest>();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
+  /**
+   * agent 装配期经 `slash_completions` 帧声明的静态 slash 补全候选(spec
+   * agent-slash-completion)。按会话缓存,供 completion provider 读取实现 per-agent gating。
+   */
+  private slashCompletions: readonly SlashCompletionDecl[] = [];
 
   private _status: SessionStatus = "active";
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -403,20 +413,24 @@ export class PiSession {
    * 其余行已由 onEvent/onExtensionUIRequest 路径处理,这里忽略。
    */
   private handleRawLine(line: string): void {
-    if (this._status !== "active") return;
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
     } catch {
       return; // 非 JSON 行忽略
     }
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      (parsed as { type?: unknown }).type !== "ui_rpc_response"
-    ) {
+    if (parsed === null || typeof parsed !== "object") return;
+    const type = (parsed as { type?: unknown }).type;
+    // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
+    // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
+    if (type === "slash_completions") {
+      const sc = SlashCompletionsFrameSchema.safeParse(parsed);
+      if (sc.success) this.slashCompletions = sc.data.items;
       return;
     }
+    if (this._status !== "active") return;
+    // Tier3 ui-rpc 下行约定:`{"type":"ui_rpc_response","response":{...}}`。
+    if (type !== "ui_rpc_response") return;
     const res = UiRpcResponseSchema.safeParse(
       (parsed as { response?: unknown }).response,
     );
@@ -425,6 +439,11 @@ export class PiSession {
       FRAME_EVENT,
       makeControlFrame({ control: "ui-rpc", response: res.data }),
     );
+  }
+
+  /** agent 装配期声明的静态 slash 补全候选(spec agent-slash-completion)。 */
+  getSlashCompletions(): readonly SlashCompletionDecl[] {
+    return this.slashCompletions;
   }
 
   /**

@@ -16,3 +16,6 @@ export type {
   BuiltinCommandTarget,
   BuiltinSubcommand,
 } from "./commands/types.js";
+
+// AIGC slash 补全候选声明(agent-slash-completion);纯数据 + 仅类型,前端安全。
+export { aigcSlashCompletions } from "./aigc/slash-completions.js";

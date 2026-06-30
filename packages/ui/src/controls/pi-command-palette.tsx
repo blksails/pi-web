@@ -16,10 +16,11 @@
  */
 import * as React from "react";
 import type { UsePiControlsResult } from "@blksails/pi-web-react";
-import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
+import type { CompletionItem, RpcSlashCommand } from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
 import { useCaretAnchor } from "../completion/use-caret-anchor.js";
+import type { CompletionClient } from "../completion/use-completion.js";
 import {
   parseCommandStage,
   type CommandArgItem,
@@ -89,6 +90,13 @@ export interface PiCommandPaletteProps {
    * 做子命令/参数分阶段补全。缺省 → 仅命令名补全(既有行为)。
    */
   readonly commandArgProvider?: CommandArgProvider;
+  /**
+   * 补全客户端 + 会话(agent-slash-completion):用于拉取 agent 声明的伪命令候选
+   * (GET /completion?trigger=/),与执行型命令并入**单浮层**;选中只填入、不执行。
+   * 缺省 → 不拉伪命令(仅执行型命令)。
+   */
+  readonly client?: CompletionClient;
+  readonly sessionId?: string;
   readonly className?: string;
 }
 
@@ -123,6 +131,8 @@ export function PiCommandPalette({
   onBuiltinSelect,
   inputRef,
   commandArgProvider,
+  client,
+  sessionId,
   className,
 }: PiCommandPaletteProps): React.JSX.Element | null {
   const open = isCommandMode(value);
@@ -226,6 +236,38 @@ export function PiCommandPalette({
     [value, spec],
   );
   const inArgFlow = spec !== undefined && stage.kind !== "command";
+
+  // agent-slash-completion:agent 声明的伪命令候选(经 completion 端点 trigger "/" 拉取),
+  // 与执行型命令并入**单浮层**;选中只填入、不执行。arg-flow(子命令/参数阶段)不混入。
+  const [pseudoItems, setPseudoItems] = React.useState<readonly CompletionItem[]>(
+    [],
+  );
+  React.useEffect(() => {
+    if (
+      !open ||
+      inArgFlow ||
+      client === undefined ||
+      sessionId === undefined
+    ) {
+      setPseudoItems([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      void client
+        .getCompletion(sessionId, "/", queryOf(value))
+        .then((res) => {
+          if (!cancelled) setPseudoItems(res.items);
+        })
+        .catch(() => {
+          if (!cancelled) setPseudoItems([]);
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [open, inArgFlow, value, client, sessionId]);
 
   // 参数阶段:异步取候选(防抖 + cancel),与扩展 slash 取数同范式。
   const [argItems, setArgItems] = React.useState<readonly CommandArgItem[]>([]);
@@ -336,7 +378,9 @@ export function PiCommandPalette({
     open &&
     (inArgFlow
       ? argNav.length > 0
-      : filtered.length > 0 || extItems.length > 0);
+      : filtered.length > 0 ||
+        extItems.length > 0 ||
+        pseudoItems.length > 0);
   const prevCapturingRef = React.useRef<boolean | undefined>(undefined);
   React.useEffect(() => {
     if (prevCapturingRef.current !== capturing) {
@@ -362,6 +406,38 @@ export function PiCommandPalette({
       if (onSubmit !== undefined) onSubmit(cmd);
     },
     [onChange, onSubmit, onBuiltinSelect, value, commandArgProvider],
+  );
+
+  // agent-slash-completion:选中伪命令**只填入** insertText、绝不执行(纯输入提示);
+  // 补词后由 prompt-input 走正常发送,作为普通消息交给 LLM。
+  const selectPseudo = React.useCallback(
+    (item: CompletionItem): void => {
+      const insert = item.insertText ?? item.label;
+      onChange(insert);
+      const el = inputRef?.current ?? null;
+      if (el !== null) {
+        requestAnimationFrame(() => {
+          el.focus();
+          el.setSelectionRange(insert.length, insert.length);
+        });
+      }
+    },
+    [onChange, inputRef],
+  );
+
+  // 普通模式统一可选序列:执行型命令在前、伪命令在后,共享单一高亮(active)。
+  const normalTotal = filtered.length + pseudoItems.length;
+  const selectNormalAt = React.useCallback(
+    (i: number): void => {
+      if (i < filtered.length) {
+        const cmd = filtered[i];
+        if (cmd !== undefined) select(cmd);
+        return;
+      }
+      const item = pseudoItems[i - filtered.length];
+      if (item !== undefined) selectPseudo(item);
+    },
+    [filtered, pseudoItems, select, selectPseudo],
   );
 
   const handleKey = React.useCallback(
@@ -399,7 +475,7 @@ export function PiCommandPalette({
         return false;
       }
 
-      if (filtered.length === 0) {
+      if (normalTotal === 0) {
         if (e.key === "Escape") {
           onChange("");
           return true;
@@ -408,18 +484,17 @@ export function PiCommandPalette({
       }
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActive((i) => (i + 1) % filtered.length);
+        setActive((i) => (i + 1) % normalTotal);
         return true;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        setActive((i) => (i - 1 + filtered.length) % filtered.length);
+        setActive((i) => (i - 1 + normalTotal) % normalTotal);
         return true;
       }
       if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
-        const cmd = filtered[active];
-        if (cmd !== undefined) select(cmd);
+        selectNormalAt(active % normalTotal);
         return true;
       }
       if (e.key === "Escape") {
@@ -429,7 +504,7 @@ export function PiCommandPalette({
       }
       return false;
     },
-    [inArgFlow, argNav, filtered, active, onChange, select],
+    [inArgFlow, argNav, normalTotal, selectNormalAt, active, onChange],
   );
 
   // 命令模式下,即便焦点在外部输入框(prompt input),也捕获方向键/回车/Esc 导航。
@@ -526,7 +601,9 @@ export function PiCommandPalette({
         >
           {error}
         </div>
-      ) : filtered.length === 0 && extItems.length === 0 ? (
+      ) : filtered.length === 0 &&
+        extItems.length === 0 &&
+        pseudoItems.length === 0 ? (
         <div
           className="p-3 text-sm text-[hsl(var(--muted-foreground))]"
           data-pi-command-empty
@@ -596,6 +673,35 @@ export function PiCommandPalette({
               ) : null}
             </li>
           ))}
+          {pseudoItems.map((item, j) => {
+            const idx = filtered.length + j;
+            return (
+              <li
+                key={`pseudo-${item.id}`}
+                id={`${listId}-opt-${idx}`}
+                role="option"
+                aria-selected={idx === active}
+                onMouseEnter={() => setActive(idx)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => selectPseudo(item)}
+                className={cn(
+                  "flex cursor-pointer flex-col rounded-sm px-2 py-1.5 text-sm",
+                  idx === active
+                    ? "bg-[hsl(var(--accent))] text-[hsl(var(--accent-foreground))]"
+                    : "",
+                )}
+                data-pi-command-item={item.id}
+                data-pi-command-source="agent-slash"
+              >
+                <span className="font-medium">{item.label}</span>
+                {item.detail !== undefined ? (
+                  <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                    {item.detail}
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

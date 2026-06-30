@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
 } from "./sdk-types.js";
 import type { Logger } from "@blksails/pi-web-logger";
+import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 
 /**
  * Context passed to a factory-style agent definition (shape b).
@@ -98,4 +99,12 @@ export interface AgentDefinition {
     model: AgentModel;
     thinkingLevel?: ThinkingLevel;
   }>;
+  /**
+   * Static slash-command completion candidates this agent declares (e.g.
+   * `/img-gen`, `/img-edit`). They surface in the input `/` completion and,
+   * when selected, only fill the input box — they are NOT executed; the filled
+   * text is sent as a normal message and interpreted by the LLM (driven by the
+   * system prompt). Pure data, threaded to the server at runner assembly time.
+   */
+  slashCompletions?: SlashCompletionDecl[];
 }

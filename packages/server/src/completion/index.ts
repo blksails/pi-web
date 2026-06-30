@@ -30,3 +30,8 @@ export {
   ATTACHMENT_KIND,
   type AttachmentLister,
 } from "./providers/attachment-provider.js";
+export {
+  createAgentSlashProvider,
+  AGENT_SLASH_PROVIDER_ID,
+  type SlashCompletionSource,
+} from "./providers/agent-slash-provider.js";

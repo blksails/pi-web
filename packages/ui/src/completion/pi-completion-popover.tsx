@@ -30,6 +30,8 @@ export interface PiCompletionPopoverProps {
   /** 底层 textarea ref:用于 caret 像素测量与选中后光标复位(completion-cursor-anchor)。 */
   readonly inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   readonly onCaptureChange?: (capturing: boolean) => void;
+  /** 让出的触发符(由别的浮层独占,如 "/" 归 PiCommandPalette)。 */
+  readonly excludeTriggers?: readonly string[];
   readonly className?: string;
 }
 
@@ -41,6 +43,7 @@ export function PiCompletionPopover({
   sessionId,
   inputRef,
   onCaptureChange,
+  excludeTriggers,
   className,
 }: PiCompletionPopoverProps): React.JSX.Element | null {
   const { open, groups, activeToken, accept } = useCompletion({
@@ -48,6 +51,7 @@ export function PiCompletionPopover({
     sessionId,
     value,
     cursor,
+    ...(excludeTriggers !== undefined ? { excludeTriggers } : {}),
   });
   const listId = React.useId();
 
