@@ -16,6 +16,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { Logger } from "@blksails/pi-web-logger";
+import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 
 /** A resolved pi model (from the public from-services options). */
 export type Model = NonNullable<CreateAgentSessionFromServicesOptions["model"]>;
@@ -77,4 +78,10 @@ export interface AgentDefinition {
   promptTemplates?: PromptsOverride;
   contextFiles?: AgentsFilesOverride;
   scopedModels?: Array<{ model: AgentModel; thinkingLevel?: ThinkingLevel }>;
+  /**
+   * Static slash-command completion candidates (mirror of agent-kit field).
+   * pi-web-only metadata (not a pi SDK session field): threaded from the agent
+   * definition to the server via a runner-assembly-time stdout frame.
+   */
+  slashCompletions?: SlashCompletionDecl[];
 }

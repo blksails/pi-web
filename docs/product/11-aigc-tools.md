@@ -11,7 +11,7 @@
 | `image_generation` | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
 | `image_edit` | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
 
-两个工具声明在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts:31` 的 `imageGeneration`、`image-edit.ts:28` 的 `imageEdit`，二者 ToolSpec `name` 分别为 `image_generation` / `image_edit`），聚合入口为 `packages/tool-kit/src/aigc/index.ts:17`（`AIGC_TOOLS` 常量 + `buildAigcTools()` 工厂）。
+两个工具的注册函数在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts` 的 `registerImageGeneration(pi)`、`image-edit.ts` 的 `registerImageEdit(pi)`,各以 `pi.registerTool` 注册,工具 `name` 分别为 `image_generation` / `image_edit`),聚合为进程内 `ExtensionFactory`:`packages/tool-kit/src/aigc/extension.ts` 的 `aigcExtension`。
 
 ---
 
@@ -39,7 +39,7 @@
 ```ts
 // examples/aigc-agent/index.ts
 import { defineAgent } from "@blksails/pi-web-agent-kit";
-import { buildAigcTools } from "@blksails/pi-web-tool-kit/runtime";  // 注意：走 /runtime 子入口
+import { aigcExtension } from "@blksails/pi-web-tool-kit/runtime";  // 注意：走 /runtime 子入口
 
 export default defineAgent({
   systemPrompt: [
@@ -50,13 +50,15 @@ export default defineAgent({
     "Each tool persists its output as an attachment and returns a reference; report the",
     "produced attachment id back to the user. Keep replies concise.",
   ].join("\n"),
-  customTools: buildAigcTools(),
-  noTools: "builtin",    // 关掉内置工具，仅暴露 AIGC 工具
+  extensions: [aigcExtension],   // AIGC 以进程内 ExtensionFactory 装载（pi.registerTool）
+  noTools: "builtin",            // 关掉默认内置工具，仅暴露 AIGC 扩展工具
   skills: ({ diagnostics }) => ({ skills: [], diagnostics }),
 });
 ```
 
-> **重要**：`buildAigcTools` 必须从 `@blksails/pi-web-tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出引擎类型与纯数据 `ToolSpec` 声明（`AIGC_TOOLS` / `imageGeneration` / `imageEdit`），不顶层 import pi SDK / undici，对前端 bundle 安全。
+> **重要**：`aigcExtension` 必须从 `@blksails/pi-web-tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出前端安全的内置命令声明（`BUILTIN_COMMANDS`），不顶层 import pi SDK / undici。
+>
+> **形态说明（detoolspec-unify-builtin-tools）**：AIGC 工具已统一为普通 pi extension 形态——`aigcExtension` 是进程内 `ExtensionFactory`，内部用 `pi.registerTool` 注册 `image_generation` / `image_edit`，与 `extension-manager` / `auto-title` 一致。旧的声明式 `ToolSpec` + `compileTool` + `buildAigcTools`（`customTools` 装配）已移除;运行时编排由 `runImageTool` 承担（同样从 `/runtime` 导出，供自定义图像工具复用）。
 
 ### 3. 配置环境变量
 
@@ -251,7 +253,7 @@ ToolSpec（tools/image-generation.ts）
 
 ## 完整示例：aigc-agent
 
-`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `buildAigcTools()` 装配到生成全链路。
+`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `extensions: [aigcExtension]` 装载到生成全链路。
 
 **启动方式**：
 

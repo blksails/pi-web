@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { runEndpoint } from "../../src/engine/endpoint-adapter.js";
-import type { EndpointBehavior } from "../../src/engine/types.js";
+import type { EndpointBehavior } from "../../src/engine/endpoint-types.js";
 
 describe("async submit detectError(Req 1.6)", () => {
   it("submit 即错 → 立即抛错且不进入轮询", async () => {

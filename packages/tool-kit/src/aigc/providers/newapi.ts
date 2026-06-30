@@ -1,7 +1,7 @@
 /**
  * NewAPI(OpenAI 兼容聚合网关)provider 工厂 — `@blksails/pi-web-tool-kit` 版。
  *
- * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
+ * 提供两类 model 路由项工厂(返回 {@link ImageRoute}):
  *  - createNewApiImage:    文生图,走 /v1/images/generations
  *  - createNewApiImageEdit: 图像编辑,走 /v1/images/edits(multipart FormData)
  *
@@ -10,7 +10,8 @@
  * 国内网关**不挂 proxy**,避免增加延迟或触发安全策略。
  */
 
-import type { ModelRoute, PickedResult, BuildBodyContext } from "../../engine/types.js";
+import type { PickedResult, BuildBodyContext } from "../../engine/endpoint-types.js";
+import type { ImageRoute } from "../types.js";
 
 // ── Base URL ────────────────────────────────────────────────────────────────────
 
@@ -216,8 +217,8 @@ export interface NewApiModelArgs {
  */
 export function createNewApiImage(
   args: NewApiModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,
@@ -237,8 +238,8 @@ export function createNewApiImage(
  */
 export function createNewApiImageEdit(
   args: NewApiModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,

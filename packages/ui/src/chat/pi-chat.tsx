@@ -183,6 +183,10 @@ export interface PiChatProps {
 
 const WEB_SEARCH_HINT = "[web-search] 请在回答前进行联网搜索。";
 
+// agent-slash-completion:"/" 触发符让 PiCommandPalette 单浮层独占,从 core 补全浮层
+// (PiCompletionPopover)排除,避免双浮层冲突。模块级常量保证引用稳定(effect 依赖)。
+const SLASH_EXCLUDED_TRIGGERS: readonly string[] = ["/"];
+
 const EMPTY_NOTIFICATIONS: UseExtensionUIResult["notifications"] = [];
 const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
 
@@ -993,6 +997,9 @@ export function PiChat({
             ? { slashContribution: extension.contributions.slash }
             : {})}
           {...(uiRpc !== undefined ? { uiRpc } : {})}
+          // agent-slash-completion:伪命令候选(/img-gen 等)经 completion 端点并入此单浮层。
+          {...(client !== undefined ? { client } : {})}
+          {...(sessionId !== undefined ? { sessionId } : {})}
         />
       ) : null}
       {/* core 触发符补全(平台级,知道 sessionId);接管 @ 等服务端 provider 触发符。
@@ -1006,6 +1013,8 @@ export function PiChat({
           sessionId={sessionId}
           inputRef={inputRef}
           onCaptureChange={setCommandCapturing}
+          // agent-slash-completion:"/" 归 PiCommandPalette 单浮层,避免双浮层冲突。
+          excludeTriggers={SLASH_EXCLUDED_TRIGGERS}
         />
       ) : null}
       {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。

@@ -45,7 +45,7 @@ export { defineMinimalAgent, minimalAgentPreset } from "./minimal-preset.js";
 
 // server-driven UI:在工具 execute 内经 onUpdate 发出 data-pi-ui 部件。
 export { emitUi } from "./emit-ui.js";
-export type { UiSpec, UiNode } from "@blksails/pi-web-protocol";
+export type { UiSpec, UiNode, SlashCompletionDecl } from "@blksails/pi-web-protocol";
 
 // attachment-tool-bridge(task 4.1):tool 接入上下文的**作者面类型契约**。
 // 仅类型,无值导入 —— 构造(createAttachmentToolContext)与运行期句柄留在 @blksails/pi-web-server

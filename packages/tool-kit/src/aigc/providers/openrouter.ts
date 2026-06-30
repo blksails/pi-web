@@ -1,7 +1,7 @@
 /**
  * OpenRouter image-modality provider 工厂 — `@blksails/pi-web-tool-kit` 版。
  *
- * 提供两类 model 路由项工厂(返回 {@link ModelRoute}):
+ * 提供两类 model 路由项工厂(返回 {@link ImageRoute}):
  *  - createOpenRouterImage:    文生图(T2I);content 可为字符串或 multi-part 数组
  *  - createOpenRouterImageEdit: 图像编辑;content 永远是 multi-part(含图像 part)
  *
@@ -10,7 +10,8 @@
  * 编译器在 buildBody 前已把 att_id 解析为 data URI,故此处不内联远程图。
  */
 
-import type { ModelRoute, PickedResult, BuildBodyContext } from "../../engine/types.js";
+import type { PickedResult, BuildBodyContext } from "../../engine/endpoint-types.js";
+import type { ImageRoute } from "../types.js";
 
 // ── Endpoint & 共用常量 ────────────────────────────────────────────────────────
 
@@ -164,8 +165,8 @@ export interface OpenRouterModelArgs {
  */
 export function createOpenRouterImage(
   args: OpenRouterModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,
@@ -186,8 +187,8 @@ export function createOpenRouterImage(
  */
 export function createOpenRouterImageEdit(
   args: OpenRouterModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,

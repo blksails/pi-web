@@ -22,6 +22,7 @@ import {
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "./agent-definition.js";
 import { loadAgentDefinition } from "./agent-loader.js";
+import { emitSlashCompletions } from "./slash-completions-wiring.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
 import {
   createSessionEntryStore,
@@ -318,6 +319,10 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const stateWiring = wireStateBridge(runtime, {
     sessionId: runtime.session.sessionId,
   });
+
+  // agent-slash-completion:把 agent 声明的静态 slash 补全候选经 stdout 帧推给 server
+  // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
+  emitSlashCompletions(factory);
 
   // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
   // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为

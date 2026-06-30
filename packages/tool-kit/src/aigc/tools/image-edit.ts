@@ -1,153 +1,153 @@
 /**
- * `image_edit` ToolSpec 声明 — 图像编辑(对齐 OpenAI Images `/v1/images/edits`)。
+ * `image_edit` 工具注册函数 — 图像编辑(对齐 OpenAI Images `/v1/images/edits`)。
  *
- * 纯数据声明,无值导入运行时库:可从主入口安全导出(守 webpack externals 边界)。
+ * detoolspec-unify-builtin-tools:由原 ToolSpec 数据声明改写为 `pi.registerTool` 注册函数。
+ * 手写 `parameters` + `execute` 调运行时编排器 {@link runImageTool}。`image`/`mask`/
+ * `reference_images` 经 `mediaFields` 在发往 provider 前由编排器解析为 data URI。
  *
- * model 路由(本轮):
- *  - `gpt-image-2`         NewAPI(默认)—— OpenAI 兼容 edits(整图改写),经验证可用
- *  - `qwen-image-edit-max` DashScope —— 最高保真,支持 mask 局部重绘
- *
- * 参数对齐 OpenAI Images edits:`image`/`prompt`(必填)+ `mask`/`n`/`size`/`response_format`;
- * 另保留 `reference_images`(DashScope 风格/角色一致)。`image`/`mask`/`reference_images` 的
- * `att_` 前缀引用由编译器在发往 provider 前解析为 data URI。`model` 由编译器据 models 注入。
+ * model 路由:
+ *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容 edits(整图改写)
+ *  - `qwen-image-edit-max`       DashScope —— 最高保真,支持 mask 局部重绘
+ *  - `wan2.7-image-edit-bailian` token plan multimodal —— 百炼带图编辑
  */
-
-import type { ToolSpec } from "../../engine/types.js";
+import { Type } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext, AgentToolResult } from "@earendil-works/pi-coding-agent";
 import {
   createDashscopeImageEdit,
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
 import { createNewApiImageEdit } from "../providers/newapi.js";
+import {
+  runImageTool,
+  buildModelsDescription,
+  optionalModelEnum,
+} from "../run-image-tool.js";
+import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "../types.js";
 
-// token plan(阿里云百炼)图像编辑 —— 同样走 DashScope **原生** messages/content 格式 + 同一
-// multimodal-generation 端点(非 OpenAI /images/edits)。base 经 env DASHSCOPE_TOKENPLAN_BASE_URL
-// 可配。token plan key(DASHSCOPE_API_KEY)对官方 dashscope 端点无效,故打 token plan 末端。
+// token plan(阿里云百炼)图像编辑 —— 走 DashScope 原生 messages/content + 同一 multimodal 端点。
 const TOKEN_PLAN_MULTIMODAL_URL =
   "${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation";
 
-export const imageEdit: ToolSpec = {
-  name: "image_edit",
-  label: "Image edit",
-  description:
-    "Edit an existing image based on a text prompt. " +
-    "Supports inpainting (mask-aware) via DashScope and whole-image rewrite via NewAPI. " +
-    "Provide image and prompt; optionally provide mask (B/W, white = repaint region) and reference_images. " +
-    "IMPORTANT: pass `prompt` in the user's original language verbatim; do NOT translate it to English.",
+const DEFAULT_MODEL = "gpt-image-2";
 
-  inputSchema: {
-    type: "object",
-    properties: {
-      image: {
-        type: "string",
-        description:
-          "Attachment id (att_...) or URL of the image to edit. " +
-          "Attachment ids are resolved to data URIs before being sent to the provider.",
-        mediaKind: "image",
-      },
-      prompt: {
-        type: "string",
-        description:
-          "What to change, in the user's original language (do NOT translate to English). " +
-          "Concrete descriptions work better than abstract ones.",
-        examples: [
-          "把背景换成夕阳下的海滩",
-          "去掉文字水印,保持背景一致",
-          "将整体风格改为吉卜力动画",
-          "把白天改成夜晚,加上星空",
-        ],
-      },
-      mask: {
-        type: "string",
-        description:
-          "Optional B/W mask: white = region to redraw, black = keep. " +
-          "When provided the edit runs in inpaint mode (DashScope models).",
-        mediaKind: "image",
-      },
-      n: {
-        type: "integer",
-        description: "Number of images to generate (1–10).",
-      },
-      size: {
-        type: "string",
-        description: "Output image size, e.g. 1024x1024 (model-dependent).",
-      },
-      reference_images: {
-        type: "array",
-        description:
-          "Optional reference images for style/character consistency. " +
-          "Main image + mask + reference images must total ≤ 3 (DashScope limit).",
-        items: {
-          type: "string",
-          mediaKind: "image",
-        },
-        mediaKind: "image",
-      },
-      response_format: {
-        type: "string",
-        enum: ["url", "b64_json"],
-        description: "Output format. OpenAI models only.",
-      },
+const ROUTES: readonly ImageRoute[] = [
+  createNewApiImageEdit(
+    {
+      model: "gpt-image-2",
+      label: "GPT Image 2 · NewAPI",
+      description:
+        "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
     },
-    required: ["image", "prompt"],
-    additionalProperties: false,
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createDashscopeImageEdit(
+    {
+      model: "qwen-image-edit-max",
+      label: "Qwen Image Edit Max · sync",
+      description:
+        "Best edit fidelity; supports mask inpainting and reference images. Needs DASHSCOPE_API_KEY.",
+      providerModel: DASHSCOPE_MODELS.qwenImageEditMax,
+    },
+    { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
+  ),
+  createDashscopeImageEdit(
+    {
+      model: "wan2.7-image-edit-bailian",
+      label: "Wan 2.7 Image Edit · token plan",
+      description:
+        "Wan 2.7 Image Pro 带图编辑 via token plan multimodal-generation (DashScope 原生 messages/content). " +
+        "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
+      providerModel: DASHSCOPE_MODELS.wan27ImagePro,
+    },
+    { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.3, currency: "CNY", unit: "image" } },
+  ),
+];
+
+const REQUIRED_PARAMS: readonly InteractionParam[] = [
+  { param: "model", via: "select", title: "选择编辑模型", options: ["$models"] },
+  {
+    param: "size",
+    via: "select",
+    title: "选择输出尺寸",
+    options: ["1024x1024", "1536x1024", "1024x1536", "auto"],
+    fallback: "auto",
   },
+  {
+    param: "prompt",
+    via: "input",
+    title: "输入编辑指令",
+    placeholder: "用你的语言描述要做的修改(不会被翻译)",
+  },
+];
 
-  defaultModel: "gpt-image-2",
+const BASE_DESCRIPTION =
+  "Edit an existing image based on a text prompt. " +
+  "Supports inpainting (mask-aware) via DashScope and whole-image rewrite via NewAPI. " +
+  "Provide image and prompt; optionally provide mask (B/W, white = repaint region) and reference_images. " +
+  "IMPORTANT: pass `prompt` in the user's original language verbatim; do NOT translate it to English.";
 
-  // 业务必选项:缺失时经 ctx.ui 交互补全(model/size 选择,prompt 输入)。
-  requiredParams: [
-    { param: "model", via: "select", title: "选择编辑模型", options: ["$models"] },
-    {
-      param: "size",
-      via: "select",
-      title: "选择输出尺寸",
-      options: ["1024x1024", "1536x1024", "1024x1536", "auto"],
-      fallback: "auto",
+const PARAMETERS = Type.Object({
+  image: Type.String({
+    description:
+      "Attachment id (att_...) or URL of the image to edit. " +
+      "Attachment ids are resolved to data URIs before being sent to the provider.",
+  }),
+  prompt: Type.String({
+    description:
+      "What to change, in the user's original language (do NOT translate to English). " +
+      "Concrete descriptions work better than abstract ones.",
+  }),
+  mask: Type.Optional(
+    Type.String({
+      description:
+        "Optional B/W mask: white = region to redraw, black = keep. " +
+        "When provided the edit runs in inpaint mode (DashScope models).",
+    }),
+  ),
+  n: Type.Optional(Type.Integer({ description: "Number of images to generate (1–10)." })),
+  size: Type.Optional(
+    Type.String({ description: "Output image size, e.g. 1024x1024 (model-dependent)." }),
+  ),
+  reference_images: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Optional reference images for style/character consistency. " +
+        "Main image + mask + reference images must total ≤ 3 (DashScope limit).",
+    }),
+  ),
+  response_format: Type.Optional(
+    Type.Union([Type.Literal("url"), Type.Literal("b64_json")], {
+      description: "Output format. OpenAI models only.",
+    }),
+  ),
+  model: optionalModelEnum(ROUTES, DEFAULT_MODEL),
+});
+
+/** 注册 `image_edit` 工具到给定的 pi 扩展上下文。 */
+export function registerImageEdit(pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "image_edit",
+    label: "Image edit",
+    description: buildModelsDescription(BASE_DESCRIPTION, ROUTES, DEFAULT_MODEL),
+    parameters: PARAMETERS,
+    async execute(
+      _toolCallId: string,
+      params: Record<string, unknown>,
+      signal: AbortSignal | undefined,
+      onUpdate: unknown,
+      ctx: ExtensionContext,
+    ) {
+      const emit =
+        typeof onUpdate === "function"
+          ? (onUpdate as (p: AgentToolResult<ToolExecuteDetails>) => void)
+          : undefined;
+      return runImageTool(params, ctx, signal, emit, {
+        toolName: "image_edit",
+        routes: ROUTES,
+        defaultModel: DEFAULT_MODEL,
+        requiredParams: REQUIRED_PARAMS,
+        mediaFields: ["image", "mask", "reference_images"],
+      });
     },
-    {
-      param: "prompt",
-      via: "input",
-      title: "输入编辑指令",
-      placeholder: "用你的语言描述要做的修改(不会被翻译)",
-    },
-  ],
-
-  models: [
-    // ── NewAPI(OpenAI 兼容 edits;整图改写;默认,经验证可用)──────────────────
-    createNewApiImageEdit(
-      {
-        model: "gpt-image-2",
-        label: "GPT Image 2 · NewAPI",
-        description:
-          "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
-      },
-      { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
-    ),
-
-    // ── DashScope mask-aware(局部重绘精准)────────────────────────────────────
-    createDashscopeImageEdit(
-      {
-        model: "qwen-image-edit-max",
-        label: "Qwen Image Edit Max · sync",
-        description:
-          "Best edit fidelity; supports mask inpainting and reference images. Needs DASHSCOPE_API_KEY.",
-        providerModel: DASHSCOPE_MODELS.qwenImageEditMax,
-      },
-      { pricing: { amount: 0.5, currency: "CNY", unit: "image" } },
-    ),
-
-    // ── token plan(阿里云百炼 multimodal-generation 原生格式;末端 url 切换到 token plan)──
-    // token plan 仅开通 wan2.7-image-pro(multimodal:t2i + 带图编辑统一);curl 实测它支持图像编辑。
-    createDashscopeImageEdit(
-      {
-        model: "wan2.7-image-edit-bailian",
-        label: "Wan 2.7 Image Edit · token plan",
-        description:
-          "Wan 2.7 Image Pro 带图编辑 via token plan multimodal-generation (DashScope 原生 messages/content). " +
-          "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
-        providerModel: DASHSCOPE_MODELS.wan27ImagePro,
-      },
-      { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.3, currency: "CNY", unit: "image" } },
-    ),
-  ],
-};
+  });
+}

@@ -11,6 +11,7 @@
  * absent are never injected, preserving pi's default discovery behaviour.
  */
 import { basename, extname } from "node:path";
+import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import type { AgentDefinition, AgentModel } from "./agent-definition.js";
 import {
   type AgentSessionServices,
@@ -262,7 +263,9 @@ export function buildRuntimeFactory(
   def: AgentDefinition,
   trust: ResolveProjectTrust,
   systemResources: SystemResourceOverrides = {},
-): CreateAgentSessionRuntimeFactory {
+): CreateAgentSessionRuntimeFactory & {
+  slashCompletions?: readonly SlashCompletionDecl[];
+} {
   const forcedExtensionPaths = collectForcedExtensionPaths(process.env);
   const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
     forcedExtensionPaths,
@@ -273,7 +276,9 @@ export function buildRuntimeFactory(
   });
   const session = mapSessionFields(def);
 
-  return async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+  const factory: CreateAgentSessionRuntimeFactory & {
+    slashCompletions?: readonly SlashCompletionDecl[];
+  } = async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
     const services: AgentSessionServices = await createAgentSessionServices({
       cwd,
       agentDir,
@@ -318,4 +323,11 @@ export function buildRuntimeFactory(
       diagnostics: services.diagnostics,
     };
   };
+
+  // pi-web 自有元数据:把 agent 声明的静态 slash 补全候选附到 factory 上,供 runner
+  // 装配期读取并经 stdout 帧推送给 server 主进程(不进 pi session)。
+  if (def.slashCompletions !== undefined && def.slashCompletions.length > 0) {
+    factory.slashCompletions = def.slashCompletions;
+  }
+  return factory;
 }

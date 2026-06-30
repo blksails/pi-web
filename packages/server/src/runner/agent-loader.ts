@@ -18,12 +18,19 @@ import { fileURLToPath } from "node:url";
 import type { AgentContext, AgentDefinition } from "./agent-definition.js";
 import { createJiti } from "jiti";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
+import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import { buildRuntimeFactory } from "./option-mapper.js";
 import type { SystemResourceOverrides } from "./option-mapper.js";
 import type { ResolveProjectTrust } from "./project-trust.js";
 
 /** Normalized internal representation shared by all three shapes. */
-export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory;
+export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory & {
+  /**
+   * pi-web: agent 声明的静态 slash 补全候选(`AgentDefinition.slashCompletions`),
+   * 经 `buildRuntimeFactory` 附加。shape (c) 自建 runtime factory 不附(为空)。
+   */
+  slashCompletions?: readonly SlashCompletionDecl[];
+};
 
 /**
  * Brand marking a function as a shape-(c) `CreateAgentSessionRuntimeFactory`,

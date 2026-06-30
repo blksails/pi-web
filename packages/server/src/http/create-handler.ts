@@ -48,6 +48,7 @@ import {
   createCompletionRegistry,
   createFileProvider,
   createAttachmentProvider,
+  createAgentSlashProvider,
   type AttachmentLister,
 } from "../completion/index.js";
 import { Router, type RouteSpec } from "./router.js";
@@ -89,6 +90,9 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     };
     completion.register(createAttachmentProvider(lister));
   }
+  // agent-slash-completion:通用命令补全 provider(trigger "/"),按会话读取 agent
+  // 装配期声明的静态 slash 候选(per-agent gating)。
+  completion.register(createAgentSlashProvider((id) => store.get(id)));
   for (const p of opts.completionProviders ?? []) completion.register(p);
 
   const builtins: RouteSpec[] = [

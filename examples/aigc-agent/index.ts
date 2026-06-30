@@ -1,11 +1,12 @@
 /**
  * aigc-agent — `@blksails/pi-web-tool-kit` AIGC 生成工具的**端到端示例 agent**(spec aigc-generation-tools,task 6)。
  *
- * 装配 `buildAigcTools()` 产出的 customTools(`text_to_image` / `image_edit`)演示完整接入:
- *  - 用户发文本 prompt → 模型调 `text_to_image({ prompt })` → provider 生成 → 产物经 attachment
+ * 经 `extensions: [aigcExtension]` 装载 AIGC 工具(`image_generation` / `image_edit`,pi.registerTool
+ * 形态)演示完整接入:
+ *  - 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment
  *    store 落库 → 工具回 `att_<id>` 引用,默认工具卡片展示;
  *  - 用户上传图(主进程注入 `[attachment id=att_… …]` 引用)→ 模型把 att_id 抄进
- *    `image_edit({ instruction, image_url })` → 编辑器解析输入附件为 data URI → provider 编辑 →
+ *    `image_edit({ image, prompt })` → 编辑器解析输入附件为 data URI → provider 编辑 →
  *    产物落库回引用。
  *
  * 工具在 runner 子进程内经注入的 AttachmentToolContext(globalThis seam)落库;装配缺失 / provider
@@ -21,7 +22,8 @@
  * 不进 Next 服务端 bundle)。
  */
 import { defineAgent } from "@blksails/pi-web-agent-kit";
-import { buildAigcTools } from "@blksails/pi-web-tool-kit/runtime";
+import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";
+import { aigcExtension } from "@blksails/pi-web-tool-kit/runtime";
 
 export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。
@@ -30,11 +32,24 @@ export default defineAgent({
     "- Use `image_generation` to generate one or more images from a text prompt.",
     "- Use `image_edit` to edit an uploaded image: copy the public id from the",
     "  [attachment id=att_… …] marker verbatim into the tool's `image` parameter.",
+    "",
+    "Slash 命令快捷写法(用户可能这样发消息;它们会作为普通用户消息到达你这里,",
+    "请据此**直接调用对应工具**,不要把命令文本当普通问题来解释或回答):",
+    "- `/img-gen <提示词>` → 调用 `image_generation` 工具生成图像",
+    "  (把 `<提示词>` 原样作为工具的 `prompt`,保持用户原语言,不要翻译)。",
+    "- `/img-edit <提示词>` → 调用 `image_edit` 工具编辑最近上传的图像",
+    "  (从对话中最近的 [attachment id=att_… …] 取 id 填入工具的 `image` 参数,",
+    "  `<提示词>` 作为编辑指令)。",
+    "",
     "Each tool persists its output as an attachment and returns a reference; report the",
     "produced attachment id back to the user. Keep replies concise.",
   ].join("\n"),
-  customTools: buildAigcTools(),
-  // Self-contained:关掉内置工具,仅暴露 AIGC 生成工具(+ 扩展工具)。
+  // AIGC 工具经进程内 ExtensionFactory 装载(detoolspec-unify-builtin-tools)。
+  extensions: [aigcExtension],
+  // slash 补全候选(agent-slash-completion):/img-gen、/img-edit 出现在输入补全,
+  // 选中只填入、不执行;补词后作为普通消息发给 LLM,由上面的 system prompt 驱动调工具。
+  slashCompletions: aigcSlashCompletions,
+  // Self-contained:关掉内置工具,仅暴露 AIGC 扩展工具。
   noTools: "builtin",
   // 关掉磁盘发现的系统 skills,保持示例 hermetic。
   skills: ({ diagnostics }) => ({ skills: [], diagnostics }),

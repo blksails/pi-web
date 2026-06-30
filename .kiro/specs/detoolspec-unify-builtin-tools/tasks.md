@@ -1,0 +1,89 @@
+# Implementation Plan
+
+- [x] 1. Foundation:拆出执行层类型,与 ToolSpec 声明层解耦
+  - 新建执行层类型模块,迁入 `EndpointBehavior`/`AsyncSpec`/`PickedResult`/`RunStage`/`ToolProgress`/`BuildBodyContext`/`LocalExecuteHook`(均与 ToolSpec 无关)
+  - 调整 `endpoint-adapter` 及 provider 工厂的类型 import 指向新模块
+  - 暂不删除 `types.ts` 的声明层类型(避免中间态断链;删除在集成阶段)
+  - 观察完成:`endpoint-adapter` 与 provider 仅依赖新执行层类型模块即可编译通过
+  - _Requirements: 4.1, 4.3_
+
+- [x] 2. Core:编排器、provider 改造与工具注册
+- [x] 2.1 (P) 实现运行时编排器 runImageTool
+  - 从现 `compile-tool` 的执行编排抽取:必选项补全(经 `ctx.ui`)、model 路由(按 `routes` 表 + `defaultModel`)、`checkRequiredVars`、attachment ctx 可用性检查、媒体字段解析(显式 `mediaFields`:`att_`→data URI→`normalizeImageDataUri`)、`runEndpoint`、乐观预览 `onUpdate`、`persistPicked`、结果组装
+  - `options` 哨兵 `"$models"` 在运行时展开为 `Object.keys(routes)`
+  - 结果 `content`/`details` 组装复用现 `buildImageResult` 语义,保持形态不变
+  - 观察完成:给定 mock `routes`/`ctx`/`ui`,成功路径返回带 `att_` 产物的 result,各降级条件返回 `ok:false` 且不调用 provider
+  - _Requirements: 1.2, 1.3, 1.4, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7_
+  - _Boundary: run-image-tool_
+  - _Depends: 1_
+- [x] 2.2 (P) provider 工厂去 ModelRoute 包装
+  - `dashscope`/`newapi`/`openrouter` 工厂改为返回 `EndpointBehavior`(+ 轻量 `{ id, label }`),保留 `buildBody`/`pickResult`/`detectError`/`async`/端点常量/`IMAGE_EDIT_MAX_IMAGES`/`DASHSCOPE_MODELS`
+  - 不改变任何 HTTP 请求/响应业务语义
+  - 观察完成:每个工厂产物可被 `runEndpoint` 直接执行,请求体与响应解析与改造前一致
+  - _Requirements: 4.3_
+  - _Boundary: aigc providers_
+  - _Depends: 1_
+- [x] 2.3 实现 image_generation 注册函数
+  - 以 `pi.registerTool` 注册 `image_generation`:手写 `Type.Object` parameters(含全部现有参数 + 可选 `model` 枚举,枚举值=routes 键),description 复刻可用 model 列表文案
+  - `execute(_id, params, signal, onUpdate, ctx)` 调 `runImageTool`,传入文生图的 `routes`/`defaultModel`/`requiredParams`/`mediaFields`
+  - 观察完成:注册后工具名为 `image_generation`,参数与 model 路由集合与重构前等价,execute 返回形态不变
+  - _Requirements: 1.1, 1.2, 1.5, 2.1, 4.4_
+  - _Depends: 2.1, 2.2_
+- [x] 2.4 实现 image_edit 注册函数
+  - 以 `pi.registerTool` 注册 `image_edit`:手写 parameters(含 `image`/`mask`/`reference_images`/`response_format` 等),`mediaFields` 为 `["image","mask","reference_images"]`
+  - `execute` 调 `runImageTool`,传入图像编辑的 `routes`/`defaultModel`/`requiredParams`/`mediaFields`
+  - 观察完成:注册后工具名为 `image_edit`,主图+mask+参考图总数限制(≤3)经 provider 逻辑保持,result 形态不变
+  - _Requirements: 1.1, 1.3, 1.5, 2.1, 4.4_
+  - _Depends: 2.1, 2.2_
+- [x] 2.5 组装 aigcExtension(ExtensionFactory)
+  - 新建进程内 `aigcExtension`,在 factory 内调用两个注册函数注册两工具
+  - 观察完成:以 mock `pi` 调用 `aigcExtension(pi)` 后,`pi.registerTool` 被以 `image_generation` 与 `image_edit` 各调用一次
+  - _Requirements: 2.1_
+  - _Depends: 2.3, 2.4_
+
+- [x] 3. Integration:移除 ToolSpec、调整导出面与装配
+- [x] 3.1 移除 ToolSpec/compileTool 并重整 tool-kit 导出面
+  - 删除 `compile-tool` 与 `types.ts` 残余声明层类型;`runtime` 子入口去除 `compileTool`/`CompileDeps`/`ToolExecuteDetails`/`buildAigcTools`/`AIGC_TOOLS`,新增 `aigcExtension`,保留通用 util 与附件 seam 导出
+  - 主入口去除 `engine/types` 导出与 `AIGC_TOOLS`/`imageGeneration`/`imageEdit`,保留 `BUILTIN_COMMANDS`,保持前端安全(不引入 pi SDK 值导入)
+  - 观察完成:仓库内无对已移除符号的引用,`pnpm typecheck` 通过;主入口不含运行时值导入
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 6.4_
+  - _Depends: 2.5_
+- [x] 3.2 examples/aigc-agent 改用 extensions 装配
+  - 将 `customTools: buildAigcTools()` 改为 `extensions: [aigcExtension]`,保留 `noTools: "builtin"`
+  - 观察完成:启动 aigc-agent 后 `image_generation`/`image_edit` 在工具表可见且首轮可调用
+  - _Requirements: 2.2, 2.4, 2.5_
+  - _Depends: 2.5, 3.1_
+
+- [x] 4. Validation:测试与回归
+- [x] 4.1 (P) runImageTool 单元测试
+  - 覆盖:必选项补全(select/input)、用户取消、fallback、`$models` 展开、model 路由选择、`requiredVars` 缺失降级、attachment 不可用降级、零产物失败、成功 result 的 `content`/`details` 形态
+  - 观察完成:测试以新鲜运行全绿,覆盖全部降级分支与成功形态
+  - _Requirements: 1.4, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 7.2_
+  - _Boundary: run-image-tool_
+  - _Depends: 2.1_
+- [x] 4.2 (P) provider 工厂单元测试
+  - 改写 `newapi`/`openrouter` 等工厂测试,断言返回的 `EndpointBehavior` 的 `buildBody`/`pickResult`/`detectError` 行为不变
+  - 观察完成:provider 工厂测试新鲜运行全绿
+  - _Requirements: 4.3, 7.1_
+  - _Boundary: aigc providers_
+  - _Depends: 2.2_
+- [x] 4.3 aigcExtension 注册与 execute 集成测试
+  - mock provider + mock attachment ctx + mock `ctx.ui`:断言两工具经 extension 正确注册;execute 成功落库并回流 `att_` 产物;result 形态符合 1.4;`noTools:"builtin"` 下 extension 工具仍可用
+  - 观察完成:集成测试新鲜运行全绿,覆盖成功与至少一条降级路径
+  - _Requirements: 1.2, 1.3, 2.1, 2.4, 2.5, 6.3, 7.2_
+  - _Depends: 2.5_
+- [x] 4.4 清理与迁移既有测试 + vitest 配置
+  - 删除 `compile-tool*` 系列测试;迁移 aigc 工具/装配相关测试到 extension 形态;保留通用 util 测试不变;同步 vitest 对 tool-kit 子入口的 alias
+  - 观察完成:`pnpm --filter @blksails/pi-web-tool-kit test` 全绿,无对已删模块的引用
+  - _Requirements: 7.1, 7.2_
+  - _Depends: 3.1_
+- [x] 4.5 e2e:extension 装载下的 AIGC 调用
+  - 经 `extensions: [aigcExtension]` 装载 aigc-agent,prompt 触发 `image_generation`(stub provider):验证产物回流、工具卡渲染与 result 形态;确认前端 renderer 无需改动
+  - 观察完成:e2e 以新鲜运行通过,产物与 result 形态符合 1.4,前端零改动
+  - _Requirements: 2.2, 6.1, 6.2, 7.3_
+  - _Depends: 3.2_
+- [x] 4.6 全量回归验证
+  - 运行 `pnpm typecheck` 与受影响包测试(`tool-kit`、`test:app` 视范围),以新鲜输出为证据;确认协议 schema 与 `protocolVersion` 未变
+  - 观察完成:typecheck 与受影响测试全绿,协议无 diff
+  - _Requirements: 3.4, 6.1, 7.4_
+  - _Depends: 3.1, 3.2_

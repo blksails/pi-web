@@ -22,6 +22,7 @@ import type {
   RpcResponse,
   SessionLifecycleState,
   SessionSnapshot,
+  SlashCompletionDecl,
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
@@ -30,6 +31,7 @@ import type {
 import {
   makeControlFrame,
   makeUiMessageChunkFrame,
+  SlashCompletionsFrameSchema,
   UiRpcResponseSchema,
   StateDownLineSchema,
 } from "@blksails/pi-web-protocol";
@@ -115,6 +117,11 @@ export class PiSession {
   private readonly pendingExtensionUI = new Map<string, RpcExtensionUIRequest>();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
+  /**
+   * agent 装配期经 `slash_completions` 帧声明的静态 slash 补全候选(spec
+   * agent-slash-completion)。按会话缓存,供 completion provider 读取实现 per-agent gating。
+   */
+  private slashCompletions: readonly SlashCompletionDecl[] = [];
 
   /**
    * 服务端**唯一权威**会话快照(session-snapshot-authority):lifecycle/busy/turn/stats/model/title。
@@ -512,7 +519,6 @@ export class PiSession {
    * 其余行已由 onEvent/onExtensionUIRequest 路径处理,这里忽略。
    */
   private handleRawLine(line: string): void {
-    if (this._status !== "active") return;
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
@@ -521,7 +527,6 @@ export class PiSession {
     }
     if (parsed === null || typeof parsed !== "object") return;
     const type = (parsed as { type?: unknown }).type;
-
     // 状态注入桥(state-injection-bridge):子进程上报的权威态变更 → control:"state" 帧。
     if (type === "piweb_state") {
       const state = StateDownLineSchema.safeParse(parsed);
@@ -539,6 +544,16 @@ export class PiSession {
       return;
     }
 
+    // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
+    // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
+    if (type === "slash_completions") {
+      const sc = SlashCompletionsFrameSchema.safeParse(parsed);
+      if (sc.success) this.slashCompletions = sc.data.items;
+      return;
+    }
+
+    if (this._status !== "active") return;
+    // Tier3 ui-rpc 下行约定:`{"type":"ui_rpc_response","response":{...}}`。
     if (type !== "ui_rpc_response") return;
     const res = UiRpcResponseSchema.safeParse(
       (parsed as { response?: unknown }).response,
@@ -548,6 +563,11 @@ export class PiSession {
       FRAME_EVENT,
       makeControlFrame({ control: "ui-rpc", response: res.data }),
     );
+  }
+
+  /** agent 装配期声明的静态 slash 补全候选(spec agent-slash-completion)。 */
+  getSlashCompletions(): readonly SlashCompletionDecl[] {
+    return this.slashCompletions;
   }
 
   /**

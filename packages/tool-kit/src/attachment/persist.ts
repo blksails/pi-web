@@ -10,7 +10,7 @@
  */
 import { createLogger } from "@blksails/pi-web-logger";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
-import type { PickedResult } from "../engine/types.js";
+import type { PickedResult } from "../engine/endpoint-types.js";
 
 // 命名空间 toolkit:persist —— 每张图落库:inline(本地解码)还是 download(远程下载)+ 耗时。
 const log = createLogger({ namespace: "toolkit:persist" });

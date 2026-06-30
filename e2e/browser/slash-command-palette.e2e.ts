@@ -160,6 +160,41 @@ test("slash palette: command-mode Enter with candidates does not send, appended 
   await expect(messages).toContainText("Hello");
 });
 
+test("slash palette: agent 声明的伪命令并入单浮层,选中只填入不执行,补词后正常发送 (agent-slash-completion)", async ({
+  page,
+}) => {
+  await startSession(page);
+  const input = page.locator("[data-pi-input-textarea]");
+  const messages = page.locator("[data-pi-chat-messages]");
+
+  // "/" → 伪命令(agent 声明,经 completion 端点)与执行型命令(get_commands)并入同一浮层。
+  await input.fill("/");
+  await expect(page.locator("[data-pi-command-palette]")).toBeVisible();
+  await expect(page.locator('[data-pi-command-item="img-gen"]')).toBeVisible();
+  await expect(page.locator('[data-pi-command-item="img-edit"]')).toBeVisible();
+  await expect(page.locator('[data-pi-command-item="help"]')).toBeVisible();
+
+  // 前缀过滤到伪命令(执行型命令无 img 匹配)。
+  await input.fill("/img");
+  await expect(page.locator('[data-pi-command-item="img-gen"]')).toBeVisible();
+  await expect(page.locator('[data-pi-command-item="help"]')).toHaveCount(0);
+
+  // 选中伪命令 → 只填入 insertText("/img-gen ")、不执行、不发送。
+  await page.locator('[data-pi-command-item="img-gen"]').click();
+  await expect(input).toHaveValue("/img-gen ");
+  await expect(messages).toHaveCount(0);
+
+  // 补词后:等候选(防抖 120ms 刷新)清空——"/img-gen 一只猫" 不再前缀匹配任何命令名,
+  // 浮层落到 No-commands(normalTotal=0),Enter 不被浮层拦截。
+  // (真实使用中逐字输入,防抖在敲击间已结算;此处等候选清空以避免 fill+Enter 抢跑防抖。)
+  await input.fill("/img-gen 一只猫");
+  await expect(page.locator('[data-pi-command-item="img-gen"]')).toHaveCount(0);
+  await expect(page.locator('[data-pi-command-item="img-edit"]')).toHaveCount(0);
+  // Enter → 作为普通消息发送,stub 回流回复。
+  await page.keyboard.press("Enter");
+  await expect(messages).toContainText("Hello");
+});
+
 test("slash palette: empty session shows suggestion grid, session state drops the bubbles (Req 5)", async ({
   page,
 }) => {

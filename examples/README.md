@@ -48,7 +48,7 @@ pi-web ./examples/hello-agent
 |---|---|---|---|
 | [attachment-tool-agent](./attachment-tool-agent/) | 附件工具桥端到端：上传图 → `att_id` → 工具处理 → 落库回引用 | `AttachmentToolContext`（`resolve` / `putOutput`）、`afterToolCall` 闸门、`/raw` 分发 | ★★★ |
 | [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
-| [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `buildAigcTools()`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
+| [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `aigcExtension`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
 
 ### WebExtension（按 Tier 1–5）
 
@@ -78,5 +78,5 @@ pi-web ./examples/hello-agent
 
 - [07 自定义 Agent 开发](../docs/product/07-agent-development.md) —— `defineAgent` / 工具 / 工具姿态（`noTools` / `tools` / `excludeTools`）。
 - [10 Web UI 扩展](../docs/product/10-web-ui-extension.md) —— `.pi/web` 协议与 WebExtension 五个 Tier。
-- [11 AIGC 工具](../docs/product/11-aigc-tools.md) —— `buildAigcTools()`、provider 密钥与产物落库。
+- [11 AIGC 工具](../docs/product/11-aigc-tools.md) —— `aigcExtension`、provider 密钥与产物落库。
 - [08 附件系统](../docs/product/08-attachment-system.md) —— attachment store、工具桥、`/raw` 分发。

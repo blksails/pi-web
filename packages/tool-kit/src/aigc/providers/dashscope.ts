@@ -1,7 +1,7 @@
 /**
  * DashScope provider 工厂 — `@blksails/pi-web-tool-kit` 版(精简移植自 pi-labs)。
  *
- * 提供 model 路由项工厂(返回 {@link ModelRoute}):
+ * 提供 model 路由项工厂(返回 {@link ImageRoute}):
  *  - async wanx:  POST text2image/image-synthesis → `x-dashscope-async:enable` → poll `/tasks/<id>`
  *  - sync multimodal: POST multimodal-generation/generation → 单次响应
  *  - image edit: multimodal-generation 同步端点,支持 mask 局部重绘
@@ -10,7 +10,7 @@
  * 密钥从 `${DASHSCOPE_API_KEY}` env 占位读取(var-resolver 在 runEndpoint 时展开)。
  */
 
-import type { ModelRoute } from "../../engine/types.js";
+import type { ImageRoute } from "../types.js";
 
 // ── Endpoint URLs ─────────────────────────────────────────────────────────────
 
@@ -238,8 +238,8 @@ export interface DashscopeModelArgs {
  */
 export function createDashscopeAsyncT2I(
   args: DashscopeModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,
@@ -260,8 +260,8 @@ export function createDashscopeAsyncT2I(
  */
 export function createDashscopeSyncT2I(
   args: DashscopeModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,
@@ -283,8 +283,8 @@ export function createDashscopeSyncT2I(
  */
 export function createDashscopeImageEdit(
   args: DashscopeModelArgs,
-  extras: Partial<ModelRoute> = {},
-): ModelRoute {
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
   return {
     model: args.model,
     label: args.label,

@@ -11,7 +11,7 @@ import {
   createOpenRouterImage,
   createOpenRouterImageEdit,
 } from "../../../src/aigc/providers/openrouter.js";
-import type { BuildBodyContext } from "../../../src/engine/types.js";
+import type { BuildBodyContext } from "../../../src/engine/endpoint-types.js";
 
 const ctx: BuildBodyContext = {};
 
