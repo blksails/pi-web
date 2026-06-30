@@ -151,6 +151,12 @@ export interface PiChatProps {
    * 装后即时双路生效之路②(spec plugin-system-unification,Req 7;路①为 runner reload)。
    */
   readonly onRuntimeReloadRequested?: () => void;
+  /**
+   * 一轮 agent 运行结束(submitted/streaming → idle 边沿)回调。宿主据此做「每轮收尾」副作用,
+   * 典型为刷新会话历史列表:新会话镜像落库与 auto_title 自动标题持久化均在 `agent_end` 时完成,
+   * 故每轮结束后重拉列表即可及时反映新会话与最新标题(与内核 stats 的「每轮结束重拉」同构)。
+   */
+  readonly onTurnEnd?: () => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -274,6 +280,7 @@ export function PiChat({
   onBuiltinSelect,
   onCommandResult,
   onRuntimeReloadRequested,
+  onTurnEnd,
   showSessionStats = true,
   showLogs = false,
   logsPanelVisible = true,
@@ -507,6 +514,14 @@ export function PiChat({
     }
     statsWasBusyRef.current = isBusy;
   }, [showSessionStats, controls, sessionId, isBusy]);
+
+  // 一轮运行结束(submitted/streaming → idle 边沿)→ 通知宿主做每轮收尾副作用(如刷新会话历史)。
+  // 与上方 stats「每轮结束重拉」同构,但不受 showSessionStats 门控:无论是否展示用量区都广播。
+  const turnEndWasBusyRef = React.useRef<boolean>(false);
+  React.useEffect(() => {
+    if (turnEndWasBusyRef.current && !isBusy) onTurnEnd?.();
+    turnEndWasBusyRef.current = isBusy;
+  }, [isBusy, onTurnEnd]);
 
   // 空闲期 Tier3 贡献点(slash/mention/autocomplete)需持久控制通道:per-prompt 消息流仅在发送时
   // 打开。故仅当**扩展声明了 contributions**(需 ui-rpc)且**空闲时**才另开一条「仅 ui-rpc」订阅

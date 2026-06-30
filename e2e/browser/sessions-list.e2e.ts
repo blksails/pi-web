@@ -75,6 +75,20 @@ test("backend gates scope=all and lists the current session's directory", async 
   expect(body.sessions.map((s) => s.sessionId)).toContain(id);
 });
 
+test("new session appears in the sidebar after a turn, without reload", async ({
+  page,
+}) => {
+  // 新建会话首屏:header 异步落盘,侧栏此刻可能不含该会话(既有竞态——其余用例靠 reload 绕过)。
+  const id = await startSession(page);
+  // 完成一轮 → 宿主 onTurnEnd 触发面板刷新;再完成一轮,使刷新必发生在首轮落盘之后(消除竞态)。
+  await sendAndFinishTurn(page, "hello");
+  await sendAndFinishTurn(page, "again");
+  // 无需 reload:每轮结束后列表重拉当前 cwd 首页 → 该会话出现在侧栏(问题1:及时看到新会话)。
+  await expect(
+    page.locator(`[data-pi-session-list-resume="${id}"]`),
+  ).toBeVisible();
+});
+
 test("resume a listed session from the sidebar", async ({ page }) => {
   // 建会话 A 并持久化一轮(header + 一回合落盘)。
   const idA = await startSession(page);
