@@ -68,6 +68,13 @@ export interface PromptInputProps {
    * 能用真实光标位置驱动补全(completion-cursor-anchor R1)。
    */
   readonly onSelectionChange?: (selectionStart: number) => void;
+  /**
+   * bang shell 命令视觉提示(spec bang-shell-command,Req 6.x)。
+   * `"bash"`:输入以 `!` 开头;`"bash-no-context"`:以 `!!` 开头(输出不进上下文)。
+   * 命中时换强调边框、显示 BASH 徽标并切换占位符;`undefined` 为常规外观。
+   * 仅在前端体验开关开启时由装配层传入(关闭时恒为 undefined)。
+   */
+  readonly mode?: "bash" | "bash-no-context";
 }
 
 /** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
@@ -95,8 +102,12 @@ export function PromptInput({
   onAcceptGhost,
   inputRef,
   onSelectionChange,
+  mode,
 }: PromptInputProps): React.JSX.Element {
   const canSubmit = !disabled && !isBlank(value);
+  // bash 模式时占位符切换为 shell 提示(Req 6.1)。
+  const effectivePlaceholder =
+    mode !== undefined ? "运行 shell 命令…" : placeholder;
   const hasGhost =
     ghostSuffix !== undefined &&
     ghostSuffix.length > 0 &&
@@ -175,10 +186,28 @@ export function PromptInput({
     <div
       className={cn(
         "flex flex-col gap-2 rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2",
+        // bash 模式:强调边框 + ring(Req 6.1/6.2);退出后恢复常规(Req 6.3)。
+        mode !== undefined &&
+          "border-[hsl(var(--ring))] ring-1 ring-[hsl(var(--ring))]",
         className,
       )}
       data-pi-prompt-input
+      {...(mode !== undefined ? { "data-pi-bash-mode": mode } : {})}
     >
+      {mode !== undefined ? (
+        <div
+          className="flex items-center gap-1 text-xs font-mono font-semibold text-[hsl(var(--ring))]"
+          data-pi-bash-badge
+        >
+          <span className="rounded bg-[hsl(var(--primary))] px-1.5 py-0.5 text-[hsl(var(--primary-foreground))]">
+            BASH
+          </span>
+          {mode === "bash-no-context" ? (
+            <span className="text-[hsl(var(--muted-foreground))]">· no context</span>
+          ) : null}
+        </div>
+      ) : null}
+
       {children !== undefined ? (
         <div data-pi-prompt-input-extra>{children}</div>
       ) : null}
@@ -213,7 +242,7 @@ export function PromptInput({
             value={value}
             disabled={disabled}
             rows={rows}
-            placeholder={placeholder}
+            placeholder={effectivePlaceholder}
             onChange={(e) => {
               onChange(e.target.value);
               // 值变即上报光标,保证 value 与 cursor 同帧一致(供补全提取)。
