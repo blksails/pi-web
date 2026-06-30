@@ -150,6 +150,15 @@ export class MockChannel implements SessionChannel {
   getForkMessages(): Promise<RpcResponse> {
     return this.record("get_fork_messages", []);
   }
+  bash(
+    command: string,
+    options?: { excludeFromContext?: boolean },
+  ): Promise<RpcResponse> {
+    return this.record("bash", [command, options]);
+  }
+  abortBash(): Promise<RpcResponse> {
+    return this.record("abort_bash", []);
+  }
 
   // ── 测试触发器 ──
   emitEvent(event: AgentEvent): void {

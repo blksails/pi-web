@@ -9,14 +9,14 @@
   - _Requirements: 5.1, 5.6_
   - _Boundary: resolveBashEnabled_
 
-- [ ] 2. 后端:bash 执行接缝
-- [ ] 2.1 (P) 暴露会话层 bash 执行转发
+- [x] 2. 后端:bash 执行接缝
+- [x] 2.1 (P) 暴露会话层 bash 执行转发
   - 在会话包装层新增 bash 执行与中止的转发方法,照既有只读查询转发(getMessages)的同款 forward 模式,把命令与 `excludeFromContext` 选项透传给底层 RPC 通道既有的 bash 能力;补齐类型签名。
   - 完成态:可经会话对象发起一次 bash 执行并拿到结构化结果(输出/退出码/取消/截断);`excludeFromContext` 标记被原样透传;typecheck 通过。
   - _Requirements: 2.1, 2.4, 3.1, 3.2, 3.3_
   - _Boundary: PiSession_
 
-- [ ] 2.2 新增 bash 执行 HTTP 端点与启用门控
+- [x] 2.2 新增 bash 执行 HTTP 端点与启用门控
   - 新增 `POST /sessions/:id/bash`:启用时执行命令并以同步响应体返回结构化结果;**在读取/解析请求体之前**校验启用门控,禁用时返回 404(不泄露端点存在性);无效命令(缺失/空)返回 400;会话不存在返回 404。
   - 完成态:启用态对存在会话发请求返回 `200 { result }`;禁用态返回 404 且未触达会话执行;有覆盖禁用 404 与无效 body 400 的单元测试通过。
   - _Requirements: 2.1, 2.3, 5.2, 5.3, 5.4_

@@ -51,3 +51,4 @@ export {
   DEFAULT_MAX_UPLOAD_BYTES,
   type UploadHandlerOptions,
 } from "./routes/attachment-routes.js";
+export { createBashRoutes, makeBashHandler } from "./routes/bash-routes.js";

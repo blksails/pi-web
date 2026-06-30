@@ -105,6 +105,16 @@ export interface SessionChannel extends PiRpcChannel {
   getCommands(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   fork(entryId: string): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
   getForkMessages(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
+  /**
+   * 执行 bash 命令(bang shell 命令,spec bang-shell-command)。`excludeFromContext`
+   * 为真时输出不进入 LLM 上下文(`!!` 前缀)。底层走 pi RPC `bash`。
+   */
+  bash(
+    command: string,
+    options?: { excludeFromContext?: boolean },
+  ): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
+  /** 中止运行中的 bash 命令(预留;当前不接 UI)。 */
+  abortBash(): Promise<import("@blksails/pi-web-protocol").RpcResponse>;
 }
 
 /**

@@ -130,6 +130,15 @@ export class MockSession {
   getForkMessages(): Promise<RpcResponse> {
     return this.call("getForkMessages", []);
   }
+  bash(
+    command: string,
+    options?: { excludeFromContext?: boolean },
+  ): Promise<RpcResponse> {
+    return this.call("bash", [command, options]);
+  }
+  abortBash(): Promise<RpcResponse> {
+    return this.call("abortBash", []);
+  }
   getLogs(_query: { level?: string; limit?: number; since?: number }): unknown[] {
     return [];
   }
