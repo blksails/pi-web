@@ -65,13 +65,13 @@
   - _Boundary: chat-app_
 
 - [ ] 5. 验证:集成测试与端到端
-- [ ] 5.1 后端 bash 端点集成测试(真实 RPC 子进程)
+- [x] 5.1 后端 bash 端点集成测试(真实 RPC 子进程)
   - 对真实 RPC 模式 agent 子进程发请求:启用态执行简单命令断言输出与退出码;以「不进上下文」标记执行后核验该结果未进入会话上下文;禁用态断言 404。
   - 完成态:三个集成用例(执行成功、排除上下文、禁用 404)在真实子进程下通过。
   - _Requirements: 2.1, 2.2, 2.4, 3.2, 5.2_
   - _Depends: 2.2, 4.1_
 
-- [ ] 5.2 前端提交链路与解析单元测试
+- [x] 5.2 前端提交链路与解析单元测试
   - 覆盖:开关关闭时 `!cmd` 走常规消息发送、不调 bash;开关开启时 `!cmd` 调 bash、不走常规发送;`!`/`!!` 解析正确;空命令(`!`、`!!  `)不请求不写消息;前导空白等价;提交后清空输入框。
   - 完成态:上述用例的单元测试全部通过。
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 5.5, 7.4_
@@ -82,3 +82,9 @@
   - 完成态:开/关两档的 e2e 用例均通过,fresh 运行输出可证。
   - _Requirements: 1.1, 4.2, 4.5, 5.5, 6.1, 6.4_
   - _Depends: 4.3_
+
+## Implementation Notes
+
+- **5.1 集成测试用 stub agent(真实执行 shell)而非真 pi**:`test/bash-route.integration.test.ts` 经完整 `createPiWebHandler` 全链路(HTTP → 门控 → pi-session 转发 → 通道 → agent)发 `POST /sessions/:id/bash`,断言执行成功/exit 非零/exclude 透传/空命令 400。stub agent(`lib/app/stub-agent-process.mjs`)新增 `case "bash"` 用 `execSync` **真实执行 shell**,离线确定性且验证了 pi-web 侧全部接缝;真实 pi 的 `recordBashResult` 上下文写入语义由 pi agent 自身保证(协议/通道既有,本特性不改)。禁用 404 由 `bash-route.test.ts`(makeBashHandler enabled:false)+ `bash-env-default.test.ts`(resolveBashEnabled 默认关)组合覆盖。
+- **vitest 配置补缺**:`vitest.config.ts` 补 `@blksails/pi-web-tool-kit/auto-title-entry` 的 src alias —— 这是 auto-session-title 特性引入 handler import 时遗漏的既有缺口,缺它会令**所有经完整 handler 的 app 集成测试**(含既有 `route.integration.test.ts`)在本地 vite 解析失败。补后两者均恢复。
+- **前端单测 mock client**:PiChat 渲染会触发补全 effect 调 `client.getCompletionTriggers`;mock client 除 `bash` 外需提供该 no-op,否则渲染期抛错。readiness gating 默认关(不传 `gateUntilReady`),故 mock 会话即可提交。
