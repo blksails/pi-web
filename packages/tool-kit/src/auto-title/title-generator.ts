@@ -32,6 +32,13 @@ const MARKUP_TAGS = /<\/?[a-zA-Z][^>]*>/gu;
 /** 残留的孤立尖括号(被截断或不配对的标签),一并移除,避免标记字符泄漏进标题。 */
 const STRAY_ANGLES = /[<>]/gu;
 
+/**
+ * 首部斜杠命令前缀(如 `/image_generation 一只赛博朋克`):命令是调用动作、非标题内容。
+ * 仅匹配「`/` + 命令名(ASCII 词字符/连字符)+ 空白」,故仅在命令**带参**时剥离前缀、保留参数
+ * (`/image_generation 一只赛博朋克` → `一只赛博朋克`);裸命令(如 `/help`,其后无空白)不匹配、保持原样不被清空。
+ */
+const LEADING_SLASH_COMMAND = /^\/[\w-]+\s+/u;
+
 /** 判断内容块是否文本块。 */
 function isTextContent(c: unknown): c is TextContent {
   return (
@@ -63,7 +70,10 @@ export function sanitizeTitle(raw: string, maxLen: number): string {
   const collapsed = stripped
     .replace(CONTROL_CHARS, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim()
+    // 剥离首部斜杠命令前缀(`/image_generation 一只赛博朋克` → `一只赛博朋克`):在空白归一后进行,
+    // 确保命令名与参数以单空格分隔、前缀能被稳定匹配;带参才剥离,裸命令保持原样。
+    .replace(LEADING_SLASH_COMMAND, "");
   if (collapsed.length === 0) return "";
   const chars = Array.from(collapsed);
   if (maxLen > 0 && chars.length > maxLen) {
