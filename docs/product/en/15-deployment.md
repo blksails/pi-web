@@ -170,6 +170,8 @@ The following are the core deployment-related environment variables (for the ful
 | `PI_WEB_TRUST_PROJECT` | `1` = trust `.pi/` project extensions (custom agent mode) | — |
 | `PI_WEB_SANDBOX_ENTRY` | Sandbox entry path (injected into the child process by the main process, custom mode) | — |
 | `PI_CODING_AGENT_DIR` | The agent directory read by the pi SDK (child process), injected by the main process via spawn env (note: not `PI_AGENT_DIR`) | `~/.pi/agent` |
+| `PI_WEB_BASH_ENABLED` | **Server-authoritative gate**: enables the bang shell command endpoint (`!`/`!!`, equivalent to arbitrary command execution / RCE). When off, `POST /sessions/:id/bash` returns 404 | — (off) |
+| `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` | **Frontend experience switch** (build-time inlined): recognizes the `!` prefix and shows the bash-mode hint; must be on together with the server gate for full use | — (off) |
 
 > **The difference between the two agent-dir variables**: `PI_WEB_AGENT_DIR` is the config root directory read by the pi-web main process (global settings, sandbox policy persistence; corresponds to the CLI's `--agent-dir`, see `bin/pi-web.mjs:130`, `packages/server/src/config/config-codec.ts:16`); `PI_CODING_AGENT_DIR` is the directory the main process passes down to the pi SDK child process (trust store / session persistence, see `packages/server/test/agent-source/mode-trust.test.ts:159`). For multi-tenant isolation, both should be partitioned per tenant (see §15.6.4).
 
@@ -195,6 +197,8 @@ Sandbox options (by isolation strength):
 | OpenShell sandbox | Policy-based (FS/network/credentials/inference) | Managed/remote sandbox |
 
 Minimum requirements: confine `cwd` to the workspace, container with read-only root + writable working volume, deny outbound network or allow on demand.
+
+> **Bang shell commands (`PI_WEB_BASH_ENABLED`)**: pi-web's `!`/`!!` chat commands execute arbitrary shell directly in the session agent's working directory — equivalent to RCE. **Off by default**; enable only in trusted single-user / controlled environments, and always behind the sandbox above. Keep it off for any multi-user / public deployment (when off, `POST /sessions/:id/bash` returns 404 without leaking the endpoint's existence). The frontend experience switch `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` is deliberately separate from the server-authoritative switch so the server can be hard-killed. See [05 · Configuration](./05-configuration.md) §11 for the variables.
 
 ### 15.6.2 Graceful Shutdown
 

@@ -824,6 +824,22 @@ export class PiSession {
   }
 
   /**
+   * 执行 bash 命令(bang shell 命令,spec bang-shell-command)。转发到通道既有 bash 能力,
+   * `excludeFromContext` 透传(`!!` → 输出不进入 LLM 上下文)。结果由 agent 同步返回。
+   */
+  bash(
+    command: string,
+    options?: { excludeFromContext?: boolean },
+  ): Promise<RpcResponse> {
+    return this.forward(() => this.channel.bash(command, options));
+  }
+
+  /** 中止运行中的 bash 命令(预留端点;当前不接 UI)。 */
+  abortBash(): Promise<RpcResponse> {
+    return this.forward(() => this.channel.abortBash());
+  }
+
+  /**
    * 重启底层 runner 子进程(以同一会话 id/env 重 spawn、重解析资源),使安装/卸载的
    * 扩展对运行中的会话生效(builtin-plugin-command 任务 2.1)。底层 channel 不支持重启时抛错,
    * 由调用方(SessionReloader)按未配置处理。

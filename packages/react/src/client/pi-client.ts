@@ -33,6 +33,7 @@ import type {
   LogLevel,
   StateSetRequest,
   StateSetResponse,
+  BashResult,
 } from "@blksails/pi-web-protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -89,6 +90,16 @@ export interface PiClient {
 
   /** POST /sessions/:id/state —— 状态注入桥写回(set/delete);同步 ack。 */
   setState(id: string, req: StateSetRequest): Promise<StateSetResponse>;
+
+  /**
+   * POST /sessions/:id/bash —— bang shell 命令(spec bang-shell-command)。
+   * 同步返回结构化 `BashResult`;端点禁用(404)或失败(非 2xx)→ 抛错(供上层给可见反馈)。
+   * 不经 useChat,不进 LLM 消息流;`excludeFromContext` 对应 `!!`(输出不进上下文)。
+   */
+  bash(
+    id: string,
+    req: { command: string; excludeFromContext?: boolean },
+  ): Promise<BashResult>;
 
   getState(id: string): Promise<GetStateResponse>;
   getStats(id: string): Promise<GetStatsResponse>;
@@ -197,6 +208,10 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/ui-rpc`, req),
     uiRpcCommand: (id, req) =>
       post<UiRpcResponse>(`/sessions/${enc(id)}/ui-rpc`, req),
+    bash: (id, req) =>
+      post<{ result: BashResult }>(`/sessions/${enc(id)}/bash`, req).then(
+        (r) => r.result,
+      ),
 
     setState: (id, req) =>
       post<StateSetResponse>(`/sessions/${enc(id)}/state`, req),

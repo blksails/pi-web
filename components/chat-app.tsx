@@ -544,6 +544,12 @@ function SessionView({
           slots={sessionListSlot}
           onTurnEnd={onTurnEnd}
           showLogs={true}
+          // bang shell 命令前端体验开关(spec bang-shell-command,Req 5.5/5.6/5.7)。
+          // 仅经构建期内联的 NEXT_PUBLIC_ 变量提供(非用户可写 Settings);服务端权威门控独立。
+          enableBash={
+            process.env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED === "1" ||
+            process.env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED === "true"
+          }
           logsPanelVisible={logsPanelVisible ?? true}
           logsPanelPosition={logsPanelPosition ?? "bottom"}
           {...(extension !== undefined ? { extension } : {})}

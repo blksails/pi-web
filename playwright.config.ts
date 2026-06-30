@@ -63,6 +63,10 @@ const stubEnv = {
   PI_WEB_DEFAULT_SOURCE: "./examples/hello-agent",
   PI_WEB_DEFAULT_MODEL: "stub-model",
   PI_WEB_AGENT_DIR: agentDir,
+  // bang shell 命令(spec bang-shell-command)e2e 开启档:服务端权威门控开启,
+  // 配合 build 期 NEXT_PUBLIC_PI_WEB_BASH_ENABLED=1(前端体验)端到端验证。
+  // 关闭档(前端关 ! 当普通消息 / 后端关 404)由单元/集成测试覆盖,避免双 build 成本。
+  PI_WEB_BASH_ENABLED: "1",
 };
 
 // Forward an isolated build dir to the servers so `next start` serves the
@@ -71,6 +75,11 @@ const stubEnv = {
 const distEnv: Record<string, string> = process.env.NEXT_DIST_DIR
   ? { NEXT_DIST_DIR: process.env.NEXT_DIST_DIR }
   : {};
+
+// 自管 webServer 用 `next start`,而 next.config 默认 output:"standalone"(CLI 打包),
+// 二者不兼容。next start 在启动时重读 config,故运行期也须置 PI_WEB_DISABLE_STANDALONE=1
+// (仅 build 期设不够),否则 next start 拒绝服务。external server 模式自带该 env。
+const disableStandaloneEnv = { PI_WEB_DISABLE_STANDALONE: "1" };
 
 export default defineConfig({
   testDir: "./e2e/browser",
@@ -113,6 +122,7 @@ export default defineConfig({
             env: {
               ...stubEnv,
               ...distEnv,
+              ...disableStandaloneEnv,
               SESSION_STORE: "fs",
               SESSION_STORE_ROOT: fsRoot,
             },
@@ -125,6 +135,7 @@ export default defineConfig({
             env: {
               ...stubEnv,
               ...distEnv,
+              ...disableStandaloneEnv,
               SESSION_STORE: "sqlite",
               SESSION_STORE_PATH: sqlitePath,
             },
