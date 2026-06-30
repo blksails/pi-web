@@ -11,15 +11,25 @@ import { createRendererRegistry } from "../../src/registry/renderer-registry.js"
 import { mockSession, mockControls, MockTransport } from "../fixtures/mock-session.js";
 import type { UsePiSessionResult } from "@blksails/pi-web-react";
 
-function setup(enableBash: boolean) {
+type BashImpl = () => Promise<{
+  output: string;
+  exitCode?: number;
+  cancelled: boolean;
+  truncated: boolean;
+}>;
+
+function setup(enableBash: boolean, bashImpl?: BashImpl) {
   const transport = new MockTransport();
   const sendSpy = vi.spyOn(transport, "sendMessages");
-  const bash = vi.fn(async () => ({
-    output: "hi\n",
-    exitCode: 0,
-    cancelled: false,
-    truncated: false,
-  }));
+  const bash = vi.fn(
+    bashImpl ??
+      (async () => ({
+        output: "hi\n",
+        exitCode: 0,
+        cancelled: false,
+        truncated: false,
+      })),
+  );
   const client = {
     bash,
     // 补全 effect(completion-provider-framework)在 client 就绪时拉取触发符;mock no-op。
@@ -46,7 +56,7 @@ function setup(enableBash: boolean) {
     fireEvent.change(ta, { target: { value: text } });
     fireEvent.keyDown(ta, { key: "Enter" });
   };
-  return { bash, sendSpy, submit };
+  return { bash, sendSpy, submit, container };
 }
 
 describe("PiChat bang shell 命令分流", () => {
@@ -90,5 +100,17 @@ describe("PiChat bang shell 命令分流", () => {
     submit("!echo hi");
     expect(bash).not.toHaveBeenCalled();
     await waitFor(() => expect(sendSpy).toHaveBeenCalled());
+  });
+
+  it("enableBash + bash 失败(404/网络)→ 注入可见错误卡片(Req 7.1/7.2)", async () => {
+    const { submit, container } = setup(true, async () => {
+      throw new Error("bash failed: 404");
+    });
+    submit("!badcmd");
+    await waitFor(() => {
+      const card = container.querySelector("[data-pi-bash-result]");
+      expect(card).not.toBeNull();
+      expect(card?.textContent).toContain("命令执行失败");
+    });
   });
 });

@@ -677,6 +677,8 @@ export function PiChat({
                 command,
                 excludeFromContext,
                 output: "命令执行失败:shell 命令未启用或服务端错误。",
+                // 非零退出码使卡片标红呈现失败态(避免误显示 exit 0)。
+                exitCode: 1,
                 cancelled: false,
                 truncated: false,
               },

@@ -170,6 +170,8 @@ PORT=3000 HOSTNAME=0.0.0.0 node .next-cli/standalone/server.js
 | `PI_WEB_TRUST_PROJECT` | `1` = 信任 `.pi/` 项目扩展（custom agent 模式） | — |
 | `PI_WEB_SANDBOX_ENTRY` | 沙箱入口路径（由主进程注入子进程，custom 模式） | — |
 | `PI_CODING_AGENT_DIR` | pi SDK（子进程）读取的 agent 目录，由主进程通过 spawn env 注入（注意非 `PI_AGENT_DIR`） | `~/.pi/agent` |
+| `PI_WEB_BASH_ENABLED` | **服务端权威门控**：启用 bang shell 命令端点（`!`/`!!`，等同任意命令执行 RCE）。关闭时 `POST /sessions/:id/bash` 返回 404 | —（关闭） |
+| `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` | **前端体验开关**（构建期内联）：识别 `!` 前缀并显示 bash 模式提示；须与服务端开关同开方完整可用 | —（关闭） |
 
 > **两个 agent-dir 变量的区别**：`PI_WEB_AGENT_DIR` 是 pi-web 主进程读取的配置根目录（全局 settings、沙箱策略落盘，对应 CLI 的 `--agent-dir`，见 `bin/pi-web.mjs:130`、`packages/server/src/config/config-codec.ts:16`）；`PI_CODING_AGENT_DIR` 是主进程下发给 pi SDK 子进程的目录（trust store / session 落盘，见 `packages/server/test/agent-source/mode-trust.test.ts:159`）。多租户隔离时两者都应按租户区分（见 §15.6.4）。
 
@@ -195,6 +197,8 @@ PORT=3000 HOSTNAME=0.0.0.0 node .next-cli/standalone/server.js
 | OpenShell 沙箱 | 策略化（FS/网络/凭据/推理） | 托管/远程沙箱 |
 
 最低要求：限定 `cwd` 工作区、容器只读根 + 可写工作卷、禁出网或按需放行。
+
+> **Bang shell 命令（`PI_WEB_BASH_ENABLED`）**：pi-web 的 `!`/`!!` 聊天命令直接在会话 agent 工作目录执行任意 shell，等同 RCE。**默认关闭**；仅在可信单人/受控环境启用，且务必配合上述沙箱。多用户 / 公网部署一律保持关闭（关闭时 `POST /sessions/:id/bash` 返回 404，不泄露端点存在）。前端体验开关 `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` 与服务端权威开关故意分离，使服务端可彻底关死。变量详见 [05 · 配置](./05-configuration.md) §十一。
 
 ### 15.6.2 优雅停机
 

@@ -203,6 +203,17 @@ PI_WEB_LOG_FILE=/var/log/pi-web/app.log
 
 > For the level semantics, namespace layering, and the Node/browser differences of the logging system, see [16 · Logging](./16-logging.md).
 
+### 11. Bang Shell Commands (off by default)
+
+Bang (`!`) shell commands let you run a shell command straight from the chat input: `!cmd` executes and feeds the output into the LLM context; `!!cmd` executes but keeps the output out of context. **This is equivalent to arbitrary command execution (RCE) on the server host. It is off by default and should only be enabled in trusted single-user / controlled environments.** Enabling requires setting both variables below (deliberately split: the server side is the authoritative security gate, the frontend is experience-only):
+
+| Variable | Default | Description |
+|---|---|---|
+| `PI_WEB_BASH_ENABLED` | (unset = off) | **Server-authoritative gate** (server-only). Set to any non-`false`/`0` value (e.g. `1`/`true`) to enable the `POST /sessions/:id/bash` endpoint; when off the endpoint returns 404 (without leaking its existence). Even if the frontend switch is bypassed, execution is refused while this is off |
+| `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` | (unset = off) | **Frontend experience switch** (build-time inlined). When `1`/`true`, the chat input recognizes the `!`/`!!` prefix and shows the bash-mode hint; when off, `!` text is sent to the LLM as a normal message |
+
+> Both must be on for full functionality; frontend-on/backend-off → endpoint 404 (frontend shows an error card); frontend-off → `!` falls back to a normal message. The switch is **not exposed in the Settings UI** (deployment-level security switch, controlled only via env). See [15 · Deployment](./15-deployment.md) §15.6 for the security risk and hardening guidance.
+
 ---
 
 ## `~/.pi/agent` directory structure and priority
