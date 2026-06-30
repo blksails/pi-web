@@ -16,6 +16,7 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
+import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -82,6 +83,9 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "logging-demo-agent", ext: loggingDemoExt },
   // state-bridge-agent:状态注入桥「人侧」panelRight 面板(双向闭环浏览器验收)。
   { match: "state-bridge-agent", ext: stateBridgeExt },
+  // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
+  // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。
+  { match: "plugin-code-review-agent", ext: codeReviewExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */

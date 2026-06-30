@@ -15,6 +15,7 @@
  * Provider keys are never logged or echoed (Req 3.5).
  */
 import path from "node:path";
+import fs from "node:fs";
 import {
   createPiWebHandler,
   type PiWebHandler,
@@ -124,7 +125,19 @@ function makeRealResolver(config: AppConfig): {
     resolve: async (source, opts) => {
       const cwd = opts?.cwd ?? config.defaultCwd;
       // 「扩展」面板开关:关闭系统 skills/extensions → 注入 --no-skills/--no-extensions。
-      const extraArgs = await systemResourceArgs(agentDir, cwd);
+      // 项目级开关须读 **agent source 自身目录** 的 .pi/settings.json(本地目录源即项目根,
+      // 与 runner 资源发现的 cwd 一致),否则被 handler defaultCwd 遮蔽 → per-source
+      // loadSystemSkills 覆盖失效(plugin-system-unification R12 Fix#1)。git/cli 源回退 cwd。
+      let resourceCwd = cwd;
+      if (typeof source === "string" && source.length > 0) {
+        try {
+          const abs = path.resolve(cwd, source);
+          if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) resourceCwd = abs;
+        } catch {
+          // 解析失败(非本地路径/权限)→ 保持 cwd。
+        }
+      }
+      const extraArgs = await systemResourceArgs(agentDir, resourceCwd);
       return AgentSourceResolver.resolve(source, {
         cwd,
         runnerEntry,
@@ -266,11 +279,16 @@ function buildSingleton(): HandlerSingleton {
 
   // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
   // 使前端在 agent 真正就绪前门控发送、就绪通告经粘性 session-status 帧投递。可经 env 关闭以回退。
+  // snapshotAuthority: 开启会话权威快照(spec session-snapshot-authority) —— 仅生产 app 接线开启,
+  // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
+  // ⚠ 与 readinessHandshake 存在耦合:lifecycle 仅经 setLifecycle 入快照(后者在握手关闭时早返回),
+  // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
   const manager = new SessionManager({
     store,
     idleMs: 0,
     loggingConfigProvider,
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
+    snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
   });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。

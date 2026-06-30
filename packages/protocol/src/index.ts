@@ -21,8 +21,10 @@ export * from "./rpc/session-state.js";
 export * from "./transport/spawn.js";
 export * from "./transport/ui-spec.js";
 export * from "./transport/data-part.js";
+export * from "./transport/part-kinds.js";
 export * from "./transport/ui-message-chunk.js";
 export * from "./transport/session-status.js";
+export * from "./transport/session-state.js";
 export * from "./transport/sse-frame.js";
 export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";
@@ -35,6 +37,9 @@ export * from "./config/index.js";
 
 // web-ext 层(agent-web-extension UI 控制层契约:manifest / ui-rpc / descriptor / artifact)
 export * from "./web-ext/index.js";
+
+// plugin 层(统一插件包清单契约:pi-plugin.json — pi 资源 + webext 两层入口)
+export * from "./plugin/index.js";
 
 // logging 层(日志数据契约:LogLevelSchema / LogEntrySchema / parseLogLine)
 export * from "./logging/index.js";

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://pi-web.dev/schema/pi-plugin.json",
+  "id": "code-review",
+  "version": "1.0.0",
+  "displayName": "Code Review",
+  "description": "代码检视:pi 工具/命令 + web 富卡渲染",
+  "pi": {
+    "extensions": ["extensions/code-review.ts"],
+    "skills": ["skills/code-review"],
+    "prompts": ["prompts/review-snippet.md", "prompts/review-staged.md", "prompts/review-security.md"]
+  },
+  "web": { "dist": ".pi/web/dist", "commands": ["review"] },
+  "bindings": { "tools": ["code_review"] }
+}

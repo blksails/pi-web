@@ -25,7 +25,7 @@ import {
   type LogHistoryFetcher,
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
-import { PiUiPart } from "../parts/pi-ui-part.js";
+import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import type { PiChatSlots } from "./slots.js";
 import {
   ChatError,
@@ -147,6 +147,11 @@ export interface PiChatProps {
    * 提供后,内置命令由 PiChat 经 ui-rpc 总线执行(point=command),不再走 onBuiltinSelect。
    */
   readonly onCommandResult?: (commandName: string, outcome: CommandOutcome) => void;
+  /**
+   * 装/卸插件命令(`/plugin`、`/reload-runtime`)提交时触发,供宿主驱动 webext 重载——
+   * 装后即时双路生效之路②(spec plugin-system-unification,Req 7;路①为 runner reload)。
+   */
+  readonly onRuntimeReloadRequested?: () => void;
   /**
    * 一轮 agent 运行结束(submitted/streaming → idle 边沿)回调。宿主据此做「每轮收尾」副作用,
    * 典型为刷新会话历史列表:新会话镜像落库与 auto_title 自动标题持久化均在 `agent_end` 时完成,
@@ -275,6 +280,7 @@ export function PiChat({
   builtinCommands,
   onBuiltinSelect,
   onCommandResult,
+  onRuntimeReloadRequested,
   onTurnEnd,
   showSessionStats = true,
   showLogs = false,
@@ -358,7 +364,9 @@ export function PiChat({
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
     registry.registerDataPartRenderer("data-sources", SourcesDataPartRenderer);
-    registry.registerDataPartRenderer("data-pi-ui", PiUiPart);
+    // pi-web 自定义 data-part(data-pi-ui)经单一真相源 PART_KINDS 遍历注册
+    //(session-snapshot-authority STEP4):不可能漏注册,孤儿渲染器由契约测试静态排除(Req 6.4/6.5)。
+    registerBuiltinDataPartRenderers(registry);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -500,11 +508,17 @@ export function PiChat({
     void models.ensureLoaded().catch(() => undefined);
   }, [sessionId, models]);
 
-  const isBusy = status === "submitted" || status === "streaming";
+  // 权威 busy(session-snapshot-authority):有 session-state 快照时取服务端权威 busy
+  //(纯投影,不再从 useChat.status 时序推断);无快照(legacy / 机制关闭)时回退到 status,
+  // 行为完全不变。这一改根治「扩展命令不发 agent_end → 永久卡 busy」(busy 由轮次边界权威派生)。
+  const isBusy =
+    controls?.session !== undefined
+      ? controls.busy
+      : status === "submitted" || status === "streaming";
 
-  // 内核用量区数据填充:服务端不主动推送 stats 控制帧,故按"重新拉取"策略
-  // (需求 3.1)填充 controls.stats —— 会话就绪拉取一次,每轮回复结束
-  // (streaming → idle)再拉取一次,保持用量(tokens/cost/messages/toolCalls)最新。
+  // 内核用量区数据填充:stats 的**读**单一取自权威快照(controls.stats,由 stats 帧 / session-state
+  // 同步喂),不再双源 merge;此处仅以**事件驱动**(会话就绪一次 + 轮次结束一次,非定时轮询)
+  // 触发 getStats 让 agent 刷新用量(随即经 session-state 广播给所有订阅者)。
   const statsWasBusyRef = React.useRef<boolean>(false);
   const statsSessionRef = React.useRef<string | undefined>(undefined);
   React.useEffect(() => {
@@ -546,9 +560,11 @@ export function PiChat({
   const sessionReady = !readinessGating || lifecycle?.state === "ready";
   const sessionReadinessError =
     readinessGating && lifecycle?.state === "error";
-  // agent 扩展命令(/plugin 等)经 fire-and-forget 投递、不开 per-prompt 消息流;其 ctx.ui 反馈
-  // (notify/setWidget)走控制帧,需有打开的下行流才能投递。故派发扩展命令时临时点亮此标志,
-  // 在有界窗口内开「仅控制」流承载反馈,窗口后自动熄灭(不变成对所有 agent 常开,避免 prompt-流回归)。
+  // agent 扩展命令(registerCommand,如 /review、/plugin)经 fire-and-forget 投递、不开 per-prompt
+  // 消息流(R15:命令是动作,无气泡、不进历史);其 ctx.ui 反馈(notify/setWidget)走控制帧,需有打开
+  // 的下行流才能投递。故派发扩展命令时临时点亮此标志,在有界窗口内开「仅控制」流承载反馈,窗口后
+  // 自动熄灭(不对所有 agent 常开,避免 prompt-流回归)。无 webext 的纯 registerCommand 扩展尤其需要
+  // (否则 needsIdleControl 为 false,fire-and-forget 后 ctx.ui notify 会丢)。
   const [extCtrlActive, setExtCtrlActive] = React.useState(false);
   const extCtrlTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const armExtControlStream = React.useCallback((): void => {
@@ -563,8 +579,8 @@ export function PiChat({
     },
     [],
   );
-  // 就绪前需开空闲控制流以接收粘性 session-status 帧(仍受 !isBusy 门控;就绪前 isBusy 不可能为真,
-  // 故不与 per-prompt 流冲突)。就绪后若无其它需求自然关闭。扩展命令窗口(extCtrlActive)同样需要。
+  // 空闲控制流开启条件:有贡献点(Tier3 回包)/ artifact rpc / 就绪握手未就绪期(接粘性 session-status)/
+  // 扩展命令窗口(extCtrlActive,承载 fire-and-forget 命令的 ctx.ui 反馈)。
   const needsIdleControl =
     hasContributions ||
     hasArtifactRpc ||
@@ -572,10 +588,13 @@ export function PiChat({
     extCtrlActive;
   React.useEffect(() => {
     if (connection === undefined || isBusy || !needsIdleControl) return;
-    // 扩展命令窗口内额外承载 ctx.ui(extension-ui)帧——fire-and-forget 命令无 per-prompt 流,
-    // 否则其 notify/status/widget 无消费者(空闲期无并发 per-prompt 流,不会重复应用 ambient)。
-    return connection.openControlOnlyStream({ applyAmbient: extCtrlActive });
-  }, [connection, isBusy, needsIdleControl, extCtrlActive]);
+    // 空闲控制流恒应用 ambient(notify/status/widget)帧。纯命令(无 agent_start)下服务端 busy 仍 false,
+    // 故此流与 per-prompt chunk 流可能并存且都应用同一 notify 帧——由 controlStore 按帧 id **幂等去重**
+    // 保证只显示一条(见 control-store.appendNotification),无需靠关流避免重复(关流会漏掉迟到 notify)。
+    // (此前 gate 到 extCtrlActive 会令"有 contributions、流已 applyAmbient:false 打开"的扩展收不到
+    //  session_start 等 ctx.ui notify——故恒 true,plugin-system-unification R10 修复。)
+    return connection.openControlOnlyStream({ applyAmbient: true });
+  }, [connection, isBusy, needsIdleControl]);
   const canSubmit =
     transport !== undefined &&
     sessionReady &&
@@ -665,11 +684,13 @@ export function PiChat({
       }
     }
 
-    // agent 扩展命令拦截(source==="extension",如 /plugin):**不走 useChat**。
-    // 扩展命令在 agent 进程内本地执行后提前返回,从不发任何 message 生命周期帧(实测命令轮
-    // 仅有 extension_ui_request);若经 useChat.sendMessage 发送,会永久等不到 finish 帧而卡 busy。
-    // 故经 client.prompt fire-and-forget 直接投递(agent 照常执行命令),反馈完全靠 ctx.ui
-    // (status/notify/widget 经独立控制流到达),输入区即时复位、不进 LLM、不卡 pending。
+    // agent 扩展命令拦截(source==="extension",如 /review、/plugin):**不走 useChat**(R15)。
+    // registerCommand 命令是**动作**而非对话:在 agent 进程内本地执行后提前返回,从不发任何 message
+    // 生命周期帧(实测命令轮仅有 extension_ui_request);若经 useChat.sendMessage 发送,既会渲染一条
+    // 不该有的用户气泡、又会永久等不到 finish 帧而卡 busy。故经 client.prompt fire-and-forget 直接投递
+    // (agent 照常执行命令):**无气泡、不进消息历史**,反馈完全靠 ctx.ui(notify/status/widget 经独立
+    // 控制流到达),输入区即时复位、不进 LLM、不卡 pending。(skills/template 不是 registerCommand,
+    // 不命中此分支 → 仍走 doSend 正常进历史、有气泡。)
     if (
       input.startsWith("/") &&
       client !== undefined &&
@@ -687,6 +708,10 @@ export function PiChat({
         // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
         armExtControlStream();
         void client.prompt(sessionId, { message: input }).catch(() => undefined);
+        // 装/卸插件命令(/plugin、/reload-runtime)→ 驱动 webext 重载(双路生效路②)。
+        if (name === "plugin" || name === "reload-runtime") {
+          onRuntimeReloadRequested?.();
+        }
         setInput("");
         return;
       }
@@ -702,6 +727,7 @@ export function PiChat({
     sessionId,
     controls?.commands,
     armExtControlStream,
+    onRuntimeReloadRequested,
   ]);
 
   const onStop = React.useCallback((): void => {

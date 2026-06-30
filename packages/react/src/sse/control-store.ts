@@ -11,6 +11,7 @@ import type {
   ControlPayload,
   RpcExtensionUIRequest,
   SessionLifecycleState,
+  SessionSnapshot,
   SessionStats,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
@@ -96,6 +97,13 @@ export interface ControlSnapshot {
   readonly lifecycle: SessionLifecycleSnapshot;
   /** 共享状态切片(state-injection-bridge):key→{value,rev},经 control:"state" 帧更新。 */
   readonly states: Readonly<Record<string, SharedStateEntry>>;
+  /**
+   * 服务端权威会话快照(session-snapshot-authority);收到 session-state 帧前为 undefined。
+   * 唯一权威投影:busy/stats 据此派生,前端不再从消息流 status 时序推断。
+   */
+  readonly session: SessionSnapshot | undefined;
+  /** 轮次是否进行中(权威 busy,来自 session.busy);无快照时为 false(失败安全)。 */
+  readonly busy: boolean;
 }
 
 const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
@@ -122,6 +130,8 @@ const INITIAL_SNAPSHOT: ControlSnapshot = {
   ambient: EMPTY_AMBIENT,
   lifecycle: INITIAL_LIFECYCLE,
   states: {},
+  session: undefined,
+  busy: false,
 };
 
 type Listener = () => void;
@@ -232,6 +242,21 @@ export class ControlStore {
           });
         }
         break;
+      case "session-state": {
+        // 权威快照帧(session-snapshot-authority):吸收 snapshot 成为唯一权威投影。
+        // busy 来自 snapshot.busy(替代 useChat.status 时序推断);stats 据快照同步(单一来源,
+        // 不再 REST 双源 merge);lifecycle 的 detail/code 仍由 session-status 帧承载,过渡期一致,
+        // 故此处不覆写 lifecycle 切片。服务端仅在变更时广播本帧,直接 emit 即可。
+        const snap = payload.snapshot;
+        const nextStats = (snap.stats as SessionStats | undefined) ?? this.snapshot.stats;
+        this.emit({
+          ...this.snapshot,
+          session: snap,
+          busy: snap.busy,
+          stats: nextStats,
+        });
+        break;
+      }
       default: {
         const _exhaustive: never = payload;
         void _exhaustive;
@@ -320,6 +345,11 @@ export class ControlStore {
 
   /** 追加通知,超出软上限时丢弃最旧的,只保留最近 NOTIFICATIONS_SOFT_CAP 条。 */
   private appendNotification(notification: ExtensionNotification): void {
+    // 按 id 幂等:同一 notify 帧(一次 ctx.ui.notify emit)会广播到多条订阅流(per-prompt + 空闲控制流),
+    // 每条都 applyControlFrame → 若直接追加会重复显示同一通知。已存在同 id 则跳过(去重)。
+    if (this.snapshot.ambient.notifications.some((n) => n.id === notification.id)) {
+      return;
+    }
     const next = [...this.snapshot.ambient.notifications, notification];
     const capped =
       next.length > NOTIFICATIONS_SOFT_CAP

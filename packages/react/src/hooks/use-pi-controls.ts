@@ -18,6 +18,7 @@ import type {
   GetStatsResponse,
   GetCommandsResponse,
   RpcSlashCommand,
+  SessionSnapshot,
   SessionStats,
 } from "@blksails/pi-web-protocol";
 import type { PiClient } from "../client/pi-client.js";
@@ -71,6 +72,10 @@ export interface UsePiControlsResult {
   readonly state: Readonly<Record<ControlOperation, OperationState>>;
   /** 会话生命周期态(session-readiness-handshake);供门控发送/呈现连接态。 */
   readonly lifecycle: SessionLifecycleSnapshot;
+  /** 轮次是否进行中(权威 busy,来自 session-state 快照);无快照时 false(session-snapshot-authority)。 */
+  readonly busy: boolean;
+  /** 服务端权威会话快照;收到 session-state 帧前为 undefined。 */
+  readonly session: SessionSnapshot | undefined;
 }
 
 const NO_SUBSCRIBE = (): (() => void) => () => undefined;
@@ -218,10 +223,14 @@ export function usePiControls(
     [run, requireReady],
   );
 
-  // SSE 旁路 stats 优先于(更新于)REST 拉取的 stats。
+  // 权威 stats:优先取自 SSE 旁路快照(stats 帧 / session-state 同步,单一权威),
+  // REST 拉取仅作首屏冷启动回退(Req 3.2/3.4)。
   const stats = sseStats ?? restStats;
   // 会话生命周期态:取自 control 旁路快照;无连接/无帧时回退失败安全默认(initializing)。
   const lifecycle = controlSnapshot?.lifecycle ?? DEFAULT_LIFECYCLE;
+  // 权威 busy / 会话快照(session-snapshot-authority):前端纯投影,不再从 useChat.status 推断。
+  const busy = controlSnapshot?.busy ?? false;
+  const session = controlSnapshot?.session;
 
   return {
     setModel,
@@ -235,5 +244,7 @@ export function usePiControls(
     commands,
     state,
     lifecycle,
+    busy,
+    session,
   };
 }

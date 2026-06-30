@@ -119,6 +119,23 @@ describe("Notifications 通知浮层", () => {
     expect(onDismiss).toHaveBeenCalledWith("n-info");
   });
 
+  it("级别感知:warning/error 即使 autoDismissMs>0 也不自动消失(需手动关闭)", () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(
+      <Notifications
+        notifications={[warning, error]}
+        onDismiss={onDismiss}
+        autoDismissMs={5000}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    // info 会在 5s 消失;warning/error 承载重要信息,不自动消失。
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("autoDismissMs <= 0 时不自动消失 (Req 1.3 关闭)", () => {
     vi.useFakeTimers();
     const onDismiss = vi.fn();

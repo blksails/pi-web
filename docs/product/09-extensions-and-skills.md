@@ -323,6 +323,84 @@ interface AuditRecord {
 
 ---
 
+## 统一插件包标准（plugin-system-unification）
+
+pi-web 把 **pi 原生 extension（CLI 标准）** 与 **webext（5 层 web UI 扩展）** 收口为一个
+**扁平于两层的插件包标准**：一个包用一份 `pi-plugin.json` 同时声明两层入口，零改动复用
+pi extension，并让"安装即时双路生效"。
+
+### `pi-plugin.json` 清单（单一事实来源）
+
+放在包根，声明同一逻辑插件的两层入口；**缺失时回退既有目录约定**（向后兼容）：
+
+```jsonc
+{
+  "id": "code-review",            // 逻辑插件标识(两层共享)
+  "version": "1.0.0",
+  "pi": {                          // 第一层:pi 原生资源(沿用 DefaultPackageManager 目录约定)
+    "extensions": ["extensions/code-review.ts"],
+    "skills": ["skills/code-review"]
+  },
+  "web": { "dist": ".pi/web/dist" },        // 第二层:webext 产物(沿用 .pi/web/dist 约定)
+  "bindings": { "tools": ["code_review"] }  // 两层契约锚点(见下)
+}
+```
+
+解析器 `resolvePiPlugin`（`@blksails/pi-web-server` 导出）据清单合成
+`PluginDescriptor`；清单字段非法/产物缺失降级为 `diagnostics`，**不使整包失败**，无清单则
+回退扫包根 `extensions/`/`skills/`/`prompts/`/`themes/` + 探测 `.pi/web/dist`。
+
+### 两层契约锚点：工具名
+
+`bindings.tools` 声明哪些 pi 工具由 webext 接管渲染。**工具名是两层咬合的锚点**：
+pi 侧 `registerTool("code_review")` 产出的 `tool-code_review` part，由 webext
+`renderers.tools.code_review` 接管渲染成富卡——同一能力，agent 出数据、web 出 UI，零胶水。
+
+### 声明 web 可见 slash 命令（`web.commands`）
+
+平台默认隐藏 `source:"extension"` 命令（防 busy 卡死的历史安全网；busy 已由 fire-and-forget 修复）。
+统一插件可在 `pi-plugin.json` 的 `web.commands` 显式 opt-in 其命令默认可见：
+
+```jsonc
+{ "web": { "dist": ".pi/web/dist", "commands": ["review"] } }
+```
+
+服务端 `GET /sessions/:id/commands` 据命令 `sourceInfo` 解析其插件清单，对 `web.commands` 命中的命令
+回填 `webVisible:true`；前端补全对 `webVisible` 命令**默认放行**（无需 `NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST`），
+未声明的扩展命令仍默认隐藏（安全网不变）。
+
+> 注：项目级 `.pi/extensions` 仍需 **trust** 才加载（与可见性无关）——dev 经 `PI_WEB_TRUST_PROJECT=1`
+> 或建会话传 `trust:true`，见「信任策略落地」。
+
+### 双角色：agent source 兼作插件提供源
+
+同一仓库可同时满足两种发现场景，统一清单指向**单一真身**消除重复：
+
+| 场景 | 发现 origin | 资源路径 | webext 车道 |
+|------|------------|---------|------------|
+| 自运行（作为 agent source） | `top-level` | `<cwd>/.pi/extensions` | 构建期集成 |
+| 被安装（作为插件包） | `package` | 包根 `extensions/` | 运行时 `.pi/web/dist` |
+
+`.pi/extensions/x.ts` 薄转发到包根 `extensions/x.ts`，避免维护两份。可跑样板见
+`examples/plugin-code-review-agent/`（双角色）与 `examples/plugin-consumer-agent/`（消费方）。
+
+### 装完即时双路生效
+
+`/plugin install <source>`（或 `/reload-runtime`）完成后**并行触发两路**、互不阻塞：
+
+- **路①（pi 资源）**：runner reload（`SessionReloader` / `restartRunner`）使工具/命令生效；
+- **路②（webext）**：前端 `webextReloadNonce` bump → 经 `/api/webext/resolve` 重解析加载，
+  富卡渲染器生效。
+
+编排逻辑由 `runInstallEffects`（`@blksails/pi-web-server`）按 `PluginDescriptor` 分派：
+仅 pi / 仅 webext / 双层三分支，任一路失败不阻断另一路（仅含一层时另一路安全空转）。
+前端接线见 `PiChat` 的 `onRuntimeReloadRequested` 接缝（`components/chat-app.tsx` 装配为
+bump nonce）。
+
+> webext 浏览器侧加载、验签、运行时车道见 [10 · Web UI 扩展](./10-web-ui-extension.md#webext-包安装与运行时加载webext-package-install)。
+
+---
+
 ## 相关章节
 
 - [02 · 核心概念](./02-core-concepts.md) — 双模式、会话、RPC 通道

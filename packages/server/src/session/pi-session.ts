@@ -21,6 +21,7 @@ import type {
   RpcExtensionUIResponse,
   RpcResponse,
   SessionLifecycleState,
+  SessionSnapshot,
   SseFrame,
   ThinkingLevel,
   UiRpcRequest,
@@ -28,6 +29,7 @@ import type {
 } from "@blksails/pi-web-protocol";
 import {
   makeControlFrame,
+  makeUiMessageChunkFrame,
   UiRpcResponseSchema,
   StateDownLineSchema,
 } from "@blksails/pi-web-protocol";
@@ -59,12 +61,21 @@ import {
   type SubscribeHandle,
 } from "./session.types.js";
 import { translateEvent } from "./translate/translate-event.js";
+import { INITIAL_SNAPSHOT, reduceSnapshot } from "./reduce-snapshot.js";
+import { StickyFrameRegistry } from "./sticky-registry.js";
 import {
   createTranslationContext,
   type TranslationContext,
 } from "./translate/translation-context.js";
 
 const FRAME_EVENT = "frame";
+
+/**
+ * R11：斜杠命令 prompt 到 `agent_start` 的等待窗口（毫秒）。窗口内无 agent_start → 视为纯命令，
+ * 合成 finish 收尾。需足够覆盖"命令处理器运行 + 触发 turn 的 followUp 排队到 agent_start"，
+ * 又不至于让纯命令输入卡太久（纯命令此窗口后才解除 streaming）。
+ */
+const COMMAND_TURN_WINDOW_MS = 1500;
 const END_EVENT = "end";
 
 /**
@@ -105,6 +116,19 @@ export class PiSession {
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
 
+  /**
+   * 服务端**唯一权威**会话快照(session-snapshot-authority):lifecycle/busy/turn/stats/model/title。
+   * 任一字段变更经 `applySnapshot` 广播 `control: session-state` 帧;订阅时回放当前态(粘性)。
+   * 与 `readinessHandshake` 解耦:busy/stats 等不依赖握手开关,恒可用。
+   */
+  private _snapshot: SessionSnapshot = INITIAL_SNAPSHOT;
+
+  /**
+   * 粘性帧注册表(session-snapshot-authority):承载 last-value 粘性态(session-status /
+   * session-state)的最新帧,订阅时统一重放,使迟到订阅者收敛。logs 仍走 ring-buffer 单独回放。
+   */
+  private readonly sticky = new StickyFrameRegistry();
+
   private _status: SessionStatus = "active";
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -117,8 +141,22 @@ export class PiSession {
   private _lifecycleCode: string | undefined;
   private readonly readinessHandshake: boolean;
   private readonly readinessProbeTimeoutMs: number;
+  /**
+   * 权威快照机制开关(session-snapshot-authority)。默认 `false`:不广播/不回放 session-state
+   * 帧,完全保留既有行为(单测/legacy 零回归)。生产 app 接线开启(见 pi-handler)。
+   * 关 → 开 / 开 → 关 即一步回退(Req 8.2/8.4)。
+   */
+  private readonly snapshotAuthority: boolean;
   private probeTimer: ReturnType<typeof setTimeout> | undefined;
   private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * R11（扩展命令消息流一致性）：斜杠命令 prompt 后在窗口内观察是否有 `agent_start`（真 turn）。
+   * 有 → 真 turn，照常走到真 finish；窗口内无 → 纯命令（不发任何 message 生命周期帧）→ 合成一个
+   * `finish` 帧让前端 per-prompt 流干净收尾，避免 useChat 永久 streaming。**仅命令路径触发**
+   * （普通消息必有 agent_start，watcher 在 start 时即取消，对普通流零影响）。
+   */
+  private commandTurnTimer: ReturnType<typeof setTimeout> | undefined;
+  private awaitingCommandTurn = false;
 
   private readonly unsubs: Unsubscribe[] = [];
 
@@ -148,6 +186,7 @@ export class PiSession {
     this.onClosed = opts.onClosed;
     this.loggingConfigProvider = opts.loggingConfigProvider;
     this.readinessHandshake = opts.readinessHandshake ?? false;
+    this.snapshotAuthority = opts.snapshotAuthority ?? false;
     this.readinessProbeTimeoutMs =
       opts.readinessProbeTimeoutMs ?? DEFAULT_READINESS_PROBE_TIMEOUT_MS;
 
@@ -158,6 +197,15 @@ export class PiSession {
 
     // EventEmitter 默认 maxListeners=10,多订阅者场景放宽。
     this.emitter.setMaxListeners(0);
+
+    // 粘性帧 seed:开启对应机制时登记初始 last-value,使**任何时刻**订阅都能回放当前态
+    //(含变更前订阅:lifecycle=initializing / snapshot=初始 busy:false)。机制关闭则不登记 → legacy。
+    if (this.readinessHandshake) {
+      this.sticky.set("session-status", this.lifecycleFrame());
+    }
+    if (this.snapshotAuthority) {
+      this.sticky.set("session-state", this.snapshotFrame());
+    }
 
     // 订阅通道三类信号(Req 1.2)。
     this.unsubs.push(
@@ -258,6 +306,55 @@ export class PiSession {
     this._lifecycleCode = code;
     this._lifecycleDetail = detail;
     this.emitter.emit(FRAME_EVENT, this.lifecycleFrame());
+    // 更新粘性表(订阅回放最新生命周期态)。
+    this.sticky.set("session-status", this.lifecycleFrame());
+    // 同步入权威快照(单一内部权威:lifecycle 既走 session-status 又入 session-state)。
+    this.setSnapshot({ lifecycle: state });
+  }
+
+  // ──────────────── 权威会话快照(session-snapshot-authority) ────────────────
+
+  /** 当前权威快照(测试/诊断用)。 */
+  get snapshot(): SessionSnapshot {
+    return this._snapshot;
+  }
+
+  /** 当前快照的 `control: session-state` 帧(供广播与订阅回放复用)。 */
+  private snapshotFrame(): SseFrame {
+    return makeControlFrame({ control: "session-state", snapshot: this._snapshot });
+  }
+
+  /**
+   * 应用一份完整新快照:与现态不同则替换并广播一帧 session-state(变更才广播)。
+   * 引用相同(纯归约返回原引用)或逐字段相等时为 no-op。
+   */
+  private applySnapshot(next: SessionSnapshot): void {
+    // 逐字段相等即 no-op(Req 1.2「字段变更才广播」):避免 getStats/setModel 等重复响应
+    // 产生冗余 session-state 帧 churn 前端投影。turn/stats/model 用引用比较(归约/缓存每次新对象)。
+    const cur = this._snapshot;
+    if (
+      next === cur ||
+      (next.lifecycle === cur.lifecycle &&
+        next.busy === cur.busy &&
+        next.turn === cur.turn &&
+        next.stats === cur.stats &&
+        next.model === cur.model &&
+        next.title === cur.title)
+    ) {
+      return;
+    }
+    this._snapshot = next;
+    // 始终维护内部权威态;仅在机制开启时广播帧 + 更新粘性表(关闭=legacy 零回归)。
+    if (this.snapshotAuthority) {
+      const frame = this.snapshotFrame();
+      this.sticky.set("session-state", frame);
+      this.emitter.emit(FRAME_EVENT, frame);
+    }
+  }
+
+  /** 以局部补丁更新权威快照(合并后经 applySnapshot 广播)。 */
+  private setSnapshot(patch: Partial<SessionSnapshot>): void {
+    this.applySnapshot({ ...this._snapshot, ...patch });
   }
 
   /**
@@ -343,12 +440,10 @@ export class PiSession {
       frameWrap(makeControlFrame({ control: "logs", entries: buffered }));
     }
 
-    // 回放当前生命周期态(粘性,spec session-readiness-handshake,Req 2.2/2.4):仅向**刚订阅**
-    // 的 onFrame 发一帧 session-status,使迟到订阅(含 ready 先于订阅)不丢就绪通告。
-    // 与日志回填同范式;未开启握手时不发(既有行为不变)。
-    if (this.readinessHandshake) {
-      frameWrap(this.lifecycleFrame());
-    }
+    // 回放全部粘性 last-value 帧(session-status / session-state):统一经注册表向**刚订阅**
+    // 的 onFrame 重放,使迟到订阅者收敛到当前态(Req 4.1/4.3)。未开启对应机制时注册表无该键
+    //（不登记 → 不回放),既有行为不变。新增可重放态只需登记键,无需改此处(Req 4.2)。
+    this.sticky.replayInto(frameWrap);
 
     return {
       unsubscribe: () => {
@@ -366,6 +461,16 @@ export class PiSession {
   private handleEvent(event: AgentEvent): void {
     if (this._status !== "active") return;
     this.touch();
+    // R11:真 turn 开始 → 取消命令-turn watcher,由真 finish 收尾(不合成,避免重复/早切)。
+    if (event.type === "agent_start" && this.awaitingCommandTurn) {
+      this.cancelCommandTurnWatcher();
+    }
+    // 权威快照归约(session-snapshot-authority):busy/turn 由轮次边界派生,变更才广播。
+    // **必须先于** translate 帧广播:agent_end 翻译出的 finish 帧触发前端关流;若 busy=false 的
+    // session-state 帧排在 finish 之后,会在该 per-prompt 流被丢弃 → 前端 busy 永久卡 true
+    //(browser e2e 实测捕获)。先发快照即规避。busy=true 先于 start 帧亦语义正确(轮次已开始)。
+    this.applySnapshot(reduceSnapshot(this._snapshot, event, Date.now()));
+    // 工具调用边界日志(server 侧,与 runner 内部计时对照)。
     this.logToolEvent(event);
     // 纯函数翻译:推进上下文并广播产出帧(同序,Req 3.1 / 3.3)。
     const { frames, ctx } = translateEvent(event, this.translationCtx);
@@ -595,7 +700,32 @@ export class PiSession {
       streamingBehavior?: "steer" | "followUp";
     },
   ): Promise<RpcResponse> {
+    // R11:斜杠命令可能不触发 turn(纯 ctx.ui 命令)→ 武装 watcher;窗口内无 agent_start 则合成 finish
+    // 让前端 per-prompt 流收尾(否则纯命令永久 streaming)。真 turn 的 agent_start 会取消之。
+    if (message.startsWith("/")) this.armCommandTurnWatcher();
     return this.forward(() => this.channel.prompt(message, options));
+  }
+
+  /** R11:武装命令-turn watcher(见 `commandTurnTimer` 字段注释)。 */
+  private armCommandTurnWatcher(): void {
+    this.cancelCommandTurnWatcher();
+    this.awaitingCommandTurn = true;
+    this.commandTurnTimer = setTimeout(() => {
+      if (!this.awaitingCommandTurn || this._status !== "active") return;
+      this.awaitingCommandTurn = false;
+      this.commandTurnTimer = undefined;
+      // 纯命令:无 agent_start/agent_end → 合成 finish(等同 agent_end 的产出)收尾 per-prompt 流。
+      this.emitter.emit(FRAME_EVENT, makeUiMessageChunkFrame({ type: "finish" }));
+    }, COMMAND_TURN_WINDOW_MS);
+  }
+
+  /** R11:取消 watcher(收到 agent_start=真 turn,或会话收尾/重启时)。 */
+  private cancelCommandTurnWatcher(): void {
+    if (this.commandTurnTimer !== undefined) {
+      clearTimeout(this.commandTurnTimer);
+      this.commandTurnTimer = undefined;
+    }
+    this.awaitingCommandTurn = false;
   }
 
   steer(
@@ -745,12 +875,19 @@ export class PiSession {
         break;
       case "get_session_stats":
         this.cache = { ...(this.cache ?? {}), stats: data, updatedAt: now };
+        // 单一权威:stats 同步入快照(仅 plain object;数组/非对象不污染,否则前端 safeParse 会
+        // 连带丢掉整条 session-state 帧——含 busy/lifecycle,见检阅 MED)。
+        if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+          this.setSnapshot({ stats: data as Record<string, unknown> });
+        }
         break;
       case "set_model":
         this.cache = { ...(this.cache ?? {}), model: data, updatedAt: now };
+        this.setSnapshot({ model: data });
         break;
       case "cycle_model":
         this.cache = { ...(this.cache ?? {}), model: data, updatedAt: now };
+        this.setSnapshot({ model: data });
         break;
       default:
         break;
@@ -864,6 +1001,10 @@ export class PiSession {
       // 0) 生命周期终态(spec session-readiness-handshake,Req 5.2):置 ended 并广播
       //    (终态守卫:error/exit-before-ready 已是终态则保持不变;须在 removeAllListeners 前)。
       this.setLifecycle("ended");
+      // 0b) 权威 busy 终态复位(session-snapshot-authority,Req 2.2「轮次以任意方式结束→busy=false」):
+      //     崩溃/中途停止不经 handleEvent/reduceSnapshot(不会收到 agent_end),故此处显式复位,
+      //     避免最后一帧 session-state 以 busy=true 收尾让纯投影前端永久显示忙碌。须在 removeAllListeners 前。
+      this.setSnapshot({ busy: false });
       // 1) 清 idle 计时(Stopping 首步)+ 就绪握手计时器。
       if (this.idleTimer !== undefined) {
         clearTimeout(this.idleTimer);
@@ -877,6 +1018,8 @@ export class PiSession {
         clearTimeout(this.restartSettleTimer);
         this.restartSettleTimer = undefined;
       }
+      // R11:清命令-turn watcher 计时器(收尾时不再合成 finish)。
+      this.cancelCommandTurnWatcher();
       // 2) 退订通道信号。
       for (const u of this.unsubs) {
         try {

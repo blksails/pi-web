@@ -131,10 +131,38 @@ function stripAttachmentRefs(text: string): string {
   return text.replace(ATTACHMENT_REF_RE, "").replace(/^\n+/, "");
 }
 
+/**
+ * 把 skill 命令展开块**折叠回原始斜杠命令**用于历史显示(plugin-system-unification R14)。
+ *
+ * 背景(与 stripAttachmentRefs 同性质的"为显示反转服务端注入"):`/skill:<name> [args]` 不是
+ * 扩展命令,pi SDK 的 `AgentSession._expandSkillCommand` 把它**展开成 `<skill name="…">…</skill>`
+ * 块当 prompt** 送给模型(展开内容进 LLM 上下文是 skill 的本意)。但 `get_messages` 历史回放取出的
+ * user 文本即该展开块,直接渲染会显示成一大段 SKILL.md 正文——与发送当下用户只见 `/skill:<name>`
+ * 短命令(useChat 乐观气泡)**不一致**(刷新后才暴露)。此处反向折叠,使历史用户气泡与发送当下一致。
+ *
+ * SDK 展开形态(`agent-session.js`):
+ *   `<skill name="${name}" location="${path}">\nReferences are relative to ${base}.\n\n${body}\n</skill>`
+ *   + 有 args 时追加 `\n\n${args}`。
+ * 仅匹配 `^<skill name="…" location="…">…</skill>` 这一稳定形态(非贪婪到首个 `</skill>`),不误伤
+ * 用户输入的普通文本;不匹配(如 body 含 `</skill>` 致尾部不是 `\n\n<args>$`)则原样返回(安全降级)。
+ * 仅改显示,不影响 server message log(模型上下文仍是展开内容)。
+ */
+const SKILL_EXPANSION_RE =
+  /^<skill name="([^"]*)" location="[^"]*">[\s\S]*?<\/skill>(?:\n\n([\s\S]*))?$/;
+function collapseSkillExpansion(text: string): string {
+  if (!text.startsWith('<skill name="')) return text;
+  const m = SKILL_EXPANSION_RE.exec(text);
+  if (m === null) return text;
+  const name = m[1] ?? "";
+  const args = (m[2] ?? "").trim();
+  return args.length > 0 ? `/skill:${name} ${args}` : `/skill:${name}`;
+}
+
 /** user 消息内容 → UI parts(text / file);剥离附件引用占位符(见 stripAttachmentRefs)。 */
 function userParts(content: unknown, baseUrl: string): UIPart[] {
   if (typeof content === "string") {
-    const text = stripAttachmentRefs(content);
+    // 先折叠 skill 展开块(与发送当下短命令一致),再剥离附件占位符。
+    const text = stripAttachmentRefs(collapseSkillExpansion(content));
     // 纯附件消息(占位符剥离后无真实文本)→ 不产生空 text part。
     if (content.includes("[attachment id=") && text === "") return [];
     return [{ type: "text", text, state: "done" } as UIPart];
@@ -144,7 +172,7 @@ function userParts(content: unknown, baseUrl: string): UIPart[] {
   for (const raw of content as ContentItem[]) {
     if (raw.type === "text") {
       const original = String(raw.text ?? "");
-      const text = stripAttachmentRefs(original);
+      const text = stripAttachmentRefs(collapseSkillExpansion(original));
       // 纯附件 text item(占位符剥离后无真实文本)→ 跳过,避免空 text part;
       // 不含占位符的(含原本就空的)保持既有行为,原样产出。
       if (original.includes("[attachment id=") && text === "") continue;

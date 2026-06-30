@@ -15,6 +15,7 @@ import { UiRpcControlPayloadSchema } from "../web-ext/ui-rpc.js";
 import { StateControlPayloadSchema } from "../web-ext/state.js";
 import { LogEntrySchema } from "../logging/log-entry.js";
 import { SessionStatusControlSchema } from "./session-status.js";
+import { SessionStateControlSchema } from "./session-state.js";
 
 /** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
@@ -48,6 +49,8 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   SessionStatusControlSchema,
   // 状态注入桥(state-injection-bridge):权威 KV 变更 agent→UI 下行镜像。
   StateControlPayloadSchema,
+  // 会话权威快照(session-snapshot-authority):粘性帧,承载 lifecycle/busy/turn/stats/model/title。
+  SessionStateControlSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

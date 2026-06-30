@@ -3,9 +3,10 @@
  *
  * 无状态展示元件:不接 pi 数据逻辑,仅接收 `notifications` 列表堆叠展示(以 `id` 作 key,
  * Req 1.5),由装配层(PiChat)接线。按 `notifyType`(info/warning/error)以 shadcn CSS
- * 变量配色(Req 1.2),无硬编码颜色。每条挂载后 `autoDismissMs`(默认 5000)毫秒自动消失
- * (Req 1.3),`autoDismissMs <= 0` 则关闭自动消失;每条带关闭按钮支持手动关闭(Req 1.4);
- * 自动/手动均回调 `onDismiss(id)`。`notifications` 为空时返回 null 不渲染浮层区域(Req 1.6)。
+ * 变量配色(Req 1.2),无硬编码颜色。**级别感知自动消失**:`info` 挂载后 `autoDismissMs`
+ * (默认 5000)毫秒自动消失(Req 1.3),`autoDismissMs <= 0` 则关闭;`error`/`warning` 承载需
+ * 阅读/处置的重要信息(检视结果、安装失败等),**不自动消失**、仅手动关闭(避免"太快消失"错过)。
+ * 每条带关闭按钮支持手动关闭(Req 1.4);自动/手动均回调 `onDismiss(id)`。空列表返回 null(Req 1.6)。
  *
  * 自动消失定时按每条 toast 抽成子组件 `Toast`,以 `useEffect` 正确管理各自 timer 生命周期
  * (卸载/重渲染清理)。无障碍(Req 8.2):error → `role="alert"`,info/warning → `role="status"`;
@@ -54,18 +55,22 @@ function Toast({
 }: ToastProps): React.JSX.Element {
   const { id, message, notifyType } = notification;
 
-  // 挂载后定时自动消失;autoDismissMs<=0 关闭;卸载/依赖变化清理 timer(Req 1.3)。
+  // 级别感知的自动消失:info 为瞬态提示,按 autoDismissMs 自动消失;error/warning 承载需阅读/
+  // 处置的重要信息(如代码检视结果、安装失败),不自动消失、需手动关闭——避免"太快消失"错过。
+  const effectiveDismissMs = notifyType === "info" ? autoDismissMs : 0;
+
+  // 挂载后定时自动消失;effectiveDismissMs<=0 关闭;卸载/依赖变化清理 timer(Req 1.3)。
   React.useEffect(() => {
-    if (autoDismissMs <= 0) {
+    if (effectiveDismissMs <= 0) {
       return;
     }
     const timer = setTimeout(() => {
       onDismiss(id);
-    }, autoDismissMs);
+    }, effectiveDismissMs);
     return () => {
       clearTimeout(timer);
     };
-  }, [id, autoDismissMs, onDismiss]);
+  }, [id, effectiveDismissMs, onDismiss]);
 
   // 无障碍:error 需立即播报 → alert;info/warning → status(Req 8.2)。
   const role = notifyType === "error" ? "alert" : "status";

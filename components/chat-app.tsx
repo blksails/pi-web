@@ -537,6 +537,9 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={EXTENSION_COMMAND_POLICY}
           builtinCommands={builtinCommands}
+          // 装/卸插件命令(/plugin、/reload-runtime)提交后 bump nonce → 重解析 webext
+          // (装后即时双路生效之路②;spec plugin-system-unification Req 7)。
+          onRuntimeReloadRequested={() => setWebextReloadNonce((n) => n + 1)}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           onTurnEnd={onTurnEnd}

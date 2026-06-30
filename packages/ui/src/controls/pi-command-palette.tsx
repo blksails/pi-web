@@ -106,6 +106,7 @@ function isCommandVisible(
   policy: ExtensionCommandPolicy | undefined,
 ): boolean {
   if (c.source !== "extension") return true; // 非扩展命令不受策略影响
+  if (c.webVisible === true) return true; // 统一插件经 pi-plugin.json(web.commands)显式 opt-in
   if (policy?.enabled === true) return true; // 全局放行
   return policy?.allowlist?.includes(c.name) ?? false; // 白名单放行,否则隐藏
 }

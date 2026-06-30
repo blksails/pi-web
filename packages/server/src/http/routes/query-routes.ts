@@ -15,6 +15,7 @@ import {
   parseHiddenProviders,
   excludeProviderModels,
 } from "../../config/model-options-filter.js";
+import { enrichWebVisibleCommands } from "../../plugin/enrich-web-visible.js";
 
 function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
   const id = ctx.sessionId ?? "";
@@ -93,7 +94,9 @@ export function makeCommandsHandler(store: SessionStore): RouteHandler {
       const res = await session.getCommands();
       const extracted = dataOrError<{ commands: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { commands: extracted.data.commands });
+      // 据各扩展命令所属插件的 pi-plugin.json(web.commands)回填 webVisible(plugin-system-unification)。
+      const commands = await enrichWebVisibleCommands(extracted.data.commands);
+      return jsonResponse(200, { commands });
     } catch (err) {
       return mapEngineError(err);
     }
