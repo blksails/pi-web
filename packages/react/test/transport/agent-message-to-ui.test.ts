@@ -433,4 +433,47 @@ describe("agentMessagesToUiMessages", () => {
     // id 仍按原下标生成,保证与原始序列对齐。
     expect(out[0]?.id).toBe("msg-1");
   });
+
+  describe("skill 展开块折叠回斜杠命令(R14:历史↔实时一致)", () => {
+    const textOf = (m: { parts: readonly unknown[] }) =>
+      (m.parts[0] as { text?: string } | undefined)?.text;
+
+    it("string content 的展开块折叠为 /skill:<name>", () => {
+      const expanded =
+        '<skill name="code-review-skill" location="/x/.pi/skills/code-review/SKILL.md">\n' +
+        "References are relative to /x/.pi/skills/code-review.\n\n" +
+        "Code Review\n何时触发\n步骤\n备注\n</skill>";
+      const out = agentMessagesToUiMessages(msgs([{ role: "user", content: expanded }]));
+      expect(textOf(out[0]!)).toBe("/skill:code-review-skill");
+    });
+
+    it("数组 text item 的展开块同样折叠", () => {
+      const expanded =
+        '<skill name="my-skill" location="/p/SKILL.md">\nReferences are relative to /p.\n\nBODY\n</skill>';
+      const out = agentMessagesToUiMessages(
+        msgs([{ role: "user", content: [{ type: "text", text: expanded }] }]),
+      );
+      expect(textOf(out[0]!)).toBe("/skill:my-skill");
+    });
+
+    it("带 args 的展开块保留 args:/skill:<name> <args>", () => {
+      const expanded =
+        '<skill name="review" location="/p/SKILL.md">\nReferences are relative to /p.\n\nBODY\n</skill>\n\nfocus on auth.ts';
+      const out = agentMessagesToUiMessages(msgs([{ role: "user", content: expanded }]));
+      expect(textOf(out[0]!)).toBe("/skill:review focus on auth.ts");
+    });
+
+    it("普通用户文本不受影响(无误折叠)", () => {
+      const out = agentMessagesToUiMessages(
+        msgs([{ role: "user", content: "请 review 这段 <skill> 标签的用法" }]),
+      );
+      expect(textOf(out[0]!)).toBe("请 review 这段 <skill> 标签的用法");
+    });
+
+    it("不完整/畸形块(无闭合 </skill>)原样保留(安全降级)", () => {
+      const broken = '<skill name="x" location="/p">\nReferences...\n\nbody (无闭合)';
+      const out = agentMessagesToUiMessages(msgs([{ role: "user", content: broken }]));
+      expect(textOf(out[0]!)).toBe(broken);
+    });
+  });
 });

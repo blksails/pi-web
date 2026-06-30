@@ -524,6 +524,24 @@ interface EffectOrchestrator {
 |-----|---------|-----------|-------|
 | 13 | 纯命令历史持久化 | `runner/command-marker.ts`, `query-routes.ts`(合并), `lib/app` loader 注入, stub | e2e 冷恢复 |
 
+## R14 设计：skill 命令历史显示折叠（用户实测发现）
+
+**问题**：`/skill:<name>` 经 SDK `_expandSkillCommand` 展开成 `<skill name="…">…</skill>` 块当 prompt 持久化。
+实时乐观气泡（useChat 原始输入）显示 `/skill:<name>`，历史（`get_messages` → 展开块）显示整段正文 → 不一致。
+
+**修法（与 R13 正交，仅前端显示）**：在 `packages/react/src/transport/agent-message-to-ui.ts` 加
+`collapseSkillExpansion(text)`（与既有 `stripAttachmentRefs` 同性质的"为显示反转服务端注入"）：
+- 正则 `^<skill name="([^"]*)" location="[^"]*">[\s\S]*?</skill>(?:\n\n([\s\S]*))?$` 匹配展开块（非贪婪到
+  首个 `</skill>`），折叠为 `/skill:<name>`（捕获尾部 args 则 `/skill:<name> <args>`）；不匹配/畸形原样返回。
+- 在 `userParts` 的 string 与数组 text 两路，于 `stripAttachmentRefs` 之前调用。
+- 仅改前端历史显示，**不动** server message log（LLM 上下文仍是展开内容，保留 skill 进上下文本意）。
+
+**Traceability 增补**：
+
+| Req | Summary | Components | Flows |
+|-----|---------|-----------|-------|
+| 14 | skill 历史显示折叠 | `agent-message-to-ui.ts`(`collapseSkillExpansion`), stub `/skill:` sentinel | e2e 冷恢复 |
+
 ## Security Considerations
 
 - 安装 = RCE：沿用 `extension-management` 四层防线（白名单 + 版本固定 + `--ignore-scripts` + 管理员门控 + 审计），本特性不放松。

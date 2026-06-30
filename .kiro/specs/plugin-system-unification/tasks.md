@@ -150,3 +150,11 @@
   - `e2e`：提交 `/review` → 实时见气泡 → reload/重开会话 → 断言 `/review` 用户气泡仍在（修复前空白）。
   - 完成证据：隔离 build + 外部 server，新例通过 + 相邻无回归。
   - _Requirements: 13.6_
+
+- [x] 18. 增量：skill 命令历史显示折叠（R14 — 用户实测发现）
+  - `agent-message-to-ui.ts`：`collapseSkillExpansion` 把 `<skill name="…">…</skill>` 展开块折叠回
+    `/skill:<name>`（有 args 保留）；在 `userParts` string/数组 text 两路于 `stripAttachmentRefs` 前调用。仅改前端显示。
+  - stub `/skill:<name>` sentinel：镜像 SDK 展开（持久化展开块为 user 消息）+ 干净 turn，供离线 e2e。
+  - 完成证据：react 单测（string/数组/带 args/普通文本不误折叠/畸形降级）28 passed；react typecheck 绿；
+    浏览器 e2e：提交 `/skill:` → 实时短命令 + 不显示展开正文 → 冷恢复仍折叠为短命令。
+  - _Requirements: 14.1, 14.2, 14.3, 14.4_

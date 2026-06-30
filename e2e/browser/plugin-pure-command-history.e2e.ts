@@ -49,3 +49,45 @@ test("纯扩展命令 /review:实时可见 → 冷恢复历史仍可见(R13)", a
   await expect(page.locator("[data-session-active]")).toBeVisible();
   await expect(messages).toContainText("/review"); // 修复前此处为空白(0 持久化)
 });
+
+/**
+ * skill 命令历史显示一致(R14)。
+ *
+ * `/skill:<name>` 经 SDK `_expandSkillCommand` 展开成 `<skill name="…">…</skill>` 块当 prompt 持久化:
+ * 实时乐观气泡显示短命令 `/skill:<name>`,但 `get_messages` 历史回放取出的是展开块——直接渲染会显示
+ * 一大段 SKILL.md 正文,与发送当下不一致。R14 在 agent-message-to-ui 的 collapseSkillExpansion 把展开块
+ * 折叠回 `/skill:<name>`,使历史用户气泡与实时一致。
+ *
+ * stub 镜像 SDK 展开(持久化展开块为 user 消息)以离线复现该不一致。
+ */
+test("skill 命令 /skill::实时短命令 → 冷恢复历史折叠回同一短命令(R14)", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("[data-agent-source-picker]")).toBeVisible();
+  await page.locator("[data-agent-source-input]").fill(SOURCE);
+  await page.locator("[data-agent-source-submit]").click();
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+  await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
+
+  const text = await page.locator("[data-session-id]").textContent();
+  const id = (text ?? "").replace("session: ", "").trim();
+  expect(id.length).toBeGreaterThan(0);
+
+  await page.locator("[data-pi-input-textarea]").fill("/skill:code-review-skill");
+  await page.locator('[data-pi-submit-state="send"]').click();
+
+  const messages = page.locator("[data-pi-chat-messages]");
+  // 实时:短命令气泡 + 助手回复;不应出现展开块正文。
+  await expect(messages).toContainText("/skill:code-review-skill");
+  await expect(messages).toContainText("Skill expanded and answered");
+  await expect(messages).not.toContainText("这是 stub 展开的 skill 正文");
+
+  // 冷恢复:历史取出展开块,经 collapseSkillExpansion 折叠回短命令。
+  const del = await page.request.delete(`/api/sessions/${id}`);
+  expect(del.ok()).toBeTruthy();
+  await page.goto(`/session/${id}`);
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+  // 关键:历史仍显示短命令,而非展开块正文(修复前此处会显示 `<skill …>` 大段正文)。
+  await expect(messages).toContainText("/skill:code-review-skill");
+  await expect(messages).not.toContainText("这是 stub 展开的 skill 正文");
+  await expect(messages).toContainText("Skill expanded and answered"); // 助手历史
+});

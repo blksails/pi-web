@@ -217,6 +217,30 @@ typecheck:root tsc EXIT=0(含 lib/app)+ 受影响包 Done
 - webext-runtime-install / webext-document-title 等 webext e2e:需特定 env(扩展 base-url / 验签),本次外部
   server 未注入 → 环境性失败,非 R13 回归。
 
+## 增量:skill 命令历史显示折叠（R14，用户实测发现，2026-06-30）
+
+### 问题（用户截图实证）
+`/skill:<name>` 经 SDK `_expandSkillCommand` 展开成 `<skill name="…">…</skill>` 块当 prompt 持久化:
+**实时**乐观气泡显示 `/skill:code-review-skill`(短),**历史回放**(`get_messages` → 展开块)显示整段
+SKILL.md 正文(References/Code Review/何时触发/步骤…)——刷新后才暴露的显示不一致。与 R13(0 持久化)不同,
+这是"已持久化但展示形态不一致"。
+
+### 修法（与 R13 正交,仅前端显示）
+`agent-message-to-ui.ts` 加 `collapseSkillExpansion`(与既有 `stripAttachmentRefs` 同性质):正则匹配展开块
+折叠回 `/skill:<name>`(有 args 保留),在 `userParts` string/数组 text 两路于 `stripAttachmentRefs` 前调用。
+仅改前端历史显示,**不动** server message log(LLM 上下文仍是展开内容,保留 skill 进上下文本意)。
+stub 加 `/skill:<name>` sentinel 镜像 SDK 展开(持久化展开块为 user 消息 + 干净 turn)供离线 e2e。
+
+### 新鲜证据
+```
+react 单测:agent-message-to-ui 28 passed(+5:string/数组/带 args/普通文本不误折叠/畸形降级)
+react 全套:281 passed(32 文件)无回归;react typecheck 绿
+浏览器 e2e(隔离 build .next-e2e + 外部 server,fs):
+  ✓ plugin-pure-command-history 内 R14:提交 /skill:code-review-skill → 实时短命令气泡(不显示展开正文)
+    → 删内存会话冷恢复 → 历史仍折叠为 /skill:code-review-skill(非展开块正文)
+  ✓ R13 同文件 + 相邻无关无回归(plugin-system-unification 1 / tool-call-ui 3 / session-persistence fs 1)
+```
+
 ## 已知边界（诚实记录）
 - `resolvePiPlugin` / `runInstallEffects` 作为**已导出、已单测**的标准化构建块；当前安装流为 agent 内置工具驱动（`extension-install-agent-tools`，经 `/reload-runtime` followUp 触发 runner reload = 路①）。R7 路②的**实时**生效经前端 `onRuntimeReloadRequested`（检测 `/plugin`、`/reload-runtime` 提交 → bump `webextReloadNonce`）落地并通过 typecheck + e2e 基建验证；编排器尚未接入服务端"安装完成"回调（该回调当前不存在，install 经 ctx.ui 反馈）。完整 install→reload 竞态的浏览器 e2e（需真实 `pi install` 本地包）未覆盖，由编排器单测 + 渲染器 e2e 共同保障。
 - examples 不纳入 workspace typecheck（根 tsconfig 排除 `examples`，与既有 webext 示例同约定）；其正确性由 webext 构建成功 + 浏览器 e2e 保障。
