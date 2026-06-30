@@ -12,6 +12,7 @@ import { z } from "zod";
 import { protocolVersion } from "../version.js";
 import { UiMessageChunkSchema } from "./ui-message-chunk.js";
 import { UiRpcControlPayloadSchema } from "../web-ext/ui-rpc.js";
+import { StateControlPayloadSchema } from "../web-ext/state.js";
 import { LogEntrySchema } from "../logging/log-entry.js";
 import { SessionStatusControlSchema } from "./session-status.js";
 
@@ -45,6 +46,8 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   }),
   // 会话生命周期态(session-readiness-handshake):粘性帧,订阅时回放当前态。
   SessionStatusControlSchema,
+  // 状态注入桥(state-injection-bridge):权威 KV 变更 agent→UI 下行镜像。
+  StateControlPayloadSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

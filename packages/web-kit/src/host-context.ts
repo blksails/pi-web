@@ -7,6 +7,22 @@
 import type { UiRpcClient } from "./rpc-client.js";
 import type { Logger } from "@blksails/pi-web-logger";
 
+/**
+ * webext 侧共享状态接入(state-injection-bridge, Req 7)。宿主把它接到与前端 hook 同一条
+ * 下行/写回通道(ControlStore.states + client.setState),webext 经此读写「人机共驾」状态。
+ * 写回沿用既有 webext 信任门控边界(由宿主在装配时决定是否提供)。
+ */
+export interface WebExtStateAccess {
+  /** 读 key 当前值(未初始化为 undefined)。 */
+  get<T = unknown>(key: string): T | undefined;
+  /** 订阅 key 变更,返回取消订阅函数。 */
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
+  /** 写回 key(经写回端点)。 */
+  set(key: string, value: unknown): Promise<void>;
+  /** 删除 key(经写回端点)。 */
+  delete(key: string): Promise<void>;
+}
+
 export interface WebExtHostContext {
   /** 当前扩展 id(CSS/registry 命名空间根)。 */
   readonly extId: string;
@@ -20,4 +36,9 @@ export interface WebExtHostContext {
    * Provided by the host; webext components read it via WebExtHostContext.
    */
   readonly logger: Logger;
+  /**
+   * 共享状态接入(state-injection-bridge)。可选:宿主在启用状态桥且 webext 信任门控允许时提供;
+   * 未提供表示该 webext 无状态读写能力(降级,不报错)。
+   */
+  readonly state?: WebExtStateAccess;
 }

@@ -47,6 +47,7 @@ pi-web ./examples/hello-agent
 | 示例 | 一句话 | 关键 API / 能力 | 难度 |
 |---|---|---|---|
 | [attachment-tool-agent](./attachment-tool-agent/) | 附件工具桥端到端：上传图 → `att_id` → 工具处理 → 落库回引用 | `AttachmentToolContext`（`resolve` / `putOutput`）、`afterToolCall` 闸门、`/raw` 分发 | ★★★ |
+| [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
 | [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `buildAigcTools()`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
 
 ### WebExtension（按 Tier 1–5）

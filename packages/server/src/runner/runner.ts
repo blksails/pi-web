@@ -30,6 +30,7 @@ import {
 } from "../session-store/index.js";
 import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
+import { wireStateBridge } from "./state-wiring.js";
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -311,6 +312,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     (sm ?? sessionManager).appendSessionInfo(title);
   });
 
+  // 状态注入桥(state-injection-bridge)装配:建子进程权威 KV、挂 globalThis seam(供作者工具经
+  // getSessionState 读写)、订阅变更→stdout 下行帧、在 runRpcMode 之前给 stdin 挂第二个读取器接写回。
+  // 失败优雅降级(内部吞错),不阻断会话启动。
+  const stateWiring = wireStateBridge(runtime, {
+    sessionId: runtime.session.sessionId,
+  });
+
   // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
   // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为
   // 旁路 best-effort 在同样的终止信号上触发(幂等、吞错不抛,不阻断 rpc-mode 收尾)。
@@ -320,6 +328,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
         `runner: attachment session cleanup error: ${String(err)}\n`,
       );
     });
+    try {
+      stateWiring.cleanup();
+    } catch (err) {
+      process.stderr.write(
+        `runner: state-bridge session cleanup error: ${String(err)}\n`,
+      );
+    }
   };
   process.once("SIGTERM", runSessionCleanup);
   process.once("SIGINT", runSessionCleanup);

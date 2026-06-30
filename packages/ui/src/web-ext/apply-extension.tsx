@@ -9,7 +9,11 @@
  */
 import * as React from "react";
 import type { SlotKey } from "@blksails/pi-web-protocol";
-import type { WebExtension, SlotContribution } from "@blksails/pi-web-kit";
+import type {
+  WebExtension,
+  SlotContribution,
+  WebExtStateAccess,
+} from "@blksails/pi-web-kit";
 import type {
   RendererRegistry,
   ToolRenderer,
@@ -49,11 +53,17 @@ export function resolveSlot(
 function renderContribution(
   contribution: SlotContribution,
   extId: string,
+  state: WebExtStateAccess | undefined,
 ): React.ReactNode {
-  // 组件(函数)→ 实例化并传 extId;否则按 ReactNode 直接渲染。
+  // 组件(函数)→ 实例化并传 extId(+ 可选 state 接入);否则按 ReactNode 直接渲染。
+  // 经 prop 注入(非 React context):webext 是独立打包的 bundle,context 身份不跨 bundle 共享,
+  // 故沿用既有「slot 收 extId / contribution 收 rpc」的形参注入范式(state-injection-bridge Req 7)。
   if (typeof contribution === "function") {
-    const Comp = contribution as React.ComponentType<{ extId: string }>;
-    return <Comp extId={extId} />;
+    const Comp = contribution as React.ComponentType<{
+      extId: string;
+      state?: WebExtStateAccess;
+    }>;
+    return <Comp extId={extId} state={state} />;
   }
   return contribution;
 }
@@ -64,6 +74,8 @@ export interface SlotHostProps {
   /** 扩展未声明该插槽时的默认内容。 */
   readonly fallback?: React.ReactNode;
   readonly onError?: (error: Error) => void;
+  /** 共享状态接入(state-injection-bridge);宿主提供,经 prop 透给 slot 组件。 */
+  readonly state?: WebExtStateAccess;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -72,6 +84,7 @@ export function SlotHost({
   slot,
   fallback,
   onError,
+  state,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -80,7 +93,7 @@ export function SlotHost({
       fallback={fallback ?? null}
       {...(onError !== undefined ? { onError } : {})}
     >
-      {renderContribution(contribution, ext?.manifestId ?? "")}
+      {renderContribution(contribution, ext?.manifestId ?? "", state)}
     </ExtErrorBoundary>
   );
 }

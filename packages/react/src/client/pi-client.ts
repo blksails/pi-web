@@ -31,6 +31,8 @@ import type {
   ListSessionsResponse,
   GetLogsResponse,
   LogLevel,
+  StateSetRequest,
+  StateSetResponse,
 } from "@blksails/pi-web-protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -84,6 +86,9 @@ export interface PiClient {
    * 结果直接在响应体返回(UiRpcResponse 形状),不依赖 SSE 控制流。
    */
   uiRpcCommand(id: string, req: UiRpcRequest): Promise<UiRpcResponse>;
+
+  /** POST /sessions/:id/state —— 状态注入桥写回(set/delete);同步 ack。 */
+  setState(id: string, req: StateSetRequest): Promise<StateSetResponse>;
 
   getState(id: string): Promise<GetStateResponse>;
   getStats(id: string): Promise<GetStatsResponse>;
@@ -192,6 +197,9 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/ui-rpc`, req),
     uiRpcCommand: (id, req) =>
       post<UiRpcResponse>(`/sessions/${enc(id)}/ui-rpc`, req),
+
+    setState: (id, req) =>
+      post<StateSetResponse>(`/sessions/${enc(id)}/state`, req),
 
     getState: (id) => get<GetStateResponse>(`/sessions/${enc(id)}/state`),
     getStats: (id) => get<GetStatsResponse>(`/sessions/${enc(id)}/stats`),

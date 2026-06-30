@@ -15,6 +15,7 @@ import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
 import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
+import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -79,6 +80,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-declarative-agent", ext: DECLARATIVE },
   // logging-demo-agent:浏览器侧 webext 日志总线验收(webext:logging-demo 命名空间)。
   { match: "logging-demo-agent", ext: loggingDemoExt },
+  // state-bridge-agent:状态注入桥「人侧」panelRight 面板(双向闭环浏览器验收)。
+  { match: "state-bridge-agent", ext: stateBridgeExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */

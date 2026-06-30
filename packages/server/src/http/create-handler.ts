@@ -29,6 +29,7 @@ import {
   makeUiRpcHandler,
 } from "./routes/command-routes.js";
 import { makeDeleteSessionHandler } from "./routes/delete-session.js";
+import { makeStateWriteHandler } from "./routes/state-routes.js";
 import {
   makeCommandsHandler,
   makeForkMessagesHandler,
@@ -142,6 +143,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "POST",
       path: "/sessions/:id/ui-rpc",
       handler: makeUiRpcHandler(store, opts.hostCommands),
+    },
+    {
+      method: "POST",
+      path: "/sessions/:id/state",
+      handler: makeStateWriteHandler(store),
     },
     {
       method: "POST",

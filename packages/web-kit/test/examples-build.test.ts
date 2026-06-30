@@ -22,6 +22,7 @@ const EXAMPLES = [
   { id: "webext-contrib", name: "webext-contrib-agent" },
   { id: "webext-artifact", name: "webext-artifact-agent" },
   { id: "webext-background", name: "webext-background-agent" },
+  { id: "state-bridge", name: "state-bridge-agent" },
 ];
 
 describe("webext 示例构建", () => {

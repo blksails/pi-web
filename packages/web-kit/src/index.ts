@@ -28,7 +28,14 @@ export {
   type Keybinding,
 } from "./define-web-extension.js";
 export { type UiRpcClient, type UiRpcCall } from "./rpc-client.js";
-export { type WebExtHostContext } from "./host-context.js";
+export {
+  type WebExtHostContext,
+  type WebExtStateAccess,
+} from "./host-context.js";
+export {
+  createWebExtStateAccess,
+  type WebExtStateAccessDeps,
+} from "./state-access.js";
 export { SLOTS } from "./slots.js";
 
 // 便于作者引用的可序列化契约(从 protocol re-export 类型)

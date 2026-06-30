@@ -10,6 +10,24 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // tool-kit 子路径导出指向 .ts 源(无 dist);vite 不解析工作区子路径 exports,
+      // 显式别名到源文件(否则 pi-handler 经子路径 import 时 handler 集成测试全崩)。
+      "@blksails/pi-web-tool-kit/extension-entry": path.resolve(
+        __dirname,
+        "packages/tool-kit/src/extension-tools/entry-path.ts",
+      ),
+      "@blksails/pi-web-tool-kit/auto-title-entry": path.resolve(
+        __dirname,
+        "packages/tool-kit/src/auto-title/entry-path.ts",
+      ),
+      "@blksails/pi-web-tool-kit/commands": path.resolve(
+        __dirname,
+        "packages/tool-kit/src/commands/index.ts",
+      ),
+      "@blksails/pi-web-tool-kit/runtime": path.resolve(
+        __dirname,
+        "packages/tool-kit/src/runtime.ts",
+      ),
     },
   },
   test: {

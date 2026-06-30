@@ -21,3 +21,10 @@ export type {
   BuiltinCommandTarget,
   BuiltinSubcommand,
 } from "./commands/types.js";
+
+// 状态注入桥作者接入点(state-injection-bridge):读 globalThis seam,前端安全降级。
+export {
+  getSessionState,
+  SESSION_STATE_SEAM_KEY,
+  type SessionStateAccess,
+} from "./session-state.js";

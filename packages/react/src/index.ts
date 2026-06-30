@@ -77,6 +77,12 @@ export {
   type UseExtensionUIResult,
 } from "./hooks/use-extension-ui.js";
 export {
+  useExtensionState,
+  type UseExtensionStateOptions,
+  type UseExtensionStateResult,
+} from "./hooks/use-extension-state.js";
+export type { SharedStateEntry } from "./sse/control-store.js";
+export {
   useModels,
   type UseModelsOptions,
   type UseModelsResult,

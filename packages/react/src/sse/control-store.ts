@@ -75,6 +75,13 @@ export interface AmbientUiSnapshot {
 /** 通知列表软上限:保留最近 100 条,防御非挂载场景下无限增长。 */
 const NOTIFICATIONS_SOFT_CAP = 100;
 
+/** 状态注入桥(state-injection-bridge):单个 key 的前端视图条目(value + 已应用 rev)。 */
+export interface SharedStateEntry {
+  readonly value: unknown;
+  /** 已应用的最大 rev(用于丢弃乱序/过期下行帧)。 */
+  readonly rev: number;
+}
+
 /** control store 的不可变快照。 */
 export interface ControlSnapshot {
   readonly queue: QueueSnapshot;
@@ -87,6 +94,8 @@ export interface ControlSnapshot {
   readonly ambient: AmbientUiSnapshot;
   /** 会话生命周期态(session-readiness-handshake);初始 initializing(失败安全)。 */
   readonly lifecycle: SessionLifecycleSnapshot;
+  /** 共享状态切片(state-injection-bridge):key→{value,rev},经 control:"state" 帧更新。 */
+  readonly states: Readonly<Record<string, SharedStateEntry>>;
 }
 
 const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
@@ -112,6 +121,7 @@ const INITIAL_SNAPSHOT: ControlSnapshot = {
   extensionUiQueue: [],
   ambient: EMPTY_AMBIENT,
   lifecycle: INITIAL_LIFECYCLE,
+  states: {},
 };
 
 type Listener = () => void;
@@ -195,6 +205,15 @@ export class ControlStore {
           this._onLogsFrame(payload.entries as LogEntry[]);
         }
         break;
+      case "state":
+        // 状态注入桥(state-injection-bridge):下行镜像帧,按 rev 守卫更新 states 切片。
+        this.applyStateFrame(
+          payload.key,
+          payload.value,
+          payload.rev,
+          payload.deleted === true,
+        );
+        break;
       case "session-status":
         // 会话生命周期态(session-readiness-handshake):更新 lifecycle 切片。
         // 相同态不换引用(防 useSyncExternalStore 抖动)。
@@ -271,6 +290,32 @@ export class ControlStore {
   /** 以新 ambient 切片发射(浅合并到既有快照)。 */
   private emitAmbient(ambient: AmbientUiSnapshot): void {
     this.emit({ ...this.snapshot, ambient });
+  }
+
+  /**
+   * 应用一条状态下行帧(state-injection-bridge)。rev 守卫:仅当 `rev` 严格大于该 key 已应用
+   * rev 才更新,否则丢弃(防乱序/过期回退)。`deleted` 删键。不变更则不换引用(防抖动)。
+   */
+  private applyStateFrame(
+    key: string,
+    value: unknown,
+    rev: number,
+    deleted: boolean,
+  ): void {
+    const cur = this.snapshot.states[key];
+    // rev 守卫:不大于已应用 rev 即丢弃(乱序保护)。
+    if (cur !== undefined && rev <= cur.rev) return;
+    if (deleted) {
+      if (cur === undefined) return; // 已无该键,不换引用
+      const next = { ...this.snapshot.states };
+      delete next[key];
+      this.emit({ ...this.snapshot, states: next });
+      return;
+    }
+    this.emit({
+      ...this.snapshot,
+      states: { ...this.snapshot.states, [key]: { value, rev } },
+    });
   }
 
   /** 追加通知,超出软上限时丢弃最旧的,只保留最近 NOTIFICATIONS_SOFT_CAP 条。 */

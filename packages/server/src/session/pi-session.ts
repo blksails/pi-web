@@ -26,7 +26,11 @@ import type {
   UiRpcRequest,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
-import { makeControlFrame, UiRpcResponseSchema } from "@blksails/pi-web-protocol";
+import {
+  makeControlFrame,
+  UiRpcResponseSchema,
+  StateDownLineSchema,
+} from "@blksails/pi-web-protocol";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
 
 // 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
@@ -410,13 +414,27 @@ export class PiSession {
     } catch {
       return; // 非 JSON 行忽略
     }
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      (parsed as { type?: unknown }).type !== "ui_rpc_response"
-    ) {
+    if (parsed === null || typeof parsed !== "object") return;
+    const type = (parsed as { type?: unknown }).type;
+
+    // 状态注入桥(state-injection-bridge):子进程上报的权威态变更 → control:"state" 帧。
+    if (type === "piweb_state") {
+      const state = StateDownLineSchema.safeParse(parsed);
+      if (!state.success) return; // 畸形行丢弃,不广播
+      this.emitter.emit(
+        FRAME_EVENT,
+        makeControlFrame({
+          control: "state",
+          key: state.data.key,
+          value: state.data.value,
+          rev: state.data.rev,
+          ...(state.data.deleted ? { deleted: true } : {}),
+        }),
+      );
       return;
     }
+
+    if (type !== "ui_rpc_response") return;
     const res = UiRpcResponseSchema.safeParse(
       (parsed as { response?: unknown }).response,
     );
@@ -516,6 +534,23 @@ export class PiSession {
     this.assertActive();
     this.touch();
     this.channel.send(JSON.stringify({ type: "ui_rpc", request }));
+  }
+
+  /**
+   * 状态注入桥(state-injection-bridge)写回(UI→agent):把写入/删除作为内部行经 stdin 下发子进程,
+   * 由 runner 的 `wireStateBridge` 第二个 stdin 读取器截获改权威态(触发下行帧)。本方法仅发送、不等待;
+   * UI 收敛靠下行 `control:"state"` 帧。pi 自身的 stdin 读取器对该行回无害 Unknown-command(已丢弃)。
+   */
+  setState(key: string, value: unknown, op: "set" | "delete" = "set"): void {
+    this.assertActive();
+    this.touch();
+    this.channel.send(
+      JSON.stringify(
+        op === "delete"
+          ? { type: "piweb_state_delete", key }
+          : { type: "piweb_state_set", key, value },
+      ),
+    );
   }
 
   /**
