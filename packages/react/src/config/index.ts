@@ -16,9 +16,11 @@ export {
   createSettingsRegistry,
   defaultSettingsRegistry,
   registerSettingsPanel,
+  normalizeConfigDomainData,
   type SettingsRegistry,
   type SettingsPanelDescriptor,
   type ConfigDomainIO,
+  type ConfigDomainData,
 } from "./settings-registry.js";
 export {
   makeConfigDomainIO,

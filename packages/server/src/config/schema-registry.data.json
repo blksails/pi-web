@@ -1,0 +1,53 @@
+{
+  "@aizigao/pi-proxy-fetch": {
+    "file": "proxy.json",
+    "schema": "https://raw.githubusercontent.com/aizigao/pi-proxy-fetch/master/schema.json"
+  },
+  "pi-mcp-adapter": {
+    "file": "mcp.json",
+    "schema": {
+      "title": "pi-mcp-adapter Config",
+      "type": "object",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "title": "全局设置",
+          "properties": {
+            "toolPrefix": { "type": "string", "title": "工具名前缀", "description": "代理工具名前缀(默认 server)。" },
+            "idleTimeout": { "type": "number", "title": "空闲超时(分钟)", "description": "服务器空闲多久后回收(默认 10)。" },
+            "directTools": { "type": "boolean", "title": "直接暴露工具", "description": "直接注册各 MCP 工具而非走单一代理工具。" },
+            "autoAuth": { "type": "boolean", "title": "自动鉴权" }
+          }
+        },
+        "mcpServers": {
+          "type": "object",
+          "title": "MCP 服务器",
+          "description": "服务器名 → 配置。stdio 用 command/args;HTTP 用 url/headers。",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": { "type": "string", "title": "命令", "description": "stdio 传输的可执行命令(如 npx)。" },
+              "args": { "type": "array", "title": "参数", "items": { "type": "string" } },
+              "env": { "type": "object", "title": "环境变量", "additionalProperties": { "type": "string" } },
+              "cwd": { "type": "string", "title": "工作目录" },
+              "url": { "type": "string", "title": "HTTP 端点", "description": "HTTP 传输的 URL(与 command 二选一)。" },
+              "headers": { "type": "object", "title": "请求头", "additionalProperties": { "type": "string" } },
+              "bearer": { "type": "string", "title": "Bearer Token", "description": "HTTP 传输的 bearer 鉴权令牌。" },
+              "lifecycle": { "type": "string", "title": "生命周期", "enum": ["lazy", "eager", "keep-alive"], "description": "lazy 按需启动 / eager 预启动 / keep-alive 常驻。" },
+              "idleTimeout": { "type": "number", "title": "空闲超时(分钟)", "description": "覆盖全局空闲超时。" },
+              "directTools": { "type": "boolean", "title": "直接暴露工具", "description": "覆盖全局:本服务器工具直接注册。" },
+              "excludeTools": { "type": "array", "title": "排除工具", "items": { "type": "string" }, "description": "不暴露的工具名。" },
+              "debug": { "type": "boolean", "title": "调试日志" }
+            }
+          }
+        },
+        "imports": {
+          "type": "array",
+          "title": "导入来源",
+          "description": "从其它客户端导入 MCP 配置(如 cursor / claude-code)。",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

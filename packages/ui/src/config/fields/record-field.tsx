@@ -30,9 +30,11 @@ export function RecordField({
   // 已删除条目以 null 标记保留在值中(显式删除意图),不渲染。
   const entries = Object.entries(record).filter(([, v]) => v !== null);
   const subFields = descriptor.fields ?? [];
+  // 标量值 record(如 Record<string,string>):无对象子字段,值本身是标量(itemKind)。
+  const scalarKind = subFields.length === 0 ? descriptor.itemKind : undefined;
   const [newKey, setNewKey] = React.useState("");
 
-  const setEntry = (key: string, next: Record<string, unknown>): void => {
+  const setEntry = (key: string, next: unknown): void => {
     onChange({ ...record, [key]: next });
   };
   const removeEntry = (key: string): void => {
@@ -43,7 +45,9 @@ export function RecordField({
   const addEntry = (): void => {
     const key = newKey.trim();
     if (key.length === 0 || key in record) return;
-    onChange({ ...record, [key]: {} });
+    const initial: unknown =
+      scalarKind === "boolean" ? false : scalarKind === "number" ? 0 : scalarKind !== undefined ? "" : {};
+    onChange({ ...record, [key]: initial });
     setNewKey("");
   };
 
@@ -68,20 +72,32 @@ export function RecordField({
                 删除
               </Button>
             </div>
-            {subFields.map((sub) => (
+            {scalarKind !== undefined ? (
               <FieldRenderer
-                key={sub.key}
-                descriptor={sub}
-                value={(entryValue as Record<string, unknown>)?.[sub.key]}
-                onChange={(next: unknown) =>
-                  setEntry(entryKey, { ...entryValue, [sub.key]: next })
-                }
-                path={[...path, entryKey, sub.key]}
+                descriptor={{ key: entryKey, kind: scalarKind, label: "值", required: false }}
+                value={entryValue}
+                onChange={(next: unknown) => setEntry(entryKey, next)}
+                path={[...path, entryKey]}
                 errors={errors}
                 disabled={disabled}
                 registry={registry}
               />
-            ))}
+            ) : (
+              subFields.map((sub) => (
+                <FieldRenderer
+                  key={sub.key}
+                  descriptor={sub}
+                  value={(entryValue as Record<string, unknown>)?.[sub.key]}
+                  onChange={(next: unknown) =>
+                    setEntry(entryKey, { ...(entryValue as Record<string, unknown>), [sub.key]: next })
+                  }
+                  path={[...path, entryKey, sub.key]}
+                  errors={errors}
+                  disabled={disabled}
+                  registry={registry}
+                />
+              ))
+            )}
           </Card>
         ))}
 

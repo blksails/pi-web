@@ -19,6 +19,8 @@ export interface SchemaFormProps {
   readonly registry?: FieldRegistry;
   readonly disabled?: boolean;
   readonly className?: string;
+  /** 文件名 → 服务端已解析 JSON Schema(透传给顶层 configFiles 控件)。 */
+  readonly fileSchemas?: Record<string, unknown>;
 }
 
 function isRootRecord(formSchema: FormSchema): boolean {
@@ -38,6 +40,7 @@ export function SchemaForm({
   registry,
   disabled,
   className,
+  fileSchemas,
 }: SchemaFormProps): React.JSX.Element {
   // 顶层 record:整域即一个 record(auth)。
   if (isRootRecord(formSchema)) {
@@ -67,6 +70,7 @@ export function SchemaForm({
       errors={errors}
       registry={registry}
       disabled={disabled}
+      fileSchemas={fileSchemas}
     />
   );
 

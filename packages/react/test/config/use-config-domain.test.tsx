@@ -30,6 +30,36 @@ describe("useConfigDomain", () => {
     expect(result.current.saved).toBe(true);
   });
 
+  it("裸表单值加载时 fileSchemas 为 undefined", async () => {
+    const panel = { load: async () => ({ theme: "dark" }), save: vi.fn(async () => undefined) };
+    const { result } = renderHook(() => useConfigDomain(panel));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.fileSchemas).toBeUndefined();
+    expect(result.current.form.values.theme).toBe("dark");
+  });
+
+  it("包裹形态 { values, fileSchemas } 加载时填值并暴露 fileSchemas", async () => {
+    const schema = { type: "object", properties: { a: { type: "string" } } };
+    const panel = {
+      load: async () => ({ values: { files: { "mcp.json": {} } }, fileSchemas: { "mcp.json": schema } }),
+      save: vi.fn(async () => undefined),
+    };
+    const { result } = renderHook(() => useConfigDomain(panel));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.form.values.files).toEqual({ "mcp.json": {} });
+    expect(result.current.fileSchemas).toEqual({ "mcp.json": schema });
+  });
+
+  it("裸值含名为 values 的 provider 不被误判为 wrapper(M3)", async () => {
+    // auto 域裸值:多 provider,其中一个恰名为 `values`。不应被当作 { values, fileSchemas } 包裹。
+    const bare = { values: { apiKey: "x" }, anthropic: { apiKey: "y" } };
+    const panel = { load: async () => bare, save: vi.fn(async () => undefined) };
+    const { result } = renderHook(() => useConfigDomain(panel));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.form.values).toEqual(bare); // 完整保留,未丢 anthropic
+    expect(result.current.fileSchemas).toBeUndefined();
+  });
+
   it("校验失败不调用 save", async () => {
     const save = vi.fn(async () => undefined);
     const panel = {

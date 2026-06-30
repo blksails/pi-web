@@ -110,33 +110,43 @@ function FileEditor({
   onChange,
   disabled,
   registry,
+  providedSchema,
 }: {
   readonly name: string;
   readonly content: unknown;
   readonly onChange: (next: unknown) => void;
   readonly disabled?: boolean;
   readonly registry?: FieldRegistry;
+  /** ①③ 服务端已解析的原始 JSON Schema(优先于内联 $schema,免远端拉取)。 */
+  readonly providedSchema?: unknown;
 }): React.JSX.Element {
-  const url = schemaUrlOf(content);
   const owner = ownerFromSchema(content);
+  // 服务端结果优先:同步转 IR,不发网络;此时不再走内联 $schema 远端路径。
+  const provided = React.useMemo<FormSchema | undefined>(
+    () => (providedSchema !== undefined ? jsonSchemaToFormSchema(providedSchema) : undefined),
+    [providedSchema],
+  );
+  const url = provided !== undefined ? undefined : schemaUrlOf(content);
   // undefined = 加载中;null = 无 schema / 失败 → 原始 JSON;FormSchema = 结构化。
-  const [schema, setSchema] = React.useState<FormSchema | null | undefined>(
+  const [fetched, setFetched] = React.useState<FormSchema | null | undefined>(
     url === undefined ? null : undefined,
   );
 
   React.useEffect(() => {
     if (url === undefined) {
-      setSchema(null);
+      setFetched(null);
       return;
     }
     let alive = true;
     void loadFormSchema(url).then((fs) => {
-      if (alive) setSchema(fs);
+      if (alive) setFetched(fs);
     });
     return () => {
       alive = false;
     };
   }, [url]);
+
+  const schema = provided ?? fetched;
 
   return (
     <Card className="flex flex-col gap-2 p-3" data-pi-config-file={name}>
@@ -169,6 +179,7 @@ export function ConfigFilesField({
   onChange,
   disabled,
   registry,
+  fileSchemas,
 }: FieldProps): React.JSX.Element {
   const files = asFiles(value);
   const entries = Object.entries(files);
@@ -186,6 +197,7 @@ export function ConfigFilesField({
             content={content}
             disabled={disabled}
             registry={registry}
+            providedSchema={fileSchemas?.[name]}
             onChange={(next) => onChange({ ...files, [name]: next })}
           />
         ))}

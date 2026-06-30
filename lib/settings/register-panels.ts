@@ -10,6 +10,7 @@ import {
   zodValidator,
   secretAwareValidator,
   type ConfigDomainIO,
+  type ConfigDomainData,
   type FormValues,
 } from "@blksails/pi-web-react";
 import {
@@ -23,6 +24,7 @@ import {
   extensionsConfigSchema,
   loggingFormSchema,
   loggingConfigSchema,
+  type FormSchema,
 } from "@blksails/pi-web-protocol";
 import {
   registerFieldRendererByKey,
@@ -37,11 +39,15 @@ let registered = false;
 /** 经给定 URL 读写表单值的通用 IO(自定义路径,非 /config/:domain)。 */
 function makeUrlIO(url: string, label: string): ConfigDomainIO {
   return {
-    load: async (): Promise<FormValues> => {
+    load: async (): Promise<ConfigDomainData> => {
       const res = await fetch(url, { method: "GET" });
       if (!res.ok) throw new Error(`加载${label}失败(${res.status})`);
-      const json = (await res.json()) as { values?: FormValues };
-      return json.values ?? {};
+      const json = (await res.json()) as {
+        values?: FormValues;
+        fileSchemas?: Record<string, unknown>;
+      };
+      // 透传服务端解析的 fileSchemas(扩展配置域),供 configFiles 控件优先采用。
+      return { values: json.values ?? {}, fileSchemas: json.fileSchemas };
     },
     save: async (values): Promise<void> => {
       const res = await fetch(url, {
@@ -175,4 +181,51 @@ export function registerConfigPanels(): void {
     validate: zodValidator(loggingConfigSchema),
     ...makeConfigDomainIO("logging"),
   });
+}
+
+/** 独立「MCP」面板的表单:单个 configFiles 字段,复用扩展独立配置文件的结构化渲染编辑 mcp.json。 */
+const mcpFormSchema: FormSchema = {
+  domain: "mcp",
+  title: "MCP",
+  fields: [
+    {
+      key: "files",
+      kind: "record",
+      label: "MCP 配置 (mcp.json)",
+      description: "pi-mcp-adapter 的服务器与全局设置(原始 JSON 编辑)。",
+      required: false,
+      widget: "configFiles",
+    },
+  ],
+};
+
+let mcpRegistered = false;
+
+/**
+ * 「装了 pi-mcp-adapter 才出现」门控:异步探测 /api/config/mcp 的 installed,
+ * 已安装则登记独立「MCP」面板(幂等)。返回是否登记。需调用方在完成后触发一次重渲染,
+ * 使 <SettingsShell>(每次渲染重读 listPanels)纳入该面板。
+ */
+export async function registerMcpPanelIfInstalled(
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean> {
+  if (mcpRegistered) return true;
+  try {
+    const res = await fetchImpl("/api/config/mcp", { method: "GET" });
+    if (!res.ok) return false;
+    const json = (await res.json()) as { installed?: boolean };
+    if (json.installed !== true) return false;
+  } catch {
+    return false;
+  }
+  registerSettingsPanel({
+    id: "mcp",
+    title: "MCP",
+    order: 6,
+    icon: "plug",
+    formSchema: mcpFormSchema,
+    ...makeUrlIO("/api/config/mcp", "MCP 配置"),
+  });
+  mcpRegistered = true;
+  return true;
 }

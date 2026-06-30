@@ -1,0 +1,22 @@
+{
+  "feature_name": "extension-settings-schema-ui",
+  "created_at": "2026-06-30T04:48:26Z",
+  "updated_at": "2026-06-30T05:28:19Z",
+  "language": "zh-CN",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

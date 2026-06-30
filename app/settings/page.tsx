@@ -7,11 +7,23 @@
  */
 import * as React from "react";
 import { SettingsShell } from "@blksails/pi-web-ui";
-import { registerConfigPanels } from "@/lib/settings/register-panels";
+import {
+  registerConfigPanels,
+  registerMcpPanelIfInstalled,
+} from "@/lib/settings/register-panels";
 
 registerConfigPanels();
 
 export default function SettingsPage(): React.JSX.Element {
+  // 「MCP」面板装了 pi-mcp-adapter 才出现:挂载后异步探测并条件登记,完成后 bump 触发重渲染,
+  // 使 <SettingsShell>(每次渲染重读 listPanels)纳入该面板。
+  const [, bump] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    void registerMcpPanelIfInstalled().then((added) => {
+      if (added) bump();
+    });
+  }, []);
+
   return (
     <main className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col gap-6 overflow-y-auto p-6">
       <header className="flex items-center gap-3">

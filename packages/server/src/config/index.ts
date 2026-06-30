@@ -29,3 +29,8 @@ export {
   type ExtensionsConfigRoutesOptions,
   type ExtensionsAdminPolicy,
 } from "./extensions-config-routes.js";
+export {
+  createMcpConfigRoutes,
+  type McpConfigRoutesOptions,
+  type McpAdminPolicy,
+} from "./mcp-config-routes.js";

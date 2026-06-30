@@ -15,8 +15,12 @@ const descriptor: FieldDescriptor = {
   widget: "configFiles",
 };
 
-function renderField(value: unknown, onChange = vi.fn()): typeof onChange {
-  const props: FieldProps = { descriptor, value, onChange, path: ["files"], errors: {} };
+function renderField(
+  value: unknown,
+  onChange = vi.fn(),
+  fileSchemas?: Record<string, unknown>,
+): typeof onChange {
+  const props: FieldProps = { descriptor, value, onChange, path: ["files"], errors: {}, fileSchemas };
   render(<ConfigFilesField {...props} />);
   return onChange;
 }
@@ -77,5 +81,53 @@ describe("ConfigFilesField", () => {
       },
     });
     await waitFor(() => expect(screen.getByRole("textbox")).toBeInTheDocument());
+  });
+
+  it("fileSchemas[name] 命中 → 同步结构化表单,且不触发远端 fetch", () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("should not fetch");
+    });
+    __setSchemaFetchImpl(fetchImpl as unknown as typeof fetch);
+    renderField(
+      { "mcp.json": { settings: { toolPrefix: "x" } } },
+      vi.fn(),
+      { "mcp.json": { type: "object", properties: { settings: { type: "object", title: "设置组" } } } },
+    );
+    // 同步渲染结构化字段(无加载态、无 textarea),且未发请求。
+    expect(screen.getByText("设置组")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("内容为空 + fileSchemas → 渲染空结构化表单以供新建", () => {
+    const onChange = renderField(
+      { "mcp.json": {} },
+      vi.fn(),
+      { "mcp.json": { type: "object", properties: { toolPrefix: { type: "string", title: "前缀" } } } },
+    );
+    // 结构化字段标签出现(证明非原始 JSON 编辑器);空值下输入框存在以供填写。
+    expect(screen.getByText("前缀")).toBeInTheDocument();
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "srv" } });
+    expect(onChange).toHaveBeenLastCalledWith({ "mcp.json": { toolPrefix: "srv" } });
+  });
+
+  it("fileSchemas 优先于内联 $schema(不走远端)", () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("should not fetch");
+    });
+    __setSchemaFetchImpl(fetchImpl as unknown as typeof fetch);
+    renderField(
+      {
+        "p.json": {
+          $schema: "https://raw.githubusercontent.com/aizigao/pi-proxy-fetch/master/schema.json",
+          enabled: true,
+        },
+      },
+      vi.fn(),
+      { "p.json": { type: "object", properties: { enabled: { type: "boolean", title: "服务端开关" } } } },
+    );
+    expect(screen.getByText("服务端开关")).toBeInTheDocument();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
