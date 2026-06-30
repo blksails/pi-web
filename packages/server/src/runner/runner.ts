@@ -15,6 +15,7 @@
 import {
   createAgentSessionRuntime,
   getAgentDir,
+  initTheme,
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
@@ -198,6 +199,14 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // Apply logger configuration from environment variables (including file output).
   // Must be called before any logger is created so config is in place.
   initConfigFromEnv();
+
+  // RPC 模式(headless)下 pi SDK 从不调用 initTheme,而 ctx.ui.theme 仍是读 globalThis
+  // 主题单例的 Proxy —— 任何扩展调用 `ctx.ui.theme.fg(...)`(如 npm:pi-sandbox 在
+  // session_start 给状态栏上色)都会抛 "Theme not initialized. Call initTheme() first.",
+  // 被扩展 catch 后误报成 "Sandbox initialization failed: …" 红色 toast(沙箱其实已初始化)。
+  // 在任何会话/扩展 hook 之前补一次默认主题初始化(不开文件 watcher),消除该硬依赖崩点。
+  // ANSI 着色字符串在 web 端不显示,主题取默认即可;失败内部回退 dark,best-effort 不抛。
+  initTheme(undefined, false);
 
   const agentDir = args.agentDir ?? getAgentDir();
   // Derive a namespace from the agent path. Generic entry names (index, main …)
