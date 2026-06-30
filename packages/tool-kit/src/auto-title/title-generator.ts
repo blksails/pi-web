@@ -26,6 +26,12 @@ export const TITLE_SYSTEM_PROMPT =
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001F\u007F]+/gu;
 
+/** XML/HTML 风格成对标签(如 skill / 命令调用 `<skill name="…">…</skill>`),整体移除。 */
+const MARKUP_TAGS = /<\/?[a-zA-Z][^>]*>/gu;
+
+/** 残留的孤立尖括号(被截断或不配对的标签),一并移除,避免标记字符泄漏进标题。 */
+const STRAY_ANGLES = /[<>]/gu;
+
 /** 判断内容块是否文本块。 */
 function isTextContent(c: unknown): c is TextContent {
   return (
@@ -50,8 +56,14 @@ function contentToText(content: string | readonly unknown[]): string {
  * 截断到 `maxLen`。空白或空输入返回 `""`。
  */
 export function sanitizeTitle(raw: string, maxLen: number): string {
+  // 先剥离 XML/HTML 标记标签(skill / 命令调用如 `<skill name="…">`)及残留孤立尖括号,
+  // 避免标记字符泄漏进标题(截断前移除,确保完整标签被整体清掉)。
+  const stripped = raw.replace(MARKUP_TAGS, " ").replace(STRAY_ANGLES, " ");
   // 控制字符(含换行/制表)折叠为空格,再合并多余空白并去首尾。
-  const collapsed = raw.replace(CONTROL_CHARS, " ").replace(/\s+/g, " ").trim();
+  const collapsed = stripped
+    .replace(CONTROL_CHARS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (collapsed.length === 0) return "";
   const chars = Array.from(collapsed);
   if (maxLen > 0 && chars.length > maxLen) {
