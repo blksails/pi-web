@@ -503,6 +503,11 @@ export class PiSession {
     const { frames, ctx } = translateEvent(event, this.translationCtx);
     this.translationCtx = ctx;
     for (const frame of frames) {
+      // message-queue-ui:把 control:"queue" 登记为粘性帧(与 session-state 对称),使重连/迟到订阅者
+      // 回放即得当前排队快照——否则忙时重连后 busy 回放为 true 但 queue 空,取回回环静默不可用。
+      if (frame.kind === "control" && frame.payload.control === "queue") {
+        this.sticky.set("queue", frame);
+      }
       this.emitter.emit(FRAME_EVENT, frame);
     }
   }

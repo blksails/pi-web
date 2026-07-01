@@ -2,6 +2,7 @@
  * message-queue-ui「取回」:PiSession.clearQueue 请求/响应关联(reqId 配对 / 超时 / 迟到丢弃 / 收尾拒绝)。
  */
 import { describe, expect, it } from "vitest";
+import type { SseFrame } from "@blksails/pi-web-protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { MockChannel } from "./mock-channel.js";
 import { makeResolved } from "./fixtures.js";
@@ -74,5 +75,39 @@ describe("PiSession.clearQueue", () => {
     const s = newSession(ch);
     await s.stop("idle");
     await expect(s.clearQueue()).rejects.toBeInstanceOf(Error);
+  });
+});
+
+describe("control:queue 粘性回放(重连收敛)", () => {
+  function queuePayload(frames: SseFrame[]) {
+    const f = frames.find(
+      (x) =>
+        x.kind === "control" &&
+        (x as { payload?: { control?: string } }).payload?.control === "queue",
+    );
+    return f === undefined
+      ? undefined
+      : (f as { payload: { steering: string[]; followUp: string[] } }).payload;
+  }
+
+  it("queue_update 后新订阅者回放最新排队快照", () => {
+    const ch = new MockChannel();
+    const s = newSession(ch);
+    // 忙时收到排队更新(先于订阅)。
+    ch.emitEvent({ type: "queue_update", steering: ["a"], followUp: ["b"] });
+    // 迟到订阅者(模拟 SSE 重连)应回放当前 queue 快照。
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+    expect(queuePayload(frames)).toMatchObject({ steering: ["a"], followUp: ["b"] });
+  });
+
+  it("空 queue_update 覆盖粘性帧(取回后回放为空)", () => {
+    const ch = new MockChannel();
+    const s = newSession(ch);
+    ch.emitEvent({ type: "queue_update", steering: ["a"], followUp: [] });
+    ch.emitEvent({ type: "queue_update", steering: [], followUp: [] });
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+    expect(queuePayload(frames)).toMatchObject({ steering: [], followUp: [] });
   });
 });
