@@ -42,6 +42,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 | 6 | webext-declarative-agent | 纯声明(theme/layout/empty) | **零 bundle、无扩展面板**,但有**可见的零代码效果**(别再误判"像默认没加载"):紫主题(`--primary: 262 83% 58%` 重着色发送键/焦点环)+ `layout:wide`(对话列 max-w-5xl 更宽)+ 自定义空态(标题「纯声明式扩展 · 零代码」+ 副标题 + 3 建议项)+ 标签页标题「Declarative · pi-web」。仍 `extCount===1`(仅 `data-pi-ext-theme`)、`panelRight===false` | ✅ |
 | 7 | webext-contrib-agent | Tier3 ui-rpc 贡献点 | slash/mention/autocomplete/keybinding 贡献 | ⚠️ 仅 `hasContributions && !isBusy` 时开，见 [[pi-web-uirpc-idle-control-stream]] |
 | 8 | aigc-agent | `@blksails/pi-web-tool-kit` AIGC 工具 + Tier2 媒体渲染器 | **两条端到端流程**:**①图像生成**(发文本 prompt → LLM 调 `image_generation` → provider 生成 → 产物落 attachment store → 回 `att_<id>`,渲成图片卡片);**②图像编辑**(上传图 → LLM 把 `att_…` 抄进 `image_edit({instruction,image})` → 编辑 → 回引用)。两工具产物均命中自定义渲染器 `[data-testid=aigc-tool-card]`(复用 `PiToolPart` 壳,output 换成 `![](displayUrl)` markdown → `<img>`),带**图片/JSON 视图切换**(`[data-testid=aigc-view-image]` / `[data-testid=aigc-view-json]`)。默认变体 `gpt-image-2`(NewAPI),**需 `NEWAPI_API_KEY`**;缺密钥工具仍加载但返回「能力不可用/缺少配置」降级,不崩溃 | ⚠️ 需驱动一轮 + 配置 provider 密钥(详见 §2.5) |
+| 9 | state-bridge-agent | context 外**双向共享状态**(状态注入桥) + Tier1 panelRight 面板 | **人机共驾同一份会话级 KV**(权威在 agent 子进程,pi 无原生 ctx.state)。panelRight 面板 `[data-testid=state-bridge-panel]` 显示 `count`(`[data-testid=state-bridge-count]`,初始 `—`)+「+1(写回)」按钮 `[data-testid=state-bridge-increment]`。**两条方向**:**①AI→UI**(发 `increment the counter` → LLM 调 `increment` 工具 → 子进程 KV +1 → stdout `piweb_state` 行 → SSE `control:"state"` 帧 → 面板数值实时 +1);**②UI→AI**(点「+1(写回)」→ `POST /sessions/:id/state` → 子进程权威态更新 → 下行帧收敛,且 agent 下次 `read_state` 读到新值)。**需真实 runner**(`wireStateBridge` 装配,**stub 抓不到** state 帧);方向①需有效 default provider/model,方向②纯前端写回无需模型。详见 [[state-injection-bridge-spec]] | ⚠️ 需驱动一轮(方向①)/ 点按钮(方向②),真实 runner |
 
 ---
 
@@ -143,6 +144,7 @@ rm -f ~/.cache/chrome-devtools-mcp/chrome-profile/Singleton{Lock,Socket,Cookie}
 - **declarative 仍是"无扩展面板"(零 bundle)**,但**有可见的零代码效果**(紫主题/宽布局/自定义空态/标签页标题)—— 不要再当成"像默认没加载"误判;`extCount===1`(仅 theme 包裹)是正确结果。
 - 改了注入路由 / 配置域后需重启 dev（handler 单例 pin 在 globalThis）。见 [[pi-web-handler-singleton-restart]]。
 - 背景层负 z-index 需 `isolation:isolate` 逃逸壳底遮挡。见 [[pi-web-bg-slot-isolate]]。
+- **9(state-bridge)是真实 runner 双向验收,非 stub**:`wireStateBridge` 装配的状态核只在真实子进程存在,stub 模式下 `control:"state"` 帧不发、面板恒为 `—`。方向①(工具写)需 default provider/model;方向②(按钮写回)纯前端 `POST /state`,可独立验收。详见 [[state-injection-bridge-spec]] / [[pi-web-context-外双向-state]]。
 
 ---
 

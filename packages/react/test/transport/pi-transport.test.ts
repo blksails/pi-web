@@ -312,4 +312,54 @@ describe("PiTransport.sendMessages", () => {
     expect(done).toBe(true);
     expect(connection.isSubscribed).toBe(false);
   });
+
+  it("waits for the /stream subscription before POSTing the prompt (race fix)", async () => {
+    // 复现修复的竞态:/stream 建连被人为延迟,POST /messages 必须等到订阅就绪后才发出,
+    // 否则本轮回复帧会在「无订阅者」窗口被广播而丢失(需刷新才可见)。
+    const order: string[] = [];
+    let releaseStream!: (r: Response) => void;
+    const streamGate = new Promise<Response>((resolve) => {
+      releaseStream = resolve;
+    });
+    const fetchImpl = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/messages") && init?.method === "POST") {
+          order.push("prompt");
+          return makeJsonResponse({ ok: true });
+        }
+        if (url.endsWith("/stream")) {
+          order.push("stream-fetch");
+          return streamGate; // 延迟 resolve:模拟 /stream 冷编译/慢建连
+        }
+        return makeJsonResponse({ ok: true });
+      },
+    ) as unknown as typeof fetch;
+    const client = createPiClient("http://api.test", fetchImpl);
+    const connection = new PiSessionConnection({
+      baseUrl: "http://api.test",
+      sessionId: "s1",
+      fetchImpl,
+    });
+    const transport = new PiTransport({ sessionId: "s1", client, connection });
+
+    const sendP = transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "s1",
+      messageId: undefined,
+      messages: [userMessage("hi")],
+      abortSignal: undefined,
+    });
+
+    // 推进微任务:/stream fetch 已发起但未 resolve → prompt 绝不能提前发出。
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(order).toEqual(["stream-fetch"]);
+
+    // 订阅建立(收到 /stream 响应)后,才允许 POST prompt。
+    releaseStream(makeSseResponse(textStreamFrames("hi")));
+    await sendP;
+    expect(order).toEqual(["stream-fetch", "prompt"]);
+  });
 });

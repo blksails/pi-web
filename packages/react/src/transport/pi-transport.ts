@@ -122,7 +122,7 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
     const images = extractImages(options.body, options.metadata);
     const attachmentIds = extractAttachmentIds(options.body, options.metadata);
 
-    // 先建立 /stream 订阅,再 POST prompt,避免错过早到的帧。
+    // 先建立 /stream 订阅(并在下方 await 其在服务端就绪),再 POST prompt,避免错过早到的帧。
     const stream = this.connection.openChunkStream(
       options.headers === undefined ? undefined : { headers: options.headers },
     );
@@ -138,6 +138,11 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
         );
       }
     }
+
+    // 关键:等本轮 /stream 订阅在服务端建立完成后再 POST prompt。openChunkStream 只是同步
+    // 返回流、异步发起 GET /stream;若不等待,prompt 可能早于订阅到达服务端,导致本轮回复帧
+    // 在「无订阅者」窗口被广播而永久丢失(仅刷新走历史接口可见)。见 docs/product/13、18。
+    await this.connection.whenSubscribed();
 
     await this.client.prompt(this.sessionId, {
       message,

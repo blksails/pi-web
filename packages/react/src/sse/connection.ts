@@ -72,6 +72,11 @@ export class PiSessionConnection {
   private abortController: AbortController | undefined;
   private currentController: ReadableStreamDefaultController<UIMessageChunk> | undefined;
   private subscribed = false;
+  /**
+   * 解析于「本轮 /stream 订阅已在服务端建立」之后(见 whenSubscribed)。初始为 resolved,
+   * 每次 openChunkStream 重建;pump 收到响应(或失败/中断降级)时 resolve。
+   */
+  private _subscribeReady: Promise<void> = Promise.resolve();
 
   constructor(opts: PiSessionConnectionOptions) {
     this.baseUrl = opts.baseUrl;
@@ -104,6 +109,17 @@ export class PiSessionConnection {
   }
 
   /**
+   * 解析于「本轮 /stream 订阅已在服务端建立」之后:收到 GET /stream 响应即证明服务端已
+   * subscribe()(SSE 响应的 ReadableStream.start() 在响应构造/handler return 前同步执行
+   * subscribe)。PiTransport.sendMessages 在 POST prompt 之前 await 本 promise,消除
+   * 「prompt 早于订阅到达服务端 → 本轮回复帧在无订阅者窗口被广播而永久丢失」的竞态。
+   * 订阅失败/中断亦 resolve(降级为旧行为,不挂起调用方)。
+   */
+  whenSubscribed(): Promise<void> {
+    return this._subscribeReady;
+  }
+
+  /**
    * 订阅 /stream 并返回 uiMessageChunk 可读流。可带 Last-Event-ID 续流。
    * 同一连接对象一次只持有一条订阅;再次调用会关闭旧订阅再开新订阅。
    */
@@ -114,6 +130,19 @@ export class PiSessionConnection {
     const abort = new AbortController();
     this.abortController = abort;
     this.subscribed = true;
+
+    // 本轮订阅就绪信号:收到 GET /stream 响应即证明服务端已 subscribe()
+    // (SSE 响应的 ReadableStream.start() 在响应构造/handler return 前同步执行 subscribe)。
+    let signalSubscribed: () => void = () => {};
+    this._subscribeReady = new Promise<void>((resolve) => {
+      signalSubscribed = resolve;
+    });
+    let subscribeSignaled = false;
+    const markSubscribed = (): void => {
+      if (subscribeSignaled) return;
+      subscribeSignaled = true;
+      signalSubscribed();
+    };
 
     const lastEventId = opts?.lastEventId ?? this._lastEventId;
     const headers = mergeHeaders(this.baseHeaders, opts?.headers, lastEventId);
@@ -136,9 +165,12 @@ export class PiSessionConnection {
           this.onError(
             new Error(`stream subscribe failed: status ${res.status}`),
           );
+          markSubscribed(); // 降级:失败也放行 prompt,不挂起调用方
           this.safeClose(controller);
           return;
         }
+        // 收到响应=服务端订阅已建立;放行 sendMessages 去 POST prompt。
+        markSubscribed();
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -160,10 +192,12 @@ export class PiSessionConnection {
         this.safeClose(controller);
       } catch (err) {
         if (abort.signal.aborted) {
+          markSubscribed(); // 中断降级:放行调用方
           this.safeClose(controller);
           return;
         }
         this.onError(err);
+        markSubscribed();
         this.safeClose(controller);
       }
     };
