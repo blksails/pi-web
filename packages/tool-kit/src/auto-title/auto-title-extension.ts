@@ -15,7 +15,8 @@
  * 总开关 `PI_WEB_AUTO_TITLE` 不在此读取 —— 由服务端(pi-handler)权威门控「是否下发本扩展入口」,
  * 关闭时扩展根本不注入。
  */
-import { completeSimple } from "@earendil-works/pi-ai";
+// pi-ai 0.80: `completeSimple` 迁到 `/compat` 子路径(0.79 在主入口);类型仍在主入口。
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { AssistantMessage, Context, Model } from "@earendil-works/pi-ai";
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import type {
