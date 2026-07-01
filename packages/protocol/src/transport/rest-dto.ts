@@ -310,6 +310,63 @@ export const SetFavoritesRequestSchema = z.object({
 export type SetFavoritesRequest = z.infer<typeof SetFavoritesRequestSchema>;
 
 /**
+ * 会话操作端点 —— 删除 / 重命名 / 会话收藏(session-list-item-actions)。
+ *
+ *   POST /sessions/delete    { sessionId }        → CommandAck                    (幂等物理删除)
+ *   POST /sessions/rename    { sessionId, name }  → RenameSessionResponse
+ *   GET  /sessions/favorites                      → ListSessionFavoritesResponse
+ *   POST /sessions/favorites { sessionIds }       → ListSessionFavoritesResponse  (全量替换回显)
+ *
+ * 全部**无 `:id` 路径参数**(sessionId 走请求体),绕过 router 对内存会话的存在性门控,
+ * 故可作用于历史(非运行)会话。写操作受部署门控 `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE`。
+ */
+
+/** 会话显示名最大长度(防滥用/DOS);超限由端点返回校验错误。 */
+export const SESSION_NAME_MAX_LENGTH = 200;
+
+export const DeleteSessionRequestSchema = z.object({
+  /** 待物理删除的会话标识。 */
+  sessionId: z.string().min(1),
+});
+export type DeleteSessionRequest = z.infer<typeof DeleteSessionRequestSchema>;
+
+export const RenameSessionRequestSchema = z.object({
+  /** 待重命名的会话标识。 */
+  sessionId: z.string().min(1),
+  /** 新显示名:trim 后非空、原串不超过上限;服务端以 trim 结果落库。 */
+  name: z
+    .string()
+    .max(SESSION_NAME_MAX_LENGTH)
+    .refine((s) => s.trim().length > 0, {
+      message: "name must not be blank",
+    }),
+});
+export type RenameSessionRequest = z.infer<typeof RenameSessionRequestSchema>;
+
+export const RenameSessionResponseSchema = z.object({
+  sessionId: z.string(),
+  /** 落库后的最新显示名(已 trim)。 */
+  name: z.string(),
+});
+export type RenameSessionResponse = z.infer<typeof RenameSessionResponseSchema>;
+
+export const ListSessionFavoritesResponseSchema = z.object({
+  /** 已收藏的会话标识集合(去重、无空串)。 */
+  sessionIds: z.array(z.string()),
+});
+export type ListSessionFavoritesResponse = z.infer<
+  typeof ListSessionFavoritesResponseSchema
+>;
+
+export const SetSessionFavoritesRequestSchema = z.object({
+  /** 全量替换的收藏会话标识集合;服务端落库前去重、丢空串。 */
+  sessionIds: z.array(z.string()),
+});
+export type SetSessionFavoritesRequest = z.infer<
+  typeof SetSessionFavoritesRequestSchema
+>;
+
+/**
  * GET /sessions/:id/logs 响应 —— 返回结构化日志条目列表。
  * 对应 Requirement 3.3 / design Event Contract: control:logs。
  */
