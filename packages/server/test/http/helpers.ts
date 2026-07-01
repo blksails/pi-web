@@ -9,6 +9,7 @@ import type {
 import { fileURLToPath } from "node:url";
 import { PiRpcProcess } from "../../src/rpc-channel/index.js";
 import { PiSession } from "../../src/session/pi-session.js";
+import { SessionStoppedError } from "../../src/session/session.errors.js";
 import { SessionManager } from "../../src/session/session-manager.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import type {
@@ -102,6 +103,18 @@ export class MockSession {
   }
   abort(): Promise<RpcResponse> {
     return this.call("abort", []);
+  }
+  /** message-queue-ui:clearQueue 返回被清文本(可经 clearQueueResult 覆盖);会话已停则抛。 */
+  clearQueueResult: { steering: string[]; followUp: string[] } = {
+    steering: [],
+    followUp: [],
+  };
+  clearQueue(): Promise<{ steering: string[]; followUp: string[] }> {
+    this.calls.push({ method: "clearQueue", args: [] });
+    if (this.status === "stopped") {
+      return Promise.reject(new SessionStoppedError("sess-1"));
+    }
+    return Promise.resolve(this.clearQueueResult);
   }
   setModel(provider: string, modelId: string): Promise<RpcResponse> {
     return this.call("setModel", [provider, modelId]);

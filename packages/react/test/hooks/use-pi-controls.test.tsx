@@ -24,6 +24,8 @@ function mockFetch(ok = true): { fetch: typeof fetch; calls: Call[] } {
     if (url.endsWith("/stats")) return makeJsonResponse({ stats: { t: 1 } });
     if (url.endsWith("/commands"))
       return makeJsonResponse({ commands: [{ name: "help", description: "h" }] });
+    if (url.endsWith("/clear_queue"))
+      return makeJsonResponse({ steering: ["s"], followUp: ["f"] });
     return makeJsonResponse({ ok: true });
   });
   return { fetch: f as unknown as typeof fetch, calls };
@@ -84,6 +86,48 @@ describe("usePiControls", () => {
     });
     expect(result.current.state.abort.error).toBeDefined();
     expect(result.current.state.abort.pending).toBe(false);
+  });
+
+  it("clearQueue calls /clear_queue and returns cleared text (message-queue-ui)", async () => {
+    const { fetch, calls } = mockFetch();
+    const client = createPiClient("http://api.test", fetch);
+    const { result } = renderHook(() =>
+      usePiControls({ sessionId: "s1", client }),
+    );
+    let cleared: { steering: string[]; followUp: string[] } | undefined;
+    await act(async () => {
+      cleared = await result.current.clearQueue();
+    });
+    expect(calls.at(-1)?.url).toBe("http://api.test/sessions/s1/clear_queue");
+    expect(calls.at(-1)?.method).toBe("POST");
+    expect(cleared).toEqual({ steering: ["s"], followUp: ["f"] });
+  });
+
+  it("exposes queue snapshot from control:queue frame (message-queue-ui)", async () => {
+    const { fetch } = mockFetch();
+    const client = createPiClient("http://api.test", fetch);
+    const connection = new PiSessionConnection({
+      baseUrl: "http://api.test",
+      sessionId: "s1",
+      fetchImpl: fetch,
+    });
+    const { result } = renderHook(() =>
+      usePiControls({ sessionId: "s1", client, connection }),
+    );
+    expect(result.current.queue).toEqual({ steering: [], followUp: [] });
+    act(() => {
+      connection.controlStore.applyControlFrame({
+        control: "queue",
+        steering: ["a", "b"],
+        followUp: ["c"],
+      } as never);
+    });
+    await waitFor(() =>
+      expect(result.current.queue).toEqual({
+        steering: ["a", "b"],
+        followUp: ["c"],
+      }),
+    );
   });
 
   it("merges SSE bypass stats from the control store", async () => {

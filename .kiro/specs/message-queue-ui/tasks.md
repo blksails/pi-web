@@ -88,13 +88,13 @@
 
 ## 6. Validation：测试
 
-- [ ] 6.1 单元测试
+- [x] 6.1 单元测试
   - 覆盖：protocol 行/响应 schema 解析；`PiQueuePanel` 非空/空渲染与 data-* 值；`PiSession.clearQueue` reqId 关联 resolve / 超时 reject / 迟到结果丢弃；`doSend` 意图派生（idle/steer/followUp/att_ 拦截）；取回回填（空框/追加/多条顺序）。
   - 观察完成：相关包 `pnpm test` 新增用例全绿。
   - _Requirements: 3.1, 3.6, 5.2, 6.1, 6.2_
   - _Depends: 4.3, 5.1_
 
-- [ ] 6.2 集成测试与 stub 扩展
+- [x] 6.2 集成测试与 stub 扩展
   - `command-routes` 集成：`POST /clear_queue` 调 session.clearQueue 并返回响应体，409/404 分支；`wireClearQueueBridge` 注入 stdin 请求行→断言 stdout 结果行；`usePiControls` queue 随帧更新。
   - 扩展 stub agent：可发 `control:queue`/模拟 busy/应答 `piweb_clear_queue` 行。
   - 观察完成：集成用例全绿；stub 能驱动 busy + 队列 + clear_queue 回环。
