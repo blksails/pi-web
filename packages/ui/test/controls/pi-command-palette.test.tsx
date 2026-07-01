@@ -4,6 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { PiCommandPalette } from "../../src/controls/pi-command-palette.js";
 import { mockControls, sampleCommands } from "../fixtures/mock-session.js";
+import { I18nProvider } from "../../src/i18n/context.js";
 import type { GetCommandsResponse } from "@blksails/pi-web-protocol";
 
 function Harness({
@@ -223,7 +224,11 @@ describe("PiCommandPalette", () => {
 
   it("命令列表为空显示空态不崩溃", () => {
     const controls = mockControls({ commands: [] });
-    render(<PiCommandPalette controls={controls} value="/" onChange={vi.fn()} />);
+    render(
+      <I18nProvider locale="en">
+        <PiCommandPalette controls={controls} value="/" onChange={vi.fn()} />
+      </I18nProvider>,
+    );
     expect(screen.getByText(/no commands/i)).toBeInTheDocument();
   });
 

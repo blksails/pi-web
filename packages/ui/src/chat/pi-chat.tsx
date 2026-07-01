@@ -1532,7 +1532,7 @@ export function PiChat({
                   : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
               )}
             >
-              {PANEL_RATIO_LABEL[r]}
+              {r === "centered" ? t("layout.ratio.centered") : PANEL_RATIO_LABEL[r]}
             </button>
           ))}
         </div>

@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  useI18n,
 } from "@blksails/pi-web-ui";
 
 /**
@@ -151,8 +152,10 @@ export function AgentSourcePicker({
   onToggleFavorite,
   variant = "page",
   onClose,
-  dialogTitle = "选择 agent source",
+  dialogTitle: dialogTitleProp,
 }: AgentSourcePickerProps): React.JSX.Element {
+  const t = useI18n();
+  const dialogTitle = dialogTitleProp ?? t("agentSourcePicker.dialogTitle");
   const [value, setValue] = React.useState<string>(defaultSource ?? "");
   const showList = enableSourceList && listAgentSources !== undefined;
   const showFavToggle = onToggleFavorite !== undefined;
@@ -256,7 +259,11 @@ export function AgentSourcePicker({
                           data-agent-source-favorite-toggle
                           data-source={item.source}
                           data-favorited={isFav ? "true" : "false"}
-                          aria-label={isFav ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
+                          aria-label={
+                            isFav
+                              ? t("agentSourcePicker.unfavorite", { name: item.name })
+                              : t("agentSourcePicker.favorite", { name: item.name })
+                          }
                           aria-pressed={isFav}
                           onClick={() => onToggleFavorite?.(item)}
                           className={`absolute right-2 top-2 rounded p-0.5 text-base leading-none ${isFav ? "text-yellow-500" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
@@ -280,8 +287,11 @@ export function AgentSourcePicker({
                 className="mt-1 self-start rounded-md px-2 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
               >
                 {expanded
-                  ? "收起"
-                  : `显示全部 ${items.length} 个(展开其余 ${items.length - COLLAPSE_LIMIT})`}
+                  ? t("agentSourcePicker.collapse")
+                  : t("agentSourcePicker.showAll", {
+                      total: items.length,
+                      more: items.length - COLLAPSE_LIMIT,
+                    })}
               </button>
             ) : null}
           </section>

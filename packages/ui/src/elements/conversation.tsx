@@ -13,6 +13,7 @@ import * as React from "react";
 import { ArrowDown } from "lucide-react";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 import { useAutoScroll } from "./use-auto-scroll.js";
 
 export interface ConversationProps {
@@ -34,12 +35,14 @@ export interface ConversationProps {
 
 export function Conversation({
   children,
-  scrollToBottomLabel = "回到底部",
+  scrollToBottomLabel,
   threshold,
   className,
   viewportClassName,
   fadeBottom = false,
 }: ConversationProps): React.JSX.Element {
+  const t = useI18n();
+  const scrollLabel = scrollToBottomLabel ?? t("conversation.scrollToBottom");
   const { ref, atBottom, scrollToBottom } = useAutoScroll(
     children,
     threshold === undefined ? undefined : { threshold },
@@ -82,7 +85,7 @@ export function Conversation({
             variant="secondary"
             size="icon"
             className="pointer-events-auto rounded-full shadow-md"
-            aria-label={scrollToBottomLabel}
+            aria-label={scrollLabel}
             onClick={scrollToBottom}
             data-pi-conversation-to-bottom
           >

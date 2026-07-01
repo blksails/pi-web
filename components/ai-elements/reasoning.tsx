@@ -14,7 +14,7 @@
  *  - 历史/冷恢复(进来即非流式)保持折叠,由用户点击展开。
  */
 import * as React from "react";
-import { cn } from "@blksails/pi-web-ui";
+import { cn, useI18n } from "@blksails/pi-web-ui";
 
 /** 内联 Brain / ChevronDown 图标(lucide 路径),避免在 app 层引入 lucide-react 依赖。 */
 function BrainIcon({ className }: { readonly className?: string }): React.JSX.Element {
@@ -167,6 +167,7 @@ export const ReasoningTrigger = React.memo(function ReasoningTrigger({
   ...props
 }: ReasoningTriggerProps): React.JSX.Element {
   const { isStreaming, isOpen, setIsOpen, durationSec } = useReasoning();
+  const t = useI18n();
   return (
     <button
       type="button"
@@ -182,9 +183,9 @@ export const ReasoningTrigger = React.memo(function ReasoningTrigger({
         <>
           <BrainIcon className="h-4 w-4 shrink-0" />
           {isStreaming || durationSec === 0 ? (
-            <span>思考中…</span>
+            <span>{t("aiReasoning.thinking")}</span>
           ) : (
-            <span>已思考 {durationSec} 秒</span>
+            <span>{t("aiReasoning.thoughtFor", { sec: durationSec })}</span>
           )}
           <ChevronDownIcon
             className={cn(

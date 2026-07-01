@@ -24,6 +24,8 @@ vi.mock("@blksails/pi-web-ui", () => ({
     return <div data-test-pi-chat-basic />;
   },
   SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
+  useI18n: () => (key: string) => key,
+  useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));
 
 // Drive the assembly straight into the session-active branch: a session with a

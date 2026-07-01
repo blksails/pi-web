@@ -33,6 +33,7 @@ import {
 import type { PendingAttachment } from "@blksails/pi-web-react";
 import { useIcon } from "../customization/icons.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 /** 附件媒体类别(本期入列恒为 image,其余为未来非图片留口)。 */
 export type MediaCategory = "image" | "video" | "audio" | "file";
@@ -160,13 +161,14 @@ function StatusOverlay({
 }: {
   readonly att: PendingAttachment;
 }): React.JSX.Element | null {
+  const t = useI18n();
   if (att.status === "uploading") {
     return (
       <span
         data-testid="pi-attachment-status-uploading"
         data-pi-attachment-status="uploading"
         role="status"
-        aria-label={`${att.name} 上传中`}
+        aria-label={t("attachments.status.uploading").replace("{name}", att.name)}
         className="absolute inset-0 flex items-center justify-center rounded-[calc(var(--radius)-2px)] bg-[hsl(var(--background)/0.6)] text-[hsl(var(--muted-foreground))]"
       >
         <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -179,7 +181,7 @@ function StatusOverlay({
         data-testid="pi-attachment-status-error"
         data-pi-attachment-status="error"
         role="alert"
-        aria-label={`${att.name} 上传失败`}
+        aria-label={t("attachments.status.error").replace("{name}", att.name)}
         className="absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
       >
         <AlertCircle className="h-3 w-3" aria-hidden="true" />
@@ -204,6 +206,7 @@ function AttachmentThumb({
   readonly size: ThumbSize;
   readonly hoverPreview: boolean;
 }): React.JSX.Element {
+  const t = useI18n();
   const cat = getMediaCategory(att);
   const src = imageSrc(att);
   const hasImage = cat === "image" && Boolean(src);
@@ -224,7 +227,11 @@ function AttachmentThumb({
       onFocus={previewable ? open : undefined}
       onBlur={previewable ? close : undefined}
       tabIndex={previewable ? 0 : undefined}
-      aria-label={previewable ? `预览 ${att.name}` : undefined}
+      aria-label={
+        previewable
+          ? t("attachments.preview").replace("{name}", att.name)
+          : undefined
+      }
     >
       {hasImage ? (
         <img
@@ -254,7 +261,7 @@ function AttachmentThumb({
         >
           <img
             src={src}
-            alt={`${att.name} 预览`}
+            alt={t("attachments.previewAlt").replace("{name}", att.name)}
             className="max-h-48 max-w-[12rem] rounded-[calc(var(--radius)-2px)] object-contain"
           />
         </span>
@@ -271,12 +278,13 @@ function TypeLabel({
   readonly att: PendingAttachment;
   readonly className?: string;
 }): React.JSX.Element {
+  const t = useI18n();
   return (
     <span
       data-pi-attachment-type
       className={cn("text-[10px] text-[hsl(var(--muted-foreground))]", className)}
     >
-      {getAttachmentLabel(att)}
+      {t(`attachments.category.${getMediaCategory(att)}`)}
     </span>
   );
 }
@@ -313,14 +321,21 @@ export function Attachments({
   rejected,
   variant = "panel",
   hoverPreview = true,
-  hint = "拖拽、粘贴或点击添加图片",
-  rejectedLabel = "暂不支持该类型附件",
-  addLabel = "添加图片附件",
-  removeLabel = (name) => `移除附件 ${name}`,
+  hint: hintProp,
+  rejectedLabel: rejectedLabelProp,
+  addLabel: addLabelProp,
+  removeLabel: removeLabelProp,
   className,
 }: AttachmentsProps): React.JSX.Element | null {
+  const t = useI18n();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const AttachIcon = useIcon("attach", Paperclip);
+  const hint = hintProp ?? t("attachments.hint");
+  const rejectedLabel = rejectedLabelProp ?? t("attachments.rejectedLabel");
+  const addLabel = addLabelProp ?? t("attachments.addLabel");
+  const removeLabel =
+    removeLabelProp ??
+    ((name: string) => t("attachments.removeLabel").replace("{name}", name));
 
   const isDisplayOnly = DISPLAY_VARIANTS.includes(variant);
 

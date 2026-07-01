@@ -15,6 +15,7 @@ import {
   LauncherRail,
   SlotHost,
   resolveSlot,
+  useI18n,
   type ExtensionCommandPolicy,
   type ComponentOverrides,
   type PiChatSlots,
@@ -26,7 +27,7 @@ import type {
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
-import { ThemeToggleButton } from "@/app/theme-controls.js";
+import { ThemeToggleButton, LocaleToggleButton } from "@/app/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
 import { ChatReasoning } from "./chat-reasoning.js";
@@ -415,6 +416,7 @@ function SessionView({
   /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
   readonly logsPanelPosition?: "bottom" | "right" | "drawer";
 }): React.JSX.Element {
+  const t = useI18n();
   const session: UsePiSessionResult = usePiSession({
     create,
     ...(resumeId !== undefined ? { resumeId } : {}),
@@ -663,7 +665,7 @@ function SessionView({
           className="ml-auto shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-new-session
         >
-          New session
+          {t("chatApp.newSession")}
         </button>
         <button
           type="button"
@@ -671,15 +673,16 @@ function SessionView({
           className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-switch-source
         >
-          切换源
+          {t("chatApp.switchSource")}
         </button>
         <a
           href="/settings"
           className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
           data-settings-link
         >
-          设置
+          {t("chatApp.settings")}
         </a>
+        <LocaleToggleButton />
         <ThemeToggleButton />
       </div>
       <div

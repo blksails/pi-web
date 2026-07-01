@@ -19,6 +19,7 @@ import type { UsePiControlsResult } from "@blksails/pi-web-react";
 import type { CompletionItem, RpcSlashCommand } from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 import { useCaretAnchor } from "../completion/use-caret-anchor.js";
 import type { CompletionClient } from "../completion/use-completion.js";
 import {
@@ -136,6 +137,7 @@ export function PiCommandPalette({
   sessionId,
   className,
 }: PiCommandPaletteProps): React.JSX.Element | null {
+  const t = useI18n();
   const open = isCommandMode(value);
   const [commands, setCommands] = React.useState<readonly RpcSlashCommand[]>(
     controls.commands ?? [],
@@ -550,7 +552,7 @@ export function PiCommandPalette({
         <ul
           role="listbox"
           id={listId}
-          aria-label="Command arguments"
+          aria-label={t("commandPalette.aria.arguments")}
           aria-activedescendant={`${listId}-opt-${idx}`}
           tabIndex={-1}
           className="max-h-64 overflow-y-auto p-1"
@@ -609,13 +611,13 @@ export function PiCommandPalette({
           className="p-3 text-sm text-[hsl(var(--muted-foreground))]"
           data-pi-command-empty
         >
-          No commands
+          {t("commandPalette.empty")}
         </div>
       ) : (
         <ul
           role="listbox"
           id={listId}
-          aria-label="Slash commands"
+          aria-label={t("commandPalette.aria.slashCommands")}
           aria-activedescendant={activeId}
           tabIndex={-1}
           className="max-h-64 overflow-y-auto p-1"
@@ -663,7 +665,7 @@ export function PiCommandPalette({
                     data-pi-command-builtin-badge
                     className="rounded-sm bg-[hsl(var(--muted))] px-1 py-0.5 text-[10px] font-normal text-[hsl(var(--muted-foreground))]"
                   >
-                    内置
+                    {t("commandPalette.builtinBadge")}
                   </span>
                 ) : null}
               </span>

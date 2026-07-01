@@ -17,6 +17,7 @@ import type {
 } from "@blksails/pi-web-protocol";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface SessionListPanelProps {
   /** 当前活跃会话标识;在场时「当前目录」视图以其持久化 cwd 为准(优先于 currentCwd)。 */
@@ -72,6 +73,7 @@ function formatTime(item: SessionListItem): string {
 export function SessionListPanel(
   props: SessionListPanelProps,
 ): React.ReactElement {
+  const t = useI18n();
   const {
     currentSessionId,
     currentCwd,
@@ -82,16 +84,17 @@ export function SessionListPanel(
     pageSize,
     pendingSession,
     className,
-    title = "会话历史",
-    cwdTabLabel = "当前目录",
-    allTabLabel = "全部",
-    loadingLabel = "加载中…",
-    emptyLabel = "暂无会话",
-    errorLabel = "加载失败",
-    retryLabel = "重试",
-    loadMoreLabel = "加载更多",
-    pendingSessionLabel = "新会话",
   } = props;
+  const title = props.title ?? t("sessionList.title");
+  const cwdTabLabel = props.cwdTabLabel ?? t("sessionList.cwdTab");
+  const allTabLabel = props.allTabLabel ?? t("sessionList.allTab");
+  const loadingLabel = props.loadingLabel ?? t("sessionList.loading");
+  const emptyLabel = props.emptyLabel ?? t("sessionList.empty");
+  const errorLabel = props.errorLabel ?? t("sessionList.error");
+  const retryLabel = props.retryLabel ?? t("sessionList.retry");
+  const loadMoreLabel = props.loadMoreLabel ?? t("sessionList.loadMore");
+  const pendingSessionLabel =
+    props.pendingSessionLabel ?? t("sessionList.pendingSession");
 
   const [scope, setScope] = React.useState<Scope>("cwd");
   const [items, setItems] = React.useState<ReadonlyArray<SessionListItem>>([]);

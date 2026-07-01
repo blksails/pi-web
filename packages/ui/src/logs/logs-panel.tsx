@@ -22,6 +22,7 @@ import type { LogEntry, LogLevel } from "@blksails/pi-web-logger";
 import { useLogs, createLogsStore, type UseLogsResult } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
 import { Input } from "../ui/input.js";
+import { useI18n } from "../i18n/index.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ function formatDetail(data: unknown): string {
  * 有结构化 `data` 时,行首出现展开开关(▸/▾),展开后整行全宽同步渲染 JSON 明细(Req:明细展示态)。
  */
 function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
+  const t = useI18n();
   const hasDetail = entry.data !== undefined && entry.data !== null;
   const [expanded, setExpanded] = useState(false);
   const detailText = useMemo(
@@ -106,7 +108,7 @@ function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
           type="button"
           data-pi-log-detail-toggle
           aria-expanded={expanded}
-          aria-label={expanded ? "收起日志明细" : "展开日志明细"}
+          aria-label={expanded ? t("logs.detail.collapse") : t("logs.detail.expand")}
           onClick={toggle}
           className="shrink-0 w-3 self-start leading-5 text-center opacity-50 hover:opacity-100 transition-opacity"
         >
@@ -178,6 +180,7 @@ export interface LogsPanelProps {
  * store (useful for standalone usage; task 3.4 wires the real session store).
  */
 export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): React.JSX.Element {
+  const t = useI18n();
   // Use injected result or fall back to internal hook driven by default store.
   const internal = useLogs({ store: getDefaultStore() });
   const logs = logsResult ?? internal;
@@ -274,7 +277,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
       {/* Title bar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[hsl(var(--border))] shrink-0 bg-[hsl(var(--muted)/0.4)]">
         <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
-          {"日志"}
+          {t("logs.title")}
           {entries.length > 0 && (
             <span className="ml-1.5 opacity-60">{`· ${entries.length}`}</span>
           )}
@@ -282,7 +285,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
         <button
           type="button"
           data-pi-logs-collapse-toggle
-          aria-label={expanded ? "折叠日志面板" : "展开日志面板"}
+          aria-label={expanded ? t("logs.panel.collapse") : t("logs.panel.expand")}
           aria-expanded={expanded}
           onClick={handleToggle}
           className="text-xs px-1.5 py-0.5 rounded hover:bg-[hsl(var(--accent))] opacity-60 hover:opacity-100 transition-opacity"
@@ -301,7 +304,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
             value={filters.level}
             onChange={(e) => handleLevelChange(e.target.value)}
             data-pi-logs-level-filter
-            aria-label="日志级别过滤"
+            aria-label={t("logs.filter.levelLabel")}
             className="h-7 w-24 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-transparent px-2 text-xs"
           >
             {LOG_LEVELS.map((lvl) => (
@@ -314,7 +317,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
           {/* Namespace filter */}
           <Input
             className="h-7 text-xs flex-1"
-            placeholder="namespace filter…"
+            placeholder={t("logs.filter.namespacePlaceholder")}
             value={filters.namespace}
             onChange={(e) => setFilters({ namespace: e.target.value })}
             data-pi-logs-ns-filter
@@ -323,7 +326,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
           {/* Text search */}
           <Input
             className="h-7 text-xs flex-1"
-            placeholder="search…"
+            placeholder={t("logs.filter.searchPlaceholder")}
             value={filters.text}
             onChange={(e) => setFilters({ text: e.target.value })}
             data-pi-logs-text-filter
@@ -365,7 +368,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
             onClick={handleJumpLatest}
             className="absolute bottom-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium shadow-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
           >
-            {`↓ ${unreadCount} 新日志`}
+            {t("logs.unread").replace("{count}", String(unreadCount))}
           </button>
         )}
       </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import { I18nProvider } from "@blksails/pi-web-ui";
 import { ThemeControls } from "./theme-controls";
 import { WEBEXT_IMPORT_MAP } from "@/lib/app/webext-singletons";
 import { WebextSingletonBridge } from "@/lib/app/webext-singleton-bridge";
@@ -26,11 +27,13 @@ export default function RootLayout({
       </head>
       <body>
         <WebextSingletonBridge />
-        <ThemeControls>
-          <div className="flex h-dvh w-full flex-col overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
-            {children}
-          </div>
-        </ThemeControls>
+        <I18nProvider>
+          <ThemeControls>
+            <div className="flex h-dvh w-full flex-col overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
+              {children}
+            </div>
+          </ThemeControls>
+        </I18nProvider>
       </body>
     </html>
   );

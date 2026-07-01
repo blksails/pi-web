@@ -5,8 +5,32 @@ import { en, zh, type Locale } from "./messages.js";
 
 const dictionaries: Record<Locale, Record<string, string>> = { zh, en };
 
-/** Translate function: never throws; falls back to zh, then the key itself. */
-export type TranslateFn = (key: string) => string;
+/**
+ * Translate function: never throws; falls back to zh, then the key itself.
+ * Optional `params` interpolate `{name}` placeholders in the message.
+ */
+export type TranslateFn = (
+  key: string,
+  params?: Record<string, string | number>,
+) => string;
+
+function interpolate(
+  template: string,
+  params?: Record<string, string | number>,
+): string {
+  if (params === undefined) return template;
+  return template.replace(/\{(\w+)\}/g, (m, k: string) =>
+    k in params ? String(params[k]) : m,
+  );
+}
+
+function translate(
+  locale: Locale,
+  key: string,
+  params?: Record<string, string | number>,
+): string {
+  return interpolate(dictionaries[locale][key] ?? zh[key] ?? key, params);
+}
 
 interface I18nContextValue {
   locale: Locale;
@@ -14,17 +38,19 @@ interface I18nContextValue {
   t: TranslateFn;
 }
 
-function translate(locale: Locale, key: string): string {
-  return dictionaries[locale][key] ?? zh[key] ?? key;
-}
-
 const defaultContext: I18nContextValue = {
   locale: "zh",
   setLocale: () => {},
-  t: (key: string) => translate("zh", key),
+  t: (key, params) => translate("zh", key, params),
 };
 
 const I18nContext = React.createContext<I18nContextValue>(defaultContext);
+
+const STORAGE_KEY = "pi-web.locale";
+
+function isLocale(v: unknown): v is Locale {
+  return v === "zh" || v === "en";
+}
 
 export interface I18nProviderProps {
   locale?: Locale;
@@ -35,15 +61,36 @@ export function I18nProvider({
   locale: initialLocale = "zh",
   children,
 }: I18nProviderProps): React.ReactElement {
-  const [locale, setLocale] = React.useState<Locale>(initialLocale);
+  const [locale, setLocaleState] = React.useState<Locale>(initialLocale);
+
+  // 客户端挂载后读持久化偏好(避免 SSR 水合不匹配:首帧用 initialLocale)。
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (isLocale(saved) && saved !== locale) setLocaleState(saved);
+    } catch {
+      /* localStorage 不可用时忽略 */
+    }
+    // 仅挂载时读一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setLocale = React.useCallback((l: Locale): void => {
+    setLocaleState(l);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, l);
+    } catch {
+      /* 忽略持久化失败 */
+    }
+  }, []);
 
   const value = React.useMemo<I18nContextValue>(
     () => ({
       locale,
       setLocale,
-      t: (key: string) => translate(locale, key),
+      t: (key, params) => translate(locale, key, params),
     }),
-    [locale],
+    [locale, setLocale],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

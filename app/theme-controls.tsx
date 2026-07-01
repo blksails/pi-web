@@ -5,7 +5,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ThemeProvider, type ThemeMode } from "@blksails/pi-web-ui";
+import {
+  ThemeProvider,
+  type ThemeMode,
+  useI18n,
+  useLocale,
+} from "@blksails/pi-web-ui";
 
 /**
  * 应用级主题接入:`ThemeControls` 用 @blksails/pi-web-ui 的 ThemeProvider 包裹全局并经 context
@@ -80,6 +85,7 @@ export function ThemeToggleButton({
 }: {
   readonly className?: string;
 }): React.JSX.Element | null {
+  const t = useI18n();
   const ctx = useContext(ThemeToggleContext);
   if (ctx === null) return null;
   const { isDark, toggle } = ctx;
@@ -87,8 +93,8 @@ export function ThemeToggleButton({
     <button
       type="button"
       data-pi-theme-toggle
-      aria-label={isDark ? "切换到亮色主题" : "切换到暗色主题"}
-      title={isDark ? "亮色" : "暗色"}
+      aria-label={isDark ? t("themeControls.toLight") : t("themeControls.toDark")}
+      title={isDark ? t("themeControls.light") : t("themeControls.dark")}
       onClick={toggle}
       className={
         className ??
@@ -96,6 +102,30 @@ export function ThemeToggleButton({
       }
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
+    </button>
+  );
+}
+
+/** 语言切换按钮(zh ↔ en,放在头部与主题切换并排);经 useLocale 持久化到 localStorage。 */
+export function LocaleToggleButton({
+  className,
+}: {
+  readonly className?: string;
+}): React.JSX.Element {
+  const t = useI18n();
+  const { locale, setLocale } = useLocale();
+  return (
+    <button
+      type="button"
+      data-pi-locale-toggle
+      aria-label={t("localeToggle.aria")}
+      onClick={() => setLocale(locale === "zh" ? "en" : "zh")}
+      className={
+        className ??
+        "inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+      }
+    >
+      {locale === "zh" ? "EN" : "中"}
     </button>
   );
 }

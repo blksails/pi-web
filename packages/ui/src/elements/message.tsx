@@ -22,6 +22,7 @@ import {
   type MessageActionsProps,
 } from "./message-actions.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface MessageProps {
   /** 消息角色;"user" 右对齐气泡,其它(assistant 等)左对齐裸文本 + 头像。 */
@@ -56,6 +57,7 @@ function BranchControl({
   onPrev?: () => void;
   onNext?: () => void;
 }): React.JSX.Element {
+  const t = useI18n();
   const atFirst = branch.index <= 0;
   const atLast = branch.index >= branch.total - 1;
   return (
@@ -67,20 +69,22 @@ function BranchControl({
         type="button"
         onClick={onPrev}
         disabled={atFirst}
-        aria-label="上一个版本"
+        aria-label={t("message.branch.prev")}
         className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius)] hover:bg-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:pointer-events-none disabled:opacity-50"
         data-pi-branch-prev
       >
         <ChevronLeft className="h-4 w-4" aria-hidden="true" />
       </button>
       <span data-pi-branch-indicator>
-        第 {branch.index + 1} / 共 {branch.total}
+        {t("message.branch.indicator")
+          .replace("{current}", String(branch.index + 1))
+          .replace("{total}", String(branch.total))}
       </span>
       <button
         type="button"
         onClick={onNext}
         disabled={atLast}
-        aria-label="下一个版本"
+        aria-label={t("message.branch.next")}
         className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius)] hover:bg-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:pointer-events-none disabled:opacity-50"
         data-pi-branch-next
       >
