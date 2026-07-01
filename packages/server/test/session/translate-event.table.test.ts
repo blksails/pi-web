@@ -293,15 +293,26 @@ describe("translateEvent — schema-valid frames per event", () => {
     });
   });
 
-  it("queue_update → data-pi-queue", () => {
+  it("queue_update → data-pi-queue + control:queue(双帧)", () => {
     const r = translateEvent(
       { type: "queue_update", steering: ["a"], followUp: ["b"] },
       createTranslationContext(),
     );
     expectValidFrames(r.frames);
+    // data-pi-queue(消息流)
     expect(chunkAt(r.frames)).toMatchObject({
       type: "data-pi-queue",
       data: { steering: ["a"], followUp: ["b"] },
+    });
+    // control:"queue"(旁路快照,message-queue-ui):供 control-store → usePiControls().queue
+    const controlFrame = r.frames.find(
+      (f) => (f as { payload?: { control?: string } }).payload?.control === "queue",
+    );
+    expect(controlFrame).toBeDefined();
+    expect((controlFrame as { payload: unknown }).payload).toMatchObject({
+      control: "queue",
+      steering: ["a"],
+      followUp: ["b"],
     });
   });
 
