@@ -1,5 +1,5 @@
 /**
- * SessionListPanel — 会话列表面板(sessions-list)。
+ * SessionListPanel — 会话列表面板(sessions-list + session-list-item-actions)。
  *
  * 展示历史会话并触发恢复。两类视图经 Tab 切换:「当前目录」(scope=cwd)与「全部」
  * (scope=all,系统/全机器);「全部」入口仅在 `globalEnabled` 时出现(Req 2.2/6.1)。
@@ -8,6 +8,11 @@
  * 点击经 `onResume` 回调上抛(Req 4.1),由宿主导航到 /session/:id 冷恢复并回溯 agent source。
  * 三态可见:加载中 / 空态 / 可重试错误(Req 6.2/1.3/6.3);分页经「加载更多」续取
  * (Req 3.3/3.4)。data-* 属性供 e2e 与宿主定位。
+ *
+ * 项级管理(session-list-item-actions):每项右侧 `⋯` 操作菜单(仅 `manageEnabled` 时渲染写入口,
+ * Req 6.1),提供删除(二次确认+乐观移除)/ 重命名(内联编辑+乐观改名)/ 收藏切换。已收藏且属于
+ * 当前视图的会话在顶部「收藏」分区置顶、不与普通列表重复(Req 4.3/4.4);写失败展示可见错误并回滚
+ * 乐观更新(Req 2.7/3.6/4.8);在途禁用重复触发(Req 5.2);沿用竞态守卫(Req 5.3)。
  */
 import * as React from "react";
 import type {
@@ -18,6 +23,7 @@ import type {
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
+import { SessionItemMenu, SessionRenameField } from "./session-item-menu.js";
 
 export interface SessionListPanelProps {
   /** 当前活跃会话标识;在场时「当前目录」视图以其持久化 cwd 为准(优先于 currentCwd)。 */
@@ -47,6 +53,25 @@ export interface SessionListPanelProps {
    */
   readonly pendingSession?: { readonly sessionId: string; readonly title?: string };
   readonly className?: string;
+
+  // ── 项级管理(session-list-item-actions,均可选;缺省时退化为纯只读列表)──
+  /** 写操作(删除/重命名/收藏)是否启用;false 时不渲染写入口(Req 6.1)。 */
+  readonly manageEnabled?: boolean;
+  /** 已收藏的会话标识集合(宿主权威);属于当前视图者置顶到「收藏」分区(Req 4.3/4.6)。 */
+  readonly favoriteSessionIds?: readonly string[];
+  /** 删除会话(宿主执行物理删除+导航/刷新);resolve=成功、reject=失败。 */
+  readonly onDeleteSession?: (sessionId: string) => void | Promise<void>;
+  /** 重命名会话(宿主执行写入+刷新);resolve=成功、reject=失败。 */
+  readonly onRenameSession?: (
+    sessionId: string,
+    name: string,
+  ) => void | Promise<void>;
+  /** 切换收藏(favorite=目标态;宿主读→算→写并更新 favoriteSessionIds)。 */
+  readonly onToggleFavorite?: (
+    sessionId: string,
+    favorite: boolean,
+  ) => void | Promise<void>;
+
   // 文案(默认中文)。
   readonly title?: string;
   readonly cwdTabLabel?: string;
@@ -58,6 +83,10 @@ export interface SessionListPanelProps {
   readonly loadMoreLabel?: string;
   /** 占位行标题文案(无标题的新建会话),默认「新会话」。 */
   readonly pendingSessionLabel?: string;
+  /** 收藏分区标题,默认「收藏」。 */
+  readonly favoritesSectionLabel?: string;
+  /** 管理操作失败提示,默认「操作失败」。 */
+  readonly actionErrorLabel?: string;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -84,6 +113,11 @@ export function SessionListPanel(
     pageSize,
     pendingSession,
     className,
+    manageEnabled = false,
+    favoriteSessionIds,
+    onDeleteSession,
+    onRenameSession,
+    onToggleFavorite,
   } = props;
   const title = props.title ?? t("sessionList.title");
   const cwdTabLabel = props.cwdTabLabel ?? t("sessionList.cwdTab");
@@ -95,6 +129,10 @@ export function SessionListPanel(
   const loadMoreLabel = props.loadMoreLabel ?? t("sessionList.loadMore");
   const pendingSessionLabel =
     props.pendingSessionLabel ?? t("sessionList.pendingSession");
+  const favoritesSectionLabel =
+    props.favoritesSectionLabel ?? t("sessionList.favoritesSection");
+  const actionErrorLabel =
+    props.actionErrorLabel ?? t("sessionList.actionError");
 
   const [scope, setScope] = React.useState<Scope>("cwd");
   const [items, setItems] = React.useState<ReadonlyArray<SessionListItem>>([]);
@@ -102,6 +140,17 @@ export function SessionListPanel(
     undefined,
   );
   const [status, setStatus] = React.useState<Status>("loading");
+
+  // 项级管理瞬态。
+  const [editingId, setEditingId] = React.useState<string | undefined>(undefined);
+  const [busyIds, setBusyIds] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // 在途 id 的同步集合:runAction 据此拒绝对同一项的重入(避免快速重复触发发起冲突请求,Req 5.2)。
+  const inFlightRef = React.useRef<Set<string>>(new Set());
+  const [actionError, setActionError] = React.useState<string | undefined>(
+    undefined,
+  );
 
   // 竞态守卫:仅最新一次请求可写状态(切 Tab/快速续取时丢弃过期响应)。
   const reqIdRef = React.useRef(0);
@@ -145,6 +194,68 @@ export function SessionListPanel(
     void fetchPage(scope, undefined, "reset");
   }, [scope, fetchPage, refreshSignal]);
 
+  // ── 项级管理操作 ──────────────────────────────────────────────
+  // 在途包裹:标记 busy(禁用重复触发,Req 5.2)+ 清错;失败展示可见错误(Req 2.7/3.6/4.8)。
+  const runAction = React.useCallback(
+    async (id: string, fn: () => void | Promise<void>): Promise<boolean> => {
+      // 重入拒绝:该项已有操作在途则忽略(同步 ref 判定,避免 setState 异步导致的竞态,Req 5.2)。
+      if (inFlightRef.current.has(id)) return false;
+      inFlightRef.current.add(id);
+      setBusyIds((s) => new Set(s).add(id));
+      setActionError(undefined);
+      try {
+        await fn();
+        return true;
+      } catch {
+        setActionError(actionErrorLabel);
+        return false;
+      } finally {
+        inFlightRef.current.delete(id);
+        setBusyIds((s) => {
+          const n = new Set(s);
+          n.delete(id);
+          return n;
+        });
+      }
+    },
+    [actionErrorLabel],
+  );
+
+  const handleDelete = React.useCallback(
+    (id: string): void => {
+      if (onDeleteSession === undefined) return;
+      void runAction(id, async () => {
+        await onDeleteSession(id);
+        // 乐观移除:仅在成功后从本地列表摘除(失败则保留,Req 2.4/2.7)。
+        setItems((prev) => prev.filter((i) => i.sessionId !== id));
+      });
+    },
+    [onDeleteSession, runAction],
+  );
+
+  const handleRenameSubmit = React.useCallback(
+    (id: string, name: string): void => {
+      setEditingId(undefined);
+      if (onRenameSession === undefined) return;
+      void runAction(id, async () => {
+        await onRenameSession(id, name);
+        // 乐观改名:成功后本地即时更新;失败保留原名(Req 3.3/3.6)。
+        setItems((prev) =>
+          prev.map((i) => (i.sessionId === id ? { ...i, name } : i)),
+        );
+      });
+    },
+    [onRenameSession, runAction],
+  );
+
+  const handleToggleFavorite = React.useCallback(
+    (id: string, favorite: boolean): void => {
+      if (onToggleFavorite === undefined) return;
+      void runAction(id, () => onToggleFavorite(id, favorite));
+    },
+    [onToggleFavorite, runAction],
+  );
+
   // 乐观占位:仅当占位会话 id 尚未出现在已拉取列表时渲染(去重让位)。
   const pending =
     pendingSession !== undefined &&
@@ -158,6 +269,76 @@ export function SessionListPanel(
     status === "loading" && items.length === 0 && pending === undefined;
   const isEmpty =
     status === "idle" && items.length === 0 && pending === undefined;
+
+  // 写入口仅在启用且至少一个写回调在场时渲染(Req 6.1)。收藏分区不受此门控(Req 4.9)。
+  const canManage =
+    manageEnabled &&
+    (onDeleteSession !== undefined ||
+      onRenameSession !== undefined ||
+      onToggleFavorite !== undefined);
+
+  const favoriteSet = React.useMemo(
+    () => new Set(favoriteSessionIds ?? []),
+    [favoriteSessionIds],
+  );
+  // 收藏分区 = 已收藏 ∩ 当前视图会话(失效收藏 id 因不在 items 而自然跳过,Req 4.7);
+  // 普通列表排除已收藏项,避免重复渲染(Req 4.3)。
+  const favoriteItems = items.filter((i) => favoriteSet.has(i.sessionId));
+  const normalItems = items.filter((i) => !favoriteSet.has(i.sessionId));
+
+  /** 渲染单个会话项(收藏分区与普通列表共用)。 */
+  const renderRow = (item: SessionListItem): React.ReactElement => {
+    const isActive = item.sessionId === currentSessionId;
+    const isFav = favoriteSet.has(item.sessionId);
+    const editing = editingId === item.sessionId;
+    const busy = busyIds.has(item.sessionId);
+    return (
+      <li
+        key={item.sessionId}
+        data-pi-session-list-item={item.sessionId}
+        data-pi-session-list-item-busy={busy ? "" : undefined}
+      >
+        {/* 整行可点击恢复;右侧 hover/聚焦显现 ⋯ 菜单。编辑态时标题位替换为内联输入。 */}
+        <div className="group relative flex items-center gap-0.5">
+          {editing ? (
+            <SessionRenameField
+              sessionId={item.sessionId}
+              initialValue={item.name ?? item.sessionId}
+              onSubmit={handleRenameSubmit}
+              onCancel={() => setEditingId(undefined)}
+              className="flex-1"
+            />
+          ) : (
+            <button
+              type="button"
+              data-pi-session-list-resume={item.sessionId}
+              data-active={isActive ? "" : undefined}
+              disabled={busy}
+              onClick={() => onResume(item.sessionId)}
+              title={`${formatTime(item)} · ${item.cwd}`}
+              className={cn(
+                "block min-w-0 flex-1 truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
+                isActive
+                  ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
+                  : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
+              )}
+            >
+              {item.name ?? item.sessionId}
+            </button>
+          )}
+          {canManage && !editing ? (
+            <SessionItemMenu
+              sessionId={item.sessionId}
+              isFavorite={isFav}
+              onRename={(id) => setEditingId(id)}
+              onDelete={handleDelete}
+              onToggleFavorite={handleToggleFavorite}
+            />
+          ) : null}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <div
@@ -206,6 +387,15 @@ export function SessionListPanel(
         </div>
       ) : null}
 
+      {actionError !== undefined ? (
+        <div
+          data-pi-session-list-action-error=""
+          className="mx-1 rounded-[var(--radius)] bg-[hsl(var(--destructive)/0.1)] px-2 py-1 text-xs text-[hsl(var(--destructive))]"
+        >
+          {actionError}
+        </div>
+      ) : null}
+
       <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto px-1">
         {isInitialLoading ? (
           <div
@@ -234,70 +424,61 @@ export function SessionListPanel(
             {emptyLabel}
           </div>
         ) : (
-          <ul className="flex flex-col gap-0.5">
-            {pending !== undefined ? (
-              <li
-                key={pending.sessionId}
-                data-pi-session-list-item={pending.sessionId}
-                data-pi-session-list-pending=""
-              >
-                {/* 乐观占位:新建会话即时出现,高亮为当前;真实数据到达后由上方去重让位。 */}
-                <button
-                  type="button"
-                  data-pi-session-list-resume={pending.sessionId}
-                  data-active=""
-                  onClick={() => onResume(pending.sessionId)}
-                  className="block w-full truncate rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
-                >
-                  {pending.title !== undefined && pending.title.length > 0 ? (
-                    pending.title
-                  ) : (
-                    <span className="text-[hsl(var(--muted-foreground))]">
-                      {pendingSessionLabel}
-                    </span>
-                  )}
-                </button>
-              </li>
+          <>
+            {/* 收藏分区:属于当前视图的已收藏会话置顶;无则不渲染(Req 4.3/4.4)。 */}
+            {favoriteItems.length > 0 ? (
+              <div data-pi-session-list-favorites="" className="mb-1">
+                <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+                  {favoritesSectionLabel}
+                </div>
+                <ul className="flex flex-col gap-0.5">
+                  {favoriteItems.map((item) => renderRow(item))}
+                </ul>
+              </div>
             ) : null}
-            {items.map((item) => {
-              const isActive = item.sessionId === currentSessionId;
-              return (
-                <li key={item.sessionId} data-pi-session-list-item={item.sessionId}>
-                  {/* 单行标题,整行可点击:直接重新载入该会话(经 /session/:id 冷恢复,回溯 agent
-                      source)。时间/路径不占行,移入 hover tooltip;当前会话高亮。 */}
+
+            <ul className="flex flex-col gap-0.5">
+              {pending !== undefined ? (
+                <li
+                  key={pending.sessionId}
+                  data-pi-session-list-item={pending.sessionId}
+                  data-pi-session-list-pending=""
+                >
+                  {/* 乐观占位:新建会话即时出现,高亮为当前;真实数据到达后由上方去重让位。 */}
                   <button
                     type="button"
-                    data-pi-session-list-resume={item.sessionId}
-                    data-active={isActive ? "" : undefined}
-                    onClick={() => onResume(item.sessionId)}
-                    title={`${formatTime(item)} · ${item.cwd}`}
-                    className={cn(
-                      "block w-full truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
-                      isActive
-                        ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
-                        : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
-                    )}
+                    data-pi-session-list-resume={pending.sessionId}
+                    data-active=""
+                    onClick={() => onResume(pending.sessionId)}
+                    className="block w-full truncate rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
                   >
-                    {item.name ?? item.sessionId}
+                    {pending.title !== undefined && pending.title.length > 0 ? (
+                      pending.title
+                    ) : (
+                      <span className="text-[hsl(var(--muted-foreground))]">
+                        {pendingSessionLabel}
+                      </span>
+                    )}
                   </button>
                 </li>
-              );
-            })}
-            {nextCursor !== undefined ? (
-              <li className="px-1 py-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  data-pi-session-list-load-more=""
-                  disabled={status === "loading"}
-                  onClick={() => void fetchPage(scope, nextCursor, "append")}
-                  className="w-full"
-                >
-                  {loadMoreLabel}
-                </Button>
-              </li>
-            ) : null}
-          </ul>
+              ) : null}
+              {normalItems.map((item) => renderRow(item))}
+              {nextCursor !== undefined ? (
+                <li className="px-1 py-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    data-pi-session-list-load-more=""
+                    disabled={status === "loading"}
+                    onClick={() => void fetchPage(scope, nextCursor, "append")}
+                    className="w-full"
+                  >
+                    {loadMoreLabel}
+                  </Button>
+                </li>
+              ) : null}
+            </ul>
+          </>
         )}
       </div>
     </div>

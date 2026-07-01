@@ -57,4 +57,10 @@ export {
   SessionListPanel,
   type SessionListPanelProps,
 } from "./session-list-panel.js";
+export {
+  SessionItemMenu,
+  type SessionItemMenuProps,
+  SessionRenameField,
+  type SessionRenameFieldProps,
+} from "./session-item-menu.js";
 export { LauncherRail, type LauncherRailProps } from "./launcher-rail.js";

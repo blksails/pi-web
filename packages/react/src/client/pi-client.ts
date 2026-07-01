@@ -33,6 +33,9 @@ import type {
   ListAgentSourcesResponse,
   ListFavoritesResponse,
   SetFavoritesRequest,
+  ListSessionFavoritesResponse,
+  SetSessionFavoritesRequest,
+  RenameSessionResponse,
   GetLogsResponse,
   LogLevel,
   StateSetRequest,
@@ -46,6 +49,8 @@ import {
   ListSessionsResponseSchema,
   ListAgentSourcesResponseSchema,
   ListFavoritesResponseSchema,
+  ListSessionFavoritesResponseSchema,
+  RenameSessionResponseSchema,
   GetLogsResponseSchema,
 } from "@blksails/pi-web-protocol";
 import type { LogEntry } from "@blksails/pi-web-logger";
@@ -95,6 +100,27 @@ export interface PiClient {
    * PUT /agent-sources/favorites —— 全量替换收藏集合,返回落盘后的最新集合。
    */
   setFavorites(req: SetFavoritesRequest): Promise<ListFavoritesResponse>;
+
+  /**
+   * POST /sessions/delete —— 物理删除历史会话(session-list-item-actions)。
+   * 与 `deleteSession`(DELETE /sessions/:id,仅停内存会话)语义不同:本方法删除持久化
+   * 存储中的整会话且幂等(目标不存在亦成功)。
+   */
+  deleteSessionHistory(sessionId: string): Promise<CommandAck>;
+  /**
+   * POST /sessions/rename —— 重命名历史会话,返回落库后的最新显示名(已 trim)。
+   */
+  renameSession(sessionId: string, name: string): Promise<RenameSessionResponse>;
+  /**
+   * GET /sessions/favorites —— 列出收藏的会话标识集合(按 sessionId,独立于 agent 源收藏)。
+   */
+  listSessionFavorites(): Promise<ListSessionFavoritesResponse>;
+  /**
+   * POST /sessions/favorites —— 全量替换会话收藏集合,返回落盘后的最新集合。
+   */
+  setSessionFavorites(
+    req: SetSessionFavoritesRequest,
+  ): Promise<ListSessionFavoritesResponse>;
   prompt(id: string, req: PromptRequest): Promise<CommandAck>;
   steer(id: string, req: SteerRequest): Promise<CommandAck>;
   /** follow_up 端点;请求体形状同 SteerRequest(见 protocol rest-dto)。 */
@@ -232,6 +258,20 @@ export function createPiClient(
     setFavorites: async (req) =>
       ListFavoritesResponseSchema.parse(
         await put<unknown>("/agent-sources/favorites", req),
+      ),
+    deleteSessionHistory: (sessionId) =>
+      post<CommandAck>("/sessions/delete", { sessionId }),
+    renameSession: async (sessionId, name) =>
+      RenameSessionResponseSchema.parse(
+        await post<unknown>("/sessions/rename", { sessionId, name }),
+      ),
+    listSessionFavorites: async () =>
+      ListSessionFavoritesResponseSchema.parse(
+        await get<unknown>("/sessions/favorites"),
+      ),
+    setSessionFavorites: async (req) =>
+      ListSessionFavoritesResponseSchema.parse(
+        await post<unknown>("/sessions/favorites", req),
       ),
     prompt: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/messages`, req),

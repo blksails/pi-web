@@ -48,7 +48,17 @@ vi.mock("@blksails/pi-web-react", () => ({
   usePiSession: () => fakeSession,
   usePiControls: () => fakeControls,
   useExtensionUI: () => fakeExtensionUI,
-  createPiClient: () => ({ listSessions: vi.fn() }),
+  createPiClient: () => ({
+    listSessions: vi.fn(),
+    // session-list-item-actions:chat-app 挂载时拉取会话收藏 + 管理回调。
+    listSessionFavorites: vi.fn(async () => ({ sessionIds: [] })),
+    setSessionFavorites: vi.fn(async () => ({ sessionIds: [] })),
+    deleteSessionHistory: vi.fn(async () => ({ ok: true })),
+    renameSession: vi.fn(async (id: string, name: string) => ({
+      sessionId: id,
+      name,
+    })),
+  }),
   // 统一命令层:chat-app 构造自有 ui-rpc 总线 + 命令执行(mock 为惰性接缝)。
   createUiRpcBus: () => ({ request: vi.fn(), dispose: vi.fn() }),
   executeHostCommand: vi.fn(async () => ({ ok: true })),

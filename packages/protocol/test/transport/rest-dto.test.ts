@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   CreateSessionRequestSchema,
+  DeleteSessionRequestSchema,
   ForkRequestSchema,
   ForkResponseSchema,
   GetAvailableModelsResponseSchema,
   GetForkMessagesResponseSchema,
   GetStateResponseSchema,
+  ListSessionFavoritesResponseSchema,
   PromptRequestSchema,
+  RenameSessionRequestSchema,
+  RenameSessionResponseSchema,
+  SESSION_NAME_MAX_LENGTH,
   SetModelRequestSchema,
+  SetSessionFavoritesRequestSchema,
   SetThinkingRequestSchema,
   UiResponseRequestSchema,
 } from "../../src/transport/rest-dto.js";
@@ -166,5 +172,95 @@ describe("GetForkMessagesResponseSchema (对齐 get_fork_messages)", () => {
     if (!res.success) {
       expect(res.error.issues.some((i) => i.path.includes("text"))).toBe(true);
     }
+  });
+});
+
+describe("DeleteSessionRequestSchema (session-list-item-actions)", () => {
+  it("parses { sessionId }", () => {
+    expect(DeleteSessionRequestSchema.parse({ sessionId: "s1" }).sessionId).toBe(
+      "s1",
+    );
+  });
+  it("rejects empty / missing sessionId", () => {
+    expect(DeleteSessionRequestSchema.safeParse({ sessionId: "" }).success).toBe(
+      false,
+    );
+    expect(DeleteSessionRequestSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("RenameSessionRequestSchema (session-list-item-actions)", () => {
+  it("parses { sessionId, name }", () => {
+    expect(
+      RenameSessionRequestSchema.parse({ sessionId: "s1", name: "My Chat" }),
+    ).toEqual({ sessionId: "s1", name: "My Chat" });
+  });
+  it("rejects blank (whitespace-only) name", () => {
+    const res = RenameSessionRequestSchema.safeParse({
+      sessionId: "s1",
+      name: "   ",
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues.some((i) => i.path.includes("name"))).toBe(true);
+    }
+  });
+  it("rejects empty name and missing sessionId", () => {
+    expect(
+      RenameSessionRequestSchema.safeParse({ sessionId: "s1", name: "" }).success,
+    ).toBe(false);
+    expect(
+      RenameSessionRequestSchema.safeParse({ name: "x" }).success,
+    ).toBe(false);
+  });
+  it("rejects name exceeding max length", () => {
+    const res = RenameSessionRequestSchema.safeParse({
+      sessionId: "s1",
+      name: "a".repeat(SESSION_NAME_MAX_LENGTH + 1),
+    });
+    expect(res.success).toBe(false);
+  });
+  it("accepts name at exactly max length", () => {
+    expect(
+      RenameSessionRequestSchema.safeParse({
+        sessionId: "s1",
+        name: "a".repeat(SESSION_NAME_MAX_LENGTH),
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("RenameSessionResponseSchema (session-list-item-actions)", () => {
+  it("parses { sessionId, name }", () => {
+    expect(
+      RenameSessionResponseSchema.parse({ sessionId: "s1", name: "n" }),
+    ).toEqual({ sessionId: "s1", name: "n" });
+  });
+});
+
+describe("session favorites DTOs (session-list-item-actions)", () => {
+  it("parses ListSessionFavoritesResponse { sessionIds }", () => {
+    expect(
+      ListSessionFavoritesResponseSchema.parse({ sessionIds: ["a", "b"] })
+        .sessionIds,
+    ).toEqual(["a", "b"]);
+  });
+  it("parses empty sessionIds list", () => {
+    expect(
+      ListSessionFavoritesResponseSchema.parse({ sessionIds: [] }).sessionIds,
+    ).toEqual([]);
+  });
+  it("parses SetSessionFavoritesRequest { sessionIds }", () => {
+    expect(
+      SetSessionFavoritesRequestSchema.parse({ sessionIds: ["x"] }).sessionIds,
+    ).toEqual(["x"]);
+  });
+  it("rejects when sessionIds is not an array of strings", () => {
+    expect(
+      SetSessionFavoritesRequestSchema.safeParse({ sessionIds: [1, 2] }).success,
+    ).toBe(false);
+    expect(
+      SetSessionFavoritesRequestSchema.safeParse({ sessionIds: "a" }).success,
+    ).toBe(false);
   });
 });

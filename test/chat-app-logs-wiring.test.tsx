@@ -40,7 +40,16 @@ vi.mock("@blksails/pi-web-react", () => ({
   usePiSession: () => fakeSession,
   usePiControls: () => ({ kind: "controls" }),
   useExtensionUI: () => ({ kind: "extension-ui" }),
-  createPiClient: () => ({ listSessions: vi.fn() }),
+  createPiClient: () => ({
+    listSessions: vi.fn(),
+    listSessionFavorites: vi.fn(async () => ({ sessionIds: [] })),
+    setSessionFavorites: vi.fn(async () => ({ sessionIds: [] })),
+    deleteSessionHistory: vi.fn(async () => ({ ok: true })),
+    renameSession: vi.fn(async (id: string, name: string) => ({
+      sessionId: id,
+      name,
+    })),
+  }),
 }));
 
 // Helper to stub /api/config/logging fetch response.

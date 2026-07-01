@@ -32,6 +32,7 @@ import {
   createAttachmentRoutes,
   createBashRoutes,
   createSessionListRoutes,
+  createSessionActionsRoutes,
   createAgentSourcesRoutes,
   createFavoritesRoutes,
   createExtensionRoutes,
@@ -458,6 +459,18 @@ function buildSingleton(): HandlerSingleton {
           process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
           process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
         defaultCwd: config.defaultCwd,
+      }),
+      // 会话项管理(session-list-item-actions):POST /sessions/{delete,rename}、GET/POST
+      // /sessions/favorites。全部无 :id 路径参数(sessionId 走 body),绕过 Router 对内存会话
+      // 的存在性门控,可作用于历史会话。写操作(删除/重命名/收藏)经 NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE
+      // 门控,默认启用;=false/=0 时写端点 403、不触达存储(同名 NEXT_PUBLIC_ 前端亦读取以隐藏写入口)。
+      // 会话收藏偏好落 <agentDir>/session-favorites.json(独立于 agent-source 收藏)。
+      ...createSessionActionsRoutes({
+        storeConfig: sessionStoreConfigFromEnv(),
+        agentDir: config.agentDir,
+        manageEnabled:
+          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
+          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
       }),
       // agent source 列表(agent-sources-list):GET /agent-sources 只读枚举端点。数据来源
       // 为「目录扫描 ∪ 注册表文件」:PI_WEB_SOURCES_ROOT(path.delimiter 分隔多个,相对以
