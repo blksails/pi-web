@@ -8,6 +8,7 @@
 import * as React from "react";
 import { Copy, Check, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useIcon } from "../customization/icons.js";
+import { useI18n } from "../i18n/index.js";
 import { cn } from "../lib/cn.js";
 
 export interface MessageActionsProps {
@@ -26,6 +27,7 @@ export function MessageActions({
   onFeedback,
   className,
 }: MessageActionsProps): React.JSX.Element {
+  const t = useI18n();
   const CopyIcon = useIcon("copy", Copy);
   const CopiedIcon = useIcon("copied", Check);
   const ThumbUpIcon = useIcon("thumbUp", ThumbsUp);
@@ -61,7 +63,7 @@ export function MessageActions({
         type="button"
         onClick={handleCopy}
         disabled={copyText === undefined}
-        aria-label="复制"
+        aria-label={t("messageActions.copy")}
         className={ACTION_BTN}
         data-pi-message-copy
       >
@@ -74,7 +76,7 @@ export function MessageActions({
       <button
         type="button"
         onClick={() => pick("up")}
-        aria-label="赞"
+        aria-label={t("messageActions.like")}
         aria-pressed={feedback === "up"}
         className={cn(
           ACTION_BTN,
@@ -87,7 +89,7 @@ export function MessageActions({
       <button
         type="button"
         onClick={() => pick("down")}
-        aria-label="踩"
+        aria-label={t("messageActions.dislike")}
         aria-pressed={feedback === "down"}
         className={cn(
           ACTION_BTN,

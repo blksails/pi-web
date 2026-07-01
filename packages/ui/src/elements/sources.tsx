@@ -13,6 +13,7 @@
 import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 /** 单条引用来源的最小展示形状(展示元件不依赖 pi 协议)。 */
 export interface Source {
@@ -34,6 +35,7 @@ export function Sources({
   defaultOpen = false,
   className,
 }: SourcesProps): React.JSX.Element | null {
+  const t = useI18n();
   const [open, setOpen] = React.useState<boolean>(defaultOpen);
   const contentId = React.useId();
 
@@ -62,7 +64,7 @@ export function Sources({
         ) : (
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         )}
-        <span>Sources</span>
+        <span>{t("sources.title")}</span>
         <span className="ml-1 rounded-full bg-[hsl(var(--background))] px-1.5 text-xs">
           {sources.length}
         </span>
@@ -75,7 +77,7 @@ export function Sources({
         >
           {sources.map((source, index) => {
             const key = source.id ?? source.url ?? `source-${index}`;
-            const label = source.title ?? source.url ?? "Untitled source";
+            const label = source.title ?? source.url ?? t("sources.untitled");
             return (
               <li key={key}>
                 {source.url !== undefined ? (

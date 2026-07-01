@@ -13,6 +13,7 @@ import * as React from "react";
 import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
 import type { ModelGroup, ModelSelection } from "@blksails/pi-web-react";
 import { useIcon } from "../customization/icons.js";
+import { useI18n } from "../i18n/index.js";
 import { Button } from "../ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
 import {
@@ -81,13 +82,18 @@ export function ModelSelector({
   available,
   onSelect,
   onOpen,
-  triggerLabel = "模型",
-  searchPlaceholder = "搜索模型…",
-  emptyLabel = "无匹配模型",
+  triggerLabel: triggerLabelProp,
+  searchPlaceholder: searchPlaceholderProp,
+  emptyLabel: emptyLabelProp,
   disabled,
   busy,
   className,
 }: ModelSelectorProps): React.JSX.Element | null {
+  const t = useI18n();
+  const triggerLabel = triggerLabelProp ?? t("modelSelector.triggerLabel");
+  const searchPlaceholder =
+    searchPlaceholderProp ?? t("modelSelector.searchPlaceholder");
+  const emptyLabel = emptyLabelProp ?? t("modelSelector.empty");
   const [open, setOpen] = React.useState(false);
 
   const ModelIcon = useIcon("model", ChevronsUpDown);

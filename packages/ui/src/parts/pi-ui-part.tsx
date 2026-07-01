@@ -16,6 +16,7 @@ import type { DataPartRenderer } from "../registry/renderer-registry.js";
 import { defaultUiComponentRegistry } from "../components/ui-component-registry.js";
 import { registerBuiltinUiComponents } from "../components/builtin-components.js";
 import { SandboxRenderer } from "../components/sandbox-renderer.js";
+import { useI18n } from "../i18n/index.js";
 
 // 副作用:内置组件 seed(幂等,覆盖语义)。PiUiPart 被 pi-chat 引用,故不被 tree-shake。
 registerBuiltinUiComponents(defaultUiComponentRegistry);
@@ -33,10 +34,11 @@ function UiFallback({ message }: { readonly message: string }): React.JSX.Elemen
 }
 
 export const PiUiPart: DataPartRenderer = ({ part }) => {
+  const t = useI18n();
   const data = "data" in part ? part.data : undefined;
   const parsed = UiSpecSchema.safeParse(data);
   if (!parsed.success) {
-    return <UiFallback message="无法解析 UI 规格(data-pi-ui)" />;
+    return <UiFallback message={t("piUi.parseError")} />;
   }
   const spec = parsed.data;
 
@@ -45,7 +47,12 @@ export const PiUiPart: DataPartRenderer = ({ part }) => {
     const Comp = defaultUiComponentRegistry.resolveUiComponent(spec.component);
     body =
       Comp === undefined ? (
-        <UiFallback message={`未注册的内置组件:${spec.component}`} />
+        <UiFallback
+          message={t("piUi.unregisteredComponent").replace(
+            "{component}",
+            spec.component,
+          )}
+        />
       ) : (
         <Comp props={spec.props ?? {}} />
       );

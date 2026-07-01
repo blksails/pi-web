@@ -23,6 +23,8 @@ import type {
 import { Card } from "../ui/card.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
+import type { TranslateFn } from "../i18n/index.js";
 
 export interface PiInteractionProps {
   readonly extensionUI: UseExtensionUIResult;
@@ -68,6 +70,7 @@ export function PiInteraction({
   extensionUI,
   className,
 }: PiInteractionProps): React.JSX.Element | null {
+  const t = useI18n();
   const [resolved, setResolved] = React.useState<ResolvedInteraction[]>([]);
   const [localError, setLocalError] = React.useState<string | undefined>(
     undefined,
@@ -143,12 +146,14 @@ export function PiInteraction({
     <div
       data-pi-interaction
       role="group"
-      aria-label="扩展交互"
+      aria-label={t("piInteraction.groupLabel")}
       className={cn("flex flex-col gap-2", className)}
     >
       {/* sr-only 实时播报区:active 标题变化时以非打断优先级播报新交互请求(Req 5.1)。 */}
       <div className="sr-only" aria-live="polite" data-pi-interaction-live>
-        {active !== undefined ? `交互请求：${active.title}` : ""}
+        {active !== undefined
+          ? t("piInteraction.requestAnnounce").replace("{title}", active.title)
+          : ""}
       </div>
 
       {resolved.map((item) => (
@@ -176,8 +181,9 @@ function ResolvedCard({
 }: {
   readonly item: ResolvedInteraction;
 }): React.JSX.Element {
+  const t = useI18n();
   const { request, outcome } = item;
-  const { label, icon } = resolvedLabel(outcome);
+  const { label, icon } = resolvedLabel(outcome, t);
   return (
     <Card
       className="flex flex-col gap-1 px-3 py-2 text-sm opacity-80"
@@ -202,33 +208,48 @@ function ResolvedCard({
 }
 
 /** 终态文案 + 图标(Req 3.2–3.6)。 */
-function resolvedLabel(outcome: InteractionOutcome): {
+function resolvedLabel(
+  outcome: InteractionOutcome,
+  t: TranslateFn,
+): {
   label: string;
   icon: React.JSX.Element;
 } {
   if (outcome.kind === "confirm") {
     return outcome.confirmed
-      ? { label: "已批准", icon: <Check className="h-4 w-4" aria-hidden="true" /> }
-      : { label: "已拒绝", icon: <X className="h-4 w-4" aria-hidden="true" /> };
+      ? {
+          label: t("piInteraction.approved"),
+          icon: <Check className="h-4 w-4" aria-hidden="true" />,
+        }
+      : {
+          label: t("piInteraction.rejected"),
+          icon: <X className="h-4 w-4" aria-hidden="true" />,
+        };
   }
   if (outcome.kind === "cancelled") {
-    return { label: "已取消", icon: <Ban className="h-4 w-4" aria-hidden="true" /> };
+    return {
+      label: t("piInteraction.cancelled"),
+      icon: <Ban className="h-4 w-4" aria-hidden="true" />,
+    };
   }
   // value
   if (outcome.method === "select") {
     return {
-      label: `已选择：${outcome.value}`,
+      label: t("piInteraction.selected").replace("{value}", outcome.value),
       icon: <Check className="h-4 w-4" aria-hidden="true" />,
     };
   }
   if (outcome.method === "input") {
     return {
-      label: `已提交：${outcome.value}`,
+      label: t("piInteraction.submittedValue").replace("{value}", outcome.value),
       icon: <Check className="h-4 w-4" aria-hidden="true" />,
     };
   }
   // editor:正文折叠展示,标签仅示已提交
-  return { label: "已提交", icon: <Check className="h-4 w-4" aria-hidden="true" /> };
+  return {
+    label: t("piInteraction.submitted"),
+    icon: <Check className="h-4 w-4" aria-hidden="true" />,
+  };
 }
 
 /** 可应答 active 卡:按 method 渲染表单 + 提交/取消;挂载时聚焦首动作并滚动可见。 */
@@ -247,6 +268,7 @@ function ActiveCard({
   readonly onValue: (method: "select" | "input" | "editor", value: string) => void;
   readonly onCancel: () => void;
 }): React.JSX.Element {
+  const t = useI18n();
   const [text, setText] = React.useState<string>(
     request.method === "editor" ? (request.prefill ?? "") : "",
   );
@@ -354,7 +376,7 @@ function ActiveCard({
               disabled={pending}
               data-pi-confirm-ok
             >
-              批准
+              {t("piInteraction.approveButton")}
             </Button>
             <Button
               variant="outline"
@@ -362,7 +384,7 @@ function ActiveCard({
               disabled={pending}
               data-pi-confirm-cancel
             >
-              拒绝
+              {t("piInteraction.rejectButton")}
             </Button>
           </>
         ) : (
@@ -382,7 +404,7 @@ function ActiveCard({
               disabled={pending}
               data-pi-interaction-submit
             >
-              提交
+              {t("piInteraction.submitButton")}
             </Button>
             <Button
               variant="outline"
@@ -390,7 +412,7 @@ function ActiveCard({
               disabled={pending}
               data-pi-interaction-cancel
             >
-              取消
+              {t("piInteraction.cancelButton")}
             </Button>
           </>
         )}

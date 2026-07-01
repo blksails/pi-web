@@ -19,6 +19,7 @@ import { Mic } from "lucide-react";
 import { useIcon } from "../customization/icons.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 /** 单条识别候选(最小视图)。 */
 interface SpeechRecognitionAlternative {
@@ -92,11 +93,15 @@ export interface SpeechInputProps {
 export function SpeechInput({
   onTranscript,
   lang,
-  label = "语音输入",
-  unsupportedHint = "当前浏览器不支持语音输入",
-  deniedHint = "麦克风权限被拒绝,语音输入不可用",
+  label: labelProp,
+  unsupportedHint: unsupportedHintProp,
+  deniedHint: deniedHintProp,
   className,
 }: SpeechInputProps): React.JSX.Element | null {
+  const t = useI18n();
+  const label = labelProp ?? t("speechInput.label");
+  const unsupportedHint = unsupportedHintProp ?? t("speechInput.unsupportedHint");
+  const deniedHint = deniedHintProp ?? t("speechInput.deniedHint");
   // feature-detect 仅需一次;构造器引用在组件生命周期内稳定。
   const ctorRef = React.useRef<SpeechRecognitionConstructor | undefined>(
     undefined,

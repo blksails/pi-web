@@ -15,6 +15,7 @@ import * as React from "react";
 import { type ChatStatus } from "ai";
 import { ArrowUp, Square, RotateCcw } from "lucide-react";
 import { useIcon } from "../customization/icons.js";
+import { useI18n } from "../i18n/index.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -39,11 +40,15 @@ export function SubmitButton({
   canSubmit,
   onSubmit,
   onStop,
-  submitLabel = "发送",
-  stopLabel = "停止生成",
-  retryLabel = "出错,重试发送",
+  submitLabel,
+  stopLabel,
+  retryLabel,
   className,
 }: SubmitButtonProps): React.JSX.Element {
+  const t = useI18n();
+  const resolvedSubmitLabel = submitLabel ?? t("submitButton.send");
+  const resolvedStopLabel = stopLabel ?? t("submitButton.stop");
+  const resolvedRetryLabel = retryLabel ?? t("submitButton.retry");
   const isBusy = status === "submitted" || status === "streaming";
   const isError = status === "error";
 
@@ -57,7 +62,7 @@ export function SubmitButton({
         type="button"
         variant="secondary"
         size="icon"
-        aria-label={stopLabel}
+        aria-label={resolvedStopLabel}
         onClick={onStop}
         className={cn("rounded-full", className)}
         data-pi-submit-state="stop"
@@ -67,7 +72,7 @@ export function SubmitButton({
     );
   }
 
-  const label = isError ? retryLabel : submitLabel;
+  const label = isError ? resolvedRetryLabel : resolvedSubmitLabel;
 
   return (
     <Button

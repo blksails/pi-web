@@ -10,6 +10,7 @@ import * as React from "react";
 import type { UsePiControlsResult } from "@blksails/pi-web-react";
 import type { ModelGroup } from "@blksails/pi-web-react";
 import { ModelSelector } from "../elements/model-selector.js";
+import { useI18n } from "../i18n/index.js";
 import { cn } from "../lib/cn.js";
 
 export interface PiModelOption {
@@ -51,6 +52,7 @@ export function PiModelSelector({
   models = [],
   className,
 }: PiModelSelectorProps): React.JSX.Element {
+  const t = useI18n();
   const op = controls.state.setModel;
   const errorMsg =
     op.error === undefined || op.error === null
@@ -74,7 +76,7 @@ export function PiModelSelector({
         current={undefined}
         available
         onSelect={onSelect}
-        triggerLabel="Select model"
+        triggerLabel={t("modelSelector.selectPlaceholder")}
         busy={op.pending}
         disabled={op.pending}
       />

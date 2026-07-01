@@ -13,6 +13,7 @@ import type { FieldProps } from "../field-registry.js";
 import { Input } from "../../ui/input.js";
 import { Button } from "../../ui/button.js";
 import { FieldShell } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 function asNamespaceRecord(value: unknown): Record<string, boolean> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
@@ -29,6 +30,7 @@ export function NamespaceTogglesField({
   onChange,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const record = asNamespaceRecord(value);
   const entries = Object.entries(record);
   const [newNs, setNewNs] = React.useState("");
@@ -54,7 +56,7 @@ export function NamespaceTogglesField({
     <FieldShell descriptor={descriptor}>
       <div className="flex flex-col gap-2" data-pi-ns-toggles>
         {entries.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无命名空间（全部默认）</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.namespaceToggles.empty")}</p>
         ) : null}
         {entries.map(([ns, enabled]) => (
           <div
@@ -80,7 +82,7 @@ export function NamespaceTogglesField({
               disabled={disabled}
               onClick={() => remove(ns)}
             >
-              删
+              {t("config.namespaceToggles.remove")}
             </Button>
           </div>
         ))}
@@ -88,7 +90,7 @@ export function NamespaceTogglesField({
           <Input
             type="text"
             value={newNs}
-            placeholder="添加命名空间（如 agent:tool）"
+            placeholder={t("config.namespaceToggles.addPlaceholder")}
             disabled={disabled}
             onChange={(e) => setNewNs(e.target.value)}
             onKeyDown={(e) => {
@@ -105,7 +107,7 @@ export function NamespaceTogglesField({
             disabled={disabled}
             onClick={addNs}
           >
-            添加
+            {t("config.namespaceToggles.add")}
           </Button>
         </div>
       </div>

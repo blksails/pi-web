@@ -11,6 +11,7 @@ import { Card } from "../../ui/card.js";
 import { Button } from "../../ui/button.js";
 import { Input } from "../../ui/input.js";
 import { FieldShell } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 function asRecord(value: unknown): Record<string, Record<string, unknown>> {
   if (typeof value !== "object" || value === null) return {};
@@ -26,6 +27,7 @@ export function RecordField({
   disabled,
   registry,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const record = asRecord(value);
   // 已删除条目以 null 标记保留在值中(显式删除意图),不渲染。
   const entries = Object.entries(record).filter(([, v]) => v !== null);
@@ -55,7 +57,7 @@ export function RecordField({
     <FieldShell descriptor={descriptor}>
       <div className="flex flex-col gap-3">
         {entries.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无条目</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.record.empty")}</p>
         ) : null}
 
         {entries.map(([entryKey, entryValue]) => (
@@ -69,12 +71,12 @@ export function RecordField({
                 disabled={disabled}
                 onClick={() => removeEntry(entryKey)}
               >
-                删除
+                {t("common.remove")}
               </Button>
             </div>
             {scalarKind !== undefined ? (
               <FieldRenderer
-                descriptor={{ key: entryKey, kind: scalarKind, label: "值", required: false }}
+                descriptor={{ key: entryKey, kind: scalarKind, label: t("config.record.valueLabel"), required: false }}
                 value={entryValue}
                 onChange={(next: unknown) => setEntry(entryKey, next)}
                 path={[...path, entryKey]}
@@ -105,7 +107,7 @@ export function RecordField({
           <Input
             type="text"
             value={newKey}
-            placeholder="新增条目键(如 anthropic)"
+            placeholder={t("config.record.newKeyPlaceholder")}
             disabled={disabled}
             onChange={(e) => setNewKey(e.target.value)}
             onKeyDown={(e) => {
@@ -116,7 +118,7 @@ export function RecordField({
             }}
           />
           <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addEntry}>
-            添加
+            {t("common.add")}
           </Button>
         </div>
       </div>

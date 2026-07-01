@@ -13,6 +13,7 @@ import type { FieldProps, FieldRegistry } from "../field-registry.js";
 import { SchemaForm } from "../schema-form.js";
 import { Card } from "../../ui/card.js";
 import { FieldShell } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 function asFiles(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
@@ -72,6 +73,7 @@ function RawJsonEditor({
   readonly onChange: (next: unknown) => void;
   readonly disabled?: boolean;
 }): React.JSX.Element {
+  const t = useI18n();
   const [text, setText] = React.useState<string>(() => JSON.stringify(content ?? {}, null, 2));
   const [error, setError] = React.useState<string | undefined>(undefined);
   return (
@@ -90,7 +92,7 @@ function RawJsonEditor({
             setError(undefined);
             onChange(parsed);
           } catch {
-            setError("JSON 格式错误,未保存改动");
+            setError(t("config.configFiles.jsonError"));
           }
         }}
         className="w-full rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2 font-mono text-xs"
@@ -120,6 +122,7 @@ function FileEditor({
   /** ①③ 服务端已解析的原始 JSON Schema(优先于内联 $schema,免远端拉取)。 */
   readonly providedSchema?: unknown;
 }): React.JSX.Element {
+  const t = useI18n();
   const owner = ownerFromSchema(content);
   // 服务端结果优先:同步转 IR,不发网络;此时不再走内联 $schema 远端路径。
   const provided = React.useMemo<FormSchema | undefined>(
@@ -157,7 +160,7 @@ function FileEditor({
         ) : null}
       </div>
       {schema === undefined ? (
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">加载 schema…</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.configFiles.loadingSchema")}</p>
       ) : schema !== null ? (
         <SchemaForm
           formSchema={schema}
@@ -181,6 +184,7 @@ export function ConfigFilesField({
   registry,
   fileSchemas,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const files = asFiles(value);
   const entries = Object.entries(files);
 
@@ -188,7 +192,7 @@ export function ConfigFilesField({
     <FieldShell descriptor={descriptor}>
       <div className="flex flex-col gap-3">
         {entries.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无独立配置文件</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.configFiles.empty")}</p>
         ) : null}
         {entries.map(([name, content]) => (
           <FileEditor

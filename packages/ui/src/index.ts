@@ -177,3 +177,6 @@ export {
   createContributionsController,
   type ContributionsController,
 } from "./web-ext/contributions-controller.js";
+
+// i18n(轻量自研 i18n 运行时:零第三方依赖,isomorphic)
+export * from "./i18n/index.js";

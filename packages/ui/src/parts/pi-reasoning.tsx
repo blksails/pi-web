@@ -11,6 +11,7 @@ import * as React from "react";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { UIMessage } from "ai";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 type AnyPart = UIMessage["parts"][number];
 export type ReasoningPart = Extract<AnyPart, { type: "reasoning" }>;
@@ -38,6 +39,7 @@ export function PiReasoning({
   streamingAutoOpen = false,
   getThinkingMessage,
 }: PiReasoningProps): React.JSX.Element {
+  const t = useI18n();
   const streaming = part.state === "streaming";
   const [open, setOpen] = React.useState<boolean>(defaultOpen);
   const [durationSec, setDurationSec] = React.useState<number | undefined>(
@@ -66,7 +68,7 @@ export function PiReasoning({
 
   const label = getThinkingMessage
     ? getThinkingMessage(streaming, durationSec)
-    : "Reasoning";
+    : t("reasoning.label");
 
   return (
     <div
@@ -92,7 +94,7 @@ export function PiReasoning({
         {streaming ? (
           <Loader2
             className="ml-auto h-3.5 w-3.5 animate-spin"
-            aria-label="Thinking"
+            aria-label={t("reasoning.thinking")}
             role="status"
           />
         ) : null}

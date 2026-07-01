@@ -15,6 +15,7 @@
  */
 import * as React from "react";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 /** SSR 安全的 layout effect:服务端退化为 useEffect,避免 useLayoutEffect 警告。 */
 const useIsomorphicLayoutEffect =
@@ -86,11 +87,11 @@ export function PromptInput({
   value,
   onChange,
   onSubmit,
-  placeholder = "输入消息…",
+  placeholder,
   disabled = false,
   rows = 2,
   maxRows = 10,
-  textareaLabel = "消息输入",
+  textareaLabel,
   toolbar,
   leftSlot,
   rightSlot,
@@ -104,10 +105,14 @@ export function PromptInput({
   onSelectionChange,
   mode,
 }: PromptInputProps): React.JSX.Element {
+  const t = useI18n();
   const canSubmit = !disabled && !isBlank(value);
+  const effectiveTextareaLabel = textareaLabel ?? t("promptInput.textareaLabel");
   // bash 模式时占位符切换为 shell 提示(Req 6.1)。
   const effectivePlaceholder =
-    mode !== undefined ? "运行 shell 命令…" : placeholder;
+    mode !== undefined
+      ? t("promptInput.bashPlaceholder")
+      : (placeholder ?? t("promptInput.placeholder"));
   const hasGhost =
     ghostSuffix !== undefined &&
     ghostSuffix.length > 0 &&
@@ -200,10 +205,10 @@ export function PromptInput({
           data-pi-bash-badge
         >
           <span className="rounded bg-[hsl(var(--primary))] px-1.5 py-0.5 text-[hsl(var(--primary-foreground))]">
-            BASH
+            {t("promptInput.bashBadge")}
           </span>
           {mode === "bash-no-context" ? (
-            <span className="text-[hsl(var(--muted-foreground))]">· no context</span>
+            <span className="text-[hsl(var(--muted-foreground))]">{t("promptInput.bashNoContext")}</span>
           ) : null}
         </div>
       ) : null}
@@ -238,7 +243,7 @@ export function PromptInput({
           ) : null}
           <textarea
             ref={setTextareaRef}
-            aria-label={textareaLabel}
+            aria-label={effectiveTextareaLabel}
             value={value}
             disabled={disabled}
             rows={rows}

@@ -20,6 +20,7 @@ import {
 } from "./use-completion.js";
 import { flattenSelectable, isSelectable, nextActiveIndex } from "./nav.js";
 import { useCaretAnchor } from "./use-caret-anchor.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface PiCompletionPopoverProps {
   readonly value: string;
@@ -46,6 +47,7 @@ export function PiCompletionPopover({
   excludeTriggers,
   className,
 }: PiCompletionPopoverProps): React.JSX.Element | null {
+  const t = useI18n();
   const { open, groups, activeToken, accept } = useCompletion({
     client,
     sessionId,
@@ -164,7 +166,7 @@ export function PiCompletionPopover({
       <ul
         role="listbox"
         id={listId}
-        aria-label="Completions"
+        aria-label={t("completion.aria.completions")}
         aria-activedescendant={activeId}
         tabIndex={-1}
         className="max-h-64 overflow-y-auto p-1"

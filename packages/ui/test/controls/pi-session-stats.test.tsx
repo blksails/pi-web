@@ -6,7 +6,7 @@ import { mockControls, sampleStats } from "../fixtures/mock-session.js";
 describe("PiSessionStats", () => {
   it("无 stats 时显示空态", () => {
     render(<PiSessionStats controls={mockControls()} />);
-    expect(screen.getByText(/no stats/i)).toBeInTheDocument();
+    expect(screen.getByText(/暂无统计/)).toBeInTheDocument();
   });
 
   it("展示用量与成本统计", () => {

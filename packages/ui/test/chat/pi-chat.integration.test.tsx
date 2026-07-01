@@ -419,7 +419,8 @@ describe("PiChat 富交互(mock hooks)", () => {
       screen.queryByRole("button", { name: /Reasoning/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Sources/ }),
+      // i18n 默认 zh:sources.title = 「来源」。
+      screen.queryByRole("button", { name: /来源/ }),
     ).not.toBeInTheDocument();
   });
 
@@ -460,7 +461,8 @@ describe("PiChat 富交互(mock hooks)", () => {
     rerender(<PiChat session={fakeSession()} registry={registry} />);
 
     // 折叠头出现且默认折叠(Req 9.3);来源数=2。
-    const srcToggle = screen.getByRole("button", { name: /Sources/ });
+    // i18n 默认 locale=zh:sources.title 渲染为「来源」(见 i18n/messages.ts)。
+    const srcToggle = screen.getByRole("button", { name: /来源/ });
     expect(srcToggle).toHaveAttribute("aria-expanded", "false");
     expect(srcToggle).toHaveTextContent("2");
     // 默认折叠:链接不可见。

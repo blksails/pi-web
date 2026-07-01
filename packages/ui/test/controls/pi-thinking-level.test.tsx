@@ -8,7 +8,7 @@ describe("PiThinkingLevel", () => {
   it("渲染思考等级选择器", () => {
     render(<PiThinkingLevel controls={mockControls()} />);
     expect(
-      screen.getByRole("combobox", { name: /select thinking level/i }),
+      screen.getByRole("combobox", { name: /选择思考等级/ }),
     ).toBeInTheDocument();
   });
 
@@ -17,7 +17,7 @@ describe("PiThinkingLevel", () => {
     const controls = mockControls();
     render(<PiThinkingLevel controls={controls} />);
     await user.click(
-      screen.getByRole("combobox", { name: /select thinking level/i }),
+      screen.getByRole("combobox", { name: /选择思考等级/ }),
     );
     await user.click(await screen.findByText("high"));
     expect(controls.setThinking).toHaveBeenCalledWith({ level: "high" });

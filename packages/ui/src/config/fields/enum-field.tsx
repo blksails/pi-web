@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "../../ui/select.js";
 import { FieldShell, errorAt } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 export function EnumField({
   descriptor,
@@ -20,6 +21,7 @@ export function EnumField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const id = React.useId();
   const error = errorAt(errors, path);
   const options = descriptor.enumOptions ?? [];
@@ -35,7 +37,7 @@ export function EnumField({
         onValueChange={(v) => onChange(v)}
       >
         <SelectTrigger id={id} aria-invalid={error !== undefined}>
-          <SelectValue placeholder={descriptor.placeholder ?? "请选择…"} />
+          <SelectValue placeholder={descriptor.placeholder ?? t("common.selectPlaceholder")} />
         </SelectTrigger>
         <SelectContent>
           {options.map((opt) => (

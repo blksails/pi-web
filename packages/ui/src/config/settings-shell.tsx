@@ -15,6 +15,7 @@ import { SchemaForm } from "./schema-form.js";
 import type { FieldRegistry } from "./field-registry.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface SettingsShellProps {
   readonly registry?: SettingsRegistry;
@@ -62,6 +63,7 @@ export function SettingsShell({
   fieldRegistry,
   className,
 }: SettingsShellProps): React.JSX.Element {
+  const t = useI18n();
   const groups = buildGroups(registry.listPanels());
   const [activeGroupId, setActiveGroupId] = React.useState<string | undefined>(
     groups[0]?.id,
@@ -78,7 +80,7 @@ export function SettingsShell({
   if (activeGroup === undefined || activePanel === undefined) {
     return (
       <div className={cn("p-6 text-sm text-[hsl(var(--muted-foreground))]", className)}>
-        无可用设置面板
+        {t("config.settings.noPanels")}
       </div>
     );
   }
@@ -90,7 +92,7 @@ export function SettingsShell({
 
   return (
     <div className={cn("flex gap-6", className)} data-pi-settings-shell>
-      <nav className="flex w-48 shrink-0 flex-col gap-1" aria-label="设置分区">
+      <nav className="flex w-48 shrink-0 flex-col gap-1" aria-label={t("config.settings.navAriaLabel")}>
         {groups.map((g) => (
           <button
             key={g.id}
@@ -113,7 +115,7 @@ export function SettingsShell({
         {activeGroup.panels.length > 1 ? (
           <div
             role="tablist"
-            aria-label={`${activeGroup.title} 范围`}
+            aria-label={`${activeGroup.title} ${t("config.settings.scopeAriaLabel")}`}
             className="mb-4 inline-flex gap-1 rounded-lg bg-[hsl(var(--muted))] p-1"
           >
             {activeGroup.panels.map((p) => (
@@ -149,6 +151,7 @@ function ConfigPanelView({
   readonly panel: SettingsPanelDescriptor;
   readonly fieldRegistry?: FieldRegistry;
 }): React.JSX.Element {
+  const t = useI18n();
   const { form, loading, loadError, saving, saveError, saved, save, fileSchemas } =
     useConfigDomain(panel);
 
@@ -159,7 +162,7 @@ function ConfigPanelView({
       </header>
 
       {loading ? (
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">加载中…</p>
+        <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</p>
       ) : loadError !== undefined ? (
         <p role="alert" className="text-sm text-[hsl(var(--destructive))]">
           {loadError}
@@ -177,10 +180,10 @@ function ConfigPanelView({
           />
           <div className="flex items-center gap-3">
             <Button type="button" onClick={() => void save()} disabled={saving || !form.dirty}>
-              {saving ? "保存中…" : "保存"}
+              {saving ? t("common.saving") : t("common.save")}
             </Button>
             {saved ? (
-              <span className="text-sm text-[hsl(var(--muted-foreground))]">已保存</span>
+              <span className="text-sm text-[hsl(var(--muted-foreground))]">{t("common.saved")}</span>
             ) : null}
             {saveError !== undefined ? (
               <span role="alert" className="text-sm text-[hsl(var(--destructive))]">

@@ -11,8 +11,8 @@ import {
 describe("PiChatBasic 装配", () => {
   it("渲染消息区与输入区", () => {
     render(<PiChatBasic session={mockSession()} showControls={false} />);
-    expect(screen.getByLabelText("Message")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("消息")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /发送/ })).toBeInTheDocument();
   });
 
   it("showControls 时渲染内置控制面板", () => {
@@ -24,7 +24,7 @@ describe("PiChatBasic 装配", () => {
       />,
     );
     expect(
-      screen.getByRole("button", { name: /select model/i }),
+      screen.getByRole("button", { name: /选择模型/ }),
     ).toBeInTheDocument();
   });
 

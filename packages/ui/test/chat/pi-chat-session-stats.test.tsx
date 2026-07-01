@@ -61,7 +61,8 @@ describe("富版 PiChat × 内核用量区", () => {
       <PiChat session={mockSession({ initialMessages: CONVO })} controls={mockControls({ stats: undefined })} />,
     );
     expect(container.querySelector("[data-pi-session-stats-region]")).not.toBeNull();
-    expect(screen.getByText(/No stats yet/i)).toBeInTheDocument();
+    // i18n 默认 locale=zh,空态文案渲染为中文("暂无统计")
+    expect(screen.getByText(/暂无统计/)).toBeInTheDocument();
   });
 
   it("用例D:与 webext statusBar 贡献并存不顶替 (4.1)", () => {

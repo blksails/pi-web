@@ -9,6 +9,7 @@ import type { FieldProps } from "../field-registry.js";
 import { Input } from "../../ui/input.js";
 import { Button } from "../../ui/button.js";
 import { FieldShell, errorAt } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 function asList(value: unknown): string[] {
   return Array.isArray(value) ? value.map((v) => (typeof v === "string" ? v : String(v))) : [];
@@ -22,6 +23,7 @@ export function StringListField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const list = asList(value);
   const error = errorAt(errors, path);
 
@@ -38,7 +40,7 @@ export function StringListField({
     <FieldShell descriptor={descriptor} error={error}>
       <div className="flex flex-col gap-2">
         {list.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无条目</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.stringList.empty")}</p>
         ) : null}
         {list.map((item, i) => (
           <div key={i} className="flex items-center gap-2" data-pi-list-row={i}>
@@ -57,13 +59,13 @@ export function StringListField({
               disabled={disabled}
               onClick={() => removeAt(i)}
             >
-              删除
+              {t("common.delete")}
             </Button>
           </div>
         ))}
         <div>
           <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={add}>
-            添加
+            {t("common.add")}
           </Button>
         </div>
       </div>

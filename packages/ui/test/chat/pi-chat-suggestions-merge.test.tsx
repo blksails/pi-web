@@ -45,9 +45,10 @@ describe("PiChat 空态标题/副标题透传", () => {
     ).toBeInTheDocument();
   });
 
-  it("未传时使用宿主默认标题", () => {
+  it("未传时使用宿主默认标题(默认 locale=zh)", () => {
     render(<PiChat session={mockSession()} />);
-    expect(screen.getByText("What can I help with?")).toBeInTheDocument();
+    // i18n 默认 locale=zh,未传 emptyTitle 时回退到 t("chat.empty.title") 的中文值
+    expect(screen.getByText("有什么可以帮你的?")).toBeInTheDocument();
   });
 });
 

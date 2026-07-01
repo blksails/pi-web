@@ -3,6 +3,7 @@
  */
 import * as React from "react";
 import type { FieldProps } from "../field-registry.js";
+import { useI18n } from "../../i18n/index.js";
 import { FieldShell, errorAt } from "./field-shell.js";
 
 export function BooleanField({
@@ -13,6 +14,7 @@ export function BooleanField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const id = React.useId();
   const error = errorAt(errors, path);
   // value=undefined 时回显 descriptor.default（如有），否则视为 false
@@ -31,7 +33,7 @@ export function BooleanField({
           className="h-4 w-4 rounded border-[hsl(var(--input))]"
         />
         <span className="text-[hsl(var(--muted-foreground))]">
-          {checked ? "已启用" : "已关闭"}
+          {checked ? t("config.boolean.enabled") : t("config.boolean.disabled")}
         </span>
       </label>
     </FieldShell>

@@ -17,6 +17,7 @@ import type { FieldProps } from "../field-registry.js";
 import { Input } from "../../ui/input.js";
 import { Button } from "../../ui/button.js";
 import { FieldShell, errorAt } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 type Mode = "idle" | "editing" | "cleared";
 
@@ -37,6 +38,7 @@ export function SecretField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const id = React.useId();
   const error = errorAt(errors, path);
   const [mask] = React.useState<SecretMask>(() => maskOf(value));
@@ -44,8 +46,8 @@ export function SecretField({
   const [text, setText] = React.useState("");
 
   const masked = mask.set
-    ? `已设置 ••••${mask.hint ?? ""}`
-    : "未设置";
+    ? `${t("config.secret.set")}${mask.hint ?? ""}`
+    : t("config.secret.unset");
 
   return (
     <FieldShell descriptor={descriptor} htmlFor={id} error={error}>
@@ -68,7 +70,7 @@ export function SecretField({
               onChange(secretKeep);
             }}
           >
-            更换
+            {t("config.secret.change")}
           </Button>
           <Button
             type="button"
@@ -80,7 +82,7 @@ export function SecretField({
               onChange(secretClear);
             }}
           >
-            清除
+            {t("config.secret.clear")}
           </Button>
         </div>
       ) : null}
@@ -91,7 +93,7 @@ export function SecretField({
             id={id}
             type="password"
             value={text}
-            placeholder={descriptor.placeholder ?? "输入新值"}
+            placeholder={descriptor.placeholder ?? t("config.secret.newValuePlaceholder")}
             disabled={disabled}
             aria-invalid={error !== undefined}
             onChange={(e) => {
@@ -111,7 +113,7 @@ export function SecretField({
                 onChange(secretKeep);
               }}
             >
-              取消
+              {t("common.cancel")}
             </Button>
           ) : null}
         </div>
@@ -120,7 +122,7 @@ export function SecretField({
       {mode === "cleared" ? (
         <div className="flex items-center gap-2">
           <span className="flex-1 text-sm text-[hsl(var(--destructive))]">
-            将清除已保存的密钥
+            {t("config.secret.willClear")}
           </span>
           <Button
             type="button"
@@ -131,7 +133,7 @@ export function SecretField({
               onChange(secretKeep);
             }}
           >
-            撤销
+            {t("config.secret.undo")}
           </Button>
         </div>
       ) : null}

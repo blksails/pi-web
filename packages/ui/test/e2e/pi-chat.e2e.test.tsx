@@ -63,8 +63,12 @@ describe("PiChatBasic e2e (mock 会话)", () => {
     render(<Wrapper />);
 
     // 提交一条消息,驱动 transport 脚本流
-    await user.type(screen.getByLabelText("Message"), "go");
-    await user.click(screen.getByRole("button", { name: /send/i }));
+    // i18n 后输入框 aria-label / 发送按钮文案随 locale 变化,改用语言无关的 data-* 选择器。
+    await user.type(
+      document.querySelector("[data-pi-input-textarea]") as HTMLElement,
+      "go",
+    );
+    await user.click(document.querySelector("[data-pi-send]") as HTMLElement);
 
     // (a) 流式文本逐步出现
     await waitFor(() =>
