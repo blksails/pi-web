@@ -28,13 +28,16 @@ import type {
   UiRpcRequest,
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
+import type { ClearQueueResponse } from "@blksails/pi-web-protocol";
 import {
   makeControlFrame,
   makeUiMessageChunkFrame,
   SlashCompletionsFrameSchema,
   UiRpcResponseSchema,
   StateDownLineSchema,
+  ClearQueueResultLineSchema,
 } from "@blksails/pi-web-protocol";
+import { randomUUID } from "node:crypto";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
 
 // 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
@@ -78,6 +81,8 @@ const FRAME_EVENT = "frame";
  * 又不至于让纯命令输入卡太久（纯命令此窗口后才解除 streaming）。
  */
 const COMMAND_TURN_WINDOW_MS = 1500;
+/** message-queue-ui「取回」clearQueue 请求→结果行的关联超时(子进程无回写即 reject)。 */
+const CLEAR_QUEUE_TIMEOUT_MS = 5000;
 const END_EVENT = "end";
 
 /**
@@ -115,6 +120,15 @@ export class PiSession {
 
   private readonly emitter = new EventEmitter();
   private readonly pendingExtensionUI = new Map<string, RpcExtensionUIRequest>();
+  /**
+   * message-queue-ui「取回」在途请求(clearQueue):按关联 id 配对子进程回写的
+   * `piweb_clear_queue_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
+   * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂。
+   */
+  private readonly pendingClearQueue = new Map<
+    string,
+    { resolve: (r: ClearQueueResponse) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+  >();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
   /**
@@ -489,6 +503,11 @@ export class PiSession {
     const { frames, ctx } = translateEvent(event, this.translationCtx);
     this.translationCtx = ctx;
     for (const frame of frames) {
+      // message-queue-ui:把 control:"queue" 登记为粘性帧(与 session-state 对称),使重连/迟到订阅者
+      // 回放即得当前排队快照——否则忙时重连后 busy 回放为 true 但 queue 空,取回回环静默不可用。
+      if (frame.kind === "control" && frame.payload.control === "queue") {
+        this.sticky.set("queue", frame);
+      }
       this.emitter.emit(FRAME_EVENT, frame);
     }
   }
@@ -547,6 +566,22 @@ export class PiSession {
           ...(state.data.deleted ? { deleted: true } : {}),
         }),
       );
+      return;
+    }
+
+    // message-queue-ui「取回」:子进程回写的 clearQueue 结果行 → 按 id 配对 pending 请求 resolve。
+    // 置于 active gate 之前:结果关联在途请求,晚到亦应解析(超时已删除则安全丢弃)。
+    if (type === "piweb_clear_queue_result") {
+      const parsedRes = ClearQueueResultLineSchema.safeParse(parsed);
+      if (!parsedRes.success) return; // 畸形结果行丢弃
+      const pending = this.pendingClearQueue.get(parsedRes.data.id);
+      if (pending === undefined) return; // 未知/已超时 id → 丢弃
+      this.pendingClearQueue.delete(parsedRes.data.id);
+      clearTimeout(pending.timer);
+      pending.resolve({
+        steering: parsedRes.data.steering,
+        followUp: parsedRes.data.followUp,
+      });
       return;
     }
 
@@ -770,6 +805,36 @@ export class PiSession {
 
   abort(): Promise<RpcResponse> {
     return this.forward(() => this.channel.abort());
+  }
+
+  /**
+   * message-queue-ui「取回」:清空 agent 排队消息并返回被清文本。
+   * 经 stdin 下发内部请求行 `piweb_clear_queue{id}`(runner 的 `wireClearQueueBridge` 截获执行),
+   * 结果经 `piweb_clear_queue_result` 行回流,由 `handleRawLine` 按 id 配对 resolve。超时兜底 reject。
+   * clearQueue 不在 pi RPC 命令集,故不走 `channel` 的 typed 命令,而经 `channel.send` 原始行。
+   */
+  clearQueue(timeoutMs = CLEAR_QUEUE_TIMEOUT_MS): Promise<ClearQueueResponse> {
+    try {
+      this.assertActive();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    this.touch();
+    const id = randomUUID();
+    return new Promise<ClearQueueResponse>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingClearQueue.delete(id);
+        reject(new Error("clear_queue timed out"));
+      }, timeoutMs);
+      this.pendingClearQueue.set(id, { resolve, reject, timer });
+      try {
+        this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id }));
+      } catch (err) {
+        this.pendingClearQueue.delete(id);
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
   }
 
   setModel(provider: string, modelId: string): Promise<RpcResponse> {
@@ -1102,6 +1167,12 @@ export class PiSession {
       }
       // 4) 清挂起表与缓存(Req 5.4)。
       this.pendingExtensionUI.clear();
+      // message-queue-ui:reject 所有在途 clearQueue 请求,避免收尾后悬挂(超时兜底之外的即时收敛)。
+      for (const [, pending] of this.pendingClearQueue) {
+        clearTimeout(pending.timer);
+        pending.reject(new SessionStoppedError(this.id));
+      }
+      this.pendingClearQueue.clear();
       this.cache = undefined;
       // 5) 向订阅者广播会话结束(Req 7.3 / 7.5)。
       this.emitter.emit(END_EVENT, reason);

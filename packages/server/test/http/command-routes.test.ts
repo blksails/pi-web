@@ -95,6 +95,25 @@ describe("command routes", () => {
     expect(session.calls.some((c) => c.method === "abort")).toBe(true);
   });
 
+  it("clear_queue → PiSession.clearQueue, returns cleared queue body", async () => {
+    const { handler, session } = setup();
+    session.clearQueueResult = { steering: ["a", "b"], followUp: ["c"] };
+    const res = await handler(post("/sessions/sess-1/clear_queue"));
+    expect(res.status).toBe(200);
+    expect((await res.json()) as unknown).toMatchObject({
+      steering: ["a", "b"],
+      followUp: ["c"],
+    });
+    expect(session.calls.some((c) => c.method === "clearQueue")).toBe(true);
+  });
+
+  it("clear_queue → 409 when session stopped", async () => {
+    const { handler, session } = setup();
+    session.status = "stopped";
+    const res = await handler(post("/sessions/sess-1/clear_queue"));
+    expect(res.status).toBe(409);
+  });
+
   it("400 on validation failure, not forwarded", async () => {
     const { handler, session } = setup();
     const res = await handler(post("/sessions/sess-1/messages", { message: 5 }));

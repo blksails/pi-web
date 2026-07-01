@@ -257,11 +257,18 @@ export function translateEvent(
       };
 
     case "queue_update":
+      // 双帧:data-pi-queue(进消息流,历史/渲染兼容)+ control:"queue"(旁路快照,权威、粘性,
+      // 供 control-store 维护 queue 快照 → usePiControls().queue → message-queue-ui 队列面板)。
       return {
         frames: [
           makeUiMessageChunkFrame({
             type: "data-pi-queue",
             data: { steering: event.steering, followUp: event.followUp },
+          }),
+          makeControlFrame({
+            control: "queue",
+            steering: event.steering,
+            followUp: event.followUp,
           }),
         ],
         ctx,

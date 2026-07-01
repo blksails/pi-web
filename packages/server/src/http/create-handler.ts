@@ -19,6 +19,7 @@ import type {
 import { makeCreateSessionHandler } from "./routes/create-session.js";
 import {
   makeAbortHandler,
+  makeClearQueueHandler,
   makeFollowUpHandler,
   makeForkHandler,
   makeMessagesHandler,
@@ -127,6 +128,11 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "POST",
       path: "/sessions/:id/abort",
       handler: makeAbortHandler(store),
+    },
+    {
+      method: "POST",
+      path: "/sessions/:id/clear_queue",
+      handler: makeClearQueueHandler(store),
     },
     {
       method: "POST",

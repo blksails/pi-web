@@ -28,6 +28,7 @@ import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import { BashResultRenderer } from "./bash-result-renderer.js";
 import type { PiChatSlots } from "./slots.js";
+import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
   ChatError,
   Conversation,
@@ -193,6 +194,11 @@ export interface PiChatProps {
 // agent-slash-completion:"/" 触发符让 PiCommandPalette 单浮层独占,从 core 补全浮层
 // (PiCompletionPopover)排除,避免双浮层冲突。模块级常量保证引用稳定(effect 依赖)。
 const SLASH_EXCLUDED_TRIGGERS: readonly string[] = ["/"];
+/** 稳定空队列引用(controls 缺失时的回退,避免每次渲染换引用)。 */
+const EMPTY_QUEUE_VIEW: { steering: readonly string[]; followUp: readonly string[] } = {
+  steering: [],
+  followUp: [],
+};
 
 const EMPTY_NOTIFICATIONS: UseExtensionUIResult["notifications"] = [];
 const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
@@ -532,6 +538,14 @@ export function PiChat({
       ? controls.busy
       : status === "submitted" || status === "streaming";
 
+  // message-queue-ui:排队快照(纯投影自 control:queue)与派生的取回可用性 + 瞬态提示。
+  const queue = controls?.queue ?? EMPTY_QUEUE_VIEW;
+  const pendingCount = queue.steering.length + queue.followUp.length;
+  const canRetrieve = pendingCount > 0;
+  const [queueNotice, setQueueNotice] = React.useState<string | undefined>(
+    undefined,
+  );
+
   // 内核用量区数据填充:stats 的**读**单一取自权威快照(controls.stats,由 stats 帧 / session-state
   // 同步喂),不再双源 merge;此处仅以**事件驱动**(会话就绪一次 + 轮次结束一次,非定时轮询)
   // 触发 getStats 让 agent 刷新用量(随即经 session-state 广播给所有订阅者)。
@@ -617,7 +631,7 @@ export function PiChat({
     (input.trim().length > 0 || attachments.items.length > 0);
 
   const doSend = React.useCallback(
-    (text: string): void => {
+    (text: string, opts?: { followUp?: boolean }): void => {
       if (transport === undefined) return;
       const trimmed = text.trim();
       const hasAttachments = attachments.items.length > 0;
@@ -638,6 +652,32 @@ export function PiChat({
         ? (attachments.referenceIds?.() ?? [])
         : [];
 
+      // message-queue-ui:忙时按投递意图排队(Enter→steer / Alt+Enter→followUp),始终携带排队行为
+      // (根治 pi SDK「streaming 缺 streamingBehavior」报错,Req 1.1/1.2/4.1)。空闲时走既有 prompt 链路
+      // (含附件/补全,零回归,Req 1.3/5.3)。steer/follow_up 端点仅收 message+images,不收 att_ 引用:
+      // 忙时带引用附件 → 阻止排队并提示(不静默丢弃,Req 5.2)。
+      if (isBusy && controls !== undefined) {
+        if (attachmentIds.length > 0) {
+          setQueueNotice(t("chat.queue.attachmentUnsupported"));
+          return;
+        }
+        const req =
+          images.length > 0 ? { message: outgoing, images } : { message: outgoing };
+        const enqueue = opts?.followUp ? controls.followUp : controls.steer;
+        void enqueue(req)
+          .then(() => {
+            setInput("");
+            if (hasAttachments) attachments.clear();
+            setRejected([]);
+            setQueueNotice(undefined);
+          })
+          .catch(() => {
+            // 失败:可见反馈且不清输入(不丢用户输入,Req 4.2)。
+            setQueueNotice(t("chat.queue.enqueueFailed"));
+          });
+        return;
+      }
+
       const body: Record<string, unknown> = {};
       if (images.length > 0) body.images = images;
       if (attachmentIds.length > 0) body.attachmentIds = attachmentIds;
@@ -655,8 +695,9 @@ export function PiChat({
       setInput("");
       if (hasAttachments) attachments.clear();
       setRejected([]);
+      setQueueNotice(undefined);
     },
-    [transport, attachments, webSearch, sendMessage, t],
+    [transport, attachments, webSearch, sendMessage, t, isBusy, controls],
   );
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
@@ -740,7 +781,7 @@ export function PiChat({
     [client, sessionId, t],
   );
 
-  const onSubmit = React.useCallback((): void => {
+  const onSubmit = React.useCallback((opts?: { followUp?: boolean }): void => {
     // bang shell 命令(spec bang-shell-command):前端体验开启且以 `!` 开头 → 作为 bash 命令分流,
     // 不发给 LLM;`!!` → 输出不进上下文。去前缀去空白后为空则忽略(不请求/不写消息,Req 1.3);
     // 提交即清空输入框(Req 7.4)。置于斜杠命令分支之前,使 `!` 与 `/` 互不干扰(Req 1.5)。
@@ -807,7 +848,7 @@ export function PiChat({
       }
     }
 
-    doSend(input);
+    doSend(input, opts);
   }, [
     doSend,
     input,
@@ -826,6 +867,24 @@ export function PiChat({
     if (controls !== undefined) void controls.abort().catch(() => undefined);
     stop();
   }, [controls, stop]);
+
+  // message-queue-ui「取回」:把已排队消息取回编辑器(Esc / Alt+↑)。经 clearQueue 端点清空 agent
+  // 队列并拿回文本;空框回填、非空追加(先 steering 后 followUp,换行连接,Req 3.2/3.3/3.4)。
+  // 端点失败 → 提示且不改编辑器现有内容(Req 3.6)。
+  const onRequestRetrieve = React.useCallback((): void => {
+    if (controls === undefined) return;
+    void controls
+      .clearQueue()
+      .then((cleared) => {
+        const restored = [...cleared.steering, ...cleared.followUp].join("\n");
+        if (restored.length === 0) return;
+        setInput((prev) => (prev.length === 0 ? restored : `${prev}\n${restored}`));
+        setQueueNotice(undefined);
+      })
+      .catch(() => {
+        setQueueNotice(t("chat.queue.retrieveFailed"));
+      });
+  }, [controls, t]);
 
   const onAddAttachments = React.useCallback(
     (files: FileList | File[]): void => {
@@ -1040,6 +1099,8 @@ export function PiChat({
       onAcceptGhost={() => setInput(input + ghostSuffix)}
       inputRef={inputRef}
       onSelectionChange={setCursor}
+      canRetrieve={canRetrieve}
+      {...(controls !== undefined ? { onRequestRetrieve } : {})}
     />
   );
 
@@ -1139,6 +1200,17 @@ export function PiChat({
           cursor={cursor}
           inputRef={inputRef}
         />
+      ) : null}
+      {/* message-queue-ui:排队消息面板(control:queue 快照)+ 瞬态提示,置于编辑器上方。 */}
+      <PiQueuePanel queue={queue} />
+      {queueNotice !== undefined ? (
+        <div
+          data-pi-queue-notice
+          role="status"
+          className="mb-1 rounded-lg bg-[hsl(var(--muted))] px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]"
+        >
+          {queueNotice}
+        </div>
       ) : null}
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />

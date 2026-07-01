@@ -84,6 +84,16 @@ export const SteerRequestSchema = z.object({
 });
 export type SteerRequest = z.infer<typeof SteerRequestSchema>;
 
+/**
+ * `POST /sessions/:id/clear_queue` 响应体(message-queue-ui「取回」)。
+ * 返回被清空的 steering / follow-up 待投递文本,供前端回填编辑器。请求为空体。
+ */
+export const ClearQueueResponseSchema = z.object({
+  steering: z.array(z.string()),
+  followUp: z.array(z.string()),
+});
+export type ClearQueueResponse = z.infer<typeof ClearQueueResponseSchema>;
+
 export const SetModelRequestSchema = z.object({
   provider: z.string(),
   modelId: z.string(),

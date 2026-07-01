@@ -186,6 +186,23 @@ export function makeAbortHandler(store: SessionStore): RouteHandler {
   };
 }
 
+/**
+ * POST /sessions/:id/clear_queue → PiSession.clearQueue(message-queue-ui「取回」)。
+ * 空请求体;同步返回被清空的 steering / follow-up 文本供前端回填编辑器。
+ * 桥超时(子进程无回写)经 mapEngineError 归一为错误响应。
+ */
+export function makeClearQueueHandler(store: SessionStore): RouteHandler {
+  return async (ctx): Promise<Response> => {
+    try {
+      const session = requireSession(store, ctx);
+      const cleared = await session.clearQueue();
+      return jsonResponse(200, cleared);
+    } catch (err) {
+      return mapEngineError(err);
+    }
+  };
+}
+
 /** POST /sessions/:id/model → PiSession.setModel */
 export function makeModelHandler(store: SessionStore): RouteHandler {
   return async (ctx): Promise<Response> => {

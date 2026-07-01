@@ -20,10 +20,14 @@ import type {
   RpcSlashCommand,
   SessionSnapshot,
   SessionStats,
+  ClearQueueResponse,
 } from "@blksails/pi-web-protocol";
 import type { PiClient } from "../client/pi-client.js";
 import type { PiSessionConnection } from "../sse/connection.js";
-import type { SessionLifecycleSnapshot } from "../sse/control-store.js";
+import type {
+  SessionLifecycleSnapshot,
+  QueueSnapshot,
+} from "../sse/control-store.js";
 import { usePiContext } from "../provider/pi-provider.js";
 import { createPiClient } from "../client/pi-client.js";
 
@@ -41,12 +45,16 @@ export interface OperationState {
 
 const IDLE: OperationState = { pending: false, error: undefined };
 
+/** 稳定空队列引用(无连接/无帧时的回退,避免每次渲染换引用)。 */
+const EMPTY_QUEUE_SNAPSHOT: QueueSnapshot = { steering: [], followUp: [] };
+
 export type ControlOperation =
   | "setModel"
   | "setThinking"
   | "abort"
   | "steer"
   | "followUp"
+  | "clearQueue"
   | "getStats"
   | "getCommands";
 
@@ -64,6 +72,8 @@ export interface UsePiControlsResult {
   abort(): Promise<void>;
   steer(req: SteerRequest): Promise<void>;
   followUp(req: SteerRequest): Promise<void>;
+  /** 清空排队消息并返回被清 steering/followUp 文本(取回)。 */
+  clearQueue(): Promise<ClearQueueResponse>;
   getStats(): Promise<GetStatsResponse>;
   getCommands(): Promise<GetCommandsResponse>;
   /** 兼合 REST + SSE 旁路的会话统计。 */
@@ -76,6 +86,8 @@ export interface UsePiControlsResult {
   readonly busy: boolean;
   /** 服务端权威会话快照;收到 session-state 帧前为 undefined。 */
   readonly session: SessionSnapshot | undefined;
+  /** steering / follow-up 排队快照(message-queue-ui);无连接/无帧时为空。 */
+  readonly queue: QueueSnapshot;
 }
 
 const NO_SUBSCRIBE = (): (() => void) => () => undefined;
@@ -100,6 +112,7 @@ export function usePiControls(
     abort: IDLE,
     steer: IDLE,
     followUp: IDLE,
+    clearQueue: IDLE,
     getStats: IDLE,
     getCommands: IDLE,
   });
@@ -201,6 +214,15 @@ export function usePiControls(
     [run, requireReady],
   );
 
+  const clearQueue = useCallback(
+    (): Promise<ClearQueueResponse> =>
+      run("clearQueue", async () => {
+        const { client: c, sessionId } = requireReady();
+        return c.clearQueue(sessionId);
+      }),
+    [run, requireReady],
+  );
+
   const getStats = useCallback(
     (): Promise<GetStatsResponse> =>
       run("getStats", async () => {
@@ -231,6 +253,8 @@ export function usePiControls(
   // 权威 busy / 会话快照(session-snapshot-authority):前端纯投影,不再从 useChat.status 推断。
   const busy = controlSnapshot?.busy ?? false;
   const session = controlSnapshot?.session;
+  // 排队快照(message-queue-ui):纯投影自 control:queue 帧;无连接/无帧回退空。
+  const queue = controlSnapshot?.queue ?? EMPTY_QUEUE_SNAPSHOT;
 
   return {
     setModel,
@@ -238,6 +262,7 @@ export function usePiControls(
     abort,
     steer,
     followUp,
+    clearQueue,
     getStats,
     getCommands,
     stats,
@@ -246,5 +271,6 @@ export function usePiControls(
     lifecycle,
     busy,
     session,
+    queue,
   };
 }
