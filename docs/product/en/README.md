@@ -21,7 +21,7 @@ Pick a reading path by role:
 | I am… | Recommended order |
 | --- | --- |
 | **First encounter (evaluating/trying out)** | [00 · Product Overview](./00-product-overview.md) → [01 · Quickstart](./01-quickstart.md) → [02 · Core Concepts](./02-core-concepts.md) |
-| **Agent author** (want to put a UI on your own agent) | [01 · Quickstart](./01-quickstart.md) → [07 · Custom Agent Development](./07-agent-development.md) → [08 · Attachment System](./08-attachment-system.md) → [21 · Sessions List](./21-sessions-list.md) → [10 · Web UI Extension](./10-web-ui-extension.md) → [11 · AIGC Tools](./11-aigc-tools.md) |
+| **Agent author** (want to put a UI on your own agent) | [01 · Quickstart](./01-quickstart.md) → [07 · Custom Agent Development](./07-agent-development.md) → [08 · Attachment System](./08-attachment-system.md) → [21 · Sessions List](./21-sessions-list.md) → [10 · Web UI Extension](./10-web-ui-extension.md) → [11 · AIGC Tools](./11-aigc-tools.md) → [22 · Message Queue](./22-message-queue.md) |
 | **Integrator** (embedding pi-web into your own stack) | [03 · Architecture](./03-architecture.md) → [04 · Packages](./04-packages.md) → [13 · HTTP/SSE API Reference](./13-http-api-reference.md) → [21 · Sessions List](./21-sessions-list.md) → [12 · Config UI](./12-config-ui.md) |
 | **Ops / Deployment** | [05 · Configuration](./05-configuration.md) → [14 · CLI](./14-cli.md) → [15 · Deployment & Operations](./15-deployment.md) → [16 · Logging](./16-logging.md) |
 | **Contributor** | [03 · Architecture](./03-architecture.md) → [04 · Packages](./04-packages.md) → [17 · Development & Testing](./17-development-and-testing.md) → [19 · Roadmap](./19-roadmap.md) |
@@ -52,6 +52,7 @@ Pick a reading path by role:
 | 19 | [Roadmap](./19-roadmap.md) | Capability matrix and planning |
 | 20 | [Glossary](./20-glossary.md) | Definitions of key terms |
 | 21 | [Sessions List](./21-sessions-list.md) | Browse historical sessions and resume in one click |
+| 22 | [Message Queue](./22-message-queue.md) | Queue messages while busy with interject/follow-up semantics, visualize pending items and take them back; `control:queue` sticky frames converge on reconnect, `clearQueue` closes the loop via a state-bridge-style custom frame (zero changes to pi). |
 
 ## Conventions
 

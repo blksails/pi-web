@@ -153,6 +153,37 @@ pi-web 由 7 个可独立发布的 npm 包组成，依赖方向单向收敛：`@
 
 支持 Storybook 开发：`pnpm --filter @blksails/pi-web-ui storybook`（端口 6006）。
 
+#### 自研 i18n 机制
+
+`@blksails/pi-web-ui` 内置一套**轻量自研的国际化运行时**（`packages/ui/src/i18n/`），刻意不引入 `react-i18next`、`formatjs` 等第三方库：字典是纯对象、翻译是纯字符串查表，同构（浏览器/Node）且零运行时依赖。它随组件库整包 barrel 一同导出（`packages/ui/src/index.ts` 从 `./i18n/index.js` 重导出），消费方无需额外安装或配置。
+
+**字典结构**：`Locale` 目前有 `"zh"` 与 `"en"` 两种，各自是一张 `Record<string, string>`（`packages/ui/src/i18n/messages.ts`）。key 采用 `域.子项` 的点分命名（如 `chat.empty.title`、`sessionItemMenu.deleteConfirmBody`），两张表按同一组 key 平行维护，约 173 条。key 类型故意保持宽松的 `string`（而非字面量联合），以便增量迁移时逐步补齐。
+
+**`t()` 翻译函数**：组件通过 `useI18n()` 拿到翻译函数 `t`，签名为 `(key: string, params?: Record<string, string | number>) => string`。其行为契约（`packages/ui/src/i18n/context.tsx` 的 `translate`）：
+
+| 特性 | 行为 |
+|---|---|
+| **绝不抛错** | 任意 key 都返回一个字符串，不会因缺失 key 崩溃 |
+| **缺失回退** | 查找顺序为「当前 locale → `zh` → key 原文」：先查当前语言，缺失则回退中文，再缺失则**原样返回 key 本身**（保证 UI 永远有可见文本，便于发现漏翻） |
+| **参数替换** | `params` 存在时对模板内 `{name}` 占位符做插值；占位符名不在 `params` 中则保留原文。参数值类型为 `string | number`（数字会 `String()` 转字符串），不支持复数、日期等 ICU 语法 |
+
+**无 Provider 默认 zh**：`useI18n()` 不强制外层挂 Provider——`I18nContext` 的 `defaultContext` 直接绑定 `translate("zh", …)`，因此在没有 `I18nProvider` 的场景（如某些 Storybook story 或裸用单个组件）下 `t` 仍可用，默认输出中文。挂上 `I18nProvider` 后才获得语言切换能力：它以 `locale` state 驱动 `t`，客户端挂载后从 `localStorage` 的 `pi-web.locale` 键读回用户偏好（首帧仍用 `initialLocale` 以避免 SSR 水合不匹配），`setLocale` 写回同一键持久化。
+
+**语言切换 UI**：`I18nProvider` 由宿主 app 在 `app/providers.tsx` 挂载（经整包 barrel 引入）；面向用户的切换按钮是 `app/theme-controls.tsx` 的 `LocaleToggleButton`（`data-pi-locale-toggle`），它用 `useLocale()` 拿到 `{ locale, setLocale }` 在 `zh ↔ en` 间切换，与主题切换按钮并排渲染在 `components/chat-app.tsx` 的头部。注意：**语言切换 UI 属于宿主 app 层而非组件库**——`@blksails/pi-web-ui` 只导出 `I18nProvider` / `useI18n` / `useLocale` 三个原语，切换控件由集成方按需自行组装。
+
+**给组件作者的用法要点（prop 默认值须下沉函数体）**：当一个文案有对应的**可覆盖 prop** 时，不要把 `t("…")` 写成解构参数的默认值——那样默认值会在渲染前、`t` 尚不可用（且不随 locale 变化）时被固化。约定是把该 prop 接收为 `undefined`（如重命名为 `xxxProp`），再在函数体内用 `??` 回退到 `t()`：
+
+```tsx
+// packages/ui/src/chat/pi-chat.tsx（约定示例）
+function PiChat({ emptyTitle: emptyTitleProp, /* … */ }: PiChatProps) {
+  const t = useI18n();
+  const emptyTitle = emptyTitleProp ?? t("chat.empty.title");   // 下沉到函数体
+  // …
+}
+```
+
+这样既让调用方可显式覆盖文案，又保证未覆盖时走响应式的 `t()`（随语言切换实时更新）。纯内部、无对应 prop 的文案则直接 `t("…")` 即可。
+
 ---
 
 ### @blksails/pi-web-agent-kit

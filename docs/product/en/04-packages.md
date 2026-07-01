@@ -153,6 +153,37 @@ Additional standalone exports:
 
 Storybook development is supported: `pnpm --filter @blksails/pi-web-ui storybook` (port 6006).
 
+#### In-house i18n runtime
+
+`@blksails/pi-web-ui` ships a **lightweight, in-house internationalization runtime** (`packages/ui/src/i18n/`), deliberately avoiding third-party libraries like `react-i18next` or `formatjs`: the dictionary is a plain object, translation is a pure string table lookup, isomorphic (browser/Node) and with zero runtime dependencies. It is exported together with the component library through the whole-package barrel (`packages/ui/src/index.ts` re-exports from `./i18n/index.js`), so consumers need no extra install or configuration.
+
+**Dictionary structure**: `Locale` currently has two values, `"zh"` and `"en"`, each being a `Record<string, string>` (`packages/ui/src/i18n/messages.ts`). Keys use dot-separated `domain.subitem` naming (e.g. `chat.empty.title`, `sessionItemMenu.deleteConfirmBody`); the two tables are maintained in parallel against the same set of keys, about 173 entries. The key type is deliberately kept as the loose `string` (rather than a literal union) so keys can be filled in incrementally during migration.
+
+**The `t()` translation function**: Components obtain the translation function `t` via `useI18n()`, with the signature `(key: string, params?: Record<string, string | number>) => string`. Its behavioral contract (the `translate` in `packages/ui/src/i18n/context.tsx`):
+
+| Feature | Behavior |
+|---|---|
+| **Never throws** | Any key returns a string; it never crashes on a missing key |
+| **Missing-key fallback** | The lookup order is "current locale → `zh` → the raw key": it first looks up the current language, falls back to Chinese if missing, and if still missing **returns the key itself verbatim** (guaranteeing the UI always has visible text and making missing translations easy to spot) |
+| **Parameter substitution** | When `params` is present, it interpolates `{name}` placeholders in the template; a placeholder name not in `params` is left as-is. Parameter values are typed `string | number` (numbers are converted with `String()`); it does not support ICU syntax like plurals or dates |
+
+**Defaults to zh without a Provider**: `useI18n()` does not require mounting a Provider above — the `defaultContext` of `I18nContext` is bound directly to `translate("zh", …)`, so in scenarios without an `I18nProvider` (such as some Storybook stories or using a single component bare) `t` still works and outputs Chinese by default. Only after mounting `I18nProvider` do you gain language-switching capability: it drives `t` from a `locale` state, and after client mount reads the user preference back from the `pi-web.locale` key in `localStorage` (the first frame still uses `initialLocale` to avoid SSR hydration mismatch), with `setLocale` writing back to the same key to persist it.
+
+**Language-switching UI**: `I18nProvider` is mounted by the host app in `app/providers.tsx` (imported via the whole-package barrel); the user-facing toggle button is `LocaleToggleButton` in `app/theme-controls.tsx` (`data-pi-locale-toggle`), which uses `useLocale()` to get `{ locale, setLocale }` and toggles between `zh ↔ en`, rendered next to the theme-switch button in the header of `components/chat-app.tsx`. Note: **the language-switching UI belongs to the host app layer, not the component library** — `@blksails/pi-web-ui` only exports the three primitives `I18nProvider` / `useI18n` / `useLocale`, and the toggle control is assembled by the integrator as needed.
+
+**Usage note for component authors (prop defaults must be pushed into the function body)**: When a piece of text has a corresponding **overridable prop**, do not write `t("…")` as the default value of a destructured parameter — that way the default is frozen before render, when `t` is not yet available (and does not change with locale). The convention is to receive that prop as `undefined` (e.g. renamed to `xxxProp`), then fall back to `t()` with `??` inside the function body:
+
+```tsx
+// packages/ui/src/chat/pi-chat.tsx (convention example)
+function PiChat({ emptyTitle: emptyTitleProp, /* … */ }: PiChatProps) {
+  const t = useI18n();
+  const emptyTitle = emptyTitleProp ?? t("chat.empty.title");   // pushed into the function body
+  // …
+}
+```
+
+This lets callers explicitly override the text while ensuring that, when not overridden, it goes through the reactive `t()` (updating live on language switch). Purely internal text with no corresponding prop can just use `t("…")` directly.
+
 ---
 
 ### @blksails/pi-web-agent-kit

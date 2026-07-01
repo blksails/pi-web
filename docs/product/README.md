@@ -19,7 +19,7 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 我是… | 推荐顺序 |
 | --- | --- |
 | **第一次接触（评估/试用）** | [00 产品概述](./00-product-overview.md) → [01 快速开始](./01-quickstart.md) → [02 核心概念](./02-core-concepts.md) |
-| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [07 自定义 Agent 开发](./07-agent-development.md) → [08 附件系统](./08-attachment-system.md) → [21 会话列表](./21-sessions-list.md) → [10 Web UI 扩展](./10-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-tools.md) |
+| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [07 自定义 Agent 开发](./07-agent-development.md) → [08 附件系统](./08-attachment-system.md) → [21 会话列表](./21-sessions-list.md) → [10 Web UI 扩展](./10-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-tools.md) → [22 消息队列](./22-message-queue.md) |
 | **集成方**（把 pi-web 嵌进自己的栈） | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [13 HTTP/SSE API 参考](./13-http-api-reference.md) → [21 会话列表](./21-sessions-list.md) → [12 配置 UI](./12-config-ui.md) |
 | **运维 / 部署** | [05 配置参考](./05-configuration.md) → [14 CLI](./14-cli.md) → [15 部署与运维](./15-deployment.md) → [16 日志系统](./16-logging.md) |
 | **贡献者** | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [17 开发规范与测试](./17-development-and-testing.md) → [19 路线图](./19-roadmap.md) |
@@ -50,6 +50,7 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 19 | [路线图](./19-roadmap.md) | 能力矩阵与规划 |
 | 20 | [术语表](./20-glossary.md) | 关键术语定义 |
 | 21 | [会话列表](./21-sessions-list.md) | 浏览历史会话并一键恢复 |
+| 22 | [消息队列](./22-message-queue.md) | 忙时按插话/跟进语义排队、可视化 pending 与取回;control:queue 粘性帧收敛重连,clearQueue 走 state-bridge 式自定义帧闭环(pi 零改)。 |
 
 ## 约定
 
