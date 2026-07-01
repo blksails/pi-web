@@ -101,7 +101,7 @@
   - _Requirements: 3.1, 6.2_
   - _Depends: 2.1, 2.3, 3.2_
 
-- [ ] 6.3 浏览器端到端关键回环
+- [x] 6.3 浏览器端到端关键回环
   - 隔离构建（`NEXT_DIST_DIR=.next-e2e`）+ external server：选源 → 触发 busy → 输入并 Enter 排队 → `data-pi-queue-count` 增 → Esc 取回 → 文本回编辑器且队列清空。
   - 观察完成：Playwright 用例走通「忙时排队→可视化→取回」全回环并断言 data-* 状态。
   - _Requirements: 1.1, 2.2, 3.2, 6.3_
