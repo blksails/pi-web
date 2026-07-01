@@ -18,7 +18,8 @@ describe("ChatApp (un-sessioned)", () => {
     expect(
       document.querySelector("[data-agent-source-picker]"),
     ).not.toBeNull();
-    expect(screen.getByText(/Start a pi-web session/i)).toBeInTheDocument();
+    // i18n 默认 locale 为 zh(无 I18nProvider 时);文案经 t("agentSourcePicker.formTitle")。
+    expect(screen.getByText(/启动一个 pi-web 会话/)).toBeInTheDocument();
     expect(
       document.querySelector("[data-agent-source-submit]"),
     ).not.toBeNull();

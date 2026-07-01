@@ -188,7 +188,7 @@ export function AgentSourcePicker({
             className="flex flex-col gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 text-[hsl(var(--card-foreground))] shadow-sm"
           >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <span>Available agent sources</span>
+              <span>{t("agentSourcePicker.listTitle")}</span>
               {status === "idle" && items.length > 0 ? (
                 <span className="rounded-full bg-[hsl(var(--muted))] px-1.5 text-[10px] font-normal text-[hsl(var(--muted-foreground))]">
                   {items.length}
@@ -201,7 +201,7 @@ export function AgentSourcePicker({
                 data-agent-source-list-loading
                 className="text-sm text-[hsl(var(--muted-foreground))]"
               >
-                Loading sources…
+                {t("agentSourcePicker.listLoading")}
               </p>
             ) : status === "error" ? (
               <p
@@ -209,14 +209,14 @@ export function AgentSourcePicker({
                 data-agent-source-list-error
                 className="text-sm text-[hsl(var(--destructive))]"
               >
-                Failed to load agent sources. You can still enter one below.
+                {t("agentSourcePicker.listError")}
               </p>
             ) : items.length === 0 ? (
               <p
                 data-agent-source-list-empty
                 className="text-sm text-[hsl(var(--muted-foreground))]"
               >
-                No agent sources found. Enter one below.
+                {t("agentSourcePicker.listEmpty")}
               </p>
             ) : (
               // 宽屏卡片网格:窄屏 1 列,渐进到 2/3 列;默认只展示前 9 个,其余折叠。
@@ -302,21 +302,25 @@ export function AgentSourcePicker({
           className="flex w-full flex-col gap-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 text-[hsl(var(--card-foreground))] shadow-sm"
         >
           <div className="space-y-1">
-            <h1 className="text-lg font-semibold">Start a pi-web session</h1>
+            <h1 className="text-lg font-semibold">
+              {t("agentSourcePicker.formTitle")}
+            </h1>
             <p className="text-sm text-[hsl(var(--muted-foreground))]">
-              Enter an agent source — a local directory with an{" "}
-              <code>index.ts</code> (custom agent) or any directory (general CLI
-              mode) or a git source.
+              {t("agentSourcePicker.hintBefore")}
+              <code>index.ts</code>
+              {t("agentSourcePicker.hintAfter")}
             </p>
           </div>
 
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Agent source</span>
+            <span className="font-medium">
+              {t("agentSourcePicker.sourceLabel")}
+            </span>
             <input
               type="text"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder="./examples/hello-agent or https://github.com/org/repo"
+              placeholder={t("agentSourcePicker.inputPlaceholder")}
               disabled={loading}
               data-agent-source-input
               className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
@@ -340,7 +344,9 @@ export function AgentSourcePicker({
               data-agent-source-submit
               className="inline-flex items-center justify-center rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
             >
-              {loading ? "Creating session…" : "Start session"}
+              {loading
+                ? t("agentSourcePicker.creating")
+                : t("agentSourcePicker.startSession")}
             </button>
 
             {defaultSource !== undefined ? (
@@ -351,7 +357,7 @@ export function AgentSourcePicker({
                 onClick={() => submit("")}
                 className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
-                Use default source
+                {t("agentSourcePicker.useDefault")}
               </button>
             ) : null}
           </div>
@@ -361,7 +367,7 @@ export function AgentSourcePicker({
               data-agent-source-loading
               className="text-sm text-[hsl(var(--muted-foreground))]"
             >
-              Resolving source and spawning agent…
+              {t("agentSourcePicker.resolving")}
             </p>
           ) : null}
         </form>
