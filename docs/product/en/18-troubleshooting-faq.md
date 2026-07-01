@@ -67,6 +67,27 @@ Related config: `next.config.ts:55` (`distDir: process.env.NEXT_DIST_DIR ?? ".ne
 
 ---
 
+### 1.4 Reply requires a manual refresh to appear (reply not real-time)
+
+**Symptom**: You send a message in a session and the assistant seems to "not respond" — the bubble never appears, the streaming text never scrolls; but after you manually refresh the page, that reply turn shows up in full. The behavior is **intermittent**: most sessions stream in real time normally, and only an occasional turn (especially the first time you hit a route under dev, or when the machine is under high load) requires a refresh to become visible.
+
+**Cause**: pi-web's reply stream is **one `/stream` SSE subscription per turn**, not a single session-level persistent connection, so having no stream during idle periods is normal. On the client, `PiTransport.sendMessages` (`packages/react/src/transport/pi-transport.ts:118-149`) first calls `connection.openChunkStream()` to open `GET /sessions/:id/stream`, then `await client.prompt()` to send `POST /sessions/:id/messages` submitting this turn's prompt; the reply frames for the turn come back over that stream and it closes on a finish/abort frame. The problem is the combination of two things:
+
+1. **The prompt is sent without awaiting the `/stream` connection**: `openChunkStream` (`packages/react/src/sse/connection.ts:110-179`) returns a `ReadableStream` **synchronously**; the actual `GET /stream` fetch is fired **asynchronously** inside the internal pump (`connection.ts:130`) and does not wait for the connection to be established, while `POST /messages` is fast (measured ~32ms) and triggers the agent to emit its first reply frame immediately.
+2. **The server does not buffer or replay reply frames**: `GET /stream` (`packages/server/src/http/routes/stream-route.ts` → `buildSseResponse` in `sse-response.ts`) only calls `session.subscribe()` inside `ReadableStream.start`; `Last-Event-ID` serves merely as the frame "resume sequence start" (`startSeq`, `sse-response.ts:35`) — the gateway does not cache historical frames and does not replay by sequence (see the doc note at `sse-response.ts:11-12`). What `PiSession.subscribe` (`packages/server/src/session/pi-session.ts:416-461`) replays to late subscribers is only the log ring-buffer (`:445-448`) and the two sticky frame types `session-status` / `session-state` (`:453`); **reply frames `uiMessageChunk` are broadcast transiently via `EventEmitter` (`:486` etc.), with no buffering and no replay**.
+
+So when the agent broadcasts the first frame before `/stream` is connected, the `uiMessageChunk` broadcast inside that connection window is **lost permanently** because the server does not buffer it — the real-time stream for that turn looks empty. Refreshing recovers it because a refresh goes through the history endpoint `GET /sessions/:id/messages` (reconstructing from persisted messages), not the live stream.
+
+**Trigger conditions**: dev cold compilation or high load amplifies this race. The first access to a route under dev requires just-in-time compilation, so establishing the `/stream` connection was measured at up to ~3237ms, versus only ~79ms when warm; triggering the agent's first frame via `POST /messages` takes only ~32ms. When the connect is slow enough to land after the agent's first emission, that turn's frames are lost inside the window. In warm production, `/stream` usually connects before the first frame, so it rarely reproduces.
+
+**Remedy**:
+1. **Warm up the `/stream` route**: under dev, visit a session page once to compile that route, or trigger compilation ahead of time with `curl -N http://localhost:3000/api/sessions/<id>/stream`, then send your message.
+2. **Make sure the session is ready before sending**: wait until the session enters the ready state (no longer showing "connecting to agent…") before submitting the prompt, avoiding sending inside the cold-start window.
+3. **Temporary recovery**: for a turn that already dropped frames, manually refreshing the page recovers the full reply from the history endpoint.
+4. **Fixed in the framework**: `sendMessages` now `await`s `connection.whenSubscribed()` before `POST /messages`, waiting until this turn's `/stream` subscription is established server-side before sending the prompt — receiving the `GET /stream` response proves the subscription is live, because the SSE response's `ReadableStream.start()` runs `subscribe()` synchronously before the handler returns (see `whenSubscribed` in `packages/react/src/sse/connection.ts` and `packages/react/src/transport/pi-transport.ts`). This eliminates the race at its root, so items 1–3 above mainly apply to older builds or as a fallback. For further hardening, you can additionally add a **short-lived buffer** for this turn's message frames on the server and replay by `Last-Event-ID` (currently `sse-response.ts` only resumes sequence numbering without replaying).
+
+---
+
 ## 2. Provider / Model Issues
 
 ### 2.1 Custom provider auth 401
@@ -287,6 +308,7 @@ git worktree remove ../pi-web-attach
 |---|---|
 | webpack 500 / chunk error | whether `pnpm build` ran while dev was running; delete `.next/` and restart |
 | new route not taking effect | handler singleton pinned to globalThis; restart dev |
+| reply needs a refresh to appear | per-turn `/stream` not connected before the agent's first frame + server does not buffer/replay `uiMessageChunk`; warm up the `/stream` route, send after the session is ready |
 | `node:fs` resolution failure | `next.config.ts` `serverExternalPackages` + `externals` |
 | custom provider 401 | `models.json` location (`~/.pi/agent/`); `baseUrl`+`apiKey` are required |
 | DashScope image 401 | MAAS token and native DashScope key are independent; hit the right endpoint |

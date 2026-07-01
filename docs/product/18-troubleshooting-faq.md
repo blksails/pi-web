@@ -67,6 +67,27 @@
 
 ---
 
+### 1.4 发送消息后需手动刷新才看到回复（回复不实时）
+
+**症状**：在会话里发一条消息，助手看似「没有回应」——气泡不出现、流式文字不滚动；但手动刷新页面后，刚才那轮回复却完整出现了。现象**间歇性**：多数会话正常实时流，偶发某一轮（尤其是 dev 首次访问某路由、或机器高负载时）需要刷新才可见。
+
+**原因**：pi-web 的回复流是**每轮（per-turn）一条 `/stream` SSE 订阅**，不是一条会话级持久连接，空闲期没有流是正常的。客户端 `PiTransport.sendMessages`（`packages/react/src/transport/pi-transport.ts:118-149`）先调 `connection.openChunkStream()` 打开 `GET /sessions/:id/stream`，再 `await client.prompt()` 发 `POST /sessions/:id/messages` 提交本轮 prompt，该轮回复帧经这条流回来，遇 finish/abort 帧关闭。问题在于两处叠加：
+
+1. **`/stream` 未 await 连上就发了 prompt**：`openChunkStream`（`packages/react/src/sse/connection.ts:110-179`）**同步**返回 `ReadableStream`，真正的 `GET /stream` fetch 是在内部 pump 里**异步**发起的（`connection.ts:130`），并未等待连接建立；而 `POST /messages` 很快（实测 ~32ms）就触发 agent 立即产出首帧回复。
+2. **服务端对回复帧无缓冲、无回放**：`GET /stream`（`packages/server/src/http/routes/stream-route.ts` → `sse-response.ts` 的 `buildSseResponse`）在 `ReadableStream.start` 内才调 `session.subscribe()`；`Last-Event-ID` 仅作帧「续号起点」（`startSeq`，`sse-response.ts:35`），网关不缓存历史帧、不按序号回放（见 `sse-response.ts:11-12` 文档）。`PiSession.subscribe`（`packages/server/src/session/pi-session.ts:416-461`）给迟到订阅者回放的只有日志 ring-buffer（`:445-448`）与 sticky 的 `session-status` / `session-state` 两类粘性帧（`:453`）；**回复帧 `uiMessageChunk` 经 `EventEmitter` 瞬时广播（`:486` 等），无缓冲、无回放**。
+
+于是当 agent 抢在 `/stream` 连上之前就广播了首帧，连接窗口内的 `uiMessageChunk` 因服务端无缓冲而**永久丢失**——本轮实时流看起来是空的。刷新之所以能恢复，是因为刷新走的是历史接口 `GET /sessions/:id/messages`（从落库消息重建），而非实时流。
+
+**触发条件**：dev 冷编译或高负载放大了这个竞态。dev 首次访问某路由需即时编译，`/stream` 建连实测可达 ~3237ms，而热态仅 ~79ms；`POST /messages` 触发 agent 首帧只需 ~32ms。建连慢到落在 agent 首次产出之后，本轮帧就丢在窗口里。生产热态下 `/stream` 通常抢在首帧前连上，故很少复现。
+
+**对策**：
+1. **预热 `/stream` 路由**：dev 下先访问一次会话页把该路由编译好，或用 `curl -N http://localhost:3000/api/sessions/<id>/stream` 提前触发编译，之后再发消息。
+2. **发消息前确保会话已就绪**：等会话进入就绪态（不再显示「正在连接 agent…」）再提交 prompt，避免在冷启动窗口内抢发。
+3. **临时恢复**：已经丢帧的那轮，手动刷新页面即可从历史接口补回完整回复。
+4. **框架侧已修复**：`sendMessages` 现在在 `POST /messages` 之前 `await connection.whenSubscribed()`，等本轮 `/stream` 订阅在服务端建立后才发 prompt——收到 `GET /stream` 响应即证明订阅已建立，因为 SSE 响应的 `ReadableStream.start()` 在 handler `return` 前同步执行 `subscribe()`（见 `packages/react/src/sse/connection.ts` 的 `whenSubscribed` 与 `packages/react/src/transport/pi-transport.ts`）。这从根上消除了该竞态，故上面 1–3 项主要适用于旧版本或作为兜底。若要进一步加固，可叠加服务端为本轮消息帧加**短时缓冲**并按 `Last-Event-ID` 回放（当前 `sse-response.ts` 仅续号不回放）。
+
+---
+
 ## 2. Provider / 模型问题
 
 ### 2.1 自定义 provider 鉴权 401
@@ -287,6 +308,7 @@ git worktree remove ../pi-web-attach
 |---|---|
 | webpack 500 / chunk 错误 | 是否在 dev 运行时跑了 `pnpm build`；删 `.next/` 重启 |
 | 路由新增不生效 | handler 单例在 globalThis；重启 dev |
+| 发消息后需刷新才看到回复 | 每轮 `/stream` 未抢在 agent 首帧前连上 + 服务端 `uiMessageChunk` 无缓冲回放；预热 `/stream` 路由、会话就绪后再发 |
 | `node:fs` 解析失败 | `next.config.ts` `serverExternalPackages` + `externals` |
 | 自定义 provider 401 | `models.json` 位置（`~/.pi/agent/`）；`baseUrl`+`apiKey` 必填 |
 | DashScope 图像 401 | MAAS token 与 DashScope 原生 key 独立；走对端点 |

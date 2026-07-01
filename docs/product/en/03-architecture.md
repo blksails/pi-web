@@ -79,6 +79,14 @@ It wraps a set of command methods aligned with the SDK's `RpcClient` (19 in tota
 
 A hand-written `JsonlLineReader` (`packages/server/src/rpc-channel/jsonl-reader.ts`) does incremental framing: **splitting lines only on `\n`**, stripping a trailing `\r` (CRLF), concatenating leftover partial lines across chunks, and skipping empty lines. **Node's `readline` is disabled** — it would mistakenly treat `U+2028` / `U+2029` as line separators, yet these characters can legitimately appear inside JSON strings, so splitting on them would corrupt the JSON.
 
+### The Reply Stream: One /stream Subscription per Turn
+
+SSE is not a single session-lifetime persistent connection but a **fresh one opened per turn**. The client `PiTransport.sendMessages` (`packages/react/src/transport/pi-transport.ts`) follows a fixed order: **open the stream first, then POST the prompt** — it first calls `connection.openChunkStream()` to open `GET /sessions/:id/stream`, then `await client.prompt()` to send `POST /sessions/:id/messages` submitting this turn's prompt; the reply frames for this turn come back over that stream, which closes on a `finish` / `abort` frame. Having no stream at all during idle is the normal state.
+
+On the server, `GET /stream` (`packages/server/src/http/routes/stream-route.ts`) calls `PiSession.subscribe()` inside `ReadableStream.start`. For a **late subscriber**, subscribe replays only two things: the log ring-buffer plus the sticky `session-status` / `session-state` frames; the `uiMessageChunk` frames that carry the reply body are broadcast **instantaneously via `EventEmitter`, with no buffering and no replay**. `Last-Event-ID` serves only as the **resume sequence origin** (`startSeq`) — the gateway does not cache historical frames or replay by sequence number.
+
+For this reason the "open the stream first, then POST the prompt" ordering is a hard contract rather than a stylistic choice: if `POST /messages` triggers the agent's first output before the stream has connected (measured: the prompt lands in ~32ms, whereas under dev cold-compile / high load the stream may take seconds to connect — ~79ms when warm, but 3237ms observed when cold), the `uiMessageChunk` frames broadcast within that connection window are lost permanently for lack of buffering, and the reply becomes visible only after a manual refresh (via the history endpoint `GET /sessions/:id/messages`). This is the root cause of the intermittent "have to refresh after sending to see the reply" symptom.
+
 ## Constraints of Stateful Long-Lived Connections
 
 > **Cannot run Serverless / Edge** (unless the control/data planes are split); horizontal scaling requires **sticky routing** by `sessionId`.

@@ -202,8 +202,9 @@ curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
 
 ### GET /api/sessions/:id/stream — SSE 事件流
 
-建立长连接，实时接收会话事件（文本增量、工具调用、控制帧等）。  
-客户端必须先创建会话，再订阅此流，然后发送 `POST /messages` 触发推理。
+建立长连接，实时接收会话事件（文本增量、工具调用、控制帧等）。该订阅是**按轮（per-turn）**建立的：每轮回复由客户端为该轮新开一条 `/stream` 连接来承接，并非一条会话级常驻连接；空闲期没有流是正常的。
+
+**调用顺序约定（重要）**：客户端必须先创建会话、**先打开本轮 `/stream` 订阅，再** `POST /messages` 提交 prompt——该轮回复帧经这条已建立的流回来。顺序不可颠倒：回复帧经服务端 EventEmitter 瞬时广播、无缓冲，若流尚未连上，连接窗口之前广播的帧会永久丢失（见下文"竞态注意"）。
 
 **响应头**：
 
@@ -236,7 +237,7 @@ data: {"kind":"control","protocolVersion":"0.1.0","payload":{"control":"error","
 - 心跳帧（`: keep-alive`）每 15 秒发送一次（`DEFAULT_HEARTBEAT_MS = 15_000`），防止代理超时
 - control 帧负载在 `payload` 字段内，以 `payload.control` 判别（**不是** `type`）；会话结束时服务端发一帧 `payload.control = "error"`（`message` 描述原因、`code` 为结束 reason）后关闭连接
 
-**断线重连**：携带 `Last-Event-ID` 头重新 GET 此端点，服务端重新订阅并续推后续帧（网关不缓存历史帧）：
+**断线重连与回放边界**：携带 `Last-Event-ID` 头重新 GET 此端点，服务端重新订阅并续推后续帧。`Last-Event-ID` 仅作续推的**续号起点**（`startSeq`），网关**不缓存历史帧、也不按序号回放历史消息帧**。迟到订阅者（含重连）能"补回"的仅有：日志 ring-buffer，以及 `session-status` / `session-state` 两类**粘性（sticky）**帧；**本轮已广播的 `uiMessageChunk` 回复帧不会重放**——它们经 EventEmitter 瞬时广播、无缓冲。要取回错过的回复正文，须走历史接口 `GET /sessions/:id/messages`。
 
 ```bash
 curl -N "http://localhost:3010/api/sessions/sess_abc/stream" \
@@ -247,11 +248,13 @@ curl -N "http://localhost:3010/api/sessions/sess_abc/stream" \
 
 > **重要**：会话 stats（用量统计）**不通过 SSE 推送**。SSE control 帧的 schema 虽定义了 `stats` 类型，但 `pi-session` 实际从不发送 `payload.control = "stats"` 帧（实测仅发出 `error` 与 `ui-rpc` 两类 control 帧）。用量数据须通过 `GET /sessions/:id/stats` REST 端点主动拉取。
 
+> **竞态注意**：`POST /messages` 触发 agent 产出首帧可能极快（实测 ~32ms），而同轮 `/stream` 在 dev 冷编译或高负载下可能数秒才连上（实测冷态 ~3237ms、热态仅 ~79ms）。若 `POST` 早于流连上，连接窗口之前广播的 `uiMessageChunk` 因服务端无缓冲而永久丢失，该轮回复只有刷新（走 `GET /sessions/:id/messages` 历史接口）后才可见——表现为"发送消息后需手动刷新才看到回复"，且因取决于流是否抢在 agent 首帧前连上而呈间歇性。规避方式即严格遵守上文的调用顺序约定：先建立本轮 `/stream` 订阅，再 `POST /messages`。
+
 ---
 
 ### POST /api/sessions/:id/messages — 发送消息
 
-向会话发送用户消息，触发 agent 推理。推理结果通过 `/stream` 异步推送。
+向会话发送用户消息，触发 agent 推理。推理结果通过**本轮已建立的** `/stream` 连接异步推送。**必须先为本轮打开 `/stream` 订阅，再调用本端点**：回复帧经服务端 EventEmitter 瞬时广播、不缓冲，若本端点早于 `/stream` 连上，连接窗口之前的回复帧会永久丢失，只能刷新经 `GET /sessions/:id/messages` 历史接口恢复（详见 `GET /sessions/:id/stream` 的"竞态注意"）。
 
 **请求体** (`PromptRequestSchema`，见 `packages/protocol/src/transport/rest-dto.ts:67`)：
 

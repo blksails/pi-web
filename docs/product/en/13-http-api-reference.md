@@ -202,8 +202,9 @@ curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
 
 ### GET /api/sessions/:id/stream — SSE Event Stream
 
-Establishes a long-lived connection to receive session events in real time (text deltas, tool calls, control frames, etc.).
-The client must first create a session, then subscribe to this stream, and only then send `POST /messages` to trigger inference.
+Establishes a long-lived connection to receive session events in real time (text deltas, tool calls, control frames, etc.). This subscription is established **per turn**: each turn's reply is carried by a fresh `/stream` connection the client opens for that turn—it is not a single session-level persistent connection, and it is normal to have no stream while idle.
+
+**Call-ordering convention (important)**: the client must first create the session, **open this turn's `/stream` subscription first, and only then** `POST /messages` to submit the prompt—the turn's reply frames come back over that already-established stream. The order must not be reversed: reply frames are broadcast transiently via the server's EventEmitter with no buffering, so if the stream is not yet connected, frames broadcast before the connection window are lost permanently (see "Race-condition note" below).
 
 **Response headers**:
 
@@ -236,7 +237,7 @@ data: {"kind":"control","protocolVersion":"0.1.0","payload":{"control":"error","
 - Heartbeat frames (`: keep-alive`) are sent every 15 seconds (`DEFAULT_HEARTBEAT_MS = 15_000`) to prevent proxy timeouts
 - The control-frame payload lives in the `payload` field and is discriminated by `payload.control` (**not** `type`); when the session ends, the server sends one frame with `payload.control = "error"` (`message` describes the reason, `code` is the end reason) and then closes the connection
 
-**Reconnection**: GET this endpoint again with a `Last-Event-ID` header; the server re-subscribes and continues pushing subsequent frames (the gateway does not buffer historical frames):
+**Reconnection and replay boundary**: GET this endpoint again with a `Last-Event-ID` header; the server re-subscribes and continues pushing subsequent frames. `Last-Event-ID` serves only as the **starting sequence number** (`startSeq`) for continued delivery—the gateway **does not buffer historical frames and does not replay historical message frames by sequence number**. All a late subscriber (including a reconnection) can "recover" is: the log ring-buffer, plus the two **sticky** frame kinds `session-status` / `session-state`; **the `uiMessageChunk` reply frames already broadcast for the current turn are not replayed**—they are broadcast transiently via the EventEmitter with no buffering. To retrieve missed reply content, use the history endpoint `GET /sessions/:id/messages`.
 
 ```bash
 curl -N "http://localhost:3010/api/sessions/sess_abc/stream" \
@@ -247,11 +248,13 @@ curl -N "http://localhost:3010/api/sessions/sess_abc/stream" \
 
 > **Important**: session stats (usage statistics) are **not pushed over SSE**. Although the SSE control-frame schema defines a `stats` type, `pi-session` never actually sends a `payload.control = "stats"` frame (in practice only the `error` and `ui-rpc` control frames are emitted). Usage data must be actively pulled via the `GET /sessions/:id/stats` REST endpoint.
 
+> **Race-condition note**: `POST /messages` can trigger the agent's first frame extremely fast (measured ~32ms), whereas the same turn's `/stream` may take several seconds to connect under a dev cold compile or heavy load (measured ~3237ms cold, ~79ms warm). If the `POST` happens before the stream connects, the `uiMessageChunk` frames broadcast before the connection window are lost permanently because the server does not buffer them, and the turn's reply becomes visible only after a refresh (via the `GET /sessions/:id/messages` history endpoint)—appearing as "you must manually refresh to see the reply after sending a message," and intermittently so, since it depends on whether the stream connects ahead of the agent's first frame. The way to avoid it is to strictly follow the call-ordering convention above: open this turn's `/stream` subscription first, then `POST /messages`.
+
 ---
 
 ### POST /api/sessions/:id/messages — Send a Message
 
-Sends a user message to the session, triggering agent inference. Inference results are pushed asynchronously via `/stream`.
+Sends a user message to the session, triggering agent inference. Inference results are pushed asynchronously via **this turn's already-established** `/stream` connection. **You must open this turn's `/stream` subscription before calling this endpoint**: reply frames are broadcast transiently via the server's EventEmitter with no buffering, so if this endpoint runs before `/stream` connects, the reply frames before the connection window are lost permanently and can only be recovered by refreshing via the `GET /sessions/:id/messages` history endpoint (see the "Race-condition note" under `GET /sessions/:id/stream`).
 
 **Request body** (`PromptRequestSchema`, see `packages/protocol/src/transport/rest-dto.ts:67`):
 
