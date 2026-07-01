@@ -1,9 +1,20 @@
 "use client";
 
 import * as React from "react";
+import type {
+  AgentSourceItem,
+  ListAgentSourcesRequest,
+  ListAgentSourcesResponse,
+} from "@blksails/pi-web-protocol";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@blksails/pi-web-ui";
 
 /**
- * AgentSourcePicker — agent source input + submit.
+ * AgentSourcePicker — agent source input + submit,可选叠加"可浏览的源列表"。
  *
  * Accepts any `source` shape supported by agent-source-resolver (a local
  * directory path or a git source). Offers a "use default source" option when a
@@ -11,6 +22,11 @@ import * as React from "react";
  * created and a recognizable error (with re-pick) on failure (Req 1.5 / 4.1 /
  * 4.4 / 4.5). It produces only a `source` string and a submit intent — it does
  * not create the session itself.
+ *
+ * agent-sources-list:当 `enableSourceList` 开启且注入 `listAgentSources` 时,在手输框
+ * 之上展示一个只读的可选源列表(GET /agent-sources)。点击某项等价于把其 `source` 交给
+ * `onSubmit`(与手输等价字符串再提交完全一致,Req 5.1/5.2)。列表加载失败或为空都不阻断
+ * 手输框(Req 5.3/5.4);会话创建中(`loading`)禁用列表点击(Req 5.5)。
  */
 export interface AgentSourcePickerProps {
   /** Called with the chosen source string (empty string ⇒ use default). */
@@ -21,6 +37,107 @@ export interface AgentSourcePickerProps {
   readonly loading?: boolean;
   /** Recognizable error message from a failed session creation. */
   readonly error?: string | undefined;
+  /**
+   * 只读源列表数据源(注入 PiClient.listAgentSources)。未注入 ⇒ 不显示列表。
+   */
+  readonly listAgentSources?: (
+    req: ListAgentSourcesRequest,
+  ) => Promise<ListAgentSourcesResponse>;
+  /** 门控:是否启用源列表入口。未启用或未注入数据源 ⇒ 仅显示手输框(Req 6.4)。 */
+  readonly enableSourceList?: boolean;
+  /**
+   * sidebar-launcher-rail:已收藏的 source 集合(用于星标高亮)。未注入 ⇒ 不显示星标
+   * (向后兼容 agent-sources-list)。
+   */
+  readonly favoriteSources?: ReadonlySet<string>;
+  /** 收藏/取消收藏某源(切换)。未注入 ⇒ 不显示星标。 */
+  readonly onToggleFavorite?: (item: AgentSourceItem) => void;
+  /**
+   * 展示形态(sidebar-launcher-rail:悬浮对话框):
+   * - `"page"`(默认):整页居中(初始启动屏)。
+   * - `"dialog"`:悬浮遮罩层 + 居中卡片 + 关闭按钮,可在会话进行中调出。
+   */
+  readonly variant?: "page" | "dialog";
+  /** 关闭对话框(仅 `variant="dialog"`;点关闭/遮罩/Esc 触发)。 */
+  readonly onClose?: () => void;
+  /** 对话框标题(仅 dialog)。 */
+  readonly dialogTitle?: string;
+}
+
+type ListStatus = "idle" | "loading" | "error";
+
+/** 源列表子视图状态。竞态守卫用 reqId ref 丢弃过期响应。 */
+function useAgentSourceList(
+  enabled: boolean,
+  listAgentSources:
+    | ((req: ListAgentSourcesRequest) => Promise<ListAgentSourcesResponse>)
+    | undefined,
+): { status: ListStatus; items: readonly AgentSourceItem[] } {
+  const [status, setStatus] = React.useState<ListStatus>("idle");
+  const [items, setItems] = React.useState<readonly AgentSourceItem[]>([]);
+  const reqIdRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (!enabled || listAgentSources === undefined) {
+      setStatus("idle");
+      setItems([]);
+      return;
+    }
+    const myId = reqIdRef.current + 1;
+    reqIdRef.current = myId;
+    setStatus("loading");
+    void listAgentSources({})
+      .then((res) => {
+        if (reqIdRef.current !== myId) return; // 过期响应丢弃
+        setItems(res.sources);
+        setStatus("idle");
+      })
+      .catch(() => {
+        if (reqIdRef.current !== myId) return;
+        setStatus("error");
+      });
+  }, [enabled, listAgentSources]);
+
+  return { status, items };
+}
+
+/** avatar 是否为可直接渲染的图片地址(URL / data-URI)。 */
+function isImageAvatar(avatar: string): boolean {
+  return (
+    avatar.startsWith("http://") ||
+    avatar.startsWith("https://") ||
+    avatar.startsWith("data:")
+  );
+}
+
+/** 源头像:图片地址→<img>;短文本/emoji→文字;缺省→标题/名称首字母。 */
+function SourceAvatar({
+  item,
+}: {
+  readonly item: AgentSourceItem;
+}): React.JSX.Element {
+  const label = item.title ?? item.name;
+  const base =
+    "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[hsl(var(--muted))] text-sm font-medium text-[hsl(var(--muted-foreground))]";
+  if (item.avatar !== undefined && isImageAvatar(item.avatar)) {
+    return (
+      <img
+        src={item.avatar}
+        alt=""
+        data-agent-source-avatar
+        className="h-9 w-9 shrink-0 rounded-md object-cover"
+      />
+    );
+  }
+  const glyph =
+    item.avatar !== undefined && item.avatar.length > 0
+      ? item.avatar
+      : (label.trim()[0] ?? "?").toUpperCase();
+  return (
+    <span data-agent-source-avatar className={base} aria-hidden>
+      {glyph}
+    </span>
+  );
 }
 
 export function AgentSourcePicker({
@@ -28,8 +145,25 @@ export function AgentSourcePicker({
   defaultSource,
   loading = false,
   error,
+  listAgentSources,
+  enableSourceList = false,
+  favoriteSources,
+  onToggleFavorite,
+  variant = "page",
+  onClose,
+  dialogTitle = "选择 agent source",
 }: AgentSourcePickerProps): React.JSX.Element {
   const [value, setValue] = React.useState<string>(defaultSource ?? "");
+  const showList = enableSourceList && listAgentSources !== undefined;
+  const showFavToggle = onToggleFavorite !== undefined;
+  const isDialog = variant === "dialog";
+  const { status, items } = useAgentSourceList(showList, listAgentSources);
+  // 默认只展示前 COLLAPSE_LIMIT 个源卡片,其余折叠在「显示全部」之后。
+  const COLLAPSE_LIMIT = 9;
+  const [expanded, setExpanded] = React.useState(false);
+  const hasMore = items.length > COLLAPSE_LIMIT;
+  const visibleItems =
+    expanded || !hasMore ? items : items.slice(0, COLLAPSE_LIMIT);
 
   const submit = (source: string): void => {
     if (loading) return;
@@ -41,79 +175,221 @@ export function AgentSourcePicker({
     submit(value.trim());
   };
 
+  // 宽屏容器:源列表以卡片网格铺开;无列表(仅手输)时收窄更聚焦。
+  const innerWidth = showList ? "max-w-4xl" : "max-w-lg";
+  const inner = (
+    <div className={`flex w-full ${innerWidth} flex-col gap-4`}>
+        {showList ? (
+          <section
+            data-agent-source-list
+            className="flex flex-col gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 text-[hsl(var(--card-foreground))] shadow-sm"
+          >
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <span>Available agent sources</span>
+              {status === "idle" && items.length > 0 ? (
+                <span className="rounded-full bg-[hsl(var(--muted))] px-1.5 text-[10px] font-normal text-[hsl(var(--muted-foreground))]">
+                  {items.length}
+                </span>
+              ) : null}
+            </h2>
+
+            {status === "loading" ? (
+              <p
+                data-agent-source-list-loading
+                className="text-sm text-[hsl(var(--muted-foreground))]"
+              >
+                Loading sources…
+              </p>
+            ) : status === "error" ? (
+              <p
+                role="alert"
+                data-agent-source-list-error
+                className="text-sm text-[hsl(var(--destructive))]"
+              >
+                Failed to load agent sources. You can still enter one below.
+              </p>
+            ) : items.length === 0 ? (
+              <p
+                data-agent-source-list-empty
+                className="text-sm text-[hsl(var(--muted-foreground))]"
+              >
+                No agent sources found. Enter one below.
+              </p>
+            ) : (
+              // 宽屏卡片网格:窄屏 1 列,渐进到 2/3 列;默认只展示前 9 个,其余折叠。
+              <ul className="grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                {visibleItems.map((item) => {
+                  const isFav = favoriteSources?.has(item.source) ?? false;
+                  return (
+                    <li key={item.id} className="relative">
+                      <button
+                        type="button"
+                        disabled={loading}
+                        data-agent-source-item
+                        data-source={item.source}
+                        onClick={() => submit(item.source)}
+                        className="flex h-full w-full flex-col gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 text-left transition-colors hover:border-[hsl(var(--ring))] hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+                      >
+                        <span className="flex items-center gap-2">
+                          <SourceAvatar item={item} />
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span
+                              data-agent-source-title
+                              className="truncate pr-6 text-sm font-medium"
+                            >
+                              {item.title ?? item.name}
+                            </span>
+                            <span className="mt-0.5 w-fit rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[10px] uppercase text-[hsl(var(--muted-foreground))]">
+                              {item.mode}
+                            </span>
+                          </span>
+                        </span>
+                        {item.description !== undefined ? (
+                          <span className="line-clamp-3 text-xs text-[hsl(var(--muted-foreground))]">
+                            {item.description}
+                          </span>
+                        ) : null}
+                      </button>
+                      {showFavToggle ? (
+                        <button
+                          type="button"
+                          data-agent-source-favorite-toggle
+                          data-source={item.source}
+                          data-favorited={isFav ? "true" : "false"}
+                          aria-label={isFav ? `取消收藏 ${item.name}` : `收藏 ${item.name}`}
+                          aria-pressed={isFav}
+                          onClick={() => onToggleFavorite?.(item)}
+                          className={`absolute right-2 top-2 rounded p-0.5 text-base leading-none ${isFav ? "text-yellow-500" : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"}`}
+                        >
+                          {isFav ? "★" : "☆"}
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* 超过 9 个时:显示全部 / 收起。 */}
+            {status === "idle" && hasMore ? (
+              <button
+                type="button"
+                data-agent-source-list-more
+                aria-expanded={expanded}
+                onClick={() => setExpanded((v) => !v)}
+                className="mt-1 self-start rounded-md px-2 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+              >
+                {expanded
+                  ? "收起"
+                  : `显示全部 ${items.length} 个(展开其余 ${items.length - COLLAPSE_LIMIT})`}
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
+        <form
+          onSubmit={onFormSubmit}
+          className="flex w-full flex-col gap-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 text-[hsl(var(--card-foreground))] shadow-sm"
+        >
+          <div className="space-y-1">
+            <h1 className="text-lg font-semibold">Start a pi-web session</h1>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Enter an agent source — a local directory with an{" "}
+              <code>index.ts</code> (custom agent) or any directory (general CLI
+              mode) or a git source.
+            </p>
+          </div>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Agent source</span>
+            <input
+              type="text"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="./examples/hello-agent or https://github.com/org/repo"
+              disabled={loading}
+              data-agent-source-input
+              className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+            />
+          </label>
+
+          {error !== undefined ? (
+            <p
+              role="alert"
+              data-agent-source-error
+              className="rounded-md border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-3 py-2 text-sm text-[hsl(var(--destructive))]"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={loading}
+              data-agent-source-submit
+              className="inline-flex items-center justify-center rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
+            >
+              {loading ? "Creating session…" : "Start session"}
+            </button>
+
+            {defaultSource !== undefined ? (
+              <button
+                type="button"
+                disabled={loading}
+                data-agent-source-default
+                onClick={() => submit("")}
+                className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50"
+              >
+                Use default source
+              </button>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <p
+              data-agent-source-loading
+              className="text-sm text-[hsl(var(--muted-foreground))]"
+            >
+              Resolving source and spawning agent…
+            </p>
+          ) : null}
+        </form>
+    </div>
+  );
+
+  // 悬浮对话框:shadcn/Radix Dialog(遮罩点击 / Esc / 焦点捕获 / 内置关闭 X 由 Radix 提供)。
+  // 受控:open 恒真,任一关闭路径经 onOpenChange(false) 汇聚到 onClose。
+  if (isDialog) {
+    return (
+      <Dialog
+        open
+        onOpenChange={(next) => {
+          if (!next) onClose?.();
+        }}
+      >
+        <DialogContent
+          data-agent-source-picker
+          data-agent-source-dialog
+          className="max-h-[85vh] w-[92vw] max-w-4xl gap-2 overflow-auto border-0 bg-transparent p-0 shadow-none"
+        >
+          {/* inner 自带可见的卡片与标题;此处提供无障碍所需的对话框标题(视觉隐藏)。 */}
+          <DialogHeader className="sr-only">
+            <DialogTitle>{dialogTitle}</DialogTitle>
+          </DialogHeader>
+          {inner}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // 整页(初始启动屏)。
   return (
     <div
       className="flex h-full w-full items-center justify-center p-6"
       data-agent-source-picker
     >
-      <form
-        onSubmit={onFormSubmit}
-        className="flex w-full max-w-lg flex-col gap-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 text-[hsl(var(--card-foreground))] shadow-sm"
-      >
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">Start a pi-web session</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">
-            Enter an agent source — a local directory with an{" "}
-            <code>index.ts</code> (custom agent) or any directory (general CLI
-            mode) or a git source.
-          </p>
-        </div>
-
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Agent source</span>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="./examples/hello-agent or https://github.com/org/repo"
-            disabled={loading}
-            data-agent-source-input
-            className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
-          />
-        </label>
-
-        {error !== undefined ? (
-          <p
-            role="alert"
-            data-agent-source-error
-            className="rounded-md border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-3 py-2 text-sm text-[hsl(var(--destructive))]"
-          >
-            {error}
-          </p>
-        ) : null}
-
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            disabled={loading}
-            data-agent-source-submit
-            className="inline-flex items-center justify-center rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
-          >
-            {loading ? "Creating session…" : "Start session"}
-          </button>
-
-          {defaultSource !== undefined ? (
-            <button
-              type="button"
-              disabled={loading}
-              data-agent-source-default
-              onClick={() => submit("")}
-              className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              Use default source
-            </button>
-          ) : null}
-        </div>
-
-        {loading ? (
-          <p
-            data-agent-source-loading
-            className="text-sm text-[hsl(var(--muted-foreground))]"
-          >
-            Resolving source and spawning agent…
-          </p>
-        ) : null}
-      </form>
+      {inner}
     </div>
   );
 }

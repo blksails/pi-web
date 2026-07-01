@@ -161,6 +161,7 @@ Lists locally persisted historical sessions (only lightweight session-header met
 | `sessionId` | string | No | when `scope=cwd`, prefer this session's persisted cwd as the target directory |
 | `limit` | positive integer | No | per-page cap, defaults to 50, hard-clamped to 200 |
 | `cursor` | string | No | opaque keyset cursor (`base64url(JSON.stringify({ ts, id }))`), to fetch the next page |
+| `q` | string | No | Name search keyword (sidebar-launcher-rail): when non-empty, filters by session name/id substring (case-insensitive) before sort/pagination; absent/empty keeps existing behavior (backward compatible). Max length 100. Matches names only, not body content |
 
 **Success response** 200 (`ListSessionsResponse`, see `rest-dto.ts:207`):
 
@@ -197,6 +198,78 @@ curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
 > The system view (`scope=all`) is off by default and requires the deployer to set `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`. For the full mechanism of pagination, gating, the frontend's three states, and relocation, see [21 · Sessions List](./21-sessions-list.md).
 >
 > **Implementation reference**: `packages/server/src/session-list/session-list-routes.ts`
+
+### GET /api/agent-sources — List Available Agent Sources
+
+Read-only enumeration of "agent sources available in the current environment," for the new-session picker (`AgentSourcePicker`) to browse and pick — clicking an item creates a session with its `source` directly (equivalent to typing it). Data comes from **two merged channels**: a directory scan (first-level subdirectories under `PI_WEB_SOURCES_ROOT`, reusing source-probe semantics to classify custom/cli) ∪ a registry file (`PI_WEB_SOURCES_REGISTRY` JSON), deduplicated by `id` (registry overrides scan). Mounted via the `routes:` injection seam (`createAgentSourcesRoutes()`).
+
+**Strictly read-only**: handling a request performs no writes, no git clone, and no resolve/spawn of a session subprocess. Returns an empty list (success) when no source is configured.
+
+**Query parameters** (`ListAgentSourcesRequestSchema`, see `packages/protocol/src/transport/rest-dto.ts`):
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `limit` | positive int | No | Page size, default 100, hard-clamped to 500 |
+| `cursor` | string | No | Opaque keyset cursor (`base64url(JSON.stringify({ id }))`), fetch next page |
+
+**Success response** 200 (`ListAgentSourcesResponse`):
+
+```jsonc
+{
+  "sources": [
+    {
+      "id": "/abs/examples/hello-agent",   // stable id: dir→realpath; git→url@ref
+      "source": "/abs/examples/hello-agent", // source string passed to POST /sessions
+      "name": "hello-agent",                // technical name: package.json name > dir/repo basename
+      "kind": "dir",                        // "dir" | "git"
+      "origin": "scan",                     // "scan" | "registry"
+      "mode": "custom",                     // "custom" (has entry) | "cli"
+      "title": "Hello Agent",               // optional display title (pi-web.title / registry.title); list uses title ?? name
+      "description": "…",                   // optional (pi-web.description / registry.description / package.json description)
+      "avatar": "🤖"                        // optional avatar: image URL/data-URI → <img>; else short text/emoji; falls back to initial
+    }
+  ],
+  "nextCursor": "eyJpZCI6...",  // absent means no more pages
+  "protocolVersion": "0.1.0"
+}
+```
+
+**Display metadata source**: scanned sources read `title` / `description` / `avatar` from their `package.json` `pi-web` field (same place as `pi-web.entry`); `name` still comes from top-level `package.json` name, `description` falls back to the top-level one. Registry entries may declare `title` / `description` / `avatar` directly. The frontend renders the source list as a widescreen card grid: each card has an avatar + `title ?? name` + mode badge + description + favorite star.
+
+**Errors**:
+
+| Status | code | Trigger |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | `limit` / `cursor` invalid (response includes offending field) |
+| 500 | `INTERNAL` | Unexpected assembly/serialization failure (missing/corrupt sources do not count — they degrade to an empty contribution) |
+
+```bash
+curl "http://localhost:3010/api/agent-sources?limit=100"
+```
+
+> Whether the frontend shows the source list is gated by the build-time `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1`; the backend sources are configured via `PI_WEB_SOURCES_ROOT` (`path.delimiter`-separated for multiple) and `PI_WEB_SOURCES_REGISTRY` (default `<agentDir>/sources.json`). See [05 · Configuration](05-configuration.md) for all three.
+>
+> **Implementation reference**: `packages/server/src/agent-source-list/`
+
+### GET·PUT /api/agent-sources/favorites — agent source favorites (read/write)
+
+Favorites are a **user preference** (sidebar-launcher-rail), independent of the read-only source enumeration `/agent-sources`; persisted at `<agentDir>/agent-source-favorites.json`, used by the sidebar launcher rail to render one-click launch anchors. Injected via `createFavoritesRoutes()`, mounted under the `/api/agent-sources/**` catch-all forwarder (GET+PUT). Favoriting/unfavoriting does **not** modify the enumeration sources (scan dir / registry).
+
+- **GET** → `ListFavoritesResponse`: `{ "favorites": [ { "source": "...", "name": "..." } ] }`. Missing/corrupt file degrades to the remaining available items.
+- **PUT** `{ favorites }` → `ListFavoritesResponse` (echoes the persisted result): **full replace** (idempotent), atomic tmp+rename write. Invalid body → `400 INVALID_REQUEST`.
+
+```bash
+curl -X PUT "http://localhost:3010/api/agent-sources/favorites" \
+  -H "Content-Type: application/json" \
+  -d '{"favorites":[{"source":"./examples/hello-agent","name":"hello-agent"}]}'
+```
+
+| Status | code | Trigger |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | PUT body invalid JSON / shape mismatch |
+| 500 | `INTERNAL` | read/write preference file error |
+
+> **Implementation reference**: `packages/server/src/agent-source-list/favorites-store.ts`, `favorites-routes.ts`
 
 ---
 

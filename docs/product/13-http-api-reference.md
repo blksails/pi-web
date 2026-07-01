@@ -161,6 +161,7 @@ curl -X POST http://localhost:3010/api/sessions \
 | `sessionId` | string | 否 | `scope=cwd` 时优先以该会话的持久化 cwd 为目标目录 |
 | `limit` | 正整数 | 否 | 单页上限，默认 50，硬 clamp 到 200 |
 | `cursor` | string | 否 | 不透明 keyset 游标（`base64url(JSON.stringify({ ts, id }))`），续取下一页 |
+| `q` | string | 否 | 名称搜索关键字（sidebar-launcher-rail）：非空时按会话名称/标识子串（大小写不敏感）过滤，置于排序/分页前；缺省/空串行为不变（向后兼容）。限长 100。仅匹配名称，不检索正文 |
 
 **成功响应** 200（`ListSessionsResponse`，见 `rest-dto.ts:207`）：
 
@@ -197,6 +198,91 @@ curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
 > 系统视图（`scope=all`）默认关闭，需部署方设 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`。分页、门控、前端三态与重定位等完整机制详见 [21 · 会话列表](21-sessions-list.md)。
 >
 > **实现参考**：`packages/server/src/session-list/session-list-routes.ts`
+
+### GET /api/agent-sources — 列出可用的 agent source
+
+只读枚举「当前环境下可用的 agent source」，供新建会话选择器（`AgentSourcePicker`）浏览、点选后以其 `source` 直接创建会话（等价手输）。数据来源为**两路合并**：目录扫描（`PI_WEB_SOURCES_ROOT` 下的一级子目录，复用源探测语义判定 custom/cli）∪ 注册表文件（`PI_WEB_SOURCES_REGISTRY` JSON），按 `id` 去重（注册表覆盖扫描）。经 `routes:` 注入接缝挂载（`createAgentSourcesRoutes()`）。
+
+**严格只读**：处理请求时不写文件、不 clone git、不 resolve/spawn 会话子进程。未配任何来源时返回空列表（成功）。
+
+**查询参数** (`ListAgentSourcesRequestSchema`，见 `packages/protocol/src/transport/rest-dto.ts`)：
+
+| 参数 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| `limit` | 正整数 | 否 | 单页上限，默认 100，硬 clamp 到 500 |
+| `cursor` | string | 否 | 不透明 keyset 游标（`base64url(JSON.stringify({ id }))`），续取下一页 |
+
+**成功响应** 200（`ListAgentSourcesResponse`）：
+
+```jsonc
+{
+  "sources": [
+    {
+      "id": "/abs/examples/hello-agent",   // 稳定标识：dir→realpath；git→url@ref
+      "source": "/abs/examples/hello-agent", // 直接提交给 POST /sessions 的 source
+      "name": "hello-agent",                // 技术名：package.json name > 目录/repo 末段
+      "kind": "dir",                        // "dir" | "git"
+      "origin": "scan",                     // "scan" | "registry"
+      "mode": "custom",                     // "custom"（含入口）| "cli"
+      "title": "Hello Agent",               // 可选展示标题（pi-web.title / registry.title）；列表用 title ?? name
+      "description": "…",                   // 可选（pi-web.description / registry.description / package.json description）
+      "avatar": "🤖"                        // 可选头像：图片 URL/data-URI→<img>；否则短文本/emoji；缺省用标题首字母
+    }
+  ],
+  "nextCursor": "eyJpZCI6...",  // 缺省表示无更多页
+  "protocolVersion": "0.1.0"
+}
+```
+
+**展示元数据来源**：目录扫描的源从其 `package.json` 的 `pi-web` 字段(与 `pi-web.entry` 同处)取 `title` / `description` / `avatar`,`name` 仍取 `package.json` 顶层 name,`description` 回退顶层 description。注册表登记项可直接声明 `title` / `description` / `avatar`。前端源列表以宽屏卡片网格展示,每卡片含头像 + `title ?? name` + 模式徽标 + 描述 + 收藏星标。
+
+```jsonc
+// 示例源的 package.json 片段
+{
+  "name": "hello-agent",
+  "pi-web": {
+    "entry": "index.ts",
+    "title": "Hello Agent",
+    "description": "最简回声 agent,用于上手演示",
+    "avatar": "🤖"
+  }
+}
+```
+
+**错误**：
+
+| 状态 | code | 触发 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | `limit` / `cursor` 非法（响应含出错字段） |
+| 500 | `INTERNAL` | 装配/序列化等意外失败（来源缺失/损坏不算，退化为空贡献） |
+
+```bash
+curl "http://localhost:3010/api/agent-sources?limit=100"
+```
+
+> 前端是否展示源列表由构建期 `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1` 门控；后端来源由 `PI_WEB_SOURCES_ROOT`（`path.delimiter` 分隔多个）与 `PI_WEB_SOURCES_REGISTRY`（默认 `<agentDir>/sources.json`）配置。三者详见 [05 · 配置](05-configuration.md)。
+>
+> **实现参考**：`packages/server/src/agent-source-list/`
+
+### GET·PUT /api/agent-sources/favorites — agent source 收藏（读写）
+
+收藏是**用户偏好**（sidebar-launcher-rail），独立于只读源枚举 `/agent-sources`；持久化在 `<agentDir>/agent-source-favorites.json`，供侧栏启动导航区渲染一键启动锚点。经 `createFavoritesRoutes()` 注入，挂在 `/api/agent-sources/**` catch-all 转发器下（GET+PUT）。收藏/取消收藏**不修改**源枚举来源（扫描目录/注册表）。
+
+- **GET** → `ListFavoritesResponse`：`{ "favorites": [ { "source": "...", "name": "..." } ] }`。文件缺失/损坏容错返回其余可用项。
+- **PUT** `{ favorites }` → `ListFavoritesResponse`（回显落盘结果）：**全量替换**（幂等），原子 tmp+rename 写。body 非法 → `400 INVALID_REQUEST`。
+
+```bash
+curl -X PUT "http://localhost:3010/api/agent-sources/favorites" \
+  -H "Content-Type: application/json" \
+  -d '{"favorites":[{"source":"./examples/hello-agent","name":"hello-agent"}]}'
+```
+
+| 状态 | code | 触发 |
+|---|---|---|
+| 400 | `INVALID_REQUEST` | PUT body 非法 JSON / 结构不符 |
+| 500 | `INTERNAL` | 读/写偏好文件异常 |
+
+> **实现参考**：`packages/server/src/agent-source-list/favorites-store.ts`、`favorites-routes.ts`
 
 ---
 

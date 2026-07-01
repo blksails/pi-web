@@ -45,6 +45,8 @@ export const SlotKeySchema = z.enum([
   "artifactSurface",
   "dialogLayer",
   "logs",
+  // sidebar-launcher-rail:侧栏启动导航区内的 webext 贡献槽(扩展在导航区挂自定义渲染)。
+  "launcherRail",
 ]);
 export type SlotKey = z.infer<typeof SlotKeySchema>;
 

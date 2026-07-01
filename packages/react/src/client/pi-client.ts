@@ -29,6 +29,10 @@ import type {
   CompletionTriggersResponse,
   ListSessionsRequest,
   ListSessionsResponse,
+  ListAgentSourcesRequest,
+  ListAgentSourcesResponse,
+  ListFavoritesResponse,
+  SetFavoritesRequest,
   GetLogsResponse,
   LogLevel,
   StateSetRequest,
@@ -40,6 +44,8 @@ import {
   ForkResponseSchema,
   GetForkMessagesResponseSchema,
   ListSessionsResponseSchema,
+  ListAgentSourcesResponseSchema,
+  ListFavoritesResponseSchema,
   GetLogsResponseSchema,
 } from "@blksails/pi-web-protocol";
 import type { LogEntry } from "@blksails/pi-web-logger";
@@ -72,6 +78,23 @@ export interface PiClient {
    * (系统/全机器,受部署门控)。响应经 ListSessionsResponseSchema 解析;空结果返回空数组。
    */
   listSessions(req: ListSessionsRequest): Promise<ListSessionsResponse>;
+  /**
+   * GET /agent-sources —— 只读枚举可用的 agent source(agent-sources-list),来源为
+   * 「目录扫描 ∪ 注册表文件」两路合并去重。响应经 ListAgentSourcesResponseSchema 解析;
+   * 无来源返回空数组。选中项的 `source` 可直接交给会话创建链路(等价手输)。
+   */
+  listAgentSources(
+    req: ListAgentSourcesRequest,
+  ): Promise<ListAgentSourcesResponse>;
+  /**
+   * GET /agent-sources/favorites —— 列出收藏的 agent source(sidebar-launcher-rail)。
+   * 收藏是用户偏好,独立于只读源枚举。
+   */
+  listFavorites(): Promise<ListFavoritesResponse>;
+  /**
+   * PUT /agent-sources/favorites —— 全量替换收藏集合,返回落盘后的最新集合。
+   */
+  setFavorites(req: SetFavoritesRequest): Promise<ListFavoritesResponse>;
   prompt(id: string, req: PromptRequest): Promise<CommandAck>;
   steer(id: string, req: SteerRequest): Promise<CommandAck>;
   /** follow_up 端点;请求体形状同 SteerRequest(见 protocol rest-dto)。 */
@@ -172,6 +195,8 @@ export function createPiClient(
     sendRequest<T>(baseUrl, f, { method: "GET", path });
   const del = <T>(path: string): Promise<T> =>
     sendRequest<T>(baseUrl, f, { method: "DELETE", path });
+  const put = <T>(path: string, body?: unknown): Promise<T> =>
+    sendRequest<T>(baseUrl, f, { method: "PUT", path, body });
 
   return {
     baseUrl,
@@ -185,11 +210,29 @@ export function createPiClient(
       if (req.sessionId !== undefined) p.set("sessionId", req.sessionId);
       if (req.limit !== undefined) p.set("limit", String(req.limit));
       if (req.cursor !== undefined) p.set("cursor", req.cursor);
+      if (req.q !== undefined) p.set("q", req.q);
       const qs = p.toString();
       return ListSessionsResponseSchema.parse(
         await get<unknown>(`/sessions${qs.length > 0 ? `?${qs}` : ""}`),
       );
     },
+    listAgentSources: async (req) => {
+      const p = new URLSearchParams();
+      if (req.limit !== undefined) p.set("limit", String(req.limit));
+      if (req.cursor !== undefined) p.set("cursor", req.cursor);
+      const qs = p.toString();
+      return ListAgentSourcesResponseSchema.parse(
+        await get<unknown>(`/agent-sources${qs.length > 0 ? `?${qs}` : ""}`),
+      );
+    },
+    listFavorites: async () =>
+      ListFavoritesResponseSchema.parse(
+        await get<unknown>("/agent-sources/favorites"),
+      ),
+    setFavorites: async (req) =>
+      ListFavoritesResponseSchema.parse(
+        await put<unknown>("/agent-sources/favorites", req),
+      ),
     prompt: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/messages`, req),
     steer: (id, req) =>

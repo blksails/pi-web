@@ -34,5 +34,8 @@ export * from "./config/index.js";
 // session-list(sessions-list):GET /sessions 只读列表端点的注入路由工厂。
 // 仅 node builtins + session-store/http 复用面(无 pi SDK 值导入),可安全经 barrel 重导出。
 export * from "./session-list/index.js";
+// agent-source-list(agent-sources-list):GET /agent-sources 只读源枚举端点的注入路由工厂。
+// 仅 node builtins + agent-source 只读探测(probeEntry/identify),无 pi SDK 值导入,可安全经 barrel 重导出。
+export * from "./agent-source-list/index.js";
 // sandbox 强制注入入口解析(仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出)。
 export { resolveSandboxEntry } from "./sandbox/entry.js";

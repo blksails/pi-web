@@ -1,0 +1,22 @@
+{
+  "feature_name": "agent-sources-list",
+  "created_at": "2026-07-01T04:40:28Z",
+  "updated_at": "2026-07-01T05:25:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

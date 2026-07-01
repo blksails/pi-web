@@ -218,3 +218,77 @@ describe("GET /sessions — request validation", () => {
     expect(res.status).toBe(500);
   });
 });
+
+describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
+  /** seed 命名会话到 cwdA。 */
+  async function seedNamed(): Promise<void> {
+    const store = new FsSessionEntryStore(tmpDir);
+    const mk = (id: string, name: string, t: string): Promise<string> =>
+      store.create({ type: "session", id, version: 1, cwd: cwdA, name, timestamp: t });
+    await mk("s1", "Refactor Auth Module", "2026-06-01T00:00:01.000Z");
+    await mk("s2", "Fix login bug", "2026-06-01T00:00:02.000Z");
+    await mk("s3", "Docs update", "2026-06-01T00:00:03.000Z");
+  }
+
+  it("q 命中(大小写不敏感)只返回匹配名称的会话(Req 3.2)", async () => {
+    await seedNamed();
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=fix`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s2"]);
+  });
+
+  it("q 未命中 → 空结果(Req 3.4),不使请求失败", async () => {
+    await seedNamed();
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=zzz-nomatch`));
+    expect(res.status).toBe(200);
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions).toEqual([]);
+  });
+
+  it("空 q 与不传 q 一致(向后兼容 Req 6.2)", async () => {
+    await seedNamed();
+    const handler = makeHandler(false);
+    const base = ListSessionsResponseSchema.parse(
+      await readJson(await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`))),
+    );
+    const withEmptyQ = ListSessionsResponseSchema.parse(
+      await readJson(await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=`))),
+    );
+    expect(withEmptyQ.sessions.map((s) => s.sessionId)).toEqual(
+      base.sessions.map((s) => s.sessionId),
+    );
+  });
+
+  it("q 也可按 sessionId 子串命中", async () => {
+    await seedNamed();
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=s3`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s3"]);
+  });
+
+  it("q 匹配 auto-title 显示名(header 未命名,标题在 session_info)(Req 3.2/3.6)", async () => {
+    // header 无 name,标题经 session_info 派生(auto-session-title 路径)。
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({
+      type: "session",
+      id: "auto1",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+    });
+    await store.append("auto1", {
+      type: "session_info",
+      name: "Investigate Payment Bug",
+    } as never);
+    const handler = makeHandler(false);
+    // 按显示名子串搜索 → 命中该 header 未命名会话(修复前只匹配 header name 会漏)。
+    const res = await handler(
+      url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=payment`),
+    );
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["auto1"]);
+  });
+});

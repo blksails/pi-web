@@ -189,6 +189,11 @@ export const ListSessionsRequestSchema = z.object({
   limit: z.number().int().positive().optional(),
   /** 续取游标(不透明);缺省取首页。 */
   cursor: z.string().optional(),
+  /**
+   * 名称搜索关键字(sidebar-launcher-rail):非空时按会话名称/标识子串(大小写不敏感)
+   * 过滤;缺省/空串行为与不过滤一致(向后兼容)。限长防 DOS。仅匹配名称,不检索正文。
+   */
+  q: z.string().max(100).optional(),
 });
 export type ListSessionsRequest = z.infer<typeof ListSessionsRequestSchema>;
 
@@ -214,6 +219,95 @@ export const ListSessionsResponseSchema = z.object({
   globalEnabled: z.boolean(),
 });
 export type ListSessionsResponse = z.infer<typeof ListSessionsResponseSchema>;
+
+/**
+ * GET /agent-sources 列表端点 —— 请求/响应/列表项契约(agent-sources-list)。
+ *
+ *   GET /agent-sources?limit=&cursor=  → ListAgentSourcesResponse
+ *
+ * 只读枚举「当前环境可用的 agent source」,数据来源为「目录扫描 ∪ 注册表文件」两路合并、
+ * 按 id 去重(registry 覆盖 scan)。端点严格只读:不写、不 clone git、不 resolve/spawn。
+ * 分页用不透明 keyset 游标 `cursor`(base64url `{origin,name,id}`,与列表排序同序),即便游标
+ * 记录在两次请求间消失也不重发/漏发已返回条目。
+ */
+export const AgentSourceItemSchema = z.object({
+  /** 稳定标识:dir→realpath 绝对路径;git→`url@ref`。 */
+  id: z.string(),
+  /** 可直接提交给会话创建链路(等价手输)的 source 字符串。 */
+  source: z.string(),
+  /** 显示名:registry.name > package.json name > 目录/repo 末段。 */
+  name: z.string(),
+  /** 源类型。 */
+  kind: z.enum(["dir", "git"]),
+  /** 来源渠道:目录扫描 | 注册表登记。 */
+  origin: z.enum(["scan", "registry"]),
+  /** 解析模式:含入口文件→custom;否则→cli(与真正建会话判定一致)。 */
+  mode: z.enum(["custom", "cli"]),
+  /**
+   * 可选展示标题(比 `name` 更友好的人读名):`pi-web.title` / registry.title;
+   * 列表展示优先用 `title ?? name`。
+   */
+  title: z.string().optional(),
+  /** 可选描述(pi-web.description / registry.description / package.json description)。 */
+  description: z.string().optional(),
+  /**
+   * 可选头像:图片 URL(http/https/data:)直接渲染为图片;否则按短文本/emoji 渲染;
+   * 缺省时前端用标题/名称首字母兜底。来源:`pi-web.avatar` / registry.avatar。
+   */
+  avatar: z.string().optional(),
+});
+export type AgentSourceItem = z.infer<typeof AgentSourceItemSchema>;
+
+export const ListAgentSourcesRequestSchema = z.object({
+  /** 单页上限;缺省由服务端取默认值并 clamp 到上限。 */
+  limit: z.number().int().positive().optional(),
+  /** 续取游标(不透明);缺省取首页。 */
+  cursor: z.string().optional(),
+});
+export type ListAgentSourcesRequest = z.infer<
+  typeof ListAgentSourcesRequestSchema
+>;
+
+export const ListAgentSourcesResponseSchema = z.object({
+  sources: z.array(AgentSourceItemSchema),
+  /** 缺省表示无更多页。 */
+  nextCursor: z.string().optional(),
+});
+export type ListAgentSourcesResponse = z.infer<
+  typeof ListAgentSourcesResponseSchema
+>;
+
+/**
+ * agent source 收藏(sidebar-launcher-rail)—— 用户偏好,独立于只读源枚举。
+ *
+ *   GET /agent-sources/favorites            → ListFavoritesResponse
+ *   PUT /agent-sources/favorites  { favorites } → ListFavoritesResponse(回显)
+ *
+ * 持久化在 `<agentDir>/agent-source-favorites.json`。PUT 为全量替换(幂等)。收藏/取消
+ * 收藏不修改源枚举的来源(扫描目录/注册表文件)。
+ */
+export const AgentSourceFavoriteSchema = z.object({
+  /** 提交给会话创建链路的 source 字符串(等价手输/列表选取)。 */
+  source: z.string(),
+  /** 技术名(兜底标签)。 */
+  name: z.string(),
+  /** 可选展示标题;锚点优先显示 title ?? name。 */
+  title: z.string().optional(),
+  /** 可选头像(图片 URL/data-URI 或短文本/emoji)。 */
+  avatar: z.string().optional(),
+});
+export type AgentSourceFavorite = z.infer<typeof AgentSourceFavoriteSchema>;
+
+export const ListFavoritesResponseSchema = z.object({
+  favorites: z.array(AgentSourceFavoriteSchema),
+});
+export type ListFavoritesResponse = z.infer<typeof ListFavoritesResponseSchema>;
+
+export const SetFavoritesRequestSchema = z.object({
+  /** 全量替换的收藏集合。 */
+  favorites: z.array(AgentSourceFavoriteSchema),
+});
+export type SetFavoritesRequest = z.infer<typeof SetFavoritesRequestSchema>;
 
 /**
  * GET /sessions/:id/logs 响应 —— 返回结构化日志条目列表。

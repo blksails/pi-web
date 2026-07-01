@@ -12,11 +12,17 @@ import {
 import {
   PiChat,
   SessionListPanel,
+  LauncherRail,
+  SlotHost,
+  resolveSlot,
   type ExtensionCommandPolicy,
   type ComponentOverrides,
   type PiChatSlots,
 } from "@blksails/pi-web-ui";
-import type { CreateSessionRequest } from "@blksails/pi-web-protocol";
+import type {
+  CreateSessionRequest,
+  AgentSourceItem,
+} from "@blksails/pi-web-protocol";
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
@@ -183,6 +189,18 @@ const SESSIONS_GLOBAL_ENABLED =
   process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
   process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1";
 
+// agent-sources-list:是否在源选择器中展示"可浏览的源列表"。构建期内联,前端门控;
+// 后端未配来源时端点返回空列表,两端一致表现为"无列表可浏览"(Req 6.4)。
+const SOURCE_PICKER_ENABLED =
+  process.env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER === "true" ||
+  process.env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER === "1";
+
+// sidebar-launcher-rail:是否在侧栏会话列表之上渲染启动导航区(搜索/新建/收藏锚点/webext槽)。
+// 构建期内联,前端门控;未启用时侧栏退化为仅会话列表(Req 1.4/6.1)。
+const LAUNCHER_RAIL_ENABLED =
+  process.env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL === "true" ||
+  process.env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL === "1";
+
 /** 允许的宿主插槽子集(PiChatSlots 中可承载块级面板的 key)。 */
 type SessionsSlotKey = "sidebar" | "header" | "footer" | "empty";
 const ALLOWED_SESSIONS_SLOTS: readonly SessionsSlotKey[] = [
@@ -242,6 +260,66 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
   // Logging panel config (Req 6.6 + 6.1/6.2): defaults until config loads.
   const logsPanelConfig = useLogsPanelConfig();
 
+  // agent-sources-list:源选择器的只读列表数据源(注入 PiClient.listAgentSources)。
+  // 与 SessionListPanel 同构的注入式接线——组件不持接线,便于测试。
+  const pickerClient = React.useMemo(() => createPiClient("/api"), []);
+
+  // sidebar-launcher-rail:收藏集合(供选择器星标高亮 + 切换)。选择器(session===undefined)
+  // 与侧栏导航区(SessionView 内)是互斥视图,故此处仅服务选择器的星标态;导航区锚点由
+  // LauncherRail 自身经 listFavorites 拉取。
+  const [favoriteSources, setFavoriteSources] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  // 返回选择器时 bump(onReset)→ 重拉收藏,反映在会话内(LauncherRail)对收藏的增删,
+  // 避免选择器星标态陈旧(reviewer 反馈)。
+  const [favoritesReloadKey, setFavoritesReloadKey] = React.useState(0);
+  React.useEffect(() => {
+    if (!LAUNCHER_RAIL_ENABLED) return;
+    let live = true;
+    void pickerClient
+      .listFavorites()
+      .then((res) => {
+        if (live) setFavoriteSources(new Set(res.favorites.map((f) => f.source)));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [pickerClient, favoritesReloadKey]);
+  const onToggleFavorite = React.useCallback(
+    (item: AgentSourceItem): void => {
+      setFavoriteSources((prev) => {
+        const next = new Set(prev);
+        if (next.has(item.source)) next.delete(item.source);
+        else next.add(item.source);
+        return next;
+      });
+      // 读当前收藏 → 计算下一状态 → 持久化(全量替换)。存 title/avatar 供锚点展示。
+      void pickerClient
+        .listFavorites()
+        .then((res) => {
+          const exists = res.favorites.some((f) => f.source === item.source);
+          const next = exists
+            ? res.favorites.filter((f) => f.source !== item.source)
+            : [
+                ...res.favorites,
+                {
+                  source: item.source,
+                  name: item.name,
+                  ...(item.title !== undefined ? { title: item.title } : {}),
+                  ...(item.avatar !== undefined ? { avatar: item.avatar } : {}),
+                },
+              ];
+          return pickerClient.setFavorites({ favorites: next });
+        })
+        .then((res) =>
+          setFavoriteSources(new Set(res.favorites.map((f) => f.source))),
+        )
+        .catch(() => {});
+    },
+    [pickerClient],
+  );
+
   // Resume mode (resumeId) or CLI autostart (source already determined): enter
   // SessionView immediately and skip the picker.
   const [session, setSession] = React.useState<ActiveSession | undefined>(
@@ -268,6 +346,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
 
   const onReset = (): void => {
     setSession(undefined);
+    // 返回选择器:重拉收藏,反映会话内导航区对收藏的增删(避免星标态陈旧)。
+    setFavoritesReloadKey((n) => n + 1);
     // Drop back to the picker URL so a refresh does not re-resume.
     if (typeof window !== "undefined") {
       window.history.replaceState(null, "", "/");
@@ -291,6 +371,11 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
         <AgentSourcePicker
           onSubmit={onSubmit}
           defaultSource={props.defaultSource}
+          enableSourceList={SOURCE_PICKER_ENABLED}
+          listAgentSources={pickerClient.listAgentSources}
+          {...(LAUNCHER_RAIL_ENABLED
+            ? { favoriteSources, onToggleFavorite }
+            : {})}
         />
       ) : (
         <SessionView
@@ -301,6 +386,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
             : {})}
           onReset={onReset}
           onNewByAgentSource={onNewByAgentSource}
+          onLaunchSource={onSubmit}
           logsPanelVisible={logsPanelConfig.panelVisible}
           logsPanelPosition={logsPanelConfig.panelPosition}
         />
@@ -314,6 +400,7 @@ function SessionView({
   resumeId,
   onReset,
   onNewByAgentSource,
+  onLaunchSource,
   logsPanelVisible,
   logsPanelPosition,
 }: {
@@ -321,6 +408,8 @@ function SessionView({
   readonly resumeId?: string;
   readonly onReset: () => void;
   readonly onNewByAgentSource: () => void;
+  /** sidebar-launcher-rail:以某 source 新建会话(收藏锚点点击)。 */
+  readonly onLaunchSource: (source: string) => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
   readonly logsPanelVisible?: boolean;
   /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
@@ -399,28 +488,105 @@ function SessionView({
   const onTurnEnd = React.useCallback((): void => {
     setSessionListRefreshKey((n) => n + 1);
   }, []);
-  const sessionListSlot = React.useMemo<PiChatSlots>(
-    () =>
-      sessionListSlots(
-        <SessionListPanel
-          {...(session.sessionId !== undefined
-            ? { currentSessionId: session.sessionId }
-            : {})}
-          currentCwd={create.cwd ?? "."}
-          globalEnabled={SESSIONS_GLOBAL_ENABLED}
-          listSessions={piClient.listSessions}
-          onResume={onResumeSession}
-          refreshSignal={sessionListRefreshKey}
-        />,
-      ),
-    [
-      session.sessionId,
-      create.cwd,
-      piClient,
-      onResumeSession,
-      sessionListRefreshKey,
-    ],
+
+  // sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源即新建会话。
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  // 收藏信号:会话内收藏变更(对话框星标/导航区取消)后 bump → 导航区锚点与对话框星标同步。
+  const [favoritesSignal, setFavoritesSignal] = React.useState(0);
+  const [dialogFavorites, setDialogFavorites] = React.useState<Set<string>>(
+    () => new Set(),
   );
+  // 对话框打开或收藏信号变化时拉取收藏,用于星标高亮。
+  React.useEffect(() => {
+    if (!LAUNCHER_RAIL_ENABLED || !pickerOpen) return;
+    let live = true;
+    void piClient
+      .listFavorites()
+      .then((res) => {
+        if (live) setDialogFavorites(new Set(res.favorites.map((f) => f.source)));
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [piClient, pickerOpen, favoritesSignal]);
+  const onDialogToggleFavorite = React.useCallback(
+    (item: AgentSourceItem): void => {
+      void piClient
+        .listFavorites()
+        .then((res) => {
+          const exists = res.favorites.some((f) => f.source === item.source);
+          const next = exists
+            ? res.favorites.filter((f) => f.source !== item.source)
+            : [
+                ...res.favorites,
+                {
+                  source: item.source,
+                  name: item.name,
+                  ...(item.title !== undefined ? { title: item.title } : {}),
+                  ...(item.avatar !== undefined ? { avatar: item.avatar } : {}),
+                },
+              ];
+          return piClient.setFavorites({ favorites: next });
+        })
+        .then((res) => {
+          setDialogFavorites(new Set(res.favorites.map((f) => f.source)));
+          setFavoritesSignal((n) => n + 1); // 同步导航区锚点
+        })
+        .catch(() => {});
+    },
+    [piClient],
+  );
+
+  const sessionListSlot = React.useMemo<PiChatSlots>(() => {
+    const panel = (
+      <SessionListPanel
+        {...(session.sessionId !== undefined
+          ? { currentSessionId: session.sessionId }
+          : {})}
+        currentCwd={create.cwd ?? "."}
+        globalEnabled={SESSIONS_GLOBAL_ENABLED}
+        listSessions={piClient.listSessions}
+        onResume={onResumeSession}
+        refreshSignal={sessionListRefreshKey}
+      />
+    );
+    if (!LAUNCHER_RAIL_ENABLED) return sessionListSlots(panel);
+    // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
+    // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
+    // SlotHost 自带 error boundary 隔离(Req 5.4)。
+    const launcherContribution = resolveSlot(extension, "launcherRail");
+    return sessionListSlots(
+      <div className="flex h-full w-64 flex-col gap-1 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-2">
+        <LauncherRail
+          onNewChat={() => setPickerOpen(true)}
+          onResume={onResumeSession}
+          onLaunchSource={onLaunchSource}
+          listSessions={piClient.listSessions}
+          currentCwd={create.cwd ?? "."}
+          listFavorites={piClient.listFavorites}
+          setFavorites={piClient.setFavorites}
+          favoritesRefreshSignal={favoritesSignal}
+          {...(launcherContribution !== undefined
+            ? { webextSlot: <SlotHost ext={extension} slot="launcherRail" /> }
+            : {})}
+        />
+        <div className="mx-1 my-1.5 h-px shrink-0 bg-[hsl(var(--border))]" />
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {panel}
+        </div>
+      </div>,
+    );
+  }, [
+    session.sessionId,
+    create.cwd,
+    piClient,
+    onResumeSession,
+    sessionListRefreshKey,
+    favoritesSignal,
+    onLaunchSource,
+    extension,
+  ]);
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
   // 未显式声明则回落到由 source 派生的名字(deriveSourceTitle)。cleanup 还原为载入前标题
@@ -576,6 +742,22 @@ function SessionView({
             : {})}
         />
       </div>
+      {/* sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源→新建会话。 */}
+      {LAUNCHER_RAIL_ENABLED && pickerOpen ? (
+        <AgentSourcePicker
+          variant="dialog"
+          onClose={() => setPickerOpen(false)}
+          onSubmit={(source) => {
+            setPickerOpen(false);
+            onLaunchSource(source);
+          }}
+          defaultSource={create.source}
+          enableSourceList={SOURCE_PICKER_ENABLED}
+          listAgentSources={piClient.listAgentSources}
+          favoriteSources={dialogFavorites}
+          onToggleFavorite={onDialogToggleFavorite}
+        />
+      ) : null}
     </div>
   );
 }
