@@ -214,6 +214,12 @@ export class PiSession {
       this.sticky.set("session-state", this.snapshotFrame());
     }
 
+    // 冷恢复标题回填(方案A):有初始标题时 seed 一帧粘性 setTitle,使任何订阅者(含首个)回放即得
+    // ambient.title。冷恢复无 agent 侧 setTitle 帧,否则顶栏无标题。仅 resume 分支传入,新建不受影响。
+    if (opts.initialTitle !== undefined && opts.initialTitle.length > 0) {
+      this.seedInitialTitle(opts.initialTitle);
+    }
+
     // 订阅通道三类信号(Req 1.2)。
     this.unsubs.push(
       this.channel.onEvent((event) => this.handleEvent(event)),
@@ -936,6 +942,27 @@ export class PiSession {
   }
 
   // ───────────────────────── extension UI 往返(Req 5.x） ─────────────────────────
+
+  /**
+   * 冷恢复标题回填(方案A):把持久化的会话名合成一帧 `setTitle` extension-ui 请求,translate 成
+   * `control:"extension-ui"` 帧后**登记为粘性帧**并广播。订阅者(含首个)回放该帧即得 ambient.title,
+   * 补上冷恢复无 agent 侧 setTitle 帧的缺口。不入 `pendingExtensionUI`(setTitle 是推送类、无需回包),
+   * 与握手/快照开关正交。构造期调用一次(此时无订阅者,靠 sticky 回放;后续订阅即得)。
+   */
+  private seedInitialTitle(title: string): void {
+    const req: RpcExtensionUIRequest = {
+      type: "extension_ui_request",
+      id: `resume-title:${this.id}`,
+      method: "setTitle",
+      title,
+    };
+    const { frames, ctx } = translateEvent(req, this.translationCtx);
+    this.translationCtx = ctx;
+    for (const frame of frames) {
+      this.sticky.set("resume-title", frame);
+      this.emitter.emit(FRAME_EVENT, frame);
+    }
+  }
 
   private handleExtensionUIRequest(req: RpcExtensionUIRequest): void {
     if (this._status !== "active") return;

@@ -108,3 +108,74 @@ describe("SessionListPanel × refreshSignal", () => {
     expect(listSessions).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
+  it("占位行在空列表上也立即渲染(不落库前即可见,不闪空态)", async () => {
+    const listSessions = vi.fn(async () => resp([])); // 服务端尚无该会话
+    render(
+      <SessionListPanel
+        currentSessionId="new-1"
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        pendingSession={{ sessionId: "new-1" }}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-pi-session-list-pending=""]'),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByText("新会话")).toBeInTheDocument();
+    // 不应出现空态。
+    expect(
+      document.querySelector("[data-pi-session-list-empty]"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("真实数据已含该 id → 占位去重让位,不重复渲染", async () => {
+    const listSessions = vi.fn(async () =>
+      resp([item({ sessionId: "new-1", name: "首条消息标题" })]),
+    );
+    render(
+      <SessionListPanel
+        currentSessionId="new-1"
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        pendingSession={{ sessionId: "new-1" }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("首条消息标题")).toBeInTheDocument());
+    // 占位不再出现(已被真实项去重让位)。
+    expect(
+      document.querySelector('[data-pi-session-list-pending=""]'),
+    ).not.toBeInTheDocument();
+    // 该 id 的列表项唯一。
+    expect(
+      document.querySelectorAll('[data-pi-session-list-item="new-1"]'),
+    ).toHaveLength(1);
+  });
+
+  it("占位可带自定义标题", async () => {
+    const listSessions = vi.fn(async () => resp([]));
+    render(
+      <SessionListPanel
+        currentSessionId="new-2"
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        pendingSession={{ sessionId: "new-2", title: "自定义占位标题" }}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("自定义占位标题")).toBeInTheDocument(),
+    );
+  });
+});

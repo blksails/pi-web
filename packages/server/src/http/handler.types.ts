@@ -56,6 +56,12 @@ export interface ResumeMeta {
   readonly source: string | undefined;
   readonly cwd: string;
   readonly model?: string;
+  /**
+   * 会话显示名(冷恢复标题回填,方案A):最新 `session_info` 名(fs 经 displayName 派生)或
+   * header.name。主进程 resume 时据此 seed 会话顶栏标题(ambient.title)——冷恢复无 agent 侧
+   * setTitle 帧,否则顶栏标题为空。
+   */
+  readonly name?: string;
 }
 
 /** SSE 调参(可选)。 */

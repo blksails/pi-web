@@ -40,11 +40,24 @@ export function makeResumeMetaLoader(
 
     // 权威 cwd 取自 header;读不到 header 即视为会话不存在。
     let cwd: string;
+    let name: string | undefined;
     try {
       const header = await store.readHeader(id);
       cwd = header.cwd;
+      name = header.name; // 回退基线;下方优先用 displayName 派生的最新 session_info 名。
     } catch {
       return undefined;
+    }
+
+    // 显示名(冷恢复标题回填,方案A):优先经 displayName 派生最新 session_info 名(fs 后端);
+    // 派生不到 / store 不支持时保留 header.name。best-effort,失败不致命(仍可用 cwd 恢复)。
+    if (typeof store.displayName === "function") {
+      try {
+        const derived = await store.displayName(id);
+        if (derived !== undefined && derived.length > 0) name = derived;
+      } catch {
+        // 忽略:名字只是展示增强。
+      }
     }
 
     // 读 entries 找 piweb.session 创建元数据中的 model(custom 模式写入;cli 模式无)。
@@ -67,6 +80,11 @@ export function makeResumeMetaLoader(
     // cwd 的相对路径,持久化后丢失基准;而 header.cwd 是 resolve 后的绝对目录,直接以它
     // 作 source 即可复现会话(custom→该目录有 index;cli→普通目录),避免相对 source 被
     // 二次拼接到已是 agent 目录的 cwd 上。
-    return { source: cwd, cwd, ...(model !== undefined ? { model } : {}) };
+    return {
+      source: cwd,
+      cwd,
+      ...(model !== undefined ? { model } : {}),
+      ...(name !== undefined && name.length > 0 ? { name } : {}),
+    };
   };
 }

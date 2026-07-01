@@ -411,10 +411,14 @@ function SessionView({
           listSessions={piClient.listSessions}
           onResume={onResumeSession}
           refreshSignal={sessionListRefreshKey}
+          {...(resumeId === undefined && session.sessionId !== undefined
+            ? { pendingSession: { sessionId: session.sessionId } }
+            : {})}
         />,
       ),
     [
       session.sessionId,
+      resumeId,
       create.cwd,
       piClient,
       onResumeSession,

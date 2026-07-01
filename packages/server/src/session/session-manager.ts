@@ -109,6 +109,8 @@ export class SessionManager {
         : {}),
       // 权威快照:从 manager 透传开关(session-snapshot-authority)。
       snapshotAuthority: this.snapshotAuthority,
+      // 冷恢复标题回填(方案A):resume 分支透传初始标题,新建会话为 undefined(不 seed)。
+      ...(input.initialTitle !== undefined ? { initialTitle: input.initialTitle } : {}),
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
       onClosed: (id) => {
         this.store.delete(id);

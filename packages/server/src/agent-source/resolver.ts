@@ -13,7 +13,43 @@ import { decideMode } from "./mode-decide.js";
 import { identify } from "./source-type.js";
 import { applyTrust } from "./trust-apply.js";
 import { resolveTrustPolicy } from "./trust-policy.js";
+import { AgentSourceError } from "./errors.js";
+import {
+  BUILTIN_DEFAULT_AGENT_SOURCE,
+  defaultAgentEntryPath,
+} from "../builtin-agents/entry-path.js";
 import type { ResolveOptions, ResolvedSource } from "./types.js";
+
+/**
+ * 内置 agent 解析(`builtin:<name>`):入口文件随包发布(defaultAgentEntryPath),
+ * **cwd 用用户工作目录**(opts.cwd,非入口所在的包内目录)→ 走 custom 模式,runner 期特性
+ * (auto-title 等)全生效。目前仅支持 `default-agent`;入口解析不到 → 抛错(上层可回退)。
+ */
+function resolveBuiltin(
+  name: string,
+  policySource: string,
+  opts: ResolveOptions,
+): ResolvedSource {
+  if (name !== "default-agent") {
+    throw new AgentSourceError("UNKNOWN_BUILTIN_AGENT", `Unknown built-in agent: ${name}`);
+  }
+  const entryPath = defaultAgentEntryPath();
+  if (entryPath === undefined) {
+    throw new AgentSourceError(
+      "BUILTIN_AGENT_NOT_FOUND",
+      "Built-in default agent entry could not be located.",
+    );
+  }
+  const cwd = opts.cwd ?? process.cwd();
+  const trust = resolveTrustPolicy(opts)({
+    dir: cwd,
+    source: policySource,
+    requestTrust: opts.requestTrust,
+  });
+  const fragment = applyTrust("custom", trust);
+  const spawnSpec = assemble({ mode: "custom", cwd, entryPath }, fragment, opts);
+  return { mode: "custom", spawnSpec, cwd: spawnSpec.cwd, trust };
+}
 
 /** 解析后的本地工作目录 + 表示该来源的用于信任策略的 source 字符串。 */
 interface LocalTarget {
@@ -45,6 +81,9 @@ async function toLocalDir(
         : path.resolve(opts.cwd ?? process.cwd(), localDir);
       return { dir: abs, policySource: identified.source };
     }
+    case "builtin":
+      // 不可达:resolve() 在调用 toLocalDir 前已拦截 builtin(其入口在包内、不映射本地目录)。
+      throw new AgentSourceError("UNKNOWN_BUILTIN_AGENT", `Built-in source must be resolved earlier: ${identified.name}`);
   }
 }
 
@@ -55,6 +94,12 @@ export async function resolve(
   source: string | undefined,
   opts: ResolveOptions = {},
 ): Promise<ResolvedSource> {
+  // 内置 agent(`builtin:<name>`)走独立路径:入口在包内、cwd 用用户目录,直接 custom 模式。
+  const identified = identify(source, opts);
+  if (identified.kind === "builtin") {
+    return resolveBuiltin(identified.name, source ?? BUILTIN_DEFAULT_AGENT_SOURCE, opts);
+  }
+
   const { dir, policySource } = await toLocalDir(source, opts);
 
   const entry = await probeEntry(dir);

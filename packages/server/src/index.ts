@@ -9,6 +9,8 @@
 export {};
 export * from "./rpc-channel/index.js";
 export * from "./agent-source/index.js";
+// 内置 default-agent 入口解析(纯 node builtins,无 pi SDK 值导入,可安全 barrel 重导出)。
+export * from "./builtin-agents/entry-path.js";
 // trust 策略仍经子路径 `@blksails/pi-web-server/trust` 导出(消费方 pi-handler 据此导入)。
 // 历史原因是 `project-trust-policy` 曾值导入 `@earendil-works/pi-coding-agent`(其 dist 拉入
 // pi-ai 的 `node:fs/os/path` + 表达式 require),经 barrel `export *` 会令 Next external 失效、

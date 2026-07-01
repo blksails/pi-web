@@ -83,7 +83,13 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
           source: meta.source,
           ...(meta.model !== undefined ? { model: meta.model } : {}),
         });
-        deps.manager.createSession({ resolved, channel, id });
+        deps.manager.createSession({
+          resolved,
+          channel,
+          id,
+          // 冷恢复标题回填(方案A):把持久化的会话名 seed 成初始 ambient.title,重开即见标题。
+          ...(meta.name !== undefined ? { initialTitle: meta.name } : {}),
+        });
         return jsonResponse(201, { sessionId: id });
       } catch (err) {
         return mapEngineError(err);

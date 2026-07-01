@@ -91,7 +91,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     agentDir: resolveAgentDir(env),
     defaultProvider: env.PI_WEB_DEFAULT_PROVIDER,
     defaultModel: env.PI_WEB_DEFAULT_MODEL,
-    defaultSource: env.PI_WEB_DEFAULT_SOURCE,
+    // 未显式配置 source 时,回退到随包发布的内置 default-agent(custom 模式 → auto-title 等
+    // runner 期特性生效),而非退回 "."(仓库根/任意 cwd 的 cli 模式,无标题)。见 resolver 的
+    // `builtin:` 处理。部署方仍可用 PI_WEB_DEFAULT_SOURCE 覆盖为自己的 agent。
+    defaultSource: env.PI_WEB_DEFAULT_SOURCE ?? "builtin:default-agent",
     defaultCwd: env.PI_WEB_DEFAULT_CWD ?? process.cwd(),
     stubAgent,
     autoStart: isTruthy(env.PI_WEB_AUTOSTART),

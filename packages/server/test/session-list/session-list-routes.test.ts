@@ -129,6 +129,67 @@ describe("GET /sessions — current-directory view", () => {
   });
 });
 
+describe("GET /sessions — display name enrichment (auto-title)", () => {
+  it("derives the latest session_info name for an unnamed session", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({ type: "session", id: "n1", version: 1, cwd: cwdA, timestamp: "2026-06-01T00:00:01.000Z" });
+    await store.append("n1", {
+      type: "session_info",
+      id: "i1",
+      parentId: null,
+      timestamp: "2026-06-01T00:00:02.000Z",
+      name: "自动生成的标题",
+    } as never);
+
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "n1")?.name).toBe("自动生成的标题");
+  });
+
+  it("prefers the latest session_info name over a stale header name (fs parity with sqlite/pg)", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    // header 已命名,但随后 session_info 更新了标题 —— 列表应显示最新 session_info 名,而非陈旧 header 名。
+    await store.create({
+      type: "session",
+      id: "h1",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+      name: "陈旧的 header 名",
+    });
+    await store.append("h1", {
+      type: "session_info",
+      id: "i1",
+      parentId: null,
+      timestamp: "2026-06-01T00:00:03.000Z",
+      name: "最新的自动标题",
+    } as never);
+
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "h1")?.name).toBe("最新的自动标题");
+  });
+
+  it("keeps the header name when there is no session_info", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({
+      type: "session",
+      id: "h2",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+      name: "仅 header 命名",
+    });
+
+    const handler = makeHandler(false);
+    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "h2")?.name).toBe("仅 header 命名");
+  });
+});
+
 describe("GET /sessions — pagination", () => {
   it("paginates via cursor without repeating sessions and converges", async () => {
     await seed();

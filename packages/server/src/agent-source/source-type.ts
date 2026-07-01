@@ -106,6 +106,12 @@ export function identify(
     return { kind: "plugin", plugin: opts.sourceResolver, source };
   }
 
+  // 保留 `builtin:<name>` 前缀 → 随包发布的内置 agent(custom 模式,入口在包内、cwd 用用户目录)。
+  if (source.startsWith("builtin:")) {
+    const name = source.slice("builtin:".length);
+    return { kind: "builtin", name: name.length > 0 ? name : "default-agent" };
+  }
+
   if (source.startsWith("git:")) {
     return { kind: "git", git: parseGitScheme(source) };
   }
