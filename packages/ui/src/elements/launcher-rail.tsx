@@ -230,7 +230,7 @@ export function LauncherRail({
                 {searchEmptyLabel}
               </p>
             ) : (
-              <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+              <ul className="pi-scrollbar-ghost flex max-h-48 flex-col gap-0.5 overflow-y-auto">
                 {results.map((s) => (
                   <li key={s.sessionId}>
                     <button

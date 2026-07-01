@@ -100,3 +100,27 @@
 .pi-scrollbar-thin::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* 幽灵滚动条:比 thin 更细更透(4px,idle 0.18 / hover 0.4),轨道透明、贴右边,
+   悬停才略显——用于会话列表等需要"几乎无感"滚动条的侧栏。 */
+.pi-scrollbar-ghost {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.18);
+  border-radius: 9999px;
+}
+.pi-scrollbar-ghost:hover::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-corner {
+  background: transparent;
+}

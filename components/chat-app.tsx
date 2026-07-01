@@ -575,7 +575,7 @@ function SessionView({
             : {})}
         />
         <div className="mx-1 my-1.5 h-px shrink-0 bg-[hsl(var(--border))]" />
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {panel}
         </div>
       </div>,
