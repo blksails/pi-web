@@ -25,6 +25,7 @@ import {
   CommandList,
 } from "../../ui/command.js";
 import { cn } from "../../lib/cn.js";
+import { useI18n } from "../../i18n/index.js";
 import { FieldShell, errorAt } from "./field-shell.js";
 
 interface ModelOption {
@@ -131,6 +132,7 @@ export function ModelSelectField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const id = React.useId();
   const error = errorAt(errors, path);
   const current = typeof value === "string" ? value : "";
@@ -152,7 +154,7 @@ export function ModelSelectField({
   const triggerText =
     current.length > 0
       ? (selectedLabel ?? current)
-      : (descriptor.placeholder ?? "选择…");
+      : (descriptor.placeholder ?? t("config.modelSelect.triggerPlaceholder"));
 
   const commit = (v: string): void => {
     onChange(v);
@@ -187,11 +189,11 @@ export function ModelSelectField({
           >
             <Command>
               <CommandInput
-                placeholder={descriptor.placeholder ?? "搜索…"}
-                aria-label={descriptor.label ?? "搜索"}
+                placeholder={descriptor.placeholder ?? t("config.modelSelect.searchPlaceholder")}
+                aria-label={descriptor.label ?? t("config.modelSelect.searchAria")}
               />
               <CommandList>
-                <CommandEmpty>无匹配</CommandEmpty>
+                <CommandEmpty>{t("config.modelSelect.empty")}</CommandEmpty>
                 {groups.map((g) => {
                   const items = g.options.map((o) => {
                     const selected = o.value === current;

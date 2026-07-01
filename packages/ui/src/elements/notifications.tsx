@@ -16,6 +16,7 @@ import * as React from "react";
 import { X } from "lucide-react";
 import type { ExtensionNotification } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface NotificationsProps {
   /** 通知列表(来自 useExtensionUI);空时不渲染(Req 1.6)。 */
@@ -53,6 +54,7 @@ function Toast({
   onDismiss,
   autoDismissMs,
 }: ToastProps): React.JSX.Element {
+  const t = useI18n();
   const { id, message, notifyType } = notification;
 
   // 级别感知的自动消失:info 为瞬态提示,按 autoDismissMs 自动消失;error/warning 承载需阅读/
@@ -88,7 +90,7 @@ function Toast({
       <span className="min-w-0 flex-1 break-words">{message}</span>
       <button
         type="button"
-        aria-label="关闭通知"
+        aria-label={t("notifications.dismiss")}
         data-pi-notification-dismiss
         onClick={() => onDismiss(id)}
         className="shrink-0 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"

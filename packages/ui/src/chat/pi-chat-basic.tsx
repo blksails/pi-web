@@ -24,6 +24,7 @@ import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { Button } from "../ui/button.js";
 import type { RendererRegistry } from "../registry/renderer-registry.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface PiChatBasicProps {
   /** 来自 usePiSession;提供绑定的 transport 与连接态。 */
@@ -49,6 +50,7 @@ export function PiChatBasic({
   registry,
   className,
 }: PiChatBasicProps): React.JSX.Element {
+  const t = useI18n();
   const transport = session.transport;
 
   const chat = useChat(
@@ -149,7 +151,7 @@ export function PiChatBasic({
               role="status"
             >
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Generating…
+              {t("chat.generating")}
             </div>
           ) : null}
           {/* 扩展 UI 交互内联卡(取代模态弹窗):渲染于消息流末尾,随流滚动。 */}
@@ -164,7 +166,7 @@ export function PiChatBasic({
           data-pi-prompt-input
         >
           <textarea
-            aria-label="Message"
+            aria-label={t("chat.messageAriaLabel")}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -174,7 +176,7 @@ export function PiChatBasic({
               }
             }}
             rows={2}
-            placeholder="Type a message…"
+            placeholder={t("chat.inputPlaceholder")}
             className="min-w-0 flex-1 resize-none rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
             data-pi-input-textarea
           />
@@ -184,7 +186,7 @@ export function PiChatBasic({
               variant="destructive"
               size="icon"
               onClick={onAbort}
-              aria-label="Stop"
+              aria-label={t("chat.stop")}
               data-pi-abort
             >
               <Square className="h-4 w-4" />
@@ -193,7 +195,7 @@ export function PiChatBasic({
             <Button
               type="submit"
               size="icon"
-              aria-label="Send"
+              aria-label={t("chat.send")}
               disabled={transport === undefined}
               data-pi-send
             >

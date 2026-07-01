@@ -10,6 +10,7 @@ import type {
 } from "@blksails/pi-web-protocol";
 import { Search, SquarePen, X } from "lucide-react";
 import { ExtErrorBoundary } from "../web-ext/ext-error-boundary.js";
+import { useI18n } from "../i18n/index.js";
 
 /** avatar 是否为可直接渲染的图片地址(URL / data-URI)。 */
 function isImageAvatar(avatar: string): boolean {
@@ -102,11 +103,17 @@ export function LauncherRail({
   favoritesRefreshSignal,
   webextSlot,
   className,
-  newChatLabel = "新建聊天",
-  searchLabel = "搜索",
-  searchPlaceholder = "搜索会话…",
-  searchEmptyLabel = "无匹配会话",
+  newChatLabel,
+  searchLabel,
+  searchPlaceholder,
+  searchEmptyLabel,
 }: LauncherRailProps): React.JSX.Element {
+  const t = useI18n();
+  const newChatText = newChatLabel ?? t("launcherRail.newChat");
+  const searchText = searchLabel ?? t("launcherRail.search");
+  const searchPlaceholderText =
+    searchPlaceholder ?? t("launcherRail.searchPlaceholder");
+  const searchEmptyText = searchEmptyLabel ?? t("launcherRail.searchEmpty");
   // ── 搜索 ────────────────────────────────────────────────────────────────
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -193,7 +200,7 @@ export function LauncherRail({
         <span aria-hidden className={iconClass}>
           <Search className="h-4 w-4" />
         </span>
-        <span>{searchLabel}</span>
+        <span>{searchText}</span>
       </button>
 
       {searchOpen ? (
@@ -206,28 +213,28 @@ export function LauncherRail({
             onKeyDown={(e) => {
               if (e.key === "Escape") closeSearch();
             }}
-            placeholder={searchPlaceholder}
+            placeholder={searchPlaceholderText}
             data-launcher-search-input
             className="rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
           />
           {query.trim().length > 0 ? (
             searchStatus === "loading" ? (
               <p className="px-2 py-1 text-xs text-[hsl(var(--muted-foreground))]">
-                搜索中…
+                {t("launcherRail.searching")}
               </p>
             ) : searchStatus === "error" ? (
               <p
                 role="alert"
                 className="px-2 py-1 text-xs text-[hsl(var(--destructive))]"
               >
-                搜索失败
+                {t("launcherRail.searchError")}
               </p>
             ) : results.length === 0 ? (
               <p
                 data-launcher-search-empty
                 className="px-2 py-1 text-xs text-[hsl(var(--muted-foreground))]"
               >
-                {searchEmptyLabel}
+                {searchEmptyText}
               </p>
             ) : (
               <ul className="pi-scrollbar-ghost flex max-h-48 flex-col gap-0.5 overflow-y-auto">
@@ -262,7 +269,7 @@ export function LauncherRail({
         <span aria-hidden className={iconClass}>
           <SquarePen className="h-4 w-4" />
         </span>
-        <span>{newChatLabel}</span>
+        <span>{newChatText}</span>
       </button>
 
       {/* 收藏锚点:无标签,自然跟随在新建聊天下方(无收藏则不占位) */}
@@ -288,7 +295,7 @@ export function LauncherRail({
               <button
                 type="button"
                 data-launcher-favorite-remove
-                aria-label={`取消收藏 ${f.title ?? f.name}`}
+                aria-label={`${t("launcherRail.removeFavorite")} ${f.title ?? f.name}`}
                 onClick={() => removeFavorite(f.source)}
                 className="absolute right-1.5 flex h-6 w-6 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--background))] hover:text-[hsl(var(--foreground))] group-hover:opacity-100"
               >

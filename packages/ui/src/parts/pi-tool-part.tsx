@@ -25,6 +25,7 @@ import type { UIMessage } from "ai";
 import { Card } from "../ui/card.js";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 type AnyPart = UIMessage["parts"][number];
 export type ToolPart =
@@ -33,11 +34,12 @@ export type ToolPart =
 
 export type ToolPhase = "start" | "update" | "end" | "error";
 
-export const PHASE_LABEL: Record<ToolPhase, string> = {
-  start: "Running",
-  update: "Streaming",
-  end: "Completed",
-  error: "Error",
+/** phase → i18n key(在组件内经 t(key) 翻译为徽章文案)。 */
+export const PHASE_LABEL_KEY: Record<ToolPhase, string> = {
+  start: "toolPart.status.running",
+  update: "toolPart.status.streaming",
+  end: "toolPart.status.completed",
+  error: "toolPart.status.error",
 };
 
 /** 从 part 推导工具名(dynamic-tool 用 toolName,静态用 `tool-<name>`)。 */
@@ -208,6 +210,7 @@ export function ToolHeader({
   timerLabel,
   timerSettled = false,
 }: ToolHeaderProps): React.JSX.Element {
+  const t = useI18n();
   const isError = phase === "error";
   return (
     <button
@@ -252,7 +255,7 @@ export function ToolHeader({
           {phase === "update" ? (
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
           ) : null}
-          {PHASE_LABEL[phase]}
+          {t(PHASE_LABEL_KEY[phase])}
         </span>
       </span>
     </button>

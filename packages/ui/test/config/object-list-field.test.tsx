@@ -63,7 +63,7 @@ describe("ObjectListField", () => {
     };
     const onChange = renderField(d, [{ note: "n1" }]);
     expect(screen.getByDisplayValue("n1")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "删除" }));
+    await user.click(screen.getByRole("button", { name: "删" }));
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 });

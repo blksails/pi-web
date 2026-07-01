@@ -13,6 +13,7 @@ import { FieldRenderer } from "../field-renderer.js";
 import { Card } from "../../ui/card.js";
 import { Button } from "../../ui/button.js";
 import { FieldShell } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 function asItem(v: unknown): Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -27,6 +28,7 @@ export function ObjectListField({
   disabled,
   registry,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const list = Array.isArray(value) ? value : [];
   const variants = descriptor.variants;
   const itemFields = descriptor.itemFields ?? [];
@@ -56,7 +58,7 @@ export function ObjectListField({
     <FieldShell descriptor={descriptor}>
       <div className="flex flex-col gap-3">
         {list.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无条目</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.objectList.empty")}</p>
         ) : null}
         {list.map((raw, i) => {
           const item = asItem(raw);
@@ -88,7 +90,7 @@ export function ObjectListField({
                   disabled={disabled}
                   onClick={() => removeItem(i)}
                 >
-                  删除
+                  {t("common.delete")}
                 </Button>
               </div>
               {fieldsForItem(item).map((sub) => (
@@ -108,7 +110,7 @@ export function ObjectListField({
         })}
         <div>
           <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addItem}>
-            添加条目
+            {t("config.objectList.addItem")}
           </Button>
         </div>
       </div>

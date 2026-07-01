@@ -9,6 +9,7 @@
 import * as React from "react";
 import { parseArtifactMessage } from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "@blksails/pi-web-kit";
+import { useI18n } from "../i18n/index.js";
 
 export interface ArtifactSurfaceProps {
   /** artifact 入口 URL(独立 origin 加载)。与 srcDoc 二选一。 */
@@ -31,11 +32,13 @@ export function ArtifactSurface({
   src,
   srcDoc,
   initialHeight = 200,
-  title = "artifact",
+  title,
   rpc,
   push,
   className,
 }: ArtifactSurfaceProps): React.JSX.Element {
+  const t = useI18n();
+  const resolvedTitle = title ?? t("artifact.title");
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = React.useState<number>(initialHeight);
   // 记录最新 push,iframe 加载完成(onLoad)时补投一次,避免推送早于 iframe 就绪而丢失。
@@ -97,7 +100,7 @@ export function ArtifactSurface({
     <iframe
       ref={iframeRef}
       data-pi-artifact
-      title={title}
+      title={resolvedTitle}
       sandbox="allow-scripts"
       onLoad={() => {
         // iframe 就绪后补投最新 push,确保对话已产生的输出不因加载时序而丢失。

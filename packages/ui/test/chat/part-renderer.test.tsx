@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { I18nProvider } from "../../src/i18n/index.js";
 import { PartRenderer } from "../../src/chat/part-renderer.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
 import { PiUiPart } from "../../src/parts/pi-ui-part.js";
@@ -57,12 +58,14 @@ describe("PartRenderer 分派", () => {
     expect(img?.getAttribute("alt")).toBe("pi-e2e-attach.png");
   });
 
-  it("file(image/*)无 filename → alt 兜底为 image", () => {
+  it("file(image/*)无 filename → alt 兜底为默认(en locale: image)", () => {
     const { container } = render(
-      <PartRenderer
-        part={filePart("/api/attachments/att_x/raw", "image/png")}
-        message={msg}
-      />,
+      <I18nProvider locale="en">
+        <PartRenderer
+          part={filePart("/api/attachments/att_x/raw", "image/png")}
+          message={msg}
+        />
+      </I18nProvider>,
     );
     expect(
       container.querySelector("img[data-pi-message-image]")?.getAttribute("alt"),

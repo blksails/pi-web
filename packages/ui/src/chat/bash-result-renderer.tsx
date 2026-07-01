@@ -8,6 +8,7 @@
  *  - 取消 → 标示未正常完成(Req 7.3)。
  *  - `!!`(不进上下文)→ no-context 徽标(Req 4.5)。
  */
+import { useI18n } from "../i18n/index.js";
 import { cn } from "../lib/cn.js";
 import type { DataPartRenderer } from "../registry/renderer-registry.js";
 
@@ -26,6 +27,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
   const data = ("data" in part ? part.data : undefined) as
     | BashResultPartData
     | undefined;
+  const t = useI18n();
   if (data === undefined) return null;
   const failed = data.exitCode !== undefined && data.exitCode !== 0;
   return (
@@ -48,7 +50,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
             className="rounded bg-[hsl(var(--secondary))] px-1.5 py-0.5 text-xs text-[hsl(var(--secondary-foreground))]"
             data-pi-bash-no-context
           >
-            no context
+            {t("bashResult.noContext")}
           </span>
         ) : null}
       </div>
@@ -64,7 +66,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
             className="text-[hsl(var(--destructive))]"
             data-pi-bash-cancelled
           >
-            已取消(未正常完成)
+            {t("bashResult.cancelled")}
           </span>
         ) : (
           <span
@@ -75,7 +77,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
             )}
             data-pi-bash-exit
           >
-            exit {data.exitCode ?? 0}
+            {t("bashResult.exit")} {data.exitCode ?? 0}
           </span>
         )}
         {data.truncated ? (
@@ -83,7 +85,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
             className="text-[hsl(var(--muted-foreground))]"
             data-pi-bash-truncated
           >
-            输出已截断
+            {t("bashResult.truncated")}
           </span>
         ) : null}
       </div>

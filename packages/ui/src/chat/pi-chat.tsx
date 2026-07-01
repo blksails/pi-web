@@ -49,6 +49,7 @@ import {
   PiInteraction,
 } from "../elements/index.js";
 import { IconsProvider, type IconTheme } from "../customization/icons.js";
+import { useI18n } from "../i18n/index.js";
 import {
   resolveComponent,
   type ComponentOverrides,
@@ -189,8 +190,6 @@ export interface PiChatProps {
   readonly className?: string;
 }
 
-const WEB_SEARCH_HINT = "[web-search] 请在回答前进行联网搜索。";
-
 // agent-slash-completion:"/" 触发符让 PiCommandPalette 单浮层独占,从 core 补全浮层
 // (PiCompletionPopover)排除,避免双浮层冲突。模块级常量保证引用稳定(effect 依赖)。
 const SLASH_EXCLUDED_TRIGGERS: readonly string[] = ["/"];
@@ -198,43 +197,12 @@ const SLASH_EXCLUDED_TRIGGERS: readonly string[] = ["/"];
 const EMPTY_NOTIFICATIONS: UseExtensionUIResult["notifications"] = [];
 const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
 
-const DEFAULT_PLACEHOLDER = "Ask anything…";
-const DEFAULT_EMPTY_TITLE = "What can I help with?";
-const DEFAULT_EMPTY_SUBTITLE = "Ask a question, write code, or explore ideas.";
-
 const DEFAULT_TOOLBAR_ORDER: ReadonlyArray<ToolbarControl> = [
   "attachments",
   "model",
   "speech",
   "webSearch",
   "submit",
-];
-
-const DEFAULT_STARTERS: ReadonlyArray<Suggestion> = [
-  {
-    id: "starter-nextjs",
-    label: "What are the advantages of using Next.js?",
-    value: "What are the advantages of using Next.js?",
-    mode: "fill",
-  },
-  {
-    id: "starter-dijkstra",
-    label: "Write code to demonstrate Dijkstra's algorithm",
-    value: "Write code to demonstrate Dijkstra's algorithm",
-    mode: "fill",
-  },
-  {
-    id: "starter-essay",
-    label: "Help me write an essay about Silicon Valley",
-    value: "Help me write an essay about Silicon Valley",
-    mode: "fill",
-  },
-  {
-    id: "starter-weather",
-    label: "What is the weather in San Francisco?",
-    value: "What is the weather in San Francisco?",
-    mode: "fill",
-  },
 ];
 
 function sourcesFromData(data: unknown): Source[] {
@@ -278,9 +246,9 @@ export function PiChat({
   suggestionsPresets,
   suggestionsMerge,
   placeholder,
-  emptyTitle = DEFAULT_EMPTY_TITLE,
-  emptySubtitle = DEFAULT_EMPTY_SUBTITLE,
-  starters = DEFAULT_STARTERS,
+  emptyTitle: emptyTitleProp,
+  emptySubtitle: emptySubtitleProp,
+  starters: startersProp,
   notificationsAutoDismissMs,
   components,
   icons,
@@ -303,6 +271,39 @@ export function PiChat({
   uploadAttachment,
   className,
 }: PiChatProps): React.JSX.Element {
+  const t = useI18n();
+  const emptyTitle = emptyTitleProp ?? t("chat.empty.title");
+  const emptySubtitle = emptySubtitleProp ?? t("chat.empty.subtitle");
+  const defaultStarters = React.useMemo<ReadonlyArray<Suggestion>>(
+    () => [
+      {
+        id: "starter-nextjs",
+        label: t("chat.starter.nextjs"),
+        value: t("chat.starter.nextjs"),
+        mode: "fill",
+      },
+      {
+        id: "starter-dijkstra",
+        label: t("chat.starter.dijkstra"),
+        value: t("chat.starter.dijkstra"),
+        mode: "fill",
+      },
+      {
+        id: "starter-essay",
+        label: t("chat.starter.essay"),
+        value: t("chat.starter.essay"),
+        mode: "fill",
+      },
+      {
+        id: "starter-weather",
+        label: t("chat.starter.weather"),
+        value: t("chat.starter.weather"),
+        mode: "fill",
+      },
+    ],
+    [t],
+  );
+  const starters = startersProp ?? defaultStarters;
   const transport = session.transport;
   const sessionId = session.sessionId;
   const client = session.client;
@@ -410,7 +411,7 @@ export function PiChat({
     error !== undefined
       ? error.message
       : status === "error"
-        ? "An error occurred."
+        ? t("chat.error.generic")
         : undefined;
 
   const [input, setInput] = React.useState<string>("");
@@ -622,11 +623,12 @@ export function PiChat({
       const hasAttachments = attachments.items.length > 0;
       if (trimmed.length === 0 && !hasAttachments) return;
 
+      const webSearchHint = t("chat.webSearchHint");
       const outgoing = !webSearch
         ? trimmed
         : trimmed.length > 0
-          ? `${trimmed}\n\n${WEB_SEARCH_HINT}`
-          : WEB_SEARCH_HINT;
+          ? `${trimmed}\n\n${webSearchHint}`
+          : webSearchHint;
 
       // vision 现状:仍按 base64 发图(toImageContents);不动 prompt({images}) 链路。
       const images = hasAttachments ? attachments.toImageContents() : [];
@@ -654,7 +656,7 @@ export function PiChat({
       if (hasAttachments) attachments.clear();
       setRejected([]);
     },
-    [transport, attachments, webSearch, sendMessage],
+    [transport, attachments, webSearch, sendMessage, t],
   );
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
@@ -724,7 +726,7 @@ export function PiChat({
               data: {
                 command,
                 excludeFromContext,
-                output: "命令执行失败:shell 命令未启用或服务端错误。",
+                output: t("chat.bash.failed"),
                 // 非零退出码使卡片标红呈现失败态(避免误显示 exit 0)。
                 exitCode: 1,
                 cancelled: false,
@@ -735,7 +737,7 @@ export function PiChat({
         });
       }
     },
-    [client, sessionId],
+    [client, sessionId, t],
   );
 
   const onSubmit = React.useCallback((): void => {
@@ -1009,9 +1011,9 @@ export function PiChat({
 
   // 就绪握手:未就绪/错误时改写占位符,门控期禁用输入(Req 3.1/3.2/4.3)。
   const readinessPlaceholder = sessionReadinessError
-    ? `会话连接失败${lifecycle?.detail ? `:${lifecycle.detail}` : ""}`
+    ? `${t("chat.readiness.connectFailed")}${lifecycle?.detail ? `:${lifecycle.detail}` : ""}`
     : readinessGating && !sessionReady
-      ? "连接中,请稍候…"
+      ? t("chat.readiness.connecting")
       : undefined;
   // bash 模式视觉提示(spec bang-shell-command,Req 6.x):仅前端体验开启且以 `!` 开头时点亮;
   // `!!` → 不进上下文态。关闭或非 `!` 前缀 → undefined(常规外观)。
@@ -1030,7 +1032,7 @@ export function PiChat({
       disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
       rows={3}
-      placeholder={readinessPlaceholder ?? placeholder ?? DEFAULT_PLACEHOLDER}
+      placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
       className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
@@ -1065,8 +1067,8 @@ export function PiChat({
         />
         <span>
           {sessionReadinessError
-            ? `会话连接失败${lifecycle?.detail ? `:${lifecycle.detail}` : ",请稍后重试"}`
-            : "正在连接 agent…"}
+            ? `${t("chat.readiness.connectFailed")}${lifecycle?.detail ? `:${lifecycle.detail}` : t("chat.readiness.retryLater")}`
+            : t("chat.readiness.connectingAgent")}
         </span>
       </div>
     ) : null;
@@ -1340,12 +1342,12 @@ export function PiChat({
               <button
                 type="button"
                 data-pi-logs-drawer-toggle
-                aria-label={drawerOpen ? "收起日志抽屉" : "展开日志抽屉"}
+                aria-label={drawerOpen ? t("chat.logs.drawerCollapse") : t("chat.logs.drawerExpand")}
                 aria-expanded={drawerOpen}
                 onClick={() => setDrawerOpen((v) => !v)}
                 className="mt-1.5 text-xs px-2.5 py-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-md text-[hsl(var(--foreground))] opacity-70 hover:opacity-100 transition-opacity"
               >
-                日志
+                {t("chat.logs.drawerToggle")}
               </button>
               {drawerOpen ? (
                 <div

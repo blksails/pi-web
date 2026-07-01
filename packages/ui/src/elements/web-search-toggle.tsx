@@ -14,6 +14,7 @@
 import * as React from "react";
 import { Globe } from "lucide-react";
 import { useIcon } from "../customization/icons.js";
+import { useI18n } from "../i18n/index.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 
@@ -32,10 +33,12 @@ export interface WebSearchToggleProps {
 export function WebSearchToggle({
   enabled,
   onToggle,
-  label = "联网搜索",
+  label: labelProp,
   disabled = false,
   className,
 }: WebSearchToggleProps): React.JSX.Element {
+  const t = useI18n();
+  const label = labelProp ?? t("webSearchToggle.label");
   const GlobeIcon = useIcon("webSearch", Globe);
   const handleClick = (): void => {
     // 受控:仅回传取反目标态,自身不持有状态(Req 6.2)。

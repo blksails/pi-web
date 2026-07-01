@@ -27,6 +27,7 @@ import {
   type RendererRegistry,
 } from "../registry/renderer-registry.js";
 import { ChatError } from "../elements/chat-error.js";
+import { useI18n } from "../i18n/index.js";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -86,6 +87,7 @@ export function PartRenderer({
   reasoning,
   toolPart,
 }: PartRendererProps): React.JSX.Element | null {
+  const t = useI18n();
   if (part.type === "text") {
     const Md = markdown ?? Response;
     return <Md>{part.text}</Md>;
@@ -147,7 +149,7 @@ export function PartRenderer({
       const alt =
         typeof filePart.filename === "string" && filePart.filename !== ""
           ? filePart.filename
-          : "image";
+          : t("partRenderer.imageAlt");
       return (
         // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image;与 attachments.tsx 一致
         <img

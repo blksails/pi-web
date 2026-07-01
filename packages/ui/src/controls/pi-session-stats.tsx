@@ -7,6 +7,7 @@
 import * as React from "react";
 import type { UsePiControlsResult } from "@blksails/pi-web-react";
 import { cn } from "../lib/cn.js";
+import { useI18n } from "../i18n/index.js";
 
 export interface PiSessionStatsProps {
   readonly controls: UsePiControlsResult;
@@ -47,6 +48,7 @@ export function PiSessionStats({
   controls,
   className,
 }: PiSessionStatsProps): React.JSX.Element {
+  const t = useI18n();
   const stats = controls.stats;
 
   if (stats === undefined) {
@@ -58,7 +60,7 @@ export function PiSessionStats({
         )}
         data-pi-session-stats
       >
-        No stats yet
+        {t("sessionStats.empty")}
       </div>
     );
   }
@@ -71,11 +73,11 @@ export function PiSessionStats({
       )}
       data-pi-session-stats
     >
-      <Item label="Messages" stat="messages" value={fmtNum(stats.totalMessages)} />
+      <Item label={t("sessionStats.messages")} stat="messages" value={fmtNum(stats.totalMessages)} />
       <span aria-hidden className="opacity-30">·</span>
-      <Item label="Tools" stat="toolCalls" value={fmtNum(stats.toolCalls)} />
+      <Item label={t("sessionStats.tools")} stat="toolCalls" value={fmtNum(stats.toolCalls)} />
       <span aria-hidden className="opacity-30">·</span>
-      <Item label="Tokens" stat="tokens" value={fmtNum(stats.tokens.total)} />
+      <Item label={t("sessionStats.tokens")} stat="tokens" value={fmtNum(stats.tokens.total)} />
       <span aria-hidden className="opacity-30">·</span>
       <span
         data-pi-stat="cost"

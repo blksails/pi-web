@@ -13,6 +13,7 @@ import { Input } from "../../ui/input.js";
 import { Button } from "../../ui/button.js";
 import { Card } from "../../ui/card.js";
 import { FieldShell } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 
 type ExtEntry = {
   enabled: boolean;
@@ -52,19 +53,20 @@ function KvEditor({
   readonly onChange: (next: Record<string, string>) => void;
   readonly disabled?: boolean;
 }): React.JSX.Element {
+  const t = useI18n();
   const entries = Object.entries(kv);
   const commit = (next: [string, string][]): void => onChange(Object.fromEntries(next));
   return (
     <div className="flex flex-col gap-2">
       {entries.length === 0 ? (
-        <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无键值</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.extensionsKv.emptyKv")}</p>
       ) : null}
       {entries.map(([k, v], i) => (
         <div key={i} className="flex items-center gap-2" data-pi-kv-row={i}>
           <Input
             type="text"
             value={k}
-            placeholder="键(如 HTTP_PROXY)"
+            placeholder={t("config.extensionsKv.keyPlaceholder")}
             disabled={disabled}
             onChange={(e) => {
               const next = entries.slice();
@@ -75,7 +77,7 @@ function KvEditor({
           <Input
             type="text"
             value={v}
-            placeholder="值"
+            placeholder={t("config.extensionsKv.valuePlaceholder")}
             disabled={disabled}
             onChange={(e) => {
               const next = entries.slice();
@@ -90,7 +92,7 @@ function KvEditor({
             disabled={disabled}
             onClick={() => commit(entries.filter((_, idx) => idx !== i))}
           >
-            删
+            {t("common.delete")}
           </Button>
         </div>
       ))}
@@ -102,7 +104,7 @@ function KvEditor({
           disabled={disabled}
           onClick={() => commit([...entries, ["", ""]])}
         >
-          + 键值
+          {t("config.extensionsKv.addKv")}
         </Button>
       </div>
     </div>
@@ -115,6 +117,7 @@ export function ExtensionsKvField({
   onChange,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const map = asExtMap(value);
   const exts = Object.entries(map);
   const [newExt, setNewExt] = React.useState("");
@@ -137,7 +140,7 @@ export function ExtensionsKvField({
     <FieldShell descriptor={descriptor}>
       <div className="flex flex-col gap-3">
         {exts.length === 0 ? (
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">暂无扩展条目</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("config.extensionsKv.empty")}</p>
         ) : null}
         {exts.map(([extId, entry]) => (
           <Card
@@ -159,7 +162,7 @@ export function ExtensionsKvField({
                       onChange={(e) => patchExt(extId, { enabled: e.target.checked })}
                       className="h-4 w-4 rounded border-[hsl(var(--input))]"
                     />
-                    {entry.enabled ? "已启用" : "已禁用"}
+                    {entry.enabled ? t("config.extensionsKv.enabled") : t("config.extensionsKv.disabled")}
                   </label>
                 ) : null}
                 <Button
@@ -169,7 +172,7 @@ export function ExtensionsKvField({
                   disabled={disabled}
                   onClick={() => removeExt(extId)}
                 >
-                  删除
+                  {t("common.remove")}
                 </Button>
               </div>
             </div>
@@ -184,7 +187,7 @@ export function ExtensionsKvField({
           <Input
             type="text"
             value={newExt}
-            placeholder="新增扩展条目(如 @alexgorbatchev/pi-env)"
+            placeholder={t("config.extensionsKv.newExtPlaceholder")}
             disabled={disabled}
             onChange={(e) => setNewExt(e.target.value)}
             onKeyDown={(e) => {
@@ -195,7 +198,7 @@ export function ExtensionsKvField({
             }}
           />
           <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addExt}>
-            添加扩展条目
+            {t("config.extensionsKv.addExt")}
           </Button>
         </div>
       </div>
