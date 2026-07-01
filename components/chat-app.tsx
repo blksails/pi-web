@@ -189,6 +189,12 @@ const SESSIONS_GLOBAL_ENABLED =
   process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
   process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1";
 
+// session-list-item-actions:会话项管理写操作(删除/重命名/收藏)是否启用。默认启用;
+// =false/=0 时隐藏写入口(与后端同名 NEXT_PUBLIC_ 门控两端一致:服务端亦拒绝写请求)。
+const SESSIONS_MANAGE_ENABLED =
+  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
+  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0";
+
 // agent-sources-list:是否在源选择器中展示"可浏览的源列表"。构建期内联,前端门控;
 // 后端未配来源时端点返回空列表,两端一致表现为"无列表可浏览"(Req 6.4)。
 const SOURCE_PICKER_ENABLED =
@@ -538,6 +544,60 @@ function SessionView({
     [piClient],
   );
 
+  // 会话项管理(session-list-item-actions):收藏集合(按 sessionId)+ 删除/重命名/收藏回调。
+  // 收藏是宿主权威的用户偏好,经 listSessionFavorites 拉取;写操作后 bump sessionListRefreshKey
+  // 使列表重拉权威态(与 auto_title/新会话同一刷新通道)。删当前会话则导航至新会话空态。
+  const [sessionFavoriteIds, setSessionFavoriteIds] = React.useState<
+    readonly string[]
+  >([]);
+  React.useEffect(() => {
+    if (!SESSIONS_MANAGE_ENABLED) return;
+    let live = true;
+    void piClient
+      .listSessionFavorites()
+      .then((res) => {
+        if (live) setSessionFavoriteIds(res.sessionIds);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+    // 收藏在写操作后经 setSessionFavoriteIds 就地更新;列表刷新时一并重拉以纠偏。
+  }, [piClient, sessionListRefreshKey]);
+
+  const onDeleteSession = React.useCallback(
+    async (id: string): Promise<void> => {
+      await piClient.deleteSessionHistory(id);
+      if (id === session.sessionId) {
+        // 删的是当前会话 → 导航至新会话空态(不破坏其它进行中的会话)。
+        if (typeof window !== "undefined") window.location.assign("/");
+        return;
+      }
+      setSessionListRefreshKey((n) => n + 1); // 拉权威态
+    },
+    [piClient, session.sessionId],
+  );
+
+  const onRenameSession = React.useCallback(
+    async (id: string, name: string): Promise<void> => {
+      await piClient.renameSession(id, name);
+      setSessionListRefreshKey((n) => n + 1);
+    },
+    [piClient],
+  );
+
+  const onToggleSessionFavorite = React.useCallback(
+    async (id: string, favorite: boolean): Promise<void> => {
+      const current = await piClient.listSessionFavorites();
+      const next = favorite
+        ? [...current.sessionIds.filter((x) => x !== id), id]
+        : current.sessionIds.filter((x) => x !== id);
+      const res = await piClient.setSessionFavorites({ sessionIds: next });
+      setSessionFavoriteIds(res.sessionIds);
+    },
+    [piClient],
+  );
+
   const sessionListSlot = React.useMemo<PiChatSlots>(() => {
     const panel = (
       <SessionListPanel
@@ -549,6 +609,11 @@ function SessionView({
         listSessions={piClient.listSessions}
         onResume={onResumeSession}
         refreshSignal={sessionListRefreshKey}
+        manageEnabled={SESSIONS_MANAGE_ENABLED}
+        favoriteSessionIds={sessionFavoriteIds}
+        onDeleteSession={onDeleteSession}
+        onRenameSession={onRenameSession}
+        onToggleFavorite={onToggleSessionFavorite}
         {...(resumeId === undefined && session.sessionId !== undefined
           ? { pendingSession: { sessionId: session.sessionId } }
           : {})}
@@ -590,6 +655,10 @@ function SessionView({
     favoritesSignal,
     onLaunchSource,
     extension,
+    sessionFavoriteIds,
+    onDeleteSession,
+    onRenameSession,
+    onToggleSessionFavorite,
   ]);
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
