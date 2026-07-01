@@ -48,6 +48,7 @@ export type IdentifiedSource =
   | { kind: "dir"; path: string }
   | { kind: "git"; git: GitSource }
   | { kind: "plugin"; plugin: SourceResolverPlugin; source: string }
+  | { kind: "builtin"; name: string }
   | { kind: "default" };
 
 /** git 源描述(克隆 URL、固定 ref、host 与仓库路径)。 */

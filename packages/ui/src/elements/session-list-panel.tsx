@@ -39,6 +39,12 @@ export interface SessionListPanelProps {
   readonly refreshSignal?: unknown;
   /** 单页上限(透传给端点;缺省由端点取默认)。 */
   readonly pageSize?: number;
+  /**
+   * 乐观占位(new-session placeholder):新建会话尚未落库、未进列表数据时,由宿主传入其 id,
+   * 面板立即在顶部渲染一个占位行(更符合人类预期:一发起就看到条目)。当真实数据(refreshSignal
+   * 重拉)已含该 id 时,占位按 id 去重、自动让位给真实项。仅新建会话传入(resume 分支不传)。
+   */
+  readonly pendingSession?: { readonly sessionId: string; readonly title?: string };
   readonly className?: string;
   // 文案(默认中文)。
   readonly title?: string;
@@ -49,6 +55,8 @@ export interface SessionListPanelProps {
   readonly errorLabel?: string;
   readonly retryLabel?: string;
   readonly loadMoreLabel?: string;
+  /** 占位行标题文案(无标题的新建会话),默认「新会话」。 */
+  readonly pendingSessionLabel?: string;
 }
 
 type Status = "idle" | "loading" | "error";
@@ -72,6 +80,7 @@ export function SessionListPanel(
     onResume,
     refreshSignal,
     pageSize,
+    pendingSession,
     className,
     title = "会话历史",
     cwdTabLabel = "当前目录",
@@ -81,6 +90,7 @@ export function SessionListPanel(
     errorLabel = "加载失败",
     retryLabel = "重试",
     loadMoreLabel = "加载更多",
+    pendingSessionLabel = "新会话",
   } = props;
 
   const [scope, setScope] = React.useState<Scope>("cwd");
@@ -132,9 +142,19 @@ export function SessionListPanel(
     void fetchPage(scope, undefined, "reset");
   }, [scope, fetchPage, refreshSignal]);
 
+  // 乐观占位:仅当占位会话 id 尚未出现在已拉取列表时渲染(去重让位)。
+  const pending =
+    pendingSession !== undefined &&
+    !items.some((i) => i.sessionId === pendingSession.sessionId)
+      ? pendingSession
+      : undefined;
+
   const showTabs = globalEnabled;
-  const isInitialLoading = status === "loading" && items.length === 0;
-  const isEmpty = status === "idle" && items.length === 0;
+  // 有占位行时:不视作「初始加载中/空」——立即展示占位,避免闪 loading/空态(更符合人类预期)。
+  const isInitialLoading =
+    status === "loading" && items.length === 0 && pending === undefined;
+  const isEmpty =
+    status === "idle" && items.length === 0 && pending === undefined;
 
   return (
     <div
@@ -144,8 +164,10 @@ export function SessionListPanel(
         className,
       )}
     >
-      <div className="flex items-center justify-between px-1 pt-1">
-        <span className="font-medium">{title}</span>
+      <div className="flex items-center justify-between px-2 pt-1">
+        <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
+          {title}
+        </span>
       </div>
 
       {showTabs ? (
@@ -209,28 +231,55 @@ export function SessionListPanel(
             {emptyLabel}
           </div>
         ) : (
-          <ul className="flex flex-col gap-1">
-            {items.map((item) => (
-              <li key={item.sessionId} data-pi-session-list-item={item.sessionId}>
-                {/* 整行可点击:直接重新载入该会话(经 /session/:id 冷恢复,回溯 agent source)。 */}
+          <ul className="flex flex-col gap-0.5">
+            {pending !== undefined ? (
+              <li
+                key={pending.sessionId}
+                data-pi-session-list-item={pending.sessionId}
+                data-pi-session-list-pending=""
+              >
+                {/* 乐观占位:新建会话即时出现,高亮为当前;真实数据到达后由上方去重让位。 */}
                 <button
                   type="button"
-                  data-pi-session-list-resume={item.sessionId}
-                  onClick={() => onResume(item.sessionId)}
-                  title={item.cwd}
-                  className="flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-left transition-colors hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))] focus-visible:outline-none"
+                  data-pi-session-list-resume={pending.sessionId}
+                  data-active=""
+                  onClick={() => onResume(pending.sessionId)}
+                  className="block w-full truncate rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">
-                      {item.name ?? item.sessionId}
-                    </div>
-                    <div className="truncate text-xs text-[hsl(var(--muted-foreground))]">
-                      {formatTime(item)} · {item.cwd}
-                    </div>
-                  </div>
+                  {pending.title !== undefined && pending.title.length > 0 ? (
+                    pending.title
+                  ) : (
+                    <span className="text-[hsl(var(--muted-foreground))]">
+                      {pendingSessionLabel}
+                    </span>
+                  )}
                 </button>
               </li>
-            ))}
+            ) : null}
+            {items.map((item) => {
+              const isActive = item.sessionId === currentSessionId;
+              return (
+                <li key={item.sessionId} data-pi-session-list-item={item.sessionId}>
+                  {/* 单行标题,整行可点击:直接重新载入该会话(经 /session/:id 冷恢复,回溯 agent
+                      source)。时间/路径不占行,移入 hover tooltip;当前会话高亮。 */}
+                  <button
+                    type="button"
+                    data-pi-session-list-resume={item.sessionId}
+                    data-active={isActive ? "" : undefined}
+                    onClick={() => onResume(item.sessionId)}
+                    title={`${formatTime(item)} · ${item.cwd}`}
+                    className={cn(
+                      "block w-full truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
+                      isActive
+                        ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
+                        : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
+                    )}
+                  >
+                    {item.name ?? item.sessionId}
+                  </button>
+                </li>
+              );
+            })}
             {nextCursor !== undefined ? (
               <li className="px-1 py-1">
                 <Button

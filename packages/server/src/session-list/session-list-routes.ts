@@ -24,6 +24,35 @@ import {
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
+/**
+ * displayName 派生的最大并发度。fs 后端每项需顺读整份 jsonl,页项数最多 MAX_PAGE_SIZE(200);
+ * 无界 Promise.all 会一次性并发全页 → fd/IO 压力峰值。用有界池把并发压到常量,牺牲少量延迟换稳态。
+ */
+const DISPLAY_NAME_CONCURRENCY = 8;
+
+/**
+ * 有界并发 map:保持输入顺序,同一时刻最多 `limit` 个 worker 在跑。零依赖(不引 p-limit)。
+ * `fn` 抛出由调用方自行处理(本文件的 enrich 已在 fn 内吞错,故池内不会 reject)。
+ */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < items.length) {
+      const i = cursor;
+      cursor += 1;
+      results[i] = await fn(items[i]!, i);
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
 export interface SessionListRoutesOptions {
   /** 存储后端配置(与冷恢复同源,经 sessionStoreConfigFromEnv() 取)。 */
   readonly storeConfig: SessionStoreConfig;
@@ -89,26 +118,28 @@ function decodeCursor(raw: string): CursorPayload | undefined {
 }
 
 /**
- * 对一页会话 meta 富集显示名(spec auto-session-title, Req 8.4):仅对 header 未命名项调用
- * `store.displayName`(若实现)派生最新 session_info 名。已命名项与 store 不支持 displayName 时原样返回。
+ * 对一页会话 meta 富集显示名(spec auto-session-title, Req 8.4):对**每一项**调用
+ * `store.displayName`(若实现)派生最新 `session_info` 名,派生到即覆盖 header.name ——
+ * 与 sqlite/postgres 后端(append session_info 时 `UPDATE name` 列)的「session_info 优先于
+ * header」语义对齐,保证跨后端一致(不再因 header 已命名而跳过、显示陈旧 header 名)。
+ * 无 session_info 派生结果时保留 header.name(原样返回);store 不支持 displayName 时整页原样返回。
  * 任一项派生失败静默忽略(展示增强,绝不让列表请求失败)。
+ * 注意:fs 后端每项 displayName 需顺读整份 jsonl,故本步开销与「当前页项数」成正比;
+ * 为避免大页无界并发造成 fd/IO 峰值,经有界池限并发到 DISPLAY_NAME_CONCURRENCY。
  */
 async function enrichDisplayNames(
   store: SessionEntryStore,
   page: readonly SessionMeta[],
 ): Promise<SessionMeta[]> {
   if (typeof store.displayName !== "function") return [...page];
-  return Promise.all(
-    page.map(async (m) => {
-      if (m.name !== undefined && m.name.length > 0) return m;
-      try {
-        const name = await store.displayName!(m.sessionId);
-        return name !== undefined && name.length > 0 ? { ...m, name } : m;
-      } catch {
-        return m;
-      }
-    }),
-  );
+  return mapWithConcurrency(page, DISPLAY_NAME_CONCURRENCY, async (m) => {
+    try {
+      const name = await store.displayName!(m.sessionId);
+      return name !== undefined && name.length > 0 ? { ...m, name } : m;
+    } catch {
+      return m;
+    }
+  });
 }
 
 function toItem(m: SessionMeta): SessionListItem {
@@ -136,9 +167,14 @@ export function createSessionListRoutes(
   const maxPageSize = opts.maxPageSize ?? MAX_PAGE_SIZE;
 
   // 惰性单例 store:首次请求时构造并缓存(避免把同步装配改为 async)。
+  // 构造失败(如 sqlite 文件锁 / pg 连接抖动)不缓存 rejected promise —— 否则 `??=` 认为已赋值,
+  // 后续每个请求都复用同一个 rejected promise → 端点永久 500 直到进程重启。失败即清空以允许重试。
   let storePromise: Promise<SessionEntryStore> | undefined;
   const getStore = (): Promise<SessionEntryStore> => {
-    storePromise ??= createSessionEntryStore(opts.storeConfig);
+    storePromise ??= createSessionEntryStore(opts.storeConfig).catch((err: unknown) => {
+      storePromise = undefined;
+      throw err;
+    });
     return storePromise;
   };
 
@@ -209,9 +245,9 @@ export function createSessionListRoutes(
         const nextCursor =
           hasMore && last !== undefined ? encodeCursor(last) : undefined;
 
-        // 自动标题展示(spec auto-session-title, Req 8.4):header 未命名的会话,按需经
-        // store.displayName 派生最新 session_info 名,**仅对当前页未命名项**调用以限成本(fs 扫文件)。
-        // sqlite/postgres 已在 append 时维护 name 列,其 SessionMeta.name 已正确 → 跳过、不重复查。
+        // 自动标题展示(spec auto-session-title, Req 8.4):对当前页每一项经 store.displayName
+        // 派生最新 session_info 名并覆盖 header.name,与 sqlite/postgres「session_info 优先」语义对齐。
+        // sqlite/postgres 已在 append 时维护 name 列(不实现 displayName)→ enrich 整页原样返回、不重复查。
         const enriched = await enrichDisplayNames(store, page);
 
         const body: ListSessionsResponse = {

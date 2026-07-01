@@ -165,6 +165,12 @@ export interface PiSessionOptions {
    * 回放当前快照。**默认关**(向后兼容:不发 session-state 帧,既有行为不变)。生产由 app 接线开启。
    */
   readonly snapshotAuthority?: boolean;
+  /**
+   * 冷恢复标题回填(方案A):存在时构造后 seed 一帧粘性 `setTitle` extension-ui 请求,使订阅者
+   * 回放即得会话顶栏标题(ambient.title)。仅 resume 分支据 ResumeMeta.name 传入;新建会话不传,
+   * 既有行为零变化(不发帧)。
+   */
+  readonly initialTitle?: string;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */
@@ -174,6 +180,8 @@ export interface CreateSessionInput {
   readonly idleMs?: number;
   /** 显式会话标识;提供时优先于 idFactory(用于主进程 id 与持久化文件 id 对齐 / 恢复)。 */
   readonly id?: SessionId;
+  /** 冷恢复标题回填(方案A):透传给 PiSession 作初始 ambient.title;仅 resume 分支设置。 */
+  readonly initialTitle?: string;
 }
 
 /** 默认空闲回收阈值(毫秒)。 */
