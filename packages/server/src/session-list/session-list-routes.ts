@@ -236,7 +236,23 @@ export function createSessionListRoutes(
           metas = await store.list(targetCwd);
         }
 
-        const sorted = [...metas].sort(cmpDesc);
+        // 名称搜索(sidebar-launcher-rail Req 3.2/3.6):非空 q 时按会话**名称/显示名** + 标识
+        // 子串(大小写不敏感)过滤,置于排序/分页前;空 q / 无 q 行为不变(向后兼容 Req 6.2)。
+        // header 未命名的会话其标题在 session_info(auto-title),故有搜索关键字时先富集全量
+        // displayName 再过滤(有界并发,O(n) 仅在搜索时付出;空 q 不付此代价)。不检索正文(Req 3.6)。
+        const qRaw = q.get("q");
+        const qNorm = qRaw !== null ? qRaw.trim().toLowerCase() : "";
+        let filtered: SessionMeta[];
+        if (qNorm.length === 0) {
+          filtered = metas;
+        } else {
+          const enrichedForSearch = await enrichDisplayNames(store, metas);
+          filtered = enrichedForSearch.filter((m) =>
+            `${m.name ?? ""} ${m.sessionId}`.toLowerCase().includes(qNorm),
+          );
+        }
+
+        const sorted = [...filtered].sort(cmpDesc);
         const startIdx =
           cursor === undefined ? 0 : firstIndexAfter(sorted, cursor);
         const page = sorted.slice(startIdx, startIdx + limit);

@@ -182,6 +182,46 @@ NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
 
 ---
 
+### 9b. Agent Source List (agent-sources-list)
+
+Beyond typing a source, the new-session picker (`AgentSourcePicker`) can show a **browsable list of available agent sources** (`GET /agent-sources`). Data comes from two merged, deduplicated channels: a directory scan ∪ a registry file (see [13 · HTTP API](13-http-api-reference.md) and the implementation `packages/server/src/agent-source-list/`). The endpoint is strictly read-only: no writes, no clone, no resolve/spawn.
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` | (unset, off) | **Frontend gate** (build-time inlined). When `true` / `1`, the picker shows the source list; when off, only the text input is shown |
+| `PI_WEB_SOURCES_ROOT` | (unset, no scan) | Directory scan roots, `path.delimiter`-separated (`:` / `;`); relative paths resolve against `PI_WEB_DEFAULT_CWD`. Scans each root's first-level subdirectories: with an `index.[jt]s` entry → `custom`, otherwise → `cli` |
+| `PI_WEB_SOURCES_REGISTRY` | `<agentDir>/sources.json` | Registry JSON path (read only if present). Shape: `{ "sources": [ { "source", "name?", "description?" } ] }`. Missing or corrupt files degrade gracefully (returns the remaining available sources) |
+
+> Two-sided consistency: with `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` off the frontend renders no list; with no `PI_WEB_SOURCES_ROOT` and no registry file the backend returns an empty list. Together they present as "nothing to browse," and the text input always remains as a fallback. Frontend gate read in `components/chat-app.tsx` (`SOURCE_PICKER_ENABLED`); assembly in `lib/app/pi-handler.ts` (`createAgentSourcesRoutes`).
+
+```bash
+# Enable the source list and use the examples directory as a scan root
+NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1
+PI_WEB_SOURCES_ROOT=/abs/path/to/examples
+PI_WEB_SOURCES_REGISTRY=/abs/path/to/sources.json
+```
+
+---
+
+### 9c. Sidebar Launcher Rail (sidebar-launcher-rail)
+
+Renders a fixed launcher rail above the sidebar session list: session search, a fixed new-chat entry, one-click launch anchors for favorite agent sources, and a webext contribution slot (`launcherRail` SlotKey, see [10 · Web UI Extension](10-web-ui-extension.md)).
+
+| Variable | Default | Description |
+|---|---|---|
+| `NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL` | (unset, off) | **Frontend gate** (build-time inlined). When `true` / `1`, the sidebar renders the launcher rail; when off, the sidebar shows only the existing session list (unchanged) |
+
+> Favorites are read/written via `GET·PUT /api/agent-sources/favorites` (persisted at `<agentDir>/agent-source-favorites.json`), independent of the read-only source enumeration. Users favorite a source by clicking the star on a source-list item in the picker (`AgentSourcePicker`). Search reuses `GET /sessions?q=` (name substring, backward compatible). Frontend gate read in `components/chat-app.tsx` (`LAUNCHER_RAIL_ENABLED`).
+
+```bash
+# Enable the sidebar launcher rail (usually together with the source list)
+NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL=1
+NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1
+PI_WEB_SOURCES_ROOT=/abs/path/to/examples
+```
+
+---
+
 ### 10. Logging
 
 Logging is handled by the isomorphic package `packages/logger`, which parses the following env config (parsing logic in `packages/logger/src/config.ts:48`); the client and server share the same variable names.

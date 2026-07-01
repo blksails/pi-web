@@ -176,8 +176,9 @@ The output is written to `.pi/web/dist/`: `web-extension.mjs`, `manifest.json` (
 | `artifactSurface` | Artifact standalone surface | `data-pi-ext-artifact-surface` |
 | `dialogLayer` | Dialog layer (`z-[60]`, does not intercept kernel interaction) | `data-pi-ext-dialog-layer` |
 | `logs` | Logs panel surface (introduced by the logging system) | `data-pi-ext-logs` |
+| `launcherRail` | Contribution slot inside the sidebar launcher rail (introduced by sidebar-launcher-rail; host renders it via `SlotHost` with `ExtErrorBoundary` isolation) | `data-launcher-webext-slot` |
 
-**Slot semantics**: extension content is mounted additively, not replacing kernel surfaces. When the host has not declared the corresponding slot, it is ignored without error (Req 2.3).
+**Slot semantics**: extension content is mounted additively, not replacing kernel surfaces. When the host has not declared the corresponding slot, it is ignored without error (Req 2.3). `launcherRail` is reachable only when the sidebar launcher rail is enabled (`NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL=1`); when no extension contributes, the rail does not reserve space for the slot.
 
 ### The isolate Pitfall of the background Slot
 

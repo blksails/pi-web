@@ -182,6 +182,46 @@ NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
 
 ---
 
+### 九之二、Agent Source 列表（agent-sources-list）
+
+新建会话选择器（`AgentSourcePicker`）除手输 source 外，可展示一份**可浏览的可用 agent source 列表**（`GET /agent-sources`）。数据来源为「目录扫描 ∪ 注册表文件」两路合并去重（详见 [13 · HTTP API](13-http-api-reference.md) 与实现 `packages/server/src/agent-source-list/`）。端点严格只读：不写、不 clone、不 resolve/spawn。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` | （未设，关闭） | **前端门控**（构建期内联）。取 `true` / `1` 时选择器展示源列表；关闭时仅显示手输框 |
+| `PI_WEB_SOURCES_ROOT` | （未设，不扫描） | 目录扫描根，`path.delimiter`（`:` / `;`）分隔多个；相对路径以 `PI_WEB_DEFAULT_CWD` 解析为绝对。扫描每个根的一级子目录，含 `index.[jt]s` 入口→`custom`、否则→`cli` |
+| `PI_WEB_SOURCES_REGISTRY` | `<agentDir>/sources.json` | 注册表 JSON 路径（存在才读）。形态：`{ "sources": [ { "source", "name?", "description?" } ] }`。缺失或损坏均容错（返回其余可用来源） |
+
+> 两端一致：前端未开 `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` → 不渲染列表；后端未配 `PI_WEB_SOURCES_ROOT` 且注册表不存在 → 端点返回空列表。二者共同表现为「无列表可浏览」，手输框始终作为兜底入口。前端门控读取见 `components/chat-app.tsx`（`SOURCE_PICKER_ENABLED`），装配见 `lib/app/pi-handler.ts`（`createAgentSourcesRoutes`）。
+
+```bash
+# 启用源列表并把 examples 目录作为扫描根
+NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1
+PI_WEB_SOURCES_ROOT=/abs/path/to/examples
+PI_WEB_SOURCES_REGISTRY=/abs/path/to/sources.json
+```
+
+---
+
+### 九之三、侧栏启动导航区（sidebar-launcher-rail）
+
+在侧栏会话列表之上渲染一个固定「启动导航区」：搜索历史会话、固定的新建聊天、收藏 agent source 的一键启动锚点、以及一个 webext 贡献槽（`launcherRail` SlotKey，详见 [10 · Web UI 扩展](10-web-ui-extension.md)）。
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL` | （未设，关闭） | **前端门控**（构建期内联）。取 `true` / `1` 时侧栏渲染启动导航区；关闭时侧栏仅展示既有会话列表（现状不变） |
+
+> 收藏经 `GET·PUT /api/agent-sources/favorites` 读写（持久化 `<agentDir>/agent-source-favorites.json`），独立于只读源枚举。用户在源选择器（`AgentSourcePicker`）的源列表项上点星标收藏。搜索复用 `GET /sessions?q=`（名称子串，向后兼容）。前端门控读取见 `components/chat-app.tsx`（`LAUNCHER_RAIL_ENABLED`）。
+
+```bash
+# 启用侧栏启动导航区(通常与源列表同开)
+NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL=1
+NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1
+PI_WEB_SOURCES_ROOT=/abs/path/to/examples
+```
+
+---
+
 ### 十、日志
 
 日志由同构包 `packages/logger` 解析以下 env 配置（解析逻辑见 `packages/logger/src/config.ts:48`），客户端与服务端共用同一套变量名。

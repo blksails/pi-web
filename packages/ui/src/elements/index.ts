@@ -57,3 +57,4 @@ export {
   SessionListPanel,
   type SessionListPanelProps,
 } from "./session-list-panel.js";
+export { LauncherRail, type LauncherRailProps } from "./launcher-rail.js";

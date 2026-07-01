@@ -176,8 +176,9 @@ pnpm pi-web build \
 | `artifactSurface` | Artifact 独立表面 | `data-pi-ext-artifact-surface` |
 | `dialogLayer` | 对话框层（`z-[60]`，不拦截内核交互） | `data-pi-ext-dialog-layer` |
 | `logs` | 日志面板表面（由日志系统引入） | `data-pi-ext-logs` |
+| `launcherRail` | 侧栏启动导航区内的贡献槽（由 sidebar-launcher-rail 引入；宿主经 `SlotHost` 在导航区渲染，`ExtErrorBoundary` 隔离失败） | `data-launcher-webext-slot` |
 
-**插槽语义**：扩展内容以追加（additive）方式挂载，不替换内核表面。宿主未声明对应插槽时忽略、不报错（Req 2.3）。
+**插槽语义**：扩展内容以追加（additive）方式挂载，不替换内核表面。宿主未声明对应插槽时忽略、不报错（Req 2.3）。`launcherRail` 仅在启用侧栏启动导航区（`NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL=1`）时可达；扩展未贡献时导航区不为该槽占位。
 
 ### background 插槽的 isolate 陷阱
 

@@ -14,7 +14,7 @@ import { PiHttpError, type PiErrorBody } from "./errors.js";
 export type FetchLike = typeof fetch;
 
 export interface RequestOptions {
-  readonly method: "GET" | "POST" | "DELETE";
+  readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: string;
   readonly body?: unknown;
   readonly headers?: Record<string, string> | Headers;

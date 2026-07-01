@@ -101,6 +101,20 @@ export * from "./config/index.js";
 // 文本输入基元
 export { Input, type InputProps } from "./ui/input.js";
 
+// Dialog 原语(shadcn/Radix 封装:焦点捕获 / Esc / 遮罩点击关闭 / aria 对话框语义)
+export {
+  Dialog,
+  DialogTrigger,
+  DialogClose,
+  DialogPortal,
+  DialogOverlay,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "./ui/dialog.js";
+
 // server-driven UI(自定义渲染扩展):data-pi-ui 渲染器 + 沙箱解释器 + 组件注册表
 export { PiUiPart } from "./parts/pi-ui-part.js";
 export {

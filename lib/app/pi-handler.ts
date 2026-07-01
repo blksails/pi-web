@@ -32,6 +32,8 @@ import {
   createAttachmentRoutes,
   createBashRoutes,
   createSessionListRoutes,
+  createAgentSourcesRoutes,
+  createFavoritesRoutes,
   createExtensionRoutes,
   createHostCommandRegistry,
   ChildProcessPiCli,
@@ -154,6 +156,20 @@ function makeRealResolver(config: AppConfig): {
       });
     },
   };
+}
+
+/**
+ * agent-sources-list:解析 PI_WEB_SOURCES_ROOT 为绝对扫描根列表。
+ * path.delimiter(: / ;)分隔多个;相对路径以 defaultCwd 绝对化;去空段。未配 → []。
+ */
+function resolveSourcesScanRoots(defaultCwd: string): readonly string[] {
+  const raw = process.env.PI_WEB_SOURCES_ROOT;
+  if (raw === undefined || raw.trim().length === 0) return [];
+  return raw
+    .split(path.delimiter)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => (path.isAbsolute(s) ? s : path.resolve(defaultCwd, s)));
 }
 
 /**
@@ -443,6 +459,20 @@ function buildSingleton(): HandlerSingleton {
           process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
         defaultCwd: config.defaultCwd,
       }),
+      // agent source 列表(agent-sources-list):GET /agent-sources 只读枚举端点。数据来源
+      // 为「目录扫描 ∪ 注册表文件」:PI_WEB_SOURCES_ROOT(path.delimiter 分隔多个,相对以
+      // defaultCwd 绝对化)+ PI_WEB_SOURCES_REGISTRY(默认 <agentDir>/sources.json)。严格
+      // 只读:不写、不 clone、不 resolve/spawn。未配来源时返回空列表(前端 NEXT_PUBLIC_
+      // PI_WEB_SOURCE_PICKER 门控是否显示列表,两端一致表现为"无列表可浏览")。
+      ...createAgentSourcesRoutes({
+        scanRoots: resolveSourcesScanRoots(config.defaultCwd),
+        registryPath:
+          process.env.PI_WEB_SOURCES_REGISTRY ??
+          path.join(config.agentDir, "sources.json"),
+      }),
+      // agent source 收藏(sidebar-launcher-rail):GET/PUT /agent-sources/favorites 读写
+      // 用户偏好(<agentDir>/agent-source-favorites.json),独立于只读源枚举。仅写该偏好文件。
+      ...createFavoritesRoutes({ agentDir: config.agentDir }),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。

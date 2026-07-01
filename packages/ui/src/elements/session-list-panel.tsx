@@ -164,8 +164,8 @@ export function SessionListPanel(
         className,
       )}
     >
-      <div className="flex items-center justify-between px-2 pt-1">
-        <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">
+      <div className="flex items-center justify-between px-2.5 pb-1 pt-1">
+        <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
           {title}
         </span>
       </div>
