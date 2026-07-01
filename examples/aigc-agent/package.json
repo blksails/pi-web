@@ -1,0 +1,9 @@
+{
+  "name": "aigc-agent",
+  "private": true,
+  "pi-web": {
+    "title": "AIGC 图像工具",
+    "avatar": "🎨",
+    "description": "文生图 + 图像编辑,产物落附件、富卡渲染"
+  }
+}

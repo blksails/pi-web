@@ -1,0 +1,9 @@
+{
+  "name": "webext-contrib-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 贡献点",
+    "avatar": "🧩",
+    "description": "Tier3 ui-rpc 贡献(slash/mention/keybinding)"
+  }
+}

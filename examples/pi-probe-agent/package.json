@@ -1,0 +1,9 @@
+{
+  "name": "pi-probe-agent",
+  "private": true,
+  "pi-web": {
+    "title": "pi 探针",
+    "avatar": "🔎",
+    "description": "探测 pi SDK 运行时 API 的诊断 agent"
+  }
+}

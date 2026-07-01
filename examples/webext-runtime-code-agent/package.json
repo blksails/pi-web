@@ -1,0 +1,9 @@
+{
+  "name": "webext-runtime-code-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 运行时代码",
+    "avatar": "⚙️",
+    "description": "运行时安装的代码型 webext"
+  }
+}

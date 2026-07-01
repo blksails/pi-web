@@ -1,0 +1,9 @@
+{
+  "name": "webext-layout-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 布局",
+    "avatar": "🗂️",
+    "description": "Tier1 区域插槽 + 比例切换"
+  }
+}

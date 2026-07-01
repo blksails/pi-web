@@ -1,0 +1,9 @@
+{
+  "name": "server-driven-ui-agent",
+  "private": true,
+  "pi-web": {
+    "title": "服务端驱动 UI",
+    "avatar": "🖥️",
+    "description": "由服务端下发驱动的 UI 演示"
+  }
+}

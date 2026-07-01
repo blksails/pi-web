@@ -1,0 +1,9 @@
+{
+  "name": "ui-demo-agent",
+  "private": true,
+  "pi-web": {
+    "title": "UI 演示",
+    "avatar": "🎛️",
+    "description": "PiChat 富 UI 能力综合演示"
+  }
+}

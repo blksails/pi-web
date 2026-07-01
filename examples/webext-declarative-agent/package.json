@@ -1,0 +1,9 @@
+{
+  "name": "webext-declarative-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 声明式",
+    "avatar": "📜",
+    "description": "纯声明主题/布局/空态,零 bundle"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "plugin-consumer-agent",
+  "private": true,
+  "pi-web": {
+    "title": "插件消费示例",
+    "avatar": "🔌",
+    "description": "消费已安装 pi 插件的 agent"
+  }
+}

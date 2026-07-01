@@ -1,0 +1,9 @@
+{
+  "name": "attachment-tool-agent",
+  "private": true,
+  "pi-web": {
+    "title": "附件工具示例",
+    "avatar": "📎",
+    "description": "附件读写/属主校验 tool-bridge 演示"
+  }
+}

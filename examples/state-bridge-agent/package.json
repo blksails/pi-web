@@ -1,0 +1,9 @@
+{
+  "name": "state-bridge-agent",
+  "private": true,
+  "pi-web": {
+    "title": "状态注入桥示例",
+    "avatar": "🔗",
+    "description": "context 外双向共享状态(人机共驾 KV)"
+  }
+}

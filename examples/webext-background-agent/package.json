@@ -1,0 +1,9 @@
+{
+  "name": "webext-background-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 背景",
+    "avatar": "🌌",
+    "description": "Tier1 自定义背景(空/活两态)"
+  }
+}

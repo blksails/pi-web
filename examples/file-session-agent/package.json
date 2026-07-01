@@ -1,0 +1,9 @@
+{
+  "name": "file-session-agent",
+  "private": true,
+  "pi-web": {
+    "title": "文件会话示例",
+    "avatar": "📁",
+    "description": "文件读写与会话持久化演示"
+  }
+}

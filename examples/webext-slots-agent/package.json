@@ -1,0 +1,9 @@
+{
+  "name": "webext-slots-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 插槽全集",
+    "avatar": "🧱",
+    "description": "Tier1 18 保留插槽全集演示"
+  }
+}

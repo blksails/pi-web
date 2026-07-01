@@ -1,0 +1,9 @@
+{
+  "name": "builtin-tools-agent",
+  "private": true,
+  "pi-web": {
+    "title": "内置工具示例",
+    "avatar": "🧰",
+    "description": "Tier1 附件/媒体等内置 web 工具"
+  }
+}

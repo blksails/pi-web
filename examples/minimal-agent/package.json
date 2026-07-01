@@ -1,0 +1,9 @@
+{
+  "name": "minimal-agent",
+  "private": true,
+  "pi-web": {
+    "title": "极简 agent",
+    "avatar": "⚪",
+    "description": "最小可运行 agent 骨架"
+  }
+}

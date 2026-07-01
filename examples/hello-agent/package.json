@@ -1,0 +1,9 @@
+{
+  "name": "hello-agent",
+  "private": true,
+  "pi-web": {
+    "title": "Hello 示例",
+    "avatar": "👋",
+    "description": "最小自定义 agent:一个 echo 工具 + 系统提示"
+  }
+}

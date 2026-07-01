@@ -1,0 +1,9 @@
+{
+  "name": "system-status-agent",
+  "private": true,
+  "pi-web": {
+    "title": "系统状态示例",
+    "avatar": "📊",
+    "description": "会话用量/系统状态展示"
+  }
+}

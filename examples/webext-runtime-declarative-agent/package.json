@@ -1,0 +1,9 @@
+{
+  "name": "webext-runtime-declarative-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 运行时声明式",
+    "avatar": "📄",
+    "description": "运行时安装的声明式 webext"
+  }
+}

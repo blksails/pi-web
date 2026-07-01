@@ -1,0 +1,9 @@
+{
+  "name": "webext-renderer-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 渲染器",
+    "avatar": "🖌️",
+    "description": "自定义工具/消息渲染器"
+  }
+}

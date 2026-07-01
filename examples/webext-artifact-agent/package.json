@@ -1,0 +1,9 @@
+{
+  "name": "webext-artifact-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · Artifact",
+    "avatar": "🖼️",
+    "description": "Tier4 artifact 沙箱 iframe"
+  }
+}

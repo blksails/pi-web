@@ -1,0 +1,9 @@
+{
+  "name": "logging-demo-agent",
+  "private": true,
+  "pi-web": {
+    "title": "日志示例",
+    "avatar": "🪵",
+    "description": "同构日志系统:stderr sentinel → 前端面板"
+  }
+}
