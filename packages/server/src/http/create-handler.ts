@@ -7,6 +7,7 @@
  * 透传上游 `shutdown()` 供宿主 SIGTERM 调用;不 spawn(默认通道工厂经注入提供)、不解析、
  * 不持有会话状态。
  */
+import { createLogger } from "@blksails/pi-web-logger";
 import type { ResolvedSource } from "../agent-source/index.js";
 import { PiRpcProcess } from "../rpc-channel/index.js";
 import type { SessionChannel } from "../session/index.js";
@@ -54,6 +55,9 @@ import {
 } from "../completion/index.js";
 import { Router, type RouteSpec } from "./router.js";
 
+// 命名空间 session:create —— 会话/通道创建与删除生命周期里程碑(server stderr,受主进程门控)。
+const createLog = createLogger({ namespace: "session:create" });
+
 /**
  * 默认通道工厂:经 rpc-channel 本地通道按 spawnSpec 起子进程。
  * 默认实现不消费 `opts`(会话标识对齐 / 元数据由装配层注入的 createChannel 处理)。
@@ -62,6 +66,7 @@ function defaultCreateChannel(
   resolved: ResolvedSource,
   _opts?: CreateChannelOpts,
 ): SessionChannel {
+  createLog.debug("channel created", { cmd: resolved.spawnSpec.cmd });
   return new PiRpcProcess(resolved.spawnSpec) satisfies SessionChannel;
 }
 

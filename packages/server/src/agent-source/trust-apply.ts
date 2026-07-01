@@ -13,9 +13,14 @@
  * 任何取值都不抑制 context 文件(AGENTS.md/CLAUDE.md)与全局/用户扩展加载,
  * 且不产生交互提示(Req 5.7)。
  */
+import { createLogger } from "@blksails/pi-web-logger";
 import type { AgentMode, TrustDecision, TrustFragment } from "./types.js";
 
+// 命名空间 agent:resolve:trust —— 信任结论落地点(TrustDecision → spawnSpec 片段)。
+const trustLog = createLogger({ namespace: "agent:resolve:trust" });
+
 export function applyTrust(mode: AgentMode, trust: TrustDecision): TrustFragment {
+  trustLog.debug("trust resolved", { trusted: trust === "always" });
   const fragment: TrustFragment = { extraArgs: [], extraEnv: {} };
 
   if (mode === "cli") {

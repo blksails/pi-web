@@ -6,6 +6,7 @@
  * 错误信息中不含 env 敏感值(由各错误类型保证)。
  */
 import path from "node:path";
+import { createLogger } from "@blksails/pi-web-logger";
 import { assemble } from "./assemble-spawn.js";
 import { probeEntry } from "./entry-probe.js";
 import { ensureGitSource } from "./git-clone.js";
@@ -20,6 +21,9 @@ import {
 } from "../builtin-agents/entry-path.js";
 import type { ResolveOptions, ResolvedSource } from "./types.js";
 
+// 命名空间 agent:resolve —— 源解析/模式判定/信任生命周期(server 侧,落 stderr,默认关)。
+const resolveLog = createLogger({ namespace: "agent:resolve" });
+
 /**
  * 内置 agent 解析(`builtin:<name>`):入口文件随包发布(defaultAgentEntryPath),
  * **cwd 用用户工作目录**(opts.cwd,非入口所在的包内目录)→ 走 custom 模式,runner 期特性
@@ -31,10 +35,12 @@ function resolveBuiltin(
   opts: ResolveOptions,
 ): ResolvedSource {
   if (name !== "default-agent") {
+    resolveLog.error("resolve failed", { code: "UNKNOWN_BUILTIN_AGENT", source: policySource });
     throw new AgentSourceError("UNKNOWN_BUILTIN_AGENT", `Unknown built-in agent: ${name}`);
   }
   const entryPath = defaultAgentEntryPath();
   if (entryPath === undefined) {
+    resolveLog.error("resolve failed", { code: "BUILTIN_AGENT_NOT_FOUND", source: policySource });
     throw new AgentSourceError(
       "BUILTIN_AGENT_NOT_FOUND",
       "Built-in default agent entry could not be located.",
@@ -83,6 +89,7 @@ async function toLocalDir(
     }
     case "builtin":
       // 不可达:resolve() 在调用 toLocalDir 前已拦截 builtin(其入口在包内、不映射本地目录)。
+      resolveLog.error("resolve failed", { code: "UNKNOWN_BUILTIN_AGENT", source });
       throw new AgentSourceError("UNKNOWN_BUILTIN_AGENT", `Built-in source must be resolved earlier: ${identified.name}`);
   }
 }
@@ -94,10 +101,18 @@ export async function resolve(
   source: string | undefined,
   opts: ResolveOptions = {},
 ): Promise<ResolvedSource> {
+  resolveLog.info("resolve start", { source });
+
   // 内置 agent(`builtin:<name>`)走独立路径:入口在包内、cwd 用用户目录,直接 custom 模式。
   const identified = identify(source, opts);
   if (identified.kind === "builtin") {
-    return resolveBuiltin(identified.name, source ?? BUILTIN_DEFAULT_AGENT_SOURCE, opts);
+    const builtin = resolveBuiltin(identified.name, source ?? BUILTIN_DEFAULT_AGENT_SOURCE, opts);
+    resolveLog.info("resolve done", {
+      name: identified.name,
+      mode: builtin.mode,
+      localDir: builtin.cwd,
+    });
+    return builtin;
   }
 
   const { dir, policySource } = await toLocalDir(source, opts);
@@ -117,6 +132,7 @@ export async function resolve(
       ? assemble({ mode: "custom", cwd: dir, entryPath: entry.path }, fragment, opts)
       : assemble({ mode: "cli", cwd: dir }, fragment, opts);
 
+  resolveLog.info("resolve done", { name: policySource, mode, localDir: dir });
   return { mode, spawnSpec, cwd: spawnSpec.cwd, trust };
 }
 

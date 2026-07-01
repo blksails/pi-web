@@ -10,6 +10,7 @@
  * 全部会话,单失败隔离(Req 8.x)。
  */
 import { randomUUID } from "node:crypto";
+import { createLogger } from "@blksails/pi-web-logger";
 import { PiSession } from "./pi-session.js";
 import { MissingInputError } from "./session.errors.js";
 import { InMemorySessionStore, type SessionStore } from "./session-store.js";
@@ -18,6 +19,9 @@ import type {
   SessionId,
 } from "./session.types.js";
 import type { LoggingConfig } from "@blksails/pi-web-protocol";
+
+// 命名空间 session:create —— 会话登记/去注册生命周期(server stderr,受主进程门控)。
+const createLog = createLogger({ namespace: "session:create" });
 
 export interface SessionManagerOptions {
   /** 注入存储实现;缺省为 InMemorySessionStore(Req 9.6)。 */
@@ -112,11 +116,13 @@ export class SessionManager {
       // 冷恢复标题回填(方案A):resume 分支透传初始标题,新建会话为 undefined(不 seed)。
       ...(input.initialTitle !== undefined ? { initialTitle: input.initialTitle } : {}),
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
-      onClosed: (id) => {
+      onClosed: (id, reason) => {
+        createLog.info("session removed", { sessionId: id, reason });
         this.store.delete(id);
       },
     });
 
+    createLog.debug("session registered", { sessionId, idleMs });
     this.store.create(session);
     return { sessionId, session };
   }

@@ -6,6 +6,7 @@
  * 缺 `source`/类型错 → 400(含字段路径)。http-api 不 spawn、不解析、不持有会话状态。
  */
 import { randomUUID } from "node:crypto";
+import { createLogger } from "@blksails/pi-web-logger";
 import { CreateSessionRequestSchema } from "@blksails/pi-web-protocol";
 import type { ResolvedSource } from "../../agent-source/index.js";
 import { AgentSourceResolver } from "../../agent-source/index.js";
@@ -18,6 +19,9 @@ import type {
   RouteHandler,
 } from "../handler.types.js";
 import { validateBody } from "../validate.js";
+
+// 命名空间 session:create —— POST /sessions 建会话生命周期里程碑(server stderr)。
+const createLog = createLogger({ namespace: "session:create" });
 
 export interface CreateSessionDeps {
   readonly manager: SessionManager;
@@ -75,6 +79,12 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
         return errorResponse(404, "SESSION_NOT_FOUND", `Session "${id}" not found.`);
       }
       try {
+        createLog.info("session creating", {
+          source: meta.source,
+          cwd: meta.cwd,
+          model: meta.model,
+          resumed: true,
+        });
         // 权威 cwd 取自持久化 header;source/model 取自创建元数据(cli 模式 source 为
         // undefined,由 resolver 据 cwd 判定 cli)。agent 端据 --session-id 加载历史(Req 3.1/3.3)。
         const resolved = await resolver.resolve(meta.source, { cwd: meta.cwd });
@@ -90,6 +100,7 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
           // 冷恢复标题回填(方案A):把持久化的会话名 seed 成初始 ambient.title,重开即见标题。
           ...(meta.name !== undefined ? { initialTitle: meta.name } : {}),
         });
+        createLog.info("session created", { sessionId: id });
         return jsonResponse(201, { sessionId: id });
       } catch (err) {
         return mapEngineError(err);
@@ -100,6 +111,12 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
     try {
       // 主进程主导 sessionId,下传给 agent(--session-id)以对齐持久化文件 id(Req 2.2)。
       const sessionId = randomUUID();
+      createLog.info("session creating", {
+        source: body.source,
+        cwd: body.cwd,
+        model: body.model,
+        resumed: false,
+      });
       const resolveOpts: { cwd?: string; trust?: boolean } = {};
       if (body.cwd !== undefined) resolveOpts.cwd = body.cwd;
       if (body.trust !== undefined) resolveOpts.trust = body.trust;
@@ -110,6 +127,7 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
         ...(body.model !== undefined ? { model: body.model } : {}),
       });
       deps.manager.createSession({ resolved, channel, id: sessionId });
+      createLog.info("session created", { sessionId });
       return jsonResponse(201, { sessionId });
     } catch (err) {
       return mapEngineError(err);

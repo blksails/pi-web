@@ -13,6 +13,10 @@
 import { watch, type FSWatcher } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { createLogger } from "@blksails/pi-web-logger";
+
+// 命名空间 session:rpc —— 热重载侦测到源码变更、触发 runner 重启的里程碑。
+const hotReloadLog = createLogger({ namespace: "session:rpc" });
 
 /** 可热重启的目标(由 PiRpcProcess 实现)。 */
 export interface HotReloadTarget {
@@ -58,11 +62,15 @@ function watchPaths(): string[] {
   return [resolve(packagesDir, "tool-kit", "src")];
 }
 
-function triggerRestartAll(): void {
+function triggerRestartAll(path?: string): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
     if (targets.size === 0) return;
+    hotReloadLog.info("hot-reload triggered", {
+      reason: "source-changed",
+      ...(path !== undefined ? { path } : {}),
+    });
     process.stderr.write(
       `[runner-hot-reload] source changed → restarting ${targets.size} runner(s)\n`,
     );
@@ -87,7 +95,7 @@ function ensureWatching(): void {
         if (filename && !/\.(ts|tsx|js|mjs|cjs|json)$/.test(String(filename))) {
           return;
         }
-        triggerRestartAll();
+        triggerRestartAll(filename ? String(filename) : undefined);
       });
       w.on("error", () => {
         /* 监视器错误(目录消失等):静默,dev-only。 */

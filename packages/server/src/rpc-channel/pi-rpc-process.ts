@@ -42,6 +42,11 @@ import {
   registerForHotReload,
   type HotReloadTarget,
 } from "./hot-reload.js";
+import { createLogger } from "@blksails/pi-web-logger";
+
+// 命名空间 session:rpc —— 子进程生命周期(spawn/error/exit)与热重载/重启的里程碑。
+// 主进程日志落 server stderr,受 configureLogger(主进程门控)约束,默认关。
+const rpcLog = createLogger({ namespace: "session:rpc" });
 
 /** 内部状态机(见 design 关闭与生命周期图)。 */
 type Status = "spawning" | "ready" | "closing" | "exited";
@@ -152,6 +157,7 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     } catch (err) {
       // 极少数同步 spawn 失败(如参数非法)。
       this.status = "exited";
+      rpcLog.error("spawn failed(sync)", { cmd: this.spec.cmd });
       throw new SpawnError(`Failed to spawn "${this.spec.cmd}"`, err);
     }
     this.child = child;
@@ -160,6 +166,11 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     child.stderr.setEncoding("utf8");
 
     child.on("spawn", () => {
+      rpcLog.info("subprocess spawned", {
+        pid: child.pid,
+        cmd: this.spec.cmd,
+        argsCount: this.spec.args.length,
+      });
       if (this.status === "spawning") {
         this.status = "ready";
       }
@@ -177,11 +188,17 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     // spawn 失败(命令不存在/无法执行)经 error 事件到达(Req 2.4 / 6.5)。
     child.on("error", (err: Error) => {
       if (this.restarting) return; // 重启中:旧进程的 error 不视为崩溃
+      rpcLog.error("subprocess error", { message: err.message });
       this.finalize(null, null, new SpawnError(err.message, err));
     });
 
     child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
       if (this.restarting) return; // 重启中:旧进程退出由 doRestart 处理重生
+      if (code === 0) {
+        rpcLog.info("subprocess exit", { code, signal });
+      } else {
+        rpcLog.warn("subprocess exit", { code, signal });
+      }
       // 子进程退出/崩溃:发信号 + 拒绝待决(Req 6.2 / 6.5)。
       const crash =
         this.status === "closing"
@@ -227,6 +244,7 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     if (this.restarting) return;
     if (this.status === "exited" || this.status === "closing") return;
     this.restarting = true;
+    rpcLog.info("restart begin");
     const old = this.child;
     try {
       await new Promise<void>((res) => {
@@ -244,6 +262,7 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
           return;
         }
         const t = setTimeout(() => {
+          rpcLog.warn("restart kill escalation");
           try {
             old.kill("SIGKILL");
           } catch {
@@ -259,6 +278,7 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
       this.status = "spawning";
       this.restarting = false;
       this.spawnChild();
+      rpcLog.info("restart done");
       process.stderr.write("[runner-hot-reload] runner restarted\n");
       // 重生完成:通知就绪握手重新探针(此刻新子进程已 spawn、读循环将就绪,探针落到新进程)。
       for (const cb of this.restartListeners) {

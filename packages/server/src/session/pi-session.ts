@@ -44,6 +44,11 @@ import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-w
 // 的时刻(对照 runner 内部 toolkit:* 计时,定位时间花在哪一段)。主进程日志落 server stderr,
 // 受 configureLogger(主进程门控)约束,默认关。
 const toolLog = createLogger({ namespace: "session:tool" });
+
+// 命名空间 session:lifecycle —— 会话生命周期里程碑:就绪握手/生命周期跃迁(ready/ended/error/
+// initializing)、退出与崩溃语义、cleanup 清理、turn 边界(agent_start/agent_end)。主进程日志落
+// server stderr,受 configureLogger(主进程门控)约束,默认关。
+const lifecycleLog = createLogger({ namespace: "session:lifecycle" });
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import { LogRingBuffer } from "../logging/log-ring-buffer.js";
@@ -329,9 +334,18 @@ export class PiSession {
     const isTerminal = this._lifecycle === "error" || this._lifecycle === "ended";
     if (isTerminal && !force) return;
     if (this._lifecycle === "ready" && state === "initializing" && !force) return;
+    const from = this._lifecycle;
     this._lifecycle = state;
     this._lifecycleCode = code;
     this._lifecycleDetail = detail;
+    // 生命周期里程碑(真正跃迁才记一条,early-return 守卫已在上方拦截 no-op/终态)。
+    if (state === "error") {
+      lifecycleLog.error("lifecycle transition", { session: this.id, from, to: state, code, detail });
+    } else if (state === "ready" || state === "ended") {
+      lifecycleLog.info("lifecycle transition", { session: this.id, from, to: state, code, detail });
+    } else {
+      lifecycleLog.debug("lifecycle transition", { session: this.id, from, to: state, code, detail });
+    }
     this.emitter.emit(FRAME_EVENT, this.lifecycleFrame());
     // 更新粘性表(订阅回放最新生命周期态)。
     this.sticky.set("session-status", this.lifecycleFrame());
@@ -491,6 +505,16 @@ export class PiSession {
     // R11:真 turn 开始 → 取消命令-turn watcher,由真 finish 收尾(不合成,避免重复/早切)。
     if (event.type === "agent_start" && this.awaitingCommandTurn) {
       this.cancelCommandTurnWatcher();
+    }
+    // turn 边界(轻量字段;tool start/end 已由 toolLog 记,此处不重复)。
+    if (event.type === "agent_start") {
+      lifecycleLog.debug("turn start", { session: this.id });
+    } else if (event.type === "agent_end") {
+      lifecycleLog.debug("turn end", {
+        session: this.id,
+        willRetry: event.willRetry,
+        messages: event.messages.length,
+      });
     }
     // 权威快照归约(session-snapshot-authority):busy/turn 由轮次边界派生,变更才广播。
     // **必须先于** translate 帧广播:agent_end 翻译出的 finish 帧触发前端关流;若 busy=false 的
@@ -1083,6 +1107,11 @@ export class PiSession {
     // 就绪握手:子进程就绪前退出 → error{exit-before-ready},不停留 initializing(Req 4.2);
     // 就绪后退出由 cleanup 统一置 ended。
     if (this._lifecycle === "initializing") {
+      lifecycleLog.error("exit before ready", {
+        session: this.id,
+        code: info.code,
+        signal: info.signal,
+      });
       this.setLifecycle(
         "error",
         "exit-before-ready",
@@ -1092,6 +1121,11 @@ export class PiSession {
     const reason: SessionEndReason =
       info.code === 0 ? "stopped" : "crashed";
     if (reason === "crashed") {
+      lifecycleLog.error("agent crashed", {
+        session: this.id,
+        code: info.code,
+        signal: info.signal,
+      });
       // 崩溃以可见错误帧告知订阅者(不外泄敏感 env,仅退出码/信号摘要)。
       try {
         const summary =
@@ -1124,6 +1158,8 @@ export class PiSession {
       return this.closingPromise ?? Promise.resolve();
     }
     this._status = "stopping";
+    // 会话清理里程碑(仅 active→stopping 真正执行清理时记一条,幂等 early-return 不重复)。
+    lifecycleLog.info("session cleanup", { session: this.id, reason });
 
     this.closingPromise = (async () => {
       // 0) 生命周期终态(spec session-readiness-handshake,Req 5.2):置 ended 并广播

@@ -34,6 +34,12 @@ import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 
+// runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
+// 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
+// (命名空间=agent 目录名)互不相干。config 在 emit 时惰性读取,故模块顶层创建安全:
+// initConfigFromEnv() 在 startRunner 内先跑,门控在首次日志调用时才生效。
+const bootLog = createLogger({ namespace: "runner:boot" });
+
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
   agent: string;
@@ -203,6 +209,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // Must be called before any logger is created so config is in place.
   initConfigFromEnv();
 
+  bootLog.info("runner boot", {
+    agent: args.agent,
+    cwd: args.cwd,
+    trusted: args.trusted,
+    ...(args.model !== undefined ? { model: args.model } : {}),
+  });
+
   // RPC 模式(headless)下 pi SDK 从不调用 initTheme,而 ctx.ui.theme 仍是读 globalThis
   // 主题单例的 Proxy —— 任何扩展调用 `ctx.ui.theme.fg(...)`(如 npm:pi-sandbox 在
   // session_start 给状态栏上色)都会抛 "Theme not initialized. Call initTheme() first.",
@@ -292,6 +305,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     agentDir,
     sessionManager,
   });
+  bootLog.debug("runtime built");
 
   // attachment-tool-bridge 装配(task 5.1):实例化子进程 store、把属主校验闸门接到
   // 执行前 hook、把 base64 剥离闸门接到结果出口 hook、把 tool 接入上下文经 globalThis seam
@@ -301,6 +315,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     env: process.env,
     sessionId: runtime.session.sessionId,
   });
+  bootLog.debug("attachment wiring", { available: attachmentWiring.available });
 
   // 标题持久化(spec auto-session-title, Req 8):包装 uiContext.setTitle,使经 ctx.ui.setTitle
   // 设置的标题在原展示(ambient.title 帧)之外,持久化为会话名(appendSessionInfo)→ 经既有镜像
@@ -332,10 +347,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
   emitSlashCompletions(factory);
 
+  bootLog.info("entering rpc mode");
+
   // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
   // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为
   // 旁路 best-effort 在同样的终止信号上触发(幂等、吞错不抛,不阻断 rpc-mode 收尾)。
   const runSessionCleanup = (): void => {
+    bootLog.debug("runner cleanup");
     void attachmentWiring.cleanup().catch((err) => {
       process.stderr.write(
         `runner: attachment session cleanup error: ${String(err)}\n`,
@@ -370,6 +388,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     args = parseRunnerArgs(argv);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    bootLog.error("runner fatal", { message });
     process.stderr.write(`runner: ${message}\n`);
     process.exitCode = 2;
     return;
@@ -379,6 +398,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     await startRunner(args);
   } catch (error) {
     const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    bootLog.error("runner fatal", { message });
     process.stderr.write(`runner: failed to start: ${message}\n`);
     process.exitCode = 1;
   }

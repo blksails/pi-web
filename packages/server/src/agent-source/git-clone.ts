@@ -12,8 +12,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createLogger } from "@blksails/pi-web-logger";
 import { GitResolveError } from "./errors.js";
 import type { GitSource } from "./types.js";
+
+// 命名空间 agent:resolve:clone —— git 克隆/更新子生命周期(server 侧,落 stderr,默认关)。
+const cloneLog = createLogger({ namespace: "agent:resolve:clone" });
 
 /** 强制非交互的 git 执行 env(Req 2.3)。不透传调用方敏感 env。 */
 export function nonInteractiveGitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
@@ -95,18 +99,23 @@ export function __resetInFlightForTest(): void {
 }
 
 async function cloneAndCheckout(src: GitSource, dir: string): Promise<void> {
+  const startedAt = Date.now();
+  cloneLog.info("clone start", { url: src.url, ref: src.ref });
   await fs.mkdir(path.dirname(dir), { recursive: true });
   // 先克隆(不检出),再固定到 pinned ref。
   const clone = await runGit(["clone", "--no-checkout", src.url, dir]);
   if (clone.code !== 0) {
+    cloneLog.error("clone failed", { url: src.url, ref: src.ref, ms: Date.now() - startedAt });
     throw new GitResolveError(src.url, src.ref, summarize(clone.stderr || clone.stdout));
   }
   // 固定到 ref:支持分支/标签/commit;HEAD 表示远端默认分支。
   const target = src.ref === "HEAD" ? "HEAD" : src.ref;
   const checkout = await runGit(["checkout", "--force", target], dir);
   if (checkout.code !== 0) {
+    cloneLog.error("clone failed", { url: src.url, ref: src.ref, ms: Date.now() - startedAt });
     throw new GitResolveError(src.url, src.ref, summarize(checkout.stderr || checkout.stdout));
   }
+  cloneLog.info("clone done", { localDir: dir, ms: Date.now() - startedAt });
 }
 
 /** 剥离可能的敏感片段,产出简短原因。 */
@@ -140,6 +149,7 @@ export function ensureGitSource(src: GitSource, root?: string): Promise<string> 
       // 失败时不留下半成品缓存。
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
       if (err instanceof GitResolveError) throw err;
+      cloneLog.error("clone failed", { url: src.url, ref: src.ref });
       throw new GitResolveError(src.url, src.ref, summarize(err instanceof Error ? err.message : String(err)));
     }
     return dir;
