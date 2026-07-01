@@ -32,6 +32,7 @@ import {
 import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
+import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 
 /** Parsed runner CLI arguments. */
 export interface RunnerArgs {
@@ -320,6 +321,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId: runtime.session.sessionId,
   });
 
+  // message-queue-ui「取回」桥(clearQueue):在 runRpcMode 之前给 stdin 挂第二个读取器,
+  // 截获 server 下发的 piweb_clear_queue 请求行 → 调当前 session.clearQueue() → 写回结果行。
+  // 优雅降级(内部吞错),不阻断会话启动。
+  const clearQueueWiring = wireClearQueueBridge(runtime, {
+    sessionId: runtime.session.sessionId,
+  });
+
   // agent-slash-completion:把 agent 声明的静态 slash 补全候选经 stdout 帧推给 server
   // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
   emitSlashCompletions(factory);
@@ -338,6 +346,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       process.stderr.write(
         `runner: state-bridge session cleanup error: ${String(err)}\n`,
+      );
+    }
+    try {
+      clearQueueWiring.cleanup();
+    } catch (err) {
+      process.stderr.write(
+        `runner: clear-queue bridge session cleanup error: ${String(err)}\n`,
       );
     }
   };

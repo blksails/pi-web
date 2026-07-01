@@ -75,6 +75,7 @@ export function mockControls(
     abort: IDLE,
     steer: IDLE,
     followUp: IDLE,
+    clearQueue: IDLE,
     getStats: IDLE,
     getCommands: IDLE,
   };
@@ -84,6 +85,7 @@ export function mockControls(
     abort: vi.fn(async () => undefined),
     steer: vi.fn(async () => undefined),
     followUp: vi.fn(async () => undefined),
+    clearQueue: vi.fn(async () => ({ steering: [], followUp: [] })),
     getStats: vi.fn(async () => ({ stats: sampleStats() })),
     getCommands: vi.fn(async () => ({ commands: sampleCommands() })),
     stats: undefined,
@@ -93,6 +95,8 @@ export function mockControls(
     // session-snapshot-authority:权威 busy/session 投影,默认空闲、无快照(可经 overrides 注入)。
     busy: false,
     session: undefined,
+    // message-queue-ui:排队快照,默认空(可经 overrides 注入)。
+    queue: { steering: [], followUp: [] },
     ...overrides,
   };
 }

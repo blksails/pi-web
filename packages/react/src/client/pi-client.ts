@@ -19,6 +19,7 @@ import type {
   GetMessagesResponse,
   GetCommandsResponse,
   CommandAck,
+  ClearQueueResponse,
   GetAvailableModelsResponse,
   ForkRequest,
   ForkResponse,
@@ -100,6 +101,8 @@ export interface PiClient {
   /** follow_up 端点;请求体形状同 SteerRequest(见 protocol rest-dto)。 */
   followUp(id: string, req: SteerRequest): Promise<CommandAck>;
   abort(id: string): Promise<CommandAck>;
+  /** POST /sessions/:id/clear_queue —— 清空排队消息,返回被清 steering/followUp 文本(取回)。 */
+  clearQueue(id: string): Promise<ClearQueueResponse>;
   setModel(id: string, req: SetModelRequest): Promise<CommandAck>;
   setThinking(id: string, req: SetThinkingRequest): Promise<CommandAck>;
   uiResponse(id: string, req: UiResponseRequest): Promise<CommandAck>;
@@ -241,6 +244,8 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/follow_up`, req),
     abort: (id) =>
       post<CommandAck>(`/sessions/${enc(id)}/abort`),
+    clearQueue: (id) =>
+      post<ClearQueueResponse>(`/sessions/${enc(id)}/clear_queue`),
     setModel: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/model`, req),
     setThinking: (id, req) =>

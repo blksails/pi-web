@@ -26,8 +26,19 @@ export interface PromptInputProps {
   readonly value: string;
   /** 文本变化回调,接收新的完整文本。 */
   readonly onChange: (value: string) => void;
-  /** 提交回调(Enter 或外部发送按钮触发);value 为空/仅空白或 disabled 时不会被调用。 */
-  readonly onSubmit: () => void;
+  /**
+   * 提交回调(Enter 或外部发送按钮触发);value 为空/仅空白或 disabled 时不会被调用。
+   * `opts.followUp` 为真表示以「跟进(follow-up)」意图提交(Alt+Enter);缺省为常规/插话意图。
+   * 忙/闲下的实际投递语义(prompt / steer / followUp)由装配层(PiChat)据 busy 派生。
+   */
+  readonly onSubmit: (opts?: { followUp?: boolean }) => void;
+  /**
+   * 取回请求回调(message-queue-ui):存在已排队消息时,Esc 或 Alt+↑ 触发,把队列取回编辑器。
+   * 仅在 `canRetrieve` 为真且无补全浮层占用(`suppressEnterSubmit` 为假)时触发。
+   */
+  readonly onRequestRetrieve?: () => void;
+  /** 当前是否可取回(通常为队列非空);为假时 Esc 保持既有默认行为不触发取回(Req 3.5)。 */
+  readonly canRetrieve?: boolean;
   /** 占位符,默认中文;可由调用方覆盖(Req 1.5)。 */
   readonly placeholder?: string;
   /** 是否禁用输入与提交。 */
@@ -104,6 +115,8 @@ export function PromptInput({
   inputRef,
   onSelectionChange,
   mode,
+  onRequestRetrieve,
+  canRetrieve = false,
 }: PromptInputProps): React.JSX.Element {
   const t = useI18n();
   const canSubmit = !disabled && !isBlank(value);
@@ -174,7 +187,20 @@ export function PromptInput({
       onAcceptGhost();
       return;
     }
+    // 取回(message-queue-ui):存在已排队消息时 Esc / Alt+↑ 把队列取回编辑器。补全浮层占用
+    // (suppressEnterSubmit)或不可取回(canRetrieve 为假)时不拦截,保持既有 Esc 默认行为(Req 3.5)。
+    if (
+      onRequestRetrieve !== undefined &&
+      canRetrieve &&
+      !suppressEnterSubmit &&
+      (event.key === "Escape" || (event.altKey && event.key === "ArrowUp"))
+    ) {
+      event.preventDefault();
+      onRequestRetrieve();
+      return;
+    }
     // Shift+Enter:换行,不提交(Req 1.4)——交由浏览器默认行为插入换行。
+    // Alt+Enter 视为 Enter 的「跟进」变体(followUp),不视为换行。
     if (event.key !== "Enter" || event.shiftKey) return;
     // 命令模式激活时:阻止默认换行并让位给命令浮层(Req 4.1);不调用 onSubmit。
     if (suppressEnterSubmit) {
@@ -182,9 +208,10 @@ export function PromptInput({
       return;
     }
     // Enter:阻止默认换行并提交(Req 1.2);空/仅空白或禁用时不提交(Req 1.3)。
+    // Alt+Enter → followUp 意图;普通 Enter → 常规/插话意图(由 PiChat 据 busy 派生)。
     event.preventDefault();
     if (!canSubmit) return;
-    onSubmit();
+    onSubmit(event.altKey ? { followUp: true } : undefined);
   };
 
   return (

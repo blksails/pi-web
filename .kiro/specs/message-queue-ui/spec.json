@@ -1,0 +1,22 @@
+{
+  "feature_name": "message-queue-ui",
+  "created_at": "2026-07-01T09:35:09Z",
+  "updated_at": "2026-07-01T10:12:00Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}
