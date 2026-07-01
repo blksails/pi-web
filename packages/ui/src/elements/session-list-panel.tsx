@@ -141,6 +141,8 @@ export function SessionListPanel(
   const [busyIds, setBusyIds] = React.useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // 在途 id 的同步集合:runAction 据此拒绝对同一项的重入(避免快速重复触发发起冲突请求,Req 5.2)。
+  const inFlightRef = React.useRef<Set<string>>(new Set());
   const [actionError, setActionError] = React.useState<string | undefined>(
     undefined,
   );
@@ -191,6 +193,9 @@ export function SessionListPanel(
   // 在途包裹:标记 busy(禁用重复触发,Req 5.2)+ 清错;失败展示可见错误(Req 2.7/3.6/4.8)。
   const runAction = React.useCallback(
     async (id: string, fn: () => void | Promise<void>): Promise<boolean> => {
+      // 重入拒绝:该项已有操作在途则忽略(同步 ref 判定,避免 setState 异步导致的竞态,Req 5.2)。
+      if (inFlightRef.current.has(id)) return false;
+      inFlightRef.current.add(id);
       setBusyIds((s) => new Set(s).add(id));
       setActionError(undefined);
       try {
@@ -200,6 +205,7 @@ export function SessionListPanel(
         setActionError(actionErrorLabel);
         return false;
       } finally {
+        inFlightRef.current.delete(id);
         setBusyIds((s) => {
           const n = new Set(s);
           n.delete(id);

@@ -551,7 +551,7 @@ function SessionView({
     readonly string[]
   >([]);
   React.useEffect(() => {
-    if (!SESSIONS_MANAGE_ENABLED) return;
+    // 收藏**读**不受写门控(Req 4.9):即便写操作禁用(只读部署),已持久化的收藏仍拉取用于置顶展示。
     let live = true;
     void piClient
       .listSessionFavorites()
