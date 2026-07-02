@@ -15,6 +15,7 @@ import {
   useModels,
   useAttachments,
   type UploadAttachmentFn,
+  uploadAttachment as defaultUploadAttachment,
   useBranches,
   useSuggestions,
   createUiRpcBus,
@@ -1612,6 +1613,9 @@ export function PiChat({
               slot="panelRight"
               state={webextState}
               surface={surfaceAccess}
+              upload={uploadAttachment ?? defaultUploadAttachment}
+              baseUrl={client?.baseUrl ?? ""}
+              {...(sessionId !== undefined ? { sessionId } : {})}
             />
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。

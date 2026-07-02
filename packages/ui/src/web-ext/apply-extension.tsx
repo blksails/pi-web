@@ -51,13 +51,26 @@ export function resolveSlot(
   return ext?.slots?.[slot];
 }
 
+/**
+ * 通用附件上传接入(领域无关,像 state / surface 一样由宿主经 prop 注入)。签名对齐 react
+ * `uploadAttachment` / `useAttachments`;slot 组件(如 Canvas B 档)据此把客户端产物落 `att_`。
+ */
+export type SlotUploadFn = (
+  baseUrl: string,
+  sessionId: string,
+  file: File,
+) => Promise<{ attachment: { id: string }; displayUrl: string }>;
+
 function renderContribution(
   contribution: SlotContribution,
   extId: string,
   state: WebExtStateAccess | undefined,
   surface: WebExtSurfaceAccess | undefined,
+  upload: SlotUploadFn | undefined,
+  baseUrl: string | undefined,
+  sessionId: string | undefined,
 ): React.ReactNode {
-  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface 接入);否则按 ReactNode 直接渲染。
+  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入);否则按 ReactNode 直接渲染。
   // 经 prop 注入(非 React context):webext 是独立打包的 bundle,context 身份不跨 bundle 共享,
   // 故沿用既有「slot 收 extId / contribution 收 rpc」的形参注入范式(state-injection-bridge Req 7 /
   // agent-authoritative-surface)。
@@ -66,8 +79,20 @@ function renderContribution(
       extId: string;
       state?: WebExtStateAccess;
       surface?: WebExtSurfaceAccess;
+      upload?: SlotUploadFn;
+      baseUrl?: string;
+      sessionId?: string;
     }>;
-    return <Comp extId={extId} state={state} surface={surface} />;
+    return (
+      <Comp
+        extId={extId}
+        state={state}
+        surface={surface}
+        upload={upload}
+        baseUrl={baseUrl}
+        sessionId={sessionId}
+      />
+    );
   }
   return contribution;
 }
@@ -82,6 +107,12 @@ export interface SlotHostProps {
   readonly state?: WebExtStateAccess;
   /** 权威 surface 接入(agent-authoritative-surface);宿主提供,经 prop 透给 slot 组件。 */
   readonly surface?: WebExtSurfaceAccess;
+  /** 通用附件上传接入(B 档客户端产物落 att_);宿主提供,经 prop 透给 slot 组件。 */
+  readonly upload?: SlotUploadFn;
+  /** http-api 基址(如 `/api`),附件上传所需。 */
+  readonly baseUrl?: string;
+  /** 目标会话 id,附件上传写路径门控。 */
+  readonly sessionId?: string;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -92,6 +123,9 @@ export function SlotHost({
   onError,
   state,
   surface,
+  upload,
+  baseUrl,
+  sessionId,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -100,7 +134,15 @@ export function SlotHost({
       fallback={fallback ?? null}
       {...(onError !== undefined ? { onError } : {})}
     >
-      {renderContribution(contribution, ext?.manifestId ?? "", state, surface)}
+      {renderContribution(
+        contribution,
+        ext?.manifestId ?? "",
+        state,
+        surface,
+        upload,
+        baseUrl,
+        sessionId,
+      )}
     </ExtErrorBoundary>
   );
 }

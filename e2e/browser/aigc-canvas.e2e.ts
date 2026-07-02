@@ -97,6 +97,31 @@ test("canvas: 命令后刷新 → 粘性 control:state 回放,画廊快照仍在
   await expect(page.locator("[data-canvas-cell]")).toHaveCount(2);
 });
 
+test("canvas: B 档接线(host 注入 upload → 旋转 90° 客户端产物落 att_ → register 回流,新图进画廊)", async ({
+  page,
+}) => {
+  await selectSource(page, CANVAS_SOURCE);
+  await page.locator("[data-canvas-launcher]").click();
+  await expect(page.locator("[data-canvas-gallery]")).toBeVisible();
+  await expect(page.locator("[data-canvas-cell]")).toHaveCount(1);
+
+  // 展开工作台。
+  await page.locator("[data-canvas-cell]").first().click();
+  await expect(page.locator("[data-canvas-workbench]")).toBeVisible();
+
+  // 接线证明:宿主经 SlotHost 注入 upload(uploadAttachment)+ baseUrl + sessionId 后,B 档旋转
+  // 按钮不再禁用(此前 upload===undefined 降级禁用,deviation 2)。
+  const rotate = page.locator("[data-canvas-b-rotate]");
+  await expect(rotate).toBeEnabled();
+
+  // 端到端:点旋转 → 客户端 canvas 旋转产 dataURI → 上传 att_(POST /attachments)→
+  // run("canvas","register") → 快照回流 → 新图进画廊(种子 + 旋转产物 = 2)。
+  await rotate.click();
+  // 关闭工作台回画廊(workbench 态 gallery cell 不渲染),断言旋转产物已入快照(种子 + 旋转 = 2)。
+  await page.locator("[data-canvas-workbench-close]").click();
+  await expect(page.locator("[data-canvas-cell]")).toHaveCount(2);
+});
+
 test("canvas: 非 AIGC source(hello-agent)不挂载入口/画廊,pi-web 照常运行(退化 / 门控独立性)", async ({
   page,
 }) => {
