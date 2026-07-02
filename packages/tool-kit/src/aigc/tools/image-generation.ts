@@ -7,6 +7,7 @@
  *
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容
+ *  - `gpt-image-2-sufy`          sufy(七牛云)—— OpenAI 兼容,providerModel openai/gpt-image-2
  *  - `wan2.7-image-pro`          DashScope sync —— 旗舰文生图
  *  - `wan2.7-image-pro-bailian`  token plan multimodal —— 百炼原生格式
  */
@@ -17,6 +18,7 @@ import {
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
 import { createNewApiImage } from "../providers/newapi.js";
+import { createSufyImage } from "../providers/sufy.js";
 import {
   runImageTool,
   buildModelsDescription,
@@ -39,6 +41,16 @@ const ROUTES: readonly ImageRoute[] = [
       label: "GPT Image 2 · NewAPI",
       description:
         "OpenAI-compatible gpt-image generation via NewAPI gateway. Needs NEWAPI_API_KEY.",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createSufyImage(
+    {
+      model: "gpt-image-2-sufy",
+      label: "GPT Image 2 · sufy",
+      description:
+        "OpenAI-compatible gpt-image generation via sufy (七牛云) gateway. Needs SUFY_API_KEY.",
+      providerModel: "openai/gpt-image-2",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),

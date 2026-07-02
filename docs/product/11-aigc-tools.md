@@ -67,6 +67,7 @@ export default defineAgent({
 | 变量名 | 用途 | 必填条件 |
 |---|---|---|
 | `NEWAPI_API_KEY` | NewAPI 网关（默认 `gpt-image-2` 路由） | 使用 gpt-image-2 时必填 |
+| `SUFY_API_KEY` | sufy（七牛云）网关（`gpt-image-2-sufy` 路由） | 使用 gpt-image-2-sufy 时必填 |
 | `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一个变量名**读取密钥 | 使用 DashScope / token plan 模型时必填 |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan 端点 base（可选，缺省 `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`） | 覆盖 token plan 域时配置 |
 
@@ -75,6 +76,7 @@ export default defineAgent({
 ```bash
 # .env.local 示例
 NEWAPI_API_KEY=sk-xxxxxxxx
+SUFY_API_KEY=sk-xxxxxxxx
 DASHSCOPE_API_KEY=sk-xxxxxxxx
 # token plan 端点（默认已内置，通常无需配置）
 # DASHSCOPE_TOKENPLAN_BASE_URL=https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1
@@ -124,6 +126,7 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 | model id | 标签 | provider | 端点 | 价格参考 |
 |---|---|---|---|---|
 | `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | `POST /v1/images/generations` | $0.04/张 |
+| `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | `POST https://openai.sufy.com/v1/images/generations`（providerModel `openai/gpt-image-2`） | $0.04/张 |
 | `wan2.7-image-pro` | Wan 2.7 Image Pro | DashScope 官方 | `POST /api/v1/services/aigc/multimodal-generation/generation`（同步） | ¥0.5/张 |
 | `wan2.7-image-pro-bailian` | Wan 2.7 Image Pro · token plan | 阿里云百炼 token plan | 同 DashScope 路径，base 切换到 token plan 域 | ¥0.2/张 |
 
@@ -132,6 +135,7 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 | model id | 标签 | provider | 特性 |
 |---|---|---|---|
 | `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | 整图改写；multipart FormData |
+| `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | 整图改写；multipart FormData；providerModel `openai/gpt-image-2` |
 | `qwen-image-edit-max` | Qwen Image Edit Max · sync | DashScope 官方 | 最高保真；支持 mask 局部重绘 |
 | `wan2.7-image-edit-bailian` | Wan 2.7 Image Edit · token plan | 阿里云百炼 token plan | DashScope 原生 messages/content；支持带图编辑 |
 
@@ -186,6 +190,18 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 - 图像编辑端点：`POST https://www.apiservices.top/v1/images/edits`（multipart FormData）
 - 请求体：OpenAI 兼容格式（`{ model, prompt, n, size, ... }`）
 - 密钥：`Authorization: Bearer ${NEWAPI_API_KEY}`
+
+### sufy（七牛云，gpt-image-2-sufy）
+
+- 文生图端点：`POST https://openai.sufy.com/v1/images/generations`
+- 图像编辑端点：`POST https://openai.sufy.com/v1/images/edits`（multipart FormData）
+- base host 为 `openai.sufy.com`（与 `api.qnaigc.com` 同源的七牛 AIGC 网关）；**注意不是** `api.sufy.com`（该域名不存在，NXDOMAIN）
+- 请求体：与 NewAPI 完全同构（OpenAI 兼容），复用通用工厂 `createOpenAiCompatImage` / `createOpenAiCompatImageEdit`（`providers/openai-compat.ts`）；edits 端点经 curl 实测接受 `image[]` 多图字段
+- **`response_format` 差异**：sufy **拒绝** `response_format` 参数（`[BadRequestError] Unknown parameter: 'response_format'` → 400），故 sufy config 设 `omitResponseFormat: true`，文生图不发该字段；gpt-image 系列**默认已返回 b64_json**（curl 实测 200 仍拿到 b64_json），`persistPicked` 的 b64 内联优化不受损。NewAPI 保持显式发送（向后兼容）
+- **model 名差异**：sufy 上 gpt-image-2 的真实 id **必须带 `openai/` 前缀**（`openai/gpt-image-2`），不带前缀返回 `502 upstream_error`；故路由声明用 `providerModel: "openai/gpt-image-2"`（LLM 可见路由键仍为 `gpt-image-2-sufy`）。该 model 未出现在 `/v1/models` 列表中，但 `/v1/images/generations` 可直接调用
+- 密钥：`Authorization: Bearer ${SUFY_API_KEY}`
+
+> **同构说明**：NewAPI 与 sufy 都是 OpenAI `/images` 协议兼容网关，二者的 `buildBody`/`pickResult`/`detectError` 完全一致，统一抽到 `providers/openai-compat.ts` 的通用工厂；`newapi.ts` / `sufy.ts` 只是绑定各自 `baseUrl` + `apiKeyVar` 的薄封装。再接入同类网关只需照 `sufy.ts` 复制一份薄封装即可。
 
 ### DashScope 官方（wan2.7-image-pro / qwen-image-edit-max）
 
@@ -302,7 +318,9 @@ createNewApiImage(
 ),
 ```
 
-如需新 provider 类型，参考 `packages/tool-kit/src/aigc/providers/` 下的 `dashscope.ts` 与 `newapi.ts` 实现工厂函数，返回 `ModelRoute`。
+**新增 OpenAI `/images` 兼容网关（最常见）**：无需写任何 buildBody/pickResult——照 `providers/sufy.ts` 复制一份薄封装，只改 `baseUrl` + `apiKeyVar` 两个常量，即复用 `providers/openai-compat.ts` 的通用工厂 `createOpenAiCompatImage` / `createOpenAiCompatImageEdit`；若网关 model 名与路由键不同（如 sufy 的 `openai/gpt-image-2`）用 `providerModel` 区分。env 变量（如 `SUFY_API_KEY`）会随 `runner.ts` 的 `env: process.env` 整体继承自动流入 runner 子进程，**无需白名单注入**。
+
+如需**异构** provider 类型（非 OpenAI 形态，如 DashScope 原生 input/parameters），参考 `providers/dashscope.ts` 实现工厂函数，返回 `ImageRoute`。
 
 ---
 

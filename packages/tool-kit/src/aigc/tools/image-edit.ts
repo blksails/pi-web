@@ -7,6 +7,7 @@
  *
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容 edits(整图改写)
+ *  - `gpt-image-2-sufy`          sufy(七牛云)—— OpenAI 兼容 edits,providerModel openai/gpt-image-2
  *  - `qwen-image-edit-max`       DashScope —— 最高保真,支持 mask 局部重绘
  *  - `wan2.7-image-edit-bailian` token plan multimodal —— 百炼带图编辑
  */
@@ -17,6 +18,7 @@ import {
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
 import { createNewApiImageEdit } from "../providers/newapi.js";
+import { createSufyImageEdit } from "../providers/sufy.js";
 import {
   runImageTool,
   buildModelsDescription,
@@ -37,6 +39,16 @@ const ROUTES: readonly ImageRoute[] = [
       label: "GPT Image 2 · NewAPI",
       description:
         "OpenAI-compatible gpt-image editing via NewAPI gateway. Whole-image rewrite. Needs NEWAPI_API_KEY.",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createSufyImageEdit(
+    {
+      model: "gpt-image-2-sufy",
+      label: "GPT Image 2 · sufy",
+      description:
+        "OpenAI-compatible gpt-image editing via sufy (七牛云) gateway. Whole-image rewrite. Needs SUFY_API_KEY.",
+      providerModel: "openai/gpt-image-2",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
