@@ -20,6 +20,9 @@ vi.mock("@blksails/pi-web-ui", () => ({
   },
   PiChatBasic: (): React.JSX.Element => <div data-test-pi-chat-basic />,
   SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
+  // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这两个组件。
+  CanvasLauncher: (): null => null,
+  CanvasPanel: (): null => null,
   useI18n: () => (key: string) => key,
   useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));

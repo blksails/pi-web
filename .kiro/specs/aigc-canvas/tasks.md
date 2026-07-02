@@ -1,0 +1,167 @@
+# Implementation Plan — aigc-canvas
+
+> 前置(本 spec **只消费,不实现**):① 上游 `agent-authoritative-surface` SDK(`createSurface` / `useSurface` / `SurfaceCommandPayload` / `wireSurfaceBridge` / 探针 / 退化);② 上游 `attachment-tool-bridge` 的**领域无关 seam 扩展**(把 facade 既有 `listBySession` 透出到子进程 `AttachmentToolContext` 供 `hydrate` 会话枚举 + 新增按 `att_id` 存取的不透明扩展 meta `getMeta`/`setMeta`(落 `.att.json`,承载 `{derivedFrom, genParams}`));③ `state-injection-bridge` 通用粘性帧修复。Canvas 只是 `domain="canvas"` 的 AAS 实例。核心范式:**画廊 = attachment store 物化视图**(`hydrate` 经上游 `listBySession` 枚举重建 + `sync` reconcile + 命令内 setState);A 档二创走 AAS 命令通道 → `wireSurfaceBridge` → 子进程内 `runImageTool`(`ext=undefined` + `requiredParams:[]`,附件解析独立于 `ext`;保 provider/models.json 独立);图字节走 `att_` 签名 URL 永不进帧;血缘经上游 `setMeta`/`getMeta` 存 / 取附件不透明扩展 meta。零 REST route、宿主零领域语义(grep `app/`+`packages/server` 无 `canvas`/`gallery`/`image_edit`);**不改 `agent-kit`/`server`/`attachment-store`**。门控 `NEXT_PUBLIC_PI_WEB_CANVAS` 默认关。
+
+- [x] 1. 纯 schema:画廊 / 血缘 / 命令 args
+- [x] 1.1 定义 canvas 纯 schema（无 pi 值导入）(P)
+  - 新增 `packages/tool-kit/src/aigc/canvas/schema.ts`:`CanvasLineageSchema`(`derivedFrom?`/`genParams?`)、`GalleryAssetSchema`(`attachmentId`/`displayUrl`/`mimeType`/`name`/`createdAt`/`origin`/`derivedFrom?`/`genParams?`,**无二进制**)、`GalleryStateSchema`(`assets` newest-first)、A 档命令 args(`Edit`/`Inpaint`/`Reference`/`Variants`/`Outpaint`/`Reframe`)、`Register`/`Sync`/`Delete` args
+  - 模块保持纯净(仅 zod;无 `@earendil-works/pi-coding-agent` 等 pi 值导入),使其可被浏览器安全子路径导出
+  - 观察完成:`GalleryStateSchema.parse` round-trip 成功;`EditArgsSchema.safeParse({image,prompt})` 成功、缺 `image` 失败;grep 该文件无 pi 值 import
+  - _Requirements: 2.4, 4.1, 7.3, 8.1_
+  - _Boundary: packages/tool-kit/src/aigc/canvas/schema.ts_
+- [x] 1.2 canvas schema 单元测试 (P)
+  - `packages/tool-kit/test/aigc/canvas/schema.test.ts`:各 state/asset/lineage round-trip、命令 args 合法 / 缺必填拒绝 / 拒绝二进制字段
+  - 观察完成:`pnpm --filter @blksails/pi-web-tool-kit test` 覆盖 canvas schema 全绿
+  - _Requirements: 2.4, 4.1, 7.3, 8.1_
+  - _Boundary: packages/tool-kit/test/aigc/canvas/schema.test.ts_
+  - _Depends: 1.1_
+
+> **上游前置(非本 spec 任务)**:attachment 会话枚举(`listBySession`)+ 不透明 meta(`getMeta`/`setMeta`)seam 由上游 `attachment-tool-bridge` 的领域无关 seam 扩展提供。本 spec 下游任务经 `SurfaceCtx.attachments`(即 `AttachmentToolContext`)消费,**不实现该 seam、不改 `packages/agent-kit/src/attachment.ts` / `packages/server` 的 `createAttachmentToolContext` / `attachment-store` 的 `.att.json`**。其单测(枚举只取描述符、meta round-trip、领域无关)归 `attachment-tool-bridge` spec。
+
+- [x] 2. agent 侧:hydrate 物化视图重建（消费上游枚举 + meta seam）
+- [x] 2.1 实现 `rebuildGalleryFromAttachments`
+  - 新增 `packages/tool-kit/src/aigc/canvas/hydrate.ts`:经**上游** `ctx.attachments.listBySession()` 列会话附件 → filter `mimeType.startsWith("image/")` → 逐个 `ctx.attachments.getMeta(id)` 读 `{derivedFrom,genParams}`（无则根节点）→ 经既有签名 seam 生成 `displayUrl` → 组 newest-first `GalleryState`；装配期异步、失败记诊断退空/现快照不崩会话
+  - **不自建枚举/meta 实现**（上游 `attachment-tool-bridge` 提供），仅经 `SurfaceCtx.attachments` 消费
+  - 观察完成:注入 fake 上游 `listBySession`+`getMeta`，`rebuildGalleryFromAttachments` 返回按 createdAt 倒序、含血缘的 GalleryState；无 meta 资产为根节点
+  - _Requirements: 2.1, 7.2, 7.4, 12.1, 12.2, 12.4_
+  - _Boundary: packages/tool-kit/src/aigc/canvas/hydrate.ts_
+  - _Depends: 1.1_
+- [x] 2.2 hydrate 单元测试 (P)
+  - `packages/tool-kit/test/aigc/canvas/hydrate.test.ts`（注入 fake 上游 `listBySession`+`getMeta`）:image mime filter、meta 附加血缘、无 meta 根节点、newest-first、签名 URL 生成被调、枚举失败降级
+  - 观察完成:tool-kit test 覆盖 hydrate 全绿
+  - _Requirements: 2.1, 7.2, 7.4, 12.4_
+  - _Boundary: packages/tool-kit/test/aigc/canvas/hydrate.test.ts_
+  - _Depends: 2.1_
+
+- [x] 3. agent 侧:canvas 命令处理器
+- [x] 3.1 实现命令处理器（A 档 + register/sync/delete）
+  - 新增 `packages/tool-kit/src/aigc/canvas/commands.ts`:A 档 `edit`/`inpaint`/`reference`/`variants`/`outpaint`/`reframe` → `safeParse` args → `runImageTool(params, undefined, signal, undefined, {toolName:"image_edit", routes: IMAGE_EDIT_ROUTES, defaultModel:"gpt-image-2", requiredParams:[], mediaFields:["image","mask","reference_images"]})`（`ext=undefined` 安全:附件解析独立于 `ext`，`ext` 仅用于交互补全）；成功 → 映射 `details.assets` + 写血缘（`derivedFrom`=源 att_,`genParams`=args）经**上游** `ctx.attachments.setMeta` + `ctx.setState` prepend + 返回 `{ids}`；`details.ok=false`/抛出 → `ok:false`+稳定 `error.code` 不留半态；`variants` 对 `models` 逐一汇总；`register` `ctx.attachments.resolve` 校验属主 + `ctx.attachments.setMeta` + setState（不调 provider）；`sync` 调 `rebuildGalleryFromAttachments` + setState；`delete` filter 移除
+  - **无二进制进 args/快照**（仅 att_ 引用 + `runImageTool` 返回的签名 `displayUrl`）;血缘存 / 取一律经上游 seam
+  - 观察完成:注入 fake runImageTool / fake 上游 attachment ctx / setState — `edit` 成功令 setState 收到含 `derivedFrom` 新资产 + `setMeta` 被调 + 返回 ids;`details.ok=false` → `ok:false`;`register` 不调 runImageTool;`delete` 移除指定资产
+  - _Requirements: 2.2, 2.3, 2.5, 4.2, 4.3, 4.4, 4.5, 5.2, 5.3, 7.1, 8.1_
+  - _Boundary: packages/tool-kit/src/aigc/canvas/commands.ts_
+  - _Depends: 1.1, 2.1_
+- [x] 3.2 命令处理器单元测试 (P)
+  - `packages/tool-kit/test/aigc/canvas/commands.test.ts`:A 档成功/失败、血缘写入（`setMeta` 被调）、变体多模型汇总、register 属主校验、delete filter、sync 调 hydrate、无二进制断言
+  - 观察完成:tool-kit test 覆盖 commands 全绿
+  - _Requirements: 2.2, 2.3, 2.5, 4.2, 4.3, 4.4, 4.5, 5.2, 5.3, 7.1_
+  - _Boundary: packages/tool-kit/test/aigc/canvas/commands.test.ts_
+  - _Depends: 3.1_
+
+- [x] 4. agent 侧:canvasSurfaceExtension 装配
+- [x] 4.1 实现 `canvasSurfaceExtension`（ExtensionFactory）
+  - 新增 `packages/tool-kit/src/aigc/canvas/{extension.ts,index.ts}`:`canvasSurfaceExtension: ExtensionFactory = (pi) => createSurface(pi, {domain:"canvas", initialState:(空画廊,默认下沉函数体), commands:{edit,inpaint,reference,variants,outpaint,reframe,register,sync,delete}, hydrate})`；**复用上游 `createSurface`**（不自造 control 帧/ui-rpc 回流/探针/注册表）；命令 / hydrate 经 `SurfaceCtx.attachments` 消费上游 seam（resolve/putOutput/listBySession/getMeta/setMeta）；改 `packages/tool-kit/src/runtime.ts` runtime 子入口 barrel 导出 `canvasSurfaceExtension`
+  - 含 pi 值导入 → 仅 `@blksails/pi-web-tool-kit/runtime` 加载,不进前端 bundle
+  - 观察完成:在 fake `pi`/上游 createSurface 下 `canvasSurfaceExtension(pi)` 注册 `surface:canvas` 探针（经上游）且命令表就绪;`initialState` 不共享引用
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+  - _Boundary: packages/tool-kit/src/aigc/canvas/extension.ts, packages/tool-kit/src/aigc/canvas/index.ts, packages/tool-kit/src/runtime.ts_
+  - _Depends: 2.1, 3.1_
+- [x] 4.2 extension 单元测试 (P)
+  - `packages/tool-kit/test/aigc/canvas/extension.test.ts`（注入 fake pi + 上游 createSurface spy）:探针经上游注册、命令表挂全、hydrate 传入、initialState 独立引用
+  - 观察完成:tool-kit test 覆盖 extension 全绿
+  - _Requirements: 1.1, 1.2, 1.3, 1.5_
+  - _Boundary: packages/tool-kit/test/aigc/canvas/extension.test.ts_
+  - _Depends: 4.1_
+
+- [x] 5. UI 侧:纯 schema 子路径 + 画廊
+- [x] 5.1 暴露 canvas 纯 schema 浏览器安全子路径
+  - 改 `packages/tool-kit`（package.json `exports` + tsconfig paths）:新增 `@blksails/pi-web-tool-kit/aigc-canvas-schema` 指向 `aigc/canvas/schema.ts`（纯，无 pi 值导入）；**同步 vitest 子路径 alias**（既有坑:漏 alias 害集成测试全崩）
+  - 观察完成:UI 包可 `import { GalleryStateSchema } from "@blksails/pi-web-tool-kit/aigc-canvas-schema"` 且 typecheck 绿;vitest 解析该子路径不报错
+  - _Requirements: 8.1, 11.1_
+  - _Boundary: packages/tool-kit/package.json + tsconfig_
+  - _Depends: 1.1_
+- [x] 5.2 实现 `use-canvas-view`（UI 本地视图偏好）(P)
+  - 新增 `packages/ui/src/canvas/use-canvas-view.ts`:密度（概览/瀑布流/聚焦）、页码、选中项、分组模式、工作台开合、当前工作图链 —— 全 localStorage 持久,**不进权威快照**
+  - 观察完成:切换密度/翻页/选中改变本地态并写 localStorage;刷新后从本地恢复
+  - _Requirements: 3.2, 3.3, 3.5, 6.4, 10.3_
+  - _Boundary: packages/ui/src/canvas/use-canvas-view.ts_
+  - _Depends: 5.1_
+- [x] 5.3 实现 `CanvasGallery`
+  - 新增 `packages/ui/src/canvas/canvas-gallery.tsx`:`useSurface<GalleryState>("canvas")`（上游）镜像;`available===true` → 9 宫格默认 + 密度切换 + 客户端分页 + 血缘/时间分组 + `displayUrl` 缩略;轮末 idle 边沿 → `run("sync")`;`available===false` → 退化（消息历史图片图库 + A 档禁用，见 6.x）
+  - 观察完成:mock useSurface — 快照渲染 9 宫格;密度切换改布局;分页翻页;`available=false` 走退化分支
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 8.2, 2.2, 9.1_
+  - _Boundary: packages/ui/src/canvas/canvas-gallery.tsx_
+  - _Depends: 5.1, 5.2_
+- [x] 5.4 CanvasGallery 单元测试 (P)
+  - `packages/ui/test/canvas/canvas-gallery.test.tsx`:9 宫格渲染、密度/分页/分组本地态、sync 在 idle 边沿触发、available=false 退化
+  - 观察完成:`pnpm --filter @blksails/pi-web-ui test` 覆盖 canvas-gallery 全绿
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 2.2, 9.1_
+  - _Boundary: packages/ui/test/canvas/canvas-gallery.test.tsx_
+  - _Depends: 5.3_
+
+- [x] 6. UI 侧:工作台 + B 档客户端处理 + C 档 + 退化
+- [x] 6.1 实现 `client-image-ops`（B 档）
+  - 新增 `packages/ui/src/canvas/client-image-ops.ts`:Canvas 2D crop/rotate/collage/annotate + inpaint/outpaint **mask 画布**（B/W）,坐标系按源图像素对齐;产 data URI（可先 `normalizeImageDataUri`）→ 既有附件上传接缝落新 `att_`（base64/二进制不进命令 payload）
+  - 观察完成:给定源图尺寸,crop/rotate/mask 输出与源图像素坐标对齐（断言 mask 尺寸=源图）;产出可上传拿到 att_
+  - _Requirements: 5.1, 5.4, 8.1_
+  - _Boundary: packages/ui/src/canvas/client-image-ops.ts_
+  - _Depends: 5.1_
+- [x] 6.2 实现 `CanvasWorkbench`（展开态 + A/B 工具栏 + mask）
+  - 新增 `packages/ui/src/canvas/canvas-workbench.tsx`:格子点击展开全屏工作台;工具栏发 A 档 `run("edit"/"inpaint"/"reference"/"variants"/"outpaint"/"reframe", args)`;B 档经 `client-image-ops` 产 att_ 后 `run("register", {attachmentId, derivedFrom, genParams})`;"带入对话"显式 Prompt 注入（带 att_id）;关闭回画廊
+  - 观察完成:mock useSurface — 点 A 档按钮发对形 SurfaceCommandPayload（仅 att_ 引用）;B 档产 att_ 后调 register;关闭切回画廊视图
+  - _Requirements: 4.1, 4.6, 5.2, 10.3_
+  - _Boundary: packages/ui/src/canvas/canvas-workbench.tsx_
+  - _Depends: 5.3, 6.1_
+- [x] 6.3 实现 `lineage-view`（C 档）(P)
+  - 新增 `packages/ui/src/canvas/lineage-view.tsx`:从快照 `derivedFrom` 建血缘树、`genParams` 预填 A 档表单（参数复用）、A-B 并排对比、当前工作图链前进/回退（UI 本地）
+  - 观察完成:给定含 derivedFrom 快照渲染父子树;点资产"复用参数"预填表单;选两图出对比
+  - _Requirements: 6.1, 6.2, 6.3, 6.4_
+  - _Boundary: packages/ui/src/canvas/lineage-view.tsx_
+  - _Depends: 5.3_
+- [x] 6.4 实现 `CanvasLauncher`（launcherRail 入口 + 门控）
+  - 新增 `packages/ui/src/canvas/canvas-launcher.tsx`:`NEXT_PUBLIC_PI_WEB_CANVAS`（`=== "true" || === "1"`）门控,关则 `null`;开则渲染入口按钮，激活展开 `CanvasGallery`/`CanvasWorkbench`;ui barrel 导出 `CanvasGallery`/`CanvasWorkbench`/`CanvasLauncher`
+  - 门控读在 UI 组件侧（client bundle），**不落宿主 `app/`/`packages/server`**
+  - 观察完成:env 未设 → 组件渲染 null;env=1 → 出现入口按钮，点击展开画廊
+  - _Requirements: 10.1, 10.2, 10.3, 10.4_
+  - _Boundary: packages/ui/src/canvas/canvas-launcher.tsx, packages/ui/src/index.ts_
+  - _Depends: 5.3, 6.2_
+- [x] 6.5 workbench / launcher / 退化 / B 档 单元测试 (P)
+  - `packages/ui/test/canvas/*.test.tsx`:A 档发对形 payload、register 分支、门控 null/on、退化只读（消息历史图库 + B 档本地不 register）、client-image-ops 坐标
+  - 观察完成:ui test 覆盖 workbench/launcher/退化全绿
+  - _Requirements: 4.1, 5.2, 5.3, 9.2, 9.3, 9.4, 10.1_
+  - _Boundary: packages/ui/test/canvas/_
+  - _Depends: 6.1, 6.2, 6.4_
+
+- [x] 7. 示例 source 接入（集成 / e2e 夹具）
+- [x] 7.1 实现 `aigc-canvas-agent` 示例 source
+  - 新增 `examples/aigc-canvas-agent/{index.ts,README.md,.pi/web/web.config.tsx}`:`extensions:[aigcExtension, canvasSurfaceExtension]`;`.pi/web` 用 `slots.launcherRail = CanvasLauncher` 挂 `CanvasGallery`/`CanvasWorkbench`;`examples/README.md` 注册一行
+  - 观察完成:runner 可加载 `aigc-canvas-agent`;`getCommands` 含 `surface:canvas` 探针
+  - _Requirements: 1.1, 10.2, 13.4_
+  - _Boundary: examples/aigc-canvas-agent, examples/README.md_
+  - _Depends: 4.1, 6.4_
+- [x] 7.2 注册示例到 webext-registry（e2e 静态加载）
+  - 改 `lib/app/webext-registry.ts`:静态 import `aigc-canvas-agent` 的 `.pi/web`（注册 `launcherRail` 槽，绕签名门控，对齐既有示例）
+  - 观察完成:隔离 build 下 `aigc-canvas-agent` 的 `launcherRail` 渲染器可挂载
+  - _Requirements: 13.4_
+  - _Boundary: lib/app/webext-registry.ts_
+  - _Depends: 7.1_
+
+- [x] 8. 真实子进程集成测试（物化视图 + A 档端到端）
+- [x] 8.1 A 档命令端到端集成测试
+  - `packages/server/test/runner/canvas-surface.integration.test.ts`（真实子进程装 `canvasSurfaceExtension`，`runImageTool` provider 可 stub）:server 经 `PiSession.uiRpc` 发 `inpaint` 命令 → `wireSurfaceBridge`（上游）转发 → 处理器调 runImageTool → 新 `att_`+血缘 meta（经上游 `setMeta`）落库 → `ctx.setState` → `control:"state"`（key=`surface:canvas`）携新资产（含 `derivedFrom`）;ui-rpc 回流 `data.ids`
+  - 观察完成:集成断言收到 `control:"state"` 帧（key=surface:canvas，value 含新资产 + derivedFrom）且 ui-rpc result.data.ids 非空
+  - _Requirements: 2.3, 4.2, 4.4, 7.1, 13.3_
+  - _Boundary: packages/server/test/runner/canvas-surface.integration.test.ts_
+  - _Depends: 4.1, 7.1_
+- [x] 8.2 hydrate + sync + register 集成测试
+  - 同/邻集成测试:预置带血缘 meta 的 image `att_` → 装配期 `hydrate` 经上游 `listBySession`+`getMeta` 重建 → 推粘性 `control:"state"`（断言资产数 + 血缘还原）;模拟触发源 ① 落新 att_ → `run("sync")` reconcile 出现新图;`run("register")` B 档回流不调 provider
+  - 观察完成:断言 hydrate 后快照资产/血缘还原;sync 后新图入画廊;register 后 setMeta+setState 且无 provider 调用
+  - _Requirements: 2.1, 2.2, 5.3, 7.2_
+  - _Boundary: packages/server/test/runner/canvas-surface.integration.test.ts_
+  - _Depends: 4.1, 7.1_
+
+- [x] 9. 浏览器 e2e（闭环 + 刷新回放 + 退化 + 门控）
+- [x] 9.1 canvas e2e
+  - 新增 `e2e/browser/aigc-canvas.e2e.ts`（external server + 隔离 `NEXT_DIST_DIR`，`NEXT_PUBLIC_PI_WEB_CANVAS=1`，provider stub）:① `aigc-canvas-agent` 挂载 → launcherRail 入口开画廊 → 点格子展开工作台 → `run` A 档 → 快照回流 → 新图进 9 宫格，断言命令不过 LLM（无 `/messages`）；② 命令后刷新 → 粘性 `control:"state"` 回放画廊仍在;③ 切非 AIGC source → `available===false` → 退化只读（消息历史图库）+ B 档不报错;④ 门控未开 → 入口不出现零回归
+  - 观察完成:playwright 新鲜运行四条断言全绿（闭环递增 + 刷新回放 + 退化 + 门控关）
+  - _Requirements: 2.6, 4.1, 9.2, 9.4, 10.1, 13.4, 13.5_
+  - _Boundary: e2e/browser/aigc-canvas.e2e.ts_
+  - _Depends: 7.2, 5.3, 6.4_
+
+- [x] 10. 质量门与宿主中立性验收
+- [x] 10.1 全量 typecheck + 受影响包测试 + 中立性 grep
+  - 全工作区 `typecheck`（strict、无 `any`）;`pnpm test` 覆盖 tool-kit/ui + app 受影响包;grep `app/` + `packages/server` 无 `canvas`/`gallery`/`image_edit`（领域仅在 `packages/tool-kit/src/aigc/canvas`、`packages/ui/src/canvas`、示例 source）;确认未改 `packages/agent-kit/src/attachment.ts` / `packages/server` 的 `createAttachmentToolContext` / `attachment-store` 的 `.att.json`（seam 归上游）
+  - 观察完成:typecheck EXIT 0;受影响包测试 + 集成 + e2e 全绿;中立性 grep 无宿主匹配,以新鲜运行证据记录
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 13.1, 13.2, 13.5_
+  - _Boundary: (跨包验证任务)_
+  - _Depends: 1.2, 2.2, 3.2, 4.2, 5.4, 6.5, 8.1, 8.2, 9.1_

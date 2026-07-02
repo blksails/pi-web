@@ -83,6 +83,11 @@ export {
 } from "./hooks/use-extension-state.js";
 export type { SharedStateEntry } from "./sse/control-store.js";
 export {
+  useSurface,
+  type UseSurfaceOptions,
+  type UseSurfaceResult,
+} from "./hooks/use-surface.js";
+export {
   useModels,
   type UseModelsOptions,
   type UseModelsResult,

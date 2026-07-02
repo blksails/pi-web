@@ -1,0 +1,9 @@
+{
+  "name": "aigc-canvas-agent",
+  "private": true,
+  "pi-web": {
+    "title": "AIGC Canvas 画廊",
+    "avatar": "🖼️",
+    "description": "画廊 = attachment 物化视图 + 二创工作台(domain=canvas 的 AAS 实例);门控 NEXT_PUBLIC_PI_WEB_CANVAS"
+  }
+}

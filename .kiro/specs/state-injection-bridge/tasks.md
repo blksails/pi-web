@@ -124,3 +124,11 @@
   - _Depends: 4.2, 4.3_
 
 > 覆盖核对：R1.1-1.5、R2.1-2.4、R3.1-3.5、R4.1-4.4、R5.1-5.4、R6.1-6.5、R7.1-7.3、R8.1-8.4、R9.1-9.4 均已映射至上述任务。
+
+- [x] 5. 增量：`control:"state"` 帧补通用粘性回放（Requirement 10）
+  - 在 `pi-session.ts` `piweb_state` 分支，构造帧后 `this.sticky.set(\`state:${key}\`, frame)` 再广播（键前缀避免多 key 互相覆盖）
+  - delete 帧（`deleted:true`）同样登记为该 key 最新粘性帧（不新增 `StickyFrameRegistry.delete()`），重放后前端沿用既有 `deleted:true` 删键语义
+  - 完成态：单测覆盖「单 key set 粘性回放」「同 key 多次 set 只留最新/rev 单调」「多 key 独立」「delete 帧粘性回放」「畸形行不广播不登记」，`@blksails/pi-web-server` 全量测试与 typecheck 均绿
+  - _Requirements: 10.1, 10.2, 10.3, 10.4_
+  - _Boundary: PiSession / StickyFrameRegistry_
+  - _Depends: 2.1_

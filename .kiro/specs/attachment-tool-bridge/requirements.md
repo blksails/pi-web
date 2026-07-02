@@ -147,3 +147,13 @@
 2. The Attachment Bridge shall 配备浏览器端到端验证,覆盖"上传→tool 以公开 id 解析→执行→产出落库→引用回流→前端经分发 URL 展示"的完整链路。
 3. While 运行端到端验证,the Attachment 验证流程 shall 使用隔离的构建产物(独立 dist 目录),不污染开发态使用的默认构建产物。
 4. The Attachment Bridge shall 以新鲜运行的测试/e2e 证据证明上述行为通过,而非仅以代码存在为由声称完成。
+
+## 增量:hydrate/血缘领域无关 seam(2026-07-02)
+
+**Objective:** 作为上层 surface(如 Canvas)的作者,我想要在 `AttachmentToolContext` 上多两个领域无关的存取 seam,以便做「重建会话已产附件列表」与「持久不透明血缘/派生 meta」,而不需 attachment 层理解任何领域语义。
+
+### Acceptance Criteria
+1. The Attachment Tool Context shall 暴露 `listBySession(): Promise<Attachment[]>`,枚举上下文闭包绑定的当前会话的附件描述符(不含字节)。
+2. The Attachment Tool Context shall 暴露 `getMeta(id)`/`setMeta(id, meta)`,把调用方传入的任意 JSON 原样持久到该附件描述符旁路文件的一个不透明扩展字段(`ext`),不解释其结构。
+3. While 某附件从未 `setMeta`,the Attachment Tool Context shall `getMeta` 返回 `undefined`。
+4. The Attachment Tool Context shall 在存储能力不可用时对上述三个方法同样安全拒绝(抛 `AttachmentCapabilityUnavailableError`),与既有 `resolve`/`putOutput` 一致。

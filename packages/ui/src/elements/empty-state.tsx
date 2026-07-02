@@ -45,7 +45,7 @@ export function EmptyState({
       className={cn("w-full max-w-3xl", className)}
       data-pi-empty-state
     >
-      <div className="mb-12 text-center">
+      <div className="mb-8 text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
           {title}
         </h1>

@@ -16,6 +16,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "."),
       "@blksails/pi-web-logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
       "@blksails/pi-web-agent-kit": path.resolve(__dirname, "packages/agent-kit/src/index.ts"),
+      "@blksails/pi-web-tool-kit/aigc-canvas-schema": path.resolve(__dirname, "packages/tool-kit/src/aigc/canvas/schema.ts"),
       "@blksails/pi-web-tool-kit/commands": path.resolve(__dirname, "packages/tool-kit/src/commands/index.ts"),
       "@blksails/pi-web-tool-kit/extension-entry": path.resolve(__dirname, "packages/tool-kit/src/extension-tools/entry-path.ts"),
       "@blksails/pi-web-tool-kit/auto-title-entry": path.resolve(__dirname, "packages/tool-kit/src/auto-title/entry-path.ts"),

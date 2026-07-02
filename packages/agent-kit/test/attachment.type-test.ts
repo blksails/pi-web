@@ -45,3 +45,16 @@ export async function usePutOutput(): Promise<ToolOutputRef> {
 // putOutput input must not require sessionId (the context injects it).
 // @ts-expect-error — sessionId is not part of the author-supplied putOutput input.
 ctx.putOutput({ bytes: new Uint8Array(), name: "x", mimeType: "y", sessionId: "s" });
+
+// `listBySession()` enumerates the current session's attachment descriptors (no args, no bytes).
+export async function useListBySession(): Promise<Attachment[]> {
+  return ctx.listBySession();
+}
+
+// `getMeta`/`setMeta` are an opaque JSON extension seam — attachment-kit does not
+// interpret the shape (author decides, e.g. `{derivedFrom, genParams}`).
+export async function useMeta(id: string): Promise<void> {
+  const meta: Record<string, unknown> | undefined = await ctx.getMeta(id);
+  void meta;
+  await ctx.setMeta(id, { derivedFrom: "att_x", genParams: { seed: 1 } });
+}

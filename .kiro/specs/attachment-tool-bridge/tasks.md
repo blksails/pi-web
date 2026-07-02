@@ -121,3 +121,9 @@
 - task 4.2 → 5.1 接线门:示例 agent tool(examples/attachment-tool-agent/tools/edit-image-tool.ts)在 jiti 装载期拿不到闭包,故经 `globalThis.__piWebAttachmentToolContext__` 取 `AttachmentToolContext`,缺失时降级 `available:false`。**task 5.1 runner 装配必须**在 customTools 组装时把闭包绑定的 ctx 设到该 key(或将示例工具改为工厂闭包注入),否则 e2e(6.2)示例工具静默跑在"能力不可用"模式。server 侧 createEditImageTool(ctx) 用的是 design 规定的工厂闭包注入(无此问题)。
 - 闸门同形解耦(task 3.1/3.2):pi 内层 `AgentLoopConfig.beforeToolCall/afterToolCall` 类型不可达(仓库只依赖 @earendil-works/pi-coding-agent 公开面),闸门实现为纯函数 + 与公开 `ToolCallEventResult`/`(TextContent|ImageContent)[]` 同形的本地接口。**task 5.1** 接 runner 实际 hook 时需做一次 narrowing 适配(零阻抗,字段同形)。
 - task 5.2 → 6.2 接线门:reference 注入要在真实运行/e2e 生效,装配层 `lib/app/pi-handler.ts` 的 `createPiWebHandler({...})` 必须传 `attachmentStore`(主进程 store,config 已在 pi-handler.ts:226 实例化)。5.2 守边界未改装配;**6.2 e2e 前需补**这条 + 5.1 的 `globalThis.__piWebAttachmentToolContext__` 接线,才能跑通"注入引用→模型调示例 tool→回流"。
+
+- [x] 7. 增量:hydrate/血缘领域无关 seam(2026-07-02)
+  - `AttachmentRegistry`/`AttachmentStore` 新增 `getMeta`/`setMeta`(旁路文件不透明 `ext` 字段);`AttachmentToolContext`(server + agent-kit 作者面类型)新增 `listBySession()`/`getMeta`/`setMeta`
+  - 观察完成:`packages/server` 169 attachment* 测试 + 1063 全量测试绿,`packages/agent-kit` typecheck 绿(含 `attachment.type-test.ts` 新增用例)
+  - _Requirements: 增量 1-4_
+  - _Boundary: attachment-store(AttachmentRegistry/AttachmentStore), attachment-bridge(tool-context.ts), agent-kit(attachment.ts)_

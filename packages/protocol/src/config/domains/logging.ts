@@ -100,14 +100,19 @@ export const loggingConfigSchema = z
           .optional(),
         panelVisible: z.boolean().default(true),
         panelPosition: z
-          .enum(["bottom", "right", "drawer"])
+          .enum(["bottom", "right", "drawer", "top"])
           .default("bottom")
           .describe(
             JSON.stringify({
               label: "面板位置",
               group: "output",
               order: 4,
-              enumLabels: { bottom: "底部", right: "右侧", drawer: "抽屉" },
+              enumLabels: {
+                bottom: "底部",
+                right: "右侧",
+                drawer: "抽屉",
+                top: "顶部",
+              },
             }),
           ),
       })

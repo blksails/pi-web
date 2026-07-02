@@ -427,6 +427,22 @@ export function useExtensionState<T = unknown>(
 ### 质量门
 - 全工作区 `typecheck`（strict、无 `any`，9.4）；新增/受影响包 `pnpm test`。
 
+## 增量：粘性帧重连不丢 KV（Requirement 10）
+
+**问题**：`handleRawLine` 的 `piweb_state` 分支此前只 `emitter.emit(...)` 广播，未登记 `StickyFrameRegistry`。与 `session-status`/`session-state`/`queue`（均登记粘性）不对称——重连订阅者能收敛到当前 busy/排队快照，却收不到已发生过的 state KV，等价于每次重连状态被「清空」。
+
+**方案**：在 `pi-session.ts` 的 `piweb_state` 分支，构造帧后同时 `this.sticky.set(\`state:${key}\`, frame)` 再广播。键前缀 `state:` 与既有 `session-status`/`session-state`/`queue`/`resume-title` 等单一键并列，按 key 分裂避免不同 key 互相覆盖（`StickyFrameRegistry` 是单一 last-value 表，不分裂键则只剩一个 key 的状态存活）。
+
+**delete 语义如何处理——两个候选**：
+1. 从 sticky 表中 `delete(\`state:${key}\`)`，需要给 `StickyFrameRegistry` 新增 `delete(key)` API。
+2. 把 delete 帧本身（`deleted:true`）**也**登记为该 key 的最新粘性帧，复用既有 `set()`，不新增 API。
+
+采用方案 2：`ControlStore.applyControlFrame`（task 2.2）已经把 `deleted:true` 定义为「前端收到该帧即删键」的语义（与是否来自重放无关）。重放一条 `deleted:true` 帧和「表里没有这个 key」对前端可观察行为完全等价，但更简单——不用给 `StickyFrameRegistry` 引入新方法，也不用在 `PiSession` 里区分「registry 有没有这个 key」的分支。唯一代价是 sticky 表会为已删除的 key 保留一条哨兵帧（内存开销可忽略，会话生命周期内 key 数量有限）。
+
+**回放路径**：`replayInto` 已在 `subscribe()` 中对所有 sticky 键统一回放（见 `pi-session.ts:487`），新增的 `state:*` 键无需改动该路径即可被覆盖。
+
+**未改动**：`StickyFrameRegistry` 本身零改动（`set`/`get`/`keys`/`replayInto` 语义已经足够）。
+
 ## Open Questions / Risks
 - **OQ-1（已闭合）**：webext host-context 本期已落地完整浏览器 e2e —— slot 经 prop 注入 `WebExtStateAccess`（非 React context，因 webext 为独立 bundle），example `.pi/web` 的 panelRight 面板渲染 count + 写回按钮，浏览器 e2e 验证「prompt→count=1→点击+1→2→3」双向闭环。repo 示例经构建期注册表（`webext-registry.ts`）静态 import 加载（绕过代码 webext 签名门控）。
 - **R-1/2/3/4**：见 `research.md` 风险表（stdin 噪声 / stdout 交织 / 仅 state 约定 / 多 tab 后写覆盖），均有缓解，不阻塞实现。

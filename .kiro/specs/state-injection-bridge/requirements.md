@@ -144,3 +144,14 @@ pi 0.79.6 真实能给的（已逐行核对 `dist/core/extensions/types.d.ts`）
 2. The State Injection Bridge shall 提供针对真实 agent 子进程的集成测试，覆盖「工具写 → 下行帧」与「写回命令 → 工具下次读到新值」两条路径。
 3. The State Injection Bridge shall 提供离线（`PI_WEB_STUB_AGENT`）浏览器 e2e，在隔离构建目录（`NEXT_DIST_DIR`）下验证双向闭环：工具改状态 → UI 视图更新；UI 点击 → 写回 → 工具读到新值。
 4. The State Injection Bridge shall 通过工作区 `typecheck`（`strict`、无 `any`）。
+
+### Requirement 10（增量）：粘性帧重连不丢 KV
+
+**Objective:** 作为使用共享状态的用户，我希望断线重连（或迟到订阅）后仍能立刻看到每个 state key 的最新值，以便刷新页面或网络抖动不丢已发生过的状态变更。
+
+#### Acceptance Criteria
+
+1. When 会话层收到子进程上报的 `piweb_state` 行并合成 `control:"state"` 帧，the State Injection Bridge shall 将该帧按 key（`state:${key}`）登记为粘性帧（last-value 语义），与 `session-status`/`session-state`/`queue` 同构。
+2. When 新订阅者（重连/迟到）订阅会话，the State Injection Bridge shall 回放每个已登记 key 的最新 `control:"state"` 帧。
+3. When 同一 key 多次变更，the State Injection Bridge shall 仅保留最新一帧（覆盖式 last-value），回放时 `rev` 与变更发生序一致（单调）。
+4. When 变更帧的 `deleted` 为 true，the State Injection Bridge shall 同样登记该帧为粘性（而非从表中摘除该 key），使重放后前端按既有 `deleted:true` 语义删键，效果等同于「表中无此键」。

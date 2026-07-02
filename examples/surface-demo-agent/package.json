@@ -1,0 +1,9 @@
+{
+  "name": "surface-demo-agent",
+  "private": true,
+  "pi-web": {
+    "title": "Agent 权威 Surface 示例",
+    "avatar": "🪟",
+    "description": "领域无关 surface(createSurface + useSurface):权威快照镜像 + 命令转发 + 能力退化"
+  }
+}

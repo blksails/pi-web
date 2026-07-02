@@ -83,9 +83,10 @@ describe("pi-handler assembles attachment store + routes (task 5.1, Req 7.1)", (
     expect(body.attachment.id).toMatch(/^att_/);
     expect(body.attachment.origin).toBe("upload");
     expect(body.attachment.sessionId).toBe(sessionId);
-    // displayUrl is the signed distribution path (frontend prepends /api).
+    // displayUrl is the signed distribution path, already prefixed with /api
+    // (pi-handler assembles the store with urlBasePath:"/api"; frontend uses it as-is).
     expect(body.displayUrl).toMatch(
-      /^\/attachments\/.+\/raw\?exp=\d+&sig=[a-f0-9]+$/,
+      /^\/api\/attachments\/.+\/raw\?exp=\d+&sig=[a-f0-9]+$/,
     );
   }, 15000);
 
@@ -107,9 +108,9 @@ describe("pi-handler assembles attachment store + routes (task 5.1, Req 7.1)", (
     expect(upRes.status).toBe(200);
     const { displayUrl } = (await upRes.json()) as { displayUrl: string };
 
-    // The handler mounts under /api (sse.basePath); prepend it like the frontend.
+    // displayUrl already carries the /api prefix (urlBasePath:"/api"); use it as-is.
     const rawRes = await handler()(
-      req(`/api${displayUrl}`, { method: "GET" }),
+      req(displayUrl, { method: "GET" }),
     );
     expect(rawRes.status).toBe(200);
     const out = new Uint8Array(await rawRes.arrayBuffer());

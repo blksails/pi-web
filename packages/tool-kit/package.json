@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./runtime": "./src/runtime.ts",
+    "./aigc-canvas-schema": "./src/aigc/canvas/schema.ts",
     "./commands": "./src/commands/index.ts",
     "./extension-entry": "./src/extension-tools/entry-path.ts",
     "./auto-title-entry": "./src/auto-title/entry-path.ts"
@@ -23,7 +24,8 @@
   "dependencies": {
     "@blksails/pi-web-agent-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
-    "undici": "^6.21.0"
+    "undici": "^6.21.0",
+    "zod": "^3.23.8"
   },
   "peerDependencies": {
     "@earendil-works/pi-ai": "^0.80.3",

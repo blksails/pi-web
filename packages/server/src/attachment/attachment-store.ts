@@ -171,6 +171,22 @@ export class AttachmentStore {
   }
 
   /**
+   * 一等只读访问器:读回某附件的不透明扩展 meta(委托 {@link AttachmentRegistry.getMeta},
+   * attachment-tool-bridge 增量,领域无关)。不存在或未曾写入返回 `undefined`。
+   */
+  async getMeta(id: string): Promise<Record<string, unknown> | undefined> {
+    return this.registry.getMeta(id);
+  }
+
+  /**
+   * 写入某附件的不透明扩展 meta(委托 {@link AttachmentRegistry.setMeta});整体覆盖,
+   * store 层不解释 `meta` 内容。目标附件不存在时透传 registry 的可识别拒绝错误。
+   */
+  async setMeta(id: string, meta: Record<string, unknown>): Promise<void> {
+    return this.registry.setMeta(id, meta);
+  }
+
+  /**
    * 签发客户端可达 URL(本地后端 = 签名 `/attachments/:id/raw` URL;与 S3 presign 同形,Req 4.5)。
    */
   async presignUrl(id: string, opts?: { expiresInMs?: number }): Promise<string> {

@@ -223,6 +223,9 @@ importers:
       undici:
         specifier: ^6.21.0
         version: 6.27.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
     devDependencies:
       '@earendil-works/pi-ai':
         specifier: ^0.80.3
@@ -254,6 +257,9 @@ importers:
       '@blksails/pi-web-react':
         specifier: workspace:*
         version: link:../react
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:*
+        version: link:../tool-kit
       '@radix-ui/react-dialog':
         specifier: ^1.1.0
         version: 1.1.17(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

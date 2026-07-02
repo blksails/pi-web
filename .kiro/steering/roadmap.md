@@ -43,6 +43,29 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
 - [x] **attachment-store** — L0 对象存储(可插拔后端 + LocalFs)+ L1 描述符&id 生成 + 上传 `POST /attachments`(multipart)+ 分发 `GET /attachments/:id/raw`(签名防越权)+ 前端 `useAttachments` 改"上传拿 id、URL 展示",历史回显由 base64 改 URL 引用。_Depends on: http-api, react-client, ui-components, session-engine_ — 21 任务实现 + 浏览器 e2e 通过(2026-06-22)。
 - [x] **attachment-tool-bridge** — L2 `resolve` 句柄(path/url/bytes,S3 localPath 懒下载)+ runner 子进程 store 实例化 + `AgentTool` 接入(description 必填、base64 先 await)+ `beforeToolCall` 属主校验 + `afterToolCall` base64 剥离 + 文本引用注入 + tool-output 落库回流(同一 id 空间,闭合跨轮回环)。_Depends on: attachment-store, agent-runner_ — 14 任务实现 + 浏览器 e2e 通过(2026-06-22)。
 
+## AAS 权威表面 + AIGC Canvas 波次(2026-07-02 discovery · Path E)
+
+> 背景:为 AIGC 场景做 Canvas(图片素材画廊 + 二次创作),讨论中提炼出通用范式
+> **Agent 权威表面(AAS)**——富交互 UI surface = agent 某 domain 的瘦投影 + 命令发起端。
+> 权威设计:`docs/agent-authoritative-surface-design.md`。
+
+### 方案决策(2026-07-02)
+- **Chosen**:路线 A(**零 REST route**)。复用现有 `control:"state"` 桥(下行快照)+ Tier3 `ui-rpc`(上行命令),不新增 protocol 结构、不加宿主服务端端点。
+- **Why**:pi 约束(agent→server 仅 event/response/extension_ui_request 三类下行、工具不能 pull、无 `ctx.state`)逼出 CQRS;宿主中立(哑管道、不认领域语义)才能保住 agent source 独立性。
+- **Rejected**:① 宿主 REST 端点直连 `runImageTool`(认领 provider/model/key,破坏独立性);② gallery 走完整 AAS 快照+hydrate 被质疑对"持久资源视图"过度——但因坚持零 REST,仍以 SSE 粘性回放实现,而非 REST 拉;③ `pi.appendEntry` 当持久层(0.80.3 为 `private`,扩展无公开持久 API)。
+
+### Boundary Strategy
+- **Why this split**:粘性修复是 state 桥既有缺口(通用、零依赖);AAS SDK 是领域无关的通信基础设施;Canvas 是首个 domain 落地。三者依赖单向收敛,可独立交付与 review。
+- **Shared seams to watch**:`control:"state"` 通用粘性(宿主 `PiSession.handleRawLine`,领域无关)/ ui-rpc 命令"无 `name` 逃逸 host 拦截"落到 agent 转发路径 / gallery = attachment store 派生视图(血缘存 `.att.json`)/ 图字节走 Bulk(`att_` 签名 URL,永不进帧)/ **attachment 会话枚举 + 不透明 meta seam(领域无关,归上游 `attachment-tool-bridge`,勿被 Canvas 吸收)**。
+
+### Existing Spec Updates
+- [ ] **state-injection-bridge** — 给 `control:"state"` 桥补**通用粘性帧**:`PiSession.handleRawLine` 的 `piweb_state` 分支 `sticky.set(\`state:${key}\`, frame)`(照抄 queue 的 pi-session.ts:532,`delete` 帧相应清理),修重连丢 KV。领域无关,惠及所有 state key。_Dependencies: none_
+- [ ] **attachment-tool-bridge / attachment-store** — 补**领域无关**的两个 seam(对称于粘性修复,carve 自 Canvas,cross-spec review IMPORTANT-1):① `getAttachmentToolContext()` 暴露 `listBySession`(会话枚举,facade 已有 `listBySession`,仅需透出到子进程工具上下文,供 surface `hydrate` 重建);② 不透明扩展 meta `getMeta/setMeta`(存 `.att.json`,承载 `{derivedFrom,genParams}` 等,attachment 层存 opaque JSON、不解释领域语义)。_Dependencies: none_
+
+### Specs (dependency order)
+- [ ] **agent-authoritative-surface** — 通用 AAS SDK:agent 侧 `createSurface({domain,initialState,commands,hydrate})` + UI 侧 `useSurface(domain)→{state,run,available}` + `SurfaceCommandPayload/Result`(细化 ui-rpc payload,走 agent 转发)+ 能力探针 `surface:<domain>` + 退化契约;宿主零领域语义。_Dependencies: state-injection-bridge_
+- [ ] **aigc-canvas** — AIGC Canvas:画廊(attachment 派生视图,9宫格/密度可切换/分页)+ 工作台(格子展开/关闭)+ 二次创作(A 档 image_edit 指令/inpaint mask/参考图/变体、B 档客户端裁剪拼贴、C 档血缘树/参数复用/对比)+ image_edit 集成(ui-rpc 转发调 runImageTool)+ 非 AIGC source 优雅退化;门控 `NEXT_PUBLIC_PI_WEB_CANVAS`。_Dependencies: agent-authoritative-surface_
+
 ## Future / Out of MVP scope(不进入本批次,仅作排序与一致性意识)
 
 - `embed-integrations` — `@pi-web/embed`:Web Component `<pi-web-chat>` + iframe widget(非 React 集成)。

@@ -580,16 +580,19 @@ export class PiSession {
     if (type === "piweb_state") {
       const state = StateDownLineSchema.safeParse(parsed);
       if (!state.success) return; // 畸形行丢弃,不广播
-      this.emitter.emit(
-        FRAME_EVENT,
-        makeControlFrame({
-          control: "state",
-          key: state.data.key,
-          value: state.data.value,
-          rev: state.data.rev,
-          ...(state.data.deleted ? { deleted: true } : {}),
-        }),
-      );
+      const frame = makeControlFrame({
+        control: "state",
+        key: state.data.key,
+        value: state.data.value,
+        rev: state.data.rev,
+        ...(state.data.deleted ? { deleted: true } : {}),
+      });
+      // state-injection-bridge 增量:按 key 登记为粘性帧(与 queue/session-state 同构),
+      // 使重连/迟到订阅者回放即得每个 key 的最新值——否则重连后 KV 快照丢失(仅当次会话内存活)。
+      // delete 帧同样登记(而非从表中摘除):重放时前端按 deleted:true 语义删键,
+      // 效果与「表中没有该键」一致,但复用已有 last-value 覆盖机制,无需新增 delete() API。
+      this.sticky.set(`state:${state.data.key}`, frame);
+      this.emitter.emit(FRAME_EVENT, frame);
       return;
     }
 

@@ -180,7 +180,7 @@ export function LauncherRail({
   };
 
   const rowClass =
-    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--accent))]";
+    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--accent))]";
   const iconClass =
     "flex w-5 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]";
 
@@ -285,7 +285,7 @@ export function LauncherRail({
                 data-launcher-favorite
                 data-source={f.source}
                 onClick={() => onLaunchSource(f.source)}
-                className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-sm"
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"
               >
                 <span className={iconClass}>
                   <FavoriteAvatar favorite={f} />

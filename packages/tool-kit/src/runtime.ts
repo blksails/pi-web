@@ -51,10 +51,46 @@ export {
 } from "./attachment/persist.js";
 export type { PersistedAsset } from "./attachment/persist.js";
 
+// ── Surface(agent-authoritative-surface · agent 侧门面 + 进程内注册表 seam)─────
+export {
+  createSurface,
+  SurfaceCommandError,
+  getSurfaceRegistry,
+  SURFACE_REGISTRY_SEAM_KEY,
+} from "./surface/index.js";
+export type {
+  SurfaceCtx,
+  SurfaceConfig,
+  SurfaceHandle,
+  SurfaceCommandHandler,
+  SurfaceCommandHandlerResult,
+  CreateSurfaceDeps,
+  SurfaceRegistry,
+  SurfaceDispatch,
+} from "./surface/index.js";
+
 // ── AIGC extension(进程内 ExtensionFactory)───────────────────────────────────
 export { aigcExtension } from "./aigc/extension.js";
 export { registerImageGeneration } from "./aigc/tools/image-generation.js";
 export { registerImageEdit } from "./aigc/tools/image-edit.js";
+
+// ── aigc-canvas surface(domain="canvas" 的 AAS 实例;画廊 = attachment 物化视图)──────
+export {
+  canvasSurfaceExtension,
+  makeCanvasSurfaceExtension,
+  createCanvasCommands,
+  rebuildGalleryFromAttachments,
+  CANVAS_DOMAIN,
+} from "./aigc/canvas/index.js";
+export type {
+  CanvasExtensionDeps,
+  CanvasCommandDeps,
+} from "./aigc/canvas/index.js";
+export type {
+  GalleryState,
+  GalleryAsset,
+  CanvasLineage,
+} from "./aigc/canvas/index.js";
 
 // ── Image-tool orchestrator(供自定义图像工具复用)──────────────────────────────
 export {

@@ -500,3 +500,9 @@ export function buildAttachmentRefs(attachments: readonly Attachment[]): string;
 - base64 剥离显著降低 transcript 体积,省下游轮次的 context 与 token。
 - S3 懒下载 + 两级临时文件回收避免远程后端临时文件堆积(2.x,接口预留)。
 - 本切片单进程对(主+一 runner 子进程)本地后端;多实例/S3 为 future(`localPath` 懒下载与 `url` presign 同形缝已留)。
+
+## 增量:领域无关 hydrate/血缘 seam(2026-07-02)
+
+- `AttachmentRegistry`(attachment-store)新增 `getMeta(id)`/`setMeta(id, meta)`:读写描述符旁路文件(`<root>/<id>.att.json`)里 `Attachment` schema 之外的不透明 `ext` 字段(整体覆盖,不合并);`AttachmentStore` 门面透传;不存在的 id `setMeta` 抛 `AttachmentDescriptorNotFoundError`。
+- `AttachmentToolContext`(server `attachment-bridge/tool-context.ts` + agent-kit `attachment.ts` 作者面类型)新增 `listBySession()`(无参,闭包读当前 sessionId,委托门面既有 `listBySession(sessionId)`)与 `getMeta`/`setMeta`(委托门面同名新方法);三者遵循既有 `available===false` 安全拒绝约定。
+- attachment 层不解释 `ext`/meta 内容;上层(如 Canvas hydrate)自行约定形状(如 `{derivedFrom, genParams}`)。跨主/子进程一致性沿用既有「同 env(DIR+SECRET)指向同一 root」的约定,天然成立,无需额外同步。

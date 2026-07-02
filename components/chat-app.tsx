@@ -35,7 +35,7 @@ import { LoggingConfigLoader } from "./logging-config-loader.js";
 
 type LogsPanelConfig = {
   readonly panelVisible: boolean;
-  readonly panelPosition: "bottom" | "right" | "drawer";
+  readonly panelPosition: "bottom" | "right" | "drawer" | "top";
 };
 
 /**
@@ -61,7 +61,7 @@ function useLogsPanelConfig(): LogsPanelConfig {
           values?: {
             outputs?: {
               panelVisible?: boolean;
-              panelPosition?: "bottom" | "right" | "drawer";
+              panelPosition?: "bottom" | "right" | "drawer" | "top";
             };
           };
         };
@@ -74,7 +74,8 @@ function useLogsPanelConfig(): LogsPanelConfig {
           const panelPosition =
             outputs?.panelPosition === "bottom" ||
             outputs?.panelPosition === "right" ||
-            outputs?.panelPosition === "drawer"
+            outputs?.panelPosition === "drawer" ||
+            outputs?.panelPosition === "top"
               ? outputs.panelPosition
               : prev.panelPosition;
           return { panelVisible, panelPosition };
@@ -342,13 +343,17 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
         ? { create: buildCreate(props, props.defaultSource ?? ".") }
         : undefined,
   );
-  // 同源新建计数:bump 后变更 SessionView 的 key 以强制重挂(见 onNewByAgentSource)。
+  // 新建会话计数:onSubmit 时 bump 以变更 SessionView 的 key,强制重挂得到全新会话
+  // (即便选中同一 source)。
   const [nonce, setNonce] = React.useState<number>(0);
 
   const onSubmit = (source: string): void => {
     const resolved = source.length > 0 ? source : (props.defaultSource ?? ".");
-    // New session: no resumeId.
+    // New session: no resumeId. bump nonce 强制 SessionView 重挂 —— 使侧栏「新建聊天」
+    // 即便选中当前同一 source 也得到全新会话(usePiSession 不响应 create 变化重建,须靠
+    // key 重挂)。原顶栏「新建会话」按钮已移除,同源新建统一由「新建聊天」承担。
     setSession({ create: buildCreate(props, resolved) });
+    setNonce((n) => n + 1);
   };
 
   const onReset = (): void => {
@@ -361,10 +366,9 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
     }
   };
 
-  // 同源新建:保持当前 agent source、丢弃 resumeId(恢复模式下避免重挂为"再次恢复旧会话"),
-  // 并 bump nonce 以变更 SessionView 的 key —— 强制 React 卸载+重挂,使 usePiSession 以
-  // 新实例(startedRef 复位)用同一 source 重新 createSession,得到全新会话。
-  // (usePiSession 不响应 create 变化重建,故必须靠 key 重挂;见 spec design。)
+  // 同源新建:保持当前 agent source、丢弃 resumeId,bump nonce 变更 SessionView 的 key 强制
+  // 重挂,得到同一 source 的全新会话。仅 rail 关闭态账户区仍提供此入口(rail 开启时由
+  // 侧栏「新建聊天」承担,见 SessionView 账户区)。
   const onNewByAgentSource = (): void => {
     setSession((s) => (s === undefined ? s : { create: s.create }));
     setNonce((n) => n + 1);
@@ -414,13 +418,14 @@ function SessionView({
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
   readonly onReset: () => void;
+  /** 同源新建(仅 rail 关闭态账户区使用;rail 开启时由侧栏「新建聊天」承担)。 */
   readonly onNewByAgentSource: () => void;
   /** sidebar-launcher-rail:以某 source 新建会话(收藏锚点点击)。 */
   readonly onLaunchSource: (source: string) => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
   readonly logsPanelVisible?: boolean;
   /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
-  readonly logsPanelPosition?: "bottom" | "right" | "drawer";
+  readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
 }): React.JSX.Element {
   const t = useI18n();
   const session: UsePiSessionResult = usePiSession({
@@ -621,13 +626,63 @@ function SessionView({
           : {})}
       />
     );
-    if (!LAUNCHER_RAIL_ENABLED) return sessionListSlots(panel);
+    // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
+    // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 LAUNCHER_RAIL_ENABLED 门控),因主流 e2e
+    // 跑在 rail 关闭态且依赖 data-settings-link / data-pi-theme-toggle 等。原「新建会话/切换源」
+    // 已移除(冗余,统一由侧栏「新建聊天」承担);日志面板可见性由 /settings 的「显示日志面板」
+    // 设置项(logging.outputs.panelVisible)控制,账户区不再放开关。
+    const accountBtnClass =
+      "inline-flex shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]";
+    const accountBar = (
+      <div
+        data-launcher-account
+        className="flex shrink-0 flex-col gap-1 border-t border-[hsl(var(--border))] px-2 pb-2 pt-2"
+      >
+        {/* 新建会话/切换源:仅 rail 关闭态提供(rail 开启时冗余,由侧栏「新建聊天」承担)。 */}
+        {!LAUNCHER_RAIL_ENABLED ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onNewByAgentSource}
+              data-new-session
+              className={`${accountBtnClass} flex-1`}
+            >
+              {t("chatApp.newSession")}
+            </button>
+            <button
+              type="button"
+              onClick={onReset}
+              data-switch-source
+              className={`${accountBtnClass} flex-1`}
+            >
+              {t("chatApp.switchSource")}
+            </button>
+          </div>
+        ) : null}
+        <div className="flex items-center gap-1">
+          <a href="/settings" data-settings-link className={accountBtnClass}>
+            {t("chatApp.settings")}
+          </a>
+          <span className="ml-auto flex items-center gap-1">
+            <LocaleToggleButton />
+            <ThemeToggleButton />
+          </span>
+        </div>
+      </div>
+    );
+    if (!LAUNCHER_RAIL_ENABLED)
+      return sessionListSlots(
+        <div className="flex h-full flex-col">
+          <div className="min-h-0 flex-1">{panel}</div>
+          {accountBar}
+        </div>,
+      );
     // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
     // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
     // SlotHost 自带 error boundary 隔离(Req 5.4)。
     const launcherContribution = resolveSlot(extension, "launcherRail");
     return sessionListSlots(
-      <div className="flex h-full w-64 flex-col gap-1 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-2">
+      <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-1.5">
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
           onResume={onResumeSession}
@@ -645,6 +700,7 @@ function SessionView({
         <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {panel}
         </div>
+        {accountBar}
       </div>,
     );
   }, [
@@ -661,6 +717,9 @@ function SessionView({
     onDeleteSession,
     onRenameSession,
     onToggleSessionFavorite,
+    onNewByAgentSource,
+    onReset,
+    t,
   ]);
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
@@ -720,40 +779,11 @@ function SessionView({
 
   return (
     <div className="flex h-full w-full flex-col" data-session-active>
-      <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] px-3 py-2 sm:gap-3 sm:px-4">
-        <span className="shrink-0 text-sm font-medium">pi-web</span>
-        <span
-          className="hidden truncate text-xs text-[hsl(var(--muted-foreground))] sm:inline"
-          data-session-id
-        >
-          session: {session.sessionId}
-        </span>
-        <button
-          type="button"
-          onClick={onNewByAgentSource}
-          className="ml-auto shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
-          data-new-session
-        >
-          {t("chatApp.newSession")}
-        </button>
-        <button
-          type="button"
-          onClick={onReset}
-          className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
-          data-switch-source
-        >
-          {t("chatApp.switchSource")}
-        </button>
-        <a
-          href="/settings"
-          className="shrink-0 rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs sm:px-3"
-          data-settings-link
-        >
-          {t("chatApp.settings")}
-        </a>
-        <LocaleToggleButton />
-        <ThemeToggleButton />
-      </div>
+      {/* 无 head 设计:撤除顶部导航栏,全局控件下沉到侧栏底部账户区。会话 id 以 sr-only
+          保留在 DOM 供 e2e 读取(data-session-id),不再有可见头栏。 */}
+      <span className="sr-only" data-session-id>
+        session: {session.sessionId}
+      </span>
       <div
         className="min-h-0 flex-1"
         {...(extension?.config?.theme !== undefined

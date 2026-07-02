@@ -60,8 +60,8 @@ describe("loggingConfigSchema — 枚举校验", () => {
     ).toBe(false);
   });
 
-  it("outputs.panelPosition 接受 bottom/right/drawer", () => {
-    for (const pos of ["bottom", "right", "drawer"]) {
+  it("outputs.panelPosition 接受 bottom/right/drawer/top", () => {
+    for (const pos of ["bottom", "right", "drawer", "top"]) {
       expect(
         loggingConfigSchema.safeParse({ outputs: { panelPosition: pos } }).success,
       ).toBe(true);
@@ -70,10 +70,10 @@ describe("loggingConfigSchema — 枚举校验", () => {
 
   it("outputs.panelPosition 拒绝非法值", () => {
     expect(
-      loggingConfigSchema.safeParse({ outputs: { panelPosition: "top" } }).success,
+      loggingConfigSchema.safeParse({ outputs: { panelPosition: "float" } }).success,
     ).toBe(false);
     expect(
-      loggingConfigSchema.safeParse({ outputs: { panelPosition: "float" } }).success,
+      loggingConfigSchema.safeParse({ outputs: { panelPosition: "middle" } }).success,
     ).toBe(false);
   });
 });

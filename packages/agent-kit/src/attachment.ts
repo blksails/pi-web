@@ -92,4 +92,20 @@ export interface AttachmentToolContext<
   resolve(id: string): Promise<THandle>;
   /** 把产出物先落库(`tool-output`,当前会话属主)再以引用回流;不可用时安全拒绝。 */
   putOutput(input: PutOutputInput): Promise<ToolOutputRef>;
+  /**
+   * 枚举**当前会话**的附件描述符(不含字节;领域无关的枚举 seam,供上层 surface 如 Canvas
+   * 做 hydrate 重建)。不可用时安全拒绝(抛可识别错误)。
+   */
+  listBySession(): Promise<Attachment[]>;
+  /**
+   * 读回某附件的不透明扩展 meta(领域无关,attachment 层不解释内容;供上层承载如
+   * `{derivedFrom,genParams}` 等血缘/派生信息)。不存在或未曾写入返回 `undefined`;
+   * 不可用时安全拒绝(抛可识别错误)。
+   */
+  getMeta(id: string): Promise<Record<string, unknown> | undefined>;
+  /**
+   * 写入某附件的不透明扩展 meta(整体覆盖,attachment 层不解释内容,原样持久)。
+   * 不可用时安全拒绝(抛可识别错误)。
+   */
+  setMeta(id: string, meta: Record<string, unknown>): Promise<void>;
 }

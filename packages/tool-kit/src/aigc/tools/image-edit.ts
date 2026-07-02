@@ -63,6 +63,18 @@ const ROUTES: readonly ImageRoute[] = [
   ),
 ];
 
+/**
+ * `image_edit` 的 model 路由表 / 默认 model / 媒体字段(供 aigc-canvas A 档命令处理器复用,
+ * 经 AAS 命令通道在子进程内直调 {@link runImageTool},保 provider/models.json 独立性)。
+ */
+export const IMAGE_EDIT_ROUTES: readonly ImageRoute[] = ROUTES;
+export const IMAGE_EDIT_DEFAULT_MODEL = DEFAULT_MODEL;
+export const IMAGE_EDIT_MEDIA_FIELDS: readonly string[] = [
+  "image",
+  "mask",
+  "reference_images",
+];
+
 const REQUIRED_PARAMS: readonly InteractionParam[] = [
   { param: "model", via: "select", title: "选择编辑模型", options: ["$models"] },
   {

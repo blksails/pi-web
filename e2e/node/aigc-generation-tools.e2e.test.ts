@@ -107,6 +107,15 @@ let originalFetch: typeof fetch;
 function buildCtx(s: AttachmentStore, sessionId: string): AttachmentToolContext {
   return {
     available: true,
+    async listBySession() {
+      return s.listBySession(sessionId);
+    },
+    async getMeta(id: string) {
+      return s.getMeta(id);
+    },
+    async setMeta(id: string, meta: Record<string, unknown>) {
+      return s.setMeta(id, meta);
+    },
     async resolve(id: string): Promise<AttachmentToolHandle> {
       const meta = await s.head(id);
       if (!meta) throw new Error(`resolve: attachment not found: ${id}`);
@@ -277,6 +286,15 @@ describe("aigc-generation-tools node e2e (extension form)", () => {
           throw new Error("attachment capability unavailable: context not injected");
         },
         async putOutput(): Promise<ToolOutputRef> {
+          throw new Error("attachment capability unavailable: context not injected");
+        },
+        async listBySession(): Promise<Attachment[]> {
+          throw new Error("attachment capability unavailable: context not injected");
+        },
+        async getMeta(): Promise<Record<string, unknown> | undefined> {
+          throw new Error("attachment capability unavailable: context not injected");
+        },
+        async setMeta(): Promise<void> {
           throw new Error("attachment capability unavailable: context not injected");
         },
       };
