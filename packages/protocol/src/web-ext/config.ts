@@ -15,12 +15,13 @@ export type LayoutPreset = z.infer<typeof LayoutPresetSchema>;
 
 /**
  * panelRight 让位比例(对话区 : 右侧领域检视面板)。声明的是「初始」比例;
- * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在三档间动态切换:
+ * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在四档间动态切换:
  * - `centered` 收起面板、对话居中(经典版面);
  * - `2:1` 对话 ~66% / 面板 ~33%;
+ * - `4:6` 对话 40% / 面板 60%(面板主导,适合 Canvas 等创作台型 agent);
  * - `3:7` 对话 30% / 面板 70%(面板为主,适合检视/仪表盘型 agent)。
  */
-export const PanelRatioSchema = z.enum(["centered", "2:1", "3:7"]);
+export const PanelRatioSchema = z.enum(["centered", "2:1", "4:6", "3:7"]);
 export type PanelRatio = z.infer<typeof PanelRatioSchema>;
 
 /**

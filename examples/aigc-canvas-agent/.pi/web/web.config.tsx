@@ -15,6 +15,9 @@ import { CanvasLauncher, CanvasPanel } from "@blksails/pi-web-ui";
 export default defineWebExtension({
   manifestId: "aigc-canvas",
   capabilities: ["slots"],
+  // panelRight 初始比例 4:6(对话 40% / Canvas 60%,面板主导):Canvas 是创作台,默认给足空间。
+  // 宿主段控切换器仍可运行时在 centered / 2:1 / 4:6 / 3:7 间切换。
+  config: { panelRatio: "4:6" },
   slots: {
     launcherRail: CanvasLauncher as never,
     panelRight: CanvasPanel as never,

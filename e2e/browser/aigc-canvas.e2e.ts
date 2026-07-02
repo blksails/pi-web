@@ -50,6 +50,12 @@ test("canvas: 闭环(launcherRail 入口 → 画廊 → 格子展开 → edit �
 
   await selectSource(page, CANVAS_SOURCE);
 
+  // panelRight 初始比例来自 source 声明(web.config `config.panelRatio="4:6"`:对话 40% / Canvas 60%,面板主导)。
+  await expect(page.locator("[data-pi-chat-aside]")).toHaveAttribute(
+    "data-pi-panel-ratio",
+    "4:6",
+  );
+
   // launcherRail 入口(门控开)。
   const launcher = page.locator("[data-canvas-launcher]");
   await expect(launcher).toBeVisible();
