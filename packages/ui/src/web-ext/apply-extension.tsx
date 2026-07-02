@@ -69,8 +69,10 @@ function renderContribution(
   upload: SlotUploadFn | undefined,
   baseUrl: string | undefined,
   sessionId: string | undefined,
+  syncSignal: unknown,
 ): React.ReactNode {
-  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入);否则按 ReactNode 直接渲染。
+  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号);
+  // 否则按 ReactNode 直接渲染。
   // 经 prop 注入(非 React context):webext 是独立打包的 bundle,context 身份不跨 bundle 共享,
   // 故沿用既有「slot 收 extId / contribution 收 rpc」的形参注入范式(state-injection-bridge Req 7 /
   // agent-authoritative-surface)。
@@ -82,6 +84,7 @@ function renderContribution(
       upload?: SlotUploadFn;
       baseUrl?: string;
       sessionId?: string;
+      syncSignal?: unknown;
     }>;
     return (
       <Comp
@@ -91,6 +94,7 @@ function renderContribution(
         upload={upload}
         baseUrl={baseUrl}
         sessionId={sessionId}
+        syncSignal={syncSignal}
       />
     );
   }
@@ -113,6 +117,11 @@ export interface SlotHostProps {
   readonly baseUrl?: string;
   /** 目标会话 id,附件上传写路径门控。 */
   readonly sessionId?: string;
+  /**
+   * 轮末 idle 边沿信号(值变化即触发 slot 组件重同步);宿主在每轮结束 bump。
+   * Canvas 面板据此在 LLM 生图后 `run("sync")` 重建物化视图,否则画廊要等下次重连才 hydrate。
+   */
+  readonly syncSignal?: unknown;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -126,6 +135,7 @@ export function SlotHost({
   upload,
   baseUrl,
   sessionId,
+  syncSignal,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -142,6 +152,7 @@ export function SlotHost({
         upload,
         baseUrl,
         sessionId,
+        syncSignal,
       )}
     </ExtErrorBoundary>
   );

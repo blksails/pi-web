@@ -101,6 +101,31 @@ test("canvas: 命令后刷新 → 粘性 control:state 回放,画廊快照仍在
   await expect(page.locator("[data-canvas-cell]")).toHaveCount(2);
 });
 
+test("canvas: LLM 生图轮末 auto-sync → 画廊自动填充新图(宿主 syncSignal 接线,不刷新)", async ({
+  page,
+}) => {
+  await selectSource(page, CANVAS_SOURCE);
+  await page.locator("[data-canvas-launcher]").click();
+  const gallery = page.locator("[data-canvas-gallery]");
+  await expect(gallery).toBeVisible();
+  // 装配期 hydrate 种子图:1 格。
+  await expect(page.locator("[data-canvas-cell]")).toHaveCount(1);
+
+  // 发一轮 `canvas-gen`:stub 落一张 tool-output 图入 pending 池(不 emit surface state,模拟
+  // image_generation 只落 att、不写 canvas 快照)。轮末前端 isBusy idle 边沿 → 宿主 bump
+  // syncSignal(pi-chat panelSyncSignal)→ SlotHost 透给 CanvasPanel → CanvasGallery run("canvas","sync")
+  // → stub sync 并入 pending → 画廊 +1。全程不刷新页面。
+  const input = page.locator("[data-pi-input-textarea]");
+  await input.fill("canvas-gen 生成一张图");
+  await input.press("Enter");
+  // 轮结束(assistant stub 回复出现)。
+  await expect(page.locator("[data-pi-chat-messages]")).toContainText("canvas-gen stub");
+
+  // 关键断言:**未刷新**,画廊经轮末 auto-sync 从 1 → 2 格。
+  // 回归守卫:若宿主漏注入 syncSignal(修复前),sync 永不触发,画廊停在 1 格。
+  await expect(page.locator("[data-canvas-cell]")).toHaveCount(2);
+});
+
 test("canvas: B 档接线(host 注入 upload → 旋转 90° 客户端产物落 att_ → register 回流,新图进画廊)", async ({
   page,
 }) => {

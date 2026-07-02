@@ -98,7 +98,10 @@ export function CanvasPanel({
   const workbenchAsset = openId !== null ? assets.find((a) => a.attachmentId === openId) : undefined;
 
   return (
-    <div data-canvas-panel className="flex h-full min-h-0 flex-col overflow-y-auto">
+    <div
+      data-canvas-panel
+      className="pi-scrollbar-ghost m-2 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.2)]"
+    >
       {workbenchAsset !== undefined ? (
         <CanvasWorkbench
           {...(surface !== undefined ? { surface } : {})}

@@ -601,8 +601,15 @@ export function PiChat({
   // 一轮运行结束(submitted/streaming → idle 边沿)→ 通知宿主做每轮收尾副作用(如刷新会话历史)。
   // 与上方 stats「每轮结束重拉」同构,但不受 showSessionStats 门控:无论是否展示用量区都广播。
   const turnEndWasBusyRef = React.useRef<boolean>(false);
+  // panelRight slot 的轮末同步信号:每轮 idle 边沿递增,经 SlotHost 透给 slot 组件。
+  // Canvas 画廊据此在 LLM 生图后 `run("sync")` 重建物化视图(否则 tool-output 图要等下次
+  // 会话重连 hydrate 才进画廊——生图当场画廊不刷新)。领域无关:宿主只广播"一轮结束了"。
+  const [panelSyncSignal, setPanelSyncSignal] = React.useState<number>(0);
   React.useEffect(() => {
-    if (turnEndWasBusyRef.current && !isBusy) onTurnEnd?.();
+    if (turnEndWasBusyRef.current && !isBusy) {
+      onTurnEnd?.();
+      setPanelSyncSignal((v) => v + 1);
+    }
     turnEndWasBusyRef.current = isBusy;
   }, [isBusy, onTurnEnd]);
 
@@ -1567,7 +1574,7 @@ export function PiChat({
 
         {isEmpty ? (
           <div
-            className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
+            className="pi-scrollbar-ghost flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
             {emptyBody}
@@ -1615,6 +1622,7 @@ export function PiChat({
               surface={surfaceAccess}
               upload={uploadAttachment ?? defaultUploadAttachment}
               baseUrl={client?.baseUrl ?? ""}
+              syncSignal={panelSyncSignal}
               {...(sessionId !== undefined ? { sessionId } : {})}
             />
           ) : null}

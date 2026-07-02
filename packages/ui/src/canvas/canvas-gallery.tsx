@@ -107,10 +107,10 @@ export function CanvasGallery({
 
   const gridClass =
     view.density === "overview"
-      ? "grid grid-cols-3 gap-2"
+      ? "grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3"
       : view.density === "waterfall"
-        ? "columns-3 gap-2 [&>*]:mb-2"
-        : "grid grid-cols-1 gap-2";
+        ? "columns-[160px] gap-3 [&>*]:mb-3"
+        : "mx-auto grid w-full max-w-2xl grid-cols-1 gap-3";
 
   return (
     <div
@@ -118,10 +118,10 @@ export function CanvasGallery({
       data-canvas-available={String(available)}
       data-canvas-density={view.density}
       data-canvas-page={String(page)}
-      className="flex flex-col gap-2 p-2"
+      className="flex flex-col gap-3 p-3"
     >
       {/* 密度切换 + 分组(UI 本地)。 */}
-      <div className="flex items-center gap-1 text-xs">
+      <div className="flex items-center gap-1 border-b border-[hsl(var(--border))] pb-2 text-xs">
         {(Object.keys(DENSITY_LABEL) as CanvasDensity[]).map((d) => (
           <button
             key={d}
@@ -186,7 +186,7 @@ export function CanvasGallery({
                   data-canvas-cell
                   data-att-id={a.attachmentId}
                   onClick={() => onOpenAsset?.(a.attachmentId)}
-                  className="group relative block overflow-hidden rounded border border-[hsl(var(--border))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+                  className="group relative block overflow-hidden rounded-lg border border-[hsl(var(--border))] shadow-sm transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
