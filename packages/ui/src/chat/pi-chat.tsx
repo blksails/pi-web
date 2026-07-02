@@ -183,7 +183,7 @@ export interface PiChatProps {
    * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式。
    * 本任务占位声明，渲染逻辑在 8.2 实现。
    */
-  readonly logsPanelPosition?: "bottom" | "right" | "drawer";
+  readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
   /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
   readonly attachmentBaseUrl?: string;
   /** 可注入的附件上传函数(默认 `@blksails/pi-web-react` 的 `uploadAttachment`);测试用以 mock。 */
@@ -1108,10 +1108,10 @@ export function PiChat({
   const readinessIndicator =
     readinessGating && !sessionReady ? (
       <div
-        className={`mb-2 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
+        className={`mx-auto mb-2 flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
           sessionReadinessError
-            ? "bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
-            : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+            ? "border-[hsl(var(--destructive))]/20 bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
+            : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
         }`}
         data-pi-session-readiness={
           sessionReadinessError ? "error" : "connecting"
@@ -1122,7 +1122,7 @@ export function PiChat({
           className={
             sessionReadinessError
               ? ""
-              : "inline-block h-2 w-2 animate-pulse rounded-full bg-current"
+              : "inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
           }
           aria-hidden="true"
         />
@@ -1505,9 +1505,26 @@ export function PiChat({
         <ExtSlotRegion ext={extension} slot="statusBar" />
         <ExtSlotRegion ext={extension} slot="toolbar" />
 
+        {/* top 位置：对话/空态之上的横向日志条,利用无 head 后的顶部空间;与内容同宽居中,
+            bounded 高度内滚动(不吃右侧列宽)。 */}
+        {showLogs && logsPanelVisible && effectiveLogsPosition === "top" ? (
+          <div
+            data-pi-logs-region
+            data-pi-logs-top=""
+            className={cn(
+              "flex max-h-56 min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/70 px-0 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/60",
+              lay.content,
+            )}
+          >
+            <LogsPanel logsResult={logsResult} className="min-h-0 flex-1" fill />
+            {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
+            <ExtSlotRegion ext={extension} slot="logs" />
+          </div>
+        ) : null}
+
         {isEmpty ? (
           <div
-            className="flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8"
+            className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
             {emptyBody}

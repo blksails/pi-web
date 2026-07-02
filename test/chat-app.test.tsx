@@ -17,13 +17,19 @@ const piChatBasicSpy = vi.fn<(props: Record<string, unknown>) => void>();
 vi.mock("@blksails/pi-web-ui", () => ({
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
-    return <div data-test-pi-chat />;
+    // 无 head 设计后,全局控件(设置/日志开关/语言/主题 + rail 关闭态的新建会话/切换源)
+    // 下沉到侧栏账户区,经 slots.sidebar 注入。忠实渲染该槽,测试才能触达这些控件。
+    const slots = props.slots as { sidebar?: React.ReactNode } | undefined;
+    return <div data-test-pi-chat>{slots?.sidebar}</div>;
   },
   PiChatBasic: (props: Record<string, unknown>): React.JSX.Element => {
     piChatBasicSpy(props);
     return <div data-test-pi-chat-basic />;
   },
   SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
+  // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这两个组件。
+  CanvasLauncher: (): null => null,
+  CanvasPanel: (): null => null,
   useI18n: () => (key: string) => key,
   useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));

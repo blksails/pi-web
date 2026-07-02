@@ -241,10 +241,45 @@ describe("PiChat × logsPanelPosition", () => {
     });
   });
 
-  // ── panelVisible/showLogs 门控（三种位置）─────────────────────────────────
+  // ── top ───────────────────────────────────────────────────────────────────
 
-  describe("门控：showLogs=false 或 logsPanelVisible=false 时三种位置均不渲染面板", () => {
-    const positions = ["bottom", "right", "drawer"] as const;
+  describe("position=top（顶部横条）", () => {
+    it("data-pi-logs-region 渲染于顶部（data-pi-logs-top，且不在 dock/aside 内）", () => {
+      const { container } = render(
+        <PiChat
+          session={makeSession({ initialMessages: CONVO })}
+          showLogs={true}
+          logsPanelVisible={true}
+          logsPanelPosition="top"
+        />,
+      );
+      const region = container.querySelector("[data-pi-logs-region]");
+      expect(region).not.toBeNull();
+      expect(region!.hasAttribute("data-pi-logs-top")).toBe(true);
+      // 不在 dock（bottom）也不在 aside（right）内 —— 顶部独立区块。
+      const dock = container.querySelector("[data-pi-input-dock]");
+      if (dock !== null) expect(dock.contains(region)).toBe(false);
+      const aside = container.querySelector("[data-pi-chat-aside]");
+      if (aside !== null) expect(aside.contains(region)).toBe(false);
+    });
+
+    it("position=top 且 logsPanelVisible=false 时不渲染 data-pi-logs-region", () => {
+      const { container } = render(
+        <PiChat
+          session={makeSession({ initialMessages: CONVO })}
+          showLogs={true}
+          logsPanelVisible={false}
+          logsPanelPosition="top"
+        />,
+      );
+      expect(container.querySelector("[data-pi-logs-region]")).toBeNull();
+    });
+  });
+
+  // ── panelVisible/showLogs 门控（四种位置）─────────────────────────────────
+
+  describe("门控：showLogs=false 或 logsPanelVisible=false 时四种位置均不渲染面板", () => {
+    const positions = ["bottom", "right", "drawer", "top"] as const;
 
     for (const position of positions) {
       it(`position=${position} && showLogs=false → 无 data-pi-logs-region`, () => {
