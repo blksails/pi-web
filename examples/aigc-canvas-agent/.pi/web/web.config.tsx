@@ -17,7 +17,8 @@ export default defineWebExtension({
   capabilities: ["slots"],
   // panelRight 初始比例 4:6(对话 40% / Canvas 60%,面板主导):Canvas 是创作台,默认给足空间。
   // 宿主段控切换器仍可运行时在 centered / 2:1 / 4:6 / 3:7 间切换。
-  config: { panelRatio: "4:6" },
+  // logs 固定 bottom(对话区下方):避免日志面板挤占 Canvas 的右侧 aside。
+  config: { panelRatio: "4:6", logsPanelPosition: "bottom" },
   slots: {
     launcherRail: CanvasLauncher as never,
     panelRight: CanvasPanel as never,

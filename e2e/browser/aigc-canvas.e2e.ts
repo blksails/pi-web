@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * aigc-canvas 浏览器级 e2e —— 画廊物化视图闭环 + 刷新回放 + 退化 + 门控。
+ * aigc-canvas 浏览器级 e2e —— 画廊物化视图闭环 + 刷新回放 + 退化(source 声明驱动,免门控)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行,门控
- * `NEXT_PUBLIC_PI_WEB_CANVAS=1`。`aigc-canvas-agent` 的 `.pi/web` 在 launcherRail 挂
- * `CanvasLauncher`(门控入口)、panelRight 挂 `CanvasPanel`(有 surface 接入 → 画廊/工作台)。
+ * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。Canvas 由 source 声明驱动
+ * (免全局门控):`aigc-canvas-agent` 的 `.pi/web` 在 launcherRail 挂 `CanvasLauncher`、
+ * panelRight 挂 `CanvasPanel`(有 surface 接入 → 画廊/工作台),挂载即显示。
  * stub 代替真实 canvas 命令处理器:装配期推种子图(hydrate 模拟)+ 派发 A/B 档命令维护
  * `{ assets }` 快照 → `control:"state"`(key=`surface:canvas`)回流(real fd1 直写由集成测试覆盖)。
  *
@@ -13,13 +13,11 @@ import { test, expect } from "@playwright/test";
  *     点格子展开工作台 → 输入指令 → 点「编辑」→ `run("canvas","edit")` → 快照回流 → 新图进画廊。
  *     断言**无 `/messages`**(命令绕过 LLM)。
  *  ② 刷新回放:命令后刷新页面 → 经服务端粘性 `control:"state"` 回放,画廊快照仍在(新图仍在)。
- *  ③ 退化:切非 AIGC source(hello-agent)→ 无 `surface:canvas` 探针 → 入口/画廊不挂载,
- *     pi-web 照常运行(输入可用、可对话),不报错。
- *  ④ 门控关(单独 project / env):`NEXT_PUBLIC_PI_WEB_CANVAS` 未开 → launcherRail 入口不出现(零回归)。
+ *  ③ 退化 / 独立性:切非 AIGC source(hello-agent)→ 未声明 canvas 槽 + 无 `surface:canvas` 探针 →
+ *     入口/画廊不挂载,pi-web 照常运行(输入可用、可对话),不报错。独立性由声明缺席保证,非 env 门控。
  *
- * 说明:④ 门控关分支依赖 env 未开的构建;本文件在门控开(=1)的隔离 build 下跑 ①②③,并对 launcher
- * 存在性做 data-attr 断言。门控关的零回归由 `CanvasLauncher enabled=false → null` 单元测试兜底,
- * 并可在门控关的 build project 下复用本文件的 gating 断言。
+ * 说明:本文件在**不设** `NEXT_PUBLIC_PI_WEB_CANVAS` / `LAUNCHER_RAIL` 的隔离 build 下跑,验证
+ * source 声明即显示(免门控);强制关能力由 `CanvasLauncher enabled=false → null` 单元测试兜底。
  */
 
 const CANVAS_SOURCE = "./examples/aigc-canvas-agent";

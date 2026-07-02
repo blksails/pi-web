@@ -1,9 +1,12 @@
 /**
- * CanvasLauncher / CanvasPanel — 入口 + 门控 + 面板挂载(aigc-canvas · Req 10.x)。
+ * CanvasLauncher / CanvasPanel — 入口 + 面板挂载(aigc-canvas · Req 10.x)。
  *
- * - **CanvasLauncher**(launcherRail 具名槽):`NEXT_PUBLIC_PI_WEB_CANVAS` 门控(关则 `null`);
- *   开则渲染入口按钮,点击经跨 slot 共享的 `canvasOpenStore` 开合画廊面板(激活/关闭回收视图)。
- *   门控读在 UI 组件侧(client bundle),不落宿主 `app/` / `packages/server`(保宿主中立)。
+ * **由 source 声明驱动,免全局门控**:agent source 在 `.pi/web` 把这两个组件挂到
+ * launcherRail / panelRight 槽,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
+ * 非 AIGC source 不声明这些槽 → 自然不挂载(独立性由声明缺席保证,而非 env 开关)。
+ *
+ * - **CanvasLauncher**(launcherRail 具名槽):渲染入口按钮,点击经跨 slot 共享的
+ *   `canvasOpenStore` 开合画廊面板(激活/关闭回收视图)。
  * - **CanvasPanel**(panelRight 具名槽):宿主经 prop 注入 `surface`(launcherRail slot 拿不到 surface,
  *   故交互画廊 / 工作台落在有 surface 的 panelRight 区);读 `canvasOpen` 开合,展开 CanvasGallery,
  *   点格子展开 CanvasWorkbench,关闭回画廊。
@@ -21,7 +24,10 @@ import type { UploadFn } from "./client-image-ops.js";
 const DOMAIN = "canvas";
 const STATE_KEY = `surface:${DOMAIN}`;
 
-/** 门控读取(client 侧):`NEXT_PUBLIC_PI_WEB_CANVAS === "true" || "1"`。 */
+/**
+ * @deprecated Canvas 显示已改为 source 声明驱动(挂 slot 即显示),不再依赖此 env 门控。
+ * 保留仅为向后兼容 / 可选的强制覆盖读取:`NEXT_PUBLIC_PI_WEB_CANVAS === "true" || "1"`。
+ */
 export function isCanvasEnabled(): boolean {
   if (typeof process === "undefined") return false;
   const v = process.env?.NEXT_PUBLIC_PI_WEB_CANVAS;
@@ -35,9 +41,9 @@ export interface CanvasLauncherProps {
   readonly enabled?: boolean;
 }
 
-/** launcherRail 入口按钮(门控关 → null)。 */
+/** launcherRail 入口按钮(被 source 声明挂载即显示;`enabled` 显式传可覆盖,如强制关)。 */
 export function CanvasLauncher({ enabled }: CanvasLauncherProps): React.JSX.Element | null {
-  const on = enabled ?? isCanvasEnabled();
+  const on = enabled ?? true;
   const { open, toggle } = useCanvasOpen();
   if (!on) return null;
   return (
@@ -81,7 +87,7 @@ export function CanvasPanel({
   baseUrl,
   sessionId,
 }: CanvasPanelProps): React.JSX.Element | null {
-  const on = enabled ?? isCanvasEnabled();
+  const on = enabled ?? true;
   const { open } = useCanvasOpen();
   const [openId, setOpenId] = React.useState<string | null>(null);
 
