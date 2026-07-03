@@ -349,10 +349,58 @@ export function ToolOutput({
   );
 }
 
-/** 按输出值类型生成默认渲染节点:字符串→Response 富渲染,数据→JSON 代码块。 */
+/**
+ * 从 pi 工具结果里抽可读文本(含图片/链接 markdown)。
+ *
+ * 工具结果经翻译层为 `{content: ContentItem[], details?}`(带结构化 details 时)或直接 `ContentItem[]`
+ * (见 agent-message-to-ui)。`content` 里 `type:"text"` 项的 `text` 拼接即工具的人读输出(AIGC 图像
+ * 工具在此放 `![](url)` markdown)。无文本项 → 返回 undefined(交由 JSON 代码块兜底)。
+ */
+function textFromToolContent(output: unknown): string | undefined {
+  const content = Array.isArray(output)
+    ? output
+    : (output as { content?: unknown } | null | undefined)?.content;
+  if (!Array.isArray(content)) return undefined;
+  const texts: string[] = [];
+  for (const item of content) {
+    if (typeof item !== "object" || item === null) continue;
+    const text = (item as { text?: unknown }).text;
+    if (typeof text === "string" && text.length > 0) texts.push(text);
+  }
+  return texts.length > 0 ? texts.join("\n\n") : undefined;
+}
+
+/**
+ * 按输出值类型生成默认渲染节点:
+ *  - 字符串 → Response 富渲染;
+ *  - pi 工具结果(`{content, details}` / `ContentItem[]`)→ 抽 content 文本经 Response 渲染(图片
+ *    markdown 即显图),结构化 details 折叠附于其后(可展开审阅,不再整体 dump JSON);
+ *  - 其它数据 → JSON 代码块。
+ */
 function defaultOutputNode(output: unknown): React.ReactNode {
   if (output === undefined) return null;
   if (typeof output === "string") return <Response>{output}</Response>;
+  const text = textFromToolContent(output);
+  if (text !== undefined) {
+    const details =
+      !Array.isArray(output) &&
+      (output as { details?: unknown } | null)?.details !== undefined
+        ? (output as { details?: unknown }).details
+        : undefined;
+    return (
+      <div className="space-y-2">
+        <Response>{text}</Response>
+        {details !== undefined ? (
+          <details className="text-[11px]">
+            <summary className="cursor-pointer select-none text-[hsl(var(--muted-foreground))]">
+              详情
+            </summary>
+            <JsonBlock value={details} className="mt-1" />
+          </details>
+        ) : null}
+      </div>
+    );
+  }
   return <JsonBlock value={output} />;
 }
 

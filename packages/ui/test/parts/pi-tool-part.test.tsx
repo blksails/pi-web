@@ -91,6 +91,28 @@ describe("PiToolPart 四态", () => {
     expect(screen.getByText("hello result")).toBeInTheDocument();
   });
 
+  it("pi 工具结果 {content,details}:渲染 content 文本(非整体 JSON dump),details 折叠", () => {
+    render(
+      <PiToolPart
+        part={toolEndPart("image_generation", {}, {
+          content: [{ type: "text", text: "生成成功:1 张图像已保存" }],
+          details: { ok: true, model: "gpt-5.4-image-2" },
+        })}
+        defaultOpen={true}
+      />,
+    );
+    const detail = screen
+      .getByText("image_generation")
+      .closest("[data-pi-tool]")
+      ?.querySelector("[data-pi-tool-detail]");
+    // content 文本经 Response 渲染(可读),而非把整个对象 dump 成 JSON。
+    expect(detail?.textContent).toContain("生成成功:1 张图像已保存");
+    // 结构化 details 收进可折叠「详情」,不喧宾夺主。
+    const disclosure = detail?.querySelector("details");
+    expect(disclosure).not.toBeNull();
+    expect(disclosure?.querySelector("summary")?.textContent).toBe("详情");
+  });
+
   it("保留全部 data 属性:tool / phase / name / status / detail", () => {
     render(<PiToolPart part={toolEndPart("search", {}, { hits: 3 })} />);
     const card = screen.getByText("search").closest("[data-pi-tool]");
