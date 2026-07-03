@@ -32,6 +32,7 @@ import {
 import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
+import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
@@ -336,6 +337,15 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId: runtime.session.sessionId,
   });
 
+  // agent 权威 surface(agent-authoritative-surface)桥:补齐 state-injection-bridge 留下的
+  // 「ui-rpc 命令真实接收方」缺口——在 runRpcMode 之前给 stdin 挂第二个读取器,截获转发进子进程的
+  // surface 命令行(point=command/action=execute + SurfaceCommandPayload),按 domain 派发进程内
+  // surface 注册表,经 fd1 直写回流 ui_rpc_response。非 surface 行放行;无注册惰性 no-op。
+  // 装配序:wireStateBridge 之后、runRpcMode 之前(命令内 ctx.setState 复用 wireStateBridge 的下行)。
+  const surfaceWiring = wireSurfaceBridge(runtime, {
+    sessionId: runtime.session.sessionId,
+  });
+
   // message-queue-ui「取回」桥(clearQueue):在 runRpcMode 之前给 stdin 挂第二个读取器,
   // 截获 server 下发的 piweb_clear_queue 请求行 → 调当前 session.clearQueue() → 写回结果行。
   // 优雅降级(内部吞错),不阻断会话启动。
@@ -364,6 +374,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       process.stderr.write(
         `runner: state-bridge session cleanup error: ${String(err)}\n`,
+      );
+    }
+    try {
+      surfaceWiring.cleanup();
+    } catch (err) {
+      process.stderr.write(
+        `runner: surface bridge session cleanup error: ${String(err)}\n`,
       );
     }
     try {

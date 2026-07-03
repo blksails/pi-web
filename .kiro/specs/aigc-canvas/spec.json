@@ -1,0 +1,27 @@
+{
+  "feature_name": "aigc-canvas",
+  "created_at": "2026-07-02T00:00:00Z",
+  "updated_at": "2026-07-02T12:00:00Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "depends_on": [
+    "agent-authoritative-surface",
+    "attachment-tool-bridge"
+  ],
+  "depends_on_notes": "agent-authoritative-surface = AAS 通信 SDK(前置);attachment-tool-bridge = 领域无关 seam 扩展(listBySession + getMeta/setMeta,前置);间接依赖 state-injection-bridge 通用粘性帧修复。三者本 spec 只消费、不实现。",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

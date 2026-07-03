@@ -15,6 +15,7 @@ import {
   useModels,
   useAttachments,
   type UploadAttachmentFn,
+  uploadAttachment as defaultUploadAttachment,
   useBranches,
   useSuggestions,
   createUiRpcBus,
@@ -81,7 +82,8 @@ import { LogsPanel } from "../logs/logs-panel.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension } from "@blksails/pi-web-kit";
-import { createWebExtStateAccess } from "@blksails/pi-web-kit";
+import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
+import { SurfaceCommandResultSchema } from "@blksails/pi-web-protocol";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -180,8 +182,8 @@ export interface PiChatProps {
   readonly logsPanelVisible?: boolean;
   /**
    * 日志面板位置，对应 logging 配置的 outputs.panelPosition（Req 6.1/6.2）。
-   * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式。
-   * 本任务占位声明，渲染逻辑在 8.2 实现。
+   * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式；"top" 为顶部横条
+   * (置于对话/空态之上,利用无 head 后的顶部空间)。
    */
   readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
   /** 附件上传/分发端点基址(如 `/api`);缺省为同源相对路径。 */
@@ -341,6 +343,39 @@ export function PiChat({
         c.setState(sid, { key, value, op }).then(() => undefined),
     });
   }, [client, sessionId, connection]);
+
+  // 权威 surface 接入(agent-authoritative-surface):webext slot 经 prop 取得领域无关的
+  // 命令上行(uiRpc bus,run)+ 状态读/订阅(ControlStore.states)+ 能力探针(controls.commands)。
+  // domain 对宿主不透明(领域无关搬运);命令走 ui-rpc agent 转发路径(payload 无 name → 逃逸 host
+  // 拦截 → 子进程 wireSurfaceBridge 派发)。会话/连接/总线就绪时构造。
+  const surfaceAccess = React.useMemo(() => {
+    if (uiRpc === undefined || connection === undefined) return undefined;
+    const cs = connection.controlStore;
+    const bus = uiRpc;
+    return createWebExtSurfaceAccess({
+      run: async (domain, action, args) => {
+        const resp = await bus.request({
+          point: "command",
+          action: "execute",
+          payload: { domain, action, args },
+        });
+        const parsed = SurfaceCommandResultSchema.safeParse(resp.result);
+        if (parsed.success) return parsed.data;
+        return {
+          domain,
+          action,
+          ok: false,
+          error: resp.error ?? {
+            code: "invalid_result",
+            message: "surface command result malformed",
+          },
+        };
+      },
+      read: (key) => cs.getSnapshot().states[key]?.value,
+      subscribe: (listener) => cs.subscribe(listener),
+      hasCommand: (name) => (controls?.commands ?? []).some((cmd) => cmd.name === name),
+    });
+  }, [uiRpc, connection, controls?.commands]);
 
   React.useEffect(() => {
     return () => uiRpc?.dispose();
@@ -566,8 +601,15 @@ export function PiChat({
   // 一轮运行结束(submitted/streaming → idle 边沿)→ 通知宿主做每轮收尾副作用(如刷新会话历史)。
   // 与上方 stats「每轮结束重拉」同构,但不受 showSessionStats 门控:无论是否展示用量区都广播。
   const turnEndWasBusyRef = React.useRef<boolean>(false);
+  // panelRight slot 的轮末同步信号:每轮 idle 边沿递增,经 SlotHost 透给 slot 组件。
+  // Canvas 画廊据此在 LLM 生图后 `run("sync")` 重建物化视图(否则 tool-output 图要等下次
+  // 会话重连 hydrate 才进画廊——生图当场画廊不刷新)。领域无关:宿主只广播"一轮结束了"。
+  const [panelSyncSignal, setPanelSyncSignal] = React.useState<number>(0);
   React.useEffect(() => {
-    if (turnEndWasBusyRef.current && !isBusy) onTurnEnd?.();
+    if (turnEndWasBusyRef.current && !isBusy) {
+      onTurnEnd?.();
+      setPanelSyncSignal((v) => v + 1);
+    }
     turnEndWasBusyRef.current = isBusy;
   }, [isBusy, onTurnEnd]);
 
@@ -609,11 +651,19 @@ export function PiChat({
     },
     [],
   );
-  // 空闲控制流开启条件:有贡献点(Tier3 回包)/ artifact rpc / 就绪握手未就绪期(接粘性 session-status)/
-  // 扩展命令窗口(extCtrlActive,承载 fire-and-forget 命令的 ctx.ui 反馈)。
+  // panelRight slot 是唯一被注入 `surface`(WebExtSurfaceAccess)的槽(launcherRail 拿不到 surface,
+  // 见 canvas web.config 注释)。agent-authoritative-surface / aigc-canvas 的 surface 命令在**空闲期**
+  // 触发,其权威快照回流(control:"state",key=surface:<domain>)只能由空闲控制流承载并应用进
+  // ControlStore.states——故声明 panelRight 的 webext 须在空闲期常开该流,否则命令后的快照更新丢失
+  // (计数停初值 / 画廊新图不进廊)。与 contributions/artifact 同理需要持久下行通道;由 `!isBusy`
+  // 门控保证仅空闲期开(prompt 期由 per-prompt 流处理 control 帧,不重蹈 prompt-流回归)。
+  const hasSurfacePanel = extension?.slots?.panelRight !== undefined;
+  // 空闲控制流开启条件:有贡献点(Tier3 回包)/ artifact rpc / panelRight surface 槽 / 就绪握手未就绪期
+  //(接粘性 session-status)/ 扩展命令窗口(extCtrlActive,承载 fire-and-forget 命令的 ctx.ui 反馈)。
   const needsIdleControl =
     hasContributions ||
     hasArtifactRpc ||
+    hasSurfacePanel ||
     (readinessGating && !sessionReady) ||
     extCtrlActive;
   React.useEffect(() => {
@@ -1524,7 +1574,7 @@ export function PiChat({
 
         {isEmpty ? (
           <div
-            className="flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
+            className="pi-scrollbar-ghost flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
             {emptyBody}
@@ -1565,7 +1615,16 @@ export function PiChat({
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
           {showPanelRight ? (
-            <SlotHost ext={extension} slot="panelRight" state={webextState} />
+            <SlotHost
+              ext={extension}
+              slot="panelRight"
+              state={webextState}
+              surface={surfaceAccess}
+              upload={uploadAttachment ?? defaultUploadAttachment}
+              baseUrl={client?.baseUrl ?? ""}
+              syncSignal={panelSyncSignal}
+              {...(sessionId !== undefined ? { sessionId } : {})}
+            />
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
               flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}

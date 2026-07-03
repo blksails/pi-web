@@ -26,6 +26,15 @@ function makeCtx(): {
 
   const ctx: AttachmentToolContext = {
     available: true,
+    async listBySession() {
+      throw new Error("not used");
+    },
+    async getMeta() {
+      throw new Error("not used");
+    },
+    async setMeta() {
+      throw new Error("not used");
+    },
     async resolve(id: string): Promise<AttachmentToolHandle> {
       return {
         meta: {
@@ -134,6 +143,15 @@ describe("persistPicked — image-set", () => {
     let callCount = 0;
     const ctx: AttachmentToolContext = {
       available: true,
+      async listBySession() {
+        throw new Error("not used");
+      },
+      async getMeta() {
+        throw new Error("not used");
+      },
+      async setMeta() {
+        throw new Error("not used");
+      },
       async resolve() {
         throw new Error("not used");
       },

@@ -22,6 +22,7 @@
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-react": "workspace:*",
     "@blksails/pi-web-kit": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.0",
     "@radix-ui/react-popover": "^1.1.17",
     "@radix-ui/react-select": "^2.1.0",

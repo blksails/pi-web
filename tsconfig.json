@@ -33,6 +33,9 @@
       "@blksails/pi-web-tool-kit": [
         "./packages/tool-kit/src/index.ts"
       ],
+      "@blksails/pi-web-tool-kit/aigc-canvas-schema": [
+        "./packages/tool-kit/src/aigc/canvas/schema.ts"
+      ],
       "@blksails/pi-web-tool-kit/commands": [
         "./packages/tool-kit/src/commands/index.ts"
       ],
@@ -47,6 +50,7 @@
   "include": [
     ".next-clear-dev/types/**/*.ts",
     ".next-cli/types/**/*.ts",
+    ".next-debug/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
     ".next-ro-dev/types/**/*.ts",
     ".next-stub/types/**/*.ts",
@@ -65,7 +69,7 @@
     "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next-debug/types/**/*.ts"
+    ".next-e2e-on/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

@@ -56,7 +56,7 @@ export function Conversation({
       <div
         ref={ref}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto",
+          "pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto pr-4",
           viewportClassName,
         )}
         data-pi-conversation-viewport

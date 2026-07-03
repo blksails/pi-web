@@ -15,13 +15,23 @@ export type LayoutPreset = z.infer<typeof LayoutPresetSchema>;
 
 /**
  * panelRight 让位比例(对话区 : 右侧领域检视面板)。声明的是「初始」比例;
- * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在三档间动态切换:
+ * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在四档间动态切换:
  * - `centered` 收起面板、对话居中(经典版面);
  * - `2:1` 对话 ~66% / 面板 ~33%;
+ * - `4:6` 对话 40% / 面板 60%(面板主导,适合 Canvas 等创作台型 agent);
  * - `3:7` 对话 30% / 面板 70%(面板为主,适合检视/仪表盘型 agent)。
  */
-export const PanelRatioSchema = z.enum(["centered", "2:1", "3:7"]);
+export const PanelRatioSchema = z.enum(["centered", "2:1", "4:6", "3:7"]);
 export type PanelRatio = z.infer<typeof PanelRatioSchema>;
+
+/**
+ * 日志面板位置(声明式,per-source 覆盖宿主全局默认):
+ * - `bottom`(默认)对话区下方;`right` 进右侧 aside 与 panelRight 垂直堆叠;
+ * - `drawer` 底部抽屉;`top` 对话区上方。
+ * 占 panelRight 的 source(如 Canvas)宜声明 `bottom`,避免日志面板挤占右侧 aside。
+ */
+export const LogsPanelPositionSchema = z.enum(["bottom", "right", "drawer", "top"]);
+export type LogsPanelPosition = z.infer<typeof LogsPanelPositionSchema>;
 
 /**
  * 空态建议项(可序列化)。字段与 `@blksails/pi-web-react` 的 `Suggestion` 对齐:
@@ -55,6 +65,8 @@ export const WebExtConfigSchema = z.object({
   layout: LayoutPresetSchema.optional(),
   /** panelRight 让位的初始比例(运行时可由宿主切换器改写)。 */
   panelRatio: PanelRatioSchema.optional(),
+  /** 日志面板位置(覆盖宿主全局默认);占 panelRight 的 source 宜声明 `bottom`。 */
+  logsPanelPosition: LogsPanelPositionSchema.optional(),
   empty: EmptyConfigSchema.optional(),
   /**
    * 浏览器标签页标题(document.title)。agent source 载入后由宿主同步;

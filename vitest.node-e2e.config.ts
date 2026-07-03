@@ -28,6 +28,10 @@ export default defineConfig({
         __dirname,
         "packages/tool-kit/src/runtime.ts",
       ),
+      "@blksails/pi-web-tool-kit/aigc-canvas-schema": path.resolve(
+        __dirname,
+        "packages/tool-kit/src/aigc/canvas/schema.ts",
+      ),
     },
   },
   test: {

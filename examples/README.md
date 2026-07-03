@@ -1,6 +1,6 @@
 # pi-web 示例总索引
 
-本目录收录 18 个**可直接运行**的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
+本目录收录 19 个**可直接运行**的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
 
 ## 怎么跑
 
@@ -48,7 +48,9 @@ pi-web ./examples/hello-agent
 |---|---|---|---|
 | [attachment-tool-agent](./attachment-tool-agent/) | 附件工具桥端到端：上传图 → `att_id` → 工具处理 → 落库回引用 | `AttachmentToolContext`（`resolve` / `putOutput`）、`afterToolCall` 闸门、`/raw` 分发 | ★★★ |
 | [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
+| [surface-demo-agent](./surface-demo-agent/) | Agent 权威 surface（领域无关）：权威快照镜像 + 结构化命令转发（不过 LLM）+ 能力探针退化 | `createSurface` / `useSurface`、`wireSurfaceBridge`（ui-rpc 命令派发 + fd1 回流）、`SurfaceCommandPayload` | ★★★ |
 | [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `aigcExtension`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
+| [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`） | `canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam | ★★★ |
 
 ### WebExtension（按 Tier 1–5）
 

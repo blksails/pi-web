@@ -32,6 +32,22 @@ describe("SlotHost", () => {
     expect(screen.getByTestId("p")).toHaveTextContent("acme");
   });
 
+  it("syncSignal 经 SlotHost 透传给组件型 slot 贡献(Canvas 轮末 re-sync 接线)", () => {
+    const Panel = ({ syncSignal }: { syncSignal?: unknown }): React.JSX.Element => (
+      <div data-testid="sig">{String(syncSignal)}</div>
+    );
+    // slot 组件按生产范式以 `as never` 挂载(对齐 web.config.tsx 的 `CanvasPanel as never`):
+    // 注入 props(surface/upload/syncSignal…)由组件自声明,不进最小 SlotRenderProps 契约。
+    const ext: WebExtension = { manifestId: "acme", slots: { panelRight: Panel as never } };
+    const { rerender } = render(
+      <SlotHost ext={ext} slot="panelRight" syncSignal={0} />,
+    );
+    expect(screen.getByTestId("sig")).toHaveTextContent("0");
+    // 宿主轮末 bump → slot 组件收到新值(据此触发 run("sync"))。
+    rerender(<SlotHost ext={ext} slot="panelRight" syncSignal={1} />);
+    expect(screen.getByTestId("sig")).toHaveTextContent("1");
+  });
+
   it("未声明插槽时回退默认", () => {
     const ext: WebExtension = { manifestId: "acme", slots: {} };
     render(<SlotHost ext={ext} slot="footer" fallback={<span data-testid="def">DEF</span>} />);

@@ -18,6 +18,7 @@
  * - **构造留在 server 侧**:类型契约经 `@blksails/pi-web-agent-kit` 暴露给 tool 作者(仅类型,无值导入);
  *   本工厂(值)留在 `@blksails/pi-web-server`,与作者面 `AttachmentToolContext` 结构兼容。
  */
+import type { Attachment } from "@blksails/pi-web-protocol";
 import type { ChildAttachmentStore } from "./child-store.js";
 import type { AttachmentHandle } from "./attachment-handle.js";
 import { resolveAttachment } from "./resolve.js";
@@ -56,6 +57,23 @@ export interface AttachmentToolContext {
    * 能力不可用时抛 {@link AttachmentCapabilityUnavailableError}(安全拒绝,不崩溃)。
    */
   putOutput(input: PutOutputInput): Promise<ToolOutputRef>;
+  /**
+   * 枚举**当前会话**(上下文闭包绑定的 sessionId,与 `putOutput` 属主一致)的附件描述符
+   * (不含字节;领域无关的枚举 seam,供上层 surface 如 Canvas 做 hydrate 重建)。
+   * 能力不可用时抛 {@link AttachmentCapabilityUnavailableError}(安全拒绝,不崩溃)。
+   */
+  listBySession(): Promise<Attachment[]>;
+  /**
+   * 读回某附件的不透明扩展 meta(领域无关,attachment 层不解释内容;供上层承载如
+   * `{derivedFrom,genParams}` 等血缘/派生信息)。不存在或未曾写入返回 `undefined`。
+   * 能力不可用时抛 {@link AttachmentCapabilityUnavailableError}(安全拒绝,不崩溃)。
+   */
+  getMeta(id: string): Promise<Record<string, unknown> | undefined>;
+  /**
+   * 写入某附件的不透明扩展 meta(整体覆盖,attachment 层不解释内容,原样持久)。
+   * 能力不可用时抛 {@link AttachmentCapabilityUnavailableError}(安全拒绝,不崩溃)。
+   */
+  setMeta(id: string, meta: Record<string, unknown>): Promise<void>;
 }
 
 /**
@@ -104,6 +122,24 @@ export function createAttachmentToolContext(
         mimeType: input.mimeType,
         sessionId,
       });
+    },
+    async listBySession(): Promise<Attachment[]> {
+      if (store === undefined) {
+        throw new AttachmentCapabilityUnavailableError();
+      }
+      return store.listBySession(sessionId);
+    },
+    async getMeta(id: string): Promise<Record<string, unknown> | undefined> {
+      if (store === undefined) {
+        throw new AttachmentCapabilityUnavailableError();
+      }
+      return store.getMeta(id);
+    },
+    async setMeta(id: string, meta: Record<string, unknown>): Promise<void> {
+      if (store === undefined) {
+        throw new AttachmentCapabilityUnavailableError();
+      }
+      return store.setMeta(id, meta);
     },
   };
 }

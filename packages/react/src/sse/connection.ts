@@ -260,16 +260,21 @@ export class PiSessionConnection {
             const result = SseFrameSchema.safeParse(json);
             if (!result.success) continue;
             const frame = result.data;
-            // 空闲控制流默认应用 ui-rpc(Tier3 回包)、session-status(就绪握手粘性帧)与
-            // session-state(权威快照粘性帧,session-snapshot-authority);applyAmbient 时额外应用
-            // extension-ui。其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
-            // session-state 安全可放:busy 转换主要经 per-prompt 流投递(handleEvent 应用全部 control
-            // 帧),空闲流转发仅为让就绪前/空闲/重连客户端经粘性回放收敛(检阅 P1,Req 4.1)。
+            // 空闲控制流默认应用 ui-rpc(Tier3 回包)、session-status(就绪握手粘性帧)、
+            // session-state(权威快照粘性帧,session-snapshot-authority)与 state(状态注入桥/
+            // agent-authoritative-surface 的下行镜像粘性帧);applyAmbient 时额外应用 extension-ui。
+            // 其余帧丢弃,避免与 per-prompt 流重复应用 ambient(extension-ui)帧。
+            // session-state/state 安全可放:busy 转换与 state 变更主要经 per-prompt 流投递(handleEvent
+            // 应用全部 control 帧),空闲流转发仅为让就绪前/空闲/重连客户端经粘性回放收敛。
+            // state 尤其关键:surface 命令(agent-authoritative-surface / aigc-canvas)在**空闲期**
+            // 触发,其权威快照回流帧(control:"state",key=surface:<domain>)只能由本空闲流承载——
+            // 漏放会令 slot 组件收不到快照更新(增量停在初值 / 画廊种子不 hydrate)。
             if (
               frame.kind === "control" &&
               (frame.payload.control === "ui-rpc" ||
                 frame.payload.control === "session-status" ||
                 frame.payload.control === "session-state" ||
+                frame.payload.control === "state" ||
                 (applyAmbient && frame.payload.control === "extension-ui"))
             ) {
               this.controlStore.applyControlFrame(frame.payload);

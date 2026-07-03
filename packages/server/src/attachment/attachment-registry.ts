@@ -84,4 +84,63 @@ export class AttachmentRegistry {
     }
     return out;
   }
+
+  /**
+   * 读回描述符旁路文件的原始 JSON(未收窄为 {@link Attachment});不存在返回 `undefined`。
+   *
+   * 供 `getMeta`/`setMeta` 内部复用,以在不打扰 `get`/`listBySession`(严格收窄为 `Attachment`)
+   * 的前提下,原样保留/写回旁路文件里 `Attachment` 之外的不透明扩展字段(`ext`)。
+   */
+  private async readDescriptorRaw(
+    id: string,
+  ): Promise<Record<string, unknown> | undefined> {
+    let raw: string;
+    try {
+      raw = await readFile(this.descriptorPath(id), "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw err;
+    }
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  /**
+   * 读回某附件的不透明扩展 meta(旁路文件的 `ext` 字段,attachment-tool-bridge 增量;领域无关)。
+   *
+   * attachment 层**不解释** `ext` 的内容(上层如 Canvas hydrate 血缘 `{derivedFrom,genParams}` 等
+   * 结构由调用方自行约定),仅原样存取。描述符不存在或未曾 `setMeta` 过(无 `ext` 字段)均返回 `undefined`。
+   */
+  async getMeta(id: string): Promise<Record<string, unknown> | undefined> {
+    const raw = await this.readDescriptorRaw(id);
+    if (raw === undefined) return undefined;
+    const ext = raw["ext"];
+    if (ext === undefined) return undefined;
+    return ext as Record<string, unknown>;
+  }
+
+  /**
+   * 写入某附件的不透明扩展 meta,持久到旁路文件的 `ext` 字段(整体覆盖,不与旧值合并)。
+   *
+   * 不触碰描述符其余字段(`id`/`name`/`mimeType`/… 原样保留);目标描述符不存在时抛
+   * {@link AttachmentDescriptorNotFoundError}(安全拒绝,不静默造出半个描述符)。
+   */
+  async setMeta(id: string, meta: Record<string, unknown>): Promise<void> {
+    const raw = await this.readDescriptorRaw(id);
+    if (raw === undefined) {
+      throw new AttachmentDescriptorNotFoundError(id);
+    }
+    const next = { ...raw, ext: meta };
+    await mkdir(this.root, { recursive: true });
+    await writeFile(this.descriptorPath(id), JSON.stringify(next), "utf8");
+  }
+}
+
+/**
+ * `setMeta` 目标描述符不存在时抛出的可识别错误(安全拒绝,而非静默造出半个描述符)。
+ */
+export class AttachmentDescriptorNotFoundError extends Error {
+  constructor(readonly id: string) {
+    super(`attachment descriptor not found: ${id}`);
+    this.name = "AttachmentDescriptorNotFoundError";
+  }
 }

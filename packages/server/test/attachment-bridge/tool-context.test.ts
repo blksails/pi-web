@@ -104,6 +104,70 @@ describe("createAttachmentToolContext — 可用 store(Req 4.1)", () => {
     const handle = await ctx.resolve(ref.attachmentId);
     expect([...(await handle.bytes())]).toEqual([...OUTPUT_BYTES]);
   });
+
+  it("listBySession() 枚举当前会话附件(mimeType/id/name,不含字节;领域无关增量 seam)", async () => {
+    const att = await putUpload();
+    const ctx = createAttachmentToolContext(store, SESSION);
+
+    const list = await ctx.listBySession();
+    const found = list.find((a) => a.id === att.id);
+    expect(found).toBeDefined();
+    expect(found).toMatchObject({
+      id: att.id,
+      name: "in.bin",
+      mimeType: "application/octet-stream",
+      sessionId: SESSION,
+    });
+    expect(found).not.toHaveProperty("bytes");
+
+    // 不返回其它会话的附件。
+    const otherSessionAtt = await store.put({
+      bytes: new Uint8Array([1]),
+      name: "other.bin",
+      mimeType: "application/octet-stream",
+      size: 1,
+      sessionId: "sess-other",
+      origin: "upload",
+    });
+    const listAgain = await ctx.listBySession();
+    expect(listAgain.some((a) => a.id === otherSessionAtt.id)).toBe(false);
+  });
+
+  it("getMeta/setMeta 往返(opaque:存任意 JSON 原样取回),不影响 descriptor 其它字段", async () => {
+    const att = await putUpload();
+    const ctx = createAttachmentToolContext(store, SESSION);
+
+    await expect(ctx.getMeta(att.id)).resolves.toBeUndefined();
+
+    const meta = { derivedFrom: "att_parent", genParams: { seed: 42 } };
+    await ctx.setMeta(att.id, meta);
+    await expect(ctx.getMeta(att.id)).resolves.toEqual(meta);
+
+    // descriptor 其它字段原样保留。
+    const head = await store.head(att.id);
+    expect(head).toMatchObject({
+      id: att.id,
+      name: "in.bin",
+      mimeType: "application/octet-stream",
+      sessionId: SESSION,
+      origin: "upload",
+    });
+  });
+
+  it("跨主进程/子进程实例指向同一后端:tool-context 写的 meta 可被另一 store 实例读到", async () => {
+    const att = await putUpload();
+    const ctx = createAttachmentToolContext(store, SESSION);
+    await ctx.setMeta(att.id, { crossProcess: true });
+
+    // 模拟主进程:同 env 另建一个 AttachmentStore 实例(同 root)。
+    const { store: mainStore } = attachmentStoreConfigFromEnv({
+      [ATTACHMENT_DIR_ENV]: root,
+      [ATTACHMENT_SECRET_ENV]: SECRET,
+    });
+    await expect(mainStore.getMeta(att.id)).resolves.toEqual({
+      crossProcess: true,
+    });
+  });
 });
 
 describe("createAttachmentToolContext — 存储能力不可用(env 缺失降级,Req 3.4)", () => {
@@ -130,5 +194,19 @@ describe("createAttachmentToolContext — 存储能力不可用(env 缺失降级
       .catch((e) => e);
     expect(err).toBeInstanceOf(AttachmentCapabilityUnavailableError);
     expect(err).toBeInstanceOf(Error);
+  });
+
+  it("不可用 → listBySession 安全拒绝(抛可识别 AttachmentCapabilityUnavailableError),不崩溃", async () => {
+    const ctx = createAttachmentToolContext(undefined, SESSION);
+    const err = await ctx.listBySession().catch((e) => e);
+    expect(err).toBeInstanceOf(AttachmentCapabilityUnavailableError);
+  });
+
+  it("不可用 → getMeta/setMeta 安全拒绝(抛可识别 AttachmentCapabilityUnavailableError),不崩溃", async () => {
+    const ctx = createAttachmentToolContext(undefined, SESSION);
+    const getErr = await ctx.getMeta("att_whatever").catch((e) => e);
+    expect(getErr).toBeInstanceOf(AttachmentCapabilityUnavailableError);
+    const setErr = await ctx.setMeta("att_whatever", {}).catch((e) => e);
+    expect(setErr).toBeInstanceOf(AttachmentCapabilityUnavailableError);
   });
 });

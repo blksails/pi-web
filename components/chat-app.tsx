@@ -726,7 +726,13 @@ function SessionView({
         </div>
       </div>
     );
-    if (!LAUNCHER_RAIL_ENABLED)
+    // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
+    // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
+    // SlotHost 自带 error boundary 隔离(Req 5.4)。
+    const launcherContribution = resolveSlot(extension, "launcherRail");
+    // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
+    // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
+    if (!LAUNCHER_RAIL_ENABLED && launcherContribution === undefined)
       return sessionListSlots(
         <div className="flex h-full flex-col">
           {collapseBtn}
@@ -734,10 +740,6 @@ function SessionView({
           {accountBar}
         </div>,
       );
-    // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
-    // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
-    // SlotHost 自带 error boundary 隔离(Req 5.4)。
-    const launcherContribution = resolveSlot(extension, "launcherRail");
     return sessionListSlots(
       <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-1.5">
         {collapseBtn}

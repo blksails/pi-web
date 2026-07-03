@@ -53,6 +53,10 @@ const nextConfig: NextConfig = {
   // build never clobbers a concurrently running `next dev` .next cache.
   // Defaults to ".next" — unchanged behavior unless NEXT_DIST_DIR is set.
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  // 开发指示器(编译状态小图标)固定在右下角,避开左下角的其它开发浮层。
+  devIndicators: {
+    position: "bottom-right",
+  },
   // 自包含产物(spec pi-web-cli):产出 `<distDir>/standalone` 一份可脱离 monorepo
   // 源码树运行的最小化 server。注意:standalone 产物与 `next start` 不兼容(后者拒绝
   // 服务 standalone build)。浏览器 e2e 须经 `next start` 起服,故经 PI_WEB_DISABLE_STANDALONE=1

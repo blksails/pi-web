@@ -18,7 +18,10 @@ export {
   type BlobMeta,
 } from "./blob-store.js";
 export { LocalFsBlobBackend } from "./local-fs-backend.js";
-export { AttachmentRegistry } from "./attachment-registry.js";
+export {
+  AttachmentRegistry,
+  AttachmentDescriptorNotFoundError,
+} from "./attachment-registry.js";
 export {
   AttachmentStore,
   type PutInput,

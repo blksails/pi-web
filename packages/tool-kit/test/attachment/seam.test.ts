@@ -23,6 +23,15 @@ describe("getAttachmentToolContext", () => {
   it("returns the injected ctx from a custom scope", () => {
     const fakeCtx: AttachmentToolContext = {
       available: true,
+      async listBySession() {
+        throw new Error("not implemented");
+      },
+      async getMeta() {
+        throw new Error("not implemented");
+      },
+      async setMeta() {
+        throw new Error("not implemented");
+      },
       async resolve() {
         throw new Error("not implemented");
       },

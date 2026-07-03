@@ -181,3 +181,25 @@ export {
 
 // i18n(轻量自研 i18n 运行时:零第三方依赖,isomorphic)
 export * from "./i18n/index.js";
+
+// aigc-canvas(domain="canvas" 的 AAS 实例 UI:画廊 + 二创工作台;门控 NEXT_PUBLIC_PI_WEB_CANVAS)
+export { CanvasGallery, type CanvasGalleryProps } from "./canvas/canvas-gallery.js";
+export { CanvasWorkbench, type CanvasWorkbenchProps } from "./canvas/canvas-workbench.js";
+export {
+  CanvasLauncher,
+  CanvasPanel,
+  isCanvasEnabled,
+  type CanvasLauncherProps,
+  type CanvasPanelProps,
+} from "./canvas/canvas-launcher.js";
+export { LineageView, buildLineageTree, type LineageViewProps, type LineageNode } from "./canvas/lineage-view.js";
+export {
+  useCanvasView,
+  useCanvasOpen,
+  canvasOpenStore,
+  CANVAS_PAGE_SIZE,
+  type CanvasDensity,
+  type CanvasGroupMode,
+  type CanvasViewState,
+} from "./canvas/use-canvas-view.js";
+export * from "./canvas/client-image-ops.js";

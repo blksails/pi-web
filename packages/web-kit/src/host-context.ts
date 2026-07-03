@@ -6,6 +6,7 @@
  */
 import type { UiRpcClient } from "./rpc-client.js";
 import type { Logger } from "@blksails/pi-web-logger";
+import type { SurfaceCommandResult } from "@blksails/pi-web-protocol";
 
 /**
  * webext 侧共享状态接入(state-injection-bridge, Req 7)。宿主把它接到与前端 hook 同一条
@@ -21,6 +22,23 @@ export interface WebExtStateAccess {
   set(key: string, value: unknown): Promise<void>;
   /** 删除 key(经写回端点)。 */
   delete(key: string): Promise<void>;
+}
+
+/**
+ * webext 侧 agent 权威 surface 接入(agent-authoritative-surface)。宿主把它接到与前端 hook 同一条
+ * 命令上行(ui-rpc agent 转发)+ 状态下行(ControlStore.states)+ 能力探针(getCommands)通道。
+ * `domain` 对宿主不透明(领域无关搬运);slot 组件是独立 bundle,故经 prop 注入(非 React context /
+ * 非 useSurface hook,因 web-kit 不依赖 react)—— 这是 useSurface 在 slot 侧的等价接入。
+ */
+export interface WebExtSurfaceAccess {
+  /** 发起 surface 命令(经 ui-rpc agent 转发路径),resolve 为 SurfaceCommandResult。 */
+  run(domain: string, action: string, args?: unknown): Promise<SurfaceCommandResult>;
+  /** 读某 state key 当前值(通常 `surface:<domain>` 的镜像快照)。 */
+  getState<T = unknown>(key: string): T | undefined;
+  /** 订阅某 state key 变更,返回取消订阅函数。 */
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
+  /** 探针:某命令名(如 `surface:<domain>`)是否存在,供 available 退化。 */
+  hasCommand(name: string): boolean;
 }
 
 export interface WebExtHostContext {
