@@ -47,6 +47,20 @@ export type RunStage =
 
 export type ToolProgress = (stage: RunStage) => void;
 
+/**
+ * 流式增量事件(仅 OpenAI-chat 形态的流式端点,如 OpenRouter `chat/completions` + `stream:true`)。
+ *  - `reasoning` — 模型「思考」文本的**累积**串(边想边显)
+ *  - `text`      — 模型答复正文的**累积**串
+ *  - `image`     — 早弹图像(局部/首张出现即推,后续被最终结果覆盖)
+ */
+export type StreamEvent =
+  | { kind: "reasoning"; text: string }
+  | { kind: "text"; text: string }
+  | { kind: "image"; picked: PickedResult };
+
+/** 流式增量回调(执行层→编排层→前端 onUpdate)。 */
+export type ToolStreamHandler = (ev: StreamEvent) => void;
+
 /** buildBody 执行上下文:注入式 fetch 与已解析的代理 URL。 */
 export interface BuildBodyContext {
   proxyUrl?: string;
@@ -94,6 +108,17 @@ export interface EndpointBehavior {
   detectError?: (response: unknown) => string | undefined;
   /** 异步轮询声明;省略则为同步单次请求。 */
   async?: AsyncSpec;
+  /**
+   * 流式读取(`stream:true` → `text/event-stream`)。置真时执行层走流式分支,经 `onStream` 上报增量;
+   * 网关**未透传 SSE**(仍返回整包 JSON)时自动回退为同步解析,不崩。SSE 形态由 {@link streamKind} 决定。
+   */
+  stream?: boolean;
+  /**
+   * 流式帧形态:
+   *  - `"chat"`(默认)  —— OpenAI chat SSE(`choices[].delta.{reasoning,content,images}`),reasoning 边想边显 + 图早弹。
+   *  - `"images"`        —— OpenAI Images SSE(`image_generation.partial_image` 渐进局部图,由糊变清)+ `image_generation.completed`。
+   */
+  streamKind?: "chat" | "images";
   /** 调用前需可解析的环境变量名(缺失 → 工具降级)。 */
   requiredVars?: ReadonlyArray<string>;
   /** 可选代理 URL,支持 `${VAR}`;env 未配 → 直连。 */

@@ -105,6 +105,52 @@ describe("aigcExtension integration", () => {
     expect(result.content[0]?.text).toContain("![");
   });
 
+  it("image_generation 暴露 gpt-5.4-image-2(OpenRouter)路由并可路由执行", async () => {
+    process.env.OPENROUTER_API_KEY = "or-test-key";
+    installSeam();
+    // gpt-5.4-image-2 走 /api/v1/images(streamKind:images);stub 返回非 SSE 整包 → 走同步回退,
+    // 形态为 OpenAI Images `{data:[{b64_json}]}`。
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const u = typeof url === "string" ? url : url instanceof URL ? url.href : (url as Request).url;
+        if (u === "https://openrouter.ai/api/v1/images") {
+          return {
+            ok: true,
+            text: async () => JSON.stringify({ data: [{ b64_json: "AAAA" }] }),
+            headers: { get: () => "application/json" },
+            status: 200,
+          } as unknown as Response;
+        }
+        return { ok: true, arrayBuffer: async () => new ArrayBuffer(8), headers: { get: () => "image/png" }, status: 200 } as unknown as Response;
+      }),
+    );
+
+    const OPENROUTER_KEYS = [
+      "gemini-3.1-flash-image",
+      "gemini-3-pro-image",
+      "gemini-2.5-flash-image",
+      "gpt-5-image",
+      "gpt-5-image-mini",
+      "gpt-5.4-image-2",
+    ];
+    const tools = collectAigcTools();
+    const gen = tools.find((t) => t.name === "image_generation")!;
+    const edit = tools.find((t) => t.name === "image_edit")!;
+    // 全部 OpenRouter 路由键出现在两个工具的 description(buildModelsDescription 列出每个 model)。
+    for (const k of OPENROUTER_KEYS) {
+      expect(gen.description).toContain(k);
+      expect(edit.description).toContain(k);
+    }
+    // 取一个可路由执行的 OpenRouter 模型跑通全链路。
+    const result = await gen.execute("c3", { prompt: "a red apple", model: "gpt-5.4-image-2" }, undefined, undefined, noUI);
+    const d = result.details as { ok: boolean; model?: string; assets?: { attachmentId: string }[] };
+    expect(d.ok).toBe(true);
+    expect(d.model).toBe("gpt-5.4-image-2");
+    expect(d.assets?.[0]?.attachmentId).toMatch(/^att_/);
+    delete process.env.OPENROUTER_API_KEY;
+  });
+
   it("image_edit 主图+mask+参考图>3 → 超限降级(ok:false)", async () => {
     installSeam();
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "{}", headers: { get: () => "application/json" }, status: 200 } as unknown as Response)));

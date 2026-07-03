@@ -71,6 +71,105 @@ describe("runEndpoint — sync", () => {
   });
 });
 
+describe("runEndpoint — streaming (OpenAI-chat SSE)", () => {
+  // openrouter 形态 pickResult:choices[].message.images[].image_url.url。
+  const orPick = (r: unknown): PickedResult => {
+    const urls: string[] = [];
+    for (const c of (r as { choices?: { message?: { images?: { image_url?: { url?: string } }[] } }[] }).choices ?? []) {
+      for (const img of c.message?.images ?? []) if (img.image_url?.url) urls.push(img.image_url.url);
+    }
+    if (urls.length === 0) return { kind: "raw", value: r };
+    if (urls.length === 1) return { kind: "image", url: urls[0] as string };
+    return { kind: "image-set", urls };
+  };
+
+  function sseResponse(chunks: string[]): Response {
+    const enc = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) { for (const x of chunks) c.enqueue(enc.encode(x)); c.close(); },
+    });
+    return new Response(stream, { headers: { "content-type": "text/event-stream" } });
+  }
+
+  const streamBehavior = (fetchImpl: typeof fetch): EndpointBehavior => ({
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    stream: true,
+    buildBody: (args) => ({ model: "m", messages: [{ role: "user", content: args["prompt"] }] }),
+    pickResult: orPick,
+    detectError: (r) => (r as { error?: { message?: string } }).error?.message,
+  });
+
+  it("发 stream:true,逐帧上报 reasoning/图,返回最终 image PickedResult", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"choices":[{"delta":{"reasoning":"plan"}}]}\n\n',
+      'data: {"choices":[{"delta":{"images":[{"image_url":{"url":"data:image/png;base64,ZZ"}}]}}]}\n\n',
+      "data: [DONE]\n\n",
+    ]));
+    const events: string[] = [];
+    const result = await runEndpoint(streamBehavior(fetchImpl), { prompt: "cat" }, {
+      fetchImpl,
+      onStream: (ev) => events.push(ev.kind),
+    });
+    // 请求体确实带了 stream:true。
+    const body = JSON.parse((fetchImpl.mock.calls[0]?.[1] as RequestInit).body as string);
+    expect(body.stream).toBe(true);
+    expect(events).toContain("reasoning");
+    expect(events).toContain("image");
+    expect(result).toEqual({ kind: "image", url: "data:image/png;base64,ZZ" });
+  });
+
+  it("网关忽略 stream 返回整包 JSON → 回退同步解析", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { images: [{ image_url: { url: "u1" } }] } }] }), {
+        status: 200, headers: { "content-type": "application/json" },
+      }),
+    );
+    const result = await runEndpoint(streamBehavior(fetchImpl), { prompt: "cat" }, { fetchImpl });
+    expect(result).toEqual({ kind: "image", url: "u1" });
+  });
+
+  it("流内 error 帧 → 抛出可读错误", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"error":{"code":429,"message":"rate limited"}}\n\n',
+      "data: [DONE]\n\n",
+    ]));
+    await expect(
+      runEndpoint(streamBehavior(fetchImpl), { prompt: "cat" }, { fetchImpl }),
+    ).rejects.toThrow("rate limited");
+  });
+
+  it("streamKind=images:逐张 partial 早弹 + completed 作最终图(由糊变清)", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(sseResponse([
+      'data: {"type":"image_generation.partial_image","partial_image_index":0,"b64_json":"AA"}\n\n',
+      'data: {"type":"image_generation.partial_image","partial_image_index":1,"b64_json":"BB"}\n\n',
+      'data: {"type":"image_generation.completed","b64_json":"CC"}\n\n',
+      "data: [DONE]\n\n",
+    ]));
+    const imgEvents: string[] = [];
+    const behavior: EndpointBehavior = {
+      url: "https://openrouter.ai/api/v1/images",
+      stream: true,
+      streamKind: "images",
+      buildBody: (a) => ({ model: "m", prompt: a["prompt"] }),
+      pickResult: () => ({ kind: "raw", value: null }), // images 分支不经此
+    };
+    const result = await runEndpoint(behavior, { prompt: "cat" }, {
+      fetchImpl,
+      onStream: (ev) => { if (ev.kind === "image" && ev.picked.kind === "image") imgEvents.push(ev.picked.url); },
+    });
+    // 请求体带 stream:true。
+    expect(JSON.parse((fetchImpl.mock.calls[0]?.[1] as RequestInit).body as string).stream).toBe(true);
+    // 3 次 image 事件:2 partial(渐进)+ 1 completed。
+    expect(imgEvents).toEqual([
+      "data:image/png;base64,AA",
+      "data:image/png;base64,BB",
+      "data:image/png;base64,CC",
+    ]);
+    // 最终返回 completed 图。
+    expect(result).toEqual({ kind: "image", url: "data:image/png;base64,CC" });
+  });
+});
+
 describe("runEndpoint — async polling", () => {
   it("polls until SUCCEEDED and returns result", async () => {
     const pendingResp = makeJsonResponse({ status: "PENDING" });

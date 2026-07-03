@@ -262,6 +262,18 @@ describe("previewAssetsFromPicked", () => {
     expect(mixed).toHaveLength(1);
     expect(mixed[0]?.displayUrl).toBe("https://cdn.example.com/a.png");
   });
+
+  it("includeDataUri=true 保留 data: URI(流式图早弹)+ 解析 data URI mime", () => {
+    const assets = previewAssetsFromPicked(
+      { kind: "image", url: "data:image/jpeg;base64,UE5H" },
+      "gen",
+      { includeDataUri: true },
+    );
+    expect(assets).toHaveLength(1);
+    expect(assets[0]?.displayUrl).toBe("data:image/jpeg;base64,UE5H");
+    expect(assets[0]?.mimeType).toBe("image/jpeg");
+    expect(assets[0]?.name).toBe("gen-0.jpg");
+  });
 });
 
 describe("resolveInputToDataUri", () => {

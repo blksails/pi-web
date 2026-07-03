@@ -68,6 +68,8 @@ export default defineAgent({
 |---|---|---|
 | `NEWAPI_API_KEY` | NewAPI 网关（默认 `gpt-image-2` 路由） | 使用 gpt-image-2 时必填 |
 | `SUFY_API_KEY` | sufy（七牛云）网关（`gpt-image-2-sufy` 路由） | 使用 gpt-image-2-sufy 时必填 |
+| `OPENROUTER_API_KEY` | OpenRouter 网关（`gpt-5.4-image-2` 路由，走 chat/completions） | 使用 gpt-5.4-image-2 时必填 |
+| `OPENROUTER_PROXY` | OpenRouter 请求代理（可选，`${VAR}` 占位；未设则直连） | 需经代理访问 OpenRouter 时配置 |
 | `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一个变量名**读取密钥 | 使用 DashScope / token plan 模型时必填 |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan 端点 base（可选，缺省 `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`） | 覆盖 token plan 域时配置 |
 
@@ -127,7 +129,15 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 |---|---|---|---|---|
 | `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | `POST /v1/images/generations` | $0.04/张 |
 | `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | `POST https://openai.sufy.com/v1/images/generations`（providerModel `openai/gpt-image-2`） | $0.04/张 |
+| `gemini-3.1-flash-image` | Gemini 3.1 Flash Image · OpenRouter | OpenRouter 网关 | `POST /api/v1/chat/completions`（providerModel `google/gemini-3.1-flash-image`） | $0.003/1k tok |
+| `gemini-3-pro-image` | Gemini 3 Pro Image · OpenRouter | OpenRouter 网关 | providerModel `google/gemini-3-pro-image` | $0.012/1k tok |
+| `gemini-2.5-flash-image` | Gemini 2.5 Flash Image · OpenRouter | OpenRouter 网关 | providerModel `google/gemini-2.5-flash-image` | $0.0025/1k tok |
+| `gpt-5-image` | GPT-5 Image · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5-image` | $0.01/1k tok |
+| `gpt-5-image-mini` | GPT-5 Image Mini · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5-image-mini` | $0.002/1k tok |
+| `gpt-5.4-image-2` | GPT-5.4 Image 2 · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5.4-image-2`（⚠️ 上游 org 配额异常时暂不可用） | $0.015/1k tok |
 | `wan2.7-image-pro` | Wan 2.7 Image Pro | DashScope 官方 | `POST /api/v1/services/aigc/multimodal-generation/generation`（同步） | ¥0.5/张 |
+
+> OpenRouter 6 个图像模型统一走 `chat/completions` + `modalities:["image","text"]`，路由清单集中在 `providers/openrouter-models.ts`（文生图/编辑各一份映射）。全部经 curl 实测出图（除 `gpt-5.4-image-2` 因 OpenRouter 上游 OpenAI org 配额异常暂不可用，接线正确，上游修复后自动生效）。
 | `wan2.7-image-pro-bailian` | Wan 2.7 Image Pro · token plan | 阿里云百炼 token plan | 同 DashScope 路径，base 切换到 token plan 域 | ¥0.2/张 |
 
 ### image_edit 可用模型
@@ -136,6 +146,8 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 |---|---|---|---|
 | `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | 整图改写；multipart FormData |
 | `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | 整图改写；multipart FormData；providerModel `openai/gpt-image-2` |
+| `gemini-3.1-flash-image` / `gemini-3-pro-image` / `gemini-2.5-flash-image` | Gemini 3.1/3 Pro/2.5 Flash Image · OpenRouter | OpenRouter 网关 | 整图改写（无 mask）；chat/completions 多模态 content |
+| `gpt-5-image` / `gpt-5-image-mini` / `gpt-5.4-image-2` | GPT-5 Image 系 · OpenRouter | OpenRouter 网关 | 整图改写（无 mask）；`gpt-5.4-image-2` 上游 org 异常时暂不可用 |
 | `qwen-image-edit-max` | Qwen Image Edit Max · sync | DashScope 官方 | 最高保真；支持 mask 局部重绘 |
 | `wan2.7-image-edit-bailian` | Wan 2.7 Image Edit · token plan | 阿里云百炼 token plan | DashScope 原生 messages/content；支持带图编辑 |
 
@@ -202,6 +214,20 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 - 密钥：`Authorization: Bearer ${SUFY_API_KEY}`
 
 > **同构说明**：NewAPI 与 sufy 都是 OpenAI `/images` 协议兼容网关，二者的 `buildBody`/`pickResult`/`detectError` 完全一致，统一抽到 `providers/openai-compat.ts` 的通用工厂；`newapi.ts` / `sufy.ts` 只是绑定各自 `baseUrl` + `apiKeyVar` 的薄封装。再接入同类网关只需照 `sufy.ts` 复制一份薄封装即可。
+
+### OpenRouter（gpt-5.4-image-2）
+
+- 端点：`POST https://openrouter.ai/api/v1/chat/completions`（**不是** OpenAI `/images` 接口）
+- 请求体：chat/completions 多模态形态——`{ model, modalities:["image","text"], messages:[{role:"user", content}] }`；
+  文生图 `content` 为字符串（有参考图时切多 part `text` + `image_url[]`），编辑时 `content` 恒为多 part（`text` + 主图/参考图 `image_url`）
+- 响应解析：图像在 `choices[].message.images[].image_url.url`（data URI），非 `data[].b64_json`
+- `negative_prompt` 有效（拼进 prompt 的 `Avoid:` 段）；`size`/`background`/`quality`/`moderation`/`mask` **不进 payload**（OpenRouter chat 接口无对应字段，静默忽略）
+- 密钥：`Authorization: Bearer ${OPENROUTER_API_KEY}`；可选 `${OPENROUTER_PROXY}` 代理（未设直连）
+- **流式（已启用，分两种）**：
+  - **OpenAI 系（`gpt-5-image` / `-mini` / `gpt-5.4-image-2`）走 `POST /api/v1/images` + `partial_images`**：**真·由糊变清**——`image_generation.partial_image` 逐张渐进（实测 3 张跨 ~19s 一张比一张清晰）→ `image_generation.completed`。gen/edit 均 JSON（edit 用 `image` 字段传 data URI）。
+  - **Gemini 系走 `/chat/completions` + `stream:true`**：**推理文本边想边显**（工具卡 `💭`）+ **图早弹**（图一到先显 data URI，比 persist 早若干秒）；图本身单帧原子（无 partial_images）。
+  - 实现与实机验证见 `docs/aigc-streaming-design.md §0.1/§0.2`。网关未透传 SSE 时自动回退同步解析。
+- **计费**：按 token（output tokens 含图像），OpenRouter 报价 `$0.000015/completion token`
 
 ### DashScope 官方（wan2.7-image-pro / qwen-image-edit-max）
 

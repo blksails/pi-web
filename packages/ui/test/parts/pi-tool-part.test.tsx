@@ -42,12 +42,9 @@ describe("PiToolPart 四态", () => {
     expect(detail?.querySelector("code.language-json")).not.toBeNull();
   });
 
-  it("update 态:Streaming 徽章 + 旋转图标;显式展开显示累积值", () => {
+  it("update 态:Streaming 徽章 + 旋转图标;默认展开显示流式累积值", () => {
     render(
-      <PiToolPart
-        part={toolUpdatePart("search", { q: "pi" }, { partial: 1 })}
-        defaultOpen={true}
-      />,
+      <PiToolPart part={toolUpdatePart("search", { q: "pi" }, { partial: 1 })} />,
     );
     const card = screen.getByText("search").closest("[data-pi-tool]");
     expect(card).toHaveAttribute("data-pi-tool-phase", "update");
@@ -56,6 +53,7 @@ describe("PiToolPart 四态", () => {
     expect(
       card?.querySelector("[data-pi-tool-status] .animate-spin"),
     ).not.toBeNull();
+    // update 态默认展开(无需显式 defaultOpen),流式增量可见。
     expect(
       card?.querySelector("[data-pi-tool-detail]")?.textContent,
     ).toContain('"partial": 1');
@@ -102,11 +100,15 @@ describe("PiToolPart 四态", () => {
     expect(card?.querySelector("[data-pi-tool-detail]")).not.toBeNull();
   });
 
-  it("按状态默认展开:start/update 折叠、end/error 展开;显式 defaultOpen 覆盖", () => {
+  it("按状态默认展开:start 折叠、update/end/error 展开;显式 defaultOpen 覆盖", () => {
     const { rerender } = render(
       <PiToolPart part={toolStartPart("t", {})} />,
     );
+    // start(仅入参、无输出)默认折叠。
     expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "false");
+    // update(流式增量)默认展开,让输出可见。
+    rerender(<PiToolPart part={toolUpdatePart("t", {}, { partial: 1 })} />);
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
     rerender(<PiToolPart part={toolEndPart("t", {}, { ok: 1 })} />);
     expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
     // 显式覆盖:end 态强制折叠。

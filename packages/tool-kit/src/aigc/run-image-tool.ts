@@ -23,6 +23,8 @@ import type {
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import { checkRequiredVars } from "../engine/var-resolver.js";
 import { runEndpoint } from "../engine/endpoint-adapter.js";
+import type { StreamEvent } from "../engine/endpoint-types.js";
+import { emitLivePreview } from "../surface/live-preview-seam.js";
 import { normalizeImageDataUri } from "../engine/normalize-image.js";
 import { getAttachmentToolContext } from "../attachment/seam.js";
 import {
@@ -239,6 +241,22 @@ function errResult(error: string): ExecuteResult {
   };
 }
 
+/** 流式思考/文本预览结果(preview 态,前端增量渲染;details 无 assets)。 */
+function buildStreamingText(text: string, model: string): ExecuteResult {
+  return {
+    content: [{ type: "text", text }],
+    details: { ok: true, model, assets: [] },
+  };
+}
+
+/** 组装流式思考文案:优先思考(reasoning),再附答复正文;都空则占位。 */
+function composeThinking(reasoning: string, text: string): string {
+  const parts: string[] = [];
+  if (reasoning) parts.push(`💭 ${reasoning}`);
+  if (text) parts.push(text);
+  return parts.join("\n\n") || "生成中…";
+}
+
 // ── 编排主函数 ─────────────────────────────────────────────────────────────────
 
 export async function runImageTool(
@@ -288,7 +306,39 @@ export async function runImageTool(
   try {
     await resolveMediaFields(mediaFields, merged, ctx);
 
-    const picked = await runEndpoint(route, merged, { signal, fetchImpl: deps?.fetchImpl });
+    // 流式增量:图像 → ①全局 live-preview seam(canvas 等 surface 渐进显示,不依赖 onUpdate)②chat 卡片
+    // 早弹(onUpdate,若有);reasoning/文本 → 仅 chat 卡片(onUpdate)。onStream 恒建,seam 覆盖对话流 +
+    // 命令旁路两条生成路径(见 surface/live-preview-seam)。
+    let lastReasoning = "";
+    let lastText = "";
+    let lastEmit = 0;
+    let sawImagePreview = false;
+    const THROTTLE_MS = 100;
+    const onStream = (ev: StreamEvent): void => {
+      if (ev.kind === "image") {
+        // 流式图:data URI(includeDataUri)。先喂全局 seam(canvas 渐进),再喂 chat 卡片早弹。
+        const preview = previewAssetsFromPicked(ev.picked, toolName, { includeDataUri: true });
+        const url = preview[0]?.displayUrl;
+        if (url !== undefined) {
+          emitLivePreview({ displayUrl: url, stage: "partial" });
+          if (onUpdate) {
+            sawImagePreview = true;
+            onUpdate(buildImageResult(preview, route.model, { preview: true }));
+          }
+        }
+        return;
+      }
+      if (onUpdate === undefined) return; // 纯文本增量仅 chat 卡片需要
+      if (ev.kind === "reasoning") lastReasoning = ev.text;
+      else lastText = ev.text;
+      if (sawImagePreview) return; // 图已早弹,不回退到思考文本
+      const now = Date.now();
+      if (now - lastEmit < THROTTLE_MS) return;
+      lastEmit = now;
+      onUpdate(buildStreamingText(composeThinking(lastReasoning, lastText), route.model));
+    };
+
+    const picked = await runEndpoint(route, merged, { signal, fetchImpl: deps?.fetchImpl, onStream });
     const providerMs = Date.now() - startedAt;
     log.info("provider returned", {
       tool: toolName,
@@ -333,5 +383,8 @@ export async function runImageTool(
       ms: Date.now() - startedAt,
     });
     return errResult(`生成失败:${message}`);
+  } finally {
+    // 生成结束(成功/失败/取消)清除全局渐进预览 seam(surface sink 据此清 livePreview)。
+    emitLivePreview(null);
   }
 }

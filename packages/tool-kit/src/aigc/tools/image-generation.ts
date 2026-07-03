@@ -19,6 +19,7 @@ import {
 } from "../providers/dashscope.js";
 import { createNewApiImage } from "../providers/newapi.js";
 import { createSufyImage } from "../providers/sufy.js";
+import { openRouterImageRoutes } from "../providers/openrouter-models.js";
 import {
   runImageTool,
   buildModelsDescription,
@@ -54,6 +55,7 @@ const ROUTES: readonly ImageRoute[] = [
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
+  ...openRouterImageRoutes(),
   createDashscopeSyncT2I(
     {
       model: "wan2.7-image-pro",

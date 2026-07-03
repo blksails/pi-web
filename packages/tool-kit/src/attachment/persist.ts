@@ -104,15 +104,17 @@ export async function persistPicked(
 export function previewAssetsFromPicked(
   picked: PickedResult,
   namePrefix = "aigc",
+  opts: { includeDataUri?: boolean } = {},
 ): PersistedAsset[] {
   const urls = pickedImageUrls(picked);
   if (urls === null) return [];
   return (
     urls
-      // Only remote URLs are worth optimistically previewing: a `data:` URI is
-      // already in hand (persist decodes it locally, no gap to fill) and inlining a
-      // multi-MB base64 string into a preliminary SSE frame would be pure waste.
-      .filter((url) => !url.startsWith("data:"))
+      // 非流式:只预览远程 URL——`data:` URI 已在手(persist 本地解码,无需填补空窗),
+      // 把多 MB base64 塞进 preliminary SSE 帧是纯浪费,默认过滤。
+      // 流式(includeDataUri):图**先于** persist 到达且只有 data URI 形态,「图早弹」正是要
+      // 提前把这张 data URI 显出来(尤其 gemini 图在首帧),故此时保留 data URI。
+      .filter((url) => opts.includeDataUri || !url.startsWith("data:"))
       .map((url, i) => {
         const mimeType = mimeFromUrl(url);
         const ext = extFromMime(mimeType);
@@ -183,6 +185,11 @@ function detectMimeType(resp: Response, url: string): string {
 }
 
 function mimeFromUrl(url: string): string {
+  // data URI:mime 就写在前缀里(`data:image/png;base64,…`)。
+  if (url.startsWith("data:")) {
+    const m = /^data:([^;,]+)/.exec(url);
+    if (m?.[1]) return m[1].toLowerCase();
+  }
   const lower = url.split("?")[0]?.toLowerCase() ?? "";
   if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
   if (lower.endsWith(".webp")) return "image/webp";

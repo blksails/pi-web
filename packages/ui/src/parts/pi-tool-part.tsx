@@ -10,11 +10,11 @@
  *
  * 对应 AI SDK `ToolUIPart` / `DynamicToolUIPart` 的 `state`:
  *   - input-streaming / input-available  → start 态(Running,默认折叠)
- *   - output-available(preliminary)     → update 态(Streaming,默认折叠)
+ *   - output-available(preliminary)     → update 态(Streaming,默认展开:让流式增量可见)
  *   - output-available(最终)            → end 态(Completed,默认展开)
  *   - output-error                       → error 态(Error,默认展开,destructive)
  *
- * 默认展开策略:未显式传 `defaultOpen` 时,end / error 展开,start / update 折叠。
+ * 默认展开策略:未显式传 `defaultOpen` 时,update / end / error 展开(有输出即显),仅 start 折叠。
  * 明细区可折叠并带键盘可达 + aria 状态。数据型 input/output 用同步 JSON 代码块
  * (实测 streamdown shiki 对代码块异步高亮且破坏文本格式,见 spec research.md R4),
  * 字符串型 output 经 Response 富渲染。
@@ -377,10 +377,10 @@ export function PiToolPart({
   const name = toolNameOf(part);
   const isError = phase === "error";
   const contentId = React.useId();
-  // 按状态默认展开:end / error 展开,start / update 折叠;显式 defaultOpen 优先。
-  // 用 derived state + 用户覆盖:phase 进入终态时随之展开;用户手动切换后由其接管,
-  // 后续 phase 变化不再覆盖用户选择。
-  const autoOpen = defaultOpen ?? (phase === "end" || phase === "error");
+  // 按状态默认展开:update / end / error 展开(有输出即显,含流式增量),仅 start 折叠;
+  // 显式 defaultOpen 优先。用 derived state + 用户覆盖:phase 变化时随之展开;用户手动切换
+  // 后由其接管,后续 phase 变化不再覆盖用户选择。
+  const autoOpen = defaultOpen ?? (phase === "update" || phase === "end" || phase === "error");
   const [userOverride, setUserOverride] = React.useState<boolean | null>(null);
   const open = userOverride ?? autoOpen;
   const onToggle = () => setUserOverride(!open);

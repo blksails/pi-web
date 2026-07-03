@@ -19,6 +19,7 @@ import {
 } from "../providers/dashscope.js";
 import { createNewApiImageEdit } from "../providers/newapi.js";
 import { createSufyImageEdit } from "../providers/sufy.js";
+import { openRouterImageEditRoutes } from "../providers/openrouter-models.js";
 import {
   runImageTool,
   buildModelsDescription,
@@ -52,6 +53,7 @@ const ROUTES: readonly ImageRoute[] = [
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
+  ...openRouterImageEditRoutes(),
   createDashscopeImageEdit(
     {
       model: "qwen-image-edit-max",
