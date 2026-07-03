@@ -120,6 +120,7 @@ export function CanvasPanel({
           {...(sessionId !== undefined ? { sessionId } : {})}
           {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
           {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
+          {...(syncSignal !== undefined ? { syncSignal } : {})}
         />
       ) : (
         <CanvasGallery

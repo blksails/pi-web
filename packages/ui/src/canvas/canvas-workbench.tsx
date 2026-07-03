@@ -407,6 +407,8 @@ export interface CanvasWorkbenchProps {
   readonly onSubmitPrompt?: (text: string) => void;
   /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview` 显示渐进图。 */
   readonly livePreviewImage?: string;
+  /** 轮末 idle 边沿信号(宿主每轮结束 bump);作 livePreview 卡死自愈锚点。 */
+  readonly syncSignal?: unknown;
 }
 
 export function CanvasWorkbench({
@@ -424,6 +426,7 @@ export function CanvasWorkbench({
   imageLoader,
   onSubmitPrompt,
   livePreviewImage,
+  syncSignal,
 }: CanvasWorkbenchProps): React.JSX.Element {
   const available = surface !== undefined && surface.hasCommand(PROBE);
   const [prompt, setPrompt] = React.useState("");
@@ -446,6 +449,16 @@ export function CanvasWorkbench({
     read();
     return surface.subscribe(STATE_KEY, read);
   }, [surface]);
+  // 轮末兜底自愈:清除帧(livePreview:null)在 dev 帧投递不稳/长流式高频窗口下可能丢失,
+  // 叠层会卡死在「生成中」。轮末 idle 边沿(syncSignal 变化)时生成必已结束 → 无条件清叠层。
+  const firstSync = React.useRef(true);
+  React.useEffect(() => {
+    if (firstSync.current) {
+      firstSync.current = false;
+      return;
+    }
+    setLivePreview(null);
+  }, [syncSignal]);
   // ── M2 状态:@引用 / 参数簇 / 文本标注编辑器 ─────────────────────────────────
   const [refs, setRefs] = React.useState<readonly string[]>([]);
   const [refOpen, setRefOpen] = React.useState(false);

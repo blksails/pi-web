@@ -399,6 +399,41 @@ describe("CanvasWorkbench", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("livePreview 卡死自愈:清除帧丢失(快照仍挂 stage)时,轮末 syncSignal 变化强制清叠层", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    // fake 快照恒挂 livePreview(模拟 null 清除帧丢失)。
+    const surface: WebExtSurfaceAccess = {
+      run,
+      getState: <T,>() =>
+        ({ assets: [], livePreview: { stage: "partial" } }) as T,
+      subscribe: () => () => undefined,
+      hasCommand: () => true,
+    };
+    const { rerender } = render(
+      <CanvasWorkbench
+        surface={surface}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        syncSignal={1}
+      />,
+    );
+    expect(document.querySelector("[data-canvas-live-preview]")).toBeTruthy();
+    // 轮末 idle 边沿(syncSignal bump)→ 无条件清叠层(不依赖快照帧)。
+    rerender(
+      <CanvasWorkbench
+        surface={surface}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        syncSignal={2}
+      />,
+    );
+    await waitFor(() =>
+      expect(document.querySelector("[data-canvas-live-preview]")).toBeNull(),
+    );
+  });
+
   it("关闭 → onClose;带入对话 → onBringToConversation(att_id)", () => {
     const onClose = vi.fn();
     const onBring = vi.fn();
