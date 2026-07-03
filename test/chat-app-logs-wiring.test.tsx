@@ -20,6 +20,11 @@ vi.mock("@blksails/pi-web-ui", () => ({
   },
   PiChatBasic: (): React.JSX.Element => <div data-test-pi-chat-basic />,
   SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
+  // 免门控(source 声明驱动):chat-app 经 resolveSlot 探测 launcherRail 贡献;测试 source 无
+  // webext 声明 → undefined(走 rail 关闭分支,与生产语义一致)。
+  resolveSlot: (): undefined => undefined,
+  SlotHost: (): null => null,
+  LauncherRail: (): React.JSX.Element => <div data-test-launcher-rail />,
   // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这两个组件。
   CanvasLauncher: (): null => null,
   CanvasPanel: (): null => null,

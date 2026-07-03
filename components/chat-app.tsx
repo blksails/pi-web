@@ -33,6 +33,25 @@ import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 
+/** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
+function PanelToggleIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="9" y1="4" x2="9" y2="20" />
+    </svg>
+  );
+}
+
 type LogsPanelConfig = {
   readonly panelVisible: boolean;
   readonly panelPosition: "bottom" | "right" | "drawer" | "top";
@@ -428,6 +447,25 @@ function SessionView({
   readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
 }): React.JSX.Element {
   const t = useI18n();
+  // 侧栏折叠(整条左栏):折叠后不渲染 sidebar 槽,对话区吃满横向空间(类 ChatGPT/Grok)。
+  // localStorage 持久化;SSR 安全:初值 false,挂载后读取偏好。
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState<boolean>(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem("pi-web:sidebar-collapsed") === "1")
+      setSidebarCollapsed(true);
+  }, []);
+  const toggleSidebar = React.useCallback(() => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      if (typeof window !== "undefined")
+        window.localStorage.setItem(
+          "pi-web:sidebar-collapsed",
+          next ? "1" : "0",
+        );
+      return next;
+    });
+  }, []);
   const session: UsePiSessionResult = usePiSession({
     create,
     ...(resumeId !== undefined ? { resumeId } : {}),
@@ -626,6 +664,24 @@ function SessionView({
           : {})}
       />
     );
+    // 折叠整条左栏:不提供 sidebar 槽 → PiChat 不渲染 aside,对话区吃满宽度。
+    // 展开入口(浮钮)在 SessionView 内、PiChat 之上渲染(见 return)。
+    if (sidebarCollapsed) return {};
+    // 折叠按钮:置于侧栏顶部右侧,点击收起整条左栏。
+    const collapseBtn = (
+      <div className="flex shrink-0 items-center justify-end px-0.5 pt-0.5">
+        <button
+          type="button"
+          data-sidebar-collapse
+          onClick={toggleSidebar}
+          aria-label={t("chatApp.collapseSidebar")}
+          title={t("chatApp.collapseSidebar")}
+          className="inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+        >
+          <PanelToggleIcon />
+        </button>
+      </div>
+    );
     // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
     // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 LAUNCHER_RAIL_ENABLED 门控),因主流 e2e
     // 跑在 rail 关闭态且依赖 data-settings-link / data-pi-theme-toggle 等。原「新建会话/切换源」
@@ -679,12 +735,14 @@ function SessionView({
     if (!LAUNCHER_RAIL_ENABLED && launcherContribution === undefined)
       return sessionListSlots(
         <div className="flex h-full flex-col">
+          {collapseBtn}
           <div className="min-h-0 flex-1">{panel}</div>
           {accountBar}
         </div>,
       );
     return sessionListSlots(
       <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-1.5">
+        {collapseBtn}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
           onResume={onResumeSession}
@@ -722,6 +780,8 @@ function SessionView({
     onNewByAgentSource,
     onReset,
     t,
+    sidebarCollapsed,
+    toggleSidebar,
   ]);
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
@@ -787,7 +847,7 @@ function SessionView({
         session: {session.sessionId}
       </span>
       <div
-        className="min-h-0 flex-1"
+        className="relative min-h-0 flex-1"
         {...(extension?.config?.theme !== undefined
           ? {
               "data-pi-ext-theme": "",
@@ -796,6 +856,19 @@ function SessionView({
             }
           : {})}
       >
+        {/* 侧栏折叠态:浮于对话区左上角的展开钮(侧栏已不渲染,须在此提供展开入口)。 */}
+        {sidebarCollapsed ? (
+          <button
+            type="button"
+            data-sidebar-expand
+            onClick={toggleSidebar}
+            aria-label={t("chatApp.expandSidebar")}
+            title={t("chatApp.expandSidebar")}
+            className="absolute left-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          >
+            <PanelToggleIcon />
+          </button>
+        ) : null}
         {/* Tier5 空态声明式配置(config.empty)→ PiChat props,与上方 theme/layout 同构。
             优先级契约在 PiChat 边界:PiChat 不读 extension.config,只认显式 props,故显式 props
             天然胜出;本宿主若未来叠加自身显式空态 props,须置于这些条件展开之后以让宿主值胜出。 */}

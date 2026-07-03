@@ -259,10 +259,22 @@ export interface Annotation {
   readonly text?: string;
   /** 线宽(text 时为字号基数,实际字号 = size × 4)。 */
   readonly size: number;
+  /** 每条标注的颜色(缺省用 drawAnnotations 的整体 color 参数,即批注红)。 */
+  readonly color?: string;
 }
 
 /** 批注红(给模型看的指令色,业界惯例)。 */
 export const ANNOTATION_COLOR = "#ef4444";
+
+/** 标注预设色板(工具轨颜色选择;首项为默认批注红)。 */
+export const ANNOTATION_PALETTE: readonly string[] = [
+  ANNOTATION_COLOR, // 红(默认)
+  "#f97316", // 橙
+  "#22c55e", // 绿
+  "#3b82f6", // 蓝
+  "#ffffff", // 白
+  "#111111", // 黑
+];
 
 /** 在 ctx 上绘制标注序列(线/带头箭头/文本;fake 缺原语时静默跳过对应部分)。 */
 export function drawAnnotations(
@@ -276,16 +288,18 @@ export function drawAnnotations(
     typeof ctx.lineTo === "function" &&
     typeof ctx.stroke === "function";
   for (const a of annotations) {
+    // 每条标注可自带颜色(工具轨颜色选择);缺省回落整体 color 参数(批注红)。
+    const c = a.color ?? color;
     if (a.kind === "text") {
       if (typeof ctx.fillText === "function") {
-        ctx.fillStyle = color;
+        ctx.fillStyle = c;
         ctx.font = `bold ${Math.max(10, Math.round(a.size * 4))}px sans-serif`;
         ctx.fillText(a.text ?? "", a.from.x, a.from.y);
       }
       continue;
     }
     if (!hasPath) continue;
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = c;
     ctx.lineWidth = a.size;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";

@@ -53,6 +53,8 @@ import {
 import { Textarea } from "../ui/textarea.js";
 import { cn } from "../lib/cn.js";
 import {
+  ANNOTATION_COLOR,
+  ANNOTATION_PALETTE,
   annotationsToImage,
   compositeByMask,
   drawAnnotations,
@@ -399,6 +401,8 @@ export function CanvasWorkbench({
   const [tool, setTool] = React.useState<StageTool>("move");
   /** 笔刷占源图短边比例(实际像素在落笔时按 natural 换算)。 */
   const [brushRatio, setBrushRatio] = React.useState<number>(BRUSH_RATIOS[1]);
+  /** 标注颜色(线/箭头/文本共用;默认批注红,经工具轨色板切换)。 */
+  const [annoColor, setAnnoColor] = React.useState<string>(ANNOTATION_COLOR);
   const [currentId, setCurrentId] = React.useState<string>(asset.attachmentId);
   // ── M2 状态:@引用 / 参数簇 / 文本标注编辑器 ─────────────────────────────────
   const [refs, setRefs] = React.useState<readonly string[]>([]);
@@ -914,7 +918,7 @@ export function CanvasWorkbench({
     if (annoLineTool) {
       (e.target as Element).setPointerCapture?.(e.pointerId);
       drawing.current = true;
-      const d: Annotation = { kind: tool, from: p, to: p, size: annoSize };
+      const d: Annotation = { kind: tool, from: p, to: p, size: annoSize, color: annoColor };
       annoDraftRef.current = d;
       setAnnoDraft(d);
       return;
@@ -989,6 +993,7 @@ export function CanvasWorkbench({
         to: { x: textEditor.nx, y: textEditor.ny },
         text: value,
         size: annoSize * 2,
+        color: annoColor,
       };
       setOps([...ops, { kind: "anno", item: anno }]);
       setRedoOps([]);
@@ -1150,6 +1155,31 @@ export function CanvasWorkbench({
       {toolBtn("text", <Type className="h-4 w-4" />, "文本", maskToolsDisabled, "文本(标注即指令)")}
       {toolBtn("mask", <Brush className="h-4 w-4" />, "掩码刷", maskToolsDisabled)}
       {toolBtn("erase", <Eraser className="h-4 w-4" />, "擦除", maskToolsDisabled)}
+
+      {annoLineTool || tool === "text" ? (
+        <div className="flex flex-col items-center gap-1 py-1" data-canvas-anno-colors>
+          {ANNOTATION_PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              aria-pressed={annoColor === c}
+              aria-label={`标注颜色 ${c}`}
+              title={`标注颜色 ${c}`}
+              data-canvas-anno-color={c}
+              onClick={() => setAnnoColor(c)}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
+                annoColor === c ? "bg-[hsl(var(--accent))]" : "hover:bg-[hsl(var(--muted))]",
+              )}
+            >
+              <span
+                className="h-3.5 w-3.5 rounded-full border border-[hsl(var(--border))]"
+                style={{ backgroundColor: c }}
+              />
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {drawingTool ? (
         <div className="flex flex-col items-center gap-1 py-1" data-canvas-brush-sizes>

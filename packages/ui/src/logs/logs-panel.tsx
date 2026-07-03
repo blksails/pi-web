@@ -270,7 +270,7 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
   return (
     <div
       className={cn(
-        "flex flex-col min-h-0 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] border border-[hsl(var(--border))] rounded-lg overflow-hidden",
+        "flex flex-col min-h-0 bg-[hsl(var(--background))] text-[hsl(var(--foreground))] rounded-lg overflow-hidden",
         className,
       )}
     >
