@@ -259,7 +259,7 @@ export function SessionListPanel(
   // 乐观占位:仅当占位会话 id 尚未出现在已拉取列表时渲染(去重让位)。
   const pending =
     pendingSession !== undefined &&
-    !items.some((i) => i.sessionId === pendingSession.sessionId)
+      !items.some((i) => i.sessionId === pendingSession.sessionId)
       ? pendingSession
       : undefined;
 
@@ -344,7 +344,7 @@ export function SessionListPanel(
     <div
       data-pi-session-list=""
       className={cn(
-        "flex h-full w-60 shrink-0 flex-col gap-2 overflow-hidden border-r border-[hsl(var(--border))] text-sm",
+        "flex h-full w-60 shrink-0 flex-col gap-2 overflow-hidden text-sm",
         className,
       )}
     >

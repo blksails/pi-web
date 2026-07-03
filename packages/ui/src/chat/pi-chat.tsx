@@ -1210,8 +1210,8 @@ export function PiChat({
     readinessGating && !sessionReady ? (
       <div
         className={`mx-auto mb-2 flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sessionReadinessError
-            ? "border-[hsl(var(--destructive))]/20 bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
-            : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
+          ? "border-[hsl(var(--destructive))]/20 bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
+          : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
           }`}
         data-pi-session-readiness={
           sessionReadinessError ? "error" : "connecting"
@@ -1541,7 +1541,7 @@ export function PiChat({
   const tree = (
     <div
       className={cn(
-        "relative flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
+        "relative flex h-full w-full gap-1 text-[hsl(var(--foreground))]",
         className,
       )}
       data-pi-chat-pro
