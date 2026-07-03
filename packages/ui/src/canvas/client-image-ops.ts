@@ -171,6 +171,73 @@ export function createMask(
   return canvas.toDataURL(deps.mimeType ?? "image/png");
 }
 
+// ── 扩图 outpaint(拖动底图边框向外扩 → 大画布 + alpha mask)──────────────────────
+
+/** 四边扩展量(源图像素,≥0)。 */
+export interface ExpandEdges {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+/** 是否存在有效扩展。 */
+export function hasExpand(e: ExpandEdges): boolean {
+  return e.top > 0 || e.right > 0 || e.bottom > 0 || e.left > 0;
+}
+
+/** 扩展后画布尺寸。 */
+export function expandedSize(
+  base: { width: number; height: number },
+  e: ExpandEdges,
+): { width: number; height: number } {
+  return { width: base.width + e.left + e.right, height: base.height + e.top + e.bottom };
+}
+
+/**
+ * 扩图输入图:大画布(扩展后尺寸)+ 原图绘于 (left,top)。扩展区留透明,
+ * 与 {@link outpaintMask} 配对喂 image_edit(OpenAI outpaint via inpaint 惯例)。
+ */
+export function outpaintImage(
+  base: ImageSourceLike,
+  e: ExpandEdges,
+  deps: ClientImageOpsDeps = {},
+): string {
+  const factory = deps.canvasFactory ?? defaultCanvasFactory;
+  const out = expandedSize(base, e);
+  const canvas = factory();
+  canvas.width = out.width;
+  canvas.height = out.height;
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) throw new Error("client-image-ops: 2d context unavailable");
+  if (base.source !== undefined) {
+    ctx.drawImage(base.source, e.left, e.top, base.width, base.height);
+  }
+  return canvas.toDataURL(deps.mimeType ?? "image/png");
+}
+
+/**
+ * 扩图 alpha mask:扩展后尺寸;**原图区域不透明**(保留),扩展区透明(alpha=0 = 生成)。
+ * OpenAI images/edits 标准语义,与 strokesToMask 同一套 alpha 约定。
+ */
+export function outpaintMask(
+  base: { width: number; height: number },
+  e: ExpandEdges,
+  deps: ClientImageOpsDeps = {},
+): string {
+  const factory = deps.canvasFactory ?? defaultCanvasFactory;
+  const out = expandedSize(base, e);
+  const canvas = factory();
+  canvas.width = out.width;
+  canvas.height = out.height;
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) throw new Error("client-image-ops: 2d context unavailable");
+  // canvas 默认全透明(=生成区);只把原图区涂不透明(=保留)。
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(e.left, e.top, base.width, base.height);
+  return canvas.toDataURL(deps.mimeType ?? "image/png");
+}
+
 // ── 图层拍平(M3:拖入资产成层 → 本地合成回流)─────────────────────────────────────
 
 /** 一个待拍平图层(位置/尺寸均为**底图像素坐标**;后序在上)。 */

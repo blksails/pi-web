@@ -25,6 +25,7 @@ import {
   AtSign,
   Brush,
   Eraser,
+  Expand,
   Hand,
   Loader2,
   Maximize2,
@@ -59,13 +60,18 @@ import {
   annotationsToImage,
   compositeByMask,
   drawAnnotations,
+  expandedSize,
   flattenLayers,
+  hasExpand,
   hasMaskContent,
+  outpaintImage,
+  outpaintMask,
   rotateImage,
   strokesToMask,
   uploadDataUri,
   type Annotation,
   type CanvasFactory,
+  type ExpandEdges,
   type ImageSourceLike,
   type MaskStroke,
   type UploadFn,
@@ -90,7 +96,7 @@ function settleWindow<T>(p: Promise<T>, ms = RUN_SETTLE_MS): Promise<unknown> {
 }
 
 /** 舞台工具。 */
-type StageTool = "move" | "draw" | "line" | "arrow" | "text" | "mask" | "erase";
+type StageTool = "move" | "expand" | "draw" | "line" | "arrow" | "text" | "mask" | "erase";
 
 /** 笔刷直径预设:占源图**短边**的比例(固定像素对小图荒谬——1×1 占位图一笔全屏)。 */
 const BRUSH_RATIOS = [0.025, 0.05, 0.1] as const;
@@ -150,6 +156,8 @@ export interface GenerateDecisionInput {
   readonly imageId: string;
   readonly prompt: string;
   readonly model: string;
+  /** 扩图就绪(四边扩展量任一 >0 且上传接缝可用;优先级最高——改变画布本身)。 */
+  readonly hasExpand?: boolean;
   /** 掩码就绪(有 paint 笔迹且上传接缝可用)。 */
   readonly hasMask: boolean;
   /** 参考图 att_id 序列(@引用 + 已拍平上传的批注图)。 */
@@ -161,7 +169,7 @@ export interface GenerateDecisionInput {
 }
 
 export interface GenerateDecision {
-  readonly action: "inpaint" | "reference" | "variants" | "reframe" | "edit";
+  readonly action: "outpaint" | "inpaint" | "reference" | "variants" | "reframe" | "edit";
   /** 命令 args(inpaint 的 `mask` 由调用方在掩码上传后补充)。 */
   readonly args: Record<string, unknown>;
 }
@@ -174,6 +182,12 @@ export function decideGenerate(i: GenerateDecisionInput): GenerateDecision {
   const base: Record<string, unknown> = { image: i.imageId, prompt: i.prompt };
   if (i.model !== "") base.model = i.model;
   if (i.size !== "") base.size = i.size;
+  if (i.hasExpand === true) {
+    // 扩图:image 由调用方替换为「大画布合成图」att,mask 同步补充;size 交给输入画布(auto)。
+    const { size: _drop, ...rest } = base;
+    void _drop;
+    return { action: "outpaint", args: rest };
+  }
   if (i.hasMask) return { action: "inpaint", args: base };
   if (i.referenceIds.length > 0) {
     const args: Record<string, unknown> = { ...base, reference_images: [...i.referenceIds] };
@@ -186,6 +200,7 @@ export function decideGenerate(i: GenerateDecisionInput): GenerateDecision {
 }
 
 const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
+  outpaint: "扩图",
   inpaint: "局部重绘",
   reference: "融合生成",
   variants: "生成变体",
@@ -410,6 +425,12 @@ export function CanvasWorkbench({
   const [refOpen, setRefOpen] = React.useState(false);
   const [ratioSize, setRatioSize] = React.useState<string>("");
   const [variantsN, setVariantsN] = React.useState(1);
+  const [sizeOpen, setSizeOpen] = React.useState(false);
+  const [customW, setCustomW] = React.useState("");
+  const [customH, setCustomH] = React.useState("");
+  // ── 扩图:四边扩展量(源图像素;>0 即扩图意图,生成走 outpaint)────────────────────
+  const NO_EXPAND: ExpandEdges = { top: 0, right: 0, bottom: 0, left: 0 };
+  const [expand, setExpand] = React.useState<ExpandEdges>(NO_EXPAND);
   const [textEditor, setTextEditor] = React.useState<{
     nx: number;
     ny: number;
@@ -485,6 +506,7 @@ export function CanvasWorkbench({
     setTextEditor(null);
     setLayers([]);
     setSelectedLayer(null);
+    setExpand({ top: 0, right: 0, bottom: 0, left: 0 });
     setNatural(null);
   }, [current.attachmentId, resetView]);
 
@@ -588,12 +610,18 @@ export function CanvasWorkbench({
     }
   }, [upload, canvasFactory, current, baseUrl, sessionId, available, surface]);
 
+  // 扩展后画布(hasExpand 时 wrapper 按 extended 布局,原图/overlay/图层带偏移定位)。
+  const ext = natural !== null ? expandedSize({ width: natural.w, height: natural.h }, expand) : null;
+  const expanding = hasExpand(expand);
+
   const maskReady = hasMaskContent(strokes) && upload !== undefined;
+  const expandReady = expanding && upload !== undefined;
   // 决策预览(生成按钮的动作/文案;inpaint 的 mask 与标注拍平图在 generate 时才上传)。
   const decisionPreview = decideGenerate({
     imageId: current.attachmentId,
     prompt,
     model,
+    hasExpand: expandReady,
     hasMask: maskReady,
     referenceIds: annotations.length > 0 && upload !== undefined ? ["__anno__", ...refs] : refs,
     variants: variantsN,
@@ -624,6 +652,7 @@ export function CanvasWorkbench({
         imageId: current.attachmentId,
         prompt,
         model,
+        hasExpand: hasExpand(expand) && upload !== undefined,
         hasMask: hasMaskContent(strokes) && upload !== undefined,
         referenceIds,
         variants: variantsN,
@@ -645,6 +674,49 @@ export function CanvasWorkbench({
         );
         setRedoOps([]);
       };
+
+      if (decision.action === "outpaint" && upload !== undefined) {
+        // 扩图:本地合成「大画布+原图居位」输入图 + alpha mask(扩展区透明=生成)。
+        const src = sourceSize();
+        const opts = canvasFactory !== undefined ? { canvasFactory } : {};
+        const bigUri = outpaintImage(src, expand, opts);
+        const maskUri = outpaintMask({ width: src.width, height: src.height }, expand, opts);
+        const [big, maskUp] = await Promise.all([
+          uploadDataUri({
+            dataUri: bigUri,
+            name: `outpaint-${current.name}`,
+            baseUrl: baseUrl ?? "",
+            sessionId: sessionId ?? "",
+            upload,
+          }),
+          uploadDataUri({
+            dataUri: maskUri,
+            name: `outpaint-mask-${current.name}`,
+            baseUrl: baseUrl ?? "",
+            sessionId: sessionId ?? "",
+            upload,
+          }),
+        ]);
+        const args: Record<string, unknown> = {
+          ...decision.args,
+          image: big.attachmentId,
+          prompt:
+            prompt.trim() !== ""
+              ? prompt
+              : "向外自然延展画面内容,与原图风格/光影无缝衔接",
+        };
+        if (onSubmitPrompt !== undefined) {
+          onSubmitPrompt(
+            buildToolPrompt({ action: "outpaint", args }, { maskId: maskUp.attachmentId }),
+          );
+        } else {
+          await settleWindow(
+            surface.run(DOMAIN, "outpaint", { ...args, mask: maskUp.attachmentId }),
+          );
+        }
+        setExpand({ top: 0, right: 0, bottom: 0, left: 0 });
+        return;
+      }
 
       if (decision.action === "inpaint" && upload !== undefined) {
         const src = sourceSize();
@@ -705,7 +777,7 @@ export function CanvasWorkbench({
     } finally {
       setBusy(false);
     }
-  }, [available, surface, refs, annotations, strokes, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, onSubmitPrompt]);
+  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, onSubmitPrompt]);
 
   /** 版本条选中 → 切工作图 + 复用其参数(预填表单 + 通知宿主)。 */
   const selectAsset = React.useCallback(
@@ -849,6 +921,46 @@ export function CanvasWorkbench({
   };
   const onLayerPointerUp = (): void => {
     layerDrag.current = null;
+  };
+
+  // ── 扩图手柄:拖动底图边框向外扩(client px → 源图像素,经 overlay rect 换算)。
+  // window 级监听:手柄目标极小(12px)且拖动跨元素,pointer capture 的目标派发不可靠;
+  // down 时挂 window pointermove/pointerup,up 时摘除(拖拽小目标的稳妥惯例)。
+  const onExpandHandleDown = (
+    e: React.PointerEvent,
+    edge: "top" | "right" | "bottom" | "left",
+  ): void => {
+    e.stopPropagation();
+    e.preventDefault();
+    const cv = overlayRef.current;
+    const nat = natural;
+    if (cv === null || nat === null) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const orig = expand[edge];
+    const onMove = (ev: PointerEvent): void => {
+      const rect = cv.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const perPx = nat.w / rect.width; // client px → 源图像素
+      const deltaClient =
+        edge === "right"
+          ? ev.clientX - startX
+          : edge === "left"
+            ? startX - ev.clientX
+            : edge === "bottom"
+              ? ev.clientY - startY
+              : startY - ev.clientY;
+      const next = Math.max(0, Math.round(orig + deltaClient * perPx));
+      setExpand((prev) => ({ ...prev, [edge]: next }));
+    };
+    const onUp = (): void => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
   };
 
   /** 拍平:底图 + 依序各层 → 上传 att_ → register(derivedFrom=底图)→ 清层。 */
@@ -1052,7 +1164,14 @@ export function CanvasWorkbench({
     drag.current = null;
   };
 
-  const summary = summarizeGenParams(current).join(" · ");
+  // 嗅探:真实像素尺寸(natural);扩展时显示扩展后画布。
+  const sniff =
+    natural !== null
+      ? expanding && ext !== null
+        ? `${natural.w}×${natural.h} → ${ext.width}×${ext.height}`
+        : `${natural.w}×${natural.h}`
+      : undefined;
+  const summary = [...(sniff !== undefined ? [sniff] : []), ...summarizeGenParams(current)].join(" · ");
   const genDisabled = !available || busy;
 
   // ── 区块:Header ────────────────────────────────────────────────────────────
@@ -1174,6 +1293,7 @@ export function CanvasWorkbench({
       )}
     >
       {toolBtn("move", <Hand className="h-4 w-4" />, "移动", false)}
+      {toolBtn("expand", <Expand className="h-4 w-4" />, "扩图", maskToolsDisabled, "扩图(拖动边框向外扩,生成填充新区域)")}
       {toolBtn("draw", <Pencil className="h-4 w-4" />, "画笔", maskToolsDisabled, "画笔(标注即指令)")}
       {toolBtn("line", <Slash className="h-4 w-4" />, "画线", maskToolsDisabled, "画线(标注即指令)")}
       {toolBtn("arrow", <ArrowUpRight className="h-4 w-4" />, "箭头", maskToolsDisabled, "箭头(标注即指令)")}
@@ -1254,18 +1374,35 @@ export function CanvasWorkbench({
   );
 
   // ── 区块:Stage(contain-fit wrapper + overlay 画布 + 缩放胶囊)────────────────
+  // 扩图态四周预留手柄操作区:右侧工具轨/左侧版本条是更高 z 的浮层(wrapper 因 transform
+  // 自成 stacking context,内部手柄 z 压不过它们),贴边时手柄会被盖住不可点。
+  const fitPad = tool === "expand" ? 56 : 0;
   const fit =
-    natural !== null && stageSize !== null
-      ? Math.min(stageSize.w / natural.w, stageSize.h / natural.h)
+    ext !== null && stageSize !== null
+      ? Math.min(
+          Math.max(64, stageSize.w - fitPad * 2) / ext.width,
+          Math.max(64, stageSize.h - fitPad * 2) / ext.height,
+        )
       : null;
   const wrapperStyle: React.CSSProperties =
-    natural !== null && fit !== null
+    ext !== null && fit !== null
       ? {
-          width: natural.w * fit,
-          height: natural.h * fit,
+          width: ext.width * fit,
+          height: ext.height * fit,
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
         }
       : { width: "100%", height: "100%", transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` };
+  // eslint-disable-next-line no-lone-blocks -- (占位:原重复 expanding 定义已上移)
+  /** 原图区在扩展画布内的百分比定位(无扩展时 = 满幅)。 */
+  const baseRect =
+    natural !== null && ext !== null
+      ? {
+          left: `${(expand.left / ext.width) * 100}%`,
+          top: `${(expand.top / ext.height) * 100}%`,
+          width: `${(natural.w / ext.width) * 100}%`,
+          height: `${(natural.h / ext.height) * 100}%`,
+        }
+      : { left: "0%", top: "0%", width: "100%", height: "100%" };
 
   const zoomPct = Math.round(scale * 100);
   const stage = (
@@ -1283,7 +1420,13 @@ export function CanvasWorkbench({
       onDrop={onStageDrop}
       style={{ cursor: tool === "move" ? (drag.current?.active ? "grabbing" : "grab") : undefined }}
     >
-      <div className="relative shrink-0 will-change-transform" style={wrapperStyle}>
+      <div
+        className={cn(
+          "relative shrink-0 will-change-transform",
+          expanding && "outline-dashed outline-1 outline-[hsl(var(--primary))]",
+        )}
+        style={wrapperStyle}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           ref={imgRef}
@@ -1297,7 +1440,8 @@ export function CanvasWorkbench({
               setNatural({ w: el.naturalWidth, h: el.naturalHeight });
             }
           }}
-          className="h-full w-full select-none object-contain"
+          className="absolute select-none object-fill"
+          style={baseRect}
           crossOrigin="anonymous"
         />
         {/* 图层(底图之上、掩码/标注 overlay 之下;百分比定位随 wrapper 缩放)。 */}
@@ -1315,10 +1459,10 @@ export function CanvasWorkbench({
                     : "z-[1]",
                 )}
                 style={{
-                  left: `${(l.x / natural.w) * 100}%`,
-                  top: `${(l.y / natural.h) * 100}%`,
-                  width: `${(l.w / natural.w) * 100}%`,
-                  height: `${(l.h / natural.h) * 100}%`,
+                  left: `${((expand.left + l.x) / (ext?.width ?? natural.w)) * 100}%`,
+                  top: `${((expand.top + l.y) / (ext?.height ?? natural.h)) * 100}%`,
+                  width: `${(l.w / (ext?.width ?? natural.w)) * 100}%`,
+                  height: `${(l.h / (ext?.height ?? natural.h)) * 100}%`,
                   cursor: "move",
                 }}
                 onPointerDown={(e) => onLayerPointerDown(e, l.id, "move")}
@@ -1356,8 +1500,9 @@ export function CanvasWorkbench({
             data-canvas-mask-overlay
             width={natural.w}
             height={natural.h}
+            style={baseRect}
             className={cn(
-              "absolute inset-0 z-[3] h-full w-full",
+              "absolute z-[3]",
               overlayInteractive
                 ? tool === "text"
                   ? "cursor-text"
@@ -1370,7 +1515,52 @@ export function CanvasWorkbench({
             onPointerCancel={onOverlayPointerUp}
           />
         ) : null}
+        {/* 扩图手柄:四边中点,拖动向外扩(源图像素);仅扩图工具激活时显示。 */}
+        {tool === "expand" && natural !== null
+          ? (
+              [
+                { edge: "top" as const, cls: "left-1/2 -top-1.5 -translate-x-1/2 cursor-ns-resize" },
+                { edge: "right" as const, cls: "top-1/2 -right-1.5 -translate-y-1/2 cursor-ew-resize" },
+                { edge: "bottom" as const, cls: "left-1/2 -bottom-1.5 -translate-x-1/2 cursor-ns-resize" },
+                { edge: "left" as const, cls: "top-1/2 -left-1.5 -translate-y-1/2 cursor-ew-resize" },
+              ].map((h) => (
+                <span
+                  key={h.edge}
+                  data-canvas-expand-handle={h.edge}
+                  aria-label={`向${h.edge === "top" ? "上" : h.edge === "right" ? "右" : h.edge === "bottom" ? "下" : "左"}扩展`}
+                  onPointerDown={(e) => onExpandHandleDown(e, h.edge)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  className={cn(
+                    "absolute z-[4] h-3 w-3 rounded-sm border border-[hsl(var(--background))] bg-[hsl(var(--primary))] shadow",
+                    h.cls,
+                  )}
+                />
+              ))
+            )
+          : null}
       </div>
+      {/* 扩展信息条(扩图态顶部中央;与层浮条并存时下移)。 */}
+      {expanding && ext !== null ? (
+        <div
+          data-canvas-expand-bar
+          className={cn(
+            "absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 px-2.5 py-0.5 text-xs shadow-sm backdrop-blur",
+            layers.length > 0 ? "top-11" : "top-2",
+          )}
+        >
+          <span className="text-[hsl(var(--muted-foreground))]">
+            扩图 → {ext.width}×{ext.height}
+          </span>
+          <button
+            type="button"
+            data-canvas-expand-reset
+            onClick={() => setExpand({ top: 0, right: 0, bottom: 0, left: 0 })}
+            className="text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
+          >
+            复位
+          </button>
+        </div>
+      ) : null}
       {/* 图层浮条(有层时顶部中央):拍平/删除选中/清空。 */}
       {layers.length > 0 ? (
         <div
@@ -1589,26 +1779,84 @@ export function CanvasWorkbench({
             </SelectContent>
           </Select>
 
-          {/* 比例 chips。 */}
-          <div className="flex items-center gap-0.5" role="group" aria-label="输出比例">
-            {RATIO_OPTIONS.map((r) => (
+          {/* 输出尺寸(嗅探+预设比例+自定义)。 */}
+          <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
+            <PopoverAnchor asChild>
               <button
-                key={r.label}
                 type="button"
-                data-canvas-ratio={r.label}
-                aria-pressed={ratioSize === r.size}
-                onClick={() => setRatioSize(r.size)}
-                className={cn(
-                  "rounded px-1.5 py-1 text-[10px] transition-colors",
-                  ratioSize === r.size
-                    ? "bg-[hsl(var(--accent))] font-medium"
-                    : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
-                )}
+                data-canvas-size-trigger
+                onClick={() => setSizeOpen(true)}
+                className="rounded border border-[hsl(var(--border))] px-1.5 py-1 text-[10px] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))]"
               >
-                {r.label}
+                尺寸·
+                {ratioSize === ""
+                  ? natural !== null
+                    ? `跟随 ${natural.w}×${natural.h}`
+                    : "跟随原图"
+                  : (RATIO_OPTIONS.find((r) => r.size === ratioSize)?.label ?? ratioSize)}
               </button>
-            ))}
-          </div>
+            </PopoverAnchor>
+            <PopoverContent align="start" side="top" className="w-56 p-2 text-xs">
+              <div className="mb-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))]">
+                输出尺寸
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {RATIO_OPTIONS.map((r) => (
+                  <button
+                    key={r.label}
+                    type="button"
+                    data-canvas-ratio={r.label}
+                    aria-pressed={ratioSize === r.size}
+                    onClick={() => {
+                      setRatioSize(r.size);
+                      setSizeOpen(false);
+                    }}
+                    className={cn(
+                      "rounded px-1.5 py-1 text-left transition-colors",
+                      ratioSize === r.size
+                        ? "bg-[hsl(var(--accent))] font-medium"
+                        : "hover:bg-[hsl(var(--muted))]",
+                    )}
+                  >
+                    {r.size === ""
+                      ? `跟随原图${natural !== null ? `(${natural.w}×${natural.h})` : ""}`
+                      : `${r.label}(${r.size})`}
+                  </button>
+                ))}
+                <div className="mt-1 flex items-center gap-1 border-t border-[hsl(var(--border))] pt-1.5">
+                  <span className="text-[hsl(var(--muted-foreground))]">自定义</span>
+                  <Input
+                    data-canvas-size-custom-w
+                    value={customW}
+                    onChange={(e) => setCustomW(e.target.value.replace(/\D/g, ""))}
+                    placeholder="宽"
+                    className="h-6 w-14 px-1 text-xs"
+                  />
+                  ×
+                  <Input
+                    data-canvas-size-custom-h
+                    value={customH}
+                    onChange={(e) => setCustomH(e.target.value.replace(/\D/g, ""))}
+                    placeholder="高"
+                    className="h-6 w-14 px-1 text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-1.5 text-[10px]"
+                    data-canvas-size-apply
+                    disabled={customW === "" || customH === ""}
+                    onClick={() => {
+                      setRatioSize(`${customW}x${customH}`);
+                      setSizeOpen(false);
+                    }}
+                  >
+                    应用
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* 变体数 stepper。 */}
           <div className="flex items-center gap-0.5 text-[10px]" aria-label="变体数">

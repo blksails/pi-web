@@ -131,7 +131,11 @@ describe("CanvasWorkbench", () => {
   it("decideGenerate:决策矩阵(掩码＞引用＞变体＞仅比例 reframe＞edit;size/model 随附)", () => {
     const base = { imageId: "att_x", prompt: "p", model: "", variants: 1, size: "", referenceIds: [] as string[], hasMask: false };
     expect(decideGenerate({ ...base })).toEqual({ action: "edit", args: { image: "att_x", prompt: "p" } });
-    // 掩码最优先(即使有引用/变体)。
+    // 扩图最优先(改变画布本身;size 抛弃交给输入画布)。
+    expect(
+      decideGenerate({ ...base, hasExpand: true, hasMask: true, size: "1024x1024" }),
+    ).toEqual({ action: "outpaint", args: { image: "att_x", prompt: "p" } });
+    // 掩码次优先(即使有引用/变体)。
     expect(
       decideGenerate({ ...base, hasMask: true, referenceIds: ["att_r"], variants: 3 }).action,
     ).toBe("inpaint");
@@ -217,9 +221,11 @@ describe("CanvasWorkbench", () => {
         n: 3,
       }),
     );
-    // 回 ×1,选 3:2,空 prompt → reframe。
+    // 回 ×1,开尺寸 Popover 选 3:2,空 prompt → reframe。
     fireEvent.click(document.querySelector("[data-canvas-variants-dec]")!);
     fireEvent.click(document.querySelector("[data-canvas-variants-dec]")!);
+    fireEvent.click(document.querySelector("[data-canvas-size-trigger]")!);
+    await waitFor(() => expect(document.querySelector('[data-canvas-ratio="3:2"]')).toBeTruthy());
     fireEvent.click(document.querySelector('[data-canvas-ratio="3:2"]')!);
     expect(gen.getAttribute("data-canvas-action")).toBe("reframe");
     fireEvent.click(gen);
