@@ -215,26 +215,35 @@ const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
  */
 export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string }): string {
   const a = d.args;
-  const lines: string[] = [
-    `请直接调用 image_edit 工具执行以下${ACTION_LABEL[d.action]}(参数已备齐,不要追问):`,
-    `- image: ${String(a.image)}`,
+  // 人读标题行:「🎨 动作 · 意图」;技术参数与执行指令全部收进 canvas-op 代码块
+  // (markdown 渲染为紧凑代码块,不再裸奔在气泡里;LLM 读 fence 内容无碍)。
+  const params: string[] = [
+    "tool: image_edit(请直接按下列参数调用,勿追问、勿复述参数)",
+    `image: ${String(a.image)}`,
   ];
   if (opts?.maskId !== undefined) {
-    lines.push(`- mask: ${opts.maskId}(alpha mask,透明区=需要重绘的区域)`);
+    params.push(`mask: ${opts.maskId}(alpha mask,透明区=需要重绘的区域)`);
   }
   const refs = a.reference_images;
   if (Array.isArray(refs) && refs.length > 0) {
-    lines.push(`- reference_images: ${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`);
+    params.push(`reference_images: ${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`);
   }
   if (typeof a.prompt === "string" && a.prompt.trim() !== "") {
-    lines.push(`- prompt: ${a.prompt}`);
+    params.push(`prompt: ${a.prompt}`);
   } else if (d.action === "reframe") {
-    lines.push(`- prompt: 保持画面内容,仅按目标尺寸重构比例`);
+    params.push(`prompt: 保持画面内容,仅按目标尺寸重构比例`);
   }
-  if (typeof a.size === "string") lines.push(`- size: ${a.size}`);
-  if (typeof a.n === "number") lines.push(`- n: ${a.n}`);
-  if (typeof a.model === "string") lines.push(`- model: ${a.model}`);
-  return lines.join("\n");
+  if (typeof a.size === "string") params.push(`size: ${a.size}`);
+  if (typeof a.n === "number") params.push(`n: ${a.n}`);
+  if (typeof a.model === "string") params.push(`model: ${a.model}`);
+  const intent =
+    typeof a.prompt === "string" && a.prompt.trim() !== ""
+      ? a.prompt.trim().length > 48
+        ? `${a.prompt.trim().slice(0, 48)}…`
+        : a.prompt.trim()
+      : "";
+  const title = intent !== "" ? `🎨 ${ACTION_LABEL[d.action]} · ${intent}` : `🎨 ${ACTION_LABEL[d.action]}`;
+  return `${title}\n\n\`\`\`canvas-op\n${params.join("\n")}\n\`\`\``;
 }
 
 /** 从 asset 派生只读元信息摘要片段(缺项跳过)。 */
