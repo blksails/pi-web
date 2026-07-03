@@ -171,6 +171,41 @@ export function createMask(
   return canvas.toDataURL(deps.mimeType ?? "image/png");
 }
 
+// ── 图层拍平(M3:拖入资产成层 → 本地合成回流)─────────────────────────────────────
+
+/** 一个待拍平图层(位置/尺寸均为**底图像素坐标**;后序在上)。 */
+export interface FlattenLayer {
+  readonly source: CanvasImageSource | CanvasLike;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+}
+
+/**
+ * 图层拍平:底图打底 + 依序绘制各层(后加的在上)。返回 data URI,经上传接缝落 `att_`
+ * 后 `register` 回流画廊(B 档,Req 5.2)。
+ */
+export function flattenLayers(
+  base: ImageSourceLike,
+  layers: readonly FlattenLayer[],
+  deps: ClientImageOpsDeps = {},
+): string {
+  const factory = deps.canvasFactory ?? defaultCanvasFactory;
+  const canvas = factory();
+  canvas.width = base.width;
+  canvas.height = base.height;
+  const ctx = canvas.getContext("2d");
+  if (ctx === null) throw new Error("client-image-ops: 2d context unavailable");
+  if (base.source !== undefined) {
+    ctx.drawImage(base.source, 0, 0, base.width, base.height);
+  }
+  for (const l of layers) {
+    ctx.drawImage(l.source, l.x, l.y, l.w, l.h);
+  }
+  return canvas.toDataURL(deps.mimeType ?? "image/png");
+}
+
 // ── 掩码笔迹(掩码刷/擦除 → B/W mask)────────────────────────────────────────────
 
 /** 一笔掩码笔迹(源图**像素坐标**折线;paint=涂白(重绘区) / erase=涂黑(收回))。 */

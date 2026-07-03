@@ -231,6 +231,43 @@ describe("CanvasWorkbench", () => {
     );
   });
 
+  it("图层:⊕ 加层 → 浮条出现 → 拍平 → 上传 + register(op:flatten,derivedFrom=底图)→ 清层", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const upload = vi.fn(fakeUpload);
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src"), asset("att_ref1")]}
+        onClose={() => undefined}
+        upload={upload}
+        baseUrl="/api"
+        sessionId="s1"
+        canvasFactory={fakeCanvasFactory()}
+        imageLoader={async () => ({
+          source: {} as CanvasImageSource,
+          width: 200,
+          height: 100,
+        })}
+      />,
+    );
+    // ⊕ 加层(att_ref1;当前工作图无 ⊕)。
+    expect(document.querySelector('[data-canvas-layer-add][data-att-id="att_src"]')).toBeNull();
+    fireEvent.click(document.querySelector('[data-canvas-layer-add][data-att-id="att_ref1"]')!);
+    await waitFor(() => expect(document.querySelector("[data-canvas-layer-bar]")).toBeTruthy());
+    // 拍平 → 合成上传(1 次)+ register 血缘 → 浮条消失(层清空)。
+    fireEvent.click(document.querySelector("[data-canvas-layer-flatten]")!);
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith("canvas", "register", {
+        attachmentId: "att_new",
+        derivedFrom: "att_src",
+        genParams: { op: "flatten", layers: ["att_ref1"] },
+      }),
+    );
+    await waitFor(() => expect(document.querySelector("[data-canvas-layer-bar]")).toBeNull());
+  });
+
   it("composeInpaintBack:模型结果回流 → 掩码回贴合成 → 上传 → register(op:inpaint-composite)", async () => {
     // 快照:base + inpaint 模型结果(derivedFrom=base,非 composite);knownIds 只含 base。
     const snap: GalleryState = {

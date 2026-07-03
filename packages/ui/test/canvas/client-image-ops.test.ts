@@ -3,6 +3,7 @@ import {
   annotationsToImage,
   clampRect,
   compositeByMask,
+  flattenLayers,
   rotatedSize,
   createMask,
   cropImage,
@@ -267,6 +268,43 @@ describe("client-image-ops 几何", () => {
     expect(calls.filter((c) => c === "moveTo")).toHaveLength(1 + 3);
     expect(calls.at(-1)).toBe("fillText:改成红色");
     expect(uri).toBe("data:image/png;base64,ANNO");
+  });
+
+  it("flattenLayers:底图打底 + 依序绘制各层(位置/尺寸透传)", () => {
+    const draws: (string | number)[][] = [];
+    const ctx: Ctx2DLike = {
+      fillStyle: "",
+      fillRect: vi.fn(),
+      drawImage: (img, dx, dy, dw, dh) =>
+        draws.push([(img as { tag?: string }).tag ?? "?", dx, dy, dw ?? -1, dh ?? -1]),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      clearRect: vi.fn(),
+    };
+    const canvas: CanvasLike = {
+      width: 0,
+      height: 0,
+      getContext: () => ctx,
+      toDataURL: () => "data:image/png;base64,FLAT",
+    };
+    const uri = flattenLayers(
+      { width: 800, height: 600, source: { tag: "base" } as unknown as CanvasImageSource },
+      [
+        { source: { tag: "l1" } as unknown as CanvasImageSource, x: 10, y: 20, w: 100, h: 50 },
+        { source: { tag: "l2" } as unknown as CanvasImageSource, x: 200, y: 300, w: 80, h: 80 },
+      ],
+      { canvasFactory: () => canvas },
+    );
+    expect(canvas.width).toBe(800);
+    expect(canvas.height).toBe(600);
+    expect(draws).toEqual([
+      ["base", 0, 0, 800, 600],
+      ["l1", 10, 20, 100, 50],
+      ["l2", 200, 300, 80, 80],
+    ]);
+    expect(uri).toBe("data:image/png;base64,FLAT");
   });
 
   it("parseDataUri 提取 mimeType + base64", () => {
