@@ -221,19 +221,19 @@ describe("CanvasWorkbench", () => {
         n: 3,
       }),
     );
-    // 回 ×1,开尺寸 Popover 选 3:2,空 prompt → reframe。
+    // 回 ×1,开尺寸 Popover 选 16:9,空 prompt → reframe。
     fireEvent.click(document.querySelector("[data-canvas-variants-dec]")!);
     fireEvent.click(document.querySelector("[data-canvas-variants-dec]")!);
     fireEvent.click(document.querySelector("[data-canvas-size-trigger]")!);
-    await waitFor(() => expect(document.querySelector('[data-canvas-ratio="3:2"]')).toBeTruthy());
-    fireEvent.click(document.querySelector('[data-canvas-ratio="3:2"]')!);
+    await waitFor(() => expect(document.querySelector('[data-canvas-ratio="16:9"]')).toBeTruthy());
+    fireEvent.click(document.querySelector('[data-canvas-ratio="16:9"]')!);
     expect(gen.getAttribute("data-canvas-action")).toBe("reframe");
     fireEvent.click(gen);
     await waitFor(() =>
       expect(run).toHaveBeenCalledWith("canvas", "reframe", {
         image: "att_src",
         prompt: "",
-        size: "1536x1024",
+        size: "1280x720",
       }),
     );
   });

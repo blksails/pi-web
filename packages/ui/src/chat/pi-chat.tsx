@@ -242,6 +242,52 @@ const SourcesDataPartRenderer: DataPartRenderer = ({ part }) => {
   return <Sources sources={sources} />;
 };
 
+/** 从工具结果 content 里抽第一张内联 data:image URI(`![](data:image/…)`)。 */
+function dataImageFromToolOutput(output: unknown): string | undefined {
+  const content = (output as { content?: ReadonlyArray<{ text?: unknown }> } | undefined)?.content;
+  if (!Array.isArray(content)) return undefined;
+  for (const c of content) {
+    if (typeof c?.text === "string") {
+      const m = /!\[[^\]]*\]\((data:image\/[^)\s]+)\)/.exec(c.text);
+      if (m?.[1] !== undefined) return m[1];
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 宿主转发:从**最近一条 assistant 消息**里抽正在流式(`preliminary`)的 AIGC 工具(image_generation/
+ * image_edit)的内联 data:image 预览。图已随对话流到达浏览器(经 pi 稳健 RPC,非状态桥),故 Canvas
+ * 面板可零成本复用这张「由糊变清」渐进图,规避 surface 大帧经 fd1 损坏的问题(见 canvas schema)。
+ */
+function latestToolImagePreview(messages: readonly UIMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m?.role !== "assistant") continue;
+    const parts = m.parts ?? [];
+    for (let j = parts.length - 1; j >= 0; j -= 1) {
+      const p = parts[j] as {
+        type?: string;
+        state?: string;
+        preliminary?: boolean;
+        output?: unknown;
+      };
+      const t = p.type;
+      const isAigcTool =
+        typeof t === "string" &&
+        (t.startsWith("tool-image_generation") ||
+          t.startsWith("tool-image_edit") ||
+          t === "dynamic-tool");
+      if (!isAigcTool) continue;
+      if (p.state !== "output-available" || p.preliminary !== true) continue;
+      const url = dataImageFromToolOutput(p.output);
+      if (url !== undefined) return url;
+    }
+    return undefined; // 仅看最近一条 assistant(当前轮)
+  }
+  return undefined;
+}
+
 export function PiChat({
   session,
   controls,
@@ -436,13 +482,18 @@ export function PiChat({
     transport === undefined
       ? {}
       : {
-          transport,
-          ...(session.initialMessages !== undefined
-            ? { messages: session.initialMessages }
-            : {}),
-        },
+        transport,
+        ...(session.initialMessages !== undefined
+          ? { messages: session.initialMessages }
+          : {}),
+      },
   );
   const { messages, sendMessage, status, stop, error } = chat;
+  // 宿主转发给 panelRight slot(如 Canvas)的最新流式 AIGC 图像预览(由糊变清);仅当前轮 preliminary。
+  const livePreviewImage = React.useMemo(
+    () => latestToolImagePreview(messages),
+    [messages],
+  );
   // 注:不在 render 期解构 `chat.setMessages`(ai-sdk v5 的 useChat 返回对象上某些字段读取会
   // 触发额外重渲染,曾导致无限循环);/clear 的清空在 dispatchBuiltin 回调内按需访问 chat.setMessages。
   const chatRef = React.useRef(chat);
@@ -882,8 +933,8 @@ export function PiChat({
       const extCmd =
         name !== undefined && name.length > 0
           ? controls.commands.find(
-              (c) => c.name.toLowerCase() === name && c.source === "extension",
-            )
+            (c) => c.name.toLowerCase() === name && c.source === "extension",
+          )
           : undefined;
       if (extCmd !== undefined) {
         // 先点亮控制流(承载命令的 ctx.ui 反馈),再 fire-and-forget 投递命令。
@@ -1158,11 +1209,10 @@ export function PiChat({
   const readinessIndicator =
     readinessGating && !sessionReady ? (
       <div
-        className={`mx-auto mb-2 flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
-          sessionReadinessError
+        className={`mx-auto mb-2 flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${sessionReadinessError
             ? "border-[hsl(var(--destructive))]/20 bg-[hsl(var(--destructive))]/10 text-[hsl(var(--destructive))]"
             : "border-[hsl(var(--border))] bg-[hsl(var(--muted))]/60 text-[hsl(var(--muted-foreground))]"
-        }`}
+          }`}
         data-pi-session-readiness={
           sessionReadinessError ? "error" : "connecting"
         }
@@ -1228,8 +1278,8 @@ export function PiChat({
       {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。
           与 @/`/` 一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {extension?.contributions?.mention !== undefined &&
-      uiRpc !== undefined &&
-      !(client !== undefined && sessionId !== undefined) ? (
+        uiRpc !== undefined &&
+        !(client !== undefined && sessionId !== undefined) ? (
         <PiMentionPopover
           value={input}
           onChange={setInput}
@@ -1241,7 +1291,7 @@ export function PiChat({
       ) : null}
       {/* webext 通用 autocomplete:与 @/`/` 一致,经 caret 锚定 fixed 定位。 */}
       {extension?.contributions?.autocomplete !== undefined &&
-      uiRpc !== undefined ? (
+        uiRpc !== undefined ? (
         <PiAutocompletePopover
           value={input}
           onChange={setInput}
@@ -1362,16 +1412,16 @@ export function PiChat({
             const branchProps =
               branch !== undefined && branch.total > 1
                 ? {
-                    branch,
-                    onPrev: () =>
-                      void branches
-                        .select(message.id, branch.index - 1)
-                        .catch(() => undefined),
-                    onNext: () =>
-                      void branches
-                        .select(message.id, branch.index + 1)
-                        .catch(() => undefined),
-                  }
+                  branch,
+                  onPrev: () =>
+                    void branches
+                      .select(message.id, branch.index - 1)
+                      .catch(() => undefined),
+                  onNext: () =>
+                    void branches
+                      .select(message.id, branch.index + 1)
+                      .catch(() => undefined),
+                }
                 : {};
             const copyText = message.parts
               .map((part) =>
@@ -1430,7 +1480,7 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pointer-events-none absolute inset-x-0 bottom-0"
+        className="pointer-events-none absolute inset-x-0 bottom-0 p-4"
       >
         <div className={cn("pointer-events-auto px-3 pb-2 md:px-0", lay.content)}>
           {inputWithWidgets}
@@ -1624,6 +1674,8 @@ export function PiChat({
               baseUrl={client?.baseUrl ?? ""}
               syncSignal={panelSyncSignal}
               {...(sessionId !== undefined ? { sessionId } : {})}
+              // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
+              {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
               // Prompt 通道接缝:slot 组件(如 canvas 工作台)把操作组装成用户消息发进对话流,
               // 由 LLM 调工具执行 —— 操作天然回流对话历史(替代旁路 surface 命令的无痕执行)。
               onSubmitPrompt={(text: string) => doSend(text)}
@@ -1650,11 +1702,11 @@ export function PiChat({
               {...(uiRpc !== undefined ? { rpc: uiRpc } : {})}
               {...(latestAssistantText !== undefined
                 ? {
-                    push: {
-                      name: "assistant-message",
-                      data: { text: latestAssistantText },
-                    },
-                  }
+                  push: {
+                    name: "assistant-message",
+                    data: { text: latestAssistantText },
+                  },
+                }
                 : {})}
             />
           ) : null}

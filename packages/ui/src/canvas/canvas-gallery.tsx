@@ -12,6 +12,7 @@
  * slot 组件是独立 bundle,经 prop 注入 surface(领域无关搬运);domain 对宿主不透明。
  */
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
@@ -39,6 +40,8 @@ export interface CanvasGalleryProps {
   readonly syncSignal?: unknown;
   /** 点击格子:展开工作台(由父面板处理)。 */
   readonly onOpenAsset?: (assetId: string) => void;
+  /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview` 显示渐进图。 */
+  readonly livePreviewImage?: string;
 }
 
 /** 时间分组标签(按本地日期)。 */
@@ -56,6 +59,7 @@ export function CanvasGallery({
   historyImages,
   syncSignal,
   onOpenAsset,
+  livePreviewImage,
 }: CanvasGalleryProps): React.JSX.Element {
   const view = useCanvasView();
   const available = surface !== undefined && surface.hasCommand(PROBE);
@@ -166,7 +170,32 @@ export function CanvasGallery({
         </div>
       ) : null}
 
-      {assets.length === 0 ? (
+      {/* 流式渐进预览指示(由糊变清):生成中在画廊顶部显示;有小预览显图,否则显占位指示。
+          完整渐进图由对话流工具卡承载(4:6 布局下与 Canvas 并列可见);出终图即清。 */}
+      {snap?.livePreview != null ? (
+        <div
+          data-canvas-live-preview
+          data-canvas-live-preview-stage={snap.livePreview.stage}
+          className="relative flex aspect-square w-full max-w-[200px] items-center justify-center gap-2 overflow-hidden rounded-md border border-dashed border-[hsl(var(--primary))] bg-[hsl(var(--muted)/0.3)]"
+        >
+          {(livePreviewImage ?? snap.livePreview.displayUrl) !== undefined ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={livePreviewImage ?? snap.livePreview.displayUrl}
+              alt="生成中预览"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <Loader2 className="h-6 w-6 animate-spin text-[hsl(var(--primary))]" aria-hidden="true" />
+          )}
+          <div className="pointer-events-none absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[hsl(var(--background))]/90 px-2 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))] shadow">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            {snap.livePreview.stage === "finalizing" ? "正在保存…" : "生成中 · 由糊变清"}
+          </div>
+        </div>
+      ) : null}
+
+      {assets.length === 0 && snap?.livePreview == null ? (
         <div data-canvas-empty className="px-2 py-6 text-center text-xs text-[hsl(var(--muted-foreground))]">
           暂无图片
         </div>

@@ -17,6 +17,7 @@ import {
   type SurfaceHandle,
 } from "../../surface/create-surface.js";
 import { getAttachmentToolContext as defaultGetAttachmentToolContext } from "../../attachment/seam.js";
+import { installLivePreviewSink } from "../../surface/live-preview-seam.js";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import { createCanvasCommands, type CanvasCommandDeps } from "./commands.js";
 import { rebuildGalleryFromAttachments } from "./hydrate.js";
@@ -68,8 +69,8 @@ export function makeCanvasSurfaceExtension(
   const getAtt = deps.surfaceDeps?.getAttachmentToolContext ?? defaultGetAttachmentToolContext;
   const scope = deps.surfaceDeps?.scope;
 
-  return (pi: ExtensionAPI): SurfaceHandle<GalleryState> =>
-    createSurface<GalleryState>(
+  return (pi: ExtensionAPI): SurfaceHandle<GalleryState> => {
+    const handle = createSurface<GalleryState>(
       pi,
       {
         domain: CANVAS_DOMAIN,
@@ -79,6 +80,18 @@ export function makeCanvasSurfaceExtension(
       },
       deps.surfaceDeps ?? {},
     );
+    // 装 live-preview sink:runImageTool 流式(对话流 LLM 工具 或 命令旁路皆经它)出图时经 seam 广播 →
+    // 投影进 canvas 临时 `livePreview`(生成中「由糊变清」指示);`null` = 结束清除。
+    // ⚠️ 刻意**只取 stage,丢弃 frame.displayUrl(大图 data URI)**:大帧经 fd1 与 pi RPC 并发写会交织
+    // 损坏 JSONL 半行被丢(守无二进制帧不变量,见 schema LivePreviewSchema)。完整渐进图由对话流工具卡承载。
+    installLivePreviewSink((frame) =>
+      handle.update((s) => ({
+        ...s,
+        livePreview: frame === null ? null : { stage: frame.stage },
+      })),
+    );
+    return handle;
+  };
 }
 
 /** canvas surface 扩展工厂(装载:`extensions: [aigcExtension, canvasSurfaceExtension]`)。 */

@@ -5,6 +5,10 @@ import {
   makeCanvasSurfaceExtension,
   CANVAS_DOMAIN,
 } from "../../../src/aigc/canvas/extension.js";
+import {
+  emitLivePreview,
+  installLivePreviewSink,
+} from "../../../src/surface/live-preview-seam.js";
 import type { GalleryState } from "../../../src/aigc/canvas/schema.js";
 
 const fakePi = {} as ExtensionAPI;
@@ -51,6 +55,33 @@ describe("canvasSurfaceExtension 装配", () => {
     );
     expect(typeof cfg.hydrate).toBe("function");
     expect(cfg.initialState).toEqual({ assets: [] });
+  });
+
+  it("装 live-preview sink:emitLivePreview → handle.update 投影进 livePreview,null 清除", () => {
+    // 带 update spy 的 fake handle;记录 reducer 施加到初始 state 的结果。
+    const updates: GalleryState[] = [];
+    let state: GalleryState = { assets: [] };
+    const fn = vi.fn((_pi: ExtensionAPI, config: SurfaceConfig<GalleryState>) => ({
+      domain: config.domain,
+      update: (reducer: (s: GalleryState) => GalleryState) => {
+        state = reducer(state);
+        updates.push(state);
+      },
+      dispatch: async () => ({ domain: config.domain, action: "x", ok: true }),
+      replay: () => undefined,
+    }) as SurfaceHandle<GalleryState>);
+
+    const factory = makeCanvasSurfaceExtension({ createSurface: fn as never });
+    factory(fakePi);
+
+    // sink 刻意只取 stage、丢弃大图 displayUrl(避免 fd1 大帧损坏)。
+    emitLivePreview({ displayUrl: "data:image/png;base64,AA", stage: "partial" });
+    expect(updates.at(-1)?.livePreview).toEqual({ stage: "partial" });
+    emitLivePreview(null);
+    expect(updates.at(-1)?.livePreview).toBeNull();
+
+    // 清理全局 seam。
+    installLivePreviewSink(() => undefined)();
   });
 
   it("initialState 不跨实例共享引用", () => {

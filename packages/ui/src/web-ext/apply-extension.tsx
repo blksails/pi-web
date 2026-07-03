@@ -71,6 +71,7 @@ function renderContribution(
   sessionId: string | undefined,
   syncSignal: unknown,
   onSubmitPrompt?: (text: string) => void,
+  livePreviewImage?: string,
 ): React.ReactNode {
   // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号);
   // 否则按 ReactNode 直接渲染。
@@ -87,6 +88,7 @@ function renderContribution(
       sessionId?: string;
       syncSignal?: unknown;
       onSubmitPrompt?: (text: string) => void;
+      livePreviewImage?: string;
     }>;
     return (
       <Comp
@@ -98,6 +100,7 @@ function renderContribution(
         sessionId={sessionId}
         syncSignal={syncSignal}
         {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
+        {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
       />
     );
   }
@@ -130,6 +133,11 @@ export interface SlotHostProps {
    * 由 LLM 调 image_edit 等工具执行 —— 操作天然回流对话历史)。
    */
   readonly onSubmitPrompt?: (text: string) => void;
+  /**
+   * 宿主转发的当前轮流式图像预览(data URI/URL);图已随对话流到浏览器,slot(如 Canvas)零成本
+   * 复用做「由糊变清」渐进展示,规避 surface 大帧经 fd1 损坏。
+   */
+  readonly livePreviewImage?: string;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -145,6 +153,7 @@ export function SlotHost({
   sessionId,
   syncSignal,
   onSubmitPrompt,
+  livePreviewImage,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -163,6 +172,7 @@ export function SlotHost({
         sessionId,
         syncSignal,
         onSubmitPrompt,
+        livePreviewImage,
       )}
     </ExtErrorBoundary>
   );

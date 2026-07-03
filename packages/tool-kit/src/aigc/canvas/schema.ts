@@ -38,10 +38,31 @@ export const GalleryAssetSchema = z.object({
 });
 export type GalleryAsset = z.infer<typeof GalleryAssetSchema>;
 
+/**
+ * 生成中的**临时渐进预览指示**(流式 partial_images「由糊变清」)。
+ *
+ * ⚠️ **刻意不承载图像二进制**(守「base64/二进制永不进帧」不变量,Req 8):渐进图**若**内联进快照,
+ * 生成期(busy turn)大帧经 fd1 `writeSync` 会与 pi RPC 并发大帧交织损坏(JSONL 半行)→ 被丢弃。
+ * 故快照仅带**阶段标识**(轻量帧),Canvas 据此渲染「生成中·由糊变清」指示;**完整渐进图由对话流工具卡
+ * 承载**(经 pi 稳健 RPC 通道,4:6 布局下与 Canvas 并列可见)。`displayUrl` 保留为可选:仅当可提供**小
+ * 尺寸**(缩略图 / att_ 签名 URL,不触发大帧)预览时才带。
+ */
+export const LivePreviewSchema = z.object({
+  /** 可选小尺寸预览(缩略图 data URI 或 att_ 签名 URL);缺省则 UI 显示占位指示。**勿放大图 data URI**。 */
+  displayUrl: z.string().optional(),
+  /** 阶段:`partial`=渐进中;`finalizing`=已出终图、正在落库。 */
+  stage: z.enum(["partial", "finalizing"]),
+  /** 触发的命令动作(`edit`/`inpaint`/… 展示用)。 */
+  action: z.string().optional(),
+});
+export type LivePreview = z.infer<typeof LivePreviewSchema>;
+
 /** surface 快照(`control:"state"` 的 value,key=`surface:canvas`)。 */
 export const GalleryStateSchema = z.object({
   /** newest-first。 */
   assets: z.array(GalleryAssetSchema),
+  /** 生成中的临时渐进预览;空闲时省略 / null。 */
+  livePreview: LivePreviewSchema.nullish(),
 });
 export type GalleryState = z.infer<typeof GalleryStateSchema>;
 

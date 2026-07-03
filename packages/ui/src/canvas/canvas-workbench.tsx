@@ -120,12 +120,15 @@ const DEFAULT_MODEL_OPTIONS: readonly string[] = [
 /** Radix Select 不接受空字符串 item value;以哨兵表示「默认模型」。 */
 const MODEL_DEFAULT_SENTINEL = "__default__";
 
-/** 比例参数簇(size="" = 交给模型默认;对齐 gpt-image 支持的输出尺寸)。 */
+/**
+ * 比例参数簇(仅 1:1 / 16:9 / 9:16 三档)。初始 ratioSize="" 时 trigger 显示「跟随原图」,选比例即带 size。
+ * ⚠️ 16:9 / 9:16(1280×720 / 720×1280)是 wan/dashscope 系尺寸;gpt-image(默认 NewAPI/sufy)只支持
+ * 1:1(1024²)/1536×1024/1024×1536 —— 选 16:9/9:16 走 gpt-image 会被网关拒绝,须配 wan 模型。
+ */
 const RATIO_OPTIONS: readonly { label: string; size: string }[] = [
-  { label: "默认", size: "" },
   { label: "1:1", size: "1024x1024" },
-  { label: "3:2", size: "1536x1024" },
-  { label: "2:3", size: "1024x1536" },
+  { label: "16:9", size: "1280x720" },
+  { label: "9:16", size: "720x1280" },
 ];
 
 /** 浮动层公共观感(舞台上的悬浮控件)。 */
@@ -402,6 +405,8 @@ export interface CanvasWorkbenchProps {
    * (LLM 调工具执行,操作回流对话历史);缺失时回退旁路 surface 命令(不过 LLM,兼容旧宿主)。
    */
   readonly onSubmitPrompt?: (text: string) => void;
+  /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview` 显示渐进图。 */
+  readonly livePreviewImage?: string;
 }
 
 export function CanvasWorkbench({
@@ -418,6 +423,7 @@ export function CanvasWorkbench({
   modelOptions,
   imageLoader,
   onSubmitPrompt,
+  livePreviewImage,
 }: CanvasWorkbenchProps): React.JSX.Element {
   const available = surface !== undefined && surface.hasCommand(PROBE);
   const [prompt, setPrompt] = React.useState("");
@@ -429,6 +435,17 @@ export function CanvasWorkbench({
   /** 标注颜色(线/箭头/文本共用;默认批注红,经工具轨色板切换)。 */
   const [annoColor, setAnnoColor] = React.useState<string>(ANNOTATION_COLOR);
   const [currentId, setCurrentId] = React.useState<string>(asset.attachmentId);
+  // 生成中的临时渐进预览(流式 partial_images 由糊变清):订阅权威快照 livePreview,渲染为舞台叠层。
+  const [livePreview, setLivePreview] = React.useState<GalleryState["livePreview"]>(
+    () => surface?.getState<GalleryState>(STATE_KEY)?.livePreview ?? null,
+  );
+  React.useEffect(() => {
+    if (surface === undefined) return;
+    const read = (): void =>
+      setLivePreview(surface.getState<GalleryState>(STATE_KEY)?.livePreview ?? null);
+    read();
+    return surface.subscribe(STATE_KEY, read);
+  }, [surface]);
   // ── M2 状态:@引用 / 参数簇 / 文本标注编辑器 ─────────────────────────────────
   const [refs, setRefs] = React.useState<readonly string[]>([]);
   const [refOpen, setRefOpen] = React.useState(false);
@@ -1429,6 +1446,30 @@ export function CanvasWorkbench({
       onDrop={onStageDrop}
       style={{ cursor: tool === "move" ? (drag.current?.active ? "grabbing" : "grab") : undefined }}
     >
+      {/* 流式渐进预览叠层(由糊变清):生成中盖住舞台。有小尺寸预览则显图,否则显指示;
+          完整渐进图由对话流工具卡承载(4:6 布局下与 Canvas 并列可见)。出终图即清。 */}
+      {livePreview != null ? (
+        <div
+          data-canvas-live-preview
+          data-canvas-live-preview-stage={livePreview.stage}
+          className="absolute inset-0 z-[40] flex flex-col items-center justify-center gap-3 bg-[hsl(var(--background))]/75 backdrop-blur-sm"
+        >
+          {(livePreviewImage ?? livePreview.displayUrl) !== undefined ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={livePreviewImage ?? livePreview.displayUrl}
+              alt="生成中预览"
+              className="max-h-[80%] max-w-[80%] rounded-md object-contain shadow-lg"
+            />
+          ) : (
+            <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" aria-hidden="true" />
+          )}
+          <div className="flex items-center gap-2 rounded-full bg-[hsl(var(--background))]/90 px-3 py-1 text-xs text-[hsl(var(--muted-foreground))] shadow">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+            {livePreview.stage === "finalizing" ? "正在保存…" : "生成中 · 由糊变清"}
+          </div>
+        </div>
+      ) : null}
       <div
         className={cn(
           "relative shrink-0 will-change-transform",

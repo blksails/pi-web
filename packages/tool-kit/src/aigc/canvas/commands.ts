@@ -58,6 +58,9 @@ async function executeImageEdit(
   lineage: { derivedFrom?: string; genParams: unknown },
   deps: Required<Pick<CanvasCommandDeps, "runImageTool" | "now">>,
 ): Promise<{ ids: string[] } | ExplicitFailure> {
+  // 流式渐进预览(由糊变清)不在此接线:runImageTool 内部经全局 live-preview seam 广播,canvas
+  // surface 的 sink 投影进 `livePreview`(见 canvas/extension.ts + surface/live-preview-seam.ts),
+  // 对话流 LLM 工具与命令旁路两条路径统一覆盖。故此处 onUpdate 仍为 undefined。
   const result = await deps.runImageTool(params, undefined, undefined, undefined, {
     toolName: "image_edit",
     routes: IMAGE_EDIT_ROUTES,
@@ -94,6 +97,7 @@ async function executeImageEdit(
     });
   }
 
+  // 终图落库 → prepend 进画廊(reducer 只留 assets,天然丢弃临时 livePreview,由糊变清收束到最终资产)。
   ctx.setState((s) => ({ assets: [...fresh, ...s.assets] }));
   return { ids: fresh.map((a) => a.attachmentId) };
 }

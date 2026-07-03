@@ -76,6 +76,8 @@ export interface CanvasPanelProps {
   readonly sessionId?: string;
   /** 经宿主 Prompt 通道发用户消息(canvas 生成走对话流,LLM 调工具执行)。 */
   readonly onSubmitPrompt?: (text: string) => void;
+  /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview.stage` 显示渐进图。 */
+  readonly livePreviewImage?: string;
 }
 
 /** panelRight 画廊 / 工作台面板(门控关或未开 → null)。 */
@@ -89,6 +91,7 @@ export function CanvasPanel({
   baseUrl,
   sessionId,
   onSubmitPrompt,
+  livePreviewImage,
 }: CanvasPanelProps): React.JSX.Element | null {
   const on = enabled ?? true;
   const { open } = useCanvasOpen();
@@ -116,12 +119,14 @@ export function CanvasPanel({
           {...(baseUrl !== undefined ? { baseUrl } : {})}
           {...(sessionId !== undefined ? { sessionId } : {})}
           {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
+          {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
         />
       ) : (
         <CanvasGallery
           {...(surface !== undefined ? { surface } : {})}
           {...(historyImages !== undefined ? { historyImages } : {})}
           {...(syncSignal !== undefined ? { syncSignal } : {})}
+          {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
           onOpenAsset={(id) => setOpenId(id)}
         />
       )}
