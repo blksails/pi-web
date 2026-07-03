@@ -100,7 +100,7 @@ export function CanvasPanel({
   return (
     <div
       data-canvas-panel
-      className="pi-scrollbar-ghost m-2 flex h-[calc(100%-1rem)] min-h-0 flex-col overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.2)]"
+      className="pi-scrollbar-ghost flex h-full min-h-0 flex-col overflow-y-auto animate-in fade-in-0 duration-200"
     >
       {workbenchAsset !== undefined ? (
         <CanvasWorkbench
