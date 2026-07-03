@@ -277,4 +277,25 @@ describe("aigc-prompt-toolbar 偏好级", () => {
       delete g[SESSION_STATE_SEAM_KEY];
     }
   });
+
+  it("清单下发·装配时序:factory 执行时 seam 未挂(真实 runner 顺序)→ 重试后仍下发", () => {
+    vi.useFakeTimers();
+    const { state, sets } = makeFakeState();
+    const g = globalThis as Record<string, unknown>;
+    try {
+      // 复刻真实 runner:extensions 装配(factory 执行)早于 wireStateBridge 挂 seam。
+      const fakePi = { registerTool: vi.fn() } as unknown as ExtensionAPI;
+      aigcExtension(fakePi); // 此刻 seam 缺失 → 首次 set 必 no-op
+      expect(sets.some(([k]) => k === "aigc.models")).toBe(false);
+      // 随后 wireStateBridge 挂上 seam(下一宏任务前)。
+      g[SESSION_STATE_SEAM_KEY] = state;
+      vi.advanceTimersByTime(200); // 越过退避重试
+      const models = sets.find(([k]) => k === "aigc.models")?.[1] as string[];
+      expect(models).toContain("gpt-image-2");
+      expect(sets.some(([k]) => k === "aigc.sizes")).toBe(true);
+    } finally {
+      delete g[SESSION_STATE_SEAM_KEY];
+      vi.useRealTimers();
+    }
+  });
 });

@@ -21,10 +21,26 @@ const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", 
 /**
  * 装配期清单下发(aigc-prompt-toolbar Req 2.2/3.1):把「生成∪编辑」模型并集与尺寸档位
  * 写入会话共享状态,供工具排快捷设置选择器动态渲染(单一事实源 = 工具 routes,新增
- * provider 自动出现)。seam 缺失(非子进程/桥未装配)时 set 为 no-op,UI 侧回退内置常量。
+ * provider 自动出现)。
+ *
+ * ⚠ 装配时序:runner 里 extensions 在 `createAgentSessionRuntime` 期间执行,而
+ * `wireStateBridge` 挂 globalThis seam 在其**之后**(runner.ts 装配段)——factory 同步
+ * 执行瞬间 seam 尚未就绪,直接 set 恒 no-op(真实 runner 实证:选择器只见 fallback)。
+ * 故采用**短退避重试**:seam 未就绪则 setTimeout 重试(首试排在下一宏任务,此时 runner
+ * 主流程的同步装配段已挂好 seam,一般第一次重试即成)。非子进程/桥未装配(重试耗尽)
+ * 则放弃,UI 侧回退内置常量。
  */
-function publishAigcCatalog(): void {
+const PUBLISH_RETRY_MS = 50;
+const PUBLISH_MAX_TRIES = 40; // ~2s 上限,覆盖极慢装配;耗尽即放弃(fail-soft)
+
+function publishAigcCatalog(attempt = 0): void {
   const state = getSessionState();
+  if (!state.available) {
+    if (attempt < PUBLISH_MAX_TRIES) {
+      setTimeout(() => publishAigcCatalog(attempt + 1), attempt === 0 ? 0 : PUBLISH_RETRY_MS);
+    }
+    return;
+  }
   const models = Array.from(
     new Set([...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES].map((r) => r.model)),
   );
