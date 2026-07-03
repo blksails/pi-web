@@ -1624,6 +1624,9 @@ export function PiChat({
               baseUrl={client?.baseUrl ?? ""}
               syncSignal={panelSyncSignal}
               {...(sessionId !== undefined ? { sessionId } : {})}
+              // Prompt 通道接缝:slot 组件(如 canvas 工作台)把操作组装成用户消息发进对话流,
+              // 由 LLM 调工具执行 —— 操作天然回流对话历史(替代旁路 surface 命令的无痕执行)。
+              onSubmitPrompt={(text: string) => doSend(text)}
             />
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。

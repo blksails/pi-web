@@ -70,6 +70,7 @@ function renderContribution(
   baseUrl: string | undefined,
   sessionId: string | undefined,
   syncSignal: unknown,
+  onSubmitPrompt?: (text: string) => void,
 ): React.ReactNode {
   // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号);
   // 否则按 ReactNode 直接渲染。
@@ -85,6 +86,7 @@ function renderContribution(
       baseUrl?: string;
       sessionId?: string;
       syncSignal?: unknown;
+      onSubmitPrompt?: (text: string) => void;
     }>;
     return (
       <Comp
@@ -95,6 +97,7 @@ function renderContribution(
         baseUrl={baseUrl}
         sessionId={sessionId}
         syncSignal={syncSignal}
+        {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
       />
     );
   }
@@ -122,6 +125,11 @@ export interface SlotHostProps {
    * Canvas 面板据此在 LLM 生图后 `run("sync")` 重建物化视图,否则画廊要等下次重连才 hydrate。
    */
   readonly syncSignal?: unknown;
+  /**
+   * 经宿主 Prompt 通道发送一条用户消息(进对话流/LLM;canvas 生成走对话即用此接缝,
+   * 由 LLM 调 image_edit 等工具执行 —— 操作天然回流对话历史)。
+   */
+  readonly onSubmitPrompt?: (text: string) => void;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -136,6 +144,7 @@ export function SlotHost({
   baseUrl,
   sessionId,
   syncSignal,
+  onSubmitPrompt,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -153,6 +162,7 @@ export function SlotHost({
         baseUrl,
         sessionId,
         syncSignal,
+        onSubmitPrompt,
       )}
     </ExtErrorBoundary>
   );

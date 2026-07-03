@@ -74,6 +74,8 @@ export interface CanvasPanelProps {
   readonly upload?: UploadFn;
   readonly baseUrl?: string;
   readonly sessionId?: string;
+  /** 经宿主 Prompt 通道发用户消息(canvas 生成走对话流,LLM 调工具执行)。 */
+  readonly onSubmitPrompt?: (text: string) => void;
 }
 
 /** panelRight 画廊 / 工作台面板(门控关或未开 → null)。 */
@@ -86,6 +88,7 @@ export function CanvasPanel({
   upload,
   baseUrl,
   sessionId,
+  onSubmitPrompt,
 }: CanvasPanelProps): React.JSX.Element | null {
   const on = enabled ?? true;
   const { open } = useCanvasOpen();
@@ -112,6 +115,7 @@ export function CanvasPanel({
           {...(upload !== undefined ? { upload } : {})}
           {...(baseUrl !== undefined ? { baseUrl } : {})}
           {...(sessionId !== undefined ? { sessionId } : {})}
+          {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
         />
       ) : (
         <CanvasGallery

@@ -190,6 +190,35 @@ const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
   edit: "生成",
 };
 
+/**
+ * 把生成决策组装为**经对话流**的用户消息(LLM 据此调 `image_edit` 工具;参数用 `att_` 引用,
+ * attachment-bridge 在工具侧解析)。操作因此天然回流对话历史:用户消息 + 工具卡片 + 结果图
+ * 全部可见、可回放、进 LLM 上下文(后续"刚才那张再调亮"能接上)。export 供单测。
+ */
+export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string }): string {
+  const a = d.args;
+  const lines: string[] = [
+    `请直接调用 image_edit 工具执行以下${ACTION_LABEL[d.action]}(参数已备齐,不要追问):`,
+    `- image: ${String(a.image)}`,
+  ];
+  if (opts?.maskId !== undefined) {
+    lines.push(`- mask: ${opts.maskId}(alpha mask,透明区=需要重绘的区域)`);
+  }
+  const refs = a.reference_images;
+  if (Array.isArray(refs) && refs.length > 0) {
+    lines.push(`- reference_images: ${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`);
+  }
+  if (typeof a.prompt === "string" && a.prompt.trim() !== "") {
+    lines.push(`- prompt: ${a.prompt}`);
+  } else if (d.action === "reframe") {
+    lines.push(`- prompt: 保持画面内容,仅按目标尺寸重构比例`);
+  }
+  if (typeof a.size === "string") lines.push(`- size: ${a.size}`);
+  if (typeof a.n === "number") lines.push(`- n: ${a.n}`);
+  if (typeof a.model === "string") lines.push(`- model: ${a.model}`);
+  return lines.join("\n");
+}
+
 /** 从 asset 派生只读元信息摘要片段(缺项跳过)。 */
 function summarizeGenParams(asset: GalleryAsset): string[] {
   const parts: string[] = [];
@@ -341,6 +370,11 @@ export interface CanvasWorkbenchProps {
   readonly modelOptions?: readonly string[];
   /** 图像加载器(掩码回贴合成用;缺省浏览器 Image,测试注入 fake)。 */
   readonly imageLoader?: ImageLoader;
+  /**
+   * 经宿主 Prompt 通道发用户消息:提供时,「生成」组装 image_edit 指令**走对话流**
+   * (LLM 调工具执行,操作回流对话历史);缺失时回退旁路 surface 命令(不过 LLM,兼容旧宿主)。
+   */
+  readonly onSubmitPrompt?: (text: string) => void;
 }
 
 export function CanvasWorkbench({
@@ -356,6 +390,7 @@ export function CanvasWorkbench({
   canvasFactory,
   modelOptions,
   imageLoader,
+  onSubmitPrompt,
 }: CanvasWorkbenchProps): React.JSX.Element {
   const available = surface !== undefined && surface.hasCommand(PROBE);
   const [prompt, setPrompt] = React.useState("");
@@ -590,6 +625,22 @@ export function CanvasWorkbench({
         size: ratioSize,
       });
 
+      // 消费快照:只清「本次发送时存在的」引用/标注/笔迹 —— 飞行期间用户可能已新加,
+      // 全量清空会把新输入吞掉(竞争)。
+      const sentRefs = new Set(refs);
+      const sentAnnos = new Set(annotations);
+      const sentStrokes = new Set(strokes);
+      const consumeSent = (withStrokes: boolean): void => {
+        setRefs((prev) => prev.filter((r) => !sentRefs.has(r)));
+        setOps((prev) =>
+          prev.filter((o) => {
+            if (o.kind === "anno") return !sentAnnos.has(o.item);
+            return withStrokes ? !sentStrokes.has(o.item) : true;
+          }),
+        );
+        setRedoOps([]);
+      };
+
       if (decision.action === "inpaint" && upload !== undefined) {
         const src = sourceSize();
         const opts = canvasFactory !== undefined ? { canvasFactory } : {};
@@ -607,12 +658,19 @@ export function CanvasWorkbench({
           sessionId: sessionId ?? "",
           upload,
         });
+        if (onSubmitPrompt !== undefined) {
+          // 走对话流(A 方案):LLM 调 image_edit,操作回流对话历史。
+          // ⚠回贴暂不随此路径启动:工具产物经轮末 sync 收编,快照资产无 derivedFrom=基图
+          // 锚点,waitForNewDerivedAsset 匹配不到(误配风险大于收益);恢复待工具结果 meta 带血缘。
+          onSubmitPrompt(buildToolPrompt(decision, { maskId }));
+          consumeSent(true);
+          return;
+        }
         await settleWindow(
           surface.run(DOMAIN, "inpaint", { ...decision.args, mask: maskId }),
         );
-        // 掩码已消费:清空编辑历史;像素级局部化交给后台回贴(不阻塞 busy)。
-        setOps([]);
-        setRedoOps([]);
+        // 掩码已消费:清空;像素级局部化交给后台回贴(不阻塞 busy)。
+        consumeSent(true);
         void composeInpaintBack({
           surface,
           baseId: baseSnapshot.attachmentId,
@@ -630,22 +688,19 @@ export function CanvasWorkbench({
         return;
       }
 
-      // 消费快照:只清「本次发送时存在的」引用/标注 —— settleWindow 飞行期间用户可能已新加,
-      // 全量清空会把新输入吞掉(竞争)。
-      const sentRefs = new Set(refs);
-      const sentAnnos = new Set(annotations);
-      await settleWindow(surface.run(DOMAIN, decision.action, decision.args));
-      if (decision.action === "reference") {
-        setRefs((prev) => prev.filter((r) => !sentRefs.has(r)));
-        if (sentAnnos.size > 0) {
-          setOps((prev) => prev.filter((o) => o.kind !== "anno" || !sentAnnos.has(o.item)));
-          setRedoOps([]);
-        }
+      if (onSubmitPrompt !== undefined) {
+        // 走对话流(A 方案默认):组装 image_edit 指令为用户消息,LLM 调工具执行。
+        onSubmitPrompt(buildToolPrompt(decision));
+        if (decision.action === "reference") consumeSent(false);
+        return;
       }
+      // 回退:旁路 surface 命令(不过 LLM;兼容未接 Prompt 通道的宿主/测试)。
+      await settleWindow(surface.run(DOMAIN, decision.action, decision.args));
+      if (decision.action === "reference") consumeSent(false);
     } finally {
       setBusy(false);
     }
-  }, [available, surface, refs, annotations, strokes, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader]);
+  }, [available, surface, refs, annotations, strokes, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, onSubmitPrompt]);
 
   /** 版本条选中 → 切工作图 + 复用其参数(预填表单 + 通知宿主)。 */
   const selectAsset = React.useCallback(

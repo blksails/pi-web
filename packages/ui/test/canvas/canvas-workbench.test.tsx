@@ -4,6 +4,7 @@ import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   CanvasWorkbench,
+  buildToolPrompt,
   composeInpaintBack,
   decideGenerate,
 } from "../../src/canvas/canvas-workbench.js";
@@ -229,6 +230,54 @@ describe("CanvasWorkbench", () => {
         size: "1536x1024",
       }),
     );
+  });
+
+  it("buildToolPrompt:决策 → image_edit 指令文本(att 引用/mask/refs/参数行)", () => {
+    const inpaint = buildToolPrompt(
+      { action: "inpaint", args: { image: "att_x", prompt: "换蓝天", size: "1536x1024" } },
+      { maskId: "att_mask" },
+    );
+    expect(inpaint).toContain("image_edit");
+    expect(inpaint).toContain("- image: att_x");
+    expect(inpaint).toContain("- mask: att_mask");
+    expect(inpaint).toContain("- prompt: 换蓝天");
+    expect(inpaint).toContain("- size: 1536x1024");
+    const ref = buildToolPrompt({
+      action: "reference",
+      args: { image: "att_x", prompt: "融合", reference_images: ["att_a", "att_b"], n: 2 },
+    });
+    expect(ref).toContain("reference_images: att_a, att_b");
+    expect(ref).toContain("- n: 2");
+    // reframe 空 prompt → 自动补比例重构指令。
+    const reframe = buildToolPrompt({
+      action: "reframe",
+      args: { image: "att_x", prompt: "", size: "1024x1536" },
+    });
+    expect(reframe).toContain("仅按目标尺寸重构比例");
+  });
+
+  it("onSubmitPrompt 提供时:生成走对话流(不发 surface 命令);缺失时回退直连", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const sent: string[] = [];
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        onSubmitPrompt={(t) => sent.push(t)}
+      />,
+    );
+    fireEvent.change(document.querySelector("[data-canvas-prompt]")!, {
+      target: { value: "整体调亮" },
+    });
+    fireEvent.click(document.querySelector("[data-canvas-generate]")!);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toContain("image_edit");
+    expect(sent[0]).toContain("- image: att_src");
+    expect(sent[0]).toContain("- prompt: 整体调亮");
+    // 生成类不再走 surface 命令。
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("图层:⊕ 加层 → 浮条出现 → 拍平 → 上传 + register(op:flatten,derivedFrom=底图)→ 清层", async () => {
