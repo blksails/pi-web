@@ -136,6 +136,13 @@ const PARAMETERS = Type.Object({
   model: optionalModelEnum(ROUTES, DEFAULT_MODEL),
 });
 
+/**
+ * 生成工具路由表/默认模型导出(aigc-prompt-toolbar:装配期清单下发取 gen∪edit 并集;
+ * 与 image-edit.ts 的 IMAGE_EDIT_ROUTES 同款形态)。
+ */
+export const IMAGE_GENERATION_ROUTES: readonly ImageRoute[] = ROUTES;
+export const IMAGE_GENERATION_DEFAULT_MODEL = DEFAULT_MODEL;
+
 /** 注册 `image_generation` 工具到给定的 pi 扩展上下文。 */
 export function registerImageGeneration(pi: ExtensionAPI): void {
   pi.registerTool({

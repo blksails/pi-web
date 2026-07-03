@@ -1104,7 +1104,19 @@ export function PiChat({
   const toolbar = (
     <>
       {order.map((key) => (
-        <React.Fragment key={key}>{controlNodes[key]}</React.Fragment>
+        <React.Fragment key={key}>
+          {/* promptToolbar 槽:内核控件之后、发送键之前(source 挂领域快捷设置,宿主不认语义)。 */}
+          {key === "submit" ? (
+            <ExtSlotRegion
+              ext={extension}
+              slot="promptToolbar"
+              as="span"
+              className="flex items-center gap-1"
+              {...(webextState !== undefined ? { state: webextState } : {})}
+            />
+          ) : null}
+          {controlNodes[key]}
+        </React.Fragment>
       ))}
     </>
   );

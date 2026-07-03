@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import type { SlotKey } from "@blksails/pi-web-protocol";
-import type { WebExtension } from "@blksails/pi-web-kit";
+import type { WebExtension, WebExtStateAccess } from "@blksails/pi-web-kit";
 import { SlotHost, resolveSlot } from "./apply-extension.js";
 
 /** 12 个协议保留插槽 → 浏览器可见 data 属性(与 design 插槽表一一对应)。 */
@@ -25,6 +25,7 @@ const RESERVED_SLOT_DATA_ATTR: Partial<Record<SlotKey, string>> = {
   promptInput: "data-pi-ext-prompt-input",
   dialogLayer: "data-pi-ext-dialog-layer",
   logs: "data-pi-ext-logs",
+  promptToolbar: "data-pi-ext-prompt-toolbar",
 };
 
 export interface ExtSlotRegionProps {
@@ -33,6 +34,8 @@ export interface ExtSlotRegionProps {
   /** 容器标签,默认 div。 */
   readonly as?: keyof React.JSX.IntrinsicElements;
   readonly className?: string;
+  /** 共享状态接入(state-injection-bridge);宿主提供时经 SlotHost 透给 slot 组件。 */
+  readonly state?: WebExtStateAccess;
 }
 
 /**
@@ -44,13 +47,14 @@ export function ExtSlotRegion({
   slot,
   as = "div",
   className,
+  state,
 }: ExtSlotRegionProps): React.ReactNode {
   if (resolveSlot(ext, slot) === undefined) return null;
   const dataAttr = RESERVED_SLOT_DATA_ATTR[slot] ?? `data-pi-ext-${slot}`;
   const Tag = as as React.ElementType;
   return (
     <Tag {...{ [dataAttr]: "" }} className={className}>
-      <SlotHost ext={ext} slot={slot} />
+      <SlotHost ext={ext} slot={slot} {...(state !== undefined ? { state } : {})} />
     </Tag>
   );
 }

@@ -27,6 +27,7 @@ import type { StreamEvent } from "../engine/endpoint-types.js";
 import { emitLivePreview } from "../surface/live-preview-seam.js";
 import { normalizeImageDataUri } from "../engine/normalize-image.js";
 import { getAttachmentToolContext } from "../attachment/seam.js";
+import { getSessionState, type SessionStateAccess } from "../session-state.js";
 import {
   persistPicked,
   previewAssetsFromPicked,
@@ -41,11 +42,19 @@ const log = createLogger({ namespace: "toolkit:tool" });
 /** 工具执行返回结果(对齐 AgentToolResult)。 */
 type ExecuteResult = AgentToolResult<ToolExecuteDetails>;
 
-/** 注入依赖:测试 mock attachment ctx / fetch;生产走默认 seam + 全局 fetch。 */
+/** 注入依赖:测试 mock attachment ctx / fetch / 会话状态;生产走默认 seam + 全局 fetch。 */
 export interface RunImageToolDeps {
   getCtx?: () => AttachmentToolContext;
   fetchImpl?: typeof fetch;
+  /** 会话共享状态接入(用户偏好读写;aigc-prompt-toolbar)。默认 getSessionState(fail-safe)。 */
+  getState?: () => SessionStateAccess;
 }
+
+/**
+ * 用户偏好参数白名单(aigc-prompt-toolbar Req 4/5):仅这些参数读写会话偏好键 `aigc.<param>`。
+ * requiredParams 里的一次性输入(如 prompt)不得记住。
+ */
+const PREF_PARAMS: readonly string[] = ["model", "size"];
 
 /** `runImageTool` 选项:工具身份 + 路由表 + 补全/媒体声明。 */
 export interface RunImageToolOptions {
@@ -146,6 +155,7 @@ async function resolveRequiredParams(
   defaultModel: string,
   merged: Record<string, unknown>,
   ext: ExtensionContext | undefined,
+  prefState?: SessionStateAccess,
 ): Promise<ResolveOutcome> {
   if (specs.length === 0) return { ok: true };
   const hasUI = ext?.hasUI === true && ext.ui != null;
@@ -163,6 +173,11 @@ async function resolveRequiredParams(
         return { ok: false, error: `已取消:未提供必选项「${spec.param}」` };
       }
       merged[spec.param] = value;
+      // 追问写回(aigc-prompt-toolbar Req 5.1):仅白名单参数记为会话偏好,
+      // 下行帧同步回显到工具排选择器;seam 不可用时 set 为 no-op。
+      if (PREF_PARAMS.includes(spec.param)) {
+        prefState?.set(`aigc.${spec.param}`, value);
+      }
     } else if (spec.fallback !== undefined) {
       merged[spec.param] = spec.fallback;
     } else if (spec.param === "model") {
@@ -273,8 +288,28 @@ export async function runImageTool(
   const merged: Record<string, unknown> = { ...llmArgs };
   if (typeof modelArg === "string" && modelArg !== "") merged.model = modelArg;
 
-  // 必选项交互补全(model/size/prompt)。
-  const fill = await resolveRequiredParams(requiredParams, routes, defaultModel, merged, ext);
+  // 用户偏好一级(aigc-prompt-toolbar Req 4):白名单参数缺省时读会话偏好 `aigc.<param>`。
+  // 优先级:LLM 显式 args > 用户偏好 > defaultModel/交互补全。偏好命中即跳过对应追问;
+  // seam 不可用(available:false)读恒 undefined → 行为与引入前完全一致。
+  const getState = deps?.getState ?? getSessionState;
+  const prefState = getState();
+  for (const p of PREF_PARAMS) {
+    const cur = merged[p];
+    if (cur === undefined || cur === null || cur === "") {
+      const pref = prefState.get<string>(`aigc.${p}`);
+      if (typeof pref === "string" && pref !== "") merged[p] = pref;
+    }
+  }
+
+  // 必选项交互补全(model/size/prompt);白名单参数的追问选择写回会话偏好(Req 5.1)。
+  const fill = await resolveRequiredParams(
+    requiredParams,
+    routes,
+    defaultModel,
+    merged,
+    ext,
+    prefState,
+  );
   if (!fill.ok) return errResult(fill.error);
 
   // model 路由(model 是路由键,不作 buildBody 入参)。

@@ -47,6 +47,9 @@ export const SlotKeySchema = z.enum([
   "logs",
   // sidebar-launcher-rail:侧栏启动导航区内的 webext 贡献槽(扩展在导航区挂自定义渲染)。
   "launcherRail",
+  // prompt-input 工具排内联槽:排在内核控件(附件/模型/语音/联网)之后、发送键之前。
+  // 供 source 挂自己领域的快捷设置控件;宿主不认内容语义。
+  "promptToolbar",
 ]);
 export type SlotKey = z.infer<typeof SlotKeySchema>;
 

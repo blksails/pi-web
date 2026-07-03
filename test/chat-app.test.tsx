@@ -32,9 +32,10 @@ vi.mock("@blksails/pi-web-ui", () => ({
   resolveSlot: (): undefined => undefined,
   SlotHost: (): null => null,
   LauncherRail: (): React.JSX.Element => <div data-test-launcher-rail />,
-  // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这两个组件。
+  // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这些组件。
   CanvasLauncher: (): null => null,
   CanvasPanel: (): null => null,
+  AigcQuickSettings: (): null => null,
   useI18n: () => (key: string) => key,
   useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));

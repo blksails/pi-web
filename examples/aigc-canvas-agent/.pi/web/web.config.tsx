@@ -10,7 +10,7 @@
  * 值不透明(领域无关搬运)。
  */
 import { defineWebExtension } from "@blksails/pi-web-kit";
-import { CanvasLauncher, CanvasPanel } from "@blksails/pi-web-ui";
+import { CanvasLauncher, CanvasPanel, AigcQuickSettings } from "@blksails/pi-web-ui";
 
 export default defineWebExtension({
   manifestId: "aigc-canvas",
@@ -22,5 +22,8 @@ export default defineWebExtension({
   slots: {
     launcherRail: CanvasLauncher as never,
     panelRight: CanvasPanel as never,
+    // aigc-prompt-toolbar:输入区工具排(内核控件后、发送键前)的模型/尺寸快捷设置;
+    // 宿主经 SlotHost 注入 state(会话偏好 KV),图像工具执行时读同键。
+    promptToolbar: AigcQuickSettings as never,
   },
 });

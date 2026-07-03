@@ -1,0 +1,227 @@
+/**
+ * AigcQuickSettings — 输入区工具排的 AIGC 快捷设置(aigc-prompt-toolbar Req 2/3/5.2/6/7.2)。
+ *
+ * 由 aigc-canvas-agent 的 `.pi/web` 挂载到 `promptToolbar` 槽(内核控件后、发送键前):
+ * 图像模型 + 输出尺寸两个紧凑选择器。
+ *
+ *  - **偏好通道**:经 props 注入的 `state`(WebExtStateAccess)读写会话偏好键
+ *    `aigc.model` / `aigc.size`(权威 KV 在 agent 子进程;图像工具执行时直接读同键,
+ *    见 tool-kit run-image-tool 偏好级)。工具交互追问写回 → 下行帧 → 本组件订阅回显(5.2)。
+ *  - **清单**:读 `aigc.models` / `aigc.sizes`(aigcExtension 装配期下发;单一事实源 = 工具
+ *    routes),未就绪回退内置常量。
+ *  - **跨会话**:变更双写 localStorage(`pi-web.aigc.*`);挂载时会话偏好为空而本地记忆存在
+ *    则回填(seed)——新会话初始即生效(6.1/6.3)。
+ *  - **退化**:`state === undefined`(宿主未接状态桥)→ 返回 null,不呈现不报错(7.2)。
+ *
+ * slot 组件是独立 bundle:一切依赖经 props 注入(不依赖 React context)。
+ */
+import * as React from "react";
+import type { WebExtStateAccess } from "@blksails/pi-web-kit";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select.js";
+
+/** 清单未就绪时的回退常量(与 aigcExtension 下发值同源语义;KV 到达后即被覆盖)。 */
+const FALLBACK_MODELS: readonly string[] = [
+  "gpt-image-2",
+  "wan2.7-image-pro",
+  "qwen-image-edit-max",
+  "qwen-image-2.0",
+  "wan2.6-t2i",
+  "wanx2.1-t2i-turbo",
+];
+const FALLBACK_SIZES: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
+
+/** Radix Select 不接受空字符串 item value;以哨兵表示「默认」(= 不设偏好)。 */
+const DEFAULT_SENTINEL = "__default__";
+
+/** localStorage 键(同一浏览器跨会话记忆;读写包 try/catch 兼容隐私模式)。 */
+const LS_PREFIX = "pi-web.aigc.";
+
+function lsGet(key: string): string | undefined {
+  try {
+    const v = window.localStorage.getItem(LS_PREFIX + key);
+    return v === null || v === "" ? undefined : v;
+  } catch {
+    return undefined;
+  }
+}
+
+function lsSet(key: string, value: string | undefined): void {
+  try {
+    if (value === undefined) window.localStorage.removeItem(LS_PREFIX + key);
+    else window.localStorage.setItem(LS_PREFIX + key, value);
+  } catch {
+    /* 隐私模式等:跨会话记忆静默不可用,会话内偏好不受影响 */
+  }
+}
+
+/** 订阅一个偏好键:当前值回显 + 外部写回(如工具追问)推送更新。 */
+function useStateKey(
+  state: WebExtStateAccess,
+  key: string,
+): string | undefined {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => state.subscribe(key, onChange),
+    [state, key],
+  );
+  const getSnapshot = React.useCallback(() => {
+    const v = state.get<string>(key);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  }, [state, key]);
+  return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/** 订阅清单键(string[]);无效或未就绪返回 fallback。 */
+function useCatalogKey(
+  state: WebExtStateAccess,
+  key: string,
+  fallback: readonly string[],
+): readonly string[] {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => state.subscribe(key, onChange),
+    [state, key],
+  );
+  const getSnapshot = React.useCallback(() => state.get<unknown>(key), [state, key]);
+  const raw = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return React.useMemo(() => {
+    if (Array.isArray(raw) && raw.length > 0 && raw.every((x) => typeof x === "string")) {
+      return raw as readonly string[];
+    }
+    return fallback;
+  }, [raw, fallback]);
+}
+
+interface PrefSelectProps {
+  readonly state: WebExtStateAccess;
+  readonly prefKey: "model" | "size";
+  readonly options: readonly string[];
+  readonly placeholder: string;
+  readonly ariaLabel: string;
+  readonly dataAttr: string;
+  readonly widthClass: string;
+}
+
+/** 单个偏好选择器:回显 KV 当前值,变更写 KV + localStorage。 */
+function PrefSelect({
+  state,
+  prefKey,
+  options,
+  placeholder,
+  ariaLabel,
+  dataAttr,
+  widthClass,
+}: PrefSelectProps): React.JSX.Element {
+  const current = useStateKey(state, `aigc.${prefKey}`);
+  // 当前值不在清单里(如追问写回了清单外模型)仍需可回显:并入 items。
+  const items = React.useMemo(
+    () => (current !== undefined && !options.includes(current) ? [current, ...options] : options),
+    [current, options],
+  );
+  const onChange = (v: string): void => {
+    const next = v === DEFAULT_SENTINEL ? undefined : v;
+    if (next === undefined) void state.delete(`aigc.${prefKey}`);
+    else void state.set(`aigc.${prefKey}`, next);
+    lsSet(prefKey, next);
+  };
+  return (
+    <Select value={current ?? DEFAULT_SENTINEL} onValueChange={onChange}>
+      <SelectTrigger
+        {...{ [dataAttr]: "" }}
+        aria-label={ariaLabel}
+        className={`h-8 rounded-full border-[hsl(var(--border))] bg-transparent text-xs ${widthClass}`}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={DEFAULT_SENTINEL}>{placeholder}</SelectItem>
+        {items.map((m) => (
+          <SelectItem key={m} value={m}>
+            {m}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+export interface AigcQuickSettingsProps {
+  /** 会话共享状态接入(宿主经 SlotHost 注入);缺失 → 不呈现(Req 7.2)。 */
+  readonly state?: WebExtStateAccess;
+  /** seed 前的判空延迟(毫秒;测试可传 0)。见组件内竞态注释。 */
+  readonly seedDelayMs?: number;
+}
+
+export function AigcQuickSettings({
+  state,
+  seedDelayMs = 800,
+}: AigcQuickSettingsProps): React.JSX.Element | null {
+  // seed(Req 6.1/6.3):会话偏好为空且本地记忆存在 → 回填会话 KV,使新会话的图像工具
+  // 直接采用历史选择。
+  // ⚠ 竞态防护:KV 镜像经 SSE 粘性帧**异步**回放——mount 瞬间判空会在「重开既有会话」时
+  // 误用本地旧值覆盖会话内真值。故延迟 seedDelayMs 后再判空(粘性回放在连接后毫秒级完成,
+  // 延迟后窗口实际归零);期间键已回放出值则自然跳过。
+  React.useEffect(() => {
+    if (state === undefined) return;
+    const t = setTimeout(() => {
+      for (const key of ["model", "size"] as const) {
+        const inSession = state.get<string>(`aigc.${key}`);
+        const remembered = lsGet(key);
+        if ((inSession === undefined || inSession === "") && remembered !== undefined) {
+          void state.set(`aigc.${key}`, remembered);
+        }
+      }
+    }, seedDelayMs);
+    return () => clearTimeout(t);
+  }, [state, seedDelayMs]);
+
+  // 所有 hooks 之后再早退(Rules of Hooks):退化态不呈现。
+  const models = useCatalogKeySafe(state, "aigc.models", FALLBACK_MODELS);
+  const sizes = useCatalogKeySafe(state, "aigc.sizes", FALLBACK_SIZES);
+  if (state === undefined) return null;
+
+  return (
+    <span data-aigc-quick-settings className="flex items-center gap-1">
+      <PrefSelect
+        state={state}
+        prefKey="model"
+        options={models}
+        placeholder="图像模型"
+        ariaLabel="图像生成模型"
+        dataAttr="data-aigc-model-select"
+        widthClass="w-32"
+      />
+      <PrefSelect
+        state={state}
+        prefKey="size"
+        options={sizes}
+        placeholder="尺寸"
+        ariaLabel="输出尺寸"
+        dataAttr="data-aigc-size-select"
+        widthClass="w-24"
+      />
+    </span>
+  );
+}
+
+/** useCatalogKey 的 state 可缺失版(缺失时恒 fallback,保持 hooks 顺序稳定)。 */
+function useCatalogKeySafe(
+  state: WebExtStateAccess | undefined,
+  key: string,
+  fallback: readonly string[],
+): readonly string[] {
+  const noopState = React.useMemo<WebExtStateAccess>(
+    () => ({
+      get: () => undefined,
+      subscribe: () => () => {},
+      set: async () => {},
+      delete: async () => {},
+    }),
+    [],
+  );
+  return useCatalogKey(state ?? noopState, key, fallback);
+}

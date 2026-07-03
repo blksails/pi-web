@@ -193,6 +193,8 @@ export {
   type CanvasPanelProps,
 } from "./canvas/canvas-launcher.js";
 export { LineageView, buildLineageTree, type LineageViewProps, type LineageNode } from "./canvas/lineage-view.js";
+// aigc-prompt-toolbar:输入区工具排 AIGC 快捷设置(模型/尺寸偏好;promptToolbar 槽挂载)。
+export { AigcQuickSettings, type AigcQuickSettingsProps } from "./canvas/aigc-quick-settings.js";
 export {
   useCanvasView,
   useCanvasOpen,
