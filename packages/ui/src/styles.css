@@ -125,6 +125,20 @@
   background: transparent;
 }
 
+/* 减少动效偏好:遵从 prefers-reduced-motion,几乎归零动画/过渡时长(a11y 基线,
+   Web Interface Guidelines「Honor prefers-reduced-motion」)。保留极短时长而非 0 以不破坏
+   依赖 transitionend/animationend 的逻辑。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* 棋盘透明底:Canvas 舞台展示透明图区(16px 方格,主题 muted 半透)。 */
 .canvas-checkerboard {
   background-image:

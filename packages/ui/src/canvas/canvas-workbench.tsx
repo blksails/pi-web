@@ -1253,7 +1253,7 @@ export function CanvasWorkbench({
             aria-pressed={a.attachmentId === current.attachmentId}
             onClick={() => selectAsset(a)}
             className={cn(
-              "relative block aspect-square w-full shrink-0 overflow-hidden rounded-md border transition-all",
+              "relative block aspect-square w-full shrink-0 overflow-hidden rounded-md border transition-[opacity,border-color,box-shadow]",
               a.attachmentId === current.attachmentId
                 ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]"
                 : "border-[hsl(var(--border))] opacity-70 hover:opacity-100",
@@ -1464,7 +1464,11 @@ export function CanvasWorkbench({
           ) : (
             <Loader2 className="h-8 w-8 animate-spin text-[hsl(var(--primary))]" aria-hidden="true" />
           )}
-          <div className="flex items-center gap-2 rounded-full bg-[hsl(var(--background))]/90 px-3 py-1 text-xs text-[hsl(var(--muted-foreground))] shadow">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 rounded-full bg-[hsl(var(--background))]/90 px-3 py-1 text-xs text-[hsl(var(--muted-foreground))] shadow"
+          >
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
             {livePreview.stage === "finalizing" ? "正在保存…" : "生成中 · 由糊变清"}
           </div>
@@ -1666,8 +1670,9 @@ export function CanvasWorkbench({
           <Input
             autoFocus
             data-canvas-text-editor
+            aria-label="标注文本"
             value={textEditor.value}
-            placeholder="标注文本,回车确认"
+            placeholder="标注文本,回车确认…"
             onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
             onKeyDown={(e) => {
               if (e.key === "Enter") commitText();
@@ -1721,6 +1726,7 @@ export function CanvasWorkbench({
           <PopoverAnchor asChild>
             <Textarea
               data-canvas-prompt
+              aria-label="修改描述提示词"
               value={prompt}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1754,7 +1760,7 @@ export function CanvasWorkbench({
                     if (prompt.endsWith("@")) setPrompt(prompt.slice(0, -1));
                   }}
                   className={cn(
-                    "relative aspect-square overflow-hidden rounded border transition-all",
+                    "relative aspect-square overflow-hidden rounded border transition-[opacity,border-color,box-shadow]",
                     refs.includes(a.attachmentId)
                       ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]"
                       : "border-[hsl(var(--border))] opacity-80 hover:opacity-100",
@@ -1781,7 +1787,7 @@ export function CanvasWorkbench({
                 >
                   {a !== undefined ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.displayUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+                    <img src={a.displayUrl} alt="" width={16} height={16} className="h-4 w-4 rounded-full object-cover" />
                   ) : null}
                   @…{id.slice(-6)}
                   <button
@@ -1816,7 +1822,7 @@ export function CanvasWorkbench({
             value={model === "" ? MODEL_DEFAULT_SENTINEL : model}
             onValueChange={(v) => setModel(v === MODEL_DEFAULT_SENTINEL ? "" : v)}
           >
-            <SelectTrigger data-canvas-model className="h-8 w-36 text-xs">
+            <SelectTrigger data-canvas-model aria-label="生成模型" className="h-8 w-36 text-xs">
               <SelectValue placeholder="默认模型" />
             </SelectTrigger>
             <SelectContent>
@@ -1877,6 +1883,8 @@ export function CanvasWorkbench({
                   <span className="text-[hsl(var(--muted-foreground))]">自定义</span>
                   <Input
                     data-canvas-size-custom-w
+                    aria-label="自定义宽度(像素)"
+                    inputMode="numeric"
                     value={customW}
                     onChange={(e) => setCustomW(e.target.value.replace(/\D/g, ""))}
                     placeholder="宽"
@@ -1885,6 +1893,8 @@ export function CanvasWorkbench({
                   ×
                   <Input
                     data-canvas-size-custom-h
+                    aria-label="自定义高度(像素)"
+                    inputMode="numeric"
                     value={customH}
                     onChange={(e) => setCustomH(e.target.value.replace(/\D/g, ""))}
                     placeholder="高"

@@ -113,4 +113,22 @@ describe("CanvasGallery", () => {
     fireEvent.click(document.querySelector('[data-canvas-cell][data-att-id="cell_1"]')!);
     expect(onOpenAsset).toHaveBeenCalledWith("cell_1");
   });
+
+  it("livePreview:生成中状态区可播报(role=status/aria-live)+ 宿主转发图渲染", () => {
+    const surface: WebExtSurfaceAccess = {
+      run: vi.fn(async (d, a) => ({ domain: d, action: a, ok: true })),
+      getState: <T,>(k: string) =>
+        k === STATE_KEY ? ({ assets: [], livePreview: { stage: "partial" } } as T) : undefined,
+      subscribe: () => () => undefined,
+      hasCommand: (n: string) => n === PROBE,
+    };
+    render(<CanvasGallery surface={surface} livePreviewImage="data:image/png;base64,AA" />);
+    const lp = document.querySelector("[data-canvas-live-preview]");
+    expect(lp?.getAttribute("data-canvas-live-preview-stage")).toBe("partial");
+    const status = lp?.querySelector('[role="status"]');
+    expect(status?.getAttribute("aria-live")).toBe("polite");
+    expect(status?.textContent).toContain("生成中");
+    // 宿主转发图优先渲染。
+    expect(lp?.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AA");
+  });
 });

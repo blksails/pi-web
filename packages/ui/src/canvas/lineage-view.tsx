@@ -57,7 +57,7 @@ function TreeNode({
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={a.displayUrl} alt={a.name} className="h-20 w-20 object-cover" />
+        <img src={a.displayUrl} alt={a.name} width={80} height={80} className="h-20 w-20 object-cover" />
         <div className="pointer-events-none absolute inset-x-0 top-0 truncate bg-gradient-to-b from-black/50 to-transparent px-1 py-0.5 text-[10px] text-white">
           {a.name}
         </div>

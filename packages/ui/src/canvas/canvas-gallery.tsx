@@ -44,9 +44,20 @@ export interface CanvasGalleryProps {
   readonly livePreviewImage?: string;
 }
 
-/** 时间分组标签(按本地日期)。 */
+/** 时间分组 KEY(YYYY-MM-DD;locale 无关,保证分组稳定)。 */
 function dayOf(iso: string): string {
   return iso.slice(0, 10);
+}
+
+/** 分组标签**显示**格式(经 Intl.DateTimeFormat 本地化;运行时 locale)。 */
+const DAY_LABEL_FMT = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+function formatDayLabel(ymd: string): string {
+  const d = new Date(`${ymd}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? ymd : DAY_LABEL_FMT.format(d);
 }
 
 /** 血缘分组标签(root att_ = 无 derivedFrom 的祖先;此处以直接 derivedFrom 归组,UI 本地派生)。 */
@@ -188,7 +199,11 @@ export function CanvasGallery({
           ) : (
             <Loader2 className="h-6 w-6 animate-spin text-[hsl(var(--primary))]" aria-hidden="true" />
           )}
-          <div className="pointer-events-none absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[hsl(var(--background))]/90 px-2 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))] shadow">
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[hsl(var(--background))]/90 px-2 py-0.5 text-[10px] text-[hsl(var(--muted-foreground))] shadow"
+          >
             <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
             {snap.livePreview.stage === "finalizing" ? "正在保存…" : "生成中 · 由糊变清"}
           </div>
@@ -204,7 +219,7 @@ export function CanvasGallery({
           <div key={group.key || "_"} data-canvas-group={group.key}>
             {view.group !== "none" && group.key !== "" ? (
               <div className="mb-1 text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
-                {group.key}
+                {view.group === "time" ? formatDayLabel(group.key) : group.key}
               </div>
             ) : null}
             <div className={gridClass}>
