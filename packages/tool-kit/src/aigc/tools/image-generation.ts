@@ -114,7 +114,11 @@ const PARAMETERS = Type.Object({
   ),
   size: Type.Optional(
     Type.String({
-      description: "Output image size, e.g. 1024x1024 / 1536x1024 / 1024x1536 (model-dependent).",
+      description:
+        "Output image size, e.g. 1024x1024 / 1536x1024 / 1024x1536 (model-dependent). " +
+        "OMIT unless the user explicitly requests a specific size or aspect ratio in the conversation — " +
+        "when omitted, the user's preferred size (set in the UI) or the model default applies. " +
+        "Do NOT infer a size from the subject matter.",
     }),
   ),
   negative_prompt: Type.Optional(

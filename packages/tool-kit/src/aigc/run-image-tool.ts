@@ -97,7 +97,10 @@ export function optionalModelEnum(
   defaultModel: string,
 ): TSchema {
   const models = routes.map((m) => m.model);
-  const desc = `Model to use. Omit for default (${defaultModel}). Options: ${models.join(" | ")}`;
+  const desc =
+    `Model to use. OMIT unless the user explicitly names a model in the conversation — ` +
+    `when omitted, the user's preferred model (set in the UI) or the default (${defaultModel}) applies. ` +
+    `Options: ${models.join(" | ")}`;
   const literals = models.map((m) => Type.Literal(m, { description: m }));
   const base: TSchema =
     literals.length === 1

@@ -132,7 +132,13 @@ const PARAMETERS = Type.Object({
   ),
   n: Type.Optional(Type.Integer({ description: "Number of images to generate (1–10)." })),
   size: Type.Optional(
-    Type.String({ description: "Output image size, e.g. 1024x1024 (model-dependent)." }),
+    Type.String({
+      description:
+        "Output image size, e.g. 1024x1024 (model-dependent). " +
+        "OMIT unless the user explicitly requests a specific size or aspect ratio in the conversation — " +
+        "when omitted, the user's preferred size (set in the UI) or the model default applies. " +
+        "Do NOT infer a size from the subject matter.",
+    }),
   ),
   reference_images: Type.Optional(
     Type.Array(Type.String(), {
