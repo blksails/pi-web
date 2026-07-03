@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import {
+  ANNOTATION_COLOR,
   annotationsToImage,
   clampRect,
+  drawAnnotations,
   compositeByMask,
   flattenLayers,
   rotatedSize,
@@ -268,6 +270,51 @@ describe("client-image-ops 几何", () => {
     expect(calls.filter((c) => c === "moveTo")).toHaveLength(1 + 3);
     expect(calls.at(-1)).toBe("fillText:改成红色");
     expect(uri).toBe("data:image/png;base64,ANNO");
+  });
+
+  it("drawAnnotations:每条标注可自带 color(缺省回落批注红),线与文本分别生效", () => {
+    const strokeColors: string[] = [];
+    const fillColors: string[] = [];
+    let strokeStyle = "";
+    let fillStyle = "";
+    const ctx: Ctx2DLike = {
+      get fillStyle() {
+        return fillStyle;
+      },
+      set fillStyle(v: string) {
+        fillStyle = v;
+        fillColors.push(v);
+      },
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      clearRect: vi.fn(),
+      get strokeStyle() {
+        return strokeStyle;
+      },
+      set strokeStyle(v: string) {
+        strokeStyle = v;
+        strokeColors.push(v);
+      },
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+      fillText: vi.fn(),
+    };
+    drawAnnotations(ctx, [
+      // 带 color → 用自带色。
+      { kind: "line", from: { x: 0, y: 0 }, to: { x: 5, y: 5 }, size: 4, color: "#3b82f6" },
+      // 缺省 → 回落整体默认(批注红)。
+      { kind: "arrow", from: { x: 0, y: 0 }, to: { x: 9, y: 0 }, size: 4 },
+      // 文本带 color → fillStyle 用自带色。
+      { kind: "text", from: { x: 1, y: 1 }, to: { x: 1, y: 1 }, text: "白字", size: 8, color: "#ffffff" },
+    ]);
+    expect(strokeColors).toEqual(["#3b82f6", ANNOTATION_COLOR]);
+    expect(fillColors).toEqual(["#ffffff"]);
   });
 
   it("flattenLayers:底图打底 + 依序绘制各层(位置/尺寸透传)", () => {
