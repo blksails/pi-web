@@ -370,18 +370,39 @@ function textFromToolContent(output: unknown): string | undefined {
   return texts.length > 0 ? texts.join("\n\n") : undefined;
 }
 
+/** 行内图片 markdown(`![alt](src)`);src 到首个 `)` 前(URL/data URI 均无裸 `)`)。 */
+const IMG_MD_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+/** 把工具文本分离为「其余文本」与「图片列表」——图片改原生 `<img>` 块渲染,不进 markdown 段落。 */
+function splitToolText(raw: string): {
+  text: string;
+  images: { alt: string; src: string }[];
+} {
+  const images: { alt: string; src: string }[] = [];
+  IMG_MD_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = IMG_MD_RE.exec(raw)) !== null) {
+    images.push({ alt: m[1] ?? "", src: (m[2] ?? "").trim() });
+  }
+  const text = raw.replace(IMG_MD_RE, "").replace(/\n{2,}/g, "\n").trim();
+  return { text, images };
+}
+
 /**
  * 按输出值类型生成默认渲染节点:
  *  - 字符串 → Response 富渲染;
- *  - pi 工具结果(`{content, details}` / `ContentItem[]`)→ 抽 content 文本经 Response 渲染(图片
- *    markdown 即显图),结构化 details 折叠附于其后(可展开审阅,不再整体 dump JSON);
+ *  - pi 工具结果(`{content, details}` / `ContentItem[]`)→ 抽 content 文本,**文本经 Response 渲染、
+ *    图片抽出用原生 `<img>` 块渲染**(避免 Streamdown 把图片 `<div>` 包裹嵌进 markdown `<p>` 触发
+ *    「div cannot be descendant of p」hydration 错;顺带绕开 rehype 对 data: 的限制),结构化 details
+ *    折叠附于其后(不再整体 dump JSON);
  *  - 其它数据 → JSON 代码块。
  */
 function defaultOutputNode(output: unknown): React.ReactNode {
   if (output === undefined) return null;
   if (typeof output === "string") return <Response>{output}</Response>;
-  const text = textFromToolContent(output);
-  if (text !== undefined) {
+  const raw = textFromToolContent(output);
+  if (raw !== undefined) {
+    const { text, images } = splitToolText(raw);
     const details =
       !Array.isArray(output) &&
       (output as { details?: unknown } | null)?.details !== undefined
@@ -389,7 +410,21 @@ function defaultOutputNode(output: unknown): React.ReactNode {
         : undefined;
     return (
       <div className="space-y-2">
-        <Response>{text}</Response>
+        {text !== "" ? <Response>{text}</Response> : null}
+        {images.length > 0 ? (
+          <div className="flex flex-wrap gap-2" data-pi-tool-images>
+            {images.map((img, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`${i}-${img.src.slice(0, 32)}`}
+                src={img.src}
+                alt={img.alt}
+                loading="lazy"
+                className="max-h-64 max-w-full rounded-md border border-[hsl(var(--border))] object-contain"
+              />
+            ))}
+          </div>
+        ) : null}
         {details !== undefined ? (
           <details className="text-[11px]">
             <summary className="cursor-pointer select-none text-[hsl(var(--muted-foreground))]">

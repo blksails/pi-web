@@ -113,6 +113,33 @@ describe("PiToolPart 四态", () => {
     expect(disclosure?.querySelector("summary")?.textContent).toBe("详情");
   });
 
+  it("content 内 ![](url) 抽成原生 <img> 块渲染(不进 Streamdown 段落,避免 div-in-p)", () => {
+    render(
+      <PiToolPart
+        part={toolEndPart("image_generation", {}, {
+          content: [
+            { type: "text", text: "生成成功:1 张\n![shiba.png](/api/attachments/att_x/raw?exp=1)" },
+          ],
+          details: { ok: true },
+        })}
+        defaultOpen={true}
+      />,
+    );
+    const detail = screen
+      .getByText("image_generation")
+      .closest("[data-pi-tool]")
+      ?.querySelector("[data-pi-tool-detail]");
+    // 图片走原生 <img> 块,非 markdown 段落内的 streamdown 包裹。
+    const imgBox = detail?.querySelector("[data-pi-tool-images]");
+    const img = imgBox?.querySelector("img");
+    expect(img?.getAttribute("src")).toBe("/api/attachments/att_x/raw?exp=1");
+    expect(img?.getAttribute("alt")).toBe("shiba.png");
+    // 图片 <img> 不应嵌在 <p> 内(否则 div-in-p 水合错)。
+    expect(img?.closest("p")).toBeNull();
+    // 其余文本仍渲染。
+    expect(detail?.textContent).toContain("生成成功:1 张");
+  });
+
   it("保留全部 data 属性:tool / phase / name / status / detail", () => {
     render(<PiToolPart part={toolEndPart("search", {}, { hits: 3 })} />);
     const card = screen.getByText("search").closest("[data-pi-tool]");
