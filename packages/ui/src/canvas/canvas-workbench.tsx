@@ -56,6 +56,7 @@ import {
   annotationsToImage,
   compositeByMask,
   drawAnnotations,
+  flattenLayers,
   hasMaskContent,
   rotateImage,
   strokesToMask,
@@ -126,6 +127,19 @@ const FLOAT_LAYER =
 type EditOp =
   | { readonly kind: "stroke"; readonly item: MaskStroke }
   | { readonly kind: "anno"; readonly item: Annotation };
+
+/** 舞台图层(M3;位置/尺寸为**底图像素坐标**,后加的在上;独立于 undo 栈)。 */
+interface WorkLayer {
+  readonly id: string;
+  readonly attachmentId: string;
+  readonly displayUrl: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  /** 加载后的可绘源(拍平用;异步填充)。 */
+  readonly loaded?: LoadedImage;
+}
 
 // ── 生成决策(纯函数,export 供单测)────────────────────────────────────────────
 
@@ -363,6 +377,18 @@ export function CanvasWorkbench({
     top: number;
     value: string;
   } | null>(null);
+  // ── M3 状态:图层 ────────────────────────────────────────────────────────────
+  const [layers, setLayers] = React.useState<readonly WorkLayer[]>([]);
+  const [selectedLayer, setSelectedLayer] = React.useState<string | null>(null);
+  const layerSeq = React.useRef(0);
+  /** 图层拖动/缩放会话(pointer capture 于层元素上)。 */
+  const layerDrag = React.useRef<{
+    id: string;
+    mode: "move" | "resize";
+    startX: number;
+    startY: number;
+    orig: { x: number; y: number; w: number; h: number };
+  } | null>(null);
   const imgRef = React.useRef<HTMLImageElement | null>(null);
   const stageRef = React.useRef<HTMLDivElement | null>(null);
   const overlayRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -409,7 +435,7 @@ export function CanvasWorkbench({
     setOffset({ x: 0, y: 0 });
   }, []);
 
-  // 切换工作图 → 复位视图 + 清空编辑历史 + 重新量自然尺寸。
+  // 切换工作图 → 复位视图 + 清空编辑历史/图层 + 重新量自然尺寸。
   React.useEffect(() => {
     resetView();
     setOps([]);
@@ -417,6 +443,8 @@ export function CanvasWorkbench({
     setDraft(null);
     setAnnoDraft(null);
     setTextEditor(null);
+    setLayers([]);
+    setSelectedLayer(null);
     setNatural(null);
   }, [current.attachmentId, resetView]);
 
@@ -649,6 +677,169 @@ export function CanvasWorkbench({
   const annoLineTool = tool === "line" || tool === "arrow";
   const overlayInteractive = drawingTool || annoLineTool || tool === "text";
 
+  // ── M3:图层(加/拖放/变换/拍平;全 B 档本地)──────────────────────────────────
+  const loader = imageLoader ?? defaultImageLoader;
+
+  /** 加一层:初始宽 = 底图宽 40%,高按图像纵横比(加载后修正);落点居中(缺省底图中心)。 */
+  const addLayer = React.useCallback(
+    (att: { attachmentId: string; displayUrl: string }, at?: { x: number; y: number }): void => {
+      // natural 未量到(jsdom / 未加载)退化 1024 占位,与 sourceSize 同策略。
+      const nat = natural ?? { w: 1024, h: 1024 };
+      layerSeq.current += 1;
+      const id = `layer-${layerSeq.current}`;
+      const w0 = nat.w * 0.4;
+      const h0 = w0; // 占位方形,加载后按真实纵横比修正
+      const cx0 = at?.x ?? nat.w / 2;
+      const cy0 = at?.y ?? nat.h / 2;
+      const layer: WorkLayer = {
+        id,
+        attachmentId: att.attachmentId,
+        displayUrl: att.displayUrl,
+        x: cx0 - w0 / 2,
+        y: cy0 - h0 / 2,
+        w: w0,
+        h: h0,
+      };
+      setLayers((prev) => [...prev, layer]);
+      setSelectedLayer(id);
+      void loader(att.displayUrl)
+        .then((img) => {
+          const ratio = img.width > 0 ? img.height / img.width : 1;
+          setLayers((prev) =>
+            prev.map((l) =>
+              l.id === id
+                ? { ...l, loaded: img, h: l.w * ratio, y: cy0 - (l.w * ratio) / 2 }
+                : l,
+            ),
+          );
+        })
+        .catch(() => {
+          // 加载失败:层保留占位(拍平时跳过)。
+        });
+    },
+    [natural, loader],
+  );
+
+  /** stage drop:画廊资产(text/att-id)或 OS 文件(经上传接缝落 att_ 并 register)。 */
+  const onStageDrop = (e: React.DragEvent): void => {
+    e.preventDefault();
+    const cv = overlayRef.current;
+    if (cv === null || natural === null) return;
+    const rect = cv.getBoundingClientRect();
+    const at =
+      rect.width > 0
+        ? {
+            x: ((e.clientX - rect.left) / rect.width) * natural.w,
+            y: ((e.clientY - rect.top) / rect.height) * natural.h,
+          }
+        : undefined;
+    const attId = e.dataTransfer.getData("text/att-id");
+    if (attId !== "") {
+      const a = assets.find((x) => x.attachmentId === attId);
+      if (a !== undefined) addLayer(a, at);
+      return;
+    }
+    // OS 文件:上传落 att_ → register 进画廊(origin=upload)→ 成层。
+    const file = e.dataTransfer.files?.[0];
+    if (file !== undefined && upload !== undefined) {
+      void upload(baseUrl ?? "", sessionId ?? "", file).then(async (res) => {
+        if (available && surface !== undefined) {
+          await settleWindow(
+            surface.run(DOMAIN, "register", { attachmentId: res.attachment.id }),
+          );
+        }
+        addLayer({ attachmentId: res.attachment.id, displayUrl: res.displayUrl }, at);
+      });
+    }
+  };
+
+  /** 层指针交互:move 模式拖动 / resize 模式右下角手柄等比缩放。 */
+  const onLayerPointerDown = (e: React.PointerEvent, id: string, mode: "move" | "resize"): void => {
+    e.stopPropagation();
+    const l = layers.find((x) => x.id === id);
+    if (l === undefined) return;
+    setSelectedLayer(id);
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    layerDrag.current = {
+      id,
+      mode,
+      startX: e.clientX,
+      startY: e.clientY,
+      orig: { x: l.x, y: l.y, w: l.w, h: l.h },
+    };
+  };
+  const onLayerPointerMove = (e: React.PointerEvent): void => {
+    const d = layerDrag.current;
+    const cv = overlayRef.current;
+    if (d === null || cv === null || natural === null) return;
+    const rect = cv.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const dx = ((e.clientX - d.startX) / rect.width) * natural.w;
+    const dy = ((e.clientY - d.startY) / rect.height) * natural.h;
+    setLayers((prev) =>
+      prev.map((l) => {
+        if (l.id !== d.id) return l;
+        if (d.mode === "move") return { ...l, x: d.orig.x + dx, y: d.orig.y + dy };
+        // 等比缩放(右下角手柄;以横向位移为准,钳最小 24px)。
+        const ratio = d.orig.w > 0 ? d.orig.h / d.orig.w : 1;
+        const w = Math.max(24, d.orig.w + dx);
+        return { ...l, w, h: w * ratio };
+      }),
+    );
+  };
+  const onLayerPointerUp = (): void => {
+    layerDrag.current = null;
+  };
+
+  /** 拍平:底图 + 依序各层 → 上传 att_ → register(derivedFrom=底图)→ 清层。 */
+  const flatten = React.useCallback(async (): Promise<void> => {
+    if (upload === undefined || layers.length === 0) return;
+    setBusy(true);
+    try {
+      // 确保所有层已加载(占位未完成的现场补载;失败层跳过)。
+      const resolved = await Promise.all(
+        layers.map(async (l) => {
+          if (l.loaded !== undefined) return l;
+          try {
+            const img = await loader(l.displayUrl);
+            return { ...l, loaded: img } as WorkLayer;
+          } catch {
+            return l;
+          }
+        }),
+      );
+      const src = sourceSize();
+      const opts = canvasFactory !== undefined ? { canvasFactory } : {};
+      const uri = flattenLayers(
+        src,
+        resolved
+          .filter((l) => l.loaded !== undefined)
+          .map((l) => ({ source: l.loaded!.source, x: l.x, y: l.y, w: l.w, h: l.h })),
+        opts,
+      );
+      const { attachmentId } = await uploadDataUri({
+        dataUri: uri,
+        name: `flatten-${current.name}`,
+        baseUrl: baseUrl ?? "",
+        sessionId: sessionId ?? "",
+        upload,
+      });
+      if (available && surface !== undefined) {
+        await settleWindow(
+          surface.run(DOMAIN, "register", {
+            attachmentId,
+            derivedFrom: current.attachmentId,
+            genParams: { op: "flatten", layers: layers.map((l) => l.attachmentId) },
+          }),
+        );
+      }
+      setLayers([]);
+      setSelectedLayer(null);
+    } finally {
+      setBusy(false);
+    }
+  }, [upload, layers, loader, canvasFactory, current, baseUrl, sessionId, available, surface]);
+
   const shortEdge = natural !== null ? Math.min(natural.w, natural.h) : 1024;
   const annoSize = Math.max(3, Math.round(shortEdge * ANNOTATION_RATIO));
 
@@ -817,26 +1008,49 @@ export function CanvasWorkbench({
     >
       <div className="px-0.5 text-[10px] font-medium text-[hsl(var(--muted-foreground))]">版本</div>
       {assets.map((a) => (
-        <button
+        <div
           key={a.attachmentId}
-          type="button"
-          data-canvas-version-item
-          data-att-id={a.attachmentId}
-          aria-pressed={a.attachmentId === current.attachmentId}
-          onClick={() => selectAsset(a)}
-          className={cn(
-            "relative aspect-square w-full shrink-0 overflow-hidden rounded-md border transition-all",
-            a.attachmentId === current.attachmentId
-              ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]"
-              : "border-[hsl(var(--border))] opacity-70 hover:opacity-100",
-          )}
+          className="group relative"
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("text/att-id", a.attachmentId);
+            e.dataTransfer.effectAllowed = "copy";
+          }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={a.displayUrl} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
-          {a.derivedFrom !== undefined ? (
-            <span className="absolute left-0.5 top-0.5 rounded bg-black/50 px-1 text-[8px] text-white">派生</span>
+          <button
+            type="button"
+            data-canvas-version-item
+            data-att-id={a.attachmentId}
+            aria-pressed={a.attachmentId === current.attachmentId}
+            onClick={() => selectAsset(a)}
+            className={cn(
+              "relative block aspect-square w-full shrink-0 overflow-hidden rounded-md border transition-all",
+              a.attachmentId === current.attachmentId
+                ? "border-[hsl(var(--primary))] ring-2 ring-[hsl(var(--primary))]"
+                : "border-[hsl(var(--border))] opacity-70 hover:opacity-100",
+            )}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={a.displayUrl} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
+            {a.derivedFrom !== undefined ? (
+              <span className="absolute left-0.5 top-0.5 rounded bg-black/50 px-1 text-[8px] text-white">派生</span>
+            ) : null}
+          </button>
+          {/* ⊕ 加为图层(hover 显;拖拽到舞台等效)。当前工作图不自叠。 */}
+          {a.attachmentId !== current.attachmentId ? (
+            <button
+              type="button"
+              data-canvas-layer-add
+              data-att-id={a.attachmentId}
+              aria-label="加为图层"
+              title="加为图层(或直接拖到画布)"
+              onClick={() => addLayer(a)}
+              className="absolute bottom-0.5 right-0.5 hidden h-4 w-4 items-center justify-center rounded-full bg-black/60 text-[10px] leading-none text-white group-hover:flex"
+            >
+              +
+            </button>
           ) : null}
-        </button>
+        </div>
       ))}
     </div>
   );
@@ -955,6 +1169,8 @@ export function CanvasWorkbench({
       onMouseUp={endDrag}
       onMouseLeave={endDrag}
       onDoubleClick={tool === "move" ? resetView : undefined}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onStageDrop}
       style={{ cursor: tool === "move" ? (drag.current?.active ? "grabbing" : "grab") : undefined }}
     >
       <div className="relative shrink-0 will-change-transform" style={wrapperStyle}>
@@ -974,6 +1190,56 @@ export function CanvasWorkbench({
           className="h-full w-full select-none object-contain"
           crossOrigin="anonymous"
         />
+        {/* 图层(底图之上、掩码/标注 overlay 之下;百分比定位随 wrapper 缩放)。 */}
+        {natural !== null
+          ? layers.map((l) => (
+              <div
+                key={l.id}
+                data-canvas-layer
+                data-layer-id={l.id}
+                data-att-id={l.attachmentId}
+                className={cn(
+                  "absolute",
+                  selectedLayer === l.id
+                    ? "z-[2] ring-2 ring-[hsl(var(--primary))]"
+                    : "z-[1]",
+                )}
+                style={{
+                  left: `${(l.x / natural.w) * 100}%`,
+                  top: `${(l.y / natural.h) * 100}%`,
+                  width: `${(l.w / natural.w) * 100}%`,
+                  height: `${(l.h / natural.h) * 100}%`,
+                  cursor: "move",
+                }}
+                onPointerDown={(e) => onLayerPointerDown(e, l.id, "move")}
+                onPointerMove={onLayerPointerMove}
+                onPointerUp={onLayerPointerUp}
+                onPointerCancel={onLayerPointerUp}
+                // 阻断 mousedown 冒泡:stage 平移监听 mousedown(与 pointerdown 是不同事件,
+                // 层内 pointerdown 的 stopPropagation 挡不住它)→ 否则拖层时画布同步平移(2 倍位移)。
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={l.displayUrl}
+                  alt=""
+                  draggable={false}
+                  className="h-full w-full select-none object-fill"
+                  crossOrigin="anonymous"
+                />
+                {selectedLayer === l.id ? (
+                  <span
+                    data-canvas-layer-resize
+                    aria-label="缩放图层"
+                    onPointerDown={(e) => onLayerPointerDown(e, l.id, "resize")}
+                    onPointerMove={onLayerPointerMove}
+                    onPointerUp={onLayerPointerUp}
+                    className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-sm border border-[hsl(var(--background))] bg-[hsl(var(--primary))]"
+                  />
+                ) : null}
+              </div>
+            ))
+          : null}
         {natural !== null ? (
           <canvas
             ref={overlayRef}
@@ -981,7 +1247,7 @@ export function CanvasWorkbench({
             width={natural.w}
             height={natural.h}
             className={cn(
-              "absolute inset-0 h-full w-full",
+              "absolute inset-0 z-[3] h-full w-full",
               overlayInteractive
                 ? tool === "text"
                   ? "cursor-text"
@@ -995,6 +1261,52 @@ export function CanvasWorkbench({
           />
         ) : null}
       </div>
+      {/* 图层浮条(有层时顶部中央):拍平/删除选中/清空。 */}
+      {layers.length > 0 ? (
+        <div
+          data-canvas-layer-bar
+          className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 px-2 py-0.5 text-xs shadow-sm backdrop-blur"
+        >
+          <span className="text-[hsl(var(--muted-foreground))]">图层 {layers.length}</span>
+          {selectedLayer !== null ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-xs"
+              data-canvas-layer-remove
+              onClick={() => {
+                setLayers((prev) => prev.filter((l) => l.id !== selectedLayer));
+                setSelectedLayer(null);
+              }}
+            >
+              删除选中
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-xs"
+            data-canvas-layer-clear
+            onClick={() => {
+              setLayers([]);
+              setSelectedLayer(null);
+            }}
+          >
+            清空
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            data-canvas-layer-flatten
+            disabled={busy || upload === undefined}
+            onClick={() => void flatten()}
+          >
+            {busy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+            拍平
+          </Button>
+        </div>
+      ) : null}
       {/* 文本标注编辑器(浮动;回车确认,Esc 取消)。 */}
       {textEditor !== null ? (
         <div
