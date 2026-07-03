@@ -239,6 +239,23 @@ function errResult(error: string): ExecuteResult {
   };
 }
 
+/**
+ * 由 prompt 生成**文件名安全**的摘要前缀,使多张单图产物可区分——此前恒为 `<toolName>-0.png`
+ * 同名(@ 引用列表对不上、对不上助手回复里的 att_ id)。清洗文件名非法字符 + 折叠空白为 `-`,
+ * 截断到 24 码点(中文按码点,避免半个字);空/非字符串/清洗后为空 → 回退 `fallback`(工具名)。
+ */
+export function promptToNamePrefix(prompt: unknown, fallback: string): string {
+  if (typeof prompt !== "string") return fallback;
+  const cleaned = prompt
+    .trim()
+    // 文件名非法/易混字符(/ \ : * ? " < > | 及点、控制符)→ 空格,随后折叠为 `-`。
+    .replace(/[/\\:*?"<>|.\n\r\t]+/g, " ")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const truncated = [...cleaned].slice(0, 24).join("");
+  return truncated.length > 0 ? truncated : fallback;
+}
+
 // ── 编排主函数 ─────────────────────────────────────────────────────────────────
 
 export async function runImageTool(
@@ -308,7 +325,9 @@ export async function runImageTool(
     const persistStartedAt = Date.now();
     const assets = await persistPicked(picked, ctx, {
       fetchImpl: deps?.fetchImpl,
-      namePrefix: toolName,
+      // prompt 摘要前缀:多张单图产物此前恒为 `<toolName>-0.png` 同名(@ 引用列表对不上、
+      // 对不上助手回复的 att_ id)。用 prompt 摘要命名 → `赛博朋克2077风格的游戏画面-0.png`。
+      namePrefix: promptToNamePrefix(merged.prompt, toolName),
     });
     log.info("assets persisted", {
       tool: toolName,
