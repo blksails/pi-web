@@ -37,6 +37,14 @@ interface OpenRouterImageMeta {
    *  - `"chat"`   —— 其余(Gemini 系)走 `/chat/completions`(reasoning 边想边显 + 图早弹;不支持 partial_images)。
    */
   endpoint: "images" | "chat";
+  /**
+   * **带图编辑**的接入端点覆盖(缺省 = `endpoint`)。
+   * ⚠️ OpenRouter `/api/v1/images` 的 edit 路径实测**不消费输入图**(且 body 丢弃
+   * reference_images)→ 生成与引用无关(纯文生图);带图编辑须走 chat 模态
+   * (`image_url` parts,主图+参考图全带)。generation 无输入图,保留 images 端点的
+   * partial_images 渐进体验。
+   */
+  editEndpoint?: "images" | "chat";
 }
 
 /** 精选可用集(均经 curl 实测出图;pricePerKTok 取自 OpenRouter /models completion 单价 ×1000)。 */
@@ -74,6 +82,7 @@ const OPENROUTER_IMAGE_MODELS: readonly OpenRouterImageMeta[] = [
     blurb: "OpenAI GPT-5 图像模型(渐进局部图)",
     pricePerKTok: 0.01,
     endpoint: "images",
+    editEndpoint: "chat",
   },
   {
     model: "gpt-5-image-mini",
@@ -82,6 +91,7 @@ const OPENROUTER_IMAGE_MODELS: readonly OpenRouterImageMeta[] = [
     blurb: "OpenAI GPT-5 图像 Mini(廉价;渐进局部图)",
     pricePerKTok: 0.002,
     endpoint: "images",
+    editEndpoint: "chat",
   },
   {
     model: "gpt-5.4-image-2",
@@ -133,7 +143,7 @@ export function openRouterImageRoutes(): ImageRoute[] {
 /** 带图编辑路由项集合(image_edit 用 `...openRouterImageEditRoutes()` 展开)。 */
 export function openRouterImageEditRoutes(): ImageRoute[] {
   return OPENROUTER_IMAGE_MODELS.map((m) => {
-    if (m.endpoint === "images") {
+    if ((m.editEndpoint ?? m.endpoint) === "images") {
       // OpenAI /api/v1/images(image 字段传 data URI)+ partial_images 渐进图。
       return createOpenRouterImagesEdit(
         {
