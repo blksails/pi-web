@@ -193,10 +193,13 @@ function buildImageEditBody(model: string) {
     for (const p of parts) {
       form.append("image[]", p.blob, p.filename);
     }
-    // 可选 B/W 遮罩(OpenAI edits 的 mask 字段)。
+    // 可选 alpha 遮罩(OpenAI edits 的 mask 字段:透明 alpha=0 = 编辑区,不透明 = 保留)。
     if (a.mask) {
       const maskPart = await fetchImagePart(a.mask);
       form.append("mask", maskPart.blob, maskPart.filename);
+      // gpt-image 的 edits 是「整图重生成、mask 引导」而非像素级 inpaint,掩码外易漂移;
+      // 用户给了 mask 即明确要局部保真 → 透传 input_fidelity=high 压制(非 gpt-image 网关忽略)。
+      form.append("input_fidelity", "high");
     }
     return form;
   };

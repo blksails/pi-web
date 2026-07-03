@@ -57,7 +57,7 @@ export const EditArgsSchema = z.object({
 });
 export type EditArgs = z.infer<typeof EditArgsSchema>;
 
-/** `inpaint`:局部重绘(B/W mask,白=重绘区)。 */
+/** `inpaint`:局部重绘(alpha mask PNG,OpenAI images/edits 标准:透明 alpha=0 = 编辑区,不透明 = 保留)。 */
 export const InpaintArgsSchema = EditArgsSchema.extend({ mask: z.string() });
 export type InpaintArgs = z.infer<typeof InpaintArgsSchema>;
 

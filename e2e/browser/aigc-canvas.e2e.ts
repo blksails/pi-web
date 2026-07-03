@@ -69,7 +69,8 @@ test("canvas: 闭环(launcherRail 入口 → 画廊 → 格子展开 → edit �
   await page.locator("[data-canvas-cell]").first().click();
   await expect(page.locator("[data-canvas-workbench]")).toBeVisible();
 
-  // A 档 edit:输入指令 → 点「编辑」→ run("canvas","edit") → 快照回流 → 新图入画廊(回到画廊后 2 格)。
+  // A 档 edit:底部提示词栏输入指令 → 点「生成」(无掩码 → edit)→ run("canvas","edit") →
+  // 快照回流 → 新图入画廊(回到画廊后 2 格)。
   await page.locator("[data-canvas-prompt]").fill("make it warmer");
   await page.locator('[data-canvas-action="edit"]').click();
   // 关闭工作台回画廊,断言新增资产已入快照(种子 + edit 产物 = 2)。
@@ -139,6 +140,7 @@ test("canvas: B 档接线(host 注入 upload → 旋转 90° 客户端产物落 
   await expect(page.locator("[data-canvas-workbench]")).toBeVisible();
 
   // 接线证明:宿主经 SlotHost 注入 upload(uploadAttachment)+ baseUrl + sessionId 后,B 档旋转
+  // (右侧工具轨)
   // 按钮不再禁用(此前 upload===undefined 降级禁用,deviation 2)。
   const rotate = page.locator("[data-canvas-b-rotate]");
   await expect(rotate).toBeEnabled();
