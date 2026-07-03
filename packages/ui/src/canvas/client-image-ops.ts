@@ -253,9 +253,11 @@ export function strokesToMask(
 
 /** 一条标注(源图**像素坐标**;text 时 `from` 为锚点、`text` 为内容)。 */
 export interface Annotation {
-  readonly kind: "line" | "arrow" | "text";
+  readonly kind: "line" | "arrow" | "text" | "draw";
   readonly from: { x: number; y: number };
   readonly to: { x: number; y: number };
+  /** 自由画笔折线(kind="draw";源图像素坐标)。 */
+  readonly points?: readonly { x: number; y: number }[];
   readonly text?: string;
   /** 线宽(text 时为字号基数,实际字号 = size × 4)。 */
   readonly size: number;
@@ -303,6 +305,18 @@ export function drawAnnotations(
     ctx.lineWidth = a.size;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    if (a.kind === "draw") {
+      // 自由画笔:折线回放(单点 → round cap 圆点)。
+      const pts = a.points ?? [];
+      if (pts.length === 0) continue;
+      ctx.beginPath!();
+      const [first, ...rest] = pts;
+      ctx.moveTo!(first!.x, first!.y);
+      if (rest.length === 0) ctx.lineTo!(first!.x + 0.01, first!.y);
+      else for (const p of rest) ctx.lineTo!(p.x, p.y);
+      ctx.stroke!();
+      continue;
+    }
     ctx.beginPath!();
     ctx.moveTo!(a.from.x, a.from.y);
     ctx.lineTo!(a.to.x, a.to.y);

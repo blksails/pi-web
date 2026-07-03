@@ -223,6 +223,51 @@ describe("client-image-ops 几何", () => {
     expect(uri).toBe("data:image/png;base64,OUT");
   });
 
+  it("drawAnnotations:画笔(draw)按 points 折线回放,单点成圆点,per-annotation 颜色", () => {
+    const calls: string[] = [];
+    const ctx: Ctx2DLike = {
+      fillStyle: "",
+      fillRect: vi.fn(),
+      drawImage: vi.fn(),
+      translate: vi.fn(),
+      rotate: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      clearRect: vi.fn(),
+      beginPath: () => calls.push("beginPath"),
+      moveTo: (x, y) => calls.push(`moveTo:${x},${y}`),
+      lineTo: (x, y) => calls.push(`lineTo:${x},${y}`),
+      stroke: () => calls.push(`stroke:${ctx.strokeStyle ?? ""}`),
+    };
+    drawAnnotations(ctx, [
+      {
+        kind: "draw",
+        from: { x: 1, y: 1 },
+        to: { x: 30, y: 30 },
+        points: [
+          { x: 1, y: 1 },
+          { x: 10, y: 12 },
+          { x: 30, y: 30 },
+        ],
+        size: 5,
+        color: "#22c55e",
+      },
+      // 单点画笔 → round cap 圆点(极短线段)。
+      { kind: "draw", from: { x: 7, y: 7 }, to: { x: 7, y: 7 }, points: [{ x: 7, y: 7 }], size: 5 },
+    ]);
+    expect(calls).toEqual([
+      "beginPath",
+      "moveTo:1,1",
+      "lineTo:10,12",
+      "lineTo:30,30",
+      "stroke:#22c55e",
+      "beginPath",
+      "moveTo:7,7",
+      "lineTo:7.01,7",
+      `stroke:${ANNOTATION_COLOR}`,
+    ]);
+  });
+
   it("annotationsToImage:原图打底 + 线/箭头(带头两短线)/文本 依序绘制", () => {
     const calls: string[] = [];
     let composite = "source-over";

@@ -30,6 +30,7 @@ import {
   Maximize2,
   MessageSquarePlus,
   Minus,
+  Pencil,
   Plus,
   Redo2,
   RotateCw,
@@ -89,7 +90,7 @@ function settleWindow<T>(p: Promise<T>, ms = RUN_SETTLE_MS): Promise<unknown> {
 }
 
 /** 舞台工具。 */
-type StageTool = "move" | "line" | "arrow" | "text" | "mask" | "erase";
+type StageTool = "move" | "draw" | "line" | "arrow" | "text" | "mask" | "erase";
 
 /** 笔刷直径预设:占源图**短边**的比例(固定像素对小图荒谬——1×1 占位图一笔全屏)。 */
 const BRUSH_RATIOS = [0.025, 0.05, 0.1] as const;
@@ -734,7 +735,7 @@ export function CanvasWorkbench({
 
   const drawingTool = tool === "mask" || tool === "erase";
   const annoLineTool = tool === "line" || tool === "arrow";
-  const overlayInteractive = drawingTool || annoLineTool || tool === "text";
+  const overlayInteractive = drawingTool || annoLineTool || tool === "text" || tool === "draw";
 
   // ── M3:图层(加/拖放/变换/拍平;全 B 档本地)──────────────────────────────────
   const loader = imageLoader ?? defaultImageLoader;
@@ -923,6 +924,22 @@ export function CanvasWorkbench({
       setAnnoDraft(d);
       return;
     }
+    if (tool === "draw") {
+      // 自由画笔:标注家族(烤进批注参考图),points 累积折线。
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      drawing.current = true;
+      const d: Annotation = {
+        kind: "draw",
+        from: p,
+        to: p,
+        points: [p],
+        size: annoSize,
+        color: annoColor,
+      };
+      annoDraftRef.current = d;
+      setAnnoDraft(d);
+      return;
+    }
     if (tool === "text") {
       // 记录位置,pointerup 才开编辑器(见 pendingText 注释)。
       const stageEl = stageRef.current;
@@ -947,7 +964,11 @@ export function CanvasWorkbench({
       return;
     }
     if (annoDraftRef.current !== null) {
-      const d: Annotation = { ...annoDraftRef.current, to: p };
+      const prev = annoDraftRef.current;
+      const d: Annotation =
+        prev.kind === "draw"
+          ? { ...prev, to: p, points: [...(prev.points ?? []), p] }
+          : { ...prev, to: p };
       annoDraftRef.current = d;
       setAnnoDraft(d);
     }
@@ -973,9 +994,12 @@ export function CanvasWorkbench({
     const a = annoDraftRef.current;
     annoDraftRef.current = null;
     if (a !== null) {
-      // 零长度拖拽(点按)→ 丢弃。
-      const len = Math.hypot(a.to.x - a.from.x, a.to.y - a.from.y);
-      if (len >= 2) {
+      // 成型判定:画笔按点数(≥2);拖拽型按 from/to 距离(零长点按丢弃)。
+      const keep =
+        a.kind === "draw"
+          ? (a.points?.length ?? 0) >= 2
+          : Math.hypot(a.to.x - a.from.x, a.to.y - a.from.y) >= 2;
+      if (keep) {
         setOps([...ops, { kind: "anno", item: a }]);
         setRedoOps([]);
       }
@@ -1150,13 +1174,14 @@ export function CanvasWorkbench({
       )}
     >
       {toolBtn("move", <Hand className="h-4 w-4" />, "移动", false)}
+      {toolBtn("draw", <Pencil className="h-4 w-4" />, "画笔", maskToolsDisabled, "画笔(标注即指令)")}
       {toolBtn("line", <Slash className="h-4 w-4" />, "画线", maskToolsDisabled, "画线(标注即指令)")}
       {toolBtn("arrow", <ArrowUpRight className="h-4 w-4" />, "箭头", maskToolsDisabled, "箭头(标注即指令)")}
       {toolBtn("text", <Type className="h-4 w-4" />, "文本", maskToolsDisabled, "文本(标注即指令)")}
       {toolBtn("mask", <Brush className="h-4 w-4" />, "掩码刷", maskToolsDisabled)}
       {toolBtn("erase", <Eraser className="h-4 w-4" />, "擦除", maskToolsDisabled)}
 
-      {annoLineTool || tool === "text" ? (
+      {annoLineTool || tool === "text" || tool === "draw" ? (
         <div className="flex flex-col items-center gap-1 py-1" data-canvas-anno-colors>
           {ANNOTATION_PALETTE.map((c) => (
             <button
