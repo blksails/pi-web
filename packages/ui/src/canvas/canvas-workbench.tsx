@@ -1761,9 +1761,17 @@ export function CanvasWorkbench({
         data-canvas-prompt-bar
         className={cn("pointer-events-auto flex w-full max-w-xl flex-col gap-2 p-2", FLOAT_LAYER)}
       >
-        {!available ? (
-          <div className="text-xs text-[hsl(var(--muted-foreground))]">
+        {/* 降级三态呈现(Req 8.4–8.6,按 bridge.opChannel):prompt 无提示;command 呈现
+            「操作不进入对话、LLM 不在环」可感知降级(生成仍经控制面旁路 surface.run 执行,
+            仅不入对话流,故按钮不禁用——见 generate 回退分支与 Req 8.3 既有单测零改动);
+            unavailable 沿用「surface 不可用」横幅。 */}
+        {bridge.opChannel === "unavailable" ? (
+          <div data-canvas-degrade="unavailable" className="text-xs text-[hsl(var(--muted-foreground))]">
             surface 不可用,仅本地工具可用
+          </div>
+        ) : bridge.opChannel === "command" ? (
+          <div data-canvas-degrade="command" className="text-xs text-[hsl(var(--muted-foreground))]">
+            操作不进入对话(LLM 不在环)
           </div>
         ) : null}
         <Popover open={refOpen} onOpenChange={setRefOpen}>
@@ -2019,7 +2027,12 @@ export function CanvasWorkbench({
 
   // 画板最大化:舞台独占 header 下全幅;版本条/工具轨/提示词栏均为舞台上的浮动层。
   return (
-    <div data-canvas-workbench data-att-id={current.attachmentId} className="flex h-full min-h-0 flex-col gap-2 p-2">
+    <div
+      data-canvas-workbench
+      data-att-id={current.attachmentId}
+      data-canvas-op-channel={bridge.opChannel}
+      className="flex h-full min-h-0 flex-col gap-2 p-2"
+    >
       {header}
       <div className="relative min-h-0 flex-1">
         {stage}

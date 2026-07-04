@@ -57,8 +57,8 @@
   - 完成态:canvas 组件内 grep 无 onSubmitPrompt 调用与裸 syncSignal effect;既有 canvas 单测零改动全绿
   - _Requirements: 8.1, 8.4, 8.3_
   - _Depends: 2.1, 3.1_
-- [ ] 4.3 降级三态呈现
-  - prompt 现状;command 生成控件禁用+「操作不进入对话(LLM 不在环)」提示,控制面动作照常;unavailable 沿用现横幅;三态均有 data-* 锚点
+- [x] 4.3 降级三态呈现
+  - prompt 现状;command 「操作不进入对话(LLM 不在环)」可感知横幅(生成经控制面旁路照常可用,不禁用——见 Implementation Notes 4.3 裁决),控制面动作照常;unavailable 沿用现横幅;三态均有 data-* 锚点
   - 完成态:三态在组件测试中可断言(按注入组合渲染)
   - _Requirements: 8.4, 8.5, 8.6_
 
@@ -88,3 +88,4 @@
 - golden 对照(4.1 任务)落 packages/ui/test/canvas/,fixture 须自迁移前 buildToolPrompt 捕获(reviewer 已用真实现逐字节实证 renderSurfaceOp 可复现,inpaint 全参样例)。
 - 机器高负载(load 40-60,多 worktree 并发):子代理验证一律单包 typecheck/test,整包 typecheck 留 6.1 统一跑;禁止并行多 tsc。
 - 3.1 过程坑:子代理 Bash 若 `cd` 主仓根会与 worktree 文件树分叉,产生「改动消失」假象且验证无效——后续 agent 一律在 worktree 默认 cwd 跑命令,禁止 cd 主仓(已核主仓未被污染)。
+- 4.3 冲突裁决(requirements>design):command 态生成**不禁用**——canvas 生成有控制面旁路(surface.run(decision.action),既有 3 测试基线),禁用与 8.3 互斥;8.5 只要求可感知呈现(横幅+data-canvas-degrade 锚点),且合契约 C3-4 ② 降级合法。design.md 已同步修正。「buildSurfaceOp 无 fallback」的前提(生成无控制面等价)不准确,但 submitOp 不走 command 分支(generate 直连旁路),现架构自洽;若未来收拢旁路进 submitOp,应给 buildSurfaceOp 声明 fallback:{action:decision.action,args}。

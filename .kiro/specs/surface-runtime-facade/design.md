@@ -287,7 +287,7 @@ export function useConversationBridge(opts: UseConversationBridgeOptions): Conve
 - 析出 `buildSurfaceOp(d: GenerateDecision, opts?: { maskId?: string }): SurfaceOp`:现 buildToolPrompt 的参数组装段原样迁移(tool 行注解、mask/reference_images 注解、reframe 默认 prompt、省略规则全保留;领域决策留应用面,8.2);`fence: "canvas-op"`;**不声明 fallback**(生成无控制面等价)。
 - `buildToolPrompt` 改 `renderSurfaceOp(buildSurfaceOp(d, opts))` 薄包装(export 与签名不动,既有单测零改动,8.3)。
 - 三处提交点(outpaint/inpaint/其余)改 `bridge.submitOp(buildSurfaceOp(...))`;两类 syncSignal effect(workbench livePreview 清除、gallery 轮末 sync)改 `bridge.onTurnEnd`(8.1)。
-- 三态呈现(8.4–8.6):prompt → 现状;command → 生成控件禁用 + 「操作不进入对话(LLM 不在环)」提示,register/delete/sync 等控制面动作照常;unavailable → 沿用现「surface 不可用,仅本地工具可用」横幅。均带 data-* 锚点供 e2e。
+- 三态呈现(8.4–8.6):prompt → 现状;command → 「操作不进入对话(LLM 不在环)」可感知横幅,生成经既有控制面旁路(`surface.run(decision.action)`,4.2 逐字保留)照常可用——**不禁用**(实现期修正:canvas 生成在控制面有等价通路,既有 3 个 command 态测试以此为基线,禁用与 8.3 零改动铁律互斥;可感知呈现即满足 8.5,且更贴合契约 C3-4 ② 降级合法性),register/delete/sync 等控制面动作照常;unavailable → 沿用现「surface 不可用,仅本地工具可用」横幅。均带 data-* 锚点供 e2e(`data-canvas-op-channel` 三值 + `data-canvas-degrade`)。
 - 迁移后 canvas 组件内无 `onSubmitPrompt` 调用与裸 `syncSignal` effect(验收 grep,8.1);组件 props 仅作透传递入 hook。
 
 ## Error Handling
