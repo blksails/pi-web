@@ -41,6 +41,22 @@ export interface WebExtSurfaceAccess {
   hasCommand(name: string): boolean;
 }
 
+/**
+ * 宿主会话能力(SlotHost 注入,与 upload/surface/state 同族;契约 §4.2)。承载「经宿主 Prompt
+ * 通道提交用户消息」这一能力,取代事件回调形态的裸注入项 `onSubmitPrompt`。宿主领域无关:
+ * 只搬运 text 与显式 attachmentIds,不解析、不改写内容(领域策略留应用面)。
+ */
+export interface ConversationAccess {
+  /**
+   * 经宿主 Prompt 通道提交一条用户消息(与用户手动输入同道进入对话流,LLM 在环)。
+   * `opts.attachmentIds`:显式附件引用,与 composer 既有引用合并追加(bringToConversation 依此)。
+   */
+  submitUserMessage(
+    text: string,
+    opts?: { readonly attachmentIds?: readonly string[] },
+  ): void;
+}
+
 export interface WebExtHostContext {
   /** 当前扩展 id(CSS/registry 命名空间根)。 */
   readonly extId: string;

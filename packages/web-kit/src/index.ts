@@ -32,7 +32,9 @@ export {
   type WebExtHostContext,
   type WebExtStateAccess,
   type WebExtSurfaceAccess,
+  type ConversationAccess,
 } from "./host-context.js";
+export { type SurfaceOp, type SubmitOpResult } from "./surface-op.js";
 export {
   createWebExtStateAccess,
   type WebExtStateAccessDeps,

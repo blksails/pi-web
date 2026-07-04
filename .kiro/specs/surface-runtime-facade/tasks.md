@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. Foundation:SDK 类型与组装器(web-kit)
-- [ ] 1.1 定义会话能力对象与操作描述类型并从公开入口导出
+- [x] 1.1 定义会话能力对象与操作描述类型并从公开入口导出
   - host-context 增会话能力对象接口(`submitUserMessage(text, opts?.attachmentIds)`,与 WebExtSurfaceAccess 同族);新文件承载操作描述类型(title / tool / 有序 params / fence 默认 `surface-op` / fallback)与提交结果 discriminated union
   - web-kit 公开入口导出上述类型;不导出内部装配件
   - 完成态:workspace typecheck 绿,ui/react 包可从 web-kit 导入这些类型
