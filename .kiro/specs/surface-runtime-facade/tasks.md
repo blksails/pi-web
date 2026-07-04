@@ -71,7 +71,7 @@
   - _Depends: 2.1_
 
 - [ ] 6. Validation:回归与端到端
-- [ ] 6.1 全量回归与静态验收线
+- [x] 6.1 全量回归与静态验收线(2026-07-04 新鲜证据:typecheck EXIT=0;web-kit 36/react 335/ui 695 全绿;grep 三线零违规)
   - workspace typecheck + 受影响包(web-kit/react/ui)测试全绿;packages/ui/test/canvas/* 零改动全绿
   - grep 验收:canvas 无裸 onSubmitPrompt 调用;宿主 pi-chat/apply-extension 无 fence/领域词;公开入口无内部装配件
   - 完成态:全部命令新鲜输出为证
