@@ -35,6 +35,7 @@ import {
   createSessionActionsRoutes,
   createAgentSourcesRoutes,
   createFavoritesRoutes,
+  createAigcModelsRoute,
   createExtensionRoutes,
   createHostCommandRegistry,
   ChildProcessPiCli,
@@ -486,6 +487,10 @@ function buildSingleton(): HandlerSingleton {
       // agent source 收藏(sidebar-launcher-rail):GET/PUT /agent-sources/favorites 读写
       // 用户偏好(<agentDir>/agent-source-favorites.json),独立于只读源枚举。仅写该偏好文件。
       ...createFavoritesRoutes({ agentDir: config.agentDir }),
+      // AIGC 图像工具设置(aigc-tool-settings):GET /aigc/models 只读模型目录,供 /settings「模型开关」
+      // widget 列举。设置本体(被禁模型 / 提示词优化)走标准 config 域 /api/config/aigc(落
+      // <agentDir>/aigc.json),runner 装配期经 tool-kit resolveAigcToolSettings 只读同文件。
+      ...createAigcModelsRoute(),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。

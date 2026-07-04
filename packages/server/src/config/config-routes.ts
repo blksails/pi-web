@@ -16,6 +16,7 @@ import {
   loggingConfigSchema,
   settingsConfigSchema,
   sandboxConfigSchema,
+  aigcConfigSchema,
 } from "@blksails/pi-web-protocol";
 import type { ConfigDomainId } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
@@ -33,6 +34,8 @@ const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   sandbox: sandboxConfigSchema,
   // 日志系统配置域(Req 6.1 / 6.3)。
   logging: loggingConfigSchema,
+  // AIGC 图像工具设置域(aigc-tool-settings):写 `<agentDir>/aigc.json`,aigcExtension 装配期读取。
+  aigc: aigcConfigSchema,
 };
 
 /** PUT body 形状。 */

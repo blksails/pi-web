@@ -23,6 +23,7 @@ import type {
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import { checkRequiredVars } from "../engine/var-resolver.js";
 import { runEndpoint } from "../engine/endpoint-adapter.js";
+import { optimizePrompt } from "./optimize-prompt.js";
 import type { StreamEvent } from "../engine/endpoint-types.js";
 import { emitLivePreview } from "../surface/live-preview-seam.js";
 import { normalizeImageDataUri } from "../engine/normalize-image.js";
@@ -343,6 +344,15 @@ export async function runImageTool(
   log.debug("tool execute start", { tool: toolName, model: route.model });
   try {
     await resolveMediaFields(mediaFields, merged, ctx);
+
+    // 提示词优化(aigc-tool-settings Req 4.3):会话开关为真时,在派发 provider 前对 prompt 调
+    // 优化接缝并回写;为假/未设则完全不调用、prompt 透传(与既有行为一致)。本期接缝为无改写占位。
+    if (
+      prefState.get<boolean>("aigc.enablePromptOptimization") === true &&
+      typeof merged.prompt === "string"
+    ) {
+      merged.prompt = await optimizePrompt(merged.prompt, { signal });
+    }
 
     // 流式增量:图像 → ①全局 live-preview seam(canvas 等 surface 渐进显示,不依赖 onUpdate)②chat 卡片
     // 早弹(onUpdate,若有);reasoning/文本 → 仅 chat 卡片(onUpdate)。onStream 恒建,seam 覆盖对话流 +

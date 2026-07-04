@@ -75,6 +75,62 @@ describe("AigcQuickSettings", () => {
     expect(options).not.toContain("gpt-image-2"); // 不再混入 fallback
   });
 
+  it("有 label 映射 → 选项可见文本用 label,hover title 用模型 id", () => {
+    const { state } = makeFakeState({
+      "aigc.models": ["gpt-image-2", "wan2.7-image-pro"],
+      "aigc.modelLabels": {
+        "gpt-image-2": "GPT Image 2 · NewAPI",
+        "wan2.7-image-pro": "Wan 2.7 Image Pro",
+      },
+    });
+    render(<AigcQuickSettings state={state} />);
+    fireEvent.click(document.querySelector("[data-aigc-model-select]")!);
+    const opts = Array.from(document.querySelectorAll("[role=option]"));
+    const labelOpt = opts.find((o) => o.getAttribute("title") === "gpt-image-2");
+    expect(labelOpt).toBeDefined();
+    expect(labelOpt?.textContent).toContain("GPT Image 2 · NewAPI"); // 可见=label
+    expect(labelOpt?.textContent).not.toContain("gpt-image-2"); // id 不作可见文本
+  });
+
+  it("有 provider 映射 → 字母徽章 + 去掉冗余 provider 名后缀(保留非 provider 后缀)", () => {
+    const { state } = makeFakeState({
+      "aigc.models": ["gpt-image-2", "wan2.7-image-pro-bailian"],
+      "aigc.modelLabels": {
+        "gpt-image-2": "GPT Image 2 · NewAPI",
+        "wan2.7-image-pro-bailian": "Wan 2.7 Image Pro · token plan",
+      },
+      "aigc.modelProviders": {
+        "gpt-image-2": "newapi",
+        "wan2.7-image-pro-bailian": "dashscope",
+      },
+    });
+    render(<AigcQuickSettings state={state} />);
+    fireEvent.click(document.querySelector("[data-aigc-model-select]")!);
+    const opts = Array.from(document.querySelectorAll("[role=option]"));
+    const newapiOpt = opts.find((o) => o.getAttribute("title") === "gpt-image-2");
+    expect(newapiOpt?.textContent).toContain("N"); // 字母徽章
+    expect(newapiOpt?.textContent).toContain("GPT Image 2"); // 干净名
+    expect(newapiOpt?.textContent).not.toContain("NewAPI"); // provider 名后缀由徽章取代
+    const dashOpt = opts.find(
+      (o) => o.getAttribute("title") === "wan2.7-image-pro-bailian",
+    );
+    expect(dashOpt?.textContent).toContain("D"); // 字母徽章
+    expect(dashOpt?.textContent).toContain("token plan"); // 非 provider 后缀保留
+  });
+
+  it("缺 label 映射的模型 → 选项回退显示 id(title 仍为 id)", () => {
+    const { state } = makeFakeState({
+      "aigc.models": ["no-label-model"],
+      "aigc.modelLabels": {},
+    });
+    render(<AigcQuickSettings state={state} />);
+    fireEvent.click(document.querySelector("[data-aigc-model-select]")!);
+    const opt = Array.from(document.querySelectorAll("[role=option]")).find(
+      (o) => o.getAttribute("title") === "no-label-model",
+    );
+    expect(opt?.textContent).toContain("no-label-model");
+  });
+
   it("选择模型 → 写会话偏好 + 本地记忆(2.3/6.1 前半)", () => {
     const { state, sets } = makeFakeState({ "aigc.models": ["model-x", "model-y"] });
     render(<AigcQuickSettings state={state} />);

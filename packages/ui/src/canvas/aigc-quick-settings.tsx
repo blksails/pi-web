@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select.js";
+import { ProviderBadge, displayNameOf } from "./aigc-model-meta.js";
 
 /** 清单未就绪时的回退常量(与 aigcExtension 下发值同源语义;KV 到达后即被覆盖)。 */
 const FALLBACK_MODELS: readonly string[] = [
@@ -104,6 +105,10 @@ interface PrefSelectProps {
   readonly ariaLabel: string;
   readonly dataAttr: string;
   readonly widthClass: string;
+  /** value(id)→ 显示 label 映射;缺失键回退显示 id。hover title 恒为 id。 */
+  readonly labels?: Readonly<Record<string, string>>;
+  /** value(id)→ provider 标识;有则渲染字母徽章并去掉冗余 provider 名后缀。 */
+  readonly providers?: Readonly<Record<string, string>>;
 }
 
 /** 单个偏好选择器:回显 KV 当前值,变更写 KV + localStorage。 */
@@ -115,6 +120,8 @@ function PrefSelect({
   ariaLabel,
   dataAttr,
   widthClass,
+  labels,
+  providers,
 }: PrefSelectProps): React.JSX.Element {
   const current = useStateKey(state, `aigc.${prefKey}`);
   // 当前值不在清单里(如追问写回了清单外模型)仍需可回显:并入 items。
@@ -133,17 +140,27 @@ function PrefSelect({
       <SelectTrigger
         {...{ [dataAttr]: "" }}
         aria-label={ariaLabel}
+        // 收起态也让 hover 可见模型 id(仅 label≠id 的模型选择器需要)。
+        {...(labels !== undefined && current !== undefined ? { title: current } : {})}
         className={`h-8 rounded-full border-[hsl(var(--border))] bg-transparent text-xs ${widthClass}`}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         <SelectItem value={DEFAULT_SENTINEL}>{placeholder}</SelectItem>
-        {items.map((m) => (
-          <SelectItem key={m} value={m}>
-            {m}
-          </SelectItem>
-        ))}
+        {items.map((m) => {
+          const providerId = providers?.[m];
+          const label = labels?.[m] ?? m;
+          return (
+            // 可见=provider 字母徽章 + 去后缀的 label(缺失回退 id);hover title 恒为模型 id。
+            <SelectItem key={m} value={m} title={m}>
+              <span className="flex items-center gap-1.5">
+                <ProviderBadge providerId={providerId} />
+                <span className="truncate">{displayNameOf(label, providerId)}</span>
+              </span>
+            </SelectItem>
+          );
+        })}
       </SelectContent>
     </Select>
   );
@@ -182,6 +199,8 @@ export function AigcQuickSettings({
   // 所有 hooks 之后再早退(Rules of Hooks):退化态不呈现。
   const models = useCatalogKeySafe(state, "aigc.models", FALLBACK_MODELS);
   const sizes = useCatalogKeySafe(state, "aigc.sizes", FALLBACK_SIZES);
+  const modelLabels = useLabelMapSafe(state, "aigc.modelLabels");
+  const modelProviders = useLabelMapSafe(state, "aigc.modelProviders");
   if (state === undefined) return null;
 
   return (
@@ -190,6 +209,8 @@ export function AigcQuickSettings({
         state={state}
         prefKey="model"
         options={models}
+        labels={modelLabels}
+        providers={modelProviders}
         placeholder="图像模型"
         ariaLabel="图像生成模型"
         dataAttr="data-aigc-model-select"
@@ -206,6 +227,47 @@ export function AigcQuickSettings({
       />
     </span>
   );
+}
+
+/** 订阅一个 label 映射键(Record<string,string>);无效或未就绪返回空对象。 */
+function useLabelMap(
+  state: WebExtStateAccess,
+  key: string,
+): Readonly<Record<string, string>> {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => state.subscribe(key, onChange),
+    [state, key],
+  );
+  const getSnapshot = React.useCallback(() => state.get<unknown>(key), [state, key]);
+  const raw = React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return React.useMemo(() => {
+    if (
+      raw !== null &&
+      typeof raw === "object" &&
+      !Array.isArray(raw) &&
+      Object.values(raw as Record<string, unknown>).every((v) => typeof v === "string")
+    ) {
+      return raw as Record<string, string>;
+    }
+    return {};
+  }, [raw]);
+}
+
+/** useLabelMap 的 state 可缺失版(缺失时恒空对象,保持 hooks 顺序稳定)。 */
+function useLabelMapSafe(
+  state: WebExtStateAccess | undefined,
+  key: string,
+): Readonly<Record<string, string>> {
+  const noopState = React.useMemo<WebExtStateAccess>(
+    () => ({
+      get: () => undefined,
+      subscribe: () => () => {},
+      set: async () => {},
+      delete: async () => {},
+    }),
+    [],
+  );
+  return useLabelMap(state ?? noopState, key);
 }
 
 /** useCatalogKey 的 state 可缺失版(缺失时恒 fallback,保持 hooks 顺序稳定)。 */

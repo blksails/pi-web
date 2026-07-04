@@ -19,5 +19,10 @@ export {
   __setModelOptionsFetchImpl,
   __resetModelOptionsCache,
 } from "./fields/model-select-field.js";
+export {
+  AigcModelTogglesField,
+  __setAigcModelsFetchImpl,
+  __resetAigcModelsCache,
+} from "./fields/aigc-model-toggles-field.js";
 export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
 export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";

@@ -11,9 +11,11 @@ import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-a
 import {
   registerImageGeneration,
   IMAGE_GENERATION_ROUTES,
+  IMAGE_GENERATION_DEFAULT_MODEL,
 } from "./tools/image-generation.js";
 import { registerImageEdit, IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
 import { getSessionState } from "../session-state.js";
+import { resolveAigcToolSettings, filterRoutes } from "./model-config.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
 const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
@@ -33,24 +35,55 @@ const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", 
 const PUBLISH_RETRY_MS = 50;
 const PUBLISH_MAX_TRIES = 40; // ~2s 上限,覆盖极慢装配;耗尽即放弃(fail-soft)
 
-function publishAigcCatalog(attempt = 0): void {
+function publishAigcCatalog(
+  disabledModels: ReadonlySet<string>,
+  enablePromptOptimization: boolean,
+  attempt = 0,
+): void {
   const state = getSessionState();
   if (!state.available) {
     if (attempt < PUBLISH_MAX_TRIES) {
-      setTimeout(() => publishAigcCatalog(attempt + 1), attempt === 0 ? 0 : PUBLISH_RETRY_MS);
+      setTimeout(
+        () => publishAigcCatalog(disabledModels, enablePromptOptimization, attempt + 1),
+        attempt === 0 ? 0 : PUBLISH_RETRY_MS,
+      );
     }
     return;
   }
-  const models = Array.from(
-    new Set([...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES].map((r) => r.model)),
+  // aigc-tool-settings:下发清单须与工具实际暴露的模型同源过滤——被禁模型从 models/labels/providers
+  // 一并移除(前端 picker 自然收敛);全禁时 filterRoutes 保留默认,与工具侧一致。
+  const activeRoutes = filterRoutes(
+    [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES],
+    disabledModels,
+    IMAGE_GENERATION_DEFAULT_MODEL,
   );
-  state.set("aigc.models", models);
+  // model → label / provider 映射(同一 model 在生成/编辑均出现时取首次值);Object.keys 的
+  // 插入序与旧 Set 去重序一致,故 aigc.models 顺序不变。清单仍是 id 数组(value/路由键不变),
+  // 另下发 label 映射供选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。
+  const labelByModel: Record<string, string> = {};
+  const providerByModel: Record<string, string> = {};
+  for (const r of activeRoutes) {
+    if (labelByModel[r.model] === undefined) labelByModel[r.model] = r.label;
+    if (providerByModel[r.model] === undefined && r.provider !== undefined) {
+      providerByModel[r.model] = r.provider;
+    }
+  }
+  state.set("aigc.models", Object.keys(labelByModel));
+  state.set("aigc.modelLabels", labelByModel);
+  state.set("aigc.modelProviders", providerByModel);
   state.set("aigc.sizes", SIZE_OPTIONS);
+  // 提示词优化开关(aigc-tool-settings):持久值 publish 到会话状态,run-image-tool 读同键。
+  state.set("aigc.enablePromptOptimization", enablePromptOptimization);
 }
 
-/** 注册 AIGC 图像工具的进程内扩展工厂。 */
+/**
+ * 注册 AIGC 图像工具的进程内扩展工厂。
+ * aigc-tool-settings:装配期读持久设置得到被禁模型集合,喂给两个工具注册函数并使清单同源过滤——
+ * 被禁模型从 LLM 枚举与下发清单一并移除。当前已激活会话不追溯(装配期读取的自然结果)。
+ */
 export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
-  registerImageGeneration(pi);
-  registerImageEdit(pi);
-  publishAigcCatalog();
+  const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
+  registerImageGeneration(pi, { disabledModels });
+  registerImageEdit(pi, { disabledModels });
+  publishAigcCatalog(disabledModels, enablePromptOptimization);
 };

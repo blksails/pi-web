@@ -26,3 +26,6 @@ export {
 
 // AIGC slash 补全候选声明(agent-slash-completion);纯数据 + 仅类型,前端安全。
 export { aigcSlashCompletions } from "./aigc/slash-completions.js";
+
+// AIGC 图像模型展示目录(aigc-tool-settings);纯数据,前端/server 安全,供 /settings 模型开关列举。
+export { AIGC_MODEL_CATALOG, type AigcCatalogEntry } from "./aigc/model-catalog.js";

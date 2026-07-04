@@ -8,3 +8,14 @@
 export { aigcExtension } from "./extension.js";
 export { registerImageGeneration } from "./tools/image-generation.js";
 export { registerImageEdit } from "./tools/image-edit.js";
+// aigc-tool-settings:模型开关解析/过滤 + 提示词优化占位接缝。
+export {
+  resolveAigcToolSettings,
+  filterRoutes,
+  resolveAgentDir,
+  AIGC_TOOL_SETTINGS_FILE,
+  EMPTY_DISABLED,
+  type AigcToolSettings,
+  type RegisterImageToolOptions,
+} from "./model-config.js";
+export { optimizePrompt, type OptimizePromptOptions } from "./optimize-prompt.js";

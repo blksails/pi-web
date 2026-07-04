@@ -39,6 +39,8 @@ export * from "./session-list/index.js";
 // agent-source-list(agent-sources-list):GET /agent-sources 只读源枚举端点的注入路由工厂。
 // 仅 node builtins + agent-source 只读探测(probeEntry/identify),无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./agent-source-list/index.js";
+// aigc-settings(aigc-tool-settings):GET/PUT /aigc/settings —— AIGC 图像工具「被禁模型」持久设置读写。
+export * from "./aigc-settings/index.js";
 // session-actions(session-list-item-actions):删除/重命名/收藏 写端点的注入路由工厂 + 会话收藏存储。
 // 仅 node builtins + session-store 复用面(无 pi SDK 值导入),可安全经 barrel 重导出。
 export * from "./session-actions/index.js";

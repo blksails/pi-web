@@ -124,7 +124,7 @@ export function openRouterImageRoutes(): ImageRoute[] {
           description: `${m.blurb} via OpenRouter /images (partial_images 渐进局部图). Needs OPENROUTER_API_KEY.`,
           providerModel: m.providerModel,
         },
-        { pricing: pricingOf(m.pricePerKTok) },
+        { provider: "openrouter", pricing: pricingOf(m.pricePerKTok) },
       );
     }
     // Gemini:chat/completions 真 SSE(推理流边想边显 + 图早弹)。
@@ -135,7 +135,7 @@ export function openRouterImageRoutes(): ImageRoute[] {
         description: `${m.blurb} via OpenRouter chat/completions. Needs OPENROUTER_API_KEY.`,
         providerModel: m.providerModel,
       },
-      { stream: true, pricing: pricingOf(m.pricePerKTok) },
+      { provider: "openrouter", stream: true, pricing: pricingOf(m.pricePerKTok) },
     );
   });
 }
@@ -152,7 +152,7 @@ export function openRouterImageEditRoutes(): ImageRoute[] {
           description: `${m.blurb} 带图编辑 via OpenRouter /images (partial_images 渐进局部图). Needs OPENROUTER_API_KEY.`,
           providerModel: m.providerModel,
         },
-        { pricing: pricingOf(m.pricePerKTok) },
+        { provider: "openrouter", pricing: pricingOf(m.pricePerKTok) },
       );
     }
     return createOpenRouterImageEdit(
@@ -162,7 +162,7 @@ export function openRouterImageEditRoutes(): ImageRoute[] {
         description: `${m.blurb} 带图编辑(整图改写,无 mask) via OpenRouter chat/completions. Needs OPENROUTER_API_KEY.`,
         providerModel: m.providerModel,
       },
-      { stream: true, pricing: pricingOf(m.pricePerKTok) },
+      { provider: "openrouter", stream: true, pricing: pricingOf(m.pricePerKTok) },
     );
   });
 }

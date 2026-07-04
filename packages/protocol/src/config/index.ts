@@ -18,15 +18,17 @@ export * from "./domains/sandbox.js";
 //  无法用通用 codec 表达)。
 export * from "./domains/extensions.js";
 export * from "./domains/logging.js";
+export * from "./domains/aigc.js";
 
 import type { FormSchema } from "./form-schema.js";
 import { authFormSchema } from "./domains/auth.js";
 import { settingsFormSchema } from "./domains/settings.js";
 import { sandboxFormSchema } from "./domains/sandbox.js";
 import { loggingFormSchema } from "./domains/logging.js";
+import { aigcFormSchema } from "./domains/aigc.js";
 
 /** 配置域 id(P0)。通用 `/config/:domain` 机制覆盖的域。 */
-export type ConfigDomainId = "auth" | "settings" | "sandbox" | "logging";
+export type ConfigDomainId = "auth" | "settings" | "sandbox" | "logging" | "aigc";
 
 /** 域 id → 该域表单 IR(供前端按 id 取 schema)。 */
 export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> = {
@@ -34,4 +36,5 @@ export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> =
   settings: settingsFormSchema,
   sandbox: sandboxFormSchema,
   logging: loggingFormSchema,
+  aigc: aigcFormSchema,
 };

@@ -31,6 +31,7 @@ import {
 const NEWAPI_CONFIG: OpenAiCompatConfig = {
   baseUrl: "https://www.apiservices.top/v1",
   apiKeyVar: "NEWAPI_API_KEY",
+  provider: "newapi",
 };
 
 // ── model 路由项工厂入参(向后兼容别名)──────────────────────────────────────────

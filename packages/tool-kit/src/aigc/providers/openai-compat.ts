@@ -18,7 +18,7 @@
  */
 
 import type { PickedResult, BuildBodyContext } from "../../engine/endpoint-types.js";
-import type { ImageRoute } from "../types.js";
+import type { ImageProviderId, ImageRoute } from "../types.js";
 
 // ── 响应类型 ──────────────────────────────────────────────────────────────────
 
@@ -213,6 +213,8 @@ export interface OpenAiCompatConfig {
   baseUrl: string;
   /** 承载 bearer key 的 env 变量名,如 `NEWAPI_API_KEY` / `SUFY_API_KEY`。 */
   apiKeyVar: string;
+  /** 归属 provider(盖到产出 route.provider,供 UI 徽章)。 */
+  provider: ImageProviderId;
   /**
    * 文生图请求体是否**省略** `response_format: "b64_json"`。
    * 严格网关(sufy)拒绝该参数(400 Unknown parameter);gpt-image 默认已返回 b64_json,
@@ -250,6 +252,7 @@ export function createOpenAiCompatImage(
     model: args.model,
     label: args.label,
     description: args.description,
+    provider: cfg.provider,
     url: `${trimSlash(cfg.baseUrl)}/images/generations`,
     headers: { authorization: `Bearer \${${cfg.apiKeyVar}}` },
     requiredVars: [cfg.apiKeyVar],
@@ -274,6 +277,7 @@ export function createOpenAiCompatImageEdit(
     model: args.model,
     label: args.label,
     description: args.description,
+    provider: cfg.provider,
     url: `${trimSlash(cfg.baseUrl)}/images/edits`,
     headers: { authorization: `Bearer \${${cfg.apiKeyVar}}` },
     requiredVars: [cfg.apiKeyVar],

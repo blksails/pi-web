@@ -36,6 +36,7 @@ const SUFY_CONFIG: OpenAiCompatConfig = {
   baseUrl: "https://openai.sufy.com/v1",
   apiKeyVar: "SUFY_API_KEY",
   omitResponseFormat: true,
+  provider: "sufy",
 };
 
 // ── model 路由项工厂入参(别名)────────────────────────────────────────────────

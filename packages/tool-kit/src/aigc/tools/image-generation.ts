@@ -26,6 +26,11 @@ import {
   optionalModelEnum,
 } from "../run-image-tool.js";
 import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "../types.js";
+import {
+  filterRoutes,
+  EMPTY_DISABLED,
+  type RegisterImageToolOptions,
+} from "../model-config.js";
 
 // token plan(阿里云百炼)multimodal-generation 端点 —— 复用 DashScope 原生 input/parameters,
 // 末端 url 切换到 token plan 域(curl 实测路径;compatible-mode 报 url error)。base 经
@@ -103,7 +108,7 @@ const BASE_DESCRIPTION =
   "and n/size to control count and resolution. background/quality/moderation apply to OpenAI gpt-image models only. " +
   "IMPORTANT: pass `prompt` in the user's original language verbatim; do NOT translate it to English.";
 
-const PARAMETERS = Type.Object({
+const PARAMETER_FIELDS = {
   prompt: Type.String({
     description:
       "Visual description of the desired image, in the user's original language (do NOT translate to English). " +
@@ -137,8 +142,15 @@ const PARAMETERS = Type.Object({
       description: "Content moderation level. gpt-image models only.",
     }),
   ),
-  model: optionalModelEnum(ROUTES, DEFAULT_MODEL),
-});
+};
+
+/** 按活跃路由现建工具 parameters(model 枚举随过滤收敛,aigc-tool-settings)。 */
+function buildParameters(routes: readonly ImageRoute[]) {
+  return Type.Object({
+    ...PARAMETER_FIELDS,
+    model: optionalModelEnum(routes, DEFAULT_MODEL),
+  });
+}
 
 /**
  * 生成工具路由表/默认模型导出(aigc-prompt-toolbar:装配期清单下发取 gen∪edit 并集;
@@ -147,13 +159,21 @@ const PARAMETERS = Type.Object({
 export const IMAGE_GENERATION_ROUTES: readonly ImageRoute[] = ROUTES;
 export const IMAGE_GENERATION_DEFAULT_MODEL = DEFAULT_MODEL;
 
-/** 注册 `image_generation` 工具到给定的 pi 扩展上下文。 */
-export function registerImageGeneration(pi: ExtensionAPI): void {
+/**
+ * 注册 `image_generation` 工具到给定的 pi 扩展上下文。
+ * `opts.disabledModels`(aigc-tool-settings):装配期被禁模型集合——被禁模型从 LLM 可见 model
+ * 枚举、工具描述与运行时路由集**同源移除**;缺省时行为与既有一致(全量)。
+ */
+export function registerImageGeneration(
+  pi: ExtensionAPI,
+  opts?: RegisterImageToolOptions,
+): void {
+  const activeRoutes = filterRoutes(ROUTES, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
   pi.registerTool({
     name: "image_generation",
     label: "Text → image",
-    description: buildModelsDescription(BASE_DESCRIPTION, ROUTES, DEFAULT_MODEL),
-    parameters: PARAMETERS,
+    description: buildModelsDescription(BASE_DESCRIPTION, activeRoutes, DEFAULT_MODEL),
+    parameters: buildParameters(activeRoutes),
     async execute(
       _toolCallId: string,
       params: Record<string, unknown>,
@@ -167,7 +187,7 @@ export function registerImageGeneration(pi: ExtensionAPI): void {
           : undefined;
       return runImageTool(params, ctx, signal, emit, {
         toolName: "image_generation",
-        routes: ROUTES,
+        routes: activeRoutes,
         defaultModel: DEFAULT_MODEL,
         requiredParams: REQUIRED_PARAMS,
         mediaFields: [],

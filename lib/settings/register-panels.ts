@@ -24,6 +24,8 @@ import {
   extensionsConfigSchema,
   loggingFormSchema,
   loggingConfigSchema,
+  aigcFormSchema,
+  aigcConfigSchema,
   type FormSchema,
 } from "@blksails/pi-web-protocol";
 import {
@@ -32,6 +34,7 @@ import {
   ConfigFilesField,
   ModelSelectField,
   NamespaceTogglesField,
+  AigcModelTogglesField,
 } from "@blksails/pi-web-ui";
 
 let registered = false;
@@ -139,6 +142,8 @@ export function registerConfigPanels(): void {
   registerFieldRendererByKey("modelSelect", ModelSelectField);
   // logging 命名空间开关自定义控件（logNamespaceToggles widget 键）。
   registerFieldRendererByKey("logNamespaceToggles", NamespaceTogglesField);
+  // AIGC 图像「模型开关」自定义控件（aigcModelToggles widget 键;清单来自 GET /api/aigc/models）。
+  registerFieldRendererByKey("aigcModelToggles", AigcModelTogglesField);
 
   // 扩展:一个「扩展」菜单项 + 全局/项目 Tab。固定区=Slash 命令可用性,KV 区=per-扩展参数。
   // - 全局:写 `~/.pi/agent/settings.json`。
@@ -180,6 +185,18 @@ export function registerConfigPanels(): void {
     formSchema: loggingFormSchema,
     validate: zodValidator(loggingConfigSchema),
     ...makeConfigDomainIO("logging"),
+  });
+
+  // AIGC 图像工具(aigc-tool-settings):写 `~/.pi/agent/aigc.json`,含「模型开关」(被禁模型清单)
+  // 与「提示词优化」开关。aigcExtension 装配期读取,关模型在下一次会话/重载后生效。
+  registerSettingsPanel({
+    id: "aigc",
+    title: "AIGC 图像",
+    order: 6,
+    icon: "image",
+    formSchema: aigcFormSchema,
+    validate: zodValidator(aigcConfigSchema),
+    ...makeConfigDomainIO("aigc"),
   });
 }
 

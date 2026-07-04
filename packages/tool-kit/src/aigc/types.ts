@@ -7,6 +7,9 @@
  */
 import type { EndpointBehavior } from "../engine/endpoint-types.js";
 
+/** 归属 provider 标识(UI 以字母徽章表示;工厂盖章)。 */
+export type ImageProviderId = "openrouter" | "newapi" | "sufy" | "dashscope";
+
 /** 单一 model 的图像端点路由(= EndpointBehavior + 路由元数据)。 */
 export interface ImageRoute extends EndpointBehavior {
   /** LLM 可见 model 值 + 运行时路由键。 */
@@ -14,6 +17,8 @@ export interface ImageRoute extends EndpointBehavior {
   /** 展示标签(进工具 description 文案)。 */
   label: string;
   description?: string;
+  /** 归属 provider(供 UI 徽章分组);各 provider 工厂盖章,清单下发给选择器。 */
+  provider?: ImageProviderId;
 }
 
 /** 业务必选项的交互补全声明(缺失时经 `ctx.ui` 补全)。 */

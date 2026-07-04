@@ -288,3 +288,55 @@ describe("adminPolicy", () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ─── aigc domain(aigc-tool-settings)─────────────────────────────────────────
+
+describe("config domain: aigc", () => {
+  it("GET 缺省 → formSchema + 空 values;PUT 后回读 disabledModels + enablePromptOptimization", async () => {
+    const handler = makeHandler();
+    // GET 缺省
+    const g0 = await handler(new Request("http://x/config/aigc"));
+    expect(g0.status).toBe(200);
+    const b0 = await readJson(g0);
+    expect(b0.formSchema).toBeDefined();
+
+    // PUT 设置被禁模型 + 开启优化
+    const put = await handler(
+      new Request("http://x/config/aigc", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: { disabledModels: ["gpt-image-2"], enablePromptOptimization: true },
+        }),
+      }),
+    );
+    expect(put.status).toBe(200);
+
+    // 落盘文件形态正确(aigcExtension 装配期即读此文件)
+    const raw = await fs.readFile(join(tmpDir, "aigc.json"), "utf8");
+    expect(JSON.parse(raw)).toMatchObject({
+      disabledModels: ["gpt-image-2"],
+      enablePromptOptimization: true,
+    });
+
+    // 回读一致
+    const g1 = await handler(new Request("http://x/config/aigc"));
+    const b1 = await readJson(g1);
+    expect(b1.values).toMatchObject({
+      disabledModels: ["gpt-image-2"],
+      enablePromptOptimization: true,
+    });
+  });
+
+  it("PUT 非法 disabledModels(非数组)→ 422", async () => {
+    const handler = makeHandler();
+    const res = await handler(
+      new Request("http://x/config/aigc", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: { disabledModels: "nope" } }),
+      }),
+    );
+    expect(res.status).toBe(422);
+  });
+});

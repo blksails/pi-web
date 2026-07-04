@@ -26,6 +26,11 @@ import {
   optionalModelEnum,
 } from "../run-image-tool.js";
 import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "../types.js";
+import {
+  filterRoutes,
+  EMPTY_DISABLED,
+  type RegisterImageToolOptions,
+} from "../model-config.js";
 
 // token plan(阿里云百炼)图像编辑 —— 走 DashScope 原生 messages/content + 同一 multimodal 端点。
 const TOKEN_PLAN_MULTIMODAL_URL =
@@ -112,7 +117,7 @@ const BASE_DESCRIPTION =
   "Provide image and prompt; optionally provide mask (B/W, white = repaint region) and reference_images. " +
   "IMPORTANT: pass `prompt` in the user's original language verbatim; do NOT translate it to English.";
 
-const PARAMETERS = Type.Object({
+const PARAMETER_FIELDS = {
   image: Type.String({
     description:
       "Attachment id (att_...) or URL of the image to edit. " +
@@ -152,16 +157,28 @@ const PARAMETERS = Type.Object({
       description: "Output format. OpenAI models only.",
     }),
   ),
-  model: optionalModelEnum(ROUTES, DEFAULT_MODEL),
-});
+};
 
-/** 注册 `image_edit` 工具到给定的 pi 扩展上下文。 */
-export function registerImageEdit(pi: ExtensionAPI): void {
+/** 按活跃路由现建工具 parameters(model 枚举随过滤收敛,aigc-tool-settings)。 */
+function buildParameters(routes: readonly ImageRoute[]) {
+  return Type.Object({
+    ...PARAMETER_FIELDS,
+    model: optionalModelEnum(routes, DEFAULT_MODEL),
+  });
+}
+
+/**
+ * 注册 `image_edit` 工具到给定的 pi 扩展上下文。
+ * `opts.disabledModels`(aigc-tool-settings):装配期被禁模型集合——同源从枚举/描述/路由集移除;
+ * 缺省时行为与既有一致(全量)。
+ */
+export function registerImageEdit(pi: ExtensionAPI, opts?: RegisterImageToolOptions): void {
+  const activeRoutes = filterRoutes(ROUTES, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
   pi.registerTool({
     name: "image_edit",
     label: "Image edit",
-    description: buildModelsDescription(BASE_DESCRIPTION, ROUTES, DEFAULT_MODEL),
-    parameters: PARAMETERS,
+    description: buildModelsDescription(BASE_DESCRIPTION, activeRoutes, DEFAULT_MODEL),
+    parameters: buildParameters(activeRoutes),
     async execute(
       _toolCallId: string,
       params: Record<string, unknown>,
@@ -175,7 +192,7 @@ export function registerImageEdit(pi: ExtensionAPI): void {
           : undefined;
       return runImageTool(params, ctx, signal, emit, {
         toolName: "image_edit",
-        routes: ROUTES,
+        routes: activeRoutes,
         defaultModel: DEFAULT_MODEL,
         requiredParams: REQUIRED_PARAMS,
         mediaFields: ["image", "mask", "reference_images"],
