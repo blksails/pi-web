@@ -76,7 +76,7 @@
   - grep 验收:canvas 无裸 onSubmitPrompt 调用;宿主 pi-chat/apply-extension 无 fence/领域词;公开入口无内部装配件
   - 完成态:全部命令新鲜输出为证
   - _Requirements: 8.3, 8.1, 6.5, 7.2_
-- [ ] 6.2 e2e:canvas 闭环回归 + 降级场景
+- [x] 6.2 e2e:canvas 闭环回归 + 降级场景(降级 e2e 绿 + 闭环 5/6 绿,#1 红判 pre-existing——见 Implementation Notes 6.2 裁决)
   - 前置搭建:新建(或指认)一个"贡献 canvas 面板但无 surface 能力"的 agent source fixture——e2e/fixtures 现无此环境,aigc-canvas-agent 注册面板同时注册 surface;做法为该 example 的无 surface 变体或等效开关,fixture 本身可独立验证(探针 `hasCommand("surface:canvas")` 为假且面板可见)
   - 既有 canvas 浏览器 e2e 闭环零改动通过(隔离 build,external server 模式)
   - 降级 e2e:用上述 fixture 打开 canvas 面板→unavailable 锚点呈现、本地工具可用、无崩溃
@@ -89,3 +89,4 @@
 - 机器高负载(load 40-60,多 worktree 并发):子代理验证一律单包 typecheck/test,整包 typecheck 留 6.1 统一跑;禁止并行多 tsc。
 - 3.1 过程坑:子代理 Bash 若 `cd` 主仓根会与 worktree 文件树分叉,产生「改动消失」假象且验证无效——后续 agent 一律在 worktree 默认 cwd 跑命令,禁止 cd 主仓(已核主仓未被污染)。
 - 4.3 冲突裁决(requirements>design):command 态生成**不禁用**——canvas 生成有控制面旁路(surface.run(decision.action),既有 3 测试基线),禁用与 8.3 互斥;8.5 只要求可感知呈现(横幅+data-canvas-degrade 锚点),且合契约 C3-4 ② 降级合法。design.md 已同步修正。「buildSurfaceOp 无 fallback」的前提(生成无控制面等价)不准确,但 submitOp 不走 command 分支(generate 直连旁路),现架构自洽;若未来收拢旁路进 submitOp,应给 buildSurfaceOp 声明 fallback:{action:decision.action,args}。
+- 6.2 裁决(pre-existing 基线红):canvas 闭环 e2e #1(toHaveCount 2 得 1)经 pristine origin/main(e8d8c49)独立 worktree 复跑同样红,判 pre-existing 非本 spec 引入(memory 双源佐证);根因=轮末信号在 workbench 打开期间到达被 gallery 重挂「首见不触发」吞掉,修点在 gallery/pi-chat 挂载边沿,路由为独立后续任务,不阻本 spec。8.7 锚点落面板级降级(gallery data-canvas-available=false + data-canvas-degraded)——真实宿主 conversation 恒注入致 workbench opChannel 恒 prompt,unavailable/command 两态由组件测试穷举(canvas-workbench-channel.test.tsx),e2e 文件头已注明覆盖归属。

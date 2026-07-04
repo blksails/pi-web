@@ -1,0 +1,9 @@
+{
+  "name": "aigc-canvas-nosurface-agent",
+  "private": true,
+  "pi-web": {
+    "title": "AIGC Canvas(无 surface)",
+    "avatar": "🖼️",
+    "description": "贡献 Canvas 面板但 agent 未注册 canvas surface —— 用于降级(unavailable)端到端验证的 fixture"
+  }
+}
