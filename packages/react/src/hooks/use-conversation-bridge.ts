@@ -10,6 +10,7 @@
  *    通道缺失一律以 {@link SubmitOpResult} 承载失败,不抛异常(1.4 / 2.6 / 2.7)。
  *  - **bringToConversation(refs, summary?)**:ContextInjection 注入门面(C3-2),经 Prompt 通道把
  *    制品引用与摘要带入对话;非 prompt 态返回 ok:false(4.3,注入本质依赖对话通道,无降级)。
+ *    注意别名 onSubmitPrompt 不承载 attachmentIds,故 alias-only(无 conversation)时亦返回 ok:false。
  *  - **onTurnEnd(cb)**:TurnSync 订阅门面(C3-3),封装 `syncSignal` 边沿;返回退订函数。
  *
  * 装配范式对齐 {@link useSurface}:host 注入 props → 应用面一次性递入 opts → hook 装配为桥
@@ -55,7 +56,7 @@ export interface ConversationBridge {
   readonly opChannel: "prompt" | "command" | "unavailable";
   /** 按 opChannel 分道提交操作;不提供通道指定参数(2.8)。 */
   submitOp(op: SurfaceOp): Promise<SubmitOpResult>;
-  /** C3-2 注入门面:refs + 摘要经 Prompt 通道进对话;非 prompt 态返回 ok:false。 */
+  /** C3-2 注入门面:refs + 摘要经 Prompt 通道进对话;非 prompt 态(含 alias-only 无 conversation)返回 ok:false。 */
   bringToConversation(refs: readonly string[], summary?: string): SubmitOpResult;
   /** C3-3 订阅门面:轮末回调;返回退订函数。 */
   onTurnEnd(cb: () => void): () => void;

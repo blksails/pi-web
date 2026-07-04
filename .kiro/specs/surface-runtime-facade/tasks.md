@@ -23,7 +23,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 7.1_
   - _Boundary: useConversationBridge_
   - _Depends: 1.1, 1.2_
-- [ ] 2.2 门面 hook 单测
+- [x] 2.2 门面 hook 单测
   - 三种注入组合→三态;conversation 优先/别名兜底;submitOp 三分道(prompt 产出文本含 title/tool/params fence);bringToConversation 分道与 attachmentIds 透传;onTurnEnd 初值不触发/变化触发/退订后不触发/无信号不抛;全缺 opts 降级门面不抛
   - 完成态:react 新增单测全绿
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.4, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 6.2_
