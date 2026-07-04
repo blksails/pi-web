@@ -90,6 +90,22 @@ export function makeCanvasSurfaceExtension(
         livePreview: frame === null ? null : { stage: frame.stage },
       })),
     );
+    // 轮末自主收敛(契约 AAS 扳机③;语义与 `sync` 命令一致:全量重建并整替快照,附带清 livePreview
+    // 叠层)。此前收敛仅由 UI 画廊在轮末发 `run("sync")`(扳机②)触发——画廊在工作台打开/面板关闭
+    // 期间处于卸载态会错过轮末,物化视图停旧(闭环 e2e pre-existing 缺陷)。权威侧收敛不依赖 UI
+    // 挂载态;UI 侧 sync 保留为幂等冗余。seam 不可用或重建异常时静默跳过,不影响 agent loop。
+    pi.on("agent_end", () => {
+      void (async () => {
+        try {
+          const att = getAtt(scope);
+          if (!att.available) return;
+          const rebuilt = await rebuildGalleryFromAttachments(att);
+          handle.update(() => rebuilt);
+        } catch {
+          // 收敛失败留待下一轮末或 UI sync 再收敛。
+        }
+      })();
+    });
     return handle;
   };
 }
