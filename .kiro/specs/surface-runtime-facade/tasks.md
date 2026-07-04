@@ -13,7 +13,7 @@
   - _Requirements: 3.1, 3.2, 3.3_
 
 - [ ] 2. Core:对话桥门面 hook(react)
-- [ ] 2.1 (P) 实现 useConversationBridge 三态探测与四成员
+- [x] 2.1 (P) 实现 useConversationBridge 三态探测与四成员
   - opChannel:conversation/别名在→prompt;缺且 surface∧domain∧探针中→command;否则 unavailable;渲染时同步求值;不暴露通道指定参数
   - submitOp 分道:prompt 态组装消息经会话能力提交;command 态有 fallback 走 run、无 fallback 返回 no_fallback 错误;unavailable 返回错误;全部结果对象承载,不抛异常
   - bringToConversation:prompt 态提交 refs+摘要(显式 attachmentIds);非 prompt 态 ok:false;默认文本为实现常量
@@ -82,3 +82,8 @@
   - 降级 e2e:用上述 fixture 打开 canvas 面板→unavailable 锚点呈现、本地工具可用、无崩溃
   - 完成态:两条 e2e 新鲜运行输出全绿
   - _Requirements: 8.3, 8.6, 8.7_
+
+## Implementation Notes
+- 2.1(reviewer REJECTED→修复,用户裁决确认):alias-only(仅 onSubmitPrompt,无 conversation)时 `bringToConversation` 一律返回 ok:false(code:"unavailable")——别名通道不承载 attachmentIds,静默丢 refs 报成功违反 4.1;2.2 单测须锚定「alias-only + 非空 refs → ok:false」与 DEFAULT_BRING_TEXT 默认文本、Set 去重退订语义、空串 summary 视同未提供。
+- golden 对照(4.1 任务)落 packages/ui/test/canvas/,fixture 须自迁移前 buildToolPrompt 捕获(reviewer 已用真实现逐字节实证 renderSurfaceOp 可复现,inpaint 全参样例)。
+- 机器高负载(load 40-60,多 worktree 并发):子代理验证一律单包 typecheck/test,整包 typecheck 留 6.1 统一跑;禁止并行多 tsc。

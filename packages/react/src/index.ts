@@ -88,6 +88,18 @@ export {
   type UseSurfaceResult,
 } from "./hooks/use-surface.js";
 export {
+  useConversationBridge,
+  DEFAULT_BRING_TEXT,
+  type UseConversationBridgeOptions,
+  type ConversationBridge,
+} from "./hooks/use-conversation-bridge.js";
+// 应用面单入口叙事(Req 7.1):对话桥门面消费者从 react 一并取到操作组装器与其类型。
+export {
+  renderSurfaceOp,
+  type SurfaceOp,
+  type SubmitOpResult,
+} from "@blksails/pi-web-kit";
+export {
   useModels,
   type UseModelsOptions,
   type UseModelsResult,
