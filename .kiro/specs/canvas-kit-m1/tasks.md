@@ -1,0 +1,109 @@
+# Implementation Plan
+
+> **开工门(用户裁决 2026-07-05)**:实现阶段以「拖放/粘贴导入 WIP 合入 main」为前提;开工首任务(1.1)含核验与行号基线重校准。
+
+- [ ] 1. Foundation:包脚手架与纯函数迁入
+- [ ] 1.1 canvas-kit 包脚手架与出口纪律
+  - 开工门核验:canvas 相关文件无未提交 WIP(拖放/粘贴特性已合 main);以合入后基线重新校准 design 中的行号引用
+  - 照 web-kit 先例建 packages/canvas-kit(package.json:peer react + dep lucide-react、零 @blksails 依赖;tsconfig/vitest);根 tsconfig paths 增包别名;src/index.ts 建立 L2 唯一出口(含出口纪律注释:kernel/ 内部件不出现,L2 为 semver 承诺面)
+  - 完成态:pnpm --filter @blksails/pi-web-canvas-kit typecheck/test 空跑绿;workspace install 识别新包
+  - _Requirements: 1.1, 1.4_
+- [ ] 1.2 类型 canonical 家与 bitmap-io 迁入
+  - types.ts 收 Annotation/MaskStroke/ExpandEdges/WorkLayer/CanvasOp;bitmap-io.ts 原样迁入 client-image-ops 全部 30 函数(语义零变,注释保留)
+  - canvas-kit 侧单测:核心位图函数(旋转/裁剪/拍平/掩码光栅化/合成/扩图)语义锚定
+  - 完成态:canvas-kit test 绿;bitmap-io 导出清单与原 client-image-ops 逐一对应
+  - _Requirements: 5.2, 1.3_
+  - _Depends: 1.1_
+- [ ] 1.3 ui 消费接线与转发兼容层
+  - ui package.json 增 canvas-kit workspace 依赖;packages/ui/src/canvas/client-image-ops.ts 改写为转发模块(export * 对应子集,@deprecated 一个大版本);类型消费改 canvas-kit 来源(组件内部 import 调整)
+  - packages/ui/vitest.config.ts(若存在 alias 表)同步 canvas-kit 解析(本仓 vitest alias 坑先例:bang-shell/状态桥)
+  - 完成态:packages/ui 全部既有测试零改动通过(含深路径 import 经转发解析);ui typecheck 绿
+  - _Requirements: 5.3, 5.4, 7.1_
+  - _Depends: 1.2_
+
+- [ ] 2. Core:kernel 模块与 L2 装置
+- [ ] 2.1 (P) stage 模块(视口与坐标)
+  - createStageController:视口 scale/offset 状态 + toNatural 纯函数芯(workbench :867 逻辑原样迁移,纯函数独立导出)
+  - 单测:缩放/平移矩阵下换算往返、rect 不可得返回 null
+  - 完成态:canvas-kit test 新增 stage 用例全绿
+  - _Requirements: 2.1_
+  - _Boundary: kernel/stage_
+  - _Depends: 1.1_
+- [ ] 2.2 (P) history 模块(开放栈与 OpKind 光栅化注册)
+  - CanvasOp {kind,item} 开放注册;commit=push+清 redo(时机复刻);undo/redo;useSyncExternalStore 适配
+  - OpKind 光栅化注册机制归本模块:kind→rasterizer 查找表(注册/查询 API),3.1 的工具 opKinds 声明与 4.2 的 overlay 回放均消费此机制(design File Structure:kernel/history.ts)
+  - 单测:开放 kind/清 redo 时机/自定义 kind 一视同仁/光栅化注册查找
+  - _Requirements: 4.1, 4.3, 4.4_
+  - _Boundary: kernel/history_
+  - _Depends: 1.2_
+- [ ] 2.3 (P) layers 模块(图层树)
+  - createLayersStore:WorkLayer 增删改/命中/move-resize reducer(workbench :991/:150-160 逻辑迁移)
+  - 单测:增删改/命中/reducer 边界
+  - 完成态:layers 用例全绿
+  - _Requirements: 5.1_
+  - _Boundary: kernel/layers_
+  - _Depends: 1.2_
+- [ ] 2.4 pointer 唯一路由
+  - createPointerRouter:单入口接舞台 pointer 事件;命中判定(overlay/layer/expand-handle/stage,DOM 经 data-* 标记上交);层拖拽/缩放为工具无关内核手势;双事件守卫内建(根治 :1604/:1662 散点补丁族)
+  - 分派目标为注入接缝(dispatch 接口),单测用 stub dispatch;真 ToolRuntime 在 2.5 接入——2.4 不得 import tool-runtime(防实际循环)
+  - 单测:四类命中分派/层手势与舞台平移互斥/守卫回归
+  - 完成态:pointer 用例全绿
+  - _Requirements: 3.1, 3.2_
+  - _Depends: 2.1, 2.3_
+- [ ] 2.5 tool-runtime(L1)
+  - draft 槽 ref+state 双写(复刻 :1120-1209 时序含 capture 设置点)/defer 队列(up 后执行)/L2 错误边界(抛错→禁用工具+diagnostics+中止手势清 draft 释放 capture,画布不崩)
+  - 接入 2.4 的 dispatch 接缝(真分派实现)
+  - 单测:draft 双写时序/defer 时机/错误边界三态(禁用/诊断/不崩)
+  - 完成态:tool-runtime 用例全绿
+  - _Requirements: 2.2, 4.2, 6.4_
+  - _Boundary: kernel/tool-runtime_
+  - _Depends: 2.1, 2.2, 2.4_
+- [ ] 2.6 registry + defineCanvasTool + CanvasToolContext(L2)
+  - createCanvasRegistry(per-instance)/defineCanvasTool/CanvasToolContext(draft/history.commit/stage.panBy/layers 读面/prefs/defer);ToolGestureEvent 含 natural 已换算坐标与命中描述符;同 id 注册冲突拒绝并记 diagnostics;index.ts 导出 L2 面
+  - L2→L1 单向依赖(封装线):registry/Context 只经 tool-runtime 公开接缝消费 L1
+  - 单测:per-instance 隔离/注册冲突拒绝/Context 能力面形状
+  - 完成态:registry 用例全绿;L2 出口可从包入口导入
+  - _Requirements: 6.1, 6.5, 3.3_
+  - _Boundary: registry L2_
+  - _Depends: 2.5_
+
+- [ ] 3. Core:8 内置工具自举
+- [ ] 3.1 绘制族五工具(mask/erase/draw/line/arrow)
+  - defineCanvasTool 实现:mask/erase(MaskStroke draft,笔刷=短边×ratio 钳≥1)/draw(折线累积)/line/arrow(from/to);opKinds 注册 "stroke"/"anno" 光栅化(:615-650 逻辑迁移);选项条贡献(颜色/笔刷,保持既有 data-canvas-anno-colors/brush-sizes 锚点)
+  - 单测:五工具声明形状(builtin: 前缀)/draft 生命周期逐场景/光栅化输出
+  - 完成态:builtin 用例绿;工具代码零视口数学零 DOM 监听(grep 自查)
+  - _Requirements: 6.2, 6.3_
+  - _Depends: 2.6_
+- [ ] 3.2 非绘制族三工具(move/expand/text)
+  - move:stage 命中→ctx.stage.panBy;expand:expand-handle 命中→扩图边状态(手柄 DOM 留 workbench,事件经路由);text:down 记位、up 经 ctx.defer 挂编辑器(blur 特例复刻),overlayReact 贡献编辑器
+  - registerBuiltinTools(registry) 汇总(builtin/index.ts)
+  - 单测:三工具行为锚定(panBy 调用/手柄边载荷/defer 时机)
+  - 完成态:8 工具全部经注册表可枚举,id 全带 builtin: 前缀
+  - _Requirements: 6.2, 6.3_
+  - _Depends: 3.1_
+
+- [ ] 4. Integration:workbench 装配改造(两刀,每刀后 ui 测试全绿)
+- [ ] 4.1 交互内核接入(第一刀:状态搬家)
+  - workbench 的 toNatural/ops+redoOps 双栈/layers state 替换为 kernel 实例(stage/history/layers,useMemo per mount);既有指针处理函数暂保留但改调内核 API;undo/redo 按钮接 HistoryApi
+  - 完成态:packages/ui 全部既有测试零改动通过(中间态安全线)
+  - _Requirements: 2.3, 5.1_
+  - _Depends: 2.6, 1.3_
+- [ ] 4.2 注册表驱动替换(第二刀:散点拆除)
+  - 建 registry+registerBuiltinTools;工具轨(map registry.tools)/overlay(ops 按 opKinds 回放+激活工具 rasterizeDraft)/选项条(激活工具 optionsBar)/指针(PointerRouter 单入口)全部注册表驱动;删 StageTool union/四散点分支/onMouseDown 双事件补丁;保持全部既有 data-* 锚点
+  - workbench 装配侧注入 prefs 初值(annoColor/brushRatio 等既有 state 迁 prefs KV),选项条锚点(data-canvas-anno-colors/brush-sizes)行为回归依赖此接线
+  - 完成态:packages/ui 全部既有测试零改动通过;workbench 内 grep 无 StageTool union/散点工具分支
+  - _Requirements: 6.3, 3.4, 2.3, 7.1_
+  - _Depends: 3.2, 4.1_
+- [ ] 4.3 不可见化与封装 grep 线固化
+  - 静态断言(脚本或单测):builtin/ 零 getBoundingClientRect|stopPropagation|addEventListener|setPointerCapture|视口数学;ui 侧零 kernel 内部路径 import;canvas-kit 零 @blksails/pi-web-ui import;L2 出口清单快照测试(semver 承诺面防漂移)
+  - 完成态:grep 线以测试形式固化并全绿
+  - _Requirements: 7.5, 1.2, 1.3, 1.4_
+  - _Depends: 4.2_
+
+- [ ] 5. Validation:回归与端到端
+- [ ] 5.1 全量回归与 e2e
+  - workspace typecheck 全绿;canvas-kit 全部单测绿;packages/ui 测试零改动全绿
+  - canvas 相关全部 e2e 零改动全绿:aigc-canvas.e2e.ts 5 条 + aigc-canvas-degrade.e2e.ts 1 条,共 6 条(基线:36b774d 修复后 6/6 已绿——执行者据此,任何红都不是 pre-existing)
+  - 完成态:全部命令新鲜输出为证
+  - _Requirements: 7.1, 7.2, 7.3, 7.4_
+  - _Depends: 4.3_

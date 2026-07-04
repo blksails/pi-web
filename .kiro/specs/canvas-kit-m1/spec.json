@@ -1,22 +1,23 @@
 {
   "feature_name": "canvas-kit-m1",
   "created_at": "2026-07-04T15:50:00+08:00",
-  "updated_at": "2026-07-04T16:05:00+08:00",
+  "updated_at": "2026-07-05T03:30:00+08:00",
   "language": "zh",
-  "phase": "initialized",
+  "phase": "tasks-generated",
   "approvals": {
     "requirements": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     },
     "design": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     },
     "tasks": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     }
   },
-  "ready_for_implementation": false
+  "ready_for_implementation": true,
+  "implementation_precondition": "拖放/粘贴导入 WIP 合入 main(用户裁决 2026-07-05;tasks.md 1.1 开工门核验)"
 }
