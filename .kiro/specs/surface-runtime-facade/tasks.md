@@ -6,7 +6,7 @@
   - web-kit 公开入口导出上述类型;不导出内部装配件
   - 完成态:workspace typecheck 绿,ui/react 包可从 web-kit 导入这些类型
   - _Requirements: 3.1, 6.1, 7.2_
-- [ ] 1.2 实现操作消息组装器纯函数并单测
+- [x] 1.2 实现操作消息组装器纯函数并单测
   - 输出 `标题行\n\n\`\`\`fence\ntool: …\nk: v…\n\`\`\``;空串/undefined 值参数行省略;params 按插入序输出;fence 可参数化
   - 单测:标题行/fence 默认与参数化/省略规则/参数序稳定/同输入同输出;仅覆盖纯函数语义,不含 canvas golden 对照(golden 落 ui 侧,见 4.1)
   - 完成态:web-kit 新增单测全绿

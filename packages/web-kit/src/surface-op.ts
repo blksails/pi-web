@@ -42,3 +42,25 @@ export type SubmitOpResult =
         readonly message: string;
       };
     };
+
+/** fence 语言默认值(未声明 `op.fence` 时使用;契约 C3-1 运行时约定)。 */
+const DEFAULT_FENCE = "surface-op";
+
+/**
+ * 组装器纯函数(契约 C3-1):把 {@link SurfaceOp} 渲染为
+ * `${title}\n\n\`\`\`${fence}\ntool: ${tool}\n${k}: ${v}…\n\`\`\`` 形态的用户消息文本。
+ *
+ * - 标题与 fence 间恰好一个空行;工具行恒在参数之上;参数按 `params` 插入序输出(3.1)。
+ * - 值为空串或 undefined 的参数行省略,与现行 canvas 组装省略语义对齐(3.2)。
+ * - 纯函数:同输入恒同输出、无副作用(3.3;不改动入参、不 trim 值内领域注解)。
+ */
+export function renderSurfaceOp(op: SurfaceOp): string {
+  const fence = op.fence ?? DEFAULT_FENCE;
+  const lines: string[] = [`tool: ${op.tool}`];
+  for (const [key, value] of op.params) {
+    // 空值参数行省略(3.2);非空值原样透传,不裁剪、不 trim。
+    if (value === undefined || value === "") continue;
+    lines.push(`${key}: ${value}`);
+  }
+  return `${op.title}\n\n\`\`\`${fence}\n${lines.join("\n")}\n\`\`\``;
+}
