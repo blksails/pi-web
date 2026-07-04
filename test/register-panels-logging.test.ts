@@ -31,6 +31,9 @@ vi.mock("@blksails/pi-web-ui", () => ({
   ConfigFilesField: vi.fn(),
   ModelSelectField: vi.fn(),
   NamespaceTogglesField: vi.fn(),
+  // aigc-tool-settings 后 register-panels 亦注册 aigcModelToggles 渲染器(register-panels.ts:146),
+  // mock 须同步补齐,否则被测模块 import 即崩(与被测断言无关的装配依赖)。
+  AigcModelTogglesField: vi.fn(),
 }));
 
 vi.mock("@blksails/pi-web-protocol", () => ({
@@ -44,6 +47,9 @@ vi.mock("@blksails/pi-web-protocol", () => ({
   extensionsConfigSchema: {},
   loggingFormSchema: { domain: "logging", fields: [] },
   loggingConfigSchema: {},
+  // aigc-tool-settings 新增 config 域(register-panels.ts:190+),mock 按同型补齐。
+  aigcFormSchema: { domain: "aigc", fields: [] },
+  aigcConfigSchema: {},
 }));
 
 describe("registerConfigPanels — logging 面板与 renderer 注册", () => {
