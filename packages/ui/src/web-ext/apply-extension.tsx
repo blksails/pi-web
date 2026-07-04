@@ -14,6 +14,7 @@ import type {
   SlotContribution,
   WebExtStateAccess,
   WebExtSurfaceAccess,
+  ConversationAccess,
 } from "@blksails/pi-web-kit";
 import type {
   RendererRegistry,
@@ -70,10 +71,11 @@ function renderContribution(
   baseUrl: string | undefined,
   sessionId: string | undefined,
   syncSignal: unknown,
-  onSubmitPrompt?: (text: string) => void,
-  livePreviewImage?: string,
+  onSubmitPrompt: ((text: string) => void) | undefined,
+  livePreviewImage: string | undefined,
+  conversation: ConversationAccess | undefined,
 ): React.ReactNode {
-  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号);
+  // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号 / 会话能力);
   // 否则按 ReactNode 直接渲染。
   // 经 prop 注入(非 React context):webext 是独立打包的 bundle,context 身份不跨 bundle 共享,
   // 故沿用既有「slot 收 extId / contribution 收 rpc」的形参注入范式(state-injection-bridge Req 7 /
@@ -89,6 +91,7 @@ function renderContribution(
       syncSignal?: unknown;
       onSubmitPrompt?: (text: string) => void;
       livePreviewImage?: string;
+      conversation?: ConversationAccess;
     }>;
     return (
       <Comp
@@ -101,6 +104,7 @@ function renderContribution(
         syncSignal={syncSignal}
         {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
         {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
+        {...(conversation !== undefined ? { conversation } : {})}
       />
     );
   }
@@ -131,6 +135,9 @@ export interface SlotHostProps {
   /**
    * 经宿主 Prompt 通道发送一条用户消息(进对话流/LLM;canvas 生成走对话即用此接缝,
    * 由 LLM 调 image_edit 等工具执行 —— 操作天然回流对话历史)。
+   *
+   * @deprecated 使用 `conversation.submitUserMessage`;此裸回调为过渡别名,行为与之完全一致,
+   * 保留至少一个大版本后移除(契约 §4.2 命名事故修复,Req 6.2/6.3)。
    */
   readonly onSubmitPrompt?: (text: string) => void;
   /**
@@ -138,6 +145,12 @@ export interface SlotHostProps {
    * 复用做「由糊变清」渐进展示,规避 surface 大帧经 fd1 损坏。
    */
   readonly livePreviewImage?: string;
+  /**
+   * 会话能力对象(契约 §4.2;与 state / surface / upload 同族的能力对象注入)。承载「经宿主
+   * Prompt 通道提交用户消息」这一能力,取代事件回调形态的 `onSubmitPrompt`。宿主领域无关:只搬运
+   * text 与显式 attachmentIds,不解析、不改写内容。宿主提供,经 prop 透给 slot 组件。
+   */
+  readonly conversation?: ConversationAccess;
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -154,6 +167,7 @@ export function SlotHost({
   syncSignal,
   onSubmitPrompt,
   livePreviewImage,
+  conversation,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -173,6 +187,7 @@ export function SlotHost({
         syncSignal,
         onSubmitPrompt,
         livePreviewImage,
+        conversation,
       )}
     </ExtErrorBoundary>
   );

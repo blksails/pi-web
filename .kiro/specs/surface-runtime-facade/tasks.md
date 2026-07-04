@@ -29,7 +29,7 @@
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.4, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 6.2_
 
 - [ ] 3. Core:宿主能力对象化(ui 宿主)
-- [ ] 3.1 (P) doSend 扩参与 conversation 能力对象注入
+- [x] 3.1 (P) doSend 扩参与 conversation 能力对象注入
   - doSend 增可选显式 attachmentIds,与 composer 引用合并追加;无 opts 调用路径行为不变
   - pi-chat useMemo 构造 conversation 能力对象注入 SlotHost;SlotHostProps/renderContribution 增 conversation 透传;onSubmitPrompt 注入保留并加 @deprecated JSDoc
   - 宿主代码不出现 fence/领域词(领域无关红线)
@@ -87,3 +87,4 @@
 - 2.1(reviewer REJECTED→修复,用户裁决确认):alias-only(仅 onSubmitPrompt,无 conversation)时 `bringToConversation` 一律返回 ok:false(code:"unavailable")——别名通道不承载 attachmentIds,静默丢 refs 报成功违反 4.1;2.2 单测须锚定「alias-only + 非空 refs → ok:false」与 DEFAULT_BRING_TEXT 默认文本、Set 去重退订语义、空串 summary 视同未提供。
 - golden 对照(4.1 任务)落 packages/ui/test/canvas/,fixture 须自迁移前 buildToolPrompt 捕获(reviewer 已用真实现逐字节实证 renderSurfaceOp 可复现,inpaint 全参样例)。
 - 机器高负载(load 40-60,多 worktree 并发):子代理验证一律单包 typecheck/test,整包 typecheck 留 6.1 统一跑;禁止并行多 tsc。
+- 3.1 过程坑:子代理 Bash 若 `cd` 主仓根会与 worktree 文件树分叉,产生「改动消失」假象且验证无效——后续 agent 一律在 worktree 默认 cwd 跑命令,禁止 cd 主仓(已核主仓未被污染)。

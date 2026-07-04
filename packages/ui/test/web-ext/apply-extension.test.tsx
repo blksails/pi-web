@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import * as React from "react";
 import {
   SlotHost,
@@ -7,7 +7,7 @@ import {
   resolveSlot,
 } from "../../src/web-ext/apply-extension.js";
 import { createRendererRegistry } from "../../src/registry/renderer-registry.js";
-import type { WebExtension } from "@blksails/pi-web-kit";
+import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
 
 function Dummy(): null {
   return null;
@@ -46,6 +46,33 @@ describe("SlotHost", () => {
     // 宿主轮末 bump → slot 组件收到新值(据此触发 run("sync"))。
     rerender(<SlotHost ext={ext} slot="panelRight" syncSignal={1} />);
     expect(screen.getByTestId("sig")).toHaveTextContent("1");
+  });
+
+  it("conversation 能力对象经 SlotHost 透传给组件型 slot 贡献(§4.2 能力对象注入)", () => {
+    const Panel = ({
+      conversation,
+    }: {
+      conversation?: ConversationAccess;
+    }): React.JSX.Element => (
+      <button
+        data-testid="conv"
+        onClick={() => conversation?.submitUserMessage("hi")}
+      >
+        {conversation !== undefined ? "on" : "off"}
+      </button>
+    );
+    const submit = vi.fn();
+    const conversation: ConversationAccess = { submitUserMessage: submit };
+    const ext: WebExtension = {
+      manifestId: "acme",
+      slots: { panelRight: Panel as never },
+    };
+    render(<SlotHost ext={ext} slot="panelRight" conversation={conversation} />);
+    const btn = screen.getByTestId("conv");
+    // 能力对象到达 slot props(非 undefined),且是宿主注入的同一对象(调用命中 spy)。
+    expect(btn).toHaveTextContent("on");
+    fireEvent.click(btn);
+    expect(submit).toHaveBeenCalledWith("hi");
   });
 
   it("未声明插槽时回退默认", () => {

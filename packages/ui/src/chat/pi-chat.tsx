@@ -81,7 +81,7 @@ import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { LogsPanel } from "../logs/logs-panel.js";
 import { PiCompletionPopover } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
-import type { WebExtension } from "@blksails/pi-web-kit";
+import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import { SurfaceCommandResultSchema } from "@blksails/pi-web-protocol";
 import {
@@ -732,7 +732,10 @@ export function PiChat({
     (input.trim().length > 0 || attachments.items.length > 0);
 
   const doSend = React.useCallback(
-    (text: string, opts?: { followUp?: boolean }): void => {
+    (
+      text: string,
+      opts?: { followUp?: boolean; attachmentIds?: readonly string[] },
+    ): void => {
       if (transport === undefined) return;
       const trimmed = text.trim();
       const hasAttachments = attachments.items.length > 0;
@@ -749,9 +752,19 @@ export function PiChat({
       const images = hasAttachments ? attachments.toImageContents() : [];
       // 引用提交:以 server 铸造的正式公开 id(att_…)作为附件标识(先落库后引用),
       // 发消息不要求把附件字节内联到列表/提交身份(Req 5.3/3.5)。仅 ready 项计入。
-      const attachmentIds = hasAttachments
+      // composer 既有引用 + 调用方显式引用,合并追加并去重(bringToConversation 依此)。
+      // 无显式 ids 时结果与原「仅 composer 引用」字节级一致(无 opts 路径零行为变化)。
+      const composerIds = hasAttachments
         ? (attachments.referenceIds?.() ?? [])
         : [];
+      const explicitIds = opts?.attachmentIds ?? [];
+      const attachmentIds =
+        explicitIds.length > 0
+          ? [
+              ...composerIds,
+              ...explicitIds.filter((id) => !composerIds.includes(id)),
+            ]
+          : composerIds;
 
       // message-queue-ui:忙时按投递意图排队(Enter→steer / Alt+Enter→followUp),始终携带排队行为
       // (根治 pi SDK「streaming 缺 streamingBehavior」报错,Req 1.1/1.2/4.1)。空闲时走既有 prompt 链路
@@ -799,6 +812,14 @@ export function PiChat({
       setQueueNotice(undefined);
     },
     [transport, attachments, webSearch, sendMessage, t, isBusy, controls],
+  );
+
+  // 宿主会话能力对象(契约 §4.2;与 webextState / surfaceAccess 同族)。承载「经宿主 Prompt 通道提交
+  // 用户消息」这一能力,经 SlotHost 注入 slot 组件,取代事件回调形态的裸注入项 onSubmitPrompt。
+  // 领域无关:只搬运 text 与显式 attachmentIds,不解析、不改写内容。随 doSend 引用稳定,避免每渲染重建。
+  const conversation = React.useMemo<ConversationAccess>(
+    () => ({ submitUserMessage: (text, opts) => doSend(text, opts) }),
+    [doSend],
   );
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
@@ -1688,8 +1709,11 @@ export function PiChat({
               {...(sessionId !== undefined ? { sessionId } : {})}
               // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
               {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
-              // Prompt 通道接缝:slot 组件(如 canvas 工作台)把操作组装成用户消息发进对话流,
-              // 由 LLM 调工具执行 —— 操作天然回流对话历史(替代旁路 surface 命令的无痕执行)。
+              // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
+              // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
+              conversation={conversation}
+              // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
+              // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
               onSubmitPrompt={(text: string) => doSend(text)}
             />
           ) : null}
