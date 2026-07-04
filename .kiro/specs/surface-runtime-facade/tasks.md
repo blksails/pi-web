@@ -51,7 +51,7 @@
   - 完成态:packages/ui/test/canvas/* 既有单测零改动全绿 + golden 哨兵绿
   - _Requirements: 8.2, 8.3, 3.2_
   - _Depends: 1.2_
-- [ ] 4.2 提交点与轮末订阅迁移 + 装配点透传
+- [x] 4.2 提交点与轮末订阅迁移 + 装配点透传
   - canvas 组件经 useConversationBridge(conversation/别名/surface/syncSignal/domain="canvas")装配;三处提交点改 bridge.submitOp;workbench livePreview 清除与 launcher 侧轮末消费改 bridge.onTurnEnd(消费点 grep 实证仅 canvas-workbench.tsx 与 canvas-launcher.tsx 两文件)
   - 核验 canvas 装配点(CanvasPanel,位于 canvas-launcher.tsx;web.config 函数贡献经 renderContribution 自动获得注入)conversation 到达,不足则补透传
   - 完成态:canvas 组件内 grep 无 onSubmitPrompt 调用与裸 syncSignal effect;既有 canvas 单测零改动全绿

@@ -17,7 +17,13 @@
  * slot 组件经 prop 注入 surface(领域无关搬运)。B 档上传接缝与 canvas 工厂经 props 注入(可测)。
  */
 import * as React from "react";
-import { renderSurfaceOp, type SurfaceOp, type WebExtSurfaceAccess } from "@blksails/pi-web-kit";
+import {
+  renderSurfaceOp,
+  type SurfaceOp,
+  type WebExtSurfaceAccess,
+  type ConversationAccess,
+} from "@blksails/pi-web-kit";
+import { useConversationBridge } from "@blksails/pi-web-react";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   ArrowLeft,
@@ -415,8 +421,15 @@ export interface CanvasWorkbenchProps {
   /** 图像加载器(掩码回贴合成用;缺省浏览器 Image,测试注入 fake)。 */
   readonly imageLoader?: ImageLoader;
   /**
+   * 会话能力对象(契约 §4.2;经宿主 Prompt 通道提交用户消息)。与 `onSubmitPrompt` 同族,
+   * 二者在场时 conversation 优先(见 {@link useConversationBridge});承载「生成走对话流」能力。
+   */
+  readonly conversation?: ConversationAccess;
+  /**
    * 经宿主 Prompt 通道发用户消息:提供时,「生成」组装 image_edit 指令**走对话流**
    * (LLM 调工具执行,操作回流对话历史);缺失时回退旁路 surface 命令(不过 LLM,兼容旧宿主)。
+   *
+   * @deprecated 使用 `conversation`;此裸回调为过渡别名,行为与之等价(契约 §4.2)。
    */
   readonly onSubmitPrompt?: (text: string) => void;
   /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview` 显示渐进图。 */
@@ -438,11 +451,21 @@ export function CanvasWorkbench({
   canvasFactory,
   modelOptions,
   imageLoader,
+  conversation,
   onSubmitPrompt,
   livePreviewImage,
   syncSignal,
 }: CanvasWorkbenchProps): React.JSX.Element {
   const available = surface !== undefined && surface.hasCommand(PROBE);
+  // 对话桥门面(契约 §4.5):三处提交点经 bridge.submitOp 分道(prompt 优先经会话能力/别名),
+  // 轮末 livePreview 自愈经 bridge.onTurnEnd 订阅 syncSignal 边沿。
+  const bridge = useConversationBridge({
+    ...(conversation !== undefined ? { conversation } : {}),
+    ...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {}),
+    ...(surface !== undefined ? { surface } : {}),
+    syncSignal,
+    domain: DOMAIN,
+  });
   const [prompt, setPrompt] = React.useState("");
   const [model, setModel] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
@@ -464,15 +487,9 @@ export function CanvasWorkbench({
     return surface.subscribe(STATE_KEY, read);
   }, [surface]);
   // 轮末兜底自愈:清除帧(livePreview:null)在 dev 帧投递不稳/长流式高频窗口下可能丢失,
-  // 叠层会卡死在「生成中」。轮末 idle 边沿(syncSignal 变化)时生成必已结束 → 无条件清叠层。
-  const firstSync = React.useRef(true);
-  React.useEffect(() => {
-    if (firstSync.current) {
-      firstSync.current = false;
-      return;
-    }
-    setLivePreview(null);
-  }, [syncSignal]);
+  // 叠层会卡死在「生成中」。轮末 idle 边沿(bridge.onTurnEnd,首见不触发仅变化触发)时生成必已
+  // 结束 → 无条件清叠层。
+  React.useEffect(() => bridge.onTurnEnd(() => setLivePreview(null)), [bridge]);
   // ── M2 状态:@引用 / 参数簇 / 文本标注编辑器 ─────────────────────────────────
   const [refs, setRefs] = React.useState<readonly string[]>([]);
   const [refOpen, setRefOpen] = React.useState(false);
@@ -758,9 +775,9 @@ export function CanvasWorkbench({
               ? prompt
               : "向外自然延展画面内容,与原图风格/光影无缝衔接",
         };
-        if (onSubmitPrompt !== undefined) {
-          onSubmitPrompt(
-            buildToolPrompt({ action: "outpaint", args }, { maskId: maskUp.attachmentId }),
+        if (bridge.opChannel === "prompt") {
+          void bridge.submitOp(
+            buildSurfaceOp({ action: "outpaint", args }, { maskId: maskUp.attachmentId }),
           );
         } else {
           await settleWindow(
@@ -788,11 +805,11 @@ export function CanvasWorkbench({
           sessionId: sessionId ?? "",
           upload,
         });
-        if (onSubmitPrompt !== undefined) {
+        if (bridge.opChannel === "prompt") {
           // 走对话流(A 方案):LLM 调 image_edit,操作回流对话历史。
           // ⚠回贴暂不随此路径启动:工具产物经轮末 sync 收编,快照资产无 derivedFrom=基图
           // 锚点,waitForNewDerivedAsset 匹配不到(误配风险大于收益);恢复待工具结果 meta 带血缘。
-          onSubmitPrompt(buildToolPrompt(decision, { maskId }));
+          void bridge.submitOp(buildSurfaceOp(decision, { maskId }));
           consumeSent(true);
           return;
         }
@@ -818,9 +835,9 @@ export function CanvasWorkbench({
         return;
       }
 
-      if (onSubmitPrompt !== undefined) {
+      if (bridge.opChannel === "prompt") {
         // 走对话流(A 方案默认):组装 image_edit 指令为用户消息,LLM 调工具执行。
-        onSubmitPrompt(buildToolPrompt(decision));
+        void bridge.submitOp(buildSurfaceOp(decision));
         if (decision.action === "reference") consumeSent(false);
         return;
       }
@@ -830,7 +847,7 @@ export function CanvasWorkbench({
     } finally {
       setBusy(false);
     }
-  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, onSubmitPrompt]);
+  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, bridge]);
 
   /** 版本条选中 → 切工作图 + 复用其参数(预填表单 + 通知宿主)。 */
   const selectAsset = React.useCallback(

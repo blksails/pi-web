@@ -14,7 +14,7 @@
  * 两个 slot 是不同子树,经 module-level `canvasOpenStore` 联动(同一 app bundle 内共享)。
  */
 import * as React from "react";
-import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
+import type { WebExtSurfaceAccess, ConversationAccess } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
@@ -74,7 +74,12 @@ export interface CanvasPanelProps {
   readonly upload?: UploadFn;
   readonly baseUrl?: string;
   readonly sessionId?: string;
-  /** 经宿主 Prompt 通道发用户消息(canvas 生成走对话流,LLM 调工具执行)。 */
+  /** 会话能力对象(契约 §4.2;canvas 生成走对话流经此提交,取代 onSubmitPrompt)。 */
+  readonly conversation?: ConversationAccess;
+  /**
+   * 经宿主 Prompt 通道发用户消息(canvas 生成走对话流,LLM 调工具执行)。
+   * @deprecated 使用 `conversation`(过渡别名,行为等价)。
+   */
   readonly onSubmitPrompt?: (text: string) => void;
   /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview.stage` 显示渐进图。 */
   readonly livePreviewImage?: string;
@@ -90,6 +95,7 @@ export function CanvasPanel({
   upload,
   baseUrl,
   sessionId,
+  conversation,
   onSubmitPrompt,
   livePreviewImage,
 }: CanvasPanelProps): React.JSX.Element | null {
@@ -118,6 +124,7 @@ export function CanvasPanel({
           {...(upload !== undefined ? { upload } : {})}
           {...(baseUrl !== undefined ? { baseUrl } : {})}
           {...(sessionId !== undefined ? { sessionId } : {})}
+          {...(conversation !== undefined ? { conversation } : {})}
           {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
           {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
           {...(syncSignal !== undefined ? { syncSignal } : {})}

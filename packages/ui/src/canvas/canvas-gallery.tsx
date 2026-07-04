@@ -14,6 +14,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
+import { useConversationBridge } from "@blksails/pi-web-react";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   useCanvasView,
@@ -74,6 +75,13 @@ export function CanvasGallery({
 }: CanvasGalleryProps): React.JSX.Element {
   const view = useCanvasView();
   const available = surface !== undefined && surface.hasCommand(PROBE);
+  // 对话桥门面(契约 §4.5):轮末 idle 边沿经 bridge.onTurnEnd 订阅(封装 syncSignal 首见不触发、
+  // 仅变化触发的边沿语义);画廊只用 onTurnEnd 一维,无提交/别名。
+  const bridge = useConversationBridge({
+    ...(surface !== undefined ? { surface } : {}),
+    syncSignal,
+    domain: DOMAIN,
+  });
 
   // 镜像快照(available 时);退化时用 historyImages。
   const [snap, setSnap] = React.useState<GalleryState | undefined>(() =>
@@ -85,17 +93,16 @@ export function CanvasGallery({
     return surface.subscribe(STATE_KEY, (v) => setSnap(v as GalleryState | undefined));
   }, [surface]);
 
-  // 轮末 idle 边沿 → run("sync")(仅 available)。
-  const firstSync = React.useRef(true);
-  React.useEffect(() => {
-    if (firstSync.current) {
-      firstSync.current = false;
-      return;
-    }
-    if (available && surface !== undefined) {
-      void surface.run(DOMAIN, "sync");
-    }
-  }, [syncSignal, available, surface]);
+  // 轮末 idle 边沿 → run("sync")(仅 available;bridge.onTurnEnd 封装 syncSignal 边沿)。
+  React.useEffect(
+    () =>
+      bridge.onTurnEnd(() => {
+        if (available && surface !== undefined) {
+          void surface.run(DOMAIN, "sync");
+        }
+      }),
+    [bridge, available, surface],
+  );
 
   const assets: readonly GalleryAsset[] = available
     ? (snap?.assets ?? [])

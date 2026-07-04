@@ -290,6 +290,32 @@ describe("CanvasWorkbench", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("bridge 装配:生成经 conversation 能力对象提交(conversation 优先于别名;不发 surface 命令)", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const submitUserMessage = vi.fn();
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        conversation={{ submitUserMessage }}
+      />,
+    );
+    fireEvent.change(document.querySelector("[data-canvas-prompt]")!, {
+      target: { value: "整体调亮" },
+    });
+    fireEvent.click(document.querySelector("[data-canvas-generate]")!);
+    await waitFor(() => expect(submitUserMessage).toHaveBeenCalledTimes(1));
+    const [text] = submitUserMessage.mock.calls[0] as [string, unknown];
+    expect(text).toContain("image_edit");
+    expect(text).toContain("🎨 生成 · 整体调亮");
+    expect(text).toContain("image: att_src");
+    expect(text).toContain("prompt: 整体调亮");
+    // command 态旁路不触发(conversation 在场 → Prompt 通道优先)。
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("图层:⊕ 加层 → 浮条出现 → 拍平 → 上传 + register(op:flatten,derivedFrom=底图)→ 清层", async () => {
     const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
     const upload = vi.fn(fakeUpload);
