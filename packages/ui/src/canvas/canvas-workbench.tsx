@@ -17,7 +17,7 @@
  * slot 组件经 prop 注入 surface(领域无关搬运)。B 档上传接缝与 canvas 工厂经 props 注入(可测)。
  */
 import * as React from "react";
-import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
+import { renderSurfaceOp, type SurfaceOp, type WebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   ArrowLeft,
@@ -212,33 +212,32 @@ const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
 };
 
 /**
- * 把生成决策组装为**经对话流**的用户消息(LLM 据此调 `image_edit` 工具;参数用 `att_` 引用,
- * attachment-bridge 在工具侧解析)。操作因此天然回流对话历史:用户消息 + 工具卡片 + 结果图
- * 全部可见、可回放、进 LLM 上下文(后续"刚才那张再调亮"能接上)。export 供单测。
+ * 把生成决策析出为与通道无关的 {@link SurfaceOp}:领域参数组装(工具行执行注解、mask/
+ * reference_images 值内注解、reframe 默认提示词、省略规则、标题行意图 ≤48 截断)原样迁移,
+ * fence 固定 `canvas-op`。**不声明 fallback**(canvas 生成无控制面等价,command 态不可提交)。
+ * export 供门面/单测。参数按 tool→image→mask→reference_images→prompt→size→n→model 有序组装。
  */
-export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string }): string {
+export function buildSurfaceOp(d: GenerateDecision, opts?: { maskId?: string }): SurfaceOp {
   const a = d.args;
-  // 人读标题行:「🎨 动作 · 意图」;技术参数与执行指令全部收进 canvas-op 代码块
-  // (markdown 渲染为紧凑代码块,不再裸奔在气泡里;LLM 读 fence 内容无碍)。
-  const params: string[] = [
-    "tool: image_edit(请直接按下列参数调用,勿追问、勿复述参数)",
-    `image: ${String(a.image)}`,
-  ];
+  const params: Array<readonly [string, string]> = [["image", String(a.image)]];
   if (opts?.maskId !== undefined) {
-    params.push(`mask: ${opts.maskId}(alpha mask,透明区=需要重绘的区域)`);
+    params.push(["mask", `${opts.maskId}(alpha mask,透明区=需要重绘的区域)`]);
   }
   const refs = a.reference_images;
   if (Array.isArray(refs) && refs.length > 0) {
-    params.push(`reference_images: ${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`);
+    params.push([
+      "reference_images",
+      `${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`,
+    ]);
   }
   if (typeof a.prompt === "string" && a.prompt.trim() !== "") {
-    params.push(`prompt: ${a.prompt}`);
+    params.push(["prompt", a.prompt]);
   } else if (d.action === "reframe") {
-    params.push(`prompt: 保持画面内容,仅按目标尺寸重构比例`);
+    params.push(["prompt", "保持画面内容,仅按目标尺寸重构比例"]);
   }
-  if (typeof a.size === "string") params.push(`size: ${a.size}`);
-  if (typeof a.n === "number") params.push(`n: ${a.n}`);
-  if (typeof a.model === "string") params.push(`model: ${a.model}`);
+  if (typeof a.size === "string") params.push(["size", a.size]);
+  if (typeof a.n === "number") params.push(["n", `${a.n}`]);
+  if (typeof a.model === "string") params.push(["model", a.model]);
   const intent =
     typeof a.prompt === "string" && a.prompt.trim() !== ""
       ? a.prompt.trim().length > 48
@@ -246,7 +245,22 @@ export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string })
         : a.prompt.trim()
       : "";
   const title = intent !== "" ? `🎨 ${ACTION_LABEL[d.action]} · ${intent}` : `🎨 ${ACTION_LABEL[d.action]}`;
-  return `${title}\n\n\`\`\`canvas-op\n${params.join("\n")}\n\`\`\``;
+  return {
+    title,
+    tool: "image_edit(请直接按下列参数调用,勿追问、勿复述参数)",
+    params,
+    fence: "canvas-op",
+  };
+}
+
+/**
+ * 把生成决策组装为**经对话流**的用户消息(LLM 据此调 `image_edit` 工具;参数用 `att_` 引用,
+ * attachment-bridge 在工具侧解析)。操作因此天然回流对话历史:用户消息 + 工具卡片 + 结果图
+ * 全部可见、可回放、进 LLM 上下文(后续"刚才那张再调亮"能接上)。薄包装于 {@link buildSurfaceOp}
+ * + {@link renderSurfaceOp};export 与签名不变。
+ */
+export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string }): string {
+  return renderSurfaceOp(buildSurfaceOp(d, opts));
 }
 
 /** 从 asset 派生只读元信息摘要片段(缺项跳过)。 */

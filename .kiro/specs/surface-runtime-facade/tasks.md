@@ -43,7 +43,7 @@
   - _Requirements: 6.1, 6.2, 6.4_
 
 - [ ] 4. Integration:canvas 迁移为首个门面消费者
-- [ ] 4.1 析出领域参数组装并薄包装保测(golden 对照)
+- [x] 4.1 析出领域参数组装并薄包装保测(golden 对照)
   - 第一步(迁移前):以迁移前 buildToolPrompt 实现捕获六动作×mask/refs 组合的期望输出,固化为 fixture(golden 期望值不得由迁移后代码生成,防薄包装自证)
   - 从 buildToolPrompt 析出 buildSurfaceOp(决策→操作描述:tool 行注解/mask/reference_images 注解/reframe 默认 prompt/省略规则原样;fence 用 `canvas-op`;不声明 fallback)
   - buildToolPrompt 改为组装器∘buildSurfaceOp 薄包装,export 与签名不动
