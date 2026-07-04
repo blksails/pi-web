@@ -63,7 +63,7 @@
   - _Requirements: 8.4, 8.5, 8.6_
 
 - [ ] 5. Integration:导出重组审计
-- [ ] 5.1 (P) surface 门面入口叙事收口
+- [x] 5.1 (P) surface 门面入口叙事收口(审计结论:零改动——agent 侧规范入口=`./runtime` 已覆盖 createSurface 门面;全仓零 `/surface` 子路径导入;react/web-kit 新增导出均为门面消费面无内部件泄漏;7.3 全增量无兼容破坏)
   - tool-kit surface 子入口审计(createSurface 导出叙事;package.json exports 覆盖即零改);react/web-kit 公开入口复核不导出内部装配件;若既有导入路径变更保留兼容导出
   - 完成态:三包公开入口 API 清单核对通过,workspace typecheck 绿
   - _Requirements: 7.1, 7.2, 7.3_
