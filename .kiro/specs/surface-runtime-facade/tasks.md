@@ -37,7 +37,7 @@
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 4.1_
   - _Boundary: pi-chat, SlotHost_
   - _Depends: 1.1_
-- [ ] 3.2 宿主注入与别名等价测试
+- [x] 3.2 宿主注入与别名等价测试
   - apply-extension:conversation 对象透传断言(与既有 syncSignal 透传测试同型);别名与 conversation 底层同道等价;doSend 显式 ids 合并、无 opts 路径不变
   - 完成态:ui 包 web-ext 相关新增断言全绿
   - _Requirements: 6.1, 6.2, 6.4_

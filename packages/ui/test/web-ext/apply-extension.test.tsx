@@ -75,6 +75,58 @@ describe("SlotHost", () => {
     expect(submit).toHaveBeenCalledWith("hi");
   });
 
+  it("conversation 能力对象与过渡别名 onSubmitPrompt 同时到达 slot 且各自可触发 (§4.2 别名等价)", () => {
+    // 别名 onSubmitPrompt(@deprecated)与能力对象 conversation 是同一 doSend 底座的两条注入项;
+    // SlotHost 须把二者同时透传给 slot 组件(消费者迁移期零破坏,Req 6.2/6.4)。
+    const Panel = ({
+      conversation,
+      onSubmitPrompt,
+    }: {
+      conversation?: ConversationAccess;
+      onSubmitPrompt?: (text: string) => void;
+    }): React.JSX.Element => (
+      <div>
+        <button
+          data-testid="via-conv"
+          onClick={() => conversation?.submitUserMessage("hi")}
+        >
+          {conversation !== undefined ? "conv-on" : "conv-off"}
+        </button>
+        <button
+          data-testid="via-alias"
+          onClick={() => onSubmitPrompt?.("hi")}
+        >
+          {onSubmitPrompt !== undefined ? "alias-on" : "alias-off"}
+        </button>
+      </div>
+    );
+    // 生产接线里别名与能力对象各自独立引用(pi-chat: onSubmitPrompt=(t)=>doSend(t) / conversation
+    // .submitUserMessage=(t,o)=>doSend(t,o))。此处用两个 spy 观测「二者同时到达且各自可调」。
+    const viaConv = vi.fn();
+    const viaAlias = vi.fn();
+    const conversation: ConversationAccess = { submitUserMessage: viaConv };
+    const ext: WebExtension = {
+      manifestId: "acme",
+      slots: { panelRight: Panel as never },
+    };
+    render(
+      <SlotHost
+        ext={ext}
+        slot="panelRight"
+        conversation={conversation}
+        onSubmitPrompt={viaAlias}
+      />,
+    );
+    // 两条注入项都到达(非 undefined)。
+    expect(screen.getByTestId("via-conv")).toHaveTextContent("conv-on");
+    expect(screen.getByTestId("via-alias")).toHaveTextContent("alias-on");
+    // 各自可独立触发,命中各自 spy(SlotHost 不把别名折叠进能力对象,亦不反向)。
+    fireEvent.click(screen.getByTestId("via-conv"));
+    fireEvent.click(screen.getByTestId("via-alias"));
+    expect(viaConv).toHaveBeenCalledWith("hi");
+    expect(viaAlias).toHaveBeenCalledWith("hi");
+  });
+
   it("未声明插槽时回退默认", () => {
     const ext: WebExtension = { manifestId: "acme", slots: {} };
     render(<SlotHost ext={ext} slot="footer" fallback={<span data-testid="def">DEF</span>} />);
