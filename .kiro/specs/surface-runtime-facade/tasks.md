@@ -1,0 +1,84 @@
+# Implementation Plan
+
+- [ ] 1. Foundation:SDK 类型与组装器(web-kit)
+- [ ] 1.1 定义会话能力对象与操作描述类型并从公开入口导出
+  - host-context 增会话能力对象接口(`submitUserMessage(text, opts?.attachmentIds)`,与 WebExtSurfaceAccess 同族);新文件承载操作描述类型(title / tool / 有序 params / fence 默认 `surface-op` / fallback)与提交结果 discriminated union
+  - web-kit 公开入口导出上述类型;不导出内部装配件
+  - 完成态:workspace typecheck 绿,ui/react 包可从 web-kit 导入这些类型
+  - _Requirements: 3.1, 6.1, 7.2_
+- [ ] 1.2 实现操作消息组装器纯函数并单测
+  - 输出 `标题行\n\n\`\`\`fence\ntool: …\nk: v…\n\`\`\``;空串/undefined 值参数行省略;params 按插入序输出;fence 可参数化
+  - 单测:标题行/fence 默认与参数化/省略规则/参数序稳定/同输入同输出;仅覆盖纯函数语义,不含 canvas golden 对照(golden 落 ui 侧,见 4.1)
+  - 完成态:web-kit 新增单测全绿
+  - _Requirements: 3.1, 3.2, 3.3_
+
+- [ ] 2. Core:对话桥门面 hook(react)
+- [ ] 2.1 (P) 实现 useConversationBridge 三态探测与四成员
+  - opChannel:conversation/别名在→prompt;缺且 surface∧domain∧探针中→command;否则 unavailable;渲染时同步求值;不暴露通道指定参数
+  - submitOp 分道:prompt 态组装消息经会话能力提交;command 态有 fallback 走 run、无 fallback 返回 no_fallback 错误;unavailable 返回错误;全部结果对象承载,不抛异常
+  - bringToConversation:prompt 态提交 refs+摘要(显式 attachmentIds);非 prompt 态 ok:false;默认文本为实现常量
+  - onTurnEnd:记录 syncSignal 首见值仅变化触发;返回退订;无信号不抛;StrictMode 幂等
+  - react 公开入口导出 hook 与类型并 re-export 组装器
+  - 完成态:react 包 typecheck 绿,hook 可从公开入口导入
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 7.1_
+  - _Boundary: useConversationBridge_
+  - _Depends: 1.1, 1.2_
+- [ ] 2.2 门面 hook 单测
+  - 三种注入组合→三态;conversation 优先/别名兜底;submitOp 三分道(prompt 产出文本含 title/tool/params fence);bringToConversation 分道与 attachmentIds 透传;onTurnEnd 初值不触发/变化触发/退订后不触发/无信号不抛;全缺 opts 降级门面不抛
+  - 完成态:react 新增单测全绿
+  - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.4, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 6.2_
+
+- [ ] 3. Core:宿主能力对象化(ui 宿主)
+- [ ] 3.1 (P) doSend 扩参与 conversation 能力对象注入
+  - doSend 增可选显式 attachmentIds,与 composer 引用合并追加;无 opts 调用路径行为不变
+  - pi-chat useMemo 构造 conversation 能力对象注入 SlotHost;SlotHostProps/renderContribution 增 conversation 透传;onSubmitPrompt 注入保留并加 @deprecated JSDoc
+  - 宿主代码不出现 fence/领域词(领域无关红线)
+  - 完成态:既有 apply-extension/pi-chat 相关测试零改动通过,conversation 经 SlotHost 到达 slot 组件 props
+  - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 4.1_
+  - _Boundary: pi-chat, SlotHost_
+  - _Depends: 1.1_
+- [ ] 3.2 宿主注入与别名等价测试
+  - apply-extension:conversation 对象透传断言(与既有 syncSignal 透传测试同型);别名与 conversation 底层同道等价;doSend 显式 ids 合并、无 opts 路径不变
+  - 完成态:ui 包 web-ext 相关新增断言全绿
+  - _Requirements: 6.1, 6.2, 6.4_
+
+- [ ] 4. Integration:canvas 迁移为首个门面消费者
+- [ ] 4.1 析出领域参数组装并薄包装保测(golden 对照)
+  - 第一步(迁移前):以迁移前 buildToolPrompt 实现捕获六动作×mask/refs 组合的期望输出,固化为 fixture(golden 期望值不得由迁移后代码生成,防薄包装自证)
+  - 从 buildToolPrompt 析出 buildSurfaceOp(决策→操作描述:tool 行注解/mask/reference_images 注解/reframe 默认 prompt/省略规则原样;fence 用 `canvas-op`;不声明 fallback)
+  - buildToolPrompt 改为组装器∘buildSurfaceOp 薄包装,export 与签名不动
+  - golden 哨兵单测落 packages/ui/test/canvas/(design File Structure 原 web-kit 落点因依赖方向 `protocol←web-kit←react←ui` 不可行,design 已同步修正,以本任务为准):新管线输出 ≡ 固化 fixture 逐字节相等
+  - 完成态:packages/ui/test/canvas/* 既有单测零改动全绿 + golden 哨兵绿
+  - _Requirements: 8.2, 8.3, 3.2_
+  - _Depends: 1.2_
+- [ ] 4.2 提交点与轮末订阅迁移 + 装配点透传
+  - canvas 组件经 useConversationBridge(conversation/别名/surface/syncSignal/domain="canvas")装配;三处提交点改 bridge.submitOp;workbench livePreview 清除与 launcher 侧轮末消费改 bridge.onTurnEnd(消费点 grep 实证仅 canvas-workbench.tsx 与 canvas-launcher.tsx 两文件)
+  - 核验 canvas 装配点(CanvasPanel,位于 canvas-launcher.tsx;web.config 函数贡献经 renderContribution 自动获得注入)conversation 到达,不足则补透传
+  - 完成态:canvas 组件内 grep 无 onSubmitPrompt 调用与裸 syncSignal effect;既有 canvas 单测零改动全绿
+  - _Requirements: 8.1, 8.4, 8.3_
+  - _Depends: 2.1, 3.1_
+- [ ] 4.3 降级三态呈现
+  - prompt 现状;command 生成控件禁用+「操作不进入对话(LLM 不在环)」提示,控制面动作照常;unavailable 沿用现横幅;三态均有 data-* 锚点
+  - 完成态:三态在组件测试中可断言(按注入组合渲染)
+  - _Requirements: 8.4, 8.5, 8.6_
+
+- [ ] 5. Integration:导出重组审计
+- [ ] 5.1 (P) surface 门面入口叙事收口
+  - tool-kit surface 子入口审计(createSurface 导出叙事;package.json exports 覆盖即零改);react/web-kit 公开入口复核不导出内部装配件;若既有导入路径变更保留兼容导出
+  - 完成态:三包公开入口 API 清单核对通过,workspace typecheck 绿
+  - _Requirements: 7.1, 7.2, 7.3_
+  - _Boundary: 包入口 exports_
+  - _Depends: 2.1_
+
+- [ ] 6. Validation:回归与端到端
+- [ ] 6.1 全量回归与静态验收线
+  - workspace typecheck + 受影响包(web-kit/react/ui)测试全绿;packages/ui/test/canvas/* 零改动全绿
+  - grep 验收:canvas 无裸 onSubmitPrompt 调用;宿主 pi-chat/apply-extension 无 fence/领域词;公开入口无内部装配件
+  - 完成态:全部命令新鲜输出为证
+  - _Requirements: 8.3, 8.1, 6.5, 7.2_
+- [ ] 6.2 e2e:canvas 闭环回归 + 降级场景
+  - 前置搭建:新建(或指认)一个"贡献 canvas 面板但无 surface 能力"的 agent source fixture——e2e/fixtures 现无此环境,aigc-canvas-agent 注册面板同时注册 surface;做法为该 example 的无 surface 变体或等效开关,fixture 本身可独立验证(探针 `hasCommand("surface:canvas")` 为假且面板可见)
+  - 既有 canvas 浏览器 e2e 闭环零改动通过(隔离 build,external server 模式)
+  - 降级 e2e:用上述 fixture 打开 canvas 面板→unavailable 锚点呈现、本地工具可用、无崩溃
+  - 完成态:两条 e2e 新鲜运行输出全绿
+  - _Requirements: 8.3, 8.6, 8.7_
