@@ -58,6 +58,13 @@ export interface HistoryStore {
   readonly canRedo: boolean;
   /** 双栈清空(换图/应用结果后的复位语义)。 */
   clear(): void;
+  /**
+   * 按谓词过滤已提交 ops(true=保留)并**清空重做栈**(workbench :722-:731
+   * consumeSent 语义:发送后只清「本次发送时存在的」项,飞行期新输入不被吞;
+   * 旧实现恒 `setRedoOps([])` —— 零剔除也清 redo)。
+   * 无实效变更(零剔除且 redo 已空)→ no-op(引用稳定,不通知)。
+   */
+  prune(keep: (op: CanvasOp) => boolean): void;
   /** 变更订阅(返回退订;无实效变更不通知)。 */
   subscribe(listener: () => void): () => void;
   /** 当前快照(未变更时引用稳定)。 */
@@ -91,6 +98,11 @@ export function createHistoryStore(): HistoryStore {
     clear: () => {
       if (snapshot.ops.length === 0 && snapshot.redoOps.length === 0) return; // no-op:引用稳定
       commitState([], []);
+    },
+    prune: (keep) => {
+      const kept = snapshot.ops.filter(keep);
+      if (kept.length === snapshot.ops.length && snapshot.redoOps.length === 0) return; // no-op:引用稳定
+      commitState(kept.length === snapshot.ops.length ? snapshot.ops : kept, []);
     },
     get ops() {
       return snapshot.ops;

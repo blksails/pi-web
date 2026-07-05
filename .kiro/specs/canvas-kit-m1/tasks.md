@@ -83,7 +83,7 @@
   - _Depends: 3.1_
 
 - [ ] 4. Integration:workbench 装配改造(两刀,每刀后 ui 测试全绿)
-- [ ] 4.1 交互内核接入(第一刀:状态搬家)
+- [x] 4.1 交互内核接入(第一刀:状态搬家)
   - workbench 的 toNatural/ops+redoOps 双栈/layers state 替换为 kernel 实例(stage/history/layers,useMemo per mount);既有指针处理函数暂保留但改调内核 API;undo/redo 按钮接 HistoryApi
   - 完成态:packages/ui 全部既有测试零改动通过(中间态安全线)
   - _Requirements: 2.3, 5.1_
@@ -123,3 +123,4 @@
 - 2.6:registry.ts 落地(defineCanvasTool/createCanvasRegistry/CanvasToolContext/ToolGestureEvent;index 显式出口 2 值+10 类型,快照 19→21)。五项裁定审查维持:边名=top/right/bottom/left(罗盘边是 design 幻影)/L2 事件全载荷且 natural 可空(绘制工具 onDown/onMove 实际恒非空——路由 :291/:305 已挡 null,null 仅现于 stage 命中与 up/cancel)/diagnostics 直读共享收集器/hit 无 layer 分支(结构性不外派)/新增 capturePointer?: boolean 缺省 true(text 不捕获 :1142 的声明化表达)。**留给 4.1(硬账)**:包级装配 facade 缺口——createToolAdapter/createPrefsStore 未出口,ui 侧 Req 1.3 禁拿 kernel 件,4.1 必须补装配门面出口(形状届时定,连同 index 快照更新)。**留给 3.1/4.2**:prefs 扁平 KV,annoColor 跨工具共享=旧单 state 语义。
 - 3.1:builtin 绘制族五工具落地(+shared.ts 族内共用件,包内私有)。**PREFS 键定死**:annoColor 缺省 #ef4444 / brushRatio 缺省 0.05(BRUSH_RATIOS=[0.025,0.05,0.1]、ANNOTATION_RATIO=0.008 在 shared)——4.2 装配注入初值须同键。**留给 4.2 三笔账**:①工具轨长 title(「画笔(标注即指令)」等)不在 CanvasTool 声明面,装配须另行保持否则 ui 测试破;②mask/erase 共享同一 stroke rasterizer 函数引用,注册重复 kind 被拒(false)是无损语义,装配方勿当错误;③Tailwind content 扫描须覆盖 canvas-kit(选项条 className 在包内)。选项条颜色块显示条件含 text(:1391),3.2 text 工具复用。
 - 3.2:move/expand/text + registerBuiltinTools 落地(注册序=工具轨 :1382-1389;快照 21→22)。**裁定:扩图边状态走 ctx.prefs 键 `expandEdges`**(缺省 NO_EXPAND;commit 违反「扩图不可撤销」现状,draft 是手势期而扩图跨手势存续;PREF_EXPAND_EDGES 常量已出口)。**4.2 硬账汇总**:①text overlayReact 装配契约=挂进与 overlay 画布重合的定位容器(natural 百分比定位的等价性前提);②保持 overlayInteractive 门控(3.1 绘制族无 overlay 命中守卫);③prefs 同键注入 expandEdges/annoColor/brushRatio + 复位按钮写同键;④工具轨长 title 装配另行保持。**已知行为微差(留账)**:move 平移 capture 下指针出舞台不再中断(旧 onMouseLeave endDrag;ui 测试零 mouseleave 用例,回归线不抓)。
+- 4.1:第一刀完成(workbench 净 -100 行;createCanvasKernel(env) 装配门面收口 2.6 留账,快照 22→23;consumeSent→history.prune(keep);StageEnv=overlayRef.getBoundingClientRect+naturalRef effect 镜像,React 18 离散事件前冲刷 passive effects 故陈旧窗口不可观测)。**审查如实记录的 pre-existing 覆盖缺口**:ui 测试无锚的接线=undo/redo 按钮/缩放胶囊/wheel/stage 平移/mask-clear/绘制指针路径(canvas-kit 210 测试在 API 层锚定)——4.2 改这些区域时 ui 回归线抓不到,须靠 canvas-kit 单测+5.1 e2e 兜底,4.2 审查须逐 hunk 更严。**环境提示**:本机并发 agent 会话会致 vitest waitFor 超时假阳性(失败集中无关文件、定向重跑绿、duration 膨胀 26s→2800s 为信号)。

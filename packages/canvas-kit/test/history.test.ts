@@ -134,6 +134,47 @@ describe("kernel/history createHistoryStore(开放栈)", () => {
     expect(h.canRedo).toBe(false);
   });
 
+  it("prune(4.1):按谓词过滤 ops(true=保留)+ 清空重做栈(workbench :722-:731 consumeSent 语义)", () => {
+    const h = createHistoryStore();
+    const sentAnno = op("anno", { kind: "arrow" });
+    const keptAnno = op("anno", { kind: "text" });
+    const stroke = op("stroke", { size: 4 });
+    const undone = op("stroke", { size: 9 });
+    h.commit(sentAnno);
+    h.commit(stroke);
+    h.commit(keptAnno);
+    h.commit(undone);
+    h.undo(); // redo=[undone]
+    expect(h.canRedo).toBe(true);
+    h.prune((o) => o !== sentAnno); // 只清「发送时存在」的项;prune 同时清 redo
+    expect(h.ops).toEqual([stroke, keptAnno]);
+    expect(h.canUndo).toBe(true);
+    expect(h.canRedo).toBe(false);
+  });
+
+  it("prune:零剔除也清 redo(consumeSent 恒 setRedoOps([]));自定义 kind 一视同仁", () => {
+    const h = createHistoryStore();
+    const custom = op("plugin:sticker", { id: "x" });
+    h.commit(custom);
+    h.commit(op("stroke"));
+    h.undo(); // redo=[stroke]
+    h.prune(() => true); // 零剔除
+    expect(h.ops).toEqual([custom]);
+    expect(h.canRedo).toBe(false);
+  });
+
+  it("prune:无实效变更(零剔除且 redo 已空)→ no-op 引用稳定不通知", () => {
+    const h = createHistoryStore();
+    h.commit(op("stroke"));
+    const s0 = h.getSnapshot();
+    const listener = vi.fn();
+    const unsub = h.subscribe(listener);
+    h.prune(() => true);
+    expect(h.getSnapshot()).toBe(s0);
+    expect(listener).not.toHaveBeenCalled();
+    unsub();
+  });
+
   describe("useSyncExternalStore 适配契约", () => {
     it("getSnapshot 未变更时引用稳定;变更后换新引用", () => {
       const h = createHistoryStore();

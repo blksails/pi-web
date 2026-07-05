@@ -9,8 +9,8 @@
  * - 依赖方向:ui 消费 canvas-kit,反向禁止(本包零 @blksails/* 依赖)。
  *
  * 当前已填充:types(canonical 家)+ bitmap-io(task 1.2)、registry/defineCanvasTool
- * (task 2.6)、registerBuiltinTools(task 3.2);后续任务按 design.md File
- * Structure Plan 续填:装配门面(4.1)。
+ * (task 2.6)、registerBuiltinTools(task 3.2)、createCanvasKernel 装配门面
+ * (task 4.1;收口的装配 API,非 kernel/* re-export)。
  */
 // 类型 canonical 家(Annotation/MaskStroke/ExpandEdges/WorkLayer/CanvasOp + LoadedImage)。
 export * from "./types.js";
@@ -18,7 +18,7 @@ export * from "./types.js";
 export * from "./bitmap-io.js";
 // L2 工具装置(task 2.6,Req 6.1/6.5/3.3):声明式工具定义 + per-instance 注册表。
 // 显式清单(1.3 先例:不 export * —— 包内装配件 createToolAdapter/createPrefsStore
-// 等不进公开面;它们经 4.1 装配门面收口后再议出口)。
+// 等不进公开面;4.1 裁定:二者属工具接线,4.2 注册表驱动装配时再按需经门面收口)。
 export { defineCanvasTool, createCanvasRegistry } from "./registry.js";
 export type {
   CanvasPrefs,
@@ -35,3 +35,20 @@ export type {
 // 8 内置工具汇总注册(task 3.2,Req 6.2/6.3):单个工具不出口(经注册表枚举消费);
 // prefs 键契约(4.2 装配注入初值同键):annoColor/brushRatio/expandEdges。
 export { registerBuiltinTools } from "./builtin/index.js";
+// 交互内核装配门面(task 4.1,Req 1.3/2.3/5.1):stage/history/layers 实例创建收口
+// 为单一装配 API(能力面契约类型随之上桌;kernel 内部模块路径不出口)。
+export { createCanvasKernel } from "./kernel-facade.js";
+export type {
+  AddLayerInput,
+  CanvasKernel,
+  CanvasKernelEnv,
+  HistorySnapshot,
+  HistoryStore,
+  LayerGesture,
+  LayerGestureOrigin,
+  LayersSnapshot,
+  LayersStore,
+  RectLike,
+  StageController,
+  StageViewport,
+} from "./kernel-facade.js";

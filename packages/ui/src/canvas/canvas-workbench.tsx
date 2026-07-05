@@ -65,6 +65,7 @@ import {
   ANNOTATION_PALETTE,
   annotationsToImage,
   compositeByMask,
+  createCanvasKernel,
   drawAnnotations,
   expandedSize,
   flattenLayers,
@@ -88,10 +89,6 @@ import {
 const DOMAIN = "canvas";
 const PROBE = `surface:${DOMAIN}`;
 const STATE_KEY = `surface:${DOMAIN}`;
-
-const ZOOM_MIN = 0.2;
-const ZOOM_MAX = 8;
-const clampZoom = (z: number): number => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 /**
  * busy 解锁窗:`surface.run` 结果在 prod 毫秒级配对回包;但 **next dev(StrictMode)** 双跑空闲
@@ -142,11 +139,6 @@ const RATIO_OPTIONS: readonly { label: string; size: string }[] = [
 /** 浮动层公共观感(舞台上的悬浮控件)。 */
 const FLOAT_LAYER =
   "rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 shadow-md backdrop-blur";
-
-/** 统一编辑历史项(掩码笔迹与标注共栈,撤销/重做按操作顺序)。 */
-type EditOp =
-  | { readonly kind: "stroke"; readonly item: MaskStroke }
-  | { readonly kind: "anno"; readonly item: Annotation };
 
 // ── 生成决策(纯函数,export 供单测)────────────────────────────────────────────
 
@@ -493,10 +485,32 @@ export function CanvasWorkbench({
     top: number;
     value: string;
   } | null>(null);
-  // ── M3 状态:图层 ────────────────────────────────────────────────────────────
-  const [layers, setLayers] = React.useState<readonly WorkLayer[]>([]);
-  const [selectedLayer, setSelectedLayer] = React.useState<string | null>(null);
-  const layerSeq = React.useRef(0);
+  const imgRef = React.useRef<HTMLImageElement | null>(null);
+  const stageRef = React.useRef<HTMLDivElement | null>(null);
+  const overlayRef = React.useRef<HTMLCanvasElement | null>(null);
+  /** natural 的 ref 镜像(kernel env 访问器在事件回调期读取;经 effect 与 state 同步)。 */
+  const naturalRef = React.useRef<{ w: number; h: number } | null>(null);
+
+  // ── 交互内核(4.1 状态搬家):stage/history/layers 实例,per mount ───────────────
+  // StrictMode 双跑 useMemo 会各建一份(纯状态容器零副作用,弃置其一安全);DOM 量取
+  // 经 env 访问器延迟到调用时,kernel 本身零 DOM 依赖。
+  const kernel = React.useMemo(
+    () =>
+      createCanvasKernel({
+        getRect: () => overlayRef.current?.getBoundingClientRect() ?? null,
+        getNaturalSize: () => naturalRef.current,
+      }),
+    [],
+  );
+
+  // ── M3 状态:图层(树状态/选中/id 序列归 layers 内核,4.1)──────────────────────
+  const layersSnap = React.useSyncExternalStore(
+    kernel.layers.subscribe,
+    kernel.layers.getSnapshot,
+    kernel.layers.getSnapshot,
+  );
+  const layers = layersSnap.layers;
+  const selectedLayer = layersSnap.selectedId;
   /** 图层拖动/缩放会话(pointer capture 于层元素上)。 */
   const layerDrag = React.useRef<{
     id: string;
@@ -505,9 +519,6 @@ export function CanvasWorkbench({
     startY: number;
     orig: { x: number; y: number; w: number; h: number };
   } | null>(null);
-  const imgRef = React.useRef<HTMLImageElement | null>(null);
-  const stageRef = React.useRef<HTMLDivElement | null>(null);
-  const overlayRef = React.useRef<HTMLCanvasElement | null>(null);
 
   // 当前工作图:优先内部选择,回退到 prop。prop 变化(父切换)时同步。
   const current = React.useMemo(
@@ -516,20 +527,29 @@ export function CanvasWorkbench({
   );
   React.useEffect(() => setCurrentId(asset.attachmentId), [asset.attachmentId]);
 
-  // ── 舞台缩放 / 平移(移动工具)────────────────────────────────────────────────
-  const [scale, setScale] = React.useState(1);
-  const [offset, setOffset] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  // ── 舞台缩放 / 平移(移动工具)—— 视口状态归 stage 内核(4.1)──────────────────
+  const viewport = React.useSyncExternalStore(
+    kernel.stage.subscribe,
+    kernel.stage.getViewport,
+    kernel.stage.getViewport,
+  );
+  const scale = viewport.scale;
+  const offset = viewport.offset;
   const drag = React.useRef<{ active: boolean; x: number; y: number } | null>(null);
 
-  // ── 编辑历史(掩码笔迹 + 标注共栈;撤销/重做按操作顺序)─────────────────────────
-  const [ops, setOps] = React.useState<readonly EditOp[]>([]);
-  const [redoOps, setRedoOps] = React.useState<readonly EditOp[]>([]);
+  // ── 编辑历史(掩码笔迹 + 标注共栈;撤销/重做按操作顺序)—— 双栈归 history 内核(4.1)
+  const history = React.useSyncExternalStore(
+    kernel.history.subscribe,
+    kernel.history.getSnapshot,
+    kernel.history.getSnapshot,
+  );
+  const ops = history.ops;
   const strokes = React.useMemo(
-    () => ops.filter((o): o is Extract<EditOp, { kind: "stroke" }> => o.kind === "stroke").map((o) => o.item),
+    () => ops.filter((o) => o.kind === "stroke").map((o) => o.item as MaskStroke),
     [ops],
   );
   const annotations = React.useMemo(
-    () => ops.filter((o): o is Extract<EditOp, { kind: "anno" }> => o.kind === "anno").map((o) => o.item),
+    () => ops.filter((o) => o.kind === "anno").map((o) => o.item as Annotation),
     [ops],
   );
   const [draft, setDraft] = React.useState<MaskStroke | null>(null);
@@ -546,24 +566,26 @@ export function CanvasWorkbench({
   const [natural, setNatural] = React.useState<{ w: number; h: number } | null>(null);
   const [stageSize, setStageSize] = React.useState<{ w: number; h: number } | null>(null);
 
+  // naturalRef 镜像:kernel env 访问器在指针回调期读取(事件必发生在 effect 提交后)。
+  React.useEffect(() => {
+    naturalRef.current = natural;
+  }, [natural]);
+
   const resetView = React.useCallback(() => {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
-  }, []);
+    kernel.stage.reset();
+  }, [kernel]);
 
   // 切换工作图 → 复位视图 + 清空编辑历史/图层 + 重新量自然尺寸。
   React.useEffect(() => {
     resetView();
-    setOps([]);
-    setRedoOps([]);
+    kernel.history.clear();
     setDraft(null);
     setAnnoDraft(null);
     setTextEditor(null);
-    setLayers([]);
-    setSelectedLayer(null);
+    kernel.layers.clear();
     setExpand({ top: 0, right: 0, bottom: 0, left: 0 });
     setNatural(null);
-  }, [current.attachmentId, resetView]);
+  }, [current.attachmentId, resetView, kernel]);
 
   // 自然尺寸兜底:图片命中缓存时(挂载前已 complete)React onLoad 不触发,同步量取;
   // 否则 natural 恒 null → overlay 不渲染 → 掩码刷画不上。置于清空 effect 之后(同 deps 顺序执行)。
@@ -591,11 +613,11 @@ export function CanvasWorkbench({
     if (el === null) return;
     const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
-      setScale((s) => clampZoom(s * (e.deltaY < 0 ? 1.12 : 0.89)));
+      kernel.stage.zoomBy(e.deltaY < 0 ? 1.12 : 0.89);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [kernel]);
 
   // overlay 预览重绘:掩码笔迹(半透明粉红=编辑区,对应 alpha mask 透明洞;erase destination-out
   // 收回)按 ops 顺序回放,标注(红)叠加最上。
@@ -721,13 +743,11 @@ export function CanvasWorkbench({
       const sentStrokes = new Set(strokes);
       const consumeSent = (withStrokes: boolean): void => {
         setRefs((prev) => prev.filter((r) => !sentRefs.has(r)));
-        setOps((prev) =>
-          prev.filter((o) => {
-            if (o.kind === "anno") return !sentAnnos.has(o.item);
-            return withStrokes ? !sentStrokes.has(o.item) : true;
-          }),
-        );
-        setRedoOps([]);
+        // history.prune = 按谓词过滤 ops + 清空重做栈(原 setOps(filter)+setRedoOps([]))。
+        kernel.history.prune((o) => {
+          if (o.kind === "anno") return !sentAnnos.has(o.item as Annotation);
+          return withStrokes ? !sentStrokes.has(o.item as MaskStroke) : true;
+        });
       };
 
       if (decision.action === "outpaint" && upload !== undefined) {
@@ -832,7 +852,7 @@ export function CanvasWorkbench({
     } finally {
       setBusy(false);
     }
-  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, bridge]);
+  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, bridge, kernel]);
 
   /** 版本条选中 → 切工作图 + 复用其参数(预填表单 + 通知宿主)。 */
   const selectAsset = React.useCallback(
@@ -848,17 +868,9 @@ export function CanvasWorkbench({
     [onReuseParams],
   );
 
-  // ── 指针 → 源图像素坐标(经 overlay 的 BoundingClientRect,天然含 transform)────
-  const toNatural = (e: React.PointerEvent): { x: number; y: number } | null => {
-    const cv = overlayRef.current;
-    if (cv === null || natural === null) return null;
-    const rect = cv.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    return {
-      x: ((e.clientX - rect.left) / rect.width) * natural.w,
-      y: ((e.clientY - rect.top) / rect.height) * natural.h,
-    };
-  };
+  // ── 指针 → 源图像素坐标(stage 内核唯一实现;overlay rect/natural 经 env 访问器)──
+  const toNatural = (e: React.PointerEvent): { x: number; y: number } | null =>
+    kernel.stage.toNatural(e.clientX, e.clientY);
 
   const drawingTool = tool === "mask" || tool === "erase";
   const annoLineTool = tool === "line" || tool === "arrow";
@@ -870,41 +882,15 @@ export function CanvasWorkbench({
   /** 加一层:初始宽 = 底图宽 40%,高按图像纵横比(加载后修正);落点居中(缺省底图中心)。 */
   const addLayer = React.useCallback(
     (att: { attachmentId: string; displayUrl: string }, at?: { x: number; y: number }): void => {
-      // natural 未量到(jsdom / 未加载)退化 1024 占位,与 sourceSize 同策略。
-      const nat = natural ?? { w: 1024, h: 1024 };
-      layerSeq.current += 1;
-      const id = `layer-${layerSeq.current}`;
-      const w0 = nat.w * 0.4;
-      const h0 = w0; // 占位方形,加载后按真实纵横比修正
-      const cx0 = at?.x ?? nat.w / 2;
-      const cy0 = at?.y ?? nat.h / 2;
-      const layer: WorkLayer = {
-        id,
-        attachmentId: att.attachmentId,
-        displayUrl: att.displayUrl,
-        x: cx0 - w0 / 2,
-        y: cy0 - h0 / 2,
-        w: w0,
-        h: h0,
-      };
-      setLayers((prev) => [...prev, layer]);
-      setSelectedLayer(id);
+      // 初始几何/占位策略/id 序列归 layers 内核(natural 未量到由 store 退化 1024 占位)。
+      const id = kernel.layers.add(att, at ?? null, natural);
       void loader(att.displayUrl)
-        .then((img) => {
-          const ratio = img.width > 0 ? img.height / img.width : 1;
-          setLayers((prev) =>
-            prev.map((l) =>
-              l.id === id
-                ? { ...l, loaded: img, h: l.w * ratio, y: cy0 - (l.w * ratio) / 2 }
-                : l,
-            ),
-          );
-        })
+        .then((img) => kernel.layers.markLoaded(id, img))
         .catch(() => {
-          // 加载失败:层保留占位(拍平时跳过)。
+          // 加载失败:层保留占位(拍平时跳过;markLoaded 不调用)。
         });
     },
-    [natural, loader],
+    [kernel, natural, loader],
   );
 
   /** OS 图片文件 → 上传接缝落 att_ → register 进画廊(origin=upload)→ 成层。拖放与粘贴共用。 */
@@ -977,7 +963,7 @@ export function CanvasWorkbench({
     e.stopPropagation();
     const l = layers.find((x) => x.id === id);
     if (l === undefined) return;
-    setSelectedLayer(id);
+    kernel.layers.select(id);
     (e.target as Element).setPointerCapture?.(e.pointerId);
     layerDrag.current = {
       id,
@@ -995,16 +981,8 @@ export function CanvasWorkbench({
     if (rect.width <= 0) return;
     const dx = ((e.clientX - d.startX) / rect.width) * natural.w;
     const dy = ((e.clientY - d.startY) / rect.height) * natural.h;
-    setLayers((prev) =>
-      prev.map((l) => {
-        if (l.id !== d.id) return l;
-        if (d.mode === "move") return { ...l, x: d.orig.x + dx, y: d.orig.y + dy };
-        // 等比缩放(右下角手柄;以横向位移为准,钳最小 24px)。
-        const ratio = d.orig.w > 0 ? d.orig.h / d.orig.w : 1;
-        const w = Math.max(24, d.orig.w + dx);
-        return { ...l, w, h: w * ratio };
-      }),
-    );
+    // move/resize reducer 归 layers 内核(每帧从 down 时捕获的 orig + 总位移重算)。
+    kernel.layers.applyGesture({ id: d.id, mode: d.mode, orig: d.orig }, dx, dy);
   };
   const onLayerPointerUp = (): void => {
     layerDrag.current = null;
@@ -1092,12 +1070,11 @@ export function CanvasWorkbench({
           }),
         );
       }
-      setLayers([]);
-      setSelectedLayer(null);
+      kernel.layers.clear();
     } finally {
       setBusy(false);
     }
-  }, [upload, layers, loader, canvasFactory, current, baseUrl, sessionId, available, surface]);
+  }, [upload, layers, loader, canvasFactory, current, baseUrl, sessionId, available, surface, kernel]);
 
   const shortEdge = natural !== null ? Math.min(natural.w, natural.h) : 1024;
   const annoSize = Math.max(3, Math.round(shortEdge * ANNOTATION_RATIO));
@@ -1185,8 +1162,7 @@ export function CanvasWorkbench({
     const d = draftRef.current;
     draftRef.current = null;
     if (d !== null) {
-      setOps([...ops, { kind: "stroke", item: d }]);
-      setRedoOps([]);
+      kernel.history.commit({ kind: "stroke", item: d });
       setDraft(null);
       return;
     }
@@ -1199,8 +1175,7 @@ export function CanvasWorkbench({
           ? (a.points?.length ?? 0) >= 2
           : Math.hypot(a.to.x - a.from.x, a.to.y - a.from.y) >= 2;
       if (keep) {
-        setOps([...ops, { kind: "anno", item: a }]);
-        setRedoOps([]);
+        kernel.history.commit({ kind: "anno", item: a });
       }
       setAnnoDraft(null);
     }
@@ -1218,23 +1193,9 @@ export function CanvasWorkbench({
         size: annoSize * 2,
         color: annoColor,
       };
-      setOps([...ops, { kind: "anno", item: anno }]);
-      setRedoOps([]);
+      kernel.history.commit({ kind: "anno", item: anno });
     }
     setTextEditor(null);
-  };
-
-  const undo = (): void => {
-    if (ops.length === 0) return;
-    const last = ops[ops.length - 1]!;
-    setOps(ops.slice(0, -1));
-    setRedoOps([...redoOps, last]);
-  };
-  const redo = (): void => {
-    if (redoOps.length === 0) return;
-    const last = redoOps[redoOps.length - 1]!;
-    setRedoOps(redoOps.slice(0, -1));
-    setOps([...ops, last]);
   };
 
   // ── 舞台平移(移动工具)──────────────────────────────────────────────────────
@@ -1245,7 +1206,7 @@ export function CanvasWorkbench({
   const onStageMouseMove = (e: React.MouseEvent): void => {
     const d = drag.current;
     if (d === null || !d.active) return;
-    setOffset({ x: e.clientX - d.x, y: e.clientY - d.y });
+    kernel.stage.setOffset({ x: e.clientX - d.x, y: e.clientY - d.y });
   };
   const endDrag = (): void => {
     drag.current = null;
@@ -1438,10 +1399,10 @@ export function CanvasWorkbench({
       ) : null}
 
       <div className="my-0.5 h-px w-6 bg-[hsl(var(--border))]" />
-      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="撤销" data-canvas-undo disabled={ops.length === 0} onClick={undo}>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="撤销" data-canvas-undo disabled={!history.canUndo} onClick={() => kernel.history.undo()}>
         <Undo2 className="h-4 w-4" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="重做" data-canvas-redo disabled={redoOps.length === 0} onClick={redo}>
+      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="重做" data-canvas-redo disabled={!history.canRedo} onClick={() => kernel.history.redo()}>
         <Redo2 className="h-4 w-4" />
       </Button>
       <div className="my-0.5 h-px w-6 bg-[hsl(var(--border))]" />
@@ -1690,8 +1651,8 @@ export function CanvasWorkbench({
               className="h-6 px-1.5 text-xs"
               data-canvas-layer-remove
               onClick={() => {
-                setLayers((prev) => prev.filter((l) => l.id !== selectedLayer));
-                setSelectedLayer(null);
+                // remove(选中层)含清选中(:1694 语义在 store 内)。
+                if (selectedLayer !== null) kernel.layers.remove(selectedLayer);
               }}
             >
               删除选中
@@ -1702,10 +1663,7 @@ export function CanvasWorkbench({
             size="sm"
             className="h-6 px-1.5 text-xs"
             data-canvas-layer-clear
-            onClick={() => {
-              setLayers([]);
-              setSelectedLayer(null);
-            }}
+            onClick={() => kernel.layers.clear()}
           >
             清空
           </Button>
@@ -1746,11 +1704,11 @@ export function CanvasWorkbench({
       ) : null}
       {/* 缩放胶囊:左下角(中央底部让位给浮动提示词栏,右下角避开宿主比例切换器)。 */}
       <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/85 px-1 py-0.5 shadow-sm backdrop-blur">
-        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="缩小" onClick={() => setScale((s) => clampZoom(s * 0.83))}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="缩小" onClick={() => kernel.stage.zoomBy(0.83)}>
           <Minus className="h-4 w-4" />
         </Button>
         <span className="min-w-[3rem] text-center text-xs tabular-nums text-[hsl(var(--muted-foreground))]">{zoomPct}%</span>
-        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="放大" onClick={() => setScale((s) => clampZoom(s * 1.2))}>
+        <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="放大" onClick={() => kernel.stage.zoomBy(1.2)}>
           <Plus className="h-4 w-4" />
         </Button>
         <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="适应" onClick={resetView}>
@@ -1874,10 +1832,7 @@ export function CanvasWorkbench({
               <button
                 type="button"
                 data-canvas-mask-clear
-                onClick={() => {
-                  setOps([]);
-                  setRedoOps([]);
-                }}
+                onClick={() => kernel.history.clear()}
                 className="text-[10px] text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
               >
                 {editSummaryBits.join(" · ")} · 清除
