@@ -100,8 +100,8 @@
   - _Requirements: 7.5, 1.2, 1.3, 1.4_
   - _Depends: 4.2_
 
-- [ ] 5. Validation:回归与端到端
-- [ ] 5.1 全量回归与 e2e
+- [x] 5. Validation:回归与端到端
+- [x] 5.1 全量回归与 e2e
   - workspace typecheck 全绿;canvas-kit 全部单测绿;packages/ui 测试零改动全绿
   - canvas 相关全部 e2e 零改动全绿:aigc-canvas.e2e.ts 5 条 + aigc-canvas-degrade.e2e.ts 1 条,共 6 条(基线:36b774d 修复后 6/6 已绿——执行者据此,任何红都不是 pre-existing)
   - 完成态:全部命令新鲜输出为证
@@ -126,3 +126,4 @@
 - 4.1:第一刀完成(workbench 净 -100 行;createCanvasKernel(env) 装配门面收口 2.6 留账,快照 22→23;consumeSent→history.prune(keep);StageEnv=overlayRef.getBoundingClientRect+naturalRef effect 镜像,React 18 离散事件前冲刷 passive effects 故陈旧窗口不可观测)。**审查如实记录的 pre-existing 覆盖缺口**:ui 测试无锚的接线=undo/redo 按钮/缩放胶囊/wheel/stage 平移/mask-clear/绘制指针路径(canvas-kit 210 测试在 API 层锚定)——4.2 改这些区域时 ui 回归线抓不到,须靠 canvas-kit 单测+5.1 e2e 兜底,4.2 审查须逐 hunk 更严。**环境提示**:本机并发 agent 会话会致 vitest waitFor 超时假阳性(失败集中无关文件、定向重跑绿、duration 膨胀 26s→2800s 为信号)。
 - 4.2:第二刀完成(workbench 2017→1741;四散点全拆;facade 扩装配面 CanvasToolsApi/renderOverlay/pointer/prefs,出口 23→27)。两微差审查 ACCEPT:①overlay 预览按 ops 提交序回放(旧两趟 strokes→annos;tasks 明文授权,持久面 strokesToMask/annotationsToImage 零影响);②text 编辑器改 natural% 定位随图缩放平移(旧滞留屏幕位,新更正确)。残留具名 id=装配策略非散点(MOVE_TOOL_ID/EXPAND_TOOL_ID/TOOL_RAIL_TITLES/BACKEND_FREE_TOOLS)。新增 additive 锚点 data-canvas-tool-overlay + 禁用工具置灰。**⚠5.1 硬警示(审查者)**:workbench 装配接线(工具轨/prefs/选项条)ui 测试无锚,唯一行为兜底=6 条 canvas e2e,不可跳、任何红不许赖 pre-existing(基线 6/6 绿)。
 - 4.3:encapsulation.test.ts 固化 5 条静态线(builtin DOM-API/视口数学加严 offsetX|offsetY/ui 深路径含相对形与 kernel-facade 裸词/反向依赖/index 零 kernel 内部 re-export);失败信息带 文件:行号:行内容;空目录扫描有守卫;字面量匹配是静态线的已知合理边界(串拼接绕过不在范围)。
+- 5.1:收官验证全绿(workspace typecheck exit 0;canvas-kit 222;ui 698 零改动 29.25s 无膨胀;canvas e2e 6/6 22.4s,外部 server 模式+.next-e2e 隔离构建,BUILD_ID 02Ny4TgRRMy_mzFJMECRg)。e2e 兜住了 4.2 装配接线(闭环/粘性回放/auto-sync/B 档/门控独立/降级全过)。
