@@ -36,7 +36,7 @@
   - _Requirements: 4.1, 4.3, 4.4_
   - _Boundary: kernel/history_
   - _Depends: 1.2_
-- [ ] 2.3 (P) layers 模块(图层树)
+- [x] 2.3 (P) layers 模块(图层树)
   - createLayersStore:WorkLayer 增删改/命中/move-resize reducer(workbench :991/:150-160 逻辑迁移)
   - 单测:增删改/命中/reducer 边界
   - 完成态:layers 用例全绿
@@ -117,3 +117,4 @@
 - 1.3:转发模块用**显式 export {…} 31 项**而非 export *(审查裁定正当:export * 无法做子集,会把 WorkLayer/CanvasOp 等新家类型经 ui index export * 链泄漏成既成公开面)。workbench EditOp 局部 union(:145)有意未动,属 2.2/4.x 职责。ui vitest alias 已补 canvas-kit 主入口条目。
 - 2.1:stage.ts 落地(toNatural 纯函数=workbench :852-861 逐字符一致;ZOOM 常量 :92-94;StageEnv 访问器把 DOM 量取留装配层;toNatural 数学不含 scale/offset——rect 来自含 transform 的 getBoundingClientRect 天然带视口,4.1 接入时装配层负责 rect 量取)。controller 面:getViewport/setScale/zoomBy/setOffset/panBy/reset/subscribe + toNatural 委托。
 - 2.2:history.ts 落地(HistoryApi 六成员=commit/undo/redo/ops/canUndo/canRedo 属性访问器;OpRasterizer 注册表拒绝覆盖返回 false,diagnostics 记录职责在 2.6;store 级补充 clear=换图/摘要清除复位语义)。consumeSent(:724-730 按谓词过滤 ops+清 redo)未建 API——4.1 装配时在本模块补 prune(predicate) 或装配层处理,勿忘。
+- 2.3:layers.ts 落地(createLayersStore + applyLayerGesture 纯 reducer;cy0 闭包 quirk 原样保留=加载修正回落加层时纵中心,dropCenterY Map 承载;loader.then/catch 留装配层,store 只暴露 markLoaded;remove(id) 为行为超集,现行唯一路径 remove(selectedId) 等价;LayersReadApi=layers/selectedId/get)。4.1 装配:异步 loader 回调调 markLoaded,catch 不调用即等价。
