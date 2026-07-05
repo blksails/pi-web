@@ -139,6 +139,15 @@
   }
 }
 
+/* Canvas 活跃期:对话流工具卡里带 att_ 的生成图可点(→ 进 Canvas 工作台编辑)。悬浮示可点。 */
+[data-canvas-tool-image-clickable] [data-pi-tool-images] img[data-att-id] {
+  cursor: pointer;
+}
+[data-canvas-tool-image-clickable] [data-pi-tool-images] img[data-att-id]:hover {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
 /* 棋盘透明底:Canvas 舞台展示透明图区(16px 方格,主题 muted 半透)。 */
 .canvas-checkerboard {
   background-image:

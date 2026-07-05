@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, fireEvent, cleanup } from "@testing-library/react";
+import { render, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import type { WebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import type { GalleryAsset } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
@@ -99,5 +99,37 @@ describe("CanvasPanel 门控 + 开合", () => {
     fireEvent.click(document.querySelector("[data-canvas-workbench-close]")!);
     expect(document.querySelector("[data-canvas-gallery]")).not.toBeNull();
     expect(document.querySelector("[data-canvas-workbench]")).toBeNull();
+  });
+
+  it("点对话流工具卡生成图(data-att-id)→ 开面板并把工作台切到该 att", async () => {
+    const surface = fakeSurface([asset("att_x")]);
+    render(<CanvasPanel enabled surface={surface} />); // 初始关闭
+    expect(document.querySelector("[data-canvas-panel]")).toBeNull();
+
+    // 模拟对话流工具卡里的生成图(pi-tool-part 渲染,带通用 data-att-id)。
+    const wrap = document.createElement("div");
+    wrap.setAttribute("data-pi-tool-images", "");
+    const img = document.createElement("img");
+    img.setAttribute("data-att-id", "att_x");
+    wrap.appendChild(img);
+    document.body.appendChild(wrap);
+
+    // 无 data-pi-tool-images 包裹的裸图不接管。
+    const bare = document.createElement("img");
+    bare.setAttribute("data-att-id", "att_x");
+    document.body.appendChild(bare);
+    fireEvent.click(bare);
+    expect(canvasOpenStore.getSnapshot()).toBe(false);
+
+    // 工具卡图 → 开面板 + 工作台切到 att_x。
+    fireEvent.click(img);
+    expect(canvasOpenStore.getSnapshot()).toBe(true);
+    await waitFor(() =>
+      expect(
+        document.querySelector("[data-canvas-workbench]")?.getAttribute("data-att-id"),
+      ).toBe("att_x"),
+    );
+    wrap.remove();
+    bare.remove();
   });
 });

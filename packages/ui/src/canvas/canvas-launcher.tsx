@@ -100,8 +100,33 @@ export function CanvasPanel({
   livePreviewImage,
 }: CanvasPanelProps): React.JSX.Element | null {
   const on = enabled ?? true;
-  const { open } = useCanvasOpen();
+  const { open, setOpen } = useCanvasOpen();
   const [openId, setOpenId] = React.useState<string | null>(null);
+
+  // 「点 chat 生成图 → 进 Canvas 编辑」:对话流工具卡的图带通用 `data-att-id`(见 pi-tool-part),
+  // 这里挂 document 级**委托监听**——命中即开面板并把工作台切到该 att_id(此时面板可能仍关闭,故
+  // 监听须在早返回之前、恒常挂载)。asset 生成后经 idle 边沿 sync 已进画廊 `assets`;openId 具粘性,
+  // 万一点击早于 sync,待 asset 到达即自动展开工作台。canvas 关闭态(!on)不接管。
+  React.useEffect(() => {
+    if (!on) return undefined;
+    const onDocClick = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null;
+      const img = target?.closest?.("img[data-att-id]") as HTMLElement | null;
+      if (img === null || img === undefined) return;
+      if (img.closest("[data-pi-tool-images]") === null) return; // 仅工具卡图片
+      const id = img.getAttribute("data-att-id");
+      if (id === null || id === "") return;
+      setOpenId(id);
+      setOpen(true);
+    };
+    document.addEventListener("click", onDocClick);
+    // canvas 活跃期给 body 打标记 → 工具图悬浮态显「可点」affordance(见 styles.css)。
+    document.body.setAttribute("data-canvas-tool-image-clickable", "true");
+    return () => {
+      document.removeEventListener("click", onDocClick);
+      document.body.removeAttribute("data-canvas-tool-image-clickable");
+    };
+  }, [on, setOpen]);
 
   if (!on || !open) return null;
 

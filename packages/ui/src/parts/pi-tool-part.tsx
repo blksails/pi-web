@@ -373,6 +373,14 @@ function textFromToolContent(output: unknown): string | undefined {
 /** 行内图片 markdown(`![alt](src)`);src 到首个 `)` 前(URL/data URI 均无裸 `)`)。 */
 const IMG_MD_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
+/**
+ * 从附件签名 URL(`/api/attachments/att_xxx/raw?…`)抽 `att_` id。通用元数据(不耦合任何域):
+ * 落在工具图 `data-att-id` 上,供 Canvas 等域**委托监听**据此开工作台;data URI(流式 partial)无 id。
+ */
+function attIdFromUrl(url: string): string | undefined {
+  return /\/attachments\/(att_[^/?#]+)/.exec(url)?.[1];
+}
+
 /** 把工具文本分离为「其余文本」与「图片列表」——图片改原生 `<img>` 块渲染,不进 markdown 段落。 */
 function splitToolText(raw: string): {
   text: string;
@@ -420,6 +428,9 @@ function defaultOutputNode(output: unknown): React.ReactNode {
                 src={img.src}
                 alt={img.alt}
                 loading="lazy"
+                {...(attIdFromUrl(img.src) !== undefined
+                  ? { "data-att-id": attIdFromUrl(img.src) }
+                  : {})}
                 className="max-h-64 max-w-full rounded-md border border-[hsl(var(--border))] object-contain"
               />
             ))}

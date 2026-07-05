@@ -922,6 +922,22 @@ export function CanvasWorkbench({
     [natural, loader],
   );
 
+  /** OS 图片文件 → 上传接缝落 att_ → register 进画廊(origin=upload)→ 成层。拖放与粘贴共用。 */
+  const importFile = React.useCallback(
+    (file: File, at?: { x: number; y: number }): void => {
+      if (upload === undefined) return;
+      void upload(baseUrl ?? "", sessionId ?? "", file).then(async (res) => {
+        if (available && surface !== undefined) {
+          await settleWindow(
+            surface.run(DOMAIN, "register", { attachmentId: res.attachment.id }),
+          );
+        }
+        addLayer({ attachmentId: res.attachment.id, displayUrl: res.displayUrl }, at);
+      });
+    },
+    [upload, baseUrl, sessionId, available, surface, addLayer],
+  );
+
   /** stage drop:画廊资产(text/att-id)或 OS 文件(经上传接缝落 att_ 并 register)。 */
   const onStageDrop = (e: React.DragEvent): void => {
     e.preventDefault();
@@ -941,19 +957,35 @@ export function CanvasWorkbench({
       if (a !== undefined) addLayer(a, at);
       return;
     }
-    // OS 文件:上传落 att_ → register 进画廊(origin=upload)→ 成层。
+    // OS 文件:落 att_ → 成层。
     const file = e.dataTransfer.files?.[0];
-    if (file !== undefined && upload !== undefined) {
-      void upload(baseUrl ?? "", sessionId ?? "", file).then(async (res) => {
-        if (available && surface !== undefined) {
-          await settleWindow(
-            surface.run(DOMAIN, "register", { attachmentId: res.attachment.id }),
-          );
-        }
-        addLayer({ attachmentId: res.attachment.id, displayUrl: res.displayUrl }, at);
-      });
-    }
+    if (file !== undefined) importFile(file, at);
   };
+
+  /**
+   * 粘贴图片(Cmd/Ctrl+V):剪贴板含图片文件 → 复用 importFile 落图层(居中)。
+   * document 级监听(舞台 div 不可聚焦难收 paste 事件),仅在剪贴板**含图片**时接管——
+   * 纯文本粘贴(如往提示词框)不受影响;无上传接缝时静默降级。
+   */
+  React.useEffect(() => {
+    if (upload === undefined) return undefined;
+    const onPaste = (e: ClipboardEvent): void => {
+      const items = e.clipboardData?.items;
+      if (items === undefined) return;
+      for (const it of Array.from(items)) {
+        if (it.kind === "file" && it.type.startsWith("image/")) {
+          const file = it.getAsFile();
+          if (file !== null) {
+            e.preventDefault();
+            importFile(file); // 无坐标 → 舞台居中
+            return;
+          }
+        }
+      }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [upload, importFile]);
 
   /** 层指针交互:move 模式拖动 / resize 模式右下角手柄等比缩放。 */
   const onLayerPointerDown = (e: React.PointerEvent, id: string, mode: "move" | "resize"): void => {

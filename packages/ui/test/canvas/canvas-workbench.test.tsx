@@ -353,6 +353,71 @@ describe("CanvasWorkbench", () => {
     await waitFor(() => expect(document.querySelector("[data-canvas-layer-bar]")).toBeNull());
   });
 
+  it("粘贴图片:剪贴板含图片 → 复用上传接缝落 att_ + register(与拖放同通道)", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const upload = vi.fn(fakeUpload);
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        upload={upload}
+        baseUrl="/api"
+        sessionId="s1"
+        canvasFactory={fakeCanvasFactory()}
+        imageLoader={async () => ({
+          source: {} as CanvasImageSource,
+          width: 200,
+          height: 100,
+        })}
+      />,
+    );
+    const file = new File([new Uint8Array([1, 2, 3])], "pasted.png", { type: "image/png" });
+    // 非图片项在前应被跳过,图片项被接管。
+    const evt = new Event("paste") as Event & { clipboardData: unknown };
+    (evt as unknown as { clipboardData: unknown }).clipboardData = {
+      items: [
+        { kind: "string", type: "text/plain", getAsFile: () => null },
+        { kind: "file", type: "image/png", getAsFile: () => file },
+      ],
+    };
+    document.dispatchEvent(evt);
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith("canvas", "register", { attachmentId: "att_new" }),
+    );
+  });
+
+  it("粘贴纯文本(无图片项)→ 不触发上传(不劫持文本粘贴)", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const upload = vi.fn(fakeUpload);
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        upload={upload}
+        baseUrl="/api"
+        sessionId="s1"
+        canvasFactory={fakeCanvasFactory()}
+        imageLoader={async () => ({
+          source: {} as CanvasImageSource,
+          width: 200,
+          height: 100,
+        })}
+      />,
+    );
+    const evt = new Event("paste") as Event & { clipboardData: unknown };
+    (evt as unknown as { clipboardData: unknown }).clipboardData = {
+      items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+    };
+    document.dispatchEvent(evt);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it("composeInpaintBack:模型结果回流 → 掩码回贴合成 → 上传 → register(op:inpaint-composite)", async () => {
     // 快照:base + inpaint 模型结果(derivedFrom=base,非 composite);knownIds 只含 base。
     const snap: GalleryState = {
