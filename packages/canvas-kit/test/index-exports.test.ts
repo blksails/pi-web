@@ -4,27 +4,31 @@
  * 守护出口纪律(Req 1.3/1.4):
  * - src/index.ts 是 L2 唯一出口,可被解析;
  * - kernel/ 内部件(L1)不出现在包根出口;
- * - 当前 L2 面 = types(canonical 家)+ bitmap-io(task 1.2);
- *   后续任务填充(defineCanvasTool/registry/builtin)时更新清单断言。
+ * - 当前 L2 面 = types(canonical 家)+ bitmap-io(task 1.2)+ registry 装置
+ *   (defineCanvasTool/createCanvasRegistry,task 2.6);
+ *   后续任务填充(builtin)时更新清单断言。
  */
 import { describe, it, expect } from "vitest";
 import * as canvasKit from "../src/index.js";
 import type { Annotation, CanvasOp, ExpandEdges, MaskStroke, WorkLayer } from "../src/index.js";
+import type { CanvasTool, CanvasToolContext, ToolGestureEvent } from "../src/index.js";
 
 describe("@blksails/pi-web-canvas-kit public exports", () => {
   it("包根出口(L2 唯一出口)可解析", () => {
     expect(canvasKit).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=bitmap-io 全量 19 项,无 kernel 内部件泄漏(task 1.2 快照)", () => {
+  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项,无 kernel 内部件泄漏(task 2.6 快照)", () => {
     expect(Object.keys(canvasKit).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
       "annotationsToImage",
       "clampRect",
       "compositeByMask",
+      "createCanvasRegistry",
       "createMask",
       "cropImage",
+      "defineCanvasTool",
       "drawAnnotations",
       "expandedSize",
       "flattenLayers",
@@ -52,6 +56,17 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
       "text",
       1,
       "l",
+    ]);
+  });
+
+  it("L2 工具装置类型自包根出口可达(task 2.6;编译期守护 + 形状抽样)", () => {
+    const tool: CanvasTool<MaskStroke> = { id: "builtin:mask", label: "mask", icon: null };
+    const hitKind = (ev: ToolGestureEvent): string => ev.hit.kind;
+    const deferProbe = (ctx: CanvasToolContext): void => ctx.defer(() => {});
+    expect([tool.id, typeof hitKind, typeof deferProbe]).toEqual([
+      "builtin:mask",
+      "function",
+      "function",
     ]);
   });
 });

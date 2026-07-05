@@ -21,7 +21,7 @@
   - _Requirements: 5.3, 5.4, 7.1_
   - _Depends: 1.2_
 
-- [ ] 2. Core:kernel 模块与 L2 装置
+- [x] 2. Core:kernel 模块与 L2 装置
 - [x] 2.1 (P) stage 模块(视口与坐标)
   - createStageController:视口 scale/offset 状态 + toNatural 纯函数芯(workbench :867 逻辑原样迁移,纯函数独立导出)
   - 单测:缩放/平移矩阵下换算往返、rect 不可得返回 null
@@ -58,7 +58,7 @@
   - _Requirements: 2.2, 4.2, 6.4_
   - _Boundary: kernel/tool-runtime_
   - _Depends: 2.1, 2.2, 2.4_
-- [ ] 2.6 registry + defineCanvasTool + CanvasToolContext(L2)
+- [x] 2.6 registry + defineCanvasTool + CanvasToolContext(L2)
   - createCanvasRegistry(per-instance)/defineCanvasTool/CanvasToolContext(draft/history.commit/stage.panBy/layers 读面/prefs/defer);ToolGestureEvent 含 natural 已换算坐标与命中描述符;同 id 注册冲突拒绝并记 diagnostics;index.ts 导出 L2 面
   - L2→L1 单向依赖(封装线):registry/Context 只经 tool-runtime 公开接缝消费 L1
   - 单测:per-instance 隔离/注册冲突拒绝/Context 能力面形状
@@ -120,3 +120,4 @@
 - 2.3:layers.ts 落地(createLayersStore + applyLayerGesture 纯 reducer;cy0 闭包 quirk 原样保留=加载修正回落加层时纵中心,dropCenterY Map 承载;loader.then/catch 留装配层,store 只暴露 markLoaded;remove(id) 为行为超集,现行唯一路径 remove(selectedId) 等价;LayersReadApi=layers/selectedId/get)。4.1 装配:异步 loader 回调调 markLoaded,catch 不调用即等价。
 - 2.4:pointer.ts 落地(独占会话守卫=down 单次 hitTest 建互斥会话,层会话内 dispatch 结构性不可达;命中优先级 handle>layer(resize>move)>overlay>stage;ToolPointerEvent 载荷 natural+client/deltaClient——平移消费屏幕 px 是 :1241-1248 实证现状)。**留给 2.5**:pointercancel 独立 phase "cancel" 须映射工具 onUp(复刻旧 onPointerCancel=onPointerUp 提交语义)。**留给 2.6 显式裁定**:L2 边名词汇表(L1 用 DOM 值 top/right/bottom/left=ExpandEdges 键,design 罗盘边是幻影——DOM 无角部手柄)与 move 工具 pan 载荷的 L2 形状(design ToolGestureEvent 无 client)。**留给 4.2**:扩图手柄旧挂 window 级监听,装配需决定事件续流方式。补丁位实为 :1589/:1647(tasks.md 的 :1604/:1662 是旧账面)。
 - 2.5:tool-runtime.ts 落地(createToolRuntime+createDiagnosticsCollector 导出供 2.6 共用;cancel→onUp 映射收掉 2.4 留账;capture 释放接缝=env.releasePointerCapture 仅错误中止调,旧世界零显式 release;手势中切工具不打断会话=down 时绑定,与旧 drawing/draftRef 守卫同构)。首轮 REJECTED:onUp 抛错→弃置 defer 队列分支变异存活,补 2 用例击杀后复审通过——**教训:错误边界各相位独有分支都要显式用例**。**留给 2.6**:registry 侧追加共享 diagnostics 不 bump runtime 快照,registry.diagnostics 应直读收集器 entries;L2 边名词汇表与 pan 载荷 L2 形状两项显式裁定。**留给 3.1**:draft 成型判定(零长丢弃)/up 清 draft 是工具回调语义,逐分支复刻 :1196-1204。
+- 2.6:registry.ts 落地(defineCanvasTool/createCanvasRegistry/CanvasToolContext/ToolGestureEvent;index 显式出口 2 值+10 类型,快照 19→21)。五项裁定审查维持:边名=top/right/bottom/left(罗盘边是 design 幻影)/L2 事件全载荷且 natural 可空(绘制工具 onDown/onMove 实际恒非空——路由 :291/:305 已挡 null,null 仅现于 stage 命中与 up/cancel)/diagnostics 直读共享收集器/hit 无 layer 分支(结构性不外派)/新增 capturePointer?: boolean 缺省 true(text 不捕获 :1142 的声明化表达)。**留给 4.1(硬账)**:包级装配 facade 缺口——createToolAdapter/createPrefsStore 未出口,ui 侧 Req 1.3 禁拿 kernel 件,4.1 必须补装配门面出口(形状届时定,连同 index 快照更新)。**留给 3.1/4.2**:prefs 扁平 KV,annoColor 跨工具共享=旧单 state 语义。

@@ -50,6 +50,12 @@ import type { StageController } from "./stage.js";
 import type { LayersReadApi } from "./layers.js";
 import type { PointerDispatch, ToolPointerEvent } from "./pointer.js";
 
+// ── L2 公开接缝类型再导出(task 2.6 封装线)────────────────────────────────────
+// registry/L2 适配层**只经本模块**消费 L1(不得直接 import pointer/layers 内部)
+// —— 本模块签名里出现的接缝类型在此转发,成为 tool-runtime 公开接缝的一部分。
+export type { LayersReadApi } from "./layers.js";
+export type { PointerDispatch, ToolPointerEvent, ToolPointerHit } from "./pointer.js";
+
 // ── diagnostics(design CanvasRegistry.diagnostics 形状 + 时机字段)─────────────
 
 /**
