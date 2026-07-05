@@ -43,7 +43,7 @@
   - _Requirements: 5.1_
   - _Boundary: kernel/layers_
   - _Depends: 1.2_
-- [ ] 2.4 pointer 唯一路由
+- [x] 2.4 pointer 唯一路由
   - createPointerRouter:单入口接舞台 pointer 事件;命中判定(overlay/layer/expand-handle/stage,DOM 经 data-* 标记上交);层拖拽/缩放为工具无关内核手势;双事件守卫内建(根治 :1604/:1662 散点补丁族)
   - 分派目标为注入接缝(dispatch 接口),单测用 stub dispatch;真 ToolRuntime 在 2.5 接入——2.4 不得 import tool-runtime(防实际循环)
   - 单测:四类命中分派/层手势与舞台平移互斥/守卫回归
@@ -118,3 +118,4 @@
 - 2.1:stage.ts 落地(toNatural 纯函数=workbench :852-861 逐字符一致;ZOOM 常量 :92-94;StageEnv 访问器把 DOM 量取留装配层;toNatural 数学不含 scale/offset——rect 来自含 transform 的 getBoundingClientRect 天然带视口,4.1 接入时装配层负责 rect 量取)。controller 面:getViewport/setScale/zoomBy/setOffset/panBy/reset/subscribe + toNatural 委托。
 - 2.2:history.ts 落地(HistoryApi 六成员=commit/undo/redo/ops/canUndo/canRedo 属性访问器;OpRasterizer 注册表拒绝覆盖返回 false,diagnostics 记录职责在 2.6;store 级补充 clear=换图/摘要清除复位语义)。consumeSent(:724-730 按谓词过滤 ops+清 redo)未建 API——4.1 装配时在本模块补 prune(predicate) 或装配层处理,勿忘。
 - 2.3:layers.ts 落地(createLayersStore + applyLayerGesture 纯 reducer;cy0 闭包 quirk 原样保留=加载修正回落加层时纵中心,dropCenterY Map 承载;loader.then/catch 留装配层,store 只暴露 markLoaded;remove(id) 为行为超集,现行唯一路径 remove(selectedId) 等价;LayersReadApi=layers/selectedId/get)。4.1 装配:异步 loader 回调调 markLoaded,catch 不调用即等价。
+- 2.4:pointer.ts 落地(独占会话守卫=down 单次 hitTest 建互斥会话,层会话内 dispatch 结构性不可达;命中优先级 handle>layer(resize>move)>overlay>stage;ToolPointerEvent 载荷 natural+client/deltaClient——平移消费屏幕 px 是 :1241-1248 实证现状)。**留给 2.5**:pointercancel 独立 phase "cancel" 须映射工具 onUp(复刻旧 onPointerCancel=onPointerUp 提交语义)。**留给 2.6 显式裁定**:L2 边名词汇表(L1 用 DOM 值 top/right/bottom/left=ExpandEdges 键,design 罗盘边是幻影——DOM 无角部手柄)与 move 工具 pan 载荷的 L2 形状(design ToolGestureEvent 无 client)。**留给 4.2**:扩图手柄旧挂 window 级监听,装配需决定事件续流方式。补丁位实为 :1589/:1647(tasks.md 的 :1604/:1662 是旧账面)。
