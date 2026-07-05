@@ -8,7 +8,11 @@
  * - 此出口是 semver 承诺面:任何导出的增删改按 semver 语义对待;
  * - 依赖方向:ui 消费 canvas-kit,反向禁止(本包零 @blksails/* 依赖)。
  *
- * 当前为脚手架占位空出口(task 1.1);后续任务按 design.md File Structure Plan
- * 填充:types / bitmap-io / registry(defineCanvasTool/createCanvasRegistry)/ builtin。
+ * 当前已填充(task 1.2):types(canonical 家)+ bitmap-io(client-image-ops 迁入);
+ * 后续任务按 design.md File Structure Plan 续填:registry(defineCanvasTool/
+ * createCanvasRegistry)/ builtin。
  */
-export {};
+// 类型 canonical 家(Annotation/MaskStroke/ExpandEdges/WorkLayer/CanvasOp + LoadedImage)。
+export * from "./types.js";
+// bitmap-io:client-image-ops 原样迁入(导出清单与原模块逐一对应,Req 5.2)。
+export * from "./bitmap-io.js";

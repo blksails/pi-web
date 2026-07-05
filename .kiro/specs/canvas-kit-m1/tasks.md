@@ -8,7 +8,7 @@
   - 照 web-kit 先例建 packages/canvas-kit(package.json:peer react + dep lucide-react、零 @blksails 依赖;tsconfig/vitest);根 tsconfig paths 增包别名;src/index.ts 建立 L2 唯一出口(含出口纪律注释:kernel/ 内部件不出现,L2 为 semver 承诺面)
   - 完成态:pnpm --filter @blksails/pi-web-canvas-kit typecheck/test 空跑绿;workspace install 识别新包
   - _Requirements: 1.1, 1.4_
-- [ ] 1.2 类型 canonical 家与 bitmap-io 迁入
+- [x] 1.2 类型 canonical 家与 bitmap-io 迁入
   - types.ts 收 Annotation/MaskStroke/ExpandEdges/WorkLayer/CanvasOp;bitmap-io.ts 原样迁入 client-image-ops 全部 30 函数(语义零变,注释保留)
   - canvas-kit 侧单测:核心位图函数(旋转/裁剪/拍平/掩码光栅化/合成/扩图)语义锚定
   - 完成态:canvas-kit test 绿;bitmap-io 导出清单与原 client-image-ops 逐一对应
@@ -113,3 +113,4 @@
 - 1.1:design 行号=**恒等映射**(拖放/粘贴 WIP 的 hunk 在 :922-:993 且已含于基线 a59a70e,design 撰写时即基于含 WIP 树;后续任务直接用 design 行号,勿再加偏移)。唯一修正:workbench.test 深路径 import 引用 :13→:11。:615-650 overlay 光栅化尾锚偏松(effect 实止 :643),2.2/4.2 触及时顺手收紧。
 - 1.1:canvas-kit smoke 测试断言「出口为空」——1.2 起每次扩充 L2 出口须同步更新该断言(测试头注释已声明)。
 - 环境纪律:一切命令/文件操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-kit-m1`,禁止 cd 主仓(先例事故:验证失真、改动"消失")。
+- 1.2:原 client-image-ops 实测 **31 导出**(19 值+12 类型,"30 函数"是 spec 近似);bitmap-io 函数体与 HEAD 零 diff,3 类型搬 types.ts 经 `export type from` 转发;WorkLayer 连带收编支撑类型 LoadedImage(workbench :288)。1.3 转发层按 31 项清单做 export *。
