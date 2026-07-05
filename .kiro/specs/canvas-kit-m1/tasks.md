@@ -50,7 +50,7 @@
   - 完成态:pointer 用例全绿
   - _Requirements: 3.1, 3.2_
   - _Depends: 2.1, 2.3_
-- [ ] 2.5 tool-runtime(L1)
+- [x] 2.5 tool-runtime(L1)
   - draft 槽 ref+state 双写(复刻 :1120-1209 时序含 capture 设置点)/defer 队列(up 后执行)/L2 错误边界(抛错→禁用工具+diagnostics+中止手势清 draft 释放 capture,画布不崩)
   - 接入 2.4 的 dispatch 接缝(真分派实现)
   - 单测:draft 双写时序/defer 时机/错误边界三态(禁用/诊断/不崩)
@@ -119,3 +119,4 @@
 - 2.2:history.ts 落地(HistoryApi 六成员=commit/undo/redo/ops/canUndo/canRedo 属性访问器;OpRasterizer 注册表拒绝覆盖返回 false,diagnostics 记录职责在 2.6;store 级补充 clear=换图/摘要清除复位语义)。consumeSent(:724-730 按谓词过滤 ops+清 redo)未建 API——4.1 装配时在本模块补 prune(predicate) 或装配层处理,勿忘。
 - 2.3:layers.ts 落地(createLayersStore + applyLayerGesture 纯 reducer;cy0 闭包 quirk 原样保留=加载修正回落加层时纵中心,dropCenterY Map 承载;loader.then/catch 留装配层,store 只暴露 markLoaded;remove(id) 为行为超集,现行唯一路径 remove(selectedId) 等价;LayersReadApi=layers/selectedId/get)。4.1 装配:异步 loader 回调调 markLoaded,catch 不调用即等价。
 - 2.4:pointer.ts 落地(独占会话守卫=down 单次 hitTest 建互斥会话,层会话内 dispatch 结构性不可达;命中优先级 handle>layer(resize>move)>overlay>stage;ToolPointerEvent 载荷 natural+client/deltaClient——平移消费屏幕 px 是 :1241-1248 实证现状)。**留给 2.5**:pointercancel 独立 phase "cancel" 须映射工具 onUp(复刻旧 onPointerCancel=onPointerUp 提交语义)。**留给 2.6 显式裁定**:L2 边名词汇表(L1 用 DOM 值 top/right/bottom/left=ExpandEdges 键,design 罗盘边是幻影——DOM 无角部手柄)与 move 工具 pan 载荷的 L2 形状(design ToolGestureEvent 无 client)。**留给 4.2**:扩图手柄旧挂 window 级监听,装配需决定事件续流方式。补丁位实为 :1589/:1647(tasks.md 的 :1604/:1662 是旧账面)。
+- 2.5:tool-runtime.ts 落地(createToolRuntime+createDiagnosticsCollector 导出供 2.6 共用;cancel→onUp 映射收掉 2.4 留账;capture 释放接缝=env.releasePointerCapture 仅错误中止调,旧世界零显式 release;手势中切工具不打断会话=down 时绑定,与旧 drawing/draftRef 守卫同构)。首轮 REJECTED:onUp 抛错→弃置 defer 队列分支变异存活,补 2 用例击杀后复审通过——**教训:错误边界各相位独有分支都要显式用例**。**留给 2.6**:registry 侧追加共享 diagnostics 不 bump runtime 快照,registry.diagnostics 应直读收集器 entries;L2 边名词汇表与 pan 载荷 L2 形状两项显式裁定。**留给 3.1**:draft 成型判定(零长丢弃)/up 清 draft 是工具回调语义,逐分支复刻 :1196-1204。
