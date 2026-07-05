@@ -14,7 +14,7 @@
   - 完成态:canvas-kit test 绿;bitmap-io 导出清单与原 client-image-ops 逐一对应
   - _Requirements: 5.2, 1.3_
   - _Depends: 1.1_
-- [ ] 1.3 ui 消费接线与转发兼容层
+- [x] 1.3 ui 消费接线与转发兼容层
   - ui package.json 增 canvas-kit workspace 依赖;packages/ui/src/canvas/client-image-ops.ts 改写为转发模块(export * 对应子集,@deprecated 一个大版本);类型消费改 canvas-kit 来源(组件内部 import 调整)
   - packages/ui/vitest.config.ts(若存在 alias 表)同步 canvas-kit 解析(本仓 vitest alias 坑先例:bang-shell/状态桥)
   - 完成态:packages/ui 全部既有测试零改动通过(含深路径 import 经转发解析);ui typecheck 绿
@@ -114,3 +114,4 @@
 - 1.1:canvas-kit smoke 测试断言「出口为空」——1.2 起每次扩充 L2 出口须同步更新该断言(测试头注释已声明)。
 - 环境纪律:一切命令/文件操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-kit-m1`,禁止 cd 主仓(先例事故:验证失真、改动"消失")。
 - 1.2:原 client-image-ops 实测 **31 导出**(19 值+12 类型,"30 函数"是 spec 近似);bitmap-io 函数体与 HEAD 零 diff,3 类型搬 types.ts 经 `export type from` 转发;WorkLayer 连带收编支撑类型 LoadedImage(workbench :288)。1.3 转发层按 31 项清单做 export *。
+- 1.3:转发模块用**显式 export {…} 31 项**而非 export *(审查裁定正当:export * 无法做子集,会把 WorkLayer/CanvasOp 等新家类型经 ui index export * 链泄漏成既成公开面)。workbench EditOp 局部 union(:145)有意未动,属 2.2/4.x 职责。ui vitest alias 已补 canvas-kit 主入口条目。

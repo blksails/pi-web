@@ -19,7 +19,7 @@ import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-
 import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
 import { useCanvasOpen } from "./use-canvas-view.js";
-import type { UploadFn } from "./client-image-ops.js";
+import type { UploadFn } from "@blksails/pi-web-canvas-kit";
 
 const DOMAIN = "canvas";
 const STATE_KEY = `surface:${DOMAIN}`;

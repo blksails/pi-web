@@ -10,6 +10,8 @@ export default defineConfig({
         __dirname,
         "../tool-kit/src/aigc/canvas/schema.ts",
       ),
+      // canvas-kit 主入口(client-image-ops 转发层/组件类型 canonical 家的上游)。
+      "@blksails/pi-web-canvas-kit": path.resolve(__dirname, "../canvas-kit/src/index.ts"),
     },
   },
   test: {

@@ -270,6 +270,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@blksails/pi-web-canvas-kit':
+        specifier: workspace:*
+        version: link:../canvas-kit
       '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:../web-kit

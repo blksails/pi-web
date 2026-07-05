@@ -18,6 +18,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@blksails/pi-web-canvas-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-react": "workspace:*",

@@ -79,9 +79,11 @@ import {
   type CanvasFactory,
   type ExpandEdges,
   type ImageSourceLike,
+  type LoadedImage,
   type MaskStroke,
   type UploadFn,
-} from "./client-image-ops.js";
+  type WorkLayer,
+} from "@blksails/pi-web-canvas-kit";
 
 const DOMAIN = "canvas";
 const PROBE = `surface:${DOMAIN}`;
@@ -145,19 +147,6 @@ const FLOAT_LAYER =
 type EditOp =
   | { readonly kind: "stroke"; readonly item: MaskStroke }
   | { readonly kind: "anno"; readonly item: Annotation };
-
-/** 舞台图层(M3;位置/尺寸为**底图像素坐标**,后加的在上;独立于 undo 栈)。 */
-interface WorkLayer {
-  readonly id: string;
-  readonly attachmentId: string;
-  readonly displayUrl: string;
-  readonly x: number;
-  readonly y: number;
-  readonly w: number;
-  readonly h: number;
-  /** 加载后的可绘源(拍平用;异步填充)。 */
-  readonly loaded?: LoadedImage;
-}
 
 // ── 生成决策(纯函数,export 供单测)────────────────────────────────────────────
 
@@ -284,12 +273,8 @@ function summarizeGenParams(asset: GalleryAsset): string[] {
   return parts;
 }
 
-/** 已加载的可绘图像(尺寸显式携带,便于注入 fake 测试)。 */
-export interface LoadedImage {
-  readonly source: CanvasImageSource;
-  readonly width: number;
-  readonly height: number;
-}
+// LoadedImage 已收编进 canvas-kit 类型 canonical 家;此处转发保持 workbench 既有导出面。
+export type { LoadedImage } from "@blksails/pi-web-canvas-kit";
 
 /** 图像加载器签名(浏览器默认 new Image;测试注入 fake)。 */
 export type ImageLoader = (url: string) => Promise<LoadedImage>;
@@ -639,7 +624,7 @@ export function CanvasWorkbench({
     }
     const allAnnos = annoDraft !== null ? [...annotations, annoDraft] : annotations;
     // 真实 CanvasRenderingContext2D 是 Ctx2DLike 的超集(fillStyle 为 union),收窄安全。
-    drawAnnotations(ctx as unknown as import("./client-image-ops.js").Ctx2DLike, allAnnos);
+    drawAnnotations(ctx as unknown as import("@blksails/pi-web-canvas-kit").Ctx2DLike, allAnnos);
   }, [strokes, annotations, draft, annoDraft, natural]);
 
   /** 当前工作图的像素尺寸(用于 B 档坐标对齐);未加载时退化占位。 */
