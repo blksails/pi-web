@@ -29,7 +29,7 @@
   - _Requirements: 2.1_
   - _Boundary: kernel/stage_
   - _Depends: 1.1_
-- [ ] 2.2 (P) history 模块(开放栈与 OpKind 光栅化注册)
+- [x] 2.2 (P) history 模块(开放栈与 OpKind 光栅化注册)
   - CanvasOp {kind,item} 开放注册;commit=push+清 redo(时机复刻);undo/redo;useSyncExternalStore 适配
   - OpKind 光栅化注册机制归本模块:kind→rasterizer 查找表(注册/查询 API),3.1 的工具 opKinds 声明与 4.2 的 overlay 回放均消费此机制(design File Structure:kernel/history.ts)
   - 单测:开放 kind/清 redo 时机/自定义 kind 一视同仁/光栅化注册查找
@@ -116,3 +116,4 @@
 - 1.2:原 client-image-ops 实测 **31 导出**(19 值+12 类型,"30 函数"是 spec 近似);bitmap-io 函数体与 HEAD 零 diff,3 类型搬 types.ts 经 `export type from` 转发;WorkLayer 连带收编支撑类型 LoadedImage(workbench :288)。1.3 转发层按 31 项清单做 export *。
 - 1.3:转发模块用**显式 export {…} 31 项**而非 export *(审查裁定正当:export * 无法做子集,会把 WorkLayer/CanvasOp 等新家类型经 ui index export * 链泄漏成既成公开面)。workbench EditOp 局部 union(:145)有意未动,属 2.2/4.x 职责。ui vitest alias 已补 canvas-kit 主入口条目。
 - 2.1:stage.ts 落地(toNatural 纯函数=workbench :852-861 逐字符一致;ZOOM 常量 :92-94;StageEnv 访问器把 DOM 量取留装配层;toNatural 数学不含 scale/offset——rect 来自含 transform 的 getBoundingClientRect 天然带视口,4.1 接入时装配层负责 rect 量取)。controller 面:getViewport/setScale/zoomBy/setOffset/panBy/reset/subscribe + toNatural 委托。
+- 2.2:history.ts 落地(HistoryApi 六成员=commit/undo/redo/ops/canUndo/canRedo 属性访问器;OpRasterizer 注册表拒绝覆盖返回 false,diagnostics 记录职责在 2.6;store 级补充 clear=换图/摘要清除复位语义)。consumeSent(:724-730 按谓词过滤 ops+清 redo)未建 API——4.1 装配时在本模块补 prune(predicate) 或装配层处理,勿忘。
