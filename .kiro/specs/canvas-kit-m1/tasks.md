@@ -88,7 +88,7 @@
   - 完成态:packages/ui 全部既有测试零改动通过(中间态安全线)
   - _Requirements: 2.3, 5.1_
   - _Depends: 2.6, 1.3_
-- [ ] 4.2 注册表驱动替换(第二刀:散点拆除)
+- [x] 4.2 注册表驱动替换(第二刀:散点拆除)
   - 建 registry+registerBuiltinTools;工具轨(map registry.tools)/overlay(ops 按 opKinds 回放+激活工具 rasterizeDraft)/选项条(激活工具 optionsBar)/指针(PointerRouter 单入口)全部注册表驱动;删 StageTool union/四散点分支/onMouseDown 双事件补丁;保持全部既有 data-* 锚点
   - workbench 装配侧注入 prefs 初值(annoColor/brushRatio 等既有 state 迁 prefs KV),选项条锚点(data-canvas-anno-colors/brush-sizes)行为回归依赖此接线
   - 完成态:packages/ui 全部既有测试零改动通过;workbench 内 grep 无 StageTool union/散点工具分支
@@ -124,3 +124,4 @@
 - 3.1:builtin 绘制族五工具落地(+shared.ts 族内共用件,包内私有)。**PREFS 键定死**:annoColor 缺省 #ef4444 / brushRatio 缺省 0.05(BRUSH_RATIOS=[0.025,0.05,0.1]、ANNOTATION_RATIO=0.008 在 shared)——4.2 装配注入初值须同键。**留给 4.2 三笔账**:①工具轨长 title(「画笔(标注即指令)」等)不在 CanvasTool 声明面,装配须另行保持否则 ui 测试破;②mask/erase 共享同一 stroke rasterizer 函数引用,注册重复 kind 被拒(false)是无损语义,装配方勿当错误;③Tailwind content 扫描须覆盖 canvas-kit(选项条 className 在包内)。选项条颜色块显示条件含 text(:1391),3.2 text 工具复用。
 - 3.2:move/expand/text + registerBuiltinTools 落地(注册序=工具轨 :1382-1389;快照 21→22)。**裁定:扩图边状态走 ctx.prefs 键 `expandEdges`**(缺省 NO_EXPAND;commit 违反「扩图不可撤销」现状,draft 是手势期而扩图跨手势存续;PREF_EXPAND_EDGES 常量已出口)。**4.2 硬账汇总**:①text overlayReact 装配契约=挂进与 overlay 画布重合的定位容器(natural 百分比定位的等价性前提);②保持 overlayInteractive 门控(3.1 绘制族无 overlay 命中守卫);③prefs 同键注入 expandEdges/annoColor/brushRatio + 复位按钮写同键;④工具轨长 title 装配另行保持。**已知行为微差(留账)**:move 平移 capture 下指针出舞台不再中断(旧 onMouseLeave endDrag;ui 测试零 mouseleave 用例,回归线不抓)。
 - 4.1:第一刀完成(workbench 净 -100 行;createCanvasKernel(env) 装配门面收口 2.6 留账,快照 22→23;consumeSent→history.prune(keep);StageEnv=overlayRef.getBoundingClientRect+naturalRef effect 镜像,React 18 离散事件前冲刷 passive effects 故陈旧窗口不可观测)。**审查如实记录的 pre-existing 覆盖缺口**:ui 测试无锚的接线=undo/redo 按钮/缩放胶囊/wheel/stage 平移/mask-clear/绘制指针路径(canvas-kit 210 测试在 API 层锚定)——4.2 改这些区域时 ui 回归线抓不到,须靠 canvas-kit 单测+5.1 e2e 兜底,4.2 审查须逐 hunk 更严。**环境提示**:本机并发 agent 会话会致 vitest waitFor 超时假阳性(失败集中无关文件、定向重跑绿、duration 膨胀 26s→2800s 为信号)。
+- 4.2:第二刀完成(workbench 2017→1741;四散点全拆;facade 扩装配面 CanvasToolsApi/renderOverlay/pointer/prefs,出口 23→27)。两微差审查 ACCEPT:①overlay 预览按 ops 提交序回放(旧两趟 strokes→annos;tasks 明文授权,持久面 strokesToMask/annotationsToImage 零影响);②text 编辑器改 natural% 定位随图缩放平移(旧滞留屏幕位,新更正确)。残留具名 id=装配策略非散点(MOVE_TOOL_ID/EXPAND_TOOL_ID/TOOL_RAIL_TITLES/BACKEND_FREE_TOOLS)。新增 additive 锚点 data-canvas-tool-overlay + 禁用工具置灰。**⚠5.1 硬警示(审查者)**:workbench 装配接线(工具轨/prefs/选项条)ui 测试无锚,唯一行为兜底=6 条 canvas e2e,不可跳、任何红不许赖 pre-existing(基线 6/6 绿)。

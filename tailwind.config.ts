@@ -20,6 +20,9 @@ const config: Config = {
     "./components/**/*.{ts,tsx}",
     "./node_modules/@blksails/pi-web-ui/src/**/*.{ts,tsx}",
     "./packages/ui/src/**/*.{ts,tsx}",
+    // canvas-kit 内置工具的选项条/编辑器贡献带 Tailwind 类(4.2 注册表驱动装配)。
+    "./node_modules/@blksails/pi-web-canvas-kit/src/**/*.{ts,tsx}",
+    "./packages/canvas-kit/src/**/*.{ts,tsx}",
   ],
   plugins: [],
 };

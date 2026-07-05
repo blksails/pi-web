@@ -68,7 +68,9 @@ const textEditorOverlay = (ctx: CanvasToolContext<TextDraft>): ReactNode => {
   return createElement(
     "div",
     {
-      className: "absolute z-20",
+      // pointer-events-auto:4.2 装配契约的定位容器为 pointer-events-none(编辑器
+      // 不在编时不得夺 overlay 命中),编辑器自身恢复可交互。
+      className: "pointer-events-auto absolute z-20",
       style: {
         left: nat !== null ? `${(d.anchor.x / nat.w) * 100}%` : "0%",
         top: nat !== null ? `${(d.anchor.y / nat.h) * 100}%` : "0%",
@@ -102,6 +104,7 @@ export const textTool = defineCanvasTool<TextDraft>({
   label: "文本",
   icon: createElement(Type, { className: "h-4 w-4" }),
   cursor: "text", // :1622 cursor-text
+  overlayInteractive: true, // 手势面=overlay(4.2 装配门控声明化)
   capturePointer: false, // down 不捕获(:1142-1153)
   onDown: (ev, ctx) => {
     if (ev.hit.kind !== "overlay" || ev.natural === null) return; // :1106-1107 + overlay 专属

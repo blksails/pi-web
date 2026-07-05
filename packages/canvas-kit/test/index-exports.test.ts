@@ -19,10 +19,14 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
     expect(canvasKit).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项 + builtin 汇总 1 项 + 装配门面 1 项,无 kernel 内部件泄漏(task 4.1 快照)", () => {
+  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项 + builtin 汇总 1 项 + prefs 键契约 4 项 + 装配门面 1 项,无 kernel 内部件泄漏(task 4.2 快照)", () => {
     expect(Object.keys(canvasKit).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
+      "BRUSH_RATIOS",
+      "PREF_ANNO_COLOR",
+      "PREF_BRUSH_RATIO",
+      "PREF_EXPAND_EDGES",
       "annotationsToImage",
       "clampRect",
       "compositeByMask",
@@ -45,6 +49,13 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
       "strokesToMask",
       "uploadDataUri",
     ]);
+  });
+
+  it("prefs 键契约(4.2 装配注入初值同键):annoColor/brushRatio/expandEdges + 笔刷档位", () => {
+    expect(canvasKit.PREF_ANNO_COLOR).toBe("annoColor");
+    expect(canvasKit.PREF_BRUSH_RATIO).toBe("brushRatio");
+    expect(canvasKit.PREF_EXPAND_EDGES).toBe("expandEdges");
+    expect(canvasKit.BRUSH_RATIOS).toEqual([0.025, 0.05, 0.1]);
   });
 
   it("类型 canonical 家自包根出口可达(编译期守护;运行时锚定形状抽样)", () => {

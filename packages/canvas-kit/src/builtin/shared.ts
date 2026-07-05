@@ -36,7 +36,8 @@ import {
 } from "../bitmap-io.js";
 import type { CanvasPrefs, CanvasToolContext, ToolGestureEvent } from "../registry.js";
 
-// ── prefs 键(4.2 装配注入初值同键)───────────────────────────────────────────
+// ── prefs 键(4.2 装配注入初值同键;键契约随 BRUSH_RATIOS 经包根出口上桌 ——
+//    本文件其余成员保持包内私有)─────────────────────────────────────────────
 
 export const PREF_ANNO_COLOR = "annoColor";
 export const PREF_BRUSH_RATIO = "brushRatio";

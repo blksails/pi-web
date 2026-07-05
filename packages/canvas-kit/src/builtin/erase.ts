@@ -15,6 +15,7 @@ export const eraseTool = defineCanvasTool<MaskStroke>({
   label: "擦除",
   icon: createElement(Eraser, { className: "h-4 w-4" }),
   cursor: "crosshair",
+  overlayInteractive: true, // 手势面=overlay(4.2 装配门控声明化)
   ...strokeToolCallbacks("erase"),
   rasterizeDraft: rasterizeStrokeItem,
   opKinds: { stroke: rasterizeStrokeItem },

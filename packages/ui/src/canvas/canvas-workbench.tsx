@@ -27,23 +27,15 @@ import { useConversationBridge } from "@blksails/pi-web-react";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   ArrowLeft,
-  ArrowUpRight,
   AtSign,
-  Brush,
-  Eraser,
-  Expand,
-  Hand,
   Loader2,
   Maximize2,
   MessageSquarePlus,
   Minus,
-  Pencil,
   Plus,
   Redo2,
   RotateCw,
-  Slash,
   Sparkles,
-  Type,
   Undo2,
   X,
 } from "lucide-react";
@@ -62,26 +54,31 @@ import { Textarea } from "../ui/textarea.js";
 import { cn } from "../lib/cn.js";
 import {
   ANNOTATION_COLOR,
-  ANNOTATION_PALETTE,
+  BRUSH_RATIOS,
+  PREF_ANNO_COLOR,
+  PREF_BRUSH_RATIO,
+  PREF_EXPAND_EDGES,
   annotationsToImage,
   compositeByMask,
   createCanvasKernel,
-  drawAnnotations,
   expandedSize,
   flattenLayers,
   hasExpand,
   hasMaskContent,
   outpaintImage,
   outpaintMask,
+  registerBuiltinTools,
   rotateImage,
   strokesToMask,
   uploadDataUri,
   type Annotation,
   type CanvasFactory,
+  type Ctx2DLike,
   type ExpandEdges,
   type ImageSourceLike,
   type LoadedImage,
   type MaskStroke,
+  type RouterPointerEvent,
   type UploadFn,
   type WorkLayer,
 } from "@blksails/pi-web-canvas-kit";
@@ -100,14 +97,31 @@ function settleWindow<T>(p: Promise<T>, ms = RUN_SETTLE_MS): Promise<unknown> {
   return Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))]);
 }
 
-/** 舞台工具。 */
-type StageTool = "move" | "expand" | "draw" | "line" | "arrow" | "text" | "mask" | "erase";
+// ── 舞台工具装配(4.2 注册表驱动:工具本体在 canvas-kit builtin/,此处只留装配策略)──
 
-/** 笔刷直径预设:占源图**短边**的比例(固定像素对小图荒谬——1×1 占位图一笔全屏)。 */
-const BRUSH_RATIOS = [0.025, 0.05, 0.1] as const;
+/** 移动工具 id(领域策略锚:双击复位视图/舞台 grab 光标归属)。 */
+const MOVE_TOOL_ID = "builtin:move";
 
-/** 标注线宽:短边比例(固定,不入笔刷三档)。 */
-const ANNOTATION_RATIO = 0.008;
+/** 扩图工具 id(领域策略锚:手柄 DOM 留 workbench(design 裁定)+ 扩图态 fitPad)。 */
+const EXPAND_TOOL_ID = "builtin:expand";
+
+/** 工具轨长 title(3.1 留账①:不在 CanvasTool 声明面,装配侧另行保持;缺省用 label)。 */
+const TOOL_RAIL_TITLES: Readonly<Record<string, string>> = {
+  [EXPAND_TOOL_ID]: "扩图(拖动边框向外扩,生成填充新区域)",
+  "builtin:draw": "画笔(标注即指令)",
+  "builtin:line": "画线(标注即指令)",
+  "builtin:arrow": "箭头(标注即指令)",
+  "builtin:text": "文本(标注即指令)",
+};
+
+/** 不受「A 档 + 上传接缝」禁用门约束的工具(纯本地视口手势;其余同旧 maskToolsDisabled)。 */
+const BACKEND_FREE_TOOLS: ReadonlySet<string> = new Set([MOVE_TOOL_ID]);
+
+/** 工具 data-* 锚点值:剥 `builtin:` 前缀(既有锚点 `data-canvas-tool="move"` 等零变)。 */
+const toolAnchor = (id: string): string => id.replace(/^builtin:/, "");
+
+/** 四边零扩展(扩图复位/初值;prefs 键 PREF_EXPAND_EDGES 的缺省值)。 */
+const NO_EXPAND: ExpandEdges = { top: 0, right: 0, bottom: 0, left: 0 };
 
 /**
  * 模型下拉的内置常用清单(AIGC 图像模型;运行时可用性取决于 provider 配置,宿主可经
@@ -446,11 +460,6 @@ export function CanvasWorkbench({
   const [prompt, setPrompt] = React.useState("");
   const [model, setModel] = React.useState<string>("");
   const [busy, setBusy] = React.useState(false);
-  const [tool, setTool] = React.useState<StageTool>("move");
-  /** 笔刷占源图短边比例(实际像素在落笔时按 natural 换算)。 */
-  const [brushRatio, setBrushRatio] = React.useState<number>(BRUSH_RATIOS[1]);
-  /** 标注颜色(线/箭头/文本共用;默认批注红,经工具轨色板切换)。 */
-  const [annoColor, setAnnoColor] = React.useState<string>(ANNOTATION_COLOR);
   const [currentId, setCurrentId] = React.useState<string>(asset.attachmentId);
   // 生成中的临时渐进预览(流式 partial_images 由糊变清):订阅权威快照 livePreview,渲染为舞台叠层。
   const [livePreview, setLivePreview] = React.useState<GalleryState["livePreview"]>(
@@ -467,7 +476,7 @@ export function CanvasWorkbench({
   // 叠层会卡死在「生成中」。轮末 idle 边沿(bridge.onTurnEnd,首见不触发仅变化触发)时生成必已
   // 结束 → 无条件清叠层。
   React.useEffect(() => bridge.onTurnEnd(() => setLivePreview(null)), [bridge]);
-  // ── M2 状态:@引用 / 参数簇 / 文本标注编辑器 ─────────────────────────────────
+  // ── M2 状态:@引用 / 参数簇 ──────────────────────────────────────────────────
   const [refs, setRefs] = React.useState<readonly string[]>([]);
   const [refOpen, setRefOpen] = React.useState(false);
   const [ratioSize, setRatioSize] = React.useState<string>("");
@@ -475,33 +484,51 @@ export function CanvasWorkbench({
   const [sizeOpen, setSizeOpen] = React.useState(false);
   const [customW, setCustomW] = React.useState("");
   const [customH, setCustomH] = React.useState("");
-  // ── 扩图:四边扩展量(源图像素;>0 即扩图意图,生成走 outpaint)────────────────────
-  const NO_EXPAND: ExpandEdges = { top: 0, right: 0, bottom: 0, left: 0 };
-  const [expand, setExpand] = React.useState<ExpandEdges>(NO_EXPAND);
-  const [textEditor, setTextEditor] = React.useState<{
-    nx: number;
-    ny: number;
-    left: number;
-    top: number;
-    value: string;
-  } | null>(null);
   const imgRef = React.useRef<HTMLImageElement | null>(null);
   const stageRef = React.useRef<HTMLDivElement | null>(null);
   const overlayRef = React.useRef<HTMLCanvasElement | null>(null);
   /** natural 的 ref 镜像(kernel env 访问器在事件回调期读取;经 effect 与 state 同步)。 */
   const naturalRef = React.useRef<{ w: number; h: number } | null>(null);
 
-  // ── 交互内核(4.1 状态搬家):stage/history/layers 实例,per mount ───────────────
+  // ── 交互内核(4.1 状态搬家 + 4.2 注册表驱动):per mount,8 内置工具自举 ─────────
   // StrictMode 双跑 useMemo 会各建一份(纯状态容器零副作用,弃置其一安全);DOM 量取
-  // 经 env 访问器延迟到调用时,kernel 本身零 DOM 依赖。
-  const kernel = React.useMemo(
-    () =>
-      createCanvasKernel({
-        getRect: () => overlayRef.current?.getBoundingClientRect() ?? null,
-        getNaturalSize: () => naturalRef.current,
-      }),
-    [],
+  // 与 pointer capture 经 env 接缝延迟到调用时,kernel 本身零 DOM 依赖。
+  // prefs 初值注入(硬账③,同键契约):annoColor/brushRatio/expandEdges。
+  const kernel = React.useMemo(() => {
+    const k = createCanvasKernel({
+      getRect: () => overlayRef.current?.getBoundingClientRect() ?? null,
+      getNaturalSize: () => naturalRef.current,
+      capturePointer: (target, pointerId) => {
+        (target as unknown as Element).setPointerCapture?.(pointerId);
+      },
+      initialPrefs: {
+        [PREF_ANNO_COLOR]: ANNOTATION_COLOR,
+        [PREF_BRUSH_RATIO]: BRUSH_RATIOS[1],
+        [PREF_EXPAND_EDGES]: NO_EXPAND,
+      },
+    });
+    registerBuiltinTools(k.registry);
+    k.tools.setActiveTool(MOVE_TOOL_ID);
+    return k;
+  }, []);
+
+  // 工具通道快照(激活工具/draft/禁用)与 prefs 快照(选项条双向绑定/扩图边)。
+  const toolsSnap = React.useSyncExternalStore(
+    kernel.tools.subscribe,
+    kernel.tools.getSnapshot,
+    kernel.tools.getSnapshot,
   );
+  const prefsSnap = React.useSyncExternalStore(
+    kernel.prefs.subscribe,
+    kernel.prefs.getSnapshot,
+    kernel.prefs.getSnapshot,
+  );
+  const activeToolId = toolsSnap.activeToolId;
+  const activeCanvasTool = kernel.registry.tools.find((t) => t.id === activeToolId) ?? null;
+  /** overlay 命中门控(硬账②):工具声明 overlayInteractive 才开 pointer-events。 */
+  const overlayInteractive = activeCanvasTool?.overlayInteractive === true;
+  // ── 扩图:四边扩展量(源图像素;>0 即扩图意图,生成走 outpaint)—— prefs KV(4.2)──
+  const expand = (prefsSnap[PREF_EXPAND_EDGES] as ExpandEdges | undefined) ?? NO_EXPAND;
 
   // ── M3 状态:图层(树状态/选中/id 序列归 layers 内核,4.1)──────────────────────
   const layersSnap = React.useSyncExternalStore(
@@ -511,14 +538,6 @@ export function CanvasWorkbench({
   );
   const layers = layersSnap.layers;
   const selectedLayer = layersSnap.selectedId;
-  /** 图层拖动/缩放会话(pointer capture 于层元素上)。 */
-  const layerDrag = React.useRef<{
-    id: string;
-    mode: "move" | "resize";
-    startX: number;
-    startY: number;
-    orig: { x: number; y: number; w: number; h: number };
-  } | null>(null);
 
   // 当前工作图:优先内部选择,回退到 prop。prop 变化(父切换)时同步。
   const current = React.useMemo(
@@ -535,7 +554,6 @@ export function CanvasWorkbench({
   );
   const scale = viewport.scale;
   const offset = viewport.offset;
-  const drag = React.useRef<{ active: boolean; x: number; y: number } | null>(null);
 
   // ── 编辑历史(掩码笔迹 + 标注共栈;撤销/重做按操作顺序)—— 双栈归 history 内核(4.1)
   const history = React.useSyncExternalStore(
@@ -552,16 +570,6 @@ export function CanvasWorkbench({
     () => ops.filter((o) => o.kind === "anno").map((o) => o.item as Annotation),
     [ops],
   );
-  const [draft, setDraft] = React.useState<MaskStroke | null>(null);
-  /** draft 的同步镜像(pointerup 收笔用;避免在 setState updater 里做副作用,StrictMode 双调安全)。 */
-  const draftRef = React.useRef<MaskStroke | null>(null);
-  const [annoDraft, setAnnoDraft] = React.useState<Annotation | null>(null);
-  const annoDraftRef = React.useRef<Annotation | null>(null);
-  const drawing = React.useRef(false);
-  /** 文本标注待开编辑器(pointerdown 记录,pointerup 才挂载 —— down 时挂载会被同次点击的
-   * mouseup/click 焦点转移立刻 blur 掉,编辑器闪现即消)。 */
-  const pendingText = React.useRef<{ nx: number; ny: number; left: number; top: number } | null>(null);
-
   // 源图自然尺寸(overlay 坐标系)与舞台尺寸(contain-fit 计算)。
   const [natural, setNatural] = React.useState<{ w: number; h: number } | null>(null);
   const [stageSize, setStageSize] = React.useState<{ w: number; h: number } | null>(null);
@@ -575,15 +583,14 @@ export function CanvasWorkbench({
     kernel.stage.reset();
   }, [kernel]);
 
-  // 切换工作图 → 复位视图 + 清空编辑历史/图层 + 重新量自然尺寸。
+  // 切换工作图 → 复位视图 + 清空编辑历史/图层/进行中 draft(含文本编辑器)+ 扩图边
+  // (prefs 同键复位)+ 重新量自然尺寸。
   React.useEffect(() => {
     resetView();
     kernel.history.clear();
-    setDraft(null);
-    setAnnoDraft(null);
-    setTextEditor(null);
+    kernel.tools.context.draft.set(null);
     kernel.layers.clear();
-    setExpand({ top: 0, right: 0, bottom: 0, left: 0 });
+    kernel.prefs.set(PREF_EXPAND_EDGES, NO_EXPAND);
     setNatural(null);
   }, [current.attachmentId, resetView, kernel]);
 
@@ -619,35 +626,17 @@ export function CanvasWorkbench({
     return () => el.removeEventListener("wheel", onWheel);
   }, [kernel]);
 
-  // overlay 预览重绘:掩码笔迹(半透明粉红=编辑区,对应 alpha mask 透明洞;erase destination-out
-  // 收回)按 ops 顺序回放,标注(红)叠加最上。
+  // overlay 预览重绘(4.2 注册表驱动):已提交 ops 按 opKinds 注册表回放(提交序)
+  // + 激活工具 rasterizeDraft(进行中手势预览)。清屏留装配层(canvas 元素属 DOM)。
   React.useEffect(() => {
     const cv = overlayRef.current;
     if (cv === null || natural === null) return;
     const ctx = cv.getContext("2d");
     if (ctx === null) return;
     ctx.clearRect(0, 0, cv.width, cv.height);
-    const allStrokes = draft !== null ? [...strokes, draft] : strokes;
-    for (const s of allStrokes) {
-      if (s.points.length === 0) continue;
-      ctx.save();
-      ctx.globalCompositeOperation = s.mode === "erase" ? "destination-out" : "source-over";
-      ctx.strokeStyle = "rgba(236,72,153,0.5)";
-      ctx.lineWidth = s.size;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      const [first, ...rest] = s.points;
-      ctx.moveTo(first!.x, first!.y);
-      if (rest.length === 0) ctx.lineTo(first!.x + 0.01, first!.y);
-      else for (const p of rest) ctx.lineTo(p.x, p.y);
-      ctx.stroke();
-      ctx.restore();
-    }
-    const allAnnos = annoDraft !== null ? [...annotations, annoDraft] : annotations;
     // 真实 CanvasRenderingContext2D 是 Ctx2DLike 的超集(fillStyle 为 union),收窄安全。
-    drawAnnotations(ctx as unknown as import("@blksails/pi-web-canvas-kit").Ctx2DLike, allAnnos);
-  }, [strokes, annotations, draft, annoDraft, natural]);
+    kernel.renderOverlay(ctx as unknown as Ctx2DLike, { w: natural.w, h: natural.h });
+  }, [ops, toolsSnap.draft, natural, kernel]);
 
   /** 当前工作图的像素尺寸(用于 B 档坐标对齐);未加载时退化占位。 */
   const sourceSize = (): { width: number; height: number; source?: CanvasImageSource } => {
@@ -789,7 +778,7 @@ export function CanvasWorkbench({
             surface.run(DOMAIN, "outpaint", { ...args, mask: maskUp.attachmentId }),
           );
         }
-        setExpand({ top: 0, right: 0, bottom: 0, left: 0 });
+        kernel.prefs.set(PREF_EXPAND_EDGES, NO_EXPAND);
         return;
       }
 
@@ -868,13 +857,16 @@ export function CanvasWorkbench({
     [onReuseParams],
   );
 
-  // ── 指针 → 源图像素坐标(stage 内核唯一实现;overlay rect/natural 经 env 访问器)──
-  const toNatural = (e: React.PointerEvent): { x: number; y: number } | null =>
-    kernel.stage.toNatural(e.clientX, e.clientY);
-
-  const drawingTool = tool === "mask" || tool === "erase";
-  const annoLineTool = tool === "line" || tool === "arrow";
-  const overlayInteractive = drawingTool || annoLineTool || tool === "text" || tool === "draw";
+  // ── 指针唯一入口(4.2:PointerRouter;命中判定经 DOM data-* 标记,散点分支拆除)──
+  // 容器级 pointer 事件全量喂路由:层/手柄/overlay/stage 命中互斥会话,双事件守卫内建
+  // (onMouseDown stopPropagation 补丁族结构性根治);capture 经 env 接缝在 down 目标上
+  // 设置,后续事件钉住目标冒泡回容器,扩图手柄小目标拖动续流(硬账⑥)。
+  const routerEvent = (e: React.PointerEvent): RouterPointerEvent => ({
+    pointerId: e.pointerId,
+    clientX: e.clientX,
+    clientY: e.clientY,
+    target: e.target as Element | null,
+  });
 
   // ── M3:图层(加/拖放/变换/拍平;全 B 档本地)──────────────────────────────────
   const loader = imageLoader ?? defaultImageLoader;
@@ -958,76 +950,6 @@ export function CanvasWorkbench({
     return () => document.removeEventListener("paste", onPaste);
   }, [upload, importFile]);
 
-  /** 层指针交互:move 模式拖动 / resize 模式右下角手柄等比缩放。 */
-  const onLayerPointerDown = (e: React.PointerEvent, id: string, mode: "move" | "resize"): void => {
-    e.stopPropagation();
-    const l = layers.find((x) => x.id === id);
-    if (l === undefined) return;
-    kernel.layers.select(id);
-    (e.target as Element).setPointerCapture?.(e.pointerId);
-    layerDrag.current = {
-      id,
-      mode,
-      startX: e.clientX,
-      startY: e.clientY,
-      orig: { x: l.x, y: l.y, w: l.w, h: l.h },
-    };
-  };
-  const onLayerPointerMove = (e: React.PointerEvent): void => {
-    const d = layerDrag.current;
-    const cv = overlayRef.current;
-    if (d === null || cv === null || natural === null) return;
-    const rect = cv.getBoundingClientRect();
-    if (rect.width <= 0) return;
-    const dx = ((e.clientX - d.startX) / rect.width) * natural.w;
-    const dy = ((e.clientY - d.startY) / rect.height) * natural.h;
-    // move/resize reducer 归 layers 内核(每帧从 down 时捕获的 orig + 总位移重算)。
-    kernel.layers.applyGesture({ id: d.id, mode: d.mode, orig: d.orig }, dx, dy);
-  };
-  const onLayerPointerUp = (): void => {
-    layerDrag.current = null;
-  };
-
-  // ── 扩图手柄:拖动底图边框向外扩(client px → 源图像素,经 overlay rect 换算)。
-  // window 级监听:手柄目标极小(12px)且拖动跨元素,pointer capture 的目标派发不可靠;
-  // down 时挂 window pointermove/pointerup,up 时摘除(拖拽小目标的稳妥惯例)。
-  const onExpandHandleDown = (
-    e: React.PointerEvent,
-    edge: "top" | "right" | "bottom" | "left",
-  ): void => {
-    e.stopPropagation();
-    e.preventDefault();
-    const cv = overlayRef.current;
-    const nat = natural;
-    if (cv === null || nat === null) return;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const orig = expand[edge];
-    const onMove = (ev: PointerEvent): void => {
-      const rect = cv.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const perPx = nat.w / rect.width; // client px → 源图像素
-      const deltaClient =
-        edge === "right"
-          ? ev.clientX - startX
-          : edge === "left"
-            ? startX - ev.clientX
-            : edge === "bottom"
-              ? ev.clientY - startY
-              : startY - ev.clientY;
-      const next = Math.max(0, Math.round(orig + deltaClient * perPx));
-      setExpand((prev) => ({ ...prev, [edge]: next }));
-    };
-    const onUp = (): void => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-  };
-
   /** 拍平:底图 + 依序各层 → 上传 att_ → register(derivedFrom=底图)→ 清层。 */
   const flatten = React.useCallback(async (): Promise<void> => {
     if (upload === undefined || layers.length === 0) return;
@@ -1075,142 +997,6 @@ export function CanvasWorkbench({
       setBusy(false);
     }
   }, [upload, layers, loader, canvasFactory, current, baseUrl, sessionId, available, surface, kernel]);
-
-  const shortEdge = natural !== null ? Math.min(natural.w, natural.h) : 1024;
-  const annoSize = Math.max(3, Math.round(shortEdge * ANNOTATION_RATIO));
-
-  const onOverlayPointerDown = (e: React.PointerEvent): void => {
-    const p = toNatural(e);
-    if (p === null) return;
-    if (drawingTool) {
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      drawing.current = true;
-      // 笔刷直径 = 短边 × 比例(钳到 ≥1px)。
-      const size = Math.max(1, Math.round(shortEdge * brushRatio));
-      const d: MaskStroke = { mode: tool === "mask" ? "paint" : "erase", size, points: [p] };
-      draftRef.current = d;
-      setDraft(d);
-      return;
-    }
-    if (annoLineTool) {
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      drawing.current = true;
-      const d: Annotation = { kind: tool, from: p, to: p, size: annoSize, color: annoColor };
-      annoDraftRef.current = d;
-      setAnnoDraft(d);
-      return;
-    }
-    if (tool === "draw") {
-      // 自由画笔:标注家族(烤进批注参考图),points 累积折线。
-      (e.target as Element).setPointerCapture?.(e.pointerId);
-      drawing.current = true;
-      const d: Annotation = {
-        kind: "draw",
-        from: p,
-        to: p,
-        points: [p],
-        size: annoSize,
-        color: annoColor,
-      };
-      annoDraftRef.current = d;
-      setAnnoDraft(d);
-      return;
-    }
-    if (tool === "text") {
-      // 记录位置,pointerup 才开编辑器(见 pendingText 注释)。
-      const stageEl = stageRef.current;
-      if (stageEl === null) return;
-      const srect = stageEl.getBoundingClientRect();
-      pendingText.current = {
-        nx: p.x,
-        ny: p.y,
-        left: e.clientX - srect.left,
-        top: e.clientY - srect.top,
-      };
-    }
-  };
-  const onOverlayPointerMove = (e: React.PointerEvent): void => {
-    if (!drawing.current) return;
-    const p = toNatural(e);
-    if (p === null) return;
-    if (draftRef.current !== null) {
-      const d: MaskStroke = { ...draftRef.current, points: [...draftRef.current.points, p] };
-      draftRef.current = d;
-      setDraft(d);
-      return;
-    }
-    if (annoDraftRef.current !== null) {
-      const prev = annoDraftRef.current;
-      const d: Annotation =
-        prev.kind === "draw"
-          ? { ...prev, to: p, points: [...(prev.points ?? []), p] }
-          : { ...prev, to: p };
-      annoDraftRef.current = d;
-      setAnnoDraft(d);
-    }
-  };
-  const onOverlayPointerUp = (): void => {
-    // 文本标注:up 时才挂编辑器(down 挂载会被同次点击的焦点转移 blur 掉)。
-    if (pendingText.current !== null) {
-      const t = pendingText.current;
-      pendingText.current = null;
-      setTextEditor({ ...t, value: "" });
-      return;
-    }
-    if (!drawing.current) return;
-    drawing.current = false;
-    const d = draftRef.current;
-    draftRef.current = null;
-    if (d !== null) {
-      kernel.history.commit({ kind: "stroke", item: d });
-      setDraft(null);
-      return;
-    }
-    const a = annoDraftRef.current;
-    annoDraftRef.current = null;
-    if (a !== null) {
-      // 成型判定:画笔按点数(≥2);拖拽型按 from/to 距离(零长点按丢弃)。
-      const keep =
-        a.kind === "draw"
-          ? (a.points?.length ?? 0) >= 2
-          : Math.hypot(a.to.x - a.from.x, a.to.y - a.from.y) >= 2;
-      if (keep) {
-        kernel.history.commit({ kind: "anno", item: a });
-      }
-      setAnnoDraft(null);
-    }
-  };
-
-  const commitText = (): void => {
-    if (textEditor === null) return;
-    const value = textEditor.value.trim();
-    if (value !== "") {
-      const anno: Annotation = {
-        kind: "text",
-        from: { x: textEditor.nx, y: textEditor.ny },
-        to: { x: textEditor.nx, y: textEditor.ny },
-        text: value,
-        size: annoSize * 2,
-        color: annoColor,
-      };
-      kernel.history.commit({ kind: "anno", item: anno });
-    }
-    setTextEditor(null);
-  };
-
-  // ── 舞台平移(移动工具)──────────────────────────────────────────────────────
-  const onStageMouseDown = (e: React.MouseEvent): void => {
-    if (tool !== "move") return;
-    drag.current = { active: true, x: e.clientX - offset.x, y: e.clientY - offset.y };
-  };
-  const onStageMouseMove = (e: React.MouseEvent): void => {
-    const d = drag.current;
-    if (d === null || !d.active) return;
-    kernel.stage.setOffset({ x: e.clientX - d.x, y: e.clientY - d.y });
-  };
-  const endDrag = (): void => {
-    drag.current = null;
-  };
 
   // 嗅探:真实像素尺寸(natural);扩展时显示扩展后画布。
   const sniff =
@@ -1306,30 +1092,7 @@ export function CanvasWorkbench({
     </div>
   );
 
-  // ── 区块:右侧工具轨 ─────────────────────────────────────────────────────────
-  const toolBtn = (
-    key: StageTool,
-    icon: React.ReactNode,
-    label: string,
-    disabled: boolean,
-    title?: string,
-  ): React.JSX.Element => (
-    <Button
-      key={key}
-      variant={tool === key ? "default" : "ghost"}
-      size="icon"
-      className="h-8 w-8"
-      aria-pressed={tool === key}
-      aria-label={label}
-      title={title ?? label}
-      data-canvas-tool={key}
-      disabled={disabled}
-      onClick={() => setTool(key)}
-    >
-      {icon}
-    </Button>
-  );
-
+  // ── 区块:右侧工具轨(4.2:map registry.tools 注册表驱动;新工具注册自动纳入)────
   // 掩码工具需要 A 档 inpaint(available)+ 上传接缝;标注同理(拍平图需上传)。缺一禁用。
   const maskToolsDisabled = !available || upload === undefined || busy;
   const toolRail = (
@@ -1340,63 +1103,30 @@ export function CanvasWorkbench({
         FLOAT_LAYER,
       )}
     >
-      {toolBtn("move", <Hand className="h-4 w-4" />, "移动", false)}
-      {toolBtn("expand", <Expand className="h-4 w-4" />, "扩图", maskToolsDisabled, "扩图(拖动边框向外扩,生成填充新区域)")}
-      {toolBtn("draw", <Pencil className="h-4 w-4" />, "画笔", maskToolsDisabled, "画笔(标注即指令)")}
-      {toolBtn("line", <Slash className="h-4 w-4" />, "画线", maskToolsDisabled, "画线(标注即指令)")}
-      {toolBtn("arrow", <ArrowUpRight className="h-4 w-4" />, "箭头", maskToolsDisabled, "箭头(标注即指令)")}
-      {toolBtn("text", <Type className="h-4 w-4" />, "文本", maskToolsDisabled, "文本(标注即指令)")}
-      {toolBtn("mask", <Brush className="h-4 w-4" />, "掩码刷", maskToolsDisabled)}
-      {toolBtn("erase", <Eraser className="h-4 w-4" />, "擦除", maskToolsDisabled)}
+      {kernel.registry.tools.map((t) => (
+        <Button
+          key={t.id}
+          variant={activeToolId === t.id ? "default" : "ghost"}
+          size="icon"
+          className="h-8 w-8"
+          aria-pressed={activeToolId === t.id}
+          aria-label={t.label}
+          title={TOOL_RAIL_TITLES[t.id] ?? t.label}
+          data-canvas-tool={toolAnchor(t.id)}
+          disabled={
+            (!BACKEND_FREE_TOOLS.has(t.id) && maskToolsDisabled) ||
+            toolsSnap.disabledTools.includes(t.id)
+          }
+          onClick={() => kernel.tools.setActiveTool(t.id)}
+        >
+          {t.icon}
+        </Button>
+      ))}
 
-      {annoLineTool || tool === "text" || tool === "draw" ? (
-        <div className="flex flex-col items-center gap-1 py-1" data-canvas-anno-colors>
-          {ANNOTATION_PALETTE.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-pressed={annoColor === c}
-              aria-label={`标注颜色 ${c}`}
-              title={`标注颜色 ${c}`}
-              data-canvas-anno-color={c}
-              onClick={() => setAnnoColor(c)}
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                annoColor === c ? "bg-[hsl(var(--accent))]" : "hover:bg-[hsl(var(--muted))]",
-              )}
-            >
-              <span
-                className="h-3.5 w-3.5 rounded-full border border-[hsl(var(--border))]"
-                style={{ backgroundColor: c }}
-              />
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {drawingTool ? (
-        <div className="flex flex-col items-center gap-1 py-1" data-canvas-brush-sizes>
-          {BRUSH_RATIOS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              aria-pressed={brushRatio === r}
-              aria-label={`笔刷 ${Math.round(r * 100)}%`}
-              title={`笔刷(短边 ${Math.round(r * 100)}%)`}
-              onClick={() => setBrushRatio(r)}
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                brushRatio === r ? "bg-[hsl(var(--accent))]" : "hover:bg-[hsl(var(--muted))]",
-              )}
-            >
-              <span
-                className="rounded-full bg-[hsl(var(--foreground))]"
-                style={{ width: 4 + (r / 0.1) * 10, height: 4 + (r / 0.1) * 10 }}
-              />
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {/* 选项条 = 激活工具贡献(4.2;data-canvas-anno-colors/brush-sizes 锚点由内置实现保持)。 */}
+      {activeCanvasTool?.optionsBar !== undefined
+        ? activeCanvasTool.optionsBar(kernel.tools.context)
+        : null}
 
       <div className="my-0.5 h-px w-6 bg-[hsl(var(--border))]" />
       <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="撤销" data-canvas-undo disabled={!history.canUndo} onClick={() => kernel.history.undo()}>
@@ -1424,7 +1154,7 @@ export function CanvasWorkbench({
   // ── 区块:Stage(contain-fit wrapper + overlay 画布 + 缩放胶囊)────────────────
   // 扩图态四周预留手柄操作区:右侧工具轨/左侧版本条是更高 z 的浮层(wrapper 因 transform
   // 自成 stacking context,内部手柄 z 压不过它们),贴边时手柄会被盖住不可点。
-  const fitPad = tool === "expand" ? 56 : 0;
+  const fitPad = activeToolId === EXPAND_TOOL_ID ? 56 : 0;
   const fit =
     ext !== null && stageSize !== null
       ? Math.min(
@@ -1453,20 +1183,28 @@ export function CanvasWorkbench({
       : { left: "0%", top: "0%", width: "100%", height: "100%" };
 
   const zoomPct = Math.round(scale * 100);
+  // 舞台光标:overlay 手势工具的 cursor 施加在 overlay 画布上(见下);舞台级工具
+  // (move)的 cursor 施加在舞台容器上,grab 类在手势中(draft 在场)切 grabbing。
+  const stageCursor =
+    activeCanvasTool !== null && !overlayInteractive && activeCanvasTool.cursor !== undefined
+      ? activeCanvasTool.cursor === "grab" && toolsSnap.draft !== null
+        ? "grabbing"
+        : activeCanvasTool.cursor
+      : undefined;
   const stage = (
     <Card
       ref={stageRef}
       data-canvas-stage
-      data-canvas-active-tool={tool}
+      data-canvas-active-tool={activeToolId !== null ? toolAnchor(activeToolId) : undefined}
       className="canvas-checkerboard relative flex h-full w-full items-center justify-center overflow-hidden p-0"
-      onMouseDown={onStageMouseDown}
-      onMouseMove={onStageMouseMove}
-      onMouseUp={endDrag}
-      onMouseLeave={endDrag}
-      onDoubleClick={tool === "move" ? resetView : undefined}
+      onPointerDown={(e) => kernel.pointer.onPointerDown(routerEvent(e))}
+      onPointerMove={(e) => kernel.pointer.onPointerMove(routerEvent(e))}
+      onPointerUp={(e) => kernel.pointer.onPointerUp(routerEvent(e))}
+      onPointerCancel={(e) => kernel.pointer.onPointerCancel(routerEvent(e))}
+      onDoubleClick={activeToolId === MOVE_TOOL_ID ? resetView : undefined}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onStageDrop}
-      style={{ cursor: tool === "move" ? (drag.current?.active ? "grabbing" : "grab") : undefined }}
+      style={{ cursor: stageCursor }}
     >
       {/* 流式渐进预览叠层(由糊变清):生成中盖住舞台。有小尺寸预览则显图,否则显指示;
           完整渐进图由对话流工具卡承载(4:6 布局下与 Canvas 并列可见)。出终图即清。 */}
@@ -1541,13 +1279,8 @@ export function CanvasWorkbench({
                   height: `${(l.h / (ext?.height ?? natural.h)) * 100}%`,
                   cursor: "move",
                 }}
-                onPointerDown={(e) => onLayerPointerDown(e, l.id, "move")}
-                onPointerMove={onLayerPointerMove}
-                onPointerUp={onLayerPointerUp}
-                onPointerCancel={onLayerPointerUp}
-                // 阻断 mousedown 冒泡:stage 平移监听 mousedown(与 pointerdown 是不同事件,
-                // 层内 pointerdown 的 stopPropagation 挡不住它)→ 否则拖层时画布同步平移(2 倍位移)。
-                onMouseDown={(e) => e.stopPropagation()}
+                // 层拖拽/缩放 = 工具无关内核手势:pointer 事件冒泡到舞台容器经路由
+                // 命中 data-canvas-layer 标记分派(独占会话,双事件补丁族不再需要)。
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -1561,9 +1294,6 @@ export function CanvasWorkbench({
                   <span
                     data-canvas-layer-resize
                     aria-label="缩放图层"
-                    onPointerDown={(e) => onLayerPointerDown(e, l.id, "resize")}
-                    onPointerMove={onLayerPointerMove}
-                    onPointerUp={onLayerPointerUp}
                     className="absolute -bottom-1.5 -right-1.5 h-3 w-3 cursor-nwse-resize rounded-sm border border-[hsl(var(--background))] bg-[hsl(var(--primary))]"
                   />
                 ) : null}
@@ -1576,23 +1306,24 @@ export function CanvasWorkbench({
             data-canvas-mask-overlay
             width={natural.w}
             height={natural.h}
-            style={baseRect}
+            style={{
+              ...baseRect,
+              ...(overlayInteractive && activeCanvasTool?.cursor !== undefined
+                ? { cursor: activeCanvasTool.cursor }
+                : {}),
+            }}
             className={cn(
               "absolute z-[3]",
-              overlayInteractive
-                ? tool === "text"
-                  ? "cursor-text"
-                  : "cursor-crosshair"
-                : "pointer-events-none",
+              // overlayInteractive 门控保持(硬账②):非 overlay 手势工具下 overlay 不夺
+              // 命中(pointer-events-none),move 的舞台平移/层拖拽照常穿透。
+              !overlayInteractive && "pointer-events-none",
             )}
-            onPointerDown={onOverlayPointerDown}
-            onPointerMove={onOverlayPointerMove}
-            onPointerUp={onOverlayPointerUp}
-            onPointerCancel={onOverlayPointerUp}
           />
         ) : null}
-        {/* 扩图手柄:四边中点,拖动向外扩(源图像素);仅扩图工具激活时显示。 */}
-        {tool === "expand" && natural !== null
+        {/* 扩图手柄:四边中点,拖动向外扩(源图像素);仅扩图工具激活时显示。手柄 DOM 留
+            workbench(design 裁定),事件经 data-canvas-expand-handle 标记走路由 —— down 时
+            capture 钉住手柄,后续事件冒泡回容器,小目标拖动续流(硬账⑥)。 */}
+        {activeToolId === EXPAND_TOOL_ID && natural !== null
           ? (
               [
                 { edge: "top" as const, cls: "left-1/2 -top-1.5 -translate-x-1/2 cursor-ns-resize" },
@@ -1604,8 +1335,6 @@ export function CanvasWorkbench({
                   key={h.edge}
                   data-canvas-expand-handle={h.edge}
                   aria-label={`向${h.edge === "top" ? "上" : h.edge === "right" ? "右" : h.edge === "bottom" ? "下" : "左"}扩展`}
-                  onPointerDown={(e) => onExpandHandleDown(e, h.edge)}
-                  onMouseDown={(e) => e.stopPropagation()}
                   className={cn(
                     "absolute z-[4] h-3 w-3 rounded-sm border border-[hsl(var(--background))] bg-[hsl(var(--primary))] shadow",
                     h.cls,
@@ -1613,6 +1342,23 @@ export function CanvasWorkbench({
                 />
               ))
             )
+          : null}
+        {/* 激活工具 DOM 叠层贡献(text 编辑器等):挂进与 overlay 画布重合的定位容器
+            (硬账①:natural 百分比定位的等价性前提);容器本身不夺命中,贡献内容自带
+            pointer-events-auto。 */}
+        {natural !== null && activeCanvasTool?.overlayReact !== undefined
+          ? (() => {
+              const contributed = activeCanvasTool.overlayReact(kernel.tools.context);
+              return contributed !== null && contributed !== undefined ? (
+                <div
+                  data-canvas-tool-overlay
+                  className="pointer-events-none absolute z-20"
+                  style={baseRect}
+                >
+                  {contributed}
+                </div>
+              ) : null;
+            })()
           : null}
       </div>
       {/* 扩展信息条(扩图态顶部中央;与层浮条并存时下移)。 */}
@@ -1630,7 +1376,7 @@ export function CanvasWorkbench({
           <button
             type="button"
             data-canvas-expand-reset
-            onClick={() => setExpand({ top: 0, right: 0, bottom: 0, left: 0 })}
+            onClick={() => kernel.prefs.set(PREF_EXPAND_EDGES, NO_EXPAND)}
             className="text-[hsl(var(--muted-foreground))] underline-offset-2 hover:underline"
           >
             复位
@@ -1678,28 +1424,6 @@ export function CanvasWorkbench({
             {busy ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
             拍平
           </Button>
-        </div>
-      ) : null}
-      {/* 文本标注编辑器(浮动;回车确认,Esc 取消)。 */}
-      {textEditor !== null ? (
-        <div
-          className="absolute z-20"
-          style={{ left: textEditor.left, top: textEditor.top }}
-        >
-          <Input
-            autoFocus
-            data-canvas-text-editor
-            aria-label="标注文本"
-            value={textEditor.value}
-            placeholder="标注文本,回车确认…"
-            onChange={(e) => setTextEditor({ ...textEditor, value: e.target.value })}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitText();
-              if (e.key === "Escape") setTextEditor(null);
-            }}
-            onBlur={commitText}
-            className="h-7 w-44 text-xs"
-          />
         </div>
       ) : null}
       {/* 缩放胶囊:左下角(中央底部让位给浮动提示词栏,右下角避开宿主比例切换器)。 */}

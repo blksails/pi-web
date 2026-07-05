@@ -154,6 +154,12 @@ export interface ToolRuntimeSnapshot {
 export interface ToolRuntime {
   /** 2.4 pointer 路由 dispatch 接缝的真实现(createPointerRouter({ dispatch }))。 */
   readonly dispatch: PointerDispatch;
+  /**
+   * 运行时能力面(与手势回调收到的是**同一** ctx 实例;task 4.2)——装配层渲染期
+   * 贡献(optionsBar/overlayReact)需要 draft 槽/defer 等能力在手势外可达(text
+   * 编辑器受控输入即经此写 draft),经本成员上交,不另建第二套 draft 通道。
+   */
+  readonly context: RuntimeToolContext;
   /** 激活工具(null = 无;引用来自 2.6 registry,运行时不持第二份表)。 */
   setActiveTool(tool: RuntimeTool | null): void;
   getActiveTool(): RuntimeTool | null;
@@ -299,6 +305,7 @@ export function createToolRuntime(env: ToolRuntimeEnv): ToolRuntime {
 
   return {
     dispatch,
+    context: ctx,
     setActiveTool: (tool) => {
       if (tool === activeTool) return; // 幂等:无实效变更不通知(StrictMode 双执行安全)
       activeTool = tool;

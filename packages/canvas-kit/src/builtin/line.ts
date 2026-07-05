@@ -15,6 +15,7 @@ export const lineTool = defineCanvasTool<Annotation>({
   label: "画线",
   icon: createElement(Slash, { className: "h-4 w-4" }),
   cursor: "crosshair",
+  overlayInteractive: true, // 手势面=overlay(4.2 装配门控声明化)
   ...annoToolCallbacks("line"),
   rasterizeDraft: rasterizeAnnoItem,
   opKinds: { anno: rasterizeAnnoItem },

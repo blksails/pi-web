@@ -16,6 +16,7 @@ export const arrowTool = defineCanvasTool<Annotation>({
   label: "箭头",
   icon: createElement(ArrowUpRight, { className: "h-4 w-4" }),
   cursor: "crosshair",
+  overlayInteractive: true, // 手势面=overlay(4.2 装配门控声明化)
   ...annoToolCallbacks("arrow"),
   rasterizeDraft: rasterizeAnnoItem,
   opKinds: { anno: rasterizeAnnoItem },

@@ -108,6 +108,12 @@ export interface CanvasTool<TDraft = unknown> {
   readonly label: string;
   readonly icon: ReactNode;
   readonly cursor?: string;
+  /**
+   * 手势面是否为 overlay 画布(装配层据此开启 overlay 命中(pointer-events)并施加
+   * `cursor`;缺省 false —— move/expand 类舞台级工具不夺 overlay 命中,4.2 装配的
+   * overlayInteractive 门控声明化;3.1 绘制族无 overlay 命中守卫,门控是行为前提)。
+   */
+  readonly overlayInteractive?: boolean;
   /** down 时是否设 pointer capture(缺省 true;text 特例 false —— 裁定 4)。 */
   readonly capturePointer?: boolean;
   onDown?(ev: ToolGestureEvent, ctx: CanvasToolContext<TDraft>): void;
@@ -222,6 +228,25 @@ export interface ToolAdapterEnv {
 }
 
 /**
+ * RuntimeToolContext → CanvasToolContext(L1 能力面加 prefs;4.2 装配的渲染期
+ * ctx 亦经此建 —— optionsBar/overlayReact 贡献与手势回调看到**同一** KV/draft 槽,
+ * 只是 ctx 包装实例可各建;能力全部直通委托,无状态)。
+ */
+export function createToolContext(rt: RuntimeToolContext, env: ToolAdapterEnv): CanvasToolContext {
+  return {
+    draft: {
+      get: () => rt.draft.get(),
+      set: (d) => rt.draft.set(d),
+    },
+    history: { commit: (op) => rt.history.commit(op) },
+    stage: { panBy: (dx, dy) => rt.stage.panBy(dx, dy) },
+    layers: rt.layers,
+    defer: (fn) => rt.defer(fn),
+    prefs: env.prefs,
+  };
+}
+
+/**
  * 建适配器:CanvasTool(L2 声明)→ RuntimeTool(2.5 运行时消费面)。
  * - ToolGestureEvent 在此组装(natural 已换算坐标 + 语义化命中,capture 接缝不外泄);
  * - CanvasToolContext 在 RuntimeToolContext 之上加 prefs(其余能力直通);
@@ -245,17 +270,7 @@ export function createToolAdapter(env: ToolAdapterEnv): (tool: CanvasTool) => Ru
   const toCtx = (rt: RuntimeToolContext): CanvasToolContext => {
     const cached = ctxCache.get(rt);
     if (cached !== undefined) return cached;
-    const ctx: CanvasToolContext = {
-      draft: {
-        get: () => rt.draft.get(),
-        set: (d) => rt.draft.set(d),
-      },
-      history: { commit: (op) => rt.history.commit(op) },
-      stage: { panBy: (dx, dy) => rt.stage.panBy(dx, dy) },
-      layers: rt.layers,
-      defer: (fn) => rt.defer(fn),
-      prefs: env.prefs,
-    };
+    const ctx = createToolContext(rt, env);
     ctxCache.set(rt, ctx);
     return ctx;
   };

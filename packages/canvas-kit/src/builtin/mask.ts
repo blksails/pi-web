@@ -16,6 +16,7 @@ export const maskTool = defineCanvasTool<MaskStroke>({
   label: "掩码刷",
   icon: createElement(Brush, { className: "h-4 w-4" }),
   cursor: "crosshair",
+  overlayInteractive: true, // 手势面=overlay(4.2 装配门控声明化)
   ...strokeToolCallbacks("paint"),
   rasterizeDraft: rasterizeStrokeItem,
   opKinds: { stroke: rasterizeStrokeItem },

@@ -33,22 +33,31 @@ export type {
   ToolGestureHit,
 } from "./registry.js";
 // 8 内置工具汇总注册(task 3.2,Req 6.2/6.3):单个工具不出口(经注册表枚举消费);
-// prefs 键契约(4.2 装配注入初值同键):annoColor/brushRatio/expandEdges。
+// prefs 键契约(4.2 装配注入初值同键)= 下列 PREF_* 常量 + 笔刷档位基数。
 export { registerBuiltinTools } from "./builtin/index.js";
-// 交互内核装配门面(task 4.1,Req 1.3/2.3/5.1):stage/history/layers 实例创建收口
-// 为单一装配 API(能力面契约类型随之上桌;kernel 内部模块路径不出口)。
+export { BRUSH_RATIOS, PREF_ANNO_COLOR, PREF_BRUSH_RATIO } from "./builtin/shared.js";
+export { PREF_EXPAND_EDGES } from "./builtin/expand.js";
+// 交互内核装配门面(task 4.1/4.2,Req 1.3/2.3/3.4/5.1/6.3):stage/history/layers +
+// registry/prefs/tools/pointer/renderOverlay 实例创建收口为单一装配 API
+// (能力面契约类型随之上桌;kernel 内部模块路径不出口)。
 export { createCanvasKernel } from "./kernel-facade.js";
 export type {
   AddLayerInput,
   CanvasKernel,
   CanvasKernelEnv,
+  CanvasToolsApi,
+  ElementLike,
   HistorySnapshot,
   HistoryStore,
   LayerGesture,
   LayerGestureOrigin,
   LayersSnapshot,
   LayersStore,
+  PointerRouter,
+  PrefsStore,
   RectLike,
+  RouterPointerEvent,
   StageController,
   StageViewport,
+  ToolRuntimeSnapshot,
 } from "./kernel-facade.js";

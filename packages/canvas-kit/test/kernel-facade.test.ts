@@ -86,3 +86,171 @@ describe("kernel-facade createCanvasKernel(装配门面)", () => {
     expect(k2.layers.add({ attachmentId: "att_2", displayUrl: "/b" }, null, null)).toBe("layer-1");
   });
 });
+
+// ── 4.2 注册表驱动装配面(registry/prefs/tools/pointer/renderOverlay)──────────
+
+describe("kernel-facade 4.2 装配面(注册表驱动)", () => {
+  /** 与内置 8 工具同形的最小 fake DOM(hitTest 消费 closest/getAttribute)。 */
+  interface FakeEl {
+    closest(sel: string): FakeEl | null;
+    getAttribute(name: string): string | null;
+  }
+  const el = (attrs: Record<string, string>): FakeEl => ({
+    closest(sel: string): FakeEl | null {
+      const name = sel.slice(1, -1);
+      return name in attrs ? this : null;
+    },
+    getAttribute: (name: string) => attrs[name] ?? null,
+  });
+
+  const pev = (pointerId: number, x: number, y: number, target: FakeEl | null) => ({
+    pointerId,
+    clientX: x,
+    clientY: y,
+    target,
+  });
+
+  const fullEnv = (): CanvasKernelEnv => ({
+    getRect: () => ({ left: 0, top: 0, width: 100, height: 100 }),
+    getNaturalSize: () => ({ w: 100, h: 100 }),
+    initialPrefs: { annoColor: "#ef4444", brushRatio: 0.05 },
+  });
+
+  it("registry 包装:registerTool 接线 opKinds → renderOverlay 按提交序回放;重复 kind 无损", () => {
+    const k = createCanvasKernel(fullEnv());
+    const calls: string[] = [];
+    k.registry.registerTool({
+      id: "ext:a",
+      label: "a",
+      icon: null,
+      opKinds: { alpha: (_c, item) => calls.push(`alpha:${String(item)}`) },
+    });
+    // 同 kind 二次注册被拒(无损):回放仍走首个注册者。
+    k.registry.registerTool({
+      id: "ext:b",
+      label: "b",
+      icon: null,
+      opKinds: { alpha: () => calls.push("WRONG"), beta: (_c, item) => calls.push(`beta:${String(item)}`) },
+    });
+    expect(k.registry.tools.map((t) => t.id)).toEqual(["ext:a", "ext:b"]);
+    k.history.commit({ kind: "alpha", item: 1 });
+    k.history.commit({ kind: "beta", item: 2 });
+    k.history.commit({ kind: "alpha", item: 3 });
+    k.history.commit({ kind: "unknown", item: 4 }); // 未注册 kind:跳过
+    k.renderOverlay({} as never, { w: 100, h: 100 });
+    expect(calls).toEqual(["alpha:1", "beta:2", "alpha:3"]);
+  });
+
+  it("同 id 注册冲突:被拒 + 共享收集器条目经 registry.diagnostics 可见;opKinds 不接线", () => {
+    const k = createCanvasKernel(fullEnv());
+    const calls: string[] = [];
+    k.registry.registerTool({ id: "ext:a", label: "a", icon: null });
+    k.registry.registerTool({
+      id: "ext:a",
+      label: "dup",
+      icon: null,
+      opKinds: { alpha: () => calls.push("WRONG") },
+    });
+    expect(k.registry.tools).toHaveLength(1);
+    expect(k.registry.diagnostics).toHaveLength(1);
+    expect(k.registry.diagnostics[0]!.toolId).toBe("ext:a");
+    k.history.commit({ kind: "alpha", item: 1 });
+    k.renderOverlay({} as never, { w: 100, h: 100 });
+    expect(calls).toEqual([]); // 被拒工具的 opKinds 未接线
+  });
+
+  it("tools.setActiveTool(id)+pointer 单入口:overlay 命中手势 → 工具回调(坐标已换算)→ commit;draft 期 rasterizeDraft", () => {
+    const k = createCanvasKernel(fullEnv());
+    const seen: Array<{ phase: string; x: number; y: number }> = [];
+    const drawn: unknown[] = [];
+    k.registry.registerTool({
+      id: "ext:dot",
+      label: "dot",
+      icon: null,
+      overlayInteractive: true,
+      onDown: (ev, ctx) => {
+        seen.push({ phase: "down", x: ev.natural!.x, y: ev.natural!.y });
+        ctx.draft.set({ at: ev.natural });
+      },
+      onUp: (_ev, ctx) => {
+        const d = ctx.draft.get();
+        ctx.draft.set(null);
+        ctx.history.commit({ kind: "dot", item: d });
+      },
+      rasterizeDraft: (_c, draft) => drawn.push(draft),
+      opKinds: { dot: () => {} },
+    });
+    k.tools.setActiveTool("ext:dot");
+    expect(k.tools.getActiveToolId()).toBe("ext:dot");
+    const overlay = el({ "data-canvas-mask-overlay": "" });
+    k.pointer.onPointerDown(pev(1, 50, 25, overlay));
+    expect(seen).toEqual([{ phase: "down", x: 50, y: 25 }]); // rect=natural 100² → 恒等换算
+    expect(k.tools.getSnapshot().draft).toEqual({ at: { x: 50, y: 25 } });
+    k.renderOverlay({} as never, { w: 100, h: 100 });
+    expect(drawn).toEqual([{ at: { x: 50, y: 25 } }]); // draft 期:激活工具 rasterizeDraft
+    k.pointer.onPointerUp(pev(1, 50, 25, overlay));
+    expect(k.history.ops).toEqual([{ kind: "dot", item: { at: { x: 50, y: 25 } } }]);
+    // 未知 id / null:取消激活。
+    k.tools.setActiveTool("ext:nope");
+    expect(k.tools.getActiveToolId()).toBeNull();
+  });
+
+  it("tools.context 渲染期能力面:draft 槽/prefs 与手势回调同源(选项条/overlayReact 接线前提)", () => {
+    const k = createCanvasKernel(fullEnv());
+    expect(k.prefs.get<string>("annoColor")).toBe("#ef4444"); // env.initialPrefs 注入
+    expect(k.tools.context.prefs.get<string>("annoColor")).toBe("#ef4444"); // 同一 KV
+    k.tools.context.prefs.set("annoColor", "#00ff00");
+    expect(k.prefs.get<string>("annoColor")).toBe("#00ff00");
+    k.tools.context.draft.set({ v: 1 }); // 渲染期写 draft(text 编辑器受控输入通道)
+    expect(k.tools.getSnapshot().draft).toEqual({ v: 1 });
+    expect(k.tools.context.draft.get()).toEqual({ v: 1 });
+    k.tools.context.draft.set(null);
+    expect(k.tools.getSnapshot().draft).toBeNull();
+  });
+
+  it("capture 接缝:capturePointer 经 env 注入,工具缺省捕获时 down 即调(target+pointerId)", () => {
+    const captured: Array<[unknown, number]> = [];
+    const k = createCanvasKernel({
+      ...fullEnv(),
+      capturePointer: (target, pointerId) => captured.push([target, pointerId]),
+    });
+    k.registry.registerTool({ id: "ext:cap", label: "c", icon: null, onDown: () => {} });
+    k.tools.setActiveTool("ext:cap");
+    const overlay = el({ "data-canvas-mask-overlay": "" });
+    k.pointer.onPointerDown(pev(7, 10, 10, overlay));
+    expect(captured).toEqual([[overlay, 7]]);
+  });
+
+  it("内置 8 工具自举:registerBuiltinTools(kernel.registry) → 工具轨顺序枚举 + stroke/anno 回放接线", () => {
+    const k = createCanvasKernel(fullEnv());
+    pub.registerBuiltinTools(k.registry);
+    expect(k.registry.tools.map((t) => t.id)).toEqual([
+      "builtin:move",
+      "builtin:expand",
+      "builtin:draw",
+      "builtin:line",
+      "builtin:arrow",
+      "builtin:text",
+      "builtin:mask",
+      "builtin:erase",
+    ]);
+    expect(k.registry.diagnostics).toEqual([]); // mask/erase 重复 stroke kind = 无损,零诊断
+    // overlay 门控声明化:绘制族 + text 声明 overlayInteractive,move/expand 不声明。
+    const interactive = k.registry.tools.filter((t) => t.overlayInteractive === true).map((t) => t.id);
+    expect(interactive).toEqual([
+      "builtin:draw",
+      "builtin:line",
+      "builtin:arrow",
+      "builtin:text",
+      "builtin:mask",
+      "builtin:erase",
+    ]);
+    // stroke/anno 已接线:提交 op 后回放不炸且被消费(fake ctx 缺路径原语 → 光栅化守卫跳过)。
+    k.history.commit({ kind: "stroke", item: { mode: "paint", size: 4, points: [{ x: 1, y: 1 }] } });
+    k.history.commit({
+      kind: "anno",
+      item: { kind: "line", from: { x: 0, y: 0 }, to: { x: 5, y: 5 }, size: 3 },
+    });
+    expect(() => k.renderOverlay({} as never, { w: 100, h: 100 })).not.toThrow();
+  });
+});
