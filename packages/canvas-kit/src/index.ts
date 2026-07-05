@@ -9,7 +9,8 @@
  * - 依赖方向:ui 消费 canvas-kit,反向禁止(本包零 @blksails/* 依赖)。
  *
  * 当前已填充:types(canonical 家)+ bitmap-io(task 1.2)、registry/defineCanvasTool
- * (task 2.6);后续任务按 design.md File Structure Plan 续填:builtin(3.x)。
+ * (task 2.6)、registerBuiltinTools(task 3.2);后续任务按 design.md File
+ * Structure Plan 续填:装配门面(4.1)。
  */
 // 类型 canonical 家(Annotation/MaskStroke/ExpandEdges/WorkLayer/CanvasOp + LoadedImage)。
 export * from "./types.js";
@@ -31,3 +32,6 @@ export type {
   ToolGestureEvent,
   ToolGestureHit,
 } from "./registry.js";
+// 8 内置工具汇总注册(task 3.2,Req 6.2/6.3):单个工具不出口(经注册表枚举消费);
+// prefs 键契约(4.2 装配注入初值同键):annoColor/brushRatio/expandEdges。
+export { registerBuiltinTools } from "./builtin/index.js";

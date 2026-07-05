@@ -5,8 +5,9 @@
  * - src/index.ts 是 L2 唯一出口,可被解析;
  * - kernel/ 内部件(L1)不出现在包根出口;
  * - 当前 L2 面 = types(canonical 家)+ bitmap-io(task 1.2)+ registry 装置
- *   (defineCanvasTool/createCanvasRegistry,task 2.6);
- *   后续任务填充(builtin)时更新清单断言。
+ *   (defineCanvasTool/createCanvasRegistry,task 2.6)+ registerBuiltinTools
+ *   (task 3.2;单个内置工具不出口,经注册表枚举消费);
+ *   后续任务填充(4.1 装配门面)时更新清单断言。
  */
 import { describe, it, expect } from "vitest";
 import * as canvasKit from "../src/index.js";
@@ -18,7 +19,7 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
     expect(canvasKit).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项,无 kernel 内部件泄漏(task 2.6 快照)", () => {
+  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项 + builtin 汇总 1 项,无 kernel 内部件泄漏(task 3.2 快照)", () => {
     expect(Object.keys(canvasKit).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
@@ -37,6 +38,7 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
       "outpaintImage",
       "outpaintMask",
       "parseDataUri",
+      "registerBuiltinTools",
       "rotateImage",
       "rotatedSize",
       "strokesToMask",

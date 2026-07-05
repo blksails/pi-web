@@ -67,14 +67,14 @@
   - _Boundary: registry L2_
   - _Depends: 2.5_
 
-- [ ] 3. Core:8 内置工具自举
+- [x] 3. Core:8 内置工具自举
 - [x] 3.1 绘制族五工具(mask/erase/draw/line/arrow)
   - defineCanvasTool 实现:mask/erase(MaskStroke draft,笔刷=短边×ratio 钳≥1)/draw(折线累积)/line/arrow(from/to);opKinds 注册 "stroke"/"anno" 光栅化(:615-650 逻辑迁移);选项条贡献(颜色/笔刷,保持既有 data-canvas-anno-colors/brush-sizes 锚点)
   - 单测:五工具声明形状(builtin: 前缀)/draft 生命周期逐场景/光栅化输出
   - 完成态:builtin 用例绿;工具代码零视口数学零 DOM 监听(grep 自查)
   - _Requirements: 6.2, 6.3_
   - _Depends: 2.6_
-- [ ] 3.2 非绘制族三工具(move/expand/text)
+- [x] 3.2 非绘制族三工具(move/expand/text)
   - move:stage 命中→ctx.stage.panBy;expand:expand-handle 命中→扩图边状态(手柄 DOM 留 workbench,事件经路由);text:down 记位、up 经 ctx.defer 挂编辑器(blur 特例复刻),overlayReact 贡献编辑器
   - registerBuiltinTools(registry) 汇总(builtin/index.ts)
   - 单测:三工具行为锚定(panBy 调用/手柄边载荷/defer 时机)
@@ -122,3 +122,4 @@
 - 2.5:tool-runtime.ts 落地(createToolRuntime+createDiagnosticsCollector 导出供 2.6 共用;cancel→onUp 映射收掉 2.4 留账;capture 释放接缝=env.releasePointerCapture 仅错误中止调,旧世界零显式 release;手势中切工具不打断会话=down 时绑定,与旧 drawing/draftRef 守卫同构)。首轮 REJECTED:onUp 抛错→弃置 defer 队列分支变异存活,补 2 用例击杀后复审通过——**教训:错误边界各相位独有分支都要显式用例**。**留给 2.6**:registry 侧追加共享 diagnostics 不 bump runtime 快照,registry.diagnostics 应直读收集器 entries;L2 边名词汇表与 pan 载荷 L2 形状两项显式裁定。**留给 3.1**:draft 成型判定(零长丢弃)/up 清 draft 是工具回调语义,逐分支复刻 :1196-1204。
 - 2.6:registry.ts 落地(defineCanvasTool/createCanvasRegistry/CanvasToolContext/ToolGestureEvent;index 显式出口 2 值+10 类型,快照 19→21)。五项裁定审查维持:边名=top/right/bottom/left(罗盘边是 design 幻影)/L2 事件全载荷且 natural 可空(绘制工具 onDown/onMove 实际恒非空——路由 :291/:305 已挡 null,null 仅现于 stage 命中与 up/cancel)/diagnostics 直读共享收集器/hit 无 layer 分支(结构性不外派)/新增 capturePointer?: boolean 缺省 true(text 不捕获 :1142 的声明化表达)。**留给 4.1(硬账)**:包级装配 facade 缺口——createToolAdapter/createPrefsStore 未出口,ui 侧 Req 1.3 禁拿 kernel 件,4.1 必须补装配门面出口(形状届时定,连同 index 快照更新)。**留给 3.1/4.2**:prefs 扁平 KV,annoColor 跨工具共享=旧单 state 语义。
 - 3.1:builtin 绘制族五工具落地(+shared.ts 族内共用件,包内私有)。**PREFS 键定死**:annoColor 缺省 #ef4444 / brushRatio 缺省 0.05(BRUSH_RATIOS=[0.025,0.05,0.1]、ANNOTATION_RATIO=0.008 在 shared)——4.2 装配注入初值须同键。**留给 4.2 三笔账**:①工具轨长 title(「画笔(标注即指令)」等)不在 CanvasTool 声明面,装配须另行保持否则 ui 测试破;②mask/erase 共享同一 stroke rasterizer 函数引用,注册重复 kind 被拒(false)是无损语义,装配方勿当错误;③Tailwind content 扫描须覆盖 canvas-kit(选项条 className 在包内)。选项条颜色块显示条件含 text(:1391),3.2 text 工具复用。
+- 3.2:move/expand/text + registerBuiltinTools 落地(注册序=工具轨 :1382-1389;快照 21→22)。**裁定:扩图边状态走 ctx.prefs 键 `expandEdges`**(缺省 NO_EXPAND;commit 违反「扩图不可撤销」现状,draft 是手势期而扩图跨手势存续;PREF_EXPAND_EDGES 常量已出口)。**4.2 硬账汇总**:①text overlayReact 装配契约=挂进与 overlay 画布重合的定位容器(natural 百分比定位的等价性前提);②保持 overlayInteractive 门控(3.1 绘制族无 overlay 命中守卫);③prefs 同键注入 expandEdges/annoColor/brushRatio + 复位按钮写同键;④工具轨长 title 装配另行保持。**已知行为微差(留账)**:move 平移 capture 下指针出舞台不再中断(旧 onMouseLeave endDrag;ui 测试零 mouseleave 用例,回归线不抓)。

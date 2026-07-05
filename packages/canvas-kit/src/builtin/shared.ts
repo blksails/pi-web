@@ -63,16 +63,19 @@ const shortEdgeOf = (size: ToolGestureEvent["naturalSize"]): number =>
 const brushRatioOf = (prefs: CanvasPrefs): number =>
   prefs.get<number>(PREF_BRUSH_RATIO) ?? BRUSH_RATIOS[1];
 
-const annoColorOf = (prefs: CanvasPrefs): string =>
+/** 当前标注色(prefs 缺省批注红;text 提交亦消费,3.2)。 */
+export const annoColorOf = (prefs: CanvasPrefs): string =>
   prefs.get<string>(PREF_ANNO_COLOR) ?? ANNOTATION_COLOR;
 
 /** 笔刷直径 = 短边 × 比例(钳到 ≥1px,:1112)。 */
 const brushDiameter = (ev: ToolGestureEvent, prefs: CanvasPrefs): number =>
   Math.max(1, Math.round(shortEdgeOf(ev.naturalSize) * brushRatioOf(prefs)));
 
-/** 标注线宽 = 短边 × ANNOTATION_RATIO(钳到 ≥3,:1103)。 */
-const annoLineWidth = (ev: ToolGestureEvent): number =>
-  Math.max(3, Math.round(shortEdgeOf(ev.naturalSize) * ANNOTATION_RATIO));
+/** 标注线宽 = 短边 × ANNOTATION_RATIO(钳到 ≥3,:1103;text 字号基数亦消费,3.2)。 */
+export const annoLineWidthOf = (size: ToolGestureEvent["naturalSize"]): number =>
+  Math.max(3, Math.round(shortEdgeOf(size) * ANNOTATION_RATIO));
+
+const annoLineWidth = (ev: ToolGestureEvent): number => annoLineWidthOf(ev.naturalSize);
 
 // ── 光栅化(opKinds "stroke"/"anno";签名=kernel/history OpRasterizer)─────────
 
@@ -205,8 +208,12 @@ const OPTION_BUTTON_CLASS = "flex h-6 w-6 items-center justify-center rounded-fu
 const optionButtonClass = (selected: boolean): string =>
   `${OPTION_BUTTON_CLASS} ${selected ? "bg-[hsl(var(--accent))]" : "hover:bg-[hsl(var(--muted))]"}`;
 
-/** 标注色板(data-canvas-anno-colors;draw/line/arrow 共享,text 3.2 复用)。 */
-export function annoColorOptions(ctx: CanvasToolContext<Annotation>): ReactNode {
+/**
+ * 标注色板(data-canvas-anno-colors;draw/line/arrow 与 text 共享,:1391 显示条件
+ * 含 text)。TDraft 泛型:只消费 ctx.prefs,与 draft 形状无关(text 的 draft 非
+ * Annotation,3.2)。
+ */
+export function annoColorOptions<TDraft>(ctx: CanvasToolContext<TDraft>): ReactNode {
   const current = annoColorOf(ctx.prefs);
   return createElement(
     "div",

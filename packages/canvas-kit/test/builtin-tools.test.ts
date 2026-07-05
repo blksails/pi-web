@@ -1,5 +1,6 @@
 /**
- * builtin 绘制族五工具单测(task 3.1,Req 6.2/6.3;design「Testing Strategy」#5)。
+ * builtin 工具单测:3.1 绘制族五工具 + 3.2 非绘制族三工具与 registerBuiltinTools
+ * (Req 6.2/6.3;design「Testing Strategy」#5)。
  *
  * 覆盖:
  * - 五工具声明形状:id `builtin:` 前缀/label/icon/cursor/capturePointer 缺省捕获/
@@ -30,6 +31,10 @@ import { eraseTool } from "../src/builtin/erase.js";
 import { drawTool } from "../src/builtin/draw.js";
 import { lineTool } from "../src/builtin/line.js";
 import { arrowTool } from "../src/builtin/arrow.js";
+import { moveTool, type MoveDraft } from "../src/builtin/move.js";
+import { expandTool, PREF_EXPAND_EDGES, type ExpandDraft } from "../src/builtin/expand.js";
+import { textTool, type TextDraft } from "../src/builtin/text.js";
+import { registerBuiltinTools } from "../src/builtin/index.js";
 import {
   createCanvasRegistry,
   createPrefsStore,
@@ -37,7 +42,7 @@ import {
   type CanvasToolContext,
   type ToolGestureEvent,
 } from "../src/registry.js";
-import type { Annotation, CanvasOp, MaskStroke } from "../src/index.js";
+import type { Annotation, CanvasOp, ExpandEdges, MaskStroke } from "../src/index.js";
 import type { Ctx2DLike } from "../src/bitmap-io.js";
 
 // ── 测试基建 ──────────────────────────────────────────────────────────────────
@@ -496,5 +501,430 @@ describe("选项条贡献(:1391-1438 锚点与行为)", () => {
       const props = propsOf(tool.optionsBar?.(makeCtx<Annotation>().ctx));
       expect(props["data-canvas-brush-sizes"]).toBeUndefined();
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// task 3.2:非绘制族三工具(move/expand/text)+ registerBuiltinTools
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** 手势级 harness:panBy 记录 + defer **队列**(锚定「up 后」时机,text 特例)。 */
+interface GestureHarness<TDraft> {
+  readonly ctx: CanvasToolContext<TDraft>;
+  readonly committed: CanvasOp[];
+  readonly pans: { dx: number; dy: number }[];
+  draft(): TDraft | null;
+  /** 冲刷 defer 队列(模拟 tool-runtime 在 onUp 返回后的 FIFO 执行)。 */
+  flushDefer(): void;
+  deferredCount(): number;
+}
+
+function makeGestureCtx<TDraft>(
+  prefsInit?: Readonly<Record<string, unknown>>,
+): GestureHarness<TDraft> {
+  let draft: TDraft | null = null;
+  const committed: CanvasOp[] = [];
+  const pans: { dx: number; dy: number }[] = [];
+  const queue: Array<() => void> = [];
+  const prefs = createPrefsStore(prefsInit);
+  const ctx: CanvasToolContext<TDraft> = {
+    draft: {
+      get: () => draft,
+      set: (d) => {
+        draft = d;
+      },
+    },
+    history: { commit: (op) => committed.push(op) },
+    stage: { panBy: (dx, dy) => pans.push({ dx, dy }) },
+    layers: { layers: [], selectedId: null, get: () => undefined },
+    defer: (fn) => queue.push(fn),
+    prefs,
+  };
+  return {
+    ctx,
+    committed,
+    pans,
+    draft: () => draft,
+    flushDefer: () => {
+      const q = [...queue];
+      queue.length = 0;
+      for (const fn of q) fn();
+    },
+    deferredCount: () => queue.length,
+  };
+}
+
+// ── 声明形状(6.2)────────────────────────────────────────────────────────────
+
+describe("非绘制族三工具声明形状(3.2)", () => {
+  it("id 带 builtin: 前缀且命名与旧 StageTool 对应", () => {
+    expect(moveTool.id).toBe("builtin:move");
+    expect(expandTool.id).toBe("builtin:expand");
+    expect(textTool.id).toBe("builtin:text");
+  });
+
+  it("label/icon/cursor 照工具轨与舞台现状(:1382/:1383/:1387/:1508/:1622)", () => {
+    expect(moveTool.label).toBe("移动");
+    expect(expandTool.label).toBe("扩图");
+    expect(textTool.label).toBe("文本");
+    for (const t of [moveTool, expandTool, textTool]) expect(isValidElement(t.icon)).toBe(true);
+    expect(moveTool.cursor).toBe("grab"); // :1508 舞台平移 grab
+    expect(expandTool.cursor).toBeUndefined(); // 扩图无 overlay 交互,手柄自带 resize 光标
+    expect(textTool.cursor).toBe("text"); // :1622 cursor-text
+  });
+
+  it("capture 声明:text 不捕获(:1142);move/expand 缺省捕获", () => {
+    expect(textTool.capturePointer).toBe(false);
+    expect(moveTool.capturePointer !== false).toBe(true);
+    expect(expandTool.capturePointer !== false).toBe(true);
+  });
+
+  it("opKinds:move/expand 无(不产 op);text 注册 anno 且与标注家族同函数", () => {
+    expect(moveTool.opKinds).toBeUndefined();
+    expect(expandTool.opKinds).toBeUndefined();
+    expect(Object.keys(textTool.opKinds ?? {})).toEqual(["anno"]);
+    expect(textTool.opKinds?.anno).toBe(drawTool.opKinds?.anno);
+  });
+
+  it("rasterizeDraft:三工具皆无(move/expand 无稿可栅;text 编辑器即预览)", () => {
+    for (const t of [moveTool, expandTool, textTool]) expect(t.rasterizeDraft).toBeUndefined();
+  });
+
+  it("选项条:text 复用六色板(:1391 条件含 text);move/expand 无(:1391/:1416)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    const bar = textTool.optionsBar?.(h.ctx as unknown as CanvasToolContext<never>);
+    const props = propsOf(bar);
+    expect(props["data-canvas-anno-colors"]).toBe(true);
+    const buttons = childrenOf(bar);
+    expect(buttons).toHaveLength(6);
+    (propsOf(buttons[3])["onClick"] as () => void)();
+    expect(h.ctx.prefs.get<string>("annoColor")).toBe("#3b82f6");
+    expect(moveTool.optionsBar).toBeUndefined();
+    expect(expandTool.optionsBar).toBeUndefined();
+  });
+});
+
+// ── registerBuiltinTools(6.2/6.3 完成态:8 工具经注册表可枚举)─────────────────
+
+describe("registerBuiltinTools(builtin/index.ts 汇总)", () => {
+  it("8 工具按工具轨顺序注册(:1382-1389),id 全带 builtin: 前缀", () => {
+    const reg = createCanvasRegistry();
+    registerBuiltinTools(reg);
+    expect(reg.tools.map((t) => t.id)).toEqual([
+      "builtin:move",
+      "builtin:expand",
+      "builtin:draw",
+      "builtin:line",
+      "builtin:arrow",
+      "builtin:text",
+      "builtin:mask",
+      "builtin:erase",
+    ]);
+    expect(reg.tools.every((t) => t.id.startsWith("builtin:"))).toBe(true);
+    expect(reg.diagnostics).toEqual([]); // 无 id 冲突
+  });
+
+  it("per-instance:两注册表互不串扰(6.5)", () => {
+    const a = createCanvasRegistry();
+    const b = createCanvasRegistry();
+    registerBuiltinTools(a);
+    expect(a.tools).toHaveLength(8);
+    expect(b.tools).toHaveLength(0);
+  });
+});
+
+// ── move:舞台平移(:1241-1252)─────────────────────────────────────────────────
+
+describe("move 舞台平移(:1241-1252)", () => {
+  /** stage 命中事件(natural 允许缺席,:1241-1248 不量 natural)。 */
+  const stageEv = (deltaClient: { dx: number; dy: number }): ToolGestureEvent =>
+    gev({ hit: { kind: "stage" }, natural: null, naturalSize: null, deltaClient });
+
+  it("down(stage 命中)建锚;move 消费 deltaClient 累计位移增量 panBy(:1243/:1248)", () => {
+    const h = makeGestureCtx<MoveDraft>();
+    moveTool.onDown?.(stageEv({ dx: 0, dy: 0 }), h.ctx);
+    expect(h.draft()).toEqual({ dx: 0, dy: 0 });
+    moveTool.onMove?.(stageEv({ dx: 5, dy: 3 }), h.ctx);
+    moveTool.onMove?.(stageEv({ dx: 12, dy: 10 }), h.ctx);
+    // 事件载荷是自 down 起的累计位移;panBy 是增量 —— 增量序列合计=累计(offset 等价)。
+    expect(h.pans).toEqual([
+      { dx: 5, dy: 3 },
+      { dx: 7, dy: 7 },
+    ]);
+  });
+
+  it("up 清 draft 收束(endDrag :1250-1252);后续 move 无 pan(守卫 :1247)", () => {
+    const h = makeGestureCtx<MoveDraft>();
+    moveTool.onDown?.(stageEv({ dx: 0, dy: 0 }), h.ctx);
+    moveTool.onUp?.(stageEv({ dx: 5, dy: 5 }), h.ctx);
+    expect(h.draft()).toBeNull();
+    moveTool.onMove?.(stageEv({ dx: 9, dy: 9 }), h.ctx);
+    expect(h.pans).toEqual([]);
+  });
+
+  it("非 stage 命中 down 不启动(:1242 仅移动工具的舞台空白平移语义)", () => {
+    const h = makeGestureCtx<MoveDraft>();
+    moveTool.onDown?.(gev(), h.ctx); // overlay 命中
+    expect(h.draft()).toBeNull();
+    moveTool.onMove?.(stageEv({ dx: 5, dy: 5 }), h.ctx);
+    expect(h.pans).toEqual([]);
+  });
+
+  it("无 down 直接 move 无操作(drag ref null 守卫 :1246-1247);全程零 commit", () => {
+    const h = makeGestureCtx<MoveDraft>();
+    moveTool.onMove?.(stageEv({ dx: 5, dy: 5 }), h.ctx);
+    moveTool.onDown?.(stageEv({ dx: 0, dy: 0 }), h.ctx);
+    moveTool.onMove?.(stageEv({ dx: 2, dy: 2 }), h.ctx);
+    moveTool.onUp?.(stageEv({ dx: 2, dy: 2 }), h.ctx);
+    expect(h.pans).toEqual([{ dx: 2, dy: 2 }]);
+    expect(h.committed).toEqual([]); // move 不产 op(不可撤销)
+  });
+});
+
+// ── expand:扩图边状态(:1016-1051)────────────────────────────────────────────
+
+describe("expand 扩图边状态(:1016-1051;prefs 通道 expandEdges)", () => {
+  const handleEv = (
+    edge: keyof ExpandEdges,
+    expandDelta: number | null,
+  ): ToolGestureEvent => gev({ hit: { kind: "expand-handle", edge }, expandDelta });
+
+  it("down 记 {edge, orig}(:1027 orig=expand[edge]);move 写 prefs.expandEdges=max(0,round(orig+Δ))(:1040)", () => {
+    const h = makeGestureCtx<ExpandDraft>({
+      [PREF_EXPAND_EDGES]: { top: 0, right: 40, bottom: 0, left: 0 },
+    });
+    expandTool.onDown?.(handleEv("right", 0), h.ctx);
+    expect(h.draft()).toEqual({ edge: "right", orig: 40 });
+    expandTool.onMove?.(handleEv("right", 12.4), h.ctx);
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)).toEqual({
+      top: 0,
+      right: 52, // round(40 + 12.4)
+      bottom: 0,
+      left: 0,
+    });
+  });
+
+  it("expandDelta 是自 down 起累计量:orig 锚定不随帧漂移(:1027 闭包 orig 语义)", () => {
+    const h = makeGestureCtx<ExpandDraft>({
+      [PREF_EXPAND_EDGES]: { top: 0, right: 40, bottom: 0, left: 0 },
+    });
+    expandTool.onDown?.(handleEv("right", 0), h.ctx);
+    expandTool.onMove?.(handleEv("right", 10), h.ctx);
+    expandTool.onMove?.(handleEv("right", 25), h.ctx);
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)?.right).toBe(65); // 40+25,非 40+10+25
+  });
+
+  it("向内拖钳到 0(:1040 max(0, …));其余边保持", () => {
+    const h = makeGestureCtx<ExpandDraft>({
+      [PREF_EXPAND_EDGES]: { top: 7, right: 40, bottom: 0, left: 0 },
+    });
+    expandTool.onDown?.(handleEv("right", 0), h.ctx);
+    expandTool.onMove?.(handleEv("right", -100), h.ctx);
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)).toEqual({
+      top: 7,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    });
+  });
+
+  it("prefs 未注入初值:orig 缺省 0(NO_EXPAND 语义,:487)", () => {
+    const h = makeGestureCtx<ExpandDraft>();
+    expandTool.onDown?.(handleEv("top", 0), h.ctx);
+    expect(h.draft()).toEqual({ edge: "top", orig: 0 });
+    expandTool.onMove?.(handleEv("top", 10), h.ctx);
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)).toEqual({
+      top: 10,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    });
+  });
+
+  it("expandDelta 缺席帧丢弃(:1029-1030 rect 不可得);无 down 的 move 无操作", () => {
+    const h = makeGestureCtx<ExpandDraft>();
+    expandTool.onMove?.(handleEv("left", 10), h.ctx); // 无 draft
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)).toBeUndefined();
+    expandTool.onDown?.(handleEv("left", 0), h.ctx);
+    expandTool.onMove?.(handleEv("left", null), h.ctx); // Δ 缺席
+    expect(h.ctx.prefs.get<ExpandEdges>(PREF_EXPAND_EDGES)).toBeUndefined();
+  });
+
+  it("up 清 draft 且零 commit(setExpand 不入 ops,:1041 非可撤销)", () => {
+    const h = makeGestureCtx<ExpandDraft>();
+    expandTool.onDown?.(handleEv("bottom", 0), h.ctx);
+    expandTool.onMove?.(handleEv("bottom", 5), h.ctx);
+    expandTool.onUp?.(handleEv("bottom", 5), h.ctx);
+    expect(h.draft()).toBeNull();
+    expect(h.committed).toEqual([]);
+  });
+
+  it("非 expand-handle 命中 down 不启动(手柄专属手势)", () => {
+    const h = makeGestureCtx<ExpandDraft>();
+    expandTool.onDown?.(gev(), h.ctx); // overlay 命中
+    expect(h.draft()).toBeNull();
+  });
+});
+
+// ── text:down 记位 / up 经 defer 挂编辑器 / 编辑器提交(:1142-1153/:1176-1181/:1209-1225/:1726-1746)──
+
+describe("text 文本标注(:1142-1153/:1176-1181/:1209-1225/:1726-1746)", () => {
+  /** 走完 down→up→defer 冲刷,编辑器进入 editing 态。 */
+  const openEditor = (h: GestureHarness<TextDraft>): void => {
+    textTool.onDown?.(gev(), h.ctx);
+    textTool.onUp?.(gev({ natural: null }), h.ctx);
+    h.flushDefer();
+  };
+  /** 当前 overlayReact 编辑器 input 的 props(未挂载 → throw)。 */
+  const editorInput = (h: GestureHarness<TextDraft>): Record<string, unknown> => {
+    const overlay = textTool.overlayReact?.(h.ctx as unknown as CanvasToolContext<never>);
+    const kids = childrenOf(overlay);
+    return propsOf(kids[0]);
+  };
+
+  it("down 只记位(pending),不挂编辑器(:1142-1153 blur 特例前半)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    textTool.onDown?.(gev(), h.ctx);
+    expect(h.draft()).toEqual({
+      phase: "pending",
+      anchor: { x: 10, y: 20 },
+      naturalSize: { w: 800, h: 600 },
+      value: "",
+    });
+    // down 阶段 overlayReact 不渲染编辑器(挂载会被同次点击焦点转移 blur 掉)。
+    expect(textTool.overlayReact?.(h.ctx as unknown as CanvasToolContext<never>)).toBeNull();
+  });
+
+  it("natural 不可得 down 不启动(:1106-1107);非 overlay 命中 down 不启动", () => {
+    const h = makeGestureCtx<TextDraft>();
+    textTool.onDown?.(gev({ natural: null }), h.ctx);
+    expect(h.draft()).toBeNull();
+    textTool.onDown?.(gev({ hit: { kind: "stage" } }), h.ctx);
+    expect(h.draft()).toBeNull();
+  });
+
+  it("up 经 ctx.defer 挂编辑器(up 内清 pending、编辑态在 defer 冲刷后,:1176-1181)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    textTool.onDown?.(gev(), h.ctx);
+    textTool.onUp?.(gev({ natural: null }), h.ctx);
+    // up 返回时:pending 已清(:1179),编辑器挂载动作在 defer 队列。
+    expect(h.draft()).toBeNull();
+    expect(h.deferredCount()).toBe(1);
+    expect(textTool.overlayReact?.(h.ctx as unknown as CanvasToolContext<never>)).toBeNull();
+    h.flushDefer();
+    expect(h.draft()?.phase).toBe("editing");
+    expect(h.draft()?.value).toBe("");
+  });
+
+  it("up 无 pending 时无操作(直接 up 不开编辑器)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    textTool.onUp?.(gev(), h.ctx);
+    h.flushDefer();
+    expect(h.draft()).toBeNull();
+  });
+
+  it("编辑器:input 锚点/autoFocus/占位与初值(:1731-1736);容器按 natural 百分比定位", () => {
+    const h = makeGestureCtx<TextDraft>();
+    openEditor(h);
+    const overlay = textTool.overlayReact?.(h.ctx as unknown as CanvasToolContext<never>);
+    const wrapProps = propsOf(overlay);
+    const style = wrapProps["style"] as Record<string, unknown>;
+    expect(style["left"]).toBe(`${(10 / 800) * 100}%`);
+    expect(style["top"]).toBe(`${(20 / 600) * 100}%`);
+    const input = editorInput(h);
+    expect(input["data-canvas-text-editor"]).toBe(true);
+    expect(input["autoFocus"]).toBe(true);
+    expect(input["aria-label"]).toBe("标注文本");
+    expect(input["placeholder"]).toBe("标注文本,回车确认…");
+    expect(input["value"]).toBe("");
+  });
+
+  it("输入写回 draft.value(受控 input,:1737)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    openEditor(h);
+    const onChange = editorInput(h)["onChange"] as (e: { target: { value: string } }) => void;
+    onChange({ target: { value: "红色气球" } });
+    expect(h.draft()?.value).toBe("红色气球");
+  });
+
+  it("Enter 提交:{kind:'anno'} text 项(from=to=锚点,size=annoSize×2,:1209-1225);清编辑态", () => {
+    const h = makeGestureCtx<TextDraft>();
+    openEditor(h);
+    (editorInput(h)["onChange"] as (e: { target: { value: string } }) => void)({
+      target: { value: "  红色气球  " },
+    });
+    (editorInput(h)["onKeyDown"] as (e: { key: string }) => void)({ key: "Enter" });
+    expect(h.committed).toEqual([
+      {
+        kind: "anno",
+        item: {
+          kind: "text",
+          from: { x: 10, y: 20 },
+          to: { x: 10, y: 20 },
+          text: "红色气球", // trim(:1211)
+          size: 10, // max(3, round(600×0.008))×2 = 5×2(:1103/:1218)
+          color: "#ef4444",
+        },
+      },
+    ]);
+    expect(h.draft()).toBeNull();
+  });
+
+  it("空白值提交:不入 op 但编辑器关闭(:1212 value!=='' 门);Escape 取消零提交(:1740)", () => {
+    const blank = makeGestureCtx<TextDraft>();
+    openEditor(blank);
+    (editorInput(blank)["onKeyDown"] as (e: { key: string }) => void)({ key: "Enter" });
+    expect(blank.committed).toEqual([]);
+    expect(blank.draft()).toBeNull();
+
+    const esc = makeGestureCtx<TextDraft>();
+    openEditor(esc);
+    (editorInput(esc)["onChange"] as (e: { target: { value: string } }) => void)({
+      target: { value: "弃稿" },
+    });
+    (editorInput(esc)["onKeyDown"] as (e: { key: string }) => void)({ key: "Escape" });
+    expect(esc.committed).toEqual([]);
+    expect(esc.draft()).toBeNull();
+  });
+
+  it("blur 提交(onBlur=commitText,:1742);颜色读 prefs.annoColor", () => {
+    const h = makeGestureCtx<TextDraft>({ annoColor: "#3b82f6" });
+    openEditor(h);
+    (editorInput(h)["onChange"] as (e: { target: { value: string } }) => void)({
+      target: { value: "蓝字" },
+    });
+    (editorInput(h)["onBlur"] as () => void)();
+    expect(h.committed.map((o) => o.kind)).toEqual(["anno"]);
+    expect((h.committed[0]?.item as Annotation).color).toBe("#3b82f6");
+    expect(h.draft()).toBeNull();
+  });
+
+  it("编辑中再次 down:先提交在编内容再记新位(旧世界 blur 先行提交的结构化复刻)", () => {
+    const h = makeGestureCtx<TextDraft>();
+    openEditor(h);
+    (editorInput(h)["onChange"] as (e: { target: { value: string } }) => void)({
+      target: { value: "上一条" },
+    });
+    textTool.onDown?.(gev({ natural: { x: 50, y: 60 } }), h.ctx);
+    expect(h.committed.map((o) => (o.item as Annotation).text)).toEqual(["上一条"]);
+    expect(h.draft()).toEqual({
+      phase: "pending",
+      anchor: { x: 50, y: 60 },
+      naturalSize: { w: 800, h: 600 },
+      value: "",
+    });
+  });
+
+  it("text 的 anno 光栅化含 fillText 分支(bitmap-io drawAnnotations :342-346)", () => {
+    const { ctx, calls } = recCtx();
+    const item: Annotation = {
+      kind: "text",
+      from: { x: 12, y: 34 },
+      to: { x: 12, y: 34 },
+      text: "hi",
+      size: 10,
+    };
+    textTool.opKinds?.anno?.(ctx, item, { w: 800, h: 600 });
+    expect(calls).toContain("fillText:hi:12,34");
   });
 });
