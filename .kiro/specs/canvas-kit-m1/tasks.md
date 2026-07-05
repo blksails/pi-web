@@ -2,7 +2,7 @@
 
 > **开工门(用户裁决 2026-07-05)**:实现阶段以「拖放/粘贴导入 WIP 合入 main」为前提;开工首任务(1.1)含核验与行号基线重校准。
 
-- [ ] 1. Foundation:包脚手架与纯函数迁入
+- [x] 1. Foundation:包脚手架与纯函数迁入
 - [x] 1.1 canvas-kit 包脚手架与出口纪律
   - 开工门核验:canvas 相关文件无未提交 WIP(拖放/粘贴特性已合 main);以合入后基线重新校准 design 中的行号引用
   - 照 web-kit 先例建 packages/canvas-kit(package.json:peer react + dep lucide-react、零 @blksails 依赖;tsconfig/vitest);根 tsconfig paths 增包别名;src/index.ts 建立 L2 唯一出口(含出口纪律注释:kernel/ 内部件不出现,L2 为 semver 承诺面)
@@ -22,7 +22,7 @@
   - _Depends: 1.2_
 
 - [ ] 2. Core:kernel 模块与 L2 装置
-- [ ] 2.1 (P) stage 模块(视口与坐标)
+- [x] 2.1 (P) stage 模块(视口与坐标)
   - createStageController:视口 scale/offset 状态 + toNatural 纯函数芯(workbench :867 逻辑原样迁移,纯函数独立导出)
   - 单测:缩放/平移矩阵下换算往返、rect 不可得返回 null
   - 完成态:canvas-kit test 新增 stage 用例全绿
@@ -115,3 +115,4 @@
 - 环境纪律:一切命令/文件操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-kit-m1`,禁止 cd 主仓(先例事故:验证失真、改动"消失")。
 - 1.2:原 client-image-ops 实测 **31 导出**(19 值+12 类型,"30 函数"是 spec 近似);bitmap-io 函数体与 HEAD 零 diff,3 类型搬 types.ts 经 `export type from` 转发;WorkLayer 连带收编支撑类型 LoadedImage(workbench :288)。1.3 转发层按 31 项清单做 export *。
 - 1.3:转发模块用**显式 export {…} 31 项**而非 export *(审查裁定正当:export * 无法做子集,会把 WorkLayer/CanvasOp 等新家类型经 ui index export * 链泄漏成既成公开面)。workbench EditOp 局部 union(:145)有意未动,属 2.2/4.x 职责。ui vitest alias 已补 canvas-kit 主入口条目。
+- 2.1:stage.ts 落地(toNatural 纯函数=workbench :852-861 逐字符一致;ZOOM 常量 :92-94;StageEnv 访问器把 DOM 量取留装配层;toNatural 数学不含 scale/offset——rect 来自含 transform 的 getBoundingClientRect 天然带视口,4.1 接入时装配层负责 rect 量取)。controller 面:getViewport/setScale/zoomBy/setOffset/panBy/reset/subscribe + toNatural 委托。
