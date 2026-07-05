@@ -45,7 +45,7 @@
 - 8 工具 = `StageTool` union(workbench:105)+ 四处硬编码散点(工具轨 :1364-1404 / 指针分支 :1120-1209 / overlay 光栅化 :615-650 / 选项条 :1406-1453);新工具需改 4 处。
 - 手势骨架同构:pointer capture → draft ref+state 双写 → up 提交 `{kind,item}` 进 ops 并清 redoOps;text 特例(up 时才挂编辑器防 blur);move=舞台平移(drag ref :1257-1290)、expand=手柄(:1661)。
 - 双事件 bug 族:层/手柄 onMouseDown stopPropagation 散点补丁(:1604/:1662)。
-- client-image-ops 纯函数(567 行 30 导出)零 ui 依赖;测试深路径 import(workbench.test:13)。
+- client-image-ops 纯函数(567 行 30 导出)零 ui 依赖;测试深路径 import(workbench.test:11)。
 - **实施前提**:拖放/粘贴 WIP 合入 main 后开工(用户裁决);行号以合入后基线校准。
 
 ### Architecture Pattern & Boundary Map

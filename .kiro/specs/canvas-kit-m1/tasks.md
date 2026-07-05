@@ -3,7 +3,7 @@
 > **开工门(用户裁决 2026-07-05)**:实现阶段以「拖放/粘贴导入 WIP 合入 main」为前提;开工首任务(1.1)含核验与行号基线重校准。
 
 - [ ] 1. Foundation:包脚手架与纯函数迁入
-- [ ] 1.1 canvas-kit 包脚手架与出口纪律
+- [x] 1.1 canvas-kit 包脚手架与出口纪律
   - 开工门核验:canvas 相关文件无未提交 WIP(拖放/粘贴特性已合 main);以合入后基线重新校准 design 中的行号引用
   - 照 web-kit 先例建 packages/canvas-kit(package.json:peer react + dep lucide-react、零 @blksails 依赖;tsconfig/vitest);根 tsconfig paths 增包别名;src/index.ts 建立 L2 唯一出口(含出口纪律注释:kernel/ 内部件不出现,L2 为 semver 承诺面)
   - 完成态:pnpm --filter @blksails/pi-web-canvas-kit typecheck/test 空跑绿;workspace install 识别新包
@@ -107,3 +107,9 @@
   - 完成态:全部命令新鲜输出为证
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
   - _Depends: 4.3_
+
+## Implementation Notes
+
+- 1.1:design 行号=**恒等映射**(拖放/粘贴 WIP 的 hunk 在 :922-:993 且已含于基线 a59a70e,design 撰写时即基于含 WIP 树;后续任务直接用 design 行号,勿再加偏移)。唯一修正:workbench.test 深路径 import 引用 :13→:11。:615-650 overlay 光栅化尾锚偏松(effect 实止 :643),2.2/4.2 触及时顺手收紧。
+- 1.1:canvas-kit smoke 测试断言「出口为空」——1.2 起每次扩充 L2 出口须同步更新该断言(测试头注释已声明)。
+- 环境纪律:一切命令/文件操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-kit-m1`,禁止 cd 主仓(先例事故:验证失真、改动"消失")。
