@@ -26,6 +26,10 @@ export type {
   ResolveActionOptions,
   ResolvedAction,
 } from "./actions.js";
+// L2 图层插件契约(task 1.1,Req 1.1/1.5):图层类型声明式定义 + 契约类型。
+// 显式清单(出口纪律:CanvasPluginBundle/registerPluginBundles 属 task 1.3 勿出口)。
+export { defineCanvasLayer } from "./layers-plugin.js";
+export type { CanvasLayerPlugin } from "./layers-plugin.js";
 // L2 工具装置(task 2.6,Req 6.1/6.5/3.3):声明式工具定义 + per-instance 注册表。
 // 显式清单(1.3 先例:不 export * —— 包内装配件 createToolAdapter/createPrefsStore
 // 等不进公开面;4.1 裁定:二者属工具接线,4.2 注册表驱动装配时再按需经门面收口)。

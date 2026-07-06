@@ -70,10 +70,11 @@ export interface ToolDiagnostic {
   /** 出错时机(手势相位;"defer" = up 后延迟队列)。 */
   readonly phase?: "down" | "move" | "up" | "cancel" | "defer";
   /**
-   * 条目来源注册面(additive;task 1.2/Req 1.6)。缺省=工具语义(既有条目不写 kind
-   * 保持向后兼容);动作注册冲突条目写 "action" 以在共享收集器中与工具条目区分。
+   * 条目来源注册面(additive;task 1.2/1.1,Req 1.6/2.2/3.2)。缺省=工具语义(既有条目
+   * 不写 kind 保持向后兼容);动作注册冲突条目写 "action"、图层注册冲突写 "layer"、插件捆
+   * 拓扑校验(缺依赖禁用)写 "plugin",以在共享收集器中与工具条目区分。
    */
-  readonly kind?: "tool" | "action";
+  readonly kind?: "tool" | "action" | "layer" | "plugin";
 }
 
 /**

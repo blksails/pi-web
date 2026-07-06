@@ -64,6 +64,17 @@ export interface WorkLayer {
   readonly h: number;
   /** 加载后的可绘源(拍平用;异步填充)。 */
   readonly loaded?: LoadedImage;
+  /**
+   * 插件图层类型(task 1.1,Req 1.1/1.5;additive 可选)。缺省 = 既有基于附件的图像图层
+   * 语义**零变**:未声明 kind 者照现状渲染(drawImage)/拍平,不经插件图层分派。命名空间
+   * 化后的 CanvasLayerPlugin.type(如 "acme-stickers:sticker"),装配层据此定位插件渲染器。
+   */
+  readonly kind?: string;
+  /**
+   * 插件图层私有数据(task 1.1;additive 可选)。类型边界为 unknown,由对应插件(Render/
+   * bake/Inspector)自行收窄;既有图像图层不携带(零变)。
+   */
+  readonly data?: unknown;
 }
 
 // ── 编辑历史(开放栈)──────────────────────────────────────────────────────────

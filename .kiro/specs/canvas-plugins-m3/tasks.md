@@ -3,7 +3,7 @@
 > 基线 560af8b(canvas-actions-m2 已合 main,canvas e2e 6/6 绿)。行号引用开工时 grep 重校准;黄金基准恒取 `git show HEAD:`。三项拍板(2026-07-06):拓扑校验禁用进 diagnostics / 同 id 维持拒绝(§5 文档句修正)/ 贴纸范例含完整图层契约。裁定书 A/B/C 见 design.md。
 
 - [ ] 1. Foundation:canvas-kit 图层契约与插件捆编排
-- [ ] 1.1 图层插件契约与注册面
+- [x] 1.1 图层插件契约与注册面
   - layers-plugin.ts:CanvasLayerPlugin\<D\>(type/Render/bake/Inspector?)+ defineCanvasLayer 恒等;types.ts WorkLayer +kind?/data?(additive,缺省=图像图层语义零变);registry +registerLayer/layers(同 id 拒绝+diagnostics kind:"layer",复用收集器,退订幂等,per-instance)+ **disabledPluginTools 登记面(集合+登记 API,本任务创建,1.3 填充)**;kernel-facade 直通;index 显式出口+快照联动(唯一允许改动的既有测试)
   - 单测 layers-plugin.test.ts:契约恒等/冲突拒绝/退订/实例隔离,变异证据(注入违规→红→Edit 还原→绿,严禁 git checkout/restore)
   - 完成态:canvas-kit 全量绿(既有零改动,快照联动除外)
@@ -77,4 +77,5 @@
 
 ## Implementation Notes
 
+- 1.1:契约+注册面落地(canvas-kit 260 全绿=247+13;快照 +defineCanvasLayer)。ToolDiagnostic.kind 四值联合在 kernel/tool-runtime.ts(类型本家,审查 ACCEPT 同 M2 先例);disabledPluginTools 骨架含内部 disabledReasons Map(1.3 填充+tooltip 消费);phantom 泛型 D 与 design 字面一致记档;getter 按引用返回=M1/M2 既有纪律一致 FYI。1.3 注意:CanvasPluginBundle/registerPluginBundles 未出口未实现。
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-plugins-m3`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=560af8b)。变异复原只用 Edit 精确还原+md5 核对,严禁 git checkout/restore。子代理报告可能因消息路由延迟 30-60 分钟——看门狗先查 mtime/足迹再判定失联,重派前必须确认前任终止(M2 教训);等不起时主上下文亲审(自做变异保独立性)。并发负载假阳性判别链沿先例。

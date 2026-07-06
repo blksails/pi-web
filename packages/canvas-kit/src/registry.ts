@@ -49,6 +49,7 @@ import type { ReactNode } from "react";
 import type { CanvasOp, ExpandEdges } from "./types.js";
 import type { Ctx2DLike } from "./bitmap-io.js";
 import type { CanvasActionPlugin } from "./actions.js";
+import type { CanvasLayerPlugin } from "./layers-plugin.js";
 import {
   createDiagnosticsCollector,
   type DiagnosticsCollector,
@@ -165,7 +166,27 @@ export interface CanvasRegistry {
   registerAction(action: CanvasActionPlugin): () => void;
   /** resolveAction 候选源(注册序稳定枚举,1.4)。 */
   readonly actions: readonly CanvasActionPlugin[];
-  /** 插件错误诊断(6.4;共享收集器时含 runtime 错误边界条目与动作注册冲突条目)。 */
+  /**
+   * 注册图层插件(task 1.1,Req 1.1/2.2);返回退订。同 `type` 冲突被拒(先注册者保持)+
+   * 记 diagnostics(条目带 kind:"layer",toolId 承载 type),退订为 no-op。工具/动作/图层
+   * 各自独立 id 空间(共用收集器但跨面同名不构成冲突;M1/M2 registerTool/registerAction
+   * 同构)。
+   */
+  registerLayer(layer: CanvasLayerPlugin): () => void;
+  /** 插件图层驱动源(注册序稳定枚举,1.1;装配层按 WorkLayer.kind 命中渲染/拍平)。 */
+  readonly layers: readonly CanvasLayerPlugin[];
+  /**
+   * 缺依赖被禁用的插件工具 id 集(裁定 B;工具轨 disabled 判定并入,tooltip 经
+   * resolveToolRailTitle 显缺失项)。本任务=空登记面 + 读面骨架;拓扑校验填充在 task 1.3
+   * (registerPluginBundles 对 requires 未满足的捆内工具调 registerDisabledPluginTool)。
+   */
+  readonly disabledPluginTools: ReadonlySet<string>;
+  /**
+   * 登记一个因缺依赖而恒禁用的插件工具(内部登记 API,裁定 B;task 1.3 拓扑校验调用)。
+   * 幂等(重复登记同 id 无副作用);reason 承载禁用原因供 1.3 诊断/tooltip 消费。
+   */
+  registerDisabledPluginTool(toolId: string, reason: string): void;
+  /** 插件错误诊断(6.4;共享收集器时含 runtime 错误边界条目与工具/动作/图层注册冲突条目)。 */
   readonly diagnostics: readonly ToolDiagnostic[];
 }
 
@@ -183,6 +204,11 @@ export function createCanvasRegistry(options: CanvasRegistryOptions = {}): Canva
   const collector = options.diagnostics ?? createDiagnosticsCollector();
   let tools: readonly CanvasTool[] = [];
   let actions: readonly CanvasActionPlugin[] = [];
+  let layers: readonly CanvasLayerPlugin[] = [];
+  // 禁用集与原因表(裁定 B;追加即换引用,与 tools/actions/diagnostics 的不可变快照纪律
+  // 一致 —— 读发生在装配后的渲染期,引用稳定安全)。
+  let disabledPluginTools: ReadonlySet<string> = new Set();
+  const disabledReasons = new Map<string, string>();
 
   return {
     registerTool: (tool) => {
@@ -225,11 +251,42 @@ export function createCanvasRegistry(options: CanvasRegistryOptions = {}): Canva
         actions = actions.filter((a) => a !== action);
       };
     },
+    registerLayer: (layer) => {
+      if (layers.some((l) => l.type === layer.type)) {
+        // 同 registerTool/registerAction「注册冲突」:后注册者被拒(先注册者保持)+ 记
+        // diagnostics(条目带 kind:"layer",toolId 承载 type;task 1.1,Req 2.2)。
+        collector.add({
+          toolId: layer.type,
+          error: `duplicate layer type "${layer.type}": registration rejected (first registration kept)`,
+          at: Date.now(),
+          kind: "layer",
+        });
+        return () => {};
+      }
+      layers = [...layers, layer];
+      let registered = true;
+      return () => {
+        if (!registered) return; // 幂等
+        registered = false;
+        layers = layers.filter((l) => l !== layer);
+      };
+    },
+    registerDisabledPluginTool: (toolId, reason) => {
+      disabledReasons.set(toolId, reason); // 原因表:重复登记以最新原因为准
+      if (disabledPluginTools.has(toolId)) return; // 集合幂等
+      disabledPluginTools = new Set(disabledPluginTools).add(toolId);
+    },
     get tools() {
       return tools;
     },
     get actions() {
       return actions;
+    },
+    get layers() {
+      return layers;
+    },
+    get disabledPluginTools() {
+      return disabledPluginTools;
     },
     get diagnostics() {
       return collector.entries;

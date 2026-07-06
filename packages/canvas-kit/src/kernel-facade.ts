@@ -165,6 +165,16 @@ export function createCanvasKernel(env: CanvasKernelEnv): CanvasKernel {
     get actions() {
       return inner.actions;
     },
+    // 图层面/禁用面无 opKinds 接线,直通 inner(冲突拒绝/diagnostics/退订/幂等语义原样,
+    // task 1.1;门面透传新成员=1.2/M2 先例)。
+    registerLayer: (layer) => inner.registerLayer(layer),
+    get layers() {
+      return inner.layers;
+    },
+    registerDisabledPluginTool: (toolId, reason) => inner.registerDisabledPluginTool(toolId, reason),
+    get disabledPluginTools() {
+      return inner.disabledPluginTools;
+    },
     get diagnostics() {
       return inner.diagnostics;
     },
