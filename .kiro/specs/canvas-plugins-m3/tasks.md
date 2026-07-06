@@ -9,7 +9,7 @@
   - 完成态:canvas-kit 全量绿(既有零改动,快照联动除外)
   - _Requirements: 1.1, 1.5, 2.2_
   - _Boundary: packages/canvas-kit(layers-plugin+registry+types)_
-- [ ] 1.2 history revert/apply 可选钩子
+- [x] 1.2 history revert/apply 可选钩子
   - kernel/history.ts +op 行为注册(kind→{revert?,apply?});undo 弹栈后调 revert(op, layers),redo 调 apply;未注册 kind 纯栈语义逐字节零变(内置 stroke/anno 守恒证据=既有测试零改动)
   - 专测 history-hooks.test.ts:注册 kind undo/redo 副作用/未注册零变/钩子抛错隔离不崩,变异证据
   - 完成态:canvas-kit 全量绿
@@ -77,5 +77,6 @@
 
 ## Implementation Notes
 
+- 1.2:hooks 落地(canvas-kit 275 全绿=272+门面 3)。执行者交付核心(HistoryStoreOptions.behaviors+OpBehaviorRegistry+抛错隔离,签名取最小 fn(op)——layers 上下文由注册方闭包捕获,避免 history→layers 耦合,与 design revert(op,layers) 的差异档案化)后再度静默(消息延迟惯性),facade 接线缺口由主控 manual-mode 补齐:collector 前移+createHistoryStore({behaviors,onBehaviorError→collector kind:"plugin"})+CanvasKernel.opBehaviors 暴露+index 类型出口(值键零变快照不动)。主上下文审查:diff 逐行+变异 M1 相位互换 8 红/M2 门面断链 2 红,md5 复原,APPROVED。3.2 消费:kernel.opBehaviors.registerOpBehavior(kind,{revert,apply})。
 - 1.1:契约+注册面落地(canvas-kit 260 全绿=247+13;快照 +defineCanvasLayer)。ToolDiagnostic.kind 四值联合在 kernel/tool-runtime.ts(类型本家,审查 ACCEPT 同 M2 先例);disabledPluginTools 骨架含内部 disabledReasons Map(1.3 填充+tooltip 消费);phantom 泛型 D 与 design 字面一致记档;getter 按引用返回=M1/M2 既有纪律一致 FYI。1.3 注意:CanvasPluginBundle/registerPluginBundles 未出口未实现。
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-plugins-m3`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=560af8b)。变异复原只用 Edit 精确还原+md5 核对,严禁 git checkout/restore。子代理报告可能因消息路由延迟 30-60 分钟——看门狗先查 mtime/足迹再判定失联,重派前必须确认前任终止(M2 教训);等不起时主上下文亲审(自做变异保独立性)。并发负载假阳性判别链沿先例。

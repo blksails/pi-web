@@ -29,8 +29,10 @@
 import { createStageController, type StageController, type RectLike } from "./kernel/stage.js";
 import {
   createHistoryStore,
+  createOpBehaviorRegistry,
   createOpRasterizerRegistry,
   type HistoryStore,
+  type OpBehaviorRegistry,
 } from "./kernel/history.js";
 import { createLayersStore, type LayersStore } from "./kernel/layers.js";
 import {
@@ -57,7 +59,7 @@ import type { Ctx2DLike } from "./bitmap-io.js";
 
 // 能力面契约类型(semver 承诺;index.ts 自本模块统一转发)。
 export type { RectLike, StageController, StageViewport } from "./kernel/stage.js";
-export type { HistorySnapshot, HistoryStore } from "./kernel/history.js";
+export type { HistorySnapshot, HistoryStore, OpBehavior, OpBehaviorRegistry } from "./kernel/history.js";
 export type {
   AddLayerInput,
   LayerGesture,
@@ -114,6 +116,12 @@ export interface CanvasKernel {
   readonly stage: StageController;
   /** 编辑历史开放栈(commit/undo/redo/clear/prune,Req 4.*)。 */
   readonly history: HistoryStore;
+  /**
+   * op 撤销行为注册面(M3 裁定书 C:undo 弹栈后调 revert、redo 回栈后调 apply;
+   * 未注册 kind 纯栈语义零变)。插件放置类 op 经此挂图层副作用回滚;钩子抛错
+   * 隔离进共享诊断收集器(kind:"plugin"),不毁 undo/redo。
+   */
+  readonly opBehaviors: OpBehaviorRegistry;
   /** 图层树(增删改/命中/手势 reducer,Req 5.1)。 */
   readonly layers: LayersStore;
   /**
@@ -137,11 +145,17 @@ export interface CanvasKernel {
 /** 建一套交互内核(per-instance:同页多画布互不串扰,6.5 同族纪律)。 */
 export function createCanvasKernel(env: CanvasKernelEnv): CanvasKernel {
   const stage = createStageController(env);
-  const history = createHistoryStore();
-  const layers = createLayersStore();
-
-  // 诊断收集器:registry(注册冲突)与 runtime(错误边界)共用一个(2.5/2.6 裁定)。
+  // 诊断收集器:registry(注册冲突)/runtime(错误边界)/op 行为钩子(抛错隔离)共用一个
+  // (2.5/2.6 裁定;M3 裁定书 C 的 onBehaviorError 汇入)。
   const collector = createDiagnosticsCollector();
+  const opBehaviors = createOpBehaviorRegistry();
+  const history = createHistoryStore({
+    behaviors: opBehaviors,
+    onBehaviorError: (kind, phase, err) => {
+      collector.add({ toolId: kind, error: `op behavior ${phase} 抛错: ${String(err)}`, at: Date.now(), kind: "plugin" });
+    },
+  });
+  const layers = createLayersStore();
   const rasterizers = createOpRasterizerRegistry();
   const inner = createCanvasRegistry({ diagnostics: collector });
 
@@ -220,6 +234,7 @@ export function createCanvasKernel(env: CanvasKernelEnv): CanvasKernel {
   return {
     stage,
     history,
+    opBehaviors,
     layers,
     registry,
     prefs,

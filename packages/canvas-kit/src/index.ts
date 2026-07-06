@@ -67,6 +67,8 @@ export type {
   LayerGestureOrigin,
   LayersSnapshot,
   LayersStore,
+  OpBehavior,
+  OpBehaviorRegistry,
   PointerRouter,
   PrefsStore,
   RectLike,
