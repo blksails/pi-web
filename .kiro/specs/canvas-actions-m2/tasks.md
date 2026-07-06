@@ -3,7 +3,7 @@
 > 基线 0377b12(canvas-ui-m15 已合 main,canvas e2e 6/6 绿)。行号引用开工时以 grep 重校准;黄金基准恒取 `git show HEAD:`。前置事实:piweb_state 粘性登记已在 main(136d2bd,含专测)——Req 5 验证型,零实现任务。
 
 - [ ] 1. Foundation:canvas-kit 动作契约与注册面
-- [ ] 1.1 动作契约与纯函数决策器
+- [x] 1.1 动作契约与纯函数决策器
   - actions.ts:CanvasCapability/ActionInput/CanvasActionPlugin\<TOp\>(execution 二选一:via:"prompt" 的 buildOp 泛型载荷 / via:"command")/ResolvedAction/defineCanvasAction/resolveAction(via:"command" 且 command ∉ input.capability.actions 先行排除;match 抛错经 opts.onError 隔离为不适用;同分取注册序先者;空候选 null;不修改入参,同输入同输出)
   - 单测 actions.test.ts:最高分/false 排除/抛错隔离/同分稳定/空表 null/command 白名单过滤/defineCanvasAction 恒等,全带变异证据(注入违规即红,Edit 精确还原,严禁 git checkout/restore)
   - 完成态:pnpm --filter @blksails/pi-web-canvas-kit test 新增用例全绿;resolveAction 全分支覆盖
@@ -79,3 +79,4 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 1.1:actions.ts+16 用例落地(canvas-kit 238 全绿;审查独立变异 2 组确证)。resolveAction 形状=白名单先行过滤→match 评分/抛错隔离→稳定降序(独立数组非原地 sort,purity 用例锚定)→buildArgs 抛错剔除重选次优→空候选 null。1.2 出口清单照此:值 defineCanvasAction/resolveAction,类型 CanvasCapability/ActionInput/CanvasActionPlugin/ResolvedAction/ResolveActionOptions。测试相对路径 import 待 1.2 出口后保持不变(测试锚定实现非出口)。
