@@ -31,7 +31,7 @@
   - 完成态:web-kit 既有测试零改动绿;ui 全量零改动绿(新 prop 可选);SES-H1/encapsulation 静态断言保持
   - _Requirements: 4.1, 4.4, 5.1_
   - _Boundary: packages/web-kit + packages/ui(chat/web-ext 中立注入)_
-- [ ] 2.2 (P) tool-kit extraCommands 与 extraActions
+- [x] 2.2 (P) tool-kit extraCommands 与 extraActions
   - commands.ts CanvasCommandDeps +extraCommands?(createCanvasCommands 合并,重名内置优先);extension.ts deps 透传;capability.ts buildCanvasCapability +extraActions?(actions=A 档 6+extra 去重)
   - 集成测试 canvas-extra-commands.test.ts:合并/重名内置优先/桥可调 extra 命令/capability.actions 并入,变异证据
   - 完成态:tool-kit 全量绿(既有零改动)
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 2.2:接缝落地(tool-kit 280 全绿=274+6)。执行者交付后静默(惯性),主上下文亲审:合并语义 {...extra, ...builtin}=重名内置优先(无 logger 以注释档案化);extraActions A 档六固定序后去重保序;extension deps.capability 显式注入时 extraActions 被忽略(覆盖优先,docblock 档案化)。变异 M1 合并序翻转 1 红/M2 去重删除 1 红,md5 复原,APPROVED。3.3 消费:makeCanvasSurfaceExtension({commandDeps:{extraCommands},extraActions})。
 - 2.1:键+中立注入落地(web-kit 41/ui 710/SES-H1 5 全绿)。审查 APPROVED:SES-H1 专项 diff 零新增 canvas 词、CanvasPluginBundle 未进 ui/src;既有 apply-extension.test.tsx 纯 additive +1 用例裁定 ACCEPT 档案化;宿主单扩展→[extension] 单元素数组(多扩展就绪天然扩展);FYI:pi-chat panelRight extensions 注入无直接单测,兜底=3.1 聚合测试。
 - 1.3:编排落地(287 全绿=275+12;出口 +registerPluginBundles/2 类型)。执行者交付后静默(惯性),主上下文亲审:diff 逐条合 design(前缀浅拷贝零 mutate/requires 全局名不前缀化/BUILTIN_OP_KINDS 档案化常量与 types.ts 注释同源人工同步/裁定 B 缺依赖工具进轨置灰+diagnostics kind:"plugin"/退订不清禁用集与诊断=append-only 档案化);registry +recordPluginDiagnostic;facade 直通由执行者补齐(registerLayer/disabled/record 全直通)。变异 M1 拓扑短路 2 红/M2 前缀破坏 5 红,md5 复原,APPROVED。3.1 消费:registerPluginBundles(k.registry, bundles, {namespace: extId})。
 - 1.2:hooks 落地(canvas-kit 275 全绿=272+门面 3)。执行者交付核心(HistoryStoreOptions.behaviors+OpBehaviorRegistry+抛错隔离,签名取最小 fn(op)——layers 上下文由注册方闭包捕获,避免 history→layers 耦合,与 design revert(op,layers) 的差异档案化)后再度静默(消息延迟惯性),facade 接线缺口由主控 manual-mode 补齐:collector 前移+createHistoryStore({behaviors,onBehaviorError→collector kind:"plugin"})+CanvasKernel.opBehaviors 暴露+index 类型出口(值键零变快照不动)。主上下文审查:diff 逐行+变异 M1 相位互换 8 红/M2 门面断链 2 红,md5 复原,APPROVED。3.2 消费:kernel.opBehaviors.registerOpBehavior(kind,{revert,apply})。

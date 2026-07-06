@@ -49,9 +49,12 @@ function sizesForProvider(provider?: string): readonly string[] {
  *  - `deps.disabledModels` 缺省 → 内部 {@link resolveAigcToolSettings} 读持久设置的被禁集合;
  *  - 读设置抛错 → 兜底「全量 catalog(空 disabled)」确定性输出,不抛、不阻塞装配(与 hydrate
  *    退化同哲学)。
+ *  - `deps.extraActions`(插件车道 · canvas-plugins-m3 Req 6.3/6.5):按首现序并入 A 档六命令**之后**,
+ *    去重(与 A 档重名或自重复均剔除),A 档六固定序不变。
  */
 export function buildCanvasCapability(deps?: {
   disabledModels?: ReadonlySet<string>;
+  extraActions?: readonly string[];
 }): CanvasCapability {
   let disabled: ReadonlySet<string>;
   if (deps?.disabledModels !== undefined) {
@@ -68,6 +71,14 @@ export function buildCanvasCapability(deps?: {
     label: e.label,
     sizes: [...sizesForProvider(e.provider)],
   }));
+  // actions = A 档六固定序 + extraActions 去重保序(与 A 档重名/自重复剔除)。
+  const actions: string[] = [...CANVAS_ACTIONS];
+  const seen = new Set<string>(CANVAS_ACTIONS);
+  for (const a of deps?.extraActions ?? []) {
+    if (seen.has(a)) continue;
+    seen.add(a);
+    actions.push(a);
+  }
   // schema 推断类型为可变数组;从只读常量物化为新数组(消灭 readonly→mutable 赋值不兼容)。
-  return { models, sizes: [...GLOBAL_SIZES], actions: [...CANVAS_ACTIONS] };
+  return { models, sizes: [...GLOBAL_SIZES], actions };
 }

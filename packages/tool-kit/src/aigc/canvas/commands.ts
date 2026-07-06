@@ -46,6 +46,12 @@ export interface CanvasCommandDeps {
    * 才回落此值。装配期 extension 透传其一次生成的 capability;缺省 undefined(纯继承,不引入第二来源)。
    */
   capability?: CanvasCapability;
+  /**
+   * 插件车道注入的额外命令(canvas-plugins-m3 Req 6.3):按 action 名并入命令表。
+   * 合并语义=**重名内置优先**(见 {@link createCanvasCommands}:builtin 展开在 extra 之后覆盖同名键),
+   * 使插件无法遮蔽 A 档 / register / sync / delete 的既有行为。
+   */
+  readonly extraCommands?: Record<string, SurfaceCommandHandler<GalleryState>>;
 }
 
 type ExplicitFailure = { ok: false; error: { code: string; message: string } };
@@ -128,7 +134,7 @@ export function createCanvasCommands(
     capability: deps.capability,
   };
 
-  return {
+  const builtin: Record<string, SurfaceCommandHandler<GalleryState>> = {
     /** 整图指令编辑。 */
     edit: async (args, ctx) => {
       const parsed = EditArgsSchema.safeParse(args);
@@ -240,4 +246,8 @@ export function createCanvasCommands(
       return { deleted: attachmentId };
     },
   };
+
+  // 合并:extra 展开在前、builtin 在后 → **重名内置优先**(插件不得遮蔽 A 档 / register / sync / delete)。
+  // 无 logger 接缝,重名覆盖语义以此注释档案化(诊断:重名键的 extra 处理器被 builtin 静默覆盖)。
+  return { ...deps.extraCommands, ...builtin };
 }
