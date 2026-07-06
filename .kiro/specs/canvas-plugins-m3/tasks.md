@@ -46,7 +46,7 @@
   - _Requirements: 3.3, 4.2, 4.3, 5.1, 5.2, 5.3_
   - _Depends: 1.3, 2.1_
   - _Boundary: packages/canvas-ui(聚合+workbench 注册)+ ui 测试新文件_
-- [ ] 3.2 workbench 插件图层渲染/Inspector/拍平接线
+- [x] 3.2 workbench 插件图层渲染/Inspector/拍平接线
   - 渲染:图层循环 kind 命中 registry.layers→定位容器内插件 Render(scale 传入,随视口变换);无 kind 走既有 img(1.5 零变);选中且有 Inspector→FLOAT_LAYER 浮层(data-canvas-inspector 锚点),update 更新 layer.data 并进 history(经 1.2 钩子 op);拍平合成路径按 kind 调 bake(抛错跳过+诊断),无 kind 既有 drawImage
   - 测试:workbench-plugin-layers.test.tsx(ui 新文件):渲染分支/Inspector 出现与更新/拍平调 bake/图像图层零变/undo 移除插件图层
   - 完成态:ui 全量绿(既有零改动)
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 3.2:图层接线落地(kit 291/cui 54/ui 718 全绿=+5 新)。执行者交付后静默(惯性),主上下文亲审 APPROVED。**关键超计划契约(ACCEPT 档案化)**:CanvasTool.createLayer 声明化「点击置层」——M1 封装线下工具上下文 layers 只读(design §6.1 的 ctx.layers.add 是与实际契约不符的示意),声明式 seam 归写路径于装配层;registerPluginBundles 同步前缀化 createLayer.kind(与捆内 layer type 同名命中,requires 仍全局名)。其余:LayersStore.add +meta 第 4 参/updateData(additive 零变);LAYER_DATA_OP+opBehaviors revert/apply=Req 1.6;拍平=per-layer canvas 经 canvasFactory+bake 抛错跳过+recordPluginDiagnostic;渲染 data-canvas-plugin-layer/检查器 data-canvas-inspector 锚点。变异:断渲染分支 4 红/删 bake 1 红,md5 复原。**3.3 必须**:贴纸工具用 createLayer 声明(非 onPointerDown add);Inspector update 直接传新 data 对象。
 - 3.1:聚合+接线落地(kit 291/cui 54/ui 713 全绿)。执行者交付后静默(惯性),主上下文亲审 APPROVED:canvas-kit 微调=+disabledPluginToolReason 只读读面(捆 id 诊断无法按工具 id 匹配的档案化理由;facade 直通+additive 测试;registerDisabledPluginTool 原因表最新为准与集合幂等并存);resolveToolRailTitle +可选 pluginReason 第 5 参(向后兼容,插件禁用与 runtime 禁用不并存档案化);workbench useMemo 依赖 [plugins](CanvasPanel useMemo 稳定引用维持 per-mount 契约);聚合窄化 as 断言理由=运行期 source 作者以 canvas-kit defineXxx 声明、transport 仅擦除组件位。变异 M1 删注册循环 2 红/M2 删禁用门 1 红,md5 复原。3.2 注意:插件图层渲染消费 registry.layers。
 - 2.2:接缝落地(tool-kit 280 全绿=274+6)。执行者交付后静默(惯性),主上下文亲审:合并语义 {...extra, ...builtin}=重名内置优先(无 logger 以注释档案化);extraActions A 档六固定序后去重保序;extension deps.capability 显式注入时 extraActions 被忽略(覆盖优先,docblock 档案化)。变异 M1 合并序翻转 1 红/M2 去重删除 1 红,md5 复原,APPROVED。3.3 消费:makeCanvasSurfaceExtension({commandDeps:{extraCommands},extraActions})。
 - 2.1:键+中立注入落地(web-kit 41/ui 710/SES-H1 5 全绿)。审查 APPROVED:SES-H1 专项 diff 零新增 canvas 词、CanvasPluginBundle 未进 ui/src;既有 apply-extension.test.tsx 纯 additive +1 用例裁定 ACCEPT 档案化;宿主单扩展→[extension] 单元素数组(多扩展就绪天然扩展);FYI:pi-chat panelRight extensions 注入无直接单测,兜底=3.1 聚合测试。

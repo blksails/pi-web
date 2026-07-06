@@ -131,6 +131,14 @@ export interface CanvasTool<TDraft = unknown> {
   readonly overlayInteractive?: boolean;
   /** down 时是否设 pointer capture(缺省 true;text 特例 false —— 裁定 4)。 */
   readonly capturePointer?: boolean;
+  /**
+   * 插件图层放置声明(task 3.2,Req 1.2;design「点击置层」seam;additive)。声明时=该工具
+   * 激活期在舞台按下即放置一个 `kind` 类型的插件图层(data 为初始私有数据),装配层据此调
+   * `layers.add(..., { kind, data })`。缺省(内置工具/无图层工具)= 舞台按下走既有指针路由,
+   * 零变。3.3 贴纸工具经此声明放置(emoji 初值);工具上下文 `layers` 为只读面(封装线),
+   * 故放置写路径归装配层(工具不直接改层),此声明是工具→装配层的意图传递。
+   */
+  readonly createLayer?: { readonly kind: string; readonly data?: unknown };
   onDown?(ev: ToolGestureEvent, ctx: CanvasToolContext<TDraft>): void;
   onMove?(ev: ToolGestureEvent, ctx: CanvasToolContext<TDraft>): void;
   onUp?(ev: ToolGestureEvent, ctx: CanvasToolContext<TDraft>): void;

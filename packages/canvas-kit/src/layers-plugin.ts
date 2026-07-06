@@ -101,7 +101,19 @@ export function registerPluginBundles(
   const withPrefix = (name: string): string => `${prefix}${name}`;
 
   // ① 前缀化各捆声明(浅拷贝;无 namespace 时原样引用,零多余拷贝)。
-  const prefixTool = (t: CanvasTool): CanvasTool => (prefix ? { ...t, id: withPrefix(t.id) } : t);
+  //    createLayer.kind(task 3.2「点击置层」声明)随捆内 layer type 一同前缀化 —— 作者写
+  //    未前缀化的本地 kind(与其 layers[].type 同名),命名空间后二者一致命中(requires 是
+  //    全局名不前缀化,与之区分)。
+  const prefixTool = (t: CanvasTool): CanvasTool =>
+    prefix
+      ? {
+          ...t,
+          id: withPrefix(t.id),
+          ...(t.createLayer !== undefined
+            ? { createLayer: { ...t.createLayer, kind: withPrefix(t.createLayer.kind) } }
+            : {}),
+        }
+      : t;
   const prefixLayer = (l: CanvasLayerPlugin): CanvasLayerPlugin =>
     prefix ? { ...l, type: withPrefix(l.type) } : l;
   const prefixAction = (a: CanvasActionPlugin): CanvasActionPlugin =>

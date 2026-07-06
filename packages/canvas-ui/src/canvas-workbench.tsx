@@ -76,6 +76,7 @@ import {
   type Annotation,
   type CanvasCapability,
   type CanvasFactory,
+  type CanvasLike,
   type Ctx2DLike,
   type ExpandEdges,
   type ImageSourceLike,
@@ -187,6 +188,12 @@ const RATIO_OPTIONS: readonly { label: string; size: string }[] = [
 /** 浮动层公共观感(舞台上的悬浮控件)。 */
 const FLOAT_LAYER =
   "rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 shadow-md backdrop-blur";
+
+/**
+ * 插件图层 Inspector 编辑图层 data 的统一历史 op(task 3.2,Req 1.6)。进 undo 栈,经 1.2
+ * op 行为钩子 revert=写回 prev、apply=写回 next(裁定 C 的 data 变体;放置类 op 归 3.3)。
+ */
+const LAYER_DATA_OP = "builtin:layer-data";
 
 // ── 生成决策(纯函数,export 供单测)────────────────────────────────────────────
 
@@ -592,6 +599,19 @@ export function CanvasWorkbench({
     for (const { namespace, bundles } of plugins ?? []) {
       registerPluginBundles(k.registry, bundles, { namespace });
     }
+    // 插件图层 Inspector data 编辑的 undo/redo 行为(task 3.2,Req 1.6;裁定 C data 变体):
+    // op.item 携 {layerId, prev, next},撤销写回 prev、重做写回 next。装配期一次注册(未注册
+    // 该 kind 时纯栈语义零变);内置图像图层不产此 op,零影响。
+    k.opBehaviors.registerOpBehavior(LAYER_DATA_OP, {
+      revert: (op) => {
+        const it = op.item as { layerId: string; prev: unknown };
+        k.layers.updateData(it.layerId, it.prev);
+      },
+      apply: (op) => {
+        const it = op.item as { layerId: string; next: unknown };
+        k.layers.updateData(it.layerId, it.next);
+      },
+    });
     k.tools.setActiveTool(MOVE_TOOL_ID);
     return k;
     // plugins 来自 source 声明,mount 时即就位且经 CanvasPanel useMemo 稳定引用;身份变化
@@ -988,9 +1008,15 @@ export function CanvasWorkbench({
 
   /** 加一层:初始宽 = 底图宽 40%,高按图像纵横比(加载后修正);落点居中(缺省底图中心)。 */
   const addLayer = React.useCallback(
-    (att: { attachmentId: string; displayUrl: string }, at?: { x: number; y: number }): void => {
+    (
+      att: { attachmentId: string; displayUrl: string },
+      at?: { x: number; y: number },
+      meta?: { kind: string; data?: unknown },
+    ): void => {
       // 初始几何/占位策略/id 序列归 layers 内核(natural 未量到由 store 退化 1024 占位)。
-      const id = kernel.layers.add(att, at ?? null, natural);
+      const id = kernel.layers.add(att, at ?? null, natural, meta ?? null);
+      // 插件图层(kind 声明)以 Render 呈现,无位图源;不走图像 loader(displayUrl 为空)。
+      if (meta !== undefined) return;
       void loader(att.displayUrl)
         .then((img) => kernel.layers.markLoaded(id, img))
         .catch(() => {
@@ -998,6 +1024,42 @@ export function CanvasWorkbench({
         });
     },
     [kernel, natural, loader],
+  );
+
+  /**
+   * 放置插件图层(task 3.2「点击置层」seam):贴纸类工具激活期舞台按下 → 据工具 createLayer
+   * 声明在按下处新建一个插件图层(工具上下文 layers 只读,写路径归装配层)。坐标经 overlay
+   * rect 换算底图像素(rect 不可得 → 落点居中,由 store 退化处理)。
+   */
+  const placePluginLayer = React.useCallback(
+    (create: { kind: string; data?: unknown }, e: React.PointerEvent): void => {
+      const cv = overlayRef.current;
+      let at: { x: number; y: number } | undefined;
+      if (cv !== null && natural !== null) {
+        const rect = cv.getBoundingClientRect();
+        if (rect.width > 0) {
+          at = {
+            x: ((e.clientX - rect.left) / rect.width) * natural.w,
+            y: ((e.clientY - rect.top) / rect.height) * natural.h,
+          };
+        }
+      }
+      addLayer({ attachmentId: "", displayUrl: "" }, at, { kind: create.kind, data: create.data });
+    },
+    [addLayer, natural],
+  );
+
+  /**
+   * 插件图层 Inspector 编辑回写(task 3.2,Req 1.3/1.6):更新该层 data 并把「旧值→新值」
+   * 提交为 LAYER_DATA_OP 进统一 undo 栈(装配期已注册 revert/apply 写回)。
+   */
+  const onInspectorUpdate = React.useCallback(
+    (id: string, data: unknown): void => {
+      const prev = kernel.layers.get(id)?.data;
+      kernel.layers.updateData(id, data);
+      kernel.history.commit({ kind: LAYER_DATA_OP, item: { layerId: id, prev, next: data } });
+    },
+    [kernel],
   );
 
   /** OS 图片文件 → 上传接缝落 att_ → register 进画廊(origin=upload)→ 成层。拖放与粘贴共用。 */
@@ -1070,10 +1132,11 @@ export function CanvasWorkbench({
     if (upload === undefined || layers.length === 0) return;
     setBusy(true);
     try {
-      // 确保所有层已加载(占位未完成的现场补载;失败层跳过)。
+      // 确保所有图像层已加载(占位未完成的现场补载;失败层跳过)。插件图层(kind 声明)无位图源,
+      // 不走 loader —— 拍平时经插件 bake 烤入(下)。
       const resolved = await Promise.all(
         layers.map(async (l) => {
-          if (l.loaded !== undefined) return l;
+          if (l.kind !== undefined || l.loaded !== undefined) return l;
           try {
             const img = await loader(l.displayUrl);
             return { ...l, loaded: img } as WorkLayer;
@@ -1084,13 +1147,43 @@ export function CanvasWorkbench({
       );
       const src = sourceSize();
       const opts = canvasFactory !== undefined ? { canvasFactory } : {};
-      const uri = flattenLayers(
-        src,
-        resolved
-          .filter((l) => l.loaded !== undefined)
-          .map((l) => ({ source: l.loaded!.source, x: l.x, y: l.y, w: l.w, h: l.h })),
-        opts,
-      );
+      // 合成输入:依序各层 → 插件图层(kind 命中 registry.layers)经 bake 烤进 per-layer 画布
+      // (bake 抛错跳过该层 + 诊断,不阻塞产物,Req 1.4);图像图层保持 loaded.source(既有
+      // drawImage 逐字节零变)。per-layer 画布经注入 canvasFactory(jsdom fake / 生产 DOM)。
+      const mkCanvas =
+        canvasFactory ?? (() => document.createElement("canvas") as unknown as CanvasLike);
+      const flattenInputs: Array<{
+        source: CanvasImageSource | CanvasLike;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }> = [];
+      for (const l of resolved) {
+        const plugin =
+          l.kind !== undefined
+            ? kernel.registry.layers.find((p) => p.type === l.kind)
+            : undefined;
+        if (plugin !== undefined) {
+          const bw = Math.max(1, Math.round(l.w));
+          const bh = Math.max(1, Math.round(l.h));
+          const cv = mkCanvas();
+          cv.width = bw;
+          cv.height = bh;
+          const bctx = cv.getContext("2d");
+          if (bctx === null) continue;
+          try {
+            await plugin.bake(bctx, l, { w: bw, h: bh });
+            flattenInputs.push({ source: cv, x: l.x, y: l.y, w: l.w, h: l.h });
+          } catch (err) {
+            // bake 抛错:跳过该层 + 诊断(kind:"plugin"),产物不阻塞(与 hydrate 退化同哲学)。
+            kernel.registry.recordPluginDiagnostic(l.kind!, `图层拍平 bake 抛错: ${String(err)}`);
+          }
+        } else if (l.loaded !== undefined) {
+          flattenInputs.push({ source: l.loaded.source, x: l.x, y: l.y, w: l.w, h: l.h });
+        }
+      }
+      const uri = flattenLayers(src, flattenInputs, opts);
       const { attachmentId } = await uploadDataUri({
         dataUri: uri,
         name: `flatten-${current.name}`,
@@ -1321,7 +1414,14 @@ export function CanvasWorkbench({
       data-canvas-stage
       data-canvas-active-tool={activeToolId !== null ? toolAnchor(activeToolId) : undefined}
       className="canvas-checkerboard relative flex h-full w-full items-center justify-center overflow-hidden p-0"
-      onPointerDown={(e) => kernel.pointer.onPointerDown(routerEvent(e))}
+      onPointerDown={(e) => {
+        // 插件图层「点击置层」(task 3.2):贴纸类工具声明 createLayer 时,舞台按下先放置一层
+        // (装配层写路径);随后仍交指针路由(插件工具无 onDown,路由无副作用)。
+        if (activeCanvasTool?.createLayer !== undefined) {
+          placePluginLayer(activeCanvasTool.createLayer, e);
+        }
+        kernel.pointer.onPointerDown(routerEvent(e));
+      }}
       onPointerMove={(e) => kernel.pointer.onPointerMove(routerEvent(e))}
       onPointerUp={(e) => kernel.pointer.onPointerUp(routerEvent(e))}
       onPointerCancel={(e) => kernel.pointer.onPointerCancel(routerEvent(e))}
@@ -1384,7 +1484,15 @@ export function CanvasWorkbench({
         />
         {/* 图层(底图之上、掩码/标注 overlay 之下;百分比定位随 wrapper 缩放)。 */}
         {natural !== null
-          ? layers.map((l) => (
+          ? layers.map((l) => {
+              // 插件图层(task 3.2):kind 命中 registry.layers → 定位容器内渲染插件 Render(替换
+              // img,随视口 scale 缩放);无 kind(或 kind 未注册)走既有 img,逐字节零变(Req 1.5)。
+              const layerPlugin =
+                l.kind !== undefined
+                  ? kernel.registry.layers.find((p) => p.type === l.kind)
+                  : undefined;
+              const PluginRender = layerPlugin?.Render;
+              return (
               <div
                 key={l.id}
                 data-canvas-layer
@@ -1406,14 +1514,20 @@ export function CanvasWorkbench({
                 // 层拖拽/缩放 = 工具无关内核手势:pointer 事件冒泡到舞台容器经路由
                 // 命中 data-canvas-layer 标记分派(独占会话,双事件补丁族不再需要)。
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={l.displayUrl}
-                  alt=""
-                  draggable={false}
-                  className="h-full w-full select-none object-fill"
-                  crossOrigin="anonymous"
-                />
+                {PluginRender !== undefined ? (
+                  <div data-canvas-plugin-layer className="h-full w-full">
+                    <PluginRender layer={l} scale={scale} />
+                  </div>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={l.displayUrl}
+                    alt=""
+                    draggable={false}
+                    className="h-full w-full select-none object-fill"
+                    crossOrigin="anonymous"
+                  />
+                )}
                 {selectedLayer === l.id ? (
                   <span
                     data-canvas-layer-resize
@@ -1422,7 +1536,8 @@ export function CanvasWorkbench({
                   />
                 ) : null}
               </div>
-            ))
+              );
+            })
           : null}
         {natural !== null ? (
           <canvas
@@ -1550,6 +1665,21 @@ export function CanvasWorkbench({
           </Button>
         </div>
       ) : null}
+      {/* 插件图层 Inspector 浮层(task 3.2,Req 1.3):选中的插件图层其 kind 命中 registry.layers
+          且插件有 Inspector 时,贴右上角浮层渲染;编辑经 onInspectorUpdate 回写 data + 进 undo 栈。
+          非插件图层/无 Inspector → 不渲染(既有图像图层无检查器,零影响)。 */}
+      {(() => {
+        if (selectedLayer === null) return null;
+        const sel = layers.find((l) => l.id === selectedLayer);
+        if (sel === undefined || sel.kind === undefined) return null;
+        const Inspector = kernel.registry.layers.find((p) => p.type === sel.kind)?.Inspector;
+        if (Inspector === undefined) return null;
+        return (
+          <div data-canvas-inspector className={cn("absolute right-2 top-2 z-30 p-2", FLOAT_LAYER)}>
+            <Inspector layer={sel} update={(data) => onInspectorUpdate(sel.id, data)} />
+          </div>
+        );
+      })()}
       {/* 缩放胶囊:左下角(中央底部让位给浮动提示词栏,右下角避开宿主比例切换器)。 */}
       <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/85 px-1 py-0.5 shadow-sm backdrop-blur">
         <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="缩小" onClick={() => kernel.stage.zoomBy(0.83)}>

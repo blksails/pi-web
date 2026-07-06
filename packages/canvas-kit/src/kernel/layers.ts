@@ -95,6 +95,17 @@ export interface AddLayerInput {
 }
 
 /**
+ * 插件图层元数据(task 3.2,Req 1.1/1.2;additive)。meta 缺省 = 既有基于附件的图像图层
+ * 语义**零变**(add 第 4 参不传时 kind/data 均不落到 WorkLayer,渲染/拍平走 img 既有路径)。
+ * meta.kind 存在 = 插件图层:装配层据 kind 命中 registry.layers 渲染器/拍平器,data 为该
+ * 插件私有数据(Inspector 经 updateData 回写)。
+ */
+export interface LayerMeta {
+  readonly kind?: string;
+  readonly data?: unknown;
+}
+
+/**
  * 只读能力面(design `CanvasToolContext.layers: LayersReadApi`;2.5/2.6 注入
  * 工具上下文 —— 工具插件经此读层,不直接改组件私有状态,Req 5.1)。
  */
@@ -118,7 +129,14 @@ export interface LayersStore extends LayersReadApi {
     att: AddLayerInput,
     at?: { readonly x: number; readonly y: number } | null,
     natural?: { readonly w: number; readonly h: number } | null,
+    meta?: LayerMeta | null,
   ): string;
+  /**
+   * 更新插件图层私有数据(task 3.2,Req 1.3;additive,Inspector 编辑回写)。未知 id → no-op;
+   * 值未变(引用相同)也换新引用触发重渲(Inspector 语义:一次编辑一次呈现更新)。既有图像
+   * 图层不携带 data,不经此路径(零变)。撤销/重做由装配层以 op 承载(裁定 C 之外的 data-op)。
+   */
+  updateData(id: string, data: unknown): void;
   /**
    * 加载修正(:895-901):`{...l, loaded, h: l.w×ratio, y: cy0 − (l.w×ratio)/2}`
    * (cy0 = 加层时落点纵中心;用**当时**的 l.w —— 加载慢于缩放时按新宽修正)。
@@ -153,7 +171,7 @@ export function createLayersStore(): LayersStore {
   };
 
   return {
-    add: (att, at, natural) => {
+    add: (att, at, natural, meta) => {
       // :873-874 natural 未量到(jsdom / 未加载)退化 1024 占位,与 sourceSize 同策略。
       const nat = natural ?? { w: LAYER_FALLBACK_NATURAL, h: LAYER_FALLBACK_NATURAL };
       seq += 1;
@@ -171,9 +189,19 @@ export function createLayersStore(): LayersStore {
         y: cy0 - h0 / 2,
         w: w0,
         h: h0,
+        // 插件图层元数据(task 3.2):meta 缺省时 kind/data 均不落(图像图层零变);spread 空对象。
+        ...(meta?.kind !== undefined ? { kind: meta.kind } : {}),
+        ...(meta !== undefined && meta !== null && "data" in meta ? { data: meta.data } : {}),
       };
       commit([...snapshot.layers, layer], id); // :890-891 append + 选中新层
       return id;
+    },
+    updateData: (id, data) => {
+      if (!snapshot.layers.some((l) => l.id === id)) return; // 未知 id:no-op
+      commit(
+        snapshot.layers.map((l) => (l.id === id ? { ...l, data } : l)),
+        snapshot.selectedId,
+      );
     },
     markLoaded: (id, image) => {
       const cur = snapshot.layers.find((l) => l.id === id);
