@@ -23,6 +23,9 @@ const config: Config = {
     // canvas-kit 内置工具的选项条/编辑器贡献带 Tailwind 类(4.2 注册表驱动装配)。
     "./node_modules/@blksails/pi-web-canvas-kit/src/**/*.{ts,tsx}",
     "./packages/canvas-kit/src/**/*.{ts,tsx}",
+    // primitives 下沉的 shadcn 薄封装带 Tailwind 类(canvas-ui-m15 1.1)。
+    "./node_modules/@blksails/pi-web-primitives/src/**/*.{ts,tsx}",
+    "./packages/primitives/src/**/*.{ts,tsx}",
   ],
   plugins: [],
 };

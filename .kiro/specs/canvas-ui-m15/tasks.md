@@ -3,7 +3,7 @@
 > 基线 b507d43(canvas-kit-m1 已合 main,e2e 6/6 绿)。行号引用开工时以 grep 重校准(styles.css/pi-chat 等有并发 WIP)。黄金基准恒取 `git show HEAD:`。
 
 - [ ] 1. Foundation:primitives 下沉
-- [ ] 1.1 primitives 包脚手架与六组件+cn 迁入
+- [x] 1.1 primitives 包脚手架与六组件+cn 迁入
   - 照 canvas-kit 先例建 packages/primitives(exports "."→src/index.ts;peer react;deps=@radix-ui/react-popover、@radix-ui/react-select、class-variance-authority、clsx、tailwind-merge、lucide-react,零 @blksails);button/card/input/popover/select/textarea 自 packages/ui/src/ui/ 迁入,cn 自 src/lib/cn.ts 迁入——仅 import 改线:`../lib/cn.js`→`./cn.js`,其余零变(六文件唯一内部依赖即 cn,已核穷尽);src/index.ts 唯一出口+出口纪律注释
   - 根 tsconfig paths + tailwind content(packages/ 与 node_modules/ 双 glob)+ workspace install
   - 测试:六组件渲染 smoke + cn 语义锚定 + 出口清单快照
@@ -50,3 +50,8 @@
   - 完成态:全部命令新鲜输出为证
   - _Requirements: 5.2, 5.3, 3.4_
   - _Depends: 3.1_
+
+## Implementation Notes
+
+- 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-ui-m15`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=3bb2431)。并发负载假阳性判别链沿 canvas-kit-m1 先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 1.1:primitives 落地(出口=16 值+3 类型显式清单;vitest 需 setupFiles Radix polyfill=ui/test/setup.ts 去 jest-dom 版;devDeps 增 testing-library 渲染必需)。六组件唯一内部依赖=cn(考古+审查双确认)。1.2 转发清单以同一 16+3 全集对照。

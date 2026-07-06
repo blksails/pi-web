@@ -33,6 +33,9 @@
       "@blksails/pi-web-canvas-kit": [
         "./packages/canvas-kit/src/index.ts"
       ],
+      "@blksails/pi-web-primitives": [
+        "./packages/primitives/src/index.ts"
+      ],
       "@blksails/pi-web-tool-kit": [
         "./packages/tool-kit/src/index.ts"
       ],
