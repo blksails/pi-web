@@ -35,7 +35,7 @@
   - _Boundary: packages/tool-kit(canvas schema/extension/commands)_
 
 - [ ] 3. Core:内置动作自举与前端接线
-- [ ] 3.1 (P) 六内置动作插件
+- [x] 3.1 (P) 六内置动作插件
   - generate-actions.ts:BUILTIN_GENERATE_ACTIONS 六插件(评分 outpaint=100/inpaint=90/reference=80/variants=70/reframe=60/edit=10 恒兜底;match/buildArgs 逐分支复刻 decideGenerate if 链——公共 base={image,prompt}+model?/size? 非空才带、outpaint 删 size、reference 附 reference_images 与条件 n(variants≥2)、variants 附 n;黄金基准=git show HEAD: 的 decideGenerate 本体)+ toGenerateDecision 映射(union 字面量保持)+ registerBuiltinGenerateActions(reg);execution 全 via:"prompt",buildOp 走既有 buildSurfaceOp 路径(TOp=SurfaceOp)
   - 依赖说明:defineCanvasAction 公开出口与 registerAction 注册面均落 1.2,故依赖 1.2(传递含 1.1);(P) 与 tool-kit 2.x 并行不冲突
   - 奇偶校验表单测 generate-actions.test.ts:输入矩阵穷举六分支边界(hasExpand 删 size/reference 条件 n/reframe 空 prompt+size/优先级压制)+ 与 decideGenerate(HEAD 语义)输出逐项相等的守恒断言
@@ -79,6 +79,7 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 3.1:六插件落地(canvas-ui 43 全绿;守恒断言=直调 decideGenerate 活对照 20 行矩阵)。mask 透传约定:makeBuildOp 从 args 析 mask→opts.maskId 并剔除(buildSurfaceOp 不读 args.mask,逐字节等价审查亲核)。via:"prompt" 不受 capability 白名单门控(actions.ts 仅 gate via:"command"),edit 恒 10 兜底→resolveAction 永不 null。registerBuiltinGenerateActions 返回聚合退订(比 design 的 void 增强,审查 FYI 无需改)。3.2 接线时:出口 BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions/toGenerateDecision(如需)。
 - 2.2:六写点保留+schema 单源落地(274 全绿)。**写点①偏差审查 ACCEPT 档案化**:字面 initialState 不带 caps(extension.test.ts:67 toEqual 硬线钉死+create-surface.ts:214-219 亲证 hydrate 先于首帧推送,裸态永不上线),经 hydrate withCapabilities 包装+命令 reducer `s.capabilities ?? deps.capability` 兜底=每一条线上帧都带 caps,严格强于字面写法。CanvasCapability 类型单源=schema z.infer(capability.ts 本地 interface 已删,3.3 类型断言以此为准)。非阻塞留账:extension.ts:95 hydrate catch 分支丢 caps 无专测(防御性退化路径,可后续补 hydrate-throws 用例)。
 - 2.1:active-models 提取+capability.ts 落地(tool-kit 265 全绿;KV 四键逐语义等价审查亲核,providerByModel「首个带 provider」边缘经路由表 grep 证实不存在)。capability 形状暂用本地 interface,2.2 落 zod schema 后 3.3 做双向可赋值断言。FYI 盲区:gpt-image-2 双路由同 label/provider,首次胜出语义翻转现测抓不到(provider 传播已独立锚定,低险)。
 - 1.2:注册面+出口落地(247 全绿;index 快照 +2 值键)。两处计划外连带审查 ACCEPT:ToolDiagnostic.kind 的类型家在 kernel/tool-runtime.ts(design 表格归属粒度误差,最小落点)/kernel-facade.ts:149 门面补 registerAction/actions 纯委托(接口扩展必然编译传播,动作面无 opKinds 接线故直通即完备)。裁定:工具冲突路径不写 kind(缺省=工具语义)保既有断言零改。natural 保证矩阵头注落 registry.ts:24-36,留账①关闭。
