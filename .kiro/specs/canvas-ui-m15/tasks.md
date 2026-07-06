@@ -43,8 +43,8 @@
   - _Boundary: canvas-ui/test + ui 注释与豁免锚(index.ts/aigc-model-toggles-field/pi-chat/apply-extension/pi-tool-part)_
   - _Depends: 2.2_
 
-- [ ] 4. Validation:回归与端到端
-- [ ] 4.1 全量回归与 e2e
+- [x] 4. Validation:回归与端到端
+- [x] 4.1 全量回归与 e2e
   - workspace typecheck 全绿;primitives/canvas-ui/canvas-kit 各包测试绿(canvas-kit 222 零改动);packages/ui 全量 698 零改动绿
   - canvas 相关全部 e2e 零改动全绿:aigc-canvas.e2e.ts 5 条 + aigc-canvas-degrade.e2e.ts 1 条(基线 b507d43 后 6/6 已绿——任何红都不是 pre-existing;外部 server 模式 + .next-e2e 隔离构建先例)
   - 完成态:全部命令新鲜输出为证
@@ -59,3 +59,4 @@
 - 2.1:canvas-ui 落地(出口并集=39 值+27 类型=66,13 个深路径命脉载荷全在;peer react ^19 对齐 primitives 审查裁定可接受——workspace react=19.2.7,ui 传递下限 1.2 起已收窄;styles.css 两段 verbatim,ui 本体留待 2.2 删)。2.2 转发清单=各文件 HEAD 导出全集,与并集口径一致。
 - 2.2:8 转发文件落地(AST 8/8 守恒;client-image-ops 链路 ui→canvas-ui→canvas-kit);样式两段随迁 + app @import;**根 package.json +canvas-ui 依赖**(审查 ACCEPT:app 无自有 package.json 随根解析,根依赖是 @import 链接来源,同 pi-web-ui 先例,design 已补记档)。过程事故:执行者变异复原误用 git checkout 取到 HEAD 原件,已重写并全量复验(审查亲核现状为真转发层)——重申禁 git checkout 纪律。
 - 3.1:四断言+豁免锚协议落地(canvas-ui 9/9;④b 反走私变异证明锚计数线有效)。计划外 7 处 @deprecated 注释改写("canvas-ui-m15"→"m15 迁移",1.2/2.2 自引入的词表命中,审查裁定属 Req 4.1 射程)。引号锚定收窄+父控制器补反引号加固;单行锚 ses-h1-exempt-next-line 形态已记 design。
+- 4.1:收官全绿(workspace typecheck 11 项;单测 14+9+222+698=943;e2e 6/6 一次过 18.7s;CSS 冒烟 .canvas-checkerboard 在产物 2b86bbfa…css——canvas-ui styles.css 经 app @import 进产物实证)。
