@@ -68,10 +68,12 @@ import {
   outpaintImage,
   outpaintMask,
   registerBuiltinTools,
+  resolveAction,
   rotateImage,
   strokesToMask,
   uploadDataUri,
   type Annotation,
+  type CanvasCapability,
   type CanvasFactory,
   type Ctx2DLike,
   type ExpandEdges,
@@ -82,6 +84,11 @@ import {
   type UploadFn,
   type WorkLayer,
 } from "@blksails/pi-web-canvas-kit";
+import {
+  BUILTIN_GENERATE_ACTIONS,
+  registerBuiltinGenerateActions,
+  toGenerateDecision,
+} from "./generate-actions.js";
 
 const DOMAIN = "canvas";
 const PROBE = `surface:${DOMAIN}`;
@@ -178,29 +185,51 @@ export interface GenerateDecision {
   readonly args: Record<string, unknown>;
 }
 
+/** 空能力清单常量(退化路径喂入;内置六动作 via:"prompt" 不受 command 白名单门控,Req 2.6)。 */
+const EMPTY_CAPABILITY: CanvasCapability = { models: [], sizes: [], actions: [] };
+
 /**
- * 生成动作决策:掩码 ＞ 引用/标注 ＞ 变体 ＞ 仅比例(空 prompt)→ reframe ＞ edit。
- * size/model 作为参数随主动作附带(schema 各动作均可选支持)。
+ * resolveAction 空候选(理论不可达:edit 恒 `match`→10)的防御性回退,逐字复刻旧 if 链的
+ * edit 兜底:base = image + prompt(+ 非空 model/size)。
  */
-export function decideGenerate(i: GenerateDecisionInput): GenerateDecision {
+function fallbackEditDecision(i: {
+  readonly imageId: string;
+  readonly prompt: string;
+  readonly model: string;
+  readonly size: string;
+}): GenerateDecision {
   const base: Record<string, unknown> = { image: i.imageId, prompt: i.prompt };
   if (i.model !== "") base.model = i.model;
   if (i.size !== "") base.size = i.size;
-  if (i.hasExpand === true) {
-    // 扩图:image 由调用方替换为「大画布合成图」att,mask 同步补充;size 交给输入画布(auto)。
-    const { size: _drop, ...rest } = base;
-    void _drop;
-    return { action: "outpaint", args: rest };
-  }
-  if (i.hasMask) return { action: "inpaint", args: base };
-  if (i.referenceIds.length > 0) {
-    const args: Record<string, unknown> = { ...base, reference_images: [...i.referenceIds] };
-    if (i.variants >= 2) args.n = i.variants;
-    return { action: "reference", args };
-  }
-  if (i.variants >= 2) return { action: "variants", args: { ...base, n: i.variants } };
-  if (i.prompt.trim() === "" && i.size !== "") return { action: "reframe", args: base };
   return { action: "edit", args: base };
+}
+
+/**
+ * 生成动作决策:掩码 ＞ 引用/标注 ＞ 变体 ＞ 仅比例(空 prompt)→ reframe ＞ edit。
+ * size/model 作为参数随主动作附带(schema 各动作均可选支持)。
+ *
+ * 实现自 task 3.2 起委托评分制动作插件链:组装 {@link ActionInput}(capability 喂空清单常量,
+ * 内置六动作 via:"prompt" 不受白名单门控)→ `resolveAction(BUILTIN_GENERATE_ACTIONS)` →
+ * {@link toGenerateDecision}。签名 / 导出 / 语义与旧封闭 if 链逐项等价(generate-actions.test.ts
+ * 决策守恒线锁定)。
+ *
+ * @deprecated 兼容一个大版本;新代码直连 `resolveAction` + `BUILTIN_GENERATE_ACTIONS`
+ *   (canvas-kit),按需要以 {@link toGenerateDecision} 映射胜者插件 id。
+ */
+export function decideGenerate(i: GenerateDecisionInput): GenerateDecision {
+  const resolved = resolveAction(BUILTIN_GENERATE_ACTIONS, {
+    imageId: i.imageId,
+    prompt: i.prompt,
+    model: i.model,
+    size: i.size,
+    variants: i.variants,
+    hasMask: i.hasMask,
+    hasExpand: i.hasExpand === true,
+    referenceIds: i.referenceIds,
+    capability: EMPTY_CAPABILITY,
+  });
+  if (resolved === null) return fallbackEditDecision(i);
+  return toGenerateDecision(resolved.plugin.id, resolved.args);
 }
 
 const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
@@ -259,6 +288,9 @@ export function buildSurfaceOp(d: GenerateDecision, opts?: { maskId?: string }):
  * attachment-bridge 在工具侧解析)。操作因此天然回流对话历史:用户消息 + 工具卡片 + 结果图
  * 全部可见、可回放、进 LLM 上下文(后续"刚才那张再调亮"能接上)。薄包装于 {@link buildSurfaceOp}
  * + {@link renderSurfaceOp};export 与签名不变。
+ *
+ * @deprecated 兼容一个大版本;新代码经动作插件 `execution.buildOp` + {@link renderSurfaceOp}
+ *   取对话流载荷(BUILTIN_GENERATE_ACTIONS 内置六动作 via:"prompt" 即用此通道)。
  */
 export function buildToolPrompt(d: GenerateDecision, opts?: { maskId?: string }): string {
   return renderSurfaceOp(buildSurfaceOp(d, opts));
@@ -508,6 +540,9 @@ export function CanvasWorkbench({
       },
     });
     registerBuiltinTools(k.registry);
+    // 六内置生成动作同位注册进同一 per-instance 注册表(task 3.2);退订随 kernel(per-mount,
+    // 卸载即弃)生命周期,与 registerBuiltinTools 的既有装配形态一致,无需捕获 unregister。
+    registerBuiltinGenerateActions(k.registry);
     k.tools.setActiveTool(MOVE_TOOL_ID);
     return k;
   }, []);
@@ -682,17 +717,28 @@ export function CanvasWorkbench({
 
   const maskReady = hasMaskContent(strokes) && upload !== undefined;
   const expandReady = expanding && upload !== undefined;
-  // 决策预览(生成按钮的动作/文案;inpaint 的 mask 与标注拍平图在 generate 时才上传)。
-  const decisionPreview = decideGenerate({
+  // 快照能力清单(agent 权威,4.4/4.5 门控用;缺失→空清单 = command 动作全排除)。本任务只用于
+  // ActionInput 决策输入;模型/尺寸选项消费属 3.3(此处不动)。
+  const snapshotCapability =
+    surface?.getState<GalleryState>(STATE_KEY)?.capabilities ?? EMPTY_CAPABILITY;
+  // 决策预览(生成按钮的动作/文案;inpaint 的 mask 与标注拍平图在 generate 时才上传)。经注册表
+  // 评分制决策(kernel.registry.actions),胜者插件 id 经 toGenerateDecision 映射回 GenerateDecision
+  // ——data-canvas-action 与 ACTION_LABEL 消费面零变(内置六动作 label 逐字等同 ACTION_LABEL)。
+  const previewResolved = resolveAction(kernel.registry.actions, {
     imageId: current.attachmentId,
     prompt,
     model,
-    hasExpand: expandReady,
-    hasMask: maskReady,
-    referenceIds: annotations.length > 0 && upload !== undefined ? ["__anno__", ...refs] : refs,
-    variants: variantsN,
     size: ratioSize,
+    variants: variantsN,
+    hasMask: maskReady,
+    hasExpand: expandReady,
+    referenceIds: annotations.length > 0 && upload !== undefined ? ["__anno__", ...refs] : refs,
+    capability: snapshotCapability,
   });
+  const decisionPreview: GenerateDecision =
+    previewResolved !== null
+      ? toGenerateDecision(previewResolved.plugin.id, previewResolved.args)
+      : fallbackEditDecision({ imageId: current.attachmentId, prompt, model, size: ratioSize });
 
   /** 主生成:按决策发对应 A 档动作;掩码/标注产物先经上传接缝落 att_。 */
   const generate = React.useCallback(async (): Promise<void> => {
@@ -714,16 +760,24 @@ export function CanvasWorkbench({
         });
         referenceIds.unshift(annoId);
       }
-      const decision = decideGenerate({
+      // 注册表评分制决策(task 3.2):actionInput.capability = 快照能力(缺失→空清单,command
+      // 动作全排除,内置六 prompt 动作不受门控);胜者插件 id 经 toGenerateDecision 映射回
+      // decision——下游通道选择/资产编排/consumeSent/settleWindow 结构逐行零变。
+      const resolved = resolveAction(kernel.registry.actions, {
         imageId: current.attachmentId,
         prompt,
         model,
-        hasExpand: hasExpand(expand) && upload !== undefined,
-        hasMask: hasMaskContent(strokes) && upload !== undefined,
-        referenceIds,
-        variants: variantsN,
         size: ratioSize,
+        variants: variantsN,
+        hasMask: hasMaskContent(strokes) && upload !== undefined,
+        hasExpand: hasExpand(expand) && upload !== undefined,
+        referenceIds,
+        capability: surface.getState<GalleryState>(STATE_KEY)?.capabilities ?? EMPTY_CAPABILITY,
       });
+      const decision: GenerateDecision =
+        resolved !== null
+          ? toGenerateDecision(resolved.plugin.id, resolved.args)
+          : fallbackEditDecision({ imageId: current.attachmentId, prompt, model, size: ratioSize });
 
       // 消费快照:只清「本次发送时存在的」引用/标注/笔迹 —— 飞行期间用户可能已新加,
       // 全量清空会把新输入吞掉(竞争)。

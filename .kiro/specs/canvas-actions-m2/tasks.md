@@ -43,7 +43,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.6_
   - _Depends: 1.2_
   - _Boundary: packages/canvas-ui(generate-actions)_
-- [ ] 3.2 workbench 决策接线与兼容退役
+- [x] 3.2 workbench 决策接线与兼容退役
   - decideGenerate 重实现为 resolveAction(BUILTIN_GENERATE_ACTIONS)+toGenerateDecision 包装(签名/导出/语义零变;null 防御回退 edit);workbench 装配注册六动作(registerBuiltinTools 同位);decisionPreview/generate 改经 resolveAction(标签取 plugin.label,文案与 ACTION_LABEL 一致);via:"command" 动作按 capability.actions 门控过滤(capability 缺失→command 动作不参与决策;内置全 prompt 不受影响);通道选择(bridge.opChannel 优先/surface.run 兜底)/资产编排/consumeSent 结构零变
   - decideGenerate/buildToolPrompt 保留导出并标注 @deprecated 退役说明(兼容一个大版本,新代码直连 resolveAction/BUILTIN_GENERATE_ACTIONS)——golden 与既有消费者零改动仍绿
   - canvas-ui index +generate-actions 显式出口;index-exports 快照联动更新(唯一允许改动的既有测试)
@@ -79,6 +79,7 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 3.2:接线落地(canvas-ui 43+ui 698+typecheck 全绿;决策块以下 diff 零 hunk=下游字节级守恒)。循环 import workbench↔generate-actions 审查亲证无 TDZ(两模块顶层零跨环值求值,makeBuildOp 只构闭包);registerBuiltinGenerateActions 在 kernel useMemo 内与 registerBuiltinTools 同位,StrictMode 双跑各建新 registry 无重复注册。出口=BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions 恰两项(toGenerateDecision 刻意内部),快照 39→41。FYI 留账:按钮消费 ACTION_LABEL 非 plugin.label(单一权威,字节相等无专测);workbench 层 command 门控无独立单测(1.1 resolveAction 边界已覆盖,兜底 e2e)。
 - 3.1:六插件落地(canvas-ui 43 全绿;守恒断言=直调 decideGenerate 活对照 20 行矩阵)。mask 透传约定:makeBuildOp 从 args 析 mask→opts.maskId 并剔除(buildSurfaceOp 不读 args.mask,逐字节等价审查亲核)。via:"prompt" 不受 capability 白名单门控(actions.ts 仅 gate via:"command"),edit 恒 10 兜底→resolveAction 永不 null。registerBuiltinGenerateActions 返回聚合退订(比 design 的 void 增强,审查 FYI 无需改)。3.2 接线时:出口 BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions/toGenerateDecision(如需)。
 - 2.2:六写点保留+schema 单源落地(274 全绿)。**写点①偏差审查 ACCEPT 档案化**:字面 initialState 不带 caps(extension.test.ts:67 toEqual 硬线钉死+create-surface.ts:214-219 亲证 hydrate 先于首帧推送,裸态永不上线),经 hydrate withCapabilities 包装+命令 reducer `s.capabilities ?? deps.capability` 兜底=每一条线上帧都带 caps,严格强于字面写法。CanvasCapability 类型单源=schema z.infer(capability.ts 本地 interface 已删,3.3 类型断言以此为准)。非阻塞留账:extension.ts:95 hydrate catch 分支丢 caps 无专测(防御性退化路径,可后续补 hydrate-throws 用例)。
 - 2.1:active-models 提取+capability.ts 落地(tool-kit 265 全绿;KV 四键逐语义等价审查亲核,providerByModel「首个带 provider」边缘经路由表 grep 证实不存在)。capability 形状暂用本地 interface,2.2 落 zod schema 后 3.3 做双向可赋值断言。FYI 盲区:gpt-image-2 双路由同 label/provider,首次胜出语义翻转现测抓不到(provider 传播已独立锚定,低险)。

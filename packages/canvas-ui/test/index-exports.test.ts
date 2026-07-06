@@ -3,7 +3,7 @@
  *
  * 守护出口纪律(canvas-ui-m15 Req 2.1/2.2,tasks 2.1):
  * - src/index.ts 是唯一出口(styles.css 除外),可被解析;
- * - 出口面 = **8 迁入文件 HEAD 导出全集的去重并集**(39 值 + 27 类型)——
+ * - 出口面 = **8 迁入文件并集 + generate-actions(task 3.2)**(41 值 + 27 类型)——
  *   严格超集于迁移前 packages/ui/src/index.ts 的 canvas 导出块:深路径
  *   named import(decideGenerate/buildSurfaceOp/canvasViewStore 等)与设置
  *   面板消费(aigc-model-meta 三导出)均须从包入口可达;
@@ -55,11 +55,12 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
     expect(canvasUi).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=8 文件并集 39 项,无内部件泄漏(快照)", () => {
+  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项,共 41 项,无内部件泄漏(快照)", () => {
     expect(Object.keys(canvasUi).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
       "AigcQuickSettings",
+      "BUILTIN_GENERATE_ACTIONS",
       "CANVAS_PAGE_SIZE",
       "CanvasGallery",
       "CanvasLauncher",
@@ -90,6 +91,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "outpaintImage",
       "outpaintMask",
       "parseDataUri",
+      "registerBuiltinGenerateActions",
       "rotateImage",
       "rotatedSize",
       "strokesToMask",

@@ -47,6 +47,13 @@ export type {
   LoadedImage,
 } from "./canvas-workbench.js";
 
+// generate-actions — 六内置生成动作插件(评分制决策链;canvas-kit resolveAction 消费,
+// workbench 装配期注册进 per-instance 注册表)。
+export {
+  BUILTIN_GENERATE_ACTIONS,
+  registerBuiltinGenerateActions,
+} from "./generate-actions.js";
+
 // lineage-view — 血缘树视图。
 export { LineageView, buildLineageTree } from "./lineage-view.js";
 export type { LineageViewProps, LineageNode } from "./lineage-view.js";
