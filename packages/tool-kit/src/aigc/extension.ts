@@ -8,14 +8,11 @@
  * 不进 Next/webpack 前端 bundle。
  */
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import {
-  registerImageGeneration,
-  IMAGE_GENERATION_ROUTES,
-  IMAGE_GENERATION_DEFAULT_MODEL,
-} from "./tools/image-generation.js";
-import { registerImageEdit, IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
+import { registerImageGeneration } from "./tools/image-generation.js";
+import { registerImageEdit } from "./tools/image-edit.js";
 import { getSessionState } from "../session-state.js";
-import { resolveAigcToolSettings, filterRoutes } from "./model-config.js";
+import { resolveAigcToolSettings } from "./model-config.js";
+import { deriveActiveModels } from "./active-models.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
 const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
@@ -51,24 +48,18 @@ function publishAigcCatalog(
     return;
   }
   // aigc-tool-settings:下发清单须与工具实际暴露的模型同源过滤——被禁模型从 models/labels/providers
-  // 一并移除(前端 picker 自然收敛);全禁时 filterRoutes 保留默认,与工具侧一致。
-  const activeRoutes = filterRoutes(
-    [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES],
-    disabledModels,
-    IMAGE_GENERATION_DEFAULT_MODEL,
-  );
-  // model → label / provider 映射(同一 model 在生成/编辑均出现时取首次值);Object.keys 的
-  // 插入序与旧 Set 去重序一致,故 aigc.models 顺序不变。清单仍是 id 数组(value/路由键不变),
-  // 另下发 label 映射供选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。
+  // 一并移除(前端 picker 自然收敛);全禁时 deriveActiveModels 内部 filterRoutes 保留默认,与工具侧一致。
+  // canvas-actions-m2:活跃模型推导提取为 deriveActiveModels 共享纯函数(KV 键/值/顺序零变),
+  // 与 buildCanvasCapability 同源消费。清单仍是 id 数组(value/路由键不变),另下发 label 映射供
+  // 选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。
+  const entries = deriveActiveModels(disabledModels);
   const labelByModel: Record<string, string> = {};
   const providerByModel: Record<string, string> = {};
-  for (const r of activeRoutes) {
-    if (labelByModel[r.model] === undefined) labelByModel[r.model] = r.label;
-    if (providerByModel[r.model] === undefined && r.provider !== undefined) {
-      providerByModel[r.model] = r.provider;
-    }
+  for (const e of entries) {
+    labelByModel[e.model] = e.label;
+    if (e.provider !== undefined) providerByModel[e.model] = e.provider;
   }
-  state.set("aigc.models", Object.keys(labelByModel));
+  state.set("aigc.models", entries.map((e) => e.model));
   state.set("aigc.modelLabels", labelByModel);
   state.set("aigc.modelProviders", providerByModel);
   state.set("aigc.sizes", SIZE_OPTIONS);

@@ -18,7 +18,7 @@
   - _Boundary: packages/canvas-kit(registry+出口)_
 
 - [ ] 2. Core:agent 侧能力清单下发
-- [ ] 2.1 (P) 模型清单同源推导与 capability 生成
+- [x] 2.1 (P) 模型清单同源推导与 capability 生成
   - active-models.ts:自 extension.ts publishAigcCatalog 提取「activeRoutes→有序模型清单(model/label/provider)」纯函数 deriveActiveModels;extension.ts 改调之(aigc.models/modelLabels/modelProviders/sizes KV 键值顺序零变,纯提取重构)
   - capability.ts:buildCanvasCapability(models 带 provider→尺寸族规则:dashscope→["1024x1024","1280x720","720x1280"],其余→["1024x1024","1536x1024","1024x1536"];全局 sizes=现 RATIO_OPTIONS 三档守恒(1:1/16:9/9:16);actions=A 档 6 命令名字面量);读设置异常兜底 catalog 全量确定性输出,不抛不阻塞装配
   - 单测 canvas-capability.test.ts:禁用模型过滤/尺寸族/actions 恰 6 项/确定性
@@ -79,5 +79,6 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 2.1:active-models 提取+capability.ts 落地(tool-kit 265 全绿;KV 四键逐语义等价审查亲核,providerByModel「首个带 provider」边缘经路由表 grep 证实不存在)。capability 形状暂用本地 interface,2.2 落 zod schema 后 3.3 做双向可赋值断言。FYI 盲区:gpt-image-2 双路由同 label/provider,首次胜出语义翻转现测抓不到(provider 传播已独立锚定,低险)。
 - 1.2:注册面+出口落地(247 全绿;index 快照 +2 值键)。两处计划外连带审查 ACCEPT:ToolDiagnostic.kind 的类型家在 kernel/tool-runtime.ts(design 表格归属粒度误差,最小落点)/kernel-facade.ts:149 门面补 registerAction/actions 纯委托(接口扩展必然编译传播,动作面无 opKinds 接线故直通即完备)。裁定:工具冲突路径不写 kind(缺省=工具语义)保既有断言零改。natural 保证矩阵头注落 registry.ts:24-36,留账①关闭。
 - 1.1:actions.ts+16 用例落地(canvas-kit 238 全绿;审查独立变异 2 组确证)。resolveAction 形状=白名单先行过滤→match 评分/抛错隔离→稳定降序(独立数组非原地 sort,purity 用例锚定)→buildArgs 抛错剔除重选次优→空候选 null。1.2 出口清单照此:值 defineCanvasAction/resolveAction,类型 CanvasCapability/ActionInput/CanvasActionPlugin/ResolvedAction/ResolveActionOptions。测试相对路径 import 待 1.2 出口后保持不变(测试锚定实现非出口)。
