@@ -1,49 +1,17 @@
 /**
- * Button — shadcn 风格按钮原语(CSS 变量主题,无硬编码颜色)。
+ * @deprecated 转发兼容层(canvas-ui-m15 · Req 1.3/3.4)——保留**一个大版本**。
+ *
+ * Button 已整体下沉至 `@blksails/pi-web-primitives`,本模块只做**显式清单转发**:
+ * 原模块 HEAD 版导出全集(2 值 + 1 类型)逐一对应,深路径 import
+ * (`.../src/ui/button.js`)与 ui 内部相对路径消费者双兼容。
+ *
+ * - 新代码请直接 `import ... from "@blksails/pi-web-primitives"`;
+ * - 刻意用显式 `export {...} from` 而非 `export *`:primitives 出口另含其余
+ *   组件与 cn,不得经本兼容层泄漏成 ui 的既成公开面。
  */
-import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/cn.js";
 
-export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius)] text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default:
-          "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90",
-        secondary:
-          "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:opacity-90",
-        outline:
-          "border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]",
-        ghost:
-          "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]",
-        destructive:
-          "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))] hover:opacity-90",
-      },
-      size: {
-        default: "h-9 px-4 py-2",
-        sm: "h-8 px-3 text-xs",
-        icon: "h-9 w-9",
-      },
-    },
-    defaultVariants: { variant: "default", size: "default" },
-  },
-);
+// ── 值导出(2)──────────────────────────────────────────────────────────────
+export { Button, buttonVariants } from "@blksails/pi-web-primitives";
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
-
-export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  function Button({ className, variant, size, type, ...props }, ref) {
-    return (
-      <button
-        ref={ref}
-        type={type ?? "button"}
-        className={cn(buttonVariants({ variant, size }), className)}
-        {...props}
-      />
-    );
-  },
-);
+// ── 类型导出(1)────────────────────────────────────────────────────────────
+export type { ButtonProps } from "@blksails/pi-web-primitives";

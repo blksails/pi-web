@@ -1,25 +1,17 @@
 /**
- * Input — shadcn 风格文本输入基元(主题经 CSS 变量,无硬编码颜色)。
+ * @deprecated 转发兼容层(canvas-ui-m15 · Req 1.3/3.4)——保留**一个大版本**。
+ *
+ * Input 已整体下沉至 `@blksails/pi-web-primitives`,本模块只做**显式清单转发**:
+ * 原模块 HEAD 版导出全集(1 值 + 1 类型)逐一对应,深路径 import
+ * (`.../src/ui/input.js`)与 ui 包入口 `index.ts` 导出链双兼容。
+ *
+ * - 新代码请直接 `import ... from "@blksails/pi-web-primitives"`;
+ * - 刻意用显式 `export {...} from` 而非 `export *`:primitives 出口另含其余
+ *   组件与 cn,不得经本兼容层泄漏成 ui 的既成公开面。
  */
-import * as React from "react";
-import { cn } from "../lib/cn.js";
 
-export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
+// ── 值导出(1)──────────────────────────────────────────────────────────────
+export { Input } from "@blksails/pi-web-primitives";
 
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => (
-    <input
-      ref={ref}
-      type={type}
-      className={cn(
-        "flex h-9 w-full rounded-md border border-[hsl(var(--input))] bg-transparent px-3 py-1 text-sm shadow-sm transition-colors",
-        "placeholder:text-[hsl(var(--muted-foreground))]",
-        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  ),
-);
-Input.displayName = "Input";
+// ── 类型导出(1)────────────────────────────────────────────────────────────
+export type { InputProps } from "@blksails/pi-web-primitives";

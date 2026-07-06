@@ -328,6 +328,9 @@ importers:
       '@blksails/pi-web-logger':
         specifier: workspace:*
         version: link:../logger
+      '@blksails/pi-web-primitives':
+        specifier: workspace:*
+        version: link:../primitives
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol

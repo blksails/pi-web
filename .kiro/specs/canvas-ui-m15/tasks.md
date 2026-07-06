@@ -2,7 +2,7 @@
 
 > 基线 b507d43(canvas-kit-m1 已合 main,e2e 6/6 绿)。行号引用开工时以 grep 重校准(styles.css/pi-chat 等有并发 WIP)。黄金基准恒取 `git show HEAD:`。
 
-- [ ] 1. Foundation:primitives 下沉
+- [x] 1. Foundation:primitives 下沉
 - [x] 1.1 primitives 包脚手架与六组件+cn 迁入
   - 照 canvas-kit 先例建 packages/primitives(exports "."→src/index.ts;peer react;deps=@radix-ui/react-popover、@radix-ui/react-select、class-variance-authority、clsx、tailwind-merge、lucide-react,零 @blksails);button/card/input/popover/select/textarea 自 packages/ui/src/ui/ 迁入,cn 自 src/lib/cn.ts 迁入——仅 import 改线:`../lib/cn.js`→`./cn.js`,其余零变(六文件唯一内部依赖即 cn,已核穷尽);src/index.ts 唯一出口+出口纪律注释
   - 根 tsconfig paths + tailwind content(packages/ 与 node_modules/ 双 glob)+ workspace install
@@ -10,7 +10,7 @@
   - 完成态:pnpm --filter @blksails/pi-web-primitives typecheck/test 绿;workspace install 识别新包
   - _Requirements: 1.1, 1.2, 1.4, 5.1_
   - _Boundary: packages/primitives_
-- [ ] 1.2 (P) ui 共享件改线为转发 primitives
+- [x] 1.2 (P) ui 共享件改线为转发 primitives
   - packages/ui/src/ui/{button,card,input,popover,select,textarea}.tsx 与 src/lib/cn.ts 改写为显式转发(@deprecated 一个大版本;显式清单禁 export *,清单=HEAD 版导出全集逐文件对照);ui package.json +primitives 依赖;ui vitest alias +primitives 条目
   - 完成态:packages/ui 全量测试零改动通过(698 基线)+ ui typecheck 绿;ui 公开导出面与 HEAD 守恒
   - _Requirements: 1.3, 3.4_
@@ -55,3 +55,4 @@
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-ui-m15`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=3bb2431)。并发负载假阳性判别链沿 canvas-kit-m1 先例(失败集中无关文件+duration 膨胀→定向重跑)。
 - 1.1:primitives 落地(出口=16 值+3 类型显式清单;vitest 需 setupFiles Radix polyfill=ui/test/setup.ts 去 jest-dom 版;devDeps 增 testing-library 渲染必需)。六组件唯一内部依赖=cn(考古+审查双确认)。1.2 转发清单以同一 16+3 全集对照。
+- 1.2:7 转发文件落地(AST 级导出名集对照 7/7;变异红点落在三个真实消费者=aigc-quick-settings/canvas-workbench/enum-field,证明链路真实)。ui vitest alias 已含 primitives 条目;2.1/2.2 照抄形状加 canvas-ui。

@@ -1,36 +1,19 @@
 /**
- * Popover — shadcn/Radix Popover 封装原语(CSS 变量主题,无硬编码颜色)。
+ * @deprecated 转发兼容层(canvas-ui-m15 · Req 1.3/3.4)——保留**一个大版本**。
  *
- * 与 ui/select.tsx 同风格:Portal + Content,主题走 --popover/--border/--radius。
- * Combobox(可搜索下拉)即由 Popover + Command 组合(见 ui/command.tsx)。
+ * Popover 已整体下沉至 `@blksails/pi-web-primitives`,本模块只做**显式清单转发**:
+ * 原模块 HEAD 版导出全集(4 值)逐一对应,深路径 import
+ * (`.../src/ui/popover.js`)与 ui 内部相对路径消费者双兼容。
+ *
+ * - 新代码请直接 `import ... from "@blksails/pi-web-primitives"`;
+ * - 刻意用显式 `export {...} from` 而非 `export *`:primitives 出口另含其余
+ *   组件与 cn,不得经本兼容层泄漏成 ui 的既成公开面。
  */
-import * as React from "react";
-import * as PopoverPrimitive from "@radix-ui/react-popover";
-import { cn } from "../lib/cn.js";
 
-export const Popover = PopoverPrimitive.Root;
-export const PopoverTrigger = PopoverPrimitive.Trigger;
-export const PopoverAnchor = PopoverPrimitive.Anchor;
-
-export const PopoverContent = React.forwardRef<
-  React.ElementRef<typeof PopoverPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(function PopoverContent(
-  { className, align = "start", sideOffset = 4, ...props },
-  ref,
-) {
-  return (
-    <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
-        ref={ref}
-        align={align}
-        sideOffset={sideOffset}
-        className={cn(
-          "z-50 w-72 overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover,var(--background)))] text-[hsl(var(--popover-foreground,var(--foreground)))] shadow-md outline-none",
-          className,
-        )}
-        {...props}
-      />
-    </PopoverPrimitive.Portal>
-  );
-});
+// ── 值导出(4)──────────────────────────────────────────────────────────────
+export {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverTrigger,
+} from "@blksails/pi-web-primitives";

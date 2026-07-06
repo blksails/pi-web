@@ -12,6 +12,8 @@ export default defineConfig({
       ),
       // canvas-kit 主入口(client-image-ops 转发层/组件类型 canonical 家的上游)。
       "@blksails/pi-web-canvas-kit": path.resolve(__dirname, "../canvas-kit/src/index.ts"),
+      // primitives 主入口(src/ui 六组件 + lib/cn 转发层的上游)。
+      "@blksails/pi-web-primitives": path.resolve(__dirname, "../primitives/src/index.ts"),
     },
   },
   test: {
