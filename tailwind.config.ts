@@ -26,6 +26,9 @@ const config: Config = {
     // primitives 下沉的 shadcn 薄封装带 Tailwind 类(canvas-ui-m15 1.1)。
     "./node_modules/@blksails/pi-web-primitives/src/**/*.{ts,tsx}",
     "./packages/primitives/src/**/*.{ts,tsx}",
+    // canvas-ui 迁出的 canvas 领域组件带 Tailwind 类(canvas-ui-m15 2.1)。
+    "./node_modules/@blksails/pi-web-canvas-ui/src/**/*.{ts,tsx}",
+    "./packages/canvas-ui/src/**/*.{ts,tsx}",
   ],
   plugins: [],
 };

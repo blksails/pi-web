@@ -129,6 +129,52 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
 
+  packages/canvas-ui:
+    dependencies:
+      '@blksails/pi-web-canvas-kit':
+        specifier: workspace:*
+        version: link:../canvas-kit
+      '@blksails/pi-web-kit':
+        specifier: workspace:*
+        version: link:../web-kit
+      '@blksails/pi-web-primitives':
+        specifier: workspace:*
+        version: link:../primitives
+      '@blksails/pi-web-react':
+        specifier: workspace:*
+        version: link:../react
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:*
+        version: link:../tool-kit
+      lucide-react:
+        specifier: ^0.468.0
+        version: 0.468.0(react@19.2.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      jsdom:
+        specifier: ^25.0.1
+        version: 25.0.1
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.7)
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
   packages/logger:
     devDependencies:
       typescript:

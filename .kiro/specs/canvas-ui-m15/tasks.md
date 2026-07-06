@@ -18,7 +18,7 @@
   - _Depends: 1.1_
 
 - [ ] 2. Core:canvas-ui 迁出
-- [ ] 2.1 (P) canvas-ui 包脚手架与 8 文件迁入
+- [x] 2.1 (P) canvas-ui 包脚手架与 8 文件迁入
   - 建 packages/canvas-ui(exports "."→src/index.ts、"./styles.css"→src/styles.css;deps=canvas-kit/primitives/pi-web-kit(web-kit)/pi-web-react/tool-kit+lucide-react,peer react,**零 pi-web-ui**);8 文件自 packages/ui/src/canvas/ 原样迁入,仅 import 改线(`../ui/*`→primitives、`../lib/cn.js`→primitives,`./` 兄弟引用保持);src/styles.css 收 ui styles.css 的 canvas 两段(现约 :142-160,grep 重校准)
   - **src/index.ts = 8 文件 HEAD 导出全集的去重并集**(严格超集于 ui index canvas 块:含 aigc-model-meta 全部三导出、workbench 的 decideGenerate/buildSurfaceOp/buildToolPrompt/GenerateDecision(Input)/ImageLoader/composeInpaintBack/LoadedImage、use-canvas-view 的 canvasViewStore/UseCanvasViewResult 等——深路径 named import 与设置面板消费须从包入口可达;已核无跨文件重名,client-image-ops 显式清单刻意排除 LoadedImage 无冲突)
   - 根 tsconfig paths + tailwind content 配套;canvas-ui vitest alias 表覆盖 canvas-kit/web-kit/react 包及 **tool-kit aigc-canvas-schema 子路径**(子路径 alias 坑先例)
@@ -56,3 +56,4 @@
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-ui-m15`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=3bb2431)。并发负载假阳性判别链沿 canvas-kit-m1 先例(失败集中无关文件+duration 膨胀→定向重跑)。
 - 1.1:primitives 落地(出口=16 值+3 类型显式清单;vitest 需 setupFiles Radix polyfill=ui/test/setup.ts 去 jest-dom 版;devDeps 增 testing-library 渲染必需)。六组件唯一内部依赖=cn(考古+审查双确认)。1.2 转发清单以同一 16+3 全集对照。
 - 1.2:7 转发文件落地(AST 级导出名集对照 7/7;变异红点落在三个真实消费者=aigc-quick-settings/canvas-workbench/enum-field,证明链路真实)。ui vitest alias 已含 primitives 条目;2.1/2.2 照抄形状加 canvas-ui。
+- 2.1:canvas-ui 落地(出口并集=39 值+27 类型=66,13 个深路径命脉载荷全在;peer react ^19 对齐 primitives 审查裁定可接受——workspace react=19.2.7,ui 传递下限 1.2 起已收窄;styles.css 两段 verbatim,ui 本体留待 2.2 删)。2.2 转发清单=各文件 HEAD 导出全集,与并集口径一致。
