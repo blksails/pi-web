@@ -497,10 +497,18 @@ export function CanvasWorkbench({
   const [livePreview, setLivePreview] = React.useState<GalleryState["livePreview"]>(
     () => surface?.getState<GalleryState>(STATE_KEY)?.livePreview ?? null,
   );
+  // 能力清单(agent 权威;task 3.3):纳入同一订阅态,agent 侧晚到的 capability 帧刷新
+  // 模型/尺寸选项与决策门控输入。缺失(旧快照/退化)= undefined,消费侧 ?? 链回退硬编码。
+  const [capabilities, setCapabilities] = React.useState<GalleryState["capabilities"]>(
+    () => surface?.getState<GalleryState>(STATE_KEY)?.capabilities,
+  );
   React.useEffect(() => {
     if (surface === undefined) return;
-    const read = (): void =>
-      setLivePreview(surface.getState<GalleryState>(STATE_KEY)?.livePreview ?? null);
+    const read = (): void => {
+      const s = surface.getState<GalleryState>(STATE_KEY);
+      setLivePreview(s?.livePreview ?? null);
+      setCapabilities(s?.capabilities);
+    };
     read();
     return surface.subscribe(STATE_KEY, read);
   }, [surface]);
@@ -717,10 +725,20 @@ export function CanvasWorkbench({
 
   const maskReady = hasMaskContent(strokes) && upload !== undefined;
   const expandReady = expanding && upload !== undefined;
-  // 快照能力清单(agent 权威,4.4/4.5 门控用;缺失→空清单 = command 动作全排除)。本任务只用于
-  // ActionInput 决策输入;模型/尺寸选项消费属 3.3(此处不动)。
-  const snapshotCapability =
-    surface?.getState<GalleryState>(STATE_KEY)?.capabilities ?? EMPTY_CAPABILITY;
+  // 切换模型令已选尺寸落在新模型受支持集外 → 复位为 ""(跟随原图),不静默发不支持组合(4.3)。
+  // 仅在 model 真正切换时触发(prevModelRef 守卫):同模型下的自定义 W×H 输入/尺寸选择不受影响。
+  const prevModelRef = React.useRef(model);
+  React.useEffect(() => {
+    if (model === prevModelRef.current) return;
+    prevModelRef.current = model;
+    if (ratioSize === "") return;
+    const supported = capabilities?.models.find((m) => m.id === model)?.sizes;
+    if (supported !== undefined && !supported.includes(ratioSize)) setRatioSize("");
+  }, [model, capabilities, ratioSize]);
+
+  // 快照能力清单(agent 权威,4.4/4.5 门控用;缺失→空清单 = command 动作全排除)。经响应式
+  // capabilities 态派生,决策输入与模型/尺寸选项消费(见底部提示词栏)同源(task 3.3)。
+  const snapshotCapability = capabilities ?? EMPTY_CAPABILITY;
   // 决策预览(生成按钮的动作/文案;inpaint 的 mask 与标注拍平图在 generate 时才上传)。经注册表
   // 评分制决策(kernel.registry.actions),胜者插件 id 经 toGenerateDecision 映射回 GenerateDecision
   // ——data-canvas-action 与 ACTION_LABEL 消费面零变(内置六动作 label 逐字等同 ACTION_LABEL)。
@@ -1499,10 +1517,21 @@ export function CanvasWorkbench({
   // ── 区块:底部提示词栏(舞台上的居中浮动层;@引用 + 参数簇)────────────────────
   // z-50:宿主右下角面板比例切换器(z-40 绝对定位浮层)与栏尾「生成」按钮在常见视口
   // 重叠并拦截点击;内容交互优先,提升本栏层级(反向仅遮浮层一角)。
-  const knownModels = modelOptions ?? DEFAULT_MODEL_OPTIONS;
+  // 模型选项优先级(task 3.3,design 裁定):capability > modelOptions prop > DEFAULT。真实 agent
+  // 下发的清单应胜出;prop 是测试/宿主覆盖接缝,退到 capability 之后;二者皆缺才回内置常量。
+  const knownModels = capabilities?.models.map((m) => m.id) ?? modelOptions ?? DEFAULT_MODEL_OPTIONS;
   // 复用历史参数可能带来清单外的 model:并入候选兜底(否则 Select 显示为空)。
   const modelItems =
     model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
+  // 尺寸选项:全局档位取 capability.sizes(缺失回退 RATIO_OPTIONS);当前选中模型在 capability 中
+  // 声明了受支持尺寸集 → 收窄为交集(顺序按全局列表,4.3);未选模型 = 不收窄(守恒)。
+  const globalSizes = capabilities?.sizes ?? RATIO_OPTIONS;
+  const selectedModelSizes =
+    model !== "" ? capabilities?.models.find((m) => m.id === model)?.sizes : undefined;
+  const ratioOptions =
+    selectedModelSizes !== undefined
+      ? globalSizes.filter((r) => selectedModelSizes.includes(r.size))
+      : globalSizes;
   const refCandidates = assets.filter((a) => a.attachmentId !== current.attachmentId);
   const editSummaryBits: string[] = [];
   if (strokes.length > 0) editSummaryBits.push(`掩码 ${strokes.length}`);
@@ -1651,7 +1680,7 @@ export function CanvasWorkbench({
                   ? natural !== null
                     ? `跟随 ${natural.w}×${natural.h}`
                     : "跟随原图"
-                  : (RATIO_OPTIONS.find((r) => r.size === ratioSize)?.label ?? ratioSize)}
+                  : (globalSizes.find((r) => r.size === ratioSize)?.label ?? ratioSize)}
               </button>
             </PopoverAnchor>
             <PopoverContent align="start" side="top" className="w-56 p-2 text-xs">
@@ -1659,7 +1688,7 @@ export function CanvasWorkbench({
                 输出尺寸
               </div>
               <div className="flex flex-col gap-0.5">
-                {RATIO_OPTIONS.map((r) => (
+                {ratioOptions.map((r) => (
                   <button
                     key={r.label}
                     type="button"
