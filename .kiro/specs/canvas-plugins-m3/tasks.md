@@ -67,8 +67,8 @@
   - _Depends: 3.3_
   - _Boundary: e2e + stub 配套_
 
-- [ ] 4. Validation:回归与端到端
-- [ ] 4.1 全量回归与端到端
+- [x] 4. Validation:回归与端到端
+- [x] 4.1 全量回归与端到端
   - workspace typecheck;canvas-kit/canvas-ui/tool-kit/web-kit/ui 全量(既有零改动,快照联动除外);golden 零改动;SES-H1/encapsulation 静态线保持
   - 既有 canvas e2e 6 条零改动全绿 + 新 e2e 全绿(同一外部 server 会话)
   - 完成态:全部命令新鲜输出为证
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 4.1:收官全绿(kit291+cui54+tool-kit280+web-kit41+ui718=1384;typecheck 11;SES-H1 5;TBD/secrets 0;ui 既有测试仅预授权改动)。e2e 新 2/2(5.8s)+既有 6/6(17.4s)同 server 新鲜证据。
 - 3.4:e2e 落地(新 2/2 绿 5.8s + 既有 6/6 零回归 17.4s,同一外部 server)。执行者交付①贴纸闭环+stub 配套(stub-agent-process.mjs:A 档含 style_transfer 回流+capabilities.actions 并入快照;webext-registry 构建期静态 import 贴纸 web.config——canvasPlugins 含组件无法走运行时 resolve)后如实报 BLOCKED:**发现真实缺陷**——workbench generate()/预览把胜出插件动作经 toGenerateDecision 塌缩(仅映射 builtin: id,回退 edit)且不读 execution.via,command 插件动作永不派发 surface.run。主控裁定=实现缺口非设计缺口(design System Flows 明画「按胜者 via 分道」),manual-mode remediation:generate() 在 decision 塌缩前加 via:"command" 分支(settleWindow(surface.run(DOMAIN, plugin.execution.command, resolved.args))+consumeSent(false) 同 reference 语义)+ 生成按钮插件胜者显 plugin.label/去前缀 id 锚(内置零变);ui 718+cui 54+tsc 零回归;e2e ②(风格迁移 command 回流)由主控补写=该修复的端到端回归锚。坑:workbench 改动须重建 .next-e2e 再起 server(stub .mjs 走 cwd 运行时加载不用,但 TS bundle 要)。stub 贴纸源 capabilities={models:[],sizes:[],actions:[style_transfer]}(空 models/sizes 走回退,①用例不受影响)。
 - 3.3:双端范例落地(root tsc 覆盖 examples 零错;README 19→20 注册)。执行者交付后静默(惯性),主上下文亲审 APPROVED:stickers.tsx 逐条守 3.2 契约(createLayer 声明/update 完整对象/白名单避让/requires 全局名/bake 对 Ctx2DLike 可选原语退化跳过);agent 侧 style_transfer 委派内置 reference 命令(builtinCommands=createCanvasCommands() 纯内置表,不重造落库/血缘;capability 由快照继承);extraActions=["style_transfer"];web.config 车道① canvasPlugins:[stickersBundle]。执行者类型探针 tsconfig.stickers-check.json 已自清。3.4 e2e 锚点可用:data-sticker-emoji/data-sticker-size-range/data-sticker-emoji-pick/data-canvas-plugin-layer/data-canvas-inspector。
 - 3.2:图层接线落地(kit 291/cui 54/ui 718 全绿=+5 新)。执行者交付后静默(惯性),主上下文亲审 APPROVED。**关键超计划契约(ACCEPT 档案化)**:CanvasTool.createLayer 声明化「点击置层」——M1 封装线下工具上下文 layers 只读(design §6.1 的 ctx.layers.add 是与实际契约不符的示意),声明式 seam 归写路径于装配层;registerPluginBundles 同步前缀化 createLayer.kind(与捆内 layer type 同名命中,requires 仍全局名)。其余:LayersStore.add +meta 第 4 参/updateData(additive 零变);LAYER_DATA_OP+opBehaviors revert/apply=Req 1.6;拍平=per-layer canvas 经 canvasFactory+bake 抛错跳过+recordPluginDiagnostic;渲染 data-canvas-plugin-layer/检查器 data-canvas-inspector 锚点。变异:断渲染分支 4 红/删 bake 1 红,md5 复原。**3.3 必须**:贴纸工具用 createLayer 声明(非 onPointerDown add);Inspector update 直接传新 data 对象。
