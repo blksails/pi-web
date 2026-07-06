@@ -38,6 +38,7 @@ export {
   buildSurfaceOp,
   buildToolPrompt,
   composeInpaintBack,
+  resolveToolRailTitle,
 } from "./canvas-workbench.js";
 export type {
   CanvasWorkbenchProps,

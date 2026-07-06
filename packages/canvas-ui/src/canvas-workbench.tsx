@@ -81,6 +81,7 @@ import {
   type LoadedImage,
   type MaskStroke,
   type RouterPointerEvent,
+  type ToolDiagnostic,
   type UploadFn,
   type WorkLayer,
 } from "@blksails/pi-web-canvas-kit";
@@ -126,6 +127,23 @@ const BACKEND_FREE_TOOLS: ReadonlySet<string> = new Set([MOVE_TOOL_ID]);
 
 /** 工具 data-* 锚点值:剥 `builtin:` 前缀(既有锚点 `data-canvas-tool="move"` 等零变)。 */
 const toolAnchor = (id: string): string => id.replace(/^builtin:/, "");
+
+/**
+ * 工具轨按钮 title 组装(Req 6.3/6.4)。工具因 runtime 回调抛错被禁用(在 `disabledTools`
+ * 中)且 `diagnostics` 存在该工具**语义**条目(`kind` 缺省或 `"tool"`;`"action"` 条目属
+ * 动作面,不入工具轨)时,在原 title 后拼首条诊断原因;否则逐字节维持原 title——门控禁用
+ * (上传接缝/A 档未就绪)与无诊断均零变,不引入额外提示文本。纯函数,可独立单测。
+ */
+export function resolveToolRailTitle(
+  baseTitle: string,
+  toolId: string,
+  disabledTools: readonly string[],
+  diagnostics: readonly ToolDiagnostic[],
+): string {
+  if (!disabledTools.includes(toolId)) return baseTitle;
+  const entry = diagnostics.find((d) => d.toolId === toolId && d.kind !== "action");
+  return entry === undefined ? baseTitle : `${baseTitle}(已禁用:${entry.error})`;
+}
 
 /** 四边零扩展(扩图复位/初值;prefs 键 PREF_EXPAND_EDGES 的缺省值)。 */
 const NO_EXPAND: ExpandEdges = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -1183,7 +1201,12 @@ export function CanvasWorkbench({
           className="h-8 w-8"
           aria-pressed={activeToolId === t.id}
           aria-label={t.label}
-          title={TOOL_RAIL_TITLES[t.id] ?? t.label}
+          title={resolveToolRailTitle(
+            TOOL_RAIL_TITLES[t.id] ?? t.label,
+            t.id,
+            toolsSnap.disabledTools,
+            kernel.registry.diagnostics,
+          )}
           data-canvas-tool={toolAnchor(t.id)}
           disabled={
             (!BACKEND_FREE_TOOLS.has(t.id) && maskToolsDisabled) ||

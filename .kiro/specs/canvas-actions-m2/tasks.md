@@ -59,7 +59,7 @@
   - _Requirements: 4.2, 4.3, 4.4, 4.6, 4.7_
   - _Depends: 3.2, 2.2_
   - _Boundary: packages/canvas-ui(workbench 清单消费)+ ui 测试新文件_
-- [ ] 3.4 禁用工具 tooltip 诊断
+- [x] 3.4 禁用工具 tooltip 诊断
   - 工具轨禁用项 title 在 diagnostics 有该工具条目时拼接首条原因(kind 兼容,工具/动作条目区分);无诊断时呈现零变;DOM 锚点 data-canvas-tool 与置灰行为不动(additive)
   - 组件测试 packages/ui/test/canvas/workbench-tool-diagnostics-tooltip.test.tsx(新文件):有诊断显示原因/无诊断零变
   - 完成态:新测试绿;既有工具轨相关测试零改动绿
@@ -79,6 +79,7 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 3.4:tooltip 诊断落地(ui 709+canvas-ui 44+typecheck 绿)。执行者 impl-3-4 同样完成后失联(3.3/3.4 连续同型:活干完、报告不发——疑似子代理会话在长测试后被回收),按先例主上下文完成审查(diff 逐行+2 组变异:删 kind 过滤 1 红/反转禁用门 4 红,md5 复原,APPROVED)。形态=预授权 fallback:title 组装提为纯函数 resolveToolRailTitle 出口(canvas-ui 快照 41→42),组件级只锚定无诊断零变基线(runtime 禁用无组件外接缝,不造新接缝——设计纪律);M1 留账②关闭。
 - 3.3:capability 消费落地(canvas-ui 44+ui 701+typecheck 绿)。**流程事故记录**:执行者 impl-3-3 完成实现后失联(两次点名无回应);主控看门狗曾误判失联重派 impl-3-3b 致同 worktree 双写风险——3-3b 靠 stale-file 保护自检并主动 stand down(教训:足迹零≠失联,先查 mtime 再重派;重派前必须确认前任终止)。审查者 review-3-3 亦失联,审查按 kiro-impl manual 模式在主上下文完成(diff 逐行+3 组变异 M1 复位/M2 收窄/M3 回退全红后 md5 复原,APPROVED)。亮点:决策门控 snapshotCapability 升级为响应式订阅态(3.2 的 getState 非响应式遗留顺带收掉)。FYI 缺口:capability vs modelOptions prop 优先序无专测(低险)。type-sync 用 Mutable 归一化 toEqualTypeOf(readonly 差异档案化)。
 - 3.2:接线落地(canvas-ui 43+ui 698+typecheck 全绿;决策块以下 diff 零 hunk=下游字节级守恒)。循环 import workbench↔generate-actions 审查亲证无 TDZ(两模块顶层零跨环值求值,makeBuildOp 只构闭包);registerBuiltinGenerateActions 在 kernel useMemo 内与 registerBuiltinTools 同位,StrictMode 双跑各建新 registry 无重复注册。出口=BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions 恰两项(toGenerateDecision 刻意内部),快照 39→41。FYI 留账:按钮消费 ACTION_LABEL 非 plugin.label(单一权威,字节相等无专测);workbench 层 command 门控无独立单测(1.1 resolveAction 边界已覆盖,兜底 e2e)。
 - 3.1:六插件落地(canvas-ui 43 全绿;守恒断言=直调 decideGenerate 活对照 20 行矩阵)。mask 透传约定:makeBuildOp 从 args 析 mask→opts.maskId 并剔除(buildSurfaceOp 不读 args.mask,逐字节等价审查亲核)。via:"prompt" 不受 capability 白名单门控(actions.ts 仅 gate via:"command"),edit 恒 10 兜底→resolveAction 永不 null。registerBuiltinGenerateActions 返回聚合退订(比 design 的 void 增强,审查 FYI 无需改)。3.2 接线时:出口 BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions/toGenerateDecision(如需)。
