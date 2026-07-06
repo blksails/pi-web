@@ -67,8 +67,8 @@
   - _Depends: 3.2_
   - _Boundary: packages/canvas-ui(workbench 工具轨)+ ui 测试新文件_
 
-- [ ] 4. Validation:回归、e2e 与关账证据
-- [ ] 4.1 全量回归与端到端
+- [x] 4. Validation:回归、e2e 与关账证据
+- [x] 4.1 全量回归与端到端
   - workspace typecheck 全绿;canvas-kit/canvas-ui/tool-kit/ui 全量测试绿(既有文件零改动,出口快照联动除外);golden 零改动(Req 2.5 守恒证据);server state-sticky 专测(pi-session.state-sticky.test.ts)新鲜跑全绿(Req 5 验证型关账证据)
   - canvas e2e 6 条零改动全绿:aigc-canvas.e2e.ts 5 条 + aigc-canvas-degrade.e2e.ts 1 条(外部 server + NEXT_DIST_DIR=.next-e2e 隔离构建,先 kill 3100 遗留;基线 0377b12 全绿——任何红不许赖 pre-existing;e2e② 刷新回放同时是 Req 5.4 证据)
   - 静态线:canvas-kit encapsulation(kernel 不出口)/canvas-ui encapsulation+SES-H1 四线保持通过
@@ -79,6 +79,7 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 4.1:收官全绿(workspace typecheck 11 项 Done;单测 canvas-kit 247+canvas-ui 44+tool-kit 274+ui 709=1274;server state-sticky 5/5 新鲜跑=Req 5 验证型关账证据;golden/既有 ui 测试零改动=git diff 审计 0;改动面 25 文件与 File Structure Plan 逐一吻合;TBD/secrets grep 0)。e2e 6/6 一次过 19.7s(外部 server 模式,.next-e2e 隔离构建;含「命令后刷新→粘性回放」=Req 5.4 证据)。坑:playwright 自管 webServer 双 server 120s 超时(两 server 手动各 <1s 就绪,原因未明,疑 worktree 下双 spawn 健康检查异常)——外部 server 模式一次过,沿用先例即可。
 - 3.4:tooltip 诊断落地(ui 709+canvas-ui 44+typecheck 绿)。执行者 impl-3-4 同样完成后失联(3.3/3.4 连续同型:活干完、报告不发——疑似子代理会话在长测试后被回收),按先例主上下文完成审查(diff 逐行+2 组变异:删 kind 过滤 1 红/反转禁用门 4 红,md5 复原,APPROVED)。形态=预授权 fallback:title 组装提为纯函数 resolveToolRailTitle 出口(canvas-ui 快照 41→42),组件级只锚定无诊断零变基线(runtime 禁用无组件外接缝,不造新接缝——设计纪律);M1 留账②关闭。
 - 3.3:capability 消费落地(canvas-ui 44+ui 701+typecheck 绿)。**流程事故记录**:执行者 impl-3-3 完成实现后失联(两次点名无回应);主控看门狗曾误判失联重派 impl-3-3b 致同 worktree 双写风险——3-3b 靠 stale-file 保护自检并主动 stand down(教训:足迹零≠失联,先查 mtime 再重派;重派前必须确认前任终止)。审查者 review-3-3 亦失联,审查按 kiro-impl manual 模式在主上下文完成(diff 逐行+3 组变异 M1 复位/M2 收窄/M3 回退全红后 md5 复原,APPROVED)。亮点:决策门控 snapshotCapability 升级为响应式订阅态(3.2 的 getState 非响应式遗留顺带收掉)。FYI 缺口:capability vs modelOptions prop 优先序无专测(低险)。type-sync 用 Mutable 归一化 toEqualTypeOf(readonly 差异档案化)。
 - 3.2:接线落地(canvas-ui 43+ui 698+typecheck 全绿;决策块以下 diff 零 hunk=下游字节级守恒)。循环 import workbench↔generate-actions 审查亲证无 TDZ(两模块顶层零跨环值求值,makeBuildOp 只构闭包);registerBuiltinGenerateActions 在 kernel useMemo 内与 registerBuiltinTools 同位,StrictMode 双跑各建新 registry 无重复注册。出口=BUILTIN_GENERATE_ACTIONS/registerBuiltinGenerateActions 恰两项(toGenerateDecision 刻意内部),快照 39→41。FYI 留账:按钮消费 ACTION_LABEL 非 plugin.label(单一权威,字节相等无专测);workbench 层 command 门控无独立单测(1.1 resolveAction 边界已覆盖,兜底 e2e)。
