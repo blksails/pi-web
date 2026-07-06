@@ -1,0 +1,9 @@
+{
+  "name": "canvas-plugin-stickers",
+  "private": true,
+  "pi-web": {
+    "title": "Canvas 插件 · 贴纸",
+    "avatar": "🌟",
+    "description": "Canvas 插件双端范例:贴纸图层/工具(createLayer 点击置层)+ 风格迁移动作(命令通道);门控 NEXT_PUBLIC_PI_WEB_CANVAS"
+  }
+}

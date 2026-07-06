@@ -53,7 +53,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
   - _Depends: 3.1, 1.2_
   - _Boundary: packages/canvas-ui(workbench 图层路径)+ ui 测试新文件_
-- [ ] 3.3 贴纸双端范例
+- [x] 3.3 贴纸双端范例
   - examples/canvas-plugin-stickers/:index.ts(canvas surface extraCommands.style_transfer=runImageTool 风格包装+extraActions+aigcExtension)、.pi/web/web.config.tsx(slots 复用 CanvasLauncher/Panel + canvasPlugins:[stickersBundle])、.pi/web/stickers.tsx(stickerLayer:emoji Render/bake 烤字/Inspector 尺寸滑杆;stickerTool:点击置层+op(revert/apply);styleTransferAction:via:"command",match 含 capability.actions.includes("style_transfer") 避让评分 85)、README;examples/README.md 注册行
   - 完成态:范例 typecheck 绿;可运行性以 3.4 e2e 为证
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 3.3:双端范例落地(root tsc 覆盖 examples 零错;README 19→20 注册)。执行者交付后静默(惯性),主上下文亲审 APPROVED:stickers.tsx 逐条守 3.2 契约(createLayer 声明/update 完整对象/白名单避让/requires 全局名/bake 对 Ctx2DLike 可选原语退化跳过);agent 侧 style_transfer 委派内置 reference 命令(builtinCommands=createCanvasCommands() 纯内置表,不重造落库/血缘;capability 由快照继承);extraActions=["style_transfer"];web.config 车道① canvasPlugins:[stickersBundle]。执行者类型探针 tsconfig.stickers-check.json 已自清。3.4 e2e 锚点可用:data-sticker-emoji/data-sticker-size-range/data-sticker-emoji-pick/data-canvas-plugin-layer/data-canvas-inspector。
 - 3.2:图层接线落地(kit 291/cui 54/ui 718 全绿=+5 新)。执行者交付后静默(惯性),主上下文亲审 APPROVED。**关键超计划契约(ACCEPT 档案化)**:CanvasTool.createLayer 声明化「点击置层」——M1 封装线下工具上下文 layers 只读(design §6.1 的 ctx.layers.add 是与实际契约不符的示意),声明式 seam 归写路径于装配层;registerPluginBundles 同步前缀化 createLayer.kind(与捆内 layer type 同名命中,requires 仍全局名)。其余:LayersStore.add +meta 第 4 参/updateData(additive 零变);LAYER_DATA_OP+opBehaviors revert/apply=Req 1.6;拍平=per-layer canvas 经 canvasFactory+bake 抛错跳过+recordPluginDiagnostic;渲染 data-canvas-plugin-layer/检查器 data-canvas-inspector 锚点。变异:断渲染分支 4 红/删 bake 1 红,md5 复原。**3.3 必须**:贴纸工具用 createLayer 声明(非 onPointerDown add);Inspector update 直接传新 data 对象。
 - 3.1:聚合+接线落地(kit 291/cui 54/ui 713 全绿)。执行者交付后静默(惯性),主上下文亲审 APPROVED:canvas-kit 微调=+disabledPluginToolReason 只读读面(捆 id 诊断无法按工具 id 匹配的档案化理由;facade 直通+additive 测试;registerDisabledPluginTool 原因表最新为准与集合幂等并存);resolveToolRailTitle +可选 pluginReason 第 5 参(向后兼容,插件禁用与 runtime 禁用不并存档案化);workbench useMemo 依赖 [plugins](CanvasPanel useMemo 稳定引用维持 per-mount 契约);聚合窄化 as 断言理由=运行期 source 作者以 canvas-kit defineXxx 声明、transport 仅擦除组件位。变异 M1 删注册循环 2 红/M2 删禁用门 1 红,md5 复原。3.2 注意:插件图层渲染消费 registry.layers。
 - 2.2:接缝落地(tool-kit 280 全绿=274+6)。执行者交付后静默(惯性),主上下文亲审:合并语义 {...extra, ...builtin}=重名内置优先(无 logger 以注释档案化);extraActions A 档六固定序后去重保序;extension deps.capability 显式注入时 extraActions 被忽略(覆盖优先,docblock 档案化)。变异 M1 合并序翻转 1 红/M2 去重删除 1 红,md5 复原,APPROVED。3.3 消费:makeCanvasSurfaceExtension({commandDeps:{extraCommands},extraActions})。

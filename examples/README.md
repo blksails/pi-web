@@ -1,6 +1,6 @@
 # pi-web 示例总索引
 
-本目录收录 19 个**可直接运行**的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
+本目录收录 20 个**可直接运行**的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC、Canvas 插件，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
 
 ## 怎么跑
 
@@ -51,6 +51,7 @@ pi-web ./examples/hello-agent
 | [surface-demo-agent](./surface-demo-agent/) | Agent 权威 surface（领域无关）：权威快照镜像 + 结构化命令转发（不过 LLM）+ 能力探针退化 | `createSurface` / `useSurface`、`wireSurfaceBridge`（ui-rpc 命令派发 + fd1 回流）、`SurfaceCommandPayload` | ★★★ |
 | [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `aigcExtension`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
 | [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`） | `canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam | ★★★ |
+| [canvas-plugin-stickers](./canvas-plugin-stickers/) | Canvas 插件双端范例：emoji 贴纸图层/工具（`createLayer` 点击置层）+ 风格迁移动作（前端声明 + agent 命令，命令通道执行）；插件作者 canonical 参照 | `defineCanvasLayer`/`defineCanvasTool`/`defineCanvasAction`、`canvasPlugins` 捆（`registerPluginBundles` 命名空间 + requires 拓扑校验）、`makeCanvasSurfaceExtension`（`extraCommands`/`extraActions`） | ★★★ |
 
 ### WebExtension（按 Tier 1–5）
 
