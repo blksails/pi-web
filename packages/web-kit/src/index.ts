@@ -16,6 +16,7 @@
 export {
   defineWebExtension,
   type WebExtension,
+  type CanvasPluginBundle,
   type SlotContribution,
   type SlotRenderProps,
   type RendererContributions,

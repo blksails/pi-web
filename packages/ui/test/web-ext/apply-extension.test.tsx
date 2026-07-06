@@ -127,6 +127,27 @@ describe("SlotHost", () => {
     expect(viaAlias).toHaveBeenCalledWith("hi");
   });
 
+  it("extensions 描述符数组经 SlotHost 领域中立透传给组件型 slot 贡献(task 2.1)", () => {
+    // 宿主把「当前已装载的全部扩展描述符」以领域中立 prop 注入;slot 组件按需自取消费,
+    // SlotHost 只搬运不解析(与 state/surface/syncSignal 既有注入同形)。
+    const Panel = ({
+      extensions,
+    }: {
+      extensions?: readonly WebExtension[];
+    }): React.JSX.Element => (
+      <div data-testid="descriptors">
+        {(extensions ?? []).map((e) => e.manifestId).join(",")}
+      </div>
+    );
+    const ext: WebExtension = {
+      manifestId: "acme",
+      slots: { panelRight: Panel as never },
+    };
+    render(<SlotHost ext={ext} slot="panelRight" extensions={[ext]} />);
+    // slot 组件收到宿主注入的描述符数组(单元素:当前宿主只装载单扩展)。
+    expect(screen.getByTestId("descriptors")).toHaveTextContent("acme");
+  });
+
   it("未声明插槽时回退默认", () => {
     const ext: WebExtension = { manifestId: "acme", slots: {} };
     render(<SlotHost ext={ext} slot="footer" fallback={<span data-testid="def">DEF</span>} />);

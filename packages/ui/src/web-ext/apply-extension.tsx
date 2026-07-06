@@ -74,6 +74,7 @@ function renderContribution(
   onSubmitPrompt: ((text: string) => void) | undefined,
   livePreviewImage: string | undefined,
   conversation: ConversationAccess | undefined,
+  extensions: readonly WebExtension[] | undefined,
 ): React.ReactNode {
   // 组件(函数)→ 实例化并传 extId(+ 可选 state / surface / 附件上传接入 / 轮末同步信号 / 会话能力);
   // 否则按 ReactNode 直接渲染。
@@ -92,6 +93,7 @@ function renderContribution(
       onSubmitPrompt?: (text: string) => void;
       livePreviewImage?: string;
       conversation?: ConversationAccess;
+      extensions?: readonly WebExtension[];
     }>;
     return (
       <Comp
@@ -105,6 +107,7 @@ function renderContribution(
         {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
         {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
         {...(conversation !== undefined ? { conversation } : {})}
+        {...(extensions !== undefined ? { extensions } : {})}
       />
     );
   }
@@ -151,6 +154,11 @@ export interface SlotHostProps {
    * text 与显式 attachmentIds,不解析、不改写内容。宿主提供,经 prop 透给 slot 组件。
    */
   readonly conversation?: ConversationAccess;
+  /**
+   * 宿主当前已装载的全部扩展描述符数组(领域中立搬运)。宿主不解析其内容;slot 组件按需自取
+   * 消费(与 state / surface / syncSignal 既有注入同形)。宿主提供,经 prop 透给 slot 组件。
+   */
+  readonly extensions?: readonly WebExtension[];
 }
 
 /** 渲染具名插槽:扩展贡献优先(error boundary 隔离),否则 fallback。 */
@@ -168,6 +176,7 @@ export function SlotHost({
   onSubmitPrompt,
   livePreviewImage,
   conversation,
+  extensions,
 }: SlotHostProps): React.ReactNode {
   const contribution = resolveSlot(ext, slot);
   if (contribution === undefined) return fallback ?? null;
@@ -188,6 +197,7 @@ export function SlotHost({
         onSubmitPrompt,
         livePreviewImage,
         conversation,
+        extensions,
       )}
     </ExtErrorBoundary>
   );

@@ -1715,6 +1715,10 @@ export function PiChat({
               // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
               // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
               onSubmitPrompt={(text: string) => doSend(text)}
+              // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
+              // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
+              // 就绪时此处天然扩展为完整数组,注入面无需再改。
+              extensions={extension !== undefined ? [extension] : []}
             />
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。

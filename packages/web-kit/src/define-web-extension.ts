@@ -77,6 +77,24 @@ export interface ContributionPoints {
   readonly keybindings?: readonly Keybinding[];
 }
 
+/**
+ * Canvas 插件捆(**最小结构镜像**)。
+ *
+ * canonical 家在 `@blksails/pi-web-canvas-kit`(那里的同名类型给 tools/layers/actions
+ * 以具体的 Canvas 插件形状)。web-kit 刻意不 import canvas-kit —— 二者无依赖边(web-kit
+ * 是 source 作者侧 SDK,canvas-kit 是画布领域内核),故此处只镜像作者声明时需要的结构:
+ * 稳定的 `id`/`requires` 标量键,加上组件位宽型 `unknown` 的插件槽。宿主领域中立地搬运整个
+ * 捆,真正的形状收敛在领域侧消费点(canvas-ui 聚合处对两个同名类型下双向可赋值断言,
+ * 防镜像与 canonical 漂移)。
+ */
+export interface CanvasPluginBundle {
+  readonly id: string;
+  readonly requires?: readonly string[];
+  readonly tools?: readonly unknown[];
+  readonly layers?: readonly unknown[];
+  readonly actions?: readonly unknown[];
+}
+
 /** 运行时 WebExtension 描述符(`.pi/web` 入口默认导出)。 */
 export interface WebExtension {
   readonly manifestId: string;
@@ -86,6 +104,12 @@ export interface WebExtension {
   readonly config?: WebExtConfig;
   readonly artifact?: ArtifactDeclaration;
   readonly capabilities?: readonly WebExtensionCapability[];
+  /**
+   * 该 source / 插件包为 Canvas 实例贡献的插件捆集合。与既有声明键(slots/renderers 等)
+   * 同形共存、互不干扰。宿主对其领域中立(只整体搬运,不解析内容);实际提取与前缀化聚合
+   * 发生在领域侧(canvas-ui)。
+   */
+  readonly canvasPlugins?: readonly CanvasPluginBundle[];
 }
 
 /**

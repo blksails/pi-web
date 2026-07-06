@@ -25,7 +25,7 @@
   - _Boundary: packages/canvas-kit(layers-plugin 编排)+ docs_
 
 - [ ] 2. Core:装载键与 agent 侧接缝
-- [ ] 2.1 (P) web-kit canvasPlugins 键 + 宿主中立注入(显式集成任务)
+- [x] 2.1 (P) web-kit canvasPlugins 键 + 宿主中立注入(显式集成任务)
   - web-kit define-web-extension.ts:WebExtension +canvasPlugins?: readonly CanvasPluginBundle[](同文件最小结构镜像类型,组件位宽型;不引 canvas-kit);出口联动(如有快照)
   - 宿主:pi-chat panelRight 的 SlotHost 注入领域中立 `extensions` prop(全部已装载扩展描述符数组;SlotHost 所在文件透传;命名/注释零 canvas 词——SES-H1 四线保持是硬线);其他 slot 未消费者零影响
   - 完成态:web-kit 既有测试零改动绿;ui 全量零改动绿(新 prop 可选);SES-H1/encapsulation 静态断言保持
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 2.1:键+中立注入落地(web-kit 41/ui 710/SES-H1 5 全绿)。审查 APPROVED:SES-H1 专项 diff 零新增 canvas 词、CanvasPluginBundle 未进 ui/src;既有 apply-extension.test.tsx 纯 additive +1 用例裁定 ACCEPT 档案化;宿主单扩展→[extension] 单元素数组(多扩展就绪天然扩展);FYI:pi-chat panelRight extensions 注入无直接单测,兜底=3.1 聚合测试。
 - 1.3:编排落地(287 全绿=275+12;出口 +registerPluginBundles/2 类型)。执行者交付后静默(惯性),主上下文亲审:diff 逐条合 design(前缀浅拷贝零 mutate/requires 全局名不前缀化/BUILTIN_OP_KINDS 档案化常量与 types.ts 注释同源人工同步/裁定 B 缺依赖工具进轨置灰+diagnostics kind:"plugin"/退订不清禁用集与诊断=append-only 档案化);registry +recordPluginDiagnostic;facade 直通由执行者补齐(registerLayer/disabled/record 全直通)。变异 M1 拓扑短路 2 红/M2 前缀破坏 5 红,md5 复原,APPROVED。3.1 消费:registerPluginBundles(k.registry, bundles, {namespace: extId})。
 - 1.2:hooks 落地(canvas-kit 275 全绿=272+门面 3)。执行者交付核心(HistoryStoreOptions.behaviors+OpBehaviorRegistry+抛错隔离,签名取最小 fn(op)——layers 上下文由注册方闭包捕获,避免 history→layers 耦合,与 design revert(op,layers) 的差异档案化)后再度静默(消息延迟惯性),facade 接线缺口由主控 manual-mode 补齐:collector 前移+createHistoryStore({behaviors,onBehaviorError→collector kind:"plugin"})+CanvasKernel.opBehaviors 暴露+index 类型出口(值键零变快照不动)。主上下文审查:diff 逐行+变异 M1 相位互换 8 红/M2 门面断链 2 红,md5 复原,APPROVED。3.2 消费:kernel.opBehaviors.registerOpBehavior(kind,{revert,apply})。
 - 1.1:契约+注册面落地(canvas-kit 260 全绿=247+13;快照 +defineCanvasLayer)。ToolDiagnostic.kind 四值联合在 kernel/tool-runtime.ts(类型本家,审查 ACCEPT 同 M2 先例);disabledPluginTools 骨架含内部 disabledReasons Map(1.3 填充+tooltip 消费);phantom 泛型 D 与 design 字面一致记档;getter 按引用返回=M1/M2 既有纪律一致 FYI。1.3 注意:CanvasPluginBundle/registerPluginBundles 未出口未实现。
