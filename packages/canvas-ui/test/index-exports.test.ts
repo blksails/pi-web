@@ -3,8 +3,8 @@
  *
  * 守护出口纪律(canvas-ui-m15 Req 2.1/2.2,tasks 2.1):
  * - src/index.ts 是唯一出口(styles.css 除外),可被解析;
- * - 出口面 = **8 迁入文件并集 + generate-actions(task 3.2)+ resolveToolRailTitle(task 3.4)**
- *   (42 值 + 27 类型)——
+ * - 出口面 = **8 迁入文件并集 + generate-actions(task 3.2)+ resolveToolRailTitle(task 3.4)
+ *   + plugin-aggregation(task 3.1)**(43 值 + 28 类型)——
  *   严格超集于迁移前 packages/ui/src/index.ts 的 canvas 导出块:深路径
  *   named import(decideGenerate/buildSurfaceOp/canvasViewStore 等)与设置
  *   面板消费(aigc-model-meta 三导出)均须从包入口可达;
@@ -49,6 +49,8 @@ import type {
   Annotation,
   UploadFn,
   UploadDataUriInput,
+  // plugin-aggregation(task 3.1)
+  NamespacedPluginBundles,
 } from "../src/index.js";
 
 describe("@blksails/pi-web-canvas-ui public exports", () => {
@@ -56,7 +58,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
     expect(canvasUi).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4),共 42 项,无内部件泄漏(快照)", () => {
+  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4) + collectCanvasPluginBundles(task 3.1),共 43 项,无内部件泄漏(快照)", () => {
     expect(Object.keys(canvasUi).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
@@ -77,6 +79,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "canvasOpenStore",
       "canvasViewStore",
       "clampRect",
+      "collectCanvasPluginBundles",
       "composeInpaintBack",
       "compositeByMask",
       "createMask",
@@ -103,7 +106,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
     ]);
   });
 
-  it("类型导出(27)自包根出口可达(编译期守护;运行时锚定形状抽样)", () => {
+  it("类型导出(28)自包根出口可达(编译期守护;运行时锚定形状抽样)", () => {
     // 上方 import type 清单本身即 27 类型的编译期可达性守护;
     // 运行时抽样锚定几个代表形状。
     const density: CanvasDensity = "waterfall";
@@ -142,9 +145,10 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       Annotation,
       UploadFn,
       UploadDataUriInput,
+      NamespacedPluginBundles,
     ];
-    const witnessArity: _Witness["length"] = 22;
-    expect(witnessArity).toBe(22);
+    const witnessArity: _Witness["length"] = 23;
+    expect(witnessArity).toBe(23);
   });
 
   it("并集超集锚:迁移前 ui index canvas 块之外的深路径消费面从入口可达", () => {

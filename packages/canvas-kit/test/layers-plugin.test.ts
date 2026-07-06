@@ -148,6 +148,32 @@ describe("createCanvasRegistry per-instance 隔离(图层/禁用面)", () => {
   });
 });
 
+// ── disabledPluginToolReason 只读查询(task 3.1 消费;裁定 B tooltip 显缺失项)──────
+// 禁用集(1.1)只出 ReadonlySet,原因存私有 disabledReasons Map 无读面。canvas-ui 装配层
+// (工具轨 tooltip 经 resolveToolRailTitle 显缺失项)需按 toolId 取回原因串;而 1.3 拓扑校验
+// 的诊断条目 toolId=**捆前缀化 id** 非工具 id、kind:"plugin",故 resolveToolRailTitle 按工具 id
+// 匹配 diagnostics 取不到 —— 补此纯只读 getter 作原因读面(接口既有骨架的语义补全,零诊断改动,
+// 既有 287 测试零影响)。
+describe("createCanvasRegistry.disabledPluginToolReason", () => {
+  it("登记后按 toolId 取回原因串", () => {
+    const r = createCanvasRegistry();
+    r.registerDisabledPluginTool("acme:sticker-tool", "缺少依赖: acme:sticker");
+    expect(r.disabledPluginToolReason("acme:sticker-tool")).toBe("缺少依赖: acme:sticker");
+  });
+
+  it("未登记的 toolId → undefined", () => {
+    const r = createCanvasRegistry();
+    expect(r.disabledPluginToolReason("nobody")).toBeUndefined();
+  });
+
+  it("重复登记以最新原因为准(与集合幂等并存)", () => {
+    const r = createCanvasRegistry();
+    r.registerDisabledPluginTool("acme:t", "r1");
+    r.registerDisabledPluginTool("acme:t", "r2");
+    expect(r.disabledPluginToolReason("acme:t")).toBe("r2");
+  });
+});
+
 // ── kernel-facade 直通(1.2/M2 先例;门面透传新成员)──────────────────────────
 
 describe("createCanvasKernel registry 直通图层/禁用面", () => {
@@ -157,5 +183,11 @@ describe("createCanvasKernel registry 直通图层/禁用面", () => {
     k.registry.registerDisabledPluginTool("x:tool", "missing x");
     expect(k.registry.layers.map((l) => l.type)).toEqual(["x"]);
     expect(k.registry.disabledPluginTools.has("x:tool")).toBe(true);
+  });
+
+  it("门面 disabledPluginToolReason 直通读回原因(task 3.1 tooltip 读面)", () => {
+    const k = createCanvasKernel({ getRect: () => null, getNaturalSize: () => null });
+    k.registry.registerDisabledPluginTool("x:tool", "缺少依赖: x:layer");
+    expect(k.registry.disabledPluginToolReason("x:tool")).toBe("缺少依赖: x:layer");
   });
 });

@@ -68,6 +68,7 @@ import {
   outpaintImage,
   outpaintMask,
   registerBuiltinTools,
+  registerPluginBundles,
   resolveAction,
   rotateImage,
   strokesToMask,
@@ -90,6 +91,7 @@ import {
   registerBuiltinGenerateActions,
   toGenerateDecision,
 } from "./generate-actions.js";
+import type { NamespacedPluginBundles } from "./plugin-aggregation.js";
 
 const DOMAIN = "canvas";
 const PROBE = `surface:${DOMAIN}`;
@@ -129,17 +131,24 @@ const BACKEND_FREE_TOOLS: ReadonlySet<string> = new Set([MOVE_TOOL_ID]);
 const toolAnchor = (id: string): string => id.replace(/^builtin:/, "");
 
 /**
- * 工具轨按钮 title 组装(Req 6.3/6.4)。工具因 runtime 回调抛错被禁用(在 `disabledTools`
- * 中)且 `diagnostics` 存在该工具**语义**条目(`kind` 缺省或 `"tool"`;`"action"` 条目属
- * 动作面,不入工具轨)时,在原 title 后拼首条诊断原因;否则逐字节维持原 title——门控禁用
- * (上传接缝/A 档未就绪)与无诊断均零变,不引入额外提示文本。纯函数,可独立单测。
+ * 工具轨按钮 title 组装(Req 6.3/6.4;裁定 B 插件缺依赖)。两条禁用来源:
+ * ① **插件缺依赖**(task 3.1;`pluginReason` 非空 = 该工具在 registry.disabledPluginTools):
+ *    直接以缺依赖原因串(含具体缺失项)拼 title —— 拓扑校验诊断按**捆 id** 归属,resolveToolRailTitle
+ *    按工具 id 匹配 diagnostics 取不到,故经 registry.disabledPluginToolReason 显式取回原因;
+ * ② **runtime 回调抛错禁用**(在 `disabledTools` 中且 `diagnostics` 存在该工具**语义**条目——
+ *    `kind` 缺省或 `"tool"`;`"action"` 条目属动作面不入工具轨):拼首条诊断原因。
+ * 否则逐字节维持原 title——门控禁用(上传接缝/A 档未就绪)与无诊断均零变。纯函数,可独立单测。
  */
 export function resolveToolRailTitle(
   baseTitle: string,
   toolId: string,
   disabledTools: readonly string[],
   diagnostics: readonly ToolDiagnostic[],
+  pluginReason?: string,
 ): string {
+  // ① 插件缺依赖恒禁用:原因来自禁用集读面(裁定 B;先于 runtime 诊断 —— 缺依赖工具从不激活,
+  //    不会另有回调抛错诊断,二者不并存)。
+  if (pluginReason !== undefined) return `${baseTitle}(已禁用:${pluginReason})`;
   if (!disabledTools.includes(toolId)) return baseTitle;
   const entry = diagnostics.find((d) => d.toolId === toolId && d.kind !== "action");
   return entry === undefined ? baseTitle : `${baseTitle}(已禁用:${entry.error})`;
@@ -477,6 +486,13 @@ export interface CanvasWorkbenchProps {
   readonly livePreviewImage?: string;
   /** 轮末 idle 边沿信号(宿主每轮结束 bump);作 livePreview 卡死自愈锚点。 */
   readonly syncSignal?: unknown;
+  /**
+   * 外部插件捆(按来源命名空间分组;CanvasPanel 经 collectCanvasPluginBundles 从已装载扩展
+   * 聚合而来,task 3.1)。kernel 装配期在内置工具/动作注册后逐来源 registerPluginBundles
+   * (`<namespace>:` 前缀化 + requires 拓扑校验);缺依赖捆内工具进轨但恒禁用(裁定 B)。
+   * 缺省(无外部插件)→ 工具轨仅内置,行为逐点与现状一致(Req 4.3)。
+   */
+  readonly plugins?: readonly NamespacedPluginBundles[];
 }
 
 export function CanvasWorkbench({
@@ -496,6 +512,7 @@ export function CanvasWorkbench({
   onSubmitPrompt,
   livePreviewImage,
   syncSignal,
+  plugins,
 }: CanvasWorkbenchProps): React.JSX.Element {
   const available = surface !== undefined && surface.hasCommand(PROBE);
   // 对话桥门面(契约 §4.5):三处提交点经 bridge.submitOp 分道(prompt 优先经会话能力/别名),
@@ -569,9 +586,17 @@ export function CanvasWorkbench({
     // 六内置生成动作同位注册进同一 per-instance 注册表(task 3.2);退订随 kernel(per-mount,
     // 卸载即弃)生命周期,与 registerBuiltinTools 的既有装配形态一致,无需捕获 unregister。
     registerBuiltinGenerateActions(k.registry);
+    // 外部插件捆(task 3.1):内置注册后逐来源命名空间 registerPluginBundles(前缀化 + requires
+    // 拓扑校验;缺依赖捆内工具进轨恒禁用,裁定 B)。退订随 kernel 生命周期,同内置装配形态。
+    // 装配同步于首帧前(与内置同位),故工具轨首渲即含插件工具(禁用态一并就位)。
+    for (const { namespace, bundles } of plugins ?? []) {
+      registerPluginBundles(k.registry, bundles, { namespace });
+    }
     k.tools.setActiveTool(MOVE_TOOL_ID);
     return k;
-  }, []);
+    // plugins 来自 source 声明,mount 时即就位且经 CanvasPanel useMemo 稳定引用;身份变化
+    // (罕见:扩展集变更)才重建 kernel(新画布)——per-mount 契约由稳定引用维持。
+  }, [plugins]);
 
   // 工具通道快照(激活工具/draft/禁用)与 prefs 快照(选项条双向绑定/扩图边)。
   const toolsSnap = React.useSyncExternalStore(
@@ -1206,11 +1231,15 @@ export function CanvasWorkbench({
             t.id,
             toolsSnap.disabledTools,
             kernel.registry.diagnostics,
+            // 插件缺依赖恒禁用时取回原因(裁定 B;非插件工具 → undefined,title 逐字节零变)。
+            kernel.registry.disabledPluginToolReason(t.id),
           )}
           data-canvas-tool={toolAnchor(t.id)}
           disabled={
             (!BACKEND_FREE_TOOLS.has(t.id) && maskToolsDisabled) ||
-            toolsSnap.disabledTools.includes(t.id)
+            toolsSnap.disabledTools.includes(t.id) ||
+            // 插件缺依赖 → 恒禁用(裁定 B;工具进轨但置灰,tooltip 显缺失项)。
+            kernel.registry.disabledPluginTools.has(t.id)
           }
           onClick={() => kernel.tools.setActiveTool(t.id)}
         >

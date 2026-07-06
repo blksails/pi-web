@@ -14,10 +14,11 @@
  * 两个 slot 是不同子树,经 module-level `canvasOpenStore` 联动(同一 app bundle 内共享)。
  */
 import * as React from "react";
-import type { WebExtSurfaceAccess, ConversationAccess } from "@blksails/pi-web-kit";
+import type { WebExtSurfaceAccess, ConversationAccess, WebExtension } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
+import { collectCanvasPluginBundles } from "./plugin-aggregation.js";
 import { useCanvasOpen } from "./use-canvas-view.js";
 import type { UploadFn } from "@blksails/pi-web-canvas-kit";
 
@@ -83,6 +84,12 @@ export interface CanvasPanelProps {
   readonly onSubmitPrompt?: (text: string) => void;
   /** 宿主转发的当前轮流式图像预览(由糊变清);配合 surface `livePreview.stage` 显示渐进图。 */
   readonly livePreviewImage?: string;
+  /**
+   * 宿主中立注入的全部已装载扩展描述符(SlotHost 领域中立搬运;task 3.1,Req 4.1/4.2/5.1)。
+   * CanvasPanel 经 collectCanvasPluginBundles 领域聚合出 canvas 插件捆(附 manifestId 命名空间)
+   * 透传工作台。缺省/无声明 canvasPlugins → 零插件路径,行为与现状逐点一致(Req 4.3/5.3)。
+   */
+  readonly extensions?: readonly WebExtension[];
 }
 
 /** panelRight 画廊 / 工作台面板(门控关或未开 → null)。 */
@@ -98,10 +105,14 @@ export function CanvasPanel({
   conversation,
   onSubmitPrompt,
   livePreviewImage,
+  extensions,
 }: CanvasPanelProps): React.JSX.Element | null {
   const on = enabled ?? true;
   const { open, setOpen } = useCanvasOpen();
   const [openId, setOpenId] = React.useState<string | null>(null);
+  // 领域聚合:已装载扩展 → canvas 插件捆(附 manifestId 命名空间)。useMemo 稳定引用,使
+  // 下游工作台 kernel 装配(registerPluginBundles)不因每次渲染的新数组重建(per-mount 契约)。
+  const plugins = React.useMemo(() => collectCanvasPluginBundles(extensions), [extensions]);
 
   // 「点 chat 生成图 → 进 Canvas 编辑」:对话流工具卡的图带通用 `data-att-id`(见 pi-tool-part),
   // 这里挂 document 级**委托监听**——命中即开面板并把工作台切到该 att_id(此时面板可能仍关闭,故
@@ -153,6 +164,7 @@ export function CanvasPanel({
           {...(onSubmitPrompt !== undefined ? { onSubmitPrompt } : {})}
           {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
           {...(syncSignal !== undefined ? { syncSignal } : {})}
+          {...(plugins.length > 0 ? { plugins } : {})}
         />
       ) : (
         <CanvasGallery

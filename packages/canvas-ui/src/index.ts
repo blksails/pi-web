@@ -55,6 +55,11 @@ export {
   registerBuiltinGenerateActions,
 } from "./generate-actions.js";
 
+// plugin-aggregation — 宿主中立扩展描述符 → canvas 插件捆聚合纯函数(task 3.1;
+// CanvasPanel extensions → workbench plugins 的领域聚合点)。
+export { collectCanvasPluginBundles } from "./plugin-aggregation.js";
+export type { NamespacedPluginBundles } from "./plugin-aggregation.js";
+
 // lineage-view — 血缘树视图。
 export { LineageView, buildLineageTree } from "./lineage-view.js";
 export type { LineageViewProps, LineageNode } from "./lineage-view.js";

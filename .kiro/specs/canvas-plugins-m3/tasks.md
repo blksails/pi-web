@@ -39,7 +39,7 @@
   - _Boundary: packages/tool-kit(canvas commands/extension/capability)_
 
 - [ ] 3. Core:前端消费、范例与 e2e 资产
-- [ ] 3.1 canvas-ui 聚合与插件注册接线
+- [x] 3.1 canvas-ui 聚合与插件注册接线
   - CanvasPanelProps +extensions?;collectCanvasPluginBundles 纯函数(提取各 ext.canvasPlugins+extId 命名空间;无声明→空=零影响);CanvasWorkbench +plugins? prop,kernel useMemo 内 builtin 后 registerPluginBundles 逐扩展;工具轨 disabled 判定并入 registry.disabledPluginTools,tooltip 经 resolveToolRailTitle 显缺失项;类型双向可赋值断言(web-kit↔canvas-kit CanvasPluginBundle,M2 先例形态);车道② 覆盖=集成测试以已装包 webext 描述符(webext 装载 fixture 手法)进聚合断言生效/验签失败不进列表不崩
   - 测试:plugin-aggregation.test.ts(canvas-ui)+ workbench-plugin-disabled.test.tsx(ui 新文件:置灰+tooltip 缺失项/齐备正常)
   - 完成态:canvas-ui+ui 全量绿(既有零改动);快照联动
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 3.1:聚合+接线落地(kit 291/cui 54/ui 713 全绿)。执行者交付后静默(惯性),主上下文亲审 APPROVED:canvas-kit 微调=+disabledPluginToolReason 只读读面(捆 id 诊断无法按工具 id 匹配的档案化理由;facade 直通+additive 测试;registerDisabledPluginTool 原因表最新为准与集合幂等并存);resolveToolRailTitle +可选 pluginReason 第 5 参(向后兼容,插件禁用与 runtime 禁用不并存档案化);workbench useMemo 依赖 [plugins](CanvasPanel useMemo 稳定引用维持 per-mount 契约);聚合窄化 as 断言理由=运行期 source 作者以 canvas-kit defineXxx 声明、transport 仅擦除组件位。变异 M1 删注册循环 2 红/M2 删禁用门 1 红,md5 复原。3.2 注意:插件图层渲染消费 registry.layers。
 - 2.2:接缝落地(tool-kit 280 全绿=274+6)。执行者交付后静默(惯性),主上下文亲审:合并语义 {...extra, ...builtin}=重名内置优先(无 logger 以注释档案化);extraActions A 档六固定序后去重保序;extension deps.capability 显式注入时 extraActions 被忽略(覆盖优先,docblock 档案化)。变异 M1 合并序翻转 1 红/M2 去重删除 1 红,md5 复原,APPROVED。3.3 消费:makeCanvasSurfaceExtension({commandDeps:{extraCommands},extraActions})。
 - 2.1:键+中立注入落地(web-kit 41/ui 710/SES-H1 5 全绿)。审查 APPROVED:SES-H1 专项 diff 零新增 canvas 词、CanvasPluginBundle 未进 ui/src;既有 apply-extension.test.tsx 纯 additive +1 用例裁定 ACCEPT 档案化;宿主单扩展→[extension] 单元素数组(多扩展就绪天然扩展);FYI:pi-chat panelRight extensions 注入无直接单测,兜底=3.1 聚合测试。
 - 1.3:编排落地(287 全绿=275+12;出口 +registerPluginBundles/2 类型)。执行者交付后静默(惯性),主上下文亲审:diff 逐条合 design(前缀浅拷贝零 mutate/requires 全局名不前缀化/BUILTIN_OP_KINDS 档案化常量与 types.ts 注释同源人工同步/裁定 B 缺依赖工具进轨置灰+diagnostics kind:"plugin"/退订不清禁用集与诊断=append-only 档案化);registry +recordPluginDiagnostic;facade 直通由执行者补齐(registerLayer/disabled/record 全直通)。变异 M1 拓扑短路 2 红/M2 前缀破坏 5 红,md5 复原,APPROVED。3.1 消费:registerPluginBundles(k.registry, bundles, {namespace: extId})。

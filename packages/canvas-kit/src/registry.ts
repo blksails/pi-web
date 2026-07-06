@@ -187,6 +187,13 @@ export interface CanvasRegistry {
    */
   registerDisabledPluginTool(toolId: string, reason: string): void;
   /**
+   * 按 toolId 取回禁用原因串(task 3.1 消费;裁定 B tooltip 显缺失项)。禁用集(disabledPluginTools)
+   * 只出 ReadonlySet,原因存内部表无读面;而 1.3 拓扑校验的 diagnostics 条目 toolId=**捆前缀化 id**
+   * 非工具 id、kind:"plugin",故 canvas-ui 工具轨按工具 id 匹配 diagnostics 取不到 —— 此纯只读 getter
+   * 是原因读面(接口既有骨架的语义补全,零诊断改动)。未登记 → undefined。
+   */
+  disabledPluginToolReason(toolId: string): string | undefined;
+  /**
    * 记录一条插件捆拓扑校验诊断(kind:"plugin";task 1.3 registerPluginBundles 对 requires
    * 未满足的捆调用)。toolId 承载捆前缀化 id(诊断归属),error 含缺失依赖项。复用同一收集器
    * (与工具/动作/图层冲突条目同栈,tool-runtime.ts ToolDiagnostic.kind 联合已档案化 "plugin")。
@@ -282,6 +289,7 @@ export function createCanvasRegistry(options: CanvasRegistryOptions = {}): Canva
       if (disabledPluginTools.has(toolId)) return; // 集合幂等
       disabledPluginTools = new Set(disabledPluginTools).add(toolId);
     },
+    disabledPluginToolReason: (toolId) => disabledReasons.get(toolId),
     recordPluginDiagnostic: (bundleId, error) => {
       // 复用共享收集器:与 registerTool/Action/Layer 冲突条目同栈,kind 区分为 "plugin"
       // (task 1.3 拓扑校验;条目不带 phase —— 发生在装配期而非手势中)。
