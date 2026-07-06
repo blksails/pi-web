@@ -293,7 +293,9 @@ export interface CanvasCapability {
 | ③ 运行时(agent 命令) | capability.actions 驱动(纯 command 动作可零 UI 代码出现在动作链) | 会话 | agent 只在后端加 handler,前端按钮自动长出 |
 
 注册表 per Canvas 实例(Tier2 renderer 同款命名空间语义):`<extId>:<pluginId>` 前缀,
-同 id 后装覆盖先装并记 diagnostics。车道 ② 走 webext 全套验签(插件是浏览器代码)。
+同 id 拒绝后注册者(先注册者保持)并记 diagnostics(M3 spec 修正:原「后装覆盖先装」表述
+与 M1/M2 工具/动作注册的拒绝语义不一致,拍板②改为拒绝语义,文档与实现归位)。车道 ②
+走 webext 全套验签(插件是浏览器代码)。
 
 ---
 

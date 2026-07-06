@@ -186,6 +186,7 @@ export function createCanvasKernel(env: CanvasKernelEnv): CanvasKernel {
       return inner.layers;
     },
     registerDisabledPluginTool: (toolId, reason) => inner.registerDisabledPluginTool(toolId, reason),
+    recordPluginDiagnostic: (bundleId, error) => inner.recordPluginDiagnostic(bundleId, error),
     get disabledPluginTools() {
       return inner.disabledPluginTools;
     },

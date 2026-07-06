@@ -15,7 +15,7 @@
   - 完成态:canvas-kit 全量绿
   - _Requirements: 1.6_
   - _Boundary: packages/canvas-kit(kernel/history+注册面)_
-- [ ] 1.3 插件捆注册编排(命名空间+拓扑校验)+ 文档修正
+- [x] 1.3 插件捆注册编排(命名空间+拓扑校验)+ 文档修正
   - registerPluginBundles(registry,bundles,{namespace}):id/type 前缀化 \<extId\>:→layers 先注册→可用依赖集(含内置 kind/type)→requires 校验,缺失=捆内 tools 注册为恒禁用态(填充 1.1 的 disabledPluginTools)+diagnostics(kind:"plugin" 含缺失项)、actions 不注册、layers 不生效;齐备=正常注册;聚合退订;同 id 拒绝语义复用
   - docs/canvas-extension-mechanism-design.md §5「同 id 后装覆盖先装」句修正为拒绝语义(拍板②,实现处归位)
   - 单测:前缀化/拓扑校验禁用/齐备正常/退订/诊断内容,变异证据
@@ -77,6 +77,7 @@
 
 ## Implementation Notes
 
+- 1.3:编排落地(287 全绿=275+12;出口 +registerPluginBundles/2 类型)。执行者交付后静默(惯性),主上下文亲审:diff 逐条合 design(前缀浅拷贝零 mutate/requires 全局名不前缀化/BUILTIN_OP_KINDS 档案化常量与 types.ts 注释同源人工同步/裁定 B 缺依赖工具进轨置灰+diagnostics kind:"plugin"/退订不清禁用集与诊断=append-only 档案化);registry +recordPluginDiagnostic;facade 直通由执行者补齐(registerLayer/disabled/record 全直通)。变异 M1 拓扑短路 2 红/M2 前缀破坏 5 红,md5 复原,APPROVED。3.1 消费:registerPluginBundles(k.registry, bundles, {namespace: extId})。
 - 1.2:hooks 落地(canvas-kit 275 全绿=272+门面 3)。执行者交付核心(HistoryStoreOptions.behaviors+OpBehaviorRegistry+抛错隔离,签名取最小 fn(op)——layers 上下文由注册方闭包捕获,避免 history→layers 耦合,与 design revert(op,layers) 的差异档案化)后再度静默(消息延迟惯性),facade 接线缺口由主控 manual-mode 补齐:collector 前移+createHistoryStore({behaviors,onBehaviorError→collector kind:"plugin"})+CanvasKernel.opBehaviors 暴露+index 类型出口(值键零变快照不动)。主上下文审查:diff 逐行+变异 M1 相位互换 8 红/M2 门面断链 2 红,md5 复原,APPROVED。3.2 消费:kernel.opBehaviors.registerOpBehavior(kind,{revert,apply})。
 - 1.1:契约+注册面落地(canvas-kit 260 全绿=247+13;快照 +defineCanvasLayer)。ToolDiagnostic.kind 四值联合在 kernel/tool-runtime.ts(类型本家,审查 ACCEPT 同 M2 先例);disabledPluginTools 骨架含内部 disabledReasons Map(1.3 填充+tooltip 消费);phantom 泛型 D 与 design 字面一致记档;getter 按引用返回=M1/M2 既有纪律一致 FYI。1.3 注意:CanvasPluginBundle/registerPluginBundles 未出口未实现。
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-plugins-m3`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=560af8b)。变异复原只用 Edit 精确还原+md5 核对,严禁 git checkout/restore。子代理报告可能因消息路由延迟 30-60 分钟——看门狗先查 mtime/足迹再判定失联,重派前必须确认前任终止(M2 教训);等不起时主上下文亲审(自做变异保独立性)。并发负载假阳性判别链沿先例。

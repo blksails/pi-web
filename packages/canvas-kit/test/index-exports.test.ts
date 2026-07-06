@@ -19,7 +19,7 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
     expect(canvasKit).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项 + actions 契约 2 项 + 图层契约 1 项 + builtin 汇总 1 项 + prefs 键契约 4 项 + 装配门面 1 项,无 kernel 内部件泄漏(task 1.1/1.2 快照)", () => {
+  it("出口纪律:包根值导出=bitmap-io 19 项 + registry 装置 2 项 + actions 契约 2 项 + 图层契约 2 项 + builtin 汇总 1 项 + prefs 键契约 4 项 + 装配门面 1 项,无 kernel 内部件泄漏(task 1.1/1.2/1.3 快照)", () => {
     expect(Object.keys(canvasKit).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
@@ -46,6 +46,7 @@ describe("@blksails/pi-web-canvas-kit public exports", () => {
       "outpaintMask",
       "parseDataUri",
       "registerBuiltinTools",
+      "registerPluginBundles",
       "resolveAction",
       "rotateImage",
       "rotatedSize",

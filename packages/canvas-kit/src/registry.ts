@@ -186,6 +186,12 @@ export interface CanvasRegistry {
    * 幂等(重复登记同 id 无副作用);reason 承载禁用原因供 1.3 诊断/tooltip 消费。
    */
   registerDisabledPluginTool(toolId: string, reason: string): void;
+  /**
+   * 记录一条插件捆拓扑校验诊断(kind:"plugin";task 1.3 registerPluginBundles 对 requires
+   * 未满足的捆调用)。toolId 承载捆前缀化 id(诊断归属),error 含缺失依赖项。复用同一收集器
+   * (与工具/动作/图层冲突条目同栈,tool-runtime.ts ToolDiagnostic.kind 联合已档案化 "plugin")。
+   */
+  recordPluginDiagnostic(bundleId: string, error: string): void;
   /** 插件错误诊断(6.4;共享收集器时含 runtime 错误边界条目与工具/动作/图层注册冲突条目)。 */
   readonly diagnostics: readonly ToolDiagnostic[];
 }
@@ -275,6 +281,11 @@ export function createCanvasRegistry(options: CanvasRegistryOptions = {}): Canva
       disabledReasons.set(toolId, reason); // 原因表:重复登记以最新原因为准
       if (disabledPluginTools.has(toolId)) return; // 集合幂等
       disabledPluginTools = new Set(disabledPluginTools).add(toolId);
+    },
+    recordPluginDiagnostic: (bundleId, error) => {
+      // 复用共享收集器:与 registerTool/Action/Layer 冲突条目同栈,kind 区分为 "plugin"
+      // (task 1.3 拓扑校验;条目不带 phase —— 发生在装配期而非手势中)。
+      collector.add({ toolId: bundleId, error, at: Date.now(), kind: "plugin" });
     },
     get tools() {
       return tools;
