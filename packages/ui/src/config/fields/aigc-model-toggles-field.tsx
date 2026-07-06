@@ -11,6 +11,7 @@
 import * as React from "react";
 import type { FieldProps } from "../field-registry.js";
 import { FieldShell, errorAt } from "./field-shell.js";
+/* ses-h1-exempt-next-line: config 域对 canvas-ui 的合法跨包消费(设置面板字段;sanity F3) */
 import { ProviderBadge, displayNameOf } from "../../canvas/aigc-model-meta.js";
 
 interface CatalogEntry {

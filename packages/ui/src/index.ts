@@ -182,6 +182,7 @@ export {
 // i18n(轻量自研 i18n 运行时:零第三方依赖,isomorphic)
 export * from "./i18n/index.js";
 
+/* ses-h1-exempt: canvas 兼容导出(一个大版本) */
 // aigc-canvas(domain="canvas" 的 AAS 实例 UI:画廊 + 二创工作台;门控 NEXT_PUBLIC_PI_WEB_CANVAS)
 export { CanvasGallery, type CanvasGalleryProps } from "./canvas/canvas-gallery.js";
 export { CanvasWorkbench, type CanvasWorkbenchProps } from "./canvas/canvas-workbench.js";
@@ -205,3 +206,4 @@ export {
   type CanvasViewState,
 } from "./canvas/use-canvas-view.js";
 export * from "./canvas/client-image-ops.js";
+/* ses-h1-exempt-end */

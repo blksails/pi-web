@@ -257,8 +257,8 @@ function dataImageFromToolOutput(output: unknown): string | undefined {
 
 /**
  * 宿主转发:从**最近一条 assistant 消息**里抽正在流式(`preliminary`)的 AIGC 工具(image_generation/
- * image_edit)的内联 data:image 预览。图已随对话流到达浏览器(经 pi 稳健 RPC,非状态桥),故 Canvas
- * 面板可零成本复用这张「由糊变清」渐进图,规避 surface 大帧经 fd1 损坏的问题(见 canvas schema)。
+ * image_edit)的内联 data:image 预览。图已随对话流到达浏览器(经 pi 稳健 RPC,非状态桥),故画布
+ * 面板可零成本复用这张「由糊变清」渐进图,规避 surface 大帧经 fd1 损坏的问题(见画布域 schema)。
  */
 function latestToolImagePreview(messages: readonly UIMessage[]): string | undefined {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -489,7 +489,7 @@ export function PiChat({
       },
   );
   const { messages, sendMessage, status, stop, error } = chat;
-  // 宿主转发给 panelRight slot(如 Canvas)的最新流式 AIGC 图像预览(由糊变清);仅当前轮 preliminary。
+  // 宿主转发给 panelRight slot(如画布面板)的最新流式 AIGC 图像预览(由糊变清);仅当前轮 preliminary。
   const livePreviewImage = React.useMemo(
     () => latestToolImagePreview(messages),
     [messages],
@@ -653,7 +653,7 @@ export function PiChat({
   // 与上方 stats「每轮结束重拉」同构,但不受 showSessionStats 门控:无论是否展示用量区都广播。
   const turnEndWasBusyRef = React.useRef<boolean>(false);
   // panelRight slot 的轮末同步信号:每轮 idle 边沿递增,经 SlotHost 透给 slot 组件。
-  // Canvas 画廊据此在 LLM 生图后 `run("sync")` 重建物化视图(否则 tool-output 图要等下次
+  // 画布画廊据此在 LLM 生图后 `run("sync")` 重建物化视图(否则 tool-output 图要等下次
   // 会话重连 hydrate 才进画廊——生图当场画廊不刷新)。领域无关:宿主只广播"一轮结束了"。
   const [panelSyncSignal, setPanelSyncSignal] = React.useState<number>(0);
   React.useEffect(() => {
@@ -703,7 +703,7 @@ export function PiChat({
     [],
   );
   // panelRight slot 是唯一被注入 `surface`(WebExtSurfaceAccess)的槽(launcherRail 拿不到 surface,
-  // 见 canvas web.config 注释)。agent-authoritative-surface / aigc-canvas 的 surface 命令在**空闲期**
+  // 见画布域 web.config 注释)。agent-authoritative-surface / AIGC 画布域的 surface 命令在**空闲期**
   // 触发,其权威快照回流(control:"state",key=surface:<domain>)只能由空闲控制流承载并应用进
   // ControlStore.states——故声明 panelRight 的 webext 须在空闲期常开该流,否则命令后的快照更新丢失
   // (计数停初值 / 画廊新图不进廊)。与 contributions/artifact 同理需要持久下行通道;由 `!isBusy`

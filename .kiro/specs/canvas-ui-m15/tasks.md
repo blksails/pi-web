@@ -34,8 +34,8 @@
   - _Boundary: packages/ui 转发层(canvas 侧)+ app 样式装配_
   - _Depends: 2.1, 1.2_
 
-- [ ] 3. 中立线固化
-- [ ] 3.1 SES-H1 与封装静态断言
+- [x] 3. 中立线固化
+- [x] 3.1 SES-H1 与封装静态断言
   - canvas-ui test/encapsulation.test.ts:①canvas-ui 零 pi-web-ui import;②canvas-ui 零 canvas-kit 深路径;③primitives 零 @blksails import;④SES-H1 线(跨包 fs 读 packages/ui/src:白名单=src/canvas/ 目录;豁免锚 `/* ses-h1-exempt: … */` 全仓仅两处=index.ts canvas 导出块首尾 + toggles-field import 行,断言同时锚定**锚总数=2** 防无档扩散;其余含 styles.css 零领域词表命中,词表照 design)
   - 配合改动:词表 grep 驱动改写白名单外**全部**注释命中(基线=pi-chat.tsx ×5 / apply-extension.tsx ×4 / pi-tool-part.tsx ×1,不锚行号);index.ts canvas 导出块首尾插豁免锚(唯一 index.ts 改动,纯注释);toggles-field import 行插豁免锚
   - 完成态:静态断言全绿且每条有变异证据(注入违规即红,Edit 精确还原);ui 全量测试仍零改动绿
@@ -58,3 +58,4 @@
 - 1.2:7 转发文件落地(AST 级导出名集对照 7/7;变异红点落在三个真实消费者=aigc-quick-settings/canvas-workbench/enum-field,证明链路真实)。ui vitest alias 已含 primitives 条目;2.1/2.2 照抄形状加 canvas-ui。
 - 2.1:canvas-ui 落地(出口并集=39 值+27 类型=66,13 个深路径命脉载荷全在;peer react ^19 对齐 primitives 审查裁定可接受——workspace react=19.2.7,ui 传递下限 1.2 起已收窄;styles.css 两段 verbatim,ui 本体留待 2.2 删)。2.2 转发清单=各文件 HEAD 导出全集,与并集口径一致。
 - 2.2:8 转发文件落地(AST 8/8 守恒;client-image-ops 链路 ui→canvas-ui→canvas-kit);样式两段随迁 + app @import;**根 package.json +canvas-ui 依赖**(审查 ACCEPT:app 无自有 package.json 随根解析,根依赖是 @import 链接来源,同 pi-web-ui 先例,design 已补记档)。过程事故:执行者变异复原误用 git checkout 取到 HEAD 原件,已重写并全量复验(审查亲核现状为真转发层)——重申禁 git checkout 纪律。
+- 3.1:四断言+豁免锚协议落地(canvas-ui 9/9;④b 反走私变异证明锚计数线有效)。计划外 7 处 @deprecated 注释改写("canvas-ui-m15"→"m15 迁移",1.2/2.2 自引入的词表命中,审查裁定属 Req 4.1 射程)。引号锚定收窄+父控制器补反引号加固;单行锚 ses-h1-exempt-next-line 形态已记 design。

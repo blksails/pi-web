@@ -87,7 +87,7 @@ packages/ui/src/index.ts(转发链保持;**唯一例外**=canvas 兼容导出块
 - **白名单**:`packages/ui/src/canvas/`(转发模块目录本体)。
 - **判据**:packages/ui/src 白名单外全部文件(含 styles.css)零词表命中;index.ts 的 canvas 导出块 import 自 `./canvas/*.js` 属白名单目录消费,但 index.ts 自身含 `Canvas*` 导出标识符——**裁定**:index.ts 的 canvas 兼容导出块以「块级豁免注释锚」标注(静态断言识别 `/* ses-h1-exempt: canvas 兼容导出(一个大版本) */` 区间),豁免区间外零命中。豁免锚本身是判据的一部分,防无档扩散。
 - 注释改写范围=**词表 grep 驱动的白名单外全部命中**(基线:pi-chat.tsx ×5、apply-extension.tsx ×4、pi-tool-part.tsx ×1——sanity F2 修正 design 漏账;不锚行号,三文件均有并发 WIP 行号必漂),代码标识符本就无 canvas 词。
-- **设置面板字段豁免(sanity F3)**:aigc-model-toggles-field 的 `../../canvas/aigc-model-meta.js` import 说明符本身命中词表且改直连同样含 canvas 词(无解于改线)——该 import 行套用与 index.ts 相同的 `ses-h1-exempt` 块级豁免锚(锚文案记档:config 域对 canvas-ui 的合法跨包消费)。豁免锚全仓仅两处(index.ts 块 + toggles-field import 行),静态断言同时锚定「豁免锚总数=2」防无档扩散。
+- **设置面板字段豁免(sanity F3)**:aigc-model-toggles-field 的 `../../canvas/aigc-model-meta.js` import 说明符本身命中词表且改直连同样含 canvas 词(无解于改线)——该 import 行套用与 index.ts 相同的 `ses-h1-exempt` 块级豁免锚(锚文案记档:config 域对 canvas-ui 的合法跨包消费)。豁免锚全仓仅两处(index.ts 块级开/闭锚 + toggles-field 的单行锚 `ses-h1-exempt-next-line:`——单行形仅豁免下一行,比块形更紧,3.1 审查 ACCEPT 记档),静态断言同时锚定「豁免锚总数=2」防无档扩散。
 
 ## Error Handling
 

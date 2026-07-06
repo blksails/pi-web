@@ -1,5 +1,5 @@
 /**
- * @deprecated 转发兼容层(canvas-ui-m15 · Req 1.3/3.4)——保留**一个大版本**。
+ * @deprecated 转发兼容层(m15 迁移 · Req 1.3/3.4)——保留**一个大版本**。
  *
  * Button 已整体下沉至 `@blksails/pi-web-primitives`,本模块只做**显式清单转发**:
  * 原模块 HEAD 版导出全集(2 值 + 1 类型)逐一对应,深路径 import

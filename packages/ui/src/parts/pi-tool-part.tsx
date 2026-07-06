@@ -375,7 +375,7 @@ const IMG_MD_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
 /**
  * 从附件签名 URL(`/api/attachments/att_xxx/raw?…`)抽 `att_` id。通用元数据(不耦合任何域):
- * 落在工具图 `data-att-id` 上,供 Canvas 等域**委托监听**据此开工作台;data URI(流式 partial)无 id。
+ * 落在工具图 `data-att-id` 上,供画布等域**委托监听**据此开工作台;data URI(流式 partial)无 id。
  */
 function attIdFromUrl(url: string): string | undefined {
   return /\/attachments\/(att_[^/?#]+)/.exec(url)?.[1];

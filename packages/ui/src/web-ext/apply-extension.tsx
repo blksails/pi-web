@@ -54,7 +54,7 @@ export function resolveSlot(
 
 /**
  * 通用附件上传接入(领域无关,像 state / surface 一样由宿主经 prop 注入)。签名对齐 react
- * `uploadAttachment` / `useAttachments`;slot 组件(如 Canvas B 档)据此把客户端产物落 `att_`。
+ * `uploadAttachment` / `useAttachments`;slot 组件(如画布 B 档)据此把客户端产物落 `att_`。
  */
 export type SlotUploadFn = (
   baseUrl: string,
@@ -129,11 +129,11 @@ export interface SlotHostProps {
   readonly sessionId?: string;
   /**
    * 轮末 idle 边沿信号(值变化即触发 slot 组件重同步);宿主在每轮结束 bump。
-   * Canvas 面板据此在 LLM 生图后 `run("sync")` 重建物化视图,否则画廊要等下次重连才 hydrate。
+   * 画布面板据此在 LLM 生图后 `run("sync")` 重建物化视图,否则画廊要等下次重连才 hydrate。
    */
   readonly syncSignal?: unknown;
   /**
-   * 经宿主 Prompt 通道发送一条用户消息(进对话流/LLM;canvas 生成走对话即用此接缝,
+   * 经宿主 Prompt 通道发送一条用户消息(进对话流/LLM;画布生成走对话即用此接缝,
    * 由 LLM 调 image_edit 等工具执行 —— 操作天然回流对话历史)。
    *
    * @deprecated 使用 `conversation.submitUserMessage`;此裸回调为过渡别名,行为与之完全一致,
@@ -141,7 +141,7 @@ export interface SlotHostProps {
    */
   readonly onSubmitPrompt?: (text: string) => void;
   /**
-   * 宿主转发的当前轮流式图像预览(data URI/URL);图已随对话流到浏览器,slot(如 Canvas)零成本
+   * 宿主转发的当前轮流式图像预览(data URI/URL);图已随对话流到浏览器,slot(如画布面板)零成本
    * 复用做「由糊变清」渐进展示,规避 surface 大帧经 fd1 损坏。
    */
   readonly livePreviewImage?: string;
