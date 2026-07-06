@@ -57,12 +57,45 @@ export const LivePreviewSchema = z.object({
 });
 export type LivePreview = z.infer<typeof LivePreviewSchema>;
 
+// ── 能力清单(agent 权威下发,canvas-actions-m2 · Req 4.1/4.7)──────────────────────
+
+/** 单个模型能力条目(`sizes` 缺省 = 不收窄,全局 sizes 全可用)。 */
+export const CanvasCapabilityModelSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  sizes: z.array(z.string()).optional(),
+});
+export type CanvasCapabilityModel = z.infer<typeof CanvasCapabilityModelSchema>;
+
+/** 全局尺寸档位(label + 具体尺寸)。 */
+export const CanvasCapabilitySizeSchema = z.object({
+  label: z.string(),
+  size: z.string(),
+});
+export type CanvasCapabilitySize = z.infer<typeof CanvasCapabilitySizeSchema>;
+
+/**
+ * Canvas 能力清单:可用模型 / 可用尺寸 / 支持的命令动作白名单。装配期由 `buildCanvasCapability`
+ * 确定性生成并经 surface:canvas 快照下发(不新增帧种);前端据此渲染选项,缺失则退化到内置默认。
+ */
+export const CanvasCapabilitySchema = z.object({
+  models: z.array(CanvasCapabilityModelSchema),
+  sizes: z.array(CanvasCapabilitySizeSchema),
+  actions: z.array(z.string()),
+});
+export type CanvasCapability = z.infer<typeof CanvasCapabilitySchema>;
+
 /** surface 快照(`control:"state"` 的 value,key=`surface:canvas`)。 */
 export const GalleryStateSchema = z.object({
   /** newest-first。 */
   assets: z.array(GalleryAssetSchema),
   /** 生成中的临时渐进预览;空闲时省略 / null。 */
   livePreview: LivePreviewSchema.nullish(),
+  /**
+   * agent 权威能力清单(可选:旧快照 / 退化路径缺省)。装配期一次生成后随快照粘性下发,全部快照写点
+   * 显式保留(见 canvas/extension.ts + commands.ts)。
+   */
+  capabilities: CanvasCapabilitySchema.optional(),
 });
 export type GalleryState = z.infer<typeof GalleryStateSchema>;
 

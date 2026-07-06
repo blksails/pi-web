@@ -30,6 +30,7 @@ import {
   RegisterArgsSchema,
   ReframeArgsSchema,
   VariantsArgsSchema,
+  type CanvasCapability,
   type GalleryAsset,
   type GalleryState,
 } from "./schema.js";
@@ -40,6 +41,11 @@ export interface CanvasCommandDeps {
   runImageTool?: typeof defaultRunImageTool;
   /** 资产 createdAt 时钟(默认 `() => new Date().toISOString()`)。 */
   now?: () => string;
+  /**
+   * 能力清单兜底注入(接缝):所有写点优先从 `s.capabilities` 继承,仅当当前快照缺失(冷启/退化)时
+   * 才回落此值。装配期 extension 透传其一次生成的 capability;缺省 undefined(纯继承,不引入第二来源)。
+   */
+  capability?: CanvasCapability;
 }
 
 type ExplicitFailure = { ok: false; error: { code: string; message: string } };
@@ -56,7 +62,9 @@ async function executeImageEdit(
   ctx: SurfaceCtx<GalleryState>,
   params: Record<string, unknown>,
   lineage: { derivedFrom?: string; genParams: unknown },
-  deps: Required<Pick<CanvasCommandDeps, "runImageTool" | "now">>,
+  deps: Required<Pick<CanvasCommandDeps, "runImageTool" | "now">> & {
+    capability?: CanvasCapability;
+  },
 ): Promise<{ ids: string[] } | ExplicitFailure> {
   // 流式渐进预览(由糊变清)不在此接线:runImageTool 内部经全局 live-preview seam 广播,canvas
   // surface 的 sink 投影进 `livePreview`(见 canvas/extension.ts + surface/live-preview-seam.ts),
@@ -97,8 +105,12 @@ async function executeImageEdit(
     });
   }
 
-  // 终图落库 → prepend 进画廊(reducer 只留 assets,天然丢弃临时 livePreview,由糊变清收束到最终资产)。
-  ctx.setState((s) => ({ assets: [...fresh, ...s.assets] }));
+  // 终图落库 → prepend 进画廊(reducer 只留 assets,天然丢弃临时 livePreview,由糊变清收束到最终资产);
+  // capabilities 从 s 继承显式保留(写点⑤;漏则每次编辑成功后前端能力清单被清空退回硬编码)。
+  ctx.setState((s) => ({
+    assets: [...fresh, ...s.assets],
+    capabilities: s.capabilities ?? deps.capability,
+  }));
   return { ids: fresh.map((a) => a.attachmentId) };
 }
 
@@ -113,6 +125,7 @@ export function createCanvasCommands(
   const resolved = {
     runImageTool: deps.runImageTool ?? defaultRunImageTool,
     now: deps.now ?? ((): string => new Date().toISOString()),
+    capability: deps.capability,
   };
 
   return {
@@ -202,6 +215,7 @@ export function createCanvasCommands(
       };
       ctx.setState((s) => ({
         assets: [asset, ...s.assets.filter((a) => a.attachmentId !== attachmentId)],
+        capabilities: s.capabilities ?? resolved.capability, // 写点⑥:register 保留 capabilities。
       }));
       return { ids: [attachmentId] };
     },
@@ -209,7 +223,8 @@ export function createCanvasCommands(
     /** 视图收敛:重新枚举 attachment store,reconcile 画廊(收敛触发源 ①,LLM 生成图入画廊)。 */
     sync: async (_args, ctx) => {
       const rebuilt = await rebuildGalleryFromAttachments(ctx.attachments);
-      ctx.setState(() => rebuilt);
+      // 全量整替(写点④),但从 s.capabilities 继承保留能力清单——不在此二次生成(权威唯一来源:装配期)。
+      ctx.setState((s) => ({ ...rebuilt, capabilities: s.capabilities ?? resolved.capability }));
       return { count: rebuilt.assets.length };
     },
 
@@ -220,6 +235,7 @@ export function createCanvasCommands(
       const { attachmentId } = parsed.data;
       ctx.setState((s) => ({
         assets: s.assets.filter((a) => a.attachmentId !== attachmentId),
+        capabilities: s.capabilities ?? resolved.capability, // 写点⑥:delete 保留 capabilities。
       }));
       return { deleted: attachmentId };
     },

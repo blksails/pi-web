@@ -25,7 +25,7 @@
   - 完成态:tool-kit 新增用例绿 + 既有 aigc 测试零改动绿(KV 守恒证据)
   - _Requirements: 4.1, 4.7_
   - _Boundary: packages/tool-kit(aigc active-models+canvas/capability)_
-- [ ] 2.2 快照并入与写点保留
+- [x] 2.2 快照并入与写点保留
   - schema.ts:+CanvasCapabilitySchema(models[{id,label?,sizes?}]/sizes[{label,size}]/actions[string]);GalleryStateSchema +capabilities 可选字段(旧快照解析兼容);emptyGalleryState 不变
   - extension.ts/commands.ts:装配期 buildCanvasCapability() 算一次;六写点(initialState/hydrate 结果/agent_end 全量重建/sync 全量重建/命令成功 reducer/register-delete reducer)显式保留 capabilities(livePreview 刻意丢弃语义不变);CanvasCommandDeps 增 capability 注入接缝(或 withCapabilities 帮助函数统一表达)
   - persistence 专测 canvas-capability-persistence.test.ts:逐写点断言 capabilities 存活
@@ -79,6 +79,7 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 2.2:六写点保留+schema 单源落地(274 全绿)。**写点①偏差审查 ACCEPT 档案化**:字面 initialState 不带 caps(extension.test.ts:67 toEqual 硬线钉死+create-surface.ts:214-219 亲证 hydrate 先于首帧推送,裸态永不上线),经 hydrate withCapabilities 包装+命令 reducer `s.capabilities ?? deps.capability` 兜底=每一条线上帧都带 caps,严格强于字面写法。CanvasCapability 类型单源=schema z.infer(capability.ts 本地 interface 已删,3.3 类型断言以此为准)。非阻塞留账:extension.ts:95 hydrate catch 分支丢 caps 无专测(防御性退化路径,可后续补 hydrate-throws 用例)。
 - 2.1:active-models 提取+capability.ts 落地(tool-kit 265 全绿;KV 四键逐语义等价审查亲核,providerByModel「首个带 provider」边缘经路由表 grep 证实不存在)。capability 形状暂用本地 interface,2.2 落 zod schema 后 3.3 做双向可赋值断言。FYI 盲区:gpt-image-2 双路由同 label/provider,首次胜出语义翻转现测抓不到(provider 传播已独立锚定,低险)。
 - 1.2:注册面+出口落地(247 全绿;index 快照 +2 值键)。两处计划外连带审查 ACCEPT:ToolDiagnostic.kind 的类型家在 kernel/tool-runtime.ts(design 表格归属粒度误差,最小落点)/kernel-facade.ts:149 门面补 registerAction/actions 纯委托(接口扩展必然编译传播,动作面无 opKinds 接线故直通即完备)。裁定:工具冲突路径不写 kind(缺省=工具语义)保既有断言零改。natural 保证矩阵头注落 registry.ts:24-36,留账①关闭。
 - 1.1:actions.ts+16 用例落地(canvas-kit 238 全绿;审查独立变异 2 组确证)。resolveAction 形状=白名单先行过滤→match 评分/抛错隔离→稳定降序(独立数组非原地 sort,purity 用例锚定)→buildArgs 抛错剔除重选次优→空候选 null。1.2 出口清单照此:值 defineCanvasAction/resolveAction,类型 CanvasCapability/ActionInput/CanvasActionPlugin/ResolvedAction/ResolveActionOptions。测试相对路径 import 待 1.2 出口后保持不变(测试锚定实现非出口)。

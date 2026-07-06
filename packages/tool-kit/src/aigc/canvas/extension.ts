@@ -20,8 +20,9 @@ import { getAttachmentToolContext as defaultGetAttachmentToolContext } from "../
 import { installLivePreviewSink } from "../../surface/live-preview-seam.js";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import { createCanvasCommands, type CanvasCommandDeps } from "./commands.js";
+import { buildCanvasCapability } from "./capability.js";
 import { rebuildGalleryFromAttachments } from "./hydrate.js";
-import { emptyGalleryState, type GalleryState } from "./schema.js";
+import { emptyGalleryState, type CanvasCapability, type GalleryState } from "./schema.js";
 
 export const CANVAS_DOMAIN = "canvas";
 
@@ -54,6 +55,8 @@ export interface CanvasExtensionDeps {
   commandDeps?: CanvasCommandDeps;
   /** 透传给上游 `createSurface` 的依赖(scope / seam 注入)。 */
   surfaceDeps?: CreateSurfaceDeps;
+  /** 能力清单覆盖(测试用;缺省经装配期 `buildCanvasCapability()` 确定性生成,不抛)。 */
+  capability?: CanvasCapability;
 }
 
 /**
@@ -68,15 +71,30 @@ export function makeCanvasSurfaceExtension(
   const createSurface = deps.createSurface ?? defaultCreateSurface;
   const getAtt = deps.surfaceDeps?.getAttachmentToolContext ?? defaultGetAttachmentToolContext;
   const scope = deps.surfaceDeps?.scope;
+  // 装配期确定性生成一次(读设置异常已由 buildCanvasCapability 内部兜底,不抛、不阻塞装配)。
+  // 权威唯一来源:重建路径(hydrate / agent_end)统一经 withCapabilities 附着此值;命令 reducer 从
+  // s.capabilities 继承(见 commands.ts),不在别处二次生成。
+  const capability = deps.capability ?? buildCanvasCapability();
+  const withCapabilities = (state: GalleryState): GalleryState => ({ ...state, capabilities: capability });
 
   return (pi: ExtensionAPI): SurfaceHandle<GalleryState> => {
     const handle = createSurface<GalleryState>(
       pi,
       {
         domain: CANVAS_DOMAIN,
+        // initialState 保持裸空画廊(不跨会话共享引用);capabilities 经 hydrate 包装附着到线上首帧——
+        // createSurface 仅在 assemble()(hydrate 之后)推首帧,hydrate 恒返回带 capabilities 的快照
+        // (下方内置 catch),故线上任何一帧都不会缺 capabilities(Req 4.1)。
         initialState: emptyGalleryState(),
-        commands: createCanvasCommands(deps.commandDeps),
-        hydrate: () => hydrateWhenReady(getAtt, scope),
+        commands: createCanvasCommands({ ...deps.commandDeps, capability: deps.commandDeps?.capability ?? capability }),
+        hydrate: async () => {
+          try {
+            return withCapabilities(await hydrateWhenReady(getAtt, scope));
+          } catch {
+            // 重建异常 → 空画廊仍带 capabilities(退化不丢能力清单,避免前端无谓退回硬编码)。
+            return withCapabilities(emptyGalleryState());
+          }
+        },
       },
       deps.surfaceDeps ?? {},
     );
@@ -100,7 +118,9 @@ export function makeCanvasSurfaceExtension(
           const att = getAtt(scope);
           if (!att.available) return;
           const rebuilt = await rebuildGalleryFromAttachments(att);
-          handle.update(() => rebuilt);
+          // 整替快照(清 livePreview 叠层),但显式保留装配期 capabilities(写点③;漏则轮末收敛后前端
+          // 能力清单被清空退回硬编码)。
+          handle.update(() => withCapabilities(rebuilt));
         } catch {
           // 收敛失败留待下一轮末或 UI sync 再收敛。
         }

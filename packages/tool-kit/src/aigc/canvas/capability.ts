@@ -6,32 +6,16 @@
  * models 来自 {@link deriveActiveModels}(与 `publishAigcCatalog` 同一推导);provider 决定该模型
  * 受支持尺寸族;全局 sizes 三档守恒(= workbench RATIO_OPTIONS);actions 为 A 档六命令白名单。
  *
- * 返回形状与 task 2.2 将落的 `CanvasCapabilitySchema`(zod)一致,届时双向可赋值经 canvas-ui
- * 静态断言防漂移;本任务先以本地类型表达。属 runtime 层(经 active-models 间接引路由表)。
+ * 返回类型直接复用 `schema.ts` 的 `CanvasCapabilitySchema` z.infer(单源,消灭双源漂移);经 canvas-ui
+ * 静态断言与 canvas-kit 侧对齐防漂移。属 runtime 层(经 active-models 间接引路由表)。
  */
 import { deriveActiveModels } from "../active-models.js";
 import { resolveAigcToolSettings } from "../model-config.js";
-
-/** 单个模型的能力条目。 */
-export interface CanvasCapabilityModel {
-  readonly id: string;
-  readonly label?: string;
-  /** 该模型受支持尺寸集(缺省=不收窄,全局 sizes 全可用)。 */
-  readonly sizes?: readonly string[];
-}
-
-/** 全局尺寸档位(label + 具体尺寸)。 */
-export interface CanvasCapabilitySize {
-  readonly label: string;
-  readonly size: string;
-}
-
-/** Canvas 能力清单(可用模型 / 可用尺寸 / 支持的命令动作白名单)。 */
-export interface CanvasCapability {
-  readonly models: readonly CanvasCapabilityModel[];
-  readonly sizes: readonly CanvasCapabilitySize[];
-  readonly actions: readonly string[];
-}
+import type {
+  CanvasCapability,
+  CanvasCapabilityModel,
+  CanvasCapabilitySize,
+} from "./schema.js";
 
 /** dashscope 系尺寸族(wan/qwen)。 */
 const DASHSCOPE_SIZES: readonly string[] = ["1024x1024", "1280x720", "720x1280"];
@@ -82,7 +66,8 @@ export function buildCanvasCapability(deps?: {
   const models: CanvasCapabilityModel[] = deriveActiveModels(disabled).map((e) => ({
     id: e.model,
     label: e.label,
-    sizes: sizesForProvider(e.provider),
+    sizes: [...sizesForProvider(e.provider)],
   }));
-  return { models, sizes: GLOBAL_SIZES, actions: CANVAS_ACTIONS };
+  // schema 推断类型为可变数组;从只读常量物化为新数组(消灭 readonly→mutable 赋值不兼容)。
+  return { models, sizes: [...GLOBAL_SIZES], actions: [...CANVAS_ACTIONS] };
 }
