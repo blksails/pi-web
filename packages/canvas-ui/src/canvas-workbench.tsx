@@ -874,6 +874,19 @@ export function CanvasWorkbench({
         });
       };
 
+      // 插件 command 动作(task 3.4 remediation;design System Flows「按胜者 via 分道」):
+      // 胜出插件声明 via:"command" → 直接经命令通道派发其声明命令(capability.actions 门控已在
+      // resolveAction 内保证白名单命中),不塌缩为 GenerateDecision(六内置 id 之外映射会回退
+      // edit,曾致插件命令动作永远走 image_edit 对话流)。内置六动作全 via:"prompt",不进此分支
+      // ——下游既有编排逐行零变。引用消费与 reference 同构(参考图已随命令发出)。
+      if (resolved !== null && resolved.plugin.execution.via === "command") {
+        await settleWindow(
+          surface.run(DOMAIN, resolved.plugin.execution.command, resolved.args),
+        );
+        consumeSent(false);
+        return;
+      }
+
       if (decision.action === "outpaint" && upload !== undefined) {
         // 扩图:本地合成「大画布+原图居位」输入图 + alpha mask(扩展区透明=生成)。
         const src = sourceSize();
@@ -1974,12 +1987,21 @@ export function CanvasWorkbench({
             variant="default"
             size="sm"
             data-canvas-generate
-            data-canvas-action={decisionPreview.action}
+            data-canvas-action={
+              // 插件 command 胜者(task 3.4 remediation):锚值=去命名空间的插件 id、标签=插件
+              // label(内置六动作走既有 decision.action/ACTION_LABEL,逐字节零变——builtin 恒
+              // via:"prompt" 不进此分支)。
+              previewResolved !== null && previewResolved.plugin.execution.via === "command"
+                ? (previewResolved.plugin.id.split(":").pop() ?? previewResolved.plugin.id)
+                : decisionPreview.action
+            }
             disabled={genDisabled}
             onClick={() => void generate()}
           >
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
-            {ACTION_LABEL[decisionPreview.action]}
+            {previewResolved !== null && previewResolved.plugin.execution.via === "command"
+              ? previewResolved.plugin.label
+              : ACTION_LABEL[decisionPreview.action]}
           </Button>
         </div>
       </Card>

@@ -16,6 +16,7 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/web.config";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
+import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/web.config";
@@ -89,6 +90,11 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   // (unavailable / 只读图库)端到端验证 fixture。source 路径含子串 "aigc-canvas-nosurface-agent",
   // 不含 "aigc-canvas-agent"(-nosurface- 打断)也不含 "aigc-agent",故独立命中,与上方两项互不误配。
   { match: "aigc-canvas-nosurface-agent", ext: aigcCanvasNoSurfaceExt },
+  // canvas-plugin-stickers(canvas-plugins-m3):Canvas 插件双端范例 source —— 复用 CanvasLauncher/
+  // CanvasPanel + 车道① canvasPlugins:[stickersBundle](贴纸图层/工具 + 风格迁移动作)。canvasPlugins
+  // 含 React 组件(Render/Inspector),故必须走构建期静态 import 车道(运行时 /api/webext/resolve
+  // 无法承载组件)。source 路径含子串 "canvas-plugin-stickers",不与既有 match 互串(独立命中)。
+  { match: "canvas-plugin-stickers", ext: canvasPluginStickersExt },
   { match: "webext-declarative-agent", ext: DECLARATIVE },
   // logging-demo-agent:浏览器侧 webext 日志总线验收(webext:logging-demo 命名空间)。
   { match: "logging-demo-agent", ext: loggingDemoExt },
