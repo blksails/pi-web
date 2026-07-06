@@ -160,6 +160,11 @@ export function createCanvasKernel(env: CanvasKernelEnv): CanvasKernel {
     get tools() {
       return inner.tools;
     },
+    // 动作面无 opKinds 接线,直通 inner(冲突拒绝/diagnostics/退订语义原样,task 1.2)。
+    registerAction: (action) => inner.registerAction(action),
+    get actions() {
+      return inner.actions;
+    },
     get diagnostics() {
       return inner.diagnostics;
     },

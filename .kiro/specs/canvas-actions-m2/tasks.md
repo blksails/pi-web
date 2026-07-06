@@ -9,7 +9,7 @@
   - 完成态:pnpm --filter @blksails/pi-web-canvas-kit test 新增用例全绿;resolveAction 全分支覆盖
   - _Requirements: 1.1, 1.2, 1.3, 1.5, 1.7, 4.5_
   - _Boundary: packages/canvas-kit(actions)_
-- [ ] 1.2 注册表动作面扩展与出口
+- [x] 1.2 注册表动作面扩展与出口
   - registry.ts:CanvasRegistry 增 registerAction(action): () => void 与 readonly actions(同 id 拒绝+diagnostics kind:"action",复用共享收集器,退订幂等,per-instance);ToolDiagnostic 增可选 kind?: "tool" | "action"(additive);头注补 natural 保证矩阵注释(Req 6.1→6.2 档案化关账,design「裁定书」为准,注释级零行为变化)
   - index.ts 显式出口 +actions 值(defineCanvasAction/resolveAction)/类型(CanvasCapability/ActionInput/CanvasActionPlugin/ResolvedAction/ResolveActionOptions);index-exports 快照联动更新(唯一允许改动的既有测试);encapsulation(kernel 不出口)保持
   - 单测 action-registry.test.ts:冲突拒绝+diagnostics/退订幂等/注册序稳定/实例隔离
@@ -79,4 +79,5 @@
 ## Implementation Notes
 
 - 环境纪律:一切操作限定 worktree `/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/canvas-actions-m2`,禁止 cd 主仓;黄金基准恒取 `git show HEAD:`(HEAD=0377b12)。变异复原只用 Edit 精确还原,严禁 git checkout/restore(canvas-ui-m15 2.2 事故先例)。并发负载假阳性判别链沿先例(失败集中无关文件+duration 膨胀→定向重跑)。
+- 1.2:注册面+出口落地(247 全绿;index 快照 +2 值键)。两处计划外连带审查 ACCEPT:ToolDiagnostic.kind 的类型家在 kernel/tool-runtime.ts(design 表格归属粒度误差,最小落点)/kernel-facade.ts:149 门面补 registerAction/actions 纯委托(接口扩展必然编译传播,动作面无 opKinds 接线故直通即完备)。裁定:工具冲突路径不写 kind(缺省=工具语义)保既有断言零改。natural 保证矩阵头注落 registry.ts:24-36,留账①关闭。
 - 1.1:actions.ts+16 用例落地(canvas-kit 238 全绿;审查独立变异 2 组确证)。resolveAction 形状=白名单先行过滤→match 评分/抛错隔离→稳定降序(独立数组非原地 sort,purity 用例锚定)→buildArgs 抛错剔除重选次优→空候选 null。1.2 出口清单照此:值 defineCanvasAction/resolveAction,类型 CanvasCapability/ActionInput/CanvasActionPlugin/ResolvedAction/ResolveActionOptions。测试相对路径 import 待 1.2 出口后保持不变(测试锚定实现非出口)。

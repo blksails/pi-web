@@ -24,6 +24,19 @@
  *    —— 诚实反映能力面;「零视口数学」纪律由 4.3 grep 线守(携带屏幕位移 ≠ 工具做
  *    视口换算)。连带:`natural` 声明为可空(stage 命中不要求换算可得;up/cancel
  *    无条件派发,rect 失效时坐标缺席但提交语义照旧,2.4 路由现状)。
+ *
+ * ToolGestureEvent.natural 保证矩阵(Req 6.1 → 6.2 档案化关账;design「裁定书」):
+ * natural 的可空性是 hit 种类 × phase 的**运行时**组合,类型层不静态收窄(onDown/
+ * onMove/onUp 共用同一事件类型,拆分每相位类型属 L2 semver 破坏面,收益不抵成本)。
+ *
+ *   hit \ phase │ down/move            │ up/cancel
+ *   ────────────┼──────────────────────┼───────────────────────────
+ *   overlay     │ 恒非空(已换算坐标)  │ rect 失效时 null(提交语义照旧)
+ *   expand-handle│ 恒非空                │ rect 失效时 null
+ *   stage       │ null(不要求换算可得) │ null
+ *
+ * 即:layer/handle/overlay 命中的 down/move 恒非空(路由已挡绘制工具 onDown/onMove 的
+ * null);null 仅现于 stage 命中,以及 rect 失效下的 up/cancel。判空点少数,保持现类型。
  * 3. **hit 无 "layer" 分支**:design 片段含 layer 命中,但层拖拽/缩放是工具无关
  *    内核手势(design System Flows/research 决策),路由结构上恒不外派 layer 命中
  *    (2.4 ToolPointerHit = Exclude<…, layer>)—— L2 类型如实收窄,不给作者写
@@ -35,6 +48,7 @@
 import type { ReactNode } from "react";
 import type { CanvasOp, ExpandEdges } from "./types.js";
 import type { Ctx2DLike } from "./bitmap-io.js";
+import type { CanvasActionPlugin } from "./actions.js";
 import {
   createDiagnosticsCollector,
   type DiagnosticsCollector,
@@ -143,7 +157,15 @@ export interface CanvasRegistry {
   registerTool(tool: CanvasTool): () => void;
   /** 工具轨驱动源(注册序稳定枚举,6.3)。 */
   readonly tools: readonly CanvasTool[];
-  /** 插件错误诊断(6.4;共享收集器时含 runtime 错误边界条目)。 */
+  /**
+   * 注册动作(task 1.2,Req 1.4/1.6);返回退订。同 id 冲突被拒(先注册者保持)+ 记
+   * diagnostics(条目带 kind:"action"),退订为 no-op。工具面与动作面各自独立 id 空间
+   * (共用收集器但跨面同名不构成冲突)。
+   */
+  registerAction(action: CanvasActionPlugin): () => void;
+  /** resolveAction 候选源(注册序稳定枚举,1.4)。 */
+  readonly actions: readonly CanvasActionPlugin[];
+  /** 插件错误诊断(6.4;共享收集器时含 runtime 错误边界条目与动作注册冲突条目)。 */
   readonly diagnostics: readonly ToolDiagnostic[];
 }
 
@@ -160,12 +182,14 @@ export interface CanvasRegistryOptions {
 export function createCanvasRegistry(options: CanvasRegistryOptions = {}): CanvasRegistry {
   const collector = options.diagnostics ?? createDiagnosticsCollector();
   let tools: readonly CanvasTool[] = [];
+  let actions: readonly CanvasActionPlugin[] = [];
 
   return {
     registerTool: (tool) => {
       if (tools.some((t) => t.id === tool.id)) {
         // design Error Handling「注册冲突」:后注册者被拒并记 diagnostics
-        // (不覆盖,防意外顶替内置);冲突条目不带 phase(2.5 留账)。
+        // (不覆盖,防意外顶替内置);冲突条目不带 phase(2.5 留账)。既有工具条目不写
+        // kind(additive 兼容:缺省即工具语义)。
         collector.add({
           toolId: tool.id,
           error: `duplicate tool id "${tool.id}": registration rejected (first registration kept)`,
@@ -181,8 +205,31 @@ export function createCanvasRegistry(options: CanvasRegistryOptions = {}): Canva
         tools = tools.filter((t) => t !== tool);
       };
     },
+    registerAction: (action) => {
+      if (actions.some((a) => a.id === action.id)) {
+        // 同 registerTool「注册冲突」:后注册者被拒(先注册者保持)+ 记 diagnostics;
+        // 动作条目带 kind:"action" 以在共享收集器中与工具条目区分(task 1.2,Req 1.6)。
+        collector.add({
+          toolId: action.id,
+          error: `duplicate action id "${action.id}": registration rejected (first registration kept)`,
+          at: Date.now(),
+          kind: "action",
+        });
+        return () => {};
+      }
+      actions = [...actions, action];
+      let registered = true;
+      return () => {
+        if (!registered) return; // 幂等
+        registered = false;
+        actions = actions.filter((a) => a !== action);
+      };
+    },
     get tools() {
       return tools;
+    },
+    get actions() {
+      return actions;
     },
     get diagnostics() {
       return collector.entries;

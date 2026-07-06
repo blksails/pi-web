@@ -16,6 +16,16 @@
 export * from "./types.js";
 // bitmap-io:client-image-ops 原样迁入(导出清单与原模块逐一对应,Req 5.2)。
 export * from "./bitmap-io.js";
+// L2 动作契约(task 1.1/1.2,Req 1.1/1.2):动作声明式定义 + 纯函数决策器(值),
+// 与 capability/输入/插件/决策结果类型(显式清单;沿出口纪律禁 export *)。
+export { defineCanvasAction, resolveAction } from "./actions.js";
+export type {
+  ActionInput,
+  CanvasActionPlugin,
+  CanvasCapability,
+  ResolveActionOptions,
+  ResolvedAction,
+} from "./actions.js";
 // L2 工具装置(task 2.6,Req 6.1/6.5/3.3):声明式工具定义 + per-instance 注册表。
 // 显式清单(1.3 先例:不 export * —— 包内装配件 createToolAdapter/createPrefsStore
 // 等不进公开面;4.1 裁定:二者属工具接线,4.2 注册表驱动装配时再按需经门面收口)。
