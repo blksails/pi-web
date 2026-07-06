@@ -17,7 +17,7 @@
   - _Boundary: packages/ui 转发层(共享件侧)_
   - _Depends: 1.1_
 
-- [ ] 2. Core:canvas-ui 迁出
+- [x] 2. Core:canvas-ui 迁出
 - [x] 2.1 (P) canvas-ui 包脚手架与 8 文件迁入
   - 建 packages/canvas-ui(exports "."→src/index.ts、"./styles.css"→src/styles.css;deps=canvas-kit/primitives/pi-web-kit(web-kit)/pi-web-react/tool-kit+lucide-react,peer react,**零 pi-web-ui**);8 文件自 packages/ui/src/canvas/ 原样迁入,仅 import 改线(`../ui/*`→primitives、`../lib/cn.js`→primitives,`./` 兄弟引用保持);src/styles.css 收 ui styles.css 的 canvas 两段(现约 :142-160,grep 重校准)
   - **src/index.ts = 8 文件 HEAD 导出全集的去重并集**(严格超集于 ui index canvas 块:含 aigc-model-meta 全部三导出、workbench 的 decideGenerate/buildSurfaceOp/buildToolPrompt/GenerateDecision(Input)/ImageLoader/composeInpaintBack/LoadedImage、use-canvas-view 的 canvasViewStore/UseCanvasViewResult 等——深路径 named import 与设置面板消费须从包入口可达;已核无跨文件重名,client-image-ops 显式清单刻意排除 LoadedImage 无冲突)
@@ -27,7 +27,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 5.1_
   - _Boundary: packages/canvas-ui_
   - _Depends: 1.1_
-- [ ] 2.2 ui 侧 canvas 转发层与样式随迁
+- [x] 2.2 ui 侧 canvas 转发层与样式随迁
   - packages/ui/src/canvas/{8 文件}改写为显式转发 canvas-ui(@deprecated;清单=各文件 HEAD 导出全集);ui styles.css 删 canvas 两段;app/globals.css +`@import "@blksails/pi-web-canvas-ui/styles.css";`;ui package.json +canvas-ui 依赖;ui vitest alias +canvas-ui
   - 完成态:packages/ui 全量测试零改动通过(canvas 组件测试经深路径→转发→canvas-ui 真实链路);设置面板字段(aigc-model-toggles-field)零语义改动(3.1 允许加豁免锚注释)、index.ts 除 3.1 豁免锚外零改动仍绿;ui typecheck 绿
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 2.4_
@@ -57,3 +57,4 @@
 - 1.1:primitives 落地(出口=16 值+3 类型显式清单;vitest 需 setupFiles Radix polyfill=ui/test/setup.ts 去 jest-dom 版;devDeps 增 testing-library 渲染必需)。六组件唯一内部依赖=cn(考古+审查双确认)。1.2 转发清单以同一 16+3 全集对照。
 - 1.2:7 转发文件落地(AST 级导出名集对照 7/7;变异红点落在三个真实消费者=aigc-quick-settings/canvas-workbench/enum-field,证明链路真实)。ui vitest alias 已含 primitives 条目;2.1/2.2 照抄形状加 canvas-ui。
 - 2.1:canvas-ui 落地(出口并集=39 值+27 类型=66,13 个深路径命脉载荷全在;peer react ^19 对齐 primitives 审查裁定可接受——workspace react=19.2.7,ui 传递下限 1.2 起已收窄;styles.css 两段 verbatim,ui 本体留待 2.2 删)。2.2 转发清单=各文件 HEAD 导出全集,与并集口径一致。
+- 2.2:8 转发文件落地(AST 8/8 守恒;client-image-ops 链路 ui→canvas-ui→canvas-kit);样式两段随迁 + app @import;**根 package.json +canvas-ui 依赖**(审查 ACCEPT:app 无自有 package.json 随根解析,根依赖是 @import 链接来源,同 pi-web-ui 先例,design 已补记档)。过程事故:执行者变异复原误用 git checkout 取到 HEAD 原件,已重写并全量复验(审查亲核现状为真转发层)——重申禁 git checkout 纪律。

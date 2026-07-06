@@ -75,6 +75,7 @@ ui/src/index.ts                 = 经转发模块链保持全部公开导出(唯
 | app/globals.css | +`@import "@blksails/pi-web-canvas-ui/styles.css";` |
 | 根 tsconfig.json | paths +2 新包条目(照 canvas-kit 形状) |
 | tailwind.config.ts | content +primitives、+canvas-ui 双 glob(packages/ 与 node_modules/ 两形,照 canvas-kit 先例) |
+| 根 package.json | +canvas-ui workspace 依赖(2.2 审查 ACCEPT 记档:app/globals.css @import 的解析链接来源,同根依赖 pi-web-ui 先例) |
 | pnpm-lock.yaml | install 联动 |
 
 ### 不改(显式承诺)
