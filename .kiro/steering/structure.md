@@ -26,6 +26,15 @@
 **位置**:`packages/agent-kit/`
 **职责**:`defineAgent()` 类型帮助,给用户写 `index.ts` 用(运行时不强制依赖)。
 
+### Agent 源(examples/ 或用户目录)
+**位置**:`examples/<name>/`(或用户 agent source 目录)
+**职责**:一个 `defineAgent` 源;`index.ts` 只声明「这个 agent 是什么」。
+**声明式路由文件组织**:1 个路由内联即可;**≥2 个或 handler 变复杂**时抽到 `routes/` 子目录——
+**一路由一文件** `routes/<route-name>.ts`(文件名 === 路由 `name` kebab-case === URL 段),文件内
+co-locate handler(单独导出便于单测)+ `AgentRouteDecl`(导出 `<camelName>Route`);`routes/index.ts`
+作 barrel 汇成 `AgentRouteDecl[]`;`index.ts` 只 `import { routes }` 传给 `defineAgent`,不放 handler。
+NodeNext 相对导入带 `.js`。范例见 `examples/aigc-canvas-agent/`,详见 docs/product/07。
+
 ## 命名约定
 
 - **文件**:kebab-case(`pi-rpc-process.ts`)

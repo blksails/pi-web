@@ -182,6 +182,53 @@ export default defineAgent({
 - 运维可整体关断：`PI_WEB_AGENT_ROUTES_DISABLED=1` → 全部 agent-routes 端点返回通用 404（默认开启）。
 - 转发超时（`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`，默认 20000 ms）→ 504；POST 请求体上限（`PI_WEB_AGENT_ROUTE_BODY_LIMIT`，默认 1 MiB）→ 413。
 
+### 声明式路由的文件组织
+
+routes 增多后全塞 `index.ts` 会臃肿。约定：
+
+- **1 个路由**：内联在 `index.ts` 即可，不必过度拆分。
+- **≥2 个路由，或 handler 变复杂**：抽到 `routes/` 子目录。
+  - **一路由一文件**：`routes/<route-name>.ts`，文件名 **=== 路由 `name`（kebab-case）=== URL 段**，`/agent-routes/gallery-stats` 一眼对到 `routes/gallery-stats.ts`。
+  - 每个路由文件 **co-locate** handler + 它的 `AgentRouteDecl`：handler 单独 `export`（便于单测），decl 导出（命名 `<camelName>Route`）给 barrel 汇总。
+  - `routes/index.ts` 作 **barrel**，按稳定顺序汇成 `AgentRouteDecl[]`。
+  - `index.ts` 只 `import { routes } from "./routes/index.js"` 传给 `defineAgent`，不放 handler 逻辑。
+  - agent 源经 jiti 加载（NodeNext），相对导入带 `.js` 后缀。
+
+```
+examples/aigc-canvas-agent/
+├── index.ts               # defineAgent；import { routes } from "./routes/index.js"，无 handler 逻辑
+├── routes/
+│   ├── index.ts           # barrel：export const routes = [galleryStatsRoute]
+│   └── gallery-stats.ts   # galleryStatsHandler + galleryStatsRoute（name/description/handler）
+├── package.json
+└── README.md
+```
+
+```ts
+// routes/gallery-stats.ts —— 一路由一文件，handler + decl co-locate
+import type { AgentRouteDecl } from "@blksails/pi-web-agent-kit";
+
+export function galleryStatsHandler(): unknown {
+  /* 只在 agent 子进程内执行；读进程内状态接缝，归纳为 JSON。 */
+}
+
+export const galleryStatsRoute: AgentRouteDecl = {
+  name: "gallery-stats",                 // === 文件名 === URL 段
+  description: "Canvas 画廊统计",
+  handler: galleryStatsHandler,
+};
+
+// routes/index.ts —— barrel
+import { galleryStatsRoute } from "./gallery-stats.js";
+export const routes: AgentRouteDecl[] = [galleryStatsRoute];
+
+// index.ts —— 只汇总
+import { routes } from "./routes/index.js";
+export default defineAgent({ /* … */ routes });
+```
+
+收益：`index.ts` 只讲「这个 agent 是什么」；每条路由的逻辑/文档/类型集中在同名文件、可独立单测；URL ↔ 文件一一对应。
+
 调用面完整契约（端点路径、错误码表、env 明细、curl 示例）见 [13 · HTTP API 参考](13-http-api-reference.md)；可跑演示见 `examples/aigc-canvas-agent`（README「Agent Routes 演示（`gallery-stats`）」小节）。
 
 ---
