@@ -12,9 +12,19 @@ files:
   - dist/**
   - package.json
 # standalone 产物(由根 `pnpm build:cli` 预先产出于 ../.next-cli/standalone)整目录嵌入资源目录。
+# ⚠ electron-builder(≥v20.15.2)按**目录名** `node_modules` 特殊处理:只收打包 app 自身 package.json
+# 的生产依赖,故 standalone 里的私有 node_modules 会被复制成**空** → server.js `require('next')`
+# 崩溃(MODULE_NOT_FOUND)、打包 app 一闪而退。修:**显式**再列一条直接指向该 node_modules 目录的
+# 条目(from 直接指向 node_modules,遍历的是其子项 next/react… 而非「进入名为 node_modules 的目录」,
+# 故不被收集器剥离;实测复制 109 条含 next)。第一条同时排除 node_modules 避免重复遍历告警。
 extraResources:
   - from: ../.next-cli/standalone
     to: standalone
+    filter:
+      - "**/*"
+      - "!node_modules/**"
+  - from: ../.next-cli/standalone/node_modules
+    to: standalone/node_modules
 asar: true
 mac:
   target: dmg

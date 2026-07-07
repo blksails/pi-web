@@ -98,6 +98,11 @@ jobs:
       - name: List artifacts
         shell: bash
         run: ls -la desktop/release || dir desktop\\release
+      # 打包 app 冒烟(仅 macOS,GUI 可用):启动**已打包 .app** 跑真实会话,防「node_modules 被
+      # electron-builder 剥空致 server require('next') 崩溃」一类打包回归(未打包 e2e 抓不到)。
+      - name: Smoke · packaged app real session (macOS)
+        if: runner.os == 'macOS'
+        run: node e2e/desktop/desktop-packaged.mjs
       # 工作流产物(手动构建/排查用)。
       - uses: actions/upload-artifact@v4
         with:
