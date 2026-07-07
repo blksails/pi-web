@@ -8,6 +8,7 @@
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容
  *  - `gpt-image-2-sufy`          sufy(七牛云)—— OpenAI 兼容,providerModel openai/gpt-image-2
+ *  - `gemini-3.1-flash-lite-image-sufy` sufy —— Gemini 3.1 Flash Lite,providerModel google/gemini-3.1-flash-lite-image
  *  - `wan2.7-image-pro`          DashScope sync —— 旗舰文生图
  *  - `wan2.7-image-pro-bailian`  token plan multimodal —— 百炼原生格式
  */
@@ -59,6 +60,16 @@ const ROUTES: readonly ImageRoute[] = [
       providerModel: "openai/gpt-image-2",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createSufyImage(
+    {
+      model: "gemini-3.1-flash-lite-image-sufy",
+      label: "Gemini 3.1 Flash Lite Image · sufy",
+      description:
+        "Google Gemini 3.1 Flash Lite image generation via sufy (七牛云) gateway. Fast & low-cost. Needs SUFY_API_KEY.",
+      providerModel: "google/gemini-3.1-flash-lite-image",
+    },
+    { pricing: { amount: 0.01, currency: "USD", unit: "image" } },
   ),
   ...openRouterImageRoutes(),
   createDashscopeSyncT2I(
@@ -120,7 +131,7 @@ const PARAMETER_FIELDS = {
   size: Type.Optional(
     Type.String({
       description:
-        "Output image size, e.g. 1024x1024 / 1536x1024 / 1024x1536 (model-dependent). " +
+        "Output image size, e.g. 1024x1024 / 1280x720 / 720x1280 (model-dependent). " +
         "OMIT unless the user explicitly requests a specific size or aspect ratio in the conversation — " +
         "when omitted, the user's preferred size (set in the UI) or the model default applies. " +
         "Do NOT infer a size from the subject matter.",

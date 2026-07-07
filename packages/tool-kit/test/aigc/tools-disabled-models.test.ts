@@ -59,6 +59,7 @@ describe("registerImageGeneration/Edit 按 disabledModels 收敛", () => {
       "gpt-5-image-mini",
       "gpt-5.4-image-2",
       "gpt-image-2-sufy",
+      "gemini-3.1-flash-lite-image-sufy",
       "gpt-image-2",
     ]);
     const t = collect(registerImageGeneration, many);
