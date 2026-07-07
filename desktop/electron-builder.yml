@@ -5,6 +5,10 @@
 # 用户代码(asar 虚拟文件系统对 child_process/jiti 动态 require 不可靠)。壳自身进 asar。
 appId: com.blksails.pi-web-desktop
 productName: pi-web
+# 显式可执行名:否则 Linux/AppImage 从包名 `@blksails/pi-web-desktop` 派生 → `@blksailspi-web-desktop`
+# 含 `@`,AppImage 拒绝(「executableName contains characters that cannot be safely used」)。
+# mac/win 默认用 productName 已安全,此项只矫正 Linux 派生名。
+executableName: pi-web
 directories:
   output: release
 # 壳产物:esbuild 打出的自包含 dist/ + 清单。无生产依赖(全内联)。
