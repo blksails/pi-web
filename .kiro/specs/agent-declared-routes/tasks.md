@@ -58,7 +58,7 @@
   - _Requirements: 6.1, 6.2, 6.3_
   - _Boundary: aigc-canvas-agent 演示_
   - _Depends: 2.2, 3.2_
-- [ ] 4.3 (P) 产品手册章节
+- [x] 4.3 (P) 产品手册章节
   - 13-http-api-reference 增两端点(路径/方法/成功/错误码/门控 env);07-agent-development 增声明面小节(AgentDefinition.routes、handler 契约、安全语义);zh 与 en 镜像同步
   - 完成态:两章 zh+en 四个文件含新内容且互相一致
   - _Requirements: 6.4_

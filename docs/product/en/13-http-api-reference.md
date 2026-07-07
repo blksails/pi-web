@@ -42,6 +42,7 @@ All routes force `runtime = "nodejs"` (subprocess residency + long-lived SSE con
 | Send message / steer | `POST /sessions/:id/messages`, `/steer`, `/follow_up`, `/abort` |
 | Session control | `POST /sessions/:id/model`, `/thinking`, `/fork`, `/ui-response`, `/ui-rpc` |
 | Session queries | `GET /sessions/:id/state`, `/stats`, `/messages`, `/commands`, `/models`, `/fork-messages`, `/completion` |
+| Agent-declared routes | `GET /sessions/:id/agent-routes`, `GET·POST /sessions/:id/agent-routes/:name` |
 | Configuration | `GET·PUT /config/:domain`, `GET /config/models` |
 | Attachments | `POST /sessions/:id/attachments`, `GET /attachments/:id/raw` |
 | Source mapping | `POST /session-source` |
@@ -534,6 +535,83 @@ The query endpoint of the trigger-completion framework (e.g. `@file:` to referen
 
 **Success response** 200: completion result JSON
 **Errors**: 404
+
+---
+
+### GET /api/sessions/:id/agent-routes — Agent-Declared Route Listing
+
+HTTP routes an agent declares in `AgentDefinition.routes` (for the declaration-side contract, see [07 · Custom Agent Development Guide](./07-agent-development.md)) are automatically mounted under the session namespace when the session is created. This endpoint returns the route listing declared by the session — a **pure-data projection** (`name` / `methods` / `description`); the handler functions live only in the agent subprocess and never cross the process boundary.
+
+**Success response** 200 (an agent with no declarations returns an empty array — that's success, not an error):
+
+```json
+{
+  "routes": [
+    {
+      "name": "gallery-stats",
+      "methods": ["GET"],
+      "description": "Canvas gallery statistics (asset counts / origin breakdown / generating flag)"
+    }
+  ],
+  "protocolVersion": "0.1.0"
+}
+```
+
+**Errors**: 404 (session not found), 401/403 (rejected by the existing `:id` auth seam). When operationally disabled (`PI_WEB_AGENT_ROUTES_DISABLED=1`, see the env table below), the endpoint returns a generic 404 `NOT_FOUND` without revealing its existence.
+
+```bash
+curl -s http://localhost:3010/api/sessions/sess_abc/agent-routes
+```
+
+---
+
+### GET·POST /api/sessions/:id/agent-routes/:name — Invoke a Declared Route
+
+Forwards one HTTP call into the session's agent subprocess, where the handler bound by the declaration processes it, and returns the result synchronously **within the same HTTP request-response cycle** — external systems (curl / webhooks / third-party services) can invoke agent capabilities without subscribing to any SSE stream. Under the hood this rides the existing stdin/stdout JSONL channel with a declaration frame plus a dedicated request/result frame pair; no new SSE frames are added.
+
+**Invocation semantics**:
+
+- The handler executes only inside the agent subprocess; an invocation **does not trigger LLM inference, does not enter the conversation history, and produces no UI change whatsoever**.
+- Calls are accepted as usual while the session is busy (mid-inference), without interfering with the conversation.
+- GET invocations ignore the request body (it is not read); an empty POST body is leniently allowed (`body` is passed to the handler as undefined), while a non-empty body that is not valid JSON → 400.
+- **The success response body is the raw JSON returned by the handler** (object, array, or scalar; `undefined` is normalized to `null`), with **no** `protocolVersion` envelope; the protocol version is carried only via the `X-Pi-Protocol-Version` response header.
+
+**Errors** (check order: gate → session/auth → name → method → size → JSON → forwarding):
+
+| Status | code | Trigger |
+|---|---|---|
+| 404 | `NOT_FOUND` | Operationally disabled via `PI_WEB_AGENT_ROUTES_DISABLED=1` (does not reveal endpoint existence) |
+| 404 | `SESSION_NOT_FOUND` | Session not found |
+| 401 / 403 | `UNAUTHORIZED` / `FORBIDDEN` | Rejected by the existing `:id` auth seam |
+| 404 | `ROUTE_NOT_FOUND` | Route name not declared by this session's agent definition |
+| 405 | `METHOD_NOT_ALLOWED` | Method not in the route's declared `methods` allowlist (defaults to `["GET"]`) |
+| 413 | `PAYLOAD_TOO_LARGE` | POST body exceeds the limit (default 1 MiB; rejected early via the `Content-Length` header, with a fallback re-check against actual bytes after reading when the header is missing/untrusted) |
+| 400 | `INVALID_BODY` | Non-empty POST body is not valid JSON |
+| 502 | `ROUTE_HANDLER_ERROR` | Handler threw an error (the error message carries the handler-side message) |
+| 504 | `ROUTE_TIMEOUT` | Subprocess response timed out (default 20000 ms) |
+| 409 | `SESSION_STOPPED` | Session already stopped |
+
+**Environment variables**:
+
+| env | Default | Description |
+|---|---|---|
+| `PI_WEB_AGENT_ROUTES_DISABLED` | unset (feature enabled) | `=1` — server-authoritative kill switch; all agent-routes endpoints return a generic 404. Read per request |
+| `PI_WEB_AGENT_ROUTE_TIMEOUT_MS` | `20000` | Response timeout (ms) for forwarding into the subprocess; timeout → 504 |
+| `PI_WEB_AGENT_ROUTE_BODY_LIMIT` | `1048576` (1 MiB) | POST request-body limit in bytes; exceeded → 413 |
+
+```bash
+# Invoke (GET; query parameters are flattened to single values and passed to the handler)
+curl -s "http://localhost:3010/api/sessions/sess_abc/agent-routes/gallery-stats?verbose=1"
+
+# Invoke (POST; the route must declare "POST" in its methods)
+curl -s -X POST http://localhost:3010/api/sessions/sess_abc/agent-routes/my-route \
+  -H "Content-Type: application/json" \
+  -d '{"key": "value"}'
+```
+
+> For a runnable demo, see `examples/aigc-canvas-agent` (the "Agent Routes demo (`gallery-stats`)" section of its README: a read-only stats route invoked directly with curl, returning structured JSON). For the declaration-side contract (name format, default methods, handler constraints, assembly-time validation), see [07 · Custom Agent Development Guide](./07-agent-development.md).
+>
+> **Implementation reference**: `packages/server/src/http/routes/agent-route-routes.ts`
 
 ---
 
