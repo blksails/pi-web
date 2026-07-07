@@ -18,7 +18,7 @@
   - _Requirements: 1.4, 3.3_
   - _Boundary: bin/pi-web.mjs 导出_
 
-- [ ] 1.3 桌面 workspace 脚手架
+- [x] 1.3 桌面 workspace 脚手架
   - 新建顶层 `desktop/` 工作区包(依赖 Electron ≥39 与 electron-builder;TS 编译到 dist;dev/build/dist 脚本),并把该目录注册进 workspace 使 `pnpm install` 纳入
   - 观察完成:`pnpm install` 后 desktop 包被识别、Electron 就位;`desktop` 的 typecheck/build 脚本可跑通空骨架
   - _Requirements: 9.1_
