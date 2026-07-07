@@ -86,7 +86,7 @@
   - _Boundary: ServerSupervisor 测试_
   - _Depends: 2.3, 2.4_
 
-- [ ] 4.2 桌面启动闭环与真实会话 e2e
+- [x] 4.2 桌面启动闭环与真实会话 e2e
   - 用 Playwright 的 Electron 驱动启动桌面壳(指向预构建产物 + mock provider):断言窗口加载了本地回环 UI(非空白/非加载页);选 agent source → 发消息 → 收到流式回复(证明 server→runner 链在「Electron 充当 Node」下可用,含 runner 动态加载用户代码)
   - 观察完成:e2e 以新鲜输出证明启动进入本地 UI 且真实会话得到流式回复
   - _Requirements: 1.1, 1.4, 3.4, 9.3_
