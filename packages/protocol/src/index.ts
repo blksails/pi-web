@@ -30,6 +30,9 @@ export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";
 export * from "./transport/slash-completion.js";
 
+// agent-routes 层(agent 声明式 HTTP routes:声明 DTO + 三个自建 JSONL 帧)
+export * from "./agent-routes/frames.js";
+
 // attachment 层(attachment-store 描述符 + 上传响应 DTO)
 export * from "./attachment/attachment-dto.js";
 

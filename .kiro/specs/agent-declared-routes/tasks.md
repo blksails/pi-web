@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. 契约与类型面(Foundation)
-- [ ] 1.1 protocol 包新增 agent-routes 帧契约
+- [x] 1.1 protocol 包新增 agent-routes 帧契约
   - 定义声明 DTO(name/methods/description)与三个 JSONL 帧(装配期声明帧、请求帧、结果帧)的 zod schema 与推断类型,字段形状照 design「契约:JSONL 帧」
   - 经包主入口导出(不新增子路径出口);SSE 帧 union 零触碰
   - 完成态:protocol 包单测断言三帧 schema 对合法/非法样本的解析结果;typecheck 绿
