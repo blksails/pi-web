@@ -40,7 +40,7 @@
   - _Boundary: createMainWindow, preload_
   - _Depends: 1.3_
 
-- [ ] 2.3 (P) server 受监管拉起与就绪探针
+- [x] 2.3 (P) server 受监管拉起与就绪探针
   - 选空闲回环端口、组装 server 环境(复用 CLI 的端口选择与 env 组装原语,叠加注入的 Node 二进制路径与「以 Node 方式运行」标记);以进程组组长方式拉起 standalone server 并捕获其错误输出;复用就绪探针等待可用;返回 url/端口或判别式启动错误(无端口/早退/超时),失败时先收尾已拉起的进程
   - 观察完成:指向一个最小可就绪 server 脚本时返回就绪 url 与端口;env 里带注入的 Node 二进制路径与运行标记,而主进程自身不带该运行标记
   - _Requirements: 1.1, 1.2, 1.4, 1.5, 4.4, 5.1, 5.2_
