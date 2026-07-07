@@ -1,0 +1,25 @@
+# electron-builder 打包配置(spec pi-web-desktop task 3.2,Req 3.1/3.2/9.1)。
+#
+# 关键:standalone 自包含产物经 extraResources 放到 process.resourcesPath 下的 standalone/
+# (asar 之外),使被 spawn 的 server 与其 runner 子进程能以**真实文件路径**访问、动态加载
+# 用户代码(asar 虚拟文件系统对 child_process/jiti 动态 require 不可靠)。壳自身进 asar。
+appId: com.blksails.pi-web-desktop
+productName: pi-web
+directories:
+  output: release
+# 壳产物:esbuild 打出的自包含 dist/ + 清单。无生产依赖(全内联)。
+files:
+  - dist/**
+  - package.json
+# standalone 产物(由根 `pnpm build:cli` 预先产出于 ../.next-cli/standalone)整目录嵌入资源目录。
+extraResources:
+  - from: ../.next-cli/standalone
+    to: standalone
+asar: true
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+  # 本地未签名可运行(异机 Gatekeeper 会提示);签名/公证属 M3。
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false

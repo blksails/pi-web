@@ -70,7 +70,7 @@
   - _Boundary: main 入口(集成)_
   - _Depends: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ] 3.2 打包配置与 macOS dmg 产出
+- [x] 3.2 打包配置与 macOS dmg 产出
   - 配置把 standalone 产物经资源目录(asar 之外)整目录嵌入,产出可分发的 macOS dmg(本地未签名可运行);dist 脚本前置依赖 standalone 产物构建;资源落点与产物入口定位的打包态路径对齐
   - 观察完成:`pnpm build:cli` 后跑 desktop dist 产出一个 dmg,安装后应用内可定位到资源目录下的 server 入口
   - _Requirements: 3.1, 3.2, 9.1_
@@ -99,3 +99,7 @@
   - _Requirements: 4.2, 6.1, 9.2, 9.4_
   - _Boundary: 桌面 e2e_
   - _Depends: 3.2, 4.2_
+
+## Implementation Notes
+- (3.1) esbuild 以 CJS 内联 `bin/pi-web.mjs` 有两坑:①`import.meta` 被烤成空对象 → 顶层 `fileURLToPath(import.meta.url)` 加载即崩,须在 build.mjs 用 banner 定义真实 URL + `define` 重写 `import.meta.url`;②被内联模块的「入口守卫」(`isMain = import.meta.url===argv[1]`)在 electron 以 main.js 为入口时误触发 → 用进程内 `globalThis.__PI_WEB_CLI_EMBEDDED__` 标记跳过(勿用 env,会传子进程)。`node --check` 只验语法不执行,漏此类加载期崩溃 → 用 stub electron `require` bundle 验证加载。
+- 复用 CLI 纯原语走 DI(注入 findFreePort/waitForReady)可让 supervisor 脱离 electron 与 .mjs 类型问题做集成测试。
