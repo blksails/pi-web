@@ -36,7 +36,7 @@
   - _Requirements: 2.5, 3.2, 3.4, 5.1, 5.3_
   - _Boundary: PiSession routes 面_
   - _Depends: 1.1_
-- [ ] 3.2 HTTP 端点与错误语义
+- [x] 3.2 HTTP 端点与错误语义
   - 新建 route 模块:GET 清单(无声明→空数组)与 GET|POST 调用两个 handler;检查顺序:门控(env 关断→404)→名称 404→方法 405→Content-Length 413(默认 1 MiB 可 env 覆盖)→POST 非法 JSON 400→invokeAgentRoute→200/502(ok:false)/504(超时)
   - 本任务统一读取全部 env(PI_WEB_AGENT_ROUTES_DISABLED / PI_WEB_AGENT_ROUTE_TIMEOUT_MS / PI_WEB_AGENT_ROUTE_BODY_LIMIT),超时值以参数传入 invokeAgentRoute
   - create-handler 注册为 builtin 端点(:id 段自动获得会话 404/401/403 既有鉴权门,不自建鉴权);错误体复用 errorResponse 结构,错误码字典照 design D6
@@ -80,3 +80,7 @@
   - workspace typecheck + pnpm test 全量 + 既有浏览器 e2e 抽跑(canvas 三 spec + 核心闭环);存量无 routes source 行为零变化;prompt 流回归绿
   - 完成态:全部新鲜运行输出绿,证据记录
   - _Requirements: 5.2, 7.1, 7.2, 7.3_
+
+## Implementation Notes
+- 3.2:未声明名 + 非 GET/POST 方法的组合走 Router 通用 405(到不了 handler 的名称 404 检查)——Router 只注册两方法,属边界内不可避;design「GET|POST 调用」框定了检查顺序保证的射程。
+- 3.2:handler 内 requireSession 与 Router 会话门重复,防御性冗余(注册路径下实际死码),无害保留。

@@ -30,6 +30,10 @@ import {
   makeUiResponseHandler,
   makeUiRpcHandler,
 } from "./routes/command-routes.js";
+import {
+  makeAgentRouteInvokeHandler,
+  makeAgentRoutesListHandler,
+} from "./routes/agent-route-routes.js";
 import { makeDeleteSessionHandler } from "./routes/delete-session.js";
 import { makeStateWriteHandler } from "./routes/state-routes.js";
 import {
@@ -213,6 +217,25 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       method: "GET",
       path: "/sessions/:id/logs",
       handler: makeLogsHandler(store),
+    },
+    // agent-declared-routes:builtin 注册即复用 Router `:id` 段既有会话 404/401/403
+    // 鉴权门(Req 4.1,不自建鉴权)。调用端点对 GET/POST 挂同一 handler:route 级
+    // 方法白名单在 handler 内检查(Router 对未注册方法只能给整路径 405,无法按
+    // route 声明区分,Req 2.3);env 门控/超时/体上限均在 handler 内按请求读取。
+    {
+      method: "GET",
+      path: "/sessions/:id/agent-routes",
+      handler: makeAgentRoutesListHandler(store),
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/agent-routes/:name",
+      handler: makeAgentRouteInvokeHandler(store),
+    },
+    {
+      method: "POST",
+      path: "/sessions/:id/agent-routes/:name",
+      handler: makeAgentRouteInvokeHandler(store),
     },
     {
       method: "GET",
