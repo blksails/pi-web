@@ -45,7 +45,7 @@
   - _Depends: 3.1_
 
 - [ ] 4. 承载与演示(Integration)
-- [ ] 4.1 (P) stub agent 演示 routes
+- [x] 4.1 (P) stub agent 演示 routes
   - stub-agent-process.mjs 装配期发声明帧(含 gallery-stats 等演示 route)并应答请求帧(定值 JSON)
   - 完成态:stub 模式创建会话后 GET 清单返回演示 routes;调用返回定值 JSON
   - _Requirements: 6.1, 7.3_
@@ -84,3 +84,4 @@
 ## Implementation Notes
 - 3.2:未声明名 + 非 GET/POST 方法的组合走 Router 通用 405(到不了 handler 的名称 404 检查)——Router 只注册两方法,属边界内不可避;design「GET|POST 调用」框定了检查顺序保证的射程。
 - 3.2:handler 内 requireSession 与 Router 会话门重复,防御性冗余(注册路径下实际死码),无害保留。
+- 4.1→5.2:声明帧搭车 get_commands 探针(slash_completions 同位),POST /sessions 201 先于就绪探针完成——e2e 首次 GET /agent-routes 前必须等会话就绪(gateUntilReady/session-status ready),否则清单可能瞬时为空(系统性时序,非 stub 特有)。
