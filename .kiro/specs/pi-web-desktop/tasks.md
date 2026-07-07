@@ -79,7 +79,7 @@
 
 - [ ] 4. Validation:集成与端到端
 
-- [ ] 4.1 (P) ServerSupervisor 集成测试(真实子进程)
+- [x] 4.1 (P) ServerSupervisor 集成测试(真实子进程)
   - 覆盖:就绪返回 url/端口;server 立即退出 → 早退错误且无遗留子进程;env 透传断言(子进程 env 含注入的 Node 二进制路径与运行标记、主进程 env 不含运行标记);stop 后进程组不存活、端口释放
   - 观察完成:上述集成用例以新鲜运行输出全绿
   - _Requirements: 2.2, 4.4, 6.2, 6.3, 6.4_

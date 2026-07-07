@@ -127,8 +127,11 @@ export class ServerSupervisor {
         },
       });
     } catch {
+      // 关键:先捕获「探针失败时 server 是否已自行退出」,再 stop 收尾。
+      // 否则 stop() 杀掉仍存活的 server 会把 exited 置真 → 把 ready-timeout 误判成 early-exit。
+      const exitedBeforeCleanup = exited;
       await this.stop();
-      if (exited) {
+      if (exitedBeforeCleanup) {
         return { ok: false, error: { kind: "early-exit", code: exitCode, stderrTail } };
       }
       return { ok: false, error: { kind: "ready-timeout", timeoutMs: READY_TIMEOUT_MS } };
