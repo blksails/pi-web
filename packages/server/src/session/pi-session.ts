@@ -176,6 +176,15 @@ export class PiSession {
   private probeTimer: ReturnType<typeof setTimeout> | undefined;
   private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
   /**
+   * 状态桥(`control:"state"`)rev 跨 runner 重启保持**单调**。dev 热重载 / 显式 restart 会重生
+   * runner 子进程,新状态桥 store 的 rev 从 1 重新计数;客户端 control-store 按 `rev <= cur.rev` 判
+   * **陈旧丢弃**(control-store.ts),故重启后新 runner 重推的 KV(如 `aigc.models`)会被当陈旧忽略
+   * → 改代码后前端不刷新。这里对转发给客户端的 rev 加 `stateRevOffset`,重启时把 offset 抬过历史峰值,
+   * 使新 runner 的低 rev 帧仍 > 客户端现值而被接受(重启后 KV 收敛)。
+   */
+  private stateRevOffset = 0;
+  private maxForwardedStateRev = 0;
+  /**
    * R11（扩展命令消息流一致性）：斜杠命令 prompt 后在窗口内观察是否有 `agent_start`（真 turn）。
    * 有 → 真 turn，照常走到真 finish；窗口内无 → 纯命令（不发任何 message 生命周期帧）→ 合成一个
    * `finish` 帧让前端 per-prompt 流干净收尾，避免 useChat 永久 streaming。**仅命令路径触发**
@@ -254,23 +263,27 @@ export class PiSession {
 
     this.touch();
 
+    // 重生完成信号(若通道支持):驱动两件事——① 状态桥 rev 抬升(**恒执行**,与握手无关,修热重载
+    // 后 KV 不刷新);② 就绪握手复位 initializing 并重探针(仅握手开启时)。故 onRestart 恒订阅。
+    // 通道不支持 onRestart 时:rev 抬升退化不可用(dev 热重载少见此路径),就绪退回 settle 定时器。
+    if (typeof this.channel.onRestart === "function") {
+      this.unsubs.push(
+        this.channel.onRestart(() => this.handleRunnerRestarted()),
+      );
+    }
     // 就绪握手(spec session-readiness-handshake):开启时发只读探针判定真实就绪(Req 1.3)。
     // 异步、不阻塞构造;关闭时完全 no-op(既有行为不变)。
     if (this.readinessHandshake) {
       this.startReadinessProbe();
-      // 重生完成信号(若通道支持):在**真实重生时机**复位 initializing 并重探针(Req 5.1),
-      // 覆盖热重载与显式 restart 两条路径,且探针确定落到重生后的新子进程(根除定时器猜测的
-      // 假就绪窗口)。通道不支持 onRestart 时退回 restartRunner 内的 best-effort settle 定时器。
-      if (typeof this.channel.onRestart === "function") {
-        this.unsubs.push(
-          this.channel.onRestart(() => this.handleRunnerRestarted()),
-        );
-      }
     }
   }
 
-  /** 重生完成:复位 initializing 并以新子进程重新探针(由通道 onRestart 在真实重生后触发)。 */
+  /** 重生完成:抬升状态桥 rev(恒);握手开启时另复位 initializing 并以新子进程重新探针。 */
   private handleRunnerRestarted(): void {
+    // ① 状态桥 rev 抬升:offset 抬过历史转发峰值,使新 runner(store rev 归 1)重推的 KV 不被
+    //    客户端按 `rev <= cur.rev` 判陈旧丢弃。恒执行,不依赖握手开关。
+    this.stateRevOffset = this.maxForwardedStateRev + 1;
+    // ② 就绪握手重探针(仅握手开启 + active)。
     if (!this.readinessHandshake || this._status !== "active") return;
     if (this.probeTimer !== undefined) {
       clearTimeout(this.probeTimer);
@@ -580,11 +593,16 @@ export class PiSession {
     if (type === "piweb_state") {
       const state = StateDownLineSchema.safeParse(parsed);
       if (!state.success) return; // 畸形行丢弃,不广播
+      // 客户端 rev 单调化:runner-local rev + 跨重启 offset(见 stateRevOffset 说明)。
+      const forwardedRev = state.data.rev + this.stateRevOffset;
+      if (forwardedRev > this.maxForwardedStateRev) {
+        this.maxForwardedStateRev = forwardedRev;
+      }
       const frame = makeControlFrame({
         control: "state",
         key: state.data.key,
         value: state.data.value,
-        rev: state.data.rev,
+        rev: forwardedRev,
         ...(state.data.deleted ? { deleted: true } : {}),
       });
       // state-injection-bridge 增量:按 key 登记为粘性帧(与 queue/session-state 同构),
