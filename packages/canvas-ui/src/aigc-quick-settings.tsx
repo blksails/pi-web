@@ -97,6 +97,29 @@ function useCatalogKey(
   }, [raw, fallback]);
 }
 
+/** 最大公约数(约分屏幕比例用)。 */
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+/**
+ * 尺寸 "W×H" → **方向文本 + 屏幕比例**副标(比裸比例数字更直观):
+ *   方形("1024x1024"→"方形 1:1")、横向("1536x1024"→"宽屏 3:2")、纵向("1024x1536"→"竖屏 2:3");
+ *   "auto" → "自适应";非法/无法解析 → undefined(不显示副标)。
+ */
+export function sizeHint(size: string): string | undefined {
+  if (size === "auto") return "自适应";
+  const m = /^(\d+)\s*[x×]\s*(\d+)$/i.exec(size);
+  if (m === null) return undefined;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return undefined;
+  const g = gcd(w, h);
+  const ratio = `${w / g}:${h / g}`;
+  const orientation = w === h ? "方形" : w > h ? "宽屏" : "竖屏";
+  return `${orientation} ${ratio}`;
+}
+
 interface PrefSelectProps {
   readonly state: WebExtStateAccess;
   readonly prefKey: "model" | "size";
@@ -109,6 +132,8 @@ interface PrefSelectProps {
   readonly labels?: Readonly<Record<string, string>>;
   /** value(id)→ provider 标识;有则渲染字母徽章并去掉冗余 provider 名后缀。 */
   readonly providers?: Readonly<Record<string, string>>;
+  /** value → 右侧副标文本(如尺寸的屏幕比例);返回 undefined 则不显示。 */
+  readonly hint?: (value: string) => string | undefined;
 }
 
 /** 单个偏好选择器:回显 KV 当前值,变更写 KV + localStorage。 */
@@ -122,6 +147,7 @@ function PrefSelect({
   widthClass,
   labels,
   providers,
+  hint,
 }: PrefSelectProps): React.JSX.Element {
   const current = useStateKey(state, `aigc.${prefKey}`);
   // 当前值不在清单里(如追问写回了清单外模型)仍需可回显:并入 items。
@@ -151,12 +177,19 @@ function PrefSelect({
         {items.map((m) => {
           const providerId = providers?.[m];
           const label = labels?.[m] ?? m;
+          const h = hint?.(m);
           return (
-            // 可见=provider 字母徽章 + 去后缀的 label(缺失回退 id);hover title 恒为模型 id。
+            // 可见=provider 字母徽章 + 去后缀的 label(缺失回退 id)+ 可选右侧副标(如屏幕比例);
+            // hover title 恒为模型 id / 原始 value。
             <SelectItem key={m} value={m} title={m}>
               <span className="flex items-center gap-1.5">
                 <ProviderBadge providerId={providerId} />
                 <span className="truncate">{displayNameOf(label, providerId)}</span>
+                {h !== undefined ? (
+                  <span className="ml-auto shrink-0 pl-2 text-[10px] text-[hsl(var(--muted-foreground))]">
+                    {h}
+                  </span>
+                ) : null}
               </span>
             </SelectItem>
           );
@@ -223,7 +256,8 @@ export function AigcQuickSettings({
         placeholder="尺寸"
         ariaLabel="输出尺寸"
         dataAttr="data-aigc-size-select"
-        widthClass="w-24"
+        widthClass="w-36"
+        hint={sizeHint}
       />
     </span>
   );

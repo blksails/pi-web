@@ -245,3 +245,23 @@ describe("createPiClient three-capability REST methods", () => {
     await expect(client.getAvailableModels("s1")).rejects.toThrow();
   });
 });
+
+describe("getCompletion previewUrl 前缀(attachment-mention-preview)", () => {
+  it("根相对 previewUrl 前缀 baseUrl;绝对 URL 与无 previewUrl 的项不变", async () => {
+    const { fetch } = mockFetch(
+      makeJsonResponse({
+        items: [
+          { providerId: "attachment", kind: "attachment", id: "a1", label: "cat.png", previewUrl: "/attachments/a1/raw?exp=1&sig=x" },
+          { providerId: "attachment", kind: "attachment", id: "a2", label: "b.png", previewUrl: "http://cdn.test/b.png" },
+          { providerId: "file", kind: "file", id: "f1", label: "x.ts" },
+        ],
+        groups: [],
+      }),
+    );
+    const client = createPiClient("http://api.test", fetch);
+    const res = await client.getCompletion("s1", "@", "");
+    expect(res.items[0]?.previewUrl).toBe("http://api.test/attachments/a1/raw?exp=1&sig=x");
+    expect(res.items[1]?.previewUrl).toBe("http://cdn.test/b.png");
+    expect(res.items[2]?.previewUrl).toBeUndefined();
+  });
+});

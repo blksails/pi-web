@@ -211,3 +211,83 @@ describe("PiCompletionPopover 键盘导航", () => {
     expect(ta.value).toBe(before); // 未写回
   });
 });
+
+// ── attachment-mention-preview + 分组标题本地化 ──────────────────────────────
+function attachmentItem(id: string, previewUrl?: string): CompletionItem {
+  return {
+    id,
+    kind: "attachment",
+    label: id,
+    insertText: `@attachment:${id}`,
+    detail: "image/png · 1 KB",
+    ...(previewUrl !== undefined ? { previewUrl } : {}),
+  } as CompletionItem;
+}
+
+describe("PiCompletionPopover 分组标题本地化 + 附件缩略图", () => {
+  it("分组标题按 kind 本地化(file→文件 / attachment→附件)", async () => {
+    const client = makeClient([fileItem("a.ts"), attachmentItem("cat.png")]);
+    const { container } = await renderOpen(client);
+    await flush();
+    const fileHead = container.querySelector('[data-pi-completion-group="file"] > div');
+    const attHead = container.querySelector('[data-pi-completion-group="attachment"] > div');
+    expect(fileHead?.textContent).toBe("文件");
+    expect(attHead?.textContent).toBe("附件");
+  });
+
+  it("带 previewUrl 的附件候选渲染缩略图 img;无则不渲染", async () => {
+    const client = makeClient([
+      attachmentItem("cat.png", "/api/attachments/att_1/raw?exp=1&sig=x"),
+      attachmentItem("doc.pdf"),
+    ]);
+    const { container } = await renderOpen(client);
+    await flush();
+    const imgs = container.querySelectorAll("img[data-pi-completion-preview]");
+    expect(imgs.length).toBe(1);
+    expect(imgs[0]?.getAttribute("src")).toBe("/api/attachments/att_1/raw?exp=1&sig=x");
+  });
+
+  it("未知 kind → 分组标题回退原 kind 文本(不显示裸 i18n key)", async () => {
+    const weird = { id: "x", kind: "mention", label: "x", insertText: "@x" } as CompletionItem;
+    const client = makeClient([weird]);
+    const { container } = await renderOpen(client);
+    await flush();
+    const head = container.querySelector('[data-pi-completion-group="mention"] > div');
+    expect(head?.textContent).toBe("mention");
+  });
+});
+
+describe("PiCompletionPopover onAccept(attachment-mention-preview)", () => {
+  it("选中候选 → onAccept(item) 携带该候选(含 previewUrl)", async () => {
+    const item = attachmentItem("cat.png", "/api/attachments/att_1/raw?sig=x");
+    const client = makeClient([item]);
+    const onAccept = vi.fn();
+    const utils = render(
+      <div>
+        <PiCompletionPopover
+          value="@a"
+          cursor={2}
+          onChange={() => {}}
+          client={client}
+          sessionId="s1"
+          onAccept={onAccept}
+        />
+      </div>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await flush();
+    const opt = utils.container.querySelector("[data-pi-completion-item]");
+    await act(async () => {
+      fireEvent.click(opt!);
+    });
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onAccept.mock.calls[0]?.[0]).toMatchObject({
+      id: "cat.png",
+      kind: "attachment",
+      previewUrl: "/api/attachments/att_1/raw?sig=x",
+    });
+  });
+});

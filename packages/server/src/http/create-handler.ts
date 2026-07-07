@@ -93,6 +93,10 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     const lister: AttachmentLister = {
       head: (id) => attachmentStore.head(id),
       listBySession: (sessionId) => attachmentStore.listBySession!(sessionId),
+      // presignUrl 在场时透传,使图片附件候选带缩略图预览 URL(attachment-mention-preview)。
+      ...(attachmentStore.presignUrl !== undefined
+        ? { presignUrl: (id: string) => attachmentStore.presignUrl!(id) }
+        : {}),
     };
     completion.register(createAttachmentProvider(lister));
   }

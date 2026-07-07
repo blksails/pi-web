@@ -6,6 +6,13 @@ export {
   type PiCompletionPopoverProps,
 } from "./pi-completion-popover.js";
 export {
+  PiMentionPreviews,
+  scanAttachmentMentions,
+  removeAttachmentMention,
+  type PiMentionPreviewsProps,
+  type MentionPreview,
+} from "./pi-mention-previews.js";
+export {
   useCompletion,
   type CompletionClient,
   type UseCompletionArgs,

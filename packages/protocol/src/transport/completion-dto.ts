@@ -23,6 +23,12 @@ export const CompletionItemSchema = z.object({
   insertText: z.string().optional(),
   score: z.number().optional(),
   sortText: z.string().optional(),
+  /**
+   * 可选缩略图 URL(attachment-mention-preview):图片类附件候选携带其分发展示 URL,
+   * 前端补全浮层据此渲染缩略图。server 产出为根相对 `/attachments/:id/raw?exp&sig`,
+   * 客户端 `getCompletion` 前缀 baseUrl 后可达(与附件展示 URL 同策略)。
+   */
+  previewUrl: z.string().optional(),
 });
 export type CompletionItem = z.infer<typeof CompletionItemSchema>;
 

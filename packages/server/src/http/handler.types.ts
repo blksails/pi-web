@@ -123,7 +123,7 @@ export interface PiWebHandlerOptions {
    * 未注入时不做引用注入,也不注册附件补全 provider(与 `images`/vision 现状无关,互不影响)。
    */
   readonly attachmentStore?: AttachmentMetaSource &
-    Partial<Pick<AttachmentStore, "listBySession">>;
+    Partial<Pick<AttachmentStore, "listBySession" | "presignUrl">>;
   /**
    * 可选:host 命令注册表(unified-command-result-layer,决策 A)。注入后,ui-rpc
    * `point="command"` 且命令名已注册的请求在**服务端**执行(不转 agent),结果经

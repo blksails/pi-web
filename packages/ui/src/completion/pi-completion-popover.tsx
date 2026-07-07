@@ -33,6 +33,11 @@ export interface PiCompletionPopoverProps {
   readonly onCaptureChange?: (capturing: boolean) => void;
   /** 让出的触发符(由别的浮层独占,如 "/" 归 PiCommandPalette)。 */
   readonly excludeTriggers?: readonly string[];
+  /**
+   * 选中某候选后回调(attachment-mention-preview):装配层据此捕获候选(含 previewUrl)以在
+   * 输入区渲染被引用附件的缩略图预览。在 onChange 写回后触发,仅可选候选。
+   */
+  readonly onAccept?: (item: CompletionItem) => void;
   readonly className?: string;
 }
 
@@ -45,6 +50,7 @@ export function PiCompletionPopover({
   inputRef,
   onCaptureChange,
   excludeTriggers,
+  onAccept,
   className,
 }: PiCompletionPopoverProps): React.JSX.Element | null {
   const t = useI18n();
@@ -65,6 +71,17 @@ export function PiCompletionPopover({
 
   const [dismissedKey, setDismissedKey] = React.useState<string>("");
   const shouldRender = open && dismissedKey !== tokenKey;
+
+  // 分组标题本地化(completion.kind.<kind> → 「文件」「附件」…);字典缺失该 kind 时回退原 kind
+  // 文本(如 agent/webext mention 的自定义 kind),不显示裸 i18n key。
+  const kindLabel = React.useCallback(
+    (kind: string): string => {
+      const key = `completion.kind.${kind}`;
+      const label = t(key);
+      return label === key ? kind : label;
+    },
+    [t],
+  );
 
   // 线性可选序列(跨组拍平、过滤占位项)与单一高亮索引。
   const selectable = React.useMemo(() => flattenSelectable(groups), [groups]);
@@ -95,6 +112,8 @@ export function PiCompletionPopover({
       if (!isSelectable(item)) return; // 占位项不可选
       const { nextValue, nextCursor } = accept(item, value);
       onChange(nextValue);
+      onAccept?.(item); // 装配层捕获候选(含 previewUrl)供输入区预览
+
       // onChange 引发重渲染后再复位选区并保持焦点(经 PromptInput 的 onSelect 上报新光标)。
       const el = inputRef?.current ?? null;
       if (el !== null) {
@@ -104,7 +123,7 @@ export function PiCompletionPopover({
         });
       }
     },
-    [accept, value, onChange, inputRef],
+    [accept, value, onChange, inputRef, onAccept],
   );
 
   // 键盘导航:浮层可见时即便焦点在 textarea 也捕获 ↑↓/Enter/Esc(复用 command-palette 范式)。
@@ -174,7 +193,7 @@ export function PiCompletionPopover({
         {groups.map((group) => (
           <li key={group.kind} data-pi-completion-group={group.kind}>
             <div className="px-2 py-1 text-xs uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-              {group.kind}
+              {kindLabel(group.kind)}
             </div>
             <ul role="group">
               {group.items.map((item) => {
@@ -207,12 +226,25 @@ export function PiCompletionPopover({
                     data-kind={item.kind}
                     {...(isActive ? { "data-active": "true" } : {})}
                   >
-                    {item.label}
-                    {item.detail !== undefined ? (
-                      <span className="ml-2 text-xs text-[hsl(var(--muted-foreground))]">
-                        {item.detail}
-                      </span>
-                    ) : null}
+                    <span className="flex items-center gap-2">
+                      {/* attachment-mention-preview:图片附件候选的缩略图。 */}
+                      {item.previewUrl !== undefined ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image
+                        <img
+                          src={item.previewUrl}
+                          alt=""
+                          loading="lazy"
+                          data-pi-completion-preview
+                          className="h-8 w-8 shrink-0 rounded-sm border border-[hsl(var(--border))] object-cover"
+                        />
+                      ) : null}
+                      <span className="min-w-0 truncate">{item.label}</span>
+                      {item.detail !== undefined ? (
+                        <span className="ml-1 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">
+                          {item.detail}
+                        </span>
+                      ) : null}
+                    </span>
                   </li>
                 );
               })}

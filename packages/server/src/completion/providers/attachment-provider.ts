@@ -29,6 +29,11 @@ export const ATTACHMENT_KIND = "attachment";
 export interface AttachmentLister {
   listBySession(sessionId: string): Promise<readonly Attachment[]>;
   head(id: string): Promise<Attachment | undefined>;
+  /**
+   * 可选:签发某附件的分发展示 URL(根相对 `/attachments/:id/raw?exp&sig`)。
+   * 提供时,图片类附件候选携带 `previewUrl` 供补全浮层渲染缩略图(attachment-mention-preview)。
+   */
+  presignUrl?(id: string): Promise<string>;
 }
 
 /** 字节数 → 人类可读(B/KB/MB/GB,1024 进制,≤1 位小数)。 */
@@ -81,6 +86,16 @@ export function createAttachmentProvider(
       const items: CompletionItem[] = [];
       for (const att of attachments) {
         if (!nameMatches(att.name, query)) continue;
+        // 图片类附件:签发展示 URL 作缩略图预览(attachment-mention-preview);
+        // 签发失败 / 非图片 / 无 presignUrl 能力 → 不带 previewUrl(浮层退化为纯文本行)。
+        let previewUrl: string | undefined;
+        if (store.presignUrl !== undefined && att.mimeType.startsWith("image/")) {
+          try {
+            previewUrl = await store.presignUrl(att.id);
+          } catch {
+            previewUrl = undefined;
+          }
+        }
         items.push({
           providerId: ATTACHMENT_PROVIDER_ID,
           kind: ATTACHMENT_KIND,
@@ -92,6 +107,7 @@ export function createAttachmentProvider(
             kind: ATTACHMENT_KIND,
             id: att.id,
           }),
+          ...(previewUrl !== undefined ? { previewUrl } : {}),
         });
       }
       return items;

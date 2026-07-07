@@ -75,6 +75,21 @@ describe("AigcQuickSettings", () => {
     expect(options).not.toContain("gpt-image-2"); // 不再混入 fallback
   });
 
+  it("尺寸选项带方向文本+比例副标(方形1:1 / 宽屏3:2 / 竖屏2:3 / 自适应)", () => {
+    const { state } = makeFakeState({
+      "aigc.sizes": ["1024x1024", "1536x1024", "1024x1536", "auto"],
+    });
+    render(<AigcQuickSettings state={state} />);
+    fireEvent.click(document.querySelector("[data-aigc-size-select]")!);
+    const opts = Array.from(document.querySelectorAll("[role=option]"));
+    const byText = (needle: string) =>
+      opts.find((o) => o.textContent?.includes(needle));
+    expect(byText("1024x1024")?.textContent).toContain("方形 1:1");
+    expect(byText("1536x1024")?.textContent).toContain("宽屏 3:2");
+    expect(byText("1024x1536")?.textContent).toContain("竖屏 2:3");
+    expect(byText("auto")?.textContent).toContain("自适应");
+  });
+
   it("有 label 映射 → 选项可见文本用 label,hover title 用模型 id", () => {
     const { state } = makeFakeState({
       "aigc.models": ["gpt-image-2", "wan2.7-image-pro"],

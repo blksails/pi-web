@@ -55,7 +55,7 @@ import {
   GetLogsResponseSchema,
 } from "@blksails/pi-web-protocol";
 import type { LogEntry } from "@blksails/pi-web-logger";
-import { sendRequest, type FetchLike } from "./request.js";
+import { sendRequest, joinUrl, type FetchLike } from "./request.js";
 
 export type { FetchLike };
 
@@ -321,10 +321,23 @@ export function createPiClient(
       get<CompletionTriggersResponse>(
         `/sessions/${enc(id)}/completion/triggers`,
       ),
-    getCompletion: (id, trigger, query) =>
-      get<CompletionResponse>(
+    getCompletion: async (id, trigger, query) => {
+      const res = await get<CompletionResponse>(
         `/sessions/${enc(id)}/completion?trigger=${encodeURIComponent(trigger)}&q=${encodeURIComponent(query)}`,
-      ),
+      );
+      // attachment-mention-preview:候选的 previewUrl 为根相对 `/attachments/:id/raw?...`,
+      // 前缀 baseUrl 使 `<img src>` 可达(与附件展示 URL 同策略;已带 baseUrl 的不重复前缀)。
+      const needsPrefix = (u: string): boolean =>
+        u.startsWith("/") &&
+        !/^https?:\/\//i.test(u) &&
+        !(baseUrl !== "" && (u === baseUrl || u.startsWith(`${baseUrl}/`)));
+      const items = res.items.map((it) =>
+        it.previewUrl !== undefined && needsPrefix(it.previewUrl)
+          ? { ...it, previewUrl: joinUrl(baseUrl, it.previewUrl) }
+          : it,
+      );
+      return { ...res, items };
+    },
 
     getAvailableModels: async (id) =>
       GetAvailableModelsResponseSchema.parse(

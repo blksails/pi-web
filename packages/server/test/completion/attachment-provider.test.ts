@@ -35,7 +35,7 @@ function att(p: Partial<Attachment> & { id: string }): Attachment {
 /** 内存存根:listBySession 按 sessionId 过滤;head 全局查 id。可注入抛错。 */
 function makeStore(
   all: readonly Attachment[],
-  opts: { throwOnList?: boolean } = {},
+  opts: { throwOnList?: boolean; presign?: boolean } = {},
 ): AttachmentLister {
   return {
     async listBySession(sessionId: string): Promise<readonly Attachment[]> {
@@ -45,6 +45,9 @@ function makeStore(
     async head(id: string): Promise<Attachment | undefined> {
       return all.find((a) => a.id === id);
     },
+    ...(opts.presign
+      ? { presignUrl: async (id: string) => `/attachments/${id}/raw?exp=1&sig=abc` }
+      : {}),
   };
 }
 
@@ -157,6 +160,36 @@ describe("AttachmentCompletionProvider", () => {
         CTX,
       );
       expect(r).toBeNull();
+    });
+  });
+
+  describe("previewUrl(attachment-mention-preview)", () => {
+    it("图片附件 + presignUrl 在场 → 候选带 previewUrl(签名分发 URL)", async () => {
+      const p = createAttachmentProvider(
+        makeStore([att({ id: "att_img", name: "cat.png", mimeType: "image/png" })], {
+          presign: true,
+        }),
+      );
+      const [item] = await p.complete({ query: "", ctx: CTX });
+      expect(item?.previewUrl).toBe("/attachments/att_img/raw?exp=1&sig=abc");
+    });
+
+    it("非图片附件 → 无 previewUrl", async () => {
+      const p = createAttachmentProvider(
+        makeStore([att({ id: "att_pdf", name: "doc.pdf", mimeType: "application/pdf" })], {
+          presign: true,
+        }),
+      );
+      const [item] = await p.complete({ query: "", ctx: CTX });
+      expect(item?.previewUrl).toBeUndefined();
+    });
+
+    it("presignUrl 能力缺失 → 图片附件也无 previewUrl(退化)", async () => {
+      const p = createAttachmentProvider(
+        makeStore([att({ id: "att_img", name: "cat.png", mimeType: "image/png" })]),
+      );
+      const [item] = await p.complete({ query: "", ctx: CTX });
+      expect(item?.previewUrl).toBeUndefined();
     });
   });
 });

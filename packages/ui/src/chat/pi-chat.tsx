@@ -74,12 +74,17 @@ import {
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { createPluginArgProvider } from "../controls/plugin-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
-import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
+import type { RpcSlashCommand, CompletionItem } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { LogsPanel } from "../logs/logs-panel.js";
-import { PiCompletionPopover } from "../completion/index.js";
+import {
+  PiCompletionPopover,
+  PiMentionPreviews,
+  removeAttachmentMention,
+  type MentionPreview,
+} from "../completion/index.js";
 import { cn } from "../lib/cn.js";
 import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
@@ -508,6 +513,26 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+
+  // attachment-mention-preview:选中 `@` 附件候选时捕获其预览(id → name/previewUrl),
+  // 供输入区 PiMentionPreviews 渲染缩略图。候选自带 previewUrl(见 pi-client getCompletion)。
+  const [mentionPreviews, setMentionPreviews] = React.useState<
+    ReadonlyMap<string, MentionPreview>
+  >(new Map());
+  const onCompletionAccept = React.useCallback((item: CompletionItem): void => {
+    if (item.kind !== "attachment") return;
+    setMentionPreviews((prev) => {
+      const next = new Map(prev);
+      next.set(item.id, {
+        name: item.label,
+        ...(item.previewUrl !== undefined ? { previewUrl: item.previewUrl } : {}),
+      });
+      return next;
+    });
+  }, []);
+  const onRemoveMention = React.useCallback((id: string): void => {
+    setInput((v) => removeAttachmentMention(v, id));
+  }, []);
 
   // panelRight 让位比例:以扩展声明的初始值播种,运行时由段控切换器改写。
   // 换 source(扩展声明的初始比例变化)时重置回新声明值。
@@ -1306,6 +1331,7 @@ export function PiChat({
           onCaptureChange={setCommandCapturing}
           // agent-slash-completion:"/" 归 PiCommandPalette 单浮层,避免双浮层冲突。
           excludeTriggers={SLASH_EXCLUDED_TRIGGERS}
+          onAccept={onCompletionAccept}
         />
       ) : null}
       {/* webext 专属 mention:core 启用时让位(避免与 core 的 @ 双浮层,D-6)。
@@ -1348,6 +1374,12 @@ export function PiChat({
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />
       <Widgets widgets={widgetItems} placement="aboveEditor" />
+      {/* attachment-mention-preview:被 `@` 引用附件的缩略图预览条(输入框上方)。 */}
+      <PiMentionPreviews
+        value={input}
+        previews={mentionPreviews}
+        onRemove={onRemoveMention}
+      />
       {/* promptInput 装饰为绝对覆盖、不移除内核 textarea;inline 配件为绝对定位不挤压输入。 */}
       <div className="relative">
         <ExtSlotRegion
