@@ -71,7 +71,7 @@
   - 完成态:集成测试新鲜运行输出全绿
   - _Requirements: 5.1, 7.3_
   - _Depends: 2.2, 3.1_
-- [ ] 5.2 浏览器 e2e
+- [x] 5.2 浏览器 e2e
   - 新 e2e:stub 会话→page.request GET 清单+调用演示 route 断言 JSON(经 Next catch-all 全链路,证 2.6 无静默 404)→断言对话 UI 零新消息/零可见变化;鉴权语义抽查(非法会话 404)
   - 完成态:隔离 build e2e 新鲜运行全绿
   - _Requirements: 2.6, 3.5, 4.1, 6.1, 6.3, 7.3_
