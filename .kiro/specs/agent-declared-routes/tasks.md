@@ -51,7 +51,7 @@
   - _Requirements: 6.1, 7.3_
   - _Boundary: stub routes 支持_
   - _Depends: 3.2_
-- [ ] 4.2 (P) aigc-canvas-agent 演示与 README
+- [x] 4.2 (P) aigc-canvas-agent 演示与 README
   - index.ts 声明 gallery-stats(GET):handler 返回画廊/canvas 统计 JSON(从进程内 canvas 状态接缝读取)
   - README 记载:声明方式、URL 形态、如何取会话 id、完整 curl 示例与预期响应
   - 完成态:README 含可复制 curl 命令;真实模式手动调用返回统计 JSON(以集成测试或手动证据佐证)
