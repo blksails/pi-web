@@ -16,6 +16,10 @@ import { dirname } from "node:path";
 const READY_TIMEOUT_MS = 60_000;
 /** stderr 尾部保留上限(字节),用于早退失败诊断。 */
 const STDERR_TAIL_LIMIT = 4096;
+/** 优雅信号(SIGTERM)后等待进程组退出的宽限期,超时升级为 SIGKILL(task 2.4,Req 6.3)。 */
+const STOP_GRACE_MS = 3_000;
+/** stop 的兜底硬超时:即便 SIGKILL 后进程仍未被回收也不无限等待。 */
+const STOP_HARD_MS = STOP_GRACE_MS + 2_000;
 
 export interface ServerStartResult {
   readonly url: string;
@@ -134,25 +138,62 @@ export class ServerSupervisor {
   }
 
   /**
-   * 收尾受监管 server 进程组(task 2.3 基础版:POSIX 负 pid SIGTERM,退回直杀;幂等)。
-   * task 2.4 硬化:SIGKILL 宽限、Windows taskkill /T /F、端口释放确认。
+   * 收尾受监管 server 进程**树**(task 2.4,Req 6.1/6.2/6.3/6.4)。幂等:多次调用安全。
+   * - POSIX:对 detached 组长发**负 pid** SIGTERM(触达 runner 孙进程),宽限期后升级 SIGKILL。
+   * - Windows:无 POSIX 信号 → `taskkill /PID <pid> /T /F`(/T 树 /F 强制)。
+   * - 端口随进程退出释放(Req 6.4);不留孤儿(Req 6.2)。
    */
   async stop(): Promise<void> {
     const child = this.#child;
     this.#child = undefined;
     this.#port = undefined;
-    if (child === undefined || child.pid === undefined || child.killed) return;
+    if (child === undefined || child.pid === undefined) return;
+    // 已自行退出 → 无需再杀(幂等/避免 await 永挂)。
+    if (child.exitCode !== null || child.signalCode !== null || child.killed) return;
+    const pid = child.pid;
+
+    if (process.platform === "win32") {
+      await taskkillTree(pid);
+      return;
+    }
+
+    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    killGroup(child, "SIGTERM");
+    const sigkill = setTimeout(() => killGroup(child, "SIGKILL"), STOP_GRACE_MS);
     try {
-      // 负 pid = 整个进程组(detached 使 server 为组长),触达 runner 孙进程。
-      process.kill(-child.pid, "SIGTERM");
-    } catch {
-      try {
-        child.kill("SIGTERM");
-      } catch {
-        // 已退出/不可达 → 忽略。
-      }
+      await Promise.race([exited, delay(STOP_HARD_MS)]);
+    } finally {
+      clearTimeout(sigkill);
     }
   }
+}
+
+/** 对 detached 组长发**负 pid** 信号(整组);不可达时退回直杀直属子。 */
+function killGroup(child: ChildProcess, signal: "SIGTERM" | "SIGKILL"): void {
+  const pid = child.pid;
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      child.kill(signal);
+    } catch {
+      // 已退出/不可达 → 忽略。
+    }
+  }
+}
+
+/** Windows 进程树强制终止。 */
+function taskkillTree(pid: number): Promise<void> {
+  return new Promise((resolve) => {
+    const tk = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    tk.on("exit", () => resolve());
+    tk.on("error", () => resolve());
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** 通配/未指定主机映射为可导航回环地址。 */

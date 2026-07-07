@@ -47,7 +47,7 @@
   - _Boundary: ServerSupervisor_
   - _Depends: 1.2, 1.3_
 
-- [ ] 2.4 退出进程树收尾
+- [x] 2.4 退出进程树收尾
   - 停止时对 server 进程组做整组终止(POSIX 负 pid 优雅信号 + 宽限期后强制;Windows 强制树终止),触达 runner 孙进程,释放端口;幂等
   - 观察完成:集成层可断言 stop 后进程组不存活、端口被释放
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
