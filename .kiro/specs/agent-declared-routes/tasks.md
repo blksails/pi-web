@@ -65,7 +65,7 @@
   - _Boundary: docs_
 
 - [ ] 5. 验证(Validation)
-- [ ] 5.1 真实子进程集成测试
+- [x] 5.1 真实子进程集成测试
   - spawn 带 routes 的 fixture agent:声明帧→PiSession 缓存→invokeAgentRoute→handler 执行→fd1 结果帧→resolve 全闭环(fd1 直写坑仅此层能验)
   - 含 busy 场景:prompt 流进行中调用 route 仍同步返回
   - 完成态:集成测试新鲜运行输出全绿
