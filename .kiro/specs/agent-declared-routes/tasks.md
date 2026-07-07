@@ -15,7 +15,7 @@
   - _Boundary: AgentDefinition.routes(agent-kit)_
 
 - [ ] 2. runner 子进程侧(Core)
-- [ ] 2.1 agent-loader 归一化与权威校验
+- [x] 2.1 agent-loader 归一化与权威校验
   - 归一化 routes 进 NormalizedAgentRuntimeFactory;校验名称格式(`^[a-z0-9][a-z0-9-]*$`)、同定义内唯一、methods ⊆ {GET,POST};methods 缺省补 ["GET"]
   - 非法声明抛含 route 名与失败原因的装配错误(runner 启动失败→会话创建失败);无 routes 声明时归一化结果与现状逐字段一致
   - 完成态:单测覆盖合法/非法(格式/重名/坏方法)/缺省方法/无声明五档

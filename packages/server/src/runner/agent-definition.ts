@@ -16,7 +16,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { Logger } from "@blksails/pi-web-logger";
-import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
+import type { AgentRouteMethod, SlashCompletionDecl } from "@blksails/pi-web-protocol";
 
 /** A resolved pi model (from the public from-services options). */
 export type Model = NonNullable<CreateAgentSessionFromServicesOptions["model"]>;
@@ -54,6 +54,47 @@ export interface AgentContext {
 /** Model reference: a resolved pi Model or a lightweight `{ provider, modelId }`. */
 export type AgentModel = Model | { provider: string; modelId: string };
 
+/**
+ * Request context handed to an agent route handler (mirror of agent-kit's
+ * `AgentRouteRequest`; spec agent-declared-routes).
+ */
+export interface AgentRouteRequest {
+  /** Declared route name being invoked. */
+  readonly name: string;
+  /** HTTP method of the incoming call. */
+  readonly method: AgentRouteMethod;
+  /** URL query parameters, flattened to single string values. */
+  readonly query: Readonly<Record<string, string>>;
+  /** Parsed JSON request body, if the call carried one. */
+  readonly body?: unknown;
+}
+
+/**
+ * Handler bound to a declared route (mirror of agent-kit's
+ * `AgentRouteHandler`). Runs only inside the agent subprocess — the function
+ * never crosses the process boundary.
+ */
+export type AgentRouteHandler = (
+  req: AgentRouteRequest,
+) => unknown | Promise<unknown>;
+
+/**
+ * One agent-declared HTTP route (mirror of agent-kit's `AgentRouteDecl`).
+ * Authoritative validation (name format `^[a-z0-9][a-z0-9-]*$`, uniqueness
+ * within one definition, methods ⊆ {GET, POST}) happens at assembly time in
+ * the agent-loader normalization.
+ */
+export interface AgentRouteDecl {
+  /** Route name (URL segment under the session namespace). */
+  readonly name: string;
+  /** Allowed HTTP methods. Defaults to `["GET"]` when omitted. */
+  readonly methods?: ReadonlyArray<AgentRouteMethod>;
+  /** Human-readable description, surfaced in the route listing. */
+  readonly description?: string;
+  /** Handler executed in the agent subprocess. */
+  readonly handler: AgentRouteHandler;
+}
+
 /** Declarative custom-agent capabilities (mirror of agent-kit's AgentDefinition). */
 export interface AgentDefinition {
   model?: AgentModel;
@@ -84,4 +125,12 @@ export interface AgentDefinition {
    * definition to the server via a runner-assembly-time stdout frame.
    */
   slashCompletions?: SlashCompletionDecl[];
+  /**
+   * HTTP routes this agent declares (mirror of agent-kit field; spec
+   * agent-declared-routes). pi-web-only metadata: normalized and validated at
+   * assembly time by the agent-loader; the pure-data projection
+   * (name/methods/description) is threaded to the server via a
+   * runner-assembly-time stdout frame, handlers stay in the subprocess.
+   */
+  routes?: AgentRouteDecl[];
 }
