@@ -248,12 +248,19 @@ interface ServerSupervisor {
 
 ##### Service Interface
 ```typescript
+// 实现细化(task 2.1 已复核接受):新增 unpackaged 第三态覆盖 e2e/本地非打包直跑;
+// resolveServerEntry 改注入 deps 以成为可单测纯函数(不读 process.resourcesPath 全局)。
 type RuntimeMode =
   | { readonly kind: "packaged" }
+  | { readonly kind: "unpackaged" }
   | { readonly kind: "dev"; readonly devUrl: string };
 function resolveRuntimeMode(env: NodeJS.ProcessEnv, isPackaged: boolean): RuntimeMode;
-/** packaged 返回 server.js 绝对路径;dev 返回 null(壳直接 loadURL devUrl)。 */
-function resolveServerEntry(mode: RuntimeMode): string | null;
+interface ResolveServerEntryDeps {
+  readonly resourcesPath: string | undefined; // 生产为 process.resourcesPath
+  readonly cliStandaloneJs: string;           // 生产为 bin/pi-web.mjs 的 standaloneServerJs()
+}
+/** packaged/unpackaged 返回 server.js 绝对路径;dev 返回 null(壳直接 loadURL devUrl)。 */
+function resolveServerEntry(mode: RuntimeMode, deps: ResolveServerEntryDeps): string | null;
 ```
 
 #### createMainWindow
