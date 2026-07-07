@@ -1,28 +1,24 @@
 #!/usr/bin/env node
 /**
- * 桌面版启动闭环 + 真实会话 e2e(spec pi-web-desktop task 4.2)。可重复,产出新鲜证据。
+ * 桌面版「干净无 Node 机器」验证 + 退出收尾 e2e(spec pi-web-desktop task 4.3)。
  *
- * 用 Playwright 的 `_electron` 驱动**真实 Electron 壳**(未打包,指向预构建 standalone),
- * 证明整条桌面机制端到端可用:
- *   Electron 主进程 → 以「Electron 充当 Node」spawn standalone server →
- *   就绪后 BrowserWindow 加载本地回环 UI → 真实 runner 子进程(runner-bootstrap→jiti→用户
- *   agent 代码)→ mock provider → 流式回包显示在 Electron 窗口。
+ * 沿用 cli-reloc.mjs「藏起系统 node」的思路证明 Req 9.2/4.2:从传给 Electron 应用的 PATH 中
+ * **剥除所有含 node 可执行文件的目录**,再启动桌面壳跑真实会话。若仍成功,则证明 server 与
+ * runner 子进程用的是**注入的 Electron-as-Node 二进制**(PI_WEB_NODE_BIN=process.execPath),
+ * 而非系统 PATH 上的 node——即干净无 Node 机器可用。
  *
- * 复用 cli-real.mjs 的 mock provider + 临时 agent-dir 手法(不依赖外网/真实凭据)。
- * 关键注入:
- *   - PI_WEB_DESKTOP_SERVER_JS:指向 repo 的 .next-cli/standalone/server.js(未打包态入口覆盖)。
- *   - PI_WEB_AGENT_DIR:临时 agent-dir(默认模型指向 mock)。
- *   - PI_WEB_DEFAULT_SOURCE/CWD:autostart 直接建会话(前端据默认 source 存在跳过选源页)。
- *   - 主进程自身**不带** ELECTRON_RUN_AS_NODE(保持 GUI);supervisor 只给 server 子进程注入。
+ * 并验证退出收尾(Req 6.1/9.4):关闭应用后本地端口释放(server 进程树已被收尾)。
  *
- * 前置:`pnpm build:cli`(standalone) + `pnpm --filter @blksails/pi-web-desktop build`(desktop dist)。
- * 跑法:`node e2e/desktop/desktop-real.mjs`。
+ * 前置:`pnpm build:cli` + `pnpm --filter @blksails/pi-web-desktop build`。
+ * 跑法:`node e2e/desktop/desktop-no-node.mjs`(或 `pnpm e2e:desktop:nonode`)。
  */
 import { createServer } from "node:http";
+import { connect as netConnect } from "node:net";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "@playwright/test";
 
@@ -30,9 +26,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
 const STANDALONE_SERVER = join(ROOT, DIST, "standalone", "server.js");
 const DESKTOP_MAIN = join(ROOT, "desktop", "dist", "main.js");
-const DESKTOP_PORT = 34810;
+const DESKTOP_PORT = 34820;
 const EVIDENCE_DIR = join(ROOT, ".kiro/specs/pi-web-desktop/evidence");
-const REPLY_TOKEN = "PIWEBDESKTOPOK";
+const REPLY_TOKEN = "PIWEBNONODEOK";
 
 const failures = [];
 const check = (name, ok) => {
@@ -41,7 +37,37 @@ const check = (name, ok) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** mock OpenAI Chat Completions(确定性 SSE 回包);复用 cli-real.mjs 的格式。 */
+/** 从 PATH 剥除所有含 node/node.exe 的目录。 */
+function pathWithoutNode(origPath) {
+  return (origPath ?? "")
+    .split(delimiter)
+    .filter((d) => {
+      if (!d) return false;
+      try {
+        return !existsSync(join(d, "node")) && !existsSync(join(d, "node.exe"));
+      } catch {
+        return true;
+      }
+    })
+    .join(delimiter);
+}
+
+/** 端口是否空闲(连接被拒=空闲)。 */
+function isPortFree(port) {
+  return new Promise((res) => {
+    const sock = netConnect({ host: "127.0.0.1", port, timeout: 1000 });
+    sock.on("connect", () => {
+      sock.destroy();
+      res(false);
+    });
+    sock.on("error", () => res(true));
+    sock.on("timeout", () => {
+      sock.destroy();
+      res(true);
+    });
+  });
+}
+
 function startMockProvider() {
   let calls = 0;
   const server = createServer((req, res) => {
@@ -49,11 +75,7 @@ function startMockProvider() {
       calls += 1;
       req.on("data", () => {});
       req.on("end", () => {
-        res.writeHead(200, {
-          "content-type": "text/event-stream; charset=utf-8",
-          "cache-control": "no-cache",
-          connection: "keep-alive",
-        });
+        res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache" });
         const base = { id: "chatcmpl-mock", object: "chat.completion.chunk", created: 0, model: "mock-model" };
         const send = (choices, extra) => res.write(`data: ${JSON.stringify({ ...base, choices, ...extra })}\n\n`);
         send([{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]);
@@ -72,9 +94,8 @@ function startMockProvider() {
   });
 }
 
-/** 最小临时 agent-dir,默认模型指向 mock。 */
 function makeAgentDir(mockPort) {
-  const dir = mkdtempSync(join(tmpdir(), "pi-desktop-real-"));
+  const dir = mkdtempSync(join(tmpdir(), "pi-desktop-nonode-"));
   const models = {
     providers: {
       mock: {
@@ -83,15 +104,7 @@ function makeAgentDir(mockPort) {
         apiKey: "mock-key",
         api: "openai-completions",
         models: [
-          {
-            id: "mock-model",
-            name: "Mock Model",
-            reasoning: false,
-            input: ["text"],
-            contextWindow: 8192,
-            maxTokens: 4096,
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-          },
+          { id: "mock-model", name: "Mock Model", reasoning: false, input: ["text"], contextWindow: 8192, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
         ],
       },
     },
@@ -104,17 +117,26 @@ function makeAgentDir(mockPort) {
 }
 
 async function main() {
-  if (!existsSync(STANDALONE_SERVER)) {
-    console.error(`产物缺失:${STANDALONE_SERVER}\n请先 \`pnpm build:cli\``);
-    process.exit(1);
-  }
-  if (!existsSync(DESKTOP_MAIN)) {
-    console.error(`桌面 bundle 缺失:${DESKTOP_MAIN}\n请先 \`pnpm --filter @blksails/pi-web-desktop build\``);
+  if (!existsSync(STANDALONE_SERVER) || !existsSync(DESKTOP_MAIN)) {
+    console.error("产物缺失,请先 `pnpm build:cli` 与 `pnpm --filter @blksails/pi-web-desktop build`");
     process.exit(1);
   }
 
   const require = createRequire(join(ROOT, "desktop", "package.json"));
-  const electronPath = require("electron"); // electron npm 默认导出=二进制路径
+  const electronPath = require("electron");
+
+  const strippedPath = pathWithoutNode(process.env.PATH);
+  // 前置断言:剥离后系统确实找不到 node(否则本测试无意义)。
+  let nodeGone = false;
+  try {
+    execFileSync(process.platform === "win32" ? "where" : "which", ["node"], {
+      env: { ...process.env, PATH: strippedPath },
+      stdio: "ignore",
+    });
+  } catch {
+    nodeGone = true;
+  }
+  check("已从 PATH 剥除系统 node(干净无 Node 环境模拟)", nodeGone);
 
   const mock = await startMockProvider();
   const agentDir = makeAgentDir(mock.port);
@@ -127,29 +149,22 @@ async function main() {
       cwd: ROOT,
       env: {
         ...process.env,
-        // 未打包态 server.js 入口覆盖(避开内联 import.meta.url 路径漂移)。
+        PATH: strippedPath, // 关键:应用及其 server/runner 子进程都拿不到系统 node
         PI_WEB_DESKTOP_SERVER_JS: STANDALONE_SERVER,
         PI_WEB_DESKTOP_PORT: String(DESKTOP_PORT),
-        // agent-dir + 默认 source + autostart:直接建真实会话。
         PI_WEB_AGENT_DIR: agentDir,
         PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),
         PI_WEB_DEFAULT_CWD: ROOT,
-        // 主进程保持 GUI:显式确保不带 run-as-node(supervisor 只给 server 子进程注入)。
         ELECTRON_RUN_AS_NODE: undefined,
         NEXT_DIST_DIR: DIST,
       },
     });
 
-    // 第一个窗口:先是 loading.html,就绪后被 main 切到本地回环 UI。
     const page = await app.firstWindow();
-    // 等窗口导航到本地回环 UI(非 loading.html/file://)。
     await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 90_000 });
-    check("Electron 窗口加载本地回环 UI(非空白/非加载页)", /^http:\/\/127\.0\.0\.1:/.test(page.url()));
+    check("无系统 node 下窗口仍加载本地回环 UI(server 用注入的 Electron-as-Node 启动)", /^http:\/\/127\.0\.0\.1:/.test(page.url()));
 
-    // autostart 建会话 → 输入框出现。
     await page.waitForSelector("[data-pi-input-textarea]", { timeout: 30_000 });
-    check("默认 source 自动激活真实会话(URL 含 /session/)", /\/session\//.test(page.url()));
-
     await page.fill("[data-pi-input-textarea]", "say the magic token");
     await page.getByRole("button", { name: "发送" }).click();
 
@@ -157,24 +172,36 @@ async function main() {
       .waitForFunction((tok) => document.body.innerText.includes(tok), REPLY_TOKEN, { timeout: 45_000 })
       .then(() => true)
       .catch(() => false);
-    check("Electron 窗口收到真实 runner 经 mock provider 的流式回包", got);
-
-    // 硬证据:真实 runner 链路打通(stub 永不触发 mock)。
-    check("mock provider 被真实 runner 调用(≥1 次,证明 Electron-as-Node 下 server→runner 链可用)", mock.getCalls() >= 1);
+    check("无系统 node 下真实会话跑通(runner 用注入二进制,非系统 node — Req 4.2/9.2)", got);
+    check("mock provider 被真实 runner 调用(≥1 次)", mock.getCalls() >= 1);
 
     mkdirSync(EVIDENCE_DIR, { recursive: true });
-    await page.screenshot({ path: join(EVIDENCE_DIR, "desktop-real.png"), fullPage: true });
-    console.log(`证据截图: ${join(EVIDENCE_DIR, "desktop-real.png")}`);
+    await page.screenshot({ path: join(EVIDENCE_DIR, "desktop-no-node.png"), fullPage: true });
+    console.log(`证据截图: ${join(EVIDENCE_DIR, "desktop-no-node.png")}`);
+
+    // 退出收尾(Req 6.1/9.4):关闭应用后 server 端口应释放(进程树已被收尾,无残留)。
+    await app.close();
+    app = undefined;
+    // 轮询端口释放(给收尾一点时间)。
+    let released = false;
+    for (let i = 0; i < 20; i++) {
+      if (await isPortFree(DESKTOP_PORT)) {
+        released = true;
+        break;
+      }
+      await sleep(250);
+    }
+    check("关闭应用后本地端口释放(server 进程树已收尾,无残留 — Req 6.1)", released);
   } catch (err) {
-    check(`桌面真实 e2e: ${err?.message ?? err}`, false);
+    check(`干净无 node e2e: ${err?.message ?? err}`, false);
   } finally {
     if (app) await app.close().catch(() => {});
-    await sleep(500);
+    await sleep(300);
     mock.server.close();
     try {
       rmSync(agentDir, { recursive: true, force: true });
     } catch {
-      // best-effort。
+      // best-effort
     }
   }
 
