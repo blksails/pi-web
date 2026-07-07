@@ -29,6 +29,12 @@ import type {
   UiRpcResponse,
 } from "@blksails/pi-web-protocol";
 import type { ClearQueueResponse } from "@blksails/pi-web-protocol";
+import type {
+  AgentRouteDeclDto,
+  AgentRouteMethod,
+  AgentRouteRequestFrame,
+  AgentRouteResultFrame,
+} from "@blksails/pi-web-protocol";
 import {
   makeControlFrame,
   makeUiMessageChunkFrame,
@@ -36,6 +42,8 @@ import {
   UiRpcResponseSchema,
   StateDownLineSchema,
   ClearQueueResultLineSchema,
+  AgentRoutesFrameSchema,
+  AgentRouteResultFrameSchema,
 } from "@blksails/pi-web-protocol";
 import { randomUUID } from "node:crypto";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
@@ -49,11 +57,16 @@ const toolLog = createLogger({ namespace: "session:tool" });
 // initializing)、退出与崩溃语义、cleanup 清理、turn 边界(agent_start/agent_end)。主进程日志落
 // server stderr,受 configureLogger(主进程门控)约束,默认关。
 const lifecycleLog = createLogger({ namespace: "session:lifecycle" });
+
+// 命名空间 session:routes —— agent 声明式 routes(spec agent-declared-routes):声明帧二次校验
+// 失败丢弃的诊断记录。主进程日志落 server stderr,受 configureLogger(主进程门控)约束,默认关。
+const routesLog = createLogger({ namespace: "session:routes" });
 import type { ResolvedSource } from "../agent-source/index.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import { LogRingBuffer } from "../logging/log-ring-buffer.js";
 import { StderrLogParser } from "../logging/stderr-log-parser.js";
 import {
+  AgentRouteTimeoutError,
   SessionStoppedError,
   UnknownExtensionUIError,
 } from "./session.errors.js";
@@ -88,6 +101,11 @@ const FRAME_EVENT = "frame";
 const COMMAND_TURN_WINDOW_MS = 1500;
 /** message-queue-ui「取回」clearQueue 请求→结果行的关联超时(子进程无回写即 reject)。 */
 const CLEAR_QUEUE_TIMEOUT_MS = 5000;
+/**
+ * agent-declared-routes:route 调用请求帧→结果帧的关联超时默认值(Req 3.4)。
+ * 纯代码默认;env 覆盖(`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`)在 HTTP 层读取后以参数传入(task 3.2)。
+ */
+const DEFAULT_AGENT_ROUTE_TIMEOUT_MS = 20_000;
 const END_EVENT = "end";
 
 /**
@@ -134,6 +152,15 @@ export class PiSession {
     string,
     { resolve: (r: ClearQueueResponse) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
   >();
+  /**
+   * agent-declared-routes:route 调用在途请求(clearQueue 同构):按关联 id 配对子进程回写的
+   * `piweb_agent_route_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
+   * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂(Req 3.4 / 5.3)。
+   */
+  private readonly pendingAgentRoutes = new Map<
+    string,
+    { resolve: (r: AgentRouteResultFrame) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
+  >();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
   /**
@@ -141,6 +168,11 @@ export class PiSession {
    * agent-slash-completion)。按会话缓存,供 completion provider 读取实现 per-agent gating。
    */
   private slashCompletions: readonly SlashCompletionDecl[] = [];
+  /**
+   * agent 装配期经 `agent_routes` 帧声明的 routes 纯数据投影(spec agent-declared-routes)。
+   * 按会话缓存为路由表(就绪门前缓存,slash_completions 同族);无声明恒为空数组(Req 2.5)。
+   */
+  private agentRoutesTable: readonly AgentRouteDeclDto[] = [];
 
   /**
    * 服务端**唯一权威**会话快照(session-snapshot-authority):lifecycle/busy/turn/stats/model/title。
@@ -612,11 +644,41 @@ export class PiSession {
       return;
     }
 
+    // agent-declared-routes:子进程回写的 route 结果帧 → 按 id 配对 pending 请求 resolve。
+    // 置于 active gate 之前(clearQueue 同语义):结果关联在途请求,晚到亦应解析;
+    // 未知/已超时 id 与畸形帧安全丢弃(Req 3.4 / 5.3)。
+    if (type === "piweb_agent_route_result") {
+      const parsedResult = AgentRouteResultFrameSchema.safeParse(parsed);
+      if (!parsedResult.success) return; // 畸形结果帧丢弃
+      const pending = this.pendingAgentRoutes.get(parsedResult.data.id);
+      if (pending === undefined) return; // 未知/迟到 id → 丢弃
+      this.pendingAgentRoutes.delete(parsedResult.data.id);
+      clearTimeout(pending.timer);
+      pending.resolve(parsedResult.data);
+      return;
+    }
+
     // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
     // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
     if (type === "slash_completions") {
       const sc = SlashCompletionsFrameSchema.safeParse(parsed);
       if (sc.success) this.slashCompletions = sc.data.items;
+      return;
+    }
+
+    // agent-declared-routes:装配期 `agent_routes` 声明帧(slash_completions 同族,
+    // 早于就绪门/无 active 约束)。二次 zod 校验失败 → 整帧丢弃并记日志(routes 不挂载,
+    // 清单空、调用 404;Req 2.5 / design Error Handling)。
+    if (type === "agent_routes") {
+      const routesFrame = AgentRoutesFrameSchema.safeParse(parsed);
+      if (!routesFrame.success) {
+        routesLog.warn("agent_routes frame dropped: schema validation failed", {
+          session: this.id,
+          issues: routesFrame.error.issues,
+        });
+        return;
+      }
+      this.agentRoutesTable = routesFrame.data.routes;
       return;
     }
 
@@ -636,6 +698,14 @@ export class PiSession {
   /** agent 装配期声明的静态 slash 补全候选(spec agent-slash-completion)。 */
   getSlashCompletions(): readonly SlashCompletionDecl[] {
     return this.slashCompletions;
+  }
+
+  /**
+   * agent 装配期声明的 routes 路由表(spec agent-declared-routes,Req 2.5)。
+   * 无声明 → 空数组;就绪门前收帧即可读(声明帧缓存早于 lifecycle ready)。
+   */
+  get agentRoutes(): ReadonlyArray<AgentRouteDeclDto> {
+    return this.agentRoutesTable;
   }
 
   /**
@@ -858,6 +928,52 @@ export class PiSession {
         this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id }));
       } catch (err) {
         this.pendingClearQueue.delete(id);
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  /**
+   * agent-declared-routes:同步转发一次 route 调用(clearQueue 模式,Req 3.2 / 5.1)。
+   * 经 stdin 下发请求帧 `piweb_agent_route_request{id}`(runner 的 `wireAgentRoutesBridge`
+   * 截获执行 handler),结果经 `piweb_agent_route_result` 行回流,由 `handleRawLine` 按 id
+   * 配对 resolve。超时兜底 reject `AgentRouteTimeoutError`(→HTTP 504,Req 3.4)。
+   * 结果 `ok:false` 以返回值表达(→HTTP 502),不在此层 reject。
+   *
+   * `timeoutMs` 为纯代码默认(20s);env 覆盖由 HTTP 层(task 3.2)读取后以参数传入,本层不读 env。
+   */
+  invokeAgentRoute(
+    name: string,
+    req: { method: AgentRouteMethod; query: Record<string, string>; body?: unknown },
+    timeoutMs: number = DEFAULT_AGENT_ROUTE_TIMEOUT_MS,
+  ): Promise<AgentRouteResultFrame> {
+    try {
+      this.assertActive();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    this.touch();
+    const id = randomUUID();
+    const frame: AgentRouteRequestFrame = {
+      type: "piweb_agent_route_request",
+      id,
+      name,
+      method: req.method,
+      query: req.query,
+      // GET 无 body:undefined 时不携带 body 键(帧保持最小投影)。
+      ...(req.body !== undefined ? { body: req.body } : {}),
+    };
+    return new Promise<AgentRouteResultFrame>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAgentRoutes.delete(id);
+        reject(new AgentRouteTimeoutError(name, timeoutMs));
+      }, timeoutMs);
+      this.pendingAgentRoutes.set(id, { resolve, reject, timer });
+      try {
+        this.channel.send(JSON.stringify(frame));
+      } catch (err) {
+        this.pendingAgentRoutes.delete(id);
         clearTimeout(timer);
         reject(err instanceof Error ? err : new Error(String(err)));
       }
@@ -1212,6 +1328,12 @@ export class PiSession {
         pending.reject(new SessionStoppedError(this.id));
       }
       this.pendingClearQueue.clear();
+      // agent-declared-routes:reject 所有在途 route 调用,避免收尾后悬挂(clearQueue 同语义)。
+      for (const [, pending] of this.pendingAgentRoutes) {
+        clearTimeout(pending.timer);
+        pending.reject(new SessionStoppedError(this.id));
+      }
+      this.pendingAgentRoutes.clear();
       this.cache = undefined;
       // 5) 向订阅者广播会话结束(Req 7.3 / 7.5)。
       this.emitter.emit(END_EVENT, reason);

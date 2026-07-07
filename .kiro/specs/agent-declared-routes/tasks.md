@@ -29,7 +29,7 @@
   - _Depends: 1.1, 2.1_
 
 - [ ] 3. 主进程 session 与 HTTP(Core)
-- [ ] 3.1 (P) PiSession 路由表缓存与同步配对
+- [x] 3.1 (P) PiSession 路由表缓存与同步配对
   - handleRawLine 识别声明帧(就绪门前缓存,二次 zod 校验失败丢弃并记日志)与结果帧(pending map 按 id 配对 resolve;未知/迟到 id 丢弃)
   - 新增 agentRoutes 只读访问器与 invokeAgentRoute(发请求帧→pending→超时 reject);invokeAgentRoute 只收 `timeoutMs` 参数并给代码默认值 20s,**不读 env**(env 读取归属 3.2)
   - 完成态:单测断言缓存时序(active 前)、配对、超时 reject、非法帧丢弃、并发多请求不串扰

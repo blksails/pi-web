@@ -33,6 +33,18 @@ export class UnknownExtensionUIError extends Error {
   }
 }
 
+/**
+ * agent-declared-routes:route 调用在转发超时时限内未收到子进程结果帧(Req 3.4)。
+ * HTTP 层(agent-route-routes,task 3.2)据此可判别地映射 504 `ROUTE_TIMEOUT`。
+ */
+export class AgentRouteTimeoutError extends Error {
+  readonly code = "ROUTE_TIMEOUT" as const;
+  constructor(name: string, timeoutMs: number) {
+    super(`Agent route "${name}" timed out after ${timeoutMs}ms.`);
+    this.name = "AgentRouteTimeoutError";
+  }
+}
+
 /** 创建会话时缺少必需注入入参(Req 1.5)。 */
 export class MissingInputError extends Error {
   readonly code = "MISSING_INPUT" as const;
