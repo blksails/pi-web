@@ -18,7 +18,15 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
-/** @type {import("esbuild").BuildOptions} */
+/**
+ * @type {import("esbuild").BuildOptions}
+ *
+ * import.meta.url shim:CJS 输出下 esbuild 会把 `import.meta` 烤成空对象,导致内联的
+ * bin/pi-web.mjs 顶层 `fileURLToPath(import.meta.url)` 在模块加载即抛错。用 banner 定义
+ * 真实文件 URL(基于 __filename)并 define 重写 `import.meta.url`,使内联代码在 CJS 下也能
+ * 拿到有效 URL(解析到 dist/main.js 自身;packaged 用 process.resourcesPath、e2e 用
+ * PI_WEB_DESKTOP_SERVER_JS 覆盖,故其 PKG_ROOT 回退路径不影响受支持的运行路径)。
+ */
 const common = {
   bundle: true,
   platform: "node",
@@ -27,6 +35,18 @@ const common = {
   external: ["electron"],
   sourcemap: true,
   logLevel: "info",
+  banner: {
+    // __piImportMetaUrl:见上(import.meta.url shim)。
+    // __PI_WEB_CLI_EMBEDDED__:声明内联的 bin/pi-web.mjs「仅复用库、勿自跑 CLI main()」,
+    // 否则 electron 以 main.js 为入口时 argv[1]==入口 → bin 入口守卫误触发二次执行。
+    // 进程内 globalThis 标记,不随 spawn 的子进程传播。
+    js:
+      "const __piImportMetaUrl = require('node:url').pathToFileURL(__filename).href;" +
+      "globalThis.__PI_WEB_CLI_EMBEDDED__ = true;",
+  },
+  define: {
+    "import.meta.url": "__piImportMetaUrl",
+  },
 };
 
 const entries = [{ in: join(ROOT, "src/main.ts"), out: "dist/main.js" }];
