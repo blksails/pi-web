@@ -1,0 +1,20 @@
+{
+  "name": "@blksails/pi-web-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi-web 桌面版 — Electron 薄壳,复用 standalone 自包含产物",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "node build.mjs && cross-env PI_WEB_DESKTOP_DEV_URL=http://localhost:3010 electron dist/main.js",
+    "dist": "node build.mjs && electron-builder"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.0",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.6.3"
+  }
+}

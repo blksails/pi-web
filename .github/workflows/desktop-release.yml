@@ -1,0 +1,128 @@
+name: Desktop Release (三平台 · dmg/exe/AppImage)
+
+# pi-web 桌面版(@blksails/pi-web-desktop)分发工作流(spec pi-web-desktop M3)。
+#
+# 设计:构建 / 打包分离(与 cli-e2e.yml 同构),因为:
+#   - standalone 自包含产物只能在 Linux/macOS 上 `build:cli`(Next.js standalone 文件追踪
+#     在 Windows 有上游级 EPERM);在 Linux 上构建一次。
+#   - pack-standalone 的 flattenSymlinkFree 已把产物做成**无符号链接实体树**,故可跨平台
+#     解压;三平台各自用 electron-builder 打包本 OS 目标(mac=dmg / win=nsis / linux=AppImage)。
+#   - 运行期原生可选依赖(sharp/swc 的平台二进制)在被打包的 Linux 产物里可能缺失或非本平台,
+#     但 cli-e2e 已证明运行期不触达这些路径,壳可正常起会话。
+#
+# ⚠ 仅 macOS 形态经本 spec 端到端 e2e 验证;Windows/Linux 目标为 M3 首次落地,需本工作流真实
+#   跑通后方视为达标。未签名(无 CSC 凭据);签名/公证/自动更新属后续。
+#
+# 触发:push 版本标签 `v*`(每个版本 tag 都触发)+ 手动 workflow_dispatch。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "手动构建的 git ref(默认当前分支)"
+        required: false
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── 在 Linux 上构建 standalone 一次,压成单个 tar 上传 ──
+  build-standalone:
+    name: build standalone (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build standalone CLI
+        run: pnpm build:cli
+      # flattenSymlinkFree 后产物无符号链接,普通 tar 即可跨平台解压。
+      - name: Archive standalone
+        run: tar -czf standalone.tgz -C .next-cli standalone
+      - uses: actions/upload-artifact@v4
+        with:
+          name: standalone
+          path: standalone.tgz
+          retention-days: 1
+          if-no-files-found: error
+
+  # ── 三平台各自打包本 OS 目标并(标签构建时)附加到 Release ──
+  package:
+    name: package · ${{ matrix.os }}
+    needs: build-standalone
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    permissions:
+      contents: write # softprops 附加产物到 Release 需要
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: standalone
+      - name: Restore standalone
+        shell: bash
+        run: |
+          mkdir -p .next-cli
+          tar -xzf standalone.tgz -C .next-cli
+          ls -la .next-cli/standalone/server.js
+      # dist = esbuild 打桌面 bundle + electron-builder 打本 OS 目标(host OS 自动检测)。
+      # 未签名:关闭 macOS 签名自动发现。
+      - name: Build desktop bundle + package
+        shell: bash
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: pnpm --filter @blksails/pi-web-desktop dist
+      - name: List artifacts
+        shell: bash
+        run: ls -la desktop/release || dir desktop\\release
+      # 打包 app 冒烟(仅 macOS,GUI 可用):启动**已打包 .app** 跑真实会话,防「node_modules 被
+      # electron-builder 剥空致 server require('next') 崩溃」一类打包回归(未打包 e2e 抓不到)。
+      - name: Smoke · packaged app real session (macOS)
+        if: runner.os == 'macOS'
+        run: node e2e/desktop/desktop-packaged.mjs
+      # 工作流产物(手动构建/排查用)。
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+          if-no-files-found: warn
+      # 仅标签构建:把本 OS 产物附加到该标签的 GitHub Release(多平台各自 append,幂等)。
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+            desktop/release/*.AppImage
+            desktop/release/*.blockmap
+            desktop/release/latest*.yml
+          fail_on_unmatched_files: false

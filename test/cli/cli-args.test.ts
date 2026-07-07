@@ -5,7 +5,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { resolve, isAbsolute } from "node:path";
 import { createServer } from "node:http";
-import { parseCliArgs, buildEnv, CliUsageError, findFreePort } from "@/bin/pi-web.mjs";
+import {
+  parseCliArgs,
+  buildEnv,
+  CliUsageError,
+  findFreePort,
+  waitForReady,
+  standaloneServerJs,
+} from "@/bin/pi-web.mjs";
 import { isHotReloadEnabled } from "@/packages/server/src/rpc-channel/hot-reload";
 
 const BASE = "/home/user/proj";
@@ -160,5 +167,48 @@ describe("findFreePort 端口自动切换(Req 2.8)", () => {
     } finally {
       srv.close();
     }
+  });
+});
+
+// spec pi-web-desktop task 1.2:桌面壳复用 CLI 就绪探针与产物定位,故二者须为导出且行为不变。
+describe("桌面壳复用的导出原语(pi-web-desktop 1.2)", () => {
+  it("standaloneServerJs 返回 .next-cli/standalone/server.js 绝对路径", () => {
+    const p = standaloneServerJs();
+    expect(isAbsolute(p)).toBe(true);
+    expect(p.replaceAll("\\", "/")).toMatch(/\.next-cli\/standalone\/server\.js$/);
+  });
+
+  it("standaloneServerJs 尊重 NEXT_DIST_DIR 覆盖(与 CLI 隔离构建一致)", () => {
+    const prev = process.env.NEXT_DIST_DIR;
+    process.env.NEXT_DIST_DIR = ".next-desktop-test";
+    try {
+      expect(standaloneServerJs().replaceAll("\\", "/")).toMatch(
+        /\.next-desktop-test\/standalone\/server\.js$/,
+      );
+    } finally {
+      if (prev === undefined) delete process.env.NEXT_DIST_DIR;
+      else process.env.NEXT_DIST_DIR = prev;
+    }
+  });
+
+  it("waitForReady 对活着的 HTTP 服务 resolve(任何响应即就绪)", async () => {
+    const srv = createServer((_req, res) => {
+      res.statusCode = 200;
+      res.end("ok");
+    });
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    const port = (srv.address() as { port: number }).port;
+    try {
+      await expect(waitForReady("127.0.0.1", port)).resolves.toBeUndefined();
+    } finally {
+      srv.close();
+    }
+  });
+
+  it("waitForReady 在信号 aborted 时 reject(server 早退路径)", async () => {
+    // 未监听的端口 + 立即 aborted 信号 → 不等待,直接 reject。
+    await expect(
+      waitForReady("127.0.0.1", 1, { aborted: true }),
+    ).rejects.toThrow();
   });
 });

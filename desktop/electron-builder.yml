@@ -1,0 +1,45 @@
+# electron-builder 打包配置(spec pi-web-desktop task 3.2,Req 3.1/3.2/9.1)。
+#
+# 关键:standalone 自包含产物经 extraResources 放到 process.resourcesPath 下的 standalone/
+# (asar 之外),使被 spawn 的 server 与其 runner 子进程能以**真实文件路径**访问、动态加载
+# 用户代码(asar 虚拟文件系统对 child_process/jiti 动态 require 不可靠)。壳自身进 asar。
+appId: com.blksails.pi-web-desktop
+productName: pi-web
+directories:
+  output: release
+# 壳产物:esbuild 打出的自包含 dist/ + 清单。无生产依赖(全内联)。
+files:
+  - dist/**
+  - package.json
+# standalone 产物(由根 `pnpm build:cli` 预先产出于 ../.next-cli/standalone)整目录嵌入资源目录。
+# ⚠ electron-builder(≥v20.15.2)按**目录名** `node_modules` 特殊处理:只收打包 app 自身 package.json
+# 的生产依赖,故 standalone 里的私有 node_modules 会被复制成**空** → server.js `require('next')`
+# 崩溃(MODULE_NOT_FOUND)、打包 app 一闪而退。修:**显式**再列一条直接指向该 node_modules 目录的
+# 条目(from 直接指向 node_modules,遍历的是其子项 next/react… 而非「进入名为 node_modules 的目录」,
+# 故不被收集器剥离;实测复制 109 条含 next)。第一条同时排除 node_modules 避免重复遍历告警。
+extraResources:
+  - from: ../.next-cli/standalone
+    to: standalone
+    filter:
+      - "**/*"
+      - "!node_modules/**"
+  - from: ../.next-cli/standalone/node_modules
+    to: standalone/node_modules
+asar: true
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+  # 本地未签名可运行(异机 Gatekeeper 会提示);签名/公证属 M3。
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+# Windows/Linux target(spec pi-web-desktop M3 分发,GitHub Actions release 矩阵)。
+# ⚠ 这两平台的桌面打包尚未在本 spec 端到端验证(仅 macOS 经 e2e 验证);配置按 electron-builder
+# 惯例给出,需真实 CI 跑通后方可视为达标。standalone 产物在 Linux 一次构建(next build 在
+# Windows 有 EPERM),经 pack-standalone 的 flattenSymlinkFree 已是无符号链接实体树,可跨平台
+# 解压后由各 OS 的 electron-builder 打包(与 cli-e2e.yml 的构建/运行分离同构)。
+win:
+  target: nsis
+linux:
+  target: AppImage
+  category: Development

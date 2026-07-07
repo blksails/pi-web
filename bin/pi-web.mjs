@@ -142,8 +142,12 @@ export function buildEnv(opts, baseCwd, baseEnv) {
   return env;
 }
 
-/** 轮询 host:port 直至可连(任何 HTTP 响应即视为就绪)。 */
-function waitForReady(host, port, signal) {
+/**
+ * 轮询 host:port 直至可连(任何 HTTP 响应即视为就绪)。
+ * 导出供桌面壳(@blksails/pi-web-desktop,spec pi-web-desktop)复用同一就绪判定,
+ * 避免探针逻辑在 CLI 与桌面壳间分叉。
+ */
+export function waitForReady(host, port, signal) {
   const pollHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
   const deadline = Date.now() + READY_TIMEOUT_MS;
   return new Promise((resolveReady, reject) => {
@@ -208,8 +212,11 @@ export function openBrowser(url) {
   }
 }
 
-/** standalone server.js 的绝对路径(随包分发)。CLI 产物用 .next-cli,与 dev 的 .next 隔离。 */
-function standaloneServerJs() {
+/**
+ * standalone server.js 的绝对路径(随包分发)。CLI 产物用 .next-cli,与 dev 的 .next 隔离。
+ * 导出供桌面壳复用 CLI 布局下的产物定位(桌面打包态另有 process.resourcesPath 路径,见 spec)。
+ */
+export function standaloneServerJs() {
   const distDir = process.env.NEXT_DIST_DIR ?? ".next-cli";
   return join(PKG_ROOT, distDir, "standalone", "server.js");
 }
@@ -352,7 +359,13 @@ try {
 } catch {
   invoked = process.argv[1] ?? "";
 }
-const isMain = import.meta.url === pathToFileURL(invoked).href;
+// 当本模块被**内联打包**进别的入口(如桌面壳 @blksails/pi-web-desktop 经 esbuild 复用纯函数)时,
+// argv[1] 会等于宿主入口 → 入口守卫误判为 main 而在宿主内二次执行 CLI。宿主在打包 banner 里置
+// `globalThis.__PI_WEB_CLI_EMBEDDED__=true` 声明「仅复用库、勿自跑」;进程内标记不随子进程传播,
+// 且 CLI 正常运行时该标记恒未定义,故本守卫向后兼容、零行为变更。
+const isMain =
+  import.meta.url === pathToFileURL(invoked).href &&
+  globalThis.__PI_WEB_CLI_EMBEDDED__ !== true;
 if (isMain) {
   main().then((code) => {
     process.exitCode = code;
