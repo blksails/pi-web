@@ -15,7 +15,7 @@ import { resolveAigcToolSettings } from "./model-config.js";
 import { deriveActiveModels } from "./active-models.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
-const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
+export const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
 
 /**
  * 装配期清单下发(aigc-prompt-toolbar Req 2.2/3.1):把「生成∪编辑」模型并集与尺寸档位

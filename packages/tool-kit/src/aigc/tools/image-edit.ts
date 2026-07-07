@@ -8,6 +8,7 @@
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容 edits(整图改写)
  *  - `gpt-image-2-sufy`          sufy(七牛云)—— OpenAI 兼容 edits,providerModel openai/gpt-image-2
+ *  - `gemini-3.1-flash-lite-image-sufy` sufy —— Gemini 3.1 Flash Lite,忠实编辑(保输入应用指令)
  *  - `qwen-image-edit-max`       DashScope —— 最高保真,支持 mask 局部重绘
  *  - `wan2.7-image-edit-bailian` token plan multimodal —— 百炼带图编辑
  */
@@ -57,6 +58,16 @@ const ROUTES: readonly ImageRoute[] = [
       providerModel: "openai/gpt-image-2",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createSufyImageEdit(
+    {
+      model: "gemini-3.1-flash-lite-image-sufy",
+      label: "Gemini 3.1 Flash Lite Image · sufy",
+      description:
+        "Google Gemini 3.1 Flash Lite image editing via sufy (七牛云) gateway. Faithful edit (keeps input, applies instruction). Fast & low-cost. Needs SUFY_API_KEY.",
+      providerModel: "google/gemini-3.1-flash-lite-image",
+    },
+    { pricing: { amount: 0.01, currency: "USD", unit: "image" } },
   ),
   ...openRouterImageEditRoutes(),
   createDashscopeImageEdit(

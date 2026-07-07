@@ -104,7 +104,7 @@ function gcd(a: number, b: number): number {
 
 /**
  * 尺寸 "W×H" → **方向文本 + 屏幕比例**副标(比裸比例数字更直观):
- *   方形("1024x1024"→"方形 1:1")、横向("1536x1024"→"宽屏 3:2")、纵向("1024x1536"→"竖屏 2:3");
+ *   方形("1024x1024"→"方形 1:1")、横向("1280x720"→"宽屏 16:9")、纵向("720x1280"→"竖屏 9:16");
  *   "auto" → "自适应";非法/无法解析 → undefined(不显示副标)。
  */
 export function sizeHint(size: string): string | undefined {
@@ -120,6 +120,20 @@ export function sizeHint(size: string): string | undefined {
   return `${orientation} ${ratio}`;
 }
 
+/**
+ * 尺寸 "W×H" → **像素尺寸**弱化副标(方向/比例作主项突出时,像素退居右侧灰字)。
+ *   "1024x1024"→"1024×1024";"auto"/非法/无法解析 → undefined(不显示副标)。
+ */
+export function sizePixels(size: string): string | undefined {
+  if (size === "auto") return undefined;
+  const m = /^(\d+)\s*[x×]\s*(\d+)$/i.exec(size);
+  if (m === null) return undefined;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return undefined;
+  return `${w}×${h}`;
+}
+
 interface PrefSelectProps {
   readonly state: WebExtStateAccess;
   readonly prefKey: "model" | "size";
@@ -132,8 +146,13 @@ interface PrefSelectProps {
   readonly labels?: Readonly<Record<string, string>>;
   /** value(id)→ provider 标识;有则渲染字母徽章并去掉冗余 provider 名后缀。 */
   readonly providers?: Readonly<Record<string, string>>;
-  /** value → 右侧副标文本(如尺寸的屏幕比例);返回 undefined 则不显示。 */
+  /** value → 右侧副标文本(如尺寸的像素);返回 undefined 则不显示。 */
   readonly hint?: (value: string) => string | undefined;
+  /**
+   * value → **主项突出文本**(如尺寸的方向+比例);返回 undefined 则回退 label/id。
+   * 与 hint 配合可对调突出关系:主项显方向描述、副标弱化像素尺寸。
+   */
+  readonly primary?: (value: string) => string | undefined;
 }
 
 /** 单个偏好选择器:回显 KV 当前值,变更写 KV + localStorage。 */
@@ -148,6 +167,7 @@ function PrefSelect({
   labels,
   providers,
   hint,
+  primary,
 }: PrefSelectProps): React.JSX.Element {
   const current = useStateKey(state, `aigc.${prefKey}`);
   // 当前值不在清单里(如追问写回了清单外模型)仍需可回显:并入 items。
@@ -178,13 +198,14 @@ function PrefSelect({
           const providerId = providers?.[m];
           const label = labels?.[m] ?? m;
           const h = hint?.(m);
+          const primaryLabel = primary?.(m) ?? displayNameOf(label, providerId);
           return (
-            // 可见=provider 字母徽章 + 去后缀的 label(缺失回退 id)+ 可选右侧副标(如屏幕比例);
-            // hover title 恒为模型 id / 原始 value。
+            // 可见=provider 字母徽章 + 主项(方向描述/去后缀 label,缺失回退 id)+ 可选右侧弱化副标
+            //(如像素尺寸);hover title 恒为模型 id / 原始 value。
             <SelectItem key={m} value={m} title={m}>
               <span className="flex items-center gap-1.5">
                 <ProviderBadge providerId={providerId} />
-                <span className="truncate">{displayNameOf(label, providerId)}</span>
+                <span className="truncate">{primaryLabel}</span>
                 {h !== undefined ? (
                   <span className="ml-auto shrink-0 pl-2 text-[10px] text-[hsl(var(--muted-foreground))]">
                     {h}
@@ -257,7 +278,8 @@ export function AigcQuickSettings({
         ariaLabel="输出尺寸"
         dataAttr="data-aigc-size-select"
         widthClass="w-36"
-        hint={sizeHint}
+        primary={sizeHint}
+        hint={sizePixels}
       />
     </span>
   );

@@ -75,19 +75,21 @@ describe("AigcQuickSettings", () => {
     expect(options).not.toContain("gpt-image-2"); // 不再混入 fallback
   });
 
-  it("尺寸选项带方向文本+比例副标(方形1:1 / 宽屏3:2 / 竖屏2:3 / 自适应)", () => {
+  it("尺寸选项主项=方向文本+比例,副标=像素尺寸(方形1:1 / 宽屏3:2 / 竖屏2:3 / 自适应)", () => {
     const { state } = makeFakeState({
       "aigc.sizes": ["1024x1024", "1536x1024", "1024x1536", "auto"],
     });
     render(<AigcQuickSettings state={state} />);
     fireEvent.click(document.querySelector("[data-aigc-size-select]")!);
     const opts = Array.from(document.querySelectorAll("[role=option]"));
-    const byText = (needle: string) =>
-      opts.find((o) => o.textContent?.includes(needle));
-    expect(byText("1024x1024")?.textContent).toContain("方形 1:1");
-    expect(byText("1536x1024")?.textContent).toContain("宽屏 3:2");
-    expect(byText("1024x1536")?.textContent).toContain("竖屏 2:3");
-    expect(byText("auto")?.textContent).toContain("自适应");
+    // 主副项对调后可见文本是方向描述(像素退副标且用 ×),故按 hover title(恒为原始 value)锚定。
+    const byTitle = (value: string) =>
+      opts.find((o) => o.getAttribute("title") === value);
+    expect(byTitle("1024x1024")?.textContent).toContain("方形 1:1");
+    expect(byTitle("1024x1024")?.textContent).toContain("1024×1024");
+    expect(byTitle("1536x1024")?.textContent).toContain("宽屏 3:2");
+    expect(byTitle("1024x1536")?.textContent).toContain("竖屏 2:3");
+    expect(byTitle("auto")?.textContent).toContain("自适应");
   });
 
   it("有 label 映射 → 选项可见文本用 label,hover title 用模型 id", () => {

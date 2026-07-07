@@ -8,9 +8,22 @@
  */
 import { describe, expect, it } from "vitest";
 import type { SseFrame } from "@blksails/pi-web-protocol";
+import type { Unsubscribe } from "../../src/rpc-channel/pi-rpc-channel.js";
 import { PiSession } from "../../src/session/pi-session.js";
 import { MockChannel } from "./mock-channel.js";
 import { makeResolved } from "./fixtures.js";
+
+/** 支持 onRestart 的测试通道(模拟 runner 子进程重生)。 */
+class RestartableChannel extends MockChannel {
+  private readonly restartCbs = new Set<() => void>();
+  onRestart(cb: () => void): Unsubscribe {
+    this.restartCbs.add(cb);
+    return () => this.restartCbs.delete(cb);
+  }
+  emitRestart(): void {
+    for (const cb of this.restartCbs) cb();
+  }
+}
 
 function newSession(ch: MockChannel): PiSession {
   return new PiSession({ id: "s1", resolved: makeResolved(), channel: ch, idleMs: 0 });
@@ -72,6 +85,26 @@ describe("PiSession state control frame — sticky replay", () => {
     const replayed = stateFrames(frames);
     expect(replayed).toHaveLength(1);
     expect(replayed[0]?.payload).toMatchObject({ key: "k", rev: 2, deleted: true });
+  });
+
+  it("runner 重启后 rev 保持单调:新 store 低 rev 帧被抬过历史峰值(客户端不判陈旧丢弃)", () => {
+    const ch = new RestartableChannel();
+    const s = newSession(ch);
+    // 旧 runner:rev 升到 3。
+    ch.emitLine(JSON.stringify({ type: "piweb_state", key: "k", value: "a", rev: 1 }));
+    ch.emitLine(JSON.stringify({ type: "piweb_state", key: "k", value: "b", rev: 3 }));
+    // 热重载:runner 重生 → 新状态桥 store rev 归 1。
+    ch.emitRestart();
+    ch.emitLine(JSON.stringify({ type: "piweb_state", key: "k", value: "c", rev: 1 }));
+
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+    const replayed = stateFrames(frames);
+    expect(replayed).toHaveLength(1);
+    // 重启后重推的值 "c" 生效,且转发 rev > 重启前峰值(3)→ 客户端不会按 rev<=cur 丢弃。
+    const payload = replayed[0]?.payload as { value: unknown; rev: number };
+    expect(payload.value).toBe("c");
+    expect(payload.rev).toBeGreaterThan(3);
   });
 
   it("畸形 piweb_state 行不广播、不登记粘性", () => {

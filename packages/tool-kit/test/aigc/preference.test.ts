@@ -11,7 +11,7 @@ import { createDashscopeSyncT2I } from "../../src/aigc/providers/dashscope.js";
 import type { ImageRoute, InteractionParam } from "../../src/aigc/types.js";
 import type { SessionStateAccess } from "../../src/session-state.js";
 import { SESSION_STATE_SEAM_KEY } from "../../src/session-state.js";
-import { aigcExtension } from "../../src/aigc/extension.js";
+import { aigcExtension, SIZE_OPTIONS } from "../../src/aigc/extension.js";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -272,7 +272,7 @@ describe("aigc-prompt-toolbar 偏好级", () => {
       expect(models).toContain("gpt-image-2"); // gen 侧
       expect(models).toContain("qwen-image-edit-max"); // edit 侧
       expect(new Set(models).size).toBe(models.length); // 去重(并集)
-      expect(sizes).toEqual(["1024x1024", "1536x1024", "1024x1536", "auto"]);
+      expect(sizes).toEqual([...SIZE_OPTIONS]);
     } finally {
       delete g[SESSION_STATE_SEAM_KEY];
     }
