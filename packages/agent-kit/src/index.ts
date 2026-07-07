@@ -8,7 +8,14 @@
  * so a definition produced without this package is structurally identical and
  * still loadable by the runner.
  */
-export type { AgentContext, AgentDefinition, AgentModel } from "./types.js";
+export type {
+  AgentContext,
+  AgentDefinition,
+  AgentModel,
+  AgentRouteDecl,
+  AgentRouteHandler,
+  AgentRouteRequest,
+} from "./types.js";
 export type {
   AgentsFilesOverride,
   ExtensionFactory,

@@ -7,7 +7,7 @@
   - 完成态:protocol 包单测断言三帧 schema 对合法/非法样本的解析结果;typecheck 绿
   - _Requirements: 1.1, 7.1_
   - _Boundary: agent-routes 契约(protocol)_
-- [ ] 1.2 (P) agent-kit 声明类型面
+- [x] 1.2 (P) agent-kit 声明类型面
   - AgentDefinition 增可选 routes 字段;定义 AgentRouteDecl/AgentRouteHandler/AgentRouteRequest(handler 函数留在类型面,methods 缺省 ["GET"] 语义写入 JSDoc)
   - 类型在 agent-kit 本地自定义,**不 import protocol**(保持 agent-kit 纯类型包/零依赖承诺;与 protocol DTO 的形状一致性由 2.1 归一化层保证)
   - 完成态:agent-kit typecheck 绿;既有无 routes 的 defineAgent 用例零改动通过
