@@ -10,7 +10,7 @@
  * 默认关闭。开启:`NODE_ENV !== production` 且 `PI_RUNNER_HOT_RELOAD=1`。
  * 监视目录默认 `packages/tool-kit/src`,可经 `PI_RUNNER_HOT_RELOAD_PATHS`(逗号分隔绝对路径)覆盖。
  */
-import { watch, type FSWatcher } from "node:fs";
+import { watch, existsSync, type FSWatcher } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createLogger } from "@blksails/pi-web-logger";
@@ -41,8 +41,14 @@ const targets = new Set<HotReloadTarget>();
 let watchers: FSWatcher[] | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** 解析要监视的源码目录(默认 packages/tool-kit/src)。 */
-function watchPaths(): string[] {
+/** 解析要监视的源码目录(默认 packages/tool-kit/src),按**存在性**过滤。
+ *
+ * ⚠️ 不能只靠 `import.meta.url` 相对定位:Next dev 下本模块被 webpack **打进** route bundle,
+ * `import.meta.url` 指向 `.next<dist>/server/app/api/.../route.js`,固定层数上跳算出的目录落在
+ * `.next<dist>` 内、**不存在** → `fs.watch` 抛 ENOENT 被静默吞 → watcher 从不激活(形同虚设)。
+ * 故:收集多个候选(cwd 相对 + 自 import.meta.url 逐层上跳探 `packages/tool-kit/src`),只留**真实
+ * 存在**的目录;兼容 monorepo 源码 / dist / Next bundle / CLI standalone 各布局。 */
+export function watchPaths(): string[] {
   const override = process.env["PI_RUNNER_HOT_RELOAD_PATHS"];
   if (override && override.trim() !== "") {
     return override
@@ -50,16 +56,24 @@ function watchPaths(): string[] {
       .map((p) => p.trim())
       .filter(Boolean);
   }
-  // 本文件:packages/server/src/rpc-channel/hot-reload.ts → 仓库 packages/ 目录。
-  // standalone bundle 里 import.meta.url 被内联成构建机路径,Windows 上 fileURLToPath 抛
-  // ERR_INVALID_FILE_URL_PATH;失败则回退运行时 cwd 下的 packages。
-  let packagesDir: string;
+  const candidates = new Set<string>();
+  // ① cwd 相对:next dev / CLI 通常自仓库根(含 packages/)启动。
+  candidates.add(resolve(process.cwd(), "packages", "tool-kit", "src"));
+  candidates.add(resolve(process.cwd(), "tool-kit", "src"));
+  // ② import.meta.url 相对:逐层上跳,每层探 `tool-kit/src` 与 `packages/tool-kit/src`
+  //    (兼容 src/dist 布局深浅不一,及被打进 .next bundle 的深路径)。Windows fileURLToPath 可能抛。
   try {
-    packagesDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+    let here: string | undefined = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 10 && here !== undefined; i += 1) {
+      candidates.add(resolve(here, "tool-kit", "src"));
+      candidates.add(resolve(here, "packages", "tool-kit", "src"));
+      const parent = dirname(here);
+      here = parent === here ? undefined : parent; // 到根即止
+    }
   } catch {
-    packagesDir = resolve(process.cwd(), "packages");
+    // fileURLToPath 抛(Windows 内联路径):仅靠 cwd 候选。
   }
-  return [resolve(packagesDir, "tool-kit", "src")];
+  return [...candidates].filter((p) => existsSync(p));
 }
 
 function triggerRestartAll(path?: string): void {
@@ -88,7 +102,13 @@ function triggerRestartAll(path?: string): void {
 function ensureWatching(): void {
   if (watchers) return;
   watchers = [];
-  for (const dir of watchPaths()) {
+  const dirs = watchPaths();
+  if (dirs.length === 0) {
+    process.stderr.write(
+      "[runner-hot-reload] no tool-kit/src dir found to watch (set PI_RUNNER_HOT_RELOAD_PATHS)\n",
+    );
+  }
+  for (const dir of dirs) {
     try {
       const w = watch(dir, { recursive: true }, (_event, filename) => {
         // 只关心源码文件(忽略编辑器临时文件 / 非 ts/js)。
