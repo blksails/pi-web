@@ -20,7 +20,7 @@
   - 非法声明抛含 route 名与失败原因的装配错误(runner 启动失败→会话创建失败);无 routes 声明时归一化结果与现状逐字段一致
   - 完成态:单测覆盖合法/非法(格式/重名/坏方法)/缺省方法/无声明五档
   - _Requirements: 1.1, 1.2, 1.3_
-- [ ] 2.2 agent-routes 分发桥与装配接线
+- [x] 2.2 agent-routes 分发桥与装配接线
   - 新建 wiring:装配期 routes 非空则向 stdout 发一条声明帧(纯数据投影,handler 不出进程);空声明零帧
   - 第二 stdin reader 只消费请求帧:按 name 查进程内 registry → invoke handler(async 并发,不排队)→ 结果单次原子 fs.writeSync(1) 回写;handler 抛错归一化为 ok:false(handler_error),name 未注册归一化为 ok:false(route_not_registered);永不抛出到 runner 主流程
   - runner.ts 装配序接线:state/surface/clearQueue 之后、runRpcMode 之前

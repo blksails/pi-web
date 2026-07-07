@@ -34,6 +34,7 @@ import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
 import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
+import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
 // 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
@@ -353,6 +354,16 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId: runtime.session.sessionId,
   });
 
+  // agent-declared-routes 分发桥:装配期 routes 非空则经 stdout 发一条 agent_routes 声明帧
+  // (纯数据投影,handler 不出进程),并在 runRpcMode 之前给 stdin 挂第二个读取器,只消费
+  // piweb_agent_route_request 请求帧 → 进程内 registry 派发 handler → fd1 直写结果帧。
+  // 空声明零帧零读取器(存量 source 零行为变化)。装配序:state/surface/clearQueue 之后、
+  // runRpcMode 之前。优雅降级(内部吞错),不阻断会话启动。
+  const agentRoutesWiring = wireAgentRoutesBridge({
+    sessionId: runtime.session.sessionId,
+    routes: factory.routes,
+  });
+
   // agent-slash-completion:把 agent 声明的静态 slash 补全候选经 stdout 帧推给 server
   // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
   emitSlashCompletions(factory);
@@ -388,6 +399,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       process.stderr.write(
         `runner: clear-queue bridge session cleanup error: ${String(err)}\n`,
+      );
+    }
+    try {
+      agentRoutesWiring.cleanup();
+    } catch (err) {
+      process.stderr.write(
+        `runner: agent-routes bridge session cleanup error: ${String(err)}\n`,
       );
     }
   };
