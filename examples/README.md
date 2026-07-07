@@ -50,7 +50,7 @@ pi-web ./examples/hello-agent
 | [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
 | [surface-demo-agent](./surface-demo-agent/) | Agent 权威 surface（领域无关）：权威快照镜像 + 结构化命令转发（不过 LLM）+ 能力探针退化 | `createSurface` / `useSurface`、`wireSurfaceBridge`（ui-rpc 命令派发 + fd1 回流）、`SurfaceCommandPayload` | ★★★ |
 | [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `aigcExtension`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
-| [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`） | `canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam | ★★★ |
+| [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`） | `canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam、`AgentDefinition.routes` 声明式 HTTP route（`gallery-stats`） | ★★★ |
 | [canvas-plugin-stickers](./canvas-plugin-stickers/) | Canvas 插件双端范例：emoji 贴纸图层/工具（`createLayer` 点击置层）+ 风格迁移动作（前端声明 + agent 命令，命令通道执行）；插件作者 canonical 参照 | `defineCanvasLayer`/`defineCanvasTool`/`defineCanvasAction`、`canvasPlugins` 捆（`registerPluginBundles` 命名空间 + requires 拓扑校验）、`makeCanvasSurfaceExtension`（`extraCommands`/`extraActions`） | ★★★ |
 
 ### WebExtension（按 Tier 1–5）

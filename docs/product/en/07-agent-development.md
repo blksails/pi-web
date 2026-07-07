@@ -58,6 +58,7 @@ Source: `packages/agent-kit/src/types.ts`
 | `promptTemplates` | `PromptsOverride \| undefined` | Override hook |
 | `contextFiles` | `AgentsFilesOverride \| undefined` | Overrides the AGENTS.md/CLAUDE.md discovery result |
 | `scopedModels` | `Array<{model, thinkingLevel?}>` | List of models switchable at runtime |
+| `routes` | `AgentRouteDecl[] \| undefined` | Declarative HTTP routes; each is mounted per session at `GET·POST /api/sessions/:id/agent-routes/:name` (see the "Declarative HTTP Routes" section below) |
 
 ---
 
@@ -138,6 +139,50 @@ export default async function (ctx: AgentContext) {
 - `ctx.cwd` — the runner's effective working directory
 - `ctx.agentDir` — the global agent config directory (typically `~/.pi/agent`)
 - `ctx.env` — a snapshot of the process environment
+
+---
+
+## Declarative HTTP Routes (`AgentDefinition.routes`)
+
+An agent may declare named HTTP routes in its definition: once a session is created, each route automatically becomes an endpoint under that session's namespace, `GET·POST /api/sessions/:id/agent-routes/:name`, letting external systems (curl / webhooks / third-party services) invoke agent capabilities synchronously without subscribing to any SSE stream — **declaring is enabling, with zero host-side configuration**. Agents that do not declare `routes` are entirely unaffected by this feature.
+
+```ts
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+
+export default defineAgent({
+  routes: [
+    {
+      name: "gallery-stats",        // required: lowercase letters/digits/hyphens, unique within the definition
+      // methods defaults to ["GET"] (the primary use case is read-only queries); may declare ["GET", "POST"]
+      description: "Gallery statistics", // optional: surfaces in the route-listing endpoint's projection
+      handler: async (req) => {
+        // req: { name, method: "GET" | "POST", query: Record<string, string>, body?: unknown }
+        return { ok: true, echo: req.query };  // return value must be JSON-serializable → becomes the HTTP response body
+      },
+    },
+  ],
+});
+```
+
+**Handler contract** (`AgentRouteHandler`; types in `packages/agent-kit/src/types.ts`):
+
+- Input `AgentRouteRequest`: `name` (the invoked route name), `method` (`"GET" | "POST"`), `query` (query parameters flattened to single string values), and `body` (the parsed JSON carried by a POST, possibly absent; GET invocations never have a body).
+- The return value (may be async) **must be JSON-serializable** and becomes the HTTP response body verbatim; a thrown error surfaces to the caller as a 502.
+- The handler **executes only inside the agent subprocess** — the function itself never crosses the process boundary; the main process only receives the pure-data projection of `name` / `methods` / `description` (under the hood: an assembly-time declaration frame plus a dedicated request/result frame pair, riding the existing stdin/stdout JSONL channel).
+
+**Assembly-time validation** (performed by the assembly layer; violations fail session creation):
+
+- `name` must be non-empty, containing only lowercase letters, digits, and hyphens (`^[a-z0-9][a-z0-9-]*$`), and unique within one definition.
+- `methods` allows only `"GET"` / `"POST"`; defaults to `["GET"]`.
+
+**Security and invocation semantics**:
+
+- An invocation **does not trigger LLM inference, does not enter the conversation history, and produces no UI change whatsoever**; calls are accepted as usual while the session is busy (mid-inference).
+- A handler can only be invoked through its declaration binding — an undeclared name → 404; the endpoints reuse the existing session auth gate (401/403 / session 404).
+- Operators can disable the feature wholesale: `PI_WEB_AGENT_ROUTES_DISABLED=1` → all agent-routes endpoints return a generic 404 (enabled by default).
+- Forwarding timeout (`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`, default 20000 ms) → 504; POST request-body limit (`PI_WEB_AGENT_ROUTE_BODY_LIMIT`, default 1 MiB) → 413.
+
+For the full invocation-side contract (endpoint paths, error-code table, env details, curl examples), see [13 · HTTP API Reference](./13-http-api-reference.md); for a runnable demo, see `examples/aigc-canvas-agent` (the "Agent Routes demo (`gallery-stats`)" section of its README).
 
 ---
 

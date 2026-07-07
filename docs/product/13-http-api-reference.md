@@ -42,6 +42,7 @@ Next.js Route Handler (app/api/*/route.ts)
 | 发消息 / 引导 | `POST /sessions/:id/messages`、`/steer`、`/follow_up`、`/abort` |
 | 会话控制 | `POST /sessions/:id/model`、`/thinking`、`/fork`、`/ui-response`、`/ui-rpc` |
 | 会话查询 | `GET /sessions/:id/state`、`/stats`、`/messages`、`/commands`、`/models`、`/fork-messages`、`/completion` |
+| Agent 声明式 routes | `GET /sessions/:id/agent-routes`、`GET·POST /sessions/:id/agent-routes/:name` |
 | 配置 | `GET·PUT /config/:domain`、`GET /config/models` |
 | 附件 | `POST /sessions/:id/attachments`、`GET /attachments/:id/raw` |
 | 来源映射 | `POST /session-source` |
@@ -547,6 +548,83 @@ curl http://localhost:3010/api/sessions/sess_abc/stats
 
 **成功响应** 200：补全结果 JSON  
 **错误**：404
+
+---
+
+### GET /api/sessions/:id/agent-routes — agent 声明式 route 清单
+
+agent 在 `AgentDefinition.routes` 中声明的 HTTP routes（声明面契约见 [07 · 自定义 Agent 开发指南](07-agent-development.md)）随会话创建自动挂载到会话命名空间。本端点返回该会话声明的 route 清单——**纯数据投影**（`name` / `methods` / `description`），handler 函数只存在于 agent 子进程、从不跨进程。
+
+**成功响应** 200（无声明返回空数组，是成功不是错误）：
+
+```json
+{
+  "routes": [
+    {
+      "name": "gallery-stats",
+      "methods": ["GET"],
+      "description": "Canvas 画廊统计（资产计数/来源分布/是否生成中）"
+    }
+  ],
+  "protocolVersion": "0.1.0"
+}
+```
+
+**错误**：404（会话不存在）、401/403（既有 `:id` 鉴权接缝拒绝）。运维关断时（`PI_WEB_AGENT_ROUTES_DISABLED=1`，见下文 env 表）返回通用 404 `NOT_FOUND`，不泄露端点存在性。
+
+```bash
+curl -s http://localhost:3010/api/sessions/sess_abc/agent-routes
+```
+
+---
+
+### GET·POST /api/sessions/:id/agent-routes/:name — 调用声明 route
+
+将一次 HTTP 调用转发进该会话的 agent 子进程，由声明绑定的 handler 处理，并在**同一 HTTP 请求-响应周期**内同步返回结果——外部系统（curl / webhook / 第三方服务）无需订阅 SSE 流即可调用 agent 能力。底层为声明帧 + 专用请求/结果帧，骑既有 stdin/stdout JSONL 通道，不新增 SSE 帧。
+
+**调用语义**：
+
+- handler 只在 agent 子进程内执行；调用**不触发 LLM 推理、不进对话历史、不产生任何 UI 变化**。
+- 会话推理进行中（busy）照常受理，与对话互不干扰。
+- GET 调用忽略请求体（不读）；POST 空体宽松放行（`body` 以 undefined 传入 handler），非空但非法 JSON → 400。
+- **成功响应体 = handler 返回的原始 JSON**（对象/数组/标量皆可，`undefined` 归一为 `null`），**不包** `protocolVersion` 信封；协议版本仅经响应头 `X-Pi-Protocol-Version` 承载。
+
+**错误**（检查顺序：门控 → 会话/鉴权 → 名称 → 方法 → 体积 → JSON → 转发）：
+
+| 状态 | code | 触发 |
+|---|---|---|
+| 404 | `NOT_FOUND` | `PI_WEB_AGENT_ROUTES_DISABLED=1` 运维关断（不泄露端点存在性） |
+| 404 | `SESSION_NOT_FOUND` | 会话不存在 |
+| 401 / 403 | `UNAUTHORIZED` / `FORBIDDEN` | 既有 `:id` 鉴权接缝拒绝 |
+| 404 | `ROUTE_NOT_FOUND` | route 名未在该会话的 agent 定义中声明 |
+| 405 | `METHOD_NOT_ALLOWED` | 方法不在该 route 声明的 `methods` 白名单（缺省 `["GET"]`） |
+| 413 | `PAYLOAD_TOO_LARGE` | POST 请求体超上限（默认 1 MiB；先按 `Content-Length` 头提前拒，头缺失/不可信时读后按实际字节兜底复核） |
+| 400 | `INVALID_BODY` | POST 非空请求体不是合法 JSON |
+| 502 | `ROUTE_HANDLER_ERROR` | handler 抛错（错误消息带 handler 侧 message） |
+| 504 | `ROUTE_TIMEOUT` | 子进程应答超时（默认 20000 ms） |
+| 409 | `SESSION_STOPPED` | 会话已停止 |
+
+**环境变量**：
+
+| env | 默认 | 说明 |
+|---|---|---|
+| `PI_WEB_AGENT_ROUTES_DISABLED` | 未设置（功能开启） | `=1` 服务端权威关断，全部 agent-routes 端点返回通用 404；按请求时读取 |
+| `PI_WEB_AGENT_ROUTE_TIMEOUT_MS` | `20000` | 转发进子进程的应答超时（毫秒），超时 → 504 |
+| `PI_WEB_AGENT_ROUTE_BODY_LIMIT` | `1048576`（1 MiB） | POST 请求体上限（字节），超限 → 413 |
+
+```bash
+# 调用（GET；查询参数拍平为单值传给 handler）
+curl -s "http://localhost:3010/api/sessions/sess_abc/agent-routes/gallery-stats?verbose=1"
+
+# 调用（POST；须该 route 声明 methods 含 "POST"）
+curl -s -X POST http://localhost:3010/api/sessions/sess_abc/agent-routes/my-route \
+  -H "Content-Type: application/json" \
+  -d '{"key": "value"}'
+```
+
+> 可跑演示见 `examples/aigc-canvas-agent`（README「Agent Routes 演示（`gallery-stats`）」小节：声明只读统计 route，curl 直调拿结构化 JSON）；声明面契约（名称格式、缺省 methods、handler 约束、装配期校验）详见 [07 · 自定义 Agent 开发指南](07-agent-development.md)。
+>
+> **实现参考**：`packages/server/src/http/routes/agent-route-routes.ts`
 
 ---
 

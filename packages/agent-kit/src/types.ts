@@ -48,6 +48,59 @@ export type AgentModel =
     };
 
 /**
+ * Request context handed to an {@link AgentRouteHandler} for one route call.
+ *
+ * Defined locally (not imported from the protocol package) to keep agent-kit
+ * a pure-type, zero-dependency authoring surface; shape parity with the
+ * protocol DTOs is guaranteed by the server-side normalization layer.
+ */
+export interface AgentRouteRequest {
+  /** Declared route name being invoked. */
+  readonly name: string;
+  /** HTTP method of the incoming call. */
+  readonly method: "GET" | "POST";
+  /** URL query parameters, flattened to single string values. */
+  readonly query: Readonly<Record<string, string>>;
+  /** Parsed JSON request body, if the call carried one. */
+  readonly body?: unknown;
+}
+
+/**
+ * Handler bound to a declared route.
+ *
+ * Invoked only inside the agent subprocess — the function itself never
+ * crosses the process boundary (the main process only sees the pure-data
+ * declaration). The return value MUST be JSON-serializable; it becomes the
+ * HTTP response body. A thrown error is reported to the main process and
+ * surfaces to the caller as a 502.
+ */
+export type AgentRouteHandler = (
+  req: AgentRouteRequest,
+) => unknown | Promise<unknown>;
+
+/**
+ * One agent-declared HTTP route, exposed under the session namespace
+ * (`/api/sessions/:id/agent-routes/:name`) once the session is created.
+ */
+export interface AgentRouteDecl {
+  /**
+   * Route name. Must be non-empty and contain only lowercase letters,
+   * digits and hyphens; unique within one definition (validated at
+   * assembly time — violations fail session creation).
+   */
+  readonly name: string;
+  /**
+   * Allowed HTTP methods. Defaults to `["GET"]` when omitted (the primary
+   * use case is read-only queries).
+   */
+  readonly methods?: ReadonlyArray<"GET" | "POST">;
+  /** Human-readable description, surfaced in the route listing. */
+  readonly description?: string;
+  /** Handler executed in the agent subprocess. See {@link AgentRouteHandler}. */
+  readonly handler: AgentRouteHandler;
+}
+
+/**
  * Declarative description of a custom agent's capabilities.
  *
  * Every field is optional: an empty definition yields pi's default discovery
@@ -107,4 +160,13 @@ export interface AgentDefinition {
    * system prompt). Pure data, threaded to the server at runner assembly time.
    */
   slashCompletions?: SlashCompletionDecl[];
+  /**
+   * HTTP routes this agent declares. When present, each route becomes
+   * callable at `GET|POST /api/sessions/:id/agent-routes/:name` for the
+   * agent's session — no host-side configuration needed. Handlers run in
+   * the agent subprocess only; the main process receives the pure-data
+   * declaration (name/methods/description). Omitting this field leaves the
+   * agent completely unaffected by the feature.
+   */
+  routes?: AgentRouteDecl[];
 }

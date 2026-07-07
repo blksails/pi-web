@@ -15,13 +15,32 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AgentContext, AgentDefinition } from "./agent-definition.js";
+import type {
+  AgentContext,
+  AgentDefinition,
+  AgentRouteHandler,
+} from "./agent-definition.js";
 import { createJiti } from "jiti";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
-import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
+import type { AgentRouteMethod, SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import { buildRuntimeFactory } from "./option-mapper.js";
 import type { SystemResourceOverrides } from "./option-mapper.js";
 import type { ResolveProjectTrust } from "./project-trust.js";
+
+/**
+ * 归一化后的单条 agent route 声明(spec agent-declared-routes)。
+ *
+ * 与作者声明面(`AgentRouteDecl`)的差别:`methods` 已补缺省(`["GET"]`)且必填。
+ * 纯数据投影(name/methods/description)与 protocol 的 `AgentRouteDeclDto` 一致;
+ * `handler` 仅存活于子进程内(归一化发生在子进程,函数不过进程边界——下游
+ * wiring 消费 handler,装配期声明帧只取纯数据投影)。
+ */
+export interface NormalizedAgentRouteDecl {
+  readonly name: string;
+  readonly methods: readonly AgentRouteMethod[];
+  readonly description?: string;
+  readonly handler: AgentRouteHandler;
+}
 
 /** Normalized internal representation shared by all three shapes. */
 export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory & {
@@ -30,6 +49,12 @@ export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory & {
    * 经 `buildRuntimeFactory` 附加。shape (c) 自建 runtime factory 不附(为空)。
    */
   slashCompletions?: readonly SlashCompletionDecl[];
+  /**
+   * pi-web: agent 声明的 HTTP routes(`AgentDefinition.routes`),经装配期权威
+   * 校验并归一化后附加;无声明(或空声明)时不附,归一化结果与现状逐字段一致
+   * (Req 1.1)。shape (c) 自建 runtime factory 无定义对象,不附。
+   */
+  routes?: readonly NormalizedAgentRouteDecl[];
 };
 
 /**
@@ -68,6 +93,112 @@ export class InvalidAgentDefinitionError extends Error {
     super(`Invalid agent definition at "${agentPath}": ${reason}`, options);
     this.name = "InvalidAgentDefinitionError";
   }
+}
+
+/** route 名称格式(Req 1.2):小写字母/数字开头,仅含小写字母/数字/连字符。 */
+const ROUTE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/** route 允许的 HTTP 方法白名单(Req 1.2)。 */
+const ALLOWED_ROUTE_METHODS: ReadonlySet<string> = new Set(["GET", "POST"]);
+
+/**
+ * 权威校验并归一化 `AgentDefinition.routes`(spec agent-declared-routes,Req 1.2/1.3)。
+ *
+ * 规则:名称匹配 {@link ROUTE_NAME_PATTERN}、同一定义内唯一、methods ⊆ {GET, POST}
+ * 且非空(空集合的 route 永不可达,视为声明错误而非静默忽略)、handler 必须是函数
+ * (归一化产物携带 handler 引用,下游 wiring 依赖);`methods` 缺省补 `["GET"]`。
+ *
+ * 非法声明抛 {@link InvalidAgentDefinitionError},消息含 route 名称与失败原因
+ * (→ runner 启动失败 → 会话创建失败,而非静默忽略)。无声明返回空数组。
+ */
+function normalizeAgentRoutes(
+  routes: AgentDefinition["routes"],
+  agentPath: string,
+): readonly NormalizedAgentRouteDecl[] {
+  if (routes === undefined) {
+    return [];
+  }
+  const fail = (routeName: unknown, reason: string): never => {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid routes declaration: route ${JSON.stringify(routeName)}: ${reason}`,
+    );
+  };
+  if (!Array.isArray(routes)) {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid routes declaration: "routes" must be an array (got ${typeof routes})`,
+    );
+  }
+
+  const seen = new Set<string>();
+  return routes.map((decl, index): NormalizedAgentRouteDecl => {
+    if (typeof decl !== "object" || decl === null) {
+      return fail(index, `declaration at index ${index} must be an object (got ${decl === null ? "null" : typeof decl})`);
+    }
+    const { name, methods, description, handler } = decl;
+
+    if (typeof name !== "string" || !ROUTE_NAME_PATTERN.test(name)) {
+      return fail(
+        name ?? index,
+        "name must be a non-empty string matching ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and hyphens, starting with a letter or digit)",
+      );
+    }
+    if (seen.has(name)) {
+      return fail(name, "duplicate route name within one agent definition");
+    }
+    seen.add(name);
+
+    let normalizedMethods: readonly AgentRouteMethod[];
+    if (methods === undefined) {
+      normalizedMethods = ["GET"];
+    } else {
+      if (!Array.isArray(methods) || methods.length === 0) {
+        return fail(name, 'methods must be a non-empty array of "GET" / "POST" (omit the field to default to ["GET"])');
+      }
+      for (const method of methods) {
+        if (typeof method !== "string" || !ALLOWED_ROUTE_METHODS.has(method)) {
+          return fail(name, `method ${JSON.stringify(method)} is not allowed (allowed methods: GET, POST)`);
+        }
+      }
+      normalizedMethods = [...new Set(methods)];
+    }
+
+    if (typeof handler !== "function") {
+      return fail(name, `handler must be a function (got ${handler === null ? "null" : typeof handler})`);
+    }
+
+    return {
+      name,
+      methods: normalizedMethods,
+      ...(description !== undefined ? { description } : {}),
+      handler,
+    };
+  });
+}
+
+/**
+ * Map a definition (shapes a/b) to a runtime factory and attach the
+ * normalized routes when — and only when — the definition declares any
+ * (no declaration → the factory is field-by-field identical to the status
+ * quo, Req 1.1). Invalid declarations throw before the factory is built.
+ */
+function buildFactoryWithRoutes(
+  def: AgentDefinition,
+  agentPath: string,
+  trust: ResolveProjectTrust,
+  systemResources: SystemResourceOverrides,
+): NormalizedAgentRuntimeFactory {
+  const routes = normalizeAgentRoutes(def.routes, agentPath);
+  const factory: NormalizedAgentRuntimeFactory = buildRuntimeFactory(
+    def,
+    trust,
+    systemResources,
+  );
+  if (routes.length > 0) {
+    factory.routes = routes;
+  }
+  return factory;
 }
 
 /**
@@ -236,12 +367,12 @@ export async function loadAgentDefinition(
         `factory function returned a non-definition value (got ${produced === null ? "null" : typeof produced})`,
       );
     }
-    return buildRuntimeFactory(produced, trust, systemResources);
+    return buildFactoryWithRoutes(produced, agentPath, trust, systemResources);
   }
 
   // Shape (a): a definition object.
   if (isDefinitionObject(def)) {
-    return buildRuntimeFactory(def, trust, systemResources);
+    return buildFactoryWithRoutes(def, agentPath, trust, systemResources);
   }
 
   throw new InvalidAgentDefinitionError(

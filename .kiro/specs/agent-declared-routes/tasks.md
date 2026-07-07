@@ -1,13 +1,13 @@
 # Implementation Plan
 
 - [ ] 1. 契约与类型面(Foundation)
-- [ ] 1.1 protocol 包新增 agent-routes 帧契约
+- [x] 1.1 protocol 包新增 agent-routes 帧契约
   - 定义声明 DTO(name/methods/description)与三个 JSONL 帧(装配期声明帧、请求帧、结果帧)的 zod schema 与推断类型,字段形状照 design「契约:JSONL 帧」
   - 经包主入口导出(不新增子路径出口);SSE 帧 union 零触碰
   - 完成态:protocol 包单测断言三帧 schema 对合法/非法样本的解析结果;typecheck 绿
   - _Requirements: 1.1, 7.1_
   - _Boundary: agent-routes 契约(protocol)_
-- [ ] 1.2 (P) agent-kit 声明类型面
+- [x] 1.2 (P) agent-kit 声明类型面
   - AgentDefinition 增可选 routes 字段;定义 AgentRouteDecl/AgentRouteHandler/AgentRouteRequest(handler 函数留在类型面,methods 缺省 ["GET"] 语义写入 JSDoc)
   - 类型在 agent-kit 本地自定义,**不 import protocol**(保持 agent-kit 纯类型包/零依赖承诺;与 protocol DTO 的形状一致性由 2.1 归一化层保证)
   - 完成态:agent-kit typecheck 绿;既有无 routes 的 defineAgent 用例零改动通过
@@ -15,12 +15,12 @@
   - _Boundary: AgentDefinition.routes(agent-kit)_
 
 - [ ] 2. runner 子进程侧(Core)
-- [ ] 2.1 agent-loader 归一化与权威校验
+- [x] 2.1 agent-loader 归一化与权威校验
   - 归一化 routes 进 NormalizedAgentRuntimeFactory;校验名称格式(`^[a-z0-9][a-z0-9-]*$`)、同定义内唯一、methods ⊆ {GET,POST};methods 缺省补 ["GET"]
   - 非法声明抛含 route 名与失败原因的装配错误(runner 启动失败→会话创建失败);无 routes 声明时归一化结果与现状逐字段一致
   - 完成态:单测覆盖合法/非法(格式/重名/坏方法)/缺省方法/无声明五档
   - _Requirements: 1.1, 1.2, 1.3_
-- [ ] 2.2 agent-routes 分发桥与装配接线
+- [x] 2.2 agent-routes 分发桥与装配接线
   - 新建 wiring:装配期 routes 非空则向 stdout 发一条声明帧(纯数据投影,handler 不出进程);空声明零帧
   - 第二 stdin reader 只消费请求帧:按 name 查进程内 registry → invoke handler(async 并发,不排队)→ 结果单次原子 fs.writeSync(1) 回写;handler 抛错归一化为 ok:false(handler_error),name 未注册归一化为 ok:false(route_not_registered);永不抛出到 runner 主流程
   - runner.ts 装配序接线:state/surface/clearQueue 之后、runRpcMode 之前
@@ -29,14 +29,14 @@
   - _Depends: 1.1, 2.1_
 
 - [ ] 3. 主进程 session 与 HTTP(Core)
-- [ ] 3.1 (P) PiSession 路由表缓存与同步配对
+- [x] 3.1 (P) PiSession 路由表缓存与同步配对
   - handleRawLine 识别声明帧(就绪门前缓存,二次 zod 校验失败丢弃并记日志)与结果帧(pending map 按 id 配对 resolve;未知/迟到 id 丢弃)
   - 新增 agentRoutes 只读访问器与 invokeAgentRoute(发请求帧→pending→超时 reject);invokeAgentRoute 只收 `timeoutMs` 参数并给代码默认值 20s,**不读 env**(env 读取归属 3.2)
   - 完成态:单测断言缓存时序(active 前)、配对、超时 reject、非法帧丢弃、并发多请求不串扰
   - _Requirements: 2.5, 3.2, 3.4, 5.1, 5.3_
   - _Boundary: PiSession routes 面_
   - _Depends: 1.1_
-- [ ] 3.2 HTTP 端点与错误语义
+- [x] 3.2 HTTP 端点与错误语义
   - 新建 route 模块:GET 清单(无声明→空数组)与 GET|POST 调用两个 handler;检查顺序:门控(env 关断→404)→名称 404→方法 405→Content-Length 413(默认 1 MiB 可 env 覆盖)→POST 非法 JSON 400→invokeAgentRoute→200/502(ok:false)/504(超时)
   - 本任务统一读取全部 env(PI_WEB_AGENT_ROUTES_DISABLED / PI_WEB_AGENT_ROUTE_TIMEOUT_MS / PI_WEB_AGENT_ROUTE_BODY_LIMIT),超时值以参数传入 invokeAgentRoute
   - create-handler 注册为 builtin 端点(:id 段自动获得会话 404/401/403 既有鉴权门,不自建鉴权);错误体复用 errorResponse 结构,错误码字典照 design D6
@@ -45,38 +45,44 @@
   - _Depends: 3.1_
 
 - [ ] 4. 承载与演示(Integration)
-- [ ] 4.1 (P) stub agent 演示 routes
+- [x] 4.1 (P) stub agent 演示 routes
   - stub-agent-process.mjs 装配期发声明帧(含 gallery-stats 等演示 route)并应答请求帧(定值 JSON)
   - 完成态:stub 模式创建会话后 GET 清单返回演示 routes;调用返回定值 JSON
   - _Requirements: 6.1, 7.3_
   - _Boundary: stub routes 支持_
   - _Depends: 3.2_
-- [ ] 4.2 (P) aigc-canvas-agent 演示与 README
+- [x] 4.2 (P) aigc-canvas-agent 演示与 README
   - index.ts 声明 gallery-stats(GET):handler 返回画廊/canvas 统计 JSON(从进程内 canvas 状态接缝读取)
   - README 记载:声明方式、URL 形态、如何取会话 id、完整 curl 示例与预期响应
   - 完成态:README 含可复制 curl 命令;真实模式手动调用返回统计 JSON(以集成测试或手动证据佐证)
   - _Requirements: 6.1, 6.2, 6.3_
   - _Boundary: aigc-canvas-agent 演示_
   - _Depends: 2.2, 3.2_
-- [ ] 4.3 (P) 产品手册章节
+- [x] 4.3 (P) 产品手册章节
   - 13-http-api-reference 增两端点(路径/方法/成功/错误码/门控 env);07-agent-development 增声明面小节(AgentDefinition.routes、handler 契约、安全语义);zh 与 en 镜像同步
   - 完成态:两章 zh+en 四个文件含新内容且互相一致
   - _Requirements: 6.4_
   - _Boundary: docs_
 
 - [ ] 5. 验证(Validation)
-- [ ] 5.1 真实子进程集成测试
+- [x] 5.1 真实子进程集成测试
   - spawn 带 routes 的 fixture agent:声明帧→PiSession 缓存→invokeAgentRoute→handler 执行→fd1 结果帧→resolve 全闭环(fd1 直写坑仅此层能验)
   - 含 busy 场景:prompt 流进行中调用 route 仍同步返回
   - 完成态:集成测试新鲜运行输出全绿
   - _Requirements: 5.1, 7.3_
   - _Depends: 2.2, 3.1_
-- [ ] 5.2 浏览器 e2e
+- [x] 5.2 浏览器 e2e
   - 新 e2e:stub 会话→page.request GET 清单+调用演示 route 断言 JSON(经 Next catch-all 全链路,证 2.6 无静默 404)→断言对话 UI 零新消息/零可见变化;鉴权语义抽查(非法会话 404)
   - 完成态:隔离 build e2e 新鲜运行全绿
   - _Requirements: 2.6, 3.5, 4.1, 6.1, 6.3, 7.3_
   - _Depends: 4.1_
-- [ ] 5.3 全量回归与收尾
+- [x] 5.3 全量回归与收尾
   - workspace typecheck + pnpm test 全量 + 既有浏览器 e2e 抽跑(canvas 三 spec + 核心闭环);存量无 routes source 行为零变化;prompt 流回归绿
   - 完成态:全部新鲜运行输出绿,证据记录
   - _Requirements: 5.2, 7.1, 7.2, 7.3_
+
+## Implementation Notes
+- 3.2:未声明名 + 非 GET/POST 方法的组合走 Router 通用 405(到不了 handler 的名称 404 检查)——Router 只注册两方法,属边界内不可避;design「GET|POST 调用」框定了检查顺序保证的射程。
+- 3.2:handler 内 requireSession 与 Router 会话门重复,防御性冗余(注册路径下实际死码),无害保留。
+- 4.1→5.2:声明帧搭车 get_commands 探针(slash_completions 同位),POST /sessions 201 先于就绪探针完成——e2e 首次 GET /agent-routes 前必须等会话就绪(gateUntilReady/session-status ready),否则清单可能瞬时为空(系统性时序,非 stub 特有)。
+- 5.3:e2e 抽跑 14 绿/2 红,两红均 rich-chat.e2e.ts(model selector 空分组 DOM 语义 + suggestions 选择器歧义/就绪竞态),A/B 实验(merge-base stub×本分支 build 同样红)证 pre-existing 非本特性引入;本特性面(agent-routes/canvas 三 spec/session-readiness)全绿;prompt 流回归绿(rich-chat 基础对话档过)。

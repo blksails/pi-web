@@ -58,6 +58,7 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 | `promptTemplates` | `PromptsOverride \| undefined` | 覆盖 hook |
 | `contextFiles` | `AgentsFilesOverride \| undefined` | 覆盖 AGENTS.md/CLAUDE.md 发现结果 |
 | `scopedModels` | `Array<{model, thinkingLevel?}>` | 运行时可切换的模型列表 |
+| `routes` | `AgentRouteDecl[] \| undefined` | 声明式 HTTP routes；每条随会话挂载为 `GET·POST /api/sessions/:id/agent-routes/:name`（详见下文「声明式 HTTP routes」小节） |
 
 ---
 
@@ -138,6 +139,50 @@ export default async function (ctx: AgentContext) {
 - `ctx.cwd` — runner 的有效工作目录
 - `ctx.agentDir` — 全局 agent 配置目录（通常 `~/.pi/agent`）
 - `ctx.env` — 进程环境快照
+
+---
+
+## 声明式 HTTP routes（`AgentDefinition.routes`）
+
+agent 可以在定义中声明具名 HTTP routes：会话创建后，每条 route 自动成为该会话命名空间下的端点 `GET·POST /api/sessions/:id/agent-routes/:name`，外部系统（curl / webhook / 第三方服务）无需订阅 SSE 流即可同步调用 agent 能力——**声明即生效，零宿主侧配置**。不声明 `routes` 的 agent 完全不受此特性影响。
+
+```ts
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+
+export default defineAgent({
+  routes: [
+    {
+      name: "gallery-stats",        // 必填：小写字母/数字/连字符，定义内唯一
+      // methods 缺省 → ["GET"]（主用例是只读查询）；可声明 ["GET", "POST"]
+      description: "画廊统计",       // 可选：出现在 route 清单端点的投影里
+      handler: async (req) => {
+        // req: { name, method: "GET" | "POST", query: Record<string, string>, body?: unknown }
+        return { ok: true, echo: req.query };  // 返回值须 JSON 可序列化 → 即 HTTP 响应体
+      },
+    },
+  ],
+});
+```
+
+**handler 契约**（`AgentRouteHandler`，类型见 `packages/agent-kit/src/types.ts`）：
+
+- 入参 `AgentRouteRequest`：`name`（被调 route 名）、`method`（`"GET" | "POST"`）、`query`（拍平为单值字符串的查询参数）、`body`（POST 携带的已解析 JSON，可缺省；GET 调用恒无 body）。
+- 返回值（可 async）**必须 JSON 可序列化**，原样成为 HTTP 响应体；handler 抛错 → 调用方收到 502。
+- handler **只在 agent 子进程内执行**，函数本体从不跨进程；主进程只拿到 `name` / `methods` / `description` 纯数据投影（底层是装配期声明帧 + 专用请求/结果帧，骑既有 stdin/stdout JSONL 通道）。
+
+**装配期校验**（由装配层执行，违规 → 会话创建失败）：
+
+- `name` 非空，仅小写字母/数字/连字符（`^[a-z0-9][a-z0-9-]*$`），同一定义内唯一。
+- `methods` 仅允许 `"GET"` / `"POST"`；缺省为 `["GET"]`。
+
+**安全与调用语义**：
+
+- 调用**不触发 LLM 推理、不进对话历史、不产生任何 UI 变化**；会话推理进行中（busy）照常受理。
+- handler 只能经声明绑定被调用——未声明的名字 → 404；端点复用既有会话鉴权门（401/403/会话 404）。
+- 运维可整体关断：`PI_WEB_AGENT_ROUTES_DISABLED=1` → 全部 agent-routes 端点返回通用 404（默认开启）。
+- 转发超时（`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`，默认 20000 ms）→ 504；POST 请求体上限（`PI_WEB_AGENT_ROUTE_BODY_LIMIT`，默认 1 MiB）→ 413。
+
+调用面完整契约（端点路径、错误码表、env 明细、curl 示例）见 [13 · HTTP API 参考](13-http-api-reference.md)；可跑演示见 `examples/aigc-canvas-agent`（README「Agent Routes 演示（`gallery-stats`）」小节）。
 
 ---
 
