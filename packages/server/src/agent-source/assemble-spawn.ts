@@ -80,6 +80,12 @@ export function assemble(
   // 调试:置于脚本路径前的 node inspector flag(由 PI_RUNNER_INSPECT 门控,缺省无)。
   const inspect = inspectFlag(env);
   const nodeArgs = inspect !== undefined ? [inspect] : [];
+  // spec pi-web-desktop:子进程可执行文件读**已构造的 env** 里的 PI_WEB_NODE_BIN,
+  // 缺省回退 "node"。桌面版(Electron 薄壳)注入自身「Electron 充当 Node」二进制路径
+  // (process.execPath),使 runner 子进程在无系统 Node 的机器上也能启动;未注入时行为
+  // 与改动前完全一致(CLI/dev 零回归)。读 env(非 process.env)保持本模块「不直接读
+  // 进程全局环境」的纯函数不变式。
+  const cmd = env["PI_WEB_NODE_BIN"] ?? "node";
 
   if (params.mode === "custom") {
     const runnerEntry = opts.runnerEntry;
@@ -100,7 +106,7 @@ export function assemble(
       ...fragment.extraArgs,
       ...(opts.extraArgs ?? []),
     ];
-    return { cmd: "node", args, cwd: params.cwd, env };
+    return { cmd, args, cwd: params.cwd, env };
   }
 
   const piCliEntry = opts.piCliEntry;
@@ -121,5 +127,5 @@ export function assemble(
     ...fragment.extraArgs,
     ...(opts.extraArgs ?? []),
   ];
-  return { cmd: "node", args, cwd: params.cwd, env };
+  return { cmd, args, cwd: params.cwd, env };
 }

@@ -192,6 +192,59 @@ describe("assemble — env merge & isolation", () => {
   });
 });
 
+describe("assemble — PI_WEB_NODE_BIN 注入(桌面版 Electron-as-Node,pi-web-desktop 4.1/4.2/4.3)", () => {
+  it("custom 模式:注入 PI_WEB_NODE_BIN → spawnSpec.cmd 为注入值(不再是 node)", () => {
+    const spec = assemble(
+      { mode: "custom", cwd: "/work", entryPath: "/work/index.ts" },
+      { extraArgs: [], extraEnv: {} },
+      {
+        runnerEntry: "/runner-bootstrap.mjs",
+        env: { PI_WEB_NODE_BIN: "/Applications/pi-web.app/Contents/MacOS/pi-web" },
+      },
+    );
+    expect(spec.cmd).toBe("/Applications/pi-web.app/Contents/MacOS/pi-web");
+    // args/env 其余部分不受影响(脚本路径仍是 argv[0])。
+    expect(spec.args[0]).toBe("/runner-bootstrap.mjs");
+  });
+
+  it("cli 模式:注入 PI_WEB_NODE_BIN → spawnSpec.cmd 为注入值", () => {
+    const spec = assemble(
+      { mode: "cli", cwd: "/proj" },
+      { extraArgs: [], extraEnv: {} },
+      { piCliEntry: "/cli.js", env: { PI_WEB_NODE_BIN: "/electron/bin" } },
+    );
+    expect(spec.cmd).toBe("/electron/bin");
+    expect(spec.args).toEqual(["/cli.js", "--mode", "rpc"]);
+  });
+
+  it("未注入 → cmd 回退 node(CLI/dev 向后兼容,零回归)", () => {
+    const custom = assemble(
+      { mode: "custom", cwd: "/w", entryPath: "/w/index.ts" },
+      { extraArgs: [], extraEnv: {} },
+      { runnerEntry: "/r.mjs" },
+    );
+    const cli = assemble(
+      { mode: "cli", cwd: "/p" },
+      { extraArgs: [], extraEnv: {} },
+      { piCliEntry: "/cli.js" },
+    );
+    expect(custom.cmd).toBe("node");
+    expect(cli.cmd).toBe("node");
+  });
+
+  it("PI_WEB_NODE_BIN 经 baseEnv 透传(主进程 process.env 透传链)也生效", () => {
+    const spec = assemble(
+      { mode: "custom", cwd: "/w", entryPath: "/w/index.ts" },
+      { extraArgs: [], extraEnv: {} },
+      {
+        runnerEntry: "/r.mjs",
+        baseEnv: { PATH: "/usr/bin", PI_WEB_NODE_BIN: "/from/base" },
+      },
+    );
+    expect(spec.cmd).toBe("/from/base");
+  });
+});
+
 describe("assemble — PI_RUNNER_INSPECT 调试门控", () => {
   function customWith(inspect: string | undefined) {
     return assemble(
