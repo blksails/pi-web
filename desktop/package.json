@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-desktop",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
   "description": "pi-web 桌面版 — Electron 薄壳,复用 standalone 自包含产物",
   "main": "dist/main.js",

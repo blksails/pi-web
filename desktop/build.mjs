@@ -35,6 +35,16 @@ const common = {
   external: ["electron"],
   sourcemap: true,
   logLevel: "info",
+};
+
+/**
+ * 主进程专属:import.meta.url shim + CLI 内联守卫。**仅用于 main.js**——
+ * banner 里的 `require('node:url').pathToFileURL(__filename)` 依赖 CJS 的 `__filename`,
+ * 而 **sandbox 下的 preload 无 `__filename`**(受限沙箱上下文),套到 preload 会在加载即抛
+ * `ReferenceError: __filename is not defined`,使整个 preload 脚本不执行、contextBridge 暴露失效。
+ * preload 不使用 import.meta.url,故无需该 banner/define。
+ */
+const mainOnly = {
   banner: {
     // __piImportMetaUrl:见上(import.meta.url shim)。
     // __PI_WEB_CLI_EMBEDDED__:声明内联的 bin/pi-web.mjs「仅复用库、勿自跑 CLI main()」,
@@ -49,12 +59,21 @@ const common = {
   },
 };
 
-const entries = [{ in: join(ROOT, "src/main.ts"), out: "dist/main.js" }];
+const entries = [
+  { in: join(ROOT, "src/main.ts"), out: "dist/main.js", extra: mainOnly },
+];
 const preload = join(ROOT, "src/preload.ts");
-if (existsSync(preload)) entries.push({ in: preload, out: "dist/preload.js" });
+// preload 用纯 common(不套 mainOnly 的 __filename banner,见上)。
+if (existsSync(preload))
+  entries.push({ in: preload, out: "dist/preload.js", extra: {} });
 
 for (const e of entries) {
-  await build({ ...common, entryPoints: [e.in], outfile: join(ROOT, e.out) });
+  await build({
+    ...common,
+    ...e.extra,
+    entryPoints: [e.in],
+    outfile: join(ROOT, e.out),
+  });
 }
 
 const staticDir = join(ROOT, "static");
