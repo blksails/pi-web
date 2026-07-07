@@ -25,12 +25,15 @@ vi.mock("@blksails/pi-web-ui", () => ({
   resolveSlot: (): undefined => undefined,
   SlotHost: (): null => null,
   LauncherRail: (): React.JSX.Element => <div data-test-launcher-rail />,
-  // aigc-canvas:webext-registry 静态载入 aigc-canvas-agent 的 .pi/web 会 import 这些组件。
+  useI18n: () => (key: string) => key,
+  useLocale: () => ({ locale: "zh", setLocale: () => {} }),
+}));
+
+// aigc-canvas 等 examples:webext-registry 静态载入 .pi/web,canvas 组件已直连 canvas-ui import。
+vi.mock("@blksails/pi-web-canvas-ui", () => ({
   CanvasLauncher: (): null => null,
   CanvasPanel: (): null => null,
   AigcQuickSettings: (): null => null,
-  useI18n: () => (key: string) => key,
-  useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));
 
 const fakeSession = {

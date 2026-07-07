@@ -10,7 +10,7 @@
  * 值不透明(领域无关搬运)。
  */
 import { defineWebExtension } from "@blksails/pi-web-kit";
-import { CanvasLauncher, CanvasPanel, AigcQuickSettings } from "@blksails/pi-web-ui";
+import { CanvasLauncher, CanvasPanel, AigcQuickSettings } from "@blksails/pi-web-canvas-ui";
 
 export default defineWebExtension({
   manifestId: "aigc-canvas",

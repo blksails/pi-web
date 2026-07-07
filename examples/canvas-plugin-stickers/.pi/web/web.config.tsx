@@ -10,7 +10,7 @@
  * 门控 `NEXT_PUBLIC_PI_WEB_CANVAS`(与 aigc-canvas 同);插件捆见 `./stickers`。
  */
 import { defineWebExtension } from "@blksails/pi-web-kit";
-import { CanvasLauncher, CanvasPanel, AigcQuickSettings } from "@blksails/pi-web-ui";
+import { CanvasLauncher, CanvasPanel, AigcQuickSettings } from "@blksails/pi-web-canvas-ui";
 import { stickersBundle } from "./stickers";
 
 export default defineWebExtension({

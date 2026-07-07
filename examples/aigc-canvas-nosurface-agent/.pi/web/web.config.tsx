@@ -7,7 +7,7 @@
  * `surface.hasCommand("surface:canvas")` 为假而退化为只读图库(Req 8.6/8.7 降级验证)。
  */
 import { defineWebExtension } from "@blksails/pi-web-kit";
-import { CanvasLauncher, CanvasPanel } from "@blksails/pi-web-ui";
+import { CanvasLauncher, CanvasPanel } from "@blksails/pi-web-canvas-ui";
 
 export default defineWebExtension({
   manifestId: "aigc-canvas-nosurface",
