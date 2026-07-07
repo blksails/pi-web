@@ -100,6 +100,15 @@
   - _Boundary: 桌面 e2e_
   - _Depends: 3.2, 4.2_
 
+## M3 增量(应需追加,非 M1 范围)
+
+- [x] M3.1 GitHub Actions release 工作流(三平台 dmg/exe/AppImage)
+  - `.github/workflows/desktop-release.yml`:push 版本标签 `v*` + workflow_dispatch 触发;构建/打包分离——Linux 构建 standalone 一次(next build 在 Windows 有 EPERM;flattenSymlinkFree 已无符号链接可跨平台解压)→ 三平台矩阵各自 electron-builder 打包本 OS 目标 → 标签构建经 softprops 附加到 Release。electron-builder.yml 补 win=nsis/linux=AppImage;未签名(无 CSC)。
+  - 观察完成:两 YAML 合法;扩展后 electron-builder 配置经 `electron-builder --mac --dir` 干净产出 .app(证明 win/linux keys 未破坏已验证的 mac 路径)。
+  - ⚠ **仅 macOS 形态经端到端验证**;Windows/Linux 目标为首次落地,需本工作流真实 CI 跑通后方视为达标(本机无法跑 win/linux 打包)。签名/公证/自动更新(electron-updater)仍属后续。
+  - _Requirements: 9.1(延伸至三平台分发)_
+  - _Boundary: CI/分发配置_
+
 ## Implementation Notes
 - (3.1) esbuild 以 CJS 内联 `bin/pi-web.mjs` 有两坑:①`import.meta` 被烤成空对象 → 顶层 `fileURLToPath(import.meta.url)` 加载即崩,须在 build.mjs 用 banner 定义真实 URL + `define` 重写 `import.meta.url`;②被内联模块的「入口守卫」(`isMain = import.meta.url===argv[1]`)在 electron 以 main.js 为入口时误触发 → 用进程内 `globalThis.__PI_WEB_CLI_EMBEDDED__` 标记跳过(勿用 env,会传子进程)。`node --check` 只验语法不执行,漏此类加载期崩溃 → 用 stub electron `require` bundle 验证加载。
 - 复用 CLI 纯原语走 DI(注入 findFreePort/waitForReady)可让 supervisor 脱离 electron 与 .mjs 类型问题做集成测试。
