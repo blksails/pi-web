@@ -33,7 +33,7 @@
   - _Boundary: resolveRuntimeMode, resolveServerEntry_
   - _Depends: 1.3_
 
-- [ ] 2.2 (P) 安全主窗口、外链拦截与加载页
+- [x] 2.2 (P) 安全主窗口、外链拦截与加载页
   - 建窗口时以隔离渲染上下文加载(不授予 Node/系统集成),经最小 preload 桥;启动即显示本地加载页避免空白窗口;拦截应用内新窗口,校验 scheme 后把外部链接交系统默认浏览器打开
   - 观察完成:窗口以隔离上下文加载本地加载页;单测证明外链决策对 http/https 交系统浏览器、对本地回环 UI 与非法 scheme 一律阻止应用内导航
   - _Requirements: 1.3, 5.3, 5.4_
