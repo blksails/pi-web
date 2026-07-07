@@ -6,6 +6,7 @@ dist/
 .next-test/
 .next-cli/
 .next-debug/
+.next-*/
 coverage/
 *.log
 .DS_Store

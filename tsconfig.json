@@ -57,11 +57,13 @@
     }
   },
   "include": [
+    ".next-chrome-test/types/**/*.ts",
     ".next-clear-dev/types/**/*.ts",
     ".next-cli/types/**/*.ts",
     ".next-debug/types/**/*.ts",
     ".next-e2e-on/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
+    ".next-probe/types/**/*.ts",
     ".next-ro-dev/types/**/*.ts",
     ".next-stub/types/**/*.ts",
     ".next/types/**/*.ts",
@@ -79,7 +81,7 @@
     "test/**/*.tsx",
     "vitest.config.ts",
     "vitest.node-e2e.config.ts",
-    ".next-probe/types/**/*.ts"
+    ".next-hr/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
