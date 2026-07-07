@@ -10,6 +10,7 @@ import {
   runImageTool,
   optionalModelEnum,
   buildModelsDescription,
+  promptToNamePrefix,
 } from "../../src/aigc/run-image-tool.js";
 import {
   createDashscopeSyncT2I,
@@ -361,5 +362,34 @@ describe("runImageTool", () => {
     const desc = buildModelsDescription("base", routes, "wan2.7-image-pro");
     expect(desc).toContain("wan2.7-image-pro");
     expect(desc).toContain("(default)");
+  });
+});
+
+describe("promptToNamePrefix(附件名可区分)", () => {
+  it("正常 prompt → 文件名安全摘要(空格折叠为 -)", () => {
+    expect(promptToNamePrefix("赛博朋克2077风格的游戏画面", "image_generation")).toBe(
+      "赛博朋克2077风格的游戏画面",
+    );
+    expect(promptToNamePrefix("a red apple on table", "img")).toBe("a-red-apple-on-table");
+  });
+
+  it("截断到 24 码点(中文按码点,不切半个字)", () => {
+    const long = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十";
+    const out = promptToNamePrefix(long, "img");
+    expect([...out].length).toBe(24);
+    expect(out).toBe("一二三四五六七八九十一二三四五六七八九十一二三四");
+  });
+
+  it("清洗文件名非法字符(/ \\ : * ? \" < > | . 及控制符)", () => {
+    expect(promptToNamePrefix('a/b:c*d?"e<f>g|h.i', "img")).toBe("a-b-c-d-e-f-g-h-i");
+    expect(promptToNamePrefix("line1\nline2\ttab", "img")).toBe("line1-line2-tab");
+  });
+
+  it("空 / 纯空白 / 纯非法字符 / 非字符串 → 回退 fallback", () => {
+    expect(promptToNamePrefix("", "image_generation")).toBe("image_generation");
+    expect(promptToNamePrefix("   ", "img")).toBe("img");
+    expect(promptToNamePrefix("///...", "img")).toBe("img");
+    expect(promptToNamePrefix(undefined, "img")).toBe("img");
+    expect(promptToNamePrefix(123, "img")).toBe("img");
   });
 });
