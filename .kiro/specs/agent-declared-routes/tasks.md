@@ -76,7 +76,7 @@
   - 完成态:隔离 build e2e 新鲜运行全绿
   - _Requirements: 2.6, 3.5, 4.1, 6.1, 6.3, 7.3_
   - _Depends: 4.1_
-- [ ] 5.3 全量回归与收尾
+- [x] 5.3 全量回归与收尾
   - workspace typecheck + pnpm test 全量 + 既有浏览器 e2e 抽跑(canvas 三 spec + 核心闭环);存量无 routes source 行为零变化;prompt 流回归绿
   - 完成态:全部新鲜运行输出绿,证据记录
   - _Requirements: 5.2, 7.1, 7.2, 7.3_
@@ -85,3 +85,4 @@
 - 3.2:未声明名 + 非 GET/POST 方法的组合走 Router 通用 405(到不了 handler 的名称 404 检查)——Router 只注册两方法,属边界内不可避;design「GET|POST 调用」框定了检查顺序保证的射程。
 - 3.2:handler 内 requireSession 与 Router 会话门重复,防御性冗余(注册路径下实际死码),无害保留。
 - 4.1→5.2:声明帧搭车 get_commands 探针(slash_completions 同位),POST /sessions 201 先于就绪探针完成——e2e 首次 GET /agent-routes 前必须等会话就绪(gateUntilReady/session-status ready),否则清单可能瞬时为空(系统性时序,非 stub 特有)。
+- 5.3:e2e 抽跑 14 绿/2 红,两红均 rich-chat.e2e.ts(model selector 空分组 DOM 语义 + suggestions 选择器歧义/就绪竞态),A/B 实验(merge-base stub×本分支 build 同样红)证 pre-existing 非本特性引入;本特性面(agent-routes/canvas 三 spec/session-readiness)全绿;prompt 流回归绿(rich-chat 基础对话档过)。
