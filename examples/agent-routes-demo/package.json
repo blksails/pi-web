@@ -1,0 +1,9 @@
+{
+  "name": "agent-routes-demo",
+  "private": true,
+  "pi-web": {
+    "title": "Agent Routes 多路由范例",
+    "avatar": "🛣️",
+    "description": "声明式 HTTP routes 的多路由文件组织范例:routes/ 子目录、一路由一文件、barrel 汇总"
+  }
+}

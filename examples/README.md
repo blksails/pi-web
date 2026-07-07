@@ -33,6 +33,7 @@ pi-web ./examples/hello-agent
 | [file-session-agent](./file-session-agent/) | 演示「文件存储会话」：会话落 JSONL，可被 `FsSessionEntryStore` 回读 | 运行时 `SessionManager`（`--agent-dir`）、`FsSessionEntryStore` | ★★☆ |
 | [pi-probe-agent](./pi-probe-agent/) | 探针：验证项目级 `.pi/` 资源（extensions/agents/skills）是否被加载 | `.pi/` 发现、project trust 门控 | ★★☆ |
 | [logging-demo-agent](./logging-demo-agent/) | 端到端演示日志系统：工厂期 `ctx.logger` 四级日志 + pi extension + webext 三源汇入日志面板 | `ctx.logger`（注入）、`logger.child()`、`createLogger`（`@blksails/pi-web-logger`）、`PI_WEB_LOG_*` env | ★★☆ |
+| [agent-routes-demo](./agent-routes-demo/) | 声明式 HTTP routes 多路由范例：`ping`/`echo`/`whoami` 经 `GET·POST /api/sessions/:id/agent-routes/:name` 直调（不过 LLM）；演示 `routes/` 子目录**文件组织标准**（一路由一文件 + barrel） | `AgentDefinition.routes`、`AgentRouteDecl`/`AgentRouteRequest`、`routes/` 目录约定 | ★★☆ |
 
 ### server-driven UI 与交互
 
