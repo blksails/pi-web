@@ -1,6 +1,16 @@
 # Component 安装器设计（`pi-web add` · shadcn 式源码组件车道）
 
-> 状态：pre-spec 设计稿（2026-07-09）。
+> 状态：**v1 已实现**（spec `.kiro/specs/cli-component-add/`，2026-07-09，分支 feat/component-installer）。
+> 实现期定案（与本稿差异，以 spec 为准）：
+> ① §4.5 的独立 `pi-web update` **废止**——`update` 子命令名已被 source 级更新占用，
+>    更新三态并入 `add` 幂等语义（shadcn 同型：重复 add 即更新）；
+> ② `#<子目录>` 片段语义**仅对 git 直连形态启用**（语法门控 `isGitDirectForm`）——
+>    本地路径可能真含 `#`，一律整体解析（复核曾抓到误剥致静默装错包的 Critical，已修）；
+> ③ 溯源摘要用 sha256（既有 sha384 是 publish 车道的 SRI，语义不同不共享）；
+> ④ semver 极简实现只支持 精确/`>=`/`^`/`~`（仓内无 semver 依赖，零新增运行依赖）。
+> 范例组件包：`examples/canvas-component-watermark/`（首个 kind:"component" 实例）。
+
+> 原始设计稿（2026-07-09 定稿时的形态）如下。
 > 系列：[SES 扩展标准](./surface-extension-standard.md) ·
 > [Surface App Runtime 契约 v1](./surface-app-runtime-contract-v1.md) ·
 > [CanvasKit 插件化](./canvas-extension-mechanism-design.md) ·
