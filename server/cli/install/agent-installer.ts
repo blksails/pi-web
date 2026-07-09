@@ -73,7 +73,7 @@ import { isAbsolute, join, relative } from "node:path";
 import type { ExtSource } from "@blksails/pi-web-server";
 import { buildChildEnv } from "../context.js";
 import { redactSecrets } from "../reporter.js";
-import { registerLocalSource, unregisterLocalSource } from "./local-source-registry.js";
+import { registerLocalSource, unregisterLocalSource, canonicalize } from "./local-source-registry.js";
 
 export type Result<T, E> =
   | { readonly ok: true; readonly value: T }
@@ -460,6 +460,104 @@ async function tryRealpath(p: string): Promise<string | undefined> {
 }
 
 /**
+ * `id` 相对 `sourcesRoot` 的成员关系判定结果(只读,`uninstallAgentSource` 步骤 2 与
+ * `isAgentSourceInstalled` 共享同一套路径逃逸防护,不重复实现)。
+ */
+type SourcesRootMembership =
+  | { readonly kind: "not_found" }
+  | { readonly kind: "escaped" }
+  | { readonly kind: "member"; readonly realpath: string };
+
+/**
+ * 只读判定:`id`(相对 `sourcesRoot` 的目录名,或绝对路径)是否确实位于 `sourcesRoot`
+ * 的 realpath 之下。不做任何文件系统写操作。★ 安全门与 `uninstallAgentSource` 步骤 2
+ * 完全一致 —— `id` 可能来自用户输入(CLI 参数),含 `../` 之类的相对路径穿越必须被
+ * 拒绝(`"escaped"`),不得让调用方误判为「已安装」。
+ */
+async function checkSourcesRootMembership(id: string, sourcesRoot: string): Promise<SourcesRootMembership> {
+  const candidatePath = isAbsolute(id) ? id : join(sourcesRoot, id);
+  const candidateReal = await tryRealpath(candidatePath);
+  if (candidateReal === undefined) return { kind: "not_found" };
+
+  const sourcesRootReal = (await tryRealpath(sourcesRoot)) ?? sourcesRoot;
+  const rel = relative(sourcesRootReal, candidateReal);
+  const isInsideSourcesRoot = rel.length > 0 && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
+  return isInsideSourcesRoot ? { kind: "member", realpath: candidateReal } : { kind: "escaped" };
+}
+
+/**
+ * 只读判定:`id` 是否已登记在 `sources.json` 里的本地来源(与 `unregisterLocalSource`
+ * 判据一致 —— 按 realpath 比较,该条目路径若已不存在则退化为原始字符串比较,复用
+ * `local-source-registry.ts` 导出的 `canonicalize()`——但本函数**绝不写文件、绝不除名**,
+ * 仅供 kind 探测使用)。坏 JSON / 登记表不存在时保守返回 `false`(不算命中,不抛异常)。
+ *
+ * ★ 复核 Finding 2(spec cli-package-commands):此前本函数手写了一份等价的
+ * `tryRealpath(x) ?? x` 规范化逻辑,与 `local-source-registry.ts` 里 `canonicalize()`
+ * 语义相同但物理分离,是会漂移的第二份副本;现直接 import 复用同一份实现。
+ */
+async function isRegisteredLocalSource(registryPath: string, id: string): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(registryPath, "utf8");
+  } catch {
+    return false;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
+  const sourcesRaw = (parsed as Record<string, unknown>)["sources"];
+  if (!Array.isArray(sourcesRaw)) return false;
+
+  const canonicalTarget = await canonicalize(id);
+  for (const entry of sourcesRaw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const s = (entry as Record<string, unknown>)["source"];
+    if (typeof s !== "string" || s.length === 0) continue;
+    const existingCanonical = await canonicalize(s);
+    if (existingCanonical === canonicalTarget) return true;
+  }
+  return false;
+}
+
+/** {@link isAgentSourceInstalled} 的只读探测结果。 */
+export type AgentSourceProbe =
+  | { readonly installed: true; readonly method: "local" | "directory" }
+  | { readonly installed: false };
+
+/**
+ * 只读判定:`id` 是否是一个已安装的 agent 通道源(uninstall kind 探测用,spec
+ * cli-package-commands 缺陷修复:`uninstall` 此前缺省一律走 plugin 通道,导致本地
+ * agent 目录必定 `Not installed`)。
+ *
+ * 覆盖 `uninstallAgentSource` 认可的两种形态,但全程**不产生任何副作用**:
+ *   1. 已登记在 `sources.json` 里的本地来源(`isRegisteredLocalSource`,不除名);
+ *   2. `sourcesRoot` 之下的一个目录(`checkSourcesRootMembership`,复用同一套路径
+ *      逃逸防护,不重写一遍)。
+ *
+ * ★ 之所以不能用 `uninstallAgentSource()` 本身来探测:它匹配上就会真的执行卸载
+ * (除名登记表条目 / 递归删除目录),探测必须与执行分离。
+ *
+ * 两者皆不命中 → `{ installed: false }`(调用方据此判定应走 plugin 通道)。
+ */
+export async function isAgentSourceInstalled(
+  id: string,
+  options: AgentInstallerOptions,
+): Promise<AgentSourceProbe> {
+  if (options.registryPath !== undefined) {
+    const registered = await isRegisteredLocalSource(options.registryPath, id);
+    if (registered) return { installed: true, method: "local" };
+  }
+
+  const membership = await checkSourcesRootMembership(id, options.sourcesRoot);
+  if (membership.kind === "member") return { installed: true, method: "directory" };
+  return { installed: false };
+}
+
+/**
  * 卸载一个 `kind: "agent"` 的已安装包(Req 3.8)。
  *
  * 依次尝试:
@@ -489,18 +587,13 @@ export async function uninstallAgentSource(
   }
 
   // 2. 源根下的目录:候选路径是 id 本身(若为绝对路径)或 sourcesRoot 之下同名目录。
-  const candidatePath = isAbsolute(id) ? id : join(options.sourcesRoot, id);
-  const candidateReal = await tryRealpath(candidatePath);
-  if (candidateReal === undefined) {
+  // ★ 安全门(candidateReal 必须真的位于 sourcesRoot 的 realpath 之下,防止 id 含
+  // `../` 之类导致删到源根之外)与只读探测 `isAgentSourceInstalled` 共用同一实现。
+  const membership = await checkSourcesRootMembership(id, options.sourcesRoot);
+  if (membership.kind === "not_found") {
     return { ok: false, error: { code: "NOT_INSTALLED", message: `Not installed: ${id}` } };
   }
-
-  // ★ 安全门:candidateReal 必须真的位于 sourcesRoot 的 realpath 之下,否则拒绝
-  // (防止 id 含 `../` 之类导致删到源根之外)。
-  const sourcesRootReal = (await tryRealpath(options.sourcesRoot)) ?? options.sourcesRoot;
-  const rel = relative(sourcesRootReal, candidateReal);
-  const isInsideSourcesRoot = rel.length > 0 && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
-  if (!isInsideSourcesRoot) {
+  if (membership.kind === "escaped") {
     return {
       ok: false,
       error: {
@@ -509,6 +602,7 @@ export async function uninstallAgentSource(
       },
     };
   }
+  const candidateReal = membership.realpath;
 
   try {
     await fs.rm(candidateReal, { recursive: true, force: true });

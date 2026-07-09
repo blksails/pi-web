@@ -134,8 +134,15 @@ async function validateTargetDirectory(
   return { ok: true, value: real };
 }
 
-/** 尽力规范化一个路径为其 realpath;不存在/不可解析时退化为原始字符串。 */
-async function canonicalize(p: string): Promise<string> {
+/**
+ * 尽力规范化一个路径为其 realpath;不存在/不可解析时退化为原始字符串。
+ *
+ * 导出供 `agent-installer.ts` 的 `isRegisteredLocalSource()`(只读探测,spec
+ * cli-package-commands 复核 Finding 2)复用 —— 两处判断「一个路径是否等同于登记表里
+ * 某条目」的语义完全一致(realpath ?? raw),此前 `agent-installer.ts` 手写了一份
+ * 等价实现(`tryRealpath(x) ?? x`),是会漂移的第二份副本;统一到这一份权威实现。
+ */
+export async function canonicalize(p: string): Promise<string> {
   try {
     return await fs.realpath(p);
   } catch {

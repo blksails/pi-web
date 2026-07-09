@@ -10,7 +10,12 @@
  *   2) **临时藏起原构建目录**,使任何内联的构建机绝对路径在本地也指向不存在的位置
  *      —— 忠实复现「换机运行」,消除假阳性;
  *   3) 从重定位副本直接跑 server.mjs 走真实会话(mock openai-completions provider);
- *   4) 断言:真实会话激活 + 收到真实流式回包 + mock 被调用 + 无模块/CLI 解析错误。
+ *   4) 断言:真实会话激活 + 收到真实流式回包 + mock 被调用 + 无模块/CLI 解析错误;
+ *   5)(spec cli-package-commands 任务 6.3,Req 10.6)从**同一个重定位副本**动态
+ *      `import()` 第二个产物 `dist/cli-commands.mjs`(6.1 新增的子命令实现产物),
+ *      调用其导出验证「新产物在包被安装到任意路径后仍可被动态加载」——此前本文件只验证
+ *      过 `server.mjs`,`cli-commands.mjs` 是 6.1 才引入的第二个 esbuild 单文件产物,
+ *      同样可能内联构建机绝对路径,理应同等接受本文件「藏起原构建目录」的强化验证。
  *
  * 跨机/跨 OS 的权威验证仍是 CI 矩阵(Linux 构建 → mac/win 运行);本测试是等价的**本地快反**守卫。
  *
@@ -29,7 +34,7 @@ import {
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -179,6 +184,25 @@ async function main() {
       .catch(() => false);
     check("收到真实流式回包", got);
     check("mock 被真实 runner 调用", mock.getCalls() >= 1);
+
+    // 5) 新产物(dist/cli-commands.mjs)重定位后仍可动态加载(任务 6.3,Req 10.6)。
+    //    原构建目录此刻仍处于「藏起」状态(见上方 renameSync(origDist, hidden)),
+    //    故此处加载的确是重定位副本,任何内联的构建机绝对路径若失效会在此处暴露。
+    const relocCliCommandsJs = join(relocSA, "cli-commands.mjs");
+    check("重定位副本内 cli-commands.mjs 存在", existsSync(relocCliCommandsJs));
+    const cliCommandsMod = await import(pathToFileURL(relocCliCommandsJs).href);
+    check(
+      "重定位后 cli-commands.mjs 可动态加载且导出可调用(cliCommandsEntryReady)",
+      cliCommandsMod.cliCommandsEntryReady() === true,
+    );
+    const relocExamplesRoot = cliCommandsMod.resolveExamplesRoot(
+      [join(relocSA, "examples")],
+      existsSync,
+    );
+    check(
+      "重定位后 resolveExamplesRoot() 在副本自身 examples/ 下解析成功",
+      relocExamplesRoot === join(relocSA, "examples"),
+    );
   } catch (e) {
     check(`重定位 e2e: ${e.message}`, false);
   } finally {

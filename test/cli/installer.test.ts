@@ -497,3 +497,107 @@ describe("Installer.uninstall wires the default agent channel to uninstallAgentS
     expect(result.ok).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 缺陷修复:uninstall 不传 kindHint 时的 kind 判定(此前缺省一律 plugin,导致本地
+// agent 目录必定 "Not installed")。用注入的通道替身断言分派去向,agentInstallerOptions
+// 指向真实临时目录以驱动真正的只读探测 `isAgentSourceInstalled()`。
+// ---------------------------------------------------------------------------
+
+describe("Installer.uninstall kind determination without kindHint (defect fix)", () => {
+  let root: string;
+  let sourcesRoot: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "installer-uninstall-kind-probe-test-"));
+    sourcesRoot = join(root, "sources-root");
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("已登记的本地 agent,不传 kindHint -> 路由到 agent 通道(agent 替身被调用,plugin 替身零调用)", async () => {
+    const localDir = join(root, "my-agent");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(join(localDir, "index.ts"), "export default {};\n");
+    const registryPath = join(root, "agent-dir", "sources.json");
+
+    const installed = await installAgentSource(
+      { kind: "local", path: localDir },
+      { sourcesRoot, registryPath },
+    );
+    expect(installed.ok).toBe(true);
+    if (!installed.ok) return;
+
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+    const installer = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+      agentInstallerOptions: { sourcesRoot, registryPath },
+    });
+
+    const result = await installer.uninstall(installed.value.location);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.kind).toBe("agent");
+    }
+    expect(agentChannel.uninstallCalls).toHaveLength(1);
+    expect(pluginChannel.uninstallCalls).toHaveLength(0);
+  });
+
+  it("plugin 标识(如 'npm:foo'),不传 kindHint -> 路由到 plugin 通道(plugin 替身被调用,agent 替身零调用)", async () => {
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+    const installer = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+      agentInstallerOptions: { sourcesRoot },
+    });
+
+    const result = await installer.uninstall("npm:foo");
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.kind).toBe("plugin");
+    }
+    expect(pluginChannel.uninstallCalls).toHaveLength(1);
+    expect(agentChannel.uninstallCalls).toHaveLength(0);
+  });
+
+  it("显式 kindHint 仍然覆盖探测结果(即便 id 实际是一个已登记的本地 agent)", async () => {
+    const localDir = join(root, "my-agent-2");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(join(localDir, "index.ts"), "export default {};\n");
+    const registryPath = join(root, "agent-dir-2", "sources.json");
+
+    const installed = await installAgentSource(
+      { kind: "local", path: localDir },
+      { sourcesRoot, registryPath },
+    );
+    expect(installed.ok).toBe(true);
+    if (!installed.ok) return;
+
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+    const installer = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+      agentInstallerOptions: { sourcesRoot, registryPath },
+    });
+
+    const result = await installer.uninstall(installed.value.location, { kindHint: "plugin" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.kind).toBe("plugin");
+    }
+    expect(pluginChannel.uninstallCalls).toHaveLength(1);
+    expect(agentChannel.uninstallCalls).toHaveLength(0);
+  });
+});

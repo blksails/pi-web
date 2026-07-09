@@ -28,6 +28,7 @@ import { join } from "node:path";
 import {
   installAgentSource,
   uninstallAgentSource,
+  isAgentSourceInstalled,
   type CommandRunner,
   type CommandResult,
   type TarballDownloader,
@@ -339,6 +340,76 @@ describe("uninstallAgentSource(任务 4.5 缺口 1:Req 3.8)", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("NOT_INSTALLED");
     }
+  });
+});
+
+describe("isAgentSourceInstalled(只读探测,uninstall kind 判定用,缺陷修复)", () => {
+  it("已登记的本地来源 -> installed: true, method: 'local',登记表本身不被修改(只读)", async () => {
+    const localDir = join(root, "my-local-agent");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(join(localDir, "index.ts"), "export default {};\n");
+    const registryPath = join(root, "agent-dir", "sources.json");
+
+    const installed = await installAgentSource(
+      { kind: "local", path: localDir },
+      { sourcesRoot, registryPath },
+    );
+    expect(installed.ok).toBe(true);
+    if (!installed.ok) return;
+
+    const before = readFileSync(registryPath, "utf8");
+    const probe = await isAgentSourceInstalled(installed.value.location, { sourcesRoot, registryPath });
+    const after = readFileSync(registryPath, "utf8");
+
+    expect(probe).toEqual({ installed: true, method: "local" });
+    // 只读:登记表文件字节不变(没有被除名或改写)。
+    expect(after).toBe(before);
+    const raw = JSON.parse(after) as { sources: unknown[] };
+    expect(raw.sources).toHaveLength(1);
+  });
+
+  it("源根下的目录(git/npm 安装产物) -> installed: true, method: 'directory',目录本身不被删除(只读)", async () => {
+    const dirName = "git-github.com-acme-my-agent-v1.2.3";
+    const target = join(sourcesRoot, dirName);
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, "pi-web.json"), JSON.stringify({ kind: "agent" }));
+
+    const probe = await isAgentSourceInstalled(dirName, { sourcesRoot });
+
+    expect(probe).toEqual({ installed: true, method: "directory" });
+    expect(existsSync(target)).toBe(true);
+  });
+
+  it("路径逃逸('../evil')必须返回 installed: false,而非抛错或误判为已安装", async () => {
+    mkdirSync(sourcesRoot, { recursive: true });
+    const sentinel = join(root, "evil");
+    mkdirSync(sentinel, { recursive: true });
+    writeFileSync(join(sentinel, "sentinel.txt"), "do-not-delete");
+
+    const probe = await isAgentSourceInstalled("../evil", { sourcesRoot });
+
+    expect(probe).toEqual({ installed: false });
+    expect(existsSync(sentinel)).toBe(true);
+    expect(existsSync(join(sentinel, "sentinel.txt"))).toBe(true);
+  });
+
+  it("未安装的普通标识(既未登记也不在源根下) -> installed: false", async () => {
+    mkdirSync(sourcesRoot, { recursive: true });
+
+    const probe = await isAgentSourceInstalled("npm:some-plugin", { sourcesRoot });
+
+    expect(probe).toEqual({ installed: false });
+  });
+
+  it("坏 JSON 的登记表:探测不抛异常,保守视为未登记(仍继续探测源根形态)", async () => {
+    const registryPath = join(root, "agent-dir", "sources.json");
+    mkdirSync(join(root, "agent-dir"), { recursive: true });
+    writeFileSync(registryPath, "{ not valid json");
+    mkdirSync(sourcesRoot, { recursive: true });
+
+    await expect(isAgentSourceInstalled("whatever", { sourcesRoot, registryPath })).resolves.toEqual({
+      installed: false,
+    });
   });
 });
 

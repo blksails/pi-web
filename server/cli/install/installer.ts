@@ -22,6 +22,18 @@
  *     `install --kind <agent|plugin>` 接到这里)。
  *   - 绝不静默误判:不把 plugin 装进 agent 源根,也不反过来。
  *
+ * ## 决策 1b:`uninstall()` 的 kind 判定(缺陷修复)
+ *
+ * `uninstall()` 只有一个台账 `id`,没有 `resolveSource()` 那样的「先解析来源读
+ * `pi-web.json#kind`」的机会 —— 此前的实现因此**缺省一律按 `"plugin"` 处理**,把本地
+ * agent 目录送去 `pi remove`,必定 `Not installed`(已由端到端复现的缺陷)。
+ * 裁断:显式 `kindHint` 仍然优先;否则用 `isAgentSourceInstalled()`(只读探测,见
+ * `agent-installer.ts`)查询这个 `id` 是否是 agent 通道已安装的源,命中则走 agent 通道,
+ * 否则默认 `"plugin"`。选择「默认 plugin」而非「默认 agent」的理由:agent 通道对不
+ * 匹配的 id 返回 `NOT_INSTALLED`(安全,不会误删任何东西),但 plugin 通道对不认识的
+ * id 同样只是报错而非误删 —— 两者都安全,但 plugin 是历史默认约定,变更面更小。
+ * 真正的修复价值在探测本身:只要探测命中 agent 通道,就不会再落到 plugin 通道报错。
+ *
  * ## 决策 2:scope 语义
  *
  * 默认 `"user"`;显式 `"project"`。
@@ -67,6 +79,7 @@ import {
 import {
   installAgentSource,
   uninstallAgentSource,
+  isAgentSourceInstalled,
   type AgentInstallerOptions,
   type AgentInstallError,
   type AgentInstallResult,
@@ -371,9 +384,18 @@ export function createInstaller(options: CreateInstallerOptions = {}): Installer
     async uninstall(id, uninstallOptions = {}) {
       const scope: Scope = uninstallOptions.scope ?? "user";
       const cwd = uninstallOptions.cwd ?? process.cwd();
-      // 未直连一个已解析来源(卸载只有台账 id),按同一约定默认 plugin(与安装侧的
-      // npm/git 默认约定保持一致),显式 kindHint 覆盖。
-      const kind: PluginKind = uninstallOptions.kindHint ?? "plugin";
+      // kind 判定(缺陷修复:此前缺省一律走 plugin 通道,导致本地 agent 目录必定
+      // `Not installed`)。显式 kindHint 覆盖一切;否则用只读探测
+      // `isAgentSourceInstalled()` 查询这个 id 是否是 agent 通道管的已安装源 ——
+      // 命中则走 agent 通道,否则默认 plugin(与安装侧 npm/git 直连的默认约定一致)。
+      // 探测需要 `agentInstallerOptions`(sourcesRoot/registryPath);未配置时无从探测,
+      // 保守回退默认 plugin(与此前行为一致,不引入新的不确定性)。
+      const kind: PluginKind =
+        uninstallOptions.kindHint ??
+        (options.agentInstallerOptions !== undefined &&
+        (await isAgentSourceInstalled(id, options.agentInstallerOptions)).installed
+          ? "agent"
+          : "plugin");
 
       if (scope === "project") {
         if (kind === "agent") {

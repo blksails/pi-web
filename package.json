@@ -30,6 +30,8 @@
     "e2e:cli:real": "node e2e/cli/cli-real.mjs",
     "e2e:cli:reloc": "node e2e/cli/cli-reloc.mjs",
     "e2e:cli:create": "node e2e/cli/cli-create-run.mjs",
+    "e2e:cli:install": "node e2e/cli/cli-install-local.mjs",
+    "e2e:cli:all": "pnpm e2e:cli && pnpm e2e:cli:create && pnpm e2e:cli:install && pnpm e2e:cli:reloc",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "test:app": "vitest run",
     "e2e": "playwright test",

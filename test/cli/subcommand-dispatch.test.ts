@@ -144,6 +144,51 @@ describe("runSubcommand — install", () => {
     expect(code).not.toBe(0);
     expect(installer.install).not.toHaveBeenCalled();
   });
+
+  // --- 接线层覆盖(复核 REJECTED 补齐):断言 argv → installer.install(options) 的转发 ---
+
+  it("--kind agent → installer.install 收到 kindHint: \"agent\"", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("install", ["some-id", "--kind", "agent"], {
+      installer,
+      reporter: silentReporter(),
+    });
+    expect(code).toBe(0);
+    expect(installer.install).toHaveBeenCalledTimes(1);
+    const [, options] = (installer.install as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { kindHint?: string }];
+    expect(options.kindHint).toBe("agent");
+  });
+
+  it("--kind bogus → 非零退出码,错误信息含「取值非法」,installer.install 零调用", async () => {
+    const installer = fakeInstaller();
+    const reporter = silentReporter();
+    const code = await runSubcommand("install", ["some-id", "--kind", "bogus"], { installer, reporter });
+    expect(code).not.toBe(0);
+    expect(installer.install).not.toHaveBeenCalled();
+    expect(reporter.fail).toHaveBeenCalledTimes(1);
+    const failCall = (reporter.fail as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { message: string }];
+    expect(failCall[1].message).toContain("取值非法");
+  });
+
+  it("--project → installer.install 收到 scope: \"project\"", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("install", ["some-id", "--project"], { installer, reporter: silentReporter() });
+    expect(code).toBe(0);
+    const [, options] = (installer.install as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { scope?: string }];
+    expect(options.scope).toBe("project");
+  });
+
+  it("不传 --kind/--project → installer.install 收到 scope: \"user\" 且 kindHint 为 undefined(缺省语义)", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("install", ["some-id"], { installer, reporter: silentReporter() });
+    expect(code).toBe(0);
+    const [, options] = (installer.install as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { scope?: string; kindHint?: string },
+    ];
+    expect(options.scope).toBe("user");
+    expect(options.kindHint).toBeUndefined();
+  });
 });
 
 describe("runSubcommand — uninstall", () => {
@@ -177,6 +222,63 @@ describe("runSubcommand — uninstall", () => {
     });
     const code = await runSubcommand("uninstall", ["npm:foo"], { installer, reporter: silentReporter() });
     expect(code).not.toBe(0);
+  });
+
+  // --- 接线层覆盖(复核 REJECTED 补齐):断言 argv → installer.uninstall(options) 的转发 ---
+  // 这是本轮修复的核心断言:mutation 实证(把 runUninstall 里的转发改成
+  // `installer.uninstall(name, { cwd })`,丢弃 scope 与 kindHint)后,236 条既有测试
+  // 全部仍绿 —— 因为此前没有任何用例检查 `uninstall.mock.calls[0]` 的第二个参数。
+
+  it("--kind agent → installer.uninstall 收到 kindHint: \"agent\"", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("uninstall", ["some-id", "--kind", "agent"], {
+      installer,
+      reporter: silentReporter(),
+    });
+    expect(code).toBe(0);
+    expect(installer.uninstall).toHaveBeenCalledTimes(1);
+    const [, options] = (installer.uninstall as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { kindHint?: string },
+    ];
+    expect(options.kindHint).toBe("agent");
+  });
+
+  it("--kind bogus → 非零退出码,错误信息含「取值非法」,installer.uninstall 零调用", async () => {
+    const installer = fakeInstaller();
+    const reporter = silentReporter();
+    const code = await runSubcommand("uninstall", ["some-id", "--kind", "bogus"], { installer, reporter });
+    expect(code).not.toBe(0);
+    expect(installer.uninstall).not.toHaveBeenCalled();
+    expect(reporter.fail).toHaveBeenCalledTimes(1);
+    const failCall = (reporter.fail as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { message: string }];
+    expect(failCall[1].message).toContain("取值非法");
+  });
+
+  it("--project → installer.uninstall 收到 scope: \"project\"", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("uninstall", ["some-id", "--project"], {
+      installer,
+      reporter: silentReporter(),
+    });
+    expect(code).toBe(0);
+    const [, options] = (installer.uninstall as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { scope?: string },
+    ];
+    expect(options.scope).toBe("project");
+  });
+
+  it("不传 --kind/--project → installer.uninstall 收到 scope: \"user\" 且 kindHint 为 undefined(缺省语义)", async () => {
+    const installer = fakeInstaller();
+    const code = await runSubcommand("uninstall", ["some-id"], { installer, reporter: silentReporter() });
+    expect(code).toBe(0);
+    const [, options] = (installer.uninstall as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      { scope?: string; kindHint?: string },
+    ];
+    expect(options.scope).toBe("user");
+    expect(options.kindHint).toBeUndefined();
   });
 });
 

@@ -164,14 +164,14 @@
   - _Depends: 2.1, 3.2, 4.5, 5.2_
   - _Requirements: 1.7_
 
-- [ ] 6.2 编写离线端到端验证：创建、安装本地目录、源列表可见、卸载
+- [x] 6.2 编写离线端到端验证：创建、安装本地目录、源列表可见、卸载
   - 在无网络、无注册表的条件下完成：创建 agent 骨架 → 以其为源启动实例 → 安装该本地目录 → 源列表包含它 → 卸载 → 源列表不再包含
   - 沿用既有 CLI 端到端脚本的启动与断言范式
   - 观察态：脚本以零退出码结束，且其中「源列表包含该目录」与「卸载后不再包含」两条断言均基于真实端点响应
   - _Depends: 6.1_
   - _Requirements: 9.3, 9.4, 10.4_
 
-- [ ] 6.3 回归护栏：既有 CLI 端到端与可重定位验证继续通过
+- [x] 6.3 回归护栏：既有 CLI 端到端与可重定位验证继续通过
   - 既有的 CLI 冒烟脚本继续通过，佐证既有启动路径逐字节不变
   - 既有的可重定位脚本继续通过，佐证新增产物在包被安装到任意路径后仍可被动态加载
   - 观察态：两个既有脚本在本特性改动后均以零退出码结束
@@ -582,3 +582,21 @@
 - **`list --outdated` 的失败文案是英文**（`OUTDATED_NOT_SUPPORTED_MESSAGE`，5.1 既有实现），不含中文
   「尚不支持」字样。6.1 只透传该错误到 `ProgressReporter.fail()`，未改写文案（超出本任务边界，
   且改动会牵动 5.x 既有测试对该常量的断言）。后续如需中文化错误文案，应作为独立任务处理。
+- **★ `uninstall` 的 kind 判定缺陷（只有端到端能抓到）**：`install` 经 `resolveSource()` 从本地目录的
+  `pi-web.json` 读出真实 `kind`，而 `uninstall` 只有一个 id、没有这条路径。初版 `Installer.uninstall()`
+  缺省 `kindHint ?? "plugin"`，于是 `pi-web uninstall <本地 agent 目录>` **必定**被送去 `pi remove` 并报
+  `Not installed`。单测抓不到：`installer.test.ts` 的三条卸载用例**全部**显式传 `kindHint: "agent"`，
+  缺省路径从未被走过。修法：新增**只读**探测 `isAgentSourceInstalled()`，无 `kindHint` 时先查该 id 是否
+  归 agent 通道（已登记的本地源 / 源根下的目录），命中走 agent，否则默认 plugin。
+  探测**绝不能**用 `uninstallAgentSource()` —— 它匹配上就会真的删。逃逸防护由 `checkSourcesRootMembership()`
+  与真实卸载**共用一份**，不要写第二份。
+- **★ 接线层与组件层是两个测试面**：`Installer.uninstall()` 有测试，不等于「从 CLI argv 到它」的接线有测试。
+  实证：把 `runUninstall` 的 `installer.uninstall(name, { scope, kindHint, cwd })` 改成
+  `installer.uninstall(name, { cwd })`（即静默丢弃 `--kind`/`--project`），**236 条测试全部仍绿**。
+  因为 `UninstallOptions` 的字段都是可选的，tsc 也拦不住。必须在 `subcommand-dispatch.test.ts` 里
+  断言**注入的替身收到了什么**（`mock.calls[0][1]`）。`runInstall` 有同样的盲区，已一并补齐。
+  ⇒ 凡是「CLI 选项 → 组件参数」的转发，都要有接线层断言，否则改坏了 CI 一片绿。
+- **e2e 必须隔离**：`PI_WEB_AGENT_DIR` 指向临时目录（`install <本地路径>` 会写 `<agentDir>/sources.json`），
+  `PI_WEB_SOURCES_ROOT` 指向隔离的临时源根。**绝不能污染用户真实的 `~/.pi/agent` 与 `~/.pi-web/agents`。**
+- `RegistrySourceProvider.list()` **每次请求都重读文件**，无缓存（已读源码确认）。故 6.2 的 e2e 可以在
+  **同一个运行中的实例**上做「安装后包含 → 卸载后不包含」两次断言，无需重启。

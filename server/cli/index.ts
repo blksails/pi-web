@@ -265,7 +265,14 @@ async function runUninstall(
 ): Promise<number> {
   let parsed;
   try {
-    parsed = parseArgs({ args: [...argv], allowPositionals: true, options: {} });
+    parsed = parseArgs({
+      args: [...argv],
+      allowPositionals: true,
+      options: {
+        project: { type: "boolean", default: false },
+        kind: { type: "string" },
+      },
+    });
   } catch (err) {
     return usageError(reporter, "uninstall", err instanceof Error ? err.message : String(err));
   }
@@ -275,11 +282,23 @@ async function runUninstall(
     return usageError(reporter, "uninstall", "缺少必需的 <name> 参数(运行 `pi-web uninstall --help` 查看用法)。");
   }
 
+  let kindHint: PluginKind | undefined;
+  if (parsed.values.kind !== undefined) {
+    if (parsed.values.kind !== "agent" && parsed.values.kind !== "plugin") {
+      return usageError(reporter, "uninstall", `--kind 取值非法: "${parsed.values.kind}"(应为 agent 或 plugin)。`);
+    }
+    kindHint = parsed.values.kind;
+  }
+
   const cwd = deps.cwd ?? process.cwd();
   const installer = deps.installer ?? createDefaultInstaller(deps);
 
   reporter.start("uninstall", name);
-  const res = await installer.uninstall(name, { cwd });
+  const res = await installer.uninstall(name, {
+    scope: parsed.values.project === true ? "project" : "user",
+    kindHint,
+    cwd,
+  });
   if (!res.ok) {
     reporter.fail("uninstall", { code: res.error.code, message: res.error.message });
     return 1;

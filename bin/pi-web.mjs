@@ -101,13 +101,15 @@ const SUBCOMMAND_SPECS = {
     summary: "卸载已安装的 agent 或 plugin",
     options: {
       project: { type: "boolean", default: false },
+      kind: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     usage: `用法: pi-web uninstall <name> [options]
 
 选项:
-      --project   以项目级作用域卸载(默认用户级)
-  -h, --help      显示本帮助并退出
+      --project              以项目级作用域卸载(默认用户级)
+      --kind <agent|plugin>  显式指定包类型(缺省按已安装状态探测,探测不到则默认 plugin)
+  -h, --help                 显示本帮助并退出
 `,
   },
   list: {
