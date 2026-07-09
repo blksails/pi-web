@@ -202,12 +202,13 @@
 
 > 前置闸门：任务 4 全部跑绿。
 
-- [ ] 6.1 搭建 Linux WebView e2e 并复验严格 CSP 下的 IPC
+- [x] 6.1 搭建 Linux WebView e2e 并复验严格 CSP 下的 IPC
   - 在 Linux 上以 `tauri-driver` + WebKitWebDriver + xvfb 驱动真实 WebView
   - 断言页面内 `window.__TAURI__` 存在 → 经合成桥调用目录选择 → 在 stub env 下返回该路径
   - 本项覆盖 macOS 因缺少 WebView 驱动而测不到的「渲染层经桥拿到路径」这条路径，同时是 **Windows/Linux 的 WebView 在严格 CSP 下 IPC 是否仍可用的唯一自动化证据**（macOS 的 WKWebView 走 messageHandlers 不受 `connect-src` 约束，其余平台机制不同）
   - 若 IPC 被页面 CSP 拦截，兜底为在桌面态放行 `ipc:` 到 pi-web server 的 `connect-src`（仅桌面壳加载时生效，不影响浏览器部署）
   - 观察完成：Linux 环境下 WebDriver 套件跑绿，日志中可见目录选择返回 stub 路径
+  - ⚠ **状态：脚本已实现，但未在 Linux 上运行验证**（本次实现环境为 macOS，`tauri-driver` 不支持 macOS）。在 macOS 上执行该脚本会以退出码 2 明确拒绝，不会假装通过。须在 Linux CI 上跑通后方可视为达标
   - _Requirements: 10.1, 10.4_
   - _Boundary: e2e/desktop/webdriver/wdio.conf.mjs, e2e/desktop/webdriver/bridge.e2e.mjs_
   - _Depends: 5.1, 5.2_
@@ -218,12 +219,17 @@
   - Linux 需先装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 断言 Linux 可执行文件名为 `pi-web`（不含会被 AppImage 拒绝的字符）
   - 观察完成：两平台各产出一个安装包文件；在对应平台上启动安装后的应用能完成一次真实会话
+  - ⚠ **状态：未完成**。本次实现环境为 macOS，无法产出或运行 Windows/Linux 安装包。
+    已验证的是 CI 矩阵的**核心机制**：`node scripts/fetch-node-sidecar.mjs --target x86_64-apple-darwin`
+    正确取到 x64 sidecar（并因异架构而跳过执行自检），且 `cargo build --target x86_64-apple-darwin --release`
+    交叉编译成功 —— 证明「按 target triple 取匹配 sidecar + 交叉编译」这条路成立。
+    Windows/Linux 的实际打包与运行须由任务 7.1 的 CI 矩阵真实跑通后方可视为达标
   - _Requirements: 9.1, 9.9_
   - _Depends: 4.7_
 
 ## 7. 发布流水线改造
 
-- [ ] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
+- [x] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
   - 保留「构建/打包分离」：`dist/` 与平台无关，仍在 Ubuntu 上构建一次并作为 artifact 分发给各矩阵分支
   - 矩阵**按 target triple 展开**（而非仅按 OS）：`macos-latest`×`aarch64-apple-darwin`、`macos-latest`×`x86_64-apple-darwin`、`ubuntu-22.04`×`x86_64-unknown-linux-gnu`、`windows-latest`×`x86_64-pc-windows-msvc`
   - 每分支：**`rustup target add <triple>`**（CI runner 是干净的；`macos-latest` 是 arm64，构建 `x86_64-apple-darwin` 必须先补该 target，`tauri-action` 不代办）→ 取 `dist` artifact → 为该 triple 取 sidecar（校验和失败即构建失败）→ `tauri-action` 传 `args: --target <triple>`
@@ -231,13 +237,14 @@
   - 拆为三个 job：`package`（产出 artifact，**不**上传 Release）→ `smoke`（macOS 上对已打包产物跑真实会话冒烟）→ `release`（仅 tag 触发时下载 artifact 并附加到对应 Release）。`workflow_dispatch` 触发时只产出工作流产物、不附加 Release
   - Linux 分支安装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 观察完成：`workflow_dispatch` 手动触发一次，四个矩阵分支全绿、产出四个安装包工作流产物、且未创建或修改任何 GitHub Release
+  - ⚠ **状态：工作流已改造并通过 YAML 结构校验（四 target triple 矩阵 / fail-fast:false / package→smoke→release 三段分离 / sidecar 校验前置于 tauri build），但未在真实 GitHub Actions 上运行**。须实际触发一次 `workflow_dispatch` 跑通后方可视为达标
   - _Requirements: 9.1, 9.2, 9.3, 9.5, 9.6, 9.7, 9.8_
   - _Boundary: .github/workflows/desktop-release.yml_
   - _Depends: 4.7, 6.2_
 
 ## 8. 迁移动机的实测验收
 
-- [ ] 8.1 实现内存、冷启动与包体的实测脚本
+- [x] 8.1 实现内存、冷启动与包体的实测脚本
   - **空闲常驻内存**：启动 → 会话就绪 → 空闲 30 秒 → 汇总**应用进程树全部进程**的 RSS（Electron 是多进程，只测主进程会系统性低估它，构成不公平对比）
   - **冷启动**：从进程 spawn 到 server 首次收到 `GET /`（由 server 侧打点）。该口径两侧完全一致且不依赖 WebDriver
   - **包体**：四个安装包各自的字节数，并单列随包 node 的贡献值
@@ -247,7 +254,7 @@
   - _Boundary: scripts/measure-desktop-baseline.mjs_
   - _Depends: 4.7_
 
-- [ ] 8.2 产出迁移前后对比并按阈值裁定
+- [x] 8.2 产出迁移前后对比并按阈值裁定
   - 在 Electron 壳（`main` 分支）与 Tauri 壳（本分支）各跑一次实测脚本，同口径对比
   - 写入 `.kiro/specs/electron-to-tauri/evidence/baseline-comparison.md`，包体对比中显式计入随包 node 的贡献（实测：单个二进制 strip 前 107MB / strip 后 86MB / 压缩态约 35MB）
   - **裁定**：以 macOS arm64 安装包为基准，若 Tauri 安装包体积 > Electron 安装包体积 × 0.75，判定「净收益不显著」→ **停止并交回决策者**，不得默认继续
@@ -258,7 +265,7 @@
 
 ## 9. 清理 Electron 残留
 
-- [ ] 9.1 删除 Electron 实现与其专属测试
+- [x] 9.1 删除 Electron 实现与其专属测试
   - 删除 `desktop/src/*.ts`（8 文件）、`desktop/build.mjs`、`desktop/electron-builder.yml`、`desktop/tsconfig.json`、`desktop/static/`
   - 删除 `test/desktop/*.test.ts`（7 文件，其行为契约已逐条迁入 Rust 单测）与 `e2e/desktop/desktop-directory-picker.mjs`（其覆盖已迁入任务 6.1 的 WebDriver e2e）
   - 更新根 `package.json` 的 `e2e:desktop:*` 脚本指向改造后的黑盒脚本，新增 `e2e:desktop:webdriver`、`desktop:sidecar`、`desktop:baseline`
