@@ -20,7 +20,7 @@ import {
   PiWebManifestSchema,
   type PiWebManifest,
 } from "@blksails/pi-web-protocol";
-import { classifySourceForm, resolveSource, type Result } from "../install/source-resolver.js";
+import { resolveSource, type Result } from "../install/source-resolver.js";
 
 export type ComponentSourceError = {
   readonly code:
@@ -51,7 +51,7 @@ export interface ComponentSourceDeps {
 const USAGE_HINT =
   "v1 支持:本地目录(如 ./my-component 或 /abs/path)与 git 直连(如 git:github.com/org/repo@v1.0.0#packages/my-component);registry 名称解析归 v2";
 
-/** 剥离末段 `#<子目录>`;仅当基串仍是直连形态时才生效(Req 2.3)。 */
+/** 纯切分:剥离末段 `#<子目录>`(是否采用片段语义由 isGitDirectForm 门控,见下)。 */
 export function splitSubdirFragment(arg: string): { base: string; subdir?: string } {
   const hash = arg.lastIndexOf("#");
   if (hash <= 0) return { base: arg };
@@ -59,6 +59,31 @@ export function splitSubdirFragment(arg: string): { base: string; subdir?: strin
   const subdir = arg.slice(hash + 1);
   if (subdir.length === 0) return { base };
   return { base, subdir };
+}
+
+const GIT_SCHEME = /^git:/i;
+const URI_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+/** scp 简写(与 source-resolver 同形):`user@host:path`。 */
+const SCP_LIKE = /^[^@\s/]+@[^:\s/]+:.+/;
+
+/**
+ * 基串是否为 git 直连形态 —— **只有此形态才启用 `#<子目录>` 片段语义**(Req 2.3)。
+ * 判据是语法而非「路径形」:本地路径(`./`/`/`/`~`/盘符)与 `npm:`/`local:` 前缀一律
+ * 返回 false —— 目录名可能真含 `#`,本地实参必须整体解析,绝不剥片段(复核缺陷修复:
+ * 早前用 classifySourceForm(base) 门控,它对任意路径形字符串恒判 direct,致含 `#`
+ * 的本地路径被静默截断、解析到错误目录)。
+ */
+export function isGitDirectForm(spec: string): boolean {
+  const s = spec.trim();
+  if (GIT_SCHEME.test(s)) return true;
+  if (/^(npm|local):/i.test(s)) return false;
+  if (URI_SCHEME.test(s)) return true;
+  if (SCP_LIKE.test(s)) return true;
+  // host 简写(github.com/u/r):首个 `/` 之前的片段形似域名,且不是路径形。
+  if (s.startsWith("/") || s.startsWith("./") || s.startsWith("../") || s.startsWith("~")) return false;
+  if (/^[a-zA-Z]:[\\/]/.test(s)) return false;
+  const slash = s.indexOf("/");
+  return slash > 0 && s.slice(0, slash).includes(".");
 }
 
 async function readManifest(
@@ -120,9 +145,10 @@ export async function resolveComponentSource(
 ): Promise<Result<ResolvedComponentSource, ComponentSourceError>> {
   const trimmed = arg.trim();
   const { base, subdir } = splitSubdirFragment(trimmed);
-  // 本地目录实参不剥片段(目录名可能真含 `#`):基串非直连时按原串重判。
-  const effective = classifySourceForm(base) === "direct" ? base : trimmed;
-  const useFragment = effective === base && subdir !== undefined;
+  // 片段语义只对 git 直连形态启用;本地路径/npm/local 前缀实参整体解析,绝不剥
+  // (目录名可能真含 `#`;门控判据见 isGitDirectForm)。
+  const useFragment = subdir !== undefined && isGitDirectForm(base);
+  const effective = useFragment ? base : trimmed;
 
   const resolved = await resolveSource(effective, deps.cwd !== undefined ? { cwd: deps.cwd } : {});
   if (!resolved.ok) {
@@ -141,7 +167,7 @@ export async function resolveComponentSource(
     };
   }
   if (resolved.value.via !== "direct") {
-    // classifySourceForm 已判直连,registry 分支理论不可达;防御性收窄。
+    // resolveSource 的 registry 分支已在上方以 REGISTRY_NOT_IMPLEMENTED 短路;防御性收窄。
     return {
       ok: false,
       error: { code: "source_form_unsupported", message: `无法解析来源 "${arg}"。${USAGE_HINT}` },

@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  isGitDirectForm,
   resolveComponentSource,
   splitSubdirFragment,
 } from "@/server/cli/component/component-source";
@@ -49,7 +50,42 @@ describe("splitSubdirFragment", () => {
   });
 });
 
+describe("isGitDirectForm(片段语义门控;复核缺陷回归)", () => {
+  it.each(["git:h/u/r@v1.0.0", "https://h/u/r@v1", "ssh://git@h/u/r@v1", "git@github.com:org/repo", "github.com/u/r"])(
+    "git 直连形态 %j → true",
+    (s) => expect(isGitDirectForm(s)).toBe(true),
+  );
+  it.each(["./local", "../up", "/abs/dir", "~/home-dir", "C:\\win\\dir", "local:/x", "npm:@s/p@1.0.0", "org/name"])(
+    "非 git 形态 %j → false(本地路径/前缀/registry 名不启用片段语义)",
+    (s) => expect(isGitDirectForm(s)).toBe(false),
+  );
+});
+
 describe("resolveComponentSource", () => {
+  it("本地路径含字面 # :整体解析为该路径本身,绝不剥离(复核 Critical 回归)", async () => {
+    // 陷阱布置:截断路径与完整路径都放真实组件包,若误剥会静默解析到 WRONG。
+    const wrong = join(root, "wrong-target");
+    writeComponentPack(wrong, "WRONG");
+    const right = join(root, "wrong-target#sub");
+    writeComponentPack(right, "RIGHT");
+
+    const result = await resolveComponentSource(right, { cwd: root });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.packRoot).toBe(right);
+    expect(result.value.manifest.id).toBe("RIGHT");
+    expect(result.value.origin).toBe(`local:${right}`);
+  });
+
+  it("本地路径含 # 且截断路径不存在:仍整体解析,不误报来源缺失", async () => {
+    const dir = join(root, "only#here");
+    writeComponentPack(dir, "ONLY");
+    const result = await resolveComponentSource(dir, { cwd: root });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.manifest.id).toBe("ONLY");
+  });
+
   it("本地目录:直接作包根,origin 为 local:<abs>(2.1)", async () => {
     const pack = join(root, "my-comp");
     writeComponentPack(pack);
