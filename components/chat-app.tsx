@@ -192,6 +192,10 @@ const EXTENSION_COMMAND_POLICY: ExtensionCommandPolicy = {
     // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
     "plugin",
     "reload-runtime",
+    // 视觉识别命令(spec image-vision-tool,Req 6.1):`/img_vision` 看会话内最近一张图。
+    // 与 /plugin 同理不卡 pending(fire-and-forget),结论经 ctx.ui 通知呈现、不进消息历史。
+    // 仅按名放行本命令 —— 绝不打开 `enabled: true`(那会放行全部扩展命令,多数在 web 端会卡死)。
+    "img_vision",
     ...(process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
       .split(",")
       .map((s) => s.trim())

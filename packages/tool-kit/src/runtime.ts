@@ -92,6 +92,24 @@ export type {
   CanvasLineage,
 } from "./aigc/canvas/index.js";
 
+// ── vision extension(image_vision 工具 + /img_vision 命令;image-vision-tool)────
+export { visionExtension, makeVisionExtension } from "./vision/extension.js";
+export { createVisionRunner, envDefaultModel } from "./vision/run-vision-tool.js";
+export { listVisionModels, modelKey } from "./vision/select-model.js";
+export { resolveImageSource, pickLatestImage } from "./vision/resolve-image.js";
+export { fail as visionFail } from "./vision/errors.js";
+export { VISION_MODEL_ENV, DEFAULT_QUESTION } from "./vision/types.js";
+export type {
+  VisionResult,
+  VisionOk,
+  VisionFail,
+  VisionFailureReason,
+  VisionParams,
+  VisionRunnerDeps,
+  ResolvedImage,
+  CompleteFn,
+} from "./vision/types.js";
+
 // ── Image-tool orchestrator(供自定义图像工具复用)──────────────────────────────
 export {
   runImageTool,

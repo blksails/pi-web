@@ -254,6 +254,21 @@ export function buildResolutionAliases(): Record<string, string> {
         alias[`@earendil-works/${sibling}`] = dir;
       }
     }
+    // Subpath exports need explicit aliases: jiti's alias does *prefix*
+    // substitution, so `@earendil-works/pi-ai/compat` would become
+    // `<piAiDir>/compat` — a path that does not exist (the file lives under
+    // `dist/`), and the package's own `exports` map is never consulted for the
+    // rewritten specifier. Worse, `pi-ai`'s `exports["./compat"]` declares only
+    // an `import` condition, so even an unaliased CJS `require` would fail.
+    // Map the subpath straight at its built file. Without this, any agent entry
+    // that (transitively) imports `@earendil-works/pi-ai/compat` — e.g. via
+    // tool-kit's `visionExtension` — dies with
+    // `Cannot find module .../pi-ai/compat` at runner boot.
+    const piAiDir = join(realScope, "pi-ai");
+    const compatFile = join(piAiDir, "dist", "compat.js");
+    if (existsSync(compatFile)) {
+      alias["@earendil-works/pi-ai/compat"] = compatFile;
+    }
   }
   // `@blksails/pi-web-agent-kit` is a types-only workspace package that may not be a
   // declared dependency of the runner (so it is not symlinked into

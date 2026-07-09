@@ -7,10 +7,15 @@ Canvas(`aigc-canvas`)端到端示例:把 AIGC 生成/编辑图从「散落在对
 ## 装载
 
 ```ts
-extensions: [aigcExtension, canvasSurfaceExtension]
+extensions: [aigcExtension, visionExtension, canvasSurfaceExtension]
 ```
 
 - `aigcExtension`:`image_generation` / `image_edit` 工具(LLM 生成的图落 `att_`,触发源 ①)。
+- `visionExtension`:`image_vision` 工具 + `/img_vision` 命令(spec `image-vision-tool`)。
+  画廊里的图对 LLM 只是 `[attachment id=att_… …]` 文本标记 —— 读得到 id、**读不到像素**。
+  `image_vision({ image, question })` 取回字节、委派给一个支持图像输入的模型,返回文字结论,
+  于是 LLM 能「看见」自己生成的图(例如核对二创结果是否符合预期)。
+  视觉模型取自 `models.json` 中 `input` 含 `"image"` 且凭据可用者;主模型无须多模态。
 - `canvasSurfaceExtension`:`domain="canvas"` 的权威 surface。
   - **画廊 = attachment store 物化视图**:`hydrate()` 经上游 `attachment-tool-bridge` 的
     `listBySession()` 枚举当前会话图片附件 + `getMeta()` 读血缘重建;冷启/`sync` reconcile。

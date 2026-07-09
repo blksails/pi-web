@@ -4,12 +4,21 @@
 
 ## 它演示什么
 
-经 `extensions: [aigcExtension]` 装载（`image_generation` / `image_edit`），演示「生成 / 编辑图像 → 产物落库 → 回引用 → 富渲染」整链路：
+经 `extensions: [aigcExtension, visionExtension]` 装载（`image_generation` / `image_edit` / `image_vision`），
+演示「生成 / 编辑图像 → 产物落库 → 回引用 → 富渲染」整链路，以及**回看**已落库的图：
 
 | 场景 | 链路 |
 |---|---|
 | 文生图 | 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment store 落库 → 工具回 `att_<id>` 引用 |
 | 图编辑 | 用户上传图（主进程注入 `[attachment id=att_… …]` 引用）→ 模型把 att_id 抄进 `image_edit({ instruction, image })` → 编辑器解析输入附件为 data URI → provider 编辑 → 产物落库回引用 |
+| **回看** | 落库后的图在上下文里只剩 `att_` 文本标记（读得到 id、**读不到像素**）→ 模型把 att_id 抄进 `image_vision({ image, question })` → 取回字节 → 委派给一个支持图像输入的模型 → 返回文字结论 |
+
+于是「生成一张图 → 让 agent 描述它到底画了什么」这个闭环得以成立——在 `image_vision` 之前它做不到。
+用户也可以直接敲 `/img_vision <问题>` 看会话内最近一张图（结论经 `ctx.ui` 呈现，不进消息历史）。
+
+> 视觉模型来自 `~/.pi/agent/models.json` 中 `input` 含 `"image"` 且凭据可用的模型（无静态清单，
+> 新增即可选）；有交互界面时弹层让你选。**主模型无须支持图像输入** —— 识别被委派出去了。
+> 详见 [vision-agent](../vision-agent/)。
 
 要点：
 
