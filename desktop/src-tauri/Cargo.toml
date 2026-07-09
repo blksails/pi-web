@@ -30,6 +30,10 @@ url = "2"
 # 进程组信号（killpg）。tauri_plugin_shell 的 Command 不暴露进程组，
 # 其 kill() 触不到 pi runner 孙进程，故进程树收尾必须走 libc。
 libc = "0.2"
+# 捕获 SIGTERM/SIGINT 转为优雅退出。tao 不处理这些信号：进程会被直接终止，
+# 既不触发 RunEvent::ExitRequested 也不跑 Drop，导致 server 与 pi runner 成孤儿、端口不释放。
+# 黑盒 e2e（macOS 无 WebDriver）只能靠信号退出，故这是必需而非锦上添花。
+signal-hook = "0.3"
 
 [profile.release]
 # 体积优先：本壳无热点计算，换取更小的安装包（迁移动机之一）。

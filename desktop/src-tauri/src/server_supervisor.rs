@@ -126,12 +126,11 @@ impl ServerSupervisor {
         };
         self.port = Some(port);
 
-        let cwd = opts
-            .server_js
-            .parent()
+        // 子进程 cwd = 产物根（入口所在目录）。判据集中在 resolve_artifact，避免两处各算各的。
+        let cwd = crate::resolve_artifact::server_cwd(&opts.server_js)
             .map(Path::to_path_buf)
-            // 入口必须在产物根；无父目录属编程错误，退回当前目录不致命但会让 server 崩，
-            // 届时表现为 EarlyExit（带可读 stderr），而非静默错误。
+            // 入口无父目录属编程错误；退回当前目录不致命，server 会崩并表现为 EarlyExit
+            // （带可读 stderr），而非静默错误。
             .unwrap_or_else(|| PathBuf::from("."));
         let env = build_child_env(&opts.base_env, &opts.host, port, &opts.node_bin);
 

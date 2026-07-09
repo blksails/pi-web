@@ -613,6 +613,7 @@ commands.allow = ["pick_directory"]
 
 - `setup`：建窗 → 判模式 → dev 直接 navigate；否则解析路径 → `supervisor.start()` → 成功 navigate / 失败呈现错误。
 - `RunEvent::ExitRequested`：`api.prevent_exit()` 一次 → `supervisor.stop()` → 放行退出（4.1）。以布尔标志防重入。
+- **SIGTERM / SIGINT → `app.exit(0)`**（4.1、4.5）：★ 实现期实测发现 —— tao **不处理**这些信号，进程被内核直接终止，`ExitRequested` 与 `Drop` 均不执行，于是 server 及其 pi runner 孙进程成为孤儿并继续占用端口。又因 server 被刻意置为独立进程组组长（为了能整组收尾），它更不会随父进程一起被杀。macOS 无 WebDriver，黑盒 e2e **只能**经信号退出，故信号处理是必需路径而非可选加固。
 - `RunEvent::Reopen`（macOS）：无窗口时重开（1.6）。
 - 非 macOS 窗口全关 → `app.exit(0)`（1.7）。
 - `retry` / `quit` 两个 command 服务错误页（3.5、3.6）。**它们同样是应用自身的 command，必须在 `permissions/lifecycle.toml` 声明 `allow-retry` / `allow-quit` 并加入 capability**，否则错误页的按钮会被 ACL 拒（PoC 实证：未声明的自定义 command 报 `not allowed. Plugin not found`）。
