@@ -18,7 +18,7 @@
  *      PI_WEB_RUNTIME_ROOT 被误设成 $HOME，也碰不到 Documents/。
  */
 import { createHash, randomBytes } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, realpathSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -534,8 +534,28 @@ async function main(argv) {
   }
 }
 
+/**
+ * 入口守卫。
+ *
+ * ★ `process.argv[1]` 可能含符号链接（macOS 的 `/var` → `/private/var`、经符号链接安装的
+ *   `/Applications`、npm link 等），而 `import.meta.url` 恒为**已解析的真实路径**。直接比较
+ *   会不等 ⇒ `main()` 不执行 ⇒ CLI 模式静默输出空，桌面壳把它误判成 extract-failed。
+ *   必须先 realpath 再比。`bin/pi-web.mjs` 早有同款守卫，此处照做。
+ */
+function invokedAsMain() {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  let resolved = argv1;
+  try {
+    resolved = realpathSync(argv1);
+  } catch {
+    /* 路径不可解析时退回原值 */
+  }
+  return import.meta.url === pathToFileURL(resolved).href;
+}
+
 // 仅在作为程序入口执行时触发副作用；被 import 时保持纯净。
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (invokedAsMain()) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;
