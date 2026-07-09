@@ -374,7 +374,13 @@ type ScaffoldError =
   | { readonly code: "TEMPLATE_NOT_FOUND"; readonly name: string; readonly available: readonly string[] };
 
 interface ScaffoldWriter {
-  scaffold(req: ScaffoldRequest): Promise<Result<{ readonly createdAt: string }, ScaffoldError>>;
+  // 成功返回携带 absolutePath 与 nextStepHint：需求 2.11 要求输出生成物绝对路径与下一步提示，
+  // 而 ScaffoldWriter 不依赖 ProgressReporter（见其 Dependencies），故数据只能经返回值出。
+  // examplesRoot 由调用方解析后注入（见 TemplateCatalog 的同款约定）。
+  scaffold(
+    req: ScaffoldRequest,
+    examplesRoot: string,
+  ): Promise<Result<{ readonly absolutePath: string; readonly nextStepHint: string }, ScaffoldError>>;
 }
 ```
 - Preconditions: `templateName` 已由 `TemplateCatalog` 校验存在。

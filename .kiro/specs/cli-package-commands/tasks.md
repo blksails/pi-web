@@ -57,7 +57,7 @@
   - _Requirements: 2.4, 2.5, 2.6_
   - _Boundary: TemplateCatalog_
 
-- [ ] 3.2 实现骨架写入与身份重写
+- [x] 3.2 实现骨架写入与身份重写
   - 按包类型生成骨架；未指定包类型时以 agent 为默认
   - 写出的包清单**显式**包含包类型字段，不依赖清单格式的缺省值
   - 重写包名为用户提供的名称，移除模板自带的私有包标记，补齐 pi 生态用于发现包的关键字
@@ -346,3 +346,15 @@
   avatar→📦、description→""）只被合成 fixture 覆盖，真实模板树走不到。
 - **复核者做 mutation 测试时不得用 `git checkout -- <file>`**：本 spec 的实现文件多为未提交的新文件，
   checkout 会连实现一起抹掉（已发生过一次）。正确做法是 `cp` 到临时处备份、验完 `cp` 回来。
+- **`tsconfig.base.json` 没开 `noUnusedLocals`/`noUnusedParameters`**，死 import／未用变量**不会被 tsc 拦住**。
+  只有 IDE 的 LSP 会报。提交前留意（3.2 就混进过一个未使用的 `PiWebManifestSchema` import）。
+- `@blksails/pi-web-protocol` 可用**裸包名 import**，tsc 与 vitest 都能解析，无需新增 tsconfig paths 或
+  vitest alias（它已 pnpm 符号链接进 `node_modules` 且有规范 exports）。这与 `tool-kit`／`canvas-kit`
+  的子路径 exports 不同，后者必须显式登记 alias。
+- `scaffold()` 与 `listTemplates()` 均把 `examplesRoot` 作为**入参**（调用方解析后注入）。dev（仓库
+  `examples/`）与分发后（`dist/examples/`）的候选构造归 6.1 的 create 接线。
+- **可选加固（未做）**：`scaffold()` 写盘前可用 `PiWebManifestSchema` 自校验合成的清单以 fail-fast。
+  需求未要求，且会引入新错误码扩大 `ScaffoldError` 联合，故 3.2 未做。若模板自带的 `pi-web.json` 被改坏，
+  当前会原样拷出而不报错。
+- `template-catalog` 认定一个目录是模板的**必要条件是其 `package.json` 含 `pi-web` 字段**。写 fixture 时
+  覆盖 `package.json` 若丢了该字段，`resolveTemplate` 会静默报 `TEMPLATE_NOT_FOUND`。
