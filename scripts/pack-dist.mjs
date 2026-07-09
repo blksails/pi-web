@@ -278,6 +278,11 @@ export function packDist() {
   if (!existsSync(join(DIST, "server.mjs"))) {
     throw new Error("缺少 dist/server.mjs — 请先运行 scripts/build-server.mjs");
   }
+  // 子命令实现的第二构建产物(spec cli-package-commands 任务 1.1,Req 10.6),
+  // 与 server.mjs 同处产物根,由同一 scripts/build-server.mjs 产出。
+  if (!existsSync(join(DIST, "cli-commands.mjs"))) {
+    throw new Error("缺少 dist/cli-commands.mjs — 请先运行 scripts/build-server.mjs");
+  }
   if (!existsSync(join(DIST, "client", "index.html"))) {
     throw new Error("缺少 dist/client/index.html — 请先运行 vite build");
   }

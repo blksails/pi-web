@@ -230,6 +230,18 @@ export function distServerJs() {
 export const standaloneServerJs = distServerJs;
 
 /**
+ * 子命令实现产物的绝对路径(spec cli-package-commands 任务 1.1,Req 10.6)。
+ *
+ * 与 `distServerJs()` 同处**产物根**,同样尊重 `PI_WEB_DIST_DIR`。本任务只建立
+ * 「可被动态加载」的接缝:`main()` 对非 run 意图动态 `import()` 该产物并分派子命令
+ * 归任务 2.1,此处不接线、不改变既有 `run` 路径行为。
+ */
+export function distCliCommandsJs() {
+  const distDir = process.env.PI_WEB_DIST_DIR ?? "dist";
+  return join(PKG_ROOT, distDir, "cli-commands.mjs");
+}
+
+/**
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
  * @returns {Promise<number>} 子进程退出码
  */

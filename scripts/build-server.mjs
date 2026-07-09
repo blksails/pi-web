@@ -25,6 +25,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = resolve(process.env.PI_WEB_DIST ?? join(ROOT, "dist"));
 /** ★ 产物根,不是子目录。 */
 const OUT_FILE = join(OUT_DIR, "server.mjs");
+/**
+ * ★ 子命令实现入口,同样落在**产物根**(spec cli-package-commands 任务 1.1,Req 10.6)。
+ * 与 `OUT_FILE` 同级 —— `bin/pi-web.mjs` 对非 run 意图动态加载它时,理由与
+ * `server.mjs` 必须在产物根完全一致(见文件顶部注释)。
+ */
+const CLI_COMMANDS_OUT_FILE = join(OUT_DIR, "cli-commands.mjs");
 
 export const EXTERNAL = [
   "@earendil-works/pi-coding-agent",
@@ -66,13 +72,11 @@ const aliasPlugin = {
   },
 };
 
-export async function buildServer() {
-  rmSync(OUT_FILE, { force: true });
-  mkdirSync(OUT_DIR, { recursive: true });
-
-  const result = await esbuild.build({
-    entryPoints: [join(ROOT, "server", "index.ts")],
-    outfile: OUT_FILE,
+/** 两个入口共享的 esbuild 选项(alias/banner/external 等),仅 entryPoints/outfile 各异。 */
+function sharedBuildOptions(entry, outfile) {
+  return {
+    entryPoints: [entry],
+    outfile,
     bundle: true,
     platform: "node",
     format: "esm",
@@ -91,12 +95,40 @@ export async function buildServer() {
     },
     logLevel: "info",
     metafile: true,
-  });
+  };
+}
+
+export async function buildServer() {
+  rmSync(OUT_FILE, { force: true });
+  mkdirSync(OUT_DIR, { recursive: true });
+
+  const result = await esbuild.build(
+    sharedBuildOptions(join(ROOT, "server", "index.ts"), OUT_FILE),
+  );
 
   return { outfile: OUT_FILE, metafile: result.metafile };
 }
 
+/**
+ * 子命令实现入口的第二次构建(spec cli-package-commands 任务 1.1)。
+ * 本任务只建立构建接缝:`server/cli/index.ts` 目前只是最小骨架。
+ */
+export async function buildCliCommands() {
+  rmSync(CLI_COMMANDS_OUT_FILE, { force: true });
+  mkdirSync(OUT_DIR, { recursive: true });
+
+  const result = await esbuild.build(
+    sharedBuildOptions(join(ROOT, "server", "cli", "index.ts"), CLI_COMMANDS_OUT_FILE),
+  );
+
+  return { outfile: CLI_COMMANDS_OUT_FILE, metafile: result.metafile };
+}
+
+export { CLI_COMMANDS_OUT_FILE };
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const { outfile } = await buildServer();
   process.stdout.write(`[build-server] → ${outfile}\n`);
+  const { outfile: cliOutfile } = await buildCliCommands();
+  process.stdout.write(`[build-server] → ${cliOutfile}\n`);
 }
