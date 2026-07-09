@@ -88,7 +88,7 @@
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
   - _Boundary: LocalSourceRegistry_
 
-- [ ] 4.2 (P) 实现来源形态判别与直连来源校验
+- [x] 4.2 (P) 实现来源形态判别与直连来源校验
   - 依据实参形态判别其为直接来源还是注册表包标识；判别规则在子命令帮助中说明
   - 直接来源经既有的来源白名单纯函数校验；来源类型不被允许或版本/引用未固定时拒绝
   - 拒绝时不下载或执行任何第三方代码
@@ -119,6 +119,12 @@
   - 两条通道实现同一安装端口，由包类型选择，调用方不感知通道差异
   - 未指定作用域时以用户级作用域安装；显式指定时以项目级作用域安装
   - 项目级作用域下项目未被信任时，输出含信任指引的可操作错误并以非零退出码结束，不安装任何内容
+  - **必须把 `PI_WEB_EXT_ALLOW_NPM` 接进传给 `resolveSource` 的白名单配置**（映射为 `allowAnyNpm`）。
+    否则 `DEFAULT_ALLOWLIST.npmScopes` 只含 `@pi-web`/`@earendil-works`，CLI **装不了任何第三方 npm 包**。
+    4.2 只放开了 `allowLocal` —— 本地路径信任（读一个你已控制的目录）与供应链信任（按名字从网络抓包）
+    是两类风险，不可用同一条「CLI 用户即 admin」的理由一并放开
+  - **npm/git 来源的 `kind` 在下载前是占位值 `"agent"`**（4.2 无从得知真实值），分派前必须由通道在解包后
+    重新判定，**不得直接信任 `ResolvedSource.kind`**；只有本地路径来源的 `kind` 是真实读自 `pi-web.json`
   - 观察态：同一条安装命令对 agent 与 plugin 两类包分别落到各自目标位置，且调用方代码路径相同
   - _Requirements: 3.1, 3.2, 3.3_
   - _Depends: 4.3, 4.4_
@@ -398,3 +404,33 @@
 - **坏 JSON 的读写不对称是有意的**：只读 provider 对坏 `sources.json` 静默返回 `[]`（无副作用）；
   写路径报 `REGISTRY_FILE_CORRUPT` 且**不覆盖**（避免不可逆地毁掉用户手写的文件）。后果是文件损坏时
   源列表静默变空、而登记被拒——接线任务的错误文案应把这层关系讲清楚。
+- **`checkAllowlist()` 不识别无前缀的路径/host 简写语法**：它只解析 `npm:`/`git:`/`local:` 前缀、
+  URI 协议头（`scheme://`）、scp 简写（`user@host:path`）——裸文件系统路径（`./x`、`/abs`、`~/x`）
+  与裸 git host 简写（`github.com/u/r`，无前缀）都不在其解析范围内，会落入"unrecognized source scheme"
+  拒绝分支。任务 4.2 的 `SourceResolver` 在调用它之前，对文件系统路径形态的直连实参做了一层归一化
+  （展开 `~`、相对路径相对 `cwd` 绝对化、包一层 `local:<绝对路径>` 前缀）；但对裸 host 简写形态
+  （命中 8.1 判别规则第 5 条、却没有 `git:`/协议头前缀）目前**原样传入**，会被 `checkAllowlist`
+  拒绝——这是已知覆盖缺口而非 bug，后续任务若要支持这种形态，需在 `SourceResolver` 里再补一层到
+  `git:<host>/<repoPath>@<ref>` 的归一化，而不是修改 `checkAllowlist` 本身（它是只读的既有纯函数，
+  不在本任务边界内）。
+- **`DEFAULT_ALLOWLIST.allowLocal` 是 Web 多用户面的默认值（`false`），CLI 场景需要另一份配置**：
+  CLI 单用户本地进程的信任模型与之不同（调用者本就等价于本机管理员，与 design.md「本地 CLI 用户
+  本就是 admin」一致）。任务 4.2 新增 `server/cli/install/source-resolver.ts` 导出的 `CLI_ALLOWLIST
+  = { ...DEFAULT_ALLOWLIST, allowLocal: true }` 作为 `resolveSource()` 的默认配置——只放开本地路径
+  这一项，不放宽 npm scope / git host 白名单或版本固定。后续任务（4.3/4.4/6.1 接线 `install` 子命令）
+  应复用这份 `CLI_ALLOWLIST`，不要重新构造一份或改用 `DEFAULT_ALLOWLIST`（否则本地 agent 目录安装
+  会被无声拒绝）。
+- **`ResolvedSource.kind`（design.md 的 `via: "direct"` 分支）在 npm/git 来源未下载前无法确定**——
+  design 对此没有说明，是一个缺口。任务 4.2 的裁断：本地路径读取目标目录的 `pi-web.json#kind`
+  （用 `PiWebManifestSchema` 校验，缺失/非法时默认 `"agent"`）；npm/git 来源暂以 `"agent"` 占位，
+  真实值须在下载解包后由 `AgentInstaller`/`PluginInstaller`（任务 4.3/4.4）重新判定并覆盖，
+  不能把 `SourceResolver` 对 npm/git 给出的 `kind` 当最终依据。
+- **`resolveSource()` 的注册表分支只是占位**：判别为「注册表包标识」的实参返回
+  `{ code: "REGISTRY_NOT_IMPLEMENTED", spec }`，不是 design.md 描述的 `via: "registry"` 成功分支
+  （那个分支依赖 `RegistryPort`/`@pi-clouds/*`，归任务 9.1、Wave 2，阻塞跨仓）。任务 9.1 接线时
+  应替换这个占位分支，同时补齐 `ResolveError` 联合里 design.md 已定义、本任务未用到的
+  `SIGNATURE_UNTRUSTED`/`REGISTRY_UNREACHABLE`/`SOURCE_NOT_FOUND` 三个错误码。
+- **8.1 判别规则的「host 简写 vs 裸标识」区分点是首段含 `.`**：`github.com/u/r`（首段 `github.com`
+  含点，判直连）与 `org/name`（首段 `org` 不含点，判注册表标识）都含 `/`，仅靠"含不含 `/`"无法
+  区分——`classifySourceForm()` 用「首个 `/` 之前的片段是否含 `.`」这条启发式规则。后续新增判别
+  分支（如支持更多 VCS host）时应保持这条规则的位置（在文件系统路径判定之后，兜底判注册表标识之前）。

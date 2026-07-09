@@ -195,7 +195,14 @@
 
 #### Acceptance Criteria
 
-1. The pi-web CLI shall 依据实参的形态判别其为「直接来源」还是「注册表包标识」：带来源类型前缀、协议头或文件系统路径形态的实参视为直接来源，其余视为注册表包标识；该判别规则 shall 在子命令帮助中说明。
+1. The pi-web CLI shall 依据实参的形态判别其为「直接来源」还是「注册表包标识」：带来源类型前缀、协议头、SSH 简写、文件系统路径形态、或首段形似主机名的实参视为直接来源，其余视为注册表包标识；该判别规则 shall 在子命令帮助中说明。
+   > **形态清单（实现于任务 4.2，据其复核结论补全至此）**：来源类型前缀（`npm:` / `git:` / `local:`）、
+   > 协议头（`https://` / `ssh://` / …）、SSH 简写（`git@host:path`）、文件系统路径（`./` / `../` / `/` / `~` / `C:\`）、
+   > 首段含 `.` 的主机名简写（`github.com/u/r`）→ **直接来源**；其余（`org/name`、`org/name@channel`、`bare-name`）→ **注册表包标识**。
+   >
+   > 首段含 `.` 这一条用于区分 `github.com/u/r`（git 简写）与 `org/name`（注册表标识），二者都含 `/`。
+   > 注意：无前缀的主机名简写虽被判为直接来源，但会被来源白名单拒绝——这与 pi 的语义一致
+   > （`pi` 的 `docs/packages.md`：无 `git:` 前缀时只接受协议 URL）。
 2. When 用户执行 `pi-web install <source>` 且 `<source>` 被判别为直接来源，the pi-web CLI shall 直接安装该来源，**不联系注册表**。
 3. When 用户执行 `pi-web install <name>` 且 `<name>` 被判别为注册表包标识，the pi-web CLI shall 先向注册表解析该标识，得到其来源与已签名的发布清单。
 4. When 从注册表解析到发布清单，the pi-web CLI shall 用该包发布者的启用公钥在本地验证清单签名，验证通过后方可继续安装。
