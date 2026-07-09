@@ -13,8 +13,10 @@
  *   4. 只读    —— runtimeRoot 不可写 ⇒ runtime-root-unwritable
  *   5. 磁盘满  —— 真实的小容量磁盘映像 ⇒ disk-full，且 staging 被清除
  *
- * 用例 5 仅 macOS（`hdiutil`）。其他平台无可移植的 ENOSPC 模拟手段，**如实跳过并登记为盲区**，
- * 不以「代码看起来会处理」冒充验证。
+ * 平台差异（**如实跳过并登记为盲区，不以「代码看起来会处理」冒充验证**）：
+ *   - 用例 4（只读根）仅 POSIX：`chmod 555` 在 Windows 上对目录是 no-op，解包会照常成功，
+ *     那条断言必然假失败——若强行保留，等于在 Windows 上测了个反向结论。
+ *   - 用例 5（磁盘满）仅 macOS：其他平台无可移植的 ENOSPC 模拟手段。
  *
  * 前置：`pnpm build:dist`。
  */
@@ -147,8 +149,11 @@ async function caseCorruptPayload() {
   }
 }
 
-// ───────────────── 4. 只读运行时根 ─────────────────
+// ───────────────── 4. 只读运行时根（仅 POSIX）─────────────────
 async function caseReadOnlyRoot() {
+  if (process.platform === "win32") {
+    return skip("只读运行时根 → runtime-root-unwritable", "Windows 上 chmod 对目录是 no-op");
+  }
   const runtimeRoot = tmp("pi-web-readonly-");
   try {
     chmodSync(runtimeRoot, 0o555);
