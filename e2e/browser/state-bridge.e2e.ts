@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * 状态注入桥(state-injection-bridge)浏览器级 e2e —— 双向闭环的「人侧」真实渲染。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。
  * state-bridge-agent 的 `.pi/web` 在 panelRight 槽渲染共享状态 `count` + 写回按钮:
  *  - 下行(agent→UI):prompt(含 `state-bridge`)→ stub 发 piweb_state(count=1)→
  *    SSE control:"state" 帧 → ControlStore.states → 面板显示 1。

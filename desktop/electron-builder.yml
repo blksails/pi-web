@@ -15,7 +15,7 @@ directories:
 files:
   - dist/**
   - package.json
-# standalone 产物(由根 `pnpm build:cli` 预先产出于 ../.next-cli/standalone)整目录嵌入资源目录。
+# 自包含产物(由根 `pnpm build:dist` 预先产出于 ../dist)整目录嵌入资源目录。
 # ⚠ electron-builder(≥v20.15.2)按**目录名** `node_modules` 特殊处理:只收打包 app 自身 package.json
 # 的生产依赖,故 standalone 里的私有 node_modules 会被复制成**空** → server.js `require('next')`
 # 崩溃(MODULE_NOT_FOUND)、打包 app 一闪而退。修:**显式**再列一条直接指向该 node_modules 目录的
@@ -39,7 +39,7 @@ mac:
   gatekeeperAssess: false
 # Windows/Linux target(spec pi-web-desktop M3 分发,GitHub Actions release 矩阵)。
 # ⚠ 这两平台的桌面打包尚未在本 spec 端到端验证(仅 macOS 经 e2e 验证);配置按 electron-builder
-# 惯例给出,需真实 CI 跑通后方可视为达标。standalone 产物在 Linux 一次构建(next build 在
+# 惯例给出,需真实 CI 跑通后方可视为达标。自包含产物在 Linux 一次构建(历史上 next build 在
 # Windows 有 EPERM),经 pack-dist 的 dereference 拷贝已是无符号链接实体树,可跨平台
 # 解压后由各 OS 的 electron-builder 打包(与 cli-e2e.yml 的构建/运行分离同构)。
 win:

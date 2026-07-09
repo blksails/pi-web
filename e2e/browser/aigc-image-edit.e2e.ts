@@ -9,11 +9,11 @@
  * 而失败;修复后应正常出图。
  *
  * 运行(隔离 build + external server,见 memory pi-web-e2e-isolated-build):
- *   NEXT_DIST_DIR=.next-e2e pnpm build            # 或复用已有 .next-e2e
+ *   pnpm build:dist            # 或复用已有 dist/
  *   NEWAPI_API_KEY=… PI_WEB_STUB_AGENT=1 \
  *     PI_WEB_STUB_AGENT_PATH=./e2e/fixtures/aigc-image-edit-stub.mjs \
  *     SESSION_STORE=fs SESSION_STORE_ROOT=$FS \
- *     NEXT_DIST_DIR=.next-e2e next start -p 3100 &
+ *     PORT=3100 node dist/server.mjs &
  *   PI_WEB_E2E_EXTERNAL_SERVER=1 NEWAPI_API_KEY=… \
  *     pnpm e2e aigc-image-edit
  *

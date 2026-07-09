@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * session-snapshot-authority browser e2e(Req 5.2, 7.4)。
  *
- * Real browser → real Next server(PI_WEB_STUB_AGENT=1,snapshotAuthority 生产默认开)→
+ * Real browser → real pi-web server(PI_WEB_STUB_AGENT=1,snapshotAuthority 生产默认开)→
  * 真实 handler/session/SSE。验证**权威 busy 抵达 DOM**:
  *  - 发 prompt → 轮次开始 → data-pi-busy="true"(来自服务端 session-state,非 useChat.status 推断)
  *  - 应答权限对话 → 轮次结束 → data-pi-busy="false"(不卡死)

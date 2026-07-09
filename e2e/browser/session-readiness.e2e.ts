@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * 会话就绪握手 browser e2e(spec session-readiness-handshake, Task 5.2)。
  *
- * Real browser → real Next server(PI_WEB_STUB_AGENT=1,readinessHandshake 默认开)→ 真实
+ * Real browser → real pi-web server(PI_WEB_STUB_AGENT=1,readinessHandshake 默认开)→ 真实
  * handler/session/SSE。验证门控全链路在真实浏览器中:
  *  - 选源后会话就绪门控开启,就绪后发送按钮启用(无 false error 指示)
  *  - 就绪后发送 prompt 收到流式回复(证明 ready→发送的闭环未被门控破坏)

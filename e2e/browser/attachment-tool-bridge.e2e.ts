@@ -4,8 +4,8 @@ import { test, expect } from "@playwright/test";
  * attachment-tool-bridge browser e2e — full chain (task 6.2; Req 7.2, 10.2,
  * 10.3, 10.4).
  *
- * Drives the FULL closed loop against the REAL Next server in the isolated e2e
- * build (NEXT_DIST_DIR=.next-e2e) + external-server mode, with a deterministic,
+ * Drives the FULL closed loop against the REAL pi-web server in the isolated e2e
+ * build (PI_WEB_DIST_DIR) + external-server mode, with a deterministic,
  * LLM-free stub fixture (PI_WEB_STUB_AGENT_PATH → attachment-tool-bridge-stub.mjs)
  * that runs the GENUINE attachment tool-execution chain (subprocess store
  * resolve → transform → putOutput → reference reflow → real afterToolCall base64
@@ -17,7 +17,7 @@ import { test, expect } from "@playwright/test";
  *  - 10.2 — 上传 → 发消息(引用)→ tool 以公开 id resolve → 执行 → 产出落库 →
  *           引用回流 → 前端经分发 URL 展示 的完整浏览器链路。
  *  - 7.2  — 产出附件的公开 id 与上传 id 同一空间,可被下一轮消息再次引用(回环 B)。
- *  - 10.3 — 在隔离构建产物(.next-e2e)下运行,不污染开发态 .next。
+ *  - 10.3 — 在隔离构建产物(dist/)下运行,不污染开发态。
  *  - 10.4 — 以新鲜运行证据证明。
  *
  * Assertions:

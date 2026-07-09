@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * canvas-plugin-stickers 浏览器级 e2e —— Canvas 插件双端范例(canvas-plugins-m3 · R7.5)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。贴纸 source
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。贴纸 source
  * (`canvas-plugin-stickers`)是 domain=canvas 的权威 surface 范例:`.pi/web` 复用
  * `CanvasLauncher`/`CanvasPanel`,并经 `canvasPlugins:[stickersBundle]`(车道①)贡献
  * 贴纸图层/工具 + 风格迁移动作。构建期集成(lib/app/webext-registry)静态 import 其

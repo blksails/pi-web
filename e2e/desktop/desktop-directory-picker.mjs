@@ -12,7 +12,7 @@
  * 原生对话框无法被 Playwright 点选,故用 `app.evaluate` 在主进程猴补 `dialog.showOpenDialog`
  * 返回固定临时目录(标准做法,零生产测试钩子)。
  *
- * 前置:`pnpm build:cli`(standalone) + `pnpm --filter @blksails/pi-web-desktop build`(desktop dist)。
+ * 前置:`pnpm build:dist` + `pnpm --filter @blksails/pi-web-desktop build`(desktop dist)。
  * 跑法:`node e2e/desktop/desktop-directory-picker.mjs`。
  */
 import { createRequire } from "node:module";
@@ -23,8 +23,8 @@ import { fileURLToPath } from "node:url";
 import { _electron as electron } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
-const STANDALONE_SERVER = join(ROOT, DIST, "standalone", "server.js");
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
+const DIST_SERVER = join(ROOT, DIST, "server.mjs");
 const DESKTOP_MAIN = join(ROOT, "desktop", "dist", "main.js");
 const DESKTOP_PORT = 34811;
 const EVIDENCE_DIR = join(ROOT, ".kiro/specs/desktop-directory-picker/evidence");
@@ -37,8 +37,8 @@ const check = (name, ok) => {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  if (!existsSync(STANDALONE_SERVER)) {
-    console.error(`产物缺失:${STANDALONE_SERVER}\n请先 \`pnpm build:cli\``);
+  if (!existsSync(DIST_SERVER)) {
+    console.error(`产物缺失:${DIST_SERVER}\n请先 \`pnpm build:dist\``);
     process.exit(1);
   }
   if (!existsSync(DESKTOP_MAIN)) {
@@ -61,13 +61,13 @@ async function main() {
       cwd: ROOT,
       env: {
         ...process.env,
-        PI_WEB_DESKTOP_SERVER_JS: STANDALONE_SERVER,
+        PI_WEB_DESKTOP_SERVER_JS: DIST_SERVER,
         PI_WEB_DESKTOP_PORT: String(DESKTOP_PORT),
         PI_WEB_AGENT_DIR: agentDir,
         // 关键:不设 PI_WEB_DEFAULT_SOURCE → 停在选源页(展示 AgentSourcePicker)。
         PI_WEB_DEFAULT_CWD: ROOT,
         ELECTRON_RUN_AS_NODE: undefined,
-        NEXT_DIST_DIR: DIST,
+        PI_WEB_DIST_DIR: DIST,
       },
     });
 

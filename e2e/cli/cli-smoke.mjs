@@ -77,7 +77,7 @@ async function main() {
   const cli = spawn("node", [BIN, "./examples/hello-agent", "--stub", "-p", String(PORT)], {
     cwd: ROOT,
     // 强开日志:建会话 500 时 handler 默认不打印根因,开日志才能看到服务端堆栈(诊断跨 OS)。
-    env: { ...process.env, NEXT_DIST_DIR: DIST, PI_WEB_LOG_ENABLED: "1" },
+    env: { ...process.env, PI_WEB_DIST_DIR: DIST, PI_WEB_LOG_ENABLED: "1" },
     stdio: "inherit",
   });
   let browser;

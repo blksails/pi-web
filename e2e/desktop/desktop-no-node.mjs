@@ -9,7 +9,7 @@
  *
  * 并验证退出收尾(Req 6.1/9.4):关闭应用后本地端口释放(server 进程树已被收尾)。
  *
- * 前置:`pnpm build:cli` + `pnpm --filter @blksails/pi-web-desktop build`。
+ * 前置:`pnpm build:dist` + `pnpm --filter @blksails/pi-web-desktop build`。
  * 跑法:`node e2e/desktop/desktop-no-node.mjs`(或 `pnpm e2e:desktop:nonode`)。
  */
 import { createServer } from "node:http";
@@ -118,7 +118,7 @@ function makeAgentDir(mockPort) {
 
 async function main() {
   if (!existsSync(DIST_SERVER) || !existsSync(DESKTOP_MAIN)) {
-    console.error("产物缺失,请先 `pnpm build:cli` 与 `pnpm --filter @blksails/pi-web-desktop build`");
+    console.error("产物缺失,请先 `pnpm build:dist` 与 `pnpm --filter @blksails/pi-web-desktop build`");
     process.exit(1);
   }
 
@@ -156,7 +156,7 @@ async function main() {
         PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),
         PI_WEB_DEFAULT_CWD: ROOT,
         ELECTRON_RUN_AS_NODE: undefined,
-        NEXT_DIST_DIR: DIST,
+        PI_WEB_DIST_DIR: DIST,
       },
     });
 

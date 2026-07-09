@@ -14,7 +14,7 @@
  *
  * 跨机/跨 OS 的权威验证仍是 CI 矩阵(Linux 构建 → mac/win 运行);本测试是等价的**本地快反**守卫。
  *
- * 前置:`pnpm build:cli`。跑法:`pnpm e2e:cli:reloc`。
+ * 前置:`pnpm build:dist`。跑法:`pnpm e2e:cli:reloc`。
  */
 import { spawn } from "node:child_process";
 import { createServer, get as httpGet } from "node:http";
@@ -116,7 +116,7 @@ function makeAgentDir(mockPort) {
 async function main() {
   const origDist = join(ROOT, DIST);
   if (!existsSync(join(origDist, "server.mjs"))) {
-    console.error("产物缺失,请先 `pnpm build:cli`");
+    console.error("产物缺失,请先 `pnpm build:dist`");
     process.exit(1);
   }
 

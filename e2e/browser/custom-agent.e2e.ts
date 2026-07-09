@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * Full-loop custom-agent e2e (MVP acceptance).
  *
- * Real browser → real Next server (PI_WEB_STUB_AGENT=1) → real handler/session/
+ * Real browser → real pi-web server (PI_WEB_STUB_AGENT=1) → real handler/session/
  * SSE chain. Picks the hello-agent source, prompts, and asserts incremental
  * streamed markdown, a tool card, a collapsible reasoning block, and the
  * inline-interaction closed loop (answer → card resolves to a trace → agent continues).

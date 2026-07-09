@@ -136,7 +136,7 @@ async function main() {
         PI_WEB_DEFAULT_CWD: ROOT,
         // 主进程保持 GUI:显式确保不带 run-as-node(supervisor 只给 server 子进程注入)。
         ELECTRON_RUN_AS_NODE: undefined,
-        NEXT_DIST_DIR: DIST,
+        PI_WEB_DIST_DIR: DIST,
       },
     });
 

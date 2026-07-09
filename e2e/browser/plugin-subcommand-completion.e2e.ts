@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * plugin-subcommand-completion 浏览器 e2e — /plugin 子命令/参数分阶段补全。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。会话源用 `./examples`
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。会话源用 `./examples`
  * (general CLI 模式),其 cwd 下含多个可作为 install local: 源的子目录(各带 index.ts)。
  *
  * 覆盖(.kiro/specs/plugin-subcommand-completion):

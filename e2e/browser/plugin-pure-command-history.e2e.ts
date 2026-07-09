@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * registerCommand 扩展命令 = 动作:无气泡、不进历史(plugin-system-unification R15)。
  *
- * 真实浏览器 → 真实 Next server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
+ * 真实浏览器 → 真实 pi-web server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
  * registerCommand 命令(`/review`,只经 ctx.ui 反馈、不触发对话轮)是**动作**而非对话:前端对 source=
  * "extension" 命令 fire-and-forget 投递(不经 useChat)——**不渲染用户气泡、不进消息历史**;反馈仅靠
  * ctx.ui(notify 经临时控制流渲染)。冷恢复后转录区无任何命令痕迹。

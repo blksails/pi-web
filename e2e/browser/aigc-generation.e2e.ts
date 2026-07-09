@@ -5,8 +5,8 @@
  * To run it you need:
  *   - DASHSCOPE_API_KEY set to a valid key (for real generation tests)
  *   - pi auth configured (for the agent session)
- *   - The isolated e2e build running: NEXT_DIST_DIR=.next-e2e pnpm next build
- *   - An external server started against .next-e2e
+ *   - The isolated e2e build running: pnpm build:dist
+ *   - An external server started against dist/
  *
  * Without real credentials, this file verifies:
  *   - examples/aigc-agent source loads and a session can be started

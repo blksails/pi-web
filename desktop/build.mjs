@@ -2,7 +2,7 @@
  * 桌面壳构建脚本(spec pi-web-desktop task 1.3)。
  *
  * 用 esbuild 把主进程与 preload 打成自包含 CJS 产物(dist/):关键在于**构建期内联**从
- * `bin/pi-web.mjs` 复用的纯函数(buildEnv/findFreePort/waitForReady/standaloneServerJs),
+ * `bin/pi-web.mjs` 复用的纯函数(buildEnv/findFreePort/waitForReady/distServerJs),
  * 使打包态(Electron app)无需在运行时 import 仓库根脚本即可运行。
  *
  * - `electron` 外置(运行时由 Electron 提供,不打进 bundle)。
