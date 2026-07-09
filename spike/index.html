@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>pi-web Vite spike — webext loader</title>
+    <!-- 单例 import map:须在任何代码 webext 动态 import 前就位。
+         Next 版由 app/layout.tsx 经 SSR 注入 <head>;SPA 下写死在 index.html 即可,
+         内容与 lib/app/webext-singletons.ts 的 WEBEXT_IMPORT_MAP 完全一致。 -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/api/webext/singletons/react",
+          "react/jsx-runtime": "/api/webext/singletons/react-jsx-runtime",
+          "react-dom": "/api/webext/singletons/react-dom",
+          "@blksails/pi-web-kit": "/api/webext/singletons/webkit"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="status" data-testid="status" data-state="pending">pending</div>
+    <div id="ext-mount" data-testid="ext-mount"></div>
+    <pre id="diag" data-testid="diag"></pre>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
