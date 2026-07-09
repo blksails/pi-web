@@ -58,15 +58,21 @@ impl ServerStartOptions {
 
 /// 子进程环境中必须**剥除**的键。
 ///
-/// - `PI_WEB_AGENT_DIR`：注入它会使会话脱离 `~/.pi/agent`，不再与 CLI 共享（Req 5.5）。
-/// - `ELECTRON_RUN_AS_NODE`：Electron 时代的遗留，Tauri 下无意义。
-pub const STRIPPED_ENV_KEYS: [&str; 2] = ["PI_WEB_AGENT_DIR", "ELECTRON_RUN_AS_NODE"];
+/// `ELECTRON_RUN_AS_NODE` 是 Electron 时代的遗留，Tauri 下无意义且可能干扰随包 node。
+///
+/// ★ `PI_WEB_AGENT_DIR` **不在此列**：Req 5.5 要求的是「桌面壳自己不注入 agent 目录覆盖」，
+///   而非「剥掉用户显式设置的环境变量」。Electron 侧 `buildEnv` 以 `{...process.env}` 起手、
+///   仅在 `opts.agentDir` 存在时才写入该键——外部（用户或 e2e）显式设置的值是被继承的。
+///   剥除它会破坏行为等价，也会使 e2e 无法把 agent 指向 mock 目录。
+pub const STRIPPED_ENV_KEYS: [&str; 1] = ["ELECTRON_RUN_AS_NODE"];
 
 /// 组装子进程环境的**覆盖项**（不含继承自父进程的部分）。
 ///
 /// ★ 子进程**继承**父进程环境（`HOME`/`PATH` 等是 server 与 pi runner 定位
-///   `~/.pi/agent`、解析工具链所必需的），本函数只产出要覆盖/新增的键，
+///   `~/.pi/agent`、解析工具链所必需的），本函数只产出要覆盖/新增的键；
 ///   要剥除的键见 `STRIPPED_ENV_KEYS`，由 spawn 处 `env_remove` 落实。
+///
+/// ★ **绝不写入 `PI_WEB_AGENT_DIR`**（Req 5.5）：使会话默认落 `~/.pi/agent` 与 CLI 共享。
 pub fn build_child_env(
     base_env: &BTreeMap<String, String>,
     host: &str,
@@ -83,6 +89,10 @@ pub fn build_child_env(
     env.insert(
         "PI_WEB_NODE_BIN".into(),
         node_bin.to_string_lossy().into_owned(),
+    );
+    debug_assert!(
+        !env.contains_key("PI_WEB_AGENT_DIR") || base_env.contains_key("PI_WEB_AGENT_DIR"),
+        "桌面壳不得自行注入 PI_WEB_AGENT_DIR"
     );
     env
 }
@@ -349,22 +359,39 @@ mod tests {
     }
 
     #[test]
-    fn child_env_never_injects_agent_dir() {
-        // Req 5.5：会话须落 ~/.pi/agent 与 CLI 共享；即便 base_env 里有也要剥掉。
+    fn child_env_never_generates_agent_dir() {
+        // Req 5.5：桌面壳**自己**不注入 agentDir → 会话默认落 ~/.pi/agent 与 CLI 共享。
+        let base = BTreeMap::new();
+        let env = build_child_env(&base, "127.0.0.1", 1, Path::new("/n"));
+        assert!(!env.contains_key("PI_WEB_AGENT_DIR"), "壳不得自行生成 agentDir");
+    }
+
+    #[test]
+    fn child_env_preserves_externally_set_agent_dir() {
+        // 但用户/e2e **显式设置**的 agentDir 必须被继承 —— Electron 侧 buildEnv 以
+        // `{...process.env}` 起手，剥掉它会破坏行为等价，也会让 e2e 无法指向 mock agent 目录。
         let mut base = BTreeMap::new();
-        base.insert("PI_WEB_AGENT_DIR".into(), "/tmp/should-be-dropped".into());
+        base.insert("PI_WEB_AGENT_DIR".into(), "/tmp/e2e-agent".into());
+        let env = build_child_env(&base, "127.0.0.1", 1, Path::new("/n"));
+        assert_eq!(env.get("PI_WEB_AGENT_DIR").map(String::as_str), Some("/tmp/e2e-agent"));
+    }
+
+    #[test]
+    fn child_env_strips_electron_leftover() {
+        let mut base = BTreeMap::new();
         base.insert("ELECTRON_RUN_AS_NODE".into(), "1".into());
         let env = build_child_env(&base, "127.0.0.1", 1, Path::new("/n"));
-        assert!(!env.contains_key("PI_WEB_AGENT_DIR"), "绝不可注入 agentDir");
         assert!(!env.contains_key("ELECTRON_RUN_AS_NODE"), "Tauri 下无意义，应剥除");
     }
 
     #[test]
-    fn spawned_child_inherits_home_and_never_sees_agent_dir() {
+    fn spawned_child_inherits_home_and_gets_node_bin() {
         // 纯函数测不到「子进程实际收到什么」。此处让子进程把 env 快照写回 stderr，
         // 经 EarlyExit 的 stderr_tail 取回断言。
-        // 覆盖两件事：① 继承父进程 HOME（server 与 pi runner 靠它定位 ~/.pi/agent）
-        //            ② PI_WEB_AGENT_DIR 即便存在于 base_env 也不得下达（Req 5.5）
+        // 覆盖三件事：
+        //   ① 继承父进程 HOME（server 与 pi runner 靠它定位 ~/.pi/agent）
+        //   ② 未显式设置时子进程看不到 PI_WEB_AGENT_DIR（壳不自行生成，Req 5.5）
+        //   ③ PI_WEB_NODE_BIN 被下达（供 pi runner 孙进程复用随包 node，Req 5.3）
         let script = write_script(
             "envsnap",
             "process.stderr.write('HOME_SET=' + (process.env.HOME || process.env.USERPROFILE ? '1' : '0') + '\\n');\
@@ -374,17 +401,24 @@ mod tests {
         );
         let mut sup = ServerSupervisor::new();
         let mut opts = ServerStartOptions::new(script, node_bin(), "127.0.0.1".into(), 45270);
-        opts.base_env
-            .insert("PI_WEB_AGENT_DIR".into(), "/tmp/must-not-leak".into());
         opts.ready_timeout_ms = 10_000;
 
-        match sup.start(opts) {
+        // 确保父进程环境里也没有它，否则会被继承（这正是本测试要区分的两种情形）。
+        let saved = std::env::var("PI_WEB_AGENT_DIR").ok();
+        std::env::remove_var("PI_WEB_AGENT_DIR");
+
+        let outcome = sup.start(opts);
+        if let Some(v) = saved {
+            std::env::set_var("PI_WEB_AGENT_DIR", v);
+        }
+
+        match outcome {
             Err(ServerStartError::EarlyExit { code, stderr_tail }) => {
                 assert_eq!(code, Some(7));
                 assert!(stderr_tail.contains("HOME_SET=1"), "子进程应继承 HOME: {stderr_tail}");
                 assert!(
                     stderr_tail.contains("AGENT_DIR=unset"),
-                    "PI_WEB_AGENT_DIR 绝不可下达: {stderr_tail}"
+                    "壳不得自行生成 PI_WEB_AGENT_DIR: {stderr_tail}"
                 );
                 assert!(stderr_tail.contains("NODE_BIN=node"), "应下达 PI_WEB_NODE_BIN: {stderr_tail}");
             }

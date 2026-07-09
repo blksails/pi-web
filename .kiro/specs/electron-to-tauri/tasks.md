@@ -138,25 +138,27 @@
   - _Requirements: 3.1, 3.5, 3.6_
   - _Boundary: desktop/src-tauri/src/main.rs, desktop/src-tauri/frontend/index.html, desktop/src-tauri/permissions/lifecycle.toml, desktop/src-tauri/capabilities/default.json_
 
-- [ ] 4.4 搭建黑盒 e2e 共用基础设施与一次性前提
+- [x] 4.4 搭建黑盒 e2e 共用基础设施与一次性前提
   - 新建 `e2e/desktop/shared.mjs`：起 mock OpenAI provider（本地 SSE，回固定 token）、建临时 agent 目录（默认模型指向 mock）、启动桌面二进制、探测其拉起的回环端点、经 HTTP API 完成一次真实会话、断言 mock provider 被调用、端口释放探测、进程树断言、清理
   - **本任务一次性备齐 4.5–4.7 并行组的全部共享前提**，使并行组内无人再写共享资源：
     - 断言自包含产物 `dist/server.mjs` 存在（由 `pnpm build:dist` 产出），缺失时打印该命令并非零退出。该产物不由本 spec 拥有，三条 e2e 只读消费
     - 取本机 triple 的 sidecar（`pnpm desktop:sidecar`），并将其**拷到未打包可执行同目录**（`target/debug/`）。unpackaged 模式下 `resolve_artifact` 同样从可执行同目录取 node，故 4.5/4.6 与 4.7 一样需要它就位；`binaries/` 是 gitignored，干净检出下为空
   - 不依赖 Playwright `_electron`（Tauri 下无等价物），全部经进程与 HTTP 观察
+  - ★**实现期实测发现**：孤儿进程检查**不可用** `pgrep -f <子串>` —— 它按命令行子串匹配，会命中任何命令行里碰巧含该串的进程（实测命中了跑 e2e 的 shell 自己，造成假阳性）。须按**可执行文件绝对路径前缀**匹配
+  - ★**实现期实测发现**：进程表清理**晚于**端口释放，孤儿检查须与端口释放一样给收敛窗口（剥空 PATH 时 runner 退出更慢）
   - 观察完成：`node -e` 直接调用该模块的会话辅助函数，对一个手工启动的 server 能完成一次会话并返回 token；删除 `dist/` 后调用，得到指明 `pnpm build:dist` 的非零退出；`target/debug/node --version` 输出 `v22.22.0`
   - _Requirements: 10.6_
   - _Boundary: e2e/desktop/shared.mjs_
   - _Depends: 2.1, 2.2_
 
-- [ ] 4.5 (P) 实现未打包真实会话黑盒 e2e
+- [x] 4.5 (P) 实现未打包真实会话黑盒 e2e
   - 启动未打包二进制（经 `PI_WEB_DESKTOP_SERVER_JS` 指向构建产物入口）→ 断言回环端点可用 → 经该端点完成一次经 mock provider 的真实会话 → 断言 mock provider 被调用至少一次
   - 观察完成：`node e2e/desktop/desktop-real.mjs` 全部断言通过并以 0 退出
   - _Requirements: 10.1, 10.6_
   - _Boundary: e2e/desktop/desktop-real.mjs_
   - _Depends: 4.4_
 
-- [ ] 4.6 (P) 实现「无系统 Node」黑盒 e2e（不可降级）
+- [x] 4.6 (P) 实现「无系统 Node」黑盒 e2e（不可降级）
   - 从 PATH 剥除所有含 `node`/`node.exe` 的目录，**先断言 `which node` 确已失效**，再启动应用
   - 真实会话跑通即证明 server 与 pi runner 孙进程用的是随包 node 而非系统 node
   - 应用退出后轮询断言先前端口已释放（证明进程树已收尾）
