@@ -25,6 +25,7 @@ import { buildBootstrap } from "./bootstrap.js";
 import { handleSingleton } from "./singletons.js";
 import { handleWebextDist, handleWebextResolve } from "./webext-routes.js";
 import { serveSpaFallback, serveStatic, PRODUCTION_CSP } from "./static.js";
+import { wholeSessionIdFromUrl } from "./session-url.js";
 
 const app = new Hono();
 const isProduction = process.env.NODE_ENV === "production";
@@ -92,12 +93,6 @@ app.get("*", async (c) => {
   const asset = await serveStatic(pathname);
   return asset ?? (await serveSpaFallback());
 });
-
-/** 从恰好 `/api/sessions/:id`(整会话删除)提取 `:id`;否则 undefined。 */
-export function wholeSessionIdFromUrl(url: string): string | undefined {
-  const raw = new URL(url).pathname.match(/\/api\/sessions\/([^/]+)\/?$/)?.[1];
-  return raw !== undefined ? decodeURIComponent(raw) : undefined;
-}
 
 const port = Number(process.env.PORT ?? 3000);
 const hostname = process.env.HOST ?? "127.0.0.1";

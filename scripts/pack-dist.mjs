@@ -250,6 +250,21 @@ function collectDataJson(dir, out) {
   }
 }
 
+/**
+ * 内置示例 agent 源(632K)。
+ *
+ * 旧 standalone 产物里它们是 nft 的副作用:`lib/app/webext-registry.ts` 静态 import
+ * `examples/**\/.pi/web/web.config.tsx`,追踪器顺带把整个 examples 拷了进去。
+ *
+ * 保留该行为:`pi-web ./examples/hello-agent` 开箱即用,且 `e2e:cli:reloc` 依赖副本内
+ * 存在示例源(它把整个产物搬到异路径后从副本启动,agent source 须随之可达)。
+ */
+function packExamples() {
+  const src = join(ROOT, "examples");
+  if (!existsSync(src)) return;
+  cpSync(src, join(DIST, "examples"), { recursive: true, dereference: true });
+}
+
 /** `--stub` 模式的桩进程;`stubAgentPath()` 默认经 `process.cwd()` 解析。 */
 function packStubAgent() {
   const src = join(ROOT, "lib/app/stub-agent-process.mjs");
@@ -272,6 +287,7 @@ export function packDist() {
   const hoisted = packRuntimeDeps();
   packWorkspacePackages();
   const assetCount = packRuntimeAssets();
+  packExamples();
   packStubAgent();
   return { dist: DIST, hoistedCount: hoisted.size, assetCount };
 }

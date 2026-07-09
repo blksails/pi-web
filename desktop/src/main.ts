@@ -11,7 +11,7 @@ import { app, BrowserWindow } from "electron";
 import {
   findFreePort,
   waitForReady,
-  standaloneServerJs,
+  distServerJs,
   buildEnv,
 } from "../../bin/pi-web.mjs";
 import { resolveRuntimeMode } from "./runtime-mode.js";
@@ -49,10 +49,10 @@ async function launch(): Promise<void> {
 
   // 产物入口:打包态用资源目录;unpackaged 用 CLI 布局(e2e 可经 PI_WEB_DESKTOP_SERVER_JS 覆盖,
   // 避开 esbuild 内联后 import.meta.url 路径漂移)。
-  const cliStandaloneJs = process.env.PI_WEB_DESKTOP_SERVER_JS ?? standaloneServerJs();
+  const cliDistServerJs = process.env.PI_WEB_DESKTOP_SERVER_JS ?? distServerJs();
   const serverJs = resolveServerEntry(mode, {
     resourcesPath: process.resourcesPath,
-    cliStandaloneJs,
+    cliDistServerJs,
   });
   if (serverJs === null) return;
 

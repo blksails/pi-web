@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * CLI 跨路径重定位 e2e(standalone 产物可重定位守卫)。可重复运行。
+ * CLI 跨路径重定位 e2e(自包含产物可重定位守卫)。可重复运行。
  *
- * 为什么需要它:standalone 产物若把**构建机绝对路径**烤进 bundle(webpack 内联
+ * 为什么需要它:产物若把**构建机绝对路径**烤进 bundle(打包器内联
  * import.meta.url、externals 绝对路径等),则只在「同机 build+run、同绝对路径」下能跑;
  * 一换路径(发布到 npm / 换机 / 换 OS)即崩。同机 e2e(cli-smoke / cli-real)因构建路径
  * 仍在,会**假阳性**测不到。本测试:
  *   1) 把产物 tar 到**另一个绝对路径**(保留符号链接);
  *   2) **临时藏起原构建目录**,使任何内联的构建机绝对路径在本地也指向不存在的位置
  *      —— 忠实复现「换机运行」,消除假阳性;
- *   3) 从重定位副本直接跑 server.js 走真实会话(mock openai-completions provider);
+ *   3) 从重定位副本直接跑 server.mjs 走真实会话(mock openai-completions provider);
  *   4) 断言:真实会话激活 + 收到真实流式回包 + mock 被调用 + 无模块/CLI 解析错误。
  *
  * 跨机/跨 OS 的权威验证仍是 CI 矩阵(Linux 构建 → mac/win 运行);本测试是等价的**本地快反**守卫。
@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
 const PORT = 3489;
 const BASE = `http://127.0.0.1:${PORT}`;
 const REPLY_TOKEN = "RELOCATEDOK";
@@ -114,8 +114,8 @@ function makeAgentDir(mockPort) {
 }
 
 async function main() {
-  const origStandalone = join(ROOT, DIST, "standalone");
-  if (!existsSync(join(origStandalone, "server.js"))) {
+  const origDist = join(ROOT, DIST);
+  if (!existsSync(join(origDist, "server.mjs"))) {
     console.error("产物缺失,请先 `pnpm build:cli`");
     process.exit(1);
   }
@@ -125,31 +125,31 @@ async function main() {
   mkdirSync(join(reloc, DIST), { recursive: true });
   const t = spawnSync("bash", [
     "-c",
-    `tar -czf - -C "${join(ROOT, DIST)}" standalone | tar -xzf - -C "${join(reloc, DIST)}"`,
+    `tar -czf - -C "${ROOT}" "${DIST}" | tar -xzf - -C "${reloc}"`,
   ]);
   check("产物已重定位到新绝对路径", t.status === 0);
 
   // 2) 临时藏起原构建目录 —— 强制内联的构建机绝对路径在本地也失效(消除假阳性)
-  const hidden = join(ROOT, DIST, "standalone__hidden_reloc");
-  renameSync(origStandalone, hidden);
+  const hidden = join(ROOT, `${DIST}__hidden_reloc`);
+  renameSync(origDist, hidden);
   const restoreOrig = () => {
-    if (existsSync(hidden) && !existsSync(origStandalone)) renameSync(hidden, origStandalone);
+    if (existsSync(hidden) && !existsSync(origDist)) renameSync(hidden, origDist);
   };
 
   const mock = await startMock();
   const agentDir = makeAgentDir(mock.port);
-  const relocSA = join(reloc, DIST, "standalone");
+  const relocSA = join(reloc, DIST);
   const srcDir = join(relocSA, "examples", "hello-agent");
 
   let stderr = "";
   let browser;
   let srv;
   try {
-    srv = spawn(process.execPath, [join(relocSA, "server.js")], {
+    srv = spawn(process.execPath, [join(relocSA, "server.mjs")], {
       cwd: relocSA,
       env: {
         ...process.env,
-        NEXT_DIST_DIR: DIST,
+        PI_WEB_DIST_DIR: DIST,
         PORT: String(PORT),
         HOSTNAME: "127.0.0.1",
         PI_WEB_DEFAULT_SOURCE: srcDir,

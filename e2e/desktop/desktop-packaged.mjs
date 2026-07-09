@@ -3,7 +3,7 @@
  * 打包 app 冒烟(spec pi-web-desktop 打包路径验证)。
  *
  * 与 desktop-real.mjs 的区别:启动的是**已打包的 .app 二进制**(app.isPackaged=true → 走
- * packaged 分支:从 process.resourcesPath/standalone 定位 server,不设 PI_WEB_DESKTOP_SERVER_JS),
+ * packaged 分支:从 process.resourcesPath/dist 定位 server,不设 PI_WEB_DESKTOP_SERVER_JS),
  * 以复现并验证「双击打包应用」的真实路径(e2e 之前只测未打包 electron dist/main.js)。
  *
  * 验证:打包 app 起真实会话(证明 Resources/standalone/node_modules 完整、server require('next')
@@ -107,7 +107,7 @@ async function main() {
         PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),
         PI_WEB_DEFAULT_CWD: ROOT,
         ELECTRON_RUN_AS_NODE: undefined,
-        // 注意:不设 PI_WEB_DESKTOP_SERVER_JS → 走 process.resourcesPath/standalone(打包真实路径)
+        // 注意:不设 PI_WEB_DESKTOP_SERVER_JS → 走 process.resourcesPath/dist(打包真实路径)
       },
     });
 

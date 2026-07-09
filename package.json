@@ -10,8 +10,8 @@
   },
   "files": [
     "bin",
-    ".next-cli/standalone",
-    "next.config.ts"
+    "dist",
+    "vite.config.ts"
   ],
   "scripts": {
     "dev": "next dev",
@@ -23,7 +23,7 @@
     "dev:server": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs server/index.ts",
     "dev:client": "vite",
     "start": "next start",
-    "build:cli": "cross-env NEXT_DIST_DIR=.next-cli next build && cross-env NEXT_DIST_DIR=.next-cli node scripts/pack-standalone.mjs",
+    "build:cli": "pnpm build:dist",
     "start:cli": "node bin/pi-web.mjs",
     "e2e:cli": "node e2e/cli/cli-smoke.mjs",
     "e2e:cli:watch": "node e2e/cli/cli-watch.mjs",
