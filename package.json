@@ -14,7 +14,8 @@
     "vite.config.ts"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-all.mjs",
+    "dev:client": "vite",
     "build": "pnpm build:dist",
     "build:client": "vite build",
     "build:server": "node scripts/build-server.mjs",
