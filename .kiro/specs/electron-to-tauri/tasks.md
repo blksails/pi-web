@@ -2,6 +2,19 @@
 
 > 排序即风险控制：本迁移原地替换、无并存壳、无回滚开关。任务 4 的 macOS 全链是**关键闸门**，未跑绿前不得铺其他平台（任务 6 起）。Electron 残留保留至任务 9 才删，在此之前作为行为对照的活参考。
 
+## ⚠ 已知的自动化覆盖盲区（独立 reviewer 认定，须在收口前决断）
+
+下列 EARS 条目**当前只有本机手工验证，无自动化证据**，且 Req 10.5 要求的「不依赖图形界面的自动化测试」对它们实质空白：
+
+| 需求 | 内容 | 现状 |
+|---|---|---|
+| 1.6 | macOS Dock 激活重开窗口 | `main.rs` 有 `RunEvent::Reopen`，但 `cargo test` 无法驱动真实 Tauri runtime 事件 |
+| 1.7 | 非 macOS 窗口全关即退出 | 同上；且本机为 macOS，该分支未被执行过 |
+| 3.5 | 错误页「重试」按钮 | 需 GUI 交互；macOS 无 WebDriver |
+| 3.6 | 错误页「退出」按钮 | 同上 |
+
+任务 6.1 的 Linux WebDriver e2e **只测 `pick_directory`，不测 `retry`/`quit`**，故即便它跑通也不能根治该盲区。须明确裁定这是永久性盲区（接受）还是待办（补 WebDriver 用例）。
+
 ## 1. 骨架与编排层纯函数（Foundation）
 
 - [x] 1.1 建立 Tauri Rust crate 骨架并使其可编译
@@ -202,7 +215,7 @@
 
 > 前置闸门：任务 4 全部跑绿。
 
-- [x] 6.1 搭建 Linux WebView e2e 并复验严格 CSP 下的 IPC
+- [ ] 6.1 搭建 Linux WebView e2e 并复验严格 CSP 下的 IPC
   - 在 Linux 上以 `tauri-driver` + WebKitWebDriver + xvfb 驱动真实 WebView
   - 断言页面内 `window.__TAURI__` 存在 → 经合成桥调用目录选择 → 在 stub env 下返回该路径
   - 本项覆盖 macOS 因缺少 WebView 驱动而测不到的「渲染层经桥拿到路径」这条路径，同时是 **Windows/Linux 的 WebView 在严格 CSP 下 IPC 是否仍可用的唯一自动化证据**（macOS 的 WKWebView 走 messageHandlers 不受 `connect-src` 约束，其余平台机制不同）
@@ -229,7 +242,7 @@
 
 ## 7. 发布流水线改造
 
-- [x] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
+- [ ] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
   - 保留「构建/打包分离」：`dist/` 与平台无关，仍在 Ubuntu 上构建一次并作为 artifact 分发给各矩阵分支
   - 矩阵**按 target triple 展开**（而非仅按 OS）：`macos-latest`×`aarch64-apple-darwin`、`macos-latest`×`x86_64-apple-darwin`、`ubuntu-22.04`×`x86_64-unknown-linux-gnu`、`windows-latest`×`x86_64-pc-windows-msvc`
   - 每分支：**`rustup target add <triple>`**（CI runner 是干净的；`macos-latest` 是 arm64，构建 `x86_64-apple-darwin` 必须先补该 target，`tauri-action` 不代办）→ 取 `dist` artifact → 为该 triple 取 sidecar（校验和失败即构建失败）→ `tauri-action` 传 `args: --target <triple>`
@@ -254,12 +267,13 @@
   - _Boundary: scripts/measure-desktop-baseline.mjs_
   - _Depends: 4.7_
 
-- [x] 8.2 产出迁移前后对比并按阈值裁定
+- [ ] 8.2 产出迁移前后对比并按阈值裁定
   - 在 Electron 壳（`main` 分支）与 Tauri 壳（本分支）各跑一次实测脚本，同口径对比
   - 写入 `.kiro/specs/electron-to-tauri/evidence/baseline-comparison.md`，包体对比中显式计入随包 node 的贡献（实测：单个二进制 strip 前 107MB / strip 后 86MB / 压缩态约 35MB）
   - **裁定**：以 macOS arm64 安装包为基准，若 Tauri 安装包体积 > Electron 安装包体积 × 0.75，判定「净收益不显著」→ **停止并交回决策者**，不得默认继续
   - 报告中不得以「新方案理论上更轻」一类论证替代任何一项实测数值
   - 观察完成：对比文档存在，含 RSS / 冷启动 / 四平台包体的前后数值与裁定结论
+  - ⚠ **状态：macOS arm64 部分已完成并达标（0.35 ≤ 0.75 阈值），但 Req 11.3 要求的三平台数值未满足** —— Windows/Linux 的包体、内存、冷启动均未实测（依赖任务 6.2 与 7.1）。故本任务整体未完成
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
   - _Depends: 8.1, 7.1_
 
