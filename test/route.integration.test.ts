@@ -18,7 +18,7 @@ process.env.PI_WEB_STUB_AGENT_PATH = path.join(
   "stub-agent-process.mjs",
 );
 
-const route = await import("@/app/api/sessions/[[...path]]/route");
+const route = await import("@/lib/app/api-route");
 const { shutdownHandler } = await import("@/lib/app/pi-handler");
 const { loadConfig, ConfigError } = await import("@/lib/app/config");
 
@@ -30,12 +30,9 @@ afterAll(async () => {
   await shutdownHandler();
 });
 
-describe("route runtime declaration", () => {
-  it("declares Node runtime and force-dynamic", () => {
-    expect(route.runtime).toBe("nodejs");
-    expect(route.dynamic).toBe("force-dynamic");
-  });
-});
+// 旧宿主要求每个 route 文件声明 `export const runtime = "nodejs"` / `dynamic = "force-dynamic"`
+// (否则会话 API 被放到 Edge/Serverless,子进程与 SSE 长连接均不可用)。该约束随 Next 一并消失:
+// 新宿主是普通 Node 进程,不存在 runtime 选择。故此处不再有对应断言。
 
 describe("config injection + secret safety", () => {
   it("loads defaults and never includes secret values in errors", () => {

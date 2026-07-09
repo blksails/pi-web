@@ -8,6 +8,8 @@
  * `public/` 的内容(含 Tier4 隔离表面的 `webext-artifact/artifact.html`)由 vite 拷入
  * `client/`,因此与前端资源同源托管,无需单独分支。
  */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 
@@ -115,22 +117,76 @@ export async function serveSpaFallback(): Promise<Response> {
 }
 
 /**
+ * 内联 `<script>` 的 CSP hash(sha256-base64)。
+ *
+ * 浏览器对 `'sha256-…'` 的计算对象是 script 元素的**文本内容原文**(不含标签、不做 trim)。
+ */
+function sha256Script(source: string): string {
+  return `'sha256-${createHash("sha256").update(source, "utf8").digest("base64")}'`;
+}
+
+/**
+ * `index.html` 里全部内联 script 的 hash。
+ *
+ * SPA 下唯一的内联脚本是**单例 import map** —— 它必须内联(浏览器只认首个 import 之前的
+ * import map,且外部 import map 支持面不足)。用 hash 精确放行它,即可移除 `'unsafe-inline'`。
+ *
+ * 结果按 `clientDir()` 缓存:index.html 在一次进程生命周期内不变。
+ */
+let cachedHashes: { readonly dir: string; readonly hashes: readonly string[] } | undefined;
+
+export function inlineScriptHashes(): readonly string[] {
+  const dir = clientDir();
+  if (cachedHashes?.dir === dir) return cachedHashes.hashes;
+
+  let hashes: readonly string[] = [];
+  try {
+    const html = readFileSync(join(dir, "index.html"), "utf8");
+    hashes = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(
+      (m) => sha256Script(m[1] as string),
+    );
+  } catch (err) {
+    hashes = [];
+    process.stderr.write(
+      `[pi-web] 读取 index.html 失败,内联脚本 hash 为空: ${String(err)}\n`,
+    );
+  }
+  // 静默降级到 `script-src 'self'` 会**禁掉 import map** —— 页面看似正常,代码 webext 却
+  // 全部加载失败。宁可吵闹:产物必定含至少一个内联 script(import map)。
+  if (hashes.length === 0) {
+    process.stderr.write(
+      `[pi-web] ⚠ 未在 ${join(dir, "index.html")} 找到内联 script;` +
+        `生产 CSP 将禁止 import map,代码 webext 无法加载。\n`,
+    );
+  }
+  cachedHashes = { dir, hashes };
+  return hashes;
+}
+
+/**
  * 生产内容安全策略。
  *
- * 逐字段迁移自 `next.config.ts` 的 production headers。禁 `unsafe-eval` —— 代码 webext 经同源
- * 原生动态 import 加载,不需要它(P0 已实证)。
+ * 逐字段迁移自旧宿主的 production headers,并**收紧**两处:
  *
- * `'unsafe-inline'` 在旧宿主里是为 Next 的内联 hydration bootstrap 而存在;SPA 下唯一的内联
- * 脚本是 `index.html` 的 import map。收紧到 hash 放行是任务 11.4 的工作,此处暂时保持一致以
- * 隔离变量(先证明宿主等价,再收紧策略)。
+ *  - 禁 `unsafe-eval` —— 代码 webext 经同源原生动态 import 加载,不需要它(P0 已实证:
+ *    产物 0 个 `new Function` / `eval(`,注入一个即被浏览器拦截)。
+ *  - 移除 `script-src 'unsafe-inline'` —— 它在旧宿主里只为 Next 的内联 hydration bootstrap
+ *    而存在(`next.config.ts` 注释自陈「无 nonce 基建时」)。SPA 下改为对 import map 做 hash 放行。
+ *
+ * `style-src 'unsafe-inline'` 保留:Tailwind 运行时注入与 webext 的 scoped CSS 需要它。
  */
-export const PRODUCTION_CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "connect-src 'self'",
-  "frame-src 'self' blob: data:",
-  "img-src 'self' data: blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-].join("; ");
+export function productionCsp(): string {
+  return [
+    "default-src 'self'",
+    // 外部脚本同源;唯一内联脚本(import map)经 hash 精确放行。
+    `script-src 'self' ${inlineScriptHashes().join(" ")}`.trim(),
+    // 样式:宿主 + 扩展 scoped css(同源);Tailwind 运行时注入需 inline。
+    "style-src 'self' 'unsafe-inline'",
+    "connect-src 'self'",
+    // artifact:独立 origin sandbox iframe(srcdoc/blob)
+    "frame-src 'self' blob: data:",
+    "img-src 'self' data: blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ].join("; ");
+}

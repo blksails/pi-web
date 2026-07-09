@@ -57,26 +57,11 @@
     }
   },
   "include": [
-    ".next-chrome-test/types/**/*.ts",
-    ".next-clear-dev/types/**/*.ts",
-    ".next-cli/types/**/*.ts",
-    ".next-debug/types/**/*.ts",
-    ".next-e2e-on/types/**/*.ts",
-    ".next-e2e/types/**/*.ts",
-    ".next-hr/types/**/*.ts",
-    ".next-probe/types/**/*.ts",
-    ".next-ro-dev/types/**/*.ts",
-    ".next-stub/types/**/*.ts",
-    ".next/types/**/*.ts",
     "app-shell-env.d.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
     "e2e/**/*.ts",
     "lib/**/*.ts",
-    "next-env.d.ts",
-    "next.config.ts",
     "playwright.config.ts",
     "server/**/*.ts",
     "src/**/*.ts",
@@ -85,8 +70,7 @@
     "test/**/*.tsx",
     "vite.config.ts",
     "vitest.config.ts",
-    "vitest.node-e2e.config.ts",
-    ".next-baseline/types/**/*.ts"
+    "vitest.node-e2e.config.ts"
   ],
   "exclude": [
     "node_modules",

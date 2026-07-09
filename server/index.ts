@@ -24,7 +24,7 @@ import { forgetSessionSource } from "../lib/app/session-source-map.js";
 import { buildBootstrap } from "./bootstrap.js";
 import { handleSingleton } from "./singletons.js";
 import { handleWebextDist, handleWebextResolve } from "./webext-routes.js";
-import { serveSpaFallback, serveStatic, PRODUCTION_CSP } from "./static.js";
+import { serveSpaFallback, serveStatic, productionCsp } from "./static.js";
 import { wholeSessionIdFromUrl } from "./session-url.js";
 
 const app = new Hono();
@@ -45,7 +45,7 @@ const isProduction = process.env.NODE_ENV === "production";
  */
 app.use("*", async (c, next) => {
   await next();
-  if (isProduction) c.res.headers.set("content-security-policy", PRODUCTION_CSP);
+  if (isProduction) c.res.headers.set("content-security-policy", productionCsp());
 });
 
 // ── webext 端点(须早于通用 /api/* 转发,否则被 handler 抢匹配) ──────────────
