@@ -210,6 +210,45 @@ describe("normalizeExtSourceId (id-shape normalization, complement/root-cause fi
   });
 });
 
+describe("PluginInstaller.install scope option(任务 4.5 缺口 2:project 追加 -l)", () => {
+  it("install(source) 不传 scope -> args 不含 '-l'(4.3 既有行为逐字节不变)", async () => {
+    const { piCli, calls } = makeStubPiCli({ ok: true, stdout: "installed\n", exitCode: 0 });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.install({ kind: "npm", name: "some-plugin", version: "1.2.3" });
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.args).toEqual(["install", "npm:some-plugin@1.2.3", "--no-approve"]);
+    expect(calls[0]?.args).not.toContain("-l");
+  });
+
+  it("install(source, { scope: 'project' }) -> 传给 pi 的 args 含 '-l'", async () => {
+    const { piCli, calls } = makeStubPiCli({ ok: true, stdout: "installed\n", exitCode: 0 });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.install(
+      { kind: "npm", name: "some-plugin", version: "1.2.3" },
+      { scope: "project" },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.args).toEqual(["install", "npm:some-plugin@1.2.3", "--no-approve", "-l"]);
+  });
+
+  it("install(source, { scope: 'user' }) -> 显式 user 与不传 scope 行为一致,不含 '-l'", async () => {
+    const { piCli, calls } = makeStubPiCli({ ok: true, stdout: "installed\n", exitCode: 0 });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.install(
+      { kind: "npm", name: "some-plugin", version: "1.2.3" },
+      { scope: "user" },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.args).not.toContain("-l");
+  });
+});
+
 describe("PluginInstaller — PiCliNotFoundError", () => {
   it("maps a PiCliNotFoundError from the piCli factory to an actionable PI_CLI_NOT_FOUND error", async () => {
     const installer = createPluginInstaller({

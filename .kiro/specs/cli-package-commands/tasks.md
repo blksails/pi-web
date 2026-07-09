@@ -115,7 +115,7 @@
   - _Depends: 4.1_
   - _Boundary: AgentInstaller_
 
-- [ ] 4.5 集成：按包类型分派安装通道并落实作用域语义
+- [x] 4.5 集成：按包类型分派安装通道并落实作用域语义
   - 两条通道实现同一安装端口，由包类型选择，调用方不感知通道差异
   - 未指定作用域时以用户级作用域安装；显式指定时以项目级作用域安装
   - 项目级作用域下项目未被信任时，输出含信任指引的可操作错误并以非零退出码结束，不安装任何内容
@@ -469,3 +469,24 @@
 - **`tar` 走系统二进制**（Windows 10 1803+ 自带 bsdtar，CI 三平台矩阵已在用）。Node 内置 `zlib` 只能
   gunzip，不能展开 tar 归档层，故不加第三方 tar 依赖。⚠️ 现有 CI 的 `e2e:cli*` 跑的是 stub/mock，
   **从未真实执行过 npm/tar 解包路径**，跨平台集成证据缺失 —— 归 6.2/6.3。
+- **`kind` 的确定是「约定」不是「探测」**：本地路径来源读 `pi-web.json` 得真实 `kind`；npm/git 直连来源
+  在下载前无从得知，故 **默认按 plugin 处理**（pi 的包管理是 plugin 的自然归宿；agent 的远程分发是
+  注册表的职责，那时 `kind` 来自已验签的 manifest）。`Installer.install(spec, { kindHint })` 提供显式覆盖，
+  6.1 把 `install --kind` 接到它。**绝不静默把 plugin 装进 agent 源根。**
+- **agent 通道不支持 project 作用域**：`~/.pi-web/agents` 是全局源根。`scope: "project"` + agent →
+  `AGENT_SCOPE_UNSUPPORTED`，**不静默降级为 user**。
+- **plugin 落 project 靠后处理追加 `-l`**：`assembleInstallArgs()` 在 `packages/**`（不改），
+  追加内联在 `plugin-installer.ts` 的 `install(source, { scope })`。**不要**在 `installer.ts` 里
+  再抄一遍 assemble+execute —— 4.5 初版这么做了，安装逻辑存在于两处，被复核要求去重。
+- **信任判定用 `makeProjectTrustPolicy`，从 `/trust` 子路径 import**（该子路径刻意解耦了 pi SDK，bundle 安全；
+  barrel 主入口不要用）。`TrustDecision` 是 `"always"|"never"|"ask"`，**CLI 无交互，故只有 `"always"` 放行**。
+  判定必须在**任何通道调用之前**，且只在 `scope === "project"` 时进行（user 作用域下根本不碰 trust store）。
+  ⚠️ `/trust` 子路径只导出 `makeProjectTrustPolicy`，**不导出** `TrustPolicy`/`TrustDecision`/`TrustPolicyInput`
+  类型（它们在 barrel-only 的 `agent-source/types.ts`）。在 `installer.ts` 里结构等价地本地重声明，零 cast。
+- **`uninstallAgentSource` 的路径逃逸防护**：删目录前 `realpath` 候选路径，再与 `realpath(sourcesRoot)` 比对，
+  必须严格位于其内。**`realpath` 必须在比对之前**——否则源根内一个指向外部的符号链接就能删到源根之外。
+  已用 `../evil`、绝对路径、以及**符号链接指向源根外**三种方式实证被 `PATH_ESCAPE` 拒绝。
+  本地登记来源被卸载时**只除名、不删用户目录**（那是用户的源码）。
+- **agent 卸载曾是缺口**：4.4 只写了 `installAgentSource`，4.5 初版的 `AgentChannel.uninstall` 只能返回
+  `NOT_IMPLEMENTED` —— 意味着 agent 装上就卸不掉，直接违反需求 3.8，且会卡死 6.2 的 e2e。4.5 的
+  `_Boundary_` 含 `AgentInstaller`，故补 `uninstallAgentSource` 在边界内。

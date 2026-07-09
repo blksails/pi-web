@@ -49,15 +49,31 @@
  *
  * 5. **本地路径来源** —— 委托 `LocalSourceRegistry.registerLocalSource()` 登记,
  *    **不拷贝目录、不在源根下创建任何条目**(9.2, 9.3 既有裁决)。
+ *
+ * ## 卸载(`uninstallAgentSource`,任务 4.5 缺口 1,Req 3.8)
+ *
+ * agent 通道的落盘有两种互斥形态,卸载必须覆盖两者,且不删除用户自己的源码目录:
+ *
+ * 1. **本地登记来源** —— 入参 `id` 若命中 `sources.json` 里的一条登记(按 realpath 比较,
+ *    复用 4.1 的 `unregisterLocalSource`),只除名登记表条目,**绝不删除** `id` 指向的
+ *    目录本身(那是用户的本地源码,不是本组件的落盘产物)。
+ * 2. **源根下的目录**(git/npm 安装产物)—— 入参 `id` 视为 `sourcesRoot` 之下的目录名
+ *    或绝对路径,校验其 realpath **确实**位于 `sourcesRoot` 的 realpath 之下后,整个
+ *    目录递归删除。这条校验是必须的安全门:`id` 可能来自用户输入(CLI 参数),
+ *    含 `../` 之类的相对路径穿越会让朴素的 `join(sourcesRoot, id)` 逃出源根,
+ *    命中门控则拒绝(`PATH_ESCAPE`),不删除任何东西。
+ *
+ * 两种形态都不匹配(以及路径穿越判定命中)时返回 `NOT_INSTALLED` 判别错误,不抛异常;
+ * 除名一个不存在的登记项同样是 `NOT_INSTALLED`,不静默成功。
  */
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import type { ExtSource } from "@blksails/pi-web-server";
 import { buildChildEnv } from "../context.js";
 import { redactSecrets } from "../reporter.js";
-import { registerLocalSource } from "./local-source-registry.js";
+import { registerLocalSource, unregisterLocalSource } from "./local-source-registry.js";
 
 export type Result<T, E> =
   | { readonly ok: true; readonly value: T }
@@ -419,4 +435,85 @@ export async function installAgentSource(
     case "local":
       return installLocal(source, options);
   }
+}
+
+/** 本组件的卸载可产出的判别式错误(不抛异常)。 */
+export interface AgentUninstallError {
+  readonly code: "NOT_INSTALLED" | "PATH_ESCAPE" | "UNREGISTER_FAILED" | "REMOVE_FAILED" | "NOT_CONFIGURED";
+  readonly message: string;
+}
+
+export interface AgentUninstallResult {
+  /** 卸载方式:登记表除名 / 源根下目录整删。 */
+  readonly method: "local" | "directory";
+  /** 被移除的目标:`local` 是原登记的目录路径;`directory` 是被删除目录的 realpath。 */
+  readonly location: string;
+}
+
+/** 尽力把一个字符串规整为 realpath;不存在/不可解析时返回 `undefined`。 */
+async function tryRealpath(p: string): Promise<string | undefined> {
+  try {
+    return await fs.realpath(p);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 卸载一个 `kind: "agent"` 的已安装包(Req 3.8)。
+ *
+ * 依次尝试:
+ *   1. `id` 命中 `sources.json` 里的一条本地登记 → 除名登记表条目(不删除目标目录)。
+ *   2. `id` 是 `sourcesRoot` 之下的一个目录(相对目录名或绝对路径均可)→ 校验其 realpath
+ *      确实位于 `sourcesRoot` 的 realpath 之下后,整个递归删除。
+ *   3. 两者都不匹配 → `NOT_INSTALLED`。
+ *
+ * 不抛异常;全部失败路径以判别联合返回,错误信息经 `redactSecrets`。
+ */
+export async function uninstallAgentSource(
+  id: string,
+  options: AgentInstallerOptions,
+): Promise<Result<AgentUninstallResult, AgentUninstallError>> {
+  // 1. 本地登记来源:先试着按登记表除名(不接触目标目录本身)。
+  if (options.registryPath !== undefined) {
+    const unregResult = await unregisterLocalSource({ registryPath: options.registryPath, target: id });
+    if (!unregResult.ok) {
+      return {
+        ok: false,
+        error: { code: "UNREGISTER_FAILED", message: redactSecrets(unregResult.error.message) },
+      };
+    }
+    if (unregResult.value.removed) {
+      return { ok: true, value: { method: "local", location: id } };
+    }
+  }
+
+  // 2. 源根下的目录:候选路径是 id 本身(若为绝对路径)或 sourcesRoot 之下同名目录。
+  const candidatePath = isAbsolute(id) ? id : join(options.sourcesRoot, id);
+  const candidateReal = await tryRealpath(candidatePath);
+  if (candidateReal === undefined) {
+    return { ok: false, error: { code: "NOT_INSTALLED", message: `Not installed: ${id}` } };
+  }
+
+  // ★ 安全门:candidateReal 必须真的位于 sourcesRoot 的 realpath 之下,否则拒绝
+  // (防止 id 含 `../` 之类导致删到源根之外)。
+  const sourcesRootReal = (await tryRealpath(options.sourcesRoot)) ?? options.sourcesRoot;
+  const rel = relative(sourcesRootReal, candidateReal);
+  const isInsideSourcesRoot = rel.length > 0 && rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
+  if (!isInsideSourcesRoot) {
+    return {
+      ok: false,
+      error: {
+        code: "PATH_ESCAPE",
+        message: redactSecrets(`Refusing to remove a path outside sourcesRoot: ${id}`),
+      },
+    };
+  }
+
+  try {
+    await fs.rm(candidateReal, { recursive: true, force: true });
+  } catch (err) {
+    return { ok: false, error: { code: "REMOVE_FAILED", message: redactSecrets(String(err)) } };
+  }
+  return { ok: true, value: { method: "directory", location: candidateReal } };
 }

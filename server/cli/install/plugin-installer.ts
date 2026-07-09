@@ -14,16 +14,16 @@
  *    可测试接缝 —— 测试无需 `vi.mock` 模块,只需传入一个会抛错的工厂函数即可复现
  *    「pi 未安装」分支。两者都缺省时,默认工厂是 `() => new ChildProcessPiCli()`。
  *
- * 2. **scope(user/project)如何传给 pi**——**本任务不处理**。读过
- *    `packages/server/src/extensions/install/install-args.ts` 的实现:
- *    `assembleInstallArgs(source)` 产出的参数固定为
- *    `["install", <source>, "--no-approve"]`,不接受、也不装配 `-l`(project 级)标志,
- *    是一个纯函数,不知道调用方的 scope 语境。design.md 的 `Installer` 端口
- *    (`install(resolved, scope)`)与「落实作用域语义」明确记在任务 4.5
- *    (「集成：按包类型分派安装通道并落实作用域语义」)名下,且 4.3 的需求范围
- *    (3.5/3.7/3.8/3.9)全文不提 scope。故本文件的 `installPlugin`/`uninstallPlugin`
- *    **不接受 scope 参数**——这是刻意收窄边界,而非遗漏。若 4.5 需要 project 级安装,
- *    应在那里扩展 `assembleInstallArgs` 或本文件的签名,不在本任务内预先猜测。
+ * 2. **scope(user/project)如何传给 pi**——`install()` 接受可选的第二个参数
+ *    `{ scope?: "user" | "project" }`(任务 4.5 补齐,消除 `installer.ts` 曾重新实现
+ *    一遍 assemble+execute 的重复)。`assembleInstallArgs(source)`
+ *    (`packages/server/src/extensions/install/install-args.ts`,只读、不改)产出的参数
+ *    固定为 `["install", <source>, "--no-approve"]`,不接受、也不装配 `-l`(project 级)
+ *    标志,是一个纯函数,不知道调用方的 scope 语境;本文件在拿到它的返回值后,
+ *    在装配与执行之间对 `args` 做**纯函数后处理**(`scope === "project"` 时追加 `-l`),
+ *    不修改 `assembleInstallArgs` 本身。`scope` 缺省或为 `"user"` 时行为与此前逐字节
+ *    相同(4.3 既有测试的前提)。`uninstall()` 保持不接受 scope——`assembleRemoveArgs`
+ *    同样没有 `-l` 钩子,不在本任务内臆造。
  *
  * 3. **卸载未安装的包如何判定(3.9)**——先 `piCli.runPiCommand(["list"], {})` +
  *    `parsePiList` 取当前台账,按 `id` 精确匹配。不依赖 `pi remove` 的退出码语义
@@ -106,8 +106,17 @@ export function normalizeExtSourceId(sourceId: string): string {
   return sourceId;
 }
 
+/** `install()` 的可选安装作用域(任务 4.5 补齐,见文件头设计裁决 2)。 */
+export interface InstallPluginOptions {
+  /** 缺省 `"user"`;显式 `"project"` 时对装配好的 pi 参数追加 `-l`。 */
+  readonly scope?: "user" | "project";
+}
+
 export interface PluginInstaller {
-  install(source: ExtSource): Promise<Result<InstallPluginResult, PluginInstallError>>;
+  install(
+    source: ExtSource,
+    options?: InstallPluginOptions,
+  ): Promise<Result<InstallPluginResult, PluginInstallError>>;
   uninstall(sourceId: string): Promise<Result<UninstallPluginResult, PluginInstallError>>;
   listInstalled(): Promise<Result<readonly InstalledExtension[], PluginInstallError>>;
 }
@@ -155,13 +164,16 @@ export function createPluginInstaller(
   options: CreatePluginInstallerOptions = {},
 ): PluginInstaller {
   return {
-    async install(source) {
+    async install(source, installOptions) {
       const cliResult = resolvePiCli(options);
       if (!cliResult.ok) return cliResult;
       const piCli = cliResult.value;
 
-      const { args, env } = assembleInstallArgs(source);
-      const res = await piCli.runPiCommand(args, env);
+      const assembled = assembleInstallArgs(source);
+      // project 作用域:对装配好的参数做纯函数后处理追加 `-l`,不改 assembleInstallArgs。
+      const args =
+        installOptions?.scope === "project" ? [...assembled.args, "-l"] : assembled.args;
+      const res = await piCli.runPiCommand(args, assembled.env);
       if (!res.ok) {
         return {
           ok: false,
@@ -171,8 +183,8 @@ export function createPluginInstaller(
           },
         };
       }
-      // args 形如 ["install", <source>, "--no-approve"];索引 1 是传给 pi 的来源串
-      // (可能带版本),规范化为台账形态(不含版本)后作为返回的 id,与
+      // args 形如 ["install", <source>, "--no-approve", ("-l")?];索引 1 是传给 pi 的
+      // 来源串(可能带版本),规范化为台账形态(不含版本)后作为返回的 id,与
       // listInstalled()/parsePiList 的 id 语义对齐(见 normalizeExtSourceId)。
       const id = normalizeExtSourceId(args[1] ?? "");
       return { ok: true, value: { id, stdout: res.stdout } };
