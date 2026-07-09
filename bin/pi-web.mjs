@@ -39,11 +39,179 @@ function looksLikeGitSource(source) {
 }
 
 /**
+ * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6)。
+ * @typedef {"create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
+ */
+export const SUBCOMMAND_NAMES = /** @type {const} */ ([
+  "create",
+  "install",
+  "uninstall",
+  "list",
+  "update",
+  "publish",
+]);
+
+/**
+ * 各子命令的选项表 + 一句话说明(Req 1.3, 1.4, 1.6)。
+ *
+ * ★ 此处只承载「分发层判别与校验」需要的选项**形状**,不实现任何子命令的业务逻辑
+ * (归任务 3.x-9.x,`server/cli/**`)。选项名取自 requirements.md 已落定的 CLI 面,
+ * 后续任务在 `server/cli` 内对同一批 argv 做真正的语义解析——两处选项表如需变化须
+ * 保持同步(SubcommandRouter 的选项表是 UX 契约的第一入口)。
+ */
+const SUBCOMMAND_SPECS = {
+  create: {
+    summary: "从模板生成 agent/plugin 骨架",
+    options: {
+      kind: { type: "string" },
+      template: { type: "string" },
+      list: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web create <name> [options]
+
+从随包分发的模板生成 agent/plugin 骨架。
+
+选项:
+      --kind <agent|plugin>  包类型(默认 agent)
+      --template <name>      指定模板(默认模板见 --list)
+      --list                 列出全部可用模板并退出,不创建任何文件
+  -h, --help                 显示本帮助并退出
+`,
+  },
+  install: {
+    summary: "安装 agent 或 plugin",
+    options: {
+      project: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web install <source> [options]
+
+<source> 的形态判别:带来源类型前缀、协议头(git:/https:/ssh:)或文件系统路径形态
+的实参视为直接来源,不联系注册表;其余视为注册表包标识,先解析并验签再安装。
+
+选项:
+      --project   以项目级作用域安装(默认用户级)
+  -h, --help      显示本帮助并退出
+`,
+  },
+  uninstall: {
+    summary: "卸载已安装的 agent 或 plugin",
+    options: {
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web uninstall <name> [options]
+
+选项:
+  -h, --help      显示本帮助并退出
+`,
+  },
+  list: {
+    summary: "列出已安装的包",
+    options: {
+      outdated: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web list [options]
+
+选项:
+      --outdated  仅列出存在可用更新的包
+  -h, --help      显示本帮助并退出
+`,
+  },
+  update: {
+    summary: "更新已安装的包",
+    options: {
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web update [name] [options]
+
+未指定 name 时更新全部可更新的包。
+
+选项:
+  -h, --help      显示本帮助并退出
+`,
+  },
+  publish: {
+    summary: "编译清单、校验并发布到注册表",
+    options: {
+      "dry-run": { type: "boolean", default: false },
+      key: { type: "string" },
+      channel: { type: "string" },
+      "commit-only": { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web publish [options]
+
+选项:
+      --dry-run        演练模式:编译与全部校验但不发起任何外部写操作
+      --key <path>      签名私钥路径
+      --channel <name>  发布通道(未指定时使用稳定通道)
+      --commit-only     只提交版本,不移动发布通道指向
+  -h, --help            显示本帮助并退出
+`,
+  },
+};
+
+/** @returns {name is SubcommandName} */
+function isSubcommandName(name) {
+  return Object.prototype.hasOwnProperty.call(SUBCOMMAND_SPECS, name);
+}
+
+/**
+ * 解析子命令自身的 argv(Req 1.5, 1.6)。非法选项抛 CliUsageError,消息含选项名与
+ * 查看该子命令帮助的提示。纯函数,不触碰文件系统或网络(Req 10.1)。
+ * @param {SubcommandName} name
+ * @param {readonly string[]} rest  子命令名之后的剩余 argv
+ */
+function parseSubcommandArgs(name, rest) {
+  const spec = SUBCOMMAND_SPECS[name];
+  let parsed;
+  try {
+    parsed = parseArgs({ args: [...rest], allowPositionals: true, options: spec.options });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    const m = raw.match(/Unknown option '([^']+)'/);
+    const optName = m ? m[1] : undefined;
+    throw new CliUsageError(
+      optName
+        ? `${name}: 未知选项 ${optName}(运行 \`pi-web ${name} --help\` 查看可用选项)`
+        : `${name}: ${raw}(运行 \`pi-web ${name} --help\` 查看可用选项)`,
+    );
+  }
+  return parsed;
+}
+
+/**
  * 解析 argv 为结构化选项。未知/非法选项抛 CliUsageError(Req 5.3);
  * --help/-h、--version/-v 经 intent 短路(Req 5.1, 5.2)。
+ *
+ * 首个位置参数若命中已知子命令名(Req 1.2),整段 argv 交由该子命令自身的选项表解析
+ * (Req 1.6:各子命令选项互不串味),并短路为 `{ intent: "subcommand", name, argv }`
+ * (业务分发归任务 6.1/10.1,此处只判别)。否则回落既有 `run`/`help`/`version` 解析,
+ * 与本特性引入前逐字段一致(Req 1.1)。
+ *
+ * 返回一个以 `intent` 为判别字段的联合:`run`(选项扁平展开,与引入本特性前完全一致)、
+ * `help`(可带 `subcommand`)、`version`、`subcommand`(携带**未解析的原始 argv 切片**)。
+ *
+ * ★ 刻意不写精确的 `@returns` 联合类型:`bin/` 不在 tsconfig 的 include 内,本模块对
+ * `test/**` 呈现为 `any`。一旦标注精确联合,既有 26 项 `cli-args.test.ts` 断言就必须
+ * 先 narrow 才能访问 `.source`/`.port`,即强制改动那些断言 —— 而「既有测试零改动且仍
+ * 通过」正是需求 1.1「逐字节一致」的证据本身。实测标注后 tsc 新增 14 处错误。
+ *
  * @param {readonly string[]} argv  process.argv.slice(2)
  */
 export function parseCliArgs(argv) {
+  const first = argv[0];
+  if (first !== undefined && isSubcommandName(first)) {
+    const rest = argv.slice(1);
+    const parsed = parseSubcommandArgs(first, rest);
+    if (parsed.values.help) {
+      return { intent: "help", subcommand: first };
+    }
+    return { intent: "subcommand", name: first, argv: rest };
+  }
+
   let parsed;
   try {
     parsed = parseArgs({
@@ -309,10 +477,15 @@ export async function launch({ serverJs, host, port, env, open }) {
   return exitPromise;
 }
 
-const HELP = `pi-web — 启动一个本地 pi-web 实例
+const SUBCOMMAND_LIST_TEXT = SUBCOMMAND_NAMES.map(
+  (name) => `  ${name.padEnd(11)} ${SUBCOMMAND_SPECS[name].summary}`,
+).join("\n");
+
+const HELP = `pi-web — 启动一个本地 pi-web 实例,或调用包管理子命令
 
 用法:
   pi-web [source] [options]
+  pi-web <subcommand> [options]
 
 参数:
   source              agent source(本地目录或 git 来源);省略则用当前目录
@@ -327,6 +500,11 @@ const HELP = `pi-web — 启动一个本地 pi-web 实例
       --watch         监视 agent source 目录,文件变化时重载会话(仅本地目录)
   -h, --help          显示本帮助并退出
   -v, --version       显示版本并退出
+
+子命令:
+${SUBCOMMAND_LIST_TEXT}
+
+  运行 \`pi-web <subcommand> --help\` 查看某个子命令的专属用法。
 
 示例:
   pi-web                       # 用当前目录作为 agent source
@@ -352,12 +530,26 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   if (opts.intent === "help") {
-    process.stdout.write(HELP);
+    if (opts.subcommand) {
+      process.stdout.write(SUBCOMMAND_SPECS[opts.subcommand].usage);
+    } else {
+      process.stdout.write(HELP);
+    }
     return 0;
   }
   if (opts.intent === "version") {
     process.stdout.write(`${readVersion()}\n`);
     return 0;
+  }
+  if (opts.intent === "subcommand") {
+    // 分发接缝(动态加载 dist/cli-commands.mjs、按 name 调用具体实现)归任务 6.1
+    // (Wave 1:create/install/uninstall/list/update)与 10.1(publish)。本任务只
+    // 判别意图,不实现任何子命令的业务逻辑 —— 此处故意不启动本地实例、不触碰
+    // 文件系统或网络,如实反映「尚未接线」的当前状态。
+    console.error(
+      `[pi-web] 子命令 \`${opts.name}\` 尚未接入(等待后续任务完成分发接线)。`,
+    );
+    return 1;
   }
   if (opts.watch && opts.source && looksLikeGitSource(opts.source)) {
     console.warn("[pi-web] --watch 仅适用于本地目录 source,git 来源已跳过文件监视。");

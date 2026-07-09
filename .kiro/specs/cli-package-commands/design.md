@@ -318,15 +318,22 @@ sequenceDiagram
 ```typescript
 type SubcommandName = "create" | "install" | "uninstall" | "list" | "update" | "publish";
 
+// 判别字段沿用既有的 `intent`（非 `kind`），run 分支的选项保持扁平（非嵌套 `options`）。
+// 理由：`main()` 与既有 26 项单测均解引用 `.intent` 与扁平字段；改名/嵌套会迫使改动全部
+// 既有断言，而「既有测试零改动且仍通过」正是需求 1.1「逐字节一致」的最强证据。
+// 实现于任务 2.1，独立复核确认无消费方 type-import 本类型，故此处按实现修订。
 type CliIntent =
-  | { readonly kind: "run"; readonly options: RunOptions }
-  | { readonly kind: "help"; readonly subcommand?: SubcommandName }
-  | { readonly kind: "version" }
-  | { readonly kind: "subcommand"; readonly name: SubcommandName; readonly argv: readonly string[] };
+  | ({ readonly intent: "run" } & RunOptions)   // 选项扁平展开，与引入本特性前完全一致
+  | { readonly intent: "help"; readonly subcommand?: SubcommandName }
+  | { readonly intent: "version" }
+  | { readonly intent: "subcommand"; readonly name: SubcommandName; readonly argv: readonly string[] };
 
 /** 非法选项/参数抛 CliUsageError（既有类型），main() 捕获后打印并非零退出。 */
 export function parseCliArgs(argv: readonly string[]): CliIntent;
 ```
+
+> `intent: "subcommand"` 分支携带**未解析的原始 argv 切片**，下游可按需重新解析。
+> `main()` 中处理该分支的 `if` 块即任务 6.1 接线 `dist/cli-commands.mjs` 的接缝。
 - Preconditions: `argv` 为 `process.argv.slice(2)`。
 - Postconditions: 返回值为判别联合；不触碰文件系统或网络。
 - Invariants: 对任意不以已知子命令名开头的 `argv`，返回 `kind: "run"` 且其 `options` 与本特性引入前一致。

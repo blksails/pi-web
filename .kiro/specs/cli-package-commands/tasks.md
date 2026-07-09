@@ -35,7 +35,7 @@
 
 - [ ] 2. 子命令分发层
 
-- [ ] 2.1 扩展参数解析为子命令判别，并保持既有启动路径不变
+- [x] 2.1 扩展参数解析为子命令判别，并保持既有启动路径不变
   - 判别首个位置参数是否为已知子命令名；不是则产出既有启动意图
   - 各子命令拥有独立选项表，一个子命令的专属选项不被其他子命令接受
   - 顶层帮助列出全部子命令及一句话说明；子命令帮助输出其专属用法并以零退出码结束
@@ -326,3 +326,13 @@
   `Authorization: Bearer …`、JSON `"apiKey":"sk-…"` 与裸 `sk-…` 会漏网 —— 这三种恰是子进程与
   HTTP 客户端错误信息里最常见的泄漏形态，任务 1.2 的复核发现并已补齐。后续任务输出错误信息时
   一律经 `ProgressReporter.fail()`，不要自行 `console.error` 原始错误。
+- **`parseCliArgs` 的判别字段是 `intent` 而非 design 初稿的 `kind`**，`run` 分支选项**扁平**而非嵌套
+  `options`。design.md 已按实现修订。任务 6.1 接线时按 `intent` 写。
+- **不要给 `bin/pi-web.mjs` 的 `parseCliArgs` 加精确的 `@returns` 联合类型**。`bin/` 不在 tsconfig 的
+  `include` 内，该模块对 `test/**` 呈现为 `any`；一旦标注精确联合，既有 26 项 `cli-args.test.ts`
+  断言必须先 narrow 才能访问 `.source`/`.port` —— 实测会新增 14 处 tsc 错误，且迫使改动那些断言，
+  而「既有测试零改动且仍通过」正是需求 1.1 的证据本身。已在该函数 docstring 里写明缘由。
+- `main()` 中 `intent === "subcommand"` 的分支当前打印「尚未接入」并返回 1，**那个 `if` 块就是任务 6.1
+  接线 `dist/cli-commands.mjs` 的接缝**，其余部分无需改动。
+- `bin/pi-web.mjs` 的 `SUBCOMMAND_SPECS` 选项表是面向 UX 的，与后续 `server/cli` 各子命令实际解析的
+  选项是**两处**。3.x–9.x 任务若新增选项，必须同步更新该表，否则帮助文本与选项隔离行为会漂移。
