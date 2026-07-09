@@ -104,7 +104,7 @@
   - _Requirements: 3.5, 3.7, 3.8, 3.9_
   - _Boundary: PluginInstaller_
 
-- [ ] 4.4 实现 agent 通道的自建落盘
+- [x] 4.4 实现 agent 通道的自建落盘
   - pi 的包管理只能落到其自身配置目录或项目目录，无法落到 agent 源根，故本通道自建落盘
   - git 来源浅克隆到不可变引用；npm 来源获取发布产物后本地解包
   - 两种来源均只解包，不执行包内任何安装脚本
@@ -448,3 +448,24 @@
   在 4.5 落实（扩展该纯函数，或在 Installer 分派层后处理 `InstallArgs.args`）。
 - **别把「知道有坑」写进测试注释然后绕开它**：4.3 初版的测试注释承认了 id 形态不对称，却只测了安全的一半，
   把一个「刚装好的包卸载不掉」的缺陷藏了起来，被复核 REJECT。有不对称就写 round-trip 测试去撞它。
+- **取 npm tarball 用 `npm view <spec> dist.tarball --json` + 直接下载 + `tar -xzf`，绝不用 `npm pack`**：
+  `npm view` 是纯注册表元数据查询，不碰包代码；而 `npm pack` 对 git 型 spec 可能触发 `prepare`/`prepack`。
+  这是需求 3.12「不执行包内任何安装脚本」的实现依据。
+- **git 浅克隆到不可变 ref 的正确序列**：`git clone --depth 1 --branch <ref>` 对**裸 commit SHA 不适用**
+  （只对服务端公告的具名 ref 有效）。改用 `git init` → `git remote add` → `git fetch --depth 1 origin <ref>`
+  → `git checkout FETCH_HEAD`，对 SHA 与 `vX.Y.Z` tag 通用。checkout 后删 `.git` 得到不可变文件快照。
+  ⚠️ 该方案对裸 SHA 的可用性**依赖服务端开启 `uploadpack.allowReachableSHA1InWant`**。github.com 已开，
+  而 `DEFAULT_ALLOWLIST.gitHosts` 当前只有 `github.com`，故成立。**放开 git host 白名单前必须重新验证**
+  （GitLab CE 默认不开）。
+- **落盘用 staging + 原子 rename**：先 `mkdtemp(<sourcesRoot>/.staging-*)`（同文件系统，保证 rename 原子），
+  全部成功才 rename 到最终目录；任一步失败即递归删除 staging。因 rename 是唯一发布点，目标目录存在
+  ⇒ 必然是此前一次完整安装，故重复安装同 ref 幂等短路、不覆盖。
+- **本地路径 agent 只登记不拷贝**：走 4.1 的 `registerLocalSource`，源根之下不新增任何目录
+  （软链会被 realpath 门控静默剔除，拷贝则丢失「边改边试」的意义）。
+- **★ 让断言承担拦截责任，别让替身替它拦**：4.4 初版的 npm 替身对非 `view` 子命令直接 fail，
+  导致「不得执行包脚本」的白名单断言**永远触达不到** —— 违规在更早的「调用失败」层就被拦下，断言沦为摆设。
+  改成替身一路放行（任何子命令都返回成功且返回合法输出），白名单断言才成为真防线：
+  实测把 `npm view` 换成 `npm install` / `npm pack`，两次 mutation 都直接撞在断言上。
+- **`tar` 走系统二进制**（Windows 10 1803+ 自带 bsdtar，CI 三平台矩阵已在用）。Node 内置 `zlib` 只能
+  gunzip，不能展开 tar 归档层，故不加第三方 tar 依赖。⚠️ 现有 CI 的 `e2e:cli*` 跑的是 stub/mock，
+  **从未真实执行过 npm/tar 解包路径**，跨平台集成证据缺失 —— 归 6.2/6.3。

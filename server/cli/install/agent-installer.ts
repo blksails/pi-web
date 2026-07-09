@@ -1,0 +1,422 @@
+/**
+ * AgentInstaller — agent 通道的自建落盘(spec cli-package-commands,任务 4.4,
+ * Req 3.6, 3.12)。
+ *
+ * ## 存在理由
+ *
+ * pi 自身的包管理(`DefaultPackageManager.getBaseDirForScope`)只落到 `cwd/.pi`
+ * (project 作用域)或 `agentDir`(user 作用域,`~/.pi/agent`),没有第三种落点 ——
+ * 它无法把一个包落到 `~/.pi-web/agents`(agent 源根)。`kind: "agent"` 的包必须能被
+ * 本地实例的源列表发现,故本组件绕开 pi 的包管理,自行完成 git 浅克隆 / npm 发布产物
+ * 解包 / 本地目录登记三条落盘路径。
+ *
+ * ## 设计裁决(任务报告 DECISIONS 有完整说明,此处摘要)
+ *
+ * 1. **子进程执行接缝** —— `CommandRunner`:`(command, args, options) => Promise<CommandResult>`。
+ *    默认实现用 `node:child_process.spawn`,env 一律经 `buildChildEnv()`(`../context.js`)
+ *    收窄为白名单 + `GIT_TERMINAL_PROMPT=0`/`CI=1`,不透传调用者完整环境。单测**始终**
+ *    注入替身,绝不让默认实现被调用(即绝不真的 spawn `git`/`npm`/`tar`)。
+ *
+ * 2. **npm 来源如何取 tarball,且不执行任何包脚本(Req 3.12)** —— 用
+ *    `npm view <spec> dist.tarball --json` 只读查询注册表元数据(不下载、不安装、不涉及
+ *    任何包内代码),取得 tarball 直链后经注入的 `TarballDownloader`(默认 `fetch()`)
+ *    做一次纯 HTTP GET,最后用系统 `tar -xzf ... --strip-components=1` 解包。
+ *    全程**没有任何一步**调用 `npm install`/`npm pack`/`npm ci`/`npm run-script` 或任何会
+ *    触发 `preinstall`/`install`/`postinstall`/`prepare`/`prepack` 生命周期脚本的命令 ——
+ *    `npm view` 是纯元数据查询,`fetch` 是纯字节下载,`tar -xzf` 是纯归档解压,三者均不
+ *    执行 tarball 内的任何 JS。单测对 `CommandRunner` 的记录做白名单断言
+ *    (`npm` 的调用其 `args[0]` 只能是 `"view"`;`git` 的调用其 `args[0]` 只能属于
+ *    `["init","remote","fetch","checkout"]`),任何偏离(如误写成 `npm install`)都会
+ *    让该断言失败 —— 已用手工 mutation 验证过这条断言确实会抓到违规(见任务报告
+ *    SCRIPT_SAFETY)。
+ *
+ * 3. **git 来源如何浅克隆到一个 pinned ref(sha 或 tag)** —— `git clone --depth 1
+ *    --branch <ref>` 对 40/7-40 位十六进制 commit sha **不适用**(`--branch` 只接受服务端
+ *    公开的 ref 名,多数 host 默认不公开任意 commit 作为可 clone 的 ref)。故改用通用于
+ *    sha 与 tag 两种形态的四步序列:`git init` → `git remote add origin <url>` →
+ *    `git fetch --depth 1 origin <ref>` → `git checkout FETCH_HEAD`。克隆完成后删除
+ *    `.git` 目录,使落盘结果是一份不可变的文件快照(无法再 push/pull/切换分支),对齐
+ *    需求措辞「浅克隆到不可变引用」。
+ *
+ * 4. **回滚(不留半成品目录)** —— 先在 `sourcesRoot` 下用 `fs.mkdtemp` 建一个隐藏的
+ *    staging 目录(与最终目标同一文件系统,保证之后的 `rename` 是原子操作、不会跨设备
+ *    失败),全部工作只写入 staging;任一步骤失败,`fs.rm(staging, { recursive: true,
+ *    force: true })` 清理后返回判别式错误,**不会**在最终目标路径留下任何文件。只有
+ *    全部步骤成功后才 `fs.rename(staging, finalDir)` 一步到位地"发布"。
+ *    **目标目录已存在**(重复安装同一 git ref / npm 版本)时,视为幂等成功 ——
+ *    落盘结果由 `rename` 是唯一入口保证「要么完整要么不存在」,故已存在的目标目录
+ *    必然是此前一次完整安装的产物,直接短路返回 `created: false`,不重新拉取。
+ *
+ * 5. **本地路径来源** —— 委托 `LocalSourceRegistry.registerLocalSource()` 登记,
+ *    **不拷贝目录、不在源根下创建任何条目**(9.2, 9.3 既有裁决)。
+ */
+import { randomBytes } from "node:crypto";
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import { join } from "node:path";
+import type { ExtSource } from "@blksails/pi-web-server";
+import { buildChildEnv } from "../context.js";
+import { redactSecrets } from "../reporter.js";
+import { registerLocalSource } from "./local-source-registry.js";
+
+export type Result<T, E> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: E };
+
+/** 本组件可产出的判别式错误(不抛异常)。 */
+export interface AgentInstallError {
+  readonly code:
+    | "GIT_CLONE_FAILED"
+    | "NPM_VIEW_FAILED"
+    | "NPM_TARBALL_MISSING"
+    | "DOWNLOAD_FAILED"
+    | "EXTRACT_FAILED"
+    | "LOCAL_REGISTER_FAILED"
+    | "STAGE_FAILED";
+  readonly message: string;
+}
+
+export interface AgentInstallResult {
+  /** 落盘方式:git 浅克隆 / npm 发布产物解包 / 本地路径登记。 */
+  readonly method: "git" | "npm" | "local";
+  /** 落盘绝对路径(`git`/`npm`),或已登记的本地目录 realpath(`local`)。 */
+  readonly location: string;
+  /** true = 本次新建/新登记;false = 已存在同一目标,幂等短路(未触碰任何内容)。 */
+  readonly created: boolean;
+}
+
+/** 子进程执行结果。`ok` 为 `false` 时 `stderr` 已经过调用方按需脱敏前的原始内容。 */
+export interface CommandResult {
+  readonly ok: boolean;
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export interface CommandRunnerOptions {
+  readonly cwd?: string;
+}
+
+/**
+ * 子进程执行端口。默认实现见 {@link defaultCommandRunner};单测必须注入替身,
+ * 绝不真的 spawn `git`/`npm`/`tar`。
+ */
+export type CommandRunner = (
+  command: string,
+  args: readonly string[],
+  options?: CommandRunnerOptions,
+) => Promise<CommandResult>;
+
+/** tarball 下载端口。默认实现用全局 `fetch()`;单测注入替身,绝不真的发起网络请求。 */
+export type TarballDownloader = (url: string) => Promise<Buffer>;
+
+export interface AgentInstallerOptions {
+  /** agent 源根(写入目标目录),来自 `CliContext.sourcesRoot`。 */
+  readonly sourcesRoot: string;
+  /** 本地路径来源的登记表文件路径;`source.kind === "local"` 时必须提供。 */
+  readonly registryPath?: string;
+  readonly runCommand?: CommandRunner;
+  readonly downloadTarball?: TarballDownloader;
+}
+
+/** 默认 `CommandRunner`:spawn 子进程,env 经 `buildChildEnv()` 收窄。 */
+function defaultCommandRunner(
+  command: string,
+  args: readonly string[],
+  options?: CommandRunnerOptions,
+): Promise<CommandResult> {
+  return new Promise((resolvePromise) => {
+    const child = spawn(command, args as string[], {
+      cwd: options?.cwd,
+      env: buildChildEnv(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (err) => {
+      resolvePromise({ ok: false, code: null, stdout, stderr: stderr || String(err) });
+    });
+    child.on("close", (code) => {
+      resolvePromise({ ok: code === 0, code, stdout, stderr });
+    });
+  });
+}
+
+/** 默认 `TarballDownloader`:一次纯 HTTP GET,不涉及任何包管理器。 */
+async function defaultDownloadTarball(url: string): Promise<Buffer> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`download failed: HTTP ${res.status}`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 把任意字符串规整为安全的单段目录名(替换非 `[A-Za-z0-9._-]` 字符)。 */
+function sanitizeDirName(raw: string): string {
+  return raw.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function gitDirName(source: Extract<ExtSource, { kind: "git" }>): string {
+  return sanitizeDirName(`git-${source.host}-${source.repoPath}-${source.ref}`);
+}
+
+function npmDirName(source: Extract<ExtSource, { kind: "npm" }>): string {
+  const pkg = source.scope !== undefined ? `${source.scope}-${source.name}` : source.name;
+  return sanitizeDirName(`npm-${pkg}-${source.version}`);
+}
+
+/** 建一个与 `sourcesRoot` 同一文件系统的 staging 目录,保证之后 rename 是原子操作。 */
+async function makeStagingDir(sourcesRoot: string): Promise<string> {
+  await fs.mkdir(sourcesRoot, { recursive: true });
+  const name = `.staging-${randomBytes(8).toString("hex")}`;
+  const stagingDir = join(sourcesRoot, name);
+  await fs.mkdir(stagingDir, { recursive: true });
+  return stagingDir;
+}
+
+async function cleanupStaging(stagingDir: string): Promise<void> {
+  await fs.rm(stagingDir, { recursive: true, force: true });
+}
+
+function commandErrorMessage(prefix: string, res: CommandResult): string {
+  const detail = res.stderr.trim().length > 0 ? res.stderr.trim() : res.stdout.trim();
+  return redactSecrets(`${prefix}: ${detail.length > 0 ? detail : `exit code ${res.code}`}`);
+}
+
+async function installGit(
+  source: Extract<ExtSource, { kind: "git" }>,
+  options: AgentInstallerOptions,
+): Promise<Result<AgentInstallResult, AgentInstallError>> {
+  const finalDir = join(options.sourcesRoot, gitDirName(source));
+  if (await pathExists(finalDir)) {
+    return { ok: true, value: { method: "git", location: finalDir, created: false } };
+  }
+
+  const runCommand = options.runCommand ?? defaultCommandRunner;
+  let stagingDir: string;
+  try {
+    stagingDir = await makeStagingDir(options.sourcesRoot);
+  } catch (err) {
+    return {
+      ok: false,
+      error: { code: "STAGE_FAILED", message: redactSecrets(String(err)) },
+    };
+  }
+
+  try {
+    const cloneUrl = `https://${source.host}/${source.repoPath}.git`;
+
+    const initRes = await runCommand("git", ["init", stagingDir]);
+    if (!initRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: { code: "GIT_CLONE_FAILED", message: commandErrorMessage("git init failed", initRes) },
+      };
+    }
+
+    const remoteRes = await runCommand("git", ["remote", "add", "origin", cloneUrl], {
+      cwd: stagingDir,
+    });
+    if (!remoteRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: {
+          code: "GIT_CLONE_FAILED",
+          message: commandErrorMessage("git remote add failed", remoteRes),
+        },
+      };
+    }
+
+    const fetchRes = await runCommand("git", ["fetch", "--depth", "1", "origin", source.ref], {
+      cwd: stagingDir,
+    });
+    if (!fetchRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: { code: "GIT_CLONE_FAILED", message: commandErrorMessage("git fetch failed", fetchRes) },
+      };
+    }
+
+    const checkoutRes = await runCommand("git", ["checkout", "FETCH_HEAD"], { cwd: stagingDir });
+    if (!checkoutRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: {
+          code: "GIT_CLONE_FAILED",
+          message: commandErrorMessage("git checkout failed", checkoutRes),
+        },
+      };
+    }
+
+    // 移除 .git,使落盘结果是一份不可变文件快照(对齐「浅克隆到不可变引用」)。
+    await fs.rm(join(stagingDir, ".git"), { recursive: true, force: true });
+    await fs.rename(stagingDir, finalDir);
+    return { ok: true, value: { method: "git", location: finalDir, created: true } };
+  } catch (err) {
+    await cleanupStaging(stagingDir);
+    return { ok: false, error: { code: "GIT_CLONE_FAILED", message: redactSecrets(String(err)) } };
+  }
+}
+
+async function installNpm(
+  source: Extract<ExtSource, { kind: "npm" }>,
+  options: AgentInstallerOptions,
+): Promise<Result<AgentInstallResult, AgentInstallError>> {
+  const finalDir = join(options.sourcesRoot, npmDirName(source));
+  if (await pathExists(finalDir)) {
+    return { ok: true, value: { method: "npm", location: finalDir, created: false } };
+  }
+
+  const runCommand = options.runCommand ?? defaultCommandRunner;
+  const downloadTarball = options.downloadTarball ?? defaultDownloadTarball;
+
+  let stagingDir: string;
+  try {
+    stagingDir = await makeStagingDir(options.sourcesRoot);
+  } catch (err) {
+    return {
+      ok: false,
+      error: { code: "STAGE_FAILED", message: redactSecrets(String(err)) },
+    };
+  }
+
+  try {
+    const pkgSpec =
+      source.scope !== undefined
+        ? `${source.scope}/${source.name}@${source.version}`
+        : `${source.name}@${source.version}`;
+
+    // 只读元数据查询,不下载、不安装、不执行任何包脚本(Req 3.12)。
+    const viewRes = await runCommand("npm", ["view", pkgSpec, "dist.tarball", "--json"]);
+    if (!viewRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: { code: "NPM_VIEW_FAILED", message: commandErrorMessage("npm view failed", viewRes) },
+      };
+    }
+
+    let tarballUrl: string;
+    try {
+      const parsed: unknown = JSON.parse(viewRes.stdout);
+      if (typeof parsed !== "string" || parsed.length === 0) {
+        throw new Error("dist.tarball missing or not a string");
+      }
+      tarballUrl = parsed;
+    } catch (err) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: { code: "NPM_TARBALL_MISSING", message: redactSecrets(String(err)) },
+      };
+    }
+
+    let tarballBuffer: Buffer;
+    try {
+      // 纯 HTTP GET,不涉及任何包管理器或脚本执行。
+      tarballBuffer = await downloadTarball(tarballUrl);
+    } catch (err) {
+      await cleanupStaging(stagingDir);
+      return { ok: false, error: { code: "DOWNLOAD_FAILED", message: redactSecrets(String(err)) } };
+    }
+
+    const tarballPath = join(stagingDir, "package.tgz");
+    await fs.writeFile(tarballPath, tarballBuffer);
+
+    // 只解压归档,不执行包内任何脚本;npm tarball 顶层是 package/,故 strip-components=1。
+    const extractRes = await runCommand("tar", [
+      "-xzf",
+      tarballPath,
+      "-C",
+      stagingDir,
+      "--strip-components=1",
+    ]);
+    if (!extractRes.ok) {
+      await cleanupStaging(stagingDir);
+      return {
+        ok: false,
+        error: { code: "EXTRACT_FAILED", message: commandErrorMessage("tar extract failed", extractRes) },
+      };
+    }
+
+    await fs.rm(tarballPath, { force: true });
+    await fs.rename(stagingDir, finalDir);
+    return { ok: true, value: { method: "npm", location: finalDir, created: true } };
+  } catch (err) {
+    await cleanupStaging(stagingDir);
+    return { ok: false, error: { code: "EXTRACT_FAILED", message: redactSecrets(String(err)) } };
+  }
+}
+
+async function installLocal(
+  source: Extract<ExtSource, { kind: "local" }>,
+  options: AgentInstallerOptions,
+): Promise<Result<AgentInstallResult, AgentInstallError>> {
+  if (options.registryPath === undefined) {
+    return {
+      ok: false,
+      error: {
+        code: "LOCAL_REGISTER_FAILED",
+        message: "registryPath is required to install a local-path agent source",
+      },
+    };
+  }
+
+  const result = await registerLocalSource({
+    registryPath: options.registryPath,
+    target: source.path,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: { code: "LOCAL_REGISTER_FAILED", message: redactSecrets(result.error.message) },
+    };
+  }
+
+  return {
+    ok: true,
+    value: { method: "local", location: result.value.source, created: result.value.created },
+  };
+}
+
+/**
+ * 安装一个 `kind: "agent"` 的 `ExtSource`(Req 3.6, 3.12)。
+ *
+ * - `git` / `npm` 来源:落盘到 `options.sourcesRoot` 之下的新目录。
+ * - `local` 来源:委托 `LocalSourceRegistry` 登记,不拷贝、源根下不新增目录。
+ *
+ * 不抛异常;全部失败路径以判别联合返回,错误信息经 `redactSecrets`。
+ */
+export async function installAgentSource(
+  source: ExtSource,
+  options: AgentInstallerOptions,
+): Promise<Result<AgentInstallResult, AgentInstallError>> {
+  switch (source.kind) {
+    case "git":
+      return installGit(source, options);
+    case "npm":
+      return installNpm(source, options);
+    case "local":
+      return installLocal(source, options);
+  }
+}
