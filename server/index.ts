@@ -17,6 +17,9 @@
  * 会回退到 `process.cwd()`,而 CLI 以 `dirname(serverJs)` 作 cwd。入口若置于子目录,
  * 该回退全部失效,异机/异 OS 上真实会话必崩。
  */
+// ⚠ 必须是第一个 import:加载 `.env` / `.env.local`(旧宿主由 Next 内置完成)。
+// 下面的模块在求值时就会读 process.env(如 isProduction、pi-handler 的 loadConfig)。
+import "./load-env.js";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { getHandler, shutdownHandler } from "../lib/app/pi-handler.js";
