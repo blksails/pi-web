@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import "./globals.css";
+// 全局样式已迁至 `src/globals.css`(spec vite-spa-migration 任务 2.4)。
+// 新旧宿主并存期,旧宿主从新位置引入;旧宿主删除后(任务 11)本文件一并移除。
+import "../src/globals.css";
 import { Providers } from "./providers";
 import { WEBEXT_IMPORT_MAP } from "@/lib/app/webext-singletons";
 import { WebextSingletonBridge } from "@/lib/app/webext-singleton-bridge";

@@ -16,6 +16,9 @@ import { piWebPreset } from "./packages/ui/tailwind-preset";
 const config: Config = {
   presets: [piWebPreset as Config],
   content: [
+    // SPA 前端源(spec vite-spa-migration)。`./app/**` 在新旧宿主并存期一并保留,
+    // 待旧宿主删除(任务 11)后移除该行。
+    "./src/**/*.{ts,tsx}",
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
     "./node_modules/@blksails/pi-web-ui/src/**/*.{ts,tsx}",

@@ -27,9 +27,13 @@ import type {
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
-import { ThemeToggleButton, LocaleToggleButton } from "@/app/theme-controls.js";
+import { ThemeToggleButton, LocaleToggleButton } from "@/src/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
+import {
+  getRuntimeFeatures,
+  type RuntimeFeatures,
+} from "@/lib/app/runtime-features.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 
@@ -174,59 +178,68 @@ function buildCreate(props: ChatAppProps, source: string): CreateSessionRequest 
 }
 
 /**
+ * 门控派生值的惰性求值 + 记忆化。
+ *
+ * 迁移前这些是**模块级常量**(`process.env.NEXT_PUBLIC_*` 由 Next 构建期内联)。SPA 下门控
+ * 改由 `GET /api/bootstrap` 在运行时下发,经 `setRuntimeFeatures()` 注入 —— 那发生在模块
+ * 求值**之后**、首次渲染**之前**。故求值必须推迟到首次读取。
+ *
+ * 记忆化保留了原本「引用稳定」的性质(下游 `useMemo` 依赖这些对象):门控在一次页面生命周期
+ * 内不变,首次求值后即固定。
+ */
+function memoizeFeature<T>(derive: (f: RuntimeFeatures) => T): () => T {
+  let cached: { readonly value: T } | undefined;
+  return (): T => {
+    cached ??= { value: derive(getRuntimeFeatures()) };
+    return cached.value;
+  };
+}
+
+/**
  * 扩展(source==="extension")命令在命令补全里的可见策略。
  *
  * 默认隐藏所有扩展命令:它们在 web 端会让该轮永久卡 pending(扩展命令本地执行后提前
- * 返回、不发 agent_end,详见 PiCommandPalette 文件头)。可经环境变量覆盖(client 端
- * 读取 NEXT_PUBLIC_*,构建时内联):
+ * 返回、不发 agent_end,详见 PiCommandPalette 文件头)。可经环境变量覆盖(经 bootstrap
+ * 下发,运行时生效):
  *   NEXT_PUBLIC_PI_EXTENSION_COMMANDS=all        → 放行所有扩展命令(谨慎,可能卡死)
  *   NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST=foo,bar   → 仅按名放行(逗号分隔),其余仍隐藏
- *
- * 模块级常量:引用稳定,避免每次渲染产生新对象使下游 useMemo 失效。
  */
-const EXTENSION_COMMAND_POLICY: ExtensionCommandPolicy = {
-  enabled: process.env.NEXT_PUBLIC_PI_EXTENSION_COMMANDS === "all",
-  allowlist: [
-    // 平台内置「扩展管理扩展」命令默认放行(spec extension-install-agent-tools):
-    // /plugin 经斜杠补全直接装/卸/列扩展;它们在 web 端不卡 pending —— PiChat onSubmit
-    // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
-    "plugin",
-    "reload-runtime",
-    ...(process.env.NEXT_PUBLIC_PI_EXTENSION_ALLOWLIST ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0),
-  ],
-};
+const extensionCommandPolicy = memoizeFeature(
+  (f): ExtensionCommandPolicy => ({
+    enabled: f.extensionCommands === "all",
+    allowlist: [
+      // 平台内置「扩展管理扩展」命令默认放行(spec extension-install-agent-tools):
+      // /plugin 经斜杠补全直接装/卸/列扩展;它们在 web 端不卡 pending —— PiChat onSubmit
+      // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
+      "plugin",
+      "reload-runtime",
+      ...f.extensionAllowlist
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0),
+    ],
+  }),
+);
 
 /**
- * 会话列表(sessions-list)宿主配置(client 端读 NEXT_PUBLIC_*,构建期内联):
- *   NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true|1  → 显示「全部」(系统/全机器)Tab(默认关闭)
- *   NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=sidebar|header|footer|empty → 展示位置(默认 sidebar)
- * 与后端门控同名(NEXT_PUBLIC_ 变量两端可读),两端对系统视图是否启用保持一致。
- * 模块级常量:引用稳定,避免每渲染新对象。
+ * 会话列表(sessions-list)宿主配置:
+ *   sessionsGlobal → 显示「全部」(系统/全机器)Tab(默认关闭)
+ *   sessionsSlot   → 展示位置 sidebar|header|footer|empty(默认 sidebar)
+ * 与后端门控同名,两端对系统视图是否启用保持一致。
  */
-const SESSIONS_GLOBAL_ENABLED =
-  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
-  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1";
+const sessionsGlobalEnabled = memoizeFeature((f) => f.sessionsGlobal);
 
 // session-list-item-actions:会话项管理写操作(删除/重命名/收藏)是否启用。默认启用;
-// =false/=0 时隐藏写入口(与后端同名 NEXT_PUBLIC_ 门控两端一致:服务端亦拒绝写请求)。
-const SESSIONS_MANAGE_ENABLED =
-  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
-  process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0";
+// 关闭时隐藏写入口(与后端同名门控两端一致:服务端亦拒绝写请求)。
+const sessionsManageEnabled = memoizeFeature((f) => f.sessionsManage);
 
-// agent-sources-list:是否在源选择器中展示"可浏览的源列表"。构建期内联,前端门控;
+// agent-sources-list:是否在源选择器中展示"可浏览的源列表"。
 // 后端未配来源时端点返回空列表,两端一致表现为"无列表可浏览"(Req 6.4)。
-const SOURCE_PICKER_ENABLED =
-  process.env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER === "true" ||
-  process.env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER === "1";
+const sourcePickerEnabled = memoizeFeature((f) => f.sourcePicker);
 
 // sidebar-launcher-rail:是否在侧栏会话列表之上渲染启动导航区(搜索/新建/收藏锚点/webext槽)。
-// 构建期内联,前端门控;未启用时侧栏退化为仅会话列表(Req 1.4/6.1)。
-const LAUNCHER_RAIL_ENABLED =
-  process.env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL === "true" ||
-  process.env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL === "1";
+// 未启用时侧栏退化为仅会话列表(Req 1.4/6.1)。
+const launcherRailEnabled = memoizeFeature((f) => f.launcherRail);
 
 /** 允许的宿主插槽子集(PiChatSlots 中可承载块级面板的 key)。 */
 type SessionsSlotKey = "sidebar" | "header" | "footer" | "empty";
@@ -236,16 +249,27 @@ const ALLOWED_SESSIONS_SLOTS: readonly SessionsSlotKey[] = [
   "footer",
   "empty",
 ];
-const SESSIONS_SLOT: SessionsSlotKey = ((): SessionsSlotKey => {
-  const v = process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT;
-  return v !== undefined && (ALLOWED_SESSIONS_SLOTS as readonly string[]).includes(v)
-    ? (v as SessionsSlotKey)
-    : "sidebar";
-})();
+const sessionsSlot = memoizeFeature((f): SessionsSlotKey =>
+  (ALLOWED_SESSIONS_SLOTS as readonly string[]).includes(f.sessionsSlot)
+    ? (f.sessionsSlot as SessionsSlotKey)
+    : "sidebar",
+);
+
+// 就绪握手(spec session-readiness-handshake):默认开启,与服务端 readinessHandshake 一致;
+// 经公开 env 关闭(须与服务端 PI_WEB_DISABLE_READINESS_HANDSHAKE 同步)。
+const gateUntilReady = memoizeFeature((f) => !f.disableReadinessHandshake);
+
+// bang shell 命令的前端体验开关(spec bang-shell-command,Req 5.5/5.6/5.7)。
+// 非用户可写 Settings;服务端权威门控独立。
+const bashEnabled = memoizeFeature((f) => f.bashEnabled);
+
+// Tier4 隔离表面基址(spec agent-web-extension)。空 → 不传,<ArtifactSurface> 不挂载
+// (记忆 webext-artifact-base-url-gate:无 iframe 是正确门控,非 bug)。
+const extensionBaseUrl = memoizeFeature((f) => f.extensionBaseUrl);
 
 /** 把会话列表面板放入选定的宿主插槽(类型安全;默认 sidebar)。 */
 function sessionListSlots(node: React.ReactNode): PiChatSlots {
-  switch (SESSIONS_SLOT) {
+  switch (sessionsSlot()) {
     case "header":
       return { header: node };
     case "footer":
@@ -301,7 +325,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
   // 避免选择器星标态陈旧(reviewer 反馈)。
   const [favoritesReloadKey, setFavoritesReloadKey] = React.useState(0);
   React.useEffect(() => {
-    if (!LAUNCHER_RAIL_ENABLED) return;
+    if (!launcherRailEnabled()) return;
     let live = true;
     void pickerClient
       .listFavorites()
@@ -401,9 +425,9 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
         <AgentSourcePicker
           onSubmit={onSubmit}
           defaultSource={props.defaultSource}
-          enableSourceList={SOURCE_PICKER_ENABLED}
+          enableSourceList={sourcePickerEnabled()}
           listAgentSources={pickerClient.listAgentSources}
-          {...(LAUNCHER_RAIL_ENABLED
+          {...(launcherRailEnabled()
             ? { favoriteSources, onToggleFavorite }
             : {})}
         />
@@ -549,7 +573,7 @@ function SessionView({
   );
   // 对话框打开或收藏信号变化时拉取收藏,用于星标高亮。
   React.useEffect(() => {
-    if (!LAUNCHER_RAIL_ENABLED || !pickerOpen) return;
+    if (!launcherRailEnabled() || !pickerOpen) return;
     let live = true;
     void piClient
       .listFavorites()
@@ -650,11 +674,11 @@ function SessionView({
           ? { currentSessionId: session.sessionId }
           : {})}
         currentCwd={create.cwd ?? "."}
-        globalEnabled={SESSIONS_GLOBAL_ENABLED}
+        globalEnabled={sessionsGlobalEnabled()}
         listSessions={piClient.listSessions}
         onResume={onResumeSession}
         refreshSignal={sessionListRefreshKey}
-        manageEnabled={SESSIONS_MANAGE_ENABLED}
+        manageEnabled={sessionsManageEnabled()}
         favoriteSessionIds={sessionFavoriteIds}
         onDeleteSession={onDeleteSession}
         onRenameSession={onRenameSession}
@@ -683,7 +707,7 @@ function SessionView({
       </div>
     );
     // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
-    // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 LAUNCHER_RAIL_ENABLED 门控),因主流 e2e
+    // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 launcherRailEnabled() 门控),因主流 e2e
     // 跑在 rail 关闭态且依赖 data-settings-link / data-pi-theme-toggle 等。原「新建会话/切换源」
     // 已移除(冗余,统一由侧栏「新建聊天」承担);日志面板可见性由 /settings 的「显示日志面板」
     // 设置项(logging.outputs.panelVisible)控制,账户区不再放开关。
@@ -695,7 +719,7 @@ function SessionView({
         className="flex shrink-0 flex-col gap-1 border-t border-[hsl(var(--border))] px-2 pb-2 pt-2"
       >
         {/* 新建会话/切换源:仅 rail 关闭态提供(rail 开启时冗余,由侧栏「新建聊天」承担)。 */}
-        {!LAUNCHER_RAIL_ENABLED ? (
+        {!launcherRailEnabled() ? (
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -732,7 +756,7 @@ function SessionView({
     const launcherContribution = resolveSlot(extension, "launcherRail");
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
     // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
-    if (!LAUNCHER_RAIL_ENABLED && launcherContribution === undefined)
+    if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
         <div className="flex h-full flex-col">
           {collapseBtn}
@@ -876,13 +900,9 @@ function SessionView({
           session={session}
           controls={controls}
           extensionUI={extensionUI}
-          // 就绪握手(spec session-readiness-handshake):默认开启门控,与服务端 readinessHandshake 一致;
-          // 经公开 env 关闭(须与服务端 PI_WEB_DISABLE_READINESS_HANDSHAKE 同步)。
-          gateUntilReady={
-            process.env.NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1"
-          }
+          gateUntilReady={gateUntilReady()}
           components={PI_CHAT_COMPONENTS}
-          extensionCommands={EXTENSION_COMMAND_POLICY}
+          extensionCommands={extensionCommandPolicy()}
           builtinCommands={builtinCommands}
           // 装/卸插件命令(/plugin、/reload-runtime)提交后 bump nonce → 重解析 webext
           // (装后即时双路生效之路②;spec plugin-system-unification Req 7)。
@@ -891,12 +911,7 @@ function SessionView({
           slots={sessionListSlot}
           onTurnEnd={onTurnEnd}
           showLogs={true}
-          // bang shell 命令前端体验开关(spec bang-shell-command,Req 5.5/5.6/5.7)。
-          // 仅经构建期内联的 NEXT_PUBLIC_ 变量提供(非用户可写 Settings);服务端权威门控独立。
-          enableBash={
-            process.env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED === "1" ||
-            process.env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED === "true"
-          }
+          enableBash={bashEnabled()}
           logsPanelVisible={logsPanelVisible ?? true}
           logsPanelPosition={logsPanelPosition ?? "bottom"}
           {...(extension !== undefined ? { extension } : {})}
@@ -918,13 +933,13 @@ function SessionView({
           {...(extension?.config?.empty?.mergeCommands !== undefined
             ? { suggestionsMerge: extension.config.empty.mergeCommands }
             : {})}
-          {...(process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL !== undefined
-            ? { extensionBaseUrl: process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL }
+          {...(extensionBaseUrl().length > 0
+            ? { extensionBaseUrl: extensionBaseUrl() }
             : {})}
         />
       </div>
       {/* sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源→新建会话。 */}
-      {LAUNCHER_RAIL_ENABLED && pickerOpen ? (
+      {launcherRailEnabled() && pickerOpen ? (
         <AgentSourcePicker
           variant="dialog"
           onClose={() => setPickerOpen(false)}
@@ -933,7 +948,7 @@ function SessionView({
             onLaunchSource(source);
           }}
           defaultSource={create.source}
-          enableSourceList={SOURCE_PICKER_ENABLED}
+          enableSourceList={sourcePickerEnabled()}
           listAgentSources={piClient.listAgentSources}
           favoriteSources={dialogFavorites}
           onToggleFavorite={onDialogToggleFavorite}
