@@ -67,7 +67,7 @@
   - _Requirements: 5.1, 9.3, 9.4_
   - _Boundary: scripts/fetch-node-sidecar.mjs, desktop/node-sidecar.lock.json_
 
-- [ ] 2.2 (P) 实现产物入口与 sidecar 路径推导 + 单测
+- [x] 2.2 (P) 实现产物入口与 sidecar 路径推导 + 单测
   - `resolve_artifact`：dev → 不拉起后端；packaged → `resource_dir()/dist/server.mjs`；unpackaged → 构建产物布局入口（e2e 经 `PI_WEB_DESKTOP_SERVER_JS` 覆盖）
   - **硬约束**：返回的入口必须位于产物根，其父目录即子进程 cwd（否则 `packages/server` 的路径解析回退失效）
   - **易错点**：sidecar node 落在**主可执行同目录**（`current_exe()` 的父目录，macOS 为 `Contents/MacOS/`），而 `dist/` 落在 `resource_dir()`（macOS 为 `Contents/Resources/`）—— 两者路径来源不同，不可混用。Windows 上 node 文件名为 `node.exe`
@@ -79,17 +79,18 @@
 
 ## 3. 后端受监管拉起与进程树收尾
 
-- [ ] 3.1 实现后端 spawn 与环境变量注入
+- [x] 3.1 实现后端 spawn 与环境变量注入
   - 用 `std::process::Command` spawn 随包 node 执行 `server.mjs`，cwd 设为入口所在的产物根；**不得使用 `tauri_plugin_shell` 的 Command**（它不暴露进程组，`kill()` 触不到 pi runner 孙进程）
   - POSIX 下以 `process_group(0)` 使子进程成为进程组组长，为整组收尾做准备
   - 注入环境变量：恒有 `PORT`（实际选中端口）、`HOSTNAME=127.0.0.1`、`PI_WEB_AUTOSTART=1`、`PI_WEB_DEFAULT_CWD`、`PI_WEB_NODE_BIN`（随包 node 的**绝对路径**，供 pi runner 孙进程复用）；有默认源时注入 `PI_WEB_DEFAULT_SOURCE`
   - **永不注入 `PI_WEB_AGENT_DIR`**，使会话落 `~/.pi/agent` 与 CLI 共享；亦不再注入 `ELECTRON_RUN_AS_NODE`
+  - ★**实现期实测发现**：子进程必须**继承**父进程环境（不可 `env_clear()`）——否则丢失 `HOME`，server 与 pi runner 无法定位 `~/.pi/agent`，且丢失 `PATH`。正确做法是继承后覆盖特定键、并 `env_remove` 掉须剥除的键
   - 排空子进程 stdout 避免管道缓冲填满阻塞；stderr 尾部保留上限 4096 字节供诊断
   - 观察完成：`cargo test` 断言 spawn 出的子进程 env 含 `PI_WEB_NODE_BIN` 与 `HOSTNAME=127.0.0.1`，且**不含** `PI_WEB_AGENT_DIR`
   - _Requirements: 2.3, 5.2, 5.3, 5.5, 8.1_
   - _Boundary: desktop/src-tauri/src/server_supervisor.rs_
 
-- [ ] 3.2 实现启动失败的判别式分类（就绪超时与后端早退不得混淆）
+- [x] 3.2 实现启动失败的判别式分类（就绪超时与后端早退不得混淆）
   - 无空闲端口 → 返回「无可用端口」且**不 spawn 任何进程**
   - 就绪探针失败时：**必须先快照子进程的退出状态，再调用 stop()** —— 否则 stop 杀掉仍存活的 server 会把「就绪超时」误判成「后端早退」。这是 Electron 侧已踩过并修复的坑，是本任务最易出错处
   - 已退出 → 「后端早退」（带退出码与 stderr 尾部）；仍存活 → 「就绪超时」（带等待时长）
@@ -98,7 +99,7 @@
   - _Requirements: 2.5, 2.6, 2.7, 10.5_
   - _Boundary: desktop/src-tauri/src/server_supervisor.rs_
 
-- [ ] 3.3 实现幂等的进程树收尾
+- [x] 3.3 实现幂等的进程树收尾
   - POSIX：对进程组组长发**负 pid** 的 SIGTERM，3 秒宽限期后升级 SIGKILL；Windows：`taskkill /PID <pid> /T /F`
   - 幂等：取走并置空持有的子进程句柄，重复调用直接返回、不 panic、不挂起
   - 子进程在收尾前已自行退出 → 跳过终止动作
