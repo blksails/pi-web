@@ -24,19 +24,31 @@ const READY_TIMEOUT_MS = 180_000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function parseArgs(argv) {
-  const a = { port: 35200, noUnpack: false };
+  const a = { port: 35200, noUnpack: false, repeat: 5 };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--app") a.app = argv[++i];
     else if (argv[i] === "--label") a.label = argv[++i];
     else if (argv[i] === "--out") a.out = argv[++i];
     else if (argv[i] === "--port") a.port = Number(argv[++i]);
+    else if (argv[i] === "--repeat") a.repeat = Number(argv[++i]);
     else if (argv[i] === "--no-unpack") a.noUnpack = true;
   }
   if (!a.app || !a.label) {
-    console.error("用法: --app <.app> --label <before|after> [--no-unpack] [--out json]");
+    console.error("用法: --app <.app> --label <before|after> [--no-unpack] [--repeat N] [--out json]");
     process.exit(1);
   }
   return a;
+}
+
+/**
+ * 稳态冷启动必须重复测量取中位数。
+ *
+ * ★ 单次测量的噪声可达 ±400ms（页缓存冷热），足以淹没本改造的真实影响，甚至给出
+ *   「改造后反而更快」这种与因果相悖的结论。Req 10.2 的 200ms 预算若用单次值裁定，
+ *   等于掷硬币。原始每轮数值一并落盘，使裁定可复现、可审计。
+ */
+function median(sorted) {
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 const bytes = (p) => (existsSync(p) ? Number(execFileSync("du", ["-sk", p], { encoding: "utf8" }).trim().split(/\s+/)[0]) * 1024 : 0);
@@ -95,30 +107,42 @@ async function main() {
   result.dmgMB = mb(dmgBytes(args.app, args.label));
   console.error(`[measure:${args.label}] .app ${result.appMB} MB → dmg ${result.dmgMB} MB`);
 
+  /** 稳态冷启动重复 N 次，落盘每轮原始值 + 中位数（Req 10.2 的裁定依据）。 */
+  async function steadyRuns(env, portFrom) {
+    const runs = [];
+    for (let i = 0; i < args.repeat; i++) {
+      const ms = await coldStart(appBin, portFrom + i, env);
+      runs.push(ms);
+      console.error(`[measure:${args.label}] 稳态 #${i + 1}/${args.repeat} ${ms} ms`);
+    }
+    const sorted = [...runs].sort((a, b) => a - b);
+    return { runs, min: sorted[0], median: median(sorted), max: sorted.at(-1) };
+  }
+
   if (args.noUnpack) {
-    // 改造前：无解包概念，两次启动同一路径。
-    result.coldStartFirstMs = await coldStart(appBin, args.port, {});
-    console.error(`[measure:${args.label}] 冷启动 #1 ${result.coldStartFirstMs} ms`);
-    result.coldStartWarmMs = await coldStart(appBin, args.port + 1, {});
-    console.error(`[measure:${args.label}] 冷启动 #2 ${result.coldStartWarmMs} ms`);
+    // 改造前：无解包概念，所有启动走同一路径。
     result.runtimeMB = 0;
+    result.steady = await steadyRuns({}, args.port);
+    result.firstColdStartMs = null; // 无「首启解包」概念
   } else {
     const runtimeRoot = mkdtempSync(join(tmpdir(), "pi-web-measure-rt-"));
     try {
-      // 首启：运行时根为空 ⇒ 必然经历真实解包。
-      result.coldStartFirstMs = await coldStart(appBin, args.port, { PI_WEB_RUNTIME_ROOT: runtimeRoot });
-      console.error(`[measure:${args.label}] 首启（含解包）${result.coldStartFirstMs} ms`);
-
-      // 稳态：命中已解包目录。
-      result.coldStartWarmMs = await coldStart(appBin, args.port + 1, { PI_WEB_RUNTIME_ROOT: runtimeRoot });
-      console.error(`[measure:${args.label}] 稳态（命中）${result.coldStartWarmMs} ms`);
+      // 首启：运行时根为空 ⇒ 必然经历真实解包。仅此一次。
+      result.firstColdStartMs = await coldStart(appBin, args.port, { PI_WEB_RUNTIME_ROOT: runtimeRoot });
+      console.error(`[measure:${args.label}] 首启（含解包）${result.firstColdStartMs} ms`);
 
       result.runtimeMB = mb(bytes(runtimeRoot));
       console.error(`[measure:${args.label}] 解包出的运行时目录 ${result.runtimeMB} MB`);
+
+      // 稳态：命中已解包目录。
+      result.steady = await steadyRuns({ PI_WEB_RUNTIME_ROOT: runtimeRoot }, args.port + 1);
     } finally {
       rmSync(runtimeRoot, { recursive: true, force: true });
     }
   }
+  console.error(
+    `[measure:${args.label}] 稳态中位数 ${result.steady.median} ms（${args.repeat} 轮：${result.steady.runs.join(", ")}）`,
+  );
 
   const json = JSON.stringify(result, null, 2);
   if (args.out) {

@@ -276,12 +276,16 @@ export async function resolveRuntime() {
 
 /**
  * 回收旧运行时目录。**尽力而为**：必须在后端已拉起之后调用,任何失败都被吞掉(Req 5.4/5.5)。
+ *
+ * `load` 是注入接缝：解包器是构建生成物,仓库里未构建时它不存在。单测须能**强制**触发
+ * 「解包器缺失」这条分支,而不是依赖 `payload/` 恰好没被构建 —— 那样测试会在标准
+ * `pnpm build:dist` 流程下静默退化成另一个用例的重复。
  */
-export function scheduleRuntimeGc(runtime) {
+export function scheduleRuntimeGc(runtime, load = loadUnpacker) {
   if (!runtime) return;
   void (async () => {
     try {
-      const { gcRuntimeRoot } = loadUnpacker();
+      const { gcRuntimeRoot } = load();
       await gcRuntimeRoot(runtime.runtimeRoot, runtime.runtimeDir);
     } catch {
       // GC 永不影响启动(Req 5.4)。

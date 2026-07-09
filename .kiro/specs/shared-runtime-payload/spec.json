@@ -5,17 +5,27 @@
   "language": "zh",
   "phase": "implemented-partial",
   "approvals": {
-    "requirements": { "generated": true, "approved": true },
-    "design": { "generated": true, "approved": true },
-    "tasks": { "generated": true, "approved": true }
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
   },
   "ready_for_implementation": true,
   "implementation": {
-    "completed_tasks": 29,
-    "total_tasks": 30,
+    "completed_tasks": 30,
+    "total_tasks": 31,
     "verdict": "净收益成立(四条阈值全部达标)，改造继续",
     "open_items": [
       "8.1 desktop-release.yml 从未在真实 GitHub Actions 上运行；Windows/Linux 从未打包"
-    ]
+    ],
+    "review": "独立复查首轮 REJECT(测量不可复现 / 10.3 未交付 / 恒真断言 / 未强制触发的负路径)，四条均已修复并复测"
   }
 }

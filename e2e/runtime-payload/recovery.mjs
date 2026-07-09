@@ -77,12 +77,20 @@ async function caseInterrupted() {
     await new Promise((r) => child.on("exit", r));
 
     check("中断后不存在带 .ok 的运行时目录", !existsSync(join(target, ".ok")));
-    const residue = readdirSync(runtimeRoot).filter((e) => e.startsWith(".staging-"));
-    check(`中断后留下 staging 残留（由 GC 回收，实际 ${residue.length} 个）`, residue.length >= 0);
+
+    // 中断必须真的发生在解包途中：staging 存在、且残留的锁记录着已死的持有者。
+    // 若断言写成 `residue.length >= 0` 就是恒真的，等于什么也没验证。
+    const staging = readdirSync(runtimeRoot).filter((e) => e.startsWith(".staging-"));
+    check(`SIGKILL 确实落在解包途中（staging 残留 ${staging.length} 个）`, staging.length === 1);
+    const locks = readdirSync(runtimeRoot).filter((e) => e.startsWith(".lock-"));
+    check(`崩溃留下了未释放的锁（${locks.length} 个）`, locks.length === 1);
 
     const again = await runUnpacker(runtimeRoot);
-    check("中断后下次启动重新解包成功", again.ok === true && again.unpacked === true);
+    check("中断后下次启动重新解包成功（死者持有的锁被接管）", again.ok === true && again.unpacked === true);
     check("重解后完整性标记就位", existsSync(join(target, ".ok")));
+
+    // 死者接管必须是**立即**的。若退化为按锁的年龄判断，这里会空等满 lockWaitMs。
+    check(`接管未空等（实际 ${again.elapsedMs} ms < 30s）`, again.elapsedMs < 30_000);
   } finally {
     rmSync(runtimeRoot, { recursive: true, force: true });
   }

@@ -124,7 +124,7 @@
 
 - [x] 4.2 CLI 侧 GC 触发
   - `launch()` spawn 子进程**之后** fire-and-forget 调 `gcRuntimeRoot`，异常吞掉
-  - 完成条件：`test/runtime-payload/cli-gc.test.ts` 3 绿 —— 无运行时信息时跳过；解包器缺失时不抛出且无未捕获拒绝；运行时根不存在时静默返回
+  - 完成条件：`test/runtime-payload/cli-gc.test.ts` 5 绿。「解包器缺失」经**注入接缝**强制触发（否则在标准 `pnpm build:dist` 流程下 `payload/` 已存在，该用例会静默退化成另一个用例的重复）
   - _Requirements: 5.1, 5.4, 5.5_
   - _Boundary: bin/pi-web.mjs_
   - _Depends: 4.1_
@@ -249,7 +249,8 @@
   - 三场景磁盘：仅桌面版（`.app` + 运行时目录）、仅 CLI（`npm pack` 解包 + 运行时目录）、两者都装（共享一个运行时目录）
   - dmg 体积：`hdiutil create -format UDZO`，与改造前口径一致
   - 冷启动：首启（含解包）与稳态（命中 `.ok`）两组，口径沿用 `measure-desktop-baseline.mjs`（spawn → 后端首次响应 `GET /`）
-  - 完成条件：脚本输出 JSON，含三场景磁盘、dmg、两组冷启动
+  - 稳态冷启动必须 `--repeat N` 取中位数：单次噪声可达 ±400ms，用单次值裁定 200ms 预算等于掷硬币
+  - 完成条件：脚本输出 JSON（含每轮原始值）与 `.log`，涵盖三场景磁盘、dmg、首启与稳态冷启动
   - _Requirements: 10.2, 10.3, 10.4, 12.1, 12.2, 12.3_
   - _Boundary: scripts/measure-payload-baseline.mjs_
   - _Depends: 6.2_
@@ -272,6 +273,15 @@
   - _Requirements: 7.1, 8.1_
   - _Boundary: e2e/cli-smoke.mjs_
   - _Depends: 4.3_
+
+- [x] 10.4 打包态「载荷损坏」的失败呈现 e2e
+  - `e2e/desktop/desktop-corrupt-payload.mjs`：篡改真实 `.app` 内嵌载荷一字节后启动
+  - 断言：进程不静默退出（停在可重试错误页）、错误码 `payload-corrupt`、给出「重新安装」、不留带 `.ok` 的目录、后端从未拉起
+  - ⚠ 复制出的 `.app` **不能放在 `os.tmpdir()`**：那里 Tauri 的 `resource_dir()` 会失败，壳在触及载荷前就报错。已加前置断言防止该用例退化为「测了个寂寞」。改造前的 `.app` 在同一位置同样失败，故与本 spec 无关
+  - 完成条件：8 项断言全绿
+  - _Requirements: 4.5, 4.6_
+  - _Boundary: e2e/desktop/desktop-corrupt-payload.mjs_
+  - _Depends: 6.2_
 
 - [x] 10.2 全量回归
   - `pnpm vitest run`（全量）、`cargo test`（desktop/src-tauri）
@@ -308,4 +318,5 @@
 | 位置 | 症状 | 证据 |
 |---|---|---|
 | `e2e/cli/cli-watch.mjs:71` | 断言英文标签 `Start session`，而 UI 默认 locale 为 zh（「开始会话」）。该行自 `377d237`(2026-06-24) 未变，早于 i18n 中文化 | 在 `98e7e94` 的干净 worktree 上复现同一失败 |
+| Tauri `resource_dir()` | `.app` 位于 `os.tmpdir()`（macOS `/var/folders/<hash>/T/`）时解析失败，壳报「缺少资源目录」。`/private/tmp`、`$HOME`、`/private/var/tmp` 均正常 | 改造前的 `.app` 在同一位置同样失败 |
 | `test/bash-route.integration.test.ts` | 全量 vitest 并行负载下 5s 超时（单独跑 3/3 通过） | 在 `98e7e94` 上跑全量同样失败 |

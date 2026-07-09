@@ -59,6 +59,13 @@ describe("isRuntimeDirName（防灾守卫）", () => {
   });
 });
 
+/** 造一个与 node:fs 真实抛出的对象同形的 errno 错误。 */
+function errnoError(code: string | undefined): NodeJS.ErrnoException {
+  const err: NodeJS.ErrnoException = new Error(code ? `${code}: simulated` : "simulated");
+  if (code) err.code = code;
+  return err;
+}
+
 describe("classifyFsError", () => {
   it.each([
     ["ENOSPC", "disk-full"],
@@ -68,20 +75,20 @@ describe("classifyFsError", () => {
     ["EIO", "extract-failed"],
     [undefined, "extract-failed"],
   ])("%s → %s", (code, expected) => {
-    expect(classifyFsError({ code })).toBe(expected);
+    expect(classifyFsError(errnoError(code))).toBe(expected);
   });
 });
 
 describe("classifyExtractError", () => {
   it("zstd/tar 结构错误（无 fs errno）归为载荷损坏", () => {
     expect(classifyExtractError(new Error("invalid zstd frame"))).toBe("payload-corrupt");
-    expect(classifyExtractError({ code: "Z_DATA_ERROR" })).toBe("payload-corrupt");
+    expect(classifyExtractError(errnoError("Z_DATA_ERROR"))).toBe("payload-corrupt");
   });
 
   it("带 fs errno 的仍走 classifyFsError", () => {
-    expect(classifyExtractError({ code: "ENOSPC" })).toBe("disk-full");
-    expect(classifyExtractError({ code: "EACCES" })).toBe("runtime-root-unwritable");
-    expect(classifyExtractError({ code: "EIO" })).toBe("extract-failed");
+    expect(classifyExtractError(errnoError("ENOSPC"))).toBe("disk-full");
+    expect(classifyExtractError(errnoError("EACCES"))).toBe("runtime-root-unwritable");
+    expect(classifyExtractError(errnoError("EIO"))).toBe("extract-failed");
   });
 });
 

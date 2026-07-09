@@ -3,7 +3,18 @@
   "app": "desktop/src-tauri/target/release/bundle/macos/pi-web.app",
   "appMB": 100.3,
   "dmgMB": 47.6,
-  "coldStartFirstMs": 8372,
-  "coldStartWarmMs": 1698,
-  "runtimeMB": 88.6
+  "firstColdStartMs": 6974,
+  "runtimeMB": 88.6,
+  "steady": {
+    "runs": [
+      1157,
+      1421,
+      1137,
+      1097,
+      1089
+    ],
+    "min": 1089,
+    "median": 1137,
+    "max": 1421
+  }
 }

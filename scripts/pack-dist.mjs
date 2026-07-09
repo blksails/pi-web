@@ -19,6 +19,15 @@
  * pi SDK 的传递依赖(chalk / undici / yaml …)在 `.pnpm/<hash>/node_modules/` 下是**兄弟**。
  * 把该目录的全部条目 hoist 到 `dist/node_modules` 顶层,兄弟关系即被保留 —— 这正是
  * `pack-standalone` 的 hoist 步骤,只是不必先被 nft 打散再修回来。
+ *
+ * ★ 本脚本是随包**压缩载荷的唯一上游**（spec shared-runtime-payload）：`scripts/pack-payload.mjs`
+ *   直接消费这里产出的 `dist/` 树。两点因此成为跨脚本的隐式契约：
+ *     1. `packWorkspacePackages()` 在 POSIX 上产出的 `node_modules/@blksails/pi-web-*` 符号链接，
+ *        由 `pack-payload` 以 `tar.create({ follow: true })` 展开为实体。载荷在 Ubuntu 上构建一次
+ *        分发到三平台，带符号链接的归档在 Windows 上会重演 realpath EPERM 坑。
+ *     2. 顶层条目集合即「产物根」的定义。后端子进程以产物根为 cwd，`packages/server` 多处在
+ *        `import.meta.url` 被内联失效后回退 `process.cwd()` 定位框架自身文件；少一个顶层条目
+ *        不会报错，只会在某条运行时路径上**静默失败**。
  */
 import {
   cpSync,
