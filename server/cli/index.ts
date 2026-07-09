@@ -62,3 +62,11 @@ export {
   type TemplateInfo,
   type TemplateResolution,
 } from "./scaffold/template-catalog.js";
+
+/**
+ * `pi-web add` 编排器(spec cli-component-add,任务 3.2)。
+ * bin 壳对 `add` 子命令做专用 early-dispatch:动态 `import()` 本产物后调用 `runAdd(argv)`,
+ * 透传其退出码。这是 add 独有的最小分发路径 —— 通用 `runSubcommand` 仍归
+ * cli-package-commands 任务 6.1,落地时 add 顺势并入其词条表。
+ */
+export { runAdd, ADD_USAGE, type AddCommandOptions } from "./component/add-command.js";

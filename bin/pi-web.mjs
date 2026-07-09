@@ -39,10 +39,11 @@ function looksLikeGitSource(source) {
 }
 
 /**
- * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6)。
- * @typedef {"create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
+ * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6;`add` 归 spec cli-component-add)。
+ * @typedef {"add" | "create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
  */
 export const SUBCOMMAND_NAMES = /** @type {const} */ ([
+  "add",
   "create",
   "install",
   "uninstall",
@@ -60,6 +61,30 @@ export const SUBCOMMAND_NAMES = /** @type {const} */ ([
  * 保持同步(SubcommandRouter 的选项表是 UX 契约的第一入口)。
  */
 const SUBCOMMAND_SPECS = {
+  add: {
+    summary: "把组件源码安装进 agent source(shadcn 式,代码归你)",
+    options: {
+      target: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web add <source> [options]
+
+把组件包的源码拷贝进目标 agent source 的 .pi/web/components/<id>/,
+代码归你所有,可自由修改。重复 add 具备幂等更新语义(未改覆盖新版 /
+已改打印 diff 拒绝 / 同版不写)。
+
+<source> 支持(v1):本地目录,或 git 直连(须固定 ref,可带 #<子目录>),
+如 git:github.com/org/repo@v1.0.0#packages/my-component。
+
+选项:
+      --target <dir>  目标 agent source(缺省当前目录;须含 .pi/web/)
+      --dry-run       全部校验并列出将写入的文件与接线指引,不写任何文件
+      --force         仅将 peer 基线校验失败降级为警告;不覆盖本地改动
+  -h, --help          显示本帮助并退出
+`,
+  },
   create: {
     summary: "从模板生成 agent/plugin 骨架",
     options: {
@@ -540,6 +565,25 @@ export async function main(argv = process.argv.slice(2)) {
   if (opts.intent === "version") {
     process.stdout.write(`${readVersion()}\n`);
     return 0;
+  }
+  if (opts.intent === "subcommand" && opts.name === "add") {
+    // `add` 的专用最小分发(spec cli-component-add,任务 4):通用 runSubcommand 分发
+    // 仍归 cli-package-commands 任务 6.1,落地时本分支并入其词条表。
+    const cliCommandsJs = distCliCommandsJs();
+    if (!existsSync(cliCommandsJs)) {
+      console.error(
+        `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +
+          `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
+      );
+      return 1;
+    }
+    // ★ 经 Function 间接而非字面量 `import()`:vitest(jsdom web 管线)对本 .mjs 内的
+    // 字面量动态 import 在 ssrTransformScript 阶段崩 "Expected ident"(rollup parseAst),
+    // 致所有 import 本模块的既有单测整套无法收集(实测 vitest 2.1.9 + vite 5.4.21;
+    // 裸 vite 同配置 transform 正常)。Node CLI 无 CSP,此间接仅为绕过测试管线解析缺陷。
+    const dynamicImport = new Function("u", "return import(u)");
+    const mod = await dynamicImport(pathToFileURL(cliCommandsJs).href);
+    return await mod.runAdd(opts.argv);
   }
   if (opts.intent === "subcommand") {
     // 分发接缝(动态加载 dist/cli-commands.mjs、按 name 调用具体实现)归任务 6.1

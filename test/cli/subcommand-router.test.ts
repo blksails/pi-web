@@ -32,9 +32,9 @@ describe("parseCliArgs — 子命令判别(Req 1.1, 1.2)", () => {
     expect(o.argv).toEqual(["my-agent", "--kind", "plugin"]);
   });
 
-  it("SUBCOMMAND_NAMES 恰好含 6 个子命令名", () => {
+  it("SUBCOMMAND_NAMES 恰好含 7 个子命令名(6 个归 cli-package-commands + add 归 cli-component-add)", () => {
     expect([...SUBCOMMAND_NAMES].sort()).toEqual(
-      ["create", "install", "list", "publish", "uninstall", "update"].sort(),
+      ["add", "create", "install", "list", "publish", "uninstall", "update"].sort(),
     );
   });
 
@@ -155,5 +155,36 @@ describe("parseCliArgs — 纯函数性(Req 10.1)", () => {
     expect(o.cwd).toBe("work");
     expect(o.port).toBe(9090);
     expect(o.watch).toBe(true);
+  });
+});
+
+describe("parseCliArgs — add 子命令词条(spec cli-component-add,任务 4,Req 10.3)", () => {
+  it("`add <source>` 判别为 subcommand 意图,argv 正确切片", () => {
+    const o = parseCliArgs(["add", "./my-comp", "--target", "./my-agent", "--dry-run"]);
+    expect(o.intent).toBe("subcommand");
+    if (o.intent !== "subcommand") throw new Error("unreachable");
+    expect(o.name).toBe("add");
+    expect(o.argv).toEqual(["./my-comp", "--target", "./my-agent", "--dry-run"]);
+  });
+
+  it("`add --help` → help 意图且带 subcommand=add", () => {
+    const o = parseCliArgs(["add", "--help"]);
+    expect(o).toEqual({ intent: "help", subcommand: "add" });
+  });
+
+  it("add 的选项不串味:create --target 报错;add --kind 报错", () => {
+    expect(() => parseCliArgs(["create", "x", "--target", "y"])).toThrow(CliUsageError);
+    expect(() => parseCliArgs(["add", "x", "--kind", "agent"])).toThrow(CliUsageError);
+  });
+
+  it("add 下非法选项含选项名与帮助提示", () => {
+    try {
+      parseCliArgs(["add", "x", "--nope"]);
+      throw new Error("应当抛出");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliUsageError);
+      expect((err as Error).message).toContain("--nope");
+      expect((err as Error).message).toContain("pi-web add --help");
+    }
   });
 });
