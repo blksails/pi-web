@@ -3,9 +3,9 @@ name: Desktop Release (三平台 · dmg/exe/AppImage)
 # pi-web 桌面版(@blksails/pi-web-desktop)分发工作流(spec pi-web-desktop M3)。
 #
 # 设计:构建 / 打包分离(与 cli-e2e.yml 同构),因为:
-#   - standalone 自包含产物只能在 Linux/macOS 上 `build:cli`(Next.js standalone 文件追踪
+#   - 自包含产物只在 Linux/macOS 上 `build:dist`(历史上 Next.js standalone 的文件追踪
 #     在 Windows 有上游级 EPERM);在 Linux 上构建一次。
-#   - pack-standalone 的 flattenSymlinkFree 已把产物做成**无符号链接实体树**,故可跨平台
+#   - pack-dist 的 dereference 拷贝已把运行时依赖做成**无符号链接实体树**,故可跨平台
 #     解压;三平台各自用 electron-builder 打包本 OS 目标(mac=dmg / win=nsis / linux=AppImage)。
 #   - 运行期原生可选依赖(sharp/swc 的平台二进制)在被打包的 Linux 产物里可能缺失或非本平台,
 #     但 cli-e2e 已证明运行期不触达这些路径,壳可正常起会话。
@@ -30,9 +30,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # ── 在 Linux 上构建 standalone 一次,压成单个 tar 上传 ──
-  build-standalone:
-    name: build standalone (ubuntu)
+  # ── 在 Linux 上构建 dist 一次,压成单个 tar 上传 ──
+  build-dist:
+    name: build dist (ubuntu)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -45,22 +45,22 @@ jobs:
           node-version: "22.19.0"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build standalone CLI
-        run: pnpm build:cli
+      - name: Build self-contained dist
+        run: pnpm build:dist
       # flattenSymlinkFree 后产物无符号链接,普通 tar 即可跨平台解压。
-      - name: Archive standalone
-        run: tar -czf standalone.tgz -C .next-cli standalone
+      - name: Archive dist
+        run: tar -czf dist.tgz dist
       - uses: actions/upload-artifact@v4
         with:
           name: standalone
-          path: standalone.tgz
+          path: dist.tgz
           retention-days: 1
           if-no-files-found: error
 
   # ── 三平台各自打包本 OS 目标并(标签构建时)附加到 Release ──
   package:
     name: package · ${{ matrix.os }}
-    needs: build-standalone
+    needs: build-dist
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     permissions:
@@ -85,9 +85,8 @@ jobs:
       - name: Restore standalone
         shell: bash
         run: |
-          mkdir -p .next-cli
-          tar -xzf standalone.tgz -C .next-cli
-          ls -la .next-cli/standalone/server.js
+          tar -xzf dist.tgz
+          ls -la dist/server.mjs
       # dist = esbuild 打桌面 bundle + electron-builder 打本 OS 目标(host OS 自动检测)。
       # 未签名:关闭 macOS 签名自动发现。
       - name: Build desktop bundle + package

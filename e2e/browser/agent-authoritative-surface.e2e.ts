@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * agent 权威 surface(agent-authoritative-surface)浏览器级 e2e —— 端到端命令闭环 + 退化。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。
  * surface-demo-agent 的 `.pi/web` 在 panelRight 槽渲染 domain="demo" 的权威快照 `{count,log}`:
  *
  *  ① 命令闭环(不过 LLM):选 `surface-demo-agent` → 探针 `surface:demo` 可见(available=true)→

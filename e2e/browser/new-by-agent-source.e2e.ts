@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  *  - 1.1/1.2/1.3/1.4 — 顶栏 "New session" 用当前 agent source 同源新建:新 sessionId
  *                      (≠原)、URL→/session/:newId、源不变、可继续对话。
  *  - 2.1/2.2        — 「切换源」退回 AgentSourcePicker。
- *  - 4.2/4.3        — 隔离 build(NEXT_DIST_DIR=.next-e2e)+ external server。
+ *  - 4.2/4.3        — 隔离 build(PI_WEB_DIST_DIR)+ external server。
  */
 
 const SOURCE = "./examples/hello-agent";

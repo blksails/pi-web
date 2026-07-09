@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * aigc-prompt-toolbar 浏览器级 e2e —— 工具排 AIGC 快捷设置(模型/尺寸偏好)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行(隔离 NEXT_DIST_DIR=.next-e2e
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行(隔离产物目录 PI_WEB_DIST_DIR
  * build + PI_WEB_E2E_EXTERNAL_SERVER=1 手动 fs:3100)。
  *
  *  ① 渲染位置:选 aigc-canvas-agent(source 声明 promptToolbar 槽)→ 快捷设置出现在输入区

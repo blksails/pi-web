@@ -29,6 +29,7 @@ import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { AgentSourcePicker } from "./agent-source-picker.js";
 import { ThemeToggleButton, LocaleToggleButton } from "@/src/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
+import { getPiWebDesktopBridge } from "@/lib/app/desktop-bridge.js";
 import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
 import {
   getRuntimeFeatures,
@@ -117,6 +118,25 @@ function useLogsPanelConfig(): LogsPanelConfig {
  * 替换默认 PiReasoning。模块级常量(引用稳定,避免每渲染新对象使下游 useMemo 失效)。
  */
 const PI_CHAT_COMPONENTS: ComponentOverrides = { Reasoning: ChatReasoning };
+
+/**
+ * desktop-directory-picker:读取桌面壳注入的原生目录选择能力,供 AgentSourcePicker 的
+ * `onBrowseDirectory`(首屏 picker + 会话内 dialog picker 共用)。仅在挂载后读取,避免 SSR
+ * 与首帧客户端渲染不一致(服务端无 window ⇒ 无「浏览」按钮)导致水合错配。浏览器态恒为 undefined。
+ */
+function useDesktopPickDirectory():
+  | (() => Promise<string | undefined>)
+  | undefined {
+  const [pick, setPick] = React.useState<
+    (() => Promise<string | undefined>) | undefined
+  >(undefined);
+  React.useEffect(() => {
+    const fn = getPiWebDesktopBridge()?.pickDirectory;
+    // 存函数须用更新函数式包裹,否则 setState 会把函数当 updater 调用。
+    if (fn !== undefined) setPick(() => fn);
+  }, []);
+  return pick;
+}
 
 /**
  * ChatApp — the client-side assembly: pick source → create session → render
@@ -325,6 +345,8 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
   const [favoriteSources, setFavoriteSources] = React.useState<Set<string>>(
     () => new Set(),
   );
+  // desktop-directory-picker:桌面壳注入的原生目录选择能力(首屏 picker 用;dialog picker 同源)。
+  const desktopPickDirectory = useDesktopPickDirectory();
   // 返回选择器时 bump(onReset)→ 重拉收藏,反映在会话内(LauncherRail)对收藏的增删,
   // 避免选择器星标态陈旧(reviewer 反馈)。
   const [favoritesReloadKey, setFavoritesReloadKey] = React.useState(0);
@@ -434,6 +456,9 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
           {...(launcherRailEnabled()
             ? { favoriteSources, onToggleFavorite }
             : {})}
+          {...(desktopPickDirectory !== undefined
+            ? { onBrowseDirectory: desktopPickDirectory }
+            : {})}
         />
       ) : (
         <SessionView
@@ -475,6 +500,8 @@ function SessionView({
   readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
 }): React.JSX.Element {
   const t = useI18n();
+  // desktop-directory-picker:会话内「切换源」dialog picker 同样注入桌面原生目录选择能力。
+  const desktopPickDirectory = useDesktopPickDirectory();
   // 侧栏折叠(整条左栏):折叠后不渲染 sidebar 槽,对话区吃满横向空间(类 ChatGPT/Grok)。
   // localStorage 持久化;SSR 安全:初值 false,挂载后读取偏好。
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState<boolean>(false);
@@ -956,6 +983,9 @@ function SessionView({
           listAgentSources={piClient.listAgentSources}
           favoriteSources={dialogFavorites}
           onToggleFavorite={onDialogToggleFavorite}
+          {...(desktopPickDirectory !== undefined
+            ? { onBrowseDirectory: desktopPickDirectory }
+            : {})}
         />
       ) : null}
     </div>

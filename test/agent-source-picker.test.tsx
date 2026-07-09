@@ -300,3 +300,95 @@ describe("AgentSourcePicker — source list", () => {
     expect(document.querySelector("[data-agent-source-input]")).toBeTruthy();
   });
 });
+
+describe("AgentSourcePicker — 桌面原生目录选择(desktop-directory-picker)", () => {
+  const inputValue = (c: ParentNode): string =>
+    (c.querySelector("[data-agent-source-input]") as HTMLInputElement).value;
+
+  it("未注入 onBrowseDirectory(浏览器态)→ 不渲染浏览按钮(Req 1.2)", () => {
+    const { container } = render(<AgentSourcePicker onSubmit={() => {}} />);
+    expect(container.querySelector("[data-agent-source-browse]")).toBeNull();
+  });
+
+  it("注入 onBrowseDirectory(桌面态)→ 渲染浏览按钮(Req 1.1)", () => {
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        onBrowseDirectory={() => Promise.resolve(undefined)}
+      />,
+    );
+    expect(container.querySelector("[data-agent-source-browse]")).toBeTruthy();
+  });
+
+  it("选中目录 → 回填来源框且不触发 onSubmit(Req 2.3/1.4)", async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        onBrowseDirectory={() => Promise.resolve("/Users/x/proj")}
+      />,
+    );
+    fireEvent.click(container.querySelector("[data-agent-source-browse]")!);
+    await waitFor(() => expect(inputValue(container)).toBe("/Users/x/proj"));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("取消(resolve undefined)→ 保持来源框原值,不触发 onSubmit(Req 2.5)", async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        defaultSource="./keep"
+        onBrowseDirectory={() => Promise.resolve(undefined)}
+      />,
+    );
+    fireEvent.click(container.querySelector("[data-agent-source-browse]")!);
+    await waitFor(() =>
+      expect(
+        (container.querySelector("[data-agent-source-browse]") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(inputValue(container)).toBe("./keep");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("失败(reject)→ 保持原值,不建会话,手输框仍可用(Req 5.1/5.2)", async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        defaultSource="./keep"
+        onBrowseDirectory={() => Promise.reject(new Error("boom"))}
+      />,
+    );
+    fireEvent.click(container.querySelector("[data-agent-source-browse]")!);
+    await waitFor(() =>
+      expect(
+        (container.querySelector("[data-agent-source-browse]") as HTMLButtonElement)
+          .disabled,
+      ).toBe(false),
+    );
+    expect(inputValue(container)).toBe("./keep");
+    expect(onSubmit).not.toHaveBeenCalled();
+    // 手输框仍可编辑并提交。
+    const input = container.querySelector("[data-agent-source-input]") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "./typed" } });
+    fireEvent.click(container.querySelector("[data-agent-source-submit]")!);
+    expect(onSubmit).toHaveBeenCalledWith("./typed");
+  });
+
+  it("创建中(loading)→ 浏览按钮禁用(与提交一致)", () => {
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        loading
+        onBrowseDirectory={() => Promise.resolve("/x")}
+      />,
+    );
+    expect(
+      (container.querySelector("[data-agent-source-browse]") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+});

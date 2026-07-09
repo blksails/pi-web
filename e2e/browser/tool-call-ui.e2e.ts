@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * 工具调用 UI 重构(tool-call-ui-redesign)浏览器验收。
  *
- * 真实浏览器 → 真实 Next server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
+ * 真实浏览器 → 真实 pi-web server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
  * stub agent 每轮发一个 `echo` 工具(tool_execution_start → _end,即完成态)。
  *
  * 覆盖本次重构的新行为:

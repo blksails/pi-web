@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
  * logging-system browser e2e — full closed loop (Task 5.5).
  *
  * Validates the end-to-end logging pipeline in isolation build
- * (NEXT_DIST_DIR=.next-e2e + external server) with PI_WEB_STUB_AGENT=1.
+ * (PI_WEB_DIST_DIR + external server) with PI_WEB_STUB_AGENT=1.
  *
  * Coverage:
  *  5.1 — data-pi-logs-region is present once the session is active
