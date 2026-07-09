@@ -78,7 +78,7 @@
 
 - [ ] 4. 安装通道
 
-- [ ] 4.1 (P) 实现本地来源登记表的写入
+- [x] 4.1 (P) 实现本地来源登记表的写入
   - 读改写既有的来源登记文件，登记与除名扫描根之外的本地目录
   - 只拥有写入语义；读取与列表呈现归既有的来源提供者，不改动其行为
   - 不放宽既有的实路径安全门控
@@ -366,3 +366,35 @@
 - **e2e 判「实例就绪」不能只靠 `waitForReady()`**：它把任何 HTTP 响应都当就绪，**500 也算**。
   用 `GET /api/bootstrap` 断言 `200` + JSON 可解析（纯后端路由，不依赖前端产物）。
   已用 mutation 验过：把该断言指向不存在的路由，脚本正确失败并 exit 1。
+- **`packages/server` 主入口(`@blksails/pi-web-server`)重导出 `probeEntry` / `EntryOverrideError`**
+  （经 `src/index.ts` → `export * from "./agent-source/index.js"`，注释已明确标注该子模块只含
+  node builtins + 只读探测、不含 pi SDK 值导入，可安全经 barrel 导入）。`server/cli` 层需要判定
+  「某本地目录是否为一个能被 resolver/scan-provider 接纳的 agent 来源」时，直接从
+  `@blksails/pi-web-server` 裸包名 import 这两个符号即可，不需要新增 tsconfig path/alias，也
+  不算修改 `packages/server/**`（只读该文件、不改）。
+- **「有效包目录」不等于「有 `package.json`」**：`probeEntry()`（`scan-provider`/`resolver` 共享
+  的入口探测，也是 4.1 `LocalSourceRegistry` 复用的判据）对完全没有 `package.json` 的纯目录
+  一样接纳（`kind: "none"` → cli 模式），只有 `package.json#pi-web.entry` 显式声明了一个不存在
+  的入口文件时才抛 `EntryOverrideError`。这与 `TemplateCatalog`（`resolveTemplate`，要求
+  `package.json` 含 `pi-web` 字段）是两种不同粒度的「有效」标准，后续任务凡涉及「这是否是一个
+  可用的 agent 来源目录」都应对齐 `probeEntry` 这条线，而非误用模板判据。
+- **写路径遇到坏 JSON 时的裁决**：既有只读 `RegistrySourceProvider` 对 `sources.json` 解析失败
+  静默返回 `[]`（读操作，无副作用，安全）。但任何**写路径**（4.1 `LocalSourceRegistry` 起，后续
+  任务若也要改写该文件）都不应照搬这个「静默」策略 —— 覆盖一份当前恰好损坏、但可能是用户或其他
+  工具手写的文件会造成不可逆数据丢失。写路径应统一裁决为：解析失败即报错、不动原文件，把修复
+  留给用户。
+- **从 `@blksails/pi-web-server` barrel import `probeEntry` 是安全的，但脆弱**：`packages/server/src/index.ts:40`
+  有明确承诺「agent-source-list 仅 node builtins + 只读探测，无 pi SDK 值导入，可安全经 barrel 重导出」。
+  实测把 `local-source-registry` re-export 进产物后，`dist/cli-commands.mjs` 仅 +6KB 且 `@earendil-works`
+  出现 **0 次**（esbuild tree-shake 只拉 `probeEntry` 依赖链）。⚠️ 该安全性依赖那条承诺持续成立 ——
+  若日后 `agent-source/` 可达图谱里新增 pi SDK 值导入，pi SDK 会被打进 CLI 产物且**本 spec 的测试抓不到**。
+  真正把它接线进 `server/cli/index.ts` 的任务（4.4/6.1）应补一次产物体积 + `grep -c @earendil-works` 回归门。
+  注：`packages/server` 的 `exports` 只有 `.` / `./trust` / `./model-options` / `./vision-model-options`，
+  **没有 `./agent-source` 子路径**，所以走 barrel 是当前唯一选择（加子路径要改 `packages/server/**`）。
+- **「有效包目录」= scan-provider 会接纳的目录，不是「有 package.json」**：`probeEntry` 对**空目录**返回
+  `{kind:"none"}` → scan-provider 判为 `cli` 模式并接纳。故 `registerLocalSource(<空目录>)` 返回 `ok:true`。
+  这与既有语义一致（有意为之），但面向用户的文案不要把这类目录叫「无效包目录」。只有 `EntryOverrideError`
+  才走错误分支。
+- **坏 JSON 的读写不对称是有意的**：只读 provider 对坏 `sources.json` 静默返回 `[]`（无副作用）；
+  写路径报 `REGISTRY_FILE_CORRUPT` 且**不覆盖**（避免不可逆地毁掉用户手写的文件）。后果是文件损坏时
+  源列表静默变空、而登记被拒——接线任务的错误文案应把这层关系讲清楚。
