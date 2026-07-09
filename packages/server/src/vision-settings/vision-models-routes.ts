@@ -11,8 +11,9 @@
  * 降级:取数抛错(如 `models.json` 损坏)→ 返回 **200 + 空清单**,而非把 500 透给前端。
  * 前端据此退化为「由工具弹层选择模型」,解读功能仍可用(Req 3.6)。
  *
- * ⚠ 新顶层 API 段必须自带 Next catch-all 转发器(`app/api/vision/[[...path]]/route.ts`),
- * 否则 `/api/vision/*` 静默 404。
+ * 挂载:经 `routes:` 注入接缝进入 `createPiWebHandler`,宿主(`server/index.ts`)以一条
+ * `app.all("/api/*")` 转发全部 API 面。(spec vite-spa-migration 删除 Next 后,不再需要
+ * per-段的 catch-all 转发器。)
  */
 import { jsonResponse } from "../http/index.js";
 import type { InjectedRoute } from "../http/index.js";

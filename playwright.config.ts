@@ -6,7 +6,7 @@ import fs from "node:fs";
 /**
  * Playwright config for the app-shell browser e2e.
  *
- * The browser drives the full closed loop against the REAL Next server with a
+ * The browser drives the full closed loop against the REAL pi-web server with a
  * deterministic, offline stub agent (PI_WEB_STUB_AGENT=1) — no API key, no cost.
  *
  * Dual-backend session persistence:
@@ -18,12 +18,11 @@ import fs from "node:fs";
  *
  * Run modes:
  *  1) Self-managed:  pnpm exec playwright install chromium-headless-shell
- *                    pnpm build && pnpm e2e
- *  2) External servers (CI / when a dev server must stay up — avoids `next build`
- *     clobbering a running `next dev`'s shared .next):
- *       pnpm build
- *       SESSION_STORE=fs     SESSION_STORE_ROOT=$FS_ROOT  ...stub env... next start -p 3100 &
- *       SESSION_STORE=sqlite SESSION_STORE_PATH=$DB       ...stub env... next start -p 3101 &
+ *                    pnpm build:dist && pnpm e2e
+ *  2) External servers (CI / when a dev server must stay up):
+ *       pnpm build:dist
+ *       SESSION_STORE=fs     SESSION_STORE_ROOT=$FS_ROOT  ...stub env... PORT=3100 node dist/server.mjs &
+ *       SESSION_STORE=sqlite SESSION_STORE_PATH=$DB       ...stub env... PORT=3101 node dist/server.mjs &
  *       PI_WEB_E2E_EXTERNAL_SERVER=1 PI_WEB_E2E_FS_ROOT=$FS_ROOT PI_WEB_E2E_SQLITE_PATH=$DB pnpm e2e
  */
 const PORT_FS = Number(process.env.PI_WEB_E2E_PORT ?? 3100);
@@ -58,28 +57,27 @@ fs.writeFileSync(
   "utf8",
 );
 
+// 隔离产物目录:`vite build --outDir` / esbuild 的 PI_WEB_DIST 均可指向它,
+// 使 e2e 构建不与开发态产物互相覆盖。默认 `dist`。
+//
+// 旧宿主的 `PI_WEB_DISABLE_STANDALONE=1` hack 随 Next 一并消失:那是因为
+// `next.config` 默认 `output:"standalone"` 与 `next start` 不兼容才需要的。
+const DIST_DIR = process.env.PI_WEB_DIST_DIR ?? "dist";
+const SERVER_ENTRY = path.join(DIST_DIR, "server.mjs");
+
 const stubEnv = {
   PI_WEB_STUB_AGENT: "1",
   PI_WEB_DEFAULT_SOURCE: "./examples/hello-agent",
   PI_WEB_DEFAULT_MODEL: "stub-model",
   PI_WEB_AGENT_DIR: agentDir,
-  // bang shell 命令(spec bang-shell-command)e2e 开启档:服务端权威门控开启,
-  // 配合 build 期 NEXT_PUBLIC_PI_WEB_BASH_ENABLED=1(前端体验)端到端验证。
-  // 关闭档(前端关 ! 当普通消息 / 后端关 404)由单元/集成测试覆盖,避免双 build 成本。
+  // bang shell 命令(spec bang-shell-command)e2e 开启档:服务端权威门控开启。
   PI_WEB_BASH_ENABLED: "1",
+  // 前端门控现由 `GET /api/bootstrap` 在**运行时**下发(spec vite-spa-migration Req 2.2),
+  // 不再需要 build 期内联 —— 故在 server env 里设置即可,一次构建服务两种门控档。
+  NEXT_PUBLIC_PI_WEB_BASH_ENABLED: "1",
+  // 前端产物目录(server 以仓库根为 cwd 启动,`clientDir()` 默认 `cwd/client` 不存在)。
+  PI_WEB_CLIENT_DIR: path.join(process.cwd(), DIST_DIR, "client"),
 };
-
-// Forward an isolated build dir to the servers so `next start` serves the
-// e2e-only build (NEXT_DIST_DIR=.next-e2e) — never the .next a running
-// `next dev` is using. No-op when unset.
-const distEnv: Record<string, string> = process.env.NEXT_DIST_DIR
-  ? { NEXT_DIST_DIR: process.env.NEXT_DIST_DIR }
-  : {};
-
-// 自管 webServer 用 `next start`,而 next.config 默认 output:"standalone"(CLI 打包),
-// 二者不兼容。next start 在启动时重读 config,故运行期也须置 PI_WEB_DISABLE_STANDALONE=1
-// (仅 build 期设不够),否则 next start 拒绝服务。external server 模式自带该 env。
-const disableStandaloneEnv = { PI_WEB_DISABLE_STANDALONE: "1" };
 
 export default defineConfig({
   testDir: "./e2e/browser",
@@ -115,27 +113,31 @@ export default defineConfig({
     : {
         webServer: [
           {
-            command: `node_modules/.bin/next start -p ${PORT_FS}`,
-            url: `http://127.0.0.1:${PORT_FS}`,
+            command: `node ${SERVER_ENTRY}`,
+            port: PORT_FS,
+            stdout: "pipe",
+            stderr: "pipe",
             reuseExistingServer: true,
             timeout: 120_000,
             env: {
               ...stubEnv,
-              ...distEnv,
-              ...disableStandaloneEnv,
+              PORT: String(PORT_FS),
               SESSION_STORE: "fs",
               SESSION_STORE_ROOT: fsRoot,
             },
           },
           {
-            command: `node_modules/.bin/next start -p ${PORT_SQLITE}`,
-            url: `http://127.0.0.1:${PORT_SQLITE}`,
+            // ⚠ 两个 webServer 的 command 不能逐字相同(playwright 会视作同一个),
+            // 故给 sqlite 档附一个被 server 忽略的 argv 标记以示区分。
+            command: `node ${SERVER_ENTRY} --store=sqlite`,
+            port: PORT_SQLITE,
+            stdout: "pipe",
+            stderr: "pipe",
             reuseExistingServer: true,
             timeout: 120_000,
             env: {
               ...stubEnv,
-              ...distEnv,
-              ...disableStandaloneEnv,
+              PORT: String(PORT_SQLITE),
               SESSION_STORE: "sqlite",
               SESSION_STORE_PATH: sqlitePath,
             },

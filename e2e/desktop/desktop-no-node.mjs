@@ -23,8 +23,8 @@ import { fileURLToPath } from "node:url";
 import { _electron as electron } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
-const STANDALONE_SERVER = join(ROOT, DIST, "standalone", "server.js");
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
+const DIST_SERVER = join(ROOT, DIST, "server.mjs");
 const DESKTOP_MAIN = join(ROOT, "desktop", "dist", "main.js");
 const DESKTOP_PORT = 34820;
 const EVIDENCE_DIR = join(ROOT, ".kiro/specs/pi-web-desktop/evidence");
@@ -117,7 +117,7 @@ function makeAgentDir(mockPort) {
 }
 
 async function main() {
-  if (!existsSync(STANDALONE_SERVER) || !existsSync(DESKTOP_MAIN)) {
+  if (!existsSync(DIST_SERVER) || !existsSync(DESKTOP_MAIN)) {
     console.error("产物缺失,请先 `pnpm build:cli` 与 `pnpm --filter @blksails/pi-web-desktop build`");
     process.exit(1);
   }
@@ -150,7 +150,7 @@ async function main() {
       env: {
         ...process.env,
         PATH: strippedPath, // 关键:应用及其 server/runner 子进程都拿不到系统 node
-        PI_WEB_DESKTOP_SERVER_JS: STANDALONE_SERVER,
+        PI_WEB_DESKTOP_SERVER_JS: DIST_SERVER,
         PI_WEB_DESKTOP_PORT: String(DESKTOP_PORT),
         PI_WEB_AGENT_DIR: agentDir,
         PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),

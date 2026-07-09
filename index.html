@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>pi-web</title>
+    <meta name="description" content="pi-web app shell — streaming agent chat" />
+    <!--
+      单例 import map — 必须早于任何模块加载(浏览器只认首个 import 前的 import map)。
+
+      Next 版由 `app/layout.tsx` 经 SSR 注入 <head>;SPA 下写死在此即可,更简单。
+      内容必须与 `lib/app/webext-singletons.ts` 的 WEBEXT_IMPORT_MAP 逐字一致——
+      漂移由 `test/webext-import-map.test.ts` 拦截。
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/api/webext/singletons/react",
+          "react/jsx-runtime": "/api/webext/singletons/react-jsx-runtime",
+          "react-dom": "/api/webext/singletons/react-dom",
+          "@blksails/pi-web-kit": "/api/webext/singletons/webkit"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

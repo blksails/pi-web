@@ -213,13 +213,21 @@ export function openBrowser(url) {
 }
 
 /**
- * standalone server.js 的绝对路径(随包分发)。CLI 产物用 .next-cli,与 dev 的 .next 隔离。
+ * 自包含产物入口的绝对路径(随包分发)。
+ *
+ * ★ 入口位于**产物根**(`dist/server.mjs`),不是子目录。`launch()` 以 `dirname(serverJs)`
+ * 作 cwd,而 `packages/server` 的 `runnerBootstrapPath()` / `resolvePiCliEntry()` 在
+ * `import.meta.url` 被打包器内联后会回退到 `process.cwd()` —— 那个回退必须落在产物根。
+ *
  * 导出供桌面壳复用 CLI 布局下的产物定位(桌面打包态另有 process.resourcesPath 路径,见 spec)。
  */
-export function standaloneServerJs() {
-  const distDir = process.env.NEXT_DIST_DIR ?? ".next-cli";
-  return join(PKG_ROOT, distDir, "standalone", "server.js");
+export function distServerJs() {
+  const distDir = process.env.PI_WEB_DIST_DIR ?? "dist";
+  return join(PKG_ROOT, distDir, "server.mjs");
 }
+
+/** @deprecated 旧名(Next standalone 时代);保留一轮以免外部调用方骤断。 */
+export const standaloneServerJs = distServerJs;
 
 /**
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
@@ -229,7 +237,7 @@ export async function launch({ serverJs, host, port, env, open }) {
   if (!existsSync(serverJs)) {
     console.error(
       `[pi-web] 未找到自包含产物 ${serverJs}\n` +
-        `  请先构建: \`pnpm build:cli\`(或 \`npm run build:cli\`)。`,
+        `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
     );
     return 1;
   }
@@ -247,9 +255,10 @@ export async function launch({ serverJs, host, port, env, open }) {
     port = chosen;
     env = { ...env, PORT: String(port) };
   }
-  const standaloneDir = dirname(serverJs);
+  // ★ cwd = 产物根。runnerBootstrapPath()/resolvePiCliEntry() 的 cwd 回退依赖它。
+  const distRoot = dirname(serverJs);
   const child = spawn(process.execPath, [serverJs], {
-    cwd: standaloneDir,
+    cwd: distRoot,
     env,
     stdio: "inherit",
   });
@@ -343,7 +352,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const env = buildEnv(opts, process.cwd(), process.env);
   return launch({
-    serverJs: standaloneServerJs(),
+    serverJs: distServerJs(),
     host: env.HOSTNAME,
     port: Number(env.PORT),
     env,

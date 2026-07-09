@@ -36,3 +36,6 @@ storybook-static
 
 # 个人照片 e2e fixture(隐私,不入库;本地放置后跑 aigc-image-edit e2e)
 e2e/fixtures/iphone-mpf.jpg
+
+# vite-spa-migration 产物
+/dist/

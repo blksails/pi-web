@@ -18,6 +18,8 @@ declare module "*/bin/pi-web.mjs" {
     signal?: { readonly aborted: boolean },
   ): Promise<void>;
 
+  export function distServerJs(): string;
+  /** @deprecated 旧名别名。 */
   export function standaloneServerJs(): string;
 
   export interface BuildEnvOpts {

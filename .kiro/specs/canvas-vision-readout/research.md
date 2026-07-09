@@ -195,3 +195,18 @@ Textarea（`:1756-1770`）只有 `onChange`，无 `onKeyDown` / `onSubmit`。唯
 - 🟡 **`model` 参数格式混淆**（`provider/id` vs 裸 `id`）⇒ 工具报 `unknown_model`。缓解：单测锁死。
 - 🟡 **误接入 consumeSent** ⇒ 解读会吞掉用户的掩码/参考图。缓解：组件测试 4 专门锁这条。
 - 🟢 围栏隐性契约：tool 行内联中文指令，单测 3 锁死。
+
+---
+
+## 合并 main 后的失效项（如实记录）
+
+`vite-spa-migration` 已合入 main，**Next.js 被删除**（`app/api/**` 下 11 个 catch-all 转发器
+整体消失，改由 Hono 的一条 `app.all("/api/*")` 转发全部 API 面）。因此：
+
+- §2 表中「Next catch-all 转发器 — 新顶层 API 段必须自带，否则静默 404」**已失效**。
+- §3 需求 3.1 的 gap「需新端点 + `input` 过滤 + Next catch-all 转发器」中，转发器一项**已失效**。
+- §5 风险「Next catch-all 转发器遗漏 ⇒ 静默 404」**已消除**（不是被修复，是随架构迁移消失）。
+
+合并时的处置：删除本 spec 新增的 `app/api/vision/[[...path]]/route.ts`；
+`e2e/node/vision-models-endpoint.e2e.test.ts` 改用框架无关的 `lib/app/api-route` 驱动同一单例 handler。
+端点本身（`routes:` 注入 + `createVisionModelsRoute`）**未受影响**。

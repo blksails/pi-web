@@ -19,7 +19,7 @@ process.env.PI_WEB_STUB_AGENT_PATH = path.join(
 );
 process.env.PI_WEB_BASH_ENABLED = "1";
 
-const route = await import("@/app/api/sessions/[[...path]]/route");
+const route = await import("@/lib/app/api-route");
 const { shutdownHandler } = await import("@/lib/app/pi-handler");
 
 function req(pathname: string, init?: RequestInit): Request {

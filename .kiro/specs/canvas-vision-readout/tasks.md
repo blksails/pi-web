@@ -31,10 +31,14 @@
   - _Requirements: 3.1_
   - _Boundary: vision-models-routes_
 
-- [x] 2.3 接线端点：宿主路由注入 + 新顶层 API 段的转发器
+- [x] 2.3 接线端点：宿主路由注入（+ 当时的 Next catch-all 转发器）
   - 在宿主装配层的路由数组中追加本端点
-  - **新建该顶层 API 段的 catch-all 转发器**（仅需 GET）——缺失会导致该端点静默 404，这是本 spec 最易漏的一项
-  - 完成态：节点级 e2e 经真实 handler 请求该端点返回 200 与预期形状（若转发器缺失则此测试为 404，直接暴露）
+  - 实现当时（Next 尚在）还新建了该顶层 API 段的 catch-all 转发器——缺失会导致端点静默 404
+  - ⚠ **随 `vite-spa-migration` 合入 main，Next 已被删除**：`app/api/**` 下 11 个转发器整体消失，
+    改由 Hono 的一条 `app.all("/api/*")` 转发。合并时已删除本 spec 新增的
+    `app/api/vision/[[...path]]/route.ts`，e2e 改用框架无关的 `lib/app/api-route`。
+    **该风险已不复存在**，相应的守护声明已从 e2e 注释中撤下。
+  - 完成态：节点级 e2e 经真实 handler 请求该端点返回 200 与预期形状
   - _Depends: 2.2_
   - _Requirements: 3.1_
   - _Boundary: vision-routes-wiring, app 宿主装配层_
@@ -117,7 +121,9 @@
 
 ### 端到端
 - `e2e/node/vision-models-endpoint.e2e.test.ts` → **3 passed**。
-  该测试直接 `import("@/app/api/vision/[[...path]]/route")`，**因此真正验证了 Next catch-all 转发器存在**。
+  该测试经 `lib/app/api-route` 驱动真实单例 handler（与宿主 `app.all("/api/*")` 同一条路）。
+  > 实现当时它直接 import Next 转发器文件，用以守护「漏建转发器 → 静默 404」。
+  > 合并 main（Next 已删）后该坑不复存在，测试已改写并撤下该守护声明。
 - node e2e 全量 → **50 passed / 2 failed**；2 条为 **pre-existing**
   （`webext-build-load` declarative ×1、`config-domains` ×1），已于 `image-vision-tool` spec 期间
   在 `git stash` 基线上逐条复现，与本 spec 无关。
@@ -125,7 +131,8 @@
 ### 变异验证（证明护栏真能抓 bug，而非假绿）
 1. **移走 Next 转发器**（`mv app/api/vision /tmp`）→ 端点 e2e 立刻
    `Cannot find module '@/app/api/vision/[[...path]]/route'` 失败。还原后复绿。
-   ⇒ 证明「转发器缺失导致静默 404」这条最易漏的风险被真正守住。
+   ⇒ 当时证明「转发器缺失导致静默 404」这条风险被真正守住。
+   （合并 main 后 Next 已删，该风险与该守护均已随之消失——如实记录，不再声称仍在守护。）
 2. **在 `readout()` 中注入 `setRefs([])`**（模拟误接入 `consumeSent`）→ 组件测试
    `★ 解读不吞噬生成输入(4.3/4.4)` 精确变红 1 条。还原后复绿。
    ⇒ 证明「解读吞掉用户掩码/参考图」这条风险被真正守住。

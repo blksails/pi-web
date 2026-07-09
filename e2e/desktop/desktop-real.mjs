@@ -2,20 +2,20 @@
 /**
  * 桌面版启动闭环 + 真实会话 e2e(spec pi-web-desktop task 4.2)。可重复,产出新鲜证据。
  *
- * 用 Playwright 的 `_electron` 驱动**真实 Electron 壳**(未打包,指向预构建 standalone),
+ * 用 Playwright 的 `_electron` 驱动**真实 Electron 壳**(未打包,指向预构建自包含产物),
  * 证明整条桌面机制端到端可用:
- *   Electron 主进程 → 以「Electron 充当 Node」spawn standalone server →
+ *   Electron 主进程 → 以「Electron 充当 Node」spawn server →
  *   就绪后 BrowserWindow 加载本地回环 UI → 真实 runner 子进程(runner-bootstrap→jiti→用户
  *   agent 代码)→ mock provider → 流式回包显示在 Electron 窗口。
  *
  * 复用 cli-real.mjs 的 mock provider + 临时 agent-dir 手法(不依赖外网/真实凭据)。
  * 关键注入:
- *   - PI_WEB_DESKTOP_SERVER_JS:指向 repo 的 .next-cli/standalone/server.js(未打包态入口覆盖)。
+ *   - PI_WEB_DESKTOP_SERVER_JS:指向 repo 的 dist/server.mjs(未打包态入口覆盖)。
  *   - PI_WEB_AGENT_DIR:临时 agent-dir(默认模型指向 mock)。
  *   - PI_WEB_DEFAULT_SOURCE/CWD:autostart 直接建会话(前端据默认 source 存在跳过选源页)。
  *   - 主进程自身**不带** ELECTRON_RUN_AS_NODE(保持 GUI);supervisor 只给 server 子进程注入。
  *
- * 前置:`pnpm build:cli`(standalone) + `pnpm --filter @blksails/pi-web-desktop build`(desktop dist)。
+ * 前置:`pnpm build:dist` + `pnpm --filter @blksails/pi-web-desktop build`(desktop dist)。
  * 跑法:`node e2e/desktop/desktop-real.mjs`。
  */
 import { createServer } from "node:http";
@@ -27,8 +27,8 @@ import { fileURLToPath } from "node:url";
 import { _electron as electron } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
-const STANDALONE_SERVER = join(ROOT, DIST, "standalone", "server.js");
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
+const DIST_SERVER = join(ROOT, DIST, "server.mjs");
 const DESKTOP_MAIN = join(ROOT, "desktop", "dist", "main.js");
 const DESKTOP_PORT = 34810;
 const EVIDENCE_DIR = join(ROOT, ".kiro/specs/pi-web-desktop/evidence");
@@ -104,8 +104,8 @@ function makeAgentDir(mockPort) {
 }
 
 async function main() {
-  if (!existsSync(STANDALONE_SERVER)) {
-    console.error(`产物缺失:${STANDALONE_SERVER}\n请先 \`pnpm build:cli\``);
+  if (!existsSync(DIST_SERVER)) {
+    console.error(`产物缺失:${DIST_SERVER}\n请先 \`pnpm build:dist\``);
     process.exit(1);
   }
   if (!existsSync(DESKTOP_MAIN)) {
@@ -127,8 +127,8 @@ async function main() {
       cwd: ROOT,
       env: {
         ...process.env,
-        // 未打包态 server.js 入口覆盖(避开内联 import.meta.url 路径漂移)。
-        PI_WEB_DESKTOP_SERVER_JS: STANDALONE_SERVER,
+        // 未打包态 server.mjs 入口覆盖(避开内联 import.meta.url 路径漂移)。
+        PI_WEB_DESKTOP_SERVER_JS: DIST_SERVER,
         PI_WEB_DESKTOP_PORT: String(DESKTOP_PORT),
         // agent-dir + 默认 source + autostart:直接建真实会话。
         PI_WEB_AGENT_DIR: agentDir,

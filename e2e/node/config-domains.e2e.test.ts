@@ -16,7 +16,7 @@ process.env.PI_WEB_STUB_AGENT = "1";
 process.env.PI_WEB_AGENT_DIR = agentDir;
 process.env.PI_WEB_DEFAULT_CWD = projectDir;
 
-const config = await import("@/app/api/config/[[...path]]/route");
+const config = await import("@/lib/app/api-route");
 const { shutdownHandler } = await import("@/lib/app/pi-handler");
 
 afterAll(async () => {

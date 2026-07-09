@@ -5,8 +5,8 @@
  * 验证:CLI --watch 启动 → 激活会话(createSession 即 spawn runner 并注册 watcher)→
  * 修改 agent source 入口文件 → runner 因源码变化空闲重启。不依赖 LLM 凭据(只验机制)。
  *
- * 前置:`NEXT_DIST_DIR=.next-cli pnpm build:cli`(须含放开门控后的 hot-reload)。
- * 跑法:`NEXT_DIST_DIR=.next-cli node e2e/cli/cli-watch.mjs`。
+ * 前置:`pnpm build:dist`(须含放开门控后的 hot-reload)。
+ * 跑法:`node e2e/cli/cli-watch.mjs`。
  */
 import { spawn, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ import { get as httpGet } from "node:http";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
 const BIN = join(ROOT, "bin", "pi-web.mjs");
 const PORT = 3461;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -56,7 +56,7 @@ async function main() {
   let stderr = "";
   const cli = spawn("node", [BIN, AGENT, "--watch", "-p", String(PORT)], {
     cwd: ROOT,
-    env: { ...process.env, NEXT_DIST_DIR: DIST },
+    env: { ...process.env, PI_WEB_DIST_DIR: DIST },
   });
   cli.stdout.on("data", (d) => process.stdout.write(d));
   cli.stderr.on("data", (d) => {

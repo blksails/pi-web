@@ -16,7 +16,7 @@ import { piWebPreset } from "./packages/ui/tailwind-preset";
 const config: Config = {
   presets: [piWebPreset as Config],
   content: [
-    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
     "./node_modules/@blksails/pi-web-ui/src/**/*.{ts,tsx}",
     "./packages/ui/src/**/*.{ts,tsx}",

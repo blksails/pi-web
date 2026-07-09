@@ -1,12 +1,16 @@
 /**
  * Node 级 e2e — GET /api/vision/models(spec canvas-vision-readout,Req 3.1/3.6)。
  *
- * ★ 本测试的首要价值是**验证 Next catch-all 转发器存在**:
- *   它直接 `import("@/app/api/vision/[[...path]]/route")`。若该文件缺失,import 就失败;
- *   若存在但未导出 GET,调用就失败。新顶层 API 段漏建转发器会导致 `/api/vision/*` **静默 404**
- *   —— 这是本 spec 最易漏的一项(见 `app/api/aigc/[[...path]]/route.ts` 的同款警告)。
+ * 经 `lib/app/api-route` 驱动真实单例 `createPiWebHandler`，与宿主
+ * (`server/index.ts` 的 `app.all("/api/*")`)走同一条路，免去起 HTTP 服务。
  *
- * 其次验证端点经真实单例 handler 可达,且在隔离 agentDir 下返回预期形状。
+ * 断言：端点可达、只返回支持图像输入的模型、`value` 形如 `provider/id`、不泄漏凭据。
+ *
+ * ⚠ 历史注记：本测试原先直接 `import("@/app/api/vision/[[...path]]/route")`，
+ * 用以守护「新顶层 API 段漏建 Next catch-all 转发器 → 静默 404」这个坑。
+ * 随 spec `vite-spa-migration` 删除 Next（`app/api/**` 下 11 个转发器整体消失，
+ * 改由 Hono 的一条 `app.all("/api/*")` 转发），**该坑已不复存在**，
+ * 故此处不再声称守护它。
  */
 import { describe, it, expect, afterAll } from "vitest";
 import path from "node:path";
@@ -51,8 +55,8 @@ fs.writeFileSync(
 fs.writeFileSync(path.join(agentDir, "auth.json"), "{}\n");
 process.env.PI_CODING_AGENT_DIR = agentDir;
 
-// ★ 直接 import 转发器文件 —— 缺失则本行即失败。
-const vision = await import("@/app/api/vision/[[...path]]/route");
+// 框架无关的 `/api/*` 方法级入口（与宿主共享同一单例 handler）。
+const api = await import("@/lib/app/api-route");
 const { shutdownHandler } = await import("@/lib/app/pi-handler");
 
 afterAll(async () => {
@@ -64,17 +68,17 @@ interface Body {
   models: Array<{ value: string; label: string; provider: string }>;
 }
 
-describe("GET /api/vision/models(经真实 handler + Next 转发器)", () => {
-  it("★ 转发器存在且导出 GET —— 端点可达,返回 200(缺转发器则静默 404)", async () => {
-    expect(typeof vision.GET).toBe("function");
+const get = (): Promise<Response> =>
+  api.GET(new Request("http://localhost/api/vision/models"));
 
-    const res = await vision.GET(new Request("http://localhost/api/vision/models"));
+describe("GET /api/vision/models(经真实 handler)", () => {
+  it("端点可达,返回 200", async () => {
+    const res = await get();
     expect(res.status).toBe(200);
   });
 
   it("只返回支持图像输入的模型,value 形如 provider/id(3.1)", async () => {
-    const res = await vision.GET(new Request("http://localhost/api/vision/models"));
-    const body = (await res.json()) as Body;
+    const body = (await (await get()).json()) as Body;
 
     expect(Array.isArray(body.models)).toBe(true);
     const values = body.models.map((m) => m.value);
@@ -87,8 +91,7 @@ describe("GET /api/vision/models(经真实 handler + Next 转发器)", () => {
   });
 
   it("返回体不泄漏凭据 / baseUrl", async () => {
-    const res = await vision.GET(new Request("http://localhost/api/vision/models"));
-    const raw = JSON.stringify(await res.json());
+    const raw = JSON.stringify(await (await get()).json());
 
     expect(raw).not.toContain("sk-e2e");
     expect(raw).not.toContain("baseUrl");
