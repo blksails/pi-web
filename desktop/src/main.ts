@@ -19,6 +19,7 @@ import { resolveServerEntry } from "./resolve-artifact.js";
 import { createMainWindow } from "./window.js";
 import { ServerSupervisor } from "./server-supervisor.js";
 import { showStartupError } from "./startup-error.js";
+import { registerDirectoryPickerBridge } from "./dialog-bridge.js";
 
 const HOST = "127.0.0.1";
 const START_PORT = Number(process.env.PI_WEB_DESKTOP_PORT ?? 3000);
@@ -82,6 +83,8 @@ async function launch(): Promise<void> {
 }
 
 app.whenReady().then(() => {
+  // 注册原生目录选择 IPC 桥(渲染层经 piWebDesktop.pickDirectory 触达);以主窗口为父窗体。
+  registerDirectoryPickerBridge(() => mainWindow);
   void launch();
 });
 

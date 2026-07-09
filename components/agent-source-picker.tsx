@@ -63,6 +63,12 @@ export interface AgentSourcePickerProps {
   readonly onClose?: () => void;
   /** 对话框标题(仅 dialog)。 */
   readonly dialogTitle?: string;
+  /**
+   * desktop-directory-picker:桌面壳注入的原生「选择文件夹」能力。注入时在来源框旁展示
+   * 「浏览文件夹」入口;返回被选目录绝对路径(取消/失败返回 undefined)。未注入(浏览器态)
+   * ⇒ 不展示入口(Req 1.1/1.2/1.3)。
+   */
+  readonly onBrowseDirectory?: () => Promise<string | undefined>;
 }
 
 type ListStatus = "idle" | "loading" | "error";
@@ -153,10 +159,15 @@ export function AgentSourcePicker({
   variant = "page",
   onClose,
   dialogTitle: dialogTitleProp,
+  onBrowseDirectory,
 }: AgentSourcePickerProps): React.JSX.Element {
   const t = useI18n();
   const dialogTitle = dialogTitleProp ?? t("agentSourcePicker.dialogTitle");
   const [value, setValue] = React.useState<string>(defaultSource ?? "");
+  // desktop-directory-picker:仅在等待原生对话框期间禁用「浏览」按钮自身(防重入),
+  // 不禁用手输框/源列表(Req 5.2)。
+  const [browsing, setBrowsing] = React.useState(false);
+  const showBrowse = onBrowseDirectory !== undefined;
   const showList = enableSourceList && listAgentSources !== undefined;
   const showFavToggle = onToggleFavorite !== undefined;
   const isDialog = variant === "dialog";
@@ -176,6 +187,21 @@ export function AgentSourcePicker({
   const onFormSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
     submit(value.trim());
+  };
+
+  // desktop-directory-picker:触发桌面壳原生「选择文件夹」对话框;选中→回填来源框(不提交,
+  // Req 2.3);取消/失败→保持原值(Req 2.5/5.1)。防重入 + finally 清标志避免卡死禁用(Req 5.2)。
+  const onBrowse = async (): Promise<void> => {
+    if (onBrowseDirectory === undefined || loading || browsing) return;
+    setBrowsing(true);
+    try {
+      const picked = await onBrowseDirectory();
+      if (typeof picked === "string" && picked.length > 0) setValue(picked);
+    } catch {
+      // 失败即取消语义:保持来源框原值,不建会话,不改其它入口可用性。
+    } finally {
+      setBrowsing(false);
+    }
   };
 
   // 宽屏容器:源列表以卡片网格铺开;无列表(仅手输)时收窄更聚焦。
@@ -326,6 +352,19 @@ export function AgentSourcePicker({
               className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
             />
           </label>
+
+          {/* desktop-directory-picker:桌面壳态展示原生「浏览文件夹」入口(浏览器态不渲染)。 */}
+          {showBrowse ? (
+            <button
+              type="button"
+              disabled={loading || browsing}
+              data-agent-source-browse
+              onClick={() => void onBrowse()}
+              className="inline-flex w-fit items-center justify-center rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            >
+              {t("agentSourcePicker.browseDirectory")}
+            </button>
+          ) : null}
 
           {error !== undefined ? (
             <p
