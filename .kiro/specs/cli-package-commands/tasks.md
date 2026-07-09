@@ -23,7 +23,7 @@
   - 观察态：`pnpm build:dist` 后产物根同时存在服务器入口与子命令入口两个文件；CLI 壳可动态加载后者并调用其导出函数
   - _Requirements: 10.6_
 
-- [ ] 1.2 实现共享的运行上下文与进度报告器
+- [x] 1.2 实现共享的运行上下文与进度报告器
   - 运行上下文集中解析工作目录、pi 配置目录、agent 源根，供各子命令注入而非各自读取环境变量
   - 进度报告器以阶段性事件（开始 / 完成 / 失败）输出可读进度
   - 错误渲染统一走脱敏路径：不输出凭据、令牌或完整环境变量内容
@@ -305,3 +305,24 @@
   - 观察态：对真实注册表完成一次提交版本与移动通道，并能以该包标识安装回来
   - _Depends: 10.2_
   - _Requirements: 7.1, 7.2_
+
+---
+
+## Rules & Tips
+
+- **`childEnv()` / `redact()`(`packages/server/src/extensions/cli/pi-cli.ts`）未导出**（模块私有），
+  `server/cli` 层不能直接 import 复用。后续任务若需要子进程最小环境透传或脱敏，优先复用
+  任务 1.2 已落地的 `server/cli/context.ts:buildChildEnv()` 与 `server/cli/reporter.ts:redactSecrets()`
+  （同策略：白名单 `PATH`/`HOME` + `GIT_TERMINAL_PROMPT=0`/`CI=1`；脱敏正则同款），不要重复造轮子，
+  也不要为了复用而扩大 `pi-cli.ts` 的导出面（超出各任务边界）。
+- `CliContext.sourcesRoot` 是**单个写入目标目录**，与 `lib/app/pi-handler.ts` 的
+  `resolveSourcesScanRoots()`（多根扫描语义）不是同一回事——`PI_WEB_SOURCES_ROOT` 在两处的语义
+  不同（写入目标 vs 扫描列表），后续任务引用时注意别混淆。
+- 全仓 vitest 默认 `jsdom` 环境；`test/cli/**` 涉及 `node:*` 内置（os/path/fs）的测试文件一律
+  用 `// @vitest-environment node` per-file pragma，已有先例（`cli-commands-build.test.ts`、
+  本任务新增的 `cli-context-reporter.test.ts`）。
+- **脱敏覆盖面**：`redactSecrets()` 覆盖四类形态（URL 内联凭据 / 敏感键赋值（键值可带引号）/
+  `Bearer`·`Basic` 令牌 / 已知前缀令牌字面量兜底）。基线 `pi-cli.ts:redact()` 只覆盖前两类，
+  `Authorization: Bearer …`、JSON `"apiKey":"sk-…"` 与裸 `sk-…` 会漏网 —— 这三种恰是子进程与
+  HTTP 客户端错误信息里最常见的泄漏形态，任务 1.2 的复核发现并已补齐。后续任务输出错误信息时
+  一律经 `ProgressReporter.fail()`，不要自行 `console.error` 原始错误。

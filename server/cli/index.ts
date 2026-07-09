@@ -9,6 +9,9 @@
  * 本任务只建立构建接缝与最小骨架:真正的子命令分发(`runSubcommand`)与各子域实现
  * (scaffold/install/publish/registry)留给后续任务。此处先导出一个可被动态加载并
  * 调用的占位函数,验证「产物存在 + 可被 CLI 壳 import 并调用其导出」这条接缝成立。
+ *
+ * 任务 1.2 新增共享的运行上下文(`CliContext`)与进度报告器(`ProgressReporter`),
+ * 在此 re-export 使其随本产物一并分发;尚无子命令消费它们(留给后续任务)。
  */
 
 /**
@@ -18,3 +21,21 @@
 export function cliCommandsEntryReady(): true {
   return true;
 }
+
+export {
+  createCliContext,
+  resolveAgentDir,
+  resolveSourcesRoot,
+  defaultSourcesRoot,
+  buildChildEnv,
+  type CliContext,
+  type CreateCliContextOptions,
+} from "./context.js";
+export {
+  createProgressReporter,
+  redactSecrets,
+  type ProgressReporter,
+  type ProgressReporterOptions,
+  type ProgressStage,
+  type CliError,
+} from "./reporter.js";
