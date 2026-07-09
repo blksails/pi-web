@@ -38,8 +38,10 @@ const DIGEST_PREFIX_LEN = 12;
 const DEFAULT_LOCK_WAIT_MS = 120_000;
 const LOCK_POLL_MS = 250;
 
-/** 锁目录被判定为陈旧（持锁进程已死）的年龄。 */
+/** 锁在无任何心跳推进后被判定为陈旧（持有者卡死）的年龄。 */
 export const STALE_LOCK_MS = 10 * 60 * 1000;
+/** 持锁方在解包期间刷新锁的心跳间隔。远小于 STALE_LOCK_MS 与 lockWaitMs。 */
+export const LOCK_HEARTBEAT_MS = 2_000;
 /** GC：保留除当前目录外最近使用的几个运行时目录。 */
 export const GC_KEEP = 2;
 /** GC：运行时目录的最小年龄，早于此才可能被删。 */
@@ -320,6 +322,35 @@ async function readLockOwner(lockDir) {
   }
 }
 
+/** 锁的「最近推进时间」：取 owner 文件的 mtime（目录 mtime 在 Windows 上不可靠）。 */
+async function lockProgressMs(lockDir) {
+  const stat = await fsp.stat(path.join(lockDir, LOCK_OWNER)).catch(() => undefined);
+  if (stat) return stat.mtimeMs;
+  // owner 文件缺失（旧版本写的锁）：退回目录 mtime。
+  const dirStat = await fsp.stat(lockDir).catch(() => undefined);
+  return dirStat?.mtimeMs;
+}
+
+/**
+ * 持锁期间的心跳：每 `LOCK_HEARTBEAT_MS` 刷新一次 owner 文件的 mtime。
+ *
+ * ★ 这不是可有可无的装饰。没有心跳，等待方只能用一个**固定预算**去赌「解包不会比这更慢」——
+ *   而那个假设在慢文件系统上不成立：CI 实测 Windows（Defender 扫 9284 个文件）解包耗时
+ *   129s，超过 120s 的默认预算，于是三个等待方在持有者**健康地正常解包**时集体 lock-timeout。
+ *   有了心跳，超时才恢复它应有的语义：持有者**卡死**了，而不是持有者**慢**。
+ *
+ * `unref()` 使它不阻止进程退出。
+ */
+function startLockHeartbeat(lockDir) {
+  const ownerPath = path.join(lockDir, LOCK_OWNER);
+  const timer = setInterval(() => {
+    const now = new Date();
+    fsp.utimes(ownerPath, now, now).catch(() => {});
+  }, LOCK_HEARTBEAT_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
 /**
  * 取锁。返回 `"acquired"`（本进程负责解包）或 `"reused"`（他人已完成，直接用）。
  *
@@ -329,22 +360,29 @@ async function readLockOwner(lockDir) {
  *   （或被 SIGKILL）后，残留的锁在 10 分钟内都被视为「新鲜」，下一次启动要空等满
  *   `lockWaitMs` 才报 lock-timeout —— 崩一次，应用两分钟起不来。实测踩过。
  *   年龄阈值仍作为兜底：跨主机（共享盘）或 owner 文件缺失时无法探测存活。
+ *
+ * ★ `waitMs` 是**无推进**的容忍窗口，而非解包总耗时的预算。持锁方每 `LOCK_HEARTBEAT_MS`
+ *   刷新一次锁，等待方一旦看到推进就重置期限。否则在慢文件系统上（CI 实测 Windows 解包
+ *   129s > 120s 默认预算），等待方会在持有者**健康地正常解包**时集体超时。
+ *
+ * @returns `{ outcome: "acquired" | "reused", stopHeartbeat }`
  */
 async function acquireLock(lockDir, targetDir, digest, waitMs) {
-  const deadline = Date.now() + waitMs;
+  let deadline = Date.now() + waitMs;
+  let lastProgress;
   let takeovers = 0;
 
   for (;;) {
     try {
       await fsp.mkdir(lockDir);
-      // 身份写在锁内，供后来者探测存活。写失败不致命——退回年龄判据。
+      // 身份写在锁内，供后来者探测存活与推进。写失败不致命——退回年龄判据。
       await fsp
         .writeFile(
           path.join(lockDir, LOCK_OWNER),
           JSON.stringify({ pid: process.pid, host: hostname(), at: Date.now() }),
         )
         .catch(() => {});
-      return "acquired";
+      return { outcome: "acquired", stopHeartbeat: startLockHeartbeat(lockDir) };
     } catch (err) {
       if (err.code !== "EEXIST") {
         throw new RuntimeError(classifyFsError(err), `无法创建锁目录 ${lockDir}：${err.message}`, {
@@ -355,7 +393,7 @@ async function acquireLock(lockDir, targetDir, digest, waitMs) {
 
     // 锁被他人持有。若对方已完成，直接复用其结果（Req 3.3）。
     const marker = await readMarker(targetDir);
-    if (marker?.digest === digest) return "reused";
+    if (marker?.digest === digest) return { outcome: "reused", stopHeartbeat: () => {} };
 
     if (takeovers < 2 && (await isLockStale(lockDir))) {
       takeovers += 1;
@@ -363,23 +401,30 @@ async function acquireLock(lockDir, targetDir, digest, waitMs) {
       continue; // 重新竞争；两个进程同时接管也无妨——原子落地保证最终一致
     }
 
+    // 持有者在推进（心跳刷新了 owner 的 mtime）⇒ 重置无推进窗口。
+    const progress = await lockProgressMs(lockDir);
+    if (progress !== undefined && progress !== lastProgress) {
+      lastProgress = progress;
+      deadline = Date.now() + waitMs;
+    }
+
     if (Date.now() >= deadline) {
       throw new RuntimeError(
         "lock-timeout",
-        `等待其他进程完成解包超时（${waitMs}ms）：${lockDir}`,
+        `等待其他进程完成解包超时：${waitMs}ms 内无任何推进（${lockDir}）`,
       );
     }
     await sleep(LOCK_POLL_MS);
   }
 }
 
-/** 锁是否可被接管：持有者已死（同主机），或锁已超过年龄阈值。 */
+/** 锁是否可被接管：持有者已死（同主机），或**长时间无推进**（持有者卡死）。 */
 async function isLockStale(lockDir) {
   const owner = await readLockOwner(lockDir);
   if (owner && owner.host === hostname() && !isProcessAlive(owner.pid)) return true;
 
-  const stat = await fsp.stat(lockDir).catch(() => undefined);
-  return Boolean(stat && Date.now() - stat.mtimeMs > STALE_LOCK_MS);
+  const progress = await lockProgressMs(lockDir);
+  return Boolean(progress !== undefined && Date.now() - progress > STALE_LOCK_MS);
 }
 
 /**
@@ -421,7 +466,8 @@ export async function ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs = DEFA
   }
 
   const lockDir = path.join(root, `.lock-${meta.digest.slice(0, DIGEST_PREFIX_LEN)}`);
-  if ((await acquireLock(lockDir, targetDir, meta.digest, lockWaitMs)) === "reused") {
+  const { outcome, stopHeartbeat } = await acquireLock(lockDir, targetDir, meta.digest, lockWaitMs);
+  if (outcome === "reused") {
     await touchMarker(targetDir);
     return result(false);
   }
@@ -464,6 +510,7 @@ export async function ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs = DEFA
     }
     return result(true);
   } finally {
+    stopHeartbeat();
     await rmrf(lockDir).catch(() => {});
   }
 }
@@ -525,11 +572,16 @@ export async function gcRuntimeRoot(runtimeRoot, keepDir, now = Date.now()) {
   for (const name of names) {
     const full = path.join(runtimeRoot, name);
     try {
-      // 运行时目录按 `.ok` 的 mtime 判活；其余按自身 mtime。
-      const markerStat = isRuntimeDirName(name)
-        ? await fsp.stat(path.join(full, MARKER)).catch(() => undefined)
-        : undefined;
-      const stat = markerStat ?? (await fsp.stat(full));
+      // 运行时目录按 `.ok` 的 mtime 判活；锁按 owner 文件的 mtime（心跳刷的就是它，
+      // 且目录 mtime 在 Windows 上不可靠——若按目录 mtime 判，会误删一个正在解包的活锁）；
+      // 其余按自身 mtime。
+      let stat;
+      if (isRuntimeDirName(name)) {
+        stat = await fsp.stat(path.join(full, MARKER)).catch(() => undefined);
+      } else if (name.startsWith(".lock-")) {
+        stat = await fsp.stat(path.join(full, LOCK_OWNER)).catch(() => undefined);
+      }
+      stat ??= await fsp.stat(full);
       entries.push({ name, mtimeMs: stat.mtimeMs });
     } catch {
       // 条目在枚举与 stat 之间消失，跳过。

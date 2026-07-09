@@ -13,6 +13,12 @@
  *   - 最终只有一个运行时目录，且带完整性标记
  *   - 无 .staging-* / .lock-* / .trash-* 残留
  *
+ * ★ 刻意把 `--lock-wait-ms` 压到 3s（远小于真实解包耗时 5-7s）。这不是为了跑得快，而是为了
+ *   在本地复现 CI 上才暴露的缺陷：`lockWaitMs` 若被当成「解包总耗时的预算」，等待方就会在
+ *   持有者**健康地正常解包**时集体 lock-timeout（Windows 上 Defender 扫 9284 个文件，解包
+ *   耗时 129s > 120s 默认预算，三个等待方全部失败）。正确语义是「**无推进**的容忍窗口」：
+ *   持锁方心跳刷新锁，等待方见到推进即重置期限。压低该值后，缺陷在 macOS 上也必然复现。
+ *
  * 前置：`pnpm build:dist`（用真实载荷，覆盖真实解包耗时下的锁竞争）。
  */
 import { execFile } from "node:child_process";
@@ -28,6 +34,8 @@ const PAYLOAD_DIR = join(ROOT, "payload");
 const UNPACKER = join(PAYLOAD_DIR, "unpack.mjs");
 const CONCURRENCY = 4;
 const ROUNDS = 3;
+/** 见文件头：刻意远小于真实解包耗时，使「无推进窗口」与「总耗时预算」的混淆必然暴露。 */
+const LOCK_WAIT_MS = 3_000;
 
 const fails = [];
 const check = (name, ok) => {
@@ -42,6 +50,8 @@ async function runOnce(runtimeRoot) {
     PAYLOAD_DIR,
     "--runtime-root",
     runtimeRoot,
+    "--lock-wait-ms",
+    String(LOCK_WAIT_MS),
     "--json",
   ]);
   return JSON.parse(stdout.trim().split("\n").at(-1));
@@ -95,7 +105,9 @@ async function main() {
     process.exit(1);
   }
   const mb = (statSync(join(PAYLOAD_DIR, "dist.tar.zst")).size / 1048576).toFixed(1);
-  console.log(`并发首启：${CONCURRENCY} 进程 × ${ROUNDS} 轮（真实 ${mb}MB 载荷）\n`);
+  console.log(
+    `并发首启：${CONCURRENCY} 进程 × ${ROUNDS} 轮（真实 ${mb}MB 载荷，lock-wait ${LOCK_WAIT_MS}ms ≪ 解包耗时）\n`,
+  );
   for (let n = 1; n <= ROUNDS; n++) await round(n);
 
   console.log(fails.length ? `\nFAIL: ${fails.length} 项` : "\nPASS: 全部通过");

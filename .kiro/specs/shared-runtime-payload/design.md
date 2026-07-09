@@ -187,7 +187,8 @@
 | `target/.ok` 存在且 `digest` 匹配 | touch `.ok` 的 mtime（供 GC 判活）；直接返回 | 命中，`unpacked=false` | 1.4, 10.1 |
 | `target` 不存在 | 取锁 → 解包到 staging → 写 `.ok` → `rename(staging → target)` | 已解包 | 3.1, 3.2 |
 | `target` 存在但无 `.ok`，或 `.ok` 的 `digest` 不匹配 | 取锁 → 解包到 staging → `rename(target → .trash-*)` → `rename(staging → target)` → 尽力删 trash | 已修复 | 3.5 |
-| 取锁时 `.lock-*` 已存在 | 轮询 `target/.ok`（250ms）直至出现或超 `LOCK_WAIT_MS`(120s) | 复用他人结果 / `lock-timeout` | 3.3, 3.6 |
+| 取锁时 `.lock-*` 已存在，且持有者**在推进**（心跳刷新 `owner.json` 的 mtime） | 轮询 `target/.ok`（250ms），每见到一次推进就**重置**无推进窗口 | 复用他人结果 | 3.3 |
+| 取锁时 `.lock-*` 已存在，且 `LOCK_WAIT_MS`(120s) 内**无任何推进** | 判定持有者卡死 | `lock-timeout` | 3.6 |
 | `.lock-*` 的持有者进程**已死**（`owner.json` 记录 pid+host，`kill(pid,0)` 探测） | 立即判为陈旧，删除后重新竞争 | 继续 | 3.3 |
 | `.lock-*` 的 mtime 早于 `STALE_LOCK_MS`(10min) | 兜底判据（跨主机 / owner 文件缺失） | 继续 | 3.3 |
 | 解包中途进程被杀 | staging 残留，`target` 不存在或无 `.ok` | 下次启动重新解包；staging 由 GC 清理 | 3.4 |
@@ -196,6 +197,10 @@
 **`rename` 为什么必须先把旧目录移开**（D-5）：POSIX 上 `rename(dir → 非空 dir)` 返回 `ENOTEMPTY`，Windows 上直接失败。「先移开再 rename」是唯一跨平台一致的原子替换路径。
 
 **锁的陈旧判据为什么必须看存活而非年龄**（实测修正）：只按年龄判断的话，解包途中崩溃（或被 SIGKILL）留下的锁在 10 分钟内都算「新鲜」，下一次启动要空等满 `lockWaitMs`(120s) 才报 `lock-timeout`——**崩一次，应用两分钟起不来**。故锁内写 `owner.json`（pid + host + at），后来者用 `kill(pid, 0)` 探测存活；年龄阈值退居兜底（跨主机共享盘、owner 文件缺失）。误判方向是安全的：把活的当死的只可能发生在 pid 极短时间内被复用，而那时 `kill(0)` 返回存活，我们选择**等待**而非接管。
+
+**`lockWaitMs` 是「无推进」的容忍窗口，不是解包总耗时的预算**（CI 实测修正）：把它当作总耗时预算，等于假设「解包不会比这更慢」——而这个假设在慢文件系统上不成立。CI 实测 Windows（Defender 扫描 9284 个文件）解包耗时 **129s > 120s 默认预算**，于是三个等待方在持有者**健康地正常解包**时集体 `lock-timeout`。修法不是把超时调大（那只是把同一个坏假设往后推），而是让持锁方每 `LOCK_HEARTBEAT_MS`(2s) 刷新 `owner.json` 的 mtime，等待方一旦看到推进就重置期限。超时从此恢复它应有的语义：**持有者卡死了**，而不是持有者慢。
+
+心跳刷的是 `owner.json` 的 mtime 而非锁目录的 mtime —— 目录 mtime 在 Windows 上不可靠。`gcRuntimeRoot` 判断 `.lock-*` 是否陈旧时须用同一个信号，否则会误删一个正在解包的活锁。
 
 **失败时为什么必须等流关闭再删 staging**（实测修正）：`pipeline` 一旦 reject 就 destroy 各流，但 tar 的 `Unpack` **仍可能有在途的 `mkdir`/`open` 落盘**。立刻 `rm` staging 会删到一半又被重新写出来，磁盘满时必然残留一个半成品目录——而那正是用户最需要回收的空间。
 
@@ -440,3 +445,4 @@ Req 5.3 要求「不删正在被其他进程使用的目录」，但跨进程无
 | D-5 | CLI 的 `distServerJs()` 由同步变异步 | 外部若有调用方会断裂 | 是；该函数仅被 `bin/pi-web.mjs` 自身与桌面壳（已弃用路径）消费；保留同步的 `distServerJs()` 作为分支 1/2 的实现细节 |
 | D-6 | CLI 用 `createRequire` 而非 `await import(变量)` 载入解包器 | 看起来是倒退 | 是；`await import(<非字面量>)` 经 vite 的 ssrTransform 会产出 rollup 解析不了的代码（`Expected ident`），使 `test/cli/cli-args.test.ts` 整个套件无法收集。`@vite-ignore` 与包一层函数均无效；唯一不引入 `eval` 的出路是 `require`（Node ≥ 22.12 支持 `require(esm)`） |
 | D-7 | 首次解包耗时由 5.6s 升至约 6s | 多了一次全树文件计数 | 是；换来「摘要正确但落盘不全」这一静默灾难的闸门 |
+| D-8 | 持锁期间有一个 2s 间隔的心跳定时器 | 极小的常驻开销 | 是；`unref()` 不阻止进程退出。没有它，慢文件系统上的等待方会在持有者正常工作时超时（CI 实测 Windows 129s） |

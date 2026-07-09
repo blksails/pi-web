@@ -15,6 +15,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
@@ -228,7 +229,8 @@ describe("ensureRuntime 损坏与自愈", () => {
     expect(Date.now() - startedAt).toBeLessThan(5_000);
   });
 
-  it("持锁进程仍存活 → 不接管，等待至超时", async () => {
+  it("持锁进程存活但**无任何推进** → 不接管，等待至超时", async () => {
+    // 超时的语义是「持有者卡死」，不是「持有者慢」：此处锁的 owner 文件 mtime 始终不变。
     const digest = await buildSyntheticPayload();
     mkdirSync(runtimeRoot, { recursive: true });
     const lockDir = join(runtimeRoot, `.lock-${digest.slice(0, 12)}`);
@@ -241,6 +243,41 @@ describe("ensureRuntime 损坏与自愈", () => {
     await expect(ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs: 600 })).rejects.toMatchObject({
       code: "lock-timeout",
     });
+  });
+
+  it("持锁者存活且**持续推进** → 等待方不超时，哪怕耗时远超 lockWaitMs", async () => {
+    // ★ 回归防护：CI 实测 Windows 上解包耗时 129s > 120s 的默认 lockWaitMs，导致三个等待方
+    //   在持有者健康地正常解包时集体 lock-timeout。`lockWaitMs` 是**无推进**的容忍窗口，
+    //   不是解包总耗时的预算。持锁方靠心跳刷新 owner 文件的 mtime；等待方见到推进即重置期限。
+    const digest = await buildSyntheticPayload();
+    mkdirSync(runtimeRoot, { recursive: true });
+    const lockDir = join(runtimeRoot, `.lock-${digest.slice(0, 12)}`);
+    const ownerPath = join(lockDir, "owner.json");
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(ownerPath, JSON.stringify({ pid: process.pid, host: hostname(), at: Date.now() }));
+
+    // 模拟持锁方的心跳：每 100ms 刷新 mtime，总计 900ms —— 远超 300ms 的无推进窗口。
+    const beat = setInterval(() => {
+      const now = new Date();
+      utimesSync(ownerPath, now, now);
+    }, 100);
+    // 900ms 后「完成解包」：写 .ok 并释放锁。
+    const finish = setTimeout(() => {
+      clearInterval(beat);
+      const target = join(runtimeRoot, `9.9.9-${digest.slice(0, 12)}`);
+      mkdirSync(join(target, "dist"), { recursive: true });
+      writeFileSync(join(target, "dist", "server.mjs"), "//");
+      writeFileSync(join(target, MARKER), JSON.stringify({ schema: 1, version: "9.9.9", digest, entries: 3 }));
+      rmSync(lockDir, { recursive: true, force: true });
+    }, 900);
+
+    try {
+      const res = await ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs: 300 });
+      expect(res.unpacked).toBe(false); // 复用了持锁方的结果，而非超时
+    } finally {
+      clearInterval(beat);
+      clearTimeout(finish);
+    }
   });
 
   it("落盘文件数与元数据不符 → payload-corrupt，不落地", async () => {

@@ -306,10 +306,11 @@
 
 | 需求 | 盲区 | 原因 | 现状 |
 |---|---|---|---|
-| 11.1–11.5 | 发布流水线从未在真实 CI 上运行 | 无法本地触发 GitHub Actions | 仅结构自检；任务 8.1 未打勾 |
-| 2.5 | 跨平台一致性（Ubuntu 构建 → Windows/Linux 解包） | 本地只有 macOS arm64 | 未验证 |
+| 11.1–11.5 | `desktop-release.yml` 从未在真实 CI 上运行 | 只在 tag / workflow_dispatch 触发 | 仅结构自检；任务 8.1 未打勾。（`cli-e2e.yml` 已在 PR 上真实跑通三平台） |
+| ~~2.5~~ | ~~跨平台一致性~~ | — | **已由 CI 覆盖**：`cli-e2e.yml` 三平台矩阵跑 `e2e:cli:reloc`（Ubuntu 构建载荷 → Windows/macOS 首启解包），Windows 通过 |
 | 12.2 | Windows / Linux 的三场景磁盘与下载体积 | 同上 | 未验证；报告已声明「不得据此推断其他平台」 |
 | 4.2 | 非 macOS 的磁盘满路径 | 无可移植的 ENOSPC 模拟手段 | `recovery.mjs` 在非 macOS 上打印跳过原因 |
+| 4.1 | Windows 的只读运行时根 | `chmod 555` 在 Windows 上对目录是 no-op | `recovery.mjs` 在 Windows 上跳过并登记 |
 | 5.3 | 「GC 不删正在被其他进程使用的目录」 | 跨进程无引用计数可用 | **启发式**（存活探测 + 7 天最小年龄 + 保留最近 K 个），见 design D-3。只验证了「7 天内不删」与「keepDir 不删」 |
 | 1.6 / 3.3 | 跨主机共享盘上的锁语义 | 无 NFS/SMB 测试环境 | 依赖年龄阈值兜底，未验证 |
 
