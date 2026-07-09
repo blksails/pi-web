@@ -13,6 +13,7 @@ import {
   classifyExtractError,
   classifyFsError,
   defaultRuntimeRoot,
+  isProcessAlive,
   isRuntimeDirName,
   runtimeDirName,
   selectGcVictims,
@@ -139,6 +140,21 @@ describe("selectGcVictims", () => {
       rt(".lock-bbbbbbbbbbbb", STALE_LOCK_MS - 1000),
     ];
     expect(selectGcVictims(entries, "", NOW)).toEqual([".lock-aaaaaaaaaaaa"]);
+  });
+});
+
+describe("isProcessAlive（锁的陈旧判据）", () => {
+  it("当前进程视为存活", () => {
+    expect(isProcessAlive(process.pid)).toBe(true);
+  });
+
+  it("不可能存在的 pid 视为已死", () => {
+    // 2^22 之上的 pid 在常见系统上不会被分配。
+    expect(isProcessAlive(4_194_303)).toBe(false);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, undefined, null])("非法 pid %s 视为已死", (pid) => {
+    expect(isProcessAlive(pid as number)).toBe(false);
   });
 });
 

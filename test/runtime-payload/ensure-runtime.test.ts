@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { constants, createZstdCompress } from "node:zlib";
@@ -206,6 +206,58 @@ describe("ensureRuntime 损坏与自愈", () => {
     const err = await ensureRuntime({ payloadDir, runtimeRoot }).catch((e) => e);
     expect(err).toBeInstanceOf(RuntimeError);
     expect(err.code).toBe("runtime-root-unwritable");
+  });
+
+  it("持锁进程已死 → 立即接管，不空等 lockWaitMs", async () => {
+    // ★ 回归防护：陈旧判据必须看**持有者是否存活**，而非锁的年龄。只看年龄的话，
+    //   解包途中崩溃留下的锁在 10 分钟内都算「新鲜」，下次启动要空等满 lockWaitMs
+    //   才报 lock-timeout —— 崩一次，应用两分钟起不来。实测踩过。
+    const digest = await buildSyntheticPayload();
+    mkdirSync(runtimeRoot, { recursive: true });
+    const lockDir = join(runtimeRoot, `.lock-${digest.slice(0, 12)}`);
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(
+      join(lockDir, "owner.json"),
+      JSON.stringify({ pid: 4_194_303, host: hostname(), at: Date.now() }),
+    );
+
+    const startedAt = Date.now();
+    const res = await ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs: 30_000 });
+    expect(res.unpacked).toBe(true);
+    // 若退化为按年龄判断，这里会耗尽 30s 并抛 lock-timeout。
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
+
+  it("持锁进程仍存活 → 不接管，等待至超时", async () => {
+    const digest = await buildSyntheticPayload();
+    mkdirSync(runtimeRoot, { recursive: true });
+    const lockDir = join(runtimeRoot, `.lock-${digest.slice(0, 12)}`);
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(
+      join(lockDir, "owner.json"),
+      JSON.stringify({ pid: process.pid, host: hostname(), at: Date.now() }),
+    );
+
+    await expect(ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs: 600 })).rejects.toMatchObject({
+      code: "lock-timeout",
+    });
+  });
+
+  it("落盘文件数与元数据不符 → payload-corrupt，不落地", async () => {
+    // ★ 回归防护：这道闸拦的是「摘要正确但写盘不全」。实测中 tar 默认把写盘错误当作
+    //   可恢复 warning 丢掉，磁盘满时会写出残缺的树却一路「成功」到写 `.ok`。
+    await buildSyntheticPayload();
+    const metaPath = join(payloadDir, "payload.json");
+    const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+    meta.entries = 999; // 谎报条目数，模拟落盘不全
+    writeFileSync(metaPath, JSON.stringify(meta));
+
+    await expect(ensureRuntime({ payloadDir, runtimeRoot })).rejects.toMatchObject({
+      code: "payload-corrupt",
+    });
+    const names = existsSync(runtimeRoot) ? readdirSync(runtimeRoot) : [];
+    for (const n of names) expect(existsSync(join(runtimeRoot, n, MARKER))).toBe(false);
+    expect(names.filter((n) => n.startsWith(".staging-"))).toEqual([]);
   });
 
   it("锁被他人持有且始终无 `.ok` → lock-timeout", async () => {

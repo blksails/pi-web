@@ -20,7 +20,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream, realpathSync } from "node:fs";
 import * as fsp from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import path from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -149,7 +149,28 @@ export function defaultRuntimeRoot(env = process.env, home = homedir()) {
 // ─────────────────────────── ensureRuntime（任务 3.1–3.2）───────────────────────────
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const rmrf = (p) => fsp.rm(p, { recursive: true, force: true });
+/** `maxRetries` 用于挡住 Windows 上常见的 EBUSY，以及 POSIX 上删除与写入的窄竞争。 */
+const rmrf = (p) => fsp.rm(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+
+/**
+ * 等待流真正关闭。
+ *
+ * ★ `pipeline` 一旦 reject 就会 destroy 各流，但 tar 的 Unpack **仍可能有在途的
+ *   `mkdir`/`open` 落盘**。若此时立刻 rm 掉 staging，那些在途写入会把目录重新造出来，
+ *   于是「失败后不留半成品」的不变式被打破。实测：磁盘满时 staging 必残留一个。
+ */
+function streamSettled(stream, timeoutMs = 3000) {
+  if (stream.closed) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    stream.once("close", done);
+    stream.once("error", () => {}); // 收尾期的二次 error 不得变成未捕获异常
+  });
+}
 
 /** zstd 流 API 自 Node 22.15.0 起可用。缺失时给出可读报错而非底层 TypeError（Req 4.4）。 */
 function assertZstdAvailable() {
@@ -200,15 +221,35 @@ async function readPayloadMeta(payloadDir) {
   return { meta, archivePath };
 }
 
+/** 递归统计目录下的**真实落盘文件数**。 */
+async function countFilesOnDisk(dir) {
+  let count = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of await fsp.readdir(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) stack.push(path.join(current, entry.name));
+      else if (entry.isFile()) count += 1;
+    }
+  }
+  return count;
+}
+
 /**
  * 解包到 staging，并**流式**校验载荷字节的 sha256。
  * 任何失败都先清除 staging 再抛错——保证「不留下半成品」。
+ *
+ * ★ `strict: true` 不是洁癖，是必需的。tar 默认把**写盘错误当作可恢复的 warning 丢掉**
+ *   （`unpack.js`：“Other errors are warnings, which raise the error in strict”）。
+ *   实测：在 20MB 的卷上解 89MB 的树，tar 写满 1437 个文件后**正常返回**，摘要校验也通过
+ *   （读载荷不受磁盘满影响），最终在写 `.ok` 时才炸。若那点残余空间刚好够写 `.ok`，
+ *   就会落地一个带合法完整性标记、却只有 1437/9284 个文件的运行时——正是 Req 4.5 的噩梦。
  */
 async function extractToStaging(archivePath, staging, meta) {
   await fsp.mkdir(staging, { recursive: true });
 
   const hash = createHash("sha256");
-  let fileEntries = 0;
+  const unpack = tarExtract({ cwd: staging, strict: true });
 
   try {
     await pipeline(
@@ -220,35 +261,62 @@ async function extractToStaging(archivePath, staging, meta) {
         },
       }),
       zlib.createZstdDecompress(),
-      tarExtract({
-        cwd: staging,
-        onReadEntry: (entry) => {
-          if (entry.type === "File") fileEntries += 1;
-        },
-      }),
+      unpack,
     );
   } catch (err) {
-    await rmrf(staging);
-    const code = classifyExtractError(err);
-    throw new RuntimeError(code, `解包失败（${code}）：${err.message}`, { cause: err });
+    // 必须等在途落盘停下来，否则上层的 rm 会删到一半又被重新写出来。
+    await streamSettled(unpack);
+    throw err;
   }
 
   const actual = hash.digest("hex");
   if (actual !== meta.digest) {
-    await rmrf(staging);
     throw new RuntimeError(
       "payload-corrupt",
       `载荷摘要不匹配：期望 ${meta.digest.slice(0, 12)}… 实得 ${actual.slice(0, 12)}…`,
     );
   }
 
-  // 摘要正确但落盘条目数不符 ⇒ 写盘过程出了问题（截断、被外部干预）。
-  if (typeof meta.entries === "number" && fileEntries !== meta.entries) {
-    await rmrf(staging);
-    throw new RuntimeError(
-      "payload-corrupt",
-      `解包条目数不符：期望 ${meta.entries} 实得 ${fileEntries}`,
-    );
+  // ★ 必须数**磁盘上的**文件，而不是从归档里读出的条目数——后者与写盘成败无关，
+  //   兜不住任何写盘故障。这是防止「摘要正确但落盘不全」的最后一道闸。
+  if (typeof meta.entries === "number") {
+    const onDisk = await countFilesOnDisk(staging);
+    if (onDisk !== meta.entries) {
+      throw new RuntimeError(
+        "payload-corrupt",
+        `落盘文件数不符：期望 ${meta.entries} 实得 ${onDisk}（解包不完整）`,
+      );
+    }
+  }
+}
+
+/** 锁目录内记录持有者身份的文件。 */
+const LOCK_OWNER = "owner.json";
+
+/**
+ * 持锁进程是否还活着。
+ *
+ * `kill(pid, 0)` 不发信号，只做存在性与权限探测：`ESRCH` = 进程不存在；`EPERM` = 存在但
+ * 属于他人（视为存活）。误判方向是**安全的**：
+ *   - 把活的当死的 → 会误接管（危险）。仅当 pid 已被回收复用时可能发生，而那要求同一 pid
+ *     在极短时间内被重新分配；此时 `kill(0)` 返回存活，我们选择**等待**，不接管。
+ *   - 把死的当活的 → 只是多等一会儿，最终由年龄阈值兜底（安全）。
+ */
+export function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+
+async function readLockOwner(lockDir) {
+  try {
+    return JSON.parse(await fsp.readFile(path.join(lockDir, LOCK_OWNER), "utf8"));
+  } catch {
+    return undefined;
   }
 }
 
@@ -256,14 +324,26 @@ async function extractToStaging(archivePath, staging, meta) {
  * 取锁。返回 `"acquired"`（本进程负责解包）或 `"reused"`（他人已完成，直接用）。
  *
  * `mkdir` 的原子性在 POSIX 与 Windows 上语义一致，故不引入额外依赖。
+ *
+ * ★ 陈旧锁的判据是**持有者是否还活着**，而非锁的年龄。只按年龄判断会导致：解包途中崩溃
+ *   （或被 SIGKILL）后，残留的锁在 10 分钟内都被视为「新鲜」，下一次启动要空等满
+ *   `lockWaitMs` 才报 lock-timeout —— 崩一次，应用两分钟起不来。实测踩过。
+ *   年龄阈值仍作为兜底：跨主机（共享盘）或 owner 文件缺失时无法探测存活。
  */
 async function acquireLock(lockDir, targetDir, digest, waitMs) {
   const deadline = Date.now() + waitMs;
-  let staleRetried = false;
+  let takeovers = 0;
 
   for (;;) {
     try {
       await fsp.mkdir(lockDir);
+      // 身份写在锁内，供后来者探测存活。写失败不致命——退回年龄判据。
+      await fsp
+        .writeFile(
+          path.join(lockDir, LOCK_OWNER),
+          JSON.stringify({ pid: process.pid, host: hostname(), at: Date.now() }),
+        )
+        .catch(() => {});
       return "acquired";
     } catch (err) {
       if (err.code !== "EEXIST") {
@@ -277,14 +357,10 @@ async function acquireLock(lockDir, targetDir, digest, waitMs) {
     const marker = await readMarker(targetDir);
     if (marker?.digest === digest) return "reused";
 
-    // 陈旧锁（持锁进程已死）：接管一次。
-    if (!staleRetried) {
-      const stat = await fsp.stat(lockDir).catch(() => undefined);
-      if (stat && Date.now() - stat.mtimeMs > STALE_LOCK_MS) {
-        staleRetried = true;
-        await rmrf(lockDir);
-        continue;
-      }
+    if (takeovers < 2 && (await isLockStale(lockDir))) {
+      takeovers += 1;
+      await rmrf(lockDir).catch(() => {});
+      continue; // 重新竞争；两个进程同时接管也无妨——原子落地保证最终一致
     }
 
     if (Date.now() >= deadline) {
@@ -295,6 +371,15 @@ async function acquireLock(lockDir, targetDir, digest, waitMs) {
     }
     await sleep(LOCK_POLL_MS);
   }
+}
+
+/** 锁是否可被接管：持有者已死（同主机），或锁已超过年龄阈值。 */
+async function isLockStale(lockDir) {
+  const owner = await readLockOwner(lockDir);
+  if (owner && owner.host === hostname() && !isProcessAlive(owner.pid)) return true;
+
+  const stat = await fsp.stat(lockDir).catch(() => undefined);
+  return Boolean(stat && Date.now() - stat.mtimeMs > STALE_LOCK_MS);
 }
 
 /**
@@ -351,21 +436,32 @@ export async function ensureRuntime({ payloadDir, runtimeRoot, lockWaitMs = DEFA
 
     const suffix = `${process.pid}-${randomBytes(4).toString("hex")}`;
     const staging = path.join(root, `.staging-${meta.digest.slice(0, DIGEST_PREFIX_LEN)}-${suffix}`);
-    await extractToStaging(archivePath, staging, meta);
 
-    // ★ `.ok` 最后写入。在此之前进程被杀 ⇒ staging 是垃圾，target 不存在或无标记。
-    await fsp.writeFile(
-      path.join(staging, MARKER),
-      `${JSON.stringify({
-        schema: 1,
-        version: meta.version,
-        digest: meta.digest,
-        entries: meta.entries,
-        unpackedAt: new Date().toISOString(),
-      }, null, 2)}\n`,
-    );
+    // ★ 整条慢路径共用一个清理边界。此前只有 extractToStaging 内部清理 staging，
+    //   于是「写 .ok 失败」「rename 失败」都会把半成品留在磁盘上——磁盘满时尤其致命，
+    //   那 20MB 残骸正是用户最需要回收的空间。
+    try {
+      await extractToStaging(archivePath, staging, meta);
 
-    await landAtomically(staging, targetDir, root);
+      // ★ `.ok` 最后写入。在此之前进程被杀 ⇒ staging 是垃圾，target 不存在或无标记。
+      await fsp.writeFile(
+        path.join(staging, MARKER),
+        `${JSON.stringify({
+          schema: 1,
+          version: meta.version,
+          digest: meta.digest,
+          entries: meta.entries,
+          unpackedAt: new Date().toISOString(),
+        }, null, 2)}\n`,
+      );
+
+      await landAtomically(staging, targetDir, root);
+    } catch (err) {
+      await rmrf(staging).catch(() => {});
+      if (err instanceof RuntimeError) throw err;
+      const code = classifyExtractError(err);
+      throw new RuntimeError(code, `解包失败（${code}）：${err.message}`, { cause: err });
+    }
     return result(true);
   } finally {
     await rmrf(lockDir).catch(() => {});
