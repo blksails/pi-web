@@ -1,0 +1,24 @@
+{
+  "$schema": "https://pi-web.dev/schema/pi-web.json",
+  "id": "canvas-watermark",
+  "version": "0.1.0",
+  "kind": "component",
+  "displayName": "水印工具",
+  "description": "Canvas 水印组件:图层(渲染/拍平/检查器)+ 放置工具 + 批量动作(command 通道,能力避让)",
+  "component": {
+    "files": [
+      "components/watermark/watermark.tsx",
+      "components/watermark/watermark.test.tsx"
+    ],
+    "wiring": {
+      "point": "canvasPlugins",
+      "export": "watermarkBundle",
+      "from": "./components/watermark/watermark"
+    },
+    "peer": {
+      "@blksails/pi-web-canvas-kit": ">=0.1.0"
+    },
+    "registryDeps": []
+  },
+  "bindings": { "surfaceCommands": { "canvas": ["watermark_apply"] } }
+}
