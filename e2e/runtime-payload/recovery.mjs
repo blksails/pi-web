@@ -70,11 +70,18 @@ async function caseInterrupted() {
   const runtimeRoot = tmp("pi-web-interrupt-");
   const target = join(runtimeRoot, runtimeDirName());
   try {
-    // 解包真实载荷约 5-6s；1.2s 后 SIGKILL 必然落在解包中途。
+    // ★ 不用固定 sleep：不同机器上解包的启动延迟差异极大（CI 的 Windows 慢一个量级）。
+    //   轮询到 staging 出现再 SIGKILL，才能确定性地把中断打在解包**途中**。
     const child = spawn(process.execPath, [UNPACKER, "--payload-dir", PAYLOAD_DIR, "--runtime-root", runtimeRoot, "--json"], {
       stdio: "ignore",
     });
-    await sleep(1200);
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline) {
+      const started = existsSync(runtimeRoot) && readdirSync(runtimeRoot).some((e) => e.startsWith(".staging-"));
+      if (started) break;
+      await sleep(50);
+    }
+    await sleep(300); // 让它真的写进去一些文件
     child.kill("SIGKILL");
     await new Promise((r) => child.on("exit", r));
 
@@ -87,12 +94,17 @@ async function caseInterrupted() {
     const locks = readdirSync(runtimeRoot).filter((e) => e.startsWith(".lock-"));
     check(`崩溃留下了未释放的锁（${locks.length} 个）`, locks.length === 1);
 
-    const again = await runUnpacker(runtimeRoot);
-    check("中断后下次启动重新解包成功（死者持有的锁被接管）", again.ok === true && again.unpacked === true);
+    // ★ 死者接管必须是**立即**的。但这里**不能**用 `elapsedMs < 阈值` 去断言：
+    //   `elapsedMs` 是整个 ensureRuntime 的耗时，**包含真实解包**（CI 实测 Windows 近 100s），
+    //   拿它当「接管延迟」是把两件事混为一谈，会在慢机器上假失败。
+    //   改用与机器快慢无关的判据：把无推进窗口压到 2s。若接管退化为按锁的年龄判断，
+    //   崩溃留下的锁还很「新鲜」，必然在 2s 内报 lock-timeout；接管成功则解包成功。
+    const again = await runUnpacker(runtimeRoot, PAYLOAD_DIR, ["--lock-wait-ms", "2000"]);
+    check(
+      `死者持有的锁被立即接管（无推进窗口仅 2s，退化即 lock-timeout；实际 ${again.code ?? "ok"}）`,
+      again.ok === true && again.unpacked === true,
+    );
     check("重解后完整性标记就位", existsSync(join(target, ".ok")));
-
-    // 死者接管必须是**立即**的。若退化为按锁的年龄判断，这里会空等满 lockWaitMs。
-    check(`接管未空等（实际 ${again.elapsedMs} ms < 30s）`, again.elapsedMs < 30_000);
   } finally {
     rmSync(runtimeRoot, { recursive: true, force: true });
   }
@@ -191,9 +203,28 @@ async function caseDiskFull() {
   } catch (e) {
     check(`磁盘满用例执行失败：${e.message}`, false);
   } finally {
-    if (mounted) execFileSync("hdiutil", ["detach", "-quiet", "-force", mount]);
+    // ★ 清理失败**绝不能**判测试失败。CI 实测 `hdiutil detach` 会因卷忙返回 status 16，
+    //   而此时全部断言都已通过 —— 让 finally 抛异常等于用清理噪声掩盖了一次成功的验证。
+    if (mounted) detachWithRetry(mount);
     rmSync(dmg, { force: true });
   }
+}
+
+/** 卷可能仍被内核短暂占用（status 16）。重试若干次；始终失败也只警告，不影响判定。 */
+function detachWithRetry(mount, attempts = 6) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      execFileSync("hdiutil", ["detach", "-quiet", "-force", mount], { stdio: "ignore" });
+      return;
+    } catch {
+      try {
+        execFileSync("sleep", ["1"]);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  console.warn(`⚠ 无法卸载测试卷 ${mount}（不影响断言结果）`);
 }
 
 async function main() {
