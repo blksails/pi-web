@@ -40,19 +40,19 @@ describe("resolveRuntimeMode(明确开关,不猜测 — Req 8.3)", () => {
 describe("resolveServerEntry(产物入口定位 — Req 3.3, 8.1, 8.2)", () => {
   const deps = {
     resourcesPath: "/Apps/pi-web.app/Contents/Resources",
-    cliStandaloneJs: "/repo/.next-cli/standalone/server.js",
+    cliDistServerJs: "/repo/dist/server.mjs",
   };
 
-  it("packaged → 资源目录下 standalone/server.js(Req 3.3)", () => {
+  it("packaged → 资源目录下 dist/server.mjs(Req 3.3)", () => {
     const entry = resolveServerEntry({ kind: "packaged" }, deps);
     expect(entry).toBe(
-      "/Apps/pi-web.app/Contents/Resources/standalone/server.js",
+      "/Apps/pi-web.app/Contents/Resources/dist/server.mjs",
     );
   });
 
-  it("unpackaged → CLI 布局 standalone 入口(Req 8.2)", () => {
+  it("unpackaged → CLI 布局产物入口(Req 8.2)", () => {
     const entry = resolveServerEntry({ kind: "unpackaged" }, deps);
-    expect(entry).toBe("/repo/.next-cli/standalone/server.js");
+    expect(entry).toBe("/repo/dist/server.mjs");
   });
 
   it("dev → null(壳改加载 dev url,不拉起 server — Req 8.1)", () => {
@@ -64,7 +64,7 @@ describe("resolveServerEntry(产物入口定位 — Req 3.3, 8.1, 8.2)", () => {
     expect(() =>
       resolveServerEntry(
         { kind: "packaged" },
-        { resourcesPath: undefined, cliStandaloneJs: deps.cliStandaloneJs },
+        { resourcesPath: undefined, cliDistServerJs: deps.cliDistServerJs },
       ),
     ).toThrow(/resourcesPath/);
   });
