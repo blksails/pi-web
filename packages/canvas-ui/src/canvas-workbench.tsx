@@ -24,6 +24,8 @@ import {
   type ConversationAccess,
 } from "@blksails/pi-web-kit";
 import { useConversationBridge } from "@blksails/pi-web-react";
+// 解读载荷构造器(spec canvas-vision-readout):与 buildSurfaceOp 平行、互不 import。
+import { buildVisionOp, type VisionModelOption } from "./vision-op.js";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import {
   ArrowLeft,
@@ -32,6 +34,7 @@ import {
   Maximize2,
   MessageSquarePlus,
   Minus,
+  Eye,
   Plus,
   Redo2,
   RotateCw,
@@ -173,6 +176,33 @@ const DEFAULT_MODEL_OPTIONS: readonly string[] = [
 
 /** Radix Select 不接受空字符串 item value;以哨兵表示「默认模型」。 */
 const MODEL_DEFAULT_SENTINEL = "__default__";
+
+/**
+ * 视觉模型偏好的本地存储键(spec canvas-vision-readout,Req 3.2)。
+ *
+ * 与 `AigcQuickSettings` 的 `pi-web.aigc.*` 同前缀风格。刻意用 localStorage 而非 state 桥 KV:
+ * 提示词栏的**生成**模型选择器就是纯本地 state,引入 KV 会让同栏两个下拉的持久化机制不一致。
+ */
+const VISION_MODEL_LS_KEY = "pi-web.vision.model";
+
+/** 读视觉模型偏好;隐私模式 / SSR 下静默退化为「本次会话内有效」。 */
+function readVisionModelPref(): string {
+  try {
+    return window.localStorage.getItem(VISION_MODEL_LS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** 写视觉模型偏好;失败静默忽略。 */
+function writeVisionModelPref(value: string): void {
+  try {
+    if (value === "") window.localStorage.removeItem(VISION_MODEL_LS_KEY);
+    else window.localStorage.setItem(VISION_MODEL_LS_KEY, value);
+  } catch {
+    /* 隐私模式等:跨会话记忆静默不可用,会话内偏好不受影响 */
+  }
+}
 
 /**
  * 比例参数簇(仅 1:1 / 16:9 / 9:16 三档)。初始 ratioSize="" 时 trigger 显示「跟随原图」,选比例即带 size。
@@ -475,6 +505,12 @@ export interface CanvasWorkbenchProps {
   readonly canvasFactory?: CanvasFactory;
   /** 模型下拉候选(缺省用内置常用清单)。 */
   readonly modelOptions?: readonly string[];
+  /**
+   * 可选视觉模型清单(spec canvas-vision-readout,Req 3.1)。
+   * 由宿主(CanvasLauncher)从 `GET /api/vision/models` 拉取注入;缺省 `[]`
+   * (选择器空态,解读仍可用 —— 此时载荷不带 model,由工具弹层兜底)。
+   */
+  readonly visionModelOptions?: readonly VisionModelOption[];
   /** 图像加载器(掩码回贴合成用;缺省浏览器 Image,测试注入 fake)。 */
   readonly imageLoader?: ImageLoader;
   /**
@@ -514,6 +550,7 @@ export function CanvasWorkbench({
   sessionId,
   canvasFactory,
   modelOptions,
+  visionModelOptions,
   imageLoader,
   conversation,
   onSubmitPrompt,
@@ -533,6 +570,13 @@ export function CanvasWorkbench({
   });
   const [prompt, setPrompt] = React.useState("");
   const [model, setModel] = React.useState<string>("");
+  // 视觉模型偏好(Req 3.2):`""` = 未设定 → 解读载荷不带 model → 工具弹层选择(Req 3.4)。
+  // ⚠ 取值是 `provider/modelId`,与上面**生成**模型选择器的裸 id 格式不同,不可混用。
+  const [visionModel, setVisionModel] = React.useState<string>("");
+  React.useEffect(() => {
+    const pref = readVisionModelPref();
+    if (pref !== "") setVisionModel(pref);
+  }, []);
   const [busy, setBusy] = React.useState(false);
   const [currentId, setCurrentId] = React.useState<string>(asset.attachmentId);
   // 生成中的临时渐进预览(流式 partial_images 由糊变清):订阅权威快照 livePreview,渲染为舞台叠层。
@@ -820,6 +864,36 @@ export function CanvasWorkbench({
     previewResolved !== null
       ? toGenerateDecision(previewResolved.plugin.id, previewResolved.args)
       : fallbackEditDecision({ imageId: current.attachmentId, prompt, model, size: ratioSize });
+
+  /**
+   * 解读:对当前工作图提问,经**与生成相同的对话通道**发出(spec canvas-vision-readout)。
+   *
+   * 与 {@link generate} 刻意保持平行且互不干扰(Req 4.2/4.3/4.4):
+   *  - **不进入** `resolveAction` 评分制 —— 解读由显式按钮触发,不与生成动作竞争;
+   *  - **不调用** `consumeSent` —— 掩码 / 参考图 / 标注只服务生成,解读只看当前工作图,
+   *    点击后它们原样保留,供后续生成使用;
+   *  - **不上传**标注拍平图;
+   *  - 发出后**保留**输入框文字(与生成按钮既有行为一致,Req 1.4)。
+   *
+   * 结论由 `image_vision` 工具产出并回流对话记录(工具卡 + 助手回复),
+   * Canvas 侧不另建结论展示区(Req 2.4),也不解释失败(Req 5.1 交给工具)。
+   */
+  const readout = React.useCallback(async (): Promise<void> => {
+    if (bridge.opChannel !== "prompt") return;
+    setBusy(true);
+    try {
+      await bridge.submitOp(
+        buildVisionOp({
+          imageId: current.attachmentId,
+          question: prompt,
+          // 空偏好 → 不带 model 参数 → 工具弹层选择(3.4);非空 → 直接用(3.3)。
+          ...(visionModel !== "" ? { model: visionModel } : {}),
+        }),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [bridge, current.attachmentId, prompt, visionModel]);
 
   /** 主生成:按决策发对应 A 档动作;掩码/标注产物先经上传接缝落 att_。 */
   const generate = React.useCallback(async (): Promise<void> => {
@@ -1715,6 +1789,9 @@ export function CanvasWorkbench({
   // 模型选项优先级(task 3.3,design 裁定):capability > modelOptions prop > DEFAULT。真实 agent
   // 下发的清单应胜出;prop 是测试/宿主覆盖接缝,退到 capability 之后;二者皆缺才回内置常量。
   const knownModels = capabilities?.models.map((m) => m.id) ?? modelOptions ?? DEFAULT_MODEL_OPTIONS;
+  // 视觉模型清单:纯由宿主注入(agent 装配期拿不到 modelRegistry,无法经 capabilities 下发)。
+  // 缺省空数组 → 选择器空态,解读仍可用(Req 3.5/3.6/5.4)。
+  const visionModelItems: readonly VisionModelOption[] = visionModelOptions ?? [];
   // 复用历史参数可能带来清单外的 model:并入候选兜底(否则 Select 显示为空)。
   const modelItems =
     model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
@@ -1861,6 +1938,42 @@ export function CanvasWorkbench({
             </SelectContent>
           </Select>
 
+          {/* 视觉模型选择器(spec canvas-vision-readout,Req 3.1/3.2/3.5)。
+              ⚠ 取值是 `provider/modelId`(工具 model 参数格式),与上面**生成**模型的裸 id 不同。
+              清单为空 → 展示空态说明;解读按钮**不受影响**仍可用(载荷不带 model,工具弹层兜底)。 */}
+          <Select
+            value={visionModel === "" ? MODEL_DEFAULT_SENTINEL : visionModel}
+            onValueChange={(v) => {
+              const next = v === MODEL_DEFAULT_SENTINEL ? "" : v;
+              setVisionModel(next);
+              writeVisionModelPref(next);
+            }}
+          >
+            <SelectTrigger
+              data-canvas-vision-model
+              aria-label="视觉模型"
+              className="h-8 w-40 text-xs"
+            >
+              <SelectValue placeholder="视觉模型" />
+            </SelectTrigger>
+            <SelectContent>
+              {visionModelItems.length === 0 ? (
+                <SelectItem value={MODEL_DEFAULT_SENTINEL} disabled>
+                  没有可用的视觉模型
+                </SelectItem>
+              ) : (
+                <>
+                  <SelectItem value={MODEL_DEFAULT_SENTINEL}>每次询问</SelectItem>
+                  {visionModelItems.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+            </SelectContent>
+          </Select>
+
           {/* 输出尺寸(嗅探+预设比例+自定义)。 */}
           <Popover open={sizeOpen} onOpenChange={setSizeOpen}>
             <PopoverAnchor asChild>
@@ -1982,6 +2095,21 @@ export function CanvasWorkbench({
             onClick={() => setRefOpen(true)}
           >
             <AtSign className="h-4 w-4" />
+          </Button>
+          {/* 解读按钮(spec canvas-vision-readout,Req 1.1):与生成按钮并列。
+              走 prompt 通道即可,**不需要** surface(生成才需 A 档命令探针),
+              故清单未就绪 / 拉取失败时它仍然可用(Req 3.6/5.4)。 */}
+          <Button
+            variant="outline"
+            size="sm"
+            data-canvas-readout
+            aria-label="解读"
+            title="解读这张图（把输入框文字当作问题）"
+            disabled={bridge.opChannel !== "prompt" || busy}
+            onClick={() => void readout()}
+          >
+            <Eye className="mr-1 h-4 w-4" />
+            解读
           </Button>
           <Button
             variant="default"

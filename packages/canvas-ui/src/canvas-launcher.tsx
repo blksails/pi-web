@@ -18,6 +18,7 @@ import type { WebExtSurfaceAccess, ConversationAccess, WebExtension } from "@blk
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
+import { fetchVisionModels, type VisionModelOption } from "./vision-op.js";
 import { collectCanvasPluginBundles } from "./plugin-aggregation.js";
 import { useCanvasOpen } from "./use-canvas-view.js";
 import type { UploadFn } from "@blksails/pi-web-canvas-kit";
@@ -61,6 +62,35 @@ export function CanvasLauncher({ enabled }: CanvasLauncherProps): React.JSX.Elem
   );
 }
 
+/**
+ * 拉取可用视觉模型清单(spec canvas-vision-readout,Req 3.1/3.6)。
+ *
+ * 面板打开时拉一次,不轮询。**任何失败(网络 / 非 2xx / 解析)都记为空清单**,
+ * 既不抛也不阻断解读 —— 空清单时解读载荷不带 model,由 `image_vision` 工具弹层兜底。
+ *
+ * `override` 供测试与宿主直接注入,注入时跳过 fetch。
+ */
+function useVisionModels(
+  baseUrl: string | undefined,
+  override?: readonly VisionModelOption[],
+): readonly VisionModelOption[] {
+  const [models, setModels] = React.useState<readonly VisionModelOption[]>([]);
+
+  React.useEffect(() => {
+    if (override !== undefined) return;
+    let cancelled = false;
+    void fetchVisionModels(baseUrl).then((list) => {
+      // fetchVisionModels 内部已把一切失败折成空数组 —— 此处不需要 catch。
+      if (!cancelled && list.length > 0) setModels(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseUrl, override]);
+
+  return override ?? models;
+}
+
 export interface CanvasPanelProps {
   readonly extId?: string;
   readonly surface?: WebExtSurfaceAccess;
@@ -74,6 +104,8 @@ export interface CanvasPanelProps {
   // ── B 档上传接缝(可注入)────────────────────────────────────────────────────
   readonly upload?: UploadFn;
   readonly baseUrl?: string;
+  /** 视觉模型清单覆盖(测试 / 宿主直注);缺省时经 `GET {baseUrl}/vision/models` 拉取。 */
+  readonly visionModelOptions?: readonly VisionModelOption[];
   readonly sessionId?: string;
   /** 会话能力对象(契约 §4.2;canvas 生成走对话流经此提交,取代 onSubmitPrompt)。 */
   readonly conversation?: ConversationAccess;
@@ -101,6 +133,7 @@ export function CanvasPanel({
   onBringToConversation,
   upload,
   baseUrl,
+  visionModelOptions,
   sessionId,
   conversation,
   onSubmitPrompt,
@@ -113,6 +146,10 @@ export function CanvasPanel({
   // 领域聚合:已装载扩展 → canvas 插件捆(附 manifestId 命名空间)。useMemo 稳定引用,使
   // 下游工作台 kernel 装配(registerPluginBundles)不因每次渲染的新数组重建(per-mount 契约)。
   const plugins = React.useMemo(() => collectCanvasPluginBundles(extensions), [extensions]);
+  // 视觉模型清单(canvas-vision-readout):失败/未就绪 → 空数组,解读仍可用。
+  // ⚠ 必须在下方 `if (!on || !open) return null` **之前**调用 —— hooks 不得置于 early return 之后
+  // (面板开合会改变 hook 数量,React 报「Rendered more hooks than during the previous render」)。
+  const visionModels = useVisionModels(baseUrl, visionModelOptions);
 
   // 「点 chat 生成图 → 进 Canvas 编辑」:对话流工具卡的图带通用 `data-att-id`(见 pi-tool-part),
   // 这里挂 document 级**委托监听**——命中即开面板并把工作台切到该 att_id(此时面板可能仍关闭,故
@@ -165,6 +202,7 @@ export function CanvasPanel({
           {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
           {...(syncSignal !== undefined ? { syncSignal } : {})}
           {...(plugins.length > 0 ? { plugins } : {})}
+          visionModelOptions={visionModels}
         />
       ) : (
         <CanvasGallery

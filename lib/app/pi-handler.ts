@@ -36,6 +36,7 @@ import {
   createAgentSourcesRoutes,
   createFavoritesRoutes,
   createAigcModelsRoute,
+  createVisionModelsRoute,
   createExtensionRoutes,
   createHostCommandRegistry,
   ChildProcessPiCli,
@@ -63,6 +64,9 @@ import {
   parseHiddenProviders,
   excludeProviders,
 } from "@blksails/pi-web-server/model-options";
+// listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
+// (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
+import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
@@ -491,6 +495,13 @@ function buildSingleton(): HandlerSingleton {
       // widget 列举。设置本体(被禁模型 / 提示词优化)走标准 config 域 /api/config/aigc(落
       // <agentDir>/aigc.json),runner 装配期经 tool-kit resolveAigcToolSettings 只读同文件。
       ...createAigcModelsRoute(),
+      // Canvas 视觉解读(canvas-vision-readout):GET /vision/models 只读清单,供工作台提示词栏的
+      // 视觉模型选择器列举。取数与 image_vision 工具的候选同源(getAvailable() ∩ input 含 image),
+      // 故下拉里看到的就是工具弹层里能选到的。取数抛错 → 200 + 空清单(前端退化为工具弹层)。
+      // ⚠ 该端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
+      ...createVisionModelsRoute({
+        listModels: () => listVisionModelOptions(config.agentDir),
+      }),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。

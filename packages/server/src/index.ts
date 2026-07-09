@@ -41,6 +41,9 @@ export * from "./session-list/index.js";
 export * from "./agent-source-list/index.js";
 // aigc-settings(aigc-tool-settings):GET/PUT /aigc/settings —— AIGC 图像工具「被禁模型」持久设置读写。
 export * from "./aigc-settings/index.js";
+// vision-settings(canvas-vision-readout):GET /vision/models —— 可用视觉模型只读清单。
+// ⚠ 仅重导出薄路由与类型;取数(引 pi SDK)走子路径 `@blksails/pi-web-server/vision-model-options`。
+export * from "./vision-settings/index.js";
 // session-actions(session-list-item-actions):删除/重命名/收藏 写端点的注入路由工厂 + 会话收藏存储。
 // 仅 node builtins + session-store 复用面(无 pi SDK 值导入),可安全经 barrel 重导出。
 export * from "./session-actions/index.js";
