@@ -43,7 +43,9 @@
     "@blksails/pi-web-server": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:*",
     "@blksails/pi-web-ui": "workspace:*",
+    "@hono/node-server": "^2.0.8",
     "ai": "^5.0.0",
+    "hono": "^4.12.28",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
