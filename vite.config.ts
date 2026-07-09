@@ -36,6 +36,12 @@ export default defineConfig({
     // 与 `vitest.node-e2e.config.ts` 的别名表保持一致。
     alias: {
       "@": r("."),
+      // CSS 子路径导出必须排在**主入口之前**:alias 是前缀匹配,
+      // `@blksails/pi-web-canvas-ui` 在前会把 `/styles.css` 一起吞掉,拼出 `index.ts/styles.css`。
+      // 另注:裸包 CSS specifier 走 vite 的 node 解析在本仓极慢(实测构建挂住 >10min),
+      // 显式别名把它变成一次文件系统命中。
+      "@blksails/pi-web-ui/styles.css": r("packages/ui/src/styles.css"),
+      "@blksails/pi-web-canvas-ui/styles.css": r("packages/canvas-ui/src/styles.css"),
       "@blksails/pi-web-logger": r("packages/logger/src/index.ts"),
       "@blksails/pi-web-agent-kit": r("packages/agent-kit/src/index.ts"),
       "@blksails/pi-web-canvas-kit": r("packages/canvas-kit/src/index.ts"),
