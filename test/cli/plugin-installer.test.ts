@@ -13,7 +13,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { PiCliNotFoundError, type PiCli, type PiCommandResult } from "@blksails/pi-web-server";
-import { createPluginInstaller, normalizeExtSourceId } from "@/server/cli/install/plugin-installer";
+import {
+  createPluginInstaller,
+  normalizeExtSourceId,
+  isExactSemver,
+} from "@/server/cli/install/plugin-installer";
 
 interface RecordedCall {
   readonly args: readonly string[];
@@ -184,6 +188,388 @@ describe("PluginInstaller.listInstalled", () => {
       expect(result.value[0]?.id).toBe("npm:foo");
       expect(result.value[0]?.version).toBe("1.0.0");
       expect(result.value[1]?.scope).toBe("project");
+    }
+  });
+});
+
+describe("PluginInstaller.listInstalled — empty vs error (Req 4.1, 4.2)", () => {
+  it("returns ok:true with an empty array when nothing is installed (distinguishable from an error)", async () => {
+    const { piCli } = makeStubPiCli({ ok: true, stdout: "", exitCode: 0 });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.listInstalled();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value).toEqual([]);
+    }
+  });
+
+  it("still distinguishes a real failure (LIST_FAILED) from the empty-list case", async () => {
+    const { piCli } = makeStubPiCli({ ok: false, stdout: "", exitCode: 1, errorSummary: "boom" });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.listInstalled();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("LIST_FAILED");
+    }
+  });
+
+  it("a non-empty listing reports id / version / scope / kind for each entry (Req 4.1)", async () => {
+    const { piCli } = makeStubPiCli({
+      ok: true,
+      stdout: "npm:foo@1.0.0 (global)\ngit:github.com/org/bar@v2 (project)\n",
+      exitCode: 0,
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.listInstalled();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value[0]).toMatchObject({
+        id: "npm:foo",
+        version: "1.0.0",
+        scope: "global",
+        kind: "npm",
+      });
+      expect(result.value[1]).toMatchObject({
+        id: "git:github.com/org/bar",
+        version: "v2",
+        scope: "project",
+        kind: "git",
+      });
+    }
+  });
+});
+
+describe("PluginInstaller.listInstalled({ outdated: true }) — Req 4.3 design gap, no fabricated data", () => {
+  it("returns OUTDATED_NOT_SUPPORTED and never calls pi (no fabricated available-version data)", async () => {
+    const { piCli, calls } = makeStubPiCli({ ok: true, stdout: "npm:foo@1.0.0 (global)\n", exitCode: 0 });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.listInstalled({ outdated: true });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("OUTDATED_NOT_SUPPORTED");
+      expect(result.error.message.length).toBeGreaterThan(0);
+    }
+    // The whole point: we must not silently return "all packages" as if they were outdated,
+    // nor invent a fake "available version" — so pi must never even be invoked.
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("PluginInstaller.update — no packageId updates all updatable packages (Req 4.4)", () => {
+  it("updates every non-pinned installed package when no packageId is given", async () => {
+    // 用浮动 range(`^1.0.0`)而非精确版本号,避免撞上 Req 4.6 的 npm 精确版本钉死
+    // 判定(那部分场景由专门的 "skips pinned/immutable packages" 测试组覆盖)。
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return {
+          ok: true,
+          stdout: "npm:foo@^1.0.0 (global)\nnpm:bar@^2.0.0 (project)\n",
+          exitCode: 0,
+        };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.hasFailures).toBe(false);
+      expect(result.value.outcomes).toEqual([
+        { id: "npm:foo", status: "updated" },
+        { id: "npm:bar", status: "updated" },
+      ]);
+    }
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls.map((c) => c.args)).toEqual([
+      ["update", "npm:foo"],
+      ["update", "npm:bar"],
+    ]);
+  });
+});
+
+describe("PluginInstaller.update — packageId updates only that package (Req 4.5)", () => {
+  it("only calls pi update for the named package", async () => {
+    // 浮动 range,理由同上("no packageId" 用例)。
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return {
+          ok: true,
+          stdout: "npm:foo@^1.0.0 (global)\nnpm:bar@^2.0.0 (project)\n",
+          exitCode: 0,
+        };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update({ packageId: "npm:bar" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes).toEqual([{ id: "npm:bar", status: "updated" }]);
+    }
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]?.args).toEqual(["update", "npm:bar"]);
+  });
+
+  it("accepts a versioned spec for packageId (normalized the same way as uninstall's id)", async () => {
+    // 台账里的实际版本用浮动 range(与本用例意图无关的实现细节,理由同上);
+    // `packageId` 入参本身带一个具体版本号,这里只测试它按 id 归一化后能匹配到台账条目,
+    // 与该条目是否被判定为 pinned 无关。
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "npm:foo@^1.0.0 (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update({ packageId: "npm:foo@1.0.0" });
+
+    expect(result.ok).toBe(true);
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls[0]?.args).toEqual(["update", "npm:foo"]);
+  });
+
+  it("returns NOT_INSTALLED and never calls pi update when the named package is not installed", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "npm:foo@1.0.0 (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update({ packageId: "npm:not-installed" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("NOT_INSTALLED");
+    }
+    expect(calls.some((c) => c.args[0] === "update")).toBe(false);
+  });
+});
+
+describe("PluginInstaller.update — skips pinned/immutable packages with a real reason (Req 4.6)", () => {
+  it("skips a git-kind entry (immutable pinned ref) without invoking pi update, and states why", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "git:github.com/org/bar@v2 (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes).toHaveLength(1);
+      expect(result.value.outcomes[0]?.status).toBe("skipped");
+      expect(result.value.outcomes[0]?.reason?.length).toBeGreaterThan(0);
+      expect(result.value.hasFailures).toBe(false);
+    }
+    expect(calls.some((c) => c.args[0] === "update")).toBe(false);
+  });
+
+  it("skips a local-kind entry without invoking pi update, and states why", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        // parseListLine 判定本地来源的启发式规则是"以 /（绝对）或 .（相对）开头"，不含
+        // "local:" 前缀（pi list 原样输出注册在 settings.json 里的磁盘路径，见 pi-cli.ts）。
+        return { ok: true, stdout: "/abs/path (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes[0]?.status).toBe("skipped");
+      expect(result.value.outcomes[0]?.reason?.length).toBeGreaterThan(0);
+    }
+    expect(calls.some((c) => c.args[0] === "update")).toBe(false);
+  });
+});
+
+describe("PluginInstaller.update — npm pinned to an exact semver version is skipped (Req 4.6, review defect fix)", () => {
+  it("skips npm:foo@1.2.3 (exact semver) without invoking pi update, and states the real reason", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "npm:foo@1.2.3 (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "Updated npm:foo@1.2.3\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes).toEqual([
+        {
+          id: "npm:foo",
+          status: "skipped",
+          reason: expect.stringContaining("1.2.3"),
+        },
+      ]);
+      expect(result.value.hasFailures).toBe(false);
+    }
+    // The core assertion: pi update must never even be invoked for a pinned npm package —
+    // pi's own CLI would print "Updated" unconditionally and exit 0 even if it silently
+    // skipped internally, so we must not rely on trying it.
+    expect(calls.some((c) => c.args[0] === "update")).toBe(false);
+  });
+
+  it("attempts pi update for npm:foo@^1.0.0 (floating range, not an exact version)", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "npm:foo@^1.0.0 (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes).toEqual([{ id: "npm:foo", status: "updated" }]);
+    }
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]?.args).toEqual(["update", "npm:foo"]);
+  });
+
+  it("attempts pi update for npm:foo (no version at all)", async () => {
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return { ok: true, stdout: "npm:foo (global)\n", exitCode: 0 };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.outcomes).toEqual([{ id: "npm:foo", status: "updated" }]);
+    }
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]?.args).toEqual(["update", "npm:foo"]);
+  });
+});
+
+describe("isExactSemver — boundary cases (equivalent to pi's semver.valid() !== null)", () => {
+  it.each([
+    ["1.2.3", true],
+    ["0.0.1", true],
+    ["1.2.3-beta.1", true],
+    ["1.2.3+build.5", true],
+    ["1.2.3-rc.1+exp", true],
+    ["v1.2.3", true], // semver.valid() strips a leading v/V before validating.
+    ["^1.0.0", false],
+    ["~1.2", false],
+    [">=1.0.0", false],
+    ["1.x", false],
+    ["latest", false],
+    ["1.2", false], // missing patch
+    ["v1", false], // missing minor/patch
+    ["", false],
+  ])("isExactSemver(%j) === %p", (input, expected) => {
+    expect(isExactSemver(input)).toBe(expected);
+  });
+});
+
+describe("PluginInstaller.update — partial failure: continues processing, aggregates, non-zero-worthy (Req 4.7, observable)", () => {
+  it("processes a pinned package + a failing package + a succeeding package, all three, aggregating the failure", async () => {
+    // will-fail/will-succeed 用浮动 range,避免撞上 Req 4.6 的 npm 精确版本钉死判定
+    // (那部分场景由专门的 "npm exact version pin" 用例覆盖,见下方新增测试组)。
+    const { piCli, calls } = makeStubPiCli((args) => {
+      if (args[0] === "list") {
+        return {
+          ok: true,
+          stdout:
+            "git:github.com/org/pinned@v1 (global)\n" +
+            "npm:will-fail@^1.0.0 (global)\n" +
+            "npm:will-succeed@^2.0.0 (global)\n",
+          exitCode: 0,
+        };
+      }
+      if (args[0] === "update" && args[1] === "npm:will-fail") {
+        return {
+          ok: false,
+          stdout: "",
+          exitCode: 1,
+          errorSummary: "network error: Authorization: Bearer sk-abcdef1234567890",
+        };
+      }
+      return { ok: true, stdout: "updated\n", exitCode: 0 };
+    });
+    const installer = createPluginInstaller({ piCli });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // All three packages were processed — the mid-list failure did not abort the rest.
+    expect(result.value.outcomes).toHaveLength(3);
+    expect(result.value.outcomes).toEqual([
+      {
+        id: "git:github.com/org/pinned",
+        status: "skipped",
+        reason: expect.stringContaining("不可变"),
+      },
+      {
+        id: "npm:will-fail",
+        status: "failed",
+        reason: expect.stringContaining("[redacted]"),
+      },
+      { id: "npm:will-succeed", status: "updated" },
+    ]);
+    // The failure summary must never leak the raw secret.
+    expect(result.value.outcomes[1]?.reason).not.toContain("sk-abcdef1234567890");
+    // hasFailures is the signal the future `update` subcommand (task 6.1) uses to pick a
+    // non-zero exit code; it must be true even though the overall call succeeded (ok:true)
+    // and even though one package was merely skipped (not failed).
+    expect(result.value.hasFailures).toBe(true);
+
+    // The succeeding + failing packages were both actually attempted via pi; the pinned one
+    // was not.
+    const updateCalls = calls.filter((c) => c.args[0] === "update");
+    expect(updateCalls.map((c) => c.args[1])).toEqual(["npm:will-fail", "npm:will-succeed"]);
+  });
+});
+
+describe("PluginInstaller — PiCliNotFoundError also applies to update", () => {
+  it("maps a PiCliNotFoundError to an actionable PI_CLI_NOT_FOUND error for update()", async () => {
+    const installer = createPluginInstaller({
+      piCliFactory: () => {
+        throw new PiCliNotFoundError();
+      },
+    });
+
+    const result = await installer.update();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("PI_CLI_NOT_FOUND");
     }
   });
 });

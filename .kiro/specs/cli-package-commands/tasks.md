@@ -134,7 +134,7 @@
 
 - [ ] 5. list 与 update
 
-- [ ] 5.1 实现已安装包的列出
+- [x] 5.1 实现已安装包的列出
   - 输出已安装包的标识、版本或引用、作用域与包类型
   - 无任何已安装包时输出明确提示并以零退出码结束
   - 支持只列出存在可用更新的包，并对每一项标明当前版本与可用版本
@@ -144,7 +144,7 @@
   - _Requirements: 4.1, 4.2, 4.3_
   - _Boundary: PluginInstaller_
 
-- [ ] 5.2 实现包更新与部分失败汇总
+- [x] 5.2 实现包更新与部分失败汇总
   - 未指定包名时更新全部可更新的包；指定包名时只更新该包
   - 不更新被固定到精确版本或不可变引用的包，并在输出中标明跳过原因
   - 某个包失败时继续处理其余包，结束时汇总列出失败项及原因并以非零退出码结束
@@ -490,3 +490,53 @@
 - **agent 卸载曾是缺口**：4.4 只写了 `installAgentSource`，4.5 初版的 `AgentChannel.uninstall` 只能返回
   `NOT_IMPLEMENTED` —— 意味着 agent 装上就卸不掉，直接违反需求 3.8，且会卡死 6.2 的 e2e。4.5 的
   `_Boundary_` 含 `AgentInstaller`，故补 `uninstallAgentSource` 在边界内。
+- **★ Req 4.3「`list --outdated` 标明可用版本」是需求与 pi 实际能力之间的真实缺口**：`pi list` 只吐
+  当前已安装版本，pi 的包管理面（`docs/packages.md`）没有任何 `outdated`/`--dry-run` 子命令能给出
+  「latest 可用版本」；`DefaultPackageManager.checkForAvailableUpdates()` 存在但不在 `PiCli` 接口上，
+  `server/cli` 唯一的 IO 适配点就是 `PiCli`（`runPiCommand`/`listExtensions`）。5.1 的裁断：
+  `PluginInstaller.listInstalled({ outdated: true })` 恒返回判别式错误 `OUTDATED_NOT_SUPPORTED`，
+  不发起任何 `runPiCommand` 调用、不返回任何包数据 —— 比伪造「当前=可用」的假数据更诚实。真正实现
+  需要接入一个新的「查最新版本」数据源（如 npm registry 元数据查询），是本 `PluginInstaller` 边界之外
+  的新 IO 通道；6.1/后续任务若要补齐，应新增专门端口，不要在 `PluginInstaller` 里悄悄拼一个假实现。
+- **★「固定/不可变」的判定只能按 `kind`，不能从 `pi list` 反推 npm 精确版本锁定**：`parsePiList` 产出的
+  `id`/`version` 无法区分「用户显式 `npm install foo@1.2.3` 钉死版本」与「浮动安装、当前恰好解析到
+  这个版本」——两者在 `pi list` 输出里长得一模一样，真正记录「是否钉死」的状态在 pi 自己的
+  `settings.json` 里，而 `server/cli` 不该绕开 `PiCli` 这个唯一 IO 适配点去读那份文件（会引入第二份
+  状态源，必然与 pi 自身解读漂移）。5.2 的裁断：只对**可确定性判**的两类跳过并给出真实原因——
+  `kind === "git"`（引用恒为固定 tag/commit，pi 从不推进）与 `kind === "local"`（未经 pi 拉取，
+  「更新」无意义）；`kind === "npm"` 一律尝试 `pi update <id>`，若 pi 内部判定其被钉死而跳过，
+  本组件观察不到这一事实，只能如实报告 `pi update` 的退出结果（`"updated"`），不冒充侦测到了「跳过」。
+- **★ Req 4.7「部分失败汇总」逼出「逐包调用」而非「批量 `pi update --extensions`」**：批量子进程调用
+  拿不到「每个包是否成功」的粒度，无法满足「某个包失败时继续处理其余包、结束时汇总失败项」。5.2 的
+  `PluginInstaller.update()` 对每个目标包各发起一次独立 `piCli.runPiCommand(["update", <id>], {})`，
+  循环里不提前 return，逐个收集 `"updated"|"skipped"|"failed"` 结果。代价是变慢（N 次子进程），
+  换来 Req 4.7 要求的可观察粒度。返回值区分两层：外层 `Result.ok` 只表示「枚举台账这一步本身」有没有
+  基础设施级失败（如 `pi list` 本身报错）；`ok:true` 之下的 `hasFailures` 才是「是否有包更新失败」的
+  信号，留给未来 `update` 子命令（6.1）据此决定退出码非零——本任务边界（`PluginInstaller`）不含
+  子命令层的 stdout 格式化与实际 `process.exit`，那些留给 6.1。
+- **`pi list` 对本地路径来源的行没有 `local:` 前缀**：`parseListLine` 的 kind 启发式是
+  「以 `/`（绝对）或 `.`（相对）开头即 `local`」，不是「以 `local:` 前缀开头」——真实 `pi list` 输出
+  原样打印 settings.json 里注册的磁盘路径，不会重新包一层 `local:` 前缀（那是 `pi install`/内部
+  `ExtSource` 的来源串形态，两者不是同一形态）。写涉及 `kind: "local"` 的 `pi list` 固定 stdout 测试
+  fixture 时用裸路径（如 `/abs/path (global)`），写成 `local:/abs/path (global)` 会被误判为 `npm`
+  （已在 5.2 测试初稿踩过，RED 输出为 `expected 'updated' to be 'skipped'`）。
+- **★ npm 包「是否被钉死」可以从 `pi list` 输出直接判定**，不需要任何新 IO。依据（pi 0.80.3 真实源码）：
+  `isExactNpmVersion(v) = semver.valid(v) !== null`（`core/package-manager.js:42`）；
+  `parseSource()` 的 `pinned` 就是它（:1130）；`normalizePackageSourceForSettings()` 对**非 local** 类型
+  `return source` 原样保留（:1110-1113），故用户写 `npm:foo` 就永远无版本、写 `npm:foo@1.2.3` 就永远带版本；
+  更新时 `if (parsed.type === "local" || parsed.pinned)` 直接过滤（:926）。
+  而 `pi update <src>` 的 CLI 层**无条件**打印 `Updated <src>` 并 exit 0（`package-manager-cli.js:602`），
+  **即便内部什么都没做** —— 所以「pi 是否跳过了」观察不到，但「该不该跳过」我们自己能算。
+  ⇒ `version` 是精确 semver ⇒ pinned ⇒ 提前判为 `skipped` 并给出真实原因，**绝不调用 `pi update`**。
+  5.1/5.2 初版一律尝试并把 pi 的成功退出报为 `"updated"`，对钉死包构成**谎报**，被复核 REJECT。
+- **`isExactSemver()` 已导出**（`plugin-installer.ts`），与真实 `semver.valid()` **29 组交叉验证完全等价**：
+  major/minor/patch 必须 `0|[1-9]\d*`（`01.2.3` 非法）；只剥**小写** `v` 前缀（`V1.2.3` 非法）；
+  **不 trim** 两端空白（`"  1.2.3  "` 非法）。后续任务复用它，别再造。
+- **`pi list` 的 local 行没有 `local:` 前缀**（是裸路径）。写 `pi list` stdout fixture 时注意，
+  否则 `parseListLine` 的 kind 启发式会判错。
+- **需求 4.3（`--outdated`）在 pi 的能力面上无法实现**：pi CLI 只有 `install`/`list`/`remove`/`update`，
+  没有 `outdated`；`checkForAvailableUpdates()` 不在 `PiCli` 接口上，且其返回的 `PackageUpdate` 也**不含**
+  可用版本号。故实现为诚实降级：返回 `OUTDATED_NOT_SUPPORTED` 且**零次调用 pi**（不假装查询过），
+  不输出任何推测版本。requirements 4.3 已据此改写为条件式。
+- **测试样例数据别用精确版本号当「随便填的版本」**：5.x 修复后，`npm:foo@1.0.0` 会触发钉死判定被 skip。
+  测路由/聚合逻辑的用例应使用浮动 range（`^1.0.0`）或无版本，否则会意外撞上 4.6 的判定。
