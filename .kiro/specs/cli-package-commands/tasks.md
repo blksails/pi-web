@@ -157,7 +157,7 @@
 
 - [ ] 6. Wave 1 集成与离线验证
 
-- [ ] 6.1 集成：将全部 Wave 1 子命令接入分发层
+- [x] 6.1 集成：将全部 Wave 1 子命令接入分发层
   - create、install、uninstall、list、update 经分发层可被调用并返回统一的退出码语义
   - 任一子命令成功以零退出码结束，失败以非零退出码结束
   - 观察态：逐个子命令的成功与失败路径各触发一次，退出码与预期一致
@@ -540,3 +540,45 @@
   不输出任何推测版本。requirements 4.3 已据此改写为条件式。
 - **测试样例数据别用精确版本号当「随便填的版本」**：5.x 修复后，`npm:foo@1.0.0` 会触发钉死判定被 skip。
   测路由/聚合逻辑的用例应使用浮动 range（`^1.0.0`）或无版本，否则会意外撞上 4.6 的判定。
+- **`bin/pi-web.mjs` 里绝不能写字面 `import(<非字符串字面量表达式>)`**（任务 6.1 踩坑，耗时最长）：
+  一旦出现（哪怕只是 `import(someVariable)`），vitest 的 Vite SSR 转换阶段（`ssrTransformScript`，
+  供任何 `@/bin/pi-web.mjs` 的测试期 import 使用）会在**解析期**报 `Expected ident` 并让
+  *该文件的全部测试文件*（含与之无关的 `cli-args.test.ts` 26 项、`subcommand-router.test.ts`）
+  collect 失败——是 Rollup/Vite 对动态 import 非字面量 specifier 的解析缺陷，与运行时执行路径无关，
+  `/* @vite-ignore */` 注释对此**无效**（已实测：加了照样炸）。这与本仓 MEMORY 里
+  「@vite-ignore 对字面量无效」是同一类问题的另一面：对**非字面量**它同样规避不了解析期崩溃。
+  唯一有效规避：`const dynamicImport = new Function("specifier", "return import(specifier);")`，
+  把 `import()` 移进字符串按 `Function` 构造求值，对 Vite 的源码静态扫描完全不可见；运行时语义
+  与直接 `import(spec)` 等价（仍是原生 ESM 动态 import）。CLI 是本机进程非浏览器，无 CSP 顾虑。
+  后续任务（10.1 接线 `publish`）如需再加一处动态 import，复用这个 `dynamicImport` helper，
+  不要重新踩这个坑。
+- **`server/cli/index.ts` 内 `parseArgs()` 调用不要预先标注 `let parsed: ReturnType<typeof parseArgs>`**：
+  会丢失基于传入 `options` 字面量的精确重载推断，退化为最泛化重载（`values.xxx` 变成
+  `string | boolean | (string|boolean)[] | undefined`），导致后续对字面量比较的 narrowing 失效
+  （`tsc` 报 `string|boolean` 不能赋给字面量联合）。改为 `let parsed;`（无类型注解、无初始值）—— TS 对
+  这种「evolving let」会按首次赋值的表达式（此处是 `parseArgs({...})` 调用本身，含完整字面量 options）
+  推断出精确类型，narrowing 正常工作。
+- **`server/cli/index.ts` 的 `runSubcommand(name, argv, deps)` 采用「高层端口注入」而非「低层工厂注入」**：
+  `deps.installer`/`deps.pluginInstaller` 直接接受已构造好的 `Installer`/`PluginInstaller` 替身
+  （与 `installer.test.ts`/`plugin-installer.test.ts` 同策略），不需要再深一层注入 `PiCli`/
+  `CommandRunner`/`TrustPolicy` 等——这些底层依赖已经在各自任务（4.3/4.5）里被这两个端口封装好，
+  6.1 只是它们的又一个消费方，不必重新暴露底层注入面。`create` 同理只注入 `scaffoldFn`/
+  `listTemplatesFn`（`scaffold()`/`listTemplates()` 本身已是任务 3.x 的最终端口）。
+- **`examplesRootCandidates` 由 `bin/pi-web.mjs`（壳层）构造，不在打包进产物的 `server/cli/index.ts`
+  内自行推断**：`server/cli/index.ts` 被 esbuild 打成 `dist/cli-commands.mjs` 单文件产物后，
+  其 `import.meta.url` 会被内联，「回退 `process.cwd()`」这条路径不可靠（1.1 已有此论断）。
+  壳层的 `PKG_ROOT`（真实 `import.meta.url` 解析结果，`bin/pi-web.mjs` 本身未被打包）与
+  `distCliCommandsJs()` 的产物根才是可信来源：候选路径依次为「产物根旁 `examples/`」（分发后布局，
+  由 `scripts/pack-dist.mjs` 的 `packExamples()` 拷入）与「仓库根 `examples/`」（开发期布局，
+  `PKG_ROOT` 即仓库根）。`runSubcommand` 内部仍调用产物自带的纯函数 `resolveExamplesRoot()` 从
+  候选里选第一个存在的，只是候选列表的**构造**移到了壳层。
+- **`uninstall`/`install` 的 `--project`/`--kind` 选项表变化会连带影响 `subcommand-router.test.ts`
+  的既有断言**：该文件（非受保护的 `cli-args.test.ts`）里有断言「`uninstall --project` 必须报错」
+  「`--kind` 只被 `create` 接受」，这两条断言编码的是 6.1 之前的旧选项面；6.1 按设计要求
+  `uninstall`/`install` 分别新增 `--project`/`--kind` 后，这两条断言需要同步更新为新契约
+  （已改并保持 21 项全绿，未删减断言数量）。任务的「不得破坏既有测试」硬门只钉了
+  `cli-args.test.ts` 的 26 条（`run` 路径逐字节不变的证据），不包括子命令选项表本就预期演进的
+  `subcommand-router.test.ts`。
+- **`list --outdated` 的失败文案是英文**（`OUTDATED_NOT_SUPPORTED_MESSAGE`，5.1 既有实现），不含中文
+  「尚不支持」字样。6.1 只透传该错误到 `ProgressReporter.fail()`，未改写文案（超出本任务边界，
+  且改动会牵动 5.x 既有测试对该常量的断言）。后续如需中文化错误文案，应作为独立任务处理。

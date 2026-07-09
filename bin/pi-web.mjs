@@ -83,6 +83,7 @@ const SUBCOMMAND_SPECS = {
     summary: "安装 agent 或 plugin",
     options: {
       project: { type: "boolean", default: false },
+      kind: { type: "string" },
       help: { type: "boolean", short: "h", default: false },
     },
     usage: `用法: pi-web install <source> [options]
@@ -91,18 +92,21 @@ const SUBCOMMAND_SPECS = {
 的实参视为直接来源,不联系注册表;其余视为注册表包标识,先解析并验签再安装。
 
 选项:
-      --project   以项目级作用域安装(默认用户级)
-  -h, --help      显示本帮助并退出
+      --project              以项目级作用域安装(默认用户级)
+      --kind <agent|plugin>  显式指定包类型(npm/git 直连来源默认按 plugin 处理)
+  -h, --help                 显示本帮助并退出
 `,
   },
   uninstall: {
     summary: "卸载已安装的 agent 或 plugin",
     options: {
+      project: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
     usage: `用法: pi-web uninstall <name> [options]
 
 选项:
+      --project   以项目级作用域卸载(默认用户级)
   -h, --help      显示本帮助并退出
 `,
   },
@@ -520,6 +524,50 @@ function readVersion() {
   }
 }
 
+/**
+ * 间接动态 `import()`:构造成 `new Function` 求值,而非字面 `import(<expr>)` 语法
+ * (任务 6.1)。
+ *
+ * ★ 这不是风格偏好 —— 直接写 `import(spec)`(`spec` 为运行时变量)会在 vitest 的
+ * Vite SSR 转换阶段(`ssrTransformScript`,供 `@/bin/pi-web.mjs` 这类测试期 import 使用)
+ * 于**解析期**报 `Expected ident` 并使*该文件的全部测试*(含与本子命令无关的
+ * `cli-args.test.ts` 26 项)collect 失败 —— 与运行时执行路径无关,是 Vite 的动态 import
+ * 静态分析对非字面量 specifier 的已知解析缺陷(`/* @vite-ignore *\/` 注释亦无效,已验证)。
+ * `new Function("specifier", "return import(specifier);")` 把 `import()` 移到一个
+ * 字符串里按普通 `Function` 构造求值,对 Vite 的源码静态扫描完全不可见,规避了这个解析期
+ * 崩溃;运行时语义与直接 `import(spec)` 等价(仍是原生 ESM 动态 import,非 CJS require)。
+ * CLI 是本机进程、非浏览器,不涉及 CSP `unsafe-eval` 顾虑。
+ */
+const dynamicImport = new Function("specifier", "return import(specifier);");
+
+/**
+ * 动态加载 `dist/cli-commands.mjs` 并调用其 `runSubcommand(name, argv, deps)`(任务 6.1,
+ * Req 1.7)。产物缺失时给出可操作错误并非零退出(与 `launch()` 对 `dist/server.mjs`
+ * 缺失的处理一致)。
+ *
+ * `examplesRootCandidates` 在此(壳层)构造并传入,而非让打包进产物的 `server/cli/index.ts`
+ * 自行推断 —— 该模块被 esbuild 打成单文件产物后 `import.meta.url` 会被内联,其"回退
+ * process.cwd()"这条路径不可靠(见 `distCliCommandsJs()` 的 docstring)。壳层的 `PKG_ROOT`
+ * (真实 `import.meta.url` 解析结果,未被打包)与 `distCliCommandsJs()` 的产物根才是可信来源:
+ * 候选路径依次为「产物根旁 `examples/`」(分发后布局)与「仓库根 `examples/`」(开发期布局),
+ * `resolveExamplesRoot()`(产物内的纯函数)按序取第一个真实存在的。
+ */
+async function runSubcommandFromDist(name, argv) {
+  const cliCommandsJs = distCliCommandsJs();
+  if (!existsSync(cliCommandsJs)) {
+    console.error(
+      `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +
+        `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
+    );
+    return 1;
+  }
+  const distRoot = dirname(cliCommandsJs);
+  const mod = await dynamicImport(pathToFileURL(cliCommandsJs).href);
+  return mod.runSubcommand(name, argv, {
+    examplesRootCandidates: [join(distRoot, "examples"), join(PKG_ROOT, "examples")],
+  });
+}
+
 export async function main(argv = process.argv.slice(2)) {
   let opts;
   try {
@@ -542,14 +590,7 @@ export async function main(argv = process.argv.slice(2)) {
     return 0;
   }
   if (opts.intent === "subcommand") {
-    // 分发接缝(动态加载 dist/cli-commands.mjs、按 name 调用具体实现)归任务 6.1
-    // (Wave 1:create/install/uninstall/list/update)与 10.1(publish)。本任务只
-    // 判别意图,不实现任何子命令的业务逻辑 —— 此处故意不启动本地实例、不触碰
-    // 文件系统或网络,如实反映「尚未接线」的当前状态。
-    console.error(
-      `[pi-web] 子命令 \`${opts.name}\` 尚未接入(等待后续任务完成分发接线)。`,
-    );
-    return 1;
+    return runSubcommandFromDist(opts.name, opts.argv);
   }
   if (opts.watch && opts.source && looksLikeGitSource(opts.source)) {
     console.warn("[pi-web] --watch 仅适用于本地目录 source,git 来源已跳过文件监视。");

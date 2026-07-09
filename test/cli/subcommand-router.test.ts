@@ -99,8 +99,9 @@ describe("parseCliArgs — 顶层与子命令帮助(Req 1.3, 1.4)", () => {
 });
 
 describe("parseCliArgs — 子命令选项互不串味(Req 1.5, 1.6)", () => {
-  it("--kind 只被 create 接受;list --kind 报错", () => {
+  it("--kind 被 create 与 install 接受(任务 6.1 补齐 install --kind);list --kind 报错", () => {
     expect(() => parseCliArgs(["create", "my-agent", "--kind", "plugin"])).not.toThrow();
+    expect(() => parseCliArgs(["install", "src", "--kind", "plugin"])).not.toThrow();
     expect(() => parseCliArgs(["list", "--kind", "plugin"])).toThrow(CliUsageError);
   });
 
@@ -110,9 +111,10 @@ describe("parseCliArgs — 子命令选项互不串味(Req 1.5, 1.6)", () => {
     expect(() => parseCliArgs(["create", "x", "--dry-run"])).toThrow(CliUsageError);
   });
 
-  it("--project 只被 install 接受;uninstall --project 报错", () => {
+  it("--project 被 install 与 uninstall 接受(任务 6.1 补齐 uninstall --project);list 不接受", () => {
     expect(() => parseCliArgs(["install", "src", "--project"])).not.toThrow();
-    expect(() => parseCliArgs(["uninstall", "name", "--project"])).toThrow(CliUsageError);
+    expect(() => parseCliArgs(["uninstall", "name", "--project"])).not.toThrow();
+    expect(() => parseCliArgs(["list", "--project"])).toThrow(CliUsageError);
   });
 
   it("--outdated 只被 list 接受;update --outdated 报错", () => {
