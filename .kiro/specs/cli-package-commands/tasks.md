@@ -96,7 +96,7 @@
   - _Requirements: 3.4, 8.1, 8.2_
   - _Boundary: SourceResolver_
 
-- [ ] 4.3 (P) 实现 plugin 通道的安装、卸载与列出
+- [x] 4.3 (P) 实现 plugin 通道的安装、卸载与列出
   - 复用既有的 pi 子进程适配器与参数装配，以非交互方式执行安装，不自动信任项目本地配置文件
   - 安装成功后包被记入 pi 的来源台账；卸载时从台账除名并输出被移除的包标识
   - 卸载一个未安装的包时输出未安装提示并以非零退出码结束
@@ -434,3 +434,17 @@
   含点，判直连）与 `org/name`（首段 `org` 不含点，判注册表标识）都含 `/`，仅靠"含不含 `/`"无法
   区分——`classifySourceForm()` 用「首个 `/` 之前的片段是否含 `.`」这条启发式规则。后续新增判别
   分支（如支持更多 VCS host）时应保持这条规则的位置（在文件系统路径判定之后，兜底判注册表标识之前）。
+- **★ `pi list` 的 id 不含版本号**：`parseListLine`（`packages/server/src/extensions/cli/pi-cli.ts:266`）
+  按**最后一个 `@`** 切分（`at > 0` 才切，故 `@scope/pkg` 不会被误切），版本落进单独的 `.version` 字段。
+  而 `assembleInstallArgs` 传给 pi 的来源串**含**版本。二者**不可直接比较**。
+  4.3 已导出纯函数 `normalizeExtSourceId()`（复刻同一规则），5.x/4.5 一律复用它，别再各自推导。
+  面向用户的「包标识」（uninstall/update 的实参）应是**不含版本**的形态。
+- **`PiCli.listExtensions()` 会抛异常**（`PiListError`），不返回 `Result`。`server/cli` 的约定是判别联合、
+  不抛异常，故 `PluginInstaller` 绕过它，直接 `runPiCommand(["list"])` + `parsePiList`。
+- **`PiCliNotFoundError` 由 `ChildProcessPiCli` 的构造器同步抛出**（其中调 `resolvePiCliEntry()` 探磁盘）。
+  测这条分支不需要 `vi.mock`，注入一个会抛的 `piCliFactory` 即可。构造必须**惰性**（只在未注入时才 new），
+  否则单测会真的去磁盘找 pi。
+- **`assembleInstallArgs`/`assembleRemoveArgs` 没有 scope 参数**，不产出 `-l`。plugin 通道的 project 作用域
+  在 4.5 落实（扩展该纯函数，或在 Installer 分派层后处理 `InstallArgs.args`）。
+- **别把「知道有坑」写进测试注释然后绕开它**：4.3 初版的测试注释承认了 id 形态不对称，却只测了安全的一半，
+  把一个「刚装好的包卸载不掉」的缺陷藏了起来，被复核 REJECT。有不对称就写 round-trip 测试去撞它。
