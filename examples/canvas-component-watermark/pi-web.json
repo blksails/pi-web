@@ -13,7 +13,7 @@
     "wiring": {
       "point": "canvasPlugins",
       "export": "watermarkBundle",
-      "from": "./components/watermark/watermark"
+      "from": "./components/canvas-watermark/components/watermark/watermark"
     },
     "peer": {
       "@blksails/pi-web-canvas-kit": ">=0.1.0"

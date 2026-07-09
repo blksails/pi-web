@@ -23,7 +23,7 @@ pi-web add ./examples/canvas-component-watermark --target <你的 agent source>
 按打印的接线指引,在你的 `.pi/web/web.config.tsx` 中:
 
 ```tsx
-import { watermarkBundle } from "./components/watermark/watermark";
+import { watermarkBundle } from "./components/canvas-watermark/components/watermark/watermark";
 // defineWebExtension({ ... }) 内:
 canvasPlugins: [watermarkBundle],
 ```

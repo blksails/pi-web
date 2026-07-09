@@ -122,8 +122,16 @@ describe("组件源码车道自举(add → 接线 → build)", () => {
     expect(prov.origin).toBe(`local:${WATERMARK_PACK}`);
     expect(Object.values(prov.files).every((d) => d.startsWith("sha256:"))).toBe(true);
 
-    // 接线指引存在,并按其内容代行手工接线(e2e 机械执行指引,不自造接线)。
-    const importLine = `import { watermarkBundle } from "./components/canvas-watermark/components/watermark/watermark";`;
+    // 严格按打印指引代行手工接线:import 行**逐字取自输出**(不自造)——守住
+    // 「指引路径必须相对落点可解析」这一契约(bin 冒烟曾抓到指引给包内相对路径的缺陷)。
+    const importLine = lines
+      .flatMap((l) => l.split("\n"))
+      .map((l) => l.trim())
+      .find((l) => l.startsWith("import {"));
+    expect(importLine).toBe(
+      `import { watermarkBundle } from "./components/canvas-watermark/components/watermark/watermark";`,
+    );
+    if (importLine === undefined) throw new Error("unreachable");
     expect(out).toContain("canvasPlugins: [watermarkBundle],");
     const configPath = join(sourceDir, ".pi", "web", "web.config.tsx");
     const config = readFileSync(configPath, "utf8");
