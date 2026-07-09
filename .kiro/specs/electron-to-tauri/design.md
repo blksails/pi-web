@@ -6,7 +6,16 @@
 
 **Users**: pi-web 桌面版终端用户（感知为「更轻、更快、更小」），以及维护者（感知为一条改造后的三平台发布流水线）。
 
-**Impact**: `desktop/` 由 726 行 TypeScript（Electron 主进程 + preload，esbuild → electron-builder）原地替换为一个 Rust crate（Tauri v2 + Node sidecar，`tauri build`）。前端改动收敛为 `lib/app/desktop-bridge.ts` 一个文件的内部实现。除本文档显式列出的差异外，用户与运维者可观察的行为保持等价。
+**Impact**: `desktop/` 由 726 行 TypeScript（Electron 主进程 + preload，esbuild → electron-builder）原地替换为一个 Rust crate（Tauri v2 + Node sidecar，`tauri build`）。前端改动收敛为 `lib/app/desktop-bridge.ts` 一个文件的内部实现。除下列**已知差异**外，用户与运维者可观察的行为保持等价。
+
+### 已知差异（相对 Electron 壳）
+
+| # | 差异 | 方向 | 理由 |
+|---|---|---|---|
+| D1 | 外链的回环判定由三个字面量（`127.0.0.1`/`localhost`/`::1`）扩大为 `is_loopback()`，覆盖整个 `127.0.0.0/8` 与 IPv6 回环 | **收紧** | 旧实现会把 `http://127.0.0.2:8080` 误判为外部地址并交给系统浏览器。requirements 7.2 的措辞是「指向本地回环主机」，本就是泛指而非枚举 |
+| D2 | 加载/错误页的 CSP 由 `default-src 'none'; style-src 'unsafe-inline'` 变为 `default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ipc: http://ipc.localhost` | **收紧**（脚本/样式） + 必要放行（IPC） | 新页面需要脚本（重试/退出按钮），故脚本与样式外置走 `'self'` 而非 `unsafe-inline`。`connect-src` 放行 `ipc:` 仅因 Windows/Linux 的 Tauri IPC 走自定义协议 + fetch；该策略只作用于随包本地页 |
+| D3 | 启动失败由系统模态对话框改为窗口内错误页 | 中性 | design 的窗口/命令方案；行为（三态可读文案 + 重试/退出）等价 |
+| D4 | 随包 Node 二进制在 macOS 上经 `strip` + ad-hoc 重签名 | 中性 | `strip` 使官方签名失效导致内核 SIGKILL；ad-hoc 签名只让二进制自洽可执行，不涉及开发者身份，不改变「未签名分发」现状 |
 
 Electron 通过 `ELECTRON_RUN_AS_NODE` 让自身二进制充当 Node，从而无需系统 Node。Tauri 不捆绑 JS 运行时，故本设计以 **随包 Node 二进制（`bundle.externalBin` sidecar）** 承接该保证：`PI_WEB_NODE_BIN` 指向随包 node 的绝对路径，经 env 透传链下达 pi runner 孙进程。这是本迁移最大的工作量与体积代价来源。
 

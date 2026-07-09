@@ -4,7 +4,7 @@
 
 ## 1. 骨架与编排层纯函数（Foundation）
 
-- [ ] 1.1 建立 Tauri Rust crate 骨架并使其可编译
+- [x] 1.1 建立 Tauri Rust crate 骨架并使其可编译
   - 在 `desktop/src-tauri/` 建 `Cargo.toml`、`build.rs`、`tauri.conf.json`、`src/main.rs` 最小入口
   - `Cargo.toml` 依赖：tauri `2.11.5`（约束 `>=2.11.1` 以规避 GHSA-7gmj-67g7-phm9）、**`tauri-plugin-dialog` v2**（任务 5.1 用）、**`tauri-plugin-opener` v2**（任务 4.1 用），并在 `main.rs` 预留 `.plugin()` 注册位
   - `tauri.conf.json` 必须**一次配齐**下列各项，否则 `tauri build` 会成功但产出空壳，且只有任务 4.7 才捕获得到：
@@ -15,36 +15,37 @@
   - 放置 `icons/icon.png`（**必须是 RGBA PNG**，缺失或格式错会使 `tauri::generate_context!` 在编译期 panic）
   - 把原 `desktop/static/loading.html` 迁为 `src-tauri/frontend/index.html`（同时承载加载态与错误态）
   - 定义 `src/types.rs`：`RuntimeMode`、`ServerStartError`（三态判别式）、`ReadyError`、`ArtifactPaths`、`ResolveError`；并在 crate 根**预声明各模块桩**（`mod runtime_mode; mod external_link; mod startup_error; mod ready_probe; ...`），使任务 1.3–1.6 只填各自文件、不争用根文件
-  - 观察完成：`cargo build` 在 `desktop/src-tauri/` 下成功，产出可执行文件；`cargo test` 可运行（此时零测试）
+  - ★**实现期实测发现**：`bundle.externalBin` 与 `bundle.resources` 的路径在 **`cargo build` 期**（而非仅 `tauri build`）即被 `tauri-build` 校验存在，缺失则报 `resource path ... doesn't exist` 并中止编译。因此本任务只负责**写配置**，其编译验证必须推迟到任务 2.1（取得 sidecar）与一次 `pnpm build:dist`（产出 `dist/`）之后
+  - 观察完成：备齐 `binaries/node-<本机 triple>` 与 `dist/` 后，`cargo build` 成功产出可执行文件，`cargo test` 可运行
   - _Requirements: 9.9_
 
-- [ ] 1.2 迁移桌面工作区的工具链与忽略规则
+- [x] 1.2 迁移桌面工作区的工具链与忽略规则
   - 改写 `desktop/package.json`：保留包名 `@blksails/pi-web-desktop` 与 workspace 成员身份，移除 `electron`/`electron-builder`/`esbuild` 依赖，**新增 `@tauri-apps/cli` devDependency**（任务 4.1/4.7/6.2/7.1 均依赖它），scripts 改为驱动 tauri CLI
   - 在 `.gitignore` 增加 `desktop/src-tauri/target/`
   - 观察完成：`pnpm install` 通过；`pnpm --filter @blksails/pi-web-desktop exec tauri --version` 能解析出 tauri CLI；`git status` 不显示 `target/`
   - _Requirements: 9.9_
 
-- [ ] 1.3 (P) 实现运行模式判定纯函数 + 单测
+- [x] 1.3 (P) 实现运行模式判定纯函数 + 单测
   - 依「是否打包态」为主判据，叠加显式开发开关：未打包且 `PI_WEB_DESKTOP_DEV_URL` 非空 → dev；打包态 → packaged；否则 → unpackaged
   - 空白（仅空格）的 dev url 不得判为 dev
   - 观察完成：`cargo test` 覆盖四分支——unpackaged+devUrl → dev；packaged 优先于 devUrl；无 devUrl → unpackaged；空白 devUrl → 非 dev
   - _Requirements: 1.1, 1.2, 1.3_
   - _Boundary: desktop/src-tauri/src/runtime_mode.rs_
 
-- [ ] 1.4 (P) 实现外链放行判定纯函数 + 单测
+- [x] 1.4 (P) 实现外链放行判定纯函数 + 单测
   - **先校验 scheme 再校验 host**：仅非回环 `http`/`https` 放行外开；回环（`127.0.0.1`/`localhost`/`::1`，注意 `[::1]` 需剥方括号）拒绝；非 `http(s)` scheme（`file:`/`javascript:`/`data:`）拒绝；非法 URL 拒绝且不 panic
   - 观察完成：`cargo test` 覆盖上述四类共至少 7 个用例，全部返回预期决策
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 10.5_
   - _Boundary: desktop/src-tauri/src/external_link.rs_
 
-- [ ] 1.5 (P) 实现启动失败三态可读描述纯函数 + 单测
+- [x] 1.5 (P) 实现启动失败三态可读描述纯函数 + 单测
   - 消费 `ServerStartError` 三态，产出用户可读文案：无可用端口（含起始端口）、后端早退（含退出码与 stderr 尾部）、就绪超时（含等待时长）
   - 后端早退且无任何 stderr 输出时仍须产出可读文案，不得出现空描述
   - 观察完成：`cargo test` 覆盖三态各一例 + 「早退无 stderr」一例，断言文案分别包含退出码、时长、端口起点
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: desktop/src-tauri/src/startup_error.rs_
 
-- [ ] 1.6 (P) 实现端口选取与就绪探针 + 契约单测
+- [x] 1.6 (P) 实现端口选取与就绪探针 + 契约单测
   - `find_free_port`：从起始端口递增最多 20 次；TCP `connect` 成功=被占，出错或 `1000ms` 超时=空闲；`0.0.0.0`/`::` 探测时映射为 `127.0.0.1`；全占返回「无」
   - `wait_for_ready`：轮询 `GET /`，**任何 HTTP 响应即视为就绪**（不看状态码）；轮询间隔 `300ms`，总超时 `60_000ms`，单次请求超时 `2_000ms`；经注入的 `is_exited` 闭包感知子进程退出并立即返回 `Aborted`
   - 这是与 `bin/pi-web.mjs` 的唯一契约同步点，取值须严格对齐 design 的「就绪与端口契约」表
@@ -54,10 +55,12 @@
 
 ## 2. 随包 JS 运行时（sidecar）
 
-- [ ] 2.1 (P) 实现 sidecar 二进制获取脚本与校验和锁文件
+- [x] 2.1 (P) 实现 sidecar 二进制获取脚本与校验和锁文件
   - 新建 `desktop/node-sidecar.lock.json`：记录 Node 版本（`v22.22.0`）与四个 target triple 对应**官方压缩包**的期望 sha256（`aarch64-apple-darwin`/`x86_64-apple-darwin`/`x86_64-unknown-linux-gnu`/`x86_64-pc-windows-msvc`）
   - 新建 `scripts/fetch-node-sidecar.mjs`：按 triple 下载官方压缩包 → 比对**入库** sha256（**不信任上游 `SHASUMS256.txt`**，因其与二进制同源）→ 解压取 `bin/node` → `strip`（省约 21MB）→ 重命名为 `node-<triple>` 放入 `desktop/src-tauri/binaries/`（该目录 gitignored）
-  - 幂等：目标文件已存在且校验通过则跳过下载
+  - 幂等：目标文件已存在且能报出正确版本则跳过下载（不比对 strip 后二进制的哈希——它与压缩包无关）
+  - ★**实现期实测发现**：macOS 上 `strip` 会使 Node 官方二进制内嵌的代码签名失效，内核随即以 **SIGKILL(137)** 拒绝执行它。必须紧接着 ad-hoc 重签名（`codesign --force --sign -`）。这不改变「未签名分发」现状——ad-hoc 签名只让二进制自洽可执行，不涉及开发者身份
+  - 产出后须**自检**（对本机 triple 执行 `--version`），使「产出了一个跑不起来的二进制」当场失败，而非留到壳启动时
   - **校验和不匹配时必须打印期望值与实际值并以非零码退出**，使 CI 构建随之失败
   - 在 `.gitignore` 增加 `desktop/src-tauri/binaries/`（防止 86MB 的二进制误入库）
   - 观察完成：本机执行 `node scripts/fetch-node-sidecar.mjs --target aarch64-apple-darwin` 产出 `binaries/node-aarch64-apple-darwin` 且 `--version` 输出 `v22.22.0`；篡改 lock 中的 sha256 后重跑，脚本非零退出；`git status` 不显示 `binaries/`
