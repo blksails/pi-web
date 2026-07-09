@@ -129,7 +129,7 @@
   - _Requirements: 1.1, 1.6, 1.7, 4.1_
   - _Boundary: desktop/src-tauri/src/main.rs_
 
-- [ ] 4.3 实现启动失败呈现与重试/退出命令
+- [x] 4.3 实现启动失败呈现与重试/退出命令
   - 失败时导航回随包页并呈现区分三类失败的可读文案（消费任务 1.5 的描述函数）
   - 提供 `retry`（重跑完整拉起流程）与 `quit`（退出应用）两个命令
   - **两个命令必须在 `permissions/lifecycle.toml` 中声明 `allow-retry`/`allow-quit` 并加入 capability**，否则从远端页面调用会被 ACL 拒绝（报 `not allowed. Plugin not found`）
@@ -168,7 +168,7 @@
   - _Boundary: e2e/desktop/desktop-no-node.mjs_
   - _Depends: 4.4_
 
-- [ ] 4.7 (P) 实现已打包产物黑盒 e2e
+- [x] 4.7 (P) 实现已打包产物黑盒 e2e
   - `dist/` 与 sidecar 由任务 4.4 备齐（**本任务不得重跑 `build:dist`**——它会覆盖并行的 4.5/4.6 正在读的 `dist/`）；本任务只跑 `tauri build`（写 `target/` 与 `binaries/`，并行同伴不读这两处）产出实际 `.app`
   - 启动**打包二进制**（走 packaged 分支，靠 `resource_dir()` 定位 `dist/`）跑真实会话
   - 这是唯一能捕获「`bundle.resources` 未纳入 `dist/`」或「sidecar 落盘位置推导错误」这类仅在打包形态暴露的回归的验证
@@ -179,7 +179,7 @@
 
 ## 5. 原生目录选择能力桥
 
-- [ ] 5.1 实现目录选择命令与最小授权配置
+- [x] 5.1 实现目录选择命令与最小授权配置
   - `pick_directory` 命令：调用原生「选择文件夹」对话框，仅回传被选目录的**绝对路径字符串**；取消/无选择/异常一律回传「无结果」且不使 IPC reject；异常记 stderr
   - 返回类型静态保证不回传目录内容或任何文件系统元数据
   - 归一化逻辑抽为不依赖 Tauri 运行时的纯函数以便单测
@@ -189,7 +189,7 @@
   - _Requirements: 6.2, 6.3, 6.4, 6.5, 6.6, 8.3, 8.4, 8.5, 10.5_
   - _Boundary: desktop/src-tauri/src/dialog.rs, desktop/src-tauri/permissions/pick-directory.toml, desktop/src-tauri/capabilities/default.json_
 
-- [ ] 5.2 (P) 改造前端能力桥访问器 + 单测
+- [x] 5.2 (P) 改造前端能力桥访问器 + 单测
   - `getPiWebDesktopBridge()` 内部改为：优先读 `window.piWebDesktop`（向后兼容旧壳）→ 否则检测 `window.__TAURI__` 并合成同形状的桥（`pickDirectory` 经全局 `invoke('pick_directory')`）→ 否则返回「无」
   - **公开接口 `PiWebDesktopBridge` 形状不变**，唯一消费方 `components/chat-app.tsx` 与 `components/agent-source-picker.tsx` 零改动
   - **不得 import 任何 `@tauri-apps/*` npm 包**——远端回环页面无法加载随包模块，只能用 `withGlobalTauri` 暴露的全局
