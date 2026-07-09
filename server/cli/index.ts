@@ -39,3 +39,26 @@ export {
   type ProgressStage,
   type CliError,
 } from "./reporter.js";
+
+/**
+ * re-export `scaffold` / `listTemplates` / `resolveExamplesRoot`(任务 3.3,Req 2.10)。
+ *
+ * 这是本任务的最小必要接线:e2e 验证脚本需要从分发产物 `dist/cli-commands.mjs` 动态
+ * `import()` 出骨架生成能力,以便在不启动完整 `create` 子命令分发的前提下,仍能用真实
+ * 产物验证「生成的骨架可直接运行、无需额外安装依赖」这条观察态。**不在此处实现 `create`
+ * 子命令的参数解析与分发**——那属于任务 6.1 的接线范围,本次只 re-export 既有能力。
+ */
+export {
+  scaffold,
+  type ScaffoldRequest,
+  type ScaffoldSuccess,
+  type ScaffoldError,
+  type Result as ScaffoldResult,
+} from "./scaffold/scaffold-writer.js";
+export {
+  listTemplates,
+  resolveTemplate,
+  resolveExamplesRoot,
+  type TemplateInfo,
+  type TemplateResolution,
+} from "./scaffold/template-catalog.js";

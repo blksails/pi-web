@@ -68,7 +68,7 @@
   - _Depends: 3.1_
   - _Boundary: ScaffoldWriter_
 
-- [ ] 3.3 验证生成物可直接运行
+- [x] 3.3 验证生成物可直接运行
   - 以生成的目录作为 agent 源启动本地实例，确认无需在骨架内额外安装依赖
   - 观察态：启动后实例就绪并可进入会话；骨架目录中不存在依赖安装产物
   - _Requirements: 2.10_
@@ -358,3 +358,11 @@
   当前会原样拷出而不报错。
 - `template-catalog` 认定一个目录是模板的**必要条件是其 `package.json` 含 `pi-web` 字段**。写 fixture 时
   覆盖 `package.json` 若丢了该字段，`resolveTemplate` 会静默报 `TEMPLATE_NOT_FOUND`。
+- **验证 e2e 退出码时不要用管道**：`node script.mjs | tail -5` 之后的 `$?` 是 `tail` 的退出码，
+  不是脚本的。会把失败的脚本读成 EXIT=0。改用重定向到文件再 `echo $?`（或 `PIPESTATUS`）。
+- **`dist/` 可能是「部分构建」**：只跑过 `build:server` 时只有 `server.mjs`+`cli-commands.mjs`，
+  缺 `dist/client/`（`/` 路由会 500）与 `dist/examples/`。CLI e2e 前要校验**四件产物**齐全，
+  不能只看 `server.mjs`。
+- **e2e 判「实例就绪」不能只靠 `waitForReady()`**：它把任何 HTTP 响应都当就绪，**500 也算**。
+  用 `GET /api/bootstrap` 断言 `200` + JSON 可解析（纯后端路由，不依赖前端产物）。
+  已用 mutation 验过：把该断言指向不存在的路由，脚本正确失败并 exit 1。

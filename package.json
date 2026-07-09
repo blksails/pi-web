@@ -29,6 +29,7 @@
     "e2e:cli:watch": "node e2e/cli/cli-watch.mjs",
     "e2e:cli:real": "node e2e/cli/cli-real.mjs",
     "e2e:cli:reloc": "node e2e/cli/cli-reloc.mjs",
+    "e2e:cli:create": "node e2e/cli/cli-create-run.mjs",
     "test": "pnpm -r --workspace-concurrency=1 run test",
     "test:app": "vitest run",
     "e2e": "playwright test",
