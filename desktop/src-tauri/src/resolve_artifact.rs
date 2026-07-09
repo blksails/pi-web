@@ -4,22 +4,29 @@
 //! （壳改加载 dev url，不拉起 server）。所有环境相关输入经 `ResolveDeps` 注入以便测试。
 //!
 //! ★ **两条路径来源不同，不可混用**：
-//!   - `server_js` 来自 `resource_dir()`（`bundle.resources`）—— macOS 为 `Contents/Resources/`
+//!   - `payload_dir` 来自 `resource_dir()`（`bundle.resources`）—— macOS 为 `Contents/Resources/`
 //!   - `node_bin` 来自**主可执行同目录**（`bundle.externalBin`）—— macOS 为 `Contents/MacOS/`
 //!   混用会在打包态崩溃，且**只有 `desktop-packaged.mjs` 能捕获**（未打包 e2e 抓不到）。
 //!
 //! ★ 入口必须位于产物根：`server_supervisor` 以 `dirname(server_js)` 作子进程 cwd，
 //!   否则 `packages/server` 的路径解析回退失效。
+//!
+//! ★ 打包态**不再内嵌 `dist/` 树**（spec shared-runtime-payload）：资源目录里只有压缩载荷，
+//!   入口须由 `unpack_runtime` 解包到共享运行时目录后才存在。故本函数对打包态只返回
+//!   `ServerSource::Payload { payload_dir }`，把「解包」这一副作用留给调用方。
 
-use crate::types::{ArtifactPaths, ResolveError, RuntimeMode};
+use crate::types::{ArtifactPaths, ResolveError, RuntimeMode, ServerSource};
 use std::path::{Path, PathBuf};
 
 /// e2e 覆盖未打包态入口的环境变量（避开构建产物布局漂移）。
 pub const SERVER_JS_ENV: &str = "PI_WEB_DESKTOP_SERVER_JS";
 
-/// 自包含产物入口的固定文件名与所在目录名。
+/// 自包含产物入口的固定文件名与所在目录名（未打包态直接使用）。
 const DIST_DIR: &str = "dist";
 const SERVER_JS: &str = "server.mjs";
+
+/// 打包态随包载荷的目录名（与 npm `files` 及 `bundle.resources` 同名）。
+const PAYLOAD_DIR: &str = "payload";
 
 pub struct ResolveDeps {
     /// 打包态资源目录；生产传 `app.path().resource_dir()`。dev/unpackaged 可为 `None`。
@@ -52,22 +59,28 @@ pub fn resolve_artifact(
     let exe_dir = deps.exe_dir.as_ref().ok_or(ResolveError::MissingExeDir)?;
     let node_bin = exe_dir.join(node_file_name());
 
-    let server_js = match mode {
+    let server_source = match mode {
         RuntimeMode::Packaged => {
             let res = deps
                 .resource_dir
                 .as_ref()
                 .ok_or(ResolveError::MissingResourceDir)?;
-            res.join(DIST_DIR).join(SERVER_JS)
+            ServerSource::Payload {
+                payload_dir: res.join(PAYLOAD_DIR),
+            }
         }
-        RuntimeMode::Unpackaged => deps
-            .cli_dist_server_js
-            .clone()
-            .ok_or(ResolveError::MissingCliEntry)?,
+        RuntimeMode::Unpackaged => ServerSource::Direct(
+            deps.cli_dist_server_js
+                .clone()
+                .ok_or(ResolveError::MissingCliEntry)?,
+        ),
         RuntimeMode::Dev { .. } => unreachable!("dev 已在函数开头返回"),
     };
 
-    Ok(Some(ArtifactPaths { server_js, node_bin }))
+    Ok(Some(ArtifactPaths {
+        server_source,
+        node_bin,
+    }))
 }
 
 /// 子进程 cwd：产物根（入口所在目录）。
@@ -117,15 +130,21 @@ mod tests {
     }
 
     #[test]
-    fn packaged_entry_comes_from_resource_dir() {
+    fn payload_dir_comes_from_resource_dir() {
+        // ★ 回归防护：打包态的载荷恒取自 resource_dir，且**不再**是 dist/ 树。
         let d = deps(Some("/A.app/Contents/Resources"), Some("/A.app/Contents/MacOS"), None);
         let got = resolve_artifact(&RuntimeMode::Packaged, &d).unwrap().unwrap();
-        assert_eq!(got.server_js, PathBuf::from("/A.app/Contents/Resources/dist/server.mjs"));
+        assert_eq!(
+            got.server_source,
+            ServerSource::Payload {
+                payload_dir: PathBuf::from("/A.app/Contents/Resources/payload")
+            }
+        );
     }
 
     #[test]
     fn node_bin_comes_from_exe_dir_not_resource_dir() {
-        // ★ 回归防护：sidecar 与 dist 来源不同，绝不可混用。
+        // ★ 回归防护：sidecar 与载荷来源不同，绝不可混用。
         let d = deps(Some("/A.app/Contents/Resources"), Some("/A.app/Contents/MacOS"), None);
         let got = resolve_artifact(&RuntimeMode::Packaged, &d).unwrap().unwrap();
         assert_eq!(got.node_bin, PathBuf::from("/A.app/Contents/MacOS").join(node_file_name()));
@@ -133,10 +152,18 @@ mod tests {
     }
 
     #[test]
-    fn unpackaged_uses_cli_entry() {
+    fn packaged_never_yields_a_direct_entry() {
+        // 打包态若返回 Direct，说明有人把 dist/ 又塞回了安装包 —— 那正是本 spec 要根除的。
+        let d = deps(Some("/A.app/Contents/Resources"), Some("/A.app/Contents/MacOS"), None);
+        let got = resolve_artifact(&RuntimeMode::Packaged, &d).unwrap().unwrap();
+        assert!(matches!(got.server_source, ServerSource::Payload { .. }));
+    }
+
+    #[test]
+    fn unpackaged_uses_cli_entry_without_unpacking() {
         let d = deps(None, Some("/repo/desktop/src-tauri/target/debug"), Some("/repo/dist/server.mjs"));
         let got = resolve_artifact(&RuntimeMode::Unpackaged, &d).unwrap().unwrap();
-        assert_eq!(got.server_js, PathBuf::from("/repo/dist/server.mjs"));
+        assert_eq!(got.server_source, ServerSource::Direct(PathBuf::from("/repo/dist/server.mjs")));
         assert_eq!(
             got.node_bin,
             PathBuf::from("/repo/desktop/src-tauri/target/debug").join(node_file_name())

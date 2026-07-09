@@ -15,13 +15,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "nsis", "appimage"],
-    "icon": ["icons/icon.png"],
+    "targets": [
+      "dmg",
+      "nsis",
+      "appimage"
+    ],
+    "icon": [
+      "icons/icon.png"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "pi-web 桌面版",
-    "externalBin": ["binaries/node"],
+    "externalBin": [
+      "binaries/node"
+    ],
     "resources": {
-      "../../dist/": "dist/"
+      "../../payload/": "payload/"
     },
     "macOS": {
       "minimumSystemVersion": "10.15"

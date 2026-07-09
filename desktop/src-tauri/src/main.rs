@@ -15,6 +15,7 @@ mod runtime_mode;
 mod server_supervisor;
 mod startup_error;
 mod types;
+mod unpack_runtime;
 mod window;
 
 use resolve_artifact::{discover_cli_entry, resolve_artifact, ResolveDeps, SERVER_JS_ENV};
@@ -23,7 +24,7 @@ use startup_error::describe_startup_error;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
-use types::{ResolveError, RuntimeMode};
+use types::{ResolveError, RuntimeMode, ServerSource};
 use window::ServerOrigin;
 
 const HOST: &str = "127.0.0.1";
@@ -136,9 +137,35 @@ fn launch(app: &AppHandle) {
         }
     };
 
+    // 打包态：安装包里只有压缩载荷，入口须先解包到共享运行时目录（spec shared-runtime-payload）。
+    // 解包由随包 node 执行 payload/unpack.mjs 完成——桌面壳不实现解包语义。
+    let (server_js, runtime) = match paths.server_source {
+        ServerSource::Direct(path) => (path, None),
+        ServerSource::Payload { payload_dir } => {
+            match unpack_runtime::ensure(&paths.node_bin, &payload_dir) {
+                Ok(ok) => {
+                    if ok.unpacked {
+                        eprintln!("[desktop] 首次启动，已解包运行时 → {}", ok.runtime_dir);
+                    }
+                    let rt = (payload_dir, ok.runtime_root, ok.runtime_dir);
+                    (ok.server_js, Some(rt))
+                }
+                Err(err) => {
+                    // 失败进既有的可重试错误页，绝不静默退出（Req 4.6）。
+                    show_startup_error(
+                        app,
+                        "无法准备运行时",
+                        &unpack_runtime::describe_unpack_error(&err),
+                    );
+                    return;
+                }
+            }
+        }
+    };
+
     let mut opts = ServerStartOptions::new(
-        paths.server_js,
-        paths.node_bin,
+        server_js,
+        paths.node_bin.clone(),
         HOST.to_string(),
         start_port(),
     );
@@ -157,6 +184,10 @@ fn launch(app: &AppHandle) {
 
     match outcome {
         Ok(result) => {
+            // ★ 后端已拉起，此后才允许回收旧运行时（Req 5.5：GC 不得阻塞后端拉起）。
+            if let Some((payload_dir, runtime_root, runtime_dir)) = runtime {
+                unpack_runtime::spawn_gc(&paths.node_bin, &payload_dir, &runtime_root, &runtime_dir);
+            }
             if let Ok(mut origin) = state.server_origin.lock() {
                 *origin = url::Url::parse(&result.url)
                     .ok()

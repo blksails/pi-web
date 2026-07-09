@@ -13,7 +13,7 @@
 import { createServer } from "node:http";
 import { execFileSync, spawn } from "node:child_process";
 import { connect as netConnect } from "node:net";
-import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,8 @@ export const DIST_SERVER = join(ROOT, DIST, "server.mjs");
 /** 未打包壳二进制（`cargo build` 产物）。 */
 export const SHELL_BIN = join(ROOT, "desktop", "src-tauri", "target", "debug", "pi-web");
 export const SIDECAR_DIR = join(ROOT, "desktop", "src-tauri", "binaries");
+/** 随包载荷目录（spec shared-runtime-payload）。打包态经 `bundle.resources` 进 .app。 */
+export const PAYLOAD_DIR = join(ROOT, "payload");
 
 const failures = [];
 export const check = (name, ok) => {
@@ -53,13 +55,20 @@ export function hostTriple() {
 /**
  * 一次性备齐 4.5–4.7 并行组的共享前提，使并行组内无人再写共享资源。
  *
- * 1. `dist/`（由 `pnpm build:dist` 产出，不由本 spec 拥有）
- * 2. sidecar node，并拷到**未打包可执行同目录** —— unpackaged 模式下 `resolve_artifact`
+ * 1. `dist/`（由 `pnpm build:dist` 产出，不由本 spec 拥有）—— unpackaged 模式直接使用它，
+ *    **不触发解包**（spec shared-runtime-payload 的解析顺序第 ② 级）。
+ * 2. `payload/`（同由 `pnpm build:dist` 产出）—— 打包态经 `bundle.resources` 进 .app，
+ *    首启解包到共享运行时目录。
+ * 3. sidecar node，并拷到**未打包可执行同目录** —— unpackaged 模式下 `resolve_artifact`
  *    同样从可执行同目录取 node，而 `binaries/` 是 gitignored，干净检出下为空。
  */
 export function ensurePrerequisites({ needShellBinary = true } = {}) {
   if (!existsSync(DIST_SERVER)) {
     console.error(`✗ 缺少自包含产物：${DIST_SERVER}\n  请先执行：pnpm build:dist`);
+    process.exit(1);
+  }
+  if (!existsSync(join(PAYLOAD_DIR, "payload.json"))) {
+    console.error(`✗ 缺少随包载荷：${PAYLOAD_DIR}\n  请先执行：pnpm build:dist`);
     process.exit(1);
   }
   if (needShellBinary && !existsSync(SHELL_BIN)) {
@@ -316,4 +325,20 @@ export async function runSessionViaBrowser(port, replyToken, { screenshotPath } 
   } finally {
     await browser.close();
   }
+}
+
+/**
+ * 为 e2e 造一个隔离的运行时根，避免污染用户真实的 `~/.pi/web/runtime`（Req 8.4）。
+ * 返回路径与清理函数；把它经 `PI_WEB_RUNTIME_ROOT` 下达给壳，壳会连同环境一并传给
+ * 解包器与后端子进程（`build_child_env` 继承父环境，不 env_clear）。
+ */
+export function makeRuntimeRoot() {
+  const dir = mkdtempSync(join(tmpdir(), "pi-web-e2e-runtime-"));
+  return { dir, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** 由载荷元数据推出运行时目录名（`<version>-<digest12>`），供解包前后的存在性断言。 */
+export function expectedRuntimeDir(payloadDir = PAYLOAD_DIR) {
+  const meta = JSON.parse(readFileSync(join(payloadDir, "payload.json"), "utf8"));
+  return `${meta.version}-${meta.digest.slice(0, 12)}`;
 }

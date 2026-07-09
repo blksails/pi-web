@@ -48,16 +48,33 @@ pub struct ServerStartResult {
     pub port: u16,
 }
 
+/// 后端入口的来源。**打包态与未打包态的入口来自截然不同的地方**，故以判别式建模，
+/// 而不是让调用方去记「哪种模式下 server_js 是真路径」。
+///
+/// - `Direct`：入口已是磁盘上的真实路径（dev 不拉后端；unpackaged 直跑构建产物）。
+/// - `Payload`：安装包里只有压缩载荷，入口须先解包到共享运行时目录才存在。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerSource {
+    /// 未打包态：仓库中已构建的 `dist/server.mjs`。不触发解包。
+    Direct(PathBuf),
+    /// 打包态：`<resource_dir>/payload/`，含 `dist.tar.zst` / `payload.json` / `unpack.mjs`。
+    Payload { payload_dir: PathBuf },
+}
+
 /// 非 dev 模式下解析出的两条路径。
 ///
-/// ★ 二者来源不同，不可混用：`server_js` 来自 `resource_dir()`（macOS 为
-/// `Contents/Resources/`），`node_bin` 来自主可执行同目录（macOS 为 `Contents/MacOS/`）。
+/// ★ **三条路径来源互不相同，混用任意两条都会在打包态崩溃**，且只有 `desktop-packaged.mjs`
+///   能捕获（未打包 e2e 抓不到）：
+///   - `node_bin`    ← 主可执行同目录（`bundle.externalBin`），macOS 为 `Contents/MacOS/`
+///   - `payload_dir` ← 资源目录（`bundle.resources`），macOS 为 `Contents/Resources/`
+///   - 解包出的产物根 ← 用户运行时目录 `~/.pi/web/runtime/<version>-<digest12>/dist/`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactPaths {
-    /// 自包含产物入口。**必须位于产物根**——其父目录即子进程 cwd，
+    /// 后端入口的来源。解包后其入口**必须位于产物根**——父目录即子进程 cwd，
     /// 否则 `packages/server` 的路径解析回退失效。
-    pub server_js: PathBuf,
-    /// 随包 JS 运行时的绝对路径，经 `PI_WEB_NODE_BIN` 下达给 pi runner 孙进程。
+    pub server_source: ServerSource,
+    /// 随包 JS 运行时的绝对路径。既用于执行解包器，也经 `PI_WEB_NODE_BIN` 下达给
+    /// pi runner 孙进程。**不随产物迁移到用户运行时目录。**
     pub node_bin: PathBuf,
 }
 
@@ -70,6 +87,16 @@ pub enum ResolveError {
     MissingCliEntry,
     /// 无法定位主可执行文件所在目录，从而推不出随包 node 路径。
     MissingExeDir,
+}
+
+/// 解包共享运行时失败。
+///
+/// `code` 是与 `payload/unpack.mjs` 之间的**跨进程契约**（判别式错误码）；
+/// `message` 只是人类可读的补充，Rust 侧从不解析它。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnpackError {
+    pub code: String,
+    pub message: String,
 }
 
 /// 外链放行判定结果。
