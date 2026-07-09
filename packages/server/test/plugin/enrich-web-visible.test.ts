@@ -1,6 +1,6 @@
 /**
  * 单元:get_commands 回填 webVisible(spec plugin-system-unification 增量)。
- * 据命令 sourceInfo 解析其插件 pi-plugin.json 的 web.commands,命中打 webVisible。
+ * 据命令 sourceInfo 解析其插件 pi-web.json 的 web.commands,命中打 webVisible。
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
@@ -14,7 +14,7 @@ beforeEach(async () => {
   pkg = await fs.mkdtemp(join(tmpdir(), "pi-plugin-enrich-"));
   await fs.mkdir(join(pkg, ".pi"), { recursive: true });
   await fs.writeFile(
-    join(pkg, "pi-plugin.json"),
+    join(pkg, "pi-web.json"),
     JSON.stringify({
       id: "code-review",
       version: "1.0.0",
@@ -58,7 +58,7 @@ describe("enrichWebVisibleCommands", () => {
     expect(out[1]).toEqual({ name: "noinfo", source: "extension" });
   });
 
-  it("无 pi-plugin.json 的插件:解析降级,不打标不抛错", async () => {
+  it("无 pi-web.json 的插件:解析降级,不打标不抛错", async () => {
     const bare = await fs.mkdtemp(join(tmpdir(), "pi-plugin-bare-"));
     const commands = [
       { name: "x", source: "extension", sourceInfo: { baseDir: bare, origin: "package" } },

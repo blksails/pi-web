@@ -16,6 +16,7 @@
  */
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import {
   createPiWebHandler,
   type PiWebHandler,
@@ -165,12 +166,25 @@ function makeRealResolver(config: AppConfig): {
 }
 
 /**
+ * agent source 的默认安装/发现根。与 pi 的配置目录(`PI_WEB_AGENT_DIR`,默认 `~/.pi/agent`,
+ * 存 settings/auth/attachments)分属两个目录族:那里是 **pi 的资产**,这里是 **pi-web 的资产**。
+ * `pi-web install` 装 `kind:"agent"` 的包时落于此(plugin 则交 DefaultPackageManager 落 `~/.pi/agent`)。
+ */
+function defaultSourcesRoot(): string {
+  return path.join(os.homedir(), ".pi-web", "agents");
+}
+
+/**
  * agent-sources-list:解析 PI_WEB_SOURCES_ROOT 为绝对扫描根列表。
- * path.delimiter(: / ;)分隔多个;相对路径以 defaultCwd 绝对化;去空段。未配 → []。
+ * path.delimiter(: / ;)分隔多个;相对路径以 defaultCwd 绝对化;去空段。
+ *
+ * 未配 → 回落 `~/.pi-web/agents`(单元素)。显式配置**完全接管**(覆盖而非追加),保持既有语义。
+ * 回落无需区分 dev/prod:`ScanSourceProvider` 的契约是「root 不存在/无法解析 → 跳过该 root」,
+ * 故目录不存在时静默产出空列表,与改动前的 `[]` 行为一致。
  */
 function resolveSourcesScanRoots(defaultCwd: string): readonly string[] {
   const raw = process.env.PI_WEB_SOURCES_ROOT;
-  if (raw === undefined || raw.trim().length === 0) return [];
+  if (raw === undefined || raw.trim().length === 0) return [defaultSourcesRoot()];
   return raw
     .split(path.delimiter)
     .map((s) => s.trim())

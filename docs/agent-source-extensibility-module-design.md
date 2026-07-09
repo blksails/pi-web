@@ -18,7 +18,7 @@
 
 ### 目标
 
-1. **一个 agent source = 一个扩展模块**:行为、资源、UI、路由、设置由**同一份清单**(`pi-plugin.json` 演进)声明,同一目录约定承载,同一信任管线门控。
+1. **一个 agent source = 一个扩展模块**:行为、资源、UI、路由、设置由**同一份清单**(`pi-web.json` 演进)声明,同一目录约定承载,同一信任管线门控。
 2. 新增 **Agent Routes**:agent source 可声明 HTTP 路由,在**runner 子进程**内执行(会话作用域),经既有 RPC 通道转发——不在主进程执行任意 source 代码。
 3. 新增 **UI Settings**:agent source 可声明设置 schema,宿主设置外壳(`<SettingsShell>`)零改动动态长出该 source 的面板;值持久化到 per-source 配置文件,runner 装配期消费。
 4. 全部新接缝**沿用既有安全模型**:trust 门控(项目资源)、签名/SRI(浏览器代码)、管理员门控(安装)、进程隔离(source 行为代码只进 runner 子进程)。
@@ -37,7 +37,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        pi-plugin.json(脊柱)                     │
+│                        pi-web.json(脊柱)                     │
 │      单一事实来源:声明各运行时入口 + 能力 + 两层契约锚点            │
 └──────┬──────────────┬──────────────┬──────────────┬─────────────┘
        │              │              │              │
@@ -69,7 +69,7 @@
 | 2 | pi 资源 | `.pi/{extensions,skills,agents,commands,settings.json}` | runner | ✅ 已有 |
 | 3 | 运行时交互通道 | `ctx.ui.*` / `emitUi` / state 桥 / 附件 / ui-rpc | runner↔浏览器 | ✅ 已有 |
 | 4 | Web UI 五层 | `.pi/web/web.config.tsx` + dist | 浏览器 | ✅ 已有 |
-| 5 | 包形态 | `pi-plugin.json`(pi 层 + web 层 + bindings) | 主进程(声明) | ✅ 已有 |
+| 5 | 包形态 | `pi-web.json`(pi 层 + web 层 + bindings) | 主进程(声明) | ✅ 已有 |
 | 6 | **Agent Routes** | `routes/index.ts`(defineRoutes) | **runner**(RPC 转发) | 🆕 本设计 |
 | 7 | **UI Settings** | `settings/schema.json` + webext settings 控件 | 声明式 + 浏览器 | 🆕 本设计 |
 
@@ -79,7 +79,7 @@
 
 ```
 <agent-source>/                        # 一个扩展模块 = 一个目录/git 仓库/npm 包
-├── pi-plugin.json                     # 脊柱清单(§5);缺失时逐面回退既有目录探测
+├── pi-web.json                     # 脊柱清单(§5);缺失时逐面回退既有目录探测
 ├── index.ts                           # 面1:AgentDefinition(defineAgent / 工厂)
 ├── routes/                            # 面6:HTTP 路由(runner 进程执行)
 │   └── index.ts                       #   defineRoutes({...}) 默认导出
@@ -103,14 +103,14 @@
 └── README.md
 ```
 
-**回退规则**(向后兼容,与 `resolvePiPlugin` 现行为一致):无 `pi-plugin.json` 时,
+**回退规则**(向后兼容,与 `resolvePiPlugin` 现行为一致):无 `pi-web.json` 时,
 `routes/index.ts` 存在即启用路由面、`settings/schema.json` 存在即启用设置面(与
 `proxy.json 铁证` 同款「文件存在即门控」哲学);字段非法/文件缺失降级 `diagnostics`,不
 使整模块失败。
 
 ---
 
-## 5. 清单演进(`pi-plugin.json`)
+## 5. 清单演进(`pi-web.json`)
 
 在既有统一插件包标准上追加两段,保持纯声明、可 zod 校验:
 
@@ -377,7 +377,7 @@ export default async function (ctx: AgentContext) {
 
 ```
 examples/module-crm-agent/
-├── pi-plugin.json            # §5 全字段
+├── pi-web.json            # §5 全字段
 ├── index.ts                  # 工厂形态,消费 ctx.settings,注册 crm_query 工具
 ├── routes/index.ts           # /health + /entity(供设置控件取选项)+ /report/summary
 ├── settings/schema.json      # §7.3(含 secret + widget + liveReload)

@@ -1,7 +1,8 @@
 {
-  "$schema": "https://pi-web.dev/schema/pi-plugin.json",
+  "$schema": "https://pi-web.dev/schema/pi-web.json",
   "id": "code-review",
   "version": "1.0.0",
+  "kind": "plugin",
   "displayName": "Code Review",
   "description": "代码检视:pi 工具/命令 + web 富卡渲染",
   "pi": {

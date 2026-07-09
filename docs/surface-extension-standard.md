@@ -118,7 +118,7 @@
 - **SES-X1(SHOULD)** 面内插件 id 带命名空间 `<extId>:<pluginId>`;内置实现以 `builtin:` 前缀并**走同一插件点**(自举即验收)。
 - **SES-X2(SHOULD)** 决策类扩展点用**评分制纯函数**(`match(input): number | false`),禁 if 链;恒有兜底项。
 - **SES-X3(MUST)** 插件的执行声明沿 SES-U4 双通道;`via:"command"` 的动作必须先经能力白名单(`<ns>.actions` 或探针)确认 agent 支持,否则不渲染。
-- **SES-X4(MUST)** 第三方插件包走 webext 全套验签车道;`pi-plugin.json` 以 `bindings.surfaceCommands.<domain>` 锚定两端。
+- **SES-X4(MUST)** 第三方插件包走 webext 全套验签车道;`pi-web.json` 以 `bindings.surfaceCommands.<domain>` 锚定两端。
 
 ## 8. 测试与验收标准(SES-T)
 

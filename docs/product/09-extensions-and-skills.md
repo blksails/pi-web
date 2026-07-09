@@ -326,10 +326,10 @@ interface AuditRecord {
 ## 统一插件包标准（plugin-system-unification）
 
 pi-web 把 **pi 原生 extension（CLI 标准）** 与 **webext（5 层 web UI 扩展）** 收口为一个
-**扁平于两层的插件包标准**：一个包用一份 `pi-plugin.json` 同时声明两层入口，零改动复用
+**扁平于两层的插件包标准**：一个包用一份 `pi-web.json` 同时声明两层入口，零改动复用
 pi extension，并让"安装即时双路生效"。
 
-### `pi-plugin.json` 清单（单一事实来源）
+### `pi-web.json` 清单（单一事实来源）
 
 放在包根，声明同一逻辑插件的两层入口；**缺失时回退既有目录约定**（向后兼容）：
 
@@ -359,7 +359,7 @@ pi 侧 `registerTool("code_review")` 产出的 `tool-code_review` part，由 web
 ### 声明 web 可见 slash 命令（`web.commands`）
 
 平台默认隐藏 `source:"extension"` 命令（防 busy 卡死的历史安全网；busy 已由 fire-and-forget 修复）。
-统一插件可在 `pi-plugin.json` 的 `web.commands` 显式 opt-in 其命令默认可见：
+统一插件可在 `pi-web.json` 的 `web.commands` 显式 opt-in 其命令默认可见：
 
 ```jsonc
 { "web": { "dist": ".pi/web/dist", "commands": ["review"] } }

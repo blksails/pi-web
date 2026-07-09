@@ -189,10 +189,12 @@ Beyond typing a source, the new-session picker (`AgentSourcePicker`) can show a 
 | Variable | Default | Description |
 |---|---|---|
 | `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` | (unset, off) | **Frontend gate** (build-time inlined). When `true` / `1`, the picker shows the source list; when off, only the text input is shown |
-| `PI_WEB_SOURCES_ROOT` | (unset, no scan) | Directory scan roots, `path.delimiter`-separated (`:` / `;`); relative paths resolve against `PI_WEB_DEFAULT_CWD`. Scans each root's first-level subdirectories: with an `index.[jt]s` entry → `custom`, otherwise → `cli` |
+| `PI_WEB_SOURCES_ROOT` | `~/.pi-web/agents` | Directory scan roots, `path.delimiter`-separated (`:` / `;`); relative paths resolve against `PI_WEB_DEFAULT_CWD`. Scans each root's first-level subdirectories: with an `index.[jt]s` entry → `custom`, otherwise → `cli`. Setting it **fully replaces** the default root (override, not append); a missing default root is silently skipped |
 | `PI_WEB_SOURCES_REGISTRY` | `<agentDir>/sources.json` | Registry JSON path (read only if present). Shape: `{ "sources": [ { "source", "name?", "description?" } ] }`. Missing or corrupt files degrade gracefully (returns the remaining available sources) |
 
-> Two-sided consistency: with `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` off the frontend renders no list; with no `PI_WEB_SOURCES_ROOT` and no registry file the backend returns an empty list. Together they present as "nothing to browse," and the text input always remains as a fallback. Frontend gate read in `components/chat-app.tsx` (`SOURCE_PICKER_ENABLED`); assembly in `lib/app/pi-handler.ts` (`createAgentSourcesRoutes`).
+> Two-sided consistency: with `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` off the frontend renders no list; when the default root `~/.pi-web/agents` is absent and no registry file exists, the backend returns an empty list. Together they present as "nothing to browse," and the text input always remains as a fallback. Frontend gate read in `components/chat-app.tsx` (`SOURCE_PICKER_ENABLED`); assembly in `lib/app/pi-handler.ts` (`createAgentSourcesRoutes`).
+>
+> Note: the default root lets the backend *discover* sources, but the frontend is still gated by `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` (build-time inlined). Both sides must be on for agents under `~/.pi-web/agents` to actually appear.
 
 ```bash
 # Enable the source list and use the examples directory as a scan root

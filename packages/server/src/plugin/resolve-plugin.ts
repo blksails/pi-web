@@ -2,7 +2,7 @@
  * 统一插件解析器(spec: plugin-system-unification,Req 1.2/1.3/1.4/2.1/4.1)。
  *
  * 清单优先,无清单回退既有目录约定:
- *  - 有 `pi-plugin.json` → 据其合成描述符,并对声明的资源路径做存在性校验(缺失移入 diagnostics);
+ *  - 有 `pi-web.json` → 据其合成描述符,并对声明的资源路径做存在性校验(缺失移入 diagnostics);
  *  - 无清单 → 回退:扫包根 `extensions/`/`skills/`/`prompts/`/`themes/`(DefaultPackageManager
  *    origin:"package" 约定) + 探测 `.pi/web/dist`;id/version 取 package.json。
  *
@@ -11,9 +11,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
-  PluginManifestSchema,
-  PLUGIN_MANIFEST_FILENAME,
-  type PluginManifest,
+  PiWebManifestSchema,
+  PI_WEB_MANIFEST_FILENAME,
+  type PiWebManifest,
 } from "@blksails/pi-web-protocol";
 import type { PluginDescriptor } from "./plugin.types.js";
 
@@ -49,27 +49,27 @@ async function readPackageJson(
 async function readManifest(
   packageDir: string,
   diagnostics: string[],
-): Promise<PluginManifest | undefined> {
-  const manifestPath = path.join(packageDir, PLUGIN_MANIFEST_FILENAME);
+): Promise<PiWebManifest | undefined> {
+  const manifestPath = path.join(packageDir, PI_WEB_MANIFEST_FILENAME);
   if (!(await pathExists(manifestPath))) return undefined;
   let raw: string;
   try {
     raw = await fs.readFile(manifestPath, "utf8");
   } catch {
-    diagnostics.push(`${PLUGIN_MANIFEST_FILENAME} 读取失败`);
+    diagnostics.push(`${PI_WEB_MANIFEST_FILENAME} 读取失败`);
     return undefined;
   }
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    diagnostics.push(`${PLUGIN_MANIFEST_FILENAME} 不是合法 JSON`);
+    diagnostics.push(`${PI_WEB_MANIFEST_FILENAME} 不是合法 JSON`);
     return undefined;
   }
-  const parsed = PluginManifestSchema.safeParse(json);
+  const parsed = PiWebManifestSchema.safeParse(json);
   if (!parsed.success) {
     diagnostics.push(
-      `${PLUGIN_MANIFEST_FILENAME} 校验失败: ${parsed.error.issues
+      `${PI_WEB_MANIFEST_FILENAME} 校验失败: ${parsed.error.issues
         .map((i) => `${i.path.join(".")}: ${i.message}`)
         .join("; ")}`,
     );

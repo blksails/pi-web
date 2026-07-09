@@ -42,7 +42,7 @@ export * from "./config/index.js";
 // web-ext 层(agent-web-extension UI 控制层契约:manifest / ui-rpc / descriptor / artifact)
 export * from "./web-ext/index.js";
 
-// plugin 层(统一插件包清单契约:pi-plugin.json — pi 资源 + webext 两层入口)
+// plugin 层(统一包清单契约:pi-web.json — pi 资源 + webext 两层入口,kind 判别 agent/plugin)
 export * from "./plugin/index.js";
 
 // logging 层(日志数据契约:LogLevelSchema / LogEntrySchema / parseLogLine)

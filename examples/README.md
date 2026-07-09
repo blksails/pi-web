@@ -68,7 +68,7 @@ pi-web ./examples/hello-agent
 | [webext-contrib-agent](./webext-contrib-agent/) | 3 | 贡献点（slash / @mention），经 ui-rpc 回 agent 取候选 | 贡献点 provider、`UiRpcClient` | 3️⃣ |
 | [webext-artifact-agent](./webext-artifact-agent/) | 4 | LLM 输出在独立 origin sandbox iframe 中渲染 | artifact 隔离表面、`NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 门控 | 4️⃣ |
 | [webext-declarative-agent](./webext-declarative-agent/) | 5 | 纯声明零代码 UI 扩展（theme token + layout，无 bundle） | `.pi/web/manifest.json` 内联声明式 config、零加载路径 | 5️⃣ |
-| [plugin-code-review-agent](./plugin-code-review-agent/) | 2+3 | 双角色:自运行 agent + 可发布插件包（统一清单 pi-plugin.json、code_review 工具富卡 + slash 贡献点） | `pi-plugin.json` 统一清单、`bindings.tools`、Tier2 渲染器、Tier3 贡献点、双角色（自运行/可安装） | ⭐ |
+| [plugin-code-review-agent](./plugin-code-review-agent/) | 2+3 | 双角色:自运行 agent + 可发布插件包（统一清单 pi-web.json、code_review 工具富卡 + slash 贡献点） | `pi-web.json` 统一清单、`bindings.tools`、Tier2 渲染器、Tier3 贡献点、双角色（自运行/可安装） | ⭐ |
 | [plugin-consumer-agent](./plugin-consumer-agent/) | — | 消费方:安装 @acme/code-review 插件后零改动获得 code_review 工具 + 富卡渲染 | `extensions: ["local:..."]`、零本地工具代码、插件复用 | ⭐ |
 
 ## 推荐学习路径

@@ -189,10 +189,12 @@ NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` | （未设，关闭） | **前端门控**（构建期内联）。取 `true` / `1` 时选择器展示源列表；关闭时仅显示手输框 |
-| `PI_WEB_SOURCES_ROOT` | （未设，不扫描） | 目录扫描根，`path.delimiter`（`:` / `;`）分隔多个；相对路径以 `PI_WEB_DEFAULT_CWD` 解析为绝对。扫描每个根的一级子目录，含 `index.[jt]s` 入口→`custom`、否则→`cli` |
+| `PI_WEB_SOURCES_ROOT` | `~/.pi-web/agents` | 目录扫描根，`path.delimiter`（`:` / `;`）分隔多个；相对路径以 `PI_WEB_DEFAULT_CWD` 解析为绝对。扫描每个根的一级子目录，含 `index.[jt]s` 入口→`custom`、否则→`cli`。显式设置则**完全接管**默认根（覆盖而非追加）；默认根不存在时静默跳过 |
 | `PI_WEB_SOURCES_REGISTRY` | `<agentDir>/sources.json` | 注册表 JSON 路径（存在才读）。形态：`{ "sources": [ { "source", "name?", "description?" } ] }`。缺失或损坏均容错（返回其余可用来源） |
 
-> 两端一致：前端未开 `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` → 不渲染列表；后端未配 `PI_WEB_SOURCES_ROOT` 且注册表不存在 → 端点返回空列表。二者共同表现为「无列表可浏览」，手输框始终作为兜底入口。前端门控读取见 `components/chat-app.tsx`（`SOURCE_PICKER_ENABLED`），装配见 `lib/app/pi-handler.ts`（`createAgentSourcesRoutes`）。
+> 两端一致：前端未开 `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` → 不渲染列表；后端默认根 `~/.pi-web/agents` 不存在且注册表不存在 → 端点返回空列表。二者共同表现为「无列表可浏览」，手输框始终作为兜底入口。前端门控读取见 `components/chat-app.tsx`（`SOURCE_PICKER_ENABLED`），装配见 `lib/app/pi-handler.ts`（`createAgentSourcesRoutes`）。
+>
+> 注意：默认根让后端**能**扫出源，但前端仍受 `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` 门控（构建期内联）。要让 `~/.pi-web/agents` 里的 agent 真正可见，两侧都要开。
 
 ```bash
 # 启用源列表并把 examples 目录作为扫描根
