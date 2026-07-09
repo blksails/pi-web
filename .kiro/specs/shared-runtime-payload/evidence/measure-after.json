@@ -1,0 +1,9 @@
+{
+  "label": "after",
+  "app": "desktop/src-tauri/target/release/bundle/macos/pi-web.app",
+  "appMB": 100.3,
+  "dmgMB": 47.6,
+  "coldStartFirstMs": 8372,
+  "coldStartWarmMs": 1698,
+  "runtimeMB": 88.6
+}

@@ -1,0 +1,28 @@
+{
+  "measuredAt": "2026-07-09",
+  "platform": "macOS 24.6.0 / Apple Silicon (aarch64-apple-darwin)",
+  "note": "改造前 = 提交 98e7e94（含第一层剪枝），在临时 worktree 中以同一工具链重建 .app 后实测；两侧同脚本同口径。磁盘一律用 du -sm。",
+  "before": {
+    "appMB": 177,
+    "dmgMB": 81.3,
+    "npmPackageMB": 86,
+    "runtimeMB": 0,
+    "desktopOnlyDiskMB": 177,
+    "cliOnlyDiskMB": 86,
+    "bothInstalledDiskMB": 263,
+    "steadyColdStartMedianMs": 1182,
+    "steadyColdStartRunsMs": [1144, 1150, 1182, 1184, 1552]
+  },
+  "after": {
+    "appMB": 101,
+    "dmgMB": 47.6,
+    "npmPackageMB": 10,
+    "runtimeMB": 89,
+    "desktopOnlyDiskMB": 190,
+    "cliOnlyDiskMB": 99,
+    "bothInstalledDiskMB": 200,
+    "steadyColdStartMedianMs": 1183,
+    "steadyColdStartRunsMs": [1133, 1145, 1183, 1224, 1621],
+    "firstColdStartMs": 8372
+  }
+}

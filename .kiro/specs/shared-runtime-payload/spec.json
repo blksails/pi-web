@@ -1,22 +1,21 @@
 {
   "feature_name": "shared-runtime-payload",
   "created_at": "2026-07-09T00:00:00Z",
-  "updated_at": "2026-07-09T03:00:00Z",
+  "updated_at": "2026-07-09T05:00:00Z",
   "language": "zh",
-  "phase": "tasks-generated",
+  "phase": "implemented-partial",
   "approvals": {
-    "requirements": {
-      "generated": true,
-      "approved": true
-    },
-    "design": {
-      "generated": true,
-      "approved": true
-    },
-    "tasks": {
-      "generated": true,
-      "approved": true
-    }
+    "requirements": { "generated": true, "approved": true },
+    "design": { "generated": true, "approved": true },
+    "tasks": { "generated": true, "approved": true }
   },
-  "ready_for_implementation": true
+  "ready_for_implementation": true,
+  "implementation": {
+    "completed_tasks": 29,
+    "total_tasks": 30,
+    "verdict": "净收益成立(四条阈值全部达标)，改造继续",
+    "open_items": [
+      "8.1 desktop-release.yml 从未在真实 GitHub Actions 上运行；Windows/Linux 从未打包"
+    ]
+  }
 }
