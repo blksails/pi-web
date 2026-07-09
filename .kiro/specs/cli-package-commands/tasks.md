@@ -48,7 +48,7 @@
 
 - [ ] 3. create：骨架创建
 
-- [ ] 3.1 (P) 实现模板目录枚举
+- [x] 3.1 (P) 实现模板目录枚举
   - 从随包分发的示例目录枚举可用模板，读取其展示元数据（标题、描述、图标）
   - 模板来源是打包脚本既有的示例目录拷贝行为（`scripts/pack-dist.mjs` 已将 `examples/` 拷入产物），本任务只消费该产物，不新增拷贝步骤
   - 列出模板时以零退出码结束且不创建任何文件
@@ -336,3 +336,13 @@
   接线 `dist/cli-commands.mjs` 的接缝**，其余部分无需改动。
 - `bin/pi-web.mjs` 的 `SUBCOMMAND_SPECS` 选项表是面向 UX 的，与后续 `server/cli` 各子命令实际解析的
   选项是**两处**。3.x–9.x 任务若新增选项，必须同步更新该表，否则帮助文本与选项隔离行为会漂移。
+- **路径推断一律外提为纯函数**：`TemplateCatalog` 的 `listTemplates(examplesRoot)` 只吃已解析好的目录；
+  dev（仓库 `examples/`）与分发后（`dist/examples/`）的差异收敛到 `resolveExamplesRoot(candidates, exists)`。
+  **候选列表的构造（`[join(distRoot,"examples"), join(repoRoot,"examples")]`）尚未落地**，归 create 接线任务
+  （3.2 或 6.1）。这样做是因为 `import.meta.url` 会被 esbuild 内联后回退 `process.cwd()`（见任务 1.1）。
+- 模板枚举对**坏 `package.json` / 非对象 `pi-web` 字段静默跳过**，不抛错也不报告。故 `create --template <坏目录>`
+  只会表现为「模板不存在」，不会暴露解析错误 —— 接线任务若需区分二者，得另加诊断。
+- 当前 29 个 examples **全部**带完整 `pi-web.title/avatar/description`，故缺字段回退路径（title→目录名、
+  avatar→📦、description→""）只被合成 fixture 覆盖，真实模板树走不到。
+- **复核者做 mutation 测试时不得用 `git checkout -- <file>`**：本 spec 的实现文件多为未提交的新文件，
+  checkout 会连实现一起抹掉（已发生过一次）。正确做法是 `cp` 到临时处备份、验完 `cp` 回来。
