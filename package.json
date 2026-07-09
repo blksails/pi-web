@@ -16,6 +16,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:client": "vite build",
+    "build:server": "node scripts/build-server.mjs",
+    "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs",
+    "start:dist": "node dist/server.mjs",
+    "dev:server": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs server/index.ts",
+    "dev:client": "vite",
     "start": "next start",
     "build:cli": "cross-env NEXT_DIST_DIR=.next-cli next build && cross-env NEXT_DIST_DIR=.next-cli node scripts/pack-standalone.mjs",
     "start:cli": "node bin/pi-web.mjs",
