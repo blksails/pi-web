@@ -212,6 +212,55 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
     expect(serialized).not.toMatch(/sekret-value-123/);
     expect(serialized).not.toMatch(/hunter2/);
   });
+
+  // 复核抓到的真实泄露路径(Req 5.3):source/id 本身就是凭据来源——用户 argv 原样输入
+  // `user:token@host` 形式的 URL,过去未脱敏直进卡片 data.id 与审计事件 source。
+  const CRED_SOURCE = "git:https://user:hunter2@github.com/org/repo.git";
+
+  it("install 成功(agent):带凭据 URL source 不出现在卡片任何字段", async () => {
+    const { installer } = okInstaller({
+      ok: true,
+      value: { kind: "agent", result: { method: "git", location: "/root/agents/repo", created: true } },
+    });
+    const cmd = createInstallHostCommand(baseDeps({ installer }));
+    const r = await cmd.execute({ session: makeSession() as never, argv: `install ${CRED_SOURCE}` });
+    const serialized = JSON.stringify(r);
+    expect(serialized).not.toContain("hunter2");
+    expect(serialized).toContain("[redacted]@");
+  });
+
+  it("install 失败(ALLOWLIST_REJECTED):卡片与审计事件均不含凭据", async () => {
+    const { installer } = okInstaller({
+      ok: false,
+      error: { code: "ALLOWLIST_REJECTED", message: `source rejected: ${CRED_SOURCE}` },
+    });
+    const audit = vi.fn((_event: InstallAuditEvent) => undefined);
+    const cmd = createInstallHostCommand(baseDeps({ installer, audit }));
+    const r = await cmd.execute({ session: makeSession() as never, argv: `install ${CRED_SOURCE}` });
+    expect(JSON.stringify(r)).not.toContain("hunter2");
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(audit.mock.calls[0])).not.toContain("hunter2");
+  });
+
+  it("uninstall 成功与失败:带凭据 id 不出现在卡片与审计事件", async () => {
+    const okCase = okInstaller(
+      { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } } },
+      { ok: true, value: { kind: "agent", result: { id: "/root/agents/x" } } },
+    );
+    const cmdOk = createInstallHostCommand(baseDeps({ installer: okCase.installer }));
+    const rOk = await cmdOk.execute({ session: makeSession() as never, argv: `uninstall ${CRED_SOURCE}` });
+    expect(JSON.stringify(rOk)).not.toContain("hunter2");
+
+    const failCase = okInstaller(
+      { ok: false, error: { code: "ALLOWLIST_REJECTED", message: "rejected" } },
+      { ok: false, error: { code: "ALLOWLIST_REJECTED", message: `rejected: ${CRED_SOURCE}` } },
+    );
+    const audit = vi.fn((_event: InstallAuditEvent) => undefined);
+    const cmdFail = createInstallHostCommand(baseDeps({ installer: failCase.installer, audit }));
+    const rFail = await cmdFail.execute({ session: makeSession() as never, argv: `uninstall ${CRED_SOURCE}` });
+    expect(JSON.stringify(rFail)).not.toContain("hunter2");
+    expect(JSON.stringify(audit.mock.calls)).not.toContain("hunter2");
+  });
 });
 
 // ---------------------------------------------------------------------------

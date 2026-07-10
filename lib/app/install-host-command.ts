@@ -268,21 +268,25 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
       const v = parsed.value;
 
       if (v.action === "install") {
+        // v.source 是用户 argv 原样输入(可能内嵌 user:token@host 凭据):安装调用必须用
+        // 原始值(凭据是拉取所需),但**一切输出面**(卡片 data.id / 审计事件)一律用脱敏副本
+        // (Req 5.3——复核抓到的真实泄露路径,单测有带凭据 URL 的回归样本)。
+        const safeSource = redactSecrets(v.source);
         const result = await deps.installer.install(v.source, { kindHint: v.kindHint, cwd: deps.cwd });
         if (!result.ok) {
           if (result.error.code === "ALLOWLIST_REJECTED") {
             deps.audit?.({
               action: "install",
-              source: v.source,
+              source: safeSource,
               outcome: "rejected",
-              reason: result.error.message,
+              reason: redactSecrets(result.error.message),
             });
           }
           const message = messageForInstallerError(result.error);
           const data: InstallResultData = {
             action: "install",
             ok: false,
-            id: v.source,
+            id: safeSource,
             guidance: guidanceForInstallerError(result.error),
             steps: [failStep("install", result.error.code, result.error.message)],
             error: { code: result.error.code, message },
@@ -297,7 +301,7 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
             action: "install",
             ok: true,
             kind: "agent",
-            id: v.source,
+            id: safeSource,
             location: outcome.result.location,
             guidance,
             steps: [completeStep("install:agent", outcome.result.location)],
@@ -319,21 +323,23 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
       }
 
       if (v.action === "uninstall") {
+        // 同 install:v.id 原样进卸载调用,输出面一律用脱敏副本(Req 5.3)。
+        const safeId = redactSecrets(v.id);
         const result = await deps.installer.uninstall(v.id, { kindHint: v.kindHint, cwd: deps.cwd });
         if (!result.ok) {
           if (result.error.code === "ALLOWLIST_REJECTED") {
             deps.audit?.({
               action: "uninstall",
-              source: v.id,
+              source: safeId,
               outcome: "rejected",
-              reason: result.error.message,
+              reason: redactSecrets(result.error.message),
             });
           }
           const message = messageForInstallerError(result.error);
           const data: InstallResultData = {
             action: "uninstall",
             ok: false,
-            id: v.id,
+            id: safeId,
             guidance: guidanceForInstallerError(result.error),
             steps: [failStep("uninstall", result.error.code, result.error.message)],
             error: { code: result.error.code, message },
@@ -348,9 +354,9 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
             action: "uninstall",
             ok: true,
             kind: "agent",
-            id: v.id,
+            id: safeId,
             guidance,
-            steps: [completeStep("uninstall:agent", v.id)],
+            steps: [completeStep("uninstall:agent", safeId)],
           };
           return { command: COMMAND_NAME, effect: "panel-refresh", message: guidance, data };
         }

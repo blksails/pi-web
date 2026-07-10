@@ -60,7 +60,7 @@
   - 观察态:provider 单测断言候选合并与 insertText;typecheck 0 错;e2e 目录无 plugin-subcommand-completion
   - _Requirements: 6.3, 6.4, 6.5_
 
-- [ ] 4. 摘除与应用装配(Integration)
+- [x] 4. 摘除与应用装配(Integration)
 - [x] 4.1 (P) 摘除 agent 侧 /plugin 命令
   - extension-manager 删 registerCommand("plugin") 块与专用 helper;保留 reload-runtime 与三个 agent 工具;不留提示型残根
   - tool-kit 测试改写:命令清单断言只剩 reload-runtime,/plugin describe 块删除,工具面测试保留
@@ -69,11 +69,12 @@
   - _Boundary: ExtensionManagerRemoval_
 - [x] 4.2 chat-app 接线:effect 落地与选择器刷新
   - extensionCommandPolicy allowlist 移除 "plugin" 项
-  - agentSourcesRefreshKey state + onCommandResult(effect==="panel-refresh" 时 bump)传给 PiChat;两处 AgentSourcePicker 传 refreshSignal
+  - agentSourcesRefreshKey state + onCommandResult(effect==="panel-refresh" 时 bump)传给 PiChat;会话内 AgentSourcePicker 传 refreshSignal
+  - 【豁免注记(复核确认)】首屏 picker(ChatApp,session===undefined 分支)不接 refreshSignal:/install 只能在会话内执行,回到首屏必经重挂载(useAgentSourceList 挂载即重拉),不存在陈旧窗口;接信号是死代码
   - agent-source-picker:refreshSignal prop 进 useAgentSourceList 依赖数组
   - 观察态:组件测或单测断言 panel-refresh 触发列表重取(agent 卸载后列表不再含该项同机制覆盖)
   - _Requirements: 4.3, 4.4, 6.1_
-- [ ] 4.3 pi-handler 装配注入与通道集成测试
+- [x] 4.3 pi-handler 装配注入与通道集成测试
   - hostCommands 追加 createInstallHostCommand({installer(allowlistConfig:extAllowlist, agentInstallerOptions:{sourcesRoot,registryPath}, piCli:extPiCli), pluginInstaller, adminGate:()=>extAllowMutate, reloadRunner, audit, cwd})
   - 集成测试:command-routes + 真会话 store + fake 安装端口,POST uiRpcCommand execute → 同步 HTTP 响应体含 CommandResult,会话消息流零注入
   - 观察态:集成测试通过;dev 起服后 /install 在命令面板可见且返回用法文本
