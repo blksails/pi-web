@@ -1,7 +1,12 @@
 # /plugin 内置命令重构分析 — 增加 agent/plugin 安装（复用 CLI 子命令实现）
 
-> 状态：分析报告（2026-07-10，pre-spec）。范围裁定:**component 安装不进 /plugin**（暂限
+> 状态：分析报告（2026-07-10，pre-spec）。范围裁定:**component 安装不进本命令**（暂限
 > CLI `pi-web add`,理由见 §6）。
+> **命名裁定(2026-07-10,用户拍板)**:新 host 命令定名 **`/install`**(非沿用 `/plugin`)——
+> 语义对齐「按 kind 装包」;且天然避开与现役 agent 侧 `/plugin` 的同名双注册仲裁(§4 注)。
+> `/uninstall`、`/install list`(或独立 `/installed`)子动作命名随 spec 定。
+> 现役 agent 侧 `/plugin` 的处置:**摘除**(方案②既定);是否保留一轮「/plugin → 已改名
+> /install」的提示型残根,立 spec 时拍板(倾向不留,靠补全引导)。
 > 相关:[组件安装器设计](./component-installer-design.md) ·
 > cli-package-commands spec（六子命令,分支 8f3a9f7）· unified-command-result-layer(决策A)。
 
@@ -64,7 +69,7 @@ uninstall/list 对齐;实现复用 §2 的 CLI 子域。
 | 案 | 形态 | 优 | 劣 |
 |---|---|---|---|
 | ① 留在 A(agent 命令内加 kind 分派) | extension-manager 直调 CLI 子域 | 改动集中 | **跨层依赖 + 子进程持有 agents 根写权限**;门控要在子进程重造;结果呈现受限。**否决** |
-| ② **/plugin 迁回 C(host 命令)** ★推荐 | 主进程 host handler 调 `createInstaller`(kind 分派);pi 资源通道复用 B 的同一实现;结果走 `CommandResult{effect,data}` + 新 `data-plugin-result` 渲染器(BashResultRenderer 同型) | 主进程天然复用 CLI 子域**零跨层**;与 B 共享三门策略(一处配置);同步 HTTP 响应体(决策A 铁律,不碰 SSE);agent/plugin 生效语义可分道(effect: panel-refresh vs notify+reload) | 需迁移:摘除 tool-kit 的 `registerCommand("plugin")`(避免同名双注册仲裁)、补全 provider 改指 host 命令、既有 /plugin e2e 迁移;`ctx.ui` widget 交互改为卡片形态 |
+| ② **迁到 C(host 命令),定名 `/install`** ★推荐+已定名 | 主进程 host handler 调 `createInstaller`(kind 分派);pi 资源通道复用 B 的同一实现;结果走 `CommandResult{effect,data}` + 新 `data-install-result` 渲染器(BashResultRenderer 同型) | 主进程天然复用 CLI 子域**零跨层**;与 B 共享三门策略(一处配置);同步 HTTP 响应体(决策A 铁律,不碰 SSE);agent/plugin 生效语义可分道(effect: panel-refresh vs notify+reload);**新名 /install 无同名仲裁**(与旧 /plugin 不冲突,切换期共存也安全) | 需迁移:摘除 tool-kit 的 `registerCommand("plugin")`、补全 provider 换新词条、既有 /plugin e2e 迁移;`ctx.ui` widget 交互改为卡片形态 |
 | ③ 扩 B(REST)+ 前端 slash 直打端点 | /plugin 变前端糖 | 端点已有三门 | 违背决策A(命令回到「离 UI 补丁」);agent 子进程发起时无 auth 上下文;命令语义割裂。**否决** |
 
 **推荐案②**。要点:
@@ -75,9 +80,9 @@ uninstall/list 对齐;实现复用 §2 的 CLI 子域。
   agent 拒绝 `--project`(沿 installer 既有裁决)。
 - 生效分道:plugin → `effect:"notify"` + 触发 reload(沿 B);agent → `effect:"panel-refresh"`
   (source 列表/收藏锚点刷新)+ data 卡片给出「在选择器切换」指引。
-- **同名仲裁**:tool-kit 摘除 `registerCommand("plugin")` 与 `extensionCommandPolicy`
-  的 "plugin" 放行项,一次到位,不留双通道(灰度期如需保留,须명确 host 优先并在
-  palette 去重——不建议)。
+- **旧命令处置**:tool-kit 摘除 `registerCommand("plugin")` 与 `extensionCommandPolicy`
+  的 "plugin" 放行项。因新名 `/install` 与旧名不同,**切换期共存无仲裁风险**(老会话
+  runner 未重启时旧 /plugin 仍可见但只是旧能力),摘除可以从容随 spec 落地。
 
 ## 5. 复用映射表(CLI 子域 → web host 命令)
 
@@ -127,6 +132,7 @@ uninstall/list 对齐;实现复用 §2 的 CLI 子域。
    (user-only)收紧 agent 安装 → 拍板。
 3. **`update`/`list` 子动作是否同轮迁移**:CLI 已有实现,建议同轮(否则 /plugin list
    与 host list 语义分裂)。
-4. **灰度**:摘除 agent 侧 /plugin 是一次性切换,老会话(runner 未重启)仍带旧命令
-   ——`getCommands` 探针下前端会看到双源,需确认 palette 合并行为或强制 reload。
+4. **灰度**:~~同名双源仲裁~~ 已因改名 `/install` 消解——老会话的旧 `/plugin` 与新
+   `/install` 名字不同、能力不同,共存无歧义;仅需在旧 /plugin 的 list 输出里加一行
+   「安装能力已迁至 /install」过渡提示(可选)。
 5. 命令帮助文本与 `/plugin --help` 的呈现形态(CommandResult.message vs data 卡片)。
