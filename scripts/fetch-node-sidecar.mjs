@@ -85,15 +85,41 @@ function alreadyGood(outPath, expectVersion) {
 }
 
 /**
- * 解压出 node 可执行文件，返回其临时路径。用系统 tar（Windows 10+ 的 bsdtar 亦可解 zip）。
+ * 把下载到的归档解开到 `workDir`。
  *
- * ★ 命令行里**不得出现 Windows 盘符**。GitHub Actions 的 `shell: bash` 步骤里，`tar` 解析到的
- *   是 Git Bash 的 **GNU tar** 而非 System32 的 bsdtar，而 GNU tar 会把 `C:\...` 当成
- *   `host:path` 形式的远程归档，报 `Cannot connect to C: resolve failed`（CI 实测）。
- *   归档本就落在 `workDir` 内，故改为「cwd 设为 workDir + 传相对文件名」，两个盘符一起消失。
+ * ★ **不能一律用 `tar`**。CI 实测（GitHub Actions，`shell: bash`）连踩两层：
+ *   ① `tar` 解析到的是 Git Bash 的 **GNU tar**，而非 System32 的 bsdtar。GNU tar 把
+ *      `C:\...` 当成 `host:path` 的远程归档 → `Cannot connect to C: resolve failed`。
+ *   ② 绕开盘符后，GNU tar 又**读不了 zip** → `This does not look like a tar archive`。
+ *      而 Windows 的 Node 发行包恰恰是 `.zip`。
+ *   故 zip 分道处理：Windows 宿主用 PowerShell 的 `Expand-Archive`（系统自带，行为确定）；
+ *   其他宿主用 `unzip`。`.tar.xz` 仍走 `tar`，且以「cwd + 相对文件名」规避盘符。
  */
+function extractArchive(archivePath, workDir) {
+  const name = basename(archivePath);
+  if (name.endsWith(".zip")) {
+    if (process.platform === "win32") {
+      execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${workDir}' -Force`,
+        ],
+        { stdio: "inherit" },
+      );
+    } else {
+      execFileSync("unzip", ["-q", name], { cwd: workDir, stdio: "inherit" });
+    }
+    return;
+  }
+  execFileSync("tar", ["-xf", name], { cwd: workDir, stdio: "inherit" });
+}
+
+/** 解压出 node 可执行文件，返回其临时路径。 */
 function extractNode(archivePath, workDir, triple) {
-  execFileSync("tar", ["-xf", basename(archivePath)], { cwd: workDir, stdio: "inherit" });
+  extractArchive(archivePath, workDir);
   const isWin = triple.includes("windows");
   const stem = archivePath
     .split(/[\\/]/)
