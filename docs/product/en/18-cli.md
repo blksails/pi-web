@@ -1,26 +1,66 @@
-# 14 · Global CLI (standalone mode)
+# 18 · CLI
 
-`pi-web` ships a globally installable CLI entry point, letting you spin up a self-contained pi-web instance locally or in CI with a single command—no knowledge of Next.js internals required.
+`pi-web` provides a globally installable command entry point: a single command spins up a self-contained pi-web instance locally or in CI (Vite + SPA front-end + a single-file Hono/esbuild back-end). It is a **subcommand-free thin launcher**—there are no package-management subcommands such as `create` / `install` / `publish`. It only does three things: "parse arguments → translate them into runtime env → spawn the back-end artifact".
 
 ---
 
 ## How it works
 
-`bin/pi-web.mjs` is a **thin launcher** that contains no business logic itself (`bin/pi-web.mjs:1-12`). It does just three things:
+`bin/pi-web.mjs` contains no business logic itself and does three things:
 
-1. Parse command-line arguments with `node:util.parseArgs` (`parseCliArgs`, `bin/pi-web.mjs:46`).
-2. Call `buildEnv()` to translate arguments into runtime environment variables (`bin/pi-web.mjs:107`): `PI_WEB_DEFAULT_SOURCE`, `PORT`, `HOSTNAME`, and so on, which the business code reads via `loadConfig()`—the two are decoupled.
-3. Use `node:child_process.spawn` to launch `<distDir>/standalone/server.js` with `process.execPath` (the current Node) (`launch`, `bin/pi-web.mjs:221`). The child process `cwd` is set to the standalone directory, with `stdio: "inherit"`, and the business code requires zero changes.
+1. Parse the command line into structured options with `node:util.parseArgs` (`parseCliArgs`, `bin/pi-web.mjs:47`).
+2. Translate those options into the runtime environment variables the back-end reads with `buildEnv()` (`bin/pi-web.mjs:108`): `PI_WEB_DEFAULT_SOURCE`, `PORT`, `HOSTNAME`, and so on. The business code reads them via `loadConfig()`—the two are decoupled.
+3. Locate the back-end artifact entry with `resolveRuntime()`, then use `node:child_process.spawn` to launch the **product root's `dist/server.mjs`** with `process.execPath` (the current Node) (`launch`, `bin/pi-web.mjs:324`). The child process's `cwd` is set to the product root, `stdio: "inherit"`, and the business code needs zero changes.
 
-`parseCliArgs` and `buildEnv` are **pure functions and are exported** for unit testing; all side effects (spawn / open / port probing) are concentrated in `launch` / `main` and only fire when executed as the program entry point (`bin/pi-web.mjs:347-360` resolves symbolic links with `realpathSync` before comparing against `import.meta.url`, ensuring the entry-point check still holds after global installation via `npm link`).
+`parseCliArgs` and `buildEnv` are **pure functions and are exported** for unit testing; all side effects (spawn / open / port probing / first-run unpacking) are concentrated in `launch` / `main` and only fire when executed as the program entry point. The entry-point check compares `import.meta.url` after resolving symbolic links with `realpathSync` (`bin/pi-web.mjs:455-469`), so the check still holds after a global install via `npm link`, and it uses the `globalThis.__PI_WEB_CLI_EMBEDDED__` marker to avoid self-launching a second time when inlined into the desktop shell bundle.
 
-The standalone artifact is produced by Next.js `output: "standalone"` mode (`next.config.ts:60-61`). After the build, `scripts/pack-standalone.mjs` fills in the static assets and trims the output, forming a minimal server bundle that can run independently of the monorepo source tree. When the launcher resolves the artifact path, `NEXT_DIST_DIR` defaults to `.next-cli` (`bin/pi-web.mjs:211-215`), isolated from dev's `.next`.
+> `dist/server.mjs` is bundled into a single file by `scripts/build-server.mjs` via esbuild (bundle + esm + node22, with the two pi SDK packages / jiti / pg kept external). **The entry point must sit at the product root**: `packages/server`'s `runnerBootstrapPath()` / `resolvePiCliEntry()` fall back to `process.cwd()` once `import.meta.url` has been inlined away by the bundler, and `launch()` uses exactly the product root as the child process's cwd (`bin/pi-web.mjs:322-328`). For the build artifact layout, see [19 · Deployment and Operations](./19-deployment.md).
 
-```
-bin/pi-web.mjs                    ← thin launcher (entry point)
-.next-cli/standalone/server.js    ← Next standalone artifact
-scripts/pack-standalone.mjs       ← post-build script that fills in static assets + trims
-```
+> Known stale facts (harmless at runtime): the header comment at `bin/pi-web.mjs:6` and the `description` at `package.json:88` still say "launch the Next standalone self-contained artifact". This is leftover wording—Next.js has long been gone from main, and what actually launches is the esbuild single file `dist/server.mjs`. `standaloneServerJs` at `bin/pi-web.mjs:230` is likewise marked `@deprecated` and kept only as an old-name alias for one release.
+
+---
+
+## Three-level artifact-entry resolution
+
+`resolveRuntime()` (`bin/pi-web.mjs:263`) locates the back-end entry by priority, stopping at the first hit:
+
+| Level | Condition | Entry source | Unpacks? |
+|-------|-----------|--------------|----------|
+| ① | `PI_WEB_DIST_DIR` is set | `<PKG_ROOT>/<PI_WEB_DIST_DIR>/server.mjs` | No (isolated build / e2e) |
+| ② | `<PKG_ROOT>/dist/server.mjs` already exists | in-repo already-built artifact | No (development) |
+| ③ | none of the above hit (npm-installed) | packaged compressed payload `payload/` → shared runtime dir | **first run triggers unpacking** |
+
+- Levels ①② let post-`pnpm build:dist` local iteration, CLI e2e, and the unpackaged desktop-shell e2e all keep passing with zero changes, without being slowed down by first-run unpacking.
+- Level ③ is the shape after a global npm install: the published package ships only `payload/` (not `dist/`). On first launch, `payload/unpack.mjs` unpacks into a shared runtime directory and the console prints:
+
+  ```
+  [pi-web] 首次启动,已解包运行时 → <distRoot>(<N>ms)
+  ```
+
+`distServerJs()` (`bin/pi-web.mjs:225`) is the entry computation for levels ①②: `join(PKG_ROOT, process.env.PI_WEB_DIST_DIR ?? "dist", "server.mjs")`.
+
+---
+
+## First-run shared-runtime unpacking
+
+On the first launch in npm-installed mode, `ensureRuntime()` (the packaged `payload/unpack.mjs`, sourced from `src/runtime/unpack.src.mjs:435`) unpacks the compressed payload into a shared runtime directory:
+
+- **Target directory**: `~/.pi/web/runtime/<version>-<digest prefix>/` (`defaultRuntimeRoot`, `src/runtime/unpack.src.mjs:145-148`; the directory name is produced by `runtimeDirName`, `:73`). The root path can be overridden with `PI_WEB_RUNTIME_ROOT`.
+- **Concurrency safety**: when multiple instances first-launch at once, they coordinate via a lock directory + heartbeat (`acquireLock`, `src/runtime/unpack.src.mjs:370`); latecomers reuse the already-unpacked result instead of unpacking again.
+- **Digest verification**: the payload digest is computed on the fly while unpacking, and the operation aborts if it does not match once the read completes (`src/runtime/unpack.src.mjs:274-278`).
+- **GC**: old runtime directories are reclaimed on a best-effort basis only **after** the back-end has been launched, keeping the most recent `GC_KEEP=2` versions (`scheduleRuntimeGc`, `bin/pi-web.mjs:284`; `gcRuntimeRoot`, `src/runtime/unpack.src.mjs:561`). GC never blocks or affects startup.
+
+When unpacking fails, `main()` translates the discriminant error code into readable text (`RUNTIME_ERROR_HINTS`, `bin/pi-web.mjs:392-401`):
+
+| Error code | User's next step |
+|------------|------------------|
+| `runtime-root-unwritable` | The runtime directory is not writable; check permissions or relocate it with `PI_WEB_RUNTIME_ROOT` |
+| `disk-full` | Insufficient disk space; clean up and retry |
+| `payload-missing` / `payload-corrupt` | Payload missing/corrupt; reinstall `@blksails/pi-web` |
+| `zstd-unsupported` | Node version too old; upgrade to Node >= 22.15.0 |
+| `lock-timeout` | Timed out waiting for another instance to unpack; confirm no stuck process and retry |
+
+> This shared-runtime payload production line also serves the desktop edition (Tauri); for the full mechanism see [20 · Desktop Edition (Tauri) Packaging and Distribution](./20-desktop-tauri.md). For a self-service failure quick-reference, see [23 · Troubleshooting / FAQ](./23-troubleshooting-faq.md).
 
 ---
 
@@ -28,33 +68,43 @@ scripts/pack-standalone.mjs       ← post-build script that fills in static ass
 
 ### Prerequisites
 
-- Node.js >= 22.19.0
-- pnpm >= 9 (required for the monorepo build)
+- Node.js >= 22.19.0 (`package.json:6` `engines.node`)
+- pnpm >= 9 (only needed when building from the monorepo source)
 
 ### Global install from npm (recommended)
 
-The CLI is published to the public npm registry under the name `@blksails/pi-web` (`package.json:2`, `publishConfig.access: "public"`) and can be installed globally directly:
+The CLI is published to the public npm registry under the name `@blksails/pi-web` (`package.json:89-91` `publishConfig.access: "public"`):
 
 ```bash
 npm i -g @blksails/pi-web
 # or
 pnpm add -g @blksails/pi-web
 
-pi-web --version   # 0.1.2
+pi-web --version   # 0.2.0
 pi-web --help
 ```
 
-The published package contains only the self-contained standalone artifact and **does not require** the monorepo source to run.
+The published package ships only three things—the thin launcher, the packaged compressed payload, and the vite config the back-end uses to resolve aliases (`package.json:11-15`):
 
-### Build from source and link (development/debugging)
+```json
+{
+  "name": "@blksails/pi-web",
+  "version": "0.2.0",
+  "bin": { "pi-web": "bin/pi-web.mjs" },
+  "files": ["bin", "payload", "vite.config.ts"],
+  "publishConfig": { "access": "public" }
+}
+```
 
-To debug the CLI based on local changes, build from the monorepo and link it globally with `npm link`:
+After installation, the first run automatically unpacks the shared runtime (see above).
+
+### Build from source and link (development / debugging)
+
+To debug the CLI against local changes, build from the monorepo and link it globally with `npm link`:
 
 ```bash
-# 1. Build the CLI artifact (output isolated to .next-cli, leaving dev's .next untouched)
-pnpm build:cli
-# Equivalent to:
-# NEXT_DIST_DIR=.next-cli next build && NEXT_DIST_DIR=.next-cli node scripts/pack-standalone.mjs
+# 1. Build the full artifact set (dist/client + dist/server.mjs + payload/)
+pnpm build:dist
 
 # 2. Link globally
 npm link
@@ -64,17 +114,7 @@ pi-web --version
 pi-web --help
 ```
 
-The `bin` and `files` fields in `package.json:8-15` together determine the published shape—`bin` points the command name at the thin launcher, while `files` tightens the published contents to three items, shipping only the standalone artifact and config with the package:
-
-```json
-{
-  "name": "@blksails/pi-web",
-  "version": "0.1.2",
-  "bin": { "pi-web": "bin/pi-web.mjs" },
-  "files": ["bin", ".next-cli/standalone", "next.config.ts"],
-  "publishConfig": { "access": "public" }
-}
-```
+When linked, `resolveRuntime()` hits level ② (the in-repo `dist/server.mjs` already exists) and does not trigger unpacking.
 
 ---
 
@@ -87,7 +127,7 @@ pi-web
 # Specify an agent source directory, custom port, and auto-open the browser when ready
 pi-web ./examples/hello-agent -p 8080 --open
 
-# Specify an agent source, bind all network interfaces
+# Bind all network interfaces
 pi-web ./my-agent --host 0.0.0.0 -p 3000
 
 # Offline smoke test with the stub agent (no real pi config needed)
@@ -97,37 +137,43 @@ pi-web ./examples/hello-agent --stub
 pi-web ./my-agent --watch
 ```
 
-Once the server is ready, the console prints:
+Once the server is ready, the console prints (`bin/pi-web.mjs:356`):
 
 ```
-[pi-web] ready → http://127.0.0.1:3000
+[pi-web] 就绪 → http://127.0.0.1:3000
 ```
+
+`examples/hello-agent` is the minimal agent bundled with the repo; combined with `--stub`, it lets you run an end-to-end smoke test on a machine with no pi credentials at all.
 
 ---
 
 ## Options reference
 
+Source: the `parseArgs` configuration in `parseCliArgs` (`bin/pi-web.mjs:53-63`).
+
 | Option | Short flag | Default | Description |
-|------|--------|--------|------|
+|--------|-----------|---------|-------------|
 | `[source]` | — | current directory | agent source (local directory or git source) |
-| `--port <n>` | `-p` | `3000` | listen port; if the port is taken, automatically increments to find a free one (up to 20 attempts) |
+| `--port <n>` | `-p` | `3000` | listen port; when taken, automatically increments to find a free one (up to 20 attempts) |
 | `--host <h>` | — | `127.0.0.1` | bind host |
 | `--cwd <dir>` | — | working directory when the CLI is invoked | session working directory |
 | `--agent-dir <dir>` | — | `~/.pi/agent` | pi config directory |
-| `--open` | — | `false` | open the system default browser automatically when the server is ready |
-| `--stub` | — | `false` | run with the deterministic stub agent (offline smoke test, no real pi config needed) |
+| `--open` | — | `false` | open the system default browser when ready |
+| `--stub` | — | `false` | run with the deterministic stub agent (offline smoke test) |
 | `--watch` | — | `false` | watch the local agent source directory and reload active sessions on file changes (local directories only) |
 | `--help` | `-h` | — | show help and exit (exit code 0) |
-| `--version` | `-v` | — | show the version number and exit (exit code 0) |
+| `--version` | `-v` | — | show the version and exit (exit code 0) |
+
+Unknown / invalid options throw `CliUsageError`, print a usage hint, and exit non-zero without starting the server (`bin/pi-web.mjs:65-68`, `412-420`).
 
 ---
 
 ## Argument-to-environment-variable mapping
 
-`buildEnv()` translates CLI options into the env that the Next.js application reads at runtime, achieving decoupling:
+`buildEnv()` (`bin/pi-web.mjs:108-144`) translates CLI options into the env the back-end reads:
 
 | CLI option / default | Environment variable |
-|----------------|---------|
+|----------------------|----------------------|
 | `source` (after absolutization) | `PI_WEB_DEFAULT_SOURCE` |
 | `--cwd` (after absolutization) | `PI_WEB_DEFAULT_CWD` |
 | `--port` | `PORT` |
@@ -137,7 +183,20 @@ Once the server is ready, the console prints:
 | `--stub` | `PI_WEB_STUB_AGENT=1` |
 | `--watch` (local source) | `PI_WEB_WATCH=1` + `PI_RUNNER_HOT_RELOAD_PATHS=<source>` |
 
-> The `source` path is absolutized relative to the working directory when the CLI is invoked (`baseCwd`), because the standalone server process's cwd changes to the standalone directory.
+> `source` / `--cwd` are absolutized relative to the working directory when the CLI is invoked (`baseCwd`), because the back-end child process's cwd becomes the product root (`bin/pi-web.mjs:109-119`). Git-form sources (`git:` / `https:` / `ssh:` / `git@`) are passed through verbatim and not absolutized (`looksLikeGitSource`, `:38`).
+>
+> `PI_WEB_AUTOSTART=1` is not CLI-exclusive—the desktop shell injects it into the back-end too. For the full semantics of each env, see [06 · Configuration Reference](./06-configuration.md).
+
+### Go straight to a session (autostart)
+
+When launched via the CLI, the agent source is already determined, so there is no need to make the user click once on the source-picker page. The launcher **injects `PI_WEB_AUTOSTART=1` unconditionally** (`bin/pi-web.mjs:128`); the front-end uses this to skip `AgentSourcePicker` and create a session directly from `PI_WEB_DEFAULT_SOURCE`, entering the session UI. "Switch source" still returns to the source-picker page afterward. For non-CLI launches (where this signal is unset), the default behavior is unchanged and the source-picker page is still shown.
+
+---
+
+## Port selection and readiness detection
+
+- **Automatic avoidance**: `findFreePort` (`bin/pi-web.mjs:189`) probes upward from the specified port, trying up to 20 ports, and uses the first free one; if the actual port differs from the requested one it prints a notice (`:317-321`). If all 20 are taken, it errors out. Choosing a free port before launching avoids the readiness probe accidentally hitting the occupant (`:308-316`).
+- **Readiness probe**: `waitForReady` (`bin/pi-web.mjs:151`) polls `host:port`, treats any HTTP response as ready, then prints the ready address and decides whether to open the browser based on `--open`. This function is exported so the desktop shell reuses the same readiness logic, avoiding a fork.
 
 ---
 
@@ -149,175 +208,85 @@ Once the server is ready, the console prints:
 - Injects `PI_RUNNER_HOT_RELOAD_PATHS=<source>` to tell the watcher which path to monitor.
 - On file changes, the idle per-session runner process restarts automatically (resuming the session rather than creating a new one).
 
-**Limitation**: `--watch` only works for local directory sources. When a git source is passed, `main()` prints a warning and skips file watching (`bin/pi-web.mjs:334-336`), and `buildEnv()` silently omits the watch env (`bin/pi-web.mjs:138-141`).
+**Limitation**: `--watch` only works for local directory sources. When a git source is passed, `main()` prints a warning and skips it (`bin/pi-web.mjs:429-431`), and `buildEnv()` silently omits the watch env (`:139-142`).
 
 ### Turn safety (does not interrupt an in-progress session)
 
-A hot reload only actually restarts when the runner is **idle**, avoiding interrupting a streaming response or tool call midway. `PiRpcProcess` (`packages/server/src/rpc-channel/pi-rpc-process.ts:122`) tracks the `agent_start..agent_end` interval as `turnActive` (`pi-rpc-process.ts:511-512`) and extends `requestRestart`'s "busy" check from "has pending commands" to "**has pending commands OR turn in progress**" (`pi-rpc-process.ts:198-201`):
-
-- If a restart request arrives while a turn is in progress (streaming tokens / tool call / awaiting an extension_ui response), it is deferred until after `agent_end`.
-- Relying on `pendingCommands` alone is not enough—a prompt is acked immediately and all increments flow over the event stream, so an empty `pendingCommands` mid-turn would be misread as idle, interrupting the turn and losing information.
-- `maybeRestartWhenIdle` (`pi-rpc-process.ts:209-213`) settles the deferred restart uniformly after command settlement and turn completion (`pi-rpc-process.ts:500`, `pi-rpc-process.ts:514`).
-
-Dev-mode hot reload (`PI_RUNNER_HOT_RELOAD=1`) and the CLI's `--watch` share this same mechanism, so neither interrupts an in-progress session.
+A hot reload only actually restarts when the runner is **idle**, avoiding interrupting a streaming response or tool call midway. `requestRestart`'s "busy" check is extended from "has pending commands" to "has pending commands OR turn in progress" (`packages/server/src/rpc-channel/pi-rpc-process.ts:217-220`): when a restart request arrives mid-turn (streaming tokens / tool call / awaiting an extension_ui response), it is deferred and settled uniformly after `agent_end`. Dev mode's `PI_RUNNER_HOT_RELOAD=1` and the CLI's `--watch` share this mechanism, and neither interrupts an in-progress session.
 
 ---
 
-## Go straight to a session (autostart)
+## Build and npm scripts quick reference
 
-Since the agent source is already determined when launched via the CLI, there is no need to make the user click once on the source-picker page. The launcher **injects** `PI_WEB_AUTOSTART=1` unconditionally (`bin/pi-web.mjs:127`), and the front-end app-shell uses this to skip `AgentSourcePicker` and create a session directly from `PI_WEB_DEFAULT_SOURCE`, entering the session UI (reusing the existing resume branch):
-
-- `AppConfig.autoStart` reads `PI_WEB_AUTOSTART` → `page.tsx` passes it through → `ChatApp`'s initial session uses `defaultSource` to create a session directly when `autoStart` is set.
-- After entering the auto session, "switch source" (`onReset`) can still return to the source-picker page.
-- For non-CLI launches (where this signal is not set), the default behavior is unchanged and the source-picker page is still shown.
-
-This is the only "go straight to a session" wiring signal between the CLI and the application layer; the application layer makes only a minimal assembly change, and the session engine / source resolution / runner behavior are all unaffected.
-
----
-
-## Build details
-
-### Why an isolated build directory is needed
-
-```bash
-NEXT_DIST_DIR=.next-cli next build
-```
-
-During development, `next dev` uses the default `.next` directory; the CLI artifact is written to `.next-cli`, so the two don't interfere. Running `next build` while the dev server is running pollutes the shared `.next` and causes a webpack 500 error, so isolation is mandatory.
-
-### Standalone artifact and static asset completion
-
-Next.js `output: "standalone"` does not bundle `static/` and `public/` itself; `scripts/pack-standalone.mjs` completes them after the build in an overwrite (idempotent, re-runnable) manner (`scripts/pack-standalone.mjs:22-44`):
-
-1. Verify `<distDir>/standalone/server.js` exists (missing = not yet built in standalone mode, exit code 1).
-2. Copy `<distDir>/static/` → `<distDir>/standalone/<distDir>/static/`.
-3. Copy `public/` → `<distDir>/standalone/public/` (if it exists).
-
-The layout assumes `outputFileTracingRoot` = app root (= workspace root, `next.config.ts:64`), so within standalone the app files are at the root and `server.js` is at the standalone root.
-
-### Mutual exclusion of standalone and next start (PI_WEB_DISABLE_STANDALONE)
-
-The standalone artifact is incompatible with `next start` (the latter refuses to serve a standalone build). Browser e2e must launch the server via `next start`, so `next.config.ts:60-61` makes `output` conditional:
-
-```typescript
-// next.config.ts:60-61
-output:
-  process.env.PI_WEB_DISABLE_STANDALONE === "1" ? undefined : "standalone",
-```
-
-- Default (variable unset): produces standalone, CLI packaging behavior unchanged.
-- `PI_WEB_DISABLE_STANDALONE=1`: disables standalone so `next start` can serve a regular production build (for e2e).
-
-### Trimming the published standalone artifact (pack-standalone prune)
-
-The CLI package is a self-contained artifact and does not need development files such as test / docs / source-map / markdown. After completing the static assets, `scripts/pack-standalone.mjs:46-71` recursively cleans the standalone directory:
-
-- **Delete entire directories** (`PRUNE_DIRS`, `scripts/pack-standalone.mjs:47-53`): `test`/`tests`/`__tests__`, `docs`/`doc`, `example`/`examples`, `.github`/`coverage`/`stories`/`man`, etc.; plus pure test/e2e libraries dragged in via `outputFileTracingIncludes` as internal-package devDeps but not needed at runtime—`vitest`/`vite`/`@vitest`/`tinypool`/`tinyspy`/`tinybench`/`jsdom`/`happy-dom`/`@testing-library`/`playwright`/`playwright-core`/`@playwright`.
-- **Delete files** (`PRUNE_FILE` regex, `scripts/pack-standalone.mjs:54`): `*.md` / `*.markdown` / `*.map` / `*.flow` / `*.tsbuildinfo` / `*.d.ts`, plus `changelog`/`authors`/`contributors`/`.npmignore`/`.editorconfig`/`.prettierrc*`/`.eslintrc*`.
-
-Effect: CLI package **69.7MB → 46.4MB (13619 → 8345 files)** (commit `e07dfa7`). The cleanup count is printed on completion:
+The CLI artifact is the full production artifact, generated by `pnpm build:dist` chaining five steps (`package.json:22`):
 
 ```
-[pack-standalone] trim: cleaned N dev files/dirs (test/docs/*.map/*.md…)
+vite build(client) → esbuild(server) → pack-dist.mjs → build:unpacker → build:payload
 ```
-
-When you need to compare / debug, use `PACK_NO_PRUNE=1` to disable trimming (`scripts/pack-standalone.mjs:66-71`) and keep the full artifact.
-
-### outputFileTracingIncludes — P0 critical config
-
-The child processes spawned by the main process when a session activates (runner-bootstrap.mjs, pi SDK cli.js, jiti) are runtime dynamic processes that Next.js's nft (Node File Tracer) cannot trace by default. They are explicitly included in `next.config.ts`:
-
-```typescript
-// next.config.ts:69-79
-outputFileTracingIncludes: {
-  "/**/*": [
-    "./packages/server/runner-bootstrap.mjs",
-    "./packages/server/src/**/*",
-    "./packages/server/node_modules/@earendil-works/**/*",
-    "./packages/server/node_modules/jiti/**/*",
-    "./packages/agent-kit/**/*",
-    "./packages/tool-kit/**/*",
-    "./examples/**/*",
-  ],
-},
-```
-
-Without this config, real sessions cannot start under the standalone artifact (the child-process dependency files are missing).
-
----
-
-## npm scripts cheat sheet
 
 | Command | Equivalent operation |
-|------|---------|
-| `pnpm build:cli` | `NEXT_DIST_DIR=.next-cli next build && NEXT_DIST_DIR=.next-cli node scripts/pack-standalone.mjs` |
-| `pnpm start:cli` | `node bin/pi-web.mjs` |
+|---------|----------------------|
+| `pnpm build:dist` | full five-step build (dist/client + dist/server.mjs + payload/) |
+| `pnpm build:cli` | it is `pnpm build:dist` (`package.json:26`, an alias) |
+| `pnpm start:cli` | `node bin/pi-web.mjs` (`package.json:27`) |
 | `pnpm e2e:cli` | `node e2e/cli/cli-smoke.mjs` |
 | `pnpm e2e:cli:watch` | `node e2e/cli/cli-watch.mjs` |
+| `pnpm e2e:cli:real` | `node e2e/cli/cli-real.mjs` |
+| `pnpm e2e:cli:reloc` | `node e2e/cli/cli-reloc.mjs` |
 
-Build-related environment variables:
-
-| Variable | Purpose |
-|------|------|
-| `NEXT_DIST_DIR` | isolated build output directory; the CLI uses `.next-cli`, which doesn't pollute dev's `.next` |
-| `PI_WEB_DISABLE_STANDALONE=1` | disable standalone output so `next start` can serve a regular build (for browser e2e) |
-| `PACK_NO_PRUNE=1` | skip standalone trimming and keep the full artifact (for comparison / debugging) |
+For build-pipeline details (esbuild single file, pack-dist artifact layout, production CSP), see [19 · Deployment and Operations](./19-deployment.md).
 
 ---
 
 ## E2E acceptance
 
-`e2e/cli/cli-smoke.mjs` covers the complete startup chain and is repeatable (produces fresh-evidence screenshots):
+The CLI's e2e suite splits into four, each covering a different path:
 
 ```bash
 # Prerequisite: build first
-pnpm build:cli
+pnpm build:dist
 
-# Run the smoke test
+# Startup-chain smoke test
 pnpm e2e:cli
 ```
 
-The smoke test covers:
-
-1. **Artifact integrity** — verifies that `server.js`, `runner-bootstrap.mjs`, the pi SDK `cli.js`, and `jiti` are all present in the standalone directory.
-2. **Argument paths** — `--help`/`--version` exit code 0; an unknown argument exits non-zero and does not start the server.
-3. **Stub startup + browser smoke** — CLI launches standalone → browser loads → default source activates a session → message sent → stub streaming response received.
-
-Evidence screenshots are saved to `.kiro/specs/pi-web-cli/evidence/cli-smoke-repeatable.png`.
-
-`e2e/cli/cli-watch.mjs` specifically validates `--watch` hot-reload behavior.
+- `e2e/cli/cli-smoke.mjs` — artifact integrity + argument paths (`--help`/`--version` exit code 0, unknown argument non-zero and does not start) + stub startup + browser smoke (default source activates a session → message sent → stub streaming response received).
+- `e2e/cli/cli-watch.mjs` — specifically validates `--watch` hot-reload behavior.
+- `e2e/cli/cli-real.mjs` — real (non-stub) mode startup chain.
+- `e2e/cli/cli-reloc.mjs` — **first-run shared-runtime unpacking / relocation path**. The direct artifact path of levels ①② cannot exercise unpacking; unpacking is covered only by `cli-reloc` and the desktop shell's `desktop-packaged` (`bin/pi-web.mjs:257-259`).
 
 ---
 
 ## FAQ
 
-> The following are high-frequency questions specific to the CLI; for more startup / session troubleshooting, see [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md).
+> The following are high-frequency questions specific to the CLI; for more startup / session troubleshooting, see [23 · Troubleshooting / FAQ](./23-troubleshooting-faq.md).
 
-**Q: At startup it reports `self-contained artifact .next-cli/standalone/server.js not found`**
+**Q: At startup it reports `未找到自包含产物 <...>/dist/server.mjs`**
 
-A: It hasn't been built yet—run `pnpm build:cli` first.
+A: The repo hasn't been built yet—run `pnpm build:dist` first (`bin/pi-web.mjs:301-306`). In npm-installed mode it should unpack automatically—if you see this error, level ③'s payload is most likely missing; see the `payload-missing` hint.
 
 **Q: What if the port is taken?**
 
-A: The CLI automatically increments from the specified port (default 3000) to find a free one, trying up to 20 ports, and prints the actual port used in the console. If all 20 ports are taken, use `-p` to specify a different range.
+A: The CLI increments from the specified port (default 3000) to find a free one, trying up to 20 ports, and prints the actual port used. If all 20 are taken, use `-p` to specify a different range.
 
 **Q: `--watch` has no effect**
 
-A: Confirm that `source` is a local directory path, not a git source such as `git:` / `https:`. A git source has no local directory to watch, so the CLI prints a warning and skips it.
+A: Confirm `source` is a local directory, not a git source such as `git:` / `https:`. A git source has no local directory to watch, so the CLI prints a warning and skips it.
 
 **Q: I changed a file with `--watch`, but the session didn't reload immediately**
 
-A: This is turn-safety protection. A restart only happens when the runner is idle; if the session is streaming a response or calling a tool (turn in progress), the restart is deferred until after this turn ends (`agent_end`), avoiding interrupting the current session. It resumes automatically once idle.
+A: This is turn-safety protection. A restart only happens when the runner is idle; while the session is streaming a response or calling a tool (turn in progress), the restart is deferred until this turn ends (`agent_end`). It resumes automatically once idle.
 
-**Q: The CLI package is too large / I want to keep the full artifact for investigation**
+**Q: The first launch is slow / I want to specify where the runtime unpacks**
 
-A: The default build already trims automatically (cleaning test/docs/`*.map`/`*.md`, etc., roughly 69.7MB → 46.4MB). To compare against the full artifact, use `PACK_NO_PRUNE=1 pnpm build:cli` to disable trimming.
+A: In npm-installed mode the first launch unpacks the shared runtime (one-time). Use `PI_WEB_RUNTIME_ROOT` to specify the unpack root directory. For unpacking-related error codes and self-service fixes, see the "First-run shared-runtime unpacking" table above.
 
 ---
 
-## Next steps / related docs
+## Related
 
-- [06 · Configuration](./06-configuration.md) — full documentation of env variables such as `PI_WEB_DEFAULT_SOURCE`, `PI_WEB_AUTOSTART`
-- [19 · Deployment](./19-deployment.md) — production deployment, Docker packaging
-- [22 · Development and Testing](./22-development-and-testing.md) — running in dev mode, the rationale behind `NEXT_DIST_DIR` isolated builds
-- [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md) — more startup troubleshooting
+- [06 · Configuration Reference](./06-configuration.md) — full explanation of env such as `PI_WEB_DEFAULT_SOURCE`, `PI_WEB_AUTOSTART`, `PI_WEB_DIST_DIR`, `PI_WEB_RUNTIME_ROOT`
+- [19 · Deployment and Operations (Web Server)](./19-deployment.md) — the esbuild single-file artifact structure, the packaged-payload production line, and the production CSP
+- [20 · Desktop Edition (Tauri) Packaging and Distribution](./20-desktop-tauri.md) — the second delivery form that reuses the same `dist/server.mjs` back-end and shared-runtime payload
+- [22 · Development and Testing](./22-development-and-testing.md) — the `pnpm dev` dual-process orchestration and the five-step `build:dist` pipeline
+- [23 · Troubleshooting / FAQ](./23-troubleshooting-faq.md) — more startup issues and first-run unpacking troubleshooting

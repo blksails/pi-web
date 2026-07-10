@@ -1,6 +1,6 @@
-# 21 · Sessions List
+# 14 · Sessions List
 
-The Sessions List lets users **browse historical sessions** inside the Web UI and **resume any session with one click** to continue the conversation—without manually remembering or typing a session id. Session history has always been persisted by the underlying layer (each session is bucketed by its working directory cwd, carrying header metadata such as id / cwd / created/modified time / optional name), yet it was never surfaced in the interface before. This feature embeds that history as a relocatable, read-only panel into the chat interface, without occupying or replacing the existing conversation area.
+The Sessions List lets users **browse historical sessions** inside the Web UI and **resume any session with one click** to continue the conversation—without manually remembering or typing a session id. Session history has always been persisted by the underlying layer (each session is bucketed by its working directory cwd, carrying header metadata such as id / cwd / created-and-modified time / optional name), yet it was never surfaced in the interface before. This feature embeds that history as a relocatable, read-only panel into the chat interface, without occupying or replacing the existing conversation area.
 
 ---
 
@@ -41,9 +41,9 @@ Both views are sorted by `updatedAt ?? createdAt` in **descending order** (newes
 - Server: when `scope=all` and the global switch is off, `GET /api/sessions` returns `403` directly and **does not touch storage** (no scanning of whole-machine session buckets, no manifest exposure).
 - Frontend: when the global switch is off, the panel does not render the "All" Tab at all (keeping only the "Current directory" view).
 
-To enable the system view, the deployer must set `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true` (or `=1`) at build time—this value is read client-side and inlined at build time (`components/chat-app.tsx`).
+To enable the system view, the deployer sets `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true` (or `=1`)—this value is read from `process.env` by the server when handling `GET /api/bootstrap` and delivered to the frontend (`server/bootstrap.ts:97`), which injects the gate via `setRuntimeFeatures()` (`src/bootstrap.tsx:140`, `lib/app/runtime-features.ts:33`). After changing it, **restarting the server takes effect immediately, with no rebuild required** (delivery mechanism in [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap)).
 
-> **How the current-directory view determines the target cwd**: the frontend cannot reliably infer the "real cwd after agent resolution", so a `scope=cwd` request carries the currently active `sessionId`, and the server uses that session's persisted cwd as the source of truth (`session-list-routes.ts:168-177`); only when `sessionId` is missing / unresolvable does it fall back to the `cwd` parameter or the server's default cwd.
+> **How the current-directory view determines the target cwd**: the frontend cannot reliably infer the "real cwd after agent resolution", so a `scope=cwd` request carries the currently active `sessionId`, and the server uses that session's persisted cwd as the source of truth (`store.readHeader(sid).cwd`, `session-list-routes.ts:225-236`); only when `sessionId` is missing / unresolvable does it fall back to the `cwd` parameter or the server's default cwd.
 
 ---
 
@@ -84,6 +84,15 @@ Click a list item
   → GET /sessions/:id/messages replays history   [pick up the context]
 ```
 
+### 4.1 Session Name Source and Persistence
+
+The display name shown as the list item's primary title (`name ?? sessionId`) reads the store's `SessionMeta.name`, whose **read rule is uniform**: "header name at creation → latest `session_info.name`". Writing that name has **two sources sharing the same `session_info` append event model**:
+
+1. **User rename** ([§9.2](#92-rename-inline-edit--latest-display-name)): `POST /sessions/rename` → the server `store.append`s a `session_info{ name }`, which becomes the latest display name.
+2. **Auto-session-title extension**: the title an extension sets via `ctx.ui.setTitle(t)` originally only emitted a frame driving the frontend's **transient** `ambient.title` and **did not write the session name** (so it never entered the history list). `wireSessionTitlePersistence` prototype-patches `session.bindExtensions` to wrap `setTitle` as "call the original `setTitle` first (preserving the ambient display) → then best-effort `persistTitle` writing `appendSessionInfo`", landing in sqlite/postgres + pi's native fs (`packages/server/src/runner/session-title-wiring.ts:1-20`).
+
+Both sources write the **same session-name field**, so an auto title and a manual rename **overwrite each other, last write wins**; and both persist via `appendSessionInfo`, so they **survive cold resume**—when a session is resumed the list still shows the name last written. This feature (the rename entry) only adds the user path that "writes a new name" and does not change the read rule.
+
 ---
 
 ## 5. HTTP Contract
@@ -94,6 +103,8 @@ The read-only list endpoint is mounted via the existing `routes:` injection seam
 GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 → ListSessionsResponse
 ```
+
+> **Where did the `/api` prefix go**: the server host is Hono, and the entire `/api/*` surface collapses into a single `app.all('/api/*')` forwarding to the `createPiWebHandler` singleton (`server/index.ts`); the handler's internal routes carry **no `/api` prefix** (registered as `/sessions`, `/sessions/delete`, etc.). So this chapter always writes `/api/sessions/...` for the client (the path the browser actually requests), and if you cross-reference the `packages/server` source you will see the routes declared as `/sessions/...`—the two refer to the same endpoint, differing only by the `/api` basePath that the Hono layer strips. The list itself is a pure-read path; resume goes through the SPA's `/session/:id` route (`src/app.tsx:24`, `src/routes/session.tsx:21` take `id` as `resumeId`).
 
 **Request parameters** (query, `packages/protocol/src/transport/rest-dto.ts:187`)
 
@@ -118,7 +129,22 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 }
 ```
 
-**Pagination (keyset)**: the cursor is `base64url(JSON.stringify({ ts, id }))`, where `ts = updatedAt ?? createdAt` and `id = sessionId`, taken from the last item of the previous page; the server returns items that lie strictly after `{ts,id}` in the sorted sequence, guaranteeing that continuation **does not repeat** already-returned sessions and eventually converges (`session-list-routes.ts:60-89`, `181-187`). Pagination is done by in-memory slicing; the store only provides the lightweight header metadata of `list(cwd)` / `listAll()`.
+**Try it** (in dev the API is on `:3000` and the browser UI on `:5173`; curl hits the API port directly):
+
+```bash
+# Current-directory view, first page (default scope=cwd, limit=50)—using an active session's persisted cwd as the target directory
+curl -s 'http://localhost:3000/api/sessions?sessionId=<active session id>&limit=20' | jq
+
+# Next page: pass back the previous response's nextCursor verbatim
+curl -s 'http://localhost:3000/api/sessions?limit=20&cursor=<previous nextCursor>' | jq '.sessions | length'
+
+# System (whole-machine) view: expect 403 SESSIONS_GLOBAL_DISABLED when NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL is unset
+curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?scope=all'
+```
+
+Expected: the first returns `{ "sessions": [...], "nextCursor": "...", "scope": "cwd", "globalEnabled": false }`; the third prints `403` when the system view is off.
+
+**Pagination (keyset)**: the cursor is `base64url(JSON.stringify({ ts, id }))`, where `ts = updatedAt ?? createdAt` and `id = sessionId`, taken from the last item of the previous page; the server returns items that lie strictly after `{ts,id}` in the sorted sequence, guaranteeing that continuation **does not repeat** already-returned sessions and eventually converges (cursor encode/decode and descending comparison `session-list-routes.ts:70-112`, sort + slice + `nextCursor` generation `256-263`). Pagination is done by in-memory slicing; the store only provides the lightweight header metadata of `list(cwd)` / `listAll()`.
 
 **Errors**
 
@@ -128,7 +154,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 | `403` | `SESSIONS_GLOBAL_DISABLED` | `scope=all` but the system view is not enabled (no session data returned) |
 | `500` | `INTERNAL` | Storage read error (the frontend shows a retryable error) |
 
-> Lazy store singleton: on the first request, `await createSessionEntryStore(storeConfig)` constructs and caches it, with configuration sharing the same source as cold resume (`sessionStoreConfigFromEnv()`), ensuring the list and resume read from the same backend (`session-list-routes.ts:115-120`).
+> Lazy store singleton: on the first request, `await createSessionEntryStore(storeConfig)` constructs and caches it, with configuration sharing the same source as cold resume (`sessionStoreConfigFromEnv()`), ensuring the list and resume read from the same backend (`session-list-routes.ts:169-179`).
 
 ### 5.1 Session Action Endpoints (delete / rename / favorite)
 
@@ -173,7 +199,7 @@ The three visible states of `SessionListPanel` (`packages/ui/src/elements/sessio
 - **Empty**: when there are no sessions in the current range, it shows `emptyLabel` (default "No sessions") rather than an error or blank.
 - **Error**: when loading fails, it shows `errorLabel` + a clickable **Retry** button, rather than a silent blank.
 
-The view-switch "Current directory / All" Tab appears only when `globalEnabled`; switching Tabs or a change in data source resets and reloads the first page. When `nextCursor` is present, a "Load more" button is shown to fetch and append. The component has a **race guard** (`reqIdRef`) that discards stale responses during rapid Tab switching / continuation (`session-list-panel.tsx`, `108`).
+The view-switch "Current directory / All" Tab appears only when `globalEnabled`; switching Tabs or a change in data source resets and reloads the first page. When `nextCursor` is present, a "Load more" button is shown to fetch and append. The component has a **race guard** (`reqIdRef`) that discards stale responses during rapid Tab switching / continuation (`session-list-panel.tsx:156`, `177`, `184`).
 
 > List items, Tabs, the three states, and Load more all carry `data-pi-session-list-*` attributes, for e2e and host location.
 
@@ -183,22 +209,31 @@ The view-switch "Current directory / All" Tab appears only when `globalEnabled`;
 
 | Variable | Default | Effect | Read at |
 |---|---|---|---|
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `false` | `true`/`1` enables the system (whole-machine) view: shows the "All" Tab + allows `scope=all` | `chat-app.tsx` (frontend) + `pi-handler` injects `globalEnabled` (server gating) |
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | Panel display position (`sidebar`/`header`/`footer`/`empty`) | `chat-app.tsx` |
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | Enabled | **Write gate**: set to `false` / `0` to turn off item-level delete / rename / favorite (frontend hides write entries + server write endpoints return `403`); any other value (including unset) defaults to enabled. Reading favorites (`GET /sessions/favorites`) is not subject to this gate | `chat-app.tsx` (frontend `manageEnabled`) + `pi-handler.ts` (injects `createSessionActionsRoutes({ manageEnabled })`) |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `false` | `true`/`1` enables the system (whole-machine) view: shows the "All" Tab + allows `scope=all` | `bootstrap` delivery → `chat-app.tsx` (frontend) + `pi-handler.ts:464` injects `globalEnabled` (server gating) |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | Panel display position (`sidebar`/`header`/`footer`/`empty`) | `bootstrap` delivery → `chat-app.tsx` (`sessionsSlot()`) |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | Enabled | **Write gate**: set to `false` / `0` to turn off item-level delete / rename / favorite (frontend hides write entries + server write endpoints return `403`); any other value (including unset) defaults to enabled. Reading favorites (`GET /sessions/favorites`) is not subject to this gate | `bootstrap` delivery → `chat-app.tsx` (frontend `manageEnabled`) + `pi-handler.ts:477` (injects `createSessionActionsRoutes({ manageEnabled })`) |
 
-All three are `NEXT_PUBLIC_*`, read client-side and **inlined at build time**—changes require a rebuild to take effect. The session storage backend is determined by the existing `sessionStoreConfigFromEnv()`, sharing the same source as cold resume; session favorites land separately in the independent file `<agentDir>/session-favorites.json` (without altering the session store schema, see [§5.1](#51-session-action-endpoints-delete--rename--favorite)); this feature introduces no new storage-backend configuration.
+Although all three are still named `NEXT_PUBLIC_*`, they are **no longer the build-time inlined values of the Next era**—they are now read by the server from `process.env` at runtime when handling `GET /api/bootstrap` and delivered to the frontend (see [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap)). **After changing them, restarting the server takes effect immediately, with no rebuild required**; this is especially crucial for CLI users (the `pi-web` binary has no build step at all). The session storage backend is determined by the existing `sessionStoreConfigFromEnv()`, sharing the same source as cold resume; session favorites land separately in the independent file `<agentDir>/session-favorites.json` (without altering the session store schema, see [§5.1](#51-session-action-endpoints-delete--rename--favorite)); this feature introduces no new storage-backend configuration.
+
+### 7.1 Why the Gates Take Effect at Runtime (`GET /api/bootstrap`)
+
+After the migration from Next to Vite+SPA, the way these gates are read **fundamentally changed**—understand this, or you will waste effort following stale "rebuild" guidance:
+
+- **Next era**: `NEXT_PUBLIC_*` was **inlined at build time** into a literal inside client components—CLI users setting these env vars at runtime actually had **no effect** (`lib/app/runtime-features.ts:4-8`, the file header documents this pitfall explicitly).
+- **Now (SPA)**: the server's `buildBootstrap()` reads `process.env` on every `GET /api/bootstrap` request (`server/bootstrap.ts:58-102`), deriving `sessionsGlobal` / `sessionsManage` / `sessionsSlot`, etc. into `RuntimeFeatures` for delivery; the SPA injects it once at startup via `setRuntimeFeatures()` (`src/bootstrap.tsx:140`), after which all gates in `chat-app.tsx` are evaluated lazily via `getRuntimeFeatures()` (`components/chat-app.tsx:210-286`). So runtime switches like `pi-web --canvas` **finally work**.
+
+Therefore the correct operating rule for every `NEXT_PUBLIC_PI_WEB_SESSIONS_*` gate in this chapter is: **change the env → restart the server** (`node dist/server.mjs` or `pnpm dev`)—you **do not need to, and cannot, rely on "rebuilding"**. Frontend and server read the same env; the server gating (`lib/app/pi-handler.ts:464-478`) is field-for-field identical to the frontend delivered determination.
 
 ---
 
 ## 8. Troubleshooting / Notes
 
-- **The "All" Tab does not appear / switching to the system view returns 403**: `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` is not enabled, or was enabled without a rebuild (the value is inlined at build time). The server 403 and the frontend hiding the Tab are the dual safeguards of the same gate, which is expected behavior.
+- **The "All" Tab does not appear / switching to the system view returns 403**: `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` is not enabled, or was enabled without restarting the server (the value is delivered at runtime on `GET /api/bootstrap`, so a change requires a restart, see [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap)). The server 403 and the frontend hiding the Tab are the dual safeguards of the same gate, which is expected behavior.
 - **The session directory listed by the current-directory view is not as expected**: `scope=cwd` uses the persisted cwd of the active `sessionId` as the source of truth; if there is currently no active session or that session is unresolvable, it falls back to the `cwd` parameter / the server's default cwd.
 - **The panel position is wrong**: check whether the `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` value falls within `sidebar`/`header`/`footer`/`empty`; invalid values silently fall back to `sidebar`.
 - **Slow first screen under a large history**: `scope=all` goes through `listAll`, a full bucket scan + in-memory slicing, with overhead growing linearly with the history size—keeping the global view off by default + pagination (`limit` defaults to 50, capped at 200) are the primary mitigations.
 - **Extension UI (region slots / background) breaks after clicking resume**: resume must go through the `/session/:id` cold-resume path to trace back the agent source; re-mounting in any way other than via `resumeId` loses the source.
-- **The ⋯ action menu does not appear / the delete·rename·favorite write entries are gone**: `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` was explicitly set to `false` / `0` (write gate off), or was changed without a rebuild (the value is inlined at build time). In this case the server also returns `403 SESSIONS_MANAGE_DISABLED` for write requests, which is expected behavior for a read-only deployment; note that the "Favorites" section still pins already-read favorites (reading favorites is not gated).
+- **The ⋯ action menu does not appear / the delete·rename·favorite write entries are gone**: `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` was explicitly set to `false` / `0` (write gate off), or was changed without restarting the server (the value is delivered at runtime via `GET /api/bootstrap`, see [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap)). In this case the server also returns `403 SESSIONS_MANAGE_DISABLED` for write requests, which is expected behavior for a read-only deployment; note that the "Favorites" section still pins already-read favorites (reading favorites is not gated).
 - **Deleting the session currently being viewed**: after a successful delete, the host navigates to the new-session empty state with `window.location.assign("/")`; other ongoing sessions are unaffected.
 - **Rename returns 404**: the target session no longer exists in storage (e.g. concurrently deleted); rename does not create a record for a nonexistent session. Delete is the opposite—deleting a session that is already gone is treated as idempotent success.
 
@@ -214,7 +249,7 @@ Beyond full-row click-to-resume ([§4](#4-full-row-click-to-resume)), **each ses
 - The trigger entry `stopPropagation`s, so activating the menu **does not** trigger the full row's `onResume` (resume)—menu interaction and full-row resume never accidentally trigger each other.
 - Once the menu is open, clicking outside the menu or pressing Esc closes it with no side effect.
 - Write entries render only when **the write gate is enabled and the corresponding callback is present**; when the gate is off, the entire group of write entries is hidden (see [§9.5](#95-deployment-gate)).
-- The menu, each menu item, the inline edit input, the delete confirmation, etc. all carry stable `data-*` location attributes (`data-pi-session-item-menu` / `-menu-rename` / `-menu-delete` / `-menu-favorite` / `-rename-input` / `-delete-confirm`), for e2e and host location.
+- The menu, each menu item, the inline edit input, the delete confirmation, etc. all carry stable `data-*` location attributes (`data-pi-session-item-menu` / `-menu-content` / `-rename` / `-delete` / `-favorite` / `-rename-input` / `-delete-confirm` / `-delete-confirm-btn` / `-delete-cancel`), for e2e and host location (`packages/ui/src/elements/session-item-menu.tsx`).
 
 ### 9.2 Rename (inline edit → latest display name)
 
@@ -222,7 +257,7 @@ Beyond full-row click-to-resume ([§4](#4-full-row-click-to-resume)), **each ses
 - Submitting a name that is non-empty after `trim` → raised to the host via `onRenameSession(id, name)` → `POST /sessions/rename` → the server `append`s a `session_info` to that session, making it the **latest display name**. After the frontend optimistically renames, the host bumps a refresh to pull the authoritative state, so the name is **consistent across refreshes and across views**.
 - A submission that is empty after `trim` sends no write request and simply exits the edit keeping the original name; Esc / cancel likewise abandons the edit without sending a request.
 - A write failure (`500`, etc.) shows a visible error and rolls back to the original name.
-- The **read / derivation rule** for the display name follows the existing sessions-list rule (header name at creation → latest `session_info.name`, sharing the same rule as auto-session-title, see [§4](#4-full-row-click-to-resume) and the auto-title feature); this feature only adds a "write new name" entry and does not change the read rule.
+- The **read / derivation rule** for the display name follows the existing sessions-list rule (header name at creation → latest `session_info.name`, sharing the same `session_info` event model and persistence path as auto-session-title, see [§4.1 Session Name Source and Persistence](#41-session-name-source-and-persistence)); this feature only adds a "write new name" entry and does not change the read rule.
 
 ### 9.3 Favorite / Pin (independent preference store)
 
@@ -247,7 +282,7 @@ The three **write** operations (delete / rename / favorite) are gated wholesale 
 - Frontend: gate off → the panel **does not render** any write entry (`⋯` write menu items are hidden).
 - Server: gate off → the delete / rename / favorite-write endpoints all return `403 SESSIONS_MANAGE_DISABLED` and **modify no storage**; `GET /sessions/favorites` is the exception, always readable.
 
-The value is read by `chat-app.tsx` and inlined at build time (`manageEnabled = value !== "false" && value !== "0"`), and the server `pi-handler.ts` injects `createSessionActionsRoutes({ manageEnabled })` with the same determination—frontend and server read the same env with consistent semantics.
+The value is delivered at runtime via `GET /api/bootstrap` and read by the frontend `chat-app.tsx` (`manageEnabled = value !== "false" && value !== "0"`), while the server `pi-handler.ts:477` injects `createSessionActionsRoutes({ manageEnabled })` with the same determination—frontend and server read the same env with consistent semantics, and a change takes effect on server restart (see [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap)).
 
 ### 9.6 Consistency and Concurrency
 
@@ -260,6 +295,7 @@ The value is read by `chat-app.tsx` and inlined at build time (`manageEnabled = 
 
 ## Next Steps / Related
 
-- Session action endpoints (delete / rename / favorite) and the rest of the `/sessions/**` endpoints → [24 · HTTP/SSE API Reference](./24-http-api-reference.md), this chapter's [§5.1](#51-session-action-endpoints-delete--rename--favorite)
+- Session action endpoints (delete / rename / favorite) and the rest of the `/sessions/**` endpoints, plus the `GET /api/bootstrap` runtime gate delivery → [24 · HTTP/SSE API Reference](./24-http-api-reference.md), this chapter's [§5.1](#51-session-action-endpoints-delete--rename--favorite)
 - Host `slots` and interface layout → [12 · Web UI Extension](./12-web-ui-extension.md)
-- The session-management write gate `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` and environment-variables overview → [06 · Configuration Reference](./06-configuration.md), this chapter's [§9.5](#95-deployment-gate)
+- The session-management write gate `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE`, the `GET /api/bootstrap` runtime delivery mechanism, and the environment-variables overview → [06 · Configuration Reference](./06-configuration.md), this chapter's [§7.1](#71-why-the-gates-take-effect-at-runtime-get-apibootstrap) / [§9.5](#95-deployment-gate)
+- Queueing / retrieval, a session-native UI feature raised alongside this chapter → [15 · Message Queue](./15-message-queue.md)

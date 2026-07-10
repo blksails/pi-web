@@ -1,51 +1,61 @@
-# 13 · HTTP API Reference
+# 24 · HTTP/SSE API Reference
 
-pi-web exposes all session, configuration, and attachment operations as standard REST + SSE interfaces through four Next.js catch-all Route Handlers, driven under the hood by the framework-agnostic `createPiWebHandler` factory.
+pi-web exposes every session, configuration, attachment, state-bridge, and vision/AIGC operation as a uniform REST + SSE surface, driven under the hood by the framework-agnostic `createPiWebHandler` factory. This chapter is the consolidated endpoint reference for the whole manual — the endpoints scattered across the feature chapters (sessions list, message queue, attachments, extensions, AIGC/vision, Canvas) are gathered here. Read the relevant feature chapter first for the semantics, then come back here for the concrete request/response contracts.
 
 ---
 
 ## Architecture Overview
 
+Next.js has been deleted from `main`. The server host is **Hono** (`server/index.ts`); `@hono/node-server` acts only as a `fetch↔Node` adapter and introduces no framework-level abstraction. The entire `/api/*` surface collapses into **one** `app.all('/api/*')` forwarder to the `getHandler()` singleton — but **before** it, the host registers a few endpoints that bypass the handler (webext resources, `/api/bootstrap`), because the generic forwarder would otherwise match them first.
+
 ```
-Next.js Route Handler (app/api/*/route.ts)
-         │
+Browser (Vite SPA, dev :5173 / prod same port)
+         │  fetch /api/**
          ▼
-  getHandler()  ← lib/app/pi-handler.ts singleton
-         │
-         ▼
-  createPiWebHandler(opts)
-  packages/server/src/http/create-handler.ts
-         │
-         ├── Router  (method + path dispatch)
-         ├── Built-in endpoint handlers  (sessions / config / attachments)
-         └── Injected endpoints  (config-routes / attachment-routes)
+server/index.ts  (Hono host, default PORT=3000)
+  ├── app.get('/api/webext/singletons/:name')  ┐ registered first: webext resources
+  ├── app.get('/api/webext/resolve')           │ (must precede the generic /api/*
+  ├── app.get('/api/webext/dist/:dir/*')       │  forwarder, or the handler grabs the match)
+  ├── app.get('/api/bootstrap')                ┘ SPA runtime configuration
+  └── app.all('/api/*')  ─────────────┐  everything else under /api
+                                       ▼
+                        getHandler()  ← lib/app/pi-handler.ts singleton
+                                       │
+                                       ▼
+                        createPiWebHandler(opts)
+                        packages/server/src/http/create-handler.ts
+                                       ├── Router (method + path dispatch)
+                                       ├── Built-in endpoints (sessions / config / attachments)
+                                       └── Injected endpoints (config / attachment / agent-sources /
+                                            favorites / session-list / aigc-models /
+                                            vision-models / bash / extensions …)
 ```
 
-**The four catch-all routes**:
+- `c.req.raw` is a standard `Request`; the `Response` returned by the handler (including an SSE `ReadableStream` body) is **passed through verbatim** — status/headers/body are not rewritten and nothing is buffered (`server/index.ts:75-91`).
+- The host is a long-running process: it spawns session subprocesses and holds long-lived SSE connections, so it cannot run on Edge/stateless Serverless. This is a framework-agnostic runtime constraint, **no longer** enforced by any `runtime="nodejs"` declaration.
+- The server is bundled by esbuild into a single file `dist/server.mjs` (the entry must sit at the artifact root — see [19 · Deployment & Operations](19-deployment.md)).
 
-| Route file | Path prefix covered | Methods supported |
-|---|---|---|
-| `app/api/sessions/[[...path]]/route.ts` | `/api/sessions/**` | GET, POST, DELETE |
-| `app/api/config/[[...path]]/route.ts` | `/api/config/**` | GET, PUT |
-| `app/api/attachments/[[...path]]/route.ts` | `/api/attachments/**` | GET |
-| `app/api/session-source/route.ts` | `/api/session-source` | POST |
+> **Port**: default `PORT=3000` (`server/index.ts:100`, `process.env.PORT ?? 3000`). In development, `pnpm dev` concurrently brings up the API (:3000) and Vite dev (:5173); the browser opens 5173 and `/api` is proxied by Vite to 3000; hitting the API directly (as in this chapter's curl examples) targets 3000. Production is a single process on one port.
 
-All routes force `runtime = "nodejs"` (subprocess residency + long-lived SSE connections; Edge/Serverless are not supported).
-
-**Endpoint quick reference** (grouped by purpose; see the corresponding sections for details):
+**Endpoint quick reference** (grouped by purpose; see the corresponding sections for detail):
 
 | Purpose | Endpoint |
 |---|---|
+| SPA bootstrap | `GET /bootstrap` (runtime config, mounted directly by the host, bypasses the handler) |
 | Session lifecycle | `POST /sessions`, `DELETE /sessions/:id` |
 | Sessions list | `GET /sessions` (lists historical sessions, paginated) |
+| Agent-source enumeration | `GET /agent-sources`, `GET·PUT /agent-sources/favorites` |
 | Event subscription | `GET /sessions/:id/stream` (SSE) |
 | Send message / steer | `POST /sessions/:id/messages`, `/steer`, `/follow_up`, `/abort` |
 | Session control | `POST /sessions/:id/model`, `/thinking`, `/fork`, `/ui-response`, `/ui-rpc` |
+| State-injection bridge | `POST /sessions/:id/state` (write-back; downstream via SSE `control:state` frame) |
 | Session queries | `GET /sessions/:id/state`, `/stats`, `/messages`, `/commands`, `/models`, `/fork-messages`, `/completion` |
 | Agent-declared routes | `GET /sessions/:id/agent-routes`, `GET·POST /sessions/:id/agent-routes/:name` |
 | Configuration | `GET·PUT /config/:domain`, `GET /config/models` |
+| Model enumeration (tool side) | `GET /aigc/models`, `GET /vision/models` |
 | Attachments | `POST /sessions/:id/attachments`, `GET /attachments/:id/raw` |
-| Source mapping | `POST /session-source` |
+
+> The full prefix for every endpoint on the browser/curl side is `/api/**` (the handler's internal routes carry no `/api`; that is aligned by `sse.basePath`). webext and `/bootstrap` are mounted directly by the host; everything else goes through `app.all('/api/*')` → handler.
 
 ---
 
@@ -93,13 +103,58 @@ Error responses use a uniform structure:
 | path matched but method mismatched | 405 | `METHOD_NOT_ALLOWED` |
 | unknown exception | 500 | `INTERNAL` |
 
-> Source of the code literals: session-engine error codes are in `packages/server/src/session/session.errors.ts:7` (`SESSION_STOPPED` / `SESSION_NOT_FOUND` / `UNKNOWN_EXTENSION_UI` / `MISSING_INPUT`); HTTP-layer codes are in `packages/server/src/http/error-map.ts` and the individual route handlers.
+> Source of the code literals: the session-engine error codes are in `packages/server/src/session/session.errors.ts:7` (`SESSION_STOPPED` / `SESSION_NOT_FOUND` / `UNKNOWN_EXTENSION_UI` / `MISSING_INPUT`); the HTTP-layer codes are in `packages/server/src/http/error-map.ts` and the individual route handlers.
 
 Version incompatibility (the client declares an `X-Pi-Protocol-Version` whose major version does not match the server's `0`; if not declared, the request is allowed through):
 → 426 `PROTOCOL_VERSION_MISMATCH`
 
 Auth seam (allows through by default):
 → `authResolver` rejects: 401 `UNAUTHORIZED`; `authorizeSession` returns false: 403 `FORBIDDEN`
+
+---
+
+## Bootstrap API — `/api/bootstrap`
+
+### GET /api/bootstrap — SPA Runtime Configuration
+
+On startup the SPA fetches this endpoint first, retrieving the runtime configuration needed to render the source picker / session page. It is mounted directly by the host (`server/index.ts:67`, **bypassing** `createPiWebHandler`) and replaces the two injection points of the Next.js era: the server component's props, and the 15 `NEXT_PUBLIC_*` gates — the latter were **inlined at build time** under Next (so setting those envs at CLI runtime had no effect). Now folded into this endpoint, they become **true runtime configuration**, so runtime switches like `pi-web --canvas` actually take effect.
+
+**Query parameters**:
+
+| Parameter | Description |
+|---|---|
+| `sessionId` | Optional. Pass it when cold-loading `/session/:id`; the response then carries that session's agent-source recovery result (`resumeSource`), otherwise the webext extension surface silently disappears after a refresh |
+
+**Success response** 200 (`BootstrapPayload`, see `server/bootstrap.ts:28`):
+
+```jsonc
+{
+  "defaultCwd": "/workspace",
+  "autoStart": false,
+  "multiTenant": false,
+  "hostApiVersion": "0.1.0",
+  "defaultSource": "/path/to/agent",   // optional (when a default source is configured)
+  "defaultModel": "claude-opus-4-5",   // optional
+  "resumeSource": "/path/to/agent",    // optional (when ?sessionId= matches and can be recovered)
+  "features": {
+    "canvas": false,          // NEXT_PUBLIC_PI_WEB_CANVAS
+    "sourcePicker": false,    // NEXT_PUBLIC_PI_WEB_SOURCE_PICKER
+    "launcherRail": false,    // NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL
+    "bashEnabled": false,     // NEXT_PUBLIC_PI_WEB_BASH_ENABLED
+    "sessionsGlobal": false,  // NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL
+    "sessionsManage": true,   // off only when explicitly false/0
+    "sessionsSlot": "sidebar",
+    "extensionCommands": "",
+    "extensionAllowlist": "",
+    "extensionBaseUrl": "",
+    "disableReadinessHandshake": false
+  }
+}
+```
+
+> **Provider secrets never appear in the response**. The `supabase` field is emitted only when `PI_WEB_MULTI_TENANT=1` and a URL/anon key are configured (the anon key is already a public, browser-side key). For each gate env see [06 · Configuration](06-configuration.md) and [14 · Sessions List](14-sessions-list.md).
+>
+> **Implementation reference**: `server/bootstrap.ts`
 
 ---
 
@@ -142,7 +197,7 @@ Establishes a new agent session and returns a server-generated `sessionId` (driv
 **curl example**:
 
 ```bash
-curl -X POST http://localhost:3010/api/sessions \
+curl -X POST http://localhost:3000/api/sessions \
   -H "Content-Type: application/json" \
   -d '{"source": "/path/to/.pi", "cwd": "/workspace"}'
 ```
@@ -153,7 +208,7 @@ curl -X POST http://localhost:3010/api/sessions \
 
 Lists locally persisted historical sessions (only lightweight session-header metadata; the body is not read), used for browsing and resuming in the Sessions List panel. Mounted via the `routes:` injection seam (`createSessionListRoutes()`), coexisting with the built-in sessions endpoints. Sorted by `updatedAt ?? createdAt` descending, with keyset cursor pagination.
 
-**Query parameters** (`ListSessionsRequestSchema`, see `packages/protocol/src/transport/rest-dto.ts:177`):
+**Query parameters** (`ListSessionsRequestSchema`, see `packages/protocol/src/transport/rest-dto.ts:187`):
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -162,9 +217,9 @@ Lists locally persisted historical sessions (only lightweight session-header met
 | `sessionId` | string | No | when `scope=cwd`, prefer this session's persisted cwd as the target directory |
 | `limit` | positive integer | No | per-page cap, defaults to 50, hard-clamped to 200 |
 | `cursor` | string | No | opaque keyset cursor (`base64url(JSON.stringify({ ts, id }))`), to fetch the next page |
-| `q` | string | No | Name search keyword (sidebar-launcher-rail): when non-empty, filters by session name/id substring (case-insensitive) before sort/pagination; absent/empty keeps existing behavior (backward compatible). Max length 100. Matches names only, not body content |
+| `q` | string | No | name search keyword (sidebar-launcher-rail): when non-empty, filters by session name/id substring (case-insensitive), applied before sort/pagination; absent/empty keeps the existing behavior (backward compatible). Max length 100. Matches names only, not body content |
 
-**Success response** 200 (`ListSessionsResponse`, see `rest-dto.ts:207`):
+**Success response** 200 (`ListSessionsResponse`, see `rest-dto.ts:222`):
 
 ```jsonc
 {
@@ -193,10 +248,10 @@ Lists locally persisted historical sessions (only lightweight session-header met
 | 500 | `INTERNAL` | storage read exception |
 
 ```bash
-curl "http://localhost:3010/api/sessions?scope=cwd&limit=50"
+curl "http://localhost:3000/api/sessions?scope=cwd&limit=50"
 ```
 
-> The system view (`scope=all`) is off by default and requires the deployer to set `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`. For the full mechanism of pagination, gating, the frontend's three states, and relocation, see [14 · Sessions List](./14-sessions-list.md).
+> The system view (`scope=all`) is off by default and requires the deployer to set `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`. For the full mechanism of pagination, gating, the frontend's three states, and relocation, see [14 · Sessions List](14-sessions-list.md).
 >
 > **Implementation reference**: `packages/server/src/session-list/session-list-routes.ts`
 
@@ -210,8 +265,8 @@ Read-only enumeration of "agent sources available in the current environment," f
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `limit` | positive int | No | Page size, default 100, hard-clamped to 500 |
-| `cursor` | string | No | Opaque keyset cursor (`base64url(JSON.stringify({ id }))`), fetch next page |
+| `limit` | positive integer | No | page size, default 100, hard-clamped to 500 |
+| `cursor` | string | No | opaque keyset cursor (`base64url(JSON.stringify({ id }))`), to fetch the next page |
 
 **Success response** 200 (`ListAgentSourcesResponse`):
 
@@ -227,7 +282,7 @@ Read-only enumeration of "agent sources available in the current environment," f
       "mode": "custom",                     // "custom" (has entry) | "cli"
       "title": "Hello Agent",               // optional display title (pi-web.title / registry.title); list uses title ?? name
       "description": "…",                   // optional (pi-web.description / registry.description / package.json description)
-      "avatar": "🤖"                        // optional avatar: image URL/data-URI → <img>; else short text/emoji; falls back to initial
+      "avatar": "🤖"                        // optional avatar: image URL/data-URI → <img>; else short text/emoji; falls back to the title's initial
     }
   ],
   "nextCursor": "eyJpZCI6...",  // absent means no more pages
@@ -235,32 +290,45 @@ Read-only enumeration of "agent sources available in the current environment," f
 }
 ```
 
-**Display metadata source**: scanned sources read `title` / `description` / `avatar` from their `package.json` `pi-web` field (same place as `pi-web.entry`); `name` still comes from top-level `package.json` name, `description` falls back to the top-level one. Registry entries may declare `title` / `description` / `avatar` directly. The frontend renders the source list as a widescreen card grid: each card has an avatar + `title ?? name` + mode badge + description + favorite star.
+**Display-metadata source**: scanned sources read `title` / `description` / `avatar` from their `package.json` `pi-web` field (the same place as `pi-web.entry`); `name` still comes from the top-level `package.json` name, and `description` falls back to the top-level one. Registry entries may declare `title` / `description` / `avatar` directly. The frontend renders the source list as a widescreen card grid: each card has an avatar + `title ?? name` + mode badge + description + favorite star.
+
+```jsonc
+// package.json fragment of an example source
+{
+  "name": "hello-agent",
+  "pi-web": {
+    "entry": "index.ts",
+    "title": "Hello Agent",
+    "description": "The simplest echo agent, for a first walkthrough",
+    "avatar": "🤖"
+  }
+}
+```
 
 **Errors**:
 
 | Status | code | Trigger |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | `limit` / `cursor` invalid (response includes offending field) |
-| 500 | `INTERNAL` | Unexpected assembly/serialization failure (missing/corrupt sources do not count — they degrade to an empty contribution) |
+| 400 | `INVALID_REQUEST` | `limit` / `cursor` invalid (the response includes the offending field) |
+| 500 | `INTERNAL` | unexpected assembly/serialization failure (missing/corrupt sources do not count — they degrade to an empty contribution) |
 
 ```bash
-curl "http://localhost:3010/api/agent-sources?limit=100"
+curl "http://localhost:3000/api/agent-sources?limit=100"
 ```
 
-> Whether the frontend shows the source list is gated by the build-time `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1`; the backend sources are configured via `PI_WEB_SOURCES_ROOT` (`path.delimiter`-separated for multiple) and `PI_WEB_SOURCES_REGISTRY` (default `<agentDir>/sources.json`). See [06 · Configuration](06-configuration.md) for all three.
+> Whether the frontend shows the source list is gated by `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER=1` — now delivered at **runtime** via `features.sourcePicker` after `GET /api/bootstrap` reads the env server-side (no longer inlined at build time as in the Next.js era). The backend sources are configured via `PI_WEB_SOURCES_ROOT` (`path.delimiter`-separated for multiple) and `PI_WEB_SOURCES_REGISTRY` (default `<agentDir>/sources.json`). See [06 · Configuration](06-configuration.md) for all three.
 >
 > **Implementation reference**: `packages/server/src/agent-source-list/`
 
-### GET·PUT /api/agent-sources/favorites — agent source favorites (read/write)
+### GET·PUT /api/agent-sources/favorites — Agent Source Favorites (Read/Write)
 
-Favorites are a **user preference** (sidebar-launcher-rail), independent of the read-only source enumeration `/agent-sources`; persisted at `<agentDir>/agent-source-favorites.json`, used by the sidebar launcher rail to render one-click launch anchors. Injected via `createFavoritesRoutes()`, mounted under the `/api/agent-sources/**` catch-all forwarder (GET+PUT). Favoriting/unfavoriting does **not** modify the enumeration sources (scan dir / registry).
+Favorites are a **user preference** (sidebar-launcher-rail), independent of the read-only source enumeration `/agent-sources`; persisted at `<agentDir>/agent-source-favorites.json`, used by the sidebar launcher rail to render one-click launch anchors. Injected via `createFavoritesRoutes()` and mounted at `/agent-sources/favorites` (GET+PUT). Favoriting/unfavoriting does **not** modify the enumeration sources (scan dir / registry).
 
-- **GET** → `ListFavoritesResponse`: `{ "favorites": [ { "source": "...", "name": "..." } ] }`. Missing/corrupt file degrades to the remaining available items.
+- **GET** → `ListFavoritesResponse`: `{ "favorites": [ { "source": "...", "name": "..." } ] }`. A missing/corrupt file degrades to the remaining available items.
 - **PUT** `{ favorites }` → `ListFavoritesResponse` (echoes the persisted result): **full replace** (idempotent), atomic tmp+rename write. Invalid body → `400 INVALID_REQUEST`.
 
 ```bash
-curl -X PUT "http://localhost:3010/api/agent-sources/favorites" \
+curl -X PUT "http://localhost:3000/api/agent-sources/favorites" \
   -H "Content-Type: application/json" \
   -d '{"favorites":[{"source":"./examples/hello-agent","name":"hello-agent"}]}'
 ```
@@ -276,9 +344,9 @@ curl -X PUT "http://localhost:3010/api/agent-sources/favorites" \
 
 ### GET /api/sessions/:id/stream — SSE Event Stream
 
-Establishes a long-lived connection to receive session events in real time (text deltas, tool calls, control frames, etc.). This subscription is established **per turn**: each turn's reply is carried by a fresh `/stream` connection the client opens for that turn—it is not a single session-level persistent connection, and it is normal to have no stream while idle.
+Establishes a long-lived connection to receive session events in real time (text deltas, tool calls, control frames, etc.). This subscription is established **per turn**: each turn's reply is carried by a fresh `/stream` connection the client opens for that turn — it is not a single session-level persistent connection, and having no stream while idle is normal.
 
-**Call-ordering convention (important)**: the client must first create the session, **open this turn's `/stream` subscription first, and only then** `POST /messages` to submit the prompt—the turn's reply frames come back over that already-established stream. The order must not be reversed: reply frames are broadcast transiently via the server's EventEmitter with no buffering, so if the stream is not yet connected, frames broadcast before the connection window are lost permanently (see "Race-condition note" below).
+**Call-ordering convention (important)**: the client must first create the session, **open this turn's `/stream` subscription first, and only then** `POST /messages` to submit the prompt — the turn's reply frames come back over that already-established stream. The order must not be reversed: reply frames are broadcast transiently via the server's EventEmitter with no buffering, so if the stream is not yet connected, frames broadcast before the connection window are lost permanently (see "Race-condition note" below).
 
 **Response headers**:
 
@@ -311,18 +379,18 @@ data: {"kind":"control","protocolVersion":"0.1.0","payload":{"control":"error","
 - Heartbeat frames (`: keep-alive`) are sent every 15 seconds (`DEFAULT_HEARTBEAT_MS = 15_000`) to prevent proxy timeouts
 - The control-frame payload lives in the `payload` field and is discriminated by `payload.control` (**not** `type`); when the session ends, the server sends one frame with `payload.control = "error"` (`message` describes the reason, `code` is the end reason) and then closes the connection
 
-**Reconnection and replay boundary**: GET this endpoint again with a `Last-Event-ID` header; the server re-subscribes and continues pushing subsequent frames. `Last-Event-ID` serves only as the **starting sequence number** (`startSeq`) for continued delivery—the gateway **does not buffer historical frames and does not replay historical message frames by sequence number**. All a late subscriber (including a reconnection) can "recover" is: the log ring-buffer, plus the two **sticky** frame kinds `session-status` / `session-state`; **the `uiMessageChunk` reply frames already broadcast for the current turn are not replayed**—they are broadcast transiently via the EventEmitter with no buffering. To retrieve missed reply content, use the history endpoint `GET /sessions/:id/messages`.
+**Reconnection and replay boundary**: GET this endpoint again with a `Last-Event-ID` header; the server re-subscribes and continues pushing subsequent frames. `Last-Event-ID` serves only as the **starting sequence number** (`startSeq`) for continued delivery — the gateway **does not buffer historical frames and does not replay historical message frames by sequence number**. All a late subscriber (including a reconnection) can "recover" is: the log ring-buffer, plus the **sticky** frames `session-status` / `session-state` / `queue` / state-bridge `state` (registered per key) (`packages/server/src/session/pi-session.ts:271,396,436,578,640`); **the `uiMessageChunk` reply frames already broadcast for the current turn are not replayed** — they are broadcast transiently via the EventEmitter with no buffering. To retrieve missed reply content, use the history endpoint `GET /sessions/:id/messages`.
 
 ```bash
-curl -N "http://localhost:3010/api/sessions/sess_abc/stream" \
+curl -N "http://localhost:3000/api/sessions/sess_abc/stream" \
   -H "Last-Event-ID: 42"
 ```
 
 **Errors**: 404 (session not found), 409 `SESSION_ENDED` (session already ended; returns an explicit response rather than hanging on an empty stream)
 
-> **Important**: session stats (usage statistics) are **not pushed over SSE**. Although the SSE control-frame schema defines a `stats` type, `pi-session` never actually sends a `payload.control = "stats"` frame (in practice only the `error` and `ui-rpc` control frames are emitted). Usage data must be actively pulled via the `GET /sessions/:id/stats` REST endpoint.
+> **Important**: session stats (usage statistics) are **not pushed over a dedicated `control:"stats"` frame**. Although the SSE control-frame schema defines a `stats` type, `pi-session` never actually sends a `payload.control = "stats"` frame; usage data must be actively pulled via the `GET /sessions/:id/stats` REST endpoint (or read from the sticky `control:"session-state"` snapshot frame's `snapshot.stats`). For the control frames actually emitted, see [SSE Frame Reference](#kind-control) below.
 
-> **Race-condition note**: `POST /messages` can trigger the agent's first frame extremely fast (measured ~32ms), whereas the same turn's `/stream` may take several seconds to connect under a dev cold compile or heavy load (measured ~3237ms cold, ~79ms warm). If the `POST` happens before the stream connects, the `uiMessageChunk` frames broadcast before the connection window are lost permanently because the server does not buffer them, and the turn's reply becomes visible only after a refresh (via the `GET /sessions/:id/messages` history endpoint)—appearing as "you must manually refresh to see the reply after sending a message," and intermittently so, since it depends on whether the stream connects ahead of the agent's first frame. The way to avoid it is to strictly follow the call-ordering convention above: open this turn's `/stream` subscription first, then `POST /messages`.
+> **Race-condition note**: `POST /messages` can trigger the agent's first frame extremely fast (measured ~32ms), whereas the same turn's `/stream` may take several seconds to connect under a dev cold compile or heavy load (measured ~3237ms cold, ~79ms warm). If the `POST` happens before the stream connects, the `uiMessageChunk` frames broadcast before the connection window are lost permanently because the server does not buffer them, and the turn's reply becomes visible only after a refresh (via the `GET /sessions/:id/messages` history endpoint) — appearing as "you must manually refresh to see the reply after sending a message," and intermittently so, since it depends on whether the stream connects ahead of the agent's first frame. To avoid it, strictly follow the call-ordering convention above: open this turn's `/stream` subscription first, then `POST /messages`.
 
 ---
 
@@ -353,7 +421,7 @@ Sends a user message to the session, triggering agent inference. Inference resul
 **Errors**: 400 (validation failure), 404 (session not found), 409 (session stopped)
 
 ```bash
-curl -X POST http://localhost:3010/api/sessions/sess_abc/messages \
+curl -X POST http://localhost:3000/api/sessions/sess_abc/messages \
   -H "Content-Type: application/json" \
   -d '{"message": "Hello, agent!"}'
 ```
@@ -430,6 +498,35 @@ The upstream RPC request from a Web UI extension (Tier3) (`UiRpcRequestSchema`).
 
 ---
 
+### POST /api/sessions/:id/state — Write Back Session Shared State (State-Injection Bridge)
+
+The **state-injection bridge** is a session-level shared-KV route separate from the LLM conversation history, with the authoritative state living in the agent subprocess. This endpoint is its **UI→agent write-back** direction: validate `StateSetRequest` → `PiSession.setState` (dispatched to the subprocess via an internal stdin line) → 200 synchronous ack. The frontend converges via the downstream SSE `control:"state"` frame (not awaited at this endpoint) — see [SSE Frame Reference](#kind-control) below. For the author-side read/write API (`getSessionState()`), see [04 · Surface Authoritative Surface Stack](04-surface-stack.md) and [08 · Custom Agent Development](08-agent-development.md).
+
+**Request body** (`StateSetRequestSchema`, see `packages/protocol/src/web-ext/state.ts:27`):
+
+```json
+{ "key": "aigc.selectedModel", "value": "gemini-3.1-flash-image", "op": "set" }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `key` | string | Yes | state key (non-empty) |
+| `value` | any JSON-serializable value | No | the new value when `op=set`; transport-agnostic, not limited to text |
+| `op` | `"set"` \| `"delete"` | No | defaults to `set`; `value` is ignored when `delete` |
+
+**Success response** 200: `{ "ok": true }` (synchronous ack; the actual state change flows back via the `control:state` frame)
+**Errors**: 400 (payload violates the contract, authoritative state unchanged), 404 (session not found)
+
+```bash
+curl -X POST http://localhost:3000/api/sessions/sess_abc/state \
+  -H "Content-Type: application/json" \
+  -d '{"key":"aigc.selectedModel","value":"gemini-3.1-flash-image"}'
+```
+
+> **Implementation reference**: `packages/server/src/http/routes/state-routes.ts:25`
+
+---
+
 ### POST /api/sessions/:id/fork — Fork a Session
 
 Forks from a specified history entry. **Request body** (`ForkRequestSchema`): `{ "entryId": "..." }`
@@ -490,7 +587,7 @@ Forks from a specified history entry. **Request body** (`ForkRequestSchema`): `{
 **Errors**: 404, 502 (upstream command failed)
 
 ```bash
-curl http://localhost:3010/api/sessions/sess_abc/stats
+curl http://localhost:3000/api/sessions/sess_abc/stats
 ```
 
 ---
@@ -531,7 +628,7 @@ Returns the list of history entries that can serve as fork starting points.
 
 ### GET /api/sessions/:id/completion — Trigger Completion
 
-The query endpoint of the trigger-completion framework (e.g. `@file:` to reference a file). Paired with `GET /api/sessions/:id/completion/triggers`, which returns the registered triggers. See [02 · Core Concepts](./02-core-concepts.md).
+The query endpoint of the trigger-completion framework (e.g. `@file:` to reference a file). Paired with `GET /api/sessions/:id/completion/triggers`, which returns the registered triggers. See [02 · Core Concepts](02-core-concepts.md).
 
 **Success response** 200: completion result JSON
 **Errors**: 404
@@ -540,7 +637,7 @@ The query endpoint of the trigger-completion framework (e.g. `@file:` to referen
 
 ### GET /api/sessions/:id/agent-routes — Agent-Declared Route Listing
 
-HTTP routes an agent declares in `AgentDefinition.routes` (for the declaration-side contract, see [08 · Custom Agent Development Guide](./08-agent-development.md)) are automatically mounted under the session namespace when the session is created. This endpoint returns the route listing declared by the session — a **pure-data projection** (`name` / `methods` / `description`); the handler functions live only in the agent subprocess and never cross the process boundary.
+The HTTP routes an agent declares in `AgentDefinition.routes` (for the declaration-side contract, see [08 · Custom Agent Development Guide](08-agent-development.md)) are automatically mounted under the session namespace when the session is created. This endpoint returns the route listing declared by that session — a **pure-data projection** (`name` / `methods` / `description`); the handler functions live only in the agent subprocess and never cross the process boundary.
 
 **Success response** 200 (an agent with no declarations returns an empty array — that's success, not an error):
 
@@ -560,7 +657,7 @@ HTTP routes an agent declares in `AgentDefinition.routes` (for the declaration-s
 **Errors**: 404 (session not found), 401/403 (rejected by the existing `:id` auth seam). When operationally disabled (`PI_WEB_AGENT_ROUTES_DISABLED=1`, see the env table below), the endpoint returns a generic 404 `NOT_FOUND` without revealing its existence.
 
 ```bash
-curl -s http://localhost:3010/api/sessions/sess_abc/agent-routes
+curl -s http://localhost:3000/api/sessions/sess_abc/agent-routes
 ```
 
 ---
@@ -580,36 +677,36 @@ Forwards one HTTP call into the session's agent subprocess, where the handler bo
 
 | Status | code | Trigger |
 |---|---|---|
-| 404 | `NOT_FOUND` | Operationally disabled via `PI_WEB_AGENT_ROUTES_DISABLED=1` (does not reveal endpoint existence) |
-| 404 | `SESSION_NOT_FOUND` | Session not found |
-| 401 / 403 | `UNAUTHORIZED` / `FORBIDDEN` | Rejected by the existing `:id` auth seam |
-| 404 | `ROUTE_NOT_FOUND` | Route name not declared by this session's agent definition |
-| 405 | `METHOD_NOT_ALLOWED` | Method not in the route's declared `methods` allowlist (defaults to `["GET"]`) |
+| 404 | `NOT_FOUND` | operationally disabled via `PI_WEB_AGENT_ROUTES_DISABLED=1` (does not reveal endpoint existence) |
+| 404 | `SESSION_NOT_FOUND` | session not found |
+| 401 / 403 | `UNAUTHORIZED` / `FORBIDDEN` | rejected by the existing `:id` auth seam |
+| 404 | `ROUTE_NOT_FOUND` | route name not declared by this session's agent definition |
+| 405 | `METHOD_NOT_ALLOWED` | method not in the route's declared `methods` allowlist (defaults to `["GET"]`) |
 | 413 | `PAYLOAD_TOO_LARGE` | POST body exceeds the limit (default 1 MiB; rejected early via the `Content-Length` header, with a fallback re-check against actual bytes after reading when the header is missing/untrusted) |
-| 400 | `INVALID_BODY` | Non-empty POST body is not valid JSON |
-| 502 | `ROUTE_HANDLER_ERROR` | Handler threw an error (the error message carries the handler-side message) |
-| 504 | `ROUTE_TIMEOUT` | Subprocess response timed out (default 20000 ms) |
-| 409 | `SESSION_STOPPED` | Session already stopped |
+| 400 | `INVALID_BODY` | non-empty POST body is not valid JSON |
+| 502 | `ROUTE_HANDLER_ERROR` | handler threw an error (the error message carries the handler-side message) |
+| 504 | `ROUTE_TIMEOUT` | subprocess response timed out (default 20000 ms) |
+| 409 | `SESSION_STOPPED` | session already stopped |
 
 **Environment variables**:
 
 | env | Default | Description |
 |---|---|---|
-| `PI_WEB_AGENT_ROUTES_DISABLED` | unset (feature enabled) | `=1` — server-authoritative kill switch; all agent-routes endpoints return a generic 404. Read per request |
-| `PI_WEB_AGENT_ROUTE_TIMEOUT_MS` | `20000` | Response timeout (ms) for forwarding into the subprocess; timeout → 504 |
+| `PI_WEB_AGENT_ROUTES_DISABLED` | unset (feature enabled) | `=1` — server-authoritative kill switch; all agent-routes endpoints return a generic 404; read per request |
+| `PI_WEB_AGENT_ROUTE_TIMEOUT_MS` | `20000` | response timeout (ms) for forwarding into the subprocess; timeout → 504 |
 | `PI_WEB_AGENT_ROUTE_BODY_LIMIT` | `1048576` (1 MiB) | POST request-body limit in bytes; exceeded → 413 |
 
 ```bash
 # Invoke (GET; query parameters are flattened to single values and passed to the handler)
-curl -s "http://localhost:3010/api/sessions/sess_abc/agent-routes/gallery-stats?verbose=1"
+curl -s "http://localhost:3000/api/sessions/sess_abc/agent-routes/gallery-stats?verbose=1"
 
 # Invoke (POST; the route must declare "POST" in its methods)
-curl -s -X POST http://localhost:3010/api/sessions/sess_abc/agent-routes/my-route \
+curl -s -X POST http://localhost:3000/api/sessions/sess_abc/agent-routes/my-route \
   -H "Content-Type: application/json" \
   -d '{"key": "value"}'
 ```
 
-> For a runnable demo, see `examples/aigc-canvas-agent` (the "Agent Routes demo (`gallery-stats`)" section of its README: a read-only stats route invoked directly with curl, returning structured JSON). For the declaration-side contract (name format, default methods, handler constraints, assembly-time validation), see [08 · Custom Agent Development Guide](./08-agent-development.md).
+> For a runnable demo, see `examples/aigc-canvas-agent` (the "Agent Routes demo (`gallery-stats`)" section of its README: a read-only stats route invoked directly with curl, returning structured JSON). For the declaration-side contract (name format, default methods, handler constraints, assembly-time validation), see [08 · Custom Agent Development Guide](08-agent-development.md).
 >
 > **Implementation reference**: `packages/server/src/http/routes/agent-route-routes.ts`
 
@@ -617,24 +714,24 @@ curl -s -X POST http://localhost:3010/api/sessions/sess_abc/agent-routes/my-rout
 
 ### DELETE /api/sessions/:id — Delete a Session
 
-Stops and removes the session. After the handler returns, the sessions catch-all route (`app/api/sessions/[[...path]]/route.ts:34`), when the response is `res.ok`, additionally clears the app-level `sessionId → source` mapping (best-effort, without rewriting the handler response; prevents unbounded growth of the mapping table).
+Stops and removes the session. After the handler returns, the **host layer** (the DELETE branch of `app.all` in `server/index.ts:80-88`), when the response is `res.ok`, additionally calls `forgetSessionSource(id)` to clear the app-level `sessionId → source` mapping (best-effort, without rewriting the handler response; prevents unbounded growth of the mapping table). Deletion of sub-resources (extra path segments) does not trigger it.
 
 **Success response** 200: `{ "ok": true }`
 **Errors**: 404
 
 ```bash
-curl -X DELETE http://localhost:3010/api/sessions/sess_abc
+curl -X DELETE http://localhost:3000/api/sessions/sess_abc
 ```
 
 ---
 
 ## Config API — `/api/config/**`
 
-Read/write interface for configuration domains. Supports three known domains—`auth`, `settings`, `sandbox`—and `models` is a special endpoint.
+Read/write interface for configuration domains. There are five known domains: `auth`, `settings`, `sandbox`, `logging`, `aigc` (`packages/server/src/config/config-routes.ts:30`); `models` is a special endpoint. For the schema-driven settings UI, see [13 · Config UI](13-config-ui.md).
 
 ### GET /api/config/:domain — Read Configuration
 
-**Path parameter**: `domain` = `auth` | `settings` | `sandbox`
+**Path parameter**: `domain` = `auth` | `settings` | `sandbox` | `logging` | `aigc`
 
 **Success response** 200:
 
@@ -691,11 +788,55 @@ When the `listModelOptions` seam is not configured, returns `{ "providers": [], 
 
 ---
 
+## Model Enumeration API — Tool-Side Model Enumeration
+
+Two **read-only** endpoints that feed the AIGC/vision tools' settings controls and the Canvas picker with model lists. They are independent of the text-conversation models (`/config/models` and `GET /sessions/:id/models`): image/vision models do not go through `models.json`/`ModelRegistry`, but through their own module-level route tables (see [11 · AIGC & Vision Tools](11-aigc-and-vision-tools.md)).
+
+### GET /api/aigc/models — List the AIGC Image-Model Catalog
+
+Used by the "model switches" custom widget on `/settings` for enumeration (that page has no session state, so it cannot get the `aigc.models` delivered at runtime by `aigcExtension`). The data source is the tool-kit main entry's pure `AIGC_MODEL_CATALOG` (zero pi SDK). The "disabled models" read/write goes through the standard config domain `/api/config/aigc` (persisted to `<agentDir>/aigc.json`), not here.
+
+**Success response** 200:
+
+```json
+{
+  "models": [
+    { "model": "gemini-3.1-flash-image", "label": "Gemini 3.1 Flash Image", "provider": "openrouter" }
+  ]
+}
+```
+
+> **Implementation reference**: `packages/server/src/aigc-settings/aigc-models-routes.ts:14`
+
+### GET /api/vision/models — List Available Vision Models
+
+Read-only, returns the list of models "with configured credentials and image-input support," for the vision-model picker in the Canvas prompt bar. `value` is `provider/modelId`, which can be **passed verbatim** into the `image_vision` tool's `model` parameter (note this format must not be mixed with the bare ids of image-generation models).
+
+**Success response** 200:
+
+```json
+{
+  "models": [
+    { "value": "anthropic/claude-opus-4-5", "label": "Claude Opus 4.5", "provider": "anthropic" }
+  ]
+}
+```
+
+**Degradation**: if fetching throws (e.g. `models.json` corrupt) → returns **200 + an empty list**, rather than leaking a 500 to the frontend; the frontend degrades to "pick the model from the tool's popover," and the readout feature still works.
+
+```bash
+curl http://localhost:3000/api/vision/models
+```
+
+> **Implementation reference**: `packages/server/src/vision-settings/vision-models-routes.ts:27`
+
+---
+
 ## Attachments API — `/api/attachments/**`
 
 ### POST /api/sessions/:id/attachments — Upload an Attachment
 
-> This endpoint is served by the **sessions** catch-all route (not the attachments route), reusing the Router's `:id` session gating (session not found → 404, unauthorized → 401/403).
+> This endpoint is registered in the **sessions** namespace (`POST /sessions/:id/attachments`, not the attachments route), reusing the Router's `:id` session gating (session not found → 404, unauthorized → 401/403).
 
 **Request**: `multipart/form-data`, file field name `file`
 
@@ -723,7 +864,7 @@ When the `listModelOptions` seam is not configured, returns `{ "providers": [], 
 **Errors**: 400 `NO_FILE` (no file part or empty file), 413 `PAYLOAD_TOO_LARGE` (exceeds size limit), 404 (session not found), 401/403 (auth seam rejected)
 
 ```bash
-curl -X POST http://localhost:3010/api/sessions/sess_abc/attachments \
+curl -X POST http://localhost:3000/api/sessions/sess_abc/attachments \
   -F "file=@/path/to/image.png"
 ```
 
@@ -751,59 +892,51 @@ Response headers: `Content-Type: <attachment mime>`, `Cache-Control: private, ma
 
 ---
 
-## Session Source API — `/api/session-source`
+## Session Source Mapping (sessionId → source)
 
-### POST /api/session-source — Record the Session Source Mapping
+The app-level `sessionId → agent source` mapping is used on a cold load (directly accessing `/session/:id`) to restore the `.pi/web` UI extension configuration; the read happens in `GET /api/bootstrap?sessionId=` (see `resolveResumeSource`).
 
-The client calls this after a session is created (upon receiving the `onSessionId` callback) to persist the `sessionId → agent source` mapping to the app layer. On a cold load (directly accessing `/session/:id`), the `.pi/web` UI extension configuration is restored from it.
-
-**Request body**:
-
-```json
-{ "id": "sess_abc123", "source": "/path/to/agent" }
-```
-
-**Success response** 204: no content (best-effort; a failure to write the mapping does not affect the session itself, and 204 is still returned)
-
-**Errors**: 400 (request body is not JSON, or `id`/`source` is not a string)
-
-> Note: this route is a standalone Next.js handler (it does not go through `createPiWebHandler`), and its 400 response is plain text (e.g. `"id and source must be strings"`)—it does **not** use the uniform `{ error, protocolVersion }` JSON error structure.
-
-**Implementation reference**: `app/api/session-source/route.ts:14`
+> **Note**: the standalone `POST /api/session-source` endpoint of the Next.js era was removed along with `app/` — **no** such route is registered on `main` (`recordSessionSource` exists only in tests). The current recovery path reads that mapping first and falls back to the persisted session metadata (`resume-meta`), so a new session can be recovered by id even without an explicit POST. Cleanup is done incidentally by `DELETE /api/sessions/:id` (`forgetSessionSource`, see above).
+>
+> **Implementation reference**: `lib/app/session-source-map.ts`, `server/bootstrap.ts:46`
 
 ---
 
 ## createPiWebHandler — Framework-Agnostic Integration
 
-A framework-agnostic factory that returns a standard Web Fetch handler `(Request) => Promise<Response>`, mountable on any compatible framework.
+A framework-agnostic factory that returns a standard Web Fetch handler `(Request) => Promise<Response>`, mountable on any framework compatible with Web Fetch. The host on `main` mounts it with Hono (see `server/index.ts`):
 
 ```typescript
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
 import {
   createPiWebHandler,
   createConfigRoutes,
   createAttachmentRoutes,
 } from "@blksails/pi-web-server";
 
-// Next.js Route Handler
 const handler = createPiWebHandler({
   manager,          // SessionManager (from session-engine)
   store,            // SessionStore
   authResolver,     // optional, allows through by default
   authorizeSession, // optional, allows through by default
-  routes: [         // optional, inject external routes (e.g. config-routes)
+  routes: [         // optional, inject external routes (config / attachment / vision-models …)
     ...createConfigRoutes({ listModelOptions }),
     ...createAttachmentRoutes(attachmentStore),
   ],
   sse: {
     heartbeatMs: 15_000,  // heartbeat interval (milliseconds)
-    basePath: "/api",     // optional route prefix
+    basePath: "/api",     // route prefix (aligned with the browser side's /api/**)
   },
 });
 
-export const GET = handler;
-export const POST = handler;
-export const DELETE = handler;
+const app = new Hono();
+// c.req.raw is a standard Request; the Response returned by the handler (including an SSE ReadableStream body) is passed through verbatim.
+app.all("/api/*", (c) => handler(c.req.raw));
+serve({ fetch: app.fetch, port: Number(process.env.PORT ?? 3000) });
 ```
+
+> The production host also registers the webext resources and the `/api/bootstrap` endpoint **before** `app.all('/api/*')` (see [Architecture Overview](#architecture-overview)), and cleans up the source mapping after a successful DELETE. The above is the minimal runnable skeleton.
 
 **Notes on the injection seams**:
 
@@ -836,15 +969,21 @@ Incremental content frame; the payload lives in the `chunk` field, and `chunk.ty
 
 ### kind: control
 
-Control frame; the payload lives in the `payload` field and is discriminated by `payload.control` (see `transport/sse-frame.ts:17`):
+Control frame; the payload lives in the `payload` field and is discriminated by `payload.control`. `ControlPayloadSchema` is a **nine-way discriminated union** (`packages/protocol/src/transport/sse-frame.ts:21-54`):
 
 | payload.control | Description | Actually sent? |
 |---|---|---|
-| `extension-ui` | extension UI request (needs `POST /ui-response` to reply) | Yes |
-| `queue` | queue status (`steering` / `followUp` arrays) | schema-defined |
-| `stats` | usage statistics | **never sent** (usage goes through REST, see above) |
 | `error` | error / session end (`message` + optional `code`) | Yes |
 | `ui-rpc` | Tier3 UI↔agent RPC downstream response (paired by `correlationId`) | Yes |
+| `session-status` | session-readiness handshake state (`SessionLifecycleState`: initializing/ready/error/ended), **sticky**, replayed on subscribe | Yes |
+| `session-state` | authoritative session snapshot (six fields: lifecycle/busy/turn/stats/model/title), **sticky** | Yes (when snapshot authority is enabled) |
+| `state` | state-injection bridge: authoritative KV change agent→UI downstream mirror (`key`/`value`/`rev`/`deleted`), **sticky** per key | Yes |
+| `logs` | structured logs batch-pushed to the frontend panel (`entries`) | Yes |
+| `queue` | queue status (`steering` / `followUp` arrays), **sticky** | Sent in message-queue scenarios |
+| `extension-ui` | extension UI request (needs `POST /ui-response` to reply) | Sent in extension scenarios |
+| `stats` | usage statistics | **never sent** (usage goes through REST or `session-state.snapshot.stats`) |
+
+> When writing an SSE control parser (frontend/integrator), you must cover the discriminants above (an unknown `control` can fall through to a default branch and be safely ignored, staying backward compatible). For `session-status` (readiness handshake) see `packages/protocol/src/transport/session-status.ts`; for `session-state` (authoritative snapshot) see `session-state.ts`; for `state` (state bridge) see `packages/protocol/src/web-ext/state.ts:15`.
 
 JSON structure of each frame:
 
@@ -865,58 +1004,54 @@ The following steps demonstrate the complete flow from creating a session to rec
 1. **Create a session**:
 
    ```bash
-   SESSION=$(curl -s -X POST http://localhost:3010/api/sessions \
+   SESSION=$(curl -s -X POST http://localhost:3000/api/sessions \
      -H "Content-Type: application/json" \
      -d '{"source": "/path/to/.pi"}' | jq -r .sessionId)
    echo "Session: $SESSION"
    ```
 
-2. **Record the source mapping** (optional, for cold-load recovery):
+2. **Subscribe to the SSE stream** (run in the background; **must precede** the next step's `POST /messages`, or the turn's reply frames are lost because there is no buffering — see the "Race-condition note" under `/stream`):
 
    ```bash
-   curl -X POST http://localhost:3010/api/session-source \
-     -H "Content-Type: application/json" \
-     -d "{\"id\": \"$SESSION\", \"source\": \"/path/to/.pi\"}"
-   ```
-
-3. **Subscribe to the SSE stream** (run in the background):
-
-   ```bash
-   curl -N "http://localhost:3010/api/sessions/$SESSION/stream" &
+   curl -N "http://localhost:3000/api/sessions/$SESSION/stream" &
    STREAM_PID=$!
    ```
 
-4. **Send a message**:
+3. **Send a message**:
 
    ```bash
-   curl -X POST "http://localhost:3010/api/sessions/$SESSION/messages" \
+   curl -X POST "http://localhost:3000/api/sessions/$SESSION/messages" \
      -H "Content-Type: application/json" \
      -d '{"message": "Hello, agent! What can you do?"}'
    ```
 
-5. **Query usage** (after inference finishes):
+4. **Query usage** (after inference finishes):
 
    ```bash
-   curl "http://localhost:3010/api/sessions/$SESSION/stats"
+   curl "http://localhost:3000/api/sessions/$SESSION/stats"
    ```
 
-6. **Delete the session**:
+5. **Delete the session** (incidentally cleaning up the `sessionId → source` mapping):
 
    ```bash
    kill $STREAM_PID
-   curl -X DELETE "http://localhost:3010/api/sessions/$SESSION"
+   curl -X DELETE "http://localhost:3000/api/sessions/$SESSION"
    ```
 
-> Common remedies when it doesn't work: the connection is closed immediately and you receive one `payload.control = "error"` frame → usually the source path does not exist or the agent failed to start; `/messages` returns 409 → the session has stopped and must be recreated; the SSE stream emits no frames at all → confirm that `runtime = "nodejs"` is in effect (Edge/Serverless is not supported). See more in [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md).
+> Common remedies when it doesn't work: the connection is closed immediately and you receive one `payload.control = "error"` frame → usually the source path does not exist or the agent failed to start; `/messages` returns 409 → the session has stopped and must be recreated; the SSE stream emits no frames at all → usually the stream connected later than `POST /messages` (see the "Race-condition note"), or the host was deployed to Edge/stateless Serverless (which does not support resident subprocesses + long-lived SSE connections). See more in [23 · Troubleshooting FAQ](23-troubleshooting-faq.md).
 
 ---
 
 ## Next Steps / Related
 
-- [02 · Core Concepts](./02-core-concepts.md) — session lifecycle and the SSE dual-connection model
-- [03 · Architecture](./03-architecture.md) — where `createPiWebHandler` sits in the system
-- [06 · Configuration](./06-configuration.md) — environment variables such as `PI_WEB_HIDE_PROVIDERS`, `PI_WEB_ATTACHMENT_SECRET`
-- [09 · Attachment System](./09-attachment-system.md) — the full mechanism of attachment storage, signed URLs, and the tool-bridge
-- [18 · CLI](./18-cli.md) — usage of bin/pi-web.mjs for standalone deployment
-- [21 · Logging](./21-logging.md) — server-side logging and SSE-frame observability
-- [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md) — common errors such as session startup failures, no SSE frames, 409/426
+- [02 · Core Concepts](02-core-concepts.md) — session lifecycle and the SSE dual-connection model
+- [03 · Architecture](03-architecture.md) — where the Hono host and `createPiWebHandler` sit in the system
+- [04 · Surface Authoritative Surface Stack](04-surface-stack.md) — the author side of the state-injection bridge (`getSessionState`) and the `control:state` frame context
+- [06 · Configuration](06-configuration.md) — environment variables such as `PI_WEB_HIDE_PROVIDERS`, `PI_WEB_ATTACHMENT_SECRET`, and the `NEXT_PUBLIC_*` gates
+- [09 · Attachment System](09-attachment-system.md) — the full mechanism of attachment storage, signed URLs, and the tool-bridge
+- [11 · AIGC & Vision Tools](11-aigc-and-vision-tools.md) — the tool semantics of `GET /aigc/models` and `GET /vision/models`
+- [14 · Sessions List](14-sessions-list.md) — `GET /sessions` pagination/gating and the `/bootstrap` runtime features
+- [18 · CLI](18-cli.md) — usage of bin/pi-web.mjs for standalone deployment
+- [19 · Deployment & Operations](19-deployment.md) — the esbuild single-file `dist/server.mjs` artifact and production CSP
+- [21 · Logging](21-logging.md) — server-side logging and SSE `control:logs` frame observability
+- [23 · Troubleshooting FAQ](23-troubleshooting-faq.md) — common errors such as session startup failures, no SSE frames, 409/426

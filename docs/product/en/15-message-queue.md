@@ -1,4 +1,4 @@
-# 22 · Message Queue
+# 15 · Message Queue
 
 A pi coding agent is "busy" while it processes a turn. During that time, if the user wants to keep steering the task, there is no need to wait — subsequent messages can be **queued**: a `steering` (interjection) message is delivered in the gaps between the current assistant turn's tool calls, while a `follow-up` message is delivered after the agent has finished all of its work. The user can also **retrieve** not-yet-delivered queued messages back into the editor to keep editing them or to withdraw them.
 
@@ -78,13 +78,17 @@ The frontend control-store (`packages/react/src/sse/control-store.ts`) writes `{
 
 `StickyFrameRegistry` (`packages/server/src/session/sticky-registry.ts`) only carries **last-value** semantics (multiple writes to the same key keep only the latest); the ring-buffer history semantics of `logs` are not merged into this table.
 
+**Sticky frames are per-session**: each `PiSession` holds its own `StickyFrameRegistry` (`packages/server/src/session/pi-session.ts:188`), and the `"queue"` key is only valid within that session. When the frontend switches to another session from the [sessions list](./14-sessions-list.md), the SSE subscription points at the new session's stream, and what gets replayed is the **new session's** `control:queue` (usually empty); the old session's queue snapshot never bleeds into the current panel — the queue view is naturally isolated across session switches.
+
 ---
 
 ## 4. The clearQueue Round-Trip (Retrieval)
 
 ### 4.1 Why It Goes Through a state-bridge-Style Custom Frame Rather Than pi RPC
 
-pi's `AgentSession.clearQueue()` is **not in pi's RPC command set**. To keep pi upstream zero-change, `clearQueue` reuses the state-injection-bridge seam — "a second stdin reader + a custom stdout line" — closing the loop inside pi-web. This is a **request / response** channel (with a correlating `id`), not the one-way downlink of the state bridge.
+pi's `AgentSession.clearQueue()` is **not in pi's RPC command set**. To keep pi upstream zero-change, `clearQueue` reuses the **state-injection-bridge** seam — "a second stdin reader + a custom stdout line" — closing the loop inside pi-web. This is a **request / response** channel (with a correlating `id`), not the one-way downlink of the state bridge.
+
+> The state-injection-bridge is a bidirectional seam pi-web builds itself at the pi subprocess boundary (a self-built shared KV inside the subprocess, plus three edges: the downlink mirror frame, the write-back endpoint, and the internal custom line). Its concept and author-facing usage are covered in [04 Surface Authoritative Stack](./04-surface-stack.md); `clearQueue` is one application of its "request / response" variant, and understanding the bridge's seam model helps in reading this section.
 
 The contract is defined in `packages/protocol/src/web-ext/queue-line.ts`, with two internal lines:
 
@@ -117,7 +121,7 @@ Key implementation points:
 - **The result line must be written directly to fd1** (`fs.writeSync(1, …)`). See `packages/server/src/runner/clear-queue-wiring.ts`: pi's `runRpcMode` will `takeOverStdout()` and redirect `process.stdout.write` to stderr; RPC frames are written out via the raw fd1, and the server reads that same subprocess fd1, so this bridge must also write directly to fd1 and cannot use `process.stdout.write`.
 - **Assemble before `runRpcMode(runtime)`** (`packages/server/src/runner/runner.ts`), and hook into the `cleanup()` of SIGTERM/SIGINT/beforeExit.
 - **`runtime.session` is evaluated at call time**, to cover the case where an in-process `new_session` / `switchSession` / `fork` swaps the session.
-- **The correlating id is isolated** from `PiRpcProcess`'s RPC pending map (a separate `pendingClearQueue`). pi's own stdin reader will also see the `piweb_clear_queue` request line and reply with a harmless `Unknown command` (the id does not match the server-side RPC pending → discarded), which does not affect this path.
+- **The correlating id is isolated** in `PiRpcProcess`'s RPC pending map (a separate `pendingClearQueue`). pi's own stdin reader will also see the `piweb_clear_queue` request line and reply with a harmless `Unknown command` (the id does not match the server-side RPC pending → discarded), which does not affect this path.
 - **A synchronous HTTP response body** returns the cleared text (not an SSE idle control stream), avoiding a repeat of the prompt-stream conflict, aligned with the unified-command-result-layer decision.
 - **Timeout fallback**: `CLEAR_QUEUE_TIMEOUT_MS = 5000` (5s); if the subprocess does not write back, it rejects; a late result line is safely discarded because the pending was already deleted (`handleRawLine` ignores an unknown id outright, placed before the active gate). On session teardown, all in-flight requests are immediately rejected.
 - **Graceful degradation**: if `wireClearQueueBridge` fails to assemble → it logs to stderr, degrades the capability, and **does not throw** (the session still starts); when `runtime.session.clearQueue()` throws, it returns an **empty result line** (without swallowing the queue semantics; the UI-side editor is unchanged and the panel is preserved).
@@ -126,12 +130,53 @@ Key implementation points:
 
 | Scenario | Status code |
 |---|---|
-| No session | 404 |
-| Session already stopped | 409 |
-| Bridge timeout (subprocess did not write back) | 504 |
+| No session | 404 (`SessionNotFoundError`) |
+| Session already stopped | 409 (`SessionStoppedError`) |
+| Bridge timeout (subprocess did not write back) | 500 |
 | General failure | 500 |
 
-Normalized via the existing `mapEngineError`. The frontend always does "prompt + do not modify the editor's existing content".
+Normalized via the existing `mapEngineError` (`packages/server/src/http/error-map.ts`). Note: `PiSession.clearQueue`'s timeout rejects with a plain `Error("clear_queue timed out")`, which falls into `mapEngineError`'s **unknown branch and maps to 500** — unlike agent-declared-routes, which goes through a dedicated `AgentRouteTimeoutError` → 504, the retrieval bridge currently has **no** separate 504 mapping. For any error code the frontend uniformly does "prompt + do not modify the editor's existing content".
+
+### 4.4 Manually Verifying the Retrieval Endpoint (curl)
+
+The retrieval endpoint is a standard POST and can be hit directly, decoupled from the frontend. In dev the API server sits at `127.0.0.1:3000`, and the `/api/*` prefix is served by the Hono host (`app.all('/api/*')` in `server/index.ts`). Steps:
+
+1. Start a session with an observable subprocess (an offline stub is enough and consumes no real model quota):
+
+   ```bash
+   PI_WEB_STUB_AGENT=1 pnpm dev
+   # dev-all: Vite frontend at http://localhost:5173 (/api proxied to 3000)
+   ```
+
+2. Open `http://localhost:5173` in a browser, create a new session and grab the `sessionId` (visible in the URL or in the response body of `POST /api/sessions` under DevTools Network). While the agent is busy, press Enter / Alt+Enter to queue a few interject / follow-up messages, and confirm the panel's `data-pi-queue-count` is non-zero.
+
+3. Hit the retrieval endpoint directly (empty request body) to pull all currently queued text back at once:
+
+   ```bash
+   curl -s -X POST \
+     http://localhost:3000/api/sessions/<sessionId>/clear_queue \
+     -H 'content-type: application/json' -d '{}'
+   ```
+
+   **Expected result**: HTTP 200, with a `ClearQueueResponse` body — the two groups of cleared text (order is always steering first, then followUp):
+
+   ```json
+   { "steering": ["run unit tests first", "check lint while at it"], "followUp": ["write a summary at the end"] }
+   ```
+
+   At the same time the agent queue is cleared, a fresh `control:queue` (empty snapshot) is sent downstream, the frontend panel hides, and `data-pi-queue-count` resets to zero.
+
+> In e2e the equivalent assertion reads the DOM markers: after queuing, assert `[data-pi-queue-count]` text > 0; after triggering retrieval, assert it resets to zero and the `[data-pi-queue]` panel is `toBeHidden`. See the marker list in §5.1.
+
+### 4.5 Idempotent Semantics of Concurrent Retrieval (Multi-Tab / Multi-Subscriber)
+
+A single session may have multiple frontend subscribers (multiple tabs, multiple devices). If two subscribers trigger retrieval almost simultaneously, the same batch of text is not retrieved twice:
+
+- Each `clearQueue` generates an **isolated correlating `id`** registered into `pendingClearQueue` (`packages/server/src/session/pi-session.ts:931-948`), each pairing with its own result line independently, with no crossed ids.
+- On receiving the request line, the runtime bridge calls `clearQueue()` on the **currently bound session** (`packages/server/src/runner/clear-queue-wiring.ts:96`); that call returns the queue contents **at that moment** and atomically clears them. **The first to arrive retrieves all the text, the later one gets empty arrays** (`{ steering: [], followUp: [] }`) — there is no way for two editors to be backfilled with the same block of text.
+- After retrieval the empty `control:queue` the agent emits is a sticky last-value, so all subscribers converge to the same "queue is now empty" view.
+
+Retrieval is therefore **naturally idempotent**: repeatedly hitting `/clear_queue` returns content only the first time and empty thereafter — safe to retry.
 
 ---
 
@@ -187,7 +232,7 @@ The underlying queuing policy (`steeringMode` / `followUpMode`) is decided by th
 
 - **Busy-time submission does nothing / reports "streaming missing streamingBehavior"**: confirm the frontend has wired this feature (busy-time should go through `steer` / `followUp` rather than a bare prompt). If dev was started before this feature was merged, the handler singleton may be the old logic — restart dev.
 - **After reconnect the queue panel disappears and retrieval is unavailable**: check whether `control:queue` is registered as a sticky frame (`sticky.set("queue", …)` in `pi-session.ts`). If after a busy-time reconnect `busy` is replayed as true but `queue` is empty, the sticky registration is missing.
-- **The retrieval request returns 504**: `wireClearQueueBridge` was not assembled or the subprocess did not write back the result line. Confirm the bridge is assembled before `runRpcMode`; the bridge does not take effect in non-custom runner mode (such as a `pi --mode rpc` fallback) — the current bootstrap path is custom runner only, and if a fallback is introduced the retrieval entry needs a gated degradation.
+- **The retrieval request returns 500 (bridge timeout)**: `wireClearQueueBridge` was not assembled or the subprocess did not write back the result line; `clearQueue` rejects after 5s and is mapped to 500 by `mapEngineError` (the retrieval bridge has no dedicated 504 mapping — see §4.3). Confirm the bridge is assembled before `runRpcMode`; the bridge does not take effect in non-custom runner mode (such as a `pi --mode rpc` fallback) — the current bootstrap path is custom runner only, and if a fallback is introduced the retrieval entry needs a gated degradation.
 - **Retrieved text is not backfilled / is garbled**: the result line must be validated by `ClearQueueResultLineSchema`; the order is always steering first then followUp. If the result line was written to stderr instead of fd1, it means `process.stdout.write` was mistakenly used (hijacked by `takeOverStdout`) — it must be `fs.writeSync(1, …)`.
 - **Busy-time attachment queuing is blocked**: this is **expected behavior** (`chat.queue.attachmentUnsupported`) — the `steer`/`follow_up` endpoints do not accept `att_…` referenced attachments; send them while the session is idle.
 - **A stub cannot exercise the bridge behavior**: the direct write to fd1 of the custom stdout line can only be caught by a **real subprocess integration test**; a stub cannot catch it (the same known pitfall as the state bridge).
@@ -198,5 +243,6 @@ The underlying queuing policy (`steeringMode` / `followUpMode`) is decided by th
 
 - The `/steer` `/follow_up` `/clear_queue` endpoints and SSE frames → [24 HTTP/SSE API Reference](./24-http-api-reference.md)
 - The session-readiness handshake and busy authoritative snapshot → [02 Core Concepts](./02-core-concepts.md)
-- state-injection-bridge (the same-origin paradigm of the custom-frame seam) → [12 Web UI Extension](./12-web-ui-extension.md)
+- Queuing / retrieval happen within a session, and the queue snapshot is isolated across session switches → [14 Sessions List](./14-sessions-list.md)
+- state-injection-bridge (the same-origin paradigm of the custom-frame seam), concept and author-facing usage → [04 Surface Authoritative Stack](./04-surface-stack.md)
 - The responsibilities of the layered `@blksails/*` packages → [05 Packages](./05-packages.md)

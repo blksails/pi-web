@@ -1,6 +1,6 @@
-# 08 · Attachment System
+# 09 · Attachment System
 
-The attachment system gives pi-web end-to-end file management from upload-to-persistence to tool consumption. Built on the core principle of "reference, not base64", it is implemented across four layers (L0–L3) to deliver a pluggable, enumeration-resistant, cross-process-consistent attachment store and delivery pipeline.
+The attachment system gives pi-web end-to-end file management, from upload-to-persistence all the way to tool consumption. Built on the core principle of "reference, not base64", it is implemented across four layers (L0–L3) to deliver a pluggable, enumeration-resistant, cross-process-consistent attachment store and delivery pipeline.
 
 ---
 
@@ -8,7 +8,7 @@ The attachment system gives pi-web end-to-end file management from upload-to-per
 
 | Invariant | Meaning |
 |--------|------|
-| **Single identity** | The `att_<nanoid>` public id is unique and can only be minted by `AttachmentStore.put()` on the server; the frontend cannot fabricate a legitimate id |
+| **Single identity** | The `att_<base64url>` public id is unique (encoded from `node:crypto` `randomBytes(16)`, no third-party dependency) and can only be minted by `AttachmentStore.put()` on the server; the frontend cannot fabricate a legitimate id |
 | **Persist before reference** | Upload-to-persistence must complete before a message references an attachment; history/context only store `att_<id>` references |
 | **base64 materialized only at named exits** | Only two exits can produce base64: vision fed to the LLM (`toImageContents()`, kept as-is) and `afterToolCall` marking "needs re-inspection"; all other paths carry references only |
 
@@ -27,7 +27,7 @@ L2  resolve projection — AttachmentHandle (attachment-handle.ts)
      ├─ bytes()  stream()  localPath()  url() (no base64 form)
      └─ child-process store factory createChildAttachmentStore (child-store.ts)
 
-L1  descriptor and public id — att_<nanoid>
+L1  descriptor and public id — att_<base64url>
      ├─ AttachmentStore facade (put/head/getReadStream/presignUrl/localPath/listBySession)
      └─ AttachmentRegistry (<id>.att.json persistence)
 
@@ -268,7 +268,7 @@ export function createMyImageTool(ctx: AttachmentToolContext) {
    PI_WEB_DEFAULT_SOURCE=./examples/attachment-tool-agent pnpm dev
    ```
    (You may also skip `PI_WEB_DEFAULT_SOURCE` and, after startup, fill in `./examples/attachment-tool-agent` directly in the home-page agent source picker, matching `e2e/browser/attachment-tool-bridge.e2e.ts:44`.)
-2. Open http://localhost:3000, upload an image (`image/*` only) in the chat box, and wait for the status to turn `ready`.
+2. `pnpm dev` is `scripts/dev-all.mjs`, which concurrently brings up the API (3000) and the Vite dev server (5173). Open **http://localhost:5173** in the browser (`/api` requests are proxied by Vite to 3000), upload an image (`image/*` only) in the chat box, and wait for the status to turn `ready`.
 3. Send a message asking to edit that image; the model calls the `edit_image` tool based on the injected `[attachment id=… ]` marker.
 4. Expected result: the tool loops back an `att_out` output, a new `displayUrl` appears in the message, and it remains visible in history after refresh.
 5. If the tool reports "Attachment capability unavailable" → the subprocess env is missing `PI_WEB_ATTACHMENT_DIR` (`ctx.available === false`); if the output image gets 401 → the main/child `PI_WEB_ATTACHMENT_SECRET` do not match. See [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md).
@@ -322,11 +322,20 @@ GET /sessions/:id/completion?trigger=@&q=<query>  → { items, groups }
 2. **candidate and token**: selecting a candidate inserts the token `@attachment:<id>` (produced by `serializeToken({ trigger: "@", kind: "attachment", id })`). It shares the `@` trigger with `@file:<rel>` — in the same popover, file and attachment candidates are grouped side by side by `kind`.
 3. **resolve (at submit time)**: on send, `POST /sessions/:id/messages` first resolves tokens via `resolveCompletions` (`packages/server/src/http/routes/command-routes.ts:104`). The attachment provider's `resolve` reuses `buildAttachmentRefs([att])` — only when `head(id)` hits **and** `att.sessionId === ctx.sessionId` — to produce the canonical reference marker `[attachment id=… type=… name=…]` **identical** to the upload-injection/base64-stripping path; otherwise it returns `null` and the framework keeps the original token — preventing both cross-session references and enumerating others' attachments via completion.
 
-### 9.5 Integration with the Attachment System
+### 9.5 Preview chips for referenced attachments (PiMentionPreviews)
+
+After selecting an `@` attachment candidate, the input box retains only a bare token `@attachment:<id>` — the user cannot tell which image was actually referenced. `PiMentionPreviews` (`packages/ui/src/completion/pi-mention-previews.tsx:54`) supplies this piece of visual feedback: it scans the `@attachment:<id>` tokens in the current input value (`scanAttachmentMentions`, same file `:35`, deduped and order-preserving) and renders one chip per token — thumbnail + attachment name + remove button. This is the only visual receipt the user gets in the "`@`-mention attachment" loop.
+
+- **Preview data is captured at selection time**: the assembly layer captures the candidate's `{ label, previewUrl }` in the completion popover's `onAccept` callback and stores it as `id → MentionPreview` in state (`packages/ui/src/chat/pi-chat.tsx:522-532`), then passes it into the component via the `previews` prop (`pi-chat.tsx:1378`). The candidate's `previewUrl` is produced by `GET /completion`, shaped like a root-relative `/attachments/:id/raw?exp=…&sig=…`; the client-side `getCompletion` prefixes it with `baseUrl` to make it a reachable URL (`packages/react/src/client/pi-client.ts:328-338`), same origin as the delivery read path in §4.2 and likewise guarded by the HMAC signature.
+- **Degradation without a preview**: a token typed manually or surviving a refresh was never selected through completion, so its id is not found in `previews`, and it degrades to a no-image chip showing only the "name / id" (`pi-mention-previews.tsx:71,78`), still marking which attachment is referenced.
+- **Removal**: clicking the `×` on a chip triggers `onRemove(id)`, and the assembly layer uses `removeAttachmentMention(value, id)` (same file `:49`) to delete the corresponding token from the input value (along with one adjacent trailing whitespace).
+- **Display-only, no protocol change**: the component issues no requests and materializes no base64 (the three invariants hold as-is); it tags the DOM with `data-pi-mention-previews` (container) and `data-pi-mention-preview=<id>` (per chip) for e2e location.
+
+### 9.6 Integration with the Attachment System
 
 The `resolve` exit deliberately reuses §6's `buildAttachmentRefs()`: whether an attachment is introduced via "persist before reference" (the `injectAttachmentRefs` of §6.2 step 2) or via `@` completion, the text marker injected into the user message is **uniform** in shape, and the downstream `beforeToolCall` ownership check, the `ctx.resolve` handle retrieval inside the tool's `execute`, and the cross-turn loopback (§6.2 step 8) all reuse the same chain, with no separate branch needed for completion. Completion merely opens one more **user-side reference entry** for the attachment system; it introduces no new materialization and no new id source — the three invariants (§1) hold unchanged.
 
-### 9.6 Practical Reference
+### 9.7 Practical Reference
 
 For the end-to-end runnable form see `examples/attachment-tool-agent`: after uploading and persisting an image, type `@` in the input box to select the just-uploaded attachment from the popover, selecting it inserts `@attachment:<id>`, and on send it is resolved into a canonical reference marker handed to the `edit_image` tool for consumption (same agent source as §8 "Running This Example", with browser e2e covering the full chain). For the contract and endpoint behavior of the completion framework itself, see also the explanation of the trigger completion framework extension points in [10 · Extensions and Skills](./10-extensions-and-skills.md).
 

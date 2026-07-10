@@ -1,110 +1,199 @@
-# 18 · Troubleshooting / FAQ
+# 23 · Troubleshooting / FAQ
 
-This chapter collects the known high-frequency issues encountered during pi-web development and operations. Each entry is laid out in a three-part form: "Symptom → Cause → Remedy". When you need a quick answer, jump straight to the [6. Diagnostic Quick Reference](#6-diagnostic-quick-reference) at the end and locate the issue by keyword.
+This chapter collects the known high-frequency issues encountered during pi-web development, builds, distribution, and operations, each laid out in a three-part "Symptom → Cause → Remedy" form. When you need a quick answer, jump straight to the [8. Diagnostic Quick Reference](#8-diagnostic-quick-reference) at the end and locate the issue by keyword.
+
+> Architecture premise: the frontend is a **Vite-driven SPA** (root `index.html` static entry + `src/main.tsx`, output `dist/client`), the server host is **Hono** (`server/index.ts` with a single `app.all('/api/*')` forwarding to the `createPiWebHandler` singleton), and the server is **bundled by esbuild into a single file** `dist/server.mjs`. Next.js has been deleted from the codebase — if you see `next dev` / `next build` / `.next` / `NEXT_DIST_DIR` / webpack 500 in other documents, those are historical residue; this chapter gives the real failure model for the current architecture.
 
 ---
 
 ## 1. Dev Server Issues
 
-### 1.1 Webpack 500 on the page after running `pnpm build` while dev is running
+### 1.1 After `pnpm dev`, opening 3000 in the browser shows a bare API / no chat UI
 
-**Symptom**: `pnpm dev` is running, you open another terminal and run `pnpm build`, and afterward the browser refresh shows a webpack module-resolution 500 error, or the page goes completely blank.
+**Symptom**: You run `pnpm dev`, open `http://localhost:3000` out of habit, and see JSON or a 404 instead of the chat interface.
 
-**Cause**: `pnpm build` (i.e. `next build`) writes to `.next/` by default, sharing the same output directory as `pnpm dev`. The build process overwrites chunks that the dev server has already memory-mapped, scrambling file handles.
+**Cause**: `pnpm dev` = `node scripts/dev-all.mjs` (`package.json:17`), which **spawns two processes concurrently**: the Hono API server listening on `:3000`, and the Vite dev server listening on `:5173` (`scripts/dev-all.mjs:2`). During development the SPA frontend is served by **Vite (5173)**; `3000` is merely the proxied API host and does not emit HTML itself.
 
 **Remedy**:
-1. Never run `pnpm build` without an isolated directory while `pnpm dev` is running.
-2. Both the CLI build and the e2e build use `NEXT_DIST_DIR` for isolation:
+1. During development, **open `http://localhost:5173`** in the browser. Vite reverse-proxies `/api` requests to `127.0.0.1:3000` (`vite.config.ts:76-78`), so frontend and backend cooperate under the same origin.
+2. Ports are overridable: `PI_WEB_DEV_CLIENT_PORT` (frontend, default 5173) and `PI_WEB_DEV_API_PORT` (API, default 3000), see `vite.config.ts:73,78`.
+3. To run only one side: `pnpm dev:client` (Vite only) or `pnpm dev:server` (API only).
+4. Offline smoke tests work the same way — still open 5173 in the browser:
    ```bash
-   # CLI standalone artifact
-   NEXT_DIST_DIR=.next-cli next build
-
-   # e2e isolated build (does not affect dev)
-   PI_WEB_STUB_AGENT=1 NEXT_DIST_DIR=.next-e2e pnpm build
-   PI_WEB_STUB_AGENT=1 NEXT_DIST_DIR=.next-e2e next start -p 3100
-   ```
-3. If `.next/` is already polluted, stop dev, delete `.next/`, then re-run `pnpm dev`:
-   ```bash
-   rm -rf .next && pnpm dev
+   PI_WEB_STUB_AGENT=1 pnpm dev   # stub agent, no real model needed
+   # open http://localhost:5173
    ```
 
-Related config: `next.config.ts:55` (`distDir: process.env.NEXT_DIST_DIR ?? ".next"`)
+> Production mode has no such split: `node dist/server.mjs` is a single process, and Hono serves the frontend static assets and `/api` on the same port.
 
 ---
 
-### 1.2 Injected routes or config-domain changes don't take effect
+### 1.2 Changing an injected route or config domain has no effect after hot reload
 
-**Symptom**: You modified a route file under `app/api/` or config-domain-related code, Next.js hot reload triggers on save, but the new route is still unavailable (404 or unchanged behavior).
+**Symptom**: You modified an injected route wired up in `lib/app/pi-handler.ts`, or some config-domain-related code, and after saving the process reports no error but the new behavior does not appear (404 or unchanged behavior).
 
-**Cause**: The `createPiWebHandler` instance in `lib/app/pi-handler.ts` is **pinned to `globalThis` after the first call** (`lib/app/pi-handler.ts:342`). In `dev` mode, hot reload only replaces the module and does not reset `globalThis`, so the old handler instance keeps serving requests.
+**Cause**: The `createPiWebHandler` instance is **pinned to `globalThis` after its first assembly** (`lib/app/pi-handler.ts:232`, `GLOBAL_KEY = Symbol.for("pi-web.app.handler")`, read/write at `:540-543`). Within the API server process the singleton is constructed only once; changing a module does not rebuild it.
 
 **Remedy**:
-1. Manually restart the dev server (`Ctrl-C` → `pnpm dev`).
-2. It listens on `:3000` by default (the review checklist notes that some machines conventionally use `:3010`; rely on the port actually printed by `pnpm dev`).
-3. After restarting, if your change involves session state, prefer creating a new session for testing rather than reusing an old session URL.
+1. Manually restart the API process: `Ctrl-C` to end `pnpm dev`, then `pnpm dev` again (dev-all tears down and re-spawns both processes together).
+2. To restart the backend only, re-run `pnpm dev:server` on its own; the Vite frontend does not need to be touched.
+3. After restarting, if your change involves session assembly, prefer **creating a new session** for testing rather than reusing an old session URL.
 
 ---
 
-### 1.3 Importing the pi SDK in the main process crashes dev routes with `node:fs`
+### 1.3 A session throws `node:fs` / pi-SDK-related resolution errors
 
-**Symptom**: Under `pnpm dev`, accessing any route throws an error, and the logs contain something like `Cannot read properties of undefined (reading 'existsSync')` or `Module not found: Can't resolve 'node:fs'`.
+**Symptom**: A route or tool call fails, and the stack contains `node:fs` / `node:os` / an unresolvable dynamic `require`, or `@earendil-works/pi-coding-agent` gets unexpectedly bundled into the frontend bundle.
 
-**Cause**: `@earendil-works/pi-coding-agent` and its transitive dependencies (`@earendil-works/pi-ai`) contain `node:fs / node:os / node:path` and dynamic `require()`. If these packages get bundled into the route bundle (instead of being externalized into the Node runtime), webpack fails to resolve these imports.
-
-**Root-cause location**: `serverExternalPackages` in `next.config.ts` (`next.config.ts:96`) plus the webpack `externals` configuration (the `webpack()` hook starting at `next.config.ts:131`).
+**Cause**: The two pi SDK packages (`@earendil-works/pi-coding-agent` + `@earendil-works/pi-ai`) contain `node:*` built-ins and dynamic `require`, and can only run in the Node runtime — they cannot be bundled into the frontend. The current architecture isolates them with two mechanisms:
+- The frontend Vite build **does not bundle** the pi SDK — it runs only inside the Hono/Node-side API server, and during dev it is naturally separated into the `:3000` process.
+- The production server is bundled into a single file by `scripts/build-server.mjs` via esbuild, whose `external` list explicitly externalizes the **two pi SDK packages + `jiti` + `pg`** (`scripts/build-server.mjs`), so they are not inlined into `dist/server.mjs`.
 
 **Remedy**:
-1. Confirm that `serverExternalPackages` in `next.config.ts` includes:
-   ```ts
-   serverExternalPackages: [
-     "jiti",
-     "@earendil-works/pi-coding-agent",
-     "@earendil-works/pi-ai",
-   ],
-   ```
-2. Also confirm that the `piSdkExternal` function in webpack `externals` returns the `module <absolute-path>` form for `@earendil-works/pi-coding-agent` (`next.config.ts:148`, where the absolute path is resolved by `piSdkEntryAbsPath()`).
-3. Any code that imports the pi SDK in the main process (route handler) must use subpath imports (e.g. `@blksails/pi-web-server/trust`, `@blksails/pi-web-server/model-options`); it must not go through a barrel that lets webpack bundle the pi SDK.
+1. Any code in the main process (handler / server) that uses the pi SDK must go through **`@blksails/pi-web-tool-kit/runtime`** or an explicit subpath import — never through a barrel that would drag in the frontend.
+2. If you add a server dependency that contains `node:*` or a native module, add it to the esbuild `external` list in `scripts/build-server.mjs`; otherwise the single-file build will try to inline it and fail.
+3. Confirm you are not `import`ing any `@blksails/pi-web-server` or pi SDK value exports from the frontend `src/` (type-only imports excepted).
 
 ---
 
-### 1.4 Reply requires a manual refresh to appear (reply not real-time)
+### 1.4 A reply requires a manual refresh to appear (reply not real-time)
 
-**Symptom**: You send a message in a session and the assistant seems to "not respond" — the bubble never appears, the streaming text never scrolls; but after you manually refresh the page, that reply turn shows up in full. The behavior is **intermittent**: most sessions stream in real time normally, and only an occasional turn (especially the first time you hit a route under dev, or when the machine is under high load) requires a refresh to become visible.
+**Symptom**: You send a message and the assistant bubble never appears, the streaming text never scrolls; after manually refreshing the page, that turn's reply shows up in full. The behavior is **intermittent**, mostly reproducing on the first dev access or when the machine is under high load.
 
-**Cause**: pi-web's reply stream is **one `/stream` SSE subscription per turn**, not a single session-level persistent connection, so having no stream during idle periods is normal. On the client, `PiTransport.sendMessages` (`packages/react/src/transport/pi-transport.ts:118-149`) first calls `connection.openChunkStream()` to open `GET /sessions/:id/stream`, then `await client.prompt()` to send `POST /sessions/:id/messages` submitting this turn's prompt; the reply frames for the turn come back over that stream and it closes on a finish/abort frame. The problem is the combination of two things:
+**Cause**: pi-web's reply stream is **one `/stream` SSE subscription per turn**, not a session-level persistent connection. The client first calls `openChunkStream()` to open `GET /sessions/:id/stream`, then `POST /sessions/:id/messages` to submit this turn's prompt, and reply frames come back over that stream. The race is: if `/stream` has not yet established a subscription on the server, the agent may already have broadcast its first frame, and the server **neither buffers nor replays** reply frames `uiMessageChunk` (late subscribers only get the log ring-buffer and the two sticky frame types `session-status` / `session-state`) — frames within that window are lost permanently. A refresh recovers because it goes through the history endpoint `GET /sessions/:id/messages` (reconstructing from persisted messages).
 
-1. **The prompt is sent without awaiting the `/stream` connection**: `openChunkStream` (`packages/react/src/sse/connection.ts:110-179`) returns a `ReadableStream` **synchronously**; the actual `GET /stream` fetch is fired **asynchronously** inside the internal pump (`connection.ts:130`) and does not wait for the connection to be established, while `POST /messages` is fast (measured ~32ms) and triggers the agent to emit its first reply frame immediately.
-2. **The server does not buffer or replay reply frames**: `GET /stream` (`packages/server/src/http/routes/stream-route.ts` → `buildSseResponse` in `sse-response.ts`) only calls `session.subscribe()` inside `ReadableStream.start`; `Last-Event-ID` serves merely as the frame "resume sequence start" (`startSeq`, `sse-response.ts:35`) — the gateway does not cache historical frames and does not replay by sequence (see the doc note at `sse-response.ts:11-12`). What `PiSession.subscribe` (`packages/server/src/session/pi-session.ts:416-461`) replays to late subscribers is only the log ring-buffer (`:445-448`) and the two sticky frame types `session-status` / `session-state` (`:453`); **reply frames `uiMessageChunk` are broadcast transiently via `EventEmitter` (`:486` etc.), with no buffering and no replay**.
-
-So when the agent broadcasts the first frame before `/stream` is connected, the `uiMessageChunk` broadcast inside that connection window is **lost permanently** because the server does not buffer it — the real-time stream for that turn looks empty. Refreshing recovers it because a refresh goes through the history endpoint `GET /sessions/:id/messages` (reconstructing from persisted messages), not the live stream.
-
-**Trigger conditions**: dev cold compilation or high load amplifies this race. The first access to a route under dev requires just-in-time compilation, so establishing the `/stream` connection was measured at up to ~3237ms, versus only ~79ms when warm; triggering the agent's first frame via `POST /messages` takes only ~32ms. When the connect is slow enough to land after the agent's first emission, that turn's frames are lost inside the window. In warm production, `/stream` usually connects before the first frame, so it rarely reproduces.
+**Trigger conditions**: dev cold compilation or high load amplifies this race — just-in-time compilation on first access to a route slows `/stream` connection setup, landing it after the agent's first frame. In warm production, `/stream` usually connects before the first frame, so it rarely reproduces.
 
 **Remedy**:
-1. **Warm up the `/stream` route**: under dev, visit a session page once to compile that route, or trigger compilation ahead of time with `curl -N http://localhost:3000/api/sessions/<id>/stream`, then send your message.
-2. **Make sure the session is ready before sending**: wait until the session enters the ready state (no longer showing "connecting to agent…") before submitting the prompt, avoiding sending inside the cold-start window.
-3. **Temporary recovery**: for a turn that already dropped frames, manually refreshing the page recovers the full reply from the history endpoint.
-4. **Fixed in the framework**: `sendMessages` now `await`s `connection.whenSubscribed()` before `POST /messages`, waiting until this turn's `/stream` subscription is established server-side before sending the prompt — receiving the `GET /stream` response proves the subscription is live, because the SSE response's `ReadableStream.start()` runs `subscribe()` synchronously before the handler returns (see `whenSubscribed` in `packages/react/src/sse/connection.ts` and `packages/react/src/transport/pi-transport.ts`). This eliminates the race at its root, so items 1–3 above mainly apply to older builds or as a fallback. For further hardening, you can additionally add a **short-lived buffer** for this turn's message frames on the server and replay by `Last-Event-ID` (currently `sse-response.ts` only resumes sequence numbering without replaying).
+1. **Already fixed on the framework side**: `sendMessages` now `await`s `connection.whenSubscribed()` before `POST /messages` — receiving the `GET /stream` response proves the subscription is established server-side (the SSE response's `ReadableStream.start()` runs `subscribe()` synchronously before the handler returns), eliminating the race at its root. The items below are fallbacks.
+2. **Warm up `/stream`**: under dev, visit a session page once to compile the route, or trigger compilation ahead of time with `curl -N http://localhost:3000/api/sessions/<id>/stream` (note this hits the API host on 3000), then send your message.
+3. **Temporary recovery**: for a turn that already dropped frames, refresh the page to recover them from the history endpoint.
 
 ---
 
-## 2. Provider / Model Issues
+### 1.5 A session is stuck on "connecting to agent…"
 
-### 2.1 Custom provider auth 401
+**Symptom**: After creating or opening a session, the input box is disabled and the UI stays on "connecting to agent…" without entering the ready state, no matter how long you wait.
+
+**Cause**: The session-readiness handshake (spec `session-readiness-handshake`) uses the first response of the read-only probe `channel.getCommands()` as the readiness anchor; the server broadcasts a sticky `control:session-status` frame (`SessionLifecycleState`: initializing/ready/error/ended), and the frontend gates the input accordingly (`packages/ui/src/chat/pi-chat.tsx:704-707`, copy in `packages/ui/src/i18n/messages.ts:71`). If the **dev frontend and backend code are out of sync** (e.g. you restarted only Vite but not the API, or vice versa), the handshake protocol mismatches, the readiness frame never arrives, and the session deadlocks in the connecting state.
+
+**Remedy**:
+1. **Fully restart dev**: `Ctrl-C` to end `pnpm dev` and re-run it, so both the API (3000) and Vite (5173) come up on the same version of the code.
+2. If you only changed the backend, restart it with `pnpm dev:server`; if you only changed the frontend, Vite HMR usually applies automatically and the backend need not be touched.
+3. After reproducing, use `curl -N http://localhost:3000/api/sessions/<id>/stream` to observe whether the `control: session-status` frame arrives, to determine whether the sticking point is the server handshake or frontend rendering.
+
+---
+
+## 2. Build and Production Issues
+
+### 2.1 Blank page in production / code webext silently fails to load (CSP block)
+
+**Symptom**: In production mode under `node dist/server.mjs` the page is blank, or chat works but a code webext (an extension loaded via same-origin dynamic import) does not mount; the browser console reports a Content-Security-Policy violation involving `eval` or an inline `<script>`.
+
+**Cause**: The production CSP is generated by `productionCsp()` and injected via Hono middleware only when `NODE_ENV=production` (`server/index.ts:51`), tightening two things relative to dev (`server/static.ts:171-184`):
+- **`unsafe-eval` is forbidden** — `eval` / `new Function` are blocked. Runtime code-construction patterns (such as some extensions' dynamic compilation) are unavailable in production.
+- **`script-src 'unsafe-inline'` is removed** — replaced by a precise sha256-hash allowance for the **inline singleton import map** (`server/static.ts:124-146`). If the import map's text in the artifact does not match the computed hash (e.g. it was rewritten by middleware, or a proxy injected an extra inline script), the browser refuses to execute the import map, causing all code webexts to fail to load.
+
+**Remedy**:
+1. A code webext should load via **same-origin native dynamic import** (no `eval` required); do not construct logic with `new Function` / `eval` inside an extension, or the production CSP will block it.
+2. Do not insert a proxy/middleware between server and browser that rewrites HTML or injects inline scripts — any change to the inline import map's text breaks its sha256 match.
+3. If the build artifact is **missing the inline script**, `productionCsp()` **warns loudly** rather than degrading silently (`server/static.ts:154-159`): watch for warnings like "production CSP will forbid the import map" in the server startup logs — it means the allowance hash was not generated and the page will fail to load code.
+4. When investigating, first confirm the feature works under dev (no production CSP), then switch to production to reproduce, which pinpoints whether CSP is the cause. See the production-CSP section of [19-deployment.md](19-deployment.md).
+
+---
+
+### 2.2 CLI reports "self-contained artifact not found"
+
+**Symptom**: After a local `git clone`, running `node bin/pi-web.mjs` or `pi-web` directly reports:
+
+```
+[pi-web] self-contained artifact not found <...>/dist/server.mjs
+  Build first: `pnpm build:dist` (or `npm run build:dist`).
+```
+
+**Cause**: The CLI locates the backend entry via a three-tier `resolveRuntime()` (`bin/pi-web.mjs:263`): ① `PI_WEB_DIST_DIR` override (isolated/e2e, no unpack) → ② in-repo `dist/server.mjs` (dev, no unpack) → ③ first-launch unpack of the packaged compressed payload. A source clone takes ②, but `dist/` has not been built yet, hence the error (`bin/pi-web.mjs:303-304`).
+
+**Remedy**:
+```bash
+pnpm build:dist   # = build:client(vite) + build:server(esbuild) + pack-dist + build:unpacker + build:payload
+node bin/pi-web.mjs <source>
+```
+Once the build finishes, `dist/server.mjs` (which must live at the artifact root) is in place and the CLI can launch. To use an isolated directory, set `PI_WEB_DIST_DIR=<other-dir>` to override (that directory must also contain `server.mjs`). See [18-cli.md](18-cli.md) for full CLI details.
+
+---
+
+### 2.3 First-launch shared-runtime unpack fails under an npm install
+
+**Symptom**: After `npm i -g @blksails/pi-web`, the first run reports something like `[pi-web] failed to prepare runtime (<code>): ...`, followed by a human-readable remediation hint.
+
+**Cause**: An npm install takes tier ③ of `resolveRuntime()` — it unpacks the packaged compressed payload (`payload/dist.tar.zst`) on first launch into the shared-runtime directory `~/.pi/web/runtime/<version>-<digest>/` (overridable via `PI_WEB_RUNTIME_ROOT`), with a concurrency lock / heartbeat, and `scheduleRuntimeGc` retains the most recent N old runtimes (`bin/pi-web.mjs:284,451`). On failure it throws a **discriminant error code**, and `RUNTIME_ERROR_HINTS` (`bin/pi-web.mjs:392-401`) translates it into user-readable copy.
+
+**Error code → meaning → remedy**:
+
+| code | meaning | remedy |
+|---|---|---|
+| `runtime-root-unwritable` | runtime directory not writable | check path permissions, or set `PI_WEB_RUNTIME_ROOT` to a writable directory |
+| `disk-full` | insufficient disk space | free up disk and retry |
+| `payload-missing` | packaged payload missing | reinstall `@blksails/pi-web` |
+| `payload-corrupt` | packaged payload corrupted | reinstall `@blksails/pi-web` |
+| `zstd-unsupported` | Node version too old to decompress zstd | upgrade to **Node >= 22.15.0** |
+| `lock-timeout` | timed out waiting for another process to unpack | confirm no other instance is stuck, clear locks under `~/.pi/web/runtime`, and retry |
+| `extract-failed` | unpacker produced no valid output (fallback) | reinstall; if it still fails, attach the full error and file a report |
+
+**Self-help quick reference**:
+```bash
+# 1) confirm Node version (zstd requires >= 22.15.0)
+node -v
+# 2) retry with a different writable runtime root
+PI_WEB_RUNTIME_ROOT="$HOME/.pi-web-runtime" pi-web <source>
+# 3) clear a possibly stale unpack directory and retry
+rm -rf ~/.pi/web/runtime && pi-web <source>
+```
+
+---
+
+## 3. Desktop (Tauri) First-Launch Unpack Issues
+
+### 3.1 The desktop app reports an unpack error on first launch
+
+**Symptom**: After installing the dmg/nsis/appimage, the app shows an unpack-failure prompt on first launch; the background log contains a discriminant error code.
+
+**Cause**: In packaged form the desktop shell (Tauri v2) unpacks the shared runtime from packaged resources — the Rust side `unpack_runtime.rs` spawns the packaged Node to run `unpack.mjs`, consumes the discriminant `code` from a single line of JSON, and translates it into user copy (`desktop/src-tauri/src/unpack_runtime.rs:147-154`). Its error-code set shares the same source as the CLI.
+
+**Error code → meaning → remedy**:
+
+| code | meaning | remedy |
+|---|---|---|
+| `runtime-root-unwritable` | runtime directory not writable | check `~/.pi/web/runtime` permissions, or set `PI_WEB_RUNTIME_ROOT` |
+| `disk-full` | insufficient disk space | free up disk and restart the app |
+| `payload-missing` / `payload-corrupt` | packaged runtime payload missing or corrupted | reinstall the app |
+| `zstd-unsupported` | packaged Node does not support zstd decompression | the app may be corrupted; reinstall |
+| `lock-timeout` | timed out waiting for another process to unpack | confirm no other instance is stuck, then retry |
+| `extract-failed` | unpacker output invalid / missing fields (fallback) | reinstall the app |
+
+**Remedy**: Most codes point to "reinstall" or "switch to a writable runtime root". The desktop shell injects `PI_WEB_NODE_BIN` (the absolute path to the packaged node) into the backend child process, and deliberately **does not inject** `PI_WEB_AGENT_DIR` (so sessions default to `~/.pi/agent`, shared with the CLI). See [20-desktop-tauri.md](20-desktop-tauri.md) for desktop packaging/distribution and run modes.
+
+> Note: the two specs corresponding to `desktop/` and its payload line (electron-to-tauri, shared-runtime-payload) are in the **implemented-partial** state, and cross-platform support is not fully verified; for platform-specific issues, use this table's error codes as the starting point.
+
+---
+
+## 4. Provider / Model Issues
+
+### 4.1 Custom provider auth 401
 
 **Symptom**: You configured a custom provider in `~/.pi/agent/models.json`, but calls return HTTP 401, or the logs show "channel does not exist" / "This token has no access to model (model name is empty)".
 
-**Possible cause A — config file in the wrong location**: A custom provider must be written in `~/.pi/agent/models.json`, not in `auth.json`. `auth.json` is managed by the pi CLI login flow; manual edits get overwritten and are not recognized by `ModelRegistry` as a custom provider.
-
-**Possible cause B — required fields missing**: `baseUrl` and `apiKey` are required fields; missing either one prevents the SDK from constructing the request.
-
-**Possible cause C — DashScope / MAAS key does not match the endpoint**: A DashScope MAAS token (the Tongyi Qianwen primary-account API key) **cannot** be used for the image-generation endpoint (`/api/v1/services/aigc/multimodal-generation`); the two are independent key systems, and using one against the other's endpoint always returns 401.
+**Possible causes**:
+- **A — config file in the wrong location**: a custom provider must be written in `~/.pi/agent/models.json`, **not** in `auth.json` (the latter is managed by the pi CLI login flow; manual edits get overwritten and are not recognized by `ModelRegistry`).
+- **B — required fields missing**: missing either `baseUrl` or `apiKey` prevents constructing the request.
+- **C — DashScope / MAAS key does not match the endpoint**: a DashScope MAAS token (the Tongyi Qianwen primary-account API key) **cannot** be used for the image-generation endpoint; the two are independent key systems, and using one against the other's endpoint always returns 401.
 
 **Remedy**:
 
-**Step 1**: Confirm the location and format of `models.json`:
+**Step 1** — confirm the location and format of `models.json`:
 ```bash
 cat ~/.pi/agent/models.json
+jq . ~/.pi/agent/models.json   # verify it is valid JSON
 ```
 Minimal valid structure:
 ```json
@@ -130,26 +219,28 @@ Minimal valid structure:
 }
 ```
 
-**Step 2**: Verify the model appears in the list (requires the global `pi` CLI on PATH; `--list-models` shares the same source as the in-process model enumeration of pi-web, see `packages/server/src/config/model-options.ts:7`):
+**Step 2** — verify the model appears in the list (requires the global `pi` CLI on PATH; `--list-models` shares the same source as pi-web's in-process model enumeration, see `packages/server/src/config/model-options.ts:7`):
 ```bash
-pi --list-models           # list all available models
-pi --list-models my-gateway # fuzzy search, only this provider
+pi --list-models             # list all available models
+pi --list-models my-gateway  # fuzzy search, only this provider
 ```
-Expected result: `some-model` under `my-gateway` appears in the output. If you still don't see it, go back to Step 1 and check whether `models.json` is valid JSON (you can validate with `jq . ~/.pi/agent/models.json`).
+Expected result: `some-model` under `my-gateway` appears in the output. If you don't see it, go back to Step 1 and check the JSON.
 
-**Step 3** (DashScope scenario): Split text chat and image generation into two provider entries, each configured with its own key and endpoint; AIGC images use the native DashScope protocol — see [11-aigc-and-vision-tools.md](./11-aigc-and-vision-tools.md).
+**Step 3** (DashScope scenario): split text chat and image generation into two provider entries, each configured with its own key and endpoint.
+
+> Boundary reminder: `models.json` / `ModelRegistry` **only govern text-chat models**. The models for the AIGC image tools (`image_generation` / `image_edit`) and the vision tool (`image_vision`) do not go through `ModelRegistry`, but through their own module-level routing tables — see [11-aigc-and-vision-tools.md](11-aigc-and-vision-tools.md).
 
 ---
 
-### 2.2 iPhone multi-image JPEG upload causes the gateway to report "empty model name" or "channel does not exist"
+### 4.2 iPhone multi-image JPEG upload causes the gateway to report "empty model name" or "channel does not exist"
 
-**Symptom**: After uploading multiple photos taken on an iPhone (HEIC converted to JPEG, or JPEG directly), the image-editing request returns "no available channel exists" or "This token has no access to model", with the model name being an empty string; taking a screenshot of the same image with a regular JPEG tool works fine.
+**Symptom**: After uploading multiple photos taken on an iPhone (HEIC converted to JPEG, or JPEG directly), the image-editing request returns "no available channel exists" or "This token has no access to model", with the model name being an empty string; the same image via a regular screenshot works fine.
 
 **Cause**: iPhone multi-image JPEGs contain an MPF (Multi-Picture Format, `APP2` segment) index, plus a second JPEG (HDR gain map) appended after the main image's `EOI`. NewAPI-class gateways fail upstream-channel matching when parsing such files and return a misleading error.
 
-**Fix status**: The `normalizeImageDataUri()` function in `packages/tool-kit/src/engine/normalize-image.ts` already implements **pure-JS, zero-dependency** MPF stripping and trailing-truncation logic (it strips `MPF`-class `APP2` segments and truncates at the main image's first `EOI`; it preserves `ICC_PROFILE`-class `APP2`, EXIF orientation, and other metadata, lossless and without re-encoding). The image-editing tool calls it automatically before uploading to the gateway (`packages/tool-kit/src/engine/compile-tool.ts:263`). No manual intervention is needed.
+**Fix status**: `normalizeImageDataUri()` in `packages/tool-kit/src/engine/normalize-image.ts` already implements **pure-JS, zero-dependency** MPF stripping and trailing-truncation (it strips `MPF`-class `APP2` segments and truncates at the main image's first `EOI`; it preserves `ICC_PROFILE`, EXIF orientation, and other metadata, lossless and without re-encoding), and the image tool calls it automatically before uploading to the gateway — the call site is `packages/tool-kit/src/aigc/run-image-tool.ts:204` (imported from `../engine/normalize-image.js` at `run-image-tool.ts:29`). No manual intervention is needed.
 
-**If you still hit this issue** (for example, you used a custom tool that did not go through `normalizeImageDataUri`), preprocess manually:
+**If you still hit this** (e.g. a custom tool that did not go through `normalizeImageDataUri`), preprocess manually:
 ```bash
 # Use ImageMagick to take only the first frame (main image) of the multi-image JPEG, discarding the MPF index and trailing gain map
 convert 'input.jpg[0]' output.jpg
@@ -157,36 +248,52 @@ convert 'input.jpg[0]' output.jpg
 
 ---
 
-## 3. Web Extension / UI Issues
+## 5. Web Extension / UI Issues
 
-### 3.1 webext artifact region is blank, no iframe
+### 5.1 webext artifact region is blank, no iframe
 
-**Symptom**: You configured `.pi/web/web.config.tsx` and expected content to render in the artifact region, but the right region is completely blank, and no `<iframe>` can be found in the browser DOM.
+**Symptom**: You configured `.pi/web/web.config.tsx` and expected content to render in the artifact region, but the right side is completely blank and no `<iframe>` can be found in the DOM.
 
-**Cause**: `components/chat-app.tsx:375` passes `extensionBaseUrl` into `<PiChat>` only when `process.env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL` has a value; if the `ArtifactSurface` component does not receive a base URL, it does not mount the iframe (this is correct security gating, not a bug).
+**Cause**: `ArtifactSurface` mounts the iframe only when it has an extension base URL (no base URL means no mount — this is **correct security gating**, not a bug). The value comes from the environment variable `NEXT_PUBLIC_PI_EXTENSION_BASE_URL`. **Note the semantics have changed**: it is no longer inlined at build time, but read from env at **runtime** on the server by `GET /api/bootstrap` and pushed down to the frontend (`server/bootstrap.ts:105`, `lib/app/runtime-features.ts:67`).
 
 **Remedy**:
 ```bash
-# dev mode (when webext and the main app are same-origin, use the dev address directly)
-NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:3000  pnpm dev
+# dev mode (use the API address when webext and the main app are same-origin)
+NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:3000 pnpm dev
+# still open http://localhost:5173 in the browser
 
 # or persist it in .env.local
 echo 'NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:3000' >> .env.local
 ```
-
-Note: This variable is prefixed with `NEXT_PUBLIC_` and must be injected at build time (Next.js inlines it into the client bundle), so after modifying `.env.local` you must restart `pnpm dev` for it to take effect.
+Because this value is now pushed down at runtime, **changing env and restarting the server takes effect immediately, with no rebuild needed** (the frontend no longer inlines the variable). See [12-web-ui-extension.md](12-web-ui-extension.md) for the artifact / Tier4 surface.
 
 ---
 
-### 3.2 `split` layout right side is empty (historical issue: once produced a 384px blank floating region)
+### 5.2 Canvas workbench panel does not show
 
-**Symptom**: You set `config.layout = "split"` in `web.config.tsx` but did not configure `panelRight`; you expected a left/right split but see no right-side content.
+**Symptom**: You expect the Canvas remix canvas/gallery, but there is no entry in the sidebar or panels at all.
 
-**Cause**: `layout: "split"` is marked `hasAside: true` in the layout table (`packages/ui/src/customization/layout.ts:49`). The early implementation rendered the `<aside>` clearance region unconditionally, so when both the `panelRight` slot and the artifact were empty, it left a full column of about 384px — a "detached blank floating region" — under the lg viewport.
+**Cause**: The Canvas panel is **gated by the environment variable `NEXT_PUBLIC_PI_WEB_CANVAS`, off by default** (`bool(env.NEXT_PUBLIC_PI_WEB_CANVAS)`, see `server/bootstrap.ts:93`, `lib/app/runtime-features.ts:55`). When not enabled, the canvas/gallery not mounting is correct gating, not a fault. Same family as 5.1 — this gate is now read and pushed down at runtime by `GET /api/bootstrap`.
 
-**Fix status**: From `packages/ui/src/chat/pi-chat.tsx:1058` onward, the `<aside>` is rendered only when the clearance region has actual content (`panelRight` slot or artifact); when `config.layout="split"` but there is no content, it **gracefully degrades to the centered layout** (`content` width is `max-w-3xl`, same as `centered`), leaving no blank space (fix in commit `72394b6`).
+**Remedy**:
+```bash
+NEXT_PUBLIC_PI_WEB_CANVAS=1 pnpm dev   # open 5173 in the browser
+# production: set this env on the server process and restart, no rebuild needed
+NEXT_PUBLIC_PI_WEB_CANVAS=1 node dist/server.mjs
+```
+See [16-canvas-workbench.md](16-canvas-workbench.md) for the Canvas workbench's editor interactions, generation actions, gallery, and the "readout" button.
 
-**Remedy**: If you genuinely need right-side split content, put the content into the `panelRight` slot — the real config API is `defineWebExtension`, where `layout` (`LayoutPreset`, defined at `packages/ui/src/chat/pi-chat.tsx:110`) and `panelRatio` live under the `config` field, and `panelRight` lives under the `slots` field. A runnable reference: `examples/webext-layout-agent/.pi/web/web.config.tsx` (that example uses `config.panelRatio: "3:7"` + `slots.panelRight`, and the host renders the split clearance region accordingly). Below is the equivalent with `layout: "split"`:
+---
+
+### 5.3 `split` layout right side is empty
+
+**Symptom**: You set `config.layout = "split"` in `web.config.tsx` but see no right-side content.
+
+**Cause**: `layout: "split"` is marked `hasAside: true`. The early implementation rendered the clearance region unconditionally, so when both `panelRight` and the artifact are empty, it left roughly a 384px blank floating column under the lg viewport.
+
+**Fix status**: from `packages/ui/src/chat/pi-chat.tsx:1094` (the `showAside` decision) onward, the `<aside>` is rendered only when the clearance region has actual content (`pi-chat.tsx:1715`); with no content it **gracefully degrades to the centered layout**, leaving no blank space (fix in `72394b6`).
+
+**Remedy**: if you genuinely want a split, put content into the `panelRight` slot. A runnable reference: `examples/webext-layout-agent/.pi/web/web.config.tsx` (uses `config.panelRatio: "3:7"` + `slots.panelRight`). The equivalent with `layout: "split"`:
 ```tsx
 // .pi/web/web.config.tsx
 import { defineWebExtension } from "@blksails/pi-web-kit";
@@ -197,100 +304,81 @@ export default defineWebExtension({
   config: { layout: "split", panelRatio: "2:1" },
   slots: { panelRight: <MyPanel /> },
 });
-
-// or switch to a non-split layout preset
-export default defineWebExtension({
-  manifestId: "my-ext",
-  capabilities: ["config"],
-  config: { layout: "wide" }, // "centered" / "wide" / "full"
-});
 ```
 
 ---
 
-### 3.3 Background slot is covered by the shell base (`backgroundLayer` not visible)
+### 5.4 Background slot is covered by the shell base (`backgroundLayer` not visible)
 
-**Symptom**: You injected content into the `backgroundLayer` slot in the webext config (e.g. a custom background image), but it's not visible in the browser and the page still shows the default white background.
+**Symptom**: You injected content into the `backgroundLayer` slot (e.g. a background image), but it's not visible in the browser and the default background still shows.
 
-**Cause**: A negative-`z-index` element in a parent container that has not established its own stacking context escapes to the `<body>` root context and is covered by the opaque app-shell `<div>`.
+**Cause**: A negative-`z-index` element in a parent container without its own stacking context escapes to the `<body>` root context and is covered by the opaque app-shell.
 
-**Fix status**: `packages/ui/src/chat/pi-chat.tsx:938` already adds the `isolate` Tailwind class (i.e. CSS `isolation: isolate`) on the wrapper, confining `backgroundLayer`'s `z-index: -10` within that column so it is no longer covered by the outer layer.
+**Fix status**: `packages/ui/src/chat/pi-chat.tsx:1645` already adds `isolate` (CSS `isolation: isolate`) on the wrapper, confining `backgroundLayer`'s `z-index: -10` within that column.
 
-**If you hit a similar issue implementing a slot yourself**, make sure the container holding the negative-`z-index` child sets `isolation: isolate` or `position: relative` + `z-index: 0` to establish its own stacking context:
+**If you hit a similar issue implementing a slot yourself**, establish an independent stacking context on the container holding the negative-`z-index` child:
 ```css
 .my-container {
-  isolation: isolate; /* establish a stacking context */
+  isolation: isolate; /* or position: relative + z-index: 0 */
 }
 ```
 
 ---
 
-### 3.4 A conversation turn fails but the assistant bubble is blank (the error cause is invisible)
+### 5.5 A conversation turn fails but the assistant bubble is blank (the error cause is invisible)
 
-**Symptom**: A conversation turn fails due to a provider / streaming error (e.g. `Connection error.`, auth failure), but the assistant bubble in the Web UI is empty, looking "as if it had nothing to say". You can't tell whether the model didn't respond or an error occurred, and you can't see the real error message.
+**Symptom**: A turn fails due to a provider / streaming error (e.g. `Connection error.`, auth failure), but the assistant bubble is empty, so you can't tell whether the model didn't respond or an error occurred.
 
-**Cause**: The session translation layer used to either discard or translate-as-normal-completion the runtime events carrying the real error (`message_end`'s `stopReason:"error"` + `errorMessage`, `agent_end`'s `willRetry`, `auto_retry_end`'s `finalError`), so the frontend rendered only an empty assistant bubble.
+**Cause**: The session translation layer used to discard or translate-as-normal-completion the runtime events carrying the real error (`message_end`'s `stopReason:"error"` + `errorMessage`, `agent_end`'s `willRetry`, `auto_retry_end`'s `finalError`).
 
 **Fix status** (spec `stream-error-surfacing`, implemented):
-- The translation layer `packages/server/src/session/translate/translate-event.ts`, **when retries are exhausted or the error is non-retryable**, translates the terminal error into a user-visible error signal and passes through the real `errorMessage` (no longer overriding it with hardcoded copy).
-- Real-time frontend stream: `packages/ui/src/chat/pi-chat.tsx:871` renders it via the `<ChatError>` element (`role="alert"`, destructive color).
-- History replay: `packages/react/src/transport/agent-message-to-ui.ts:212` appends a `data-pi-error` part to assistant messages with `stopReason === "error"`, rendered inline as a red block by `part-renderer.tsx:115`.
+- The translation layer `packages/server/src/session/translate/translate-event.ts`, when retries are exhausted or the error is non-retryable, translates the terminal error into a visible error signal and passes through the real `errorMessage`.
+- The real-time stream renders it via the `<ChatError>` element (`role="alert"`, destructive color); history replay appends a `data-pi-error` part to messages with `stopReason === "error"` and renders it inline as a red block.
 - A user-initiated abort is not misreported as an error.
 
-**If you still see a blank bubble**: confirm that the running version already includes this spec's implementation; use browser dev tools to check whether the failed turn's assistant message node carries `data-pi-error`, and inspect the raw `agent_end` / `message_end` events in the dev server logs to verify whether `errorMessage` is empty (when the provider itself returns no error copy, the translation layer uses fallback copy).
+**If you still see a blank bubble**: confirm the running version already includes this spec; use dev tools to check whether the failed turn's message node carries `data-pi-error`, and inspect the raw `agent_end` / `message_end` events in the server logs to verify `errorMessage`.
 
 ---
 
-## 4. Testing and Toolchain Issues
+## 6. Testing and Toolchain Issues
 
-### 4.1 Tool-call JSON code block `textContent` is empty under jsdom
+### 6.1 Tool-call JSON code block `textContent` is empty under jsdom
 
-**Symptom**: In vitest (`environment: "jsdom"`), you assert on tool-call argument JSON content via `screen.getByRole(...)?.textContent` and get an empty string or `undefined`, but it displays fine in a real browser.
+**Symptom**: In vitest (`environment: "jsdom"`) you assert on tool-argument JSON via `textContent` and get an empty result, but it displays fine in a real browser.
 
-**Cause**: The `<Response>` component uses `streamdown` underneath (`packages/ui/src/ui/response.tsx:7`), whose code-block highlighting is **asynchronous** (Shiki). jsdom has no real layout engine, so `textContent` is empty while async rendering has not completed.
+**Cause**: The `<Response>` component uses `streamdown` underneath (`packages/ui/src/ui/response.tsx:14` imports `Streamdown`), whose code-block highlighting is **asynchronous** (Shiki). jsdom has no real layout engine, so `textContent` is empty while async rendering has not completed.
 
-**Fix status (tool / data JSON)**: `<ToolInput>` in `packages/ui/src/parts/pi-tool-part.tsx` renders with a **synchronous** `<pre><code className="language-json">` together with `highlightJson()`, not going through `<Response>` / streamdown, ensuring `textContent` can be read synchronously under jsdom (`pi-tool-part.tsx:238`).
+**Fix status (tool / data JSON)**: `<ToolInput>` in `packages/ui/src/parts/pi-tool-part.tsx` renders with a **synchronous** `<pre><code className="language-json">` + `highlightJson()`, ensuring it can be read synchronously under jsdom (`pi-tool-part.tsx:314`, `highlightJson` defined at `:137`).
 
 **Remedy (custom components)**:
-- For tool arguments and data-class JSON display, use the synchronous `<pre><code className="language-json">` approach, not `<Response>`.
-- If you must use `<Response>`, in jsdom tests `await act(async () => { ... })` to wait for shiki to finish, or mock `streamdown`.
+- For tool arguments and data-class JSON display, use the synchronous `<pre><code className="language-json">`, not `<Response>`.
+- If you must use `<Response>`, `await act(async () => { ... })` in tests to wait for shiki, or mock `streamdown`.
 
 ---
 
-### 4.2 `--no-skills` argument is dropped (fixed)
+### 6.2 `--no-skills` argument is dropped (fixed)
 
-**Symptom** (historical issue, fixed): After passing `--no-skills` via URL parameter or session config, the system skills were still loaded; toggling the "System Resources" switch on the settings page had no effect.
+**Symptom** (historical): after passing `--no-skills`, the system skills were still loaded; toggling the "System Resources" switch on the settings page had no effect.
 
-**Cause (fixed)**: `parseRunnerArgs` had a path that did not correctly parse the `--no-skills` flag and write it into `RunnerArgs`.
+**Fix status**: `packages/server/src/runner/runner.ts:115-134` now correctly parses the flag and writes it into `RunnerArgs.noSkills`, and `option-mapper.ts:184` downstream overrides with empty `skills`.
 
-**Fix status**: `packages/server/src/runner/runner.ts:115–134` now handles it correctly:
-```ts
-} else if (arg === "--no-skills" || arg!.startsWith("--no-skills=")) {
-  noSkills = arg === "--no-skills" ? true : takeValue("--no-skills") !== "false";
-}
-// ...
-if (noSkills !== undefined) result.noSkills = noSkills;
-```
-`option-mapper.ts:184` downstream also correctly applies the `noSkills` override (clearing skills).
-
-**If the switch still has no effect**: confirm you are on the `system-resource-toggle-fix` branch or a version merged into `main` afterward. Note that `--no-skills` is a runtime argument parsed by the runner at session activation (from URL parameter / session config), and does **not** land in `settings.json`, so `GET /api/config/extensions/global` (which returns the extension config from `<agentDir>/settings.json`) will not reflect it. To verify, cross-check the arguments the runner actually receives: `parseRunnerArgs` writes `--no-skills` into `RunnerArgs.noSkills` (`runner.ts:115`), and `option-mapper.ts:184` uses it to override with empty `skills` (`skillsOverride` returns `{ skills: [] }`).
+**If the switch still has no effect**: confirm the version includes the fix. Note that `--no-skills` is a **runtime argument** parsed by the runner at session activation (from URL parameter / session config); it does **not** land in `settings.json`, so `GET /api/config/extensions/global` (which returns `settings.json` extension config) will not reflect it.
 
 ---
 
-## 5. Concurrency and Worktree Issues
+## 7. Concurrency and Worktree Issues
 
-### 5.1 Concurrent sessions reset the main worktree branch and destroy commits
+### 7.1 Concurrent sessions reset the main worktree branch and destroy commits
 
-**Symptom**: When multiple AI agent sessions run in parallel, `git` operations interfere with each other — after one session switches branches, another session's file state gets scrambled, or commits get lost.
+**Symptom**: when multiple AI agent sessions run in parallel, `git` operations interfere — after one session switches branches, another session's file state gets scrambled, or commits get lost.
 
-**Cause**: Multiple processes concurrently doing `git checkout / reset` on the same git worktree (`agents/pi-web/`) overwrite each other's `HEAD` pointer.
+**Cause**: multiple processes concurrently doing `git checkout / reset` on the same git worktree (`agents/pi-web/`) overwrite each other's `HEAD`.
 
-**Remedy**: Run long tasks (implementation-class tasks lasting more than a few minutes) in an **isolated git worktree**, not on the main worktree:
+**Remedy**: run long tasks (implementation-class tasks lasting more than a few minutes) in an **isolated git worktree**, not on the main worktree:
 ```bash
 # Create an isolated worktree (one level up from the repo root)
 git worktree add ../pi-web-attach -b feat/my-feature HEAD
 
-# Work inside the isolated directory
 cd ../pi-web-attach
 # ... edit, commit ...
 
@@ -302,32 +390,42 @@ git worktree remove ../pi-web-attach
 
 ---
 
-## 6. Diagnostic Quick Reference
+## 8. Diagnostic Quick Reference
 
 | Issue keyword | Check first |
 |---|---|
-| webpack 500 / chunk error | whether `pnpm build` ran while dev was running; delete `.next/` and restart |
-| new route not taking effect | handler singleton pinned to globalThis; restart dev |
-| reply needs a refresh to appear | per-turn `/stream` not connected before the agent's first frame + server does not buffer/replay `uiMessageChunk`; warm up the `/stream` route, send after the session is ready |
-| `node:fs` resolution failure | `next.config.ts` `serverExternalPackages` + `externals` |
-| custom provider 401 | `models.json` location (`~/.pi/agent/`); `baseUrl`+`apiKey` are required |
-| DashScope image 401 | MAAS token and native DashScope key are independent; hit the right endpoint |
-| iPhone JPEG "empty model name" | whether `normalizeImage` is on the call chain; custom tools must call it explicitly |
-| webext no iframe | `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` not set; restart dev |
-| split right side empty | `slots.panelRight` not configured; newer versions degrade to centered, not blank |
-| blank assistant bubble, error invisible | terminal error translation; check `data-pi-error` / server-side `agent_end` event |
+| dev opens 3000 and shows a bare API | during dev the browser should open **5173** (Vite); 3000 is the proxied API host |
+| route/config-domain change has no effect | handler singleton pinned to `globalThis`; restart dev (or `dev:server`) |
+| `node:fs` / pi SDK resolution failure | pi SDK runs only on the Node side; externalized in esbuild `external` (`build-server.mjs`) — don't bundle into the frontend |
+| reply needs a refresh to appear | per-turn `/stream` not subscribed before the agent's first frame + server has no replay; fixed by `whenSubscribed`, fallback is to warm up the route |
+| session stuck on "connecting to agent…" | dev frontend/backend out of sync deadlocks the readiness handshake; fully restart dev |
+| production blank page / webext not loading | production CSP forbids `unsafe-eval` + sha256-allows the import map; don't use eval, don't rewrite inline scripts |
+| CLI reports "dist/server.mjs not found" | run `pnpm build:dist` first; or set `PI_WEB_DIST_DIR` |
+| npm first-launch unpack fails | check the error code (zstd→upgrade Node 22.15+ / disk-full / lock-timeout / switch `PI_WEB_RUNTIME_ROOT`) |
+| desktop app first-launch unpack fails | same discriminant codes; mostly reinstall or switch to a writable runtime root, see [20](20-desktop-tauri.md) |
+| custom provider 401 | `models.json` location (`~/.pi/agent/`), `baseUrl`+`apiKey` required, DashScope key hits the right endpoint |
+| iPhone JPEG "empty model name" | whether `normalizeImageDataUri` (`run-image-tool.ts:204`) is on the chain; custom tools must call it explicitly |
+| webext no iframe | `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` not set; now pushed at runtime, restart the server to take effect |
+| Canvas panel not showing | `NEXT_PUBLIC_PI_WEB_CANVAS` off by default; set to 1 and restart the server |
+| split right side empty | `slots.panelRight` not configured; newer versions degrade to centered with no content, not blank |
+| blank assistant bubble, error invisible | terminal-error translation; check `data-pi-error` / server-side `agent_end` event |
 | background slot covered | outer container missing `isolation: isolate` |
-| empty jsdom textContent | streamdown async highlighting; switch tool JSON to synchronous `pre+language-json` |
-| `--no-skills` no effect | confirm the `system-resource-toggle-fix` fix is included |
+| empty jsdom textContent | streamdown async highlighting; switch tool JSON to synchronous `pre + language-json` |
+| `--no-skills` no effect | it's a runtime argument that does not land in `settings.json`; confirm the version includes the fix |
 | concurrent sessions lose commits | put long tasks in an isolated worktree (`git worktree add`) |
 
 ---
 
 ## Related Links
 
-- [06-configuration.md](./06-configuration.md) — full env variable table, including `NEXT_DIST_DIR`, `NEXT_PUBLIC_PI_EXTENSION_BASE_URL`
-- [07-providers-and-models.md](./07-providers-and-models.md) — `models.json` format and DashScope key details
-- [12-web-ui-extension.md](./12-web-ui-extension.md) — webext config, layout/slot usage
-- [11-aigc-and-vision-tools.md](./11-aigc-and-vision-tools.md) — AIGC image tools, `normalizeImage`, DashScope endpoint
-- [18-cli.md](./18-cli.md) — CLI startup, `--port` argument
-- [22-development-and-testing.md](./22-development-and-testing.md) — test environment isolation, e2e build workflow
+- [06-configuration.md](06-configuration.md) — full env variable table (`PI_WEB_DIST_DIR` / `PI_WEB_RUNTIME_ROOT` / `NEXT_PUBLIC_PI_WEB_CANVAS` / `NEXT_PUBLIC_PI_EXTENSION_BASE_URL`, etc.)
+- [07-providers-and-models.md](07-providers-and-models.md) — `models.json` format and DashScope key
+- [11-aigc-and-vision-tools.md](11-aigc-and-vision-tools.md) — AIGC image/vision tools, `normalizeImageDataUri`, model-routing boundary
+- [12-web-ui-extension.md](12-web-ui-extension.md) — webext five-tier model, artifact/slot and gating
+- [13-config-ui.md](13-config-ui.md) — schema-driven settings UI
+- [16-canvas-workbench.md](16-canvas-workbench.md) — Canvas workbench and gating
+- [18-cli.md](18-cli.md) — CLI startup, three-tier `resolveRuntime`, first-launch unpack
+- [19-deployment.md](19-deployment.md) — esbuild single-file artifact, packaged payload, production CSP hardening
+- [20-desktop-tauri.md](20-desktop-tauri.md) — desktop packaging/distribution, run modes, first-launch unpack error codes
+- [22-development-and-testing.md](22-development-and-testing.md) — `pnpm dev` two-process orchestration, `build:dist` pipeline, isolated builds
+- [24-http-api-reference.md](24-http-api-reference.md) — HTTP/SSE API, `GET /api/bootstrap`, SSE control frames
