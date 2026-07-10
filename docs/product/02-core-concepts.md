@@ -24,7 +24,7 @@
 
 **关键决策：两模式对外是同一套 RPC 协议。** 底层 RPC 实现完全相同，前后端桥接完全复用，只是 spawn 的目标进程不同。这让 pi-web 既能跑任意自定义 agent，也能把通用 pi coding agent 当 Web 服务提供，而无需两套前端。
 
-> custom 模式怎么写入口、归一化为 `AgentDefinition`，见 [07 自定义 Agent 开发](./07-agent-development.md)；cli 模式与全局 `pi-web` 命令行见 [14 CLI](./14-cli.md)。
+> custom 模式怎么写入口、归一化为 `AgentDefinition`，见 [08 自定义 Agent 开发](./08-agent-development.md)；cli 模式与全局 `pi-web` 命令行见 [18 CLI](./18-cli.md)。
 
 ## Session（会话）
 
@@ -38,7 +38,7 @@
 
 > 一会话一进程 + SSE 长连接 = **有状态服务**。这是 pi-web 不能跑 Serverless/Edge、横向扩容需按 `sessionId` 粘性路由的根本原因。详见 [03 系统架构](./03-architecture.md)。
 
-> 历史会话可在 **会话列表**里浏览并一键恢复（按 `sessionId` 重新订阅其事件流），详见 [21 会话列表](./21-sessions-list.md)。
+> 历史会话可在 **会话列表**里浏览并一键恢复（按 `sessionId` 重新订阅其事件流），详见 [14 会话列表](./14-sessions-list.md)。
 
 ## RPC 通道（`PiRpcChannel`）
 
@@ -71,7 +71,7 @@ interface PiRpcChannel {
 
 ## SSE 帧与 `protocolVersion`
 
-前后端经 **SSE（Server-Sent Events）** 传流式数据，每帧携带 `protocolVersion`。`@blksails/pi-web-protocol` 是稳定契约，类型/schema 改动需语义化版本管理。详见 [13 HTTP/SSE API 参考](./13-http-api-reference.md)。
+前后端经 **SSE（Server-Sent Events）** 传流式数据，每帧携带 `protocolVersion`。`@blksails/pi-web-protocol` 是稳定契约，类型/schema 改动需语义化版本管理。详见 [24 HTTP/SSE API 参考](./24-http-api-reference.md)。
 
 ## 附件的两条路径（概念预览）
 
@@ -80,7 +80,7 @@ interface PiRpcChannel {
 1. **喂 LLM 识别**（vision）— 上传图在该出口转 base64 给模型；
 2. **交 server 端 tool** — 文件经 `attachmentId` 参数在 runner 子进程内 `resolve` 为 path/url/bytes，工具产出再落库回流。
 
-详见 [08 附件系统](./08-attachment-system.md)。
+详见 [09 附件系统](./09-attachment-system.md)。
 
 ## 配置目录 `~/.pi/agent`
 
@@ -88,7 +88,7 @@ interface PiRpcChannel {
 
 - `auth.json` — provider 凭据（`pi` 登录后生成）；
 - `settings.json` — 默认 provider/model 等；
-- `models.json` — 自定义 OpenAI-compatible provider（见 [06](./06-providers-and-models.md)）。
+- `models.json` — 自定义 OpenAI-compatible provider（见 [06](./07-providers-and-models.md)）。
 
 可经 `PI_WEB_AGENT_DIR` / `PI_CODING_AGENT_DIR` 覆盖目录。注意环境变量名是 `PI_CODING_AGENT_DIR`（不是 `PI_AGENT_DIR`）。
 
@@ -103,8 +103,8 @@ interface PiRpcChannel {
 ## 下一步 / 相关
 
 - 这些概念如何落到层与数据流上 → [03 系统架构](./03-architecture.md)
-- 提到的 `@blksails/pi-web-protocol`、`@blksails/pi-web-server` 等包边界 → [04 分层包](./04-packages.md)
-- 给自己的 agent 套 UI（custom 模式入口）→ [07 自定义 Agent 开发](./07-agent-development.md)
-- 把通用 pi agent 当 Web 服务起（cli 模式 / `pi-web` 命令）→ [14 CLI](./14-cli.md)
-- 附件三不变式的完整实现 → [08 附件系统](./08-attachment-system.md)
-- 不熟的名词随时查 → [20 术语表](./20-glossary.md)
+- 提到的 `@blksails/pi-web-protocol`、`@blksails/pi-web-server` 等包边界 → [05 分层包](./05-packages.md)
+- 给自己的 agent 套 UI（custom 模式入口）→ [08 自定义 Agent 开发](./08-agent-development.md)
+- 把通用 pi agent 当 Web 服务起（cli 模式 / `pi-web` 命令）→ [18 CLI](./18-cli.md)
+- 附件三不变式的完整实现 → [09 附件系统](./09-attachment-system.md)
+- 不熟的名词随时查 → [26 术语表](./26-glossary.md)

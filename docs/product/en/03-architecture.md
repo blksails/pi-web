@@ -44,7 +44,7 @@ After loading `examples/hello-agent` (which contains `index.ts`, taking custom m
 - If a **custom agent** was loaded (the source contains `index.ts`) → you see `node …/runner-bootstrap.mjs --agent <your entry> --cwd <working directory>`;
 - If the **general pi** was loaded (the source has no entry, falling back to cli) → you see `node …/pi… --mode rpc`.
 
-Each additional session opened spawns one more such subprocess; closing a session (`DELETE /api/sessions/:id`) makes the corresponding process exit accordingly. See no subprocess at all? Most likely the session hasn't truly been established yet or has just crashed — for diagnosis see [18 · Troubleshooting FAQ](./18-troubleshooting-faq.md).
+Each additional session opened spawns one more such subprocess; closing a session (`DELETE /api/sessions/:id`) makes the corresponding process exit accordingly. See no subprocess at all? Most likely the session hasn't truly been established yet or has just crashed — for diagnosis see [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md).
 
 ## The Hinge: RPC Channel + Translation Layer
 
@@ -106,7 +106,7 @@ Transport / isolation / storage are all implemented behind **interfaces**, switc
 | `SessionStore` | in-memory Registry | Redis / Durable Object |
 | `BlobStore` | `LocalFsBlobBackend` | S3-style object store |
 
-Attachment capabilities are layered as **L0 storage / L1 reference / L2 projection (resolve) / L3 context gate** (see [08](./08-attachment-system.md)).
+Attachment capabilities are layered as **L0 storage / L1 reference / L2 projection (resolve) / L3 context gate** (see [08](./09-attachment-system.md)).
 
 ## Security Is a Replaceable Policy
 
@@ -124,7 +124,7 @@ The core of the HTTP layer is `createPiWebHandler` (`packages/server/src/http/cr
 
 ## Packages/Layers as Boundaries
 
-Dependencies converge in a single direction: `protocol ← everything`; `server` depends only on `protocol`; `react`/`ui` are decoupled from the backend via the protocol. Each spec's boundary = the package/layer boundary. See [04 · Packages](./04-packages.md) for details.
+Dependencies converge in a single direction: `protocol ← everything`; `server` depends only on `protocol`; `react`/`ui` are decoupled from the backend via the protocol. Each spec's boundary = the package/layer boundary. See [05 · Packages](./05-packages.md) for details.
 
 ## Runtime & Image
 
@@ -135,10 +135,10 @@ Dependencies converge in a single direction: `protocol ← everything`; `server`
 
 ## Next Steps / Related
 
-- The concrete boundaries of packages and layers, and the dependency direction → [04 · Packages](./04-packages.md)
-- Per-endpoint documentation of the HTTP endpoints mentioned above (`/api/sessions`, `/api/attachments`, etc.) → [13 · HTTP API Reference](./13-http-api-reference.md)
-- The full picture of attachment L0–L3 layering and HMAC delivery URLs → [08 · Attachment System](./08-attachment-system.md)
-- Extension installation / trust policy → [09 · Extensions and Skills](./09-extensions-and-skills.md)
-- Deployment forms and the sticky routing constraint → [15 · Deployment](./15-deployment.md)
+- The concrete boundaries of packages and layers, and the dependency direction → [05 · Packages](./05-packages.md)
+- Per-endpoint documentation of the HTTP endpoints mentioned above (`/api/sessions`, `/api/attachments`, etc.) → [24 · HTTP API Reference](./24-http-api-reference.md)
+- The full picture of attachment L0–L3 layering and HMAC delivery URLs → [09 · Attachment System](./09-attachment-system.md)
+- Extension installation / trust policy → [10 · Extensions and Skills](./10-extensions-and-skills.md)
+- Deployment forms and the sticky routing constraint → [19 · Deployment](./19-deployment.md)
 </content>
 </invoke>

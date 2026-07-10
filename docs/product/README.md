@@ -19,10 +19,10 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 我是… | 推荐顺序 |
 | --- | --- |
 | **第一次接触（评估/试用）** | [00 产品概述](./00-product-overview.md) → [01 快速开始](./01-quickstart.md) → [02 核心概念](./02-core-concepts.md) |
-| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [07 自定义 Agent 开发](./07-agent-development.md) → [08 附件系统](./08-attachment-system.md) → [21 会话列表](./21-sessions-list.md) → [10 Web UI 扩展](./10-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-tools.md) → [22 消息队列](./22-message-queue.md) |
-| **集成方**（把 pi-web 嵌进自己的栈） | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [13 HTTP/SSE API 参考](./13-http-api-reference.md) → [21 会话列表](./21-sessions-list.md) → [12 配置 UI](./12-config-ui.md) |
-| **运维 / 部署** | [05 配置参考](./05-configuration.md) → [14 CLI](./14-cli.md) → [15 部署与运维](./15-deployment.md) → [16 日志系统](./16-logging.md) |
-| **贡献者** | [03 系统架构](./03-architecture.md) → [04 分层包](./04-packages.md) → [17 开发规范与测试](./17-development-and-testing.md) → [19 路线图](./19-roadmap.md) |
+| **Agent 作者**（要给自己的 agent 套 UI） | [01 快速开始](./01-quickstart.md) → [08 自定义 Agent 开发](./08-agent-development.md) → [09 附件系统](./09-attachment-system.md) → [14 会话列表](./14-sessions-list.md) → [12 Web UI 扩展](./12-web-ui-extension.md) → [11 AIGC 工具](./11-aigc-and-vision-tools.md) → [15 消息队列](./15-message-queue.md) |
+| **集成方**（把 pi-web 嵌进自己的栈） | [03 系统架构](./03-architecture.md) → [05 分层包](./05-packages.md) → [24 HTTP/SSE API 参考](./24-http-api-reference.md) → [14 会话列表](./14-sessions-list.md) → [13 配置 UI](./13-config-ui.md) |
+| **运维 / 部署** | [06 配置参考](./06-configuration.md) → [18 CLI](./18-cli.md) → [19 部署与运维](./19-deployment.md) → [21 日志系统](./21-logging.md) |
+| **贡献者** | [03 系统架构](./03-architecture.md) → [05 分层包](./05-packages.md) → [22 开发规范与测试](./22-development-and-testing.md) → [25 路线图](./25-roadmap.md) |
 
 ## 全部章节
 
@@ -32,25 +32,25 @@ pi-web 把一个目录或 git 仓库（含用 [`@earendil-works/pi-coding-agent`
 | 01 | [快速开始](./01-quickstart.md) | 装好环境到跑通第一个 agent |
 | 02 | [核心概念](./02-core-concepts.md) | Agent Source / 双模式 / Session / RPC / 翻译层 |
 | 03 | [系统架构](./03-architecture.md) | 数据流、传输无关通道、有状态约束、扩展接缝 |
-| 04 | [分层包](./04-packages.md) | 7 个 `@blksails/*` 包的职责与依赖方向 |
-| 05 | [配置参考](./05-configuration.md) | 环境变量、`~/.pi/agent`、隐藏 provider |
-| 06 | [Provider 与模型](./06-providers-and-models.md) | 内置与自定义 OpenAI-compatible 网关接入 |
-| 07 | [自定义 Agent 开发](./07-agent-development.md) | `defineAgent()`、`index.ts` 契约、示例索引、热重载 |
-| 08 | [附件系统](./08-attachment-system.md) | 分层存储、两条消费路径、`attachmentId` 回流 |
-| 09 | [扩展 / Skills / 模板](./09-extensions-and-skills.md) | pi 资源直通、权限弹窗、安装管理 |
-| 10 | [Web UI 扩展](./10-web-ui-extension.md) | agent-web-extension 五层模型 |
-| 11 | [AIGC 图像工具](./11-aigc-tools.md) | 生成/编辑、默认模型、图像归一化 |
-| 12 | [配置 UI](./12-config-ui.md) | JSON Schema → 表单 IR、动态 widget |
-| 13 | [HTTP/SSE API 参考](./13-http-api-reference.md) | REST + SSE 端点契约 |
-| 14 | [CLI](./14-cli.md) | `pi-web` 全局命令、standalone、`--watch` |
-| 15 | [部署与运维](./15-deployment.md) | standalone 产物、粘性路由、生产硬化 |
-| 16 | [日志系统](./16-logging.md) | 同构 logger、服务端门控 |
-| 17 | [开发规范与测试](./17-development-and-testing.md) | TS strict、测试硬要求、spec 流程 |
-| 18 | [故障排查 / FAQ](./18-troubleshooting-faq.md) | 常见报错与对策 |
-| 19 | [路线图](./19-roadmap.md) | 能力矩阵与规划 |
-| 20 | [术语表](./20-glossary.md) | 关键术语定义 |
-| 21 | [会话列表](./21-sessions-list.md) | 浏览历史会话并一键恢复 |
-| 22 | [消息队列](./22-message-queue.md) | 忙时按插话/跟进语义排队、可视化 pending 与取回;control:queue 粘性帧收敛重连,clearQueue 走 state-bridge 式自定义帧闭环(pi 零改)。 |
+| 04 | [分层包](./05-packages.md) | 7 个 `@blksails/*` 包的职责与依赖方向 |
+| 05 | [配置参考](./06-configuration.md) | 环境变量、`~/.pi/agent`、隐藏 provider |
+| 06 | [Provider 与模型](./07-providers-and-models.md) | 内置与自定义 OpenAI-compatible 网关接入 |
+| 07 | [自定义 Agent 开发](./08-agent-development.md) | `defineAgent()`、`index.ts` 契约、示例索引、热重载 |
+| 08 | [附件系统](./09-attachment-system.md) | 分层存储、两条消费路径、`attachmentId` 回流 |
+| 09 | [扩展 / Skills / 模板](./10-extensions-and-skills.md) | pi 资源直通、权限弹窗、安装管理 |
+| 10 | [Web UI 扩展](./12-web-ui-extension.md) | agent-web-extension 五层模型 |
+| 11 | [AIGC 图像工具](./11-aigc-and-vision-tools.md) | 生成/编辑、默认模型、图像归一化 |
+| 12 | [配置 UI](./13-config-ui.md) | JSON Schema → 表单 IR、动态 widget |
+| 13 | [HTTP/SSE API 参考](./24-http-api-reference.md) | REST + SSE 端点契约 |
+| 14 | [CLI](./18-cli.md) | `pi-web` 全局命令、standalone、`--watch` |
+| 15 | [部署与运维](./19-deployment.md) | standalone 产物、粘性路由、生产硬化 |
+| 16 | [日志系统](./21-logging.md) | 同构 logger、服务端门控 |
+| 17 | [开发规范与测试](./22-development-and-testing.md) | TS strict、测试硬要求、spec 流程 |
+| 18 | [故障排查 / FAQ](./23-troubleshooting-faq.md) | 常见报错与对策 |
+| 19 | [路线图](./25-roadmap.md) | 能力矩阵与规划 |
+| 20 | [术语表](./26-glossary.md) | 关键术语定义 |
+| 21 | [会话列表](./14-sessions-list.md) | 浏览历史会话并一键恢复 |
+| 22 | [消息队列](./15-message-queue.md) | 忙时按插话/跟进语义排队、可视化 pending 与取回;control:queue 粘性帧收敛重连,clearQueue 走 state-bridge 式自定义帧闭环(pi 零改)。 |
 
 ## 约定
 

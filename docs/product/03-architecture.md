@@ -44,7 +44,7 @@ pgrep -fl node | grep -E -- '--mode rpc|--agent'
 - 载入的是**自定义 agent**（源里有 `index.ts`）→ 看到 `node …/runner-bootstrap.mjs --agent <你的入口> --cwd <工作目录>`；
 - 载入的是**通用 pi**（源里无入口，回退 cli）→ 看到 `node …/pi… --mode rpc`。
 
-每多开一个会话就多一个这样的子进程；关掉会话（`DELETE /api/sessions/:id`）对应进程随之退出。看不到任何子进程？多半是会话还没真正建立或刚崩溃——排查见 [18 故障排查 FAQ](./18-troubleshooting-faq.md)。
+每多开一个会话就多一个这样的子进程；关掉会话（`DELETE /api/sessions/:id`）对应进程随之退出。看不到任何子进程？多半是会话还没真正建立或刚崩溃——排查见 [23 故障排查 FAQ](./23-troubleshooting-faq.md)。
 
 ## 枢纽：RPC 通道 + 翻译层
 
@@ -106,7 +106,7 @@ SSE 不是一条会话级持久连接，而是**每轮（per-turn）新开一条
 | `SessionStore` | 内存 Registry | Redis / Durable Object |
 | `BlobStore` | `LocalFsBlobBackend` | S3 风格对象存储 |
 
-附件能力按 **L0 存储 / L1 引用 / L2 投影(resolve) / L3 context 闸门**分层（见 [08](./08-attachment-system.md)）。
+附件能力按 **L0 存储 / L1 引用 / L2 投影(resolve) / L3 context 闸门**分层（见 [08](./09-attachment-system.md)）。
 
 ## 安全是可替换策略
 
@@ -124,7 +124,7 @@ HTTP 层核心是 `createPiWebHandler`（`packages/server/src/http/create-handle
 
 ## 包/层即边界
 
-依赖单向收敛：`protocol ← 一切`；`server` 只依赖 `protocol`；`react`/`ui` 与后端经协议解耦。每个 spec 的边界 = 包/层边界。详见 [04 分层包](./04-packages.md)。
+依赖单向收敛：`protocol ← 一切`；`server` 只依赖 `protocol`；`react`/`ui` 与后端经协议解耦。每个 spec 的边界 = 包/层边界。详见 [05 分层包](./05-packages.md)。
 
 ## 运行时与镜像
 
@@ -135,8 +135,8 @@ HTTP 层核心是 `createPiWebHandler`（`packages/server/src/http/create-handle
 
 ## 下一步 / 相关
 
-- 包与层的具体边界、依赖方向 → [04 分层包](./04-packages.md)
-- 上面提到的 HTTP 端点（`/api/sessions`、`/api/attachments` 等）逐条说明 → [13 HTTP API 参考](./13-http-api-reference.md)
-- 附件 L0–L3 分层与 HMAC 分发 URL 全貌 → [08 附件系统](./08-attachment-system.md)
-- 扩展安装/信任策略 → [09 扩展与 Skills](./09-extensions-and-skills.md)
-- 部署形态与 sticky routing 约束 → [15 部署](./15-deployment.md)
+- 包与层的具体边界、依赖方向 → [05 分层包](./05-packages.md)
+- 上面提到的 HTTP 端点（`/api/sessions`、`/api/attachments` 等）逐条说明 → [24 HTTP API 参考](./24-http-api-reference.md)
+- 附件 L0–L3 分层与 HMAC 分发 URL 全貌 → [09 附件系统](./09-attachment-system.md)
+- 扩展安装/信任策略 → [10 扩展与 Skills](./10-extensions-and-skills.md)
+- 部署形态与 sticky routing 约束 → [19 部署](./19-deployment.md)

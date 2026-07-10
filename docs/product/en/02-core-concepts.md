@@ -24,7 +24,7 @@ Source resolution (the `agent-source-resolver` spec) does three things:
 
 **Key decision: both modes expose the same RPC protocol.** The underlying RPC implementation is identical, the front-to-back bridge is fully reused, and only the spawn target process differs. This lets pi-web run any custom agent as well as serve the general pi coding agent as a web service, without needing two separate frontends.
 
-> For how to write a custom-mode entry and normalize it into `AgentDefinition`, see [07 · Custom Agent Development](./07-agent-development.md); for cli mode and the global `pi-web` command line, see [14 · CLI](./14-cli.md).
+> For how to write a custom-mode entry and normalize it into `AgentDefinition`, see [08 · Custom Agent Development](./08-agent-development.md); for cli mode and the global `pi-web` command line, see [18 · CLI](./18-cli.md).
 
 ## Session
 
@@ -38,7 +38,7 @@ The session registry is the `SessionStore` interface (`packages/server/src/sessi
 
 > One process per session + a long-lived SSE connection = a **stateful service**. This is the fundamental reason pi-web cannot run on Serverless/Edge, and why horizontal scaling requires sticky routing by `sessionId`. See [03 · Architecture](./03-architecture.md) for details.
 
-> Historical sessions can be browsed in the **Sessions List** and resumed with one click (re-subscribing to their event stream by `sessionId`). See [21 · Sessions List](./21-sessions-list.md) for details.
+> Historical sessions can be browsed in the **Sessions List** and resumed with one click (re-subscribing to their event stream by `sessionId`). See [14 · Sessions List](./14-sessions-list.md) for details.
 
 ## RPC Channel (`PiRpcChannel`)
 
@@ -71,7 +71,7 @@ This is **the hinge between front and back**. The RPC events emitted by the agen
 
 ## SSE Frames and `protocolVersion`
 
-The frontend and backend stream data over **SSE (Server-Sent Events)**, with each frame carrying a `protocolVersion`. `@blksails/pi-web-protocol` is the stable contract; changes to types/schemas require semantic versioning. See [13 · HTTP/SSE API Reference](./13-http-api-reference.md) for details.
+The frontend and backend stream data over **SSE (Server-Sent Events)**, with each frame carrying a `protocolVersion`. `@blksails/pi-web-protocol` is the stable contract; changes to types/schemas require semantic versioning. See [24 · HTTP/SSE API Reference](./24-http-api-reference.md) for details.
 
 ## The Two Paths for Attachments (Concept Preview)
 
@@ -80,7 +80,7 @@ Attachments do not enter the pi protocol; they live entirely in the pi-web layer
 1. **Fed to the LLM for vision** — an uploaded image is converted to base64 at this exit and handed to the model;
 2. **Handed to a server-side tool** — the file is `resolve`d into a path/url/bytes inside the runner child process via the `attachmentId` parameter, and the tool's output is persisted and flows back.
 
-See [08 · Attachment System](./08-attachment-system.md) for details.
+See [09 · Attachment System](./09-attachment-system.md) for details.
 
 ## The Config Directory `~/.pi/agent`
 
@@ -88,7 +88,7 @@ The source of credentials and defaults:
 
 - `auth.json` — provider credentials (generated after `pi` login);
 - `settings.json` — default provider/model, etc.;
-- `models.json` — custom OpenAI-compatible providers (see [06](./06-providers-and-models.md)).
+- `models.json` — custom OpenAI-compatible providers (see [06](./07-providers-and-models.md)).
 
 The directory can be overridden via `PI_WEB_AGENT_DIR` / `PI_CODING_AGENT_DIR`. Note that the environment variable is named `PI_CODING_AGENT_DIR` (not `PI_AGENT_DIR`).
 
@@ -103,8 +103,8 @@ Remember these three and many design decisions become self-consistent:
 ## Next / Related
 
 - How these concepts map onto layers and data flow → [03 · Architecture](./03-architecture.md)
-- The package boundaries mentioned, such as `@blksails/pi-web-protocol` and `@blksails/pi-web-server` → [04 · Packages](./04-packages.md)
-- Wrapping a UI around your own agent (the custom-mode entry) → [07 · Custom Agent Development](./07-agent-development.md)
-- Serving the general pi agent as a web service (cli mode / the `pi-web` command) → [14 · CLI](./14-cli.md)
-- The full implementation of the three attachment invariants → [08 · Attachment System](./08-attachment-system.md)
-- Look up any unfamiliar term anytime → [20 · Glossary](./20-glossary.md)
+- The package boundaries mentioned, such as `@blksails/pi-web-protocol` and `@blksails/pi-web-server` → [05 · Packages](./05-packages.md)
+- Wrapping a UI around your own agent (the custom-mode entry) → [08 · Custom Agent Development](./08-agent-development.md)
+- Serving the general pi agent as a web service (cli mode / the `pi-web` command) → [18 · CLI](./18-cli.md)
+- The full implementation of the three attachment invariants → [09 · Attachment System](./09-attachment-system.md)
+- Look up any unfamiliar term anytime → [26 · Glossary](./26-glossary.md)

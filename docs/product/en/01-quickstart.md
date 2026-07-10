@@ -63,7 +63,7 @@ export default defineAgent({
 });
 ```
 
-> The above is an excerpt. The real `examples/hello-agent/index.ts:1` also sets `noTools: "builtin"` and `skills: () => ({ skills: [], ... })`, making the example **self-contained** — it exposes only the custom `echo` tool and loads neither system built-in tools nor disk-discovered skills. The meaning of these two switches is covered in [07 · Custom Agent Development](./07-agent-development.md).
+> The above is an excerpt. The real `examples/hello-agent/index.ts:1` also sets `noTools: "builtin"` and `skills: () => ({ skills: [], ... })`, making the example **self-contained** — it exposes only the custom `echo` tool and loads neither system built-in tools nor disk-discovered skills. The meaning of these two switches is covered in [08 · Custom Agent Development](./08-agent-development.md).
 
 Steps:
 
@@ -72,7 +72,7 @@ Steps:
 3. Enter the session and send a message → **expected**: you see a streaming reply
 4. Make it call the tool: send "use the echo tool to echo hello" (or a similar instruction) → **expected**: an `echo` tool card appears in the session
 
-> **No reply / authentication error?** Most likely the default provider/model has no valid key. First use the stub agent under "Offline Quick Verification" below to get the chain working; for authentication issues, see [18 · Troubleshooting / FAQ](./18-troubleshooting-faq.md).
+> **No reply / authentication error?** Most likely the default provider/model has no valid key. First use the stub agent under "Offline Quick Verification" below to get the chain working; for authentication issues, see [23 · Troubleshooting / FAQ](./23-troubleshooting-faq.md).
 
 > `hello-agent` deliberately omits `model`, letting it inherit the default provider/model from your pi login, so it works out of the box. To pin the model, add `model: { provider, modelId }`, but that provider must have valid authentication.
 
@@ -88,7 +88,7 @@ PI_WEB_DEFAULT_PROVIDER=openrouter                       # force the provider (o
 PI_WEB_DEFAULT_MODEL=anthropic/claude-sonnet-4.6         # force the model (value must match the provider)
 ```
 
-For the complete set of variables, see [05 · Configuration Reference](./05-configuration.md).
+For the complete set of variables, see [06 · Configuration Reference](./06-configuration.md).
 
 ## Offline Quick Verification (No Model Quota Consumed)
 
@@ -111,16 +111,16 @@ pnpm e2e:node
 | `pnpm e2e` | Playwright browser e2e |
 | `pnpm e2e:node` | Offline Node-level streaming e2e (stub agent) |
 | `pnpm typecheck` | Typecheck for all packages + app |
-| `pnpm build:cli` / `pnpm start:cli` | Build / start the global CLI (standalone, see [14 · CLI](./14-cli.md)) |
+| `pnpm build:cli` / `pnpm start:cli` | Build / start the global CLI (standalone, see [18 · CLI](./18-cli.md)) |
 
 ## Common First-Time Issues
 
 - **Don't run `pnpm build` during dev** — it pollutes the shared `.next` and causes webpack 500s. CLI/e2e builds use isolated directories (`NEXT_DIST_DIR=.next-cli` / `.next-e2e`).
 - **Changed an injected route / config domain but the route didn't take effect** — the handler singleton is pinned on `globalThis`, and hot reload does not refresh new routes, so you need to restart dev.
-- For more, see [18 · Troubleshooting / FAQ](./18-troubleshooting-faq.md).
+- For more, see [23 · Troubleshooting / FAQ](./23-troubleshooting-faq.md).
 
 ## Next Steps
 
 - Understand loading and session mechanics → [02 · Core Concepts](./02-core-concepts.md)
-- Write your own agent → [07 · Custom Agent Development](./07-agent-development.md)
-- Integrate a custom model gateway → [06 · Providers and Models](./06-providers-and-models.md)
+- Write your own agent → [08 · Custom Agent Development](./08-agent-development.md)
+- Integrate a custom model gateway → [07 · Providers and Models](./07-providers-and-models.md)

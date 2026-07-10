@@ -15,7 +15,7 @@ pi-web shrinks the distance between "having written a pi agent" and "it being a 
 - **Dual-mode loading** — If an entry is detected in the source (`index.ts` > `index.js` > `index.mjs`, or overridden by `package.json#pi-web.entry`) → your custom agent runs via the SDK's `runRpcMode`; if there is no entry → it falls back to the general `pi --mode rpc`. Both expose **the same RPC protocol**, the front-to-back bridge is fully reused, and only the spawn target differs. See [02 Core Concepts](./02-core-concepts.md) for entry detection and trust policy.
 - **Streaming chat UI** — Next.js 15 + shadcn/ui + Vercel AI Elements, rendering text / thinking / tool calls over SSE + a custom AI SDK v5 `ChatTransport`.
 - **Native pi resources** — extensions / skills / prompt templates are auto-discovered and declaratively injected; permission prompts flow through the extension UI sub-protocol into frontend dialogs.
-- **Sessions list and resume** — Browse historical sessions and resume any of them by `sessionId` with one click, re-subscribing to its event stream to continue the conversation. See [21 Sessions List](./21-sessions-list.md).
+- **Sessions list and resume** — Browse historical sessions and resume any of them by `sessionId` with one click, re-subscribing to its event stream to continue the conversation. See [14 Sessions List](./14-sessions-list.md).
 - **Attachment system** — Image/file uploads are persisted through a pluggable object store (local first) with signed delivery URLs. Two consumption paths: **base64 fed to the LLM for vision**, and **files handed to a server-side tool** (image editing/generation) that resolves and executes via `attachmentId`, with outputs flowing back and available for re-use on the next turn.
 - **Custom providers** — Any OpenAI-compatible gateway (NewAPI, DashScope…) can be wired in via `~/.pi/agent/models.json`; the settings UI offers a searchable model dropdown grouped by provider.
 - **Web UI extensions** — Each agent source can carry a `.pi/web` control layer, contributing buttons/panels/declarative layouts/custom renderers/artifact iframes through a five-tier model.
@@ -62,4 +62,4 @@ pi-web shrinks the distance between "having written a pi agent" and "it being a 
 
 - Want to run it right away → [01 Quickstart](./01-quickstart.md)
 - Want to understand how it works → [02 Core Concepts](./02-core-concepts.md) and [03 Architecture](./03-architecture.md)
-- Want to put a UI on your own agent → [07 Agent Development](./07-agent-development.md)
+- Want to put a UI on your own agent → [08 Agent Development](./08-agent-development.md)

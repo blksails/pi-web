@@ -63,7 +63,7 @@ export default defineAgent({
 });
 ```
 
-> 上面是节选。真实 `examples/hello-agent/index.ts:1` 还设了 `noTools: "builtin"` 和 `skills: () => ({ skills: [], ... })`，使示例**自包含**——只暴露自定义 `echo`，不加载系统内置工具与磁盘发现的 skills。这两个开关的含义见 [07 自定义 Agent 开发](./07-agent-development.md)。
+> 上面是节选。真实 `examples/hello-agent/index.ts:1` 还设了 `noTools: "builtin"` 和 `skills: () => ({ skills: [], ... })`，使示例**自包含**——只暴露自定义 `echo`，不加载系统内置工具与磁盘发现的 skills。这两个开关的含义见 [08 自定义 Agent 开发](./08-agent-development.md)。
 
 步骤：
 
@@ -72,7 +72,7 @@ export default defineAgent({
 3. 进入会话，发一句话 → **预期**看到流式回复
 4. 让它调工具：发「用 echo 工具回显 hello」（或类似指令）→ **预期**会话里出现 `echo` 的工具卡
 
-> **没看到回复 / 报鉴权错？** 多半是默认 provider/model 无有效 key。先用下方「离线快速验证」的 stub agent 跑通链路，鉴权问题见 [18 故障排查 / FAQ](./18-troubleshooting-faq.md)。
+> **没看到回复 / 报鉴权错？** 多半是默认 provider/model 无有效 key。先用下方「离线快速验证」的 stub agent 跑通链路，鉴权问题见 [23 故障排查 / FAQ](./23-troubleshooting-faq.md)。
 
 > `hello-agent` 故意省略 `model`，让它继承你 pi 登录的默认 provider/model，开箱即用。要钉死模型，加 `model: { provider, modelId }`，但该 provider 必须有有效鉴权。
 
@@ -88,7 +88,7 @@ PI_WEB_DEFAULT_PROVIDER=openrouter                       # 强制 provider（否
 PI_WEB_DEFAULT_MODEL=anthropic/claude-sonnet-4.6         # 强制 model（值与 provider 对应）
 ```
 
-完整变量见 [05 配置参考](./05-configuration.md)。
+完整变量见 [06 配置参考](./06-configuration.md)。
 
 ## 离线快速验证（不消耗模型额度）
 
@@ -111,16 +111,16 @@ pnpm e2e:node
 | `pnpm e2e` | Playwright 浏览器 e2e |
 | `pnpm e2e:node` | 离线 Node 级流式 e2e（stub agent） |
 | `pnpm typecheck` | 全包 + app 类型检查 |
-| `pnpm build:cli` / `pnpm start:cli` | 构建 / 启动全局 CLI（standalone，见 [14 CLI](./14-cli.md)） |
+| `pnpm build:cli` / `pnpm start:cli` | 构建 / 启动全局 CLI（standalone，见 [18 CLI](./18-cli.md)） |
 
 ## 常见首次问题
 
 - **dev 期不要跑 `pnpm build`** — 会污染共享 `.next` 致 webpack 500。CLI/e2e 构建用隔离目录（`NEXT_DIST_DIR=.next-cli` / `.next-e2e`）。
 - **改了注入路由/配置域后路由没生效** — handler 单例 pin 在 `globalThis`，热重载不刷新新路由，需重启 dev。
-- 更多见 [18 故障排查 / FAQ](./18-troubleshooting-faq.md)。
+- 更多见 [23 故障排查 / FAQ](./23-troubleshooting-faq.md)。
 
 ## 下一步
 
 - 理解载入与会话机制 → [02 核心概念](./02-core-concepts.md)
-- 写自己的 agent → [07 自定义 Agent 开发](./07-agent-development.md)
-- 接入自定义模型网关 → [06 Provider 与模型](./06-providers-and-models.md)
+- 写自己的 agent → [08 自定义 Agent 开发](./08-agent-development.md)
+- 接入自定义模型网关 → [07 Provider 与模型](./07-providers-and-models.md)
