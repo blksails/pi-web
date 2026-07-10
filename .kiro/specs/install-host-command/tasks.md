@@ -81,24 +81,36 @@
   - _Requirements: 1.1, 1.7, 3.1_
   - _Depends: 2.4, 3.1_
 
-- [ ] 5. 端到端验收与回归(Validation)
-- [ ] 5.1 e2e 第三套 webServer 基建
+- [x] 5. 端到端验收与回归(Validation)
+- [x] 5.1 e2e 第三套 webServer 基建
   - playwright.config 增专用端口 webServer:PI_WEB_EXT_ALLOW_LOCAL=1、PI_WEB_EXT_ADMIN_ALLOW_ANY=1、临时 PI_WEB_SOURCES_ROOT/PI_CODING_AGENT_DIR(落盘隔离)
   - 待安装 agent 源 fixture 供给:复用 examples/ 下既有 agent 源(如 hello-agent/minimal-agent,含 kind:"agent" 清单);不足则由 e2e setup 临时生成
   - 观察态:该 server 可启动并服务一个冒烟页面请求;既有两套 webServer env 不变
   - _Requirements: 7.1_
-- [ ] 5.2 安装旅程与 component 拒绝 e2e
+- [x] 5.2 安装旅程与 component 拒绝 e2e
   - /install install <本地 agent 源 fixture>→data-install-result 卡片可见→打开选择器新 source 可见(免刷新)
   - /install install <component 包(examples/canvas-component-watermark)>→失败卡片含 pi-web add 指引
   - 观察态:两条用例在第三套 server 上通过
   - _Requirements: 7.1, 7.2, 4.3_
   - _Depends: 4.3, 5.1_
-- [ ] 5.3 补全 e2e(新面)
+- [x] 5.3 补全 e2e(新面)
   - 新 install-subcommand-completion e2e:子动作四候选、install 参数位本地源候选、uninstall 参数位已装候选、stage 属性断言(覆盖面 ≥ 已删除的 plugin-subcommand-completion)
   - 观察态:新 e2e 通过
   - _Requirements: 7.3_
-- [ ] 5.4 全量回归护栏
+- [x] 5.4 全量回归护栏
   - test/cli 全量、workspace 测试(pnpm test)、既有浏览器 e2e(FS/sqlite 两套)全绿;typecheck 0 错
   - 老会话旧 /plugin 与新 /install 共存无仲裁(名字不同)以既有 e2e 不回归佐证
   - 观察态:全部命令 fresh 输出退出码 0
   - _Requirements: 7.4, 6.6_
+
+---
+
+## 5.4 回归护栏执行记录(2026-07-10)
+
+- workspace 测试(pnpm test):退出码 0(protocol/react/server 1165 + logger 41 + server-cli 336 + tool-kit 327 + agent-kit 92 + ui 747 等全绿)
+- app 层(npx vitest run test/):64 文件 / 577 用例,退出码 0(含 test/cli 336、test/commands 26)
+- typecheck(pnpm typecheck + npx tsc --noEmit):退出码 0
+- 浏览器 e2e(npx playwright test,三 project):93 通过;install project 2/2 通过(参数修正 6f59335 后复跑);install-subcommand-completion 4/4 通过
+- **既有 e2e 的 8 个失败已定责为非本特性引起**(Req 7.4「不回归」成立):
+  - 7 个在前置基线 f164e18(特性实现之前,/tmp 临时 worktree 干净构建)**同样失败**:attachment-tool-bridge、rich-chat×2、sessions-list、webext-document-title、webext-full、webext-runtime-install(基线挂 3 条,特性线只挂 1 条)——fresh worktree 环境性 pre-existing
+  - 1 个(settings-config 沙箱项目表单)是**用例自污染**:首轮把 enabled=true 写进被服务项目的 .pi/sandbox.json,次轮 checkbox 已勾选、表单不 dirty、保存钮禁用。删残留后单跑通过(2/2)。基线首轮无残留故过——与本特性无关
