@@ -1,11 +1,14 @@
 /**
- * createPluginArgProvider — `/plugin` 子命令/参数补全的默认数据 provider
- * (plugin-subcommand-completion)。
+ * createInstallArgProvider — `/install` 子命令/参数补全的默认数据 provider
+ * (spec install-host-command,任务 3.3)。取代 `plugin-arg-provider.ts`(旧 `/plugin` 命令
+ * 已摘除,见 tool-kit ExtensionManagerRemoval)。
  *
- * 静态 argSpec 与真实 `/plugin` 命令对齐(install <local 源>[-l] / uninstall <名> / list);
- * 参数候选经现成 REST 取数:
- *   - uninstall(installedExt) → `GET /extensions`(PiCli.listExtensions,结构化 id)。
- *   - install(localSource)    → `GET /sessions/:id/install-sources?q`(扫会话 cwd)。
+ * 静态 argSpec 覆盖四子动作(install/uninstall/list/update);参数候选经现成 REST 取数:
+ *   - install(localSource)      → `GET /sessions/:id/install-sources?q`(扫会话 cwd,同 /plugin 旧径)。
+ *   - uninstall(installedPackage) → `GET /extensions` ∪ `GET /agent-sources` 合并(agent 项
+ *     insertText 追加 " --kind agent",规避缺省 kind 走错通道,见 handler kind 分派)。
+ *   - update(installedPackage)  → 仅 `GET /extensions`(update 只有 plugin 通道,CLI 亦无 agent 更新)。
+ *   - list:terminal,无参数候选。
  * 命令面板只依赖 CommandArgProvider 窄接口,本工厂在装配层(知道 baseUrl/sessionId)构造。
  */
 import type {
@@ -13,18 +16,15 @@ import type {
   CommandArgProvider,
   CommandArgSpec,
 } from "./command-arg.js";
+import { findSubcommand } from "./command-arg.js";
 
-const PLUGIN_SPEC: CommandArgSpec = {
-  command: "plugin",
+const INSTALL_SPEC: CommandArgSpec = {
+  command: "install",
   subcommands: [
-    { name: "install", aliases: ["add"], terminal: false, argKind: "localSource" },
-    {
-      name: "uninstall",
-      aliases: ["remove"],
-      terminal: false,
-      argKind: "installedExt",
-    },
-    { name: "list", aliases: ["ls"], terminal: true },
+    { name: "install", terminal: false, argKind: "localSource" },
+    { name: "uninstall", terminal: false, argKind: "installedPackage" },
+    { name: "list", terminal: true },
+    { name: "update", terminal: false, argKind: "installedPackage" },
   ],
 };
 
@@ -36,6 +36,10 @@ interface InstalledExtensionDto {
 interface InstallSourceDto {
   readonly path: string;
   readonly insertText: string;
+}
+interface AgentSourceDto {
+  readonly id: string;
+  readonly name: string;
 }
 
 /**
@@ -52,19 +56,19 @@ function join(baseUrl: string, path: string): string {
   return `${b}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-export interface PluginArgProviderOptions {
+export interface InstallArgProviderOptions {
   readonly baseUrl: string;
   readonly sessionId: string;
   /** 注入式 fetch(默认全局 fetch),便于测试。 */
   readonly fetchImpl?: typeof fetch;
 }
 
-export function createPluginArgProvider(
-  opts: PluginArgProviderOptions,
+export function createInstallArgProvider(
+  opts: InstallArgProviderOptions,
 ): CommandArgProvider {
   const doFetch = opts.fetchImpl ?? fetch;
 
-  async function installed(
+  async function installedPlugins(
     query: string,
     signal?: AbortSignal,
   ): Promise<readonly CommandArgItem[]> {
@@ -84,6 +88,32 @@ export function createPluginArgProvider(
         label: e.id,
         insertText: e.id,
         ...(e.kind !== undefined ? { detail: e.kind } : {}),
+      }));
+  }
+
+  async function installedAgentSources(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<readonly CommandArgItem[]> {
+    const res = await doFetch(join(opts.baseUrl, "/agent-sources"), {
+      ...(signal !== undefined ? { signal } : {}),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { sources?: AgentSourceDto[] };
+    const q = query.toLowerCase();
+    return (data.sources ?? [])
+      .filter(
+        (s) =>
+          q.length === 0 ||
+          s.id.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q),
+      )
+      .map((s) => ({
+        id: s.id,
+        label: s.name,
+        // agent 候选须显式带 --kind agent:uninstall 缺省探测可能落错通道(见 installer kind 分派)。
+        insertText: `${s.id} --kind agent`,
+        detail: "agent",
       }));
   }
 
@@ -109,15 +139,18 @@ export function createPluginArgProvider(
   }
 
   return {
-    specFor: (command) => (command === "plugin" ? PLUGIN_SPEC : undefined),
+    specFor: (command) => (command === "install" ? INSTALL_SPEC : undefined),
     listArgs: (command, sub, query, signal) => {
-      if (command !== "plugin") return Promise.resolve([]);
-      const spec = PLUGIN_SPEC.subcommands.find(
-        (s) =>
-          s.name === sub || (s.aliases ?? []).includes(sub),
-      );
-      if (spec?.argKind === "installedExt") return installed(query, signal);
+      if (command !== "install") return Promise.resolve([]);
+      const spec = findSubcommand(INSTALL_SPEC, sub);
       if (spec?.argKind === "localSource") return localSources(query, signal);
+      if (spec?.argKind === "installedPackage") {
+        if (spec.name === "update") return installedPlugins(query, signal);
+        return Promise.all([
+          installedPlugins(query, signal),
+          installedAgentSources(query, signal),
+        ]).then(([plugins, agents]) => [...plugins, ...agents]);
+      }
       return Promise.resolve([]);
     },
   };

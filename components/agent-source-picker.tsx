@@ -47,6 +47,11 @@ export interface AgentSourcePickerProps {
   /** 门控:是否启用源列表入口。未启用或未注入数据源 ⇒ 仅显示手输框(Req 6.4)。 */
   readonly enableSourceList?: boolean;
   /**
+   * 刷新信号(spec install-host-command,任务 4.2):变更时重拉源列表(免刷新反映 `/install`
+   * 装/卸 agent 源后的最新结果)。可选,未注入 ⇒ 行为不变(仅 enabled 变化时加载一次)。
+   */
+  readonly refreshSignal?: number;
+  /**
    * sidebar-launcher-rail:已收藏的 source 集合(用于星标高亮)。未注入 ⇒ 不显示星标
    * (向后兼容 agent-sources-list)。
    */
@@ -79,6 +84,7 @@ function useAgentSourceList(
   listAgentSources:
     | ((req: ListAgentSourcesRequest) => Promise<ListAgentSourcesResponse>)
     | undefined,
+  refreshSignal?: number,
 ): { status: ListStatus; items: readonly AgentSourceItem[] } {
   const [status, setStatus] = React.useState<ListStatus>("idle");
   const [items, setItems] = React.useState<readonly AgentSourceItem[]>([]);
@@ -103,7 +109,8 @@ function useAgentSourceList(
         if (reqIdRef.current !== myId) return;
         setStatus("error");
       });
-  }, [enabled, listAgentSources]);
+    // refreshSignal 变化(如 /install 装/卸 agent 源成功)→ 重拉,免刷新可见最新结果。
+  }, [enabled, listAgentSources, refreshSignal]);
 
   return { status, items };
 }
@@ -154,6 +161,7 @@ export function AgentSourcePicker({
   error,
   listAgentSources,
   enableSourceList = false,
+  refreshSignal,
   favoriteSources,
   onToggleFavorite,
   variant = "page",
@@ -171,7 +179,11 @@ export function AgentSourcePicker({
   const showList = enableSourceList && listAgentSources !== undefined;
   const showFavToggle = onToggleFavorite !== undefined;
   const isDialog = variant === "dialog";
-  const { status, items } = useAgentSourceList(showList, listAgentSources);
+  const { status, items } = useAgentSourceList(
+    showList,
+    listAgentSources,
+    refreshSignal,
+  );
   // 默认只展示前 COLLAPSE_LIMIT 个源卡片,其余折叠在「显示全部」之后。
   const COLLAPSE_LIMIT = 9;
   const [expanded, setExpanded] = React.useState(false);

@@ -21,8 +21,11 @@ export interface SubcommandSpec {
   readonly aliases?: readonly string[];
   /** 终态:无需后续参数(如 list),靠 Enter 执行。 */
   readonly terminal: boolean;
-  /** 非终态的参数类型,驱动 listArgs 的数据源。 */
-  readonly argKind?: "installedExt" | "localSource";
+  /**
+   * 非终态的参数类型,驱动 listArgs 的数据源。`installedExt` 为 `/plugin` 遗留(仅装/卸插件);
+   * `installedPackage` 为 `/install` 通用候选(插件 ∪ agent 源合并,见 install-arg-provider)。
+   */
+  readonly argKind?: "installedExt" | "localSource" | "installedPackage";
 }
 
 /** 某命令的参数补全规格。 */

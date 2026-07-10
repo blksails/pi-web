@@ -28,6 +28,7 @@ import {
 import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import { BashResultRenderer } from "./bash-result-renderer.js";
+import { InstallResultRenderer } from "./install-result-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
@@ -72,7 +73,7 @@ import {
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
-import { createPluginArgProvider } from "../controls/plugin-arg-provider.js";
+import { createInstallArgProvider } from "../controls/install-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import type { RpcSlashCommand, CompletionItem } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
@@ -146,6 +147,13 @@ export interface PiChatProps {
   readonly extensionCommands?: ExtensionCommandPolicy;
   /** harness 内置命令(source==="builtin");前置合流到命令面板(builtin-plugin-command)。 */
   readonly builtinCommands?: readonly RpcSlashCommand[];
+  /**
+   * 内置命令名 → 结果卡片 data part 类型(如 `{install:"data-install-result"}`),对应
+   * `BuiltinCommandSpec.resultDataPart`(`RpcSlashCommand` 是 pi 原生派生形状,不携带此
+   * UI 专属字段,故经此单独映射传入)。声明了该命令名的结果(`data`/`message`)才会作为消息
+   * 追加进聊天流(bang 命令同型);未声明 ⇒ 只驱动 effect,不进消息流(如 `/clear`)。
+   */
+  readonly builtinResultDataParts?: Readonly<Record<string, string>>;
   /**
    * 选中内置命令时的分派回调(执行 harness 逻辑,不进 LLM)。
    * @deprecated 统一命令层(unified-command-result-layer):内置命令改经 ui-rpc command 通道
@@ -317,6 +325,7 @@ export function PiChat({
   toolbarOrder,
   extensionCommands,
   builtinCommands,
+  builtinResultDataParts,
   onBuiltinSelect,
   onCommandResult,
   onRuntimeReloadRequested,
@@ -475,6 +484,8 @@ export function PiChat({
     registerBuiltinDataPartRenderers(registry);
     // bang shell 命令结果卡片(spec bang-shell-command,Req 4.x)。
     registry.registerDataPartRenderer("data-bash-result", BashResultRenderer);
+    // /install host 命令结果卡片(spec install-host-command,任务 3.2)。
+    registry.registerDataPartRenderer("data-install-result", InstallResultRenderer);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -561,11 +572,11 @@ export function PiChat({
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cursor, setCursor] = React.useState<number>(0);
 
-  // /plugin 子命令/参数补全 provider(plugin-subcommand-completion):有 client+sessionId 时
-  // 构造,经现成 GET /extensions 与 install-sources 端点取候选。
+  // /install 子命令/参数补全 provider(spec install-host-command,任务 3.3):有 client+sessionId
+  // 时构造,经现成 GET /extensions、/agent-sources、install-sources 端点取候选。
   const commandArgProvider = React.useMemo(() => {
     if (client === undefined || sessionId === undefined) return undefined;
-    return createPluginArgProvider({ baseUrl: client.baseUrl, sessionId });
+    return createInstallArgProvider({ baseUrl: client.baseUrl, sessionId });
   }, [client, sessionId]);
 
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
@@ -862,6 +873,28 @@ export function PiChat({
             if (outcome.ok && outcome.result?.effect === "clear-transcript") {
               chatRef.current.setMessages?.([]);
             }
+            // 通用卡片追加(spec install-host-command,任务 3.1):仅对声明了 resultDataPart 的
+            // 词条(如 /install)生效——bang 命令同型,追加一条 assistant 消息。result.data 存在
+            // → data part 卡片;仅 message(用法/帮助等无 data 的结果)→ 纯文本 part。
+            const partType = builtinResultDataParts?.[cmd.name];
+            if (partType !== undefined && outcome.ok) {
+              const result = outcome.result;
+              if (result?.data !== undefined) {
+                const card: UIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  parts: [{ type: partType, data: result.data } as UIMessage["parts"][number]],
+                };
+                chatRef.current.setMessages?.((prev) => [...prev, card]);
+              } else if (result?.message !== undefined) {
+                const text: UIMessage = {
+                  id: crypto.randomUUID(),
+                  role: "assistant",
+                  parts: [{ type: "text", text: result.message }],
+                };
+                chatRef.current.setMessages?.((prev) => [...prev, text]);
+              }
+            }
             // app 级 effect(面板/通知等)交宿主处理。
             onCommandResult?.(cmd.name, outcome);
           },
@@ -870,7 +903,7 @@ export function PiChat({
       }
       onBuiltinSelect?.(cmd, rawValue);
     },
-    [client, sessionId, onCommandResult, onBuiltinSelect],
+    [client, sessionId, onCommandResult, onBuiltinSelect, builtinResultDataParts],
   );
 
   // bang shell 命令(spec bang-shell-command):执行 bash 并把命令+结果注入聊天流。

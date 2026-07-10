@@ -392,3 +392,47 @@ describe("AgentSourcePicker — 桌面原生目录选择(desktop-directory-picke
     ).toBe(true);
   });
 });
+
+describe("AgentSourcePicker — refreshSignal(spec install-host-command,任务 4.2)", () => {
+  it("refreshSignal 变化 → 重拉列表(免刷新反映 /install 装/卸 agent 源后的最新结果)", async () => {
+    const listAgentSources = vi.fn(list(twoSources));
+    const { rerender } = render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={listAgentSources}
+        refreshSignal={0}
+      />,
+    );
+    await waitFor(() => expect(listAgentSources).toHaveBeenCalledTimes(1));
+    rerender(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={listAgentSources}
+        refreshSignal={1}
+      />,
+    );
+    await waitFor(() => expect(listAgentSources).toHaveBeenCalledTimes(2));
+  });
+
+  it("refreshSignal 未提供/未变化 → 不重复拉取", async () => {
+    const listAgentSources = vi.fn(list(twoSources));
+    const { rerender } = render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={listAgentSources}
+      />,
+    );
+    await waitFor(() => expect(listAgentSources).toHaveBeenCalledTimes(1));
+    rerender(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={listAgentSources}
+      />,
+    );
+    expect(listAgentSources).toHaveBeenCalledTimes(1);
+  });
+});

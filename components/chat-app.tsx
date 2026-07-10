@@ -8,6 +8,7 @@ import {
   useExtensionUI,
   createPiClient,
   type UsePiSessionResult,
+  type CommandOutcome,
 } from "@blksails/pi-web-react";
 import {
   PiChat,
@@ -229,9 +230,11 @@ const extensionCommandPolicy = memoizeFeature(
     enabled: f.extensionCommands === "all",
     allowlist: [
       // 平台内置「扩展管理扩展」命令默认放行(spec extension-install-agent-tools):
-      // /plugin 经斜杠补全直接装/卸/列扩展;它们在 web 端不卡 pending —— PiChat onSubmit
-      // 识别 source==="extension" 命令后经 client.prompt fire-and-forget 执行(不进 useChat)。
-      "plugin",
+      // 它们在 web 端不卡 pending —— PiChat onSubmit 识别 source==="extension" 命令后经
+      // client.prompt fire-and-forget 执行(不进 useChat)。旧 agent 侧 `/plugin` 命令已摘除
+      // (spec install-host-command,任务 4.1/4.2):装/卸/列/更新改由 host 通道 `/install`
+      // 承接(builtin,见 extensionCommandPolicy 之外的 builtinCommands 合流),故此处不再放行
+      // "plugin"。
       "reload-runtime",
       // 视觉识别命令(spec image-vision-tool,Req 6.1):`/img_vision` 看会话内最近一张图。
       // 与 /plugin 同理不卡 pending(fire-and-forget),结论经 ctx.ui 通知呈现、不进消息历史。
@@ -575,6 +578,19 @@ function SessionView({
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
     [],
   );
+  // 词条名 → 结果卡片 data part 类型(spec install-host-command,任务 3.1):`RpcSlashCommand`
+  // 是 pi 原生派生形状,不携带 `resultDataPart`,故从 tool-kit 的 BuiltinCommandSpec 单独派生
+  // 一份映射传给 PiChat(dispatchBuiltin 据此判断是否把结果追加为聊天卡片,如 /install)。
+  const builtinResultDataParts = React.useMemo(
+    () =>
+      Object.fromEntries(
+        BUILTIN_COMMANDS.filter((c) => c.resultDataPart !== undefined).map((c) => [
+          c.name,
+          c.resultDataPart as string,
+        ]),
+      ),
+    [],
+  );
   // 扩展安装已迁出为 agent 内置工具(spec extension-install-agent-tools),信息/进度走 ctx.ui
   // (StatusBar/通知),不再有 plugin 模态面板与 host 命令结果回流。
 
@@ -594,6 +610,20 @@ function SessionView({
   const onTurnEnd = React.useCallback((): void => {
     setSessionListRefreshKey((n) => n + 1);
   }, []);
+
+  // agent source 选择器刷新信号(spec install-host-command,任务 4.2):`/install install|uninstall`
+  // 装/卸 agent 源成功后,host handler 回填 `effect:"panel-refresh"`;bump 此计数使两处
+  // <AgentSourcePicker> 的只读列表(GET /agent-sources)重拉,免刷新即可见新增/移除的源
+  // (与上方 sessionListRefreshKey「事件驱动重拉」同构)。
+  const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
+  const onCommandResult = React.useCallback(
+    (_name: string, outcome: CommandOutcome): void => {
+      if (outcome.ok && outcome.result?.effect === "panel-refresh") {
+        setAgentSourcesRefreshKey((n) => n + 1);
+      }
+    },
+    [],
+  );
 
   // sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源即新建会话。
   const [pickerOpen, setPickerOpen] = React.useState(false);
@@ -935,6 +965,8 @@ function SessionView({
           components={PI_CHAT_COMPONENTS}
           extensionCommands={extensionCommandPolicy()}
           builtinCommands={builtinCommands}
+          builtinResultDataParts={builtinResultDataParts}
+          onCommandResult={onCommandResult}
           // 装/卸插件命令(/plugin、/reload-runtime)提交后 bump nonce → 重解析 webext
           // (装后即时双路生效之路②;spec plugin-system-unification Req 7)。
           onRuntimeReloadRequested={() => setWebextReloadNonce((n) => n + 1)}
@@ -981,6 +1013,7 @@ function SessionView({
           defaultSource={create.source}
           enableSourceList={sourcePickerEnabled()}
           listAgentSources={piClient.listAgentSources}
+          refreshSignal={agentSourcesRefreshKey}
           favoriteSources={dialogFavorites}
           onToggleFavorite={onDialogToggleFavorite}
           {...(desktopPickDirectory !== undefined
