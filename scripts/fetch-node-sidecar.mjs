@@ -20,7 +20,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,9 +84,16 @@ function alreadyGood(outPath, expectVersion) {
   }
 }
 
-/** 解压出 node 可执行文件，返回其临时路径。用系统 tar（Windows 10+ 的 bsdtar 亦可解 zip）。 */
+/**
+ * 解压出 node 可执行文件，返回其临时路径。用系统 tar（Windows 10+ 的 bsdtar 亦可解 zip）。
+ *
+ * ★ 命令行里**不得出现 Windows 盘符**。GitHub Actions 的 `shell: bash` 步骤里，`tar` 解析到的
+ *   是 Git Bash 的 **GNU tar** 而非 System32 的 bsdtar，而 GNU tar 会把 `C:\...` 当成
+ *   `host:path` 形式的远程归档，报 `Cannot connect to C: resolve failed`（CI 实测）。
+ *   归档本就落在 `workDir` 内，故改为「cwd 设为 workDir + 传相对文件名」，两个盘符一起消失。
+ */
 function extractNode(archivePath, workDir, triple) {
-  execFileSync("tar", ["-xf", archivePath, "-C", workDir], { stdio: "inherit" });
+  execFileSync("tar", ["-xf", basename(archivePath)], { cwd: workDir, stdio: "inherit" });
   const isWin = triple.includes("windows");
   const stem = archivePath
     .split(/[\\/]/)

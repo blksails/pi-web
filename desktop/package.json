@@ -4,6 +4,7 @@
   "private": true,
   "description": "pi-web 桌面版 — Tauri 薄壳，复用 standalone 自包含产物",
   "scripts": {
+    "tauri": "tauri",
     "sidecar": "node ../scripts/fetch-node-sidecar.mjs",
     "dev": "tauri dev",
     "build": "tauri build",
