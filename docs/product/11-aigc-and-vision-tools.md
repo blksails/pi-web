@@ -1,27 +1,59 @@
-# 11 · AIGC 图像工具
+# 11 · AIGC 与视觉工具
 
-`@blksails/pi-web-tool-kit` 提供两个内置 AIGC 图像工具：`image_generation`（文生图）与 `image_edit`（图像编辑），由 agent 以 `customTools` 形式挂载，LLM 通过工具参数驱动，产出自动落入附件存储并以签名 URL 回流对话。
+`@blksails/pi-web-tool-kit` 提供两条同源能力线：**AIGC 图像工具**（`image_generation` 文生图、`image_edit` 图像编辑）负责「画出来」，**视觉识别工具**（`image_vision` 工具、`/img_vision` 命令）负责「看得懂」。四者都是进程内 pi extension——经 `pi.registerTool` / `pi.registerCommand` 注册，由 agent 以 `AgentDefinition.extensions: [aigcExtension, visionExtension]` 装载。产物图落入附件存储、以 `att_<id>` 引用回流对话；视觉结论以纯文本回流，可回放、可追问。
+
+> **形态说明（detoolspec-unify-builtin-tools）**：AIGC 工具早期用声明式 `ToolSpec` + `compileTool` + `buildAigcTools`（`customTools` 装配路径）——**这套两层编译架构与 `customTools` 路径均已从 main 移除**。现在两个工具用手写 `Type.Object` parameters + `pi.registerTool` 注册，运行时编排统一走 `runImageTool`。若你在旧文档或旧示例里看到 `customTools` / `buildAigcTools` / `compileTool`，一律以本章为准。
 
 ---
 
 ## 工具一览
 
-| 工具名 | 功能 | 必填参数 | 默认 model |
-|---|---|---|---|
-| `image_generation` | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
-| `image_edit` | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
+| 名称 | 类型 | 功能 | 必填参数 | 默认 model |
+|---|---|---|---|---|
+| `image_generation` | 工具 | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
+| `image_edit` | 工具 | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
+| `image_vision` | 工具 | 图像理解（看图回答问题） | `question` | 读 `PI_WEB_VISION_MODEL` |
+| `/img_vision` | 命令 | 对会话内「最近一张图」发起识别 | 命令参数即提问 | 同上 |
 
-两个工具的注册函数在 `packages/tool-kit/src/aigc/tools/`（`image-generation.ts` 的 `registerImageGeneration(pi)`、`image-edit.ts` 的 `registerImageEdit(pi)`,各以 `pi.registerTool` 注册,工具 `name` 分别为 `image_generation` / `image_edit`),聚合为进程内 `ExtensionFactory`:`packages/tool-kit/src/aigc/extension.ts` 的 `aigcExtension`。
+注册函数与聚合工厂：
+
+- `packages/tool-kit/src/aigc/tools/image-generation.ts:178` 的 `registerImageGeneration(pi)`、`image-edit.ts:186` 的 `registerImageEdit(pi)`，聚合为 `aigcExtension`（`packages/tool-kit/src/aigc/extension.ts:75`）。
+- `packages/tool-kit/src/vision/tools/image-vision.ts:69` 的 `registerImageVision(pi, run)`、`command.ts:37` 的 `registerImgVisionCommand(pi, run)`，聚合为 `visionExtension`（`packages/tool-kit/src/vision/extension.ts:71`）。
 
 ---
 
 ## 接入方式
 
-> 跟着做最快的路径：仓库自带 `examples/aigc-agent/`（仅一个 `index.ts`，靠 monorepo workspace 解析依赖），可直接 `pi-web ./examples/aigc-agent --open` 跑起来（见文末「完整示例」一节）。下面三步是从零接入到**自己的** agent 包时的做法。
+> 最快路径：仓库自带 `examples/aigc-agent/`（核心是一个 `index.ts`，`@blksails/*` 依赖靠 monorepo workspace 解析），可直接跑起来看到生成 + 回看闭环（见文末「完整示例」）。
 
-### 1. 安装依赖
+```bash
+export NEWAPI_API_KEY=sk-xxxxxxxx          # 生成/编辑的默认 gpt-image-2 路由
+export PI_WEB_VISION_MODEL=openai/gpt-4o   # image_vision 默认视觉模型（provider/modelId）
 
-仅当你新建独立 agent 包（不在本 monorepo 内）时需要——在该包 `package.json` 的 `dependencies` 中加入：
+# source 是位置参数，不是 --agent 标志；--open 自动开浏览器
+pi-web ./examples/aigc-agent --open
+```
+
+`examples/aigc-agent/index.ts:28-68` 的核心装配：
+
+```ts
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";
+// 注意：走 /runtime 子入口——含 pi SDK 值导入，仅在 runner（jiti）子进程加载
+import { aigcExtension, visionExtension } from "@blksails/pi-web-tool-kit/runtime";
+
+export default defineAgent({
+  systemPrompt: "...",                     // 教 LLM 何时调 image_generation / image_edit / image_vision
+  extensions: [aigcExtension, visionExtension],  // 进程内 ExtensionFactory（pi.registerTool）
+  slashCompletions: aigcSlashCompletions,  // /img-gen、/img-edit 出现在输入补全（选中只填、不执行）
+  noTools: "builtin",                      // 关掉内置工具，仅暴露扩展工具
+  skills: ({ diagnostics }) => ({ skills: [], diagnostics }),
+});
+```
+
+> **子入口纪律**：`aigcExtension` / `visionExtension` 必须从 `@blksails/pi-web-tool-kit/runtime` 导入，该入口含 pi SDK 值导入，仅在 runner 子进程加载，**不得**进前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出前端安全的纯数据/类型（`BUILTIN_COMMANDS`、`aigcSlashCompletions`、`AIGC_MODEL_CATALOG` 等）。
+
+新建**独立** agent 包（不在本 monorepo 内）时，需在 `package.json` 加依赖：
 
 ```jsonc
 {
@@ -32,57 +64,25 @@
 }
 ```
 
-> monorepo 内的 `examples/aigc-agent` 无需此步：它没有 `package.json`，`@blksails/*` 由工作区直接解析。
+monorepo 内的 `examples/aigc-agent` 无此步——它的 `package.json` 只带 pi-web 展示元数据（`title` / `avatar` / `description`），不声明任何 `@blksails/*` 依赖，由工作区直接解析。
 
-### 2. 在 agent 中挂载工具
+---
 
-```ts
-// examples/aigc-agent/index.ts
-import { defineAgent } from "@blksails/pi-web-agent-kit";
-import { aigcExtension } from "@blksails/pi-web-tool-kit/runtime";  // 注意：走 /runtime 子入口
+## 配置环境变量
 
-export default defineAgent({
-  systemPrompt: [
-    "You are aigc-agent, a pi-web example exposing AIGC generation tools.",
-    "- Use `image_generation` to generate one or more images from a text prompt.",
-    "- Use `image_edit` to edit an uploaded image: copy the public id from the",
-    "  [attachment id=att_… …] marker verbatim into the tool's `image` parameter.",
-    "Each tool persists its output as an attachment and returns a reference; report the",
-    "produced attachment id back to the user. Keep replies concise.",
-  ].join("\n"),
-  extensions: [aigcExtension],   // AIGC 以进程内 ExtensionFactory 装载（pi.registerTool）
-  noTools: "builtin",            // 关掉默认内置工具，仅暴露 AIGC 扩展工具
-  skills: ({ diagnostics }) => ({ skills: [], diagnostics }),
-});
-```
-
-> **重要**：`aigcExtension` 必须从 `@blksails/pi-web-tool-kit/runtime` 子入口导入，该入口含 pi SDK 值导入，仅在 runner（jiti）子进程加载，**不得**进 Next.js webpack 前端 bundle。主入口 `@blksails/pi-web-tool-kit` 只导出前端安全的内置命令声明（`BUILTIN_COMMANDS`），不顶层 import pi SDK / undici。
->
-> **形态说明（detoolspec-unify-builtin-tools）**：AIGC 工具已统一为普通 pi extension 形态——`aigcExtension` 是进程内 `ExtensionFactory`，内部用 `pi.registerTool` 注册 `image_generation` / `image_edit`，与 `extension-manager` / `auto-title` 一致。旧的声明式 `ToolSpec` + `compileTool` + `buildAigcTools`（`customTools` 装配）已移除;运行时编排由 `runImageTool` 承担（同样从 `/runtime` 导出，供自定义图像工具复用）。
-
-### 3. 配置环境变量
-
-工具启动时检查 `requiredVars`；缺失变量时返回 `ok:false` 降级，不崩溃子进程。
+图像工具启动时检查各路由声明的 `requiredVars`；缺失变量时该路由返回 `ok:false` 降级，不崩溃子进程。视觉工具默认模型读 `PI_WEB_VISION_MODEL`。
 
 | 变量名 | 用途 | 必填条件 |
 |---|---|---|
-| `NEWAPI_API_KEY` | NewAPI 网关（默认 `gpt-image-2` 路由） | 使用 gpt-image-2 时必填 |
-| `SUFY_API_KEY` | sufy（七牛云）网关（`gpt-image-2-sufy` 路由） | 使用 gpt-image-2-sufy 时必填 |
-| `OPENROUTER_API_KEY` | OpenRouter 网关（`gpt-5.4-image-2` 路由，走 chat/completions） | 使用 gpt-5.4-image-2 时必填 |
-| `OPENROUTER_PROXY` | OpenRouter 请求代理（可选，`${VAR}` 占位；未设则直连） | 需经代理访问 OpenRouter 时配置 |
-| `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一个变量名**读取密钥 | 使用 DashScope / token plan 模型时必填 |
+| `NEWAPI_API_KEY` | NewAPI 网关（默认 `gpt-image-2` 路由） | 用 gpt-image-2 时必填 |
+| `SUFY_API_KEY` | sufy（七牛云）网关（`*-sufy` 路由） | 用 `*-sufy` 模型时必填 |
+| `OPENROUTER_API_KEY` | OpenRouter 网关（gemini/gpt-5 系图像模型） | 用 OpenRouter 模型时必填 |
+| `OPENROUTER_PROXY` | OpenRouter 请求代理（可选，`${VAR}` 占位；未设直连） | 需经代理访问时配置 |
+| `DASHSCOPE_API_KEY` | 官方 DashScope 路由与 token plan 路由**共用同一变量名**读密钥 | 用 DashScope / token plan 模型时必填 |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan 端点 base（可选，缺省 `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`） | 覆盖 token plan 域时配置 |
+| `PI_WEB_VISION_MODEL` | `image_vision` 默认视觉模型，格式 `provider/modelId` | 想设默认视觉模型时配置 |
 
-> **注意**：官方 `dashscope.aliyuncs.com` 路由（`wan2.7-image-pro` / `qwen-image-edit-max`）与 token plan 路由（`*-bailian`）都从同一个 `DASHSCOPE_API_KEY` 读取密钥，但两套密钥**不通用**——token plan key 打官方端点返回 401，反之亦然。同一进程内 `DASHSCOPE_API_KEY` 只能配一个值，故二选一：要么走官方路由用官方 key，要么走 `*-bailian` 路由用 token plan key。遇到 401 或"渠道不存在"先按此排查，详细对策见 [23 · 故障排查 FAQ §2.1](23-troubleshooting-faq.md#21-自定义-provider-鉴权-401)。
-
-```bash
-# .env.local 示例
-NEWAPI_API_KEY=sk-xxxxxxxx
-SUFY_API_KEY=sk-xxxxxxxx
-DASHSCOPE_API_KEY=sk-xxxxxxxx
-# token plan 端点（默认已内置，通常无需配置）
-# DASHSCOPE_TOKENPLAN_BASE_URL=https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1
-```
+> **DashScope 双 key 陷阱**：官方 `dashscope.aliyuncs.com` 路由（`wan2.7-image-pro` / `qwen-image-edit-max`）与 token plan 路由（`*-bailian`）都从 `DASHSCOPE_API_KEY` 读密钥，但两套密钥**不通用**——token plan key 打官方端点返回 401，反之亦然。同一进程只能配一个值，故二选一。遇到 401 或「渠道不存在」，见 [23 · 故障排查 FAQ](./23-troubleshooting-faq.md#4-provider--模型问题)。
 
 ---
 
@@ -90,16 +90,18 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 
 ### image_generation
 
+参数手写在 `image-generation.ts:122` 的 `PARAMETER_FIELDS`，`model` 枚举由 `optionalModelEnum(routes, DEFAULT_MODEL)` 动态构造（`buildParameters`，`:159`）。
+
 ```jsonc
 {
-  "prompt": "极光下的雪山，胶片质感",   // 必填；不要翻译为英文
+  "prompt": "极光下的雪山，胶片质感",   // 必填；保持用户原语言，不要翻译为英文
   "n": 1,                                // 图片数量 1–10，部分 model 仅支持 1
   "size": "1024x1024",                   // 或 1536x1024 / 1024x1536 / auto
   "negative_prompt": "模糊, 水印",       // DashScope/OpenRouter 有效
   "background": "transparent",           // gpt-image 专属
   "quality": "high",                     // OpenAI 专属
   "moderation": "low",                   // gpt-image 专属
-  "model": "gpt-image-2"                 // 省略则用 defaultModel
+  "model": "gpt-image-2"                 // 省略则用 DEFAULT_MODEL
 }
 ```
 
@@ -107,233 +109,194 @@ DASHSCOPE_API_KEY=sk-xxxxxxxx
 
 ```jsonc
 {
-  "image": "att_abc123",    // 附件 id（att_前缀）或 https URL；必填
+  "image": "att_abc123",    // 附件 id（att_ 前缀）或 https URL；必填
   "prompt": "把背景换成夕阳下的海滩",  // 编辑指令；必填
   "mask": "att_def456",     // 可选 B/W 遮罩：白色区域重绘
-  "reference_images": ["att_xyz"],  // 可选参考图；主图+mask+参考图总数 ≤ 3（dashscope.ts:155 IMAGE_EDIT_MAX_IMAGES，超限抛错）
+  "reference_images": ["att_xyz"],  // 可选参考图
   "n": 1,
   "size": "1024x1024",
   "model": "gpt-image-2"
 }
 ```
 
-`att_` 前缀 id 由编译器在调用前自动解析为 data URI（经附件存储权限校验），LLM 只需原样传入对话中显示的附件引用。
+`image` / `mask` / `reference_images` 三个是媒体字段（`IMAGE_EDIT_MEDIA_FIELDS`，`image-edit.ts:102`），调用前由编排器解析为 data URI（经附件权限校验），LLM 只需原样传入对话中显示的 `att_` 引用。DashScope 系模型的「主图 + mask + 参考图」总数 ≤ 3（`providers/dashscope.ts:155` 的 `IMAGE_EDIT_MAX_IMAGES`，超限抛错）。
 
 ---
 
 ## 可用 model 路由
 
-### image_generation 可用模型
+路由是模块级常量数组 `ROUTES`（`image-generation.ts:44` / `image-edit.ts` 同款），对外导出为 `IMAGE_GENERATION_ROUTES`（`:170`）/ `IMAGE_EDIT_ROUTES`。OpenRouter 系模型集中在 `providers/openrouter-models.ts`，两工具经 `openRouterImageRoutes()` / `openRouterImageEditRoutes()` 复用。
 
-| model id | 标签 | provider | 端点 | 价格参考 |
-|---|---|---|---|---|
-| `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | `POST /v1/images/generations` | $0.04/张 |
-| `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | `POST https://openai.sufy.com/v1/images/generations`（providerModel `openai/gpt-image-2`） | $0.04/张 |
-| `gemini-3.1-flash-image` | Gemini 3.1 Flash Image · OpenRouter | OpenRouter 网关 | `POST /api/v1/chat/completions`（providerModel `google/gemini-3.1-flash-image`） | $0.003/1k tok |
-| `gemini-3-pro-image` | Gemini 3 Pro Image · OpenRouter | OpenRouter 网关 | providerModel `google/gemini-3-pro-image` | $0.012/1k tok |
-| `gemini-2.5-flash-image` | Gemini 2.5 Flash Image · OpenRouter | OpenRouter 网关 | providerModel `google/gemini-2.5-flash-image` | $0.0025/1k tok |
-| `gpt-5-image` | GPT-5 Image · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5-image` | $0.01/1k tok |
-| `gpt-5-image-mini` | GPT-5 Image Mini · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5-image-mini` | $0.002/1k tok |
-| `gpt-5.4-image-2` | GPT-5.4 Image 2 · OpenRouter | OpenRouter 网关 | providerModel `openai/gpt-5.4-image-2`（⚠️ 上游 org 配额异常时暂不可用） | $0.015/1k tok |
-| `wan2.7-image-pro` | Wan 2.7 Image Pro | DashScope 官方 | `POST /api/v1/services/aigc/multimodal-generation/generation`（同步） | ¥0.5/张 |
+### image_generation 路由
 
-> OpenRouter 6 个图像模型统一走 `chat/completions` + `modalities:["image","text"]`，路由清单集中在 `providers/openrouter-models.ts`（文生图/编辑各一份映射）。全部经 curl 实测出图（除 `gpt-5.4-image-2` 因 OpenRouter 上游 OpenAI org 配额异常暂不可用，接线正确，上游修复后自动生效）。
-| `wan2.7-image-pro-bailian` | Wan 2.7 Image Pro · token plan | 阿里云百炼 token plan | 同 DashScope 路径，base 切换到 token plan 域 | ¥0.2/张 |
+| model id | provider | 端点形态 |
+|---|---|---|
+| `gpt-image-2`（默认） | NewAPI（`https://www.apiservices.top/v1`） | OpenAI `/images/generations` |
+| `gpt-image-2-sufy` | sufy（`https://openai.sufy.com/v1`） | OpenAI `/images/generations`（providerModel `openai/gpt-image-2`） |
+| `gemini-3.1-flash-lite-image-sufy` | sufy | OpenAI `/images`（providerModel `google/gemini-3.1-flash-lite-image`，快 & 低成本） |
+| `gemini-3.1-flash-image` / `gemini-3-pro-image` / `gemini-2.5-flash-image` | OpenRouter | chat/completions + `modalities:["image","text"]` |
+| `gpt-5-image` / `gpt-5-image-mini` / `gpt-5.4-image-2` | OpenRouter | 同上；`gpt-5.4-image-2` 上游 org 配额异常时暂不可用 |
+| `wan2.7-image-pro` | DashScope 官方 | `multimodal-generation`（同步 input/parameters） |
+| `wan2.7-image-pro-bailian` | 阿里云百炼 token plan | 同 DashScope 路径，base 切到 token plan 域 |
 
-### image_edit 可用模型
+### image_edit 路由
 
-| model id | 标签 | provider | 特性 |
-|---|---|---|---|
-| `gpt-image-2`（默认） | GPT Image 2 · NewAPI | NewAPI 网关 | 整图改写；multipart FormData |
-| `gpt-image-2-sufy` | GPT Image 2 · sufy | sufy（七牛云）网关 | 整图改写；multipart FormData；providerModel `openai/gpt-image-2` |
-| `gemini-3.1-flash-image` / `gemini-3-pro-image` / `gemini-2.5-flash-image` | Gemini 3.1/3 Pro/2.5 Flash Image · OpenRouter | OpenRouter 网关 | 整图改写（无 mask）；chat/completions 多模态 content |
-| `gpt-5-image` / `gpt-5-image-mini` / `gpt-5.4-image-2` | GPT-5 Image 系 · OpenRouter | OpenRouter 网关 | 整图改写（无 mask）；`gpt-5.4-image-2` 上游 org 异常时暂不可用 |
-| `qwen-image-edit-max` | Qwen Image Edit Max · sync | DashScope 官方 | 最高保真；支持 mask 局部重绘 |
-| `wan2.7-image-edit-bailian` | Wan 2.7 Image Edit · token plan | 阿里云百炼 token plan | DashScope 原生 messages/content；支持带图编辑 |
+| model id | provider | 特性 |
+|---|---|---|
+| `gpt-image-2`（默认） / `gpt-image-2-sufy` | NewAPI / sufy | 整图改写；multipart FormData |
+| `gemini-3.1-flash-lite-image-sufy` | sufy | 整图改写；providerModel `google/gemini-3.1-flash-lite-image` |
+| `gemini-3.1-flash-image` / `gemini-3-pro-image` / `gemini-2.5-flash-image` | OpenRouter | 整图改写（无 mask） |
+| `gpt-5-image` / `gpt-5-image-mini` / `gpt-5.4-image-2` | OpenRouter | 整图改写（无 mask） |
+| `qwen-image-edit-max` | DashScope 官方 | 最高保真；支持 mask 局部重绘 |
+| `wan2.7-image-edit-bailian` | 阿里云百炼 token plan | DashScope 原生 messages/content；支持带图编辑 |
 
 ---
 
-## 交互式参数补全（aigc-tools-interactive-params）
+## 交互式参数补全
 
-`model`、`size`、`prompt` 三个参数对成图质量至关重要，但不在 `inputSchema.required` 中声明——若 LLM 漏传，不会被参数校验拦截，而是由工具执行层经扩展上下文的 `ext.ui`（`ExtensionContext.ui`，区别于负责附件落库的 attachment `ctx`）弹窗让用户补全。
+`model`、`size`、`prompt` 对成图质量至关重要，但不在工具 `parameters.required` 中——若 LLM 漏传，不被参数校验拦截，而是运行时经扩展上下文的 `ctx.ui` 弹窗让用户补全。
 
-**补全逻辑**（声明在 `ToolSpec.requiredParams`，见 `image-generation.ts:92` / `image-edit.ts:98`；实现在 `packages/tool-kit/src/engine/compile-tool.ts:288` 的 `resolveRequiredParams`，由 `runExecute` 在路由与 provider 调用之前调用于 `compile-tool.ts:342`）：
+必选项声明为模块常量 `REQUIRED_PARAMS`（`image-generation.ts:99`、`image-edit.ts:108`，同款结构）；补全逻辑在 `run-image-tool.ts` 的 `resolveRequiredParams`（`:156`），由 `runImageTool` 在路由与 provider 调用之前调用：
 
-1. 已有非空值（`cur !== undefined && cur !== null && cur !== ""`）→ 直接跳过，不弹窗（正常流不受干扰）
-2. 有交互 UI（`ext?.hasUI === true && ext.ui != null`）：
-   - `via: "select"` → 调用 `ext.ui.select(title, options)` 弹选择器
-   - `via: "input"` → 调用 `ext.ui.input(title, placeholder)` 弹文本框
-   - 用户取消（返回 `undefined` 或空字符串）→ 返回 `ok:false`，不发起 provider 调用
-3. 无交互 UI 时：
-   - 有 `fallback` 声明 → 使用 fallback 值继续
-   - `param === "model"` → 回退到 `defaultModel`
-   - `prompt` 无兜底 → 返回 `ok:false`
+1. 已有非空值 → 直接跳过，不弹窗（正常流不受干扰）。
+2. 有交互 UI（`ctx.hasUI`）：`via:"select"` 调 `ctx.ui.select(...)`，`via:"input"` 调 `ctx.ui.input(...)`；用户取消 → `ok:false`，不发起 provider 调用。
+3. 无交互 UI：有 `fallback` 用 fallback（如 `size` 兜底 `auto`）；`param === "model"` 回退到 `DEFAULT_MODEL`；`prompt` 无兜底 → `ok:false`。
 
-`options` 中的哨兵值 `"$models"` 在运行时由 `expandOptions`（`compile-tool.ts:275`）自动展开为该工具 `models[]` 的所有 `model` 路由键。
+`options` 中的哨兵值 `"$models"` 在运行时由 `expandOptions`（`run-image-tool.ts:141`）展开为当前活跃路由的所有 `model` 路由键（被禁模型已同源移除）。
 
 ---
 
 ## 图像规范化：iPhone 多图 JPEG 问题
 
-**问题**：iPhone 拍摄的 JPEG 内含 `APP2/MPF`（Multi-Picture Format）索引 + 主图 `EOI` 后追加的 HDR gain map，发往 NewAPI 网关会触发误导性错误："可用渠道不存在 / This token has no access to model（model 名为空）"。
+**问题**：iPhone 拍摄的 JPEG 内含 `APP2/MPF`（Multi-Picture Format）索引 + 主图 `EOI` 后追加的 HDR gain map，发往 NewAPI 网关会触发误导性错误：「可用渠道不存在 / This token has no access to model（model 名为空）」。
 
-**解决方案**：纯 JS 无损规范化，实现于 `packages/tool-kit/src/engine/normalize-image.ts`，导出 `normalizeImageDataUri(input: string): string`。
+**解决方案**：纯 JS 无损规范化，实现于 `packages/tool-kit/src/engine/normalize-image.ts`（仍在 `engine/` 下、被复用），导出 `normalizeImageDataUri(input): string`：
 
-**处理策略**：
-- 仅处理 `data:image/jpeg` 格式（其他格式原样返回）
-- 定位并跳过 `APP2/MPF` 段（以 `4d 50 46 00` 魔数识别，区别于需保留的 ICC_PROFILE APP2）
-- 在主图首个 `EOI`（`FF D9`）处截断，丢弃追加的 gain map
-- 零重编码、零缩放，保留 EXIF 方向等其他元数据
-- 解析失败或无 MPF 内容时原样返回，不阻断工具调用
+- 仅处理 `data:image/jpeg`（其他格式原样返回）；
+- 定位并跳过 `APP2/MPF` 段（以 `4d 50 46 00` 魔数识别，区别于需保留的 ICC_PROFILE APP2）；
+- 在主图首个 `EOI`（`FF D9`）处截断，丢弃追加的 gain map；
+- 零重编码、零缩放，保留 EXIF 方向等元数据；解析失败或无 MPF 时原样返回，不阻断调用。
 
-编译器 `resolveMediaFields`（`compile-tool.ts:217`）遍历 `inputSchema.properties`，对所有 `mediaKind: "image"` 字段（含数组型如 `reference_images`）经 `resolveAndNormalizeImage`（`compile-tool.ts:256`）解析：`att_` 前缀 → `resolveInputToDataUri` 转 data URI → 再喂入 `normalizeImageDataUri`；非 `att_`/非 `data:` 的 https URL 原样透传。整条链在 `buildBody` 之前完成，工具作者无需手动处理。
+`runImageTool` 的 `resolveMediaFields`（`run-image-tool.ts:208`）对每个 `mediaFields` 字段（含数组型 `reference_images`）经 `resolveAndNormalizeImage`（`:199`）解析：`att_` 前缀 → 转 data URI → 再喂入 `normalizeImageDataUri`；非 `att_`/非 `data:` 的 https URL 原样透传。整条链在构造请求体之前完成，工具作者无需手动处理。
 
-> 仍遇到"空 model 名 / 渠道不存在"且确认是 iPhone 多图照片？见 [23 · 故障排查 FAQ §2.2](23-troubleshooting-faq.md#22-iphone-多图-jpeg-上传致网关报错空-model-名或渠道不存在)，含 ImageMagick 手动取主图的临时绕过命令。
-
----
-
-## Provider 端点差异速查
-
-使用不同 provider 时需注意以下端点与参数形态差异：
-
-### NewAPI（gpt-image-2，默认）
-
-- 文生图端点：`POST https://www.apiservices.top/v1/images/generations`
-- 图像编辑端点：`POST https://www.apiservices.top/v1/images/edits`（multipart FormData）
-- 请求体：OpenAI 兼容格式（`{ model, prompt, n, size, ... }`）
-- 密钥：`Authorization: Bearer ${NEWAPI_API_KEY}`
-
-### sufy（七牛云，gpt-image-2-sufy）
-
-- 文生图端点：`POST https://openai.sufy.com/v1/images/generations`
-- 图像编辑端点：`POST https://openai.sufy.com/v1/images/edits`（multipart FormData）
-- base host 为 `openai.sufy.com`（与 `api.qnaigc.com` 同源的七牛 AIGC 网关）；**注意不是** `api.sufy.com`（该域名不存在，NXDOMAIN）
-- 请求体：与 NewAPI 完全同构（OpenAI 兼容），复用通用工厂 `createOpenAiCompatImage` / `createOpenAiCompatImageEdit`（`providers/openai-compat.ts`）；edits 端点经 curl 实测接受 `image[]` 多图字段
-- **`response_format` 差异**：sufy **拒绝** `response_format` 参数（`[BadRequestError] Unknown parameter: 'response_format'` → 400），故 sufy config 设 `omitResponseFormat: true`，文生图不发该字段；gpt-image 系列**默认已返回 b64_json**（curl 实测 200 仍拿到 b64_json），`persistPicked` 的 b64 内联优化不受损。NewAPI 保持显式发送（向后兼容）
-- **model 名差异**：sufy 上 gpt-image-2 的真实 id **必须带 `openai/` 前缀**（`openai/gpt-image-2`），不带前缀返回 `502 upstream_error`；故路由声明用 `providerModel: "openai/gpt-image-2"`（LLM 可见路由键仍为 `gpt-image-2-sufy`）。该 model 未出现在 `/v1/models` 列表中，但 `/v1/images/generations` 可直接调用
-- 密钥：`Authorization: Bearer ${SUFY_API_KEY}`
-
-> **同构说明**：NewAPI 与 sufy 都是 OpenAI `/images` 协议兼容网关，二者的 `buildBody`/`pickResult`/`detectError` 完全一致，统一抽到 `providers/openai-compat.ts` 的通用工厂；`newapi.ts` / `sufy.ts` 只是绑定各自 `baseUrl` + `apiKeyVar` 的薄封装。再接入同类网关只需照 `sufy.ts` 复制一份薄封装即可。
-
-### OpenRouter（gpt-5.4-image-2）
-
-- 端点：`POST https://openrouter.ai/api/v1/chat/completions`（**不是** OpenAI `/images` 接口）
-- 请求体：chat/completions 多模态形态——`{ model, modalities:["image","text"], messages:[{role:"user", content}] }`；
-  文生图 `content` 为字符串（有参考图时切多 part `text` + `image_url[]`），编辑时 `content` 恒为多 part（`text` + 主图/参考图 `image_url`）
-- 响应解析：图像在 `choices[].message.images[].image_url.url`（data URI），非 `data[].b64_json`
-- `negative_prompt` 有效（拼进 prompt 的 `Avoid:` 段）；`size`/`background`/`quality`/`moderation`/`mask` **不进 payload**（OpenRouter chat 接口无对应字段，静默忽略）
-- 密钥：`Authorization: Bearer ${OPENROUTER_API_KEY}`；可选 `${OPENROUTER_PROXY}` 代理（未设直连）
-- **流式（已启用，分两种）**：
-  - **OpenAI 系（`gpt-5-image` / `-mini` / `gpt-5.4-image-2`）走 `POST /api/v1/images` + `partial_images`**：**真·由糊变清**——`image_generation.partial_image` 逐张渐进（实测 3 张跨 ~19s 一张比一张清晰）→ `image_generation.completed`。gen/edit 均 JSON（edit 用 `image` 字段传 data URI）。
-  - **Gemini 系走 `/chat/completions` + `stream:true`**：**推理文本边想边显**（工具卡 `💭`）+ **图早弹**（图一到先显 data URI，比 persist 早若干秒）；图本身单帧原子（无 partial_images）。
-  - 实现与实机验证见 `docs/aigc-streaming-design.md §0.1/§0.2`。网关未透传 SSE 时自动回退同步解析。
-- **计费**：按 token（output tokens 含图像），OpenRouter 报价 `$0.000015/completion token`
-
-### DashScope 官方（wan2.7-image-pro / qwen-image-edit-max）
-
-- 端点：`POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`
-- 请求体：DashScope **原生** `input/parameters` 格式（非 OpenAI `/images` 格式）
-  ```json
-  {
-    "model": "wan2.7-image-pro",
-    "input": { "messages": [{ "role": "user", "content": [{ "text": "..." }] }] },
-    "parameters": { "size": "1024*1024", "n": 1 }
-  }
-  ```
-- `size` 格式：`width*height`（星号分隔，如 `1024*1024`），而非 OpenAI 的 `1024x1024`；实现中自动转换
-- 密钥：`Authorization: Bearer ${DASHSCOPE_API_KEY}`
-- **注意**：`DASHSCOPE_API_KEY`（token plan key）对官方 `dashscope.aliyuncs.com` 端点无效（返回 401），两套 key 不通用
-
-### 阿里云百炼 token plan（wan2.7-image-pro-bailian / wan2.7-image-edit-bailian）
-
-- 端点：`https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`。URL 在工具声明里以占位常量 `${DASHSCOPE_TOKENPLAN_BASE_URL:-https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1}/services/aigc/multimodal-generation/generation` 写死（`image-generation.ts:28` / `image-edit.ts:25`），`${VAR:-default}` 缺省语法由 `var-resolver.ts:20` 在 `runEndpoint` 时展开——设了 `DASHSCOPE_TOKENPLAN_BASE_URL` 即覆盖 base，否则回落到 token plan 默认域
-- 请求体格式与 DashScope 原生相同（复用 `createDashscopeSyncT2I` / `createDashscopeImageEdit` 工厂，仅经 `extras.url` 覆盖 base URL）
-- **坑**：不要使用 `compatible-mode/aigc` 路径，会报 URL error；正确路径为 `maas/**api/v1/services/aigc/multimodal-generation**`
-- token plan 路由用 `*-bailian` 后缀的 model id 区分（`wan2.7-image-pro-bailian` 走 image_generation、`wan2.7-image-edit-bailian` 走 image_edit），二者底层 `providerModel` 同为 `DASHSCOPE_MODELS.wan27ImagePro`——token plan 实际仅开通 Wan 2.7 Image Pro 一个模型（文生图 + 带图编辑统一），文生图/编辑只是拆成两个独立路由键。`*-bailian` 才是 token plan 专用路由；不带后缀的 `wan2.7-image-pro` / `qwen-image-edit-max` 为 DashScope 官方路由
-
----
-
-## 声明式引擎结构
-
-工具采用两层声明式设计，便于低成本扩展新工具或新 provider：
-
-```
-ToolSpec（tools/image-generation.ts）
-  ├── inputSchema          — LLM 可见参数 schema（不含 model）
-  ├── defaultModel         — 省略 model 时的回退
-  ├── requiredParams[]     — 业务必选项交互补全声明
-  └── models[]             — ModelRoute 路由表
-        ├── model          — LLM 可见路由键（同时是枚举值）
-        ├── url            — 端点 URL（支持 ${VAR} 占位）
-        ├── headers        — 请求头（支持 ${VAR} 占位，运行时展开）
-        ├── buildBody      — 请求体构造函数
-        ├── pickResult     — 响应解析函数
-        ├── detectError    — 业务错误检测函数
-        ├── async?         — 异步轮询声明（省略为同步）
-        └── requiredVars[] — 所需环境变量（缺失则降级）
-```
-
-`compileTool`（`packages/tool-kit/src/engine/compile-tool.ts`）在运行时将 `ToolSpec` 编译为 pi `ToolDefinition`，自动注入 `model` 枚举参数。
+> 仍遇到「空 model 名 / 渠道不存在」且确认是 iPhone 多图照片？见 [23 · 故障排查 FAQ](./23-troubleshooting-faq.md#4-provider--模型问题)。
 
 ---
 
 ## 执行流程
 
-一次成功的图像生成调用经历以下步骤：
+一次成功的图像生成/编辑调用（由 `runImageTool` 统一编排）：
 
-1. LLM 调用工具，传入 `prompt`（及可选参数）；`model` 被剥出作路由键，不进 `buildBody`
-2. `resolveRequiredParams` 检查 `requiredParams`，对缺失项触发交互补全（用户取消 → `ok:false`）
-3. `selectModelRoute` 按 `model` 参数（或 `defaultModel`，再兜底 `models[0]`）路由到对应 `ModelRoute`
-4. `checkRequiredVars` 检查 `requiredVars` 是否可解析；缺失则返回 `ok:false` 降级（不崩溃）
-5. 检查 attachment ctx 是否注入（`ctx.available`，runner 装配）；未注入则 `ok:false` 降级
-6. `resolveMediaFields` 对 `mediaKind: "image"` 字段：`att_id → data URI → normalizeImageDataUri`
-7. 调用 `runEndpoint`：构造请求体 → HTTP POST → 解析响应（同步 / 异步轮询）
-8. `persistPicked`：将图像产物写入附件存储，获得 `att_<id>` 引用；**零产物**（provider 返回 raw/空 url）→ 报 `ok:false` 失败而非误导性成功（`compile-tool.ts:394`）
-9. 组装工具结果：文本说明 + `![name](signedDisplayUrl)` markdown（displayUrl 随 content 走，前端 renderer 据此渲染 `<img>`）+ `details.assets`
+1. LLM 调用工具，传入 `prompt`（及可选参数）；`model` 被剥出作路由键。
+2. `resolveRequiredParams` 检查必选项，对缺失项触发交互补全（用户取消 → `ok:false`）。
+3. `selectRoute`（`run-image-tool.ts:118`）按 `model`（或 `DEFAULT_MODEL`）路由到对应 `ImageRoute`。
+4. 检查该路由 `requiredVars` 是否可解析；缺失则 `ok:false` 降级（不崩溃）。
+5. 检查 attachment ctx 是否注入（runner 装配）；未注入则 `ok:false`。
+6. `resolveMediaFields` 对媒体字段：`att_id → data URI → normalizeImageDataUri`。
+7. `runEndpoint`：构造请求体 → HTTP POST → 解析响应（同步 / 异步轮询）→ 乐观预览 `onUpdate`。
+8. `persistPicked`：将产物写入附件存储得 `att_<id>`；**零产物**（provider 返回空 url）→ 报失败而非误导性成功（`run-image-tool.ts:437`）。
+9. 组装结果：文本说明 + `![name](signedDisplayUrl)` markdown + `details.assets`，前端 renderer 据此渲染 `<img>`。
 
 ---
 
-## 完整示例：aigc-agent
+## 视觉识别工具
 
-`examples/aigc-agent/index.ts` 提供完整可运行示例，演示从 `extensions: [aigcExtension]` 装载到生成全链路。
+生成/编辑产物落库后，在 LLM 上下文里只剩 `[attachment id=att_… …]` 文本标记——**读得到 id，读不到像素**。`image_vision` 补上「回看」这一环：把一张会话内已有的图送进支持图像输入的模型，拿回文字结论。
 
-**启动方式**：
+### image_vision 工具（LLM 自主调用）
 
-```bash
-# 配置密钥
-export NEWAPI_API_KEY=sk-xxxxxxxx
+参数（`vision/tools/image-vision.ts:24`）：
 
-# 以 aigc-agent 为 agent 源启动 pi-web（source 是位置参数，不是 --agent 标志）
-pi-web ./examples/aigc-agent --open
-
-# 改 examples/aigc-agent/index.ts 后自动重载会话
-pi-web ./examples/aigc-agent --watch
+```jsonc
+{
+  "image": "att_abc123",   // 可选：att_ 引用；省略则看会话内「最近一张图」
+  "question": "这张图里有几个人？",  // 必填；保持用户原语言，不要翻译
+  "model": "openai/gpt-4o"  // 可选：provider/modelId；省略则弹选择器或降级到默认
+}
 ```
 
-**对话示例**：
+内核 `createVisionRunner`（`vision/run-vision-tool.ts:77`）永不抛出，一律返回判别联合 `VisionResult`（`vision/types.ts:63`），失败结果**绝不携带图像字节**。编排顺序：
 
-```
-用户：帮我生成一张极光下的雪山，胶片质感
-助手：[调用 image_generation { prompt: "极光下的雪山，胶片质感", model: "gpt-image-2", size: "1024x1024" }]
-      生成成功：1 张图像已保存 (att_abc123)。
-      ![image_generation_0](https://pi-web.local/api/attachments/att_abc123/display?sig=...)
+1. 附件能力可用性检查（seam 未接线 → `attachment_unavailable`）；
+2. 取图（`att_` 解析或取最近一张；找不到 → `no_image` / `attachment_not_found` / `not_an_image`）；
+3. 选模型（`ctx.modelRegistry` + `PI_WEB_VISION_MODEL` 默认 + 交互选择器）；
+4. **显式解析凭据**：`ctx.modelRegistry.getApiKeyAndHeaders(model)`——目标 provider 的 key 只存在于 `~/.pi/agent/models.json`，`completeSimple` 内部只会回落环境变量，故必须先取凭据再显式传入（`run-vision-tool.ts:116`），照抄 auto-title 会直接 401；
+5. 调模型，抽取文本结论；结果 `content` 只放文本、`details` 承载完整 `VisionResult`。
 
-用户：[上传图片，对话中显示 [attachment id=att_def456 ...]]
-用户：把这张图的背景换成夕阳下的海滩
-助手：[调用 image_edit { image: "att_def456", prompt: "把背景换成夕阳下的海滩" }]
-      生成成功：1 张图像已保存 (att_ghi789)。
-```
+> **模型格式陷阱**：`image_vision` 的 `model` 是 **`provider/modelId`**（如 `openai/gpt-4o`），与 AIGC 生成模型的**裸路由键**（如 `gpt-image-2`）格式不同，不可混用。
+
+### /img_vision 命令（用户主动发起）
+
+`vision/command.ts:37` 注册 `/img_vision`。命令参数（裸 string）整段作为提问，为空时用默认提问「描述这张图片的内容。」；图像固定走「最近一张图」缺省规则，**不接受 `att_` id**（避免用户手抄 nanoid，需指定图请用 `image_vision` 工具）。
+
+命令 handler **无返回值**，结论只经 `ctx.ui.notify` 呈现（成功=info、失败=error、用户取消/中止=info）。前端对 `source === "extension"` 的命令走 **fire-and-forget**：无气泡、不进消息历史、不卡 busy（详见 [10 · 扩展 / Skills](./10-extensions-and-skills.md) 扩展命令执行语义）。
+
+---
+
+## Canvas 提示词栏「解读」按钮
+
+Canvas 工作台的提示词栏内嵌一个「解读」按钮：把**当前工作图 + 问题 + 可选视觉模型**组装成一个 `tool: image_vision` 的 `SurfaceOp`，经 `bridge.submitOp → renderSurfaceOp` 渲染为**用户消息**发进对话流，LLM 据此调用 `image_vision`。结论因此天然回流对话记录——可回放、可追问、进 LLM 上下文。
+
+载荷构造器 `buildVisionOp`（`packages/canvas-ui/src/vision-op.ts:63`）是纯函数：`params` 顺序恒为 `image → question → model?`；`model` 为空时**不产生参数行**，把「是否弹选择层」的决策权完整交回工具（工具收不到 model 即弹层）。同前节陷阱——这里的 `model` 也是 `provider/modelId`，与提示词栏「生成模型」选择器的裸 id 不可混用。
+
+Canvas 建立在 Surface 权威表面栈之上（`domain=canvas` 的 CQRS 单写者通信）：「解读」按钮的对话回流正是走这条通道。架构总述见 [04 · Surface 权威表面栈](./04-surface-stack.md)，工作台交互见 [16 · Canvas 工作台](./16-canvas-workbench.md)。
+
+---
+
+## 只读模型枚举端点
+
+供设置界面与 Canvas 选择器列举模型，**取数失败一律降级 200 + 空清单**，不把 500 透给前端：
+
+| 端点 | 用途 | 实现 |
+|---|---|---|
+| `GET /api/vision/models` | 列「已配凭证且支持图像输入」的视觉模型 `{value,label,provider}`，供 Canvas「解读」选择器；`value` 是 `provider/modelId`，可原样填进 `image_vision` 的 `model` | `packages/server/src/vision-settings/vision-models-routes.ts:29` |
+| `GET /api/aigc/models` | 列 AIGC 图像模型展示目录 `{model,label,provider}`，供 `/settings` 的「模型开关」widget；数据源是主入口纯常量 `AIGC_MODEL_CATALOG` | `packages/server/src/aigc-settings/aigc-models-routes.ts:14` |
+
+两条路由经 `routes:` 注入接缝挂进 `createPiWebHandler`（`lib/app/pi-handler.ts:497,502`），宿主用一条 `app.all("/api/*")` 转发全部 API 面（Next 删除后不再需要 per-段转发器）。端点完整参考见 [24 · HTTP/SSE API 参考](./24-http-api-reference.md)。
+
+前端可复用 `fetchVisionModels`（`vision-op.ts:92`）拉 `GET /vision/models`：任何失败（无 baseUrl / 非 2xx / 解析异常 / 形状不符）都返回空数组，解读功能仍可用。
+
+---
+
+## AIGC 配置域（aigc.json）
+
+用户可控的 AIGC 设置落 `~/.pi/agent/aigc.json`，schema 在 `packages/protocol/src/config/domains/aigc.ts:18`：
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `disabledModels` | `[]` | 被禁用的图像模型 id 列表，经自定义 widget `aigcModelToggles` 勾选。被禁模型从 LLM 可见枚举 + 下发清单**同源移除**，下次会话/重载生效 |
+| `enablePromptOptimization` | `false` | 是否开启工具提示词优化（本期为无改写占位接缝） |
+
+装配期 `aigcExtension` 读取该设置（`resolveAigcToolSettings`），喂给两个工具注册函数使清单同源过滤（`extension.ts:76-79`）。设置界面（schema 驱动 + `aigcModelToggles` widget）见 [13 · 配置 UI](./13-config-ui.md)。
+
+### promptToolbar 快捷设置
+
+装配期 `aigcExtension` 还把「生成∪编辑」模型并集 + label/provider 映射 + 尺寸档位 + 提示词优化开关写入会话共享状态（`aigc.models` 等键，`extension.ts:35-68`），供提示词栏工具排（`promptToolbar` 槽）的 AIGC 快捷设置选择器动态渲染——单一事实源=工具 `ROUTES`，新增 provider 自动出现。`promptToolbar` 是已声明的 web-ext SlotKey，详见 [12 · Web UI 扩展](./12-web-ui-extension.md)。
+
+---
+
+## Provider 端点差异速查
+
+不同 provider 的端点与请求体形态差异（`buildBody`/`pickResult`/`detectError` 各自封装）：
+
+- **NewAPI（`gpt-image-2`，默认）**：`POST https://www.apiservices.top/v1/images/generations` 与 `/images/edits`（multipart）；OpenAI 兼容请求体；`Authorization: Bearer ${NEWAPI_API_KEY}`。
+- **sufy（`*-sufy`）**：base `https://openai.sufy.com/v1`（七牛云 AIGC 网关，**不是** `api.sufy.com`——NXDOMAIN）；与 NewAPI 同构，复用 `providers/openai-compat.ts` 的通用工厂；`response_format` 参数被 sufy 拒绝（400），故 sufy config 设 `omitResponseFormat`；真实 model id 须带 `openai/` 前缀（不带返回 502），路由用 `providerModel` 区分。
+- **OpenRouter（gemini/gpt-5 系）**：`POST https://openrouter.ai/api/v1/chat/completions`（**不是** OpenAI `/images`）；请求体 `{ model, modalities:["image","text"], messages }`；响应图在 `choices[].message.images[].image_url.url`；`negative_prompt` 有效，`size`/`background`/`quality`/`moderation`/`mask` 静默忽略；可选 `${OPENROUTER_PROXY}`。
+- **DashScope 官方（`wan2.7-image-pro` / `qwen-image-edit-max`）**：`POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`；DashScope **原生** `input/parameters` 格式；`size` 用 `width*height`（星号，如 `1024*1024`），运行时自动转换。
+- **阿里云百炼 token plan（`*-bailian`）**：同 DashScope 原生格式，base 经 `${DASHSCOPE_TOKENPLAN_BASE_URL:-…}` 占位覆盖；**不要**用 `compatible-mode/aigc` 路径（会报 URL error），正确路径为 `.../services/aigc/multimodal-generation`。
+
+> 再接入同类 OpenAI `/images` 兼容网关最省事：照 `providers/sufy.ts` 复制一份薄封装，只改 `baseUrl` + `apiKeyVar` 两个常量即复用通用工厂；env 变量随 `runner.ts` 的 `env: process.env` 整体继承流入子进程，无需白名单注入。异构 provider（如 DashScope 原生形态）参考 `providers/dashscope.ts` 返回 `ImageRoute`。
 
 ---
 
 ## 扩展：添加新 provider
 
-在 `packages/tool-kit/src/aigc/tools/image-generation.ts` 的 `models` 数组追加新路由项即可，不影响其他工具执行路径：
+在 `image-generation.ts` 的 `ROUTES` 数组（`:44`）追加新路由项即可，不影响其他工具执行路径：
 
 ```ts
 import { createNewApiImage } from "../providers/newapi.js";
 
-// 在 imageGeneration.models 中追加：
+// 在 ROUTES 中追加：
 createNewApiImage(
   {
     model: "my-custom-model",
@@ -344,17 +307,41 @@ createNewApiImage(
 ),
 ```
 
-**新增 OpenAI `/images` 兼容网关（最常见）**：无需写任何 buildBody/pickResult——照 `providers/sufy.ts` 复制一份薄封装，只改 `baseUrl` + `apiKeyVar` 两个常量，即复用 `providers/openai-compat.ts` 的通用工厂 `createOpenAiCompatImage` / `createOpenAiCompatImageEdit`；若网关 model 名与路由键不同（如 sufy 的 `openai/gpt-image-2`）用 `providerModel` 区分。env 变量（如 `SUFY_API_KEY`）会随 `runner.ts` 的 `env: process.env` 整体继承自动流入 runner 子进程，**无需白名单注入**。
-
-如需**异构** provider 类型（非 OpenAI 形态，如 DashScope 原生 input/parameters），参考 `providers/dashscope.ts` 实现工厂函数，返回 `ImageRoute`。
+新路由的 `model` 会自动进入 `optionalModelEnum` 构造的 LLM 可见枚举，`"$models"` 哨兵展开、装配期清单下发、`GET /aigc/models` 目录均随之更新——单一事实源。
 
 ---
 
-## 下一步 / 相关
+## 完整示例：aigc-agent
 
-- [09 · 附件系统](09-attachment-system.md) — 工具产物落库与 `att_<id>` 引用机制
-- [10 · 扩展与 Skills](10-extensions-and-skills.md) — 如何在 agent 中装配工具与扩展
-- [06 · 配置](06-configuration.md) — 环境变量配置说明
-- [07 · Providers 与 Models](07-providers-and-models.md) — NewAPI / DashScope provider 接入
-- [08 · Agent 开发](08-agent-development.md) — `defineAgent` 与 `customTools` 用法
-- [23 · 故障排查 FAQ](23-troubleshooting-faq.md#2-provider--模型问题) — 401／"渠道不存在"（[§2.1](23-troubleshooting-faq.md#21-自定义-provider-鉴权-401)）、iPhone 多图 JPEG 报错（[§2.2](23-troubleshooting-faq.md#22-iphone-多图-jpeg-上传致网关报错空-model-名或渠道不存在)）
+`examples/aigc-agent/index.ts` 演示从 `extensions:[aigcExtension, visionExtension]` 装载到「生成 → 回看」全链路。
+
+**对话示例**：
+
+```
+用户：帮我生成一张极光下的雪山，胶片质感
+助手：[调用 image_generation { prompt: "极光下的雪山，胶片质感", size: "1024x1024" }]
+      生成成功：1 张图像已保存 (att_abc123)。
+      ![image_generation_0](https://.../api/attachments/att_abc123/display?sig=...)
+
+用户：/img_vision 这张图是白天还是夜晚？
+助手：[/img_vision 命令 → image_vision 内核对最近一张图识别]
+      → ctx.ui.notify：这是一张夜景图，天空可见极光……（不进消息历史，无气泡）
+```
+
+**热重载**：改 `examples/aigc-agent/index.ts` 后加 `--watch` 自动重载会话。
+
+---
+
+## 相关链接
+
+- [04 · Surface 权威表面栈](./04-surface-stack.md) — Canvas「解读」按钮回流对话的通信平面
+- [06 · 配置参考](./06-configuration.md) — 环境变量与配置目录（含 AIGC provider key、`PI_WEB_VISION_MODEL`）
+- [07 · Provider 与模型](./07-providers-and-models.md) — 文本对话模型接入（图像/视觉模型走各自路由表，不经 ModelRegistry）
+- [08 · 自定义 Agent 开发](./08-agent-development.md) — `defineAgent` 与 `extensions` 装载
+- [09 · 附件系统](./09-attachment-system.md) — 工具产物落库与 `att_<id>` 引用机制
+- [10 · 扩展 / Skills](./10-extensions-and-skills.md) — 扩展装载与扩展命令 fire-and-forget 语义
+- [12 · Web UI 扩展](./12-web-ui-extension.md) — `promptToolbar` 槽与 AIGC 快捷设置
+- [13 · 配置 UI](./13-config-ui.md) — `aigc.json` 的 `aigcModelToggles` widget
+- [16 · Canvas 工作台](./16-canvas-workbench.md) — 二创画布编辑器与「解读」按钮的完整交互
+- [24 · HTTP/SSE API 参考](./24-http-api-reference.md) — `GET /vision/models`、`GET /aigc/models` 端点
+- [23 · 故障排查 FAQ](./23-troubleshooting-faq.md#4-provider--模型问题) — 401／「渠道不存在」、iPhone 多图 JPEG 报错

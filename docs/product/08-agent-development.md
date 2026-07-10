@@ -1,8 +1,8 @@
-# 07 · 自定义 Agent 开发指南
+# 08 · 自定义 Agent 开发指南
 
-本章说明如何从零编写一个可被 pi-web runner 载入的自定义 agent，覆盖入口契约、工具定义、模型继承、examples 目录索引和开发期热重载。
+本章说明如何从零编写一个可被 pi-web runner 载入的自定义 agent，覆盖入口契约、工具定义、模型继承、会话共享状态（`getSessionState`）、静态 slash 补全、声明式 HTTP routes、examples 目录索引和开发期热重载。
 
-> **边学边跑**：本章每个关键概念都配有一个可运行示例，散落在仓库 `examples/` 下。推荐学习路径（从易到难）：`minimal-agent` → `hello-agent` → `builtin-tools-agent` → `file-session-agent` → `server-driven-ui-agent` → `system-status-agent` → `ui-demo-agent`。各示例定位与跑法总索引见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)，章末「示例索引（学习路径）」小节也有速查表。
+> **边学边跑**：本章每个关键概念都配有一个可运行示例，散落在仓库 `examples/` 下。推荐学习路径（从易到难）：`minimal-agent` → `hello-agent` → `builtin-tools-agent` → `state-bridge-agent` → `agent-routes-demo` → `server-driven-ui-agent`。各示例定位与跑法总索引见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)，章末「示例索引（学习路径）」小节也有速查表。
 
 ---
 
@@ -28,8 +28,8 @@ Runner bootstrap（`packages/server/runner-bootstrap.mjs`）通过 jiti 载入 `
 
 - **`defineAgent(def)`** — 恒等函数，仅用于编译期类型推断，运行时原样返回入参。不用此包写出的等价 `AgentDefinition` 对象同样能被 runner 载入。
 - **`defineMinimalAgent(overrides?)`** — 在 `minimalAgentPreset`（`noTools: "all"` + 空 skills + `allowExtensions: []`）之上浅合并作者覆盖，一行得到零能力基线。
-- **`emitUi(onUpdate, spec)`** — 在工具 `execute` 内发出 `UiSpec`，触发 server-driven UI 渲染（对应实践见 `examples/server-driven-ui-agent`：内置白名单组件 + 沙箱节点树两条信任路径；与 ambient 状态/通知组合的形态见 `examples/system-status-agent`）。
-- 类型导出：`AgentDefinition`、`AgentContext`、`AgentModel`、`ToolDefinition`、`AttachmentToolContext` 等（均为纯类型，无值依赖）。
+- **`emitUi(onUpdate, spec)`** — 在工具 `execute` 内发出 `UiSpec`，触发 server-driven UI 渲染（对应实践见 `examples/server-driven-ui-agent`）。
+- 类型导出：`AgentDefinition`、`AgentContext`、`AgentModel`、`ToolDefinition`、`AgentRouteDecl`、`AgentRouteRequest`、`AttachmentToolContext` 等（均为纯类型，无值依赖）。
 
 ```ts
 import { defineAgent } from "@blksails/pi-web-agent-kit";
@@ -39,7 +39,7 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 
 ## `AgentDefinition` 字段速查
 
-来源：`packages/agent-kit/src/types.ts`
+来源：`packages/agent-kit/src/types.ts:110`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -50,15 +50,16 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 | `tools` | `string[]` | 内置/扩展工具名许可名单 |
 | `excludeTools` | `string[]` | 工具排除名单（在 `tools` 之后应用） |
 | `noTools` | `"all" \| "builtin"` | `"builtin"` 关闭内置工具集（保留 custom/extension）；`"all"` 全关 |
-
-> 三种工具姿态各有一个可跑示例对照：`noTools: "all"`（零能力基线）见 `examples/minimal-agent`；`noTools: "builtin"`（仅留自定义工具）见 `examples/hello-agent`；用 `tools` allowlist 显式启用 pi 内置文件系统/shell 工具集见 `examples/builtin-tools-agent`。
 | `extensions` | `Array<string \| ExtensionFactory>` | 追加加载的扩展（路径或工厂） |
 | `allowExtensions` | `string[] \| undefined` | 系统扩展许可名单；`[]` = 关闭所有磁盘发现的系统扩展 |
 | `skills` | `SkillsOverride \| undefined` | 覆盖 hook，接收已发现的 skill 集并返回过滤后的集合 |
 | `promptTemplates` | `PromptsOverride \| undefined` | 覆盖 hook |
 | `contextFiles` | `AgentsFilesOverride \| undefined` | 覆盖 AGENTS.md/CLAUDE.md 发现结果 |
 | `scopedModels` | `Array<{model, thinkingLevel?}>` | 运行时可切换的模型列表 |
-| `routes` | `AgentRouteDecl[] \| undefined` | 声明式 HTTP routes；每条随会话挂载为 `GET·POST /api/sessions/:id/agent-routes/:name`（详见下文「声明式 HTTP routes」小节） |
+| `slashCompletions` | `SlashCompletionDecl[] \| undefined` | 静态 slash 伪命令补全候选；选中仅填输入框、不执行（详见「静态 slash 补全」小节） |
+| `routes` | `AgentRouteDecl[] \| undefined` | 声明式 HTTP routes；每条随会话挂载为 `GET·POST /api/sessions/:id/agent-routes/:name`（详见「声明式 HTTP routes」小节） |
+
+> 三种工具姿态各有一个可跑示例对照：`noTools: "all"`（零能力基线）见 `examples/minimal-agent`；`noTools: "builtin"`（仅留自定义工具）见 `examples/hello-agent`；用 `tools` allowlist 显式启用 pi 内置文件系统/shell 工具集见 `examples/builtin-tools-agent`。
 
 ---
 
@@ -142,12 +143,96 @@ export default async function (ctx: AgentContext) {
 
 ---
 
+## 会话共享状态：`getSessionState()`（作者面）
+
+来源：`packages/tool-kit/src/session-state.ts:61`
+
+agent 工具需要在**人机之间共读写一份会话级状态**（例如一个计数器、一个当前选中项）时，用 `getSessionState()`。它是「状态注入桥（state-injection-bridge）」的作者侧接入点：权威 KV 存在 runner **子进程**里，由 pi-web 的 `wireStateBridge` 自建并挂到约定的 globalThis seam；工具内读写零跨进程、立即生效，写入会经下行 `control:"state"` 帧实时镜像到 UI（在 LLM context 之外，不进对话历史）。
+
+**授权与可用性语义**（务必按此使用）：
+
+- `getSessionState()` **只在 agent 工具 `execute` 内调用**才有意义——此时代码跑在 runner 子进程里，seam 已被 `wireStateBridge` 装配。
+- seam 不可用时（不是子进程 / 桥未装配 / 前端环境）返回 `available: false` 的降级视图：`get` 返回 `undefined`、`set`/`delete` 为 no-op，**绝不抛错**。因此工具应先判 `available` 再决定行为，而非假设状态一定可写。
+- 纯 globalThis 读取，无 pi SDK / Node 依赖，前端安全（浏览器侧恒降级）。
+
+`SessionStateAccess` 接口（`session-state.ts:18`）：`available` / `get<T>(key)` / `set(key, value)` / `delete(key)` / `snapshot()`。
+
+```ts
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { getSessionState } from "@blksails/pi-web-tool-kit";
+
+// increment：读 count → +1 → 写回 → 返回新值；写入实时镜像到 UI
+const increment = defineTool({
+  name: "increment",
+  label: "Increment State",
+  description: "Bump a shared counter and return the new value.",
+  parameters: Type.Object({
+    key: Type.Optional(Type.String({ description: "状态 key（默认 'count'）。" })),
+  }),
+  async execute(_id, params) {
+    const state = getSessionState();
+    if (!state.available) {
+      return { content: [{ type: "text", text: "Shared state unavailable." }], details: { ok: false } };
+    }
+    const key = params.key ?? "count";
+    const next = (typeof state.get<number>(key) === "number" ? state.get<number>(key)! : 0) + 1;
+    state.set(key, next);
+    return { content: [{ type: "text", text: `${key} = ${next}` }], details: { ok: true, key, value: next } };
+  },
+});
+```
+
+> `getSessionState` 从 `@blksails/pi-web-tool-kit` 主入口导出（纯 globalThis 读取，前端安全，无 pi SDK 值依赖）。canonical 双端范例见 `examples/state-bridge-agent`：AI 侧 `increment`/`read_state` 工具 + 人侧 `.pi/web` 用 `useExtensionState("count")` 渲染并写回，两端读写同一份实时状态。该范例的工具刻意内联 seam 读取（不 import tool-kit）以保持 hermetic，与上面用 `getSessionState()` 的等价写法可任选其一。
+>
+> 状态注入桥的整体架构（子进程权威、`control:"state"` 下行镜像、`rev` 单调号）见 [04 · Surface 权威表面栈](04-surface-stack.md)；人侧写回端点 `POST /api/sessions/:id/state` 见 [24 · HTTP API 参考](24-http-api-reference.md)。
+
+---
+
+## 静态 slash 补全（`slashCompletions`）
+
+来源：字段类型 `packages/agent-kit/src/types.ts:162`；协议 schema `packages/protocol/src/transport/slash-completion.ts:16`
+
+agent 可声明一组**静态 slash 伪命令补全候选**，让用户在输入框敲 `/` 时看到本 agent 专属的提示。关键语义：这些候选**只是补全项，选中后仅把 `insertText` 填入输入框、并不执行任何命令**——填入的文本作为一条普通消息发送，由 LLM 按系统提示解读。它不同于 `pi.registerCommand` 注册的可执行命令。
+
+`SlashCompletionDecl`（纯数据，前端安全）：
+
+- `name` — 命令名（无前导 `/`），如 `"img-gen"`。
+- `description?` — 补全浮层的副文本。
+- `insertText?` — 选中后填入输入框的文本；缺省由消费方按 `"/" + name + " "` 推导。
+
+```ts
+import { defineAgent } from "@blksails/pi-web-agent-kit";
+
+export default defineAgent({
+  systemPrompt:
+    "When the user sends '/img-gen <描述>', treat it as a request to generate an image.",
+  slashCompletions: [
+    { name: "img-gen", description: "用提示词生成图像", insertText: "/img-gen " },
+    { name: "img-edit", description: "编辑最近上传的图像", insertText: "/img-edit " },
+  ],
+});
+```
+
+**端到端链路**（声明 → 装配期帧 → 命令面板）：
+
+1. 声明在 `AgentDefinition.slashCompletions`（纯数据，无函数、无 pi SDK 导入）。
+2. runner 装配期（`runRpcMode` 之前）由子进程经 stdout 推出一次性 `slash_completions` 帧（与 `ui_rpc_response` 同性质的 pi-web 自建 JSONL 帧）；server 按会话缓存。
+3. 前端 `/` 补全把这些候选并入命令面板；用户选中 → 仅填输入框 → 作为普通消息发送。
+
+> 真实数据范例：`aigcSlashCompletions`（`packages/tool-kit/src/aigc/slash-completions.ts:12`）就是 AIGC 扩展声明的 `/img-gen`、`/img-edit` 两个候选，`examples/aigc-agent` 经 `import { aigcSlashCompletions }` 挂载。之所以能「选中即填入而非执行」，是因为真实图像工具是 `image_generation` / `image_edit`（LLM 调用），slash 候选只是把请求措辞塞进输入框交给模型。
+
+---
+
 ## 声明式 HTTP routes（`AgentDefinition.routes`）
+
+来源：`packages/agent-kit/src/types.ts:85`（`AgentRouteDecl`）、`:57`（`AgentRouteRequest`）
 
 agent 可以在定义中声明具名 HTTP routes：会话创建后，每条 route 自动成为该会话命名空间下的端点 `GET·POST /api/sessions/:id/agent-routes/:name`，外部系统（curl / webhook / 第三方服务）无需订阅 SSE 流即可同步调用 agent 能力——**声明即生效，零宿主侧配置**。不声明 `routes` 的 agent 完全不受此特性影响。
 
 ```ts
 import { defineAgent } from "@blksails/pi-web-agent-kit";
+import type { AgentRouteRequest } from "@blksails/pi-web-agent-kit";
 
 export default defineAgent({
   routes: [
@@ -155,7 +240,7 @@ export default defineAgent({
       name: "gallery-stats",        // 必填：小写字母/数字/连字符，定义内唯一
       // methods 缺省 → ["GET"]（主用例是只读查询）；可声明 ["GET", "POST"]
       description: "画廊统计",       // 可选：出现在 route 清单端点的投影里
-      handler: async (req) => {
+      handler: async (req: AgentRouteRequest) => {
         // req: { name, method: "GET" | "POST", query: Record<string, string>, body?: unknown }
         return { ok: true, echo: req.query };  // 返回值须 JSON 可序列化 → 即 HTTP 响应体
       },
@@ -164,7 +249,7 @@ export default defineAgent({
 });
 ```
 
-**handler 契约**（`AgentRouteHandler`，类型见 `packages/agent-kit/src/types.ts`）：
+**handler 契约**（`AgentRouteHandler`，`packages/agent-kit/src/types.ts:77`）：
 
 - 入参 `AgentRouteRequest`：`name`（被调 route 名）、`method`（`"GET" | "POST"`）、`query`（拍平为单值字符串的查询参数）、`body`（POST 携带的已解析 JSON，可缺省；GET 调用恒无 body）。
 - 返回值（可 async）**必须 JSON 可序列化**，原样成为 HTTP 响应体；handler 抛错 → 调用方收到 502。
@@ -175,12 +260,11 @@ export default defineAgent({
 - `name` 非空，仅小写字母/数字/连字符（`^[a-z0-9][a-z0-9-]*$`），同一定义内唯一。
 - `methods` 仅允许 `"GET"` / `"POST"`；缺省为 `["GET"]`。
 
-**安全与调用语义**：
+**调用语义**（关键几条，完整错误码表 / 超时·体积上限 env / curl 请求样例见 [24 · HTTP API 参考](24-http-api-reference.md)）：
 
 - 调用**不触发 LLM 推理、不进对话历史、不产生任何 UI 变化**；会话推理进行中（busy）照常受理。
-- handler 只能经声明绑定被调用——未声明的名字 → 404；端点复用既有会话鉴权门（401/403/会话 404）。
-- 运维可整体关断：`PI_WEB_AGENT_ROUTES_DISABLED=1` → 全部 agent-routes 端点返回通用 404（默认开启）。
-- 转发超时（`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`，默认 20000 ms）→ 504；POST 请求体上限（`PI_WEB_AGENT_ROUTE_BODY_LIMIT`，默认 1 MiB）→ 413。
+- handler 只能经声明绑定被调用——未声明的名字 → 404；端点复用既有会话鉴权门（401/403 / 会话 404）。
+- 运维可整体关断、并调节转发超时与 POST 体积上限（`PI_WEB_AGENT_ROUTES_DISABLED` / `PI_WEB_AGENT_ROUTE_TIMEOUT_MS` / `PI_WEB_AGENT_ROUTE_BODY_LIMIT`，默认值与行为在 24 章列全）。
 
 ### 声明式路由的文件组织
 
@@ -188,48 +272,75 @@ routes 增多后全塞 `index.ts` 会臃肿。约定：
 
 - **1 个路由**：内联在 `index.ts` 即可，不必过度拆分。
 - **≥2 个路由，或 handler 变复杂**：抽到 `routes/` 子目录。
-  - **一路由一文件**：`routes/<route-name>.ts`，文件名 **=== 路由 `name`（kebab-case）=== URL 段**，`/agent-routes/gallery-stats` 一眼对到 `routes/gallery-stats.ts`。
+  - **一路由一文件**：`routes/<route-name>.ts`，文件名 **=== 路由 `name`（kebab-case）=== URL 段**，`/agent-routes/ping` 一眼对到 `routes/ping.ts`。
   - 每个路由文件 **co-locate** handler + 它的 `AgentRouteDecl`：handler 单独 `export`（便于单测），decl 导出（命名 `<camelName>Route`）给 barrel 汇总。
   - `routes/index.ts` 作 **barrel**，按稳定顺序汇成 `AgentRouteDecl[]`。
   - `index.ts` 只 `import { routes } from "./routes/index.js"` 传给 `defineAgent`，不放 handler 逻辑。
   - agent 源经 jiti 加载（NodeNext），相对导入带 `.js` 后缀。
 
+canonical 多路由范例：`examples/agent-routes-demo`（`ping` / `echo` / `whoami` 三路由）。
+
 ```
-examples/aigc-canvas-agent/
+examples/agent-routes-demo/
 ├── index.ts               # defineAgent；import { routes } from "./routes/index.js"，无 handler 逻辑
 ├── routes/
-│   ├── index.ts           # barrel：export const routes = [galleryStatsRoute]
-│   └── gallery-stats.ts   # galleryStatsHandler + galleryStatsRoute（name/description/handler）
+│   ├── index.ts           # barrel：export const routes = [pingRoute, echoRoute, whoamiRoute]
+│   ├── ping.ts            # pingHandler + pingRoute
+│   ├── echo.ts            # echoHandler + echoRoute（GET·POST）
+│   └── whoami.ts          # whoamiHandler + whoamiRoute
 ├── package.json
 └── README.md
 ```
 
 ```ts
-// routes/gallery-stats.ts —— 一路由一文件，handler + decl co-locate
+// routes/ping.ts —— 一路由一文件，handler + decl co-locate
 import type { AgentRouteDecl } from "@blksails/pi-web-agent-kit";
 
-export function galleryStatsHandler(): unknown {
-  /* 只在 agent 子进程内执行；读进程内状态接缝，归纳为 JSON。 */
+export function pingHandler(): unknown {
+  return { pong: true };
 }
 
-export const galleryStatsRoute: AgentRouteDecl = {
-  name: "gallery-stats",                 // === 文件名 === URL 段
-  description: "Canvas 画廊统计",
-  handler: galleryStatsHandler,
+export const pingRoute: AgentRouteDecl = {
+  name: "ping",                          // === 文件名 === URL 段
+  description: "探活：返回 { pong: true }",
+  handler: pingHandler,
 };
 
 // routes/index.ts —— barrel
-import { galleryStatsRoute } from "./gallery-stats.js";
-export const routes: AgentRouteDecl[] = [galleryStatsRoute];
+import { pingRoute } from "./ping.js";
+import { echoRoute } from "./echo.js";
+import { whoamiRoute } from "./whoami.js";
+export const routes: AgentRouteDecl[] = [pingRoute, echoRoute, whoamiRoute];
 
 // index.ts —— 只汇总
 import { routes } from "./routes/index.js";
 export default defineAgent({ /* … */ routes });
 ```
 
+**试一下**：以本目录为 agent source 启动会话后（`pi-web ./examples/agent-routes-demo`），拿到会话 id，直接 HTTP 调用（无需订阅 SSE）：
+
+```bash
+# 探活
+curl http://127.0.0.1:3000/api/sessions/<id>/agent-routes/ping
+# → {"pong":true}
+
+# 回显 query
+curl "http://127.0.0.1:3000/api/sessions/<id>/agent-routes/echo?foo=bar"
+# → {"method":"GET","query":{"foo":"bar"},"body":null}
+
+# 回显 POST body
+curl -X POST http://127.0.0.1:3000/api/sessions/<id>/agent-routes/echo \
+  -H 'content-type: application/json' -d '{"hello":"world"}'
+# → {"method":"POST","query":{},"body":{"hello":"world"}}
+```
+
 收益：`index.ts` 只讲「这个 agent 是什么」；每条路由的逻辑/文档/类型集中在同名文件、可独立单测；URL ↔ 文件一一对应。
 
-调用面完整契约（端点路径、错误码表、env 明细、curl 示例）见 [24 · HTTP API 参考](24-http-api-reference.md)；可跑演示见 `examples/aigc-canvas-agent`（README「Agent Routes 演示（`gallery-stats`）」小节）。
+---
+
+## Surface 权威表面：一句指路
+
+如果 agent 要维护一份**领域权威状态**（如 Canvas 的画布/画廊），并让前端以「命令上行 + 状态快照下行」的 CQRS 单写者方式消费，作者侧接入点是 `createSurface`（`packages/tool-kit/src/surface/create-surface.ts`，以 `ExtensionFactory` 形态装载）。它与本章的 `getSessionState`（无结构的会话 KV）不同：surface 是按 domain 建的权威投影 + 结构化命令转发（不过 LLM）。完整概念、`createSurface`/`useSurface`/`wireSurfaceBridge` API 与 Canvas 端到端实例见 [04 · Surface 权威表面栈](04-surface-stack.md)；作者面范例 `examples/surface-demo-agent`。
 
 ---
 
@@ -241,37 +352,34 @@ export default defineAgent({ /* … */ routes });
 |--------|-----------|
 | `hello-agent` | 最小完整范例：自定义 `echo` 工具 + 系统提示，关闭内置工具集 |
 | `minimal-agent` | 零能力基线：`defineMinimalAgent` preset，noTools/skills/extensions 全关 |
-| `aigc-agent` | 装配 `buildAigcTools()`（`image_generation` / `image_edit`），演示 AIGC 工具 + 附件接缝 |
-| `attachment-tool-agent` | 演示 attachment-tool-bridge：自定义图像工具经 `AttachmentToolContext` 将产物落 attachment store |
 | `builtin-tools-agent` | 启用 pi 内置工具集（与 hello-agent 的 `noTools: "builtin"` 相反的姿态） |
+| `state-bridge-agent` | 会话共享状态双端范例：AI 侧 `increment`/`read_state` 工具 + 人侧 `.pi/web` 写回同一份实时状态 |
+| `agent-routes-demo` | 声明式 HTTP routes 多路由范例：`routes/` 子目录一路由一文件（`ping`/`echo`/`whoami`），可直接 curl |
+| `aigc-agent` | 装配 `extensions: [aigcExtension, visionExtension]`（`image_generation` / `image_edit` / `image_vision`），演示 AIGC + 视觉 + 附件接缝 |
+| `vision-agent` | 视觉识别专题：`image_vision` 工具 + `/img_vision` 命令 |
+| `attachment-tool-agent` | 演示 attachment-tool-bridge：自定义图像工具经 `AttachmentToolContext` 将产物落 attachment store |
 | `file-session-agent` | 配合文件存储会话演示的最小 agent（session 存储是运行时配置，不在 AgentDefinition 中） |
 | `pi-probe-agent` | 探针 agent，用于验证 `.pi/` 项目级资源（extensions/skills）被正确发现和加载 |
+| `surface-demo-agent` | Surface 权威表面作者面范例（`createSurface`，详见 04 章） |
 | `server-driven-ui-agent` | 在工具 `execute` 内调用 `emitUi(onUpdate, spec)` 发出 `UiSpec`，前端零配置渲染 |
 | `system-status-agent` | 组合 server-driven UI + ambient 状态/通知，一个工具同时演示两条链路 |
 | `ui-demo-agent` | 演示 extension UI 全部交互 surface（`ctx.ui.*`：状态推送、ambient 通知等） |
-| `webext-artifact-agent` | Tier 4 artifact 隔离表面示例，`.pi/web` 声明 artifact 入口，宿主在沙箱 iframe 渲染 |
-| `webext-background-agent` | Tier 1 背景插槽示例：`.pi/web` WebExtension 渲染动画背景层（`background` 区域） |
-| `webext-contrib-agent` | Tier 3 贡献点示例：slash / @mention，经 ui-rpc 回 agent 取候选 |
-| `webext-declarative-agent` | Tier 5 纯声明示例：`.pi/web/manifest.json` 内联 theme token + layout，零代码 UI 扩展 |
-| `webext-layout-agent` | Tier 1 区域插槽示例：填充 `panelRight` 与 `headerCenter` 区域 |
-| `webext-renderer-agent` | Tier 2 渲染器示例：注册自定义 `data-metric` data-part 渲染器 + `echo` 工具 |
-| `webext-slots-agent` | 验收 fixture：声明 18 个区域插槽（协议 `SlotKeySchema` 共 19 槽，fixture 暂未含 `logs`），验证宿主已为各插槽接线 `SlotHost` |
+| `webext-*`（一组） | `.pi/web` WebExtension Tier 1–5 各层示例（背景/区域插槽/渲染器/贡献点/artifact/声明式/运行时代码），详见 [12 · Web UI 扩展](12-web-ui-extension.md) |
 
 ### 学习路径（从易到难）
 
-下表把上面"自定义 agent 开发"涉及的核心概念串成一条由浅入深的实践路线，逐个对应一个可跑示例。建议按顺序跑通：
+下表把上面「自定义 agent 开发」涉及的核心概念串成一条由浅入深的实践路线，逐个对应一个可跑示例。建议按顺序跑通：
 
 | 顺序 | 示例 | 你将学到的概念 | 对应本章小节 |
 |------|------|---------------|-------------|
 | 1 | `examples/minimal-agent` | `defineMinimalAgent` preset / `noTools: "all"` 零能力基线 | 核心概念、最小基线 |
 | 2 | `examples/hello-agent` | 自定义 `defineTool` + `systemPrompt`，`noTools: "builtin"`（e2e 目标） | hello-agent 范例 |
 | 3 | `examples/builtin-tools-agent` | 用 `tools` allowlist 启用 pi 内置文件系统/shell 工具集 | `noTools` / `tools` 字段 |
-| 4 | `examples/file-session-agent` | 会话存储是**运行时**配置，不在 `AgentDefinition` 中 | `AgentDefinition` 字段速查 |
-| 5 | `examples/server-driven-ui-agent` | `emitUi(onUpdate, spec)` 发 `data-pi-ui`，前端零配置渲染 | `emitUi` |
-| 6 | `examples/system-status-agent` | server-driven UI + ambient 状态/通知组合（`ctx.ui.setStatus/notify`） | `emitUi` |
-| 7 | `examples/ui-demo-agent` | extension UI 交互 surface：`ctx.ui.select/confirm/input` | — |
+| 4 | `examples/state-bridge-agent` | `getSessionState()` 读写会话共享状态（人机共驾） | 会话共享状态 |
+| 5 | `examples/agent-routes-demo` | `routes` 声明式 HTTP 端点 + `routes/` 文件组织 | 声明式 HTTP routes |
+| 6 | `examples/server-driven-ui-agent` | `emitUi(onUpdate, spec)` 发 `data-pi-ui`，前端零配置渲染 | `emitUi` |
 
-> 上表是「自定义 agent 开发」主线的推荐顺序；`aigc-agent`、`attachment-tool-agent`、`pi-probe-agent` 与 `webext-*` 系列属于专题方向，分别详见 [11 · AIGC 工具](11-aigc-and-vision-tools.md)、[09 · 附件系统](09-attachment-system.md)、[10 · 扩展与 Skills](10-extensions-and-skills.md) 与 [12 · Web UI 扩展](12-web-ui-extension.md)。完整清单与各自跑法见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
+> 上表是「自定义 agent 开发」主线的推荐顺序；`aigc-agent`、`vision-agent`、`attachment-tool-agent`、`surface-demo-agent` 与 `webext-*` 系列属于专题方向，分别详见 [11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md)、[09 · 附件系统](09-attachment-system.md)、[04 · Surface 权威表面栈](04-surface-stack.md) 与 [12 · Web UI 扩展](12-web-ui-extension.md)。完整清单与各自跑法见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
 
 ---
 
@@ -327,6 +435,8 @@ pi-web 后端进程
               │    └─ buildRuntimeFactory(def) # 归一化为统一运行时工厂
               ├─ createAgentSessionRuntime(factory, {cwd, agentDir, sessionManager})
               ├─ wireAttachmentBridge(runtime)  # attachment-tool-bridge 装配
+              ├─ wireStateBridge(runtime)       # 会话共享状态桥装配（getSessionState seam）
+              ├─ wireSurfaceBridge(runtime)     # Surface 权威表面桥装配（见 04 章）
               └─ runRpcMode(runtime)       # 进入 RPC 循环，永不返回
 ```
 
@@ -375,17 +485,19 @@ pi-web 后端进程
    - `noTools: "builtin"` — 关闭内置工具，只保留 `customTools` 和 `.pi/extensions` 工具。
    - `noTools: "all"` — 全关，等价于 `minimalAgentPreset` 的工具姿态。
    - 省略 `noTools` — 保持默认内置工具集。
-6. **开启热重载**（修改 tool-kit 源码时）：设置 `PI_RUNNER_HOT_RELOAD=1`；改 agent 自身 `index.ts` 则用 `pi-web --watch /path/to/my-agent`。改动会在 runner 空闲时自动重启并续上会话，无需手动开新会话。
+6. **（可选）声明扩展面**：需要 HTTP 端点用 `routes`（见「声明式 HTTP routes」），需要 `/` 补全提示用 `slashCompletions`，需要人机共享状态在工具内用 `getSessionState()`。
+7. **开启热重载**（修改 tool-kit 源码时）：设置 `PI_RUNNER_HOT_RELOAD=1`；改 agent 自身 `index.ts` 则用 `pi-web --watch /path/to/my-agent`。改动会在 runner 空闲时自动重启并续上会话，无需手动开新会话。
 
 **常见报错对策**：
 
 | 现象 | 多半原因 | 对策 |
 |------|---------|------|
 | `module has no default export` | `index.ts` 没有 `export default` 或导出了仅命名导出 | 确认默认导出是 `AgentDefinition` 对象 / 工厂 / 带 brand 的工厂 |
-| 模型调用 401 / 鉴权失败 | 显式 `model` 指定的 provider 无有效凭据 | 删掉 `model` 改用默认，或补好该 provider 的 auth，详见 [23 · 故障排查 §2.1](./23-troubleshooting-faq.md) |
-| 改了代码不生效 | runner 是常驻子进程、只 import 一次 | 开热重载（见步骤 6）或手动开新会话 |
+| 模型调用 401 / 鉴权失败 | 显式 `model` 指定的 provider 无有效凭据 | 删掉 `model` 改用默认，或补好该 provider 的 auth，详见 [23 · 故障排查 §2.1](23-troubleshooting-faq.md) |
+| 改了代码不生效 | runner 是常驻子进程、只 import 一次 | 开热重载（见步骤 7）或手动开新会话 |
+| `getSessionState().available === false` | 在子进程/桥装配之外调用，或在前端调用 | 只在工具 `execute` 内调用；前端读状态用 `useExtensionState` |
 
-更多排查见 [23 · 故障排查 FAQ](./23-troubleshooting-faq.md)。
+更多排查见 [23 · 故障排查 FAQ](23-troubleshooting-faq.md)。
 
 ---
 
@@ -393,9 +505,11 @@ pi-web 后端进程
 
 - [02 · 核心概念](02-core-concepts.md) — AgentDefinition、runner、会话模型
 - [03 · 架构](03-architecture.md) — runner 子进程隔离与 RPC 通道
+- [04 · Surface 权威表面栈](04-surface-stack.md) — `createSurface` / `getSessionState` 状态桥的整体架构与 Canvas 实例
 - [10 · 扩展与 Skills](10-extensions-and-skills.md) — `extensions` / `allowExtensions` / `skills` 字段详解
+- [11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md) — `aigcExtension` / `visionExtension` 与 aigc-agent 接入范式
 - [12 · Web UI 扩展（WebExtension）](12-web-ui-extension.md) — `.pi/web` Tier 1–5 UI 扩展体系
-- [11 · AIGC 工具](11-aigc-and-vision-tools.md) — `buildAigcTools()` 与 aigc-agent 接入范式
 - [09 · 附件系统](09-attachment-system.md) — `AttachmentToolContext` 与 attachment-tool-bridge
 - [18 · CLI](18-cli.md) — `pi-web --watch` 与命令行参数
+- [24 · HTTP API 参考](24-http-api-reference.md) — agent-routes 调用面、错误码/env、`POST /sessions/:id/state` 写回端点
 - [23 · 故障排查 FAQ](23-troubleshooting-faq.md) — agent 载入失败、provider 鉴权、热重载不生效等对策

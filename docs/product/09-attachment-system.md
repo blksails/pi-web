@@ -1,4 +1,4 @@
-# 08 · 附件系统
+# 09 · 附件系统
 
 附件系统为 pi-web 提供从上传落库到 tool 消费的全链路文件管理能力，以「引用而非 base64」为核心原则，分四层（L0–L3）实现可插拔、防枚举、跨进程一致的附件存储与分发。
 
@@ -8,7 +8,7 @@
 
 | 不变式 | 含义 |
 |--------|------|
-| **单一身份** | `att_<nanoid>` 公开 id 唯一，只能由 server 端 `AttachmentStore.put()` 铸造，前端无法自造正式 id |
+| **单一身份** | `att_<base64url>` 公开 id 唯一（`node:crypto` `randomBytes(16)` 编码，无第三方依赖），只能由 server 端 `AttachmentStore.put()` 铸造，前端无法自造正式 id |
 | **先落库后引用** | 发消息引用前必先完成上传落库，history/context 只存 `att_<id>` 引用 |
 | **base64 仅具名出口物化** | 只有两个出口可产生 base64：vision 喂 LLM（`toImageContents()`，现状保留）与 `afterToolCall` 标记"需复看"；所有其他路径只传引用 |
 
@@ -27,7 +27,7 @@ L2  resolve 投影 — AttachmentHandle（attachment-handle.ts）
      ├─ bytes()  stream()  localPath()  url()（无 base64 形态）
      └─ 子进程 store 工厂 createChildAttachmentStore（child-store.ts）
 
-L1  描述符与公开 id — att_<nanoid>
+L1  描述符与公开 id — att_<base64url>
      ├─ AttachmentStore 门面（put/head/getReadStream/presignUrl/localPath/listBySession）
      └─ AttachmentRegistry（<id>.att.json 持久化）
 
@@ -268,7 +268,7 @@ export function createMyImageTool(ctx: AttachmentToolContext) {
    PI_WEB_DEFAULT_SOURCE=./examples/attachment-tool-agent pnpm dev
    ```
    （也可不设 `PI_WEB_DEFAULT_SOURCE`，启动后在首页 agent source picker 里直接填 `./examples/attachment-tool-agent`，与 `e2e/browser/attachment-tool-bridge.e2e.ts:44` 一致。）
-2. 打开 http://localhost:3000，在对话框上传一张图片（仅 `image/*`），等状态变 `ready`。
+2. `pnpm dev` 是 `scripts/dev-all.mjs`，并发拉起 API(3000) 与 Vite dev(5173)。浏览器打开 **http://localhost:5173**（`/api` 请求由 Vite 代理到 3000），在对话框上传一张图片（仅 `image/*`），等状态变 `ready`。
 3. 发一句要求编辑该图片的消息；模型据注入的 `[attachment id=… ]` 标记调用 `edit_image` 工具。
 4. 预期结果：tool 回流一个 `att_out` 产出物，消息里出现新的 `displayUrl`，刷新后历史仍可见。
 5. 若 tool 报「附件能力不可用」→ 子进程 env 缺 `PI_WEB_ATTACHMENT_DIR`（`ctx.available === false`）；若产出图 401 → 主/子 `PI_WEB_ATTACHMENT_SECRET` 不一致。详见 [23 故障排查 FAQ](./23-troubleshooting-faq.md)。
@@ -322,11 +322,20 @@ GET /sessions/:id/completion?trigger=@&q=<查询>  → { items, groups }
 2. **候选与 token**:选中候选插入 token `@attachment:<id>`（由 `serializeToken({ trigger: "@", kind: "attachment", id })` 产出）。它与 `@file:<rel>` 共享 `@` 触发符——同一弹层里 file 与 attachment 候选按 `kind` 分组并列。
 3. **resolve（提交期）**:发送时 `POST /sessions/:id/messages` 先经 `resolveCompletions` 解析 token（`packages/server/src/http/routes/command-routes.ts:104`）。attachment provider 的 `resolve` 仅当 `head(id)` 命中**且** `att.sessionId === ctx.sessionId` 时，复用 `buildAttachmentRefs([att])` 产出与上传注入/base64 剥离路径**完全一致**的规范引用标记 `[attachment id=… type=… name=…]`；否则返回 `null`，框架保留原 token——既防跨会话引用，也防经补全枚举他人附件。
 
-### 9.5 与附件系统的衔接
+### 9.5 被引附件的预览 chip（PiMentionPreviews）
+
+选中 `@` 附件候选后，输入框里只留一段裸 token `@attachment:<id>`——用户看不出到底引用了哪张图。`PiMentionPreviews`（`packages/ui/src/completion/pi-mention-previews.tsx:54`）补上这条可视反馈：它扫描当前输入值里的 `@attachment:<id>` token（`scanAttachmentMentions`，同文件 `:35`，去重保序），为每个渲染一枚 chip——缩略图 + 附件名 + 移除按钮。这是「@ 引附件」闭环里用户唯一的可视回执。
+
+- **预览数据来自选中一刻**：装配层在补全弹层的 `onAccept` 回调里捕获候选的 `{ label, previewUrl }`，以 `id → MentionPreview` 存进 state（`packages/ui/src/chat/pi-chat.tsx:522-532`），再经 `previews` prop 传入组件（`pi-chat.tsx:1378`）。候选的 `previewUrl` 由 `GET /completion` 产出，形如根相对的 `/attachments/:id/raw?exp=…&sig=…`；客户端 `getCompletion` 按 `baseUrl` 前缀成可达 URL（`packages/react/src/client/pi-client.ts:328-338`），与 §4.2 的分发读路径同源、同样受 HMAC 签名鉴权。
+- **无预览退化**：手动键入或刷新后的 token 未经补全选中、`previews` 里查无此 id，退化为「仅名字 / id」的无图 chip（`pi-mention-previews.tsx:71,78`），仍能标记出引用了哪个附件。
+- **移除**：点 chip 上的 `×` 触发 `onRemove(id)`，装配层用 `removeAttachmentMention(value, id)`（同文件 `:49`）从输入值删去对应 token（连带其后紧邻的一个空白）。
+- **纯展示、不改协议**：组件不发请求、不物化 base64（三条不变式原样成立）；DOM 打 `data-pi-mention-previews`（容器）与 `data-pi-mention-preview=<id>`（每枚 chip）标记，供 e2e 定位。
+
+### 9.6 与附件系统的衔接
 
 `resolve` 出口刻意复用 §6 的 `buildAttachmentRefs()`：无论附件是经"先落库后引用"（§6.2 步骤 2 的 `injectAttachmentRefs`）还是经 `@` 补全引入，注入用户消息的文本标记形态**统一**，下游 `beforeToolCall` 属主校验、tool `execute` 内的 `ctx.resolve` 取句柄、跨轮回环（§6.2 步骤 8）全部沿用同一条链路，无需为补全单开分支。补全只是给附件系统多开了一个**用户侧引用入口**，没有引入新的物化或新的 id 来源——三条不变式（§1）原样成立。
 
-### 9.6 实践参考
+### 9.7 实践参考
 
 端到端可运行形态见 `examples/attachment-tool-agent`：上传图片落库后，在输入框敲 `@` 即可从弹层选中刚上传的附件，选中插入 `@attachment:<id>`，发送时被解析为规范引用标记交给 `edit_image` 工具消费（与 §8「跑通这个示例」同一 agent 源，浏览器 e2e 覆盖整链路）。补全框架本身的契约与端点行为，另见 [10 扩展与 Skills](./10-extensions-and-skills.md) 中触发符补全框架的扩展点说明。
 

@@ -1,4 +1,4 @@
-# 12 · Schema 驱动配置 UI
+# 13 · Schema 驱动配置 UI
 
 配置 UI 以 **schema 为单一事实源**，自动生成可校验、可读写、可扩展的设置界面；不为每个配置域手写表单，而是用统一的表单 IR（`FormSchema`）把 zod schema / JSON Schema 推导为控件树，再经可插拔的渲染器注册表渲染。
 
@@ -49,9 +49,9 @@ server
   config/sandbox-project-routes.ts  → /config/sandbox/project
   config/extensions-config-routes.ts → /config/extensions[/project]
            ↓
-app
-  lib/settings/register-panels.ts   → 幂等注册所有面板(auth/settings/sandbox/extensions)
-  app/settings/page.tsx             → <SettingsShell> 挂载点
+前端应用(Vite SPA)
+  lib/settings/register-panels.ts   → registerConfigPanels() 幂等注册所有面板 + 自定义 widget
+  src/routes/settings.tsx           → <SettingsShell> 挂载点(SettingsRoute)
 ```
 
 依赖方向严格单向：`protocol → react → ui → server/app`。
@@ -159,10 +159,14 @@ defaultProvider: z.string().optional().describe(
 | `sandbox-project` | `<cwd>/.pi/sandbox.json` | 同上，项目覆盖全局 | `GET·PUT /api/config/sandbox/project` |
 | `extensions`（全局）| `~/.pi/agent/settings.json` 中 commands + per-扩展 KV | `extensionsConfigSchema` | `GET·PUT /api/config/extensions/global` |
 | `extensions-project` | `<cwd>/.pi/settings.json` | 同上 | `GET·PUT /api/config/extensions/project` |
+| `logging` | `~/.pi/agent/logging.json` | `loggingConfigSchema`（enabled/level/namespaces/outputs/panelDefaultLevel） | `GET·PUT /api/config/logging` |
+| `aigc` | `~/.pi/agent/aigc.json` | `aigcConfigSchema`（disabledModels/enablePromptOptimization） | `GET·PUT /api/config/aigc` |
 
 > `extensions` 和 `sandbox/project` 有自定义互映逻辑，不走通用 `CONFIG_FORM_SCHEMAS` 注册表，而是经专属路由（`extensions-config-routes.ts` / `sandbox-project-routes.ts`）处理。
 >
 > 全局配置目录默认 `~/.pi/agent`，可经环境变量 `PI_WEB_AGENT_DIR` 覆盖（见 `config-codec.ts:16`）。本表中的 `~/.pi/agent/*.json` 均指该默认目录。
+>
+> `logging` 与 `aigc` 是两个走通用 `makeConfigDomainIO`（`GET·PUT /api/config/:domain`）的标准域，在 `lib/settings/register-panels.ts:180,192` 分别以 `order:5`（日志）、`order:6`（AIGC 图像）登记。两者都各自挂了一个自定义 widget（`logNamespaceToggles` / `aigcModelToggles`，见 §8）。`aigc.disabledModels` 由 `aigcExtension` 装配期读取——被取消勾选的模型不再暴露给 LLM、也不在选择器出现，**变更在下一次会话/重载后生效**（`packages/protocol/src/config/domains/aigc.ts:18-45`）。
 
 ### API 响应格式
 
@@ -249,6 +253,14 @@ registerFieldRendererByKey("modelSelect", ModelSelectField);
 
 `settings.json` 的 `defaultProvider` / `defaultModel` 字段在 schema 中通过 `.describe(JSON.stringify({ widget: "providerSelect" / "modelSelect" }))` 声明使用此 widget。
 
+### `aigcModelToggles`（`packages/ui/src/config/fields/aigc-model-toggles-field.tsx`）
+
+AIGC 图像配置域 `aigc.disabledModels`（值 = 被禁用的 model id 数组）的勾选清单：勾选 = 启用，取消 = 加入 `disabledModels`。可选模型清单来自 **`GET /api/aigc/models`**（返回 `AIGC_MODEL_CATALOG` 纯目录，每项含 `model` / `label` / `provider`），按模块级 Promise 缓存整页取一次，取数失败回退空集不阻断面板（`aigc-model-toggles-field.tsx:36-49`）。声明侧只需在 schema 字段写 `widget: "aigcModelToggles"`。
+
+### `logNamespaceToggles`（`packages/ui/src/config/fields/namespace-toggles-field.tsx`）
+
+logging 配置域 `namespaces` 字段（`Record<string, boolean>`）的逐项开关列表：支持逐条切换、删除已有条目、添加新命名空间。与前两个 widget 不同，其数据源不是远端端点而是**当前值本地枚举**（把 record 的每个键渲染为一行开关）。声明侧在 `logging.ts` 的 `namespaces` 字段写 `widget: "logNamespaceToggles"`。
+
 ### `extensionsKv`（`packages/ui/src/config/fields/extensions-kv-field.tsx`）
 
 两级动态增删：外层"扩展条目"（key = extId）、内层"键值对"，用于 per-扩展 KV 参数配置。
@@ -283,6 +295,17 @@ export function createSettingsRegistry(): SettingsRegistry; // 工厂
 ```
 
 **`SettingsShell`**（`packages/ui/src/config/settings-shell.tsx`）读 `listPanels()` 渲染左侧导航；同 `group` 的多个面板显示为一个菜单项 + Tab 切换（沙箱、扩展均以此方式呈现全局/项目两个作用域）。
+
+### 条件面板：MCP（「装了才出现」）
+
+绝大多数面板在 `registerConfigPanels()` 里一次性静态登记。**MCP 面板是唯一的条件面板**：仅当探测到 `pi-mcp-adapter` 已安装时才登记。机制见 `lib/settings/register-panels.ts:226`：
+
+1. `SettingsRoute` 挂载后在 `useEffect` 里调 `registerMcpPanelIfInstalled()`（`src/routes/settings.tsx:22`）。
+2. 该函数 `GET /api/config/mcp`；服务端读 `settings.json` 的 `packages[]`，含 `pi-mcp-adapter` 时返回 `{ installed: true, values }`，否则 `{ installed: false }`（`packages/server/src/config/mcp-config-routes.ts:64-75`）。
+3. 仅当 `installed === true` 才 `registerSettingsPanel({ id: "mcp", ... })`（幂等，`mcpRegistered` 守卫），并返回 `true`。
+4. 返回 `true` 时 `SettingsRoute` `bump()` 触发一次重渲染；`<SettingsShell>` 每次渲染都重读 `listPanels()`，于是新面板并入导航。
+
+MCP 面板的表单是手写的单字段 `FormSchema`（`register-panels.ts:204`，一个 `configFiles` 字段），复用 §8 的 `configFiles` 控件编辑 `mcp.json`——服务端不喂 `fileSchemas`，故控件回退原始 JSON 文本编辑（`mcp-config-routes.ts:70`）。
 
 ---
 
@@ -412,5 +435,7 @@ registerSettingsPanel({
 - 配置文件与 env 变量详情（含 `PI_WEB_AGENT_DIR`）→ [06 配置参考](./06-configuration.md)
 - Provider 与模型设置（`settings.json` 对应页）→ [07 Provider 与模型](./07-providers-and-models.md)
 - 扩展配置域、沙箱注入 → [10 扩展与 Skills](./10-extensions-and-skills.md)
-- HTTP API 端点完整列表（含 `GET·PUT /api/config/:domain`）→ [24 HTTP/SSE API 参考](./24-http-api-reference.md)
+- AIGC 图像工具语义、`disabledModels` / `enablePromptOptimization` 的运行时效果 → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
+- 日志运行时、命名空间与文件 sink（`logging` 域对应的库） → [21 日志系统](./21-logging.md)
+- HTTP API 端点完整列表（含 `GET·PUT /api/config/:domain`、`GET /api/aigc/models`、`GET·PUT /api/config/mcp`）→ [24 HTTP/SSE API 参考](./24-http-api-reference.md)
 - widget 不显示 / 保存 422 / secret 被清空等问题 → [23 故障排查 / FAQ](./23-troubleshooting-faq.md)

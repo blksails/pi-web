@@ -1,4 +1,4 @@
-# 21 · 会话列表
+# 14 · 会话列表
 
 会话列表（Sessions List）让用户在 Web UI 内**浏览历史会话**并**一键恢复**任意会话继续对话——无需手动记忆或输入会话 id。会话历史一直由底层持久化（每个会话按其工作目录 cwd 分桶，含 id / cwd / 创建·修改时间 / 可选名称等头部元数据），此前却从未在界面暴露；本特性把这份历史以一个可重定位的只读面板嵌入聊天界面，不占用、不替换既有对话区。
 
@@ -41,9 +41,9 @@
 - 服务端：`scope=all` 且全局开关关闭时，`GET /api/sessions` 直接返回 `403`，**不触达存储**（不扫描全机器会话桶、不暴露清单）。
 - 前端：全局开关关闭时，面板根本**不渲染「全部」Tab**（仅保留「当前目录」视图）。
 
-要开启系统视图，部署方需在构建期设置 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`（或 `=1`）——该值在 client 端读取并构建期内联（`components/chat-app.tsx`）。
+要开启系统视图，部署方设置 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`（或 `=1`）——该值由服务端在 `GET /api/bootstrap` 请求时读 `process.env` 下发前端（`server/bootstrap.ts:97`），前端经 `setRuntimeFeatures()` 注入门控（`src/bootstrap.tsx:140`、`lib/app/runtime-features.ts:33`）。改后**重启服务端即生效，无需重新构建**（下发机制见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。
 
-> **当前目录视图如何确定目标 cwd**：前端无从可靠推断「agent 解析后的真实 cwd」，故 `scope=cwd` 请求会带上当前活跃 `sessionId`，服务端以该会话的持久化 cwd 为准（`session-list-routes.ts:168-177`）；仅当 `sessionId` 缺失 / 无法解析时，才回退到 `cwd` 参数或服务端默认 cwd。
+> **当前目录视图如何确定目标 cwd**：前端无从可靠推断「agent 解析后的真实 cwd」，故 `scope=cwd` 请求会带上当前活跃 `sessionId`，服务端以该会话的持久化 cwd 为准（`store.readHeader(sid).cwd`，`session-list-routes.ts:225-236`）；仅当 `sessionId` 缺失 / 无法解析时，才回退到 `cwd` 参数或服务端默认 cwd。
 
 ---
 
@@ -84,6 +84,15 @@
   → GET /sessions/:id/messages 回放历史           [接续上下文]
 ```
 
+### 4.1 会话名来源与持久化
+
+列表项主标题的显示名（`name ?? sessionId`）读的是 store 的 `SessionMeta.name`，其**读取口径统一**为「创建时头部名 → 最新 `session_info.name`」。写入这个名字有**两条来源，共用同一 `session_info` append 事件模型**：
+
+1. **用户重命名**（[§9.2](#92-重命名内联编辑--最新显示名)）：`POST /sessions/rename` → 服务端 `store.append` 一条 `session_info{ name }`，成为最新显示名。
+2. **自动会话标题扩展**：扩展经 `ctx.ui.setTitle(t)` 设置的标题原本只发一帧驱动前端**瞬态** `ambient.title`、**不写会话名**（故不进历史列表）。`wireSessionTitlePersistence` 以 prototype-patch `session.bindExtensions` 把 `setTitle` 包装为「先调原 `setTitle`（保留 ambient 展示）→ 再 best-effort `persistTitle` 写 `appendSessionInfo`」，落 sqlite/postgres + pi 原生 fs（`packages/server/src/runner/session-title-wiring.ts:1-20`）。
+
+两条来源写的是**同一个会话名字段**，故自动标题与手动重命名**互相覆盖、后写为准**；且都经 `appendSessionInfo` 持久化，**冷恢复后保留**——恢复某会话时列表里显示的仍是最后一次写入的名字。本特性（重命名入口）只新增「写入新名」的用户路径，不改动读取口径。
+
 ---
 
 ## 5. HTTP 契约
@@ -94,6 +103,8 @@
 GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 → ListSessionsResponse
 ```
+
+> **`/api` 前缀去哪了**：服务端宿主是 Hono，整个 `/api/*` 面收敛为一条 `app.all('/api/*')` 转发到 `createPiWebHandler` 单例（`server/index.ts`）；handler 内部路由**不带 `/api` 前缀**（注册为 `/sessions`、`/sessions/delete` 等）。故本章面向客户端一律写 `/api/sessions/...`（浏览器实际请求的路径），若你对照 `packages/server` 源码会看到路由声明为 `/sessions/...`——两者指同一端点，差的只是 Hono 层剥掉的 `/api` basePath。列表本身是纯读链路，恢复则走 SPA 的 `/session/:id` 路由（`src/app.tsx:24`、`src/routes/session.tsx:21` 把 `id` 作 `resumeId`）。
 
 **请求参数**（query，`packages/protocol/src/transport/rest-dto.ts:187`）
 
@@ -118,7 +129,22 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 }
 ```
 
-**分页（keyset）**：游标是 `base64url(JSON.stringify({ ts, id }))`，`ts = updatedAt ?? createdAt`、`id = sessionId`，取自上一页最后一项；服务端在排序序列中返回严格位于 `{ts,id}` 之后的项，保证续取**不重复**已返回会话，最终收敛（`session-list-routes.ts:60-89`、`181-187`）。分页在内存切片完成，store 仅提供 `list(cwd)` / `listAll()` 的轻量 header 元数据。
+**试一下**（dev 下 API 在 `:3000`，浏览器 UI 在 `:5173`；curl 直打 API 端口）：
+
+```bash
+# 当前目录视图首页(默认 scope=cwd, limit=50)——以某活跃会话的持久化 cwd 为目标目录
+curl -s 'http://localhost:3000/api/sessions?sessionId=<活跃会话id>&limit=20' | jq
+
+# 取下一页:把上一次响应里的 nextCursor 原样带回
+curl -s 'http://localhost:3000/api/sessions?limit=20&cursor=<上页 nextCursor>' | jq '.sessions | length'
+
+# 系统(全机器)视图:未开 NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL 时预期 403 SESSIONS_GLOBAL_DISABLED
+curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?scope=all'
+```
+
+预期：第一条返回 `{ "sessions": [...], "nextCursor": "...", "scope": "cwd", "globalEnabled": false }`；第三条在系统视图关闭时打印 `403`。
+
+**分页（keyset）**：游标是 `base64url(JSON.stringify({ ts, id }))`，`ts = updatedAt ?? createdAt`、`id = sessionId`，取自上一页最后一项；服务端在排序序列中返回严格位于 `{ts,id}` 之后的项，保证续取**不重复**已返回会话，最终收敛（游标编解码与倒序比较 `session-list-routes.ts:70-112`，排序 + 切片 + `nextCursor` 生成 `256-263`）。分页在内存切片完成，store 仅提供 `list(cwd)` / `listAll()` 的轻量 header 元数据。
 
 **错误**
 
@@ -128,7 +154,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 | `403` | `SESSIONS_GLOBAL_DISABLED` | `scope=all` 但系统视图未启用（不返回任何会话数据） |
 | `500` | `INTERNAL` | 存储读取异常（前端展示可重试错误） |
 
-> store 惰性单例：首次请求时 `await createSessionEntryStore(storeConfig)` 构造并缓存，配置与冷恢复同源（`sessionStoreConfigFromEnv()`），保证列表与恢复读到同一后端（`session-list-routes.ts:115-120`）。
+> store 惰性单例：首次请求时 `await createSessionEntryStore(storeConfig)` 构造并缓存，配置与冷恢复同源（`sessionStoreConfigFromEnv()`），保证列表与恢复读到同一后端（`session-list-routes.ts:169-179`）。
 
 ### 5.1 会话操作端点（删除 / 重命名 / 收藏）
 
@@ -173,7 +199,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 - **空态**：当前范围无会话时显示 `emptyLabel`（默认「暂无会话」），而非报错或空白。
 - **错误**：加载失败显示 `errorLabel` + 可点击的**重试**按钮，而非静默空白。
 
-视图切换仅在 `globalEnabled` 时出现「当前目录 / 全部」Tab；切 Tab 或数据源变化会重置并重新加载首页。`nextCursor` 存在时显示「加载更多」按钮续取并追加。组件内有**竞态守卫**（`reqIdRef`），快速切 Tab / 续取时丢弃过期响应（`session-list-panel.tsx`、`108`）。
+视图切换仅在 `globalEnabled` 时出现「当前目录 / 全部」Tab；切 Tab 或数据源变化会重置并重新加载首页。`nextCursor` 存在时显示「加载更多」按钮续取并追加。组件内有**竞态守卫**（`reqIdRef`），快速切 Tab / 续取时丢弃过期响应（`session-list-panel.tsx:156`、`177`、`184`）。
 
 > 列表项、Tab、三态、加载更多均带 `data-pi-session-list-*` 属性，供 e2e 与宿主定位。
 
@@ -183,22 +209,31 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 
 | 变量 | 默认 | 作用 | 读取处 |
 |---|---|---|---|
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `false` | `true`/`1` 开启系统（全机器）视图：显示「全部」Tab + 放行 `scope=all` | `chat-app.tsx`（前端）+ `pi-handler` 注入 `globalEnabled`（服务端门控） |
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | 面板展示位置（`sidebar`/`header`/`footer`/`empty`） | `chat-app.tsx` |
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | 启用 | **写门控**：设为 `false` / `0` 关闭项级删除 / 重命名 / 收藏（前端隐藏写入口 + 服务端写端点 `403`）;其余取值（含未设）默认启用。读收藏（`GET /sessions/favorites`）不受此门控 | `chat-app.tsx`（前端 `manageEnabled`）+ `pi-handler.ts`（注入 `createSessionActionsRoutes({ manageEnabled })`） |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `false` | `true`/`1` 开启系统（全机器）视图：显示「全部」Tab + 放行 `scope=all` | `bootstrap` 下发 → `chat-app.tsx`（前端）+ `pi-handler.ts:464` 注入 `globalEnabled`（服务端门控） |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | 面板展示位置（`sidebar`/`header`/`footer`/`empty`） | `bootstrap` 下发 → `chat-app.tsx`（`sessionsSlot()`） |
+| `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | 启用 | **写门控**：设为 `false` / `0` 关闭项级删除 / 重命名 / 收藏（前端隐藏写入口 + 服务端写端点 `403`）;其余取值（含未设）默认启用。读收藏（`GET /sessions/favorites`）不受此门控 | `bootstrap` 下发 → `chat-app.tsx`（前端 `manageEnabled`）+ `pi-handler.ts:477`（注入 `createSessionActionsRoutes({ manageEnabled })`） |
 
-三者均为 `NEXT_PUBLIC_*`，在 client 端读取、**构建期内联**——更改后需重新构建生效。会话存储后端由既有 `sessionStoreConfigFromEnv()` 决定，与冷恢复同源;会话收藏另落独立文件 `<agentDir>/session-favorites.json`（不改动会话存储 schema，见 [§5.1](#51-会话操作端点删除--重命名--收藏)），本特性不引入新的存储后端配置。
+三者虽仍叫 `NEXT_PUBLIC_*`，但**已不是 Next 时代的构建期内联值**——现由服务端在 `GET /api/bootstrap` 请求时运行时读取并下发前端（见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。**改后重启服务端即生效，无需重新构建**；对 CLI 用户（`pi-web` 二进制本无 build 步骤）尤为关键。会话存储后端由既有 `sessionStoreConfigFromEnv()` 决定，与冷恢复同源;会话收藏另落独立文件 `<agentDir>/session-favorites.json`（不改动会话存储 schema，见 [§5.1](#51-会话操作端点删除--重命名--收藏)），本特性不引入新的存储后端配置。
+
+### 7.1 门控为何运行时生效（`GET /api/bootstrap`）
+
+Next 迁移到 Vite+SPA 后，这套门控的读取方式**根本改变**了，务必理解，否则会照着过时的「重新构建」指引白费力气：
+
+- **Next 时代**：`NEXT_PUBLIC_*` 在客户端组件里被**构建期内联**成字面量——CLI 用户在运行时设置这些 env 其实**不生效**（`lib/app/runtime-features.ts:4-8` 文件头明确记录了这个坑）。
+- **现在（SPA）**：服务端 `buildBootstrap()` 在每次 `GET /api/bootstrap` 请求时读 `process.env`（`server/bootstrap.ts:58-102`），把 `sessionsGlobal` / `sessionsManage` / `sessionsSlot` 等派生成 `RuntimeFeatures` 下发；SPA 启动时经 `setRuntimeFeatures()` 注入一次（`src/bootstrap.tsx:140`），此后 `chat-app.tsx` 全部门控经 `getRuntimeFeatures()` 惰性求值（`components/chat-app.tsx:210-286`）。于是 `pi-web --canvas` 这类**运行时开关终于能工作**。
+
+因此本章所有 `NEXT_PUBLIC_PI_WEB_SESSIONS_*` 门控的正确操作口径是：**改 env → 重启服务端**（`node dist/server.mjs` 或 `pnpm dev`），**不需要也无法靠「重新构建」**。前后端读同一份 env，服务端门控（`lib/app/pi-handler.ts:464-478`）与前端下发的判定逐字段一致。
 
 ---
 
 ## 8. 故障排查 / 注意事项
 
-- **「全部」Tab 不出现 / 切到系统视图报 403**：`NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 未开启，或开启后未重新构建（该值构建期内联）。服务端 403 与前端隐藏 Tab 是同一门控的双重保险，属预期行为。
+- **「全部」Tab 不出现 / 切到系统视图报 403**：`NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 未开启，或开启后未重启服务端（该值在 `GET /api/bootstrap` 时运行时下发，改后须重启，见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。服务端 403 与前端隐藏 Tab 是同一门控的双重保险，属预期行为。
 - **当前目录视图列出的会话目录不符预期**：`scope=cwd` 以活跃 `sessionId` 的持久化 cwd 为准；若当前无活跃会话或该会话不可解析，会回退到 `cwd` 参数 / 服务端默认 cwd。
 - **面板位置不对**：检查 `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` 取值是否落在 `sidebar`/`header`/`footer`/`empty` 之内；非法值静默回退 `sidebar`。
 - **大量历史下首屏慢**：`scope=all` 走 `listAll` 全量扫桶 + 内存切片，开销随历史规模线性——默认关闭全局视图 + 分页（`limit` 默认 50、上限 200）是主要缓解手段。
 - **点恢复后扩展 UI（region slots / background）失效**：恢复须经 `/session/:id` 冷恢复链路回溯 agent source；直接以 `resumeId` 之外的方式重挂会丢失 source。
-- **⋯ 操作菜单不出现 / 删除·重命名·收藏写入口消失**：`NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` 被显式设为 `false` / `0`（写门控关闭），或改后未重新构建（该值构建期内联）。此时服务端也会对写请求返回 `403 SESSIONS_MANAGE_DISABLED`，属只读部署的预期行为;注意「收藏」分区仍会按已读收藏置顶展示（读收藏不受门控）。
+- **⋯ 操作菜单不出现 / 删除·重命名·收藏写入口消失**：`NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` 被显式设为 `false` / `0`（写门控关闭），或改后未重启服务端（该值经 `GET /api/bootstrap` 运行时下发，见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。此时服务端也会对写请求返回 `403 SESSIONS_MANAGE_DISABLED`，属只读部署的预期行为;注意「收藏」分区仍会按已读收藏置顶展示（读收藏不受门控）。
 - **删的是当前正在查看的会话**：删除成功后宿主会 `window.location.assign("/")` 导航至新会话空态，其余进行中的会话不受影响。
 - **重命名报 404**：目标会话在存储中已不存在（如并发删除）;重命名不会为不存在的会话创建记录。删除则相反——删一个已不在的会话按幂等成功处理。
 
@@ -214,7 +249,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 - 触发入口 `stopPropagation`，激活菜单**不会**触发整行的 `onResume`（恢复）——菜单交互与整行恢复互不误触。
 - 菜单展开后，点击菜单外区域或按 Esc 关闭且无副作用。
 - 写入口仅在**写门控启用且相应回调在场**时渲染;门控关闭时整组写入口隐藏（详见 [§9.5](#95-部署门控)）。
-- 菜单、各菜单项、内联编辑输入、删除确认等均带稳定 `data-*` 定位属性（`data-pi-session-item-menu` / `-menu-rename` / `-menu-delete` / `-menu-favorite` / `-rename-input` / `-delete-confirm`），供 e2e 与宿主定位。
+- 菜单、各菜单项、内联编辑输入、删除确认等均带稳定 `data-*` 定位属性（`data-pi-session-item-menu` / `-menu-content` / `-rename` / `-delete` / `-favorite` / `-rename-input` / `-delete-confirm` / `-delete-confirm-btn` / `-delete-cancel`），供 e2e 与宿主定位（`packages/ui/src/elements/session-item-menu.tsx`）。
 
 ### 9.2 重命名（内联编辑 → 最新显示名）
 
@@ -222,7 +257,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 - 提交一个 `trim` 后非空的名称 → 经 `onRenameSession(id, name)` 上抛宿主 → `POST /sessions/rename` → 服务端向该会话 `append` 一条 `session_info`，使其成为**最新显示名**。前端乐观改名后由宿主 bump 刷新拉权威态，名称**跨刷新、跨视图一致**。
 - `trim` 后为空的提交不发写请求、直接退出编辑保留原名;Esc / 取消同样放弃编辑、不发请求。
 - 写失败（`500` 等）展示可见错误并回滚为原名。
-- 显示名的**读取 / 派生口径**沿用会话列表既有规则（创建时头部名 → 最新 `session_info.name`，与 auto-session-title 共用同一口径，见 [§4](#4-整行点击恢复) 与自动标题特性）;本特性只新增「写入新名」入口，不改读取规则。
+- 显示名的**读取 / 派生口径**沿用会话列表既有规则（创建时头部名 → 最新 `session_info.name`，与 auto-session-title 共用同一 `session_info` 事件模型与持久化路径，见 [§4.1 会话名来源与持久化](#41-会话名来源与持久化)）;本特性只新增「写入新名」入口，不改读取规则。
 
 ### 9.3 收藏 / 置顶（独立偏好存储）
 
@@ -247,7 +282,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 - 前端：门控关闭 → 面板**不渲染**任何写入口（`⋯` 写菜单项隐藏）。
 - 服务端：门控关闭 → 删除 / 重命名 / 写收藏端点一律返回 `403 SESSIONS_MANAGE_DISABLED` 且**不改动任何存储**;`GET /sessions/favorites` 例外，始终可读。
 
-值经 `chat-app.tsx` 读取并构建期内联（`manageEnabled = 值 !== "false" && 值 !== "0"`），服务端 `pi-handler.ts` 以同一判定注入 `createSessionActionsRoutes({ manageEnabled })`——前后端读同一 env、语义一致。
+值经 `GET /api/bootstrap` 运行时下发，前端 `chat-app.tsx` 读取（`manageEnabled = 值 !== "false" && 值 !== "0"`），服务端 `pi-handler.ts:477` 以同一判定注入 `createSessionActionsRoutes({ manageEnabled })`——前后端读同一 env、语义一致，改后重启服务端即生效（见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。
 
 ### 9.6 一致性与并发
 
@@ -260,6 +295,7 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 
 ## 下一步 / 相关
 
-- 会话项操作端点（删除 / 重命名 / 收藏）与 `/sessions/**` 其余端点 → [24 HTTP/SSE API 参考](./24-http-api-reference.md)、本章 [§5.1](#51-会话操作端点删除--重命名--收藏)
+- 会话项操作端点（删除 / 重命名 / 收藏）与 `/sessions/**` 其余端点、`GET /api/bootstrap` 运行时门控下发 → [24 HTTP/SSE API 参考](./24-http-api-reference.md)、本章 [§5.1](#51-会话操作端点删除--重命名--收藏)
 - 宿主 `slots` 与界面布局 → [12 Web UI 扩展](./12-web-ui-extension.md)
-- 会话管理写门控 `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` 与环境变量总览 → [06 配置参考](./06-configuration.md)、本章 [§9.5](#95-部署门控)
+- 会话管理写门控 `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE`、`GET /api/bootstrap` 运行时下发机制与环境变量总览 → [06 配置参考](./06-configuration.md)、本章 [§7.1](#71-门控为何运行时生效get-apibootstrap) / [§9.5](#95-部署门控)
+- 同属会话内建 UI 特性、随本章一起上提的排队 / 取回 → [15 消息队列](./15-message-queue.md)

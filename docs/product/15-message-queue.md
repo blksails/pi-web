@@ -1,4 +1,4 @@
-# 22 · 消息队列
+# 15 · 消息队列
 
 pi coding agent 在处理某个轮次(turn)时是「忙碌」的。此时用户若想继续引导任务,不必等待——可以把后续消息**排队**:`steering`(插话)消息会在当前 assistant 轮的工具调用间隙投递,`follow-up`(跟进)消息会在 agent 全部工作结束后投递。用户还能把尚未投递的排队消息**取回**编辑器继续修改或撤回。
 
@@ -78,13 +78,17 @@ agent 子进程每次队列变化都发 `queue_update` 事件(`packages/protocol
 
 `StickyFrameRegistry`(`packages/server/src/session/sticky-registry.ts`)只承载 **last-value** 语义(同键多次写入仅留最新);`logs` 那种 ring-buffer 历史语义不并入本表。
 
+**粘性帧是 per-session 的**:每个 `PiSession` 持有自己的 `StickyFrameRegistry`(`packages/server/src/session/pi-session.ts:188`),`"queue"` 键只在该会话内有效。前端在[会话列表](./14-sessions-list.md)里切换到另一会话时,SSE 订阅指向新会话的流,回放的是**新会话**的 `control:queue`(通常为空),旧会话的排队快照不会串到当前面板——队列视图随会话切换自然隔离。
+
 ---
 
 ## 4. clearQueue 闭环(取回)
 
 ### 4.1 为什么走 state-bridge 式自定义帧而非 pi RPC
 
-pi 的 `AgentSession.clearQueue()` **不在 pi 的 RPC 命令集内**。为了 pi 上游零改动,`clearQueue` 复用 state-injection-bridge 的接缝——「第二个 stdin 读取器 + 自定义 stdout 行」——在 pi-web 内部闭环。这是一条**请求 / 响应**通道(带关联 `id`),而非 state 桥的单向下行。
+pi 的 `AgentSession.clearQueue()` **不在 pi 的 RPC 命令集内**。为了 pi 上游零改动,`clearQueue` 复用 **state-injection-bridge**(状态注入桥)的接缝——「第二个 stdin 读取器 + 自定义 stdout 行」——在 pi-web 内部闭环。这是一条**请求 / 响应**通道(带关联 `id`),而非 state 桥的单向下行。
+
+> 状态注入桥是 pi-web 在 pi 子进程边界上自建的一套双向接缝(子进程内自建共享 KV + 三条边:下行镜像帧、写回端点、内部自定义行)。其概念与作者面用法见 [04 Surface 权威表面栈](./04-surface-stack.md);`clearQueue` 是它「请求 / 响应」变体的一个应用,理解桥的接缝模型有助于读懂本节。
 
 契约定义在 `packages/protocol/src/web-ext/queue-line.ts`,两条内部行:
 
@@ -126,12 +130,53 @@ PiChat(Esc/Alt+↑)
 
 | 场景 | 状态码 |
 |---|---|
-| 无会话 | 404 |
-| 会话已停 | 409 |
-| 桥超时(子进程无回写) | 504 |
+| 无会话 | 404(`SessionNotFoundError`) |
+| 会话已停 | 409(`SessionStoppedError`) |
+| 桥超时(子进程无回写) | 500 |
 | 一般失败 | 500 |
 
-经既有 `mapEngineError` 归一。前端一律「提示 + 不修改编辑器现有内容」。
+经既有 `mapEngineError`(`packages/server/src/http/error-map.ts`)归一。注意:`PiSession.clearQueue` 的超时以普通 `Error("clear_queue timed out")` reject,落入 `mapEngineError` 的**未知分支归为 500**——不同于 agent-declared-routes 走专用 `AgentRouteTimeoutError`→504,取回桥当前**没有**独立的 504 映射。前端对任一错误码一律「提示 + 不修改编辑器现有内容」。
+
+### 4.4 手动验证取回端点(curl)
+
+取回端点是标准 POST,可脱离前端直接打。dev 下 API server 常驻 `127.0.0.1:3000`,`/api/*` 前缀由 Hono 宿主承担(`server/index.ts` 的 `app.all('/api/*')`)。步骤:
+
+1. 起一个可观测子进程的会话(离线桩即可,不消耗真实模型额度):
+
+   ```bash
+   PI_WEB_STUB_AGENT=1 pnpm dev
+   # dev-all:vite 前端 http://localhost:5173(/api 代理到 3000)
+   ```
+
+2. 浏览器打开 `http://localhost:5173`,新建会话拿到 `sessionId`(URL 或 DevTools Network 里 `POST /api/sessions` 的响应体可见)。趁 agent 忙时按 Enter / Alt+Enter 排入几条插话 / 跟进消息,确认面板 `data-pi-queue-count` 非零。
+
+3. 直接打取回端点(空请求体),把当前排队文本一次性取回:
+
+   ```bash
+   curl -s -X POST \
+     http://localhost:3000/api/sessions/<sessionId>/clear_queue \
+     -H 'content-type: application/json' -d '{}'
+   ```
+
+   **预期结果**:HTTP 200,响应体为 `ClearQueueResponse`——被清空的两组文本(顺序恒为先 steering 后 followUp):
+
+   ```json
+   { "steering": ["先跑单测", "顺带查一下 lint"], "followUp": ["最后写个总结"] }
+   ```
+
+   同时 agent 队列被清空,一帧新的 `control:queue`(空快照)下行,前端面板隐藏、`data-pi-queue-count` 归零。
+
+> e2e 里等价断言是读 DOM 标记:排队后断言 `[data-pi-queue-count]` 文本 > 0,触发取回后断言其归零、`[data-pi-queue]` 面板 `toBeHidden`。标记清单见 §5.1。
+
+### 4.5 并发取回(多标签 / 多订阅者)的幂等语义
+
+同一会话可能有多个前端订阅者(多标签、多设备)。若两个订阅者近乎同时触发取回,不会重复取回同一批文本:
+
+- 每次 `clearQueue` 生成**隔离的关联 `id`** 登记进 `pendingClearQueue`(`packages/server/src/session/pi-session.ts:931-948`),各自独立配对结果行,互不串号。
+- 运行时桥收到请求行即调**当前绑定 session** 的 `clearQueue()`(`packages/server/src/runner/clear-queue-wiring.ts:96`),该调用返回**当时**队列内容并原子清空。**先到者取回全部文本,后到者拿到空数组**(`{ steering: [], followUp: [] }`),不会有两个编辑器都被回填同一段文本。
+- 取回后 agent 发的空 `control:queue` 是粘性 last-value,所有订阅者收敛到同一「队列已空」视图。
+
+故取回是**天然幂等**的:重复打 `/clear_queue` 只有首次返回内容,其后返回空——安全可重试。
 
 ---
 
@@ -187,7 +232,7 @@ PiChat(Esc/Alt+↑)
 
 - **忙时提交无反应 / 报「streaming 缺 streamingBehavior」**:确认前端已接线本特性(忙时应走 `steer` / `followUp` 而非裸 prompt)。dev 若在本特性合入前启动,handler 单例可能是旧逻辑——重启 dev。
 - **重连后队列面板消失、取回不可用**:检查 `control:queue` 是否被登记为粘性帧(`pi-session.ts` 的 `sticky.set("queue", …)`)。若忙时重连后 `busy` 回放为 true 但 `queue` 为空,即粘性化缺失。
-- **取回请求返回 504**:`wireClearQueueBridge` 未装配或子进程未回写结果行。确认桥在 `runRpcMode` 之前装配;非 custom runner 模式(如 `pi --mode rpc` fallback)下桥不生效——当前引导路径仅 custom runner,若引入 fallback 需给取回入口加门控降级。
+- **取回请求返回 500(桥超时)**:`wireClearQueueBridge` 未装配或子进程未回写结果行,`clearQueue` 5s 后超时 reject,经 `mapEngineError` 归为 500(取回桥无专用 504 映射,见 §4.3)。确认桥在 `runRpcMode` 之前装配;非 custom runner 模式(如 `pi --mode rpc` fallback)下桥不生效——当前引导路径仅 custom runner,若引入 fallback 需给取回入口加门控降级。
 - **取回文本没回填 / 回填错乱**:结果行须经 `ClearQueueResultLineSchema` 校验;顺序恒为先 steering 后 followUp。若结果行写到了 stderr 而非 fd1,说明误用了 `process.stdout.write`(被 `takeOverStdout` 劫持)——须 `fs.writeSync(1, …)`。
 - **忙时带附件排队被拦截**:这是**预期行为**(`chat.queue.attachmentUnsupported`)——`steer`/`follow_up` 端点不收 `att_…` 引用附件,请在会话空闲时发送。
 - **stub 测不到桥行为**:自定义 stdout 行的直写 fd1 只有**真实子进程集成测试**能抓到,stub 抓不到(同 state 桥的已知坑)。
@@ -198,5 +243,6 @@ PiChat(Esc/Alt+↑)
 
 - `/steer` `/follow_up` `/clear_queue` 端点与 SSE 帧 → [24 HTTP/SSE API 参考](./24-http-api-reference.md)
 - 会话就绪握手与 busy 权威快照 → [02 核心概念](./02-core-concepts.md)
-- state-injection-bridge(自定义帧接缝的同源范式) → [12 Web UI 扩展](./12-web-ui-extension.md)
+- 排队 / 取回发生在会话内,队列快照随会话切换隔离 → [14 会话列表](./14-sessions-list.md)
+- state-injection-bridge(自定义帧接缝的同源范式)概念与作者面 → [04 Surface 权威表面栈](./04-surface-stack.md)
 - 分层 `@blksails/*` 包职责 → [05 包结构](./05-packages.md)
