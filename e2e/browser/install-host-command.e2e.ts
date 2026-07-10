@@ -14,14 +14,15 @@ import { test, expect } from "@playwright/test";
  * `/install install <arg>` 的提交机制:命令面板对声明了 argSpec 的命令(install 属于此类)
  * 在有候选时拦截 Enter(命令面板 Req 3.3/4);直接键入完整参数段(如 `local:./examples/hello-agent`)
  * 时,该段作为 stage.query 送 `GET /sessions/:id/install-sources?q=` 查询,候选按
- * `path.includes(q)` 过滤 —— 该完整参数段不是任何候选 path 的子串,候选清空后浮层关闭
- * (120ms 防抖后),Enter 才落到 dispatchBuiltin 正常提交(见 pi-command-palette.tsx
- * `inArgFlow && argNav.length===0` 分支 + pi-chat.tsx `onSubmit` 的 builtin 拦截)。
+ * `path.includes(q)` 过滤 —— 带 `local:` 前缀的完整参数段不是任何候选 path 的子串,候选
+ * 清空后浮层关闭(120ms 防抖后),Enter 才落到 dispatchBuiltin 正常提交(见
+ * pi-command-palette.tsx `inArgFlow && argNav.length===0` 分支 + pi-chat.tsx `onSubmit`)。
  *
- * ⚠ `local:<rel>` 的 `<rel>` 相对**服务器 `config.defaultCwd`**(装配时注入 install host
- * command 的 `deps.cwd`,与会话 `cwd` 是两个不同基准 —— 见 lib/app/install-host-command.ts
- * 的 `InstallHostCommandDeps.cwd` 与 pi-handler.ts `cwd: config.defaultCwd`),此仓库以
- * 仓库根为 server 启动 cwd,故用 `./examples/<dir>` 而非会话内 `./<dir>`。
+ * `local:<rel>` 的 `<rel>` 相对**会话 cwd**(与 install-sources 补全端点同基准 ——
+ * 整改 230ce05:handler 执行时优先 `ctx.session.cwd`,装配 `deps.cwd` 仅兜底)。
+ * 本布置中源 `./examples` 走通用 CLI 模式 ⇒ 会话 cwd = 服务器工作目录(仓库根),
+ * 补全端点按同一 cwd 扫描(MAX_DEPTH=2)给出的候选即 `./examples/<dir>` 形态 ——
+ * 用例键入的正是补全会给出的值(「选中候选提交即可用」的用户旅程)。
  */
 
 const SOURCE = "./examples";
