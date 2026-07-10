@@ -251,5 +251,7 @@ schema 与 three 解耦（three 对象 ↔ SceneDoc 的互转在 viewport/skelet
 4. **scene.json 的会话锚定**：`att_` 元数据带 sessionId 便于 Phase 2 hydrate 枚举,
    还是 v1 不锚定（纯手动保存/载入）？倾向带（附件 meta 不透明,加了不解释,
    为 Phase 2 留缝零成本）。
-5. **首发位置**：`examples/scene3d-component`（本仓 example,与 watermark 并列）
-   还是独立 git 仓（吃 git 直连车道）？倾向本仓先行,验证大依赖组件的车道成色。
+5. **首发位置**：~~本仓 example vs 独立 git 仓~~ **已拍板(2026-07-10):独立组件库仓
+   `~/Projects/BlackSail/agents/pi-web-components`**(每个顶层目录=一个组件包;
+   `scene3d` 起步版已入库并跑通「真 three peer → add → slots 指引接线 → 真实构建」
+   全链路;installer v1.1 slots 接线点已随之落地,commit 7604352)。
