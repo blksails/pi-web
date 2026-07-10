@@ -1,3 +1,10 @@
 dist/
 release/
 node_modules/
+
+# Rust 构建产物（体积巨大）
+src-tauri/target/
+# tauri codegen 生成的 ACL schema
+src-tauri/gen/
+# 随包 Node 二进制（strip 后仍 86MB/个，由 scripts/fetch-node-sidecar.mjs 按需取得并校验）
+src-tauri/binaries/

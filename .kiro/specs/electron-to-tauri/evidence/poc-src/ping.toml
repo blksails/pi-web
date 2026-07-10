@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-ping"
+description = "允许远端回环页面调用 ping 命令"
+commands.allow = ["ping"]

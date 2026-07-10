@@ -65,6 +65,14 @@ async function main() {
     process.exit(1);
   }
 
+  // 1b) 随包载荷(spec shared-runtime-payload)。npm 包分发的是它,不再是 dist/ 树。
+  // ⚠ 本 e2e 仍走 CLI 解析顺序的第 ② 级(仓库内 dist/ 存在 ⇒ 不解包),
+  //   故它**测不到解包路径** —— 那由 e2e/cli/cli-reloc.mjs 覆盖。
+  const PAYLOAD = join(ROOT, "payload");
+  for (const f of ["dist.tar.zst", "payload.json", "unpack.mjs"]) {
+    check(`载荷存在: payload/${f}`, existsSync(join(PAYLOAD, f)));
+  }
+
   // 2) 参数路径(Req 5.1-5.3)
   const help = spawnSync("node", [BIN, "--help"], { encoding: "utf8" });
   check("--help 退出0且含用法", help.status === 0 && /用法:/.test(help.stdout));

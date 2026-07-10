@@ -10,7 +10,7 @@
   },
   "files": [
     "bin",
-    "dist",
+    "payload",
     "vite.config.ts"
   ],
   "scripts": {
@@ -18,7 +18,7 @@
     "build": "pnpm build:dist",
     "build:client": "vite build",
     "build:server": "node scripts/build-server.mjs",
-    "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs",
+    "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs && pnpm build:unpacker && pnpm build:payload",
     "start:dist": "node dist/server.mjs",
     "dev:server": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs server/index.ts",
     "start": "node dist/server.mjs",
@@ -37,7 +37,16 @@
     "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit",
     "e2e:desktop:real": "node e2e/desktop/desktop-real.mjs",
     "e2e:desktop:nonode": "node e2e/desktop/desktop-no-node.mjs",
-    "e2e:desktop:packaged": "node e2e/desktop/desktop-packaged.mjs"
+    "e2e:desktop:packaged": "node e2e/desktop/desktop-packaged.mjs",
+    "desktop:sidecar": "node scripts/fetch-node-sidecar.mjs",
+    "desktop:baseline": "node scripts/measure-desktop-baseline.mjs",
+    "desktop:build": "pnpm --filter @blksails/pi-web-desktop exec tauri build",
+    "e2e:desktop:webdriver": "node e2e/desktop/webdriver/bridge.e2e.mjs",
+    "build:unpacker": "node scripts/build-unpacker.mjs",
+    "build:payload": "node scripts/pack-payload.mjs",
+    "e2e:runtime:conc": "node e2e/runtime-payload/concurrency.mjs",
+    "e2e:runtime:recovery": "node e2e/runtime-payload/recovery.mjs",
+    "e2e:desktop:corrupt": "node e2e/desktop/desktop-corrupt-payload.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.0",
@@ -70,6 +79,7 @@
     "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
+    "tar": "^7.5.19",
     "typescript": "^5.6.3",
     "vite": "^6",
     "vitest": "^2.1.8"

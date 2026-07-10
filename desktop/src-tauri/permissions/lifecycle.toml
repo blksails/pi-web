@@ -1,0 +1,10 @@
+# 启动失败错误页的两个按钮所需的命令。同样是应用自身的 command，同样必须显式声明。
+[[permission]]
+identifier = "allow-retry"
+description = "允许错误页重新执行完整的后端拉起流程"
+commands.allow = ["retry"]
+
+[[permission]]
+identifier = "allow-quit"
+description = "允许错误页退出应用"
+commands.allow = ["quit"]

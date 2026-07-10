@@ -19,6 +19,15 @@
  * pi SDK 的传递依赖(chalk / undici / yaml …)在 `.pnpm/<hash>/node_modules/` 下是**兄弟**。
  * 把该目录的全部条目 hoist 到 `dist/node_modules` 顶层,兄弟关系即被保留 —— 这正是
  * `pack-standalone` 的 hoist 步骤,只是不必先被 nft 打散再修回来。
+ *
+ * ★ 本脚本是随包**压缩载荷的唯一上游**（spec shared-runtime-payload）：`scripts/pack-payload.mjs`
+ *   直接消费这里产出的 `dist/` 树。两点因此成为跨脚本的隐式契约：
+ *     1. `packWorkspacePackages()` 在 POSIX 上产出的 `node_modules/@blksails/pi-web-*` 符号链接，
+ *        由 `pack-payload` 以 `tar.create({ follow: true })` 展开为实体。载荷在 Ubuntu 上构建一次
+ *        分发到三平台，带符号链接的归档在 Windows 上会重演 realpath EPERM 坑。
+ *     2. 顶层条目集合即「产物根」的定义。后端子进程以产物根为 cwd，`packages/server` 多处在
+ *        `import.meta.url` 被内联失效后回退 `process.cwd()` 定位框架自身文件；少一个顶层条目
+ *        不会报错，只会在某条运行时路径上**静默失败**。
  */
 import {
   cpSync,
@@ -28,6 +37,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
 } from "node:fs";
 import { createRequire } from "node:module";
@@ -175,6 +185,150 @@ function packRuntimeDeps() {
   return hoisted;
 }
 
+/* ────────────────────────── 剪枝(prune) ──────────────────────────
+ *
+ * hoist 进来的第三方包携带大量**运行时永不读取**的文件:sourcemap、类型声明、
+ * README、测试夹具。实测占 `dist/node_modules` 的一半以上。
+ *
+ * 这份产物同时被 **CLI(npm 包 `files: ["bin","dist"]`)** 与**桌面版(随包 resources)**
+ * 携带,故每省 1MB 是省两次。
+ *
+ * 边界(违反即运行时崩溃):
+ *   - 只处理 `dist/node_modules` 下的**第三方**包。`@blksails/*` 是指向 `dist/packages/`
+ *     的链接(Windows 退化为实体拷贝),其 `src/**.ts` 由 jiti 在运行时加载,**不可删**。
+ *     本函数在 `packWorkspacePackages()` **之前**调用,那时 `@blksails` 尚不存在。
+ *   - `dist/examples`、`dist/packages` 同样含 jiti 加载的 `.ts`,不在本函数射程内。
+ *   - `LICENSE`/`NOTICE`/`COPYING` **保留**:MIT/Apache 等要求分发时保留 copyright notice。
+ *   - `.ts` 源码按包**动态判定**:若某包 `exports` 的运行时 condition(排除 `types`)
+ *     解析到 `.ts`(如 `zod/@zod/source`、`@mistralai/mistralai/source`),则该包整体跳过
+ *     `.ts` 删除。动态判定而非硬编码包名 —— 新增依赖时自动安全。
+ *
+ * 关闭:`PI_WEB_DIST_NO_PRUNE=1`(排查产物问题时保留完整树)。
+ */
+
+/** 运行时永不读取的文件后缀。 */
+const PRUNE_SUFFIXES = [".map", ".d.ts", ".d.mts", ".d.cts", ".md", ".markdown"];
+/** 运行时永不读取的目录名。 */
+const PRUNE_DIRS = new Set([
+  "test",
+  "tests",
+  "__tests__",
+  "example",
+  "examples",
+  "docs",
+  ".github",
+]);
+/** 即便同名也必须保留的文件(法律义务)。 */
+const KEEP_RE = /^(LICEN[CS]E|NOTICE|COPYING|AUTHORS)/i;
+/** `exports` 中只被 TS 编译器读取、Node 运行时忽略的 condition。 */
+const TYPE_ONLY_CONDITIONS = new Set(["types", "typings"]);
+
+const isPlainTs = (p) =>
+  typeof p === "string" && p.endsWith(".ts") && !/\.d\.(m|c)?ts$/.test(p);
+
+/** 递归展开 `exports`,跳过纯类型 condition,产出所有运行时可解析的目标。 */
+function* runtimeExportTargets(node) {
+  if (typeof node === "string") {
+    yield node;
+  } else if (Array.isArray(node)) {
+    for (const x of node) yield* runtimeExportTargets(x);
+  } else if (node !== null && typeof node === "object") {
+    for (const [cond, sub] of Object.entries(node)) {
+      if (TYPE_ONLY_CONDITIONS.has(cond)) continue;
+      yield* runtimeExportTargets(sub);
+    }
+  }
+}
+
+/** 该包是否可能在运行时解析到 `.ts` 源码(是则保留其 `.ts`)。 */
+function packageResolvesToTs(pkgDir) {
+  let pkg;
+  try {
+    pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+  } catch {
+    return true; // 读不到清单 → 保守保留
+  }
+  for (const key of ["main", "module"]) {
+    if (isPlainTs(pkg[key])) return true;
+  }
+  if (typeof pkg.bin === "object" && pkg.bin !== null) {
+    for (const v of Object.values(pkg.bin)) if (isPlainTs(v)) return true;
+  } else if (isPlainTs(pkg.bin)) {
+    return true;
+  }
+  for (const target of runtimeExportTargets(pkg.exports)) {
+    if (isPlainTs(target)) return true;
+  }
+  return false;
+}
+
+/** 列出 `dist/node_modules` 下的第三方包根(展开 scope,排除 `@blksails`)。 */
+function listThirdPartyPackages() {
+  const out = [];
+  if (!existsSync(DIST_NM)) return out;
+  for (const entry of readdirSync(DIST_NM)) {
+    if (entry === "@blksails" || entry === ".bin") continue;
+    const p = join(DIST_NM, entry);
+    if (entry.startsWith("@")) {
+      for (const inner of readdirSync(p)) out.push(join(p, inner));
+    } else {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+function pruneTree(dir, { dropTs }, stats) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (PRUNE_DIRS.has(entry.name)) {
+        stats.bytes += dirSize(p);
+        rmSync(p, { recursive: true, force: true });
+        stats.dirs += 1;
+        continue;
+      }
+      pruneTree(p, { dropTs }, stats);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (KEEP_RE.test(entry.name)) continue;
+
+    const drop =
+      PRUNE_SUFFIXES.some((s) => entry.name.endsWith(s)) ||
+      (dropTs && isPlainTs(entry.name));
+    if (drop) {
+      stats.bytes += statSync(p).size;
+      rmSync(p, { force: true });
+      stats.files += 1;
+    }
+  }
+}
+
+function dirSize(dir) {
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) total += dirSize(p);
+    else if (entry.isFile()) total += statSync(p).size;
+  }
+  return total;
+}
+
+/** 剪掉第三方依赖里运行时永不读取的文件。返回省下的字节数。 */
+function pruneRuntimeDeps() {
+  if (process.env.PI_WEB_DIST_NO_PRUNE === "1") return { bytes: 0, skipped: [] };
+  const stats = { bytes: 0, files: 0, dirs: 0 };
+  const keptTs = [];
+  for (const pkgDir of listThirdPartyPackages()) {
+    if (!existsSync(join(pkgDir, "package.json"))) continue;
+    const resolvesToTs = packageResolvesToTs(pkgDir);
+    if (resolvesToTs) keptTs.push(relative(DIST_NM, pkgDir));
+    pruneTree(pkgDir, { dropTs: !resolvesToTs }, stats);
+  }
+  return { ...stats, keptTs };
+}
+
 /** workspace 包:拷 src + package.json,并在 node_modules 建相对链接(与源码树同构)。 */
 function packWorkspacePackages() {
   const pkgsDir = join(ROOT, "packages");
@@ -285,16 +439,28 @@ export function packDist() {
   mkdirSync(DIST_NM, { recursive: true });
 
   const hoisted = packRuntimeDeps();
+  // ★ 必须在 packWorkspacePackages() **之前**:那时 `node_modules/@blksails` 尚不存在,
+  //   剪枝不可能误伤 `dist/packages/**/*.ts`(jiti 在运行时加载它们)。
+  const pruned = pruneRuntimeDeps();
   packWorkspacePackages();
   const assetCount = packRuntimeAssets();
   packExamples();
   packStubAgent();
-  return { dist: DIST, hoistedCount: hoisted.size, assetCount };
+  return { dist: DIST, hoistedCount: hoisted.size, assetCount, pruned };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { dist, hoistedCount, assetCount } = packDist();
+  const { dist, hoistedCount, assetCount, pruned } = packDist();
   process.stdout.write(
     `[pack-dist] → ${dist} (hoist ${hoistedCount} 个运行时包, ${assetCount} 个运行时资源)\n`,
   );
+  if (pruned.bytes > 0) {
+    const mb = (pruned.bytes / 1048576).toFixed(1);
+    process.stdout.write(
+      `[pack-dist] 剪枝省 ${mb} MB (${pruned.files} 文件 / ${pruned.dirs} 目录);` +
+        ` ${pruned.keptTs.length} 个包因运行时可解析到 .ts 而保留源码: ${pruned.keptTs.join(", ") || "无"}\n`,
+    );
+  } else if (process.env.PI_WEB_DIST_NO_PRUNE === "1") {
+    process.stdout.write("[pack-dist] 剪枝已关闭(PI_WEB_DIST_NO_PRUNE=1)\n");
+  }
 }

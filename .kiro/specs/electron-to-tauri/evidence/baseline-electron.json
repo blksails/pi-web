@@ -1,0 +1,44 @@
+{
+  "label": "electron",
+  "shell": "/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/electron-baseline/desktop/release/mac-arm64/pi-web.app/Contents/MacOS/pi-web",
+  "measuredAt": "2026-07-09T09:35:20.426Z",
+  "bundle": {
+    "appPath": "/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/electron-baseline/desktop/release/mac-arm64/pi-web.app",
+    "appBytes": 826834944,
+    "appMB": 788.5,
+    "electronFrameworkMB": 274.5,
+    "bundledDistMB": 198.7
+  },
+  "coldStartMs": 5751,
+  "idleMemory": {
+    "totalBytes": 797638656,
+    "totalMB": 760.7,
+    "processCount": 6,
+    "processes": [
+      {
+        "comm": "pi-web",
+        "rssMB": 152.8
+      },
+      {
+        "comm": "pi-web Helper (Renderer)",
+        "rssMB": 147.1
+      },
+      {
+        "comm": "pi-web",
+        "rssMB": 151.4
+      },
+      {
+        "comm": "pi",
+        "rssMB": 186.3
+      },
+      {
+        "comm": "pi-web Helper",
+        "rssMB": 40.1
+      },
+      {
+        "comm": "pi-web Helper",
+        "rssMB": 83.1
+      }
+    ]
+  }
+}
