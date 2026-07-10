@@ -14,7 +14,13 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 const piChatSpy = vi.fn<(props: Record<string, unknown>) => void>();
 const piChatBasicSpy = vi.fn<(props: Record<string, unknown>) => void>();
 
-vi.mock("@blksails/pi-web-ui", () => ({
+vi.mock("@blksails/pi-web-ui", async () => ({
+  // AgentSourcePicker 已从应用层 components/ 搬进 ui 包,于是也落进了这个 mock 的替换面。
+  // 本文件的 startSession 依赖 picker 的真实交互契约(填输入 → 点 [data-agent-source-submit]),
+  // 故必须用真实组件而非 stub。直接加载源文件、绕开包 exports:picker 内部引的是相对路径
+  // (`../ui/dialog.js` / `../i18n/index.js`),不会再回到这个被 mock 的模块。
+  AgentSourcePicker: (await import("../packages/ui/src/chat/agent-source-picker.js"))
+    .AgentSourcePicker,
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
     // 无 head 设计后,全局控件(设置/日志开关/语言/主题 + rail 关闭态的新建会话/切换源)

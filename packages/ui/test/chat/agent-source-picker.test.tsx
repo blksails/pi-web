@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { AgentSourcePicker } from "../components/agent-source-picker.js";
+import { AgentSourcePicker } from "../../src/chat/agent-source-picker.js";
 import type {
   ListAgentSourcesRequest,
   ListAgentSourcesResponse,

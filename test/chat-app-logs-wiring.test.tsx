@@ -13,7 +13,12 @@ import { cleanup, fireEvent, render, act } from "@testing-library/react";
 // Spy captures props forwarded to <PiChat>.
 const piChatSpy = vi.fn<(props: Record<string, unknown>) => void>();
 
-vi.mock("@blksails/pi-web-ui", () => ({
+vi.mock("@blksails/pi-web-ui", async () => ({
+  // AgentSourcePicker 已搬进 ui 包 → 落入本 mock 的替换面。本文件靠点击
+  // [data-agent-source-submit] 建会话,依赖 picker 的真实交互契约,故加载真实组件源文件
+  // (它内部引相对路径,不会绕回这个被 mock 的模块)。
+  AgentSourcePicker: (await import("../packages/ui/src/chat/agent-source-picker.js"))
+    .AgentSourcePicker,
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
     return <div data-test-pi-chat />;

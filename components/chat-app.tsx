@@ -20,6 +20,7 @@ import {
   type ExtensionCommandPolicy,
   type ComponentOverrides,
   type PiChatSlots,
+  AgentSourcePicker,
 } from "@blksails/pi-web-ui";
 import type {
   CreateSessionRequest,
@@ -27,7 +28,7 @@ import type {
 } from "@blksails/pi-web-protocol";
 import { BUILTIN_COMMANDS } from "@blksails/pi-web-tool-kit/commands";
 import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
-import { AgentSourcePicker } from "./agent-source-picker.js";
+
 import { ThemeToggleButton, LocaleToggleButton } from "@/src/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { getPiWebDesktopBridge } from "@/lib/app/desktop-bridge.js";

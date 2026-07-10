@@ -6,13 +6,8 @@ import type {
   ListAgentSourcesRequest,
   ListAgentSourcesResponse,
 } from "@blksails/pi-web-protocol";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  useI18n,
-} from "@blksails/pi-web-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog.js";
+import { useI18n } from "../i18n/index.js";
 
 /**
  * AgentSourcePicker — agent source input + submit,可选叠加"可浏览的源列表"。
