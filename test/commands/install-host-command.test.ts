@@ -264,6 +264,35 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 本地源解析基准 = 会话 cwd(与 install-sources 补全端点同基准;e2e 阶段抓到的缺陷)
+// ---------------------------------------------------------------------------
+
+describe("本地源解析基准", () => {
+  it("installer 收到 ctx.session.cwd(补全候选 local:<rel> 按会话 cwd 产出,执行必须同基准)", async () => {
+    const { installer, installCalls } = okInstaller({
+      ok: true,
+      value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } },
+    });
+    const cmd = createInstallHostCommand(baseDeps({ installer, cwd: "/assembly/default" }));
+    await cmd.execute({
+      session: { id: "s1", cwd: "/session/workdir" } as never,
+      argv: "install local:./hello-agent",
+    });
+    expect(installCalls[0]?.[1]).toMatchObject({ cwd: "/session/workdir" });
+  });
+
+  it("会话未暴露 cwd 时回退装配兜底 cwd", async () => {
+    const { installer, uninstallCalls } = okInstaller(
+      { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } } },
+      { ok: true, value: { kind: "agent", result: { id: "x" } } },
+    );
+    const cmd = createInstallHostCommand(baseDeps({ installer, cwd: "/assembly/default" }));
+    await cmd.execute({ session: makeSession() as never, argv: "uninstall x" });
+    expect(uninstallCalls[0]?.[1]).toMatchObject({ cwd: "/assembly/default" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 生效分道:reloadRunner 调用次数与时序(4.1/4.2)
 // ---------------------------------------------------------------------------
 

@@ -45,7 +45,12 @@ export interface InstallHostCommandDeps {
   readonly adminGate: () => boolean;
   readonly reloadRunner: (session: PiSession) => Promise<void>;
   readonly audit?: (event: InstallAuditEvent) => void;
-  /** `resolveSource` 的本地源解析基准;缺省 `process.cwd()`。 */
+  /**
+   * `resolveSource` 本地源解析基准的**装配兜底**。执行时优先用 `ctx.session.cwd`——
+   * `/install install` 参数位补全(GET /sessions/:id/install-sources)按会话 cwd 扫描产出
+   * `local:<rel>` 候选,执行与补全必须同基准,否则选中候选直接提交会解析失败(e2e 阶段
+   * 抓到的真实体验缺陷:会话 cwd ≠ server defaultCwd 时补全候选 404)。
+   */
   readonly cwd?: string;
 }
 
@@ -266,13 +271,15 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
       }
 
       const v = parsed.value;
+      // 本地源解析基准 = 会话 cwd(与 install-sources 补全端点同基准),装配 cwd 仅兜底。
+      const cwd = ctx.session.cwd ?? deps.cwd;
 
       if (v.action === "install") {
         // v.source 是用户 argv 原样输入(可能内嵌 user:token@host 凭据):安装调用必须用
         // 原始值(凭据是拉取所需),但**一切输出面**(卡片 data.id / 审计事件)一律用脱敏副本
         // (Req 5.3——复核抓到的真实泄露路径,单测有带凭据 URL 的回归样本)。
         const safeSource = redactSecrets(v.source);
-        const result = await deps.installer.install(v.source, { kindHint: v.kindHint, cwd: deps.cwd });
+        const result = await deps.installer.install(v.source, { kindHint: v.kindHint, cwd });
         if (!result.ok) {
           if (result.error.code === "ALLOWLIST_REJECTED") {
             deps.audit?.({
@@ -325,7 +332,7 @@ export function createInstallHostCommand(deps: InstallHostCommandDeps): HostComm
       if (v.action === "uninstall") {
         // 同 install:v.id 原样进卸载调用,输出面一律用脱敏副本(Req 5.3)。
         const safeId = redactSecrets(v.id);
-        const result = await deps.installer.uninstall(v.id, { kindHint: v.kindHint, cwd: deps.cwd });
+        const result = await deps.installer.uninstall(v.id, { kindHint: v.kindHint, cwd });
         if (!result.ok) {
           if (result.error.code === "ALLOWLIST_REJECTED") {
             deps.audit?.({
