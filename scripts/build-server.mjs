@@ -56,6 +56,10 @@ const ALIAS = {
     "packages/tool-kit/src/auto-title/entry-path.ts",
   "@blksails/pi-web-tool-kit/runtime": "packages/tool-kit/src/runtime.ts",
   "@blksails/pi-web-tool-kit": "packages/tool-kit/src/index.ts",
+  // cli-package-commands:registry 客户端(签名/摘要纯函数 + HTTP 客户端)。**首个越仓 alias**
+  // —— 指向兄弟仓 pi-clouds 源码,构建期 inline 进 cli-commands.mjs,运行时零依赖。
+  // registry-client 是纯包(零运行时依赖,只用 node:crypto),bundle 干净;不进 EXTERNAL。
+  "@pi-clouds/registry-client": "../pi-clouds/packages/registry-client/src/index.ts",
 };
 
 /**

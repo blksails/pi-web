@@ -53,6 +53,12 @@
       ],
       "@blksails/pi-web-tool-kit/auto-title-entry": [
         "./packages/tool-kit/src/auto-title/entry-path.ts"
+      ],
+      "@pi-clouds/registry-client": [
+        "../pi-clouds/packages/registry-client/src/index.ts"
+      ],
+      "@pi-clouds/registry-client/testing": [
+        "../pi-clouds/packages/registry-client/src/testing/index.ts"
       ]
     }
   },

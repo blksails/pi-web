@@ -25,6 +25,10 @@ export default defineConfig({
       // Next 走 tsconfig paths 可解析,vitest 不读 paths 须显式 alias);canvas-ui 同规则对齐。
       "@blksails/pi-web-canvas-kit": path.resolve(__dirname, "packages/canvas-kit/src/index.ts"),
       "@blksails/pi-web-canvas-ui": path.resolve(__dirname, "packages/canvas-ui/src/index.ts"),
+      // cli-package-commands:越仓 registry 客户端(源码 alias 指向兄弟仓)+ 契约夹具(/testing)。
+      // 注意子路径 alias 须在裸包名**之前**匹配,故 /testing 先列。
+      "@pi-clouds/registry-client/testing": path.resolve(__dirname, "../pi-clouds/packages/registry-client/src/testing/index.ts"),
+      "@pi-clouds/registry-client": path.resolve(__dirname, "../pi-clouds/packages/registry-client/src/index.ts"),
     },
   },
   test: {
