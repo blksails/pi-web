@@ -17,7 +17,7 @@
  *  - `node:sqlite` 是 Node 内置;`zod` 纯 JS —— 均可安全 bundle。
  */
 import * as esbuild from "esbuild";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,16 +58,37 @@ const ALIAS = {
   "@blksails/pi-web-tool-kit": "packages/tool-kit/src/index.ts",
 };
 
+/**
+ * 裸路径→文件的扩展名探测:esbuild 对**插件已返回的路径**不会再套用
+ * `resolveExtensions`(那只作用于 esbuild 自身的默认解析算法),故无扩展名的 `@/…`
+ * 说明符(如 `@/server/cli/context`)必须由插件自己探测出真实文件,否则 "Cannot read
+ * file" 报错——生产 esbuild 构建才会暴露,dev 服务器走的是另一条(tsconfig-paths 感知的)
+ * 解析链,不会复现。
+ */
+function resolveWithExtension(absPath) {
+  if (existsSync(absPath)) return absPath;
+  for (const ext of [".ts", ".tsx", ".mjs", ".js"]) {
+    if (existsSync(absPath + ext)) return absPath + ext;
+  }
+  for (const ext of [".ts", ".tsx"]) {
+    const indexPath = join(absPath, `index${ext}`);
+    if (existsSync(indexPath)) return indexPath;
+  }
+  return absPath;
+}
+
 /** `@/x` → `<root>/x`(tsconfig paths 的 `@/*`)。 */
 const aliasPlugin = {
   name: "pi-web-alias",
   setup(build) {
     for (const [spec, target] of Object.entries(ALIAS)) {
       const filter = new RegExp(`^${spec.replace(/[/\\^$*+?.()|[\]{}]/g, "\\$&")}$`);
-      build.onResolve({ filter }, () => ({ path: join(ROOT, target) }));
+      build.onResolve({ filter }, () => ({
+        path: resolveWithExtension(join(ROOT, target)),
+      }));
     }
     build.onResolve({ filter: /^@\// }, (args) => ({
-      path: join(ROOT, args.path.slice(2)),
+      path: resolveWithExtension(join(ROOT, args.path.slice(2))),
     }));
   },
 };

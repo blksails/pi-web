@@ -27,6 +27,9 @@ import fs from "node:fs";
  */
 const PORT_FS = Number(process.env.PI_WEB_E2E_PORT ?? 3100);
 const PORT_SQLITE = PORT_FS + 1;
+// install-host-command(第三套 webServer,任务 5.1):独立端口 + 放行 env + 落盘隔离
+// (临时 sourcesRoot/registry/agentDir),不动前两套既有 env。
+const PORT_INSTALL = PORT_FS + 2;
 const externalServer = process.env.PI_WEB_E2E_EXTERNAL_SERVER === "1";
 
 // Isolated temp storage per run; exposed via env so the spec can assert artifacts.
@@ -56,6 +59,21 @@ fs.writeFileSync(
   JSON.stringify({ enabled: true, level: "debug" }, null, 2),
   "utf8",
 );
+
+// install-host-command(任务 5.1):第三套 server 专用的隔离落盘 —— 独立 agentDir(与
+// FS/sqlite 两套的 agentDir 互不共享)+ 临时 sourcesRoot + 临时 registry 文件,绝不触碰
+// 真实 ~/.pi-web 或 ~/.pi/agent。
+const installAgentDir =
+  process.env.PI_WEB_E2E_INSTALL_AGENT_DIR ??
+  fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-install-agent-"));
+process.env.PI_WEB_E2E_INSTALL_AGENT_DIR = installAgentDir;
+fs.mkdirSync(installAgentDir, { recursive: true });
+const installSourcesRoot =
+  process.env.PI_WEB_E2E_INSTALL_SOURCES_ROOT ??
+  fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-install-sources-"));
+process.env.PI_WEB_E2E_INSTALL_SOURCES_ROOT = installSourcesRoot;
+fs.mkdirSync(installSourcesRoot, { recursive: true });
+const installSourcesRegistry = path.join(installAgentDir, "sources.json");
 
 // 隔离产物目录:`vite build --outDir` / esbuild 的 PI_WEB_DIST 均可指向它,
 // 使 e2e 构建不与开发态产物互相覆盖。默认 `dist`。
@@ -93,6 +111,9 @@ export default defineConfig({
   projects: [
     {
       name: "fs",
+      // install-host-command.e2e.ts 需要放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+
+      // 隔离落盘,fs server 未开这些放行档 —— 该 spec 只跑在专用 `install` project 上。
+      testIgnore: /install-host-command\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -105,6 +126,15 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_SQLITE}`,
+      },
+    },
+    {
+      // install-host-command(任务 5.1):专用 server(放行 env + 隔离落盘),只跑安装旅程 spec。
+      name: "install",
+      testMatch: /install-host-command\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_INSTALL}`,
       },
     },
   ],
@@ -127,7 +157,7 @@ export default defineConfig({
             },
           },
           {
-            // ⚠ 两个 webServer 的 command 不能逐字相同(playwright 会视作同一个),
+            // ⚠ 三个 webServer 的 command 不能逐字相同(playwright 会视作同一个),
             // 故给 sqlite 档附一个被 server 忽略的 argv 标记以示区分。
             command: `node ${SERVER_ENTRY} --store=sqlite`,
             port: PORT_SQLITE,
@@ -140,6 +170,35 @@ export default defineConfig({
               PORT: String(PORT_SQLITE),
               SESSION_STORE: "sqlite",
               SESSION_STORE_PATH: sqlitePath,
+            },
+          },
+          {
+            // install-host-command(任务 5.1):放行 env(admin/local)+ 隔离 agentDir/sourcesRoot/
+            // registry,不影响 fs/sqlite 两套既有 env。command 附独立 argv 标记以避免与前两者
+            // "视作同一 server" 的去重判定。
+            command: `node ${SERVER_ENTRY} --store=install`,
+            port: PORT_INSTALL,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_INSTALL),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-install-fs-"),
+              ),
+              PI_WEB_AGENT_DIR: installAgentDir,
+              PI_WEB_EXT_ADMIN_ALLOW_ANY: "1",
+              PI_WEB_EXT_ALLOW_LOCAL: "1",
+              PI_WEB_SOURCES_ROOT: installSourcesRoot,
+              PI_WEB_SOURCES_REGISTRY: installSourcesRegistry,
+              // 运行时下发(GET /api/bootstrap,非构建期内联)门控:开启 source 选择器列表 +
+              // launcherRail 悬浮对话框,使安装旅程用例可在**不离开会话**的情况下打开选择器
+              // 断言新 source 免刷新可见(agentSourcesRefreshKey 语义)。
+              NEXT_PUBLIC_PI_WEB_SOURCE_PICKER: "1",
+              NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL: "1",
             },
           },
         ],
