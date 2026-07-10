@@ -81,7 +81,7 @@ pi-web ./examples/hello-agent
 
 ## 延伸阅读（产品文档）
 
-- [07 自定义 Agent 开发](../docs/product/07-agent-development.md) —— `defineAgent` / 工具 / 工具姿态（`noTools` / `tools` / `excludeTools`）。
-- [10 Web UI 扩展](../docs/product/10-web-ui-extension.md) —— `.pi/web` 协议与 WebExtension 五个 Tier。
-- [11 AIGC 工具](../docs/product/11-aigc-tools.md) —— `aigcExtension`、provider 密钥与产物落库。
-- [08 附件系统](../docs/product/08-attachment-system.md) —— attachment store、工具桥、`/raw` 分发。
+- [07 自定义 Agent 开发](../docs/product/08-agent-development.md) —— `defineAgent` / 工具 / 工具姿态（`noTools` / `tools` / `excludeTools`）。
+- [10 Web UI 扩展](../docs/product/12-web-ui-extension.md) —— `.pi/web` 协议与 WebExtension 五个 Tier。
+- [11 AIGC 工具](../docs/product/11-aigc-and-vision-tools.md) —— `aigcExtension`、provider 密钥与产物落库。
+- [08 附件系统](../docs/product/09-attachment-system.md) —— attachment store、工具桥、`/raw` 分发。

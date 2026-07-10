@@ -102,7 +102,7 @@ runImageTool(params, ext, {
 
 - e2e:`examples/aigc-agent` 经 `extensions: [aigcExtension]` 加载后,node/browser e2e 仍能调
   `image_generation`(stub provider)。**铁律:每 spec 需 e2e + fresh 证据**。
-- 文档:`docs/product/11-aigc-tools.md` 接入改 `extensions`;删/改"声明式引擎结构"章节;`09` 章补边界说明。
+- 文档:`docs/product/11-aigc-and-vision-tools.md` 接入改 `extensions`;删/改"声明式引擎结构"章节;`09` 章补边界说明。
 
 ## 9. 实施阶段
 

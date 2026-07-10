@@ -1,0 +1,41 @@
+/* 加载页 / 启动错误页样式。外置以便 CSP 用 style-src 'self'（不放 unsafe-inline）。 */
+:root { color-scheme: dark; }
+html, body {
+  margin: 0; height: 100%;
+  background: #0b0b0c; color: #e6e6e6;
+  font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+}
+.wrap {
+  height: 100%; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 18px;
+  padding: 24px; box-sizing: border-box;
+}
+.spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid #2a2a2e; border-top-color: #7c9cff;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.title { font-weight: 600; letter-spacing: 0.02em; }
+.hint { color: #8a8a90; font-size: 12px; }
+
+#loading { display: contents; }
+#loading.hidden { display: none; }
+#error { display: none; max-width: 620px; width: 100%; }
+#error.shown { display: block; }
+
+.err-title { font-weight: 600; font-size: 15px; color: #ff8a8a; margin-bottom: 10px; }
+.err-detail {
+  white-space: pre-wrap; word-break: break-word;
+  background: #141417; border: 1px solid #26262b; border-radius: 6px;
+  padding: 12px; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #c9c9cf; max-height: 320px; overflow: auto;
+}
+.actions { display: flex; gap: 10px; margin-top: 16px; }
+button {
+  font: inherit; padding: 7px 16px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #33333a; background: #1c1c20; color: #e6e6e6;
+}
+button.primary { background: #3b5bdb; border-color: #3b5bdb; color: #fff; }
+button:hover { filter: brightness(1.15); }
+button:disabled { opacity: 0.5; cursor: default; filter: none; }

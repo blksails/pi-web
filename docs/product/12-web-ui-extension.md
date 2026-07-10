@@ -1,0 +1,546 @@
+# 12 · Web UI 扩展（agent-web-extension）
+
+每个 agent source 可在 `.pi/web` 目录携带一套 **WebExtension**（ESM bundle + manifest），宿主在该 source 的会话激活时动态加载，自定义布局、渲染、交互与隔离表面——而不触碰宿主的 document、session 与安全边界。
+
+> **两套「表面」勿混淆**：本章讲的是 5-tier **挂载机制**（把组件填进宿主让出的插槽 / 注册渲染器 / iframe）。其中 Tier4 的 `artifactSurface` 是 iframe 隔离表面。与之**正交**的还有一套 **Surface 权威表面**通信约定（`createSurface`/`useSurface`，命令上行 + 领域状态下行的 CQRS 单写者，端到端驱动 Canvas），它不是新的 tier，而是与挂载机制平行的通信平面，详见 [04 Surface 权威表面栈](./04-surface-stack.md)。
+
+---
+
+## 五层模型（Tier 1–5）
+
+| Tier | 名称 | 能力 | 必需 bundle |
+|------|------|------|-------------|
+| 1 | **区域插槽** | 填入 21 个具名 slot（background、header、panelRight、promptToolbar、logs 等） | 是 |
+| 2 | **渲染器注册表** | 替换 tool/data-part 的卡片渲染，per-session 命名空间 | 是 |
+| 3 | **贡献点 + RPC** | slash、@mention、autocomplete、keybindings，经 `ui-rpc` 总线回 agent | 是 |
+| 4 | **Artifact iframe** | 沙箱 iframe（`sandbox="allow-scripts"`），无同源凭证，postMessage 通信 | 是（artifact HTML） |
+| 5 | **纯声明配置** | theme token、layout 预设、empty 空态文案——零 bundle，直接读 manifest.json | 否 |
+
+宿主采用**模型 A**：宿主永远持有页面根、session、transport 与安全边界；扩展只能填入宿主让出的具名插槽、注册贡献点或在 iframe 内自由渲染。
+
+---
+
+## 端到端：从零跑通一个扩展
+
+宿主有两条加载车道：**构建期集成**（仓库内白名单 source 静态 import `.pi/web/web.config`，见 `lib/app/webext-registry.ts:68`）与**独立预构建 + import map**（外部 git source 走 `.pi/web/dist` + SRI + 签名校验）。下面以构建期车道、Tier1 区域插槽为例，给出最短可跑通路径（每步可独立验证）：
+
+1. **试现成示例（最快）** — 直接体验仓库内 `examples/webext-layout-agent`，无需自己写：
+   ```bash
+   pnpm dev   # dev-all.mjs：vite 前端 http://localhost:5173（/api 自动代理到 API 的 3000）
+   ```
+   浏览器打开 **http://localhost:5173**（HMR + SPA；3000 是 API-only 宿主，dev 下不提供前端页面）。在 agent source 输入框（`data-agent-source-input`，占位文案 `./examples/hello-agent or https://github.com/org/repo`）填 `./examples/webext-layout-agent` 提交。
+2. **验证生效** — 进入会话后应看到 `headerCenter` 文案与右侧 `panelRight` 面板，DOM 上分别带 `data-pi-ext-header` 与 `data-pi-chat-aside`。
+3. **写自己的扩展** — 在你自己的 agent source 下建 `.pi/web/web.config.tsx`，`export default defineWebExtension({...})`（见下文「最简 Tier1 示例」）。
+4. **装 SDK 并构建** — 在该 agent source 根目录执行：
+   ```bash
+   pnpm add -D @blksails/pi-web-kit
+   pnpm pi-web build --id <extId> --api "^0.1.0" --dir .pi/web --out .pi/web/dist
+   ```
+   成功时终端打印 `[pi-web build] <extId> → … (integrity=sha384-…)`，并在 `.pi/web/dist/` 生成 `web-extension.mjs` + `manifest.json`。该 `dist/` 产物供「独立预构建」车道（外部 source）加载与校验。
+5. **指向你的 source** — `pnpm dev` 后在 source 输入框填你 agent source 的本地路径或 git URL 即可。
+6. **没生效？** — 多为签名/版本/门控问题，对照 [23 故障排查 FAQ](./23-troubleshooting-faq.md) 第 3 节「Web Extension / UI 问题」，或本章末尾「常见问题」。
+
+> Tier5 纯声明扩展可跳过第 4 步的构建：手写 `manifest.json`（含 `config`，无 `entry`）即可被宿主直接合成描述符。
+
+---
+
+## 目录契约与 manifest
+
+### `.pi/web` 目录结构
+
+```
+<agent-source>/
+└── .pi/
+    └── web/
+        ├── web.config.tsx        # 入口（defaultExport = defineWebExtension(…)）
+        ├── styles.css            # 可选，构建时自动 scope
+        ├── artifact.html         # Tier4 用，独立 origin 加载
+        └── dist/                 # pi-web build 产物
+            ├── web-extension.mjs
+            ├── ext.css           # 可选
+            └── manifest.json
+```
+
+入口文件按 `web.config.tsx` → `web.config.ts` → `index.tsx` → `index.ts` 顺序自动探测。
+
+### manifest.json 结构
+
+`pi-web build` 自动产出，也可手写（Tier5 纯声明场景）：
+
+```json
+{
+  "id": "webext-contrib",
+  "targetApiVersion": "^0.1.0",
+  "entry": "web-extension.mjs",
+  "integrity": "sha384-…",
+  "capabilities": ["contributions"]
+}
+```
+
+**Tier5 纯声明**示例（无 `entry` 字段，零 bundle）：
+
+```json
+{
+  "id": "webext-declarative",
+  "targetApiVersion": "^0.1.0",
+  "capabilities": ["config"],
+  "config": {
+    "documentTitle": "Declarative · pi-web",
+    "theme": { "--primary": "262 83% 58%" },
+    "layout": "wide",
+    "empty": {
+      "title": "纯声明式扩展 · 零代码",
+      "subtitle": "theme/layout/文案来自 manifest.json，不携带任何 bundle。",
+      "starters": [{ "id": "q1", "label": "说明", "value": "…", "mode": "fill" }],
+      "mergeCommands": "prepend"
+    }
+  }
+}
+```
+
+---
+
+## 编写扩展
+
+### 安装作者侧 SDK
+
+```bash
+pnpm add -D @blksails/pi-web-kit
+```
+
+### 最简 Tier1 示例（区域插槽）
+
+下面是仓库内 `examples/webext-layout-agent/.pi/web/web.config.tsx` 的精简版——填 `headerCenter` 与 `panelRight` 两个插槽，并用 Tier5 声明 `panelRatio` 让出右侧面板比例：
+
+```tsx
+// .pi/web/web.config.tsx
+import * as React from "react";
+import { defineWebExtension } from "@blksails/pi-web-kit";
+
+function InfoPanel(): React.JSX.Element {
+  return (
+    <div data-testid="layout-panel" style={{ padding: 12 }}>
+      <h3>领域检视面板</h3>
+      <p>webext-layout-agent 填充的 panelRight。</p>
+    </div>
+  );
+}
+
+export default defineWebExtension({
+  manifestId: "webext-layout",
+  capabilities: ["slots", "config"],
+  config: { panelRatio: "3:7" }, // 对话 30% / 面板 70%；需配合 slots.panelRight
+  slots: {
+    headerCenter: <span data-testid="layout-header">Layout Agent</span>,
+    panelRight: <InfoPanel />,
+  },
+});
+```
+
+### 构建
+
+```bash
+# 在 agent source 根目录执行（@blksails/pi-web-kit 的 bin 名即 pi-web → build/cli.ts）
+pnpm pi-web build \
+  --id my-agent-ext \
+  --api "^0.1.0" \
+  --dir .pi/web \
+  --out .pi/web/dist
+  # 可选：--sign <ed25519PrivateKeyBase64Pkcs8> 为 manifest 写入 Ed25519 签名
+```
+
+> 注意 flag 是 `--api`/`--dir`/`--out`（见 `packages/web-kit/build/cli.ts:32`），不是 `--target-api-version`/`--entry-dir`/`--out-dir`。仓库内的示例则统一由 `scripts/build-webext-examples.ts` 调用程序化 API `buildWebExtension({...})` 构建（`node --import jiti/register scripts/build-webext-examples.ts`）。
+
+产物写入 `.pi/web/dist/`：`web-extension.mjs`、`manifest.json`（含 SRI），有 `styles.css` 时另出 `ext.css`。
+
+---
+
+## Tier 1：区域插槽（Slots）
+
+> **对应可跑示例**：本 Tier 有三个落地示例——`examples/webext-layout-agent`（`panelRight` 领域检视面板 + `headerCenter`，见 `examples/webext-layout-agent/.pi/web/web.config.tsx:1`）、`examples/webext-slots-agent`（18 个区域插槽 fixture，覆盖原始 19 个保留槽中除 `logs` 外的全集，每槽一个带 `data-testid` 的可见组件，见 `examples/webext-slots-agent/.pi/web/web.config.tsx:1`；`launcherRail`/`promptToolbar` 为后续新增，不在此 fixture 内）、`examples/webext-background-agent`（`background` 区域插槽自定义动画极光背景，类名自命名空间，见 `examples/webext-background-agent/.pi/web/web.config.tsx:1`）。
+
+### 21 个协议保留插槽
+
+`SlotKeySchema` 是闭集枚举，当前 **21** 个（`packages/protocol/src/web-ext/descriptor.ts:28-53`）：前 19 个为原始保留槽，`launcherRail`、`promptToolbar` 为后续新增。
+
+| SlotKey | 位置说明 | data 属性 |
+|---------|----------|-----------|
+| `background` | 绝对铺满、`-z-10`，消息层之下 | `data-pi-chat-background` |
+| `headerLeft` / `headerCenter` / `headerRight` | header 三区 | `data-pi-ext-header` |
+| `sidebarLeft` | 左侧侧边栏 | `data-pi-ext-sidebar-left` |
+| `panelRight` | 右侧领域检视面板（lg 断点） | `data-pi-chat-aside` |
+| `empty` | 空态屏 | `data-pi-ext-empty` |
+| `footer` | 底部 | — |
+| `promptInput` | 输入框装饰层 | `data-pi-ext-prompt-input` |
+| `accessoryAboveEditor` / `accessoryBelowEditor` | 输入框上下 | `data-pi-ext-accessory-above/below` |
+| `accessoryInlineLeft` / `accessoryInlineRight` | 输入框行内左右 | `data-pi-ext-accessory-inline-left/right` |
+| `toolbar` | 工具栏 | `data-pi-ext-toolbar` |
+| `notifications` | 通知层 | `data-pi-ext-notifications` |
+| `statusBar` | 状态栏 | `data-pi-ext-status-bar` |
+| `artifactSurface` | Artifact 独立表面 | `data-pi-ext-artifact-surface` |
+| `dialogLayer` | 对话框层（`z-[60]`，不拦截内核交互） | `data-pi-ext-dialog-layer` |
+| `logs` | 日志面板表面（由日志系统引入） | `data-pi-ext-logs` |
+| `launcherRail` | 侧栏启动导航区内的贡献槽（由 sidebar-launcher-rail 引入；宿主经 `SlotHost` 在导航区渲染，`ExtErrorBoundary` 隔离失败） | `data-launcher-webext-slot` |
+| `promptToolbar` | 输入框工具排内联槽，排在内核控件（附件/模型/语音/联网）之后、发送键之前；供 source 挂领域快捷设置控件，宿主不认内容语义 | — |
+
+**插槽语义**：扩展内容以追加（additive）方式挂载，不替换内核表面。宿主未声明对应插槽时忽略、不报错（Req 2.3）。`launcherRail` 的渲染条件是「全局门控 `NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL=1` 开启 **或** 当前 source 声明了 `launcherRail` 贡献」二者其一——**source 声明贡献即视为意图，免全局门控**（`components/chat-app.tsx:787-790`，Canvas 即走此路）；两者都未命中时导航区不为该槽占位。
+
+`promptToolbar` 是 AIGC 快捷设置控件的挂载点：装配期 `aigcExtension` 把 `aigc.models`/`modelLabels`/`sizes`/`enablePromptOptimization` 下发到会话共享状态，驱动提示词栏动态渲染模型/尺寸/视觉模型选择器（`packages/tool-kit/src/aigc/extension.ts:35-68`）。详见 [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md) 的「工具排快捷设置」。
+
+### background 插槽的 isolate 陷阱
+
+`background` 渲染在 `absolute inset-0 -z-10`。宿主用 Tailwind `isolate` 为聊天主列建立独立 stacking context（`packages/ui/src/chat/pi-chat.tsx:1645`），使负 z-index 被限定于此列之内——**而非逃逸到根上下文被 app-shell 不透明壳底遮挡**。
+
+```tsx
+// pi-chat.tsx:1645（宿主实现细节，扩展作者无需改动）
+<div className="relative isolate flex min-w-0 flex-1 flex-col">
+  {backgroundLayer}
+  …
+</div>
+```
+
+---
+
+## Tier 2：自定义渲染器（per-session Registry）
+
+> **对应可跑示例**：`examples/webext-renderer-agent`——同时注册 `echo` 工具卡渲染器（`EchoToolRenderer`）与 `data-metric` data-part 渲染器（`MetricRenderer`），并在 agent `index.ts` 注册配套的 `echo` customTool 驱动触发（见 `examples/webext-renderer-agent/.pi/web/web.config.tsx:1`）。
+
+渲染注册表以 per-session 实例化，扩展 ID 作为命名空间前缀，多扩展互不覆盖。
+
+### 注册渲染器
+
+```tsx
+export default defineWebExtension({
+  manifestId: "webext-renderer",
+  capabilities: ["renderers"],
+  renderers: {
+    tools: {
+      // 命中 `tool-echo` part 时替换默认工具卡
+      echo: EchoToolRenderer,
+    },
+    dataParts: {
+      // 命中 `data-metric` data-part 时触发
+      "data-metric": MetricRenderer,
+    },
+  },
+});
+```
+
+渲染器 props 与宿主 registry 同形：
+
+```typescript
+type ToolRenderer = ComponentType<{ part: AnyPart; message: UIMessage }>;
+type DataPartRenderer = ComponentType<{ part: AnyPart; message: UIMessage }>;
+```
+
+### 开发时触发说明
+
+真实 dev 环境（无 `PI_WEB_STUB_AGENT=1`）下，宿主**不会**自动发出 `echo` 或 `data-metric` part——需要 LLM 实际调用对应工具（或用 stub 模式）才能触发自定义渲染器。
+
+- **stub 触发**：`PI_WEB_STUB_AGENT=1` 时离线 stub agent 每轮发出 `echo` 工具调用，无需 LLM 即可验证渲染器。
+- **真实 LLM 触发**：agent `index.ts` 注册 `echo` customTool，要求 LLM 在用户请求回显时调用。
+
+---
+
+## Tier 3：贡献点与 UI↔Agent RPC
+
+> **对应可跑示例**：`examples/webext-contrib-agent`——slash 命令、@mention、autocomplete、inlineComplete、keybindings 贡献点全集，全部经 `ui-rpc` 总线回 agent 处理（见 `examples/webext-contrib-agent/.pi/web/web.config.tsx:1`）。
+
+### RPC 总线架构
+
+```
+浏览器扩展
+  │  rpc.request({ point: "slash", action: "list", payload: { query } })
+  ▼
+UiRpcBus（packages/react/src/web-ext/ui-rpc-bus.ts）
+  │  POST /sessions/:id/ui-rpc  → { correlationId, point, action, payload, protocolVersion }
+  ▼
+server command-routes.ts → session.uiRpc()
+  │  → agent 进程处理 → 返回结果
+  ▼
+SSE control 帧：{ control: "ui-rpc", response: { correlationId, ok, result } }
+  │
+UiRpcBus 按 correlationId 配对 → resolve Promise
+```
+
+超时默认 **15000 ms**，支持 `AbortSignal` 取消。失败以 `{ ok: false, error }` 回填，不抛、不崩会话。
+
+### 注册贡献点
+
+```tsx
+import { defineWebExtension, type UiRpcClient } from "@blksails/pi-web-kit";
+
+export default defineWebExtension({
+  manifestId: "webext-contrib",
+  capabilities: ["contributions"],
+  contributions: {
+    slash: {
+      async list(query: string, rpc: UiRpcClient) {
+        const res = await rpc.request({ point: "slash", action: "list", payload: { query } });
+        return (res.ok ? res.result : []) as Array<{ id: string; title: string }>;
+      },
+      async execute(id: string, rpc: UiRpcClient) {
+        await rpc.request({ point: "slash", action: "execute", payload: { id } });
+      },
+    },
+    mention: {
+      trigger: "@",
+      async query(q: string, rpc: UiRpcClient) {
+        const res = await rpc.request({ point: "mention", action: "resolve", payload: { q } });
+        return (res.ok ? res.result : []) as Array<{ id: string; label: string }>;
+      },
+    },
+    keybindings: [{ combo: "Mod+k", commandId: "deploy" }],
+  },
+});
+```
+
+#### keybindings 的运行时语义：填充而非执行
+
+`keybindings` 声明 `combo → commandId`。宿主在**会话作用域**注册一个 `document` 级 `keydown` 监听，按 `mod`/`shift`/`alt` 修饰键 + 主键匹配 combo（`mod` 同时匹配 `metaKey || ctrlKey`）。**命中后并不直接执行命令，而是把 `/${commandId} ` 填入输入框**（`e.preventDefault()` 后 `setInput`），由用户确认再发送（`packages/ui/src/chat/pi-chat.tsx:1196-1228`，DOM 上 `data-pi-keybindings`）。这是刻意的：避免快捷键静默触发副作用，把最终执行权留给用户。切勿把它当作「按键即执行」。
+
+### 空闲控制流（openControlOnlyStream）
+
+**关键行为**：贡献点经 ui-rpc 回 agent 时，需要接收 SSE `control` 下行帧配对响应。但 per-prompt 消息流仅在用户发消息时打开。因此：
+
+- 扩展声明了 `contributions`（`hasContributions = true`）**且会话空闲**（`!isBusy`）时，宿主自动开启一条 `openControlOnlyStream` 连接，专门接收 ui-rpc 响应。
+- 开启条件是 `needsIdleControl && !isBusy`：`needsIdleControl` 由 `hasContributions`、`hasArtifactRpc`、`panelRight` surface 槽（`hasSurfacePanel`）以及就绪握手未就绪期任一命中；prompt 流传输期间关闭（由 per-prompt 流处理 control 帧），**避免并发冲突**（`packages/ui/src/chat/pi-chat.tsx:696-753`）。
+
+```typescript
+// pi-chat.tsx:696-753（宿主逻辑，简化）
+const hasContributions = extension?.contributions !== undefined;
+const hasArtifactRpc =
+  extension?.artifact !== undefined && extensionBaseUrl !== undefined;
+const hasSurfacePanel = extension?.slots?.panelRight !== undefined;
+const needsIdleControl =
+  hasContributions || hasArtifactRpc || hasSurfacePanel; /* || 就绪握手未就绪期 */
+React.useEffect(() => {
+  if (connection === undefined || isBusy || !needsIdleControl) return;
+  return connection.openControlOnlyStream({ applyAmbient: true });
+}, [connection, isBusy, needsIdleControl]);
+```
+
+---
+
+## Tier 4：Artifact 隔离表面
+
+> **对应可跑示例**：`examples/webext-artifact-agent`——声明 `artifact.entry`，宿主用 `sandbox="allow-scripts"` iframe 加载 `artifact.html`，经 postMessage 完成 resize / rpc 双向通信（见 `examples/webext-artifact-agent/.pi/web/web.config.tsx:1`）。运行需设置 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL`，详见下文「门控」小节。
+
+### 工作原理
+
+1. 扩展在描述符中声明 `artifact.entry`（相对于 `.pi/web/dist/` 的路径）。
+2. 宿主用 `<ArtifactSurface src="…" sandbox="allow-scripts">` 加载（**不含** `allow-same-origin`），iframe 获得不透明 origin，无法访问宿主 cookie/DOM/凭证。
+3. 双向通信经 postMessage，消息结构由 `@blksails/pi-web-protocol` 的 `ArtifactMessage` 类型约束：
+
+```typescript
+type ArtifactMessage =
+  | { kind: "ready"; manifestId: string }
+  | { kind: "resize"; height: number }
+  | { kind: "rpc"; request: UiRpcRequest }   // artifact → 宿主中转回 agent
+  | { kind: "event"; name: string; data: unknown }; // 宿主 → artifact 推送
+```
+
+非法来源或非法结构的消息**直接丢弃**（Req 5.4）。
+
+### 配置 artifact（web.config.tsx）
+
+```tsx
+export default defineWebExtension({
+  manifestId: "webext-artifact",
+  capabilities: ["artifact"],
+  artifact: {
+    entry: "artifact.html",
+    initialHeight: 240,
+  },
+});
+```
+
+### 门控：NEXT_PUBLIC_PI_EXTENSION_BASE_URL
+
+`ArtifactSurface` 的 `src` 由 `extensionBaseUrl + artifact.entry` 拼接。**若 `extensionBaseUrl` 为空，`ArtifactSurface` 不会挂载**——这是正确的门控行为，不是 bug（`components/chat-app.tsx:967-968`，`extensionBaseUrl().length > 0` 才注入）。
+
+> **变量名保留，语义已反转**：`NEXT_PUBLIC_*` 前缀是历史命名，但**不再是构建期内联**。现在由服务端 `GET /api/bootstrap` **每次请求读进程 env** 后下发（`server/bootstrap.ts:105` 取 `env.NEXT_PUBLIC_PI_EXTENSION_BASE_URL ?? ""`，装进 `features.extensionBaseUrl`），前端经 `BootstrapGate` → `setRuntimeFeatures` → chat-app 的 `extensionBaseUrl()` 消费（`src/bootstrap.tsx:140`）。因此它是**运行时**开关：在**启动 API server 的进程**上设好该 env 即生效，改值后重启该进程（无需重新构建）。
+
+```bash
+# 启动前设进 API server 进程的环境（dev 下由 dev-all 拉起的 API 进程读取）
+# dev：与 SPA 同源时用应用地址
+export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
+# 生产：指向独立托管 artifact 资源的源
+# export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=https://ext.example.com
+```
+
+仍不出现 iframe 时，按 [23 故障排查 FAQ](./23-troubleshooting-faq.md) 第 3.1 节核对。
+
+---
+
+## Tier 5：纯声明配置（config）
+
+> **对应可跑示例**：`examples/webext-declarative-agent`——零代码、零 bundle，只有一个手写的 `.pi/web/manifest.json`（紫色 `theme` token + `layout: "wide"` + `empty` 空态文案与 starters），宿主直接合成描述符（见 `examples/webext-declarative-agent/.pi/web/manifest.json:1`）。
+
+无需 bundle，直接在 `manifest.json` 的 `config` 字段声明：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `documentTitle` | string | 加载该 source 后同步 `document.title`；切源后还原 |
+| `layout` | `"centered"` \| `"wide"` \| `"full"` \| `"split"` | 版面预设（宿主 `LayoutPreset`，见 `packages/ui/src/customization/layout.ts:8`） |
+| `panelRatio` | `"centered"` \| `"2:1"` \| `"3:7"` | 右侧面板初始比例，闭集枚举（`packages/protocol/src/web-ext/config.ts:23`，需配合 `slots.panelRight`） |
+| `theme` | `Record<string, string>` | CSS 变量覆盖（宿主 token 前缀） |
+| `empty.title/subtitle` | string | 空态屏文案 |
+| `empty.starters` | array | 建议项列表 |
+| `empty.mergeCommands` | `"prepend"` \| `"append"` \| `"replace"` | 与 agent slash 命令合并策略 |
+
+**`config.layout="split"` 注意事项**：声明 `split` 布局但未在 `slots.panelRight` 提供内容时，宿主不渲染空的 `<aside>` 占位，优雅退化为居中版面（`pi-chat.tsx:1816-1819`）。之前版本曾留出 384px 空白侧边区域，已修复。
+
+---
+
+## 安全围栏
+
+### 门控流程
+
+1. **SRI 完整性**：重算 entry 字节 sha384，与 `manifest.integrity` 比对。
+2. **签名白名单**：用 `PI_WEB_EXT_WHITELIST` 中的 **Ed25519 公钥**验签 `manifest.signature`（任一命中即受信；公钥验签在服务端 Node 执行，机密不下发浏览器，见 `packages/react/src/web-ext/extension-gate.ts:92`）。
+3. **版本兼容**：`manifest.targetApiVersion`（semver range）须兼容宿主 `PI_WEB_KIT_VERSION`（默认 `0.1.0`）。
+
+任何校验失败 → 拒绝加载，回退默认 UI，记审计日志。
+
+### 相关环境变量
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `PI_WEB_EXT_WHITELIST` | 逗号分隔的受信发布者 **Ed25519 公钥**（base64 raw） | `""` |
+| `PI_WEB_EXT_REQUIRE_SIGNATURE` | 是否强制签名（`"false"` 关闭） | `"true"` |
+| `PI_WEB_KIT_VERSION` | 宿主 web-kit 版本，用于版本兼容判定 | `"0.1.0"` |
+| `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` | Artifact 表面的基础 URL（缺失则不挂载） | — |
+
+### CSS Scoping
+
+`pi-web build` 把所有 class 选择器改写为 `.pw-<extId>-<原 class 名>`（`packages/web-kit/build/css-scope-plugin.ts`），拒绝 `*`/`html`/`body`/`:root`/顶层裸标签等全局选择器、Tailwind preflight、`@layer base`，命名空间化 `@keyframes`/`@font-face`，并要求自定义 CSS 变量须以 `--pw-<extId>-` 开头（只读宿主 token，不可覆写），防止多扩展样式互污。
+
+---
+
+## 加载流程（运行时）
+
+```
+选定 agent source → 宿主读取 .pi/web/dist/manifest.json
+  │
+  ├─ isDeclarativeOnly(manifest)?
+  │    是 → 仅校验版本，从 manifest.config 合成描述符（Tier5，零 bundle）
+  │    否 → fetch entry 字节 → SRI + 签名 + 版本校验
+  │            ↓ 通过
+  │         注入 import map（react/react-dom/@blksails/pi-web-kit → 宿主单例 URL）
+  │         动态 import(entryUrl) → 取 default export WebExtension 描述符
+  │
+  ▼
+applyExtension：合并 slots / per-session registry / contributions / config
+  │
+  ▼
+PiChat 渲染：插槽挂载、渲染器生效、贡献点注册、artifact iframe 挂载
+```
+
+import map 已随 SPA 入口 `index.html` 的 `<head>` **静态内置**（内联，生产 CSP 经 sha256 hash 放行），把裸 `import "react"`/`"react/jsx-runtime"`/`"react-dom"`/`"@blksails/pi-web-kit"` 解析到 `/api/webext/singletons/<name>` 宿主单例端点，避免 hook 冲突。其内容须与 `lib/app/webext-singletons.ts` 的 `WEBEXT_IMPORT_MAP` 逐字一致（漂移由 `test/webext-import-map.test.ts` 拦截）。
+
+---
+
+## webext 包安装与运行时加载（webext-package-install）
+
+上节「加载流程」描述的是构建期已知源；**安装的 webext**（随 plugin 包落盘、构建期注册表未命中的源）走运行时车道:
+
+```
+/plugin install <source>（或已装源）→ 落盘（复用 pi install）
+  │
+  ▼  会话激活时
+GET /api/webext/resolve?source=<source>
+  ├─ 服务端 locateDist → 读 <installedPath>/.pi/web/dist/manifest.json
+  ├─ 服务端验签（trust-service，见下）→ 产出 VettedManifest（去 signature、保 integrity）
+  └─ 返回 { found, manifest(已背书), baseUrl }
+  │
+  ▼  客户端（useRuntimeWebext）
+loadExtension：纯声明→直接 apply config；代码→fetch .mjs → 浏览器 SRI → 动态 import → applyExtension
+```
+
+- **落盘复用 pi install**：webext 产物 `.pi/web/dist/` 随其 npm/git 包被装到 `~/.pi/agent/npm/node_modules/<pkg>/`；不重做安装器。
+- **静态托管**：`GET /api/webext/dist/<base64url(distDir)>/<file>` 只读托管产物（realpath 前缀校验防目录穿越）。
+
+### 信任模型：签名服务端验 / SRI 浏览器验
+
+webext 代码在**浏览器同源**执行（共享 React 单例），等于可执行任意代码，故:
+
+| 校验 | 算法 | 位置 | 说明 |
+|---|---|---|---|
+| 完整性 SRI | sha384 | **浏览器** | 字节比对 manifest.integrity；无需机密 |
+| 发布者签名 | **Ed25519** | **服务端** | 公钥验签；机密/材料不下发浏览器 |
+
+服务端验签通过后产出去签名的 `VettedManifest`（含 integrity），浏览器仅凭它做 SRI（gate 的 `signaturePreVerified` 跳过签名分支、仍验 SRI）。构建侧 `pi-web build --sign <ed25519PrivateKeyBase64Pkcs8>` 签名。
+
+### 可信发布者白名单与中心列表
+
+- 白名单（`PI_WEB_EXT_WHITELIST`，Ed25519 公钥）为**服务端信任根**，由部署方掌握，终端用户/扩展不可改。
+- 可选**中心可信发布者列表**（`PI_WEB_EXT_TRUSTED_LIST_URL` + 出厂钉死根公钥 `PI_WEB_EXT_ROOT_PUBKEY`）：下载列表须经根公钥验签方采信；拉取失败回退缓存/出厂快照，**绝不 fail-open**；运营者本地决策（吊销/追加/固定版本/停用）优先于中心列表。
+- `PI_WEB_EXT_REQUIRE_SIGNATURE`（默认 true）：生产强制签名；`false` 仅本地开发免签（带不安全提示）。
+
+### CSP 与单例
+
+- 动态加载用 `import(/* webpackIgnore: true */ url)`（避打包器改写且**无需 `unsafe-eval`**，可在禁 eval 的生产 CSP 下工作）。
+- 单例 ESM 端点 `GET /api/webext/singletons/<react|react-jsx-runtime|react-dom|webkit>` 从 `window.__PI_WEBEXT_SINGLETONS__`（宿主桥接注入）re-export 宿主同一实例；import map 把裸 specifier 映射到这些端点。
+
+### 装后双路生效
+
+含 webext 的包安装后:① pi 资源经 `SessionReloader`（runner reload）生效；② webext 经客户端重触发加载路径生效（`useRuntimeWebext` 的 reloadNonce）。两路并行，避免「装了但 UI 没变」。
+
+---
+
+## 示例索引（examples/）
+
+五层模型的每一层都有可直接跑通的示例。下表按 **Tier → 示例**速查，宿主加载方式见上文「端到端：从零跑通一个扩展」：
+
+| Tier | 能力 | 对应示例 |
+|------|------|----------|
+| Tier1 | 区域插槽 | `examples/webext-layout-agent`、`examples/webext-slots-agent`、`examples/webext-background-agent` |
+| Tier2 | 自定义渲染器 | `examples/webext-renderer-agent` |
+| Tier3 | 贡献点 + RPC | `examples/webext-contrib-agent` |
+| Tier4 | Artifact iframe | `examples/webext-artifact-agent` |
+| Tier5 | 纯声明配置 | `examples/webext-declarative-agent` |
+
+各示例详情：
+
+| 目录 | Tier | 说明 |
+|------|------|------|
+| `examples/webext-declarative-agent/` | Tier5 | 紫色主题、宽版布局、空态文案，纯 `manifest.json`，零 bundle |
+| `examples/webext-layout-agent/` | Tier1 | `panelRight`（领域检视面板）+ header 三区 + `panelRatio: "3:7"` |
+| `examples/webext-background-agent/` | Tier1 | `background` 插槽，动画极光背景，类名自命名空间 |
+| `examples/webext-slots-agent/` | Tier1+5 | 18 个区域插槽 fixture（原始 19 槽中除 `logs` 外的全集）+ 空态声明式配置验收 |
+| `examples/webext-renderer-agent/` | Tier2 | 自定义 `echo` 工具卡（`EchoToolRenderer`）+ `data-metric` data-part 渲染器 |
+| `examples/webext-contrib-agent/` | Tier3 | slash 命令、@mention、autocomplete、inlineComplete、keybindings 全集，经 ui-rpc 回 agent |
+| `examples/webext-artifact-agent/` | Tier4 | `artifact.html` sandbox iframe，postMessage resize/rpc 通信 |
+
+> 全部示例的总索引（含非 webext 示例）见 [`examples/README.md`](https://github.com/blksails/pi-web/blob/main/examples/README.md)。
+
+E2E 测试入口：`e2e/browser/webext.e2e.ts`、`webext-full.e2e.ts`、`webext-document-title.e2e.ts`（均使用 `PI_WEB_STUB_AGENT=1` 离线 stub）。
+
+---
+
+## 常见问题
+
+**Q：为什么 Artifact iframe 不出现？**
+A：检查启动 API server 的进程是否设置了 `NEXT_PUBLIC_PI_EXTENSION_BASE_URL`（现由 `GET /api/bootstrap` 服务端读 env 后下发，非构建期内联）。为空时宿主不挂载 `ArtifactSurface`，这是正确门控，非 bug（`components/chat-app.tsx:967-968`）。改值后重启该进程。
+
+**Q：渲染器没有触发？**
+A：真实 dev 环境中，宿主只在收到匹配的 tool/data-part 时才调用自定义渲染器。用 `PI_WEB_STUB_AGENT=1` 启动可驱动 `echo` 工具触发，或让 LLM agent 实际调用对应工具。
+
+**Q：`config.layout="split"` 但右侧是空白？**
+A：`split` 仅声明布局意图，须同时在 `slots.panelRight` 提供实际组件；否则宿主不渲染 aside 容器，自动退化为居中版面（`pi-chat.tsx:1816`）。
+
+**Q：slash/mention 触发后无响应？**
+A：确认扩展声明了 `capabilities: ["contributions"]`，且会话**处于空闲状态**（`!isBusy`）——prompt 发送期间 per-prompt 流接管，空闲控制流暂停。
+
+---
+
+## 下一步 / 相关章节
+
+- **Surface 权威表面**（与 5-tier 正交的 CQRS 通信平面，`createSurface`/`useSurface`，勿与 Tier4 `artifactSurface` 混淆）→ [04 Surface 权威表面栈](./04-surface-stack.md)
+- 扩展与技能安装管理 → [10 扩展与 Skills](./10-extensions-and-skills.md)
+- AIGC 图像/视觉工具与 `promptToolbar` 快捷设置（`aigc.models` 下发）→ [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
+- 声明式 Config UI 与动态 widget → [13 Config UI](./13-config-ui.md)
+- Canvas 工作台的提示词栏「解读」按钮（`vision-op` 把工作图+问题组装成 `tool:image_vision` 的 SurfaceOp 回流对话，跨 webext/Canvas 边界；模型取 `provider/modelId` 格式，勿与生成模型裸 id 混用）→ [16 Canvas 工作台](./16-canvas-workbench.md)
+- 浏览器 e2e 隔离构建跑法 → [22 开发与测试](./22-development-and-testing.md)
+- `POST /sessions/:id/ui-rpc`、webext 系列端点 → [24 HTTP API 参考](./24-http-api-reference.md)

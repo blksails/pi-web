@@ -1,6 +1,6 @@
 # agent-routes-demo
 
-声明式 HTTP routes 的**多路由**范例——演示 `routes/` 子目录的**文件目录标准**(spec agent-declared-routes;标准见 [docs/product/07 · 声明式路由的文件组织](../../docs/product/07-agent-development.md#声明式路由的文件组织))。
+声明式 HTTP routes 的**多路由**范例——演示 `routes/` 子目录的**文件目录标准**(spec agent-declared-routes;标准见 [docs/product/07 · 声明式路由的文件组织](../../docs/product/08-agent-development.md#声明式路由的文件组织))。
 
 ## 目录结构
 
@@ -41,4 +41,4 @@ curl http://127.0.0.1:3000/api/sessions/<id>/agent-routes/whoami
 # → {"agent":"agent-routes-demo","routes":["ping","echo","whoami"]}
 ```
 
-调用不触发 LLM、不进对话历史、对话 UI 零变化。完整调用契约(错误码、env、超时/体积上限)见 [13 · HTTP API 参考](../../docs/product/13-http-api-reference.md)。
+调用不触发 LLM、不进对话历史、对话 UI 零变化。完整调用契约(错误码、env、超时/体积上限)见 [13 · HTTP API 参考](../../docs/product/24-http-api-reference.md)。

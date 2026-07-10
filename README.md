@@ -13,7 +13,7 @@ pi-web turns any agent written with the [`@earendil-works/pi-coding-agent`](http
 ## Features
 
 - **Dual-mode loading** — a source with `index.[js|ts]` runs your custom agent via the SDK's `runRpcMode`; a source without an entry falls back to the general `pi --mode rpc`. Both speak the same RPC protocol to the frontend.
-- **Streaming chat UI** — Next.js + shadcn/ui + Vercel AI Elements, rendering text / thinking / tool calls over SSE with an AI SDK v5 custom `ChatTransport`.
+- **Streaming chat UI** — Vite + React SPA with shadcn/ui + Vercel AI Elements, rendering text / thinking / tool calls over SSE with an AI SDK v5 custom `ChatTransport`.
 - **Native pi resources** — extensions / skills / prompt templates are auto-discovered and declaratively injected; permission prompts flow through the extension UI sub-protocol.
 - **Attachment system** — image/file uploads persist to a pluggable object store (local-first) with signed delivery URLs. Two consumption paths: **base64 fed to the LLM** for vision, and **files handed to server-side tools** (image edit/generation) resolved by `attachmentId`, with outputs flowing back for re-use in the next turn.
 - **Custom providers** — bring any OpenAI-compatible gateway (NewAPI, DashScope, …) via `~/.pi/agent/models.json`; the settings UI offers a searchable provider/model dropdown sourced from your configured, available models.
@@ -22,10 +22,10 @@ pi-web turns any agent written with the [`@earendil-works/pi-coding-agent`](http
 ## Architecture
 
 ```
-Browser (AI Elements + useChat)
+Browser (Vite SPA — AI Elements + useChat)
    │  SSE / HTTP
    ▼
-Next.js Route Handler (Node runtime, session process resident)
+Hono host (server/index.ts — one app.all("/api/*") → createPiWebHandler)
    │  stdin/stdout JSONL
    ▼
 Agent subprocess  — bootstrap runner `runRpcMode`  OR  `pi --mode rpc`
@@ -48,6 +48,10 @@ Layered, independently-publishable packages with a single dependency direction (
 | `@blksails/pi-web-ui` | shadcn/ui + AI Elements components and the schema-driven config UI. |
 | `@blksails/pi-web-agent-kit` | `defineAgent()` typing helper for writing your `index.ts`. |
 | `@blksails/pi-web-tool-kit`, `@blksails/pi-web-kit` | Supporting kits for tools and web integration. |
+| `@blksails/pi-web-primitives` | Framework-neutral UI primitives, decoupled from the chat shell. |
+| `@blksails/pi-web-canvas-kit` | Canvas kernel: layer model, ops, history. Headless. |
+| `@blksails/pi-web-canvas-ui` | Canvas workbench UI, actions, and the plugin registration surface. |
+| `@blksails/pi-web-logger` | Isomorphic logger shared by browser and Node. |
 
 ## Getting Started
 
@@ -61,7 +65,7 @@ Layered, independently-publishable packages with a single dependency direction (
 
 ```bash
 pnpm install
-pnpm dev          # next dev — http://localhost:3000
+pnpm dev          # API host on :3000 + Vite dev server — open http://localhost:5173
 ```
 
 Open the app, enter an **agent source** in the picker:
@@ -109,9 +113,10 @@ Non-built-in providers require `baseUrl` + `apiKey`; verify with `pi --list-mode
 
 | Command | Description |
 | --- | --- |
-| `pnpm dev` | Start the dev server (`next dev`). |
-| `pnpm build` | Production build. |
-| `pnpm start` | Serve the production build. |
+| `pnpm dev` | Start both dev processes (`scripts/dev-all.mjs`): API host on `:3000` + Vite on `:5173`. |
+| `pnpm dev:client` | Vite dev server only. |
+| `pnpm build` | Production build (`build:dist`): Vite client → esbuild server → `pack-dist` → payload. |
+| `pnpm start` | Serve the production build (`node dist/server.mjs`). |
 | `pnpm test` | Run all workspace package tests. |
 | `pnpm test:app` | App-level vitest. |
 | `pnpm e2e` | Playwright e2e. |

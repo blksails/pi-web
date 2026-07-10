@@ -1,0 +1,20 @@
+{
+  "label": "before",
+  "app": "/Users/hysios/Projects/BlackSail/agents/pi-web/.claude/worktrees/before-payload/desktop/src-tauri/target/release/bundle/macos/pi-web.app",
+  "appMB": 176.1,
+  "dmgMB": 81.4,
+  "runtimeMB": 0,
+  "steady": {
+    "runs": [
+      2769,
+      1101,
+      1101,
+      1096,
+      1161
+    ],
+    "min": 1096,
+    "median": 1101,
+    "max": 2769
+  },
+  "firstColdStartMs": null
+}

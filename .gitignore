@@ -39,3 +39,6 @@ e2e/fixtures/iphone-mpf.jpg
 
 # vite-spa-migration 产物
 /dist/
+
+# shared-runtime-payload 生成物(载荷 + 解包器)
+/payload/

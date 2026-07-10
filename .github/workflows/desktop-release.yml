@@ -1,19 +1,22 @@
-name: Desktop Release (三平台 · dmg/exe/AppImage)
+name: Desktop Release (四目标 · dmg/nsis/AppImage)
 
-# pi-web 桌面版(@blksails/pi-web-desktop)分发工作流(spec pi-web-desktop M3)。
+# pi-web 桌面版(@blksails/pi-web-desktop)分发工作流(spec electron-to-tauri 任务 7.1)。
 #
-# 设计:构建 / 打包分离(与 cli-e2e.yml 同构),因为:
-#   - 自包含产物只在 Linux/macOS 上 `build:dist`(历史上 Next.js standalone 的文件追踪
-#     在 Windows 有上游级 EPERM);在 Linux 上构建一次。
-#   - pack-dist 的 dereference 拷贝已把运行时依赖做成**无符号链接实体树**,故可跨平台
-#     解压;三平台各自用 electron-builder 打包本 OS 目标(mac=dmg / win=nsis / linux=AppImage)。
-#   - 运行期原生可选依赖(sharp/swc 的平台二进制)在被打包的 Linux 产物里可能缺失或非本平台,
-#     但 cli-e2e 已证明运行期不触达这些路径,壳可正常起会话。
+# 设计:
+#   - **构建 / 打包分离**仍然成立,但分发的不再是 `dist/` 树,而是**压缩载荷** `payload/`
+#     (spec shared-runtime-payload):载荷与平台无关(tar 已 dereference,无符号链接),
+#     故在 Ubuntu 上构建一次并作为 artifact 分发给各矩阵分支;`tauri build` 必须在各自 OS 上跑。
+#     `.app` / `.exe` / `.AppImage` 内只带 9.4MB 载荷,首次启动时解包到 `~/.pi/web/runtime/`。
+#   - **矩阵按 target triple 展开**,而非仅按 OS。原因:随包 Node 二进制(sidecar)必须与
+#     目标架构一致,macOS 的 arm64 与 x64 需要各自的 node,只按 OS 分是不够的。
+#   - **三 job 分离** package → smoke → release:`tauri-action` 若传 tagName 会自行把产物
+#     上传到 Release,那样冒烟就跑在「已发布之后」了。故 package 只产出 artifact,
+#     由独立的 smoke job 对**已打包产物**跑真实会话,通过后 release job 才附加到 Release。
 #
-# ⚠ 仅 macOS 形态经本 spec 端到端 e2e 验证;Windows/Linux 目标为 M3 首次落地,需本工作流真实
-#   跑通后方视为达标。未签名(无 CSC 凭据);签名/公证/自动更新属后续。
+# ⚠ 仅 macOS 形态经本 spec 端到端 e2e 验证(desktop-real / desktop-no-node / desktop-packaged)。
+#   Windows/Linux 目标为首次落地,需本工作流真实跑通后方可视为达标。
 #
-# 触发:push 版本标签 `v*`(每个版本 tag 都触发)+ 手动 workflow_dispatch。
+# 触发:push 版本标签 `v*` + 手动 workflow_dispatch(手动触发只产出工作流产物,不碰 Release)。
 
 on:
   push:
@@ -29,8 +32,12 @@ concurrency:
   group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  NODE_VERSION: "22.19.0"
+  PNPM_VERSION: "9.12.0"
+
 jobs:
-  # ── 在 Linux 上构建 dist 一次,压成单个 tar 上传 ──
+  # ── 在 Linux 上构建自包含产物一次,压成单个 tar 上传 ──
   build-dist:
     name: build dist (ubuntu)
     runs-on: ubuntu-latest
@@ -39,89 +46,219 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.12.0
+          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.19.0"
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build self-contained dist
+      - name: Build self-contained dist + payload
         run: pnpm build:dist
-      # flattenSymlinkFree 后产物无符号链接,普通 tar 即可跨平台解压。
-      - name: Archive dist
-        run: tar -czf dist.tgz dist
+      # 载荷已是 zstd 压缩的单文件,直接上传三件套即可(无需再套一层 tar)。
+      - name: Show payload metadata
+        run: |
+          cat payload/payload.json
+          ls -l payload/
       - uses: actions/upload-artifact@v4
         with:
-          name: standalone
-          path: dist.tgz
+          name: payload
+          path: payload/
           retention-days: 1
           if-no-files-found: error
 
-  # ── 三平台各自打包本 OS 目标并(标签构建时)附加到 Release ──
+  # ── 按 target triple 展开:四个目标各自打包本 OS 的安装包(Req 9.1/9.2) ──
   package:
-    name: package · ${{ matrix.os }}
+    name: package · ${{ matrix.target }}
     needs: build-dist
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    permissions:
-      contents: write # softprops 附加产物到 Release 需要
+    timeout-minutes: 45
     strategy:
-      fail-fast: false
+      fail-fast: false # 单平台失败不阻断其余平台(Req 9.5)
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bundles: dmg
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # ★ CI runner 是干净的。macos-latest 是 arm64,构建 x86_64-apple-darwin 必须先补该
+          #   target —— tauri-action 不代办。
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: ${{ matrix.target }}
+
+      # Tauri v2 在 Linux 需要 webkit2gtk 等系统依赖。
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: payload
+          path: payload
+      # ★ 校验载荷未在传输/解压中损坏。摘要不一致即失败(Req 11.3),绝不把坏载荷打进安装包。
+      - name: Verify payload digest
+        shell: bash
+        run: node scripts/verify-payload.mjs
+
+      # ★ 必须在 tauri build 之前:externalBin 与 resources 的路径在 **cargo build 期**
+      #   即被 tauri-build 校验存在,缺失会直接中止编译(实测)。
+      #   校验和不匹配时脚本非零退出,构建随之失败(Req 9.3/9.4)。
+      - name: Fetch & verify Node sidecar
+        shell: bash
+        run: node scripts/fetch-node-sidecar.mjs --target ${{ matrix.target }}
+
+      # ★ 载荷必须在 tauri build 之前就位:`bundle.resources` 的路径在 **cargo build 期**
+      #   即被 tauri-build 校验存在,缺失会直接中止编译(electron-to-tauri 实测)。
+      - name: Build desktop bundle
+        uses: tauri-apps/tauri-action@v0
+        env:
+          CI: true
+        with:
+          projectPath: desktop
+          # 不传 tagName/releaseId ⇒ tauri-action 不碰 Release,只产出本地 bundle。
+          # 发布由独立的 release job 在冒烟通过后完成(Req 9.8 的顺序要求)。
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          includeUpdaterJson: false
+
+      # Linux 可执行名必须不含会被 AppImage 拒绝的字符(Req 9.9)。
+      # tauri.conf.json 的 productName 已设为 `pi-web`;此处断言,防回归。
+      - name: Assert Linux executable name
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          bin="desktop/src-tauri/target/${{ matrix.target }}/release/pi-web"
+          test -f "$bin" || { echo "期望可执行名为 pi-web,未找到:$bin"; exit 1; }
+          echo "✓ Linux 可执行名为 pi-web(不含 @ 等非法字符)"
+
+      - name: List artifacts
+        shell: bash
+        run: |
+          find desktop/src-tauri/target/${{ matrix.target }}/release/bundle -maxdepth 3 -type f \
+            \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) -print || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            desktop/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── 对**已打包产物**跑真实会话冒烟;必须先于 Release 附加(Req 9.8) ──
+  smoke:
+    name: smoke · packaged app real session (macOS)
+    needs: package
+    runs-on: macos-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.12.0
+          version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.19.0"
+          node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+          key: aarch64-apple-darwin
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
       - uses: actions/download-artifact@v4
         with:
-          name: standalone
-      - name: Restore standalone
-        shell: bash
-        run: |
-          tar -xzf dist.tgz
-          ls -la dist/server.mjs
-      # dist = esbuild 打桌面 bundle + electron-builder 打本 OS 目标(host OS 自动检测)。
-      # 未签名:关闭 macOS 签名自动发现。
-      - name: Build desktop bundle + package
-        shell: bash
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm --filter @blksails/pi-web-desktop dist
-      - name: List artifacts
-        shell: bash
-        run: ls -la desktop/release || dir desktop\\release
-      # 打包 app 冒烟(仅 macOS,GUI 可用):启动**已打包 .app** 跑真实会话,防「node_modules 被
-      # electron-builder 剥空致 server require('next') 崩溃」一类打包回归(未打包 e2e 抓不到)。
-      - name: Smoke · packaged app real session (macOS)
-        if: runner.os == 'macOS'
+          name: payload
+          path: payload
+      - name: Verify payload digest
+        run: node scripts/verify-payload.mjs
+
+      # 冒烟需要 .app 目录形态。此处重建 app bundle(复用 package job 已验证过的同一配置,
+      # 且命中 rust-cache),成本远低于把整个 .app 也上传为 artifact。
+      - name: Fetch Node sidecar
+        run: node scripts/fetch-node-sidecar.mjs --target aarch64-apple-darwin
+      - name: Build .app for smoke
+        run: pnpm --filter @blksails/pi-web-desktop exec tauri build --bundles app
+
+      # ★ 强制经历一次**真实的首启解包**(Req 11.4)。desktop-packaged.mjs 自己会把
+      #   PI_WEB_RUNTIME_ROOT 指向临时目录并断言解包前该目录不存在;此处再清一遍
+      #   默认根,防止 runner 缓存把首启路径悄悄跳过。
+      - name: Ensure a cold first-launch unpack
+        run: rm -rf "$HOME/.pi/web/runtime"
+
+      # 启动**实际打包产物**跑真实会话。这是唯一能捕获「bundle.resources 未纳入 payload」
+      # 「安装包里仍残留未压缩的 dist/」「sidecar 落盘位置推导错误」这类仅在打包形态暴露
+      # 的回归的验证。
+      - name: Packaged app real session smoke (含真实首启解包)
         run: node e2e/desktop/desktop-packaged.mjs
-      # 工作流产物(手动构建/排查用)。
-      - uses: actions/upload-artifact@v4
+
+      # 解包器自身的失败模式与并发语义,与平台强相关,故一并在 CI 上跑。
+      - name: Runtime payload concurrency + recovery
+        run: |
+          node e2e/runtime-payload/concurrency.mjs
+          node e2e/runtime-payload/recovery.mjs
+
+  # ── 仅 tag 触发:冒烟通过后才把各平台产物附加到该标签的 Release(Req 9.6) ──
+  #    workflow_dispatch 触发时本 job 被跳过 ⇒ 只产出工作流产物,不碰 Release(Req 9.7)。
+  release:
+    name: attach to GitHub Release
+    needs: smoke
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          name: desktop-${{ matrix.os }}
-          path: |
-            desktop/release/*.dmg
-            desktop/release/*.exe
-            desktop/release/*.AppImage
-            desktop/release/*.blockmap
-            desktop/release/latest*.yml
-          if-no-files-found: warn
-      # 仅标签构建:把本 OS 产物附加到该标签的 GitHub Release(多平台各自 append,幂等)。
-      - name: Attach to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+          pattern: desktop-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: List assets
+        run: find release-assets -type f | sort
+
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
-            desktop/release/*.dmg
-            desktop/release/*.exe
-            desktop/release/*.AppImage
-            desktop/release/*.blockmap
-            desktop/release/latest*.yml
+            release-assets/**/*.dmg
+            release-assets/**/*.exe
+            release-assets/**/*.AppImage
           fail_on_unmatched_files: false

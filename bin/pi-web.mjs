@@ -14,6 +14,7 @@ import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve, isAbsolute } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { get as httpGet } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -428,6 +429,69 @@ export function distServerJs() {
 /** @deprecated 旧名(Next standalone 时代);保留一轮以免外部调用方骤断。 */
 export const standaloneServerJs = distServerJs;
 
+/** 随包载荷目录(npm `files` 与 tauri `bundle.resources` 都以此名分发)。 */
+const PAYLOAD_DIR = join(PKG_ROOT, "payload");
+
+/**
+ * 载入随包解包器。`payload/unpack.mjs` 是构建生成物,仓库里可能不存在,故必须运行时载入。
+ *
+ * ★ 用 `createRequire` 而非 `await import(变量)`:后者经 vite 的 ssrTransform 会产出
+ *   rollup 解析不了的代码(`Expected ident`),使 test/cli/cli-args.test.ts 整个套件无法收集
+ *   —— 该测试经 `@/bin/pi-web.mjs` 别名导入本文件。字面量 import 无此问题,`@vite-ignore`
+ *   与包一层函数都无效,唯一不引入 eval 的出路是 `require`。
+ *   Node >= 22.12 的 `require(esm)` 可同步加载无顶层 await 的 ESM,`engines` 已要求 >= 22.19。
+ */
+function loadUnpacker() {
+  return createRequire(import.meta.url)(join(PAYLOAD_DIR, "unpack.mjs"));
+}
+
+/**
+ * 解析出可用的产物入口(spec shared-runtime-payload,Req 1.x / 8.1)。
+ *
+ * 三级解析,命中即停：
+ *   ① `PI_WEB_DIST_DIR` 覆盖      —— 隔离构建 / e2e,不解包
+ *   ② `PKG_ROOT/dist/server.mjs` —— 仓库内已构建的产物(开发态),不解包
+ *   ③ 随包载荷 → 共享运行时目录  —— npm 安装态,首次触发解包
+ *
+ * ★ 分支 ①② 的存在使既有的 cli-smoke / cli-real / cli-watch 与桌面壳的未打包 e2e
+ *   零改动继续通过,也让开发迭代不被首启解包拖慢、不污染 ~/.pi/web。
+ *   **代价**：它们因此完全测不到解包路径,那只由 cli-reloc 与 desktop-packaged 覆盖。
+ *
+ * @returns {Promise<{serverJs: string, runtime?: {runtimeRoot: string, runtimeDir: string}}>}
+ */
+export async function resolveRuntime() {
+  const direct = distServerJs();
+  if (process.env.PI_WEB_DIST_DIR || existsSync(direct)) {
+    return { serverJs: direct };
+  }
+
+  const { ensureRuntime } = loadUnpacker();
+  const res = await ensureRuntime({ payloadDir: PAYLOAD_DIR });
+  if (res.unpacked) {
+    console.log(`[pi-web] 首次启动,已解包运行时 → ${res.distRoot}(${res.elapsedMs}ms)`);
+  }
+  return { serverJs: res.serverJs, runtime: { runtimeRoot: res.runtimeRoot, runtimeDir: res.runtimeDir } };
+}
+
+/**
+ * 回收旧运行时目录。**尽力而为**：必须在后端已拉起之后调用,任何失败都被吞掉(Req 5.4/5.5)。
+ *
+ * `load` 是注入接缝：解包器是构建生成物,仓库里未构建时它不存在。单测须能**强制**触发
+ * 「解包器缺失」这条分支,而不是依赖 `payload/` 恰好没被构建 —— 那样测试会在标准
+ * `pnpm build:dist` 流程下静默退化成另一个用例的重复。
+ */
+export function scheduleRuntimeGc(runtime, load = loadUnpacker) {
+  if (!runtime) return;
+  void (async () => {
+    try {
+      const { gcRuntimeRoot } = load();
+      await gcRuntimeRoot(runtime.runtimeRoot, runtime.runtimeDir);
+    } catch {
+      // GC 永不影响启动(Req 5.4)。
+    }
+  })();
+}
+
 /**
  * 子命令实现产物的绝对路径(spec cli-package-commands 任务 1.1,Req 10.6)。
  *
@@ -444,7 +508,7 @@ export function distCliCommandsJs() {
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
  * @returns {Promise<number>} 子进程退出码
  */
-export async function launch({ serverJs, host, port, env, open }) {
+export async function launch({ serverJs, host, port, env, open, onStarted }) {
   if (!existsSync(serverJs)) {
     console.error(
       `[pi-web] 未找到自包含产物 ${serverJs}\n` +
@@ -473,6 +537,9 @@ export async function launch({ serverJs, host, port, env, open }) {
     env,
     stdio: "inherit",
   });
+
+  // 后端已拉起。此后才允许触发运行时回收(Req 5.5:GC 不得阻塞后端拉起)。
+  onStarted?.();
 
   let exited = false;
   const exitPromise = new Promise((resolveExit) => {
@@ -541,6 +608,18 @@ ${SUBCOMMAND_LIST_TEXT}
   pi-web                       # 用当前目录作为 agent source
   pi-web ./examples/hello-agent -p 8080 --open
 `;
+
+/** 解包失败的判别式错误码 → 用户下一步该做什么。文案与 payload/unpack.mjs 的 describeErrorCode 同源。 */
+const RUNTIME_ERROR_HINTS = {
+  "runtime-root-unwritable":
+    "运行时目录不可写。请检查该路径的权限,或经 PI_WEB_RUNTIME_ROOT 指定其他位置。",
+  "disk-full": "磁盘空间不足,无法解包运行时。请清理磁盘后重试。",
+  "payload-missing": "随包运行时载荷缺失。请重新安装 @blksails/pi-web。",
+  "payload-corrupt": "随包运行时载荷已损坏。请重新安装 @blksails/pi-web。",
+  "zstd-unsupported": "当前 Node 版本过低,不支持 zstd 解压。请升级到 Node >= 22.15.0。",
+  "lock-timeout": "等待其他进程完成运行时解包超时。请确认没有其他实例卡住,然后重试。",
+  default: "解包运行时失败。",
+};
 
 function readVersion() {
   try {
@@ -642,12 +721,25 @@ export async function main(argv = process.argv.slice(2)) {
     console.warn("[pi-web] --watch 仅适用于本地目录 source,git 来源已跳过文件监视。");
   }
   const env = buildEnv(opts, process.cwd(), process.env);
+
+  let resolved;
+  try {
+    resolved = await resolveRuntime();
+  } catch (err) {
+    // 解包失败的判别式错误码由 payload/unpack.mjs 给出;此处只翻成可读文案(Req 4.1-4.4)。
+    const code = err?.code ?? "extract-failed";
+    console.error(`[pi-web] 无法准备运行时(${code}): ${err?.message ?? err}`);
+    console.error(`  ${RUNTIME_ERROR_HINTS[code] ?? RUNTIME_ERROR_HINTS.default}`);
+    return 1;
+  }
+
   return launch({
-    serverJs: distServerJs(),
+    serverJs: resolved.serverJs,
     host: env.HOSTNAME,
     port: Number(env.PORT),
     env,
     open: opts.open,
+    onStarted: () => scheduleRuntimeGc(resolved.runtime),
   });
 }
 

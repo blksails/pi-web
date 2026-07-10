@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      CSP 基线不得弱于被替换的 Electron loading.html（`default-src 'none'; style-src 'unsafe-inline'`）。
+      此处实际更严：脚本与样式均外置，故用 'self' 而非 'unsafe-inline'。
+      connect-src 放行 `ipc:` 与 `http://ipc.localhost` —— Windows(WebView2)/Linux(WebKitGTK) 的
+      Tauri IPC 走自定义协议 + fetch，会被 connect-src 拦截；macOS(WKWebView) 走 messageHandlers
+      不受此约束。此放行只作用于**随包本地页**，窗口导航到远端回环 UI 后由该页自身的 CSP 接管。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    />
+    <title>pi-web</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div id="loading" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="title">正在启动 pi-web…</div>
+        <div class="hint">首次启动需初始化本地服务，请稍候</div>
+      </div>
+
+      <div id="error" role="alert">
+        <div class="err-title" id="err-title"></div>
+        <div class="err-detail" id="err-detail"></div>
+        <div class="actions">
+          <button class="primary" id="btn-retry" type="button">重试</button>
+          <button id="btn-quit" type="button">退出</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
