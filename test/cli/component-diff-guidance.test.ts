@@ -45,19 +45,39 @@ describe("wiring guidance", () => {
     from: "./components/watermark/watermark",
   } as const;
 
-  it("结构化形态由声明驱动", () => {
+  it("canvasPlugins:结构化形态由声明驱动(数组追加)", () => {
     expect(buildWiringGuidance(wiring)).toEqual({
       importLine: `import { watermarkBundle } from "./components/watermark/watermark";`,
       point: "canvasPlugins",
-      arrayEntry: "watermarkBundle",
+      entry: "watermarkBundle",
+      configLine: "canvasPlugins: [watermarkBundle],",
     });
   });
 
-  it("终端文本含 import 行、插件点数组项与 build 提示(5.4/6.2)", () => {
+  it("canvasPlugins:终端文本含 import 行、插件点数组项与 build 提示(5.4/6.2)", () => {
     const text = renderWiringGuidance(buildWiringGuidance(wiring));
     expect(text).toContain(`import { watermarkBundle } from "./components/watermark/watermark";`);
     expect(text).toContain("canvasPlugins: [watermarkBundle],");
     expect(text).toContain("pi-web build");
     expect(text).toContain("web.config.tsx");
+  });
+
+  it("slots:具名槽对象键 JSX 挂载(v1.1)", () => {
+    const guidance = buildWiringGuidance({
+      point: "slots",
+      slot: "panelRight",
+      export: "Scene3dPanel",
+      from: "./components/scene3d/components/scene3d/scene3d-panel",
+    });
+    expect(guidance).toEqual({
+      importLine: `import { Scene3dPanel } from "./components/scene3d/components/scene3d/scene3d-panel";`,
+      point: "slots",
+      slot: "panelRight",
+      entry: "<Scene3dPanel />",
+      configLine: "slots: { panelRight: <Scene3dPanel /> },",
+    });
+    const text = renderWiringGuidance(guidance);
+    expect(text).toContain("slots: { panelRight: <Scene3dPanel /> },");
+    expect(text).toContain("并入同一对象");
   });
 });

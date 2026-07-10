@@ -73,7 +73,7 @@ describe("validateComponentManifest", () => {
     expect(issueCodes(m)).toEqual(["component_tests_missing"]);
   });
 
-  it("wiring.point 预留枚举值报 wiring_point_unsupported(1.5)", () => {
+  it("wiring.point 预留枚举值 renderers 报 wiring_point_unsupported(1.5)", () => {
     const m = manifest({
       component: {
         files: ["a.tsx", "a.test.tsx"],
@@ -81,6 +81,24 @@ describe("validateComponentManifest", () => {
       },
     });
     expect(issueCodes(m)).toEqual(["wiring_point_unsupported"]);
+  });
+
+  it("slots 点(v1.1):带 slot 通过;缺 slot 报 wiring_slot_missing", () => {
+    const ok = manifest({
+      component: {
+        files: ["a.tsx", "a.test.tsx"],
+        wiring: { point: "slots", slot: "panelRight", export: "P", from: "./p" },
+      },
+    });
+    expect(issueCodes(ok)).toEqual([]);
+
+    const missing = manifest({
+      component: {
+        files: ["a.tsx", "a.test.tsx"],
+        wiring: { point: "slots", export: "P", from: "./p" },
+      },
+    });
+    expect(issueCodes(missing)).toEqual(["wiring_slot_missing"]);
   });
 
   it("registryDeps 非空报 registry_deps_unsupported(1.6)", () => {
@@ -126,7 +144,7 @@ describe("validateComponentManifest", () => {
     const codes = issueCodes(m);
     expect(codes).toContain("component_files_invalid");
     expect(codes).toContain("component_tests_missing");
-    expect(codes).toContain("wiring_point_unsupported");
+    expect(codes).toContain("wiring_slot_missing");
     expect(codes).toContain("registry_deps_unsupported");
     expect(codes).toContain("target_mismatch");
   });

@@ -69,12 +69,18 @@ export type PluginBindings = z.infer<typeof PluginBindingsSchema>;
 
 /**
  * 组件接线声明(kind=component;spec: cli-component-add)。声明组件装入后挂到宿主
- * `web.config.tsx` 的哪个插件点。v1 的 CLI 实现只认 `canvasPlugins`;`renderers`/`slots`
- * 是 schema 预留枚举值(结构合法但业务校验拒绝),为 v2 的多插件点接线保留形状。
+ * `web.config.tsx` 的哪个插件点。CLI 实现认 `canvasPlugins`(数组追加,v1)与
+ * `slots`(具名槽对象键挂载,v1.1 · scene3d 设计稿 §7 M0);`renderers` 是 schema
+ * 预留枚举值(结构合法但业务校验拒绝),为后续多插件点接线保留形状。
  */
 export const ComponentWiringSchema = z.object({
   /** 插件点:宿主 defineWebExtension 配置里的目标键。 */
   point: z.enum(["canvasPlugins", "renderers", "slots"]),
+  /**
+   * 具名槽 key(仅 point:"slots" 有意义,业务校验要求必填;如 `panelRight`/
+   * `launcherRail`/`promptToolbar`)。自由字符串:宿主槽位集合是开放的,不在契约层钉死。
+   */
+  slot: z.string().min(1).optional(),
   /** 组件模块的导出名(接线指引中的 import 绑定)。 */
   export: z.string().min(1),
   /** 相对目标 source `.pi/web/` 的 import 路径(接线指引中的 from 串)。 */

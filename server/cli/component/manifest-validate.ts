@@ -21,6 +21,7 @@ export type ComponentManifestIssue = {
     | "component_files_invalid"
     | "component_tests_missing"
     | "wiring_point_unsupported"
+    | "wiring_slot_missing"
     | "registry_deps_unsupported"
     | "target_mismatch";
   readonly message: string;
@@ -88,11 +89,19 @@ export function validateComponentManifest(manifest: PiWebManifest): ValidateResu
     });
   }
 
-  if (spec.wiring.point !== "canvasPlugins") {
+  if (spec.wiring.point === "renderers") {
     issues.push({
       code: "wiring_point_unsupported",
-      message: `v1 仅支持接线到 canvasPlugins;"${spec.wiring.point}" 是预留枚举值,尚未实现`,
+      message: `暂支持接线到 canvasPlugins 与 slots;"renderers" 是预留枚举值,尚未实现`,
       field: "component.wiring.point",
+    });
+  }
+  // slots 点(v1.1):具名槽对象键挂载,必须声明挂到哪个槽。
+  if (spec.wiring.point === "slots" && (spec.wiring.slot === undefined || spec.wiring.slot.length === 0)) {
+    issues.push({
+      code: "wiring_slot_missing",
+      message: `point:"slots" 必须声明具名槽 key(component.wiring.slot,如 "panelRight")`,
+      field: "component.wiring.slot",
     });
   }
 
