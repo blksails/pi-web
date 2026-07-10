@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import extensionManager, { parseListLines } from "../../src/extension-tools/extension-manager.js";
 import { gateInstall, gateMutate, checkAllowlist, DEFAULT_ALLOWLIST } from "../../src/extension-tools/gate.js";
 

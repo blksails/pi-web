@@ -42,6 +42,8 @@ import {
   createHostCommandRegistry,
   ChildProcessPiCli,
   DEFAULT_ALLOWLIST,
+  defaultOnAudit,
+  redactReason,
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
@@ -77,6 +79,13 @@ import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-e
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
+import {
+  createInstallHostCommand,
+  type InstallAuditEvent,
+} from "./install-host-command.js";
+import { createInstaller } from "@/server/cli/install/installer";
+import { createPluginInstaller } from "@/server/cli/install/plugin-installer";
+import { resolveSourcesRoot } from "@/server/cli/context";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -421,13 +430,50 @@ function buildSingleton(): HandlerSingleton {
     await session.restartRunner();
   };
 
+  // /install host 命令(spec install-host-command):web 面按 kind 安装 agent/plugin,
+  // 复用 CLI install 子域(createInstaller/createPluginInstaller 直调,零第二份编排)。
+  // 治理与 REST /extensions 同源:extAllowlist(白名单)/extAllowMutate(admin 门)/extPiCli。
+  // agent 落盘目标与 GET /agent-sources 的「扫描 ∪ 注册表」同值,装完选择器天然可见。
+  const installRegistryPath =
+    process.env.PI_WEB_SOURCES_REGISTRY ??
+    path.join(config.agentDir, "sources.json");
+  const installHostCommand = createInstallHostCommand({
+    installer: createInstaller({
+      allowlistConfig: extAllowlist,
+      piCli: extPiCli,
+      agentInstallerOptions: {
+        sourcesRoot: resolveSourcesRoot(process.env, config.defaultCwd),
+        registryPath: installRegistryPath,
+      },
+    }),
+    pluginInstaller: createPluginInstaller({ piCli: extPiCli }),
+    adminGate: () => extAllowMutate,
+    reloadRunner,
+    // 审计与 REST 扩展安装同 sink(defaultOnAudit):host 通道无 AuthContext,actor 固定
+    // 标识来源;uninstall→remove,其余动作按安装类记录(list/update 仅 admin 拒绝会至此)。
+    audit: (event: InstallAuditEvent): void => {
+      defaultOnAudit({
+        actor: "host-command",
+        at: new Date().toISOString(),
+        action: event.action === "uninstall" ? "remove" : "install",
+        source: event.source ?? event.action,
+        outcome: event.outcome,
+        reason: redactReason(event.reason),
+      });
+    },
+    cwd: config.defaultCwd,
+  });
+
   const handler = createPiWebHandler({
     manager,
     store,
-    // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/plugin 已迁出:扩展安装改为
-    // agent 回合内的内置工具(spec extension-install-agent-tools),用 ctx.ui 呈现,不再走
-    // host 命令 + 模态面板。此处仅保留 /clear(agent 上下文清空 + 前端 clear-transcript)。
-    hostCommands: createHostCommandRegistry([createClearHostCommand()]),
+    // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
+    // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
+    // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
+    hostCommands: createHostCommandRegistry([
+      createClearHostCommand(),
+      installHostCommand,
+    ]),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
     // 与 vision/images base64 并存,不内联字节。

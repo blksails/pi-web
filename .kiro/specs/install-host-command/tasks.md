@@ -1,59 +1,59 @@
 # Implementation Plan — install-host-command
 
-- [ ] 1. 契约与 CLI 子域接缝(Foundation)
-- [ ] 1.1 定义安装结果卡片的数据契约
+- [x] 1. 契约与 CLI 子域接缝(Foundation)
+- [x] 1.1 定义安装结果卡片的数据契约
   - protocol 包新增 InstallResultData schema(action/ok/kind/id/location/guidance/steps/items/error),经 barrel 导出
   - 所有 string 字段约定为已脱敏内容;ok:false 时 error 必填
   - 观察态:workspace typecheck 通过,schema 可从 @blksails/pi-web-protocol 导入并 safeParse 通过样例
   - _Requirements: 5.1, 5.4_
-- [ ] 1.2 CLI installer 增加来源白名单注入接缝
+- [x] 1.2 CLI installer 增加来源白名单注入接缝
   - CreateInstallerOptions 新增 allowlistConfig 可选项,穿透到内部 resolveSource;缺省行为与现状逐字节一致
   - 单测:注入 allowLocal:false 时本地源被拒;不注入时既有用例全绿(回归护栏)
   - 观察态:test/cli 新用例通过且既有 334 测试不回归
   - _Requirements: 3.4_
-- [ ] 1.3 CLI installer 的 kind 分派层显式拒绝 component
+- [x] 1.3 CLI installer 的 kind 分派层显式拒绝 component
   - install()/uninstall() 判别为 component 时立即返回 KIND_COMPONENT_UNSUPPORTED 错误(message 含「组件包请在目标 source 目录用 pi-web add 安装」指引),不触碰任何安装通道
   - 单测:本地 component 清单(kind:"component")→ install 与 uninstall 均拒绝
   - 观察态:CLI `pi-web install <component包>` 退出码非零且输出含 pi-web add 指引
   - _Requirements: 2.5, 2.6_
 
-- [ ] 2. /install host 命令 handler(Core·服务端)
-- [ ] 2.1 handler 骨架:argv 解析与用法文本
+- [x] 2. /install host 命令 handler(Core·服务端)
+- [x] 2.1 handler 骨架:argv 解析与用法文本
   - createInstallHostCommand(deps) 返回 HostCommandHandler;argv 空白分词 + 选项解析(--kind/--outdated/位置参数)
   - 裸 /install、未知子动作、缺参、非法 --kind 各返回独立用法文本(effect:"none",纯 message 无 data);update 收到任何 --kind 输入均以用法错误拒绝(update 仅 plugin 通道)
   - 观察态:单测覆盖解析全矩阵,用法文本注明不支持含空格路径
   - _Requirements: 1.5, 1.6, 2.3, 2.4_
-- [ ] 2.2 门控、审计与脱敏收集器
+- [x] 2.2 门控、审计与脱敏收集器
   - adminGate 注入判定:拒绝时返回失败卡片(message 说明 PI_WEB_EXT_ADMIN_ALLOW_ANY 放行途径)并记审计事件(与 REST 扩展安装同端口,实现时核对其形状)
   - 交付 allowlist 拒绝错误的 message 装饰逻辑(按错误码附对应 env 放行指引)+ 其单测;2.3 的编排测试引用该逻辑,不重复认领
   - collector reporter:ProgressReporter 内存实现,complete/fail 落 InstallStep,detail 与 error message 组装前过 redactSecrets
   - 观察态:单测含 Bearer/token/URL 凭据样本断言输出无泄露;拒绝路径断言审计被调用
   - _Requirements: 3.1, 3.2, 3.3, 3.5, 5.3_
-- [ ] 2.3 install/uninstall 编排与生效分道
+- [x] 2.3 install/uninstall 编排与生效分道
   - 复用注入的 installer(kindHint 直通):agent 成功→effect panel-refresh + location + 选择器切换 guidance,恒不调 reloadRunner;plugin 成功→effect notify,返回前恰调一次 reloadRunner;component 错误直通失败卡片(guidance 含 pi-web add)
   - 失败任一阶段→ok:false + error + 失败 step,不呈现部分成功
   - 观察态:单测断言 reloadRunner 调用次数与时序、effect 取值、guidance 内容
   - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.5, 4.1, 4.2, 5.4_
-- [ ] 2.4 list/update 编排
+- [x] 2.4 list/update 编排
   - list:pluginInstaller.listInstalled → items 表体;--outdated 时把 OUTDATED_NOT_SUPPORTED 如实呈现为失败卡片(不谎报)
   - update:逐项 outcomes 进 steps/items,hasFailures→整体失败语义
   - 观察态:单测覆盖空列表、--outdated 诚实转达、update 部分失败
   - _Requirements: 1.3, 1.4_
 
-- [ ] 3. 前端呈现与补全(Core·前端)
-- [ ] 3.1 builtin 词条与通用卡片追加机制
+- [x] 3. 前端呈现与补全(Core·前端)
+- [x] 3.1 builtin 词条与通用卡片追加机制
   - BuiltinCommandSpec 加可选 resultDataPart;新增 /install 词条(resultDataPart:"data-install-result")
   - dispatchBuiltin:词条声明 resultDataPart 且 result.data 存在→setMessages 追加 assistant 消息(bang 模式);仅 message→纯文本追加;/clear 行为不变
   - 观察态:单测断言卡片消息被追加、用法文本以纯文本出现
   - _Requirements: 5.1, 5.2_
   - _Depends: 1.1_
-- [ ] 3.2 data-install-result 渲染器
+- [x] 3.2 data-install-result 渲染器
   - InstallResultDataSchema.safeParse 成功→头行/location/guidance/steps/items 表;失败→JSON 预格式降级不崩
   - 在 pi-chat 与 bash renderer 同点注册
   - 观察态:渲染器单测覆盖成功/失败/list 表体/降级四态
   - _Requirements: 5.1, 5.4_
   - _Depends: 1.1_
-- [ ] 3.3 /install 补全词条与参数候选(含旧补全面原子退场)
+- [x] 3.3 /install 补全词条与参数候选(含旧补全面原子退场)
   - install-arg-provider 取代 plugin-arg-provider(删除旧文件):INSTALL_SPEC 四子动作;install→install-sources 端点;uninstall→extensions ∪ agent-sources 合并(agent 项 insertText 追加 " --kind agent");update→extensions
   - 同步更新 packages/ui barrel 导出(移除旧 provider 导出、导出新);pi-chat 换 createInstallArgProvider
   - 同任务删除 e2e/browser/plugin-subcommand-completion.e2e.ts(它全程驱动 /plugin 补全,本任务后必红;新 e2e 在 5.3 编写,覆盖面不缩)
@@ -61,13 +61,13 @@
   - _Requirements: 6.3, 6.4, 6.5_
 
 - [ ] 4. 摘除与应用装配(Integration)
-- [ ] 4.1 (P) 摘除 agent 侧 /plugin 命令
+- [x] 4.1 (P) 摘除 agent 侧 /plugin 命令
   - extension-manager 删 registerCommand("plugin") 块与专用 helper;保留 reload-runtime 与三个 agent 工具;不留提示型残根
   - tool-kit 测试改写:命令清单断言只剩 reload-runtime,/plugin describe 块删除,工具面测试保留
   - 观察态:packages/tool-kit 测试全绿;grep 无 registerCommand("plugin")
   - _Requirements: 6.1, 6.2_
   - _Boundary: ExtensionManagerRemoval_
-- [ ] 4.2 chat-app 接线:effect 落地与选择器刷新
+- [x] 4.2 chat-app 接线:effect 落地与选择器刷新
   - extensionCommandPolicy allowlist 移除 "plugin" 项
   - agentSourcesRefreshKey state + onCommandResult(effect==="panel-refresh" 时 bump)传给 PiChat;两处 AgentSourcePicker 传 refreshSignal
   - agent-source-picker:refreshSignal prop 进 useAgentSourceList 依赖数组
