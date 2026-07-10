@@ -96,7 +96,7 @@
   - _Requirements: 3.4, 8.1, 8.2_
   - _Boundary: SourceResolver_
 
-- [ ] 4.3 (P) 实现 plugin 通道的安装、卸载与列出
+- [x] 4.3 (P) 实现 plugin 通道的安装、卸载与列出
   - 复用既有的 pi 子进程适配器与参数装配，以非交互方式执行安装，不自动信任项目本地配置文件
   - 安装成功后包被记入 pi 的来源台账；卸载时从台账除名并输出被移除的包标识
   - 卸载一个未安装的包时输出未安装提示并以非零退出码结束
@@ -104,7 +104,7 @@
   - _Requirements: 3.5, 3.7, 3.8, 3.9_
   - _Boundary: PluginInstaller_
 
-- [ ] 4.4 实现 agent 通道的自建落盘
+- [x] 4.4 实现 agent 通道的自建落盘
   - pi 的包管理只能落到其自身配置目录或项目目录，无法落到 agent 源根，故本通道自建落盘
   - git 来源浅克隆到不可变引用；npm 来源获取发布产物后本地解包
   - 两种来源均只解包，不执行包内任何安装脚本
@@ -115,7 +115,7 @@
   - _Depends: 4.1_
   - _Boundary: AgentInstaller_
 
-- [ ] 4.5 集成：按包类型分派安装通道并落实作用域语义
+- [x] 4.5 集成：按包类型分派安装通道并落实作用域语义
   - 两条通道实现同一安装端口，由包类型选择，调用方不感知通道差异
   - 未指定作用域时以用户级作用域安装；显式指定时以项目级作用域安装
   - 项目级作用域下项目未被信任时，输出含信任指引的可操作错误并以非零退出码结束，不安装任何内容
@@ -134,7 +134,7 @@
 
 - [ ] 5. list 与 update
 
-- [ ] 5.1 实现已安装包的列出
+- [x] 5.1 实现已安装包的列出
   - 输出已安装包的标识、版本或引用、作用域与包类型
   - 无任何已安装包时输出明确提示并以零退出码结束
   - 支持只列出存在可用更新的包，并对每一项标明当前版本与可用版本
@@ -144,7 +144,7 @@
   - _Requirements: 4.1, 4.2, 4.3_
   - _Boundary: PluginInstaller_
 
-- [ ] 5.2 实现包更新与部分失败汇总
+- [x] 5.2 实现包更新与部分失败汇总
   - 未指定包名时更新全部可更新的包；指定包名时只更新该包
   - 不更新被固定到精确版本或不可变引用的包，并在输出中标明跳过原因
   - 某个包失败时继续处理其余包，结束时汇总列出失败项及原因并以非零退出码结束
@@ -157,21 +157,21 @@
 
 - [ ] 6. Wave 1 集成与离线验证
 
-- [ ] 6.1 集成：将全部 Wave 1 子命令接入分发层
+- [x] 6.1 集成：将全部 Wave 1 子命令接入分发层
   - create、install、uninstall、list、update 经分发层可被调用并返回统一的退出码语义
   - 任一子命令成功以零退出码结束，失败以非零退出码结束
   - 观察态：逐个子命令的成功与失败路径各触发一次，退出码与预期一致
   - _Depends: 2.1, 3.2, 4.5, 5.2_
   - _Requirements: 1.7_
 
-- [ ] 6.2 编写离线端到端验证：创建、安装本地目录、源列表可见、卸载
+- [x] 6.2 编写离线端到端验证：创建、安装本地目录、源列表可见、卸载
   - 在无网络、无注册表的条件下完成：创建 agent 骨架 → 以其为源启动实例 → 安装该本地目录 → 源列表包含它 → 卸载 → 源列表不再包含
   - 沿用既有 CLI 端到端脚本的启动与断言范式
   - 观察态：脚本以零退出码结束，且其中「源列表包含该目录」与「卸载后不再包含」两条断言均基于真实端点响应
   - _Depends: 6.1_
   - _Requirements: 9.3, 9.4, 10.4_
 
-- [ ] 6.3 回归护栏：既有 CLI 端到端与可重定位验证继续通过
+- [x] 6.3 回归护栏：既有 CLI 端到端与可重定位验证继续通过
   - 既有的 CLI 冒烟脚本继续通过，佐证既有启动路径逐字节不变
   - 既有的可重定位脚本继续通过，佐证新增产物在包被安装到任意路径后仍可被动态加载
   - 观察态：两个既有脚本在本特性改动后均以零退出码结束
@@ -434,3 +434,169 @@
   含点，判直连）与 `org/name`（首段 `org` 不含点，判注册表标识）都含 `/`，仅靠"含不含 `/`"无法
   区分——`classifySourceForm()` 用「首个 `/` 之前的片段是否含 `.`」这条启发式规则。后续新增判别
   分支（如支持更多 VCS host）时应保持这条规则的位置（在文件系统路径判定之后，兜底判注册表标识之前）。
+- **★ `pi list` 的 id 不含版本号**：`parseListLine`（`packages/server/src/extensions/cli/pi-cli.ts:266`）
+  按**最后一个 `@`** 切分（`at > 0` 才切，故 `@scope/pkg` 不会被误切），版本落进单独的 `.version` 字段。
+  而 `assembleInstallArgs` 传给 pi 的来源串**含**版本。二者**不可直接比较**。
+  4.3 已导出纯函数 `normalizeExtSourceId()`（复刻同一规则），5.x/4.5 一律复用它，别再各自推导。
+  面向用户的「包标识」（uninstall/update 的实参）应是**不含版本**的形态。
+- **`PiCli.listExtensions()` 会抛异常**（`PiListError`），不返回 `Result`。`server/cli` 的约定是判别联合、
+  不抛异常，故 `PluginInstaller` 绕过它，直接 `runPiCommand(["list"])` + `parsePiList`。
+- **`PiCliNotFoundError` 由 `ChildProcessPiCli` 的构造器同步抛出**（其中调 `resolvePiCliEntry()` 探磁盘）。
+  测这条分支不需要 `vi.mock`，注入一个会抛的 `piCliFactory` 即可。构造必须**惰性**（只在未注入时才 new），
+  否则单测会真的去磁盘找 pi。
+- **`assembleInstallArgs`/`assembleRemoveArgs` 没有 scope 参数**，不产出 `-l`。plugin 通道的 project 作用域
+  在 4.5 落实（扩展该纯函数，或在 Installer 分派层后处理 `InstallArgs.args`）。
+- **别把「知道有坑」写进测试注释然后绕开它**：4.3 初版的测试注释承认了 id 形态不对称，却只测了安全的一半，
+  把一个「刚装好的包卸载不掉」的缺陷藏了起来，被复核 REJECT。有不对称就写 round-trip 测试去撞它。
+- **取 npm tarball 用 `npm view <spec> dist.tarball --json` + 直接下载 + `tar -xzf`，绝不用 `npm pack`**：
+  `npm view` 是纯注册表元数据查询，不碰包代码；而 `npm pack` 对 git 型 spec 可能触发 `prepare`/`prepack`。
+  这是需求 3.12「不执行包内任何安装脚本」的实现依据。
+- **git 浅克隆到不可变 ref 的正确序列**：`git clone --depth 1 --branch <ref>` 对**裸 commit SHA 不适用**
+  （只对服务端公告的具名 ref 有效）。改用 `git init` → `git remote add` → `git fetch --depth 1 origin <ref>`
+  → `git checkout FETCH_HEAD`，对 SHA 与 `vX.Y.Z` tag 通用。checkout 后删 `.git` 得到不可变文件快照。
+  ⚠️ 该方案对裸 SHA 的可用性**依赖服务端开启 `uploadpack.allowReachableSHA1InWant`**。github.com 已开，
+  而 `DEFAULT_ALLOWLIST.gitHosts` 当前只有 `github.com`，故成立。**放开 git host 白名单前必须重新验证**
+  （GitLab CE 默认不开）。
+- **落盘用 staging + 原子 rename**：先 `mkdtemp(<sourcesRoot>/.staging-*)`（同文件系统，保证 rename 原子），
+  全部成功才 rename 到最终目录；任一步失败即递归删除 staging。因 rename 是唯一发布点，目标目录存在
+  ⇒ 必然是此前一次完整安装，故重复安装同 ref 幂等短路、不覆盖。
+- **本地路径 agent 只登记不拷贝**：走 4.1 的 `registerLocalSource`，源根之下不新增任何目录
+  （软链会被 realpath 门控静默剔除，拷贝则丢失「边改边试」的意义）。
+- **★ 让断言承担拦截责任，别让替身替它拦**：4.4 初版的 npm 替身对非 `view` 子命令直接 fail，
+  导致「不得执行包脚本」的白名单断言**永远触达不到** —— 违规在更早的「调用失败」层就被拦下，断言沦为摆设。
+  改成替身一路放行（任何子命令都返回成功且返回合法输出），白名单断言才成为真防线：
+  实测把 `npm view` 换成 `npm install` / `npm pack`，两次 mutation 都直接撞在断言上。
+- **`tar` 走系统二进制**（Windows 10 1803+ 自带 bsdtar，CI 三平台矩阵已在用）。Node 内置 `zlib` 只能
+  gunzip，不能展开 tar 归档层，故不加第三方 tar 依赖。⚠️ 现有 CI 的 `e2e:cli*` 跑的是 stub/mock，
+  **从未真实执行过 npm/tar 解包路径**，跨平台集成证据缺失 —— 归 6.2/6.3。
+- **`kind` 的确定是「约定」不是「探测」**：本地路径来源读 `pi-web.json` 得真实 `kind`；npm/git 直连来源
+  在下载前无从得知，故 **默认按 plugin 处理**（pi 的包管理是 plugin 的自然归宿；agent 的远程分发是
+  注册表的职责，那时 `kind` 来自已验签的 manifest）。`Installer.install(spec, { kindHint })` 提供显式覆盖，
+  6.1 把 `install --kind` 接到它。**绝不静默把 plugin 装进 agent 源根。**
+- **agent 通道不支持 project 作用域**：`~/.pi-web/agents` 是全局源根。`scope: "project"` + agent →
+  `AGENT_SCOPE_UNSUPPORTED`，**不静默降级为 user**。
+- **plugin 落 project 靠后处理追加 `-l`**：`assembleInstallArgs()` 在 `packages/**`（不改），
+  追加内联在 `plugin-installer.ts` 的 `install(source, { scope })`。**不要**在 `installer.ts` 里
+  再抄一遍 assemble+execute —— 4.5 初版这么做了，安装逻辑存在于两处，被复核要求去重。
+- **信任判定用 `makeProjectTrustPolicy`，从 `/trust` 子路径 import**（该子路径刻意解耦了 pi SDK，bundle 安全；
+  barrel 主入口不要用）。`TrustDecision` 是 `"always"|"never"|"ask"`，**CLI 无交互，故只有 `"always"` 放行**。
+  判定必须在**任何通道调用之前**，且只在 `scope === "project"` 时进行（user 作用域下根本不碰 trust store）。
+  ⚠️ `/trust` 子路径只导出 `makeProjectTrustPolicy`，**不导出** `TrustPolicy`/`TrustDecision`/`TrustPolicyInput`
+  类型（它们在 barrel-only 的 `agent-source/types.ts`）。在 `installer.ts` 里结构等价地本地重声明，零 cast。
+- **`uninstallAgentSource` 的路径逃逸防护**：删目录前 `realpath` 候选路径，再与 `realpath(sourcesRoot)` 比对，
+  必须严格位于其内。**`realpath` 必须在比对之前**——否则源根内一个指向外部的符号链接就能删到源根之外。
+  已用 `../evil`、绝对路径、以及**符号链接指向源根外**三种方式实证被 `PATH_ESCAPE` 拒绝。
+  本地登记来源被卸载时**只除名、不删用户目录**（那是用户的源码）。
+- **agent 卸载曾是缺口**：4.4 只写了 `installAgentSource`，4.5 初版的 `AgentChannel.uninstall` 只能返回
+  `NOT_IMPLEMENTED` —— 意味着 agent 装上就卸不掉，直接违反需求 3.8，且会卡死 6.2 的 e2e。4.5 的
+  `_Boundary_` 含 `AgentInstaller`，故补 `uninstallAgentSource` 在边界内。
+- **★ Req 4.3「`list --outdated` 标明可用版本」是需求与 pi 实际能力之间的真实缺口**：`pi list` 只吐
+  当前已安装版本，pi 的包管理面（`docs/packages.md`）没有任何 `outdated`/`--dry-run` 子命令能给出
+  「latest 可用版本」；`DefaultPackageManager.checkForAvailableUpdates()` 存在但不在 `PiCli` 接口上，
+  `server/cli` 唯一的 IO 适配点就是 `PiCli`（`runPiCommand`/`listExtensions`）。5.1 的裁断：
+  `PluginInstaller.listInstalled({ outdated: true })` 恒返回判别式错误 `OUTDATED_NOT_SUPPORTED`，
+  不发起任何 `runPiCommand` 调用、不返回任何包数据 —— 比伪造「当前=可用」的假数据更诚实。真正实现
+  需要接入一个新的「查最新版本」数据源（如 npm registry 元数据查询），是本 `PluginInstaller` 边界之外
+  的新 IO 通道；6.1/后续任务若要补齐，应新增专门端口，不要在 `PluginInstaller` 里悄悄拼一个假实现。
+- **★「固定/不可变」的判定只能按 `kind`，不能从 `pi list` 反推 npm 精确版本锁定**：`parsePiList` 产出的
+  `id`/`version` 无法区分「用户显式 `npm install foo@1.2.3` 钉死版本」与「浮动安装、当前恰好解析到
+  这个版本」——两者在 `pi list` 输出里长得一模一样，真正记录「是否钉死」的状态在 pi 自己的
+  `settings.json` 里，而 `server/cli` 不该绕开 `PiCli` 这个唯一 IO 适配点去读那份文件（会引入第二份
+  状态源，必然与 pi 自身解读漂移）。5.2 的裁断：只对**可确定性判**的两类跳过并给出真实原因——
+  `kind === "git"`（引用恒为固定 tag/commit，pi 从不推进）与 `kind === "local"`（未经 pi 拉取，
+  「更新」无意义）；`kind === "npm"` 一律尝试 `pi update <id>`，若 pi 内部判定其被钉死而跳过，
+  本组件观察不到这一事实，只能如实报告 `pi update` 的退出结果（`"updated"`），不冒充侦测到了「跳过」。
+- **★ Req 4.7「部分失败汇总」逼出「逐包调用」而非「批量 `pi update --extensions`」**：批量子进程调用
+  拿不到「每个包是否成功」的粒度，无法满足「某个包失败时继续处理其余包、结束时汇总失败项」。5.2 的
+  `PluginInstaller.update()` 对每个目标包各发起一次独立 `piCli.runPiCommand(["update", <id>], {})`，
+  循环里不提前 return，逐个收集 `"updated"|"skipped"|"failed"` 结果。代价是变慢（N 次子进程），
+  换来 Req 4.7 要求的可观察粒度。返回值区分两层：外层 `Result.ok` 只表示「枚举台账这一步本身」有没有
+  基础设施级失败（如 `pi list` 本身报错）；`ok:true` 之下的 `hasFailures` 才是「是否有包更新失败」的
+  信号，留给未来 `update` 子命令（6.1）据此决定退出码非零——本任务边界（`PluginInstaller`）不含
+  子命令层的 stdout 格式化与实际 `process.exit`，那些留给 6.1。
+- **`pi list` 对本地路径来源的行没有 `local:` 前缀**：`parseListLine` 的 kind 启发式是
+  「以 `/`（绝对）或 `.`（相对）开头即 `local`」，不是「以 `local:` 前缀开头」——真实 `pi list` 输出
+  原样打印 settings.json 里注册的磁盘路径，不会重新包一层 `local:` 前缀（那是 `pi install`/内部
+  `ExtSource` 的来源串形态，两者不是同一形态）。写涉及 `kind: "local"` 的 `pi list` 固定 stdout 测试
+  fixture 时用裸路径（如 `/abs/path (global)`），写成 `local:/abs/path (global)` 会被误判为 `npm`
+  （已在 5.2 测试初稿踩过，RED 输出为 `expected 'updated' to be 'skipped'`）。
+- **★ npm 包「是否被钉死」可以从 `pi list` 输出直接判定**，不需要任何新 IO。依据（pi 0.80.3 真实源码）：
+  `isExactNpmVersion(v) = semver.valid(v) !== null`（`core/package-manager.js:42`）；
+  `parseSource()` 的 `pinned` 就是它（:1130）；`normalizePackageSourceForSettings()` 对**非 local** 类型
+  `return source` 原样保留（:1110-1113），故用户写 `npm:foo` 就永远无版本、写 `npm:foo@1.2.3` 就永远带版本；
+  更新时 `if (parsed.type === "local" || parsed.pinned)` 直接过滤（:926）。
+  而 `pi update <src>` 的 CLI 层**无条件**打印 `Updated <src>` 并 exit 0（`package-manager-cli.js:602`），
+  **即便内部什么都没做** —— 所以「pi 是否跳过了」观察不到，但「该不该跳过」我们自己能算。
+  ⇒ `version` 是精确 semver ⇒ pinned ⇒ 提前判为 `skipped` 并给出真实原因，**绝不调用 `pi update`**。
+  5.1/5.2 初版一律尝试并把 pi 的成功退出报为 `"updated"`，对钉死包构成**谎报**，被复核 REJECT。
+- **`isExactSemver()` 已导出**（`plugin-installer.ts`），与真实 `semver.valid()` **29 组交叉验证完全等价**：
+  major/minor/patch 必须 `0|[1-9]\d*`（`01.2.3` 非法）；只剥**小写** `v` 前缀（`V1.2.3` 非法）；
+  **不 trim** 两端空白（`"  1.2.3  "` 非法）。后续任务复用它，别再造。
+- **`pi list` 的 local 行没有 `local:` 前缀**（是裸路径）。写 `pi list` stdout fixture 时注意，
+  否则 `parseListLine` 的 kind 启发式会判错。
+- **需求 4.3（`--outdated`）在 pi 的能力面上无法实现**：pi CLI 只有 `install`/`list`/`remove`/`update`，
+  没有 `outdated`；`checkForAvailableUpdates()` 不在 `PiCli` 接口上，且其返回的 `PackageUpdate` 也**不含**
+  可用版本号。故实现为诚实降级：返回 `OUTDATED_NOT_SUPPORTED` 且**零次调用 pi**（不假装查询过），
+  不输出任何推测版本。requirements 4.3 已据此改写为条件式。
+- **测试样例数据别用精确版本号当「随便填的版本」**：5.x 修复后，`npm:foo@1.0.0` 会触发钉死判定被 skip。
+  测路由/聚合逻辑的用例应使用浮动 range（`^1.0.0`）或无版本，否则会意外撞上 4.6 的判定。
+- **`bin/pi-web.mjs` 里绝不能写字面 `import(<非字符串字面量表达式>)`**（任务 6.1 踩坑，耗时最长）：
+  一旦出现（哪怕只是 `import(someVariable)`），vitest 的 Vite SSR 转换阶段（`ssrTransformScript`，
+  供任何 `@/bin/pi-web.mjs` 的测试期 import 使用）会在**解析期**报 `Expected ident` 并让
+  *该文件的全部测试文件*（含与之无关的 `cli-args.test.ts` 26 项、`subcommand-router.test.ts`）
+  collect 失败——是 Rollup/Vite 对动态 import 非字面量 specifier 的解析缺陷，与运行时执行路径无关，
+  `/* @vite-ignore */` 注释对此**无效**（已实测：加了照样炸）。这与本仓 MEMORY 里
+  「@vite-ignore 对字面量无效」是同一类问题的另一面：对**非字面量**它同样规避不了解析期崩溃。
+  唯一有效规避：`const dynamicImport = new Function("specifier", "return import(specifier);")`，
+  把 `import()` 移进字符串按 `Function` 构造求值，对 Vite 的源码静态扫描完全不可见；运行时语义
+  与直接 `import(spec)` 等价（仍是原生 ESM 动态 import）。CLI 是本机进程非浏览器，无 CSP 顾虑。
+  后续任务（10.1 接线 `publish`）如需再加一处动态 import，复用这个 `dynamicImport` helper，
+  不要重新踩这个坑。
+- **`server/cli/index.ts` 内 `parseArgs()` 调用不要预先标注 `let parsed: ReturnType<typeof parseArgs>`**：
+  会丢失基于传入 `options` 字面量的精确重载推断，退化为最泛化重载（`values.xxx` 变成
+  `string | boolean | (string|boolean)[] | undefined`），导致后续对字面量比较的 narrowing 失效
+  （`tsc` 报 `string|boolean` 不能赋给字面量联合）。改为 `let parsed;`（无类型注解、无初始值）—— TS 对
+  这种「evolving let」会按首次赋值的表达式（此处是 `parseArgs({...})` 调用本身，含完整字面量 options）
+  推断出精确类型，narrowing 正常工作。
+- **`server/cli/index.ts` 的 `runSubcommand(name, argv, deps)` 采用「高层端口注入」而非「低层工厂注入」**：
+  `deps.installer`/`deps.pluginInstaller` 直接接受已构造好的 `Installer`/`PluginInstaller` 替身
+  （与 `installer.test.ts`/`plugin-installer.test.ts` 同策略），不需要再深一层注入 `PiCli`/
+  `CommandRunner`/`TrustPolicy` 等——这些底层依赖已经在各自任务（4.3/4.5）里被这两个端口封装好，
+  6.1 只是它们的又一个消费方，不必重新暴露底层注入面。`create` 同理只注入 `scaffoldFn`/
+  `listTemplatesFn`（`scaffold()`/`listTemplates()` 本身已是任务 3.x 的最终端口）。
+- **`examplesRootCandidates` 由 `bin/pi-web.mjs`（壳层）构造，不在打包进产物的 `server/cli/index.ts`
+  内自行推断**：`server/cli/index.ts` 被 esbuild 打成 `dist/cli-commands.mjs` 单文件产物后，
+  其 `import.meta.url` 会被内联，「回退 `process.cwd()`」这条路径不可靠（1.1 已有此论断）。
+  壳层的 `PKG_ROOT`（真实 `import.meta.url` 解析结果，`bin/pi-web.mjs` 本身未被打包）与
+  `distCliCommandsJs()` 的产物根才是可信来源：候选路径依次为「产物根旁 `examples/`」（分发后布局，
+  由 `scripts/pack-dist.mjs` 的 `packExamples()` 拷入）与「仓库根 `examples/`」（开发期布局，
+  `PKG_ROOT` 即仓库根）。`runSubcommand` 内部仍调用产物自带的纯函数 `resolveExamplesRoot()` 从
+  候选里选第一个存在的，只是候选列表的**构造**移到了壳层。
+- **`uninstall`/`install` 的 `--project`/`--kind` 选项表变化会连带影响 `subcommand-router.test.ts`
+  的既有断言**：该文件（非受保护的 `cli-args.test.ts`）里有断言「`uninstall --project` 必须报错」
+  「`--kind` 只被 `create` 接受」，这两条断言编码的是 6.1 之前的旧选项面；6.1 按设计要求
+  `uninstall`/`install` 分别新增 `--project`/`--kind` 后，这两条断言需要同步更新为新契约
+  （已改并保持 21 项全绿，未删减断言数量）。任务的「不得破坏既有测试」硬门只钉了
+  `cli-args.test.ts` 的 26 条（`run` 路径逐字节不变的证据），不包括子命令选项表本就预期演进的
+  `subcommand-router.test.ts`。
+- **`list --outdated` 的失败文案是英文**（`OUTDATED_NOT_SUPPORTED_MESSAGE`，5.1 既有实现），不含中文
+  「尚不支持」字样。6.1 只透传该错误到 `ProgressReporter.fail()`，未改写文案（超出本任务边界，
+  且改动会牵动 5.x 既有测试对该常量的断言）。后续如需中文化错误文案，应作为独立任务处理。
+- **★ `uninstall` 的 kind 判定缺陷（只有端到端能抓到）**：`install` 经 `resolveSource()` 从本地目录的
+  `pi-web.json` 读出真实 `kind`，而 `uninstall` 只有一个 id、没有这条路径。初版 `Installer.uninstall()`
+  缺省 `kindHint ?? "plugin"`，于是 `pi-web uninstall <本地 agent 目录>` **必定**被送去 `pi remove` 并报
+  `Not installed`。单测抓不到：`installer.test.ts` 的三条卸载用例**全部**显式传 `kindHint: "agent"`，
+  缺省路径从未被走过。修法：新增**只读**探测 `isAgentSourceInstalled()`，无 `kindHint` 时先查该 id 是否
+  归 agent 通道（已登记的本地源 / 源根下的目录），命中走 agent，否则默认 plugin。
+  探测**绝不能**用 `uninstallAgentSource()` —— 它匹配上就会真的删。逃逸防护由 `checkSourcesRootMembership()`
+  与真实卸载**共用一份**，不要写第二份。
+- **★ 接线层与组件层是两个测试面**：`Installer.uninstall()` 有测试，不等于「从 CLI argv 到它」的接线有测试。
+  实证：把 `runUninstall` 的 `installer.uninstall(name, { scope, kindHint, cwd })` 改成
+  `installer.uninstall(name, { cwd })`（即静默丢弃 `--kind`/`--project`），**236 条测试全部仍绿**。
+  因为 `UninstallOptions` 的字段都是可选的，tsc 也拦不住。必须在 `subcommand-dispatch.test.ts` 里
+  断言**注入的替身收到了什么**（`mock.calls[0][1]`）。`runInstall` 有同样的盲区，已一并补齐。
+  ⇒ 凡是「CLI 选项 → 组件参数」的转发，都要有接线层断言，否则改坏了 CI 一片绿。
+- **e2e 必须隔离**：`PI_WEB_AGENT_DIR` 指向临时目录（`install <本地路径>` 会写 `<agentDir>/sources.json`），
+  `PI_WEB_SOURCES_ROOT` 指向隔离的临时源根。**绝不能污染用户真实的 `~/.pi/agent` 与 `~/.pi-web/agents`。**
+- `RegistrySourceProvider.list()` **每次请求都重读文件**，无缓存（已读源码确认）。故 6.2 的 e2e 可以在
+  **同一个运行中的实例**上做「安装后包含 → 卸载后不包含」两次断言，无需重启。

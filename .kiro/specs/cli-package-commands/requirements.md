@@ -135,7 +135,16 @@
 
 1. When 用户执行 `pi-web list`，the pi-web CLI shall 输出已安装包的标识、版本或引用、作用域与包类型。
 2. When 用户执行 `pi-web list` 且没有任何已安装包，the pi-web CLI shall 输出「无已安装包」的明确提示，并以退出码 0 结束。
-3. When 用户执行 `pi-web list --outdated`，the pi-web CLI shall 仅列出存在可用更新的包，并对每一项标明当前版本与可用版本。
+3. Where 底层包管理器向 CLI 暴露了「可用更新查询」能力，when 用户执行 `pi-web list --outdated`，the pi-web CLI shall 仅列出存在可用更新的包并对每一项标明当前版本与可用版本；if 该能力不可用，then the pi-web CLI shall 输出明确的「尚不支持」提示并以非零退出码结束，且**不输出任何推测的版本信息**。
+   > **裁定与理由**（据任务 5.1 的实现核查补记）：pi 的 CLI 面只有 `install` / `list` / `remove` / `update`
+   > 四个子命令，**没有 `outdated`**，且 `pi list` 的输出从不携带「最新可用版本」。
+   > `DefaultPackageManager.checkForAvailableUpdates()` 虽存在，却**不在** CLI 所消费的 `PiCli` 接口上，
+   > 且其返回的 `PackageUpdate` 也只有 `{ source, displayName, type, scope }`——同样**不含可用版本号**
+   > （`getLatestNpmVersion` 是私有方法）。要真正标明「当前版本 vs 可用版本」，必须自行查询 npm registry，
+   > 那是一条新的 IO 通道，超出 `PluginInstaller` 的边界。
+   >
+   > 故本条改为条件式：能力可用时给出完整信息；不可用时**明确报「尚不支持」而非伪造数据**。
+   > 这保留了需求意图，又诚实反映了当前能力边界，且两条分支都可测。
 4. When 用户执行 `pi-web update` 且未指定包名，the pi-web CLI shall 更新全部可更新的包。
 5. When 用户执行 `pi-web update <name>`，the pi-web CLI shall 仅更新该包。
 6. The pi-web CLI shall 不更新被固定到精确版本或不可变引用的包，并在输出中标明这些包被跳过的原因。
