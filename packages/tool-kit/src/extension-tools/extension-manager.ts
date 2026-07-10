@@ -3,10 +3,11 @@
  *
  * 经 `forcedExtensionPaths` 由 runner 强制注入**每个**会话（无需用户 agent 声明），向 agent 提供：
  *   - 工具 install_extension / uninstall_extension / list_extensions（LLM 可调）
- *   - 命令 /plugin <install|uninstall|list>（用户经斜杠补全面板直接调，子命令式）
  *   - 命令 /reload-runtime（工具装完排队 follow-up 触发，应用新扩展）
  *
- * 两条入口共用同一套装包逻辑与 pi 原生 `ctx.ui`（setStatus/notify/setWidget → StatusBar/通知/Widget，
+ * （用户向的扩展管理入口已迁移至宿主侧 /install 命令，见 spec install-host-command。）
+ *
+ * 工具入口共用同一套装包逻辑与 pi 原生 `ctx.ui`（setStatus/notify/setWidget → StatusBar/通知/Widget，
  * ambient 非模态，**无任何前端面板**）。装包用 `pi.exec("pi install …")`（pi 未暴露 in-process 包管理
  * API），落到当前会话 agent 的配置目录（子进程 env 决定，不污染真实 ~/.pi）。装前经 {@link gateInstall}
  * 做来源白名单门控。
@@ -33,18 +34,6 @@ export function parseListLines(stdout: string): string[] {
     .map((l) => l.replace(/\s+$/, ""))
     .filter((l) => l.trim().length > 0);
   return lines.length > 0 ? lines : ["(无已安装扩展)"];
-}
-
-/** 解析 `/install-extension <source> [-l|--local]` 的原始参数串。 */
-export function parseInstallArgs(raw: string): { source: string; local: boolean } {
-  const toks = (raw ?? "").trim().split(/\s+/).filter((t) => t.length > 0);
-  let local = false;
-  const rest: string[] = [];
-  for (const t of toks) {
-    if (t === "-l" || t === "--local") local = true;
-    else rest.push(t);
-  }
-  return { source: rest.join(" "), local };
 }
 
 /** 装包共享逻辑：门控 → ctx.ui 进度 → pi.exec install → 结果通知。返回是否成功（供调用方决定 reload 方式）。 */
@@ -152,32 +141,6 @@ export default function extensionManager(pi: ExtensionAPI): void {
     description: "Reload extensions, skills, prompts, and themes (pi-web extension manager)",
     handler: async (_args, ctx) => {
       await ctx.reload();
-    },
-  });
-
-  // ── 用户向命令 /plugin <子命令>：经斜杠补全面板直接调用,handler 用 ExtensionCommandContext
-  //     直接 ctx.reload()（无需工具那套 followUp 排队）。子命令：install / uninstall / list。 ──
-  pi.registerCommand("plugin", {
-    description: "扩展管理: /plugin install <npm:|git:|local: 源> [-l] | /plugin uninstall <名> | /plugin list",
-    handler: async (args, ctx) => {
-      const trimmed = (args ?? "").trim();
-      const sp = trimmed.search(/\s/);
-      const sub = (sp === -1 ? trimmed : trimmed.slice(0, sp)).toLowerCase();
-      const rest = sp === -1 ? "" : trimmed.slice(sp + 1).trim();
-
-      if (sub === "install" || sub === "add") {
-        const { source, local } = parseInstallArgs(rest);
-        const r = await performInstall(pi, ctx.ui, source, local, undefined);
-        if (r.ok) await ctx.reload();
-      } else if (sub === "uninstall" || sub === "remove") {
-        const r = await performUninstall(pi, ctx.ui, rest, undefined);
-        if (r.ok) await ctx.reload();
-      } else if (sub === "list" || sub === "ls" || sub === "") {
-        // 裸 /plugin 默认列出已装扩展（非模态 Widget），兼顾发现性。
-        await performList(pi, ctx.ui, undefined);
-      } else {
-        ctx.ui.notify(`未知子命令「${sub}」（用 install / uninstall / list）`, "error");
-      }
     },
   });
 
