@@ -47,6 +47,9 @@ function fakeRegistry(overrides: Partial<Record<"upload" | "register" | "channel
       // 内容寻址:sha256 前缀
       return { ok: true, value: { bundle: `bundles/${bytes.length}.tgz` } };
     },
+    async downloadBundle() {
+      return { ok: false, error: { code: "SOURCE_ABSENT", sourceId: "x" } };
+    },
     async registerVersion(_id, origin, manifest) {
       calls.register++;
       seen.origin = origin;

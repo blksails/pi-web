@@ -100,6 +100,13 @@ export class HttpRegistryAdapter implements RegistryPort {
     }, sourceId);
   }
 
+  async downloadBundle(sourceId: string, bundle: string): Promise<Result<Uint8Array, RegistryError>> {
+    return this.guard(async () => {
+      const bytes = await this.client.downloadBundle(this.consumeToken, sourceId, bundle);
+      return ok(bytes);
+    }, sourceId);
+  }
+
   async registerVersion(
     sourceId: string,
     origin: RegistryOrigin,

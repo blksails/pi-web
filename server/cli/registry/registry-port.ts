@@ -67,6 +67,8 @@ export interface RegistryPort {
   resolve(sourceId: string, opts?: { channel?: string; version?: string }): Promise<Result<ResolvedRegistryEntry, RegistryError>>;
   /** 代理上传 bundle tarball → registry 写 OSS → 内容寻址 key(发布侧不接触 OSS 凭据)。 */
   uploadBundle(sourceId: string, bytes: Uint8Array): Promise<Result<{ readonly bundle: string }, RegistryError>>;
+  /** 代理下载 bundle 字节(安装侧不接触 OSS 凭据)。 */
+  downloadBundle(sourceId: string, bundle: string): Promise<Result<Uint8Array, RegistryError>>;
   /** 登记新版本(origin 可变时**必须**在此前置失败,不推给服务端)。 */
   registerVersion(sourceId: string, origin: RegistryOrigin, manifest: SignedManifest): Promise<Result<void, RegistryError>>;
   /** 把发布通道指向某版本。 */
