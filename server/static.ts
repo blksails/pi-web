@@ -25,6 +25,9 @@ const MIME: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8",
+  // PWA 清单。缺失时会落到 `application/octet-stream` —— 浏览器仍能解析，
+  // 但不符合规范，且 devtools 会提示 MIME 类型不正确。
+  ".webmanifest": "application/manifest+json",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
