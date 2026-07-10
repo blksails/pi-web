@@ -601,3 +601,116 @@ describe("Installer.uninstall kind determination without kindHint (defect fix)",
     expect(agentChannel.uninstallCalls).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// allowlistConfig 注入接缝(spec install-host-command,任务 1.2)。缺省路径(不注入)
+// 必须与既有用例逐字节一致 —— 上面所有既有 describe 块全部不改地保留,本身就是回归证据。
+// 注入路径直接用注入值,不再叠加 `PI_WEB_EXT_ALLOW_NPM`。
+// ---------------------------------------------------------------------------
+
+describe("Installer allowlistConfig injection (Req 3.4)", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "installer-allowlist-inject-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("注入 allowLocal:false 时,本地目录源被拒(不注入时同一来源默认放行)", async () => {
+    const localDir = join(root, "my-local-thing");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(join(localDir, "index.ts"), "export default {};\n");
+
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+
+    const rejecting = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+      allowlistConfig: { npmScopes: [], gitHosts: [], allowLocal: false },
+    });
+
+    const rejected = await rejecting.install(`local:${localDir}`);
+    expect(rejected.ok).toBe(false);
+    if (!rejected.ok) expect(rejected.error.code).toBe("ALLOWLIST_REJECTED");
+    expect(agentChannel.installCalls).toHaveLength(0);
+    expect(pluginChannel.installCalls).toHaveLength(0);
+
+    const allowing = createInstaller({
+      agentChannel: makeAgentChannelStub(),
+      pluginChannel: makePluginChannelStub(),
+      trustPolicy: makeAlwaysTrustPolicy(),
+      // 不注入 allowlistConfig -> 缺省 CLI_ALLOWLIST(allowLocal:true),同一来源应放行。
+    });
+    const allowed = await allowing.install(`local:${localDir}`);
+    expect(allowed.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// component 显式拒绝(spec install-host-command,任务 1.3,Req 2.5, 2.6)。install/uninstall
+// 均不触碰任何通道,直接返回 KIND_COMPONENT_UNSUPPORTED,指引到 `pi-web add`。
+// ---------------------------------------------------------------------------
+
+describe("Installer rejects component kind on both install and uninstall (Req 2.5, 2.6)", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "installer-component-reject-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("install:本地目录 pi-web.json 声明 kind:component -> KIND_COMPONENT_UNSUPPORTED,两条通道零调用", async () => {
+    const localDir = join(root, "my-component");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(
+      join(localDir, "pi-web.json"),
+      JSON.stringify({ id: "my-component", version: "1.0.0", kind: "component" }),
+    );
+
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+    const installer = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+    });
+
+    const result = await installer.install(`local:${localDir}`);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("KIND_COMPONENT_UNSUPPORTED");
+      expect(result.error.message).toContain("pi-web add");
+    }
+    expect(agentChannel.installCalls).toHaveLength(0);
+    expect(pluginChannel.installCalls).toHaveLength(0);
+  });
+
+  it("uninstall:显式 kindHint 'component' -> KIND_COMPONENT_UNSUPPORTED,两条通道零调用", async () => {
+    const agentChannel = makeAgentChannelStub();
+    const pluginChannel = makePluginChannelStub();
+    const installer = createInstaller({
+      agentChannel,
+      pluginChannel,
+      trustPolicy: makeAlwaysTrustPolicy(),
+    });
+
+    const result = await installer.uninstall("some-component-id", { kindHint: "component" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("KIND_COMPONENT_UNSUPPORTED");
+      expect(result.error.message).toContain("pi-web add");
+    }
+    expect(agentChannel.uninstallCalls).toHaveLength(0);
+    expect(pluginChannel.uninstallCalls).toHaveLength(0);
+  });
+});

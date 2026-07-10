@@ -173,7 +173,8 @@ export type InstallerErrorCode =
   | "AGENT_INSTALL_FAILED"
   | "PLUGIN_INSTALL_FAILED"
   | "AGENT_UNINSTALL_FAILED"
-  | "PLUGIN_UNINSTALL_FAILED";
+  | "PLUGIN_UNINSTALL_FAILED"
+  | "KIND_COMPONENT_UNSUPPORTED";
 
 export interface InstallerError {
   readonly code: InstallerErrorCode;
@@ -202,6 +203,13 @@ export interface CreateInstallerOptions {
   /** 生产 plugin 通道的 `PiCli` 注入(测试替身,或留空走 `piCliFactory`)。 */
   readonly piCli?: PiCli;
   readonly piCliFactory?: () => PiCli;
+  /**
+   * `resolveSource()` 的白名单配置注入接缝(spec install-host-command,任务 1.2)。
+   * 未注入时行为与此前逐字节一致:`buildAllowlistConfig(env)`(`CLI_ALLOWLIST` 叠加
+   * `PI_WEB_EXT_ALLOW_NPM`)。注入后**直接使用注入值**,不再叠加 env —— 调用方
+   * (host 命令装配层)对 allowlist 的取舍已经做完,本文件不重复判断。
+   */
+  readonly allowlistConfig?: AllowlistConfig;
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +349,7 @@ export function createInstaller(options: CreateInstallerOptions = {}): Installer
       const scope: Scope = installOptions.scope ?? "user";
       const cwd = installOptions.cwd ?? process.cwd();
 
-      const allowlistConfig = buildAllowlistConfig(env);
+      const allowlistConfig = options.allowlistConfig ?? buildAllowlistConfig(env);
       const resolved = await resolveSource(spec, { allowlistConfig, cwd });
       if (!resolved.ok) return { ok: false, error: mapResolveError(resolved.error) };
       if (resolved.value.via === "registry") {
@@ -350,6 +358,19 @@ export function createInstaller(options: CreateInstallerOptions = {}): Installer
       const resolvedDirect = resolved.value;
 
       const kind = determineKind(resolvedDirect, installOptions.kindHint);
+
+      // component 包不走任何安装通道(spec install-host-command,任务 1.3):既不进 agent 源根,
+      // 也不进 pi 的 plugin 目录。指引到组件安装器(`pi-web add`,在目标 source 目录内运行)。
+      if (kind === "component") {
+        return {
+          ok: false,
+          error: {
+            code: "KIND_COMPONENT_UNSUPPORTED",
+            message:
+              "component packages are not supported by install/uninstall; run `pi-web add` inside the target source directory instead.",
+          },
+        };
+      }
 
       if (scope === "project") {
         if (kind === "agent") {
@@ -396,6 +417,19 @@ export function createInstaller(options: CreateInstallerOptions = {}): Installer
         (await isAgentSourceInstalled(id, options.agentInstallerOptions)).installed
           ? "agent"
           : "plugin");
+
+      // component 包不走任何卸载通道(spec install-host-command,任务 1.3);只有显式
+      // `kindHint: "component"` 能到达这里(探测本身不产出 component)。
+      if (kind === "component") {
+        return {
+          ok: false,
+          error: {
+            code: "KIND_COMPONENT_UNSUPPORTED",
+            message:
+              "component packages are not supported by install/uninstall; run `pi-web add` inside the target source directory instead.",
+          },
+        };
+      }
 
       if (scope === "project") {
         if (kind === "agent") {
