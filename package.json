@@ -85,7 +85,7 @@
     "vite": "^6",
     "vitest": "^2.1.8"
   },
-  "description": "pi web — 全局可安装 CLI，拉起 Next standalone 自包含产物",
+  "description": "pi web — 全局可安装 CLI，为任何 pi SDK agent 起一个流式 Web UI",
   "publishConfig": {
     "access": "public"
   }
