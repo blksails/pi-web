@@ -85,6 +85,11 @@ import { createCliContext } from "./context.js";
 import { createProgressReporter, type ProgressReporter, type CliError } from "./reporter.js";
 import { createInstaller, type Installer } from "./install/installer.js";
 import { createPluginInstaller, type PluginInstaller } from "./install/plugin-installer.js";
+import { HttpRegistryAdapter } from "./registry/http-registry-adapter.js";
+import type { RegistryPort } from "./registry/registry-port.js";
+import { publish as runPublishOrchestrator } from "./publish/publish-orchestrator.js";
+import { installFromRegistry } from "./install/registry-install.js";
+import { classifySourceForm } from "./install/source-resolver.js";
 
 /** 已知子命令名(与 `bin/pi-web.mjs` 的 `SUBCOMMAND_NAMES` 同一份契约,此处独立声明避免
  * 从 `.mjs` 反向 import 类型)。Wave 1 五个 + `publish`(Wave 2,尚未接入)。 */
@@ -119,6 +124,22 @@ export interface RunSubcommandDeps {
   readonly installer?: Installer;
   /** `list`/`update` 用的 `PluginInstaller` 端口;缺省装配真实实现。 */
   readonly pluginInstaller?: PluginInstaller;
+  /** `publish`/registry-install 用的 `RegistryPort`;缺省按 env 装配 `HttpRegistryAdapter`(测试注入夹具)。 */
+  readonly registry?: RegistryPort;
+}
+
+/**
+ * 按 env 装配 registry 端口(cli-package-commands)。
+ *  - `PI_WEB_REGISTRY_URL`:registry 地址(必需)。
+ *  - `PI_WEB_REGISTRY_TOKEN`:发布/消费 token。
+ * 缺 URL → undefined(调用方据此报「未配置 registry」)。
+ */
+function buildRegistryFromEnv(env: NodeJS.ProcessEnv, injected?: RegistryPort): RegistryPort | undefined {
+  if (injected) return injected;
+  const baseUrl = env["PI_WEB_REGISTRY_URL"];
+  if (!baseUrl) return undefined;
+  const token = env["PI_WEB_REGISTRY_TOKEN"];
+  return new HttpRegistryAdapter({ baseUrl, ...(token ? { publishToken: token } : {}) });
 }
 
 /** `create` 只支持 agent|plugin 两种骨架;`component` 包经 `pi-web add` 车道分发,无骨架模板。 */
@@ -251,6 +272,24 @@ async function runInstall(
   }
 
   const cwd = deps.cwd ?? process.cwd();
+  const env = deps.env ?? process.env;
+
+  // 注册表标识 + 已配 registry → 经注册表安装(resolve→代理下载→复核→物化)。
+  // 否则落既有直连安装路径(git/npm/本地)。
+  const registry = buildRegistryFromEnv(env, deps.registry);
+  if (classifySourceForm(source) === "registry" && registry) {
+    const targetBase = env["PI_WEB_REGISTRY_INSTALL_DIR"] ?? join(cwd, ".pi-web", "registry-sources");
+    const targetDir = join(targetBase, source.replace(/[^a-zA-Z0-9._-]/g, "_"));
+    reporter.start("install", `${source}(经注册表)`);
+    const r = await installFromRegistry(registry, source, { targetDir });
+    if (!r.ok) {
+      reporter.fail("install", { code: `REGISTRY_INSTALL_${r.error.code}`, message: JSON.stringify(r.error) });
+      return 1;
+    }
+    reporter.complete("install", `${r.value.sourceId}@${r.value.version} 已装到 ${r.value.targetDir}(复核 ${r.value.verifiedFiles} 文件)`);
+    return 0;
+  }
+
   const installer = deps.installer ?? createDefaultInstaller(deps);
 
   reporter.start("install", source);
@@ -400,6 +439,86 @@ function createDefaultInstaller(deps: RunSubcommandDeps): Installer {
  * 失败恒返回非零值(不抛异常,内部 `try/catch` 只包裹参数解析,业务错误均以判别联合
  * 承接并经 `ProgressReporter.fail()` 渲染)。`publish`(Wave 2)尚未接入分发,恒返回失败。
  */
+/**
+ * `pi-web publish`(任务 8.5/10.1)—— 编译→签名→代理上传→登记→通道。
+ * 选项与 `bin/pi-web.mjs` 的 SUBCOMMAND_SPECS.publish 对齐:--dry-run/--key/--channel/--commit-only。
+ */
+async function runPublish(
+  argv: readonly string[],
+  deps: RunSubcommandDeps,
+  reporter: ProgressReporter,
+): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: [...argv],
+      allowPositionals: true,
+      options: {
+        "dry-run": { type: "boolean", default: false },
+        key: { type: "string" },
+        channel: { type: "string" },
+        "commit-only": { type: "boolean", default: false },
+      },
+    });
+  } catch (err) {
+    return usageError(reporter, "publish", err instanceof Error ? err.message : String(err));
+  }
+  const dryRun = parsed.values["dry-run"] === true;
+  const commitOnly = parsed.values["commit-only"] === true;
+  const keyPath = parsed.values.key;
+  const channel = parsed.values.channel;
+  const cwd = deps.cwd ?? process.cwd();
+  const env = deps.env ?? process.env;
+
+  if (!dryRun && keyPath === undefined) {
+    return usageError(reporter, "publish", "缺少 --key <path>(签名私钥)。dry-run 亦需私钥以产出签名清单。");
+  }
+  // dry-run 也要签名(验收:打印将发布的清单),故 key 必需
+  if (keyPath === undefined) {
+    return usageError(reporter, "publish", "缺少 --key <path>(签名私钥)。");
+  }
+
+  // dry-run 不需要 registry;正式发布需要
+  const registry = buildRegistryFromEnv(env, deps.registry);
+  if (!dryRun && !registry) {
+    reporter.fail("publish", { code: "REGISTRY_NOT_CONFIGURED", message: "未配置 registry(设 PI_WEB_REGISTRY_URL)。" });
+    return 1;
+  }
+
+  reporter.start("publish", dryRun ? "演练(dry-run)" : "发布到注册表");
+  // dry-run 用一个「永不外部写」的占位 registry(orchestrator 在签名后短路,不会触达它)
+  const port: RegistryPort = registry ?? {
+    async resolve() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
+    async uploadBundle() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
+    async downloadBundle() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
+    async registerVersion() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
+    async setChannel() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
+  };
+
+  const res = await runPublishOrchestrator(port, {
+    packageDir: cwd,
+    keyPath,
+    dryRun,
+    commitOnly,
+    ...(channel !== undefined ? { channel } : {}),
+  });
+  if (!res.ok) {
+    const e = res.error;
+    const detail = e.stage === "compile" || e.stage === "sign" ? JSON.stringify(e.error) : `${e.error.code}`;
+    reporter.fail("publish", { code: `PUBLISH_${e.stage.toUpperCase()}`, message: detail });
+    return 1;
+  }
+  if (res.value.kind === "dry-run") {
+    reporter.complete("publish", `dry-run:将发布 ${res.value.files.length} 个文件;清单 kind=${res.value.manifest["kind"]}(零外部写)`);
+  } else {
+    reporter.complete(
+      "publish",
+      `${res.value.sourceId}@${res.value.version} 已发布(bundle=${res.value.bundle}${res.value.channelMoved ? ",通道已更新" : ""})`,
+    );
+  }
+  return 0;
+}
+
 export async function runSubcommand(
   name: string,
   argv: readonly string[],
@@ -418,11 +537,7 @@ export async function runSubcommand(
     case "update":
       return runUpdate(argv, deps, reporter);
     case "publish":
-      reporter.fail("publish", {
-        code: "NOT_IMPLEMENTED",
-        message: "publish 子命令尚未接入分发层(Wave 2,见任务 10.1)。",
-      });
-      return 1;
+      return runPublish(argv, deps, reporter);
     default:
       reporter.fail("dispatch", { code: "UNKNOWN_SUBCOMMAND", message: `未知子命令: ${name}` });
       return 1;
