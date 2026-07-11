@@ -7,7 +7,11 @@
  */
 
 // 默认拖入聊天组件(富装配)+ 插槽
-export { PiChat, type PiChatProps } from "./chat/pi-chat.js";
+export {
+  PiChat,
+  type PiChatProps,
+  type PiChatAttachmentsApi,
+} from "./chat/pi-chat.js";
 export { PiQueuePanel, type PiQueuePanelProps } from "./chat/pi-queue-panel.js";
 export type { PiChatSlots } from "./chat/slots.js";
 

@@ -43,6 +43,12 @@ export interface PendingAttachment {
   readonly attachmentId?: string;
   /** 分发展示 URL(server 返回);仅 status="ready" 时存在(Req 5.2)。 */
   readonly displayUrl?: string;
+  /**
+   * 引用型附件:指向**已落库**的既有附件(经 `addReference` 加入),而非本地上传的字节。
+   * 无本地 dataUrl/base64,故排除出 `toImageContents()`(只经 `referenceIds()` 以 att_id 上行);
+   * 预览与乐观 file part 走 `displayUrl`。用于「拖已有素材进对话框作引用」等宿主场景。
+   */
+  readonly isReference?: boolean;
 }
 
 /**
@@ -76,6 +82,20 @@ export interface UseAttachmentsResult {
    * 经 setItems 推进至 ready/error。
    */
   add(files: FileList | File[]): Promise<{ rejected: string[] }>;
+  /**
+   * 把**已落库**的既有附件按其 `att_` id 加入待发引用集(不上传字节)——用于「拖已有素材进
+   * 对话框作引用」等宿主场景。入列即 status="ready"、带 attachmentId/displayUrl、`isReference=true`,
+   * 故立即计入 `referenceIds()`(随正常发送以 `body.attachmentIds` 上行),并渲染为附件 chip。
+   * 已在列(同 attachmentId)则跳过,避免重复。
+   */
+  addReference(
+    refs: ReadonlyArray<{
+      readonly attachmentId: string;
+      readonly displayUrl?: string;
+      readonly name?: string;
+      readonly mimeType?: string;
+    }>,
+  ): void;
   remove(id: string): void;
   clear(): void;
   /** 把 items 映射为 pi 的 ImageContent[](data 为裸 base64)。 */
@@ -262,6 +282,45 @@ export function useAttachments(
     [supported, nextId, markReady, markError],
   );
 
+  const addReference = useCallback(
+    (
+      refs: ReadonlyArray<{
+        readonly attachmentId: string;
+        readonly displayUrl?: string;
+        readonly name?: string;
+        readonly mimeType?: string;
+      }>,
+    ): void => {
+      if (!supported || refs.length === 0) return;
+      setItems((prev) => {
+        const seen = new Set(
+          prev.map((it) => it.attachmentId).filter((x): x is string => x != null),
+        );
+        const additions: PendingAttachment[] = [];
+        for (const r of refs) {
+          if (r.attachmentId.length === 0 || seen.has(r.attachmentId)) continue;
+          seen.add(r.attachmentId);
+          additions.push({
+            id: nextId(),
+            name: r.name ?? r.attachmentId,
+            mimeType: r.mimeType ?? "image/*",
+            // 引用无本地字节:dataUrl 留空,预览/file part 走 displayUrl。
+            dataUrl: "",
+            status: "ready",
+            attachmentId: r.attachmentId,
+            displayUrl:
+              r.displayUrl !== undefined
+                ? resolveDisplayUrl(baseUrlRef.current, r.displayUrl)
+                : undefined,
+            isReference: true,
+          });
+        }
+        return additions.length > 0 ? [...prev, ...additions] : prev;
+      });
+    },
+    [supported, nextId],
+  );
+
   const remove = useCallback((id: string): void => {
     setItems((prev) => prev.filter((it) => it.id !== id));
   }, []);
@@ -274,11 +333,14 @@ export function useAttachments(
   itemsRef.current = items;
 
   const toImageContents = useCallback((): ImageContent[] => {
-    return itemsRef.current.map((it) => ({
-      type: "image",
-      data: base64FromDataUrl(it.dataUrl),
-      mimeType: it.mimeType,
-    }));
+    // 引用型附件无本地 base64,仅经 referenceIds() 以 att_id 上行,故排除出内联 images。
+    return itemsRef.current
+      .filter((it) => it.isReference !== true)
+      .map((it) => ({
+        type: "image",
+        data: base64FromDataUrl(it.dataUrl),
+        mimeType: it.mimeType,
+      }));
   }, []);
 
   const toFileParts = useCallback((): FileUIPart[] => {
@@ -307,6 +369,7 @@ export function useAttachments(
       items,
       supported,
       add,
+      addReference,
       remove,
       clear,
       toImageContents,
@@ -317,6 +380,7 @@ export function useAttachments(
       items,
       supported,
       add,
+      addReference,
       remove,
       clear,
       toImageContents,
