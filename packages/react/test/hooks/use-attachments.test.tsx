@@ -366,13 +366,13 @@ describe("useAttachments", () => {
         ]);
       });
       expect(result.current.items).toHaveLength(1);
-      const it0 = result.current.items[0];
-      expect(it0?.status).toBe("ready");
-      expect(it0?.isReference).toBe(true);
-      expect(it0?.attachmentId).toBe("att_gen1");
-      expect(it0?.name).toBe("海报A");
+      const item = result.current.items[0];
+      expect(item?.status).toBe("ready");
+      expect(item?.isReference).toBe(true);
+      expect(item?.attachmentId).toBe("att_gen1");
+      expect(item?.name).toBe("海报A");
       // 展示 URL 经 baseUrl("/api")解析加前缀(与上传落库同处理)。
-      expect(it0?.displayUrl).toBe("/api/attachments/att_gen1/raw?exp=1&sig=x");
+      expect(item?.displayUrl).toBe("/api/attachments/att_gen1/raw?exp=1&sig=x");
       // 不上传字节。
       expect(opts.upload).not.toHaveBeenCalled();
       // 立即计入可提交引用(随正常发送以 body.attachmentIds 上行)。
@@ -432,9 +432,9 @@ describe("useAttachments", () => {
         ]);
       });
       expect(result.current.items).toHaveLength(2);
-      const rid = result.current.items[0]!.id;
+      const removeId = result.current.items[0]!.id;
       act(() => {
-        result.current.remove(rid);
+        result.current.remove(removeId);
       });
       expect(result.current.items).toHaveLength(1);
       act(() => {
