@@ -351,4 +351,129 @@ describe("useAttachments", () => {
     expect(rejected).toEqual(["a.png"]);
     expect(opts.upload).not.toHaveBeenCalled();
   });
+
+  describe("addReference(既有附件按 att_ id 引用,不上传字节)", () => {
+    it("把既有附件登记为 ready 引用(isReference/attachmentId/displayUrl 经 baseUrl 解析,不触发上传)", () => {
+      const opts = okOptions();
+      const { result } = renderHook(() => useAttachments(opts));
+      act(() => {
+        result.current.addReference([
+          {
+            attachmentId: "att_gen1",
+            displayUrl: "/attachments/att_gen1/raw?exp=1&sig=x",
+            name: "海报A",
+          },
+        ]);
+      });
+      expect(result.current.items).toHaveLength(1);
+      const it0 = result.current.items[0];
+      expect(it0?.status).toBe("ready");
+      expect(it0?.isReference).toBe(true);
+      expect(it0?.attachmentId).toBe("att_gen1");
+      expect(it0?.name).toBe("海报A");
+      // 展示 URL 经 baseUrl("/api")解析加前缀(与上传落库同处理)。
+      expect(it0?.displayUrl).toBe("/api/attachments/att_gen1/raw?exp=1&sig=x");
+      // 不上传字节。
+      expect(opts.upload).not.toHaveBeenCalled();
+      // 立即计入可提交引用(随正常发送以 body.attachmentIds 上行)。
+      expect(result.current.referenceIds!()).toEqual(["att_gen1"]);
+    });
+
+    it("引用排除出 toImageContents(引用无本地 base64,只经 attachmentIds 上行)", () => {
+      const { result } = renderHook(() => useAttachments(okOptions()));
+      act(() => {
+        result.current.addReference([
+          { attachmentId: "att_gen1", displayUrl: "https://cdn.example.com/x.png" },
+        ]);
+      });
+      expect(result.current.toImageContents()).toEqual([]);
+      expect(result.current.referenceIds!()).toEqual(["att_gen1"]);
+    });
+
+    it("按 attachmentId 去重(同 id 多次/多批不重复入列)", () => {
+      const { result } = renderHook(() => useAttachments(okOptions()));
+      act(() => {
+        result.current.addReference([
+          { attachmentId: "att_x" },
+          { attachmentId: "att_x" },
+        ]);
+      });
+      act(() => {
+        result.current.addReference([{ attachmentId: "att_x" }]);
+      });
+      expect(result.current.items).toHaveLength(1);
+      expect(result.current.referenceIds!()).toEqual(["att_x"]);
+    });
+
+    it("toFileParts 用引用的 displayUrl(乐观消息即时显示既有素材)", () => {
+      const { result } = renderHook(() => useAttachments(okOptions()));
+      act(() => {
+        result.current.addReference([
+          {
+            attachmentId: "att_x",
+            displayUrl: "https://cdn.example.com/x.png",
+            mimeType: "image/webp",
+            name: "n",
+          },
+        ]);
+      });
+      const parts = result.current.toFileParts!();
+      expect(parts).toHaveLength(1);
+      expect(parts[0]?.url).toBe("https://cdn.example.com/x.png");
+      expect(parts[0]?.mediaType).toBe("image/webp");
+    });
+
+    it("remove / clear 同样作用于引用项", () => {
+      const { result } = renderHook(() => useAttachments(okOptions()));
+      act(() => {
+        result.current.addReference([
+          { attachmentId: "att_a" },
+          { attachmentId: "att_b" },
+        ]);
+      });
+      expect(result.current.items).toHaveLength(2);
+      const rid = result.current.items[0]!.id;
+      act(() => {
+        result.current.remove(rid);
+      });
+      expect(result.current.items).toHaveLength(1);
+      act(() => {
+        result.current.clear();
+      });
+      expect(result.current.items).toEqual([]);
+    });
+
+    it("supported=false 时不加入任何引用", () => {
+      const { result } = renderHook(() =>
+        useAttachments({ ...okOptions(), supported: false }),
+      );
+      act(() => {
+        result.current.addReference([{ attachmentId: "att_x" }]);
+      });
+      expect(result.current.items).toEqual([]);
+    });
+
+    it("与上传项共存:referenceIds 含两者,toImageContents 只含上传项(base64)", async () => {
+      const opts = okOptions();
+      const { result } = renderHook(() => useAttachments(opts));
+      await act(async () => {
+        await result.current.add([makeFile("a.png", "image/png", PNG_BYTES)]);
+      });
+      await waitFor(() =>
+        expect(result.current.items[0]?.status).toBe("ready"),
+      );
+      act(() => {
+        result.current.addReference([
+          { attachmentId: "att_ref", displayUrl: "https://cdn.example.com/r.png" },
+        ]);
+      });
+      expect([...result.current.referenceIds!()].sort()).toEqual(
+        ["att_a.png", "att_ref"].sort(),
+      );
+      // 上传项进内联 images(base64),引用项不进。
+      const contents = result.current.toImageContents();
+      expect(contents).toHaveLength(1);
+      expect(contents[0]?.data).toBe(PNG_BASE64);
+    });
+  });
 });
