@@ -7,7 +7,11 @@
  */
 
 // 默认拖入聊天组件(富装配)+ 插槽
-export { PiChat, type PiChatProps } from "./chat/pi-chat.js";
+export {
+  PiChat,
+  type PiChatProps,
+  type PiChatAttachmentsApi,
+} from "./chat/pi-chat.js";
 // 新建会话的 agent source 选择器。三项能力(源列表 / 收藏 / 浏览目录)全部可选注入 ——
 // 宿主不注入就只渲染手输框,故云端可只接列表、砍掉本地目录与桌面目录选择。
 export {

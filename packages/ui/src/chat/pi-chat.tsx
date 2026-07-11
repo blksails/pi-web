@@ -104,6 +104,22 @@ export type ToolbarControl =
   | "webSearch"
   | "submit";
 
+/**
+ * 宿主可达的附件 API(经 `attachmentsApiRef` 暴露)。让根应用/扩展把**已落库**的既有附件
+ * 按 `att_` id 注入**当前 composer** 的待发引用集,从而随正常发送(`body.attachmentIds`)一并上行。
+ * 典型场景:把素材抽屉里的已生成图拖进/`@` 引用进对话框作 `image_edit` 等工具的输入图。
+ */
+export interface PiChatAttachmentsApi {
+  addReference(
+    refs: ReadonlyArray<{
+      readonly attachmentId: string;
+      readonly displayUrl?: string;
+      readonly name?: string;
+      readonly mimeType?: string;
+    }>,
+  ): void;
+}
+
 export interface PiChatProps {
   readonly session: UsePiSessionResult;
   readonly controls?: UsePiControlsResult;
@@ -203,6 +219,11 @@ export interface PiChatProps {
   readonly attachmentBaseUrl?: string;
   /** 可注入的附件上传函数(默认 `@blksails/pi-web-react` 的 `uploadAttachment`);测试用以 mock。 */
   readonly uploadAttachment?: UploadAttachmentFn;
+  /**
+   * 宿主附件 API 出口(命令式):PiChat 在挂载后把 `{ addReference }` 写入该 ref.current,
+   * 卸载时置空。宿主据此把既有素材以引用形态注入当前 composer(见 {@link PiChatAttachmentsApi})。
+   */
+  readonly attachmentsApiRef?: React.RefObject<PiChatAttachmentsApi | null>;
   readonly className?: string;
 }
 
@@ -337,6 +358,7 @@ export function PiChat({
   logsPanelPosition = "bottom",
   attachmentBaseUrl,
   uploadAttachment,
+  attachmentsApiRef,
   className,
 }: PiChatProps): React.JSX.Element {
   const t = useI18n();
@@ -617,6 +639,15 @@ export function PiChat({
     ...(attachmentBaseUrl !== undefined ? { baseUrl: attachmentBaseUrl } : {}),
     ...(uploadAttachment !== undefined ? { upload: uploadAttachment } : {}),
   });
+  // 宿主附件 API 出口:把 addReference 命令式暴露给宿主(挂载写入、卸载置空)。
+  const addReference = attachments.addReference;
+  React.useEffect(() => {
+    if (attachmentsApiRef === undefined) return;
+    attachmentsApiRef.current = { addReference };
+    return () => {
+      attachmentsApiRef.current = null;
+    };
+  }, [attachmentsApiRef, addReference]);
   const branches = useBranches({
     sessionId,
     ...(client !== undefined ? { client } : {}),
