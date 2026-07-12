@@ -19,9 +19,11 @@ import type {
   PiSession,
 } from "@blksails/pi-web-server";
 import type { CommandResult, InstallResultData, InstallStep, PluginKind } from "@blksails/pi-web-protocol";
-import type { Installer, InstallerError } from "@/server/cli/install/installer";
-import type { PluginInstaller } from "@/server/cli/install/plugin-installer";
-import { redactSecrets } from "@/server/cli/reporter";
+// 相对路径 + `.js` 后缀是仓库唯一在三条解析链(vite dev / jiti 服务端 / esbuild 产物)上
+// 都成立的形态——`@/` 别名 jiti 不认(bun dev 实证崩)、esbuild 靠自建插件才认。
+import type { Installer, InstallerError } from "../../server/cli/install/installer.js";
+import type { PluginInstaller } from "../../server/cli/install/plugin-installer.js";
+import { redactSecrets } from "../../server/cli/reporter.js";
 
 /**
  * `/install` 拒绝路径的审计事件(仅 adminGate 拒绝 / allowlist 拒绝两条路径触发,与

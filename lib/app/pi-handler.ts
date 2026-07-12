@@ -83,9 +83,9 @@ import {
   createInstallHostCommand,
   type InstallAuditEvent,
 } from "./install-host-command.js";
-import { createInstaller } from "@/server/cli/install/installer";
-import { createPluginInstaller } from "@/server/cli/install/plugin-installer";
-import { resolveSourcesRoot } from "@/server/cli/context";
+import { createInstaller } from "../../server/cli/install/installer.js";
+import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
+import { resolveSourcesRoot } from "../../server/cli/context.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
