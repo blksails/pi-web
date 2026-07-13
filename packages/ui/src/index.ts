@@ -14,6 +14,7 @@ export {
 } from "./chat/pi-chat.js";
 export { PiQueuePanel, type PiQueuePanelProps } from "./chat/pi-queue-panel.js";
 export type { PiChatSlots } from "./chat/slots.js";
+export { LogsPanel, type LogsPanelProps } from "./logs/logs-panel.js";
 
 // 最小拖入聊天组件
 export { PiChatBasic, type PiChatBasicProps } from "./chat/pi-chat-basic.js";

@@ -216,6 +216,13 @@ export interface PiChatProps {
    * 卸载时置空。宿主据此把既有素材以引用形态注入当前 composer(见 {@link PiChatAttachmentsApi})。
    */
   readonly attachmentsApiRef?: React.RefObject<PiChatAttachmentsApi | null>;
+  /**
+   * 宿主会话提交 API 出口(命令式):PiChat 在挂载后把 `{ submitUserMessage }`(= 内部 `doSend`)写入
+   * 该 ref.current,卸载时置空。宿主右栏级面板(如提到 host-level 的 canvas 工作区,不走 panelRight 槽,
+   * 故拿不到 slot 注入的 `conversation`)据此复用同一 Prompt 通道把生成请求发进对话流并实时渲染。
+   * 与 {@link attachmentsApiRef} 同款接缝;类型即 `ConversationAccess`(契约 §4.2)。
+   */
+  readonly conversationApiRef?: React.RefObject<ConversationAccess | null>;
   readonly className?: string;
 }
 
@@ -350,6 +357,7 @@ export function PiChat({
   attachmentBaseUrl,
   uploadAttachment,
   attachmentsApiRef,
+  conversationApiRef,
   className,
 }: PiChatProps): React.JSX.Element {
   const t = useI18n();
@@ -877,6 +885,16 @@ export function PiChat({
     () => ({ submitUserMessage: (text, opts) => doSend(text, opts) }),
     [doSend],
   );
+
+  // 宿主会话提交 API 出口:把同一 `conversation` 能力命令式暴露给宿主(挂载写入、卸载置空),
+  // 供不走 panelRight 槽的 host-level 面板(canvas 工作区)复用 Prompt 通道。与 attachmentsApiRef 同款。
+  React.useEffect(() => {
+    if (conversationApiRef === undefined) return;
+    conversationApiRef.current = conversation;
+    return () => {
+      conversationApiRef.current = null;
+    };
+  }, [conversationApiRef, conversation]);
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
   // 结果经 onCommandResult 事件驱动 UI(不进 LLM)。无 bus/无 onCommandResult 时回退旧 onBuiltinSelect。
