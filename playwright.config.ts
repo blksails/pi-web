@@ -30,7 +30,19 @@ const PORT_SQLITE = PORT_FS + 1;
 // install-host-command(第三套 webServer,任务 5.1):独立端口 + 放行 env + 落盘隔离
 // (临时 sourcesRoot/registry/agentDir),不动前两套既有 env。
 const PORT_INSTALL = PORT_FS + 2;
+// attachment-tool-bridge(第四套 webServer):专用 stub(PI_WEB_STUB_AGENT_PATH →
+// e2e/fixtures/attachment-tool-bridge-stub.mjs)驱动真实附件工具链;不能与默认 stub 共服务器,
+// 故独立端口 + 独立落盘。
+const PORT_ATTACH = PORT_FS + 3;
 const externalServer = process.env.PI_WEB_E2E_EXTERNAL_SERVER === "1";
+
+// attachment-tool-bridge 专用 stub 的绝对路径(服务端据 PI_WEB_STUB_AGENT_PATH 派生 spawn 规格)。
+const ATTACHMENT_STUB_PATH = path.join(
+  process.cwd(),
+  "e2e",
+  "fixtures",
+  "attachment-tool-bridge-stub.mjs",
+);
 
 // Isolated temp storage per run; exposed via env so the spec can assert artifacts.
 const fsRoot =
@@ -95,11 +107,19 @@ const stubEnv = {
   NEXT_PUBLIC_PI_WEB_BASH_ENABLED: "1",
   // 前端产物目录(server 以仓库根为 cwd 启动,`clientDir()` 默认 `cwd/client` 不存在)。
   PI_WEB_CLIENT_DIR: path.join(process.cwd(), DIST_DIR, "client"),
+  // webext 运行时验签受信发布者公钥(base64 raw)。解锁 webext-runtime-install 的代码夹具
+  // (webext-runtime-code)经 /api/webext/resolve 的验签车道 —— 其 .mjs 由 globalSetup 用
+  // 对应测试私钥签名(见 e2e/webext-fixtures.setup.ts 与 test/build-runtime-code-fixture.test.ts)。
+  // 纯声明夹具无代码不涉签名;对其余用例无副作用(仅扩大受信集,不改默认门控)。
+  PI_WEB_EXT_WHITELIST: "+YygXrhbbHsoc1U+pHZIUdNBE+4Qb9kK3oWMCCnEUY0=",
 };
 
 export default defineConfig({
   testDir: "./e2e/browser",
   testMatch: /.*\.e2e\.ts/,
+  // 浏览器 e2e 依赖的 webext 示例产物(`.pi/web/dist`)是 gitignored 构建产物;启动前幂等重建
+  // (含运行时代码夹具的测试私钥签名),使 fresh worktree / CI 自足可复现。
+  globalSetup: "./e2e/webext-fixtures.setup.ts",
   timeout: 60_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
@@ -111,9 +131,10 @@ export default defineConfig({
   projects: [
     {
       name: "fs",
-      // install-host-command.e2e.ts 需要放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+
-      // 隔离落盘,fs server 未开这些放行档 —— 该 spec 只跑在专用 `install` project 上。
-      testIgnore: /install-host-command\.e2e\.ts/,
+      // 专用 server 上的 spec 从 fs project 排除:
+      //  - install-host-command.e2e.ts 需放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+ 隔离落盘;
+      //  - attachment-tool-bridge.e2e.ts 需专用 stub(PI_WEB_STUB_AGENT_PATH)驱动真实附件工具链。
+      testIgnore: /(install-host-command|attachment-tool-bridge)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -135,6 +156,15 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_INSTALL}`,
+      },
+    },
+    {
+      // attachment-tool-bridge:专用 stub server(PI_WEB_STUB_AGENT_PATH),只跑附件工具桥 spec。
+      name: "attachment",
+      testMatch: /attachment-tool-bridge\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_ATTACH}`,
       },
     },
   ],
@@ -199,6 +229,33 @@ export default defineConfig({
               // 断言新 source 免刷新可见(agentSourcesRefreshKey 语义)。
               NEXT_PUBLIC_PI_WEB_SOURCE_PICKER: "1",
               NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL: "1",
+            },
+          },
+          {
+            // attachment-tool-bridge:专用 stub(PI_WEB_STUB_AGENT_PATH → 附件工具桥夹具)驱动真实
+            // 附件工具执行链(子进程 store resolve→处理→落库→回流→afterToolCall base64 门)。默认
+            // stub 只发 echo 帧、不跑工具链,故本 spec 须独占此 server。command 附独立 argv 标记去重。
+            command: `node ${SERVER_ENTRY} --store=attachment`,
+            port: PORT_ATTACH,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_ATTACH),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-attach-fs-"),
+              ),
+              PI_WEB_STUB_AGENT_PATH: ATTACHMENT_STUB_PATH,
+              // 主/子进程一致性(已知坑):stub 子进程继承 server env,直接读 PI_WEB_ATTACHMENT_SECRET
+              // 签 URL,主进程用同一 secret 校验。缺省时主进程回退**随机** secret 但不写入 env,子进程
+              // 读不到 → 签名 URL 校验 401。故显式钉死稳定 secret + 隔离落盘目录,主/子共用。
+              PI_WEB_ATTACHMENT_DIR: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-attach-store-"),
+              ),
+              PI_WEB_ATTACHMENT_SECRET: "pi-e2e-attachment-stable-secret",
             },
           },
         ],

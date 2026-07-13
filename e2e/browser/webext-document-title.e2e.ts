@@ -52,8 +52,10 @@ test("documentTitle 还原:回选源页后标签页标题复位为宿主默认",
   await expect(page.locator("[data-session-active]")).toBeVisible();
   await expect(page).toHaveTitle("Slots Agent · pi-web");
 
-  // "New session" → onReset:SessionView 卸载,effect cleanup 还原载入前标题。
-  await page.getByRole("button", { name: "New session" }).click();
+  // 「切换源」→ onReset:SessionView 卸载,effect cleanup 还原载入前标题。
+  // (回选源页语义由 data-switch-source 承担;data-new-session 是同源新建,不回选择器。
+  //  按 data-* 而非本地化按钮名定位,避免随 i18n 默认语言变化而失效。)
+  await page.locator("[data-switch-source]").click();
   await expect(page.locator("[data-agent-source-picker]")).toBeVisible();
   await expect(page).toHaveTitle("pi-web");
 });

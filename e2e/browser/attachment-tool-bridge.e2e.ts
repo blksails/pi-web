@@ -125,7 +125,13 @@ async function readProduced(
   ).not.toBeNull();
   const outId = idMatch![1]!;
 
-  const urlMatch = cardText.match(/url=(\/attachments\/[^\s"'<>]+)/);
+  // 分发 URL 可带可不带 `/api` 前缀(端点挂载于 `/api`;子进程 store 的 displayUrl 含前缀,
+  // 而 probeRaw 亦对两种形态归一)。精确匹配到 sig 的十六进制串末尾 —— `card.textContent()`
+  // 把 URL 与紧随其后的「详情」等 UI 文本无分隔地拼接,宽松字符类会把非 URL 文本一并吞入
+  // 破坏 sig,故按 `att_id/raw?exp=<digits>&sig=<hex>` 的精确形态收口。
+  const urlMatch = cardText.match(
+    /url=((?:\/api)?\/attachments\/att_[A-Za-z0-9_-]+\/raw\?exp=\d+&sig=[0-9a-f]+)/,
+  );
   expect(
     urlMatch,
     `tool card should surface a /raw display url: ${cardText}`,

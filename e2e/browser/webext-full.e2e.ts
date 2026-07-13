@@ -108,8 +108,9 @@ test("webext slots: Tier5 声明式空态配置(config.empty)驱动标题/副标
 
 test("regression: 无 empty 配置的 source 使用宿主默认标题", async ({ page }) => {
   await selectSource(page, "./examples/hello-agent");
+  // 宿主默认空态标题取 i18n 当前语言(默认 zh);未声明 empty 的 source 回落到此默认。
   await expect(
-    page.getByRole("heading", { name: "What can I help with?" }),
+    page.getByRole("heading", { name: "有什么可以帮你的?" }),
   ).toBeVisible();
 });
 
