@@ -84,6 +84,7 @@ import {
   PiCompletionPopover,
   PiMentionPreviews,
   removeAttachmentMention,
+  useCatalogMaterialize,
   type MentionPreview,
 } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
@@ -524,23 +525,72 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+  // agent-attachment-catalog:换写状态机的 getValue 读最新 input(避免 onAccept 闭包捕获旧值,
+  // 物化是异步的,完成时用户可能已继续输入)。
+  const inputValueRef = React.useRef(input);
+  inputValueRef.current = input;
 
   // attachment-mention-preview:选中 `@` 附件候选时捕获其预览(id → name/previewUrl),
   // 供输入区 PiMentionPreviews 渲染缩略图。候选自带 previewUrl(见 pi-client getCompletion)。
   const [mentionPreviews, setMentionPreviews] = React.useState<
     ReadonlyMap<string, MentionPreview>
   >(new Map());
-  const onCompletionAccept = React.useCallback((item: CompletionItem): void => {
-    if (item.kind !== "attachment") return;
-    setMentionPreviews((prev) => {
-      const next = new Map(prev);
-      next.set(item.id, {
-        name: item.label,
-        ...(item.previewUrl !== undefined ? { previewUrl: item.previewUrl } : {}),
+
+  // agent-attachment-catalog:accept 异步换写状态机的失败反馈(撤 token 后的瞬态提示,
+  // queueNotice 同 UX 模式,自动消隐)。
+  const [catalogNotice, setCatalogNotice] = React.useState<string | undefined>(
+    undefined,
+  );
+  React.useEffect(() => {
+    if (catalogNotice === undefined) return;
+    const timer = setTimeout(() => setCatalogNotice(undefined), 4000);
+    return () => clearTimeout(timer);
+  }, [catalogNotice]);
+  const catalogMaterialize = useCatalogMaterialize({
+    ...(client !== undefined ? { client } : {}),
+    ...(sessionId !== undefined ? { sessionId } : {}),
+    getValue: () => inputValueRef.current,
+    onChange: setInput,
+    onMaterialized: (attachmentId, attachment, displayUrl) => {
+      setMentionPreviews((prev) => {
+        const next = new Map(prev);
+        next.set(attachmentId, { name: attachment.name, previewUrl: displayUrl });
+        return next;
       });
-      return next;
+    },
+    onError: () => setCatalogNotice(t("chat.catalog.materializeFailed")),
+  });
+
+  // agent-attachment-catalog:`control:"attachment"` 事件(agent 主动 publish)→ 递增刷新信号,
+  // 传给 PiCompletionPopover 强制重查当前 token(浮层开启时立即感知新条目,Req 4.2/4.3)。
+  // 非粘性:仅当次订阅期间收到的事件才计数,不回放历史(打开会话时本就全量枚举)。
+  const [attachmentRefreshSignal, setAttachmentRefreshSignal] =
+    React.useState<number>(0);
+  React.useEffect(() => {
+    if (connection === undefined) return;
+    return connection.controlStore.onAttachmentEvent(() => {
+      setAttachmentRefreshSignal((v) => v + 1);
     });
-  }, []);
+  }, [connection]);
+
+  const onCompletionAccept = React.useCallback(
+    (item: CompletionItem): void => {
+      if (item.kind === "catalog") {
+        catalogMaterialize.materialize(item);
+        return;
+      }
+      if (item.kind !== "attachment") return;
+      setMentionPreviews((prev) => {
+        const next = new Map(prev);
+        next.set(item.id, {
+          name: item.label,
+          ...(item.previewUrl !== undefined ? { previewUrl: item.previewUrl } : {}),
+        });
+        return next;
+      });
+    },
+    [catalogMaterialize],
+  );
   const onRemoveMention = React.useCallback((id: string): void => {
     setInput((v) => removeAttachmentMention(v, id));
   }, []);
@@ -1364,6 +1414,8 @@ export function PiChat({
           onCaptureChange={setCommandCapturing}
           // agent-slash-completion:"/" 归 PiCommandPalette 单浮层,避免双浮层冲突。
           excludeTriggers={SLASH_EXCLUDED_TRIGGERS}
+          // agent-attachment-catalog:agent 主动推送后强制重查当前 token(Req 4.2/4.3)。
+          refreshSignal={attachmentRefreshSignal}
           onAccept={onCompletionAccept}
         />
       ) : null}
@@ -1402,6 +1454,16 @@ export function PiChat({
           className="mb-1 rounded-lg bg-[hsl(var(--muted))] px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]"
         >
           {queueNotice}
+        </div>
+      ) : null}
+      {/* agent-attachment-catalog:accept 异步换写失败的瞬态提示(撤 token 后,queueNotice 同 UX)。 */}
+      {catalogNotice !== undefined ? (
+        <div
+          data-pi-catalog-notice
+          role="status"
+          className="mb-1 rounded-lg bg-[hsl(var(--destructive))]/10 px-3 py-1.5 text-xs text-[hsl(var(--destructive))]"
+        >
+          {catalogNotice}
         </div>
       ) : null}
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}

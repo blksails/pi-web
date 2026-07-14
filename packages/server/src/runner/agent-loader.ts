@@ -16,6 +16,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  AgentAttachmentCatalogDecl,
   AgentContext,
   AgentDefinition,
   AgentRouteHandler,
@@ -55,6 +56,21 @@ export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory & {
    * (Req 1.1)。shape (c) 自建 runtime factory 无定义对象,不附。
    */
   routes?: readonly NormalizedAgentRouteDecl[];
+  /**
+   * pi-web: agent 声明的附件写目标 profile 名(`AgentDefinition.attachmentProfile`,
+   * spec agent-attachment-profile),经装配期**形状**校验(非空、与后端名同规字符格式)后
+   * 附加;白名单校验(对照宿主拓扑)由 runner 在装配期另行执行,本字段仅形状合法性保证
+   * (Req 1.1/1.3)。无声明时不附。shape (c) 自建 runtime factory 无定义对象,不附。
+   */
+  attachmentProfile?: string;
+  /**
+   * pi-web: agent 声明的动态附件目录(`AgentDefinition.attachmentCatalog`,
+   * spec agent-attachment-catalog),经装配期**形状**校验(list/resolve 均为函数)后
+   * 附加;未声明返回 `undefined`,与现状逐字段一致(Req 1.1)。handler 只存活于子进程,
+   * 下游 catalog 桥(runner)消费,装配期声明帧只取 `available:true` 投影。
+   * shape (c) 自建 runtime factory 无定义对象,不附。
+   */
+  attachmentCatalog?: AgentAttachmentCatalogDecl;
 };
 
 /**
@@ -178,10 +194,72 @@ function normalizeAgentRoutes(
 }
 
 /**
+ * 权威校验并归一化 `AgentDefinition.attachmentProfile`(spec agent-attachment-profile,
+ * Req 1.1/1.3)——**形状**校验:非空字符串、与 route/后端名同规字符格式
+ * ({@link ROUTE_NAME_PATTERN})。白名单(是否命中宿主拓扑)不在此校验,由 runner 在装配期
+ * 另行对照 `parseBackendsEnv` 执行(loader 阶段尚不便读取拓扑 env 的语义权威,归属见
+ * design.md §runner)。
+ *
+ * 非法形状抛 {@link InvalidAgentDefinitionError};未声明返回 `undefined`。
+ */
+function normalizeAttachmentProfile(
+  attachmentProfile: AgentDefinition["attachmentProfile"],
+  agentPath: string,
+): string | undefined {
+  if (attachmentProfile === undefined) return undefined;
+  if (
+    typeof attachmentProfile !== "string" ||
+    !ROUTE_NAME_PATTERN.test(attachmentProfile)
+  ) {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid attachmentProfile declaration: must be a non-empty string matching ^[a-z0-9][a-z0-9-]*$ (got ${JSON.stringify(attachmentProfile)})`,
+    );
+  }
+  return attachmentProfile;
+}
+
+/**
+ * 权威校验 `AgentDefinition.attachmentCatalog`(spec agent-attachment-catalog,Req 1.1/1.2)——
+ * **形状**校验:声明存在时 `list`/`resolve` 均必须为函数。白名单/子进程侧行为不在此校验。
+ *
+ * 非法形状抛 {@link InvalidAgentDefinitionError};未声明返回 `undefined`。
+ */
+function normalizeAttachmentCatalog(
+  attachmentCatalog: AgentDefinition["attachmentCatalog"],
+  agentPath: string,
+): AgentAttachmentCatalogDecl | undefined {
+  if (attachmentCatalog === undefined) return undefined;
+  if (typeof attachmentCatalog !== "object" || attachmentCatalog === null) {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid attachmentCatalog declaration: must be an object with "list" and "resolve" handlers (got ${
+        attachmentCatalog === null ? "null" : typeof attachmentCatalog
+      })`,
+    );
+  }
+  const { list, resolve } = attachmentCatalog;
+  if (typeof list !== "function") {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid attachmentCatalog declaration: "list" must be a function (got ${typeof list})`,
+    );
+  }
+  if (typeof resolve !== "function") {
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `invalid attachmentCatalog declaration: "resolve" must be a function (got ${typeof resolve})`,
+    );
+  }
+  return { list, resolve };
+}
+
+/**
  * Map a definition (shapes a/b) to a runtime factory and attach the
- * normalized routes when — and only when — the definition declares any
- * (no declaration → the factory is field-by-field identical to the status
- * quo, Req 1.1). Invalid declarations throw before the factory is built.
+ * normalized routes / attachment profile / attachment catalog when — and
+ * only when — the definition declares them (no declaration → the factory is
+ * field-by-field identical to the status quo, Req 1.1). Invalid declarations
+ * throw before the factory is built.
  */
 function buildFactoryWithRoutes(
   def: AgentDefinition,
@@ -190,6 +268,14 @@ function buildFactoryWithRoutes(
   systemResources: SystemResourceOverrides,
 ): NormalizedAgentRuntimeFactory {
   const routes = normalizeAgentRoutes(def.routes, agentPath);
+  const attachmentProfile = normalizeAttachmentProfile(
+    def.attachmentProfile,
+    agentPath,
+  );
+  const attachmentCatalog = normalizeAttachmentCatalog(
+    def.attachmentCatalog,
+    agentPath,
+  );
   const factory: NormalizedAgentRuntimeFactory = buildRuntimeFactory(
     def,
     trust,
@@ -197,6 +283,12 @@ function buildFactoryWithRoutes(
   );
   if (routes.length > 0) {
     factory.routes = routes;
+  }
+  if (attachmentProfile !== undefined) {
+    factory.attachmentProfile = attachmentProfile;
+  }
+  if (attachmentCatalog !== undefined) {
+    factory.attachmentCatalog = attachmentCatalog;
   }
   return factory;
 }

@@ -21,20 +21,26 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "./agent-definition.js";
-import { loadAgentDefinition } from "./agent-loader.js";
+import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
+import {
+  emitAttachmentProfile,
+  isAttachmentProfileDisabled,
+} from "./attachment-profile-wiring.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
 import {
   createSessionEntryStore,
   mirrorSessionManagerToStore,
   sessionStoreConfigFromEnv,
 } from "../session-store/index.js";
+import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "../attachment/backends-config.js";
 import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
 import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
+import { wireAttachmentCatalogBridge } from "./attachment-catalog-wiring.js";
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
 // 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
@@ -193,6 +199,45 @@ export function deriveAgentNamespace(agentPath: string): string {
 }
 
 /**
+ * 装配期白名单校验(spec agent-attachment-profile,任务 3.1;Req 2.1/2.2/5.1)。
+ *
+ * 权威在子进程:definition(`factory.attachmentProfile`)与拓扑 env 都在子进程手里。
+ * 校验顺序(design.md §行为规约):
+ *  1. 关断(`PI_WEB_AGENT_ATTACHMENT_PROFILE_DISABLED === "1"`)生效 → 视同未声明,直接放行
+ *     (不校验、后续 wiring 也不覆盖写路由/不发帧);
+ *  2. 未声明 `attachmentProfile` → 放行(existing agents 零行为变化,Req 1.2);
+ *  3. 声明存在且未关断 → 对照 `parseBackendsEnv(env)` 的具名后端集合校验:未命中(**含宿主
+ *     未声明任何拓扑,即 `parseBackendsEnv` 返回 `undefined` 的情形**)→ 抛
+ *     {@link InvalidAgentDefinitionError}(message 含该 profile 名与已注册名字集),经
+ *     `startRunner` 冒泡 → 进程 ready 前退出(exit-before-ready 失败链,复用既有机制,不新增
+ *     握手语义)。
+ *
+ * 导出为独立纯函数(签名仅吃 `profile`/`env`/`agentPath`)以便直接单测,不需要拉起完整
+ * `startRunner`/子进程(与 `agent-loader-routes.test.ts` 的隔离粒度一致)。
+ */
+export function validateAttachmentProfileWhitelist(
+  profile: string | undefined,
+  env: NodeJS.ProcessEnv,
+  agentPath: string,
+): void {
+  if (isAttachmentProfileDisabled(env)) return; // 关断优先于一切(Req 5.1)。
+  if (profile === undefined) return; // 未声明 → 现状零行为变化(Req 1.2)。
+
+  const topology = parseBackendsEnv(env[ATTACHMENT_BACKENDS_ENV]);
+  const known = topology?.backends.map((b) => b.name) ?? [];
+  if (!known.includes(profile)) {
+    const registered =
+      known.length > 0
+        ? known.join(", ")
+        : "(no PI_WEB_ATTACHMENT_BACKENDS topology configured on this host)";
+    throw new InvalidAgentDefinitionError(
+      agentPath,
+      `attachmentProfile "${profile}" is not among the host's registered backend names: ${registered}`,
+    );
+  }
+}
+
+/**
  * Build the runtime and enter RPC mode. Returns the (never-resolving) promise
  * from `runRpcMode`. Separated from {@link main} for testability.
  */
@@ -248,6 +293,17 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     ...(args.noSkills !== undefined ? { noSkills: args.noSkills } : {}),
     ...(args.noExtensions !== undefined ? { noExtensions: args.noExtensions } : {}),
   });
+
+  // agent-attachment-profile:装配期白名单校验(Req 2.1/2.2/5.1)。权威在子进程——definition
+  // 与拓扑 env 都在这里。未命中(含宿主未声明任何拓扑)抛 InvalidAgentDefinitionError,冒泡到
+  // main() 的 catch → 非零 exitCode → 进程在 ready 前退出,复用既有 exit-before-ready 失败链
+  // (不新增握手语义)。关断优先于校验(disabled → 视同未声明,不抛)。
+  const attachmentProfileDisabled = isAttachmentProfileDisabled(process.env);
+  validateAttachmentProfileWhitelist(
+    factory.attachmentProfile,
+    process.env,
+    args.agent,
+  );
 
   // open-or-create by id(对齐 pi CLI main.js:255-261):给定 --session-id 时,若该 id 的
   // 会话文件已存在则 open 加载历史(恢复),否则以该 id 新建——使持久化文件 id 与主进程
@@ -313,9 +369,15 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // 执行前 hook、把 base64 剥离闸门接到结果出口 hook、把 tool 接入上下文经 globalThis seam
   // 透给运行在本子进程的 customTools;store env 缺失时优雅降级(闸门 fail-closed / ctx
   // available:false),不崩溃。env 由 attachment-store 经 spawn env 下发(DIR + SECRET)。
+  // writeProfile:白名单校验已通过(或关断/未声明为 undefined)的 profile 名,静态覆盖写路由
+  // (agent-attachment-profile spec,Req 3.2)。
+  const effectiveWriteProfile = attachmentProfileDisabled
+    ? undefined
+    : factory.attachmentProfile;
   const attachmentWiring = wireAttachmentBridge(runtime, {
     env: process.env,
     sessionId: runtime.session.sessionId,
+    writeProfile: effectiveWriteProfile,
   });
   bootLog.debug("attachment wiring", { available: attachmentWiring.available });
 
@@ -364,9 +426,24 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     routes: factory.routes,
   });
 
+  // agent-attachment-catalog 分发桥:装配期声明存在则经 stdout 发一条 agent_attachment_catalog
+  // 声明帧,并在 runRpcMode 之前给 stdin 挂第三个读取器,只消费 piweb_attachment_catalog_request
+  // 请求帧 → list 派发到 agent handler / materialize 走幂等物化通路(经 attachmentWiring.store
+  // 落库,继承拓扑/profile 写路由)→ fd1 直写结果帧。无声明零帧零读取器(存量 source 零行为变化)。
+  // 装配序:agent-routes 之后、runRpcMode 之前。优雅降级(内部吞错),不阻断会话启动。
+  const attachmentCatalogWiring = wireAttachmentCatalogBridge({
+    sessionId: runtime.session.sessionId,
+    catalog: factory.attachmentCatalog,
+    store: attachmentWiring.store,
+  });
+
   // agent-slash-completion:把 agent 声明的静态 slash 补全候选经 stdout 帧推给 server
   // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
   emitSlashCompletions(factory);
+
+  // agent-attachment-profile:装配期单帧发射(slash_completions 同族),关断或未声明 → 零帧
+  // (Req 2.3/5.1)。已通过白名单校验(disabled 时视同未声明,attachmentProfileDisabled 门控)。
+  emitAttachmentProfile(factory, attachmentProfileDisabled);
 
   bootLog.info("entering rpc mode");
 
@@ -406,6 +483,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       process.stderr.write(
         `runner: agent-routes bridge session cleanup error: ${String(err)}\n`,
+      );
+    }
+    try {
+      attachmentCatalogWiring.cleanup();
+    } catch (err) {
+      process.stderr.write(
+        `runner: attachment-catalog bridge session cleanup error: ${String(err)}\n`,
       );
     }
   };

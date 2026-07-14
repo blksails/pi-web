@@ -45,6 +45,11 @@ const FILE_FIELD = "file";
 export interface UploadHandlerOptions {
   /** 上传字节上限;超限以 413 拒绝。默认 {@link DEFAULT_MAX_UPLOAD_BYTES}。 */
   readonly maxBytes?: number;
+  /**
+   * 按会话 id 解析写目标后端名(`agent-attachment-profile` spec,Req 3.1)。查无会话/无 profile
+   * → 返回 `undefined`(回落宿主默认写路由,不抛)。缺省(未注入)= 现状,恒不解析。
+   */
+  readonly resolveWriteBackend?: (sessionId: string) => string | undefined;
 }
 
 function tooLarge(maxBytes: number): Response {
@@ -116,8 +121,11 @@ export function makeUploadAttachmentHandler(
       part.type.length > 0 ? part.type : "application/octet-stream";
 
     // 4) 落库:记 origin=upload + 会话属主;put 内铸造公开 id、先落 blob 再写描述符。
+    // writeBackend(agent-attachment-profile spec,Req 3.1):注入的 resolver 按 sessionId 解析
+    // 该会话 agent 声明的写目标 profile;未注入/查无 → undefined,回落宿主默认写路由。
     try {
       const bytes = new Uint8Array(await part.arrayBuffer());
+      const writeBackend = options.resolveWriteBackend?.(sessionId);
       const attachment = await store.put({
         bytes,
         name,
@@ -125,6 +133,7 @@ export function makeUploadAttachmentHandler(
         size: bytes.byteLength,
         sessionId,
         origin: "upload",
+        writeBackend,
       });
       const displayUrl = await store.presignUrl(attachment.id);
       return jsonResponse(200, { attachment, displayUrl });
@@ -242,12 +251,13 @@ export const UPLOAD_ATTACHMENT_ROUTE = "/sessions/:id/attachments";
  */
 export function createAttachmentRoutes(
   store: AttachmentStore,
+  options: UploadHandlerOptions = {},
 ): InjectedRoute[] {
   return [
     {
       method: "POST",
       path: UPLOAD_ATTACHMENT_ROUTE,
-      handler: makeUploadAttachmentHandler(store),
+      handler: makeUploadAttachmentHandler(store, options),
     },
     {
       method: "GET",

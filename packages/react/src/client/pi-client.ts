@@ -42,6 +42,7 @@ import type {
   StateSetRequest,
   StateSetResponse,
   BashResult,
+  Attachment,
 } from "@blksails/pi-web-protocol";
 import {
   GetAvailableModelsResponseSchema,
@@ -175,6 +176,17 @@ export interface PiClient {
     trigger: string,
     query: string,
   ): Promise<CompletionResponse>;
+
+  /**
+   * POST /sessions/:id/attachment-catalog/:entryId/materialize —— 惰性物化一个 catalog 条目
+   * (spec agent-attachment-catalog,Req 3.2)。成功回落库描述符 + 展示 URL(displayUrl 同附件
+   * 展示 URL 策略,已前缀 baseUrl);失败(404/502/504)经 PiHttpError 向上抛,调用方
+   * (accept 状态机)据此撤 token + toast。
+   */
+  materializeCatalogEntry(
+    id: string,
+    entryId: string,
+  ): Promise<{ attachmentId: string; attachment: Attachment; displayUrl: string }>;
 
   /**
    * GET /sessions/:id/models —— 拉取可用模型列表(对齐 RpcCommand get_available_models)。
@@ -337,6 +349,20 @@ export function createPiClient(
           : it,
       );
       return { ...res, items };
+    },
+
+    materializeCatalogEntry: async (id, entryId) => {
+      const res = await post<{
+        attachmentId: string;
+        attachment: Attachment;
+        displayUrl: string;
+      }>(`/sessions/${enc(id)}/attachment-catalog/${enc(entryId)}/materialize`);
+      // 与 getCompletion 的 previewUrl 同策略:displayUrl 为根相对 URL,前缀 baseUrl 使可达。
+      const needsPrefix =
+        res.displayUrl.startsWith("/") &&
+        !/^https?:\/\//i.test(res.displayUrl) &&
+        !(baseUrl !== "" && (res.displayUrl === baseUrl || res.displayUrl.startsWith(`${baseUrl}/`)));
+      return needsPrefix ? { ...res, displayUrl: joinUrl(baseUrl, res.displayUrl) } : res;
     },
 
     getAvailableModels: async (id) =>

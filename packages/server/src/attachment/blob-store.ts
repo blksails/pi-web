@@ -27,12 +27,39 @@ export interface BlobMeta {
  * S3 风格对象存储端口(后端无关)。仅承担字节存取;`key` 唯一性由门面保证
  * (本切片 `key` = 公开 id)。
  */
+/**
+ * `put` 写入回执:组合后端(union)据此报告实际承载字节的具名后端(`attachment-backend-pluggable`
+ * spec 引入);单后端实现(如 `LocalFsBlobBackend`)返回空回执 `{}`,调用方零语义变化。
+ */
+export interface PutReceipt {
+  readonly backendName?: string;
+}
+
+/**
+ * `put` 的 per-call 写目标覆盖(`agent-attachment-profile` spec,Req 3.1/3.3)。仅
+ * {@link ../union-blob-store.js!UnionBlobStore} 消费(优先于其 `writePolicy`);单后端实现
+ * (`LocalFsBlobBackend`/`S3BlobBackend`)签名兼容但忽略——不传等价现状,零行为变化。
+ */
+export interface PutOptions {
+  /** 显式指定的具名后端(优先于 union 的 `writePolicy`);未注册名字 → union 既有 throw 语义。 */
+  readonly writeBackend?: string;
+}
+
 export interface BlobStore {
   /**
    * 写入字节(本切片由调用方传入 `key` = 公开 id)。
    * `body` 支持 `Uint8Array` 或可读流以便大文件流式落盘,避免全量入内存。
+   * 返回 {@link PutReceipt}:单后端实现返回 `{}`;组合后端(union)报告实际选中的后端名,
+   * 供门面把绑定固化进描述符(`attachment-backend-pluggable` spec)。
+   * `opts.writeBackend` 为 per-call 写目标覆盖(`agent-attachment-profile` spec);缺省走
+   * 各实现既有写路由,单后端实现忽略该参数。
    */
-  put(key: string, body: Uint8Array | NodeJS.ReadableStream, meta: BlobMeta): Promise<void>;
+  put(
+    key: string,
+    body: Uint8Array | NodeJS.ReadableStream,
+    meta: BlobMeta,
+    opts?: PutOptions,
+  ): Promise<PutReceipt>;
   /** 读取为可读流 + 元信息;不存在抛 {@link BlobNotFoundError}(Req 1.4/1.5/1.6)。 */
   getReadStream(key: string): Promise<{ stream: NodeJS.ReadableStream; meta: BlobMeta }>;
   /** 查询元信息;不存在抛 {@link BlobNotFoundError}(Req 1.5)。 */

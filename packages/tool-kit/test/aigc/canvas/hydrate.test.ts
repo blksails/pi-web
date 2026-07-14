@@ -46,6 +46,9 @@ function fakeAttachments(cfg: FakeCtxConfig): AttachmentToolContext {
     async putOutput() {
       throw new Error("not used");
     },
+    async publish() {
+      throw new Error("not used");
+    },
     async listBySession() {
       if (cfg.listThrows) throw new Error("enumeration failed");
       return cfg.descriptors;

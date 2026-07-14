@@ -63,6 +63,9 @@ function makeCtx(): {
         mimeType: input.mimeType,
       };
     },
+    async publish() {
+      throw new Error("not used");
+    },
   };
 
   return { ctx, putOutputCalls };
@@ -159,6 +162,9 @@ describe("persistPicked — image-set", () => {
         callCount++;
         if (callCount >= 1) throw new Error("store failure");
         return { attachmentId: "att_x", displayUrl: "u", name: "n", mimeType: "image/png" };
+      },
+      async publish() {
+        throw new Error("not used");
       },
     };
 

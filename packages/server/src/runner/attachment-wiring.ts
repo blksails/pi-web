@@ -32,7 +32,9 @@
  * 覆盖:先保存既有 hook,装入的新 hook 先跑 attachment 闸门,再委托既有 hook(before:闸门 block
  * 优先、否则委托;after:既有 hook 先改写、再叠加 base64 剥离),保留扩展链行为。
  */
+import { writeSync } from "node:fs";
 import type { AgentSessionRuntime } from "@earendil-works/pi-coding-agent";
+import type { Attachment, AttachmentEventFrame } from "@blksails/pi-web-protocol";
 import {
   createChildAttachmentStore,
   type ChildAttachmentStore,
@@ -110,6 +112,17 @@ export interface WireAttachmentBridgeInput {
   readonly globalScope?: Record<string, unknown>;
   /** 可选:注入的临时文件登记器(默认新建),便于测试断言会话级回收。 */
   readonly tracker?: TempFileTracker;
+  /**
+   * agent 声明的附件写目标 profile 名(spec agent-attachment-profile,Req 3.2),已经 runner
+   * 白名单校验通过(或关断/未声明为 `undefined`)。原样透传给
+   * {@link createChildAttachmentStore} 静态覆盖多后端拓扑的写路由;未传 = 现状(宿主默认写路由)。
+   */
+  readonly writeProfile?: string;
+  /**
+   * 可选:`publish` 事件帧出口(默认直写 fd1,`writeSync(1, ...)`,绕 `runRpcMode` 的
+   * `takeOverStdout()` 劫持;agent-attachment-catalog spec,Req 4.1)。测试可注入捕获。
+   */
+  readonly publishEventWrite?: (line: string) => void;
 }
 
 /** {@link wireAttachmentBridge} 返回:接线产物 + 会话结束清理入口。 */
@@ -142,12 +155,28 @@ export function wireAttachmentBridge(
   const globalScope = input.globalScope ?? (globalThis as Record<string, unknown>);
   const tracker = input.tracker ?? createTempFileTracker();
 
-  // 1) 子进程 store 实例化(env 缺失 → undefined,优雅降级,Req 3.3/3.4)。
-  const store = createChildAttachmentStore(env);
+  // 1) 子进程 store 实例化(env 缺失 → undefined,优雅降级,Req 3.3/3.4)。writeProfile
+  //    原样透传(agent-attachment-profile spec),静态覆盖多后端拓扑的写路由。
+  const store = createChildAttachmentStore(env, { writeProfile: input.writeProfile });
 
   // 4) tool 接入上下文经 globalThis seam 透给运行在子进程、经 jiti 装载的示例工具
   //    (Implementation Notes ①:装载期闭包不可达)。store 缺失时 ctx.available=false。
-  const ctx = createAttachmentToolContext(store, sessionId);
+  // publish 事件出口:默认 fd1 直写(agent-attachment-catalog spec,Req 4.1);测试可注入捕获。
+  const writePublishEventLine: (s: string) => void =
+    input.publishEventWrite ??
+    ((s) => {
+      writeSync(1, s);
+    });
+  const ctx = createAttachmentToolContext(store, sessionId, {
+    emitEvent: (attachment: Attachment) => {
+      const frame: AttachmentEventFrame = {
+        type: "piweb_attachment_event",
+        event: "added",
+        attachment,
+      };
+      writePublishEventLine(JSON.stringify(frame) + "\n");
+    },
+  });
   globalScope[ATTACHMENT_TOOL_CONTEXT_KEY] = ctx;
 
   // session.agent 持有可组合的 hook 属性(narrowing:pi 内层类型不可达,以同形本地视图操作)。

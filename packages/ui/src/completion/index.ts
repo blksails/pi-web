@@ -38,3 +38,9 @@ export {
   useCaretAnchor,
   type UseCaretAnchorArgs,
 } from "./use-caret-anchor.js";
+export {
+  useCatalogMaterialize,
+  type CatalogMaterializeClient,
+  type UseCatalogMaterializeArgs,
+  type UseCatalogMaterializeResult,
+} from "./use-catalog-materialize.js";

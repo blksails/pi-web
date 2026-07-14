@@ -58,6 +58,7 @@ describe("BlobStore 端口可被实现(Req 1.1 五能力 / 1.8 异步 verb+noun)
       async put(key, body, meta) {
         const bytes = body instanceof Uint8Array ? body : new Uint8Array();
         blobs.set(key, { bytes, meta });
+        return {};
       },
       async getReadStream(key) {
         const found = blobs.get(key);

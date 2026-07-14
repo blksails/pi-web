@@ -45,6 +45,7 @@ import {
   defaultOnAudit,
   redactReason,
   attachmentStoreConfigFromEnv,
+  ATTACHMENT_PROFILE_DISABLED_ENV,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
@@ -234,9 +235,22 @@ function stubAgentPath(): string {
  * a store in the child nor do any cross-process resolve — that is owned by the
  * downstream `attachment-tool-bridge` spec, which must not edit this passthrough
  * (it only verifies the child received both vars). The secret is never logged.
+ *
+ * `passthroughEnv` (attachment-backend-pluggable spec, Req 6.1) is merged in last:
+ * when a multi-backend topology (`PI_WEB_ATTACHMENT_BACKENDS`) is configured, the
+ * config factory computes the topology raw text plus every referenced credential
+ * env var it references, so the child can rebuild the SAME union backend. Empty
+ * object when no topology is configured — zero behavior change for single-backend
+ * deployments (still just DIR + SECRET + URL_BASE above).
  */
 function attachmentSpawnEnv(
   attachment: { dir: string; secret: string },
+  passthroughEnv: Record<string, string> = {},
+  // agent-attachment-profile 关断开关(Req 5.1/5.2):调用方传入**装配期捕获一次**的值
+  // (而非在此处现读 `process.env`),使主/子两侧关断读取收敛到同一次判定、同一来源
+  // (research.md「关断的读取位置」决策;避免请求处理期 env 漂移导致主/子不同步)。
+  // 未设置时不注入该键(子进程按未关断默认)。
+  attachmentProfileDisabledValue?: string,
 ): Record<string, string> {
   return {
     PI_WEB_ATTACHMENT_DIR: attachment.dir,
@@ -244,6 +258,10 @@ function attachmentSpawnEnv(
     // 分发 URL base path:子进程产出的 tool-output 签名 URL 需带 app 挂载前缀 `/api`
     // 才直接可达(与主进程一致;否则前端取该签名 URL 会 404)。
     PI_WEB_ATTACHMENT_URL_BASE: "/api",
+    ...(attachmentProfileDisabledValue !== undefined
+      ? { [ATTACHMENT_PROFILE_DISABLED_ENV]: attachmentProfileDisabledValue }
+      : {}),
+    ...passthroughEnv,
   };
 }
 
@@ -272,6 +290,8 @@ function stubSpawnSpec(
   opts: CreateChannelOpts,
   sessionCwd: string,
   attachment: { dir: string; secret: string },
+  attachmentPassthroughEnv: Record<string, string> = {},
+  attachmentProfileDisabledValue?: string,
 ): SpawnSpec {
   // Run with cwd = @blksails/pi-web-server package dir so `--import jiti/register`
   // resolves jiti from the server package (pnpm does not hoist it to the app
@@ -287,7 +307,11 @@ function stubSpawnSpec(
       ...config.providerKeys,
       // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
       // 配置,保证主/子进程一致;最后写入,防止被 process.env 既有同名变量遮蔽。
-      ...attachmentSpawnEnv(attachment),
+      ...attachmentSpawnEnv(
+        attachment,
+        attachmentPassthroughEnv,
+        attachmentProfileDisabledValue,
+      ),
       PI_WEB_STUB_SESSION_ID: opts.sessionId,
       PI_WEB_STUB_CWD: sessionCwd,
       ...(opts.source !== undefined ? { PI_WEB_STUB_SOURCE: opts.source } : {}),
@@ -365,9 +389,15 @@ function buildSingleton(): HandlerSingleton {
     store: attachmentStore,
     dir: attachmentDir,
     secret: attachmentSecret,
+    // 多后端拓扑透传清单(attachment-backend-pluggable spec,Req 6.1):未配置拓扑时为空对象,
+    // 子进程 spawn env 仅下发既有 DIR/SECRET/URL_BASE,零行为变化。
+    passthroughEnv: attachmentPassthroughEnv,
     // 主进程 store 也用 `/api` 前缀(上传端点返回的 displayUrl 与 tool-output 一致可达)。
   } = attachmentStoreConfigFromEnv(process.env, { urlBasePath: "/api" });
   const attachmentEnv = { dir: attachmentDir, secret: attachmentSecret };
+  // agent-attachment-profile 关断开关(Req 5.1/5.2):装配期捕获一次(与 dir/secret 同一时机),
+  // 而非在每次 spawn 时现读 process.env——避免请求处理期 env 被改动造成主/子不同步。
+  const attachmentProfileDisabledValue = process.env[ATTACHMENT_PROFILE_DISABLED_ENV];
 
   const createChannel = (
     resolved: ResolvedSource,
@@ -377,7 +407,14 @@ function buildSingleton(): HandlerSingleton {
       // Deterministic offline agent: reuse the real channel over the stub spec,
       // threading session identity + metadata via env (resolved cwd kept aligned).
       return new PiRpcProcess(
-        stubSpawnSpec(config, opts, resolved.spawnSpec.cwd, attachmentEnv),
+        stubSpawnSpec(
+          config,
+          opts,
+          resolved.spawnSpec.cwd,
+          attachmentEnv,
+          attachmentPassthroughEnv,
+          attachmentProfileDisabledValue,
+        ),
       );
     }
     // Real mode: append session-alignment args by source mode. Both modes take
@@ -406,7 +443,11 @@ function buildSingleton(): HandlerSingleton {
         ...(autoTitleEntry !== undefined ? { PI_WEB_AUTO_TITLE_ENTRY: autoTitleEntry } : {}),
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
-        ...attachmentSpawnEnv(attachmentEnv),
+        ...attachmentSpawnEnv(
+          attachmentEnv,
+          attachmentPassthroughEnv,
+          attachmentProfileDisabledValue,
+        ),
       },
     };
     return new PiRpcProcess(spec);
@@ -564,8 +605,12 @@ function buildSingleton(): HandlerSingleton {
       }),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
-      // 在 /api/** 下可达(Req 7.1)。
-      ...createAttachmentRoutes(attachmentStore),
+      // 在 /api/** 下可达(Req 7.1)。resolveWriteBackend(agent-attachment-profile spec,
+      // Req 3.1):经会话管理器的 SessionStore 查 PiSession 只读投影,取该会话 agent 声明的
+      // 写目标 profile 名;查无会话/无声明 → undefined,回落宿主默认写路由(不抛)。
+      ...createAttachmentRoutes(attachmentStore, {
+        resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
+      }),
       // bang shell 命令(spec bang-shell-command):POST /sessions/:id/bash。
       // 服务端权威门控——默认关闭(secure by default),仅 PI_WEB_BASH_ENABLED 显式开启;
       // 关闭时端点返回 404(任意 shell 执行属高危,远程/多用户环境必须默认关)。

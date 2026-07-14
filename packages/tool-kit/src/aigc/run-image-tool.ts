@@ -443,13 +443,25 @@ export async function runImageTool(
     return buildImageResult(assets, route.model);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    // 附件存储相关错误(`AttachmentCapabilityUnavailableError`/`RemoteAttachmentError`/
+    // `ToolOutputPutError`,均由 pi-web-server 定义、可 instanceof 识别)按 `name` 归类出可读文案,
+    // 区分「attachment 未注入」与「cloud 存储失败」两类原因(R7.2)。不新增跨包依赖(duck-typing;
+    // tool-kit 不依赖 pi-web-server,类型契约归其所有)——快速失败、不静默挂起(R7.1)。
+    const errName = err instanceof Error ? err.name : undefined;
+    const display =
+      errName === "AttachmentCapabilityUnavailableError"
+        ? "生成失败:附件能力不可用(attachment 上下文未注入)"
+        : errName === "RemoteAttachmentError" || errName === "ToolOutputPutError"
+          ? `生成失败:附件存储失败(${message})`
+          : `生成失败:${message}`;
     log.error("tool execute failed", {
       tool: toolName,
       model: route.model,
       error: message,
+      errorName: errName,
       ms: Date.now() - startedAt,
     });
-    return errResult(`生成失败:${message}`);
+    return errResult(display);
   } finally {
     // 生成结束(成功/失败/取消)清除全局渐进预览 seam(surface sink 据此清 livePreview)。
     emitLivePreview(null);

@@ -38,6 +38,7 @@ function makeControlStore() {
       return () => { capturedOnLogsFrame = undefined; };
     }),
     onUiRpcResponse: vi.fn(() => () => {}),
+    onAttachmentEvent: vi.fn(() => () => {}),
     subscribe: vi.fn(() => () => {}),
     getSnapshot: vi.fn(() => ({
       queue: { steering: [], followUp: [] },

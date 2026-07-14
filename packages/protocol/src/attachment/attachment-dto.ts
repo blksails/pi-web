@@ -29,6 +29,11 @@ export const AttachmentSchema = z.object({
   origin: AttachmentOriginSchema,
   sessionId: z.string(),
   createdAt: z.string().datetime(),
+  /**
+   * 字节所在具名后端的标识(`attachment-backend-pluggable` spec 引入,可选字段,minor bump)。
+   * 由写路径固化,此后不可变;缺省 = 存量对象/单后端部署,读路径按声明顺序探测(design.md §4.x)。
+   */
+  backend: z.string().optional(),
 });
 export type Attachment = z.infer<typeof AttachmentSchema>;
 

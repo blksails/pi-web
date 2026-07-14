@@ -25,7 +25,7 @@ import type { Attachment, AttachmentOrigin } from "@blksails/pi-web-protocol";
 import { mintAttachmentId } from "./id.js";
 import type { BlobMeta, BlobStore } from "./blob-store.js";
 import type { LocalFsBlobBackend } from "./local-fs-backend.js";
-import type { AttachmentRegistry } from "./attachment-registry.js";
+import type { AttachmentRegistryPort } from "./attachment-registry.js";
 import type { UrlSigner } from "./url-signer.js";
 
 /**
@@ -43,6 +43,13 @@ export interface PutInput {
   readonly sessionId: string;
   /** 来源:`"upload"`(前端)或 `"tool-output"`(下游 bridge);store 不对取值设限。 */
   readonly origin: AttachmentOrigin;
+  /**
+   * per-call 写目标覆盖(`agent-attachment-profile` spec,Req 3.1):原样透传给
+   * `blob.put` 第 4 参(`PutOptions.writeBackend`)。单后端场景该参数被忽略;多后端拓扑下
+   * union 优先据此选定后端。描述符固化仍走既有回执链(`receipt.backendName`)不变——本字段
+   * 只影响**选哪个后端写**,不改变「写完后如何把选中结果记进描述符」的机制。
+   */
+  readonly writeBackend?: string;
 }
 
 /**
@@ -68,8 +75,8 @@ function hasDiskPath(backend: unknown): backend is DiskPathCapable {
 export interface AttachmentStoreDeps {
   /** 字节对象存储端口(本切片 = {@link LocalFsBlobBackend})。 */
   readonly blob: BlobStore;
-  /** 描述符元数据注册表。 */
-  readonly registry: AttachmentRegistry;
+  /** 描述符元数据注册表端口。 */
+  readonly registry: AttachmentRegistryPort;
   /** HMAC 签名器(`presignUrl`/`verifyUrl`)。 */
   readonly signer: UrlSigner;
   /**
@@ -87,7 +94,7 @@ export interface AttachmentStoreDeps {
  */
 export class AttachmentStore {
   private readonly blob: BlobStore;
-  private readonly registry: AttachmentRegistry;
+  private readonly registry: AttachmentRegistryPort;
   private readonly signer: UrlSigner;
   private readonly backend?: DiskPathCapable;
 
@@ -103,13 +110,21 @@ export class AttachmentStore {
    *
    * 不变式:**先落 blob 再写描述符**;描述符写失败时回滚已落 blob 并抛错,绝不返回半落库引用
    * (Req 单一身份 / 先落库后引用)。公开 id 仅在此铸造(Req 2.4)。
+   *
+   * 多后端拓扑下(`blob` = union 组合后端):`blob.put` 的回执报告实际选中的后端名,
+   * 门面把该名字条件展开进描述符 `backend` 字段并随描述符一并持久化(`attachment-backend-pluggable`
+   * spec,Req 3.1/3.2)。单后端场景回执为空,描述符形状与现状一致,零行为变化(Req 1.2)。
    */
   async put(input: PutInput): Promise<Attachment> {
     const id = mintAttachmentId();
     const meta: BlobMeta = { mimeType: input.mimeType, size: input.size };
 
-    // 1) 先落字节(key = 公开 id,本切片单一身份)。
-    await this.blob.put(id, input.bytes, meta);
+    // 1) 先落字节(key = 公开 id,本切片单一身份);回执报告实际承载的后端(多后端拓扑下)。
+    // writeBackend 原样透传(agent-attachment-profile spec);未传 = undefined,
+    // 单后端实现忽略、union 走既有 writePolicy——零行为变化(Req 1.2 结构性证明)。
+    const receipt = await this.blob.put(id, input.bytes, meta, {
+      writeBackend: input.writeBackend,
+    });
 
     // 2) 再写描述符;失败则回滚已落 blob,绝不暴露半落库引用。
     const descriptor: Attachment = {
@@ -120,11 +135,16 @@ export class AttachmentStore {
       origin: input.origin,
       sessionId: input.sessionId,
       createdAt: new Date().toISOString(),
+      ...(receipt.backendName !== undefined
+        ? { backend: receipt.backendName }
+        : {}),
     };
     try {
       await this.registry.save(descriptor);
     } catch (err) {
       // 回滚:删除已落 blob(delete 对不存在幂等);回滚失败不掩盖原始描述符写错误。
+      // 注:此刻描述符尚未写入,union 的 resolveBackendName(经 registry.get)查不到绑定,
+      // 天然落入「无绑定 → 全后端幂等删」分支,语义正确且门面无需感知选中的后端(Req 3.2)。
       try {
         await this.blob.delete(id);
       } catch {

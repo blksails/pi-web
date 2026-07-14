@@ -101,6 +101,96 @@ describe("createChildAttachmentStore — 缺失目录约定降级(Req 3.4)", () 
     });
     expect(store).toBeUndefined();
   });
+
+  it("cloud-http 拓扑(sandbox-attachment-store spec Wave A'3)下发 BACKENDS → 可用 store", () => {
+    const topology = JSON.stringify({
+      backends: [
+        {
+          kind: "cloud-http",
+          name: "cloud",
+          endpoint: "https://cloud.internal/internal/attachments/blob",
+          tokenEnv: "PI_WEB_ATTACHMENT_TOKEN",
+        },
+      ],
+      write: "cloud",
+      registry: { kind: "cloud-http", backend: "cloud" },
+    });
+    const store = createChildAttachmentStore({
+      PI_WEB_ATTACHMENT_BACKENDS: topology,
+      PI_WEB_ATTACHMENT_TOKEN: "tok-value",
+      [ATTACHMENT_SECRET_ENV]: SECRET,
+    });
+    expect(store).toBeDefined();
+  });
+});
+
+describe("createChildAttachmentStore — writeProfile 静态绑定(agent-attachment-profile spec,Req 3.2)", () => {
+  it("覆盖生效:opts.writeProfile 覆盖拓扑声明的默认 write", async () => {
+    const topology = JSON.stringify({
+      backends: [
+        { kind: "local-fs", name: "primary", dir: root },
+        { kind: "local-fs", name: "secondary" },
+      ],
+      write: "primary",
+    });
+    const store = createChildAttachmentStore(
+      { PI_WEB_ATTACHMENT_BACKENDS: topology, [ATTACHMENT_SECRET_ENV]: SECRET },
+      { writeProfile: "secondary" },
+    );
+    expect(store).toBeDefined();
+    const att = await store!.put(basePut());
+    expect(att.backend).toBe("secondary");
+  });
+
+  it("失配:未声明的 writeProfile → 抛错(createChildAttachmentStore 透传 config 工厂的装配期错误)", () => {
+    const topology = JSON.stringify({
+      backends: [{ kind: "local-fs", name: "primary", dir: root }],
+      write: "primary",
+    });
+    expect(() =>
+      createChildAttachmentStore(
+        { PI_WEB_ATTACHMENT_BACKENDS: topology, [ATTACHMENT_SECRET_ENV]: SECRET },
+        { writeProfile: "ghost" },
+      ),
+    ).toThrow(/ghost/);
+  });
+
+  it("不传 opts(或未含 writeProfile)= 现状:走拓扑默认 write", async () => {
+    const topology = JSON.stringify({
+      backends: [{ kind: "local-fs", name: "primary", dir: root }],
+      write: "primary",
+    });
+    const store = createChildAttachmentStore({
+      PI_WEB_ATTACHMENT_BACKENDS: topology,
+      [ATTACHMENT_SECRET_ENV]: SECRET,
+    });
+    const att = await store!.put(basePut());
+    expect(att.backend).toBe("primary");
+  });
+});
+
+describe("createChildAttachmentStore — DIR 或 BACKENDS 任一下发即可用(attachment-backend-pluggable spec,Req 6.2/6.3)", () => {
+  it("仅下发 PI_WEB_ATTACHMENT_BACKENDS(不下发 DIR)→ 可用", async () => {
+    const topology = JSON.stringify({
+      backends: [{ kind: "local-fs", name: "local", dir: root }],
+      write: "local",
+    });
+    const store = createChildAttachmentStore({
+      PI_WEB_ATTACHMENT_BACKENDS: topology,
+      [ATTACHMENT_SECRET_ENV]: SECRET,
+    });
+    expect(store).toBeDefined();
+    const att = await store!.put(basePut());
+    expect(att.backend).toBe("local");
+  });
+
+  it("DIR 与 BACKENDS 均未下发(空字符串同视为缺失)→ undefined", () => {
+    const store = createChildAttachmentStore({
+      PI_WEB_ATTACHMENT_BACKENDS: "",
+      [ATTACHMENT_SECRET_ENV]: SECRET,
+    });
+    expect(store).toBeUndefined();
+  });
 });
 
 describe("createChildAttachmentStore — 双进程同后端一致性(Req 3.2/3.3/7.2)", () => {

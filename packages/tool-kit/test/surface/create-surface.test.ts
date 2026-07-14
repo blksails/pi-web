@@ -40,6 +40,9 @@ const UNAVAILABLE_ATT: AttachmentToolContext = {
   async putOutput() {
     throw new Error("unavailable");
   },
+  async publish() {
+    throw new Error("unavailable");
+  },
   async listBySession() {
     throw new Error("unavailable");
   },
