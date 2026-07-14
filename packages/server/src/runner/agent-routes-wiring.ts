@@ -15,16 +15,12 @@ import {
   AgentRouteRequestFrameSchema,
   type AgentRouteDeclDto,
   type AgentRouteRequestFrame,
-  type AgentRouteResultFrame,
   type AgentRoutesFrame,
 } from "@blksails/pi-web-protocol";
-import type {
-  FrameChannel,
-  HandlerCtx,
-  WritableLike,
-} from "./frame-channel/index.js";
+import type { FrameChannel, WritableLike } from "./frame-channel/index.js";
 import { emitAssemblyFrame } from "./frame-channel/index.js";
 import type { NormalizedAgentRouteDecl } from "./agent-loader.js";
+import { createRouteDispatcher } from "./route-dispatcher.js";
 
 export interface WireAgentRoutesBridgeInput {
   /** 当前会话 id(诊断维度)。 */
@@ -81,11 +77,6 @@ export function wireAgentRoutesBridge(
         }
       : undefined;
 
-  // 进程内 handler registry(name → 归一化声明;handler 只存活于此,不出进程)。
-  const registry = new Map<string, NormalizedAgentRouteDecl>(
-    routes.map((decl) => [decl.name, decl]),
-  );
-
   // 装配期声明帧(纯数据投影,单次发射)。失败记诊断不抛(不阻断会话启动)。
   try {
     const frame: AgentRoutesFrame = {
@@ -99,74 +90,15 @@ export function wireAgentRoutesBridge(
     );
   }
 
-  const emitResult = (ctx: HandlerCtx, result: AgentRouteResultFrame): void => {
-    let payload: AgentRouteResultFrame = result;
-    try {
-      JSON.stringify(result); // 序列化探针
-    } catch (err) {
-      // handler 返回值不可 JSON 序列化(如循环引用)→ 归一化为 handler_error 回包,
-      // 不悬挂主进程侧 pending(否则只能等 504)。
-      payload = {
-        type: "piweb_agent_route_result",
-        id: result.id,
-        ok: false,
-        error: {
-          code: "handler_error",
-          message: `route result is not JSON-serializable: ${String(err)}`,
-        },
-      };
-    }
-    ctx.send(payload);
-  };
-
-  // 处理一条请求帧:查 registry → invoke handler → 归一化结果回写。永不抛出。
-  const handleRequest = async (
-    frame: AgentRouteRequestFrame,
-    ctx: HandlerCtx,
-  ): Promise<void> => {
-    const entry = registry.get(frame.name);
-    if (entry === undefined) {
-      emitResult(ctx, {
-        type: "piweb_agent_route_result",
-        id: frame.id,
-        ok: false,
-        error: {
-          code: "route_not_registered",
-          message: `route not registered in this agent process: ${frame.name}`,
-        },
-      });
-      return;
-    }
-    try {
-      const value = await entry.handler({
-        name: frame.name,
-        method: frame.method,
-        query: frame.query,
-        ...(frame.body !== undefined ? { body: frame.body } : {}),
-      });
-      emitResult(ctx, {
-        type: "piweb_agent_route_result",
-        id: frame.id,
-        ok: true,
-        ...(value !== undefined ? { result: value } : {}),
-      });
-    } catch (err) {
-      emitResult(ctx, {
-        type: "piweb_agent_route_result",
-        id: frame.id,
-        ok: false,
-        error: {
-          code: "handler_error",
-          message: err instanceof Error ? err.message : String(err),
-        },
-      });
-    }
-  };
-
+  // 请求→结果的纯逻辑委托给独立派发器(SRP/DIP:不依赖通道,可独立单测);
+  // 本接线只负责把 `dispatch` 的结果经 `ctx.send` 回流。派发器永不 reject。
+  const dispatcher = createRouteDispatcher(routes);
   const unregister = channel.register(
     "piweb_agent_route_request",
     AgentRouteRequestFrameSchema,
-    (frame: AgentRouteRequestFrame, ctx) => handleRequest(frame, ctx),
+    async (frame: AgentRouteRequestFrame, ctx) => {
+      ctx.send(await dispatcher.dispatch(frame));
+    },
   );
 
   let cleanedUp = false;
