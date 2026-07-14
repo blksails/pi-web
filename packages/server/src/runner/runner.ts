@@ -36,6 +36,7 @@ import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
 import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
+import { openOrCreateSession } from "./open-or-create-session.js";
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
 // 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
@@ -250,26 +251,11 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     ...(args.noExtensions !== undefined ? { noExtensions: args.noExtensions } : {}),
   });
 
-  // open-or-create by id(对齐 pi CLI main.js:255-261):给定 --session-id 时,若该 id 的
-  // 会话文件已存在则 open 加载历史(恢复),否则以该 id 新建——使持久化文件 id 与主进程
-  // sessionId 对齐,支撑 URL 冷恢复。未给 id 则保持既有行为(随机新建)。
-  let sessionManager: SessionManager;
-  let isNewSession = true;
-  if (args.sessionId !== undefined) {
-    const existing = (await SessionManager.list(args.cwd)).find(
-      (s) => s.id === args.sessionId,
-    );
-    if (existing !== undefined) {
-      sessionManager = SessionManager.open(existing.path, undefined, args.cwd);
-      isNewSession = false;
-    } else {
-      sessionManager = SessionManager.create(args.cwd, undefined, {
-        id: args.sessionId,
-      });
-    }
-  } else {
-    sessionManager = SessionManager.create(args.cwd);
-  }
+  // 会话打开或新建(open-or-create by id);纯逻辑见 open-or-create-session。
+  const { sessionManager, isNewSession } = await openOrCreateSession(
+    args.cwd,
+    args.sessionId,
+  );
 
   // 可选:把会话镜像到配置的 SessionEntryStore(sqlite/postgres)。fs 由 pi 原生负责,
   // 不镜像(否则双写同一文件)。镜像是 best-effort 旁路,初始化失败不影响 agent。
