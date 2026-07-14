@@ -3,39 +3,28 @@
  * `wireSurfaceBridge`。
  *
  * `PiSession.uiRpc` 把 surface 命令作为 `{"type":"ui_rpc","request":{...}}` 行写入子进程 stdin。
- * 本桥向父子 IPC 帧通道注册 `ui_rpc` 帧:
+ * 本接线向父子 IPC 帧通道注册 `ui_rpc` 帧,只负责**路由门控与回包封装**:
  *
- *  1. **匹配 + 派发**:仅当 `point==="command"` && `action==="execute"` &&
- *     `SurfaceCommandPayloadSchema` 通过时消费;按 `payload.domain` 在进程内 surface 注册表 seam
- *     (`__piWebSurfaces__`,由 tool-kit `createSurface` 写入)查 dispatch。未注册 → `ok:false`
- *     `surface_not_registered`。**非 surface 命令**(host 命令有 name / 非 command point / 畸形 payload)
- *     直接返回不回包(=放行,交 pi / webext)。
- *  2. **回流**:经帧通道 `ctx.send` 写 `ui_rpc_response` 行(fd1)。server 的 `handleRawLine` 识别 →
- *     合成 `control:"ui-rpc"` 帧(按 correlationId 客户端配对)。
+ *  1. **门控**:仅当 `point==="command"` && `action==="execute"` &&
+ *     `SurfaceCommandPayloadSchema` 通过时消费;否则直接返回不回包(=放行,交 pi / webext)。
+ *  2. **派发**:命中后委托纯 `SurfaceDispatcher`(按 domain 查 seam 注册表 → dispatch → 归一化)。
+ *  3. **回流**:把结果封装为 `ui_rpc_response` 经 `ctx.send` 写回(fd1);server 的 `handleRawLine`
+ *     识别 → 合成 `control:"ui-rpc"` 帧(按 correlationId 客户端配对)。
  *
- * 上行 fd1 直写、单一 stdin 读取器、优雅降级由帧通道统一承担。无 surface 注册时惰性 no-op(Req 3.6)。
+ * 派发/查表/错误归一化的纯逻辑在 `surface-command-dispatcher`;上行 fd1、单一 stdin 读取器、
+ * 优雅降级由帧通道统一承担。无 surface 注册时惰性 no-op(Req 3.6)。
  */
 import {
   SurfaceCommandPayloadSchema,
   UiRpcRequestSchema,
-  type SurfaceCommandResult,
   type UiRpcRequest,
 } from "@blksails/pi-web-protocol";
-import type {
-  FrameChannel,
-  HandlerCtx,
-  SafeParser,
-  WritableLike,
-} from "./frame-channel/index.js";
+import type { FrameChannel, SafeParser, WritableLike } from "./frame-channel/index.js";
 import { SURFACE_REGISTRY_SEAM_KEY } from "./frame-channel/index.js";
+import { createSurfaceDispatcher } from "./surface-command-dispatcher.js";
 
 /** 约定 globalThis seam key(自 `frame-channel/seam-keys` 单一来源再导出,兼容既有引用)。 */
 export { SURFACE_REGISTRY_SEAM_KEY };
-
-/** 进程内注册表条目(与 tool-kit `SurfaceDispatch` 结构一致,duck-typed 读取)。 */
-interface SurfaceDispatchLike {
-  dispatch(action: string, args: unknown): Promise<SurfaceCommandResult>;
-}
 
 export interface WireSurfaceBridgeInput {
   /** 当前会话 id(诊断维度)。 */
@@ -57,26 +46,6 @@ export interface SurfaceBridgeWiring {
 interface UiRpcLine {
   readonly type: "ui_rpc";
   readonly request: UiRpcRequest;
-}
-
-/** 从 seam 查目标 surface 的 dispatch(duck-type:兼容 tool-kit SeamRegistry 的 `entries` Map)。 */
-function lookupSurface(
-  globalScope: Record<string, unknown>,
-  domain: string,
-): SurfaceDispatchLike | undefined {
-  const seam = globalScope[SURFACE_REGISTRY_SEAM_KEY];
-  if (typeof seam !== "object" || seam === null) return undefined;
-  const entries = (seam as { entries?: unknown }).entries;
-  if (!(entries instanceof Map)) return undefined;
-  const entry = entries.get(domain) as unknown;
-  if (
-    typeof entry === "object" &&
-    entry !== null &&
-    typeof (entry as { dispatch?: unknown }).dispatch === "function"
-  ) {
-    return entry as SurfaceDispatchLike;
-  }
-  return undefined;
 }
 
 /**
@@ -104,62 +73,26 @@ export function wireSurfaceBridge(
 ): SurfaceBridgeWiring {
   const globalScope =
     input.globalScope ?? (globalThis as unknown as Record<string, unknown>);
-
-  // 处理一条已确认为 surface 命令的请求:按 domain 派发 → 回流 ui_rpc_response。
-  const handleSurfaceCommand = async (
-    request: UiRpcRequest,
-    domain: string,
-    action: string,
-    args: unknown,
-    ctx: HandlerCtx,
-  ): Promise<void> => {
-    let result: SurfaceCommandResult;
-    const entry = lookupSurface(globalScope, domain);
-    if (entry === undefined) {
-      result = {
-        domain,
-        action,
-        ok: false,
-        error: {
-          code: "surface_not_registered",
-          message: `surface 未注册:${domain}`,
-        },
-      };
-    } else {
-      try {
-        result = await entry.dispatch(action, args);
-      } catch (err) {
-        // dispatch 内部已归一化不抛;此处为最终防线(不崩会话,Req 3.5)。
-        result = {
-          domain,
-          action,
-          ok: false,
-          error: { code: "dispatch_failed", message: String(err) },
-        };
-      }
-    }
-    ctx.send({
-      type: "ui_rpc_response",
-      response: { correlationId: request.correlationId, ok: result.ok, result },
-    });
-  };
+  const dispatcher = createSurfaceDispatcher(globalScope, SURFACE_REGISTRY_SEAM_KEY);
 
   const unregister = channel.register(
     "ui_rpc",
     uiRpcLineParser,
     async (line: UiRpcLine, ctx) => {
       const req = line.request;
-      // 仅消费 surface 命令(point=command / action=execute / SurfaceCommandPayload)。
+      // 门控:仅消费 surface 命令(point=command / action=execute / SurfaceCommandPayload)。
       if (req.point !== "command" || req.action !== "execute") return; // 放行
       const payload = SurfaceCommandPayloadSchema.safeParse(req.payload);
       if (!payload.success) return; // 非 surface 命令(如 host 命令有 name)— 放行
-      await handleSurfaceCommand(
-        req,
+      const result = await dispatcher.dispatch(
         payload.data.domain,
         payload.data.action,
         payload.data.args,
-        ctx,
       );
+      ctx.send({
+        type: "ui_rpc_response",
+        response: { correlationId: req.correlationId, ok: result.ok, result },
+      });
     },
   );
 
