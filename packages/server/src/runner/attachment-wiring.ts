@@ -41,16 +41,14 @@ import {
   createTempFileTracker,
   type TempFileTracker,
 } from "../attachment-bridge/temp-files.js";
-import {
-  makeBeforeToolCall,
-  type ToolCallGuardEvent,
-} from "../attachment-bridge/ownership-guard.js";
-import {
-  makeAfterToolCall,
-  type AfterToolCallGuardEvent,
-  type ToolResultContent,
-} from "../attachment-bridge/base64-gate.js";
+import { makeBeforeToolCall } from "../attachment-bridge/ownership-guard.js";
+import { makeAfterToolCall } from "../attachment-bridge/base64-gate.js";
 import { createAttachmentToolContext } from "../attachment-bridge/tool-context.js";
+import {
+  composeBeforeToolCall,
+  composeAfterToolCall,
+  type HookableAgent,
+} from "./attachment-hooks.js";
 
 /**
  * 约定 globalThis seam key:runner 装配把闭包绑定的 `AttachmentToolContext` 挂到此 key,
@@ -60,47 +58,6 @@ import { createAttachmentToolContext } from "../attachment-bridge/tool-context.j
  */
 import { ATTACHMENT_TOOL_CONTEXT_KEY } from "./frame-channel/index.js";
 export { ATTACHMENT_TOOL_CONTEXT_KEY };
-
-/**
- * pi `Agent` 上 tool hook 的最小形状(narrowing 目标)。
- *
- * `BeforeToolCallContext`/`AfterToolCallContext` 属 pi 内层包(不可达),此处以**同形**本地接口
- * 描述本模块实际消费的字段(`toolCall.name`/`toolCall.id`/`args`/`result.content`/`result.details`)。
- */
-interface PiBeforeToolCallContext {
-  readonly toolCall: { readonly name: string; readonly id: string };
-  readonly args: unknown;
-}
-interface PiAfterToolCallContext {
-  readonly toolCall: { readonly name: string; readonly id: string };
-  readonly args: unknown;
-  readonly result: { readonly content: unknown; readonly details?: unknown };
-  readonly isError: boolean;
-}
-interface PiBeforeToolCallResult {
-  block?: boolean;
-  reason?: string;
-}
-interface PiAfterToolCallResult {
-  content?: ToolResultContent[];
-  details?: unknown;
-  isError?: boolean;
-  terminate?: boolean;
-}
-type PiBeforeToolCall = (
-  context: PiBeforeToolCallContext,
-  signal?: AbortSignal,
-) => Promise<PiBeforeToolCallResult | undefined>;
-type PiAfterToolCall = (
-  context: PiAfterToolCallContext,
-  signal?: AbortSignal,
-) => Promise<PiAfterToolCallResult | undefined>;
-
-/** pi `Agent` 上本模块组合的两个 hook 属性的最小可写视图。 */
-interface HookableAgent {
-  beforeToolCall?: PiBeforeToolCall;
-  afterToolCall?: PiAfterToolCall;
-}
 
 /** {@link wireAttachmentBridge} 入参。 */
 export interface WireAttachmentBridgeInput {
@@ -156,57 +113,16 @@ export function wireAttachmentBridge(
   const agent = runtime.session.agent as unknown as HookableAgent;
 
   // 2) 执行前闸门(属主校验)→ agent.beforeToolCall,组合既有 hook(扩展 tool_call 路由)。
-  const beforeGuard = makeBeforeToolCall(store, sessionId);
-  const priorBefore = agent.beforeToolCall;
-  agent.beforeToolCall = async (context, signal) => {
-    // narrowing:pi BeforeToolCallContext → 闸门 ToolCallGuardEvent(字段同形,零转换)。
-    const guardEvent: ToolCallGuardEvent = {
-      toolName: context.toolCall.name,
-      toolCallId: context.toolCall.id,
-      // args 为已校验工具参数对象;非对象(理论不至)退化为空对象使闸门放行无附件引用调用。
-      input: isRecord(context.args) ? context.args : {},
-    };
-    const blocked = await beforeGuard(guardEvent);
-    // 闸门阻断优先:不进入既有 hook / execute(Req 5.1)。
-    if (blocked?.block === true) {
-      return { block: true, ...(blocked.reason !== undefined ? { reason: blocked.reason } : {}) };
-    }
-    // 放行 → 委托既有 hook(保留扩展 tool_call 链)。
-    return priorBefore ? priorBefore(context, signal) : undefined;
-  };
-
   // 3) 结果出口闸门(base64 剥离 + 调用级临时文件回收)→ agent.afterToolCall,组合既有 hook。
-  const afterGate = makeAfterToolCall(tracker);
-  const priorAfter = agent.afterToolCall;
-  agent.afterToolCall = async (context, signal) => {
-    // 先跑既有 hook(扩展 tool_result 链)拿其可能的改写;以改写后的 content/details 为剥离输入。
-    const prior = priorAfter ? await priorAfter(context, signal) : undefined;
-
-    const effectiveContent =
-      prior?.content !== undefined
-        ? prior.content
-        : toToolResultContent(context.result.content);
-    const effectiveDetails =
-      prior?.details !== undefined ? prior.details : context.result.details;
-
-    // narrowing:pi AfterToolCallContext(+既有 hook 改写)→ 闸门 AfterToolCallGuardEvent。
-    const gateEvent: AfterToolCallGuardEvent = {
-      toolCallId: context.toolCall.id,
-      content: effectiveContent,
-      ...(isRecord(effectiveDetails) ? { details: effectiveDetails } : {}),
-    };
-    const stripped = await afterGate(gateEvent);
-
-    // 闸门无改写(无图像/标记复看)→ 透传既有 hook 结果(可能为 undefined 原样)。
-    if (stripped?.content === undefined) {
-      return prior;
-    }
-    // 闸门剥离:整段替换 content,保留既有 hook 的 details/isError/terminate 改写(若有)。
-    return {
-      ...(prior ?? {}),
-      content: stripped.content,
-    };
-  };
+  // narrowing + 组合语义为纯逻辑,见 attachment-hooks;本接线只做实例化 + 组合安装。
+  agent.beforeToolCall = composeBeforeToolCall(
+    makeBeforeToolCall(store, sessionId),
+    agent.beforeToolCall,
+  );
+  agent.afterToolCall = composeAfterToolCall(
+    makeAfterToolCall(tracker),
+    agent.afterToolCall,
+  );
 
   let cleanedUp = false;
   return {
@@ -224,17 +140,4 @@ export function wireAttachmentBridge(
       }
     },
   };
-}
-
-/** unknown → 非空 `Record` 判定(narrowing 守卫)。 */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * pi tool result `content`(`(TextContent|ImageContent)[]`,同形)→ 闸门 `ToolResultContent[]`。
- * content 来自 pi 内层不可达类型,以同形结构断言(字段一致:`type`/`text`/`data`/`mimeType`)。
- */
-function toToolResultContent(content: unknown): readonly ToolResultContent[] {
-  return Array.isArray(content) ? (content as ToolResultContent[]) : [];
 }
