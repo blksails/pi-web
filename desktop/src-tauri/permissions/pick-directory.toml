@@ -1,0 +1,8 @@
+# 允许（本地回环的）远端页面调用应用自身的 pick_directory 命令。
+#
+# ★ PoC 实证：仅配 `core:default` 时，远端来源 invoke 应用自身的 command 会被 ACL 拒绝，
+#   报 `pick_directory not allowed. Plugin not found`。必须在此显式声明。
+[[permission]]
+identifier = "allow-pick-directory"
+description = "允许渲染层打开原生「选择文件夹」对话框；仅回传绝对路径字符串"
+commands.allow = ["pick_directory"]

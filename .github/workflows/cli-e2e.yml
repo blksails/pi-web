@@ -1,16 +1,24 @@
-name: CLI E2E (standalone · 多平台)
+name: CLI E2E (自包含产物 · 多平台)
 
-# 生产模式(standalone 自包含产物)的多操作系统集成测试。
+# 生产模式(自包含产物 dist/ + 随包载荷 payload/)的多操作系统集成测试。
 #
 # 设计:构建 / 运行分离 —— 贴近真实生产形态。
-#   - 产物只在 Linux 上 `build:cli` 构建一次(生产里产物也只在 Linux/macOS 构建后
-#     发布到 npm;Windows 从不是构建端,只是运行端;且 Next.js standalone 文件追踪
-#     在 Windows 上有上游级 EPERM 问题)。
+#   - 产物只在 Linux 上 `build:dist` 构建一次(生产里产物也只在 Linux/macOS 构建后
+#     发布到 npm;Windows 从不是构建端,只是运行端)。
 #   - 三个平台下载同一份产物,只跑运行期 e2e:
-#       e2e:cli       stub 冒烟(产物完整性 + 参数路径 + 浏览器流式回包)
-#       e2e:cli:real  真实 runner(mock openai-completions provider,验依赖解析/会话不崩)
+#       e2e:cli            stub 冒烟(产物完整性 + 载荷三件套 + 参数路径 + 浏览器流式回包)
+#       e2e:cli:real       真实 runner(mock openai-completions provider,验依赖解析/会话不崩)
+#       e2e:cli:reloc      **npm 安装态**:临时包根只有 bin/+payload/(无 dist/),首启解包后跑真实会话
+#       e2e:runtime:conc   并发首启:4 进程争抢同一运行时目录,恰好一个解包
+#       e2e:runtime:recovery 失败模式:中断/损坏/只读(仅 POSIX)/磁盘满(仅 macOS)
 #     这才是按 OS 真正不同的部分:process.execPath spawn、路径分隔符、SIGINT、
-#     以及 pack-standalone 产物里的**符号链接**能否在 Windows 上正常解析。
+#     以及 pack-dist 产物里 workspace 包的**符号链接**能否在 Windows 上正常解析
+#     (运行时依赖已一律 dereference 为实体目录;只有 node_modules/@blksails/* 是 junction)。
+#
+# ★ `e2e:cli:reloc` 是**载荷跨平台一致性**(spec shared-runtime-payload Req 2.5)的唯一验证:
+#   载荷在 Ubuntu 上构建一次分发到三平台,由 `tar.create({follow:true})` 把 11 个符号链接
+#   展开为实体 —— 若不展开,Windows 解包会重演既有的 realpath EPERM 坑。本地只有 macOS,
+#   这条只能靠 CI 证伪。
 
 on:
   push:
@@ -23,7 +31,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── 构建一次:在 Linux 上产出 standalone,打成保留符号链接的 tar 上传 ──
+  # ── 构建一次:在 Linux 上产出 dist/,打成保留符号链接的 tar 上传 ──
   build:
     name: build (ubuntu)
     runs-on: ubuntu-latest
@@ -38,16 +46,19 @@ jobs:
           node-version: "22.19.0"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build standalone CLI
-        run: pnpm build:cli
+      - name: Build self-contained dist + payload
+        run: pnpm build:dist
+      - name: Verify payload digest
+        run: node scripts/verify-payload.mjs
       # 自己打 tar(保留符号链接为链接,不 deref —— .pnpm 内有符号链接环,deref 会炸)。
       # upload-artifact 默认不可靠地处理符号链接,故压成单个 tgz 传输。
-      - name: Archive standalone (preserve symlinks)
-        run: tar -czf standalone.tgz -C .next-cli standalone
+      # ★ payload/ 也必须随行:cli-smoke 断言其存在,cli-reloc 靠它跑首启解包。
+      - name: Archive dist + payload (preserve symlinks)
+        run: tar -czf dist.tgz dist payload
       - uses: actions/upload-artifact@v4
         with:
-          name: standalone-cli
-          path: standalone.tgz
+          name: pi-web-dist
+          path: dist.tgz
           retention-days: 1
           if-no-files-found: error
 
@@ -71,27 +82,39 @@ jobs:
           node-version: "22.19.0"
           cache: pnpm
       # 运行期需要仓库的 bin/ examples/ e2e/cli/ 以及 @playwright/test(从根 node_modules)。
-      # next build 不在此跑,故 Windows 上的构建 EPERM 不会触发。
+      # 前端/服务端构建不在此跑,只做运行期验证。
       - run: pnpm install --frozen-lockfile
       - name: Install Playwright chromium
         run: pnpm exec playwright install --with-deps chromium
       - uses: actions/download-artifact@v4
         with:
-          name: standalone-cli
+          name: pi-web-dist
       # 用 bash(三平台都可用:Windows 走 Git Bash)。Windows 上靠
       # MSYS=winsymlinks:nativestrict 让 tar 解出**原生符号链接**
       # (GH Windows runner 以管理员运行,具备 SeCreateSymbolicLinkPrivilege)。
       # 非 Windows 上该环境变量被忽略,tar 正常解链接。
-      - name: Extract standalone (restore symlinks)
+      - name: Extract dist + payload (restore symlinks)
         shell: bash
         run: |
-          mkdir -p .next-cli
-          MSYS=winsymlinks:nativestrict tar -xzf standalone.tgz -C .next-cli
-          ls -la .next-cli/standalone/server.js
+          MSYS=winsymlinks:nativestrict tar -xzf dist.tgz
+          ls -la dist/server.mjs
+          ls -la payload/
+      # 载荷跨平台传输后必须仍与元数据一致(Req 11.3):Windows 的 tar 若做了换行转换
+      # 或丢了字节,这里立刻炸,而不是等首启解包时报 payload-corrupt。
+      - name: Verify payload digest (跨平台一致性)
+        run: node scripts/verify-payload.mjs
       - name: E2E · CLI stub 冒烟
         run: pnpm e2e:cli
       - name: E2E · CLI 真实模式(mock provider)
         run: pnpm e2e:cli:real
+      # ★ 以下三条覆盖 spec shared-runtime-payload 的解包路径。
+      #   前两条 e2e 走「仓库内 dist/ 优先」分支,完全测不到解包。
+      - name: E2E · npm 安装态首启解包(载荷跨平台一致性 · Req 2.5/9.4)
+        run: pnpm e2e:cli:reloc
+      - name: E2E · 并发首启(锁协议 · Req 3.3/3.6)
+        run: pnpm e2e:runtime:conc
+      - name: E2E · 解包失败模式与自愈(Req 3.4/3.5/4.x)
+        run: pnpm e2e:runtime:recovery
       - name: Upload evidence on failure
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,98 @@
+# Implementation Plan
+
+- [x] 1. 给包清单增加 component 判别值与字段组
+  - kind 判别式扩为三值;新增接线声明(point 枚举预留 renderers/slots)、文件清单、peer 表、registryDeps 的结构契约,顶层挂可选 component 字段组
+  - 契约保持零运行时、非 strict、向前兼容;既有 agent/plugin 实例 parse 结果不变
+  - 观察态:契约包测试含新 kind 与字段组的合法/非法 parse 用例并全绿,`pnpm --filter @blksails/pi-web-protocol test` 通过
+  - _Requirements: 1.1_
+
+- [x] 2. 组件子域纯函数(全部可注入依赖直测)
+- [x] 2.1 (P) 极简版本范围校验
+  - 支持精确、>=、^、~ 四种范围写法的解析与满足性判定;其余写法返回稳定的不支持错误
+  - 观察态:四种写法的边界矩阵(主/次/补丁位进退位)与拒绝表单测全绿
+  - _Requirements: 4.4_
+  - _Boundary: semver-lite_
+- [x] 2.2 (P) 组件清单业务校验
+  - kind=component 时字段组必备;files 非空、拒绝绝对路径与逃逸相对路径、必含测试文件;wiring 白名单只认 canvasPlugins;registryDeps 必须为空;target 声明值必须等于约定落点
+  - 每条失败路径返回稳定错误码与字段定位,一次校验聚合全部问题
+  - 观察态:1.2–1.7 每条验收标准至少一个单测用例,规则矩阵全绿
+  - _Requirements: 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 2.5_
+  - _Boundary: manifest-validate_
+  - _Depends: 1_
+- [x] 2.3 (P) 溯源记录与安装态判定
+  - .component.json 读写(id/版本/来源/时间/逐文件 sha256);安装态判定纯函数输出 fresh、clean-same-version、clean-new-version、modified(含变更文件表)、unmanaged 五态判别式
+  - 溯源记录中文件在落点缺失视同修改
+  - 观察态:五态穷举单测全绿(含缺失文件、版本相等/不等、无溯源目录各分支)
+  - _Requirements: 5.2, 7.1, 7.2, 7.3, 7.4_
+  - _Boundary: provenance_
+- [x] 2.4 (P) peer 基线校验
+  - 从目标目录逐级向上解析各 peer 包实际版本(读 node_modules 内 package.json);一次遍历聚合全部不满足项(包名、要求范围、实际版本或未找到)
+  - 观察态:命中根 workspace 链接、包未找到、多项聚合、范围不支持透传四类单测全绿
+  - _Requirements: 4.1, 4.2, 4.4_
+  - _Boundary: peer-check_
+  - _Depends: 2.1_
+- [x] 2.5 (P) 终端呈现物:行级 diff 与接线指引
+  - 行级 LCS 产出 unified 格式 diff 字符串;依 wiring 声明生成 import 行、插件点数组项与 build 提示
+  - 观察态:diff 对增/删/改/无差异四态的快照单测 + 指引模板对范例形状清单的快照单测全绿
+  - _Requirements: 5.4, 7.3_
+  - _Boundary: unified-diff, wiring-guidance_
+- [x] 2.6 (P) 原子写入器
+  - 全部源文件先读入内存 → staging 目录写入 → rename 进位;覆盖态先备份旧目录,失败清 staging 并还原备份;溯源文件随 staging 原子同生
+  - 每个目标路径解析符号链接后必须落在目标 source 内,违例拒绝
+  - 全程不 import/require/执行组件包内任何内容
+  - 观察态:注入写失败的单测断言落点恢复安装前状态;逃逸路径(软链指向 source 外)单测被稳定码拒绝
+  - _Requirements: 3.3, 3.4, 5.1, 5.3_
+  - _Boundary: installer_
+  - _Depends: 2.3_
+
+- [x] 3. 来源解析与命令编排
+- [x] 3.1 组件来源解析
+  - 实参剥离末段 #子目录 片段(仅对直连 git 形态生效)后,基串复用既有来源形态判别与 CLI 白名单;本地目录直接作包根;git 经既有克隆缓存后 join 子目录并校验存在
+  - registry 名称形态返回稳定码并附本地/git 用法示例;包根无清单或 kind 非 component 拒绝并报实际 kind
+  - 观察态:本地/git(注入 fake 克隆)/带子目录/子目录缺失/registry 形态/非 component 包六类单测全绿(测试用合成夹具,不依赖范例包)
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+- [x] 3.2 add 命令编排器与产物导出
+  - 解析位置参与 --target/--dry-run/--force/--help;目标须含 .pi/web/ 目录否则稳定码拒绝;按安装态分派(覆盖/no-op/diff 拒绝/占用拒绝);--force 只降级 peer 校验;dry-run 在全部校验与态判定后、任何写入前短路,列出将写文件与指引
+  - 阶段化进度输出(来源解析→校验→peer→态判定→写入→溯源→指引),错误经既有脱敏渲染
+  - 编排器随 CLI 命令产物导出
+  - 观察态:CLI 命令产物构建后可动态 import 出编排器入口;--help 输出参数面完整
+  - _Requirements: 3.1, 3.2, 4.3, 5.5, 6.1, 6.2_
+  - _Depends: 2.4, 2.5, 2.6, 3.1_
+- [x] 3.3 编排器集成测试
+  - 临时目录真实文件系统(合成夹具)走通:首装成功、dry-run(断言零写入)、同版 no-op、本地修改后 diff 拒绝、peer 不满足 + --force 各路径
+  - 断言各路径退出码(成功/no-op 为零,失败非零)与稳定错误码呈现
+  - 观察态:上述路径的集成测试全绿
+  - _Requirements: 6.3, 7.1, 7.2, 7.3, 7.4, 10.1, 10.2_
+  - _Depends: 3.2_
+
+- [x] 4. CLI 壳接线:add 子命令词条与最小分发(集成任务)
+  - 子命令表与 UX 契约表增加 add(usage 含来源形态示例与 --force 语义说明);占位分支之前插入 add 专用分发(动态 import 产物调编排器,透传退出码);其它子命令占位行为逐字节不变
+  - 观察态:路由单测覆盖 add 判别/用法/未知选项;对其它子命令的既有用例零改动且全绿;产物缺失时报既有「先构建」指引
+  - _Requirements: 10.3_
+  - _Depends: 3.2_
+
+- [x] 5. 水印组件范例包
+- [x] 5.1 (P) 范例组件包本体
+  - examples 下新增 kind=component 组件包:清单(files 含测试/wiring 指向 canvasPlugins/peer 用 workspace 真实版本)、水印插件捆(图层 Render+bake 降级+Inspector、工具声明式置层、动作 via command 且经能力白名单避让)、README 含 SES 自检勾选
+  - 源码只 import peer 声明过的包与包内相对路径;DOM 锚点 data-watermark-text
+  - 观察态:对该包执行清单业务校验(2.2 的校验器)通过;组件测试文件随包存在
+  - _Requirements: 8.1, 8.2, 8.3_
+  - _Boundary: examples/canvas-component-watermark_
+  - _Depends: 1, 2.2_
+- [x] 5.2 范例测试纳入仓库套件
+  - canvas-ui 测试目录挂 wrapper 引入范例测试(wrapper-import 不可行时回退内联同等断言,断言集不变:图层渲染、bake 降级、动作避让矩阵)
+  - 观察态:`pnpm --filter @blksails/pi-web-canvas-ui test` 全绿且含水印用例
+  - _Requirements: 8.4_
+  - _Depends: 5.1_
+
+- [x] 6. 端到端自举验收与回归
+- [x] 6.1 demo 自举 e2e
+  - 临时目录复制最小干净 source → 编排器装入范例组件 → 依 wiring 声明代行接线改写 web.config → 真实 webext 构建成功且产物含 data-watermark-text 标记;另覆盖 dry-run 零写入与对非 component 包的拒绝路径;全程不触仓库工作树(结束断言 git status 干净)
+  - 观察态:e2e 测试文件在 node e2e 套件下全绿
+  - _Requirements: 9.1, 9.2, 9.3_
+  - _Depends: 3.3, 5.1_
+- [x] 6.2 全量回归与证据
+  - typecheck、契约包/CLI 单测/canvas-ui/node e2e 相关套件新鲜跑通;既有 cli 测试零改动全绿
+  - 观察态:各命令的新鲜运行输出作为完成证据留存
+  - _Requirements: 10.3_
+  - _Depends: 6.1_

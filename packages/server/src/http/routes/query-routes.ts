@@ -94,7 +94,7 @@ export function makeCommandsHandler(store: SessionStore): RouteHandler {
       const res = await session.getCommands();
       const extracted = dataOrError<{ commands: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
-      // 据各扩展命令所属插件的 pi-plugin.json(web.commands)回填 webVisible(plugin-system-unification)。
+      // 据各扩展命令所属插件的 pi-web.json(web.commands)回填 webVisible(plugin-system-unification)。
       const commands = await enrichWebVisibleCommands(extracted.data.commands);
       return jsonResponse(200, { commands });
     } catch (err) {

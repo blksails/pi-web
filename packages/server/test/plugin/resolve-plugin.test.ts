@@ -28,12 +28,12 @@ async function mkdir(rel: string): Promise<void> {
 }
 
 describe("resolvePiPlugin", () => {
-  it("清单优先:据 pi-plugin.json 合成描述符,声明的存在路径全保留,无诊断", async () => {
+  it("清单优先:据 pi-web.json 合成描述符,声明的存在路径全保留,无诊断", async () => {
     await write("extensions/code-review.ts", "export default () => {};");
     await mkdir("skills/code-review");
     await write(".pi/web/dist/manifest.json", "{}");
     await write(
-      "pi-plugin.json",
+      "pi-web.json",
       JSON.stringify({
         id: "code-review",
         version: "1.0.0",
@@ -76,7 +76,7 @@ describe("resolvePiPlugin", () => {
 
   it("声明 webext 但 dist/manifest.json 缺失:忽略 webext + 记诊断,不失败", async () => {
     await write(
-      "pi-plugin.json",
+      "pi-web.json",
       JSON.stringify({ id: "p", version: "1.0.0", web: { dist: ".pi/web/dist" } }),
     );
 
@@ -87,7 +87,7 @@ describe("resolvePiPlugin", () => {
   });
 
   it("非法清单 JSON:记诊断并回退(id 取目录名)", async () => {
-    await write("pi-plugin.json", "{ not json");
+    await write("pi-web.json", "{ not json");
 
     const d = await resolvePiPlugin(root);
 
@@ -97,7 +97,7 @@ describe("resolvePiPlugin", () => {
 
   it("声明的 pi 资源路径不存在:忽略 + 记诊断,不使整包失败", async () => {
     await write(
-      "pi-plugin.json",
+      "pi-web.json",
       JSON.stringify({
         id: "p",
         version: "1.0.0",

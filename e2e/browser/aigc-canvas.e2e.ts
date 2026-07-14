@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * aigc-canvas 浏览器级 e2e —— 画廊物化视图闭环 + 刷新回放 + 退化(source 声明驱动,免门控)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。Canvas 由 source 声明驱动
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。Canvas 由 source 声明驱动
  * (免全局门控):`aigc-canvas-agent` 的 `.pi/web` 在 launcherRail 挂 `CanvasLauncher`、
  * panelRight 挂 `CanvasPanel`(有 surface 接入 → 画廊/工作台),挂载即显示。
  * stub 代替真实 canvas 命令处理器:装配期推种子图(hydrate 模拟)+ 派发 A/B 档命令维护

@@ -1,7 +1,7 @@
 /**
  * 统一插件解析的运行时产物类型(spec: plugin-system-unification)。
  *
- * `PluginManifest`(on-disk 契约)在 protocol;`PluginDescriptor`(解析后、含诊断与
+ * `PiWebManifest`(on-disk 契约)在 protocol;`PluginDescriptor`(解析后、含诊断与
  * 规范化路径)是 server 侧运行时产物,故定义于此。
  */
 
@@ -22,7 +22,7 @@ export interface PluginDescriptor {
   };
   /** 第二层:webext 产物目录(相对包根),仅在 `<dist>/manifest.json` 存在时给出。 */
   readonly web?: { readonly dist: string };
-  /** 声明暴露到 web 命令补全的 slash 命令名(`pi-plugin.json` 的 `web.commands`);无则空。 */
+  /** 声明暴露到 web 命令补全的 slash 命令名(`pi-web.json` 的 `web.commands`);无则空。 */
   readonly webCommands: readonly string[];
   /** 两层契约锚点:由 webext 接管渲染的工具名。 */
   readonly bindings?: { readonly tools: readonly string[] };

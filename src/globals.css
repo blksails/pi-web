@@ -1,0 +1,33 @@
+/* ⚠ `@import` 必须排在**所有**其它语句之前(CSS 规范)。
+ *
+ * 迁移前它们跟在 `@tailwind` 指令之后 —— Next 的 postcss 链容忍这个顺序,Vite 不:
+ * postcss 报 "@import must precede all other statements" 并**直接丢弃**这两条,
+ * 于是 shadcn 主题变量与 canvas 领域样式整个不进产物(页面看似能用,只是全无主题)。
+ * 构建仍然成功,只在日志里留一行警告 —— 属于典型的静默失效。
+ */
+
+/* shadcn CSS variable theme tokens consumed by <PiChat> and its children. */
+@import "@blksails/pi-web-ui/styles.css";
+/* canvas 领域样式随组件迁至 canvas-ui(canvas-ui-m15 Req 2.4/3.3):样式装配是 app
+   装配层职责,按包分别 @import,ui 基础样式不再夹带 canvas 领域段。 */
+@import "@blksails/pi-web-canvas-ui/styles.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  height: 100%;
+  /* 应用为全屏布局:文档自身永不滚动,滚动只发生在对话视口(<Conversation>)内部。
+     这可避免经典(非 overlay)滚动条下 100vw/100vh 互相触发、出现重复滚动条。 */
+  overflow: hidden;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}

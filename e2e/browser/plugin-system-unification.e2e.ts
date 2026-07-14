@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * 统一插件包标准(plugin-system-unification)浏览器验收。
  *
- * 真实浏览器 → 真实 Next server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
+ * 真实浏览器 → 真实 pi-web server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE 链。
  * examples/plugin-code-review-agent 是统一插件包(pi-plugin.json + pi 扩展 code_review 工具
  * + .pi/web webext Tier2 渲染器)。验证「扁平双层咬合」(Req 3/8):
  *   pi 侧产出的 `code_review` 工具 part 由 webext 的 renderers.tools.code_review

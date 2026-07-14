@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-logger",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "pi-web 同构结构化日志库：零运行时依赖、按运行环境自动分流",
   "type": "module",
   "sideEffects": false,

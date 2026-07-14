@@ -50,8 +50,9 @@ pi-web ./examples/hello-agent
 | [attachment-tool-agent](./attachment-tool-agent/) | 附件工具桥端到端：上传图 → `att_id` → 工具处理 → 落库回引用 | `AttachmentToolContext`（`resolve` / `putOutput`）、`afterToolCall` 闸门、`/raw` 分发 | ★★★ |
 | [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
 | [surface-demo-agent](./surface-demo-agent/) | Agent 权威 surface（领域无关）：权威快照镜像 + 结构化命令转发（不过 LLM）+ 能力探针退化 | `createSurface` / `useSurface`、`wireSurfaceBridge`（ui-rpc 命令派发 + fd1 回流）、`SurfaceCommandPayload` | ★★★ |
-| [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库 | `aigcExtension`（`image_generation` / `image_edit`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
-| [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`） | `canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam、`AgentDefinition.routes` 声明式 HTTP route（`gallery-stats`） | ★★★ |
+| [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库；并可 `image_vision` 回看自己画的图 | `aigcExtension`（`image_generation` / `image_edit`）、`visionExtension`（`image_vision`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
+| [vision-agent](./vision-agent/) | 视觉识别（图像理解）：把已落库的附件图交给支持图像输入的模型，取回文字结论；生成图 → 回看图闭环 | `visionExtension`（`image_vision` 工具 + `/img_vision` 命令）、`ModelRegistry.getAvailable()` 过滤 `input` 含 `image`、`ctx.ui.select` 选模型 | ★★★ |
+| [aigc-canvas-agent](./aigc-canvas-agent/) | Canvas：AIGC 素材画廊 + 二创工作台（画廊 = attachment 物化视图，`domain=canvas` 的 AAS 实例；门控 `NEXT_PUBLIC_PI_WEB_CANVAS`）；LLM 可 `image_vision` 看见画廊里的图 | `visionExtension`（`image_vision`）、`canvasSurfaceExtension`（`createSurface` + `runImageTool` + `hydrate`）、`CanvasLauncher`/`CanvasPanel`、上游 attachment `listBySession`/`getMeta`/`setMeta` seam、`AgentDefinition.routes` 声明式 HTTP route（`gallery-stats`） | ★★★ |
 | [canvas-plugin-stickers](./canvas-plugin-stickers/) | Canvas 插件双端范例：emoji 贴纸图层/工具（`createLayer` 点击置层）+ 风格迁移动作（前端声明 + agent 命令，命令通道执行）；插件作者 canonical 参照 | `defineCanvasLayer`/`defineCanvasTool`/`defineCanvasAction`、`canvasPlugins` 捆（`registerPluginBundles` 命名空间 + requires 拓扑校验）、`makeCanvasSurfaceExtension`（`extraCommands`/`extraActions`） | ★★★ |
 
 ### WebExtension（按 Tier 1–5）
@@ -67,7 +68,7 @@ pi-web ./examples/hello-agent
 | [webext-contrib-agent](./webext-contrib-agent/) | 3 | 贡献点（slash / @mention），经 ui-rpc 回 agent 取候选 | 贡献点 provider、`UiRpcClient` | 3️⃣ |
 | [webext-artifact-agent](./webext-artifact-agent/) | 4 | LLM 输出在独立 origin sandbox iframe 中渲染 | artifact 隔离表面、`NEXT_PUBLIC_PI_EXTENSION_BASE_URL` 门控 | 4️⃣ |
 | [webext-declarative-agent](./webext-declarative-agent/) | 5 | 纯声明零代码 UI 扩展（theme token + layout，无 bundle） | `.pi/web/manifest.json` 内联声明式 config、零加载路径 | 5️⃣ |
-| [plugin-code-review-agent](./plugin-code-review-agent/) | 2+3 | 双角色:自运行 agent + 可发布插件包（统一清单 pi-plugin.json、code_review 工具富卡 + slash 贡献点） | `pi-plugin.json` 统一清单、`bindings.tools`、Tier2 渲染器、Tier3 贡献点、双角色（自运行/可安装） | ⭐ |
+| [plugin-code-review-agent](./plugin-code-review-agent/) | 2+3 | 双角色:自运行 agent + 可发布插件包（统一清单 pi-web.json、code_review 工具富卡 + slash 贡献点） | `pi-web.json` 统一清单、`bindings.tools`、Tier2 渲染器、Tier3 贡献点、双角色（自运行/可安装） | ⭐ |
 | [plugin-consumer-agent](./plugin-consumer-agent/) | — | 消费方:安装 @acme/code-review 插件后零改动获得 code_review 工具 + 富卡渲染 | `extensions: ["local:..."]`、零本地工具代码、插件复用 | ⭐ |
 
 ## 推荐学习路径
@@ -75,12 +76,12 @@ pi-web ./examples/hello-agent
 1. **基线**：[minimal-agent](./minimal-agent/) → [hello-agent](./hello-agent/)，理解 `defineAgent` / `defineTool` 与 `noTools` 的语义梯度。
 2. **工具与会话**：[builtin-tools-agent](./builtin-tools-agent/)（启用内置工具）→ [file-session-agent](./file-session-agent/)（会话持久化）→ [logging-demo-agent](./logging-demo-agent/)（日志系统三源汇入面板）。
 3. **server-driven UI**：[server-driven-ui-agent](./server-driven-ui-agent/)（后端发 UI）→ [ui-demo-agent](./ui-demo-agent/)（交互 / ambient）→ [system-status-agent](./system-status-agent/)（两者组合）。
-4. **附件 / AIGC**：[attachment-tool-agent](./attachment-tool-agent/)（附件工具桥）→ [aigc-agent](./aigc-agent/)（文生图 / 图编辑）。
+4. **附件 / AIGC**：[attachment-tool-agent](./attachment-tool-agent/)（附件工具桥）→ [aigc-agent](./aigc-agent/)（文生图 / 图编辑）→ [vision-agent](./vision-agent/)（回看已落库的图）。
 5. **WebExtension 五层**：[webext-layout-agent](./webext-layout-agent/) / [webext-background-agent](./webext-background-agent/) / [webext-slots-agent](./webext-slots-agent/)（Tier 1 插槽）→ [webext-renderer-agent](./webext-renderer-agent/)（Tier 2 渲染器）→ [webext-contrib-agent](./webext-contrib-agent/)（Tier 3 贡献点）→ [webext-artifact-agent](./webext-artifact-agent/)（Tier 4 artifact）→ [webext-declarative-agent](./webext-declarative-agent/)（Tier 5 声明式）。
 
 ## 延伸阅读（产品文档）
 
-- [07 自定义 Agent 开发](../docs/product/07-agent-development.md) —— `defineAgent` / 工具 / 工具姿态（`noTools` / `tools` / `excludeTools`）。
-- [10 Web UI 扩展](../docs/product/10-web-ui-extension.md) —— `.pi/web` 协议与 WebExtension 五个 Tier。
-- [11 AIGC 工具](../docs/product/11-aigc-tools.md) —— `aigcExtension`、provider 密钥与产物落库。
-- [08 附件系统](../docs/product/08-attachment-system.md) —— attachment store、工具桥、`/raw` 分发。
+- [07 自定义 Agent 开发](../docs/product/08-agent-development.md) —— `defineAgent` / 工具 / 工具姿态（`noTools` / `tools` / `excludeTools`）。
+- [10 Web UI 扩展](../docs/product/12-web-ui-extension.md) —— `.pi/web` 协议与 WebExtension 五个 Tier。
+- [11 AIGC 工具](../docs/product/11-aigc-and-vision-tools.md) —— `aigcExtension`、provider 密钥与产物落库。
+- [08 附件系统](../docs/product/09-attachment-system.md) —— attachment store、工具桥、`/raw` 分发。

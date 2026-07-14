@@ -49,7 +49,7 @@ export const RpcSlashCommandSchema = z.object({
   source: z.enum(["extension", "prompt", "skill", "builtin"]),
   sourceInfo: SourceInfoSchema.optional(),
   /**
-   * 该扩展命令是否由其所属统一插件经 `pi-plugin.json` 的 `web.commands` 声明为
+   * 该扩展命令是否由其所属统一插件经 `pi-web.json` 的 `web.commands` 声明为
    * **web 可见**(plugin-system-unification 增量)。服务端 get_commands 据清单回填;
    * 前端补全对 `webVisible===true` 的扩展命令放行(保留"默认隐藏扩展命令"安全网,
    * 插件显式 opt-in)。仅对 `source:"extension"` 有意义。

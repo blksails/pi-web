@@ -3,7 +3,7 @@
  * CLI 真实模式 e2e(spec pi-web-cli, real-runner 验收)。可重复运行,产出新鲜证据。
  *
  * 为什么需要它:`cli-smoke.mjs` 用 `--stub`,绕过真实 runner 子进程,因此测不到
- * standalone 产物里 runner-bootstrap → jiti → pi SDK 传递依赖的解析(这正是
+ * 自包含产物里 runner-bootstrap → jiti → pi SDK 传递依赖的解析(这正是
  * fix/standalone-realmode-resolution 修的「建会话即崩」根因)。本测试**不带 --stub**,
  * 真实 spawn runner,但把 LLM 指向本地 mock(openai-completions 协议),从而:
  *   - 真正走通 runner 子进程 + 依赖解析(产物正确性的核心证据);
@@ -16,7 +16,7 @@
  *   4. 浏览器 autostart 建会话 → 发消息 → 断言收到 mock 的真实流式回包。
  *   5. 断言 mock 至少被请求一次(证明真实 runner 链路全程打通)。
  *
- * 前置:`pnpm build:cli`(standalone 产物)。
+ * 前置:`pnpm build:dist`(自包含产物)。
  * 跑法:`pnpm e2e:cli:real`(或 `node e2e/cli/cli-real.mjs`)。
  */
 import { spawn } from "node:child_process";
@@ -29,7 +29,7 @@ import { get as httpGet } from "node:http";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
 const BIN = join(ROOT, "bin", "pi-web.mjs");
 const PORT = 3473;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -140,9 +140,9 @@ function makeAgentDir(mockPort) {
 
 async function main() {
   // 1) 产物存在性(缺则直接退出,提示先构建)
-  const SA = join(ROOT, DIST, "standalone");
-  if (!existsSync(join(SA, "server.js"))) {
-    console.error("产物缺失,请先 `pnpm build:cli`");
+  const SA = join(ROOT, DIST);
+  if (!existsSync(join(SA, "server.mjs"))) {
+    console.error("产物缺失,请先 `pnpm build:dist`");
     process.exit(1);
   }
 
@@ -153,7 +153,7 @@ async function main() {
   const cli = spawn(
     "node",
     [BIN, "./examples/hello-agent", "--agent-dir", agentDir, "-p", String(PORT)],
-    { cwd: ROOT, env: { ...process.env, NEXT_DIST_DIR: DIST } },
+    { cwd: ROOT, env: { ...process.env, PI_WEB_DIST_DIR: DIST } },
   );
   cli.stdout.on("data", (d) => process.stdout.write(d));
   cli.stderr.on("data", (d) => {

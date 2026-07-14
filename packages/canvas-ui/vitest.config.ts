@@ -2,6 +2,12 @@ import { defineConfig } from "vitest/config";
 import path from "node:path";
 
 export default defineConfig({
+  // 与包 tsconfig(jsx: react-jsx)/web-kit build(jsx: automatic)/根 vitest 配置对齐;
+  // vitest 的 esbuild 缺省是 classic runtime,首个 .tsx 测试(examples 组件包挂载)即暴露
+  // "React is not defined"。
+  esbuild: {
+    jsx: "automatic",
+  },
   resolve: {
     alias: {
       // canvas 纯 schema 子路径(浏览器安全,无 pi 值导入);vite 不解析工作区子路径 exports,

@@ -19,4 +19,16 @@ const CLEAR: BuiltinCommandSpec = {
   userOnly: true,
 };
 
-export const BUILTIN_COMMANDS: readonly BuiltinCommandSpec[] = [CLEAR];
+/**
+ * /install:host 通道装/卸/列/更新 agent 与 plugin(spec install-host-command)。结果经
+ * `resultDataPart` 声明的 data part 追加为卡片(见 dispatchBuiltin 通用卡片追加机制)。
+ */
+const INSTALL: BuiltinCommandSpec = {
+  name: "install",
+  description: "安装/卸载/列出/更新 agent 或 plugin(host 通道)",
+  target: { kind: "server-action" },
+  userOnly: true,
+  resultDataPart: "data-install-result",
+};
+
+export const BUILTIN_COMMANDS: readonly BuiltinCommandSpec[] = [CLEAR, INSTALL];

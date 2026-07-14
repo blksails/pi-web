@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * aigc-tool-settings 浏览器 e2e —— /settings 页「AIGC 图像工具」面板(关模型 + 提示词优化)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行(隔离 NEXT_DIST_DIR=.next-e2e)。
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行(隔离产物目录 PI_WEB_DIST_DIR)。
  * 面板为标准 config 域 `aigc`:模型开关清单(自定义 widget,来自 GET /api/aigc/models)+ 提示词
  * 优化布尔开关;保存落 config 域文件 `<agentDir>/aigc.json`(临时 agentDir,不污染用户配置)。
  * 装配期「被禁模型从 LLM 枚举/清单移除」由 tool-kit 集成测试证明,本 e2e 覆盖设置页 UI↔持久往返。

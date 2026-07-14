@@ -1,0 +1,9 @@
+{
+  "name": "vision-agent",
+  "private": true,
+  "pi-web": {
+    "title": "视觉识别",
+    "avatar": "👁️",
+    "description": "看图回答：把已落库的附件图交给视觉模型，取回文字结论"
+  }
+}

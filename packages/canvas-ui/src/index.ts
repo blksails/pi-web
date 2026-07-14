@@ -116,3 +116,7 @@ export type {
   UploadFn,
   UploadDataUriInput,
 } from "./client-image-ops.js";
+
+// ── vision readout(spec canvas-vision-readout):解读载荷构造器 + 模型选项类型 ──────
+export { buildVisionOp, DEFAULT_READOUT_QUESTION } from "./vision-op.js";
+export type { BuildVisionOpInput, VisionModelOption } from "./vision-op.js";

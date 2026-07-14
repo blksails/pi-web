@@ -14,6 +14,7 @@ import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve, isAbsolute } from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { get as httpGet } from "node:http";
 import { connect as netConnect } from "node:net";
@@ -39,11 +40,210 @@ function looksLikeGitSource(source) {
 }
 
 /**
+ * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6;`add` 归 spec cli-component-add)。
+ * @typedef {"add" | "create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
+ */
+export const SUBCOMMAND_NAMES = /** @type {const} */ ([
+  "add",
+  "create",
+  "install",
+  "uninstall",
+  "list",
+  "update",
+  "publish",
+]);
+
+/**
+ * 各子命令的选项表 + 一句话说明(Req 1.3, 1.4, 1.6)。
+ *
+ * ★ 此处只承载「分发层判别与校验」需要的选项**形状**,不实现任何子命令的业务逻辑
+ * (归任务 3.x-9.x,`server/cli/**`)。选项名取自 requirements.md 已落定的 CLI 面,
+ * 后续任务在 `server/cli` 内对同一批 argv 做真正的语义解析——两处选项表如需变化须
+ * 保持同步(SubcommandRouter 的选项表是 UX 契约的第一入口)。
+ */
+const SUBCOMMAND_SPECS = {
+  add: {
+    summary: "把组件源码安装进 agent source(shadcn 式,代码归你)",
+    options: {
+      target: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web add <source> [options]
+
+把组件包的源码拷贝进目标 agent source 的 .pi/web/components/<id>/,
+代码归你所有,可自由修改。重复 add 具备幂等更新语义(未改覆盖新版 /
+已改打印 diff 拒绝 / 同版不写)。
+
+<source> 支持(v1):本地目录,或 git 直连(须固定 ref,可带 #<子目录>),
+如 git:github.com/org/repo@v1.0.0#packages/my-component。
+
+选项:
+      --target <dir>  目标 agent source(缺省当前目录;须含 .pi/web/)
+      --dry-run       全部校验并列出将写入的文件与接线指引,不写任何文件
+      --force         仅将 peer 基线校验失败降级为警告;不覆盖本地改动
+  -h, --help          显示本帮助并退出
+`,
+  },
+  create: {
+    summary: "从模板生成 agent/plugin 骨架",
+    options: {
+      kind: { type: "string" },
+      template: { type: "string" },
+      list: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web create <name> [options]
+
+从随包分发的模板生成 agent/plugin 骨架。
+
+选项:
+      --kind <agent|plugin>  包类型(默认 agent)
+      --template <name>      指定模板(默认模板见 --list)
+      --list                 列出全部可用模板并退出,不创建任何文件
+  -h, --help                 显示本帮助并退出
+`,
+  },
+  install: {
+    summary: "安装 agent 或 plugin",
+    options: {
+      project: { type: "boolean", default: false },
+      kind: { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web install <source> [options]
+
+<source> 的形态判别:带来源类型前缀、协议头(git:/https:/ssh:)或文件系统路径形态
+的实参视为直接来源,不联系注册表;其余视为注册表包标识,先解析并验签再安装。
+
+选项:
+      --project              以项目级作用域安装(默认用户级)
+      --kind <agent|plugin>  显式指定包类型(npm/git 直连来源默认按 plugin 处理)
+  -h, --help                 显示本帮助并退出
+`,
+  },
+  uninstall: {
+    summary: "卸载已安装的 agent 或 plugin",
+    options: {
+      project: { type: "boolean", default: false },
+      kind: { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web uninstall <name> [options]
+
+选项:
+      --project              以项目级作用域卸载(默认用户级)
+      --kind <agent|plugin>  显式指定包类型(缺省按已安装状态探测,探测不到则默认 plugin)
+  -h, --help                 显示本帮助并退出
+`,
+  },
+  list: {
+    summary: "列出已安装的包",
+    options: {
+      outdated: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web list [options]
+
+选项:
+      --outdated  仅列出存在可用更新的包
+  -h, --help      显示本帮助并退出
+`,
+  },
+  update: {
+    summary: "更新已安装的包",
+    options: {
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web update [name] [options]
+
+未指定 name 时更新全部可更新的包。
+
+选项:
+  -h, --help      显示本帮助并退出
+`,
+  },
+  publish: {
+    summary: "编译清单、校验并发布到注册表",
+    options: {
+      "dry-run": { type: "boolean", default: false },
+      key: { type: "string" },
+      channel: { type: "string" },
+      "commit-only": { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web publish [options]
+
+选项:
+      --dry-run        演练模式:编译与全部校验但不发起任何外部写操作
+      --key <path>      签名私钥路径
+      --channel <name>  发布通道(未指定时使用稳定通道)
+      --commit-only     只提交版本,不移动发布通道指向
+  -h, --help            显示本帮助并退出
+`,
+  },
+};
+
+/** @returns {name is SubcommandName} */
+function isSubcommandName(name) {
+  return Object.prototype.hasOwnProperty.call(SUBCOMMAND_SPECS, name);
+}
+
+/**
+ * 解析子命令自身的 argv(Req 1.5, 1.6)。非法选项抛 CliUsageError,消息含选项名与
+ * 查看该子命令帮助的提示。纯函数,不触碰文件系统或网络(Req 10.1)。
+ * @param {SubcommandName} name
+ * @param {readonly string[]} rest  子命令名之后的剩余 argv
+ */
+function parseSubcommandArgs(name, rest) {
+  const spec = SUBCOMMAND_SPECS[name];
+  let parsed;
+  try {
+    parsed = parseArgs({ args: [...rest], allowPositionals: true, options: spec.options });
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : String(err);
+    const m = raw.match(/Unknown option '([^']+)'/);
+    const optName = m ? m[1] : undefined;
+    throw new CliUsageError(
+      optName
+        ? `${name}: 未知选项 ${optName}(运行 \`pi-web ${name} --help\` 查看可用选项)`
+        : `${name}: ${raw}(运行 \`pi-web ${name} --help\` 查看可用选项)`,
+    );
+  }
+  return parsed;
+}
+
+/**
  * 解析 argv 为结构化选项。未知/非法选项抛 CliUsageError(Req 5.3);
  * --help/-h、--version/-v 经 intent 短路(Req 5.1, 5.2)。
+ *
+ * 首个位置参数若命中已知子命令名(Req 1.2),整段 argv 交由该子命令自身的选项表解析
+ * (Req 1.6:各子命令选项互不串味),并短路为 `{ intent: "subcommand", name, argv }`
+ * (业务分发归任务 6.1/10.1,此处只判别)。否则回落既有 `run`/`help`/`version` 解析,
+ * 与本特性引入前逐字段一致(Req 1.1)。
+ *
+ * 返回一个以 `intent` 为判别字段的联合:`run`(选项扁平展开,与引入本特性前完全一致)、
+ * `help`(可带 `subcommand`)、`version`、`subcommand`(携带**未解析的原始 argv 切片**)。
+ *
+ * ★ 刻意不写精确的 `@returns` 联合类型:`bin/` 不在 tsconfig 的 include 内,本模块对
+ * `test/**` 呈现为 `any`。一旦标注精确联合,既有 26 项 `cli-args.test.ts` 断言就必须
+ * 先 narrow 才能访问 `.source`/`.port`,即强制改动那些断言 —— 而「既有测试零改动且仍
+ * 通过」正是需求 1.1「逐字节一致」的证据本身。实测标注后 tsc 新增 14 处错误。
+ *
  * @param {readonly string[]} argv  process.argv.slice(2)
  */
 export function parseCliArgs(argv) {
+  const first = argv[0];
+  if (first !== undefined && isSubcommandName(first)) {
+    const rest = argv.slice(1);
+    const parsed = parseSubcommandArgs(first, rest);
+    if (parsed.values.help) {
+      return { intent: "help", subcommand: first };
+    }
+    return { intent: "subcommand", name: first, argv: rest };
+  }
+
   let parsed;
   try {
     parsed = parseArgs({
@@ -213,23 +413,106 @@ export function openBrowser(url) {
 }
 
 /**
- * standalone server.js 的绝对路径(随包分发)。CLI 产物用 .next-cli,与 dev 的 .next 隔离。
+ * 自包含产物入口的绝对路径(随包分发)。
+ *
+ * ★ 入口位于**产物根**(`dist/server.mjs`),不是子目录。`launch()` 以 `dirname(serverJs)`
+ * 作 cwd,而 `packages/server` 的 `runnerBootstrapPath()` / `resolvePiCliEntry()` 在
+ * `import.meta.url` 被打包器内联后会回退到 `process.cwd()` —— 那个回退必须落在产物根。
+ *
  * 导出供桌面壳复用 CLI 布局下的产物定位(桌面打包态另有 process.resourcesPath 路径,见 spec)。
  */
-export function standaloneServerJs() {
-  const distDir = process.env.NEXT_DIST_DIR ?? ".next-cli";
-  return join(PKG_ROOT, distDir, "standalone", "server.js");
+export function distServerJs() {
+  const distDir = process.env.PI_WEB_DIST_DIR ?? "dist";
+  return join(PKG_ROOT, distDir, "server.mjs");
+}
+
+/** @deprecated 旧名(Next standalone 时代);保留一轮以免外部调用方骤断。 */
+export const standaloneServerJs = distServerJs;
+
+/** 随包载荷目录(npm `files` 与 tauri `bundle.resources` 都以此名分发)。 */
+const PAYLOAD_DIR = join(PKG_ROOT, "payload");
+
+/**
+ * 载入随包解包器。`payload/unpack.mjs` 是构建生成物,仓库里可能不存在,故必须运行时载入。
+ *
+ * ★ 用 `createRequire` 而非 `await import(变量)`:后者经 vite 的 ssrTransform 会产出
+ *   rollup 解析不了的代码(`Expected ident`),使 test/cli/cli-args.test.ts 整个套件无法收集
+ *   —— 该测试经 `@/bin/pi-web.mjs` 别名导入本文件。字面量 import 无此问题,`@vite-ignore`
+ *   与包一层函数都无效,唯一不引入 eval 的出路是 `require`。
+ *   Node >= 22.12 的 `require(esm)` 可同步加载无顶层 await 的 ESM,`engines` 已要求 >= 22.19。
+ */
+function loadUnpacker() {
+  return createRequire(import.meta.url)(join(PAYLOAD_DIR, "unpack.mjs"));
+}
+
+/**
+ * 解析出可用的产物入口(spec shared-runtime-payload,Req 1.x / 8.1)。
+ *
+ * 三级解析,命中即停：
+ *   ① `PI_WEB_DIST_DIR` 覆盖      —— 隔离构建 / e2e,不解包
+ *   ② `PKG_ROOT/dist/server.mjs` —— 仓库内已构建的产物(开发态),不解包
+ *   ③ 随包载荷 → 共享运行时目录  —— npm 安装态,首次触发解包
+ *
+ * ★ 分支 ①② 的存在使既有的 cli-smoke / cli-real / cli-watch 与桌面壳的未打包 e2e
+ *   零改动继续通过,也让开发迭代不被首启解包拖慢、不污染 ~/.pi/web。
+ *   **代价**：它们因此完全测不到解包路径,那只由 cli-reloc 与 desktop-packaged 覆盖。
+ *
+ * @returns {Promise<{serverJs: string, runtime?: {runtimeRoot: string, runtimeDir: string}}>}
+ */
+export async function resolveRuntime() {
+  const direct = distServerJs();
+  if (process.env.PI_WEB_DIST_DIR || existsSync(direct)) {
+    return { serverJs: direct };
+  }
+
+  const { ensureRuntime } = loadUnpacker();
+  const res = await ensureRuntime({ payloadDir: PAYLOAD_DIR });
+  if (res.unpacked) {
+    console.log(`[pi-web] 首次启动,已解包运行时 → ${res.distRoot}(${res.elapsedMs}ms)`);
+  }
+  return { serverJs: res.serverJs, runtime: { runtimeRoot: res.runtimeRoot, runtimeDir: res.runtimeDir } };
+}
+
+/**
+ * 回收旧运行时目录。**尽力而为**：必须在后端已拉起之后调用,任何失败都被吞掉(Req 5.4/5.5)。
+ *
+ * `load` 是注入接缝：解包器是构建生成物,仓库里未构建时它不存在。单测须能**强制**触发
+ * 「解包器缺失」这条分支,而不是依赖 `payload/` 恰好没被构建 —— 那样测试会在标准
+ * `pnpm build:dist` 流程下静默退化成另一个用例的重复。
+ */
+export function scheduleRuntimeGc(runtime, load = loadUnpacker) {
+  if (!runtime) return;
+  void (async () => {
+    try {
+      const { gcRuntimeRoot } = load();
+      await gcRuntimeRoot(runtime.runtimeRoot, runtime.runtimeDir);
+    } catch {
+      // GC 永不影响启动(Req 5.4)。
+    }
+  })();
+}
+
+/**
+ * 子命令实现产物的绝对路径(spec cli-package-commands 任务 1.1,Req 10.6)。
+ *
+ * 与 `distServerJs()` 同处**产物根**,同样尊重 `PI_WEB_DIST_DIR`。本任务只建立
+ * 「可被动态加载」的接缝:`main()` 对非 run 意图动态 `import()` 该产物并分派子命令
+ * 归任务 2.1,此处不接线、不改变既有 `run` 路径行为。
+ */
+export function distCliCommandsJs() {
+  const distDir = process.env.PI_WEB_DIST_DIR ?? "dist";
+  return join(PKG_ROOT, distDir, "cli-commands.mjs");
 }
 
 /**
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
  * @returns {Promise<number>} 子进程退出码
  */
-export async function launch({ serverJs, host, port, env, open }) {
+export async function launch({ serverJs, host, port, env, open, onStarted }) {
   if (!existsSync(serverJs)) {
     console.error(
       `[pi-web] 未找到自包含产物 ${serverJs}\n` +
-        `  请先构建: \`pnpm build:cli\`(或 \`npm run build:cli\`)。`,
+        `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
     );
     return 1;
   }
@@ -247,12 +530,16 @@ export async function launch({ serverJs, host, port, env, open }) {
     port = chosen;
     env = { ...env, PORT: String(port) };
   }
-  const standaloneDir = dirname(serverJs);
+  // ★ cwd = 产物根。runnerBootstrapPath()/resolvePiCliEntry() 的 cwd 回退依赖它。
+  const distRoot = dirname(serverJs);
   const child = spawn(process.execPath, [serverJs], {
-    cwd: standaloneDir,
+    cwd: distRoot,
     env,
     stdio: "inherit",
   });
+
+  // 后端已拉起。此后才允许触发运行时回收(Req 5.5:GC 不得阻塞后端拉起)。
+  onStarted?.();
 
   let exited = false;
   const exitPromise = new Promise((resolveExit) => {
@@ -288,10 +575,15 @@ export async function launch({ serverJs, host, port, env, open }) {
   return exitPromise;
 }
 
-const HELP = `pi-web — 启动一个本地 pi-web 实例
+const SUBCOMMAND_LIST_TEXT = SUBCOMMAND_NAMES.map(
+  (name) => `  ${name.padEnd(11)} ${SUBCOMMAND_SPECS[name].summary}`,
+).join("\n");
+
+const HELP = `pi-web — 启动一个本地 pi-web 实例,或调用包管理子命令
 
 用法:
   pi-web [source] [options]
+  pi-web <subcommand> [options]
 
 参数:
   source              agent source(本地目录或 git 来源);省略则用当前目录
@@ -307,10 +599,27 @@ const HELP = `pi-web — 启动一个本地 pi-web 实例
   -h, --help          显示本帮助并退出
   -v, --version       显示版本并退出
 
+子命令:
+${SUBCOMMAND_LIST_TEXT}
+
+  运行 \`pi-web <subcommand> --help\` 查看某个子命令的专属用法。
+
 示例:
   pi-web                       # 用当前目录作为 agent source
   pi-web ./examples/hello-agent -p 8080 --open
 `;
+
+/** 解包失败的判别式错误码 → 用户下一步该做什么。文案与 payload/unpack.mjs 的 describeErrorCode 同源。 */
+const RUNTIME_ERROR_HINTS = {
+  "runtime-root-unwritable":
+    "运行时目录不可写。请检查该路径的权限,或经 PI_WEB_RUNTIME_ROOT 指定其他位置。",
+  "disk-full": "磁盘空间不足,无法解包运行时。请清理磁盘后重试。",
+  "payload-missing": "随包运行时载荷缺失。请重新安装 @blksails/pi-web。",
+  "payload-corrupt": "随包运行时载荷已损坏。请重新安装 @blksails/pi-web。",
+  "zstd-unsupported": "当前 Node 版本过低,不支持 zstd 解压。请升级到 Node >= 22.15.0。",
+  "lock-timeout": "等待其他进程完成运行时解包超时。请确认没有其他实例卡住,然后重试。",
+  default: "解包运行时失败。",
+};
 
 function readVersion() {
   try {
@@ -319,6 +628,50 @@ function readVersion() {
   } catch {
     return "0.0.0";
   }
+}
+
+/**
+ * 间接动态 `import()`:构造成 `new Function` 求值,而非字面 `import(<expr>)` 语法
+ * (任务 6.1)。
+ *
+ * ★ 这不是风格偏好 —— 直接写 `import(spec)`(`spec` 为运行时变量)会在 vitest 的
+ * Vite SSR 转换阶段(`ssrTransformScript`,供 `@/bin/pi-web.mjs` 这类测试期 import 使用)
+ * 于**解析期**报 `Expected ident` 并使*该文件的全部测试*(含与本子命令无关的
+ * `cli-args.test.ts` 26 项)collect 失败 —— 与运行时执行路径无关,是 Vite 的动态 import
+ * 静态分析对非字面量 specifier 的已知解析缺陷(`/* @vite-ignore *\/` 注释亦无效,已验证)。
+ * `new Function("specifier", "return import(specifier);")` 把 `import()` 移到一个
+ * 字符串里按普通 `Function` 构造求值,对 Vite 的源码静态扫描完全不可见,规避了这个解析期
+ * 崩溃;运行时语义与直接 `import(spec)` 等价(仍是原生 ESM 动态 import,非 CJS require)。
+ * CLI 是本机进程、非浏览器,不涉及 CSP `unsafe-eval` 顾虑。
+ */
+const dynamicImport = new Function("specifier", "return import(specifier);");
+
+/**
+ * 动态加载 `dist/cli-commands.mjs` 并调用其 `runSubcommand(name, argv, deps)`(任务 6.1,
+ * Req 1.7)。产物缺失时给出可操作错误并非零退出(与 `launch()` 对 `dist/server.mjs`
+ * 缺失的处理一致)。
+ *
+ * `examplesRootCandidates` 在此(壳层)构造并传入,而非让打包进产物的 `server/cli/index.ts`
+ * 自行推断 —— 该模块被 esbuild 打成单文件产物后 `import.meta.url` 会被内联,其"回退
+ * process.cwd()"这条路径不可靠(见 `distCliCommandsJs()` 的 docstring)。壳层的 `PKG_ROOT`
+ * (真实 `import.meta.url` 解析结果,未被打包)与 `distCliCommandsJs()` 的产物根才是可信来源:
+ * 候选路径依次为「产物根旁 `examples/`」(分发后布局)与「仓库根 `examples/`」(开发期布局),
+ * `resolveExamplesRoot()`(产物内的纯函数)按序取第一个真实存在的。
+ */
+async function runSubcommandFromDist(name, argv) {
+  const cliCommandsJs = distCliCommandsJs();
+  if (!existsSync(cliCommandsJs)) {
+    console.error(
+      `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +
+        `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
+    );
+    return 1;
+  }
+  const distRoot = dirname(cliCommandsJs);
+  const mod = await dynamicImport(pathToFileURL(cliCommandsJs).href);
+  return mod.runSubcommand(name, argv, {
+    examplesRootCandidates: [join(distRoot, "examples"), join(PKG_ROOT, "examples")],
+  });
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -331,23 +684,62 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   if (opts.intent === "help") {
-    process.stdout.write(HELP);
+    if (opts.subcommand) {
+      process.stdout.write(SUBCOMMAND_SPECS[opts.subcommand].usage);
+    } else {
+      process.stdout.write(HELP);
+    }
     return 0;
   }
   if (opts.intent === "version") {
     process.stdout.write(`${readVersion()}\n`);
     return 0;
   }
+  if (opts.intent === "subcommand" && opts.name === "add") {
+    // `add` 的专用最小分发(spec cli-component-add,任务 4):通用 runSubcommand 分发
+    // 仍归 cli-package-commands 任务 6.1,落地时本分支并入其词条表。
+    const cliCommandsJs = distCliCommandsJs();
+    if (!existsSync(cliCommandsJs)) {
+      console.error(
+        `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +
+          `  请先构建: \`pnpm build:dist\`(或 \`npm run build:dist\`)。`,
+      );
+      return 1;
+    }
+    // ★ 经 Function 间接而非字面量 `import()`:vitest(jsdom web 管线)对本 .mjs 内的
+    // 字面量动态 import 在 ssrTransformScript 阶段崩 "Expected ident"(rollup parseAst),
+    // 致所有 import 本模块的既有单测整套无法收集(实测 vitest 2.1.9 + vite 5.4.21;
+    // 裸 vite 同配置 transform 正常)。Node CLI 无 CSP,此间接仅为绕过测试管线解析缺陷。
+    const dynamicImport = new Function("u", "return import(u)");
+    const mod = await dynamicImport(pathToFileURL(cliCommandsJs).href);
+    return await mod.runAdd(opts.argv);
+  }
+  if (opts.intent === "subcommand") {
+    return runSubcommandFromDist(opts.name, opts.argv);
+  }
   if (opts.watch && opts.source && looksLikeGitSource(opts.source)) {
     console.warn("[pi-web] --watch 仅适用于本地目录 source,git 来源已跳过文件监视。");
   }
   const env = buildEnv(opts, process.cwd(), process.env);
+
+  let resolved;
+  try {
+    resolved = await resolveRuntime();
+  } catch (err) {
+    // 解包失败的判别式错误码由 payload/unpack.mjs 给出;此处只翻成可读文案(Req 4.1-4.4)。
+    const code = err?.code ?? "extract-failed";
+    console.error(`[pi-web] 无法准备运行时(${code}): ${err?.message ?? err}`);
+    console.error(`  ${RUNTIME_ERROR_HINTS[code] ?? RUNTIME_ERROR_HINTS.default}`);
+    return 1;
+  }
+
   return launch({
-    serverJs: standaloneServerJs(),
+    serverJs: resolved.serverJs,
     host: env.HOSTNAME,
     port: Number(env.PORT),
     env,
     open: opts.open,
+    onStarted: () => scheduleRuntimeGc(resolved.runtime),
   });
 }
 

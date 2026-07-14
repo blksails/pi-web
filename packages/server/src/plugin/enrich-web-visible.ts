@@ -2,7 +2,7 @@
  * get_commands 回填 `webVisible`(spec plugin-system-unification 增量)。
  *
  * 平台默认隐藏 `source:"extension"` 命令(防 busy 卡死的历史安全网)。统一插件可在
- * `pi-plugin.json` 的 `web.commands` 显式声明 web 可见命令;此处据命令的 sourceInfo
+ * `pi-web.json` 的 `web.commands` 显式声明 web 可见命令;此处据命令的 sourceInfo
  * 解析其所属插件清单,命中则打 `webVisible:true`,前端补全据此放行(安全网仍在,opt-in)。
  *
  * 按 packageRoot 缓存解析,O(去重后插件数) 次 fs 读;解析失败安全降级(不打标记)。
@@ -22,7 +22,7 @@ function packageRootOf(baseDir: string, origin: unknown): string {
 }
 
 /**
- * 给 `source:"extension"` 命令回填 `webVisible`(据 pi-plugin.json 的 `web.commands`)。
+ * 给 `source:"extension"` 命令回填 `webVisible`(据 pi-web.json 的 `web.commands`)。
  * 非扩展命令、无 baseDir 的命令原样透传。
  */
 export async function enrichWebVisibleCommands(

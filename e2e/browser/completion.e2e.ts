@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * completion-provider-framework 浏览器 e2e。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。验证 core 触发符
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。验证 core 触发符
  * 补全:在会话输入框键入 `@` → 弹出按 kind 分区的文件候选浮层 → 选中后输入框被插入
  * `@file:<相对路径>` token。会话 cwd = 选中的 agent 源目录(hello-agent 含 index.ts)。
  */

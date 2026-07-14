@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * message-queue-ui browser e2e —— 忙时排队 → 可视化 → 取回 全回环(Req 1.1/1.2/2.2/3.2)。
  *
- * Real browser → real Next server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE/clear_queue 端点。
+ * Real browser → real pi-web server(PI_WEB_STUB_AGENT=1)→ 真实 handler/session/SSE/clear_queue 端点。
  * stub 的 `queue-hold` 哨兵开一个不结束的 busy 轮次(无阻塞对话框);忙时 steer/follow_up 命令累积
  * 并回发 queue_update →(server 双帧)control:"queue" → control-store → usePiControls().queue → 队列面板。
  * Esc 触发 clearQueue(POST /clear_queue → PiSession 关联 → stub 回 piweb_clear_queue_result)取回回填编辑器。

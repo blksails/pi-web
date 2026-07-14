@@ -1,0 +1,32 @@
+{
+  "label": "tauri",
+  "shell": "desktop/src-tauri/target/release/bundle/macos/pi-web.app/Contents/MacOS/pi-web",
+  "measuredAt": "2026-07-09T09:33:49.411Z",
+  "bundle": {
+    "appPath": "desktop/src-tauri/target/release/bundle/macos/pi-web.app",
+    "appBytes": 289112064,
+    "appMB": 275.7,
+    "sidecarNodeMB": 85.6,
+    "bundledDistMB": 185
+  },
+  "coldStartMs": 1756,
+  "idleMemory": {
+    "totalBytes": 379043840,
+    "totalMB": 361.5,
+    "processCount": 3,
+    "processes": [
+      {
+        "comm": "pi-web",
+        "rssMB": 75.6
+      },
+      {
+        "comm": "node",
+        "rssMB": 137
+      },
+      {
+        "comm": "node",
+        "rssMB": 148.9
+      }
+    ]
+  }
+}

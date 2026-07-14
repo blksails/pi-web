@@ -16,6 +16,7 @@
  */
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import {
   createPiWebHandler,
   type PiWebHandler,
@@ -36,10 +37,13 @@ import {
   createAgentSourcesRoutes,
   createFavoritesRoutes,
   createAigcModelsRoute,
+  createVisionModelsRoute,
   createExtensionRoutes,
   createHostCommandRegistry,
   ChildProcessPiCli,
   DEFAULT_ALLOWLIST,
+  defaultOnAudit,
+  redactReason,
   attachmentStoreConfigFromEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
@@ -63,6 +67,9 @@ import {
   parseHiddenProviders,
   excludeProviders,
 } from "@blksails/pi-web-server/model-options";
+// listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
+// (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
+import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
@@ -72,6 +79,13 @@ import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-e
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
+import {
+  createInstallHostCommand,
+  type InstallAuditEvent,
+} from "./install-host-command.js";
+import { createInstaller } from "../../server/cli/install/installer.js";
+import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
+import { resolveSourcesRoot } from "../../server/cli/context.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -161,12 +175,25 @@ function makeRealResolver(config: AppConfig): {
 }
 
 /**
+ * agent source 的默认安装/发现根。与 pi 的配置目录(`PI_WEB_AGENT_DIR`,默认 `~/.pi/agent`,
+ * 存 settings/auth/attachments)分属两个目录族:那里是 **pi 的资产**,这里是 **pi-web 的资产**。
+ * `pi-web install` 装 `kind:"agent"` 的包时落于此(plugin 则交 DefaultPackageManager 落 `~/.pi/agent`)。
+ */
+function defaultSourcesRoot(): string {
+  return path.join(os.homedir(), ".pi-web", "agents");
+}
+
+/**
  * agent-sources-list:解析 PI_WEB_SOURCES_ROOT 为绝对扫描根列表。
- * path.delimiter(: / ;)分隔多个;相对路径以 defaultCwd 绝对化;去空段。未配 → []。
+ * path.delimiter(: / ;)分隔多个;相对路径以 defaultCwd 绝对化;去空段。
+ *
+ * 未配 → 回落 `~/.pi-web/agents`(单元素)。显式配置**完全接管**(覆盖而非追加),保持既有语义。
+ * 回落无需区分 dev/prod:`ScanSourceProvider` 的契约是「root 不存在/无法解析 → 跳过该 root」,
+ * 故目录不存在时静默产出空列表,与改动前的 `[]` 行为一致。
  */
 function resolveSourcesScanRoots(defaultCwd: string): readonly string[] {
   const raw = process.env.PI_WEB_SOURCES_ROOT;
-  if (raw === undefined || raw.trim().length === 0) return [];
+  if (raw === undefined || raw.trim().length === 0) return [defaultSourcesRoot()];
   return raw
     .split(path.delimiter)
     .map((s) => s.trim())
@@ -403,13 +430,50 @@ function buildSingleton(): HandlerSingleton {
     await session.restartRunner();
   };
 
+  // /install host 命令(spec install-host-command):web 面按 kind 安装 agent/plugin,
+  // 复用 CLI install 子域(createInstaller/createPluginInstaller 直调,零第二份编排)。
+  // 治理与 REST /extensions 同源:extAllowlist(白名单)/extAllowMutate(admin 门)/extPiCli。
+  // agent 落盘目标与 GET /agent-sources 的「扫描 ∪ 注册表」同值,装完选择器天然可见。
+  const installRegistryPath =
+    process.env.PI_WEB_SOURCES_REGISTRY ??
+    path.join(config.agentDir, "sources.json");
+  const installHostCommand = createInstallHostCommand({
+    installer: createInstaller({
+      allowlistConfig: extAllowlist,
+      piCli: extPiCli,
+      agentInstallerOptions: {
+        sourcesRoot: resolveSourcesRoot(process.env, config.defaultCwd),
+        registryPath: installRegistryPath,
+      },
+    }),
+    pluginInstaller: createPluginInstaller({ piCli: extPiCli }),
+    adminGate: () => extAllowMutate,
+    reloadRunner,
+    // 审计与 REST 扩展安装同 sink(defaultOnAudit):host 通道无 AuthContext,actor 固定
+    // 标识来源;uninstall→remove,其余动作按安装类记录(list/update 仅 admin 拒绝会至此)。
+    audit: (event: InstallAuditEvent): void => {
+      defaultOnAudit({
+        actor: "host-command",
+        at: new Date().toISOString(),
+        action: event.action === "uninstall" ? "remove" : "install",
+        source: event.source ?? event.action,
+        outcome: event.outcome,
+        reason: redactReason(event.reason),
+      });
+    },
+    cwd: config.defaultCwd,
+  });
+
   const handler = createPiWebHandler({
     manager,
     store,
-    // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/plugin 已迁出:扩展安装改为
-    // agent 回合内的内置工具(spec extension-install-agent-tools),用 ctx.ui 呈现,不再走
-    // host 命令 + 模态面板。此处仅保留 /clear(agent 上下文清空 + 前端 clear-transcript)。
-    hostCommands: createHostCommandRegistry([createClearHostCommand()]),
+    // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
+    // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
+    // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
+    hostCommands: createHostCommandRegistry([
+      createClearHostCommand(),
+      installHostCommand,
+    ]),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
     // 与 vision/images base64 并存,不内联字节。
@@ -491,6 +555,13 @@ function buildSingleton(): HandlerSingleton {
       // widget 列举。设置本体(被禁模型 / 提示词优化)走标准 config 域 /api/config/aigc(落
       // <agentDir>/aigc.json),runner 装配期经 tool-kit resolveAigcToolSettings 只读同文件。
       ...createAigcModelsRoute(),
+      // Canvas 视觉解读(canvas-vision-readout):GET /vision/models 只读清单,供工作台提示词栏的
+      // 视觉模型选择器列举。取数与 image_vision 工具的候选同源(getAvailable() ∩ input 含 image),
+      // 故下拉里看到的就是工具弹层里能选到的。取数抛错 → 200 + 空清单(前端退化为工具弹层)。
+      // ⚠ 该端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
+      ...createVisionModelsRoute({
+        listModels: () => listVisionModelOptions(config.agentDir),
+      }),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。

@@ -1,0 +1,22 @@
+{
+  "feature_name": "canvas-vision-readout",
+  "created_at": "2026-07-09T04:58:42Z",
+  "updated_at": "2026-07-09T06:30:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

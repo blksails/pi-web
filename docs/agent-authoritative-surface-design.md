@@ -412,4 +412,4 @@ function CanvasGallery() {
 | Bulk | `packages/server/src/attachment/*`(签名 URL) |
 | 编辑执行编排器 | `packages/tool-kit/src/aigc/run-image-tool.ts` |
 
-> 相关文档:`docs/bidirectional-shared-state-design.md`(context 外双向 state 的更早讨论)、`docs/product/10-web-ui-extension`(5-tier 挂载)、`docs/product/11-aigc-tools`(Canvas 首个落地场景)。
+> 相关文档:`docs/bidirectional-shared-state-design.md`(context 外双向 state 的更早讨论)、`docs/product/12-web-ui-extension`(5-tier 挂载)、`docs/product/11-aigc-and-vision-tools`(Canvas 首个落地场景)。

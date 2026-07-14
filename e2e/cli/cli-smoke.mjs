@@ -2,11 +2,11 @@
 /**
  * CLI 启动链路 e2e 冒烟(spec pi-web-cli, Task 4.1 + 3.2)。可重复运行,产出新鲜证据。
  *
- * 前置:已构建自包含产物 —— `NEXT_DIST_DIR=.next-cli pnpm build:cli`。
- * 跑法:`NEXT_DIST_DIR=.next-cli node e2e/cli/cli-smoke.mjs`(或 `pnpm e2e:cli`)。
+ * 前置:已构建自包含产物 —— `pnpm build:dist`。
+ * 跑法:`node e2e/cli/cli-smoke.mjs`(或 `pnpm e2e:cli`)。
  *
  * 覆盖:
- *   - 产物完整性(server.js / runner-bootstrap / pi SDK cli.js / jiti)——P0(research §2.3)
+ *   - 产物完整性(server.mjs / runner-bootstrap / pi SDK cli.js / jiti)——P0(research §2.3)
  *   - 参数路径:--help/--version 零退出;未知参数非零退出且不启动(Req 5.1-5.3)
  *   - stub 启动 → 浏览器加载 → 默认 source 激活会话 → 发消息 → stub 流式回包(Req 7.2, 1.4, 3.1, 3.3)
  */
@@ -18,7 +18,7 @@ import { get as httpGet } from "node:http";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const DIST = process.env.NEXT_DIST_DIR ?? ".next-cli";
+const DIST = process.env.PI_WEB_DIST_DIR ?? "dist";
 const BIN = join(ROOT, "bin", "pi-web.mjs");
 const PORT = 3457;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -49,19 +49,28 @@ function waitReady(timeoutMs) {
 
 async function main() {
   // 1) 产物完整性(Task 3.2 / P0)
-  const SA = join(ROOT, DIST, "standalone");
-  // 无符号链接产物:pi SDK / jiti 经扁平化 hoist 到顶层 node_modules(见 pack-standalone)。
+  // 产物根即 DIST(入口 server.mjs 在其下,不再有 standalone/ 子层)。
+  const SA = join(ROOT, DIST);
+  // 无符号链接产物:pi SDK / jiti 经 dereference 拷贝 hoist 到顶层 node_modules(见 pack-dist)。
   for (const f of [
-    "server.js",
+    "server.mjs",
     "packages/server/runner-bootstrap.mjs",
     "node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
     "node_modules/jiti",
   ]) {
     check(`产物存在: ${f}`, existsSync(join(SA, f)));
   }
-  if (!existsSync(join(SA, "server.js"))) {
-    console.error("产物缺失,请先 `NEXT_DIST_DIR=.next-cli pnpm build:cli`");
+  if (!existsSync(join(SA, "server.mjs"))) {
+    console.error("产物缺失,请先 `pnpm build:dist`");
     process.exit(1);
+  }
+
+  // 1b) 随包载荷(spec shared-runtime-payload)。npm 包分发的是它,不再是 dist/ 树。
+  // ⚠ 本 e2e 仍走 CLI 解析顺序的第 ② 级(仓库内 dist/ 存在 ⇒ 不解包),
+  //   故它**测不到解包路径** —— 那由 e2e/cli/cli-reloc.mjs 覆盖。
+  const PAYLOAD = join(ROOT, "payload");
+  for (const f of ["dist.tar.zst", "payload.json", "unpack.mjs"]) {
+    check(`载荷存在: payload/${f}`, existsSync(join(PAYLOAD, f)));
   }
 
   // 2) 参数路径(Req 5.1-5.3)
@@ -76,7 +85,7 @@ async function main() {
   const cli = spawn("node", [BIN, "./examples/hello-agent", "--stub", "-p", String(PORT)], {
     cwd: ROOT,
     // 强开日志:建会话 500 时 handler 默认不打印根因,开日志才能看到服务端堆栈(诊断跨 OS)。
-    env: { ...process.env, NEXT_DIST_DIR: DIST, PI_WEB_LOG_ENABLED: "1" },
+    env: { ...process.env, PI_WEB_DIST_DIR: DIST, PI_WEB_LOG_ENABLED: "1" },
     stdio: "inherit",
   });
   let browser;

@@ -11,7 +11,7 @@ import {
   CliUsageError,
   findFreePort,
   waitForReady,
-  standaloneServerJs,
+  distServerJs,
 } from "@/bin/pi-web.mjs";
 import { isHotReloadEnabled } from "@/packages/server/src/rpc-channel/hot-reload";
 
@@ -172,22 +172,26 @@ describe("findFreePort 端口自动切换(Req 2.8)", () => {
 
 // spec pi-web-desktop task 1.2:桌面壳复用 CLI 就绪探针与产物定位,故二者须为导出且行为不变。
 describe("桌面壳复用的导出原语(pi-web-desktop 1.2)", () => {
-  it("standaloneServerJs 返回 .next-cli/standalone/server.js 绝对路径", () => {
-    const p = standaloneServerJs();
+  // ★ 入口必须位于**产物根**:CLI 以 dirname(serverJs) 作 cwd,而 packages/server 的
+  // runnerBootstrapPath()/resolvePiCliEntry() 在 import.meta.url 被内联后回退到 cwd。
+  it("distServerJs 返回 dist/server.mjs 绝对路径(入口在产物根)", () => {
+    const p = distServerJs();
     expect(isAbsolute(p)).toBe(true);
-    expect(p.replaceAll("\\", "/")).toMatch(/\.next-cli\/standalone\/server\.js$/);
+    expect(p.replaceAll("\\", "/")).toMatch(/\/dist\/server\.mjs$/);
+    // 产物根 = 入口所在目录,不得有额外层级。
+    expect(p.replaceAll("\\", "/")).not.toMatch(/\/dist\/[^/]+\/server\.mjs$/);
   });
 
-  it("standaloneServerJs 尊重 NEXT_DIST_DIR 覆盖(与 CLI 隔离构建一致)", () => {
-    const prev = process.env.NEXT_DIST_DIR;
-    process.env.NEXT_DIST_DIR = ".next-desktop-test";
+  it("distServerJs 尊重 PI_WEB_DIST_DIR 覆盖(与隔离构建一致)", () => {
+    const prev = process.env.PI_WEB_DIST_DIR;
+    process.env.PI_WEB_DIST_DIR = "dist-desktop-test";
     try {
-      expect(standaloneServerJs().replaceAll("\\", "/")).toMatch(
-        /\.next-desktop-test\/standalone\/server\.js$/,
+      expect(distServerJs().replaceAll("\\", "/")).toMatch(
+        /dist-desktop-test\/server\.mjs$/,
       );
     } finally {
-      if (prev === undefined) delete process.env.NEXT_DIST_DIR;
-      else process.env.NEXT_DIST_DIR = prev;
+      if (prev === undefined) delete process.env.PI_WEB_DIST_DIR;
+      else process.env.PI_WEB_DIST_DIR = prev;
     }
   });
 

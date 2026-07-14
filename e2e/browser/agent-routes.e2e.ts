@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 /**
  * agent-declared-routes 浏览器级 e2e(spec agent-declared-routes task 5.2)。
  *
- * 对真实 Next server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。stub 装配期
+ * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。stub 装配期
  * 搭车 get_commands 就绪探针发 `agent_routes` 声明帧(演示 routes:
  * `gallery-stats` GET 定值 / `echo` POST 回显),主进程缓存为会话路由表并挂载
  * `/api/sessions/:id/agent-routes[...]` 端点。

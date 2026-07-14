@@ -113,7 +113,7 @@ describe("PiCommandPalette", () => {
       expect(screen.queryByText("/sandbox")).not.toBeInTheDocument();
     });
 
-    it("webVisible:true 的 extension 命令默认放行(pi-plugin.json web.commands opt-in),无需 allowlist", async () => {
+    it("webVisible:true 的 extension 命令默认放行(pi-web.json web.commands opt-in),无需 allowlist", async () => {
       const controls = mockControls({
         commands: [
           { ...extCmd("review"), webVisible: true },

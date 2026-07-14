@@ -12,6 +12,12 @@ export {
   type PiChatProps,
   type PiChatAttachmentsApi,
 } from "./chat/pi-chat.js";
+// 新建会话的 agent source 选择器。三项能力(源列表 / 收藏 / 浏览目录)全部可选注入 ——
+// 宿主不注入就只渲染手输框,故云端可只接列表、砍掉本地目录与桌面目录选择。
+export {
+  AgentSourcePicker,
+  type AgentSourcePickerProps,
+} from "./chat/agent-source-picker.js";
 export { PiQueuePanel, type PiQueuePanelProps } from "./chat/pi-queue-panel.js";
 export type { PiChatSlots } from "./chat/slots.js";
 export { LogsPanel, type LogsPanelProps } from "./logs/logs-panel.js";
@@ -80,9 +86,9 @@ export {
   type CommandStage,
 } from "./controls/command-arg.js";
 export {
-  createPluginArgProvider,
-  type PluginArgProviderOptions,
-} from "./controls/plugin-arg-provider.js";
+  createInstallArgProvider,
+  type InstallArgProviderOptions,
+} from "./controls/install-arg-provider.js";
 
 // interaction 层(原 dialog/PiPermissionDialog 重命名为 elements/PiInteraction)
 export {

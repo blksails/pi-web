@@ -4,7 +4,7 @@
  * 守护出口纪律(canvas-ui-m15 Req 2.1/2.2,tasks 2.1):
  * - src/index.ts 是唯一出口(styles.css 除外),可被解析;
  * - 出口面 = **8 迁入文件并集 + generate-actions(task 3.2)+ resolveToolRailTitle(task 3.4)
- *   + plugin-aggregation(task 3.1)**(43 值 + 28 类型)——
+ *   + plugin-aggregation(task 3.1)**(45 值 + 28 类型)——
  *   严格超集于迁移前 packages/ui/src/index.ts 的 canvas 导出块:深路径
  *   named import(decideGenerate/buildSurfaceOp/canvasViewStore 等)与设置
  *   面板消费(aigc-model-meta 三导出)均须从包入口可达;
@@ -58,7 +58,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
     expect(canvasUi).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4) + collectCanvasPluginBundles(task 3.1),共 43 项,无内部件泄漏(快照)", () => {
+  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4) + collectCanvasPluginBundles(task 3.1),共 45 项,无内部件泄漏(快照)", () => {
     expect(Object.keys(canvasUi).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
@@ -69,6 +69,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "CanvasLauncher",
       "CanvasPanel",
       "CanvasWorkbench",
+      "DEFAULT_READOUT_QUESTION",
       "LineageView",
       "PROVIDER_META",
       "ProviderBadge",
@@ -76,6 +77,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "buildLineageTree",
       "buildSurfaceOp",
       "buildToolPrompt",
+      "buildVisionOp",
       "canvasOpenStore",
       "canvasViewStore",
       "clampRect",

@@ -13,7 +13,7 @@ pi-web 把任何用 [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/pa
 ## 核心能力
 
 - **双模式载入** —— 有 `index.[js|ts]` 入口的源用 SDK 的 `runRpcMode` 跑自定义 agent;无入口则回退通用 `pi --mode rpc`。两者对前端是同一套 RPC 协议。
-- **流式对话 UI** —— Next.js + shadcn/ui + Vercel AI Elements,经 SSE + AI SDK v5 自定义 `ChatTransport` 渲染文本 / 思考 / 工具调用。
+- **流式对话 UI** —— Vite + React SPA,搭配 shadcn/ui + Vercel AI Elements,经 SSE + AI SDK v5 自定义 `ChatTransport` 渲染文本 / 思考 / 工具调用。
 - **pi 资源体系直通** —— extensions / skills / prompt templates 自动发现 + 声明式注入;权限弹窗经 extension UI 子协议。
 - **附件系统** —— 图片/文件上传经可插拔对象存储(先本地)落库 + 签名分发 URL。两条消费路径:**base64 喂 LLM 识别**,以及**文件交 server 端 tool**(图像编辑/生成)经 `attachmentId` 解析执行,产出回流并可被下一轮再次引用。
 - **自定义 provider** —— 经 `~/.pi/agent/models.json` 接入任意 OpenAI 兼容网关(NewAPI、DashScope 等);设置 UI 提供可搜索的 provider/模型下拉,选项来自你已配置凭证的可用模型。
@@ -22,10 +22,10 @@ pi-web 把任何用 [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/pa
 ## 架构
 
 ```
-浏览器 (AI Elements + useChat)
+浏览器 (Vite SPA — AI Elements + useChat)
    │  SSE / HTTP
    ▼
-Next.js Route Handler (Node runtime,会话进程驻留)
+Hono 宿主 (server/index.ts — 一条 app.all("/api/*") 转发到 createPiWebHandler)
    │  stdin/stdout JSONL
    ▼
 Agent 子进程  — bootstrap runner `runRpcMode`  或  `pi --mode rpc`
@@ -48,6 +48,10 @@ Agent 子进程  — bootstrap runner `runRpcMode`  或  `pi --mode rpc`
 | `@blksails/pi-web-ui` | shadcn/ui + AI Elements 组件,以及 schema 驱动的配置 UI。 |
 | `@blksails/pi-web-agent-kit` | 写 `index.ts` 用的 `defineAgent()` 类型帮助。 |
 | `@blksails/pi-web-tool-kit`、`@blksails/pi-web-kit` | 工具与 Web 集成的配套套件。 |
+| `@blksails/pi-web-primitives` | 与对话壳解耦的框架中立 UI 原语。 |
+| `@blksails/pi-web-canvas-kit` | Canvas 内核:图层模型、ops、history。headless。 |
+| `@blksails/pi-web-canvas-ui` | Canvas 工作台 UI、动作与插件注册面。 |
+| `@blksails/pi-web-logger` | 浏览器与 Node 共用的同构 logger。 |
 
 ## 快速开始
 
@@ -61,7 +65,7 @@ Agent 子进程  — bootstrap runner `runRpcMode`  或  `pi --mode rpc`
 
 ```bash
 pnpm install
-pnpm dev          # next dev —— http://localhost:3000
+pnpm dev          # API 宿主跑 :3000 + Vite dev server —— 浏览器开 http://localhost:5173
 ```
 
 打开应用,在选择器里输入 **agent source**:
@@ -109,9 +113,10 @@ pnpm dev          # next dev —— http://localhost:3000
 
 | 命令 | 说明 |
 | --- | --- |
-| `pnpm dev` | 启动开发服务器(`next dev`)。 |
-| `pnpm build` | 生产构建。 |
-| `pnpm start` | 运行生产构建。 |
+| `pnpm dev` | 并发拉起两个开发进程(`scripts/dev-all.mjs`):API 宿主 `:3000` + Vite `:5173`。 |
+| `pnpm dev:client` | 只起 Vite dev server。 |
+| `pnpm build` | 生产构建(`build:dist`):Vite 客户端 → esbuild 服务端 → `pack-dist` → 载荷。 |
+| `pnpm start` | 运行生产构建(`node dist/server.mjs`)。 |
 | `pnpm test` | 运行所有 workspace 包测试。 |
 | `pnpm test:app` | 应用级 vitest。 |
 | `pnpm e2e` | Playwright e2e。 |

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Slash-command-palette browser e2e — drives the "/" command completion overlay
- * against the real Next server with the deterministic offline stub agent
+ * against the real pi-web server with the deterministic offline stub agent
  * (PI_WEB_STUB_AGENT=1). The stub's `get_commands` returns two commands: `help`
  * and `clear` (lib/app/stub-agent-process.mjs).
  *

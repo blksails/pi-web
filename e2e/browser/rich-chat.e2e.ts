@@ -102,7 +102,9 @@ test("rich chat: model selector renders, groups by provider, searches, and selec
   await page.locator("[data-pi-model-search]").fill("gpt");
   await expect(panel.locator('[role="option"]')).toHaveCount(1);
   await expect(panel.locator('[role="option"]').first()).toContainText("GPT");
-  await expect(groups.filter({ hasText: "anthropic" })).toHaveCount(0);
+  // cmdk 过滤后无命中项的分组以 hidden 保留在 DOM(a11y 树已排除),故断言不可见而非
+  // 计数为 0(toHaveCount 会把隐藏元素也计入)。
+  await expect(groups.filter({ hasText: "anthropic" })).not.toBeVisible();
 
   // Req 4.3 — selecting the model invokes setModel (POST /model) and closes the
   // panel; the trigger reflects the newly-selected model.
@@ -127,9 +129,11 @@ test("rich chat: suggestion bubble from get_commands fills the input (Req 10.2)"
   await startSession(page);
 
   // Req 10.1 — get_commands populates suggestion bubbles once the session is ready.
+  // get_commands 是就绪后的**异步**探针:命令到达前空态先渲染默认 starter 提示(非斜杠命令),
+  // 命令到达后并入建议区。故等待「以 / 开头」的命令气泡出现,而非取首个气泡立即断言(避免竞态)。
   const suggestions = page.locator("[data-pi-suggestions]");
   await expect(suggestions).toBeVisible();
-  const bubble = suggestions.locator("button").first();
+  const bubble = suggestions.locator("button").filter({ hasText: /^\// }).first();
   await expect(bubble).toBeVisible();
   const label = (await bubble.textContent())?.trim() ?? "";
   expect(label.startsWith("/")).toBe(true);

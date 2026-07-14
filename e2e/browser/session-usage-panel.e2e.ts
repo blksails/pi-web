@@ -8,7 +8,7 @@ import { test, expect } from "@playwright/test";
  *  - 1.1 / 2.1 — 富版 PiChat 渲染内核自有用量区(data-pi-session-stats),展示
  *                messages / tool calls / tokens / cost 四项字段。
  *  - 3.1       — 完成一轮会话后用量随 stats 帧刷新(messages 计数增长)。
- *  - 6.2 / 6.3 — 在隔离 build(NEXT_DIST_DIR=.next-e2e)+ external server 模式下验收。
+ *  - 6.2 / 6.3 — 在隔离 build(PI_WEB_DIST_DIR)+ external server 模式下验收。
  *
  * 用量区是内核自有(非 webext slot),挂在主列、与顶部 webext statusBar 物理分离。
  * 该面板的实时刷新来自 SSE control 的 stats 帧(usePiControls.stats)。

@@ -4,8 +4,8 @@ import { test, expect } from "@playwright/test";
  * attachment-tool-bridge browser e2e — full chain (task 6.2; Req 7.2, 10.2,
  * 10.3, 10.4).
  *
- * Drives the FULL closed loop against the REAL Next server in the isolated e2e
- * build (NEXT_DIST_DIR=.next-e2e) + external-server mode, with a deterministic,
+ * Drives the FULL closed loop against the REAL pi-web server in the isolated e2e
+ * build (PI_WEB_DIST_DIR) + external-server mode, with a deterministic,
  * LLM-free stub fixture (PI_WEB_STUB_AGENT_PATH → attachment-tool-bridge-stub.mjs)
  * that runs the GENUINE attachment tool-execution chain (subprocess store
  * resolve → transform → putOutput → reference reflow → real afterToolCall base64
@@ -17,7 +17,7 @@ import { test, expect } from "@playwright/test";
  *  - 10.2 — 上传 → 发消息(引用)→ tool 以公开 id resolve → 执行 → 产出落库 →
  *           引用回流 → 前端经分发 URL 展示 的完整浏览器链路。
  *  - 7.2  — 产出附件的公开 id 与上传 id 同一空间,可被下一轮消息再次引用(回环 B)。
- *  - 10.3 — 在隔离构建产物(.next-e2e)下运行,不污染开发态 .next。
+ *  - 10.3 — 在隔离构建产物(dist/)下运行,不污染开发态。
  *  - 10.4 — 以新鲜运行证据证明。
  *
  * Assertions:
@@ -125,7 +125,13 @@ async function readProduced(
   ).not.toBeNull();
   const outId = idMatch![1]!;
 
-  const urlMatch = cardText.match(/url=(\/attachments\/[^\s"'<>]+)/);
+  // 分发 URL 可带可不带 `/api` 前缀(端点挂载于 `/api`;子进程 store 的 displayUrl 含前缀,
+  // 而 probeRaw 亦对两种形态归一)。精确匹配到 sig 的十六进制串末尾 —— `card.textContent()`
+  // 把 URL 与紧随其后的「详情」等 UI 文本无分隔地拼接,宽松字符类会把非 URL 文本一并吞入
+  // 破坏 sig,故按 `att_id/raw?exp=<digits>&sig=<hex>` 的精确形态收口。
+  const urlMatch = cardText.match(
+    /url=((?:\/api)?\/attachments\/att_[A-Za-z0-9_-]+\/raw\?exp=\d+&sig=[0-9a-f]+)/,
+  );
   expect(
     urlMatch,
     `tool card should surface a /raw display url: ${cardText}`,

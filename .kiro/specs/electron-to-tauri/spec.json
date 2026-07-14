@@ -1,0 +1,35 @@
+{
+  "feature_name": "electron-to-tauri",
+  "created_at": "2026-07-09T07:26:20Z",
+  "updated_at": "2026-07-09T09:51:54Z",
+  "language": "zh",
+  "phase": "implemented-partial",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation": {
+    "completed_tasks": 22,
+    "total_tasks": 26,
+    "blocked_by": "跨平台验证需 Linux/Windows 环境与真实 GitHub Actions",
+    "macos_chain": "green (cargo 57 / vitest 216 / 3 条黑盒 e2e 全通过)",
+    "motive_verdict": "macOS arm64 达标: 包体 0.35×、内存 -52.5%、冷启动 -69.5%",
+    "open_items": [
+      "6.1 Linux WebDriver 未跑",
+      "6.2 Windows/Linux 打包未验",
+      "7.1 CI 未真实运行",
+      "8.2 Req 11.3 三平台数值未齐"
+    ]
+  }
+}

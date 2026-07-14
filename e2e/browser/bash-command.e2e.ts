@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * Bang(`!`)shell 命令 browser e2e(spec bang-shell-command)— 真实 Next server +
+ * Bang(`!`)shell 命令 browser e2e(spec bang-shell-command)— 真实 pi-web server +
  * 离线 stub agent(stub 用 execSync 真实执行 shell)。
  *
  * 覆盖(开启档:NEXT_PUBLIC_PI_WEB_BASH_ENABLED=1 build + PI_WEB_BASH_ENABLED=1 server):

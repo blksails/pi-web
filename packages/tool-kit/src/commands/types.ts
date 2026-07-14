@@ -28,4 +28,9 @@ export interface BuiltinCommandSpec {
   readonly subcommands?: readonly BuiltinSubcommand[];
   /** 仅用户可触发;模型不可调用(绝不进消息流/工具表)。恒 true。 */
   readonly userOnly: true;
+  /**
+   * 声明该命令的执行结果应作为 data part 卡片追加进聊天流(如 "data-install-result")。
+   * 未声明 ⇒ 结果只驱动 effect(如 clear-transcript),不进消息流(见 dispatchBuiltin)。
+   */
+  readonly resultDataPart?: string;
 }

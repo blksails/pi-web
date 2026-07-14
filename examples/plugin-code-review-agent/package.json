@@ -4,12 +4,14 @@
   "private": true,
   "description": "代码检视插件:pi 工具/命令 + web 富卡渲染",
   "files": [
-    "pi-plugin.json",
+    "pi-web.json",
     "extensions",
     "skills",
+    "prompts",
     ".pi/web/dist"
   ],
   "keywords": [
+    "pi-package",
     "pi-extension",
     "pi-web-extension",
     "pi-plugin"

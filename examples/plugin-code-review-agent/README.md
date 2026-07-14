@@ -7,7 +7,7 @@
 | 角色 | 说明 |
 |------|------|
 | 自运行 agent | `pi-web ./examples/plugin-code-review-agent` 直接启动,`.pi/extensions` 自动加载扩展 |
-| 可安装插件 | `pi-plugin.json` 统一清单 + `package.json`(`@acme/code-review`)声明可发布;消费方 `extensions: ["local:../plugin-code-review-agent"]` 安装即用 |
+| 可安装插件 | `pi-web.json` 统一清单 + `package.json`(`@acme/code-review`)声明可发布;消费方 `extensions: ["local:../plugin-code-review-agent"]` 安装即用 |
 
 ### 两层咬合契约锚点:`code_review`
 
@@ -18,13 +18,13 @@
 | pi 提示模板 | `prompts/*.md` | `/review-snippet`、`/review-staged`、`/review-security` 三个斜杠命令,展开成调用 `code_review` 工具的提示 |
 | Web 渲染器 | `.pi/web/web.config.tsx` | `renderers.tools.code_review` → `CodeReviewCard` 富卡 |
 | Web 贡献点 | 同上 | `contributions.slash` 接入 `/review` 命令补全 |
-| 清单绑定 | `pi-plugin.json` → `bindings.tools` | 声明 `code_review` 为对外契约 |
+| 清单绑定 | `pi-web.json` → `bindings.tools` | 声明 `code_review` 为对外契约 |
 
 ## 目录结构
 
 ```
 plugin-code-review-agent/
-├── pi-plugin.json          # 统一插件清单
+├── pi-web.json          # 统一插件清单
 ├── package.json            # 可发布声明(@acme/code-review)
 ├── index.ts                # 自运行 agent 入口
 ├── extensions/
@@ -62,7 +62,7 @@ plugin-code-review-agent/
 三者都引导 agent 调用 `code_review` 工具,以富卡呈现结果(与 skill 同一渲染路径)。
 
 > 与扩展 / skill 一样,提示模板也分两处:被安装(`origin:package`)时扫**包根** `prompts/`
-> 并由 `pi-plugin.json` 的 `pi.prompts` 声明;自运行(`origin:top-level`)时 SDK 扫 `.pi/prompts/`。
+> 并由 `pi-web.json` 的 `pi.prompts` 声明;自运行(`origin:top-level`)时 SDK 扫 `.pi/prompts/`。
 > markdown 无法像扩展那样 re-export,故两处各放一份(与 `.pi/skills` 样板同理)。
 
 ## 运行

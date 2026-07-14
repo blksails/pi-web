@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Extension-UI ambient surfaces browser e2e — full closed loop against the real
- * Next server with the deterministic offline stub agent (PI_WEB_STUB_AGENT=1).
+ * pi-web server with the deterministic offline stub agent (PI_WEB_STUB_AGENT=1).
  *
  * Covers (requirements.md):
  *  - Req 1.1 — notify → a notification toast appears in [data-pi-notifications].

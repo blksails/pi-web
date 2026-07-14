@@ -289,7 +289,7 @@ export interface CanvasCapability {
 | 车道 | 声明 | 作用域 | 典型 |
 |---|---|---|---|
 | ① 同 bundle | `defineWebExtension({ canvasPlugins: [...] })`(新 capability 键) | 该 source 的 Canvas 实例 | aigc-canvas-agent 自带全部内置插件 |
-| ② 第三方插件包 | `pi-plugin.json` 的 `web.canvasPlugins`(第一篇 §5 清单加一键) | 安装后对声明消费它的 Canvas 生效 | 「水印工具包」npm 包 |
+| ② 第三方插件包 | `pi-web.json` 的 `web.canvasPlugins`(第一篇 §5 清单加一键) | 安装后对声明消费它的 Canvas 生效 | 「水印工具包」npm 包 |
 | ③ 运行时(agent 命令) | capability.actions 驱动(纯 command 动作可零 UI 代码出现在动作链) | 会话 | agent 只在后端加 handler,前端按钮自动长出 |
 
 注册表 per Canvas 实例(Tier2 renderer 同款命名空间语义):`<extId>:<pluginId>` 前缀,
@@ -376,7 +376,7 @@ const canvas = createSurface<CanvasState>({
 });
 ```
 
-两端由 `pi-plugin.json` 的 `bindings` 锚定(第一篇两层咬合锚点的 Canvas 版):
+两端由 `pi-web.json` 的 `bindings` 锚定(第一篇两层咬合锚点的 Canvas 版):
 
 ```jsonc
 {

@@ -1,0 +1,116 @@
+# Implementation Plan — install-host-command
+
+- [x] 1. 契约与 CLI 子域接缝(Foundation)
+- [x] 1.1 定义安装结果卡片的数据契约
+  - protocol 包新增 InstallResultData schema(action/ok/kind/id/location/guidance/steps/items/error),经 barrel 导出
+  - 所有 string 字段约定为已脱敏内容;ok:false 时 error 必填
+  - 观察态:workspace typecheck 通过,schema 可从 @blksails/pi-web-protocol 导入并 safeParse 通过样例
+  - _Requirements: 5.1, 5.4_
+- [x] 1.2 CLI installer 增加来源白名单注入接缝
+  - CreateInstallerOptions 新增 allowlistConfig 可选项,穿透到内部 resolveSource;缺省行为与现状逐字节一致
+  - 单测:注入 allowLocal:false 时本地源被拒;不注入时既有用例全绿(回归护栏)
+  - 观察态:test/cli 新用例通过且既有 334 测试不回归
+  - _Requirements: 3.4_
+- [x] 1.3 CLI installer 的 kind 分派层显式拒绝 component
+  - install()/uninstall() 判别为 component 时立即返回 KIND_COMPONENT_UNSUPPORTED 错误(message 含「组件包请在目标 source 目录用 pi-web add 安装」指引),不触碰任何安装通道
+  - 单测:本地 component 清单(kind:"component")→ install 与 uninstall 均拒绝
+  - 观察态:CLI `pi-web install <component包>` 退出码非零且输出含 pi-web add 指引
+  - _Requirements: 2.5, 2.6_
+
+- [x] 2. /install host 命令 handler(Core·服务端)
+- [x] 2.1 handler 骨架:argv 解析与用法文本
+  - createInstallHostCommand(deps) 返回 HostCommandHandler;argv 空白分词 + 选项解析(--kind/--outdated/位置参数)
+  - 裸 /install、未知子动作、缺参、非法 --kind 各返回独立用法文本(effect:"none",纯 message 无 data);update 收到任何 --kind 输入均以用法错误拒绝(update 仅 plugin 通道)
+  - 观察态:单测覆盖解析全矩阵,用法文本注明不支持含空格路径
+  - _Requirements: 1.5, 1.6, 2.3, 2.4_
+- [x] 2.2 门控、审计与脱敏收集器
+  - adminGate 注入判定:拒绝时返回失败卡片(message 说明 PI_WEB_EXT_ADMIN_ALLOW_ANY 放行途径)并记审计事件(与 REST 扩展安装同端口,实现时核对其形状)
+  - 交付 allowlist 拒绝错误的 message 装饰逻辑(按错误码附对应 env 放行指引)+ 其单测;2.3 的编排测试引用该逻辑,不重复认领
+  - collector reporter:ProgressReporter 内存实现,complete/fail 落 InstallStep,detail 与 error message 组装前过 redactSecrets
+  - 观察态:单测含 Bearer/token/URL 凭据样本断言输出无泄露;拒绝路径断言审计被调用
+  - _Requirements: 3.1, 3.2, 3.3, 3.5, 5.3_
+- [x] 2.3 install/uninstall 编排与生效分道
+  - 复用注入的 installer(kindHint 直通):agent 成功→effect panel-refresh + location + 选择器切换 guidance,恒不调 reloadRunner;plugin 成功→effect notify,返回前恰调一次 reloadRunner;component 错误直通失败卡片(guidance 含 pi-web add)
+  - 失败任一阶段→ok:false + error + 失败 step,不呈现部分成功
+  - 观察态:单测断言 reloadRunner 调用次数与时序、effect 取值、guidance 内容
+  - _Requirements: 1.1, 1.2, 2.1, 2.2, 2.5, 4.1, 4.2, 5.4_
+- [x] 2.4 list/update 编排
+  - list:pluginInstaller.listInstalled → items 表体;--outdated 时把 OUTDATED_NOT_SUPPORTED 如实呈现为失败卡片(不谎报)
+  - update:逐项 outcomes 进 steps/items,hasFailures→整体失败语义
+  - 观察态:单测覆盖空列表、--outdated 诚实转达、update 部分失败
+  - _Requirements: 1.3, 1.4_
+
+- [x] 3. 前端呈现与补全(Core·前端)
+- [x] 3.1 builtin 词条与通用卡片追加机制
+  - BuiltinCommandSpec 加可选 resultDataPart;新增 /install 词条(resultDataPart:"data-install-result")
+  - dispatchBuiltin:词条声明 resultDataPart 且 result.data 存在→setMessages 追加 assistant 消息(bang 模式);仅 message→纯文本追加;/clear 行为不变
+  - 观察态:单测断言卡片消息被追加、用法文本以纯文本出现
+  - _Requirements: 5.1, 5.2_
+  - _Depends: 1.1_
+- [x] 3.2 data-install-result 渲染器
+  - InstallResultDataSchema.safeParse 成功→头行/location/guidance/steps/items 表;失败→JSON 预格式降级不崩
+  - 在 pi-chat 与 bash renderer 同点注册
+  - 观察态:渲染器单测覆盖成功/失败/list 表体/降级四态
+  - _Requirements: 5.1, 5.4_
+  - _Depends: 1.1_
+- [x] 3.3 /install 补全词条与参数候选(含旧补全面原子退场)
+  - install-arg-provider 取代 plugin-arg-provider(删除旧文件):INSTALL_SPEC 四子动作;install→install-sources 端点;uninstall→extensions ∪ agent-sources 合并(agent 项 insertText 追加 " --kind agent");update→extensions
+  - 同步更新 packages/ui barrel 导出(移除旧 provider 导出、导出新);pi-chat 换 createInstallArgProvider
+  - 同任务删除 e2e/browser/plugin-subcommand-completion.e2e.ts(它全程驱动 /plugin 补全,本任务后必红;新 e2e 在 5.3 编写,覆盖面不缩)
+  - 观察态:provider 单测断言候选合并与 insertText;typecheck 0 错;e2e 目录无 plugin-subcommand-completion
+  - _Requirements: 6.3, 6.4, 6.5_
+
+- [x] 4. 摘除与应用装配(Integration)
+- [x] 4.1 (P) 摘除 agent 侧 /plugin 命令
+  - extension-manager 删 registerCommand("plugin") 块与专用 helper;保留 reload-runtime 与三个 agent 工具;不留提示型残根
+  - tool-kit 测试改写:命令清单断言只剩 reload-runtime,/plugin describe 块删除,工具面测试保留
+  - 观察态:packages/tool-kit 测试全绿;grep 无 registerCommand("plugin")
+  - _Requirements: 6.1, 6.2_
+  - _Boundary: ExtensionManagerRemoval_
+- [x] 4.2 chat-app 接线:effect 落地与选择器刷新
+  - extensionCommandPolicy allowlist 移除 "plugin" 项
+  - agentSourcesRefreshKey state + onCommandResult(effect==="panel-refresh" 时 bump)传给 PiChat;会话内 AgentSourcePicker 传 refreshSignal
+  - 【豁免注记(复核确认)】首屏 picker(ChatApp,session===undefined 分支)不接 refreshSignal:/install 只能在会话内执行,回到首屏必经重挂载(useAgentSourceList 挂载即重拉),不存在陈旧窗口;接信号是死代码
+  - agent-source-picker:refreshSignal prop 进 useAgentSourceList 依赖数组
+  - 观察态:组件测或单测断言 panel-refresh 触发列表重取(agent 卸载后列表不再含该项同机制覆盖)
+  - _Requirements: 4.3, 4.4, 6.1_
+- [x] 4.3 pi-handler 装配注入与通道集成测试
+  - hostCommands 追加 createInstallHostCommand({installer(allowlistConfig:extAllowlist, agentInstallerOptions:{sourcesRoot,registryPath}, piCli:extPiCli), pluginInstaller, adminGate:()=>extAllowMutate, reloadRunner, audit, cwd})
+  - 集成测试:command-routes + 真会话 store + fake 安装端口,POST uiRpcCommand execute → 同步 HTTP 响应体含 CommandResult,会话消息流零注入
+  - 观察态:集成测试通过;dev 起服后 /install 在命令面板可见且返回用法文本
+  - _Requirements: 1.1, 1.7, 3.1_
+  - _Depends: 2.4, 3.1_
+
+- [x] 5. 端到端验收与回归(Validation)
+- [x] 5.1 e2e 第三套 webServer 基建
+  - playwright.config 增专用端口 webServer:PI_WEB_EXT_ALLOW_LOCAL=1、PI_WEB_EXT_ADMIN_ALLOW_ANY=1、临时 PI_WEB_SOURCES_ROOT/PI_CODING_AGENT_DIR(落盘隔离)
+  - 待安装 agent 源 fixture 供给:复用 examples/ 下既有 agent 源(如 hello-agent/minimal-agent,含 kind:"agent" 清单);不足则由 e2e setup 临时生成
+  - 观察态:该 server 可启动并服务一个冒烟页面请求;既有两套 webServer env 不变
+  - _Requirements: 7.1_
+- [x] 5.2 安装旅程与 component 拒绝 e2e
+  - /install install <本地 agent 源 fixture>→data-install-result 卡片可见→打开选择器新 source 可见(免刷新)
+  - /install install <component 包(examples/canvas-component-watermark)>→失败卡片含 pi-web add 指引
+  - 观察态:两条用例在第三套 server 上通过
+  - _Requirements: 7.1, 7.2, 4.3_
+  - _Depends: 4.3, 5.1_
+- [x] 5.3 补全 e2e(新面)
+  - 新 install-subcommand-completion e2e:子动作四候选、install 参数位本地源候选、uninstall 参数位已装候选、stage 属性断言(覆盖面 ≥ 已删除的 plugin-subcommand-completion)
+  - 观察态:新 e2e 通过
+  - _Requirements: 7.3_
+- [x] 5.4 全量回归护栏
+  - test/cli 全量、workspace 测试(pnpm test)、既有浏览器 e2e(FS/sqlite 两套)全绿;typecheck 0 错
+  - 老会话旧 /plugin 与新 /install 共存无仲裁(名字不同)以既有 e2e 不回归佐证
+  - 观察态:全部命令 fresh 输出退出码 0
+  - _Requirements: 7.4, 6.6_
+
+---
+
+## 5.4 回归护栏执行记录(2026-07-10)
+
+- workspace 测试(pnpm test):退出码 0(protocol/react/server 1165 + logger 41 + server-cli 336 + tool-kit 327 + agent-kit 92 + ui 747 等全绿)
+- app 层(npx vitest run test/):64 文件 / 577 用例,退出码 0(含 test/cli 336、test/commands 26)
+- typecheck(pnpm typecheck + npx tsc --noEmit):退出码 0
+- 浏览器 e2e(npx playwright test,三 project):93 通过;install project 2/2 通过(参数修正 6f59335 后复跑);install-subcommand-completion 4/4 通过
+- **既有 e2e 的 8 个失败已定责为非本特性引起**(Req 7.4「不回归」成立):
+  - 7 个在前置基线 f164e18(特性实现之前,/tmp 临时 worktree 干净构建)**同样失败**:attachment-tool-bridge、rich-chat×2、sessions-list、webext-document-title、webext-full、webext-runtime-install(基线挂 3 条,特性线只挂 1 条)——fresh worktree 环境性 pre-existing
+  - 1 个(settings-config 沙箱项目表单)是**用例自污染**:首轮把 enabled=true 写进被服务项目的 .pi/sandbox.json,次轮 checkbox 已勾选、表单不 dirty、保存钮禁用。删残留后单跑通过(2/2)。基线首轮无残留故过——与本特性无关
