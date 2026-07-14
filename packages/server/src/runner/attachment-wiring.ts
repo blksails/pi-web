@@ -56,8 +56,10 @@ import { createAttachmentToolContext } from "../attachment-bridge/tool-context.j
  * 约定 globalThis seam key:runner 装配把闭包绑定的 `AttachmentToolContext` 挂到此 key,
  * 供运行在子进程、经 jiti 装载的示例工具(`examples/attachment-tool-agent/tools/edit-image-tool.ts`)
  * 在 `execute` 内取得。与示例工具端的 `ATTACHMENT_CTX_KEY` 保持单一约定一致。
+ * 常量单一来源在 `frame-channel/seam-keys`(Req 7.2),此处再导出以兼容既有引用。
  */
-export const ATTACHMENT_TOOL_CONTEXT_KEY = "__piWebAttachmentToolContext__";
+import { ATTACHMENT_TOOL_CONTEXT_KEY } from "./frame-channel/index.js";
+export { ATTACHMENT_TOOL_CONTEXT_KEY };
 
 /**
  * pi `Agent` 上 tool hook 的最小形状(narrowing 目标)。

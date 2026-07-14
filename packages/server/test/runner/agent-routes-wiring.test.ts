@@ -11,6 +11,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { wireAgentRoutesBridge } from "../../src/runner/agent-routes-wiring.js";
+import { createInboundFrameRouter } from "../../src/runner/frame-channel/index.js";
 import type { NormalizedAgentRouteDecl } from "../../src/runner/agent-loader.js";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -31,10 +32,10 @@ function makeHarness(routes: readonly NormalizedAgentRouteDecl[] | undefined): H
   const errors: string[] = [];
   const stdout = { write: (s: string) => (lines.push(s), true) };
   const stderr = { write: (s: string) => (errors.push(s), true) };
-  const wiring = wireAgentRoutesBridge({
+  const channel = createInboundFrameRouter({ sessionId: "s1", stdin, stdout, stderr });
+  const wiring = wireAgentRoutesBridge(channel, {
     sessionId: "s1",
     routes,
-    stdin,
     stdout,
     stderr,
   });

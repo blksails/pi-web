@@ -9,6 +9,7 @@ import {
   wireStateBridge,
   SESSION_STATE_SEAM_KEY,
 } from "../../src/runner/state-wiring.js";
+import { createInboundFrameRouter } from "../../src/runner/frame-channel/index.js";
 
 interface SeamProvider {
   get(key: string): unknown;
@@ -26,11 +27,9 @@ function makeHarness() {
   const stdout = { write: (s: string) => (lines.push(s), true) };
   const stderr = { write: () => true };
   const globalScope: Record<string, unknown> = {};
-  const runtime = {} as never;
-  const wiring = wireStateBridge(runtime, {
+  const channel = createInboundFrameRouter({ sessionId: "s1", stdin, stdout, stderr });
+  const wiring = wireStateBridge(channel, {
     sessionId: "s1",
-    stdin,
-    stdout,
     stderr,
     globalScope,
   });

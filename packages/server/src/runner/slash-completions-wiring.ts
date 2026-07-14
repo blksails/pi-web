@@ -9,19 +9,18 @@
  * 不触及外部 pi SDK;无声明则不发帧(下游会话行为不变)。
  */
 import type { SlashCompletionsFrame } from "@blksails/pi-web-protocol";
+import { emitAssemblyFrame } from "./frame-channel/index.js";
 import type { NormalizedAgentRuntimeFactory } from "./agent-loader.js";
 
 /**
- * 若 factory 携带非空 `slashCompletions`,向 stdout 写一条 `slash_completions` 帧。
+ * 若 factory 携带非空 `slashCompletions`,经装配期声明帧原语写一条 `slash_completions` 帧。
  *
  * @param factory runner 归一化后的 runtime factory(带 pi-web 元数据)。
- * @param write   行写出函数(默认 `process.stdout.write`);注入以便单测。
+ * @param write   行写出函数(默认 `process.stdout.write`,装配窗口);注入以便单测。
  */
 export function emitSlashCompletions(
   factory: Pick<NormalizedAgentRuntimeFactory, "slashCompletions">,
-  write: (line: string) => void = (line) => {
-    process.stdout.write(line);
-  },
+  write?: (line: string) => void,
 ): void {
   const items = factory.slashCompletions;
   if (items === undefined || items.length === 0) return;
@@ -29,5 +28,5 @@ export function emitSlashCompletions(
     type: "slash_completions",
     items: [...items],
   };
-  write(JSON.stringify(frame) + "\n");
+  emitAssemblyFrame(frame, write);
 }

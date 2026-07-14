@@ -1,10 +1,11 @@
 /**
- * message-queue-ui:wireClearQueueBridge — 第二 stdin reader 截获请求行 → 调 runtime.session.clearQueue()
- * → 写回结果行。含畸形/非本桥行忽略、clearQueue 抛错回空结果、cleanup 卸载。
+ * message-queue-ui:wireClearQueueBridge — 经父子 IPC 帧通道截获请求帧 → 调 runtime.session.clearQueue()
+ * → 写回结果行。含畸形/非本桥行忽略、clearQueue 抛错回空结果、cleanup 解绑。
  */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentSessionRuntime } from "@earendil-works/pi-coding-agent";
 import { wireClearQueueBridge } from "../../src/runner/clear-queue-wiring.js";
+import { createInboundFrameRouter } from "../../src/runner/frame-channel/index.js";
 
 /** 可注入的假 stdin(EventEmitter 最小面)。 */
 function makeFakeStdin() {
@@ -41,10 +42,13 @@ describe("wireClearQueueBridge", () => {
     const stdin = makeFakeStdin();
     const out: string[] = [];
     const clearQueue = vi.fn(() => ({ steering: ["a"], followUp: ["b", "c"] }));
-    const wiring = wireClearQueueBridge(makeRuntime(clearQueue), {
+    const channel = createInboundFrameRouter({
       sessionId: "s1",
       stdin,
       stdout: { write: (s: string) => out.push(s) },
+    });
+    const wiring = wireClearQueueBridge(channel, makeRuntime(clearQueue), {
+      sessionId: "s1",
     });
     expect(wiring.installed).toBe(true);
 
@@ -63,11 +67,12 @@ describe("wireClearQueueBridge", () => {
     const stdin = makeFakeStdin();
     const out: string[] = [];
     const clearQueue = vi.fn(() => ({ steering: [], followUp: [] }));
-    wireClearQueueBridge(makeRuntime(clearQueue), {
+    const channel = createInboundFrameRouter({
       sessionId: "s1",
       stdin,
       stdout: { write: (s: string) => out.push(s) },
     });
+    wireClearQueueBridge(channel, makeRuntime(clearQueue), { sessionId: "s1" });
     stdin.push(JSON.stringify({ type: "piweb_state_set", key: "k" }) + "\n");
     stdin.push("not-json\n");
     expect(clearQueue).not.toHaveBeenCalled();
@@ -78,14 +83,18 @@ describe("wireClearQueueBridge", () => {
     const stdin = makeFakeStdin();
     const out: string[] = [];
     const stderr: string[] = [];
+    const channel = createInboundFrameRouter({
+      sessionId: "s1",
+      stdin,
+      stdout: { write: (s: string) => out.push(s) },
+    });
     wireClearQueueBridge(
+      channel,
       makeRuntime(() => {
         throw new Error("boom");
       }),
       {
         sessionId: "s1",
-        stdin,
-        stdout: { write: (s: string) => out.push(s) },
         stderr: { write: (s: string) => stderr.push(s) },
       },
     );
@@ -99,16 +108,25 @@ describe("wireClearQueueBridge", () => {
     expect(stderr.join("")).toMatch(/clearQueue error/);
   });
 
-  it("cleanup 卸载 stdin 读取器(幂等)", () => {
+  it("cleanup 解绑注册(幂等):卸载后不再处理;channel.cleanup 移除 stdin 读取器", () => {
     const stdin = makeFakeStdin();
-    const wiring = wireClearQueueBridge(makeRuntime(() => ({ steering: [], followUp: [] })), {
+    const out: string[] = [];
+    const clearQueue = vi.fn(() => ({ steering: [], followUp: [] }));
+    const channel = createInboundFrameRouter({
       sessionId: "s1",
       stdin,
-      stdout: { write: () => undefined },
+      stdout: { write: (s: string) => out.push(s) },
+    });
+    const wiring = wireClearQueueBridge(channel, makeRuntime(clearQueue), {
+      sessionId: "s1",
     });
     expect(stdin.size).toBe(1);
     wiring.cleanup();
     wiring.cleanup();
+    stdin.push(JSON.stringify({ type: "piweb_clear_queue", id: "cq_3" }) + "\n");
+    expect(clearQueue).not.toHaveBeenCalled();
+    expect(out).toHaveLength(0);
+    channel.cleanup();
     expect(stdin.size).toBe(0);
   });
 });

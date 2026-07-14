@@ -10,6 +10,7 @@ import {
   wireSurfaceBridge,
   SURFACE_REGISTRY_SEAM_KEY,
 } from "../../src/runner/surface-wiring.js";
+import { createInboundFrameRouter } from "../../src/runner/frame-channel/index.js";
 
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -26,11 +27,9 @@ function makeHarness(withRegistry: boolean, dispatch?: ReturnType<typeof vi.fn>)
       entries: new Map<string, unknown>([["demo", { dispatch: dispatch! }]]),
     };
   }
-  const runtime = {} as never;
-  const wiring = wireSurfaceBridge(runtime, {
+  const channel = createInboundFrameRouter({ sessionId: "s1", stdin, stdout, stderr });
+  const wiring = wireSurfaceBridge(channel, {
     sessionId: "s1",
-    stdin,
-    stdout,
     stderr,
     globalScope,
   });

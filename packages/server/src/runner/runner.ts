@@ -35,6 +35,7 @@ import { wireStateBridge } from "./state-wiring.js";
 import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
+import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
 // 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
@@ -331,35 +332,40 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     (sm ?? sessionManager).appendSessionInfo(title);
   });
 
-  // 状态注入桥(state-injection-bridge)装配:建子进程权威 KV、挂 globalThis seam(供作者工具经
-  // getSessionState 读写)、订阅变更→stdout 下行帧、在 runRpcMode 之前给 stdin 挂第二个读取器接写回。
+  // 父子 IPC 帧通道(runner-frame-channel):server(父)↔ runner(子)之间的单一入站帧通道。
+  // 对 process.stdin **只挂一个** data 读取器、**只维护一个** JsonlLineReader,按 frame.type 分发到
+  // 下方各桥注册的 handler;未注册 / 非 JSON / schema 失败的行放行(pi 的 runRpcMode 读取器独立处理)。
+  // 上行帧经通道统一 fd1 writer 直写(绕 takeOverStdout)。在 runRpcMode **之前**创建并完成所有 register。
+  const frameChannel = createInboundFrameRouter({
+    sessionId: runtime.session.sessionId,
+  });
+
+  // 状态注入桥(state-injection-bridge):建子进程权威 KV、挂 globalThis seam(供作者工具经
+  // getSessionState 读写)、订阅变更→帧通道下行 piweb_state 帧、注册 piweb_state_set/_delete 写回。
   // 失败优雅降级(内部吞错),不阻断会话启动。
-  const stateWiring = wireStateBridge(runtime, {
+  const stateWiring = wireStateBridge(frameChannel, {
     sessionId: runtime.session.sessionId,
   });
 
-  // agent 权威 surface(agent-authoritative-surface)桥:补齐 state-injection-bridge 留下的
-  // 「ui-rpc 命令真实接收方」缺口——在 runRpcMode 之前给 stdin 挂第二个读取器,截获转发进子进程的
-  // surface 命令行(point=command/action=execute + SurfaceCommandPayload),按 domain 派发进程内
-  // surface 注册表,经 fd1 直写回流 ui_rpc_response。非 surface 行放行;无注册惰性 no-op。
-  // 装配序:wireStateBridge 之后、runRpcMode 之前(命令内 ctx.setState 复用 wireStateBridge 的下行)。
-  const surfaceWiring = wireSurfaceBridge(runtime, {
+  // agent 权威 surface(agent-authoritative-surface)桥:向帧通道注册 ui_rpc 帧,截获 surface 命令
+  // (point=command/action=execute + SurfaceCommandPayload),按 domain 派发进程内 surface 注册表,
+  // 经 ctx.send 回流 ui_rpc_response。非 surface 行放行;无注册惰性 no-op。
+  // 装配序:wireStateBridge 之后(命令内 ctx.setState 复用 wireStateBridge 的下行)。
+  const surfaceWiring = wireSurfaceBridge(frameChannel, {
     sessionId: runtime.session.sessionId,
   });
 
-  // message-queue-ui「取回」桥(clearQueue):在 runRpcMode 之前给 stdin 挂第二个读取器,
-  // 截获 server 下发的 piweb_clear_queue 请求行 → 调当前 session.clearQueue() → 写回结果行。
-  // 优雅降级(内部吞错),不阻断会话启动。
-  const clearQueueWiring = wireClearQueueBridge(runtime, {
+  // message-queue-ui「取回」桥(clearQueue):向帧通道注册 piweb_clear_queue 请求帧 →
+  // 调当前 session.clearQueue() → ctx.send 回写结果帧。优雅降级,不阻断会话启动。
+  const clearQueueWiring = wireClearQueueBridge(frameChannel, runtime, {
     sessionId: runtime.session.sessionId,
   });
 
-  // agent-declared-routes 分发桥:装配期 routes 非空则经 stdout 发一条 agent_routes 声明帧
-  // (纯数据投影,handler 不出进程),并在 runRpcMode 之前给 stdin 挂第二个读取器,只消费
-  // piweb_agent_route_request 请求帧 → 进程内 registry 派发 handler → fd1 直写结果帧。
-  // 空声明零帧零读取器(存量 source 零行为变化)。装配序:state/surface/clearQueue 之后、
-  // runRpcMode 之前。优雅降级(内部吞错),不阻断会话启动。
-  const agentRoutesWiring = wireAgentRoutesBridge({
+  // agent-declared-routes 分发桥:装配期 routes 非空则经装配期声明帧发一条 agent_routes 声明帧
+  // (纯数据投影,handler 不出进程),并向帧通道注册 piweb_agent_route_request 请求帧 → 进程内
+  // registry 派发 handler → ctx.send 结果帧。空声明零帧零注册(存量 source 零行为变化)。
+  // 装配序:state/surface/clearQueue 之后、runRpcMode 之前。
+  const agentRoutesWiring = wireAgentRoutesBridge(frameChannel, {
     sessionId: runtime.session.sessionId,
     routes: factory.routes,
   });
@@ -370,44 +376,24 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
 
   bootLog.info("entering rpc mode");
 
-  // 会话生命周期结束(子进程终止)→ 触发会话级临时文件回收 + 清理 seam(Req 2.3)。
-  // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为
-  // 旁路 best-effort 在同样的终止信号上触发(幂等、吞错不抛,不阻断 rpc-mode 收尾)。
+  // 会话生命周期结束(子进程终止)→ 统一释放所有接线 + 会话级临时文件回收(Req 2.3, 6.3)。
+  // runRpcMode 自身在 SIGTERM / stdin end 时 dispose 运行时并 process.exit;本回收作为旁路
+  // best-effort 在同样的终止信号上触发。disposeAll 遍历 cleanup、单点抛错记诊断并续跑,永不抛。
+  // 帧通道最后释放(卸载唯一 stdin 读取器);各桥 cleanup 先解绑各自注册。
+  // 注:session-title 是 prototype patch(机制 C),按既有行为不随会话结束还原,不入此列表。
   const runSessionCleanup = (): void => {
     bootLog.debug("runner cleanup");
-    void attachmentWiring.cleanup().catch((err) => {
-      process.stderr.write(
-        `runner: attachment session cleanup error: ${String(err)}\n`,
-      );
-    });
-    try {
-      stateWiring.cleanup();
-    } catch (err) {
-      process.stderr.write(
-        `runner: state-bridge session cleanup error: ${String(err)}\n`,
-      );
-    }
-    try {
-      surfaceWiring.cleanup();
-    } catch (err) {
-      process.stderr.write(
-        `runner: surface bridge session cleanup error: ${String(err)}\n`,
-      );
-    }
-    try {
-      clearQueueWiring.cleanup();
-    } catch (err) {
-      process.stderr.write(
-        `runner: clear-queue bridge session cleanup error: ${String(err)}\n`,
-      );
-    }
-    try {
-      agentRoutesWiring.cleanup();
-    } catch (err) {
-      process.stderr.write(
-        `runner: agent-routes bridge session cleanup error: ${String(err)}\n`,
-      );
-    }
+    disposeAll(
+      [
+        attachmentWiring,
+        stateWiring,
+        surfaceWiring,
+        clearQueueWiring,
+        agentRoutesWiring,
+        frameChannel,
+      ],
+      process.stderr,
+    );
   };
   process.once("SIGTERM", runSessionCleanup);
   process.once("SIGINT", runSessionCleanup);
