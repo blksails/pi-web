@@ -24,13 +24,34 @@ import type { Attachment } from "@blksails/pi-web-protocol";
 const DESCRIPTOR_SUFFIX = ".att.json";
 
 /**
- * `Attachment` 描述符(不含字节)的持久化与查询。
+ * 描述符注册表端口(`attachment-backend-pluggable` spec 引入):把既有 `AttachmentRegistry`
+ * 类的公开形状提为接口,使描述符存取经配置可插拔(本地/S3 等实现均满足此端口)。
  *
  * 接口风格与既有可插拔存储(session-store-adapters)对齐:异步 `动词+名词`(Req 1.8)。
+ */
+export interface AttachmentRegistryPort {
+  save(att: Attachment): Promise<void>;
+  get(id: string): Promise<Attachment | undefined>;
+  listBySession(sessionId: string): Promise<Attachment[]>;
+  /**
+   * 读回某附件的不透明扩展 meta(attachment-tool-bridge 增量,领域无关;门面 `getMeta` 直接委托)。
+   * 描述符不存在或未曾 `setMeta` 过均返回 `undefined`。
+   */
+  getMeta(id: string): Promise<Record<string, unknown> | undefined>;
+  /**
+   * 写入某附件的不透明扩展 meta(整体覆盖,不与旧值合并;门面 `setMeta` 直接委托)。
+   * 目标描述符不存在时抛 {@link AttachmentDescriptorNotFoundError}(安全拒绝)。
+   */
+  setMeta(id: string, meta: Record<string, unknown>): Promise<void>;
+}
+
+/**
+ * `Attachment` 描述符(不含字节)的本地文件系统持久化与查询——{@link AttachmentRegistryPort} 端口
+ * 的既有本地实现(更名保留,barrel 留 `AttachmentRegistry` 兼容别名)。
  *
  * @param root 落盘根目录(与 `LocalFsBlobBackend` 共享同一 `PI_WEB_ATTACHMENT_DIR`)。
  */
-export class AttachmentRegistry {
+export class LocalFsAttachmentRegistry implements AttachmentRegistryPort {
   constructor(private readonly root: string) {}
 
   /** 描述符旁路文件的盘上绝对路径(`<root>/<id>.att.json`)。 */
@@ -134,6 +155,12 @@ export class AttachmentRegistry {
     await writeFile(this.descriptorPath(id), JSON.stringify(next), "utf8");
   }
 }
+
+/**
+ * 兼容别名(module-local,非 barrel):存量直接 `import { AttachmentRegistry } from
+ * "./attachment-registry.js"` 的调用点在类更名后零改动继续通过类型检查(Req 1.1 完成态)。
+ */
+export { LocalFsAttachmentRegistry as AttachmentRegistry };
 
 /**
  * `setMeta` 目标描述符不存在时抛出的可识别错误(安全拒绝,而非静默造出半个描述符)。

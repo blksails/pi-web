@@ -165,6 +165,71 @@ describe("makeUploadAttachmentHandler (isolated)", () => {
   });
 });
 
+// ─── resolveWriteBackend 注入(agent-attachment-profile spec,Req 3.1) ────────────
+
+describe("makeUploadAttachmentHandler — resolveWriteBackend 注入", () => {
+  async function makeTopologyStore(): Promise<{ store: AttachmentStore; dirB: string }> {
+    const dirB = join(tmpDir, "secondary");
+    await fs.mkdir(dirB, { recursive: true });
+    const topology = JSON.stringify({
+      backends: [
+        { kind: "local-fs", name: "primary", dir: tmpDir },
+        { kind: "local-fs", name: "secondary", dir: dirB },
+      ],
+      write: "primary",
+    });
+    const { store } = attachmentStoreConfigFromEnv({
+      PI_WEB_ATTACHMENT_DIR: tmpDir,
+      PI_WEB_ATTACHMENT_SECRET: "test-secret-stable",
+      PI_WEB_ATTACHMENT_BACKENDS: topology,
+    });
+    return { store, dirB };
+  }
+
+  it("注入生效:resolver 返回的后端名写进 PutInput.writeBackend,描述符固化该名", async () => {
+    const { store } = await makeTopologyStore();
+    const handler = makeUploadAttachmentHandler(store, {
+      resolveWriteBackend: (sessionId) => (sessionId === "sess-profile" ? "secondary" : undefined),
+    });
+
+    const fd = new FormData();
+    fd.append("file", new Blob([new TextEncoder().encode("hi")], { type: "text/plain" }), "a.txt");
+    const res = await handler({
+      req: uploadRequest("sess-profile", fd),
+      sessionId: "sess-profile",
+      auth: { anonymous: true } as AuthContext,
+      url: new URL("http://x/sessions/sess-profile/attachments"),
+    });
+    expect(res.status).toBe(200);
+    const body = await readJson(res);
+    const attachment = body["attachment"] as Record<string, unknown>;
+    expect(attachment["backend"]).toBe("secondary");
+  });
+
+  it("回落两态:resolver 返回 undefined → 走宿主默认写路由(不注入 resolver 同样回落)", async () => {
+    const { store } = await makeTopologyStore();
+    const handlerWithResolverUndefined = makeUploadAttachmentHandler(store, {
+      resolveWriteBackend: () => undefined,
+    });
+    const handlerWithoutResolver = makeUploadAttachmentHandler(store);
+
+    for (const handler of [handlerWithResolverUndefined, handlerWithoutResolver]) {
+      const fd = new FormData();
+      fd.append("file", new Blob([new TextEncoder().encode("hi")], { type: "text/plain" }), "a.txt");
+      const res = await handler({
+        req: uploadRequest("sess-default", fd),
+        sessionId: "sess-default",
+        auth: { anonymous: true } as AuthContext,
+        url: new URL("http://x/sessions/sess-default/attachments"),
+      });
+      expect(res.status).toBe(200);
+      const body = await readJson(res);
+      const attachment = body["attachment"] as Record<string, unknown>;
+      expect(attachment["backend"]).toBe("primary");
+    }
+  });
+});
+
 // ─── 完整 handler 装配(复用 Router :id 会话解析 + 鉴权门控) ──────────────────
 
 function makeAssembledHandler(opts: {

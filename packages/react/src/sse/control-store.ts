@@ -8,6 +8,7 @@
  * 类型取自 @blksails/pi-web-protocol(ControlPayload / RpcExtensionUIRequest / SessionStats)。
  */
 import type {
+  AttachmentControlPayload,
   ControlPayload,
   RpcExtensionUIRequest,
   SessionLifecycleState,
@@ -144,6 +145,14 @@ export class ControlStore {
   private editorTextSeq = 0;
   /** ui-rpc 下行响应监听(use-ui-rpc 订阅,按 correlationId 配对)。 */
   private readonly uiRpcListeners = new Set<(r: UiRpcResponse) => void>();
+  /**
+   * agent-attachment-catalog:`control:"attachment"` 事件监听(agent 主动推送后的即时感知,
+   * Req 4.2/4.3)。非粘性——不入 ControlSnapshot(打开会话时前端本就全量枚举目录/附件),
+   * 与 ui-rpc 下行响应同构:仅派发给已注册监听,不持久化最近一条。
+   */
+  private readonly attachmentEventListeners = new Set<
+    (payload: AttachmentControlPayload) => void
+  >();
   /** control:"logs" 帧转发回调(由装配方注入,转交 logsStore.applyLogsFrame)。 */
   private _onLogsFrame: ((entries: LogEntry[]) => void) | undefined;
 
@@ -160,6 +169,19 @@ export class ControlStore {
     this.uiRpcListeners.add(cb);
     return () => {
       this.uiRpcListeners.delete(cb);
+    };
+  };
+
+  /**
+   * 订阅 `control:"attachment"` 事件(agent-attachment-catalog spec,Req 4.2)。
+   * 返回取消订阅函数。
+   */
+  readonly onAttachmentEvent = (
+    cb: (payload: AttachmentControlPayload) => void,
+  ): (() => void) => {
+    this.attachmentEventListeners.add(cb);
+    return () => {
+      this.attachmentEventListeners.delete(cb);
     };
   };
 
@@ -257,6 +279,10 @@ export class ControlStore {
         });
         break;
       }
+      case "attachment":
+        // agent-attachment-catalog:非粘性事件,直接派发给已注册监听,不入快照(Req 4.2)。
+        for (const cb of this.attachmentEventListeners) cb(payload);
+        break;
       default: {
         const _exhaustive: never = payload;
         void _exhaustive;

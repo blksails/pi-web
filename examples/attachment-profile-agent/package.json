@@ -1,0 +1,9 @@
+{
+  "name": "attachment-profile-agent",
+  "private": true,
+  "pi-web": {
+    "title": "附件 Profile 定向落库范例",
+    "avatar": "🗄️",
+    "description": "agent 声明 attachmentProfile 把本会话产物定向到宿主注册的具名后端;含白名单失败与运维关断演示"
+  }
+}

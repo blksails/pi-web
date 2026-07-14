@@ -22,7 +22,7 @@ import type { Attachment } from "@blksails/pi-web-protocol";
 import type { ChildAttachmentStore } from "./child-store.js";
 import type { AttachmentHandle } from "./attachment-handle.js";
 import { resolveAttachment } from "./resolve.js";
-import { putToolOutput, type ToolOutputRef } from "./tool-output.js";
+import { putToolOutput, ToolOutputPutError, type ToolOutputRef } from "./tool-output.js";
 
 /**
  * `putOutput(...)` 入参:产出字节 + 描述符元数据。
@@ -58,6 +58,14 @@ export interface AttachmentToolContext {
    */
   putOutput(input: PutOutputInput): Promise<ToolOutputRef>;
   /**
+   * 与 `putOutput` 同样先落库(`origin:"tool-output"`,当前会话属主)再以引用回流,额外
+   * 广播一次「新增附件」推送事件(agent-attachment-catalog spec,Req 4.1)给主进程,使已连接
+   * 前端免刷新即时感知(经 SSE `control:"attachment"`,由 `attachment-wiring` 注入的
+   * `emitEvent` 回调实现,fd1 直写)。能力不可用时安全拒绝(抛可识别错误);未注入
+   * `emitEvent`(如未装配 catalog 特性的旧调用路径)时落库仍照常完成,仅不发事件(安全降级)。
+   */
+  publish(input: PutOutputInput): Promise<ToolOutputRef>;
+  /**
    * 枚举**当前会话**(上下文闭包绑定的 sessionId,与 `putOutput` 属主一致)的附件描述符
    * (不含字节;领域无关的枚举 seam,供上层 surface 如 Canvas 做 hydrate 重建)。
    * 能力不可用时抛 {@link AttachmentCapabilityUnavailableError}(安全拒绝,不崩溃)。
@@ -89,17 +97,29 @@ export class AttachmentCapabilityUnavailableError extends Error {
   }
 }
 
+/** {@link createAttachmentToolContext} 可选注入项。 */
+export interface AttachmentToolContextOptions {
+  /**
+   * `publish` 落库成功后回调一次,传入落库的完整 {@link Attachment} 描述符(agent-attachment-catalog
+   * spec,Req 4.1)。由 `attachment-wiring` 装配 ctx 时注入(fd1 直写 `piweb_attachment_event` 帧,
+   * 与各桥同坑);未注入(如未装配 catalog 特性)时 `publish` 仍照常落库,只是不发事件(安全降级)。
+   */
+  readonly emitEvent?: (attachment: Attachment) => void;
+}
+
 /**
  * 构造 tool 接入上下文(Req 4.1/3.3/3.4)。
  *
  * @param store     子进程 store 客户端(上游门面),由 {@link createChildAttachmentStore} 实例化;
  *                  `undefined` 表示存储能力不可用(env 缺失降级)。
  * @param sessionId 当前会话 id(以闭包绑定,作为 `putOutput` 落库描述符属主)。
+ * @param opts      可选:`publish` 落库成功后的事件广播回调(见 {@link AttachmentToolContextOptions}).
  * @returns 与作者面 `AttachmentToolContext`(`@blksails/pi-web-agent-kit`)结构兼容的上下文。
  */
 export function createAttachmentToolContext(
   store: ChildAttachmentStore | undefined,
   sessionId: string,
+  opts?: AttachmentToolContextOptions,
 ): AttachmentToolContext {
   const available = store !== undefined;
   return {
@@ -122,6 +142,38 @@ export function createAttachmentToolContext(
         mimeType: input.mimeType,
         sessionId,
       });
+    },
+    async publish(input: PutOutputInput): Promise<ToolOutputRef> {
+      if (store === undefined) {
+        throw new AttachmentCapabilityUnavailableError();
+      }
+      // 与 putOutput 同一落库路径(origin:"tool-output",当前会话属主),但需要完整
+      // Attachment 描述符才能广播事件帧(ToolOutputRef 不含描述符,故不复用 putToolOutput,
+      // 直接调门面 put 取回描述符;落库失败错误类型与 putToolOutput 保持一致,便于调用方
+      // 统一 instanceof 识别)。
+      let att: Attachment;
+      try {
+        att = await store.put({
+          bytes: input.bytes,
+          name: input.name,
+          mimeType: input.mimeType,
+          size: input.bytes.length,
+          sessionId,
+          origin: "tool-output",
+        });
+      } catch (cause) {
+        throw new ToolOutputPutError(cause);
+      }
+      const displayUrl = await store.presignUrl(att.id);
+      // 事件广播:未注入 emitEvent(如未装配 catalog 特性)时安全降级——落库已完成,只是
+      // 不发事件,不影响本次 publish 的返回值(design.md §行为规约「publish=putOutput+fd1 事件帧」,
+      // 事件帧是落库之外的旁路广播,自身失败不应撤销已完成的落库)。
+      try {
+        opts?.emitEvent?.(att);
+      } catch {
+        /* 事件广播是尽力而为的旁路通知;失败不影响已完成的落库结果 */
+      }
+      return { attachmentId: att.id, displayUrl, name: att.name, mimeType: att.mimeType };
     },
     async listBySession(): Promise<Attachment[]> {
       if (store === undefined) {

@@ -1,0 +1,9 @@
+{
+  "name": "attachment-catalog-agent",
+  "private": true,
+  "pi-web": {
+    "title": "附件目录范例",
+    "avatar": "🗂️",
+    "description": "agent 声明动态附件目录(@ 补全发现、选中惰性物化);并演示运行期主动 publish 推送 + 前端免刷新感知"
+  }
+}

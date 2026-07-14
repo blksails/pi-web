@@ -15,6 +15,22 @@ import type { PickedResult } from "../engine/endpoint-types.js";
 // 命名空间 toolkit:persist —— 每张图落库:inline(本地解码)还是 download(远程下载)+ 耗时。
 const log = createLogger({ namespace: "toolkit:persist" });
 
+/**
+ * 超时兜底(sandbox-attachment-store spec A4,Req R7)——给可能挂起的 Promise(远程 fetch /
+ * `ctx.putOutput` 经 `RemoteAttachmentStore` 打回 cloud 等)加超时,超时抛可读错误而非无限挂起。
+ * `putOutput` 自身在 `RemoteAttachmentStore` 内已有 30s HTTP 超时,这里是**双保险**——覆盖
+ * `fetchImpl`/`arrayBuffer` 等不经 `RemoteAttachmentStore` 的下载路径,防止任何未来新增挂起点。
+ */
+const PERSIST_TIMEOUT_MS = 30_000;
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) =>
+      setTimeout(() => rej(new Error(`persistPicked: timed out after ${ms}ms at ${label}`)), ms),
+    ),
+  ]);
+}
+
 /** Stable reference to a persisted generation asset. */
 export interface PersistedAsset {
   attachmentId: string;
@@ -64,16 +80,22 @@ export async function persistPicked(
       if (inline) {
         ({ bytes, mimeType } = decodeDataUri(url));
       } else {
-        const resp = await fetchImpl(url);
+        const resp = await withTimeout(fetchImpl(url), PERSIST_TIMEOUT_MS, `fetch[${i}]`);
         if (!resp.ok) {
           throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
         }
         mimeType = detectMimeType(resp, url);
-        bytes = new Uint8Array(await resp.arrayBuffer());
+        bytes = new Uint8Array(
+          await withTimeout(resp.arrayBuffer(), PERSIST_TIMEOUT_MS, `arrayBuffer[${i}]`),
+        );
       }
       const ext = extFromMime(mimeType);
       const name = `${namePrefix}-${i}.${ext}`;
-      const ref = await ctx.putOutput({ bytes, name, mimeType });
+      const ref = await withTimeout(
+        ctx.putOutput({ bytes, name, mimeType }),
+        PERSIST_TIMEOUT_MS,
+        `putOutput[${i}]`,
+      );
       log.debug("image persisted", {
         index: i,
         source: inline ? "inline" : "download",

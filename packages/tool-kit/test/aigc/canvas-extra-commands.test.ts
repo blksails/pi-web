@@ -64,6 +64,9 @@ function makeCmdHarness(seed: GalleryState): CmdHarness {
     async putOutput() {
       throw new Error("nope");
     },
+    async publish() {
+      throw new Error("nope");
+    },
     async getMeta() {
       return undefined;
     },
@@ -215,6 +218,9 @@ function emptyAtt(): AttachmentToolContext {
       },
     })),
     async putOutput() {
+      throw new Error("no");
+    },
+    async publish() {
       throw new Error("no");
     },
     async getMeta() {

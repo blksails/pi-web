@@ -109,6 +109,9 @@ function availableAtt(): AttachmentToolContext {
     async putOutput() {
       throw new Error("no");
     },
+    async publish() {
+      throw new Error("no");
+    },
     async getMeta() {
       return undefined;
     },
@@ -223,6 +226,9 @@ function makeCmdHarness(
     listBySession: vi.fn(async () => []),
     setMeta: vi.fn(async () => undefined),
     async putOutput() {
+      throw new Error("nope");
+    },
+    async publish() {
       throw new Error("nope");
     },
     async getMeta() {

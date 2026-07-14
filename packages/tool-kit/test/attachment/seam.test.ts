@@ -38,6 +38,9 @@ describe("getAttachmentToolContext", () => {
       async putOutput() {
         throw new Error("not implemented");
       },
+      async publish() {
+        throw new Error("not implemented");
+      },
     };
     const scope: Record<string, unknown> = { [SEAM_KEY]: fakeCtx };
     const ctx = getAttachmentToolContext(scope);

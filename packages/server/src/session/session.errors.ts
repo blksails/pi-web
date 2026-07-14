@@ -45,6 +45,19 @@ export class AgentRouteTimeoutError extends Error {
   }
 }
 
+/**
+ * agent-attachment-catalog:catalog 请求(list/materialize)在转发超时时限内未收到子进程
+ * 结果帧(design.md §Error Handling)。物化端点(task 4.2)据此可判别地映射 504 `CATALOG_TIMEOUT`;
+ * catalog provider(task 4.1)据此把 list 超时降级为空组(Req 2.4)。
+ */
+export class AttachmentCatalogTimeoutError extends Error {
+  readonly code = "CATALOG_TIMEOUT" as const;
+  constructor(op: "list" | "materialize", timeoutMs: number) {
+    super(`Attachment catalog "${op}" timed out after ${timeoutMs}ms.`);
+    this.name = "AttachmentCatalogTimeoutError";
+  }
+}
+
 /** 创建会话时缺少必需注入入参(Req 1.5)。 */
 export class MissingInputError extends Error {
   readonly code = "MISSING_INPUT" as const;

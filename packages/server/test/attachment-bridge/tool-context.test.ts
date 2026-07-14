@@ -105,6 +105,58 @@ describe("createAttachmentToolContext — 可用 store(Req 4.1)", () => {
     expect([...(await handle.bytes())]).toEqual([...OUTPUT_BYTES]);
   });
 
+  it("publish(...) 同 putOutput 落库(tool-output/属主一致),额外触发注入的 emitEvent 回调携带完整描述符(agent-attachment-catalog spec,Req 4.1)", async () => {
+    const events: unknown[] = [];
+    const ctx = createAttachmentToolContext(store, SESSION, {
+      emitEvent: (attachment) => events.push(attachment),
+    });
+
+    const ref = await ctx.publish({
+      bytes: OUTPUT_BYTES,
+      name: "published.png",
+      mimeType: "image/png",
+    });
+
+    expect(ref.attachmentId.startsWith("att_")).toBe(true);
+    const head = await store.head(ref.attachmentId);
+    expect(head).toMatchObject({
+      origin: "tool-output",
+      sessionId: SESSION,
+      name: "published.png",
+      mimeType: "image/png",
+    });
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ id: ref.attachmentId, sessionId: SESSION });
+  });
+
+  it("publish(...) 未注入 emitEvent 时安全降级:落库仍照常完成", async () => {
+    const ctx = createAttachmentToolContext(store, SESSION);
+    const ref = await ctx.publish({
+      bytes: OUTPUT_BYTES,
+      name: "no-emit.png",
+      mimeType: "image/png",
+    });
+    const head = await store.head(ref.attachmentId);
+    expect(head).toBeDefined();
+  });
+
+  it("publish(...) emitEvent 回调自身抛错不影响已完成的落库结果(旁路广播尽力而为)", async () => {
+    const ctx = createAttachmentToolContext(store, SESSION, {
+      emitEvent: () => {
+        throw new Error("sink unavailable");
+      },
+    });
+    const ref = await ctx.publish({
+      bytes: OUTPUT_BYTES,
+      name: "resilient.png",
+      mimeType: "image/png",
+    });
+    expect(ref.attachmentId.startsWith("att_")).toBe(true);
+    const head = await store.head(ref.attachmentId);
+    expect(head).toBeDefined();
+  });
+
   it("listBySession() 枚举当前会话附件(mimeType/id/name,不含字节;领域无关增量 seam)", async () => {
     const att = await putUpload();
     const ctx = createAttachmentToolContext(store, SESSION);
@@ -191,6 +243,15 @@ describe("createAttachmentToolContext — 存储能力不可用(env 缺失降级
         name: "out.png",
         mimeType: "image/png",
       })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(AttachmentCapabilityUnavailableError);
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("不可用 → publish 安全拒绝(抛可识别 AttachmentCapabilityUnavailableError),不崩溃", async () => {
+    const ctx = createAttachmentToolContext(undefined, SESSION);
+    const err = await ctx
+      .publish({ bytes: OUTPUT_BYTES, name: "out.png", mimeType: "image/png" })
       .catch((e) => e);
     expect(err).toBeInstanceOf(AttachmentCapabilityUnavailableError);
     expect(err).toBeInstanceOf(Error);

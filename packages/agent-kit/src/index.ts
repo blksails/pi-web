@@ -9,12 +9,15 @@
  * still loadable by the runner.
  */
 export type {
+  AgentAttachmentCatalogDecl,
   AgentContext,
   AgentDefinition,
   AgentModel,
   AgentRouteDecl,
   AgentRouteHandler,
   AgentRouteRequest,
+  CatalogEntry,
+  CatalogResolved,
 } from "./types.js";
 export type {
   AgentsFilesOverride,

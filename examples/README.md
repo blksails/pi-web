@@ -48,6 +48,8 @@ pi-web ./examples/hello-agent
 | 示例 | 一句话 | 关键 API / 能力 | 难度 |
 |---|---|---|---|
 | [attachment-tool-agent](./attachment-tool-agent/) | 附件工具桥端到端：上传图 → `att_id` → 工具处理 → 落库回引用 | `AttachmentToolContext`（`resolve` / `putOutput`）、`afterToolCall` 闸门、`/raw` 分发 | ★★★ |
+| [attachment-profile-agent](./attachment-profile-agent/) | agent 用一个名字把本会话产物定向到宿主注册的具名后端；含白名单失败与运维关断演练 | `AgentDefinition.attachmentProfile`、`PI_WEB_ATTACHMENT_BACKENDS` 多后端拓扑、描述符 `backend` 权威路由、`PI_WEB_AGENT_ATTACHMENT_PROFILE_DISABLED` | ★★☆ |
+| [attachment-catalog-agent](./attachment-catalog-agent/) | agent 提供动态附件目录：`@` 补全发现 → 选中惰性物化 → 幂等复用；并演示运行期主动 `publish` 推送 + 前端免刷新感知 | `AgentDefinition.attachmentCatalog`（`list`/`resolve`）、`AttachmentToolContext.publish`、`control:"attachment"` 事件、`kind:"catalog"` 补全 provider | ★★☆ |
 | [state-bridge-agent](./state-bridge-agent/) | 状态注入桥：context 外的会话级共享状态，AI（工具）与人（UI）共读写同一份实时态（人机共驾） | 子进程权威 KV（`wireStateBridge` seam）、`control:"state"` 下行帧、`useExtensionState`、`POST /state` 写回 | ★★★ |
 | [surface-demo-agent](./surface-demo-agent/) | Agent 权威 surface（领域无关）：权威快照镜像 + 结构化命令转发（不过 LLM）+ 能力探针退化 | `createSurface` / `useSurface`、`wireSurfaceBridge`（ui-rpc 命令派发 + fd1 回流）、`SurfaceCommandPayload` | ★★★ |
 | [aigc-agent](./aigc-agent/) | AIGC 生成工具端到端：文生图 / 图编辑，产物经 attachment store 落库；并可 `image_vision` 回看自己画的图 | `aigcExtension`（`image_generation` / `image_edit`）、`visionExtension`（`image_vision`）、`@blksails/pi-web-tool-kit/runtime` | ★★★ |
@@ -76,7 +78,7 @@ pi-web ./examples/hello-agent
 1. **基线**：[minimal-agent](./minimal-agent/) → [hello-agent](./hello-agent/)，理解 `defineAgent` / `defineTool` 与 `noTools` 的语义梯度。
 2. **工具与会话**：[builtin-tools-agent](./builtin-tools-agent/)（启用内置工具）→ [file-session-agent](./file-session-agent/)（会话持久化）→ [logging-demo-agent](./logging-demo-agent/)（日志系统三源汇入面板）。
 3. **server-driven UI**：[server-driven-ui-agent](./server-driven-ui-agent/)（后端发 UI）→ [ui-demo-agent](./ui-demo-agent/)（交互 / ambient）→ [system-status-agent](./system-status-agent/)（两者组合）。
-4. **附件 / AIGC**：[attachment-tool-agent](./attachment-tool-agent/)（附件工具桥）→ [aigc-agent](./aigc-agent/)（文生图 / 图编辑）→ [vision-agent](./vision-agent/)（回看已落库的图）。
+4. **附件 / AIGC**：[attachment-tool-agent](./attachment-tool-agent/)（附件工具桥）→ [attachment-profile-agent](./attachment-profile-agent/)（具名 profile 定向落库）→ [attachment-catalog-agent](./attachment-catalog-agent/)（动态目录发现 + 主动推送）→ [aigc-agent](./aigc-agent/)（文生图 / 图编辑）→ [vision-agent](./vision-agent/)（回看已落库的图）。
 5. **WebExtension 五层**：[webext-layout-agent](./webext-layout-agent/) / [webext-background-agent](./webext-background-agent/) / [webext-slots-agent](./webext-slots-agent/)（Tier 1 插槽）→ [webext-renderer-agent](./webext-renderer-agent/)（Tier 2 渲染器）→ [webext-contrib-agent](./webext-contrib-agent/)（Tier 3 贡献点）→ [webext-artifact-agent](./webext-artifact-agent/)（Tier 4 artifact）→ [webext-declarative-agent](./webext-declarative-agent/)（Tier 5 声明式）。
 
 ## 延伸阅读（产品文档）

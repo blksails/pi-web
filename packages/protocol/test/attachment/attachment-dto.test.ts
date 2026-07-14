@@ -97,6 +97,33 @@ describe("AttachmentSchema", () => {
         .origin,
     ).toBe("tool-output");
   });
+
+  it("parses without the optional backend field (legacy descriptor shape)", () => {
+    const parsed = AttachmentSchema.parse(validAttachment);
+    expect(parsed.backend).toBeUndefined();
+    expect(parsed).not.toHaveProperty("backend");
+  });
+
+  it("parses with the optional backend field set (union-backed descriptor)", () => {
+    const parsed = AttachmentSchema.parse({
+      ...validAttachment,
+      backend: "s3-cn",
+    });
+    expect(parsed.backend).toBe("s3-cn");
+  });
+
+  it("rejects a non-string backend value (field path)", () => {
+    const res = AttachmentSchema.safeParse({
+      ...validAttachment,
+      backend: 42,
+    });
+    expect(res.success).toBe(false);
+    if (!res.success) {
+      expect(res.error.issues.some((i) => i.path.includes("backend"))).toBe(
+        true,
+      );
+    }
+  });
 });
 
 describe("UploadAttachmentResponseSchema", () => {

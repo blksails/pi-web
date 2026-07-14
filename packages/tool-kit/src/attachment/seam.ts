@@ -23,6 +23,9 @@ const UNAVAILABLE_CTX: AttachmentToolContext = {
   async putOutput() {
     throw new Error("attachment capability unavailable: context not injected");
   },
+  async publish() {
+    throw new Error("attachment capability unavailable: context not injected");
+  },
   async listBySession() {
     throw new Error("attachment capability unavailable: context not injected");
   },

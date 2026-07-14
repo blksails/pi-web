@@ -34,6 +34,9 @@ import type {
   AgentRouteMethod,
   AgentRouteRequestFrame,
   AgentRouteResultFrame,
+  AttachmentCatalogRequestFrame,
+  AttachmentCatalogResultFrame,
+  AttachmentControlPayload,
 } from "@blksails/pi-web-protocol";
 import {
   makeControlFrame,
@@ -44,6 +47,10 @@ import {
   ClearQueueResultLineSchema,
   AgentRoutesFrameSchema,
   AgentRouteResultFrameSchema,
+  AgentAttachmentProfileFrameSchema,
+  AgentAttachmentCatalogFrameSchema,
+  AttachmentCatalogResultFrameSchema,
+  AttachmentEventFrameSchema,
 } from "@blksails/pi-web-protocol";
 import { randomUUID } from "node:crypto";
 import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
@@ -61,12 +68,28 @@ const lifecycleLog = createLogger({ namespace: "session:lifecycle" });
 // 命名空间 session:routes —— agent 声明式 routes(spec agent-declared-routes):声明帧二次校验
 // 失败丢弃的诊断记录。主进程日志落 server stderr,受 configureLogger(主进程门控)约束,默认关。
 const routesLog = createLogger({ namespace: "session:routes" });
+
+// 命名空间 session:attachment-profile —— agent 具名附件 profile(spec agent-attachment-profile):
+// 装配期声明帧二次校验失败/关断/名字失配丢弃的诊断记录(子进程为权威,本处仅防御性核对)。
+// 主进程日志落 server stderr,受 configureLogger(主进程门控)约束,默认关。
+const attachmentProfileLog = createLogger({ namespace: "session:attachment-profile" });
+
+// 命名空间 session:attachment-catalog —— agent 附件目录(spec agent-attachment-catalog):
+// 声明帧/结果帧二次校验失败丢弃、事件帧畸形丢弃的诊断记录。主进程日志落 server stderr,
+// 受 configureLogger(主进程门控)约束,默认关。
+const attachmentCatalogLog = createLogger({ namespace: "session:attachment-catalog" });
 import type { ResolvedSource } from "../agent-source/index.js";
+import {
+  ATTACHMENT_BACKENDS_ENV,
+  isAttachmentProfileDisabled,
+  parseBackendsEnv,
+} from "../attachment/backends-config.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
 import { LogRingBuffer } from "../logging/log-ring-buffer.js";
 import { StderrLogParser } from "../logging/stderr-log-parser.js";
 import {
   AgentRouteTimeoutError,
+  AttachmentCatalogTimeoutError,
   SessionStoppedError,
   UnknownExtensionUIError,
 } from "./session.errors.js";
@@ -106,6 +129,15 @@ const CLEAR_QUEUE_TIMEOUT_MS = 5000;
  * 纯代码默认;env 覆盖(`PI_WEB_AGENT_ROUTE_TIMEOUT_MS`)在 HTTP 层读取后以参数传入(task 3.2)。
  */
 const DEFAULT_AGENT_ROUTE_TIMEOUT_MS = 20_000;
+/**
+ * agent-attachment-catalog:catalog 请求(list/materialize)请求帧→结果帧的关联超时默认值。
+ * 纯代码默认;list 侧由 catalog provider 传入更短的时限(≈700ms,design.md §决策);
+ * materialize 侧的 env 覆盖(`PI_WEB_ATTACHMENT_CATALOG_TIMEOUT_MS`)在 HTTP 层读取后
+ * 以参数传入(task 4.2),本层不读 env。
+ */
+const DEFAULT_CATALOG_TIMEOUT_MS = 20_000;
+/** agent-attachment-catalog:`control:"attachment"` 事件转发的尾沿节流窗口(design.md,防风暴)。 */
+const ATTACHMENT_EVENT_THROTTLE_MS = 1000;
 const END_EVENT = "end";
 
 /**
@@ -173,6 +205,36 @@ export class PiSession {
    * 按会话缓存为路由表(就绪门前缓存,slash_completions 同族);无声明恒为空数组(Req 2.5)。
    */
   private agentRoutesTable: readonly AgentRouteDeclDto[] = [];
+  /**
+   * agent 装配期经 `agent_attachment_profile` 帧声明的附件写目标 profile 名(spec
+   * agent-attachment-profile)。按会话缓存为只读投影;子进程装配期已是白名单校验权威,
+   * 本字段仅供上传路由的 `resolveWriteBackend` 消费(Req 2.1/2.3)。未声明/关断/校验失配恒
+   * 为 `undefined`(Req 5.1)。
+   */
+  private attachmentWriteProfile: string | undefined;
+  /**
+   * agent-attachment-catalog:catalog 调用(list/materialize)在途请求(clearQueue/agent-routes
+   * 同构):按关联 id 配对子进程回写的 `piweb_attachment_catalog_result` 行。超时或会话收尾时
+   * reject 以免悬挂(Req 2.4/3.4)。
+   */
+  private readonly pendingCatalog = new Map<
+    string,
+    {
+      resolve: (r: AttachmentCatalogResultFrame) => void;
+      reject: (e: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  /**
+   * agent 装配期经 `agent_attachment_catalog` 帧声明的目录可用性(spec agent-attachment-catalog)。
+   * 按会话缓存为只读投影(slash_completions/agent_routes 同族,就绪门前收帧即可读);
+   * 未声明恒为 `false`(Req 1.2 结构性零变化)。
+   */
+  private catalogAvailable = false;
+  /** `control:"attachment"` 尾沿节流状态(design.md,≤1 帧/秒防风暴)。 */
+  private attachmentEventLastEmitAt: number | undefined;
+  private attachmentEventThrottleTimer: ReturnType<typeof setTimeout> | undefined;
+  private attachmentEventPendingPayload: AttachmentControlPayload | undefined;
 
   /**
    * 服务端**唯一权威**会话快照(session-snapshot-authority):lifecycle/busy/turn/stats/model/title。
@@ -676,6 +738,20 @@ export class PiSession {
       return;
     }
 
+    // agent-attachment-catalog:子进程回写的 catalog 结果帧(list/materialize)→ 按 id 配对
+    // pending 请求 resolve。置于 active gate 之前(clearQueue/agent-routes 同语义):结果关联
+    // 在途请求,晚到亦应解析;未知/已超时 id 与畸形帧安全丢弃(Req 2.4/3.4)。
+    if (type === "piweb_attachment_catalog_result") {
+      const parsedCatalogResult = AttachmentCatalogResultFrameSchema.safeParse(parsed);
+      if (!parsedCatalogResult.success) return; // 畸形结果帧丢弃
+      const pending = this.pendingCatalog.get(parsedCatalogResult.data.id);
+      if (pending === undefined) return; // 未知/迟到 id → 丢弃
+      this.pendingCatalog.delete(parsedCatalogResult.data.id);
+      clearTimeout(pending.timer);
+      pending.resolve(parsedCatalogResult.data);
+      return;
+    }
+
     // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
     // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
     if (type === "slash_completions") {
@@ -697,6 +773,75 @@ export class PiSession {
         return;
       }
       this.agentRoutesTable = routesFrame.data.routes;
+      return;
+    }
+
+    // agent-attachment-profile:装配期 `agent_attachment_profile` 声明帧(slash_completions
+    // 同族,早于就绪门/无 active 约束)。子进程装配期已是白名单校验权威;主进程消费侧仅做
+    // 防御性核对——关断 / 二次 zod 校验失败 / 名字未在本进程视角的拓扑中命中,均 warn+丢弃
+    // 不缓存(不失败会话,回落宿主默认写路由,Req 2.1/2.3/5.1)。
+    if (type === "agent_attachment_profile") {
+      if (isAttachmentProfileDisabled(process.env)) {
+        attachmentProfileLog.warn("agent_attachment_profile frame dropped: disabled", {
+          session: this.id,
+        });
+        return;
+      }
+      const profileFrame = AgentAttachmentProfileFrameSchema.safeParse(parsed);
+      if (!profileFrame.success) {
+        attachmentProfileLog.warn(
+          "agent_attachment_profile frame dropped: schema validation failed",
+          { session: this.id, issues: profileFrame.error.issues },
+        );
+        return;
+      }
+      const topology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
+      const known = topology?.backends.map((b) => b.name) ?? [];
+      if (!known.includes(profileFrame.data.profile)) {
+        attachmentProfileLog.warn(
+          "agent_attachment_profile frame dropped: profile not in this process's topology view",
+          { session: this.id, profile: profileFrame.data.profile, known },
+        );
+        return;
+      }
+      this.attachmentWriteProfile = profileFrame.data.profile;
+      return;
+    }
+
+    // agent-attachment-catalog:装配期 `agent_attachment_catalog` 声明帧(slash_completions/
+    // agent_routes 同族,早于就绪门/无 active 约束)。二次 zod 校验失败 → 丢弃不缓存
+    // (目录视同未声明,provider 零往返,Req 1.2)。
+    if (type === "agent_attachment_catalog") {
+      const catalogFrame = AgentAttachmentCatalogFrameSchema.safeParse(parsed);
+      if (!catalogFrame.success) {
+        attachmentCatalogLog.warn(
+          "agent_attachment_catalog frame dropped: schema validation failed",
+          { session: this.id, issues: catalogFrame.error.issues },
+        );
+        return;
+      }
+      this.catalogAvailable = true;
+      return;
+    }
+
+    // agent-attachment-catalog:子进程主动推送的「新增附件」事件帧(publish 落库后发射)。
+    // 二次 zod 校验失败 → warn+丢弃,不失败会话(design.md §Error Handling)。转发为 SSE
+    // `control:"attachment"`,尾沿节流 ≤1 帧/秒防风暴(design.md §行为规约)。非粘性:
+    // 错过不补(打开会话时前端本就全量枚举目录/附件)。
+    if (type === "piweb_attachment_event") {
+      const eventFrame = AttachmentEventFrameSchema.safeParse(parsed);
+      if (!eventFrame.success) {
+        attachmentCatalogLog.warn(
+          "piweb_attachment_event frame dropped: schema validation failed",
+          { session: this.id, issues: eventFrame.error.issues },
+        );
+        return;
+      }
+      this.emitAttachmentEventThrottled({
+        control: "attachment",
+        event: eventFrame.data.event,
+        attachment: eventFrame.data.attachment,
+      });
       return;
     }
 
@@ -724,6 +869,53 @@ export class PiSession {
    */
   get agentRoutes(): ReadonlyArray<AgentRouteDeclDto> {
     return this.agentRoutesTable;
+  }
+
+  /**
+   * agent 装配期声明的附件写目标 profile 名(spec agent-attachment-profile,Req 2.1/2.3)。
+   * 未声明/关断/校验失配恒为 `undefined`(回落宿主默认写路由)。就绪门前收帧即可读
+   * (声明帧缓存早于 lifecycle ready,slash_completions/agent_routes 同族)。
+   */
+  getAttachmentWriteProfile(): string | undefined {
+    return this.attachmentWriteProfile;
+  }
+
+  /**
+   * agent 装配期声明的附件目录是否可用(spec agent-attachment-catalog,Req 1.2)。
+   * 未声明恒为 `false`;就绪门前收帧即可读(声明帧缓存早于 lifecycle ready,
+   * slash_completions/agent_routes 同族)。catalog provider 据此实现零往返降级。
+   */
+  get attachmentCatalogAvailable(): boolean {
+    return this.catalogAvailable;
+  }
+
+  /**
+   * agent-attachment-catalog:尾沿节流转发 `control:"attachment"`(design.md,≤1 帧/秒防风暴)。
+   * 距上次转发 ≥ 节流窗口 → 立即转发;否则挂起最新载荷,窗口到期后一次性补发(合并期间的多次
+   * 事件只保留最新一条 —— 面板重拉是全量枚举,合并无损)。
+   */
+  private emitAttachmentEventThrottled(payload: AttachmentControlPayload): void {
+    const now = Date.now();
+    if (
+      this.attachmentEventLastEmitAt === undefined ||
+      now - this.attachmentEventLastEmitAt >= ATTACHMENT_EVENT_THROTTLE_MS
+    ) {
+      this.attachmentEventLastEmitAt = now;
+      this.emitter.emit(FRAME_EVENT, makeControlFrame(payload));
+      return;
+    }
+    this.attachmentEventPendingPayload = payload;
+    if (this.attachmentEventThrottleTimer === undefined) {
+      const delay = ATTACHMENT_EVENT_THROTTLE_MS - (now - this.attachmentEventLastEmitAt);
+      this.attachmentEventThrottleTimer = setTimeout(() => {
+        this.attachmentEventThrottleTimer = undefined;
+        if (this.attachmentEventPendingPayload !== undefined) {
+          this.attachmentEventLastEmitAt = Date.now();
+          this.emitter.emit(FRAME_EVENT, makeControlFrame(this.attachmentEventPendingPayload));
+          this.attachmentEventPendingPayload = undefined;
+        }
+      }, delay);
+    }
   }
 
   /**
@@ -992,6 +1184,48 @@ export class PiSession {
         this.channel.send(JSON.stringify(frame));
       } catch (err) {
         this.pendingAgentRoutes.delete(id);
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  }
+
+  /**
+   * agent-attachment-catalog:同步转发一次 catalog 请求(list/materialize,invokeAgentRoute
+   * 模式,Req 2.4 / 3.2)。经 stdin 下发请求帧 `piweb_attachment_catalog_request{id}`(runner
+   * 的 `wireAttachmentCatalogBridge` 截获派发),结果经 `piweb_attachment_catalog_result` 行
+   * 回流,由 `handleRawLine` 按 id 配对 resolve。超时兜底 reject `AttachmentCatalogTimeoutError`
+   * (list 侧 provider 据此降级为空组;materialize 侧 HTTP 层映射 504)。结果 `ok:false` 以
+   * 返回值表达,不在此层 reject。
+   *
+   * `timeoutMs` 为纯代码默认(20s);调用方按场景覆盖(provider 传 ≈700ms;HTTP 层读 env 覆盖后
+   * 以参数传入),本层不读 env。
+   */
+  requestCatalog(
+    req: { op: "list"; query: string } | { op: "materialize"; entryId: string },
+    timeoutMs: number = DEFAULT_CATALOG_TIMEOUT_MS,
+  ): Promise<AttachmentCatalogResultFrame> {
+    try {
+      this.assertActive();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    this.touch();
+    const id = randomUUID();
+    const frame: AttachmentCatalogRequestFrame =
+      req.op === "list"
+        ? { type: "piweb_attachment_catalog_request", id, op: "list", query: req.query }
+        : { type: "piweb_attachment_catalog_request", id, op: "materialize", entryId: req.entryId };
+    return new Promise<AttachmentCatalogResultFrame>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingCatalog.delete(id);
+        reject(new AttachmentCatalogTimeoutError(req.op, timeoutMs));
+      }, timeoutMs);
+      this.pendingCatalog.set(id, { resolve, reject, timer });
+      try {
+        this.channel.send(JSON.stringify(frame));
+      } catch (err) {
+        this.pendingCatalog.delete(id);
         clearTimeout(timer);
         reject(err instanceof Error ? err : new Error(String(err)));
       }
@@ -1352,6 +1586,17 @@ export class PiSession {
         pending.reject(new SessionStoppedError(this.id));
       }
       this.pendingAgentRoutes.clear();
+      // agent-attachment-catalog:reject 所有在途 catalog 调用,避免收尾后悬挂(同语义);
+      // 清尾沿节流定时器,避免会话已收尾后仍触发 emitter.emit(已 removeAllListeners 前安全)。
+      for (const [, pending] of this.pendingCatalog) {
+        clearTimeout(pending.timer);
+        pending.reject(new SessionStoppedError(this.id));
+      }
+      this.pendingCatalog.clear();
+      if (this.attachmentEventThrottleTimer !== undefined) {
+        clearTimeout(this.attachmentEventThrottleTimer);
+        this.attachmentEventThrottleTimer = undefined;
+      }
       this.cache = undefined;
       // 5) 向订阅者广播会话结束(Req 7.3 / 7.5)。
       this.emitter.emit(END_EVENT, reason);

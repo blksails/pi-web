@@ -35,3 +35,10 @@ export {
   AGENT_SLASH_PROVIDER_ID,
   type SlashCompletionSource,
 } from "./providers/agent-slash-provider.js";
+export {
+  createCatalogProvider,
+  CATALOG_PROVIDER_ID,
+  CATALOG_KIND,
+  type CatalogSource,
+  type CatalogAttachmentLister,
+} from "./providers/catalog-provider.js";

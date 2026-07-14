@@ -93,6 +93,13 @@ export interface AttachmentToolContext<
   /** 把产出物先落库(`tool-output`,当前会话属主)再以引用回流;不可用时安全拒绝。 */
   putOutput(input: PutOutputInput): Promise<ToolOutputRef>;
   /**
+   * 与 `putOutput` 同样先落库(`tool-output`,当前会话属主)再以引用回流,额外向主进程
+   * 广播一次「新增附件」推送事件(agent-attachment-catalog spec,Req 4.1),使已连接的前端
+   * 免刷新即时感知(经 SSE `control:"attachment"`)。适合 agent 在运行期(不只是响应工具调用)
+   * 主动产出用户可见产物的场景。不可用时安全拒绝(抛可识别错误)。
+   */
+  publish(input: PutOutputInput): Promise<ToolOutputRef>;
+  /**
    * 枚举**当前会话**的附件描述符(不含字节;领域无关的枚举 seam,供上层 surface 如 Canvas
    * 做 hydrate 重建)。不可用时安全拒绝(抛可识别错误)。
    */

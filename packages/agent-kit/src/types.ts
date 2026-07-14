@@ -169,4 +169,78 @@ export interface AgentDefinition {
    * agent completely unaffected by the feature.
    */
   routes?: AgentRouteDecl[];
+  /**
+   * Named attachment write-target profile (spec `agent-attachment-profile`).
+   * A **plain name** referencing a backend the host has registered in its
+   * `PI_WEB_ATTACHMENT_BACKENDS` topology — this field carries no credentials,
+   * endpoints, or storage parameters, only a whitelist reference. New
+   * attachments produced by this agent's session (both browser uploads and
+   * subprocess tool output) are written to that backend; reads/signed
+   * distribution keep routing by the descriptor's already-fixed backend
+   * binding, independent of this field or the session's lifetime.
+   *
+   * The name must match a backend the host has declared, or session creation
+   * fails with an error naming the unregistered profile — the host, not the
+   * agent, holds final authority over where data lands. Omitting this field
+   * leaves the agent's session on the host's default write target, identical
+   * to pre-feature behavior.
+   */
+  attachmentProfile?: string;
+  /**
+   * Dynamic, discoverable attachment catalog this agent's session exposes
+   * (spec `agent-attachment-catalog`). Entries surface in the input `@`
+   * completion under the "catalog" group; selecting one lazily materializes
+   * it into a standard attachment (same treatment as an uploaded file — the
+   * bytes never leave the agent subprocess until a user actually picks the
+   * entry). Omitting this field leaves the agent completely unaffected.
+   *
+   * Both handlers run only inside the agent subprocess; the main process
+   * only ever sees the pure-data entry projection (`CatalogEntry`, no
+   * bytes) and, after materialization, a standard `att_` id.
+   */
+  attachmentCatalog?: AgentAttachmentCatalogDecl;
+}
+
+/**
+ * A dynamic attachment catalog entry (pure data — no bytes). `id` must be
+ * stable for the lifetime of the session (re-listing the same logical item
+ * should reuse the same `id`). `version`, when the underlying content can
+ * change, is part of the materialization idempotency key: a repeated
+ * `materialize` call for the same `id` + `version` reuses the previously
+ * materialized attachment rather than re-running `resolve` and re-storing
+ * bytes; bumping `version` signals new content.
+ */
+export interface CatalogEntry {
+  /** Stable entry id within this session. `^[A-Za-z0-9][\w.-]*$`. */
+  readonly id: string;
+  /** Display name, also used as the completion filter target. */
+  readonly name: string;
+  /** Optional human-readable description. */
+  readonly description?: string;
+  /** Optional content-type hint (display only, not enforced). */
+  readonly mimeType?: string;
+  /** Optional size hint in bytes (display only). */
+  readonly sizeHint?: number;
+  /** Optional idempotency-key component; a version bump means new content. */
+  readonly version?: string;
+}
+
+/** The materialized bytes for one catalog entry, returned by `resolve`. */
+export interface CatalogResolved {
+  readonly bytes: Uint8Array;
+  readonly name: string;
+  readonly mimeType: string;
+}
+
+/**
+ * Declarative attachment catalog: `list` enumerates entries matching a query
+ * (called on every `@` completion keystroke, so it should be fast — an
+ * in-memory catalog is strongly recommended); `resolve` lazily produces the
+ * bytes for one entry id, only called when a user actually selects it (or
+ * the completion framework's resolve fallback path runs). Both may be sync
+ * or async; both run only inside the agent subprocess.
+ */
+export interface AgentAttachmentCatalogDecl {
+  list(query: string): CatalogEntry[] | Promise<CatalogEntry[]>;
+  resolve(entryId: string): CatalogResolved | Promise<CatalogResolved>;
 }

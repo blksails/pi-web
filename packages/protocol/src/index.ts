@@ -35,6 +35,10 @@ export * from "./agent-routes/frames.js";
 
 // attachment 层(attachment-store 描述符 + 上传响应 DTO)
 export * from "./attachment/attachment-dto.js";
+// agent 具名附件 profile 装配期声明帧(agent-attachment-profile spec)
+export * from "./attachment/profile-frame.js";
+// agent 附件目录:四种帧 + control 载荷(agent-attachment-catalog spec)
+export * from "./attachment/catalog.js";
 
 // config 层(由 object schema 生成配置 UI 的契约:表单 IR + adapter + 配置域)
 export * from "./config/index.js";

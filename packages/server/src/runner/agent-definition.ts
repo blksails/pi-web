@@ -95,6 +95,36 @@ export interface AgentRouteDecl {
   readonly handler: AgentRouteHandler;
 }
 
+/**
+ * A dynamic attachment catalog entry (mirror of agent-kit's `CatalogEntry`;
+ * spec agent-attachment-catalog). Pure data — no bytes.
+ */
+export interface CatalogEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly mimeType?: string;
+  readonly sizeHint?: number;
+  readonly version?: string;
+}
+
+/** Materialized bytes for one catalog entry (mirror of agent-kit's `CatalogResolved`). */
+export interface CatalogResolved {
+  readonly bytes: Uint8Array;
+  readonly name: string;
+  readonly mimeType: string;
+}
+
+/**
+ * Declarative attachment catalog (mirror of agent-kit's
+ * `AgentAttachmentCatalogDecl`). Both handlers run only inside the agent
+ * subprocess — they never cross the process boundary.
+ */
+export interface AgentAttachmentCatalogDecl {
+  list(query: string): CatalogEntry[] | Promise<CatalogEntry[]>;
+  resolve(entryId: string): CatalogResolved | Promise<CatalogResolved>;
+}
+
 /** Declarative custom-agent capabilities (mirror of agent-kit's AgentDefinition). */
 export interface AgentDefinition {
   model?: AgentModel;
@@ -133,4 +163,20 @@ export interface AgentDefinition {
    * runner-assembly-time stdout frame, handlers stay in the subprocess.
    */
   routes?: AgentRouteDecl[];
+  /**
+   * Named attachment write-target profile (mirror of agent-kit field; spec
+   * agent-attachment-profile). pi-web-only metadata: shape-validated at
+   * assembly time by the agent-loader, whitelist-validated by the runner
+   * against the host's `PI_WEB_ATTACHMENT_BACKENDS` topology, then threaded
+   * to the subprocess child attachment store's write policy and announced to
+   * the server via a runner-assembly-time stdout frame.
+   */
+  attachmentProfile?: string;
+  /**
+   * Dynamic attachment catalog this agent's session exposes (mirror of
+   * agent-kit field; spec agent-attachment-catalog). pi-web-only metadata:
+   * shape-validated at assembly time by the agent-loader; handlers stay in
+   * the subprocess, consumed by the runner's catalog bridge.
+   */
+  attachmentCatalog?: AgentAttachmentCatalogDecl;
 }

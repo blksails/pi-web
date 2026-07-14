@@ -191,6 +191,101 @@ describe("AttachmentStore 先落 blob 再写描述符 — save 失败不暴露�
   });
 });
 
+describe("AttachmentStore.put 回执固化后端绑定(attachment-backend-pluggable,Req 3.1/3.2/1.2)", () => {
+  it("回执无 backendName(单后端场景)→ 描述符不含 backend 字段,形状与现状一致(Req 1.2)", async () => {
+    const store = await makeStore();
+    const att = await store.put(baseInput());
+    expect(att).not.toHaveProperty("backend");
+  });
+
+  it("回执含 backendName(多后端拓扑场景)→ 门面把该名字固化进描述符 backend 字段(Req 3.1)", async () => {
+    const signer = createUrlSigner(SECRET);
+    const backend = new LocalFsBlobBackend(root, signer);
+    const registry = new AttachmentRegistry(root);
+    // 注入回执携带 backendName 的 blob(模拟 union 组合后端选中了具名后端)。
+    const fakeBlob = {
+      async put(key: string, body: Uint8Array | NodeJS.ReadableStream, meta: { mimeType: string; size: number }) {
+        await backend.put(key, body, meta);
+        return { backendName: "s3-cn" };
+      },
+      getReadStream: backend.getReadStream.bind(backend),
+      head: backend.head.bind(backend),
+      presignUrl: backend.presignUrl.bind(backend),
+      delete: backend.delete.bind(backend),
+    };
+    const store = new AttachmentStore({ blob: fakeBlob, registry, signer, backend });
+
+    const att = await store.put(baseInput());
+    expect(att.backend).toBe("s3-cn");
+    // 持久化随描述符落盘,读回仍带该字段。
+    const reread = await store.head(att.id);
+    expect(reread?.backend).toBe("s3-cn");
+  });
+
+  it("描述符写失败时回滚:blob.delete 仍被调用且门面无需感知选中的后端(Req 3.2)", async () => {
+    const signer = createUrlSigner(SECRET);
+    const backend = new LocalFsBlobBackend(root, signer);
+    const registry = new AttachmentRegistry(root);
+    let deletedKey: string | undefined;
+    const fakeBlob = {
+      async put(key: string, body: Uint8Array | NodeJS.ReadableStream, meta: { mimeType: string; size: number }) {
+        await backend.put(key, body, meta);
+        return { backendName: "s3-cn" };
+      },
+      getReadStream: backend.getReadStream.bind(backend),
+      head: backend.head.bind(backend),
+      presignUrl: backend.presignUrl.bind(backend),
+      async delete(key: string) {
+        deletedKey = key;
+        return backend.delete(key);
+      },
+    };
+    registry.save = async () => {
+      throw new Error("disk full");
+    };
+    const store = new AttachmentStore({ blob: fakeBlob, registry, signer, backend });
+
+    await expect(store.put(baseInput())).rejects.toThrow("disk full");
+    expect(deletedKey).toBeDefined();
+  });
+});
+
+describe("AttachmentStore.put writeBackend 透传(agent-attachment-profile spec,Req 3.1)", () => {
+  it("PutInput.writeBackend 原样透传进 blob.put 第 4 参", async () => {
+    const signer = createUrlSigner(SECRET);
+    const backend = new LocalFsBlobBackend(root, signer);
+    const registry = new AttachmentRegistry(root);
+    let capturedOpts: { writeBackend?: string } | undefined;
+    const fakeBlob = {
+      async put(
+        key: string,
+        body: Uint8Array | NodeJS.ReadableStream,
+        meta: { mimeType: string; size: number },
+        opts?: { writeBackend?: string },
+      ) {
+        capturedOpts = opts;
+        await backend.put(key, body, meta);
+        return { backendName: opts?.writeBackend };
+      },
+      getReadStream: backend.getReadStream.bind(backend),
+      head: backend.head.bind(backend),
+      presignUrl: backend.presignUrl.bind(backend),
+      delete: backend.delete.bind(backend),
+    };
+    const store = new AttachmentStore({ blob: fakeBlob, registry, signer, backend });
+
+    const att = await store.put(baseInput({ writeBackend: "profile-a" }));
+    expect(capturedOpts).toEqual({ writeBackend: "profile-a" });
+    expect(att.backend).toBe("profile-a");
+  });
+
+  it("不传 writeBackend = 现状:透传 undefined,描述符固化不变(结构性回归证明,Req 1.2)", async () => {
+    const store = await makeStore();
+    const att = await store.put(baseInput());
+    expect(att).not.toHaveProperty("backend");
+  });
+});
+
 describe("AttachmentStore.delete", () => {
   it("删除后 blob 字节文件移除(getReadStream 抛未找到)", async () => {
     const store = await makeStore();

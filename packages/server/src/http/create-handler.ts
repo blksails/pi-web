@@ -55,8 +55,10 @@ import {
   createFileProvider,
   createAttachmentProvider,
   createAgentSlashProvider,
+  createCatalogProvider,
   type AttachmentLister,
 } from "../completion/index.js";
+import { createAttachmentCatalogRoutes } from "./routes/attachment-catalog-routes.js";
 import { Router, type RouteSpec } from "./router.js";
 
 // 命名空间 session:create —— 会话/通道创建与删除生命周期里程碑(server stderr,受主进程门控)。
@@ -107,9 +109,31 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
   // agent-slash-completion:通用命令补全 provider(trigger "/"),按会话读取 agent
   // 装配期声明的静态 slash 候选(per-agent gating)。
   completion.register(createAgentSlashProvider((id) => store.get(id)));
+  // agent-attachment-catalog:仅当注入的附件门面具备 presignUrl 能力(能力探测,resolve
+  // 兜底构造引用标记需要 head + presignUrl 都在场)时注册,与附件补全 provider 同门控风格。
+  // 会话访问器直接复用 `store.get`(PiSession 实现 CatalogSource 结构契约:
+  // attachmentCatalogAvailable/requestCatalog)。
+  if (attachmentStore?.presignUrl !== undefined) {
+    completion.register(
+      createCatalogProvider((id) => store.get(id), {
+        head: (id) => attachmentStore.head(id),
+      }),
+    );
+  }
   for (const p of opts.completionProviders ?? []) completion.register(p);
 
+  // agent-attachment-catalog:物化端点仅当附件门面具备 head+presignUrl 能力时挂载
+  // (同上方 provider 注册门控;未注入附件门面的部署形态不挂此端点,访问路径 404)。
+  const catalogRoutes: RouteSpec[] =
+    attachmentStore?.presignUrl !== undefined
+      ? createAttachmentCatalogRoutes(store, {
+          head: (id) => attachmentStore.head(id),
+          presignUrl: (id) => attachmentStore.presignUrl!(id),
+        })
+      : [];
+
   const builtins: RouteSpec[] = [
+    ...catalogRoutes,
     {
       method: "POST",
       path: "/sessions",

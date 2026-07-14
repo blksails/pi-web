@@ -21,7 +21,12 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { isAbsolute, join, resolve } from "node:path";
-import { BlobNotFoundError, type BlobMeta, type BlobStore } from "./blob-store.js";
+import {
+  BlobNotFoundError,
+  type BlobMeta,
+  type BlobStore,
+  type PutReceipt,
+} from "./blob-store.js";
 import type { UrlSigner } from "./url-signer.js";
 
 /**
@@ -94,7 +99,7 @@ export class LocalFsBlobBackend implements BlobStore {
     key: string,
     body: Uint8Array | NodeJS.ReadableStream,
     meta: BlobMeta,
-  ): Promise<void> {
+  ): Promise<PutReceipt> {
     await mkdir(this.root, { recursive: true });
     const source =
       body instanceof Uint8Array ? Readable.from(Buffer.from(body)) : body;
@@ -105,6 +110,8 @@ export class LocalFsBlobBackend implements BlobStore {
       JSON.stringify({ mimeType: meta.mimeType, size: meta.size }),
       "utf8",
     );
+    // 单后端实现:空回执,调用方(门面)零语义变化(Req 3.1 适配基线)。
+    return {};
   }
 
   /**

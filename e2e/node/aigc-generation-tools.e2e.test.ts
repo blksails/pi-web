@@ -149,6 +149,22 @@ function buildCtx(s: AttachmentStore, sessionId: string): AttachmentToolContext 
       const displayUrl = await s.presignUrl(att.id);
       return { attachmentId: att.id, displayUrl, name: att.name, mimeType: att.mimeType };
     },
+    // agent-attachment-catalog spec: this e2e adapter has no fd1/event-broadcast seam,
+    // so `publish` degrades to the same put-and-return-ref behavior as `putOutput`
+    // (no event frame emitted) — sufficient to satisfy the interface for AIGC tool tests
+    // that don't exercise the catalog publish/event path.
+    async publish(input: PutOutputInput): Promise<ToolOutputRef> {
+      const att = await s.put({
+        bytes: input.bytes,
+        name: input.name,
+        mimeType: input.mimeType,
+        size: input.bytes.byteLength,
+        sessionId,
+        origin: "tool-output",
+      });
+      const displayUrl = await s.presignUrl(att.id);
+      return { attachmentId: att.id, displayUrl, name: att.name, mimeType: att.mimeType };
+    },
   };
 }
 
@@ -286,6 +302,9 @@ describe("aigc-generation-tools node e2e (extension form)", () => {
           throw new Error("attachment capability unavailable: context not injected");
         },
         async putOutput(): Promise<ToolOutputRef> {
+          throw new Error("attachment capability unavailable: context not injected");
+        },
+        async publish(): Promise<ToolOutputRef> {
           throw new Error("attachment capability unavailable: context not injected");
         },
         async listBySession(): Promise<Attachment[]> {

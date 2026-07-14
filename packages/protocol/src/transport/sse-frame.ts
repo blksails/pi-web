@@ -16,6 +16,7 @@ import { StateControlPayloadSchema } from "../web-ext/state.js";
 import { LogEntrySchema } from "../logging/log-entry.js";
 import { SessionStatusControlSchema } from "./session-status.js";
 import { SessionStateControlSchema } from "./session-state.js";
+import { AttachmentControlPayloadSchema } from "../attachment/catalog.js";
 
 /** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
@@ -51,6 +52,8 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   StateControlPayloadSchema,
   // 会话权威快照(session-snapshot-authority):粘性帧,承载 lifecycle/busy/turn/stats/model/title。
   SessionStateControlSchema,
+  // agent 附件目录(agent-attachment-catalog):agent 主动推送产物的即时感知事件,非粘性。
+  AttachmentControlPayloadSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

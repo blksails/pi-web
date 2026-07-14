@@ -49,6 +49,9 @@ function makeHarness(over?: Partial<AttachmentToolContext>): Harness {
     async putOutput() {
       throw new Error("nope");
     },
+    async publish() {
+      throw new Error("nope");
+    },
     async getMeta() {
       return undefined;
     },

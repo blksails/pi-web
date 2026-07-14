@@ -34,6 +34,11 @@ export interface PiCompletionPopoverProps {
   /** 让出的触发符(由别的浮层独占,如 "/" 归 PiCommandPalette)。 */
   readonly excludeTriggers?: readonly string[];
   /**
+   * agent-attachment-catalog:外部刷新信号透传给 `useCompletion`(浮层开启时收到
+   * `control:"attachment"` 事件 → 立即重查当前 token,Req 4.2/4.3)。
+   */
+  readonly refreshSignal?: number;
+  /**
    * 选中某候选后回调(attachment-mention-preview):装配层据此捕获候选(含 previewUrl)以在
    * 输入区渲染被引用附件的缩略图预览。在 onChange 写回后触发,仅可选候选。
    */
@@ -50,6 +55,7 @@ export function PiCompletionPopover({
   inputRef,
   onCaptureChange,
   excludeTriggers,
+  refreshSignal,
   onAccept,
   className,
 }: PiCompletionPopoverProps): React.JSX.Element | null {
@@ -60,6 +66,7 @@ export function PiCompletionPopover({
     value,
     cursor,
     ...(excludeTriggers !== undefined ? { excludeTriggers } : {}),
+    ...(refreshSignal !== undefined ? { refreshSignal } : {}),
   });
   const listId = React.useId();
 

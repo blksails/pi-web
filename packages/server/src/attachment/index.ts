@@ -16,11 +16,15 @@ export {
   BlobNotFoundError,
   type BlobStore,
   type BlobMeta,
+  type PutOptions,
+  type PutReceipt,
 } from "./blob-store.js";
 export { LocalFsBlobBackend } from "./local-fs-backend.js";
 export {
-  AttachmentRegistry,
+  LocalFsAttachmentRegistry,
+  LocalFsAttachmentRegistry as AttachmentRegistry,
   AttachmentDescriptorNotFoundError,
+  type AttachmentRegistryPort,
 } from "./attachment-registry.js";
 export {
   AttachmentStore,
@@ -34,3 +38,37 @@ export {
   ATTACHMENT_DIR_ENV,
   type AttachmentStoreConfig,
 } from "./config.js";
+export {
+  UnionBlobStore,
+  UnknownBackendBindingError,
+  type NamedBackend,
+  type WritePolicy,
+  type UnionBlobStoreDeps,
+} from "./union-blob-store.js";
+export { S3Client, S3NotFoundError, S3RequestError, type S3ClientConfig } from "./s3/s3-client.js";
+export { S3BlobBackend, type S3BlobBackendConfig } from "./s3/s3-blob-backend.js";
+export { S3AttachmentRegistry, type S3AttachmentRegistryConfig } from "./s3/s3-registry.js";
+export {
+  HttpBlobStore,
+  type HttpBlobStoreConfig,
+  HttpAttachmentRegistry,
+  type HttpAttachmentRegistryConfig,
+  RemoteAttachmentError,
+} from "./http/index.js";
+export {
+  ATTACHMENT_BACKENDS_ENV,
+  ATTACHMENT_PROFILE_DISABLED_ENV,
+  AttachmentBackendsConfigError,
+  isAttachmentProfileDisabled,
+  parseBackendsEnv,
+  buildBackends,
+  buildRegistry,
+  computePassthroughEnv,
+  type BackendDecl,
+  type LocalFsBackendDecl,
+  type S3BackendDecl,
+  type CloudHttpBackendDecl,
+  type RegistryDecl,
+  type BackendsTopology,
+  type BuildDeps,
+} from "./backends-config.js";
