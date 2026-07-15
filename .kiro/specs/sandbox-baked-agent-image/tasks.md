@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Foundation:sandbox-image 纯函数内核
+- [x] 1. Foundation:sandbox-image 纯函数内核
 - [x] 1.1 实现 source 标识派生能力(slug/镜像名/模板名)并配单测
   - 输入 resolver 稳定来源标识,输出命名安全的 slug 与 `piweb-agent/<slug>:<tag>`、`piweb-agent-<slug>.<tag>`,同输入恒同输出
   - 单测覆盖 dir/git/builtin 三型标识、字符集安全、模板名与 dynamic 规则互逆
@@ -13,7 +13,7 @@
   - 完成态:单测覆盖上述全部决策路径且全绿
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 2. Core:模板解析与配置放宽
+- [x] 2. Core:模板解析与配置放宽
 - [x] 2.1 (P) 放宽 e2b 配置的全局模板必填并解析新增配置面
   - PI_WEB_E2B_TEMPLATE 由必填改可缺;新增解析 PI_WEB_E2B_TEMPLATE_MAP(JSON)与 PI_WEB_E2B_TEMPLATE_DERIVE 门控
   - 缺 API key 仍抛既有清晰错误;既有 e2b-config/transport-select 测试断言迁移
@@ -28,7 +28,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: template-resolve_
 
-- [ ] 3. Core:构建编排脚本
+- [x] 3. Core:构建编排脚本
 - [x] 3.1 实现镜像构建编排(staging→bundle→docker build→输出)
   - 消费烘焙计划落盘 staging;esbuild bundle(externals=pi SDK+@blksails/*;--no-bundle 拷源);docker build -t <image:tag>
   - 输出 image:tag、派生模板名、内容哈希与下一步指引;打印 staging 收集与排除的文件清单供审计
@@ -47,7 +47,7 @@
   - 完成态:集成测试在无 docker 环境可跑且全绿
   - _Requirements: 7.1_
 
-- [ ] 4. Integration:会话路径接线
+- [x] 4. Integration:会话路径接线
 - [x] 4.1 pi-handler e2b 分支接入模板解析
   - e2b 分支调三级解析,ok 时覆写 selection.config.template,失败即抛(会话创建失败,错误含修复指引);local 分支零改动
   - 完成态:配 map 的会话用映射模板建沙箱;全空配置会话创建报错含三路径
@@ -65,7 +65,7 @@
   - 完成态:集成测试全绿且既有 pi-handler 相关测试不回归
   - _Requirements: 7.1, 5.3, 3.5_
 
-- [ ] 5. Integration:本地闭环
+- [x] 5. Integration:本地闭环
 - [x] 5.1 dev:e2b:local 烘焙扩展与本地闭环文档
   - PI_WEB_E2B_BAKE_SOURCE=<dir> 时先跑构建(--kind-load --register)再注入对应 TEMPLATE_MAP 起 dev;未设置零行为变化
   - 集群未就绪/镜像未加载/模板未注册在对应步骤给可操作指引;交付 docs/sandbox-baked-agent-image.md 操作文档
@@ -73,7 +73,7 @@
   - _Depends: 3.2, 4.1_
   - _Requirements: 6.1, 6.3_
 
-- [ ] 6. Validation:e2e 与回归
+- [x] 6. Validation:e2e 与回归
 - [x] 6.1 本地 kind 门控 e2e(装配面一致性)
   - 被测资产 = `examples/aigc-canvas-agent`(声明工具+webext 贡献+布局三面俱全);烘焙→加载→注册→e2b dev→建会话
   - 断言:就绪握手、装配面声明(工具清单/webext/布局)与非沙盒同源 dev 一致、prompt 流式回复
