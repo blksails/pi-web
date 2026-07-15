@@ -72,6 +72,17 @@ describe("S3BlobBackend(Req 5.1/5.3/5.4)", () => {
     expect(url).toContain("/blob/k3");
   });
 
+  it("presignUrl 把超协议上限的 TTL 收口到 604800s(X-Amz-Expires 7 天上限,超限 S3/MinIO 400 拒签)", async () => {
+    const backend = new S3BlobBackend(BASE_CONFIG);
+    // 缺省 TTL(local-fs 同约定的 10 年)与显式超限值都必须被 clamp,否则 S3 后端开箱即坏。
+    const byDefault = await backend.presignUrl("k4");
+    expect(new URL(byDefault).searchParams.get("X-Amz-Expires")).toBe("604800");
+    const byExplicit = await backend.presignUrl("k4", {
+      expiresInMs: 10 * 365 * 24 * 60 * 60_000,
+    });
+    expect(new URL(byExplicit).searchParams.get("X-Amz-Expires")).toBe("604800");
+  });
+
   it("delete 幂等(不存在不抛)", async () => {
     const fetchImpl = vi.fn(async () => new Response(null, { status: 404 })) as unknown as typeof fetch;
     const backend = new S3BlobBackend({ ...BASE_CONFIG, fetchImpl });

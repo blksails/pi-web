@@ -27,6 +27,13 @@ function resolveDefaultUrlTtlMs(): number {
   return Number.isFinite(n) && n > 0 ? n : 10 * 365 * 24 * 60 * 60_000;
 }
 
+/**
+ * SigV4 query presign 的协议上限:`X-Amz-Expires` 不得超过 7 天(604800s),超限时 S3/MinIO
+ * 直接 400 AuthorizationQueryParametersError 拒签。local-fs 的 10 年默认 TTL(HMAC 自签名,
+ * 无协议上限)传到这里必须收口,否则 S3 后端开箱即坏(画廊 displayUrl 全 400)。
+ */
+const S3_PRESIGN_MAX_SECONDS = 604_800;
+
 export interface S3BlobBackendConfig extends S3ClientConfig {
   /** key 前缀(缺省空串);字节对象落 `<prefix>blob/<key>`。 */
   readonly prefix?: string;
@@ -79,7 +86,10 @@ export class S3BlobBackend implements BlobStore {
 
   async presignUrl(key: string, opts?: { expiresInMs?: number }): Promise<string> {
     const expiresInMs = opts?.expiresInMs ?? resolveDefaultUrlTtlMs();
-    const expiresInSeconds = Math.max(1, Math.ceil(expiresInMs / 1000));
+    const expiresInSeconds = Math.min(
+      S3_PRESIGN_MAX_SECONDS,
+      Math.max(1, Math.ceil(expiresInMs / 1000)),
+    );
     return this.client.presignGetUrl(this.objectKey(key), expiresInSeconds);
   }
 
