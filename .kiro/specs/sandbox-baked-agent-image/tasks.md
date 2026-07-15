@@ -6,7 +6,7 @@
   - 单测覆盖 dir/git/builtin 三型标识、字符集安全、模板名与 dynamic 规则互逆
   - 完成态:`pnpm --filter @blksails/pi-web-server test` 中该模块单测全绿
   - _Requirements: 2.6, 3.2_
-- [ ] 1.2 实现烘焙计划纯函数(收集/排除/Dockerfile 文本/tag)并配单测
+- [x] 1.2 实现烘焙计划纯函数(收集/排除/Dockerfile 文本/tag)并配单测
   - 收集入口+package.json+.pi/ 全量;排除规则常量导出(node_modules/.git/dist/.installed/本地缓存);缺入口返回 MISSING_ENTRY
   - Dockerfile 文本含 FROM 基座、COPY /workspace/agent、ENV AGENT_CMD(runner-bootstrap argv)与 AGENT_CWD;bundle 与 --no-bundle 两形态(entry index.js/index.ts)
   - tag 缺省 = staging 内容哈希(确定性);经注入的 fs 端口读盘,单测用内存实现
