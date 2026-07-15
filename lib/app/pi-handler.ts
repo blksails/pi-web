@@ -444,13 +444,23 @@ function buildSingleton(): HandlerSingleton {
           ...config.providerKeys,
         },
       };
+      // 临时终判(spec sandbox-baked-agent-image 任务 4.1 由 resolveSandboxTemplate 三级
+      // 解析接管后覆写 template):config.template 已放宽为可缺,三级解析未接线前缺全局
+      // 模板仍在会话创建路径以清晰错误失败,不静默回退 local(Req 3.3/3.4,语义与现状一致)。
+      const sandboxTemplate = selection.config.template;
+      if (sandboxTemplate === undefined) {
+        throw new Error(
+          "PI_WEB_TRANSPORT=e2b 需要 PI_WEB_E2B_TEMPLATE(按 source 的模板解析尚未接线)。请设置该环境变量,或改用 PI_WEB_TRANSPORT=local(默认)。",
+        );
+      }
+      const e2bConfig = { ...selection.config, template: sandboxTemplate };
       // 数据面二选一:
       //  - ws-runner:WS 连沙箱内 agent-runner(agent-sandbox/ACS,无 envd)——完整闭环。
       //  - envd(默认):e2b SDK commands.run(真实 e2b 云有 envd)。
       const transport =
         selection.dataPlane === "ws-runner"
-          ? new SandboxWsTransport(e2bSpec, selection.config)
-          : new E2bTransport(e2bSpec, selection.config);
+          ? new SandboxWsTransport(e2bSpec, e2bConfig)
+          : new E2bTransport(e2bSpec, e2bConfig);
       return new PiRpcSession(transport) satisfies SessionChannel;
     }
     // Real mode: append session-alignment args by source mode. Both modes take

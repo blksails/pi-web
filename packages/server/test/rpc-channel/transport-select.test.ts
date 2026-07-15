@@ -46,6 +46,7 @@ describe("selectTransport — e2b 分支 (Req 3.2/3.3)", () => {
     expect(sel.config).toEqual({
       apiKey: "k",
       template: "tmpl",
+      templateDerive: false,
       envPassthrough: ["ANTHROPIC_API_KEY"],
     });
   });
@@ -72,13 +73,20 @@ describe("selectTransport — e2b 分支 (Req 3.2/3.3)", () => {
     expect(ws.config.wsBase).toBe("ws://127.0.0.1:10000");
   });
 
-  it("PI_WEB_TRANSPORT=e2b 但缺配置 → 清晰错误,不静默回退 local", () => {
+  it("PI_WEB_TRANSPORT=e2b 但缺 E2B_API_KEY → 清晰错误,不静默回退 local", () => {
     expect(() => selectTransport({ PI_WEB_TRANSPORT: "e2b" })).toThrow(
       E2B_CONFIG_MISSING_MESSAGE,
     );
     // 关键:失败即抛,绝不降级为 { mode: "local" }(避免「以为在沙盒里其实在本地」)。
     expect(() =>
-      selectTransport({ PI_WEB_TRANSPORT: "e2b", E2B_API_KEY: "k" }),
+      selectTransport({ PI_WEB_TRANSPORT: "e2b", PI_WEB_E2B_TEMPLATE: "t" }),
     ).toThrow(E2B_CONFIG_MISSING_MESSAGE);
+  });
+
+  it("PI_WEB_TRANSPORT=e2b 缺 template 不抛 → e2b 分支 + template undefined(终判在 resolveSandboxTemplate)", () => {
+    const sel = selectTransport({ PI_WEB_TRANSPORT: "e2b", E2B_API_KEY: "k" });
+    expect(sel.mode).toBe("e2b");
+    if (sel.mode !== "e2b") throw new Error("unreachable");
+    expect(sel.config.template).toBeUndefined();
   });
 });

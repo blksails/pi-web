@@ -47,7 +47,10 @@ describe("E2bTransport 真实沙盒最小闭环 (Req 5.1/5.2/5.3)", () => {
     "起沙盒 → prompt → 收到流式 event → close 后 health 死(不泄漏沙盒)",
     async () => {
       const cfg = e2bTransportConfigFromEnv(process.env);
-      const transport = new E2bTransport(spec(), cfg);
+      // template 已放宽为可缺(终判在 resolveSandboxTemplate);本测试由 HAS_CREDS 门控
+      // 保证已设,此处窄化后按传输构造要求补齐必填 template(与 pi-handler 覆写语义一致)。
+      if (cfg.template === undefined) throw new Error("unreachable: HAS_CREDS 已保证 PI_WEB_E2B_TEMPLATE");
+      const transport = new E2bTransport(spec(), { ...cfg, template: cfg.template });
       const session = new PiRpcSession(transport);
 
       const events: unknown[] = [];

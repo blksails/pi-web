@@ -49,6 +49,11 @@ describe.skipIf(!RUN)("E2B 传输控制面 @ 本地 agent-sandbox", () => {
     // domain/validateApiKey 应由 env 正确解析(自托管 sys-* token 路径)。
     expect(cfg.validateApiKey).toBe(false);
     expect(cfg.domain).toBeTruthy();
+    // template 已放宽为可缺(终判在 resolveSandboxTemplate);本用例按运行前置要求
+    // 已设 PI_WEB_E2B_TEMPLATE,此处窄化以满足 Sandbox.create 的必填参数。
+    if (cfg.template === undefined) {
+      throw new Error("本用例需要 PI_WEB_E2B_TEMPLATE(见文件头运行说明)");
+    }
 
     const sbx = await Sandbox.create(cfg.template, {
       apiKey: cfg.apiKey,

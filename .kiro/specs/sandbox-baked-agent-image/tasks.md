@@ -14,7 +14,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
 
 - [ ] 2. Core:模板解析与配置放宽
-- [ ] 2.1 (P) 放宽 e2b 配置的全局模板必填并解析新增配置面
+- [x] 2.1 (P) 放宽 e2b 配置的全局模板必填并解析新增配置面
   - PI_WEB_E2B_TEMPLATE 由必填改可缺;新增解析 PI_WEB_E2B_TEMPLATE_MAP(JSON)与 PI_WEB_E2B_TEMPLATE_DERIVE 门控
   - 缺 API key 仍抛既有清晰错误;既有 e2b-config/transport-select 测试断言迁移
   - 完成态:未配 map/derive、仅配全局模板的既有部署行为与现状逐字节一致(测试证明)
@@ -85,3 +85,9 @@
   - pnpm test 全绿 + e2e:node stub 套件不受影响;以新鲜运行输出为证据
   - 完成态:回归结果记录在 spec 验证报告
   - _Requirements: 7.3, 3.5_
+
+## Implementation Notes
+- 1.2: BakeFsPort.listFiles 契约=递归+相对路径+posix 分隔(bake-plan.ts docstring 钉住),任务 3.1 真实 fs 适配器必须遵守。
+- 1.2: `Result` 以通用名从 sandbox-image/index.ts 导出,并入 server 主 barrel 时留意命名冲突(且主 barrel 不得重导出含 pi SDK 取数的模块)。
+- 1.2: tag 哈希输入=全部非排除源文件(非 staging 清单);「同源两形态同 tag」被测试钉住,若日后分叉须同步改断言。
+- 2.1: pi-handler.ts:447-460 有「临时终判」桥(缺 template 抛错+窄化喂传输),**任务 4.1 落地 resolveSandboxTemplate 时必须删除此桥**;ResolvedE2bConfig.template 已 `template?`,两传输配置仍必填,4.1 覆写后窄化喂构造。

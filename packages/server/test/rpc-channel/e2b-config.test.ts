@@ -1,7 +1,9 @@
 /**
- * e2bTransportConfigFromEnv 单元测试(spec e2b-sandbox-transport,Req 3.2/3.3/7.1)。
+ * e2bTransportConfigFromEnv 单元测试(spec e2b-sandbox-transport,Req 3.2/3.3/7.1;
+ * spec sandbox-baked-agent-image,Req 3.3/3.5:template 必填放宽 + 模板映射/派生配置面)。
  *
- * 纯函数:覆盖缺 apiKey/template 时的清晰失败(不静默回退)与齐全时的正确解析。
+ * 纯函数:覆盖缺 apiKey 时的清晰失败(不静默回退)、template 可缺(终判移交
+ * resolveSandboxTemplate)、templateMap/templateDerive 解析与齐全时的正确解析。
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -17,10 +19,10 @@ describe("e2bTransportConfigFromEnv — 缺配置清晰失败 (Req 3.3)", () => 
     ).toThrow(E2B_CONFIG_MISSING_MESSAGE);
   });
 
-  it("缺 PI_WEB_E2B_TEMPLATE 抛出携带指引的错误", () => {
-    expect(() => e2bTransportConfigFromEnv({ E2B_API_KEY: "k" })).toThrow(
-      E2B_CONFIG_MISSING_MESSAGE,
-    );
+  it("缺 PI_WEB_E2B_TEMPLATE 不抛,template 为 undefined(终判移交 resolveSandboxTemplate)", () => {
+    const cfg = e2bTransportConfigFromEnv({ E2B_API_KEY: "k" });
+    expect(cfg.template).toBeUndefined();
+    expect(cfg).not.toHaveProperty("template");
   });
 
   it("空字符串/纯空白视为缺失", () => {
@@ -29,19 +31,19 @@ describe("e2bTransportConfigFromEnv — 缺配置清晰失败 (Req 3.3)", () => 
     ).toThrow(E2B_CONFIG_MISSING_MESSAGE);
   });
 
-  it("错误消息含变量名,便于运营者修复", () => {
+  it("错误消息含 E2B_API_KEY 变量名,且不再要求 PI_WEB_E2B_TEMPLATE(template 指引归模板解析错误)", () => {
     expect(E2B_CONFIG_MISSING_MESSAGE).toContain("E2B_API_KEY");
-    expect(E2B_CONFIG_MISSING_MESSAGE).toContain("PI_WEB_E2B_TEMPLATE");
+    expect(E2B_CONFIG_MISSING_MESSAGE).not.toContain("PI_WEB_E2B_TEMPLATE");
   });
 });
 
 describe("e2bTransportConfigFromEnv — 齐全时解析 (Req 3.2)", () => {
-  it("仅必需项时返回最小配置(可选项省略)", () => {
+  it("仅必需项时返回最小配置(可选项省略,templateDerive 默认 false)", () => {
     const cfg = e2bTransportConfigFromEnv({
       E2B_API_KEY: "k",
       PI_WEB_E2B_TEMPLATE: "tmpl",
     });
-    expect(cfg).toEqual({ apiKey: "k", template: "tmpl" });
+    expect(cfg).toEqual({ apiKey: "k", template: "tmpl", templateDerive: false });
   });
 
   it("全部可选项解析:timeout/runnerCmd/cwd/envPassthrough", () => {
@@ -56,6 +58,7 @@ describe("e2bTransportConfigFromEnv — 齐全时解析 (Req 3.2)", () => {
     expect(cfg).toEqual({
       apiKey: "k",
       template: "tmpl",
+      templateDerive: false,
       timeoutMs: 30000,
       runnerCmd: "pi --mode rpc",
       sandboxCwd: "/work",
@@ -70,6 +73,93 @@ describe("e2bTransportConfigFromEnv — 齐全时解析 (Req 3.2)", () => {
       PI_WEB_E2B_TIMEOUT_MS: "abc",
     });
     expect(cfg).not.toHaveProperty("timeoutMs");
+  });
+});
+
+describe("e2bTransportConfigFromEnv — 模板映射/派生配置面 (sandbox-baked-agent-image Req 3.3)", () => {
+  it("PI_WEB_E2B_TEMPLATE_MAP 合法 JSON object → 解析为 templateMap", () => {
+    const cfg = e2bTransportConfigFromEnv({
+      E2B_API_KEY: "k",
+      PI_WEB_E2B_TEMPLATE_MAP:
+        '{"/abs/agent-a":"piweb-agent-a.abc123","gh:org/repo":"piweb-agent-b.def456"}',
+    });
+    expect(cfg.templateMap).toEqual({
+      "/abs/agent-a": "piweb-agent-a.abc123",
+      "gh:org/repo": "piweb-agent-b.def456",
+    });
+  });
+
+  it("非法 JSON → 抛携带变量名的清晰错误(禁静默忽略)", () => {
+    expect(() =>
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_MAP: "{not json",
+      }),
+    ).toThrow(/PI_WEB_E2B_TEMPLATE_MAP/);
+  });
+
+  it("JSON 非 object(数组/字符串/数字/null)→ 抛清晰错误", () => {
+    for (const raw of ['["a"]', '"str"', "42", "null"]) {
+      expect(() =>
+        e2bTransportConfigFromEnv({
+          E2B_API_KEY: "k",
+          PI_WEB_E2B_TEMPLATE_MAP: raw,
+        }),
+      ).toThrow(/PI_WEB_E2B_TEMPLATE_MAP/);
+    }
+  });
+
+  it("object 但值非字符串 → 抛清晰错误", () => {
+    expect(() =>
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_MAP: '{"src": 1}',
+      }),
+    ).toThrow(/PI_WEB_E2B_TEMPLATE_MAP/);
+  });
+
+  it("未设/纯空白 → 不注入 templateMap", () => {
+    expect(
+      e2bTransportConfigFromEnv({ E2B_API_KEY: "k" }),
+    ).not.toHaveProperty("templateMap");
+    expect(
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_MAP: "  ",
+      }),
+    ).not.toHaveProperty("templateMap");
+  });
+
+  it('PI_WEB_E2B_TEMPLATE_DERIVE === "1" → templateDerive:true;其余(含 "true"/"0"/未设)→ false', () => {
+    expect(
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_DERIVE: "1",
+      }).templateDerive,
+    ).toBe(true);
+    expect(
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_DERIVE: "true",
+      }).templateDerive,
+    ).toBe(false);
+    expect(
+      e2bTransportConfigFromEnv({
+        E2B_API_KEY: "k",
+        PI_WEB_E2B_TEMPLATE_DERIVE: "0",
+      }).templateDerive,
+    ).toBe(false);
+    expect(
+      e2bTransportConfigFromEnv({ E2B_API_KEY: "k" }).templateDerive,
+    ).toBe(false);
+  });
+
+  it("未配 map/derive、仅配全局模板 → 与现状一致(map 不注入、derive 关、template 原样)", () => {
+    const cfg = e2bTransportConfigFromEnv({
+      E2B_API_KEY: "k",
+      PI_WEB_E2B_TEMPLATE: "tmpl",
+    });
+    expect(cfg).toEqual({ apiKey: "k", template: "tmpl", templateDerive: false });
   });
 });
 

@@ -1,14 +1,22 @@
 /**
- * e2bTransportConfigFromEnv — 从环境变量解析 `E2bTransportConfig`(Req 3.2/3.3)。
+ * e2bTransportConfigFromEnv — 从环境变量解析 `ResolvedE2bConfig`(Req 3.2/3.3;
+ * spec sandbox-baked-agent-image Req 3.3/3.5:template 放宽 + 模板映射/派生配置面)。
  *
  * 与既有 `*ConfigFromEnv` 纯函数同风格(如 `attachmentStoreConfigFromEnv`):不读
- * `process.env` 全局而消费传入的 env 快照,便于单测。缺 `E2B_API_KEY` 或 template 时
+ * `process.env` 全局而消费传入的 env 快照,便于单测。缺 `E2B_API_KEY` 时
  * **抛携带修复指引的清晰错误**,绝不返回可用配置——避免「以为在沙盒里其实在本地」的
- * 静默回退(Req 3.3)。
+ * 静默回退(Req 3.3)。template 可缺:缺失时**不在此抛**,终判移交会话创建路径的
+ * `resolveSandboxTemplate`(三级解析后仍无才报错,错误文案含三种修复路径)。
  *
  * 读取的变量:
  *  - `E2B_API_KEY`(必需):e2b API key。
- *  - `PI_WEB_E2B_TEMPLATE`(必需):e2b template id(预装 node + pi + agent 源)。
+ *  - `PI_WEB_E2B_TEMPLATE`(可选):全局 e2b template id(预装 node + pi + agent 源);
+ *    模板解析序的第三级回退(显式映射 → 门控派生 → 全局)。
+ *  - `PI_WEB_E2B_TEMPLATE_MAP`(可选):JSON object,「source 标识 → 模板名」显式映射;
+ *    非法 JSON / 非 object / 值非字符串 → 抛清晰错误,禁静默忽略(与 backends-config
+ *    的 fail-fast 风格一致)。
+ *  - `PI_WEB_E2B_TEMPLATE_DERIVE`(可选):="1" 时启用从 source 标识派生模板名的约定
+ *    (默认关,避免既有部署解析到未注册模板名)。
  *  - `PI_WEB_E2B_TIMEOUT_MS`(可选):沙盒超时毫秒,非法数字忽略。
  *  - `PI_WEB_E2B_RUNNER_CMD`(可选):沙盒内启动 runner 的命令,默认 `pi --mode rpc`。
  *  - `PI_WEB_E2B_CWD`(可选):沙盒内 agent 工作目录。
@@ -29,26 +37,41 @@ import type { SandboxWsTransportConfig } from "./sandbox-ws-transport.js";
 
 /**
  * 已解析的 e2b 配置 —— 两种数据面传输(envd 的 `E2bTransport`、ws-runner 的
- * `SandboxWsTransport`)共享控制面字段,各自读所需子集。取二者交集类型,使同一配置对象
- * 可传给任一传输构造。
+ * `SandboxWsTransport`)共享控制面字段,各自读所需子集。基于二者交集类型,但显式把
+ * `template` 放宽为可选(两传输配置各自仍必填;pi-handler 在会话创建路径经
+ * `resolveSandboxTemplate` 终判后覆写 template 再喂传输构造),并附加模板解析配置面
+ * (`templateMap` / `templateDerive`,供 `resolveSandboxTemplate` 消费)。
  */
-export type ResolvedE2bConfig = E2bTransportConfig & SandboxWsTransportConfig;
+export type ResolvedE2bConfig = Omit<
+  E2bTransportConfig & SandboxWsTransportConfig,
+  "template"
+> & {
+  /** 全局 e2b template id(模板解析序第三级回退);三级解析前可缺。 */
+  readonly template?: string;
+  /** 「source 标识 → 模板名」显式映射(`PI_WEB_E2B_TEMPLATE_MAP`);未配置时省略。 */
+  readonly templateMap?: Readonly<Record<string, string>>;
+  /** 是否启用从 source 标识派生模板名(`PI_WEB_E2B_TEMPLATE_DERIVE` === "1")。 */
+  readonly templateDerive: boolean;
+};
 
 /** e2b 数据面。`envd`=SDK commands.run(真实 e2b 云);`ws-runner`=WS 连沙箱内 agent-runner。 */
 export type E2bDataPlane = "envd" | "ws-runner";
 
 /** 缺配置时抛出的错误消息(集中一处,便于测试断言与文案维护)。 */
 export const E2B_CONFIG_MISSING_MESSAGE =
-  "PI_WEB_TRANSPORT=e2b 需要 E2B_API_KEY 与 PI_WEB_E2B_TEMPLATE。请设置这两个环境变量,或改用 PI_WEB_TRANSPORT=local(默认)。";
+  "PI_WEB_TRANSPORT=e2b 需要 E2B_API_KEY。请设置该环境变量,或改用 PI_WEB_TRANSPORT=local(默认)。";
 
 export function e2bTransportConfigFromEnv(
   env: Record<string, string | undefined>,
 ): ResolvedE2bConfig {
   const apiKey = trimmed(env.E2B_API_KEY);
-  const template = trimmed(env.PI_WEB_E2B_TEMPLATE);
-  if (apiKey === undefined || template === undefined) {
+  if (apiKey === undefined) {
     throw new Error(E2B_CONFIG_MISSING_MESSAGE);
   }
+  // template 可缺:终判移交会话创建路径的 resolveSandboxTemplate(三级解析)。
+  const template = trimmed(env.PI_WEB_E2B_TEMPLATE);
+  const templateMap = parseTemplateMap(env.PI_WEB_E2B_TEMPLATE_MAP);
+  const templateDerive = trimmed(env.PI_WEB_E2B_TEMPLATE_DERIVE) === "1";
 
   const timeoutMs = parsePositiveInt(env.PI_WEB_E2B_TIMEOUT_MS);
   const runnerCmd = trimmed(env.PI_WEB_E2B_RUNNER_CMD);
@@ -68,7 +91,9 @@ export function e2bTransportConfigFromEnv(
 
   return {
     apiKey,
-    template,
+    templateDerive,
+    ...(template !== undefined ? { template } : {}),
+    ...(templateMap !== undefined ? { templateMap } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(runnerCmd !== undefined ? { runnerCmd } : {}),
     ...(sandboxCwd !== undefined ? { sandboxCwd } : {}),
@@ -107,7 +132,8 @@ export type TransportSelection =
  * 依 `PI_WEB_TRANSPORT` 选择执行传输后端(Req 3.1/3.2/3.3)。
  *
  * 未设置或非 `e2b` → `{ mode: "local" }`(默认零变化)。`=e2b` → 解析 e2b 配置并返回
- * `{ mode: "e2b", config }`;**缺 `E2B_API_KEY`/template 时抛清晰错误,不静默回退 local**。
+ * `{ mode: "e2b", config }`;**缺 `E2B_API_KEY` 时抛清晰错误,不静默回退 local**
+ * (template 缺失不在此抛,终判在 `resolveSandboxTemplate`)。
  *
  * 装配层应在**会话创建路径**(createChannel 被调用时)调用本函数,使缺配置以清晰错误
  * 让会话创建失败,而非在 app 启动期 fail-fast(Req 3.3 的「会话创建路径」措辞)。
@@ -122,6 +148,41 @@ export function selectTransport(
     dataPlane: e2bDataPlaneFromEnv(env),
     config: e2bTransportConfigFromEnv(env),
   };
+}
+
+/**
+ * 解析 `PI_WEB_E2B_TEMPLATE_MAP`(JSON object:source 标识 → 模板名)。
+ * 非法 JSON / 非 object / 值非字符串 → 抛携带变量名与修复指引的清晰错误,
+ * 禁静默忽略(与 `parseBackendsEnv` 的 fail-fast 风格一致)。未设/纯空白 → undefined。
+ */
+function parseTemplateMap(
+  raw: string | undefined,
+): Readonly<Record<string, string>> | undefined {
+  const v = trimmed(raw);
+  if (v === undefined) return undefined;
+  let json: unknown;
+  try {
+    json = JSON.parse(v);
+  } catch (err) {
+    throw new Error(
+      `PI_WEB_E2B_TEMPLATE_MAP 不是合法 JSON:${(err as Error).message}。期望形如 {"<source 标识>":"<模板名>"} 的 JSON object。`,
+    );
+  }
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+    throw new Error(
+      `PI_WEB_E2B_TEMPLATE_MAP 必须是 JSON object(形如 {"<source 标识>":"<模板名>"}),实际为 ${Array.isArray(json) ? "array" : json === null ? "null" : typeof json}。`,
+    );
+  }
+  const map: Record<string, string> = {};
+  for (const [key, value] of Object.entries(json)) {
+    if (typeof value !== "string") {
+      throw new Error(
+        `PI_WEB_E2B_TEMPLATE_MAP 的值必须全为字符串模板名,键 "${key}" 的值为 ${typeof value}。`,
+      );
+    }
+    map[key] = value;
+  }
+  return map;
 }
 
 function trimmed(raw: string | undefined): string | undefined {
