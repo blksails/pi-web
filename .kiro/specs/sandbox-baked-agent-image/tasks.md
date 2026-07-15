@@ -81,10 +81,11 @@
   - 完成态:e2e 脚本本地跑通,输出逐项一致的断言证据
   - _Depends: 5.1_
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.3, 4.4, 4.5, 6.2, 7.2, 3.4_
-- [ ] 6.2 全量回归
+- [x] 6.2 全量回归
   - pnpm test 全绿 + e2e:node stub 套件不受影响;以新鲜运行输出为证据
   - 完成态:回归结果记录在 spec 验证报告
   - _Requirements: 7.3, 3.5_
+  - 【2026-07-15 结果】pnpm test 全 workspace 绿(尾包 97 files/777 tests,pnpm -r 零非零退出);e2e:node 53/57——config-domains/webext-build-load 各 1 例为既往记录在案的既有失败(与本特性无关面),attachment-completion/state-bridge 各 1 例为全套并行负载 flake(隔离重跑 6/6 绿);typecheck 全仓 0 错。
 
 ## Implementation Notes
 - 1.2: BakeFsPort.listFiles 契约=递归+相对路径+posix 分隔(bake-plan.ts docstring 钉住),任务 3.1 真实 fs 适配器必须遵守。
