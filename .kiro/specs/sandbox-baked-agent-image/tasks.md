@@ -36,7 +36,7 @@
   - 完成态:对 examples 下一个真实 agent 执行后本地 docker images 出现该镜像,重复执行秒级完成
   - _Depends: 1.2_
   - _Requirements: 2.1, 2.2, 2.3, 2.5, 2.7, 1.5_
-- [ ] 3.2 实现 --kind-load 与 --register 及步骤级错误指引
+- [x] 3.2 实现 --kind-load 与 --register 及步骤级错误指引
   - kind load 进指定集群;--register 经 kubectl patch config-templates 静态条目(name/image/port 8080)+ rollout restart + 等就绪,幂等
   - docker/kind/kubectl 缺失或非零退出 → 步骤名+原始 stderr+修复建议
   - 完成态:本地 kind 集群里 crictl images 可见镜像、config-templates 含新模板条目

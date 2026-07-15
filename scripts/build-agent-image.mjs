@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * build:agent-image —— agent source 目录 → 专属沙箱镜像构建编排
- * (`sandbox-baked-agent-image` spec,任务 3.1;Req 2.1-2.3/2.5/2.7/1.5)。
+ * (`sandbox-baked-agent-image` spec,任务 3.1 + 3.2;Req 2.1-2.3/2.5/2.7/6.3/1.5)。
  *
  * 决策(收集/排除/Dockerfile 文本/命名/tag)全部来自 `packages/server/src/sandbox-image/`
  * 纯函数内核(可单测);本脚本只做不可单测的编排:落盘 + spawn(research「构建工具 =
@@ -13,11 +13,21 @@
  *   3) bundle 模式(缺省):esbuild 单文件 staged/index.js(externals = pi SDK + @blksails/*,
  *      由基础镜像全局 node_modules 解析);`--no-bundle`:拷全部源,沙箱运行时 jiti 编译
  *   4) `docker build -t <image:tag>`(tag 缺省 = 源内容哈希 → 同内容恒同 tag,层缓存命中)
- *   5) 输出 image:tag / 派生模板名 / 内容哈希 + 下一步指引(kind load / 注册模板 / TEMPLATE_MAP)
+ *   5) 可选 `--kind-load [--kind-cluster c]`:`kind load docker-image` 进本地 kind 集群
+ *   6) 可选 `--register`:kubectl 读 config-templates → upsert 静态条目 {name,image,port:8080}
+ *      → patch 写回(经临时 patch 文件,避免 shell 转义)→ rollout restart + 等就绪。
+ *      幂等:同名条目整条替换,重复执行结果一致。manager 对 ConfigMap 变更不保证热加载,
+ *      故每次注册都 rollout restart(research「agent-sandbox 模板注册机制」待验证项的落地)。
+ *   7) 输出 image:tag / 派生模板名 / 内容哈希 + 下一步指引(kind load / 注册模板 / TEMPLATE_MAP)
+ *
+ * 每个外部步骤(docker/kind/kubectl)失败都给「步骤名 + 原始 stderr + 修复建议」(Req 6.3)。
  *
  * 用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle]
+ *        [--kind-load] [--kind-cluster c] [--register]
  *      (或 `pnpm build:agent-image <sourceDir> …`)
  * 基础镜像优先序:--base-image > env PI_WEB_E2B_BASE_IMAGE > 缺省 pi-clouds/agent-runner:pi。
+ * 集群定位 env(对齐 dev-e2b-local.mjs 同名惯例):AGENT_SANDBOX_NS / AGENT_SANDBOX_SVC
+ * (deploy 与 ConfigMap 同名,缺省均 agent-sandbox)。
  *
  * ⚠ bundle 后 agent 内 `import.meta.url` 相对路径语义变化(单文件化);有此依赖的 agent
  *   用 `--no-bundle` 退回「拷源 + 沙箱运行时 jiti 编译」。
@@ -43,12 +53,22 @@ const BAKE_PLAN_TS = path.join(
   "bake-plan.ts",
 );
 const DEFAULT_BASE_IMAGE = "pi-clouds/agent-runner:pi";
+const DEFAULT_KIND_CLUSTER = "pi-clouds";
+// agent-sandbox 集群定位(deploy 与 ConfigMap 同名);env 覆盖对齐 dev-e2b-local.mjs 惯例。
+const SANDBOX_NS = process.env.AGENT_SANDBOX_NS ?? "agent-sandbox";
+const SANDBOX_DEPLOY = process.env.AGENT_SANDBOX_SVC ?? "agent-sandbox";
+const SANDBOX_CONFIGMAP = SANDBOX_DEPLOY;
+const TEMPLATES_KEY = "config-templates";
 
-const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle]
+const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle] [--kind-load] [--kind-cluster c] [--register]
   <sourceDir>       agent source 目录(须含入口 index.js 或 index.ts)
   --tag t           显式镜像 tag(缺省 = 源内容 sha256 前 12 位,内容寻址)
   --base-image i    基础镜像(缺省 env PI_WEB_E2B_BASE_IMAGE 或 ${DEFAULT_BASE_IMAGE})
-  --no-bundle       不做 esbuild 单文件化,拷全部源(沙箱运行时 jiti 编译)`;
+  --no-bundle       不做 esbuild 单文件化,拷全部源(沙箱运行时 jiti 编译)
+  --kind-load       构建后 kind load docker-image 进本地 kind 集群
+  --kind-cluster c  kind 集群名(缺省 ${DEFAULT_KIND_CLUSTER};仅与 --kind-load 联用)
+  --register        注册为 agent-sandbox 静态模板(kubectl patch ${TEMPLATES_KEY} + rollout restart + 等就绪;幂等)
+                    集群定位 env:AGENT_SANDBOX_NS(缺省 ${SANDBOX_NS})/ AGENT_SANDBOX_SVC(缺省 ${SANDBOX_DEPLOY})`;
 
 function log(msg) {
   // eslint-disable-next-line no-console
@@ -61,12 +81,12 @@ function die(msg) {
 }
 
 // ---------------------------------------------------------------------------
-// CLI 解析(未知 flag 直接报错;--kind-load/--register 归任务 3.2,届时再加)
+// CLI 解析(未知 flag 直接报错)
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  /** @type {{ sourceDir?: string; tag?: string; baseImage?: string; bundle: boolean }} */
-  const opts = { bundle: true };
+  /** @type {{ sourceDir?: string; tag?: string; baseImage?: string; bundle: boolean; kindLoad: boolean; kindCluster: string; register: boolean }} */
+  const opts = { bundle: true, kindLoad: false, kindCluster: DEFAULT_KIND_CLUSTER, register: false };
   const takeValue = (arg, name, rest) => {
     if (arg.includes("=")) return arg.slice(arg.indexOf("=") + 1);
     const v = rest.shift();
@@ -82,6 +102,12 @@ function parseArgs(argv) {
       opts.baseImage = takeValue(arg, "--base-image", rest);
     } else if (arg === "--no-bundle") {
       opts.bundle = false;
+    } else if (arg === "--kind-load") {
+      opts.kindLoad = true;
+    } else if (arg === "--kind-cluster" || arg.startsWith("--kind-cluster=")) {
+      opts.kindCluster = takeValue(arg, "--kind-cluster", rest);
+    } else if (arg === "--register") {
+      opts.register = true;
     } else if (arg.startsWith("-")) {
       die(`未知参数:${arg}\n${USAGE}`);
     } else if (opts.sourceDir === undefined) {
@@ -134,6 +160,180 @@ async function loadBakePlanModule() {
   const { createJiti } = requireFromServer("jiti");
   const jiti = createJiti(SERVER_PKG_JSON);
   return jiti.import(BAKE_PLAN_TS);
+}
+
+// ---------------------------------------------------------------------------
+// 步骤级外部命令执行(Req 6.3:步骤名 + 原始 stderr + 修复建议)
+// ---------------------------------------------------------------------------
+
+/**
+ * 跑一个外部命令步骤,失败即 die 且错误可操作:
+ * - 可执行缺失(ENOENT)→ 步骤名 + notFoundHint(安装指引);
+ * - 非零退出 → 步骤名 + 原始 stderr 透传 + fixHint(修复建议)。
+ * 成功返回 spawnSync 结果(stdout/stderr 已捕获,调用方决定是否回显)。
+ */
+function runStep(step, cmd, cmdArgs, { notFoundHint, fixHint }) {
+  const res = spawnSync(cmd, cmdArgs, { encoding: "utf8" });
+  if (res.error && res.error.code === "ENOENT") {
+    die(`步骤「${step}」失败:找不到 ${cmd} 可执行文件。\n${notFoundHint}`);
+  }
+  if (res.error) {
+    die(`步骤「${step}」启动失败:${String(res.error.message ?? res.error)}`);
+  }
+  if (res.status !== 0) {
+    const stderr = (res.stderr ?? "").trim();
+    die(
+      `步骤「${step}」失败(${cmd} exit ${res.status})。\n` +
+        `--- 原始 stderr ---\n${stderr === "" ? "(空)" : stderr}\n` +
+        `--- 修复建议 ---\n${fixHint}`,
+    );
+  }
+  return res;
+}
+
+const KUBECTL_NOT_FOUND_HINT =
+  "注册模板需要 kubectl:\n" +
+  "  - macOS:brew install kubectl(或 Docker Desktop/OrbStack 自带)\n" +
+  "  - 其他:https://kubernetes.io/docs/tasks/tools/";
+
+// ---------------------------------------------------------------------------
+// --kind-load:kind load docker-image 进本地集群
+// ---------------------------------------------------------------------------
+
+function kindLoadImage(imageName, cluster) {
+  const step = `kind load(集群 ${cluster})`;
+  log(`kind load docker-image ${imageName} --name ${cluster} …`);
+  const res = runStep(step, "kind", ["load", "docker-image", imageName, "--name", cluster], {
+    notFoundHint:
+      "加载镜像进本地集群需要 kind:\n" +
+      "  - macOS:brew install kind\n" +
+      "  - 其他:https://kind.sigs.k8s.io/docs/user/quick-start/#installation",
+    fixHint:
+      `  - 确认集群存在:kind get clusters(应含 ${cluster};不同名用 --kind-cluster 指定)\n` +
+      `  - 确认镜像已构建:docker images | grep ${imageName.split(":")[0]}\n` +
+      "  - 确认 docker daemon 在跑(kind load 依赖本地 docker)",
+  });
+  // kind 的进度输出走 stdout/stderr 混合;成功也回显便于确认已加载到哪些节点
+  for (const line of `${res.stdout ?? ""}${res.stderr ?? ""}`.split("\n")) {
+    if (line.trim() !== "") log(`  ${line.trim()}`);
+  }
+  log(`kind load 完成:${imageName} → 集群 ${cluster}`);
+}
+
+// ---------------------------------------------------------------------------
+// --register:kubectl patch config-templates 静态条目 + rollout restart + 等就绪
+// ---------------------------------------------------------------------------
+
+/**
+ * 注册烘焙镜像为 agent-sandbox 静态模板条目(幂等:同 name 存在则整条替换)。
+ * 写回经临时 patch 文件 + `kubectl patch --patch-file`(JSON 串套 JSON 串,
+ * 避免 shell 引号转义地狱)。manager 不保证热加载 ConfigMap,故每次注册都
+ * rollout restart + rollout status 等就绪。
+ */
+function registerTemplate(plan) {
+  const cmRef = `configmap/${SANDBOX_CONFIGMAP}(ns ${SANDBOX_NS})`;
+  const clusterHint =
+    `  - 确认本地集群在跑且 kubectl context 正确:kubectl config current-context\n` +
+    `  - 确认 agent-sandbox 已部署:kubectl -n ${SANDBOX_NS} get deploy,cm\n` +
+    `  - ns/名字不同时用 env 覆盖:AGENT_SANDBOX_NS / AGENT_SANDBOX_SVC`;
+
+  // 1) 读现有 config-templates
+  log(`读取 ${cmRef} 的 ${TEMPLATES_KEY} …`);
+  const get = runStep(
+    `读取模板 ConfigMap(kubectl get ${cmRef})`,
+    "kubectl",
+    ["-n", SANDBOX_NS, "get", "configmap", SANDBOX_CONFIGMAP, "-o", "json"],
+    { notFoundHint: KUBECTL_NOT_FOUND_HINT, fixHint: clusterHint },
+  );
+  /** @type {{ data?: Record<string, string> }} */
+  let cm;
+  try {
+    cm = JSON.parse(get.stdout);
+  } catch (e) {
+    die(`步骤「解析模板 ConfigMap JSON」失败:${String(e)}\n--- 修复建议 ---\n${clusterHint}`);
+  }
+  const raw = cm.data?.[TEMPLATES_KEY];
+  if (typeof raw !== "string") {
+    die(
+      `步骤「解析模板 ConfigMap」失败:${cmRef} 缺少键 ${TEMPLATES_KEY}。\n` +
+        `--- 修复建议 ---\n  - 确认目标是 agent-sandbox manager 的模板 ConfigMap\n${clusterHint}`,
+    );
+  }
+  /** @type {unknown} */
+  let templates;
+  try {
+    templates = JSON.parse(raw);
+  } catch (e) {
+    die(
+      `步骤「解析 ${TEMPLATES_KEY} JSON 数组」失败:${String(e)}\n` +
+        `--- 修复建议 ---\n  - ${cmRef} 的 ${TEMPLATES_KEY} 值应为 JSON 数组 [{name,image,port?,…}],先人工修复其内容`,
+    );
+  }
+  if (!Array.isArray(templates)) {
+    die(
+      `步骤「解析 ${TEMPLATES_KEY} JSON 数组」失败:期望数组,实为 ${typeof templates}。\n` +
+        `--- 修复建议 ---\n  - ${cmRef} 的 ${TEMPLATES_KEY} 值应为 JSON 数组 [{name,image,port?,…}],先人工修复其内容`,
+    );
+  }
+
+  // 2) upsert 静态条目(同 name 整条替换 = 幂等)
+  const slug = plan.templateName.replace(/^piweb-agent-/, "").replace(/\.[^.]*$/, "");
+  const entry = {
+    name: plan.templateName,
+    image: plan.imageName,
+    port: 8080,
+    description: `piweb baked agent (${slug})`,
+  };
+  const idx = templates.findIndex((t) => t !== null && typeof t === "object" && t.name === plan.templateName);
+  const action = idx >= 0 ? "替换同名条目" : "追加新条目";
+  if (idx >= 0) templates[idx] = entry;
+  else templates.push(entry);
+  log(`upsert 模板条目(${action}):${JSON.stringify(entry)}`);
+
+  // 3) patch 写回(临时 patch 文件,免 shell 转义)
+  const patchDir = fs.mkdtempSync(path.join(os.tmpdir(), "piweb-register-"));
+  const patchFile = path.join(patchDir, "patch.json");
+  fs.writeFileSync(
+    patchFile,
+    JSON.stringify({ data: { [TEMPLATES_KEY]: JSON.stringify(templates) } }),
+  );
+  try {
+    runStep(
+      `写回模板 ConfigMap(kubectl patch ${cmRef})`,
+      "kubectl",
+      [
+        "-n", SANDBOX_NS,
+        "patch", "configmap", SANDBOX_CONFIGMAP,
+        "--type", "merge",
+        "--patch-file", patchFile,
+      ],
+      { notFoundHint: KUBECTL_NOT_FOUND_HINT, fixHint: clusterHint },
+    );
+  } finally {
+    fs.rmSync(patchDir, { recursive: true, force: true });
+  }
+
+  // 4) rollout restart + 等就绪(manager 不保证热加载 ConfigMap)
+  log(`rollout restart deploy/${SANDBOX_DEPLOY}(manager 重读模板)…`);
+  runStep(
+    `重启 manager(kubectl rollout restart deploy/${SANDBOX_DEPLOY})`,
+    "kubectl",
+    ["-n", SANDBOX_NS, "rollout", "restart", `deploy/${SANDBOX_DEPLOY}`],
+    { notFoundHint: KUBECTL_NOT_FOUND_HINT, fixHint: clusterHint },
+  );
+  runStep(
+    `等待 manager 就绪(kubectl rollout status deploy/${SANDBOX_DEPLOY})`,
+    "kubectl",
+    ["-n", SANDBOX_NS, "rollout", "status", `deploy/${SANDBOX_DEPLOY}`, "--timeout=120s"],
+    {
+      notFoundHint: KUBECTL_NOT_FOUND_HINT,
+      fixHint:
+        `  - 看 Pod 事件:kubectl -n ${SANDBOX_NS} describe deploy/${SANDBOX_DEPLOY}\n` +
+        `  - 看容器日志:kubectl -n ${SANDBOX_NS} logs deploy/${SANDBOX_DEPLOY} --tail=100\n` +
+        "  - 常见原因:镜像拉取失败 / 模板 JSON 不合法致 manager 启动崩",
+    },
+  );
+  log(`模板注册完成(${action}):${plan.templateName} → ${plan.imageName}(port 8080),manager 已重启就绪`);
 }
 
 // ---------------------------------------------------------------------------
@@ -216,18 +416,30 @@ async function main() {
   }
   fs.rmSync(contextDir, { recursive: true, force: true });
 
-  // -- 输出与下一步指引(Req 2.7) ------------------------------------------------
+  // -- 可选:kind load / 注册模板(任务 3.2;失败即步骤级错误退出) ----------------
+  if (args.kindLoad) kindLoadImage(plan.imageName, args.kindCluster);
+  if (args.register) registerTemplate(plan);
+
+  // -- 输出与下一步指引(Req 2.7;已由 flag 完成的步骤标记 ✓) ---------------------
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);
   log(`构建完成(${elapsed}s)`);
   log(`  image:tag   ${plan.imageName}`);
   log(`  模板名      ${plan.templateName}`);
   log(`  tag         ${plan.tag}${args.tag ? "(显式)" : "(源内容哈希,同内容恒同 tag)"}`);
   log("下一步:");
-  log(`  1) 加载进本地 kind 集群:`);
-  log(`       kind load docker-image ${plan.imageName} --name pi-clouds`);
-  log(`  2) 注册为 agent-sandbox 模板(静态条目;或等 --register,任务 3.2):`);
-  log(`       在 agent-sandbox 的 config-templates 中追加 {"name":"${plan.templateName}","image":"${plan.imageName}","port":8080}`);
-  log(`       然后 kubectl -n agent-sandbox rollout restart deploy/agent-sandbox`);
+  if (args.kindLoad) {
+    log(`  1) ✓ 已加载进 kind 集群 ${args.kindCluster}(--kind-load)`);
+  } else {
+    log(`  1) 加载进本地 kind 集群(或直接加 --kind-load):`);
+    log(`       kind load docker-image ${plan.imageName} --name ${DEFAULT_KIND_CLUSTER}`);
+  }
+  if (args.register) {
+    log(`  2) ✓ 已注册为 agent-sandbox 模板并重启 manager(--register)`);
+  } else {
+    log(`  2) 注册为 agent-sandbox 模板(或直接加 --register):`);
+    log(`       在 ${SANDBOX_CONFIGMAP} 的 ${TEMPLATES_KEY} 中追加 {"name":"${plan.templateName}","image":"${plan.imageName}","port":8080}`);
+    log(`       然后 kubectl -n ${SANDBOX_NS} rollout restart deploy/${SANDBOX_DEPLOY}`);
+  }
   log(`  3) 让 pi-web 会话按 source 命中该模板(三选一):`);
   log(`       PI_WEB_E2B_TEMPLATE_MAP='{"${sourceDir}":"${plan.templateName}"}'`);
   log(`       PI_WEB_E2B_TEMPLATE_DERIVE=1(需 dynamic 模板规则已注册)`);
