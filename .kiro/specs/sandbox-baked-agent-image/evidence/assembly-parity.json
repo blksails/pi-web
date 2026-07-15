@@ -1,0 +1,753 @@
+{
+  "at": "2026-07-15T11:13:44.478Z",
+  "image": "piweb-agent/aigc-canvas-agent-78d565b7:76867ade2c00",
+  "template": "piweb-agent-aigc-canvas-agent-78d565b7.76867ade2c00",
+  "sandbox": {
+    "label": "sandbox",
+    "sessionId": "22017b7b-8eb2-4bac-ae9c-b90495f4bb79",
+    "ready": true,
+    "surfaceState": {
+      "control": "state",
+      "key": "surface:canvas",
+      "value": {
+        "assets": [],
+        "capabilities": {
+          "models": [
+            {
+              "id": "gpt-image-2",
+              "label": "GPT Image 2 · NewAPI",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-image-2-sufy",
+              "label": "GPT Image 2 · sufy",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3.1-flash-lite-image-sufy",
+              "label": "Gemini 3.1 Flash Lite Image · sufy",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3.1-flash-image",
+              "label": "Gemini 3.1 Flash Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3-pro-image",
+              "label": "Gemini 3 Pro Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-2.5-flash-image",
+              "label": "Gemini 2.5 Flash Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5-image",
+              "label": "GPT-5 Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5-image-mini",
+              "label": "GPT-5 Image Mini · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5.4-image-2",
+              "label": "GPT-5.4 Image 2 · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "wan2.7-image-pro",
+              "label": "Wan 2.7 Image Pro",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "wan2.7-image-pro-bailian",
+              "label": "Wan 2.7 Image Pro · token plan",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "qwen-image-edit-max",
+              "label": "Qwen Image Edit Max · sync",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "wan2.7-image-edit-bailian",
+              "label": "Wan 2.7 Image Edit · token plan",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            }
+          ],
+          "sizes": [
+            {
+              "label": "1:1",
+              "size": "1024x1024"
+            },
+            {
+              "label": "16:9",
+              "size": "1280x720"
+            },
+            {
+              "label": "9:16",
+              "size": "720x1280"
+            }
+          ],
+          "actions": [
+            "edit",
+            "inpaint",
+            "reference",
+            "variants",
+            "outpaint",
+            "reframe"
+          ]
+        }
+      }
+    },
+    "commandsStatus": 200,
+    "commandsRaw": [
+      {
+        "name": "img_vision",
+        "description": "看一张图并回答问题（对会话内最近一张图发起视觉识别）",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "<inline:2>",
+          "source": "inline",
+          "scope": "temporary",
+          "origin": "top-level"
+        }
+      },
+      {
+        "name": "surface:canvas",
+        "description": "agent-authoritative-surface probe: canvas",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "<inline:3>",
+          "source": "inline",
+          "scope": "temporary",
+          "origin": "top-level"
+        }
+      }
+    ],
+    "commandsAgent": [
+      {
+        "name": "img_vision",
+        "description": "看一张图并回答问题（对会话内最近一张图发起视觉识别）",
+        "source": "extension"
+      },
+      {
+        "name": "surface:canvas",
+        "description": "agent-authoritative-surface probe: canvas",
+        "source": "extension"
+      }
+    ],
+    "commandsHostEnv": [],
+    "completionStatus": 200,
+    "slashItems": [
+      {
+        "providerId": "agent-slash",
+        "kind": "agent-slash",
+        "id": "img-edit",
+        "label": "/img-edit",
+        "insertText": "/img-edit ",
+        "detail": "编辑最近上传的图像(image_edit)"
+      },
+      {
+        "providerId": "agent-slash",
+        "kind": "agent-slash",
+        "id": "img-gen",
+        "label": "/img-gen",
+        "insertText": "/img-gen ",
+        "detail": "用提示词生成图像(image_generation)"
+      }
+    ],
+    "slashGroups": [
+      {
+        "kind": "agent-slash",
+        "count": 2
+      }
+    ],
+    "triggers": [
+      {
+        "trigger": "@",
+        "extract": "wordTail"
+      },
+      {
+        "trigger": "/",
+        "extract": "lineStart"
+      }
+    ],
+    "routesStatus": 200,
+    "routes": [
+      {
+        "name": "gallery-stats",
+        "methods": [
+          "GET"
+        ],
+        "description": "Canvas 画廊统计(资产计数/来源分布/是否生成中)"
+      }
+    ],
+    "galleryStats": {
+      "status": 200,
+      "body": {
+        "domain": "canvas",
+        "assets": 0,
+        "byOrigin": {
+          "upload": 0,
+          "tool-output": 0
+        },
+        "generating": false
+      }
+    },
+    "webextResolve": {
+      "status": 200,
+      "body": {
+        "found": false
+      }
+    },
+    "promptAccepted": true,
+    "promptStreamed": true,
+    "promptFullReply": false,
+    "promptFrameKinds": [
+      "control",
+      "uiMessageChunk"
+    ],
+    "promptSample": [
+      "{\"kind\":\"control\",\"protocolVersion\":\"0.1.0\",\"payload\":{\"control\":\"session-state\",\"snapshot\":{\"lifecycle\":\"ready\",\"busy\":true,\"turn\":{\"startedAt\":1784113951614}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"start\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"start-step\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"finish-step\"}}",
+      "{\"kind\":\"control\",\"protocolVersion\":\"0.1.0\",\"payload\":{\"control\":\"session-state\",\"snapshot\":{\"lifecycle\":\"ready\",\"busy\":false}}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"error\",\"errorText\":\"402: {\\\"message\\\":\\\"This request requires more credits, or fewer max_tok"
+    ]
+  },
+  "local": {
+    "label": "local",
+    "sessionId": "f7d218c8-a778-47f3-86ef-5a2dc36a0a57",
+    "ready": true,
+    "surfaceState": {
+      "control": "state",
+      "key": "surface:canvas",
+      "value": {
+        "assets": [],
+        "capabilities": {
+          "models": [
+            {
+              "id": "gpt-image-2",
+              "label": "GPT Image 2 · NewAPI",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-image-2-sufy",
+              "label": "GPT Image 2 · sufy",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3.1-flash-lite-image-sufy",
+              "label": "Gemini 3.1 Flash Lite Image · sufy",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3.1-flash-image",
+              "label": "Gemini 3.1 Flash Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-3-pro-image",
+              "label": "Gemini 3 Pro Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gemini-2.5-flash-image",
+              "label": "Gemini 2.5 Flash Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5-image",
+              "label": "GPT-5 Image · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5-image-mini",
+              "label": "GPT-5 Image Mini · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "gpt-5.4-image-2",
+              "label": "GPT-5.4 Image 2 · OpenRouter",
+              "sizes": [
+                "1024x1024",
+                "1536x1024",
+                "1024x1536"
+              ]
+            },
+            {
+              "id": "wan2.7-image-pro",
+              "label": "Wan 2.7 Image Pro",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "wan2.7-image-pro-bailian",
+              "label": "Wan 2.7 Image Pro · token plan",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "qwen-image-edit-max",
+              "label": "Qwen Image Edit Max · sync",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            },
+            {
+              "id": "wan2.7-image-edit-bailian",
+              "label": "Wan 2.7 Image Edit · token plan",
+              "sizes": [
+                "1024x1024",
+                "1280x720",
+                "720x1280"
+              ]
+            }
+          ],
+          "sizes": [
+            {
+              "label": "1:1",
+              "size": "1024x1024"
+            },
+            {
+              "label": "16:9",
+              "size": "1280x720"
+            },
+            {
+              "label": "9:16",
+              "size": "720x1280"
+            }
+          ],
+          "actions": [
+            "edit",
+            "inpaint",
+            "reference",
+            "variants",
+            "outpaint",
+            "reframe"
+          ]
+        }
+      }
+    },
+    "commandsStatus": 200,
+    "commandsRaw": [
+      {
+        "name": "sandbox-enable",
+        "description": "Enable the sandbox for this session",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox/index.ts",
+          "source": "npm:pi-sandbox",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox"
+        }
+      },
+      {
+        "name": "sandbox-disable",
+        "description": "Disable the sandbox for this session",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox/index.ts",
+          "source": "npm:pi-sandbox",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox"
+        }
+      },
+      {
+        "name": "sandbox",
+        "description": "Show sandbox configuration",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox/index.ts",
+          "source": "npm:pi-sandbox",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-sandbox"
+        }
+      },
+      {
+        "name": "reload-runtime",
+        "description": "Reload extensions, skills, prompts, and themes (pi-web extension manager)",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/Projects/BlackSail/agents/pi-web/packages/tool-kit/src/extension-tools/extension-manager.ts",
+          "source": "cli",
+          "scope": "temporary",
+          "origin": "top-level"
+        }
+      },
+      {
+        "name": "websearch",
+        "description": "Open web search curator",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access/index.ts",
+          "source": "npm:pi-web-access",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access"
+        }
+      },
+      {
+        "name": "curator",
+        "description": "Toggle or configure the search curator workflow",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access/index.ts",
+          "source": "npm:pi-web-access",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access"
+        }
+      },
+      {
+        "name": "google-account",
+        "description": "Show the active Google account for Gemini Web",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access/index.ts",
+          "source": "npm:pi-web-access",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access"
+        }
+      },
+      {
+        "name": "search",
+        "description": "Browse stored web search results",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access/index.ts",
+          "source": "npm:pi-web-access",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-web-access"
+        }
+      },
+      {
+        "name": "schedule-prompt",
+        "description": "Manage scheduled prompts interactively",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-schedule-prompt/src/index.ts",
+          "source": "npm:pi-schedule-prompt@0.4.1",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-schedule-prompt"
+        }
+      },
+      {
+        "name": "mcp",
+        "description": "Show MCP server status",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts",
+          "source": "npm:pi-mcp-adapter",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-mcp-adapter"
+        }
+      },
+      {
+        "name": "mcp-auth",
+        "description": "Authenticate with an MCP server (OAuth)",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "/Users/hysios/.pi/agent/npm/node_modules/pi-mcp-adapter/index.ts",
+          "source": "npm:pi-mcp-adapter",
+          "scope": "user",
+          "origin": "package",
+          "baseDir": "/Users/hysios/.pi/agent/npm/node_modules/pi-mcp-adapter"
+        }
+      },
+      {
+        "name": "img_vision",
+        "description": "看一张图并回答问题（对会话内最近一张图发起视觉识别）",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "<inline:2>",
+          "source": "inline",
+          "scope": "temporary",
+          "origin": "top-level"
+        }
+      },
+      {
+        "name": "surface:canvas",
+        "description": "agent-authoritative-surface probe: canvas",
+        "source": "extension",
+        "sourceInfo": {
+          "path": "<inline:3>",
+          "source": "inline",
+          "scope": "temporary",
+          "origin": "top-level"
+        }
+      }
+    ],
+    "commandsAgent": [
+      {
+        "name": "img_vision",
+        "description": "看一张图并回答问题（对会话内最近一张图发起视觉识别）",
+        "source": "extension"
+      },
+      {
+        "name": "surface:canvas",
+        "description": "agent-authoritative-surface probe: canvas",
+        "source": "extension"
+      }
+    ],
+    "commandsHostEnv": [
+      {
+        "name": "curator",
+        "description": "Toggle or configure the search curator workflow",
+        "source": "extension"
+      },
+      {
+        "name": "google-account",
+        "description": "Show the active Google account for Gemini Web",
+        "source": "extension"
+      },
+      {
+        "name": "mcp",
+        "description": "Show MCP server status",
+        "source": "extension"
+      },
+      {
+        "name": "mcp-auth",
+        "description": "Authenticate with an MCP server (OAuth)",
+        "source": "extension"
+      },
+      {
+        "name": "reload-runtime",
+        "description": "Reload extensions, skills, prompts, and themes (pi-web extension manager)",
+        "source": "extension"
+      },
+      {
+        "name": "sandbox",
+        "description": "Show sandbox configuration",
+        "source": "extension"
+      },
+      {
+        "name": "sandbox-disable",
+        "description": "Disable the sandbox for this session",
+        "source": "extension"
+      },
+      {
+        "name": "sandbox-enable",
+        "description": "Enable the sandbox for this session",
+        "source": "extension"
+      },
+      {
+        "name": "schedule-prompt",
+        "description": "Manage scheduled prompts interactively",
+        "source": "extension"
+      },
+      {
+        "name": "search",
+        "description": "Browse stored web search results",
+        "source": "extension"
+      },
+      {
+        "name": "websearch",
+        "description": "Open web search curator",
+        "source": "extension"
+      }
+    ],
+    "completionStatus": 200,
+    "slashItems": [
+      {
+        "providerId": "agent-slash",
+        "kind": "agent-slash",
+        "id": "img-edit",
+        "label": "/img-edit",
+        "insertText": "/img-edit ",
+        "detail": "编辑最近上传的图像(image_edit)"
+      },
+      {
+        "providerId": "agent-slash",
+        "kind": "agent-slash",
+        "id": "img-gen",
+        "label": "/img-gen",
+        "insertText": "/img-gen ",
+        "detail": "用提示词生成图像(image_generation)"
+      }
+    ],
+    "slashGroups": [
+      {
+        "kind": "agent-slash",
+        "count": 2
+      }
+    ],
+    "triggers": [
+      {
+        "trigger": "@",
+        "extract": "wordTail"
+      },
+      {
+        "trigger": "/",
+        "extract": "lineStart"
+      }
+    ],
+    "routesStatus": 200,
+    "routes": [
+      {
+        "name": "gallery-stats",
+        "methods": [
+          "GET"
+        ],
+        "description": "Canvas 画廊统计(资产计数/来源分布/是否生成中)"
+      }
+    ],
+    "galleryStats": {
+      "status": 200,
+      "body": {
+        "domain": "canvas",
+        "assets": 0,
+        "byOrigin": {
+          "upload": 0,
+          "tool-output": 0
+        },
+        "generating": false
+      }
+    },
+    "webextResolve": {
+      "status": 200,
+      "body": {
+        "found": false
+      }
+    },
+    "promptAccepted": true,
+    "promptStreamed": true,
+    "promptFullReply": false,
+    "promptFrameKinds": [
+      "control",
+      "uiMessageChunk"
+    ],
+    "promptSample": [
+      "{\"kind\":\"control\",\"protocolVersion\":\"0.1.0\",\"payload\":{\"control\":\"session-state\",\"snapshot\":{\"lifecycle\":\"ready\",\"busy\":true,\"turn\":{\"startedAt\":1784114021658}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"start\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"start-step\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"reasoning-start\",\"id\":\"p1\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"reasoning-delta\",\"id\":\"p1\",\"delta\":\"The\"}}",
+      "{\"kind\":\"uiMessageChunk\",\"protocolVersion\":\"0.1.0\",\"chunk\":{\"type\":\"reasoning-delta\",\"id\":\"p1\",\"delta\":\" user is asking me\"}}"
+    ]
+  },
+  "negative": {
+    "status": 500,
+    "body": {
+      "error": {
+        "code": "INTERNAL",
+        "message": "Internal server error."
+      },
+      "protocolVersion": "0.1.0"
+    },
+    "stderrHasResolveError": true,
+    "stderrHasMapPath": true,
+    "stderrHasDerivePath": true,
+    "stderrHasGlobalPath": true
+  },
+  "concerns": [
+    "非沙盒侧存在 11 条宿主环境级命令(curator, google-account, mcp, mcp-auth, reload-runtime, sandbox, sandbox-disable, sandbox-enable, schedule-prompt, search, websearch):来自宿主 ~/.pi/agent 个人包与 local 分支强注入的平台扩展(pi-sandbox/ext-tools/auto-title),按设计不进不可变镜像 ⇒ 沙盒会话缺这部分宿主级能力(含 auto-title 自动会话标题)——属 e2b 模式既有行为差,非本 spec agent 声明面回归;是否补齐交人裁定",
+    "沙盒 prompt 未取得完整 LLM 回复(沙箱内无 provider 凭据/模型配置时的预期降级);数据面往返已由回流帧与 gallery-stats route 调用证明"
+  ],
+  "failures": []
+}

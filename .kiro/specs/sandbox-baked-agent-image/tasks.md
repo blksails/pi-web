@@ -74,7 +74,7 @@
   - _Requirements: 6.1, 6.3_
 
 - [ ] 6. Validation:e2e 与回归
-- [ ] 6.1 本地 kind 门控 e2e(装配面一致性)
+- [x] 6.1 本地 kind 门控 e2e(装配面一致性)
   - 被测资产 = `examples/aigc-canvas-agent`(声明工具+webext 贡献+布局三面俱全);烘焙→加载→注册→e2b dev→建会话
   - 断言:就绪握手、装配面声明(工具清单/webext/布局)与非沙盒同源 dev 一致、prompt 流式回复
   - 负路径:未注册模板名会话创建失败且错误含修复指引;集群不可达整套跳过(CI 不红)

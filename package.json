@@ -41,6 +41,7 @@
     "e2e:build": "pnpm build:dist && playwright test",
     "e2e:node": "cross-env PI_WEB_STUB_AGENT=1 vitest run -c vitest.node-e2e.config.ts",
     "e2e:csp": "node e2e/csp/import-map-csp.mjs",
+    "e2e:sandbox-baked": "node e2e/sandbox-baked-image.local.mjs",
     "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit",
     "e2e:desktop:real": "node e2e/desktop/desktop-real.mjs",
     "e2e:desktop:nonode": "node e2e/desktop/desktop-no-node.mjs",
