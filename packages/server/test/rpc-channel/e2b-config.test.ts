@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   e2bTransportConfigFromEnv,
+  e2bDataPlaneFromEnv,
   E2B_CONFIG_MISSING_MESSAGE,
 } from "../../src/rpc-channel/e2b-config.js";
 
@@ -108,5 +109,41 @@ describe("e2bTransportConfigFromEnv — 自托管/ACS 端点 (domain/validateApi
     });
     expect(cfg).not.toHaveProperty("validateApiKey");
     expect(cfg).not.toHaveProperty("domain");
+  });
+});
+
+describe("e2bDataPlaneFromEnv + ws-runner 字段", () => {
+  it("PI_WEB_E2B_DATAPLANE 默认 envd,=ws-runner 时切换", () => {
+    expect(e2bDataPlaneFromEnv({})).toBe("envd");
+    expect(e2bDataPlaneFromEnv({ PI_WEB_E2B_DATAPLANE: "envd" })).toBe("envd");
+    expect(e2bDataPlaneFromEnv({ PI_WEB_E2B_DATAPLANE: "ws-runner" })).toBe("ws-runner");
+    expect(e2bDataPlaneFromEnv({ PI_WEB_E2B_DATAPLANE: "WS-RUNNER" })).toBe("ws-runner");
+    expect(e2bDataPlaneFromEnv({ PI_WEB_E2B_DATAPLANE: "bogus" })).toBe("envd");
+  });
+
+  it("解析 ws-runner 专属字段 runnerPort/wsBase/reconnectMs + apiUrl", () => {
+    const cfg = e2bTransportConfigFromEnv({
+      E2B_API_KEY: "sys-x",
+      PI_WEB_E2B_TEMPLATE: "aio",
+      PI_WEB_E2B_RUNNER_PORT: "8080",
+      PI_WEB_E2B_RUNNER_WS_BASE: "ws://127.0.0.1:10000",
+      PI_WEB_E2B_RECONNECT_MS: "500",
+      E2B_API_URL: "http://127.0.0.1:13000",
+    });
+    expect(cfg).toMatchObject({
+      apiKey: "sys-x",
+      template: "aio",
+      runnerPort: 8080,
+      wsBase: "ws://127.0.0.1:10000",
+      reconnectDelayMs: 500,
+      apiUrl: "http://127.0.0.1:13000",
+    });
+  });
+
+  it("未设 ws-runner 字段 → 不注入(envd 路径零负担)", () => {
+    const cfg = e2bTransportConfigFromEnv({ E2B_API_KEY: "e2b_x", PI_WEB_E2B_TEMPLATE: "t" });
+    expect(cfg).not.toHaveProperty("runnerPort");
+    expect(cfg).not.toHaveProperty("wsBase");
+    expect(cfg).not.toHaveProperty("reconnectDelayMs");
   });
 });

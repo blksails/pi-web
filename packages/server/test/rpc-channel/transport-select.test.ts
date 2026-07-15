@@ -50,6 +50,28 @@ describe("selectTransport — e2b 分支 (Req 3.2/3.3)", () => {
     });
   });
 
+  it("dataPlane 默认 envd;=ws-runner 时切换(config 带 ws 字段)", () => {
+    const envd = selectTransport({
+      PI_WEB_TRANSPORT: "e2b",
+      E2B_API_KEY: "e2b_k",
+      PI_WEB_E2B_TEMPLATE: "t",
+    });
+    if (envd.mode !== "e2b") throw new Error("unreachable");
+    expect(envd.dataPlane).toBe("envd");
+
+    const ws = selectTransport({
+      PI_WEB_TRANSPORT: "e2b",
+      PI_WEB_E2B_DATAPLANE: "ws-runner",
+      E2B_API_KEY: "sys-k",
+      PI_WEB_E2B_TEMPLATE: "aio",
+      PI_WEB_E2B_RUNNER_WS_BASE: "ws://127.0.0.1:10000",
+      PI_WEB_E2B_VALIDATE_API_KEY: "false",
+    });
+    if (ws.mode !== "e2b") throw new Error("unreachable");
+    expect(ws.dataPlane).toBe("ws-runner");
+    expect(ws.config.wsBase).toBe("ws://127.0.0.1:10000");
+  });
+
   it("PI_WEB_TRANSPORT=e2b 但缺配置 → 清晰错误,不静默回退 local", () => {
     expect(() => selectTransport({ PI_WEB_TRANSPORT: "e2b" })).toThrow(
       E2B_CONFIG_MISSING_MESSAGE,

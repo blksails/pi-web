@@ -17,8 +17,25 @@
  *    前者优先,回落后者。
  *  - `PI_WEB_E2B_VALIDATE_API_KEY`(可选):="false" 时关闭 SDK 的 `e2b_` key 格式校验
  *    (自托管/ACS 用 `sys-*` 等非 `e2b_` token 时须关);缺省不设(SDK 默认校验,对齐真实 e2b 云)。
+ *  - `PI_WEB_E2B_DATAPLANE`(可选):`envd`(默认,commands.run/真实 e2b 云)| `ws-runner`
+ *    (WS 连沙箱内 agent-runner;agent-sandbox/ACS 无 envd 时用)。
+ *  - `PI_WEB_E2B_RUNNER_PORT`(可选,仅 ws-runner):沙箱内 runner 端口,默认 8080。
+ *  - `PI_WEB_E2B_RUNNER_WS_BASE`(可选,仅 ws-runner):manager WS base(如 `ws://127.0.0.1:10000`);
+ *    配则 manager-path 路由(agent-sandbox/ACS),否则 e2b-host(getHost,真实 e2b 云)。
+ *  - `PI_WEB_E2B_RECONNECT_MS`(可选,仅 ws-runner):断线重连等待毫秒,默认 300。
  */
 import type { E2bTransportConfig } from "./e2b-transport.js";
+import type { SandboxWsTransportConfig } from "./sandbox-ws-transport.js";
+
+/**
+ * 已解析的 e2b 配置 —— 两种数据面传输(envd 的 `E2bTransport`、ws-runner 的
+ * `SandboxWsTransport`)共享控制面字段,各自读所需子集。取二者交集类型,使同一配置对象
+ * 可传给任一传输构造。
+ */
+export type ResolvedE2bConfig = E2bTransportConfig & SandboxWsTransportConfig;
+
+/** e2b 数据面。`envd`=SDK commands.run(真实 e2b 云);`ws-runner`=WS 连沙箱内 agent-runner。 */
+export type E2bDataPlane = "envd" | "ws-runner";
 
 /** 缺配置时抛出的错误消息(集中一处,便于测试断言与文案维护)。 */
 export const E2B_CONFIG_MISSING_MESSAGE =
@@ -26,7 +43,7 @@ export const E2B_CONFIG_MISSING_MESSAGE =
 
 export function e2bTransportConfigFromEnv(
   env: Record<string, string | undefined>,
-): E2bTransportConfig {
+): ResolvedE2bConfig {
   const apiKey = trimmed(env.E2B_API_KEY);
   const template = trimmed(env.PI_WEB_E2B_TEMPLATE);
   if (apiKey === undefined || template === undefined) {
@@ -38,11 +55,16 @@ export function e2bTransportConfigFromEnv(
   const sandboxCwd = trimmed(env.PI_WEB_E2B_CWD);
   const envPassthrough = parseCsv(env.PI_WEB_E2B_ENV_PASSTHROUGH);
   const domain = trimmed(env.PI_WEB_E2B_DOMAIN) ?? trimmed(env.E2B_DOMAIN);
+  const apiUrl = trimmed(env.E2B_API_URL);
   // 仅当显式 ="false" 时关闭校验;其余(含未设)不注入该键,交 SDK 默认(true)。
   const validateApiKey =
     trimmed(env.PI_WEB_E2B_VALIDATE_API_KEY)?.toLowerCase() === "false"
       ? false
       : undefined;
+  // ws-runner 专属字段。
+  const runnerPort = parsePositiveInt(env.PI_WEB_E2B_RUNNER_PORT);
+  const wsBase = trimmed(env.PI_WEB_E2B_RUNNER_WS_BASE);
+  const reconnectDelayMs = parsePositiveInt(env.PI_WEB_E2B_RECONNECT_MS);
 
   return {
     apiKey,
@@ -52,8 +74,21 @@ export function e2bTransportConfigFromEnv(
     ...(sandboxCwd !== undefined ? { sandboxCwd } : {}),
     ...(envPassthrough.length > 0 ? { envPassthrough } : {}),
     ...(domain !== undefined ? { domain } : {}),
+    ...(apiUrl !== undefined ? { apiUrl } : {}),
     ...(validateApiKey !== undefined ? { validateApiKey } : {}),
+    ...(runnerPort !== undefined ? { runnerPort } : {}),
+    ...(wsBase !== undefined ? { wsBase } : {}),
+    ...(reconnectDelayMs !== undefined ? { reconnectDelayMs } : {}),
   };
+}
+
+/** 解析 e2b 数据面选择(`PI_WEB_E2B_DATAPLANE`,默认 envd)。 */
+export function e2bDataPlaneFromEnv(
+  env: Record<string, string | undefined>,
+): E2bDataPlane {
+  return trimmed(env.PI_WEB_E2B_DATAPLANE)?.toLowerCase() === "ws-runner"
+    ? "ws-runner"
+    : "envd";
 }
 
 /**
@@ -62,7 +97,11 @@ export function e2bTransportConfigFromEnv(
  */
 export type TransportSelection =
   | { readonly mode: "local" }
-  | { readonly mode: "e2b"; readonly config: E2bTransportConfig };
+  | {
+      readonly mode: "e2b";
+      readonly dataPlane: E2bDataPlane;
+      readonly config: ResolvedE2bConfig;
+    };
 
 /**
  * 依 `PI_WEB_TRANSPORT` 选择执行传输后端(Req 3.1/3.2/3.3)。
@@ -78,7 +117,11 @@ export function selectTransport(
 ): TransportSelection {
   const mode = (env.PI_WEB_TRANSPORT ?? "local").trim();
   if (mode !== "e2b") return { mode: "local" };
-  return { mode: "e2b", config: e2bTransportConfigFromEnv(env) };
+  return {
+    mode: "e2b",
+    dataPlane: e2bDataPlaneFromEnv(env),
+    config: e2bTransportConfigFromEnv(env),
+  };
 }
 
 function trimmed(raw: string | undefined): string | undefined {

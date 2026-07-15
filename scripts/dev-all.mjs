@@ -29,8 +29,15 @@ function shutdown(code) {
 process.on('SIGINT', () => shutdown(0))
 process.on('SIGTERM', () => shutdown(0))
 
-run(process.execPath, [
-  '--import', './node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs',
-  'server/index.ts',
-])
+// e2b 模式:e2b@2.33 内部 __toESM(require("platform")) 经 jiti ESM register hook 转换后崩
+// (getRuntime 读 platform.default.version → undefined)。改用编程式 jiti + nativeModules 的引导
+// (scripts/dev-server-native-e2b.mjs)。默认(非 e2b)dev 仍用官方 jiti-register(零变化)。
+if (process.env.PI_WEB_TRANSPORT === 'e2b') {
+  run(process.execPath, ['scripts/dev-server-native-e2b.mjs'])
+} else {
+  run(process.execPath, [
+    '--import', './node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs',
+    'server/index.ts',
+  ])
+}
 run(path.join(root, 'node_modules', '.bin', 'vite'), [])

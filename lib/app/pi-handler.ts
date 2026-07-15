@@ -26,6 +26,7 @@ import {
   // e2b 云沙盒传输(spec e2b-sandbox-transport):传输无关会话核心 + e2b adapter + 配置解析。
   PiRpcSession,
   E2bTransport,
+  SandboxWsTransport,
   selectTransport,
   AgentSourceResolver,
   resolvePiCliEntry,
@@ -443,9 +444,14 @@ function buildSingleton(): HandlerSingleton {
           ...config.providerKeys,
         },
       };
-      return new PiRpcSession(
-        new E2bTransport(e2bSpec, selection.config),
-      ) satisfies SessionChannel;
+      // 数据面二选一:
+      //  - ws-runner:WS 连沙箱内 agent-runner(agent-sandbox/ACS,无 envd)——完整闭环。
+      //  - envd(默认):e2b SDK commands.run(真实 e2b 云有 envd)。
+      const transport =
+        selection.dataPlane === "ws-runner"
+          ? new SandboxWsTransport(e2bSpec, selection.config)
+          : new E2bTransport(e2bSpec, selection.config);
+      return new PiRpcSession(transport) satisfies SessionChannel;
     }
     // Real mode: append session-alignment args by source mode. Both modes take
     // --session-id (agent-side open-or-create); custom (runner) also takes

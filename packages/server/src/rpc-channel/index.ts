@@ -15,11 +15,19 @@ export { PiRpcProcess, type ExitInfo } from "./pi-rpc-process.js";
 export type { RpcTransport } from "./transport.js";
 export { PiRpcSession } from "./pi-rpc-session.js";
 export { E2bTransport, type E2bTransportConfig } from "./e2b-transport.js";
+// WS-runner 数据面传输(无 envd,连沙箱内 agent-runner;agent-sandbox/ACS 用)。
+export {
+  SandboxWsTransport,
+  type SandboxWsTransportConfig,
+} from "./sandbox-ws-transport.js";
 export {
   e2bTransportConfigFromEnv,
+  e2bDataPlaneFromEnv,
   selectTransport,
   E2B_CONFIG_MISSING_MESSAGE,
   type TransportSelection,
+  type ResolvedE2bConfig,
+  type E2bDataPlane,
 } from "./e2b-config.js";
 export {
   SpawnError,
