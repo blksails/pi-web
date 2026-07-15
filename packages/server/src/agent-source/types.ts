@@ -41,6 +41,13 @@ export interface ResolvedSource {
   /** 与 spawnSpec.cwd 一致。 */
   cwd: string;
   trust: TrustDecision;
+  /**
+   * resolver 稳定来源标识(dir 原始 source 串或缺省 cwd / git url / `builtin:<name>`),
+   * 与 trustPolicy 收到的 `source` 同一推导、同一语义(spec sandbox-baked-agent-image,
+   * 任务 4.1;Req 3.1/3.2)。供会话创建路径的沙箱模板解析(map 键匹配 / 派生命名)消费。
+   * 可选:仅为向后兼容外部自定义 resolver 实现;本模块的公共实现恒赋值。只读、零行为变化。
+   */
+  readonly policySource?: string;
 }
 
 /** 源类型识别结果。 */

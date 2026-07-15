@@ -48,7 +48,7 @@
   - _Requirements: 7.1_
 
 - [ ] 4. Integration:会话路径接线
-- [ ] 4.1 pi-handler e2b 分支接入模板解析
+- [x] 4.1 pi-handler e2b 分支接入模板解析
   - e2b 分支调三级解析,ok 时覆写 selection.config.template,失败即抛(会话创建失败,错误含修复指引);local 分支零改动
   - 完成态:配 map 的会话用映射模板建沙箱;全空配置会话创建报错含三路径
   - _Depends: 2.2_
@@ -90,4 +90,5 @@
 - 1.2: BakeFsPort.listFiles 契约=递归+相对路径+posix 分隔(bake-plan.ts docstring 钉住),任务 3.1 真实 fs 适配器必须遵守。
 - 1.2: `Result` 以通用名从 sandbox-image/index.ts 导出,并入 server 主 barrel 时留意命名冲突(且主 barrel 不得重导出含 pi SDK 取数的模块)。
 - 1.2: tag 哈希输入=全部非排除源文件(非 staging 清单);「同源两形态同 tag」被测试钉住,若日后分叉须同步改断言。
-- 2.1: pi-handler.ts:447-460 有「临时终判」桥(缺 template 抛错+窄化喂传输),**任务 4.1 落地 resolveSandboxTemplate 时必须删除此桥**;ResolvedE2bConfig.template 已 `template?`,两传输配置仍必填,4.1 覆写后窄化喂构造。
+- 2.1: pi-handler.ts:447-460 有「临时终判」桥(缺 template 抛错+窄化喂传输),**任务 4.1 落地 resolveSandboxTemplate 时必须删除此桥**;ResolvedE2bConfig.template 已 `template?`,两传输配置仍必填,4.1 覆写后窄化喂构造。【4.1 已删桥】
+- 4.1: 模板解析失败经既有 mapEngineError 落 HTTP **500**(修复指引在 stderr,body 不泄露)——design「400 级」承诺未落任务,复核裁定跟随性 gap 非本任务缺陷;6.1 负路径 e2e 断言按 500+stderr 指引口径写。ResolvedSource 新增只读 policySource?(与 trustPolicy 同一推导)。

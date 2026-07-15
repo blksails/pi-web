@@ -28,6 +28,8 @@ import {
   E2bTransport,
   SandboxWsTransport,
   selectTransport,
+  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
+  resolveSandboxTemplate,
   AgentSourceResolver,
   resolvePiCliEntry,
   runnerBootstrapPath,
@@ -444,16 +446,26 @@ function buildSingleton(): HandlerSingleton {
           ...config.providerKeys,
         },
       };
-      // 临时终判(spec sandbox-baked-agent-image 任务 4.1 由 resolveSandboxTemplate 三级
-      // 解析接管后覆写 template):config.template 已放宽为可缺,三级解析未接线前缺全局
-      // 模板仍在会话创建路径以清晰错误失败,不静默回退 local(Req 3.3/3.4,语义与现状一致)。
-      const sandboxTemplate = selection.config.template;
-      if (sandboxTemplate === undefined) {
-        throw new Error(
-          "PI_WEB_TRANSPORT=e2b 需要 PI_WEB_E2B_TEMPLATE(按 source 的模板解析尚未接线)。请设置该环境变量,或改用 PI_WEB_TRANSPORT=local(默认)。",
-        );
+      // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image 任务 4.1,
+      // Req 3.1/3.4):显式映射(PI_WEB_E2B_TEMPLATE_MAP)→ 门控派生 → 全局模板
+      // (PI_WEB_E2B_TEMPLATE)。ok 时以解析结果覆写 selection.config.template
+      // (二传输的 config.template 必填,覆写后自然窄化);三级全空即抛携三种修复
+      // 路径的错误——会话创建失败,不静默回退 local(与既有缺配置语义一致)。
+      //  - policySource:resolver 稳定来源标识(dir source 串或缺省 cwd / git url /
+      //    builtin:<name>);外部自定义 resolver 未赋值时回退 opts.source → resolved.cwd。
+      //  - rawSource:用户传入的原始 source 串(map 键第一优先位;resume 元数据缺
+      //    source 时为 undefined,仅按 policySource 查找)。
+      const templateResolution = resolveSandboxTemplate({
+        source: {
+          policySource: resolved.policySource ?? opts.source ?? resolved.cwd,
+          ...(opts.source !== undefined ? { rawSource: opts.source } : {}),
+        },
+        env: process.env,
+      });
+      if (!templateResolution.ok) {
+        throw new Error(templateResolution.error);
       }
-      const e2bConfig = { ...selection.config, template: sandboxTemplate };
+      const e2bConfig = { ...selection.config, template: templateResolution.template };
       // 数据面二选一:
       //  - ws-runner:WS 连沙箱内 agent-runner(agent-sandbox/ACS,无 envd)——完整闭环。
       //  - envd(默认):e2b SDK commands.run(真实 e2b 云有 envd)。

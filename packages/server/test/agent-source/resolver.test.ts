@@ -188,9 +188,42 @@ describe("e2e / cross-spec sanity — spawnSpec is launch-ready", () => {
     }
   });
 
-  it("AgentSourceResolver.resolve is the single public entry returning the 4-tuple", async () => {
+  it("AgentSourceResolver.resolve is the single public entry returning the 4-tuple (+policySource)", async () => {
     const dir = await tmp();
     const r = await AgentSourceResolver.resolve(dir, { piCliEntry: PI_CLI });
-    expect(Object.keys(r).sort()).toEqual(["cwd", "mode", "spawnSpec", "trust"]);
+    // spec sandbox-baked-agent-image(任务 4.1):追加只读 policySource(稳定来源标识,
+    // 供会话创建路径的沙箱模板解析消费),其余四元组契约不变。
+    expect(Object.keys(r).sort()).toEqual([
+      "cwd",
+      "mode",
+      "policySource",
+      "spawnSpec",
+      "trust",
+    ]);
+  });
+});
+
+// spec sandbox-baked-agent-image(任务 4.1;Req 3.1/3.2):ResolvedSource 携带 resolver 的
+// 稳定来源标识 policySource(与 trustPolicy 收到的 source 同一语义),供 pi-handler e2b 分支
+// 的 resolveSandboxTemplate 做 map 键匹配 / 派生命名。零行为变化:仅新增只读字段。
+describe("resolve — policySource on ResolvedSource (sandbox-baked-agent-image 4.1)", () => {
+  it("dir source(显式 source 串)→ policySource = 原始 source 串", async () => {
+    const dir = await tmp();
+    const r = await resolve(dir, { runnerEntry: RUNNER, piCliEntry: PI_CLI });
+    expect(r.policySource).toBe(dir);
+  });
+
+  it("default(undefined source)→ policySource = 解析后的工作目录", async () => {
+    const dir = await tmp();
+    const r = await resolve(undefined, { cwd: dir, piCliEntry: PI_CLI });
+    expect(r.policySource).toBe(dir);
+  });
+
+  it("builtin source → policySource = builtin:<name> 标识", async () => {
+    const r = await resolve("builtin:default-agent", {
+      runnerEntry: RUNNER,
+      piCliEntry: PI_CLI,
+    });
+    expect(r.policySource).toBe("builtin:default-agent");
   });
 });

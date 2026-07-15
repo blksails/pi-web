@@ -54,7 +54,9 @@ function resolveBuiltin(
   });
   const fragment = applyTrust("custom", trust);
   const spawnSpec = assemble({ mode: "custom", cwd, entryPath }, fragment, opts);
-  return { mode: "custom", spawnSpec, cwd: spawnSpec.cwd, trust };
+  // policySource 随四元组下发(sandbox-baked-agent-image 4.1):builtin 的稳定标识即
+  // `builtin:<name>`(与 trustPolicy 的 source 同源),供沙箱模板解析消费。
+  return { mode: "custom", spawnSpec, cwd: spawnSpec.cwd, trust, policySource };
 }
 
 /** 解析后的本地工作目录 + 表示该来源的用于信任策略的 source 字符串。 */
@@ -133,7 +135,10 @@ export async function resolve(
       : assemble({ mode: "cli", cwd: dir }, fragment, opts);
 
   resolveLog.info("resolve done", { name: policySource, mode, localDir: dir });
-  return { mode, spawnSpec, cwd: spawnSpec.cwd, trust };
+  // policySource 随四元组下发(sandbox-baked-agent-image 4.1):toLocalDir 已按源型推导
+  // (dir=原始 source 串或缺省 cwd / git=source 串或 url / plugin=source 串),与 trustPolicy
+  // 收到的 source 同一值,供会话创建路径的沙箱模板解析(map 键 / 派生命名)消费。
+  return { mode, spawnSpec, cwd: spawnSpec.cwd, trust, policySource };
 }
 
 /** AgentSourceResolver 实例(稳定的单一对外入口)。 */
