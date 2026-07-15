@@ -13,10 +13,48 @@ import type { UiMessageChunk } from "@blksails/pi-web-protocol";
 import type { UIMessageChunk } from "ai";
 
 /**
+ * 从 tool 失败产出中抽取人类可读 errorText。
+ * 兼容 pi tool result 形状 `{ content:[{type:"text",text}] }`、纯字符串、以及
+ * sandbox block 的 `{ reason }` 等。
+ */
+export function formatToolErrorText(output: unknown): string {
+  if (typeof output === "string") {
+    const t = output.trim();
+    return t.length > 0 ? t : "Tool error";
+  }
+  if (output !== null && typeof output === "object") {
+    const o = output as Record<string, unknown>;
+    if (typeof o.errorText === "string" && o.errorText.trim()) return o.errorText;
+    if (typeof o.reason === "string" && o.reason.trim()) return o.reason;
+    if (typeof o.message === "string" && o.message.trim()) return o.message;
+    if (Array.isArray(o.content)) {
+      const parts: string[] = [];
+      for (const item of o.content) {
+        if (item !== null && typeof item === "object" && "text" in item) {
+          const text = (item as { text?: unknown }).text;
+          if (typeof text === "string" && text.length > 0) parts.push(text);
+        }
+      }
+      if (parts.length > 0) return parts.join("\n");
+    }
+    try {
+      const json = JSON.stringify(output);
+      if (json && json !== "{}" && json !== "null") return json;
+    } catch {
+      // ignore
+    }
+  }
+  if (output === null || output === undefined) return "Tool error";
+  return String(output);
+}
+
+/**
  * 把协议 uiMessageChunk 负载映射为 AI SDK UIMessageChunk。
  *
  * tool-output-error 在 AI SDK 中需 errorText;tool-output-available 的 isError 标志
  * 在协议里承载,这里据其转为 tool-output-error / tool-output-available。
+ * （历史回归：曾只透传 type/output 而丢弃 isError，沙盒 block / 工具失败卡显示为
+ * Completed 且错误文案进不了 error 态——见 decode-chunk isError 转换。）
  */
 export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
   switch (chunk.type) {
@@ -73,6 +111,16 @@ export function decodeUiMessageChunk(chunk: UiMessageChunk): UIMessageChunk {
         input: chunk.input,
       };
     case "tool-output-available":
+      // 协议可用 isError 标记失败(server translate 历史路径仍可能发此形态);
+      // AI SDK 只认 tool-output-error + errorText → 必须在此转换,否则前端工具卡
+      // 停留 output-available/Completed,沙盒拒绝等原因不可见。
+      if (chunk.isError === true) {
+        return {
+          type: "tool-output-error",
+          toolCallId: chunk.toolCallId,
+          errorText: formatToolErrorText(chunk.output),
+        };
+      }
       return {
         type: "tool-output-available",
         toolCallId: chunk.toolCallId,

@@ -42,6 +42,16 @@ describe("settings 域", () => {
     expect(settingsConfigSchema.safeParse({ theme: "neon" }).success).toBe(false);
   });
 
+  it("pathDisplay 默认 basename,枚举校验", () => {
+    expect(settingsConfigSchema.parse({}).pathDisplay).toBe("basename");
+    expect(settingsConfigSchema.safeParse({ pathDisplay: "home" }).success).toBe(
+      true,
+    );
+    expect(
+      settingsConfigSchema.safeParse({ pathDisplay: "relative" }).success,
+    ).toBe(false);
+  });
+
   it("保留未知字段", () => {
     const parsed = settingsConfigSchema.parse({ futureKey: 1 });
     expect((parsed as Record<string, unknown>).futureKey).toBe(1);

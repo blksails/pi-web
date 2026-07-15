@@ -17,7 +17,8 @@
  *   - message_update.error                        → abort(reason=aborted)| error(否则,带 errorText)
  *   - tool_execution_start                        → tool-input-available
  *   - tool_execution_update                       → data-pi-ui(details 携 UiSpec)| tool-output-available(preliminary,累积替换)
- *   - tool_execution_end                          → tool-output-available(最终)
+ *   - tool_execution_end                          → tool-output-available(成功)
+ *                                                   | tool-output-error(isError,errorText)
  *   - queue_update                                → data-pi-queue
  *   - compaction_start|end                        → data-pi-compaction
  *   - auto_retry_start|end                        → data-pi-auto-retry
@@ -45,6 +46,41 @@ import {
   openTextPart,
   type TranslationContext,
 } from "./translation-context.js";
+
+/**
+ * 从 tool_execution_end.result 抽出人类可读错误文案(沙盒 block / bash 失败等)。
+ * 与 react 侧 `formatToolErrorText` 语义对齐。
+ */
+export function formatToolErrorText(result: unknown): string {
+  if (typeof result === "string") {
+    const t = result.trim();
+    return t.length > 0 ? t : "Tool error";
+  }
+  if (result !== null && typeof result === "object") {
+    const o = result as Record<string, unknown>;
+    if (typeof o.errorText === "string" && o.errorText.trim()) return o.errorText;
+    if (typeof o.reason === "string" && o.reason.trim()) return o.reason;
+    if (typeof o.message === "string" && o.message.trim()) return o.message;
+    if (Array.isArray(o.content)) {
+      const parts: string[] = [];
+      for (const item of o.content) {
+        if (item !== null && typeof item === "object" && "text" in item) {
+          const text = (item as { text?: unknown }).text;
+          if (typeof text === "string" && text.length > 0) parts.push(text);
+        }
+      }
+      if (parts.length > 0) return parts.join("\n");
+    }
+    try {
+      const json = JSON.stringify(result);
+      if (json && json !== "{}" && json !== "null") return json;
+    } catch {
+      // ignore
+    }
+  }
+  if (result === null || result === undefined) return "Tool error";
+  return String(result);
+}
 
 /** 无帧产出的确定结果(仅可能推进 ctx)。 */
 function none(ctx: TranslationContext): TranslateResult {
@@ -113,7 +149,11 @@ function translateAssistantMessageEvent(
         frames.push(makeUiMessageChunkFrame({ type: "text-start", id }));
       }
       frames.push(
-        makeUiMessageChunkFrame({ type: "text-delta", id, delta: ame.delta }),
+        makeUiMessageChunkFrame({
+          type: "text-delta",
+          id,
+          delta: ame.delta,
+        }),
       );
       return { frames, ctx };
     }
@@ -244,13 +284,27 @@ export function translateEvent(
     }
 
     case "tool_execution_end":
+      // 失败路径直接发 AI SDK 原生 tool-output-error,避免仅靠 isError 标志;
+      // 客户端 decode 若仍收到 isError 形态也会二次转换(双保险)。
+      if (event.isError === true) {
+        return {
+          frames: [
+            makeUiMessageChunkFrame({
+              type: "tool-output-error",
+              toolCallId: event.toolCallId,
+              errorText: formatToolErrorText(event.result),
+            }),
+          ],
+          ctx,
+        };
+      }
       return {
         frames: [
           makeUiMessageChunkFrame({
             type: "tool-output-available",
             toolCallId: event.toolCallId,
             output: event.result,
-            isError: event.isError,
+            isError: false,
           }),
         ],
         ctx,

@@ -67,6 +67,29 @@ export const settingsConfigSchema = z
           enumLabels: { light: "浅色", dark: "深色", system: "跟随系统" },
         }),
       ),
+    /**
+     * 聊天/工具输出中绝对路径的展示策略(仅影响 UI 显示,不改服务端落盘原文)。
+     *  - off: 完整路径
+     *  - home: `/Users/name/…` → `~/…`
+     *  - basename: 仅最后一级目录(裸 home → `~`)
+     */
+    pathDisplay: z
+      .enum(["off", "home", "basename"])
+      .default("basename")
+      .describe(
+        JSON.stringify({
+          label: "路径显示",
+          group: "appearance",
+          order: 2,
+          description:
+            "聊天与工具输出里本机绝对路径的展示方式。仅影响界面，不改历史落盘原文。",
+          enumLabels: {
+            off: "完整路径",
+            home: "折叠用户目录为 ~",
+            basename: "仅最后一级目录",
+          },
+        }),
+      ),
   })
   .passthrough();
 export type SettingsConfig = z.infer<typeof settingsConfigSchema>;

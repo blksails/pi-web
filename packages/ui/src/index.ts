@@ -168,6 +168,19 @@ export {
   type UseThemeResult,
 } from "./theme/index.js";
 
+// path-display(聊天绝对路径展示:off/home/basename,settings.pathDisplay)
+export {
+  PathDisplayProvider,
+  usePathDisplayMode,
+  useMaskPaths,
+  useMaskPathsDeep,
+  parsePathDisplayMode,
+  DEFAULT_PATH_DISPLAY_MODE,
+  type PathDisplayMode,
+  type PathDisplayProviderProps,
+} from "./path-display/index.js";
+export { usePathDisplaySetting } from "./path-display/use-path-display-setting.js";
+
 // web-ext(agent-web-extension):宿主 UI 集成(Tier1 区域插槽 / Tier4 artifact / Tier3 贡献点)
 export {
   SlotHost,

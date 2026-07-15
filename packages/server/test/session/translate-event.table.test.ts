@@ -293,6 +293,51 @@ describe("translateEvent — schema-valid frames per event", () => {
     });
   });
 
+  it("tool_execution_end isError → tool-output-error with errorText (sandbox/bash fail)", () => {
+    const r = translateEvent(
+      {
+        type: "tool_execution_end",
+        toolCallId: "t1",
+        toolName: "bash",
+        result: {
+          content: [
+            {
+              type: "text",
+              text: 'Sandbox: read access denied for "/Users"',
+            },
+          ],
+        },
+        isError: true,
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkAt(r.frames)).toMatchObject({
+      type: "tool-output-error",
+      toolCallId: "t1",
+      errorText: 'Sandbox: read access denied for "/Users"',
+    });
+  });
+
+  it("tool_execution_end isError with string result → tool-output-error", () => {
+    const r = translateEvent(
+      {
+        type: "tool_execution_end",
+        toolCallId: "t2",
+        toolName: "bash",
+        result: "ls: /Users: Operation not permitted",
+        isError: true,
+      },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkAt(r.frames)).toMatchObject({
+      type: "tool-output-error",
+      toolCallId: "t2",
+      errorText: "ls: /Users: Operation not permitted",
+    });
+  });
+
   it("queue_update → data-pi-queue + control:queue(双帧)", () => {
     const r = translateEvent(
       { type: "queue_update", steering: ["a"], followUp: ["b"] },
@@ -693,4 +738,5 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(() => translateEvent(weird, createTranslationContext())).not.toThrow();
     expect(translateEvent(weird, createTranslationContext()).frames).toEqual([]);
   });
+
 });

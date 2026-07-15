@@ -26,6 +26,10 @@ import { Card } from "../ui/card.js";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
+import {
+  useMaskPaths,
+  useMaskPathsDeep,
+} from "../path-display/path-display-context.js";
 
 type AnyPart = UIMessage["parts"][number];
 export type ToolPart =
@@ -326,7 +330,8 @@ export function ToolInput({
   input,
   className,
 }: ToolInputProps): React.JSX.Element {
-  return <JsonBlock value={input} className={className} />;
+  const maskDeep = useMaskPathsDeep();
+  return <JsonBlock value={maskDeep(input)} className={className} />;
 }
 
 export interface ToolOutputProps {
@@ -342,9 +347,10 @@ export function ToolOutput({
   errorText,
   className,
 }: ToolOutputProps): React.JSX.Element {
+  const mask = useMaskPaths();
   return (
     <div className={cn("text-xs", className)}>
-      {errorText !== undefined ? errorText : output}
+      {errorText !== undefined ? mask(errorText) : output}
     </div>
   );
 }
@@ -405,16 +411,24 @@ function splitToolText(raw: string): {
  *    折叠附于其后(不再整体 dump JSON);
  *  - 其它数据 → JSON 代码块。
  */
-function defaultOutputNode(output: unknown): React.ReactNode {
+function DefaultOutputNode({
+  output,
+}: {
+  readonly output: unknown;
+}): React.ReactNode {
+  const mask = useMaskPaths();
+  const maskDeep = useMaskPathsDeep();
   if (output === undefined) return null;
-  if (typeof output === "string") return <Response>{output}</Response>;
+  if (typeof output === "string") {
+    return <Response>{mask(output)}</Response>;
+  }
   const raw = textFromToolContent(output);
   if (raw !== undefined) {
-    const { text, images } = splitToolText(raw);
+    const { text, images } = splitToolText(mask(raw));
     const details =
       !Array.isArray(output) &&
       (output as { details?: unknown } | null)?.details !== undefined
-        ? (output as { details?: unknown }).details
+        ? maskDeep((output as { details?: unknown }).details)
         : undefined;
     return (
       <div className="space-y-2">
@@ -447,7 +461,7 @@ function defaultOutputNode(output: unknown): React.ReactNode {
       </div>
     );
   }
-  return <JsonBlock value={output} />;
+  return <JsonBlock value={maskDeep(output)} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,9 +505,13 @@ export function PiToolPart({
   } else if (phase === "update" || phase === "end") {
     detail = (
       <ToolOutput
-        output={defaultOutputNode(
-          part.state === "output-available" ? part.output : undefined,
-        )}
+        output={
+          <DefaultOutputNode
+            output={
+              part.state === "output-available" ? part.output : undefined
+            }
+          />
+        }
       />
     );
   } else {

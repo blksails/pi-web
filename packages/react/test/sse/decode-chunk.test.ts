@@ -71,6 +71,50 @@ describe("decodeUiMessageChunk", () => {
     });
   });
 
+  it("tool-output-available isError → tool-output-error (sandbox/tool fail visible)", () => {
+    expect(
+      decodeUiMessageChunk({
+        type: "tool-output-available",
+        toolCallId: "c1",
+        output: {
+          content: [{ type: "text", text: 'Sandbox: read access denied for "/Users"' }],
+        },
+        isError: true,
+      }),
+    ).toEqual({
+      type: "tool-output-error",
+      toolCallId: "c1",
+      errorText: 'Sandbox: read access denied for "/Users"',
+    });
+
+    expect(
+      decodeUiMessageChunk({
+        type: "tool-output-available",
+        toolCallId: "c2",
+        output: "ls: /Users: Operation not permitted",
+        isError: true,
+      }),
+    ).toEqual({
+      type: "tool-output-error",
+      toolCallId: "c2",
+      errorText: "ls: /Users: Operation not permitted",
+    });
+  });
+
+  it("maps tool-output-error passthrough", () => {
+    expect(
+      decodeUiMessageChunk({
+        type: "tool-output-error",
+        toolCallId: "c1",
+        errorText: "blocked",
+      }),
+    ).toEqual({
+      type: "tool-output-error",
+      toolCallId: "c1",
+      errorText: "blocked",
+    });
+  });
+
   it("maps data-pi-* data parts", () => {
     const queue: UiMessageChunk = {
       type: "data-pi-queue",

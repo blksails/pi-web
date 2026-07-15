@@ -12,6 +12,7 @@ import * as React from "react";
 import type { UIMessage } from "ai";
 import { Response } from "../ui/response.js";
 import type { MarkdownProps } from "../elements/markdown.js";
+import { useMaskPaths } from "../path-display/path-display-context.js";
 import {
   PiReasoning,
   type ReasoningPart,
@@ -88,14 +89,21 @@ export function PartRenderer({
   toolPart,
 }: PartRendererProps): React.JSX.Element | null {
   const t = useI18n();
+  const mask = useMaskPaths();
   if (part.type === "text") {
     const Md = markdown ?? Response;
-    return <Md>{part.text}</Md>;
+    // 按 settings.pathDisplay 折叠绝对路径(流式组装后全文处理)。
+    return <Md>{mask(part.text)}</Md>;
   }
 
   if (part.type === "reasoning") {
     const Reasoning = reasoning ?? PiReasoning;
-    return <Reasoning part={part as ReasoningPart} />;
+    const raw = part as ReasoningPart;
+    const masked =
+      typeof raw.text === "string"
+        ? ({ ...raw, text: mask(raw.text) } as ReasoningPart)
+        : raw;
+    return <Reasoning part={masked} />;
   }
 
   if (isToolPart(part)) {
@@ -116,7 +124,8 @@ export function PartRenderer({
   // 包一层 data-pi-message-error 以与底部全局 ChatError 区分(便于 e2e 定位)。
   if (part.type === "data-pi-error") {
     const data = "data" in part ? (part.data as { errorText?: unknown }) : undefined;
-    const text = typeof data?.errorText === "string" ? data.errorText : "";
+    const text =
+      typeof data?.errorText === "string" ? mask(data.errorText) : "";
     return (
       <div data-pi-message-error>
         <ChatError message={text} />

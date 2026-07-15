@@ -10,6 +10,7 @@
  */
 import { useI18n } from "../i18n/index.js";
 import { cn } from "../lib/cn.js";
+import { useMaskPaths } from "../path-display/path-display-context.js";
 import type { DataPartRenderer } from "../registry/renderer-registry.js";
 
 /** `data-bash-result` part 的 data 形状(BashResult + 前端补充 command/excludeFromContext)。 */
@@ -28,6 +29,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
     | BashResultPartData
     | undefined;
   const t = useI18n();
+  const mask = useMaskPaths();
   if (data === undefined) return null;
   const failed = data.exitCode !== undefined && data.exitCode !== 0;
   return (
@@ -43,7 +45,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
       <div className="flex items-center gap-2 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2 py-1 font-mono">
         <span className="text-[hsl(var(--muted-foreground))]">$</span>
         <span className="min-w-0 flex-1 break-all" data-pi-bash-command>
-          {data.command}
+          {mask(data.command)}
         </span>
         {data.excludeFromContext ? (
           <span
@@ -58,7 +60,7 @@ export const BashResultRenderer: DataPartRenderer = ({ part }) => {
         className="pi-scrollbar-thin max-h-80 overflow-auto whitespace-pre-wrap break-words p-2 font-mono text-xs"
         data-pi-bash-output
       >
-        {data.output}
+        {mask(data.output)}
       </pre>
       <div className="flex items-center gap-3 border-t border-[hsl(var(--border))] px-2 py-1 text-xs">
         {data.cancelled ? (

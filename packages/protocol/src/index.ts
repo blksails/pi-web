@@ -51,3 +51,14 @@ export * from "./plugin/index.js";
 
 // logging 层(日志数据契约:LogLevelSchema / LogEntrySchema / parseLogLine)
 export * from "./logging/index.js";
+
+// privacy 层(展示脱敏纯函数:路径显示模式 off/home/basename)
+export {
+  type PathDisplayMode,
+  DEFAULT_PATH_DISPLAY_MODE,
+  parsePathDisplayMode,
+  maskPaths,
+  maskPathsDeep,
+  maskHomePaths,
+  maskHomePathsDeep,
+} from "./privacy/mask-home-paths.js";
