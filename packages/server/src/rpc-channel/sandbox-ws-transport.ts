@@ -150,8 +150,13 @@ export class SandboxWsTransport implements RpcTransport {
       // manager-path(agent-sandbox / ACS ack-sandbox-manager):按**沙箱 name** 路径路由到端口。
       // agent-sandbox 命名约定:name = `sbx-{template}-{sandboxId 前 20 位}`(e2b SDK 返回的
       // `sandboxId` 是完整 32 位 id,路由用的是这个派生 name,不是完整 id)。
+      // 派生名截断到 63 字符:与 agent-sandbox manager(0.6.0)创建沙箱时对实际 sandbox 名的
+      // K8s 63 字符对象名截断保持**镜像语义**(Pod 的 sandbox label 即截断名)。长模板(如烘焙
+      // 模板派生名 71-76 字符)若用全长名路由,manager 返回 502 "failed to acquire destination
+      // ip … pod not found",就绪探针超时挂死。实证见
+      // .kiro/specs/sandbox-baked-agent-image/evidence/e2e-blocked-run-probe-timeout.log。
       const base = this.#cfg.wsBase.replace(/\/$/, "");
-      const name = `sbx-${this.#cfg.template}-${sbx.sandboxId.slice(0, 20)}`;
+      const name = `sbx-${this.#cfg.template}-${sbx.sandboxId.slice(0, 20)}`.slice(0, 63);
       return `${base}/sandbox/${name}/?port=${port}`;
     }
     // e2b-host(真实 e2b 云 / ACS ALB ingress):getHost 子域(`{port}-{完整id}.{domain}`)。

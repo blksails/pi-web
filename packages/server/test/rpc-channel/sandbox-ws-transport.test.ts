@@ -119,6 +119,43 @@ describe("SandboxWsTransport — boot + 端点解析", () => {
     await t.close();
   });
 
+  it("manager-path 派生路由名超 63 字符时截断到 63(镜像 manager 的 K8s 名截断)", async () => {
+    // 烘焙模板名可长达 71-76 字符的派生名;agent-sandbox manager 创建沙箱时把实际
+    // sandbox 名截断到 63 字符(K8s 对象名上限),全长名路由会 502 pod not found。
+    const longTemplate = "piweb-agent-aigc-canvas-agent-78d565b7-with-long-suffix"; // 55 字符
+    const fullName = `sbx-${longTemplate}-${e2bState.sandboxId.slice(0, 20)}`; // 80 字符
+    expect(fullName.length).toBeGreaterThan(63);
+    const t = new SandboxWsTransport(spec(), {
+      apiKey: "sys-x",
+      template: longTemplate,
+      wsBase: "ws://127.0.0.1:10000",
+      runnerPort: 8080,
+      validateApiKey: false,
+    });
+    await t.ready();
+    const m = /\/sandbox\/([^/]+)\/\?port=8080$/.exec(lastWs().url);
+    if (!m?.[1]) throw new Error(`unexpected endpoint: ${lastWs().url}`);
+    expect(m[1]).toHaveLength(63);
+    expect(m[1]).toBe(fullName.slice(0, 63));
+    await t.close();
+  });
+
+  it("manager-path 派生路由名不足 63 字符时不截断", async () => {
+    const t = new SandboxWsTransport(spec(), {
+      apiKey: "sys-x",
+      template: "piweb-demo",
+      wsBase: "ws://127.0.0.1:10000",
+      runnerPort: 8080,
+      validateApiKey: false,
+    });
+    await t.ready();
+    // sbx-piweb-demo-{前20位} = 35 字符,原样保留
+    expect(lastWs().url).toBe(
+      "ws://127.0.0.1:10000/sandbox/sbx-piweb-demo-47b67191323b4a2b9611/?port=8080",
+    );
+    await t.close();
+  });
+
   it("e2b-host(未配 wsBase)连 wss://getHost", async () => {
     const t = new SandboxWsTransport(spec(), { apiKey: "e2b_x", template: "t" });
     await t.ready();
