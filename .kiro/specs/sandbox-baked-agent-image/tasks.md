@@ -60,7 +60,7 @@
   - 完成态:三种拓扑形态(全远程/混合/未配)的 env 组装行为可被集成测试逐一断言
   - _Requirements: 4.2, 5.1, 5.2_
   - _Boundary: pi-handler-e2b env 组装段_
-- [ ] 4.3 会话路径集成测试(stub transport 注入)
+- [x] 4.3 会话路径集成测试(stub transport 注入)
   - 断言模板覆写生效、附件三形态注入规则、providerKeys 白名单并入、local 模式零变化
   - 完成态:集成测试全绿且既有 pi-handler 相关测试不回归
   - _Requirements: 7.1, 5.3, 3.5_
