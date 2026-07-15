@@ -21,6 +21,7 @@
     "build": "pnpm build:dist",
     "build:client": "vite build",
     "build:server": "node scripts/build-server.mjs",
+    "build:agent-image": "node scripts/build-agent-image.mjs",
     "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs && pnpm build:unpacker && pnpm build:payload",
     "start:dist": "node dist/server.mjs",
     "dev:server": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs server/index.ts",

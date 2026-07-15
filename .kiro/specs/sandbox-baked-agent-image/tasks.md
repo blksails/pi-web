@@ -29,7 +29,7 @@
   - _Boundary: template-resolve_
 
 - [ ] 3. Core:构建编排脚本
-- [ ] 3.1 实现镜像构建编排(staging→bundle→docker build→输出)
+- [x] 3.1 实现镜像构建编排(staging→bundle→docker build→输出)
   - 消费烘焙计划落盘 staging;esbuild bundle(externals=pi SDK+@blksails/*;--no-bundle 拷源);docker build -t <image:tag>
   - 输出 image:tag、派生模板名、内容哈希与下一步指引;打印 staging 收集与排除的文件清单供审计
   - 同内容重复构建同 tag 且层缓存命中
