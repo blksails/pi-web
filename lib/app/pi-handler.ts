@@ -23,6 +23,10 @@ import {
   SessionManager,
   InMemorySessionStore,
   PiRpcProcess,
+  // e2b 云沙盒传输(spec e2b-sandbox-transport):传输无关会话核心 + e2b adapter + 配置解析。
+  PiRpcSession,
+  E2bTransport,
+  selectTransport,
   AgentSourceResolver,
   resolvePiCliEntry,
   runnerBootstrapPath,
@@ -416,6 +420,32 @@ function buildSingleton(): HandlerSingleton {
           attachmentProfileDisabledValue,
         ),
       );
+    }
+    // e2b 云沙盒传输(spec e2b-sandbox-transport,Req 3.2/5.x/6.x):agent 子进程改在
+    // e2b 隔离沙盒里跑,前端/协议/组合根无感。会话核心 PiRpcSession 复用于 E2bTransport。
+    //  - 缺 E2B_API_KEY/template → 在此抛清晰错误,不静默回退 local(Req 3.3)。
+    //  - E2bTransport 只消费 spec.env(经 cfg.envPassthrough 白名单过滤),不用 spec.cmd/args/cwd
+    //    (沙盒内跑 cfg.runnerCmd),故本地假设天然绕过:**不注入附件 env**(Req 6.3,避免本地磁盘
+    //    签名 URL 401)、不依赖 project-trust 的宿主 cwd 信任语义(Req 6.2)、无本地文件热重载
+    //    (Req 6.1;PI_RUNNER_HOT_RELOAD 属 runner 本地机制,e2b 分支根本不下发)。
+    //  - 一期 PoC:runner 在 template 内(预装 node + pi + 最小 agent 源),沙盒内跑
+    //    `pi --mode rpc`;仅把 provider 凭据经 envPassthrough 透传。会话身份对齐/附件共享/
+    //    沙盒复用为二期,不改本传输接口。
+    // 执行传输后端选择(Req 3.1/3.2/3.3):默认 local;PI_WEB_TRANSPORT=e2b 时经 e2b 沙盒。
+    // 在会话创建路径(此闭包内)调用 selectTransport,缺 e2b 配置即以清晰错误让会话创建失败,
+    // 不静默回退 local、不在 app 启动期 fail-fast(Req 3.3)。
+    const selection = selectTransport(process.env);
+    if (selection.mode === "e2b") {
+      const e2bSpec: SpawnSpec = {
+        ...resolved.spawnSpec,
+        env: {
+          ...resolved.spawnSpec.env,
+          ...config.providerKeys,
+        },
+      };
+      return new PiRpcSession(
+        new E2bTransport(e2bSpec, selection.config),
+      ) satisfies SessionChannel;
     }
     // Real mode: append session-alignment args by source mode. Both modes take
     // --session-id (agent-side open-or-create); custom (runner) also takes
