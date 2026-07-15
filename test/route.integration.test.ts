@@ -66,6 +66,17 @@ describe("config injection + secret safety", () => {
     expect(cfg.providerKeys.ANTHROPIC_API_KEY).toBe(secret);
   });
 
+  it("recognizes NEWAPI_API_KEY / SUFY_API_KEY as provider keys (aigc gateway routes need them inside the sandbox)", () => {
+    // aigc 工具的 newapi/sufy 网关路由在子进程 execute 期直读这两个 env;e2b 分支
+    // env 白名单过滤,不列入则沙箱内无凭据(本地 spawn 继承宿主 env 故不对称)。
+    const cfg = loadConfig({
+      NEWAPI_API_KEY: "sk-sp-test-newapi-key",
+      SUFY_API_KEY: "sk-sp-test-sufy-key",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.providerKeys.NEWAPI_API_KEY).toBe("sk-sp-test-newapi-key");
+    expect(cfg.providerKeys.SUFY_API_KEY).toBe("sk-sp-test-sufy-key");
+  });
+
   it("recognizes APISERVICES_API_KEY as a provider key (sandbox vision model injection depends on it)", () => {
     // 基座镜像 models.json 的 apiservices provider(视觉模型 gpt-5.4*)apiKey 为空,
     // entrypoint 以容器 env 注入 —— 键须自动并入 e2b envPassthrough(同 DASHSCOPE 路径)。

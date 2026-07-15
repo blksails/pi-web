@@ -64,6 +64,11 @@ const PROVIDER_KEY_NAMES = [
   // 基座镜像 models.json 的 apiservices.apiKey 为空,entrypoint 以此容器 env 运行期注入,
   // 使沙箱内 image_vision 有「input 含 image 且凭据可用」的模型可委派。
   "APISERVICES_API_KEY",
+  // AIGC 图像工具的网关路由凭据(newapi/sufy;工具在子进程 execute 期直读 env):
+  // 本地 spawn 继承宿主 env 天然可用,e2b 分支是白名单过滤 —— 不列入则同一 agent
+  // 的 gpt-image-2(NewAPI)/gpt-image-2-sufy 等路由在沙箱内无凭据,与本地行为不对称。
+  "NEWAPI_API_KEY",
+  "SUFY_API_KEY",
 ] as const;
 
 function isTruthy(v: string | undefined): boolean {
