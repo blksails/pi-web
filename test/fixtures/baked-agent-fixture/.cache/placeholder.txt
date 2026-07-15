@@ -1,0 +1,1 @@
+local cache placeholder (fixture; must be excluded from baking)

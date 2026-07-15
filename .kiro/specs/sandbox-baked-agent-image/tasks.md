@@ -41,7 +41,7 @@
   - docker/kind/kubectl 缺失或非零退出 → 步骤名+原始 stderr+修复建议
   - 完成态:本地 kind 集群里 crictl images 可见镜像、config-templates 含新模板条目
   - _Requirements: 2.7, 6.3_
-- [ ] 3.3 构建脚本夹具集成测试(不依赖 docker)
+- [x] 3.3 构建脚本夹具集成测试(不依赖 docker)
   - 在测试夹具目录新建最小夹具 agent(index.ts + package.json + .pi/web/dist 假产物 + 应被排除的 node_modules/.git 占位),作为被测资产随任务交付
   - 对该夹具跑 staging+Dockerfile 生成,断言文件清单/排除/Dockerfile 内容形状
   - 完成态:集成测试在无 docker 环境可跑且全绿

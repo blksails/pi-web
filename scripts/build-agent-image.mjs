@@ -125,7 +125,7 @@ function parseArgs(argv) {
 // ---------------------------------------------------------------------------
 
 /** @returns {{ exists(p: string): boolean; listFiles(dir: string): string[]; readFile(p: string): Buffer }} */
-function createNodeBakeFs() {
+export function createNodeBakeFs() {
   return {
     exists: (p) => fs.existsSync(p),
     listFiles: (dir) => {
@@ -155,7 +155,7 @@ function createNodeBakeFs() {
 // TS 内核加载(bake-plan.ts):jiti 是 server 包依赖,root 解析不到,须锚定 server 包
 // ---------------------------------------------------------------------------
 
-async function loadBakePlanModule() {
+export async function loadBakePlanModule() {
   const requireFromServer = createRequire(SERVER_PKG_JSON);
   const { createJiti } = requireFromServer("jiti");
   const jiti = createJiti(SERVER_PKG_JSON);
@@ -446,4 +446,20 @@ async function main() {
   log(`       PI_WEB_E2B_TEMPLATE=${plan.templateName}(全局单模板)`);
 }
 
-await main();
+// 入口守卫:仅「node scripts/build-agent-image.mjs …」直跑时执行 main。集成测试
+// (test/sandbox-image-build.integration.test.ts,任务 3.3)以模块形式 import 本文件取
+// createNodeBakeFs/loadBakePlanModule,不得触发 main(parseArgs 会对 vitest argv die)。
+// 两侧都先 realpath 再比对:argv[1] 可能经 symlink(pnpm bin 链)到达,直接比路径会漏判
+// (shared-runtime-payload 教训:入口守卫不 realpath 会误判)。
+const isDirectRun = (() => {
+  const argv1 = process.argv[1];
+  if (typeof argv1 !== "string" || argv1 === "") return false;
+  try {
+    return (
+      fs.realpathSync(argv1) === fs.realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+})();
+if (isDirectRun) await main();

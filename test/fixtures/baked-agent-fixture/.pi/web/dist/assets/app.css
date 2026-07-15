@@ -1,0 +1,4 @@
+/* 夹具 webext 假产物(嵌套层级,验证 .pi/web/dist 例外递归生效)。 */
+.baked-agent-fixture {
+  display: block;
+}

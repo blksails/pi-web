@@ -1,0 +1,6 @@
+# 夹具专用负规则:根 .gitignore 全局忽略 dist/,但本夹具的两个 dist 都是被测资产——
+# .pi/web/dist(webext 运行产物,烘焙必须保留)与 dist/(宿主构建垃圾,烘焙必须排除),
+# 负规则把它们重新纳入版本库,随任务 3.3 交付(spec sandbox-baked-agent-image,Req 7.1)。
+# node_modules/ 与 .git/ 占位无法入库(嵌套 .git 被 git 拒绝),由集成测试 beforeAll
+# 在 os.tmpdir 夹具副本中动态补齐,见 test/sandbox-image-build.integration.test.ts。
+!dist/

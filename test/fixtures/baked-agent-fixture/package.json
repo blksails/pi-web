@@ -1,0 +1,7 @@
+{
+  "name": "baked-agent-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "sandbox-baked-agent-image 任务 3.3 集成测试夹具(非可运行 agent)"
+}
