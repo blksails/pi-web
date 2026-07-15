@@ -23,7 +23,10 @@ import "./load-env.js";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { getHandler, shutdownHandler } from "../lib/app/pi-handler.js";
-import { forgetSessionSource } from "../lib/app/session-source-map.js";
+import {
+  forgetSessionSource,
+  recordSessionSource,
+} from "../lib/app/session-source-map.js";
 import { buildBootstrap } from "./bootstrap.js";
 import { handleSingleton } from "./singletons.js";
 import { handleWebextDist, handleWebextResolve } from "./webext-routes.js";
@@ -65,6 +68,34 @@ app.get("/api/webext/dist/:dir/*", (c) => {
 
 /** SPA 运行时配置(替代 server component 的 props 注入 + 构建期内联的 NEXT_PUBLIC_*)。 */
 app.get("/api/bootstrap", async (c) => c.json(await buildBootstrap(new URL(c.req.url))));
+
+/**
+ * app 级 sessionId → agent source 映射(冷加载 `/session/:id` 经 bootstrap 重解析
+ * source 声明的 webext/布局)。会话创建时前端 best-effort 记录(chat-app onSessionId)。
+ *
+ * 这是冷恢复 source 的**主路径**:resume-meta 兜底依赖 runner 写进会话存储的
+ * `piweb.session` custom entry —— 沙盒(e2b)模式下 runner 持久化在沙箱 Pod 内,
+ * 宿主读不到,没有本映射则沙盒会话 reload 后退回 builtin:default-agent,source 声明的
+ * UI(如 canvas)全部丢失。⚠ 该路由曾在 vite-spa 迁移删 Next 时(8e32288)一并丢失。
+ */
+app.post("/api/session-source", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: { code: "INVALID_BODY" } }, 400);
+  }
+  const { id, source } = (body ?? {}) as { id?: unknown; source?: unknown };
+  if (typeof id !== "string" || typeof source !== "string" || source.length === 0) {
+    return c.json({ error: { code: "INVALID_BODY" } }, 400);
+  }
+  try {
+    await recordSessionSource(id, source);
+  } catch {
+    // best-effort:记录失败不阻塞前端(冷加载退回 resume-meta / header.cwd 兜底)。
+  }
+  return c.json({ ok: true });
+});
 
 /**
  * 其余 `/api/*` → 单例 handler。
