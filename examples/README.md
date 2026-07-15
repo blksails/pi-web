@@ -1,6 +1,6 @@
 # pi-web 示例总索引
 
-本目录收录 20 个**可直接运行**的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC、Canvas 插件，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
+本目录收录可直接运行的 pi-web 示例 agent，从「零能力基线」一路覆盖到内置工具、业务办公、文件会话、可观测性（日志）、server-driven UI、附件 / AIGC、Canvas 插件，直至 WebExtension 的 5 个 Tier。每个示例都是一个最小、自包含、能跑起来看到效果的 `AgentDefinition`，是学习对应能力最快的入口。
 
 ## 怎么跑
 
@@ -25,11 +25,18 @@ pi-web ./examples/hello-agent
 | [minimal-agent](./minimal-agent/) | 最彻底的零能力基线：关掉所有内置 / 扩展工具、skills、扩展 | `defineMinimalAgent`（`noTools: "all"`） | 1️⃣ |
 | [hello-agent](./hello-agent/) | 最小自定义 agent：一个 `echo` 自定义工具 + system prompt | `defineAgent` / `defineTool` / `customTools` | 2️⃣ |
 
+### 业务 / 办公场景
+
+| 示例 | 一句话 | 关键 API / 能力 | 难度 |
+|---|---|---|---|
+| [daily-work-agent](./daily-work-agent/) | **日常工作业务**：phonegen、审核文件拷贝、批量核对、工作简报、**定时任务** | `phonegen`、`schedule_prompt`（`pi-schedule-prompt`）、`.pi/skills/*`、内置文件工具 | ★★☆ |
+
 ### 内置工具 / 会话
 
 | 示例 | 一句话 | 关键 API / 能力 | 难度 |
 |---|---|---|---|
 | [builtin-tools-agent](./builtin-tools-agent/) | 显式启用 pi 内置文件 / shell 工具集 | `tools` allowlist（read/ls/grep/glob/bash/edit/write/patch/fetch）、`excludeTools` denylist | ★☆☆ |
+| [archive-agent](./archive-agent/) | **zip / unzip / unrar** 归档工具（zip-slip 防护；unrar 依赖本机后端） | `createZip`/`extractZip`/`extractRar`（`@blksails/pi-web-tool-kit/runtime`）、`customTools` | ★☆☆ |
 | [file-session-agent](./file-session-agent/) | 演示「文件存储会话」：会话落 JSONL，可被 `FsSessionEntryStore` 回读 | 运行时 `SessionManager`（`--agent-dir`）、`FsSessionEntryStore` | ★★☆ |
 | [pi-probe-agent](./pi-probe-agent/) | 探针：验证项目级 `.pi/` 资源（extensions/agents/skills）是否被加载 | `.pi/` 发现、project trust 门控 | ★★☆ |
 | [logging-demo-agent](./logging-demo-agent/) | 端到端演示日志系统：工厂期 `ctx.logger` 四级日志 + pi extension + webext 三源汇入日志面板 | `ctx.logger`（注入）、`logger.child()`、`createLogger`（`@blksails/pi-web-logger`）、`PI_WEB_LOG_*` env | ★★☆ |

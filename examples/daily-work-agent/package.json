@@ -1,0 +1,9 @@
+{
+  "name": "daily-work-agent",
+  "private": true,
+  "pi-web": {
+    "title": "日常工作业务",
+    "avatar": "📋",
+    "description": "日常办公助手：号码生成、审核拷贝、批量核对、工作简报、定时任务、企微扩展(.pi/extensions/wecom + wecom_*)"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "enabled": true,
+  "network": {
+    "allowedDomains": [],
+    "deniedDomains": []
+  },
+  "filesystem": {
+    "allowRead": [
+      ".",
+      "/Users/hysios/Projects/phonegen",
+      "/opt/homebrew/bin/python3"
+    ],
+    "allowWrite": [
+      ".",
+      "/Users/hysios/Projects/phonegen",
+      "/tmp"
+    ],
+    "denyRead": [
+      "/Users",
+      "/home"
+    ],
+    "denyWrite": [
+      ".env",
+      ".env.*",
+      "*.pem",
+      "*.key",
+      "*.crt"
+    ]
+  }
+}
