@@ -53,6 +53,10 @@ import {
   redactReason,
   attachmentStoreConfigFromEnv,
   ATTACHMENT_PROFILE_DISABLED_ENV,
+  // 附件拓扑条件透传判定(spec sandbox-baked-agent-image 任务 4.2):e2b 分支按拓扑
+  // 本体 backend.kind 判「全远程」,与 attachmentStoreConfigFromEnv 同源同时机解析。
+  ATTACHMENT_BACKENDS_ENV,
+  parseBackendsEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
@@ -405,6 +409,23 @@ function buildSingleton(): HandlerSingleton {
   // agent-attachment-profile 关断开关(Req 5.1/5.2):装配期捕获一次(与 dir/secret 同一时机),
   // 而非在每次 spawn 时现读 process.env——避免请求处理期 env 被改动造成主/子不同步。
   const attachmentProfileDisabledValue = process.env[ATTACHMENT_PROFILE_DISABLED_ENV];
+  // 附件拓扑条件透传判定(spec sandbox-baked-agent-image 任务 4.2,Req 5.1/5.2):
+  // 装配期一次判定,与上面 attachmentStoreConfigFromEnv 同一 env 来源、同一时机——
+  // attachmentPassthroughEnv 是装配期快照,判定若在请求期现读 process.env 会与快照漂移。
+  // 规则:拓扑存在且**每个** backend.kind ∈ {cloud-http, s3}(全远程)→ e2b 分支把
+  // attachmentPassthroughEnv(拓扑原文 + 被引凭据)并入 e2bSpec.env 且其键并入
+  // envPassthrough 白名单(Req 5.1);否则(未配拓扑 / 混合含 local-fs)完全不注入——
+  // 沙箱内子进程 wiring 走既有 fail-closed 附件降级(Req 5.2),避免把本地磁盘语义的
+  // 附件 env 带进云沙箱(签名 URL 401)。注:parseBackendsEnv 的错误路径不新增——
+  // 同一原文已被上面的 attachmentStoreConfigFromEnv 先解析,坏配置在此之前即抛。
+  // local/stub 分支不经此判定(与主进程同机共享后端,混合拓扑照样透传,行为零变化)。
+  const attachmentTopology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
+  const attachmentAllRemote =
+    attachmentTopology !== undefined &&
+    attachmentTopology.backends.every((b) => b.kind === "cloud-http" || b.kind === "s3");
+  const sandboxAttachmentEnv: Record<string, string> = attachmentAllRemote
+    ? attachmentPassthroughEnv
+    : {};
 
   const createChannel = (
     resolved: ResolvedSource,
@@ -444,6 +465,10 @@ function buildSingleton(): HandlerSingleton {
         env: {
           ...resolved.spawnSpec.env,
           ...config.providerKeys,
+          // 附件拓扑条件透传(任务 4.2,Req 5.1):全远程拓扑时并入装配期快照
+          // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
+          // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
+          ...sandboxAttachmentEnv,
         },
       };
       // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image 任务 4.1,
@@ -465,7 +490,24 @@ function buildSingleton(): HandlerSingleton {
       if (!templateResolution.ok) {
         throw new Error(templateResolution.error);
       }
-      const e2bConfig = { ...selection.config, template: templateResolution.template };
+      // env 白名单组装(任务 4.2,Req 4.2/5.1):传输只把 envPassthrough 白名单键从
+      // e2bSpec.env 下发进沙箱,故上面并入 env 的键必须同步并入白名单才真正可达。
+      //  - providerKeys 键**无条件**并入(不受附件判定影响;值已在上方 e2bSpec.env——
+      //    此前会被白名单静默过滤,并入是收敛而非放宽:见 design「Security Considerations」)。
+      //  - 附件透传键仅在全远程判定通过时非空(与 env 并入同一开关,键值成对)。
+      //  - Set 去重:providerKeys/附件键可能与既有 PI_WEB_E2B_ENV_PASSTHROUGH 配置重复。
+      const envPassthrough = [
+        ...new Set([
+          ...(selection.config.envPassthrough ?? []),
+          ...Object.keys(sandboxAttachmentEnv),
+          ...Object.keys(config.providerKeys),
+        ]),
+      ];
+      const e2bConfig = {
+        ...selection.config,
+        template: templateResolution.template,
+        envPassthrough,
+      };
       // 数据面二选一:
       //  - ws-runner:WS 连沙箱内 agent-runner(agent-sandbox/ACS,无 envd)——完整闭环。
       //  - envd(默认):e2b SDK commands.run(真实 e2b 云有 envd)。

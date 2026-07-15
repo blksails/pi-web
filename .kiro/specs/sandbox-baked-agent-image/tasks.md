@@ -54,7 +54,7 @@
   - _Depends: 2.2_
   - _Requirements: 3.1, 3.4, 3.5_
   - _Boundary: pi-handler-e2b 模板覆写段_
-- [ ] 4.2 pi-handler e2b 分支附件拓扑条件透传与凭据白名单并入
+- [x] 4.2 pi-handler e2b 分支附件拓扑条件透传与凭据白名单并入
   - 拓扑存在且全部 backend.kind ∈ {cloud-http,s3} 时把 computePassthroughEnv 结果并入 e2bSpec.env 且键并入 envPassthrough;否则完全不注入
   - providerKeys 键自动并入 envPassthrough(值已在 env);与 4.1 同文件顺序执行,本任务只碰 env 组装段
   - 完成态:三种拓扑形态(全远程/混合/未配)的 env 组装行为可被集成测试逐一断言
