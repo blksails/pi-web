@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. Foundation:sandbox-image 纯函数内核
-- [ ] 1.1 实现 source 标识派生能力(slug/镜像名/模板名)并配单测
+- [x] 1.1 实现 source 标识派生能力(slug/镜像名/模板名)并配单测
   - 输入 resolver 稳定来源标识,输出命名安全的 slug 与 `piweb-agent/<slug>:<tag>`、`piweb-agent-<slug>.<tag>`,同输入恒同输出
   - 单测覆盖 dir/git/builtin 三型标识、字符集安全、模板名与 dynamic 规则互逆
   - 完成态:`pnpm --filter @blksails/pi-web-server test` 中该模块单测全绿
