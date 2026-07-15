@@ -1,0 +1,87 @@
+# Implementation Plan
+
+- [ ] 1. Foundation:sandbox-image 纯函数内核
+- [ ] 1.1 实现 source 标识派生能力(slug/镜像名/模板名)并配单测
+  - 输入 resolver 稳定来源标识,输出命名安全的 slug 与 `piweb-agent/<slug>:<tag>`、`piweb-agent-<slug>.<tag>`,同输入恒同输出
+  - 单测覆盖 dir/git/builtin 三型标识、字符集安全、模板名与 dynamic 规则互逆
+  - 完成态:`pnpm --filter @blksails/pi-web-server test` 中该模块单测全绿
+  - _Requirements: 2.6, 3.2_
+- [ ] 1.2 实现烘焙计划纯函数(收集/排除/Dockerfile 文本/tag)并配单测
+  - 收集入口+package.json+.pi/ 全量;排除规则常量导出(node_modules/.git/dist/.installed/本地缓存);缺入口返回 MISSING_ENTRY
+  - Dockerfile 文本含 FROM 基座、COPY /workspace/agent、ENV AGENT_CMD(runner-bootstrap argv)与 AGENT_CWD;bundle 与 --no-bundle 两形态(entry index.js/index.ts)
+  - tag 缺省 = staging 内容哈希(确定性);经注入的 fs 端口读盘,单测用内存实现
+  - 完成态:单测覆盖上述全部决策路径且全绿
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+- [ ] 2. Core:模板解析与配置放宽
+- [ ] 2.1 (P) 放宽 e2b 配置的全局模板必填并解析新增配置面
+  - PI_WEB_E2B_TEMPLATE 由必填改可缺;新增解析 PI_WEB_E2B_TEMPLATE_MAP(JSON)与 PI_WEB_E2B_TEMPLATE_DERIVE 门控
+  - 缺 API key 仍抛既有清晰错误;既有 e2b-config/transport-select 测试断言迁移
+  - 完成态:未配 map/derive、仅配全局模板的既有部署行为与现状逐字节一致(测试证明)
+  - _Requirements: 3.3, 3.5_
+  - _Boundary: e2b-config_
+- [ ] 2.2 实现三级模板解析(显式映射→门控派生→全局→清晰错误)并配单测
+  - map 键两级查找(先 exact source 串,再 policySource);derive 仅门控开启且能取到 tag 时参与;全空返回携三种修复路径的错误
+  - 返回 via 标记(map/derived/global)供日志排查
+  - 完成态:单测覆盖四级路径、门控开关、缺 tag 跳过、错误文案断言,全绿
+  - _Depends: 1.1, 2.1_
+  - _Requirements: 3.1, 3.2, 3.3, 3.4_
+  - _Boundary: template-resolve_
+
+- [ ] 3. Core:构建编排脚本
+- [ ] 3.1 实现镜像构建编排(staging→bundle→docker build→输出)
+  - 消费烘焙计划落盘 staging;esbuild bundle(externals=pi SDK+@blksails/*;--no-bundle 拷源);docker build -t <image:tag>
+  - 输出 image:tag、派生模板名、内容哈希与下一步指引;打印 staging 收集与排除的文件清单供审计
+  - 同内容重复构建同 tag 且层缓存命中
+  - 完成态:对 examples 下一个真实 agent 执行后本地 docker images 出现该镜像,重复执行秒级完成
+  - _Depends: 1.2_
+  - _Requirements: 2.1, 2.2, 2.3, 2.5, 2.7, 1.5_
+- [ ] 3.2 实现 --kind-load 与 --register 及步骤级错误指引
+  - kind load 进指定集群;--register 经 kubectl patch config-templates 静态条目(name/image/port 8080)+ rollout restart + 等就绪,幂等
+  - docker/kind/kubectl 缺失或非零退出 → 步骤名+原始 stderr+修复建议
+  - 完成态:本地 kind 集群里 crictl images 可见镜像、config-templates 含新模板条目
+  - _Requirements: 2.7, 6.3_
+- [ ] 3.3 构建脚本夹具集成测试(不依赖 docker)
+  - 在测试夹具目录新建最小夹具 agent(index.ts + package.json + .pi/web/dist 假产物 + 应被排除的 node_modules/.git 占位),作为被测资产随任务交付
+  - 对该夹具跑 staging+Dockerfile 生成,断言文件清单/排除/Dockerfile 内容形状
+  - 完成态:集成测试在无 docker 环境可跑且全绿
+  - _Requirements: 7.1_
+
+- [ ] 4. Integration:会话路径接线
+- [ ] 4.1 pi-handler e2b 分支接入模板解析
+  - e2b 分支调三级解析,ok 时覆写 selection.config.template,失败即抛(会话创建失败,错误含修复指引);local 分支零改动
+  - 完成态:配 map 的会话用映射模板建沙箱;全空配置会话创建报错含三路径
+  - _Depends: 2.2_
+  - _Requirements: 3.1, 3.4, 3.5_
+  - _Boundary: pi-handler-e2b 模板覆写段_
+- [ ] 4.2 pi-handler e2b 分支附件拓扑条件透传与凭据白名单并入
+  - 拓扑存在且全部 backend.kind ∈ {cloud-http,s3} 时把 computePassthroughEnv 结果并入 e2bSpec.env 且键并入 envPassthrough;否则完全不注入
+  - providerKeys 键自动并入 envPassthrough(值已在 env);与 4.1 同文件顺序执行,本任务只碰 env 组装段
+  - 完成态:三种拓扑形态(全远程/混合/未配)的 env 组装行为可被集成测试逐一断言
+  - _Requirements: 4.2, 5.1, 5.2_
+  - _Boundary: pi-handler-e2b env 组装段_
+- [ ] 4.3 会话路径集成测试(stub transport 注入)
+  - 断言模板覆写生效、附件三形态注入规则、providerKeys 白名单并入、local 模式零变化
+  - 完成态:集成测试全绿且既有 pi-handler 相关测试不回归
+  - _Requirements: 7.1, 5.3, 3.5_
+
+- [ ] 5. Integration:本地闭环
+- [ ] 5.1 dev:e2b:local 烘焙扩展与本地闭环文档
+  - PI_WEB_E2B_BAKE_SOURCE=<dir> 时先跑构建(--kind-load --register)再注入对应 TEMPLATE_MAP 起 dev;未设置零行为变化
+  - 集群未就绪/镜像未加载/模板未注册在对应步骤给可操作指引;交付 docs/sandbox-baked-agent-image.md 操作文档
+  - 完成态:单命令从源目录到可用沙盒 dev;文档步骤可照跑
+  - _Depends: 3.2, 4.1_
+  - _Requirements: 6.1, 6.3_
+
+- [ ] 6. Validation:e2e 与回归
+- [ ] 6.1 本地 kind 门控 e2e(装配面一致性)
+  - 被测资产 = `examples/aigc-canvas-agent`(声明工具+webext 贡献+布局三面俱全);烘焙→加载→注册→e2b dev→建会话
+  - 断言:就绪握手、装配面声明(工具清单/webext/布局)与非沙盒同源 dev 一致、prompt 流式回复
+  - 负路径:未注册模板名会话创建失败且错误含修复指引;集群不可达整套跳过(CI 不红)
+  - 完成态:e2e 脚本本地跑通,输出逐项一致的断言证据
+  - _Depends: 5.1_
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.3, 4.4, 4.5, 6.2, 7.2, 3.4_
+- [ ] 6.2 全量回归
+  - pnpm test 全绿 + e2e:node stub 套件不受影响;以新鲜运行输出为证据
+  - 完成态:回归结果记录在 spec 验证报告
+  - _Requirements: 7.3, 3.5_
