@@ -176,17 +176,15 @@ export class PiRpcSession implements PiRpcChannel {
     return () => this.#restartListeners.delete(cb);
   }
 
-  respondExtensionUI(id: string, response: RpcExtensionUIResponse): void {
+  respondExtensionUI(_id: string, response: RpcExtensionUIResponse): void {
     // fire-and-forget:不等 response(与命令方法不同,无 pending 登记)。
+    // ⚠ 必须发 response **原对象**(自带 pi 原生 `type:"extension_ui_response"` + `id`),
+    // 与本地传输 PiRpcProcess.respondExtensionUI 同一线协议 —— pi 的 runRpcMode 按
+    // `parsed.type === "extension_ui_response"` 匹配 pendingExtensionRequests。曾包一层
+    // 自创的 `{type:"respond_extension_ui", requestId, response}`:pi 不认该 type 静默丢弃,
+    // 子进程 ui.select 永不 resolve → 工具永挂、会话被楔死(2026-07-16 沙盒 e2e 实measured)。
     if (this.#closed) return;
-    this.#transport.send(
-      JSON.stringify({
-        id: randomUUID(),
-        type: "respond_extension_ui",
-        requestId: id,
-        response,
-      }),
-    );
+    this.#transport.send(JSON.stringify(response));
   }
 
   // ── SessionChannel 扩展:命令方法(type 为 snake_case)───

@@ -173,12 +173,17 @@ describe("PiRpcSession — 命令封装 (Req 1.3)", () => {
     });
   });
 
-  it("respondExtensionUI 为 fire-and-forget(不登记待决)", () => {
+  it("respondExtensionUI 为 fire-and-forget,发 pi 原生 extension_ui_response 原对象(不自创包装帧)", () => {
+    // 与本地传输 PiRpcProcess 同一线协议:pi 的 runRpcMode 只认
+    // `parsed.type === "extension_ui_response"` 并按 `id` 匹配 pending;
+    // 曾发 `{type:"respond_extension_ui", requestId, response}` 包装帧 → pi 静默丢弃 →
+    // 沙盒会话 ui.select 永挂(2026-07-16 沙盒 chrome e2e 实抓)。
     const t = new MockTransport();
     const s = new PiRpcSession(t);
-    s.respondExtensionUI("req-1", { ok: true } as never);
+    const response = { type: "extension_ui_response", id: "req-1", value: "opt-a" };
+    s.respondExtensionUI("req-1", response as never);
     const m = parseFrame(t.sent[0]);
-    expect(m).toMatchObject({ type: "respond_extension_ui", requestId: "req-1" });
+    expect(m).toEqual(response);
   });
 });
 
