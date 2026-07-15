@@ -23,7 +23,7 @@
  * 每个外部步骤(docker/kind/kubectl)失败都给「步骤名 + 原始 stderr + 修复建议」(Req 6.3)。
  *
  * 用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle]
- *        [--kind-load] [--kind-cluster c] [--register]
+ *        [--kind-load] [--kind-cluster c] [--register] [--pool n]
  *      (或 `pnpm build:agent-image <sourceDir> …`)
  * 基础镜像优先序:--base-image > env PI_WEB_E2B_BASE_IMAGE > 缺省 pi-clouds/agent-runner:pi。
  * 集群定位 env(对齐 dev-e2b-local.mjs 同名惯例):AGENT_SANDBOX_NS / AGENT_SANDBOX_SVC
@@ -60,7 +60,7 @@ const SANDBOX_DEPLOY = process.env.AGENT_SANDBOX_SVC ?? "agent-sandbox";
 const SANDBOX_CONFIGMAP = SANDBOX_DEPLOY;
 const TEMPLATES_KEY = "config-templates";
 
-const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle] [--kind-load] [--kind-cluster c] [--register]
+const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [--base-image i] [--no-bundle] [--kind-load] [--kind-cluster c] [--register] [--pool n]
   <sourceDir>       agent source 目录(须含入口 index.js 或 index.ts)
   --tag t           显式镜像 tag(缺省 = 源内容 sha256 前 12 位,内容寻址)
   --base-image i    基础镜像(缺省 env PI_WEB_E2B_BASE_IMAGE 或 ${DEFAULT_BASE_IMAGE})
@@ -68,6 +68,7 @@ const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [
   --kind-load       构建后 kind load docker-image 进本地 kind 集群
   --kind-cluster c  kind 集群名(缺省 ${DEFAULT_KIND_CLUSTER};仅与 --kind-load 联用)
   --register        注册为 agent-sandbox 静态模板(kubectl patch ${TEMPLATES_KEY} + rollout restart + 等就绪;幂等)
+  --pool n          (随 --register)模板条目带预热池 pool:{size:n,probePort:8080},manager 预养 n 个热 Pod 消掉冷启调度段
                     集群定位 env:AGENT_SANDBOX_NS(缺省 ${SANDBOX_NS})/ AGENT_SANDBOX_SVC(缺省 ${SANDBOX_DEPLOY})`;
 
 function log(msg) {
@@ -85,8 +86,8 @@ function die(msg) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  /** @type {{ sourceDir?: string; tag?: string; baseImage?: string; bundle: boolean; kindLoad: boolean; kindCluster: string; register: boolean }} */
-  const opts = { bundle: true, kindLoad: false, kindCluster: DEFAULT_KIND_CLUSTER, register: false };
+  /** @type {{ sourceDir?: string; tag?: string; baseImage?: string; bundle: boolean; kindLoad: boolean; kindCluster: string; register: boolean; pool: number }} */
+  const opts = { bundle: true, kindLoad: false, kindCluster: DEFAULT_KIND_CLUSTER, register: false, pool: 0 };
   const takeValue = (arg, name, rest) => {
     if (arg.includes("=")) return arg.slice(arg.indexOf("=") + 1);
     const v = rest.shift();
@@ -108,6 +109,11 @@ function parseArgs(argv) {
       opts.kindCluster = takeValue(arg, "--kind-cluster", rest);
     } else if (arg === "--register") {
       opts.register = true;
+    } else if (arg === "--pool" || arg.startsWith("--pool=")) {
+      const v = takeValue(arg, "--pool", rest);
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0) die(`--pool 需要非负整数,收到:${v}\n${USAGE}`);
+      opts.pool = n;
     } else if (arg.startsWith("-")) {
       die(`未知参数:${arg}\n${USAGE}`);
     } else if (opts.sourceDir === undefined) {
@@ -230,7 +236,7 @@ function kindLoadImage(imageName, cluster) {
  * 避免 shell 引号转义地狱)。manager 不保证热加载 ConfigMap,故每次注册都
  * rollout restart + rollout status 等就绪。
  */
-function registerTemplate(plan) {
+function registerTemplate(plan, pool) {
   const cmRef = `configmap/${SANDBOX_CONFIGMAP}(ns ${SANDBOX_NS})`;
   const clusterHint =
     `  - 确认本地集群在跑且 kubectl context 正确:kubectl config current-context\n` +
@@ -283,6 +289,11 @@ function registerTemplate(plan) {
     image: plan.imageName,
     port: 8080,
     description: `piweb baked agent (${slug})`,
+    // 预热池(--pool n):manager 预养 n 个热 Pod(镜像 ENTRYPOINT 自预热:runner-entry
+    // configureTimeout 兜底会先 spawn 烘焙 agent),会话认领即热,消掉调度+冷启段。
+    // 注意:池 Pod 建于会话之前,Sandbox.create 的 per-session envs(如 provider key)
+    // 到不了已 spawn 的 agent——凭据依赖 configure/env 注入的场景实测后再定池策略。
+    ...(pool > 0 ? { pool: { size: pool, probePort: 8080 } } : {}),
   };
   const idx = templates.findIndex((t) => t !== null && typeof t === "object" && t.name === plan.templateName);
   const action = idx >= 0 ? "替换同名条目" : "追加新条目";
@@ -418,7 +429,7 @@ async function main() {
 
   // -- 可选:kind load / 注册模板(任务 3.2;失败即步骤级错误退出) ----------------
   if (args.kindLoad) kindLoadImage(plan.imageName, args.kindCluster);
-  if (args.register) registerTemplate(plan);
+  if (args.register) registerTemplate(plan, args.pool);
 
   // -- 输出与下一步指引(Req 2.7;已由 flag 完成的步骤标记 ✓) ---------------------
   const elapsed = ((Date.now() - started) / 1000).toFixed(1);

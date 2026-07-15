@@ -299,14 +299,19 @@ describe("排除规则 BAKE_EXCLUDES(Req 2.5)", () => {
 // ---------------------------------------------------------------------------
 
 describe("computeBakePlan — Dockerfile 文本(Req 2.2/2.6)", () => {
-  it("bundle 形态:FROM 基座 + COPY + AGENT_CWD + AGENT_CMD(entry=index.js)", () => {
+  it("bundle 形态:FROM 基座 + COPY + AGENT_CWD + AGENT_CMD(entry=index.js)+ 编译缓存预热", () => {
     const plan = planOrThrow(opts(), memFs(SRC, baseTree));
+    const agentCmd =
+      "node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
     expect(plan.dockerfile).toBe(
       [
         `FROM ${BASE_IMAGE}`,
         "COPY staged/ /workspace/agent/",
         "ENV AGENT_CWD=/workspace/agent",
-        'ENV AGENT_CMD="node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent"',
+        `ENV AGENT_CMD="${agentCmd}"`,
+        // 冷启动优化:V8 编译缓存烘进镜像层(构建期 timeout 预热一次 AGENT_CMD)。
+        "ENV NODE_COMPILE_CACHE=/opt/node-compile-cache",
+        `RUN timeout 25 ${agentCmd} < /dev/null > /dev/null 2>&1 || true`,
         "",
       ].join("\n"),
     );

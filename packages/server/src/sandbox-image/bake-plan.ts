@@ -181,7 +181,15 @@ const RUNNER_BOOTSTRAP_PATH =
 /** 缺省 tag(内容哈希)长度:sha256 hex 前 12 位。 */
 const TAG_HASH_LEN = 12;
 
-/** 生成 Dockerfile 全文(design「烘焙镜像契约」的固定四行 + 尾换行)。 */
+/**
+ * V8 编译缓存目录(冷启动优化):构建期以 `NODE_COMPILE_CACHE` 预热一次 AGENT_CMD
+ * (timeout 兜底杀掉——bootstrap 装配后会驻留读 stdin,build 期无人喂),把 runner +
+ * pi SDK 的 V8 字节码缓存烘进镜像层;容器冷启时 node 直接吃缓存跳过解析/编译
+ * (实测 E 段 6.6s 的主要构成之一)。预热失败不阻断构建(`|| true`:缓存是优化非正确性)。
+ */
+const NODE_COMPILE_CACHE_DIR = "/opt/node-compile-cache";
+
+/** 生成 Dockerfile 全文(design「烘焙镜像契约」固定四行 + 编译缓存预热两行 + 尾换行)。 */
 function renderDockerfile(baseImage: string, entry: string): string {
   const agentCmd = `node ${RUNNER_BOOTSTRAP_PATH} --agent ${AGENT_WORKDIR}/${entry} --cwd ${AGENT_WORKDIR} --agent-dir /root/.pi/agent`;
   return [
@@ -189,6 +197,8 @@ function renderDockerfile(baseImage: string, entry: string): string {
     `COPY staged/ ${AGENT_WORKDIR}/`,
     `ENV AGENT_CWD=${AGENT_WORKDIR}`,
     `ENV AGENT_CMD="${agentCmd}"`,
+    `ENV NODE_COMPILE_CACHE=${NODE_COMPILE_CACHE_DIR}`,
+    `RUN timeout 25 ${agentCmd} < /dev/null > /dev/null 2>&1 || true`,
     "",
   ].join("\n");
 }

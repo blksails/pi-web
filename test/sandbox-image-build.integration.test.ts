@@ -249,14 +249,19 @@ describe("computeBakePlan × 真实 fs — staging 清单(--no-bundle)", () => {
 // ---------------------------------------------------------------------------
 
 describe("computeBakePlan × 真实 fs — Dockerfile 文本形状", () => {
-  it("bundle 形态:FROM/COPY staged\\//ENV AGENT_CWD/ENV AGENT_CMD(--agent index.js)四行精确", () => {
+  it("bundle 形态:FROM/COPY staged\\//ENV AGENT_CWD/ENV AGENT_CMD(--agent index.js)+编译缓存预热,逐行精确", () => {
     const plan = planOrThrow(opts());
+    const agentCmd =
+      "node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
     expect(plan.dockerfile).toBe(
       [
         `FROM ${BASE_IMAGE}`,
         "COPY staged/ /workspace/agent/",
         "ENV AGENT_CWD=/workspace/agent",
-        'ENV AGENT_CMD="node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent"',
+        `ENV AGENT_CMD="${agentCmd}"`,
+        // 冷启动优化:V8 编译缓存层(构建期预热,timeout 兜底)。
+        "ENV NODE_COMPILE_CACHE=/opt/node-compile-cache",
+        `RUN timeout 25 ${agentCmd} < /dev/null > /dev/null 2>&1 || true`,
         "",
       ].join("\n"),
     );
