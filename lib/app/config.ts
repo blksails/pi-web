@@ -56,6 +56,10 @@ const PROVIDER_KEY_NAMES = [
   "GEMINI_API_KEY",
   "MISTRAL_API_KEY",
   "OPENROUTER_API_KEY",
+  // DashScope(阿里云百炼/token-plan 兼容端点):沙盒基座镜像的 entrypoint 依赖此容器 env
+  // 把 key 注入容器内 models.json(spec sandbox-baked-agent-image;e2b 分支 providerKeys
+  // 键自动并入 envPassthrough → Sandbox.create envs → Pod spec env → entrypoint)。
+  "DASHSCOPE_API_KEY",
 ] as const;
 
 function isTruthy(v: string | undefined): boolean {
