@@ -60,6 +60,10 @@ const PROVIDER_KEY_NAMES = [
   // 把 key 注入容器内 models.json(spec sandbox-baked-agent-image;e2b 分支 providerKeys
   // 键自动并入 envPassthrough → Sandbox.create envs → Pod spec env → entrypoint)。
   "DASHSCOPE_API_KEY",
+  // apiservices(OpenAI 兼容网关,承载视觉模型 gpt-5.4*):同 DASHSCOPE 注入路径 ——
+  // 基座镜像 models.json 的 apiservices.apiKey 为空,entrypoint 以此容器 env 运行期注入,
+  // 使沙箱内 image_vision 有「input 含 image 且凭据可用」的模型可委派。
+  "APISERVICES_API_KEY",
 ] as const;
 
 function isTruthy(v: string | undefined): boolean {

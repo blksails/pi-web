@@ -66,6 +66,14 @@ describe("config injection + secret safety", () => {
     expect(cfg.providerKeys.ANTHROPIC_API_KEY).toBe(secret);
   });
 
+  it("recognizes APISERVICES_API_KEY as a provider key (sandbox vision model injection depends on it)", () => {
+    // 基座镜像 models.json 的 apiservices provider(视觉模型 gpt-5.4*)apiKey 为空,
+    // entrypoint 以容器 env 注入 —— 键须自动并入 e2b envPassthrough(同 DASHSCOPE 路径)。
+    const secret = "sk-sp-test-apiservices-key";
+    const cfg = loadConfig({ APISERVICES_API_KEY: secret } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.providerKeys.APISERVICES_API_KEY).toBe(secret);
+  });
+
   it("recognizes DASHSCOPE_API_KEY as a provider key (sandbox baked-image entrypoint depends on it)", () => {
     // spec sandbox-baked-agent-image:e2b 分支把 providerKeys 键自动并入 envPassthrough,
     // 基座镜像 entrypoint 以容器 env DASHSCOPE_API_KEY 注入容器内 models.json。
