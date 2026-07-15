@@ -66,7 +66,7 @@
   - _Requirements: 7.1, 5.3, 3.5_
 
 - [ ] 5. Integration:本地闭环
-- [ ] 5.1 dev:e2b:local 烘焙扩展与本地闭环文档
+- [x] 5.1 dev:e2b:local 烘焙扩展与本地闭环文档
   - PI_WEB_E2B_BAKE_SOURCE=<dir> 时先跑构建(--kind-load --register)再注入对应 TEMPLATE_MAP 起 dev;未设置零行为变化
   - 集群未就绪/镜像未加载/模板未注册在对应步骤给可操作指引;交付 docs/sandbox-baked-agent-image.md 操作文档
   - 完成态:单命令从源目录到可用沙盒 dev;文档步骤可照跑

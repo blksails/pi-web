@@ -20,8 +20,16 @@
  *
  * 可调 env:AGENT_SANDBOX_NS / AGENT_SANDBOX_SVC / E2B_MANAGER_PORT / E2B_PROXY_PORT /
  *          PI_WEB_E2B_TEMPLATE / PORT / PI_WEB_DEV_CLIENT_PORT / E2B_API_KEY(显式则不自动取)
+ *
+ * 烘焙闭环(spec sandbox-baked-agent-image,任务 5.1;Req 6.1/6.3):
+ *   PI_WEB_E2B_BAKE_SOURCE=<agent source 目录> 时,起 dev 前先跑
+ *   `scripts/build-agent-image.mjs <dir> --kind-load --register`(构建镜像 → 加载 kind →
+ *   注册 agent-sandbox 模板),再把 `{<dir绝对路径>: <templateName>}` 注入
+ *   PI_WEB_E2B_TEMPLATE_MAP(用户已显式配同键时用户优先)后起 dev——单命令从源目录到
+ *   可用沙盒 dev。未设置该 env 时行为与从前完全一致(零行为变化)。
+ *   操作文档:docs/sandbox-baked-agent-image.md。
  */
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import http from "node:http";
@@ -38,6 +46,8 @@ const TEMPLATE = process.env.PI_WEB_E2B_TEMPLATE ?? (DATA_PLANE === "ws-runner" 
 const RUNNER_PORT = process.env.PI_WEB_E2B_RUNNER_PORT ?? "8080";
 const DEV_API_PORT = process.env.PORT ?? "3020";
 const DEV_CLIENT_PORT = process.env.PI_WEB_DEV_CLIENT_PORT ?? "5183";
+// 可选烘焙源目录:设了就在起 dev 前先「构建镜像 → kind load → 注册模板」一条龙。
+const BAKE_SOURCE = process.env.PI_WEB_E2B_BAKE_SOURCE;
 
 const procs = [];
 let exiting = false;
@@ -161,8 +171,137 @@ function startDev(env) {
   procs.push(dev);
 }
 
+// ---------------------------------------------------------------------------
+// 烘焙阶段(PI_WEB_E2B_BAKE_SOURCE;未设置时以下代码完全不参与)
+// ---------------------------------------------------------------------------
+
+/**
+ * 计算烘焙计划拿 templateName(不落盘不构建):直接 import build-agent-image.mjs
+ * 导出的 loadBakePlanModule/createNodeBakeFs,在本进程跑 computeBakePlan——与随后
+ * spawn 的构建脚本走同一套纯函数与同样缺省(bundle、tag=内容哈希),两侧命名恒一致
+ * (比解析构建 stdout 稳;3.3 集成测试已钉住该导出面可 import)。
+ */
+async function computeBakeTemplate(sourceDir) {
+  const { loadBakePlanModule, createNodeBakeFs } = await import(
+    "./build-agent-image.mjs"
+  );
+  const { computeBakePlan } = await loadBakePlanModule();
+  // baseImage 不参与镜像名/模板名派生(只进 Dockerfile 文本),此处取值仅为满足入参;
+  // 与 build-agent-image.mjs 缺省保持同源(env 覆盖 → 同一缺省字面量)。
+  const baseImage =
+    process.env.PI_WEB_E2B_BASE_IMAGE ?? "pi-clouds/agent-runner:pi";
+  const result = computeBakePlan(
+    { sourceDir, baseImage, bundle: true },
+    createNodeBakeFs(),
+  );
+  if (!result.ok) {
+    die(
+      `烘焙计划失败 [${result.error.code}] ${result.error.detail}\n` +
+        `请确认 PI_WEB_E2B_BAKE_SOURCE 指向一个含入口 index.js/index.ts 的 agent source 目录` +
+        `(当前解析为 ${sourceDir}),或去掉该 env 用预注册模板起 dev。`,
+    );
+    return undefined;
+  }
+  return result.value;
+}
+
+/**
+ * 跑构建一条龙:build → kind load → 注册模板(spawn 构建脚本,stdio 继承让用户
+ * 看到每一步;步骤级错误指引由 build-agent-image.mjs 自带,Req 6.3)。
+ * 成功返回 { sourceDir, templateName };失败 die(不起 dev)。
+ *
+ * ⚠ 时序:--register 会 rollout restart agent-sandbox,已建立的 kubectl port-forward
+ * 会随旧 Pod 一起断(其 exit 钩子会 die 整个编排)。故本阶段必须在 ensurePortForward
+ * **之前**跑:fetchSystemToken 已证明 kubectl 可用且 deploy 存在(集群前置就绪),
+ * bake 完(manager 已重启就绪)再对新 Pod 建 port-forward。
+ */
+async function runBakeStage() {
+  const sourceDir = path.resolve(BAKE_SOURCE);
+  const plan = await computeBakeTemplate(sourceDir);
+  if (plan === undefined || exiting) return undefined;
+
+  log(`bake:${sourceDir} → 镜像 ${plan.imageName} / 模板 ${plan.templateName}`);
+  log("bake:跑 build-agent-image --kind-load --register(输出如下)…");
+  const res = spawnSync(
+    process.execPath,
+    [
+      path.join(root, "scripts", "build-agent-image.mjs"),
+      sourceDir,
+      "--kind-load",
+      "--register",
+    ],
+    { stdio: "inherit" },
+  );
+  if (res.error) {
+    die(`bake:构建脚本启动失败:${String(res.error.message ?? res.error)}`);
+    return undefined;
+  }
+  if (res.status !== 0) {
+    die(
+      `bake 阶段失败(exit ${res.status}),不起 dev。\n` +
+        `上方 [build:agent-image] 已给出失败步骤(docker build / kind load / 模板注册)` +
+        `的原始错误与修复建议,按其修复后重跑本命令;\n` +
+        `或去掉 PI_WEB_E2B_BAKE_SOURCE,用已注册模板(PI_WEB_E2B_TEMPLATE=${TEMPLATE})起 dev。`,
+    );
+    return undefined;
+  }
+  return { sourceDir, templateName: plan.templateName };
+}
+
+/**
+ * 合并 PI_WEB_E2B_TEMPLATE_MAP:用户显式配置优先——同键已存在则不覆盖,烘焙项仅
+ * 在键缺失时补入。map 键用源目录**绝对路径**(resolver 会把 dir source 归一为绝对
+ * policySource,resolveSandboxTemplate 的 policySource 级查找必命中;相对 source 串
+ * 也经归一命中同键)。
+ */
+function mergeTemplateMap(userRaw, sourceDir, templateName) {
+  if (userRaw === undefined || userRaw.trim() === "") {
+    return JSON.stringify({ [sourceDir]: templateName });
+  }
+  let user;
+  try {
+    user = JSON.parse(userRaw);
+  } catch (e) {
+    die(
+      `PI_WEB_E2B_TEMPLATE_MAP 不是合法 JSON,无法并入烘焙模板:${String(e?.message ?? e)}\n` +
+        `请修正该 env(形如 {"<source>":"<模板名>"})或去掉它后重试。`,
+    );
+    return undefined;
+  }
+  if (user === null || typeof user !== "object" || Array.isArray(user)) {
+    die(
+      `PI_WEB_E2B_TEMPLATE_MAP 应为 JSON 对象(source → 模板名),实为 ${Array.isArray(user) ? "array" : typeof user}。`,
+    );
+    return undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(user, sourceDir)) {
+    log(
+      `PI_WEB_E2B_TEMPLATE_MAP 已含键 ${sourceDir},用户显式配置优先(烘焙模板 ${templateName} 不覆盖)。`,
+    );
+    return userRaw;
+  }
+  return JSON.stringify({ ...user, [sourceDir]: templateName });
+}
+
 async function main() {
   const token = fetchSystemToken();
+
+  // 烘焙阶段(可选):须在 ensurePortForward 之前(--register 的 rollout restart
+  // 会断已有 port-forward,见 runBakeStage 文档)。
+  let bake;
+  let templateMapEnv;
+  if (BAKE_SOURCE !== undefined && BAKE_SOURCE.trim() !== "") {
+    if (exiting) return; // fetchSystemToken 失败(die)后不进 bake
+    bake = await runBakeStage();
+    if (bake === undefined || exiting) return;
+    templateMapEnv = mergeTemplateMap(
+      process.env.PI_WEB_E2B_TEMPLATE_MAP,
+      bake.sourceDir,
+      bake.templateName,
+    );
+    if (templateMapEnv === undefined || exiting) return;
+  }
+
   await ensurePortForward();
   startProxy();
 
@@ -170,6 +309,9 @@ async function main() {
     DATA_PLANE === "ws-runner"
       ? " ✅ 数据面 = ws-runner(WS 连沙箱内 agent-runner,无需 envd)。\n" +
         `   模板=${TEMPLATE};piweb-demo=stub-agent(免 LLM),piweb-pi=真实 pi --mode rpc。\n` +
+        (bake !== undefined
+          ? `   bake 模式:source=${bake.sourceDir} → 模板=烘焙镜像 ${bake.templateName}(已注入 TEMPLATE_MAP)。\n`
+          : "") +
         "   完整闭环:网页发 prompt → 沙箱内 agent 流式回复。\n" +
         "   前置:该模板须已注册(config-templates)且镜像已 kind load。"
       : " ⚠ 数据面 = envd(commands.run):agent-sandbox 无 envd,沙箱内 runner 起不来。\n" +
@@ -190,6 +332,11 @@ async function main() {
     E2B_API_URL: `http://127.0.0.1:${PROXY_PORT}`, // e2b 2.33 认此 env → 走本地反代控制面
     E2B_DOMAIN: `localhost:${MANAGER_PORT}`,
     PI_WEB_E2B_TEMPLATE: TEMPLATE,
+    // bake 模式:烘焙 source → 模板名 映射(map 级命中优先于上面的全局模板;
+    // 其他 source 仍走全局模板)。未设 BAKE_SOURCE 时不注入(零行为变化)。
+    ...(templateMapEnv !== undefined
+      ? { PI_WEB_E2B_TEMPLATE_MAP: templateMapEnv }
+      : {}),
     PI_WEB_E2B_VALIDATE_API_KEY: "false", // agent-sandbox 用 sys-* token(非 e2b_ 格式)
     // ── ws-runner 数据面 ──
     PI_WEB_E2B_RUNNER_WS_BASE: `ws://127.0.0.1:${MANAGER_PORT}`,
