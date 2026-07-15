@@ -118,3 +118,29 @@ export {
 } from "./aigc/run-image-tool.js";
 export type { RunImageToolOptions, RunImageToolDeps } from "./aigc/run-image-tool.js";
 export type { ImageRoute, InteractionParam, ToolExecuteDetails } from "./aigc/types.js";
+
+// ── archive-tools(zip / unzip / unrar;node-only)──────────────────────────────
+export {
+  normalizeRoot,
+  isInsideRoot,
+  resolveUnderRoot,
+  resolveUnderRootReal,
+  resolveZipEntry,
+  createZip,
+  listZipEntries,
+  extractZip,
+  writeZipEntries,
+  extractRar,
+  detectRarBackend,
+  writePlaceholderRar,
+  rimraf,
+} from "./archive/index.js";
+export type {
+  PathResolveResult,
+  ArchiveResult,
+  ArchiveErr,
+  ArchiveOk,
+  ArchiveErrorCode,
+  ZipEntryMeta,
+  RarBackend,
+} from "./archive/index.js";

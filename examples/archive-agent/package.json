@@ -1,0 +1,7 @@
+{
+  "name": "archive-agent",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "pi-web example agent with zip / unzip / unrar tools"
+}
