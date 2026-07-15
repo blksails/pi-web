@@ -29,6 +29,14 @@ export {
   type ResolvedE2bConfig,
   type E2bDataPlane,
 } from "./e2b-config.js";
+// 三级沙箱模板解析(spec sandbox-baked-agent-image:显式映射→门控派生→全局→清晰错误)。
+export {
+  resolveSandboxTemplate,
+  templateResolveMissingMessage,
+  type TemplateResolveInput,
+  type TemplateResolveSource,
+  type TemplateResolution,
+} from "./template-resolve.js";
 export {
   SpawnError,
   ChannelClosedError,
