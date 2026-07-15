@@ -73,6 +73,10 @@ export class PiRpcSession implements PiRpcChannel {
     if (typeof msg !== "object" || msg === null) return;
     const m = msg as Record<string, unknown>;
     const type = m["type"];
+    // 路由与 PiRpcProcess.dispatchLine 一致(pi-rpc-process.ts:494-506):
+    //   response → 兑现待决;extension_ui_request → 扩展 UI;**其余全部 → AgentEvent**
+    //   (agent_start/turn_start/message_update/text_delta/… 都是 AgentEvent 联合成员,
+    //    不带 `type:"event"` 包裹——真实 pi --mode rpc 直发这些帧,真机闭环才暴露)。
     if (type === "response" && typeof m["id"] === "string") {
       const pending = this.#pendingCommands.get(m["id"]);
       if (pending) {
@@ -81,14 +85,14 @@ export class PiRpcSession implements PiRpcChannel {
       }
       return;
     }
-    if (type === "event") {
-      for (const cb of this.#eventListeners) {
-        this.#safe(() => cb(msg as AgentEvent));
+    if (type === "extension_ui_request") {
+      for (const cb of this.#extUIListeners) {
+        this.#safe(() => cb(msg as RpcExtensionUIRequest));
       }
       return;
     }
-    for (const cb of this.#extUIListeners) {
-      this.#safe(() => cb(msg as RpcExtensionUIRequest));
+    for (const cb of this.#eventListeners) {
+      this.#safe(() => cb(msg as AgentEvent));
     }
   }
 

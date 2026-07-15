@@ -23,8 +23,12 @@
  *  - `CommandHandle` 暴露 `pid`、`sendStdin(data)`、`kill()`。
  *  - `sbx.kill()` 销毁沙盒。
  */
-import { Sandbox } from "e2b";
-import type { CommandHandle } from "e2b";
+// ⚠ e2b SDK **只在 #boot() 里懒加载**(`await import("e2b")`),不在模块顶层 import。
+// 原因:e2b@2.33 的模块初始化(getRuntime 读 platform.default.version)在 jiti 运行时
+// (dev server 走 `--import jiti/register`)下会抛,顶层 import 会让**整个 rpc-channel barrel**
+// 在 jiti 下加载即崩——哪怕根本没用 e2b 传输。懒加载使 e2b 仅在 PI_WEB_TRANSPORT=e2b 真正
+// 起 E2bTransport 时才 load,默认/local/stub 路径零影响。类型 import 为纯类型(运行时擦除,安全)。
+import type { CommandHandle, Sandbox } from "e2b";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import type { ChannelHealth, Unsubscribe } from "./pi-rpc-channel.js";
 import type { ExitInfo } from "./pi-rpc-process.js";
@@ -85,6 +89,8 @@ export class E2bTransport implements RpcTransport {
 
   async #boot(): Promise<void> {
     try {
+      // ── 懒加载 e2b SDK(见文件顶部注释:避免 jiti 下顶层 import 崩整个 barrel)──
+      const { Sandbox } = await import("e2b");
       // ── 起沙盒 ──
       const sbx = await Sandbox.create(this.#cfg.template, {
         apiKey: this.#cfg.apiKey,

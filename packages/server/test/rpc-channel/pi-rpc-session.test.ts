@@ -95,6 +95,30 @@ describe("PiRpcSession — 分帧分发 (Req 1.2)", () => {
     expect(seen[0]).toMatchObject({ type: "event", event: "agent_start" });
   });
 
+  it("真实 pi agent 帧(agent_start/message_update/…,无 type:event 包裹)→ onEvent", () => {
+    // ★真机回归:pi --mode rpc 直发 {type:"agent_start"}/{type:"message_update"} 等,不带
+    // type:"event"。路由须与 PiRpcProcess 一致——除 response/extension_ui_request 外**全部**
+    // 进 onEvent。曾错路由到 onExtensionUIRequest(单测用假 type:"event" 没抓到,真机才暴露)。
+    const t = new MockTransport();
+    const s = new PiRpcSession(t);
+    const events: unknown[] = [];
+    const uiReqs: unknown[] = [];
+    s.onEvent((e) => events.push(e));
+    s.onExtensionUIRequest((r) => uiReqs.push(r));
+    t.emitLine(JSON.stringify({ type: "agent_start" }));
+    t.emitLine(
+      JSON.stringify({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "PONG" } }),
+    );
+    t.emitLine(JSON.stringify({ type: "agent_end", messages: [] }));
+    expect(events).toHaveLength(3);
+    expect(events.map((e) => (e as { type: string }).type)).toEqual([
+      "agent_start",
+      "message_update",
+      "agent_end",
+    ]);
+    expect(uiReqs).toHaveLength(0); // agent 帧绝不进扩展 UI
+  });
+
   it("非 response/event 帧通知 onExtensionUIRequest 监听器", () => {
     const t = new MockTransport();
     const s = new PiRpcSession(t);
