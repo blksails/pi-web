@@ -308,9 +308,13 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   );
 
   // 会话打开或新建(open-or-create by id);纯逻辑见 open-or-create-session。
+  // 沙盒模式(spec sandbox-baked-agent-image)兜底:烘焙镜像的 AGENT_CMD 定死于构建期,
+  // per-session 的 --session-id 塞不进 argv,改经 configure→子进程 env 下发 PI_WEB_SESSION_ID;
+  // argv 优先(本地模式零变化),env 兜底使沙盒内会话身份与宿主对齐(附件属主校验依赖)。
+  const sessionId = args.sessionId ?? process.env["PI_WEB_SESSION_ID"];
   const { sessionManager, isNewSession } = await openOrCreateSession(
     args.cwd,
-    args.sessionId,
+    sessionId,
   );
 
   // 可选:把会话镜像到配置的 SessionEntryStore(sqlite/postgres)。fs 由 pi 原生负责,

@@ -371,9 +371,14 @@ describe("pi-handler e2b 分支 · 附件降级态下会话其余能力不受影
     const extraInDegraded = [...degradedKeys].filter((k) => !remoteKeys.has(k));
     expect(extraInDegraded).toEqual([]);
     // 共有键的值逐一相同(降级不改动任何非附件 env 的值)。
+    // PI_WEB_SESSION_ID 豁免:会话身份对齐 env(Req 4.1)按定义 per-session 不同——
+    // 两态来自两个会话,值必然不等;键集差断言(上方)已保证它在两态都存在。
     for (const k of degradedKeys) {
+      if (k === "PI_WEB_SESSION_ID") continue;
       expect(degradedSpecEnv[k], `spec.env[${k}] 两态应一致`).toBe(remoteSpecEnv[k]);
     }
+    expect(degradedSpecEnv["PI_WEB_SESSION_ID"]).toBeTruthy();
+    expect(remoteSpecEnv["PI_WEB_SESSION_ID"]).toBeTruthy();
 
     // envPassthrough 白名单:同样只差附件键。
     const remoteWlSet = new Set(remoteWl);

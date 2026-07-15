@@ -469,6 +469,11 @@ function buildSingleton(): HandlerSingleton {
           // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
           // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
           ...sandboxAttachmentEnv,
+          // 会话身份对齐(Req 4.1):烘焙镜像 AGENT_CMD 定死于构建期,per-session 的
+          // --session-id 塞不进 argv;改经 env 下发,runner 侧 argv 缺席时读此兜底,
+          // 使沙箱内会话 id 与宿主一致(附件属主校验依赖)。池化预 spawn 的 agent
+          // 收不到 per-session env,附件工具场景须用非池模板(取舍见 tasks.md Notes)。
+          PI_WEB_SESSION_ID: opts.sessionId,
         },
       };
       // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image 任务 4.1,
@@ -501,6 +506,8 @@ function buildSingleton(): HandlerSingleton {
           ...(selection.config.envPassthrough ?? []),
           ...Object.keys(sandboxAttachmentEnv),
           ...Object.keys(config.providerKeys),
+          // 会话身份 env(见上方 e2bSpec.env 注入处注释)。
+          "PI_WEB_SESSION_ID",
         ]),
       ];
       const e2bConfig = {
