@@ -60,6 +60,11 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
+  // LLM 网关路由挂载(spec sandbox-credentials-v2,任务 3.4):路由工厂 + provider 登记表
+  // 解析 + secret 解析,仅 serve 门控开启时注册。
+  createLlmGatewayRoutes,
+  resolveLlmGatewayProviderTable,
+  resolveLlmGatewaySecret,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -752,8 +757,19 @@ function buildSingleton(): HandlerSingleton {
         listModels: () => listVisionModelOptions(config.agentDir),
       }),
       // aigc-proxy 已摘除(spec sandbox-credentials-v2,任务 3.1,Req 4.1):原
-      // /aigc-proxy/:provider/* 注入路由不再注册,请求落到既有 404 语义。LLM 网关路由
-      // (createLlmGatewayRoutes,serve 门控)是任务 3.4 的范围,此处暂不挂载。
+      // /aigc-proxy/:provider/* 注入路由不再注册,请求落到既有 404 语义。
+      // LLM 网关路由(spec sandbox-credentials-v2,任务 3.4,Req 3.8):仅 serve 门控开启
+      // (config.llmGateway !== undefined 且 .serve !== false,3.2 定义)时挂载
+      // /llm-gateway/:provider/*(/api 下可达)。secret/registry 解析仅在启用时求值——
+      // resolveLlmGatewaySecret 在未配置 PI_WEB_LLM_GATEWAY_SECRET/PI_WEB_ATTACHMENT_SECRET
+      // 时会抛错,若移到条件外无条件调用会在未配置网关的部署上拖累整个装配。未启用时该
+      // 路径落既有 404 语义,不注册任何路由。
+      ...(config.llmGateway?.serve
+        ? createLlmGatewayRoutes({
+            secret: resolveLlmGatewaySecret(process.env),
+            registry: resolveLlmGatewayProviderTable(process.env),
+          })
+        : []),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。resolveWriteBackend(agent-attachment-profile spec,

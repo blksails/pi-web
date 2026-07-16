@@ -117,7 +117,7 @@ describe("computeE2bProviderEnv — LLM gateway configured", () => {
       sessionId: "sess-1",
       env,
     });
-    expect(result.passthroughKeys.sort()).toEqual(
+    expect([...result.passthroughKeys].sort()).toEqual(
       Object.keys(result.sandboxLlmEnv).sort(),
     );
   });
@@ -166,7 +166,7 @@ describe("computeE2bProviderEnv — LLM gateway not configured", () => {
       env: {},
     });
     expect(result.sandboxLlmEnv).toEqual({});
-    expect(result.passthroughKeys.sort()).toEqual(
+    expect([...result.passthroughKeys].sort()).toEqual(
       Object.keys(REAL_PROVIDER_KEYS).sort(),
     );
   });
