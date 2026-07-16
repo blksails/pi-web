@@ -89,14 +89,31 @@ export class Router {
     this.routes = [...builtins, ...injected];
   }
 
-  /** 匹配路径模板(段数相等,字面段相等,`:param` 段捕获)。 */
+  /**
+   * 匹配路径模板(段数相等,字面段相等,`:param` 段捕获)。
+   *
+   * 模板尾段为字面量 `*` 时视为通配段(Req 2.3):放宽段数约束为
+   * `segments.length >= route.segments.length - 1`(`*` 可匹配零段),其余实际段
+   * 逐段 `decodeURIComponent` 后以 `/` 连接存入 `params["*"]`。`*` 仅在尾段位置生效;
+   * 中段出现的 `*` 仍按字面量比较(向后兼容)。
+   */
   private matchPath(
     route: CompiledRoute,
     segments: ReadonlyArray<string>,
   ): Readonly<Record<string, string>> | undefined {
-    if (route.segments.length !== segments.length) return undefined;
+    const lastTmpl = route.segments[route.segments.length - 1];
+    const isWildcard = route.segments.length > 0 && lastTmpl === "*";
+
+    if (isWildcard) {
+      const fixedLen = route.segments.length - 1;
+      if (segments.length < fixedLen) return undefined;
+    } else if (route.segments.length !== segments.length) {
+      return undefined;
+    }
+
     const params: Record<string, string> = {};
-    for (let i = 0; i < route.segments.length; i += 1) {
+    const fixedCount = isWildcard ? route.segments.length - 1 : route.segments.length;
+    for (let i = 0; i < fixedCount; i += 1) {
       const tmpl = route.segments[i];
       const actual = segments[i];
       if (tmpl === undefined || actual === undefined) return undefined;
@@ -106,6 +123,14 @@ export class Router {
         return undefined;
       }
     }
+
+    if (isWildcard) {
+      params["*"] = segments
+        .slice(fixedCount)
+        .map((s) => decodeURIComponent(s))
+        .join("/");
+    }
+
     return params;
   }
 

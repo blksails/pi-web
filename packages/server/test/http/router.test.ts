@@ -141,4 +141,126 @@ describe("Router", () => {
     );
     expect(miss.status).toBe(404);
   });
+
+  describe("尾段 `*` 通配匹配(Req 2.3)", () => {
+    const wildcardBuiltins: RouteSpec[] = [
+      {
+        method: "GET",
+        path: "/aigc-proxy/:provider/*",
+        handler: ok("wildcard"),
+      },
+    ];
+
+    it("matches zero trailing segments (`*` matches empty)", async () => {
+      const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("wildcard");
+    });
+
+    it("matches a single trailing segment", async () => {
+      const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/v1", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("wildcard");
+    });
+
+    it("matches multiple trailing segments", async () => {
+      const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/v1/chat/completions", {
+          method: "GET",
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("wildcard");
+    });
+
+    it("matches trailing segments containing percent-encoded characters", async () => {
+      const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/a%2Fb/c%20d", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("wildcard");
+    });
+
+    it("exact route registered before wildcard wins (先注册先赢)", async () => {
+      const router = new Router({
+        store: makeStore(),
+        builtins: [
+          {
+            method: "GET",
+            path: "/aigc-proxy/:provider/special",
+            handler: ok("exact-special"),
+          },
+          ...wildcardBuiltins,
+        ],
+      });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/special", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("exact-special");
+    });
+
+    it("wildcard registered before an overlapping exact route wins (先注册先赢,方向相反)", async () => {
+      const router = new Router({
+        store: makeStore(),
+        builtins: [
+          ...wildcardBuiltins,
+          {
+            method: "GET",
+            path: "/aigc-proxy/:provider/special",
+            handler: ok("exact-special"),
+          },
+        ],
+      });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/special", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("wildcard");
+    });
+
+    it("path matches wildcard but method does not → 405", async () => {
+      const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
+      const res = await router.route(
+        new Request("http://x/aigc-proxy/newapi/v1", { method: "POST" }),
+      );
+      expect(res.status).toBe(405);
+    });
+
+    it("mid-segment `*` remains a literal (backward compatible, no match)", async () => {
+      const router = new Router({
+        store: makeStore(),
+        builtins: [
+          { method: "GET", path: "/foo/*/bar", handler: ok("literal-star") },
+        ],
+      });
+      const literalMatch = await router.route(
+        new Request("http://x/foo/*/bar", { method: "GET" }),
+      );
+      expect(literalMatch.status).toBe(200);
+      expect(await literalMatch.text()).toBe("literal-star");
+
+      const noMatch = await router.route(
+        new Request("http://x/foo/anything/bar", { method: "GET" }),
+      );
+      expect(noMatch.status).toBe(404);
+    });
+
+    it("non-wildcard route matching semantics are unaffected (regression)", async () => {
+      const router = new Router({ store: makeStore(true), builtins });
+      const res = await router.route(
+        new Request("http://x/sessions/sess-1/state", { method: "GET" }),
+      );
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe("state:sess-1");
+    });
+  });
 });
