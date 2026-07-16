@@ -83,3 +83,8 @@
   - 既有 e2e:sandbox-browser 基建(kind 集群/凭据)可用时:沙盒内生图经宿主代理完成,验收 2.1/4.1 在真实沙盒环境成立
   - 缺基建/凭据时 SKIP(exit 0),不阻塞本 spec 完成判定
   - _Requirements: 2.1, 4.1_
+
+## Implementation Notes
+- 「三真实键名不出现」是速记:语义为真实**值**不出现——六键含三个与真实键同名的 `*_API_KEY`(值=会话 token),断言按值做(4.2 复核确认)
+- 代理路由注册门控在 config.aigcProxyPublicBase;secret 皆缺在装配期(buildSingleton)抛,属合理 fail-fast
+- e2b 闭包断言技术:捕获 transport 构造参数 + 惰性 FakeChannel 经 getHandler()+createSession() 走真实路径(沿 e2b-env-assembly.test.ts 惯例,无需抽纯函数)
