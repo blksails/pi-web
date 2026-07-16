@@ -1226,13 +1226,13 @@ export function PiChat({
   const showAside = showPanelRight || hasArtifactAside || showLogsRight;
   // 连续宽度(全受控):宿主传 panelWidth 即启用,替离散 panelRatio 档。
   const resizablePanel = hasPanelRight && panelWidth !== undefined;
-  const asideWidth = resizablePanel
-    ? typeof panelWidth === "number"
-      ? `${panelWidth}px`
-      : panelWidth
-    : panelRatioActive
-      ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
-      : undefined;
+  // 宽度解析:连续模式 number→px、string 原样;否则离散档取预设宽;再否则不设(沿用 w-96 类)。
+  let asideWidth: string | undefined;
+  if (resizablePanel) {
+    asideWidth = typeof panelWidth === "number" ? `${panelWidth}px` : panelWidth;
+  } else if (panelRatioActive) {
+    asideWidth = PANEL_RATIO_ASIDE_WIDTH[panelRatio];
+  }
 
   // 控件解析(components 覆盖 vs 默认;可移除控件支持 null)。
   const SubmitC = resolveComponent(components?.SubmitButton, SubmitButton);
