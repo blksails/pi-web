@@ -50,7 +50,7 @@
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 2.6, 3.3_
 
 - [ ] 4. 宿主接线
-- [ ] 4.1 配置解析与 fail-fast 校验
+- [x] 4.1 配置解析与 fail-fast 校验
   - config 层收原始 `PI_WEB_AIGC_PROXY_PUBLIC_BASE` 与 aigc 网关键子集常量(NEWAPI/SUFY/DASHSCOPE 三键);解析函数校验 http/https,非法值抛携带变量名与三种修复路径的清晰错误,未设返回 undefined
   - token TTL 计算:e2b 沙盒超时 + 安全余量,可被 `PI_WEB_AIGC_PROXY_TOKEN_TTL_MS` 独立覆盖
   - 沙盒网关 env 构造:publicBase 尾斜杠归一后拼 `/api/aigc-proxy/<provider>`,产出六键(三 BASE_URL + 三 API_KEY=token)

@@ -39,6 +39,13 @@ export interface AppConfig {
    * already determined the source; the user can still switch source in-session.
    */
   readonly autoStart: boolean;
+  /**
+   * Raw operator-configured externally-reachable base URL for the aigc key proxy
+   * (`PI_WEB_AIGC_PROXY_PUBLIC_BASE`), unvalidated here — parsing/validation is
+   * `resolveAigcProxyConfig`'s job (spec aigc-key-proxy, e2b session-creation path).
+   * Undefined means proxy mode is off (existing key-passthrough behavior).
+   */
+  readonly aigcProxyPublicBase?: string;
 }
 
 /** Recognizable configuration error; its message never includes secret values. */
@@ -71,6 +78,19 @@ const PROVIDER_KEY_NAMES = [
   "SUFY_API_KEY",
 ] as const;
 
+/**
+ * Subset of `PROVIDER_KEY_NAMES` for the three aigc gateway providers (spec
+ * aigc-key-proxy): in proxy mode these three keys are the ones stripped from the
+ * sandbox env and replaced by `buildSandboxGatewayEnv`'s six gateway keys instead
+ * of being passed through as real credentials (Req 1.1, 4.1). Kept as a literal
+ * subset (not derived) so `PROVIDER_KEY_NAMES` itself stays untouched.
+ */
+export const AIGC_GATEWAY_KEY_NAMES = [
+  "NEWAPI_API_KEY",
+  "SUFY_API_KEY",
+  "DASHSCOPE_API_KEY",
+] as const;
+
 function isTruthy(v: string | undefined): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
@@ -99,6 +119,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (value !== undefined && value.length > 0) providerKeys[name] = value;
   }
 
+  const aigcProxyPublicBase = env.PI_WEB_AIGC_PROXY_PUBLIC_BASE;
+
   return Object.freeze({
     providerKeys: Object.freeze({ ...providerKeys }),
     agentDir: resolveAgentDir(env),
@@ -111,5 +133,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     defaultCwd: env.PI_WEB_DEFAULT_CWD ?? process.cwd(),
     stubAgent,
     autoStart: isTruthy(env.PI_WEB_AUTOSTART),
+    ...(aigcProxyPublicBase !== undefined ? { aigcProxyPublicBase } : {}),
   });
 }
