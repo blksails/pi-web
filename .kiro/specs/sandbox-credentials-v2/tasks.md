@@ -1,14 +1,14 @@
 # Implementation Plan
 
-- [ ] 1. token 原语基础
-- [ ] 1.1 scoped token 签发/校验
+- [x] 1. token 原语基础
+- [x] 1.1 scoped token 签发/校验
   - 实现 `pw2.<scope>.<sessionId>.<exp>.<sigHex>` 线格式的 mint/verify;签名 `HMAC-SHA256(secret, "pi-token.v2." + scope + "." + sessionId + "." + exp)` hex
   - mint 期拒签含 `.` 的 scope/sessionId(抛清晰错误);verify 顺序=格式→过期(nowMs 可注入)→scope 逐字等于 expectedScope→timingSafeEqual,失败返回判别原因(malformed/expired/scope-mismatch/bad-signature)不抛
   - 交付含 `packages/server/src/tokens/` barrel 与 `packages/server/src/index.ts` 增 tokens 导出(供 lib/app 装配 import)
   - 观察:单测覆盖四种失败判别 + scope 逐字匹配(`llm:newapi` 的 token 用 expectedScope=`llm:sufy` 校验→scope-mismatch)+ `.` 拒签 + 与 url-signer/attachment token 签名域不可互换(同 secret 交叉校验必失败);`import { mintScopedToken } from` server 包 barrel 可解析
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
   - _Boundary: ScopedToken_
-- [ ] 1.2 LLM 面 secret 族解析
+- [x] 1.2 LLM 面 secret 族解析
   - 实现 `resolveLlmGatewaySecret(env)`:优先 `PI_WEB_LLM_GATEWAY_SECRET`,回退 `PI_WEB_ATTACHMENT_SECRET`,皆缺抛清晰错误;按 secret 族参数化预留其他面
   - 观察:单测覆盖优先/回退/皆缺三态;回退取值与附件 secret 一致
   - _Requirements: 1.5_

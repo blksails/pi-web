@@ -52,3 +52,6 @@ export { resolveSandboxEntry } from "./sandbox/entry.js";
 // aigc-proxy(aigc-key-proxy):凭据注入代理路由 + provider 登记表 + 会话短期 token。
 // 仅 node builtins(node:crypto)+ 全局 fetch,无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./aigc-proxy/index.js";
+// tokens(sandbox-credentials-v2):分面 scoped token 签发/校验原语(mintScopedToken /
+// verifyScopedToken)。仅 node builtins(node:crypto),无 pi SDK 值导入,可安全经 barrel 重导出。
+export * from "./tokens/index.js";
