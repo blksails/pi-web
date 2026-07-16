@@ -67,7 +67,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 4.1_
 
 - [ ] 5. 端到端验证
-- [ ] 5.1 核心链路 e2e(无 e2b 依赖)
+- [x] 5.1 核心链路 e2e(无 e2b 依赖)
   - 起真实 pi-web server(代理路由启用,宿主 env 含真实 key `sk-real-e2e`)+ node:http stub 上游;独立子进程 env 仅含代理地址与会话 token(无真实 key),经真实 runEndpoint 发起文生图
   - 断言:产物 b64 正确回传;stub 收到且仅收到 `Bearer sk-real-e2e`;子进程 env 全程无 `sk-real-e2e`;工具错误语义:过期 token → 401
   - 观察:e2e 脚本 exit 0 并输出断言摘要

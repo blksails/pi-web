@@ -43,6 +43,7 @@
     "e2e:csp": "node e2e/csp/import-map-csp.mjs",
     "e2e:sandbox-baked": "node e2e/sandbox-baked-image.local.mjs",
     "e2e:sandbox-browser": "node e2e/sandbox-browser.local.mjs",
+    "e2e:aigc-proxy": "node e2e/aigc-proxy/proxy-chain.local.mjs",
     "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit",
     "e2e:desktop:real": "node e2e/desktop/desktop-real.mjs",
     "e2e:desktop:nonode": "node e2e/desktop/desktop-no-node.mjs",
