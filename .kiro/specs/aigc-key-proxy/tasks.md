@@ -24,7 +24,7 @@
   - _Requirements: 2.2_
   - _Boundary: provider-registry_
 
-- [ ] 2.3 (P) 工具侧网关地址占位化
+- [x] 2.3 (P) 工具侧网关地址占位化
   - newapi/sufy 的 baseUrl 与 dashscope 的 BASE 常量改为 `${X_BASE_URL:-<原字面量>}`(三键独立);dashscope 异步轮询 URL 由同一 BASE 拼接自动跟随
   - 保持模块顶层不读 process.env 的双入口约束(占位为字符串字面量,展开发生在执行期)
   - 观察:集成测试证明 env 设 `NEWAPI_BASE_URL` 指 stub 时请求打到 stub、未设时打默认字面量;既有 aigc 全部测试零回归

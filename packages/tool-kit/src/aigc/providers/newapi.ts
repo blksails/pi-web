@@ -25,11 +25,12 @@ import {
 
 // ── 网关配置 ─────────────────────────────────────────────────────────────────
 
-// NewAPI 网关 base 为**编译期常量**:本模块经 tool 声明从主入口(前端安全)导出,
+// NewAPI 网关 base 为**编译期字符串字面量**:本模块经 tool 声明从主入口(前端安全)导出,
 // 模块顶层**不得**读 `process.env`(浏览器 bundle eval 时 `process` 可能未定义,破坏双入口
-// 边界 / Req 6.1)。如需可配置 base,后续经 var-resolver `${VAR}` 占位在运行时解析。
+// 边界 / Req 6.1)。base 走 `${NEWAPI_BASE_URL:-默认值}` 占位,在 runEndpoint 执行期经
+// var-resolver 展开(未设/空 env 时回落默认字面量,Req 5.1/5.2/5.3)。
 const NEWAPI_CONFIG: OpenAiCompatConfig = {
-  baseUrl: "https://www.apiservices.top/v1",
+  baseUrl: "${NEWAPI_BASE_URL:-https://www.apiservices.top/v1}",
   apiKeyVar: "NEWAPI_API_KEY",
   provider: "newapi",
   // 该网关与 sufy 同样严格拒绝 response_format(400 Unknown parameter,2026-07-16 实测);

@@ -26,14 +26,16 @@ import {
 // ── 网关配置 ─────────────────────────────────────────────────────────────────
 
 // sufy OpenAI 兼容 base(`https://openai.sufy.com/v1`,七牛云 AIGC 网关,与 api.qnaigc.com 同源)。
-// 编译期常量,勿读 env(双入口边界:主入口经浏览器 bundle,`process` 可能未定义)。
+// 编译期字符串字面量,勿读 env(双入口边界:主入口经浏览器 bundle,`process` 可能未定义)。
 // 经 curl 冒烟实测:/images/generations 与 /images/edits(接受 image[] 多图字段)均出图;
 // 模型 id 必须带 openai/ 前缀(见 providerModel),不带前缀返回 502 upstream_error。
+// base 走 `${SUFY_BASE_URL:-默认值}` 占位,在 runEndpoint 执行期经 var-resolver 展开
+// (未设/空 env 时回落默认字面量,Req 5.1/5.2/5.3)。
 // omitResponseFormat:sufy 严格拒绝 response_format 参数
 // ("[BadRequestError] Unknown parameter: 'response_format'" → 400),故文生图不发该字段;
 // gpt-image 系列默认已返回 b64_json,省略不损失 persistPicked 的 b64 内联优化。
 const SUFY_CONFIG: OpenAiCompatConfig = {
-  baseUrl: "https://openai.sufy.com/v1",
+  baseUrl: "${SUFY_BASE_URL:-https://openai.sufy.com/v1}",
   apiKeyVar: "SUFY_API_KEY",
   omitResponseFormat: true,
   provider: "sufy",

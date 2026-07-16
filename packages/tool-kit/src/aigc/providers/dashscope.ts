@@ -14,7 +14,10 @@ import type { ImageRoute } from "../types.js";
 
 // ── Endpoint URLs ─────────────────────────────────────────────────────────────
 
-const BASE = "https://dashscope.aliyuncs.com/api/v1";
+// base 走 `${DASHSCOPE_BASE_URL:-默认值}` 占位(编译期字符串字面量,不读 env),在
+// runEndpoint 执行期经 var-resolver 展开(未设/空 env 时回落默认字面量,Req 5.1/5.2/5.3)。
+// 异步轮询 URL(taskUrl)由同一 BASE 拼接,故自动跟随 override。
+const BASE = "${DASHSCOPE_BASE_URL:-https://dashscope.aliyuncs.com/api/v1}";
 
 /** Wanx 系列文生图异步端点。 */
 const ASYNC_T2I_URL = `${BASE}/services/aigc/text2image/image-synthesis`;

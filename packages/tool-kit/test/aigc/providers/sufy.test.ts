@@ -13,6 +13,7 @@ import {
   createSufyImageEdit,
 } from "../../../src/aigc/providers/sufy.js";
 import type { BuildBodyContext } from "../../../src/engine/endpoint-types.js";
+import { resolveVars } from "../../../src/engine/var-resolver.js";
 
 const ctx: BuildBodyContext = {};
 
@@ -25,7 +26,9 @@ describe("createSufyImage", () => {
       providerModel: "openai/gpt-image-2",
     });
     expect(v.model).toBe("gpt-image-2-sufy");
-    expect(v.url).toBe("https://openai.sufy.com/v1/images/generations");
+    // baseUrl 是 `${SUFY_BASE_URL:-默认值}` 占位(声明期字面量),经 resolveVars(runEndpoint
+    // 执行期语义)展开后才是真实请求 URL;未设 SUFY_BASE_URL 时回落默认字面量。
+    expect(resolveVars(v.url ?? "")).toBe("https://openai.sufy.com/v1/images/generations");
     expect(v.requiredVars).toContain("SUFY_API_KEY");
     expect(v.headers?.["authorization"]).toContain("${SUFY_API_KEY}");
     // 国内网关不挂 proxy
@@ -81,7 +84,7 @@ describe("createSufyImageEdit", () => {
       description: "d",
       providerModel: "openai/gpt-image-2",
     });
-    expect(v.url).toBe("https://openai.sufy.com/v1/images/edits");
+    expect(resolveVars(v.url ?? "")).toBe("https://openai.sufy.com/v1/images/edits");
     expect(v.requiredVars).toContain("SUFY_API_KEY");
   });
 
