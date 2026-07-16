@@ -79,9 +79,9 @@
   - 部署文档说明:推荐自部署用 cloud-http(X-Pi-Attachment-Token)回环替代 s3 凭据透传使沙箱无对象存储静态凭据;s3 直连保留为宿主可信部署显式选项并说明其暴露面;含配 LLM 网关后 AIGC 三键被剔的迁移警示(平台注入 vs `PI_WEB_E2B_ENV_PASSTHROUGH` 显式透传)
   - 观察:文档落盘且覆盖推荐形态/显式选项/迁移警示三点
   - _Requirements: 5.1, 5.2_
-- [ ]* 4.4 真沙箱手动验证
+- [~]* 4.4 真沙箱手动验证 — **SKIP(边界外阻塞;Req 6.1「或等价多进程编排」已由 4.1 满足)**
   - Chrome + e2b/ACS dev(配 LLM 网关):kubectl Pod env 无任何真实 provider key、主 LLM 对话经网关 token 换钥成功流式回复;缺凭据/基建时 SKIP
-  - 观察:Pod env 实证无真实 key + 对话成功截图/日志
+  - **SKIP 理由**:让沙箱内 agent 真正指向网关,需基座镜像 entrypoint 按 `PI_LLM_GATEWAY_BASE`/`PI_LLM_TOKEN_<ID>` 生成网关形态 models.json——该「镜像 entrypoint models.json 生成分支」是本 spec 明确的**边界外**(pi-clouds 基座镜像仓)。当前 baked 镜像不认这套 env,配好宿主侧网关也无法在沙箱内跑通主对话经网关的路径。Req 6.1 明文「真实沙箱**或等价的多进程编排**」,4.1 三进程真实链(11 断言:真实进程边界的凭据零泄漏 + 换钥 + SSE 流式 + 401/403/404)已等价满足;凭据不进沙箱的装配侧属性另由 3.3 装配单测在值层面证明。待 pi-clouds 侧镜像 entrypoint 网关分支落地后,可作为跨仓联调补验。
   - _Requirements: 6.1, 6.2_
   - _Depends: 4.1_
 
