@@ -91,7 +91,10 @@ import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 // LLM 网关凭据切换决策(spec sandbox-credentials-v2,任务 3.3):e2b 分支的
 // providerKeysForE2b/sandboxLlmEnv 计算抽成纯函数,便于脱离真实传输单测。
-import { computeE2bProviderEnv } from "./llm-gateway-assembly.js";
+import {
+  computeE2bProviderEnv,
+  deprecatedAigcProxyWarning,
+} from "./llm-gateway-assembly.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
@@ -477,16 +480,9 @@ function buildSingleton(): HandlerSingleton {
       // 装配中完全摘除;若运维仍设置其专属废弃 env(三者任一),这些 env 自身已不再产生
       // 任何效果(沙箱沿用现状 key 透传行为,与摘除前"未配置代理"的形态等同,Req 4.3),
       // 仅在此提示已废弃与替代去向,便于运维排查为何配置不再生效。
-      if (
-        process.env.PI_WEB_AIGC_PROXY_PUBLIC_BASE !== undefined ||
-        process.env.PI_WEB_AIGC_PROXY_SECRET !== undefined ||
-        process.env.PI_WEB_AIGC_PROXY_TOKEN_TTL_MS !== undefined
-      ) {
-        llmGatewayLogger.warn(
-          "检测到已废弃的 aigc-proxy 专属配置项(PI_WEB_AIGC_PROXY_PUBLIC_BASE / " +
-            "PI_WEB_AIGC_PROXY_SECRET / PI_WEB_AIGC_PROXY_TOKEN_TTL_MS 任一):aigc-proxy 已废弃," +
-            "这些 env 不再产生任何效果,LLM 凭据改由 sandbox-credentials-v2 的 LLM 网关处理。",
-        );
+      const deprecationWarning = deprecatedAigcProxyWarning(process.env);
+      if (deprecationWarning !== undefined) {
+        llmGatewayLogger.warn(deprecationWarning);
       }
       // LLM 网关凭据切换(任务 3.3,design.md LlmGatewayAssembly,Req 2.1/2.2/2.4/2.5/4.3/4.4):
       // 决策逻辑抽成纯函数 computeE2bProviderEnv(见 llm-gateway-assembly.ts),便于脱离真实

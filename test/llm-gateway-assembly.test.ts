@@ -7,7 +7,11 @@
  * 传输直接断言安全不变式(配置网关后沙箱 env/白名单不含任何真实 provider key 值)。
  */
 import { describe, expect, it } from "vitest";
-import { computeE2bProviderEnv } from "@/lib/app/llm-gateway-assembly";
+import {
+  computeE2bProviderEnv,
+  deprecatedAigcProxyWarning,
+  DEPRECATED_AIGC_PROXY_ENV_NAMES,
+} from "@/lib/app/llm-gateway-assembly";
 import type { LlmGatewayConfig } from "@/lib/app/llm-gateway-config";
 
 /** A representative subset of `PROVIDER_KEY_NAMES` (lib/app/config.ts), covering
@@ -196,5 +200,33 @@ describe("computeE2bProviderEnv — LLM gateway not configured", () => {
     });
     expect(result.warn).toBeDefined();
     expect(result.warn).toMatch(/LLM 网关未配置/);
+  });
+});
+
+describe("deprecatedAigcProxyWarning — 废弃 aigc-proxy env 告警(Req 4.2)", () => {
+  it("三个废弃 env 皆未设 → 无告警(undefined)", () => {
+    expect(deprecatedAigcProxyWarning({})).toBeUndefined();
+  });
+
+  it.each(DEPRECATED_AIGC_PROXY_ENV_NAMES)(
+    "设置 %s(任一)→ 返回告警文案",
+    (name) => {
+      const warning = deprecatedAigcProxyWarning({ [name]: "x" });
+      expect(warning).toBeDefined();
+      expect(warning).toContain("已废弃");
+      expect(warning).toContain("LLM 网关");
+    },
+  );
+
+  it("告警文案不含任何凭据值(仅 env 名与去向)", () => {
+    const warning = deprecatedAigcProxyWarning({
+      PI_WEB_AIGC_PROXY_SECRET: "super-secret-value-should-not-leak",
+    });
+    expect(warning).toBeDefined();
+    expect(warning).not.toContain("super-secret-value-should-not-leak");
+  });
+
+  it("空串也视为已设置(env 存在即告警)", () => {
+    expect(deprecatedAigcProxyWarning({ PI_WEB_AIGC_PROXY_PUBLIC_BASE: "" })).toBeDefined();
   });
 });

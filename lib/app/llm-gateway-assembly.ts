@@ -41,6 +41,33 @@ import {
 import type { AppConfig } from "./config.js";
 import { buildSandboxLlmEnv } from "./llm-gateway-config.js";
 
+/** 已废弃的 aigc-proxy 专属配置项 env 名(spec sandbox-credentials-v2,Req 4.2)。 */
+export const DEPRECATED_AIGC_PROXY_ENV_NAMES = [
+  "PI_WEB_AIGC_PROXY_PUBLIC_BASE",
+  "PI_WEB_AIGC_PROXY_SECRET",
+  "PI_WEB_AIGC_PROXY_TOKEN_TTL_MS",
+] as const;
+
+/**
+ * 废弃告警检测(Req 4.2):若运维仍设置任一已废弃的 aigc-proxy 专属 env,返回一条指明
+ * 「已废弃 + 替代去向」的告警文案(供 e2b 装配路径 warn),否则返回 undefined。纯函数,
+ * 便于单测;文案不含任何凭据值。
+ */
+export function deprecatedAigcProxyWarning(
+  env: Record<string, string | undefined>,
+): string | undefined {
+  const anySet = DEPRECATED_AIGC_PROXY_ENV_NAMES.some(
+    (name) => env[name] !== undefined,
+  );
+  if (!anySet) return undefined;
+  return (
+    "检测到已废弃的 aigc-proxy 专属配置项(" +
+    DEPRECATED_AIGC_PROXY_ENV_NAMES.join(" / ") +
+    " 任一):aigc-proxy 已废弃,这些 env 不再产生任何效果," +
+    "LLM 凭据改由 sandbox-credentials-v2 的 LLM 网关处理。"
+  );
+}
+
 /** Result of the e2b-branch LLM credential switch decision. */
 export interface E2bProviderEnvResult {
   /**

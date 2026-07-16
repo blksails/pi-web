@@ -78,19 +78,6 @@ const PROVIDER_KEY_NAMES = [
   "SUFY_API_KEY",
 ] as const;
 
-/**
- * Subset of `PROVIDER_KEY_NAMES` for the three aigc gateway providers (spec
- * aigc-key-proxy): in proxy mode these three keys are the ones stripped from the
- * sandbox env and replaced by `buildSandboxGatewayEnv`'s six gateway keys instead
- * of being passed through as real credentials (Req 1.1, 4.1). Kept as a literal
- * subset (not derived) so `PROVIDER_KEY_NAMES` itself stays untouched.
- */
-export const AIGC_GATEWAY_KEY_NAMES = [
-  "NEWAPI_API_KEY",
-  "SUFY_API_KEY",
-  "DASHSCOPE_API_KEY",
-] as const;
-
 function isTruthy(v: string | undefined): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
