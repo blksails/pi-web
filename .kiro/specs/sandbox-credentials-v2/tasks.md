@@ -14,7 +14,7 @@
   - _Requirements: 1.5_
   - _Boundary: SecretResolver_
 
-- [ ] 2. LLM 网关核心
+- [x] 2. LLM 网关核心
 - [x] 2.1 provider 登记表
   - 内置 provider 表(providerId→keyEnvCandidates→upstreamBase,逐一核对上游基址与 tool-kit/镜像事实一致);`PI_WEB_LLM_GATEWAY_PROVIDERS` JSON 同名覆盖/新名追加,zod 装配期 fail-fast;token env 名派生规则(providerId 大写、`-`→`_`,前缀 `PI_LLM_TOKEN_`)
   - 观察:单测覆盖内置表查得、JSON 覆盖生效、JSON 追加新 provider、非法 JSON fail-fast、env 名派生正确
@@ -44,13 +44,13 @@
   - 观察:源码/单测/装配层无残留 aigc-proxy 引用;`/api/aigc-proxy/*` 请求 404;设置废弃 env 触发 warn;删除后单测/集成套件通过
   - _Requirements: 4.1, 4.2, 4.5_
   - _Boundary: AigcProxyRemoval_
-- [ ] 3.2 LLM 网关装配配置与 env 注入
+- [x] 3.2 LLM 网关装配配置与 env 注入
   - `lib/app/llm-gateway-config.ts`:`resolveLlmGatewayConfig(env)`(PUBLIC_BASE/TOKEN_TTL_MS/SERVE 解析,SERVE 缺省=PUBLIC_BASE 非空即启);`buildSandboxLlmEnv({publicBase,tokens})`→`{PI_LLM_GATEWAY_BASE, PI_LLM_TOKEN_<ID>...}`;`lib/app/config.ts` 增 llmGateway 相关字段装载
   - 观察:单测覆盖配置解析三态、buildSandboxLlmEnv 产物键名符合跨仓契约(`PI_LLM_GATEWAY_BASE`=`<publicBase>/api/llm-gateway`、`PI_LLM_TOKEN_<ID>` 派生正确)
   - _Requirements: 2.2_
   - _Boundary: LlmGatewayAssembly_
   - _Depends: 1.1, 2.1_
-- [ ] 3.3 pi-handler e2b 装配切换
+- [x] 3.3 pi-handler e2b 装配切换
   - e2b 分支:配 PUBLIC_BASE 时 `providerKeysForE2b={}`(PROVIDER_KEY_NAMES 全量不进 env 与白名单),对登记表∩宿主env有key的每个 provider mint(scope=`llm:<id>`),buildSandboxLlmEnv 产物并入 e2bSpec.env 与白名单;未配置→现状透传 + `app:llm-gateway` 可识别 warn;本地 spawn 分支零触碰
   - AIGC 面回归:未配 LLM 网关时三键随 PROVIDER_KEY_NAMES 照常透传(tool-kit 占位符零改动),平台/operator 注入的覆盖值优先生效
   - 观察:装配单测断言——配置时沙箱 env 与白名单不含任何 PROVIDER_KEY_NAMES 真实值且 token env 齐全;未配置时维持现状 + warn;本地模式无变化;未配网关时 AIGC 三键仍透传
@@ -98,3 +98,5 @@
 - gateway-routes.ts 中 2.3 待补项已用 `// TODO(2.3):` 标注(body 改 `arrayBuffer()` 缓冲、`ctx.req.signal` abort 传播、上游错误 causeStack 细化日志);2.3 实现时按这些注释点定位即可,勿另起结构
 - 2.3 完成:`gateway-routes.ts` 补齐 body 缓冲转发(`arrayBuffer()`,GET/HEAD 除外,绝不手动 set content-length)、`ctx.req.signal` 经 `AbortSignal.any([clientSignal, timeoutSignal])` 联动可选 `timeoutMs`(超时命中→504,其余 fetch 抛错→502)、上游错误日志(errName/causeCode/causeStack,截前 5 行栈)+ 每请求 `{sessionId,provider,status,durationMs}` 埋点(命名空间 `server:llm-gateway`)。响应流式直通(`new Response(upstream.body,…)`)与 URL 拼接在 2.2 已正确实现,2.3 未改动。测试新增 4 条(body 逐字节+无手动 content-length 回归锁、SSE 非整体缓冲、client abort 传播、502 文案不含 key)+ 补强既有「上游 fetch 抛错→502」用例的脱敏断言,`packages/server/test/llm-gateway/` 27/27 绿;`npx tsc --noEmit -p packages/server` 零错误(无残留 aigc-proxy 相关既知错误——该 2 个既知错误在别处的 tsconfig 范围,不在 packages/server 内)
 - **测试 abort 传播的时序陷阱**:`Router.route()` 在触达 `matched.route.handler` 前有 `await this.authResolver(req)`(鉴权解析),故 test 里同步调用 `controller.abort()` 可能发生在 mock `fetchImpl` 被真正调用**之前**——mock 内必须先同步核对 `signal.aborted`,不能只挂 `addEventListener("abort", …)`(否则错过已发生的 abort 事件,测试会挂起到 vitest 默认 30s 超时)。任何后续任务对携带 abort 语义的路由做集成测试时都应留意这个先后关系。
+- 3.2 完成:`lib/app/llm-gateway-config.ts` 的 `resolveLlmGatewayConfig(env)` 以 `PI_WEB_LLM_GATEWAY_PUBLIC_BASE` 是否已设为**唯一判别点**(`undefined` ⟺ 网关未配置,与已删的 `resolveAigcProxyConfig` 同构),`serve` 字段只在配置存在时才有意义、默认 `true`(`PI_WEB_LLM_GATEWAY_SERVE=0|false` 大小写不敏感显式关闭)——3.3(装配切换)判定"是否配置"用 `config.llmGateway !== undefined`,3.4(路由挂载门控)再取其 `.serve` 字段,两者共用同一个 `LlmGatewayConfig | undefined`,不要在 3.3/3.4 里各自重新解析 env。`buildSandboxLlmEnv` 的 provider→token env 名派生**复用**了 `@blksails/pi-web-server` 已导出的 `llmGatewayTokenEnvName`(未在 lib/app 重造),3.3 装配 mint 循环时对每个 provider 调用该函数取 env 名与 2.1 的登记表/2.2 路由的 scope 命名(`llm:<id>`)保持同源。单测位置沿用 `test/`(根级,`@/lib/app/...` 别名,vitest.config.ts 无需改动;`@blksails/pi-web-server` 是 pnpm workspace 包,按 package.json `exports` 正常 node 解析,无需在 vitest.config.ts 加 alias)。全仓 `npx tsc --noEmit` 剩余 2 个已知错误(`e2e/aigc-proxy/server-entry.ts`)与本任务无关,留给 4.1;`npx vitest run` 有 3 个 `test/webext-locate-dist.test.ts` 失败,经 `git stash` 复核为改动前既存失败(与本任务无关),root cause 未查(疑似夹具/构建产物缺失,非本 spec 范围)。
+- 3.3 完成:装配切换决策抽成纯函数 `lib/app/llm-gateway-assembly.ts` 的 `computeE2bProviderEnv({config, sessionId, env})`,理由是 `pi-handler.ts` 的 e2b 分支耦合真实 e2b/ws-runner transport 不易单测——`pi-handler.ts` 只在 `selection.mode === "e2b"` 分支内调用它一次,产出 `{providerKeysForE2b, sandboxLlmEnv, passthroughKeys, warn?}` 后原样并入既有 `e2bSpec.env`/`envPassthrough` 组装(未改动附件/会话身份 env 的既有并入逻辑,只是把原来字面量 `config.providerKeys` 换成函数产出)。配置网关时(`config.llmGateway !== undefined`)`providerKeysForE2b` 恒为 `{}`——遍历 `resolveLlmGatewayProviderTable(env)` ∩ 宿主 env 实际持有 key 的 provider,逐个 `mintScopedToken({scope:"llm:"+id, sessionId, ttlMs:config.llmGateway.tokenTtlMs, secret:resolveLlmGatewaySecret(env)})`,`buildSandboxLlmEnv` 产物即 `passthroughKeys` 全集;未配置时原样透传 `config.providerKeys` + 产出一条 `warn`(pi-handler 侧用既有 `llmGatewayLogger.warn` 记,namespace `app:llm-gateway`,与 3.1 的废弃告警同一 logger 实例)。安全不变式测试:`test/llm-gateway-assembly.test.ts` 用一组含真实密钥字面量(`sk-ant-REAL-SECRET-VALUE` 等,含 NEWAPI/SUFY/DASHSCOPE)的 fixture provider keys,配置网关后对 `{...providerKeysForE2b, ...sandboxLlmEnv}` 序列化后逐个 `.not.toContain(secret)` 扫描 + 断言 `passthroughKeys` 不含任何真实 key 名(不只是值层面);另断言未配置时三键仍原样透传、`PI_LLM_TOKEN_<ID>` 只对宿主实际持有 key 的 provider 产出(google/mistral/openrouter 在 fixture env 里缺 key,断言其 token env 不存在)、`PI_LLM_GATEWAY_BASE` 派生正确、mint 出的 token 可用 `verifyScopedToken` 逐字段核验(sessionId/scope 绑定正确)。测试与实现共 11 + 0(纯函数无需改现有测试)个新用例,全绿。`packages/server` 全量 1630 pass/12 skip;根 `test/` 695 pass/1 skip + 3 个 `test/webext-locate-dist.test.ts` 既知无关失败(与 3.2 记录一致,未回归);`npx tsc --noEmit -p packages/server` 零错误;全仓 `npx tsc --noEmit` 仅剩 3.1 遗留的 2 个 `e2e/aigc-proxy/server-entry.ts` 已知错误,无新增。本地(非 e2b)spawn 分支与路由挂载段(3.4 范围)完全未触碰。

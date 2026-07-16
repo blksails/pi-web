@@ -17,6 +17,7 @@
  */
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { resolveLlmGatewayConfig, type LlmGatewayConfig } from "./llm-gateway-config";
 
 export interface AppConfig {
   /** Provider env passed through to the session; never logged / echoed. Optional. */
@@ -39,6 +40,12 @@ export interface AppConfig {
    * already determined the source; the user can still switch source in-session.
    */
   readonly autoStart: boolean;
+  /**
+   * LLM gateway assembly configuration (spec sandbox-credentials-v2, Req 2.1/2.2);
+   * `undefined` when `PI_WEB_LLM_GATEWAY_PUBLIC_BASE` is unset (compat mode: real
+   * provider keys keep being passed through to the sandbox as-is, Req 2.4).
+   */
+  readonly llmGateway: LlmGatewayConfig | undefined;
 }
 
 /** Recognizable configuration error; its message never includes secret values. */
@@ -124,5 +131,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     defaultCwd: env.PI_WEB_DEFAULT_CWD ?? process.cwd(),
     stubAgent,
     autoStart: isTruthy(env.PI_WEB_AUTOSTART),
+    llmGateway: resolveLlmGatewayConfig(env),
   });
 }

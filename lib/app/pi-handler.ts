@@ -84,6 +84,9 @@ import {
 import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
+// LLM 网关凭据切换决策(spec sandbox-credentials-v2,任务 3.3):e2b 分支的
+// providerKeysForE2b/sandboxLlmEnv 计算抽成纯函数,便于脱离真实传输单测。
+import { computeE2bProviderEnv } from "./llm-gateway-assembly.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
@@ -480,15 +483,27 @@ function buildSingleton(): HandlerSingleton {
             "这些 env 不再产生任何效果,LLM 凭据改由 sandbox-credentials-v2 的 LLM 网关处理。",
         );
       }
-      // 现状透传基线(aigc-proxy 摘除后回到"没有 aigc-proxy"的形态,Req 4.3):
-      // providerKeysForE2b 即 config.providerKeys 原样(逐键与摘除前"未配置代理"一致)。
-      // LLM 网关切换(剔除真实键 + 注入网关 token env)是任务 3.3 的范围,本任务不涉及。
-      const providerKeysForE2b: Record<string, string> = config.providerKeys;
+      // LLM 网关凭据切换(任务 3.3,design.md LlmGatewayAssembly,Req 2.1/2.2/2.4/2.5/4.3/4.4):
+      // 决策逻辑抽成纯函数 computeE2bProviderEnv(见 llm-gateway-assembly.ts),便于脱离真实
+      // e2b/ws-runner 传输单测——配置 LLM 网关时 providerKeysForE2b 为空(真实 provider key
+      // 全量不进 env/白名单),sandboxLlmEnv 携 PI_LLM_GATEWAY_BASE/PI_LLM_TOKEN_<ID> 顶替;
+      // 未配置时 providerKeysForE2b=config.providerKeys(现状透传,含 AIGC 三键,Req 4.3/4.4),
+      // sandboxLlmEnv 为空,并带一条待记的 warn(Req 2.4)。
+      const e2bProviderEnv = computeE2bProviderEnv({
+        config,
+        sessionId: opts.sessionId,
+        env: process.env,
+      });
+      if (e2bProviderEnv.warn !== undefined) {
+        llmGatewayLogger.warn(e2bProviderEnv.warn);
+      }
+      const { providerKeysForE2b, sandboxLlmEnv } = e2bProviderEnv;
       const e2bSpec: SpawnSpec = {
         ...resolved.spawnSpec,
         env: {
           ...resolved.spawnSpec.env,
           ...providerKeysForE2b,
+          ...sandboxLlmEnv,
           // 附件拓扑条件透传(任务 4.2,Req 5.1):全远程拓扑时并入装配期快照
           // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
           // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
@@ -519,17 +534,19 @@ function buildSingleton(): HandlerSingleton {
       if (!templateResolution.ok) {
         throw new Error(templateResolution.error);
       }
-      // env 白名单组装(任务 4.2,Req 4.2/5.1):传输只把 envPassthrough 白名单键从
+      // env 白名单组装(任务 4.2/3.3,Req 4.2/5.1/2.1/2.2):传输只把 envPassthrough 白名单键从
       // e2bSpec.env 下发进沙箱,故上面并入 env 的键必须同步并入白名单才真正可达。
-      //  - providerKeysForE2b 键**无条件**并入(不受附件判定影响;值已在上方 e2bSpec.env——
-      //    此前会被白名单静默过滤,并入是收敛而非放宽:见 design「Security Considerations」)。
+      //  - e2bProviderEnv.passthroughKeys**无条件**并入(不受附件判定影响;值已在上方
+      //    e2bSpec.env)——配置网关时这是 sandboxLlmEnv 的键(PI_LLM_GATEWAY_BASE/
+      //    PI_LLM_TOKEN_<ID>,零真实 provider key),未配置时是 providerKeysForE2b 的键
+      //    (现状透传,与摘除 aigc-proxy 前一致);两态互斥,见 llm-gateway-assembly.ts。
       //  - 附件透传键仅在全远程判定通过时非空(与 env 并入同一开关,键值成对)。
-      //  - Set 去重:providerKeys/附件键可能与既有 PI_WEB_E2B_ENV_PASSTHROUGH 配置重复。
+      //  - Set 去重:provider/网关/附件键可能与既有 PI_WEB_E2B_ENV_PASSTHROUGH 配置重复。
       const envPassthrough = [
         ...new Set([
           ...(selection.config.envPassthrough ?? []),
           ...Object.keys(sandboxAttachmentEnv),
-          ...Object.keys(providerKeysForE2b),
+          ...e2bProviderEnv.passthroughKeys,
           // 会话身份 env(见上方 e2bSpec.env 注入处注释)。
           "PI_WEB_SESSION_ID",
         ]),
