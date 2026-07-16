@@ -15,7 +15,7 @@
   - _Boundary: SecretResolver_
 
 - [ ] 2. LLM 网关核心
-- [ ] 2.1 provider 登记表
+- [x] 2.1 provider 登记表
   - 内置 provider 表(providerId→keyEnvCandidates→upstreamBase,逐一核对上游基址与 tool-kit/镜像事实一致);`PI_WEB_LLM_GATEWAY_PROVIDERS` JSON 同名覆盖/新名追加,zod 装配期 fail-fast;token env 名派生规则(providerId 大写、`-`→`_`,前缀 `PI_LLM_TOKEN_`)
   - 观察:单测覆盖内置表查得、JSON 覆盖生效、JSON 追加新 provider、非法 JSON fail-fast、env 名派生正确
   - _Requirements: 3.1_
@@ -37,7 +37,7 @@
   - _Depends: 2.2_
 
 - [ ] 3. 装配集成与 aigc-proxy 摘除
-- [ ] 3.1 摘除 aigc-proxy(保留 e2e 骨架待 4.1 改造)
+- [x] 3.1 摘除 aigc-proxy(保留 e2e 骨架待 4.1 改造)
   - 删除 `packages/server/src/aigc-proxy/`、`lib/app/aigc-proxy-config.ts`、`packages/server/test/aigc-proxy/`;去 `packages/server/src/index.ts` 的 aigc-proxy 导出;改写 `test/http/router.test.ts` 中 aigc-proxy 引用为非 aigc-proxy 夹具;去 `lib/app/config.ts` 的 aigcProxyPublicBase 装载与 pi-handler 的 aigc-proxy 接线(import/logger/判定/注入/剔除/路由挂载)
   - **暂不删 `e2e/aigc-proxy/`**(4.1 将其改造为 e2e/llm-gateway,避免骨架丢失);此时源码/装配层已无 aigc-proxy,`/api/aigc-proxy/*` 已 404
   - 废弃告警:`PI_WEB_AIGC_PROXY_*`(PUBLIC_BASE/SECRET/TOKEN_TTL_MS)任一被设置→装配期 `app:llm-gateway` warn(指明已废弃与替代),与删除同处收口
@@ -90,3 +90,7 @@
 - body 缓冲不手动 set content-length 是 fetch-bridge 血泪教训(undici 混搭重复头→UND_ERR_INVALID_ARG 502),2.3 回归锁必须断言出站头无手动 content-length
 - 跨仓 env 契约(`PI_LLM_GATEWAY_BASE`/`PI_LLM_TOKEN_<ID>`)定稿后不可轻改:镜像 entrypoint 与 pi-clouds 装配同读(design Revalidation Triggers);e2e 子进程模拟 entrypoint 语义验证契约
 - e2e 复用 aigc-proxy 三进程编排骨架(spawn/stub/断言),3.1 摘除时保留骨架改造为 llm-gateway 版本(先改造 4.1 再删原目录,避免骨架丢失)
+- design.md 内置表里 dashscope 的 upstreamBase 写的是 `.../compatible-mode/v1`,与权威参照 `aigc-proxy/provider-registry.ts`(及 tool-kit dashscope.ts 的 `BASE` 占位默认字面量)实际的 `.../api/v1` **不一致**——已按任务说明以 aigc-proxy 权威参照为准实现;后续任务(2.2/2.3/3.x/4.x)引用 dashscope base 时须用 `api/v1`,不要照抄 design.md 原文
+- 本 worktree 有并行 agent 同时执行任务 3.1(摘除 aigc-proxy),会与其他任务竞态删除 `packages/server/src/aigc-proxy/`;新代码/新测试不应运行期依赖该目录(哪怕当前仍存在),只在实现期人工核对其值后固化为字面量/注释引用
+- 本 worktree 首次执行时 `node_modules` 不存在(git worktree 不自动带 pnpm 安装),跑单测/typecheck 前须先在 worktree 根执行 `pnpm install --frozen-lockfile`
+- 3.1 摘除 aigc-proxy 后,design 的删除清单**并不完整**:仓库根 `test/aigc-proxy-config.test.ts`、`test/aigc-proxy-injection.test.ts`(在顶层 `test/`,非 `packages/server/test/aigc-proxy/`)直接 import 被删模块,必须一并删除;`packages/server/test/tokens/scoped-token.test.ts` 有一条跨域断言 import `../../src/aigc-proxy/session-token.js` 做签名域隔离验证,须去掉该 import 与对应用例(其余用例不受影响)。全仓 `npx tsc --noEmit` 会在 `e2e/aigc-proxy/server-entry.ts`(故意保留待 4.1 改造)报 2 个"模块无此导出"错误——这是预期的、留给 4.1 收口,不属于 3.1 的破坏

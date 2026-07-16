@@ -9,16 +9,11 @@
  * - scope 逐字匹配:`llm:newapi` 签发的 token 用 expectedScope=`llm:sufy` 校验 → scope-mismatch
  *   (Req 1.3);
  * - scope/sessionId 含 `.` → 签发路径直接拒签抛错(Req 1.1);
- * - 签名域隔离:本模块(`pi-token.v2.`)与 `attachment/url-signer.ts`、
- *   `aigc-proxy/session-token.ts`(`aigc-proxy.v1.`)的签名域不同,即便共用同一 secret,产物也
- *   互不可换认(Req 1.4)。
+ * - 签名域隔离:本模块(`pi-token.v2.`)与 `attachment/url-signer.ts` 的签名域不同,即便共用
+ *   同一 secret,产物也互不可换认(Req 1.4)。
  */
 import { describe, expect, it } from "vitest";
 import { createUrlSigner } from "../../src/attachment/url-signer.js";
-import {
-  mintSessionToken,
-  verifySessionToken,
-} from "../../src/aigc-proxy/session-token.js";
 import {
   mintScopedToken,
   verifyScopedToken,
@@ -261,36 +256,4 @@ describe("mintScopedToken / verifyScopedToken", () => {
     }
   });
 
-  it("签名域隔离:与 aigc-proxy/session-token 的 token 不可互换(同 secret 交叉校验必失败)", () => {
-    // aigc-proxy session-token 签名域前缀为 `aigc-proxy.v1.`,与本模块 `pi-token.v2.` 不同;
-    // 即便 sessionId 相同、共用同一 secret,把 aigc-proxy token 的 sig 段搬进 scoped token 结构,
-    // 校验也必须判定 bad-signature。
-    const aigcToken = mintSessionToken({
-      sessionId: SESSION_ID,
-      ttlMs: 60_000,
-      secret: SECRET,
-    });
-    const aigcResult = verifySessionToken({ token: aigcToken, secret: SECRET });
-    expect(aigcResult.ok).toBe(true);
-
-    const aigcParts = aigcToken.split(".");
-    const aigcSig = aigcParts[3] ?? "";
-
-    const scopedToken = mintScopedToken({
-      scope: SCOPE_NEWAPI,
-      sessionId: SESSION_ID,
-      ttlMs: 60_000,
-      secret: SECRET,
-    });
-    const scopedParts = scopedToken.split(".");
-    scopedParts[4] = aigcSig;
-    const crossDomainToken = scopedParts.join(".");
-
-    const result = verifyScopedToken({
-      token: crossDomainToken,
-      expectedScope: SCOPE_NEWAPI,
-      secret: SECRET,
-    });
-    expect(result).toEqual({ ok: false, reason: "bad-signature" });
-  });
 });

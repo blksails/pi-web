@@ -146,7 +146,7 @@ describe("Router", () => {
     const wildcardBuiltins: RouteSpec[] = [
       {
         method: "GET",
-        path: "/aigc-proxy/:provider/*",
+        path: "/llm-gateway/:provider/*",
         handler: ok("wildcard"),
       },
     ];
@@ -154,7 +154,7 @@ describe("Router", () => {
     it("matches zero trailing segments (`*` matches empty)", async () => {
       const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi", { method: "GET" }),
+        new Request("http://x/llm-gateway/newapi", { method: "GET" }),
       );
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("wildcard");
@@ -163,7 +163,7 @@ describe("Router", () => {
     it("matches a single trailing segment", async () => {
       const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/v1", { method: "GET" }),
+        new Request("http://x/llm-gateway/newapi/v1", { method: "GET" }),
       );
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("wildcard");
@@ -172,7 +172,7 @@ describe("Router", () => {
     it("matches multiple trailing segments", async () => {
       const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/v1/chat/completions", {
+        new Request("http://x/llm-gateway/newapi/v1/chat/completions", {
           method: "GET",
         }),
       );
@@ -183,7 +183,7 @@ describe("Router", () => {
     it("matches trailing segments containing percent-encoded characters", async () => {
       const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/a%2Fb/c%20d", { method: "GET" }),
+        new Request("http://x/llm-gateway/newapi/a%2Fb/c%20d", { method: "GET" }),
       );
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("wildcard");
@@ -195,14 +195,14 @@ describe("Router", () => {
         builtins: [
           {
             method: "GET",
-            path: "/aigc-proxy/:provider/special",
+            path: "/llm-gateway/:provider/special",
             handler: ok("exact-special"),
           },
           ...wildcardBuiltins,
         ],
       });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/special", { method: "GET" }),
+        new Request("http://x/llm-gateway/newapi/special", { method: "GET" }),
       );
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("exact-special");
@@ -215,13 +215,13 @@ describe("Router", () => {
           ...wildcardBuiltins,
           {
             method: "GET",
-            path: "/aigc-proxy/:provider/special",
+            path: "/llm-gateway/:provider/special",
             handler: ok("exact-special"),
           },
         ],
       });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/special", { method: "GET" }),
+        new Request("http://x/llm-gateway/newapi/special", { method: "GET" }),
       );
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("wildcard");
@@ -230,7 +230,7 @@ describe("Router", () => {
     it("path matches wildcard but method does not → 405", async () => {
       const router = new Router({ store: makeStore(), builtins: wildcardBuiltins });
       const res = await router.route(
-        new Request("http://x/aigc-proxy/newapi/v1", { method: "POST" }),
+        new Request("http://x/llm-gateway/newapi/v1", { method: "POST" }),
       );
       expect(res.status).toBe(405);
     });

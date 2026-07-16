@@ -39,13 +39,6 @@ export interface AppConfig {
    * already determined the source; the user can still switch source in-session.
    */
   readonly autoStart: boolean;
-  /**
-   * Raw operator-configured externally-reachable base URL for the aigc key proxy
-   * (`PI_WEB_AIGC_PROXY_PUBLIC_BASE`), unvalidated here — parsing/validation is
-   * `resolveAigcProxyConfig`'s job (spec aigc-key-proxy, e2b session-creation path).
-   * Undefined means proxy mode is off (existing key-passthrough behavior).
-   */
-  readonly aigcProxyPublicBase?: string;
 }
 
 /** Recognizable configuration error; its message never includes secret values. */
@@ -119,8 +112,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (value !== undefined && value.length > 0) providerKeys[name] = value;
   }
 
-  const aigcProxyPublicBase = env.PI_WEB_AIGC_PROXY_PUBLIC_BASE;
-
   return Object.freeze({
     providerKeys: Object.freeze({ ...providerKeys }),
     agentDir: resolveAgentDir(env),
@@ -133,6 +124,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     defaultCwd: env.PI_WEB_DEFAULT_CWD ?? process.cwd(),
     stubAgent,
     autoStart: isTruthy(env.PI_WEB_AUTOSTART),
-    ...(aigcProxyPublicBase !== undefined ? { aigcProxyPublicBase } : {}),
   });
 }

@@ -60,12 +60,6 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
-  // aigc key 代理(spec aigc-key-proxy,任务 4.2):会话短期 token 签发/secret 解析 +
-  // 注入路由工厂。secret 解析与 token 签发同源(resolveAigcProxySecret),保证沙盒签发
-  // 的 token 与代理路由校验用的是同一把 secret。
-  mintSessionToken,
-  resolveAigcProxySecret,
-  createAigcProxyRoutes,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -89,15 +83,7 @@ import {
 // (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
 import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
-import { loadConfig, AIGC_GATEWAY_KEY_NAMES, type AppConfig } from "./config.js";
-// aigc key 代理配置(spec aigc-key-proxy):纯函数,e2b 分支在会话创建路径消费——
-// 校验代理地址(非法 → 清晰错误,Req 1.4)、推导 token TTL(Req 3.2)、组装六个网关 env 键
-// (Req 1.1/4.1)。与 packages/server 的 token 签发/secret 解析各自独立、同源装配。
-import {
-  resolveAigcProxyConfig,
-  resolveAigcProxyTokenTtlMs,
-  buildSandboxGatewayEnv,
-} from "./aigc-proxy-config.js";
+import { loadConfig, type AppConfig } from "./config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
@@ -345,10 +331,10 @@ function stubSpawnSpec(
   };
 }
 
-// aigc key 代理(spec aigc-key-proxy,任务 4.2,Req 1.2):兼容模式下 e2b 分支的告警日志,
-// 命名空间含 "aigc-proxy" 便于检索;每次会话创建(createChannel 调用一次)记一次即可,
+// LLM 网关(spec sandbox-credentials-v2,Req 4.2):aigc-proxy 摘除后的废弃 env 告警,
+// 命名空间 "app:llm-gateway" 便于检索;每次会话创建(createChannel 调用一次)记一次即可,
 // 不需要跨会话去重。
-const aigcProxyLogger = createLogger({ namespace: "app:aigc-proxy" });
+const llmGatewayLogger = createLogger({ namespace: "app:llm-gateway" });
 
 function buildSingleton(): HandlerSingleton {
   const config = loadConfig();
@@ -479,49 +465,30 @@ function buildSingleton(): HandlerSingleton {
     // 不静默回退 local、不在 app 启动期 fail-fast(Req 3.3)。
     const selection = selectTransport(process.env);
     if (selection.mode === "e2b") {
-      // aigc key 代理模式判定(spec aigc-key-proxy,任务 4.2,Req 1.1/1.2/1.4):在会话
-      // 创建路径(此闭包内)调用配置校验,与上面的 selectTransport 同位——非法
-      // PI_WEB_AIGC_PROXY_PUBLIC_BASE 在此直接抛出携修复指引的错误,使会话创建失败,
-      // 不静默回退兼容(key 透传)模式。
-      const aigcProxyConfig = resolveAigcProxyConfig(process.env);
-      // 代理模式与兼容模式二选一组装 e2b 分支的网关相关 env:
-      //  - 代理模式:providerKeysForE2b 剔除三真实网关键(AIGC_GATEWAY_KEY_NAMES),
-      //    aigcGatewayEnv 补上六个网关键(BASE_URL 指代理端点 + API_KEY 为会话短期
-      //    token),真实 key 永不写入沙箱 env(Req 1.1、4.1)。
-      //  - 兼容模式:providerKeysForE2b 就是 config.providerKeys 原样(逐键与现状一致),
-      //    aigcGatewayEnv 为空对象,额外记一条可检索的警告日志(Req 1.2)。
-      let providerKeysForE2b: Record<string, string> = config.providerKeys;
-      let aigcGatewayEnv: Record<string, string> = {};
-      if (aigcProxyConfig !== undefined) {
-        const ttlMs = resolveAigcProxyTokenTtlMs(process.env);
-        const token = mintSessionToken({
-          sessionId: opts.sessionId,
-          ttlMs,
-          secret: resolveAigcProxySecret(process.env),
-        });
-        aigcGatewayEnv = buildSandboxGatewayEnv({
-          publicBase: aigcProxyConfig.publicBase,
-          token,
-        });
-        providerKeysForE2b = Object.fromEntries(
-          Object.entries(config.providerKeys).filter(
-            ([name]) => !(AIGC_GATEWAY_KEY_NAMES as readonly string[]).includes(name),
-          ),
-        );
-      } else {
-        aigcProxyLogger.warn(
-          "aigc-proxy 未启用(PI_WEB_AIGC_PROXY_PUBLIC_BASE 未配置):e2b 沙盒沿用现状 key 透传行为," +
-            "newapi/sufy/dashscope 真实凭据会随会话进入沙盒 env。可配置该变量启用宿主侧 key 代理。",
+      // 废弃告警(spec sandbox-credentials-v2,任务 3.1,Req 4.2):aigc-proxy 已从代码与
+      // 装配中完全摘除;若运维仍设置其专属废弃 env(三者任一),这些 env 自身已不再产生
+      // 任何效果(沙箱沿用现状 key 透传行为,与摘除前"未配置代理"的形态等同,Req 4.3),
+      // 仅在此提示已废弃与替代去向,便于运维排查为何配置不再生效。
+      if (
+        process.env.PI_WEB_AIGC_PROXY_PUBLIC_BASE !== undefined ||
+        process.env.PI_WEB_AIGC_PROXY_SECRET !== undefined ||
+        process.env.PI_WEB_AIGC_PROXY_TOKEN_TTL_MS !== undefined
+      ) {
+        llmGatewayLogger.warn(
+          "检测到已废弃的 aigc-proxy 专属配置项(PI_WEB_AIGC_PROXY_PUBLIC_BASE / " +
+            "PI_WEB_AIGC_PROXY_SECRET / PI_WEB_AIGC_PROXY_TOKEN_TTL_MS 任一):aigc-proxy 已废弃," +
+            "这些 env 不再产生任何效果,LLM 凭据改由 sandbox-credentials-v2 的 LLM 网关处理。",
         );
       }
+      // 现状透传基线(aigc-proxy 摘除后回到"没有 aigc-proxy"的形态,Req 4.3):
+      // providerKeysForE2b 即 config.providerKeys 原样(逐键与摘除前"未配置代理"一致)。
+      // LLM 网关切换(剔除真实键 + 注入网关 token env)是任务 3.3 的范围,本任务不涉及。
+      const providerKeysForE2b: Record<string, string> = config.providerKeys;
       const e2bSpec: SpawnSpec = {
         ...resolved.spawnSpec,
         env: {
           ...resolved.spawnSpec.env,
           ...providerKeysForE2b,
-          // 代理模式下的六个网关 env 键(晚并入,不被 providerKeysForE2b 覆盖;
-          // providerKeysForE2b 已剔除同名三真实键,故此处并无覆盖冲突,顺序仅为显式保险)。
-          ...aigcGatewayEnv,
           // 附件拓扑条件透传(任务 4.2,Req 5.1):全远程拓扑时并入装配期快照
           // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
           // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
@@ -556,8 +523,6 @@ function buildSingleton(): HandlerSingleton {
       // e2bSpec.env 下发进沙箱,故上面并入 env 的键必须同步并入白名单才真正可达。
       //  - providerKeysForE2b 键**无条件**并入(不受附件判定影响;值已在上方 e2bSpec.env——
       //    此前会被白名单静默过滤,并入是收敛而非放宽:见 design「Security Considerations」)。
-      //    代理模式下该集合已剔除三真实网关键(见上方过滤),故三真实键名不会出现在此白名单。
-      //  - aigcGatewayEnv 键(代理模式的六个网关键)同步并入,否则值到不了沙箱(Req 1.1/4.1)。
       //  - 附件透传键仅在全远程判定通过时非空(与 env 并入同一开关,键值成对)。
       //  - Set 去重:providerKeys/附件键可能与既有 PI_WEB_E2B_ENV_PASSTHROUGH 配置重复。
       const envPassthrough = [
@@ -565,7 +530,6 @@ function buildSingleton(): HandlerSingleton {
           ...(selection.config.envPassthrough ?? []),
           ...Object.keys(sandboxAttachmentEnv),
           ...Object.keys(providerKeysForE2b),
-          ...Object.keys(aigcGatewayEnv),
           // 会话身份 env(见上方 e2bSpec.env 注入处注释)。
           "PI_WEB_SESSION_ID",
         ]),
@@ -770,16 +734,9 @@ function buildSingleton(): HandlerSingleton {
       ...createVisionModelsRoute({
         listModels: () => listVisionModelOptions(config.agentDir),
       }),
-      // aigc key 代理(spec aigc-key-proxy,任务 4.2):GET/POST/PUT/DELETE
-      // /aigc-proxy/:provider/* 注入路由(挂载在 /api 下可达 /api/aigc-proxy/...,
-      // 与 buildSandboxGatewayEnv 组装的 BASE_URL 一致)。仅当运维者配置了代理地址
-      // (config.aigcProxyPublicBase 非空,即便其值尚未经 resolveAigcProxyConfig 校验
-      // 合法性)才注册该路由并解析 secret——未配置时完全不注册,请求落到既有 404 语义,
-      // 与「代理功能未启用」一致;resolveAigcProxySecret 的抛错门槛(两 env 皆缺)因此
-      // 只在运维者已表达启用意图时才可能触发,不会拖累未启用代理的部署在装配期报错。
-      ...(config.aigcProxyPublicBase
-        ? createAigcProxyRoutes({ secret: resolveAigcProxySecret(process.env) })
-        : []),
+      // aigc-proxy 已摘除(spec sandbox-credentials-v2,任务 3.1,Req 4.1):原
+      // /aigc-proxy/:provider/* 注入路由不再注册,请求落到既有 404 语义。LLM 网关路由
+      // (createLlmGatewayRoutes,serve 门控)是任务 3.4 的范围,此处暂不挂载。
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
       // 在 /api/** 下可达(Req 7.1)。resolveWriteBackend(agent-attachment-profile spec,
