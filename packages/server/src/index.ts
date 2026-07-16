@@ -52,3 +52,7 @@ export { resolveSandboxEntry } from "./sandbox/entry.js";
 // tokens(sandbox-credentials-v2):分面 scoped token 签发/校验原语(mintScopedToken /
 // verifyScopedToken)。仅 node builtins(node:crypto),无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./tokens/index.js";
+// llm-gateway(sandbox-credentials-v2):provider 登记表 + dev/自部署 LLM 网关路由
+// (createLlmGatewayRoutes)。仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK
+// 值导入,可安全经 barrel 重导出。
+export * from "./llm-gateway/index.js";

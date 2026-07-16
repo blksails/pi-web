@@ -21,7 +21,7 @@
   - _Requirements: 3.1_
   - _Boundary: ProviderRegistry_
   - _Depends: 1.1_
-- [ ] 2.2 网关路由:门控与换钥
+- [x] 2.2 网关路由:门控与换钥
   - 实现 `createLlmGatewayRoutes` 挂 `/llm-gateway/:provider/*`;门控顺序=方法(非 POST/GET→405)→provider 登记(404)→Bearer verify(expectedScope=`llm:<provider>`;无效/过期 401、scope 不符 403)→keyEnvCandidates 按序即时读(皆缺→502,不缓存);失败路径零上游请求
   - 换钥:剥入站 authorization/逐跳头/host/content-length,注入 `Authorization: Bearer <真实key>`
   - 交付含 `packages/server/src/llm-gateway/` barrel 与 `packages/server/src/index.ts` 增 llm-gateway 导出(供 pi-handler 路由挂载 import)
@@ -29,7 +29,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.7_
   - _Boundary: LlmGatewayRoutes_
   - _Depends: 1.1, 2.1_
-- [ ] 2.3 网关路由:透传与流式
+- [x] 2.3 网关路由:透传与流式
   - URL=upstreamBase+`:provider` 后余部路径+query;请求 body 缓冲转发(arrayBuffer),**绝不手动 set content-length**;响应剥逐跳头+content-length 后流式直通(不缓冲);`ctx.req.signal` 联动 AbortController 传播中断;上游 4xx/5xx 原样透传;上游抛错→502 固定脱敏 + 服务端日志记 errName/causeCode/causeStack;每请求记 {sessionId,provider,status,durationMs} 不落 key/token
   - 观察:集成测试断言 body 逐字节转发且出站头无手动 content-length(回归锁)、SSE 分块流式到达非整体缓冲、client abort 传播上游、上游 4xx 状态与体透传、502 文案不含 key
   - _Requirements: 3.4, 3.5, 3.6_
@@ -94,3 +94,7 @@
 - 本 worktree 有并行 agent 同时执行任务 3.1(摘除 aigc-proxy),会与其他任务竞态删除 `packages/server/src/aigc-proxy/`;新代码/新测试不应运行期依赖该目录(哪怕当前仍存在),只在实现期人工核对其值后固化为字面量/注释引用
 - 本 worktree 首次执行时 `node_modules` 不存在(git worktree 不自动带 pnpm 安装),跑单测/typecheck 前须先在 worktree 根执行 `pnpm install --frozen-lockfile`
 - 3.1 摘除 aigc-proxy 后,design 的删除清单**并不完整**:仓库根 `test/aigc-proxy-config.test.ts`、`test/aigc-proxy-injection.test.ts`(在顶层 `test/`,非 `packages/server/test/aigc-proxy/`)直接 import 被删模块,必须一并删除;`packages/server/test/tokens/scoped-token.test.ts` 有一条跨域断言 import `../../src/aigc-proxy/session-token.js` 做签名域隔离验证,须去掉该 import 与对应用例(其余用例不受影响)。全仓 `npx tsc --noEmit` 会在 `e2e/aigc-proxy/server-entry.ts`(故意保留待 4.1 改造)报 2 个"模块无此导出"错误——这是预期的、留给 4.1 收口,不属于 3.1 的破坏
+- `http/router.ts` 对通配路径(`/…/:param/*`)只需按需注册子集方法(如仅 GET+POST)即可天然获得「路径命中、方法不符→405」——handler 内无需自写方法白名单判断,405 分支自动零调用 handler(故也天然满足零上游请求);同理 `RequestContext` 只透出 `sessionId`(`:id` 段),**不透出其他 `:param`/`*` 捕获值**,任何非 `:id` 的路径段(如本任务的 `:provider`、余部 `*`)必须在 handler 内自行以 `url.pathname` 锚定字面段手工解析(`attachment-routes.ts`/已摘除的 `aigc-proxy/proxy-routes.ts` 同惯例)——2.3/3.4 触碰同一路由文件时延续此模式,勿假设 Router 会传参
+- gateway-routes.ts 中 2.3 待补项已用 `// TODO(2.3):` 标注(body 改 `arrayBuffer()` 缓冲、`ctx.req.signal` abort 传播、上游错误 causeStack 细化日志);2.3 实现时按这些注释点定位即可,勿另起结构
+- 2.3 完成:`gateway-routes.ts` 补齐 body 缓冲转发(`arrayBuffer()`,GET/HEAD 除外,绝不手动 set content-length)、`ctx.req.signal` 经 `AbortSignal.any([clientSignal, timeoutSignal])` 联动可选 `timeoutMs`(超时命中→504,其余 fetch 抛错→502)、上游错误日志(errName/causeCode/causeStack,截前 5 行栈)+ 每请求 `{sessionId,provider,status,durationMs}` 埋点(命名空间 `server:llm-gateway`)。响应流式直通(`new Response(upstream.body,…)`)与 URL 拼接在 2.2 已正确实现,2.3 未改动。测试新增 4 条(body 逐字节+无手动 content-length 回归锁、SSE 非整体缓冲、client abort 传播、502 文案不含 key)+ 补强既有「上游 fetch 抛错→502」用例的脱敏断言,`packages/server/test/llm-gateway/` 27/27 绿;`npx tsc --noEmit -p packages/server` 零错误(无残留 aigc-proxy 相关既知错误——该 2 个既知错误在别处的 tsconfig 范围,不在 packages/server 内)
+- **测试 abort 传播的时序陷阱**:`Router.route()` 在触达 `matched.route.handler` 前有 `await this.authResolver(req)`(鉴权解析),故 test 里同步调用 `controller.abort()` 可能发生在 mock `fetchImpl` 被真正调用**之前**——mock 内必须先同步核对 `signal.aborted`,不能只挂 `addEventListener("abort", …)`(否则错过已发生的 abort 事件,测试会挂起到 vitest 默认 30s 超时)。任何后续任务对携带 abort 语义的路由做集成测试时都应留意这个先后关系。

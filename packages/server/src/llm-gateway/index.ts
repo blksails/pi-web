@@ -1,8 +1,9 @@
 /**
  * llm-gateway · 模块公共出口(barrel)。
  *
- * 当前仅导出 provider 登记表(design.md ProviderRegistry,Req 3.1)。网关路由
- * (`createLlmGatewayRoutes`)由后续任务(2.2)交付后在此追加导出。
+ * 导出 provider 登记表(design.md ProviderRegistry,Req 3.1)与网关路由
+ * (`createLlmGatewayRoutes`,design.md LlmGatewayRoutes,Req 3.1-3.3, 3.7;透传/流式细节
+ * 见 2.3)。
  */
 export {
   resolveLlmGatewayProviderTable,
@@ -13,3 +14,7 @@ export {
   type LlmGatewayProviderEntry,
   type LlmGatewayProviderTable,
 } from "./provider-registry.js";
+export {
+  createLlmGatewayRoutes,
+  type CreateLlmGatewayRoutesDeps,
+} from "./gateway-routes.js";
