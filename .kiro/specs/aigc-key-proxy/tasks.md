@@ -32,7 +32,7 @@
   - _Boundary: tool-kit provider 声明_
 
 - [ ] 3. 代理路由段
-- [ ] 3.1 代理转发处理器与注入路由工厂
+- [x] 3.1 代理转发处理器与注入路由工厂
   - 处理顺序:provider 查表(未登记→404 且零上游请求)→ Bearer token 校验(缺失/无效/过期→401 且零上游请求,对外文案不区分原因)→ 宿主真实 key 查 env(缺失→502,文案提示宿主未配凭据、不含 key 值)→ 转发
   - 转发:请求 headers 剔除 host/authorization/content-length/逐跳头后透传(content-type 的 multipart boundary、x-dashscope-async、accept 保留),注入真实 key 的 authorization;请求体 `duplex:"half"` 流式透传;响应以 `Response(upstream.body)` 流式透传状态码与过滤后 headers
   - 上游 4xx/5xx 状态与体原样透传;fetch 网络错误→502、超时→504,错误体固定脱敏文案

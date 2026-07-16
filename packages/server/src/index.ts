@@ -49,3 +49,6 @@ export * from "./vision-settings/index.js";
 export * from "./session-actions/index.js";
 // sandbox 强制注入入口解析(仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出)。
 export { resolveSandboxEntry } from "./sandbox/entry.js";
+// aigc-proxy(aigc-key-proxy):凭据注入代理路由 + provider 登记表 + 会话短期 token。
+// 仅 node builtins(node:crypto)+ 全局 fetch,无 pi SDK 值导入,可安全经 barrel 重导出。
+export * from "./aigc-proxy/index.js";
