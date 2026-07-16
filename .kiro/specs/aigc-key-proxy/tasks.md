@@ -9,7 +9,7 @@
   - _Requirements: 2.3_
 
 - [ ] 2. 核心模块(三者边界互不重叠,可并行)
-- [ ] 2.1 (P) 会话凭据模块:签发与校验
+- [x] 2.1 (P) 会话凭据模块:签发与校验
   - token 格式 `pwap1.<sessionId>.<exp>.<sigHex>`,HMAC-SHA256,签名域前缀 `aigc-proxy.v1.` 与附件签名隔离
   - 校验顺序:格式 → 过期(注入时钟便于测试)→ timingSafeEqual 常量时间签名比对,失败返回判别原因(malformed/expired/bad-signature)不抛
   - secret 解析:`PI_WEB_AIGC_PROXY_SECRET` 优先,回退 `PI_WEB_ATTACHMENT_SECRET`,皆缺时抛清晰错误;sessionId 含 `.` 拒签
