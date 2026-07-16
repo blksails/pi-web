@@ -42,7 +42,7 @@
   - _Depends: 1.1, 2.1, 2.2_
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 4.2, 4.3_
 
-- [ ] 3.2 真实 HTTP stub 上游集成测试
+- [x] 3.2 真实 HTTP stub 上游集成测试
   - 起 node:http stub 上游:有效 token → stub 收到 `Bearer <真实key>` 且响应体透传;无效/过期 token → 401 且 stub 零请求;未知 provider → 404 且零请求
   - 流式:stub 发 SSE 分片 → 调用方按片增量收到(非一次性);multipart 请求体 → stub 收到 boundary 完整的原始字节
   - 错误:stub 返回 400/500 → 状态码与体透传;上游端口不通 → 502 且响应体不含真实 key
