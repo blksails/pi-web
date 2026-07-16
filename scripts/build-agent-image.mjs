@@ -64,6 +64,7 @@ const USAGE = `用法:node scripts/build-agent-image.mjs <sourceDir> [--tag t] [
   <sourceDir>       agent source 目录(须含入口 index.js 或 index.ts)
   --tag t           显式镜像 tag(缺省 = 源内容 sha256 前 12 位,内容寻址)
   --base-image i    基础镜像(缺省 env PI_WEB_E2B_BASE_IMAGE 或 ${DEFAULT_BASE_IMAGE})
+  --platform p      docker build --platform(如 linux/amd64;ACS 节点是 amd64,本机 arm64 须显式指定)
   --no-bundle       不做 esbuild 单文件化,拷全部源(沙箱运行时 jiti 编译)
   --kind-load       构建后 kind load docker-image 进本地 kind 集群
   --kind-cluster c  kind 集群名(缺省 ${DEFAULT_KIND_CLUSTER};仅与 --kind-load 联用)
@@ -101,6 +102,8 @@ function parseArgs(argv) {
       opts.tag = takeValue(arg, "--tag", rest);
     } else if (arg === "--base-image" || arg.startsWith("--base-image=")) {
       opts.baseImage = takeValue(arg, "--base-image", rest);
+    } else if (arg === "--platform" || arg.startsWith("--platform=")) {
+      opts.platform = takeValue(arg, "--platform", rest);
     } else if (arg === "--no-bundle") {
       opts.bundle = false;
     } else if (arg === "--kind-load") {
@@ -410,10 +413,15 @@ async function main() {
   log(`build context: ${contextDir}`);
 
   // -- docker build(stdio inherit:构建输出/缓存命中/stderr 原样透传) ----------
-  log(`docker build -t ${plan.imageName} …`);
-  const build = spawnSync("docker", ["build", "-t", plan.imageName, contextDir], {
-    stdio: "inherit",
-  });
+  const platformArgs = args.platform ? ["--platform", args.platform] : [];
+  log(`docker build ${platformArgs.join(" ")} -t ${plan.imageName} …`.replace("  ", " "));
+  const build = spawnSync(
+    "docker",
+    ["build", ...platformArgs, "-t", plan.imageName, contextDir],
+    {
+      stdio: "inherit",
+    },
+  );
   if (build.error && build.error.code === "ENOENT") {
     die(
       "找不到 docker 可执行文件。构建镜像需要 Docker:\n" +

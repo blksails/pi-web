@@ -17,6 +17,7 @@
     "dev": "node scripts/dev-all.mjs",
     "dev:e2b": "cross-env PI_WEB_TRANSPORT=e2b node scripts/dev-all.mjs",
     "dev:e2b:local": "node scripts/dev-e2b-local.mjs",
+    "dev:acs": "node scripts/dev-acs.mjs",
     "dev:client": "vite",
     "build": "pnpm build:dist",
     "build:client": "vite build",
