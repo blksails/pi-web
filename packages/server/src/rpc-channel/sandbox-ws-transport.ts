@@ -53,6 +53,16 @@ export interface SandboxWsTransportConfig {
    * 未配置时走 e2b-host 模式 `wss://${sandbox.getHost(runnerPort)}`(真实 e2b 云)。
    */
   readonly wsBase?: string;
+  /**
+   * wsBase 的路由形态(仅 wsBase 配置时生效):
+   *  - `"path"`(默认):本地 agent-sandbox 的路径路由 `/sandbox/<name>/?port=`;
+   *  - `"header"`:ACS sandbox-gateway 的请求头路由 —— 直连 `wsBase`,upgrade 请求带
+   *    `e2b-sandbox-id: <sandboxId>` + `e2b-sandbox-port: <runnerPort>`(2026-07-16 实测验通)。
+   *    本机 port-forward 联调 ACS 的唯一形态:e2b-host 分支的 `wss://{port}-{id}.{domain}`
+   *    在本机既解析不了集群内域名、scheme 又定死 wss(gateway 7788 是明文 ws)。
+   *    ⚠ 需自定义请求头 → 该模式用 `ws` 包建连(Node 全局 undici WebSocket 不支持 headers)。
+   */
+  readonly wsRoute?: "path" | "header";
   /** 断线重连等待(毫秒),默认 300。 */
   readonly reconnectDelayMs?: number;
   /** 从 spawnSpec.env 透传到 runner(经 configure 帧)的键白名单(如 provider 凭据);默认空。 */
@@ -82,6 +92,12 @@ type ClientMessage =
   | { readonly type: "hello"; readonly lastSeq?: number }
   | { readonly type: "line"; readonly line: string }
   | { readonly type: "configure"; readonly env?: Readonly<Record<string, string>> };
+
+/** WS 建连目标:endpoint + 可选 upgrade 请求头(header 路由模式)。 */
+interface ConnectTarget {
+  readonly endpoint: string;
+  readonly headers?: Readonly<Record<string, string>>;
+}
 
 export class SandboxWsTransport implements RpcTransport {
   readonly #spawnSpec: SpawnSpec;
@@ -133,7 +149,7 @@ export class SandboxWsTransport implements RpcTransport {
       });
       this.#sandbox = sbx;
       this.#alive = true;
-      this.#connect(this.#endpointFor(sbx));
+      this.#connect(this.#targetFor(sbx));
     } catch (err) {
       this.#alive = false;
       this.#exitInfo = { code: null, signal: null };
@@ -142,6 +158,27 @@ export class SandboxWsTransport implements RpcTransport {
       for (const cb of this.#exitListeners) this.#safe(() => cb(this.#exitInfo as ExitInfo));
       throw wrapped;
     }
+  }
+
+  #targetFor(sbx: Sandbox): ConnectTarget {
+    const port = this.#cfg.runnerPort ?? 8080;
+    if (
+      this.#cfg.wsBase !== undefined &&
+      this.#cfg.wsBase !== "" &&
+      this.#cfg.wsRoute === "header"
+    ) {
+      // header 路由(ACS sandbox-gateway):直连 wsBase,沙箱寻址走 upgrade 请求头。
+      // gateway 按 `e2b-sandbox-id`/`e2b-sandbox-port` 路由到沙箱内 runner(与 Host 头路由
+      // 等价,2026-07-16 双双实测验通);本机 port-forward 联调 ACS 用此形态。
+      return {
+        endpoint: this.#cfg.wsBase.replace(/\/$/, ""),
+        headers: {
+          "e2b-sandbox-id": sbx.sandboxId,
+          "e2b-sandbox-port": String(port),
+        },
+      };
+    }
+    return { endpoint: this.#endpointFor(sbx) };
   }
 
   #endpointFor(sbx: Sandbox): string {
@@ -164,9 +201,41 @@ export class SandboxWsTransport implements RpcTransport {
   }
 
   // ── WS 数据面 ─────────────────────────────────────────
-  #connect(endpoint: string): void {
+  #connect(target: ConnectTarget): void {
     if (this.#closed) return;
-    const socket = new WebSocket(endpoint);
+    void this.#openSocket(target);
+  }
+
+  /**
+   * 建 socket:无自定义头走全局 WebSocket(undici,现状零变化);header 路由需自定义
+   * upgrade 请求头 → 懒加载 `ws` 包(undici WebSocket 不支持 headers)。`ws` 的实例
+   * 同样暴露 onopen/onmessage/onclose/onerror 与 readyState,对本类的使用面同构。
+   */
+  async #openSocket(target: ConnectTarget): Promise<void> {
+    let socket: WebSocket;
+    if (target.headers !== undefined) {
+      try {
+        const { default: WsWebSocket } = await import("ws");
+        socket = new WsWebSocket(target.endpoint, {
+          headers: { ...target.headers },
+        }) as unknown as WebSocket;
+      } catch {
+        // ws 包不可用(异常安装形态):按连接失败处理,走既有重连节奏(不崩传输)。
+        this.#socketOpen = false;
+        this.#scheduleReconnect(target);
+        return;
+      }
+    } else {
+      socket = new WebSocket(target.endpoint);
+    }
+    if (this.#closed) {
+      try {
+        socket.close();
+      } catch {
+        /* 竞态关闭 */
+      }
+      return;
+    }
     this.#socket = socket;
     socket.onopen = () => {
       this.#socketOpen = true;
@@ -187,18 +256,18 @@ export class SandboxWsTransport implements RpcTransport {
     socket.onmessage = (ev: MessageEvent) => this.#onServerMessage(ev.data);
     socket.onclose = () => {
       this.#socketOpen = false;
-      this.#scheduleReconnect(endpoint);
+      this.#scheduleReconnect(target);
     };
     socket.onerror = () => {
       // ws 的 close 会在 error 后触发,重连在那里安排。
     };
   }
 
-  #scheduleReconnect(endpoint: string): void {
+  #scheduleReconnect(target: ConnectTarget): void {
     if (this.#closed || this.#reconnectTimer) return;
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null;
-      this.#connect(endpoint);
+      this.#connect(target);
     }, this.#reconnectDelayMs);
   }
 

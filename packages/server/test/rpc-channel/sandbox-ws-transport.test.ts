@@ -17,6 +17,54 @@ const e2bState = vi.hoisted(() => ({
   sandboxId: "47b67191323b4a2b9611d081af05df85",
 }));
 
+// ── mock `ws` 包(header 路由模式建连用;记录 endpoint + upgrade headers)──
+const wsPkgState = vi.hoisted(() => ({
+  instances: [] as Array<{
+    url: string;
+    headers: Record<string, string> | undefined;
+    sent: string[];
+    readyState: number;
+    onopen: (() => void) | null;
+    onmessage: ((ev: { data: string }) => void) | null;
+    onclose: (() => void) | null;
+    onerror: (() => void) | null;
+    send(data: string): void;
+    close(): void;
+    drvOpen(): void;
+  }>,
+}));
+
+vi.mock("ws", () => {
+  class FakeWsPackageSocket {
+    static readonly CLOSED = 3;
+    url: string;
+    headers: Record<string, string> | undefined;
+    sent: string[] = [];
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onmessage: ((ev: { data: string }) => void) | null = null;
+    onclose: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor(url: string, opts?: { headers?: Record<string, string> }) {
+      this.url = url;
+      this.headers = opts?.headers;
+      wsPkgState.instances.push(this);
+    }
+    send(data: string): void {
+      this.sent.push(data);
+    }
+    close(): void {
+      this.readyState = FakeWsPackageSocket.CLOSED;
+      this.onclose?.();
+    }
+    drvOpen(): void {
+      this.readyState = 1;
+      this.onopen?.();
+    }
+  }
+  return { default: FakeWsPackageSocket };
+});
+
 vi.mock("e2b", () => {
   class Sandbox {
     readonly sandboxId = e2bState.sandboxId;
@@ -98,6 +146,7 @@ beforeEach(() => {
   e2bState.createShouldThrow = false;
   e2bState.sandboxId = "47b67191323b4a2b9611d081af05df85";
   FakeWebSocket.instances = [];
+  wsPkgState.instances = [];
   (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
 });
 afterEach(() => {
@@ -160,6 +209,50 @@ describe("SandboxWsTransport — boot + 端点解析", () => {
     const t = new SandboxWsTransport(spec(), { apiKey: "e2b_x", template: "t" });
     await t.ready();
     expect(lastWs().url).toBe("wss://8080-47b67191323b4a2b9611d081af05df85.e2b.app");
+    await t.close();
+  });
+
+  it('header 路由(wsRoute:"header"):直连 wsBase,经 ws 包携 e2b-sandbox-id/-port 头(ACS gateway)', async () => {
+    e2bState.sandboxId = "default--pi-runner-zj99d"; // ACS 形态 id(含 `--`)原样入头
+    const t = new SandboxWsTransport(spec(), {
+      apiKey: "sys-x",
+      template: "pi-runner",
+      wsBase: "ws://127.0.0.1:17788",
+      wsRoute: "header",
+      runnerPort: 8787,
+      validateApiKey: false,
+    });
+    await t.ready();
+    // header 模式建 socket 是异步路径(懒加载 ws 包),flush 微任务后断言。
+    await vi.waitFor(() => {
+      expect(wsPkgState.instances).toHaveLength(1);
+    });
+    const sock = wsPkgState.instances[0]!;
+    expect(sock.url).toBe("ws://127.0.0.1:17788");
+    expect(sock.headers).toEqual({
+      "e2b-sandbox-id": "default--pi-runner-zj99d",
+      "e2b-sandbox-port": "8787",
+    });
+    // 全局 WebSocket 不参与(header 模式全走 ws 包)。
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    // open 后照常走 hello+configure 协议(与 path 模式同一状态机)。
+    sock.drvOpen();
+    expect(parse(sock.sent[0])).toMatchObject({ type: "hello" });
+    expect(parse(sock.sent[1])).toMatchObject({ type: "configure" });
+    await t.close();
+  });
+
+  it('wsRoute 未设(缺省 path):不加载 ws 包,行为与现状完全一致', async () => {
+    const t = new SandboxWsTransport(spec(), {
+      apiKey: "sys-x",
+      template: "aio",
+      wsBase: "ws://127.0.0.1:10000",
+      runnerPort: 8080,
+      validateApiKey: false,
+    });
+    await t.ready();
+    expect(wsPkgState.instances).toHaveLength(0);
+    expect(lastWs().url).toContain("/sandbox/sbx-aio-");
     await t.close();
   });
 });

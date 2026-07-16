@@ -30,6 +30,9 @@
  *  - `PI_WEB_E2B_RUNNER_PORT`(可选,仅 ws-runner):沙箱内 runner 端口,默认 8080。
  *  - `PI_WEB_E2B_RUNNER_WS_BASE`(可选,仅 ws-runner):manager WS base(如 `ws://127.0.0.1:10000`);
  *    配则 manager-path 路由(agent-sandbox/ACS),否则 e2b-host(getHost,真实 e2b 云)。
+ *  - `PI_WEB_E2B_RUNNER_WS_ROUTE`(可选,仅 ws-runner 且 wsBase 已配):`path`(默认,
+ *    agent-sandbox 路径路由)| `header`(ACS sandbox-gateway 请求头路由,
+ *    `e2b-sandbox-id`/`e2b-sandbox-port`;本机 port-forward 联调 ACS 用)。
  *  - `PI_WEB_E2B_RECONNECT_MS`(可选,仅 ws-runner):断线重连等待毫秒,默认 300。
  */
 import type { E2bTransportConfig } from "./e2b-transport.js";
@@ -88,6 +91,11 @@ export function e2bTransportConfigFromEnv(
   const runnerPort = parsePositiveInt(env.PI_WEB_E2B_RUNNER_PORT);
   const wsBase = trimmed(env.PI_WEB_E2B_RUNNER_WS_BASE);
   const reconnectDelayMs = parsePositiveInt(env.PI_WEB_E2B_RECONNECT_MS);
+  // 仅认 "header";其余(含未设/"path")一律缺省 path 行为(不注入键)。
+  const wsRoute =
+    trimmed(env.PI_WEB_E2B_RUNNER_WS_ROUTE)?.toLowerCase() === "header"
+      ? ("header" as const)
+      : undefined;
 
   return {
     apiKey,
@@ -103,6 +111,7 @@ export function e2bTransportConfigFromEnv(
     ...(validateApiKey !== undefined ? { validateApiKey } : {}),
     ...(runnerPort !== undefined ? { runnerPort } : {}),
     ...(wsBase !== undefined ? { wsBase } : {}),
+    ...(wsRoute !== undefined ? { wsRoute } : {}),
     ...(reconnectDelayMs !== undefined ? { reconnectDelayMs } : {}),
   };
 }
