@@ -74,7 +74,7 @@
   - _Depends: 2.3, 4.2_
   - _Requirements: 2.1, 3.3, 4.1, 5.2_
 
-- [ ] 5.2 全量回归
+- [x] 5.2 全量回归
   - server 与 tool-kit 全部单测+集成测试全绿;既有 e2e:node 基线不回退(config-domains/webext-build-load 既有失败除外)
   - 观察:测试命令输出计数全绿,与实现前基线对比无新增失败
   - _Requirements: 1.3, 5.1_
