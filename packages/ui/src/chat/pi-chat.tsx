@@ -140,6 +140,18 @@ export interface PiChatProps {
    * 宿主据此渲染段控切换器,运行时可在 居中/2:1/3:7 间动态切换;缺省 `2:1`(≈现行 w-96)。
    */
   readonly panelRatio?: PanelRatio;
+  /**
+   * panelRight 连续宽度(全受控):传入即启用连续拖拽模式(替离散 panelRatio 档),
+   * number 视 px、string 原样入 style.width。仅在扩展声明 panelRight 时生效。
+   * 详见 spec 2026-07-16-panelright-resizable-width。
+   */
+  readonly panelWidth?: number | string;
+  /** 拖拽分隔条回传的目标宽度(px);宿主 setState → panelWidth 回流(可自行 rAF 节流)。 */
+  readonly onPanelWidthChange?: (widthPx: number) => void;
+  /** 连续模式拖拽下界(px),缺省 240。 */
+  readonly minPanelWidth?: number;
+  /** 连续模式拖拽上界(px),缺省 容器宽 − 360(留对话区底)。 */
+  readonly maxPanelWidth?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
@@ -322,6 +334,10 @@ export function PiChat({
   icons,
   layout,
   panelRatio: panelRatioInitial,
+  panelWidth,
+  onPanelWidthChange,
+  minPanelWidth,
+  maxPanelWidth,
   theme,
   toolbarOrder,
   extensionCommands,
@@ -603,6 +619,39 @@ export function PiChat({
   React.useEffect(() => {
     setPanelRatio(panelRatioInitial ?? "2:1");
   }, [panelRatioInitial]);
+
+  // panelRight 连续宽度(全受控):宿主传 panelWidth 即启用;拖拽分隔条经 onPanelWidthChange
+  // 回传 clamp 后目标宽度(px),PiChat 不持宽度 state。详见 panelright-resizable spec。
+  const panelResizeTreeRef = React.useRef<HTMLDivElement | null>(null);
+  const panelDraggingRef = React.useRef(false);
+  const onPanelResizeMove = React.useCallback(
+    (e: React.PointerEvent) => {
+      if (!panelDraggingRef.current) return;
+      const rect = panelResizeTreeRef.current?.getBoundingClientRect();
+      if (rect === undefined) return;
+      const min = minPanelWidth ?? 240;
+      const max = maxPanelWidth ?? rect.width - 360;
+      const raw = rect.right - e.clientX;
+      onPanelWidthChange?.(Math.max(min, Math.min(max, raw)));
+    },
+    [minPanelWidth, maxPanelWidth, onPanelWidthChange],
+  );
+  const onPanelResizeDown = React.useCallback((e: React.PointerEvent) => {
+    panelDraggingRef.current = true;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
+    }
+  }, []);
+  const onPanelResizeUp = React.useCallback((e: React.PointerEvent) => {
+    panelDraggingRef.current = false;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // 同上。
+    }
+  }, []);
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -1175,9 +1224,15 @@ export function PiChat({
   const showLogsRight =
     showLogs && logsPanelVisible && effectiveLogsPosition === "right";
   const showAside = showPanelRight || hasArtifactAside || showLogsRight;
-  const asideWidth = panelRatioActive
-    ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
-    : undefined;
+  // 连续宽度(全受控):宿主传 panelWidth 即启用,替离散 panelRatio 档。
+  const resizablePanel = hasPanelRight && panelWidth !== undefined;
+  const asideWidth = resizablePanel
+    ? typeof panelWidth === "number"
+      ? `${panelWidth}px`
+      : panelWidth
+    : panelRatioActive
+      ? PANEL_RATIO_ASIDE_WIDTH[panelRatio]
+      : undefined;
 
   // 控件解析(components 覆盖 vs 默认;可移除控件支持 null)。
   const SubmitC = resolveComponent(components?.SubmitButton, SubmitButton);
@@ -1704,6 +1759,7 @@ export function PiChat({
         "relative flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
         className,
       )}
+      ref={panelResizeTreeRef}
       data-pi-chat-pro
       data-pi-chat-empty={isEmpty ? "true" : "false"}
     >
@@ -1812,18 +1868,32 @@ export function PiChat({
         // panelRatioActive 时宽度由比例百分比驱动(对话列 flex-1 吃余量);否则沿用固定 w-96。
         <aside
           className={cn(
+            // relative:为连续模式拖拽分隔条(absolute left)提供定位上下文。
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
-            "hidden min-h-0 shrink-0 lg:flex lg:flex-col",
+            "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
             panelRatioActive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
           data-pi-chat-aside
-          {...(panelRatioActive
+          {...(panelRatioActive && !resizablePanel
             ? { "data-pi-panel-ratio": panelRatio }
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
+          {/* 连续模式拖拽分隔条:aside 左缘(对话区↔aside 之间);全受控经 onPanelWidthChange 回传。 */}
+          {resizablePanel ? (
+            <div
+              data-pi-panel-resizer
+              role="separator"
+              aria-orientation="vertical"
+              className="absolute left-0 top-0 z-10 hidden h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none bg-transparent hover:bg-[hsl(var(--border))] lg:block"
+              onPointerDown={onPanelResizeDown}
+              onPointerMove={onPanelResizeMove}
+              onPointerUp={onPanelResizeUp}
+              onPointerCancel={onPanelResizeUp}
+            />
+          ) : null}
           {showPanelRight ? (
             <SlotHost
               ext={extension}
@@ -1882,7 +1952,7 @@ export function PiChat({
 
       {/* panelRight 比例切换器:有 panelRight 时常驻右下角(lg+),运行时在 居中/2:1/3:7 间切换。
           置于 aside 之外、tree(relative)内,使 centered 收起面板后仍可切回。 */}
-      {panelRatioActive ? (
+      {panelRatioActive && !resizablePanel ? (
         <div
           data-pi-panel-ratio-switch={panelRatio}
           className="absolute bottom-4 right-4 z-40 hidden items-center gap-0.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/90 p-0.5 shadow-sm backdrop-blur lg:flex"
