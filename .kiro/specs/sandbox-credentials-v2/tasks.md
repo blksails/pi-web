@@ -4,7 +4,8 @@
 - [ ] 1.1 scoped token 签发/校验
   - 实现 `pw2.<scope>.<sessionId>.<exp>.<sigHex>` 线格式的 mint/verify;签名 `HMAC-SHA256(secret, "pi-token.v2." + scope + "." + sessionId + "." + exp)` hex
   - mint 期拒签含 `.` 的 scope/sessionId(抛清晰错误);verify 顺序=格式→过期(nowMs 可注入)→scope 逐字等于 expectedScope→timingSafeEqual,失败返回判别原因(malformed/expired/scope-mismatch/bad-signature)不抛
-  - 观察:单测覆盖四种失败判别 + scope 逐字匹配(`llm:newapi` 的 token 用 expectedScope=`llm:sufy` 校验→scope-mismatch)+ `.` 拒签 + 与 url-signer/attachment token 签名域不可互换(同 secret 交叉校验必失败)
+  - 交付含 `packages/server/src/tokens/` barrel 与 `packages/server/src/index.ts` 增 tokens 导出(供 lib/app 装配 import)
+  - 观察:单测覆盖四种失败判别 + scope 逐字匹配(`llm:newapi` 的 token 用 expectedScope=`llm:sufy` 校验→scope-mismatch)+ `.` 拒签 + 与 url-signer/attachment token 签名域不可互换(同 secret 交叉校验必失败);`import { mintScopedToken } from` server 包 barrel 可解析
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.6_
   - _Boundary: ScopedToken_
 - [ ] 1.2 LLM 面 secret 族解析
@@ -23,7 +24,8 @@
 - [ ] 2.2 网关路由:门控与换钥
   - 实现 `createLlmGatewayRoutes` 挂 `/llm-gateway/:provider/*`;门控顺序=方法(非 POST/GET→405)→provider 登记(404)→Bearer verify(expectedScope=`llm:<provider>`;无效/过期 401、scope 不符 403)→keyEnvCandidates 按序即时读(皆缺→502,不缓存);失败路径零上游请求
   - 换钥:剥入站 authorization/逐跳头/host/content-length,注入 `Authorization: Bearer <真实key>`
-  - 观察:路由级集成测试(mock fetchImpl)断言 401/403/404/405/502 各自零上游、出站 Bearer=真实 key、入站 token 不外泄
+  - 交付含 `packages/server/src/llm-gateway/` barrel 与 `packages/server/src/index.ts` 增 llm-gateway 导出(供 pi-handler 路由挂载 import)
+  - 观察:路由级集成测试(mock fetchImpl)断言 401/403/404/405/502 各自零上游、出站 Bearer=真实 key、入站 token 不外泄;`import { createLlmGatewayRoutes } from` server 包 barrel 可解析
   - _Requirements: 3.1, 3.2, 3.3, 3.7_
   - _Boundary: LlmGatewayRoutes_
   - _Depends: 1.1, 2.1_
@@ -38,8 +40,9 @@
 - [ ] 3.1 摘除 aigc-proxy(保留 e2e 骨架待 4.1 改造)
   - 删除 `packages/server/src/aigc-proxy/`、`lib/app/aigc-proxy-config.ts`、`packages/server/test/aigc-proxy/`;去 `packages/server/src/index.ts` 的 aigc-proxy 导出;改写 `test/http/router.test.ts` 中 aigc-proxy 引用为非 aigc-proxy 夹具;去 `lib/app/config.ts` 的 aigcProxyPublicBase 装载与 pi-handler 的 aigc-proxy 接线(import/logger/判定/注入/剔除/路由挂载)
   - **暂不删 `e2e/aigc-proxy/`**(4.1 将其改造为 e2e/llm-gateway,避免骨架丢失);此时源码/装配层已无 aigc-proxy,`/api/aigc-proxy/*` 已 404
-  - 观察:源码/单测/装配层无残留 aigc-proxy 引用;`/api/aigc-proxy/*` 请求 404;删除后单测/集成套件通过
-  - _Requirements: 4.1, 4.5_
+  - 废弃告警:`PI_WEB_AIGC_PROXY_*`(PUBLIC_BASE/SECRET/TOKEN_TTL_MS)任一被设置→装配期 `app:llm-gateway` warn(指明已废弃与替代),与删除同处收口
+  - 观察:源码/单测/装配层无残留 aigc-proxy 引用;`/api/aigc-proxy/*` 请求 404;设置废弃 env 触发 warn;删除后单测/集成套件通过
+  - _Requirements: 4.1, 4.2, 4.5_
   - _Boundary: AigcProxyRemoval_
 - [ ] 3.2 LLM 网关装配配置与 env 注入
   - `lib/app/llm-gateway-config.ts`:`resolveLlmGatewayConfig(env)`(PUBLIC_BASE/TOKEN_TTL_MS/SERVE 解析,SERVE 缺省=PUBLIC_BASE 非空即启);`buildSandboxLlmEnv({publicBase,tokens})`→`{PI_LLM_GATEWAY_BASE, PI_LLM_TOKEN_<ID>...}`;`lib/app/config.ts` 增 llmGateway 相关字段装载
@@ -49,17 +52,17 @@
   - _Depends: 1.1, 2.1_
 - [ ] 3.3 pi-handler e2b 装配切换
   - e2b 分支:配 PUBLIC_BASE 时 `providerKeysForE2b={}`(PROVIDER_KEY_NAMES 全量不进 env 与白名单),对登记表∩宿主env有key的每个 provider mint(scope=`llm:<id>`),buildSandboxLlmEnv 产物并入 e2bSpec.env 与白名单;未配置→现状透传 + `app:llm-gateway` 可识别 warn;本地 spawn 分支零触碰
-  - 废弃告警:`PI_WEB_AIGC_PROXY_*` 任一被设置→warn(指明已废弃与替代)
-  - 观察:装配单测断言——配置时沙箱 env 与白名单不含任何 PROVIDER_KEY_NAMES 真实值且 token env 齐全;未配置时维持现状 + warn;废弃 env 触发 warn;本地模式无变化
-  - _Requirements: 2.1, 2.2, 2.4, 2.5, 4.2, 4.3, 4.4_
+  - AIGC 面回归:未配 LLM 网关时三键随 PROVIDER_KEY_NAMES 照常透传(tool-kit 占位符零改动),平台/operator 注入的覆盖值优先生效
+  - 观察:装配单测断言——配置时沙箱 env 与白名单不含任何 PROVIDER_KEY_NAMES 真实值且 token env 齐全;未配置时维持现状 + warn;本地模式无变化;未配网关时 AIGC 三键仍透传
+  - _Requirements: 2.1, 2.2, 2.4, 2.5, 4.3, 4.4_
   - _Boundary: LlmGatewayAssembly_
-  - _Depends: 3.2_
+  - _Depends: 1.1, 2.1, 3.2_
 - [ ] 3.4 网关路由挂载(serve 门控)
   - pi-handler 路由注册段:仅 SERVE 门控开启时注册 `createLlmGatewayRoutes`;secret 经 resolveLlmGatewaySecret 注入;未启用则路由不注册(请求 404),不因缺网关配置影响其余装配
   - 观察:集成测试——SERVE 开启时 `/api/llm-gateway/<provider>/*` 可达并按门控响应;SERVE 关闭时该路径 404 且其余路由正常
   - _Requirements: 3.8_
   - _Boundary: LlmGatewayRoutes, LlmGatewayAssembly_
-  - _Depends: 2.3, 3.3_
+  - _Depends: 1.2, 2.3, 3.3_
 
 - [ ] 4. 端到端与文档
 - [ ] 4.1 e2e:LLM 网关三进程链(改造并移除 aigc-proxy e2e)
@@ -72,7 +75,7 @@
   - 观察:测试计数与改动前基线对比无新增失败
   - _Requirements: 6.5_
   - _Depends: 4.1_
-- [ ]* 4.3 附件面部署文档对齐
+- [ ] 4.3 附件面部署文档对齐
   - 部署文档说明:推荐自部署用 cloud-http(X-Pi-Attachment-Token)回环替代 s3 凭据透传使沙箱无对象存储静态凭据;s3 直连保留为宿主可信部署显式选项并说明其暴露面;含配 LLM 网关后 AIGC 三键被剔的迁移警示(平台注入 vs `PI_WEB_E2B_ENV_PASSTHROUGH` 显式透传)
   - 观察:文档落盘且覆盖推荐形态/显式选项/迁移警示三点
   - _Requirements: 5.1, 5.2_
