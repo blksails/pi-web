@@ -70,7 +70,7 @@
   - 观察:`pnpm e2e:llm-gateway` exit 0 含上述全部断言;package.json 增 llm-gateway e2e 脚本、无 aigc-proxy e2e 残留
   - _Requirements: 2.3, 6.1, 6.2, 6.3, 6.4_
   - _Depends: 3.4_
-- [ ] 4.2 全量回归
+- [x] 4.2 全量回归
   - server + 根 + tool-kit 全部单测/集成绿;aigc-proxy 删除后计数基线更新无遗留失败;既有 e2e:node 基线不回退
   - 观察:测试计数与改动前基线对比无新增失败
   - _Requirements: 6.5_
