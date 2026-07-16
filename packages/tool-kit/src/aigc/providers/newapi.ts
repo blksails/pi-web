@@ -32,6 +32,9 @@ const NEWAPI_CONFIG: OpenAiCompatConfig = {
   baseUrl: "https://www.apiservices.top/v1",
   apiKeyVar: "NEWAPI_API_KEY",
   provider: "newapi",
+  // 该网关与 sufy 同样严格拒绝 response_format(400 Unknown parameter,2026-07-16 实测);
+  // gpt-image 系列默认即返回 b64_json,省略不损失内联优化。
+  omitResponseFormat: true,
 };
 
 // ── model 路由项工厂入参(向后兼容别名)──────────────────────────────────────────
