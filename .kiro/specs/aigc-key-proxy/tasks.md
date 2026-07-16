@@ -17,7 +17,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4_
   - _Boundary: session-token_
 
-- [ ] 2.2 (P) provider 登记表
+- [x] 2.2 (P) provider 登记表
   - 静态映射 newapi/sufy/dashscope → { 上游 base, 真实 key 的 env 变量名 };上游 base 与 tool-kit 占位默认字面量逐字一致
   - 真实 key 在请求期从宿主 env 读取不缓存;未知 provider 查表返回 undefined
   - 观察:查表单测(三命中 + 未知返回 undefined + 上游 base 与 tool-kit 字面量一致性断言)全绿
