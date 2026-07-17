@@ -1,0 +1,7 @@
+{
+  "defaultProvider": "openrouter",
+  "defaultModel": "openai/gpt-4o-mini",
+  "loadSystemSkills": false,
+  "packages": [],
+  "defaultProjectTrust": "always"
+}

@@ -79,9 +79,10 @@
   - 部署文档说明:推荐自部署用 cloud-http(X-Pi-Attachment-Token)回环替代 s3 凭据透传使沙箱无对象存储静态凭据;s3 直连保留为宿主可信部署显式选项并说明其暴露面;含配 LLM 网关后 AIGC 三键被剔的迁移警示(平台注入 vs `PI_WEB_E2B_ENV_PASSTHROUGH` 显式透传)
   - 观察:文档落盘且覆盖推荐形态/显式选项/迁移警示三点
   - _Requirements: 5.1, 5.2_
-- [~]* 4.4 真沙箱手动验证 — **SKIP(边界外阻塞;Req 6.1「或等价多进程编排」已由 4.1 满足)**
+- [x]* 4.4 真沙箱手动验证 — **PASS(本地 kind e2b 真沙箱,openrouter provider,2026-07-17)**
   - Chrome + e2b/ACS dev(配 LLM 网关):kubectl Pod env 无任何真实 provider key、主 LLM 对话经网关 token 换钥成功流式回复;缺凭据/基建时 SKIP
-  - **SKIP 理由**:让沙箱内 agent 真正指向网关,需基座镜像 entrypoint 按 `PI_LLM_GATEWAY_BASE`/`PI_LLM_TOKEN_<ID>` 生成网关形态 models.json——该「镜像 entrypoint models.json 生成分支」是本 spec 明确的**边界外**(pi-clouds 基座镜像仓)。当前 baked 镜像不认这套 env,配好宿主侧网关也无法在沙箱内跑通主对话经网关的路径。Req 6.1 明文「真实沙箱**或等价的多进程编排**」,4.1 三进程真实链(11 断言:真实进程边界的凭据零泄漏 + 换钥 + SSE 流式 + 401/403/404)已等价满足;凭据不进沙箱的装配侧属性另由 3.3 装配单测在值层面证明。待 pi-clouds 侧镜像 entrypoint 网关分支落地后,可作为跨仓联调补验。
+  - **结果**:造测试镜像夹具 `pi-clouds/agent-runner:pi-gw-test`(FROM 真 pi 镜像 + 网关 entrypoint 分支:见 `PI_LLM_GATEWAY_BASE` 即把 models.json 每 provider 改为 baseUrl=$base/<id>、apiKey=$PI_LLM_TOKEN_<ID>、authHeader:true——**模拟 pi-clouds 未来要加的镜像 entrypoint 网关分支,不改任何仓生产代码**),bake hello-agent 于其上,dev:e2b:local + `PI_WEB_LLM_GATEWAY_PUBLIC_BASE=host.docker.internal:3020`+SERVE=1,宿主持真实 `OPENROUTER_API_KEY`。会话 f437cef1:①kubectl Pod env 实证**无 `OPENROUTER_API_KEY` 真实值**,只有 `PI_LLM_GATEWAY_BASE` + `PI_LLM_TOKEN_OPENROUTER=pw2.llm:openrouter.<sessionId>.…`;②主对话"用一句话介绍你自己"经沙箱内 pi(读网关形态 models.json)→宿主 `/api/llm-gateway/openrouter/*`→网关 verify token(scope=llm:openrouter)→换真实 key→openrouter,**两笔 status 200**(token 打 openrouter 必 401,200=换钥成立),LLM 自然语言回复成功。**pi SDK 0.80.3 零改动经网关走主对话的设计核心假设首次真沙箱验证成立**。
+  - **★验证中发现的设计问题(dashscope 端点不一致)**:登记表 `dashscope` upstreamBase=`https://dashscope.aliyuncs.com/api/v1`(取自 aigc-proxy 权威值,是 **AIGC 图像端点**),但 pi-clouds models.json 模板里 dashscope **主 LLM 对话**端点=`https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`(不同 host+path)。若用户以 dashscope 作主 LLM 经网关,登记表会把主对话转到 AIGC 端点→失败。openrouter 验证不受影响(单一端点),但 **dashscope(及任何主对话/AIGC 端点分叉的 provider)需登记表区分用途或按 scope 细分 upstreamBase**——记后续修正项。
   - _Requirements: 6.1, 6.2_
   - _Depends: 4.1_
 
