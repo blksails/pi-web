@@ -20,7 +20,7 @@
   - _Boundary: askUserQuestionTool_
   - _Depends: 1.1_
 - [x] 2.2 (P) 在 ui 包实现 AskUserQuestionCard 组件 + i18n 键
-  - 多题同卡表单：单选题 radiogroup（默认首项、互斥）/ 多选题 checkbox（可 0..n）；每选项显示 label + description 副文本；allowOther 时显示 Other 文本输入
+  - 多题同卡使用 header Tabs，一次展示当前题且切换保留各题状态；单选题 radiogroup（默认首项、互斥）/ 多选题 checkbox（可 0..n）；每选项显示 label + description 副文本；allowOther 时显示 Other 文本输入
   - 提交收集答案 → 经 codec 编码为回传 value + 生成人类可读摘要，经回调上交；取消经回调上交；pending 时禁用控件
   - zh/en 字典各新增 `piInteraction.askq.*` 键；`data-pi-askq-*` 测试锚点
   - 可观察：以 mock 富问题组渲染时每题 header/question 与每选项 label/description 可见；提交回调收到的 value 可经 `decodeAskAnswers` 还原为所选
@@ -52,7 +52,7 @@
 
 - [ ] 4. Validation: UI 单测 + node e2e
 - [ ] 4.1 (P) 为 AskUserQuestionCard 与 pi-interaction 富分支编写 UI 单测
-  - 覆盖：多题渲染（header/question/选项 label+description 可见）、单选互斥+默认首项、多选可 0..n、Other 输入并提交、提交编码回传可还原、取消回调；并断言非哨兵 select 请求仍走原生 select 渲染（R4.3 回归）
+  - 覆盖：多题 header Tabs（一次展示当前题、切换保留状态、可访问 ARIA 与键盘切换）、单选互斥+默认首项、多选可 0..n、Other 输入并提交、提交编码回传可还原、取消回调；并断言非哨兵 select 请求仍走原生 select 渲染（R4.3 回归）
   - 可观察：ui 包测试新增用例全绿
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.3, 4.3, 6.2_
   - _Depends: 2.2, 3.1_

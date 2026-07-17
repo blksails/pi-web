@@ -65,8 +65,9 @@ describe("PiInteraction", () => {
     const { container } = render(<PiInteraction extensionUI={ext} />);
 
     expect(screen.getByText("Choose test types")).toBeInTheDocument();
-    expect(screen.getByText("Choose code style")).toBeInTheDocument();
-    expect(screen.getAllByRole("textbox", { name: "其他答案" })).toHaveLength(2);
+    expect(screen.getByText("Choose code style")).not.toBeVisible();
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getAllByRole("textbox", { name: "其他答案" })).toHaveLength(1);
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
     expect(container.querySelector("[data-pi-interaction-active]")).toBeNull();
     expect(container.textContent).not.toContain(ASK_TITLE_SENTINEL);
@@ -77,7 +78,10 @@ describe("PiInteraction", () => {
 
     await user.click(screen.getByRole("checkbox", { name: /Unit/ }));
     await user.click(screen.getByRole("checkbox", { name: /Integration/ }));
-    await user.type(screen.getAllByRole("textbox", { name: "其他答案" })[1]!, "Hybrid");
+    await user.click(screen.getByRole("tab", { name: "Style" }));
+    expect(screen.getByText("Choose code style")).toBeInTheDocument();
+    expect(screen.getByText("Choose test types")).not.toBeVisible();
+    await user.type(screen.getByRole("textbox", { name: "其他答案" }), "Hybrid");
     await user.click(container.querySelector("[data-pi-askq-submit]")!);
 
     const response = vi.mocked(ext.respond).mock.calls[0]?.[1];

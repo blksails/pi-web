@@ -93,9 +93,44 @@ export function AskUserQuestionCard({
   onCancel,
 }: AskUserQuestionCardProps): React.JSX.Element {
   const t = useI18n();
+  const [activeIndex, setActiveIndex] = React.useState(0);
   const [states, setStates] = React.useState<readonly QuestionAnswerState[]>(
     () => group.questions.map(initialAnswerState),
   );
+  const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const activeQuestion = group.questions[activeIndex]!;
+  const hasTabs = group.questions.length > 1;
+
+  const tabId = (index: number): string =>
+    `askq-${request.id}-tab-${index}`;
+  const panelId = (index: number): string =>
+    `askq-${request.id}-panel-${index}`;
+
+  const activateTab = (index: number, focus = false): void => {
+    if (pending) return;
+    setActiveIndex(index);
+    if (focus) tabRefs.current[index]?.focus();
+  };
+
+  const handleTabKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    index: number,
+  ): void => {
+    let nextIndex: number | undefined;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % group.questions.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + group.questions.length) % group.questions.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = group.questions.length - 1;
+    }
+    if (nextIndex !== undefined) {
+      event.preventDefault();
+      activateTab(nextIndex, true);
+    }
+  };
 
   const setQuestionState = (
     index: number,
@@ -115,45 +150,113 @@ export function AskUserQuestionCard({
 
   return (
     <Card
-      className="flex flex-col gap-4 px-4 py-3"
+      className="flex min-h-0 flex-col gap-0 overflow-hidden p-0"
       data-pi-askq-card
       role="group"
       aria-label={t("piInteraction.askq.groupLabel")}
     >
-      {group.questions.map((question, index) => (
-        <QuestionFieldset
-          key={`${request.id}-q${index}`}
-          question={question}
-          questionIndex={index}
-          requestId={request.id}
-          state={states[index]!}
-          pending={pending}
-          onChange={(updater) => setQuestionState(index, updater)}
-        />
-      ))}
-
-      {error !== undefined ? (
-        <p
-          role="alert"
-          className="text-sm text-[hsl(var(--destructive))]"
-          data-pi-askq-error
+      {hasTabs ? (
+        <div
+          role="tablist"
+          className="flex min-h-10 overflow-x-auto border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] px-2"
+          data-pi-askq-tabs
         >
-          {error}
-        </p>
+          {group.questions.map((question, index) => {
+            const selected = activeIndex === index;
+            return (
+              <button
+                key={`${request.id}-tab-${index}`}
+                ref={(element) => {
+                  tabRefs.current[index] = element;
+                }}
+                type="button"
+                role="tab"
+                id={tabId(index)}
+                aria-selected={selected}
+                aria-controls={panelId(index)}
+                tabIndex={selected ? 0 : -1}
+                disabled={pending}
+                onClick={() => activateTab(index)}
+                onKeyDown={(event) => handleTabKeyDown(event, index)}
+                className={`relative shrink-0 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))] disabled:cursor-not-allowed disabled:opacity-50 ${
+                  selected
+                    ? "text-[hsl(var(--foreground))] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[hsl(var(--primary))]"
+                    : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                }`}
+                data-pi-askq-tab={index}
+              >
+                {question.header}
+              </button>
+            );
+          })}
+        </div>
       ) : null}
 
-      <div className="flex justify-end gap-2">
-        <Button onClick={handleSubmit} disabled={pending} data-pi-askq-submit>
-          {t("piInteraction.askq.submit")}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={onCancel}
-          disabled={pending}
-          data-pi-askq-cancel
+      {hasTabs ? (
+        group.questions.map((question, index) => (
+          <div
+            key={`${request.id}-panel-${index}`}
+            id={panelId(index)}
+            role="tabpanel"
+            aria-labelledby={tabId(index)}
+            hidden={activeIndex !== index}
+            className="min-h-0 flex-1 px-4 py-4"
+            data-pi-askq-panel={index}
+          >
+            <QuestionFieldset
+              question={question}
+              questionIndex={index}
+              requestId={request.id}
+              state={states[index]!}
+              pending={pending}
+              showHeader={false}
+              onChange={(updater) => setQuestionState(index, updater)}
+            />
+          </div>
+        ))
+      ) : (
+        <div
+          className="min-h-0 flex-1 px-4 py-4"
+          data-pi-askq-panel={0}
         >
-          {t("piInteraction.askq.cancel")}
-        </Button>
+          <QuestionFieldset
+            question={activeQuestion}
+            questionIndex={0}
+            requestId={request.id}
+            state={states[0]!}
+            pending={pending}
+            showHeader
+            onChange={(updater) => setQuestionState(0, updater)}
+          />
+        </div>
+      )}
+
+      <div
+        className="mt-auto flex flex-col gap-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-3"
+        data-pi-askq-actions
+      >
+        {error !== undefined ? (
+          <p
+            role="alert"
+            className="text-sm text-[hsl(var(--destructive))]"
+            data-pi-askq-error
+          >
+            {error}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <Button onClick={handleSubmit} disabled={pending} data-pi-askq-submit>
+            {t("piInteraction.askq.submit")}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={pending}
+            data-pi-askq-cancel
+          >
+            {t("piInteraction.askq.cancel")}
+          </Button>
+        </div>
       </div>
     </Card>
   );
@@ -166,6 +269,7 @@ function QuestionFieldset({
   requestId,
   state,
   pending,
+  showHeader,
   onChange,
 }: {
   readonly question: AskQuestion;
@@ -173,6 +277,7 @@ function QuestionFieldset({
   readonly requestId: string;
   readonly state: QuestionAnswerState;
   readonly pending: boolean;
+  readonly showHeader: boolean;
   readonly onChange: (
     updater: (prev: QuestionAnswerState) => QuestionAnswerState,
   ) => void;
@@ -202,11 +307,13 @@ function QuestionFieldset({
       className="flex flex-col gap-2"
       data-pi-askq-question={questionIndex}
     >
-      <div className="flex flex-col gap-0.5">
-        <div className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-          {question.header}
-        </div>
-        <div className="text-sm font-medium text-[hsl(var(--foreground))]">
+      <div className="flex flex-col gap-1">
+        {showHeader ? (
+          <div className="text-xs font-semibold uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            {question.header}
+          </div>
+        ) : null}
+        <div className="text-sm font-semibold text-[hsl(var(--foreground))]">
           {question.question}
         </div>
       </div>
@@ -216,7 +323,11 @@ function QuestionFieldset({
           {question.options.map((option) => (
             <label
               key={option.label}
-              className="flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-[hsl(var(--accent))]"
+              className={`flex cursor-pointer items-start gap-2 rounded-[var(--radius)] border px-3 py-2 text-sm transition-colors ${
+                state.selected.includes(option.label)
+                  ? "border-[hsl(var(--border))] bg-[hsl(var(--accent))]"
+                  : "border-transparent hover:bg-[hsl(var(--accent)/0.6)]"
+              }`}
             >
               <input
                 type="checkbox"
@@ -244,7 +355,11 @@ function QuestionFieldset({
           {question.options.map((option) => (
             <label
               key={option.label}
-              className="flex cursor-pointer items-start gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-[hsl(var(--accent))]"
+              className={`flex cursor-pointer items-start gap-2 rounded-[var(--radius)] border px-3 py-2 text-sm transition-colors ${
+                state.selected.includes(option.label)
+                  ? "border-[hsl(var(--border))] bg-[hsl(var(--accent))]"
+                  : "border-transparent hover:bg-[hsl(var(--accent)/0.6)]"
+              }`}
             >
               <input
                 type="radio"
