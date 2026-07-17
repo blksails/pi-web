@@ -19,7 +19,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 3.2, 3.3, 4.2, 5.2_
   - _Boundary: askUserQuestionTool_
   - _Depends: 1.1_
-- [ ] 2.2 (P) 在 ui 包实现 AskUserQuestionCard 组件 + i18n 键
+- [x] 2.2 (P) 在 ui 包实现 AskUserQuestionCard 组件 + i18n 键
   - 多题同卡表单：单选题 radiogroup（默认首项、互斥）/ 多选题 checkbox（可 0..n）；每选项显示 label + description 副文本；allowOther 时显示 Other 文本输入
   - 提交收集答案 → 经 codec 编码为回传 value + 生成人类可读摘要，经回调上交；取消经回调上交；pending 时禁用控件
   - zh/en 字典各新增 `piInteraction.askq.*` 键；`data-pi-askq-*` 测试锚点
