@@ -150,6 +150,14 @@
 6. The pi-web CLI shall 不更新被固定到精确版本或不可变引用的包，并在输出中标明这些包被跳过的原因。
 7. If 更新过程中某个包失败，then the pi-web CLI shall 继续处理其余包、在结束时汇总列出失败项及其原因，并以非零退出码结束。
 
+> **补记（2026-07-17，update 对齐 registry agent 通道）**：任务 5.2 交付的 `update` 只覆盖
+> plugin 通道（`pi update`）；经注册表安装（任务 9）落盘的包此前没有任何更新通道。
+> 以下三条把 registry 通道纳入同一 `update` 子命令（实现见任务 11）：
+
+8. When 用户执行 `pi-web update` 且存在经注册表安装（带安装回执 `.pi-web-registry.json`）的包，the pi-web CLI shall 按回执记录的 channel 重新解析该 source，并在解析版本与已安装版本不同时经注册表通道原子重装、滚动回执；版本相同时报告 skipped（已是最新）。update 的语义是**对齐 channel 当前指向**（channel 可前移亦可回撤），不做 semver 大小比较。
+9. The pi-web CLI shall 对安装时显式钉死精确版本（回执含 `pinnedVersion`）的注册表安装如实报告 skipped 并给出解除钉死的指引，且不对其发起任何解析请求（对齐 4.6 的 pinned 语义）。
+10. If 存在注册表通道的安装但注册表未配置，或某个包的解析/重装失败，then the pi-web CLI shall 对相应条目报告 failed（不静默掠过），继续处理其余条目（含 plugin 通道），并以非零退出码结束。指定包名时若命中注册表通道台账，则只走注册表通道，不再把该 id 交给 plugin 通道。
+
 ### Requirement 5: 发布清单编译（publish 的编译阶段）
 
 **Objective:** 作为包作者，我希望发布时由工具把我手写的清单编译成可签名的发布清单，以便我不必手工维护文件摘要。

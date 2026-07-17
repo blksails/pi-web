@@ -10,9 +10,12 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { tmpdir } from "node:os";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { runSubcommand, type RunSubcommandDeps, type ScaffoldResult } from "@/server/cli/index";
 import type { Installer } from "@/server/cli/install/installer";
 import type { PluginInstaller } from "@/server/cli/install/plugin-installer";
+import type { RegistryPort } from "@/server/cli/registry/registry-port";
 import type { ScaffoldSuccess, ScaffoldError } from "@/server/cli/scaffold/scaffold-writer";
 import type { TemplateInfo } from "@/server/cli/scaffold/template-catalog";
 
@@ -378,6 +381,81 @@ describe("runSubcommand — update", () => {
     });
     const code = await runSubcommand("update", [], { pluginInstaller, reporter: silentReporter() });
     expect(code).not.toBe(0);
+  });
+
+  // --- registry 通道(update 对齐补记,Req 4.8–4.10)---
+
+  /** 在临时安装根植入一个带回执的 registry 安装目录,返回 { root, dir }。 */
+  function plantRegistryInstall(receipt: Record<string, unknown>): { root: string; dir: string } {
+    const root = mkdtempSync(join(tmpdir(), "pi-dispatch-upd-"));
+    const dir = join(root, "acme_pack");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, ".pi-web-registry.json"), JSON.stringify(receipt));
+    return { root, dir };
+  }
+
+  /** fake RegistryPort:resolve 恒返回给定版本(其余方法不参与 update 判定路径)。 */
+  function fakeRegistryPort(version: string): RegistryPort {
+    return {
+      resolve: vi.fn(async (sourceId: string) => ({
+        ok: true as const,
+        value: { sourceId, version, origin: { type: "oss" as const, bundle: "b" }, manifest: { signature: "s" } },
+      })),
+      downloadBundle: vi.fn(),
+      uploadBundle: vi.fn(),
+      registerVersion: vi.fn(),
+      setChannel: vi.fn(),
+    } as unknown as RegistryPort;
+  }
+
+  it("★ 指定 packageId 命中 registry 台账 → 只走 registry 通道,plugin 通道不被打扰", async () => {
+    const { root } = plantRegistryInstall({ sourceId: "acme/pack", version: "1.0.0" });
+    const pluginUpdate = vi.fn();
+    const pluginInstaller = fakePluginInstaller({ update: pluginUpdate });
+    const code = await runSubcommand("update", ["acme/pack"], {
+      pluginInstaller,
+      registry: fakeRegistryPort("1.0.0"), // 与回执同版本 → skipped
+      env: { PI_WEB_REGISTRY_INSTALL_DIR: root } as NodeJS.ProcessEnv,
+      reporter: silentReporter(),
+    });
+    expect(code).toBe(0);
+    expect(pluginUpdate).not.toHaveBeenCalled();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("指定 packageId 未命中 registry 台账 → 落 plugin 通道(既有行为)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-dispatch-upd-")); // 空安装根
+    const pluginUpdate = vi.fn(async () => ({
+      ok: true as const,
+      value: { outcomes: [], hasFailures: false },
+    }));
+    const pluginInstaller = fakePluginInstaller({ update: pluginUpdate });
+    const code = await runSubcommand("update", ["npm:foo"], {
+      pluginInstaller,
+      env: { PI_WEB_REGISTRY_INSTALL_DIR: root } as NodeJS.ProcessEnv,
+      reporter: silentReporter(),
+    });
+    expect(code).toBe(0);
+    expect(pluginUpdate).toHaveBeenCalledWith({ packageId: "npm:foo" });
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("★ 无 packageId → 两通道都跑;registry 通道失败时即便 plugin 全成功也非零退出", async () => {
+    // registry 未配置(不注入 port、env 无 URL)但存在回执 → registry 通道逐项 failed
+    const { root } = plantRegistryInstall({ sourceId: "acme/pack", version: "1.0.0" });
+    const pluginUpdate = vi.fn(async () => ({
+      ok: true as const,
+      value: { outcomes: [{ id: "npm:foo", status: "updated" as const }], hasFailures: false },
+    }));
+    const pluginInstaller = fakePluginInstaller({ update: pluginUpdate });
+    const code = await runSubcommand("update", [], {
+      pluginInstaller,
+      env: { PI_WEB_REGISTRY_INSTALL_DIR: root } as NodeJS.ProcessEnv,
+      reporter: silentReporter(),
+    });
+    expect(code).not.toBe(0);
+    expect(pluginUpdate).toHaveBeenCalled(); // 两通道都跑了
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

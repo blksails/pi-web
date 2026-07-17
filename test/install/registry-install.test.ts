@@ -9,7 +9,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { computeIntegrity } from "@pi-clouds/registry-client";
-import { installFromRegistry } from "@/server/cli/install/registry-install";
+import {
+  installFromRegistry,
+  readInstallReceipt,
+  registryInstallDirName,
+  REGISTRY_RECEIPT_FILENAME,
+} from "@/server/cli/install/registry-install";
 import type { RegistryPort, RegistryError, RegistryOrigin, SignedManifest } from "@/server/cli/registry/registry-port";
 
 const dirs: string[] = [];
@@ -168,5 +173,50 @@ describe("installFromRegistry", () => {
     const target = join(scratch(), "t");
     const r = await installFromRegistry(registry, "acme/pack", { version: "1.0.0", targetDir: target });
     expect(!r.ok && r.error.code).toBe("UNSUPPORTED_ORIGIN");
+  });
+
+  it("★ 安装回执:channel 浮动安装落 {sourceId, version, channel},无 pinnedVersion", async () => {
+    const skill = "# s\n";
+    const bundle = makeTarball({ "skills/a.md": skill });
+    const manifest: SignedManifest = {
+      name: "acme/pack", version: "1.0.0", kind: "agent",
+      skills: [{ path: "skills/a.md", integrity: computeIntegrity(Buffer.from(skill)) }],
+      signature: "s",
+    };
+    const registry = fakeRegistry({ origin: { type: "oss", bundle: "b" }, manifest, bundleBytes: bundle });
+    const target = join(scratch(), "t");
+    const r = await installFromRegistry(registry, "acme/pack", { channel: "stable", targetDir: target });
+    expect(r.ok).toBe(true);
+    const receipt = readInstallReceipt(target);
+    expect(receipt).toEqual({ sourceId: "acme/pack", version: "1.0.0", channel: "stable" });
+  });
+
+  it("★ 安装回执:显式钉版本安装记 pinnedVersion(update 据此跳过)", async () => {
+    const skill = "# s\n";
+    const bundle = makeTarball({ "skills/a.md": skill });
+    const manifest: SignedManifest = {
+      name: "acme/pack", version: "1.0.0", kind: "agent",
+      skills: [{ path: "skills/a.md", integrity: computeIntegrity(Buffer.from(skill)) }],
+      signature: "s",
+    };
+    const registry = fakeRegistry({ origin: { type: "oss", bundle: "b" }, manifest, bundleBytes: bundle });
+    const target = join(scratch(), "t");
+    const r = await installFromRegistry(registry, "acme/pack", { version: "1.0.0", targetDir: target });
+    expect(r.ok).toBe(true);
+    expect(readInstallReceipt(target)?.pinnedVersion).toBe("1.0.0");
+  });
+
+  it("回执读取:缺文件/坏 JSON/缺必要字段 → undefined(不属于 registry 通道)", async () => {
+    const dir = scratch();
+    expect(readInstallReceipt(dir)).toBeUndefined();
+    writeFileSync(join(dir, REGISTRY_RECEIPT_FILENAME), "not json");
+    expect(readInstallReceipt(dir)).toBeUndefined();
+    writeFileSync(join(dir, REGISTRY_RECEIPT_FILENAME), JSON.stringify({ version: "1.0.0" }));
+    expect(readInstallReceipt(dir)).toBeUndefined();
+  });
+
+  it("registryInstallDirName:与 install 落盘的 sanitize 规则一致", () => {
+    expect(registryInstallDirName("acme/pack")).toBe("acme_pack");
+    expect(registryInstallDirName("a.b-c_1")).toBe("a.b-c_1");
   });
 });

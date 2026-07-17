@@ -312,6 +312,34 @@
   - _Depends: 10.2_
   - _Requirements: 7.1, 7.2_
 
+- [ ] 11. update 对齐：registry agent 通道（2026-07-17 补记）
+
+- [x] 11.1 安装回执：`installFromRegistry` 落盘时写 `.pi-web-registry.json`
+  - 回执记 `sourceId` / 实际安装 `version` / 请求的 `channel` / 显式钉死的 `pinnedVersion`
+  - 回执在 integrity 复核通过后写进 staging，随 rename 原子落盘；回滚不残留；不参与复核
+  - 目录名 sanitize 规则提为共享 `registryInstallDirName()`（install 落盘与 update 匹配同源）
+  - 观察态：channel 浮动安装落 `{sourceId, version, channel}`；钉版本安装另记 `pinnedVersion`；坏/缺回执 `readInstallReceipt()` → undefined
+  - _Depends: 9.2_
+  - _Requirements: 4.8, 4.9_
+  - _Boundary: registry-install_
+
+- [x] 11.2 registry-update 模块：枚举回执 → resolve 比对 → 原子重装
+  - `listRegistryInstalls(rootDir)` 枚举带有效回执的子目录（根不存在 → 空列表）
+  - `updateRegistryInstalls()`：pinned → skipped 零网络调用；resolve 失败 → failed 继续；版本相同 → skipped 已是最新；不同 → `installFromRegistry` 重装并滚动回执，outcome reason 记 `旧版 → 新版`
+  - registry 未配置且有条目 → 逐项 failed（不静默掠过）；汇总形状复用 plugin 通道 `UpdatePackageOutcome` + `hasFailures`
+  - 观察态：`test/install/registry-update.test.ts` 7 用例全绿
+  - _Depends: 11.1_
+  - _Requirements: 4.8, 4.9, 4.10_
+  - _Boundary: registry-update_
+
+- [x] 11.3 集成：`runUpdate` 接入 registry 通道
+  - 安装根与 install 落盘同源（`registryInstallRoot()`：`PI_WEB_REGISTRY_INSTALL_DIR` ?? `<cwd>/.pi-web/registry-sources`）
+  - 指定 packageId 命中回执台账（sourceId 或 sanitize 目录名）→ 只走 registry 通道；未命中 → plugin 通道（既有行为）；无 packageId → 两通道都跑、合并汇总，退出码由合并 `hasFailures` 决定
+  - 观察态：`subcommand-dispatch.test.ts` 新增 3 条接线断言（命中不打扰 plugin 通道 / 未命中落 plugin / registry 失败即非零退出）全绿，既有 update 用例不回归
+  - _Depends: 11.2, 6.1_
+  - _Requirements: 4.8, 4.10_
+  - _Boundary: SubcommandRouter_
+
 ---
 
 ## Rules & Tips
@@ -600,3 +628,8 @@
   `PI_WEB_SOURCES_ROOT` 指向隔离的临时源根。**绝不能污染用户真实的 `~/.pi/agent` 与 `~/.pi-web/agents`。**
 - `RegistrySourceProvider.list()` **每次请求都重读文件**，无缓存（已读源码确认）。故 6.2 的 e2e 可以在
   **同一个运行中的实例**上做「安装后包含 → 卸载后不包含」两次断言，无需重启。
+- **回执先于更新（任务 11 边界）**：`update` 的 registry 通道只认带 `.pi-web-registry.json` 回执的
+  目录 —— 回执机制引入（11.1）之前的存量安装没有回执，枚举不到、不会被更新（重新 `pi-web install`
+  一次即有）。这是刻意选择：没有回执就不知道「装的哪个版本、跟踪哪个 channel」，猜测比不更新更危险。
+- **两次 resolve 的 TOCTOU 可接受，但绝不能把第一次的 version 钉给 `installFromRegistry`**：
+  显式 `version` 会被回执记成 `pinnedVersion`，之后的 update 将永远跳过该包（隐性自锁）。

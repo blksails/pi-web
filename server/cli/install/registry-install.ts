@@ -9,6 +9,18 @@
  * 既有 AgentInstaller 直连路径(不经代理),不在本模块。
  *
  * 完整性复核后于落盘(防下载/落盘字节损坏);验签由 registry 在 registerVersion 时已做,安装侧不重复。
+ *
+ * ## 安装回执(update 对齐补记,Req 4.8–4.10)
+ *
+ * 落盘时在 targetDir 内写一份回执 `.pi-web-registry.json`(`REGISTRY_RECEIPT_FILENAME`),
+ * 记录 `sourceId` / 实际安装的 `version` / 请求的 `channel` / 显式钉死的 `pinnedVersion`。
+ * 这是 `pi-web update` 的 registry 通道(`registry-update.ts`)判定「装的是什么、跟踪哪个
+ * channel、有没有新版」的唯一依据 —— 没有回执的目录不属于本通道(存量安装重装一次即有)。
+ *
+ * 回执在 integrity 复核**通过后**写进 staging 的 extractDir,再随 rename 一并原子落盘;
+ * 复核失败回滚时自然不残留。回执不在 manifest refs 里,不参与 integrity 复核。
+ * `pinnedVersion` 只在调用方显式指定精确 `version` 时记录 —— update 对钉死安装如实跳过
+ * (对齐 Req 4.6 的 pinned 语义),channel 浮动安装才是可更新对象。
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, renameSync, existsSync } from "node:fs";
@@ -32,6 +44,53 @@ export interface InstalledEntry {
   readonly version: string;
   readonly targetDir: string;
   readonly verifiedFiles: number;
+}
+
+/** 安装回执文件名(落在 targetDir 根,`.` 前缀不参与源扫描/复核)。 */
+export const REGISTRY_RECEIPT_FILENAME = ".pi-web-registry.json";
+
+/** 安装回执 —— `pi-web update` registry 通道的判定依据(见文件头「安装回执」)。 */
+export interface RegistryInstallReceipt {
+  readonly sourceId: string;
+  /** 本次实际安装的版本(resolve 结果,非请求值)。 */
+  readonly version: string;
+  /** 安装时显式请求的 channel;缺省表示跟 registry 的默认 channel。 */
+  readonly channel?: string;
+  /** 安装时显式钉死的精确版本;存在即视为 pinned,update 跳过。 */
+  readonly pinnedVersion?: string;
+}
+
+/** 读取一个目录的安装回执;不存在/坏 JSON/缺必要字段 → undefined(该目录不属于 registry 通道)。 */
+export function readInstallReceipt(dir: string): RegistryInstallReceipt | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(join(dir, REGISTRY_RECEIPT_FILENAME), "utf8");
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined;
+  const obj = parsed as Record<string, unknown>;
+  if (typeof obj["sourceId"] !== "string" || typeof obj["version"] !== "string") return undefined;
+  return {
+    sourceId: obj["sourceId"],
+    version: obj["version"],
+    ...(typeof obj["channel"] === "string" ? { channel: obj["channel"] } : {}),
+    ...(typeof obj["pinnedVersion"] === "string" ? { pinnedVersion: obj["pinnedVersion"] } : {}),
+  };
+}
+
+/**
+ * sourceId → 安装目录名(与 CLI install 分支的既有 sanitize 规则同一实现,提为共享函数,
+ * update 按 packageId 匹配目录时复用同一规则,避免两处漂移)。
+ */
+export function registryInstallDirName(sourceId: string): string {
+  return sourceId.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 /** 从 registry manifest 收集受完整性保护的引用(与发布侧 collectRefs 对称)。 */
@@ -111,6 +170,15 @@ export async function installFromRegistry(
         return fail({ code: "INTEGRITY_MISMATCH", path: ref.path });
       }
     }
+
+    // 4.5) 复核通过 → 写安装回执进 staging(随 rename 原子落盘;失败回滚不残留)
+    const receipt: RegistryInstallReceipt = {
+      sourceId,
+      version: entry.version,
+      ...(opts.channel !== undefined ? { channel: opts.channel } : {}),
+      ...(opts.version !== undefined ? { pinnedVersion: opts.version } : {}),
+    };
+    writeFileSync(join(extractDir, REGISTRY_RECEIPT_FILENAME), `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
 
     // 5) 原子移入 targetDir(先删旧,再 rename staging content)
     if (existsSync(opts.targetDir)) rmSync(opts.targetDir, { recursive: true, force: true });

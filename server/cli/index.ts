@@ -88,7 +88,12 @@ import { createPluginInstaller, type PluginInstaller } from "./install/plugin-in
 import { HttpRegistryAdapter } from "./registry/http-registry-adapter.js";
 import type { RegistryPort } from "./registry/registry-port.js";
 import { publish as runPublishOrchestrator } from "./publish/publish-orchestrator.js";
-import { installFromRegistry } from "./install/registry-install.js";
+import { installFromRegistry, registryInstallDirName } from "./install/registry-install.js";
+import {
+  listRegistryInstalls,
+  findRegistryInstalls,
+  updateRegistryInstalls,
+} from "./install/registry-update.js";
 import { classifySourceForm } from "./install/source-resolver.js";
 
 /** 已知子命令名(与 `bin/pi-web.mjs` 的 `SUBCOMMAND_NAMES` 同一份契约,此处独立声明避免
@@ -134,6 +139,11 @@ export interface RunSubcommandDeps {
  *  - `PI_WEB_REGISTRY_TOKEN`:发布/消费 token。
  * 缺 URL → undefined(调用方据此报「未配置 registry」)。
  */
+/** registry 通道的安装根(install 落盘与 update 枚举必须同源,提为共享函数)。 */
+function registryInstallRoot(env: NodeJS.ProcessEnv, cwd: string): string {
+  return env["PI_WEB_REGISTRY_INSTALL_DIR"] ?? join(cwd, ".pi-web", "registry-sources");
+}
+
 function buildRegistryFromEnv(env: NodeJS.ProcessEnv, injected?: RegistryPort): RegistryPort | undefined {
   if (injected) return injected;
   const baseUrl = env["PI_WEB_REGISTRY_URL"];
@@ -278,8 +288,8 @@ async function runInstall(
   // 否则落既有直连安装路径(git/npm/本地)。
   const registry = buildRegistryFromEnv(env, deps.registry);
   if (classifySourceForm(source) === "registry" && registry) {
-    const targetBase = env["PI_WEB_REGISTRY_INSTALL_DIR"] ?? join(cwd, ".pi-web", "registry-sources");
-    const targetDir = join(targetBase, source.replace(/[^a-zA-Z0-9._-]/g, "_"));
+    const targetBase = registryInstallRoot(env, cwd);
+    const targetDir = join(targetBase, registryInstallDirName(source));
     reporter.start("install", `${source}(经注册表)`);
     const r = await installFromRegistry(registry, source, { targetDir });
     if (!r.ok) {
@@ -404,20 +414,46 @@ async function runUpdate(
   const [packageId] = parsed.positionals;
   const pluginInstaller = deps.pluginInstaller ?? createPluginInstaller();
 
+  // registry 通道:枚举安装根下带回执的目录(与 install 落盘同源,见 registryInstallRoot)。
+  // 指定 packageId 且命中本通道台账 → 只走 registry 通道;未命中 → 落 plugin 通道(既有行为)。
+  // 未指定 → 两通道都跑,合并汇总(通道归属对用户透明,与 uninstall 的探测裁断同精神)。
+  const cwd = deps.cwd ?? process.cwd();
+  const env = deps.env ?? process.env;
+  const registry = buildRegistryFromEnv(env, deps.registry);
+  const allRegistryEntries = listRegistryInstalls(registryInstallRoot(env, cwd));
+  const registryEntries =
+    packageId !== undefined ? findRegistryInstalls(allRegistryEntries, packageId) : allRegistryEntries;
+
   reporter.start("update", packageId ?? "全部可更新的包");
-  const res = await pluginInstaller.update({ packageId });
-  if (!res.ok) {
-    reporter.fail("update", { code: res.error.code, message: res.error.message });
-    return 1;
-  }
-  for (const outcome of res.value.outcomes) {
+
+  const emit = (outcome: { id: string; status: string; reason?: string }): void => {
     if (outcome.status === "failed") {
       reporter.fail("update", { code: outcome.status, message: `${outcome.id}: ${outcome.reason ?? ""}` });
     } else {
       reporter.complete("update", `${outcome.id}: ${outcome.status}${outcome.reason ? ` (${outcome.reason})` : ""}`);
     }
+  };
+
+  let hasFailures = false;
+
+  if (registryEntries.length > 0) {
+    const regRes = await updateRegistryInstalls(registry, registryEntries);
+    for (const outcome of regRes.outcomes) emit(outcome);
+    hasFailures = hasFailures || regRes.hasFailures;
   }
-  return res.value.hasFailures ? 1 : 0;
+
+  // 指定包且已由 registry 通道处理 → 不再打扰 plugin 通道(该 id 不在 pi 的台账里)。
+  if (packageId !== undefined && registryEntries.length > 0) {
+    return hasFailures ? 1 : 0;
+  }
+
+  const res = await pluginInstaller.update({ packageId });
+  if (!res.ok) {
+    reporter.fail("update", { code: res.error.code, message: res.error.message });
+    return 1;
+  }
+  for (const outcome of res.value.outcomes) emit(outcome);
+  return hasFailures || res.value.hasFailures ? 1 : 0;
 }
 
 /** 装配生产 `Installer`:依据 `CliContext` 得到 `sourcesRoot`/`agentDir`(注册表路径)。 */
