@@ -17,14 +17,20 @@ import * as React from "react";
 import { Check, X, Ban } from "lucide-react";
 import type { UseExtensionUIResult } from "@blksails/pi-web-react";
 import type {
+  AskQuestionGroup,
   RpcExtensionUIRequest,
   UiResponseRequest,
+} from "@blksails/pi-web-protocol";
+import {
+  decodeAskTitle,
+  isAskTitle,
 } from "@blksails/pi-web-protocol";
 import { Card } from "../ui/card.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
 import type { TranslateFn } from "../i18n/index.js";
+import { AskUserQuestionCard } from "./ask-user-question-card.js";
 
 export interface PiInteractionProps {
   readonly extensionUI: UseExtensionUIResult;
@@ -36,6 +42,7 @@ type InteractiveRequest = Extract<
   RpcExtensionUIRequest,
   { method: "select" | "confirm" | "input" | "editor" }
 >;
+type SelectRequest = Extract<InteractiveRequest, { method: "select" }>;
 
 /** 应答结果(判别式联合),驱动终态留痕文案。 */
 type InteractionOutcome =
@@ -66,6 +73,26 @@ function isInteractive(
   );
 }
 
+function richAskRequest(
+  request: InteractiveRequest,
+): { readonly request: SelectRequest; readonly group: AskQuestionGroup } | undefined {
+  if (request.method !== "select" || !isAskTitle(request.title)) {
+    return undefined;
+  }
+  const group = decodeAskTitle(request.title);
+  return group === undefined ? undefined : { request, group };
+}
+
+/** 富载荷绝不进入视觉留痕或读屏播报。 */
+function readableTitle(request: InteractiveRequest): string {
+  const rich = richAskRequest(request);
+  if (rich === undefined) return request.title;
+  const first = rich.group.questions[0]!;
+  return rich.group.questions.length === 1
+    ? first.question
+    : `${first.question} (+${rich.group.questions.length - 1} more)`;
+}
+
 export function PiInteraction({
   extensionUI,
   className,
@@ -90,6 +117,7 @@ export function PiInteraction({
         ? extensionUI.error.message
         : String(extensionUI.error);
   const errorMsg = localError ?? hookError;
+  const activeAsk = active === undefined ? undefined : richAskRequest(active);
 
   const submit = React.useCallback(
     (
@@ -123,11 +151,12 @@ export function PiInteraction({
     request: InteractiveRequest,
     method: "select" | "input" | "editor",
     value: string,
+    summary: string = value,
   ): void => {
     submit(
       request,
       { type: "extension_ui_response", id: request.id, value },
-      { kind: "value", method, value },
+      { kind: "value", method, value: summary },
     );
   };
 
@@ -152,7 +181,10 @@ export function PiInteraction({
       {/* sr-only 实时播报区:active 标题变化时以非打断优先级播报新交互请求(Req 5.1)。 */}
       <div className="sr-only" aria-live="polite" data-pi-interaction-live>
         {active !== undefined
-          ? t("piInteraction.requestAnnounce").replace("{title}", active.title)
+          ? t("piInteraction.requestAnnounce").replace(
+              "{title}",
+              readableTitle(active),
+            )
           : ""}
       </div>
 
@@ -160,7 +192,19 @@ export function PiInteraction({
         <ResolvedCard key={item.id} item={item} />
       ))}
 
-      {active !== undefined ? (
+      {activeAsk !== undefined ? (
+        <AskUserQuestionCard
+          key={activeAsk.request.id}
+          group={activeAsk.group}
+          request={activeAsk.request}
+          pending={extensionUI.pending}
+          error={errorMsg}
+          onSubmitEncoded={(value, summary) =>
+            onValue(activeAsk.request, "select", value, summary)
+          }
+          onCancel={() => onCancel(activeAsk.request)}
+        />
+      ) : active !== undefined ? (
         <ActiveCard
           key={active.id}
           request={active}
@@ -192,7 +236,7 @@ function ResolvedCard({
       data-pi-interaction-method={request.method}
     >
       <div className="font-medium text-[hsl(var(--foreground))]">
-        {request.title}
+        {readableTitle(request)}
       </div>
       <div className="flex items-center gap-1.5 text-[hsl(var(--muted-foreground))]">
         {icon}

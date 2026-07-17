@@ -28,6 +28,7 @@ const group: AskQuestionGroup = {
         { label: "Cache", description: "Faster reads" },
         { label: "Queue", description: "Async work" },
       ],
+      allowOther: false,
     },
   ],
 };
@@ -59,7 +60,7 @@ describe("AskUserQuestionCard", () => {
     expect(screen.getByText("Async work")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Node/ })).toBeChecked();
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
-    expect(screen.getByRole("textbox", { name: "其他答案" })).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: "其他答案" })).toHaveLength(2);
   });
 
   it("单选互斥、多选可多项，并提交 codec value 与可读摘要", async () => {
@@ -79,7 +80,7 @@ describe("AskUserQuestionCard", () => {
     expect(screen.getByRole("radio", { name: /Node/ })).not.toBeChecked();
     await user.click(screen.getByRole("checkbox", { name: /Cache/ }));
     await user.click(screen.getByRole("checkbox", { name: /Queue/ }));
-    await user.type(screen.getByRole("textbox", { name: "其他答案" }), "Bun");
+    await user.type(screen.getAllByRole("textbox", { name: "其他答案" })[0]!, "Bun");
     await user.click(container.querySelector("[data-pi-askq-submit]")!);
 
     const [value, summary] = onSubmitEncoded.mock.calls[0]!;

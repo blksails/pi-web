@@ -4,7 +4,7 @@
  * 背景:AskUserQuestion 特性零协议帧改动,问题组经哨兵搭载在既有 `select` 请求的 title
  * 上(见 `@blksails/pi-web-protocol` 的 ask-user-question codec)。本组件只负责“已解码问题组”
  * 的多题富表单渲染与本地状态收集——单选题以互斥 radiogroup 呈现(默认首项)、多选题以
- * checkbox 呈现(可 0..n)、每个选项展示 label + description、`allowOther` 时附加自由文本输入。
+ * checkbox 呈现(可 0..n)、每个选项展示 label + description,并始终附加自由文本输入。
  * 提交时将本地作答编码为 `AskAnswers` 并调用 `encodeAskAnswers` 生成回传 value,同时生成
  * 一份人类可读摘要,二者经 `onSubmitEncoded` 回调上交给宿主(接线逻辑不在本组件内,见
  * `pi-interaction.tsx` 的 select 分支,任务 3.1)。
@@ -159,7 +159,7 @@ export function AskUserQuestionCard({
   );
 }
 
-/** 单题渲染:header + question + radio/checkbox 选项(含 description) + 可选 Other 输入。 */
+/** 单题渲染:header + question + radio/checkbox 选项(含 description) + Other 输入。 */
 function QuestionFieldset({
   question,
   questionIndex,
@@ -266,18 +266,16 @@ function QuestionFieldset({
         </div>
       )}
 
-      {question.allowOther === true ? (
-        <input
-          type="text"
-          aria-label={t("piInteraction.askq.otherLabel")}
-          placeholder={t("piInteraction.askq.otherPlaceholder")}
-          value={state.other}
-          onChange={(e) => setOther(e.target.value)}
-          disabled={pending}
-          className="h-9 w-full rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          data-pi-askq-other
-        />
-      ) : null}
+      <input
+        type="text"
+        aria-label={t("piInteraction.askq.otherLabel")}
+        placeholder={t("piInteraction.askq.otherPlaceholder")}
+        value={state.other}
+        onChange={(e) => setOther(e.target.value)}
+        disabled={pending}
+        className="h-9 w-full rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        data-pi-askq-other
+      />
     </div>
   );
 }

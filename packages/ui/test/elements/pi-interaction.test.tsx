@@ -8,6 +8,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { userEvent } from "@testing-library/user-event";
 import { PiInteraction } from "../../src/elements/pi-interaction.js";
 import {
+  ASK_TITLE_SENTINEL,
+  decodeAskAnswers,
+  encodeAskRequest,
+  type AskQuestionGroup,
+} from "@blksails/pi-web-protocol";
+import {
   mockExtensionUI,
   selectRequest,
   confirmRequest,
@@ -15,7 +21,160 @@ import {
   editorRequest,
 } from "../fixtures/mock-session.js";
 
+const richGroup: AskQuestionGroup = {
+  questions: [
+    {
+      header: "Tests",
+      question: "Choose test types",
+      multiSelect: true,
+      allowOther: false,
+      options: [
+        { label: "Unit", description: "Fast isolated checks" },
+        { label: "Integration", description: "Cross-module checks" },
+      ],
+    },
+    {
+      header: "Style",
+      question: "Choose code style",
+      multiSelect: false,
+      allowOther: false,
+      options: [
+        { label: "Functional", description: "Prefer functions" },
+        { label: "Object", description: "Prefer classes" },
+      ],
+    },
+  ],
+};
+
+function richSelectRequest() {
+  const encoded = encodeAskRequest(richGroup);
+  return {
+    type: "extension_ui_request" as const,
+    id: "req-rich-select",
+    method: "select" as const,
+    title: encoded.title,
+    options: encoded.options,
+  };
+}
+
 describe("PiInteraction", () => {
+  it("富 select 仅渲染多题卡片并以可读摘要留痕", async () => {
+    const user = userEvent.setup();
+    const request = richSelectRequest();
+    const ext = mockExtensionUI({ current: request });
+    const { container } = render(<PiInteraction extensionUI={ext} />);
+
+    expect(screen.getByText("Choose test types")).toBeInTheDocument();
+    expect(screen.getByText("Choose code style")).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox", { name: "其他答案" })).toHaveLength(2);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2);
+    expect(container.querySelector("[data-pi-interaction-active]")).toBeNull();
+    expect(container.textContent).not.toContain(ASK_TITLE_SENTINEL);
+    expect(container.textContent).not.toContain('{"questions"');
+    expect(container.querySelector("[data-pi-interaction-live]")).not.toHaveTextContent(
+      ASK_TITLE_SENTINEL,
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: /Unit/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Integration/ }));
+    await user.type(screen.getAllByRole("textbox", { name: "其他答案" })[1]!, "Hybrid");
+    await user.click(container.querySelector("[data-pi-askq-submit]")!);
+
+    const response = vi.mocked(ext.respond).mock.calls[0]?.[1];
+    expect(response).toMatchObject({
+      type: "extension_ui_response",
+      id: request.id,
+    });
+    if (!("value" in response!)) throw new Error("expected value response");
+    expect(decodeAskAnswers(response.value, richGroup)).toEqual({
+      kind: "rich",
+      answers: {
+        answers: [
+          {
+            header: "Tests",
+            question: "Choose test types",
+            selected: ["Unit", "Integration"],
+          },
+          {
+            header: "Style",
+            question: "Choose code style",
+            selected: ["Functional"],
+            other: "Hybrid",
+          },
+        ],
+      },
+    });
+    const resolved = await screen.findByText(
+      "已选择：Tests: Unit, Integration · Style: Functional, Hybrid",
+    );
+    expect(resolved.closest("[data-pi-interaction-resolved]")).not.toHaveTextContent(
+      ASK_TITLE_SENTINEL,
+    );
+  });
+
+  it("含 sentinel 但 JSON 损坏的 select 回落原生选项", () => {
+    const request = {
+      type: "extension_ui_request" as const,
+      id: "req-broken-rich-select",
+      method: "select" as const,
+      title: `Readable fallback${ASK_TITLE_SENTINEL}{broken-json`,
+      options: ["Fallback A", "Fallback B"],
+    };
+    const { container } = render(
+      <PiInteraction extensionUI={mockExtensionUI({ current: request })} />,
+    );
+
+    expect(container.querySelector("[data-pi-interaction-active]")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Fallback A" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Fallback B" })).toBeInTheDocument();
+  });
+
+  it("富卡取消回传 cancelled:true 并以安全标题留痕", async () => {
+    const user = userEvent.setup();
+    const request = richSelectRequest();
+    const ext = mockExtensionUI({ current: request });
+    const { container } = render(<PiInteraction extensionUI={ext} />);
+
+    await user.click(container.querySelector("[data-pi-askq-cancel]")!);
+    expect(ext.respond).toHaveBeenCalledWith(request.id, {
+      type: "extension_ui_response",
+      id: request.id,
+      cancelled: true,
+    });
+    const resolved = (await screen.findByText("已取消")).closest(
+      "[data-pi-interaction-resolved]",
+    );
+    expect(resolved).toHaveTextContent("Choose test types (+1 more)");
+    expect(resolved).not.toHaveTextContent(ASK_TITLE_SENTINEL);
+    expect(resolved).not.toHaveTextContent('{"questions"');
+  });
+
+  it("富卡提交失败保留表单与错误，重试成功后才留痕", async () => {
+    const user = userEvent.setup();
+    const request = richSelectRequest();
+    const respond = vi
+      .fn<(id: string, response: unknown) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("rich response failed"))
+      .mockResolvedValueOnce(undefined);
+    const ext = mockExtensionUI({ current: request, respond });
+    const { container } = render(<PiInteraction extensionUI={ext} />);
+
+    await user.click(container.querySelector("[data-pi-askq-submit]")!);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "rich response failed",
+    );
+    expect(container.querySelector("[data-pi-askq-card]")).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-interaction-resolved]")).toBeNull();
+
+    await user.click(container.querySelector("[data-pi-askq-submit]")!);
+    expect(respond).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(
+        container.querySelector("[data-pi-interaction-resolved]"),
+      ).toHaveTextContent("Style: Functional");
+    });
+  });
+
   it("无 current 且无留痕 → 不渲染(降级)", () => {
     const { container } = render(
       <PiInteraction extensionUI={mockExtensionUI()} />,

@@ -36,7 +36,7 @@
   - _Depends: 1.1_
 
 - [ ] 3. Integration: 前端接线 + 示例 agent
-- [ ] 3.1 在 pi-interaction.tsx 的 select 分支接入富卡片
+- [x] 3.1 在 pi-interaction.tsx 的 select 分支接入富卡片
   - `isAskTitle(request.title)` 命中 → `decodeAskTitle` → 渲染 AskUserQuestionCard，提交走既有 `submit`（回传编码 value / 留痕人类可读摘要），取消走既有 cancel
   - 未命中或载荷损坏（decodeAskTitle 返回 undefined）→ 回落原生 select 渲染；confirm/input/editor 分支保持不变
   - 可观察：富 select 请求渲染为富卡片、作答经既有链路回传并在留痕卡显示可读摘要；普通 select/confirm/input/editor 请求渲染与行为不变（回归）
