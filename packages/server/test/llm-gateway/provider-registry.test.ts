@@ -2,10 +2,8 @@
  * llm-gateway · provider 登记表单元测试(design.md ProviderRegistry,Req 3.1)。
  *
  * 断言:
- * - 内置表查得(newapi/sufy/dashscope 的 upstreamBase 与 aigc-proxy/provider-registry.ts
- *   逐字一致——该模块在任务 3.1 摘除 aigc-proxy 后不复存在,故不做跨文件运行期 import,值已
- *   在实现期人工核对并固化为字面量断言;其余 openrouter/anthropic/openai/google/mistral 亦可
- *   查得);
+ * - 内置表查得(newapi/sufy/dashscope 取各自 OpenAI 兼容主对话端点,dashscope 主对话/AIGC
+ *   端点分叉见对应用例;其余 openrouter/anthropic/openai/google/mistral 亦可查得);
  * - `PI_WEB_LLM_GATEWAY_PROVIDERS` JSON 同名覆盖生效;
  * - JSON 追加新 provider 生效(内置表不受影响);
  * - 非法 JSON / 不符 schema → fail-fast 抛 `LlmGatewayProviderConfigError`;
@@ -42,10 +40,10 @@ describe("resolveLlmGatewayProviderTable — 内置表", () => {
     expect(lookupLlmGatewayProvider(table, "newapi")).toBeDefined();
   });
 
-  it("newapi/sufy/dashscope 的 upstreamBase 与 aigc-proxy/provider-registry.ts(权威参照)逐字一致", () => {
-    // aigc-proxy 已在任务 3.1 摘除,这里的期望值是实现期从
-    // `packages/server/src/aigc-proxy/provider-registry.ts` 人工核对固化的字面量
-    // (revalidation trigger:该权威参照若在摘除前发生变更,须同步更新此处)。
+  it("newapi/sufy/dashscope 的 upstreamBase 取各自 OpenAI 兼容(主对话)端点", () => {
+    // LLM 网关服务主对话(scope=llm:<provider>),upstreamBase 一律 OpenAI 兼容端点。
+    // ★dashscope 分叉:主对话走 compatible-mode/v1(此处),AIGC 图像走 api/v1(tool-kit
+    // 占位符,不经网关)——不可照抄已摘除的 aigc-proxy(AIGC 用途、用 api/v1)。
     const table = resolveLlmGatewayProviderTable({});
     expect(lookupLlmGatewayProvider(table, "newapi")).toEqual({
       upstreamBase: "https://www.apiservices.top/v1",
@@ -56,7 +54,7 @@ describe("resolveLlmGatewayProviderTable — 内置表", () => {
       keyEnvCandidates: ["SUFY_API_KEY"],
     });
     expect(lookupLlmGatewayProvider(table, "dashscope")).toEqual({
-      upstreamBase: "https://dashscope.aliyuncs.com/api/v1",
+      upstreamBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       keyEnvCandidates: ["DASHSCOPE_API_KEY"],
     });
   });

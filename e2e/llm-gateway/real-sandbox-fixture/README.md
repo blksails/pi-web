@@ -21,5 +21,5 @@
    - 页面主对话成功回复
 
 ## 已知发现
-dashscope 登记表 upstreamBase(`/api/v1` AIGC 端点)≠ 主对话端点
+dashscope 端点分叉**已修**:登记表 upstreamBase 改为 compatible-mode/v1(主对话),
 (`token-plan…/compatible-mode/v1`);主对话/AIGC 端点分叉的 provider 需登记表区分用途。

@@ -6,16 +6,17 @@
  * 追加新 provider——装配期以 zod 解析并 fail-fast(非法 JSON/不符 schema 直接抛清晰错误,
  * 不静默吞掉)。
  *
- * ⚠️ newapi/sufy/dashscope 三项 upstreamBase 与
- * `packages/server/src/aigc-proxy/provider-registry.ts`(权威参照,同时也与
- * `packages/tool-kit/src/aigc/providers/*.ts` 的占位默认字面量逐字一致)保持逐字一致——
- * 尤其 dashscope 为 `https://dashscope.aliyuncs.com/api/v1`(**不是**
- * `.../compatible-mode/v1`;后者仅是 dashscope 其他兼容端点的路径,非本仓 AIGC 图像工具
- * 实际使用的 base)。其余 provider(openrouter/anthropic/openai/google/mistral)以
- * `lib/app/config.ts` 的 `PROVIDER_KEY_NAMES` key 名 + 各官方 API base 为准。
+ * ⚠️ upstreamBase 一律取各 provider 的 **OpenAI 兼容(主对话 chat/completions)端点**——
+ * LLM 网关服务的是主对话(scope=llm:<provider>)。**尤其 dashscope 为
+ * `.../compatible-mode/v1`(主对话),不是 `.../api/v1`**;后者是 dashscope 原生多模态
+ * 端点,由本仓 AIGC 图像工具(`packages/tool-kit/src/aigc/providers/dashscope.ts` 的
+ * `${DASHSCOPE_BASE_URL:-…/api/v1}` 占位符)使用,**不经本网关**。已摘除的 aigc-proxy
+ * 服务 AIGC 图像、用 api/v1,故本表不可照抄其端点(端点分叉见 BUILTIN_PROVIDER_TABLE 注释)。
+ * 其余 provider(openrouter/anthropic/openai/google/mistral)以 `lib/app/config.ts` 的
+ * `PROVIDER_KEY_NAMES` key 名 + 各官方 OpenAI 兼容 API base 为准。
  *
  * 请求期(2.2/2.3 任务)按 `keyEnvCandidates` 顺序从宿主 `process.env` 即时读取真实 key,
- * 不在本模块缓存——与 aigc-proxy 登记表的即时读语义一致。
+ * 不在本模块缓存(换 key 即时生效)。
  */
 import { z } from "zod";
 
@@ -47,8 +48,12 @@ const TOKEN_ENV_PREFIX = "PI_LLM_TOKEN_";
 /**
  * 内置 provider 登记表(design.md 内置表,Req 3.1)。
  *
- * newapi/sufy/dashscope 的 upstreamBase 与 `aigc-proxy/provider-registry.ts` 逐字一致
- * (revalidation trigger:两处同改)。
+ * ★端点语义:LLM 网关服务的是**主对话**(scope=llm:<provider>),故 upstreamBase 一律取
+ * 各 provider 的 **OpenAI 兼容(chat/completions)端点**,而非其 AIGC/原生多模态端点。
+ * 这与已摘除的 aigc-proxy(服务 AIGC 图像工具、用原生端点)刻意区分——不可再照抄其端点。
+ * 分叉点仅 dashscope:主对话走 `.../compatible-mode/v1`,AIGC 图像走 `.../api/v1`
+ * (后者由 tool-kit `${DASHSCOPE_BASE_URL:-…/api/v1}` 占位符承载,不经本网关)。
+ * newapi/sufy 是 OpenAI 兼容聚合网关,主对话与 AIGC 共用同一 base,无分叉。
  */
 const BUILTIN_PROVIDER_TABLE: LlmGatewayProviderTable = {
   newapi: {
@@ -60,7 +65,9 @@ const BUILTIN_PROVIDER_TABLE: LlmGatewayProviderTable = {
     keyEnvCandidates: ["SUFY_API_KEY"],
   },
   dashscope: {
-    upstreamBase: "https://dashscope.aliyuncs.com/api/v1",
+    // 主对话=OpenAI 兼容端点 compatible-mode/v1(非 AIGC 原生 api/v1)。部署若用
+    // token-plan 等 NewAPI 代理,经 PI_WEB_LLM_GATEWAY_PROVIDERS 覆盖此默认。
+    upstreamBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     keyEnvCandidates: ["DASHSCOPE_API_KEY"],
   },
   openrouter: {
