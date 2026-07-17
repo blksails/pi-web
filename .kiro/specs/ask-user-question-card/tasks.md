@@ -10,7 +10,7 @@
   - 可观察：protocol 包测试套件新增用例全绿
   - _Requirements: 1.5, 3.1, 3.2, 4.2, 6.1_
 
-- [ ] 2. Core: 工具端 / 前端卡片 / stub 三独立边界
+- [x] 2. Core: 工具端 / 前端卡片 / stub 三独立边界
 - [x] 2.1 (P) 在 tool-kit runtime 实现 askUserQuestionTool
   - `defineTool` 入参用 Type.Object 约束（1–4 题、每题 2–4 选项）；execute 内以 codec zod schema 复校，失败返回错误结果且不发起任何 ctx.ui 交互
   - 编码问题组 → `ctx.ui.select` → 解码应答收敛为四态结果：rich 结构化答案 / 用户取消 / 旧前端降级 / 入参错误
@@ -27,7 +27,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.3, 3.4_
   - _Boundary: AskUserQuestionCard_
   - _Depends: 1.1_
-- [ ] 2.3 (P) 在 stub-agent-process.mjs 新增 ext-askq sentinel
+- [x] 2.3 (P) 在 stub-agent-process.mjs 新增 ext-askq sentinel
   - handlePrompt 加分支：`pendingUi="askq"`，写 `extension_ui_request(select)` 帧、title 载哨兵问题组、options 载兜底选项
   - 应答 case 加 `pendingUi==="askq"` 分支：读 `cmd.value`、解码答案、echo 后 finishTurn（单步闭环）
   - 可观察：以 ext-askq prompt 驱动时 stub 写出的 select 帧 title 含哨兵；收到富答案 value 后 echo 出解码答案文本并结束本轮（agent_end）
