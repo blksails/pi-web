@@ -376,6 +376,9 @@ importers:
       '@blksails/pi-web-logger':
         specifier: workspace:*
         version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
       undici:
         specifier: ^6.21.0
         version: 6.27.0

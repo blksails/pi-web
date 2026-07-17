@@ -1,0 +1,64 @@
+# Implementation Plan
+
+- [x] 1. Foundation: 共享 AskUserQuestion codec（protocol 单一权威）
+- [x] 1.1 在 protocol 包实现 codec：问题组/答案类型 + zod 校验 schema（1–4 题、每题 2–4 选项）+ 两个哨兵常量 + encodeAskRequest / isAskTitle / decodeAskTitle / encodeAskAnswers / decodeAskAnswers 函数，并经包主 barrel 再导出
+  - 校验 schema 拒绝题数=0/>4、任一题选项<2/>4；title 编码含人类可读前导 + 哨兵 + JSON，options 为降级兜底选项
+  - 可观察：从 protocol 包可 import 上述全部符号；`isAskTitle(encodeAskRequest(g).title) === true` 且 `decodeAskTitle` 往返得回原问题组；`decodeAskTitle` 对普通 title 返回 undefined 不抛
+  - _Requirements: 1.5, 3.1, 3.2, 4.2, 5.1, 6.1_
+- [x] 1.2 为 codec 编写单元测试
+  - 覆盖 encode/decode 往返（单题/多题、含/不含 Other）、富答案往返（单选/多选/Other）、无哨兵 value 判 degraded、schema 拒绝越界入参、`decodeAskTitle` 对普通 title 返回 undefined 不抛
+  - 可观察：protocol 包测试套件新增用例全绿
+  - _Requirements: 1.5, 3.1, 3.2, 4.2, 6.1_
+
+- [ ] 2. Core: 工具端 / 前端卡片 / stub 三独立边界
+- [x] 2.1 (P) 在 tool-kit runtime 实现 askUserQuestionTool
+  - `defineTool` 入参用 Type.Object 约束（1–4 题、每题 2–4 选项）；execute 内以 codec zod schema 复校，失败返回错误结果且不发起任何 ctx.ui 交互
+  - 编码问题组 → `ctx.ui.select` → 解码应答收敛为四态结果：rich 结构化答案 / 用户取消 / 旧前端降级 / 入参错误
+  - 经 runtime barrel 再导出；tool-kit package.json 增 protocol workspace 依赖
+  - 可观察：tool-kit runtime 可 import askUserQuestionTool；非法入参（0 题 / 选项越界）时 execute 返回错误结果且不调用 ctx.ui；合法入参编码出的 title 命中哨兵
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 3.2, 3.3, 4.2, 5.2_
+  - _Boundary: askUserQuestionTool_
+  - _Depends: 1.1_
+- [ ] 2.2 (P) 在 ui 包实现 AskUserQuestionCard 组件 + i18n 键
+  - 多题同卡表单：单选题 radiogroup（默认首项、互斥）/ 多选题 checkbox（可 0..n）；每选项显示 label + description 副文本；allowOther 时显示 Other 文本输入
+  - 提交收集答案 → 经 codec 编码为回传 value + 生成人类可读摘要，经回调上交；取消经回调上交；pending 时禁用控件
+  - zh/en 字典各新增 `piInteraction.askq.*` 键；`data-pi-askq-*` 测试锚点
+  - 可观察：以 mock 富问题组渲染时每题 header/question 与每选项 label/description 可见；提交回调收到的 value 可经 `decodeAskAnswers` 还原为所选
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.3, 3.4_
+  - _Boundary: AskUserQuestionCard_
+  - _Depends: 1.1_
+- [ ] 2.3 (P) 在 stub-agent-process.mjs 新增 ext-askq sentinel
+  - handlePrompt 加分支：`pendingUi="askq"`，写 `extension_ui_request(select)` 帧、title 载哨兵问题组、options 载兜底选项
+  - 应答 case 加 `pendingUi==="askq"` 分支：读 `cmd.value`、解码答案、echo 后 finishTurn（单步闭环）
+  - 可观察：以 ext-askq prompt 驱动时 stub 写出的 select 帧 title 含哨兵；收到富答案 value 后 echo 出解码答案文本并结束本轮（agent_end）
+  - _Requirements: 6.3_
+  - _Boundary: stub-agent-process_
+  - _Depends: 1.1_
+
+- [ ] 3. Integration: 前端接线 + 示例 agent
+- [ ] 3.1 在 pi-interaction.tsx 的 select 分支接入富卡片
+  - `isAskTitle(request.title)` 命中 → `decodeAskTitle` → 渲染 AskUserQuestionCard，提交走既有 `submit`（回传编码 value / 留痕人类可读摘要），取消走既有 cancel
+  - 未命中或载荷损坏（decodeAskTitle 返回 undefined）→ 回落原生 select 渲染；confirm/input/editor 分支保持不变
+  - 可观察：富 select 请求渲染为富卡片、作答经既有链路回传并在留痕卡显示可读摘要；普通 select/confirm/input/editor 请求渲染与行为不变（回归）
+  - _Requirements: 2.1, 3.1, 4.1, 4.3, 5.4_
+  - _Depends: 1.1, 2.2_
+- [ ] 3.2 (P) 新增 examples/ask-user-question-agent 并登记
+  - `defineAgent` + `customTools:[askUserQuestionTool]` + systemPrompt（指导模型在方案决策时调用工具、勿自行臆测）；配 README（既有风格）
+  - examples/README.md 在「server-driven UI 与交互」段新增示例行
+  - 可观察：示例目录含 index.ts 与 README；README 表格新增该行；index.ts 声明引用 askUserQuestionTool
+  - _Requirements: 6.4_
+  - _Boundary: examples/ask-user-question-agent_
+  - _Depends: 2.1_
+
+- [ ] 4. Validation: UI 单测 + node e2e
+- [ ] 4.1 (P) 为 AskUserQuestionCard 与 pi-interaction 富分支编写 UI 单测
+  - 覆盖：多题渲染（header/question/选项 label+description 可见）、单选互斥+默认首项、多选可 0..n、Other 输入并提交、提交编码回传可还原、取消回调；并断言非哨兵 select 请求仍走原生 select 渲染（R4.3 回归）
+  - 可观察：ui 包测试新增用例全绿
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.3, 4.3, 6.2_
+  - _Depends: 2.2, 3.1_
+- [ ] 4.2 编写 node e2e 证明富卡片帧级闭环
+  - 经真实 HTTP handler（REST+SSE）驱动 stub ext-askq：断言 SSE `extension_ui_request(select)` 帧 title 含哨兵；POST `/ui-response` 富答案 value 后 stub echo 出解码答案并 finish
+  - 断言 protocolVersion 仍为 0.1.0（零协议改动佐证）
+  - 可观察：`pnpm e2e:node` 该用例绿，证明「发起富问题组 → 富作答回传 → 续跑得结构化结果」闭环
+  - _Requirements: 5.1, 5.3, 6.3_
+  - _Depends: 1.1, 2.3_

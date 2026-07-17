@@ -16,6 +16,7 @@ export * from "./rpc/response.js";
 export * from "./rpc/event.js";
 export * from "./rpc/extension-ui.js";
 export * from "./rpc/session-state.js";
+export * from "./rpc/ask-user-question.js";
 
 // transport 层(pi-web 自定义)
 export * from "./transport/spawn.js";

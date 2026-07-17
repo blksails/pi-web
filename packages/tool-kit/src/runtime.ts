@@ -14,6 +14,7 @@
  *  - AIGC extension:   `aigcExtension`, `registerImageGeneration`, `registerImageEdit`
  *  - Image tool orchestrator (复用):`runImageTool`, `buildModelsDescription`, `optionalModelEnum`
  *  - Memory extension: `memoryExtension`, `createMemoryStore`, file/supabase stores
+ *  - Structured user prompt: `askUserQuestionTool`
  *  - Execution-layer & route types
  */
 
@@ -164,6 +165,7 @@ export {
   memoryErr,
   toMeta,
 } from "./memory/index.js";
+
 export type {
   MemoryScope,
   MemoryEntry,
@@ -183,3 +185,6 @@ export type {
   SupabaseMemoryStoreOptions,
   RegisterMemoryToolsOptions,
 } from "./memory/index.js";
+
+// ── AskUserQuestion tool(structured select interaction;node-only)────────────
+export { askUserQuestionTool } from "./ask-user-question/tool.js";
