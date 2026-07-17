@@ -1,19 +1,46 @@
 {
   "enabled": true,
   "network": {
-    "allowedDomains": [],
+    "allowedDomains": [
+      "tracking.e.qq.com",
+      "api.e.qq.com",
+      "api.weixin.qq.com",
+      "proxy.golang.org",
+      "sum.golang.org",
+      "storage.googleapis.com",
+      "106.14.250.218"
+    ],
     "deniedDomains": []
   },
   "filesystem": {
     "allowRead": [
       ".",
       "/Users/hysios/Projects/phonegen",
-      "/opt/homebrew/bin/python3"
+      "/Users/hysios/Projects/hnhuaxi/utils/sendaction",
+      "/Users/hysios/go",
+      "/Users/hysios/Library/Caches/go-build",
+      "/Users/hysios/.ssh",
+      "/opt/homebrew/bin/python3",
+      "/opt/homebrew/bin/go",
+      "/opt/homebrew/Cellar/go",
+      "/usr/local/go",
+      "/usr/bin/scp",
+      "/usr/bin/ssh",
+      "/usr/bin/unzip",
+      "/usr/bin/tar",
+      "/var/folders",
+      "/private/tmp",
+      "/tmp"
     ],
     "allowWrite": [
       ".",
       "/Users/hysios/Projects/phonegen",
-      "/tmp"
+      "/tmp",
+      "/private/tmp",
+      "/var/folders",
+      "/Users/hysios/Library/Caches/go-build",
+      "/Users/hysios/go/pkg/mod",
+      "/Users/hysios/.ssh/known_hosts"
     ],
     "denyRead": [
       "/Users",

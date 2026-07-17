@@ -13,6 +13,8 @@
  *   开箱即用于任意 pi 登录)。
  * - **保留内置工具**(不设 `noTools`):read/write/edit/bash 等在位,当通用编码/问答助手用。cwd 由
  *   resolver 设为**用户工作目录**(非本文件所在的包内目录),故它操作的是用户项目、而非 pi-web 内部。
+ *
+ * 通道/认知/工作循环人格不在此 agent：见 examples/daily-work-agent。
  */
 import type { AgentDefinition } from "../../runner/agent-definition.js";
 
