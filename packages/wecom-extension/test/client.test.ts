@@ -52,4 +52,39 @@ describe("WecomGatewayClient", () => {
     expect(h.status).toBe("ok");
     expect(h.channels?.[0]?.id).toBe("wecom");
   });
+
+  it("adminWhoami parses role", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      expect(String(input)).toContain("/api/admin/whoami?sessionId=s1");
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          userId: "alice",
+          channelType: "wecom",
+          role: "admin",
+        }),
+        { status: 200 },
+      );
+    });
+    const client = new WecomGatewayClient(
+      { baseUrl: "http://127.0.0.1:7930", defaultChannelId: "wecom" },
+      fetchImpl as unknown as typeof fetch,
+    );
+    const r = await client.adminWhoami("s1");
+    expect("role" in r && r.role).toBe("admin");
+  });
+
+  it("adminList surfaces NOT_ADMIN", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ ok: false, code: "NOT_ADMIN", message: "admin role required" }), {
+        status: 403,
+      }),
+    );
+    const client = new WecomGatewayClient(
+      { baseUrl: "http://gw", defaultChannelId: "wecom" },
+      fetchImpl as unknown as typeof fetch,
+    );
+    const r = await client.adminList("sess-user");
+    expect((r as { code?: string }).code).toBe("NOT_ADMIN");
+  });
 });

@@ -10,7 +10,14 @@ pi-web **Extension** 工具包：让 agent 通过 **pi-gateway** 与企业微信
 | `wecom_send_file` | 发文件（单聊优先；path 或 base64） |
 | `wecom_send_menu` | 按钮菜单卡片（单聊 `button_interaction`） |
 | `wecom_get_binding` | 查询当前 session 的 channel 绑定 |
-| `wecom_gateway_health` | 查看 gateway / WeCom 通道健康 |
+| `wecom_gateway_health` | 查看 gateway / WeCom 通道健康（公开探针级） |
+| `wecom_admin_whoami` | 当前绑定用户的 admin/user 角色 |
+| `wecom_admin_list` | 列出有效管理员（需 admin） |
+| `wecom_admin_grant` / `wecom_admin_revoke` | 运行时 state 名单（需 admin；不可撤 baseline） |
+| `wecom_gateway_status` | 运维摘要（需 admin） |
+
+**安全模型**：操作者身份只来自 gateway 的 `sessionId → channel binding.userId`，模型参数里的 userId 不能冒充 actor。  
+运维 agent 才建议把 `wecom_admin_grant` / `wecom_admin_revoke` 放进 tools allowlist。
 
 斜杠命令：`/wecom-status`
 

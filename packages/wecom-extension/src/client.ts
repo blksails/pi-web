@@ -114,4 +114,96 @@ export class WecomGatewayClient {
     const data = (await res.json()) as OutboundResult;
     return data;
   }
+
+  /** Channel-admin: identity from session binding on gateway. */
+  async adminWhoami(sessionId: string): Promise<AdminWhoamiResult> {
+    const res = await this.fetchImpl(
+      `${this.config.baseUrl}/api/admin/whoami?sessionId=${encodeURIComponent(sessionId)}`,
+      { headers: this.headers(false) },
+    );
+    return (await res.json()) as AdminWhoamiResult;
+  }
+
+  async adminList(sessionId: string, channelType = "wecom"): Promise<AdminListResult> {
+    const q = new URLSearchParams({ sessionId, channelType });
+    const res = await this.fetchImpl(`${this.config.baseUrl}/api/admin/list?${q}`, {
+      headers: this.headers(false),
+    });
+    return (await res.json()) as AdminListResult;
+  }
+
+  async adminGrant(input: {
+    sessionId: string;
+    userId: string;
+    channelType?: string;
+  }): Promise<AdminMutateResult> {
+    const res = await this.fetchImpl(`${this.config.baseUrl}/api/admin/grant`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({
+        sessionId: input.sessionId,
+        userId: input.userId,
+        channelType: input.channelType ?? "wecom",
+      }),
+    });
+    return (await res.json()) as AdminMutateResult;
+  }
+
+  async adminRevoke(input: {
+    sessionId: string;
+    userId: string;
+    channelType?: string;
+  }): Promise<AdminMutateResult> {
+    const res = await this.fetchImpl(`${this.config.baseUrl}/api/admin/revoke`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify({
+        sessionId: input.sessionId,
+        userId: input.userId,
+        channelType: input.channelType ?? "wecom",
+      }),
+    });
+    return (await res.json()) as AdminMutateResult;
+  }
+
+  async adminStatus(sessionId: string): Promise<AdminStatusResult> {
+    const res = await this.fetchImpl(
+      `${this.config.baseUrl}/api/admin/status?sessionId=${encodeURIComponent(sessionId)}`,
+      { headers: this.headers(false) },
+    );
+    return (await res.json()) as AdminStatusResult;
+  }
 }
+
+export type AdminWhoamiResult =
+  | {
+      ok: true;
+      userId: string;
+      channelType: string;
+      role: "admin" | "user";
+      sessionId?: string;
+      source?: string | null;
+    }
+  | { ok?: false; code: string; message: string };
+
+export type AdminListResult =
+  | {
+      ok: true;
+      channelType: string;
+      admins: Array<{ userId: string; source: string; channelType?: string }>;
+    }
+  | { ok?: false; code: string; message: string };
+
+export type AdminMutateResult =
+  | { ok: true; code?: string; userId?: string; channelType?: string }
+  | { ok: false; code: string; message: string };
+
+export type AdminStatusResult =
+  | {
+      ok: true;
+      version?: string;
+      upstream?: { kind?: string; healthy?: boolean };
+      channels?: unknown[];
+      bindings?: { forward?: number; reverse?: number };
+    }
+  | { ok?: false; code: string; message: string };

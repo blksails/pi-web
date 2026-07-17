@@ -10,6 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WecomGatewayClient } from "./client.js";
 import { resolveWecomGatewayConfig } from "./config.js";
+import { registerWecomAdminTools } from "./tools/wecom-admin.js";
 import { registerWecomGetBinding } from "./tools/wecom-get-binding.js";
 import { registerWecomHealth } from "./tools/wecom-health.js";
 import { registerWecomSend } from "./tools/wecom-send.js";
@@ -40,6 +41,7 @@ export default function wecomExtension(pi: ExtensionAPI): void {
   registerWecomSendMenu(pi, client, config.defaultChannelId);
   registerWecomGetBinding(pi, client);
   registerWecomHealth(pi, client);
+  registerWecomAdminTools(pi, client);
 
   pi.registerCommand("wecom-status", {
     description: "Show pi-gateway / WeCom channel health (same as wecom_gateway_health tool)",
