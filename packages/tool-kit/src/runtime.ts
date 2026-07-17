@@ -13,6 +13,7 @@
  *  - Attachment store: `persistPicked`, `previewAssetsFromPicked`, `resolveInputToDataUri`, `PersistedAsset`
  *  - AIGC extension:   `aigcExtension`, `registerImageGeneration`, `registerImageEdit`
  *  - Image tool orchestrator (复用):`runImageTool`, `buildModelsDescription`, `optionalModelEnum`
+ *  - Memory extension: `memoryExtension`, `createMemoryStore`, file/supabase stores
  *  - Execution-layer & route types
  */
 
@@ -144,3 +145,41 @@ export type {
   ZipEntryMeta,
   RarBackend,
 } from "./archive/index.js";
+
+// ── memory-extension (long-term memory; file / supabase; node-only) ──────────
+export {
+  memoryExtension,
+  makeMemoryExtension,
+  registerMemoryTools,
+  createMemoryStore,
+  memoryConfigFromEnv,
+  MemoryConfigError,
+  MEMORY_ENV_KEYS,
+  FileMemoryStore,
+  SupabaseMemoryStore,
+  normalizeMemoryName,
+  isValidMemoryName,
+  parseMemoryDocument,
+  serializeMemoryDocument,
+  memoryErr,
+  toMeta,
+} from "./memory/index.js";
+export type {
+  MemoryScope,
+  MemoryEntry,
+  MemoryEntryMeta,
+  MemoryWriteInput,
+  MemoryVisibility,
+  MemoryListFilter,
+  MemoryDeleteOpts,
+  MemoryStore,
+  MemoryErrorCode,
+  MemoryOk,
+  MemoryErr,
+  MemoryResult,
+  MemoryConfig,
+  MemoryBackendKind,
+  CreateMemoryStoreOptions,
+  SupabaseMemoryStoreOptions,
+  RegisterMemoryToolsOptions,
+} from "./memory/index.js";

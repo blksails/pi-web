@@ -1,0 +1,7 @@
+{
+  "name": "memory-agent",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "pi-web example agent with long-term memory tools (file / supabase)"
+}
