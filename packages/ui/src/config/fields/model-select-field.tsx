@@ -38,6 +38,16 @@ interface ModelOption {
    * 出现;未启用时该字段不存在,不渲染徽章(与启用前逐字节一致)。
    */
   readonly source?: "ai-gateway" | "self";
+  /**
+   * 可用性标记(model-catalog spec,Req 2.3/3.2):`"catalog"` = 仅目录展示、未接入
+   * 会话(渲染为不可选中);`"session"` 或缺省 = 会话可用,可正常选中。
+   * disabled 判据只看 availability,不看 source(为 P2 网关接入会话翻转留接缝)。
+   */
+  readonly availability?: "session" | "catalog";
+  /**
+   * 网关上游渠道名(仅目录条目携带,供界面二级分组展示;本组件当前不渲染)。
+   */
+  readonly channel?: string;
 }
 interface ModelOptionsResponse {
   readonly providers: readonly string[];
@@ -75,6 +85,8 @@ interface Opt {
   readonly label: string;
   /** 来源徽章(仅 modelSelect 组透传;providerSelect 恒为 undefined)。 */
   readonly source?: "ai-gateway" | "self";
+  /** 可用性标记(仅 modelSelect 组透传;"catalog" 渲染为不可选中)。 */
+  readonly availability?: "session" | "catalog";
 }
 /** 选项分组:`provider === ""` 表示无分组标题的平铺组(providerSelect 用)。 */
 interface OptGroup {
@@ -111,7 +123,7 @@ function buildGroups(widget: string | undefined, data: ModelOptionsResponse): Op
       order.push(m.provider);
     }
     if (!bucket.some((o) => o.value === m.id)) {
-      bucket.push({ value: m.id, label: m.id, source: m.source });
+      bucket.push({ value: m.id, label: m.id, source: m.source, availability: m.availability });
     }
   }
   return order.map((provider) => ({ provider, options: map.get(provider) ?? [] }));
@@ -205,10 +217,14 @@ export function ModelSelectField({
                 {groups.map((g) => {
                   const items = g.options.map((o) => {
                     const selected = o.value === current;
+                    // 目录态(仅目录展示、未接入会话)→ 不可选中 + 行尾提示。
+                    // 判据只看 availability(非 source):P2 网关接入会话后翻转标记即可。
+                    const isCatalogOnly = o.availability === "catalog";
                     return (
                       <CommandItem
                         key={`${g.provider}:${o.value}`}
                         value={`${o.value} ${g.provider}`}
+                        disabled={isCatalogOnly}
                         onSelect={() => commit(o.value)}
                       >
                         <Check
@@ -219,11 +235,20 @@ export function ModelSelectField({
                           aria-hidden="true"
                         />
                         <span className="truncate">{o.label}</span>
+                        {isCatalogOnly && (
+                          <span
+                            data-pi-model-availability="catalog"
+                            className="ml-auto shrink-0 text-[10px] leading-none text-[hsl(var(--muted-foreground))]"
+                          >
+                            {t("config.modelSelect.notSessionReady")}
+                          </span>
+                        )}
                         {o.source !== undefined && (
                           <span
                             data-pi-model-source={o.source}
                             className={cn(
-                              "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                              "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                              isCatalogOnly ? "ml-1.5" : "ml-auto",
                               o.source === "ai-gateway"
                                 ? "bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]"
                                 : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",

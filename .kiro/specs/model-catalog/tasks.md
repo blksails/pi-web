@@ -36,7 +36,7 @@
   - _Requirements: 1.1, 4.1, 4.3, 6.1, 6.2, 6.3_
 
 - [ ] 4. Core UI:选择器约束与来源标记
-- [ ] 4.1 (P) 模型下拉的不可选态与提示
+- [x] 4.1 (P) 模型下拉的不可选态与提示
   - 模型分组下拉透传可用性标记;目录态(catalog)条目渲染为不可选中并附提示文案(中文「未接入会话」/英文 "not session-ready",走既有 i18n 字典);来源徽章沿用
   - 组件测试:provider 下拉选项集恒等于响应 providers 数组;目录态条目不可选中且不可提交;存量无效值在触发器上原样显示不崩溃
   - 完成态:`packages/ui/test/config/model-select-field.test.tsx` 全绿
