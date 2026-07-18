@@ -1,0 +1,63 @@
+# Implementation Plan
+
+- [ ] 1. Foundation:类型扩展与聚合合并修复
+- [ ] 1.1 扩展对话模型条目的可选标记字段
+  - 模型条目类型追加可选的渠道标记与可用性标记字段,注释明确「仅聚合形态出现,未启用网关时字段不存在」
+  - 完成态:全仓 typecheck 通过,未启用形态的既有响应无任何新字段
+  - _Requirements: 2.3, 5.4_
+- [ ] 1.2 重写聚合合并纯函数(不吞并 + provider 收敛 + 块排序)
+  - 同名判定 key 改为「归属/模型 id」二元组;网关条目归属统一收敛为 `ai-gateway`,上游渠道名降级为渠道元数据;self 与网关条目分别附来源与可用性标记
+  - providers 输出仅含 self 来源归属(可设为默认的集合);同名排序偏好收窄为合并数组中两块的先后顺序,不再做覆盖删除
+  - 改写既有合并单测的三个冲突场景为「不吞并」断言;新增断言:同 id 跨归属两条并存、providers 不含任何渠道名、渠道元数据正确、网关入参为空时输出与 self 逐字节一致
+  - 完成态:`packages/server/test/ai-gateway/model-catalog.test.ts` 全绿,同 id 跨归属条目在输出中并存
+  - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 2.3, 3.1, 6.1, 6.2_
+
+- [ ] 2. Core:目录组装服务与网关图像静态目录
+- [ ] 2.1 目录组装服务(chat/image 双命名空间单一权威)
+  - 新建组装服务:各来源经构造注入(self 对话取数、网关快照、图像静态目录、隐藏名单),自身零 env 读取零 IO
+  - 网关来源未注入时 chat/image 输出与输入逐字节一致(引用级透传);隐藏名单过滤仅作用对话命名空间;隐藏名单含 `ai-gateway` 时网关条目整体剔除
+  - 图像目录组装并入网关条目并附来源标记;服务经 server 包 barrel 导出
+  - 完成态:`packages/server/test/model-catalog/service.test.ts` 全绿(含字节一致、过滤边界、剔除、并入四组断言)
+  - _Requirements: 1.3, 1.4, 4.3, 5.1, 5.2, 5.3, 5.4_
+- [ ] 2.2 (P) 网关图像静态目录与防漂移断言
+  - 图像目录条目类型的归属联合扩展 `ai-gateway`;新增网关图像静态目录(三条:gpt-image-1 / gpt-image-2-ai-gateway / qwen-image),保持声明层零 env 读取(双入口纪律)
+  - 扩展既有 sync 防漂移断言:静态目录条目集合恒等于网关生成∪编辑路由键去重集
+  - 完成态:`packages/tool-kit/test/aigc/model-catalog.test.ts` 全绿
+  - _Requirements: 4.1, 4.4_
+  - _Boundary: AI_GATEWAY_AIGC_CATALOG_
+
+- [ ] 3. Integration:端点与装配接线
+- [ ] 3.1 端点接线与集成回归
+  - 图像清单端点支持注入附加条目(响应条目附可选来源字段);装配处按网关启用判别条件注入(与 runner 侧判据同源)
+  - 对话模型清单闭包改经组装服务取数(合并 + 过滤统一入口)
+  - 更新启用/未启用两形态集成测试:启用时 providers 恢复含全部 self 归属且无渠道名、图像清单含三条网关条目;未启用时两端点输出与主干逐字节一致
+  - 完成态:`test/ai-gateway-route-mount*.integration.test.ts` 全绿
+  - _Depends: 2.1, 2.2_
+  - _Requirements: 1.1, 4.1, 4.3, 6.1, 6.2, 6.3_
+
+- [ ] 4. Core UI:选择器约束与来源标记
+- [ ] 4.1 (P) 模型下拉的不可选态与提示
+  - 模型分组下拉透传可用性标记;目录态(catalog)条目渲染为不可选中并附提示文案(中文「未接入会话」/英文 "not session-ready",走既有 i18n 字典);来源徽章沿用
+  - 组件测试:provider 下拉选项集恒等于响应 providers 数组;目录态条目不可选中且不可提交;存量无效值在触发器上原样显示不崩溃
+  - 完成态:`packages/ui/test/config/model-select-field.test.tsx` 全绿
+  - _Requirements: 2.4, 3.1, 3.2, 3.3_
+  - _Boundary: ModelSelectField_
+- [ ] 4.2 (P) 图像模型开关的来源标记
+  - 开关清单条目按来源字段附网关来源标记(与模型下拉徽章同视觉语言);勾选/保存/禁用链路零改动
+  - 组件测试断言网关条目渲染来源标记、self 条目不渲染
+  - 完成态:开关组件测试全绿
+  - _Requirements: 4.5_
+  - _Boundary: AigcModelTogglesField_
+
+- [ ] 5. Validation:全量回归与端到端验证
+- [ ] 5.1 全量测试回归与类型检查
+  - server / tool-kit / ui / 根集成 全部既有测试套件跑通;全仓 typecheck 通过
+  - 完成态:各套件汇总输出零失败(新鲜运行证据)
+  - _Requirements: 6.1, 6.2, 6.3_
+- [ ] 5.2 浏览器端到端验证(启用网关的真实 dev 实例)
+  - 设置页·通用:默认 Provider 下拉恢复出现全部 self 归属(如 apiservices/dashscope)且无任何渠道名;默认模型下拉出现 ai-gateway 分组且组内条目不可选中
+  - 设置页·AIGC 图像:开关清单出现三条网关条目(带来源标记);禁用其中一条保存后,新会话/重载后的图像工具模型枚举不再含该模型
+  - 会话内主对话模型选择器不含网关目录条目(行为锚定)
+  - 完成态:上述断言各有截图或快照证据(新鲜运行)
+  - _Depends: 3.1, 4.1, 4.2_
+  - _Requirements: 3.4, 4.2, 6.4_
