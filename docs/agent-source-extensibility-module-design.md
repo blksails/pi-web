@@ -12,6 +12,12 @@
 > 系列第三篇:[Canvas 扩展机制设计(CanvasKit)](./canvas-extension-mechanism-design.md)
 > (以 Canvas 为可扩展宿主:工具/动作/图层/检查器插件化 + 能力清单 agent 权威下发)。
 
+> ---
+> ⚠️ **实况更正(2026-07-19 · 扩展性真机验证 Phase A 取证)**:本篇 §3 总表 / §6 / §7 里面⑥⑦标注「🆕本设计」的 API 名**均为 pre-spec 虚构,落地时已改,勿照抄本篇字面**:
+> - **面⑥ Agent Routes 已落地,但换名为 `agent-declared-routes`**(已合 main,`@blksails/pi-web-server` 含之)。真实 API:声明用 `AgentDefinition.routes`(**非** `defineRoutes`);runner 装配桥 `agent-routes-wiring`(**非** `ext_http_request` 帧);built-in HTTP 端点 **`GET /sessions/:id/agent-routes` + `GET|POST /sessions/:id/agent-routes/:name`**(**非** `/sessions/:id/routes/*`,见 `create-handler.ts` 注册);门控 env **`PI_WEB_AGENT_ROUTES_DISABLED`(=`"1"` 关,默认开)**;body 上限 `PI_WEB_AGENT_ROUTE_BODY_LIMIT`(默认 1 MiB);超时 `PI_WEB_AGENT_ROUTE_TIMEOUT_MS`。本篇的 `defineRoutes`/`ext_http_request`/`ExtRouteContext`/`ROUTES_NOT_DECLARED` 等标识符**均不存在于代码**。
+> - **面⑦ UI Settings(per-source 设置面板)尚未落地**:`AgentContext.settings`、`registerSourceSettingsPanel`、`ext_settings_changed`、`useSourceSettings`、`settingsWidgets`、`/api/config/source/:sourceId` **pi-web + pi-clouds 两仓皆零命中**。要做须先立 spec。现存的只有通用 config-domain 的 `registerSettingsPanel`(服务内建 auth/aigc/vision 等域,**非** per-source 扩展面)。
+> ---
+
 ---
 
 ## 1. 目标与非目标
