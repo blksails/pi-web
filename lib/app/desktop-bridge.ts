@@ -28,6 +28,13 @@ export interface PiWebDesktopBridge {
    * 可选:旧版壳或未来形态可能不提供该方法。
    */
   readonly pickDirectory?: () => Promise<string | undefined>;
+  /**
+   * 桌面凭据持久化到 OS keychain(desktop-cloud-login,Req 2.1/2.3)。成功 resolve,失败
+   * (ACL 拒绝/IPC 故障)resolve `false`,绝不 reject。可选:非桌面壳/旧壳不提供。
+   */
+  readonly storeCredential?: (credential: string) => Promise<boolean>;
+  /** 清除 keychain 中的桌面凭据(登出,Req 2.5)。失败静默 resolve `false`,绝不 reject。 */
+  readonly clearCredential?: () => Promise<boolean>;
 }
 
 /** Tauri `withGlobalTauri` 注入的全局对象中,本模块用到的最小形状。 */
@@ -78,6 +85,24 @@ function bridgeFromTauri(tauri: TauriGlobal): PiWebDesktopBridge {
         // 未授权(ACL 拒绝)或 IPC 故障:降级为「无结果」,不向上抛。
         console.error("[desktop-bridge] pick_directory 调用失败:", err);
         return undefined;
+      }
+    },
+    storeCredential: async (credential: string): Promise<boolean> => {
+      try {
+        await invoke("store_credential", { credential });
+        return true;
+      } catch (err) {
+        console.error("[desktop-bridge] store_credential 调用失败:", err);
+        return false;
+      }
+    },
+    clearCredential: async (): Promise<boolean> => {
+      try {
+        await invoke("clear_credential");
+        return true;
+      } catch (err) {
+        console.error("[desktop-bridge] clear_credential 调用失败:", err);
+        return false;
       }
     },
   };

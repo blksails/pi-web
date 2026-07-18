@@ -39,6 +39,7 @@ import {
 } from "@/lib/app/runtime-features.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
+import { LoginControl } from "./auth/login-control.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -806,6 +807,8 @@ function SessionView({
             {t("chatApp.settings")}
           </a>
           <span className="ml-auto flex items-center gap-1">
+            {/* desktop-cloud-login:登录入口/登录态(云端登录未启用时不渲染)。 */}
+            <LoginControl />
             <LocaleToggleButton />
             <ThemeToggleButton />
           </span>

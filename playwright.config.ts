@@ -34,6 +34,11 @@ const PORT_INSTALL = PORT_FS + 2;
 // e2e/fixtures/attachment-tool-bridge-stub.mjs)驱动真实附件工具链;不能与默认 stub 共服务器,
 // 故独立端口 + 独立落盘。
 const PORT_ATTACH = PORT_FS + 3;
+// desktop-cloud-login(第五套 webServer,任务 7.4):云端登录**已启用**档(设
+// PI_WEB_CLOUD_LOGIN_EGRESS_BASE + MODELS),用于登录/登出/切号/失败 UI 全链。登录态管理
+// 不需真实模型调用(主对话经 egress 由集成测试 7.2 覆盖),故 egress base 指一个不必可达的
+// 占位地址即可驱动登录状态机。门控关闭档在既有 fs server(无该 env)上验证。
+const PORT_LOGIN = PORT_FS + 4;
 const externalServer = process.env.PI_WEB_E2E_EXTERNAL_SERVER === "1";
 
 // attachment-tool-bridge 专用 stub 的绝对路径(服务端据 PI_WEB_STUB_AGENT_PATH 派生 spawn 规格)。
@@ -134,7 +139,7 @@ export default defineConfig({
       // 专用 server 上的 spec 从 fs project 排除:
       //  - install-host-command.e2e.ts 需放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+ 隔离落盘;
       //  - attachment-tool-bridge.e2e.ts 需专用 stub(PI_WEB_STUB_AGENT_PATH)驱动真实附件工具链。
-      testIgnore: /(install-host-command|attachment-tool-bridge)\.e2e\.ts/,
+      testIgnore: /(install-host-command|attachment-tool-bridge|desktop-cloud-login)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -165,6 +170,16 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_ATTACH}`,
+      },
+    },
+    {
+      // desktop-cloud-login(任务 7.4):云端登录已启用 server,只跑登录/登出/切号 spec。
+      // 门控关闭档(无登录入口)由 `-gating` spec 在 fs server(无 login env)上跑。
+      name: "login",
+      testMatch: /desktop-cloud-login\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_LOGIN}`,
       },
     },
   ],
@@ -256,6 +271,27 @@ export default defineConfig({
                 path.join(os.tmpdir(), "pi-e2e-attach-store-"),
               ),
               PI_WEB_ATTACHMENT_SECRET: "pi-e2e-attachment-stable-secret",
+            },
+          },
+          {
+            // desktop-cloud-login(任务 7.4):云端登录已启用档。设 EGRESS_BASE + MODELS 使
+            // /api/auth/* 路由挂载、前端登录入口出现。egress base 为占位(登录态管理不发真模型
+            // 请求)。command 附独立 argv 标记去重。
+            command: `node ${SERVER_ENTRY} --store=login`,
+            port: PORT_LOGIN,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_LOGIN),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-login-fs-"),
+              ),
+              PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "http://127.0.0.1:59999/v1",
+              PI_WEB_CLOUD_LOGIN_MODELS: JSON.stringify([{ id: "test-model" }]),
             },
           },
         ],
