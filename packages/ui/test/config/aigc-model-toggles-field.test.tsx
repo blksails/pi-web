@@ -111,3 +111,62 @@ describe("AigcModelTogglesField", () => {
     );
   });
 });
+
+describe("AigcModelTogglesField — 来源标记(model-catalog 任务 4.2,Req 4.5)", () => {
+  const MIXED_CATALOG = {
+    models: [
+      { model: "gpt-image-2", label: "GPT Image 2", provider: "newapi", source: "self" },
+      { model: "gw-flux", label: "GW Flux", provider: "ai-gateway", source: "ai-gateway" },
+    ],
+  };
+
+  beforeEach(() => {
+    __resetAigcModelsCache();
+  });
+  afterEach(() => {
+    cleanup();
+    __resetAigcModelsCache();
+    vi.restoreAllMocks();
+  });
+
+  it("source='ai-gateway' 条目渲染网关来源徽章,self 条目不渲染", async () => {
+    mockFetch(MIXED_CATALOG);
+    renderField([]);
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-aigc-model-toggle="gw-flux"]'),
+      ).not.toBeNull();
+    });
+    // 网关条目 → 徽章(与 modelSelect 同视觉语言:data-pi-model-source 锚)
+    const gatewayBadge = document.querySelector('[data-pi-model-source="ai-gateway"]');
+    expect(gatewayBadge).not.toBeNull();
+    // self 条目 → 不渲染来源徽章
+    expect(document.querySelector('[data-pi-model-source="self"]')).toBeNull();
+  });
+
+  it("条目不带 source(未启用聚合形态)→ 不渲染任何来源徽章", async () => {
+    mockFetch(CATALOG);
+    renderField([]);
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-aigc-model-toggle="gpt-image-2"]'),
+      ).not.toBeNull();
+    });
+    expect(document.querySelector("[data-pi-model-source]")).toBeNull();
+  });
+
+  it("回归:带 source 的网关条目勾选链路不变(取消勾选 → 加入 disabledModels)", async () => {
+    mockFetch(MIXED_CATALOG);
+    const onChange = renderField([]);
+    const box = await waitFor(() => {
+      const el = document.querySelector<HTMLInputElement>(
+        '[data-aigc-model-toggle="gw-flux"]',
+      );
+      if (el === null) throw new Error("not yet");
+      return el;
+    });
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(onChange).toHaveBeenCalledWith(["gw-flux"]);
+  });
+});

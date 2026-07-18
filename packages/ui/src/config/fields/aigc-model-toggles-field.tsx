@@ -10,6 +10,7 @@
  */
 import * as React from "react";
 import type { FieldProps } from "../field-registry.js";
+import { useI18n } from "../../i18n/index.js";
 import { FieldShell, errorAt } from "./field-shell.js";
 /* ses-h1-exempt-next-line: config 域对 canvas-ui 的合法跨包消费(设置面板字段;sanity F3) */
 import { ProviderBadge, displayNameOf } from "../../canvas/aigc-model-meta.js";
@@ -18,6 +19,12 @@ interface CatalogEntry {
   readonly model: string;
   readonly label: string;
   readonly provider: string;
+  /**
+   * 来源标记(model-catalog spec,Req 4.5):`"ai-gateway"` = 网关托管目录条目,
+   * `"self"` = 自配静态目录条目。仅装配端启用 ai-gateway 套件聚合后才出现;
+   * 未启用时该字段不存在,不渲染徽章(与启用前逐字节一致)。
+   */
+  readonly source?: "self" | "ai-gateway";
 }
 interface CatalogResponse {
   readonly models: readonly CatalogEntry[];
@@ -63,6 +70,7 @@ export function AigcModelTogglesField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
   const [models, setModels] = React.useState<readonly CatalogEntry[]>([]);
   React.useEffect(() => {
     let alive = true;
@@ -106,6 +114,15 @@ export function AigcModelTogglesField({
                 <span className="truncate text-sm" title={m.model}>
                   {displayNameOf(m.label, m.provider)}
                 </span>
+                {/* 网关来源徽章(Req 4.5,与 modelSelect 同视觉语言);self/无 source 不渲染 */}
+                {m.source === "ai-gateway" && (
+                  <span
+                    data-pi-model-source="ai-gateway"
+                    className="shrink-0 rounded bg-[hsl(var(--primary)/0.15)] px-1.5 py-0.5 text-[10px] font-medium leading-none text-[hsl(var(--primary))]"
+                  >
+                    {t("config.modelSelect.sourceAiGateway")}
+                  </span>
+                )}
               </li>
             );
           })}
