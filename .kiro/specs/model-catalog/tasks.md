@@ -49,12 +49,12 @@
   - _Requirements: 4.5_
   - _Boundary: AigcModelTogglesField_
 
-- [ ] 5. Validation:全量回归与端到端验证
+- [x] 5. Validation:全量回归与端到端验证
 - [x] 5.1 全量测试回归与类型检查
   - server / tool-kit / ui / 根集成 全部既有测试套件跑通;全仓 typecheck 通过
   - 完成态:各套件汇总输出零失败(新鲜运行证据)
   - _Requirements: 6.1, 6.2, 6.3_
-- [ ] 5.2 浏览器端到端验证(启用网关的真实 dev 实例)
+- [x] 5.2 浏览器端到端验证(启用网关的真实 dev 实例)
   - 设置页·通用:默认 Provider 下拉恢复出现全部 self 归属(如 apiservices/dashscope)且无任何渠道名;默认模型下拉出现 ai-gateway 分组且组内条目不可选中
   - 设置页·AIGC 图像:开关清单出现三条网关条目(带来源标记);禁用其中一条保存后,新会话/重载后的图像工具模型枚举不再含该模型
   - 会话内主对话模型选择器不含网关目录条目(行为锚定)
