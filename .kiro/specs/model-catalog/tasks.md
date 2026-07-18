@@ -50,7 +50,7 @@
   - _Boundary: AigcModelTogglesField_
 
 - [ ] 5. Validation:全量回归与端到端验证
-- [ ] 5.1 全量测试回归与类型检查
+- [x] 5.1 全量测试回归与类型检查
   - server / tool-kit / ui / 根集成 全部既有测试套件跑通;全仓 typecheck 通过
   - 完成态:各套件汇总输出零失败(新鲜运行证据)
   - _Requirements: 6.1, 6.2, 6.3_
