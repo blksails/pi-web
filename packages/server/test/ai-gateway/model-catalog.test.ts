@@ -1,5 +1,9 @@
 /**
- * ai-gateway · model-catalog 单测(design.md §2.4,Req Story 4)。
+ * ai-gateway · model-catalog 单测。
+ *
+ * - `GatewayModelCatalog` 拉取机制:ai-gateway-providers spec(design.md §2.4,Req Story 4),不动。
+ * - `mergeModelCatalog` 合并语义:model-catalog spec(不吞并 + provider 收敛 + 块排序,
+ *   Req 1.1–1.3, 2.1–2.3, 3.1, 6.1, 6.2)。
  */
 import { describe, expect, it, vi } from "vitest";
 import { GatewayModelCatalog, mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
@@ -123,46 +127,113 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
   });
 });
 
-describe("mergeModelCatalog — 三种冲突场景", () => {
+describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-catalog spec)", () => {
   const selfEntries: ModelOption[] = [
     { provider: "openrouter", id: "shared-model", name: "Shared Model (self)" },
     { provider: "dashscope", id: "self-only", name: "Self Only" },
   ];
   const gatewayEntries: GatewayModelEntry[] = [
     { model: "shared-model", ownedBy: "anthropic", source: "ai-gateway" },
-    { model: "gateway-only", ownedBy: "openai", source: "ai-gateway" },
+    { model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" },
   ];
 
-  it("无冲突模型:两侧并集全部保留,各带正确 source", () => {
+  it("无冲突模型:两侧并集全部保留;self 附 source=self/availability=session,gateway 附 source=ai-gateway/availability=catalog", () => {
     const merged = mergeModelCatalog(
       [{ provider: "dashscope", id: "self-only", name: "Self Only" }],
-      [{ model: "gateway-only", ownedBy: "openai", source: "ai-gateway" }],
+      [{ model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" }],
       "gateway",
     );
     expect(merged.models).toHaveLength(2);
-    expect(merged.models.find((m) => m.id === "self-only")?.source).toBe("self");
-    expect(merged.models.find((m) => m.id === "gateway-only")?.source).toBe("ai-gateway");
+    const self = merged.models.find((m) => m.id === "self-only");
+    expect(self?.source).toBe("self");
+    expect(self?.availability).toBe("session");
+    const gw = merged.models.find((m) => m.id === "gateway-only");
+    expect(gw?.source).toBe("ai-gateway");
+    expect(gw?.availability).toBe("catalog");
   });
 
-  it("同名冲突 + precedence=gateway(默认)→ 取 ai-gateway 条目", () => {
+  it("同 id 跨归属不吞并(Req 1.1/1.2/6.1):self 与 gateway 两条并存,任一 precedence 都不做覆盖删除", () => {
+    for (const precedence of ["gateway", "self"] as const) {
+      const merged = mergeModelCatalog(selfEntries, gatewayEntries, precedence);
+      expect(merged.models).toHaveLength(4); // 2 self + 2 gateway,零丢失
+      const shared = merged.models.filter((m) => m.id === "shared-model");
+      expect(shared).toHaveLength(2);
+      expect(shared.map((m) => m.source).sort()).toEqual(["ai-gateway", "self"]);
+      const selfShared = shared.find((m) => m.source === "self");
+      expect(selfShared?.provider).toBe("openrouter");
+      expect(selfShared?.name).toBe("Shared Model (self)");
+    }
+  });
+
+  it("网关条目 provider 收敛为 ai-gateway,ownedBy 降级为 channel 元数据(Req 2.1/2.3)", () => {
     const merged = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
-    const shared = merged.models.find((m) => m.id === "shared-model");
-    expect(shared?.source).toBe("ai-gateway");
-    expect(shared?.provider).toBe("anthropic");
-    expect(merged.models).toHaveLength(3); // shared-model(gateway) + self-only + gateway-only
+    const gw = merged.models.filter((m) => m.source === "ai-gateway");
+    expect(gw).toHaveLength(2);
+    for (const m of gw) expect(m.provider).toBe("ai-gateway");
+    expect(gw.find((m) => m.id === "shared-model")?.channel).toBe("anthropic");
+    expect(gw.find((m) => m.id === "gateway-only")?.channel).toBe("openai-compat");
+    expect(gw.find((m) => m.id === "gateway-only")?.name).toBe("gateway-only");
+    // self 条目不附 channel
+    for (const m of merged.models.filter((x) => x.source === "self")) {
+      expect(m.channel).toBeUndefined();
+    }
   });
 
-  it("同名冲突 + precedence=self(PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE=self 反转)→ 取 self 条目", () => {
-    const merged = mergeModelCatalog(selfEntries, gatewayEntries, "self");
-    const shared = merged.models.find((m) => m.id === "shared-model");
-    expect(shared?.source).toBe("self");
-    expect(shared?.provider).toBe("openrouter");
-    expect(merged.models).toHaveLength(3);
-  });
-
-  it("providers 去重排序", () => {
+  it("providers 仅含 self 来源 provider(去重排序),不含 ai-gateway 与任何渠道名(Req 2.2/3.1/6.2)", () => {
     const merged = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
-    expect(merged.providers).toEqual([...merged.providers].sort());
-    expect(new Set(merged.providers).size).toBe(merged.providers.length);
+    expect(merged.providers).toEqual(["dashscope", "openrouter"]);
+    expect(merged.providers).not.toContain("ai-gateway");
+    expect(merged.providers).not.toContain("anthropic");
+    expect(merged.providers).not.toContain("openai-compat");
+  });
+
+  it("modelPrecedence=gateway → 网关块在前;=self → self 块在前(块内保持入参原有顺序)", () => {
+    const gwFirst = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
+    expect(gwFirst.models.map((m) => `${m.provider}/${m.id}`)).toEqual([
+      "ai-gateway/shared-model",
+      "ai-gateway/gateway-only",
+      "openrouter/shared-model",
+      "dashscope/self-only",
+    ]);
+    const selfFirst = mergeModelCatalog(selfEntries, gatewayEntries, "self");
+    expect(selfFirst.models.map((m) => `${m.provider}/${m.id}`)).toEqual([
+      "openrouter/shared-model",
+      "dashscope/self-only",
+      "ai-gateway/shared-model",
+      "ai-gateway/gateway-only",
+    ]);
+  });
+
+  it("同 key(provider/id)重复时保留先出现者,后块不覆盖前块(防御性去重锚定)", () => {
+    // 网关目录自身重复同 id:两条都映射到 ai-gateway/dup,仅保留先出现者(channel=first)。
+    const merged = mergeModelCatalog(
+      [],
+      [
+        { model: "dup", ownedBy: "first", source: "ai-gateway" },
+        { model: "dup", ownedBy: "second", source: "ai-gateway" },
+      ],
+      "gateway",
+    );
+    expect(merged.models).toHaveLength(1);
+    expect(merged.models[0]?.channel).toBe("first");
+  });
+
+  it("gateway 入参为空数组:models 的 provider/id/name 与 self 完全一致(含顺序),providers = self providers", () => {
+    // 语义分界(design.md「mergeModelCatalog(重写)」/ Req 1.3 零侵入辨析):
+    // 「未启用 ai-gateway 套件时响应逐字节一致」由装配层保证——aiGwConfig 为 undefined 时
+    // pi-handler 根本不调用 mergeModelCatalog,self 目录原样透传,不附加任何新字段。
+    // 而一旦调用了 merge(即聚合形态),即便 gateway 入参恰为空数组,输出也一律附
+    // source/availability 标记。故本测试断言 provider/id/name 与 self 完全一致且
+    // providers 等同(允许 source/availability 附加),不断言「无附加字段」。
+    const merged = mergeModelCatalog(selfEntries, [], "gateway");
+    expect(merged.models.map(({ provider, id, name }) => ({ provider, id, name }))).toEqual(
+      selfEntries.map(({ provider, id, name }) => ({ provider, id, name })),
+    );
+    expect(merged.providers).toEqual([...new Set(selfEntries.map((m) => m.provider))].sort());
+    for (const m of merged.models) {
+      expect(m.source).toBe("self");
+      expect(m.availability).toBe("session");
+      expect(m.channel).toBeUndefined();
+    }
   });
 });

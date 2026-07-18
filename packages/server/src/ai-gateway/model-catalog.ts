@@ -5,11 +5,14 @@
  * 后台刷新(不阻塞调用方),返回现有快照(stale-while-revalidate);拉取失败沿用上次
  * 成功快照(fail-soft,Req 4.4);从未成功过 → 空集,不影响自配目录展示。
  *
- * `mergeModelCatalog` 是纯函数:`self ∪ gateway`,每条目带来源标记
- * `source: "ai-gateway" | "self"`;同名(相同 `id`)按 `modelPrecedence` 取舍
- * (默认 `"gateway"` 优先,可经 `PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE=self` 反转,
- * Req 4.2/4.3)。接入点见 `lib/app/pi-handler.ts` 的 `createConfigRoutes({
- * listModelOptions })` 装配处(task 4.1)。
+ * `mergeModelCatalog` 是纯函数(合并语义见 model-catalog spec,Req 1/2/3.1):
+ * `self ∪ gateway` 不吞并——同名判定 key 为 `${provider}/${id}` 二元组,网关条目
+ * provider 统一收敛为 `"ai-gateway"`(上游渠道名 `ownedBy` 降级为 `channel` 元数据),
+ * 故 self 与 gateway 条目永不同 key,同 id 跨归属两条并存。`modelPrecedence` 仅决定
+ * 合并 models 数组中两块的先后顺序(`"gateway"` = 网关块在前,可经
+ * `PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE=self` 反转),不再做覆盖删除。`providers`
+ * 输出仅含 self 来源 provider(可设为默认的集合)。接入点见 `lib/app/pi-handler.ts`
+ * 的 `createConfigRoutes({ listModelOptions })` 装配处。
  */
 import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
 import type { KeyResolver } from "./key-resolver.js";
@@ -121,34 +124,61 @@ export class GatewayModelCatalog {
   }
 }
 
-/** `mergeModelCatalog` 的同名冲突取舍优先级。 */
+/**
+ * `mergeModelCatalog` 的块排序偏好(model-catalog spec):决定合并 models 数组中
+ * 网关块与 self 块的先后顺序,不再是同名覆盖取舍。
+ */
 export type ModelPrecedence = "gateway" | "self";
 
 /**
- * 目录 merge 纯函数(design.md §2.4,Req 4.2/4.3):`self ∪ gateway`,每条目带来源标记;
- * 同名(相同 `id`)按 `precedence` 取舍(默认 `"gateway"` 优先)。不改入参,不做网络/IO。
+ * 目录 merge 纯函数(model-catalog spec design.md「mergeModelCatalog(重写)」,
+ * Req 1.1–1.3, 2.1–2.3, 3.1):不改入参,不做网络/IO。
+ *
+ * - 网关条目映射为 `{ provider: "ai-gateway", id, name, source: "ai-gateway",
+ *   channel: ownedBy, availability: "catalog" }`;self 条目附
+ *   `source: "self", availability: "session"`。
+ * - 去重 key = `${provider}/${id}`(防御性;self 与 gateway 的 provider 恒不同,
+ *   理论无碰撞);同 key 重复时保留先出现者,后块不覆盖前块。
+ * - `precedence` 仅决定两块在 models 数组中的先后(`"gateway"` = 网关块在前,
+ *   `"self"` = self 块在前;块内保持入参原有顺序),不做跨归属覆盖删除。
+ * - `providers` 仅含 self 来源 provider 去重排序(不含 `"ai-gateway"` 与渠道名)。
+ *
+ * 零侵入语义分界(Req 1.3):「未启用 ai-gateway 套件时响应逐字节一致」由装配层
+ * 保证(`aiGwConfig` 为 undefined 时不调用本函数);一旦调用(聚合形态),即便
+ * `gatewayEntries` 为空数组,输出也一律附 source/availability 标记。
  */
 export function mergeModelCatalog(
   selfEntries: readonly ModelOption[],
   gatewayEntries: readonly GatewayModelEntry[],
   precedence: ModelPrecedence = "gateway",
 ): ModelOptions {
-  const selfTagged: ModelOption[] = selfEntries.map((m) => ({ ...m, source: "self" as const }));
+  const selfTagged: ModelOption[] = selfEntries.map((m) => ({
+    ...m,
+    source: "self" as const,
+    availability: "session" as const,
+  }));
   const gatewayTagged: ModelOption[] = gatewayEntries.map((g) => ({
-    provider: g.ownedBy,
+    provider: "ai-gateway",
     id: g.model,
     name: g.model,
     source: "ai-gateway" as const,
+    channel: g.ownedBy,
+    availability: "catalog" as const,
   }));
 
-  // 先放低优先级,再放高优先级覆盖同名 id,天然实现"同名按 precedence 取舍"。
-  const [low, high] =
-    precedence === "gateway" ? [selfTagged, gatewayTagged] : [gatewayTagged, selfTagged];
-  const byId = new Map<string, ModelOption>();
-  for (const m of low) byId.set(m.id, m);
-  for (const m of high) byId.set(m.id, m);
+  // precedence 只做块排序;防御性去重保留先出现者(不吞并语义,Req 1.2)。
+  const ordered =
+    precedence === "gateway"
+      ? [...gatewayTagged, ...selfTagged]
+      : [...selfTagged, ...gatewayTagged];
+  const byKey = new Map<string, ModelOption>();
+  for (const m of ordered) {
+    const key = `${m.provider}/${m.id}`;
+    if (!byKey.has(key)) byKey.set(key, m);
+  }
 
-  const models = [...byId.values()];
-  const providers = [...new Set(models.map((m) => m.provider))].sort();
+  const models = [...byKey.values()];
+  // providers 仅含 self 来源 provider(可设为默认的集合,Req 2.2/3.1)。
+  const providers = [...new Set(selfTagged.map((m) => m.provider))].sort();
   return { providers, models };
 }
