@@ -163,6 +163,7 @@ describe("PiInteraction", () => {
     const ext = mockExtensionUI({ current: request, respond });
     const { container } = render(<PiInteraction extensionUI={ext} />);
 
+    await user.click(container.querySelector("[data-pi-askq-next]")!);
     await user.click(container.querySelector("[data-pi-askq-submit]")!);
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "rich response failed",

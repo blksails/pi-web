@@ -100,6 +100,8 @@ export function AskUserQuestionCard({
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const activeQuestion = group.questions[activeIndex]!;
   const hasTabs = group.questions.length > 1;
+  const isFirstQuestion = activeIndex === 0;
+  const isLastQuestion = activeIndex === group.questions.length - 1;
 
   const tabId = (index: number): string =>
     `askq-${request.id}-tab-${index}`;
@@ -245,9 +247,29 @@ export function AskUserQuestionCard({
           </p>
         ) : null}
         <div className="flex justify-end gap-2">
-          <Button onClick={handleSubmit} disabled={pending} data-pi-askq-submit>
-            {t("piInteraction.askq.submit")}
-          </Button>
+          {hasTabs && !isFirstQuestion ? (
+            <Button
+              variant="outline"
+              onClick={() => activateTab(activeIndex - 1, true)}
+              disabled={pending}
+              data-pi-askq-previous
+            >
+              {t("piInteraction.askq.previous")}
+            </Button>
+          ) : null}
+          {hasTabs && !isLastQuestion ? (
+            <Button
+              onClick={() => activateTab(activeIndex + 1, true)}
+              disabled={pending}
+              data-pi-askq-next
+            >
+              {t("piInteraction.askq.next")}
+            </Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={pending} data-pi-askq-submit>
+              {t("piInteraction.askq.submit")}
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={onCancel}

@@ -96,6 +96,74 @@ describe("AskUserQuestionCard", () => {
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   });
 
+  it("多题时使用上一步/下一步导航，并仅在最后一题提交", async () => {
+    const user = userEvent.setup();
+    const onSubmitEncoded = vi.fn();
+    const threeQuestionGroup: AskQuestionGroup = {
+      questions: [
+        ...group.questions,
+        {
+          header: "Deploy",
+          question: "Choose a deploy target",
+          multiSelect: false,
+          options: [
+            { label: "Cloud", description: "Managed runtime" },
+            { label: "Local", description: "Self hosted" },
+          ],
+          allowOther: false,
+        },
+      ],
+    };
+    const { container } = render(
+      <AskUserQuestionCard
+        group={threeQuestionGroup}
+        request={request}
+        pending={false}
+        onSubmitEncoded={onSubmitEncoded}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("[data-pi-askq-previous]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pi-askq-submit]")).not.toBeInTheDocument();
+    const next = container.querySelector("[data-pi-askq-next]")!;
+    expect(next).toHaveTextContent("下一步");
+    await user.click(screen.getByRole("radio", { name: /Deno/ }));
+
+    await user.click(next);
+
+    expect(screen.getByRole("tab", { name: "Features" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(onSubmitEncoded).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-pi-askq-previous]")).toHaveTextContent(
+      "上一步",
+    );
+    expect(container.querySelector("[data-pi-askq-next]")).toHaveTextContent("下一步");
+    expect(container.querySelector("[data-pi-askq-submit]")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /Cache/ }));
+
+    await user.click(container.querySelector("[data-pi-askq-next]")!);
+    expect(screen.getByRole("tab", { name: "Deploy" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(container.querySelector("[data-pi-askq-next]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pi-askq-previous]")).toHaveTextContent("上一步");
+    expect(container.querySelector("[data-pi-askq-submit]")).toHaveTextContent("提交答案");
+
+    await user.click(container.querySelector("[data-pi-askq-previous]")!);
+    expect(screen.getByRole("checkbox", { name: /Cache/ })).toBeChecked();
+    await user.click(container.querySelector("[data-pi-askq-previous]")!);
+    expect(screen.getByRole("tab", { name: "Runtime" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: /Deno/ })).toBeChecked();
+    expect(onSubmitEncoded).not.toHaveBeenCalled();
+  });
+
   it("支持方向键、Home 和 End 切换 Tab 并移动焦点", async () => {
     const user = userEvent.setup();
     renderCard();
@@ -122,14 +190,16 @@ describe("AskUserQuestionCard", () => {
     expect(runtimeTab).toHaveFocus();
   });
 
-  it("单题不渲染 Tabs 或孤立 tabpanel", () => {
+  it("单题不渲染 Tabs 或孤立 tabpanel，并直接提交", async () => {
+    const user = userEvent.setup();
+    const onSubmitEncoded = vi.fn();
     const singleGroup: AskQuestionGroup = { questions: [group.questions[0]!] };
     const { container } = render(
       <AskUserQuestionCard
         group={singleGroup}
         request={request}
         pending={false}
-        onSubmitEncoded={vi.fn()}
+        onSubmitEncoded={onSubmitEncoded}
         onCancel={vi.fn()}
       />,
     );
@@ -140,6 +210,14 @@ describe("AskUserQuestionCard", () => {
     expect(container.querySelectorAll("[data-pi-askq-panel]")).toHaveLength(1);
     expect(screen.getByText("Runtime")).toBeInTheDocument();
     expect(screen.getByText("Choose one runtime")).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-askq-previous]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pi-askq-next]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pi-askq-submit]")).toHaveTextContent(
+      "提交答案",
+    );
+
+    await user.click(container.querySelector("[data-pi-askq-submit]")!);
+    expect(onSubmitEncoded).toHaveBeenCalledOnce();
   });
 
   it("多选题可清空为零项并提交", async () => {
@@ -175,6 +253,7 @@ describe("AskUserQuestionCard", () => {
     await user.click(screen.getByRole("tab", { name: "Runtime" }));
     expect(screen.getByRole("radio", { name: /Deno/ })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "其他答案" })).toHaveValue("Bun");
+    await user.click(container.querySelector("[data-pi-askq-next]")!);
     await user.click(container.querySelector("[data-pi-askq-submit]")!);
 
     const [value, summary] = onSubmitEncoded.mock.calls[0]!;

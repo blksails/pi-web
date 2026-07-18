@@ -292,7 +292,7 @@ export const askUserQuestionTool: ReturnType<typeof defineTool>;
 
 **Responsibilities & Constraints**（Summary-only presentational + 一处新边界：编码回传）
 - 入参：`{ group: AskQuestionGroup; request: InteractiveRequest; pending: boolean; error?: string; onSubmitEncoded(value: string, summary: string): void; onCancel(): void }`。
-- 渲染：每题 header + question；`multiSelect=false` → radiogroup（默认选首项，同题互斥，R2.3）；`multiSelect=true` → checkbox 组（可 0..n，R2.4）；每选项显示 label + description 副文本（R2.2）；`allowOther` → Other 文本框（R2.5）；多题在同一卡片内以 header Tabs 切换，一次展示当前题且切换保留各题状态（R2.6）。Tabs 使用 `tablist` / `tab` / `tabpanel` 语义，所有 panel 常驻 DOM 并以 `hidden` 切换，确保 `aria-controls` / `aria-labelledby` 引用始终有效；单题不渲染 Tabs 语义。
+- 渲染：每题 header + question；`multiSelect=false` → radiogroup（默认选首项，同题互斥，R2.3）；`multiSelect=true` → checkbox 组（可 0..n，R2.4）；每选项显示 label + description 副文本（R2.2）；`allowOther` → Other 文本框（R2.5）；多题在同一卡片内以 header Tabs 切换，一次展示当前题且切换保留各题状态（R2.6）。Tabs 使用 `tablist` / `tab` / `tabpanel` 语义，所有 panel 常驻 DOM 并以 `hidden` 切换，确保 `aria-controls` / `aria-labelledby` 引用始终有效；单题不渲染 Tabs 语义。多题底部动作随当前位置切换：首题仅“下一步”，中间题为“上一步/下一步”，末题为“上一步/提交答案”；前进与后退只切换题目，末题提交才编码并回传整组答案（R2.7）。
 - 提交：收集答案 → `AskAnswers` → `value=encodeAskAnswers(answers)`、`summary=人类可读摘要` → `onSubmitEncoded(value, summary)`（R3.1）；取消 → `onCancel()`（R3.3）。
 - 提交进行中（pending）禁用控件（R3.4 由上游 `ctx.ui.select` await 保证阻塞）。
 - 主题走 shadcn CSS 变量；`data-pi-askq-*` 测试锚点；i18n 用 `piInteraction.askq.*`。

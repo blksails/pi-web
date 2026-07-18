@@ -6,10 +6,14 @@
  *   **不得**改用 `getAll()`,否则会把用户选不了的模型列进弹层。
  * - 无任何静态清单 ⇒ 用户在 `models.json` 新增支持图像输入的模型即自动可选(2.3)。
  *
- * 选择顺序:
- *  1. 有 UI 且未显式指定 → `ctx.ui.select`(取消 ⇒ `cancelled`)
- *  2. 显式指定 → 校验在候选中(否则 `unknown_model`)
- *  3. 无 UI → 显式模型 → env 默认模型(须在候选中)→ 候选首个 → `no_vision_model`
+ * 选择顺序(显式 > 配置 > 交互 > 降级):
+ *  1. 显式指定 → 校验在候选中(否则 `unknown_model`,不静默回退)
+ *  2. 已配置默认模型且在候选中 → 直接用,**不弹层**(4.3)
+ *  3. 有 UI 且以上均无 → `ctx.ui.select`(取消 ⇒ `cancelled`)
+ *  4. 无 UI → 候选首个 → `no_vision_model`
+ *
+ * 第 2 步先于第 3 步是有意的:`hasUI` 仅表示「会话具备 UI 能力」,不表示「有人在看」。
+ * 无人值守通道(IM/定时任务)hasUI 亦为 true,弹层将永久挂起。配置了默认即视为「别问」。
  *
  * `ExtensionUIContext.select` 返回**选中的字符串本身**(非索引),故维护 label → model 反查。
  */
@@ -77,7 +81,18 @@ export async function selectVisionModel(
     return hit;
   }
 
-  // 交互式选择(3.1);仅在 UI 可用时。
+  // 已配置默认模型 → 直接用,不问(4.3;与 aigc `IMAGE_GENERATION_DEFAULT_MODEL` 同语义)。
+  //
+  // ⚠ 必须在 UI 分支**之前**:`hasUI` 只说明「会话具备 UI 能力」,不代表「此刻有人在看」。
+  // IM 通道(pi-gateway 企微)等无人值守会话 hasUI 亦为 true,弹层没人点 →
+  // `await ui.select` 永不 resolve → 工具静默挂死(无异常、无结果、无超时)。
+  // 既然运营方已显式配置默认模型,就是表达了「别问,用这个」——显式配置 > 交互。
+  if (defaultModel !== undefined && defaultModel.length > 0) {
+    const hit = findByKey(candidates, defaultModel);
+    if (hit !== undefined) return hit;
+  }
+
+  // 交互式选择(3.1);仅在 UI 可用且未配置默认模型时。
   if (hasUI && ui !== undefined) {
     const labels = candidates.map(modelLabel);
     let picked: string | undefined;
@@ -96,10 +111,6 @@ export async function selectVisionModel(
     return hit;
   }
 
-  // 无 UI 降级(4.3 → 4.4):env 默认模型须在候选中,否则退到候选首个。
-  if (defaultModel !== undefined && defaultModel.length > 0) {
-    const hit = findByKey(candidates, defaultModel);
-    if (hit !== undefined) return hit;
-  }
+  // 无 UI 且无默认(或默认不在候选中)降级(4.4):退到候选首个。
   return candidates[0] as Model<Api>;
 }

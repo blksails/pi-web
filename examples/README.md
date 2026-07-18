@@ -48,6 +48,7 @@ pi-web ./examples/hello-agent
 | 示例 | 一句话 | 关键 API / 能力 | 难度 |
 |---|---|---|---|
 | [server-driven-ui-agent](./server-driven-ui-agent/) | 后端声明富 UI，前端零配置渲染（`data-pi-ui`） | `emitUi(onUpdate, spec)`、`kind: "builtin"`（白名单组件）/ `"sandbox"`（受限节点树） | ★★☆ |
+| [ask-user-question-agent](./ask-user-question-agent/) | 多个合理方案无法从上下文判断时，以富问题卡结构化澄清而不臆测 | `askUserQuestionTool`（`@blksails/pi-web-tool-kit/runtime`）、`customTools` | ★☆☆ |
 | [ui-demo-agent](./ui-demo-agent/) | extension UI 全部常用交互：弹窗 / 表单 / 状态条 / 通知 | `ctx.ui.select` / `confirm` / `input`（阻塞）、`setStatus` / `notify`（ambient） | ★★☆ |
 | [system-status-agent](./system-status-agent/) | 在一个「健康检查」工具里把 server-driven UI + ambient 状态 / 通知组合起来 | `emitUi` + `ctx.ui.setStatus` / `notify` 组合 | ★★★ |
 

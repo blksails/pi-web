@@ -53,6 +53,51 @@ describe("WecomGatewayClient", () => {
     expect(h.channels?.[0]?.id).toBe("wecom");
   });
 
+  it("adminSandboxGet hits /api/admin/sandbox", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      expect(String(input)).toContain("/api/admin/sandbox?sessionId=s1");
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          profileKey: "/agent",
+          activation: "overlay_stored",
+          effective: { network: { allowedDomains: ["a.com"] } },
+        }),
+        { status: 200 },
+      );
+    });
+    const client = new WecomGatewayClient(
+      { baseUrl: "http://127.0.0.1:7930", defaultChannelId: "wecom" },
+      fetchImpl as unknown as typeof fetch,
+    );
+    const r = await client.adminSandboxGet("s1");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.effective?.network?.allowedDomains).toContain("a.com");
+  });
+
+  it("adminSandboxDomains posts add op", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/api/admin/sandbox/domains");
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(String(init?.body));
+      expect(body.op).toBe("add");
+      expect(body.domains).toEqual(["x.com"]);
+      return new Response(JSON.stringify({ ok: true, diff: { op: "add", domains: ["x.com"] } }), {
+        status: 200,
+      });
+    });
+    const client = new WecomGatewayClient(
+      { baseUrl: "http://127.0.0.1:7930", defaultChannelId: "wecom" },
+      fetchImpl as unknown as typeof fetch,
+    );
+    const r = await client.adminSandboxDomains({
+      sessionId: "s1",
+      op: "add",
+      domains: ["x.com"],
+    });
+    expect(r.ok).toBe(true);
+  });
+
   it("adminWhoami parses role", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       expect(String(input)).toContain("/api/admin/whoami?sessionId=s1");

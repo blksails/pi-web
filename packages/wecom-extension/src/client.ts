@@ -173,6 +173,60 @@ export class WecomGatewayClient {
     );
     return (await res.json()) as AdminStatusResult;
   }
+
+  /** Admin sandbox overlay GET. */
+  async adminSandboxGet(
+    sessionId: string,
+    opts?: { agentSource?: string; profileId?: string },
+  ): Promise<AdminSandboxResult> {
+    const q = new URLSearchParams({ sessionId });
+    if (opts?.agentSource) q.set("agentSource", opts.agentSource);
+    if (opts?.profileId) q.set("profileId", opts.profileId);
+    const res = await this.fetchImpl(
+      `${this.config.baseUrl}/api/admin/sandbox?${q}`,
+      { headers: this.headers(false) },
+    );
+    return (await res.json()) as AdminSandboxResult;
+  }
+
+  /** Admin sandbox: add/remove network.allowedDomains. */
+  async adminSandboxDomains(input: {
+    sessionId: string;
+    op: "add" | "remove";
+    domains: string[];
+    agentSource?: string;
+    profileId?: string;
+  }): Promise<AdminSandboxResult> {
+    const res = await this.fetchImpl(`${this.config.baseUrl}/api/admin/sandbox/domains`, {
+      method: "POST",
+      headers: this.headers(true),
+      body: JSON.stringify(input),
+    });
+    return (await res.json()) as AdminSandboxResult;
+  }
+
+  async adminFileManagerSettingsGet(sessionId: string): Promise<AdminFmSettingsResult> {
+    const res = await this.fetchImpl(
+      `${this.config.baseUrl}/api/admin/file-manager/settings?sessionId=${encodeURIComponent(sessionId)}`,
+      { headers: this.headers(false) },
+    );
+    return (await res.json()) as AdminFmSettingsResult;
+  }
+
+  async adminFileManagerSettingsPatch(
+    sessionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<AdminFmSettingsResult> {
+    const res = await this.fetchImpl(
+      `${this.config.baseUrl}/api/admin/file-manager/settings`,
+      {
+        method: "PATCH",
+        headers: this.headers(true),
+        body: JSON.stringify({ sessionId, ...patch }),
+      },
+    );
+    return (await res.json()) as AdminFmSettingsResult;
+  }
 }
 
 export type AdminWhoamiResult =
@@ -205,5 +259,33 @@ export type AdminStatusResult =
       upstream?: { kind?: string; healthy?: boolean };
       channels?: unknown[];
       bindings?: { forward?: number; reverse?: number };
+    }
+  | { ok?: false; code: string; message: string };
+
+export type AdminSandboxResult =
+  | {
+      ok: true;
+      profileKey?: string;
+      baseResolved?: boolean;
+      effective?: {
+        network?: { allowedDomains?: string[]; deniedDomains?: string[] };
+      };
+      overlay?: unknown;
+      activation?: string;
+      mutableFields?: string[];
+      diff?: { op?: string; domains?: string[] };
+    }
+  | { ok?: false; code: string; message: string };
+
+export type AdminFmSettingsResult =
+  | {
+      ok: true;
+      admin?: unknown;
+      effective?: {
+        ignoreGlobs?: string[];
+        allowedPathPrefixes?: string[];
+        triggers?: unknown;
+      };
+      mutableFields?: string[];
     }
   | { ok?: false; code: string; message: string };

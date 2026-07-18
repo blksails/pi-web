@@ -14,7 +14,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineAgent, type ExtensionFactory } from "@blksails/pi-web-agent-kit";
-import { memoryExtension } from "@blksails/pi-web-tool-kit/runtime";
+import { memoryExtension, visionExtension } from "@blksails/pi-web-tool-kit/runtime";
 import { phonegen } from "./tools/phonegen.js";
 import { sendaction } from "./tools/sendaction.js";
 import { uploadDomainReview } from "./tools/upload-domain-review.js";
@@ -70,6 +70,9 @@ const pathExtensions = [scheduleEntry, wecomEntry].filter(
 /** In-process factories + optional path-based extensions (schedule / wecom). */
 const extensions: Array<string | ExtensionFactory> = [
   memoryExtension,
+  // 本 agent 主模型是纯文本（qwen 系）；图片经 image_vision 交给视觉模型看，
+  // 主模型只读回文字结论 —— 图片字节不进主模型 content，故不会触发 400。
+  visionExtension,
   ...pathExtensions,
 ];
 
@@ -95,11 +98,23 @@ export default defineAgent({
     "wecom_send_menu",
     "wecom_get_binding",
     "wecom_gateway_health",
+    "wecom_admin_whoami",
+    "wecom_admin_list",
+    "wecom_admin_grant",
+    "wecom_admin_revoke",
+    "wecom_gateway_status",
+    "wecom_admin_sandbox_get",
+    "wecom_admin_sandbox_add_domains",
+    "wecom_admin_sandbox_remove_domains",
+    "wecom_admin_file_manager_settings_get",
+    "wecom_admin_file_manager_settings_patch",
     // memory-extension（tools allowlist 必须显式放行扩展工具名）
     "memory_write",
     "memory_read",
     "memory_list",
     "memory_search",
     "memory_delete",
+    // vision-extension：看企微等通道传来的图片附件（att_ id）
+    "image_vision",
   ],
 });

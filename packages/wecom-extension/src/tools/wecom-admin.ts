@@ -243,4 +243,256 @@ export function registerWecomAdminTools(pi: ExtensionAPI, client: WecomGatewayCl
       }
     },
   });
+
+  pi.registerTool({
+    name: "wecom_admin_sandbox_get",
+    label: "WeCom admin sandbox get",
+    description:
+      "Admin-only: read Agent OS sandbox base/overlay/effective for the bound agentSource (or override). " +
+      "Does not change monorepo .pi/sandbox.json; shows gateway overlay store.",
+    parameters: Type.Object({
+      sessionId: Type.Optional(Type.String()),
+      agentSource: Type.Optional(
+        Type.String({ description: "Optional profile/agentSource override" }),
+      ),
+    }),
+    async execute(
+      _id: string,
+      params: Record<string, unknown>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext,
+    ) {
+      const sessionId = sessionOrFail(params, "wecom_admin_sandbox_get");
+      if (!sessionId) return failNoSession("wecom_admin_sandbox_get");
+      try {
+        const agentSource =
+          typeof params.agentSource === "string" ? params.agentSource.trim() : undefined;
+        const r = await client.adminSandboxGet(sessionId, { agentSource });
+        if (!r.ok || (r as { code?: string }).code === "NOT_ADMIN") {
+          return textResult(formatErr("wecom_admin_sandbox_get", r as { code?: string; message?: string }));
+        }
+        const ok = r as {
+          profileKey?: string;
+          activation?: string;
+          baseResolved?: boolean;
+          effective?: { network?: { allowedDomains?: string[]; deniedDomains?: string[] } };
+          mutableFields?: string[];
+        };
+        const allowed = ok.effective?.network?.allowedDomains ?? [];
+        const denied = ok.effective?.network?.deniedDomains ?? [];
+        return textResult(
+          [
+            "wecom_admin_sandbox_get ok:",
+            `- profileKey: ${ok.profileKey ?? "?"}`,
+            `- baseResolved: ${String(ok.baseResolved)}`,
+            `- activation: ${ok.activation ?? "?"}`,
+            `- mutableFields: ${(ok.mutableFields ?? []).join(", ") || "(none)"}`,
+            `- effective.allowedDomains: ${allowed.join(", ") || "(none)"}`,
+            `- effective.deniedDomains (read-only): ${denied.join(", ") || "(none)"}`,
+          ].join("\n"),
+        );
+      } catch (err) {
+        return textResult(
+          `wecom_admin_sandbox_get error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "wecom_admin_sandbox_add_domains",
+    label: "WeCom admin sandbox add domains",
+    description:
+      "Admin-only: add network.allowedDomains entries to the sandbox overlay (not the repo base file).",
+    parameters: Type.Object({
+      sessionId: Type.Optional(Type.String()),
+      domains: Type.Array(Type.String(), { minItems: 1 }),
+      agentSource: Type.Optional(Type.String()),
+    }),
+    async execute(
+      _id: string,
+      params: Record<string, unknown>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext,
+    ) {
+      const sessionId = sessionOrFail(params, "wecom_admin_sandbox_add_domains");
+      if (!sessionId) return failNoSession("wecom_admin_sandbox_add_domains");
+      const domains = Array.isArray(params.domains)
+        ? (params.domains as unknown[]).map(String)
+        : [];
+      if (!domains.length) {
+        return textResult("wecom_admin_sandbox_add_domains failed: domains required");
+      }
+      try {
+        const agentSource =
+          typeof params.agentSource === "string" ? params.agentSource.trim() : undefined;
+        const r = await client.adminSandboxDomains({
+          sessionId,
+          op: "add",
+          domains,
+          agentSource,
+        });
+        if (!r.ok) {
+          return textResult(
+            formatErr("wecom_admin_sandbox_add_domains", r as { code?: string; message?: string }),
+          );
+        }
+        const allowed =
+          (r as { effective?: { network?: { allowedDomains?: string[] } } }).effective?.network
+            ?.allowedDomains ?? [];
+        return textResult(
+          `wecom_admin_sandbox_add_domains ok: added ${domains.join(", ")}; effective.allowedDomains=${allowed.join(", ")}`,
+        );
+      } catch (err) {
+        return textResult(
+          `wecom_admin_sandbox_add_domains error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "wecom_admin_file_manager_settings_get",
+    label: "WeCom admin file-manager settings get",
+    description:
+      "Admin-only: read file-manager global settings (ignore globs, path prefixes, triggers) effective for the gateway.",
+    parameters: Type.Object({
+      sessionId: Type.Optional(Type.String()),
+    }),
+    async execute(
+      _id: string,
+      params: Record<string, unknown>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext,
+    ) {
+      const sessionId = sessionOrFail(params, "wecom_admin_file_manager_settings_get");
+      if (!sessionId) return failNoSession("wecom_admin_file_manager_settings_get");
+      try {
+        const r = await client.adminFileManagerSettingsGet(sessionId);
+        if (!r.ok) {
+          return textResult(
+            formatErr("wecom_admin_file_manager_settings_get", r as { code?: string; message?: string }),
+          );
+        }
+        const eff = r.effective;
+        return textResult(
+          [
+            "wecom_admin_file_manager_settings_get ok:",
+            `- ignoreGlobs: ${(eff?.ignoreGlobs ?? []).join(", ") || "(none)"}`,
+            `- allowedPathPrefixes: ${(eff?.allowedPathPrefixes ?? []).join(", ") || "(none)"}`,
+            `- triggers: ${JSON.stringify(eff?.triggers ?? {})}`,
+          ].join("\n"),
+        );
+      } catch (err) {
+        return textResult(
+          `wecom_admin_file_manager_settings_get error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "wecom_admin_file_manager_settings_patch",
+    label: "WeCom admin file-manager settings patch",
+    description:
+      "Admin-only: patch file-manager global settings. Supported: ignoreGlobs, allowedPathPrefixes, deniedPathPrefixes, allowSensitiveRoots, debounceMs, triggers.*.enabled.",
+    parameters: Type.Object({
+      sessionId: Type.Optional(Type.String()),
+      ignoreGlobs: Type.Optional(Type.Array(Type.String())),
+      allowedPathPrefixes: Type.Optional(Type.Array(Type.String())),
+      deniedPathPrefixes: Type.Optional(Type.Array(Type.String())),
+      allowSensitiveRoots: Type.Optional(Type.Boolean()),
+      debounceMs: Type.Optional(Type.Number()),
+    }),
+    async execute(
+      _id: string,
+      params: Record<string, unknown>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext,
+    ) {
+      const sessionId = sessionOrFail(params, "wecom_admin_file_manager_settings_patch");
+      if (!sessionId) return failNoSession("wecom_admin_file_manager_settings_patch");
+      const patch: Record<string, unknown> = {};
+      for (const k of [
+        "ignoreGlobs",
+        "allowedPathPrefixes",
+        "deniedPathPrefixes",
+        "allowSensitiveRoots",
+        "debounceMs",
+        "debounceMaxWaitMs",
+        "triggers",
+      ]) {
+        if (params[k] !== undefined) patch[k] = params[k];
+      }
+      try {
+        const r = await client.adminFileManagerSettingsPatch(sessionId, patch);
+        if (!r.ok) {
+          return textResult(
+            formatErr("wecom_admin_file_manager_settings_patch", r as { code?: string; message?: string }),
+          );
+        }
+        return textResult(
+          `wecom_admin_file_manager_settings_patch ok: ${JSON.stringify(r.effective?.ignoreGlobs ?? [])}`,
+        );
+      } catch (err) {
+        return textResult(
+          `wecom_admin_file_manager_settings_patch error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  });
+
+  pi.registerTool({
+    name: "wecom_admin_sandbox_remove_domains",
+    label: "WeCom admin sandbox remove domains",
+    description:
+      "Admin-only: remove network.allowedDomains from overlay (or mark remove for base-added domains).",
+    parameters: Type.Object({
+      sessionId: Type.Optional(Type.String()),
+      domains: Type.Array(Type.String(), { minItems: 1 }),
+      agentSource: Type.Optional(Type.String()),
+    }),
+    async execute(
+      _id: string,
+      params: Record<string, unknown>,
+      _signal: AbortSignal | undefined,
+      _onUpdate: unknown,
+      _ctx: ExtensionContext,
+    ) {
+      const sessionId = sessionOrFail(params, "wecom_admin_sandbox_remove_domains");
+      if (!sessionId) return failNoSession("wecom_admin_sandbox_remove_domains");
+      const domains = Array.isArray(params.domains)
+        ? (params.domains as unknown[]).map(String)
+        : [];
+      if (!domains.length) {
+        return textResult("wecom_admin_sandbox_remove_domains failed: domains required");
+      }
+      try {
+        const agentSource =
+          typeof params.agentSource === "string" ? params.agentSource.trim() : undefined;
+        const r = await client.adminSandboxDomains({
+          sessionId,
+          op: "remove",
+          domains,
+          agentSource,
+        });
+        if (!r.ok) {
+          return textResult(
+            formatErr("wecom_admin_sandbox_remove_domains", r as { code?: string; message?: string }),
+          );
+        }
+        return textResult(
+          `wecom_admin_sandbox_remove_domains ok: ${domains.join(", ")}`,
+        );
+      } catch (err) {
+        return textResult(
+          `wecom_admin_sandbox_remove_domains error: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+  });
 }

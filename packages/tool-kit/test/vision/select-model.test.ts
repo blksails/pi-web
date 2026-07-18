@@ -107,6 +107,63 @@ describe("selectVisionModel — 显式指定模型", () => {
   });
 });
 
+/**
+ * 已配置默认模型 → 不问,直接用(4.3)。
+ *
+ * 顺序回归护栏:`hasUI` 只说明会话有 UI 能力,不说明有人在看。无人值守通道
+ * (pi-gateway 企微等)hasUI=true 但没人点弹层 → `await ui.select` 永不 resolve,
+ * 工具静默挂死。若有人把默认模型判定挪回 UI 分支之后,这两条会失败。
+ */
+describe("selectVisionModel — 已配置默认模型优先于弹层", () => {
+  it("有 UI 但已配置默认模型 → 绝不弹层,直接用默认(4.3)", async () => {
+    const reg = fakeRegistry({ available: [VISION_A, VISION_B] });
+    const select = vi.fn(async (_t: string, opts: string[]) => opts[0]);
+    const got = asModel(
+      await selectVisionModel({
+        requested: undefined,
+        registry: reg,
+        ui: { select } as never,
+        hasUI: true,
+        defaultModel: "apiservices/gpt-5.4-mini",
+      }),
+    );
+    expect(select).toHaveBeenCalledTimes(0);
+    expect(modelKey(got)).toBe("apiservices/gpt-5.4-mini");
+  });
+
+  it("显式指定仍优先于已配置的默认模型(3.2)", async () => {
+    const reg = fakeRegistry({ available: [VISION_A, VISION_B] });
+    const select = vi.fn();
+    const got = asModel(
+      await selectVisionModel({
+        requested: "apiservices/gpt-5.4",
+        registry: reg,
+        ui: { select } as never,
+        hasUI: true,
+        defaultModel: "apiservices/gpt-5.4-mini",
+      }),
+    );
+    expect(select).toHaveBeenCalledTimes(0);
+    expect(modelKey(got)).toBe("apiservices/gpt-5.4");
+  });
+
+  it("默认模型不在候选中 → 回退到弹层,不静默改用他者", async () => {
+    const reg = fakeRegistry({ available: [VISION_A, VISION_B] });
+    const select = vi.fn(async (_t: string, opts: string[]) => opts[0]);
+    const got = asModel(
+      await selectVisionModel({
+        requested: undefined,
+        registry: reg,
+        ui: { select } as never,
+        hasUI: true,
+        defaultModel: "ghost/not-there",
+      }),
+    );
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(modelKey(got)).toBe("apiservices/gpt-5.4");
+  });
+});
+
 describe("selectVisionModel — 交互式选择", () => {
   it("有 UI 且未指定 → 提示一次并采用选中项(3.1)", async () => {
     const reg = fakeRegistry({ available: [VISION_A, VISION_B] });

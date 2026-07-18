@@ -2,13 +2,26 @@
   "enabled": true,
   "network": {
     "allowedDomains": [
-      "tracking.e.qq.com",
-      "api.e.qq.com",
+      "qq.com",
+      "gdtimg.com",
+      "weixin.qq.com",
       "api.weixin.qq.com",
+      "mp.weixin.qq.com",
+      "res.wx.qq.com",
+      "open.weixin.qq.com",
+      "wxaurl.cn",
+      "wxadurl.cn",
       "proxy.golang.org",
       "sum.golang.org",
       "storage.googleapis.com",
-      "106.14.250.218"
+      "106.14.250.218",
+      "tracking.e.qq.com",
+      "*.e.qq.com",
+      "pub.wdshquan.top",
+      "*.qq.com",
+      "*.gdtimg.com",
+      "*.work.weixin.qq.com",
+      "developer.work.weixin.qq.com"
     ],
     "deniedDomains": []
   },
