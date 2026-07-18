@@ -28,4 +28,8 @@ export {
 export { aigcSlashCompletions } from "./aigc/slash-completions.js";
 
 // AIGC 图像模型展示目录(aigc-tool-settings);纯数据,前端/server 安全,供 /settings 模型开关列举。
-export { AIGC_MODEL_CATALOG, type AigcCatalogEntry } from "./aigc/model-catalog.js";
+export {
+  AIGC_MODEL_CATALOG,
+  AI_GATEWAY_AIGC_CATALOG,
+  type AigcCatalogEntry,
+} from "./aigc/model-catalog.js";

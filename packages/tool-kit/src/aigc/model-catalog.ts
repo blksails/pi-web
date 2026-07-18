@@ -9,6 +9,10 @@
  * 与 provider ROUTES 的一致性由 `test/aigc/model-catalog.test.ts` 的 sync 断言守卫(防漂移)。
  *
  * 顺序与 `publishAigcCatalog` 的 gen∪edit 并集去重序一致(生成路由在前,编辑独有在后)。
+ *
+ * `AI_GATEWAY_AIGC_CATALOG`(model-catalog spec,AI_GATEWAY_AIGC_CATALOG 边界):网关图像
+ * 静态目录,与 `AI_GATEWAY_IMAGE_ROUTES` ∪ `AI_GATEWAY_IMAGE_EDIT_ROUTES` 的**最终**路由键
+ * 去重集对齐(同款 sync 断言守卫);同样零 import / 零 env 读取(双入口纪律)。
  */
 export interface AigcCatalogEntry {
   /** LLM 可见 model 值 + 路由键。 */
@@ -16,7 +20,7 @@ export interface AigcCatalogEntry {
   /** 展示标签。 */
   readonly label: string;
   /** 归属 provider(供字母徽章)。 */
-  readonly provider: "openrouter" | "newapi" | "sufy" | "dashscope";
+  readonly provider: "openrouter" | "newapi" | "sufy" | "dashscope" | "ai-gateway";
 }
 
 export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
@@ -33,4 +37,15 @@ export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "wan2.7-image-pro-bailian", label: "Wan 2.7 Image Pro · token plan", provider: "dashscope" },
   { model: "qwen-image-edit-max", label: "Qwen Image Edit Max · sync", provider: "dashscope" },
   { model: "wan2.7-image-edit-bailian", label: "Wan 2.7 Image Edit · token plan", provider: "dashscope" },
+];
+
+/**
+ * 网关图像静态目录 — `AI_GATEWAY_IMAGE_ROUTES` ∪ `AI_GATEWAY_IMAGE_EDIT_ROUTES` 的路由键
+ * 去重序(生成路由在前,编辑独有在后;当前两表键集相同)。⚠ gpt-image-2 条目在路由表经
+ * extras 覆盖了路由键为 `gpt-image-2-ai-gateway`,目录对齐**最终**键值。
+ */
+export const AI_GATEWAY_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
+  { model: "gpt-image-1", label: "GPT Image 1 · ai-gateway", provider: "ai-gateway" },
+  { model: "gpt-image-2-ai-gateway", label: "GPT Image 2 · ai-gateway", provider: "ai-gateway" },
+  { model: "qwen-image", label: "Qwen Image · ai-gateway", provider: "ai-gateway" },
 ];

@@ -19,7 +19,7 @@
   - 图像目录组装并入网关条目并附来源标记;服务经 server 包 barrel 导出
   - 完成态:`packages/server/test/model-catalog/service.test.ts` 全绿(含字节一致、过滤边界、剔除、并入四组断言)
   - _Requirements: 1.3, 1.4, 4.3, 5.1, 5.2, 5.3, 5.4_
-- [ ] 2.2 (P) 网关图像静态目录与防漂移断言
+- [x] 2.2 (P) 网关图像静态目录与防漂移断言
   - 图像目录条目类型的归属联合扩展 `ai-gateway`;新增网关图像静态目录(三条:gpt-image-1 / gpt-image-2-ai-gateway / qwen-image),保持声明层零 env 读取(双入口纪律)
   - 扩展既有 sync 防漂移断言:静态目录条目集合恒等于网关生成∪编辑路由键去重集
   - 完成态:`packages/tool-kit/test/aigc/model-catalog.test.ts` 全绿
