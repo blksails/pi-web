@@ -15,6 +15,9 @@
     "core:default",
     "allow-pick-directory",
     "allow-retry",
-    "allow-quit"
+    "allow-quit",
+    "allow-store-credential",
+    "allow-load-credential",
+    "allow-clear-credential"
   ]
 }

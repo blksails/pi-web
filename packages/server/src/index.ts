@@ -52,6 +52,10 @@ export { resolveSandboxEntry } from "./sandbox/entry.js";
 // tokens(sandbox-credentials-v2):分面 scoped token 签发/校验原语(mintScopedToken /
 // verifyScopedToken)。仅 node builtins(node:crypto),无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./tokens/index.js";
+// auth(desktop-cloud-login):桌面凭据解析 + 进程内登录态 + 鉴权注入路由(createAuthRoutes)。
+// 仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
+// ⚠ egress-model-source(引 pi SDK 值)不在此,由 runner 装配层子路径直接引入。
+export * from "./auth/index.js";
 // llm-gateway(sandbox-credentials-v2):provider 登记表 + dev/自部署 LLM 网关路由
 // (createLlmGatewayRoutes)。仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK
 // 值导入,可安全经 barrel 重导出。

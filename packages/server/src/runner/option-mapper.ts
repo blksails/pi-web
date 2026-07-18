@@ -24,6 +24,9 @@ import {
   type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
 import type { ResolveProjectTrust } from "./project-trust.js";
+// desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
+// 不经 server barrel;egress-model-source 见 auth/)。
+import { resolveEgressModelSourceFromEnv } from "../auth/egress-model-source.js";
 
 type ResourceLoaderOptions = NonNullable<
   CreateAgentSessionServicesOptions["resourceLoaderOptions"]
@@ -279,12 +282,21 @@ export function buildRuntimeFactory(
   const factory: CreateAgentSessionRuntimeFactory & {
     slashCompletions?: readonly SlashCompletionDecl[];
   } = async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
-    const services: AgentSessionServices = await createAgentSessionServices({
+    // desktop-cloud-login(Req 3.1/3.2/4.1/4.3):登录态经 runner env 注入指向云端 egress 的
+    // 内存 ModelRegistry(复用共享 auth.json,零落盘,不改 agentDir)。未登录/未启用 →
+    // undefined,保持 SDK 默认(共享 auth.json + models.json),字节级等价今日本地路径。
+    const egressServices = resolveEgressModelSourceFromEnv(agentDir, process.env);
+    const servicesOptions: CreateAgentSessionServicesOptions = {
       cwd,
       agentDir,
       resourceLoaderOptions,
       resourceLoaderReloadOptions: { resolveProjectTrust: trust },
-    });
+    };
+    if (egressServices !== undefined) {
+      servicesOptions.authStorage = egressServices.authStorage;
+      servicesOptions.modelRegistry = egressServices.modelRegistry;
+    }
+    const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 
     const registry = services.modelRegistry;
     const model =

@@ -7,6 +7,7 @@
 //! **不注入 agent 配置目录覆盖** → 会话默认落 `~/.pi/agent`，与 CLI 共享（Req 5.5）。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod credential_store;
 mod dialog;
 mod external_link;
 mod ready_probe;
@@ -52,7 +53,12 @@ fn start_port() -> u16 {
         .unwrap_or(DEFAULT_START_PORT)
 }
 
-/// 后端基础环境：默认源与默认 cwd。**不含 agentDir**（Req 5.5）。
+/// 后端基础环境：默认源、默认 cwd、（若 keychain 有登录态）桌面凭据。**不含 agentDir**（Req 5.5）。
+///
+/// ★ spec desktop-cloud-login 任务 4.3：启动期读 keychain，若存在凭据则经新键
+///   `PI_WEB_DESKTOP_CREDENTIAL` 播种给 sidecar 初始态。此键与 agentDir **无关**——
+///   `server_supervisor.rs build_child_env` 的 Req 5.5 debug_assert（壳不得自行注入
+///   `PI_WEB_AGENT_DIR`）必须继续成立，本函数不得、也未触碰该键。
 fn base_env() -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
     if let Ok(src) = std::env::var("PI_WEB_DEFAULT_SOURCE") {
@@ -67,6 +73,11 @@ fn base_env() -> BTreeMap<String, String> {
     });
     if !cwd.is_empty() {
         env.insert("PI_WEB_DEFAULT_CWD".into(), cwd);
+    }
+    if let Some(cred) = credential_store::load_credential_sync() {
+        if !cred.trim().is_empty() {
+            env.insert("PI_WEB_DESKTOP_CREDENTIAL".into(), cred);
+        }
     }
     env
 }
@@ -260,6 +271,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             dialog::pick_directory,
+            credential_store::store_credential,
+            credential_store::load_credential,
+            credential_store::clear_credential,
             retry,
             quit
         ])
@@ -320,4 +334,96 @@ fn main() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// spec desktop-cloud-login 任务 7.3：
+    /// - Req 5.5 回归核心——不论 keychain 有无凭据，`base_env()` 都绝不得含 `PI_WEB_AGENT_DIR`；
+    ///   这条断言**必须真跑**，与 keychain 是否可用无关，因此放在任何 skip 分支之前。
+    /// - 若当前环境 keychain 可用（本地开发机通常可用；CI/headless 容器可能不可用），
+    ///   顺带验证 4.3 的注入观测完成态：keychain 有凭据 → base_env 含
+    ///   `PI_WEB_DESKTOP_CREDENTIAL`；清空后 → 该键消失。
+    ///
+    /// 单一测试函数串行执行三步，避免与 cargo test 默认的测试线程并行同时操作
+    /// 同一个生产 keychain 条目而产生竞态。
+    #[test]
+    fn base_env_agent_dir_invariant_and_credential_injection() {
+        // ① 不变式：即便尚未确定 keychain 状态，此刻的 base_env 也不得含 agentDir。
+        let env_baseline = base_env();
+        assert!(
+            !env_baseline.contains_key("PI_WEB_AGENT_DIR"),
+            "桌面壳 base_env 绝不得自行注入 PI_WEB_AGENT_DIR（Req 5.5）"
+        );
+
+        // ② 尝试播种生产条目；keychain 不可用（常见于 CI/headless）则记录 SKIP 原因并提前返回,
+        //    但①的不变式断言已经真跑过，不因此被跳过。
+        if let Err(err) = credential_store::test_seed_production_credential("fixture-desktop-cred") {
+            eprintln!(
+                "[skip] base_env_agent_dir_invariant_and_credential_injection 的凭据注入部分: \
+                 当前环境 keychain 不可用（{err}），跳过；agentDir 不变式断言已执行"
+            );
+            return;
+        }
+
+        let env_with_cred = base_env();
+        assert_eq!(
+            env_with_cred.get("PI_WEB_DESKTOP_CREDENTIAL").map(String::as_str),
+            Some("fixture-desktop-cred"),
+            "keychain 有凭据时 base_env 应含 PI_WEB_DESKTOP_CREDENTIAL（任务 4.3 观测完成态）"
+        );
+        assert!(
+            !env_with_cred.contains_key("PI_WEB_AGENT_DIR"),
+            "注入桌面凭据不得连带触碰 agentDir（Req 5.5 仍须成立）"
+        );
+
+        // ③ 清空后：该键消失，agentDir 不变式依旧成立。
+        let _ = credential_store::test_clear_production_credential();
+        let env_after_clear = base_env();
+        assert!(
+            !env_after_clear.contains_key("PI_WEB_DESKTOP_CREDENTIAL"),
+            "登出/清空 keychain 后 base_env 不应再含桌面凭据键"
+        );
+        assert!(!env_after_clear.contains_key("PI_WEB_AGENT_DIR"));
+    }
+
+    /// spec desktop-cloud-login 任务 7.3「ACL 放行/拒绝」的**静态**声明校验。
+    ///
+    /// ★ 局限（诚实标注）：真正的运行期 ACL allow/reject 需要一个真实 webview + IPC 调用
+    ///   （渲染层 invoke 命中/绕过 ACL 层），`cargo test` 单测进程内没有这样的宿主环境，
+    ///   无法在此验证「未声明前被拒、声明后放行」的运行期行为。本测试只锁定**声明本身**
+    ///   的静态一致性——`credential.toml` 三个 identifier 与 `capabilities/default.json`
+    ///   的 permissions 数组一一对应——防止两处漂移导致声明了却忘记挂载（或反之）。
+    #[test]
+    fn credential_acl_identifiers_are_declared_and_capability_wired() {
+        let toml_src = include_str!("../permissions/credential.toml");
+        let cap_src = include_str!("../capabilities/default.json");
+        let cap: serde_json::Value = serde_json::from_str(cap_src).expect("capability 应是合法 JSON");
+        let cap_perms: Vec<&str> = cap["permissions"]
+            .as_array()
+            .expect("capabilities/default.json 应含 permissions 数组")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+
+        for identifier in ["allow-store-credential", "allow-load-credential", "allow-clear-credential"] {
+            assert!(
+                toml_src.contains(&format!("identifier = \"{identifier}\"")),
+                "permissions/credential.toml 应声明 {identifier}"
+            );
+            assert!(
+                cap_perms.contains(&identifier),
+                "capabilities/default.json 的 permissions 数组应包含 {identifier}"
+            );
+        }
+
+        for cmd in ["store_credential", "load_credential", "clear_credential"] {
+            assert!(
+                toml_src.contains(cmd),
+                "permissions/credential.toml 应在某条 permission 的 commands.allow 中列出 {cmd}"
+            );
+        }
+    }
 }

@@ -76,6 +76,10 @@ import {
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
   // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
   createModelCatalogService,
+  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
+  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
+  AuthSessionState,
+  createAuthRoutes,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -116,6 +120,11 @@ import {
 // e2b 分支按会话铸造 scope="ai-gateway" token,注入沙箱可达 base + token(增量可选,
 // 不替换任何既有 provider key,与 llm-gateway 的强制 credential-switch 语义不同)。
 import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
+import {
+  resolveCloudLoginConfig,
+  computeAuthEgressSpawnEnv,
+  RUNNER_CREDENTIAL_ENV,
+} from "./auth-egress-assembly.js";
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
 // 保守默认值——沿用 llm-gateway 同一常量,语义详见 llm-gateway-config.ts 注释)。
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
@@ -379,6 +388,20 @@ function buildSingleton(): HandlerSingleton {
   // (URL/优先级枚举/TTL 覆盖值)→ fail-fast 抛出(不吞错、不静默降级)。
   const aiGwConfig = resolveAiGatewayConfig(process.env);
   const aiGatewayKeyResolver = new EnvKeyResolver(process.env);
+
+  // desktop-cloud-login(任务 6.1,Req 3.1/4.2/7.3):云端登录 egress 装配期配置解析。未配
+  // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
+  // → fail-fast 抛出。进程内登录态由启动 env(桌面壳经 base_env 播种 PI_WEB_DESKTOP_CREDENTIAL)
+  // 初始化,鉴权端点运行时更新;会话 spawn 读同一实例注入 runner egress env。
+  const cloudLoginConfig = resolveCloudLoginConfig(process.env);
+  const authSessionState = new AuthSessionState();
+  if (cloudLoginConfig !== undefined) {
+    const seededCredential = process.env[RUNNER_CREDENTIAL_ENV];
+    if (seededCredential !== undefined && seededCredential.trim().length > 0) {
+      // 播种失败(非法/过期)静默忽略——保持未登录态,不阻断装配。
+      authSessionState.set(seededCredential);
+    }
+  }
   const gatewayModelCatalog =
     aiGwConfig !== undefined
       ? new GatewayModelCatalog({
@@ -670,6 +693,14 @@ function buildSingleton(): HandlerSingleton {
           attachmentPassthroughEnv,
           attachmentProfileDisabledValue,
         ),
+        // desktop-cloud-login(任务 6.1,Req 3.1/4.4/5.2):登录态下把桌面凭据 + egress base + 模型
+        // 清单经 spawn env 下发 runner(runner option-mapper 据此注入内存 ModelRegistry 走 egress)。
+        // 未启用/未登录/凭据过期 → 空对象,runner 走本地 auth.json 默认(Req 4.1/4.4)。凭据仅经 env
+        // 下发(同 providerKeys 信任边界),不入日志/历史(Req 5.2)。sk-gw 云端换取,不下发(B-pure)。
+        ...computeAuthEgressSpawnEnv(
+          cloudLoginConfig,
+          authSessionState.currentCredential(),
+        ),
       },
     };
     return new PiRpcProcess(spec);
@@ -852,6 +883,12 @@ function buildSingleton(): HandlerSingleton {
             keyResolver: aiGatewayKeyResolver,
             timeoutMs: aiGwConfig.timeoutMs,
           })
+        : []),
+      // 鉴权端点(desktop-cloud-login,任务 6.1,Req 1.3/2.5/6.2/6.3):POST·DELETE /auth/session
+      // + GET /auth/me,/api 下可达。仅云端登录已启用(cloudLoginConfig !== undefined)时挂载——
+      // 未启用时零注册、无登录入口(Req 4.2),请求落既有 404 语义。凭据明文不回显/不入日志(Req 5.2)。
+      ...(cloudLoginConfig !== undefined
+        ? createAuthRoutes({ state: authSessionState })
         : []),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
       // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
