@@ -60,3 +60,8 @@ export * from "./llm-gateway/index.js";
 // (createAiGatewayRoutes),与 llm-gateway 同层平行、分离共存。仅 node builtins + 既有
 // http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./ai-gateway/index.js";
+// model-catalog(model-catalog spec):chat/image 双命名空间目录组装服务
+// (createModelCatalogService)。纯组装零 env 零 IO,依赖仅 ai-gateway 纯函数 +
+// config 纯过滤器 + tool-kit 主入口纯类型,无 pi SDK 值导入,可安全经 barrel 重导出。
+// ⚠ 取数闭包(config/model-options.ts,含 pi SDK)不在此导出,由装配层注入。
+export * from "./model-catalog/index.js";
