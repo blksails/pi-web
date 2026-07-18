@@ -113,7 +113,7 @@ packages/server/test/model-catalog/
 ### Modified Files
 - `packages/server/src/config/model-options.types.ts` — `ModelOption` 追加可选 `channel?: string`、`availability?: "session" | "catalog"`(注释注明仅聚合形态出现)。
 - `packages/server/src/ai-gateway/model-catalog.ts` — 重写 `mergeModelCatalog`:key `provider/id`、provider 收敛 `"ai-gateway"`、channel/availability 附加、precedence 改块排序、providers 输出 self-only。
-- `packages/server/src/aigc-settings/aigc-models-routes.ts` — `createAigcModelsRoute(opts?: { extraEntries?: readonly AigcCatalogEntry[] })`:并入注入条目(响应条目附可选 `source` 字段)。
+- `packages/server/src/aigc-settings/aigc-models-routes.ts` — `createAigcModelsRoute(opts?: { listEntries?: () => readonly CatalogImageEntry[] })`:注入完整取数函数(数据源 = `ModelCatalogService.imageEntries()`,响应条目附可选 `source` 字段;未注入回落静态目录,向后兼容)。
 - `packages/tool-kit/src/aigc/model-catalog.ts` — `AigcCatalogEntry.provider` 联合扩 `"ai-gateway"`;新增 `AI_GATEWAY_AIGC_CATALOG`(3 条:`gpt-image-1`/`gpt-image-2-ai-gateway`/`qwen-image`,零 env 读取)。
 - `lib/app/pi-handler.ts` — 装配:构造 ModelCatalogService;`listModelOptions` 闭包与 `createAigcModelsRoute` 改从服务取数;`extraEntries` 按 `aiGwConfig !== undefined` 条件传入(与 runner env 判据同源)。
 - `packages/ui/src/config/fields/model-select-field.tsx` — `Opt` 增 `availability`;`availability === "catalog"` 的 CommandItem 渲染 disabled + 「未接入会话」提示。

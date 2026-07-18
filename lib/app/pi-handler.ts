@@ -72,8 +72,10 @@ import {
   createAiGatewayRoutes,
   EnvKeyResolver,
   GatewayModelCatalog,
-  mergeModelCatalog,
   resolveAiGatewaySecret,
+  // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
+  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
+  createModelCatalogService,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -86,13 +88,19 @@ import { configureLogger, createLogger } from "@blksails/pi-web-logger";
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
 import { resolveBashEnabled } from "./bash-default.js";
 // listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
-// parseHiddenProviders/excludeProviders 为纯函数,经同一子路径转出,用于按
-// PI_WEB_HIDE_PROVIDERS 部署期开关从下拉中剔除指定 provider 的模型。
+// parseHiddenProviders 为纯函数,经同一子路径转出,用于按 PI_WEB_HIDE_PROVIDERS
+// 部署期开关从下拉中剔除指定 provider 的模型(过滤本体已收进 ModelCatalogService)。
 import {
   listModelOptions,
   parseHiddenProviders,
-  excludeProviders,
 } from "@blksails/pi-web-server/model-options";
+// 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全,
+// server 的 aigc-settings 路由同款引法):供 ModelCatalogService 的 image 命名空间组装
+// (spec model-catalog,任务 3.1)。
+import {
+  AIGC_MODEL_CATALOG,
+  AI_GATEWAY_AIGC_CATALOG,
+} from "@blksails/pi-web-tool-kit";
 // listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
 // (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
 import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
@@ -379,6 +387,24 @@ function buildSingleton(): HandlerSingleton {
           keyResolver: aiGatewayKeyResolver,
         })
       : undefined;
+
+  // 目录组装服务(spec model-catalog,design.md「ModelCatalogService」,任务 3.1,
+  // Req 1.1/4.1/4.3/5.1–5.4):chat(merge + hidden 过滤)与 image(静态∪网关,附 source)
+  // 的统一取数入口。**每请求构造**以保持 PI_WEB_HIDE_PROVIDERS 的既有请求期求值语义
+  // (原闭包即每请求 parseHiddenProviders,env 即时生效;service 零 IO 轻对象,每请求
+  // new 无成本)。网关启用判别 = `aiGwConfig !== undefined`(AI_GATEWAY_BASE_URL 已配置),
+  // 与路由挂载/runner 侧判据同源;未启用时 gatewayChat/gatewayImageCatalog 均不注入,
+  // 两端点输出与主干逐字节一致(Req 1.3/4.3)。
+  const makeModelCatalog = () =>
+    createModelCatalogService({
+      listSelfChat: () => listModelOptions(config.agentDir),
+      gatewayChat: gatewayModelCatalog,
+      modelPrecedence: aiGwConfig?.modelPrecedence,
+      imageCatalog: AIGC_MODEL_CATALOG,
+      gatewayImageCatalog:
+        aiGwConfig !== undefined ? AI_GATEWAY_AIGC_CATALOG : undefined,
+      hiddenProviders: parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS),
+    });
 
   // 主进程自身 logger 的 runtime 门控:主进程不像 runner 那样调 initConfigFromEnv,
   // 库默认 enabled=true 会让 server 侧 createLogger(pi-session 等)无条件打到 server stderr。
@@ -740,24 +766,9 @@ function buildSingleton(): HandlerSingleton {
         rootDir: config.agentDir,
         // settings 域:把 defaultProvider/defaultModel 升级为运行时下拉(选项 = 该
         // agentDir 下已配置凭证的可用模型,含 models.json 自定义 provider)。
-        // 经 PI_WEB_HIDE_PROVIDERS(逗号分隔)剔除部署期不想暴露的 provider 及其模型。
-        listModelOptions: () => {
-          const hidden = parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS);
-          const selfOptions = excludeProviders(listModelOptions(config.agentDir), hidden);
-          // ai-gateway 目录聚合(spec ai-gateway-providers,design.md §2.4,任务 4.1,
-          // Req 4.2/4.3/4.4):套件未启用时原样返回(与启用前逐字节一致,Req 1.2)。
-          // gatewayModelCatalog.get() 惰性 + TTL,fail-soft(从未成功/拉取失败 → 空集/
-          // 沿用快照),故此处永不因网关不可达而阻断自配目录展示。
-          if (aiGwConfig === undefined || gatewayModelCatalog === undefined) {
-            return selfOptions;
-          }
-          const merged = mergeModelCatalog(
-            selfOptions.models,
-            gatewayModelCatalog.get(),
-            aiGwConfig.modelPrecedence,
-          );
-          return excludeProviders(merged, hidden);
-        },
+        // merge(ai-gateway 目录聚合,fail-soft)+ PI_WEB_HIDE_PROVIDERS 过滤统一收进
+        // ModelCatalogService(spec model-catalog,任务 3.1;等价链路,语义不变)。
+        listModelOptions: () => makeModelCatalog().chatOptions(),
       }),
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
       ...createExtensionsConfigRoutes({
@@ -804,7 +815,12 @@ function buildSingleton(): HandlerSingleton {
       // AIGC 图像工具设置(aigc-tool-settings):GET /aigc/models 只读模型目录,供 /settings「模型开关」
       // widget 列举。设置本体(被禁模型 / 提示词优化)走标准 config 域 /api/config/aigc(落
       // <agentDir>/aigc.json),runner 装配期经 tool-kit resolveAigcToolSettings 只读同文件。
-      ...createAigcModelsRoute(),
+      // 取数经 ModelCatalogService.imageEntries()(spec model-catalog,任务 3.1,Req 4.1/4.3):
+      // 网关启用时并入 AI_GATEWAY_AIGC_CATALOG 三条并附 source 来源字段;未启用时引用级
+      // 透传静态目录,输出与主干逐字节一致。image 命名空间不吃 hidden 过滤(Req 5.2)。
+      ...createAigcModelsRoute({
+        listEntries: () => makeModelCatalog().imageEntries(),
+      }),
       // Canvas 视觉解读(canvas-vision-readout):GET /vision/models 只读清单,供工作台提示词栏的
       // 视觉模型选择器列举。取数与 image_vision 工具的候选同源(getAvailable() ∩ input 含 image),
       // 故下拉里看到的就是工具弹层里能选到的。取数抛错 → 200 + 空清单(前端退化为工具弹层)。

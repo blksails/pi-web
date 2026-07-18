@@ -13,6 +13,9 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import path from "node:path";
+// 静态目录单一事实源(零 env 读取、零 pi SDK,import 顺序无害):未启用形态下
+// GET /api/aigc/models 必须与它逐字节一致(model-catalog spec 任务 3.1,Req 4.3/6.3)。
+import { AIGC_MODEL_CATALOG } from "@blksails/pi-web-tool-kit";
 
 process.env.PI_WEB_STUB_AGENT = "1";
 process.env.PI_WEB_STUB_AGENT_PATH = path.join(
@@ -26,6 +29,8 @@ process.env.PI_WEB_STUB_AGENT_PATH = path.join(
 delete process.env.AI_GATEWAY_BASE_URL;
 delete process.env.PI_WEB_AI_GATEWAY_SECRET;
 delete process.env.PI_WEB_ATTACHMENT_SECRET;
+// 目录断言的确定性:不让宿主环境的 hidden 配置渗入(model-catalog spec 任务 3.1)。
+delete process.env.PI_WEB_HIDE_PROVIDERS;
 
 const route = await import("@/lib/app/api-route");
 const { shutdownHandler } = await import("@/lib/app/pi-handler");
@@ -72,13 +77,28 @@ describe("AI_GATEWAY_BASE_URL 未配置:/api/ai-gateway/* 未挂载", () => {
     expect(sessionId.length).toBeGreaterThan(0);
   });
 
-  it("其余装配未受影响:GET /api/config/models 正常工作且模型条目不带 source 字段(与启用前逐字节一致,Req 1.2)", async () => {
+  it("其余装配未受影响:GET /api/config/models 正常工作且模型条目不带 source/channel/availability 字段(与主干逐字节一致,Req 1.2/6.3)", async () => {
     const res = await route.GET(req("/api/config/models"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { models: Array<Record<string, unknown>> };
     expect(Array.isArray(body.models)).toBe(true);
     for (const m of body.models) {
       expect(m.source).toBeUndefined();
+      expect(m.channel).toBeUndefined();
+      expect(m.availability).toBeUndefined();
+    }
+  });
+
+  it("GET /api/aigc/models 与主干静态目录逐字节一致(无 source 等附加字段,Req 4.3/6.3)", async () => {
+    const res = await route.GET(req("/api/aigc/models"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
+    // 逐字节一致语义:models 载荷深等于静态目录(响应信封的 protocolVersion 是主干
+    // 既有形态,不属本 spec 增量),且每条目键集恰为 {model,label,provider}
+    // (toEqual 不抓「多出的键」以外的形态差,键集断言补齐)。
+    expect(body.models).toEqual([...AIGC_MODEL_CATALOG]);
+    for (const m of body.models) {
+      expect(Object.keys(m).sort()).toEqual(["label", "model", "provider"]);
     }
   });
 });
