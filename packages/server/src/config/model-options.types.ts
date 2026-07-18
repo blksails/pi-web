@@ -18,6 +18,20 @@ export interface ModelOption {
    * (与启用前逐字节一致,Req 1.2)。
    */
   readonly source?: "ai-gateway" | "self";
+  /**
+   * 网关上游渠道名(model-catalog spec,Req 2.3):原网关目录的 `owned_by`
+   * (如 `openai-compat`),仅供界面二级分组展示,不进入 providers 列表。
+   * 仅经 `ai-gateway/model-catalog.ts` 的 `mergeModelCatalog` 聚合后才会附带;
+   * 未启用 ai-gateway 套件时该字段不存在(与启用前逐字节一致,Req 5.4)。
+   */
+  readonly channel?: string;
+  /**
+   * 可用性标记(model-catalog spec,Req 3.2/5.4):`"session"` = agent 会话可跑,
+   * `"catalog"` = 仅目录展示(网关条目未接入会话选择器)。
+   * 仅经 `ai-gateway/model-catalog.ts` 的 `mergeModelCatalog` 聚合后才会附带;
+   * 未启用 ai-gateway 套件时该字段不存在(与启用前逐字节一致,Req 5.4)。
+   */
+  readonly availability?: "session" | "catalog";
 }
 
 /** 列模型结果:去重后的 provider 名 + 模型清单。 */
