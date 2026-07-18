@@ -95,4 +95,17 @@ describe("filterRoutes", () => {
     const out = filterRoutes(ROUTES, new Set(["ghost"]), "a");
     expect(out.map((r) => r.model)).toEqual(["a", "b", "c"]);
   });
+
+  it("disabledModels 对内置路由 ∪ ai-gateway extraRoutes 拼接后统一生效,不区分来源(Req 5.4)", () => {
+    const aiGatewayRoutes = [
+      { model: "gpt-image-1", label: "GPT Image 1 · ai-gateway" },
+      { model: "qwen-image", label: "Qwen Image · ai-gateway" },
+    ] as const;
+    const combined = [...ROUTES, ...aiGatewayRoutes];
+    // 同时禁用一个内置模型与一个 ai-gateway 模型:两者均应被剔除,其余(含另一 ai-gateway
+    // 模型)保留——证明过滤对拼接后的路由集统一生效,不因来源(newapi/sufy/dashscope 还是
+    // ai-gateway)而有差异对待。
+    const out = filterRoutes(combined, new Set(["b", "gpt-image-1"]), "a");
+    expect(out.map((r) => r.model)).toEqual(["a", "c", "qwen-image"]);
+  });
 });

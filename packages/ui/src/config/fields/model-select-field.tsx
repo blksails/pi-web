@@ -32,6 +32,12 @@ interface ModelOption {
   readonly provider: string;
   readonly id: string;
   readonly name: string;
+  /**
+   * 来源标记(ai-gateway-providers spec,Req 4.2):`"ai-gateway"` = 网关托管目录,
+   * `"self"` = 自配 provider 目录。仅在装配端启用 ai-gateway 套件并聚合目录后才会
+   * 出现;未启用时该字段不存在,不渲染徽章(与启用前逐字节一致)。
+   */
+  readonly source?: "ai-gateway" | "self";
 }
 interface ModelOptionsResponse {
   readonly providers: readonly string[];
@@ -67,6 +73,8 @@ async function loadModelOptions(): Promise<ModelOptionsResponse> {
 interface Opt {
   readonly value: string;
   readonly label: string;
+  /** 来源徽章(仅 modelSelect 组透传;providerSelect 恒为 undefined)。 */
+  readonly source?: "ai-gateway" | "self";
 }
 /** 选项分组:`provider === ""` 表示无分组标题的平铺组(providerSelect 用)。 */
 interface OptGroup {
@@ -103,7 +111,7 @@ function buildGroups(widget: string | undefined, data: ModelOptionsResponse): Op
       order.push(m.provider);
     }
     if (!bucket.some((o) => o.value === m.id)) {
-      bucket.push({ value: m.id, label: m.id });
+      bucket.push({ value: m.id, label: m.id, source: m.source });
     }
   }
   return order.map((provider) => ({ provider, options: map.get(provider) ?? [] }));
@@ -211,6 +219,21 @@ export function ModelSelectField({
                           aria-hidden="true"
                         />
                         <span className="truncate">{o.label}</span>
+                        {o.source !== undefined && (
+                          <span
+                            data-pi-model-source={o.source}
+                            className={cn(
+                              "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium leading-none",
+                              o.source === "ai-gateway"
+                                ? "bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))]"
+                                : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
+                            )}
+                          >
+                            {o.source === "ai-gateway"
+                              ? t("config.modelSelect.sourceAiGateway")
+                              : t("config.modelSelect.sourceSelf")}
+                          </span>
+                        )}
                       </CommandItem>
                     );
                   });

@@ -14,4 +14,6 @@ export {
   resolveScopedTokenSecret,
   resolveLlmGatewaySecret,
   LLM_GATEWAY_SECRET_ENV,
+  resolveAiGatewaySecret,
+  AI_GATEWAY_SECRET_ENV,
 } from "./secret.js";

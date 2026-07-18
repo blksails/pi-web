@@ -8,11 +8,15 @@
  * 不进 Next/webpack 前端 bundle。
  */
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import { registerImageGeneration } from "./tools/image-generation.js";
-import { registerImageEdit } from "./tools/image-edit.js";
+import {
+  registerImageGeneration,
+  AI_GATEWAY_IMAGE_ROUTES,
+} from "./tools/image-generation.js";
+import { registerImageEdit, AI_GATEWAY_IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
 import { getSessionState } from "../session-state.js";
 import { resolveAigcToolSettings } from "./model-config.js";
 import { deriveActiveModels } from "./active-models.js";
+import type { ImageRoute } from "./types.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
 export const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
@@ -35,13 +39,14 @@ const PUBLISH_MAX_TRIES = 40; // ~2s 上限,覆盖极慢装配;耗尽即放弃(f
 function publishAigcCatalog(
   disabledModels: ReadonlySet<string>,
   enablePromptOptimization: boolean,
+  extraRoutes: readonly ImageRoute[],
   attempt = 0,
 ): void {
   const state = getSessionState();
   if (!state.available) {
     if (attempt < PUBLISH_MAX_TRIES) {
       setTimeout(
-        () => publishAigcCatalog(disabledModels, enablePromptOptimization, attempt + 1),
+        () => publishAigcCatalog(disabledModels, enablePromptOptimization, extraRoutes, attempt + 1),
         attempt === 0 ? 0 : PUBLISH_RETRY_MS,
       );
     }
@@ -51,8 +56,10 @@ function publishAigcCatalog(
   // 一并移除(前端 picker 自然收敛);全禁时 deriveActiveModels 内部 filterRoutes 保留默认,与工具侧一致。
   // canvas-actions-m2:活跃模型推导提取为 deriveActiveModels 共享纯函数(KV 键/值/顺序零变),
   // 与 buildCanvasCapability 同源消费。清单仍是 id 数组(value/路由键不变),另下发 label 映射供
-  // 选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。
-  const entries = deriveActiveModels(disabledModels);
+  // 选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。extraRoutes(Req 4.2/5.2):
+  // 与两工具注册时同一批 ai-gateway 条件路由,使清单下发与工具实际暴露的模型同源(未启用套件
+  // 时为空数组,行为逐字节一致)。
+  const entries = deriveActiveModels(disabledModels, extraRoutes);
   const labelByModel: Record<string, string> = {};
   const providerByModel: Record<string, string> = {};
   for (const e of entries) {
@@ -74,7 +81,23 @@ function publishAigcCatalog(
  */
 export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
   const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
-  registerImageGeneration(pi, { disabledModels });
-  registerImageEdit(pi, { disabledModels });
-  publishAigcCatalog(disabledModels, enablePromptOptimization);
+  // ai-gateway 路由组条件并入(spec ai-gateway-providers,design.md §3,Req 5.2/5.3):
+  // 本模块属 runtime 层(经 `@blksails/pi-web-tool-kit/runtime` 加载,含 pi SDK 值导入),
+  // 允许读 env——浏览器 bundle 只见声明层的类型/静态 routes,不违双入口边界(Req 6.2)。
+  // 未配置 AI_GATEWAY_BASE_URL 时 extraRoutes 为 undefined,两工具行为与今天逐字节一致。
+  const aiGatewayEnabled =
+    typeof process.env.AI_GATEWAY_BASE_URL === "string" &&
+    process.env.AI_GATEWAY_BASE_URL.trim().length > 0;
+  const genExtraRoutes: readonly ImageRoute[] | undefined = aiGatewayEnabled
+    ? AI_GATEWAY_IMAGE_ROUTES
+    : undefined;
+  const editExtraRoutes: readonly ImageRoute[] | undefined = aiGatewayEnabled
+    ? AI_GATEWAY_IMAGE_EDIT_ROUTES
+    : undefined;
+  registerImageGeneration(pi, { disabledModels, extraRoutes: genExtraRoutes });
+  registerImageEdit(pi, { disabledModels, extraRoutes: editExtraRoutes });
+  const publishExtraRoutes: readonly ImageRoute[] = aiGatewayEnabled
+    ? [...AI_GATEWAY_IMAGE_ROUTES, ...AI_GATEWAY_IMAGE_EDIT_ROUTES]
+    : [];
+  publishAigcCatalog(disabledModels, enablePromptOptimization, publishExtraRoutes);
 };

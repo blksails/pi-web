@@ -20,6 +20,7 @@ import {
 } from "../providers/dashscope.js";
 import { createNewApiImage } from "../providers/newapi.js";
 import { createSufyImage } from "../providers/sufy.js";
+import { createAiGatewayImage } from "../providers/ai-gateway.js";
 import { openRouterImageRoutes } from "../providers/openrouter-models.js";
 import {
   runImageTool,
@@ -171,6 +172,41 @@ export const IMAGE_GENERATION_ROUTES: readonly ImageRoute[] = ROUTES;
 export const IMAGE_GENERATION_DEFAULT_MODEL = DEFAULT_MODEL;
 
 /**
+ * ai-gateway 文生图路由组(spec ai-gateway-providers,design.md §3,Req 5.2)——第一期
+ * 静态声明,覆盖网关已配的代表性模型。**不**并入 `ROUTES`/`IMAGE_GENERATION_ROUTES`
+ * (那两者始终无条件注册);本组由 runtime 层 `extension.ts` 按
+ * `process.env.AI_GATEWAY_BASE_URL` 存在与否决定是否经 `registerImageGeneration` 的
+ * `opts.extraRoutes` 并入,未启用套件时图像工具的模型枚举与行为与今天逐字节一致(Req 5.3)。
+ */
+export const AI_GATEWAY_IMAGE_ROUTES: readonly ImageRoute[] = [
+  createAiGatewayImage(
+    {
+      model: "gpt-image-1",
+      label: "GPT Image 1 · ai-gateway",
+      description: "OpenAI gpt-image-1 generation via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createAiGatewayImage(
+    {
+      model: "gpt-image-2",
+      label: "GPT Image 2 · ai-gateway",
+      description: "OpenAI gpt-image-2 generation via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+      providerModel: "gpt-image-2",
+    },
+    { model: "gpt-image-2-ai-gateway", pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createAiGatewayImage(
+    {
+      model: "qwen-image",
+      label: "Qwen Image · ai-gateway",
+      description: "Qwen text-to-image generation via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+    },
+    { pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
+  ),
+];
+
+/**
  * 注册 `image_generation` 工具到给定的 pi 扩展上下文。
  * `opts.disabledModels`(aigc-tool-settings):装配期被禁模型集合——被禁模型从 LLM 可见 model
  * 枚举、工具描述与运行时路由集**同源移除**;缺省时行为与既有一致(全量)。
@@ -179,7 +215,12 @@ export function registerImageGeneration(
   pi: ExtensionAPI,
   opts?: RegisterImageToolOptions,
 ): void {
-  const activeRoutes = filterRoutes(ROUTES, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
+  // extraRoutes(Req 5.2/5.3):runtime 层按 env 条件传入(如 AI_GATEWAY_IMAGE_ROUTES),
+  // 与内置 ROUTES 拼接后统一走 filterRoutes(Req 5.4:disabledModels 对两套 provider
+  // 统一生效);未传入(套件未启用)时行为与今天逐字节一致。
+  const allRoutes: readonly ImageRoute[] =
+    opts?.extraRoutes !== undefined ? [...ROUTES, ...opts.extraRoutes] : ROUTES;
+  const activeRoutes = filterRoutes(allRoutes, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
   pi.registerTool({
     name: "image_generation",
     label: "Text → image",

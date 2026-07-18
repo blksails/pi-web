@@ -42,3 +42,6 @@ e2e/fixtures/iphone-mpf.jpg
 
 # shared-runtime-payload 生成物(载荷 + 解包器)
 /payload/
+
+# pnpm 本地 store
+.pnpm-store/

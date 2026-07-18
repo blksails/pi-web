@@ -51,3 +51,20 @@ export function resolveLlmGatewaySecret(
 ): string {
   return resolveScopedTokenSecret(LLM_GATEWAY_SECRET_ENV, env, "llm-gateway");
 }
+
+/** ai-gateway 面专属 secret 环境变量名(ai-gateway-providers spec)。 */
+export const AI_GATEWAY_SECRET_ENV = "PI_WEB_AI_GATEWAY_SECRET";
+
+/**
+ * ai-gateway 面 secret 解析:优先 `PI_WEB_AI_GATEWAY_SECRET`,回退
+ * `PI_WEB_ATTACHMENT_SECRET`,皆缺抛清晰错误。与 `resolveLlmGatewaySecret` 同惯例,
+ * 使 `scope="ai-gateway"` 的 token 与 `scope="llm:<provider>"` 的 token 即便共用同一
+ * 回退 secret 值,也经签名域前缀 `pi-token.v2.<scope>.` 互不可换(scoped-token.ts)。
+ *
+ * @param env 环境变量来源(默认 `process.env`,便于测试注入)。
+ */
+export function resolveAiGatewaySecret(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveScopedTokenSecret(AI_GATEWAY_SECRET_ENV, env, "ai-gateway");
+}

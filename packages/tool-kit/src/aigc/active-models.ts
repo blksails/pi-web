@@ -15,7 +15,7 @@ import {
 } from "./tools/image-generation.js";
 import { IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
 import { filterRoutes } from "./model-config.js";
-import type { ImageProviderId } from "./types.js";
+import type { ImageProviderId, ImageRoute } from "./types.js";
 
 /** 单个活跃模型条目(稳定 id + 展示标签 + 归属 provider)。 */
 export interface ActiveModelEntry {
@@ -29,15 +29,20 @@ export interface ActiveModelEntry {
 
 /**
  * 按被禁集合推导有序活跃模型清单。纯函数,不依赖外部可变状态:
- *  - 路由源 = 生成∪编辑并集,经 {@link filterRoutes}(全禁时保留默认模型,与工具侧一致);
+ *  - 路由源 = 生成∪编辑并集(含调用方按 env 条件传入的 `extraRoutes`,如
+ *    ai-gateway-providers spec 的 `AI_GATEWAY_IMAGE_ROUTES`/`AI_GATEWAY_IMAGE_EDIT_ROUTES`,
+ *    Req 4.2),经 {@link filterRoutes}(全禁时保留默认模型,与工具侧一致);
  *  - 同一 model 去重:label 取首次出现值,provider 取首个带 provider 的路由值;
  *  - 插入序 = 各 model 首次出现序(= 旧 `Object.keys(labelByModel)` 序)。
+ *
+ * @param extraRoutes 缺省 `[]`——未传入时行为与提取前逐字节等价。
  */
 export function deriveActiveModels(
   disabledModels: ReadonlySet<string>,
+  extraRoutes: readonly ImageRoute[] = [],
 ): readonly ActiveModelEntry[] {
   const activeRoutes = filterRoutes(
-    [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES],
+    [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES, ...extraRoutes],
     disabledModels,
     IMAGE_GENERATION_DEFAULT_MODEL,
   );

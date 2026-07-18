@@ -8,7 +8,7 @@
 import type { EndpointBehavior } from "../engine/endpoint-types.js";
 
 /** 归属 provider 标识(UI 以字母徽章表示;工厂盖章)。 */
-export type ImageProviderId = "openrouter" | "newapi" | "sufy" | "dashscope";
+export type ImageProviderId = "openrouter" | "newapi" | "sufy" | "dashscope" | "ai-gateway";
 
 /** 单一 model 的图像端点路由(= EndpointBehavior + 路由元数据)。 */
 export interface ImageRoute extends EndpointBehavior {

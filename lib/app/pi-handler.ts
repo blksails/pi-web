@@ -65,6 +65,15 @@ import {
   createLlmGatewayRoutes,
   resolveLlmGatewayProviderTable,
   resolveLlmGatewaySecret,
+  // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
+  // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
+  // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
+  resolveAiGatewayConfig,
+  createAiGatewayRoutes,
+  EnvKeyResolver,
+  GatewayModelCatalog,
+  mergeModelCatalog,
+  resolveAiGatewaySecret,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -95,6 +104,13 @@ import {
   computeE2bProviderEnv,
   deprecatedAigcProxyWarning,
 } from "./llm-gateway-assembly.js";
+// ai-gateway 会话 token 注入决策(spec ai-gateway-providers,design.md §2.5,任务 4.1):
+// e2b 分支按会话铸造 scope="ai-gateway" token,注入沙箱可达 base + token(增量可选,
+// 不替换任何既有 provider key,与 llm-gateway 的强制 credential-switch 语义不同)。
+import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
+// 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
+// 保守默认值——沿用 llm-gateway 同一常量,语义详见 llm-gateway-config.ts 注释)。
+import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
@@ -350,6 +366,20 @@ const llmGatewayLogger = createLogger({ namespace: "app:llm-gateway" });
 function buildSingleton(): HandlerSingleton {
   const config = loadConfig();
 
+  // ai-gateway 套件装配期配置解析(spec ai-gateway-providers,design.md §2.5,任务 4.1,
+  // Req 1.1/1.2/1.4):未配置 AI_GATEWAY_BASE_URL → undefined(套件整体不注册);非法配置
+  // (URL/优先级枚举/TTL 覆盖值)→ fail-fast 抛出(不吞错、不静默降级)。
+  const aiGwConfig = resolveAiGatewayConfig(process.env);
+  const aiGatewayKeyResolver = new EnvKeyResolver(process.env);
+  const gatewayModelCatalog =
+    aiGwConfig !== undefined
+      ? new GatewayModelCatalog({
+          baseUrl: aiGwConfig.baseUrl,
+          ttlMs: aiGwConfig.catalogTtlMs,
+          keyResolver: aiGatewayKeyResolver,
+        })
+      : undefined;
+
   // 主进程自身 logger 的 runtime 门控:主进程不像 runner 那样调 initConfigFromEnv,
   // 库默认 enabled=true 会让 server 侧 createLogger(pi-session 等)无条件打到 server stderr。
   // 在此按同一 env 默认(PI_WEB_LOG_*,默认关)对齐,避免未开日志时刷终端;PI_WEB_LOG_ENABLED=1
@@ -499,12 +529,28 @@ function buildSingleton(): HandlerSingleton {
         llmGatewayLogger.warn(e2bProviderEnv.warn);
       }
       const { providerKeysForE2b, sandboxLlmEnv } = e2bProviderEnv;
+      // ai-gateway 会话 token 注入(spec ai-gateway-providers,design.md §2.5,任务 4.1,
+      // Req 4.5):增量可选,不替换 providerKeysForE2b/sandboxLlmEnv 中的任何键(与
+      // llm-gateway 分离共存,Req 1.3)。未启用套件或缺沙箱可达 public base 时零注入,
+      // 仅记一条待记 warn(后者复用 llm-gateway 的 sandbox-reachable public base 概念,
+      // 两套路由挂载在同一部署 /api 之下)。
+      const aiGatewaySessionEnv = computeAiGatewaySessionEnv({
+        aiGatewayConfig: aiGwConfig,
+        sessionId: opts.sessionId,
+        env: process.env,
+        publicBase: config.llmGateway?.publicBase,
+        tokenTtlMs: config.llmGateway?.tokenTtlMs ?? DEFAULT_SANDBOX_TIMEOUT_MS,
+      });
+      if (aiGatewaySessionEnv.warn !== undefined) {
+        llmGatewayLogger.warn(aiGatewaySessionEnv.warn);
+      }
       const e2bSpec: SpawnSpec = {
         ...resolved.spawnSpec,
         env: {
           ...resolved.spawnSpec.env,
           ...providerKeysForE2b,
           ...sandboxLlmEnv,
+          ...aiGatewaySessionEnv.env,
           // 附件拓扑条件透传(任务 4.2,Req 5.1):全远程拓扑时并入装配期快照
           // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
           // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
@@ -548,6 +594,7 @@ function buildSingleton(): HandlerSingleton {
           ...(selection.config.envPassthrough ?? []),
           ...Object.keys(sandboxAttachmentEnv),
           ...e2bProviderEnv.passthroughKeys,
+          ...aiGatewaySessionEnv.passthroughKeys,
           // 会话身份 env(见上方 e2bSpec.env 注入处注释)。
           "PI_WEB_SESSION_ID",
         ]),
@@ -696,7 +743,20 @@ function buildSingleton(): HandlerSingleton {
         // 经 PI_WEB_HIDE_PROVIDERS(逗号分隔)剔除部署期不想暴露的 provider 及其模型。
         listModelOptions: () => {
           const hidden = parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS);
-          return excludeProviders(listModelOptions(config.agentDir), hidden);
+          const selfOptions = excludeProviders(listModelOptions(config.agentDir), hidden);
+          // ai-gateway 目录聚合(spec ai-gateway-providers,design.md §2.4,任务 4.1,
+          // Req 4.2/4.3/4.4):套件未启用时原样返回(与启用前逐字节一致,Req 1.2)。
+          // gatewayModelCatalog.get() 惰性 + TTL,fail-soft(从未成功/拉取失败 → 空集/
+          // 沿用快照),故此处永不因网关不可达而阻断自配目录展示。
+          if (aiGwConfig === undefined || gatewayModelCatalog === undefined) {
+            return selfOptions;
+          }
+          const merged = mergeModelCatalog(
+            selfOptions.models,
+            gatewayModelCatalog.get(),
+            aiGwConfig.modelPrecedence,
+          );
+          return excludeProviders(merged, hidden);
         },
       }),
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
@@ -764,6 +824,17 @@ function buildSingleton(): HandlerSingleton {
         ? createLlmGatewayRoutes({
             secret: resolveLlmGatewaySecret(process.env),
             registry: resolveLlmGatewayProviderTable(process.env),
+          })
+        : []),
+      // ai-gateway 主对话转发路由(spec ai-gateway-providers,design.md §2.5,任务 4.1,
+      // Req 1.1/1.2):仅 aiGwConfig 已解析(AI_GATEWAY_BASE_URL 已配置)时挂载
+      // /ai-gateway/*(/api 下可达)。未配置时零注册,请求落既有 404 语义。
+      ...(aiGwConfig !== undefined
+        ? createAiGatewayRoutes({
+            baseUrl: aiGwConfig.baseUrl,
+            secret: resolveAiGatewaySecret(process.env),
+            keyResolver: aiGatewayKeyResolver,
+            timeoutMs: aiGwConfig.timeoutMs,
           })
         : []),
       // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发

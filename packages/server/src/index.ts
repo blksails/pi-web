@@ -56,3 +56,7 @@ export * from "./tokens/index.js";
 // (createLlmGatewayRoutes)。仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK
 // 值导入,可安全经 barrel 重导出。
 export * from "./llm-gateway/index.js";
+// ai-gateway(ai-gateway-providers):config 解析 + KeyResolver + 主对话转发路由
+// (createAiGatewayRoutes),与 llm-gateway 同层平行、分离共存。仅 node builtins + 既有
+// http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
+export * from "./ai-gateway/index.js";

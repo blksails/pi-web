@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { ImageRoute } from "./types.js";
 
 /** 解析所得的 AIGC 工具设置。 */
 export interface AigcToolSettings {
@@ -33,6 +34,14 @@ export const AIGC_TOOL_SETTINGS_FILE = "aigc.json";
 /** 图像工具注册选项:装配期被禁模型集合(缺省 = 空集,全量)。 */
 export interface RegisterImageToolOptions {
   readonly disabledModels?: ReadonlySet<string>;
+  /**
+   * 装配期按 env 条件并入的额外路由组(ai-gateway-providers spec,design.md §3,Req 5.2/5.3):
+   * 例如 `AI_GATEWAY_IMAGE_ROUTES`,由 runtime 层 `extension.ts` 按
+   * `process.env.AI_GATEWAY_BASE_URL` 存在与否决定是否传入——未启用套件时缺省
+   * `undefined`,与今天行为逐字节一致。与内置静态 `ROUTES` 拼接后统一走
+   * `filterRoutes`(Req 5.4:disabledModels 对两套 provider 的路由统一生效,不区分来源)。
+   */
+  readonly extraRoutes?: readonly ImageRoute[];
 }
 
 /** 空被禁集合(缺省参数复用,避免每次新建)。 */
