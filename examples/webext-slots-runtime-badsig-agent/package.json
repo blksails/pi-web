@@ -1,0 +1,9 @@
+{
+  "name": "webext-slots-runtime-badsig-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 插槽全集(运行时/坏签名降级验收)",
+    "avatar": "🧱",
+    "description": "任务 6.4 安全门降级 e2e:manifest 用非白名单私钥签名,服务端验签拒绝下发"
+  }
+}

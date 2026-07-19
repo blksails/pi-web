@@ -1,0 +1,9 @@
+{
+  "name": "webext-slots-runtime-tampered-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 插槽全集(运行时/篡改降级验收)",
+    "avatar": "🧱",
+    "description": "任务 6.4 安全门降级 e2e:entry 字节在构建后被篡改,manifest 内 SRI 校验不通过"
+  }
+}

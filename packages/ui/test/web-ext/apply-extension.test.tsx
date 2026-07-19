@@ -168,6 +168,34 @@ describe("SlotHost", () => {
     expect(onError).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("单槽渲染抛错仅该槽降级,同一扩展的其它槽照常渲染(Req 10.4:隔离不连累其它槽/整壳)", () => {
+    const Boom = (): React.JSX.Element => {
+      throw new Error("boom in panelRight");
+    };
+    const ext: WebExtension = {
+      manifestId: "acme",
+      slots: {
+        panelRight: Boom,
+        headerLeft: <div data-testid="header-ok">HEADER OK</div>,
+        footer: <div data-testid="footer-ok">FOOTER OK</div>,
+      },
+    };
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(
+      <div>
+        <SlotHost ext={ext} slot="panelRight" fallback={<span data-testid="panel-fb">PANEL FB</span>} />
+        <SlotHost ext={ext} slot="headerLeft" />
+        <SlotHost ext={ext} slot="footer" />
+      </div>,
+    );
+    // 出错槽降级到 fallback,不崩壳。
+    expect(screen.getByTestId("panel-fb")).toBeInTheDocument();
+    // 兄弟槽不受影响,照常渲染。
+    expect(screen.getByTestId("header-ok")).toHaveTextContent("HEADER OK");
+    expect(screen.getByTestId("footer-ok")).toHaveTextContent("FOOTER OK");
+    spy.mockRestore();
+  });
 });
 
 describe("applyExtensionRenderers", () => {

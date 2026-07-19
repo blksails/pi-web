@@ -1,0 +1,9 @@
+{
+  "name": "webext-slots-runtime-agent",
+  "private": true,
+  "pi-web": {
+    "title": "webext · 插槽全集(运行时)",
+    "avatar": "🧱",
+    "description": "Tier1 18 保留插槽全集 —— 第三方运行时代码扩展车道验收(不进构建期静态注册表)"
+  }
+}

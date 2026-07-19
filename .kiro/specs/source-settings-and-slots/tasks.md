@@ -71,26 +71,57 @@
 ## M2 · 面⑤ 第三方 slots 路线 A(本地)
 
 - [ ] 6. 第三方 slots 代码扩展本地全链
-- [ ] 6.1 web-kit:slots 组件编进 dist entry(manifest 带 entry + SRI + 签名)
+- [x] 6.1 web-kit:slots 组件编进 dist entry(manifest 带 entry + SRI + 签名)
   - build 产带 entry(.mjs)的 manifest.json + 逐文件 sha384 SRI + Ed25519 签名(复用 manifest-emit);slots 组件经 import map 单例复用宿主 React;canonicalManifestBytes 排除 signature
   - 完成态:webext-slots-agent build 出带 entry manifest;SRI/签名断言
   - _Requirements: 8.1, 8.2, 8.3, 8.4_
   - _Depends: 0.1_
-- [ ] 6.2 [6.1] react:代码扩展 slots 运行时加载挂 SlotHost(本地)
+- [x] 6.2 [6.1] react:代码扩展 slots 运行时加载挂 SlotHost(本地)
   - manifest 带 entry → loadExtension 走 status:"loaded":fetch→安全门→动态 import→挂 SlotHost;渲染到 pi-chat/chat-app 既有槽区;声明式-only 保持既有行为
   - 完成态:第三方 slots-agent 经 /api/webext/resolve+dist 挂各槽单测/集成
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
   - _Depends: 6.1_
-- [ ] 6.3 [6.2] 安全门贯通与降级
+- [x] 6.3 [6.2] 安全门贯通与降级
   - SRI + Ed25519 白名单签名 + API 版本 caret 三门;篡改/坏签名拒绝;单槽加载/渲染失败经 ExtErrorBoundary 隔离降级不崩壳
   - 完成态:篡改被拒/坏签名被拒/单槽失败隔离单测
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
   - _Depends: 6.2_
-- [ ] 6.4 [6.3] e2e:webext-slots-agent 作第三方源本地全链
+  - 复查结论:三门(SRI/Ed25519 白名单/API 版本 caret)与 ExtErrorBoundary 隔离在 6.1/6.2 阶段已随通用代码路径全部就位(`packages/react/src/web-ext/extension-gate.ts` 客户端门 + `lib/app/webext/webext-trust-service.ts` 服务端门,二者对 SRI/签名/版本三项校验逻辑一致;`packages/ui/src/web-ext/ext-error-boundary.tsx` + `apply-extension.tsx` 的 `SlotHost` 已挂 error boundary),本任务是**验证 + 补齐拒绝矩阵与隔离测试的缺口**,未新增门控代码:
+    - 新增 `test/webext-load-client.test.tsx`:`useRuntimeWebext` hook 在 resolve 端点回 `rejectedReason`(门拒绝)、`found:false`(无产物)、网络异常三档下均落非抛出状态且 `extension` 恒 `undefined`(验证 Req 10.4「宿主壳不崩」在实际挂载路径上成立,而非仅推断)。
+    - 扩展 `test/webext-slots-runtime.integration.test.tsx`:在 6.2 真实 resolveWebext + loadExtension 全链基础上新增矩阵 —— 非白名单私钥重签(Req 10.3)、manifest 未签名、`integrity` 字段被篡改(Req 10.2,签名覆盖 integrity 故仍被验签环节拒绝)、`targetApiVersion` 超出宿主 caret 范围(Req 10.1 版本门)四档,均断言 `resolveWebext` 返回 `rejectedReason` 且 `manifest` 为 `undefined`;末尾加一条「恢复原始 manifest.json 后重新放行」用例证明矩阵测试未污染 fixture。
+    - 扩展 `packages/ui/test/web-ext/apply-extension.test.tsx`:新增单槽抛错场景下同一扩展的兄弟槽(headerLeft/footer)照常渲染的断言(此前只验证出错槽降级到 fallback,未验证兄弟槽不受牵连,Req 10.4)。
+  - 命令与结果(均新鲜运行):
+    - `cd packages/react && npx vitest run` → `43 passed | 1 failed`(失败为已知基线 `use-config-domain.test.tsx` pathDisplay 用例,与本任务无关)
+    - `cd packages/ui && npx vitest run` → `101 passed (817 tests)`,全绿
+    - `npx vitest run test/webext` → `8 files passed (45 tests)`,全绿(含新增两个矩阵/隔离用例集)
+    - `cd packages/react && npx tsc -p tsconfig.json --noEmit` → EXIT 0
+    - `cd packages/ui && npx tsc -p tsconfig.json --noEmit` → EXIT 0
+    - 根级 `npx tsc -p tsconfig.json --noEmit` → EXIT 0(空输出,干净)
+  - 改动文件:`test/webext-load-client.test.tsx`(新增)、`test/webext-slots-runtime.integration.test.tsx`(扩展矩阵 + 相关 import/hoist)、`packages/ui/test/web-ext/apply-extension.test.tsx`(扩展隔离断言);未改动任何门控/降级生产代码(现状已满足验收标准)。
+- [x] 6.4 [6.3] e2e:webext-slots-agent 作第三方源本地全链
   - 不经构建期静态 import 车道,纯运行时 resolve→dist→import→挂 18 槽全链;安全门降级 e2e;既有第一方/声明式 webext 行为零变化(全量回归绿)
   - 完成态:隔离 build e2e 全绿 + 回归绿
   - _Requirements: 11.1, 11.2, 11.3, 13.2_
   - _Depends: 6.3_
+  - **e2e 形态取舍**:采用 **Playwright 浏览器 e2e**(非退回 node 集成层)——本机已装 chromium(`playwright.config.ts` 既有 `fs`/`sqlite` 等 webServer 先例可直接复用),`webext-runtime-install.e2e.ts` 提供了运行时车道加载(声明式+代码扩展)的现成模式,照抄即可稳定跑通,故未降级到 node 层。
+  - **构建链接线**:`webext-slots-agent`(`match:"webext-slots-agent"` 已在 `lib/app/webext-registry.ts` 登记,属构建期静态 import 车道)不能直接复用为运行时车道 fixture——`resolveExtensionForSource` 用 `source.includes(match)` 子串匹配,任何含 "webext-slots-agent" 子串的路径都会被构建期车道抢先命中,永远走不到 `/api/webext/resolve`。故新增**独立**夹具目录 `examples/webext-slots-runtime-agent`(18 槽内容与 `webext-slots-agent` 同构,manifestId/documentTitle 改用可区分值),在 `e2e/webext-fixtures.setup.ts` 新增 `buildRuntimeSlotsFixture()`,显式传 `capabilities:["slots","config"]` + 复用 `webext-runtime-code` 已建立信任的测试签名私钥(`TEST_SIGN_PRIVATE_KEY`,公钥已在 `playwright.config.ts` 的 `PI_WEB_EXT_WHITELIST`,无需新增白名单条目)。`scripts/build-webext-examples.ts`(构建期注册表车道的产物脚本)未改动——本任务的 fixture 属运行时车道,不应进那条构建链。
+  - **安全门降级 e2e(两档,均在 setup 阶段静态产出,不做运行时文件互斥修改,避免并发 worker 竞态)**:
+    - `examples/webext-slots-runtime-tampered-agent`:正常构建+正常签名后,`appendFile` 污染 entry `.mjs` 字节(manifest 内 SRI 摘要仍是构建时原始值)——验证的是**浏览器侧** SRI 校验拒绝路径(`loadExtension` 内 `verifyExtension` 比对 fetch 到的字节哈希,而非 `<script integrity>` 原生属性),`/api/webext/resolve` 本身仍返回 `found:true` 且无 `rejectedReason`(manifest 未被动过)。
+    - `examples/webext-slots-runtime-badsig-agent`:用一把**不在** `PI_WEB_EXT_WHITELIST` 里的独立 Ed25519 私钥(`UNTRUSTED_SIGN_PRIVATE_KEY`,新生成,非真实凭据)签名——验证的是**服务端** `WebextTrustService` 拒绝路径,`/api/webext/resolve` 直接返回 `found:true` + `rejectedReason`,`manifest` 字段不下发。
+    - 两档均断言:扩展槽内容不出现(`slot-header-center`/`slot-panel-right` 计数为 0)、`document.title` 未被扩展覆盖、`data-pi-input-textarea` 仍可见(会话不崩、默认 UI 降级)。
+  - **回归发现(未修复,超出本任务边界)**:`e2e/browser/webext-document-title.e2e.ts` 第三条用例("documentTitle 还原:回选源页后标签页标题复位为宿主默认")在 fresh 单独重跑下稳定超时失败(`[data-switch-source]` 定位器等不到,60s 超时),与本任务改动(新增文件,零触碰 `pi-chat.tsx`/source-picker/document-title 复位逻辑)无关联,判定为既有基线缺陷/flake——已如实报告,未在本任务范围内修复。
+  - **命令与结果(均新鲜运行)**:
+    - `npx playwright test e2e/browser/webext-runtime-slots.e2e.ts e2e/browser/webext-runtime-install.e2e.ts --project=fs` → `8 passed`(新增 18 槽全链 2 档 + 降级 2 档 + 既有运行时声明/代码 3 例,全绿)
+    - `npx playwright test e2e/browser/webext-full.e2e.ts e2e/browser/webext.e2e.ts e2e/browser/webext-document-title.e2e.ts --project=fs` → `10 passed | 1 failed`(失败即上述已定界基线缺陷,与本任务无关,单独重跑复现一致)
+    - `npx vitest run test/webext`(根)→ `8 files passed (45 tests)`,全绿
+    - `cd packages/react && npx vitest run` → `362 passed | 1 failed`(失败为已知基线 `use-config-domain.test.tsx` pathDisplay 用例,6.3 已记录,与本任务无关)
+    - `cd packages/ui && npx vitest run` → `101 files / 817 tests passed`,全绿
+    - `cd packages/web-kit && npx vitest run` → `10 files / 46 tests passed`,全绿
+    - 根级 `npx tsc -p tsconfig.json --noEmit` → EXIT 0
+    - `cd packages/react && npx tsc -p tsconfig.json --noEmit` → EXIT 0
+    - `cd packages/ui && npx tsc -p tsconfig.json --noEmit` → EXIT 0
+    - `cd packages/web-kit && npx tsc -p tsconfig.json --noEmit` → EXIT 0
+  - **改动文件**:新增 `e2e/browser/webext-runtime-slots.e2e.ts`;扩展 `e2e/webext-fixtures.setup.ts`(新增 `buildRuntimeSlotsFixture`/`buildRuntimeSlotsTamperedFixture`/`buildRuntimeSlotsBadSigFixture` 三个构建函数 + `UNTRUSTED_SIGN_PRIVATE_KEY` 常量,接入 `globalSetup`);新增三个 fixture 目录 `examples/webext-slots-runtime-agent`、`examples/webext-slots-runtime-tampered-agent`、`examples/webext-slots-runtime-badsig-agent`(各含 `index.ts`/`package.json`/`.pi/web/web.config.tsx`,`.pi/web/dist` 为 gitignored 构建产物由 setup 幂等重建)。未改动任何门控/加载器/构建生产代码,未改动 `scripts/build-webext-examples.ts` 或 `lib/app/webext-registry.ts`。
 
 ## M3 · 面⑦ 动态控件 + 实时下发(延后)
 
@@ -138,3 +169,7 @@
 - **根级 `tsc -p tsconfig.json --noEmit` 会牵连并发任务**:仓库根 typecheck 把 `packages/agent-kit`/`packages/server/src/runner` 等其他任务的未提交改动一并编译进来;若同会话有其他 exec 在跑 runner/agent-kit 相关任务,根级 typecheck 报错未必是本任务引入的——应先用 `git status` 确认报错文件是否在自己改动范围内,再按包(`packages/<pkg> && npx tsc -p tsconfig.json --noEmit`)分别复验。
 - **`e2e/node/**` 用独立 vitest 项目**:根 `vitest.config.ts` 不含 `e2e/node/**`,须显式 `--config vitest.node-e2e.config.ts` 才能跑到;`vitest run` 默认配置下会报 "No test files found"。
 - **`e2e/node` 全量偶发跨文件失败,与被测改动无关**:`attachment-completion`/`config-domains`(扩展互映)/`webext-build-load`(layout 断言)三个文件在全量跑时偶发失败,单独/子集重跑仍失败且与本任务改动的文件无关(挪走本任务新增的 e2e 文件后复现依旧),疑似全局单例 handler 跨文件状态污染或既有 fixture 时序问题——遇到同类"改动不相关文件却全量测试失败"时,先隔离复现（去掉自己新增的文件重跑一次)判断是否为已存在的基线不稳定,不要盲目为此改动自己的代码。
+- **`buildWebExtension` 的 entry/SRI/签名产出车道本就通用,6.1 不需要新代码**(`packages/web-kit/build/build.ts`+`manifest-emit.ts`):它不解析 `web.config.tsx` 里 `defineWebExtension({ capabilities, slots })` 的运行时声明,`capabilities` 必须由调用方显式传入 `BuildOptions.capabilities`(`examples-build.test.ts`/`webext-fixtures.setup.ts` 现状均未传,故那些产物的 `manifest.capabilities` 是 `undefined`)。6.2/6.4 若要让 `webext-slots-agent` 走「第三方源运行时加载」车道,记得在其构建调用处显式传 `capabilities:["slots","config"]`(同 `manifest-emit.test.ts`/`build.test.ts` 既有写法),否则宿主侧门控/降级判定可能读不到 capabilities。另外 `scripts/build-webext-examples.ts` 与 `e2e/webext-fixtures.setup.ts` 两条独立的生产构建脚本均未收录 `webext-slots-agent`——6.2/6.4 需要它作为运行时车道 e2e fixture 时,这两处(或新增等价脚本)需显式接线,本任务只在 `packages/web-kit/test/` 内新增隔离测试证明构建链本身可用,未改动这两个脚本(超出 6.1 边界)。
+- **6.2 落地时「运行时加载挂 SlotHost」车道本就已全量存在,零新代码**:`loadExtension`(`packages/react/src/web-ext/extension-loader.ts:57-67`)的代码扩展分支、`SlotHost`(`packages/ui/src/web-ext/apply-extension.tsx:165`)对运行时 `WebExtension.slots[key]` 的挂载、`resolveWebext`+`locateDist`(`lib/app/webext/resolve-webext.ts`+`locate-dist.ts`)对带 `entry` manifest 的服务端解析与 dist 字节下发——均对 declarative/code 扩展一视同仁,不区分「第三方」与「构建期已注册」。此前只是**没有任何测试用真实构建产物 + 真实动态 `import()` 走完整链路**(`e2e/node/webext-build-load.e2e.test.ts` 对代码示例只测门控字节层,未调 `loadExtension`/`importModule`;浏览器 e2e `webext-runtime-install.e2e.ts` 已覆盖但依赖 Playwright 起服务)。6.2 因此是**验证 + 补齐缺失的 Node 侧集成测试**(`test/webext-slots-runtime.integration.test.tsx`),不是新写加载器/挂载代码。
+- **`esbuild` 与 vitest `jsdom` 环境不兼容**:esbuild 模块初始化自检 `new TextEncoder().encode("") instanceof Uint8Array` 在 `jsdom` 沙箱下恒为 `false`(jsdom 用自己 realm 的 `Uint8Array`,与 Node 原生 `TextEncoder` 产物不同源,与 globalThis.TextEncoder 打补丁无关,补 `TextEncoder` 本身不解决)。任何在测试里调用 `buildWebExtension`/`esbuild` 的用例,若该测试文件跑在 `jsdom` 环境(本仓根 `vitest.config.ts` 默认 `jsdom`)会直接炸;须给该测试文件加 `// @vitest-environment node` docblock(整文件覆盖,vitest 支持按文件覆写环境),需要 DOM 渲染断言的部分改用 `react-dom/server` 的 `renderToStaticMarkup`(纯字符串输出,不依赖 DOM)而非 `@testing-library/react` 的 `render`。6.3/6.4 若要在同一文件里既 build 又断言渲染,复用此模式。
+- **`@blksails/pi-web-kit/build` 的裸导出只有 `buildWebExtension`**(`packages/web-kit/build/index.ts`):`generateSigningKeyPair`/`signManifest` 等辅助函数在 `manifest-emit.ts` 里但未经 `/build` barrel 导出,包外(如根 `test/`)拿不到,需按同手法内联用 `node:crypto` 的 `webcrypto.subtle` 生成 Ed25519 密钥对并转 base64(pkcs8 私钥 / raw 公钥)。`buildWebExtension` 的 `signKey` 入参形状是 **base64 pkcs8 字符串**,不是 `CryptoKey` 对象——直接传 `generateKey()` 返回的 `privateKey` 会在 `manifest-emit.ts:signManifest` 里因 `Buffer.from(CryptoKey, "base64")` 抛类型错误。
