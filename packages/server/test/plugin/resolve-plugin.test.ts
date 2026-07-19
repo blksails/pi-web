@@ -111,3 +111,96 @@ describe("resolvePiPlugin", () => {
     expect(d.diagnostics.some((m) => m.includes("missing.ts"))).toBe(true);
   });
 });
+
+describe("resolvePiPlugin · settings 段(spec: source-settings-and-slots,任务 1.2)", () => {
+  it("合法清单 settings 段 + schema 文件存在:PluginDescriptor 产出对应切片", async () => {
+    await write(
+      "settings/schema.json",
+      JSON.stringify({ domain: "p", fields: [{ key: "apiBase", kind: "string" }] }),
+    );
+    await write(
+      "pi-web.json",
+      JSON.stringify({
+        id: "p",
+        version: "1.0.0",
+        settings: {
+          schema: "settings/schema.json",
+          title: "Settings",
+          icon: "gear",
+          scope: "project",
+          widgets: ["crmEntityPicker"],
+        },
+      }),
+    );
+
+    const d = await resolvePiPlugin(root);
+
+    expect(d.settings).toEqual({
+      schemaPath: "settings/schema.json",
+      title: "Settings",
+      icon: "gear",
+      scope: "project",
+      widgets: ["crmEntityPicker"],
+    });
+    expect(d.diagnostics).toEqual([]);
+  });
+
+  it("清单未声明 settings 段:descriptor.settings 为 undefined,零变化", async () => {
+    await write("pi-web.json", JSON.stringify({ id: "p", version: "1.0.0" }));
+
+    const d = await resolvePiPlugin(root);
+
+    expect(d.settings).toBeUndefined();
+    expect(d.diagnostics).toEqual([]);
+  });
+
+  it("无清单但默认 settings/schema.json 存在:按文件存在即启用回退", async () => {
+    await write("settings/schema.json", JSON.stringify({ domain: "p", fields: [] }));
+
+    const d = await resolvePiPlugin(root);
+
+    expect(d.settings).toEqual({
+      schemaPath: "settings/schema.json",
+      scope: "source",
+      widgets: [],
+    });
+    expect(d.diagnostics).toEqual([]);
+  });
+
+  it("settings.schema 文件缺失:降级为 diagnostics,不 fail 整个模块解析", async () => {
+    await write(
+      "pi-web.json",
+      JSON.stringify({
+        id: "p",
+        version: "1.0.0",
+        settings: { schema: "settings/missing.json" },
+      }),
+    );
+
+    const d = await resolvePiPlugin(root);
+
+    expect(d.settings).toBeUndefined();
+    expect(d.id).toBe("p");
+    expect(
+      d.diagnostics.some((m) => m.includes("settings") && m.includes("missing.json")),
+    ).toBe(true);
+  });
+
+  it("settings.schema 文件存在但不是合法 JSON:降级为 diagnostics,不 fail 整个模块解析", async () => {
+    await write("settings/schema.json", "{ not json");
+    await write(
+      "pi-web.json",
+      JSON.stringify({
+        id: "p",
+        version: "1.0.0",
+        settings: { schema: "settings/schema.json" },
+      }),
+    );
+
+    const d = await resolvePiPlugin(root);
+
+    expect(d.settings).toBeUndefined();
+    expect(d.id).toBe("p");
+    expect(d.diagnostics.some((m) => m.includes("settings"))).toBe(true);
+  });
+});

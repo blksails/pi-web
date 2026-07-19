@@ -28,6 +28,7 @@ import {
   isAttachmentProfileDisabled,
 } from "./attachment-profile-wiring.js";
 import { makeResolveProjectTrust } from "./project-trust.js";
+import { resolveAssemblySourceSettings } from "./source-settings-assembly-wiring.js";
 import {
   createSessionEntryStore,
   mirrorSessionManagerToStore,
@@ -278,18 +279,31 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // fall back to the parent directory name so `logging-demo-agent/index.ts`
   // gets namespace `agent:logging-demo-agent` instead of `agent:index`.
   const agentNamespace = deriveAgentNamespace(args.agent);
+
+  // 信任来源:`--trusted` CLI 参数,或 custom 模式经 spawnSpec.env 注入的
+  // PI_WEB_TRUST_PROJECT=1(agent-source/trust-apply 的 custom + always 信号)。
+  // 二者任一为真即放行项目级 `.pi/`(extensions/agents/skills)。提到 ctx 构造之前算好,
+  // 因为 per-source settings 的 scope:"project" 注入(下方)复用同一信任判定作门控。
+  const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
+  const trust = makeResolveProjectTrust(trusted);
+
+  // per-source settings 装配期注入(spec: source-settings-and-slots,任务 3.1,通道 a,
+  // Req 4.1-4.5):best-effort 读取该 source 已保存的设置值,失败/未声明一律降级 `{}`,
+  // 与 option-mapper.ts 装配期读 auth.json 的先例同法,不阻断装配。
+  const settings = await resolveAssemblySourceSettings({
+    agentPath: args.agent,
+    cwd: args.cwd,
+    agentDir,
+    trusted,
+  });
+
   const ctx: AgentContext = {
     cwd: args.cwd,
     agentDir,
     env: process.env,
+    settings,
     logger: createLogger({ namespace: agentNamespace }),
   };
-
-  // 信任来源:`--trusted` CLI 参数,或 custom 模式经 spawnSpec.env 注入的
-  // PI_WEB_TRUST_PROJECT=1(agent-source/trust-apply 的 custom + always 信号)。
-  // 二者任一为真即放行项目级 `.pi/`(extensions/agents/skills)。
-  const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
-  const trust = makeResolveProjectTrust(trusted);
   // 「扩展 → 系统资源」开关透传:custom 模式(shape a/b)据此清空 skills / 关闭系统 extensions。
   const factory = await loadAgentDefinition(args.agent, ctx, trust, {
     ...(args.noSkills !== undefined ? { noSkills: args.noSkills } : {}),

@@ -74,6 +74,8 @@ export interface SettingsPanelDescriptor extends ConfigDomainIO {
 
 export interface SettingsRegistry {
   registerPanel(panel: SettingsPanelDescriptor): void;
+  /** 撤销登记(源切换/去激活时回收动态面板,不留孤儿条目)。未登记的 id 静默忽略。 */
+  unregisterPanel(id: string): void;
   resolvePanel(id: string): SettingsPanelDescriptor | undefined;
   /** 按 order(缺省置后)、再按注册序返回。 */
   listPanels(): SettingsPanelDescriptor[];
@@ -88,6 +90,12 @@ export function createSettingsRegistry(): SettingsRegistry {
     registerPanel(panel): void {
       if (!panels.has(panel.id)) order.push(panel.id);
       panels.set(panel.id, panel); // 覆盖语义:最后写入胜出。
+    },
+    unregisterPanel(id): void {
+      if (!panels.has(id)) return;
+      panels.delete(id);
+      const idx = order.indexOf(id);
+      if (idx !== -1) order.splice(idx, 1);
     },
     resolvePanel(id): SettingsPanelDescriptor | undefined {
       return panels.get(id);
@@ -116,4 +124,8 @@ export const defaultSettingsRegistry: SettingsRegistry = createSettingsRegistry(
 
 export function registerSettingsPanel(panel: SettingsPanelDescriptor): void {
   defaultSettingsRegistry.registerPanel(panel);
+}
+
+export function unregisterSettingsPanel(id: string): void {
+  defaultSettingsRegistry.unregisterPanel(id);
 }

@@ -5,10 +5,15 @@ export {
   type FieldProps,
   type FieldRegistry,
   type FieldRendererComponent,
+  type SourceFieldRegistry,
   createFieldRegistry,
   defaultFieldRegistry,
   registerFieldRendererByKey,
   registerFieldRendererByKind,
+  createSourceFieldRegistry,
+  defaultSourceFieldRegistry,
+  registerSourceFieldRenderer,
+  unregisterSourceFieldRenderers,
 } from "./field-registry.js";
 export { FieldRenderer, type FieldRendererProps } from "./field-renderer.js";
 export { ExtensionsKvField } from "./fields/extensions-kv-field.js";

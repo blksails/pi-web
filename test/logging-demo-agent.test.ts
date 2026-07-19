@@ -35,6 +35,7 @@ function makeCtx(overrides: Partial<AgentContext> = {}): AgentContext {
     cwd: "/tmp/logging-demo-agent",
     env: {},
     logger,
+    settings: {},
     ...overrides,
   };
 }

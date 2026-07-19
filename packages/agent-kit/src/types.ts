@@ -31,6 +31,20 @@ export interface AgentContext {
    * Namespace is prefixed with "agent:" followed by the agent identifier.
    */
   logger?: Logger;
+  /**
+   * Resolved per-source settings values (spec: source-settings-and-slots,
+   * Req 4.1–4.5), injected by the runner at assembly time from the
+   * source's `settings.json` (scope `"source"` → `<agentDir>/sources/<sourceKey>/`,
+   * scope `"project"` → `<cwd>/.pi/source-settings/`, gated by project trust).
+   * Secret fields are already unmasked plaintext here — this object never
+   * crosses back to the browser, only into this subprocess's memory / onward
+   * via spawn env or stdin to a further child process.
+   *
+   * `{}` when the source declares no `settings` in its manifest, when no
+   * settings file exists yet, or when resolution is skipped (e.g. untrusted
+   * project scope) — existing sources see zero behavior change.
+   */
+  readonly settings: Readonly<Record<string, unknown>>;
 }
 
 /**

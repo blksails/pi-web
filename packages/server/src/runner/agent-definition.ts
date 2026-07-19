@@ -49,6 +49,14 @@ export interface AgentContext {
    * Namespace is prefixed with "agent:" followed by the agent identifier.
    */
   logger?: Logger;
+  /**
+   * Resolved per-source settings values (spec: source-settings-and-slots,
+   * Req 4.1–4.5). Mirror of `@blksails/pi-web-agent-kit`'s `AgentContext.settings`
+   * — see that package's `types.ts` for the full contract. Injected by
+   * {@link ../runner.js startRunner} at assembly time; `{}` when the source
+   * declares no settings, no settings file exists, or resolution is skipped.
+   */
+  readonly settings: Readonly<Record<string, unknown>>;
 }
 
 /** Model reference: a resolved pi Model or a lightweight `{ provider, modelId }`. */

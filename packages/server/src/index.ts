@@ -32,6 +32,9 @@ export * from "./completion/index.js";
 export * from "./commands/host-command-registry.js";
 export * from "./extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
+// sourceKey(地基 G3,spec source-settings-and-slots 任务 0.1):纯 node builtins(crypto),
+// 面⑦ per-source 配置目录/DB 主键、面⑤ dist 寻址/源匹配复用的单一事实来源。
+export { sourceKey, isSourceKey } from "./source-key.js";
 export * from "./config/index.js";
 // session-list(sessions-list):GET /sessions 只读列表端点的注入路由工厂。
 // 仅 node builtins + session-store/http 复用面(无 pi SDK 值导入),可安全经 barrel 重导出。

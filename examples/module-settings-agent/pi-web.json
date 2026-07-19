@@ -1,0 +1,15 @@
+{
+  "$schema": "https://pi-web.dev/schema/pi-web.json",
+  "id": "module-settings-agent",
+  "version": "0.1.0",
+  "kind": "agent",
+  "displayName": "Module Settings 示例",
+  "description": "面⑦ per-source 设置面板本地验收 fixture(spec source-settings-and-slots,任务 5.1):secret + widget + liveReload 声明,工厂消费 ctx.settings,widget 数据端点走本模块 agent-declared-routes(面⑥⑦ 互为供给)",
+  "settings": {
+    "schema": "settings/schema.json",
+    "title": "Module Settings 示例",
+    "icon": "settings",
+    "scope": "source",
+    "widgets": ["entity-picker"]
+  }
+}

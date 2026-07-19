@@ -16,6 +16,7 @@ export {
   createSettingsRegistry,
   defaultSettingsRegistry,
   registerSettingsPanel,
+  unregisterSettingsPanel,
   normalizeConfigDomainData,
   type SettingsRegistry,
   type SettingsPanelDescriptor,
@@ -28,3 +29,11 @@ export {
   type MakeConfigDomainIOOptions,
   type UseConfigDomainResult,
 } from "./use-config-domain.js";
+export {
+  sourceSettingsPanelId,
+  registerSourceSettingsPanel,
+  unregisterSourceSettingsPanel,
+  useSourceSettingsPanel,
+  type RegisterSourceSettingsPanelOptions,
+  type UseSourceSettingsPanelOptions,
+} from "./register-source-settings-panel.js";

@@ -26,13 +26,14 @@ describe("AgentContext shape (task 3.3)", () => {
     const ctx: AgentContext = {
       cwd: "/work",
       env: {},
+      settings: {},
       logger: createLogger({ namespace: "agent:test" }),
     };
     expect(ctx.logger).toBeDefined();
   });
 
   it("AgentContext is still valid without logger (optional field)", () => {
-    const ctx: AgentContext = { cwd: "/work", env: {} };
+    const ctx: AgentContext = { cwd: "/work", env: {}, settings: {} };
     expect(ctx.logger).toBeUndefined();
   });
 });

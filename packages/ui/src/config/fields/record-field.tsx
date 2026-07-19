@@ -26,6 +26,7 @@ export function RecordField({
   errors,
   disabled,
   registry,
+  sourceKey,
 }: FieldProps): React.JSX.Element {
   const t = useI18n();
   const record = asRecord(value);
@@ -83,6 +84,7 @@ export function RecordField({
                 errors={errors}
                 disabled={disabled}
                 registry={registry}
+                sourceKey={sourceKey}
               />
             ) : (
               subFields.map((sub) => (
@@ -97,6 +99,7 @@ export function RecordField({
                   errors={errors}
                   disabled={disabled}
                   registry={registry}
+                  sourceKey={sourceKey}
                 />
               ))
             )}

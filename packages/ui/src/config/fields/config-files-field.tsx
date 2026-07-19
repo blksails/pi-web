@@ -113,6 +113,7 @@ function FileEditor({
   disabled,
   registry,
   providedSchema,
+  sourceKey,
 }: {
   readonly name: string;
   readonly content: unknown;
@@ -121,6 +122,7 @@ function FileEditor({
   readonly registry?: FieldRegistry;
   /** ①③ 服务端已解析的原始 JSON Schema(优先于内联 $schema,免远端拉取)。 */
   readonly providedSchema?: unknown;
+  readonly sourceKey?: string;
 }): React.JSX.Element {
   const t = useI18n();
   const owner = ownerFromSchema(content);
@@ -168,6 +170,7 @@ function FileEditor({
           onChange={(next) => onChange(next)}
           registry={registry}
           disabled={disabled}
+          sourceKey={sourceKey}
         />
       ) : (
         <RawJsonEditor content={content} onChange={onChange} disabled={disabled} />
@@ -183,6 +186,7 @@ export function ConfigFilesField({
   disabled,
   registry,
   fileSchemas,
+  sourceKey,
 }: FieldProps): React.JSX.Element {
   const t = useI18n();
   const files = asFiles(value);
@@ -202,6 +206,7 @@ export function ConfigFilesField({
             disabled={disabled}
             registry={registry}
             providedSchema={fileSchemas?.[name]}
+            sourceKey={sourceKey}
             onChange={(next) => onChange({ ...files, [name]: next })}
           />
         ))}

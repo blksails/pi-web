@@ -27,6 +27,7 @@ export function ObjectListField({
   errors,
   disabled,
   registry,
+  sourceKey,
 }: FieldProps): React.JSX.Element {
   const t = useI18n();
   const list = Array.isArray(value) ? value : [];
@@ -103,6 +104,7 @@ export function ObjectListField({
                   errors={errors}
                   disabled={disabled}
                   registry={registry}
+                  sourceKey={sourceKey}
                 />
               ))}
             </Card>

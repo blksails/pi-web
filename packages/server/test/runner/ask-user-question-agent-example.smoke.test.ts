@@ -29,7 +29,7 @@ const examplePath = join(
   "index.ts",
 );
 
-const ctx: AgentContext = { cwd: "/tmp/work", agentDir: "/tmp/agent", env: {} };
+const ctx: AgentContext = { cwd: "/tmp/work", agentDir: "/tmp/agent", env: {}, settings: {} };
 const trust = makeResolveProjectTrust(false);
 
 describe("examples/ask-user-question-agent — real loader smoke", () => {

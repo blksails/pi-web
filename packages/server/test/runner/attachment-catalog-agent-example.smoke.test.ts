@@ -35,7 +35,7 @@ const examplePath = join(
   "index.ts",
 );
 
-const ctx: AgentContext = { cwd: "/tmp/work", agentDir: "/tmp/agent", env: {} };
+const ctx: AgentContext = { cwd: "/tmp/work", agentDir: "/tmp/agent", env: {}, settings: {} };
 const trust = makeResolveProjectTrust(false);
 
 describe("examples/attachment-catalog-agent — jiti 装载冒烟", () => {

@@ -1,0 +1,8 @@
+{
+  "id": "settings-assembly-source-e2e-agent",
+  "version": "0.0.1",
+  "settings": {
+    "schema": "settings/schema.json",
+    "scope": "source"
+  }
+}

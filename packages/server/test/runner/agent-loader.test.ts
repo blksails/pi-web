@@ -16,6 +16,7 @@ const ctx: AgentContext = {
   cwd: "/tmp/work",
   agentDir: "/tmp/agent",
   env: { FOO: "bar" },
+  settings: {},
 };
 const trust = makeResolveProjectTrust(false);
 

@@ -132,13 +132,21 @@ function maskProviderObject(
 
 /**
  * GET 路径:将 rawValues 中的 secret 字段替换为掩码占位,非 secret 字段透传。
+ *
+ * `domain` 类型放宽为 `string`(spec source-settings-and-slots 任务 2.2):`ConfigDomainId`
+ * 是固定字面量联合(`"auth"|"settings"|...`),仅覆盖通用 `/config/:domain` 机制的域;
+ * per-source settings 端点需要传入一个不属于该联合、只用作「不会与字段 key 冲突的稳定
+ * moniker」的字符串(如字面量 `"source"`,见 `source-settings-routes.ts`),故放宽为
+ * `string` 的父类型。`formSchema` 省略时的 `CONFIG_FORM_SCHEMAS[domain]` 兜底仍只对已知
+ * `ConfigDomainId` 有意义(强制转型;调用方若传入未知域且不带 formSchema,行为与放宽前一致
+ * 地依赖运行时查表——本改动不改变任何既有调用点的实际入参,全部现有调用都传字面量已知域)。
  */
 export function maskSecrets(
-  domain: ConfigDomainId,
+  domain: string,
   rawValues: Record<string, unknown>,
   formSchema?: FormSchema,
 ): Record<string, unknown> {
-  const schema = formSchema ?? CONFIG_FORM_SCHEMAS[domain];
+  const schema = formSchema ?? CONFIG_FORM_SCHEMAS[domain as ConfigDomainId];
   const analysis = analyzeFormSchema(domain, schema);
 
   if (analysis.mode === "top-level-record") {
@@ -210,12 +218,12 @@ function resolveSecretOp(incoming: unknown): SecretOp {
  * 返回合并后的完整值(可直接传给 codec.save)。
  */
 export function mergeSecrets(
-  domain: ConfigDomainId,
+  domain: string,
   incomingValues: Record<string, unknown>,
   diskValues: Record<string, unknown>,
   formSchema?: FormSchema,
 ): Record<string, unknown> {
-  const schema = formSchema ?? CONFIG_FORM_SCHEMAS[domain];
+  const schema = formSchema ?? CONFIG_FORM_SCHEMAS[domain as ConfigDomainId];
   const analysis = analyzeFormSchema(domain, schema);
 
   if (analysis.mode === "top-level-record") {

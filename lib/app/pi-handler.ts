@@ -37,6 +37,13 @@ import {
   createSandboxProjectRoutes,
   createExtensionsConfigRoutes,
   createMcpConfigRoutes,
+  createSourceSettingsRoutes,
+  resolveSourceSettingsFromPackageDirs,
+  type ResolvedSourceSettings,
+  createCompositeSourceProvider,
+  createScanSourceProvider,
+  createRegistrySourceProvider,
+  defaultAgentEntryPath,
   createAttachmentRoutes,
   createBashRoutes,
   createSessionListRoutes,
@@ -255,6 +262,54 @@ function resolveSourcesScanRoots(defaultCwd: string): readonly string[] {
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .map((s) => (path.isAbsolute(s) ? s : path.resolve(defaultCwd, s)));
+}
+
+/** `PI_WEB_SOURCES_REGISTRY` 解析:显式配置优先,回退 `<agentDir>/sources.json`
+ * (与 `createAgentSourcesRoutes` 挂载处的同名表达式保持一致,见下方调用点)。 */
+function sourcesRegistryPath(config: AppConfig): string {
+  return process.env.PI_WEB_SOURCES_REGISTRY ?? path.join(config.agentDir, "sources.json");
+}
+
+/**
+ * per-source settings 生产 `resolveSettings` 接线(补task 2.3,替换任务 2.2 遗留的
+ * `() => Promise.resolve(undefined)` 占位实现)。
+ *
+ * 候选包根目录集合(sourceKey 输入恒为 `descriptor.id`,与装配期注入
+ * `runner/source-settings-assembly-wiring.ts` 使用同一 `resolvePiPlugin` → `descriptor.id`
+ * 管线,保证同一 source 在 HTTP 端点与装配期解析出同一 sourceKey,拍板 Q2):
+ *  - `config.defaultCwd` —— 未显式指定 source 时的隐式激活 agent(`agent-source/resolver.ts`
+ *    的 `identify()` "default" 分支把 cwd 本身当作该次会话的 source);
+ *  - 内置 default-agent 的入口目录(`builtin:default-agent`,`defaultAgentEntryPath()`);
+ *  - 「已安装/已登记的本地目录源」——与 `GET /agent-sources`(任务见上方 `createAgentSourcesRoutes`
+ *    挂载点)同一路 provider 组合(注册表 ∪ 扫描根),过滤 `kind==="dir"`:git 源需 clone 才能
+ *    拿到本地包根,不在本次接线范围,查不到 settings 时降级为 404(与「该 source 未声明
+ *    settings」同一对外语义,不额外泄露信息)。
+ *
+ * 每次请求重新枚举、不缓存:量级是「本地目录数」,枚举失败 best-effort 降级(不阻断
+ * default/builtin 两个基本候选)——先正确后快,缓存留给后续任务按需补。
+ */
+function makeSourceSettingsResolver(
+  config: AppConfig,
+): (sourceKeyValue: string) => Promise<ResolvedSourceSettings | undefined> {
+  const provider = createCompositeSourceProvider(
+    createRegistrySourceProvider({ registryPath: sourcesRegistryPath(config) }),
+    createScanSourceProvider({ roots: resolveSourcesScanRoots(config.defaultCwd) }),
+  );
+
+  return async (sourceKeyValue: string): Promise<ResolvedSourceSettings | undefined> => {
+    const packageDirs = new Set<string>([config.defaultCwd]);
+    const builtinEntry = defaultAgentEntryPath();
+    if (builtinEntry !== undefined) packageDirs.add(path.dirname(builtinEntry));
+    try {
+      const records = await provider.list();
+      for (const record of records) {
+        if (record.kind === "dir") packageDirs.add(record.source);
+      }
+    } catch {
+      // best-effort:枚举失败(扫描根/注册表读取异常)不阻断 default/builtin 两个基本候选。
+    }
+    return resolveSourceSettingsFromPackageDirs([...packageDirs], sourceKeyValue);
+  };
 }
 
 /**
@@ -802,6 +857,17 @@ function buildSingleton(): HandlerSingleton {
         listModelOptions: () => makeModelCatalog().chatOptions(),
       }),
       ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
+      // per-source settings(spec source-settings-and-slots,任务 2.2 + 补task 2.3):GET/PUT
+      // /config/source/:sourceKey。3 段路径,与 2 段的 /config/:domain 不冲突,注册顺序
+      // 不敏感。`resolveSettings` 生产实现见 `makeSourceSettingsResolver`(候选包根目录 =
+      // defaultCwd ∪ 内置 default-agent ∪ 已安装/已登记本地目录源,逐个 resolvePiPlugin →
+      // descriptor.id → sourceKey 命中匹配)。未知 sourceKey / 该 source 未声明 settings
+      // 均归一 404(业务错误码 SOURCE_NOT_FOUND,见 e2e/node/source-settings-endpoint.e2e.test.ts)。
+      ...createSourceSettingsRoutes({
+        rootDir: config.agentDir,
+        defaultCwd: config.defaultCwd,
+        resolveSettings: makeSourceSettingsResolver(config),
+      }),
       ...createExtensionsConfigRoutes({
         agentDir: config.agentDir,
         defaultCwd: config.defaultCwd,

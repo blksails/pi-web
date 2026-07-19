@@ -1,0 +1,36 @@
+{
+  "domain": "module-settings-agent",
+  "title": "Module Settings 示例",
+  "fields": [
+    {
+      "key": "apiBase",
+      "kind": "string",
+      "label": "API Base",
+      "description": "上游服务基址,注入 ctx.settings 后体现进 systemPrompt(证明装配期消费)",
+      "required": false
+    },
+    {
+      "key": "apiToken",
+      "kind": "secret",
+      "label": "API Token",
+      "description": "secret 三态字段(unset/set/clear),GET 响应只回吐掩码,永不明文",
+      "required": false
+    },
+    {
+      "key": "defaultEntity",
+      "kind": "string",
+      "label": "默认实体",
+      "description": "widget 字段:声明 widget:\"entity-picker\",其动态选项数据由本模块 agent-declared-route \"entities\" 供给(面⑥⑦ 互为供给)",
+      "widget": "entity-picker",
+      "required": false
+    },
+    {
+      "key": "notifyEmail",
+      "kind": "string",
+      "label": "变更通知邮箱",
+      "description": "liveReload 标记键(仅声明;实时下发通道是 M3 延后特性,Req 7.1-7.3,当前不消费——FormSchemaZodSchema 按 z.object 默认行为静默剥离未知键,不影响本字段的持久化/装配期注入)",
+      "liveReload": true,
+      "required": false
+    }
+  ]
+}

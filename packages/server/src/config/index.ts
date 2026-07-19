@@ -3,6 +3,10 @@
  */
 export { ConfigCodec } from "./config-codec.js";
 export {
+  SourceSettingsCodec,
+  type SourceSettingsScope,
+} from "./source-settings-codec.js";
+export {
   maskSecrets,
   mergeSecrets,
   isSecretMask,
@@ -34,3 +38,15 @@ export {
   type McpConfigRoutesOptions,
   type McpAdminPolicy,
 } from "./mcp-config-routes.js";
+export {
+  createSourceSettingsRoutes,
+  resolveSourceSettingsFromPackageDir,
+  resolveSourceSettingsFromPackageDirs,
+  validateFormValues,
+  SOURCE_SETTINGS_DISABLED_ENV,
+  SOURCE_SETTINGS_BODY_LIMIT_ENV,
+  DEFAULT_SOURCE_SETTINGS_BODY_LIMIT_BYTES,
+  type SourceSettingsRoutesOptions,
+  type SourceSettingsAdminPolicy,
+  type ResolvedSourceSettings,
+} from "./source-settings-routes.js";

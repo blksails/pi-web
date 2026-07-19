@@ -23,6 +23,7 @@ export function ObjectField({
   errors,
   disabled,
   registry,
+  sourceKey,
 }: FieldProps): React.JSX.Element {
   const obj = asObject(value);
   const variants = descriptor.variants;
@@ -61,6 +62,7 @@ export function ObjectField({
             errors={errors}
             disabled={disabled}
             registry={registry}
+            sourceKey={sourceKey}
           />
         ))}
       </Card>

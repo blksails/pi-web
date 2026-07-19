@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { FieldDescriptor } from "@blksails/pi-web-protocol";
 import {
   createFieldRegistry,
+  createSourceFieldRegistry,
   type FieldRendererComponent,
 } from "../../src/config/field-registry.js";
 
@@ -38,5 +39,46 @@ describe("field-registry", () => {
     const b = createFieldRegistry();
     a.registerByKind("string", Dummy);
     expect(b.resolve(desc())).toBeUndefined();
+  });
+});
+
+describe("SourceFieldRegistry — per-source scoped 注册表", () => {
+  it("按 fieldKey 命中;该 source 无注册返回 undefined", () => {
+    const r = createSourceFieldRegistry();
+    expect(r.resolve("source-a", desc())).toBeUndefined();
+    r.register("source-a", "k", Dummy);
+    expect(r.resolve("source-a", desc())).toBe(Dummy);
+  });
+
+  it("按 widget 命中(未按 key 注册时)", () => {
+    const r = createSourceFieldRegistry();
+    r.register("source-a", "fancy", Other);
+    expect(r.resolve("source-a", desc({ widget: "fancy" }))).toBe(Other);
+  });
+
+  it("不同 source 之间隔离:source-a 的注册不影响 source-b", () => {
+    const r = createSourceFieldRegistry();
+    r.register("source-a", "k", Dummy);
+    r.register("source-b", "k", Other);
+    expect(r.resolve("source-a", desc())).toBe(Dummy);
+    expect(r.resolve("source-b", desc())).toBe(Other);
+    // 未注册过的 source 完全无命中
+    expect(r.resolve("source-c", desc())).toBeUndefined();
+  });
+
+  it("unregisterSource 整段回收该 source,不影响其它 source", () => {
+    const r = createSourceFieldRegistry();
+    r.register("source-a", "k", Dummy);
+    r.register("source-b", "k", Other);
+    r.unregisterSource("source-a");
+    expect(r.resolve("source-a", desc())).toBeUndefined();
+    expect(r.resolve("source-b", desc())).toBe(Other);
+  });
+
+  it("reset 清空全部 source", () => {
+    const r = createSourceFieldRegistry();
+    r.register("source-a", "k", Dummy);
+    r.reset();
+    expect(r.resolve("source-a", desc())).toBeUndefined();
   });
 });

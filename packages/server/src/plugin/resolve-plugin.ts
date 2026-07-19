@@ -102,6 +102,64 @@ async function scanDefaultDirs(
   return (await pathExists(path.join(packageDir, kind))) ? [kind] : [];
 }
 
+/** settings 段声明时的默认 schema 相对路径(无清单回退探测用)。 */
+const DEFAULT_SETTINGS_SCHEMA_PATH = path.join("settings", "schema.json");
+
+/** schema 文件存在且是合法 JSON 即视为可用(Req 1.3);内容结构不在解析期深校验。 */
+async function readSettingsSchemaFile(
+  packageDir: string,
+  schemaPath: string,
+): Promise<boolean> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(path.join(packageDir, schemaPath), "utf8");
+  } catch {
+    return false;
+  }
+  try {
+    JSON.parse(raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 解析清单 settings 段(spec: source-settings-and-slots,任务 1.2,Req 1.2/1.3/1.4)。
+ *
+ * - 清单声明 `settings` 段:schema 文件存在且合法 JSON 才启用,否则降级 diagnostics(不 fail 整个模块)。
+ * - 无清单(`manifest === undefined`)但默认 `settings/schema.json` 存在且合法:按「文件存在即启用」回退启用。
+ * - 清单存在但未声明 settings:视为作者主动不选用本特性,零变化(不回退扫描)。
+ */
+async function resolveSettings(
+  packageDir: string,
+  manifest: PiWebManifest | undefined,
+  diagnostics: string[],
+): Promise<PluginDescriptor["settings"]> {
+  if (manifest !== undefined) {
+    if (manifest.settings === undefined) return undefined;
+    const declared = manifest.settings;
+    if (await readSettingsSchemaFile(packageDir, declared.schema)) {
+      return {
+        schemaPath: declared.schema,
+        ...(declared.title !== undefined ? { title: declared.title } : {}),
+        ...(declared.icon !== undefined ? { icon: declared.icon } : {}),
+        scope: declared.scope,
+        widgets: declared.widgets ?? [],
+      };
+    }
+    diagnostics.push(
+      `settings.schema 指向的文件缺失或不是合法 JSON,已忽略 settings: ${declared.schema}`,
+    );
+    return undefined;
+  }
+
+  if (await readSettingsSchemaFile(packageDir, DEFAULT_SETTINGS_SCHEMA_PATH)) {
+    return { schemaPath: DEFAULT_SETTINGS_SCHEMA_PATH, scope: "source", widgets: [] };
+  }
+  return undefined;
+}
+
 /**
  * 把包目录解析为统一 `PluginDescriptor`。清单优先,无清单回退目录约定。
  * @param packageDir 包根绝对路径(或可解析的相对路径)。
@@ -159,6 +217,8 @@ export async function resolvePiPlugin(
   // web.commands:与 dist 解耦(插件可只声明 web 可见命令而不带 webext bundle)。
   const webCommands = manifest?.web?.commands ?? [];
 
+  const settings = await resolveSettings(packageDir, manifest, diagnostics);
+
   return {
     id,
     version,
@@ -168,6 +228,7 @@ export async function resolvePiPlugin(
     ...(web !== undefined ? { web } : {}),
     webCommands,
     ...(bindings !== undefined ? { bindings } : {}),
+    ...(settings !== undefined ? { settings } : {}),
     diagnostics,
   };
 }

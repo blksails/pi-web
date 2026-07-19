@@ -13,6 +13,7 @@
  * 展开 glob、逐文件计算 integrity、签名,产出后者。
  */
 import { z } from "zod";
+import { PluginSettingsSchema } from "./settings-schema.js";
 
 /**
  * 包类型判别式。决定 publish 编译出的 `pi-web.manifest.json` 走哪条路,以及 install 的落盘目标:
@@ -122,6 +123,8 @@ export const PiWebManifestSchema = z.object({
   bindings: PluginBindingsSchema.optional(),
   /** kind=component 时的组件字段组(其余 kind 忽略)。 */
   component: ComponentSpecSchema.optional(),
+  /** per-source settings 声明面(可选,spec: source-settings-and-slots)。未声明时行为零变化。 */
+  settings: PluginSettingsSchema.optional(),
 });
 export type PiWebManifest = z.infer<typeof PiWebManifestSchema>;
 

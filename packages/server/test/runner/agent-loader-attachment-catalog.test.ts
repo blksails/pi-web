@@ -24,6 +24,7 @@ const ctx: AgentContext = {
   cwd: "/tmp/work",
   agentDir: "/tmp/agent",
   env: {},
+  settings: {},
 };
 const trust = makeResolveProjectTrust(false);
 
