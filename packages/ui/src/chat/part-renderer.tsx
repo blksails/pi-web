@@ -29,6 +29,7 @@ import {
 } from "../registry/renderer-registry.js";
 import { ChatError } from "../elements/chat-error.js";
 import { useI18n } from "../i18n/index.js";
+import type { TranslateFn } from "../i18n/index.js";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -80,6 +81,49 @@ function DefaultDataPart({
   );
 }
 
+/** auto-retry errorMessage 摘要上限(超出截断,避免状态条撑爆一行)。 */
+const AUTO_RETRY_ERROR_TRUNCATE_LEN = 160;
+
+/** data-pi-auto-retry 的 phase:"start" 数据形状(见 protocol AutoRetryDataPartSchema)。 */
+interface AutoRetryStartData {
+  readonly phase: "start";
+  readonly attempt: number;
+  readonly maxAttempts?: number;
+  readonly delayMs?: number;
+  readonly errorMessage?: string;
+}
+
+/** 组装 auto-retry 状态条文案:「模型请求失败，第 N[/M] 次重试（Xs 后）：<errorMessage 摘要>」。 */
+function formatAutoRetryStatus(
+  t: TranslateFn,
+  data: AutoRetryStartData,
+  mask: (s: string) => string,
+): string {
+  const attemptText =
+    data.maxAttempts !== undefined
+      ? t("chat.autoRetry.attemptOfMax", {
+        attempt: data.attempt,
+        maxAttempts: data.maxAttempts,
+      })
+      : t("chat.autoRetry.attempt", { attempt: data.attempt });
+  const delayText =
+    data.delayMs !== undefined
+      ? t("chat.autoRetry.delaySuffix", {
+        delaySec: Math.round(data.delayMs / 1000),
+      })
+      : "";
+  const base = `${t("chat.autoRetry.failed")}，${attemptText}${delayText}`;
+  if (data.errorMessage === undefined || data.errorMessage === "") {
+    return base;
+  }
+  const masked = mask(data.errorMessage);
+  const truncated =
+    masked.length > AUTO_RETRY_ERROR_TRUNCATE_LEN
+      ? `${masked.slice(0, AUTO_RETRY_ERROR_TRUNCATE_LEN)}…`
+      : masked;
+  return `${base}：${truncated}`;
+}
+
 export function PartRenderer({
   part,
   message,
@@ -129,6 +173,49 @@ export function PartRenderer({
     return (
       <div data-pi-message-error>
         <ChatError message={text} />
+      </div>
+    );
+  }
+
+  // data-pi-auto-retry:自动重试进度条(生产 402/5xx 事故的 UI 断点修复)——重试期间此前只落在
+  // data part 里、UI 从不渲染,用户只见"没回复"。phase:"start" 渲染顶部内联状态条;phase:"end"
+  // 该次出现本身不渲染(状态条随之从消息流消失),历史上更早的 start 占位仍留痕供回放。
+  if (part.type === "data-pi-auto-retry") {
+    const data =
+      "data" in part
+        ? (part.data as {
+          phase?: unknown;
+          attempt?: unknown;
+          maxAttempts?: unknown;
+          delayMs?: unknown;
+          errorMessage?: unknown;
+        })
+        : undefined;
+    if (data?.phase !== "start" || typeof data.attempt !== "number") {
+      return null;
+    }
+    const text = formatAutoRetryStatus(
+      t,
+      {
+        phase: "start",
+        attempt: data.attempt,
+        ...(typeof data.maxAttempts === "number"
+          ? { maxAttempts: data.maxAttempts }
+          : {}),
+        ...(typeof data.delayMs === "number" ? { delayMs: data.delayMs } : {}),
+        ...(typeof data.errorMessage === "string"
+          ? { errorMessage: data.errorMessage }
+          : {}),
+      },
+      mask,
+    );
+    return (
+      <div
+        role="status"
+        data-pi-auto-retry-status
+        className="flex items-start gap-2 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--accent))] px-3 py-2 text-sm text-[hsl(var(--accent-foreground))]"
+      >
+        <span className="min-w-0 flex-1 break-words">{text}</span>
       </div>
     );
   }

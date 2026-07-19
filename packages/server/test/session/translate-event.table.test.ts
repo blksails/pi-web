@@ -727,6 +727,146 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(r.frames)).not.toContain("error");
   });
 
+  it("402-UI②: auto_retry×N + 空手 agent_end → 合成 error chunk(含最后一次 errorMessage)后 finish", () => {
+    let ctx: TranslationContext = createTranslationContext();
+    const all: import("@blksails/pi-web-protocol").SseFrame[] = [];
+    const push = (e: AgentEvent): void => {
+      const r = translateEvent(e, ctx);
+      ctx = r.ctx;
+      all.push(...r.frames);
+    };
+    push({ type: "agent_start" });
+    push({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 100,
+      errorMessage: "402 Payment Required (attempt 1)",
+    });
+    push({
+      type: "auto_retry_start",
+      attempt: 2,
+      maxAttempts: 3,
+      delayMs: 200,
+      errorMessage: "402 Payment Required (attempt 2, final)",
+    });
+    // 重试耗尽后以正常 agent_end 空手收尾(无 stopReason:"error",无文本产出)。
+    push({ type: "agent_end", messages: [], willRetry: false });
+    expectValidFrames(all);
+    const types = chunkTypes(all);
+    expect(types.filter((t) => t === "data-pi-auto-retry")).toHaveLength(2);
+    expect(types.slice(-2)).toEqual(["error", "finish"]);
+    const errChunk = all.find((f) => f.kind === "uiMessageChunk" && f.chunk.type === "error");
+    expect(errChunk).toBeDefined();
+    if (errChunk?.kind !== "uiMessageChunk" || errChunk.chunk.type !== "error") {
+      throw new Error("expected error chunk");
+    }
+    expect(errChunk.chunk.errorText).toContain("402 Payment Required (attempt 2, final)");
+    expect(errChunk.chunk.errorText).not.toContain("attempt 1");
+  });
+
+  it("402-UI②: auto_retry 后有文本产出正常收尾 → 不合成 error(仅 finish)", () => {
+    let ctx: TranslationContext = createTranslationContext();
+    const all: import("@blksails/pi-web-protocol").SseFrame[] = [];
+    const push = (e: AgentEvent): void => {
+      const r = translateEvent(e, ctx);
+      ctx = r.ctx;
+      all.push(...r.frames);
+    };
+    push({ type: "agent_start" });
+    push({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 100,
+      errorMessage: "transient 402",
+    });
+    push(messageUpdate({ type: "text_start", contentIndex: 0, partial: PARTIAL }));
+    push(
+      messageUpdate({
+        type: "text_delta",
+        contentIndex: 0,
+        delta: "最终重试成功了",
+        partial: PARTIAL,
+      }),
+    );
+    push(
+      messageUpdate({
+        type: "text_end",
+        contentIndex: 0,
+        content: "最终重试成功了",
+        partial: PARTIAL,
+      }),
+    );
+    push({ type: "agent_end", messages: [], willRetry: false });
+    expectValidFrames(all);
+    const types = chunkTypes(all);
+    expect(types).not.toContain("error");
+    expect(types[types.length - 1]).toBe("finish");
+  });
+
+  it("402-UI②: 无 auto_retry 的空手收尾 → 不合成(保持既有 finish 语义)", () => {
+    const r = translateEvent(
+      { type: "agent_end", messages: [], willRetry: false },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+  });
+
+  it("402-UI②: stopReason:'error' 收尾 → 只有既有 error,不与兜底重复", () => {
+    let ctx: TranslationContext = createTranslationContext();
+    const all: import("@blksails/pi-web-protocol").SseFrame[] = [];
+    const push = (e: AgentEvent): void => {
+      const r = translateEvent(e, ctx);
+      ctx = r.ctx;
+      all.push(...r.frames);
+    };
+    push({ type: "agent_start" });
+    push({
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 100,
+      errorMessage: "transient",
+    });
+    push({
+      type: "agent_end",
+      willRetry: false,
+      messages: [{ ...PARTIAL, stopReason: "error", errorMessage: "Upstream 402." }],
+    });
+    expectValidFrames(all);
+    const errorFrames = all.filter((f) => f.kind === "uiMessageChunk" && f.chunk.type === "error");
+    expect(errorFrames).toHaveLength(1);
+    if (errorFrames[0]?.kind !== "uiMessageChunk" || errorFrames[0].chunk.type !== "error") {
+      throw new Error("expected single error chunk");
+    }
+    expect(errorFrames[0].chunk.errorText).toBe("Upstream 402.");
+  });
+
+  it("402-UI②: 跨 turn 复位 —— 上一轮的 auto_retry 不影响下一轮的空手收尾", () => {
+    let ctx: TranslationContext = createTranslationContext();
+    // 上一轮:auto_retry 后正常收尾(无文本,触发兜底),但已完整走完 agent_end。
+    ctx = translateEvent({ type: "agent_start" }, ctx).ctx;
+    ctx = translateEvent(
+      {
+        type: "auto_retry_start",
+        attempt: 1,
+        maxAttempts: 3,
+        delayMs: 100,
+        errorMessage: "prev turn error",
+      },
+      ctx,
+    ).ctx;
+    ctx = translateEvent({ type: "agent_end", messages: [], willRetry: false }, ctx).ctx;
+
+    // 下一轮:agent_start 复位后,未发生 auto_retry,直接空手收尾 → 不应合成 error。
+    ctx = translateEvent({ type: "agent_start" }, ctx).ctx;
+    const r = translateEvent({ type: "agent_end", messages: [], willRetry: false }, ctx);
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["finish"]);
+  });
+
   it("unknown / non-translatable event → deterministic empty frames, no throw", () => {
     const r = translateEvent(
       { type: "message_start", message: PARTIAL },

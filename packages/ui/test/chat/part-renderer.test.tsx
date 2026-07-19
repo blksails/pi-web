@@ -109,6 +109,81 @@ describe("PartRenderer 分派", () => {
     ).toBeNull();
   });
 
+  it("data-pi-auto-retry phase:start → 内联状态条,含次数/延时/errorMessage", () => {
+    const { container } = render(
+      <PartRenderer
+        part={dataPart("pi-auto-retry", {
+          phase: "start",
+          attempt: 2,
+          maxAttempts: 5,
+          delayMs: 3000,
+          errorMessage: "402 Payment Required: insufficient balance",
+        })}
+        message={msg}
+      />,
+    );
+    const bar = container.querySelector("[data-pi-auto-retry-status]");
+    expect(bar).not.toBeNull();
+    expect(bar?.getAttribute("role")).toBe("status");
+    expect(bar?.textContent).toContain("2/5");
+    expect(bar?.textContent).toContain("3s");
+    expect(bar?.textContent).toContain(
+      "402 Payment Required: insufficient balance",
+    );
+    // 不应落入默认 data-part 的 JSON 兜底渲染。
+    expect(
+      container.querySelector('[data-pi-data-part="data-pi-auto-retry"]'),
+    ).toBeNull();
+  });
+
+  it("data-pi-auto-retry phase:start 无 maxAttempts/delayMs/errorMessage → 仅渲染次数", () => {
+    const { container } = render(
+      <PartRenderer
+        part={dataPart("pi-auto-retry", { phase: "start", attempt: 1 })}
+        message={msg}
+      />,
+    );
+    const bar = container.querySelector("[data-pi-auto-retry-status]");
+    expect(bar).not.toBeNull();
+    expect(bar?.textContent).toContain("1");
+    expect(bar?.textContent).not.toContain("undefined");
+  });
+
+  it("data-pi-auto-retry errorMessage 超长 → 截断加省略号", () => {
+    const long = "x".repeat(200);
+    const { container } = render(
+      <PartRenderer
+        part={dataPart("pi-auto-retry", {
+          phase: "start",
+          attempt: 1,
+          errorMessage: long,
+        })}
+        message={msg}
+      />,
+    );
+    const bar = container.querySelector("[data-pi-auto-retry-status]");
+    expect(bar?.textContent?.includes(long)).toBe(false);
+    expect(bar?.textContent).toContain("…");
+  });
+
+  it("data-pi-auto-retry phase:end → 该次出现本身不渲染状态条(消失)", () => {
+    const { container } = render(
+      <PartRenderer
+        part={dataPart("pi-auto-retry", {
+          phase: "end",
+          attempt: 2,
+          success: true,
+        })}
+        message={msg}
+      />,
+    );
+    expect(container.querySelector("[data-pi-auto-retry-status]")).toBeNull();
+    expect(
+      container.querySelector('[data-pi-data-part="data-pi-auto-retry"]'),
+    ).toBeNull();
+    expect(container.firstChild).toBeNull();
+  });
+
   it("注册自定义工具渲染器命中覆盖默认", () => {
     const registry = createRendererRegistry();
     registry.registerToolRenderer("search", () => (

@@ -44,6 +44,9 @@ import {
   openMessage,
   openReasoningPart,
   openTextPart,
+  recordAssistantText,
+  recordAutoRetry,
+  resetTurnState,
   type TranslationContext,
 } from "./translation-context.js";
 
@@ -90,6 +93,17 @@ function none(ctx: TranslationContext): TranslateResult {
 /** 回退文案:仅当运行时确无具体错误信息时使用(Req 2.2)。 */
 const FALLBACK_ERROR_TEXT = "对话失败,但运行时未提供具体错误信息。";
 
+/**
+ * 402 等自动重试耗尽后"空手收尾"兜底(Req 402-UI ②):合成错误文案里附带
+ * errorMessage 的最大长度,过长截断避免刷屏。
+ */
+const MAX_RETRY_ERROR_TEXT_LENGTH = 500;
+
+/** 截断过长文本并追加省略号(纯)。 */
+function truncateForDisplay(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+}
+
 /** 从 agent_end.messages 末尾取最近 assistant 的终态信号(纯)。 */
 type TerminalSignal =
   | { kind: "error"; errorText: string }
@@ -134,7 +148,7 @@ function translateAssistantMessageEvent(
       const { id, ctx } = openTextPart(closeTextPart(ctxIn));
       return {
         frames: [makeUiMessageChunkFrame({ type: "text-start", id })],
-        ctx,
+        ctx: recordAssistantText(ctx),
       };
     }
     case "text_delta": {
@@ -145,7 +159,7 @@ function translateAssistantMessageEvent(
       if (id === undefined) {
         const opened = openTextPart(ctx);
         id = opened.id;
-        ctx = opened.ctx;
+        ctx = recordAssistantText(opened.ctx);
         frames.push(makeUiMessageChunkFrame({ type: "text-start", id }));
       }
       frames.push(
@@ -235,10 +249,11 @@ export function translateEvent(
 ): TranslateResult {
   switch (event.type) {
     case "agent_start":
-      // start 块创建 assistant message(useChat 据此建消息)。
+      // start 块创建 assistant message(useChat 据此建消息);同时复位本轮
+      // auto-retry/文本产出标记(Req 402-UI ②,跨轮不串扰)。
       return {
         frames: [makeUiMessageChunkFrame({ type: "start" })],
-        ctx: openMessage(ctx),
+        ctx: openMessage(resetTurnState(ctx)),
       };
 
     case "message_update":
@@ -358,6 +373,8 @@ export function translateEvent(
       };
 
     case "auto_retry_start":
+      // 记录本轮已重试 + 最后一次 errorMessage,供 agent_end 空手收尾兜底使用
+      // (Req 402-UI ②)。
       return {
         frames: [
           makeUiMessageChunkFrame({
@@ -371,7 +388,7 @@ export function translateEvent(
             },
           }),
         ],
-        ctx,
+        ctx: recordAutoRetry(ctx, event.errorMessage),
       };
 
     case "auto_retry_end":
@@ -440,6 +457,20 @@ export function translateEvent(
       if (signal?.kind === "aborted") {
         return {
           frames: [makeUiMessageChunkFrame({ type: "abort" })],
+          ctx: closed,
+        };
+      }
+      // "空手收尾"兜底(Req 402-UI ②):本轮出现过 auto_retry 且始终未产出任何
+      // assistant 文本(重试耗尽后正常 agent_end,无 stopReason:"error")→ 在 finish
+      // 帧之前合成一条 error 帧,避免用户界面无声无息地卡住。
+      if (ctx.hadAutoRetryInTurn && !ctx.hadAssistantTextInTurn) {
+        const rawErrorText = ctx.lastAutoRetryErrorMessage ?? FALLBACK_ERROR_TEXT;
+        const errorText = `多次重试后未获模型响应:${truncateForDisplay(rawErrorText, MAX_RETRY_ERROR_TEXT_LENGTH)}`;
+        return {
+          frames: [
+            makeUiMessageChunkFrame({ type: "error", errorText }),
+            makeUiMessageChunkFrame({ type: "finish" }),
+          ],
           ctx: closed,
         };
       }

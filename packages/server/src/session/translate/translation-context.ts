@@ -16,11 +16,22 @@ export interface TranslationContext {
   readonly openTextPartId?: string;
   /** 当前开启中的 reasoning part id(无则 undefined)。 */
   readonly openReasoningPartId?: string;
+  /** 本轮(agent_start~agent_end)内是否出现过 auto_retry_start(402 等自动重试兜底用)。 */
+  readonly hadAutoRetryInTurn: boolean;
+  /** 本轮内最后一次 auto_retry_start 携带的 errorMessage(无重试时 undefined)。 */
+  readonly lastAutoRetryErrorMessage?: string;
+  /** 本轮内是否已产出过任意 assistant 文本(text part 曾开启)。 */
+  readonly hadAssistantTextInTurn: boolean;
 }
 
 /** 初始化一个空的翻译上下文。 */
 export function createTranslationContext(): TranslationContext {
-  return { nextPartId: 1, messageOpen: false };
+  return {
+    nextPartId: 1,
+    messageOpen: false,
+    hadAutoRetryInTurn: false,
+    hadAssistantTextInTurn: false,
+  };
 }
 
 /** 分配一个新的 partId,返回 `{ id, ctx }`(纯,推进 nextPartId)。 */
@@ -68,5 +79,29 @@ export function closeReasoningPart(ctx: TranslationContext): TranslationContext 
   if (ctx.openReasoningPartId === undefined) return ctx;
   const next: TranslationContext = { ...ctx };
   delete (next as { openReasoningPartId?: string }).openReasoningPartId;
+  return next;
+}
+
+/** 记录一次 auto_retry_start(标记本轮已重试,保留最后一次 errorMessage)。 */
+export function recordAutoRetry(
+  ctx: TranslationContext,
+  errorMessage: string,
+): TranslationContext {
+  return { ...ctx, hadAutoRetryInTurn: true, lastAutoRetryErrorMessage: errorMessage };
+}
+
+/** 标记本轮已产出过 assistant 文本(幂等)。 */
+export function recordAssistantText(ctx: TranslationContext): TranslationContext {
+  return ctx.hadAssistantTextInTurn ? ctx : { ...ctx, hadAssistantTextInTurn: true };
+}
+
+/** 复位本轮(agent_start)状态:清空 auto-retry 记录与文本产出标记。 */
+export function resetTurnState(ctx: TranslationContext): TranslationContext {
+  const next: TranslationContext = {
+    ...ctx,
+    hadAutoRetryInTurn: false,
+    hadAssistantTextInTurn: false,
+  };
+  delete (next as { lastAutoRetryErrorMessage?: string }).lastAutoRetryErrorMessage;
   return next;
 }
