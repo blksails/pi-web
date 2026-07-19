@@ -175,8 +175,15 @@ export function applyFormToSettings(settings: Settings, form: FormValue): Settin
     result["commands"] = form.commands;
   }
   if (form.extensions !== undefined) {
-    const packages: string[] = [];
-    const disabled: string[] = [];
+    // 非破坏契约(模块头注释 + config-domains e2e「保留既有键」):既有 packages[] /
+    // disabledPackages[] 中**未被表单覆盖**的条目保留原归属,再叠加表单条目的重建结果。
+    // 背景:f0e8d09 引入「extensions 出现即整体重建」时打破了该契约——部分提交(API 直调,
+    // 表单只带手动 KV 条目)会把 packages 静默清空。UI 全量表单路径(settingsToForm 往返,
+    // 每个已装扩展都带 spec 出现在表单里)在此修复前后结果逐字一致。
+    const formIds = new Set(Object.keys(form.extensions));
+    const notInForm = (pkg: string): boolean => !formIds.has(extIdFromPackage(pkg));
+    const packages: string[] = stringArray(settings["packages"]).filter(notInForm);
+    const disabled: string[] = stringArray(settings["disabledPackages"]).filter(notInForm);
     for (const [extId, entry] of Object.entries(form.extensions)) {
       // per-扩展 KV:非空整体替换,空则删除顶层块。
       const params = entry.params ?? {};

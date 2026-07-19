@@ -100,6 +100,33 @@ describe("互映纯函数", () => {
     expect(merged["@alexgorbatchev/pi-env"]).toEqual({ HTTP_PROXY: "new" }); // 整体替换
   });
 
+  it("applyFormToSettings:部分提交(表单未覆盖的既有条目)保留原归属——非破坏契约", () => {
+    // 背景:f0e8d09 的「extensions 出现即整体重建」曾让只带手动 KV 条目的部分提交
+    // 静默清空 packages(config-domains e2e 假红根因)。修复后:未被表单覆盖的既有
+    // packages/disabledPackages 条目保留,表单覆盖的条目仍按 enabled 重建。
+    const merged = applyFormToSettings(
+      { packages: ["npm:pi-sandbox"], disabledPackages: ["npm:pi-off"], theme: "dark" },
+      {
+        extensions: {
+          // 仅一个手动 KV 条目(无 spec)——不该动 packages/disabledPackages 里的其它人。
+          "@a/b": { enabled: true, params: { HTTP_PROXY: "http://localhost:1080" } },
+        },
+      },
+    );
+    expect(merged["packages"]).toEqual(["npm:pi-sandbox"]); // 保留
+    expect(merged["disabledPackages"]).toEqual(["npm:pi-off"]); // 保留
+    expect(merged["@a/b"]).toEqual({ HTTP_PROXY: "http://localhost:1080" });
+    expect(merged["theme"]).toBe("dark");
+
+    // 表单覆盖到既有条目时仍按表单归属重建(禁用→启用搬移),未覆盖者不动。
+    const moved = applyFormToSettings(
+      { packages: ["npm:keep"], disabledPackages: ["npm:pi-off"] },
+      { extensions: { "pi-off": { enabled: true, spec: "npm:pi-off", params: {} } } },
+    );
+    expect(moved["packages"]).toEqual(["npm:keep", "npm:pi-off"]);
+    expect("disabledPackages" in moved).toBe(false);
+  });
+
   it("applyFormToSettings:全部启用时移除 disabledPackages 键(保持干净)", () => {
     const merged = applyFormToSettings(
       { packages: ["npm:a"], disabledPackages: ["npm:b"] },

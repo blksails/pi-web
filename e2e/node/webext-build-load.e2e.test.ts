@@ -93,7 +93,11 @@ describe("webext examples: build artifacts gate + integrity (offline e2e)", () =
     });
     expect(outcome.status).toBe("declarative");
     if (outcome.status === "declarative") {
-      expect(outcome.extension.config?.layout).toBe("split");
+      // 断言「config 透传生效」:与 fixture manifest 源值一致(而非钉死字面量)。
+      // 历史教训:69fa1dc 有意把示例 layout split→wide 强化演示,钉死 "split" 的旧断言
+      // 从此假红——本用例考察的是 loadExtension 不丢/不改 config,不是示例取什么值。
+      expect(manifest.config?.layout).toBeDefined();
+      expect(outcome.extension.config?.layout).toBe(manifest.config?.layout);
     }
   });
 });

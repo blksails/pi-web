@@ -73,9 +73,11 @@ describe("配置域 e2e — 扩展", () => {
       path.join(agentDir, "settings.json"),
       JSON.stringify({ packages: ["npm:pi-sandbox"], theme: "dark" }),
     );
+    // 条目形状为现行契约 {enabled, spec?, params}(f0e8d09 起);旧扁平 KV 形状会被
+    // passthrough 收下但 params 为空 → 按「删除该块」处理(本用例曾用旧形状假红)。
     const r = await put(`${base}/extensions/global`, {
       commands: { deny: ["danger"] },
-      extensions: { "@a/b": { HTTP_PROXY: "http://localhost:1080" } },
+      extensions: { "@a/b": { enabled: true, params: { HTTP_PROXY: "http://localhost:1080" } } },
     });
     expect(r.status).toBe(200);
     const onDisk = JSON.parse(fs.readFileSync(path.join(agentDir, "settings.json"), "utf8"));
@@ -86,8 +88,10 @@ describe("配置域 e2e — 扩展", () => {
     const g = await config.GET(new Request(`${base}/extensions/global`));
     const values = (await json(g))["values"] as Record<string, unknown>;
     const exts = values["extensions"] as Record<string, unknown>;
-    expect(exts["@a/b"]).toEqual({ HTTP_PROXY: "http://localhost:1080" });
-    expect(exts["pi-sandbox"]).toEqual({}); // 已安装扩展(packages[])作为分组占位
+    // 表单视图为现行 ExtEntry 形状(f0e8d09 起):手动 KV 条目无 spec 恒启用;
+    // 已安装扩展(packages[])带 spec 与 KV 占位。
+    expect(exts["@a/b"]).toEqual({ enabled: true, params: { HTTP_PROXY: "http://localhost:1080" } });
+    expect(exts["pi-sandbox"]).toEqual({ enabled: true, spec: "npm:pi-sandbox", params: {} });
   });
 
   it("项目 /config/extensions/project 写入 <projectDir>/.pi/settings.json", async () => {
