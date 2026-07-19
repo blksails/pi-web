@@ -18,6 +18,13 @@ export const WebExtensionCapabilitySchema = z.enum([
   "contributions",
   "artifact",
   "config",
+  /**
+   * 面⑦ per-source settings 动态控件供给方(spec source-settings-and-slots,任务 7.1)。
+   * 声明本能力的 webext 可在其运行时描述符(`@blksails/pi-web-kit` WebExtension)携带
+   * `settingsWidgets`,由宿主装载后并入该 source 的 per-source scoped field registry
+   * (`registerSourceFieldRenderer`),供设置面板 schema 字段 `widget:"<key>"` 命中渲染。
+   */
+  "settingsWidgets",
 ]);
 export type WebExtensionCapability = z.infer<
   typeof WebExtensionCapabilitySchema

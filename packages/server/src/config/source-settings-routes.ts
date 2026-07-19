@@ -110,6 +110,22 @@ export interface SourceSettingsRoutesOptions {
   ) => Promise<ResolvedSourceSettings | undefined>;
   /** `scope==="project"` 且请求未显式 `?cwd=` 时使用的默认项目根。 */
   readonly defaultCwd?: string;
+  /**
+   * PUT 落盘成功后的回调(spec 任务 7.2「运行期实时下发」,通道 b,Req 7.1;可选)。
+   * 供应用层装配把 `piweb_settings_changed` 帧推给活跃会话(见
+   * `session/settings-live-broadcast.ts` 的 `broadcastSettingsChanged`)——本文件不直接依赖
+   * `SessionStore`(config 层不应知道 session 抽象),只暴露这一接缝。`values` 已按 GET 同规则
+   * 掩码(secret 明文永不下发浏览器);`liveReloadKeys` 为 schema 中 `liveReload:true` 的字段
+   * key 子集。回调异常被吞掉(best-effort,不影响 PUT 响应本身,Req 7.1 的 `MAY` 语义);
+   * 省略时行为与 M1/M2 完全一致(通道 b 未接线)。
+   */
+  readonly onSaved?: (
+    sourceKeyValue: string,
+    payload: {
+      readonly values: Readonly<Record<string, unknown>>;
+      readonly liveReloadKeys: readonly string[];
+    },
+  ) => void | Promise<void>;
 }
 
 /** PUT body 形状(与 `config-routes.ts` 的 `PutConfigBodySchema` 同构)。 */
@@ -491,6 +507,20 @@ export function createSourceSettingsRoutes(
 
     // `merged` 已是权威全量对象(含删除),覆盖写入,不可再 deepMerge(否则已清除的密钥复活)。
     await codec.save(scope, sourceKeyValue, merged, { cwd, merge: false });
+
+    // 9) 运行期实时下发(任务 7.2,通道 b,Req 7.1,可选):落盘成功后 best-effort 通知
+    //    活跃会话。secret 按 GET 同规则掩码,永不下发明文;失败不影响本次 PUT 响应。
+    if (opts.onSaved !== undefined) {
+      const liveReloadKeys = resolved.schema.fields
+        .filter((field) => field.liveReload === true)
+        .map((field) => field.key);
+      const maskedForBroadcast = maskSecrets(SECRET_MERGE_DOMAIN_MONIKER, merged, resolved.schema);
+      try {
+        await opts.onSaved(sourceKeyValue, { values: maskedForBroadcast, liveReloadKeys });
+      } catch {
+        // best-effort:下发失败不影响落盘已成功的 PUT 响应。
+      }
+    }
 
     return jsonResponse(200, { ok: true });
   };

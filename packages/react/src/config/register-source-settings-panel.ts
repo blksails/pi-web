@@ -113,6 +113,9 @@ export async function registerSourceSettingsPanel(
     title: manifestTitle ?? schema.title ?? fallbackTitle,
     icon: opts.icon ?? manifestIcon,
     order: opts.order,
+    // 任务 7.1:透传 sourceKey,使 <SettingsShell> 渲染本面板时字段解析命中该 source
+    // 的 scoped field registry(动态控件咬合的「面板侧」落点)。
+    sourceKey,
     formSchema: schema,
     // 无 validate:结构性校验已在服务端 PUT 路径执行(400 + 结构化错误体);客户端仅转发。
     load: async (): Promise<ConfigDomainData> => {

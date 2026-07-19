@@ -16,6 +16,11 @@ export {
   unregisterSourceFieldRenderers,
 } from "./field-registry.js";
 export { FieldRenderer, type FieldRendererProps } from "./field-renderer.js";
+export {
+  applySettingsWidgets,
+  useSourceSettingsWidgets,
+  type SettingsWidgetLoadContext,
+} from "./apply-settings-widgets.js";
 export { ExtensionsKvField } from "./fields/extensions-kv-field.js";
 export { ConfigFilesField } from "./fields/config-files-field.js";
 export { NamespaceTogglesField } from "./fields/namespace-toggles-field.js";

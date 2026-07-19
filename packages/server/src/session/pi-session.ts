@@ -168,6 +168,13 @@ export class PiSession {
   readonly trust: ResolvedSource["trust"];
   /** 会话工作目录(与 spawnSpec.cwd 一致),供补全 file provider 等限定枚举范围。 */
   readonly cwd: ResolvedSource["cwd"];
+  /**
+   * resolver 稳定来源标识(同 `ResolvedSource.policySource`;dir 绝对路径 / git url /
+   * `builtin:<name>`)。per-source settings 实时下发(spec source-settings-and-slots,
+   * 任务 7.2)据此按 sourceKey 匹配活跃会话(见 `settings-live-broadcast.ts`);其余机制
+   * 不消费,可能为 `undefined`(见 `ResolvedSource.policySource` 的向后兼容注记)。
+   */
+  readonly policySource: ResolvedSource["policySource"];
 
   private readonly channel: SessionChannel;
   private readonly idleMs: number;
@@ -311,6 +318,7 @@ export class PiSession {
     this.mode = opts.resolved.mode;
     this.trust = opts.resolved.trust;
     this.cwd = opts.resolved.cwd;
+    this.policySource = opts.resolved.policySource;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
     this.loggingConfigProvider = opts.loggingConfigProvider;
@@ -604,6 +612,36 @@ export class PiSession {
   /** 当前订阅者数量(测试/诊断用)。 */
   subscriberCount(): number {
     return this.emitter.listenerCount(FRAME_EVENT);
+  }
+
+  /**
+   * per-source settings 运行期实时下发(spec source-settings-and-slots,任务 7.2;
+   * design.md「通道 b」;Req 7.1/7.2)。`PUT /config/source/:sourceKey` 落盘成功后,
+   * 应用层(见 `settings-live-broadcast.ts`)按 sourceKey 匹配到本会话时调用本方法——
+   * **公开入口**,不经子进程 stdin/handleRawLine 往返(该帧不是子进程上报,而是主进程
+   * 内部直接广播,复用的是 `piweb_state` 分支同一套「广播 + sticky 粘性回放」*模式*,
+   * 见 `handleRawLine` 的 `piweb_state` 分支 :687-708 与该模式的既有先例
+   * `setLifecycle`/`applySnapshot`)。
+   *
+   * 按 sourceKey 分区登记粘性帧(重连订阅者回放拿到该 source 最近一次下发,Req 7.2);
+   * 非 active 会话 no-op(已停止的会话无订阅者可推)。调用方负责:①按 schema 掩码
+   * secret 字段(明文永不下发浏览器,同 GET 端点);②只把 schema 声明的
+   * `liveReload:true` 键集合传入 `liveReloadKeys`(消费侧据此判断是否立即生效)。
+   */
+  emitSettingsChanged(payload: {
+    readonly sourceKey: string;
+    readonly values: Readonly<Record<string, unknown>>;
+    readonly liveReloadKeys: readonly string[];
+  }): void {
+    if (this._status !== "active") return;
+    const frame = makeControlFrame({
+      control: "settings-changed",
+      sourceKey: payload.sourceKey,
+      values: payload.values,
+      liveReloadKeys: [...payload.liveReloadKeys],
+    });
+    this.sticky.set(`settings-changed:${payload.sourceKey}`, frame);
+    this.emitter.emit(FRAME_EVENT, frame);
   }
 
   private handleEvent(event: AgentEvent): void {

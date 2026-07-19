@@ -6,6 +6,7 @@
  */
 export * from "./form-schema.js";
 export * from "./form-schema-zod.js";
+export * from "./settings-changed.js";
 export * from "./meta.js";
 export * from "./secret.js";
 export * from "./zod-to-form-schema.js";

@@ -70,6 +70,10 @@ function makeHandler(opts: {
   resolveSettings?: (sk: string) => Promise<ResolvedSourceSettings | undefined>;
   scope?: ResolvedSourceSettings["scope"];
   defaultCwd?: string;
+  onSaved?: (
+    sk: string,
+    payload: { readonly values: Readonly<Record<string, unknown>>; readonly liveReloadKeys: readonly string[] },
+  ) => void | Promise<void>;
 }) {
   const store = new InMemorySessionStore(true);
   const manager = new SessionManager({ store, idleMs: 0 });
@@ -78,6 +82,7 @@ function makeHandler(opts: {
     rootDir: tmpDir,
     resolveSettings,
     ...(opts.defaultCwd !== undefined ? { defaultCwd: opts.defaultCwd } : {}),
+    ...(opts.onSaved !== undefined ? { onSaved: opts.onSaved } : {}),
   });
   const handler = createPiWebHandler({
     manager,
@@ -342,5 +347,101 @@ describe("PUT /config/source/:sourceKey", () => {
       await fs.readFile(join(projectDir, ".pi", "source-settings", `${SK}.json`), "utf8"),
     );
     expect(onDisk["apiBase"]).toBe("https://project-scoped.example.com");
+  });
+});
+
+// ─── onSaved 通道 b(任务 7.2,运行期实时下发,Req 7.1)────────────────────────────
+
+/** liveReload 混合 schema:一个 liveReload 键(notifyEmail)+ 一个非 liveReload 键(apiBase)+
+ * 一个 secret 键(apiKey,永不下发明文)。 */
+const LIVE_RELOAD_SCHEMA: FormSchema = {
+  domain: "source",
+  fields: [
+    { key: "apiBase", kind: "string", label: "API Base", required: false },
+    { key: "apiKey", kind: "secret", label: "API Key", required: false },
+    {
+      key: "notifyEmail",
+      kind: "string",
+      label: "Notify Email",
+      required: false,
+      liveReload: true,
+    },
+  ],
+};
+
+describe("PUT /config/source/:sourceKey — onSaved 通道 b(任务 7.2)", () => {
+  it("落盘成功后调用 onSaved,携带 sourceKey + 已掩码 values + liveReloadKeys 子集", async () => {
+    const onSaved = vi.fn();
+    const { handler } = makeHandler({
+      resolveSettings: async (sk) =>
+        sk === SK ? { schema: LIVE_RELOAD_SCHEMA, scope: "source" } : undefined,
+      onSaved,
+    });
+
+    const res = await handler(
+      new Request(`http://x/config/source/${SK}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          values: {
+            apiBase: "https://crm.example.com",
+            apiKey: "sk-secret-value",
+            notifyEmail: "ops@example.com",
+          },
+        }),
+      }),
+    );
+    expect(res.status).toBe(200);
+
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    const [calledSk, payload] = onSaved.mock.calls[0] as [
+      string,
+      { values: Record<string, unknown>; liveReloadKeys: string[] },
+    ];
+    expect(calledSk).toBe(SK);
+    expect(payload.liveReloadKeys).toEqual(["notifyEmail"]);
+    expect(payload.values["apiBase"]).toBe("https://crm.example.com");
+    expect(payload.values["notifyEmail"]).toBe("ops@example.com");
+    // secret 字段必须掩码,onSaved 收到的 payload 里不含明文(同 GET/PUT 响应体的不变量)。
+    const mask = payload.values["apiKey"] as Record<string, unknown>;
+    expect(mask["__secret"]).toBe(true);
+    expect(JSON.stringify(payload.values)).not.toContain("sk-secret-value");
+  });
+
+  it("onSaved 抛出异常不影响 PUT 200 响应(best-effort,Req 7.1 的 MAY 语义)", async () => {
+    const onSaved = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const { handler } = makeHandler({
+      resolveSettings: async (sk) =>
+        sk === SK ? { schema: LIVE_RELOAD_SCHEMA, scope: "source" } : undefined,
+      onSaved,
+    });
+
+    const res = await handler(
+      new Request(`http://x/config/source/${SK}`, {
+        method: "PUT",
+        body: JSON.stringify({ values: { apiBase: "https://crm.example.com" } }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(onSaved).toHaveBeenCalledTimes(1);
+
+    const codec = new SourceSettingsCodec(tmpDir);
+    const onDisk = await codec.load("source", SK);
+    expect(onDisk["apiBase"]).toBe("https://crm.example.com");
+  });
+
+  it("未声明 onSaved 时行为与 M1/M2 完全一致(不调用任何回调)", async () => {
+    const { handler } = makeHandler({
+      resolveSettings: async (sk) =>
+        sk === SK ? { schema: LIVE_RELOAD_SCHEMA, scope: "source" } : undefined,
+    });
+    const res = await handler(
+      new Request(`http://x/config/source/${SK}`, {
+        method: "PUT",
+        body: JSON.stringify({ values: { apiBase: "https://crm.example.com" } }),
+      }),
+    );
+    expect(res.status).toBe(200);
   });
 });

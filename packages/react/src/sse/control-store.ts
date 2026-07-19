@@ -84,6 +84,17 @@ export interface SharedStateEntry {
   readonly rev: number;
 }
 
+/**
+ * per-source settings 运行期实时下发(spec source-settings-and-slots,任务 7.2;Req 7.1):
+ * 某 sourceKey 最近一次下发的快照。`values` 已按 GET 同规则掩码(secret 明文永不下发);
+ * `liveReloadKeys` 为 schema 中 `liveReload:true` 的字段 key 子集,消费侧只应用该子集
+ * 实时生效,其余键仍需下次装配才生效(取舍由消费方自行判断,契约不强制)。
+ */
+export interface SourceSettingsChangedEntry {
+  readonly values: Readonly<Record<string, unknown>>;
+  readonly liveReloadKeys: readonly string[];
+}
+
 /** control store 的不可变快照。 */
 export interface ControlSnapshot {
   readonly queue: QueueSnapshot;
@@ -98,6 +109,12 @@ export interface ControlSnapshot {
   readonly lifecycle: SessionLifecycleSnapshot;
   /** 共享状态切片(state-injection-bridge):key→{value,rev},经 control:"state" 帧更新。 */
   readonly states: Readonly<Record<string, SharedStateEntry>>;
+  /**
+   * per-source settings 实时下发切片(source-settings-and-slots,任务 7.2):
+   * sourceKey→最近一次下发快照,经 control:"settings-changed" 帧更新(粘性帧回放同样
+   * 落地本切片,Req 7.2)。
+   */
+  readonly sourceSettings: Readonly<Record<string, SourceSettingsChangedEntry>>;
   /**
    * 服务端权威会话快照(session-snapshot-authority);收到 session-state 帧前为 undefined。
    * 唯一权威投影:busy/stats 据此派生,前端不再从消息流 status 时序推断。
@@ -131,6 +148,7 @@ const INITIAL_SNAPSHOT: ControlSnapshot = {
   ambient: EMPTY_AMBIENT,
   lifecycle: INITIAL_LIFECYCLE,
   states: {},
+  sourceSettings: {},
   session: undefined,
   busy: false,
 };
@@ -282,6 +300,21 @@ export class ControlStore {
       case "attachment":
         // agent-attachment-catalog:非粘性事件,直接派发给已注册监听,不入快照(Req 4.2)。
         for (const cb of this.attachmentEventListeners) cb(payload);
+        break;
+      case "settings-changed":
+        // per-source settings 运行期实时下发(source-settings-and-slots,任务 7.2):按
+        // sourceKey 更新切片;粘性帧重连回放同样落地本切片,消费方 useSyncExternalStore
+        // 订阅即可收敛(Req 7.2)。
+        this.emit({
+          ...this.snapshot,
+          sourceSettings: {
+            ...this.snapshot.sourceSettings,
+            [payload.sourceKey]: {
+              values: payload.values as Record<string, unknown>,
+              liveReloadKeys: payload.liveReloadKeys,
+            },
+          },
+        });
         break;
       default: {
         const _exhaustive: never = payload;

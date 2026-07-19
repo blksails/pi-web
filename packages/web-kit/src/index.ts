@@ -27,6 +27,8 @@ export {
   type MentionItem,
   type CompletionItem,
   type Keybinding,
+  type SettingsWidgetProps,
+  type SettingsWidgetComponent,
 } from "./define-web-extension.js";
 export { type UiRpcClient, type UiRpcCall } from "./rpc-client.js";
 export {

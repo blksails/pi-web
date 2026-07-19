@@ -157,6 +157,62 @@ describe("A) HTTP 业务层 — GET|PUT /api/config/source/:sourceKey(module-set
   });
 });
 
+// ─── A2) HTTP agent-routes 层:面⑦动态控件「数据侧」真实 URL 形状(任务 7.1)────
+
+// `examples/module-settings-agent/.pi/web/web.config.tsx` 的 `EntityPickerWidget` 经
+// `GET {baseUrl}/sessions/{sessionId}/agent-routes/entities` 取数据——本节用真实
+// createPiWebHandler 单例(与 A 节同一驱动方式)+ 真实 POST /api/sessions 建会话
+// (真实子进程,routes 声明帧异步到达),证明该 URL 形状在生产端点上真实可用,且
+// 响应体是 route handler 的**原始**返回值(不裹 `{result:…}`,widget 侧据此直接取
+// `body.entities`,与 `session.invokeAgentRoute` 直调路径同源同形)。
+describe("A2) HTTP agent-routes 层 — GET /api/sessions/:id/agent-routes/entities(真实会话,widget 取数据同形)", () => {
+  function reqOf(pathname: string, init?: RequestInit): Request {
+    return new Request(`http://localhost${pathname}`, init);
+  }
+
+  async function createSession(source: string): Promise<string> {
+    const res = await api.POST(
+      reqOf("/api/sessions", { method: "POST", body: JSON.stringify({ source }) }),
+    );
+    expect([200, 201]).toContain(res.status);
+    const body = (await res.json()) as { sessionId: string };
+    return body.sessionId;
+  }
+
+  async function waitForRoute(sessionId: string, name: string, timeoutMs = 30_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const res = await api.GET(reqOf(`/api/sessions/${sessionId}/agent-routes`));
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { routes: Array<{ name: string }> };
+      if (body.routes.some((r) => r.name === name)) return;
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for agent route "${name}" declaration`);
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+
+  it("routes 声明帧到达后,GET agent-routes/entities 回吐原始 { entities } 形状(widget fetch 同形)", async () => {
+    const sessionId = await createSession(FIXTURE_DIR);
+    await waitForRoute(sessionId, "entities");
+
+    const res = await api.GET(reqOf(`/api/sessions/${sessionId}/agent-routes/entities`));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { entities?: Array<{ value: string; label: string }> };
+    // 不裹 result 信封:widget 侧 `body.entities`(而非 `body.result.entities`)才是正确读法。
+    expect(body.entities?.map((e) => e.value)).toEqual(["customer", "order", "invoice"]);
+  }, 40_000);
+
+  it("未声明的 route 名 → 404 ROUTE_NOT_FOUND(widget 拿到坏 widget key 时的失败态)", async () => {
+    const sessionId = await createSession(FIXTURE_DIR);
+    await waitForRoute(sessionId, "entities");
+
+    const res = await api.GET(reqOf(`/api/sessions/${sessionId}/agent-routes/no-such-route`));
+    expect(res.status).toBe(404);
+  }, 40_000);
+});
+
 // ─── B) 装配注入层:真实 runner 子进程 ─────────────────────────────────────────
 
 const runnerEntry = path.join(REPO_ROOT, "packages", "server", "src", "runner", "runner.ts");

@@ -21,6 +21,33 @@ export interface SlotRenderProps {
 }
 export type SlotContribution = ReactNode | ComponentType<SlotRenderProps>;
 
+/**
+ * 面⑦ per-source settings 动态控件(spec source-settings-and-slots,任务 7.1;
+ * `settingsWidgets` capability)的组件 props。窄接口(不携带宿主 `FieldProps` 的
+ * descriptor/path/errors/registry 等宿主内部字段)——宿主(`@blksails/pi-web-ui`)
+ * 装载时把自身的 `FieldProps` 适配为此形状再渲染,web-kit 不反向依赖 ui 包。
+ *
+ * `baseUrl`/`sessionId` 供控件按需经标准 agent-declared-routes HTTP 端点
+ * (`GET|POST {baseUrl}/sessions/{sessionId}/agent-routes/{name}`)自取数据(面⑤⑦
+ * 互为供给的咬合点);宿主在装载时注册(`applySettingsWidgets`)一并注入,不经
+ * `FieldProps` 透传。会话尚未建立(如源选择阶段尚无 session)时两者均为
+ * `undefined`,控件应自行降级(如禁用/空态),不得假定恒有值。
+ */
+export interface SettingsWidgetProps<V = unknown> {
+  readonly value: V;
+  readonly onChange: (next: V) => void;
+  /** 该字段所属 source 的稳定 key(与 per-source scoped registry 注册时一致)。 */
+  readonly sourceKey: string;
+  /** 字段键(`FormSchema` 字段声明的 `key`,即 `FieldDescriptor.key`)。 */
+  readonly fieldKey: string;
+  readonly disabled?: boolean;
+  /** http-api 基址(如 `/api`),调用本模块 agent-declared-routes 端点用。 */
+  readonly baseUrl?: string;
+  /** 当前会话 id(agent-declared-routes 端点挂在 `/sessions/:id/agent-routes/:name`)。 */
+  readonly sessionId?: string;
+}
+export type SettingsWidgetComponent<V = unknown> = ComponentType<SettingsWidgetProps<V>>;
+
 type AnyPart = UIMessage["parts"][number];
 
 /** Tier 2 渲染器(与宿主 registry 的渲染器形状一致)。 */
@@ -104,6 +131,14 @@ export interface WebExtension {
   readonly config?: WebExtConfig;
   readonly artifact?: ArtifactDeclaration;
   readonly capabilities?: readonly WebExtensionCapability[];
+  /**
+   * 面⑦ per-source settings 动态控件供给(`settingsWidgets` capability,任务 7.1)。
+   * 键=`FormSchema` 字段声明的 `widget:"<key>"`;宿主装载扩展时把整份映射并入该
+   * source 的 per-source scoped field registry(`registerSourceFieldRenderer`),
+   * 设置面板渲染时按 fieldKey→widget→kind 三级解析命中。未装载/验签失败/未提供
+   * 对应键时,宿主侧字段降级为只读 JSON(不影响面板其余字段)。
+   */
+  readonly settingsWidgets?: Readonly<Record<string, SettingsWidgetComponent>>;
   /**
    * 该 source / 插件包为 Canvas 实例贡献的插件捆集合。与既有声明键(slots/renderers 等)
    * 同形共存、互不干扰。宿主对其领域中立(只整体搬运,不解析内容);实际提取与前缀化聚合

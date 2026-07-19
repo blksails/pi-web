@@ -79,6 +79,12 @@ export interface FieldDescriptor {
   /** secret 快捷标记(与 kind:"secret" 等价语义)。 */
   readonly secret?: boolean;
   readonly readOnly?: boolean;
+  /**
+   * 运行期实时下发标记(spec source-settings-and-slots,任务 7.2;Req 7.1):`true` 时
+   * PUT 成功后该键经 `control:"settings-changed"` 帧下发,消费侧应立即生效,无需新建会话;
+   * 缺省/`false` 的字段仍需下次装配(新会话)才生效。
+   */
+  readonly liveReload?: boolean;
 }
 
 /** 分组定义。 */

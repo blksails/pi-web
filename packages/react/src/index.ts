@@ -83,6 +83,11 @@ export {
 } from "./hooks/use-extension-state.js";
 export type { SharedStateEntry } from "./sse/control-store.js";
 export {
+  useSourceSettingsChanged,
+  type UseSourceSettingsChangedOptions,
+} from "./hooks/use-source-settings-changed.js";
+export type { SourceSettingsChangedEntry } from "./sse/control-store.js";
+export {
   useSurface,
   type UseSurfaceOptions,
   type UseSurfaceResult,

@@ -65,6 +65,7 @@ const FieldDescriptorZod: z.ZodType<FieldDescriptor> = z.lazy(() =>
     widget: z.string().optional(),
     secret: z.boolean().optional(),
     readOnly: z.boolean().optional(),
+    liveReload: z.boolean().optional(),
   }),
 );
 

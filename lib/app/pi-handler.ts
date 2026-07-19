@@ -40,6 +40,8 @@ import {
   createSourceSettingsRoutes,
   resolveSourceSettingsFromPackageDirs,
   type ResolvedSourceSettings,
+  // per-source settings 运行期实时下发(spec source-settings-and-slots,任务 7.2,通道 b)。
+  broadcastSettingsChanged,
   createCompositeSourceProvider,
   createScanSourceProvider,
   createRegistrySourceProvider,
@@ -867,6 +869,11 @@ function buildSingleton(): HandlerSingleton {
         rootDir: config.agentDir,
         defaultCwd: config.defaultCwd,
         resolveSettings: makeSourceSettingsResolver(config),
+        // 运行期实时下发(任务 7.2,通道 b,Req 7.1,可选):落盘成功后向该 sourceKey
+        // 对应的活跃会话广播 settings-changed 帧(按 PiSession.policySource 匹配,
+        // best-effort,失败不影响 PUT 响应)。`manager` 与本路由数组同一装配作用域。
+        onSaved: (sourceKeyValue, payload) =>
+          broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
       }),
       ...createExtensionsConfigRoutes({
         agentDir: config.agentDir,

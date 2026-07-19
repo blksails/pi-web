@@ -177,6 +177,7 @@ function ConfigPanelView({
             registry={fieldRegistry}
             disabled={saving}
             fileSchemas={fileSchemas}
+            sourceKey={panel.sourceKey}
           />
           <div className="flex items-center gap-3">
             <Button type="button" onClick={() => void save()} disabled={saving || !form.dirty}>

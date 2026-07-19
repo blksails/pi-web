@@ -17,6 +17,7 @@ import { LogEntrySchema } from "../logging/log-entry.js";
 import { SessionStatusControlSchema } from "./session-status.js";
 import { SessionStateControlSchema } from "./session-state.js";
 import { AttachmentControlPayloadSchema } from "../attachment/catalog.js";
+import { SettingsChangedControlPayloadSchema } from "../config/settings-changed.js";
 
 /** control 帧负载:旁路控制事件,以 `control` 判别(含 web-ext 的 ui-rpc 下行响应)。 */
 export const ControlPayloadSchema = z.discriminatedUnion("control", [
@@ -54,6 +55,9 @@ export const ControlPayloadSchema = z.discriminatedUnion("control", [
   SessionStateControlSchema,
   // agent 附件目录(agent-attachment-catalog):agent 主动推送产物的即时感知事件,非粘性。
   AttachmentControlPayloadSchema,
+  // per-source settings 运行期实时下发(source-settings-and-slots,任务 7.2):粘性帧,
+  // 订阅/重连时回放该 source 最近一次下发的快照。
+  SettingsChangedControlPayloadSchema,
 ]);
 export type ControlPayload = z.infer<typeof ControlPayloadSchema>;
 

@@ -33,6 +33,10 @@ export type {
   SessionChannel,
 } from "./session.types.js";
 export { DEFAULT_IDLE_MS } from "./session.types.js";
+export {
+  broadcastSettingsChanged,
+  resolveSessionSourceKey,
+} from "./settings-live-broadcast.js";
 export { translateEvent } from "./translate/translate-event.js";
 export type { TranslateResult } from "./translate/translate.types.js";
 export {

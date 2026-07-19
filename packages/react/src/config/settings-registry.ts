@@ -53,6 +53,14 @@ export interface SettingsPanelDescriptor extends ConfigDomainIO {
   readonly order?: number;
   readonly icon?: string;
   readonly formSchema: FormSchema;
+  /**
+   * per-source 动态面板专属(spec source-settings-and-slots,任务 7.1):该面板所属的
+   * `sourceKey`。宿主 `<SettingsShell>` 据此透给 `<SchemaForm sourceKey>`,使字段解析
+   * 命中该 source 的 scoped field registry(`registerSourceFieldRenderer` 注册的动态
+   * 控件,Req 5.3/5.4)。内建域面板(auth/mcp/…)不设,行为不变(未提供 sourceKey 时
+   * `FieldRenderer` 走既有全局解析,不查 scoped 注册表)。
+   */
+  readonly sourceKey?: string;
   /** 校验器(通常由 zodValidator(域 schema) 提供)。 */
   readonly validate?: (values: FormValues) =>
     | { ok: true; values: FormValues }
