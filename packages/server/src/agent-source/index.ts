@@ -9,7 +9,7 @@ export { AgentSourceResolver, resolve } from "./resolver.js";
 export { applyTrust } from "./trust-apply.js";
 export { defaultTrustPolicy, resolveTrustPolicy } from "./trust-policy.js";
 export { decideMode } from "./mode-decide.js";
-export { probeEntry } from "./entry-probe.js";
+export { probeEntry, ENTRY_PRIORITY } from "./entry-probe.js";
 export { identify } from "./source-type.js";
 export {
   ensureGitSource,

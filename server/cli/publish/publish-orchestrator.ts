@@ -22,10 +22,14 @@ export interface PublishOptions {
   readonly commitOnly?: boolean;
 }
 
-/** 发布结果(供分发层渲染)。 */
+/**
+ * 发布结果(供分发层渲染)。
+ * `warnings` 为编译期非阻断告警(当前:webext 产物陈旧),**两条路径都带** ——
+ * 演练必须与正式发布输出同样的告警,否则演练就是假演练(R5.4)。
+ */
 export type PublishOutcome =
-  | { readonly kind: "dry-run"; readonly manifest: SignedManifest; readonly files: readonly string[] }
-  | { readonly kind: "published"; readonly sourceId: string; readonly version: string; readonly bundle: string; readonly channelMoved: boolean };
+  | { readonly kind: "dry-run"; readonly manifest: SignedManifest; readonly files: readonly string[]; readonly warnings: readonly string[] }
+  | { readonly kind: "published"; readonly sourceId: string; readonly version: string; readonly bundle: string; readonly channelMoved: boolean; readonly warnings: readonly string[] };
 
 export type PublishError =
   | { readonly stage: "compile"; readonly error: CompileError }
@@ -69,7 +73,7 @@ export async function publish(registry: RegistryPort, opts: PublishOptions): Pro
 
   // 3) dry-run:走完编译+签名,零外部写
   if (opts.dryRun) {
-    return { ok: true, value: { kind: "dry-run", manifest, files: pkg.bundlePaths } };
+    return { ok: true, value: { kind: "dry-run", manifest, files: pkg.bundlePaths, warnings: pkg.warnings } };
   }
 
   // 4) 打 bundle → 经 registry 代理上传 OSS(发布侧不接触 OSS 凭据)
@@ -84,11 +88,11 @@ export async function publish(registry: RegistryPort, opts: PublishOptions): Pro
 
   // 6) setChannel(--commit-only 则停在此前)
   if (opts.commitOnly) {
-    return { ok: true, value: { kind: "published", sourceId: pkg.id, version: pkg.version, bundle, channelMoved: false } };
+    return { ok: true, value: { kind: "published", sourceId: pkg.id, version: pkg.version, bundle, channelMoved: false, warnings: pkg.warnings } };
   }
   const channel = opts.channel ?? "stable";
   const moved = await registry.setChannel(pkg.id, channel, pkg.version);
   if (!moved.ok) return { ok: false, error: { stage: "channel", error: moved.error } };
 
-  return { ok: true, value: { kind: "published", sourceId: pkg.id, version: pkg.version, bundle, channelMoved: true } };
+  return { ok: true, value: { kind: "published", sourceId: pkg.id, version: pkg.version, bundle, channelMoved: true, warnings: pkg.warnings } };
 }

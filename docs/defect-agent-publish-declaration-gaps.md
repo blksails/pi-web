@@ -37,6 +37,26 @@ registry 上 `e2e/aigc-canvas-agent` 1.0.x 有 `entry`，是因为**它们不是
 
 `entry.path` 如何确定是**设计决策**（`probeEntry` 约定？`pkg.main`？固定 `index.ts`？），不是一行 bugfix，需评审。向后兼容要求：已发布的手工版本不得失效。
 
+> **2026-07-20 补充事实（供方案定夺）**：`probeEntry` 已是一套成熟且**运行时正在使用**的约定，位于 `packages/server/src/agent-source/entry-probe.ts:51-68`：
+> 1. `package.json` 的 `pi-web.entry` **覆盖优先**；覆盖文件不存在则抛 `EntryOverrideError`，**不静默回退**
+> 2. 否则按 `index.ts` > `index.js` > `index.mjs` 取首个存在者
+> 3. 均无 → `{ kind: "none" }`
+>
+> 三条支撑「发布期直接复用 `probeEntry`」而非在 `pi-web.json` 另设 `entry` 字段：
+> - **零错位**：发布期与运行时同一函数、同一优先级，不会出现「发布时认 A、运行时加载 B」
+> - **零存量迁移**：全仓 **40 个 example、39 个有 `index.ts`、0 个用过 `pi-web.entry` 覆盖** ⇒ 约定命中率 ~97.5%，且无任何存量依赖显式声明
+> - **跨包引用已有先例**：`server/cli/install/local-source-registry.ts:40` 已 `import { probeEntry } from "@blksails/pi-web-server"`，该 barrel 明确标注「仅 node builtins + agent-source 只读探测，无 pi SDK 值导入，可安全重导出」（`packages/server/src/index.ts:43`）
+>
+> 反之，在 `pi-web.json` 新增 `entry` 字段会造出**第二个声明位**，与 `package.json#pi-web.entry` 可能不一致，反而扩大本缺陷的同类面。
+
+### 同源缺口（同一模式的其它出口，一并收口）
+
+| # | 缺口 | 位置 / 事实 |
+|---|---|---|
+| 1 | **entry 文件本身没有入 bundle 的通道** | `bundlePaths` 只由 `pi.*` glob 与 `web.dist` 两处填充（`manifest-compiler.ts:96-146`），**不含 entry**。故即便补上 `manifest.entry`，入口文件仍不会进 tarball——#6 能跑通是因为把 `index.ts` 走私进了 `pi.extensions`。修复须让 entry **自动加入 `bundlePaths`** |
+| 2 | **`kind` 缺省两侧不一致** | registry 侧 `deriveEffectiveKind` 缺省 **`agent`**（pi-clouds `packages/registry-client/src/manifest/kind.ts`）；pi-web 侧 `PiWebManifestSchema` 的 `kind` 默认 **`plugin`**（`packages/protocol/src/plugin/plugin-manifest.ts:117`）。不写 `kind` 的 agent 包会被发成 plugin——**发布成功但类型错**（plugin 不要求 entry），运行时却按 agent 加载 |
+| 3 | **`settings.schema` 同样没有 bundle 通道** | `RESOURCE_FIELDS` 仅 `skills\|extensions\|prompts\|themes`（`manifest-compiler.ts:30-31`），声明了 `settings` 的包，其 `schema.json` 进不了 bundle（`module-settings-agent` 即此形态） |
+
 ---
 
 ## #29 manifest 缺正规声明字段：入口 / routes / webext 只能借 `pi.extensions` 走私
@@ -57,9 +77,16 @@ manifest schema 没有承载 agent 入口与附属产物的字段组。`index.ts
 |---|---|
 | webext 源码路径约定 | 一律 `.pi/web/web.config.tsx` |
 | webext 产物路径约定 | 一律 `.pi/web/dist/`（`manifest.json` + `web-extension.mjs`） |
-| 已有构建好 dist 的 example | 10 个 |
-| 有源码待构建的 example | 7 个 |
-| **声明了 `web.dist` 的 example** | **0 个**（含 dist 已建好的 `plugin-code-review-agent`） |
+| 已有构建好 dist 的 example | **13 个** |
+| 有源码待构建的 example | 7 个（`aigc-agent` / `aigc-canvas-agent` / `aigc-canvas-nosurface-agent` / `canvas-plugin-stickers` / `logging-demo-agent` / `module-settings-agent` / `surface-demo-agent`） |
+| **声明了 `web.dist` 的 example** | **1 个** —— `plugin-code-review-agent`，且填的值就是约定默认路径本身：`"web": { "dist": ".pi/web/dist", "commands": ["review"] }` |
+| **拥有 `pi-web.json`（可发布）的 example** | **3 个 / 共 40 个** —— `canvas-component-watermark`(kind=component) / `module-settings-agent`(kind=agent) / `plugin-code-review-agent`(kind=plugin) |
+
+> 📌 **2026-07-20 实测更正（原记「已建 10 个」「声明者 0 个，含 plugin-code-review-agent」）**：dist 实为 13 个；`plugin-code-review-agent` 恰恰是**唯一声明了** `web.dist` 的那个。这一更正**加强而非削弱**「约定优先」的论证——全仓唯一使用该字段的样本，填的正是约定默认值，证明该字段在实践中纯属样板冗余。
+>
+> 📌 更大的图景：**40 个 example 只有 3 个带发布清单**，其余 37 个根本不可发布。故「顺手修 examples 的声明」的实际形态不是改声明，而是补清单——那是另一个量级的工作，需单独定范围。
+>
+> 📌 活体样本：`module-settings-agent` 同时命中 (b) 与 (e) 两条——它是 `kind:"agent"`、有 `.pi/web/web.config.tsx` 而无 dist、且 `pi-web.json` **无 `pi` 字段**（⇒ 现实现下 `bundlePaths` 为空，即使补上 entry，它声明的 `settings/schema.json` 仍进不了 bundle）。修复后它应当**明确报错提示先构建**，可直接用作回归 fixture。
 
 `manifest-compiler.ts:126` 的条件是 `if (m.web?.dist)`——**未声明即整段跳过，无任何提示**。于是包发出去 `hasWebext:false`，registry、cloud 一路 fail-closed 到默认 UI，**没有一环会告诉你「这个包本该有面板」**。
 
@@ -81,9 +108,14 @@ manifest schema 没有承载 agent 入口与附属产物的字段组。`index.ts
 - **(d) 陈旧产物防护**：比对 `web.config.tsx` 与 dist 的 mtime，产物旧于源则警告
 - **(e) 入口/routes 声明位**：清单增设正规的 `entry` + `files`（或 `agent.include`）字段组，与 #28 一并收口
 
-### 待查
+### 待查（已降级：不影响结论）
 
-canvas 的 OSS bundle 里究竟有无 `.pi/web/dist`（按上述推断应为「无」，需实证）。
+canvas 的 OSS bundle 里究竟有无 `.pi/web/dist`。**无论有无，面板失效的定因都不变**：
+
+- 若**无**（推断如此）——第 1 层断点成立，dist 从未入 bundle。
+- 若**有**（例如 1.0.0 的 bundle 由更早的非 CLI 途径打包时夹带了 dist）——**结论同样成立**：manifest 里没有 `webext` 声明位，registry 因而不会为它建索引（三个版本 `capabilities.hasWebext:false` 即证），消费面 `/v1/webext-dist/<hash>/<file>` 是**按 manifest 索引寻址**的，拿不到未索引的字节。
+
+⇒ 断点在**声明位**而非字节是否存在。实证下载需要消费面 tenant token（publish token 打 `GET /sources/:id` 实测返回 `UNAUTHORIZED: missing or invalid tenant token`），成本高于收益，故不作为修复前置。
 
 ---
 

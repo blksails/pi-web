@@ -56,6 +56,13 @@ export const PluginWebSchema = z.object({
    * opt-in,使其命令在 web 补全中默认可见(busy 卡死已由 fire-and-forget 修复)。
    */
   commands: z.array(z.string()).optional(),
+  /**
+   * 自动探测开关(spec: publish-agent-entry-and-bundle,R3.6)。缺省 `true`:未声明
+   * `dist` 时,发布期探测约定路径 `.pi/web/dist/manifest.json`,存在即自动纳入 —— 与
+   * 运行时 `resolve-plugin.ts` 的既有语义一致。置 `false` 则完全跳过探测(用于「有产物
+   * 但不想发布 webext」的包);显式声明 `dist` 时本开关不生效(显式优先)。
+   */
+  autoDetectDist: z.boolean().default(true),
 });
 export type PluginWeb = z.infer<typeof PluginWebSchema>;
 
@@ -115,11 +122,29 @@ export type ComponentSpec = z.infer<typeof ComponentSpecSchema>;
 export const PiWebManifestSchema = z.object({
   id: z.string().min(1),
   version: z.string().min(1),
+  /**
+   * 包类型。缺省 `"plugin"` —— **此缺省仅供运行时消费既有包**,不代表发布期可以不写。
+   *
+   * 背景(spec: publish-agent-entry-and-bundle,R4.1/R4.3):registry 侧
+   * `deriveEffectiveKind` 缺省为 `"agent"`,与此处相反 ⇒ 未声明 kind 的 agent 包会被
+   * 发成 plugin,**发布成功但类型错**。该风险由**发布期**堵住:`compile()` 在解析后检查
+   * 作者是否**显式书写**了 `kind`,未写即 `MANIFEST_KIND_REQUIRED` 拒绝发布。
+   *
+   * ★ 强制点刻意不放在本 schema:它同时被运行时 `resolve-plugin.ts` 用于解析**已安装**的
+   * 包,一旦必填,存量中未写 kind 的包会 `safeParse` 失败并被整份丢弃(退化为按目录名推导
+   * 的描述符)——那是运行时静默故障,比 #28 的发布期报错更隐蔽,且违反「不使存量版本失效」。
+   */
   kind: PluginKindSchema.default("plugin"),
   displayName: z.string().optional(),
   description: z.string().optional(),
   pi: PluginPiResourcesSchema.optional(),
   web: PluginWebSchema.optional(),
+  /**
+   * 通用文件白名单(glob,相对包根;spec: publish-agent-entry-and-bundle,R2.3)。
+   * 命中文件**进 bundle 但不进完整性引用集合** —— 与 webext dist 中的非 manifest 文件同档。
+   * 用于 `routes/**`、`lib/**` 等运行所需的附属文件:在此之前它们只能走私进 `pi.extensions`。
+   */
+  files: z.array(z.string().min(1)).optional(),
   bindings: PluginBindingsSchema.optional(),
   /** kind=component 时的组件字段组(其余 kind 忽略)。 */
   component: ComponentSpecSchema.optional(),
@@ -130,3 +155,22 @@ export type PiWebManifest = z.infer<typeof PiWebManifestSchema>;
 
 /** 清单文件名(包根)。 */
 export const PI_WEB_MANIFEST_FILENAME = "pi-web.json";
+
+/**
+ * webext 产物目录的**约定路径**(相对包根,posix 风格)。
+ *
+ * 单一真源:运行时解析(`packages/server/src/plugin/resolve-plugin.ts`)与发布期编译
+ * (`server/cli/publish/manifest-compiler.ts`)必须用同一取值 —— 两侧各存一份字面量正是
+ * #29 的成因之一。放在 protocol 是因为它是 zero-runtime 纯契约包,两侧都已依赖它。
+ *
+ * 用 posix 分隔符而非 `path.join`:该值会被写进发布清单的 `web.dist` 字段,跨平台必须
+ * 一致(Windows 上 `path.join` 会产出 `.pi\web\dist`,进清单即不可移植)。
+ */
+export const DEFAULT_WEBEXT_DIST = ".pi/web/dist";
+
+/**
+ * webext 源码文件的**约定路径**(相对包根,posix 风格)。
+ * 发布期据此判定「有源却无产物」——该情形必须硬失败提示先构建,不得静默跳过
+ * (spec: publish-agent-entry-and-bundle,R3.3;生产上 canvas 面板失效即死于此静默)。
+ */
+export const WEBEXT_SOURCE_CONFIG = ".pi/web/web.config.tsx";

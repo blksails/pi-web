@@ -78,7 +78,8 @@ export { runAdd, ADD_USAGE, type AddCommandOptions } from "./component/add-comma
 import { parseArgs } from "node:util";
 import { existsSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
-import type { PluginKind } from "@blksails/pi-web-protocol";
+import { PI_WEB_MANIFEST_FILENAME, type PluginKind } from "@blksails/pi-web-protocol";
+import type { CompileError } from "./publish/manifest-compiler.js";
 import { scaffold, type ScaffoldError } from "./scaffold/scaffold-writer.js";
 import { listTemplates, resolveExamplesRoot } from "./scaffold/template-catalog.js";
 import { createCliContext } from "./context.js";
@@ -540,19 +541,52 @@ async function runPublish(
   });
   if (!res.ok) {
     const e = res.error;
-    const detail = e.stage === "compile" || e.stage === "sign" ? JSON.stringify(e.error) : `${e.error.code}`;
+    const detail =
+      e.stage === "compile" || e.stage === "sign" ? describeCompileError(e.error) : `${e.error.code}`;
     reporter.fail("publish", { code: `PUBLISH_${e.stage.toUpperCase()}`, message: detail });
     return 1;
   }
+  // 编译期告警:演练与正式发布**同样输出**(R5.4)——否则演练看不到的问题会带到正式发布。
+  const warnSuffix = res.value.warnings.length > 0 ? `\n  ⚠️ ${res.value.warnings.join("\n  ⚠️ ")}` : "";
   if (res.value.kind === "dry-run") {
-    reporter.complete("publish", `dry-run:将发布 ${res.value.files.length} 个文件;清单 kind=${res.value.manifest["kind"]}(零外部写)`);
+    reporter.complete("publish", `dry-run:将发布 ${res.value.files.length} 个文件;清单 kind=${res.value.manifest["kind"]}(零外部写)${warnSuffix}`);
   } else {
     reporter.complete(
       "publish",
-      `${res.value.sourceId}@${res.value.version} 已发布(bundle=${res.value.bundle}${res.value.channelMoved ? ",通道已更新" : ""})`,
+      `${res.value.sourceId}@${res.value.version} 已发布(bundle=${res.value.bundle}${res.value.channelMoved ? ",通道已更新" : ""})${warnSuffix}`,
     );
   }
   return 0;
+}
+
+/**
+ * 编译期错误 → 用户可读指引(spec: publish-agent-entry-and-bundle,R1.3/R1.4/R3.3/R4.2)。
+ *
+ * 这些错误全部发生在**任何外部写之前**,所以文案的目标是「让作者一次就能改对」,
+ * 而不是陈述失败:kind 缺失要列出可选取值,webext 缺产物要给出构建命令,
+ * 入口类错误要指明补救方式。裸 JSON 错误码对作者等于没说。
+ */
+export function describeCompileError(e: CompileError): string {
+  switch (e.code) {
+    case "MANIFEST_KIND_REQUIRED":
+      return `${PI_WEB_MANIFEST_FILENAME} 必须显式声明 "kind",可选取值:${e.allowed.join(" | ")}。(历史上此字段缺省为 "plugin",而 registry 侧缺省为 "agent",两侧相反会导致包被发成错误类型,故改为必填)`;
+    case "ENTRY_NOT_FOUND":
+      return `kind="agent" 的包必须有入口文件,但未找到任何候选:${e.candidates.join(" / ")}。请在包根创建其一,或在 package.json 中声明 {"pi-web":{"entry":"<相对路径>"}}。`;
+    case "ENTRY_OVERRIDE_MISSING":
+      return `package.json 的 "pi-web".entry 指向的文件不存在:${e.declared}。请修正该声明或创建该文件(声明了覆盖就不会回退到 index.ts 约定)。`;
+    case "ENTRY_OUTSIDE_PACKAGE":
+      return `入口解析到包目录之外:${e.resolved}。发布产物只能包含包目录内的文件,请把入口移入包内或修正 "pi-web".entry。`;
+    case "WEBEXT_SOURCE_WITHOUT_DIST":
+      return `检测到 webext 源码 ${e.source},但产物 ${e.expectedDist}/manifest.json 不存在 —— 直接发布会得到一个「没有界面」的包。请先构建:\n    pnpm --filter <该包> build\n  构建后重试;若本包确实不需要发布 webext,在 ${PI_WEB_MANIFEST_FILENAME} 中设 {"web":{"autoDetectDist":false}}。`;
+    case "DECLARED_PATH_MISSING":
+      return `声明的路径没有匹配到任何文件:${e.paths.join(", ")}。请修正 ${PI_WEB_MANIFEST_FILENAME} 中的声明,或确认这些文件确实存在。`;
+    case "MANIFEST_MISSING":
+      return `未找到 ${PI_WEB_MANIFEST_FILENAME}:${e.expectedPath}。publish 不接受位置参数,请先 cd 进包目录再执行。`;
+    case "MANIFEST_INVALID":
+      return `${PI_WEB_MANIFEST_FILENAME} 格式不合法:${e.issues.join("; ")}`;
+    case "KEY_UNUSABLE":
+      return `签名私钥不可用(${e.reason})。请检查 --key 指向的文件是否存在且为 {publicKey, privateKey} 结构。`;
+  }
 }
 
 export async function runSubcommand(

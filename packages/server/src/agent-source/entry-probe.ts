@@ -10,7 +10,12 @@ import path from "node:path";
 import { EntryOverrideError } from "./errors.js";
 import type { EntryProbe } from "./types.js";
 
-const ENTRY_PRIORITY = ["index.ts", "index.js", "index.mjs"] as const;
+/**
+ * 约定入口的优先级序列。**导出**是刻意的:发布期(`server/cli/publish`)需要在
+ * 「探测不到入口」的错误提示里列出候选文件名,若各自维护一份字面量,两处会漂移。
+ * 判定逻辑本身仍只有 `probeEntry` 一处实现。
+ */
+export const ENTRY_PRIORITY = ["index.ts", "index.js", "index.mjs"] as const;
 
 async function isFile(p: string): Promise<boolean> {
   try {

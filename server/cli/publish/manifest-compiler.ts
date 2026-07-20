@@ -11,15 +11,27 @@
  *    验签失败)。
  *  - glob 展开:声明路径可含通配;展开后只含确定文件列表;某声明**零命中** → `DECLARED_PATH_MISSING`。
  */
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { globSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import {
   PI_WEB_MANIFEST_FILENAME,
   PiWebManifestSchema,
+  DEFAULT_WEBEXT_DIST,
+  WEBEXT_SOURCE_CONFIG,
   type PluginKind,
 } from "@blksails/pi-web-protocol";
 import { computeFingerprint, computeIntegrity, signManifest } from "@pi-clouds/registry-client";
+// ★ 入口判定**复用运行时同一实现**,绝不复制一份 —— 复制即制造会漂移的副本,
+//   而「发布认 A、运行认 B」正是本 spec 要根除的失败模式(R1.7)。
+//   该 barrel 保证「仅 node builtins + agent-source 只读探测,无 pi SDK 值导入」
+//   (packages/server/src/index.ts:43),已有先例 server/cli/install/local-source-registry.ts:40。
+import { probeEntry, EntryOverrideError, ENTRY_PRIORITY } from "@blksails/pi-web-server";
+
+/** kind 的可选取值(供 MANIFEST_KIND_REQUIRED 提示;与 protocol 的 PluginKindSchema 同源)。 */
+const PLUGIN_KINDS: readonly string[] = ["agent", "plugin", "component"];
+/** 探测不到入口时提示的候选文件名 —— 直接引用运行时序列,避免副本漂移。 */
+const ENTRY_CANDIDATES: readonly string[] = ENTRY_PRIORITY;
 
 export type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: E };
 const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
@@ -48,18 +60,37 @@ export interface CompiledPackage {
   readonly displayName: string;
   readonly description: string;
   readonly refs: readonly CompiledFile[];
-  /** webext 产物目录(相对包根),声明了 `web.dist` 时存在。 */
+  /**
+   * agent 入口引用(spec: publish-agent-entry-and-bundle,R1.1/R1.6)。
+   * **仅 `kind==="agent"` 时存在**;由运行时同一套 `probeEntry` 判定得出,故发布期与
+   * 运行期恒指向同一文件(R1.7)。独立于 `refs`:`refs` 承载 resource 字段语义,
+   * entry 在 registry 侧是独立的顶层字段。
+   */
+  readonly entry?: { readonly path: string; readonly integrity: string };
+  /** webext 产物目录(相对包根),声明了 `web.dist` 或探测到约定产物时存在。 */
   readonly webextDist?: string;
-  /** webext manifest.json 的 integrity(声明了 `web.dist` 时存在)。 */
+  /** webext manifest.json 的 integrity(同上条件)。 */
   readonly webextManifestIntegrity?: string;
   readonly bundlePaths: readonly string[];
+  /** 非阻断告警(当前:webext 产物陈旧)。演练与正式发布均须输出(R5.4)。 */
+  readonly warnings: readonly string[];
 }
 
 export type CompileError =
   | { readonly code: "MANIFEST_MISSING"; readonly expectedPath: string }
   | { readonly code: "MANIFEST_INVALID"; readonly issues: readonly string[] }
   | { readonly code: "DECLARED_PATH_MISSING"; readonly paths: readonly string[] }
-  | { readonly code: "KEY_UNUSABLE"; readonly reason: "missing" | "unreadable" | "malformed" };
+  | { readonly code: "KEY_UNUSABLE"; readonly reason: "missing" | "unreadable" | "malformed" }
+  /** 清单未声明 kind(R4.2)。两侧缺省相反,故不推断,必须显式声明。 */
+  | { readonly code: "MANIFEST_KIND_REQUIRED"; readonly allowed: readonly string[] }
+  /** kind=agent 但探测不到任何入口(R1.4)。`candidates` 为按序尝试过的约定文件名。 */
+  | { readonly code: "ENTRY_NOT_FOUND"; readonly candidates: readonly string[] }
+  /** `package.json#pi-web.entry` 声明的覆盖文件不存在(R1.3)。不静默回退。 */
+  | { readonly code: "ENTRY_OVERRIDE_MISSING"; readonly declared: string }
+  /** 入口解析结果越出包目录(R1.5)。registry 侧会拒绝包外路径,前置拦截以免烧版本号。 */
+  | { readonly code: "ENTRY_OUTSIDE_PACKAGE"; readonly resolved: string }
+  /** 存在 webext 源但无对应产物(R3.3)。不静默跳过 —— 生产面板失效即死于此。 */
+  | { readonly code: "WEBEXT_SOURCE_WITHOUT_DIST"; readonly source: string; readonly expectedDist: string };
 
 /** 把 glob 结果规范成 posix 相对路径(去 packageDir 前缀、统一 `/`)。 */
 function toRel(packageDir: string, abs: string): string {
@@ -92,9 +123,48 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
   }
   const m = parsed.data;
 
+  // ── kind 必须由作者**显式书写**(R4.1/R4.3)────────────────────────────────
+  // 判据刻意是「原始 JSON 里有没有这个键」,而非「解析后 m.kind 有没有值」——
+  // schema 为运行时兼容保留了 `.default("plugin")`,解析后恒有值,检测不出"没写"。
+  // 强制点放在发布期而非 schema:后者被运行时用于解析已安装包,改必填会让存量中
+  // 未写 kind 的包被整份丢弃(运行时静默故障,且违反 R6.2)。
+  if (!Object.prototype.hasOwnProperty.call(parsedJson as object, "kind")) {
+    return fail({ code: "MANIFEST_KIND_REQUIRED", allowed: PLUGIN_KINDS });
+  }
+
   const refs: CompiledFile[] = [];
   const bundlePaths = new Set<string>();
   const missing: string[] = [];
+  const warnings: string[] = [];
+
+  // ── agent 入口(R1.1–R1.6)────────────────────────────────────────────────
+  // 仅 agent 类型产出 entry:plugin/component 即便有 index.ts 也不写(R1.6)——
+  // registry 对已声明的 entry 仍按 ref 校验,写了徒增失败面且语义误导。
+  let entry: { readonly path: string; readonly integrity: string } | undefined;
+  if (m.kind === "agent") {
+    let probed: Awaited<ReturnType<typeof probeEntry>>;
+    try {
+      probed = await probeEntry(packageDir);
+    } catch (e) {
+      if (e instanceof EntryOverrideError) {
+        // 覆盖声明的文件不存在 → 不静默回退到约定探测(R1.3),与运行时语义一致
+        return fail({ code: "ENTRY_OVERRIDE_MISSING", declared: (e as { path?: string }).path ?? String(e) });
+      }
+      throw e;
+    }
+    if (probed.kind === "none") {
+      return fail({ code: "ENTRY_NOT_FOUND", candidates: ENTRY_CANDIDATES });
+    }
+    // 越界拦截(R1.5):probeEntry 的覆盖分支允许 `../x` 与绝对路径,但 registry 侧
+    // `assertSafeRelativePath` 会拒绝包外路径 —— 不前置拦截就会烧掉一个版本号。
+    const rel = toRel(packageDir, probed.path);
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+      return fail({ code: "ENTRY_OUTSIDE_PACKAGE", resolved: probed.path });
+    }
+    const bytes = await readFile(probed.path);
+    entry = { path: rel, integrity: computeIntegrity(bytes) };
+    bundlePaths.add(rel); // R2.1:声明了 entry 就必须打包,否则回源核验取不到 → 照样烧号
+  }
 
   // resource 字段:glob 展开每个声明,逐文件摘要
   for (const field of RESOURCE_FIELDS) {
@@ -121,16 +191,97 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
     }
   }
 
+  // ── 通用文件白名单(R2.3/R2.4)──────────────────────────────────────────────
+  // 与 resource 字段的关键区别:**只进 bundlePaths、不进 refs** —— 即打包但不受完整性
+  // 保护,与 webext dist 里的非 manifest 文件同档。`routes/**`、`lib/**` 等运行所需的
+  // 附属文件由此有了正规入口,不必再走私进 `pi.extensions`。
+  for (const pattern of m.files ?? []) {
+    const matched = globSync(pattern, { cwd: packageDir })
+      .map((p) => (typeof p === "string" ? p : String(p)))
+      .filter(Boolean);
+    let hit = 0;
+    for (const rel of matched) {
+      try {
+        await readFile(join(packageDir, rel)); // 只收文件(目录读会抛)
+        bundlePaths.add(rel.split(sep).join("/"));
+        hit++;
+      } catch {
+        /* 目录 */
+      }
+    }
+    if (hit === 0) missing.push(pattern); // 沿用既有「声明零命中」语义(R2.4)
+  }
+
+  // ── 包元数据(R2.2)────────────────────────────────────────────────────────
+  // 必须入包:`package.json#pi-web.entry` 是入口覆盖的**唯一权威**,不打包会导致安装后
+  // 运行期 probeEntry 读不到覆盖、回退到约定入口 —— 与发布期判定错位(正是本 spec 要防的)。
+  // 同样只进 bundlePaths 不进 refs:它是元数据而非受保护产物。
+  try {
+    await readFile(join(packageDir, "package.json"));
+    bundlePaths.add("package.json");
+  } catch {
+    /* 无 package.json:合法(纯清单包),不报错 */
+  }
+
+  // ── webext 产物(R3.1–R3.6)────────────────────────────────────────────────
+  // 判定次序与运行时 `resolve-plugin.ts` 完全一致:显式声明优先 → 否则探测约定路径。
+  // 在此之前发布期是 `if (m.web?.dist)` —— 未声明即**整段静默跳过**,包发出去
+  // hasWebext:false,一路 fail-closed 到默认 UI,没有任何一环提示「这个包本该有面板」。
   let webextDist: string | undefined;
   let webextManifestIntegrity: string | undefined;
+  const autoDetect = m.web?.autoDetectDist ?? true;
+  let effectiveDist: string | undefined;
   if (m.web?.dist) {
-    webextDist = m.web.dist;
+    effectiveDist = m.web.dist; // 显式优先,既有行为完全不变(R3.1)
+  } else if (autoDetect) {
+    // 约定探测(R3.2):以产物清单文件存在为准,与运行时同一判据
+    try {
+      await readFile(join(packageDir, DEFAULT_WEBEXT_DIST, "manifest.json"));
+      effectiveDist = DEFAULT_WEBEXT_DIST;
+    } catch {
+      // 无产物:若存在 webext 源码则硬失败(R3.3),否则是"本就没有 webext 的包",正常跳过
+      let hasSource = false;
+      try {
+        await readFile(join(packageDir, WEBEXT_SOURCE_CONFIG));
+        hasSource = true;
+      } catch {
+        /* 无源:正常 */
+      }
+      if (hasSource) {
+        return fail({
+          code: "WEBEXT_SOURCE_WITHOUT_DIST",
+          source: WEBEXT_SOURCE_CONFIG,
+          expectedDist: DEFAULT_WEBEXT_DIST,
+        });
+      }
+    }
+  }
+  // autoDetect=false 且未显式声明 ⇒ effectiveDist 恒 undefined:完全跳过探测,
+  // 且不因产物缺失而失败(R3.6)——用于「有产物但不想发布 webext」的包。
+
+  if (effectiveDist) {
+    webextDist = effectiveDist;
     // webext 只有 manifest.json 受完整性保护(与 registry collectIntegrityRefs 一致);
     // 但整棵 dist 树都要进 bundle,install 才能物化 web-extension.mjs 等。
     const distManifest = join(packageDir, webextDist, "manifest.json");
     try {
       const bytes = await readFile(distManifest);
       webextManifestIntegrity = computeIntegrity(bytes);
+      // 陈旧产物防护(R3.5):产物清单早于源码 ⇒ 警告但不阻断。
+      // 只比 mtime、不做 hash 比对 —— 源→产物无稳定映射,hash 比对误报率高。
+      try {
+        const [distStat, srcStat] = await Promise.all([
+          stat(distManifest),
+          stat(join(packageDir, WEBEXT_SOURCE_CONFIG)),
+        ]);
+        if (distStat.mtimeMs < srcStat.mtimeMs) {
+          warnings.push(
+            `webext 产物可能已过期:${webextDist}/manifest.json 早于 ${WEBEXT_SOURCE_CONFIG},建议重新构建后再发布。`,
+          );
+        }
+      } catch {
+        /* 无源文件(纯产物包)⇒ 无从比对,跳过 */
+      }
     } catch {
       missing.push(`${webextDist}/manifest.json`);
     }
@@ -149,6 +300,8 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
   if (missing.length > 0) return fail({ code: "DECLARED_PATH_MISSING", paths: missing });
 
   return ok({
+    ...(entry ? { entry } : {}),
+    warnings,
     kind: m.kind,
     id: m.id,
     version: m.version,
@@ -208,6 +361,11 @@ export function sign(pkg: CompiledPackage, keyPath: string): Result<SignedManife
     kind: pkg.kind, // ★ 显式,不依赖任一侧缺省
     publisher: computeFingerprint(publicKey),
   };
+  // ★ #28 修复(R1.1):registry 侧 `validate.ts` 对 kind=agent 无条件要求 entry,
+  //   在此之前 sign() 从不产出该字段 ⇒ agent 包 100% 落 failed 并烧掉版本号。
+  //   仅 agent 有 entry(compile 已保证),故此处无需再判 kind。
+  //   签名覆盖范围随之包含 entry;signManifest 内部做 canonical 规范化,字段插入位置不影响结果。
+  if (pkg.entry) base["entry"] = { path: pkg.entry.path, integrity: pkg.entry.integrity };
   for (const field of RESOURCE_FIELDS) {
     const items = byField(field);
     if (items.length > 0) base[field] = items;

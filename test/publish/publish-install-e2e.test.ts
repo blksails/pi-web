@@ -133,6 +133,58 @@ describe("publish → install 端到端(契约夹具)", () => {
     void port; // setup() 的第一个 fake 仅演示,主用例用 fake2
   });
 
+  /**
+   * ★ #28 回归(spec: publish-agent-entry-and-bundle,任务 2 / Req 6.1)
+   *
+   * 缺陷原始症状(2026-07-20 生产真机 + 本用例复现):`kind:"agent"` 的包经 CLI 发布,
+   * upload 与 registerVersion 均"返回成功",但版本落库即 `status=failed`:
+   *
+   *     failureReason: "VALIDATION: manifest.entry must be an object"
+   *
+   * 随后 setChannel 报 VERSION_REJECTED,**且该版本号被永久烧掉**(failed 版本占号)。
+   * 根因两侧:`manifest-compiler.ts` 的 `sign()` 从不产 `entry`;registry 侧
+   * `validate.ts` 对 `kind==="agent"` 无条件要求 `entry`。
+   *
+   * 该字符串是本用例的复现锚点 —— 修复前必须以此原因失败,否则说明夹具没走到校验。
+   */
+  it("★ #28 回归:kind=agent 含 routes 的包能完成全链发布并被安装", async () => {
+    const fake = createFakeRegistry();
+    const port = inProcPort(fake);
+    const keys = generateEd25519KeyPair();
+    const sourceId = "acme/agent-pack";
+    await fake.api.registerPublisher(fake.adminToken, { id: "acme", name: "Acme", keys: [{ publicKey: keys.publicKey }] });
+    await fake.api.createSource(fake.adminToken, {
+      id: sourceId, displayName: "Agent Pack", description: "d", visibility: "org",
+      policy: { secrets: [], resources: { vcpu: 1, memoryGiB: 1 } }, tenantId: fake.tenantId, publisherId: "acme",
+    });
+
+    // 临时目录夹具:入口 + 路由子目录(不触碰 examples/ 下任何真实示例)
+    const dir = scratch();
+    writeFileSync(join(dir, "pi-web.json"), JSON.stringify({
+      id: sourceId, version: "1.0.0", kind: "agent", files: ["routes/**/*.ts"],
+    }));
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "agent-pack", private: true }));
+    writeFileSync(join(dir, "index.ts"), "export default { systemPrompt: 'x' };\n");
+    mkdirSync(join(dir, "routes"), { recursive: true });
+    writeFileSync(join(dir, "routes/ping.ts"), "export const ping = () => ({ pong: true });\n");
+    const keyPath = join(dir, "key.json");
+    writeFileSync(keyPath, JSON.stringify(keys));
+
+    const pub = await publish(port, { packageDir: dir, keyPath });
+    expect(pub.ok, JSON.stringify(pub)).toBe(true);
+    if (!pub.ok || pub.value.kind !== "published") throw new Error("publish failed");
+    expect(pub.value.channelMoved).toBe(true);
+
+    // 安装并核验:入口、路由、包元数据都应物化到目标目录
+    const target = join(scratch(), "installed-agent");
+    const inst = await installFromRegistry(port, sourceId, { channel: "stable", targetDir: target });
+    expect(inst.ok, JSON.stringify(inst)).toBe(true);
+    if (!inst.ok) throw new Error("install failed");
+    expect(readFileSync(join(target, "index.ts"), "utf8")).toContain("systemPrompt");
+    expect(readFileSync(join(target, "routes/ping.ts"), "utf8")).toContain("pong");
+    expect(readFileSync(join(target, "package.json"), "utf8")).toContain("agent-pack");
+  });
+
   it("★ 重复发布同版本 → VERSION_REJECTED,无副作用(通道不动)", async () => {
     const fake = createFakeRegistry();
     const port = inProcPort(fake);

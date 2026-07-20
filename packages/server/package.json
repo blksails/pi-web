@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-server",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": false,
   "type": "module",
   "sideEffects": false,

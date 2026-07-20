@@ -1,0 +1,9 @@
+{
+  "$schema": "https://pi-web.dev/schema/pi-web.json",
+  "id": "e2e/aigc-canvas-agent",
+  "version": "1.0.3",
+  "kind": "agent",
+  "displayName": "AIGC Canvas 画廊",
+  "description": "画廊 = attachment 物化视图 + 二创工作台(domain=canvas 的 AAS 实例)。入口 index.ts 由约定探测得出;routes/ 经 files 白名单入包;webext 产物走 .pi/web/dist 约定探测(需先构建)。版本从 1.0.3 起——1.0.0/1.0.1/1.0.2 已被占用(前两者为手工发布,1.0.2 亦然)。",
+  "files": ["routes/**/*.ts"]
+}

@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   PiWebManifestSchema,
   PI_WEB_MANIFEST_FILENAME,
+  DEFAULT_WEBEXT_DIST,
   type PiWebManifest,
 } from "@blksails/pi-web-protocol";
 import type { PluginDescriptor } from "./plugin.types.js";
@@ -20,7 +21,8 @@ import type { PluginDescriptor } from "./plugin.types.js";
 const PI_RESOURCE_DIRS = ["extensions", "skills", "prompts", "themes"] as const;
 type PiResourceDir = (typeof PI_RESOURCE_DIRS)[number];
 /** webext 产物默认目录(相对包根)。 */
-const DEFAULT_WEBEXT_DIST = path.join(".pi", "web", "dist");
+// DEFAULT_WEBEXT_DIST 已上移至 @blksails/pi-web-protocol(单一真源:运行时与发布期同值)。
+// 原本此处是 `path.join(".pi","web","dist")`,与发布期各存一份字面量 —— 正是 #29 的成因之一。
 
 async function pathExists(p: string): Promise<boolean> {
   try {
