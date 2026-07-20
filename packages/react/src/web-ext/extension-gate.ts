@@ -143,9 +143,23 @@ export function isApiCompatible(range: string, hostVersion: string): boolean {
       host.patch === spec.patch
     );
   }
-  if (spec.major >= 1) return host.major === spec.major && hostGe;
-  // 0.x:同 minor 且 host >= spec
-  return host.major === 0 && host.minor === spec.minor && hostGe;
+  // caret:同 major 且 host >= spec —— **0.x 与 1.x 走同一条规则**(#33)。
+  //
+  // ⚠️ 此处**刻意偏离标准 semver 的 0.x 语义**(标准下 `^0.1.0` 只匹配 0.1.x,因为 0.x 的
+  // 每个 minor 都被假定可能破坏)。看到这里请**不要"修正"回同-minor 判定** —— 那会立刻
+  // 打死全部存量扩展。原因:
+  //
+  //  1. 宿主版本此前长期自述 `0.1.0`(`server/bootstrap.ts` 曾用 `env ?? "0.1.0"` 兜底,
+  //     而 `@blksails/pi-web-kit` 实际已到 0.5.0),**minor 从未真正充当过保护边界** ——
+  //     真有破坏性变更时它照样放行。放宽不是失去保护,而是承认这份保护本就不存在。
+  //  2. web-kit 的版本号随 monorepo 统一 bump(与 protocol/server 同为 0.5.x),
+  //     minor 跳动不表达 API 破坏。实测 0.1.0 → 0.5.0 导出面纯增量:原有符号一个未删,
+  //     新增运行时值仅 `renderSurfaceOp` 一个,其余全是编译期擦除的 type。
+  //  3. 仓内 14 个 example 的 dist 全部声明 `^0.1.0`。同-minor 规则下,宿主一旦自述真实
+  //     版本,它们会**全部**被判不兼容。
+  //
+  // ★ 因此:**破坏性变更请 bump major(0.x → 1.0),不要指望 minor 拦截。**
+  return host.major === spec.major && hostGe;
 }
 
 /**

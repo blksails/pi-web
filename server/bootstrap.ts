@@ -25,6 +25,37 @@ function bool(v: string | undefined, dflt = false): boolean {
   return v === "1" || v === "true";
 }
 
+/**
+ * 构建期注入的 `@blksails/pi-web-kit` 真实版本(#33)。
+ * 由 `scripts/build-server.mjs`(生产)与 `vite.config.ts`(dev/前端)两侧的 esbuild/vite
+ * `define` 从 `packages/web-kit/package.json` 读出后内联。
+ */
+declare const __PI_WEB_KIT_VERSION__: string | undefined;
+
+/**
+ * 宿主自述的 web-kit 版本(#33)——**扩展兼容判定的输入**,见
+ * `packages/react/src/web-ext/extension-gate.ts` 的 `isApiCompatible`。
+ *
+ * 取值次序:env 覆盖 → 构建期注入的真实版本。
+ *
+ * ★ env 在此**只是覆盖手段,不再提供默认值**。此前是 `env.X ?? "0.1.0"`:生产没设该 env,
+ * 宿主便长期自称 0.1.0,而包实际已到 0.5.0。后果是「填对」与「填错」的结果相反 ——
+ * 不设(自称 0.1.0)则按真实版本构建的扩展被拒;一旦有人"顺手"设成真实版本,所有存量
+ * `^0.1.0` 扩展立刻全部被拒。根治办法是让宿主版本**来自包本身**,而不是靠人去对齐。
+ */
+export function resolveHostApiVersion(env: NodeJS.ProcessEnv): string {
+  const override = env.NEXT_PUBLIC_PI_WEB_KIT_VERSION;
+  if (override !== undefined && override.trim() !== "") return override;
+  // 注入缺失只可能是构建配置被破坏(两侧 define 都没生效);此时宁可显式失败,
+  // 也不要静默回落到某个硬编码版本 —— 那正是本缺陷的成因。
+  if (typeof __PI_WEB_KIT_VERSION__ !== "string" || __PI_WEB_KIT_VERSION__ === "") {
+    throw new Error(
+      "[bootstrap] 宿主 web-kit 版本未注入:请检查 scripts/build-server.mjs 与 vite.config.ts 的 __PI_WEB_KIT_VERSION__ define",
+    );
+  }
+  return __PI_WEB_KIT_VERSION__;
+}
+
 export interface BootstrapPayload {
   readonly defaultSource?: string;
   readonly defaultModel?: string;
@@ -88,7 +119,7 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
     defaultCwd,
     autoStart,
     multiTenant,
-    hostApiVersion: env.NEXT_PUBLIC_PI_WEB_KIT_VERSION ?? "0.1.0",
+    hostApiVersion: resolveHostApiVersion(env),
     features: {
       canvas: bool(env.NEXT_PUBLIC_PI_WEB_CANVAS),
       sourcePicker: bool(env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER),

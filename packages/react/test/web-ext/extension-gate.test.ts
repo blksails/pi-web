@@ -60,10 +60,24 @@ async function codeManifest(
 }
 
 describe("isApiCompatible", () => {
-  it("caret 0.x:同 minor 且 host>=spec 通过", () => {
+  /**
+   * #33:0.x 的同-minor 约束**已废除**,与 >=1 走同一条「同 major 且 host>=spec」。
+   *
+   * 原用例断言 `^0.1.0 × 0.2.0 → false`(0.x 不同 minor 不兼容)。该规则被移除,原因见
+   * `extension-gate.ts` 的实现注释:宿主版本此前长期自述 0.1.0,minor 从未真正充当过
+   * 保护边界;且 web-kit 版本随 monorepo 统一 bump,minor 跳动不表达 API 破坏。
+   * 保护边界改由 **major** 承担(下方最后一条断言)。
+   */
+  it("caret 0.x:同 major 且 host>=spec 通过(跨 minor 不再拦截)", () => {
     expect(isApiCompatible("^0.1.0", "0.1.3")).toBe(true);
-    expect(isApiCompatible("^0.1.0", "0.2.0")).toBe(false); // 0.x 不同 minor 不兼容
-    expect(isApiCompatible("^0.1.5", "0.1.2")).toBe(false); // host < spec
+    expect(isApiCompatible("^0.1.5", "0.1.2")).toBe(false); // host < spec:仍拒
+    // ★ 本条是 #33 的核心:存量扩展(^0.1.0)必须能在自述真实版本的宿主(0.5.0)上加载。
+    //   修复前为 false —— 宿主一旦不再谎称 0.1.0,仓内 14 个 example 的 dist 会全部被拒。
+    expect(isApiCompatible("^0.1.0", "0.5.0")).toBe(true);
+    // 反向:按新版本构建的扩展在老宿主上仍应被拒(host < spec)
+    expect(isApiCompatible("^0.5.0", "0.1.0")).toBe(false);
+    // major 仍是硬边界 —— 破坏性变更请 bump major
+    expect(isApiCompatible("^0.1.0", "1.0.0")).toBe(false);
   });
   it("caret >=1:同 major 且 host>=spec", () => {
     expect(isApiCompatible("^1.2.0", "1.5.0")).toBe(true);
