@@ -67,6 +67,12 @@ export interface CompiledPackage {
    * entry 在 registry 侧是独立的顶层字段。
    */
   readonly entry?: { readonly path: string; readonly integrity: string };
+  /**
+   * agent 声明的 route 名集合(#31),按 `routes/<name>.<ext>` 目录约定静态提取。
+   * **仅 `kind==="agent"` 且存在非空 `routes/` 目录时存在**;registry 侧 `deriveCapabilities`
+   * 据此派生 `hasRoutes`(此前恒 `false`,因为 `sign()` 从不产出该字段)。
+   */
+  readonly routes?: readonly string[];
   /** webext 产物目录(相对包根),声明了 `web.dist` 或探测到约定产物时存在。 */
   readonly webextDist?: string;
   /** webext manifest.json 的 integrity(同上条件)。 */
@@ -198,6 +204,34 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
     bundlePaths.add(rel); // R2.1:声明了 entry 就必须打包,否则回源核验取不到 → 照样烧号
   }
 
+  // ── agent 声明式 routes(#31)────────────────────────────────────────────────
+  // 目的:让 registry 的 `deriveCapabilities` 能派生出正确的 `hasRoutes` —— 在此之前
+  // `sign()` 从不产出 `routes`,导致快照对所有 agent 恒为 false,与运行时事实矛盾。
+  //
+  // ★ 提取来源的决策:按 `routes/<name>.<ext>` **目录约定**静态提取(文件名即 route 名,
+  //   `index.*` 是 barrel 不计)。**不加载用户代码** —— route 的权威值在 `defineAgent({routes})`
+  //   这个运行时值里,取它必须 jiti 加载 agent 入口,而那既违反「用户代码只在子进程 loader 内
+  //   运行」的既有架构约束(`agent-loader.ts` 文件头),又会拉起整个 pi SDK 依赖树(实测加载
+  //   `examples/agent-routes-demo/index.ts` 超时 >2min),更会把 compile 从纯静态遍历变成
+  //   执行任意用户代码。故取约定而非取权威值,代价是**只覆盖遵循目录约定的 agent**。
+  let routeNames: readonly string[] | undefined;
+  if (m.kind === "agent") {
+    const inRoutesDir = await expandToFiles(packageDir, "routes");
+    const names = inRoutesDir
+      .map((p) => p.slice("routes/".length))
+      .filter((rest) => !rest.includes("/")) // 只认一级:嵌套子目录不是 route 声明
+      .filter((f) => /\.(ts|js|mjs)$/.test(f))
+      .map((f) => f.replace(/\.(ts|js|mjs)$/, ""))
+      .filter((n) => n !== "index"); // barrel 不是 route
+    if (names.length > 0) {
+      routeNames = [...new Set(names)].sort();
+      // 声明了就必须打包 —— 与 entry 同一教训(#28):manifest 说有、包里没有,
+      // 装完即 `import "./routes/index.js"` 失败。routes 文件与 `files` 白名单同档:
+      // 进 bundle 不进 refs(不受 integrity 保护)。
+      for (const rel of inRoutesDir) bundlePaths.add(rel);
+    }
+  }
+
   // resource 字段:展开每个声明(glob / 文件 / **目录**),逐文件摘要
   for (const field of RESOURCE_FIELDS) {
     const patterns = m.pi?.[field] ?? [];
@@ -312,6 +346,7 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
 
   return ok({
     ...(entry ? { entry } : {}),
+    ...(routeNames ? { routes: routeNames } : {}),
     warnings,
     kind: m.kind,
     id: m.id,
@@ -377,6 +412,9 @@ export function sign(pkg: CompiledPackage, keyPath: string): Result<SignedManife
   //   仅 agent 有 entry(compile 已保证),故此处无需再判 kind。
   //   签名覆盖范围随之包含 entry;signManifest 内部做 canonical 规范化,字段插入位置不影响结果。
   if (pkg.entry) base["entry"] = { path: pkg.entry.path, integrity: pkg.entry.integrity };
+  // #31:route 名数组(registry `SourceManifest.routes?: readonly string[]` 的形状)。
+  // 仅 agent 且有声明时写出;registry `deriveCapabilities` 据此派生 hasRoutes。
+  if (pkg.routes && pkg.routes.length > 0) base["routes"] = [...pkg.routes];
   for (const field of RESOURCE_FIELDS) {
     const items = byField(field);
     if (items.length > 0) base[field] = items;

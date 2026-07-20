@@ -4,12 +4,12 @@
  * 签名可被 registry 侧验签纯函数验证(任务 8.2 验收)。
  */
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync, readdirSync, readFileSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateEd25519KeyPair, computeFingerprint, verifyManifest } from "@pi-clouds/registry-client";
 import { publish } from "@/server/cli/publish/publish-orchestrator";
-import { compile } from "@/server/cli/publish/manifest-compiler";
+import { compile, sign } from "@/server/cli/publish/manifest-compiler";
 import { describeCompileError } from "@/server/cli/index";
 import type { RegistryPort, RegistryError, RegistryOrigin, SignedManifest } from "@/server/cli/registry/registry-port";
 
@@ -285,6 +285,105 @@ describe("publish — agent 入口与打包通道", () => {
  * 「零命中」报 `DECLARED_PATH_MISSING` —— 对着一个明明存在的目录说"路径不存在"。
  * `examples/plugin-code-review-agent` 因此长期编译不过(早于 #28/#29 的改动)。
  */
+/**
+ * #31 —— `manifest.routes` 从不产出 ⇒ registry `deriveCapabilities` 的 `hasRoutes` 恒 false。
+ *
+ * ★ 一致性护栏(本 describe 的存在理由)
+ * 修复的风险不是"写不出 routes",而是"写出**错的** routes" —— 那会把「快照恒假」换成
+ * 「快照可能假」,比现状更难查。本组用例守两条不变式:
+ *   (1) 提取结果 === 该 agent 实际声明的 route 名集合(下方「文件名 ≡ 声明 name」用例
+ *       直接读真实 example 的源码核对,约定一旦被破坏即红);
+ *   (2) 声明了 routes 就必须打包(否则装完 `import "./routes/index.js"` 失败,
+ *       manifest 说有、包里没有 —— 与 #28 的 entry 是同一教训)。
+ */
+describe("publish — agent routes 提取与一致性(#31)", () => {
+  const AGENT = { id: "acme/r", version: "1.0.0", kind: "agent" as const };
+
+  it("按 routes/<name>.<ext> 约定提取,index 为 barrel 不计", async () => {
+    const dir = makePkg(AGENT, {
+      "index.ts": "// entry",
+      "routes/index.ts": "export const routes = [];",
+      "routes/ping.ts": "// p",
+      "routes/echo.ts": "// e",
+      "routes/whoami.ts": "// w",
+    });
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.value.routes).toEqual(["echo", "ping", "whoami"]);
+    // 声明了就必须打包(#28 同源教训):整个 routes/ 树进 bundle
+    expect(c.value.bundlePaths).toEqual(
+      expect.arrayContaining(["routes/index.ts", "routes/ping.ts", "routes/echo.ts", "routes/whoami.ts"]),
+    );
+    // 但不进完整性引用集合(与 files 白名单同档)
+    expect(c.value.refs.some((f) => f.path.startsWith("routes/"))).toBe(false);
+  });
+
+  it("★ 一致性:提取出的名字 === 真实 example 源码里声明的 name", async () => {
+    // 直接读仓内真实 example 的 route 源码,把 `name: "..."` 抽出来与提取结果核对。
+    // 这条守的是「文件名 ≡ 声明 name」这个约定本身 —— 一旦有人写了 foo.ts 却声明
+    // name:"bar",静态提取就会产出错误的 manifest.routes,本用例立刻红。
+    const exDir = join(process.cwd(), "examples/agent-routes-demo/routes");
+    const declared = readdirSync(exDir)
+      .filter((f) => f.endsWith(".ts") && f !== "index.ts")
+      .map((f) => {
+        const src = readFileSync(join(exDir, f), "utf8");
+        const m = /name:\s*["']([a-z0-9-]+)["']/.exec(src);
+        return { file: f.replace(/\.ts$/, ""), name: m?.[1] };
+      });
+    expect(declared.length).toBeGreaterThan(0);
+    for (const d of declared) expect(d.name, `${d.file}.ts 的声明 name 与文件名不符`).toBe(d.file);
+
+    // 同一份真实 routes/ 目录经 compile 提取,结果须等于上述声明集合
+    const dir = makePkg(AGENT, { "index.ts": "// entry" });
+    cpSync(exDir, join(dir, "routes"), { recursive: true });
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.value.routes).toEqual(declared.map((d) => d.name).sort());
+  });
+
+  it("kind=plugin 即使有 routes/ 目录也不产出 routes", async () => {
+    const dir = makePkg({ id: "acme/p", version: "1.0.0", kind: "plugin" }, { "routes/ping.ts": "// p" });
+    const c = await compile(dir);
+    expect(c.ok && c.value.routes).toBeUndefined();
+  });
+
+  it("无 routes/ 目录 → 不产出该字段(存量包零变化)", async () => {
+    const dir = makePkg(AGENT, { "index.ts": "// entry" });
+    const c = await compile(dir);
+    expect(c.ok && c.value.routes).toBeUndefined();
+  });
+
+  it("只认一级:嵌套子目录下的文件不算 route 声明", async () => {
+    const dir = makePkg(AGENT, {
+      "index.ts": "// entry",
+      "routes/ping.ts": "// p",
+      "routes/nested/helper.ts": "// 不是 route",
+    });
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.value.routes).toEqual(["ping"]);
+    // 但嵌套文件仍随 routes/ 树进包(运行时 import 得到)
+    expect(c.value.bundlePaths).toContain("routes/nested/helper.ts");
+  });
+
+  it("sign() 把 routes 写进签名清单(registry 据此派生 hasRoutes)", async () => {
+    const dir = makePkg(AGENT, { "index.ts": "// entry", "routes/ping.ts": "// p" });
+    const key = makeKey();
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    const s = sign(c.value, key.path);
+    expect(s.ok).toBe(true);
+    if (!s.ok) return;
+    expect(s.value.routes).toEqual(["ping"]);
+    // 签名覆盖新增字段后仍可验签(canonical 规范化不受字段插入位置影响)
+    expect(verifyManifest(s.value, key.publicKey)).toBe(true);
+  });
+});
+
 describe("publish — 声明目录的展开(#30)", () => {
   it("pi.skills 声明目录 → 递归收其下全部文件并逐文件保护", async () => {
     const dir = makePkg(
