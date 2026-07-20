@@ -175,16 +175,47 @@ export function applyFormToSettings(settings: Settings, form: FormValue): Settin
     result["commands"] = form.commands;
   }
   if (form.extensions !== undefined) {
+    // 条目归一(footgun 修复,2aa5eea 留档项):旧扁平 KV wire 形状(f0e8d09 之前的契约,
+    // `{"@a/b": {HTTP_PROXY: "..."}}`)会被 zod passthrough 静默收下,但 `params` 为空 →
+    // 曾被按「删除该块」处理,老客户端提交即静默删掉自己的 KV 块。选兼容解析而非 422:
+    // 静默丢数据是要消除的害,422 只是把它换成响亮拆客户端;兼容判别严格——条目**不含任何**
+    // enabled/spec/params 键且至少有一个字符串值才视为旧形状,转译为 `{params:<字符串子集>}`
+    // (不带 enabled:旧契约里扁平 KV 从不表达成员归属,见下方 coversMembership)。
+    // 空对象 {} 维持「显式删块」语义(新旧契约一致);其余无法归类的形状(全非字符串值等)
+    // 跳过不动(宁可 no-op 不做破坏性猜测)。
+    const normalizeEntry = (raw: Partial<ExtEntry>): Partial<ExtEntry> | undefined => {
+      const rec = raw as Record<string, unknown>;
+      if ("enabled" in rec || "spec" in rec || "params" in rec) return raw;
+      const keys = Object.keys(rec);
+      if (keys.length === 0) return raw; // {} = 显式删块,维持现行
+      const strings: Record<string, string> = {};
+      for (const [k, v] of Object.entries(rec)) {
+        if (typeof v === "string") strings[k] = v;
+      }
+      if (Object.keys(strings).length === 0) return undefined; // 无法归类:跳过不动
+      return { params: strings }; // 旧扁平 KV → 现行形状,语义保留
+    };
+    const entries: Array<[string, Partial<ExtEntry>]> = [];
+    for (const [extId, raw] of Object.entries(form.extensions)) {
+      const normalized = normalizeEntry(raw);
+      if (normalized !== undefined) entries.push([extId, normalized]);
+    }
     // 非破坏契约(模块头注释 + config-domains e2e「保留既有键」):既有 packages[] /
-    // disabledPackages[] 中**未被表单覆盖**的条目保留原归属,再叠加表单条目的重建结果。
+    // disabledPackages[] 中**未被表单覆盖归属**的条目保留原归属,再叠加表单条目的重建结果。
     // 背景:f0e8d09 引入「extensions 出现即整体重建」时打破了该契约——部分提交(API 直调,
     // 表单只带手动 KV 条目)会把 packages 静默清空。UI 全量表单路径(settingsToForm 往返,
     // 每个已装扩展都带 spec 出现在表单里)在此修复前后结果逐字一致。
-    const formIds = new Set(Object.keys(form.extensions));
-    const notInForm = (pkg: string): boolean => !formIds.has(extIdFromPackage(pkg));
-    const packages: string[] = stringArray(settings["packages"]).filter(notInForm);
-    const disabled: string[] = stringArray(settings["disabledPackages"]).filter(notInForm);
-    for (const [extId, entry] of Object.entries(form.extensions)) {
+    // 「覆盖归属」判定:仅当条目**显式表达归属**(enabled 或 spec 在场)才算——纯 params 条目
+    // (新形状手动 KV / 旧扁平转译)只表达 KV 意图,不该把同名已装扩展从 packages 里挤掉。
+    const membershipIds = new Set(
+      entries
+        .filter(([, e]) => e.enabled !== undefined || e.spec !== undefined)
+        .map(([id]) => id),
+    );
+    const notCovered = (pkg: string): boolean => !membershipIds.has(extIdFromPackage(pkg));
+    const packages: string[] = stringArray(settings["packages"]).filter(notCovered);
+    const disabled: string[] = stringArray(settings["disabledPackages"]).filter(notCovered);
+    for (const [extId, entry] of entries) {
       // per-扩展 KV:非空整体替换,空则删除顶层块。
       const params = entry.params ?? {};
       if (Object.keys(params).length > 0) {

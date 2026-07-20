@@ -127,6 +127,64 @@ describe("互映纯函数", () => {
     expect("disabledPackages" in moved).toBe(false);
   });
 
+  it("applyFormToSettings:旧扁平 KV wire 形状兼容解析(footgun 修复)——语义保留,不再静默删块", () => {
+    // 旧形状(f0e8d09 之前):条目即扁平 KV。曾被按「params 空=删块」处理 → 老客户端静默丢数据。
+    const merged = applyFormToSettings(
+      { packages: ["npm:pi-sandbox"], "@a/b": { OLD: "keep-me-not" } },
+      // 类型面上是新形状,运行时经 zod passthrough 可能携带旧扁平条目 —— 用 unknown 铸型模拟。
+      { extensions: { "@a/b": { HTTP_PROXY: "http://localhost:1080" } } } as unknown as Parameters<
+        typeof applyFormToSettings
+      >[1],
+    );
+    expect(merged["@a/b"]).toEqual({ HTTP_PROXY: "http://localhost:1080" }); // 转译为 params 写入
+    expect(merged["packages"]).toEqual(["npm:pi-sandbox"]); // 归属不受影响
+
+    // 旧扁平条目落在**已装扩展**的 id 上:KV 写入,packages 归属不被挤掉(旧契约从不表达归属)。
+    const onInstalled = applyFormToSettings(
+      { packages: ["npm:pi-sandbox"] },
+      { extensions: { "pi-sandbox": { LOG: "1" } } } as unknown as Parameters<
+        typeof applyFormToSettings
+      >[1],
+    );
+    expect(onInstalled["pi-sandbox"]).toEqual({ LOG: "1" });
+    expect(onInstalled["packages"]).toEqual(["npm:pi-sandbox"]);
+
+    // 空对象 {} 维持「显式删块」语义(新旧契约一致)。
+    const del = applyFormToSettings(
+      { "@a/b": { OLD: "x" } },
+      { extensions: { "@a/b": {} } } as unknown as Parameters<typeof applyFormToSettings>[1],
+    );
+    expect("@a/b" in del).toBe(false);
+
+    // 无法归类(全非字符串值)→ 跳过不动:不写不删,宁 no-op 不破坏性猜测。
+    const garbage = applyFormToSettings(
+      { "@a/b": { OLD: "x" } },
+      { extensions: { "@a/b": { nested: { deep: 1 } } } } as unknown as Parameters<
+        typeof applyFormToSettings
+      >[1],
+    );
+    expect(garbage["@a/b"]).toEqual({ OLD: "x" });
+  });
+
+  it("applyFormToSettings:纯 params 条目(无 enabled/spec)不表达归属——同名已装扩展不被挤出 packages", () => {
+    // zod schema 里 enabled 可选(wire 可不带),模块 ExtEntry 类型却必填 —— 铸型模拟 wire 形状。
+    const merged = applyFormToSettings(
+      { packages: ["npm:pi-sandbox"] },
+      { extensions: { "pi-sandbox": { params: { LOG: "1" } } } } as unknown as Parameters<
+        typeof applyFormToSettings
+      >[1],
+    );
+    expect(merged["pi-sandbox"]).toEqual({ LOG: "1" });
+    expect(merged["packages"]).toEqual(["npm:pi-sandbox"]); // 归属保留
+    // 对照:显式 enabled:false + spec 才搬移归属。
+    const disabled = applyFormToSettings(
+      { packages: ["npm:pi-sandbox"] },
+      { extensions: { "pi-sandbox": { enabled: false, spec: "npm:pi-sandbox", params: {} } } },
+    );
+    expect(disabled["packages"]).toEqual([]);
+    expect(disabled["disabledPackages"]).toEqual(["npm:pi-sandbox"]);
+  });
+
   it("applyFormToSettings:全部启用时移除 disabledPackages 键(保持干净)", () => {
     const merged = applyFormToSettings(
       { packages: ["npm:a"], disabledPackages: ["npm:b"] },
