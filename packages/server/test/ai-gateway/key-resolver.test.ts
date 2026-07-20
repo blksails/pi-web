@@ -24,6 +24,24 @@ describe("EnvKeyResolver", () => {
     await expect(resolver.resolve({})).resolves.toBeUndefined();
   });
 
+  // ── 改名(BLKSAILS_GATEWAY_*)与旧名回落 ────────────────────────────────
+  // 旧名 AI_GATEWAY_API_KEY 会被 spawn 的 pi 子进程继承并被 pi-ai 当成 Vercel AI Gateway
+  // 凭据,劫持全部模型调用(pi-clouds 8.2 事故),故主用新名;旧名仅为存量部署保留回落。
+  it("BLKSAILS_GATEWAY_API_KEY 存在 → 解析出该值", async () => {
+    const resolver = new EnvKeyResolver({
+      BLKSAILS_GATEWAY_API_KEY: "sk-gw-new-name",
+    });
+    await expect(resolver.resolve({})).resolves.toBe("sk-gw-new-name");
+  });
+
+  it("新名优先于旧名(两者并存时不取旧名)", async () => {
+    const resolver = new EnvKeyResolver({
+      BLKSAILS_GATEWAY_API_KEY: "sk-gw-new-name",
+      AI_GATEWAY_API_KEY: "sk-gw-legacy",
+    });
+    await expect(resolver.resolve({})).resolves.toBe("sk-gw-new-name");
+  });
+
   it("请求期即时读取:换 key 后下一次 resolve 立即生效(不缓存)", async () => {
     const env: Record<string, string | undefined> = { AI_GATEWAY_API_KEY: "sk-gw-old" };
     const resolver = new EnvKeyResolver(env);

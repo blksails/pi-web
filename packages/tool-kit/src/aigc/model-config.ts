@@ -37,7 +37,7 @@ export interface RegisterImageToolOptions {
   /**
    * 装配期按 env 条件并入的额外路由组(ai-gateway-providers spec,design.md §3,Req 5.2/5.3):
    * 例如 `AI_GATEWAY_IMAGE_ROUTES`,由 runtime 层 `extension.ts` 按
-   * `process.env.AI_GATEWAY_BASE_URL` 存在与否决定是否传入——未启用套件时缺省
+   * `process.env.BLKSAILS_GATEWAY_BASE_URL` 存在与否决定是否传入——未启用套件时缺省
    * `undefined`,与今天行为逐字节一致。与内置静态 `ROUTES` 拼接后统一走
    * `filterRoutes`(Req 5.4:disabledModels 对两套 provider 的路由统一生效,不区分来源)。
    */

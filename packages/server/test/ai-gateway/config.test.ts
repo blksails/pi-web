@@ -19,6 +19,40 @@ describe("resolveAiGatewayConfig — 缺省", () => {
   });
 });
 
+// 改名(BLKSAILS_GATEWAY_*)与旧名回落:旧名会被 spawn 的 pi 子进程继承并被 pi-ai 当作
+// Vercel AI Gateway 凭据劫持全部模型调用(pi-clouds 8.2 事故),故新名为主、旧名仅兼容。
+describe("resolveAiGatewayConfig — env 改名与回落", () => {
+  it("新名 BLKSAILS_GATEWAY_BASE_URL 生效", () => {
+    const config = resolveAiGatewayConfig({
+      BLKSAILS_GATEWAY_BASE_URL: "http://gw.new:8080",
+    });
+    expect(config?.baseUrl).toBe("http://gw.new:8080");
+  });
+
+  it("仅旧名时回落读取(存量部署不破)", () => {
+    const config = resolveAiGatewayConfig({
+      AI_GATEWAY_BASE_URL: "http://gw.legacy:8080",
+    });
+    expect(config?.baseUrl).toBe("http://gw.legacy:8080");
+  });
+
+  it("新旧并存 → 取新名", () => {
+    const config = resolveAiGatewayConfig({
+      BLKSAILS_GATEWAY_BASE_URL: "http://gw.new:8080",
+      AI_GATEWAY_BASE_URL: "http://gw.legacy:8080",
+    });
+    expect(config?.baseUrl).toBe("http://gw.new:8080");
+  });
+
+  it("新名空白 + 旧名有值 → 回落到旧名(空串不遮蔽)", () => {
+    const config = resolveAiGatewayConfig({
+      BLKSAILS_GATEWAY_BASE_URL: "   ",
+      AI_GATEWAY_BASE_URL: "http://gw.legacy:8080",
+    });
+    expect(config?.baseUrl).toBe("http://gw.legacy:8080");
+  });
+});
+
 describe("resolveAiGatewayConfig — 合法配置", () => {
   it("最小合法配置 → 默认 TTL/超时/优先级", () => {
     const config = resolveAiGatewayConfig({
@@ -67,7 +101,7 @@ describe("resolveAiGatewayConfig — 非法配置 fail-fast", () => {
       resolveAiGatewayConfig({ AI_GATEWAY_BASE_URL: "not-a-url" });
       expect.unreachable();
     } catch (err) {
-      expect((err as Error).message).toContain("AI_GATEWAY_BASE_URL");
+      expect((err as Error).message).toContain("BLKSAILS_GATEWAY_BASE_URL");
     }
   });
 

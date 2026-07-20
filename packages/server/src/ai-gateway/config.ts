@@ -12,7 +12,16 @@
 import { z } from "zod";
 
 /** 网关 base URL 环境变量名(唯一启用判别项)。 */
-export const AI_GATEWAY_BASE_URL_ENV = "AI_GATEWAY_BASE_URL";
+export const AI_GATEWAY_BASE_URL_ENV = "BLKSAILS_GATEWAY_BASE_URL";
+
+/**
+ * 旧名(存量部署兼容):新名未设时回落读取。
+ *
+ * ★为什么改名:`AI_GATEWAY_API_KEY` 是 pi-ai SDK 内建 Vercel AI Gateway 的凭据 env。
+ * 本服务端进程 spawn 的 pi 子进程会**继承**宿主 env,故宿主设旧名等于把 Vercel 凭据
+ * 塞进 pi——全部模型调用被劫持(pi-clouds 8.2 真机事故)。base URL 一并改名保持成对。
+ */
+export const AI_GATEWAY_BASE_URL_ENV_LEGACY = "AI_GATEWAY_BASE_URL";
 
 /** 请求超时覆盖(毫秒)环境变量名;未设置时用 {@link DEFAULT_TIMEOUT_MS}。 */
 export const AI_GATEWAY_TIMEOUT_MS_ENV = "AI_GATEWAY_TIMEOUT_MS";
@@ -75,8 +84,9 @@ function parsePositiveIntOverride(
 /**
  * 装配期解析 ai-gateway 套件配置(design.md §2.1,Req 1.1/1.2/1.4)。
  *
- * - `AI_GATEWAY_BASE_URL` 未设置/空白 → `undefined`(套件整体不注册)。
- * - `AI_GATEWAY_BASE_URL` 非法 URL(解析失败或非 http/https 协议)→ 抛
+ * - `BLKSAILS_GATEWAY_BASE_URL`(旧名 `AI_GATEWAY_BASE_URL` 回落)未设置/空白 →
+ *   `undefined`(套件整体不注册)。
+ * - base URL 非法(解析失败或非 http/https 协议)→ 抛
  *   `AiGatewayConfigError`(含字段名)。
  * - `PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE` 存在但不在 `"gateway" | "self"` 枚举内 → 抛
  *   `AiGatewayConfigError`(含字段名与合法枚举提示)。
@@ -88,7 +98,10 @@ function parsePositiveIntOverride(
 export function resolveAiGatewayConfig(
   env: NodeJS.ProcessEnv,
 ): AiGatewayConfig | undefined {
-  const rawBaseUrl = env[AI_GATEWAY_BASE_URL_ENV]?.trim();
+  // 新名优先,旧名回落(存量部署);两者都未设 → 套件整体不注册。
+  const rawBaseUrl =
+    env[AI_GATEWAY_BASE_URL_ENV]?.trim() ||
+    env[AI_GATEWAY_BASE_URL_ENV_LEGACY]?.trim();
   if (rawBaseUrl === undefined || rawBaseUrl.length === 0) {
     return undefined;
   }

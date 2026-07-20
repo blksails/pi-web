@@ -23,11 +23,11 @@ export interface KeyResolver {
 }
 
 /**
- * P0 实现:请求期即时读取宿主 env `AI_GATEWAY_API_KEY`(Req 3.1)。
+ * P0 实现:请求期即时读取宿主 env `BLKSAILS_GATEWAY_API_KEY`(旧名 `AI_GATEWAY_API_KEY`
+ * 回落,Req 3.1)。
  *
  * 不在构造期捕获 env 快照——每次 `resolve` 调用都重新读取传入的 `env` 引用,故运维原地
- * 替换 `process.env.AI_GATEWAY_API_KEY`(或注入的等价源)后,下一次请求立即生效,不需要
- * 重启进程或重建实例。
+ * 替换该 env(或注入的等价源)后,下一次请求立即生效,不需要重启进程或重建实例。
  */
 export class EnvKeyResolver implements KeyResolver {
   private readonly env: NodeJS.ProcessEnv;
@@ -37,7 +37,10 @@ export class EnvKeyResolver implements KeyResolver {
   }
 
   async resolve(_input: KeyResolveInput): Promise<string | undefined> {
-    const raw = this.env.AI_GATEWAY_API_KEY;
+    // 新名优先,旧名回落(存量部署)。改名理由见 config.ts 的
+    // AI_GATEWAY_BASE_URL_ENV_LEGACY 注释:旧名会被 pi 子进程继承并劫持模型调用。
+    const raw =
+      this.env.BLKSAILS_GATEWAY_API_KEY ?? this.env.AI_GATEWAY_API_KEY;
     if (raw === undefined) return undefined;
     const trimmed = raw.trim();
     return trimmed.length > 0 ? trimmed : undefined;

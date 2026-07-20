@@ -25,12 +25,12 @@ describe("createAiGatewayImage — route 形态", () => {
     expect(v.model).toBe("gpt-image-1");
     expect(v.provider).toBe("ai-gateway");
     // base URL 走占位符(模块顶层不读 env,Req 6.2)。
-    expect(v.url).toContain("${AI_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1");
+    expect(v.url).toContain("${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1");
     expect(v.url).toBe(
-      "${AI_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1/images/generations",
+      "${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1/images/generations",
     );
-    expect(v.requiredVars).toContain("AI_GATEWAY_API_KEY");
-    expect(v.headers?.["authorization"]).toBe("Bearer ${AI_GATEWAY_API_KEY}");
+    expect(v.requiredVars).toContain("BLKSAILS_GATEWAY_API_KEY");
+    expect(v.headers?.["authorization"]).toBe("Bearer ${BLKSAILS_GATEWAY_API_KEY}");
   });
 
   it("零 quirks:response_format 显式发送(不像 sufy/newapi 那样 omit)", async () => {
@@ -84,9 +84,9 @@ describe("createAiGatewayImageEdit — route 形态", () => {
     });
     expect(v.provider).toBe("ai-gateway");
     expect(v.url).toBe(
-      "${AI_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1/images/edits",
+      "${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1/images/edits",
     );
-    expect(v.requiredVars).toContain("AI_GATEWAY_API_KEY");
+    expect(v.requiredVars).toContain("BLKSAILS_GATEWAY_API_KEY");
   });
 
   it("buildBody 返回 FormData 含 model/prompt/image", async () => {

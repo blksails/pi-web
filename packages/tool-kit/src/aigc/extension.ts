@@ -79,15 +79,51 @@ function publishAigcCatalog(
  * aigc-tool-settings:装配期读持久设置得到被禁模型集合,喂给两个工具注册函数并使清单同源过滤——
  * 被禁模型从 LLM 枚举与下发清单一并移除。当前已激活会话不追溯(装配期读取的自然结果)。
  */
+/** 网关 env 的新名 → 旧名映射(旧名仅为存量部署兼容,见下方函数注释)。 */
+const GATEWAY_ENV_ALIASES: readonly (readonly [string, string])[] = [
+  ["BLKSAILS_GATEWAY_BASE_URL", "AI_GATEWAY_BASE_URL"],
+  ["BLKSAILS_GATEWAY_API_KEY", "AI_GATEWAY_API_KEY"],
+];
+
+/**
+ * 存量部署兼容:新名未设而旧名有值时,把值搬到新名下。
+ *
+ * 声明层的 `${VAR:-default}` 占位不支持多变量回落(见 engine/var-resolver 的 VAR_RE),
+ * 故回落只能在允许读 env 的 runtime 层做一次归一化。
+ *
+ * ⚠️ 运维注意:旧名 `AI_GATEWAY_API_KEY` 是 pi-ai SDK 的 **Vercel AI Gateway** 保留 env,
+ * 只要它存在于 pi 进程环境里就会劫持全部模型调用(pi-clouds 8.2 事故)。本函数只做"读得到"
+ * 的兼容,**不能**消除这个劫持——沙箱等 pi 同进程场景必须改配新名,故此处显式告警。
+ */
+function normalizeGatewayEnvNames(): void {
+  for (const [next, legacy] of GATEWAY_ENV_ALIASES) {
+    const nextVal = process.env[next];
+    const legacyVal = process.env[legacy];
+    if (
+      (nextVal === undefined || nextVal.trim() === "") &&
+      legacyVal !== undefined &&
+      legacyVal.trim() !== ""
+    ) {
+      process.env[next] = legacyVal;
+      console.warn(
+        `[aigc] ${legacy} 已弃用,请改配 ${next}。` +
+          `本次已按旧名取值;但在与 pi 同进程的场景(如云沙箱)下,${legacy} 会被 pi-ai SDK ` +
+          `当作 Vercel AI Gateway 凭据并劫持全部模型调用,必须迁移。`,
+      );
+    }
+  }
+}
+
 export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
   const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
   // ai-gateway 路由组条件并入(spec ai-gateway-providers,design.md §3,Req 5.2/5.3):
   // 本模块属 runtime 层(经 `@blksails/pi-web-tool-kit/runtime` 加载,含 pi SDK 值导入),
   // 允许读 env——浏览器 bundle 只见声明层的类型/静态 routes,不违双入口边界(Req 6.2)。
   // 未配置 AI_GATEWAY_BASE_URL 时 extraRoutes 为 undefined,两工具行为与今天逐字节一致。
+  normalizeGatewayEnvNames();
   const aiGatewayEnabled =
-    typeof process.env.AI_GATEWAY_BASE_URL === "string" &&
-    process.env.AI_GATEWAY_BASE_URL.trim().length > 0;
+    typeof process.env.BLKSAILS_GATEWAY_BASE_URL === "string" &&
+    process.env.BLKSAILS_GATEWAY_BASE_URL.trim().length > 0;
   const genExtraRoutes: readonly ImageRoute[] | undefined = aiGatewayEnabled
     ? AI_GATEWAY_IMAGE_ROUTES
     : undefined;

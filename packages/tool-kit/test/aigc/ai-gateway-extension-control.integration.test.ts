@@ -51,13 +51,17 @@ let prevBaseUrl: string | undefined;
 afterEach(() => {
   if (prevBaseUrl === undefined) delete process.env.AI_GATEWAY_BASE_URL;
   else process.env.AI_GATEWAY_BASE_URL = prevBaseUrl;
+  // ★新名也必须清:runtime 层的旧→新归一化会**写入** BLKSAILS_GATEWAY_BASE_URL,
+  // 只清旧名会把启用状态泄漏给后续用例(对照组假绿)。
+  delete process.env.BLKSAILS_GATEWAY_BASE_URL;
   delete (globalThis as Record<string, unknown>)[SESSION_STATE_SEAM_KEY];
 });
 
-describe("对照组:AI_GATEWAY_BASE_URL 未配置", () => {
+describe("对照组:网关 base URL 未配置", () => {
   it("下发清单 aigc.models 不含任何 ai-gateway 条目,基线模型悉数保留(Req 1.2/5.3)", () => {
     prevBaseUrl = process.env.AI_GATEWAY_BASE_URL;
     delete process.env.AI_GATEWAY_BASE_URL;
+    delete process.env.BLKSAILS_GATEWAY_BASE_URL;
 
     const { tools, state } = runExtension();
     const models = state.get("aigc.models") as string[];
@@ -74,7 +78,9 @@ describe("对照组:AI_GATEWAY_BASE_URL 未配置", () => {
   });
 });
 
-describe("启用组:AI_GATEWAY_BASE_URL 已配置", () => {
+describe("启用组:网关 base URL 已配置", () => {
+  // 旧名 AI_GATEWAY_BASE_URL 经 runtime 层归一化搬到新名后仍启用(存量部署兼容),
+  // 这条用例同时是兼容层的活证据;新名直配见下一条。
   it("下发清单与工具枚举含 ai-gateway 条目,且与既有 provider 条目并集(不替换)", () => {
     prevBaseUrl = process.env.AI_GATEWAY_BASE_URL;
     process.env.AI_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
@@ -95,5 +101,26 @@ describe("启用组:AI_GATEWAY_BASE_URL 已配置", () => {
     expect(JSON.stringify(gen?.parameters)).toContain("gpt-image-1");
     const edit = tools.find((t) => t.name === "image_edit");
     expect(JSON.stringify(edit?.parameters)).toContain("qwen-image");
+  });
+
+  it("新名 BLKSAILS_GATEWAY_BASE_URL 直配即启用(不依赖旧名)", () => {
+    prevBaseUrl = process.env.AI_GATEWAY_BASE_URL;
+    delete process.env.AI_GATEWAY_BASE_URL;
+    process.env.BLKSAILS_GATEWAY_BASE_URL = "http://127.0.0.1:8080";
+
+    const { state } = runExtension();
+    const models = state.get("aigc.models") as string[];
+    for (const m of AI_GATEWAY_MODELS) {
+      expect(models).toContain(m);
+    }
+  });
+
+  it("旧名归一化到新名:配旧名后新名可被占位符解析到同值", () => {
+    prevBaseUrl = process.env.AI_GATEWAY_BASE_URL;
+    delete process.env.BLKSAILS_GATEWAY_BASE_URL;
+    process.env.AI_GATEWAY_BASE_URL = "http://gw.example:9090";
+
+    runExtension();
+    expect(process.env.BLKSAILS_GATEWAY_BASE_URL).toBe("http://gw.example:9090");
   });
 });

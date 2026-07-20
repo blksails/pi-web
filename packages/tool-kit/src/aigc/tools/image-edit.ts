@@ -110,7 +110,7 @@ export const IMAGE_EDIT_MEDIA_FIELDS: readonly string[] = [
  * ai-gateway 图像编辑路由组(spec ai-gateway-providers,design.md §3,Req 5.2)——第一期
  * 静态声明,与 `AI_GATEWAY_IMAGE_ROUTES`(image-generation.ts)同一批网关已配模型。**不**
  * 并入 `ROUTES`/`IMAGE_EDIT_ROUTES`(那两者始终无条件注册);由 runtime 层 `extension.ts`
- * 按 `process.env.AI_GATEWAY_BASE_URL` 存在与否决定是否经 `registerImageEdit` 的
+ * 按网关 base URL env 存在与否决定是否经 `registerImageEdit` 的
  * `opts.extraRoutes` 并入,未启用套件时行为与今天逐字节一致(Req 5.3)。
  */
 export const AI_GATEWAY_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
@@ -118,7 +118,7 @@ export const AI_GATEWAY_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
     {
       model: "gpt-image-1",
       label: "GPT Image 1 · ai-gateway",
-      description: "OpenAI gpt-image-1 editing via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+      description: "OpenAI gpt-image-1 editing via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
@@ -126,7 +126,7 @@ export const AI_GATEWAY_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
     {
       model: "gpt-image-2",
       label: "GPT Image 2 · ai-gateway",
-      description: "OpenAI gpt-image-2 editing via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+      description: "OpenAI gpt-image-2 editing via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
       providerModel: "gpt-image-2",
     },
     { model: "gpt-image-2-ai-gateway", pricing: { amount: 0.04, currency: "USD", unit: "image" } },
@@ -135,7 +135,7 @@ export const AI_GATEWAY_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
     {
       model: "qwen-image",
       label: "Qwen Image · ai-gateway",
-      description: "Qwen image editing via ai-gateway. Needs AI_GATEWAY_API_KEY.",
+      description: "Qwen image editing via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
     },
     { pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
   ),
