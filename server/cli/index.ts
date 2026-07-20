@@ -579,7 +579,7 @@ export function describeCompileError(e: CompileError): string {
     case "WEBEXT_SOURCE_WITHOUT_DIST":
       return `检测到 webext 源码 ${e.source},但产物 ${e.expectedDist}/manifest.json 不存在 —— 直接发布会得到一个「没有界面」的包。请先构建:\n    pnpm --filter <该包> build\n  构建后重试;若本包确实不需要发布 webext,在 ${PI_WEB_MANIFEST_FILENAME} 中设 {"web":{"autoDetectDist":false}}。`;
     case "DECLARED_PATH_MISSING":
-      return `声明的路径没有匹配到任何文件:${e.paths.join(", ")}。请修正 ${PI_WEB_MANIFEST_FILENAME} 中的声明,或确认这些文件确实存在。`;
+      return `声明的路径没有匹配到任何文件:${e.paths.join(", ")}。声明可以是文件、目录(自动递归收其下全部文件)或 glob;出现此错误说明该路径不存在、或是一个空目录。请修正 ${PI_WEB_MANIFEST_FILENAME} 中的声明。`;
     case "MANIFEST_MISSING":
       return `未找到 ${PI_WEB_MANIFEST_FILENAME}:${e.expectedPath}。publish 不接受位置参数,请先 cd 进包目录再执行。`;
     case "MANIFEST_INVALID":

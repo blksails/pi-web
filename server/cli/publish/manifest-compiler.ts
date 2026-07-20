@@ -98,6 +98,38 @@ function toRel(packageDir: string, abs: string): string {
 }
 
 /**
+ * 展开一条声明为**文件**列表(#30)。
+ *
+ * 声明可以是 glob、单个文件、或**目录**。命中目录时递归收其下全部文件 ——
+ * 「声明目录」是 pi 侧的标准形态(一个 skill 就是一个含 `SKILL.md` 的目录),
+ * 此前却因 `readFile(目录)` 抛错被静默跳过、进而以「零命中」报
+ * `DECLARED_PATH_MISSING`(字面意思是"路径不存在"),对着一个明明存在的目录说不存在。
+ *
+ * 返回 posix 相对路径,已去重并排序;空目录返回空数组(由调用方按零命中处理)。
+ */
+async function expandToFiles(packageDir: string, pattern: string): Promise<readonly string[]> {
+  const matched = globSync(pattern, { cwd: packageDir })
+    .map((p) => (typeof p === "string" ? p : String(p)))
+    .filter(Boolean);
+  const out = new Set<string>();
+  for (const rel of matched) {
+    const abs = join(packageDir, rel);
+    const st = await stat(abs).catch(() => undefined);
+    if (st?.isFile()) {
+      out.add(rel.split(sep).join("/"));
+    } else if (st?.isDirectory()) {
+      // 目录 → 递归收其下全部文件(目录本身不是可摘要的产物)
+      for (const inner of globSync(join(rel, "**", "*"), { cwd: packageDir })) {
+        const innerRel = typeof inner === "string" ? inner : String(inner);
+        const innerSt = await stat(join(packageDir, innerRel)).catch(() => undefined);
+        if (innerSt?.isFile()) out.add(innerRel.split(sep).join("/"));
+      }
+    }
+  }
+  return [...out].sort();
+}
+
+/**
  * 编译 `pi-web.json` → `CompiledPackage`(单次遍历 + 逐文件 sha384)。
  */
 export async function compile(packageDir: string): Promise<Result<CompiledPackage, CompileError>> {
@@ -166,26 +198,15 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
     bundlePaths.add(rel); // R2.1:声明了 entry 就必须打包,否则回源核验取不到 → 照样烧号
   }
 
-  // resource 字段:glob 展开每个声明,逐文件摘要
+  // resource 字段:展开每个声明(glob / 文件 / **目录**),逐文件摘要
   for (const field of RESOURCE_FIELDS) {
     const patterns = m.pi?.[field] ?? [];
     for (const pattern of patterns) {
-      const matched = globSync(pattern, { cwd: packageDir })
-        .map((p) => (typeof p === "string" ? p : String(p)))
-        .filter(Boolean);
-      // 只保留文件(glob 可能命中目录);目录本身不算文件
-      const files: string[] = [];
-      for (const rel of matched) {
-        const abs = join(packageDir, rel);
-        try {
-          const bytes = await readFile(abs);
-          const relPath = toRel(packageDir, abs);
-          refs.push({ field, path: relPath, integrity: computeIntegrity(bytes) });
-          bundlePaths.add(relPath);
-          files.push(relPath);
-        } catch {
-          // 命中的是目录/不可读 → 跳过(下方以"零命中"判缺失)
-        }
+      const files = await expandToFiles(packageDir, pattern);
+      for (const relPath of files) {
+        const bytes = await readFile(join(packageDir, relPath));
+        refs.push({ field, path: relPath, integrity: computeIntegrity(bytes) });
+        bundlePaths.add(relPath);
       }
       if (files.length === 0) missing.push(pattern);
     }
@@ -196,20 +217,10 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
   // 保护,与 webext dist 里的非 manifest 文件同档。`routes/**`、`lib/**` 等运行所需的
   // 附属文件由此有了正规入口,不必再走私进 `pi.extensions`。
   for (const pattern of m.files ?? []) {
-    const matched = globSync(pattern, { cwd: packageDir })
-      .map((p) => (typeof p === "string" ? p : String(p)))
-      .filter(Boolean);
-    let hit = 0;
-    for (const rel of matched) {
-      try {
-        await readFile(join(packageDir, rel)); // 只收文件(目录读会抛)
-        bundlePaths.add(rel.split(sep).join("/"));
-        hit++;
-      } catch {
-        /* 目录 */
-      }
-    }
-    if (hit === 0) missing.push(pattern); // 沿用既有「声明零命中」语义(R2.4)
+    // 同样支持目录展开(#30):`files: ["routes"]` 与 `files: ["routes/**/*.ts"]` 等价
+    const hits = await expandToFiles(packageDir, pattern);
+    for (const rel of hits) bundlePaths.add(rel);
+    if (hits.length === 0) missing.push(pattern); // 沿用既有「声明零命中」语义(R2.4)
   }
 
   // ── 包元数据(R2.2)────────────────────────────────────────────────────────

@@ -277,6 +277,61 @@ describe("publish — agent 入口与打包通道", () => {
   });
 });
 
+/**
+ * #30 —— 声明目录时 compile 报 DECLARED_PATH_MISSING。
+ *
+ * 「一个 skill 就是一个含 `SKILL.md` 的目录」是 pi 侧的标准形态,故 `pi.skills: ["skills/x"]`
+ * 是最自然的写法。但 resource 展开原先只收文件、`readFile(目录)` 抛错即静默跳过,进而以
+ * 「零命中」报 `DECLARED_PATH_MISSING` —— 对着一个明明存在的目录说"路径不存在"。
+ * `examples/plugin-code-review-agent` 因此长期编译不过(早于 #28/#29 的改动)。
+ */
+describe("publish — 声明目录的展开(#30)", () => {
+  it("pi.skills 声明目录 → 递归收其下全部文件并逐文件保护", async () => {
+    const dir = makePkg(
+      { id: "acme/s", version: "1.0.0", kind: "plugin", pi: { skills: ["skills/code-review"] } },
+      { "skills/code-review/SKILL.md": "# skill", "skills/code-review/ref/extra.md": "# nested" },
+    );
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    const skillRefs = c.value.refs.filter((f) => f.field === "skills").map((f) => f.path);
+    // 递归:嵌套子目录下的文件同样收进来
+    expect(skillRefs).toEqual(["skills/code-review/SKILL.md", "skills/code-review/ref/extra.md"]);
+    expect(c.value.bundlePaths).toEqual(expect.arrayContaining(skillRefs));
+  });
+
+  it("files 声明目录 → 与 glob 写法等价", async () => {
+    const asDir = makePkg(
+      { id: "acme/f", version: "1.0.0", kind: "agent", files: ["routes"] },
+      { "index.ts": "// e", "routes/ping.ts": "// p", "routes/sub/deep.ts": "// d" },
+    );
+    const asGlob = makePkg(
+      { id: "acme/f", version: "1.0.0", kind: "agent", files: ["routes/**/*.ts"] },
+      { "index.ts": "// e", "routes/ping.ts": "// p", "routes/sub/deep.ts": "// d" },
+    );
+    const a = await compile(asDir);
+    const b = await compile(asGlob);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(a.value.bundlePaths).toEqual(b.value.bundlePaths);
+  });
+
+  it("真正不存在的路径仍报 DECLARED_PATH_MISSING", async () => {
+    const dir = makePkg({ id: "acme/s", version: "1.0.0", kind: "plugin", pi: { skills: ["skills/nope"] } });
+    const c = await compile(dir);
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.error.code).toBe("DECLARED_PATH_MISSING");
+  });
+
+  it("空目录按零命中处理(声明了却拿不到任何文件)", async () => {
+    const dir = makePkg({ id: "acme/s", version: "1.0.0", kind: "plugin", pi: { skills: ["skills/empty"] } });
+    mkdirSync(join(dir, "skills/empty"), { recursive: true });
+    const c = await compile(dir);
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.error.code).toBe("DECLARED_PATH_MISSING");
+  });
+});
+
 describe("publish — webext 产物通道", () => {
   const AGENT = { id: "acme/w", version: "1.0.0", kind: "agent" as const };
   const DIST = ".pi/web/dist";
