@@ -26,7 +26,11 @@ describe("useConfigDomain", () => {
     await act(async () => {
       await result.current.save();
     });
-    expect(save).toHaveBeenCalledWith({ theme: "light" });
+    // validator(zod parse)会回填 schema 的 .default() 字段(如后加的 pathDisplay),故断言
+    // 只钉用户改动的键,不写死整份对象——否则 schema 每加一个带默认值的字段都会假红。
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "light" }),
+    );
     expect(result.current.saved).toBe(true);
   });
 

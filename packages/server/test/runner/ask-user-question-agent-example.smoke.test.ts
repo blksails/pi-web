@@ -42,7 +42,7 @@ describe("examples/ask-user-question-agent — real loader smoke", () => {
 
     await factory({
       cwd: ctx.cwd,
-      agentDir: ctx.agentDir,
+      agentDir: ctx.agentDir ?? "",
       sessionManager: {} as never,
     });
 
