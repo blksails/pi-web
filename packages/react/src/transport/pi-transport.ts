@@ -144,11 +144,18 @@ export class PiTransport<MESSAGE extends UIMessage = UIMessage>
     // 在「无订阅者」窗口被广播而永久丢失(仅刷新走历史接口可见)。见 docs/product/13、18。
     await this.connection.whenSubscribed();
 
-    await this.client.prompt(this.sessionId, {
-      message,
-      ...(images === undefined ? {} : { images }),
-      ...(attachmentIds === undefined ? {} : { attachmentIds }),
-    });
+    try {
+      await this.client.prompt(this.sessionId, {
+        message,
+        ...(images === undefined ? {} : { images }),
+        ...(attachmentIds === undefined ? {} : { attachmentIds }),
+      });
+    } catch (err) {
+      // prompt 被服务端拒绝(如上游 preflight 失败 → 502)时本轮不会有任何帧:关掉上面刚建立的
+      // 订阅再上抛,否则每次失败都泄漏一条常驻 SSE 连接。错误照常上抛给 useChat 渲染错误气泡。
+      this.connection.close();
+      throw err;
+    }
 
     return stream;
   };

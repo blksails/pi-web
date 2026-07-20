@@ -33,6 +33,20 @@ function ack(): Response {
   return jsonResponse(200, { ok: true });
 }
 
+/**
+ * 命令转发的 ack:**按 `RpcResponse.success` 分流**,失败→502(镜像 `dataOrError`)。
+ *
+ * ★为什么不能无条件 ack(pi-clouds #23 事故的遮蔽层):pi 的 `prompt` 是 preflight 语义——
+ * 模型不可用(如 models.json 校验失败导致自定义模型全丢 → "No API key found for the selected
+ * model")时回 `success:false` 且**不产生任何 turn/事件**。此处若照回 200,前端与运维侧看到的
+ * 是"命令已接受但沙箱毫无反应"的黑洞,真错误信息被吞在 RPC 层永不现形。
+ */
+function ackOrError(res: RpcResponse): Response {
+  if (res.success) return ack();
+  const message = "error" in res ? res.error : "Upstream command failed.";
+  return errorResponse(502, "UPSTREAM_ERROR", message);
+}
+
 /** 提取成功响应的 data;失败→统一 502 上游错误(镜像 query-routes)。 */
 function dataOrError<T>(
   res: RpcResponse,
@@ -127,8 +141,7 @@ export function makeMessagesHandler(
       if (images !== undefined) options.images = images;
       if (streamingBehavior !== undefined)
         options.streamingBehavior = streamingBehavior;
-      await session.prompt(message, options);
-      return ack();
+      return ackOrError(await session.prompt(message, options));
     } catch (err) {
       return mapEngineError(err);
     }
@@ -143,11 +156,12 @@ export function makeSteerHandler(store: SessionStore): RouteHandler {
     try {
       const session = requireSession(store, ctx);
       const { message, images } = parsed.value;
-      await session.steer(
-        message,
-        images !== undefined ? { images } : undefined,
+      return ackOrError(
+        await session.steer(
+          message,
+          images !== undefined ? { images } : undefined,
+        ),
       );
-      return ack();
     } catch (err) {
       return mapEngineError(err);
     }
@@ -162,11 +176,12 @@ export function makeFollowUpHandler(store: SessionStore): RouteHandler {
     try {
       const session = requireSession(store, ctx);
       const { message, images } = parsed.value;
-      await session.followUp(
-        message,
-        images !== undefined ? { images } : undefined,
+      return ackOrError(
+        await session.followUp(
+          message,
+          images !== undefined ? { images } : undefined,
+        ),
       );
-      return ack();
     } catch (err) {
       return mapEngineError(err);
     }
@@ -178,8 +193,7 @@ export function makeAbortHandler(store: SessionStore): RouteHandler {
   return async (ctx): Promise<Response> => {
     try {
       const session = requireSession(store, ctx);
-      await session.abort();
-      return ack();
+      return ackOrError(await session.abort());
     } catch (err) {
       return mapEngineError(err);
     }
@@ -211,8 +225,7 @@ export function makeModelHandler(store: SessionStore): RouteHandler {
     try {
       const session = requireSession(store, ctx);
       const { provider, modelId } = parsed.value;
-      await session.setModel(provider, modelId);
-      return ack();
+      return ackOrError(await session.setModel(provider, modelId));
     } catch (err) {
       return mapEngineError(err);
     }
@@ -226,8 +239,7 @@ export function makeThinkingHandler(store: SessionStore): RouteHandler {
     if (!parsed.ok) return parsed.response;
     try {
       const session = requireSession(store, ctx);
-      await session.setThinkingLevel(parsed.value.level);
-      return ack();
+      return ackOrError(await session.setThinkingLevel(parsed.value.level));
     } catch (err) {
       return mapEngineError(err);
     }

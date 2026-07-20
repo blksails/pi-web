@@ -95,6 +95,47 @@ describe("PiTransport.sendMessages", () => {
     expect(chunks.at(-1)?.type).toBe("finish");
   });
 
+  // prompt 被服务端拒绝(pi-clouds #23:上游 preflight 失败 → 502)时,错误必须上抛给 useChat
+  // 渲染错误气泡,且本轮刚建立的 /stream 订阅要一并关闭,不能每次失败泄漏一条常驻 SSE 连接。
+  it("prompt 被拒(502)→ 抛错并关闭本轮订阅,不泄漏 SSE 连接", async () => {
+    const aborted: boolean[] = [];
+    const f = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/messages") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ error: { code: "UPSTREAM_ERROR", message: "No API key" } }),
+          { status: 502, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/stream")) {
+        init?.signal?.addEventListener("abort", () => aborted.push(true));
+        return makeSseResponse(textStreamFrames("never"));
+      }
+      return makeJsonResponse({ ok: true });
+    });
+    const fetchImpl = f as unknown as typeof fetch;
+    const connection = new PiSessionConnection({
+      baseUrl: "http://api.test",
+      sessionId: "s1",
+      fetchImpl,
+    });
+    const transport = new PiTransport({
+      sessionId: "s1",
+      client: createPiClient("http://api.test", fetchImpl),
+      connection,
+    });
+    await expect(
+      transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "s1",
+        messageId: undefined,
+        messages: [userMessage("Hi")],
+        abortSignal: undefined,
+      }),
+    ).rejects.toThrow();
+    expect(aborted).toContain(true);
+  });
+
   it("maps image attachments from body to PromptRequest.images", async () => {
     const { transport, routed } = build(textStreamFrames("Hi"));
     const images: ImageContent[] = [

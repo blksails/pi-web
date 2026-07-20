@@ -284,6 +284,39 @@ describe("command routes", () => {
     expect(options.images).toEqual([image]);
   });
 
+  // ── RpcResponse success:false 传播(pi-clouds #23 遮蔽层)────────────────
+  // 曾经这些端点无条件 ack 200,把 pi 的 preflight 拒绝(如模型不可用)吞成"命令已接受但
+  // 沙箱毫无反应"的黑洞。现在按 success 分流,失败→502 且错误文本上浮。
+  function failWith(error: string): (m: string) => RpcResponse {
+    return (command) =>
+      ({ type: "response", id: "1", command, success: false, error }) as RpcResponse;
+  }
+
+  it.each([
+    ["messages", { message: "hi" }],
+    ["steer", { message: "s" }],
+    ["follow_up", { message: "f" }],
+    ["model", { provider: "dashscope", modelId: "qwen" }],
+    ["thinking", { level: "medium" }],
+    ["abort", undefined],
+  ] as const)("%s upstream success:false → 502 with error text", async (path, body) => {
+    const { handler, session } = setup();
+    session.setResponse(failWith("No API key found for the selected model"));
+    const res = await handler(post(`/sessions/sess-1/${path}`, body));
+    expect(res.status).toBe(502);
+    const err = (await res.json()) as { error?: { message?: string } };
+    expect(JSON.stringify(err)).toContain("No API key found for the selected model");
+  });
+
+  it("success:true 仍然 ack 200(零回归)", async () => {
+    const { handler } = setup();
+    const res = await handler(post("/sessions/sess-1/model", {
+      provider: "dashscope",
+      modelId: "qwen",
+    }));
+    expect(res.status).toBe(200);
+  });
+
   it("unknown attachmentId is skipped (no marker, original kept)", async () => {
     const store = metaStore({}); // head 永远 undefined
     const { handler, session } = setup({ attachmentStore: store });
