@@ -204,16 +204,40 @@ function renderDockerfile(baseImage: string, entry: string): string {
 }
 
 /**
- * 计算缺省 tag:sourceDir 下**全部非排除源文件**(含入口与 bundle 模式下被内联的 routes/
- * 等源,已按相对路径排序)字节的 sha256 前 12 位。哈希输入宽于 staging files 清单的理由
- * 见模块头「tag 缺省」;路径与内容间以 NUL 定界,防「路径尾 + 内容头」拼接歧义。
+ * 计算缺省 tag:**基座镜像** + sourceDir 下**全部非排除源文件**(含入口与 bundle 模式下被
+ * 内联的 routes/ 等源,已按相对路径排序)字节的 sha256 前 12 位。哈希输入宽于 staging files
+ * 清单的理由见模块头「tag 缺省」;各段之间以 NUL 定界,防「路径尾 + 内容头」拼接歧义。
+ *
+ * ★ 2026-07-20(#27):基座镜像纳入哈希。此前只哈希源文件,于是「源不变、只换基座」算出的
+ * tag 不变 —— 内容寻址失去区分能力:同一个 tag 下会存在用不同基座烘出来的不同镜像,后推的
+ * 覆盖先推的,回滚锚点被侵蚀;在服务端 bake 语境下更会直接触发幂等短路(同 tag + ready ⇒
+ * 复用旧结果,构建根本不跑,新基座永远进不了池)。内容寻址的前提是「tag 能唯一确定产物
+ * 字节」,而基座是产物的一部分,故必须进哈希。
+ *
+ * 同源缺陷曾同时存在于 pi-clouds 的最小复刻版
+ * (`packages/registry-server/src/bake/pi-web-kernel.ts`),该侧已于 #26 先行修正并在注释中
+ * 记录「刻意与上游分叉」;本次上游同步修正后,两边语义重新一致 —— 是**修正后的一致**,
+ * 与此前「一致地错」有本质区别。两份实现仍应长期收敛为一份(见对侧注释:上游发布含
+ * `sandbox-image` 的 npm 版本后,应改回子路径 import 并删除复刻文件)。
+ *
+ * `baseImage` 取**镜像引用字符串**而非 digest:仓库既有约定即「基座变更须换 tag」,tag 足以
+ * 承载语义;取 digest 需额外查询 registry,引入网络依赖与新的失败模式。**前提是基座 tag 不
+ * 可变复用** —— 若出现「同 tag 覆盖推送」,本函数将失去区分能力,届时才需升级到 digest。
+ *
+ * ⚠️ 变更哈希输入 = 改变全部既有源的寻址空间(所有缺省 tag 重算),非兼容改动:此后同一份源
+ * 会算出与历史不同的 tag,产出新镜像名(**不覆盖**旧镜像,这正是所要的)。显式 `opts.tag`
+ * 不受影响。
  */
 function computeContentTag(
   hashInputRelPaths: readonly string[],
   sourceDir: string,
   fs: BakeFsPort,
+  baseImage: string,
 ): string {
   const hash = createHash("sha256");
+  // 基座先入哈希:它与源文件同属产物的决定性输入(见上方 #27 注释)。
+  hash.update(baseImage);
+  hash.update("\0");
   for (const rel of hashInputRelPaths) {
     hash.update(rel);
     hash.update("\0");
@@ -290,13 +314,14 @@ export function computeBakePlan(
     dest: rel,
   }));
 
-  // tag:显式优先(空白视为缺省);缺省 = 全部非排除源内容哈希(宽于 files 清单,
-  // 使 bundle 内联的 routes/ 等源变更也翻新 tag——内容寻址,Req 2.3/2.6)。
+  // tag:显式优先(空白视为缺省);缺省 = **基座镜像** + 全部非排除源内容哈希(宽于 files
+  // 清单,使 bundle 内联的 routes/ 等源变更也翻新 tag——内容寻址,Req 2.3/2.6)。
+  // #27:基座进哈希,换基座必产出不同 tag,避免同 tag 下并存不同产物(详见 computeContentTag)。
   const explicitTag = opts.tag?.trim();
   const rawTag =
     explicitTag !== undefined && explicitTag !== ""
       ? explicitTag
-      : computeContentTag(nonExcluded, sourceDir, fs);
+      : computeContentTag(nonExcluded, sourceDir, fs, opts.baseImage);
 
   // 命名:复用 template-name 派生(单一来源);plan.tag 取镜像名中的最终形态,
   // 保证显式 tag 含 `.` 时三者(tag/imageName/templateName)一致归一。

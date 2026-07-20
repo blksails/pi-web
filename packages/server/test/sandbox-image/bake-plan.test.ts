@@ -410,6 +410,31 @@ describe("computeBakePlan — tag(Req 2.3/2.6)", () => {
     expect(b.tag).toBe(a.tag);
   });
 
+  // #27:基座是产物的决定性输入,必须进 tag。此前只哈希源文件,「源不变只换基座」tag 不变 ⇒
+  // 同 tag 下并存不同产物(后推覆盖先推)、服务端 bake 侧更会幂等短路使新基座永不生效。
+  it("基座变化 → tag 必变(#27),且镜像名/模板名随之不同名", () => {
+    const a = planOrThrow(opts({ baseImage: "pi-clouds/agent-runner:pi-slim-0.4.2" }), memFs(SRC, baseTree));
+    const b = planOrThrow(opts({ baseImage: "pi-clouds/agent-runner:pi-slim-0.5.0" }), memFs(SRC, baseTree));
+    expect(b.tag).not.toBe(a.tag);
+    // 不同名才不会覆盖旧产物——这正是内容寻址要守住的性质。
+    expect(b.imageName).not.toBe(a.imageName);
+    expect(b.templateName).not.toBe(a.templateName);
+  });
+
+  it("同基座同内容 → tag 恒定(引入基座不破坏确定性,#27)", () => {
+    const a = planOrThrow(opts(), memFs(SRC, baseTree));
+    const b = planOrThrow(opts(), memFs(SRC, baseTree));
+    expect(b.tag).toBe(a.tag);
+    expect(a.tag).toMatch(/^[0-9a-f]{12}$/);
+  });
+
+  it("显式 tag 优先:基座变化也不改写它(逃生舱语义不受 #27 影响)", () => {
+    const a = planOrThrow(opts({ tag: "pinned", baseImage: "pi-clouds/agent-runner:pi-slim-0.4.2" }), memFs(SRC, baseTree));
+    const b = planOrThrow(opts({ tag: "pinned", baseImage: "pi-clouds/agent-runner:pi-slim-0.5.0" }), memFs(SRC, baseTree));
+    expect(a.tag).toBe("pinned");
+    expect(b.tag).toBe("pinned");
+  });
+
   it("排除项内容变化不影响 tag(node_modules 等不是 staging 输入)", () => {
     const a = planOrThrow(opts(), memFs(SRC, baseTree));
     const b = planOrThrow(
