@@ -12,7 +12,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveHostApiVersion } from "@/server/bootstrap";
+import { resolveHostApiVersion } from "@/lib/app/host-api-version";
+import { buildServerGateOptions, buildBrowserGateOptions } from "@/lib/app/web-ext-gate-config";
 
 const webKitVersion: string = JSON.parse(
   readFileSync(join(process.cwd(), "packages/web-kit/package.json"), "utf8"),
@@ -38,5 +39,25 @@ describe("宿主 web-kit 版本自述(#33)", () => {
   it("空串 env 视同未设置,回落到注入的真实版本", () => {
     const env = { NEXT_PUBLIC_PI_WEB_KIT_VERSION: "  " } as unknown as NodeJS.ProcessEnv;
     expect(resolveHostApiVersion(env)).toBe(webKitVersion);
+  });
+
+  it("两个历史 env 名都认(曾各自服务一条链路,不能只留一个)", () => {
+    expect(resolveHostApiVersion({ PI_WEB_KIT_VERSION: "8.8.8" } as unknown as NodeJS.ProcessEnv)).toBe("8.8.8");
+    expect(
+      resolveHostApiVersion({ NEXT_PUBLIC_PI_WEB_KIT_VERSION: "7.7.7" } as unknown as NodeJS.ProcessEnv),
+    ).toBe("7.7.7");
+  });
+
+  /**
+   * ★ 修复前存在两条独立链路、两个不同 env 名,各自硬编码兜底 "0.1.0":
+   *   server/bootstrap.ts(→ /api/bootstrap → 前端)读 NEXT_PUBLIC_PI_WEB_KIT_VERSION
+   *   lib/app/web-ext-gate-config.ts(→ GateOptions → verifyExtension,真正做判定的)读 PI_WEB_KIT_VERSION
+   * 设一个不设另一个,两条链路就给出不同的宿主版本。本用例守住它们的一致性。
+   */
+  it("★ 门控两条链路的宿主版本一致,且等于包真实版本", () => {
+    const env = {} as NodeJS.ProcessEnv;
+    expect(buildServerGateOptions(env).hostApiVersion).toBe(webKitVersion);
+    expect(buildBrowserGateOptions(env).hostApiVersion).toBe(webKitVersion);
+    expect(buildServerGateOptions(env).hostApiVersion).toBe(resolveHostApiVersion(env));
   });
 });

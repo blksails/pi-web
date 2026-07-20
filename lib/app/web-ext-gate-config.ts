@@ -10,13 +10,12 @@
  * 环境变量:
  *   - PI_WEB_EXT_WHITELIST:逗号分隔的受信发布者 Ed25519 公钥(base64 raw)。
  *   - PI_WEB_EXT_REQUIRE_SIGNATURE:是否强制签名(默认 "true";生产不得置 false,见任务 2.2)。
- *   - PI_WEB_KIT_VERSION:宿主 web-kit 版本(targetApiVersion 兼容判定);缺省 "0.1.0"。
+ *   - 宿主 web-kit 版本(targetApiVersion 兼容判定)由 `host-api-version.ts` 统一解析:
+ *     构建期从 web-kit 包版本注入,`NEXT_PUBLIC_PI_WEB_KIT_VERSION` / `PI_WEB_KIT_VERSION` 可覆盖。
  */
 import type { GateOptions } from "@blksails/pi-web-react";
-
-function hostApiVersionFromEnv(env: NodeJS.ProcessEnv): string {
-  return env.PI_WEB_KIT_VERSION ?? "0.1.0";
-}
+// #33:宿主版本唯一解析点(构建期注入 + env 可选覆盖),不再各自 env ?? "0.1.0"
+import { resolveHostApiVersion } from "./host-api-version.js";
 
 /**
  * 服务端门控选项:含受信发布者公钥白名单与 requireSignature,供服务端验签使用。
@@ -30,7 +29,7 @@ export function buildServerGateOptions(
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   const requireSignature = env.PI_WEB_EXT_REQUIRE_SIGNATURE !== "false";
-  return { whitelist, requireSignature, hostApiVersion: hostApiVersionFromEnv(env) };
+  return { whitelist, requireSignature, hostApiVersion: resolveHostApiVersion(env) };
 }
 
 /**
@@ -43,7 +42,7 @@ export function buildBrowserGateOptions(
   return {
     whitelist: [],
     requireSignature: false,
-    hostApiVersion: hostApiVersionFromEnv(env),
+    hostApiVersion: resolveHostApiVersion(env),
     signaturePreVerified: true,
   };
 }
