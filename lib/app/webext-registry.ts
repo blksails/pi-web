@@ -72,45 +72,71 @@ const DECLARATIVE: WebExtension = {
   },
 };
 
+// match 键一律带 `examples/` 段(路径段尾匹配,见 resolveExtensionForSource):只写目录名的话,
+// 任何以该名结尾的路径都会撞上——例如同名仓库根 `C:\workcode\aigc-agent` 本身。
 const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
-  { match: "webext-layout-agent", ext: layoutExt },
+  { match: "examples/webext-layout-agent", ext: layoutExt },
   // webext-slots-agent 同时演示 Tier1 全槽 + Tier5 声明式空态配置(config.empty)。
-  { match: "webext-slots-agent", ext: slotsExt },
-  { match: "webext-renderer-agent", ext: rendererExt },
-  { match: "webext-contrib-agent", ext: contribExt },
-  { match: "webext-artifact-agent", ext: artifactExt },
-  { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
-  { match: "aigc-agent", ext: aigcExt },
+  { match: "examples/webext-slots-agent", ext: slotsExt },
+  { match: "examples/webext-renderer-agent", ext: rendererExt },
+  { match: "examples/webext-contrib-agent", ext: contribExt },
+  { match: "examples/webext-artifact-agent", ext: artifactExt },
+  { match: "examples/webext-background-agent", ext: backgroundExt },
+  // aigc-agent:AIGC 图像工作台完整 ③(promptToolbar + panelRight 画布 + 图像/媒体渲染器 + 空态)。
+  { match: "examples/aigc-agent", ext: aigcExt },
+  // 迁移期对照:源仓库 aigc-agent 的 `agents/aigc` 与本仓库 examples/aigc-agent 是同一 agent
+  // (examples 内容由 scripts/sync-from-aigc-agent.mjs 自源同步),在本宿主点选源仓库路径时
+  // 给同一套 UI;源仓库退役后随 docs/aigc-agent-migration.md §6 一并清理。
+  { match: "agents/aigc", ext: aigcExt },
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——launcherRail 入口 + panelRight 画廊/工作台。
-  // 注:match 顺序在 "aigc-agent" 之后,但 resolveExtensionForSource 用 includes 首命中;
-  // "aigc-canvas-agent" 不含子串 "aigc-agent"(-canvas- 打断),故独立命中,无需担心顺序。
-  { match: "aigc-canvas-agent", ext: aigcCanvasExt },
+  { match: "examples/aigc-canvas-agent", ext: aigcCanvasExt },
   // aigc-canvas-nosurface-agent:贡献 Canvas 面板但 agent 无 canvas surface —— 降级
-  // (unavailable / 只读图库)端到端验证 fixture。source 路径含子串 "aigc-canvas-nosurface-agent",
-  // 不含 "aigc-canvas-agent"(-nosurface- 打断)也不含 "aigc-agent",故独立命中,与上方两项互不误配。
-  { match: "aigc-canvas-nosurface-agent", ext: aigcCanvasNoSurfaceExt },
+  // (unavailable / 只读图库)端到端验证 fixture。
+  { match: "examples/aigc-canvas-nosurface-agent", ext: aigcCanvasNoSurfaceExt },
   // canvas-plugin-stickers(canvas-plugins-m3):Canvas 插件双端范例 source —— 复用 CanvasLauncher/
   // CanvasPanel + 车道① canvasPlugins:[stickersBundle](贴纸图层/工具 + 风格迁移动作)。canvasPlugins
   // 含 React 组件(Render/Inspector),故必须走构建期静态 import 车道(运行时 /api/webext/resolve
-  // 无法承载组件)。source 路径含子串 "canvas-plugin-stickers",不与既有 match 互串(独立命中)。
-  { match: "canvas-plugin-stickers", ext: canvasPluginStickersExt },
-  { match: "webext-declarative-agent", ext: DECLARATIVE },
+  // 无法承载组件)。
+  { match: "examples/canvas-plugin-stickers", ext: canvasPluginStickersExt },
+  { match: "examples/webext-declarative-agent", ext: DECLARATIVE },
   // logging-demo-agent:浏览器侧 webext 日志总线验收(webext:logging-demo 命名空间)。
-  { match: "logging-demo-agent", ext: loggingDemoExt },
+  { match: "examples/logging-demo-agent", ext: loggingDemoExt },
   // state-bridge-agent:状态注入桥「人侧」panelRight 面板(双向闭环浏览器验收)。
-  { match: "state-bridge-agent", ext: stateBridgeExt },
+  { match: "examples/state-bridge-agent", ext: stateBridgeExt },
   // surface-demo-agent:agent 权威 surface 领域无关示例(命令闭环 + 能力退化浏览器验收)。
-  { match: "surface-demo-agent", ext: surfaceDemoExt },
+  { match: "examples/surface-demo-agent", ext: surfaceDemoExt },
   // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
   // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。
-  { match: "plugin-code-review-agent", ext: codeReviewExt },
+  { match: "examples/plugin-code-review-agent", ext: codeReviewExt },
 ];
 
-/** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */
+/**
+ * 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI,或交由运行时
+ * `/api/webext/resolve` 车道兜底,见 webext-load-client)。
+ *
+ * 匹配语义 = **路径段尾**,不是子串(上提自源仓库 aigc-agent iteration-8 目标 2 的真 bug 修复):
+ *  - 子串匹配下,绝对路径 `C:\workcode\aigc-agent\agents\aigc` 会先命中裸目录名规则
+ *    `aigc-agent`(仓库目录名恰好同名)——错拿只有渲染器的范例扩展,空态 / promptToolbar /
+ *    panelRight 全部静默回落宿主默认,且 e2e 因走正斜杠相对路径而全绿(「手动点选必坏、e2e 必绿」)。
+ *  - Windows 源列表返回原生反斜杠路径,而 match 键是 POSIX 形式,故须先归一分隔符。
+ *  - match 键带 `examples/` 段:只写目录名的话,任何以该名结尾的路径(含同名仓库根)都会撞上,
+ *    只改匹配算法治不了同名。
+ */
+function normalizeSource(source: string): string {
+  return source
+    .replace(/\\/g, "/")
+    .replace(/\.git$/, "")
+    .replace(/\/+$/, "");
+}
+
 export function resolveExtensionForSource(
   source: string | undefined,
 ): WebExtension | undefined {
   if (source === undefined) return undefined;
-  return REGISTRY.find((e) => source.includes(e.match))?.ext;
+  const norm = normalizeSource(source);
+  return REGISTRY.find((e) => norm === e.match || norm.endsWith(`/${e.match}`))
+    ?.ext;
 }
+
+/** 测试用:注册表 match 键(只读)。钉「全部带路径段」约束,防回归裸目录名子串时代。 */
+export const REGISTRY_MATCHES: readonly string[] = REGISTRY.map((e) => e.match);

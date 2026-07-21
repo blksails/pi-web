@@ -70,6 +70,22 @@ git diff                                 # 审阅
 | `pnpm build:client`(vite,含 webext 静态导入车道) | ✅ 构建通过 |
 | `pnpm test:app` | ✅ 迁移相关套件全绿(webext-load-client 4/4、webext-resolve 5/5);26 个失败均为存量/本机环境:@pi-clouds 缺失 12 套件、Windows 路径分隔符断言、Node25 localStorage、bash spawn 超时,与迁移无因果 |
 
+## 5.1 iteration-8 审查记录(2026-07-21,源侧 `2bf0da9`)
+
+源侧 iteration-8 结算(8 目标全交付)后重跑同步脚本:**迁移面零 diff**——该轮对
+`agents/aigc` 仅改空态短标题(基础波复制时已在源侧工作区,当时即带上);其余改动全在
+未随迁的壳层与文档。按合同逐项核对:
+
+| 合同项 | pi-web 侧结论 |
+|---|---|
+| 目标 1 frame-rpc 上游化 | 已按纪律交付:`feat/frame-rpc` 在远端、**PR #9 OPEN**、未动 main、submodule 指针未跟随。等维护者 review 合并,本仓库不需动作;合并后源侧换 import 属其下一轮 |
+| 目标 2 注册表段尾匹配 | **真 bug,本壳同源同病,已上提**:`lib/app/webext-registry.ts` 子串 `includes` → 段尾匹配 + `normalizeSource`(反斜杠/`.git`/尾斜杠归一)+ match 键全部带 `examples/` 段;另加 `agents/aigc` → aigcExt 迁移期对照规则。钉死测试 `test/webext-registry-resolve.test.ts`(7 用例,含注册表全量段化约束) |
+| 目标 3–8(壳 UI:去品牌/窄栏降级/账号行/最小宽度/登录页/浮标) | 全部属未随迁壳层,不影响迁移面;其中目标 3 的空态短标题已同步 |
+| iteration-9 合同(注册表反查/身份收敛/生成链路冒烟/MCP/素材上传/会话业务元) | 均为源仓库壳/平台侧目标,无迁移面影响;其目标 1「注册表可达性反查」精神已在本仓库钉死测试的全量约束用例中先行落地 |
+
+验证:注册表新测试 7/7 + 相邻 webext 套件 9/9 全绿;`build:client` ✅;root tsc 除已知
+存量 `@pi-clouds` 缺失外零新增错误;e2e source 形态(`./examples/<name>`)与段尾匹配兼容。
+
 ## 6. 割接(源仓库退役)时再做
 
 - `@aigc-agent/media-tools` 是否改名 `@blksails/pi-web-media-tools` 并发布。
