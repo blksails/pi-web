@@ -62,10 +62,14 @@
 >    与 `loadForSession(sessionId: string): Promise<CapabilitySnapshot>`，各自有被诚实
 >    校验的返回类型，实证可挡实现体越权（直接返回与经中间变量返回均被 `TS2322` 拒），
 >    绕过只剩显式 `as any`——可 grep、可 lint、复核一眼可见。
->    〔机制澄清（返工时被变异体 N2 纠正）：挡住越权的是 `attachments?: never` **本身**，
->    **不是**对象字面量的 excess property check——EPC 在「async 函数的推断返回类型经
->    `Promise<T>` 包装」这个位置根本不触发。故「直接返回」与「经中间变量返回」两种写法
->    杀伤力**相同**；两条都写是为覆盖实现者的常见写法，不是判别力增量。〕
+>    〔机制澄清（经两轮隔离探针实测定位）：挡住越权的是 `attachments?: never` **本身**。
+>    EPC（对象字面量多余属性检查）**只在返回类型显式注解时参与**——
+>    `async loadStatic(): Promise<StaticCapabilitySnapshot> { return {…, attachments} }`
+>    **会**被 EPC 以 `TS2353` 挡下；而返回类型由**上下文推断**时 EPC 完全缺席——
+>    `{ loadStatic: async () => ({…, attachments}) }` 这类对象字面量实现就属此列。
+>    故 EPC **覆盖不全**（实测四种写法只挡两种），`never` 才是唯一在**四种写法下都成立**
+>    的防线。★ 初稿此处曾写「EPC 在 async 经 `Promise<T>` 包装的位置根本不触发」，
+>    **是错的**：分界不在 async 也不在 `Promise<T>`，而在**注解 vs 推断**。〕
 >    调用方须在「有无 sessionId」处分叉，而它本来就必须做这个决策：把隐式可选参数
 >    变成显式路径选择，正是本条要的。
 >    (b) `attachments` 的字段名原文是 `endpoint`，而 design 与实现用的是 `baseUrl`，
@@ -427,8 +431,10 @@ export interface CapabilityProvider {
 ### 4.2 语义保证
 
 1. **全字段可选**：任一字段缺失表示该能力不可用，调用方**必须**降级到本地形态，不得报错。
-2. **两段式是强制的**：`attachments` 的授予作用域含 `sessionId`。实现**不得**在 `load()` 无 sessionId 时返回公司级附件授权——那会让同租户用户互读会话附件。
-3. **失败即拒绝**：`load()` 抛错时，宿主**不得**进入「已登录」态（这是当前「本地不验签」缺陷的修正点，见集成设计 §2.4）。
+2. **两段式是强制的，且已由类型机械强制**（勘误⑫a）：`attachments` 的授予作用域含 `sessionId`。
+   `loadStatic()` 的返回类型 `StaticCapabilitySnapshot` **禁止** `attachments`（`?: never`），
+   越权签发**编译不过**——那会让同租户用户互读会话附件。这条从前是纯文档义务，现在不是了。
+3. **失败即拒绝**：任一 `load*` 方法抛错时，宿主**不得**进入「已登录」态（这是当前「本地不验签」缺陷的修正点，见集成设计 §2.4）。
 4. **不落盘**：返回值中的 token 是短期授予，**禁止**写入 `Workspace`、日志或任何持久介质。凭据只存 OS 钥匙串。
 5. **调用方负责缓存**：契约不规定缓存策略；实现可以每次真调，宿主按 `expiresAt` 自行缓存。
 
