@@ -370,17 +370,31 @@ export interface CapabilitySnapshot {
   readonly tenant?: CapabilityTenant;
   readonly egress?: CapabilityEgressGrant;
   readonly sources?: CapabilityTokenGrant;
-  /** 仅当 load 传入 sessionId 时可能出现（5.3/5.4）。 */
+  /** 只可能出现在 loadForSession() 的返回里（5.3/5.4）。 */
   readonly attachments?: CapabilityTokenGrant;
 }
 
+/** 静态快照：attachments 被类型**禁止**，不是「碰巧没有」（契约勘误⑫a）。 */
+export type StaticCapabilitySnapshot =
+  Omit<CapabilitySnapshot, "attachments"> & { readonly attachments?: never };
+
 export interface CapabilityProvider {
   readonly contractVersion: typeof HOST_CONTRACT_VERSION;
-  load(sessionId?: string): Promise<CapabilitySnapshot>;
+  /** 只返回静态能力。签发附件授予会**编译不过**。 */
+  loadStatic(): Promise<StaticCapabilitySnapshot>;
+  loadForSession(sessionId: string): Promise<CapabilitySnapshot>;
 }
 ```
 
-- **Preconditions**：不传 `sessionId` 时不得返回 `attachments`（5.3）。
+> **修订（2026-07-21，任务 5.1 复核实证；契约勘误⑫a）**：接口块原为 `load(sessionId?: string)`，
+> 它**表达不了**下面 Preconditions 那条安全边界——返回类型与实参无关，越权签发全靠文档约束。
+> **重载形态也挡不住**（复核者写探针实证：TS 不逐条校验重载实现签名，`return { attachments }`
+> 编译通过），那是虚假安全感。改双方法后各自有被诚实校验的返回类型，实证可挡。
+> 挡住越权的是 `attachments?: never` 本身，**不是** excess property check（EPC 在
+> 「async 函数推断返回类型经 `Promise<T>` 包装」这个位置不触发，由变异体 N2 纠正）。
+
+- **Preconditions**：静态路径不得返回 `attachments`（5.3）——现已由方法签名**机械强制**，
+  不再是纯文档义务。
 - **Postconditions**：整体失败以 rejected promise 表达，且不返回部分快照（5.5）。
 - **Invariants**：任一能力不可用以字段缺失表达，不以抛错表达（5.2）。
 

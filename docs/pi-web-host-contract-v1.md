@@ -62,6 +62,10 @@
 >    与 `loadForSession(sessionId: string): Promise<CapabilitySnapshot>`，各自有被诚实
 >    校验的返回类型，实证可挡实现体越权（直接返回与经中间变量返回均被 `TS2322` 拒），
 >    绕过只剩显式 `as any`——可 grep、可 lint、复核一眼可见。
+>    〔机制澄清（返工时被变异体 N2 纠正）：挡住越权的是 `attachments?: never` **本身**，
+>    **不是**对象字面量的 excess property check——EPC 在「async 函数的推断返回类型经
+>    `Promise<T>` 包装」这个位置根本不触发。故「直接返回」与「经中间变量返回」两种写法
+>    杀伤力**相同**；两条都写是为覆盖实现者的常见写法，不是判别力增量。〕
 >    调用方须在「有无 sessionId」处分叉，而它本来就必须做这个决策：把隐式可选参数
 >    变成显式路径选择，正是本条要的。
 >    (b) `attachments` 的字段名原文是 `endpoint`，而 design 与实现用的是 `baseUrl`，
