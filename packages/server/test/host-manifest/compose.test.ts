@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { HOST_CAPABILITY_IDS_V1 } from "../../src/host-manifest/capability-ids.js";
@@ -53,11 +55,19 @@ function catchComposition(run: () => unknown): CapabilityCompositionError {
 }
 
 describe("HOST_CAPABILITY_IDS_V1(v1 冻结名册)", () => {
-  /** 从契约文档 §5.3 的表格中提取第一列的 id(独立于代码的对照物)。 */
-  function readFrozenIdsFromContract(): readonly string[] {
-    const contractPath = fileURLToPath(
-      new URL("../../../../docs/pi-web-host-contract-v1.md", import.meta.url),
-    );
+  /** 权威契约文档的真实路径。默认对照物取自这里。 */
+  const CONTRACT_PATH = fileURLToPath(
+    new URL("../../../../docs/pi-web-host-contract-v1.md", import.meta.url),
+  );
+
+  /**
+   * 从契约文档 §5.3 的表格中提取第一列的 id(独立于代码的对照物)。
+   *
+   * `contractPath` 是**带默认值的形参**而非硬编码常量,为的是让「文档改了 → 失配被发现」
+   * 这个方向可被实证:协议禁止原地变异权威文档(改了再还原会静默销毁期间的其它写入),
+   * 若不留副本注入的接缝,该方向就等于被直接判死 —— 将来没人能再验证这条对照还成不成立。
+   */
+  function readFrozenIdsFromContract(contractPath: string = CONTRACT_PATH): readonly string[] {
     const doc = readFileSync(contractPath, "utf8");
     const section = doc.slice(doc.indexOf("### 5.3"));
     const table = section.slice(0, section.indexOf("\n>"));
@@ -74,6 +84,34 @@ describe("HOST_CAPABILITY_IDS_V1(v1 冻结名册)", () => {
   it("与契约文档 §5.3 的冻结表格逐项一致(顺序无关的集合相等)", () => {
     const fromContract = readFrozenIdsFromContract();
     expect([...HOST_CAPABILITY_IDS_V1].sort()).toEqual([...fromContract].sort());
+  });
+
+  it("契约表格被改动时对照会失配(副本注入,绝不原地改 docs/)", () => {
+    // 取真实文档 → 改掉表格里的一个 id → 写进**临时目录**的副本。
+    // 用运行期生成的副本而非预置文件:预置在某台机器的 scratchpad 里,别人和 CI 一跑就红。
+    const real = readFileSync(CONTRACT_PATH, "utf8");
+    const tampered = real.replace("| `shell.bash` |", "| `shell.bashx` |");
+    // 自检:变异锚点必须真的命中,否则「副本与原文一致」会让下面的失配断言恒假地通过。
+    expect(tampered, "契约表格中未找到 `shell.bash` 行,锚点已失效").not.toBe(real);
+
+    const dir = mkdtempSync(join(tmpdir(), "host-manifest-contract-"));
+    const copyPath = join(dir, "contract-tampered.md");
+    try {
+      writeFileSync(copyPath, tampered);
+      const fromCopy = readFrozenIdsFromContract(copyPath);
+
+      // 解析必须仍然正常工作 —— 否则下面的「不相等」是解析失败造成的假阳性,而非真失配。
+      // 这几条同时锁住解析逻辑:若它被改坏成「什么都能匹配」,行数会变而长度断言转红;
+      // 若它被改成无视入参读回真文档,则 bashx 断言转红。
+      expect(fromCopy).toHaveLength(HOST_CAPABILITY_IDS_V1.length);
+      expect(fromCopy).toContain("shell.bashx");
+      expect(fromCopy).not.toContain("shell.bash");
+
+      // 本用例的正题:文档侧一处改动,即足以让对照物与代码侧不再相等。
+      expect([...fromCopy].sort()).not.toEqual([...HOST_CAPABILITY_IDS_V1].sort());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("恰为 16 项且无重复", () => {
