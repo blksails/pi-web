@@ -1,0 +1,4376 @@
+/* [迁移壳层] 源:aigc-agent app/globals.css(变换 D:去 @import/@tailwind 头 + 全局规则中和
+   + token 组追加 .aigc-embed 作用域)。由 scripts/sync-from-aigc-agent.mjs 覆盖,勿手改。 */
+/* @import 必须先于其它语句(CSS 规范;Vite/postcss 严格执行,置后会被静默丢弃)。 */
+/* shadcn CSS variable theme tokens consumed by <PiChat> and its children. */
+/* canvas-ui 组件样式(CanvasWorkbench 版本条/悬浮工具条/视口等)——不引则错位到底部。 */
+
+
+.aigc-dead-global-a { /* [pi-web 适配] 壳层 html/body 全局规则中和(宿主自管) */
+  height: 100%;
+  /* 应用为全屏布局:文档自身永不滚动,滚动只发生在对话视口(<Conversation>)内部。
+     这可避免经典(非 overlay)滚动条下 100vw/100vh 互相触发、出现重复滚动条。 */
+  overflow: hidden;
+}
+
+.aigc-dead-global-b { /* [pi-web 适配] 同上 */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   花影 AIGC 宿主外壳(③ app 壳)· 纯黑白灰极简设计系统(蓝图 §2.5)。
+   token 全部 scope 到 .aigc-shell,不污染 PiChat 的 shadcn token(--background 等);
+   PiChat 在中栏内保持自身主题。不使用原型的 filter:grayscale(mockup 给 emoji 去色的手段,
+   真实应用会连生成图一并去色)——改为直接用单色 token + (S6)单色线性图标。
+   明暗切换 = 单一信号「<html> 的 .dark 类」(ThemeProvider 依 mode(含 system 解析)加/去该类,
+   与 PiChat 的 shadcn token 同源)。★ 勿再用 prefers-color-scheme/[data-theme] 驱动本壳:
+   那是与切换按钮不同的信号,会导致「OS 深色时怎么切都黑」(切换只改 .dark 类,压不过媒体查询)。
+   ──────────────────────────────────────────────────────────────────────── */
+/* ★ .aigc-asset-pop 一并列入:所有下拉/右键菜单经 portal 渲到 <body>(逃出抽屉 overflow),
+   而调色板变量原本只挂 .aigc-shell(body 的后代)——portal 内 var(--surface) 取不到 → 背景透明。
+   故在弹层根类上再声明同一套变量(不上提到 :root,避免与 shadcn 的 --border/--accent 撞名)。 */
+.aigc-embed,
+.aigc-shell,
+.aigc-asset-pop,
+.aigc-dist-backdrop,
+.aigc-folder-picker {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;
+  --surface-3: #e8e8ea;
+  --ink: #18181b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --border: #e5e5e7;
+  --border-strong: #d4d4d8;
+  --accent: #18181b;
+  --accent-ink: #ffffff;
+  --accent-soft: #f4f4f5;
+  --good: #52525b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 6px 18px rgba(0, 0, 0, 0.06);
+  --step: 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+:root.dark .aigc-embed,
+:root.dark .aigc-shell,
+:root.dark .aigc-asset-pop,
+:root.dark .aigc-dist-backdrop,
+:root.dark .aigc-folder-picker {
+  --bg: #09090b;
+  --surface: #161618;
+  --surface-2: #232326;
+  --surface-3: #2d2d30;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --accent: #fafafa;
+  --accent-ink: #18181b;
+  --accent-soft: #27272a;
+  --good: #a1a1aa;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.aigc-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* 底部状态条(承接原型 .statusbar):子进程连接态(左)+ 日志开关(右)。贴 shell 底、全宽、mono。
+   —— 原型「日志位置」的真身:一条 26px 细条,非对话列内的大日志面板;日志默认折叠(▾),点开才展。 */
+/* 日志区:整页最底、全宽、贴 statusbar 之上;有界高(内容多则内部滚动),LogsPanel fill 填满。 */
+.aigc-logs-dock {
+  flex: 0 0 auto;
+  height: 220px;
+  max-height: 40vh;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.aigc-logs-dock > * {
+  min-height: 0;
+  flex: 1;
+}
+
+.aigc-statusbar {
+  flex: 0 0 auto;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.aigc-statusbar .g {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--good);
+  flex: 0 0 auto;
+}
+.aigc-statusbar .g.wait {
+  background: var(--ink-3);
+  animation: aigc-pulse 1.1s ease-in-out infinite;
+}
+.aigc-statusbar .g.off {
+  background: var(--ink-3);
+}
+.aigc-statusbar .sp {
+  flex: 1;
+}
+.aigc-statusbar-log {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0;
+  transition: color var(--step, 0.2s);
+}
+.aigc-statusbar-log:hover,
+.aigc-statusbar-log.on {
+  color: var(--ink);
+}
+
+/* TopBar */
+.aigc-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+/* 宿主品牌位(.aigc-brand + 实心色块 glyph)已撤销:本仓库的定位是「嵌入 pi-web 的一个 agent」,
+   壳顶挂自家 logo 会把 agent 的身份盖掉,那个纯色圆角方块也是页面上唯一一处无信息量的形状。
+   顶部改为下面的 .aigc-agent-id —— 显示**当前切换到的 agent**。 */
+.aigc-agent-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.aigc-tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 11px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-weight: 500;
+  /* 绝不折行:左栏可窄到 180px,一折行就是「新建/会话」竖排的变形观感。
+     窄到放不下文字时由容器查询把 .lbl 收掉,退成图标钮。 */
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition:
+    background var(--step),
+    color var(--step);
+}
+.aigc-tb-btn.grow {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
+}
+.aigc-tb-btn.icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.aigc-tb-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+/* 左栏底部的独立账号行(原先与设置/工作区/主题挤同一行,用户名一长就把整行挤变形)。
+   宽度由 min-width:0 + 省略号收口,不再由用户名长度决定。 */
+.aigc-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 4px 0 6px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.aigc-account .ava {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.aigc-account .who {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aigc-account .out {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--ink-3);
+}
+.aigc-account .out:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-tb-btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.aigc-tb-btn.active {
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+.aigc-tb-spacer {
+  flex: 1;
+}
+
+/* 聊天列头已移除(agent-chip + "已连接"移至底栏状态条;边栏入口移至顶栏)。保留空选择器占位
+   以防未来需要在该位置恢复内容。 */
+
+/* Body grid: [rail | main] —— canvas 由 PiChat 内 panelRight 承载,不占宿主列 */
+.aigc-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* [左栏 | 对话] —— canvas + 素材抽屉已移入 PiChat panelRight,不再占宿主列 */
+  grid-template-columns: var(--aigc-rail-w, 248px) minmax(0, 1fr);
+  transition: grid-template-columns var(--step);
+}
+.aigc-shell[data-rail="collapsed"] .aigc-body {
+  --aigc-rail-w: 0px;
+}
+/* 拖拽期关过渡,避免网格动画追鼠标卡顿。 */
+body.aigc-dragging {
+  user-select: none;
+  cursor: col-resize;
+}
+/* 抽屉横向拖拽:row-resize cursor(承接原型 .rz/.am-grip 的 row-resize) */
+body.aigc-dragging-row {
+  user-select: none;
+  cursor: row-resize;
+}
+body.aigc-dragging .aigc-body,
+body.aigc-dragging-row .aigc-cvp,
+body.aigc-dragging-row .aigc-assetmgr {
+  transition: none;
+}
+/* 右区一体机:canvas 工作区 + 素材抽屉(竖排)。现渲染于 PiChat panelRight 的 aside 内,
+   靠自身 flex 列撑满高度(不再借 body 网格 grid-column 定位)。 */
+.aigc-rightcol {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  overflow: hidden;
+}
+/* ═══════════════════════════════════════════════════════════════════════════
+   右栏一体机(严格照原型 huaying-aigc-layout.html 的 .rightcol 复刻)
+   .aigc-rightcol[data-canvas][data-drawer] = .aigc-cvp(画布) + .aigc-rz(分隔条) + .aigc-assetmgr(抽屉)
+   canvas 与 drawer 独立;抽屉三态 docked/full/hidden 配 --aigc-drawer-h。
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 画布面板 .cv-panel ── */
+.aigc-cvp {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+}
+.aigc-rightcol[data-canvas="off"] .aigc-cvp,
+.aigc-rightcol[data-drawer="full"] .aigc-cvp {
+  display: none;
+}
+/* 两级:画廊(默认) ↔ 工作台(编辑单图) */
+.aigc-cvp[data-mode="gallery"] .aigc-vp,
+.aigc-cvp[data-mode="gallery"] .aigc-cvprompt {
+  display: none;
+}
+.aigc-cvp[data-mode="gallery"] .aigc-cvh-back {
+  display: none;
+}
+.aigc-cvp[data-mode="workbench"] .aigc-cvgal {
+  display: none;
+}
+.aigc-cvp[data-mode="workbench"] .aigc-cvh-new {
+  display: none;
+}
+
+/* cv-head(共享一个头部;紧凑) */
+.aigc-cvh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.aigc-cvh-back {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.aigc-cvh-back:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-cvh-meta {
+  min-width: 0;
+  line-height: 1.15;
+}
+.aigc-cvh-t {
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+}
+.aigc-cvh-s {
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: var(--ink-3);
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.aigc-cvh-sp {
+  flex: 1;
+}
+.aigc-cvh-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.aigc-cvh-ic:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* cv-tabs(多标签:tab 形,顶部圆角;仅工作台态) */
+.aigc-cvtabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 10px 0;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+}
+.aigc-cvp[data-mode="gallery"] .aigc-cvtabs {
+  display: none;
+}
+.aigc-cvtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px 0 11px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  white-space: nowrap;
+  max-width: 190px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.aigc-cvtab.on {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 600;
+}
+.aigc-cvtab-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aigc-cvtab-x {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border-radius: 4px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.aigc-cvtab-x:hover {
+  background: var(--surface-3, var(--surface-2));
+  color: var(--ink);
+}
+.aigc-cvtab-add {
+  width: 28px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.aigc-cvtab-add:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* cv-gallery 容器 */
+.aigc-cvgal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── viewport(mosaic 底 + 活动图 + 版本条 + 浮动工具条 + zoom + live) ── */
+.aigc-vp {
+  flex: 1;
+  min-height: 64px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(
+        45deg,
+        var(--surface-2) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-2) 75%
+      )
+      0 0 / 22px 22px,
+    linear-gradient(
+        45deg,
+        var(--surface-2) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-2) 75%
+      )
+      11px 11px / 22px 22px,
+    var(--surface);
+}
+.aigc-cvimg-wrap {
+  position: relative;
+  max-width: 78%;
+  max-height: 82%;
+  transform-origin: center;
+}
+.aigc-cvimg {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(20, 22, 35, 0.22);
+  user-select: none;
+}
+.aigc-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #fff;
+  border: 1.5px solid var(--accent);
+}
+.aigc-handle.tl {
+  left: -5px;
+  top: -5px;
+}
+.aigc-handle.tr {
+  right: -5px;
+  top: -5px;
+}
+.aigc-handle.bl {
+  left: -5px;
+  bottom: -5px;
+}
+.aigc-handle.br {
+  right: -5px;
+  bottom: -5px;
+}
+
+/* 版本条(左侧悬浮 · 42×42 等比缩略) */
+.aigc-versions {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 44px;
+  width: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 4px;
+  background: rgba(127, 127, 127, 0.09);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+  z-index: 3;
+}
+.aigc-ver-h {
+  font-size: 9.5px;
+  color: var(--ink-3);
+  text-align: center;
+  font-weight: 600;
+}
+.aigc-ver {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  flex: 0 0 auto;
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  padding: 0;
+}
+.aigc-ver.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.aigc-ver-add {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+/* 悬浮可拖拽 / 停靠工具条 */
+.aigc-ftool {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel, var(--shadow));
+  touch-action: none;
+}
+.aigc-ftool.dock-horiz {
+  flex-direction: row;
+}
+.aigc-fgrip {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  cursor: grab;
+  height: 16px;
+}
+.aigc-ftool.dock-horiz .aigc-fgrip {
+  height: auto;
+  width: 16px;
+}
+.aigc-fgrip:active {
+  cursor: grabbing;
+}
+.aigc-fsep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 4px;
+}
+.aigc-ftool.dock-horiz .aigc-fsep {
+  height: auto;
+  width: 1px;
+  margin: 4px 3px;
+}
+.aigc-fbtn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+  position: relative;
+}
+.aigc-fbtn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-fbtn.on {
+  background: var(--accent-soft, var(--surface-2));
+  color: var(--accent);
+}
+.aigc-ftip {
+  position: absolute;
+  right: 38px;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--step, 0.2s);
+  z-index: 9;
+}
+.aigc-ftool.dock-left .aigc-ftip {
+  right: auto;
+  left: 38px;
+}
+.aigc-ftool.dock-horiz .aigc-ftip {
+  right: auto;
+  left: 50%;
+  top: auto;
+  bottom: 38px;
+  transform: translateX(-50%);
+}
+.aigc-fbtn:hover .aigc-ftip {
+  opacity: 1;
+}
+
+/* zoom / livePreview */
+.aigc-zoom {
+  position: absolute;
+  left: 10px;
+  /* 抬高避开底部生成栏(.aigc-cvprompt ≈52px)遮挡。 */
+  bottom: 62px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.aigc-zoom button {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  border-radius: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-zoom button:hover {
+  background: var(--surface-2);
+}
+.aigc-live {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 14px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 20px;
+  background: rgba(20, 22, 35, 0.66);
+  color: #fff;
+  font-size: 11.5px;
+}
+.aigc-live-sp {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e5e5e7;
+  animation: aigc-pulse 1.1s ease-in-out infinite;
+}
+@keyframes aigc-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* 底部生成栏 */
+.aigc-cvprompt {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.aigc-cvp-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  flex: 0 0 auto;
+}
+.aigc-cvp-dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--ink-3);
+}
+.aigc-cvp-field {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 12.5px;
+  outline: none;
+}
+.aigc-cvp-field::placeholder {
+  color: var(--ink-3);
+}
+.aigc-cvp-go {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  cursor: pointer;
+}
+.aigc-cvp-go:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── 抽屉横向分隔条 .drz(全宽 row-resize;拖拽调抽屉高 + snap。注:.aigc-rz 是纵向列 resizer,勿混)
+   横向统一视觉:即上「竖向拖拽分隔条统一视觉」转 90°(水平 hairline + 横 pill),同 --ink 色系/hover 逻辑。 */
+.aigc-drz {
+  flex: 0 0 auto;
+  height: 10px; /* 命中区(原 9px);透明,hairline/pill 由下方渲染 */
+  cursor: row-resize;
+  position: relative;
+  background: transparent;
+  z-index: 3;
+  touch-action: none;
+}
+.aigc-drz::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-50%);
+  background: var(--ink-3);
+  opacity: 0.3;
+  transition:
+    opacity var(--step, 0.15s),
+    background var(--step, 0.15s);
+}
+.aigc-drz::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--ink-3);
+  opacity: 0;
+  transition:
+    opacity var(--step, 0.15s),
+    background var(--step, 0.15s);
+}
+.aigc-drz:hover::before {
+  opacity: 0.85;
+}
+.aigc-drz:hover::after {
+  opacity: 1;
+}
+.aigc-drz:active::before,
+.aigc-drz:active::after {
+  opacity: 1;
+  background: var(--ink);
+}
+.aigc-rightcol[data-canvas="off"] .aigc-drz,
+.aigc-rightcol[data-drawer="full"] .aigc-drz,
+.aigc-rightcol[data-drawer="hidden"] .aigc-drz {
+  display: none;
+}
+
+/* ── 素材抽屉 .assetmgr(三态 docked/full/hidden) ── */
+.aigc-assetmgr {
+  flex: 0 0 auto;
+  height: var(--aigc-drawer-h, 236px);
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  overflow: hidden;
+  z-index: 1;
+}
+.aigc-rightcol[data-drawer="full"] .aigc-assetmgr {
+  flex: 1 1 auto;
+  height: auto;
+}
+.aigc-rightcol[data-drawer="hidden"] .aigc-assetmgr {
+  height: 40px;
+  flex: 0 0 auto;
+}
+.aigc-am-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  flex: 0 0 auto;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.aigc-am-grip {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-3);
+  cursor: move; /* 十字拖拽:纵向调抽屉高 + 横向调右区宽 */
+  padding: 0 2px;
+  touch-action: none;
+}
+.aigc-am-grip:hover {
+  color: var(--ink);
+}
+
+/* ── 竖向拖拽分隔条统一视觉(hairline 静息微可见 + grip pill hover 显现)──────────
+   命中三处竖向 resizer,样式一致,皆承接 .aigc-am-grip 的 hover 交互与 --ink 色系
+   (避开与 vendor 同名的 --border/HSL 变量):
+   · [data-pi-panel-resizer] = vendor panelRight 连续拖拽(absolute;vendor 禁改故宿主补样式);
+   · .aigc-vsp               = 素材目录并列视图中线(flex item);
+   · .aigc-rail-rz           = 左栏右缘 railW 把手(absolute)。
+   各自保留定位(见下方与后文),此处只共享 ::before(hairline)/::after(grip pill)视觉。 */
+[data-pi-panel-resizer]::before,
+.aigc-vsp::before,
+.aigc-rail-rz::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--ink-3);
+  opacity: 0.3;
+  transition:
+    opacity var(--step, 0.15s),
+    background var(--step, 0.15s);
+}
+[data-pi-panel-resizer]::after,
+.aigc-vsp::after,
+.aigc-rail-rz::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--ink-3);
+  opacity: 0;
+  transition:
+    opacity var(--step, 0.15s),
+    background var(--step, 0.15s);
+}
+[data-pi-panel-resizer]:hover::before,
+.aigc-vsp:hover::before,
+.aigc-rail-rz:hover::before {
+  opacity: 0.85;
+}
+[data-pi-panel-resizer]:hover::after,
+.aigc-vsp:hover::after,
+.aigc-rail-rz:hover::after {
+  opacity: 1;
+}
+/* 按下拖拽态:pill 加深(:active 于 pointerdown 元素持续至 release,覆盖各自拖拽机制) */
+[data-pi-panel-resizer]:active::before,
+.aigc-vsp:active::before,
+.aigc-rail-rz:active::before,
+[data-pi-panel-resizer]:active::after,
+.aigc-vsp:active::after,
+.aigc-rail-rz:active::after {
+  opacity: 1;
+  background: var(--ink);
+}
+/* 命中区宽度(各自定位:panelRight/rail-rz 为 absolute,vsp 为 flex item) */
+[data-pi-panel-resizer] {
+  width: 16px; /* 仍 -translate-x-1/2 居中于 aside 左缘,只是更好抓 */
+}
+.aigc-am-tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 3px;
+}
+.aigc-am-tabs button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-am-tabs button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.aigc-am-tabs .n {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.aigc-am-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.aigc-am-ic {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-am-ic:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-am-ic.on {
+  background: var(--accent-soft, var(--surface-2));
+  color: var(--accent);
+}
+.aigc-am-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface);
+  display: flex;
+}
+.aigc-rightcol[data-drawer="hidden"] .aigc-am-body {
+  display: none;
+}
+
+/* 历史会话浏览态提示 */
+.aigc-sess-hint {
+  margin: 6px 8px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+
+.aigc-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* 左栏:Agent 源 + 最爱 + 历史会话 */
+.aigc-rail {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  /* 窄宽降级的度量基准:左栏可被拖到 180px,按视口断点判是错的(视口很宽而左栏很窄)。
+     容器查询直接问「这一栏现在多宽」,见文件末 `@container rail`。 */
+  container-type: inline-size;
+  container-name: rail;
+}
+.aigc-shell[data-rail="collapsed"] .aigc-rail {
+  display: none;
+}
+.aigc-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  flex: 0 0 auto;
+}
+.aigc-rail-head h3 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+.aigc-collapse-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-collapse-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-rail-list {
+  overflow-y: auto;
+  padding: 2px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.aigc-src {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 13px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition:
+    background var(--step),
+    color var(--step);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aigc-src:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-src.add {
+  color: var(--ink-3);
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  border-radius: 0;
+  padding-top: 10px;
+}
+.aigc-src.add:hover {
+  color: var(--ink);
+  background: transparent;
+}
+.aigc-rail-history {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.aigc-sess-list {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding: 2px 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.aigc-sess-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.aigc-sess-group {
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.aigc-sess {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  transition:
+    background var(--step),
+    color var(--step);
+}
+.aigc-sess:hover {
+  background: var(--surface-2);
+}
+.aigc-sess.active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.aigc-sess-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.aigc-sess.active .aigc-sess-main {
+  color: var(--ink);
+  font-weight: 550;
+}
+/* hover/active 已内联到 .aigc-sess / .aigc-sess-main */
+/* 单行可 shift 横向滚动看全(原生 shift+wheel;隐藏滚动条) */
+.aigc-hscroll {
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.aigc-hscroll::-webkit-scrollbar {
+  display: none;
+}
+.aigc-sess .t {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.aigc-sess .t::-webkit-scrollbar {
+  display: none;
+}
+.aigc-sess .m {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* 会话行右侧更多按钮 */
+.aigc-sess-more {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  opacity: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: opacity var(--step, 0.15s), color var(--step, 0.15s);
+}
+.aigc-sess:hover .aigc-sess-more {
+  opacity: 1;
+}
+.aigc-sess-more:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+/* 会话操作菜单 */
+.aigc-sess-menu {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 20;
+  min-width: 120px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.aigc-sess-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.aigc-sess-menu button:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-sess-menu button.danger {
+  color: var(--bad);
+}
+.aigc-sess-menu button.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 折叠后贴边 reopen 标签 */
+.aigc-rail-reopen {
+  position: absolute;
+  left: 0;
+  top: 64px;
+  z-index: 5;
+  width: 20px;
+  height: 52px;
+  border-radius: 0 10px 10px 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: none;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.aigc-shell[data-rail="collapsed"] .aigc-rail-reopen {
+  display: flex;
+}
+
+.aigc-main {
+  /* 显式占第二列:rail 折叠(display:none 移出 grid 流)时,main 不会被 auto-flow 塞进
+     第一列(0px)而挤成 0 宽——这是折叠破坏布局的根因。 */
+  position: relative;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   对话区消息:贴原型 .msg/.bubble/.who(纯视觉覆盖 vendor PiChat 默认气泡,靠稳定 data-pi-* 锚点;
+   不动 PiChat 的消息/工具/分支/流式逻辑)。用户=右对齐·黑(accent)气泡·花头像(右);
+   助手=左对齐·描边 surface 气泡·AI 方头像(左)。token 取自祖先 .aigc-shell。
+   ──────────────────────────────────────────────────────────────────────── */
+/* 用户:改 row-reverse(头像在右)+ 花头像 + 黑气泡。 */
+.aigc-main [data-pi-message-role="user"] {
+  flex-direction: row-reverse;
+  align-items: flex-start;
+  gap: 11px;
+  max-width: 760px;
+  margin-left: auto;
+}
+/* 头像已按需求移除:用户「花」头像不再渲染,只留右对齐气泡。 */
+.aigc-main [data-pi-message-role="user"]::before {
+  display: none;
+}
+/* #2 「滚动到底部」按钮:vendor 默认在对话视口右下(justify-end/pr-3)、absolute bottom-2 贴
+   对话容器底。对话容器之上就是输入区(composer),故默认位置已在对话区域底边、输入框上方。
+   保持右对齐,仅定制样式。 */
+.aigc-main [data-pi-conversation-scroll-anchor] {
+  justify-content: flex-end !important;
+  padding-right: 16px !important;
+}
+.aigc-main [data-pi-message-role="user"] [data-pi-message-content] {
+  max-width: 100%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: 1px solid transparent;
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+/* 气泡内 PiChat 的 .prose 带 `text-[hsl(var(--foreground))]`(随主题=非反色),特异性盖掉气泡继承的
+   --accent-ink → 反色气泡上文字与背景同色不可见(两主题皆然)。给内容后代强制反色 ink(用户消息以纯
+   文本为主)。用 :where() 起手保持低特异性负担的同时,靠祖先链已足够压过单类 Tailwind 值。 */
+.aigc-main [data-pi-message-role="user"] [data-pi-message-content],
+.aigc-main [data-pi-message-role="user"] [data-pi-message-content] * {
+  color: var(--accent-ink);
+}
+/* 助手:文本描边气泡(头像已按需求移除)。 */
+.aigc-main [data-pi-message-role="assistant"],
+.aigc-main [data-pi-message-role="system"] {
+  max-width: 760px;
+  gap: 11px;
+}
+/* 头像已按需求移除:助手「AI」方头像不再渲染,只留左对齐气泡内容。 */
+.aigc-main [data-pi-message-avatar] {
+  display: none !important;
+}
+/* 仅「纯文本」助手消息套描边气泡;含工具卡/出图卡(data-pi-tool)的消息保持齐平(承接原型:
+   gencard 不在文本气泡内),避免卡中卡。 */
+.aigc-main
+  [data-pi-message-role="assistant"]
+  [data-pi-message-content]:not(:has([data-pi-tool])) {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 11px 14px;
+  box-shadow: var(--shadow);
+}
+
+/* ── 输入区(composer)贴原型 .composer-wrap ── 收窄 vendor 默认大圆角/毛玻璃/重阴影 +
+   聚焦描边 accent。靠稳定 data-pi-prompt-input-toolbar 锚点定位 composer 盒(它的直接父);
+   纯视觉,不动接线。注:发送钮与工具条 pills 同在 data-pi-prompt-input-toolbar 行(vendor 结构),
+   故不改子序——保持「文本域在上、工具条+发送在下」的自然序(强行 order 上移会把发送带离文本域)。 */
+.aigc-main div:has(> [data-pi-prompt-input-toolbar]) {
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  backdrop-filter: none;
+}
+.aigc-main div:has(> [data-pi-prompt-input-toolbar]):focus-within {
+  border-color: var(--accent);
+}
+/* 发送钮(AigcSubmitButton)贴原型 .send:矩形 accent 实心 +「发送/停止/重试」文案。 */
+.aigc-send {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  font-size: 13px;
+  border: none;
+  cursor: pointer;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  transition:
+    opacity var(--step, 0.2s),
+    color var(--step, 0.2s);
+}
+.aigc-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.aigc-send.stop {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.aigc-send.stop:hover {
+  color: var(--ink);
+}
+
+/* ── 「定位我的输入」按钮(承接原型 .chat-fabs ⌖)──
+   容器绝对定位于 .aigc-main 右下,紧靠「回到底部」按钮上方(bottom 由组件按输入坞实测高度内联,
+   以始终在输入框上方、与底部按钮同侧)。 */
+.aigc-chat-fabs {
+  position: absolute;
+  right: 16px;
+  z-index: 6;
+  display: flex;
+}
+.aigc-fab {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition:
+    color var(--step, 0.2s),
+    border-color var(--step, 0.2s);
+}
+.aigc-fab:hover,
+.aigc-fab.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.aigc-input-nav {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  width: 288px;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 7;
+}
+.aigc-input-nav .nh {
+  font-size: 11px;
+  color: var(--ink-3);
+  padding: 6px 8px 5px;
+  font-weight: 600;
+}
+.aigc-in-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 12.5px;
+  border: none;
+  background: none;
+}
+.aigc-in-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-in-item .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+  flex: 0 0 auto;
+}
+.aigc-in-item:hover .dot {
+  background: var(--accent);
+}
+.aigc-in-item .t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 定位命中后的高亮闪烁(承接原型 .msg.flash)。 */
+.aigc-msg-flash {
+  animation: aigc-flash 1.25s ease;
+  border-radius: 14px;
+}
+@keyframes aigc-flash {
+  0%,
+  100% {
+    box-shadow: none;
+  }
+  18% {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+}
+/* vendor 自带「回到底部」钮 restyle 贴原型 .fab(圆形 surface + 描边,hover accent)。
+   去掉 absolute 定位,在 scroll-anchor flex 行内自然排列(左对齐,anchor 已 `justify-content:
+   flex-start`)。不浮在内容上,在对话区域内。 */
+.aigc-main [data-pi-conversation-to-bottom] {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--ink-2) !important;
+  box-shadow: var(--shadow) !important;
+  margin: 0 !important;
+}
+.aigc-main [data-pi-conversation-to-bottom]:hover {
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 拖素材进对话区作引用时的落点高亮(承接原型 .composer.ref-drop 的 dashed outline)。 */
+.aigc-ref-drop {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+  border-radius: 12px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   沉浸式聚焦 lightbox(承接原型「聚焦模式」)。fixed 相对视口,与 .aigc-shell token 无关——
+   lightbox 恒为暗色沉浸(明暗主题一致),故用固定色值而非主题 token。图片 object-contain 适配、
+   无滚动;◁▷ 默认半透明、hover 降透;底部仅页码。
+   ──────────────────────────────────────────────────────────────────────── */
+.aigc-focus-fab {
+  position: fixed;
+  right: 24px;
+  bottom: 22px;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  color: #fff;
+  background: rgba(24, 24, 27, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.2s ease;
+}
+.aigc-focus-fab:hover {
+  background: rgba(24, 24, 27, 0.85);
+}
+.aigc-focus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: rgba(9, 9, 11, 0.92);
+  cursor: zoom-out;
+}
+.aigc-focus-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  cursor: default;
+  user-select: none;
+  border-radius: 4px;
+}
+.aigc-focus-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.2s ease;
+}
+.aigc-focus-nav:hover {
+  opacity: 0.85;
+}
+.aigc-focus-nav.left {
+  left: 3vw;
+}
+.aigc-focus-nav.right {
+  right: 3vw;
+}
+.aigc-focus-page {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: 0.04em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .aigc-focus-fab,
+  .aigc-focus-nav {
+    transition: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Canvas 多标签工作台标签条(自建 · 上游无此概念)。粘顶于面板滚动容器;每个打开的资产
+   占一个标签(缩略 + × 关闭),「◀ 画廊」回画廊态。token 取自祖先 .aigc-shell。
+   ──────────────────────────────────────────────────────────────────────── */
+.aigc-tabbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  background: var(--surface, #fff);
+  border-bottom: 1px solid var(--border, #e5e5e7);
+}
+.aigc-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  max-width: 160px;
+}
+.aigc-tab:hover {
+  background: var(--surface-2, #f4f4f5);
+}
+.aigc-tab.active {
+  background: var(--accent-soft, #f4f4f5);
+  border-color: var(--border, #e5e5e7);
+}
+.aigc-tab-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.aigc-tab-label {
+  font-size: 12px;
+  color: var(--ink-2, #52525b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.aigc-tab.active .aigc-tab-label {
+  color: var(--ink, #18181b);
+}
+.aigc-tab-close {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ink-3, #a1a1aa);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-tab-close:hover {
+  color: var(--ink, #18181b);
+  background: var(--surface-3, #e8e8ea);
+}
+.aigc-tab-new {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  color: var(--ink-2, #52525b);
+  border: 1px solid var(--border, #e5e5e7);
+  background: none;
+  cursor: pointer;
+}
+.aigc-tab-new:hover {
+  color: var(--ink, #18181b);
+  background: var(--surface-2, #f4f4f5);
+}
+
+/* 空白画布 drop 区(拖入素材成主体) */
+.aigc-blank {
+  flex: 1;
+  min-height: 0;
+  margin: 12px;
+  border: 2px dashed var(--border-strong, #d4d4d8);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3, #a1a1aa);
+  transition:
+    border-color var(--step, 0.24s),
+    background var(--step, 0.24s);
+}
+.aigc-blank.over {
+  border-color: var(--accent, #18181b);
+  background: var(--surface-2, #f4f4f5);
+}
+.aigc-blank-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.aigc-blank-plus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  color: var(--ink-3, #a1a1aa);
+}
+.aigc-blank-hint {
+  font-size: 13px;
+}
+
+/* Canvas 马赛克(棋盘)背景——空白画布 + workbench 视口透明感(承接原型 .viewport)。 */
+.aigc-blank,
+[data-canvas-workbench] {
+  background:
+    linear-gradient(
+        45deg,
+        var(--surface-2) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-2) 75%
+      )
+      0 0 / 22px 22px,
+    linear-gradient(
+        45deg,
+        var(--surface-2) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-2) 75%
+      )
+      11px 11px / 22px 22px,
+    var(--surface);
+}
+
+/* CanvasWorkbench(vendor 内核工作台)嵌入本壳:填满 .aigc-cvp 剩余高度(其内部 min-h-0
+   flex-col 据此给舞台有界高度,不溢出右栏);隐掉它自带的重复头部——返回/标题/隐藏由外层
+   共享 .aigc-cvh 承载,其浮层(data-canvas-tool-rail 工具轨 / -version-rail 版本轨 /
+   -prompt-bar 生成栏)沿用 vendor 定位,已与原型右栏一体机形态一致。 */
+/* 多标签:每 tab 一常驻 .aigc-cvbody 包裹(display 显隐保态,隐者不卸载);其内 CanvasWorkbench/
+   BlankCanvas 撑满剩余高度。wrapper 打断了原 `.aigc-cvp > [data-canvas-workbench]` 直接子链,
+   故撑高规则改挂 .aigc-cvbody 下。 */
+.aigc-cvbody {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.aigc-cvbody > [data-canvas-workbench] {
+  flex: 1;
+  min-height: 0;
+}
+[data-canvas-workbench] > *:has([data-canvas-workbench-close]) {
+  display: none;
+}
+/* #4 去内层边框 + 去内层马赛克:canvas 舞台(stage)自身描边与棋盘背景(vendor canvas-checkerboard 类)
+   都去掉 —— 只留右栏外框 + 外层 [data-canvas-workbench] 的单层马赛克(承接原型:视口只一层框、一层马赛克)。 */
+[data-canvas-stage] {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+/* #5 版本条改回原型样式:画布内左侧浮动、窄条、等比例小缩略图、不超出画布。
+   根因:vendor 用 Tailwind arbitrary 值(w-[68px]/max-h-[calc]/object-cover),本仓库 Tailwind 未生成
+   这些类 → 版本轨无宽度约束撑满(816px 宽、item 806²、溢出画布)。此处以显式规则收口尺寸,
+   img 用 object-fit:contain 等比展示(非 cover 裁切),max-height 绑定使其始终留在画布内。 */
+[data-canvas-version-rail] {
+  position: absolute !important;
+  left: 8px !important;
+  top: 8px !important;
+  width: 56px !important;
+  max-height: calc(100% - 92px) !important;
+  padding: 4px !important;
+  gap: 6px !important;
+  overflow-y: auto !important;
+}
+[data-canvas-version-rail] [data-canvas-version-item] {
+  width: 46px !important;
+  height: 46px !important;
+  aspect-ratio: 1 / 1;
+}
+[data-canvas-version-rail] [data-canvas-version-item] img {
+  object-fit: contain !important;
+  background: var(--surface-2, #f4f4f5);
+}
+/* #2(补) 工具轨拖拽 grip(ToolRailDock 注入)+ 横排停靠时改横向 flex(承接原型 .ftool)。 */
+.aigc-railgrip {
+  position: absolute;
+  z-index: 20;
+  width: 18px;
+  height: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 2px;
+  place-content: center;
+  padding: 3px;
+  border-radius: 5px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e4e4e7);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  cursor: grab;
+  touch-action: none;
+}
+.aigc-railgrip:active {
+  cursor: grabbing;
+}
+.aigc-railgrip > span {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: var(--ink-3, #a1a1aa);
+}
+/* 横排停靠:工具轨改横向(vendor 默认 flex-col);grip 由 JS 定位到左侧。 */
+[data-canvas-tool-rail][data-dock="horiz"] {
+  flex-direction: row !important;
+}
+
+/* ─── 自建画廊(AigcGallery)─────────────────────────────────────────────── */
+.aigc-gal {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.aigc-gal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 14px 6px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+.aigc-gal-tabs button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-weight: 500;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-gal-tabs button:hover {
+  color: var(--ink);
+}
+.aigc-gal-tabs button.on {
+  background: var(--ink);
+  color: var(--surface);
+  font-weight: 600;
+}
+.aigc-gal-tabs .sep {
+  width: 1px;
+  height: 13px;
+  background: var(--border);
+  margin: 0 5px;
+}
+.aigc-gal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px 16px;
+}
+.aigc-gal-body.focus {
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+}
+.aigc-gal-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.aigc-gal-group {
+  font-size: 11px;
+  color: var(--ink-3);
+  padding: 12px 2px 6px;
+}
+.aigc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 9px;
+}
+.aigc-masonry {
+  column-count: 3;
+  column-gap: 9px;
+}
+.aigc-shot {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 0;
+  cursor: pointer;
+  transition:
+    transform var(--step),
+    box-shadow var(--step);
+}
+.aigc-shot.masonry {
+  aspect-ratio: auto;
+  break-inside: avoid;
+  margin-bottom: 9px;
+  display: block;
+  width: 100%;
+}
+.aigc-shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.aigc-shot.masonry img {
+  height: auto;
+}
+.aigc-shot:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+.aigc-shot .lbl {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 8px 6px;
+  font-size: 11px;
+  color: #fff;
+  text-align: left;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aigc-shot .edit {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: rgba(20, 22, 35, 0.62);
+  color: #fff;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--step);
+  border: none;
+  cursor: pointer;
+}
+.aigc-shot:hover .edit {
+  opacity: 1;
+}
+/* 聚焦(inline · mosaic 视口 · 大图适配) */
+.aigc-gal-focus {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.aigc-gal-focus img {
+  max-width: 88%;
+  max-height: 84%;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 30px rgba(20, 22, 35, 0.22);
+}
+.aigc-gal-focus-img {
+  cursor: pointer;
+}
+/* 聚焦视图在浅底画廊内(非暗底 lightbox):◁▷/页码用深色实心 pill 才看得清(白色会隐形)。 */
+.aigc-gal-focus .aigc-focus-nav {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  opacity: 0.9;
+}
+.aigc-gal-focus .aigc-focus-nav:hover {
+  opacity: 1;
+  border-color: var(--accent);
+}
+.aigc-gal-focus .aigc-focus-nav.left {
+  left: 16px;
+}
+.aigc-gal-focus .aigc-focus-nav.right {
+  right: 16px;
+}
+.aigc-gal-focus .aigc-focus-page {
+  position: absolute;
+  bottom: 14px;
+  padding: 3px 14px;
+  border-radius: 20px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+}
+/* 画廊 gal-tabs 右侧「＋ 空白」入口 */
+.aigc-gal-newblank {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+}
+.aigc-gal-newblank:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* ─── 独立素材抽屉(MaterialDrawer · 宿主级底部面板)──────────────────────── */
+.aigc-matdrawer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: height var(--step);
+}
+.aigc-mat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 12px;
+  flex: 0 0 auto;
+}
+.aigc-mat-grip {
+  cursor: ns-resize;
+  color: var(--ink-3);
+  padding: 0 4px;
+  user-select: none;
+  touch-action: none;
+  display: inline-flex;
+  align-items: center;
+}
+.aigc-mat-grip:hover {
+  color: var(--ink);
+}
+.aigc-mat-tabs {
+  display: flex;
+  gap: 3px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 3px;
+}
+.aigc-mat-tabs button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-mat-tabs button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.aigc-mat-tabs .n {
+  font-size: 11px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.aigc-mat-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.aigc-mat-ic {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+}
+.aigc-mat-ic:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+.aigc-mat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+
+/* ─── 素材抽屉:pane / 库(日期分栏) / 目录树 / 当前目录(照原型 §2.3)─────────── */
+.aigc-am-pane {
+  flex: 1 1 0;
+  min-width: 178px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+/* 拖目录素材进「素材库」时的落点高亮。 */
+.aigc-am-pane.pane-lib.drop-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+  border-radius: 12px;
+}
+.aigc-am-pane + .aigc-am-pane {
+  border-left: 1px solid var(--border);
+}
+.aigc-dir-group {
+  flex: 2 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-2);
+}
+.aigc-dg-head {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+.aigc-dg-head .dg-n {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.aigc-dg-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--surface);
+}
+.aigc-dg-body > .aigc-am-pane {
+  border-left: none;
+}
+.aigc-dg-body > .aigc-am-pane + .aigc-am-pane {
+  border-left: 1px solid var(--border);
+}
+.aigc-pane-scroll,
+.aigc-pane-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* 细滚动条:6px 细条对齐 pi-chat 的 .pi-scrollbar-thin(原为浏览器默认粗滚动条);
+     thumb 用宿主 --ink 系(--muted-foreground 未在宿主定义,避免 aside 外退化为透明不可见)。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-3) transparent;
+}
+.aigc-pane-scroll::-webkit-scrollbar,
+.aigc-pane-tree::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.aigc-pane-scroll::-webkit-scrollbar-track,
+.aigc-pane-tree::-webkit-scrollbar-track {
+  background: transparent;
+}
+.aigc-pane-scroll::-webkit-scrollbar-thumb,
+.aigc-pane-tree::-webkit-scrollbar-thumb {
+  background-color: var(--ink-3);
+  border-radius: 3px;
+}
+.aigc-pane-scroll::-webkit-scrollbar-thumb:hover,
+.aigc-pane-tree::-webkit-scrollbar-thumb:hover {
+  background-color: var(--ink-2);
+}
+.aigc-pane-h {
+  flex: 0 0 auto;
+  background: var(--surface);
+  padding: 7px 10px;
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.aigc-pane-h .n {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.aigc-pane-h .sp {
+  flex: 1;
+}
+.aigc-pane-h .x {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 11px;
+  border: none;
+  background: none;
+}
+.aigc-pane-h .x:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-dir-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.aigc-dir-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-dir-toolbar button:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-dir-filter {
+  display: flex;
+  gap: 3px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.aigc-dir-filter button {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  font-weight: 500;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-dir-filter button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+:root.dark .aigc-dir-filter button.on {
+  color: var(--ink);
+}
+/* 素材库:日期分栏 */
+.aigc-lib {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+}
+.aigc-date-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.aigc-date-col .dh {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.aigc-date-col .dh .c {
+  font-size: 10px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 0 6px;
+  margin-left: auto;
+}
+.aigc-date-col .rule {
+  height: 1px;
+  background: var(--border);
+  margin: -2px 0 2px;
+}
+.aigc-date-col .col-grid,
+.aigc-cur-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 7px;
+}
+.aigc-cur-grid {
+  grid-template-columns: repeat(2, 1fr);
+  padding: 8px;
+}
+.aigc-asset {
+  aspect-ratio: 1;
+  border-radius: 7px;
+  position: relative;
+  cursor: grab;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  /* 保持比例(contain)时 letterbox 底:棋盘格暗示透明,像 pi-labs MediaThumb */
+  background:
+    linear-gradient(
+        45deg,
+        var(--surface-3, var(--surface-2)) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-3, var(--surface-2)) 75%
+      )
+      0 0 / 14px 14px,
+    linear-gradient(
+        45deg,
+        var(--surface-3, var(--surface-2)) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--surface-3, var(--surface-2)) 75%
+      )
+      7px 7px / 14px 14px,
+    var(--surface-2);
+}
+/* 保持比例:contain 不裁切(承接 pi-labs MediaThumb fit="contain") */
+.aigc-asset-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.aigc-asset-img.loaded {
+  opacity: 1;
+}
+/* 扫光占位 loading(承接 pi-labs lazy-img shimmer):图片就绪前的骨架微光 */
+.aigc-asset-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(
+    100deg,
+    var(--surface-2) 30%,
+    var(--surface-3, rgba(127, 127, 127, 0.14)) 50%,
+    var(--surface-2) 70%
+  );
+  background-size: 200% 100%;
+  animation: aigc-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes aigc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.aigc-asset:active {
+  cursor: grabbing;
+}
+/* ⋯ 动作菜单按钮(hover 显) */
+.aigc-asset-menu {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(20, 22, 35, 0.55);
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--step, 0.2s);
+  z-index: 2;
+}
+.aigc-asset:hover .aigc-asset-menu {
+  opacity: 1;
+}
+.aigc-asset-menu:hover {
+  background: rgba(20, 22, 35, 0.8);
+}
+/* 定位会话按钮(会话素材专属,右下角,hover 显)。 */
+.aigc-asset-locate {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgba(20, 22, 35, 0.55);
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--step, 0.2s);
+  z-index: 2;
+}
+.aigc-asset:hover .aigc-asset-locate { opacity: 1; }
+.aigc-asset-locate:hover { background: rgba(20, 22, 35, 0.8); }
+.aigc-upload-badge {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 17px;
+  padding: 2px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  background: #10b981;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  font-size: 9px;
+  line-height: 1;
+}
+.aigc-upload-badge.busy { background: #d97706; }
+.aigc-upload-badge.busy svg { animation: aigc-spin 1s linear infinite; }
+.aigc-upload-badge b { font-size: 9px; font-weight: 650; }
+.aigc-lib-actions button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+.aigc-lib-actions button:hover:not(:disabled) { color: var(--ink); }
+.aigc-lib-actions button:disabled { color: var(--ink-3); cursor: default; }
+.aigc-asset-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+/* 「移动到目录」二级选择器(素材菜单内展开的目录列表,最多滚动)。 */
+.aigc-move-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 168px;
+  overflow-y: auto;
+  margin: 2px 0;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.aigc-move-sub button {
+  text-align: left;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.aigc-move-sub button:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.aigc-move-empty {
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+/* 素材库范围切换(本会话 / 全部我的生成)。 */
+.aigc-lib-scope {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+.aigc-lib-scope button {
+  padding: 1px 8px;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  font-size: 11px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.aigc-lib-scope button.on {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+/* 完整长图预览 lightbox(承接客户「看完整图不必点开放大」):全屏暗底,长图可滚动。 */
+/* pi-labs 历史会话只读对话浮层 */
+.aigc-transcript-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+.aigc-transcript {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 86vh;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.aigc-transcript-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.aigc-transcript-head .t {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+.aigc-transcript-head .tag {
+  font-size: 11px;
+  color: var(--ink-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.aigc-transcript-head .cont {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+.aigc-transcript-head .cont:disabled {
+  opacity: 0.6;
+}
+.aigc-transcript-head .x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--ink-2);
+}
+.aigc-transcript-head .x:hover {
+  background: var(--surface-2);
+}
+.aigc-transcript-body {
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.aigc-transcript-empty {
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: center;
+  padding: 32px 0;
+}
+.aigc-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.aigc-msg-role {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.aigc-msg.role-user .aigc-msg-role {
+  color: var(--accent);
+}
+.aigc-msg-body {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface);
+}
+.aigc-msg.role-user .aigc-msg-body {
+  background: var(--surface-2);
+}
+.aigc-msg-text {
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 2px 0;
+}
+.aigc-msg-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin-right: 6px;
+}
+.aigc-msg-imgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.aigc-msg-imgs img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+/* ── 出图展示尺寸:vendor 默认 <Response>(.prose)渲染的图统一封顶,等比不裁切。
+   同一选择器同时命中「工具产出卡」(图片渲染器把 output 换成 markdown → Response)与
+   「普通对话气泡」里的 markdown 图,故两处一致(承接用户「只保留出图尺寸、回到默认样式」)。 */
+.aigc-shell [data-pi-response] img {
+  max-height: 260px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+}
+
+/* ── 对话内 AIGC 图片工具卡:等比例缩略网格 + 点击进画布 + 下载/多选下载 ── */
+.aigc-imgcard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.aigc-imgcard-empty {
+  font-size: 12px;
+  color: var(--ink-3);
+  padding: 8px 2px;
+}
+.aigc-imgcard-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.aigc-imgcard-bar .sp {
+  flex: 1;
+}
+.aigc-imgcard-bar button {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.aigc-imgcard-bar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.aigc-imgcard-bar button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.aigc-imgcard-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.aigc-imgcard-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.aigc-imgcard-cell {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+}
+/* 等比例缩略:高度封顶、宽度自适应,不裁切。 */
+.aigc-imgcard-cell img {
+  display: block;
+  max-height: 220px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: box-shadow var(--step, 0.15s);
+}
+.aigc-imgcard-cell img:hover {
+  box-shadow: var(--shadow);
+}
+.aigc-imgcard-cell.sel img {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.aigc-imgcard-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 5px;
+  padding: 1px 3px;
+  cursor: pointer;
+}
+.aigc-imgcard-acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--step, 0.15s);
+}
+.aigc-imgcard-cell:hover .aigc-imgcard-acts {
+  opacity: 1;
+}
+.aigc-imgcard-acts button {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(20, 22, 35, 0.72);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+.aigc-imgcard-acts button:hover {
+  background: var(--accent);
+}
+.aigc-imgcard-name {
+  margin-top: 3px;
+  max-width: 220px;
+  font-size: 11px;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── 富预览灯箱(ImageLightbox:缩放/旋转/翻转/左右切换)──────────────── */
+.aigc-ilb {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.82);
+}
+.aigc-ilb-stage {
+  max-width: 92vw;
+  max-height: 84vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.aigc-ilb-img {
+  max-width: 92vw;
+  max-height: 84vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  transition: transform 0.06s linear;
+  touch-action: none;
+  user-select: none;
+}
+.aigc-ilb-x,
+.aigc-ilb-nav {
+  position: fixed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  z-index: 2;
+}
+.aigc-ilb-x {
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+}
+.aigc-ilb-nav {
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+}
+.aigc-ilb-nav.left {
+  left: 16px;
+}
+.aigc-ilb-nav.right {
+  right: 16px;
+}
+.aigc-ilb-x:hover,
+.aigc-ilb-nav:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+.aigc-ilb-tools {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(24, 24, 27, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  z-index: 2;
+}
+.aigc-ilb-tools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.aigc-ilb-tools button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.aigc-ilb-tools button.on {
+  background: rgba(255, 255, 255, 0.28);
+}
+.aigc-ilb-tools .pct {
+  min-width: 38px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.aigc-ilb-tools .sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.2);
+}
+.aigc-ilb-count,
+.aigc-ilb-dims {
+  position: fixed;
+  bottom: 22px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  z-index: 1;
+}
+.aigc-ilb-count {
+  left: 20px;
+}
+.aigc-ilb-dims {
+  right: 20px;
+}
+
+/* ─── 对话内图 hover 毛玻璃操作 pill(编辑→画布 / 下载 / 多图卡下载全部)──────── */
+.aigc-img-pill {
+  position: fixed;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgba(24, 24, 27, 0.42);
+  backdrop-filter: blur(10px) saturate(1.4);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.aigc-img-pill button {
+  height: 24px;
+  padding: 0 9px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.aigc-img-pill button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.aigc-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  padding: 32px 16px;
+  background: rgba(0, 0, 0, 0.78);
+  cursor: zoom-out;
+}
+.aigc-lightbox-img {
+  max-width: 92vw;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  cursor: default;
+}
+.aigc-lightbox-x {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+.aigc-lightbox-x:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.aigc-asset-pop {
+  position: fixed;
+  z-index: 21;
+  min-width: 132px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow-panel, var(--shadow));
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.aigc-asset-pop button {
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-asset-pop button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-asset-pop button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+  opacity: 0.6;
+}
+.aigc-asset-pop-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 2px;
+}
+/* 底部名条(承接原型/pi-labs:底部半透明 caption) */
+.aigc-asset .b {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  font-size: 10px;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 素材目录:树形 */
+.aigc-tree {
+  padding: 8px 6px;
+  font-size: 13px;
+}
+.aigc-trow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 7px;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.aigc-trow:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-trow.sel {
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 550;
+}
+.aigc-trow .tcar {
+  width: 14px;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.aigc-trow .tico {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-2);
+}
+.aigc-trow .tname {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.aigc-trow .tname::-webkit-scrollbar {
+  display: none;
+}
+.aigc-trow .tcount {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.aigc-trow .tmore {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  border-radius: 5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.aigc-trow:hover .tmore {
+  opacity: 1;
+}
+.aigc-trow .tmore:hover {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.aigc-tchildren {
+  margin-left: 15px;
+  border-left: 1px solid var(--border);
+  padding-left: 4px;
+}
+.aigc-cur-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--ink-3);
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.aigc-cur-actions .strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.aigc-cur-actions a {
+  color: var(--ink-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.aigc-cur-actions a:hover {
+  color: var(--accent);
+}
+.aigc-mat-empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  padding: 16px;
+  color: var(--ink-3);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ─── lightbox 区域内 ◁▷ 翻页 + 计数(承接 pi-labs openMediaPreview gallery)──── */
+.aigc-lightbox-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  cursor: pointer;
+}
+.aigc-lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.aigc-lightbox-nav.left {
+  left: 20px;
+}
+.aigc-lightbox-nav.right {
+  right: 20px;
+}
+.aigc-lightbox-count {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── 素材卡多选 checkbox + 选中态(CurPane 批量操作)──────────────────── */
+.aigc-asset.sel .aigc-asset-img {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.aigc-asset-ck {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  z-index: 2;
+  width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.42);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.aigc-asset:hover .aigc-asset-ck,
+.aigc-asset-ck.on,
+.aigc-asset-ck.any {
+  opacity: 1;
+}
+.aigc-asset-ck.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* CurPane 批量操作条:激活链接 / 禁用态 */
+.aigc-cur-actions a.off {
+  color: var(--ink-3);
+  cursor: default;
+  pointer-events: none;
+  opacity: 0.5;
+}
+.aigc-cur-actions a.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ─── 素材分发弹层(DistributeDialog)──────────────────────────────────── */
+.aigc-dist-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+.aigc-dist {
+  width: 100%;
+  max-width: 560px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-panel, var(--shadow));
+}
+.aigc-dist-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.aigc-dist-head .x {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 6px;
+}
+.aigc-dist-head .x:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-dist-banner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+}
+.aigc-dist-banner.ok {
+  background: color-mix(in srgb, #10b981 12%, transparent);
+  color: #059669;
+}
+.aigc-dist-banner.err {
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #dc2626;
+}
+.aigc-dist-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.aigc-dist-center {
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  color: var(--ink-3);
+}
+.aigc-dist-empty {
+  padding: 18px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.aigc-dist-toggles {
+  display: flex;
+  gap: 16px;
+}
+.aigc-dist-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.aigc-dist-toggle .knob {
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.14s;
+  flex: 0 0 auto;
+}
+.aigc-dist-toggle .knob::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.14s;
+}
+.aigc-dist-toggle.on .knob {
+  background: var(--accent);
+}
+.aigc-dist-toggle.on .knob::after {
+  transform: translateX(16px);
+}
+.aigc-dist-selhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.aigc-dist-selhead em {
+  color: var(--ink-3);
+  font-style: normal;
+}
+.aigc-dist-selhead button {
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+.aigc-dist-search {
+  width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+}
+.aigc-dist-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .aigc-dist-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.aigc-dist-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 30px 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+}
+.aigc-dist-card:hover {
+  background: var(--surface-2);
+}
+.aigc-dist-card.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.aigc-dist-card .nm {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aigc-dist-card .pf {
+  flex: 0 0 auto;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.aigc-dist-card .ck {
+  position: absolute;
+  right: 9px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: #fff;
+}
+.aigc-dist-card .ck.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.aigc-dist-muse {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.aigc-dist-muse .row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.aigc-dist-muse .row label {
+  flex: 0 0 72px;
+}
+.aigc-dist-muse .row input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.aigc-dist-muse .row select {
+  flex: 1;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+.aigc-dist-muse .row .v {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.aigc-dist-count {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.aigc-dist-count strong {
+  color: var(--ink);
+}
+.aigc-dist-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+}
+.aigc-dist-foot button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.aigc-dist-foot .ghost {
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--ink-2);
+}
+.aigc-dist-foot .ghost:hover {
+  background: var(--surface-2);
+}
+.aigc-dist-foot .primary {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+}
+.aigc-dist-foot .primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.aigc-dist .spin {
+  animation: aigc-spin 0.8s linear infinite;
+}
+@keyframes aigc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ─── 左栏右缘拖拽把手(railW · ui-store;视觉见上「竖向拖拽分隔条统一视觉」)────────── */
+.aigc-rail-rz {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 10px; /* 命中区(原 5px 偏窄);hairline/pill 由共享组渲染 */
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+}
+
+/* ─── 目录右键菜单(TreeMenuPop,基于 .aigc-asset-pop)────────────────── */
+.aigc-tree-pop {
+  min-width: 168px;
+}
+.aigc-pop-title {
+  padding: 5px 9px 4px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.aigc-pop-hint {
+  padding: 0 9px 4px;
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.aigc-pop-input {
+  margin: 2px 6px 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 12px;
+  outline: none;
+}
+.aigc-pop-row {
+  display: flex;
+  gap: 4px;
+  padding: 2px 6px 4px;
+}
+.aigc-pop-row button {
+  flex: 1;
+  text-align: center;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  border: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+}
+.aigc-pop-row button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.aigc-pop-row button.danger {
+  color: #b91c1c;
+  border-color: #b91c1c55;
+}
+
+/* ─── 并列视图中线拖拽(vsp:竖向 col-resize 分隔;视觉见上「竖向拖拽分隔条统一视觉」)──── */
+.aigc-vsp {
+  flex: 0 0 10px; /* 拖拽热区宽度 */
+  margin: 0 -5px; /* 负边距抵占位(净 0):两面板贴合、分隔条骑缝,消除透明化后露出的空白间隔 */
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+  z-index: 4; /* 骑于邻面板边缘之上,保 10px 热区可拖;hairline/pill(共享组)居中于缝 */
+  touch-action: none;
+}
+
+/* ─── 输入区快捷 pill 排(AigcPromptToolbar,承接原型 .prompt-toolbar/.qp)── */
+.aigc-ptb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.aigc-qp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border, hsl(var(--border)));
+  border-radius: 20px;
+  font-size: 12.5px;
+  color: var(--ink-2, hsl(var(--muted-foreground)));
+  font-weight: 500;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--step, 0.2s);
+}
+.aigc-qp:hover {
+  color: var(--ink, hsl(var(--foreground)));
+  background: var(--surface-2, hsl(var(--muted)));
+}
+.aigc-qp.on {
+  background: var(--accent, hsl(var(--primary)));
+  color: var(--accent-ink, hsl(var(--primary-foreground)));
+  border-color: transparent;
+}
+.aigc-qp b {
+  font-weight: 650;
+}
+.aigc-qp .chev {
+  opacity: 0.6;
+}
+/* pill 下拉(基于 .aigc-asset-pop) */
+.aigc-pill-pop {
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.aigc-pill-pop button.on {
+  background: var(--accent-soft, hsl(var(--muted)));
+  color: var(--ink, hsl(var(--foreground)));
+  font-weight: 600;
+}
+.aigc-pill-pop button .hint {
+  float: right;
+  font-size: 10.5px;
+  color: var(--ink-3, hsl(var(--muted-foreground)));
+  margin-left: 10px;
+}
+
+/* ─── ＋ 工具入口 + 意图胶囊 + 分栏菜单(承接 pi-labs composer 交互模式)────────── */
+.aigc-tool-plus {
+  padding: 0 7px;
+}
+.aigc-intent {
+  gap: 5px;
+}
+.aigc-intent-x {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--accent-ink, hsl(var(--primary-foreground)));
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+}
+.aigc-intent-x:hover {
+  opacity: 1;
+}
+.aigc-menu-sec {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3, hsl(var(--muted-foreground)));
+  padding: 6px 9px 2px;
+}
+.aigc-menu-item {
+  display: flex;
+  align-items: center;
+}
+.aigc-menu-row {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--ink-2, hsl(var(--foreground)));
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.aigc-menu-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aigc-menu-row:hover {
+  background: var(--surface-2, hsl(var(--muted)));
+  color: var(--ink, hsl(var(--foreground)));
+}
+.aigc-menu-pin {
+  flex-shrink: 0;
+  margin-right: 4px;
+  padding: 4px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--ink-3, hsl(var(--muted-foreground)));
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.aigc-menu-item:hover .aigc-menu-pin {
+  opacity: 1;
+}
+.aigc-menu-pin.on {
+  opacity: 1;
+  color: var(--accent, hsl(var(--primary)));
+}
+.aigc-menu-pin:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+/* 统一走 ＋ 工具菜单里的「添加附件」,隐藏 vendor 自带附件加号避免双入口
+   (programmatic .click() 对 display:none 的 file input 仍生效)。 */
+.aigc-main [data-pi-attachments-add] {
+  display: none !important;
+}
+
+/* ─── 弹层背景强制不透明(修文字穿透:模型选择/下拉/菜单等)──────────────────
+   vendor 组件的 Radix popover / 下拉内容用 bg-[hsl(var(--popover))],个别场景下呈半透明导致
+   底层文字透出。这里对所有 popped 内容兜底:实心 --popover 背景 + 去 backdrop-blur。
+   只改背景不动布局,低风险。 */
+[data-radix-popper-content-wrapper] > *,
+[data-radix-popover-content],
+[data-radix-select-content],
+[data-radix-dropdown-menu-content],
+[data-radix-menu-content],
+[cmdk-root],
+[cmdk-list],
+[role="menu"],
+[role="listbox"] {
+  background-color: hsl(var(--popover)) !important;
+  backdrop-filter: none !important;
+}
+
+/* ─── 消息气泡贴原型(scoped 到 .aigc-main 内的 PiChat;只调形不换机)──── */
+.aigc-main [data-pi-message-role="user"] > div {
+  border-radius: 12px;
+}
+.aigc-main [data-pi-message-role] {
+  font-size: 14px;
+}
+
+/* 侧栏常驻内嵌基座 AgentSourcePicker(variant=page):贴窄栏。
+   dialog 经 Radix Portal 逃出 aside 子树,不被以下规则命中。 */
+[data-agent-source-rail] [data-agent-source-picker] {
+  height: auto;
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+[data-agent-source-rail] [data-agent-source-picker] > div {
+  max-width: none;
+}
+/* 常驻只选已有源:隐藏手输 form(含"用默认源");添新走 dialog */
+[data-agent-source-rail] [data-agent-source-picker] form {
+  display: none;
+}
+/* 卡片网格 → 单列(基座 sm/lg 断点按视口,窄栏会挤多列破版) */
+[data-agent-source-rail] [data-agent-source-picker] [data-agent-source-list] ul {
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+/* ── 卡片 → 紧凑列表行 ──
+   上游 AgentSourcePicker 只有卡片网格,无 list 变体(头像/CUSTOM 徽标/描述写死在卡片里)。
+   此处纯作用域 CSS 把每张卡压成单行列表项(隐描述 + 隐模式徽标 + 缩头像 + 去边框),零改 vendor。 */
+[data-agent-source-rail] [data-agent-source-list] {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  gap: 4px;
+}
+/* 隐藏列表标题栏("可用的 agent 源" + 计数徽标):侧栏 Agent 源 head 已有分组标题,冗余。 */
+[data-agent-source-rail] [data-agent-source-list] > h2 {
+  display: none;
+}
+/* 卡片 → 单行:横排、收紧内距、去边框与卡片底色。 */
+[data-agent-source-rail] [data-agent-source-item] {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+}
+[data-agent-source-rail] [data-agent-source-item] > span:first-child {
+  flex: 1;
+  min-width: 0;
+}
+/* 头像缩小到列表尺寸。 */
+[data-agent-source-rail] [data-agent-source-avatar] {
+  height: 22px;
+  width: 22px;
+  font-size: 11px;
+}
+[data-agent-source-rail] [data-agent-source-title] {
+  padding-right: 18px; /* 让位右侧星标 */
+}
+/* 隐藏描述段(卡片首段之后的兄弟)。 */
+[data-agent-source-rail] [data-agent-source-item] > span:first-child ~ span {
+  display: none;
+}
+/* 隐藏 CUSTOM 模式徽标(标题正下方的小标签)。 */
+[data-agent-source-rail] [data-agent-source-title] + span {
+  display: none;
+}
+/* 星标垂直居中到行内。 */
+[data-agent-source-rail] [data-agent-source-favorite-toggle] {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ─── 工作区容器(panelRight):模块 Tab 条 + Activity 保活的内容区 ──────────────
+   取代此前「画布 + 素材抽屉一体机」的 data-canvas/data-drawer 三态编排:每个模块独占
+   一个 pane,非激活 pane 由 <Activity mode="hidden"> 置 display:none(React 负责,
+   CSS 不介入)。旧的 .aigc-rightcol[data-drawer=…] 规则因属性不再存在而不命中,故此处
+   为 pane 内的画布/抽屉补默认布局(二者都占满各自 pane)。 */
+.aigc-ws-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.aigc-ws-tabs::-webkit-scrollbar {
+  display: none;
+}
+.aigc-ws-tab {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px 6px 0 0;
+  padding-right: 2px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.aigc-ws-tab.on {
+  background: var(--surface-2);
+  color: var(--foreground);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.aigc-ws-tab > button:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 6px 6px 9px;
+  font-size: 12.5px;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.aigc-ws-tab .x {
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+.aigc-ws-tab:hover .x,
+.aigc-ws-tab.on .x {
+  opacity: 0.5;
+}
+.aigc-ws-tab .x:hover {
+  opacity: 1;
+  background: var(--muted);
+}
+/* 分屏画布:所有窗与所有模块实例都绝对定位到自己的百分比矩形。
+   模块实例在 DOM 里位置恒定,换窗/拖拽只改 inline style ⇒ iframe 不重载、画布状态不丢。 */
+.aigc-ws-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 窗只承载 Tab 条;其余区域透明且不吃指针事件(内容由 .aigc-ws-pane-body 覆盖)。 */
+.aigc-ws-pane {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+  box-shadow: -1px 0 0 var(--border);
+}
+.aigc-ws-pane .aigc-ws-tabs {
+  pointer-events: auto;
+  background: var(--bg);
+}
+.aigc-ws-pane-body {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.aigc-ws-pane-body > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* pane 内的画布与素材抽屉各自占满(旧的三态高度编排在 Tab 化后不适用)。 */
+.aigc-ws-pane-body .aigc-cvp,
+.aigc-ws-pane-body .aigc-assetmgr {
+  flex: 1 1 auto;
+  height: auto;
+  max-height: none;
+  display: flex;
+}
+/* 拖拽停靠高亮遮罩(四边 25% 切分 / 中心 50% 合并为 Tab)。 */
+.aigc-ws-drop {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.aigc-ws-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+}
+
+/* ─── 沙箱模块外壳(sandbox="allow-scripts",不透明 origin) ─────────────────── */
+.aigc-sandbox-host {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.aigc-sandbox-host > iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--surface);
+}
+
+/* ─── 以词搜图面板(模块 + /search 路由共用) ───────────────────────────────── */
+.aigc-searchpanel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+  padding: 12px;
+  overflow-y: auto;
+}
+.aigc-searchpanel > header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.aigc-searchpanel h1 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.aigc-searchpanel .sub {
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+}
+.aigc-searchpanel .bar {
+  display: flex;
+  gap: 6px;
+}
+.aigc-searchpanel .bar input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+}
+.aigc-searchpanel .bar button {
+  padding: 7px 14px;
+  font-size: 12.5px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--bg);
+  cursor: pointer;
+}
+.aigc-searchpanel .bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.aigc-searchpanel .note,
+.aigc-searchpanel .empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.aigc-searchpanel .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.aigc-searchpanel .cell {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.aigc-searchpanel .cell img,
+.aigc-searchpanel .cell .ph {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+.aigc-searchpanel .cell .ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.aigc-searchpanel .cell .pct {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.6);
+  border-radius: 4px;
+}
+
+/* ─── 左栏工作区模块区(已打开列表 + ＋添加模块) ───────────────────────────── */
+.aigc-rail-mods {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 4px 10px 6px;
+}
+.aigc-rail-modules {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.aigc-rail-mod {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+}
+.aigc-rail-mod:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.aigc-rail-mod > button:first-child {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 6px;
+  font-size: 12.5px;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+}
+.aigc-rail-mod > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aigc-rail-mod .x {
+  padding: 3px;
+  margin-right: 3px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  opacity: 0;
+  cursor: pointer;
+}
+.aigc-rail-mod:hover .x {
+  opacity: 0.6;
+}
+.aigc-rail-mod .x:hover {
+  opacity: 1;
+}
+.aigc-modmenu {
+  position: absolute;
+  z-index: 40;
+  left: 10px;
+  right: 10px;
+  top: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+.aigc-modmenu > button {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.aigc-modmenu > button:hover {
+  background: var(--muted);
+}
+.aigc-modmenu .t {
+  font-size: 12.5px;
+}
+.aigc-modmenu .d {
+  grid-column: 2 / -1;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.aigc-modmenu .on {
+  font-size: 10.5px;
+  color: var(--accent);
+}
+.aigc-modmenu .empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* ─── 搜索浮层(Cmd/Ctrl+K)——搜索不占常驻输入框空间 ───────────────────────── */
+.aigc-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 14vh;
+  background: rgb(0 0 0 / 0.35);
+}
+.aigc-palette {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(560px, 90vw);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 0.3);
+  color: var(--muted-foreground);
+}
+.aigc-palette input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  font-size: 13.5px;
+  color: var(--foreground);
+}
+.aigc-palette kbd,
+.aigc-kbd {
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted-foreground);
+}
+.aigc-kbd {
+  margin-left: 4px;
+}
+
+/* ─── 左栏承接原 header:品牌区(brandSlot)/ 快捷入口(quickSlot)/ 底部固定栏(footerSlot)
+   全局 header 撤销后,这三块把整条横向空间还给工作区。 */
+.aigc-rail-quick {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+}
+.aigc-rail-quick > * {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+/* 底栏改两段:账号自成一行(未登录时该组件不渲染,此行自然消失)+ 控件行。 */
+.aigc-rail-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+.aigc-rail-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 窄栏降级:放不下文字时按钮退成图标态(title / aria-label 已在组件上,语义不丢)。
+   **只降底栏**——底栏三个控件带文字约需 200px,左栏下限却是 180px。快捷行不降:那里只有
+   一个主操作(新建会话,grow)+ 一个图标钮,180px 也放得下,把主操作图标化是净损失。 */
+@container rail (max-width: 212px) {
+  .aigc-rail-foot .aigc-tb-btn .lbl {
+    display: none;
+  }
+  .aigc-rail-foot .aigc-tb-btn {
+    padding: 0 9px;
+    gap: 0;
+  }
+}
+
+/* ═══ [pi-web 适配追加] 以下为 sync 脚本生成,不在源 globals.css 中 ═══ */
+/* sidebarLeft 槽的工作区导轨容器(源壳层由 rail grid 列定宽;pi-web 由本容器定宽)。 */
+.aigc-embed-rail {
+  width: 210px;
+  height: 100%;
+  padding: 12px 10px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  border-right: 1px solid var(--border, #e5e5e7);
+  background: var(--surface, #fff);
+}

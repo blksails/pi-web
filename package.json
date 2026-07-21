@@ -71,12 +71,14 @@
     "@blksails/pi-web-tool-kit": "workspace:*",
     "@blksails/pi-web-ui": "workspace:*",
     "@hono/node-server": "^2.0.8",
+    "@tanstack/react-query": "^5.101.2",
     "ai": "^5.0.0",
     "hono": "^4.12.28",
     "lucide-react": "^0.470.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router": "^8.2.0"
+    "react-router": "^8.2.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>沙箱预览</title>
+    <style>
+      :root { color-scheme: light dark; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        font: 13px/1.6 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+      h1 { font-size: 14px; margin: 0 0 8px; }
+      p { margin: 0 0 12px; opacity: .8; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+      dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; }
+      dt { opacity: .6; }
+      dd { margin: 0; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <!--
+      沙箱预览子页 —— 工作区 iframe 模块的参考实现与 e2e 载体。
+      本页运行在 sandbox="allow-scripts"（不含 allow-same-origin）的**不透明 origin** 里：
+      拿不到宿主 DOM / cookie / storage。协议见 lib/workspace/iframe-rpc.ts 的文件头。
+    -->
+    <h1>沙箱预览</h1>
+    <p>
+      运行于 <code>sandbox="allow-scripts"</code> 的不透明 origin：无宿主 DOM / cookie / 凭证。
+      握手完成后所有业务流量走 <code>MessagePort</code> 私有通道。
+    </p>
+    <dl>
+      <dt>握手</dt><dd id="hs">等待宿主 ping…</dd>
+      <dt>可见性</dt><dd id="vis">—</dd>
+      <dt>动画帧</dt><dd id="fr">0</dd>
+    </dl>
+    <script>
+      (function () {
+        var port = null;
+        var log = [];
+        var frames = 0;
+        var visible = false;
+        var raf = 0;
+        var $ = function (id) { return document.getElementById(id); };
+
+        function tick() {
+          frames += 1;
+          $("fr").textContent = String(frames);
+          raf = requestAnimationFrame(tick);
+        }
+
+        // 被切到后台时必须自己停 rAF：宿主的 <Activity> 只清理 React 侧 effect，
+        // **不会**冻结子 iframe 的事件循环（来源 02 §1.4 第 2 条）。
+        function setVisible(v) {
+          if (v === visible) return;
+          visible = v;
+          log.push(v ? "visible" : "hidden");
+          $("vis").textContent = v ? "可见" : "后台（已停 rAF）";
+          if (v) {
+            if (raf === 0) raf = requestAnimationFrame(tick);
+          } else if (raf !== 0) {
+            cancelAnimationFrame(raf);
+            raf = 0;
+          }
+        }
+
+        function onPort(e) {
+          var m = e.data;
+          if (!m || typeof m !== "object") return;
+          if (m.t !== "req" || typeof m.id !== "string") return; // 未知 type 丢弃
+          port.postMessage({ t: "ack", id: m.id });
+          if (m.method === "getState") {
+            port.postMessage({
+              t: "res",
+              id: m.id,
+              ok: true,
+              result: { log: log.join(","), frames: frames, visible: visible },
+            });
+            return;
+          }
+          port.postMessage({ t: "res", id: m.id, ok: false, error: "unknown method" });
+        }
+
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || typeof d !== "object") return;
+          if (d.t === "ping" && d.v === 1) {
+            // 握手包无机密；父页 origin 未知（本页 opaque），只能 "*"。
+            (e.source || window.parent).postMessage({ t: "ready", v: 1 }, "*");
+            return;
+          }
+          if (d.t === "init" && d.v === 1) {
+            var p = e.ports && e.ports[0];
+            if (!p) return;
+            port = p;
+            port.onmessage = onPort;
+            if (port.start) port.start();
+            $("hs").textContent = "已建立 MessagePort 私有通道";
+            return;
+          }
+          if (d.t === "visibility" && d.v === 1) {
+            setVisible(d.visible === true);
+            return;
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -20,13 +20,17 @@
  */
 import { defineWebExtension } from "@blksails/pi-web-kit";
 import { AigcPromptToolbar } from "./prompt-toolbar.js";
-import { SkillPanel } from "./skill-panel.js";
 import { imageRendererExtension } from "./image-renderer.js";
 // panelRight 工作区容器(模块 Tab 条 + Activity 保活):本仓库宿主用它承载右栏,模块由此拿
 // slot 注入的原生 conversation(替代 conversationApiRef 接缝)。注:引用 host components →
 // 本仓库 panelRight 不可移植;其他 pi-web 宿主仍可用可移植的 AigcCanvasPanel(纯画布)。
 // 导入 workspace-modules 即注册内置模块(画布 / 素材),副作用 import 顺序须在容器之前。
-import { AigcCanvasPanel } from "./canvas-panel.js"; // [迁移变换 B] 宿主壳 WorkspacePanel 不可移植→可移植纯画布
+import "./workspace/workspace-modules.js"; // [迁移变换 B] 壳层路径→迁移后 workspace/(副作用注册,须在容器 import 前)
+import {
+  AigcDialogLayer,
+  AigcWorkspacePanel,
+  AigcWorkspaceRail,
+} from "./workspace/host-adapter.js"; // [迁移变换 B] 经宿主适配层接入(QueryProvider 自包 + 三槽)
 import { mediaRendererExtension } from "./media-renderer.js";
 
 export default defineWebExtension({
@@ -67,10 +71,11 @@ export default defineWebExtension({
   },
   slots: {
     promptToolbar: AigcPromptToolbar as never,
-    dialogLayer: SkillPanel as never,
+    dialogLayer: AigcDialogLayer as never,
     // 右栏工作区容器(可注册模块 + Tab 条 + Activity 保活)。声明 panelRight → PiChat 注入
     // 原生 conversation + 开空闲控制流;宿主 chat-app 据此弃用 host-level CanvasRegion。
-    panelRight: AigcCanvasPanel as never,
+    panelRight: AigcWorkspacePanel as never,
+    sidebarLeft: AigcWorkspaceRail as never,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg 13 工具)渲染器合并。
   renderers: {
