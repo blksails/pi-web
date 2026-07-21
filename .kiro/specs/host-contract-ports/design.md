@@ -474,6 +474,10 @@ export const HOST_CAPABILITY_IDS_V1: readonly string[];
 - Integration: 本期无调用方；M3 阶段由 `pi-handler.ts` 接入。
 - Validation: 空白 `reason`（空串或纯空白）按 `empty-reason` 抛错（6.5）。
 - Risks: 泛型化虽解耦，但也使「id 与工厂是否匹配」无法在本期由类型保证；由 M3 接入时的类型绑定兜底。
+  **同源的一条须点名认领（2026-07-21，5.2 复核指出原文只是「相邻认领」）**：`CapabilityDescriptor.requires`
+  **本期不校验**。`TDeps` 完全泛型化 ⇒ 没有端口名注册表可比对 ⇒ 任何校验都会恒真，
+  而**恒真的校验比没有校验更坏**（让填了 `requires` 的宿主以为有保护）。契约已随勘误⑬
+  把该字段注释改为「纯声明字段，校验待 `HostDeps` 收敛后启用」。
 
 ---
 
