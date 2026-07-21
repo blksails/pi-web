@@ -33,11 +33,16 @@ export const DEFAULT_WORKSPACE_MAX_VALUE_BYTES = 1_048_576;
  */
 export class WorkspaceConfigError extends Error {
   constructor(
-    public readonly envName: string,
+    /**
+     * 配置来源的可读标识。env 路径传变量名(如 `PI_WEB_WORKSPACE_MAX_VALUE_BYTES`),
+     * 构造参数路径传选项名。**刻意不以 env 命名**:上限有两条入口,把字段绑死在环境变量上
+     * 会让参数路径的错误对外声称一个并不存在的环境变量。
+     */
+    public readonly source: string,
     public readonly rawValue: string,
     reason: string,
   ) {
-    super(`invalid ${envName}=${JSON.stringify(rawValue)}: ${reason}`);
+    super(`invalid ${source}=${JSON.stringify(rawValue)}: ${reason}`);
     this.name = "WorkspaceConfigError";
   }
 }

@@ -88,7 +88,7 @@ describe("非法即抛,不静默回落默认(Req 3.3)", () => {
   it("错误携带 env 名与原值,使运维无需读代码即可定位", () => {
     const e = expectConfigError("1MB");
     expect(e.name).toBe("WorkspaceConfigError");
-    expect(e.envName).toBe(WORKSPACE_MAX_VALUE_BYTES_ENV);
+    expect(e.source).toBe(WORKSPACE_MAX_VALUE_BYTES_ENV);
     expect(e.rawValue).toBe("1MB");
     expect(e.message).toContain(WORKSPACE_MAX_VALUE_BYTES_ENV);
     expect(e.message).toContain("1MB");

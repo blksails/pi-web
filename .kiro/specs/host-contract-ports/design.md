@@ -521,6 +521,12 @@ export function registerHostConfigDomains(registry: ConfigDomainRegistry): void;
 **Responsibilities & Constraints**
 
 - 键 → 路径映射：`user` 根 = `PI_WEB_AGENT_DIR ?? ~/.pi/agent`；`project` 根 = `<cwd>/.pi`。
+  两根**都可由构造参数显式覆盖**——下面接口块的 `userRoot?`/`projectRoot?` 缺省时才走这条规则。
+
+> **修订（2026-07-21，任务 4.3 复核暴露）**：接口块原把两根定为**必填**，与上面这条职责
+> **自相矛盾**——必填则根解析无处可落。已按「职责 + 契约 §3.5」改为可选，并补上 `env`/`cwd`
+> 两个注入项（沿用 `resolveWorkspaceValueLimit` 的既有形态，使测试不必改写进程环境）。
+> 纯加宽，原调用形态 `createLocalWorkspace({ userRoot, projectRoot })` 仍可用。
 - 落盘语义须与既有 `ConfigCodec` **逐字节等价**：目录 `0700`、文件 `0600`、deepMerge 规则一致、`merge:false` 覆盖写。
 - 原子写：同目录 temp 文件 + `rename`。
 
@@ -528,10 +534,16 @@ export function registerHostConfigDomains(registry: ConfigDomainRegistry): void;
 
 ```typescript
 export interface LocalWorkspaceOptions {
-  readonly userRoot: string;
-  readonly projectRoot: string;
-  /** 缺省取 resolveWorkspaceValueLimit(process.env)。 */
+  /** 缺省按上面 Responsibilities 的规则解析（契约 §3.5）。 */
+  readonly userRoot?: string;
+  /** 缺省按上面 Responsibilities 的规则解析（契约 §3.5）。 */
+  readonly projectRoot?: string;
+  /** 缺省取 resolveWorkspaceValueLimit(env)。 */
   readonly maxValueBytes?: number;
+  /** 注入而非直接读全局，使测试无须改写进程环境。缺省 process.env。 */
+  readonly env?: NodeJS.ProcessEnv;
+  /** 同上。缺省 process.cwd()。 */
+  readonly cwd?: string;
 }
 export function createLocalWorkspace(opts: LocalWorkspaceOptions): Workspace;
 /** 三段式 env 解析：未设→默认；非法→抛错（3.1–3.3）。 */

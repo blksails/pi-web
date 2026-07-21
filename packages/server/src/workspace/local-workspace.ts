@@ -5,11 +5,11 @@
  * 权威依据:`docs/pi-web-host-contract-v1.md` §3(尤其 §3.2 第 5、6 条与 §3.2.1)
  * 与 design.md「LocalWorkspace(参照实现)」。
  *
- * 本文件落地**单个命名空间**:键映射、读写合并、原子写入(同目录 temp + rename)、
- * 目录 0700 / 文件 0600、写时上限校验、以及「值与分组不可同址」。
- *  - 双根(user / project)装配与上限的 env 接线 → 任务 4.3。
- * 故此处刻意只导出 {@link createLocalWorkspaceNamespace},由后续任务在其上扩展,
- * 而不提前造 `createLocalWorkspace` 空壳。
+ * 本文件落地:
+ *  - **单个命名空间**(任务 4.1 + 4.2):键映射、读写合并、原子写入(同目录 temp + rename)、
+ *    目录 0700 / 文件 0600、写时上限校验、以及「值与分组不可同址」;
+ *  - **双根装配**(任务 4.3):{@link createLocalWorkspace} 以两个各自独立的根装配
+ *    `user` / `project`,并接通上限的三段式 env 契约。
  *
  * 键 → 路径映射:`<root>/<key 的各段>`,一律经 `path.join` 拼接。
  * ⚠ 校验(`validateWorkspaceKey`)是安全边界,`join` 是**纵深防御**:即便未来键规则被改宽,
@@ -28,9 +28,15 @@
  */
 import { randomBytes } from "node:crypto";
 import { promises as fs, type Dirent, type Stats } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { HOST_CONTRACT_VERSION } from "../host-contract-version.js";
 import { validateWorkspaceKey } from "./key.js";
-import { DEFAULT_WORKSPACE_MAX_VALUE_BYTES } from "./limit-config.js";
+import {
+  DEFAULT_WORKSPACE_MAX_VALUE_BYTES,
+  WorkspaceConfigError,
+  resolveWorkspaceValueLimit,
+} from "./limit-config.js";
 import { deepMergeJson } from "./merge.js";
 import {
   WorkspaceCorruptError,
@@ -38,6 +44,7 @@ import {
   WorkspaceKeyError,
   WorkspaceLimitError,
   type JsonObject,
+  type Workspace,
   type WorkspaceKey,
   type WorkspaceNamespace,
   type WorkspaceWriteOptions,
@@ -300,14 +307,44 @@ export interface LocalWorkspaceNamespaceOptions {
 }
 
 /**
+ * 校验显式传入的上限取值(装配期),口径与 `resolveWorkspaceValueLimit` 对 env 的判据一致。
+ *
+ * ★ 靶心是 `NaN`:写时校验是 `size > maxValueBytes`,而 `size > NaN` **恒为 `false`**
+ * ——上限会**完全静默失效**,任意大的值都能写进去。这正是契约 §3.2.1 对 env 路径明令
+ * fail-fast 所要消灭的失败形态;上限有两条入口(env 与构造参数),口径不该分裂。
+ * `Infinity` / 0 / 负数 / 小数虽不静默(会让写入全被拒或上限失真),但同属装配期配置错误,
+ * 一并在此拦下。
+ *
+ * ⚠ 复用 {@link WorkspaceConfigError}:它是**装配期配置错误**,语义正相符,且刻意不属于
+ * 那四个运行期判别码。其首参 `source` 是**配置来源的可读标识**而非 env 变量名,故参数路径
+ * 传选项名即可,消息读作 `invalid maxValueBytes option="NaN": ...`。
+ */
+function assertValidMaxValueBytes(source: string, value: number): void {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new WorkspaceConfigError(
+      source,
+      String(value),
+      "expected a positive integer number of bytes",
+    );
+  }
+}
+
+/**
  * 装配一个以 `root` 为根的命名空间。
  *
  * 两个根各自调用一次即得双根隔离(任务 4.3 装配);同一 `root` 的两次调用共享磁盘状态。
+ *
+ * 上限校验落在**本工厂**而非只落在 {@link createLocalWorkspace}:本工厂是上限进入生效路径
+ * (那次 `size > maxValueBytes` 比较)的**唯一咽喉**——装配入口经转发同受把守,故此处覆盖面
+ * 支配装配层。反之若只在装配层校验,直接调用本工厂的路径就洞开。
  */
 export function createLocalWorkspaceNamespace(
   root: string,
   options: LocalWorkspaceNamespaceOptions = {},
 ): WorkspaceNamespace {
+  if (options.maxValueBytes !== undefined) {
+    assertValidMaxValueBytes("maxValueBytes option", options.maxValueBytes);
+  }
   const maxValueBytes = options.maxValueBytes ?? DEFAULT_WORKSPACE_MAX_VALUE_BYTES;
   const pathOf = (key: WorkspaceKey): string => resolveWorkspaceKeyPath(root, key);
 
@@ -415,5 +452,81 @@ export function createLocalWorkspaceNamespace(
         throw new WorkspaceIoError(key, err);
       }
     },
+  };
+}
+
+/** {@link createLocalWorkspace} 的可选项(任务 4.3)。 */
+export interface LocalWorkspaceOptions {
+  /** 用户级根目录。缺省按契约 §3.5 解析:`PI_WEB_AGENT_DIR ?? ~/.pi/agent`。 */
+  readonly userRoot?: string;
+  /** 项目级根目录。缺省按契约 §3.5 解析:`<cwd>/.pi`。 */
+  readonly projectRoot?: string;
+  /**
+   * 单键值上限(字节)。缺省取 {@link resolveWorkspaceValueLimit} 对 `env` 的解析结果。
+   *
+   * ⚠ 覆盖的是**取值**,不是「跳过 env 校验」:见 {@link createLocalWorkspace} 的说明。
+   */
+  readonly maxValueBytes?: number;
+  /** 环境来源。缺省 `process.env`;注入形态使测试无需改写进程环境(Req 8.6 同款纪律)。 */
+  readonly env?: NodeJS.ProcessEnv;
+  /** 工作目录,用于解析项目根。缺省 `process.cwd()`。 */
+  readonly cwd?: string;
+}
+
+/** {@link resolveLocalWorkspaceRoots} 的结果。 */
+export interface LocalWorkspaceRoots {
+  readonly userRoot: string;
+  readonly projectRoot: string;
+}
+
+/**
+ * 解析双根的默认位置(契约 §3.5)。
+ *
+ * 纯函数、收注入的 `env` 与 `cwd`:根的位置是可观测行为的一部分(迁移后必须与既有
+ * `config/config-codec.ts` 落在同一处),值得被独立断言,而不是只经写盘路径间接覆盖。
+ */
+export function resolveLocalWorkspaceRoots(
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): LocalWorkspaceRoots {
+  const agentDir = env.PI_WEB_AGENT_DIR;
+  return {
+    userRoot:
+      agentDir !== undefined && agentDir.trim().length > 0
+        ? agentDir
+        : join(homedir(), ".pi", "agent"),
+    projectRoot: join(cwd, ".pi"),
+  };
+}
+
+/**
+ * 装配双根本地实现(任务 4.3;Req 3.1、4.1-4.4)。
+ *
+ * **两个根不可合并**(契约 §3.3):`user` 与 `project` 各自装配一个独立命名空间,
+ * 各持各的根路径,故同键在两根下映射为两个不同文件——隔离来自根本身,不靠任何
+ * 键前缀约定(前缀方案会让键空间被装配层偷偷占用一段,且两端无法对齐)。
+ *
+ * **上限的三段式 env 契约**(Req 3.1-3.3)在此接通:
+ *  - 未设 → 契约默认 1 MiB;
+ *  - 设了但非法 → **在本函数返回之前**抛 `WorkspaceConfigError`。装配期失败是刻意的:
+ *    留到第一次 `writeJson` 才抛,故障就会以「某次写入莫名失败」的形态出现在离根因很远
+ *    的地方,而这正是三段式契约要消灭的形态。
+ *  - `maxValueBytes` 覆盖其**取值**;但 env 解析**照常先执行**——即便调用方显式给了上限,
+ *    一个写错的 env 也必须炸出来,否则运维改错配置将永无信号(静默忽略与静默回落默认
+ *    是同一种病)。故此处刻意**不**写成 `options.maxValueBytes ?? resolve(...)` 的惰性形态。
+ */
+export function createLocalWorkspace(options: LocalWorkspaceOptions = {}): Workspace {
+  const env = options.env ?? process.env;
+  const envLimit = resolveWorkspaceValueLimit(env);
+  const maxValueBytes = options.maxValueBytes ?? envLimit;
+
+  const defaults = resolveLocalWorkspaceRoots(env, options.cwd ?? process.cwd());
+  const userRoot = options.userRoot ?? defaults.userRoot;
+  const projectRoot = options.projectRoot ?? defaults.projectRoot;
+
+  return {
+    contractVersion: HOST_CONTRACT_VERSION,
+    user: createLocalWorkspaceNamespace(userRoot, { maxValueBytes }),
+    project: createLocalWorkspaceNamespace(projectRoot, { maxValueBytes }),
   };
 }
