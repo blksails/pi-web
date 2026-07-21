@@ -1,12 +1,13 @@
 /**
- * 本地文件系统参照实现(spec: host-contract-ports,任务 4.1;
- * Req 2.1/2.2/2.3/2.4/2.5/2.7/2.8/2.9)。
+ * 本地文件系统参照实现(spec: host-contract-ports,任务 4.1 + 4.2;
+ * Req 1.7/1.8/2.1-2.9/3.4/3.5)。
  *
- * 权威依据:`docs/pi-web-host-contract-v1.md` §3 与 design.md「LocalWorkspace(参照实现)」。
+ * 权威依据:`docs/pi-web-host-contract-v1.md` §3(尤其 §3.2 第 5、6 条与 §3.2.1)
+ * 与 design.md「LocalWorkspace(参照实现)」。
  *
- * 本文件当前只落地**单个命名空间**的键映射与基本读写:
- *  - 原子写入(同目录 temp + rename)、目录 0700 / 文件 0600、写时上限校验 → 任务 4.2;
- *  - 双根(user / project)装配与上限接线 → 任务 4.3。
+ * 本文件落地**单个命名空间**:键映射、读写合并、原子写入(同目录 temp + rename)、
+ * 目录 0700 / 文件 0600、写时上限校验、以及「值与分组不可同址」。
+ *  - 双根(user / project)装配与上限的 env 接线 → 任务 4.3。
  * 故此处刻意只导出 {@link createLocalWorkspaceNamespace},由后续任务在其上扩展,
  * 而不提前造 `createLocalWorkspace` 空壳。
  *
@@ -25,13 +26,17 @@
  *
  * pi-SDK-free:只用 node 内置模块与本模块内的纯函数。
  */
-import { promises as fs, type Dirent } from "node:fs";
-import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+import { promises as fs, type Dirent, type Stats } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { validateWorkspaceKey } from "./key.js";
+import { DEFAULT_WORKSPACE_MAX_VALUE_BYTES } from "./limit-config.js";
 import { deepMergeJson } from "./merge.js";
 import {
   WorkspaceCorruptError,
   WorkspaceIoError,
+  WorkspaceKeyError,
+  WorkspaceLimitError,
   type JsonObject,
   type WorkspaceKey,
   type WorkspaceNamespace,
@@ -40,6 +45,11 @@ import {
 
 /** 键的段分隔符(与平台无关,见 `./key.js`)。 */
 const SEPARATOR = "/";
+
+/** 目录权限:与既有 `config/config-codec.ts` 一致。 */
+const DIR_MODE = 0o700;
+/** 文件权限:与既有 `config/config-codec.ts` 一致。 */
+const FILE_MODE = 0o600;
 
 function errnoOf(err: unknown): string | undefined {
   if (err !== null && typeof err === "object" && "code" in err) {
@@ -79,11 +89,226 @@ function parseJsonObject(key: WorkspaceKey, text: string): JsonObject {
 }
 
 /**
+ * `stat` 的「不存在即 undefined」变体。
+ *
+ * `ENOENT`(路径缺失)与 `ENOTDIR`(某个父段是文件,故该路径不可能存在)同等处置——
+ * 与 `readJson`/`exists`/`list` 对「不存在」的既有口径一致。
+ */
+async function statOrUndefined(
+  key: WorkspaceKey,
+  path: string,
+): Promise<Stats | undefined> {
+  try {
+    return await fs.stat(path);
+  } catch (err) {
+    const code = errnoOf(err);
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw new WorkspaceIoError(key, err);
+  }
+}
+
+/**
+ * 在 `dir`(键 `prefix` 对应的分组目录)之下深度优先找出**第一个值键**,用于让
+ * 「不可同址」的错误能说出到底与哪个既有键冲突(Req 1.7)。
+ *
+ * 目录序不确定,故每层排序后再下探,使同一份数据上的报错稳定可复现。
+ * 找不到返回 `undefined`——**该位置一个值键都没有,故根本不构成冲突**(契约 §3.5
+ * 「空分组不是冲突」),而不是「冲突的是分组本身」。
+ */
+async function findValueKeyUnder(
+  dir: string,
+  prefix: WorkspaceKey,
+): Promise<WorkspaceKey | undefined> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  const sorted = [...entries].sort((a, b) =>
+    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+  );
+  for (const entry of sorted) {
+    const childKey = `${prefix}${SEPARATOR}${entry.name}`;
+    if (entry.isFile()) return childKey;
+  }
+  for (const entry of sorted) {
+    if (!entry.isDirectory()) continue;
+    const found = await findValueKeyUnder(
+      join(dir, entry.name),
+      `${prefix}${SEPARATOR}${entry.name}`,
+    );
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
+/**
+ * 探测「值与分组不可同址」的冲突(Req 1.7,契约 §3.2 第 6 条),返回冲突说明或 `undefined`。
+ *
+ * 两个方向都要查,判据一律是**是否存在一个既有值键**:
+ *  - 正向:`k` 的任一严格前缀已是值键(已有 `g/a.json`,写 `g/a.json/x.json`);
+ *  - 反向:`k` 本身是某既有值键的严格前缀(已有 `g/a.json/x.json`,写 `g/a.json`)。
+ *
+ * ⚠ **空目录不是冲突**(契约 §3.5)。`delete` 只删值不删父目录,故层级载体上会残留空
+ * 目录;它一个值键都不含,而扁平 KV 后端上分组随最后一个值一起消失,同一序列写入成功。
+ * 若这里因「路径上是个目录」就拒绝,就制造了一个新的两端分歧——正是勘误⑧ 要消灭的东西。
+ * 残留空目录由 {@link prepareWritePath} 清理,不由本函数判成错误。
+ *
+ * ⚠ 反过来,冲突必须**主动**判成键非法,而不是依赖层级载体碰巧报 `ENOTDIR`/`EISDIR`:
+ * 扁平 KV 后端上两者能并存,靠 IO 错误表达会让两端的错误分类对不齐。
+ */
+async function findCollocationConflict(
+  root: string,
+  key: WorkspaceKey,
+  path: string,
+): Promise<string | undefined> {
+  const segments = key.split(SEPARATOR);
+
+  // 正向:逐段检查严格前缀。O(段数) 次 stat,只在写路径付出。
+  let cursor = root;
+  for (let i = 0; i < segments.length - 1; i += 1) {
+    cursor = join(cursor, segments[i] as string);
+    const stat = await statOrUndefined(key, cursor);
+    if (stat === undefined) break; // 前缀不存在 ⇒ 更深的前缀与本键路径也不存在
+    if (stat.isFile()) {
+      const conflict = segments.slice(0, i + 1).join(SEPARATOR);
+      return `与既有值键 ${JSON.stringify(conflict)} 冲突:值与分组不可同址(该键的严格前缀已是一个值)`;
+    }
+  }
+
+  // 反向:键自身在载体上是分组,且其下**确实还存在值键**。
+  const own = await statOrUndefined(key, path);
+  if (own !== undefined && own.isDirectory()) {
+    const conflict = await findValueKeyUnder(path, key);
+    if (conflict !== undefined) {
+      return `与既有值键 ${JSON.stringify(conflict)} 冲突:值与分组不可同址(该键是它的严格前缀)`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 自底向上删除**全空**的目录树。
+ *
+ * 刻意用非递归的 `rmdir` 而非 `fs.rm({recursive:true})`:若在探测与清理之间有并发写入
+ * 落下了一个值文件,`rmdir` 会以 `ENOTEMPTY` 失败,而 `rm -r` 会把那个值**静默删掉**。
+ * 宁可让这次写入报错,也不能吃掉别人的数据。
+ *
+ * 抛出的是**原始 errno 错误**,由调用方按上下文分类。
+ */
+async function removeEmptyDirTree(path: string): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await fs.readdir(path, { withFileTypes: true });
+  } catch (err) {
+    const code = errnoOf(err);
+    if (code === "ENOENT" || code === "ENOTDIR") return; // 已不在,无事可做
+    throw err;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) await removeEmptyDirTree(join(path, entry.name));
+  }
+  await fs.rmdir(path);
+}
+
+/**
+ * 写入前的路径准备:拒绝真冲突,清理残留空目录(Req 1.7,契约 §3.2 第 6 条 + §3.5)。
+ *
+ * 在**任何落盘动作之前**完成,使被拒的写入不留下半个中间目录。
+ */
+async function prepareWritePath(
+  root: string,
+  key: WorkspaceKey,
+  path: string,
+): Promise<void> {
+  const conflict = await findCollocationConflict(root, key, path);
+  if (conflict !== undefined) throw new WorkspaceKeyError(key, conflict);
+
+  // 走到这里说明该位置没有任何既有值键;若载体上仍是个(全空的)分组目录,把它让出来,
+  // 否则 `rename` 会撞上 EISDIR/ENOTEMPTY —— 而按契约这次写入本就应当成功。
+  const own = await statOrUndefined(key, path);
+  if (own === undefined || !own.isDirectory()) return;
+  try {
+    await removeEmptyDirTree(path);
+  } catch (err) {
+    // 清理期间有并发写入落下了值 ⇒ 现在才成为真冲突;否则是环境类故障。
+    const raced = await findCollocationConflict(root, key, path);
+    if (raced !== undefined) throw new WorkspaceKeyError(key, raced);
+    throw new WorkspaceIoError(key, err);
+  }
+}
+
+/**
+ * 原子写入:同目录临时文件 + `rename`(Req 2.6)。
+ *
+ * - **同目录**:`rename` 只在同一文件系统内保证原子,跨设备会退化为复制。
+ * - 临时名带 pid 与随机后缀,避免并发写同一键时相互覆盖。
+ * - 任一步失败都清理临时文件,不留垃圾。
+ *   ⚠ 进程被强杀时仍可能留下 `.<name>.<pid>-<rand>.tmp`,它会被 `list` 当成一个键返回、
+ *   也能被 `readJson` 读到。刻意**不**在 `list` 里按名字过滤:那会把一个合法的同名键悄悄
+ *   隐藏,是更坏的失败模式。此形态已作为本地实现的**已声明限制**写入契约 §3.5(勘误⑨b),
+ *   一致性套件不得对其断言。
+ * - 目录 0700 / 文件 0600,与既有 `ConfigCodec` 一致;`rename` 保留临时文件的权限位。
+ *
+ * ⚠ 捕获里遇 `ENOTDIR`/`EISDIR`/`ENOTEMPTY`/`EEXIST` 时**重新探测一次真冲突**再分类:
+ * 这是 {@link prepareWritePath} 之后的兜底(校验与写入之间存在竞态窗口)。刻意**不**按
+ * errno 直接判成键非法——并发写一个更深的键会 `mkdir -p` 出一个空目录并在此撞上
+ * `EISDIR`,而空目录按契约 §3.5 不是冲突,那样会把一次瞬时竞态谎报成键非法。
+ */
+async function writeFileAtomic(
+  root: string,
+  key: WorkspaceKey,
+  path: string,
+  json: string,
+): Promise<void> {
+  const dir = dirname(path);
+  const tmp = join(
+    dir,
+    `.${basename(path)}.${process.pid.toString(36)}-${randomBytes(6).toString("hex")}.tmp`,
+  );
+  try {
+    await fs.mkdir(dir, { recursive: true, mode: DIR_MODE });
+    await fs.writeFile(tmp, json, { encoding: "utf8", mode: FILE_MODE });
+    await fs.rename(tmp, path);
+  } catch (err) {
+    // 失败清理:临时文件可能尚未创建,`force` 使其不存在时也成功。
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    const code = errnoOf(err);
+    if (
+      code === "ENOTDIR" ||
+      code === "EISDIR" ||
+      code === "ENOTEMPTY" ||
+      code === "EEXIST"
+    ) {
+      const conflict = await findCollocationConflict(root, key, path);
+      if (conflict !== undefined) throw new WorkspaceKeyError(key, conflict);
+    }
+    throw new WorkspaceIoError(key, err);
+  }
+}
+
+/** {@link createLocalWorkspaceNamespace} 的可选项。 */
+export interface LocalWorkspaceNamespaceOptions {
+  /**
+   * 单键值上限(字节)。缺省取契约默认值 1 MiB。
+   *
+   * 任务 4.3 会由装配层经 `resolveWorkspaceValueLimit(process.env)` 传入;此处收参数
+   * 而不直读 env,使一致性套件能**不改写进程环境**地指定上限(Req 8.6)。
+   */
+  readonly maxValueBytes?: number;
+}
+
+/**
  * 装配一个以 `root` 为根的命名空间。
  *
  * 两个根各自调用一次即得双根隔离(任务 4.3 装配);同一 `root` 的两次调用共享磁盘状态。
  */
-export function createLocalWorkspaceNamespace(root: string): WorkspaceNamespace {
+export function createLocalWorkspaceNamespace(
+  root: string,
+  options: LocalWorkspaceNamespaceOptions = {},
+): WorkspaceNamespace {
+  const maxValueBytes = options.maxValueBytes ?? DEFAULT_WORKSPACE_MAX_VALUE_BYTES;
   const pathOf = (key: WorkspaceKey): string => resolveWorkspaceKeyPath(root, key);
 
   const readAt = async (key: WorkspaceKey, path: string): Promise<JsonObject> => {
@@ -91,14 +316,21 @@ export function createLocalWorkspaceNamespace(root: string): WorkspaceNamespace 
     try {
       text = await fs.readFile(path, "utf8");
     } catch (err) {
-      // 缺失键读为空对象(Req 2.1);其余失败(权限、EISDIR 等)为 IO 错误。
+      // 缺失键读为空对象(Req 2.1);其余失败(权限、磁盘故障等)为 IO 错误。
       //
       // ★ `ENOTDIR` 与 `ENOENT` **同等处置**:键的某个前缀段是值文件时(如 `g/a.json` 已存在
       // 而键为 `g/a.json/x.json`),底层给的是 ENOTDIR。语义上「前缀段是值文件 ⇒ 其下的键
       // 不存在」,与 `list`/`exists` 的口径必须**唯一**——否则同一实例会对同一个不存在的键
       // 给出互斥答案(读抛故障、列举与存在性说不存在)。
+      //
+      // ★ `EISDIR` 同理:键指向的是**分组**。「值与分组不可同址」(Req 1.7)保证分组永不是
+      // 值键,故读一个分组前缀就是读一个不存在的键 ⇒ 按 Req 2.1/1.8 返回 `{}`,**不得**抛
+      // IO 错误(否则扁平 KV 后端上同一个键返回 `{}`、层级后端上抛错,两端对不齐)。
+      //
+      // ⚠ 此处**不校验上限**,任何体积的既有值都必须能读回(Req 3.5、契约 §3.2.1):
+      // 若读也设限,把上限调小之后既有超限值将不可达,而用户无法自救(要缩小它必须先读到它)。
       const code = errnoOf(err);
-      if (code === "ENOENT" || code === "ENOTDIR") return {};
+      if (code === "ENOENT" || code === "ENOTDIR" || code === "EISDIR") return {};
       throw new WorkspaceIoError(key, err);
     }
     return parseJsonObject(key, text);
@@ -110,18 +342,25 @@ export function createLocalWorkspaceNamespace(root: string): WorkspaceNamespace 
     },
 
     async writeJson(key, values, opts?: WorkspaceWriteOptions) {
-      const path = pathOf(key);
+      const path = pathOf(key); // 键校验先行(Req 1.1)
+      // 「值与分组不可同址」先于任何落盘动作,使冲突写入不留下半个中间目录(Req 1.7);
+      // 同时让出残留的空分组目录(契约 §3.5)。
+      await prepareWritePath(root, key, path);
+
       // merge:false → 整体覆盖,使既有值中本次未提供的字段被删除(Req 2.4);
       // 缺省 → 与既有值深度合并(Req 2.3)。
       const next =
         opts?.merge === false ? values : deepMergeJson(await readAt(key, path), values);
-      const json = JSON.stringify(next, null, 2);
-      try {
-        await fs.mkdir(dirname(path), { recursive: true });
-        await fs.writeFile(path, json, "utf8");
-      } catch (err) {
-        throw new WorkspaceIoError(key, err);
-      }
+
+      // 上限只在**写**路径校验(Req 3.4)。
+      // 计量口径照契约 §3.2.1(勘误⑨a):**合并后整值**的**紧凑** `JSON.stringify` UTF-8
+      // 字节数。量合并后整值而非入参——否则反复用小补丁 merge 能让实际值无限膨胀而每次都
+      // 「合规」;用紧凑形态而非落盘的缩进形态——落盘表示可以更大,不算超限,否则同一个值
+      // 在扁平 KV 后端写得进、在本实现却写不进。
+      const size = Buffer.byteLength(JSON.stringify(next), "utf8");
+      if (size > maxValueBytes) throw new WorkspaceLimitError(key, size, maxValueBytes);
+
+      await writeFileAtomic(root, key, path, JSON.stringify(next, null, 2));
     },
 
     async list(prefix) {
@@ -149,7 +388,19 @@ export function createLocalWorkspaceNamespace(root: string): WorkspaceNamespace 
         await fs.unlink(pathOf(key));
       } catch (err) {
         // 不存在即幂等成功(Req 2.8)。
-        if (errnoOf(err) === "ENOENT") return;
+        //
+        // 三个 errno 都表示「这个**值键**不存在」,口径与 `readJson`/`exists`/`list` 必须一致:
+        //  - `ENOENT`  路径缺失;
+        //  - `ENOTDIR` 某个前缀段是值文件,故其下的键不存在;
+        //  - `EISDIR`(Linux)/`EPERM`(macOS) 路径是**分组**目录 —— 分组永不是值键
+        //    (Req 1.7/1.8),故要删的那个值键同样不存在。删除必须是无副作用的成功,
+        //    尤其**不得**顺带递归删掉分组之下的值。
+        const code = errnoOf(err);
+        if (code === "ENOENT" || code === "ENOTDIR") return;
+        if (code === "EISDIR" || code === "EPERM") {
+          const stat = await statOrUndefined(key, pathOf(key));
+          if (stat === undefined || stat.isDirectory()) return;
+        }
         throw new WorkspaceIoError(key, err);
       }
     },
