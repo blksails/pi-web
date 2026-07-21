@@ -421,8 +421,14 @@ export function createLocalWorkspaceNamespace(
     },
 
     async delete(key) {
+      // ★ 键校验(`pathOf`)必须在 `try` **之外**:它抛的是 `WorkspaceKeyError`,而下面的
+      // catch 是按 errno 分类 IO 故障的——把校验放进 try,`WorkspaceKeyError` 会命中兜底的
+      // `throw new WorkspaceIoError(...)`,一个**非法键**于是被报成 IO 故障(判别码 `io`)。
+      // 调用方按 `code` 分流(契约 §3.6),那等于安全边界的拒绝理由被抹掉。
+      // 同理见 `exists`。
+      const path = pathOf(key);
       try {
-        await fs.unlink(pathOf(key));
+        await fs.unlink(path);
       } catch (err) {
         // 不存在即幂等成功(Req 2.8)。
         //
@@ -435,7 +441,7 @@ export function createLocalWorkspaceNamespace(
         const code = errnoOf(err);
         if (code === "ENOENT" || code === "ENOTDIR") return;
         if (code === "EISDIR" || code === "EPERM") {
-          const stat = await statOrUndefined(key, pathOf(key));
+          const stat = await statOrUndefined(key, path);
           if (stat === undefined || stat.isDirectory()) return;
         }
         throw new WorkspaceIoError(key, err);
@@ -443,8 +449,10 @@ export function createLocalWorkspaceNamespace(
     },
 
     async exists(key) {
+      // ★ 同 `delete`:键校验必须在 `try` 之外,否则非法键被报成 IO 故障。
+      const path = pathOf(key);
       try {
-        const stat = await fs.stat(pathOf(key));
+        const stat = await fs.stat(path);
         // 目录是分组而非值:持有值才算存在(Req 2.9,与 list 的口径一致)。
         return stat.isFile();
       } catch (err) {

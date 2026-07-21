@@ -56,6 +56,19 @@ export interface ConformanceTarget {
    * 两个互不相干的弱断言,看似通过实则从未验证。
    */
   reopen(opts?: ConformanceTargetOptions): Promise<Workspace>;
+  /**
+   * 本实现的**载体**是否大小写敏感(契约 §3.2 第 4 条 / 勘误⑦)。缺省 `true`(契约语义)。
+   *
+   * ⚠ 这是**实现声明其平台限制**的唯一入口,不是豁免开关:声明 `false` 后,大小写用例
+   * 改为断言「两键确实互为别名、后写者胜出、列举只回一条」——声称不敏感却实际敏感的
+   * 实现照样红。若做成「声明即跳过」,任何实现都能靠声明把红改绿。
+   *
+   * 落在 `ConformanceTarget` 而非 {@link ConformanceTargetOptions}:后者是套件**传入**的
+   * 需求,本字段是实现**报出**的载体事实,方向相反。且它可能取决于运行时载体(同一份
+   * `LocalWorkspace` 代码在 Linux ext4 上敏感、在 macOS APFS 上不敏感),故须由工厂在
+   * 探测真实载体后填写,不能写死在套件调用处。
+   */
+  readonly caseSensitiveKeys?: boolean;
 }
 
 /**
@@ -254,19 +267,25 @@ function readWriteCases(runner: SuiteRunner, factory: ConformanceFactory): void 
       });
 
       it(`[${ns}] list 按**码元序**升序,不使用区域相关排序(Req 2.7)`, async () => {
-        // 码元序下大写字母先于小写(JS 的 `<`、SQL 的 COLLATE "C")。区域相关排序会把
-        // 二者混排 —— 同一组键在不同实现下顺序不同,跨实现确定性即失效。
+        // 码元序下 `1`(U+0031) < `B`(U+0042) < `_`(U+005F) < `a`(U+0061)。
+        // `localeCompare`(en)会给出 `_`,`1`,`a`,`B` —— 与本断言的期望**逐位不同**,
+        // 故本用例能确定性地区分两种排序口径,而不是碰巧通过。
+        //
+        // ⚠ **刻意不含仅大小写不同的键对**(契约 §3.2 第 4 条 / 勘误⑦):`A.json` 与
+        // `a.json` 在大小写不敏感载体(macOS APFS / Windows NTFS 默认)上塌成**同一个
+        // 文件**,列举只会回来一条,排序断言在半数宿主上**原理上无法成立** —— 那不是被测
+        // 实现排序写错了,而是用例把「排序口径」与「键大小写敏感」两个维度耦合在了一起。
+        // 大小写敏感另立用例(见键空间组),并允许实现声明其为平台不适用。
         await withTarget(factory, async (ws) => {
           const n = nsOf(ws, ns);
-          for (const k of ["s/b.json", "s/A.json", "s/a.json", "s/B.json", "s/1.json"]) {
+          for (const k of ["s/a.json", "s/_u.json", "s/B.json", "s/1.json"]) {
             await n.writeJson(k, SAMPLE);
           }
           assert.deepEqual(await n.list("s"), [
             "s/1.json",
-            "s/A.json",
             "s/B.json",
+            "s/_u.json",
             "s/a.json",
-            "s/b.json",
           ]);
         });
       });
@@ -476,6 +495,100 @@ function limitAndConcurrencyCases(
   });
 }
 
+/**
+ * 断言 `fn` 抛出带指定判别码的错误,**且**错误文本指名 `mentions` 这个既有键。
+ *
+ * Req 1.7 要求错误「说明与哪个既有键冲突」——只断言判别码的话,一个把 `reason` 写成
+ * 「冲突」二字的实现同样绿,而排障者拿不到任何可行动的信息。
+ */
+async function assertRejectsWithCodeMentioning(
+  fn: () => Promise<unknown>,
+  expected: WorkspaceErrorCode,
+  mentions: string,
+  message: string,
+): Promise<void> {
+  let caught: unknown;
+  let threw = false;
+  try {
+    await fn();
+  } catch (err) {
+    threw = true;
+    caught = err;
+  }
+  assert.equal(threw, true, `${message}: expected to reject, but it resolved`);
+  const actual = codeOf(caught);
+  assert.equal(actual, expected, `${message}: expected code ${expected}, got ${String(actual)}`);
+  // ⚠ 只看 `reason`,**不看**整条 message:message 里含被写入的键本身,而正向冲突中冲突键
+  // (`g/a.json`)恰是被写键(`g/a.json/x.json`)的子串——拿 message 判定就成了恒真断言。
+  // `reason` 是契约定义的字段(§3.6,勘误⑧ 明确「冲突说明由 reason 承载」),故按它判。
+  const reasonRaw = (caught as { reason?: unknown } | undefined)?.reason;
+  const reason = typeof reasonRaw === "string" ? reasonRaw : "";
+  assert.equal(
+    reason.includes(mentions),
+    true,
+    `${message}: WorkspaceKeyError.reason 须指名冲突的既有键 ${JSON.stringify(mentions)},实际 reason 为 ${JSON.stringify(reason)}`,
+  );
+}
+
+/**
+ * 「值与分组不可同址」用例组(Req 1.7/1.8,契约 §3.2 第 6 条 / 勘误⑧)。
+ *
+ * 为什么这是**契约**而不是实现差异:层级载体(文件系统)上 `g/a.json` 一旦是文件,其下
+ * 就放不下 `g/a.json/x.json`;扁平 KV 载体上两者却能并存。不把它定为键空间约束,就等于
+ * 承认「同一份配置搬到另一端会炸」是合法状态 —— 而消灭这种状态正是本契约存在的理由。
+ * 故两种载体**都**必须主动探测并拒绝,不能靠层级载体碰巧报 errno。
+ */
+function collocationCases(runner: SuiteRunner, factory: ConformanceFactory): void {
+  const { describe, it } = runner;
+
+  describe("值与分组不可同址(Req 1.7/1.8)", () => {
+    it("① 键的严格前缀已是值键 → 写入抛 key,且指名冲突键(Req 1.7)", async () => {
+      await withTarget(factory, async (ws) => {
+        await ws.user.writeJson("g/a.json", SAMPLE);
+        await assertRejectsWithCodeMentioning(
+          () => ws.user.writeJson("g/a.json/x.json", SAMPLE),
+          "key",
+          "g/a.json",
+          "前缀已是值键",
+        );
+        // 被拒的写入不得留下任何痕迹:既有值键必须完好。
+        assert.deepEqual(await ws.user.readJson("g/a.json"), SAMPLE);
+        assert.equal(await ws.user.exists("g/a.json/x.json"), false);
+      });
+    });
+
+    it("② 键本身是某既有值键的严格前缀 → 写入抛 key,且指名冲突键(Req 1.7)", async () => {
+      await withTarget(factory, async (ws) => {
+        await ws.user.writeJson("g/a.json/x.json", SAMPLE);
+        await assertRejectsWithCodeMentioning(
+          () => ws.user.writeJson("g/a.json", SAMPLE),
+          "key",
+          "g/a.json/x.json",
+          "键是既有值键的严格前缀",
+        );
+        assert.deepEqual(await ws.user.readJson("g/a.json/x.json"), SAMPLE);
+      });
+    });
+
+    it("③ 读一个只是分组前缀的键 → 返回空对象,**不得**抛错(Req 1.8)", async () => {
+      // ① / ② 保证分组永不是值键,故读分组就是读一个不存在的键 ⇒ 按 Req 2.1 读为 `{}`。
+      // 层级载体上这条尤其容易违反:`readFile` 一个目录会给 `EISDIR`,顺手包成 IO 错误
+      // 就与扁平 KV 后端(返回 `{}`)对不齐 —— 正是本契约要消灭的两端分歧。
+      await withTarget(factory, async (ws) => {
+        await ws.user.writeJson("g/deep/leaf.json", SAMPLE);
+        assert.deepEqual(await ws.user.readJson("g"), {}, "读分组前缀 g 须为空对象");
+        assert.deepEqual(
+          await ws.user.readJson("g/deep"),
+          {},
+          "读更深一层的分组前缀 g/deep 须为空对象",
+        );
+        // 与 exists / list 的口径必须一致:同一个键不得给出互斥答案。
+        assert.equal(await ws.user.exists("g"), false);
+      });
+    });
+  });
+}
+
 /** 键空间用例组(Req 1.1-1.6 / 8.2)。 */
 function keySpaceCases(runner: SuiteRunner, factory: ConformanceFactory): void {
   const { describe, it } = runner;
@@ -515,13 +628,41 @@ function keySpaceCases(runner: SuiteRunner, factory: ConformanceFactory): void {
         });
       });
 
-      it(`[${ns}] 键大小写敏感,不做归一化(Req 1.5)`, async () => {
-        await withTarget(factory, async (ws) => {
-          const n = nsOf(ws, ns);
-          await n.writeJson("Case.json", { which: "upper" });
-          await n.writeJson("case.json", { which: "lower" });
-          assert.deepEqual(await n.readJson("Case.json"), { which: "upper" });
-          assert.deepEqual(await n.readJson("case.json"), { which: "lower" });
+      it(`[${ns}] 键大小写敏感,不做归一化(Req 1.5;不敏感载体须显式声明)`, async () => {
+        // 契约 §3.2 第 4 条 / 勘误⑦:大小写敏感是**键空间的契约语义**,但载体可能承载不了
+        // —— macOS/Windows 默认文件系统上 `Case.json` 与 `case.json` 是物理同一个文件,
+        // 实现**原理上无法**满足。故实现可经 `ConformanceTarget.caseSensitiveKeys: false`
+        // 声明该限制。
+        //
+        // ★ 声明**不是**豁免:声明后本用例改为断言「两键确实互为别名」——一个声称不敏感
+        // 却实际敏感的实现同样会红。这使声明本身可被证伪,而不是一个能把红改绿的开关。
+        await withRawTarget(factory, async (t) => {
+          const n = nsOf(t.workspace, ns);
+          await n.writeJson("cs/Case.json", { which: "upper" }, { merge: false });
+          await n.writeJson("cs/case.json", { which: "lower" }, { merge: false });
+          // ⚠ 本用例只验**大小写维度**,故列举结果先归一化排序再比对:直接比对 `list` 的
+          // 原序会把「排序口径」耦合进来,一个排序写错的实现会在这里报「大小写不敏感」,
+          // 指向完全错误的方向。排序另有专门用例(见读写语义组)。
+          const listed = [...(await n.list("cs"))].sort();
+
+          if (t.caseSensitiveKeys ?? true) {
+            assert.deepEqual(await n.readJson("cs/Case.json"), { which: "upper" });
+            assert.deepEqual(await n.readJson("cs/case.json"), { which: "lower" });
+            assert.deepEqual(
+              listed,
+              ["cs/Case.json", "cs/case.json"],
+              `[${ns}] 大小写敏感载体上两键是两个键,列举应各出现一次`,
+            );
+            return;
+          }
+          // 已声明不敏感:两键必须**确实**塌成一个,且后写者胜出。
+          assert.deepEqual(await n.readJson("cs/Case.json"), { which: "lower" });
+          assert.deepEqual(await n.readJson("cs/case.json"), { which: "lower" });
+          assert.equal(
+            listed.length,
+            1,
+            `[${ns}] 已声明大小写不敏感,两键须塌为一个键;实际列举到 ${JSON.stringify(listed)}`,
+          );
         });
       });
     }
@@ -542,6 +683,7 @@ export function runWorkspaceConformance(
 ): void {
   runner.describe(`Workspace 契约一致性 · ${name}`, () => {
     keySpaceCases(runner, factory);
+    collocationCases(runner, factory);
     readWriteCases(runner, factory);
     limitAndConcurrencyCases(runner, factory);
   });

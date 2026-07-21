@@ -16,6 +16,7 @@ import { deepMergeJson } from "../../../src/workspace/merge.js";
 import { DEFAULT_WORKSPACE_MAX_VALUE_BYTES } from "../../../src/workspace/limit-config.js";
 import {
   WorkspaceCorruptError,
+  WorkspaceKeyError,
   WorkspaceLimitError,
   type JsonObject,
   type Workspace,
@@ -42,6 +43,21 @@ export interface MemoryWorkspaceOptions {
    * 该用例必过,若不另造一个读也校验的实现,那条断言永远失败不了,等于没验。
    */
   readonly enforceLimitOnRead?: boolean;
+  /**
+   * 故意**不做「值与分组不可同址」校验**(违规变体用)。
+   *
+   * 用途:这正是**扁平 KV 后端的天然形态** —— `Map` 里 `g/a.json` 与 `g/a.json/x.json`
+   * 只是两个互不相干的字符串键,不加校验就能并存。契约 §3.2 第 6 条(勘误⑧)要求两种载体
+   * 都主动探测并拒绝;若不造这个变体,同址用例组对任何被测实现都通不过失败,即恒真断言。
+   */
+  readonly skipColocationValidation?: boolean;
+  /**
+   * 故意用 **`localeCompare`** 排序 `list` 结果(违规变体用)。
+   *
+   * 用途:证明「码元序」断言不是恒真 —— 合规实现用显式比较器故该用例必过。区域相关排序
+   * 会把 `_`/数字/字母混排成另一种顺序,跨实现确定性即失效。
+   */
+  readonly localeSort?: boolean;
 }
 
 /** 以序列化字节数计量,与契约的上限口径一致。 */
@@ -52,7 +68,12 @@ function sizeOf(values: JsonObject): number {
 type ResolvedOptions = Required<
   Pick<
     MemoryWorkspaceOptions,
-    "maxValueBytes" | "skipKeyValidation" | "tornWrites" | "enforceLimitOnRead"
+    | "maxValueBytes"
+    | "skipKeyValidation"
+    | "tornWrites"
+    | "enforceLimitOnRead"
+    | "skipColocationValidation"
+    | "localeSort"
   >
 >;
 
@@ -62,6 +83,34 @@ function createNamespace(
 ): WorkspaceNamespace {
   const check = (key: WorkspaceKey): void => {
     if (!opts.skipKeyValidation) validateWorkspaceKey(key);
+  };
+
+  /**
+   * 「值与分组不可同址」(契约 §3.2 第 6 条)。扁平 KV 上两者能并存,故**必须主动探测**:
+   *  - 正向:`key` 的任一严格前缀已是值键;
+   *  - 反向:`key` 是某既有值键的严格前缀。
+   * 冲突键取字典序最小者,使同一份数据上的报错稳定可复现。
+   */
+  const checkColocation = (key: WorkspaceKey): void => {
+    if (opts.skipColocationValidation) return;
+    const segments = key.split("/");
+    for (let i = 1; i < segments.length; i += 1) {
+      const prefix = segments.slice(0, i).join("/");
+      if (store.has(prefix)) {
+        throw new WorkspaceKeyError(
+          key,
+          `与既有值键 ${JSON.stringify(prefix)} 冲突:值与分组不可同址(该键的严格前缀已是一个值)`,
+        );
+      }
+    }
+    const under = [...store.keys()].filter((k) => k.startsWith(`${key}/`)).sort();
+    const first = under[0];
+    if (first !== undefined) {
+      throw new WorkspaceKeyError(
+        key,
+        `与既有值键 ${JSON.stringify(first)} 冲突:值与分组不可同址(该键是它的严格前缀)`,
+      );
+    }
   };
 
   const read = (key: WorkspaceKey): JsonObject => {
@@ -95,6 +144,7 @@ function createNamespace(
 
     async writeJson(key, values, writeOpts?: WorkspaceWriteOptions) {
       check(key);
+      checkColocation(key);
       const next = writeOpts?.merge === false ? values : deepMergeJson(read(key), values);
       const size = sizeOf(next);
       if (size > opts.maxValueBytes) {
@@ -124,7 +174,8 @@ function createNamespace(
         // 只返回**直接子级**的值键:更深层结构不返回也不展开。
         if (rest.length > 0 && !rest.includes("/")) out.push(key);
       }
-      return out.sort();
+      if (opts.localeSort) return out.sort((a, b) => a.localeCompare(b)); // 违规:区域相关排序
+      return out.sort(); // 合规:默认 sort 即 UTF-16 码元序
     },
 
     async delete(key) {
@@ -164,6 +215,8 @@ function build(opts: MemoryWorkspaceOptions): MemoryWorkspaceHandle {
     skipKeyValidation: o.skipKeyValidation ?? false,
     tornWrites: o.tornWrites ?? false,
     enforceLimitOnRead: o.enforceLimitOnRead ?? false,
+    skipColocationValidation: o.skipColocationValidation ?? false,
+    localeSort: o.localeSort ?? false,
   });
   // 两个根各自独立的 Map —— 双根隔离在此结构上天然成立。
   const stores: Stores = {
@@ -208,4 +261,23 @@ export function createReadLimitedMemoryWorkspace(
   opts: MemoryWorkspaceOptions = {},
 ): MemoryWorkspaceHandle {
   return build({ ...opts, enforceLimitOnRead: true });
+}
+
+/**
+ * 违规内存实现:**扁平 KV,不做「值与分组不可同址」校验**,应被同址用例组抓出。
+ *
+ * 这是扁平载体的天然形态(`Map` 里两个键互不相干),故这个变体不是人为刁难 —— 它正是
+ * pi-clouds 那类后端**不加校验时会长成的样子**。
+ */
+export function createFlatMemoryWorkspace(
+  opts: MemoryWorkspaceOptions = {},
+): MemoryWorkspaceHandle {
+  return build({ ...opts, skipColocationValidation: true });
+}
+
+/** 违规内存实现:**`list` 用区域相关排序**,应被码元序用例抓出。 */
+export function createLocaleSortedMemoryWorkspace(
+  opts: MemoryWorkspaceOptions = {},
+): MemoryWorkspaceHandle {
+  return build({ ...opts, localeSort: true });
 }
