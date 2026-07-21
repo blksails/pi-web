@@ -1,0 +1,39 @@
+{
+  "name": "@aigc-agent/media-tools",
+  "version": "0.0.0",
+  "private": false,
+  "type": "module",
+  "description": "可自由集成的 pi-web AIGC 媒体工具套件:视频生成 / TTS / 音频提取 / 本地 ffmpeg 后处理。复用 @blksails/pi-web-tool-kit 引擎(runEndpoint / attachment store),以 ExtensionFactory 形态供任意 pi-web agent 经 extensions:[] 装载——脱离 aigc 项目亦可用。主入口零 pi SDK(前端安全);./runtime 子入口为 node-only 执行层。",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@blksails/pi-web-agent-kit": "workspace:*",
+    "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src"
+  ]
+}

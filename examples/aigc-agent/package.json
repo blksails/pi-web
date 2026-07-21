@@ -1,9 +1,9 @@
 {
-  "name": "aigc-agent",
+  "name": "aigc",
   "private": true,
   "pi-web": {
-    "title": "AIGC 图像工具",
+    "title": "AIGC 图像工作台",
     "avatar": "🎨",
-    "description": "文生图 + 图像编辑,产物落附件、富卡渲染"
+    "description": "文生图 / 图生图 + Canvas 画廊二创工作台(domain=canvas 的 AAS);技能入口 + 声明式 gallery-stats route。宿主提供 @blksails/pi-web-*,本源不 bundle 依赖。门控 NEXT_PUBLIC_PI_WEB_CANVAS。"
   }
 }

@@ -1,35 +1,20 @@
-# aigc-agent
+# aigc-agent — AIGC 图像工作台
 
-`@blksails/pi-web-tool-kit` AIGC 生成工具的端到端示例 agent（spec `aigc-generation-tools`）。
+文生图 / 图生图 + Canvas 画廊二创工作台。自源仓库 `aigc-agent`（`agents/aigc`）迁移而来的**完整 agent 定义**，取代早前的最小 AIGC 示例（旧版仅演示 image_generation/image_edit 渲染器；git 历史可查）。
 
-## 它演示什么
+> 迁移背景、同步方式、未随迁部分清单：见 [docs/aigc-agent-migration.md](../../docs/aigc-agent-migration.md)。源仓库仍在迭代期间，本目录内容由 `scripts/sync-from-aigc-agent.mjs` 同步生成——**勿在此目录手改逻辑**（改动会在下次同步被覆盖；须改则改源仓库或改同步脚本的变换规则）。
 
-经 `extensions: [aigcExtension, visionExtension]` 装载（`image_generation` / `image_edit` / `image_vision`），
-演示「生成 / 编辑图像 → 产物落库 → 回引用 → 富渲染」整链路，以及**回看**已落库的图：
+## 能力一览
 
-| 场景 | 链路 |
+| 层 | 内容 |
 |---|---|
-| 文生图 | 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment store 落库 → 工具回 `att_<id>` 引用 |
-| 图编辑 | 用户上传图（主进程注入 `[attachment id=att_… …]` 引用）→ 模型把 att_id 抄进 `image_edit({ instruction, image })` → 编辑器解析输入附件为 data URI → provider 编辑 → 产物落库回引用 |
-| **回看** | 落库后的图在上下文里只剩 `att_` 文本标记（读得到 id、**读不到像素**）→ 模型把 att_id 抄进 `image_vision({ image, question })` → 取回字节 → 委派给一个支持图像输入的模型 → 返回文字结论 |
-
-于是「生成一张图 → 让 agent 描述它到底画了什么」这个闭环得以成立——在 `image_vision` 之前它做不到。
-用户也可以直接敲 `/img_vision <问题>` 看会话内最近一张图（结论经 `ctx.ui` 呈现，不进消息历史）。
-
-> 视觉模型来自 `~/.pi/agent/models.json` 中 `input` 含 `"image"` 且凭据可用的模型（无静态清单，
-> 新增即可选）；有交互界面时弹层让你选。**主模型无须支持图像输入** —— 识别被委派出去了。
-> 详见 [vision-agent](../vision-agent/)。
-
-要点：
-
-- **降级而非崩溃**：工具在 runner 子进程内经注入的 `AttachmentToolContext`（globalThis seam）落库；装配缺失 / provider 密钥缺失时，工具仍加载并返回「能力不可用 / 缺少配置」降级（Req 5.3）。
-- **provider 密钥走环境变量**：如 `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` / `NEWAPI_API_KEY`；缺失则对应变体调用降级。
-- **不进 Next bundle**：工具执行层经 `@blksails/pi-web-tool-kit/runtime` 子入口引入（含 pi SDK 值导入，仅 jiti 子进程加载）。
-- **自包含**：`noTools: "builtin"` 关内置工具，空 `skills` override 丢弃磁盘 skills，保持示例 hermetic。
-
-### `.pi/web` UI 扩展
-
-`.pi/web/web.config.tsx` 提供一个 Tier2 自定义 tool 渲染器：复用宿主 `PiToolPart` 壳（保留工具名 / 状态 / 可折叠明细的默认外观），仅把 `output` 替换为含 `![](displayUrl)` 的 markdown 字符串，使产物在工具卡片内直接显示为 `<img>` 图片。
+| 图像工具 | `image_generation`（文生图）/ `image_edit`（图生图·局部重绘·风格迁移·扩图），经 `aigcExtension`（`@blksails/pi-web-tool-kit/runtime`） |
+| Canvas | `canvasSurfaceExtension`：domain=canvas 的 AAS；panelRight 画廊（6 视图）+ 二创工作台（`AigcCanvasPanel`，可移植纯画布） |
+| 媒体工具族 | `mediaToolsExtension`（`@aigc-agent/media-tools`，本仓库 `packages/aigc-media-tools`）：视频生成 / TTS / 音频提取 / 本地 ffmpeg 后处理共 13 工具 + 富卡渲染器 |
+| 声明式 route | `routes/gallery-stats.ts`：画廊统计（一路由一文件，`routes/index.ts` 只汇总） |
+| 附件目录 | `attachmentCatalog`：`@` 引用宿主素材库（aigc_assets）注入对话 |
+| 平台接缝 | `platform-client.ts`（内联）：租户 provider key 预取（`platform-keys.ts`）+ 生成台账落库（`persist-extension.ts`） |
+| Web UI | `.pi/web/web.config.tsx`：promptToolbar 快捷 pill、技能面板（dialogLayer）、panelRight 画布、图像+媒体工具渲染器、专属空态 |
 
 ## 运行
 
@@ -37,14 +22,11 @@
 pi-web ./examples/aigc-agent
 ```
 
-前端 source 指向本目录即可。`model` 省略 → 继承 `~/.pi/agent/settings.json` 的默认 `provider` / `model`，与 `hello-agent` 同姿态。
+- **model 省略即继承** `~/.pi/agent/settings.json` 默认 provider/model。
+- **provider 密钥**经环境变量提供（`DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY` / `NEWAPI_API_KEY` / `ARK_API_KEY` 等）；缺失时对应工具加载不崩溃、调用时返回「能力不可用」降级。
+- **平台接缝可选**：`PLATFORM_CALLBACK_URL` + `PLATFORM_CALLBACK_TOKEN` 二者齐备才启用（多租户 key 解析、素材台账）；缺失 → `available:false` 全链路优雅降级（key 回落 env 直传、台账静默跳过、`@` 素材目录为空）。
+- 安全边界：本 agent `noTools: "builtin"`（无 bash），预取写入 `process.env` 的租户 key 不会经孙进程 shell 外泄（源码 `platform-keys.ts` 头注详述）。
 
-至少配置一个 provider 密钥（如 `DASHSCOPE_API_KEY=…`）后启动；否则生成 / 编辑会走「缺少配置」降级而非真正出图。然后试：
+## Slash 命令
 
-- *“画一只在月球上的猫”* → 模型调 `image_generation`，产物以图片卡片内联展示。
-- 上传一张图并说 *“把背景换成海边”* → 模型调 `image_edit`，回引用并展示编辑结果。
-
-## 相关示例
-
-- [`attachment-tool-agent`](../attachment-tool-agent/README.md) — attachment-tool-bridge 的底层接入范式（`resolve` → `putOutput` → 回引用）。
-- [`hello-agent`](../hello-agent/README.md) — 自定义工具的最小起点。
+`/img-gen <提示词>`（文生图）· `/img-edit <提示词>`（图生图，取最近 `[attachment id=att_…]`）· 媒体族命令见 `@aigc-agent/media-tools` 的 `mediaSlashCompletions`。
