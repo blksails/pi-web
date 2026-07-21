@@ -390,8 +390,15 @@ export interface CapabilityProvider {
 > 它**表达不了**下面 Preconditions 那条安全边界——返回类型与实参无关，越权签发全靠文档约束。
 > **重载形态也挡不住**（复核者写探针实证：TS 不逐条校验重载实现签名，`return { attachments }`
 > 编译通过），那是虚假安全感。改双方法后各自有被诚实校验的返回类型，实证可挡。
-> 挡住越权的是 `attachments?: never` 本身，**不是** excess property check（EPC 在
-> 「async 函数推断返回类型经 `Promise<T>` 包装」这个位置不触发，由变异体 N2 纠正）。
+> 挡住越权的是 `attachments?: never` 本身。EPC 只在返回类型**显式注解**时参与
+> （`async loadStatic(): Promise<StaticCapabilitySnapshot> {…}` **会**被 EPC 挡），
+> 返回类型由**上下文推断**时完全缺席（`{ loadStatic: async () => ({…}) }`）。
+> 实测四种写法 EPC 只挡两种，`never` 四种全挡。
+>
+> ❗ **两条负向断言（字面量直返 / 经中间变量）不冗余，但理由与初稿相反**：不是
+> 「后者补前者被 EPC 绕过的漏」——二者在 `never` 下杀伤力确实相同；而是**后者覆盖了
+> EPC 完全够不到的那一半形态**。写下这条是为了防止后人拿「杀伤力相同」推出「删一个」。
+> 〔初稿曾把分界归因于 async / `Promise<T>` 包装，**是错的**，由隔离探针证伪。〕
 
 - **Preconditions**：静态路径不得返回 `attachments`（5.3）——现已由方法签名**机械强制**，
   不再是纯文档义务。
