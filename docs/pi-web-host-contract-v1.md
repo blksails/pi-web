@@ -52,7 +52,23 @@
 >    后写者胜出、列举只回一条），**谎报同样红**。豁免式的声明等于让实现自证清白。
 >    同时 §3.5 补 `LocalWorkspace` 的已声明限制（勘误⑦ 要求「实现须在自身文档中显式声明」，
 >    此前漏了这一条）。
-> 十一者均在任何实现存在之前完成，故不触发 v2。
+> ⑫ **会话作用域授予改由方法签名强制 + 字段名收口**（§4.1）——两处，都由任务 5.1 复核实证。
+>    (a) 原 `load(sessionId?: string)` **表达不了** §4.2 那条「附件授予仅在带 sessionId 时出现」
+>    的安全边界：返回类型与实参无关，两条路径共用同一个类型，越权签发全靠文档约束。
+>    **重载形态挡不住**（复核者写探针实证）：TS 不拿实现签名逐条校验每个重载，只做一次
+>    宽松兼容检查，故 `load(): Promise<S & {attachments?: never}>` + 实现体 `return
+>    { attachments }` **编译通过**——它惩罚「没照格式写」的人，不惩罚「越权签发」的人，
+>    是虚假安全感。改为**两个方法**：`loadStatic(): Promise<StaticCapabilitySnapshot>`
+>    与 `loadForSession(sessionId: string): Promise<CapabilitySnapshot>`，各自有被诚实
+>    校验的返回类型，实证可挡实现体越权（直接返回与经中间变量返回均被 `TS2322` 拒），
+>    绕过只剩显式 `as any`——可 grep、可 lint、复核一眼可见。
+>    调用方须在「有无 sessionId」处分叉，而它本来就必须做这个决策：把隐式可选参数
+>    变成显式路径选择，正是本条要的。
+>    (b) `attachments` 的字段名原文是 `endpoint`，而 design 与实现用的是 `baseUrl`，
+>    **此改名从未被记为有意为之**。失败形态很具体：pi-clouds 照 §4.1 发回 `{ endpoint }`，
+>    pi-web 读 `baseUrl` 得 `undefined`，跨仓静默不匹配——正是本契约要消灭的东西。
+>    统一为 `baseUrl`（与 `sources` 授予同形）。
+> 十二者均在任何实现存在之前完成，故不触发 v2。
 > 设计动机与取舍见 `docs/desktop-cloud-integration-design.md`；**本文只定契约，不重复论证**。
 >
 > **地位**：pi-web 是中间标准，pi-clouds（云端宿主）与 desktop（桌面宿主）是两端。
@@ -382,21 +398,25 @@ export interface CapabilitySnapshot {
     readonly token: string;
     readonly expiresAt: number;   // epoch seconds
   };
-  /** 附件远端后端。仅当 `load(sessionId)` 传入 sessionId 时可能出现。 */
+  /** 附件远端后端。**只可能**出现在 `loadForSession()` 的返回里（勘误⑫）。 */
   readonly attachments?: {
-    readonly endpoint: string;
+    /** 勘误⑫b：原文写作 `endpoint`，与实现不一致，统一为 `baseUrl`（同 `sources`）。 */
+    readonly baseUrl: string;
     readonly token: string;
     readonly expiresAt: number;
   };
 }
 
+/** 静态快照：`attachments` 被类型**禁止**，不是「碰巧没有」（勘误⑫a）。 */
+export type StaticCapabilitySnapshot =
+  Omit<CapabilitySnapshot, "attachments"> & { readonly attachments?: never };
+
 export interface CapabilityProvider {
   readonly contractVersion: 1;
-  /**
-   * @param sessionId 传入则附带**会话作用域**能力（附件）。
-   *                  不传则只返回静态能力（tenant / egress / sources）。
-   */
-  load(sessionId?: string): Promise<CapabilitySnapshot>;
+  /** 只返回静态能力（tenant / egress / sources）。签发附件授予会**编译不过**。 */
+  loadStatic(): Promise<StaticCapabilitySnapshot>;
+  /** 附带**会话作用域**能力（附件）。 */
+  loadForSession(sessionId: string): Promise<CapabilitySnapshot>;
 }
 ```
 
