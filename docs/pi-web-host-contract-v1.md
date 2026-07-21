@@ -76,7 +76,12 @@
 >    **此改名从未被记为有意为之**。失败形态很具体：pi-clouds 照 §4.1 发回 `{ endpoint }`，
 >    pi-web 读 `baseUrl` 得 `undefined`，跨仓静默不匹配——正是本契约要消灭的东西。
 >    统一为 `baseUrl`（与 `sources` 授予同形）。
-> 十二者均在任何实现存在之前完成，故不触发 v2。
+> ⑬ **`requires` 在 v1 里不校验**（§5.1）——原注释写「依赖的端口名，**装配期校验**」，
+>    但 v1 交付物中它**不校验**：`HostDeps` 完全泛型化，没有端口名注册表可比对，任何
+>    校验都会恒真。跨仓消费方照原文会以为「填了 `requires` 就有装配期保护」——
+>    **一个恒真的校验比没有校验更坏，它让人以为那个方向有人看着**。改为明写「纯声明
+>    字段，校验待 `HostDeps` 收敛后启用，在此之前不要依赖它做安全判断」。
+> 十三者均在任何实现存在之前完成，故不触发 v2。
 > 设计动机与取舍见 `docs/desktop-cloud-integration-design.md`；**本文只定契约，不重复论证**。
 >
 > **地位**：pi-web 是中间标准，pi-clouds（云端宿主）与 desktop（桌面宿主）是两端。
@@ -458,7 +463,12 @@ export interface CapabilityDescriptor {
   /** 稳定 id，命名 `<组>.<名>`，如 `config.mcp`、`session.actions`。 */
   readonly id: string;
   readonly factory: (deps: HostDeps) => readonly InjectedRoute[];
-  /** 依赖的端口名，装配期校验。 */
+  /**
+   * 依赖的端口名。**v1 交付物中这是纯声明字段，装配期不校验**（勘误⑬）。
+   * 原因：`HostDeps` 完全泛型化，没有端口名注册表可比对，任何校验都会恒真——
+   * 而一个恒真的校验比没有校验更坏，它让填了 `requires` 的宿主以为有保护。
+   * 校验待 `HostDeps` 收敛后再启用。**在此之前不要依赖它做安全判断。**
+   */
   readonly requires?: readonly string[];
 }
 
