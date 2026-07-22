@@ -1,4 +1,4 @@
-# Workbench 地基与完整实施并行工作规划
+# Panes 地基与完整实施并行工作规划
 
 ## 1. 工作流
 
@@ -8,9 +8,9 @@
 | B Host core | 实例、epoch、生命周期、授权 | `host-controller.ts` | iframe DOM、Agent 业务 |
 | C Browser | sandbox iframe、MessageChannel | `adapters/iframe.ts`、恶意 Guest e2e | 桌面 IPC |
 | D pi-web adapter | WebExt、Surface、Routes、附件、Conversation | placement 与 capability adapters | 领域 reducer |
-| E Agent example | files/editor/diff/canvas | `examples/workbench-modules-agent` | pi-web 内核改造 |
+| E Agent example | files/editor/diff/canvas | `examples/panes-agent` | pi-web 内核改造 |
 | F Desktop | Electron/Tauri relay | 两个 native adapters | Guest 业务分叉 |
-| G AIGC migration | 原型 UI/UX 与业务模块 | AIGC Workbench modules | 反向污染地基 |
+| G AIGC migration | 原型 UI/UX 与业务面板 | AIGC panes | 反向污染地基 |
 
 ## 2. 依赖图
 
@@ -32,7 +32,7 @@ flowchart LR
 
 并行：
 
-- A 定义 `WorkbenchModule`、grant、envelope、错误码与版本协商。
+- A 定义 `PaneDefinition`、grant、envelope、错误码与版本协商。
 - D 明确五个已有能力 adapter 的输入输出。
 - E 用范例场景反推最小需求，不添加通用接口。
 
@@ -44,9 +44,9 @@ flowchart LR
 
 - B 实现实例状态机、epoch、dispose、grant evaluator。
 - C 实现 iframe + MessageChannel。
-- E 保持 Agent-local Host，完成四模块 UI 与目录组织。
+- E 保持 Agent-local Host，完成四面板 UI 与目录组织。
 
-合并门：每 Tab 独立 iframe；隐藏/重载/崩溃不泄漏端口；只读模块写入被拒绝。
+合并门：每 Tab 独立 iframe；隐藏/重载/崩溃不泄漏端口；只读面板写入被拒绝。
 
 ### Wave 2：最小数据面
 
@@ -66,15 +66,15 @@ flowchart LR
 - E 让 Canvas 只保存 `att_` 引用。
 - A 补齐 attachment/conversation grants。
 
-合并门：二进制不进入 Surface/Route JSON；未授权模块不能上传或提交对话。
+合并门：二进制不进入 Surface/Route JSON；未授权面板不能上传或提交对话。
 
 ### Wave 4：地基提取
 
 并行：
 
-- A/B/C 将范例中领域无关实现提升到 `packages/workbench-kit`。
+- A/B/C 将范例中领域无关实现提升到 `packages/panes-kit`。
 - E 改为只消费公开包，行为保持。
-- D 增加无 Workbench Agent 的回归测试。
+- D 增加无 Panes Agent 的回归测试。
 
 合并门：范例不复制 Host core；包依赖单向；普通聊天与普通 WebExt 零行为变化。
 
@@ -92,13 +92,13 @@ flowchart LR
 
 并行拆分：
 
-- 素材/文件模块。
-- Canvas 编辑模块。
-- 生成任务与历史模块。
-- Dialog/全屏等模块内 UI。
+- 素材/文件面板。
+- Canvas 编辑面板。
+- 生成任务与历史面板。
+- Dialog/全屏等面板内 UI。
 - Agent Routes、Surface、Attachments 数据迁移。
 
-合并门：原型 UI/UX、侧栏、Tab、对话框和核心工作流完整；所有模块仍满足地基契约。
+合并门：原型 UI/UX、侧栏、Tab、对话框和核心工作流完整；所有面板仍满足地基契约。
 
 ## 4. PR 切分
 
@@ -107,17 +107,17 @@ flowchart LR
 | PR-A | 契约、schema、错误码 | 纯单测，无运行时改动 |
 | PR-B | Host core + iframe adapter | conformance + malicious Guest e2e |
 | PR-C | pi-web capability adapters | Surface/Routes/Attachments/Conversation 集成测试 |
-| PR-D | `workbench-modules-agent` | webext build、route unit、浏览器 e2e |
-| PR-E | `workbench-kit` 提取 | 范例零行为 diff、包边界测试 |
+| PR-D | `panes-agent` | webext build、route unit、浏览器 e2e |
+| PR-E | `panes-kit` 提取 | 范例零行为 diff、包边界测试 |
 | PR-F | Electron/Tauri | native conformance/e2e |
-| PR-G* | AIGC 模块按领域拆分 | 每模块视觉与数据闭环 |
+| PR-G* | AIGC 面板按领域拆分 | 每面板视觉与数据闭环 |
 
 ## 5. 并行冲突规约
 
 - A 独占契约文件；其他轨道只能通过 fixture 提需求。
 - B 不修改 pi-web UI；D 不修改 Host 状态机；E 不创建通用 package API。
 - Surface schema 与 Agent Route response schema 由 Agent example/业务域拥有。
-- Desktop adapter 只实现 `ModulePort`，不得新增桌面专属 Guest API。
+- Desktop adapter 只实现 `PanePort`，不得新增桌面专属 Guest API。
 - AIGC 迁移不得先于 Browser 范例与一致性闭环。
 
 ## 6. 每波验证

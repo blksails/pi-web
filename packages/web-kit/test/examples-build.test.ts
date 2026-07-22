@@ -24,7 +24,6 @@ const EXAMPLES = [
   { id: "webext-background", name: "webext-background-agent" },
   { id: "state-bridge", name: "state-bridge-agent" },
   { id: "webext-slots", name: "webext-slots-agent" },
-  { id: "workbench-modules", name: "workbench-modules-agent" },
 ];
 
 describe("webext 示例构建", () => {
@@ -46,4 +45,5 @@ describe("webext 示例构建", () => {
       );
     });
   }
+
 });

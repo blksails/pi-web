@@ -42,7 +42,7 @@ pi-web ./examples/hello-agent
 | [pi-probe-agent](./pi-probe-agent/) | 探针：验证项目级 `.pi/` 资源（extensions/agents/skills）是否被加载 | `.pi/` 发现、project trust 门控 | ★★☆ |
 | [logging-demo-agent](./logging-demo-agent/) | 端到端演示日志系统：工厂期 `ctx.logger` 四级日志 + pi extension + webext 三源汇入日志面板 | `ctx.logger`（注入）、`logger.child()`、`createLogger`（`@blksails/pi-web-logger`）、`PI_WEB_LOG_*` env | ★★☆ |
 | [agent-routes-demo](./agent-routes-demo/) | 声明式 HTTP routes 多路由范例：`ping`/`echo`/`whoami` 经 `GET·POST /api/sessions/:id/agent-routes/:name` 直调（不过 LLM）；演示 `routes/` 子目录**文件组织标准**（一路由一文件 + barrel） | `AgentDefinition.routes`、`AgentRouteDecl`/`AgentRouteRequest`、`routes/` 目录约定 | ★★☆ |
-| [workbench-modules-agent](./workbench-modules-agent/) | 文件、编辑器、Diff、Canvas 四个独立 iframe 模块；写入后同步 Surface 变更摘要并供 LLM 查询 | WebExt 落位适配、MessageChannel、Surface、Agent Routes GET/POST、附件引用 | ★★★ |
+| [panes-agent](./panes-agent/) | 文件、编辑器、Diff、Canvas、Artifact 五个独立 iframe pane；写入后同步 Surface 变更摘要并供 LLM 查询 | 配置化 WebExt、React panes、MessageChannel、Surface、Agent Routes、附件引用 | ★★★ |
 
 ### server-driven UI 与交互
 

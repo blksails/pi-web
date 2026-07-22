@@ -1,0 +1,10 @@
+{
+  "id": "panes",
+  "targetApiVersion": "^0.5.0",
+  "entry": "web-extension.mjs",
+  "integrity": "sha384-8VnbOkdPlDsIIY3gDUTM2of8vqDWF+IHIfLcTY+3i+ZZfBCPVHjRxM/WU+YXrfUD",
+  "capabilities": [
+    "slots",
+    "config"
+  ]
+}

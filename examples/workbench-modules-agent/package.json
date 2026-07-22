@@ -1,9 +1,0 @@
-{
-  "name": "workbench-modules-agent",
-  "private": true,
-  "pi-web": {
-    "title": "独立模块工作台",
-    "avatar": "🧩",
-    "description": "四个独立 iframe 模块 + Surface 热摘要 + Agent Routes 读写 + 附件引用"
-  }
-}

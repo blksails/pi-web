@@ -9,6 +9,7 @@
  */
 import { resolve } from "node:path";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
+import { buildPanesAgent } from "../examples/panes-agent/build.js";
 
 const EXAMPLES = [
   "webext-layout",
@@ -40,6 +41,8 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[built] ${name} → ${result.entryOut} (${result.manifest.integrity})`);
   }
+  const panes = await buildPanesAgent();
+  console.log(`[built] panes → ${panes.entryOut} (${panes.manifest.integrity})`);
 }
 
 void main().catch((err: unknown) => {
