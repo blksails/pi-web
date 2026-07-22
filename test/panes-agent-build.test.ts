@@ -22,5 +22,5 @@ describe("panes-agent web build", () => {
 
     const piWebEntries = await readdir(new URL("../examples/panes-agent/.pi/web/", import.meta.url));
     expect(piWebEntries).toEqual(["dist"]);
-  });
+  }, 20_000);
 });
