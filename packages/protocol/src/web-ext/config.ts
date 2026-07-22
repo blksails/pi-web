@@ -65,6 +65,15 @@ export const WebExtConfigSchema = z.object({
   layout: LayoutPresetSchema.optional(),
   /** panelRight 让位的初始比例(运行时可由宿主切换器改写)。 */
   panelRatio: PanelRatioSchema.optional(),
+  /**
+   * panelRight 连续拖拽模式的初始像素宽度。存在即由宿主以受控模式接入 PiChat
+   * `panelWidth/onPanelWidthChange`，并隐藏离散比例切换器。
+   */
+  panelWidth: z.number().finite().int().min(240).max(4096).optional(),
+  /** 连续拖拽最小宽度；仅与 panelWidth 同时生效。 */
+  minPanelWidth: z.number().finite().int().min(160).max(4096).optional(),
+  /** 连续拖拽最大宽度；仅与 panelWidth 同时生效。 */
+  maxPanelWidth: z.number().finite().int().min(240).max(8192).optional(),
   /** 日志面板位置(覆盖宿主全局默认);占 panelRight 的 source 宜声明 `bottom`。 */
   logsPanelPosition: LogsPanelPositionSchema.optional(),
   empty: EmptyConfigSchema.optional(),
@@ -73,5 +82,19 @@ export const WebExtConfigSchema = z.object({
    * 会话卸载(回选源页)或切到无此声明的 source 时还原为载入前的标题。
    */
   documentTitle: z.string().optional(),
+}).superRefine((config, ctx) => {
+  if (config.panelWidth === undefined && (config.minPanelWidth !== undefined || config.maxPanelWidth !== undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth is required when width bounds are declared" });
+    return;
+  }
+  if (config.minPanelWidth !== undefined && config.maxPanelWidth !== undefined && config.minPanelWidth > config.maxPanelWidth) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxPanelWidth"], message: "maxPanelWidth must be >= minPanelWidth" });
+  }
+  if (config.panelWidth !== undefined && config.minPanelWidth !== undefined && config.panelWidth < config.minPanelWidth) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth must be >= minPanelWidth" });
+  }
+  if (config.panelWidth !== undefined && config.maxPanelWidth !== undefined && config.panelWidth > config.maxPanelWidth) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth must be <= maxPanelWidth" });
+  }
 });
 export type WebExtConfig = z.infer<typeof WebExtConfigSchema>;

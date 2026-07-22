@@ -36,6 +36,12 @@
       "@blksails/pi-web-primitives": [
         "./packages/primitives/src/index.ts"
       ],
+      "@blksails/pi-web-panes-kit": [
+        "./packages/panes-kit/src/index.ts"
+      ],
+      "@blksails/pi-web-panes-kit/react": [
+        "./packages/panes-kit/src/react/index.ts"
+      ],
       "@blksails/pi-web-canvas-ui": [
         "./packages/canvas-ui/src/index.ts"
       ],

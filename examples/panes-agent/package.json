@@ -1,0 +1,10 @@
+{
+  "name": "panes-agent",
+  "private": true,
+  "type": "module",
+  "pi-web": {
+    "title": "Panes Agent",
+    "avatar": "▦",
+    "description": "五个独立 React iframe panes + Surface + Agent Routes + 附件引用"
+  }
+}

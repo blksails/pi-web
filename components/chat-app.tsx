@@ -575,6 +575,14 @@ function SessionView({
   );
   const extension = buildTimeExtension ?? runtimeWebext.extension;
 
+  // panelRight 连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
+  // extension/source 切换时重置，避免把上一个 Agent 的用户拖拽宽度泄漏到下一个 Agent。
+  const configuredPanelWidth = extension?.config?.panelWidth;
+  const [panelWidth, setPanelWidth] = React.useState<number | undefined>(configuredPanelWidth);
+  React.useEffect(() => {
+    setPanelWidth(configuredPanelWidth);
+  }, [extension?.manifestId, configuredPanelWidth]);
+
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
@@ -987,6 +995,18 @@ function SessionView({
             : {})}
           {...(extension?.config?.panelRatio !== undefined
             ? { panelRatio: extension.config.panelRatio }
+            : {})}
+          {...(panelWidth !== undefined
+            ? {
+                panelWidth,
+                onPanelWidthChange: setPanelWidth,
+                ...(extension?.config?.minPanelWidth !== undefined
+                  ? { minPanelWidth: extension.config.minPanelWidth }
+                  : {}),
+                ...(extension?.config?.maxPanelWidth !== undefined
+                  ? { maxPanelWidth: extension.config.maxPanelWidth }
+                  : {}),
+              }
             : {})}
           {...(extension?.config?.empty?.title !== undefined
             ? { emptyTitle: extension.config.empty.title }

@@ -64,6 +64,7 @@
     "@blksails/pi-web-canvas-ui": "workspace:*",
     "@blksails/pi-web-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-panes-kit": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-react": "workspace:*",
     "@blksails/pi-web-server": "workspace:*",
