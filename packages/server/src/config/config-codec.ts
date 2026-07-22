@@ -1,16 +1,30 @@
 /**
- * config-codec — 读写 `~/.pi/agent/*.json` 且保留未知字段。
+ * config-codec — 读写 config 域(`~/.pi/agent/<domain>.json`)且保留未知字段。
  *
- * - 路径基于 `PI_WEB_AGENT_DIR` 环境变量(默认 `~/.pi/agent`),构造时可注入 `rootDir`
- *   覆盖(供测试)。
- * - `load(domain)`:读取 `{rootDir}/{domain}.json`,文件不存在返回 `{}`。
- * - `save(domain, values)`:将 `values` 深合并到磁盘原有内容上(保留未知字段/provider),
- *   写文件权限 0600、目录 0700(递归创建)。
+ * host-contract v1(M2 垂直切片,spec: host-contract-config-on-workspace):内部改建到
+ * `LocalWorkspace` 的 `user` 命名空间之上(§3.7「既有端口保留各自类型化接口不变,只是
+ * 默认实现改建在 Workspace 上」)。公开面(构造 / `load` / `save`)、落盘路径 / 权限 /
+ * 字节格式与改建前**逐字节不变**;不再直接触碰 `node:fs`,合并语义收敛到 `deepMergeJson`。
+ *
+ * - 路径基于 `PI_WEB_AGENT_DIR`(默认 `~/.pi/agent`),构造时可注入 `rootDir` 覆盖(供测试)。
+ * - `load(domain)`:委托 `WorkspaceNamespace.readJson`,逐分区复刻既有语义——缺文件 / 损坏 /
+ *   非对象 → `{}`(损坏降级并记日志,契约 §3.6),其余 IO 错误 → rethrow。
+ * - `save(domain, values, { merge })`:read-modify-write 在本层完成,底层 `writeJson` 恒
+ *   `merge:false`;目录 0700 / 文件 0600 / 原子写由 Workspace 承接。
+ *
+ * 权威依据:`docs/pi-web-host-contract-v1.md` §3.6 / §3.7。
  */
-import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ConfigDomainId } from "@blksails/pi-web-protocol";
+import { createLogger } from "@blksails/pi-web-logger";
+import {
+  createLocalWorkspaceNamespace,
+  deepMergeJson,
+  type WorkspaceNamespace,
+} from "../workspace/index.js";
+
+const logger = createLogger({ namespace: "server:config" });
 
 function resolveDefaultRoot(): string {
   const fromEnv = process.env["PI_WEB_AGENT_DIR"];
@@ -19,97 +33,64 @@ function resolveDefaultRoot(): string {
 }
 
 /**
- * 把 `incoming` 深合并到 `base` 上:对象类型的值递归合并,其余类型直接覆盖。
- * 结果为新对象,不修改 base 或 incoming。
+ * 读 unknown 错误的 Workspace 判别码。
+ *
+ * 契约 §3.6:错误一律按 `err.code` 判别,不用 `instanceof`——跨包 / 跨仓时同名类可能来自
+ * 不同模块实例,`instanceof` 会假阴性。
  */
-function deepMerge(
-  base: Record<string, unknown>,
-  incoming: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(incoming)) {
-    const existing = result[key];
-    if (
-      value !== null &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      existing !== null &&
-      typeof existing === "object" &&
-      !Array.isArray(existing)
-    ) {
-      result[key] = deepMerge(
-        existing as Record<string, unknown>,
-        value as Record<string, unknown>,
-      );
-    } else {
-      result[key] = value;
-    }
+function workspaceErrorCode(err: unknown): string | undefined {
+  if (err !== null && typeof err === "object") {
+    const code = (err as { readonly code?: unknown }).code;
+    if (typeof code === "string") return code;
   }
-  return result;
+  return undefined;
 }
 
 export class ConfigCodec {
-  private readonly rootDir: string;
+  private readonly ns: WorkspaceNamespace;
 
   constructor(rootDir?: string) {
-    this.rootDir = rootDir ?? resolveDefaultRoot();
-  }
-
-  private filePath(domain: ConfigDomainId): string {
-    return join(this.rootDir, `${domain}.json`);
+    // 建在 LocalWorkspace user 命名空间之上(§3.7)。不传 maxValueBytes → 取缺省 1 MiB
+    // 安全网:config 五域实际值远小于此,正常路径不可达;刻意不经
+    // `resolveWorkspaceValueLimit(env)`,以免为 config 域引入「非法 env → 构造抛错」的
+    // 新失败模式,保持行为零变化。
+    this.ns = createLocalWorkspaceNamespace(rootDir ?? resolveDefaultRoot());
   }
 
   /**
-   * 加载指定域的配置,文件不存在时返回 `{}`。
+   * 加载指定域的配置。逐分区复刻既有 `ConfigCodec.load` 语义:
+   * 缺文件 → `{}`(由 `readJson` 归零);损坏 / 非对象 JSON → `{}`(捕获 `corrupt` 降级,
+   * 契约 §3.6 记日志);其余 IO 错误 → rethrow(复刻既有对非 ENOENT 读错的抛出)。
    */
   async load(domain: ConfigDomainId): Promise<Record<string, unknown>> {
-    const path = this.filePath(domain);
-    let text: string;
     try {
-      text = await fs.readFile(path, "utf8");
+      return await this.ns.readJson(`${domain}.json`);
     } catch (err: unknown) {
-      if (
-        err !== null &&
-        typeof err === "object" &&
-        (err as NodeJS.ErrnoException).code === "ENOENT"
-      ) {
+      if (workspaceErrorCode(err) === "corrupt") {
+        logger.warn("config domain file corrupt; treating as empty", { domain });
         return {};
       }
       throw err;
-    }
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return {};
-    } catch {
-      return {};
     }
   }
 
   /**
    * 保存域配置。
    * - 默认(merge:true):将 `values` 深合并到磁盘已有内容,保留未知字段(增量补丁语义)。
-   * - merge:false:`values` 已是权威全量对象(如经 `mergeSecrets` 合并出,含删除),
-   *   直接覆盖写入。不可再对磁盘 deepMerge,否则已删除的键(secret clear / provider 删除)
-   *   会从磁盘原值复活。
-   * 写入权限 0600,目录 0700(递归创建)。
+   * - merge:false:`values` 已是权威全量对象(如经 `mergeSecrets` 合并出,含删除),直接
+   *   覆盖写入。不可再对磁盘 deepMerge,否则已删除的键(secret clear / provider 删除)会复活。
+   *
+   * read-modify-write 在本层完成、底层 `writeJson` 恒 `merge:false`:既逐字节复刻既有
+   * `deepMerge(load(domain), values)` 后覆盖写的语义,又使损坏磁盘时的合并基底走 `load`
+   * 的统一降级(不因底层二次 read 抛 `corrupt`)。写入权限 0600、目录 0700、原子写。
    */
   async save(
     domain: ConfigDomainId,
     values: Record<string, unknown>,
     opts: { readonly merge?: boolean } = {},
   ): Promise<void> {
-    // 确保目录存在(0700)。
-    await fs.mkdir(this.rootDir, { recursive: true, mode: 0o700 });
-
-    // 增量补丁默认与磁盘合并;权威全量则覆盖(保留删除)。
-    const merged =
-      opts.merge === false ? values : deepMerge(await this.load(domain), values);
-
-    const path = this.filePath(domain);
-    const json = JSON.stringify(merged, null, 2);
-    await fs.writeFile(path, json, { encoding: "utf8", mode: 0o600 });
+    const next =
+      opts.merge === false ? values : deepMergeJson(await this.load(domain), values);
+    await this.ns.writeJson(`${domain}.json`, next, { merge: false });
   }
 }
