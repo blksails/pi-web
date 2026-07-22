@@ -8,9 +8,9 @@
  * - kind 由 `identify(source)` 派生;git 条目标 kind=git 且**不 clone/不 resolve**(Req 3.4)。
  * - 只读:仅读文件,无写、无 spawn、无 network。
  */
-import fs from "node:fs/promises";
 import path from "node:path";
 import { identify } from "../agent-source/index.js";
+import { createLocalWorkspaceNamespace } from "../workspace/index.js";
 import type {
   AgentSourceProvider,
   AgentSourceRecord,
@@ -95,17 +95,15 @@ export function createRegistrySourceProvider(
 ): AgentSourceProvider {
   return {
     async list(): Promise<AgentSourceRecord[]> {
-      let raw: string;
-      try {
-        raw = await fs.readFile(opts.registryPath, "utf8");
-      } catch {
-        return []; // 文件不存在/不可读 → 视为零登记(Req 3.2)
-      }
+      // M4(host-contract-stores-on-workspace):经 LocalWorkspace 读注册表 —— 把 registryPath 拆成
+      // namespace(dirname) + key(basename),落盘文件不变(含 PI_WEB_SOURCES_REGISTRY 覆盖的任意路径),
+      // 只是读经 workspace。缺文件/坏 JSON/任何读错误 → [](保持现状全 catch 静默降级,行为零变化)。
       let parsed: unknown;
       try {
-        parsed = JSON.parse(raw);
+        const ns = createLocalWorkspaceNamespace(path.dirname(opts.registryPath));
+        parsed = await ns.readJson(path.basename(opts.registryPath));
       } catch {
-        return []; // 坏 JSON → 不使整表失败(Req 3.3)
+        return []; // 缺文件/坏 JSON/io 一律视为零登记(Req 3.2/3.3)
       }
       const entries = parseEntries(parsed);
       return entries.map((e) => {

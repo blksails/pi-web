@@ -398,10 +398,11 @@ No bundle is needed—declare it directly in the `config` field of `manifest.jso
 ### Gating Flow
 
 1. **SRI integrity**: recompute the sha384 of the entry bytes and compare against `manifest.integrity`.
-2. **Signature allowlist**: verify `manifest.signature` with the **Ed25519 public keys** in `PI_WEB_EXT_WHITELIST` (any single match means trusted; public-key verification runs server-side in Node, secrets are never shipped to the browser, see `packages/react/src/web-ext/extension-gate.ts:92`).
-3. **Version compatibility**: `manifest.targetApiVersion` (a semver range) must be compatible with the host's `PI_WEB_KIT_VERSION` (default `0.1.0`).
+2. **Signature allowlist**: verify `manifest.signature` with the **Ed25519 public keys** in `PI_WEB_EXT_WHITELIST` (any single match means trusted; public-key verification runs server-side in Node, secrets are never shipped to the browser, see `packages/react/src/web-ext/extension-gate.ts`).
 
 Any verification failure → loading is rejected, the UI falls back to default, and an audit log is recorded.
+
+> A third "version compatibility" gate (`manifest.targetApiVersion` compatible with the host's `PI_WEB_KIT_VERSION`) used to exist and has been removed entirely — the host's self-reported version was long inaccurate and the minor never actually served as a protection boundary. The `targetApiVersion` field remains in the protocol, but it is no longer used for a compatibility judgment at load time.
 
 ### Related Environment Variables
 
@@ -409,7 +410,6 @@ Any verification failure → loading is rejected, the UI falls back to default, 
 |----------|-------------|---------|
 | `PI_WEB_EXT_WHITELIST` | Comma-separated trusted publisher **Ed25519 public keys** (base64 raw) | `""` |
 | `PI_WEB_EXT_REQUIRE_SIGNATURE` | Whether to enforce signatures (`"false"` disables) | `"true"` |
-| `PI_WEB_KIT_VERSION` | Host web-kit version, used for version-compatibility judgment | `"0.1.0"` |
 | `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` | Base URL for the artifact surface (absent → no mount) | — |
 
 ### CSS Scoping

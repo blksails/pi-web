@@ -1,19 +1,26 @@
 /**
  * FavoritesStore — agent source 收藏的读写存储(sidebar-launcher-rail)。
  *
- * 收藏是**用户偏好**,独立于只读源枚举(scan/registry)。持久化为单个 JSON 文件
- * `<agentDir>/agent-source-favorites.json`,形态 `{ "favorites": [ { source, name } ] }`。
+ * 收藏是**用户偏好**,独立于只读源枚举(scan/registry)。
  *
- * - `list()`:文件缺失/坏 JSON → 返回 [];逐条 zod 校验,坏条目跳过其余保留(Req 4.7)。
- * - `set()`:全量替换,原子写(写 `<file>.tmp` 后 rename),避免半写。仅写该偏好文件
- *   (Req 6.3),无其它副作用。
+ * host-contract v1(M4,spec: host-contract-stores-on-workspace):内部改建到
+ * `LocalWorkspace` 的 user 命名空间之上(§3.7,键 `agent-source-favorites.json`),
+ * 不再直接 `node:fs`。落盘路径/权限/字节与迁移前逐字节不变;原子写由 Workspace 承接。
+ *
+ * - `list()`:缺文件/坏 JSON/任何读错误 → 返回 `[]`(**保持现状对所有读错误静默降级**;
+ *   readJson 缺文件→`{}`→[],损坏→抛 corrupt→catch→[]);逐条 zod 校验,坏条目跳过。
+ *   ⚠ 现状(迁移前)`list` 对**所有**读错误 catch→[](含 io),非 ConfigCodec 的 io-rethrow;
+ *   为行为零变化,此处保持全 catch。
+ * - `set()`:全量替换,`writeJson(merge:false)`;仅写该偏好键,无其它副作用。
  */
-import fs from "node:fs/promises";
-import path from "node:path";
+import { createLocalWorkspaceNamespace } from "../workspace/index.js";
 import {
   AgentSourceFavoriteSchema,
   type AgentSourceFavorite,
 } from "@blksails/pi-web-protocol";
+
+/** user 命名空间下的收藏键(§3.7 表)。 */
+const FAVORITES_KEY = "agent-source-favorites.json";
 
 export interface FavoritesStore {
   list(): Promise<AgentSourceFavorite[]>;
@@ -21,8 +28,8 @@ export interface FavoritesStore {
 }
 
 export interface FavoritesStoreOptions {
-  /** 收藏 JSON 文件绝对路径。 */
-  readonly filePath: string;
+  /** user 命名空间根目录(agentDir)。收藏落 `<root>/agent-source-favorites.json`。 */
+  readonly root: string;
 }
 
 /** 从原始 JSON 提取合法收藏项(坏条目静默跳过)。 */
@@ -38,40 +45,24 @@ function parseFavorites(parsed: unknown): AgentSourceFavorite[] {
   return out;
 }
 
-/** 进程内单调计数,拼进临时文件名,避免同进程并发 PUT 共用同一 tmp 而互相踩写。 */
-let tmpCounter = 0;
-
 export function createFavoritesStore(
   opts: FavoritesStoreOptions,
 ): FavoritesStore {
+  const ns = createLocalWorkspaceNamespace(opts.root);
   return {
     async list(): Promise<AgentSourceFavorite[]> {
-      let raw: string;
       try {
-        raw = await fs.readFile(opts.filePath, "utf8");
+        return parseFavorites(await ns.readJson(FAVORITES_KEY));
       } catch {
-        return []; // 缺失/不可读 → 视为空(Req 4.7)
+        // 保持现状:对所有读错误(含损坏 JSON / io)静默降级为 [](行为零变化)。
+        return [];
       }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return []; // 坏 JSON → 不使整体失败(Req 4.7)
-      }
-      return parseFavorites(parsed);
     },
 
     async set(favorites): Promise<void> {
       // 落盘前丢弃 source 为空的项,使磁盘内容与 list() 的返回一致(避免 PUT 回显与落盘不对称)。
       const clean = [...favorites].filter((f) => f.source.length > 0);
-      const body = JSON.stringify({ favorites: clean }, null, 2);
-      await fs.mkdir(path.dirname(opts.filePath), { recursive: true });
-      // 原子替换:先写临时文件再 rename(同目录 rename 原子),避免半写被读到。tmp 名带 pid +
-      // 单调计数,防同进程并发 PUT 共用同一 tmp 互相踩写。
-      tmpCounter += 1;
-      const tmp = `${opts.filePath}.${process.pid}.${tmpCounter}.tmp`;
-      await fs.writeFile(tmp, body, "utf8");
-      await fs.rename(tmp, opts.filePath);
+      await ns.writeJson(FAVORITES_KEY, { favorites: clean }, { merge: false });
     },
   };
 }

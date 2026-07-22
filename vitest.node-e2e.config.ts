@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
-import { webKitVersionDefine } from "./scripts/web-kit-version.mjs";
 
 /**
  * Node-level e2e config — drives the real createPiWebHandler over HTTP/SSE in a
@@ -8,8 +7,6 @@ import { webKitVersionDefine } from "./scripts/web-kit-version.mjs";
  * the browser-level Playwright run is blocked.
  */
 export default defineConfig({
-  // #33:宿主 web-kit 版本注入 —— server/bootstrap.ts 读 __PI_WEB_KIT_VERSION__
-  define: webKitVersionDefine(),
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),

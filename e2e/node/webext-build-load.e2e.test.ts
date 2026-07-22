@@ -23,7 +23,7 @@ function hasInlinedReact(code: string): boolean {
   );
 }
 
-const GATE = { whitelist: [], requireSignature: false, hostApiVersion: "0.1.0" };
+const GATE = { whitelist: [], requireSignature: false };
 
 /** 声明式扩展加载用(无 bundle,不需 import)。 */
 function declarativeDeps(): LoaderDeps {

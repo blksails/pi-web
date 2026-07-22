@@ -4,7 +4,7 @@ import { loadExtension, type LoaderDeps } from "../../src/web-ext/extension-load
 import { computeSri } from "../../src/web-ext/extension-gate.js";
 import type { WebExtensionManifest } from "@blksails/pi-web-protocol";
 
-const opts = { whitelist: [], requireSignature: false, hostApiVersion: "0.1.0" };
+const opts = { whitelist: [], requireSignature: false };
 const bytes = Buffer.from("export default {manifestId:'acme'}", "utf8");
 
 function deps(over: Partial<LoaderDeps> = {}): LoaderDeps {
@@ -85,16 +85,6 @@ describe("loadExtension", () => {
       integrity,
     };
     const r = await loadExtension({ manifest, baseUrl: "/ext/acme/", opts, deps: d });
-    expect(r.status).toBe("rejected");
-  });
-
-  it("版本不兼容 → rejected(声明式也拦)", async () => {
-    const r = await loadExtension({
-      manifest: { id: "acme", targetApiVersion: "^9.0.0" },
-      baseUrl: "/x/",
-      opts,
-      deps: deps(),
-    });
     expect(r.status).toBe("rejected");
   });
 });

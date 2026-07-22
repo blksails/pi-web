@@ -26,7 +26,6 @@ const INJECTED: RuntimeFeatures = {
   extensionAllowlist: "foo,bar",
   extensionBaseUrl: "https://x.test/",
   disableReadinessHandshake: true,
-  hostApiVersion: "9.9.9",
 };
 
 afterEach(() => {
@@ -67,13 +66,12 @@ describe("runtime-features", () => {
     expect(getRuntimeFeatures().canvas).toBe(false);
   });
 
-  it("缺省值:未设 env 时门控关闭、slot 为 sidebar、hostApiVersion 为 0.1.0", () => {
+  it("缺省值:未设 env 时门控关闭、slot 为 sidebar", () => {
     const f = getRuntimeFeatures();
     expect(f.canvas).toBe(false);
     expect(f.launcherRail).toBe(false);
     expect(f.bashEnabled).toBe(false);
     expect(f.sessionsSlot).toBe("sidebar");
-    expect(f.hostApiVersion).toBe("0.1.0");
     expect(f.extensionBaseUrl).toBe("");
   });
 

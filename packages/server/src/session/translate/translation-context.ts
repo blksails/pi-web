@@ -22,6 +22,12 @@ export interface TranslationContext {
   readonly lastAutoRetryErrorMessage?: string;
   /** 本轮内是否已产出过任意 assistant 文本(text part 曾开启)。 */
   readonly hadAssistantTextInTurn: boolean;
+  /**
+   * 本轮是否已因**致命 provider 错误**(余额/额度/402 等)fail-fast 终止(见
+   * `fatal-provider-error.ts`)。置真后同轮后续帧被抑制,直到下一 `agent_start` 复位;
+   * PiSession 据其翻转调 `abort` 中止 agent 的重试循环。
+   */
+  readonly fatalTerminated: boolean;
 }
 
 /** 初始化一个空的翻译上下文。 */
@@ -31,6 +37,7 @@ export function createTranslationContext(): TranslationContext {
     messageOpen: false,
     hadAutoRetryInTurn: false,
     hadAssistantTextInTurn: false,
+    fatalTerminated: false,
   };
 }
 
@@ -95,12 +102,21 @@ export function recordAssistantText(ctx: TranslationContext): TranslationContext
   return ctx.hadAssistantTextInTurn ? ctx : { ...ctx, hadAssistantTextInTurn: true };
 }
 
-/** 复位本轮(agent_start)状态:清空 auto-retry 记录与文本产出标记。 */
+/**
+ * 标记本轮已因致命 provider 错误 fail-fast 终止(幂等)。置真后 `translateEvent` 顶部守卫
+ * 抑制同轮后续帧,直到下一 `agent_start` 经 `resetTurnState` 复位。
+ */
+export function markFatalTerminated(ctx: TranslationContext): TranslationContext {
+  return ctx.fatalTerminated ? ctx : { ...ctx, fatalTerminated: true };
+}
+
+/** 复位本轮(agent_start)状态:清空 auto-retry 记录、文本产出标记与致命终止标记。 */
 export function resetTurnState(ctx: TranslationContext): TranslationContext {
   const next: TranslationContext = {
     ...ctx,
     hadAutoRetryInTurn: false,
     hadAssistantTextInTurn: false,
+    fatalTerminated: false,
   };
   delete (next as { lastAutoRetryErrorMessage?: string }).lastAutoRetryErrorMessage;
   return next;
