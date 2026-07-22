@@ -145,7 +145,6 @@ beforeAll(async () => {
   });
   const trust = createWebextTrustService({
     registry,
-    hostApiVersion: "0.1.0",
     requireSignature: true,
     isProduction: false,
   });
@@ -183,7 +182,6 @@ describe("第三方 slots 代码扩展:resolve → dist → loadExtension → im
     const opts: GateOptions = {
       whitelist: [],
       requireSignature: false,
-      hostApiVersion: "0.1.0",
       signaturePreVerified: true,
     };
     const outcome = await loadExtension({
@@ -228,7 +226,6 @@ describe("第三方 slots 代码扩展:resolve → dist → loadExtension → im
       const opts: GateOptions = {
         whitelist: [],
         requireSignature: false,
-        hostApiVersion: "0.1.0",
         signaturePreVerified: true,
       };
       const outcome = await loadExtension({
@@ -312,20 +309,6 @@ describe("安全门拒绝矩阵:坏签名 / 非白名单 key / integrity 字段�
       expect(resolved.found).toBe(true);
       expect(resolved.manifest).toBeUndefined();
       expect(resolved.rejectedReason).toBeDefined();
-    } finally {
-      await restoreManifest();
-    }
-  });
-
-  it("targetApiVersion 超出宿主 caret 兼容范围 → resolveWebext 拒绝(Req 10.1 版本门)", async () => {
-    const raw = JSON.parse(originalManifestJson) as WebExtensionManifest;
-    const tampered = { ...raw, targetApiVersion: "^9.0.0" };
-    await writeFile(manifestPath, JSON.stringify(tampered), "utf8");
-    try {
-      const resolved = await resolveWebext(THIRD_PARTY_SOURCE, resolveDeps);
-      expect(resolved.found).toBe(true);
-      expect(resolved.manifest).toBeUndefined();
-      expect(resolved.rejectedReason).toMatch(/targetApiVersion|不兼容/);
     } finally {
       await restoreManifest();
     }

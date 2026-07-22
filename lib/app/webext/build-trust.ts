@@ -5,7 +5,7 @@
  *   - PI_WEB_EXT_WHITELIST:逗号分隔受信发布者 Ed25519 公钥(base64);并入本地追加。
  *   - PI_WEB_EXT_TRUSTED_LIST_URL:中心可信发布者列表 URL(可选)。
  *   - PI_WEB_EXT_ROOT_PUBKEY:出厂钉死根公钥(base64 raw),验中心列表签名(可选)。
- *   - PI_WEB_EXT_REQUIRE_SIGNATURE / PI_WEB_KIT_VERSION:见 web-ext-gate-config。
+ *   - PI_WEB_EXT_REQUIRE_SIGNATURE:见 web-ext-gate-config。
  */
 import { buildServerGateOptions } from "../web-ext-gate-config.js";
 import {
@@ -53,7 +53,6 @@ export function createWebextTrust(env: NodeJS.ProcessEnv = process.env): WebextT
   );
   const trust = createWebextTrustService({
     registry,
-    hostApiVersion: gate.hostApiVersion,
     requireSignature: gate.requireSignature,
     isProduction: env.NODE_ENV === "production",
   });

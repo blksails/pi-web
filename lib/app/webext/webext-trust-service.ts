@@ -14,7 +14,7 @@ import {
   isDeclarativeOnly,
   type WebExtensionManifest,
 } from "@blksails/pi-web-protocol";
-import { verifyManifestSignature, isApiCompatible } from "./server-gate.js";
+import { verifyManifestSignature } from "./server-gate.js";
 import type { TrustedPublisherRegistry } from "./trusted-publisher-registry.js";
 
 /** 服务端已验签、可安全下发浏览器的 manifest(去 signature,标记已预校验)。 */
@@ -28,7 +28,6 @@ export type TrustVerdict =
 
 export interface TrustServiceConfig {
   readonly registry: TrustedPublisherRegistry;
-  readonly hostApiVersion: string;
   /** 是否强制签名(由 env 配置;生产恒被强制为真)。 */
   readonly requireSignature: boolean;
   /** 是否生产环境:生产强制签名、免签开关无效。 */
@@ -52,12 +51,6 @@ export function createWebextTrustService(
   const enforceSignature = cfg.isProduction || cfg.requireSignature;
   return {
     async verifyManifest(manifest: WebExtensionManifest): Promise<TrustVerdict> {
-      if (!isApiCompatible(manifest.targetApiVersion, cfg.hostApiVersion)) {
-        return {
-          ok: false,
-          reason: `targetApiVersion ${manifest.targetApiVersion} 与宿主 web-kit ${cfg.hostApiVersion} 不兼容`,
-        };
-      }
       // 纯声明扩展:无代码,无需签名。
       if (isDeclarativeOnly(manifest)) {
         return { ok: true, vetted: strip(manifest) };

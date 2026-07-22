@@ -16,8 +16,6 @@
 import { loadConfig } from "../lib/app/config.js";
 import { makeResumeMetaLoader } from "../lib/app/resume-meta.js";
 import { lookupSessionSource } from "../lib/app/session-source-map.js";
-// #33:宿主版本唯一解析点(与 web-ext-gate-config 共用,消除两条链路两个 env 的分裂)
-import { resolveHostApiVersion } from "../lib/app/host-api-version.js";
 
 /** 模块级单例:与 handler 复用同一 SESSION_STORE 后端,避免每请求重建句柄。 */
 const loadResumeMeta = makeResumeMetaLoader();
@@ -34,7 +32,6 @@ export interface BootstrapPayload {
   readonly defaultCwd: string;
   readonly autoStart: boolean;
   readonly multiTenant: boolean;
-  readonly hostApiVersion: string;
   readonly features: Record<string, string | boolean>;
   readonly supabase?: { readonly url: string; readonly anonKey: string };
   /** `?sessionId=` 命中且能恢复时给出;供 webext registry 冷加载重解析扩展。 */
@@ -91,7 +88,6 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
     defaultCwd,
     autoStart,
     multiTenant,
-    hostApiVersion: resolveHostApiVersion(env),
     features: {
       canvas: bool(env.NEXT_PUBLIC_PI_WEB_CANVAS),
       sourcePicker: bool(env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER),

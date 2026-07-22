@@ -2,8 +2,8 @@
  * server-gate — 服务端纯加密校验(webext-package-install 任务 2.2)。
  *
  * 与 `@blksails/pi-web-react` 的 extension-gate 同语义,但**不依赖 react 包**(其 index
- * 会拖入客户端 hook,污染服务端 bundle)。服务端验签用 Ed25519 公钥(无机密);版本
- * 兼容判定与浏览器侧一致。SRI 仍由浏览器侧 extension-gate 执行。
+ * 会拖入客户端 hook,污染服务端 bundle)。服务端验签用 Ed25519 公钥(无机密)。
+ * SRI 仍由浏览器侧 extension-gate 执行。版本兼容门控已整条移除(两侧一致)。
  */
 import { webcrypto } from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -42,41 +42,4 @@ export async function verifyManifestSignature(
     }
   }
   return false;
-}
-
-interface SemVer {
-  major: number;
-  minor: number;
-  patch: number;
-}
-
-function parseSemVer(v: string): SemVer | undefined {
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim());
-  if (m === null) return undefined;
-  return { major: Number(m[1]), minor: Number(m[2]), patch: Number(m[3]) };
-}
-
-/** targetApiVersion(range)是否兼容宿主版本(caret/精确/通配),与浏览器侧一致。 */
-export function isApiCompatible(range: string, hostVersion: string): boolean {
-  const r = range.trim();
-  if (r === "" || r === "*") return true;
-  const host = parseSemVer(hostVersion);
-  if (host === undefined) return false;
-  const caret = r.startsWith("^");
-  const spec = parseSemVer(caret ? r.slice(1) : r);
-  if (spec === undefined) return false;
-  const hostGe =
-    host.major > spec.major ||
-    (host.major === spec.major &&
-      (host.minor > spec.minor ||
-        (host.minor === spec.minor && host.patch >= spec.patch)));
-  if (!caret) {
-    return (
-      host.major === spec.major &&
-      host.minor === spec.minor &&
-      host.patch === spec.patch
-    );
-  }
-  if (spec.major >= 1) return host.major === spec.major && hostGe;
-  return host.major === 0 && host.minor === spec.minor && hostGe;
 }
