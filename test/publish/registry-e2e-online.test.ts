@@ -71,4 +71,40 @@ describe.runIf(RUN)("[真机] pi-web publish → install 打线上 registry", ()
     // 物化内容与发布原文逐字节一致
     expect(readFileSync(join(target, "skills/hello.md"), "utf8")).toBe(CONTENT);
   }, 60_000);
+
+  it("[cloud-source-settings] 发布带 settings 声明的 source → resolve 下发内联 settings", async () => {
+    const ORG = `piwebs${Date.now().toString(36)}`;
+    const SOURCE_ID = `${ORG}/withsettings`;
+    const keys = generateEd25519KeyPair();
+
+    const client = new RegistryHttpClient({ baseUrl: BASE });
+    await client.registerPublisher(ADMIN, { id: ORG, name: "PiWeb Settings E2E", keys: [{ publicKey: keys.publicKey }] });
+    await client.createSource(ADMIN, {
+      id: SOURCE_ID, displayName: "With Settings", description: "e2e settings", visibility: "org",
+      policy: { secrets: [], resources: { vcpu: 1, memoryGiB: 1 } }, tenantId: "1", publisherId: ORG,
+    });
+
+    // 造包:清单声明 settings 段 + 一份合法 FormSchema JSON。
+    const pkgDir = mkdtempSync(join(tmpdir(), "piweb-e2e-settings-")); dirs.push(pkgDir);
+    writeFileSync(join(pkgDir, "pi-web.json"), JSON.stringify({
+      id: SOURCE_ID, version: "1.0.0", kind: "plugin",
+      pi: { skills: ["skills/*.md"] },
+      settings: { schema: "settings/schema.json", title: "With Settings" },
+    }));
+    mkdirSync(join(pkgDir, "skills"), { recursive: true });
+    writeFileSync(join(pkgDir, "skills/hello.md"), "# hi\n");
+    mkdirSync(join(pkgDir, "settings"), { recursive: true });
+    const FORM = { domain: "withsettings", fields: [{ key: "model", kind: "string", label: "Model" }] };
+    writeFileSync(join(pkgDir, "settings/schema.json"), JSON.stringify(FORM));
+    const keyPath = join(pkgDir, "key.json");
+    writeFileSync(keyPath, JSON.stringify(keys));
+
+    const registry = new HttpRegistryAdapter({ baseUrl: BASE, publishToken: ADMIN, consumeToken: CONSUME });
+    const pub = await publish(registry, { packageDir: pkgDir, keyPath });
+    expect(pub.ok, JSON.stringify(pub)).toBe(true);
+
+    // resolve(消费面)→ manifest.settings 应含内联的 FormSchema(证明发布链带上 + registry 承载下发)。
+    const resolved = await client.resolve(CONSUME, { sourceId: SOURCE_ID, channel: "stable" });
+    expect(resolved.manifest["settings"]).toMatchObject({ schema: FORM, scope: "source", title: "With Settings" });
+  }, 60_000);
 });
