@@ -383,13 +383,18 @@ export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
 |------|------|------|
 | `documentTitle` | string | 加载该 source 后同步 `document.title`；切源后还原 |
 | `layout` | `"centered"` \| `"wide"` \| `"full"` \| `"split"` | 版面预设（宿主 `LayoutPreset`，见 `packages/ui/src/customization/layout.ts:8`） |
-| `panelRatio` | `"centered"` \| `"2:1"` \| `"3:7"` | 右侧面板初始比例，闭集枚举（`packages/protocol/src/web-ext/config.ts:23`，需配合 `slots.panelRight`） |
+| `panelRatio` | `"centered"` \| `"2:1"` \| `"4:6"` \| `"3:7"` | 右侧面板初始比例，使用离散比例切换器（需配合 `slots.panelRight`） |
+| `panelWidth` | 240–4096 的整数 | 右侧面板初始像素宽度；存在即启用宿主受控的连续拖拽模式 |
+| `minPanelWidth` | 160–4096 的整数 | 连续拖拽最小宽度；必须与 `panelWidth` 同时声明 |
+| `maxPanelWidth` | 240–8192 的整数 | 连续拖拽最大宽度；必须与 `panelWidth` 同时声明 |
 | `theme` | `Record<string, string>` | CSS 变量覆盖（宿主 token 前缀） |
 | `empty.title/subtitle` | string | 空态屏文案 |
 | `empty.starters` | array | 建议项列表 |
 | `empty.mergeCommands` | `"prepend"` \| `"append"` \| `"replace"` | 与 agent slash 命令合并策略 |
 
 **`config.layout="split"` 注意事项**：声明 `split` 布局但未在 `slots.panelRight` 提供内容时，宿主不渲染空的 `<aside>` 占位，优雅退化为居中版面（`pi-chat.tsx:1816-1819`）。之前版本曾留出 384px 空白侧边区域，已修复。
+
+`panelRatio` 与 `panelWidth` 分别对应离散和连续交互。声明 `panelWidth` 时，ChatApp 持有宽度状态并把 PiChat 内置分隔条的 `onPanelWidthChange` 回写；比例切换器隐藏。`panelWidth` 必须落在 min/max 内，min 不得大于 max。未声明时维持原有 `panelRatio` 行为。
 
 ---
 

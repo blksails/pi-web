@@ -1,6 +1,7 @@
 import * as React from "react";
 import { defineWebExtension, type SlotRenderProps } from "@blksails/pi-web-kit";
-import { PanesHost } from "./panes-host.js";
+import { PanesHost } from "@blksails/pi-web-panes-kit/react";
+import { panesDefinition } from "./panes/index.js";
 
 export const config = {
   panes: {
@@ -11,7 +12,9 @@ export const config = {
   },
   web: {
     documentTitle: "Panes 示例 · pi-web",
-    panelRatio: "4:6" as const,
+    panelWidth: 760,
+    minPanelWidth: 420,
+    maxPanelWidth: 1280,
     logsPanelPosition: "bottom" as const,
     empty: {
       title: "隔离 Pane 范例",
@@ -30,13 +33,13 @@ export const config = {
 };
 
 function ConfiguredPanesHost(props: SlotRenderProps): React.JSX.Element {
-  return <PanesHost {...props} config={config.panes} />;
+  return <PanesHost {...props} definition={panesDefinition} config={config.panes} />;
 }
 
 export default defineWebExtension({
   manifestId: "panes",
   capabilities: ["slots", "config"],
   config: config.web,
-  // pi-web 只负责 placement 和能力注入；PanesHost 不依赖 panelRight 的布局实现。
+  // pi-web 只负责 placement 和能力注入；通用 PanesHost 来自 panes-kit。
   slots: { panelRight: ConfiguredPanesHost },
 });

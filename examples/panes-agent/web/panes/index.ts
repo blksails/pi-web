@@ -1,10 +1,32 @@
 import { paneDocuments } from "../pane-documents.generated.js";
-import type { PaneDefinition } from "../pane-types.js";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 
-export const panes: readonly PaneDefinition[] = [
-  { id: "files", title: "文件", icon: "▤", document: paneDocuments.files, capabilities: { write: true } },
-  { id: "editor", title: "编辑", icon: "⌘", document: paneDocuments.editor, capabilities: { write: true } },
-  { id: "diff", title: "Diff", icon: "±", document: paneDocuments.diff, capabilities: {} },
-  { id: "canvas", title: "画布", icon: "◇", document: paneDocuments.canvas, capabilities: { write: true, attachments: true } },
-  { id: "artifact", title: "Artifact", icon: "◫", document: paneDocuments.artifact, capabilities: { write: true } },
-] as const;
+const panesSurface = { surfaceKeys: ["surface:panes"], surfaceCommands: [], attachments: "none", conversation: "none" } as const;
+
+export const panesDefinition = definePanes({
+  id: "panes-example",
+  initialPaneIds: ["editor", "files", "canvas"],
+  maxOpenPanes: 12,
+  panes: [
+    { id: "files", title: "文件", icon: "▤", document: { kind: "inline", srcDoc: paneDocuments.files }, allowMultiple: true, maxInstances: 3, lifecycle: {}, capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] } },
+    { id: "editor", title: "编辑", icon: "⌘", document: { kind: "inline", srcDoc: paneDocuments.editor }, allowMultiple: true, maxInstances: 4, lifecycle: {}, capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] } },
+    { id: "diff", title: "Diff", icon: "±", document: { kind: "inline", srcDoc: paneDocuments.diff }, allowMultiple: true, maxInstances: 3, lifecycle: {}, capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET"] }] } },
+    {
+      id: "canvas",
+      title: "Canvas",
+      icon: "◇",
+      document: { kind: "inline", srcDoc: paneDocuments.canvas },
+      allowMultiple: true,
+      maxInstances: 3,
+      lifecycle: {},
+      capabilities: {
+        routes: [],
+        surfaceKeys: ["surface:canvas"],
+        surfaceCommands: [{ domain: "canvas", actions: ["sync", "register", "edit", "inpaint", "reference", "variants", "outpaint", "reframe", "delete"] }],
+        attachments: "read-write",
+        conversation: "submit",
+      },
+    },
+    { id: "artifact", title: "Artifact", icon: "◫", document: { kind: "inline", srcDoc: paneDocuments.artifact }, allowMultiple: true, maxInstances: 3, lifecycle: {}, capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] } },
+  ],
+});

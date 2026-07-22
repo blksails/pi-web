@@ -15,6 +15,10 @@ describe("panes-agent web build", () => {
     expect(result.manifest.integrity).toBe(computeIntegrity(Buffer.from(code, "utf8")));
     expect(code).toContain("create-artifact");
     expect(code).toMatch(/sandbox:\s*"allow-scripts"/);
+    expect(code).toContain("pane:connected");
+    expect(code).toContain("surface:canvas");
+    expect(code).toContain("canvas-checkerboard");
+    expect(code).toContain("HOST_UNAVAILABLE");
 
     const piWebEntries = await readdir(new URL("../examples/panes-agent/.pi/web/", import.meta.url));
     expect(piWebEntries).toEqual(["dist"]);

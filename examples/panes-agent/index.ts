@@ -1,6 +1,8 @@
 import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";
+import { aigcExtension, canvasSurfaceExtension, visionExtension } from "@blksails/pi-web-tool-kit/runtime";
 import { routes } from "./routes/index.js";
 import { inspectPanesForLlm } from "./panes-state.js";
 import { panesSurfaceExtension } from "./panes-extension.js";
@@ -27,7 +29,8 @@ export default defineAgent({
     "Before making claims about pane content or recent edits, call inspect_panes and use its latest revision.",
     "Keep replies concise.",
   ].join("\n"),
-  extensions: [panesSurfaceExtension],
+  extensions: [panesSurfaceExtension, aigcExtension, visionExtension, canvasSurfaceExtension],
+  slashCompletions: aigcSlashCompletions,
   customTools: [inspectPanes],
   routes,
   noTools: "builtin",

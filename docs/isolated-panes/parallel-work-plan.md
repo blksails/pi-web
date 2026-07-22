@@ -1,136 +1,108 @@
-# Panes 地基与完整实施并行工作规划
+# Isolated Panes 地基优先实施计划
 
-## 1. 工作流
+## 1. 原则
 
-| 轨道 | 范围 | 主要产物 | 不得承担 |
-|---|---|---|---|
-| A 契约 | descriptors、grants、envelopes、errors | `contract.ts`、schema、契约测试 | React、领域状态 |
-| B Host core | 实例、epoch、生命周期、授权 | `host-controller.ts` | iframe DOM、Agent 业务 |
-| C Browser | sandbox iframe、MessageChannel | `adapters/iframe.ts`、恶意 Guest e2e | 桌面 IPC |
-| D pi-web adapter | WebExt、Surface、Routes、附件、Conversation | placement 与 capability adapters | 领域 reducer |
-| E Agent example | files/editor/diff/canvas | `examples/panes-agent` | pi-web 内核改造 |
-| F Desktop | Electron/Tauri relay | 两个 native adapters | Guest 业务分叉 |
-| G AIGC migration | 原型 UI/UX 与业务面板 | AIGC panes | 反向污染地基 |
+先冻结并实现通用地基，再迁移 AIGC。业务范例只用于验证公开接口，不能成为第二套 Host core。每一波必须可独立审核、测试和回滚。
 
-## 2. 依赖图
+## 2. 轨道
+
+| 轨道 | 产物 | 边界 |
+|---|---|---|
+| A Contract | schema、grants、errors、limits | 无 React、无业务词 |
+| B Instance core | multi-open、epoch、lifecycle | 无 DOM、无 pi-web |
+| C Browser Host | iframe、MessageChannel、React Host/Guest | 无业务 reducer |
+| D pi-web seam | Agent Routes、Surface、附件、Conversation、连续宽度 | 不解释 Pane 领域 |
+| E Conformance example | files/editor/diff/Canvas/artifact | 只消费公开包 |
+| F Desktop | Electron/Tauri adapters | 不分叉 Guest API |
+| G AIGC migration | 原型 UI/UX 与领域业务 | 不修改地基契约绕过审核 |
+
+## 3. 依赖关系
 
 ```mermaid
 flowchart LR
-  A["A 契约"] --> B["B Host core"]
-  B --> C["C Browser adapter"]
-  B --> F["F Desktop adapters"]
-  A --> D["D pi-web capability adapters"]
-  C --> E["E 最简范例"]
+  A["A Contract"] --> B["B Instance core"]
+  A --> D["D pi-web seams"]
+  B --> C["C Browser Host"]
+  C --> E["E Conformance example"]
   D --> E
+  B --> F["F Desktop adapters"]
   E --> G["G AIGC migration"]
   F --> G
 ```
 
-## 3. 交付波次
+## 4. 波次
 
-### Wave 0：冻结接口
+### Wave 0：契约冻结
 
-并行：
-
-- A 定义 `PaneDefinition`、grant、envelope、错误码与版本协商。
-- D 明确五个已有能力 adapter 的输入输出。
-- E 用范例场景反推最小需求，不添加通用接口。
-
-合并门：schema 测试覆盖所有正反例；核心契约不出现 files/canvas/AIGC 领域词。
+- 建立 `packages/panes-kit`。
+- 完成定义、消息、错误、grant、大小限制和纯实例 reducer。
+- 审核门：公开契约无 Canvas/files/AIGC 词；默认拒绝测试通过。
 
 ### Wave 1：Browser 竖切
 
-并行：
+- `PanesHost` 支持同类多开、关闭、拖排、切换、空态。
+- 每实例独立 iframe、MessageChannel 和 epoch。
+- Guest SDK + React Provider/hook/HOC。
+- 审核门：同类型三个实例并存；关闭或 reload 后旧端口不可用。
 
-- B 实现实例状态机、epoch、dispose、grant evaluator。
-- C 实现 iframe + MessageChannel。
-- E 保持 Agent-local Host，完成四面板 UI 与目录组织。
+### Wave 2：pi-web 接缝
 
-合并门：每 Tab 独立 iframe；隐藏/重载/崩溃不泄漏端口；只读面板写入被拒绝。
+- Agent Route adapter 与结构化错误。
+- Surface key/action、附件、Conversation 代理。
+- WebExt `panelWidth/min/max` → ChatApp 受控状态 → PiChat 现有连续拖拽。
+- 审核门：普通 WebExt 零回归；失效 session 不显示裸 HTTP 404。
 
-### Wave 2：最小数据面
+### Wave 3：一致性范例
 
-并行：
+- `panes-agent` 删除 Agent-local Host core，改用包。
+- 文件/编辑/Diff/Artifact 走 Agent Routes 和 Surface。
+- Canvas iframe 直接消费现有 Canvas UI/Surface/附件/Conversation。
+- 审核门：示例构建、Agent Route、Canvas、multi-open 和布局测试通过。
 
-- D 接入 Surface 热摘要与 Agent Route GET/POST。
-- E 实现 revision CAS、change journal、Diff 派生和 LLM inspector。
-- C 增加消息大小、速率和超时限制。
+### Wave 4：Desktop
 
-合并门：编辑器保存后 Diff、Surface 与 LLM inspector 读取同一 revision；冲突写入不改变状态。
+- Electron `WebContentsView` adapter 与 preload relay。
+- Tauri WebView adapter 与 Rust relay。
+- 三宿主共用 conformance fixture。
+- 审核门：生命周期、授权、错误和崩溃隔离语义一致。
 
-### Wave 3：附件与对话
+### Wave 5：AIGC 迁移
 
-并行：
+- 按素材、Canvas、任务、历史等领域拆 Pane。
+- 恢复原型 Tab、Dialog、侧栏和工作流。
+- HTTP 改 Agent Routes，媒体改附件引用，热态改 Surface。
+- 审核门：视觉回归、业务闭环、三宿主隔离与 LLM 同源状态全部通过。
 
-- D 接入附件上传和 Conversation 显式提交。
-- E 让 Canvas 只保存 `att_` 引用。
-- A 补齐 attachment/conversation grants。
+## 5. PR 切分
 
-合并门：二进制不进入 Surface/Route JSON；未授权面板不能上传或提交对话。
-
-### Wave 4：地基提取
-
-并行：
-
-- A/B/C 将范例中领域无关实现提升到 `packages/panes-kit`。
-- E 改为只消费公开包，行为保持。
-- D 增加无 Panes Agent 的回归测试。
-
-合并门：范例不复制 Host core；包依赖单向；普通聊天与普通 WebExt 零行为变化。
-
-### Wave 5：Desktop 一致性
-
-并行：
-
-- F-Electron 实现 `WebContentsView` relay。
-- F-Tauri 实现 WebView relay。
-- A 维护 adapter conformance suite。
-
-合并门：同一 Guest fixture 在三类宿主上通过相同生命周期、授权和错误测试。
-
-### Wave 6：AIGC 迁移
-
-并行拆分：
-
-- 素材/文件面板。
-- Canvas 编辑面板。
-- 生成任务与历史面板。
-- Dialog/全屏等面板内 UI。
-- Agent Routes、Surface、Attachments 数据迁移。
-
-合并门：原型 UI/UX、侧栏、Tab、对话框和核心工作流完整；所有面板仍满足地基契约。
-
-## 4. PR 切分
-
-| PR | 内容 | 可独立审核证据 |
+| PR | 内容 | 审核证据 |
 |---|---|---|
-| PR-A | 契约、schema、错误码 | 纯单测，无运行时改动 |
-| PR-B | Host core + iframe adapter | conformance + malicious Guest e2e |
-| PR-C | pi-web capability adapters | Surface/Routes/Attachments/Conversation 集成测试 |
-| PR-D | `panes-agent` | webext build、route unit、浏览器 e2e |
-| PR-E | `panes-kit` 提取 | 范例零行为 diff、包边界测试 |
-| PR-F | Electron/Tauri | native conformance/e2e |
-| PR-G* | AIGC 面板按领域拆分 | 每面板视觉与数据闭环 |
+| Foundation-1 | Contract + instance core + security tests | 纯 package 测试 |
+| Foundation-2 | Browser Host + Guest SDK | iframe conformance/e2e |
+| Foundation-3 | pi-web seams + controlled width | protocol/UI/integration tests |
+| Foundation-4 | panes-agent canonical examples | isolated build + route/surface tests |
+| Desktop-1 | Electron/Tauri adapters | native conformance |
+| AIGC-* | 按业务 Pane 迁移 | 每 Pane 视觉和数据闭环 |
 
-## 5. 并行冲突规约
+## 6. 合并纪律
 
-- A 独占契约文件；其他轨道只能通过 fixture 提需求。
-- B 不修改 pi-web UI；D 不修改 Host 状态机；E 不创建通用 package API。
-- Surface schema 与 Agent Route response schema 由 Agent example/业务域拥有。
-- Desktop adapter 只实现 `PanePort`，不得新增桌面专属 Guest API。
-- AIGC 迁移不得先于 Browser 范例与一致性闭环。
+- A 独占公开契约；其他轨道通过 fixture 提需求。
+- B/C 不修改业务状态；D 不修改实例状态机；E 不复制 Host core。
+- Canvas 变更归 Canvas 领域；Panes 只提供能力代理。
+- Desktop 只替换 adapter，不增加 Guest 专属 API。
+- AIGC migration 不得早于 Browser、pi-web seam 和一致性范例验收。
 
-## 6. 每波验证
+## 7. 每波验证顺序
 
 ```text
-contract tests
-→ host/controller tests
+contract/typecheck
+→ instance/security tests
 → adapter conformance
-→ Agent Route + Surface consistency tests
+→ Agent Route + Surface integration
 → webext isolated build
-→ app typecheck
+→ app typecheck/build
 → browser e2e
 → desktop e2e（相关波次）
 ```
 
-任何波次不得以“能显示 iframe”代替数据一致性、安全边界和 LLM 可见性验证。
+“显示了 iframe”不构成交付；多实例、隔离、授权、错误语义、连续拖拽和数据一致性必须同时成立。
