@@ -41,6 +41,7 @@ import type { TranslateResult } from "./translate.types.js";
 import {
   closeReasoningPart,
   closeTextPart,
+  markFatalTerminated,
   openMessage,
   openReasoningPart,
   openTextPart,
@@ -49,6 +50,7 @@ import {
   resetTurnState,
   type TranslationContext,
 } from "./translation-context.js";
+import { isFatalProviderError } from "./fatal-provider-error.js";
 
 /**
  * 从 tool_execution_end.result 抽出人类可读错误文案(沙盒 block / bash 失败等)。
@@ -247,6 +249,13 @@ export function translateEvent(
   event: AgentEvent,
   ctx: TranslationContext,
 ): TranslateResult {
+  // fail-fast 终止后:抑制同轮后续帧(仅 `agent_start` 例外——它复位状态并重新开轮)。
+  // 致命 provider 错误(见 auto_retry_start 分支)已合成 error+finish 即时收尾;若 SDK 的重试
+  // 循环未被 abort 及时打断而仍发若干后续事件,再产帧会在 finish 之后扰乱 useChat。busy 快照
+  // 由 PiSession 侧 reduceSnapshot 独立处理,不受本抑制影响。
+  if (ctx.fatalTerminated && event.type !== "agent_start") {
+    return none(ctx);
+  }
   switch (event.type) {
     case "agent_start":
       // start 块创建 assistant message(useChat 据此建消息);同时复位本轮
@@ -372,7 +381,26 @@ export function translateEvent(
         ctx,
       };
 
-    case "auto_retry_start":
+    case "auto_retry_start": {
+      // fail-fast:确定致命的 provider 错误(余额/额度/配额/402 等)被 pi SDK 的重试分类器
+      // 误判为 transient(裸 `502` 子串命中错误消息里的 token 数字,见 fatal-provider-error.ts),
+      // 会被无谓重试至 maxAttempts 耗尽。此处补判定:命中致命 → 本轮立即合成 error+finish 终止,
+      // 并置 fatalTerminated(PiSession 据其翻转调 abort 中止 agent 的重试循环)。非致命(真正的
+      // 5xx/429/网络 transient)→ 照常产 data-pi-auto-retry 显示重试进度(既有行为不变)。
+      if (isFatalProviderError(event.errorMessage)) {
+        const errorText = truncateForDisplay(
+          event.errorMessage ?? FALLBACK_ERROR_TEXT,
+          MAX_RETRY_ERROR_TEXT_LENGTH,
+        );
+        const closed = closeReasoningPart(closeTextPart(ctx));
+        return {
+          frames: [
+            makeUiMessageChunkFrame({ type: "error", errorText }),
+            makeUiMessageChunkFrame({ type: "finish" }),
+          ],
+          ctx: markFatalTerminated(closed),
+        };
+      }
       // 记录本轮已重试 + 最后一次 errorMessage,供 agent_end 空手收尾兜底使用
       // (Req 402-UI ②)。
       return {
@@ -390,6 +418,7 @@ export function translateEvent(
         ],
         ctx: recordAutoRetry(ctx, event.errorMessage),
       };
+    }
 
     case "auto_retry_end":
       return {

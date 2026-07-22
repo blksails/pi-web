@@ -669,8 +669,17 @@ export class PiSession {
     // 工具调用边界日志(server 侧,与 runner 内部计时对照)。
     this.logToolEvent(event);
     // 纯函数翻译:推进上下文并广播产出帧(同序,Req 3.1 / 3.3)。
+    const prevFatal = this.translationCtx.fatalTerminated;
     const { frames, ctx } = translateEvent(event, this.translationCtx);
     this.translationCtx = ctx;
+    // fail-fast:本轮首次因致命 provider 错误终止(auto_retry_start 命中 isFatalProviderError)→
+    // 主动 abort 中止 agent 的重试循环。UI 已由上面翻译出的 error+finish 帧即时收尾;此处 best-effort
+    // 止住后台的无谓重试(abort 失败非致命 —— 后台至多再跑几次即自然结束,UI 不受影响)。
+    if (!prevFatal && ctx.fatalTerminated) {
+      void this.abort().catch(() => {
+        // 忽略:UI 已终止;abort 失败仅意味着后台重试未被提前打断。
+      });
+    }
     for (const frame of frames) {
       // message-queue-ui:把 control:"queue" 登记为粘性帧(与 session-state 对称),使重连/迟到订阅者
       // 回放即得当前排队快照——否则忙时重连后 busy 回放为 true 但 queue 空,取回回环静默不可用。
