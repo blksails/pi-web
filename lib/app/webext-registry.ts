@@ -21,6 +21,7 @@ import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/web.config";
 import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
+import workbenchModulesExt from "../../examples/workbench-modules-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -105,6 +106,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
   // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。
   { match: "plugin-code-review-agent", ext: codeReviewExt },
+  // workbench-modules-agent:四个独立 iframe 模块 + Agent Routes/Surface/附件最小数据面。
+  { match: "workbench-modules-agent", ext: workbenchModulesExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */
