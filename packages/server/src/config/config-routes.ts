@@ -23,6 +23,7 @@ import { errorResponse, jsonResponse } from "../http/index.js";
 import type { InjectedRoute, RequestContext } from "../http/index.js";
 import type { AuthContext } from "../http/index.js";
 import { ConfigCodec } from "./config-codec.js";
+import type { Workspace } from "../workspace/index.js";
 import { maskSecrets, mergeSecrets } from "./secret-merge.js";
 import type { ModelOptions } from "./model-options.types.js";
 
@@ -52,6 +53,12 @@ const defaultConfigAdminPolicy: ConfigAdminPolicy = () => true;
 export interface ConfigRoutesOptions {
   /** 可选:覆盖 codec 根目录(测试用)。 */
   readonly rootDir?: string;
+  /**
+   * 可选:注入的宿主状态 `Workspace`(config-workspace-injection)。提供时 config 域读写导向
+   * `workspace.user`(如云端 `TenantWorkspace`,按租户隔离),而非本地 fs 的 `rootDir`。
+   * 二者互斥优先:提供 `workspace` 时 `rootDir` 被忽略。
+   */
+  readonly workspace?: Workspace;
   /** 可选:管理员鉴权接缝,默认放行。 */
   readonly adminPolicy?: ConfigAdminPolicy;
   /**
@@ -81,7 +88,10 @@ function isKnownDomain(domain: string): domain is ConfigDomainId {
 export function createConfigRoutes(
   opts: ConfigRoutesOptions = {},
 ): ReadonlyArray<InjectedRoute> {
-  const codec = new ConfigCodec(opts.rootDir);
+  // 注入的 Workspace 优先(config 域落 user 命名空间,§3.7);否则用 rootDir 路径(现状)。
+  const codec = opts.workspace !== undefined
+    ? new ConfigCodec(opts.workspace.user)
+    : new ConfigCodec(opts.rootDir);
   const adminPolicy = opts.adminPolicy ?? defaultConfigAdminPolicy;
 
   const getHandler = async (ctx: RequestContext): Promise<Response> => {

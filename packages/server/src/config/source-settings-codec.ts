@@ -29,6 +29,7 @@ import { isSourceKey } from "../source-key.js";
 import {
   createLocalWorkspaceNamespace,
   deepMergeJson,
+  type Workspace,
   type WorkspaceKey,
   type WorkspaceNamespace,
 } from "../workspace/index.js";
@@ -63,9 +64,17 @@ function assertSourceKeyShape(sourceKey: string): void {
 
 export class SourceSettingsCodec {
   private readonly agentDir: string;
+  /** 注入分支(config-workspace-injection Req 2):承载双根的注入 Workspace(如云端 TenantWorkspace)。 */
+  private readonly workspace?: Workspace;
 
-  constructor(agentDir?: string) {
-    this.agentDir = agentDir ?? resolveDefaultAgentDir();
+  constructor(source?: string | Workspace) {
+    // 判别:`Workspace` 与路径字符串类型不相交,`string | undefined` 即路径分支,其余为注入。
+    if (source === undefined || typeof source === "string") {
+      this.agentDir = source ?? resolveDefaultAgentDir();
+    } else {
+      this.workspace = source;
+      this.agentDir = resolveDefaultAgentDir(); // 注入分支不用,仅保持 agentDir: string
+    }
   }
 
   /**
@@ -80,6 +89,14 @@ export class SourceSettingsCodec {
     cwd?: string,
   ): { readonly ns: WorkspaceNamespace; readonly key: WorkspaceKey } {
     assertSourceKeyShape(sourceKeyValue);
+    // 注入分支:source→`workspace.user`、project→`workspace.project`(注入的 project 根即目标,
+    // 不再要求 cwd —— 云端无 per-cwd 项目,project 根按租户隔离)。落盘键与路径分支逐一致。
+    if (this.workspace !== undefined) {
+      return scope === "source"
+        ? { ns: this.workspace.user, key: `sources/${sourceKeyValue}/settings.json` }
+        : { ns: this.workspace.project, key: `source-settings/${sourceKeyValue}.json` };
+    }
+    // 路径分支(现状):source→`<agentDir>`、project→`<cwd>/.pi`。
     if (scope === "source") {
       return {
         ns: createLocalWorkspaceNamespace(this.agentDir),

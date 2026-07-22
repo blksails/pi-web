@@ -54,6 +54,17 @@ type AuthOpts = Parameters<typeof createAuthRoutes>[0];
 export interface HostDeps {
   readonly agentDir: string;
   readonly defaultCwd: string;
+  /**
+   * 可选:注入的宿主状态 `Workspace`(config-workspace-injection)。提供时 config.domains / config.source
+   * 的读写导向注入的(租户隔离的)命名空间而非本地 fs;缺省不传 = 现状路径分支。desktop 不传。
+   */
+  readonly workspace?: ConfigOpts["workspace"];
+  /**
+   * 可选:config 域的管理员鉴权接缝(config-workspace-injection / 契约 §4 R4)。提供时透传给
+   * config.domains / config.source 工厂(拒绝 → 403);缺省 = 各工厂默认放行(本地单用户)。
+   * 云端(pi-clouds C3)注入 role-based 实现,防多租户下未鉴权写面。
+   */
+  readonly adminPolicy?: ConfigOpts["adminPolicy"];
   readonly listModelOptions: ConfigOpts["listModelOptions"];
   readonly resolveSourceSettings: SourceSettingsOpts["resolveSettings"];
   readonly onSourceSettingsSaved: SourceSettingsOpts["onSaved"];
@@ -93,7 +104,20 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
     // 故 config.mcp **必须**排在 config.domains 之前(复刻现状 pi-handler 的既有约束)。
     // 顺序不同于 HOST_CAPABILITY_IDS_V1 名册,但 id 集相等(装配级测试守卫①)。
     { id: "config.mcp", factory: (d) => asRoutes(createMcpConfigRoutes({ agentDir: d.agentDir })) },
-    { id: "config.domains", factory: (d) => asRoutes(createConfigRoutes({ rootDir: d.agentDir, listModelOptions: d.listModelOptions })) },
+    // config.domains / config.source:透传可选 `workspace`(注入承载) 与 `adminPolicy`(鉴权)——
+    // 提供时走注入分支(config-workspace-injection);缺省则 rootDir 路径 + 默认放行(现状零变化)。
+    {
+      id: "config.domains",
+      factory: (d) =>
+        asRoutes(
+          createConfigRoutes({
+            rootDir: d.agentDir,
+            listModelOptions: d.listModelOptions,
+            ...(d.workspace !== undefined ? { workspace: d.workspace } : {}),
+            ...(d.adminPolicy !== undefined ? { adminPolicy: d.adminPolicy } : {}),
+          }),
+        ),
+    },
     { id: "config.sandboxProject", factory: (d) => asRoutes(createSandboxProjectRoutes({ defaultCwd: d.defaultCwd })) },
     {
       id: "config.source",
@@ -104,6 +128,8 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
             defaultCwd: d.defaultCwd,
             resolveSettings: d.resolveSourceSettings,
             onSaved: d.onSourceSettingsSaved,
+            ...(d.workspace !== undefined ? { workspace: d.workspace } : {}),
+            ...(d.adminPolicy !== undefined ? { adminPolicy: d.adminPolicy } : {}),
           }),
         ),
     },

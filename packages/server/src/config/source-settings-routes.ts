@@ -68,6 +68,7 @@ import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.j
 import { isSourceKey, sourceKey as deriveSourceKey } from "../source-key.js";
 import { resolvePiPlugin } from "../plugin/resolve-plugin.js";
 import { SourceSettingsCodec, type SourceSettingsScope } from "./source-settings-codec.js";
+import type { Workspace } from "../workspace/index.js";
 import { maskSecrets, mergeSecrets } from "./secret-merge.js";
 
 /** 门控 env(`"1"` 关断;默认开启)。请求时读取,不缓存(与 agent-route-routes 同款)。 */
@@ -99,6 +100,12 @@ const defaultAdminPolicy: SourceSettingsAdminPolicy = () => true;
 export interface SourceSettingsRoutesOptions {
   /** 可选:覆盖 `SourceSettingsCodec` 的 agentDir(测试用)。 */
   readonly rootDir?: string;
+  /**
+   * 可选:注入的宿主状态 `Workspace`(config-workspace-injection)。提供时 source/project 两 scope
+   * 分别导向 `workspace.user` / `workspace.project`(如云端 `TenantWorkspace`,按租户隔离);
+   * 提供时 `rootDir` 被忽略,project scope 亦不再需要 `cwd`。
+   */
+  readonly workspace?: Workspace;
   /** 可选:管理员鉴权接缝,默认放行。 */
   readonly adminPolicy?: SourceSettingsAdminPolicy;
   /**
@@ -367,7 +374,8 @@ export async function resolveSourceSettingsFromPackageDirs(
 export function createSourceSettingsRoutes(
   opts: SourceSettingsRoutesOptions,
 ): ReadonlyArray<InjectedRoute> {
-  const codec = new SourceSettingsCodec(opts.rootDir);
+  // 注入的 Workspace 优先(双根:source→user、project→project);否则用 rootDir 路径(现状)。
+  const codec = new SourceSettingsCodec(opts.workspace ?? opts.rootDir);
   const adminPolicy = opts.adminPolicy ?? defaultAdminPolicy;
   const bodyLimit =
     positiveIntEnv(SOURCE_SETTINGS_BODY_LIMIT_ENV) ?? DEFAULT_SOURCE_SETTINGS_BODY_LIMIT_BYTES;

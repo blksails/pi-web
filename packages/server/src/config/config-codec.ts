@@ -49,12 +49,18 @@ function workspaceErrorCode(err: unknown): string | undefined {
 export class ConfigCodec {
   private readonly ns: WorkspaceNamespace;
 
-  constructor(rootDir?: string) {
-    // 建在 LocalWorkspace user 命名空间之上(§3.7)。不传 maxValueBytes → 取缺省 1 MiB
-    // 安全网:config 五域实际值远小于此,正常路径不可达;刻意不经
-    // `resolveWorkspaceValueLimit(env)`,以免为 config 域引入「非法 env → 构造抛错」的
-    // 新失败模式,保持行为零变化。
-    this.ns = createLocalWorkspaceNamespace(rootDir ?? resolveDefaultRoot());
+  constructor(source?: string | WorkspaceNamespace) {
+    // 两条构造分支(config-workspace-injection Req 1):
+    //  · **注入分支**(传入已构造的 `WorkspaceNamespace`,如云端 `TenantWorkspace.user`):直接承载,
+    //    不自建 LocalWorkspace —— 使 config.domains 读写导向注入的(租户隔离的)命名空间。
+    //  · **路径分支**(string / undefined,现状):建在 LocalWorkspace user 命名空间之上(§3.7)。
+    //    不传 maxValueBytes → 取缺省 1 MiB 安全网;刻意不经 `resolveWorkspaceValueLimit(env)`,
+    //    以免为 config 域引入「非法 env → 构造抛错」的新失败模式,保持行为零变化。
+    // 判别:`Workspace*` 与路径字符串类型不相交,故 `string | undefined` 即路径分支,其余为注入。
+    this.ns =
+      source === undefined || typeof source === "string"
+        ? createLocalWorkspaceNamespace(source ?? resolveDefaultRoot())
+        : source;
   }
 
   /**
