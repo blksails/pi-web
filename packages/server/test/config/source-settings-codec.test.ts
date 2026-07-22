@@ -81,6 +81,15 @@ describe("SourceSettingsCodec", () => {
       const loaded = await codec.load("source", SK);
       expect(loaded).toEqual({ apiBase: "https://a", label: "CRM v2" });
     });
+
+    it("损坏 JSON → load 返回 {}(不抛;M4 迁移守卫,Req 4.3)", async () => {
+      const codec = new SourceSettingsCodec(agentDir);
+      const dir = join(agentDir, "sources", SK);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(join(dir, "settings.json"), "{ not valid json", "utf8");
+      // 变异判据:删掉 load 的 corrupt catch(裸 return readJson)→ 抛 WorkspaceCorruptError,此处转红。
+      await expect(codec.load("source", SK)).resolves.toEqual({});
+    });
   });
 
   describe("scope: project", () => {
@@ -131,6 +140,15 @@ describe("SourceSettingsCodec", () => {
       } finally {
         await fs.rm(otherProjectDir, { recursive: true, force: true });
       }
+    });
+
+    it("损坏 JSON → load 返回 {}(不抛;M4 迁移守卫,Req 4.3)", async () => {
+      const codec = new SourceSettingsCodec(agentDir);
+      const dir = join(projectDir, ".pi", "source-settings");
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(join(dir, `${SK}.json`), "%%corrupt%%", "utf8");
+      // 变异判据:同上,project 作用域路径。
+      await expect(codec.load("project", SK, projectDir)).resolves.toEqual({});
     });
 
     it("throws when scope:\"project\" is used without a cwd", async () => {

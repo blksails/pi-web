@@ -1,0 +1,22 @@
+{
+  "feature_name": "host-contract-stores-on-workspace",
+  "created_at": "2026-07-22T07:26:04Z",
+  "updated_at": "2026-07-22T07:53:30Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

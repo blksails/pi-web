@@ -312,6 +312,8 @@ export class WorkspaceIoError extends WorkspaceError {}      // code: "io"      
 | trust store | `user` | `trust-store.json` |
 | sources 注册表 | `user` | `sources.json` |
 
+> **⚠ 勘误⑭（2026-07-22，M4 实现中发现）：trust store 本期不迁**。`FsProjectTrustStore` 有三处使 `Workspace` 迁移会破坏「行为零变化」或跨进程兼容：① **同步 API**（`get/set` 用 `readFileSync/writeFileSync`），`Workspace` 是 async，迁移牵连 `project-trust-policy` 调用链；② 与 pi CLI **刻意共享** `~/.pi/agent/trust.json` 的字节格式契约（key 排序 + 末尾 `\n`），而 `writeJson` 固定 2-space stringify、无末尾换行、**无法定制序列化**（改 `Workspace` 违反 §3 冻结面），会破坏 pi CLI 读取；③ 损坏 JSON → **抛错**（非静默，安全语义）+ 键名现状 `trust.json` vs 本表 `trust-store.json` + 用 `PI_CODING_AGENT_DIR`。故 **M4 只迁其余四个 store**（agent-source favorites / session favorites / per-source settings / sources 注册表）；trust store 待契约层面重新决策（云端是否需要 trust、是否值得为它引入可定制序列化的 `Workspace` 变体），届时再定 `trust.json`↔`trust-store.json` 键名。§8.3 的「M4 = 其余五个」据此收敛为**四个 + trust 悬置**。spec：`host-contract-stores-on-workspace`。
+
 ### 3.9 ❌ `SessionEntryStore` **不迁** Workspace（三个后端都不迁）
 
 **理由是语义正交，不是"重复抽象"。** Workspace 给不了它需要的三样能力：
