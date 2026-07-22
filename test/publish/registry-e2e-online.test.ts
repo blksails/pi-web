@@ -94,7 +94,7 @@ describe.runIf(RUN)("[真机] pi-web publish → install 打线上 registry", ()
     mkdirSync(join(pkgDir, "skills"), { recursive: true });
     writeFileSync(join(pkgDir, "skills/hello.md"), "# hi\n");
     mkdirSync(join(pkgDir, "settings"), { recursive: true });
-    const FORM = { domain: "withsettings", fields: [{ key: "model", kind: "string", label: "Model" }] };
+    const FORM = { domain: "withsettings", fields: [{ key: "model", kind: "string", label: "Model", required: false }] };
     writeFileSync(join(pkgDir, "settings/schema.json"), JSON.stringify(FORM));
     const keyPath = join(pkgDir, "key.json");
     writeFileSync(keyPath, JSON.stringify(keys));
