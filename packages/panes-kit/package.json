@@ -6,7 +6,10 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./react": "./src/react/index.ts"
+    "./contract": "./src/contract.ts",
+    "./workspace-protocol": "./src/workspace-protocol.ts",
+    "./react": "./src/react/index.ts",
+    "./adapters/*": "./src/adapters/*.ts"
   },
   "engines": {
     "node": ">=22.19.0"

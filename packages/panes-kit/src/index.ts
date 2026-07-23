@@ -29,6 +29,19 @@ export type {
   PaneReadyMessage,
   PaneHostMessage,
 } from "./contract.js";
+export {
+  PANES_WORKSPACE_DOMAIN,
+  PANES_WORKSPACE_REPORT_ACTION,
+  PANES_WORKSPACE_OPS_WINDOW,
+  PaneWorkspaceOpSchema,
+  PaneWorkspaceReportSchema,
+  PanesWorkspaceSnapshotSchema,
+} from "./workspace-protocol.js";
+export type {
+  PaneWorkspaceOp,
+  PaneWorkspaceReport,
+  PanesWorkspaceSnapshot,
+} from "./workspace-protocol.js";
 export { PaneHostError, asPaneHostError } from "./errors.js";
 export {
   DEFAULT_PANE_REQUEST_BYTES,
