@@ -27,6 +27,8 @@ import {
   aigcFormSchema,
   aigcConfigSchema,
   type FormSchema,
+  mcpFormSchema,
+  mcpConfigSchema,
 } from "@blksails/pi-web-protocol";
 import {
   registerFieldRendererByKey,
@@ -198,51 +200,17 @@ export function registerConfigPanels(): void {
     validate: zodValidator(aigcConfigSchema),
     ...makeConfigDomainIO("aigc"),
   });
-}
 
-/** 独立「MCP」面板的表单:单个 configFiles 字段,复用扩展独立配置文件的结构化渲染编辑 mcp.json。 */
-const mcpFormSchema: FormSchema = {
-  domain: "mcp",
-  title: "MCP",
-  fields: [
-    {
-      key: "files",
-      kind: "record",
-      label: "MCP 配置 (mcp.json)",
-      description: "pi-mcp-adapter 的服务器与全局设置(原始 JSON 编辑)。",
-      required: false,
-      widget: "configFiles",
-    },
-  ],
-};
-
-let mcpRegistered = false;
-
-/**
- * 「装了 pi-mcp-adapter 才出现」门控:异步探测 /api/config/mcp 的 installed,
- * 已安装则登记独立「MCP」面板(幂等)。返回是否登记。需调用方在完成后触发一次重渲染,
- * 使 <SettingsShell>(每次渲染重读 listPanels)纳入该面板。
- */
-export async function registerMcpPanelIfInstalled(
-  fetchImpl: typeof fetch = fetch,
-): Promise<boolean> {
-  if (mcpRegistered) return true;
-  try {
-    const res = await fetchImpl("/api/config/mcp", { method: "GET" });
-    if (!res.ok) return false;
-    const json = (await res.json()) as { installed?: boolean };
-    if (json.installed !== true) return false;
-  } catch {
-    return false;
-  }
+  // 内置 MCP 客户端(builtin-mcp-client,Req 5.2):**常驻登记** —— 不再以「是否装了
+  // pi-mcp-adapter」为可见条件(MCP 已是一等公民)。表单 IR 来自 protocol 侧单一事实源,
+  // 用 objectList + variants 表达「server 列表 + 按传输切换字段集」。
   registerSettingsPanel({
     id: "mcp",
     title: "MCP",
-    order: 6,
+    order: 7,
     icon: "plug",
     formSchema: mcpFormSchema,
+    validate: zodValidator(mcpConfigSchema),
     ...makeUrlIO("/api/config/mcp", "MCP 配置"),
   });
-  mcpRegistered = true;
-  return true;
 }

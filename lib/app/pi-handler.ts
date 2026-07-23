@@ -141,6 +141,7 @@ import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-e
 // 自动会话标题扩展文件路径解析(同样为纯路径模块,不拉 pi SDK):spec auto-session-title ——
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
+import { mcpEntryPath } from "@blksails/pi-web-tool-kit/mcp-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
   createInstallHostCommand,
@@ -541,6 +542,10 @@ function buildSingleton(): HandlerSingleton {
   // 解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
   const autoTitleEnabled = process.env.PI_WEB_AUTO_TITLE !== "0";
   const autoTitleEntry = autoTitleEnabled ? autoTitleEntryPath() : undefined;
+  // 内置 MCP 客户端扩展入口(spec builtin-mcp-client,Req 5.1):**无条件**下发 ——
+  // MCP 是一等公民,无需安装任何扩展;某个 server 连不连由 mcp.json 的 enabled 控制,
+  // 不在此处门控。解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
+  const mcpEntry = mcpEntryPath();
 
   // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
   // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
@@ -745,6 +750,10 @@ function buildSingleton(): HandlerSingleton {
         ...(extToolsEntry !== undefined ? { PI_WEB_EXT_TOOLS_ENTRY: extToolsEntry } : {}),
         // 自动会话标题扩展入口 → runner forcedExtensionPaths(spec auto-session-title)。
         ...(autoTitleEntry !== undefined ? { PI_WEB_AUTO_TITLE_ENTRY: autoTitleEntry } : {}),
+        // 内置 MCP 客户端(builtin-mcp-client,Req 5.1)。⚠ 仅本地传输分支下发:该路径是
+        // **宿主机绝对路径**,在 e2b 沙箱内不存在,下发进去只会让加载失败(既有三个
+        // *_ENTRY 同理)。沙箱形态需经镜像烘焙用沙箱内路径,属独立工作项。
+        ...(mcpEntry !== undefined ? { PI_WEB_MCP_ENTRY: mcpEntry } : {}),
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
         ...attachmentSpawnEnv(

@@ -11,7 +11,8 @@
     "./aigc-canvas-schema": "./src/aigc/canvas/schema.ts",
     "./commands": "./src/commands/index.ts",
     "./extension-entry": "./src/extension-tools/entry-path.ts",
-    "./auto-title-entry": "./src/auto-title/entry-path.ts"
+    "./auto-title-entry": "./src/auto-title/entry-path.ts",
+    "./mcp-entry": "./src/mcp/entry-path.ts"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -25,6 +26,7 @@
     "@blksails/pi-web-agent-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "undici": "^6.21.0",
     "zod": "^3.23.8"
   },

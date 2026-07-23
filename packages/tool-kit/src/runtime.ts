@@ -188,3 +188,12 @@ export type {
 
 // ── AskUserQuestion tool(structured select interaction;node-only)────────────
 export { askUserQuestionTool } from "./ask-user-question/tool.js";
+
+// ── MCP 内置客户端(builtin-mcp-client)─────────────────────────────────────────
+export { default as mcpExtension, runMcpExtension, createBridgeTools } from "./mcp/mcp-extension.js";
+export { McpClientManager, redactSecrets, DEFAULT_MCP_CONNECT_TIMEOUT_MS } from "./mcp/client-manager.js";
+export { createMcpTransport, UnsupportedMcpTransportError } from "./mcp/transport-factory.js";
+export { adaptMcpTool, composeToolName, resolveParameterSchema } from "./mcp/tool-adapter.js";
+export { loadMcpConfig, mcpConfigPath, resolveAgentDir, MCP_CONFIG_FILENAME } from "./mcp/config-loader.js";
+export type { McpConnectOutcome, McpServerHandle } from "./mcp/client-manager.js";
+export type { McpToolDescriptor, McpToolCallResult } from "./mcp/tool-adapter.js";

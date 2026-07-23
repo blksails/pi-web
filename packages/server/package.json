@@ -24,6 +24,7 @@
     "@blksails/pi-web-protocol": "workspace:*",
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "e2b": "^2.33.0",
     "jiti": "^2.7.0",
     "pg": "^8.13.1",

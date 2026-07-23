@@ -21,6 +21,11 @@ export * from "./domains/sandbox.js";
 export * from "./domains/extensions.js";
 export * from "./domains/logging.js";
 export * from "./domains/aigc.js";
+// mcp 同理**不**并入通用注册表:宿主契约 v1 §5.3 已冻结 capability id `config.mcp`(独立工厂),
+// 并入通用 :domain 会使该 id 失去内容(破坏性变更,两端须重新表态),且通用路由会遮蔽
+// `/config/mcp`。故仅导出 schema/FormSchema/codec 供独立路由与前端 import。
+export * from "./domains/mcp.js";
+export * from "./domains/mcp-codec.js";
 
 import type { FormSchema } from "./form-schema.js";
 import { authFormSchema } from "./domains/auth.js";

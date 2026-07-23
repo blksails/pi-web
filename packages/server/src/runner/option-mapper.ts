@@ -243,14 +243,17 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
  *  - `PI_WEB_EXT_TOOLS_ENTRY`:内置「扩展管理扩展」(spec extension-install-agent-tools)。
  *  - `PI_WEB_AUTO_TITLE_ENTRY`:内置「自动会话标题扩展」,由主进程按总开关 PI_WEB_AUTO_TITLE
  *    门控下发(spec auto-session-title)。
+ *  - `PI_WEB_MCP_ENTRY`:内置「MCP 客户端扩展」(spec builtin-mcp-client),由主进程无条件
+ *    下发(MCP 是一等公民,零扩展依赖;条目启停在 mcp.json 里控制,不在此门控)。
  *
- * 纯函数(env 注入,不读全局),便于单测;顺序固定:sandbox → ext-tools → auto-title。
+ * 纯函数(env 注入,不读全局),便于单测;顺序固定:sandbox → ext-tools → auto-title → mcp。
  */
 export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[] {
   return [
     env["PI_WEB_SANDBOX_ENTRY"],
     env["PI_WEB_EXT_TOOLS_ENTRY"],
     env["PI_WEB_AUTO_TITLE_ENTRY"],
+    env["PI_WEB_MCP_ENTRY"],
   ].filter((p): p is string => p !== undefined && p.length > 0);
 }
 
