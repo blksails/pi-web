@@ -52,6 +52,11 @@ jobs:
       - name: Fetch & verify Node sidecar
         run: node scripts/fetch-node-sidecar.mjs --target x86_64-unknown-linux-gnu
 
+      # tauri bundle.resources 还校验 ../../payload 存在。真载荷出自 build:dist(cli-e2e 线),
+      # cargo check/test 只需目录在场——占位即可,不打真包。
+      - name: Stub payload dir (bundle.resources 存在性校验)
+        run: mkdir -p payload
+
       - name: Typecheck (workspace 全包,含 desktop cargo check)
         run: pnpm -r run typecheck
 
