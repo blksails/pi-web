@@ -25,6 +25,13 @@ import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
 import { SessionItemMenu, SessionRenameField } from "./session-item-menu.js";
 
+/**
+ * 会话项 + 可选 `source`(来源标识,如 agent source 名)。protocol 侧 `SessionListItem`
+ * 尚无此字段(z.infer 无索引签名,结构化兼容,不改协议类型),此处本地扩展一个可选属性;
+ * `showSource` 门控关闭或字段缺失时零渲染影响(Req 6.2/6.3/6.5)。
+ */
+type SessionListItemWithSource = SessionListItem & { readonly source?: string };
+
 export interface SessionListPanelProps {
   /** 当前活跃会话标识;在场时「当前目录」视图以其持久化 cwd 为准(优先于 currentCwd)。 */
   readonly currentSessionId?: string;
@@ -46,6 +53,12 @@ export interface SessionListPanelProps {
   readonly refreshSignal?: unknown;
   /** 单页上限(透传给端点;缺省由端点取默认)。 */
   readonly pageSize?: number;
+  /**
+   * 是否展示会话项的 source 极小副标题(标题下方一行 `text-xs`)。缺省 `false`/`undefined`
+   * 时不渲染该行,DOM 与既有行为字节级一致(向后兼容,Req 6.5);为 `true` 但对应会话项
+   * 无 `source` 时同样不渲染(不留空行)。
+   */
+  readonly showSource?: boolean;
   /**
    * 乐观占位(new-session placeholder):新建会话尚未落库、未进列表数据时,由宿主传入其 id,
    * 面板立即在顶部渲染一个占位行(更符合人类预期:一发起就看到条目)。当真实数据(refreshSignal
@@ -111,6 +124,7 @@ export function SessionListPanel(
     onResume,
     refreshSignal,
     pageSize,
+    showSource = false,
     pendingSession,
     className,
     manageEnabled = false,
@@ -135,7 +149,7 @@ export function SessionListPanel(
     props.actionErrorLabel ?? t("sessionList.actionError");
 
   const [scope, setScope] = React.useState<Scope>("cwd");
-  const [items, setItems] = React.useState<ReadonlyArray<SessionListItem>>([]);
+  const [items, setItems] = React.useState<ReadonlyArray<SessionListItemWithSource>>([]);
   const [nextCursor, setNextCursor] = React.useState<string | undefined>(
     undefined,
   );
@@ -287,7 +301,7 @@ export function SessionListPanel(
   const normalItems = items.filter((i) => !favoriteSet.has(i.sessionId));
 
   /** 渲染单个会话项(收藏分区与普通列表共用)。 */
-  const renderRow = (item: SessionListItem): React.ReactElement => {
+  const renderRow = (item: SessionListItemWithSource): React.ReactElement => {
     const isActive = item.sessionId === currentSessionId;
     const isFav = favoriteSet.has(item.sessionId);
     const editing = editingId === item.sessionId;
@@ -336,6 +350,14 @@ export function SessionListPanel(
             />
           ) : null}
         </div>
+        {showSource && item.source !== undefined && item.source.length > 0 ? (
+          <div
+            data-pi-session-list-item-source=""
+            className="truncate px-2 text-xs text-[hsl(var(--muted-foreground))]"
+          >
+            {item.source}
+          </div>
+        ) : null}
       </li>
     );
   };

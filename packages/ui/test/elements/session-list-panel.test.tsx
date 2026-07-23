@@ -29,6 +29,20 @@ function resp(sessions: SessionListItem[]): ListSessionsResponse {
   return { sessions, scope: "cwd", globalEnabled: false };
 }
 
+/**
+ * 带可选 `source` 的会话项(本地扩展,protocol `SessionListItem` 尚无此字段,Req 6.2)。
+ * 用变量而非对象字面量传给 `resp`,绕开多余属性检查、保持类型精确。
+ */
+function itemWithSource(
+  over: Partial<SessionListItem> & { sessionId: string; source?: string },
+): SessionListItem & { source?: string } {
+  return {
+    cwd: "/work",
+    createdAt: "2026-06-30T00:00:00.000Z",
+    ...over,
+  };
+}
+
 describe("SessionListPanel × refreshSignal", () => {
   it("用例A:首屏加载调用一次数据源并渲染会话项", async () => {
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
@@ -177,5 +191,89 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     await waitFor(() =>
       expect(screen.getByText("自定义占位标题")).toBeInTheDocument(),
     );
+  });
+});
+
+describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)", () => {
+  it("showSource=true 且项有 source → 渲染极小字号(text-xs)的 source 副标题", async () => {
+    const listSessions = vi.fn(async () =>
+      resp([itemWithSource({ sessionId: "a", name: "会话A", source: "builtin:default-agent" })]),
+    );
+    render(
+      <SessionListPanel
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        showSource
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("builtin:default-agent")).toBeInTheDocument(),
+    );
+    const el = document.querySelector('[data-pi-session-list-item-source=""]');
+    expect(el).toBeInTheDocument();
+    expect(el).toHaveTextContent("builtin:default-agent");
+    expect(el?.className).toContain("text-xs");
+  });
+
+  it("showSource 缺省(未传)且项有 source → 不渲染 source 副标题(零回归)", async () => {
+    const listSessions = vi.fn(async () =>
+      resp([itemWithSource({ sessionId: "a", name: "会话A", source: "builtin:default-agent" })]),
+    );
+    render(
+      <SessionListPanel
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("会话A")).toBeInTheDocument());
+    expect(screen.queryByText("builtin:default-agent")).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-pi-session-list-item-source=""]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("showSource=false 且项有 source → 不渲染 source 副标题", async () => {
+    const listSessions = vi.fn(async () =>
+      resp([itemWithSource({ sessionId: "a", name: "会话A", source: "builtin:default-agent" })]),
+    );
+    render(
+      <SessionListPanel
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        showSource={false}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("会话A")).toBeInTheDocument());
+    expect(screen.queryByText("builtin:default-agent")).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-pi-session-list-item-source=""]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("showSource=true 但项无 source → 不渲染、不留空行", async () => {
+    const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
+    render(
+      <SessionListPanel
+        currentCwd="/work"
+        globalEnabled={false}
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+        showSource
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("会话A")).toBeInTheDocument());
+    expect(
+      document.querySelector('[data-pi-session-list-item-source=""]'),
+    ).not.toBeInTheDocument();
   });
 });
