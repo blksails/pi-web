@@ -26,11 +26,12 @@ import { useI18n } from "../i18n/index.js";
 import { SessionItemMenu, SessionRenameField } from "./session-item-menu.js";
 
 /**
- * 会话项 + 可选 `source`(来源标识,如 agent source 名)。protocol 侧 `SessionListItem`
- * 尚无此字段(z.infer 无索引签名,结构化兼容,不改协议类型),此处本地扩展一个可选属性;
- * `showSource` 门控关闭或字段缺失时零渲染影响(Req 6.2/6.3/6.5)。
+ * 会话项(含可选 `source` 来源标识,如 agent source 名)。`source` 现已进 protocol 契约
+ * `SessionListItem`(session-source-protocol),经 `client.listSessions` 的 `.parse()` 保留而非被
+ * strip;此别名保留仅为命名可读,与 `SessionListItem` 等价。`showSource` 门控关闭或字段缺失时
+ * 零渲染影响(Req 6.2/6.3/6.5)。
  */
-type SessionListItemWithSource = SessionListItem & { readonly source?: string };
+type SessionListItemWithSource = SessionListItem;
 
 export interface SessionListPanelProps {
   /** 当前活跃会话标识;在场时「当前目录」视图以其持久化 cwd 为准(优先于 currentCwd)。 */
