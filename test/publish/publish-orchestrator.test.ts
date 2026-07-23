@@ -505,3 +505,63 @@ describe("publish — webext 产物通道", () => {
     expect(c.ok && c.value.webextDist).toBe(DIST);
   });
 });
+
+/**
+ * per-source settings 抽取+内联(spec: cloud-source-settings,R1.1–R1.4 / R2.5)。
+ * compile 读 settings.schema 的 FormSchema JSON 并校验、内联;sign 进签名字节;缺失/非法 → 发布失败;
+ * 未声明 → manifest 无 settings 字段(与现状等价)。
+ */
+describe("cloud-source-settings：发布期 settings 抽取内联", () => {
+  const withSettings = (over: Record<string, unknown> = {}, schemaJson = '{"domain":"acme","fields":[]}') => ({
+    manifest: { id: "acme/s", version: "1.0.0", kind: "plugin", settings: { schema: "settings/schema.json" }, ...over },
+    files: { "settings/schema.json": schemaJson },
+  });
+
+  it("声明合法 settings → compile 内联 + sign 进签名 + 验签通过", async () => {
+    const { manifest, files } = withSettings();
+    const dir = makePkg(manifest, files);
+    const c = await compile(dir);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(c.value.settings).toEqual({ schema: { domain: "acme", fields: [] }, scope: "source" });
+
+    const key = makeKey();
+    const s = sign(c.value, key.path);
+    expect(s.ok).toBe(true);
+    if (!s.ok) return;
+    expect(s.value.settings).toEqual({ schema: { domain: "acme", fields: [] }, scope: "source" });
+    expect(verifyManifest(s.value, key.publicKey)).toBe(true);
+  });
+
+  it("未声明 settings → manifest 无 settings 字段", async () => {
+    const dir = makePkg({ id: "acme/n", version: "1.0.0", kind: "plugin" });
+    const c = await compile(dir);
+    expect(c.ok && c.value.settings).toBeUndefined();
+    const key = makeKey();
+    const s = sign((c as { value: Parameters<typeof sign>[0] }).value, key.path);
+    expect(s.ok).toBe(true);
+    if (s.ok) expect("settings" in s.value).toBe(false);
+  });
+
+  it("settings.schema 文件缺失 → MANIFEST_INVALID(发布失败,不烧版本号)", async () => {
+    const dir = makePkg({ id: "acme/m", version: "1.0.0", kind: "plugin", settings: { schema: "settings/schema.json" } });
+    const c = await compile(dir);
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.error.code).toBe("MANIFEST_INVALID");
+  });
+
+  it("settings.schema 非合法 FormSchema → MANIFEST_INVALID", async () => {
+    const { manifest, files } = withSettings({}, '{"not":"a form schema"}');
+    const dir = makePkg(manifest, files);
+    const c = await compile(dir);
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.error.code).toBe("MANIFEST_INVALID");
+  });
+
+  it("settings.schema 路径穿越 → MANIFEST_INVALID", async () => {
+    const dir = makePkg({ id: "acme/t", version: "1.0.0", kind: "plugin", settings: { schema: "../evil.json" } });
+    const c = await compile(dir);
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.error.code).toBe("MANIFEST_INVALID");
+  });
+});
