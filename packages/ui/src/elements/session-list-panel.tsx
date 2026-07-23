@@ -353,7 +353,7 @@ export function SessionListPanel(
         {showSource && item.source !== undefined && item.source.length > 0 ? (
           <div
             data-pi-session-list-item-source=""
-            className="truncate px-2 text-xs text-[hsl(var(--muted-foreground))]"
+            className="truncate px-2 text-[10px] leading-tight text-[hsl(var(--muted-foreground))]"
           >
             {item.source}
           </div>

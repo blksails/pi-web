@@ -195,7 +195,7 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
 });
 
 describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)", () => {
-  it("showSource=true 且项有 source → 渲染极小字号(text-xs)的 source 副标题", async () => {
+  it("showSource=true 且项有 source → 渲染极小字号(text-[10px])的 source 副标题", async () => {
     const listSessions = vi.fn(async () =>
       resp([itemWithSource({ sessionId: "a", name: "会话A", source: "builtin:default-agent" })]),
     );
@@ -215,7 +215,7 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     const el = document.querySelector('[data-pi-session-list-item-source=""]');
     expect(el).toBeInTheDocument();
     expect(el).toHaveTextContent("builtin:default-agent");
-    expect(el?.className).toContain("text-xs");
+    expect(el?.className).toContain("text-[10px]");
   });
 
   it("showSource 缺省(未传)且项有 source → 不渲染 source 副标题(零回归)", async () => {
