@@ -47,6 +47,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # tauri.conf 的 externalBin 在 cargo build 期即校验存在,缺 sidecar 直接中止编译
+      # (同 desktop-release);sha256 由 desktop/node-sidecar.lock.json 钉死。
+      - name: Fetch & verify Node sidecar
+        run: node scripts/fetch-node-sidecar.mjs --target x86_64-unknown-linux-gnu
+
       - name: Typecheck (workspace 全包,含 desktop cargo check)
         run: pnpm -r run typecheck
 
