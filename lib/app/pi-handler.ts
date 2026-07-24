@@ -137,11 +137,8 @@ import {
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
-import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
 // 自动会话标题扩展文件路径解析(同样为纯路径模块,不拉 pi SDK):spec auto-session-title ——
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
-import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
-import { mcpEntryPath } from "@blksails/pi-web-tool-kit/mcp-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
   createInstallHostCommand,
@@ -534,18 +531,12 @@ function buildSingleton(): HandlerSingleton {
   // custom 模式经 env `PI_WEB_SANDBOX_ENTRY` 由 runner option-mapper 追加到 additionalExtensionPaths。
   // 未安装时为 undefined → 跳过注入(不报错,行为回退到默认发现)。
   const sandboxEntry = resolveSandboxEntry(config.agentDir);
-  // 扩展管理扩展入口(spec extension-install-agent-tools):强制注入每个会话,经 spawn env
-  // 下发,runner option-mapper 加入 forcedExtensionPaths。解析不到(异常布局)→ undefined,跳过注入。
-  const extToolsEntry = extensionManagerEntryPath();
-  // 自动会话标题扩展入口(spec auto-session-title):总开关 PI_WEB_AUTO_TITLE 默认开,
-  // 关闭(="0")时不解析、不下发 → 扩展根本不注入(服务端权威门控,零开销)。
-  // 解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
-  const autoTitleEnabled = process.env.PI_WEB_AUTO_TITLE !== "0";
-  const autoTitleEntry = autoTitleEnabled ? autoTitleEntryPath() : undefined;
-  // 内置 MCP 客户端扩展入口(spec builtin-mcp-client,Req 5.1):**无条件**下发 ——
-  // MCP 是一等公民,无需安装任何扩展;某个 server 连不连由 mcp.json 的 enabled 控制,
-  // 不在此处门控。解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
-  const mcpEntry = mcpEntryPath();
+  // ⚠ 三个 pi-web 自带内置扩展(ext-tools / auto-title / mcp)的入口**不再由主进程解析下发**
+  // (spec runner-self-resolved-builtins):它们改由 runner 侧从**自身安装树**自解析
+  // (packages/server/src/runner/builtin-extensions.ts)。原机制隐含「主进程与 runner 同文件
+  // 系统」的前提,在 e2b 沙箱下不成立,导致这些扩展在沙箱中静默不可用。
+  // 自动标题总开关 PI_WEB_AUTO_TITLE 的判定已随之下沉到扩展内部(关闭即不注册 handler),
+  // 用户可观察语义不变。sandboxEntry 不在此列:其入口在 agent 包内,仍由主进程解析下发。
 
   // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
   // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
@@ -746,14 +737,9 @@ function buildSingleton(): HandlerSingleton {
         ...config.providerKeys,
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
-        // 扩展管理扩展入口 → runner forcedExtensionPaths(spec extension-install-agent-tools)。
-        ...(extToolsEntry !== undefined ? { PI_WEB_EXT_TOOLS_ENTRY: extToolsEntry } : {}),
-        // 自动会话标题扩展入口 → runner forcedExtensionPaths(spec auto-session-title)。
-        ...(autoTitleEntry !== undefined ? { PI_WEB_AUTO_TITLE_ENTRY: autoTitleEntry } : {}),
-        // 内置 MCP 客户端(builtin-mcp-client,Req 5.1)。⚠ 仅本地传输分支下发:该路径是
-        // **宿主机绝对路径**,在 e2b 沙箱内不存在,下发进去只会让加载失败(既有三个
-        // *_ENTRY 同理)。沙箱形态需经镜像烘焙用沙箱内路径,属独立工作项。
-        ...(mcpEntry !== undefined ? { PI_WEB_MCP_ENTRY: mcpEntry } : {}),
+        // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
+        // (spec runner-self-resolved-builtins)。这消除了「宿主机绝对路径在沙箱内不存在」
+        // 的失效面,也使新增内置扩展不必再在此处接线。
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
         ...attachmentSpawnEnv(

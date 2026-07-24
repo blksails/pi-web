@@ -1,0 +1,22 @@
+{
+  "feature_name": "runner-self-resolved-builtins",
+  "created_at": "2026-07-23T17:48:50Z",
+  "updated_at": "2026-07-24T02:37:50Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

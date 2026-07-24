@@ -127,8 +127,22 @@ function resolveTitleModel(
   return ctx.model as Model<never> | undefined;
 }
 
-/** pi 扩展入口:解析配置并注册 agent_end 处理器。 */
+/**
+ * 总开关判定(spec: runner-self-resolved-builtins,任务 2.2;Req 3.2)。
+ *
+ * 改造前该判定在**主进程**:关闭时不下发本扩展入口 → 扩展根本不注入。改为 runner 侧自解析后
+ * 入口**恒被解析**,故判定必须下沉到此处 —— 关闭时不注册 handler(扩展空转),使
+ * 「`PI_WEB_AUTO_TITLE=0` = 无效果」这一用户可观察结果与改造前**逐字等价**。
+ *
+ * 语义沿用主进程原判据:`!== "0"` 即启用(未设置=默认启用)。
+ */
+export function isAutoTitleEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env["PI_WEB_AUTO_TITLE"] !== "0";
+}
+
+/** pi 扩展入口:解析配置并注册 agent_end 处理器(总开关关闭时不注册)。 */
 export default function autoTitleExtension(pi: ExtensionAPI): void {
+  if (!isAutoTitleEnabled()) return;
   const config = parseAutoTitleConfig(process.env);
   const handler = createAutoTitleHandler({
     config,

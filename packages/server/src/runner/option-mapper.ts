@@ -27,6 +27,7 @@ import type { ResolveProjectTrust } from "./project-trust.js";
 // desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
 // 不经 server barrel;egress-model-source 见 auth/)。
 import { resolveEgressModelSourceFromEnv } from "../auth/egress-model-source.js";
+import { resolveBuiltinExtensionEntries } from "./builtin-extensions.js";
 
 type ResourceLoaderOptions = NonNullable<
   CreateAgentSessionServicesOptions["resourceLoaderOptions"]
@@ -243,8 +244,13 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
  *  - `PI_WEB_EXT_TOOLS_ENTRY`:内置「扩展管理扩展」(spec extension-install-agent-tools)。
  *  - `PI_WEB_AUTO_TITLE_ENTRY`:内置「自动会话标题扩展」,由主进程按总开关 PI_WEB_AUTO_TITLE
  *    门控下发(spec auto-session-title)。
- *  - `PI_WEB_MCP_ENTRY`:内置「MCP 客户端扩展」(spec builtin-mcp-client),由主进程无条件
- *    下发(MCP 是一等公民,零扩展依赖;条目启停在 mcp.json 里控制,不在此门控)。
+ *  - `PI_WEB_MCP_ENTRY`:内置「MCP 客户端扩展」(spec builtin-mcp-client)。
+ *
+ * ⚠ **自 spec runner-self-resolved-builtins 起,三个 pi-web 自带扩展(ext-tools /
+ * auto-title / mcp)的主来源已改为 runner 侧自解析**({@link resolveBuiltinExtensionEntries}),
+ * 主进程不再下发其路径。本函数保留仅为**过渡期兼容**:外部编排若仍设置这些 env,识别但不报错
+ * (Req 3.3),并由调用方与自解析结果**去重**。
+ * `PI_WEB_SANDBOX_ENTRY` 不在自解析范围(入口在 agent 包内,须传 agentDir),仍以 env 为准。
  *
  * 纯函数(env 注入,不读全局),便于单测;顺序固定:sandbox → ext-tools → auto-title → mcp。
  */
@@ -255,6 +261,28 @@ export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[] {
     env["PI_WEB_AUTO_TITLE_ENTRY"],
     env["PI_WEB_MCP_ENTRY"],
   ].filter((p): p is string => p !== undefined && p.length > 0);
+}
+
+/**
+ * 本次会话要强制注入的扩展入口 = **自解析的内置扩展** ∪ **env 兼容项**(去重,保序)。
+ *
+ * 顺序语义:env 项(含 sandbox)在前、自解析项在后 —— 与改造前 `sandbox → ext-tools →
+ * auto-title → mcp` 的相对次序一致(改造后 env 通常只剩 sandbox,其余由自解析补齐)。
+ *
+ * 纯函数(env 与清单均可注入),便于单测。
+ */
+export function collectExtensionPaths(
+  env: NodeJS.ProcessEnv,
+  selfResolved: readonly string[] = resolveBuiltinExtensionEntries(),
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of [...collectForcedExtensionPaths(env), ...selfResolved]) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
 }
 
 /**
@@ -272,7 +300,8 @@ export function buildRuntimeFactory(
 ): CreateAgentSessionRuntimeFactory & {
   slashCompletions?: readonly SlashCompletionDecl[];
 } {
-  const forcedExtensionPaths = collectForcedExtensionPaths(process.env);
+  // 主来源=runner 侧自解析(与文件系统无关);env 仅作过渡兼容与 sandbox 入口(已去重)。
+  const forcedExtensionPaths = collectExtensionPaths(process.env);
   const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
     forcedExtensionPaths,
     ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),

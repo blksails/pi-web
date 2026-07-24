@@ -22,6 +22,7 @@
   "dependencies": {
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:^",
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
