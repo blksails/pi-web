@@ -352,3 +352,41 @@ describe("useAttachments", () => {
     expect(opts.upload).not.toHaveBeenCalled();
   });
 });
+
+describe("useAttachments.addExisting(已落库引用零上传摄入)", () => {
+  it("直接 ready 入列并计入 referenceIds;不触上传", () => {
+    const opts = okOptions();
+    const { result } = renderHook(() => useAttachments(opts));
+    act(() => {
+      result.current.addExisting?.([
+        { attachmentId: "att_x", name: "图X", displayUrl: "/attachments/att_x/raw?exp=1&sig=x" },
+      ]);
+    });
+    const it0 = result.current.items[0];
+    expect(it0?.status).toBe("ready");
+    expect(it0?.attachmentId).toBe("att_x");
+    expect(it0?.name).toBe("图X");
+    // 根相对展示 URL 按 baseUrl 解析(与上传路径同规)。
+    expect(it0?.displayUrl).toBe("/api/attachments/att_x/raw?exp=1&sig=x");
+    expect(result.current.referenceIds?.()).toEqual(["att_x"]);
+    expect(opts.upload).not.toHaveBeenCalled();
+  });
+
+  it("按 attachmentId 去重(重复拖入不重复入列)", () => {
+    const { result } = renderHook(() => useAttachments(okOptions()));
+    act(() => {
+      result.current.addExisting?.([{ attachmentId: "att_x" }]);
+      result.current.addExisting?.([{ attachmentId: "att_x" }, { attachmentId: "att_y" }]);
+    });
+    expect(result.current.items.map((i) => i.attachmentId)).toEqual(["att_x", "att_y"]);
+  });
+
+  it("引用项无本地字节:toImageContents 跳过;无 displayUrl 时 toFileParts 亦跳过", () => {
+    const { result } = renderHook(() => useAttachments(okOptions()));
+    act(() => {
+      result.current.addExisting?.([{ attachmentId: "att_x" }]);
+    });
+    expect(result.current.toImageContents()).toEqual([]);
+    expect(result.current.toFileParts?.()).toEqual([]);
+  });
+});
