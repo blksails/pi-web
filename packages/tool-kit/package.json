@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-tool-kit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": false,
   "description": "pi-web 通用工具套件:声明式工具引擎 + 首批 AIGC 生成工具集。主入口零运行时依赖(声明,前端安全);./runtime 子入口为 node-only 执行层(pi SDK + undici)。",
   "type": "module",
