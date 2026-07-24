@@ -17,6 +17,8 @@ import { PanesHost } from "@blksails/pi-web-panes-kit/react";
 import { aigcPanesDefinition } from "../../web/panes/index.js";
 import { imageRendererExtension } from "./image-renderer.js";
 import { mediaRendererExtension } from "./media-renderer.js";
+// 登录/身份(headerRight):mock 自定义扩展,日后接 pi-clouds(见 ./auth/mock-identity)。
+import { AuthStatus } from "./auth-status.js";
 
 // advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
 const panesConfig = {
@@ -62,9 +64,11 @@ export default defineWebExtension({
       mergeCommands: "replace",
     },
   },
-  // 唯一槽:右栏挂通用 PanesHost。宿主只负责 placement 与能力注入,pane 隔离由 panes-kit 承担。
+  // 右栏挂通用 PanesHost(宿主只负责 placement 与能力注入,pane 隔离由 panes-kit 承担);
+  // headerRight 挂账号状态(登录 mock 自定义扩展,日后接 pi-clouds)。
   slots: {
     panelRight: ConfiguredPanesHost,
+    headerRight: AuthStatus,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
   renderers: {
