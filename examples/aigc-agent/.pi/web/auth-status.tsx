@@ -1,51 +1,45 @@
 /**
  * AuthStatus — 账号状态槽(webext `headerRight`)。
  *
- * 登录**自定义扩展**的 mock 实现:webext 承载登录/身份 UI(Agent Routes 只读、跑子进程,
- * 不能建/写宿主会话,故登录归 webext);现为纯客户端 mock(见 ./auth/mock-identity),
- * **日后迁移到 pi-clouds**(SupabaseAuth 真登录 + tenant → PLATFORM_CALLBACK token)。
+ * 登录**自定义扩展**:webext 承载登录/身份 UI(Agent Routes 只读、跑子进程,不能建/写宿主
+ * 会话,故登录归 webext)。**真接入**——身份读 pi-web 宿主真实登录态 `GET /api/auth/me`
+ * (aigc-agent 老方法),形塑为 pi-clouds `AuthUser` 范式(见 ./auth/identity),日后无缝迁 pi-clouds。
+ * 未登录不渲染不占位(与老法一致;宿主守卫另挡)。
  */
 import * as React from "react";
-import {
-  getCurrentIdentity,
-  mockSignIn,
-  mockSignOut,
-  type AuthUser,
-} from "./auth/mock-identity.js";
+import { getCurrentIdentity, signOut, type AuthUser } from "./auth/identity.js";
 
-export function AuthStatus(): React.JSX.Element {
-  const [me, setMe] = React.useState<AuthUser | null>(() => getCurrentIdentity());
-  const label = me?.email ?? me?.userId ?? "未登录";
+export function AuthStatus(): React.JSX.Element | null {
+  const [me, setMe] = React.useState<AuthUser | null>(null);
+  const [loaded, setLoaded] = React.useState(false);
+
+  React.useEffect(() => {
+    let alive = true;
+    void getCurrentIdentity().then((u) => {
+      if (alive) {
+        setMe(u);
+        setLoaded(true);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 未登录 / 尚未加载 → 不渲染不占位。
+  if (!loaded || me === null) return null;
+
+  const label = me.email ?? me.userId;
   const initial = [...label][0] ?? "·";
-
-  const signOut = (): void => {
-    mockSignOut();
-    setMe(null);
+  const doSignOut = (): void => {
+    void signOut().then(() => setMe(null));
   };
-  const signIn = (): void => {
-    mockSignIn();
-    setMe(getCurrentIdentity());
-  };
-
-  const box: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-  };
-
-  if (me === null) {
-    return (
-      <div style={box} title="登录为 mock 占位,日后接 pi-clouds">
-        <button type="button" onClick={signIn} style={{ cursor: "pointer" }}>
-          登录(mock)
-        </button>
-      </div>
-    );
-  }
 
   return (
-    <div style={box} title={`mock 身份 · tenant=${me.tenantId ?? "-"}(日后接 pi-clouds)`}>
+    <div
+      style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}
+      title={`tenant=${me.tenantId ?? "-"}`}
+    >
       <span
         aria-hidden="true"
         style={{
@@ -63,7 +57,7 @@ export function AuthStatus(): React.JSX.Element {
       <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {label}
       </span>
-      <button type="button" onClick={signOut} style={{ cursor: "pointer" }} aria-label="登出">
+      <button type="button" onClick={doSignOut} style={{ cursor: "pointer" }} aria-label="登出">
         登出
       </button>
     </div>
