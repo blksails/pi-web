@@ -1,0 +1,64 @@
+name: Test (Linux 全量回归)
+
+# 单元/集成回归门(isolated-panes 任务 3.4 · F2):Linux 上跑全 workspace 的
+# typecheck 与测试套件。范围刻意为 `pnpm -r`(14 个 workspace 包,不含仓库根):
+#   - 根 tsc 与根 test/ 依赖磁盘兄弟仓 ../pi-clouds(tsconfig paths),CI 无从检出,
+#     属 registry/cloud 线,另行取证;
+#   - 各包套件(panes-kit/tool-kit/ui/server/…)自足,即 F2 的「全量回归」主体。
+# desktop 的 typecheck/test 是 cargo,Linux 需 tauri webkit 系依赖(同 desktop-release)。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck + test (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.19.0"
+          cache: pnpm
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      # Tauri v2 在 Linux 需要 webkit2gtk 等系统依赖(cargo check/test 用)。
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - run: pnpm install --frozen-lockfile
+
+      # tauri.conf 的 externalBin 在 cargo build 期即校验存在,缺 sidecar 直接中止编译
+      # (同 desktop-release);sha256 由 desktop/node-sidecar.lock.json 钉死。
+      - name: Fetch & verify Node sidecar
+        run: node scripts/fetch-node-sidecar.mjs --target x86_64-unknown-linux-gnu
+
+      # tauri bundle.resources 还校验 ../../payload 存在。真载荷出自 build:dist(cli-e2e 线),
+      # cargo check/test 只需目录在场——占位即可,不打真包。
+      - name: Stub payload dir (bundle.resources 存在性校验)
+        run: mkdir -p payload
+
+      - name: Typecheck (workspace 全包,含 desktop cargo check)
+        run: pnpm -r run typecheck
+
+      - name: Test (workspace 全包套件)
+        run: pnpm test

@@ -71,6 +71,21 @@ export type {
   SurfaceDispatch,
 } from "./surface/index.js";
 
+// ── panes 工作区 LLM 遥控(panes-workspace surface + pane_* 工具)────────────────
+export {
+  panesWorkspaceExtension,
+  makePanesWorkspaceExtension,
+} from "./panes/workspace-extension.js";
+export type { PanesWorkspaceExtensionOptions } from "./panes/workspace-extension.js";
+
+// ── pane 自带 tools 的绑定单元(pane 元信息 + extensions + routes 一体注册)──────
+export { composePaneAgentModules } from "./panes/agent-modules.js";
+export type {
+  PaneAgentModule,
+  PaneExtensionFactory,
+  ComposedPaneAgentModules,
+} from "./panes/agent-modules.js";
+
 // ── AIGC extension(进程内 ExtensionFactory)───────────────────────────────────
 export { aigcExtension } from "./aigc/extension.js";
 export { registerImageGeneration } from "./aigc/tools/image-generation.js";

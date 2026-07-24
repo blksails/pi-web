@@ -2,7 +2,7 @@
   "id": "panes",
   "targetApiVersion": "^0.5.0",
   "entry": "web-extension.mjs",
-  "integrity": "sha384-URX7+H6jRgGFTNXP73qDcwCZEaiIzsYHaVoD8+qivGio+gY5Md14x/n2LUqzAvYw",
+  "integrity": "sha384-1DSHi2iKOCQAKeMKC8J0wniy5h/YH2zP0cfWWna3gft96ZyrH7a2miP8kW7Cvtlh",
   "capabilities": [
     "slots",
     "config"

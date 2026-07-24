@@ -413,6 +413,9 @@ importers:
       '@blksails/pi-web-logger':
         specifier: workspace:*
         version: link:../logger
+      '@blksails/pi-web-panes-kit':
+        specifier: workspace:*
+        version: link:../panes-kit
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol

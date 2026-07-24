@@ -27,6 +27,24 @@ describe("agent route adapter", () => {
     await expect(client.query("pane-data", {}, 100)).rejects.toMatchObject({ code: "PAYLOAD_TOO_LARGE" });
   });
 
+  it("maps HTTP 409 to REVISION_CONFLICT with the upstream message", async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL) => new Response(JSON.stringify({
+      error: { code: "REVISION_CONFLICT", message: "revision 3 expected" },
+    }), { status: 409, headers: { "content-type": "application/json" } }));
+    const client = createAgentRouteClient({ baseUrl: "/api", sessionId: "s1", fetch: fetch as typeof globalThis.fetch });
+    await expect(client.mutate("pane-data", { revision: 2 })).rejects.toMatchObject({
+      code: "REVISION_CONFLICT",
+      status: 409,
+      message: "revision 3 expected",
+    });
+  });
+
+  it("maps invalid JSON to ROUTE_FAILED instead of leaking a parse error", async () => {
+    const fetch = vi.fn(async (_input: RequestInfo | URL) => new Response("<html>proxy error</html>", { status: 200 }));
+    const client = createAgentRouteClient({ baseUrl: "/api", sessionId: "s1", fetch: fetch as typeof globalThis.fetch });
+    await expect(client.query("pane-data")).rejects.toMatchObject({ code: "ROUTE_FAILED", status: 200 });
+  });
+
   it("retries ROUTE_NOT_FOUND during runner assembly and then succeeds", async () => {
     let attempt = 0;
     const fetch = vi.fn(async (_input: RequestInfo | URL) => ++attempt < 3

@@ -13,6 +13,11 @@ import { authorizePaneRequest, DEFAULT_PANE_RESPONSE_BYTES } from "../authorizat
 import { createAgentRouteClient } from "../agent-routes.js";
 import { asPaneHostError, PaneHostError } from "../errors.js";
 import { createPaneWorkspace, reducePaneWorkspace, type PaneWorkspaceAction } from "../instances.js";
+import {
+  PANES_WORKSPACE_DOMAIN,
+  PanesWorkspaceSnapshotSchema,
+  type PaneWorkspaceOp,
+} from "../workspace-protocol.js";
 
 export interface PanesSurfaceAccess {
   run(domain: string, action: string, args?: unknown): Promise<unknown>;
@@ -48,6 +53,12 @@ export interface PanesHostProps {
   readonly className?: string;
   readonly onHostError?: (error: PaneHostError) => void;
   readonly createInstanceId?: (paneId: string, sequence: number) => string;
+  /**
+   * LLM 工作区遥控桥的 surface domain(见 workspace-protocol.ts)：订阅
+   * `surface:<domain>` 快照增量应用意图 ops，并经 `surface.run(<domain>, "report", …)`
+   * 回声实况。false 关闭；仅在提供 surface 时生效，agent 未发布该 domain 时零噪声。
+   */
+  readonly workspaceDomain?: string | false;
 }
 
 interface LiveConnection {
@@ -91,6 +102,7 @@ export function PanesHost({
   className,
   onHostError,
   createInstanceId = defaultInstanceId,
+  workspaceDomain = PANES_WORKSPACE_DOMAIN,
 }: PanesHostProps): React.JSX.Element {
   const sequence = React.useRef(0);
   const nextId = React.useCallback((paneId: string) => createInstanceId(paneId, ++sequence.current), [createInstanceId]);
@@ -142,6 +154,86 @@ export function PanesHost({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [config.showCommandPalette, dispatch, workspace.instances]);
+
+  // ── LLM 工作区遥控桥(workspace-protocol.ts)────────────────────────────────
+  // 下行:订阅 surface:<domain> 快照,对 opId 增量应用意图 ops;首帧取基线(不重放
+  // 历史),opId 回退(agent 重启)自动再基线。上行:workspace 变化或 appliedOpId 推进
+  // 时经 surface.run(<domain>,"report",…) 回声实况;内容去重,best-effort。
+  const appliedOpRef = React.useRef<number | undefined>(undefined);
+  const lastReportRef = React.useRef<string | undefined>(undefined);
+  const snapshotSeenRef = React.useRef(false);
+  const [reportTick, setReportTick] = React.useState(0);
+
+  React.useEffect(() => {
+    if (surface === undefined || workspaceDomain === false) return;
+    const applyOp = (op: PaneWorkspaceOp): void => {
+      if (op.type === "open") {
+        if (definition.panes.some((pane) => pane.id === op.paneId)) {
+          dispatch({ type: "open", paneId: op.paneId, instanceId: nextId(op.paneId) });
+        }
+        return;
+      }
+      // 目标解析放进函数式更新,使同一快照内「先 open 后 activate」的串行 ops 互相可见。
+      setWorkspace((current) => {
+        const target = op.instanceId !== undefined
+          ? current.instances.find((instance) => instance.instanceId === op.instanceId)
+          : (op.paneId !== undefined ? current.instances.find((instance) => instance.paneId === op.paneId) : undefined);
+        if (target === undefined) return current;
+        // close 需同步断连;closeConnection 幂等,StrictMode 双调无害。
+        if (op.type === "close") closeConnection(target.instanceId);
+        const action: PaneWorkspaceAction = op.type === "activate"
+          ? { type: "activate", instanceId: target.instanceId }
+          : op.type === "close"
+            ? { type: "close", instanceId: target.instanceId }
+            : { type: "reload", instanceId: target.instanceId };
+        return reducePaneWorkspace(definition, current, action);
+      });
+    };
+    const consume = (value: unknown): void => {
+      const parsed = PanesWorkspaceSnapshotSchema.safeParse(value);
+      if (!parsed.success) return;
+      snapshotSeenRef.current = true;
+      const ops = [...parsed.data.ops].sort((a, b) => a.opId - b.opId);
+      const latest = ops[ops.length - 1]?.opId ?? 0;
+      if (appliedOpRef.current === undefined || appliedOpRef.current > latest) {
+        appliedOpRef.current = latest;
+      } else {
+        for (const op of ops) {
+          if (op.opId <= appliedOpRef.current) continue;
+          appliedOpRef.current = op.opId;
+          applyOp(op);
+        }
+      }
+      setReportTick((tick) => tick + 1);
+    };
+    consume(surface.getState(`surface:${workspaceDomain}`));
+    return surface.subscribe(`surface:${workspaceDomain}`, consume);
+  }, [closeConnection, definition, dispatch, nextId, surface, workspaceDomain]);
+
+  React.useEffect(() => {
+    if (surface === undefined || workspaceDomain === false || !snapshotSeenRef.current) return;
+    const report = {
+      appliedOpId: appliedOpRef.current ?? 0,
+      ...(workspace.activeInstanceId !== undefined ? { activeInstanceId: workspace.activeInstanceId } : {}),
+      panes: definition.panes.map((pane) => ({
+        paneId: pane.id,
+        title: pane.title,
+        openCount: workspace.instances.filter((instance) => instance.paneId === pane.id).length,
+        maxInstances: pane.maxInstances,
+        allowMultiple: pane.allowMultiple,
+      })),
+      instances: workspace.instances.map((instance) => ({
+        instanceId: instance.instanceId,
+        paneId: instance.paneId,
+        epoch: instance.epoch,
+        state: instance.state,
+      })),
+    };
+    const encoded = JSON.stringify(report);
+    if (encoded === lastReportRef.current) return;
+    lastReportRef.current = encoded;
+    void Promise.resolve(surface.run(workspaceDomain, "report", report)).catch(() => undefined);
+  }, [definition, reportTick, surface, workspace, workspaceDomain]);
 
   const handleRequest = React.useCallback(async (
     instance: PaneInstance,

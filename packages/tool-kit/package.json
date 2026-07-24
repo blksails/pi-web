@@ -25,6 +25,7 @@
   "dependencies": {
     "@blksails/pi-web-agent-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-panes-kit": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "undici": "^6.21.0",

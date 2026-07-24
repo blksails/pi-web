@@ -216,6 +216,11 @@ export const SessionListItemSchema = z.object({
   createdAt: z.string(),
   /** ISO 最近更新时间(可得则填;部分存储后端无此值)。 */
   updatedAt: z.string().optional(),
+  /**
+   * agent-source 来源标识(如 agent source 名);部分会话(builtin/空源)无。
+   * 可选、纯增量:无此字段的存储后端解析仍通过,含此字段的项经 `.parse()` 保留而非被 strip。
+   */
+  source: z.string().optional(),
 });
 export type SessionListItem = z.infer<typeof SessionListItemSchema>;
 

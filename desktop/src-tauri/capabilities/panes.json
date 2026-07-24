@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "pi-web-desktop-panes",
+  "description": "pane webview（pane-* 标签）的最小能力面：仅事件监听 + 中继上行；不授予导航、shell、opener、对话框或任何 host 侧命令",
+  "windows": [
+    "pane-*"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*",
+      "http://127.0.0.1:*/*"
+    ]
+  },
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-pane-relay-guest"
+  ]
+}

@@ -93,7 +93,8 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     operation: z.literal("attachment.put"),
     name: z.string().min(1).max(255),
     mimeType: z.string().max(255),
-    bytes: z.instanceof(ArrayBuffer),
+    // 结构化克隆/跨 realm 中继后 instanceof 失真,以 brand 判别。
+    bytes: z.custom<ArrayBuffer>((value) => Object.prototype.toString.call(value) === "[object ArrayBuffer]"),
   }),
   RequestBaseSchema.extend({
     operation: z.literal("conversation.submit"),
