@@ -321,3 +321,13 @@
 | `e2e/cli/cli-watch.mjs:71` | 断言英文标签 `Start session`，而 UI 默认 locale 为 zh（「开始会话」）。该行自 `377d237`(2026-06-24) 未变，早于 i18n 中文化 | 在 `98e7e94` 的干净 worktree 上复现同一失败 |
 | Tauri `resource_dir()` | `.app` 位于 `os.tmpdir()`（macOS `/var/folders/<hash>/T/`）时解析失败，壳报「缺少资源目录」。`/private/tmp`、`$HOME`、`/private/var/tmp` 均正常 | 改造前的 `.app` 在同一位置同样失败 |
 | `test/bash-route.integration.test.ts` | 全量 vitest 并行负载下 5s 超时（单独跑 3/3 通过） | 在 `98e7e94` 上跑全量同样失败 |
+
+## 环境阻塞(2026-07-24)
+
+**8.1「desktop-release.yml 改产出载荷工件」无法在本地闭合,保持未勾。** 其完成条件明写
+「**在真实 GitHub Actions 上跑通一次**」——工作流文件可以在本地改写,但"跑通"这一验收
+必须发生在 CI 上(各平台矩阵下载 payload、校验 digest、smoke job 清空 runtimeRoot 后
+真实首启解包)。
+
+**不标记完成**——本地改完 yml 也只是"写了",不是"跑通了"。解除条件:推一次触发该工作流
+的提交并确认三平台 job 与 smoke 全绿。
