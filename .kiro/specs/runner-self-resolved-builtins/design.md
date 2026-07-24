@@ -1,5 +1,12 @@
 # Design Document — runner-self-resolved-builtins
 
+> **状态:经实现校准的最终设计**(spec 已实现并提交 `ff9ba03`)。
+> 初稿写于实现前;实现中出现两处偏离,已据实回写:① 范围由"四个内置扩展"收窄为
+> **三个 tool-kit 扩展**(见下方勘误);② 补齐实现时引入、初稿未固化的两个契约
+> (`collectExtensionPaths` 去重合并、`isAutoTitleEnabled` 门控接缝)。
+> 本文件现与 `packages/server/src/runner/builtin-extensions.ts`、`option-mapper.ts`、
+> `packages/tool-kit/src/auto-title/auto-title-extension.ts` 的实际导出一致。
+
 ## Overview
 
 **Purpose**:把 pi-web 自带内置扩展的注入方式,从「主进程算绝对路径 → spawn env 下发 → runner 读 env」改为「**runner 从自身安装树自解析**」,消除「主进程与 runner 处于同一文件系统」这一在 e2b 沙箱下不成立的隐含前提。
@@ -107,9 +114,9 @@ packages/server/src/runner/builtin-extensions.ts   # ★ 单一清单 + resolveB
 ```
 
 ### 修改
-- `packages/server/src/runner/option-mapper.ts` — `buildRuntimeFactory` 把自解析结果并入 forcedExtensionPaths;`collectForcedExtensionPaths` 降级为过渡期兼容(识别既有 env,不作主来源,去重)。
+- `packages/server/src/runner/option-mapper.ts` — **新增 `collectExtensionPaths()`**(自解析 ∪ env,去重保序),`buildRuntimeFactory` 改调它;`collectForcedExtensionPaths` 保留但降级为过渡期兼容(识别既有 env + sandbox 入口,不再是主来源)。
 - `packages/server/package.json` — 新增 `@blksails/pi-web-tool-kit` 运行时依赖(**已完成**)。
-- `packages/tool-kit/src/auto-title/auto-title-extension.ts` — 总开关判定下沉到扩展内部。
+- `packages/tool-kit/src/auto-title/auto-title-extension.ts` — **新增导出 `isAutoTitleEnabled()`**,`autoTitleExtension` 开头据其短路返回(关闭即不注册 handler)。
 - `lib/app/pi-handler.ts` — 退役 `PI_WEB_AUTO_TITLE_ENTRY` / `PI_WEB_EXT_TOOLS_ENTRY` / `PI_WEB_MCP_ENTRY` 三处下发(`PI_WEB_SANDBOX_ENTRY` 保留)。
 
 ## System Flows
@@ -168,6 +175,60 @@ export function resolveBuiltinExtensionEntries(
 ```
 - Postconditions:返回路径在**当前运行环境**有效(本地=monorepo 源,沙箱=镜像内包路径)。
 - Invariants:不抛出;不可解析降级为跳过。
+
+### collectExtensionPaths(option-mapper,新增)
+
+本改造的**实际接线点**:把自解析结果与既有 env 合并成本次会话要强制注入的路径集合。
+`buildRuntimeFactory` 由原先的 `collectForcedExtensionPaths(process.env)` 改调本函数。
+
+| Field | Detail |
+|---|---|
+| Intent | 自解析 ∪ env 兼容项,去重保序 |
+| Requirements | 1.1, 1.2, 3.1, 3.3 |
+
+**Contracts**: Service
+
+```typescript
+/** 既有函数保留(过渡兼容 + sandbox 入口),不再是主来源。 */
+export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[];
+
+/**
+ * 本次会话强制注入的扩展入口 = env 兼容项 ∪ 自解析内置扩展,**去重保序**。
+ * `selfResolved` 可注入,便于单测。
+ */
+export function collectExtensionPaths(
+  env: NodeJS.ProcessEnv,
+  selfResolved?: readonly string[],
+): string[];
+```
+- **顺序语义**:env 项(含 `PI_WEB_SANDBOX_ENTRY`)在前、自解析项在后 —— 与改造前
+  `sandbox → ext-tools → auto-title → mcp` 的相对次序一致(改造后 env 通常只剩 sandbox)。
+- **去重语义**:同一路径经 env 与自解析同时出现时只注入一次(Req 3.3 的关键 —— 外部编排
+  仍设置旧 env 时不得重复注入)。
+- Invariants:纯函数(env 与清单均可注入);不读全局;不抛出。
+
+### isAutoTitleEnabled(auto-title 扩展,新增)
+
+门控下沉后的**可测接缝**:把「总开关判定」从主进程搬进扩展自身。
+
+| Field | Detail |
+|---|---|
+| Intent | 在扩展内部判定 `PI_WEB_AUTO_TITLE`,关闭即不注册 handler |
+| Requirements | 3.2 |
+
+**Contracts**: Service
+
+```typescript
+/** 判据沿用主进程原语义:`!== "0"` 即启用(未设置=默认启用)。 */
+export function isAutoTitleEnabled(env?: NodeJS.ProcessEnv): boolean;
+```
+- **等价性要求**:`PI_WEB_AUTO_TITLE=0` 时 `autoTitleExtension` 必须**不注册** `agent_end`
+  handler —— 使「关闭=无效果」的用户可观察结果与改造前逐字等价(改造前是"扩展根本不注入")。
+- Invariants:纯函数;不抛出。
+
+> **为什么这两个接口必须出现在设计里**:它们是本改造**行为正确性的承载点** ——
+> `collectExtensionPaths` 的去重决定「旧 env 残留时不重复注入」,`isAutoTitleEnabled` 的
+> 判定决定「关闭开关仍然无效果」。初稿只描述了机制方向而未固化这两处契约,故在实现后据实补齐。
 
 ## Error Handling
 
