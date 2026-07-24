@@ -1,5 +1,5 @@
 // [迁移内联] 源:aigc-agent packages/platform-client/src/index.ts(原包名 @aigc-agent/platform-client,
-// 单文件零依赖,aigc 专属胶水故不上提 workspace 包)。由 scripts/sync-from-aigc-agent.mjs 覆盖,勿手改。
+// 单文件零依赖,aigc 专属胶水故不上提 workspace 包)。例已转 canonical(sync 退役),直接维护本文件。
 /**
  * @aigc-agent/platform-client — 子进程侧平台接缝(设计文档 §4.1.1 ③)。
  *
@@ -41,6 +41,19 @@ export interface RecordGenerationInput {
 
 export type AssetKind = "image" | "video" | "audio";
 
+/** 以词搜图单条命中(shape 与宿主 /api/creative-search 对齐,web 面板直接消费)。 */
+export interface CreativeHit {
+  readonly id: string;
+  readonly similarity: number;
+  readonly payload: Record<string, unknown>;
+}
+
+export interface CreativeSearchResult {
+  readonly items: readonly CreativeHit[];
+  /** 语义降级标记(如 embedding_unavailable);有值时 items 恒空。 */
+  readonly error?: string;
+}
+
 export interface AssetRecord {
   readonly assetId: string;
   readonly attachmentId?: string;
@@ -76,6 +89,8 @@ export interface PlatformClient {
   listAssets(q?: AssetQuery): Promise<Page<AssetRecord>>;
   /** 取单条素材(attachmentCatalog.resolve 用;经 displayUrl 子进程 fetch 字节)。 */
   getAsset(assetId: string): Promise<AssetRecord | undefined>;
+  /** 以词搜图(search pane 的 creative-search route 用):父进程按租户做向量相似检索。 */
+  searchCreatives(query: string, limit?: number): Promise<CreativeSearchResult>;
 }
 
 /** 平台接缝不可用(env 未注入 token)或回调失败时抛出。 */
@@ -98,6 +113,7 @@ const UNAVAILABLE: PlatformClient = {
   recordGeneration: unavailable,
   listAssets: unavailable,
   getAsset: unavailable,
+  searchCreatives: unavailable,
 };
 
 /**
@@ -147,5 +163,10 @@ export function getPlatformContext(
       call<AssetRecord | null>("/assets/get", { assetId }).then(
         (r) => r ?? undefined,
       ),
+    searchCreatives: (query, limit) =>
+      call<CreativeSearchResult>("/creatives/search", {
+        query,
+        ...(limit !== undefined ? { limit } : {}),
+      }),
   };
 }

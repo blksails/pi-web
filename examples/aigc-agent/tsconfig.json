@@ -1,0 +1,38 @@
+{
+  "//": "examples/aigc-agent 专属 typecheck 单元。根 tsconfig exclude 了 examples/,故本 example(含下沉的 media-tools)由此配单独取证:pnpm exec tsc -p examples/aigc-agent/tsconfig.json --noEmit。paths 直指 packages/*/src(免赖构建产物);@earendil-works(pi SDK,运行时由 pi runner 子进程提供)typecheck 期指向 tool-kit 的 node_modules 副本。",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "paths": {
+      "@blksails/pi-web-logger": ["../../packages/logger/src/index.ts"],
+      "@blksails/pi-web-agent-kit": ["../../packages/agent-kit/src/index.ts"],
+      "@blksails/pi-web-canvas-kit": ["../../packages/canvas-kit/src/index.ts"],
+      "@blksails/pi-web-primitives": ["../../packages/primitives/src/index.ts"],
+      "@blksails/pi-web-panes-kit": ["../../packages/panes-kit/src/index.ts"],
+      "@blksails/pi-web-panes-kit/react": ["../../packages/panes-kit/src/react/index.ts"],
+      "@blksails/pi-web-canvas-ui": ["../../packages/canvas-ui/src/index.ts"],
+      "@blksails/pi-web-tool-kit": ["../../packages/tool-kit/src/index.ts"],
+      "@blksails/pi-web-tool-kit/aigc-canvas-schema": ["../../packages/tool-kit/src/aigc/canvas/schema.ts"],
+      "@earendil-works/pi-ai": ["../../node_modules/@blksails/pi-web-tool-kit/node_modules/@earendil-works/pi-ai"],
+      "@earendil-works/pi-coding-agent": ["../../node_modules/@blksails/pi-web-tool-kit/node_modules/@earendil-works/pi-coding-agent"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "media-tools/node_modules",
+    "media-tools/test",
+    "web/pane-documents.generated.ts"
+  ]
+}

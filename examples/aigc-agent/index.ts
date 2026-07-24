@@ -2,8 +2,9 @@ import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";
 import { aigcExtension, canvasSurfaceExtension } from "@blksails/pi-web-tool-kit/runtime";
 // 媒体工具族(视频生成 / TTS / 本地 ffmpeg 后处理)——可自由集成的独立包,任意 pi-web agent 皆可装载。
-import { mediaSlashCompletions } from "@aigc-agent/media-tools";
-import { mediaToolsExtension } from "@aigc-agent/media-tools/runtime";
+// [下沉] media-tools 为 aigc 专属,已从 packages/ 下沉入本 example 内部(./media-tools),经相对路径引。
+import { mediaSlashCompletions } from "./media-tools/src/index.js";
+import { mediaToolsExtension } from "./media-tools/src/runtime.js";
 // 声明式 HTTP route 集中在 routes/ 子目录（一路由一文件），index.ts 只汇总不放 handler 逻辑。
 import { routes } from "./routes/index.js";
 // A1b:宿主素材库(aigc_assets)经上游 @ catalog 范式引用注入对话(替代已删的拖拽注入接缝)。
@@ -13,8 +14,14 @@ import { createAttachmentCatalog } from "./attachment-catalog.js";
 import { prefetchPlatformKeys } from "./platform-keys.js";
 // P0-B B5:生成产物落 aigc_assets 素材库 + aigc_generations 台账(挂 tool_execution_end,零改 vendor)。
 import { aigcPersistExtension } from "./persist-extension.js";
+// Wave 5(6.1)「pane 自带 tools」:每业务域 pane 一个 PaneAgentModule(元信息 + extensions + routes),
+// composePaneAgentModules 装配即校验 route 覆盖(pane 声明的 route 必有模块供给,缺即抛)。
+import { composePaneAgentModules } from "@blksails/pi-web-tool-kit/runtime";
+import { paneModules } from "./panes/modules.js";
 
 await prefetchPlatformKeys();
+
+const panes = composePaneAgentModules(paneModules);
 
 export default defineAgent({
   // model 省略 → 继承 ~/.pi/agent/settings.json 的默认 provider/model
@@ -60,12 +67,12 @@ export default defineAgent({
   ].join("\n"),
   // AIGC 工具（image_generation/image_edit）+ canvas 权威 surface（画廊聚合 + 二创工作台）
   // 均经进程内 ExtensionFactory 装载（升级后 tool-kit 由 buildAigcTools 改为此形态）。
-  extensions: [aigcExtension, canvasSurfaceExtension, aigcPersistExtension, mediaToolsExtension],
+  extensions: [aigcExtension, canvasSurfaceExtension, aigcPersistExtension, mediaToolsExtension, ...panes.extensions],
   // slash 补全候选：图像(/img-gen、/img-edit) + 媒体(/t2v、/i2v、/tts、/gif、/clip)；选中只填入、不执行。
   slashCompletions: [...aigcSlashCompletions, ...mediaSlashCompletions],
-  // 声明式 HTTP route（agent-declared-routes，承接自范例）：只读查询、只在子进程执行、不过 LLM。
-  // GET /api/sessions/:id/agent-routes/gallery-stats → 画廊统计 JSON。
-  routes,
+  // 声明式 HTTP route（agent-declared-routes）：只在子进程执行、不过 LLM。
+  // GET /agent-routes/gallery-stats(画廊统计) + pane 模块自带 route(POST creative-search / GET assets-list)。
+  routes: [...routes, ...panes.routes],
   // A1b:@ 引用素材库图像 → list(补全)/resolve(materialize 取字节)经 platform-client 回调;
   // 平台不可用则 list 静默返 [](优雅降级)。
   attachmentCatalog: createAttachmentCatalog(),
