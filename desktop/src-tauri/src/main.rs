@@ -10,6 +10,7 @@
 mod credential_store;
 mod dialog;
 mod external_link;
+mod pane_relay;
 mod ready_probe;
 mod resolve_artifact;
 mod runtime_mode;
@@ -269,11 +270,16 @@ fn main() {
             server_origin: server_origin.clone(),
             quitting: Mutex::new(false),
         })
+        .manage(pane_relay::PaneRelayState::default())
         .invoke_handler(tauri::generate_handler![
             dialog::pick_directory,
             credential_store::store_credential,
             credential_store::load_credential,
             credential_store::clear_credential,
+            pane_relay::pane_relay_bind,
+            pane_relay::pane_relay_unbind,
+            pane_relay::pane_relay_to_guest,
+            pane_relay::pane_relay_to_host,
             retry,
             quit
         ])
