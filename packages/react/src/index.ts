@@ -154,7 +154,6 @@ export {
   verifyExtension,
   verifyIntegrity,
   verifySignature,
-  isApiCompatible,
   computeSri,
   type GateOptions,
   type GateResult,

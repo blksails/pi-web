@@ -24,7 +24,6 @@ export interface RuntimeFeatures {
   readonly extensionAllowlist: string;
   readonly extensionBaseUrl: string;
   readonly disableReadinessHandshake: boolean;
-  readonly hostApiVersion: string;
 }
 
 let injected: RuntimeFeatures | undefined;
@@ -68,7 +67,6 @@ function envFeatures(): RuntimeFeatures {
     disableReadinessHandshake: truthy(
       env.NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE,
     ),
-    hostApiVersion: env.NEXT_PUBLIC_PI_WEB_KIT_VERSION ?? "0.1.0",
   };
 }
 

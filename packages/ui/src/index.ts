@@ -15,6 +15,12 @@ export {
   type AgentSourcePickerProps,
 } from "./chat/agent-source-picker.js";
 export { PiQueuePanel, type PiQueuePanelProps } from "./chat/pi-queue-panel.js";
+export {
+  ATTACHMENT_ID_MIME,
+  hasAttachmentRef,
+  attachmentRefsFromDataTransfer,
+  type DroppedAttachmentRef,
+} from "./chat/attachment-dnd.js";
 export type { PiChatSlots } from "./chat/slots.js";
 
 // 最小拖入聊天组件

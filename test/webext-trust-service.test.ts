@@ -43,7 +43,6 @@ function service(opts: { isProduction?: boolean; requireSignature?: boolean } = 
   });
   return createWebextTrustService({
     registry,
-    hostApiVersion: "0.1.0",
     requireSignature: opts.requireSignature ?? true,
     isProduction: opts.isProduction ?? false,
   });
@@ -76,16 +75,6 @@ describe("WebextTrustService", () => {
     const decl: WebExtensionManifest = { id: "d", targetApiVersion: "^0.1.0", config: { layout: "wide" } };
     const r = await service().verifyManifest(decl);
     expect(r.ok).toBe(true);
-  });
-
-  it("版本不兼容 → 拒绝", async () => {
-    const signed: WebExtensionManifest = {
-      ...codeBase,
-      targetApiVersion: "^9.0.0",
-      signature: await sign({ ...codeBase, targetApiVersion: "^9.0.0" }, pubPriv),
-    };
-    const r = await service().verifyManifest(signed);
-    expect(r.ok).toBe(false);
   });
 
   it("dev 免签模式 → 放行但带不安全提示", async () => {

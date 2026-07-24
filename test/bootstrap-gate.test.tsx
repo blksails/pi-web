@@ -13,7 +13,6 @@ const PAYLOAD = {
   defaultCwd: "/tmp/x",
   autoStart: false,
   multiTenant: false,
-  hostApiVersion: "0.1.0",
   features: {
     canvas: true,
     sourcePicker: false,
@@ -99,6 +98,5 @@ describe("BootstrapGate", () => {
     await waitFor(() => expect(screen.getByTestId("gated-subtree")).toBeTruthy());
     const { getRuntimeFeatures } = await import("@/lib/app/runtime-features");
     expect(getRuntimeFeatures().canvas).toBe(true);
-    expect(getRuntimeFeatures().hostApiVersion).toBe("0.1.0");
   });
 });

@@ -24,12 +24,12 @@ afterEach(async () => {
 
 describe("FavoritesStore", () => {
   it("文件缺失 → 返回空(Req 4.7)", async () => {
-    await expect(createFavoritesStore({ filePath }).list()).resolves.toEqual([]);
+    await expect(createFavoritesStore({ root: dir }).list()).resolves.toEqual([]);
   });
 
   it("坏 JSON → 返回空,不抛(Req 4.7)", async () => {
     await fs.writeFile(filePath, "{ not json ]");
-    await expect(createFavoritesStore({ filePath }).list()).resolves.toEqual([]);
+    await expect(createFavoritesStore({ root: dir }).list()).resolves.toEqual([]);
   });
 
   it("坏条目跳过,保留其余(Req 4.7)", async () => {
@@ -43,12 +43,12 @@ describe("FavoritesStore", () => {
         ],
       }),
     );
-    const favs = await createFavoritesStore({ filePath }).list();
+    const favs = await createFavoritesStore({ root: dir }).list();
     expect(favs).toEqual([{ source: "/good", name: "Good" }]);
   });
 
   it("set 全量替换,list 回读一致(Req 4.1/4.2)", async () => {
-    const store = createFavoritesStore({ filePath });
+    const store = createFavoritesStore({ root: dir });
     await store.set([
       { source: "/a", name: "A" },
       { source: "/b", name: "B" },
@@ -65,7 +65,7 @@ describe("FavoritesStore", () => {
   it("set 只写该偏好文件,目录其余不变(Req 6.3)", async () => {
     await fs.writeFile(join(dir, "unrelated.txt"), "keep");
     const before = (await fs.readdir(dir)).sort();
-    await createFavoritesStore({ filePath }).set([{ source: "/x", name: "X" }]);
+    await createFavoritesStore({ root: dir }).set([{ source: "/x", name: "X" }]);
     const after = (await fs.readdir(dir)).sort();
     // 仅新增收藏文件,未动其它文件;临时文件已 rename 掉不残留。
     expect(after).toEqual([...before, "agent-source-favorites.json"].sort());

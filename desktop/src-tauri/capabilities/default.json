@@ -18,6 +18,7 @@
     "allow-quit",
     "allow-store-credential",
     "allow-load-credential",
-    "allow-clear-credential"
+    "allow-clear-credential",
+    "allow-pane-relay-host"
   ]
 }

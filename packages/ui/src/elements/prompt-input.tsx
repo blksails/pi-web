@@ -87,6 +87,12 @@ export interface PromptInputProps {
    * 仅在前端体验开关开启时由装配层传入(关闭时恒为 undefined)。
    */
   readonly mode?: "bash" | "bash-no-context";
+  /**
+   * 输入历史翻阅(IDE 终端式):无修饰键的 ↑/↓ 时询问装配层;返回 true 表示已接管
+   * (本组件 preventDefault),false 则保持光标移动默认行为(编辑中不劫持)。
+   * 补全浮层占用(suppressEnterSubmit)与 Alt+↑(取回)优先,不询问。
+   */
+  readonly onHistoryNav?: (dir: "prev" | "next") => boolean;
 }
 
 /** value 去除首尾空白后是否为空(用于空提交判定,Req 1.3)。 */
@@ -117,6 +123,7 @@ export function PromptInput({
   mode,
   onRequestRetrieve,
   canRetrieve = false,
+  onHistoryNav,
 }: PromptInputProps): React.JSX.Element {
   const t = useI18n();
   const canSubmit = !disabled && !isBlank(value);
@@ -198,6 +205,21 @@ export function PromptInput({
       event.preventDefault();
       onRequestRetrieve();
       return;
+    }
+    // 输入历史翻阅:无修饰键 ↑/↓ 询问装配层(接管则拦默认;编辑中装配层返回 false 不劫持)。
+    if (
+      onHistoryNav !== undefined &&
+      !suppressEnterSubmit &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown")
+    ) {
+      if (onHistoryNav(event.key === "ArrowUp" ? "prev" : "next")) {
+        event.preventDefault();
+        return;
+      }
     }
     // Shift+Enter:换行,不提交(Req 1.4)——交由浏览器默认行为插入换行。
     // Alt+Enter 视为 Enter 的「跟进」变体(followUp),不视为换行。

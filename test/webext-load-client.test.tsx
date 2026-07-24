@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe("useRuntimeWebext 降级隔离", () => {
-  it("resolve 端点回 rejectedReason(如签名/SRI/版本门拒绝) → 状态 rejected,extension 恒 undefined,不抛", async () => {
+  it("resolve 端点回 rejectedReason(如签名/SRI 拒绝) → 状态 rejected,extension 恒 undefined,不抛", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>

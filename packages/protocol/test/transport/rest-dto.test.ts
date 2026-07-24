@@ -8,10 +8,12 @@ import {
   GetForkMessagesResponseSchema,
   GetStateResponseSchema,
   ListSessionFavoritesResponseSchema,
+  ListSessionsResponseSchema,
   PromptRequestSchema,
   RenameSessionRequestSchema,
   RenameSessionResponseSchema,
   SESSION_NAME_MAX_LENGTH,
+  SessionListItemSchema,
   SetModelRequestSchema,
   SetSessionFavoritesRequestSchema,
   SetThinkingRequestSchema,
@@ -172,6 +174,27 @@ describe("GetForkMessagesResponseSchema (对齐 get_fork_messages)", () => {
     if (!res.success) {
       expect(res.error.issues.some((i) => i.path.includes("text"))).toBe(true);
     }
+  });
+});
+
+describe("SessionListItemSchema (session-source-protocol)", () => {
+  const base = { sessionId: "s1", cwd: "/w", createdAt: "2026-01-01T00:00:00Z" };
+  it("保留 source(含 source 的项经 parse 不被 strip)", () => {
+    const parsed = SessionListItemSchema.parse({ ...base, source: "git:acme/agent" });
+    expect(parsed.source).toBe("git:acme/agent");
+  });
+  it("无 source 解析通过(向后兼容,source 缺省)", () => {
+    const parsed = SessionListItemSchema.parse({ ...base });
+    expect(parsed.source).toBeUndefined();
+  });
+  it("ListSessionsResponseSchema 数组项保留 source(修 client 侧 strip 根因)", () => {
+    const res = ListSessionsResponseSchema.parse({
+      sessions: [{ ...base, source: "builtin:default-agent" }, { ...base, sessionId: "s2" }],
+      scope: "cwd",
+      globalEnabled: false,
+    });
+    expect(res.sessions[0]?.source).toBe("builtin:default-agent");
+    expect(res.sessions[1]?.source).toBeUndefined();
   });
 });
 

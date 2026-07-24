@@ -52,7 +52,7 @@ const UNTRUSTED_SIGN_PRIVATE_KEY =
 /** 运行时声明夹具 manifest(纯声明,无 entry / 无签名)。resolve 端点直接读此文件。 */
 const RUNTIME_DECLARATIVE_MANIFEST = {
   id: "webext-runtime-declarative",
-  targetApiVersion: "^0.1.0",
+  targetApiVersion: "^0.5.0",
   capabilities: ["config"],
   config: {
     documentTitle: "Runtime Declarative · pi-web",
@@ -75,7 +75,7 @@ async function buildCodeExampleDists(): Promise<void> {
     const dir = resolve(`examples/${name}-agent/.pi/web`);
     await buildWebExtension({
       id,
-      targetApiVersion: "^0.1.0",
+      targetApiVersion: "^0.5.0",
       entryDir: dir,
       outDir: resolve(dir, "dist"),
     });
@@ -86,7 +86,7 @@ async function buildRuntimeCodeFixture(): Promise<void> {
   const dir = resolve("examples/webext-runtime-code-agent/.pi/web");
   await buildWebExtension({
     id: "webext-runtime-code",
-    targetApiVersion: "^0.1.0",
+    targetApiVersion: "^0.5.0",
     entryDir: dir,
     outDir: resolve(dir, "dist"),
     signKey: TEST_SIGN_PRIVATE_KEY,
@@ -103,7 +103,7 @@ async function buildRuntimeSlotsFixture(): Promise<void> {
   const dir = resolve("examples/webext-slots-runtime-agent/.pi/web");
   await buildWebExtension({
     id: "webext-slots-runtime",
-    targetApiVersion: "^0.1.0",
+    targetApiVersion: "^0.5.0",
     entryDir: dir,
     outDir: resolve(dir, "dist"),
     capabilities: ["slots", "config"],
@@ -122,7 +122,7 @@ async function buildRuntimeSlotsTamperedFixture(): Promise<void> {
   const dir = resolve("examples/webext-slots-runtime-tampered-agent/.pi/web");
   const result = await buildWebExtension({
     id: "webext-slots-runtime-tampered",
-    targetApiVersion: "^0.1.0",
+    targetApiVersion: "^0.5.0",
     entryDir: dir,
     outDir: resolve(dir, "dist"),
     capabilities: ["slots", "config"],
@@ -140,7 +140,7 @@ async function buildRuntimeSlotsBadSigFixture(): Promise<void> {
   const dir = resolve("examples/webext-slots-runtime-badsig-agent/.pi/web");
   await buildWebExtension({
     id: "webext-slots-runtime-badsig",
-    targetApiVersion: "^0.1.0",
+    targetApiVersion: "^0.5.0",
     entryDir: dir,
     outDir: resolve(dir, "dist"),
     capabilities: ["slots", "config"],

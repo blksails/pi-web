@@ -23,10 +23,16 @@
  *   动作壳,不是要持久化的值);
  * - GET 前必须过 `maskSecrets()`,保证明文不回读浏览器(Req 2.3)。
  */
-import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isSourceKey } from "../source-key.js";
+import {
+  createLocalWorkspaceNamespace,
+  deepMergeJson,
+  type Workspace,
+  type WorkspaceKey,
+  type WorkspaceNamespace,
+} from "../workspace/index.js";
 
 /** per-source settings 的持久化作用域(拍板 Q5)。 */
 export type SourceSettingsScope = "source" | "project";
@@ -38,34 +44,14 @@ function resolveDefaultAgentDir(): string {
 }
 
 /**
- * 把 `incoming` 深合并到 `base` 上:对象类型的值递归合并,其余类型直接覆盖。
- * 结果为新对象,不修改 base 或 incoming。与 `config-codec.ts` 的同名私有函数逻辑一致
- * (刻意不抽公共模块,保持两个 codec 各自独立可演进)。
+ * 读 unknown 错误的 Workspace 判别码(契约 §3.6:按 `code` 判别,不用 `instanceof`)。
  */
-function deepMerge(
-  base: Record<string, unknown>,
-  incoming: Record<string, unknown>,
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  for (const [key, value] of Object.entries(incoming)) {
-    const existing = result[key];
-    if (
-      value !== null &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      existing !== null &&
-      typeof existing === "object" &&
-      !Array.isArray(existing)
-    ) {
-      result[key] = deepMerge(
-        existing as Record<string, unknown>,
-        value as Record<string, unknown>,
-      );
-    } else {
-      result[key] = value;
-    }
+function workspaceErrorCode(err: unknown): string | undefined {
+  if (err !== null && typeof err === "object") {
+    const code = (err as { readonly code?: unknown }).code;
+    if (typeof code === "string") return code;
   }
-  return result;
+  return undefined;
 }
 
 function assertSourceKeyShape(sourceKey: string): void {
@@ -78,67 +64,69 @@ function assertSourceKeyShape(sourceKey: string): void {
 
 export class SourceSettingsCodec {
   private readonly agentDir: string;
+  /** 注入分支(config-workspace-injection Req 2):承载双根的注入 Workspace(如云端 TenantWorkspace)。 */
+  private readonly workspace?: Workspace;
 
-  constructor(agentDir?: string) {
-    this.agentDir = agentDir ?? resolveDefaultAgentDir();
+  constructor(source?: string | Workspace) {
+    // 判别:`Workspace` 与路径字符串类型不相交,`string | undefined` 即路径分支,其余为注入。
+    if (source === undefined || typeof source === "string") {
+      this.agentDir = source ?? resolveDefaultAgentDir();
+    } else {
+      this.workspace = source;
+      this.agentDir = resolveDefaultAgentDir(); // 注入分支不用,仅保持 agentDir: string
+    }
   }
 
   /**
-   * 解析目标文件路径。
-   * `scope:"project"` 必须提供 `cwd`(project 作用域按调用方 cwd 分区)。
+   * 解析目标命名空间与键(host-contract §3.7:source→user、project→`<cwd>/.pi` 命名空间)。
+   * `scope:"project"` 必须提供 `cwd`。落盘路径与迁移前逐一致:
+   * source → `<agentDir>/sources/<sourceKey>/settings.json`;
+   * project → `<cwd>/.pi/source-settings/<sourceKey>.json`。
    */
-  private filePath(scope: SourceSettingsScope, sourceKeyValue: string, cwd?: string): string {
+  private nsAndKey(
+    scope: SourceSettingsScope,
+    sourceKeyValue: string,
+    cwd?: string,
+  ): { readonly ns: WorkspaceNamespace; readonly key: WorkspaceKey } {
     assertSourceKeyShape(sourceKeyValue);
+    // 注入分支:source→`workspace.user`、project→`workspace.project`(注入的 project 根即目标,
+    // 不再要求 cwd —— 云端无 per-cwd 项目,project 根按租户隔离)。落盘键与路径分支逐一致。
+    if (this.workspace !== undefined) {
+      return scope === "source"
+        ? { ns: this.workspace.user, key: `sources/${sourceKeyValue}/settings.json` }
+        : { ns: this.workspace.project, key: `source-settings/${sourceKeyValue}.json` };
+    }
+    // 路径分支(现状):source→`<agentDir>`、project→`<cwd>/.pi`。
     if (scope === "source") {
-      return join(this.agentDir, "sources", sourceKeyValue, "settings.json");
+      return {
+        ns: createLocalWorkspaceNamespace(this.agentDir),
+        key: `sources/${sourceKeyValue}/settings.json`,
+      };
     }
     if (cwd === undefined || cwd.length === 0) {
       throw new TypeError("source-settings-codec: scope:\"project\" requires a non-empty cwd");
     }
-    return join(cwd, ".pi", "source-settings", `${sourceKeyValue}.json`);
-  }
-
-  private dirPath(scope: SourceSettingsScope, sourceKeyValue: string, cwd?: string): string {
-    assertSourceKeyShape(sourceKeyValue);
-    if (scope === "source") {
-      return join(this.agentDir, "sources", sourceKeyValue);
-    }
-    if (cwd === undefined || cwd.length === 0) {
-      throw new TypeError("source-settings-codec: scope:\"project\" requires a non-empty cwd");
-    }
-    return join(cwd, ".pi", "source-settings");
+    return {
+      ns: createLocalWorkspaceNamespace(join(cwd, ".pi")),
+      key: `source-settings/${sourceKeyValue}.json`,
+    };
   }
 
   /**
    * 加载指定作用域/source 的配置,文件不存在时返回 `{}`(Req 2.4)。
+   * 逐分区复刻现状:缺文件→`{}`(readJson 归零);损坏/非对象→`{}`(catch `corrupt`,按 code);其余 io→rethrow。
    */
   async load(
     scope: SourceSettingsScope,
     sourceKeyValue: string,
     cwd?: string,
   ): Promise<Record<string, unknown>> {
-    const path = this.filePath(scope, sourceKeyValue, cwd);
-    let text: string;
+    const { ns, key } = this.nsAndKey(scope, sourceKeyValue, cwd);
     try {
-      text = await fs.readFile(path, "utf8");
+      return await ns.readJson(key);
     } catch (err: unknown) {
-      if (
-        err !== null &&
-        typeof err === "object" &&
-        (err as NodeJS.ErrnoException).code === "ENOENT"
-      ) {
-        return {};
-      }
+      if (workspaceErrorCode(err) === "corrupt") return {};
       throw err;
-    }
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return {};
-    } catch {
-      return {};
     }
   }
 
@@ -146,8 +134,10 @@ export class SourceSettingsCodec {
    * 保存指定作用域/source 的配置。
    * - 默认(merge:true):将 `values` 深合并到磁盘已有内容,保留未知字段(增量补丁语义)。
    * - merge:false:`values` 已是权威全量对象(如经 `mergeSecrets` 合并出,含删除),直接
-   *   覆盖写入,不可再对磁盘 deepMerge(否则已删除的键会从磁盘原值复活)。
-   * 写入权限 0600,目录 0700(递归创建;Req 2.1, 2.2)。
+   *   覆盖写入(保留删除)。
+   * read-modify-write 在本层完成、底层 `writeJson` 恒 `merge:false`(同 M2:损坏磁盘时合并基底
+   * 走 `load` 的降级,不因二次 read 抛 corrupt);合并语义收敛到 `deepMergeJson`(删私有副本)。
+   * 写入 0600 / 目录 0700 / 原子写由 Workspace 承接。
    */
   async save(
     scope: SourceSettingsScope,
@@ -155,16 +145,11 @@ export class SourceSettingsCodec {
     values: Record<string, unknown>,
     opts: { readonly cwd?: string; readonly merge?: boolean } = {},
   ): Promise<void> {
-    const dir = this.dirPath(scope, sourceKeyValue, opts.cwd);
-    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-
-    const merged =
+    const { ns, key } = this.nsAndKey(scope, sourceKeyValue, opts.cwd);
+    const next =
       opts.merge === false
         ? values
-        : deepMerge(await this.load(scope, sourceKeyValue, opts.cwd), values);
-
-    const path = this.filePath(scope, sourceKeyValue, opts.cwd);
-    const json = JSON.stringify(merged, null, 2);
-    await fs.writeFile(path, json, { encoding: "utf8", mode: 0o600 });
+        : deepMergeJson(await this.load(scope, sourceKeyValue, opts.cwd), values);
+    await ns.writeJson(key, next, { merge: false });
   }
 }

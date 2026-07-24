@@ -415,6 +415,50 @@ describe("translateEvent — schema-valid frames per event", () => {
     );
   });
 
+  // 致命 provider 错误 fail-fast(fatal-provider-error):被 pi SDK 误判为可重试 502 的 402 余额
+  // 错误,应在 auto_retry_start 入口立即 error+finish 终止,而非显示"重试中"。
+  const FATAL_402 =
+    '402: {"message":"This request requires more credits, or fewer max_tokens. You requested up to 228422 tokens, but can only afford 5021. To increase, visit https://openrouter.ai/settings/credits and add more credits","code":402}';
+
+  it("auto_retry_start(致命 402)→ error+finish 且置 fatalTerminated", () => {
+    const r = translateEvent(
+      { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 8000, errorMessage: FATAL_402 },
+      createTranslationContext(),
+    );
+    expectValidFrames(r.frames);
+    expect(chunkTypes(r.frames)).toEqual(["error", "finish"]);
+    expect(chunkAt(r.frames, 0)).toMatchObject({
+      type: "error",
+      errorText: expect.stringContaining("requires more credits"),
+    });
+    expect(r.ctx.fatalTerminated).toBe(true);
+  });
+
+  it("fatalTerminated 后同轮后续事件被抑制(空帧),agent_start 复位", () => {
+    const ctx = translateEvent(
+      { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 8000, errorMessage: FATAL_402 },
+      createTranslationContext(),
+    ).ctx;
+    // 后续任意事件 → 无帧(避免 finish 之后再产帧扰乱 useChat)。
+    expect(translateEvent({ type: "turn_start" }, ctx).frames).toEqual([]);
+    expect(
+      translateEvent({ type: "agent_end", messages: [], willRetry: false }, ctx).frames,
+    ).toEqual([]);
+    // 下一 agent_start 复位:重新开轮产 start 帧,fatalTerminated 归 false。
+    const restart = translateEvent({ type: "agent_start" }, ctx);
+    expect(chunkTypes(restart.frames)).toEqual(["start"]);
+    expect(restart.ctx.fatalTerminated).toBe(false);
+  });
+
+  it("auto_retry_start(非致命 transient)→ 仍 data-pi-auto-retry(既有行为无回归)", () => {
+    const r = translateEvent(
+      { type: "auto_retry_start", attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: "503 Service Unavailable" },
+      createTranslationContext(),
+    );
+    expect(chunkTypes(r.frames)).toEqual(["data-pi-auto-retry"]);
+    expect(r.ctx.fatalTerminated).toBe(false);
+  });
+
   it("extension_ui_request → control:extension-ui bypass frame", () => {
     const r = translateEvent(
       {
@@ -727,7 +771,10 @@ describe("translateEvent — schema-valid frames per event", () => {
     expect(chunkTypes(r.frames)).not.toContain("error");
   });
 
-  it("402-UI②: auto_retry×N + 空手 agent_end → 合成 error chunk(含最后一次 errorMessage)后 finish", () => {
+  it("空手收尾兜底: auto_retry×N(非致命 transient)+ 空手 agent_end → 合成 error chunk(含最后一次 errorMessage)后 finish", () => {
+    // ⚠ 用**非致命 transient**(503)驱动本兜底路径:致命错误(402/余额)现在走 fail-fast,
+    //   在首个 auto_retry_start 即 error+finish 早退(见上方"致命 provider 错误"用例),
+    //   根本不会"重试耗尽后空手 agent_end"。只有真正的 transient 才会重试到耗尽,由此兜底。
     let ctx: TranslationContext = createTranslationContext();
     const all: import("@blksails/pi-web-protocol").SseFrame[] = [];
     const push = (e: AgentEvent): void => {
@@ -741,14 +788,14 @@ describe("translateEvent — schema-valid frames per event", () => {
       attempt: 1,
       maxAttempts: 3,
       delayMs: 100,
-      errorMessage: "402 Payment Required (attempt 1)",
+      errorMessage: "503 Service Unavailable (attempt 1)",
     });
     push({
       type: "auto_retry_start",
       attempt: 2,
       maxAttempts: 3,
       delayMs: 200,
-      errorMessage: "402 Payment Required (attempt 2, final)",
+      errorMessage: "503 Service Unavailable (attempt 2, final)",
     });
     // 重试耗尽后以正常 agent_end 空手收尾(无 stopReason:"error",无文本产出)。
     push({ type: "agent_end", messages: [], willRetry: false });
@@ -761,7 +808,7 @@ describe("translateEvent — schema-valid frames per event", () => {
     if (errChunk?.kind !== "uiMessageChunk" || errChunk.chunk.type !== "error") {
       throw new Error("expected error chunk");
     }
-    expect(errChunk.chunk.errorText).toContain("402 Payment Required (attempt 2, final)");
+    expect(errChunk.chunk.errorText).toContain("503 Service Unavailable (attempt 2, final)");
     expect(errChunk.chunk.errorText).not.toContain("attempt 1");
   });
 

@@ -1,0 +1,22 @@
+{
+  "feature_name": "host-contract-config-on-workspace",
+  "created_at": "2026-07-22T04:30:54Z",
+  "updated_at": "2026-07-22T04:47:46Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

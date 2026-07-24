@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-protocol",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "pi-web 全项目唯一契约根:零运行时依赖(除 zod)、同构、纯 TypeScript 的协议包",
   "type": "module",
   "sideEffects": false,

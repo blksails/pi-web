@@ -37,7 +37,6 @@ function trustSvc() {
   });
   return createWebextTrustService({
     registry,
-    hostApiVersion: "0.1.0",
     requireSignature: true,
     isProduction: false,
   });

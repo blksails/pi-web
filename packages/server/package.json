@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-server",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "private": false,
   "type": "module",
   "sideEffects": false,
@@ -8,7 +8,9 @@
     ".": "./src/index.ts",
     "./trust": "./src/trust/index.ts",
     "./model-options": "./src/config/model-options.ts",
-    "./vision-model-options": "./src/vision-settings/vision-model-options.ts"
+    "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
+    "./testing": "./src/workspace/testing/index.ts",
+    "./host-assembly": "./src/host-assembly/index.ts"
   },
   "engines": {
     "node": ">=22.19.0"

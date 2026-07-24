@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-import { webKitVersionDefine } from "./scripts/web-kit-version.mjs";
 
 /**
  * pi-web SPA 前端构建(spec vite-spa-migration 任务 2.2)。
@@ -23,8 +22,6 @@ const r = (p: string): string => path.resolve(__dirname, p);
 
 export default defineConfig({
   plugins: [react()],
-  // #33:与其余构建路径共用同一读取点
-  define: webKitVersionDefine(),
   // `public/` 原样拷入 `dist/client/`(含 Tier4 隔离表面的 webext-artifact/artifact.html)。
   publicDir: r("public"),
   resolve: {

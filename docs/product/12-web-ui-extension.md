@@ -383,13 +383,18 @@ export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
 |------|------|------|
 | `documentTitle` | string | 加载该 source 后同步 `document.title`；切源后还原 |
 | `layout` | `"centered"` \| `"wide"` \| `"full"` \| `"split"` | 版面预设（宿主 `LayoutPreset`，见 `packages/ui/src/customization/layout.ts:8`） |
-| `panelRatio` | `"centered"` \| `"2:1"` \| `"3:7"` | 右侧面板初始比例，闭集枚举（`packages/protocol/src/web-ext/config.ts:23`，需配合 `slots.panelRight`） |
+| `panelRatio` | `"centered"` \| `"2:1"` \| `"4:6"` \| `"3:7"` | 右侧面板初始比例，使用离散比例切换器（需配合 `slots.panelRight`） |
+| `panelWidth` | 240–4096 的整数 | 右侧面板初始像素宽度；存在即启用宿主受控的连续拖拽模式 |
+| `minPanelWidth` | 160–4096 的整数 | 连续拖拽最小宽度；必须与 `panelWidth` 同时声明 |
+| `maxPanelWidth` | 240–8192 的整数 | 连续拖拽最大宽度；必须与 `panelWidth` 同时声明 |
 | `theme` | `Record<string, string>` | CSS 变量覆盖（宿主 token 前缀） |
 | `empty.title/subtitle` | string | 空态屏文案 |
 | `empty.starters` | array | 建议项列表 |
 | `empty.mergeCommands` | `"prepend"` \| `"append"` \| `"replace"` | 与 agent slash 命令合并策略 |
 
 **`config.layout="split"` 注意事项**：声明 `split` 布局但未在 `slots.panelRight` 提供内容时，宿主不渲染空的 `<aside>` 占位，优雅退化为居中版面（`pi-chat.tsx:1816-1819`）。之前版本曾留出 384px 空白侧边区域，已修复。
+
+`panelRatio` 与 `panelWidth` 分别对应离散和连续交互。声明 `panelWidth` 时，ChatApp 持有宽度状态并把 PiChat 内置分隔条的 `onPanelWidthChange` 回写；比例切换器隐藏。`panelWidth` 必须落在 min/max 内，min 不得大于 max。未声明时维持原有 `panelRatio` 行为。
 
 ---
 
@@ -398,10 +403,11 @@ export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
 ### 门控流程
 
 1. **SRI 完整性**：重算 entry 字节 sha384，与 `manifest.integrity` 比对。
-2. **签名白名单**：用 `PI_WEB_EXT_WHITELIST` 中的 **Ed25519 公钥**验签 `manifest.signature`（任一命中即受信；公钥验签在服务端 Node 执行，机密不下发浏览器，见 `packages/react/src/web-ext/extension-gate.ts:92`）。
-3. **版本兼容**：`manifest.targetApiVersion`（semver range）须兼容宿主 `PI_WEB_KIT_VERSION`（默认 `0.1.0`）。
+2. **签名白名单**：用 `PI_WEB_EXT_WHITELIST` 中的 **Ed25519 公钥**验签 `manifest.signature`（任一命中即受信；公钥验签在服务端 Node 执行，机密不下发浏览器，见 `packages/react/src/web-ext/extension-gate.ts`）。
 
 任何校验失败 → 拒绝加载，回退默认 UI，记审计日志。
+
+> 曾有第三道「版本兼容」门控（`manifest.targetApiVersion` 兼容宿主 `PI_WEB_KIT_VERSION`），已整条移除——宿主自述版本长期失真、minor 从未真正充当保护边界。`targetApiVersion` 字段仍保留于协议中，但加载时不再据它做兼容判定。
 
 ### 相关环境变量
 
@@ -409,7 +415,6 @@ export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
 |------|------|------|
 | `PI_WEB_EXT_WHITELIST` | 逗号分隔的受信发布者 **Ed25519 公钥**（base64 raw） | `""` |
 | `PI_WEB_EXT_REQUIRE_SIGNATURE` | 是否强制签名（`"false"` 关闭） | `"true"` |
-| `PI_WEB_KIT_VERSION` | 宿主 web-kit 版本，用于版本兼容判定 | `"0.1.0"` |
 | `NEXT_PUBLIC_PI_EXTENSION_BASE_URL` | Artifact 表面的基础 URL（缺失则不挂载） | — |
 
 ### CSS Scoping

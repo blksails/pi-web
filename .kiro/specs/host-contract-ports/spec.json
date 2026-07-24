@@ -1,0 +1,22 @@
+{
+  "feature_name": "host-contract-ports",
+  "created_at": "2026-07-21T08:40:38Z",
+  "updated_at": "2026-07-21T09:09:36Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

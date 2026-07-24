@@ -1,0 +1,27 @@
+{
+  "feature_name": "isolated-panes",
+  "created_at": "2026-07-23T00:00:00Z",
+  "updated_at": "2026-07-23T00:00:00Z",
+  "language": "zh",
+  "phase": "tasks-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "source_docs": [
+    "docs/isolated-panes/README.md",
+    "docs/isolated-panes/implementation-design.md",
+    "docs/isolated-panes/parallel-work-plan.md"
+  ]
+}

@@ -10,14 +10,16 @@
  *   - @earendil-works/pi-coding-agent/dist/core/source-info.d.ts → SourceInfo
  */
 import { z } from "zod";
-import { ModelSchema, ThinkingLevelSchema } from "./model.js";
+import { ModelSchema, ModelThinkingLevelSchema } from "./model.js";
 
 const SteeringMode = z.enum(["all", "one-at-a-time"]);
 
 /** pi: RpcSessionState */
 export const RpcSessionStateSchema = z.object({
   model: ModelSchema.optional(),
-  thinkingLevel: ThinkingLevelSchema,
+  // d.ts 声明 ThinkingLevel,但 pi 0.80.x 运行时在思考关闭态实回 "off"(get_state 实测),
+  // 故取宽的 ModelThinkingLevel("off" | ThinkingLevel)。
+  thinkingLevel: ModelThinkingLevelSchema,
   isStreaming: z.boolean(),
   isCompacting: z.boolean(),
   steeringMode: SteeringMode,

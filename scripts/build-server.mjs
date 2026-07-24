@@ -20,8 +20,6 @@ import * as esbuild from "esbuild";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-// #33:宿主版本注入 —— 读取逻辑只有一份,见该模块头注释
-import { webKitVersionDefine } from "./web-kit-version.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -111,8 +109,6 @@ function sharedBuildOptions(entry, outfile) {
     target: "node22",
     external: EXTERNAL,
     plugins: [aliasPlugin],
-    // #33:宿主 web-kit 版本内联为编译期常量(dev 走 vite,由 vite.config 侧同名 define 兜底)
-    define: webKitVersionDefine(),
     // `.js` 扩展名的相对 import 实际指向 `.ts` 源(NodeNext 约定)。
     resolveExtensions: [".ts", ".tsx", ".mjs", ".js", ".json"],
     loader: { ".ts": "ts", ".tsx": "tsx" },

@@ -11,7 +11,6 @@ import {
   SetFavoritesRequestSchema,
   type ListFavoritesResponse,
 } from "@blksails/pi-web-protocol";
-import path from "node:path";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { InjectedRoute } from "../http/index.js";
 import { createFavoritesStore, type FavoritesStore } from "./favorites-store.js";
@@ -23,8 +22,6 @@ export interface FavoritesRoutesOptions {
   readonly store?: FavoritesStore;
 }
 
-const FAVORITES_FILE = "agent-source-favorites.json";
-
 export function createFavoritesRoutes(
   opts: FavoritesRoutesOptions,
 ): ReadonlyArray<InjectedRoute> {
@@ -33,9 +30,9 @@ export function createFavoritesRoutes(
     if (cached === undefined) {
       cached =
         opts.store ??
-        createFavoritesStore({
-          filePath: path.join(opts.agentDir, FAVORITES_FILE),
-        });
+        // M4:store 内部经 LocalWorkspace user 命名空间读写(键 agent-source-favorites.json),
+        // 只需传 root=agentDir(不再拼完整 filePath)。
+        createFavoritesStore({ root: opts.agentDir });
     }
     return cached;
   };

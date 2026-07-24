@@ -17,20 +17,14 @@ import {
   type GateOptions,
 } from "@blksails/pi-web-react";
 import type { WebExtension } from "@blksails/pi-web-kit";
-import { getRuntimeFeatures } from "./runtime-features.js";
 
 /**
  * 浏览器门控选项:不含验签材料(签名已服务端验)、signaturePreVerified、仅 SRI。
- *
- * `hostApiVersion` 取自运行时门控源:SPA 下由 `/api/bootstrap` 下发,旧宿主(Next)下回退
- * 到 env 读取。**不可**直接访问 `process.env` —— 浏览器里 `process` 是未定义标识符,
- * 而 Vite 也不会像 Next 那样内联 `NEXT_PUBLIC_*` 成员。
  */
 function browserGateOptions(): GateOptions {
   return {
     whitelist: [],
     requireSignature: false,
-    hostApiVersion: getRuntimeFeatures().hostApiVersion,
     signaturePreVerified: true,
   };
 }

@@ -35,8 +35,4 @@ describe("buildBrowserGateOptions — 浏览器不含验签材料", () => {
     expect(o.signaturePreVerified).toBe(true);
     expect(o.requireSignature).toBe(false);
   });
-
-  it("透传宿主 web-kit 版本用于兼容判定", () => {
-    expect(buildBrowserGateOptions({ PI_WEB_KIT_VERSION: "0.2.0" }).hostApiVersion).toBe("0.2.0");
-  });
 });

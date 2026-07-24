@@ -49,7 +49,6 @@ The table below lists the frontend gating fields emitted by `/api/bootstrap` and
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | `sessionsManage` | **on** | Session write operations (delete / rename / favorite); `false`/`0` turns it off |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sessionsSlot` | `sidebar` | Host slot for the session list |
 | `NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE` | — | off | Disables the session-readiness handshake (for debugging) |
-| `NEXT_PUBLIC_PI_WEB_KIT_VERSION` | `hostApiVersion` | `0.1.0` | Host API version emitted to webext |
 
 > **Two-sided consistency still matters**: the frontend gate now flows through `/api/bootstrap`, but the **backend** still reads the same variable names **directly from `process.env`** for authoritative gating (for example, a `scope=all` request is decided against `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` in `lib/app/pi-handler.ts:464-465`). Both ends read the same variable name from the same process env, so you only set it once when starting the process and both sides align; there is no longer a "baked into the frontend at build time, changed on the backend at runtime" mismatch.
 

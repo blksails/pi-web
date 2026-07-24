@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
 import path from "node:path";
-import { webKitVersionDefine } from "./scripts/web-kit-version.mjs";
 
 /**
  * Vitest config for app integration + page-render tests.
@@ -9,8 +8,6 @@ import { webKitVersionDefine } from "./scripts/web-kit-version.mjs";
  * packages (the `.js` import specifiers map to `.ts` via vitest's resolver).
  */
 export default defineConfig({
-  // #33:宿主 web-kit 版本注入 —— server/bootstrap.ts 读 __PI_WEB_KIT_VERSION__
-  define: webKitVersionDefine(),
   esbuild: {
     jsx: "automatic",
   },

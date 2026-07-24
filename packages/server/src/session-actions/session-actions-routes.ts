@@ -20,7 +20,6 @@
  * 并列注入 `createPiWebHandler({ routes })`。
  */
 import { randomUUID } from "node:crypto";
-import path from "node:path";
 import {
   DeleteSessionRequestSchema,
   RenameSessionRequestSchema,
@@ -42,7 +41,6 @@ import {
   type SessionFavoritesStore,
 } from "./session-favorites-store.js";
 
-const FAVORITES_FILE = "session-favorites.json";
 
 export interface SessionActionsRoutesOptions {
   /** 会话事件存储配置(与冷恢复 / 列表同源,经 sessionStoreConfigFromEnv() 取)。 */
@@ -87,9 +85,8 @@ export function createSessionActionsRoutes(
   const getFavoritesStore = (): SessionFavoritesStore => {
     favoritesStore ??=
       opts.favoritesStore ??
-      createSessionFavoritesStore({
-        filePath: path.join(opts.agentDir, FAVORITES_FILE),
-      });
+      // M4:store 内部经 LocalWorkspace user 命名空间读写(键 session-favorites.json),传 root=agentDir。
+      createSessionFavoritesStore({ root: opts.agentDir });
     return favoritesStore;
   };
 

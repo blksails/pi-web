@@ -19,6 +19,8 @@ import {
   PiWebManifestSchema,
   DEFAULT_WEBEXT_DIST,
   WEBEXT_SOURCE_CONFIG,
+  FormSchemaZodSchema,
+  type FormSchema,
   type PluginKind,
 } from "@blksails/pi-web-protocol";
 import { computeFingerprint, computeIntegrity, signManifest } from "@pi-clouds/registry-client";
@@ -78,6 +80,18 @@ export interface CompiledPackage {
   /** webext manifest.json 的 integrity(同上条件)。 */
   readonly webextManifestIntegrity?: string;
   readonly bundlePaths: readonly string[];
+  /**
+   * per-source 设置声明(spec: cloud-source-settings,R1.1/R1.2)。**仅清单声明了 `settings` 段时
+   * 存在**;发布期读取 `settings.schema` 指向的 FormSchema JSON 并 `FormSchemaZodSchema` 校验后内联
+   * ——这是良构性的**唯一权威把关点**(registry 侧不深校验、云端消费期只浅层守卫)。`sign()` 把它
+   * 写进签名 manifest(进签名字节),供云端 `resolveSettings` 消费。
+   */
+  readonly settings?: {
+    readonly schema: FormSchema;
+    readonly scope: "source" | "project";
+    readonly title?: string;
+    readonly icon?: string;
+  };
   /** 非阻断告警(当前:webext 产物陈旧)。演练与正式发布均须输出(R5.4)。 */
   readonly warnings: readonly string[];
 }
@@ -344,6 +358,42 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
 
   if (missing.length > 0) return fail({ code: "DECLARED_PATH_MISSING", paths: missing });
 
+  // per-source settings 抽取(spec: cloud-source-settings,R1.1/R1.3)。声明了 `settings` 段则读取
+  // 其指向的 FormSchema JSON、`FormSchemaZodSchema` 校验、内联;文件缺失/坏 JSON/schema 非法 → 发布
+  // 失败(MANIFEST_INVALID,不烧版本号)。未声明 → settings 恒 undefined,产物与现状逐字节等价(R1.4)。
+  let settings: CompiledPackage["settings"];
+  if (m.settings) {
+    const schemaPath = m.settings.schema;
+    if (isAbsolute(schemaPath) || schemaPath.split(/[\\/]/).includes("..")) {
+      return fail({ code: "MANIFEST_INVALID", issues: [`settings.schema 必须是不逃逸包根的相对路径:${schemaPath}`] });
+    }
+    let rawSchema: string;
+    try {
+      rawSchema = await readFile(join(packageDir, schemaPath), "utf8");
+    } catch {
+      return fail({ code: "MANIFEST_INVALID", issues: [`settings.schema 文件不存在或不可读:${schemaPath}`] });
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(rawSchema);
+    } catch (e) {
+      return fail({ code: "MANIFEST_INVALID", issues: [`settings.schema 非合法 JSON(${schemaPath}):${(e as Error).message}`] });
+    }
+    const parsedSchema = FormSchemaZodSchema.safeParse(json);
+    if (!parsedSchema.success) {
+      return fail({
+        code: "MANIFEST_INVALID",
+        issues: parsedSchema.error.issues.map((i) => `settings.schema.${i.path.join(".")}: ${i.message}`),
+      });
+    }
+    settings = {
+      schema: parsedSchema.data,
+      scope: m.settings.scope,
+      ...(m.settings.title !== undefined ? { title: m.settings.title } : {}),
+      ...(m.settings.icon !== undefined ? { icon: m.settings.icon } : {}),
+    };
+  }
+
   return ok({
     ...(entry ? { entry } : {}),
     ...(routeNames ? { routes: routeNames } : {}),
@@ -356,6 +406,7 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
     refs,
     ...(webextDist ? { webextDist } : {}),
     ...(webextManifestIntegrity ? { webextManifestIntegrity } : {}),
+    ...(settings ? { settings } : {}),
     bundlePaths: [...bundlePaths].sort(),
   });
 }
@@ -422,6 +473,9 @@ export function sign(pkg: CompiledPackage, keyPath: string): Result<SignedManife
   if (pkg.webextDist && pkg.webextManifestIntegrity) {
     base["webext"] = { manifestRef: `${pkg.webextDist}/manifest.json`, integrity: pkg.webextManifestIntegrity };
   }
+  // cloud-source-settings(R1.2):内联 per-source settings 声明(进签名字节;canonical 规范化,
+  // 字段插入位置不影响结果)。未声明时不写该字段 → 与现状产物逐字节等价(R1.4)。
+  if (pkg.settings) base["settings"] = pkg.settings;
 
   let signature: string;
   try {

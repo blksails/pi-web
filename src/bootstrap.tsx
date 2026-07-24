@@ -37,7 +37,6 @@ export interface BootstrapPayload {
   readonly defaultCwd: string;
   readonly autoStart: boolean;
   readonly multiTenant: boolean;
-  readonly hostApiVersion: string;
   readonly features: BootstrapFeatures;
   readonly supabase?: { readonly url: string; readonly anonKey: string };
   readonly resumeSource?: string;
@@ -139,7 +138,6 @@ export function BootstrapGate({
   // 这里是同步的 render 期调用:children 在本次 render 中才被创建,故顺序有保证。
   setRuntimeFeatures({
     ...state.config.features,
-    hostApiVersion: state.config.hostApiVersion,
   });
 
   return (

@@ -100,10 +100,10 @@ afterEach(() => {
 });
 
 /** Render ChatApp and advance to the active session state. */
-async function startSession(): Promise<void> {
+async function startSession(source = "./examples/logging-demo-agent"): Promise<void> {
   render(
     <ChatApp
-      defaultSource="./examples/logging-demo-agent"
+      defaultSource={source}
       defaultModel="stub-model"
       defaultCwd="/tmp"
     />,
@@ -114,6 +114,35 @@ async function startSession(): Promise<void> {
     fireEvent.click(submit as Element);
   });
 }
+
+describe("ChatApp × panelRight controlled width", () => {
+  it("forwards WebExt width bounds and keeps drag updates controlled", async () => {
+    stubLoggingConfig({ outputs: {} });
+    await startSession("C:/workcode/pi-web/examples/panes-agent");
+    let props = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(props).toMatchObject({ panelWidth: 760, minPanelWidth: 420, maxPanelWidth: 1280 });
+    await act(async () => {
+      (props?.onPanelWidthChange as ((width: number) => void) | undefined)?.(900);
+    });
+    props = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
+    expect(props?.panelWidth).toBe(900);
+  });
+});
+
+beforeEach(() => {
+  // Node 25 may expose an incomplete --localstorage-file shim; ChatApp needs the Web Storage shape.
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(() => null),
+      length: 0,
+    },
+  });
+});
 
 describe("ChatApp × showLogs wiring（Req 6.6）", () => {
   beforeEach(() => {

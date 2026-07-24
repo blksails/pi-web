@@ -49,7 +49,6 @@ pi-web 已脱离 Next.js（前端为 Vite + SPA，后端为 Hono 宿主，服务
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | `sessionsManage` | **开** | 会话写操作（删除/重命名/收藏）；`false`/`0` 关闭 |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sessionsSlot` | `sidebar` | 会话列表宿主插槽 |
 | `NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE` | — | 关 | 关闭会话就绪握手（调试用） |
-| `NEXT_PUBLIC_PI_WEB_KIT_VERSION` | `hostApiVersion` | `0.1.0` | 下发给 webext 的宿主 API 版本 |
 
 > **两端一致仍然重要**：前端门控现在走 `/api/bootstrap`，但**后端**对同名变量仍**直接读 `process.env`** 做权威门控（例如 `scope=all` 请求在 `lib/app/pi-handler.ts:464-465` 判定 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL`）。两端读同一个变量名、同一进程 env，故只需在启动进程时设一次即可对齐；不再存在「构建期烧进前端、运行时改后端」的错位。
 

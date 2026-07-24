@@ -1,0 +1,11 @@
+# Pane WebView 中继（spec isolated-panes 任务 5.2）。应用自身 command 被远端来源调用
+# 必须显式声明；host/guest 两侧权限分离，pane webview 绝不得拿到 host 侧命令。
+[[permission]]
+identifier = "allow-pane-relay-host"
+description = "允许宿主主窗口绑定 pane 中继并向 pane webview 下行信封"
+commands.allow = ["pane_relay_bind", "pane_relay_unbind", "pane_relay_to_guest"]
+
+[[permission]]
+identifier = "allow-pane-relay-guest"
+description = "允许 pane webview 经中继向宿主上行信封"
+commands.allow = ["pane_relay_to_host"]

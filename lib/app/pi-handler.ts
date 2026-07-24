@@ -33,11 +33,8 @@ import {
   AgentSourceResolver,
   resolvePiCliEntry,
   runnerBootstrapPath,
-  createConfigRoutes,
-  createSandboxProjectRoutes,
-  createExtensionsConfigRoutes,
-  createMcpConfigRoutes,
-  createSourceSettingsRoutes,
+  // 15 个路由能力面工厂已移至 host-assembly/default-capabilities(M3 经 composeCapabilities 装配);
+  // 此处不再直接 import。保留下方 resolve*/broadcast* 等辅助(HostDeps 构造仍需)。
   resolveSourceSettingsFromPackageDirs,
   type ResolvedSourceSettings,
   // per-source settings 运行期实时下发(spec source-settings-and-slots,任务 7.2,通道 b)。
@@ -46,15 +43,8 @@ import {
   createScanSourceProvider,
   createRegistrySourceProvider,
   defaultAgentEntryPath,
-  createAttachmentRoutes,
-  createBashRoutes,
-  createSessionListRoutes,
-  createSessionActionsRoutes,
-  createAgentSourcesRoutes,
-  createFavoritesRoutes,
   createAigcModelsRoute,
   createVisionModelsRoute,
-  createExtensionRoutes,
   createHostCommandRegistry,
   ChildProcessPiCli,
   DEFAULT_ALLOWLIST,
@@ -69,16 +59,14 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
-  // LLM 网关路由挂载(spec sandbox-credentials-v2,任务 3.4):路由工厂 + provider 登记表
-  // 解析 + secret 解析,仅 serve 门控开启时注册。
-  createLlmGatewayRoutes,
+  // LLM 网关 provider 登记表 + secret 解析(HostDeps 构造 gateway.llm 用;路由工厂
+  // createLlmGatewayRoutes 已移至 host-assembly/default-capabilities)。
   resolveLlmGatewayProviderTable,
   resolveLlmGatewaySecret,
   // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
   // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
   // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
   resolveAiGatewayConfig,
-  createAiGatewayRoutes,
   EnvKeyResolver,
   GatewayModelCatalog,
   resolveAiGatewaySecret,
@@ -88,7 +76,10 @@ import {
   // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
   // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
   AuthSessionState,
-  createAuthRoutes,
+  // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
+  composeCapabilities,
+  HOST_CAPABILITY_IDS_V1,
+  type CapabilityDecision,
   type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
@@ -99,6 +90,13 @@ import { configureLogger, createLogger } from "@blksails/pi-web-logger";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
+// M3 默认能力面清单 + 装配依赖类型:经独立子路径出口(D0),绝不并入主 barrel
+// (其 factory import 真实工厂含 pi SDK,进主 barrel 会拖垮 routes bundle 的 node:fs)。
+import {
+  defaultCapabilities,
+  type HostContribution,
+  type HostDeps,
+} from "@blksails/pi-web-server/host-assembly";
 import { resolveBashEnabled } from "./bash-default.js";
 // listModelOptions 同理走子路径(它 import pi SDK,用于 settings 的 provider/model 下拉)。
 // parseHiddenProviders 为纯函数,经同一子路径转出,用于按 PI_WEB_HIDE_PROVIDERS
@@ -436,6 +434,10 @@ function stubSpawnSpec(
 // 命名空间 "app:llm-gateway" 便于检索;每次会话创建(createChannel 调用一次)记一次即可,
 // 不需要跨会话去重。
 const llmGatewayLogger = createLogger({ namespace: "app:llm-gateway" });
+
+// M3 能力面装配日志(spec host-contract-capability-composition,D7):onDecline 时把弃用
+// id + reason 记入启动日志(契约 §5.2)。pi-web 本地对 16 id 全 use 故不触发;为两端 decline 而设。
+const hostAssemblyLogger = createLogger({ namespace: "server:host-assembly" });
 
 function buildSingleton(): HandlerSingleton {
   const config = loadConfig();
@@ -815,16 +817,90 @@ function buildSingleton(): HandlerSingleton {
     cwd: config.defaultCwd,
   });
 
+  // ── M3:16 个能力面经 composeCapabilities 强制表态后装配(spec host-contract-capability-composition)──
+  // HostDeps 一次构造(deps 并集,D4);条件挂载(llm/ai/auth)以**可选字段**表达——未配置时
+  // 字段为 undefined,对应 factory 产空路由集(等价现状三元 `cond ? createX(...) : []`)。
+  // secret 等惰性求值发生在此(未配置根本不构造),规避 resolveLlmGatewaySecret 在未配置时抛错。
+  const hostDeps: HostDeps = {
+    agentDir: config.agentDir,
+    defaultCwd: config.defaultCwd,
+    listModelOptions: () => makeModelCatalog().chatOptions(),
+    resolveSourceSettings: makeSourceSettingsResolver(config),
+    onSourceSettingsSaved: (sourceKeyValue, payload) =>
+      broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
+    sessionStoreConfig: sessionStoreConfigFromEnv(),
+    sessionsGlobalEnabled:
+      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
+      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
+    sessionsManageEnabled:
+      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
+      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
+    sourcesScanRoots: resolveSourcesScanRoots(config.defaultCwd),
+    sourcesRegistryPath:
+      process.env.PI_WEB_SOURCES_REGISTRY ??
+      path.join(config.agentDir, "sources.json"),
+    llmGateway: config.llmGateway?.serve
+      ? {
+          secret: resolveLlmGatewaySecret(process.env),
+          registry: resolveLlmGatewayProviderTable(process.env),
+        }
+      : undefined,
+    aiGateway:
+      aiGwConfig !== undefined
+        ? {
+            baseUrl: aiGwConfig.baseUrl,
+            secret: resolveAiGatewaySecret(process.env),
+            keyResolver: aiGatewayKeyResolver,
+            timeoutMs: aiGwConfig.timeoutMs,
+          }
+        : undefined,
+    authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
+    attachmentStore,
+    resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
+    store,
+    bashEnabled: resolveBashEnabled(),
+    extension: {
+      piCli: extPiCli,
+      store,
+      manager,
+      ...(extAllowMutate ? { adminPolicy: (): boolean => true } : {}),
+      allowlist: extAllowlist,
+      reloadSession: reloadRunner,
+    },
+    hostCommandHandlers: [createClearHostCommand(), installHostCommand],
+  };
+
+  // pi-web 对 16 个能力面**全表态 use**(静态、可读);条件挂载的启停由各 factory 内部读
+  // deps 决定,不在 decisions 里动态构造(D3)。漏任一 id → composeCapabilities 抛 missing-decision。
+  const hostDecisions: Readonly<
+    Record<string, CapabilityDecision<HostDeps, HostContribution>>
+  > = Object.fromEntries(
+    HOST_CAPABILITY_IDS_V1.map((id) => [id, { kind: "use" } as const]),
+  );
+
+  const hostContributions = composeCapabilities<HostDeps, HostContribution>({
+    descriptors: defaultCapabilities(hostDeps),
+    decisions: hostDecisions,
+    deps: hostDeps,
+    onDecline: (id, reason) =>
+      hostAssemblyLogger.info("capability declined", { id, reason }),
+  });
+  const composedRoutes = hostContributions
+    .filter((c): c is Extract<HostContribution, { kind: "route" }> => c.kind === "route")
+    .map((c) => c.route);
+  const composedCommands = hostContributions
+    .filter((c): c is Extract<HostContribution, { kind: "command" }> => c.kind === "command")
+    .map((c) => c.command);
+
   const handler = createPiWebHandler({
     manager,
     store,
     // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
     // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
     // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
-    hostCommands: createHostCommandRegistry([
-      createClearHostCommand(),
-      installHostCommand,
-    ]),
+    // M3:命令贡献经 composeCapabilities 分拣而来 —— host.commands 与 15 个路由能力面在
+    // 同一次强制表态中一起被表态(spec host-contract-capability-composition,D5)。
+    hostCommands: createHostCommandRegistry(composedCommands),
     // 附件元数据源:makeMessagesHandler 据请求 body.attachmentIds 经 head(id) 取
     // {id,mimeType,name} 注入 prompt 文本引用(attachment-tool-bridge task 5.2);
     // 与 vision/images base64 并存,不内联字节。
@@ -847,149 +923,19 @@ function buildSingleton(): HandlerSingleton {
     //  - GET/PUT /config/extensions/{global,project} → settings.json 的 commands +
     //    顶层 per-扩展 KV 互映(全局 <agentDir>/settings.json,项目 <cwd>/.pi/settings.json)。
     routes: [
-      // 独立「MCP」配置域:GET·PUT /config/mcp → <agentDir>/mcp.json(pi-mcp-adapter)。
-      // 必须排在通用 /config/:domain **之前**,否则 2 段路径被 :domain 抢匹配致 DOMAIN_NOT_FOUND。
-      ...createMcpConfigRoutes({ agentDir: config.agentDir }),
-      ...createConfigRoutes({
-        rootDir: config.agentDir,
-        // settings 域:把 defaultProvider/defaultModel 升级为运行时下拉(选项 = 该
-        // agentDir 下已配置凭证的可用模型,含 models.json 自定义 provider)。
-        // merge(ai-gateway 目录聚合,fail-soft)+ PI_WEB_HIDE_PROVIDERS 过滤统一收进
-        // ModelCatalogService(spec model-catalog,任务 3.1;等价链路,语义不变)。
-        listModelOptions: () => makeModelCatalog().chatOptions(),
-      }),
-      ...createSandboxProjectRoutes({ defaultCwd: config.defaultCwd }),
-      // per-source settings(spec source-settings-and-slots,任务 2.2 + 补task 2.3):GET/PUT
-      // /config/source/:sourceKey。3 段路径,与 2 段的 /config/:domain 不冲突,注册顺序
-      // 不敏感。`resolveSettings` 生产实现见 `makeSourceSettingsResolver`(候选包根目录 =
-      // defaultCwd ∪ 内置 default-agent ∪ 已安装/已登记本地目录源,逐个 resolvePiPlugin →
-      // descriptor.id → sourceKey 命中匹配)。未知 sourceKey / 该 source 未声明 settings
-      // 均归一 404(业务错误码 SOURCE_NOT_FOUND,见 e2e/node/source-settings-endpoint.e2e.test.ts)。
-      ...createSourceSettingsRoutes({
-        rootDir: config.agentDir,
-        defaultCwd: config.defaultCwd,
-        resolveSettings: makeSourceSettingsResolver(config),
-        // 运行期实时下发(任务 7.2,通道 b,Req 7.1,可选):落盘成功后向该 sourceKey
-        // 对应的活跃会话广播 settings-changed 帧(按 PiSession.policySource 匹配,
-        // best-effort,失败不影响 PUT 响应)。`manager` 与本路由数组同一装配作用域。
-        onSaved: (sourceKeyValue, payload) =>
-          broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
-      }),
-      ...createExtensionsConfigRoutes({
-        agentDir: config.agentDir,
-        defaultCwd: config.defaultCwd,
-      }),
-      // 会话列表(sessions-list):GET /sessions 只读列表端点。复用与冷恢复同一存储
-      // 配置来源(sessionStoreConfigFromEnv),保证读到同一后端。系统(全机器)视图经
-      // NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL 门控,默认关闭——关闭时 scope=all 返回 403、
-      // 不触达存储(同名 NEXT_PUBLIC_ 变量前端亦读取以隐藏「全部」Tab,两端一致)。
-      ...createSessionListRoutes({
-        storeConfig: sessionStoreConfigFromEnv(),
-        globalEnabled:
-          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
-          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
-        defaultCwd: config.defaultCwd,
-      }),
-      // 会话项管理(session-list-item-actions):POST /sessions/{delete,rename}、GET/POST
-      // /sessions/favorites。全部无 :id 路径参数(sessionId 走 body),绕过 Router 对内存会话
-      // 的存在性门控,可作用于历史会话。写操作(删除/重命名/收藏)经 NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE
-      // 门控,默认启用;=false/=0 时写端点 403、不触达存储(同名 NEXT_PUBLIC_ 前端亦读取以隐藏写入口)。
-      // 会话收藏偏好落 <agentDir>/session-favorites.json(独立于 agent-source 收藏)。
-      ...createSessionActionsRoutes({
-        storeConfig: sessionStoreConfigFromEnv(),
-        agentDir: config.agentDir,
-        manageEnabled:
-          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
-          process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
-      }),
-      // agent source 列表(agent-sources-list):GET /agent-sources 只读枚举端点。数据来源
-      // 为「目录扫描 ∪ 注册表文件」:PI_WEB_SOURCES_ROOT(path.delimiter 分隔多个,相对以
-      // defaultCwd 绝对化)+ PI_WEB_SOURCES_REGISTRY(默认 <agentDir>/sources.json)。严格
-      // 只读:不写、不 clone、不 resolve/spawn。未配来源时返回空列表(前端 NEXT_PUBLIC_
-      // PI_WEB_SOURCE_PICKER 门控是否显示列表,两端一致表现为"无列表可浏览")。
-      ...createAgentSourcesRoutes({
-        scanRoots: resolveSourcesScanRoots(config.defaultCwd),
-        registryPath:
-          process.env.PI_WEB_SOURCES_REGISTRY ??
-          path.join(config.agentDir, "sources.json"),
-      }),
-      // agent source 收藏(sidebar-launcher-rail):GET/PUT /agent-sources/favorites 读写
-      // 用户偏好(<agentDir>/agent-source-favorites.json),独立于只读源枚举。仅写该偏好文件。
-      ...createFavoritesRoutes({ agentDir: config.agentDir }),
-      // AIGC 图像工具设置(aigc-tool-settings):GET /aigc/models 只读模型目录,供 /settings「模型开关」
-      // widget 列举。设置本体(被禁模型 / 提示词优化)走标准 config 域 /api/config/aigc(落
-      // <agentDir>/aigc.json),runner 装配期经 tool-kit resolveAigcToolSettings 只读同文件。
-      // 取数经 ModelCatalogService.imageEntries()(spec model-catalog,任务 3.1,Req 4.1/4.3):
-      // 网关启用时并入 AI_GATEWAY_AIGC_CATALOG 三条并附 source 来源字段;未启用时引用级
-      // 透传静态目录,输出与主干逐字节一致。image 命名空间不吃 hidden 过滤(Req 5.2)。
+      // M3:15 个路由能力面经 composeCapabilities 强制表态后的产出
+      // (spec host-contract-capability-composition,D5)。各能力面的原挂载条件(llm/ai/auth 的
+      // 网关/登录门控)已内聚到 defaultCapabilities 对应 factory 内(读 hostDeps 可选字段),
+      // 行为等价现状三元 `cond ? createX(...) : []`;secret 等惰性求值在 hostDeps 构造处完成。
+      ...composedRoutes,
+      // aigc.models / vision.models 不入 16 名册(集成设计 §5.4 判定为领域泄漏,删除属后续 spec)。
+      // M3 维持其现状接线(compose 之外);Router 对 injected 顺序不敏感,置于末尾不影响行为。
+      // ⚠ vision 端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
       ...createAigcModelsRoute({
         listEntries: () => makeModelCatalog().imageEntries(),
       }),
-      // Canvas 视觉解读(canvas-vision-readout):GET /vision/models 只读清单,供工作台提示词栏的
-      // 视觉模型选择器列举。取数与 image_vision 工具的候选同源(getAvailable() ∩ input 含 image),
-      // 故下拉里看到的就是工具弹层里能选到的。取数抛错 → 200 + 空清单(前端退化为工具弹层)。
-      // ⚠ 该端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
       ...createVisionModelsRoute({
         listModels: () => listVisionModelOptions(config.agentDir),
-      }),
-      // aigc-proxy 已摘除(spec sandbox-credentials-v2,任务 3.1,Req 4.1):原
-      // /aigc-proxy/:provider/* 注入路由不再注册,请求落到既有 404 语义。
-      // LLM 网关路由(spec sandbox-credentials-v2,任务 3.4,Req 3.8):仅 serve 门控开启
-      // (config.llmGateway !== undefined 且 .serve !== false,3.2 定义)时挂载
-      // /llm-gateway/:provider/*(/api 下可达)。secret/registry 解析仅在启用时求值——
-      // resolveLlmGatewaySecret 在未配置 PI_WEB_LLM_GATEWAY_SECRET/PI_WEB_ATTACHMENT_SECRET
-      // 时会抛错,若移到条件外无条件调用会在未配置网关的部署上拖累整个装配。未启用时该
-      // 路径落既有 404 语义,不注册任何路由。
-      ...(config.llmGateway?.serve
-        ? createLlmGatewayRoutes({
-            secret: resolveLlmGatewaySecret(process.env),
-            registry: resolveLlmGatewayProviderTable(process.env),
-          })
-        : []),
-      // ai-gateway 主对话转发路由(spec ai-gateway-providers,design.md §2.5,任务 4.1,
-      // Req 1.1/1.2):仅 aiGwConfig 已解析(AI_GATEWAY_BASE_URL 已配置)时挂载
-      // /ai-gateway/*(/api 下可达)。未配置时零注册,请求落既有 404 语义。
-      ...(aiGwConfig !== undefined
-        ? createAiGatewayRoutes({
-            baseUrl: aiGwConfig.baseUrl,
-            secret: resolveAiGatewaySecret(process.env),
-            keyResolver: aiGatewayKeyResolver,
-            timeoutMs: aiGwConfig.timeoutMs,
-          })
-        : []),
-      // 鉴权端点(desktop-cloud-login,任务 6.1,Req 1.3/2.5/6.2/6.3):POST·DELETE /auth/session
-      // + GET /auth/me,/api 下可达。仅云端登录已启用(cloudLoginConfig !== undefined)时挂载——
-      // 未启用时零注册、无登录入口(Req 4.2),请求落既有 404 语义。凭据明文不回显/不入日志(Req 5.2)。
-      ...(cloudLoginConfig !== undefined
-        ? createAuthRoutes({ state: authSessionState })
-        : []),
-      // 附件上传(POST /sessions/:id/attachments,经 Router :id 会话门控)+ 分发
-      // (GET /attachments/:attachmentId/raw,靠签名自洽鉴权)两端点,经同一注入接缝挂载,
-      // 在 /api/** 下可达(Req 7.1)。resolveWriteBackend(agent-attachment-profile spec,
-      // Req 3.1):经会话管理器的 SessionStore 查 PiSession 只读投影,取该会话 agent 声明的
-      // 写目标 profile 名;查无会话/无声明 → undefined,回落宿主默认写路由(不抛)。
-      ...createAttachmentRoutes(attachmentStore, {
-        resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
-      }),
-      // bang shell 命令(spec bang-shell-command):POST /sessions/:id/bash。
-      // 服务端权威门控——默认关闭(secure by default),仅 PI_WEB_BASH_ENABLED 显式开启;
-      // 关闭时端点返回 404(任意 shell 执行属高危,远程/多用户环境必须默认关)。
-      ...createBashRoutes(store, { enabled: resolveBashEnabled() }),
-      // 扩展安装管理(extension-management,builtin-plugin-command 任务 2.2):挂载既有
-      // GET/POST /extensions、DELETE /extensions/:extId、POST /sessions/:id/reload。
-      // 注入 SessionReloader:经 PiSession.restartRunner() 重 spawn runner 续会话、重解析
-      // 资源,使 /plugin 安装/卸载对运行中的会话生效(Req 4.1/5.x/6.1)。
-      ...createExtensionRoutes({
-        piCli: extPiCli,
-        store,
-        manager,
-        // 安装治理由 env 配置(运营者必需;默认沿用 extension-management 的安全默认:
-        // 管理员门控拒绝匿名/非管理员、白名单仅 @pi-web/@earendil-works npm + github.com、禁本地)。
-        //   PI_WEB_EXT_ADMIN_ALLOW_ANY=1  → 放行安装(dev/单用户自托管;生产应改用真实 adminPolicy)
-        //   PI_WEB_EXT_ALLOW_LOCAL=1      → 允许本地路径来源(与 host 命令共享 extAllowlist)
-        ...(extAllowMutate ? { adminPolicy: (): boolean => true } : {}),
-        allowlist: extAllowlist,
-        reloadSession: reloadRunner,
       }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes

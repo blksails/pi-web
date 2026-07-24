@@ -108,4 +108,47 @@ describe("ConfigCodec", () => {
     expect(loaded["defaultProvider"]).toBe("anthropic");
     expect(loaded["theme"]).toBe("dark");
   });
+
+  // ── host-contract v1 M2:三处「收紧」的行为零变化守卫 ──
+  // spec: host-contract-config-on-workspace。ConfigCodec 改建到 LocalWorkspace 之上后,
+  // Workspace 对损坏 JSON 抛 corrupt、写入设上限、原子写;下列用例锁死 config 域的既有
+  // 可观测行为不因这些收紧而改变。io 分区(必须 rethrow)见 config-codec.error-partition.test.ts。
+
+  it("收紧①:磁盘为非法 JSON → load 返回 {}(静默降级,不抛)", async () => {
+    await fs.writeFile(join(tmpDir, "auth.json"), "{ not valid json", "utf8");
+    const codec = new ConfigCodec(tmpDir);
+    // 变异判据:删掉 load 的 `code === "corrupt"` 降级分支 → 此处转红(readJson 抛 corrupt)。
+    await expect(codec.load("auth")).resolves.toEqual({});
+  });
+
+  it("收紧①:磁盘为合法但非对象(数组 / 标量)→ load 返回 {}", async () => {
+    await fs.writeFile(join(tmpDir, "settings.json"), JSON.stringify([1, 2, 3]), "utf8");
+    const codec = new ConfigCodec(tmpDir);
+    await expect(codec.load("settings")).resolves.toEqual({});
+
+    await fs.writeFile(join(tmpDir, "sandbox.json"), JSON.stringify("scalar"), "utf8");
+    await expect(codec.load("sandbox")).resolves.toEqual({});
+  });
+
+  it("收紧① + merge:损坏磁盘时 save(默认 merge)以 {} 为基底、不抛", async () => {
+    await fs.writeFile(join(tmpDir, "auth.json"), "%%corrupt%%", "utf8");
+    const codec = new ConfigCodec(tmpDir);
+    // 变异判据:若底层改用 writeJson({merge:true})(对损坏磁盘二次 read 抛 corrupt)→ save
+    // 抛错,此处转红。当前实现在本层以 load(→{}) 为合并基底,底层恒 merge:false。
+    await expect(
+      codec.save("auth", { anthropic: { apiKey: "sk-new" } }),
+    ).resolves.toBeUndefined();
+    const loaded = await codec.load("auth");
+    expect(loaded).toEqual({ anthropic: { apiKey: "sk-new" } });
+  });
+
+  it("落盘字节守卫:save 写出 JSON.stringify(x, null, 2) 且无尾换行", async () => {
+    const codec = new ConfigCodec(tmpDir);
+    const data = { defaultProvider: "anthropic", nested: { a: 1 } };
+    await codec.save("settings", data);
+    const raw = await fs.readFile(join(tmpDir, "settings.json"), "utf8");
+    // 变异判据:落盘格式漂移(缩进变化 / 追加尾换行)→ 转红。逐字节复刻既有 ConfigCodec。
+    expect(raw).toBe(JSON.stringify(data, null, 2));
+    expect(raw.endsWith("\n")).toBe(false);
+  });
 });

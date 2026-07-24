@@ -45,3 +45,7 @@ e2e/fixtures/iphone-mpf.jpg
 
 # pnpm 本地 store
 .pnpm-store/
+
+# 本地工具产物(代码索引/编辑器),不入库
+.codegraph/
+.cursor/
