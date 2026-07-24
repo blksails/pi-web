@@ -1,6 +1,6 @@
 # Implementation Plan — aigc-key-proxy
 
-- [ ] 1. Foundation:Router 尾段通配能力
+- [x] 1. Foundation:Router 尾段通配能力
 - [x] 1.1 实现模板尾段 `*` 匹配并以单测钉死语义
   - 模板尾段为 `*` 时放宽段数约束(`*` 可匹配零段),余段逐段 decodeURIComponent 后以 `/` 连接存入 `params["*"]`
   - 非通配模板匹配语义零变化;通配路由与精确路由共存时先注册先赢(内置在前);path 匹配但方法不符仍走 405
@@ -8,7 +8,7 @@
   - 观察:router 单测新增用例(通配匹配零段/一段/多段、`params["*"]` 余段还原、精确优先、既有路由行为回归)全绿
   - _Requirements: 2.3_
 
-- [ ] 2. 核心模块(三者边界互不重叠,可并行)
+- [x] 2. 核心模块(三者边界互不重叠,可并行)
 - [x] 2.1 (P) 会话凭据模块:签发与校验
   - token 格式 `pwap1.<sessionId>.<exp>.<sigHex>`,HMAC-SHA256,签名域前缀 `aigc-proxy.v1.` 与附件签名隔离
   - 校验顺序:格式 → 过期(注入时钟便于测试)→ timingSafeEqual 常量时间签名比对,失败返回判别原因(malformed/expired/bad-signature)不抛
@@ -31,7 +31,7 @@
   - _Requirements: 5.1, 5.2, 5.3_
   - _Boundary: tool-kit provider 声明_
 
-- [ ] 3. 代理路由段
+- [x] 3. 代理路由段
 - [x] 3.1 代理转发处理器与注入路由工厂
   - 处理顺序:provider 查表(未登记→404 且零上游请求)→ Bearer token 校验(缺失/无效/过期→401 且零上游请求,对外文案不区分原因)→ 宿主真实 key 查 env(缺失→502,文案提示宿主未配凭据、不含 key 值)→ 转发
   - 转发:请求 headers 剔除 host/authorization/content-length/逐跳头后透传(content-type 的 multipart boundary、x-dashscope-async、accept 保留),注入真实 key 的 authorization;请求体 `duplex:"half"` 流式透传;响应以 `Response(upstream.body)` 流式透传状态码与过滤后 headers
@@ -49,7 +49,7 @@
   - 观察:集成测试文件全绿
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 2.6, 3.3_
 
-- [ ] 4. 宿主接线
+- [x] 4. 宿主接线
 - [x] 4.1 配置解析与 fail-fast 校验
   - config 层收原始 `PI_WEB_AIGC_PROXY_PUBLIC_BASE` 与 aigc 网关键子集常量(NEWAPI/SUFY/DASHSCOPE 三键);解析函数校验 http/https,非法值抛携带变量名与三种修复路径的清晰错误,未设返回 undefined
   - token TTL 计算:e2b 沙盒超时 + 安全余量,可被 `PI_WEB_AIGC_PROXY_TOKEN_TTL_MS` 独立覆盖
@@ -66,7 +66,7 @@
   - _Depends: 2.1, 3.1, 4.1_
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 4.1_
 
-- [ ] 5. 端到端验证
+- [x] 5. 端到端验证
 - [x] 5.1 核心链路 e2e(无 e2b 依赖)
   - 起真实 pi-web server(代理路由启用,宿主 env 含真实 key `sk-real-e2e`)+ node:http stub 上游;独立子进程 env 仅含代理地址与会话 token(无真实 key),经真实 runEndpoint 发起文生图
   - 断言:产物 b64 正确回传;stub 收到且仅收到 `Bearer sk-real-e2e`;子进程 env 全程无 `sk-real-e2e`;工具错误语义:过期 token → 401
@@ -79,7 +79,7 @@
   - 观察:测试命令输出计数全绿,与实现前基线对比无新增失败
   - _Requirements: 1.3, 5.1_
 
-- [ ]* 5.3 e2b 沙盒全链回归(条件跑)
+- [x]* 5.3 e2b 沙盒全链回归(条件跑)
   - 既有 e2e:sandbox-browser 基建(kind 集群/凭据)可用时:沙盒内生图经宿主代理完成,验收 2.1/4.1 在真实沙盒环境成立
   - 缺基建/凭据时 SKIP(exit 0),不阻塞本 spec 完成判定
   - _Requirements: 2.1, 4.1_
@@ -88,3 +88,16 @@
 - 「三真实键名不出现」是速记:语义为真实**值**不出现——六键含三个与真实键同名的 `*_API_KEY`(值=会话 token),断言按值做(4.2 复核确认)
 - 代理路由注册门控在 config.aigcProxyPublicBase;secret 皆缺在装配期(buildSingleton)抛,属合理 fail-fast
 - e2b 闭包断言技术:捕获 transport 构造参数 + 惰性 FakeChannel 经 getHandler()+createSession() 走真实路径(沿 e2b-env-assembly.test.ts 惯例,无需抽纯函数)
+
+## 收尾记录(2026-07-24)
+
+**本 spec 的方案已被裁撤,非"待办未做"**。`aigc-key-proxy`(环境变量反代方向)因需改 baseUrl
+会破坏主 LLM 通路而放弃,由 `fetch-rpc-bridge` → 最终 `sandbox-credentials-v2`(分面 scoped token
+代理认证)取代;`aigc-proxy` 已从代码与装配中**完全摘除**,仅保留 `deprecatedAigcProxyWarning`
+(`lib/app/llm-gateway-assembly.ts:56`)提示运维其专属 env 不再生效。
+
+- 组标题 `5.` 的子任务均已完成,补勾。
+- `5.3 e2b 沙盒全链回归` 是 `*` 可选项且标注「条件跑」,需真实 e2b 凭据;方案既已裁撤,
+  该条件验证**不再有执行意义**,标记为不再适用(而非已验证)。
+
+替代方案的验证见 `sandbox-credentials-v2`(已 17/17 完成)。

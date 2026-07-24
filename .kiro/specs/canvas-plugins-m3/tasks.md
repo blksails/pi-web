@@ -2,7 +2,7 @@
 
 > 基线 560af8b(canvas-actions-m2 已合 main,canvas e2e 6/6 绿)。行号引用开工时 grep 重校准;黄金基准恒取 `git show HEAD:`。三项拍板(2026-07-06):拓扑校验禁用进 diagnostics / 同 id 维持拒绝(§5 文档句修正)/ 贴纸范例含完整图层契约。裁定书 A/B/C 见 design.md。
 
-- [ ] 1. Foundation:canvas-kit 图层契约与插件捆编排
+- [x] 1. Foundation:canvas-kit 图层契约与插件捆编排
 - [x] 1.1 图层插件契约与注册面
   - layers-plugin.ts:CanvasLayerPlugin\<D\>(type/Render/bake/Inspector?)+ defineCanvasLayer 恒等;types.ts WorkLayer +kind?/data?(additive,缺省=图像图层语义零变);registry +registerLayer/layers(同 id 拒绝+diagnostics kind:"layer",复用收集器,退订幂等,per-instance)+ **disabledPluginTools 登记面(集合+登记 API,本任务创建,1.3 填充)**;kernel-facade 直通;index 显式出口+快照联动(唯一允许改动的既有测试)
   - 单测 layers-plugin.test.ts:契约恒等/冲突拒绝/退订/实例隔离,变异证据(注入违规→红→Edit 还原→绿,严禁 git checkout/restore)
@@ -24,7 +24,7 @@
   - _Depends: 1.1_
   - _Boundary: packages/canvas-kit(layers-plugin 编排)+ docs_
 
-- [ ] 2. Core:装载键与 agent 侧接缝
+- [x] 2. Core:装载键与 agent 侧接缝
 - [x] 2.1 (P) web-kit canvasPlugins 键 + 宿主中立注入(显式集成任务)
   - web-kit define-web-extension.ts:WebExtension +canvasPlugins?: readonly CanvasPluginBundle[](同文件最小结构镜像类型,组件位宽型;不引 canvas-kit);出口联动(如有快照)
   - 宿主:pi-chat panelRight 的 SlotHost 注入领域中立 `extensions` prop(全部已装载扩展描述符数组;SlotHost 所在文件透传;命名/注释零 canvas 词——SES-H1 四线保持是硬线);其他 slot 未消费者零影响
@@ -38,7 +38,7 @@
   - _Requirements: 6.3, 6.5_
   - _Boundary: packages/tool-kit(canvas commands/extension/capability)_
 
-- [ ] 3. Core:前端消费、范例与 e2e 资产
+- [x] 3. Core:前端消费、范例与 e2e 资产
 - [x] 3.1 canvas-ui 聚合与插件注册接线
   - CanvasPanelProps +extensions?;collectCanvasPluginBundles 纯函数(提取各 ext.canvasPlugins+extId 命名空间;无声明→空=零影响);CanvasWorkbench +plugins? prop,kernel useMemo 内 builtin 后 registerPluginBundles 逐扩展;工具轨 disabled 判定并入 registry.disabledPluginTools,tooltip 经 resolveToolRailTitle 显缺失项;类型双向可赋值断言(web-kit↔canvas-kit CanvasPluginBundle,M2 先例形态);车道② 覆盖=集成测试以已装包 webext 描述符(webext 装载 fixture 手法)进聚合断言生效/验签失败不进列表不崩
   - 测试:plugin-aggregation.test.ts(canvas-ui)+ workbench-plugin-disabled.test.tsx(ui 新文件:置灰+tooltip 缺失项/齐备正常)

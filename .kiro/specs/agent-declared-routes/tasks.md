@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 契约与类型面(Foundation)
+- [x] 1. 契约与类型面(Foundation)
 - [x] 1.1 protocol 包新增 agent-routes 帧契约
   - 定义声明 DTO(name/methods/description)与三个 JSONL 帧(装配期声明帧、请求帧、结果帧)的 zod schema 与推断类型,字段形状照 design「契约:JSONL 帧」
   - 经包主入口导出(不新增子路径出口);SSE 帧 union 零触碰
@@ -14,7 +14,7 @@
   - _Requirements: 1.1_
   - _Boundary: AgentDefinition.routes(agent-kit)_
 
-- [ ] 2. runner 子进程侧(Core)
+- [x] 2. runner 子进程侧(Core)
 - [x] 2.1 agent-loader 归一化与权威校验
   - 归一化 routes 进 NormalizedAgentRuntimeFactory;校验名称格式(`^[a-z0-9][a-z0-9-]*$`)、同定义内唯一、methods ⊆ {GET,POST};methods 缺省补 ["GET"]
   - 非法声明抛含 route 名与失败原因的装配错误(runner 启动失败→会话创建失败);无 routes 声明时归一化结果与现状逐字段一致
@@ -28,7 +28,7 @@
   - _Requirements: 1.4, 3.1, 3.3, 3.5, 4.4, 5.2, 5.3_
   - _Depends: 1.1, 2.1_
 
-- [ ] 3. 主进程 session 与 HTTP(Core)
+- [x] 3. 主进程 session 与 HTTP(Core)
 - [x] 3.1 (P) PiSession 路由表缓存与同步配对
   - handleRawLine 识别声明帧(就绪门前缓存,二次 zod 校验失败丢弃并记日志)与结果帧(pending map 按 id 配对 resolve;未知/迟到 id 丢弃)
   - 新增 agentRoutes 只读访问器与 invokeAgentRoute(发请求帧→pending→超时 reject);invokeAgentRoute 只收 `timeoutMs` 参数并给代码默认值 20s,**不读 env**(env 读取归属 3.2)
@@ -44,7 +44,7 @@
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 3.2, 3.3, 3.4, 3.6, 4.1, 4.2, 4.3, 4.4_
   - _Depends: 3.1_
 
-- [ ] 4. 承载与演示(Integration)
+- [x] 4. 承载与演示(Integration)
 - [x] 4.1 (P) stub agent 演示 routes
   - stub-agent-process.mjs 装配期发声明帧(含 gallery-stats 等演示 route)并应答请求帧(定值 JSON)
   - 完成态:stub 模式创建会话后 GET 清单返回演示 routes;调用返回定值 JSON
@@ -64,7 +64,7 @@
   - _Requirements: 6.4_
   - _Boundary: docs_
 
-- [ ] 5. 验证(Validation)
+- [x] 5. 验证(Validation)
 - [x] 5.1 真实子进程集成测试
   - spawn 带 routes 的 fixture agent:声明帧→PiSession 缓存→invokeAgentRoute→handler 执行→fd1 结果帧→resolve 全闭环(fd1 直写坑仅此层能验)
   - 含 busy 场景:prompt 流进行中调用 route 仍同步返回

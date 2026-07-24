@@ -7,7 +7,7 @@
 
 ## M1 · 面⑦ per-source settings 静态主体(本地)
 
-- [ ] 0. 共享地基
+- [x] 0. 共享地基
 - [x] 0.1 sourceKey 工具(sha256 散列 + 路径安全,输入对齐 registry sourceId)
   - 新增 `sourceKey(source)`:以 registry sourceId 为稳定输入(不含版本/channel),sha256 短散列(同 template-name.ts 现成模式),仅含文件系统安全字符
   - 供面⑦ 配置目录/DB 主键、面⑤ dist 寻址/源匹配复用(单一事实来源)
@@ -15,7 +15,7 @@
   - _Requirements: 0.1, 0.2, 0.3, 0.4_
   - _Boundary: sourceKey 工具(共享地基 G3)_
 
-- [ ] 1. 清单声明面与解析
+- [x] 1. 清单声明面与解析
 - [x] 1.1 protocol:PiWebManifestSchema 新增 settings 段 + zod 校验
   - 新增 `PluginSettingsSchema`(schema/title/icon/scope/widgets),挂 PiWebManifestSchema;未声明 settings 的清单零变化
   - 完成态:合法/非法 settings 段解析单测;typecheck 绿
@@ -27,7 +27,7 @@
   - _Requirements: 1.2, 1.3, 1.4_
   - _Depends: 1.1_
 
-- [ ] 2. 持久化与端点
+- [x] 2. 持久化与端点
 - [x] 2.1 [0.1] server:per-source config codec(source/project 双作用域)
   - 落盘 source→`<agentDir>/sources/<sourceKey>/settings.json`、project→`<cwd>/.pi/source-settings/<sourceKey>.json`(独立目录,不并入 .pi/settings.json);0700/0600;缺文件回 {};复用既有 config-codec 范式
   - 完成态:双作用域落盘 + 缺文件回 {} + secret 存密文/掩码引用单测
@@ -41,14 +41,14 @@
   - _Depends: 1.2, 2.1_
   - 生产 resolveSettings 接线已补(补task 2.3):`lib/app/pi-handler.ts` 的 `makeSourceSettingsResolver` 替换过渡态占位实现,候选包根目录 = `config.defaultCwd` ∪ 内置 default-agent ∪「已安装/已登记本地目录源」(与 `GET /agent-sources` 同一 provider 组合),逐个 `resolvePiPlugin → descriptor.id → sourceKey` 命中匹配;新增 `resolveSourceSettingsFromPackageDirs`(`packages/server/src/config/source-settings-routes.ts`)承载该匹配逻辑,经 config barrel 导出。真实 fixture(`settings-assembly-source-e2e-agent`)端到端验证 200/PUT 回读/未知 sourceKey 仍 404,见 `e2e/node/source-settings-endpoint.e2e.test.ts`。
 
-- [ ] 3. 装配期注入
+- [x] 3. 装配期注入
 - [x] 3.1 [2.1] runner:AgentContext 加 settings + 装配期注入
   - agent-kit + server/runner 两处镜像加只读 settings;runner 装配期读对应作用域 per-source settings.json 注入 ctx.settings(无文件=空对象);secret 解掩码后仅经 spawn env/stdin 传子进程不落浏览器
   - 完成态:**真实子进程集成测试**证 ctx.settings 命中(stub 抓不到装配期注入回归);存量无 settings source ctx.settings 空对象且行为零变化
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
   - _Depends: 2.1_
 
-- [ ] 4. 前端面板与动态控件挂载
+- [x] 4. 前端面板与动态控件挂载
 - [x] 4.1 (P) react:registerSourceSettingsPanel 动态登记
   - source 激活时幂等登记 per-source 面板(按 id 覆盖 + bump,复刻 registerMcpPanelIfInstalled);菜单项标题取清单 settings.title;复用 SettingsShell + FormSchema 渲染器
   - 完成态:激活→面板长出 + 切源回收用例
@@ -70,7 +70,7 @@
 
 ## M2 · 面⑤ 第三方 slots 路线 A(本地)
 
-- [ ] 6. 第三方 slots 代码扩展本地全链
+- [x] 6. 第三方 slots 代码扩展本地全链
 - [x] 6.1 web-kit:slots 组件编进 dist entry(manifest 带 entry + SRI + 签名)
   - build 产带 entry(.mjs)的 manifest.json + 逐文件 sha384 SRI + Ed25519 签名(复用 manifest-emit);slots 组件经 import map 单例复用宿主 React;canonicalManifestBytes 排除 signature
   - 完成态:webext-slots-agent build 出带 entry manifest;SRI/签名断言
@@ -125,7 +125,7 @@
 
 ## M3 · 面⑦ 动态控件 + 实时下发(延后)
 
-- [ ] 7. 动态控件咬合与实时下发
+- [x] 7. 动态控件咬合与实时下发
 - [x] 7.1 [4.2,6.2] 动态控件 widget 咬合面⑤ 路线 A 产出
   - settingsWidgets capability 提供的 renderer 经 per-source scoped registry 命中;widget 数据端点走 agent-declared-routes;webext 缺失降级只读 JSON
   - 完成态:动态控件端到端(widget→routes→runner)e2e

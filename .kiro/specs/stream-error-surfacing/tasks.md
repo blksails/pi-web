@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. 服务端翻译层:终态错误与真实文案
+- [x] 1. 服务端翻译层:终态错误与真实文案
 - [x] 1.1 在 agent_end 增加终态错误/中止检测与真实文案翻译
   - 从 `agent_end.messages` 末尾取最近的 assistant 消息;`willRetry===false` 且其 `stopReason==="error"` → 产出携带真实 `errorMessage`(缺省用回退常量)的用户可见错误信号;`stopReason==="aborted"` → 产出中止信号;其余(`stop`/`length`/`toolUse`、末项非 assistant)→ 维持现有正常结束翻译
   - 产出错误/中止信号前关闭悬挂的 text/reasoning part(已开始流式后失败仍妥善收尾)
@@ -18,7 +18,7 @@
   - _Requirements: 1.1, 1.3, 1.4, 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 4.1, 4.3, 5.1, 5.2, 5.4_
   - _Depends: 1.2_
 
-- [ ] 2. 前端:错误呈现
+- [x] 2. 前端:错误呈现
 - [x] 2.1 新增无状态错误提示元件并从 UI 包导出 (P)
   - 新增展示型元件:接收错误信息文本,空则不渲染,非空以 destructive 配色 + `role="alert"` 展示文本(允许必要截断,不替换为无意义占位);从 `@blksails/pi-web-ui` 导出
   - 完成判据:元件单测覆盖"空→不渲染""非空→alert 角色+文本";`tsc --noEmit`(ui)通过
@@ -35,7 +35,7 @@
   - _Requirements: 1.2, 1.4, 2.4, 4.2, 5.4_
   - _Depends: 2.2_
 
-- [ ] 3. 集成回归
+- [x] 3. 集成回归
 - [x] 3.1 全量回归与类型校验
   - 运行 `@blksails/pi-web-server` 与 `@blksails/pi-web-ui` 全量测试 + 两包 `tsc --noEmit`,确认正常对话与其它事件翻译不回归
   - 完成判据:两包 `test` 与 `typecheck` 均以新鲜运行输出证明通过

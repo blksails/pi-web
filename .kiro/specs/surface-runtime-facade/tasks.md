@@ -1,6 +1,6 @@
 # Implementation Plan
 
-- [ ] 1. Foundation:SDK 类型与组装器(web-kit)
+- [x] 1. Foundation:SDK 类型与组装器(web-kit)
 - [x] 1.1 定义会话能力对象与操作描述类型并从公开入口导出
   - host-context 增会话能力对象接口(`submitUserMessage(text, opts?.attachmentIds)`,与 WebExtSurfaceAccess 同族);新文件承载操作描述类型(title / tool / 有序 params / fence 默认 `surface-op` / fallback)与提交结果 discriminated union
   - web-kit 公开入口导出上述类型;不导出内部装配件
@@ -12,7 +12,7 @@
   - 完成态:web-kit 新增单测全绿
   - _Requirements: 3.1, 3.2, 3.3_
 
-- [ ] 2. Core:对话桥门面 hook(react)
+- [x] 2. Core:对话桥门面 hook(react)
 - [x] 2.1 (P) 实现 useConversationBridge 三态探测与四成员
   - opChannel:conversation/别名在→prompt;缺且 surface∧domain∧探针中→command;否则 unavailable;渲染时同步求值;不暴露通道指定参数
   - submitOp 分道:prompt 态组装消息经会话能力提交;command 态有 fallback 走 run、无 fallback 返回 no_fallback 错误;unavailable 返回错误;全部结果对象承载,不抛异常
@@ -28,7 +28,7 @@
   - 完成态:react 新增单测全绿
   - _Requirements: 1.4, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.4, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 6.2_
 
-- [ ] 3. Core:宿主能力对象化(ui 宿主)
+- [x] 3. Core:宿主能力对象化(ui 宿主)
 - [x] 3.1 (P) doSend 扩参与 conversation 能力对象注入
   - doSend 增可选显式 attachmentIds,与 composer 引用合并追加;无 opts 调用路径行为不变
   - pi-chat useMemo 构造 conversation 能力对象注入 SlotHost;SlotHostProps/renderContribution 增 conversation 透传;onSubmitPrompt 注入保留并加 @deprecated JSDoc
@@ -42,7 +42,7 @@
   - 完成态:ui 包 web-ext 相关新增断言全绿
   - _Requirements: 6.1, 6.2, 6.4_
 
-- [ ] 4. Integration:canvas 迁移为首个门面消费者
+- [x] 4. Integration:canvas 迁移为首个门面消费者
 - [x] 4.1 析出领域参数组装并薄包装保测(golden 对照)
   - 第一步(迁移前):以迁移前 buildToolPrompt 实现捕获六动作×mask/refs 组合的期望输出,固化为 fixture(golden 期望值不得由迁移后代码生成,防薄包装自证)
   - 从 buildToolPrompt 析出 buildSurfaceOp(决策→操作描述:tool 行注解/mask/reference_images 注解/reframe 默认 prompt/省略规则原样;fence 用 `canvas-op`;不声明 fallback)
@@ -62,7 +62,7 @@
   - 完成态:三态在组件测试中可断言(按注入组合渲染)
   - _Requirements: 8.4, 8.5, 8.6_
 
-- [ ] 5. Integration:导出重组审计
+- [x] 5. Integration:导出重组审计
 - [x] 5.1 (P) surface 门面入口叙事收口(审计结论:零改动——agent 侧规范入口=`./runtime` 已覆盖 createSurface 门面;全仓零 `/surface` 子路径导入;react/web-kit 新增导出均为门面消费面无内部件泄漏;7.3 全增量无兼容破坏)
   - tool-kit surface 子入口审计(createSurface 导出叙事;package.json exports 覆盖即零改);react/web-kit 公开入口复核不导出内部装配件;若既有导入路径变更保留兼容导出
   - 完成态:三包公开入口 API 清单核对通过,workspace typecheck 绿
@@ -70,7 +70,7 @@
   - _Boundary: 包入口 exports_
   - _Depends: 2.1_
 
-- [ ] 6. Validation:回归与端到端
+- [x] 6. Validation:回归与端到端
 - [x] 6.1 全量回归与静态验收线(2026-07-04 新鲜证据:typecheck EXIT=0;web-kit 36/react 335/ui 695 全绿;grep 三线零违规)
   - workspace typecheck + 受影响包(web-kit/react/ui)测试全绿;packages/ui/test/canvas/* 零改动全绿
   - grep 验收:canvas 无裸 onSubmitPrompt 调用;宿主 pi-chat/apply-extension 无 fence/领域词;公开入口无内部装配件

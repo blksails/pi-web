@@ -77,6 +77,56 @@ fs.writeFileSync(
   "utf8",
 );
 
+// extension-settings-schema-ui(任务 5.2):种入一个**已安装的假扩展包**,使「扩展」设置页
+// 能渲染出由包自带 schema 驱动的结构化表单。三件套缺一不可(对应 schema-resolver 的来源①):
+//   1) settings.json 的 `packages[]` 含该扩展 —— install 门控只处理已装扩展;
+//   2) `<agentDir>/npm/node_modules/<pkg>/package.json` 的 `pi.settings = { file, schema }`;
+//   3) 包内 schema 文件本身(含一个 record 型属性,用于断言动态键 map 条目控件)。
+// 全部落在隔离 agentDir 内,绝不触碰真实 ~/.pi/agent。
+const FAKE_EXT_ID = "pi-e2e-schema-ext";
+const fakeExtDir = path.join(agentDir, "npm", "node_modules", FAKE_EXT_ID);
+fs.mkdirSync(fakeExtDir, { recursive: true });
+fs.writeFileSync(
+  path.join(fakeExtDir, "package.json"),
+  JSON.stringify(
+    {
+      name: FAKE_EXT_ID,
+      version: "1.0.0",
+      pi: { settings: { file: `${FAKE_EXT_ID}.json`, schema: "settings.schema.json" } },
+    },
+    null,
+    2,
+  ),
+  "utf8",
+);
+fs.writeFileSync(
+  path.join(fakeExtDir, "settings.schema.json"),
+  JSON.stringify(
+    {
+      type: "object",
+      properties: {
+        apiBase: { type: "string", title: "API Base" },
+        // record 型:驱动「动态键 map 条目」控件(data-pi-record-entry)
+        headers: { type: "object", additionalProperties: { type: "string" }, title: "Headers" },
+      },
+    },
+    null,
+    2,
+  ),
+  "utf8",
+);
+// 该扩展的配置文件先种一条 record 条目,使条目控件有可见行(空 record 只渲染"新增"按钮)。
+fs.writeFileSync(
+  path.join(agentDir, `${FAKE_EXT_ID}.json`),
+  JSON.stringify({ apiBase: "https://e2e.example", headers: { "X-E2E": "1" } }, null, 2),
+  "utf8",
+);
+fs.writeFileSync(
+  path.join(agentDir, "settings.json"),
+  JSON.stringify({ packages: [`npm:${FAKE_EXT_ID}`] }, null, 2),
+  "utf8",
+);
+
 // install-host-command(任务 5.1):第三套 server 专用的隔离落盘 —— 独立 agentDir(与
 // FS/sqlite 两套的 agentDir 互不共享)+ 临时 sourcesRoot + 临时 registry 文件,绝不触碰
 // 真实 ~/.pi-web 或 ~/.pi/agent。

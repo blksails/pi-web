@@ -3,7 +3,7 @@
 > Wave 1:text_to_image + image_edit,纯执行→落库→默认卡片闭环。引擎承载于新建 `@blksails/pi-web-tool-kit`(双入口)。
 > spike-first:**任务 4** 是首个端到端可验证点(text_to_image + 单 provider 跑通),据此确认「移植精简引擎」策略;任务 5 起再扩展。
 
-- [ ] 1. Foundation:`@blksails/pi-web-tool-kit` 包脚手架与引擎类型
+- [x] 1. Foundation:`@blksails/pi-web-tool-kit` 包脚手架与引擎类型
 - [x] 1.1 创建 `@blksails/pi-web-tool-kit` 包骨架(双入口)并接入 workspace
   - 新建包目录,配置 `package.json`:主入口(声明,零运行时依赖)+ `./runtime` 子入口(node-only);`peerDependencies` 含 pi SDK / pi-ai,`dependencies` 含 undici 与 type-only 的 agent-kit
   - 配置 tsconfig(strict,禁 any)、build、vitest;主入口构建产物中**不得**出现 pi SDK / undici 值导入
@@ -15,7 +15,7 @@
   - _Requirements: 6.1_
   - _Boundary: engine/types_
 
-- [ ] 2. Core:执行内核(provider 调用 + 变量解析)
+- [x] 2. Core:执行内核(provider 调用 + 变量解析)
 - [x] 2.1 (P) 实现 env-only 变量解析与必需变量校验
   - `${VAR}` 从 `process.env` 解析;缺失语义区分必需(报错)与可选(返回空)
   - 提供必需变量校验,返回缺失清单供上层判定降级
@@ -37,7 +37,7 @@
   - _Depends: 2.1, 2.2_
   - _Boundary: engine/endpoint-adapter_
 
-- [ ] 3. Core:附件落库适配
+- [x] 3. Core:附件落库适配
 - [x] 3.1 (P) 实现 attachment ctx seam 读取
   - 以约定 seam key 读取注入的 attachment ctx;缺失返回 `available:false` 的安全降级上下文
   - 单测:注入时返回真实 ctx;未注入时返回降级上下文(不抛)
@@ -51,7 +51,7 @@
   - _Depends: 3.1_
   - _Boundary: attachment/persist_
 
-- [ ] 4. Core spike:编译器 + text_to_image 端到端跑通(引擎策略确认点)
+- [x] 4. Core spike:编译器 + text_to_image 端到端跑通(引擎策略确认点)
 - [x] 4.1 实现 Category→ToolDefinition 编译器
   - 参数合并(LLM args > userParam 默认)、默认变体选取(LLM model > defaultVariant)
   - 入参 schema 映射为 pi 工具参数并暴露给 LLM;非法/越界参数返回可读参数错误
@@ -69,7 +69,7 @@
   - _Depends: 2.3, 3.2, 4.1_
   - _Boundary: aigc/providers/dashscope, aigc/categories/text-to-image, aigc/index_
 
-- [ ] 5. Core:扩展 provider 与 image_edit
+- [x] 5. Core:扩展 provider 与 image_edit
 - [x] 5.1 (P) 扩展 text_to_image 的 OpenRouter 与 NewAPI 变体
   - 实现 OpenRouter(chat/completions + modalities + inline data URI 经注入 fetch)与 NewAPI provider 工厂
   - 接入 text_to_image variants;`paramOverrides`(隐藏不支持参数)生效
@@ -91,7 +91,7 @@
   - _Depends: 4.2, 5.2_
   - _Boundary: aigc/index_
 
-- [ ] 6. Integration:示例 agent 与降级集成
+- [x] 6. Integration:示例 agent 与降级集成
 - [x] 6.1 创建端到端示例 agent 并装配 AIGC 工具
   - 新增 `examples/aigc-agent`,`defineAgent({ customTools: buildAigcTools(), ... })`,带引导 systemPrompt
   - 集成测试:未注入 seam ctx(模拟未装配)时 agent 工具仍加载成功、调用返回降级,不崩溃
@@ -99,7 +99,7 @@
   - _Depends: 5.3_
   - _Boundary: examples/aigc-agent_
 
-- [ ] 7. Validation:端到端验证
+- [x] 7. Validation:端到端验证
 - [x] 7.1 text_to_image 浏览器 e2e(真实闭环 + 默认卡片)
   - 选 `examples/aigc-agent` 源 → prompt 触发 text_to_image(优先 sync 变体)→ 生成 → 落库 → 默认工具卡片展示产物
   - 历史回放/卡片中只见 `att_<id>` 引用与图像,不暴露内联 base64 或占位符(afterToolCall 闸门 + 默认卡片)
