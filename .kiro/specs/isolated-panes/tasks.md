@@ -67,9 +67,12 @@
   - 观察完成:Layout 测试证明拖拽回调持续更新;无 `panelWidth` 的普通 WebExt 零回归。
   - _Requirements: 7.1, 7.2, 7.3, 7.4, 11.1_
   - _Boundary: ChatApp_
-- [ ] 3.4 回归门:普通 Agent / WebExt 零行为变化
+- [x] 3.4 回归门:普通 Agent / WebExt 零行为变化
   - 无 Panes 的 Agent、普通 WebExt、无 panelRight 页面回归测试。
   - 观察完成:Regression 套件全绿(F2 验收门)。
+  - 取证(2026-07-24):PR #15 · CI Linux `Test (Linux 全量回归)` 绿(run 30019370120,
+    `pnpm -r run typecheck` 14 包 + `pnpm test` 全套件;desktop cargo check/test 含内)。
+    途中根因修:protocol `RpcSessionState.thinkingLevel` 容 "off"(pi 0.80.x 运行时实况)。
   - _Requirements: 11.1_
   - _Depends: 3.1, 3.2, 3.3_
 
@@ -150,7 +153,7 @@
 - Wave 4(5.1–5.3)已按上述「观察完成」条件核对勾选:panes-kit `test/conformance/` 双宿主全绿、`cargo test`(desktop/src-tauri,含 pane_relay)全绿。
 - 2026-07-23 核对轮:1.1–1.4、2.1–2.3、3.1、3.3、4.1 按「观察完成」取证勾选——panes-kit typecheck 净、vitest 29/29 绿(contract 重复 ID/上限/默认拒绝、instances 多开/epoch/close、conformance 握手/stale epoch/dispose、agent-routes 成功/SESSION_NOT_FOUND/409 冲突/非 JSON/超大响应/装配重试、PanesHost 多开/切换/拖排/空态恢复;409/非 JSON/PanesHost 交互用例为本轮补齐)。契约 grep 无 canvas/aigc/files 词。protocol 377/377 绿(含 min/maxPanelWidth 描述符)、ui 套件 panel-resize 通过、`test/panes-agent-build.test.ts` 单跑绿(并行跑时与他套件争 dist 文件锁会假失败)。cargo 75/75 绿(含 pane_relay)。
 - 2026-07-23 第二轮:3.2、4.2、4.3 取证勾选,Wave 3 全成——panes-kit 31/31 绿(新增:attachment.put 经真实握手还原 File 走注入 upload 且 Guest 仅得 attachmentId/displayUrl、surface.run 逐 action 授权、F3 三实例独立端口共观 surface:canvas 且关闭其一不扰其余);4.2 由既有 `test/panes-agent.test.ts` 5/5 取证(REVISION_CONFLICT 可复现、diff 只读、路径安全、artifact 生命周期);4.3 由 build 测试断言 canonical `canvas-checkerboard`(canvas-ui 工作台)+ import 审计取证。契约小修:`PaneGuestRequestSchema.bytes` 由 `z.instanceof(ArrayBuffer)` 改 brand 判别(结构化克隆/跨 realm 中继后 instanceof 失真)。`test/setup.ts` 与 `packages/ui/test/setup.ts` 补 Node 25 localStorage 残缺垫片(循 chat-app-logs-wiring 先例),chat-app 回归 13/13、ui canvas 四文件 39/39 复绿。
-- 未勾且已知缺口:仅余 3.4 回归门全绿(F2)——本机余噪均与 panes 无关且在路线外:logger 测试 `C:\C:\` 路径拼接病、`@pi-clouds/registry-client` 兄弟仓缺失、runtime-payload/webext-locate-dist 的 POSIX 路径断言、bash/stream/stub-agent 集成超时、tool-kit test/aigc 模型目录漂移(期望 `gpt-image-2` 实为 `gpt-image-2-sufy`)。F2 以 CI/Linux 全量取证后勾选;届时 Wave 5 解锁。
+- ~~未勾且已知缺口:仅余 3.4 回归门全绿(F2)~~ **F2 已取证勾选(2026-07-24,PR #15 CI Linux 绿),Wave 5 解锁**。本机余噪复盘:logger `C:\C:\` 路径病与 POSIX 断言系 Windows 独症(Linux 绿);「模型目录漂移」实为 `~/.pi/agent/aigc.json` 的 `disabledModels` 渗入装配期单测(环境泄漏,测试隔离另修);`@pi-clouds/registry-client` 兄弟仓缺失属 registry 线(root tsc/root test 不在 `pnpm -r` 范围;cli-e2e 在 main 上因此三连红,另案修)。
 
 ### 合并纪律
 
