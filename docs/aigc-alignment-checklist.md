@@ -45,12 +45,12 @@
 | M3 | 选中态权威在 agent（`surface:materials` 订阅回流） | `panes/materials-surface.ts`(120) | ✅ |
 | M4 | 全局素材库（跨会话） | `material-drawer.tsx`(1969) | ⬜ |
 | M5 | 目录树：浏览 / 建目录 / 重命名 / 移动 / 删除 / 素材归类 | 同上 + `app/api/materials/folders`、`materials/tree` | ✅ 五命令（`panes/materials-surface.ts`，11 例自检）+ guest 左栏树 UI（`web/panes/materials.tsx`） |
-| M6 | 上传素材（进度、失败重试） | 同上 + `app/api/material-uploads` | ⬜ 经 `PanesUpload` + 登记命令 |
+| M6 | 上传素材（进度、失败重试） | 同上 + `app/api/material-uploads` | 🟡 写通道两段已通（`guest.upload` → `move-items` 登记 + 乐观入列）；端到端「列表可见」候平台后端；进度/失败重试未做 |
 | M7 | 分发到广告账户 | `components/distribute-dialog.tsx`(326) + `app/api/material-distribute` | ⬜ |
 | M8 | 失败角标 + 逐项重试 | `lib/app/material-upload-status.ts`、`app/api/material-uploads/retry` | ⬜ |
 | M9 | 批量重试弹窗（收集失败对 + 串行编排） | `components/batch-retry-dialog.tsx`(156) + `lib/app/batch-retry.ts` | ⬜ |
 | M10 | 目录选择弹窗 | `components/folder-picker-dialog.tsx`(246) | ⬜ |
-| M11 | 拖拽 chip 入 composer（`text/att-id`） | `material-drawer` 发端 + pi-web `feat/composer-att-drop` 受口 | 🟡 受口已在本分支，发端未接 |
+| M11 | 拖拽 chip 入 composer（`text/att-id`） | `material-drawer` 发端 + pi-web `feat/composer-att-drop` 受口 | ✅ 受口在本分支 + guest 发端（多选整批，附 uri-list/plain） |
 | M12 | 大列表虚拟滚动 | `material-drawer.tsx` | ⬜ |
 
 ## 四、搜索域（search pane）
@@ -110,8 +110,9 @@
 | # | 内容 | 源 | 状态 |
 |---|---|---|---|
 | T1 | e2e/node 31 文件 2845 行 | `e2e/` | ⬜ 按新落点改写 |
-| T2 | example typecheck 闸 | — | ✅ 手动；⬜ 入 CI |
-| T3 | webext 构建闸（`build.ts`） | — | ✅ 手动；⬜ 入 CI |
+| T2 | example typecheck 闸 | — | ✅ `pnpm typecheck:examples` 入 CI |
+| T3 | webext 构建闸（`build.ts`） | — | ✅ `pnpm build:example:aigc` 入 CI |
+| T4 | 素材域 surface 写命令自检（11 例） | 新增 | ✅ `pnpm test:example:aigc` 入 CI |
 
 ---
 
@@ -136,14 +137,16 @@
 |---|---|---|---|---|---|
 | 一 插槽 | 13 | 7 | 0 | 3 | 3 |
 | 二 画布 | 5 | 1 | 2 | 2 | 0 |
-| 三 素材 | 12 | 3 | 2 | 7 | 0 |
+| 三 素材 | 12 | 5 | 1 | 6 | 0 |
 | 四 搜索 | 4 | 2 | 0 | 2 | 0 |
 | 五 对话 | 11 | 6 | 0 | 5 | 0 |
 | 六 平台 | 10 | 1 | 2 | 7 | 0 |
 | 七 生成 | 7 | 7 | 0 | 0 | 0 |
-| 八 验证 | 3 | 0 | 2 | 1 | 0 |
+| 八 验证 | 4 | 3 | 0 | 1 | 0 |
 | 九 pi-clouds | 8 | 0 | 0 | 6 | 2 |
-| **合计** | **73** | **27** | **10** | **33** | **3** |
+| **合计** | **74** | **32** | **5** | **32** | **5** |
 
-**对齐度**（2026-07-27 第 11 轮末）：完成 27/70（形态豁免与守则不计分母）≈ **39%**；含部分完成计权（🟡按半分）≈ **46%**。
-> 本轮增量：S1–S6 promptToolbar 六项（`acb8600`）、G7 素材写命令（`ee42d7f`）、M5 转部分。
+**对齐度**（2026-07-27 第 11 轮末）：完成 32/69（形态豁免与守则不计分母）≈ **46%**；含部分完成计权（🟡按半分）≈ **50%**。
+> 轮初 26/70 ≈ 37%。本轮增量八项：S1–S6 promptToolbar（`acb8600`）、G7 素材写命令（`ee42d7f`）、M5 目录树 UI + M11 拖拽发端（`7467095`）、M6 上传写通道（`7d5a678`）、T2/T3/T4 三闸入 CI（`7eab680`）、G7 清单立档（`830f3f4`）。
+>
+> **最大剩余阻塞**：`assets-list` 等数据面权威在平台后端，未接则素材域恒空 —— 素材/平台两组的 13 个 ⬜ 大半卡在此。故 CONTRACT-12 以「按 pi-clouds 规范接平台面」为主线。
