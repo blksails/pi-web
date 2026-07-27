@@ -21,6 +21,8 @@ import { mediaRendererExtension } from "./media-renderer.js";
 import { AuthStatus } from "./auth-status.js";
 // 输入区工具排(promptToolbar):＋ 分栏工具菜单 / 图钉快捷 pill / 意图胶囊 / 图像参数。
 import { AigcPromptToolbar } from "./prompt-toolbar.js";
+// 历史会话侧栏(sidebarLeft):分组列表 + 重命名 / 分享 / 删除(接宿主 session-list·actions 端点)。
+import { SessionHistory } from "./session-history.js";
 
 // advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
 const panesConfig = {
@@ -72,6 +74,7 @@ export default defineWebExtension({
     panelRight: ConfiguredPanesHost,
     headerRight: AuthStatus,
     promptToolbar: AigcPromptToolbar,
+    sidebarLeft: SessionHistory,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
   renderers: {

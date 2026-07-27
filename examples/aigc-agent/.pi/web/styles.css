@@ -241,3 +241,257 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── 历史会话侧栏(sidebarLeft)———— 尺寸/层次照 aigc-agent globals.css 的 .aigc-sess-*,
+      配色换成本仓 shadcn 变量(hsl(var(--…)))。 */
+.sess-list {
+  height: 100%;
+  width: 264px;
+  max-width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  padding: 2px 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sess-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+.sess-group {
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+.sess {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.sess:hover {
+  background: hsl(var(--muted));
+}
+.sess.active {
+  background: hsl(var(--accent));
+  box-shadow: inset 2px 0 0 hsl(var(--primary));
+}
+.sess-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  color: hsl(var(--muted-foreground));
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.sess.active .sess-main {
+  color: hsl(var(--foreground));
+  font-weight: 550;
+}
+/* 单行标题:超长可 shift+wheel 横向看全(隐藏滚动条,同源项目)。 */
+.sess .t {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.sess .t::-webkit-scrollbar {
+  display: none;
+}
+.sess .m {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sess-more {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: hsl(var(--muted-foreground));
+  opacity: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: opacity 0.15s, color 0.15s;
+}
+.sess:hover .sess-more {
+  opacity: 1;
+}
+.sess-more:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+}
+.sess-menu {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 20;
+  min-width: 120px;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.sess-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sess-menu button:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.sess-menu button.danger {
+  color: hsl(var(--destructive));
+}
+.sess-menu button.danger:hover {
+  background: hsl(var(--destructive) / 10%);
+}
+
+/* ── 分享弹窗 ─────────────────────────────────────────────────────────── */
+.dlg-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  background: rgb(0 0 0 / 35%);
+}
+.dlg {
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 100%);
+  max-height: 80vh;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  box-shadow: 0 20px 60px rgb(0 0 0 / 35%);
+}
+.dlg-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.dlg-head .t {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dlg-head .x {
+  border: none;
+  background: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  padding: 3px;
+  display: inline-flex;
+}
+.dlg-body {
+  overflow: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dlg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  border: 1px solid hsl(var(--border));
+  background: none;
+  color: hsl(var(--foreground));
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dlg-btn:hover:not(:disabled) {
+  background: hsl(var(--muted));
+}
+.dlg-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dlg-label {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 4px;
+}
+.dlg-hint {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.5;
+}
+.dlg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+}
+.dlg-row .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dlg-select {
+  font-size: 12px;
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  padding: 2px 6px;
+}
