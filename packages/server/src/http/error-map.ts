@@ -17,6 +17,10 @@ import {
   SessionStoppedError,
   UnknownExtensionUIError,
 } from "../session/index.js";
+import {
+  OnlineSourceInstallError,
+  onlineSourceFailureStatus,
+} from "../agent-source/online-source-errors.js";
 
 /** 协议版本响应头名(REST 响应承载,Req 7.1)。 */
 export const PROTOCOL_VERSION_HEADER = "X-Pi-Protocol-Version";
@@ -88,6 +92,16 @@ export function mapEngineError(err: unknown): Response {
   }
   if (err instanceof MissingInputError) {
     return errorResponse(400, err.code, err.message);
+  }
+  // 线上源安装失败(spec desktop-online-source-runnable,任务 4.2):按失败码分档,
+  // 响应体带上失败码供前端区分处置(Req 4.1);未认证时给 401 而非泛化 500,
+  // 使「需要登录」这件事对用户可见(Req 5.1)。message 只含源标识与失败码,不含凭据。
+  if (err instanceof OnlineSourceInstallError) {
+    return errorResponse(
+      onlineSourceFailureStatus(err.failureCode),
+      err.failureCode,
+      err.message,
+    );
   }
   // 未映射错误兜底 500。响应不泄露细节,但把根因打到**服务端 stderr**,否则线上/CI 无从排障。
   console.error("[pi-web] 未映射的会话层错误:", err);

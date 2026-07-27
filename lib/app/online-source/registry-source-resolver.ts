@@ -19,27 +19,12 @@
 import {
   isOnlineSourceRef,
   parseOnlineSourceRef,
+  OnlineSourceInstallError,
   type InstalledRegistryIndex,
   type ResolveOptions,
   type SourceResolverPlugin,
 } from "@blksails/pi-web-server";
 import type { InstallFailure, RegistryInstallPort } from "./registry-install-port.js";
-
-/**
- * 安装失败导致的解析错误。
- *
- * 携带结构化 `failure` 而非仅一句话:`create-session` 的错误映射与前端据此区分
- * 「需登录」「未找到」「不支持」等不同处置(Req 4.1),压成同一种错误会让用户无从下手。
- */
-export class OnlineSourceInstallError extends Error {
-  readonly failure: InstallFailure;
-
-  constructor(source: string, failure: InstallFailure) {
-    super(`无法安装线上源 ${source}: ${failure.code}`);
-    this.name = "OnlineSourceInstallError";
-    this.failure = failure;
-  }
-}
 
 export interface RegistrySourceResolverOptions {
   /** 已装索引(纯本地,不依赖网络与登录态)。 */
@@ -72,7 +57,7 @@ export function createRegistrySourceResolver(
 
       const outcome = await opts.port.install(ref);
       if (!outcome.ok) {
-        throw new OnlineSourceInstallError(source, outcome.failure);
+        throw new OnlineSourceInstallError(source, outcome.failure.code);
       }
       return { localDir: outcome.dir };
     },

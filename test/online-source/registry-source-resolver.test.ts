@@ -80,9 +80,7 @@ describe("resolve — 失败即抛(create-session 据此不建会话,Req 4.4)", 
     const port = portReturning({ ok: false, failure: { code: "NOT_AUTHENTICATED" } });
     const resolver = createRegistrySourceResolver({ index: indexWith(), port });
 
-    await expect(resolver.resolve("acme/canvas@stable", {})).rejects.toMatchObject({
-      failure: { code: "NOT_AUTHENTICATED" },
-    });
+    await expect(resolver.resolve("acme/canvas@stable", {})).rejects.toMatchObject({ failureCode: "NOT_AUTHENTICATED" });
   });
 
   it("各失败分类如实透传,不被压成同一种错误", async () => {
@@ -95,9 +93,7 @@ describe("resolve — 失败即抛(create-session 据此不建会话,Req 4.4)", 
     ] as const) {
       const port = portReturning({ ok: false, failure: { code } as never });
       const resolver = createRegistrySourceResolver({ index: indexWith(), port });
-      await expect(resolver.resolve("acme/canvas@stable", {})).rejects.toMatchObject({
-        failure: { code },
-      });
+      await expect(resolver.resolve("acme/canvas@stable", {})).rejects.toMatchObject({ failureCode: code });
     }
   });
 

@@ -66,7 +66,7 @@
   - _Boundary: pi-handler assembly_
   - _Depends: 2.1, 3.2_
 
-- [ ] 4.2 失败分类经 HTTP 呈现
+- [x] 4.2 失败分类经 HTTP 呈现
   - **实施期发现的缺口**：设计假设「`create-session` 据既有错误映射返回」，但真机烟雾证实
     `mapEngineError` 对未映射错误一律兜底 `500 INTERNAL`（`error-map.ts`），Req 4.1（可区分的
     结构化错误）与 Req 5.1（说明需要登录）因此落空 —— 用户只看到「Internal server error.」。

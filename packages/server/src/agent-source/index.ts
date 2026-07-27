@@ -26,6 +26,11 @@ export {
   formatOnlineSourceRef,
 } from "./online-source-id.js";
 export type { OnlineSourceRef } from "./online-source-id.js";
+export {
+  OnlineSourceInstallError,
+  onlineSourceFailureStatus,
+} from "./online-source-errors.js";
+export type { OnlineSourceFailureCode } from "./online-source-errors.js";
 
 export type {
   ResolvedSource,
