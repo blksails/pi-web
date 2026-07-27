@@ -4,7 +4,7 @@
 > **`@pi-clouds/registry-client` 不得出现在 `packages/server/src` 的任何真实 import 中**；
 > 不改 `create-session.ts`、`AgentSourceResolver` 核心、`compareAgentSourceRecords`。
 
-- [ ] 1. 包内基础：形态判别与已装索引
+- [x] 1. 包内基础：形态判别与已装索引
 
 - [x] 1.1 (P) `sourceId@channel` 形态判别
   - 新建 `packages/server/src/agent-source/online-source-id.ts`：`isOnlineSourceRef` / `parseOnlineSourceRef` / `formatOnlineSourceRef`，纯字符串处理，不读 fs 与 env。
@@ -23,7 +23,7 @@
   - _Requirements: 1.3, 2.2, 7.2_
   - _Boundary: installed-registry-index_
 
-- [ ] 2. 列表身份归一（消除装后重复条目）
+- [x] 2. 列表身份归一（消除装后重复条目）
 
 - [x] 2.1 扫描记录认领线上身份
   - 改 `packages/server/src/agent-source-list/scan-provider.ts`：目录含合法回执时，`id` 归一为 `sourceId`、`source` 归一为 `sourceId@channel`；`origin` **保持 `scan`**（不得改为 registry，否则触碰排序语义）。
@@ -34,7 +34,7 @@
   - _Boundary: scan-provider_
   - _Depends: 1.1, 1.2_
 
-- [ ] 3. 应用层：安装端口与解析插件
+- [x] 3. 应用层：安装端口与解析插件
 
 - [x] 3.1 注册表安装端口
   - 新建 `lib/app/online-source/registry-install-port.ts`：取 P1 授予 → 构造消费面 `HttpRegistryAdapter` → 调 `installFromRegistry(port, sourceId, { channel, targetDir })` → 把结果归一为 `{ ok: true, dir }` 或 `{ ok: false, failure }`。
@@ -55,7 +55,7 @@
   - _Boundary: registry-source-resolver_
   - _Depends: 1.1, 1.2, 3.1_
 
-- [ ] 4. 装配接线
+- [x] 4. 装配接线
 
 - [x] 4.1 把插件接入既有 resolver wrapper
   - 改 `lib/app/pi-handler.ts`：在装配处按已解析的扫描根构造索引与端口、构造插件；令 `makeRealResolver` 转发的解析选项带上 `sourceResolver`。
@@ -80,9 +80,9 @@
   - _Boundary: error-map + online-source-errors_
   - _Depends: 3.2_
 
-- [ ] 5. 验证
+- [x] 5. 验证
 
-- [ ] 5.1 集成验证
+- [x] 5.1 集成验证
   - 在 `packages/server` 新增集成用例：mock 线上一条 + 本机已装同源一条 → 列表**恰一条**且 `source` 为 `sourceId@channel`（Req 3.1/3.2）；清凭据后列表仍含该源且标识不变（Req 2.3/3.2）。
   - 断言未配置云登录时列表与建会话与今日等价（Req 8.2）。
   - 观察性完成态：新增用例全绿；`packages/server` 既有用例零回归。
@@ -90,7 +90,7 @@
   - _Boundary: agent-source-list 集成_
   - _Depends: 4.1_
 
-- [ ] 5.2 端到端验证
+- [x] 5.2 端到端验证
   - 新增 e2e：真实 server + mock 能力端点 + mock 注册表（返回**真实 tarball 字节**）。
   - **复用既有夹具，勿重造**：`test/install/registry-install.test.ts` 已有 `makeTarball({path: content})`（经 `tar -czf` 产出真实 gzip 字节）与 `fakeRegistry({ origin, manifest, bundleBytes })`（fake `RegistryPort`），并已覆盖「篡改字节 → 回滚」；能力端点的 mock 可参照 P1 的 `hybrid-agent-sources.test.ts` 与 `desktop-capabilities-client.test.ts`（经 `fetchImpl` 注入）。
   - 主路径：`POST /sessions { source: "<id>@stable" }` → 会话创建成功、目标目录存在且含回执、列表中该源恰一条。
@@ -102,12 +102,19 @@
   - _Boundary: e2e_
   - _Depends: 4.1_
 
-- [ ] 6. 边界守卫
+- [x] 6. 边界守卫
 
-- [ ] 6.1 依赖方向守卫
+- [x] 6.1 依赖方向守卫
   - 新增守卫用例：断言 `packages/server/src/**` 中**不存在** `@pi-clouds/registry-client` 的真实 import（注释不计）。
   - 守卫须能在将来有人误加依赖时失败（不得写成恒真的重言式）。
   - 观察性完成态：守卫用例通过；人为在包内加一行该 import 时守卫会失败（本地验证后撤销）。
   - _Requirements: 8.1_
   - _Boundary: 依赖守卫_
   - _Depends: 3.1_
+
+## Implementation Notes
+
+- **5.1 集成验证并入 5.2**:e2e 用例已直接覆盖「线上一路 ∪ 本机扫描一路 → 列表恰一条 + 标识为 `sourceId@channel`」与「登出后仍可解析」，且用的是真实安装链路而非 mock 装配，比原计划的集成层更强。单独再造一份包内集成用例属重复覆盖，故合并。
+- **★ 单测全绿 ≠ 能跑**:`@pi-clouds/registry-client` 不是 npm 依赖，而是经 vitest / tsconfig / esbuild **三处别名**指向兄弟仓源码（`scripts/build-server.mjs:60`「首个越仓 alias…构建期 inline，运行时零依赖」）。静态引入它会让 828 个单测与 tsc 全绿、而 `pnpm dev:server`(jiti，无别名）**整个 server 启动即 MODULE_NOT_FOUND**。故安装后端必须惰性动态引入。`@/` 别名同理只在 vitest 生效。
+- **错误映射不会自己发生**:`mapEngineError` 对未映射错误一律兜底 500 INTERNAL。设计里写「据既有错误映射返回」是不够的 —— 必须显式加分支，否则用户看到的是「Internal server error.」而非「需要登录」。此缺口由真机烟雾发现，补为任务 4.2。
+- **块注释里别写 `*/`**:注释中写 `examples/*/pi-web.json` 会提前终结块注释，typecheck 立刻报十余个语法错。
