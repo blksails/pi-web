@@ -44,7 +44,7 @@
 | M2 | 「带入对话」（attachmentId 引用经 prompt 通道） | `materials.tsx:76 bring` | ✅ |
 | M3 | 选中态权威在 agent（`surface:materials` 订阅回流） | `panes/materials-surface.ts`(120) | ✅ |
 | M4 | 全局素材库（跨会话） | `material-drawer.tsx`(1969) | ⬜ |
-| M5 | 目录树：浏览 / 建目录 / 重命名 / 移动 | 同上 + `app/api/materials/folders`、`materials/tree` | ⬜ 写路径经 Surface 命令 |
+| M5 | 目录树：浏览 / 建目录 / 重命名 / 移动 / 删除 / 素材归类 | 同上 + `app/api/materials/folders`、`materials/tree` | 🟡 写命令已成（`panes/materials-surface.ts` 五命令 + 11 例自检），guest UI 未接 |
 | M6 | 上传素材（进度、失败重试） | 同上 + `app/api/material-uploads` | ⬜ 经 `PanesUpload` + 登记命令 |
 | M7 | 分发到广告账户 | `components/distribute-dialog.tsx`(326) + `app/api/material-distribute` | ⬜ |
 | M8 | 失败角标 + 逐项重试 | `lib/app/material-upload-status.ts`、`app/api/material-uploads/retry` | ⬜ |
@@ -103,7 +103,7 @@
 | G4 | ffmpeg 族（拼接/截片/GIF/截帧/套音轨/转码/音轨提取） | `media-tools/src/tools/ffmpeg-tools.ts`(179) | ✅ |
 | G5 | 产物落库为 attachment（displayUrl 引用，不进 base64） | `media-tools/src/persist-media.ts`(150) | ✅ |
 | G6 | 素材/资产 agent routes（assets-list / gallery-stats） | `routes/`(137) | ✅ |
-| G7 | 素材写命令（建目录/重命名/移动/登记） | 源仓走 Next API | ⬜ 经 Surface 命令 |
+| G7 | 素材写命令（建目录/重命名/移动/删除/归类） | 源仓走 Next API | ✅ 经 Surface 控制面（`create-folder`/`rename-folder`/`move-folder`/`delete-folder`/`move-items`） |
 
 ## 八、验证资产（REQ-A8 随迁）
 
@@ -136,13 +136,14 @@
 |---|---|---|---|---|---|
 | 一 插槽 | 13 | 7 | 0 | 3 | 3 |
 | 二 画布 | 5 | 1 | 2 | 2 | 0 |
-| 三 素材 | 12 | 3 | 1 | 8 | 0 |
+| 三 素材 | 12 | 3 | 2 | 7 | 0 |
 | 四 搜索 | 4 | 2 | 0 | 2 | 0 |
 | 五 对话 | 11 | 6 | 0 | 5 | 0 |
 | 六 平台 | 10 | 1 | 2 | 7 | 0 |
-| 七 生成 | 7 | 6 | 0 | 1 | 0 |
+| 七 生成 | 7 | 7 | 0 | 0 | 0 |
 | 八 验证 | 3 | 0 | 2 | 1 | 0 |
 | 九 pi-clouds | 8 | 0 | 0 | 6 | 2 |
-| **合计** | **73** | **26** | **9** | **35** | **3** |
+| **合计** | **73** | **27** | **10** | **33** | **3** |
 
-**对齐度**：完成 26/70（形态豁免与守则不计分母）≈ **37%**；含部分完成计权（🟡按半分）≈ **44%**。
+**对齐度**（2026-07-27 第 11 轮末）：完成 27/70（形态豁免与守则不计分母）≈ **39%**；含部分完成计权（🟡按半分）≈ **46%**。
+> 本轮增量：S1–S6 promptToolbar 六项（`acb8600`）、G7 素材写命令（`ee42d7f`）、M5 转部分。
