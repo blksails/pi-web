@@ -16,7 +16,7 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
