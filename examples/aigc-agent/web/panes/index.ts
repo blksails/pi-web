@@ -25,7 +25,11 @@ export const aigcPanesDefinition = definePanes({
       icon: "▦",
       document: { kind: "inline", srcDoc: paneDocuments.materials },
       capabilities: {
-        routes: [{ name: "assets-list", methods: ["GET"] }],
+        // 两条皆只读:列表 + 分发状态。分发的发起/重试是写路径(真会对外投放),不授权。
+        routes: [
+          { name: "assets-list", methods: ["GET"] },
+          { name: "material-status", methods: ["GET"] },
+        ],
         surfaceKeys: ["surface:materials"],
         // 授权面须覆盖 guest 实际会发的每条命令 —— 白名单外的一律被 PanesHost 逐请求拒掉。
         // 目录树(建/改名/移动/删)、素材归类与素材改名都在控制面,故一并授权。

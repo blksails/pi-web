@@ -8,10 +8,12 @@
  *
  * 全通道谱:
  *  - route GET:`guest.query("assets-list")` → 素材列表(数据面,只读 R-0a);
+ *  - route GET:`guest.query("material-status")` → 分发状态角标(只读台账;发起/重试是写路径,不授权);
  *  - surface 订阅:`surface:materials` 回流选中集 / 目录树 / 归属 / 改名(权威在 agent,单写者 C1-2);
  *  - surface 命令(**控制面写通道**):select / set-filter / create-folder / rename-folder /
  *    move-folder / delete-folder / move-items / rename-item;
- *  - conversation 直送:`submitUserMessage(text, { attachmentIds })`(「带入对话」);
+ *  - conversation 直送:`submitUserMessage(text, { attachmentIds })`(「带入对话」/「在画布编辑」——
+ *    后者刻意不给本 pane 加 canvas 域授权,经对话让助手调画布工具,见 `editInCanvas` 注释);
  *  - 拖放发端:`text/att-id`(+ `text/uri-list` / `text/plain` 便于外部落点)拖入宿主输入框,
  *    零上传入列为已落库引用(受口见 packages/ui `attachment-dnd`)。
  *
@@ -38,6 +40,23 @@ interface Folder {
   readonly name: string;
   readonly parentId?: string;
 }
+
+/** 分发状态(只读):shape 与 agent route `material-status` 的返回逐字段对齐。 */
+type DistributeStatus = "none" | "pending" | "done" | "failed";
+
+interface MaterialStatus {
+  readonly attachmentId: string;
+  readonly status: DistributeStatus;
+  readonly advertiserCount?: number;
+  readonly failureReason?: string;
+}
+
+const STATUS_LABEL: Readonly<Record<DistributeStatus, string>> = {
+  none: "",
+  pending: "分发中",
+  done: "已分发",
+  failed: "分发失败",
+};
 
 interface MaterialsSnapshot {
   readonly selectedIds?: readonly string[];
@@ -99,10 +118,12 @@ function AssetCell({
   attachmentId,
   selected,
   anySelected,
+  status,
   onToggleSelect,
   onPreview,
   onRename,
   onRequestMove,
+  onEditInCanvas,
   onDragStart,
   onNotice,
 }: {
@@ -112,11 +133,15 @@ function AssetCell({
   readonly attachmentId?: string;
   readonly selected: boolean;
   readonly anySelected: boolean;
+  /** 分发状态角标;缺省(平台未接 / 未分发)则不渲染。 */
+  readonly status?: MaterialStatus;
   readonly onToggleSelect?: () => void;
   /** 点缩略图 / 菜单「预览」→ 由所属区域开 lightbox(带上下切换)。 */
   readonly onPreview?: () => void;
   readonly onRename?: (next: string) => void;
   readonly onRequestMove?: () => void;
+  /** 跨 pane 送画布(零扩权:经对话直送,非直呼 canvas 域)。 */
+  readonly onEditInCanvas?: () => void;
   readonly onDragStart: (e: React.DragEvent) => void;
   /** 复制 / 下载失败等一次性提示(隔离面板可能拦截)。 */
   readonly onNotice: (text: string) => void;
@@ -142,6 +167,16 @@ function AssetCell({
       .then(() => onNotice("链接已复制"))
       .catch(() => onNotice("复制被隔离面板拦截,请右键图片另存"));
   };
+
+  /** 角标 / 菜单里的分发说明:有台账则报状态,无台账则说明为何没有。 */
+  const distributeTitle =
+    status === undefined || status.status === "none"
+      ? "尚未分发。发起分发是写路径(会真的对外投放),需平台投放端写接口,本面板只读"
+      : status.status === "failed"
+        ? `分发失败${status.failureReason !== undefined ? `:${status.failureReason}` : ""}。重试须平台投放端写接口,本面板只读`
+        : status.status === "pending"
+          ? "分发已提交,平台侧处理中(近 30 分钟内的运行)"
+          : `已分发${status.advertiserCount !== undefined ? `到 ${status.advertiserCount} 个广告主` : ""}`;
 
   const download = (): void => {
     setMenu(null);
@@ -212,6 +247,11 @@ function AssetCell({
       >
         ⋯
       </button>
+      {status !== undefined && status.status !== "none" ? (
+        <span className={`asset-badge ${status.status}`} title={distributeTitle}>
+          {STATUS_LABEL[status.status]}
+        </span>
+      ) : null}
       <span className="asset-name">{name}</span>
       {menu !== null
         ? createPortal(
@@ -281,6 +321,22 @@ function AssetCell({
                   </div>
                 ) : null}
                 <div className="pop-sep" />
+                {onEditInCanvas !== undefined ? (
+                  <button
+                    type="button"
+                    title="经对话把这张图交给助手放上画布(素材域不直呼画布域,操作留痕对话历史)"
+                    onClick={() => {
+                      setMenu(null);
+                      onEditInCanvas();
+                    }}
+                  >
+                    在画布编辑
+                  </button>
+                ) : (
+                  <button type="button" disabled title="尚未落库的素材不可送入画布">
+                    在画布编辑
+                  </button>
+                )}
                 {onRequestMove !== undefined ? (
                   <button
                     type="button"
@@ -296,8 +352,11 @@ function AssetCell({
                     移动到目录…
                   </button>
                 )}
-                <button type="button" disabled title="素材分发需平台投放端接入,当前不可用">
-                  素材分发…
+                {/* 分发只读:显示台账状态,不提供发起/重试(写路径未接,亦未授权)。 */}
+                <button type="button" disabled title={distributeTitle}>
+                  {status === undefined || status.status === "none"
+                    ? "素材分发:未分发"
+                    : `素材分发:${STATUS_LABEL[status.status]}`}
                 </button>
                 <button type="button" disabled title="素材本体权威在平台数据面,本面板不可删">
                   删除
@@ -370,6 +429,8 @@ export function MaterialsApp(): React.JSX.Element {
   const [moving, setMoving] = React.useState<readonly string[] | null>(null);
   /** 预览灯箱:以当前可见列表为图库(左右切换),起始 index 为点中的那张。 */
   const [preview, setPreview] = React.useState<number | null>(null);
+  /** 分发状态(只读台账,按 attachmentId 索引);平台未接时恒空 → 不显角标。 */
+  const [status, setStatus] = React.useState<Readonly<Record<string, MaterialStatus>>>({});
   /**
    * 刚上传的素材(乐观入列)。数据面 `assets-list` 的权威来自平台后端;后端未接时它恒回
    * `{ error:"platform_unavailable", items: [] }`,故上传结果先在本地可见,后端接上后
@@ -471,6 +532,42 @@ export function MaterialsApp(): React.JSX.Element {
   const seen = new Set(items.map((a) => a.attachmentId).filter((x): x is string => typeof x === "string"));
   const merged = [...uploaded.filter((a) => a.attachmentId === undefined || !seen.has(a.attachmentId)), ...items];
 
+  /**
+   * 分发状态(只读增强):列表变了就整批重查。route 在平台未接时降级为空,
+   * 查询失败也**静默**——角标缺席不影响素材面板任何主功能,不该弹错扰人。
+   */
+  const statusKey = merged
+    .map((a) => a.attachmentId)
+    .filter((x): x is string => typeof x === "string")
+    .join(",");
+  React.useEffect(() => {
+    if (statusKey === "") {
+      setStatus({});
+      return undefined;
+    }
+    let alive = true;
+    void guest
+      .query("material-status", { ids: statusKey })
+      .then((raw) => {
+        if (!alive) return;
+        const list = (raw ?? {}) as { items?: unknown };
+        const items2 = Array.isArray(list.items) ? (list.items as MaterialStatus[]) : [];
+        setStatus(
+          Object.fromEntries(
+            items2
+              .filter((r) => typeof r?.attachmentId === "string")
+              .map((r) => [r.attachmentId, r] as const),
+          ),
+        );
+      })
+      .catch(() => {
+        if (alive) setStatus({});
+      });
+    return () => {
+      alive = false;
+    };
+  }, [guest, statusKey]);
+
   // 当前目录过滤:null=全部;"__none"=未分类。
   const visible = merged.filter((a) => {
     if (view === null) return true;
@@ -499,6 +596,26 @@ export function MaterialsApp(): React.JSX.Element {
     if (refs.length === 0) return;
     await guest.submitUserMessage(`带入对话(共 ${refs.length} 项制品)`, { attachmentIds: refs });
     applyPicked(new Set());
+  };
+
+  /**
+   * 跨 pane「在画布编辑」——**零扩权**路径。
+   *
+   * 素材 pane 不加 canvas 域授权(见 web/panes/index.ts 的 capabilities),而是走本已授权的
+   * conversation 直送:助手收到消息后自己调画布工具。这是本仓画布 pane 的既定范式
+   * ——「操作天然回流对话历史」,故动作可审计、可回溯;代价是过一次 LLM(有延迟、非确定)。
+   *
+   * 反过来说,直呼 canvas 域会把「素材域被攻破」升级为「画布也被改」:素材面板渲染的是
+   * 外部 CDN 来的图 URL,是三 pane 里攻击面最大的一个,不值得为省一次 LLM 往返而扩横向权限。
+   */
+  const editInCanvas = async (ids: readonly string[], label: string): Promise<void> => {
+    if (ids.length === 0) return;
+    try {
+      await guest.submitUserMessage(`把${label}放到画布上,我要编辑`, { attachmentIds: [...ids] });
+      setMessage("已送入对话,助手会把它放上画布");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const submitDraft = (): void => {
@@ -577,9 +694,19 @@ export function MaterialsApp(): React.JSX.Element {
       <div className="toolbar">
         <span className="muted grow">{picked.size > 0 ? `已选 ${picked.size}` : `${visible.length} 个素材`}</span>
         {picked.size > 0 ? (
-          <button type="button" className="button" onClick={() => setMoving([...picked])}>
-            移动到目录…
-          </button>
+          <>
+            <button type="button" className="button" onClick={() => setMoving([...picked])}>
+              移动到目录…
+            </button>
+            <button
+              type="button"
+              className="button"
+              title="经对话交给助手放上画布(素材域不直呼画布域)"
+              onClick={() => void editInCanvas([...picked], `这 ${picked.size} 张素材`)}
+            >
+              在画布编辑
+            </button>
+          </>
         ) : null}
         <button
           type="button"
@@ -687,7 +814,11 @@ export function MaterialsApp(): React.JSX.Element {
                   {...(id !== undefined ? { attachmentId: id } : {})}
                   selected={id !== undefined && picked.has(id)}
                   anySelected={picked.size > 0}
+                  {...(id !== undefined && status[id] !== undefined ? { status: status[id] } : {})}
                   {...(id !== undefined ? { onToggleSelect: () => toggle(id) } : {})}
+                  {...(id !== undefined
+                    ? { onEditInCanvas: () => void editInCanvas([id], `素材「${nameOf(a)}」`) }
+                    : {})}
                   {...(id !== undefined
                     ? { onRename: (next: string) => void run("rename-item", { id, name: next }) }
                     : {})}

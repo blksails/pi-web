@@ -76,6 +76,11 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .asset-menu{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:6px;border:none;background:rgb(20 22 35/.66);color:#fff;cursor:pointer;opacity:0;transition:opacity .15s;line-height:1}
 .asset:hover .asset-menu{opacity:1}
 .asset-name{position:absolute;left:0;right:0;bottom:0;padding:4px 7px;font-size:11px;color:#fff;background:linear-gradient(transparent,rgb(0 0 0/.55));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 分发状态角标(只读台账;平台未接则整个不渲染) */
+.asset-badge{position:absolute;left:6px;bottom:22px;padding:1px 6px;border-radius:999px;font-size:10px;line-height:16px;color:#fff;background:#64748b;pointer-events:auto}
+.asset-badge.done{background:#16a34a}
+.asset-badge.pending{background:#d97706}
+.asset-badge.failed{background:#dc2626}
 /* 卡片动作菜单(portal 到 body,useFitPos 夹进视口) */
 .asset-backdrop{position:fixed;inset:0;z-index:40}
 .asset-pop{position:fixed;z-index:41;min-width:150px;padding:4px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;box-shadow:0 10px 30px rgb(0 0 0/.18);display:flex;flex-direction:column}

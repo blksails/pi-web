@@ -77,6 +77,29 @@ export interface Page<T> {
   readonly nextCursor?: string;
 }
 
+/**
+ * 素材分发状态(**只读**)。语义对齐 pi-labs 侧台账聚合
+ * (`src/lib/server/material-uploads-agg.ts`):
+ *  - `done`    远端已存在(`public.material_sync_states.remote_present`);
+ *  - `pending` 近 30 分钟内有 submitted 的分发运行(`pilabs.material_distribute_runs`);
+ *  - `failed`  有未消解的同步失败(`public.material_sync_failures`);
+ *  - `none`    三者皆无(未分发过)。
+ *
+ * 聚合在父进程做 —— 那四张表在 Supabase,而子进程零凭证(见文件头)。本仓只定契约。
+ * 发起分发与重试是**写**路径(会真的对外投放),不在本接缝内,须另行授权后单开。
+ */
+export type DistributeStatus = "none" | "pending" | "done" | "failed";
+
+export interface MaterialStatusRecord {
+  readonly attachmentId: string;
+  readonly status: DistributeStatus;
+  /** 已分发到的广告主数(done 时有意义)。 */
+  readonly advertiserCount?: number;
+  /** failed 时的首条失败原因(短文案,不带堆栈)。 */
+  readonly failureReason?: string;
+  readonly updatedAt?: string;
+}
+
 export interface PlatformClient {
   readonly available: boolean;
   /** 解析该会话身份(token 绑定)下 provider 的有效 key;404 → PlatformUnavailableError。 */
@@ -91,6 +114,10 @@ export interface PlatformClient {
   getAsset(assetId: string): Promise<AssetRecord | undefined>;
   /** 以词搜图(search pane 的 creative-search route 用):父进程按租户做向量相似检索。 */
   searchCreatives(query: string, limit?: number): Promise<CreativeSearchResult>;
+  /** 批量查素材分发状态(只读台账聚合;未查到的 id 父进程可省略,调用方按缺省即 none 处理)。 */
+  listMaterialStatus(
+    attachmentIds: readonly string[],
+  ): Promise<{ readonly items: readonly MaterialStatusRecord[] }>;
 }
 
 /** 平台接缝不可用(env 未注入 token)或回调失败时抛出。 */
@@ -114,6 +141,7 @@ const UNAVAILABLE: PlatformClient = {
   listAssets: unavailable,
   getAsset: unavailable,
   searchCreatives: unavailable,
+  listMaterialStatus: unavailable,
 };
 
 /**
@@ -167,6 +195,10 @@ export function getPlatformContext(
       call<CreativeSearchResult>("/creatives/search", {
         query,
         ...(limit !== undefined ? { limit } : {}),
+      }),
+    listMaterialStatus: (attachmentIds) =>
+      call<{ items: readonly MaterialStatusRecord[] }>("/materials/status", {
+        attachmentIds,
       }),
   };
 }

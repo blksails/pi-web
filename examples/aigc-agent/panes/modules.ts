@@ -8,6 +8,7 @@
 import type { PaneAgentModule } from "@blksails/pi-web-tool-kit/runtime";
 import { creativeSearchRoute } from "../routes/creative-search.js";
 import { assetsListRoute } from "../routes/assets-list.js";
+import { materialStatusRoute } from "../routes/material-status.js";
 import { materialsSurfaceExtension } from "./materials-surface.js";
 
 /** 搜索域 pane:检索走自带 creative-search route(HTTP→Agent Route,替代直连 /api/creative-search)。 */
@@ -21,15 +22,16 @@ export const searchPaneModule: PaneAgentModule = {
 
 /**
  * 素材域 pane:列表读走自带 assets-list route(G2①,写路径守 R-0a 留宿主);
+ * 分发状态读走 material-status(同为只读,发起/重试等写动作不授权);
  * 热态(选中/过滤)入 materials surface(G2②,单写者)。
  */
 export const materialsPaneModule: PaneAgentModule = {
   pane: {
     id: "materials",
-    capabilities: { routes: [{ name: "assets-list" }] },
+    capabilities: { routes: [{ name: "assets-list" }, { name: "material-status" }] },
   },
   extensions: [materialsSurfaceExtension],
-  routes: [assetsListRoute],
+  routes: [assetsListRoute, materialStatusRoute],
 };
 
 export const paneModules: readonly PaneAgentModule[] = [

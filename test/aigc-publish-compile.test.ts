@@ -56,7 +56,13 @@ describe("aigc 源发布编译(pi-web.json → CompiledPackage)", () => {
     const r = await compile(PKG_DIR);
     if (!r.ok) throw new Error(JSON.stringify(r.error));
     const routes = (r.value as { routes?: readonly string[] }).routes ?? [];
-    expect([...routes].sort()).toEqual(["assets-list", "creative-search", "gallery-stats"]);
+    // 全为只读查询路由;素材分发的发起/重试是写路径,刻意不在此列。
+    expect([...routes].sort()).toEqual([
+      "assets-list",
+      "creative-search",
+      "gallery-stats",
+      "material-status",
+    ]);
   });
 
   it("files 白名单覆盖运行期依赖:panes / media-tools / platform-client 皆入包", async () => {
