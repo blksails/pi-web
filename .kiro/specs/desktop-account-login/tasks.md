@@ -423,3 +423,52 @@ bundle_dmg.sh",不提挂载。解法:`hdiutil detach -force` 那个卷 + 删掉 
 若打包态也返回 404,说明 token 没传到,而那种失效在单测里完全看不出来。
 
 仍缺的一格:**登录 → 退出 → 重开仍登录**。需要真实账号,只能由持有账号的人跑一次。
+
+## 14. 真机闭环(2026-07-27)
+
+- [x] 14.1 修:Tauri ACL 漏放行 `sync_credential`
+  - `capabilities/default.json` 缺 `allow-sync-credential` → 渲染层 invoke 被 ACL **静默拒绝**
+  - 表现:登录一切正常、钥匙串却是空的。错误只落在 webview 控制台,用户与开发者都看不见
+  - ★ **本轮第二次「单测全绿、真机不通」**:ACL 由构建期生成,TS 与 Rust 的单测都碰不到它
+  - 补 `permissions/credential.toml` 的 `allow-sync-credential` + capability 引用
+  - _Requirements: 12.1_
+
+- [x] 14.2 守卫:注册的 command 必须被 ACL 放行
+  - 新增 Rust 测试:读 `main.rs` 的 `generate_handler!` + `permissions/*.toml` + `capabilities/*.json`,
+    交叉核对每个已注册 command 都被某条 `allow-*` 放行
+  - ★ **变异验证**:删掉 ACL 那行 → 精确报出
+    `sync_credential(权限 ["allow-sync-credential"] 未被任何 capabilities/*.json 引用)`
+  - 这是本仓唯一能在 CI 里拦住该类缺陷的手段
+  - _Requirements: 12.1_
+
+- [x] 14.3 桌面默认端口 3000 → 31415(用户提出)
+  - 3000 是 `pnpm dev:server` 与几乎所有前端脚手架的默认端口。共用造成两类**已实际发生**的故障:
+    ① 桌面版在跑时 `pnpm dev:server` 直接 EADDRINUSE;
+    ② 桌面版退到 3001/3002,而调试者仍按 3000 去 curl —— **探到的是别的实例甚至孤儿进程**,
+       据此得出的结论全错(本轮就这样误判过一次「登录态还在」)
+  - 31415(π)好记;低于各平台临时端口起点(macOS/Windows 49152、Linux 32768),不与系统分配撞
+  - `PI_WEB_DESKTOP_PORT` 覆盖入口不变;e2e 全部显式传端口,不受影响
+  - _Requirements: —(工程质量)_
+
+### ★ Req 12 真机闭环证据(打包态,端口 31415)
+
+| 步骤 | 结果 |
+|---|---|
+| 登录 | 成功,`role: super_admin` 真实账号 |
+| `security find-generic-password -s pi-web-desktop -a desktop-credential` | **有条目** —— 凭据确实落了钥匙串 |
+| 退出应用 + 清空全部进程 | 钥匙串条目仍在(退出不清凭据) |
+| **全新启动后 `GET /api/identity`** | **`authenticated`,全程无任何登录动作** |
+
+Req 12.1 / 12.2 至此有真机证据。登录成功路径(Req 2.1/2.6)同轮一并验通。
+
+### ⚠ 本轮发现的新缺陷(不属本 spec,未修)
+
+**退出应用会留下孤儿 server 进程。** 用 `osascript 'tell application "pi-web" to quit'`
+优雅退出后,壳进程消失,但 `node .../dist/server.mjs` 仍存活且 PPID=1,继续占着端口。
+本轮观察到三个并存(3000 / 31415 / 另一个)。
+
+后果不只是占端口:调试时 curl 到的可能是**上一次残留的实例**,其内存里还留着旧登录态 ——
+本轮就据此误判过一次「登录状态还在」,直到查进程树才发现壳早已不存在。
+
+未验证 ⌘Q(真实用户退出路径)是否同样如此 —— osascript quit 只是它的近似。
+应另立 spec 处理(涉及 `RunEvent::ExitRequested` → `supervisor.stop()` 的实际生效路径)。

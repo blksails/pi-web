@@ -32,7 +32,18 @@ use types::{ResolveError, RuntimeMode, ServerSource};
 use window::ServerOrigin;
 
 const HOST: &str = "127.0.0.1";
-const DEFAULT_START_PORT: u16 = 3000;
+/// 桌面版默认起始端口。
+///
+/// ★ **刻意避开 3000**:那是 `pnpm dev:server` 与几乎所有前端脚手架的默认端口。
+/// 共用会造成两类实际发生过的故障:
+///  ① 桌面版在跑时 `pnpm dev:server` 直接 EADDRINUSE 起不来;
+///  ② 桌面版被迫退到 3001/3002,而调试者仍按 3000 去 curl —— 探到的是别的实例
+///    (甚至是上一次残留的孤儿进程),据此得出的结论全是错的。
+///
+/// 31415(π)取其好记,便于调试时直接 curl;且低于各平台临时端口起点
+/// (macOS/Windows 49152、Linux 32768),不会与系统自动分配撞车。
+/// 被占用时仍沿用既有的「向上找空闲端口」扫描逻辑。
+const DEFAULT_START_PORT: u16 = 31415;
 /// 启动失败时推给错误页的事件名（页面只呈现文案，不解析错误类型）。
 const STARTUP_ERROR_EVENT: &str = "startup-error";
 
@@ -469,5 +480,106 @@ mod tests {
                 "permissions/credential.toml 应在某条 permission 的 commands.allow 中列出 {cmd}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod acl_guard_tests {
+    //! ★ 守卫：`generate_handler!` 里注册的每个 command，都必须在 `capabilities/default.json`
+    //! 经某个 `allow-*` 权限放行——否则渲染层 invoke 会被 ACL **静默拒绝**。
+    //!
+    //! 这个失败形态极其难查：Rust 编译通过、TS 类型通过、两侧单测全绿，
+    //! 只有真机上点下去才发现没反应，而错误只落在 webview 控制台里。
+    //! `sync_credential` 就是这么漏掉一次的（spec desktop-account-login Req 12）。
+    //!
+    //! ACL 由构建期生成，任何单测都碰不到它——所以只能靠这种「读源文件对照」的守卫。
+
+    use std::collections::HashSet;
+
+    /// 从 `generate_handler![...]` 块里抽出注册的 command 名。
+    fn registered_commands(src: &str) -> HashSet<String> {
+        let start = src
+            .find("tauri::generate_handler![")
+            .expect("main.rs 应含 generate_handler!");
+        let rest = &src[start..];
+        let end = rest.find(']').expect("generate_handler! 应闭合");
+        rest[..end]
+            .lines()
+            .skip(1)
+            .filter_map(|l| {
+                let t = l.trim().trim_end_matches(',').trim();
+                if t.is_empty() {
+                    return None;
+                }
+                // `credential_store::store_credential` → `store_credential`
+                Some(t.rsplit("::").next().unwrap_or(t).to_string())
+            })
+            .filter(|s| !s.is_empty())
+            .collect()
+    }
+
+    /// 从 permissions/*.toml 收集「被某个 allow-* 放行的 command」→ 该权限标识。
+    fn command_to_permission() -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for toml in [
+            include_str!("../permissions/credential.toml"),
+            include_str!("../permissions/lifecycle.toml"),
+            include_str!("../permissions/pane-relay.toml"),
+            include_str!("../permissions/pick-directory.toml"),
+        ] {
+            let mut current = String::new();
+            for line in toml.lines() {
+                let t = line.trim();
+                if let Some(rest) = t.strip_prefix("identifier = ") {
+                    current = rest.trim_matches('"').to_string();
+                }
+                if let Some(rest) = t.strip_prefix("commands.allow = ") {
+                    for cmd in rest.trim_matches(|c| c == '[' || c == ']').split(',') {
+                        let c = cmd.trim().trim_matches('"');
+                        if !c.is_empty() {
+                            out.push((c.to_string(), current.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn every_registered_command_is_allowed_by_a_capability() {
+        let registered = registered_commands(include_str!("main.rs"));
+        assert!(!registered.is_empty(), "解析不到任何 command，守卫本身失效了");
+
+        let caps = include_str!("../capabilities/default.json");
+        let panes = include_str!("../capabilities/panes.json");
+        let mapping = command_to_permission();
+
+        let mut missing = Vec::new();
+        for cmd in &registered {
+            let perms: Vec<&String> = mapping
+                .iter()
+                .filter(|(c, _)| c == cmd)
+                .map(|(_, p)| p)
+                .collect();
+            if perms.is_empty() {
+                missing.push(format!("{cmd}（permissions/*.toml 里没有任何 allow-* 放行它）"));
+                continue;
+            }
+            // 该 command 的任一权限被某个 capability 引用即可。
+            let granted = perms
+                .iter()
+                .any(|p| caps.contains(p.as_str()) || panes.contains(p.as_str()));
+            if !granted {
+                missing.push(format!(
+                    "{cmd}（权限 {perms:?} 未被任何 capabilities/*.json 引用）"
+                ));
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "以下 command 已注册但未被 ACL 放行，渲染层 invoke 会被静默拒绝：\n  {}",
+            missing.join("\n  ")
+        );
     }
 }
