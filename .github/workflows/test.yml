@@ -62,3 +62,17 @@ jobs:
 
       - name: Test (workspace 全包套件)
         run: pnpm test
+
+      # examples/ 不在 pnpm workspace(pnpm-workspace.yaml 只含 packages/* 与 desktop),
+      # 亦被根 tsconfig exclude —— 上面两步都覆盖不到。aigc example 是 agent-source 的正典
+      # 范本(webext 五层 + 隔离 panes + media-tools),故单列三闸:类型、构建产物、领域自检。
+      - name: Typecheck examples/aigc-agent
+        run: pnpm typecheck:examples
+
+      # build.ts 同时校验 pane 文档打包与 webext 出包(externals 守卫 + CSS scoping + SRI)。
+      - name: Build aigc-agent webext (panes + ext.css + SRI)
+        run: pnpm build:example:aigc
+
+      # 根 test/ 整体依赖磁盘兄弟仓 ../pi-clouds(见文件头注释),故只跑与 example 相关的一支。
+      - name: Test examples/aigc-agent surface commands
+        run: pnpm test:example:aigc
