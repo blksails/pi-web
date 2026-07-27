@@ -146,6 +146,8 @@ import {
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
 // 保守默认值——沿用 llm-gateway 同一常量,语义详见 llm-gateway-config.ts 注释)。
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
+// 随包固化的云端默认接入地址(仅桌面壳生效;见该文件顶部三条约束)。
+import { resolveBakedCloudEgressBase } from "./cloud-defaults.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
 // 自动会话标题扩展文件路径解析(同样为纯路径模块,不拉 pi SDK):spec auto-session-title ——
@@ -480,9 +482,12 @@ function buildSingleton(): HandlerSingleton {
   // env 优先、回落 `<agentDir>/cloud.json`(spec desktop-cloud-login Req 8)。
   // 没有回落时打包桌面版永远启用不了登录:壳不转发 env、Finder 无 shell 环境、
   // `.env` 落在会被 GC 的运行时目录 —— 实测表现为 /api/auth/me 404、登录入口不渲染。
+  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json` > 随包固化默认值(仅桌面壳)。
+  // 固化值排最后,故用户在设置面板改过的地址永远压得住它 —— 反过来会让「改了保存也没用」
+  // 这种静默失效发生(spec desktop-account-login Req 11)。
   const cloudLoginConfig = resolveCloudLoginConfig(
     process.env,
-    readCloudDomainEgressBase(config.agentDir),
+    readCloudDomainEgressBase(config.agentDir) ?? resolveBakedCloudEgressBase(process.env),
   );
   const authSessionState = new AuthSessionState();
   if (cloudLoginConfig !== undefined) {

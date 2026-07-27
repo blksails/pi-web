@@ -86,6 +86,12 @@ pub fn build_child_env(
     env.insert("PORT".into(), port.to_string());
     env.insert("HOSTNAME".into(), host.to_string());
     env.insert("PI_WEB_AUTOSTART".into(), "1".into());
+    // ★ 「我是桌面壳」的自述。随包固化的云端默认地址**只**在此标记下生效
+    //   (见 `lib/app/cloud-defaults.ts`)——因为 dist 载荷同时随 npm 包与 .app 分发,
+    //   无条件生效会让每个 `pnpm dev` / npm CLI 用户撞上一堵他过不去的登录墙。
+    //
+    // 这一件事只有壳自己知道,故只能由它声明;它**不是**配置读取(那属 Node 的配置域机制)。
+    env.insert("PI_WEB_DESKTOP".into(), "1".into());
     env.insert(
         "PI_WEB_NODE_BIN".into(),
         node_bin.to_string_lossy().into_owned(),
@@ -356,6 +362,20 @@ mod tests {
             Some("/A.app/Contents/MacOS/node")
         );
         assert_eq!(env.get("PI_WEB_DEFAULT_SOURCE").map(String::as_str), Some("/x/agent"));
+    }
+
+    #[test]
+    fn child_env_declares_desktop_marker() {
+        // ★ 随包固化的云端默认地址**只**在此标记下生效(lib/app/cloud-defaults.ts)。
+        //   删掉这一行的后果不是「默认值失效」那么温和 —— 是全新安装的桌面版打开后
+        //   压根没有登录入口,用户无从下手,而且没有任何报错。
+        let base = BTreeMap::new();
+        let env = build_child_env(&base, "127.0.0.1", 1, Path::new("/n"));
+        assert_eq!(
+            env.get("PI_WEB_DESKTOP").map(String::as_str),
+            Some("1"),
+            "桌面壳须自述 PI_WEB_DESKTOP=1,否则随包固化的云端默认地址不生效"
+        );
     }
 
     #[test]

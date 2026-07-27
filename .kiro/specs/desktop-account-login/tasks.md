@@ -289,3 +289,24 @@
     canExchange=false),它们写错的故障形态最严重
   - `cloud-login-client.test.ts`:`token` / `credential` / 两者并存 / 403→no-membership
   - _Requirements: 2.1, 2.3, 10.1-10.7_
+
+## 11. 展示名与随包默认配置(2026-07-27,第三轮)
+
+- [x] 11.1 `tenant` 增可选 `displayName`,展示名字而非 UUID
+  - 契约 `CapabilityTenant` 加可选成员(契约 §1 允许,不升版本);解析兼容 `displayName` / `name`
+  - 展示优先用它、取不到退回 `userId`;UUID 保留在 `title` 属性(排查问题要的是权威标识)
+  - ★ **不得**用于鉴权/配额归属:可重名、可为空、可被用户随时改
+  - ⚠ 云端侧未做:pi-clouds 的 tenant 仍只有三字段,`profiles.name` 未读取也未下发
+  - _Requirements: 5.1, 5.2_
+
+- [x] 11.2 随包固化云端默认地址(Req 11)
+  - 新建 `lib/app/cloud-defaults.ts`;装配次序改为 `env > 用户 cloud.json > 固化默认值`
+  - ★ **只对桌面壳生效**。`dist/` 载荷同时随 npm 包与 `.app` 分发,无条件生效会让每个
+    `pnpm dev` / npm CLI 用户开机撞上登录门禁 —— 他没有这个云端的账号,过不去,
+    等于把本地用法整个废掉
+  - 桌面标记 `PI_WEB_DESKTOP=1` 由壳在 `build_child_env` 写入 —— 只有壳知道自己是壳;
+    这**不是**配置读取(那属 Node 的配置域机制,上一轮已明确)
+  - 构建期可经 `PI_WEB_BAKED_CLOUD_EGRESS_BASE` 覆盖(私有化部署不必改源码)
+  - Rust 侧加守卫测试:标记被删 → 转红(否则故障形态是「全新安装没有登录入口且无报错」)
+  - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
+  - _Boundary: lib/app/cloud-defaults.ts, desktop/src-tauri/src/server_supervisor.rs_
