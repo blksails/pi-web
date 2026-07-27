@@ -45,6 +45,9 @@ import {
   createRegistryHttpSourceProvider,
   createDesktopCapabilitiesClient,
   resolveDesktopCapabilitiesUrl,
+  // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
+  createInstalledRegistryIndex,
+  type SourceResolverPlugin,
   defaultAgentEntryPath,
   createAigcModelsRoute,
   createVisionModelsRoute,
@@ -150,6 +153,11 @@ import {
 import { createInstaller } from "../../server/cli/install/installer.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
+// 线上源可运行(spec desktop-online-source-runnable,任务 3.1/3.2):安装端口与解析插件。
+// 二者位于应用层而非 packages/server —— 它们经 server/cli 间接依赖 @pi-clouds/registry-client,
+// 而 P1 的范围铁律要求该依赖不得进入包内(判别与索引已下沉包内,纯 fs)。
+import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
+import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -166,7 +174,17 @@ import { systemResourceArgs } from "./system-resource-args.js";
  * cwd-independent module-resolution roots. `agentDir` is threaded through when
  * the app pins an isolated PI_CODING_AGENT_DIR.
  */
-function makeRealResolver(config: AppConfig): {
+function makeRealResolver(
+  config: AppConfig,
+  /**
+   * 线上源解析插件(spec desktop-online-source-runnable,任务 4.1)。
+   *
+   * 经 `ResolveOptions.sourceResolver` 送进 `identify()`,其判别优先于 builtin/git/本地目录。
+   * 仅在云登录与能力端点均已配置时由装配处传入;缺省不传 → 解析链路与本特性引入前完全一致
+   * (Req 8.2)。`create-session` 的新建与恢复两条路径共用本 wrapper,故一处接入即全覆盖。
+   */
+  sourceResolver?: SourceResolverPlugin,
+): {
   resolve: (
     source: string | undefined,
     opts?: { cwd?: string; trust?: boolean },
@@ -233,6 +251,7 @@ function makeRealResolver(config: AppConfig): {
         // DTO `trust` → 显式信任意图;缺省时由 trustPolicy(信任库/trustedRoots/默认)决定。
         ...(opts?.trust !== undefined ? { requestTrust: opts.trust } : {}),
         ...(extraArgs.length > 0 ? { extraArgs } : {}),
+        ...(sourceResolver !== undefined ? { sourceResolver } : {}),
       });
     },
   };
@@ -843,6 +862,28 @@ function buildSingleton(): HandlerSingleton {
         )
       : createCompositeSourceProvider(localFileRegistry, localScan);
 
+  // 线上源可运行(spec desktop-online-source-runnable,任务 4.1)。
+  //
+  // 仅在云登录与能力端点均已配置时构造;否则保持 undefined → makeRealResolver 不注入插件,
+  // 解析链路与本特性引入前**完全一致**(Req 8.2)。
+  //
+  // ★ 索引每次 lookup 现建,而非装配时建一次:刚安装好的源必须在**下一次**解析时即可见,
+  // 否则会被判为「未安装」而重复下载。一次 readdir 的开销可忽略,换取新鲜度正确。
+  const onlineSourceResolver: SourceResolverPlugin | undefined =
+    desktopCapabilitiesClient !== undefined
+      ? createRegistrySourceResolver({
+          index: {
+            lookup: (sourceId) =>
+              createInstalledRegistryIndex({ roots: sourcesScanRoots }).lookup(sourceId),
+          },
+          port: createRegistryInstallPort({
+            getSourcesGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+            // 落点 = 第一个扫描根,使装完即被 scan-provider 枚举(Req 1.4)。
+            targetRoot: sourcesScanRoots[0] ?? defaultSourcesRoot(),
+          }),
+        })
+      : undefined;
+
   // ── M3:16 个能力面经 composeCapabilities 强制表态后装配(spec host-contract-capability-composition)──
   // HostDeps 一次构造(deps 并集,D4);条件挂载(llm/ai/auth)以**可选字段**表达——未配置时
   // 字段为 undefined,对应 factory 产空路由集(等价现状三元 `cond ? createX(...) : []`)。
@@ -934,7 +975,7 @@ function buildSingleton(): HandlerSingleton {
     // custom/cli spawn specs are cwd-independent and never crash on a
     // placeholder path. In stub mode the resolved spec is discarded by
     // createChannel, but resolve() still runs without throwing.
-    resolver: makeRealResolver(config),
+    resolver: makeRealResolver(config, onlineSourceResolver),
     createChannel,
     // Cold-resume reader: POST /sessions { resumeId } loads {source, cwd, model}
     // from the configured SessionEntryStore (same SESSION_STORE backend) by id.

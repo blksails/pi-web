@@ -57,7 +57,7 @@
 
 - [ ] 4. 装配接线
 
-- [ ] 4.1 把插件接入既有 resolver wrapper
+- [x] 4.1 把插件接入既有 resolver wrapper
   - 改 `lib/app/pi-handler.ts`：在装配处按已解析的扫描根构造索引与端口、构造插件；令 `makeRealResolver` 转发的解析选项带上 `sourceResolver`。
   - **仅在云登录与能力端点均已配置时注入**；未配置则不注入插件，解析链路与本特性引入前完全一致。
   - 复用 P1 既有的 `DesktopCapabilitiesClient` 与 `authSessionState` 凭据权威，不新建第二条凭据通路。
@@ -65,6 +65,20 @@
   - _Requirements: 1.1, 8.1, 8.2_
   - _Boundary: pi-handler assembly_
   - _Depends: 2.1, 3.2_
+
+- [ ] 4.2 失败分类经 HTTP 呈现
+  - **实施期发现的缺口**：设计假设「`create-session` 据既有错误映射返回」，但真机烟雾证实
+    `mapEngineError` 对未映射错误一律兜底 `500 INTERNAL`（`error-map.ts`），Req 4.1（可区分的
+    结构化错误）与 Req 5.1（说明需要登录）因此落空 —— 用户只看到「Internal server error.」。
+  - 在 `packages/server/src/agent-source/` 定义失败码联合与 `OnlineSourceInstallError`
+    （纯数据错误类，**不引入** registry-client），由应用层的解析插件抛出它。
+  - `mapEngineError` 增加分支：按失败码映射到合适状态码（未认证 401、未找到 404、
+    形态不支持 400、目标被占 409、上游/环境类 502），响应体带上失败码供前端区分。
+  - 观察性完成态：单测覆盖各失败码 → 对应状态码与响应体 `code`；真机烟雾中以线上标识建会话
+    得到非 500 的明确拒绝。
+  - _Requirements: 4.1, 5.1_
+  - _Boundary: error-map + online-source-errors_
+  - _Depends: 3.2_
 
 - [ ] 5. 验证
 

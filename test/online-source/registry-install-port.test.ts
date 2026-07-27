@@ -40,7 +40,7 @@ describe("createRegistryInstallPort — 授权前置", () => {
     const port = createRegistryInstallPort({
       getSourcesGrant: async () => undefined,
       targetRoot: root,
-      deps: { makeRegistry, installImpl },
+      deps: { loadBackend: async () => ({ makeRegistry, installImpl }) as never },
     });
 
     const r = await port.install(REF);
@@ -57,7 +57,7 @@ describe("createRegistryInstallPort — 授权前置", () => {
         throw new Error("capabilities down");
       },
       targetRoot: root,
-      deps: { makeRegistry: vi.fn(), installImpl },
+      deps: { loadBackend: async () => ({ makeRegistry: vi.fn(), installImpl }) as never },
     });
 
     const r = await port.install(REF);
@@ -75,7 +75,7 @@ describe("createRegistryInstallPort — 成功路径", () => {
     const port = createRegistryInstallPort({
       getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
       targetRoot: root,
-      deps: { makeRegistry, installImpl },
+      deps: { loadBackend: async () => ({ makeRegistry, installImpl }) as never },
     });
 
     const r = await port.install(REF);
@@ -101,8 +101,11 @@ describe("createRegistryInstallPort — 失败归一", () => {
       getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
       targetRoot: root,
       deps: {
-        makeRegistry: vi.fn(() => ({}) as never),
-        installImpl: vi.fn(async () => ({ ok: false as const, error: error as never })),
+        loadBackend: async () =>
+          ({
+            makeRegistry: vi.fn(() => ({}) as never),
+            installImpl: vi.fn(async () => ({ ok: false as const, error: error as never })),
+          }) as never,
       },
     });
   }
@@ -160,6 +163,42 @@ describe("createRegistryInstallPort — 失败归一", () => {
   });
 });
 
+describe("createRegistryInstallPort — 安装后端不可用", () => {
+  /**
+   * 真实场景:`pnpm dev:server`(jiti)解析不到 @pi-clouds/registry-client —— 它不是 npm
+   * 依赖,而是经 vitest/tsconfig/esbuild 三处别名指向兄弟仓源码。故后端只能惰性加载,
+   * 且加载失败必须归一为可诊断结果,而不是把异常抛穿(静态引入会连带炸掉 server 启动)。
+   */
+  it("后端加载失败 → INSTALL_BACKEND_UNAVAILABLE(不抛穿)", async () => {
+    const port = createRegistryInstallPort({
+      getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
+      targetRoot: root,
+      deps: {
+        loadBackend: async () => {
+          throw new Error("Cannot find module '@pi-clouds/registry-client'");
+        },
+      },
+    });
+
+    const r = await port.install(REF);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.failure.code).toBe("INSTALL_BACKEND_UNAVAILABLE");
+  });
+
+  it("后端不可用时不泄露底层错误文本(可能含路径/令牌)", async () => {
+    const port = createRegistryInstallPort({
+      getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
+      targetRoot: root,
+      deps: {
+        loadBackend: async () => {
+          throw new Error(`boom ${SECRET}`);
+        },
+      },
+    });
+    expectNoToken(await port.install(REF));
+  });
+});
+
 describe("createRegistryInstallPort — 目标位置保护", () => {
   it("目标已有非本通道安装(无回执) → TARGET_OCCUPIED 且不调安装", async () => {
     const occupied = join(root, "acme__canvas");
@@ -170,7 +209,7 @@ describe("createRegistryInstallPort — 目标位置保护", () => {
     const port = createRegistryInstallPort({
       getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
       targetRoot: root,
-      deps: { makeRegistry: vi.fn(() => ({}) as never), installImpl },
+      deps: { loadBackend: async () => ({ makeRegistry: vi.fn(() => ({}) as never), installImpl }) as never },
     });
 
     const r = await port.install(REF);
@@ -193,7 +232,7 @@ describe("createRegistryInstallPort — 目标位置保护", () => {
     const port = createRegistryInstallPort({
       getSourcesGrant: async () => ({ baseUrl: "https://reg.example", token: SECRET }),
       targetRoot: root,
-      deps: { makeRegistry: vi.fn(() => ({}) as never), installImpl },
+      deps: { loadBackend: async () => ({ makeRegistry: vi.fn(() => ({}) as never), installImpl }) as never },
     });
 
     const r = await port.install(REF);

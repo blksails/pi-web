@@ -24,9 +24,21 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readInstalledReceipt } from "@blksails/pi-web-server";
 import type { OnlineSourceRef } from "@blksails/pi-web-server";
-import { HttpRegistryAdapter } from "@/server/cli/registry/http-registry-adapter";
-import { installFromRegistry } from "@/server/cli/install/registry-install";
-import type { RegistryPort } from "@/server/cli/registry/registry-port";
+// ★★ 安装后端只能**惰性**加载,绝不可在模块顶层静态引入。两个原因叠加:
+//
+//  1. `@/` 别名只在 vitest 的 resolve.alias 下生效,真实运行时(server/index.ts 经 jiti
+//     加载)不认它 —— 用别名会让全部单测通过而 server 启动即 MODULE_NOT_FOUND。
+//     故此处用相对路径。
+//  2. 更要命的是:`server/cli/**` 的 registry 模块 import `@pi-clouds/registry-client`,
+//     而该包**不是 npm 依赖**,是经 vitest/tsconfig/esbuild 三处别名指向**兄弟仓源码**
+//     (`../pi-clouds/packages/registry-client/src`,见 scripts/build-server.mjs:60-63
+//     「首个越仓 alias…构建期 inline,运行时零依赖」)。dist 生产模式因 esbuild inline 而可用,
+//     但 `pnpm dev:server`(jiti,无别名)解析不到 —— 一旦静态引入,**整个 server 启动即崩**,
+//     与本特性无关的一切功能跟着挂。
+//
+// 惰性引入把故障面收敛到「真正安装线上源」这一条路径上,并归一为
+// INSTALL_BACKEND_UNAVAILABLE(可诊断),而不是让服务起不来。
+import type { RegistryPort } from "../../../server/cli/registry/registry-port.js";
 
 /** 安装失败的判别联合;调用方据 `code` 区分阶段并决定用户可见文案。 */
 export type InstallFailure =
@@ -37,7 +49,12 @@ export type InstallFailure =
   | { readonly code: "DOWNLOAD_FAILED" }
   | { readonly code: "EXTRACT_FAILED" }
   | { readonly code: "INTEGRITY_MISMATCH" }
-  | { readonly code: "TARGET_OCCUPIED"; readonly dir: string };
+  | { readonly code: "TARGET_OCCUPIED"; readonly dir: string }
+  /**
+   * 安装后端不可用 —— 运行环境解析不到 registry 客户端(见文件头第 2 条)。
+   * 典型场景:`pnpm dev:server` 且兄弟仓 pi-clouds 不在预期位置。dist 生产模式不会出现。
+   */
+  | { readonly code: "INSTALL_BACKEND_UNAVAILABLE" };
 
 export type InstallOutcome =
   | { readonly ok: true; readonly dir: string }
@@ -52,13 +69,46 @@ export interface SourcesGrant {
   readonly token: string;
 }
 
-/** 测试注入点;生产不传。 */
-export interface RegistryInstallPortDeps {
-  readonly makeRegistry?: (opts: {
+/** 安装后端(惰性加载的两件套)。 */
+export interface InstallBackend {
+  readonly makeRegistry: (opts: {
     readonly baseUrl: string;
     readonly consumeToken: string;
   }) => RegistryPort;
-  readonly installImpl?: typeof installFromRegistry;
+  readonly installImpl: (
+    registry: RegistryPort,
+    sourceId: string,
+    opts: { channel?: string; version?: string; targetDir: string },
+  ) => Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false; readonly error: InstallBackendError }>;
+}
+
+/** 既有实现(`server/cli/install/registry-install.ts`)的失败形状。 */
+type InstallBackendError =
+  | { readonly code: "RESOLVE_FAILED"; readonly detail: string }
+  | { readonly code: "UNSUPPORTED_ORIGIN"; readonly originType: string }
+  | { readonly code: "DOWNLOAD_FAILED"; readonly detail: string }
+  | { readonly code: "EXTRACT_FAILED"; readonly detail: string }
+  | { readonly code: "INTEGRITY_MISMATCH"; readonly path: string };
+
+/** 测试注入点;生产不传(改走惰性加载)。 */
+export interface RegistryInstallPortDeps {
+  readonly loadBackend?: () => Promise<InstallBackend>;
+}
+
+/** 惰性加载真实安装后端。见文件头说明:绝不可提到模块顶层。 */
+async function loadRealBackend(): Promise<InstallBackend> {
+  const [adapterMod, installMod] = await Promise.all([
+    import("../../../server/cli/registry/http-registry-adapter.js"),
+    import("../../../server/cli/install/registry-install.js"),
+  ]);
+  return {
+    makeRegistry: (o) =>
+      new adapterMod.HttpRegistryAdapter({
+        baseUrl: o.baseUrl,
+        consumeToken: o.consumeToken,
+      }),
+    installImpl: installMod.installFromRegistry as InstallBackend["installImpl"],
+  };
 }
 
 export interface RegistryInstallPortOptions {
@@ -103,11 +153,7 @@ function isSourceAbsent(detail: unknown): boolean {
 export function createRegistryInstallPort(
   opts: RegistryInstallPortOptions,
 ): RegistryInstallPort {
-  const makeRegistry =
-    opts.deps?.makeRegistry ??
-    ((o: { baseUrl: string; consumeToken: string }): RegistryPort =>
-      new HttpRegistryAdapter({ baseUrl: o.baseUrl, consumeToken: o.consumeToken }));
-  const installImpl = opts.deps?.installImpl ?? installFromRegistry;
+  const loadBackend = opts.deps?.loadBackend ?? loadRealBackend;
 
   return {
     async install(ref: OnlineSourceRef): Promise<InstallOutcome> {
@@ -130,8 +176,20 @@ export function createRegistryInstallPort(
         return { ok: false, failure: { code: "NOT_AUTHENTICATED" } };
       }
 
-      const registry = makeRegistry({ baseUrl: grant.baseUrl, consumeToken: grant.token });
-      const result = await installImpl(registry, ref.sourceId, {
+      // 惰性加载安装后端:失败即归一为可诊断的 INSTALL_BACKEND_UNAVAILABLE,
+      // 而不是把异常抛穿(见文件头:静态引入会连带炸掉 server 启动)。
+      let backend: InstallBackend;
+      try {
+        backend = await loadBackend();
+      } catch {
+        return { ok: false, failure: { code: "INSTALL_BACKEND_UNAVAILABLE" } };
+      }
+
+      const registry = backend.makeRegistry({
+        baseUrl: grant.baseUrl,
+        consumeToken: grant.token,
+      });
+      const result = await backend.installImpl(registry, ref.sourceId, {
         channel: ref.channel,
         targetDir,
       });
