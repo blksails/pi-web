@@ -36,20 +36,12 @@ vi.mock("@blksails/pi-web-ui", () => ({
   AigcModelTogglesField: vi.fn(),
 }));
 
-vi.mock("@blksails/pi-web-protocol", () => ({
-  authFormSchema: { domain: "auth", fields: [] },
-  authConfigSchema: {},
-  settingsFormSchema: { domain: "settings", fields: [] },
-  settingsConfigSchema: {},
-  sandboxFormSchema: { domain: "sandbox", fields: [] },
-  sandboxConfigSchema: {},
-  extensionsFormSchema: { domain: "extensions", fields: [] },
-  extensionsConfigSchema: {},
-  loggingFormSchema: { domain: "logging", fields: [] },
-  loggingConfigSchema: {},
-  // aigc-tool-settings 新增 config 域(register-panels.ts:190+),mock 按同型补齐。
-  aigcFormSchema: { domain: "aigc", fields: [] },
-  aigcConfigSchema: {},
+// protocol 是纯 schema 包(无运行时副作用),故整体透传真实导出而非逐项白名单:
+// 白名单每次新增 config 域都要同步补齐,否则被测模块 import 即崩——已连续踩中两次
+// (aigc 一次、mcp 一次,后者是 register-panels.ts:212 的 mcpFormSchema)。透传后
+// 本用例只关心「logging 面板/renderer 是否注册」,不再被无关域的装配依赖牵连。
+vi.mock("@blksails/pi-web-protocol", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@blksails/pi-web-protocol")>()),
 }));
 
 describe("registerConfigPanels — logging 面板与 renderer 注册", () => {
