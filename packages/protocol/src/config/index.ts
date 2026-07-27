@@ -21,6 +21,9 @@ export * from "./domains/sandbox.js";
 export * from "./domains/extensions.js";
 export * from "./domains/logging.js";
 export * from "./domains/aigc.js";
+// cloud(desktop-cloud-login Req 8):pi-cloud 出口地址。之所以独立成域而非并入 auth ——
+// auth 是 LLM provider 的 apiKey/baseURL(pi 自己的 auth.json),语义不同,混入会污染。
+export * from "./domains/cloud.js";
 // mcp 同理**不**并入通用注册表:宿主契约 v1 §5.3 已冻结 capability id `config.mcp`(独立工厂),
 // 并入通用 :domain 会使该 id 失去内容(破坏性变更,两端须重新表态),且通用路由会遮蔽
 // `/config/mcp`。故仅导出 schema/FormSchema/codec 供独立路由与前端 import。
@@ -33,9 +36,10 @@ import { settingsFormSchema } from "./domains/settings.js";
 import { sandboxFormSchema } from "./domains/sandbox.js";
 import { loggingFormSchema } from "./domains/logging.js";
 import { aigcFormSchema } from "./domains/aigc.js";
+import { cloudFormSchema } from "./domains/cloud.js";
 
 /** 配置域 id(P0)。通用 `/config/:domain` 机制覆盖的域。 */
-export type ConfigDomainId = "auth" | "settings" | "sandbox" | "logging" | "aigc";
+export type ConfigDomainId = "auth" | "settings" | "sandbox" | "logging" | "aigc" | "cloud";
 
 /** 域 id → 该域表单 IR(供前端按 id 取 schema)。 */
 export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> = {
@@ -44,4 +48,5 @@ export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> =
   sandbox: sandboxFormSchema,
   logging: loggingFormSchema,
   aigc: aigcFormSchema,
+  cloud: cloudFormSchema,
 };

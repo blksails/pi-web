@@ -45,6 +45,7 @@ import {
   createRegistryHttpSourceProvider,
   createDesktopCapabilitiesClient,
   resolveDesktopCapabilitiesUrl,
+  deriveCapabilitiesUrlFromEgressBase,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
@@ -135,6 +136,7 @@ import {
 import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 import {
   resolveCloudLoginConfig,
+  readCloudDomainEgressBase,
   computeAuthEgressSpawnEnv,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
@@ -472,7 +474,13 @@ function buildSingleton(): HandlerSingleton {
   // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
   // → fail-fast 抛出。进程内登录态由启动 env(桌面壳经 base_env 播种 PI_WEB_DESKTOP_CREDENTIAL)
   // 初始化,鉴权端点运行时更新;会话 spawn 读同一实例注入 runner egress env。
-  const cloudLoginConfig = resolveCloudLoginConfig(process.env);
+  // env 优先、回落 `<agentDir>/cloud.json`(spec desktop-cloud-login Req 8)。
+  // 没有回落时打包桌面版永远启用不了登录:壳不转发 env、Finder 无 shell 环境、
+  // `.env` 落在会被 GC 的运行时目录 —— 实测表现为 /api/auth/me 404、登录入口不渲染。
+  const cloudLoginConfig = resolveCloudLoginConfig(
+    process.env,
+    readCloudDomainEgressBase(config.agentDir),
+  );
   const authSessionState = new AuthSessionState();
   if (cloudLoginConfig !== undefined) {
     const seededCredential = process.env[RUNNER_CREDENTIAL_ENV];
@@ -843,7 +851,15 @@ function buildSingleton(): HandlerSingleton {
     registryPath: sourcesRegistryPathValue,
   });
   const localScan = createScanSourceProvider({ roots: sourcesScanRoots });
-  const capabilitiesUrl = resolveDesktopCapabilitiesUrl(process.env);
+  // capabilities URL:env 显式值优先,否则由**已解析的**云端出口地址推导。
+  // ★ 必须用 cloudLoginConfig.egressBaseUrl 而非 process.env —— 后者在打包桌面版里为空
+  //   (配置来自 `<agentDir>/cloud.json`),只读 env 会让 capabilities 客户端恒为 undefined,
+  //   进而线上源解析插件不注入、选中线上源报 500。此坑由打包态真机烟雾发现(Req 8.3)。
+  const capabilitiesUrl =
+    resolveDesktopCapabilitiesUrl(process.env) ??
+    (cloudLoginConfig !== undefined
+      ? deriveCapabilitiesUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
+      : undefined);
   const desktopCapabilitiesClient =
     cloudLoginConfig !== undefined && capabilitiesUrl !== undefined
       ? createDesktopCapabilitiesClient({

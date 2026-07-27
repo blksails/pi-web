@@ -15,6 +15,8 @@
  *  - `PI_WEB_CLOUD_EGRESS_BASE`  — egress OpenAI 兼容根
  *  - `PI_WEB_CLOUD_EGRESS_MODELS`— egress 模型清单(JSON)
  */
+import { readFileSync } from "node:fs";
+import { join as joinPath } from "node:path";
 import type { EgressModel } from "@blksails/pi-web-server";
 
 /** 服务端配置 env(启用判别 = base)。 */
@@ -123,8 +125,18 @@ function parseModels(raw: string | undefined): ReadonlyArray<EgressModel> {
  */
 export function resolveCloudLoginConfig(
   env: NodeJS.ProcessEnv,
+  /**
+   * 配置域回落值(`<agentDir>/cloud.json` 的 `egressBase`,由 `readCloudDomainEgressBase` 读出)。
+   *
+   * env **优先**(Req 8.4):既有的命令行与自动化用法不被破坏。仅当 env 未提供时才取本值。
+   * 之所以需要回落:打包桌面版拿不到任何 env —— 壳不转发、Finder 无 shell 环境、
+   * `.env` 落在会被 GC 的运行时目录 —— 结果是登录入口永远不出现(Req 8 背景)。
+   */
+  fallbackEgressBase?: string,
 ): CloudLoginConfig | undefined {
-  const rawBase = env[CLOUD_LOGIN_EGRESS_BASE_ENV]?.trim();
+  const envBase = env[CLOUD_LOGIN_EGRESS_BASE_ENV]?.trim();
+  const rawBase =
+    envBase !== undefined && envBase.length > 0 ? envBase : fallbackEgressBase?.trim();
   if (rawBase === undefined || rawBase.length === 0) return undefined;
 
   let parsed: URL;
@@ -177,4 +189,36 @@ export function computeAuthEgressSpawnEnv(
     [RUNNER_EGRESS_BASE_ENV]: config.egressBaseUrl,
     [RUNNER_EGRESS_MODELS_ENV]: JSON.stringify(config.models),
   };
+}
+
+/**
+ * 读 `<agentDir>/cloud.json` 的 `egressBase`(spec desktop-cloud-login 任务 8.3,Req 8.3/8.8)。
+ *
+ * 同步读:装配期在 handler 单例构造中调用,那里不便引入异步;文件极小,开销可忽略。
+ * (`ConfigCodec.load` 是异步的,故不复用它 —— 为一次装配期读取把整条装配链改成异步不划算。)
+ *
+ * 容错:文件不存在 / 不可读 / JSON 损坏 / 字段缺失或非字符串 → 一律 `undefined`,
+ * **绝不抛出**。配置文件坏掉不该让整个应用起不来,降级为「未启用云端登录」即可(Req 8.5)。
+ * 非法但结构合法的值(如 `ftp://`)仍交由 `resolveCloudLoginConfig` 的 URL 校验 fail-fast,
+ * 以免静默吞掉用户的错误配置。
+ */
+export function readCloudDomainEgressBase(agentDir: string | undefined): string | undefined {
+  if (agentDir === undefined || agentDir.trim().length === 0) return undefined;
+  let raw: string;
+  try {
+    raw = readFileSync(joinPath(agentDir, "cloud.json"), "utf8");
+  } catch {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const v = (parsed as { egressBase?: unknown }).egressBase;
+  if (typeof v !== "string") return undefined;
+  const trimmed = v.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }

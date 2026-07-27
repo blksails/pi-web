@@ -25,6 +25,8 @@ import {
   loggingFormSchema,
   loggingConfigSchema,
   aigcFormSchema,
+  cloudFormSchema,
+  cloudConfigSchema,
   aigcConfigSchema,
   type FormSchema,
   mcpFormSchema,
@@ -187,6 +189,22 @@ export function registerConfigPanels(): void {
     formSchema: loggingFormSchema,
     validate: zodValidator(loggingConfigSchema),
     ...makeConfigDomainIO("logging"),
+  });
+
+  // 云端接入(desktop-cloud-login Req 8):写 `~/.pi/agent/cloud.json`。
+  // ★ 之所以需要这个面板:云端地址此前只能来自环境变量,而打包的桌面版拿不到环境变量
+  //   —— 壳不转发、Finder 双击无 shell 环境、`.env` 落在会被 GC 的运行时目录。
+  //   实测后果是双击打开后 /api/auth/me 返回 404、登录入口根本不渲染。
+  // ★ 配置在**装配期**读一次(handler 单例 pin 在 globalThis),故改完须重启应用;
+  //   该提示写在字段 description 里(cloud.ts),缺它用户会以为功能坏了。
+  registerSettingsPanel({
+    id: "cloud",
+    title: "云端",
+    order: 8,
+    icon: "cloud",
+    formSchema: cloudFormSchema,
+    validate: zodValidator(cloudConfigSchema),
+    ...makeConfigDomainIO("cloud"),
   });
 
   // AIGC 图像工具(aigc-tool-settings):写 `~/.pi/agent/aigc.json`,含「模型开关」(被禁模型清单)

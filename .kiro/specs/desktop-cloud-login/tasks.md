@@ -195,3 +195,62 @@
   按 provider/model 名查找 registry 会静默拿不到模型，子进程收不到可用 model 而挂起
   等待/报错，且报错信息不总是直接指向「provider 名不匹配」——排障应先核对这两处
   字符串是否对齐，而非怀疑注入机制本身。
+
+- [x] 8. 云端地址可配置（补 Req 8：打包态无法启用登录）
+
+> 方案定位：这是**服务端配置**而非桌面壳的事。走仓内既有的 config 域机制（schema 在 protocol →
+> 落盘 `~/.pi/agent/<域>.json` → 前端设置面板 schema 驱动自动生成），故**桌面壳一行不改**，
+> 且浏览器与 CLI 部署同样受益（Req 8.8）。不复用现有 `auth` 域 —— 它是
+> `z.record(authProviderSchema)`（LLM provider 的 apiKey/baseURL，即 pi 自己的 `auth.json`），
+> 语义不同，混入会污染。
+
+- [x] 8.1 新增 `cloud` 配置域 schema
+  - 在 protocol 新增 `cloudConfigSchema` + `cloudFormSchema`：字段 `egressBase`（可选字符串，http/https URL）。
+  - 空串/缺失视为未配置（与「未启用」等价），非法 URL 由 schema 拒绝。
+  - 观察性完成态：单测覆盖合法 URL 通过、非法 URL 被拒、缺失字段解析为未配置；`cloudFormSchema` 的 domain 为 `cloud`。
+  - _Requirements: 8.1, 8.6_
+  - _Boundary: protocol/config/domains/cloud_
+
+- [x] 8.2 服务端注册 `cloud` 域
+  - `config-routes` 的域表登记 `cloud`，落盘 `<agentDir>/cloud.json`（经既有 ConfigCodec，保留未知字段）。
+  - 观察性完成态：`GET/PUT /config/cloud` 可读写并落盘；既有域用例零回归。
+  - _Requirements: 8.1, 8.2_
+  - _Boundary: server/config/config-routes_
+  - _Depends: 8.1_
+
+- [x] 8.3 云端配置解析改为「env 优先、回落配置域」
+  - `resolveCloudLoginConfig` 增加配置域回落：env 有值即用（Req 8.4），否则读 `<agentDir>/cloud.json` 的 `egressBase`。
+  - 两者皆无 → 返回 `undefined`，行为与今日一致（Req 8.5）；非法值仍 fail-fast。
+  - capabilities URL 的推导（`resolveDesktopCapabilitiesUrl`）同步受益 —— 线上源安装链路依赖它。
+  - 观察性完成态：单测覆盖 env 优先、仅配置域、两者皆无、非法值四种情形。
+  - _Requirements: 8.3, 8.4, 8.5, 8.6, 8.8_
+  - _Boundary: lib/app/auth-egress-assembly_
+  - _Depends: 8.2_
+
+- [x] 8.4 设置面板
+  - `register-panels` 新增 `cloud` 面板；说明文案明示**修改后需重启应用才生效**（handler 是 pin 在 globalThis 的单例，配置在装配期读一次）。
+  - 观察性完成态：面板注册用例通过；面板含重启提示文案。
+  - _Requirements: 8.2, 8.7_
+  - _Boundary: lib/settings/register-panels_
+  - _Depends: 8.2_
+
+- [x] 8.5 打包态验收
+  - 真机验证：写入 `~/.pi/agent/cloud.json` 后**不带任何环境变量**启动打包版 `.app` → `GET /api/auth/me` 不再 404、登录入口可用。
+  - 反向验证：清空该配置后回到未启用现状（无鉴权端点、无登录入口），不报错。
+  - 观察性完成态：上述两条均以新鲜运行证据通过。
+  - _Requirements: 8.3, 8.5_
+  - _Boundary: e2e/打包态_
+  - _Depends: 8.3, 8.4_
+
+## Implementation Notes（任务组 8）
+
+- **★ 打包态真机烟雾抓出一处只有它能发现的遗漏**：任务 8.3 让云端登录读到了配置域，但
+  `resolveDesktopCapabilitiesUrl(process.env)` **只读 env**，在打包版里恒为空 →
+  capabilities 客户端不构造 → 线上源解析插件不注入 → 选中线上源报 500。单测与 typecheck 全绿也
+  测不到。修法：capabilities URL 改为「env 显式值优先，否则由**已解析的** `cloudLoginConfig.egressBaseUrl` 推导」。
+- **不复用 `auth` 域**：它是 `z.record(authProviderSchema)`（LLM provider 的 apiKey/baseURL，
+  即 pi 自己的 `auth.json`），语义不同，混入会污染该文件。
+- **不放桌面壳**：云端地址是服务端配置。走配置域使浏览器与 CLI 部署同样受益（Req 8.8），
+  且免费获得设置面板；壳一行未改，不必承担「懂云端语义」这份职责。
+- **同步读而非 `ConfigCodec.load`**：后者是异步的，为一次装配期读取把整条装配链改成异步不划算。
+  坏配置一律降级为「未启用」而不抛 —— 配置文件坏掉不该让应用起不来。
