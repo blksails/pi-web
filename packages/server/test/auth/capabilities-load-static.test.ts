@@ -108,6 +108,34 @@ describe("loadStatic — 单项缺失只使该字段缺失,不整体失败(Req 4
     }
   });
 
+  it("tenant 带 displayName(云端 profiles.name)→ 解出", async () => {
+    const snap = await clientWith(
+      respond(200, { tenant: { ...FULL_BODY.tenant, displayName: "  张三  " } }),
+    ).loadStatic();
+    expect(snap.tenant?.displayName).toBe("张三");
+  });
+
+  it("tenant 用 name 作字段名 → 同样解出(兼容读位)", async () => {
+    const snap = await clientWith(
+      respond(200, { tenant: { ...FULL_BODY.tenant, name: "李四" } }),
+    ).loadStatic();
+    expect(snap.tenant?.displayName).toBe("李四");
+  });
+
+  it.each([
+    ["缺失", {}],
+    ["空串", { displayName: "" }],
+    ["纯空白", { displayName: "   " }],
+    ["类型不对", { displayName: 42 }],
+  ])("displayName %s → 不带该字段,但身份仍完整可用(只是展示退回 userId)", async (_n, extra) => {
+    const snap = await clientWith(
+      respond(200, { tenant: { ...FULL_BODY.tenant, ...extra } }),
+    ).loadStatic();
+    expect(snap.tenant).toBeDefined();
+    expect(snap.tenant?.userId).toBe("u1");
+    expect(snap.tenant?.displayName).toBeUndefined();
+  });
+
   it("tenant 三字段缺一即视为不可用(身份是完整的或根本没有)", async () => {
     const snap = await clientWith(
       respond(200, { tenant: { userId: "u1", companyId: "c1" } }),

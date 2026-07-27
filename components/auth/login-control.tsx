@@ -16,7 +16,7 @@
  * 字符串的解读,前者是云端对「你是谁」的权威表态。
  */
 import * as React from "react";
-import { useIdentity } from "./use-identity.js";
+import { tenantDisplayName, useIdentity } from "./use-identity.js";
 import { LoginForm } from "./login-form.js";
 
 const BTN =
@@ -64,8 +64,13 @@ export function LoginControl(): React.JSX.Element | null {
   // 已认证:身份 + 登出(+ 需重登时的内联表单)。
   return (
     <div className="flex items-center gap-1" data-testid="login-status">
-      <span className="text-xs text-muted-foreground" data-testid="login-user">
-        {state.tenant.userId}
+      {/* 展示名优先,退回 userId(UUID)。云端未提供 profiles.name 时行为与之前一致。 */}
+      <span
+        className="text-xs text-muted-foreground"
+        data-testid="login-user"
+        title={state.tenant.userId}
+      >
+        {tenantDisplayName(state.tenant)}
       </span>
       {state.tenant.companyId.length > 0 && (
         <span className="text-xs text-muted-foreground/70" data-testid="login-company">

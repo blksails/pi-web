@@ -158,7 +158,21 @@ function parseTenant(parsed: unknown): CapabilityTenant | undefined {
     return undefined;
   }
   if (obj.userId.length === 0 || obj.companyId.length === 0) return undefined;
-  return { userId: obj.userId, companyId: obj.companyId, role: obj.role };
+  // displayName 可选:云端 `profiles.name`。取不到就不带 —— 展示层退回 userId,
+  // **不**因为缺一个展示用的名字而让整个身份不可用。
+  const raw = (t as { displayName?: unknown; name?: unknown });
+  const display =
+    typeof raw.displayName === "string" && raw.displayName.trim().length > 0
+      ? raw.displayName.trim()
+      : typeof raw.name === "string" && raw.name.trim().length > 0
+        ? raw.name.trim()
+        : undefined;
+  return {
+    userId: obj.userId,
+    companyId: obj.companyId,
+    role: obj.role,
+    ...(display !== undefined ? { displayName: display } : {}),
+  };
 }
 
 /** 解析 egress 授予的模型清单。非数组或空数组 → 视为无可用模型(该能力不可用)。 */

@@ -26,6 +26,19 @@ export interface IdentityTenant {
   readonly userId: string;
   readonly companyId: string;
   readonly role: string;
+  /** 人类可读用户名(云端 `profiles.name`)。缺失时展示层退回 `userId`。 */
+  readonly displayName?: string;
+}
+
+/**
+ * 展示用名字:有 `displayName` 用它,否则退回 `userId`。
+ *
+ * 纯函数,便于单测。★ 只用于展示 —— 身份的权威标识始终是 `userId`,
+ * `displayName` 可重名、可为空、可被用户随时改,不得用于任何判定。
+ */
+export function tenantDisplayName(tenant: IdentityTenant): string {
+  const n = tenant.displayName?.trim();
+  return n !== undefined && n.length > 0 ? n : tenant.userId;
 }
 
 export type IdentityUiState =
@@ -105,7 +118,12 @@ function parseView(body: IdentityViewBody): IdentityUiState {
   if (body.state === "authenticated") {
     const t = body.tenant;
     if (typeof t === "object" && t !== null) {
-      const o = t as { userId?: unknown; companyId?: unknown; role?: unknown };
+      const o = t as {
+        userId?: unknown;
+        companyId?: unknown;
+        role?: unknown;
+        displayName?: unknown;
+      };
       if (typeof o.userId === "string") {
         // role/companyId 缺失时退回空串而非丢弃整个身份 —— Req 5.3「展示可得的最小
         // 身份信息,不得展示空白或错误」。
@@ -115,6 +133,9 @@ function parseView(body: IdentityViewBody): IdentityUiState {
             userId: o.userId,
             companyId: typeof o.companyId === "string" ? o.companyId : "",
             role: typeof o.role === "string" ? o.role : "",
+            ...(typeof o.displayName === "string" && o.displayName.trim().length > 0
+              ? { displayName: o.displayName.trim() }
+              : {}),
           },
           canExchange,
         };

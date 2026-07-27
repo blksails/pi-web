@@ -210,6 +210,24 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-password")).toBeTruthy();
   });
 
+  it("★ 有 displayName(云端 profiles.name)→ 展示名字而非 UUID", async () => {
+    mount({
+      state: "authenticated",
+      tenant: { ...TENANT, displayName: "张三" },
+      canExchange: true,
+    });
+    await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("张三"));
+    // UUID 仍可经 title 查看 —— 名字可重名,排查问题时要的是权威标识。
+    expect(screen.getByTestId("login-user").getAttribute("title")).toBe(TENANT.userId);
+  });
+
+  it("无 displayName → 退回 userId(云端未提供时行为与之前一致)", async () => {
+    mount({ state: "authenticated", tenant: TENANT, canExchange: true });
+    await waitFor(() =>
+      expect(screen.getByTestId("login-user").textContent).toBe(TENANT.userId),
+    );
+  });
+
   it("authenticated → 展示 tenant.userId 与 companyId(Req 5.1/5.2)", async () => {
     mount({ state: "authenticated", tenant: TENANT, canExchange: true });
     await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("u1"));
