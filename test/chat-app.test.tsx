@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
 // Capture the props passed to whichever chat component chat-app renders so we
 // can assert the default rich <PiChat> is used and that wiring is forwarded.
@@ -94,7 +94,7 @@ afterEach(() => {
 });
 
 describe("ChatApp (session-active) renders the default rich chat UI", () => {
-  function startSession(): void {
+  async function startSession(): Promise<void> {
     render(
       <ChatApp
         defaultSource="./examples/hello-agent"
@@ -102,21 +102,24 @@ describe("ChatApp (session-active) renders the default rich chat UI", () => {
         defaultCwd="/tmp"
       />,
     );
+    // 登录门禁先探测 /api/identity 才决定放行 —— 首帧为空,故须等待而非同步查询。
+    await waitFor(() =>
+      expect(document.querySelector("[data-agent-source-submit]")).not.toBeNull(),
+    );
     const submit = document.querySelector("[data-agent-source-submit]");
-    expect(submit).not.toBeNull();
     fireEvent.click(submit as Element);
   }
 
-  it("renders the default <PiChat> (not the minimal <PiChatBasic>) once a session is active", () => {
-    startSession();
+  it("renders the default <PiChat> (not the minimal <PiChatBasic>) once a session is active", async () => {
+    await startSession();
     expect(document.querySelector("[data-test-pi-chat]")).not.toBeNull();
     expect(document.querySelector("[data-test-pi-chat-basic]")).toBeNull();
     expect(piChatSpy).toHaveBeenCalled();
     expect(piChatBasicSpy).not.toHaveBeenCalled();
   });
 
-  it("forwards the same session/controls/extensionUI wiring to <PiChat>", () => {
-    startSession();
+  it("forwards the same session/controls/extensionUI wiring to <PiChat>", async () => {
+    await startSession();
     expect(piChatSpy).toHaveBeenCalled();
     const props = piChatSpy.mock.calls[0]?.[0];
     expect(props).toBeDefined();
@@ -126,8 +129,8 @@ describe("ChatApp (session-active) renders the default rich chat UI", () => {
   });
 
   // new-by-agent-source(任务 2.1)
-  it("点击「切换源」退回 agent 源选择器 (2.1/2.2)", () => {
-    startSession();
+  it("点击「切换源」退回 agent 源选择器 (2.1/2.2)", async () => {
+    await startSession();
     expect(document.querySelector("[data-session-active]")).not.toBeNull();
     const switchBtn = document.querySelector("[data-switch-source]");
     expect(switchBtn).not.toBeNull();
@@ -137,8 +140,8 @@ describe("ChatApp (session-active) renders the default rich chat UI", () => {
     expect(document.querySelector("[data-session-active]")).toBeNull();
   });
 
-  it("点击 New session 同源新建:仍停留会话(不回选择器)且 SessionView 重挂 (1.1)", () => {
-    startSession();
+  it("点击 New session 同源新建:仍停留会话(不回选择器)且 SessionView 重挂 (1.1)", async () => {
+    await startSession();
     const callsBefore = piChatSpy.mock.calls.length;
     const newBtn = document.querySelector("[data-new-session]");
     expect(newBtn).not.toBeNull();

@@ -12,7 +12,7 @@
 
 ## 实测确认的事实(2026-07-27)
 
-1. **云端真实契约是账号密码**:`POST /api/desktop/login { email, password }` —— 400 `email and password required` / 401 `Invalid login credentials`。**没有 device 授权端点**(`/api/desktop/device`、`/api/desktop/device/start`、`/api/auth/login`、`/api/auth/signin` 全 404)。故 `login-control.tsx:14` 注释所称"device 授权流由 pi-cloud 承载"是**过时推测**。
+1. **云端真实契约是账号密码**:`POST /api/desktop/login { email, password }` —— 成功返回 **`{ token }`**(★ 不是 `credential`;首版按 `credential` 解导致真机上「密码正确却报无法连接云端」)/ 400 `email and password required` / 401 `Invalid login credentials` / **403 无租户归属**(与 401 是两回事:用户该换账号而非改密码)。事实源是被撤回的 `7c184ed:packages/server/src/auth/signin-endpoint.ts`,那是本仓唯一跑通过成功路径的实现。**没有 device 授权端点**(`/api/desktop/device`、`/api/desktop/device/start`、`/api/auth/login`、`/api/auth/signin` 全 404)。故 `login-control.tsx:14` 注释所称"device 授权流由 pi-cloud 承载"是**过时推测**。
 2. **`CapabilitySnapshot.tenant` 无人消费**:契约定义了 `{ userId, companyId, role }`,但代码中没有任何消费方;P1 的 `DesktopCapabilitiesClient` 只取了 `sources` 一个字段。
 3. **`Workspace` 与身份无关**:它是存储抽象(`readJson`/`writeJson`/`list`/`delete`/`exists`,分 user/project 命名空间),`workspace/types.ts` 中 `auth`/`credential`/`login` 命中 **0** 次。身份属 `CapabilityProvider` 那一层。
 
@@ -156,3 +156,20 @@
 1. When 身份获取能力面并入宿主契约, the 契约文档 shall 记录其语义保证、状态取值,以及两类宿主各自的实现义务。
 2. The 契约演进 shall 保持 v1 兼容 —— 仅新增可选成员或新端口,不得改动既有端口的签名或语义。
 3. The 契约文档 shall 更正「device 授权流」这一过时表述,改以实测确认的账号密码形态描述桌面身份获取。
+
+### Requirement 10:登录门禁与独立登录页
+
+> 2026-07-27 真机测试后由用户追加。原设计把登录做成头部内联控件,用户反馈「登陆不了」
+> 且「没有登陆无法进入主页面」——后者是产品诉求,不是缺陷报告。
+
+**Objective:** As a pi-web 桌面用户, I want 未登录时直接看到一个完整的登录页面, so that 我不必在头部找一个小按钮,也不会在未登录状态下面对一个大部分功能都不可用的主界面。
+
+#### Acceptance Criteria
+
+1. While 身份状态为「无身份」且当前宿主**支持**凭据交换, the pi-web 宿主 shall 以独立登录页替代主界面,主界面不得挂载。
+2. Where 当前宿主**不支持**凭据交换, the pi-web 宿主 shall **不**拦截主界面 —— 身份由该宿主自身路径处理。
+3. If 云端未配置(登录能力面不存在), then the pi-web 宿主 shall **不**拦截主界面,本地能力照常可用。
+4. If 身份探测失败, then the pi-web 宿主 shall **不**拦截主界面 —— 不因网络问题把用户关在门外。
+5. While 身份状态尚未确定, the pi-web 宿主 shall 既不渲染登录页也不渲染主界面,避免先闪一次登录页再跳走。
+6. When 登录成功, the pi-web 宿主 shall 立即进入主界面,无需刷新或重启。
+7. The 独立登录页 shall 不提供「取消」——它没有可返回之处。

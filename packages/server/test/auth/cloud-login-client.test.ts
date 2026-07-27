@@ -29,7 +29,18 @@ function respond(status: number, body: unknown): CloudLoginFetch {
 }
 
 describe("成功路径", () => {
-  it("200 + { credential } → ok,凭据 trim 后返回", async () => {
+  // ★ 云端返回的字段名是 `token`。首版按 `credential` 解,真机上表现为「密码正确却报
+  //   无法连接云端」—— 2xx 但字段对不上,落进「响应形状非预期」分支。
+  //   事实源:被撤回的 7c184ed:packages/server/src/auth/signin-endpoint.ts。
+  it("200 + { token } → ok(这是实测的云端形态)", async () => {
+    const r = await clientWith(respond(200, { token: "  tok-xyz  " })).login({
+      email: EMAIL,
+      password: PASSWORD,
+    });
+    expect(r).toEqual({ ok: true, credential: "tok-xyz" });
+  });
+
+  it("200 + { credential } → ok(兼容读位,防云端将来改名)", async () => {
     const r = await clientWith(respond(200, { credential: "  cred-xyz  " })).login({
       email: EMAIL,
       password: PASSWORD,
@@ -37,11 +48,19 @@ describe("成功路径", () => {
     expect(r).toEqual({ ok: true, credential: "cred-xyz" });
   });
 
+  it("两者并存时以 token 为准", async () => {
+    const r = await clientWith(respond(200, { token: "tok", credential: "cred" })).login({
+      email: EMAIL,
+      password: PASSWORD,
+    });
+    expect(r).toEqual({ ok: true, credential: "tok" });
+  });
+
   it("请求体是 JSON { email, password },email 被 trim 而 password 不被 trim", async () => {
     let seenBody = "";
     await clientWith(async (_u, init) => {
       seenBody = init.body;
-      return { status: 200, text: async () => JSON.stringify({ credential: "c" }) };
+      return { status: 200, text: async () => JSON.stringify({ token: "c" }) };
     }).login({ email: `  ${EMAIL}  `, password: "  pw with spaces  " });
     // ★ 密码前后空格可能是密码的一部分,擅自 trim 会让合法密码登不上。
     expect(JSON.parse(seenBody)).toEqual({ email: EMAIL, password: "  pw with spaces  " });
@@ -51,13 +70,16 @@ describe("成功路径", () => {
 describe("状态映射(Req 2.3/2.4)", () => {
   it.each([
     ["401", respond(401, {}), "invalid-credentials"],
-    ["403", respond(403, {}), "invalid-credentials"],
+    // ★ 403 与 401 分开:账号密码是对的,是没有租户归属。归到 invalid-credentials
+    //   会让用户反复试同一个正确密码。
+    ["403", respond(403, {}), "no-membership"],
     ["400", respond(400, { error: "email and password required" }), "invalid-request"],
     ["422", respond(422, {}), "invalid-request"],
     ["500", respond(500, {}), "cloud-unreachable"],
     ["503", respond(503, {}), "cloud-unreachable"],
     ["响应非 JSON", respond(200, "<html>502 Bad Gateway</html>"), "cloud-unreachable"],
-    ["200 但缺 credential", respond(200, { ok: true }), "cloud-unreachable"],
+    ["200 但既无 token 也无 credential", respond(200, { ok: true }), "cloud-unreachable"],
+    ["200 但 token 为空串", respond(200, { token: "   " }), "cloud-unreachable"],
     ["200 但 credential 为空串", respond(200, { credential: "   " }), "cloud-unreachable"],
   ] as const)("%s → %s", async (_n, fetchImpl, reason) => {
     const r = await clientWith(fetchImpl).login({ email: EMAIL, password: PASSWORD });
@@ -131,7 +153,7 @@ describe("★ 脱敏:密码绝不进日志(Req 8.1)", () => {
   });
 
   it.each([
-    ["成功", respond(200, { credential: "cred-xyz" })],
+    ["成功", respond(200, { token: "tok-xyz" })],
     ["401", respond(401, { error: `bad password: ${PASSWORD}` })],
     ["500", respond(500, {})],
     ["非 JSON", respond(200, "garbage")],

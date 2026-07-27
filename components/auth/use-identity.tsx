@@ -42,6 +42,7 @@ export type IdentityUiState =
 /** 交换失败原因(镜像契约 `IdentityExchangeFailure`)。 */
 export type IdentityExchangeReason =
   | "invalid-credentials"
+  | "no-membership"
   | "invalid-request"
   | "cloud-unreachable"
   | "capabilities-failed"
@@ -180,6 +181,7 @@ function useIdentityState(): UseIdentityResult {
             "capabilities-failed",
             "cloud-unreachable",
             "invalid-credentials",
+            "no-membership",
             "invalid-request",
           ] as const) {
             if (raw.includes(r)) {

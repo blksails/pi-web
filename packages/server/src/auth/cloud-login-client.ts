@@ -7,9 +7,16 @@
  * ## 外部契约(实测确认,2026-07-27;本仓不拥有、不可改)
  *
  *   POST {loginUrl}  { email, password }
- *     200 → { credential }
+ *     200 → { token }        ← ★ 字段名是 `token`,不是 `credential`
  *     400 → "email and password required"
  *     401 → "Invalid login credentials"
+ *     403 → 账号有效但无租户归属
+ *
+ * ★ **成功响应的字段名是 `token`**。首版按 `credential` 解,导致真机上「密码正确却报
+ *   无法连接云端」—— 2xx 但字段对不上,落进了「响应形状非预期」分支。
+ *   事实源是被撤回的 `7c184ed:packages/server/src/auth/signin-endpoint.ts`(那是本仓
+ *   唯一跑通过成功路径的实现)。此处兼容 `token` 与 `credential` 两种字段名,
+ *   以防云端将来改名 —— 但 `token` 是当前实测形态。
  *
  * ★ 云端**没有** device 授权端点(`/api/desktop/device`、`/api/auth/login` 等实测全 404)。
  *   仓内曾有注释称「device 授权流由 pi-cloud 承载」,那是过时推测,已在本 spec 更正。
@@ -46,9 +53,10 @@ export type CloudLoginFetch = (
   text(): Promise<string>;
 }>;
 
-/** 登录失败类别。与 `IdentityExchangeFailure` 的前三项同名同义,故意如此(直接透传)。 */
+/** 登录失败类别。与 `IdentityExchangeFailure` 的对应项同名同义,故意如此(直接透传)。 */
 export type CloudLoginFailure =
   | "invalid-credentials"
+  | "no-membership"
   | "invalid-request"
   | "cloud-unreachable";
 
@@ -123,9 +131,15 @@ export function createCloudLoginClient(opts: CloudLoginClientOptions): CloudLogi
         clearTimeout(timer);
       }
 
-      if (status === 401 || status === 403) {
+      if (status === 401) {
         logger.warn("cloud login rejected", { status });
         return { ok: false, reason: "invalid-credentials" };
+      }
+      if (status === 403) {
+        // ★ 与 401 分开:账号密码是对的,是这个账号没有租户归属。让用户去改密码
+        // 只会让他反复试同一个正确密码。用户该做的是换账号或找管理员开通。
+        logger.warn("cloud login without membership", { status });
+        return { ok: false, reason: "no-membership" };
       }
       if (status === 400 || status === 422) {
         logger.warn("cloud login bad request", { status });
@@ -143,10 +157,12 @@ export function createCloudLoginClient(opts: CloudLoginClientOptions): CloudLogi
         logger.warn("cloud login response is not JSON");
         return { ok: false, reason: "cloud-unreachable" };
       }
-      const credential =
+      // 云端实测返回 `token`;`credential` 作为兼容读位(见文件顶部★)。
+      const obj =
         typeof parsed === "object" && parsed !== null
-          ? (parsed as { credential?: unknown }).credential
-          : undefined;
+          ? (parsed as { token?: unknown; credential?: unknown })
+          : {};
+      const credential = typeof obj.token === "string" ? obj.token : obj.credential;
       if (typeof credential !== "string" || credential.trim().length === 0) {
         // 响应形状非预期 —— 归入 cloud-unreachable 而非 invalid-credentials:
         // 用户的账号密码是对的(云端返回了 2xx),问题在服务端,重试可能成功。

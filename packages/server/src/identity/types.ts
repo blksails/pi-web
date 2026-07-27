@@ -72,8 +72,15 @@ export type IdentityCredentials = IdentityPasswordCredentials;
  * 都会产生「云端故障被当成密码错误」或反之的误判。
  */
 export type IdentityExchangeFailure =
-  /** 云端明确拒绝(401/403)。用户应更正账号或密码后重试。 */
+  /** 云端明确拒绝(401)。用户应更正账号或密码后重试。 */
   | "invalid-credentials"
+  /**
+   * 账号密码正确,但该账号**没有租户归属**(403)。
+   *
+   * ★ 与 `invalid-credentials` 分开是必需的:让这类用户去「更正密码」,他只会反复
+   * 输入同一个正确的密码。他该做的是换账号,或找管理员开通归属。
+   */
+  | "no-membership"
   /** 入参不合法(邮箱或密码为空)。请求根本没有发出或被云端以 400 拒绝。 */
   | "invalid-request"
   /** 云端不可达、超时,或响应形状非预期。用户可原样重试。 */

@@ -258,3 +258,34 @@
 | `packages/protocol` | 415 passed |
 | `packages/tool-kit` | 463 passed |
 | `pnpm typecheck` | 通过(含 `test-d` 编译期契约断言) |
+
+## 10. 真机测试反馈(2026-07-27,第二轮)
+
+- [x] 10.1 修:成功响应字段名是 `token` 不是 `credential`
+  - 用户实测报「无法连接云端,请重试」。打包态后端探测证明云端可达(错误账号正确回 401),
+    故不是连通性问题 —— 是 2xx 但字段对不上,落进「响应形状非预期」分支
+  - 事实源:被撤回的 `7c184ed:packages/server/src/auth/signin-endpoint.ts`(本仓唯一跑通过
+    成功路径的实现)。★ **我本该先看它再写客户端**,这是本 spec 最该避免的一次疏忽
+  - 改 `cloud-login-client.ts`:优先读 `token`,`credential` 作兼容读位
+  - _Requirements: 2.1_
+
+- [x] 10.2 修:403 从 `invalid-credentials` 拆出为 `no-membership`
+  - 403 = 账号密码正确但无租户归属。归到「账号或密码错误」会让用户反复试同一个正确密码
+  - 端口新增失败类别 + 路由映射 + UI 文案「该账号未加入任何组织,请更换账号或联系管理员开通」
+  - _Requirements: 2.3_
+
+- [x] 10.3 独立登录页 + 登录门禁(Req 10)
+  - 新建 `components/auth/login-page.tsx`:`LoginPage`(整屏居中卡片)+ `IdentityGate`
+  - `LoginForm` 加 `layout: "inline" | "page"` —— **只改排布,不改任何行为**,故既有表单测试
+    对两种布局同样有效
+  - ★ 门禁**不是**无条件的。`disabled` / `!canExchange` / 探测失败一律**放行** ——
+    拦了会把纯本地用法与浏览器用法整个废掉。判定表见 `login-page.tsx` 顶部
+  - `loading` 期间两者都不渲染(先闪登录页再跳走比空白更糟)
+  - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7_
+  - _Boundary: components/auth/login-page.tsx_
+
+- [x] 10.4 测试
+  - `test/auth/identity-gate.test.tsx`:**三条不拦的路径**是重点(云端未配置 / 探测失败 /
+    canExchange=false),它们写错的故障形态最严重
+  - `cloud-login-client.test.ts`:`token` / `credential` / 两者并存 / 403→no-membership
+  - _Requirements: 2.1, 2.3, 10.1-10.7_

@@ -45,6 +45,7 @@ import {
   identityListKey,
   useIdentity,
 } from "./auth/use-identity.js";
+import { IdentityGate } from "./auth/login-page.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -343,9 +344,13 @@ function deriveSourceTitle(source: string): string | undefined {
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
   // IdentityStateProvider:LoginControl 与 agent-sources 刷新共享同一身份态(不可各挂 useIdentity)。
+  // IdentityGate:登录门禁。★ 它**只在登录确实可用时**才拦(云端未配置 → 直接放行),
+  // 判定见 auth/login-page.tsx 顶部表格 —— 拦错会把纯本地用法整个废掉。
   return (
     <IdentityStateProvider>
-      <ChatAppBody {...props} />
+      <IdentityGate>
+        <ChatAppBody {...props} />
+      </IdentityGate>
     </IdentityStateProvider>
   );
 }

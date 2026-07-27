@@ -8,7 +8,7 @@
  */
 import * as React from "react";
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { cleanup, fireEvent, render, act } from "@testing-library/react";
+import { cleanup, fireEvent, render, act, waitFor } from "@testing-library/react";
 
 // Spy captures props forwarded to <PiChat>.
 const piChatSpy = vi.fn<(props: Record<string, unknown>) => void>();
@@ -108,8 +108,11 @@ async function startSession(source = "./examples/logging-demo-agent"): Promise<v
       defaultCwd="/tmp"
     />,
   );
+  // 登录门禁先探测 /api/identity 才决定放行 —— 首帧为空,故须等待而非同步查询。
+  await waitFor(() =>
+    expect(document.querySelector("[data-agent-source-submit]")).not.toBeNull(),
+  );
   const submit = document.querySelector("[data-agent-source-submit]");
-  expect(submit).not.toBeNull();
   await act(async () => {
     fireEvent.click(submit as Element);
   });

@@ -59,6 +59,7 @@ function statusOf(reason: IdentityExchangeFailure): number {
     case "invalid-request":
       return 400;
     case "invalid-credentials":
+    case "no-membership":
       return 401;
     case "cloud-unreachable":
     case "capabilities-failed":
@@ -69,6 +70,7 @@ function statusOf(reason: IdentityExchangeFailure): number {
 const MESSAGE: Readonly<Record<IdentityExchangeFailure, string>> = {
   "invalid-request": "Email and password are required.",
   "invalid-credentials": "Invalid email or password.",
+  "no-membership": "This account has no tenant membership.",
   "cloud-unreachable": "Cannot reach the cloud service.",
   "capabilities-failed": "Signed in, but capability grants could not be loaded.",
 };

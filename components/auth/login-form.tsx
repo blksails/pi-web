@@ -16,10 +16,16 @@ import type { IdentityExchangeReason } from "./use-identity.js";
 const BTN =
   "inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50";
 const INPUT = "rounded-md border border-border px-2 py-1 text-xs";
+const BTN_PAGE =
+  "inline-flex w-full items-center gap-1 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50";
+const INPUT_PAGE =
+  "w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring";
 
 /** 失败原因 → 用户可读文案。分类的全部意义就在这里:告诉用户该改什么再重试。 */
 const MESSAGE: Readonly<Record<IdentityExchangeReason, string>> = {
   "invalid-credentials": "账号或密码错误",
+  // ★ 与「密码错」分开:这类用户的密码是对的,让他改密码只会反复试同一个正确密码。
+  "no-membership": "该账号未加入任何组织,请更换账号或联系管理员开通",
   "invalid-request": "请填写邮箱与密码",
   "cloud-unreachable": "无法连接云端,请重试",
   "capabilities-failed": "登录未完成:云端授权加载失败,请重试",
@@ -31,12 +37,21 @@ export interface LoginFormProps {
     email: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  /** 取消。`layout="page"` 时不渲染取消按钮(无处可返回),但仍会被 Esc 触发。 */
   readonly onCancel: () => void;
   readonly testIdPrefix?: string;
+  /**
+   * `inline`(默认)= 头部控件里的一行;`page` = 独立登录页里的竖排卡片。
+   *
+   * 只改排布与尺寸,**不改任何行为** —— 校验、失败文案、清空规则两种布局完全一致,
+   * 故 login-form 的既有测试对两种布局同样有效。
+   */
+  readonly layout?: "inline" | "page";
 }
 
 export function LoginForm(props: LoginFormProps): React.JSX.Element {
   const prefix = props.testIdPrefix ?? "login";
+  const page = props.layout === "page";
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | undefined>(undefined);
@@ -78,11 +93,17 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     if (e.key === "Escape") cancel();
   };
 
+  const inputCls = page ? INPUT_PAGE : INPUT;
+  const btnCls = page ? BTN_PAGE : BTN;
+
   return (
-    <div className="flex items-center gap-1" data-testid={`${prefix}-form`}>
+    <div
+      className={page ? "flex w-full flex-col gap-3" : "flex items-center gap-1"}
+      data-testid={`${prefix}-form`}
+    >
       <input
         type="email"
-        className={INPUT}
+        className={inputCls}
         placeholder="邮箱"
         value={email}
         autoComplete="username"
@@ -93,7 +114,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
       />
       <input
         type="password"
-        className={INPUT}
+        className={inputCls}
         placeholder="密码"
         value={password}
         autoComplete="current-password"
@@ -103,18 +124,32 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
       />
       <button
         type="button"
-        className={BTN}
+        className={
+          page
+            ? `${btnCls} justify-center bg-primary text-primary-foreground hover:bg-primary/90`
+            : btnCls
+        }
         data-testid={`${prefix}-submit`}
         disabled={!canSubmit}
         onClick={() => void submit()}
       >
         {busy ? "登录中…" : "登录"}
       </button>
-      <button type="button" className={BTN} data-testid={`${prefix}-cancel`} onClick={cancel}>
-        取消
-      </button>
+      {/* 独立登录页没有「返回」的去处 —— 渲染一个什么都不通向的取消按钮只会让人困惑。 */}
+      {!page && (
+        <button type="button" className={btnCls} data-testid={`${prefix}-cancel`} onClick={cancel}>
+          取消
+        </button>
+      )}
       {error !== undefined && (
-        <span className="text-xs text-destructive" data-testid={`${prefix}-error`}>
+        <span
+          className={
+            page
+              ? "rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              : "text-xs text-destructive"
+          }
+          data-testid={`${prefix}-error`}
+        >
           {error}
         </span>
       )}
