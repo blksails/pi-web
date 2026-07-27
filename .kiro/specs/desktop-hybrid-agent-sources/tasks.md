@@ -51,6 +51,21 @@
   - _Requirements: 5.1, 5.4, 6.2, 6.3, 7.1, 7.2, 7.3_
   - _Depends: 4, 5_
 
+## Validation (validate-impl · 2026-07-27 · DECISION: GO)
+
+特性级终验通过，`phase` → `implemented`。代码见 `01df222`。**覆盖 21/21 条验收准则、8/8 条需求。**
+
+- **机械检查**：全仓 14 包 `pnpm -r run test` EXIT=0（0 FAIL）；TBD/TODO CLEAN；硬编码密钥 CLEAN。
+- **运行时烟雾**：真实 server 启动后 `GET /api/agent-sources` → 扫描根不存在时 200 空列表不报 500（Req 1.3）；根指向 `examples/` 时产出 5 条 `origin:"scan"` 且字段形状合规（Req 6.2）；未登录态**不发** capabilities 请求（Req 2.4）。
+- **边界审计 CLEAN**：`@pi-clouds/registry-client` 零真实 import（范围铁律成立）；新增代码零 `install/resolve/spawn`（无 P2 越界，Req 7）；装配序 `[registryHttp, fileRegistry, scan]` 合设计；推导不出 capabilities URL 时退化为二元 composite 而非挂空壳（`pi-handler.ts:844`）。
+- **最高风险项 Req 2.5 已清**：grant 缓存**与凭据绑定**，`desktop-capabilities-client.ts:134-138` 在**读缓存之前**先验凭据（缺失即清并返回 undefined），故缓存不可能活过凭据 —— 不依赖调用方记得调 `clearCache()`。
+- **Req 5.4 静态证明**：线上三路（registry-http / capabilities-client / composite）**零个**文件写入或删除操作，线上失败不可能改动本地源。
+- **Req 6.3 机制可证**：keyset 游标载荷即排序键三分量，与列表**共用同一全序比较器**（origin→name→id，`name` 固定 `"en"` locale 防跨环境漂移）。
+
+⚠ **Warning（不阻断）**：hybrid 并集下的**跨页分页无专门回归测试** —— 排序有 `composite-provider.test.ts:51`、分页有 `agent-sources-routes` 8 例，但缺「第 1 页含 registry 项、第 2 页含 scan 项」这类跨源翻页用例。判为测试覆盖薄弱而非缺陷，建议接 P2 时补。
+
+📌 **流程记录**：本次派出的三个并行验证子代理**均未交件**（反复进入空闲却不返回结构化结果，催两轮无效），上述结论全部由主上下文独立取证，未采信任何未经核实的转述。
+
 ## Implementation Notes
 
 - **合并顺序**：`[httpReg, fileReg, scan]` — 云优先，再本地登记，再扫描。
