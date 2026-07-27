@@ -593,3 +593,159 @@
     box-shadow: 0 0 0 3px hsl(var(--accent));
   }
 }
+
+/* ── 对话内媒体预览(dialogLayer · MediaPreviewHost) ─────────────────────
+   灯箱为全屏遮罩,故不吃主题 token 走固定深色(与源项目一致);pill 吃主题。
+   两者皆 portal 到 body,不受 dialogLayer 容器 pointer-events:none 影响。 */
+.ilb {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgb(8 10 18 / 0.86);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+}
+.ilb-stage {
+  max-width: 92vw;
+  max-height: 88vh;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.ilb-img {
+  max-width: 92vw;
+  max-height: 88vh;
+  object-fit: contain;
+  transition: transform 0.12s ease-out;
+  user-select: none;
+}
+.ilb-x {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+.ilb-x:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+.ilb-nav {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+.ilb-nav:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+.ilb-nav.left {
+  left: 16px;
+}
+.ilb-nav.right {
+  right: 16px;
+}
+.ilb-tools {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px;
+  border-radius: 12px;
+  background: rgb(20 22 35 / 0.8);
+  color: #fff;
+}
+.ilb-tools button {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: #fff;
+  cursor: pointer;
+}
+.ilb-tools button:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+.ilb-tools button.on {
+  background: rgb(255 255 255 / 0.26);
+}
+.ilb-tools .pct {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ilb-tools .sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgb(255 255 255 / 0.22);
+}
+.ilb-count,
+.ilb-dims {
+  position: fixed;
+  bottom: 22px;
+  font-size: 12px;
+  color: rgb(255 255 255 / 0.72);
+  font-variant-numeric: tabular-nums;
+}
+.ilb-count {
+  left: 20px;
+}
+.ilb-dims {
+  right: 20px;
+}
+
+/* hover pill:贴对话内图的右上角(left already at image right edge → 整体左移)。 */
+.img-pill {
+  position: fixed;
+  z-index: 70;
+  transform: translateX(-100%);
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover) / 0.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
+  pointer-events: auto;
+}
+.img-pill button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: hsl(var(--popover-foreground));
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.img-pill button:hover {
+  background: hsl(var(--accent) / 0.16);
+}

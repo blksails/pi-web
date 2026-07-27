@@ -2043,6 +2043,7 @@ export function PiChat({
         ext={extension}
         slot="dialogLayer"
         className="pointer-events-none fixed inset-0 z-[60]"
+        conversation={conversation}
       />
 
       {keybindings !== undefined && keybindings.length > 0 ? (

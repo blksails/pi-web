@@ -25,6 +25,8 @@ import { AigcPromptToolbar } from "./prompt-toolbar.js";
 import { SessionHistory } from "./session-history.js";
 // 对话区浮标(accessoryBelowEditor):「定位我的输入」+ 输入导航弹层。
 import { ChatInputNav } from "./chat-input-nav.js";
+// 对话内媒体预览(dialogLayer):点图开灯箱(跨整段对话切换)+ hover pill(编辑 / 下载 / 下载全部)。
+import { MediaPreviewHost } from "./media-preview-host.js";
 
 // advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
 const panesConfig = {
@@ -78,6 +80,7 @@ export default defineWebExtension({
     promptToolbar: AigcPromptToolbar,
     sidebarLeft: SessionHistory,
     accessoryBelowEditor: ChatInputNav,
+    dialogLayer: MediaPreviewHost,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
   renderers: {

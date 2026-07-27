@@ -7,7 +7,11 @@
  */
 import * as React from "react";
 import type { SlotKey } from "@blksails/pi-web-protocol";
-import type { WebExtension, WebExtStateAccess } from "@blksails/pi-web-kit";
+import type {
+  ConversationAccess,
+  WebExtension,
+  WebExtStateAccess,
+} from "@blksails/pi-web-kit";
 import { SlotHost, resolveSlot } from "./apply-extension.js";
 
 /** 12 个协议保留插槽 → 浏览器可见 data 属性(与 design 插槽表一一对应)。 */
@@ -43,6 +47,12 @@ export interface ExtSlotRegionProps {
    */
   readonly baseUrl?: string;
   readonly sessionId?: string;
+  /**
+   * 宿主会话能力(契约 §4.2)。同为 `SlotHost` 早已支持者;补上转发后,overlay 类插槽
+   * (如 dialogLayer 的媒体预览宿主)可经 `submitUserMessage` 把动作交回对话流,
+   * 无须为此扩任何跨域授权。
+   */
+  readonly conversation?: ConversationAccess;
 }
 
 /**
@@ -57,6 +67,7 @@ export function ExtSlotRegion({
   state,
   baseUrl,
   sessionId,
+  conversation,
 }: ExtSlotRegionProps): React.ReactNode {
   if (resolveSlot(ext, slot) === undefined) return null;
   const dataAttr = RESERVED_SLOT_DATA_ATTR[slot] ?? `data-pi-ext-${slot}`;
@@ -69,6 +80,7 @@ export function ExtSlotRegion({
         {...(state !== undefined ? { state } : {})}
         {...(baseUrl !== undefined ? { baseUrl } : {})}
         {...(sessionId !== undefined ? { sessionId } : {})}
+        {...(conversation !== undefined ? { conversation } : {})}
       />
     </Tag>
   );
