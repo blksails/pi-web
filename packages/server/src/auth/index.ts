@@ -14,8 +14,20 @@ export * from "./egress-model.js";
 export {
   createDesktopCapabilitiesClient,
   deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
   resolveDesktopCapabilitiesUrl,
+  CapabilitiesLoadError,
   type DesktopCapabilitiesClient,
   type DesktopCapabilitiesClientOptions,
   type CapabilitiesFetch,
 } from "./desktop-capabilities-client.js";
+// desktop-account-login:账号密码登录客户端(pi-SDK-free,只用 fetch)。
+export {
+  createCloudLoginClient,
+  CLOUD_LOGIN_REQUEST_TIMEOUT_MS,
+  type CloudLoginClient,
+  type CloudLoginClientOptions,
+  type CloudLoginFailure,
+  type CloudLoginFetch,
+  type CloudLoginResult,
+} from "./cloud-login-client.js";

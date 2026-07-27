@@ -46,6 +46,9 @@ import {
   createDesktopCapabilitiesClient,
   resolveDesktopCapabilitiesUrl,
   deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
+  createCloudLoginClient,
+  createDesktopPasswordIdentityProvider,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
@@ -137,7 +140,7 @@ import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 import {
   resolveCloudLoginConfig,
   readCloudDomainEgressBase,
-  computeAuthEgressSpawnEnv,
+  computeEgressSpawnEnvFromGrant,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
@@ -781,9 +784,13 @@ function buildSingleton(): HandlerSingleton {
         // 清单经 spawn env 下发 runner(runner option-mapper 据此注入内存 ModelRegistry 走 egress)。
         // 未启用/未登录/凭据过期 → 空对象,runner 走本地 auth.json 默认(Req 4.1/4.4)。凭据仅经 env
         // 下发(同 providerKeys 信任边界),不入日志/历史(Req 5.2)。sk-gw 云端换取,不下发(B-pure)。
-        ...computeAuthEgressSpawnEnv(
+        // desktop-account-login 任务 6.1/6.2(Req 4.5):有 `egress` 授予时以授予为准,
+        // 否则完全退回上面那套 env 配置行为。cachedStatic() 是同步读(不打网络)——
+        // spawn spec 的构造是同步路径,为读一个已在内存里的值把整条链改成异步不划算。
+        ...computeEgressSpawnEnvFromGrant(
           cloudLoginConfig,
           authSessionState.currentCredential(),
+          desktopCapabilitiesClient?.cachedStatic()?.egress,
         ),
       },
     };
@@ -867,6 +874,28 @@ function buildSingleton(): HandlerSingleton {
           getDesktopCredential: () => authSessionState.currentCredential(),
         })
       : undefined;
+  // 身份端口 P5(spec desktop-account-login,任务 6.2,Req 2.1/2.5/2.6)。
+  //
+  // ★ 登录 URL 由 **cloudLoginConfig.egressBaseUrl** 推导,不读 process.env ——
+  //   打包桌面版里 env 为空(壳不转发、Finder 无 shell 环境、.env 落在会被 GC 的运行时
+  //   目录),配置实际来自 `<agentDir>/cloud.json`。此坑已由 desktop-cloud-login Req 8.3
+  //   与 desktop-online-source-runnable 各踩过一次,不要再从 env 读。
+  //
+  // 未配置云端 → undefined → 能力面不挂载 → GET /api/identity 404 → 前端不渲染登录入口
+  // (Req 2.5),链路与本特性引入前完全一致。
+  const cloudLoginUrl =
+    cloudLoginConfig !== undefined
+      ? deriveLoginUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
+      : undefined;
+  const desktopIdentityProvider =
+    desktopCapabilitiesClient !== undefined && cloudLoginUrl !== undefined
+      ? createDesktopPasswordIdentityProvider({
+          loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
+          capabilitiesClient: desktopCapabilitiesClient,
+          authState: authSessionState,
+        })
+      : undefined;
+
   const agentSourcesProvider =
     desktopCapabilitiesClient !== undefined
       ? createCompositeSourceProvider(
@@ -937,6 +966,7 @@ function buildSingleton(): HandlerSingleton {
           }
         : undefined,
     authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
+    identityProvider: desktopIdentityProvider,
     attachmentStore,
     resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
     store,

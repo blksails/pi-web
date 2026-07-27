@@ -41,10 +41,10 @@ import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 import { LoginControl } from "./auth/login-control.js";
 import {
-  DesktopAuthProvider,
-  desktopAuthListIdentity,
-  useDesktopAuth,
-} from "./auth/use-desktop-auth.js";
+  IdentityStateProvider,
+  identityListKey,
+  useIdentity,
+} from "./auth/use-identity.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -342,11 +342,11 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
-  // DesktopAuthProvider:LoginControl 与 agent-sources 刷新共享同一登录态(不可各挂 useDesktopAuth)。
+  // IdentityStateProvider:LoginControl 与 agent-sources 刷新共享同一身份态(不可各挂 useIdentity)。
   return (
-    <DesktopAuthProvider>
+    <IdentityStateProvider>
       <ChatAppBody {...props} />
-    </DesktopAuthProvider>
+    </IdentityStateProvider>
   );
 }
 
@@ -359,8 +359,8 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   const pickerClient = React.useMemo(() => createPiClient("/api"), []);
 
   // desktop-hybrid-agent-sources:登录/登出后重拉 /agent-sources(与 LoginControl 同 Provider)。
-  const desktopAuth = useDesktopAuth();
-  const authListIdentity = desktopAuthListIdentity(desktopAuth);
+  const identity = useIdentity();
+  const authListIdentity = identityListKey(identity.state);
   const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
   React.useEffect(() => {
     setAgentSourcesRefreshKey((n) => n + 1);

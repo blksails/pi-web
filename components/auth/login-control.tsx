@@ -1,61 +1,51 @@
 "use client";
 
 /**
- * desktop-cloud-login 任务 5.2/5.3 · 登录组件 + 登录态指示(Req 1.1/1.2/1.3/1.4/1.5/6.3)。
+ * 登录控件(spec: desktop-account-login,任务 7.3;Req 3.4/3.5/5.1/5.2/5.3/7.1。
+ * 上游 desktop-cloud-login 任务 5.2/5.3)。
  *
- * 单一头部控件,按登录态三分支渲染:
- *  - 未启用(enabled=false)→ 不渲染任何入口(Req 4.2)。
- *  - 已启用未登录 → 「登录」按钮 → 内联表单收桌面凭据 → login()。取消不写入(Req 1.4)。
- *  - 已启用已登录 → 展示用户标识 + 状态(valid/expired/refreshing/session-failed)+ 登出/切号
- *    (Req 1.3/6.3)。失效态显式提示重登(Req 3.7/6.1)。
+ * 单一头部控件,**只据身份端口返回的状态**分支渲染 —— 不查询、也无从查询自己跑在
+ * 哪种宿主上(Req 1.5):
  *
- * ★ 桌面凭据的获取:生产形态由 pi-cloud 授权流(device 授权)在此承载并回传凭据(外部契约,
- *   本仓不拥有);本组件承接「已获得凭据」这一步 → POST server + 持久化 keychain(见 useDesktopAuth)。
- *   MVP/测试下由表单直接收凭据串(授权流完成的产物)。
+ *  - `disabled`(能力面未挂载 / 云端未配置)→ 不渲染任何入口(Req 2.5)
+ *  - `anonymous` 且 `canExchange` → 「登录」按钮 → 账号密码表单
+ *  - `anonymous` 且 `!canExchange` → 不渲染表单(身份由该宿主自身路径处理,Req 6.2)
+ *  - `authenticated` → 展示 tenant 身份 + 登出;需重登时同一表单收凭据(Req 3.5)
+ *
+ * 身份来源是 **`tenant` 授予**,不是凭据串解析出的 payload —— 后者是本地对一个不验签
+ * 字符串的解读,前者是云端对「你是谁」的权威表态。
  */
 import * as React from "react";
-import { useDesktopAuth } from "./use-desktop-auth.js";
+import { useIdentity } from "./use-identity.js";
+import { LoginForm } from "./login-form.js";
 
 const BTN =
   "inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent";
 
 export function LoginControl(): React.JSX.Element | null {
-  const auth = useDesktopAuth();
+  const identity = useIdentity();
   const [formOpen, setFormOpen] = React.useState(false);
-  const [credential, setCredential] = React.useState("");
-  const [error, setError] = React.useState<string | undefined>(undefined);
-  const [busy, setBusy] = React.useState(false);
 
-  // 未启用 → 无登录入口(Req 4.2)。加载中也先不渲染,避免闪烁。
-  if (!auth.enabled || auth.loading) return null;
+  const { state } = identity;
 
-  const submit = async () => {
-    const cred = credential.trim();
-    if (cred.length === 0) {
-      setError("请输入授权凭据");
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    const result = await auth.login(cred);
-    setBusy(false);
-    if (result.ok) {
-      setCredential("");
-      setFormOpen(false);
-    } else {
-      // 可读失败原因,不泄漏敏感细节(Req 1.5)。
-      setError(result.reason === "expired" ? "凭据已过期,请重新授权" : "凭据无效");
-    }
-  };
+  // 未启用 / 加载中 → 不渲染,避免闪烁。
+  if (state.kind === "disabled" || state.kind === "loading") return null;
 
-  const cancel = () => {
-    // 取消 → 不写入任一汇(Req 1.4)。
-    setCredential("");
-    setError(undefined);
-    setFormOpen(false);
-  };
+  const form = (prefix: string): React.JSX.Element => (
+    <LoginForm
+      testIdPrefix={prefix}
+      onSubmit={async (email, password) => {
+        const r = await identity.exchange(email, password);
+        if (r.ok) setFormOpen(false);
+        return r;
+      }}
+      onCancel={() => setFormOpen(false)}
+    />
+  );
 
-  if (!auth.loggedIn) {
+  if (state.kind === "anonymous") {
+    // 该宿主不支持凭据交换 —— 正常态,不是缺陷(Req 1.4/6.3)。不渲染登录入口。
+    if (!state.canExchange) return null;
     if (!formOpen) {
       return (
         <button
@@ -68,110 +58,47 @@ export function LoginControl(): React.JSX.Element | null {
         </button>
       );
     }
-    return (
-      <div className="flex items-center gap-1" data-testid="login-form">
-        <input
-          type="password"
-          className="rounded-md border border-border px-2 py-1 text-xs"
-          placeholder="授权凭据"
-          value={credential}
-          data-testid="login-credential"
-          onChange={(e) => setCredential(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void submit();
-            if (e.key === "Escape") cancel();
-          }}
-          autoFocus
-        />
-        <button
-          type="button"
-          className={BTN}
-          data-testid="login-submit"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          确认
-        </button>
-        <button type="button" className={BTN} data-testid="login-cancel" onClick={cancel}>
-          取消
-        </button>
-        {error !== undefined && (
-          <span className="text-xs text-destructive" data-testid="login-error">
-            {error}
-          </span>
-        )}
-      </div>
-    );
+    return form("login");
   }
 
-  // 已登录:标识 + 状态 + 登出/切号。
-  const failed = auth.status === "session-failed" || auth.status === "expired";
+  // 已认证:身份 + 登出(+ 需重登时的内联表单)。
   return (
     <div className="flex items-center gap-1" data-testid="login-status">
       <span className="text-xs text-muted-foreground" data-testid="login-user">
-        {auth.userId}
+        {state.tenant.userId}
       </span>
-      {failed && (
-        <span className="text-xs text-destructive" data-testid="login-needs-reauth">
-          需重新登录
+      {state.tenant.companyId.length > 0 && (
+        <span className="text-xs text-muted-foreground/70" data-testid="login-company">
+          @{state.tenant.companyId}
         </span>
       )}
-      {failed && (
-        <button
-          type="button"
-          className={BTN}
-          data-testid="login-reauth"
-          onClick={() => {
-            setFormOpen(true);
-            // 切到未登录视觉不必要:直接开表单收新凭据即可(切号语义由 server set 替换)。
-          }}
-        >
-          重新登录
-        </button>
+      {identity.needsReauth && (
+        <>
+          <span className="text-xs text-destructive" data-testid="login-needs-reauth">
+            需重新登录
+          </span>
+          {state.canExchange && !formOpen && (
+            <button
+              type="button"
+              className={BTN}
+              data-testid="login-reauth"
+              onClick={() => setFormOpen(true)}
+            >
+              重新登录
+            </button>
+          )}
+        </>
       )}
       <button
         type="button"
         className={BTN}
         data-testid="logout"
-        onClick={() => void auth.logout()}
+        onClick={() => void identity.revoke()}
       >
         登出
       </button>
-      {/* 需重登时的内联表单(与登出并存,收新凭据完成切号/续期)。 */}
-      {formOpen && (
-        <div className="flex items-center gap-1" data-testid="reauth-form">
-          <input
-            type="password"
-            className="rounded-md border border-border px-2 py-1 text-xs"
-            placeholder="授权凭据"
-            value={credential}
-            data-testid="reauth-credential"
-            onChange={(e) => setCredential(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void submit();
-              if (e.key === "Escape") cancel();
-            }}
-            autoFocus
-          />
-          <button
-            type="button"
-            className={BTN}
-            data-testid="reauth-submit"
-            disabled={busy}
-            onClick={() => void submit()}
-          >
-            确认
-          </button>
-          <button type="button" className={BTN} data-testid="reauth-cancel" onClick={cancel}>
-            取消
-          </button>
-          {error !== undefined && (
-            <span className="text-xs text-destructive" data-testid="reauth-error">
-              {error}
-            </span>
-          )}
-        </div>
-      )}
+      {/* 重登/切号走**同一个**账号密码表单,不再要求粘贴凭据串(Req 3.5)。 */}
+      {formOpen && state.canExchange && form("reauth")}
     </div>
   );
 }

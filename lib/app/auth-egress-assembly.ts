@@ -192,6 +192,44 @@ export function computeAuthEgressSpawnEnv(
 }
 
 /**
+ * 计算注入 runner 的 egress env,**优先采用云端授予**(spec: desktop-account-login,
+ * 任务 6.1;Req 4.5)。
+ *
+ * 现状 {@link computeAuthEgressSpawnEnv} 的 `baseUrl`/`models` 来自**装配期 env 配置**
+ * (`PI_WEB_CLOUD_LOGIN_EGRESS_BASE` / `_MODELS`)。那是登录能力面尚不存在时的权宜:
+ * env 里写死一份模型清单,与用户实际被授予什么无关。
+ *
+ * 登录后拿到 `egress` 授予,清单就该以授予为准 —— 否则用户在云端被开通了新模型,
+ * 本地却因为 env 里那份陈旧清单而看不到,只能改配置重启。
+ *
+ * @param grant 云端 `egress` 授予;`undefined`(未登录 / 云端未给)→ **完全退回**
+ *        {@link computeAuthEgressSpawnEnv} 的既有行为,不产生任何回归。
+ */
+export function computeEgressSpawnEnvFromGrant(
+  config: CloudLoginConfig | undefined,
+  credential: string | undefined,
+  grant: EgressGrantLike | undefined,
+): Record<string, string> {
+  const base = computeAuthEgressSpawnEnv(config, credential);
+  // 未启用或未登录时 base 为空 —— 此时即便有授予也不该注入(没有凭据,出口用不了)。
+  if (Object.keys(base).length === 0) return base;
+  if (grant === undefined) return base;
+  const baseUrl = grant.baseUrl.trim().replace(/\/+$/, "");
+  if (baseUrl.length === 0 || grant.models.length === 0) return base;
+  return {
+    ...base,
+    [RUNNER_EGRESS_BASE_ENV]: baseUrl,
+    [RUNNER_EGRESS_MODELS_ENV]: JSON.stringify(grant.models),
+  };
+}
+
+/** 授予中与出口相关的部分(结构等价 `CapabilityEgressGrant`,此处只取所需字段)。 */
+export interface EgressGrantLike {
+  readonly baseUrl: string;
+  readonly models: ReadonlyArray<EgressModel>;
+}
+
+/**
  * 读 `<agentDir>/cloud.json` 的 `egressBase`(spec desktop-cloud-login 任务 8.3,Req 8.3/8.8)。
  *
  * 同步读:装配期在 handler 单例构造中调用,那里不便引入异步;文件极小,开销可忽略。

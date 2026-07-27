@@ -518,15 +518,17 @@ egress 是 catch-all 代理（`[...path]/route.ts:40-41` 导出 GET+POST），�
 
 ---
 
-## 11. 未决项：登录形态（需拍板）
+## 11. 登录形态（已拍板：B 内置邮箱密码表单）
 
-| 方案 | 形态 | 评价 |
+> **2026-07-27 更正**。本节原先把 C（device authorization flow）列为倾向形态，依据是 `login-control.tsx` 里「生产形态由 device 授权承载」那句注释。**该注释是过时推测**：实测云端**根本没有 device 端点**（`/api/desktop/device`、`/api/desktop/device/start`、`/api/auth/login`、`/api/auth/signin` 全 404），唯一存在的是 `POST /api/desktop/login { email, password }`（400 缺参 / 401 凭据错）。倾向 C 等于倾向一个不存在的端点。
+
+| 方案 | 形态 | 结论 |
 |---|---|---|
-| **A 手工粘贴**（现状） | 用户自行 `curl /api/desktop/login` 拿 token 粘进表单 | 开发者可用，产品不可交付。`login-control.tsx:11-13` 自述是 MVP |
-| **B 内置邮箱密码表单** | 表单 → 本地 server 代理 → `POST /api/desktop/login` | **曾实现，已于 `fa927e9` 撤回**。CSP 决定必须经本地 server 代理，不能前端直连 |
-| **C device authorization flow** | 桌面开浏览器 → 用户在 pi-cloud 网页授权 → 桌面轮询取凭据 | 密码永不进桌面进程；支持 SSO/MFA；`login-control.tsx:11-13` 已写明「生产形态由 device 授权承载」 |
+| **A 手工粘贴** | 用户自行 `curl /api/desktop/login` 拿 token 粘进表单 | ✗ 开发者可用，产品不可交付 —— 用户手上根本没有凭据串。保留为兜底入口 |
+| **B 内置邮箱密码表单** | 表单 → 本地 server 代理 → `POST /api/desktop/login` | ✓ **采纳**。由 spec `desktop-account-login` 交付。CSP 与跨域决定必须经本地 server 代理，密码不直连云端、不进渲染层之外的任何地方 |
+| **C device authorization flow** | 桌面开浏览器 → 用户在 pi-cloud 网页授权 → 桌面轮询取凭据 | ✗ 云端未提供任何 device 端点。若将来提供，可作为 `IdentityProvider.exchange` 的第二种 `method` 增量接入，不必改端口签名 |
 
-方案 B 已被撤回一次，撤回原因未记录在案。**本设计不替此项拍板**——它是产品与安全的权衡，不是架构推导的结论。倾向 C 为目标形态。
+身份获取已在宿主契约 v1 立为 **P5 `IdentityProvider`**（见 `pi-web-host-contract-v1.md` §6.5）：桌面实现 `exchange`，云端多租户宿主只实现 `current()`。
 
 ---
 
