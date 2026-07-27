@@ -39,6 +39,7 @@ input{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:8px 10p
 .button-primary{border-color:#2563eb;background:#2563eb;color:#fff}
 .content{padding:12px}.scroll{overflow:auto}
 .center{height:100%;display:grid;place-items:center}.muted{color:#64748b}.error{color:#b91c1c}
+.hint{cursor:help;opacity:.75}
 .empty{min-height:160px;display:grid;place-items:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
 .card{margin:0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden}

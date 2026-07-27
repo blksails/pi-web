@@ -62,6 +62,7 @@ describe("aigc 源发布编译(pi-web.json → CompiledPackage)", () => {
       "creative-search",
       "gallery-stats",
       "material-status",
+      "session-gallery",
     ]);
   });
 

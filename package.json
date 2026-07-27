@@ -16,7 +16,7 @@
   "scripts": {
     "typecheck:examples": "tsc -p examples/aigc-agent/tsconfig.json --noEmit",
     "build:example:aigc": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs examples/aigc-agent/build.ts",
-    "test:example:aigc": "vitest run test/aigc-materials-surface.test.ts test/aigc-isolated-entry.test.ts test/aigc-publish-compile.test.ts test/aigc-session-history.test.ts test/aigc-material-status.test.ts test/aigc-media-preview.test.ts",
+    "test:example:aigc": "vitest run test/aigc-materials-surface.test.ts test/aigc-isolated-entry.test.ts test/aigc-publish-compile.test.ts test/aigc-session-history.test.ts test/aigc-material-status.test.ts test/aigc-media-preview.test.ts test/aigc-pane-authorization.test.ts test/aigc-session-gallery.test.ts",
     "dev": "node scripts/dev-all.mjs",
     "dev:e2b": "cross-env PI_WEB_TRANSPORT=e2b node scripts/dev-all.mjs",
     "dev:e2b:local": "node scripts/dev-e2b-local.mjs",

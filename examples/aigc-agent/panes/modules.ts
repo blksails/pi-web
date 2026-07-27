@@ -9,6 +9,7 @@ import type { PaneAgentModule } from "@blksails/pi-web-tool-kit/runtime";
 import { creativeSearchRoute } from "../routes/creative-search.js";
 import { assetsListRoute } from "../routes/assets-list.js";
 import { materialStatusRoute } from "../routes/material-status.js";
+import { sessionGalleryRoute } from "../routes/session-gallery.js";
 import { materialsSurfaceExtension } from "./materials-surface.js";
 
 /** 搜索域 pane:检索走自带 creative-search route(HTTP→Agent Route,替代直连 /api/creative-search)。 */
@@ -21,17 +22,21 @@ export const searchPaneModule: PaneAgentModule = {
 };
 
 /**
- * 素材域 pane:列表读走自带 assets-list route(G2①,写路径守 R-0a 留宿主);
- * 分发状态读走 material-status(同为只读,发起/重试等写动作不授权);
- * 热态(选中/过滤)入 materials surface(G2②,单写者)。
+ * 素材域 pane:三条**只读**数据面 route(写路径守 R-0a 留宿主/控制面)——
+ *  - assets-list      已落库素材(G2①);
+ *  - material-status  分发状态台账(发起/重试等写动作不授权);
+ *  - session-gallery  本会话画廊(复刻源项目的双数据源;经 route 读快照,不给素材域授画布 surface)。
+ * 热态(选中/过滤/目录)入 materials surface(G2②,单写者)。
  */
 export const materialsPaneModule: PaneAgentModule = {
   pane: {
     id: "materials",
-    capabilities: { routes: [{ name: "assets-list" }, { name: "material-status" }] },
+    capabilities: {
+      routes: [{ name: "assets-list" }, { name: "material-status" }, { name: "session-gallery" }],
+    },
   },
   extensions: [materialsSurfaceExtension],
-  routes: [assetsListRoute, materialStatusRoute],
+  routes: [assetsListRoute, materialStatusRoute, sessionGalleryRoute],
 };
 
 export const paneModules: readonly PaneAgentModule[] = [

@@ -8,6 +8,7 @@
  *
  * 全通道谱:
  *  - route GET:`guest.query("assets-list")` → 素材列表(数据面,只读 R-0a);
+ *  - route GET:`guest.query("session-gallery")` → 本会话画廊(双数据源的另一半,读 canvas 快照);
  *  - route GET:`guest.query("material-status")` → 分发状态角标(只读台账;发起/重试是写路径,不授权);
  *  - surface 订阅:`surface:materials` 回流选中集 / 目录树 / 归属 / 改名(权威在 agent,单写者 C1-2);
  *  - surface 命令(**控制面写通道**):select / set-filter / create-folder / rename-folder /
@@ -422,6 +423,8 @@ export function MaterialsApp(): React.JSX.Element {
   const [itemName, setItemName] = React.useState<Readonly<Record<string, string>>>({});
   const [phase, setPhase] = React.useState<"busy" | "done" | "error">("busy");
   const [message, setMessage] = React.useState("");
+  /** 数据面降级说明(常驻,非一次性提示):区分「平台没接」与「真的没素材」。 */
+  const [dataNote, setDataNote] = React.useState("");
   /** 视图态(不入快照):当前浏览的目录、内联输入、删除确认、移动弹窗目标。 */
   const [view, setView] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<{ kind: "create" | "rename"; id?: string; value: string } | null>(null);
@@ -442,10 +445,36 @@ export function MaterialsApp(): React.JSX.Element {
   const [dropping, setDropping] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
+  /**
+   * 双数据源(复刻源项目素材抽屉):已落库素材 ∪ 本会话画廊。前者权威在平台数据面,平台未接时
+   * 恒空;后者读 canvas 权威快照,故刚生成的图立刻可见。两条都只读,失败各自降级、互不牵连。
+   *
+   * `platform_unavailable` 如实呈现:否则「平台没接」与「真的没素材」在界面上一模一样。
+   */
   const load = React.useCallback(async (): Promise<void> => {
     setPhase("busy");
     try {
-      setItems(unwrapItems(await guest.query("assets-list", { kind: "image", limit: "200" })));
+      const [listed, gallery] = await Promise.all([
+        guest.query("assets-list", { kind: "image", limit: "200" }),
+        guest.query("session-gallery", { kind: "image" }).catch(() => ({ items: [] })),
+      ]);
+      const err = (listed as { error?: unknown } | null)?.error;
+      setDataNote(
+        err === "platform_unavailable"
+          ? "素材库未接入平台数据面 —— 此处只列本会话产出与本次上传"
+          : "",
+      );
+      // 会话画廊在前(最近产出优先);同一 attachmentId 以落库记录为准。
+      const listedItems = unwrapItems(listed);
+      const known = new Set(
+        listedItems.map((a) => a.attachmentId).filter((x): x is string => typeof x === "string"),
+      );
+      setItems([
+        ...unwrapItems(gallery).filter(
+          (a) => a.attachmentId === undefined || !known.has(a.attachmentId),
+        ),
+        ...listedItems,
+      ]);
       setPhase("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -692,7 +721,15 @@ export function MaterialsApp(): React.JSX.Element {
   return (
     <div className="pane-layout">
       <div className="toolbar">
-        <span className="muted grow">{picked.size > 0 ? `已选 ${picked.size}` : `${visible.length} 个素材`}</span>
+        <span className="muted grow">
+          {picked.size > 0 ? `已选 ${picked.size}` : `${visible.length} 个素材`}
+          {dataNote !== "" ? (
+            <span className="hint" title={dataNote}>
+              {" "}
+              ⓘ
+            </span>
+          ) : null}
+        </span>
         {picked.size > 0 ? (
           <>
             <button type="button" className="button" onClick={() => setMoving([...picked])}>
@@ -800,7 +837,10 @@ export function MaterialsApp(): React.JSX.Element {
           {phase === "busy" ? <div className="empty">加载中…</div> : null}
           {phase === "error" ? <div className="empty error">{message}</div> : null}
           {phase === "done" && visible.length === 0 ? (
-            <div className="empty">此处暂无素材(可把图片拖进来上传)</div>
+            <div className="empty">
+              此处暂无素材(可把图片拖进来上传)
+              {dataNote !== "" ? <div className="muted">{dataNote}</div> : null}
+            </div>
           ) : null}
           <div className="grid">
             {visible.map((a, i) => {

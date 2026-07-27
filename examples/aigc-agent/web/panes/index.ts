@@ -25,10 +25,12 @@ export const aigcPanesDefinition = definePanes({
       icon: "▦",
       document: { kind: "inline", srcDoc: paneDocuments.materials },
       capabilities: {
-        // 两条皆只读:列表 + 分发状态。分发的发起/重试是写路径(真会对外投放),不授权。
+        // 三条皆只读:已落库列表 + 分发状态 + 本会话画廊。分发的发起/重试是写路径
+        // (真会对外投放),不授权;会话画廊经 route 读快照,故也不必给素材域授画布 surface。
         routes: [
           { name: "assets-list", methods: ["GET"] },
           { name: "material-status", methods: ["GET"] },
+          { name: "session-gallery", methods: ["GET"] },
         ],
         surfaceKeys: ["surface:materials"],
         // 授权面须覆盖 guest 实际会发的每条命令 —— 白名单外的一律被 PanesHost 逐请求拒掉。
