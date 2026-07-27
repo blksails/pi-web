@@ -48,9 +48,20 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .imgbtn{display:block;width:100%;margin:0;padding:0;border:0;background:none;cursor:pointer}
 .imgbtn:disabled{cursor:default;opacity:.7}
 .card.on{outline:2px solid #2563eb;outline-offset:-2px}
+.card[draggable=true]{cursor:grab}
+.split{flex:1;min-height:0;display:flex}
+.side{width:210px;flex:none;border-right:1px solid #e2e8f0;background:#fff;padding:8px 6px;display:flex;flex-direction:column;gap:2px}
+.tree-row{display:flex;align-items:center;gap:2px;border-radius:7px;padding:1px 2px}
+.tree-row.on{background:#eef2ff}
+.tree-name{flex:1;min-width:0;text-align:left;border:0;background:none;padding:5px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-act{flex:none;border:0;background:none;padding:3px 5px;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:12px}
+.tree-row:hover .tree-act{color:#475569}
+.tree-act.danger{color:#b91c1c}
+.tree-add{margin-top:6px;border:1px dashed #cbd5e1;border-radius:8px;background:none;padding:6px 8px;color:#64748b;cursor:pointer;text-align:left}
 @media(prefers-color-scheme:dark){:root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
-.toolbar,.card,input,.button,.empty{background:#111827;border-color:#334155}
-.noimg{background:#1e293b}.muted,.name{color:#94a3b8}}
+.toolbar,.card,input,.button,.empty,.side{background:#111827;border-color:#334155}
+.noimg{background:#1e293b}.muted,.name{color:#94a3b8}
+.tree-row.on{background:#1e293b}.tree-add{border-color:#334155}}
 `;
 
 function htmlDocument(title: string, script: string, extraCss = ""): string {

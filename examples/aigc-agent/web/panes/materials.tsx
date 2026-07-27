@@ -1,12 +1,17 @@
 /**
- * 素材 pane 的 Guest 应用(隔离 iframe 内运行,Wave 5 · 6.1 隔离形态第二例)。
+ * 素材 pane 的 Guest 应用(隔离 iframe 内运行)。
  *
- * 验证隔离 pane 的全通道谱(搜索例只用 route POST):
- *  - route GET:guest.query("assets-list") → Page<AssetRecord>(生成素材列表);
- *  - surface 订阅:subscribe("surface:materials") 收敛选中态(权威在 agent,单写者);
- *  - surface 命令:run("materials","select"/"set-filter")(经宿主 surfaceCommands 授权);
- *  - conversation 直送:submitUserMessage(text, {attachmentIds})(「带入对话」)。
- * 不复刻 MaterialDrawer 全 UI,核心交互齐:列表/多选/全选/带入对话/刷新。
+ * 全通道谱:
+ *  - route GET:`guest.query("assets-list")` → 素材列表(数据面,只读 R-0a);
+ *  - surface 订阅:`surface:materials` 回流选中集 / 目录树 / 归属(权威在 agent,单写者 C1-2);
+ *  - surface 命令(**控制面写通道**):select / set-filter / create-folder / rename-folder /
+ *    move-folder / delete-folder / move-items;
+ *  - conversation 直送:`submitUserMessage(text, { attachmentIds })`(「带入对话」);
+ *  - 拖放发端:`text/att-id`(+ `text/uri-list` / `text/plain` 便于外部落点)拖入宿主输入框,
+ *    零上传入列为已落库引用(受口见 packages/ui `attachment-dnd`)。
+ *
+ * sandbox 只给 allow-scripts —— **无 allow-modals**,故不得用 `prompt()`/`confirm()`,
+ * 新建/改名走内联输入框,删除走「点两次确认」。
  */
 import * as React from "react";
 import { createRoot } from "react-dom/client";
@@ -20,20 +25,41 @@ interface AssetItem {
   readonly meta?: { readonly name?: string } & Record<string, unknown>;
 }
 
+interface Folder {
+  readonly id: string;
+  readonly name: string;
+  readonly parentId?: string;
+}
+
+interface MaterialsSnapshot {
+  readonly selectedIds?: readonly string[];
+  readonly folders?: readonly Folder[];
+  readonly itemFolder?: Readonly<Record<string, string>>;
+}
+
 function unwrapItems(raw: unknown): AssetItem[] {
   const o = (raw ?? {}) as { items?: unknown; data?: unknown };
-  const inner = Array.isArray(o.items)
-    ? o.items
-    : ((o.data ?? {}) as { items?: unknown }).items;
+  const inner = Array.isArray(o.items) ? o.items : ((o.data ?? {}) as { items?: unknown }).items;
   return Array.isArray(inner) ? (inner as AssetItem[]) : [];
+}
+
+/** 目录树按 parentId 归层;顺序即创建序(与快照一致,不另排序)。 */
+function childrenOf(folders: readonly Folder[], parentId: string | undefined): Folder[] {
+  return folders.filter((f) => f.parentId === parentId);
 }
 
 function MaterialsApp(): React.JSX.Element {
   const guest = usePaneGuest();
   const [items, setItems] = React.useState<AssetItem[]>([]);
   const [picked, setPicked] = React.useState<ReadonlySet<string>>(new Set());
+  const [folders, setFolders] = React.useState<readonly Folder[]>([]);
+  const [itemFolder, setItemFolder] = React.useState<Readonly<Record<string, string>>>({});
   const [phase, setPhase] = React.useState<"busy" | "done" | "error">("busy");
   const [message, setMessage] = React.useState("");
+  /** 视图态(不入快照):当前浏览的目录、内联输入、删除确认。 */
+  const [view, setView] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState<{ kind: "create" | "rename"; id?: string; value: string } | null>(null);
+  const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
 
   const load = React.useCallback(async (): Promise<void> => {
     setPhase("busy");
@@ -49,20 +75,34 @@ function MaterialsApp(): React.JSX.Element {
     void load();
   }, [load]);
 
-  // 选中态权威在 agent(surface:materials):命令上行,订阅回流收敛。
+  // 权威态回流(选中 / 目录树 / 归属)——UI 只发命令,不直写。
   React.useEffect(
     () =>
       guest.surface.subscribe("surface:materials", (v) => {
-        const ids = (v as { selectedIds?: unknown } | null)?.selectedIds;
-        if (Array.isArray(ids)) {
-          setPicked(new Set(ids.filter((x): x is string => typeof x === "string")));
+        const s = (v ?? {}) as MaterialsSnapshot;
+        if (Array.isArray(s.selectedIds)) {
+          setPicked(new Set(s.selectedIds.filter((x): x is string => typeof x === "string")));
         }
+        if (Array.isArray(s.folders)) setFolders(s.folders);
+        if (s.itemFolder !== undefined && s.itemFolder !== null) setItemFolder(s.itemFolder);
       }),
     [guest],
   );
+
+  const run = React.useCallback(
+    async (action: string, args: unknown): Promise<void> => {
+      try {
+        await guest.surface.run("materials", action, args);
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [guest],
+  );
+
   const applyPicked = (next: ReadonlySet<string>): void => {
     setPicked(next);
-    void guest.surface.run("materials", "select", { ids: [...next] }).catch(() => undefined);
+    void run("select", { ids: [...next] });
   };
   const toggle = (attachmentId: string): void => {
     const next = new Set(picked);
@@ -71,8 +111,17 @@ function MaterialsApp(): React.JSX.Element {
     applyPicked(next);
   };
 
-  const selectable = items.filter((a) => typeof a.attachmentId === "string");
-  const allPicked = selectable.length > 0 && selectable.every((a) => picked.has(a.attachmentId!));
+  // 当前目录过滤:null=全部;"__none"=未分类。
+  const visible = items.filter((a) => {
+    if (view === null) return true;
+    const id = a.attachmentId;
+    if (id === undefined) return view === "__none";
+    const owner = itemFolder[id];
+    return view === "__none" ? owner === undefined : owner === view;
+  });
+  const selectable = visible.filter((a) => typeof a.attachmentId === "string");
+  const allPicked = selectable.length > 0 && selectable.every((a) => picked.has(a.attachmentId as string));
+
   const bring = async (): Promise<void> => {
     const refs = [...picked];
     if (refs.length === 0) return;
@@ -80,11 +129,105 @@ function MaterialsApp(): React.JSX.Element {
     applyPicked(new Set());
   };
 
+  const submitDraft = (): void => {
+    if (draft === null) return;
+    const name = draft.value.trim();
+    if (name === "") {
+      setDraft(null);
+      return;
+    }
+    if (draft.kind === "create") {
+      void run("create-folder", { name, ...(view !== null && view !== "__none" ? { parentId: view } : {}) });
+    } else if (draft.id !== undefined) {
+      void run("rename-folder", { id: draft.id, name });
+    }
+    setDraft(null);
+  };
+
+  /** 拖放发端:多选时整批带走(受口按空白切分);单项另附 uri/名便于外部落点。 */
+  const onDragStart = (e: React.DragEvent, asset: AssetItem): void => {
+    const id = asset.attachmentId;
+    if (id === undefined) return;
+    const ids = picked.has(id) ? [...picked] : [id];
+    e.dataTransfer.setData("text/att-id", ids.join(" "));
+    if (ids.length === 1) {
+      e.dataTransfer.setData("text/uri-list", asset.displayUrl);
+      e.dataTransfer.setData("text/plain", asset.meta?.name ?? asset.assetId);
+    }
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
+  const renderTree = (parentId: string | undefined, depth: number): React.JSX.Element[] =>
+    childrenOf(folders, parentId).flatMap((f) => [
+      <div key={f.id} className={view === f.id ? "tree-row on" : "tree-row"} style={{ paddingLeft: 8 + depth * 12 }}>
+        {draft?.kind === "rename" && draft.id === f.id ? (
+          <input
+            className="grow"
+            autoFocus
+            value={draft.value}
+            onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitDraft();
+              if (e.key === "Escape") setDraft(null);
+            }}
+            onBlur={submitDraft}
+          />
+        ) : (
+          <>
+            <button type="button" className="tree-name" onClick={() => setView(f.id)} title={f.name}>
+              {f.name}
+            </button>
+            <button type="button" className="tree-act" title="改名" onClick={() => setDraft({ kind: "rename", id: f.id, value: f.name })}>
+              ✎
+            </button>
+            <button
+              type="button"
+              className={confirmDel === f.id ? "tree-act danger" : "tree-act"}
+              title={confirmDel === f.id ? "再点一次删除(含子目录)" : "删除"}
+              onClick={() => {
+                if (confirmDel === f.id) {
+                  void run("delete-folder", { id: f.id });
+                  setConfirmDel(null);
+                  if (view === f.id) setView(null);
+                } else setConfirmDel(f.id);
+              }}
+            >
+              {confirmDel === f.id ? "确认?" : "✕"}
+            </button>
+          </>
+        )}
+      </div>,
+      ...renderTree(f.id, depth + 1),
+    ]);
+
   return (
     <div className="pane-layout">
       <div className="toolbar">
-        <span className="muted grow">{picked.size > 0 ? `已选 ${picked.size}` : `${items.length} 个素材`}</span>
-        <button type="button" className="button" onClick={() => applyPicked(allPicked ? new Set() : new Set(selectable.map((a) => a.attachmentId!)))}>
+        <span className="muted grow">{picked.size > 0 ? `已选 ${picked.size}` : `${visible.length} 个素材`}</span>
+        {picked.size > 0 ? (
+          <select
+            className="button"
+            value=""
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "") return;
+              void run("move-items", { ids: [...picked], folderId: v === "__none" ? null : v });
+            }}
+          >
+            <option value="">移入目录…</option>
+            <option value="__none">移出目录</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <button
+          type="button"
+          className="button"
+          onClick={() => applyPicked(allPicked ? new Set() : new Set(selectable.map((a) => a.attachmentId as string)))}
+        >
           {allPicked ? "清空" : "全选"}
         </button>
         <button type="button" className="button button-primary" disabled={picked.size === 0} onClick={() => void bring()}>
@@ -94,31 +237,74 @@ function MaterialsApp(): React.JSX.Element {
           刷新
         </button>
       </div>
-      <div className="content scroll" style={{ flex: 1, minHeight: 0 }}>
-        {phase === "busy" ? <div className="empty">加载中…</div> : null}
-        {phase === "error" ? <div className="empty error">{message}</div> : null}
-        {phase === "done" && items.length === 0 ? <div className="empty">本会话暂无生成素材</div> : null}
-        <div className="grid">
-          {items.map((a) => {
-            const id = a.attachmentId;
-            const on = id !== undefined && picked.has(id);
-            return (
-              <figure key={a.assetId} className={`card${on ? " on" : ""}`}>
-                <button
-                  type="button"
-                  className="imgbtn"
-                  disabled={id === undefined}
-                  aria-pressed={on}
-                  onClick={() => id !== undefined && toggle(id)}
+
+      <div className="split">
+        <aside className="side scroll">
+          <div className={view === null ? "tree-row on" : "tree-row"}>
+            <button type="button" className="tree-name" onClick={() => setView(null)}>
+              全部素材
+            </button>
+          </div>
+          <div className={view === "__none" ? "tree-row on" : "tree-row"}>
+            <button type="button" className="tree-name" onClick={() => setView("__none")}>
+              未分类
+            </button>
+          </div>
+          {renderTree(undefined, 0)}
+          {draft?.kind === "create" ? (
+            <div className="tree-row">
+              <input
+                className="grow"
+                autoFocus
+                placeholder="目录名"
+                value={draft.value}
+                onChange={(e) => setDraft({ ...draft, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") submitDraft();
+                  if (e.key === "Escape") setDraft(null);
+                }}
+                onBlur={submitDraft}
+              />
+            </div>
+          ) : (
+            <button type="button" className="tree-add" onClick={() => setDraft({ kind: "create", value: "" })}>
+              ＋ 新建目录{view !== null && view !== "__none" ? "(在当前目录下)" : ""}
+            </button>
+          )}
+        </aside>
+
+        <div className="content scroll grow" style={{ minHeight: 0 }}>
+          {phase === "busy" ? <div className="empty">加载中…</div> : null}
+          {phase === "error" ? <div className="empty error">{message}</div> : null}
+          {phase === "done" && visible.length === 0 ? <div className="empty">此处暂无素材</div> : null}
+          <div className="grid">
+            {visible.map((a) => {
+              const id = a.attachmentId;
+              const on = id !== undefined && picked.has(id);
+              return (
+                <figure
+                  key={a.assetId}
+                  className={`card${on ? " on" : ""}`}
+                  draggable={id !== undefined}
+                  onDragStart={(e) => onDragStart(e, a)}
+                  title={id !== undefined ? "可拖入对话输入框" : undefined}
                 >
-                  <img src={a.displayUrl} alt={a.meta?.name ?? a.assetId} loading="lazy" />
-                </button>
-                <figcaption>
-                  <span className="name">{a.meta?.name ?? a.assetId}</span>
-                </figcaption>
-              </figure>
-            );
-          })}
+                  <button
+                    type="button"
+                    className="imgbtn"
+                    disabled={id === undefined}
+                    aria-pressed={on}
+                    onClick={() => id !== undefined && toggle(id)}
+                  >
+                    <img src={a.displayUrl} alt={a.meta?.name ?? a.assetId} loading="lazy" />
+                  </button>
+                  <figcaption>
+                    <span className="name">{a.meta?.name ?? a.assetId}</span>
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
