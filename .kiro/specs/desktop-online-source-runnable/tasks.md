@@ -25,7 +25,7 @@
 
 - [ ] 2. 列表身份归一（消除装后重复条目）
 
-- [ ] 2.1 扫描记录认领线上身份
+- [x] 2.1 扫描记录认领线上身份
   - 改 `packages/server/src/agent-source-list/scan-provider.ts`：目录含合法回执时，`id` 归一为 `sourceId`、`source` 归一为 `sourceId@channel`；`origin` **保持 `scan`**（不得改为 registry，否则触碰排序语义）。
   - 无回执的目录：记录构造与今日**逐字段等价**（回归护栏）。
   - 不改 `compareAgentSourceRecords`，不改分页游标语义。

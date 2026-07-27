@@ -9,6 +9,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { probeEntry } from "../agent-source/index.js";
+import { readInstalledReceipt } from "./installed-registry-index.js";
 import type {
   AgentSourceProvider,
   AgentSourceRecord,
@@ -147,9 +148,25 @@ async function scanRoot(root: string): Promise<AgentSourceRecord[]> {
       }
 
       const meta = await readPkgMeta(candReal);
+      // 已装线上源认领其线上身份(spec desktop-online-source-runnable,任务 2.1)。
+      //
+      // 线上条目 id = sourceId,而扫描条目原本 id = 绝对路径 —— composite 按 id 去重,
+      // 两者不同则装完后同一 agent 会出现两条(Req 3.1)。故含合法回执的目录把 id 归一为
+      // sourceId。source 一并归一为 `sourceId@channel`:只归一 id 的话,登录态提交
+      // `sourceId@channel`、登出后提交绝对路径,可提交标识不稳定(违反 Req 3.2)。
+      //
+      // origin 保持 "scan" —— 改成 registry 会触碰排序语义(Req 3.3/8.3)。
+      // 无回执 / 回执损坏 / 缺必需字段一律降级为原有绝对路径语义(Req 8.1 回归护栏)。
+      //
+      // 此处刻意用同步读(本函数其余 IO 皆异步):回执是每目录一次的小文件读,开销可忽略,
+      // 而为它另造一个异步孪生 API 会让解析与降级逻辑重复两份 —— 后者的维护代价更高。
+      const receipt = readInstalledReceipt(candReal);
+      const identity =
+        receipt !== undefined
+          ? { id: receipt.sourceId, source: `${receipt.sourceId}@${receipt.channel}` }
+          : { id: candReal, source: candReal };
       return {
-        id: candReal,
-        source: candReal,
+        ...identity,
         name: meta.name ?? path.basename(candReal),
         kind: "dir",
         origin: "scan",
