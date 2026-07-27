@@ -23,6 +23,8 @@ import { AuthStatus } from "./auth-status.js";
 import { AigcPromptToolbar } from "./prompt-toolbar.js";
 // 历史会话侧栏(sidebarLeft):分组列表 + 重命名 / 分享 / 删除(接宿主 session-list·actions 端点)。
 import { SessionHistory } from "./session-history.js";
+// 对话区浮标(accessoryBelowEditor):「定位我的输入」+ 输入导航弹层。
+import { ChatInputNav } from "./chat-input-nav.js";
 
 // advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
 const panesConfig = {
@@ -75,6 +77,7 @@ export default defineWebExtension({
     headerRight: AuthStatus,
     promptToolbar: AigcPromptToolbar,
     sidebarLeft: SessionHistory,
+    accessoryBelowEditor: ChatInputNav,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
   renderers: {
