@@ -19,6 +19,7 @@ import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import type { Config } from "tailwindcss";
 import { piWebPreset } from "../../packages/ui/tailwind-preset.js";
+import { aigcPanesDefinition } from "./web/panes/index.js";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PANE_IDS = ["search", "materials", "canvas"] as const;
@@ -221,6 +222,24 @@ export async function buildAigcAgent(): Promise<BuildResult> {
     entryDir: resolve(ROOT, ".pi", "web"),
     outDir,
     capabilities: ["slots", "renderers", "config"],
+    // ★ pane 清单进 manifest —— 隔离宿主(pi-clouds pane-loader 车道)读不到 entry 的运行时
+    //   描述符,manifest 是它唯一能静态拿到 pane 列表与逐 pane 授权的地方。**与
+    //   `aigcPanesDefinition` 同源**(见下),不另手写一份,免两处漂移。
+    panes: aigcPanesDefinition.panes.map((p) => ({
+      id: p.id,
+      title: p.title,
+      ...(p.icon !== undefined ? { icon: p.icon } : {}),
+      capabilities: {
+        routes: p.capabilities.routes.map((r) => ({ name: r.name, methods: [...r.methods] })),
+        surfaceKeys: [...p.capabilities.surfaceKeys],
+        surfaceCommands: p.capabilities.surfaceCommands.map((c) => ({
+          domain: c.domain,
+          actions: [...c.actions],
+        })),
+        attachments: p.capabilities.attachments,
+        conversation: p.capabilities.conversation,
+      },
+    })),
   });
   await buildSelfContainedEntry(outDir, canvasCss);
   await buildEntryDispatcher(outDir);

@@ -1,20 +1,21 @@
 /**
- * 隔离宿主入口 —— 单 pane 内的 aigc 工作台(搜图 / 素材 / 画布 三域内部切页)。
+ * 隔离宿主入口 —— **一个 iframe 一个域**(搜图 / 素材 / 画布 各占一个一级 pane)。
  *
  * 为何要这一份:pi-clouds cloud 的隔离车道(`pane-loader`)要求 dist entry 是一个
  * **自挂载的 pane guest**(自己 `connectPaneGuest` 握手 + 自 mount);而 webext 入口
  * `.pi/web/web.config.tsx` 导出的是 `defineWebExtension({...})` **描述符对象**,供宿主消费,
  * 既不握手也不 mount —— 直接喂给 pane-loader 只会加载出一个对象、屏幕空白。
  *
- * 本仓形态(pi-web 同源宿主)是右栏 PanesHost 多 tab、三域各占一个 iframe;隔离宿主只给
- * **一个** pane,故此处把三域收进单 pane 的内部切页,复用**同一批** guest 组件(零重写):
- * `SearchApp` / `MaterialsApp` / `CanvasPane`。
+ * 同源宿主(pi-web)与隔离宿主的形态**一致**:右栏 PanesHost 多个一级 tab、每域各占一个
+ * iframe。差别只在文档来源 —— 同源用 `srcDoc` 内联(build.ts 打的自含 HTML),隔离用
+ * pane-loader 的 URL 文档加载本产物。故本文件只按 `window.__PANE_ID__` 渲染**对应那一个**域,
+ * 复用**同一批** guest 组件(零重写):`SearchApp` / `MaterialsApp` / `CanvasPane`。
  *
  * 三者原文件末尾的自 mount 受 `getElementById("root")` 守卫,而本入口挂在 `#pane-root`
  * (pane-loader 的容器),故 import 它们不会触发重复挂载。
  *
- * ★ 单 `PaneGuestProvider`:整个 pane 只有一条 guest 通道,paneId 由 pane-loader 写进
- * `window.__PANE_ID__`(它从自身 URL query 读,零服务端插值);缺省回退 `aigc-workbench`。
+ * ★ 每个 iframe 一条 guest 通道,paneId 由 pane-loader 写进 `window.__PANE_ID__`
+ * (它从自身 URL query 读,零服务端插值)。宿主按同一 paneId 下发该 pane 自己的 grants。
  */
 import * as React from "react";
 import { createRoot } from "react-dom/client";
@@ -38,46 +39,27 @@ function injectStyles(): void {
   document.head.appendChild(el);
 }
 
-type TabId = "search" | "materials" | "canvas";
+/**
+ * 一个 iframe 只渲染**一个**域 —— 渲染谁由 `window.__PANE_ID__` 决定(pane-loader 从自身 URL
+ * query 读、写进全局)。故同一份产物在三个 iframe 里各渲一域,彼此是独立 realm、真隔离,
+ * 与同源宿主的 `aigcPanesDefinition` 三 pane 一一对应。
+ *
+ * 曾经在此自绘过一排按钮把三域塞进同一个 iframe 内部切页 —— 那是错的:既非一级 tab,
+ * 三域也共享同一 realm(一个域崩了拖垮另外两个),与 `web/panes/index.ts` 的授权面也对不上
+ * (那里三个 pane 的 capabilities 各不相同)。
+ */
+const PANE_VIEWS: Readonly<Record<string, () => React.JSX.Element>> = {
+  search: () => <SearchApp />,
+  materials: () => <MaterialsApp />,
+  canvas: () => <CanvasPane />,
+};
 
-const TABS: readonly { readonly id: TabId; readonly label: string }[] = [
-  { id: "materials", label: "素材" },
-  { id: "search", label: "搜图" },
-  { id: "canvas", label: "画布" },
-];
-
-function Workbench(): React.JSX.Element {
-  const [tab, setTab] = React.useState<TabId>("materials");
-  return (
-    <div className="pane-layout">
-      <div className="toolbar">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={tab === t.id ? "button button-primary" : "button"}
-            aria-pressed={tab === t.id}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {/* 三域皆挂载、非活跃者以 CSS 隐藏 —— 保活其内部状态(选中集/画布/检索结果),
-          切页不重建;与本仓 PanesHost 多 tab 的保活语义对齐。 */}
-      <div className="split" style={{ flex: 1, minHeight: 0 }}>
-        {TABS.map((t) => (
-          <div
-            key={t.id}
-            className="grow"
-            style={{ display: tab === t.id ? "flex" : "none", minHeight: 0, flexDirection: "column" }}
-          >
-            {t.id === "materials" ? <MaterialsApp /> : t.id === "search" ? <SearchApp /> : <CanvasPane />}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function PaneView({ paneId }: { readonly paneId: string }): React.JSX.Element {
+  const render = PANE_VIEWS[paneId];
+  if (render === undefined) {
+    return <main className="center muted">未知 pane:{paneId}</main>;
+  }
+  return render();
 }
 
 /**
@@ -124,12 +106,13 @@ function bridgeEarlyHandshake(): void {
 const paneRoot = document.getElementById("pane-root");
 if (paneRoot !== null) {
   injectStyles();
+  // 缺省 `materials`:pane-loader 恒会带 paneId,此回退只为直开该文件调试时不至于空白。
   const paneId =
-    (window as unknown as { __PANE_ID__?: string }).__PANE_ID__ ?? "aigc-workbench";
+    (window as unknown as { __PANE_ID__?: string }).__PANE_ID__ ?? "materials";
   bridgeEarlyHandshake();
   createRoot(paneRoot).render(
     <PaneGuestProvider paneId={paneId} fallback={<main className="center muted">正在连接会话…</main>}>
-      <Workbench />
+      <PaneView paneId={paneId} />
     </PaneGuestProvider>,
   );
 }
