@@ -47,7 +47,7 @@
   - _Boundary: registry-install-port_
   - _Depends: 1.1_
 
-- [ ] 3.2 线上源解析插件
+- [x] 3.2 线上源解析插件
   - 新建 `lib/app/online-source/registry-source-resolver.ts`：实现 `SourceResolverPlugin`。`canHandle` 直接复用 1.1 的判别；`resolve` **先查索引**命中即返回该目录，未命中才经 3.1 的端口安装。
   - 安装失败 → 抛出携带失败分类的解析错误（使 `create-session` 不创建会话）。
   - 观察性完成态：单测覆盖 —— 索引命中 → 端口**未被调用**且返回索引目录；未命中 → 端口被调用**恰一次**并返回其目录；端口失败 → `resolve` 抛出且错误可辨识失败分类；无凭据 → 以 `NOT_AUTHENTICATED` 失败。
