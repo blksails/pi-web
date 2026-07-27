@@ -16,14 +16,17 @@
 2. **`CapabilitySnapshot.tenant` 无人消费**:契约定义了 `{ userId, companyId, role }`,但代码中没有任何消费方;P1 的 `DesktopCapabilitiesClient` 只取了 `sources` 一个字段。
 3. **`Workspace` 与身份无关**:它是存储抽象(`readJson`/`writeJson`/`list`/`delete`/`exists`,分 user/project 命名空间),`workspace/types.ts` 中 `auth`/`credential`/`login` 命中 **0** 次。身份属 `CapabilityProvider` 那一层。
 
-## 待定的首要设计决策(进 requirements 前须先答)
+## 已定的首要设计决策(2026-07-27:选 A)
 
-**身份获取落在哪一层**:
+**身份获取补进宿主契约**——新增 `IdentityProvider` 端口,或给 `CapabilityProvider` 增加身份获取方法(具体形态属 design 阶段)。桌面与云端各自实现。
 
-- **A. 扩契约** —— 新增 `IdentityProvider`,或给 `CapabilityProvider` 增加身份获取方法。语义最正,桌面与云端各自实现;但动的是 v1 契约,边界跨仓,值得独立成 spec。
-- **B. 桌面实现自带** —— 身份获取视为桌面 `CapabilityProvider` 实现的内部细节,契约不动。改动面小;但"怎么登录"在不同宿主间不可复用,且本 spec 应并入 `desktop-cloud-login` 任务组 9 而非独立存在。
+**理由**:`CapabilityProvider` 已定义「用身份换授予」却没定义「身份怎么来」,这是**契约的缺口**,不是某个宿主的实现细节。补在契约里,两种宿主的身份获取才可能各自实现而调用方不变。
 
-选型须一并回答:**云端多租户 web 是否也需要这条路径**,还是其身份天然来自会话 cookie。
+**已否决 B(桌面实现自带)**:改动面小,但「怎么登录」跨宿主不可复用,且会把契约缺口掩盖成一次性实现。
+
+**由此确定的边界**:本 spec **独立成立**(不并入 `desktop-cloud-login` 任务组 9);相邻 spec `host-contract-ports` 与契约文档 `docs/pi-web-host-contract-v1.md` 需同步更新;可能联动 pi-clouds。
+
+**进 requirements 时仍须回答**:云端多租户 web 的身份是否也走该端口,还是其实现直接由会话 cookie 提供 —— 这决定端口方法签名要不要容纳「无需交互即得身份」的形态。
 
 ## 已确定的实现约束
 

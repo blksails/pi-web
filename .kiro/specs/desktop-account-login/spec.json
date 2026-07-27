@@ -1,14 +1,30 @@
 {
   "feature_name": "desktop-account-login",
   "created_at": "2026-07-27T10:00:00Z",
-  "updated_at": "2026-07-27T10:00:00Z",
+  "updated_at": "2026-07-27T10:15:00Z",
   "language": "zh",
   "phase": "initialized",
   "approvals": {
-    "requirements": { "generated": false, "approved": false },
-    "design": { "generated": false, "approved": false },
-    "tasks": { "generated": false, "approved": false }
+    "requirements": {
+      "generated": false,
+      "approved": false
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
   },
   "ready_for_implementation": false,
-  "open_decision": "身份获取落在哪一层:A 扩宿主契约(新增 IdentityProvider 或给 CapabilityProvider 加身份获取)/ B 视为桌面 CapabilityProvider 实现的内部细节。选 A 边界大值得独立成 spec;选 B 应并入 desktop-cloud-login 任务组 9。进 requirements 前须先定。"
+  "approach_decision": {
+    "date": "2026-07-27",
+    "chosen": "A · 扩宿主契约",
+    "detail": "在宿主契约 v1 新增身份获取能力(新端口 IdentityProvider,或给 CapabilityProvider 增加身份获取方法——具体形态属 design 阶段)。桌面与云端各自实现。",
+    "why": "语义最正:CapabilityProvider 已定义「用身份换授予」却没定义「身份怎么来」,这是契约的缺口而非某个宿主的实现细节。补在契约里,两种宿主的身份获取才可能各自实现而调用方不变。",
+    "implication": "边界跨仓(动 v1 契约 + 可能联动 pi-clouds),故本 spec **独立成立**,不并入 desktop-cloud-login 任务组 9。相邻 spec host-contract-ports 与契约文档 docs/pi-web-host-contract-v1.md 需同步更新。",
+    "rejected": "B · 桌面实现自带 —— 改动面小,但「怎么登录」跨宿主不可复用,且会把契约缺口掩盖成一次性实现。"
+  }
 }
