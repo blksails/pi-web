@@ -35,8 +35,10 @@ export default [
       name: "integration",
       include: ["test/integration/**/*.test.ts"],
       exclude: ["**/node_modules/**", "**/dist/**"],
-      // 集成文件之间串行:每个文件仍在独立 worker 中隔离(避免 globalThis 上的
-      // handler 单例跨文件泄漏),但同一时刻只跑一个,不再互相抢 CPU。
+      // ⚠ 串行**不能**靠这里:实测 vitest 2.1.9 忽略 project 级 fileParallelism
+      // (带此字段跑 --project integration 仍是 24.2s 并发;加 CLI --no-file-parallelism
+      // 才 63.7s 真串行)。真正的串行由 scripts/run-tests.mjs 传的 CLI 标志保证。
+      // 此处保留仅为声明意图;改动串行行为请改那个脚本,不要以为改这里有用。
       fileParallelism: false,
     },
   },

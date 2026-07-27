@@ -13,8 +13,11 @@
  *   瓶颈;探针的 30s 是产品语义(真实会话超 30s 未就绪本就该报错),为迁就测试放宽
  *   会掩盖真实退化。
  *
- * 为什么不是 vitest workspace 的 project 级 fileParallelism:实测(2.1.9)两个
- *   project 之间仍并发调度,集成文件照样与单测抢 CPU,红照旧。唯有分两次调用才真正独占。
+ * 为什么不是 vitest workspace 的 project 级 fileParallelism:实测(2.1.9)该字段在
+ *   project 配置里**被完全忽略**——`vitest run --project integration` 用时 24.2s(9 个文件
+ *   仍并发),加上 CLI `--no-file-parallelism` 才是 63.7s(≈各文件耗时之和,真串行)。
+ *   且两个 project 之间本就并发调度。故串行**必须**由下面的 CLI 标志保证,不能只写配置。
+ *   ★ 只看「跑绿了」不足以验证此修复,必须比对耗时/并发证据,否则会被偶然的绿骗过。
  *
  * 为什么不是 `vitest run --project unit && vitest run --project integration`:
  *   pnpm 把 `test -- <args>` 追加到整条脚本串尾,会只作用于后半条,破坏既有的
@@ -35,7 +38,8 @@ function vitest(extra) {
 // 开发者过滤用法:单次调用,行为与改造前一致。
 if (args.length > 0) process.exit(vitest(args));
 
-// 全量:先并行跑单测,再独占跑集成。两相都跑完再汇总退出码,便于一次看全失败。
+// 全量:先并行跑单测,再独占且**串行**跑集成。两相都跑完再汇总退出码,便于一次看全失败。
+// `--no-file-parallelism` 不可省:它是集成文件之间真正串行的唯一保证(见上方说明)。
 const unit = vitest(["--project", "unit"]);
-const integration = vitest(["--project", "integration"]);
+const integration = vitest(["--project", "integration", "--no-file-parallelism"]);
 process.exit(unit || integration);
