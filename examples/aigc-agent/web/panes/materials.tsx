@@ -457,6 +457,8 @@ export function MaterialsApp(): React.JSX.Element {
   const [view, setView] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<{ kind: "create" | "rename"; id?: string; value: string } | null>(null);
   const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
+  /** 折叠的目录(视图态,不入快照 —— 别人的窗口该按自己的习惯展开)。 */
+  const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(new Set());
   const [moving, setMoving] = React.useState<readonly string[] | null>(null);
   /** 预览灯箱:以当前可见列表为图库(左右切换),起始 index 为点中的那张。 */
   const [preview, setPreview] = React.useState<number | null>(null);
@@ -714,6 +716,22 @@ export function MaterialsApp(): React.JSX.Element {
     setDraft(null);
   };
 
+  /** 目录素材数(含后代 rollup)。归属表只登记已分类者,故直接按 itemFolder 数即可。 */
+  const rollup = (folderId: string): number => {
+    const ids = new Set([folderId]);
+    // 目录树是浅结构,逐层展开到不动点即可(比递归少一层函数,也天然防环)。
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const f of folders) {
+        if (f.parentId !== undefined && ids.has(f.parentId) && !ids.has(f.id)) {
+          ids.add(f.id);
+          grew = true;
+        }
+      }
+    }
+    return Object.values(itemFolder).filter((fid) => ids.has(fid)).length;
+  };
+
   /** 拖放发端:多选时整批带走(受口按空白切分);单项另附 uri/名便于外部落点。 */
   const onDragStart = (e: React.DragEvent, asset: AssetItem): void => {
     const id = asset.attachmentId;
@@ -728,8 +746,31 @@ export function MaterialsApp(): React.JSX.Element {
   };
 
   const renderTree = (parentId: string | undefined, depth: number): React.JSX.Element[] =>
-    childrenOf(folders, parentId).flatMap((f) => [
+    childrenOf(folders, parentId).flatMap((f) => {
+      const kids = childrenOf(folders, f.id);
+      const shut = collapsed.has(f.id);
+      return [
       <div key={f.id} className={view === f.id ? "tree-row on" : "tree-row"} style={{ paddingLeft: 8 + depth * 12 }}>
+        {kids.length > 0 ? (
+          <button
+            type="button"
+            className="tree-twist"
+            aria-label={shut ? "展开" : "折叠"}
+            aria-expanded={!shut}
+            onClick={() =>
+              setCollapsed((prev) => {
+                const next = new Set(prev);
+                if (shut) next.delete(f.id);
+                else next.add(f.id);
+                return next;
+              })
+            }
+          >
+            {shut ? "▸" : "▾"}
+          </button>
+        ) : (
+          <span className="tree-twist" aria-hidden />
+        )}
         {draft?.kind === "rename" && draft.id === f.id ? (
           <input
             className="grow"
@@ -747,6 +788,8 @@ export function MaterialsApp(): React.JSX.Element {
             <button type="button" className="tree-name" onClick={() => setView(f.id)} title={f.name}>
               {f.name}
             </button>
+            {/* 计数含后代 rollup(源项目 TreeNode.count 同义):看一眼就知道这支下面有多少素材。 */}
+            <span className="tree-count">{rollup(f.id)}</span>
             <button type="button" className="tree-act" title="改名" onClick={() => setDraft({ kind: "rename", id: f.id, value: f.name })}>
               ✎
             </button>
@@ -767,8 +810,9 @@ export function MaterialsApp(): React.JSX.Element {
           </>
         )}
       </div>,
-      ...renderTree(f.id, depth + 1),
-    ]);
+      ...(shut ? [] : renderTree(f.id, depth + 1)),
+      ];
+    });
 
   return (
     <div className="pane-layout">

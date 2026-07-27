@@ -63,6 +63,8 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .tree-row{display:flex;align-items:center;gap:2px;border-radius:7px;padding:1px 2px}
 .tree-row.on{background:#eef2ff}
 .tree-name{flex:1;min-width:0;text-align:left;border:0;background:none;padding:5px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-twist{flex:none;width:14px;border:0;background:none;padding:0;color:#94a3b8;cursor:pointer;font-size:10px;line-height:1}
+.tree-count{flex:none;padding:0 4px;font-size:11px;color:#94a3b8;font-variant-numeric:tabular-nums}
 .tree-act{flex:none;border:0;background:none;padding:3px 5px;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:12px}
 .tree-row:hover .tree-act{color:#475569}
 .tree-act.danger{color:#b91c1c}
