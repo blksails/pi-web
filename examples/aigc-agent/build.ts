@@ -91,7 +91,7 @@ async function buildCanvasCss(): Promise<string> {
   return `${uiStyles}\n${canvasStyles}\n${generated.css}`;
 }
 
-async function buildPaneDocuments(): Promise<string> {
+async function buildPaneDocuments(): Promise<{ target: string; canvasCss: string }> {
   const documents: Record<string, string> = {};
   const canvasCss = await buildCanvasCss();
   for (const id of PANE_IDS) {
@@ -117,7 +117,7 @@ async function buildPaneDocuments(): Promise<string> {
     `// 由 examples/aigc-agent/build.ts 生成,勿手改(改 web/panes/*.tsx 后重跑)。\nexport const paneDocuments = ${JSON.stringify(documents)} as const;\n`,
     "utf8",
   );
-  return target;
+  return { target, canvasCss };
 }
 
 /**
@@ -136,9 +136,12 @@ async function buildPaneDocuments(): Promise<string> {
  * 同一 React 实例;隔离宿主取本产物,realm 内自成一体、经 panes-kit RPC 与宿主通信。
  * manifest **不含**本产物,故对既有宿主与 SRI/签名链零影响。
  */
-async function buildSelfContainedEntry(outDir: string): Promise<void> {
+async function buildSelfContainedEntry(outDir: string, canvasCss: string): Promise<void> {
   const result = await build({
-    entryPoints: [resolve(ROOT, ".pi", "web", "web.config.tsx")],
+    // ★入口是**自挂载的工作台**(web/panes/isolated-workbench.tsx),不是 web.config —— 隔离宿主
+    //   的 loader 要求 entry 自己 connectPaneGuest 握手 + 自 mount;webext 描述符对象喂进去
+    //   只会加载出一个对象、屏幕空白。
+    entryPoints: [resolve(ROOT, "web", "panes", "isolated-workbench.tsx")],
     bundle: true,
     write: false,
     format: "esm",
@@ -147,7 +150,12 @@ async function buildSelfContainedEntry(outDir: string): Promise<void> {
     jsx: "automatic",
     // `ai` 仍 external:只在类型/可选路径出现,打进来显著膨胀且隔离 pane 用不到。
     external: ["ai"],
-    define: { "process.env.NODE_ENV": '"production"' },
+    define: {
+      "process.env.NODE_ENV": '"production"',
+      // 同源形态下 pane 样式由 build 写进自含 HTML;隔离形态的 HTML 是宿主的 pane-loader
+      // (第一方,不含本源样式),故把样式打进产物、运行时自注入。
+      __AIGC_PANE_CSS__: JSON.stringify(`${PANE_CSS}\n${canvasCss}`),
+    },
     minify: true,
     legalComments: "none",
   });
@@ -157,7 +165,7 @@ async function buildSelfContainedEntry(outDir: string): Promise<void> {
 }
 
 export async function buildAigcAgent(): Promise<BuildResult> {
-  await buildPaneDocuments();
+  const { canvasCss } = await buildPaneDocuments();
   const outDir = resolve(ROOT, ".pi", "web", "dist");
   await mkdir(outDir, { recursive: true });
   const built = await buildWebExtension({
@@ -167,7 +175,7 @@ export async function buildAigcAgent(): Promise<BuildResult> {
     outDir,
     capabilities: ["slots", "renderers", "config"],
   });
-  await buildSelfContainedEntry(outDir);
+  await buildSelfContainedEntry(outDir, canvasCss);
   return built;
 }
 

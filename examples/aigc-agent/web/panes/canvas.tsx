@@ -12,7 +12,7 @@ import { CanvasPanel, canvasOpenStore } from "@blksails/pi-web-canvas-ui";
 import type { ConversationAccess, WebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import { PaneGuestProvider, usePaneGuest } from "@blksails/pi-web-panes-kit/react";
 
-function CanvasPane(): React.JSX.Element {
+export function CanvasPane(): React.JSX.Element {
   const guest = usePaneGuest();
   React.useEffect(() => {
     canvasOpenStore.set(true);

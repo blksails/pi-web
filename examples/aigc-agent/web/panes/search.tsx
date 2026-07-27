@@ -31,7 +31,7 @@ function unwrapItems(raw: unknown): { items: Hit[]; error?: string } {
   };
 }
 
-function SearchApp(): React.JSX.Element {
+export function SearchApp(): React.JSX.Element {
   const guest = usePaneGuest();
   const [q, setQ] = React.useState("");
   const [hits, setHits] = React.useState<Hit[]>([]);

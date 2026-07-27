@@ -48,7 +48,7 @@ function childrenOf(folders: readonly Folder[], parentId: string | undefined): F
   return folders.filter((f) => f.parentId === parentId);
 }
 
-function MaterialsApp(): React.JSX.Element {
+export function MaterialsApp(): React.JSX.Element {
   const guest = usePaneGuest();
   const [items, setItems] = React.useState<AssetItem[]>([]);
   const [picked, setPicked] = React.useState<ReadonlySet<string>>(new Set());
