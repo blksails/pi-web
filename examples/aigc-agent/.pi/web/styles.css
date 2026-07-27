@@ -1,0 +1,243 @@
+.ptb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.qp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 20px;
+  font-size: 12.5px;
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.qp:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted));
+}
+.qp.on {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: transparent;
+}
+.qp b {
+  font-weight: 650;
+}
+.qp .chev {
+  opacity: 0.6;
+}
+.tool-plus {
+  padding: 0 7px;
+}
+.intent {
+  gap: 5px;
+}
+.intent-x {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: hsl(var(--primary-foreground));
+  opacity: 0.75;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+}
+.intent-x:hover {
+  opacity: 1;
+}
+.pop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.pop {
+  position: fixed;
+  z-index: 21;
+  min-width: 132px;
+  padding: 4px;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 9px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pop button {
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.pop button:hover:not(:disabled) {
+  background: hsl(var(--muted));
+}
+.pop button:disabled {
+  color: hsl(var(--muted-foreground));
+  cursor: default;
+  opacity: 0.6;
+}
+.pop-sep {
+  height: 1px;
+  background: hsl(var(--border));
+  margin: 3px 2px;
+}
+.pop-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+  padding: 6px 9px 2px;
+}
+.pill-pop {
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.pill-pop button.on {
+  background: hsl(var(--muted));
+  font-weight: 600;
+}
+.pill-pop button .hint {
+  float: right;
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground));
+  margin-left: 10px;
+}
+.menu-sec {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+  padding: 6px 9px 2px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+}
+.menu-row {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  text-align: left;
+  padding: 6px 9px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: hsl(var(--foreground));
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.menu-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-row:hover {
+  background: hsl(var(--muted));
+}
+.menu-pin {
+  flex-shrink: 0;
+  margin-right: 4px;
+  padding: 4px;
+  border-radius: 5px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.menu-item:hover .menu-pin {
+  opacity: 1;
+}
+.menu-pin.on {
+  opacity: 1;
+  color: hsl(var(--primary));
+}
+.menu-pin:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
+.imgcard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.imgcard-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.imgcard-cell {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+}
+.imgcard-cell img {
+  display: block;
+  max-height: 220px;
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+  transition: box-shadow 0.15s;
+}
+.imgcard-cell img:hover {
+  box-shadow: 0 6px 20px rgb(0 0 0 / 16%);
+}
+.imgcard-acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.imgcard-cell:hover .imgcard-acts {
+  opacity: 1;
+}
+.imgcard-acts button {
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: none;
+  background: rgb(20 22 35 / 72%);
+  color: #fff;
+  font-size: 11px;
+  cursor: pointer;
+}
+.imgcard-acts button:hover {
+  background: hsl(var(--primary));
+}
+.imgcard-name {
+  margin-top: 3px;
+  max-width: 220px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

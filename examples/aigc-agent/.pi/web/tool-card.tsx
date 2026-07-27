@@ -9,6 +9,7 @@
  * 资产恒以 displayUrl 引用流转,绝不进 base64(SES-P2)。
  */
 import * as React from "react";
+import { c } from "./cls.js";
 
 export type ToolPhase = "start" | "update" | "end" | "error";
 
@@ -258,7 +259,7 @@ async function downloadOne(src: string, name: string): Promise<void> {
 /** 单个资产:video/audio 原生播放器,image 渲 <img> 且可点击进画布。 */
 export function MediaCell({ asset }: { readonly asset: Asset }): React.JSX.Element {
   return (
-    <div className="aigc-imgcard-cell">
+    <div className={c("imgcard-cell")}>
       {asset.kind === "video" ? (
         <video
           src={asset.src}
@@ -285,7 +286,7 @@ export function MediaCell({ asset }: { readonly asset: Asset }): React.JSX.Eleme
           {...(asset.attId !== undefined ? { "data-att-id": asset.attId } : {})}
         />
       )}
-      <div className="aigc-imgcard-acts">
+      <div className={c("imgcard-acts")}>
         {asset.kind === "image" && asset.attId !== undefined ? (
           <button type="button" onClick={() => openInCanvas(asset.attId)} title="在画布打开">
             画布
@@ -296,7 +297,7 @@ export function MediaCell({ asset }: { readonly asset: Asset }): React.JSX.Eleme
         </button>
       </div>
       {asset.name !== "" ? (
-        <span className="aigc-imgcard-name" title={asset.name}>
+        <span className={c("imgcard-name")} title={asset.name}>
           {asset.name}
         </span>
       ) : null}
@@ -307,8 +308,8 @@ export function MediaCell({ asset }: { readonly asset: Asset }): React.JSX.Eleme
 /** 资产网格(卡内统一容器)。 */
 export function MediaGrid({ assets }: { readonly assets: readonly Asset[] }): React.JSX.Element {
   return (
-    <div className="aigc-imgcard">
-      <div className="aigc-imgcard-grid">
+    <div className={c("imgcard")}>
+      <div className={c("imgcard-grid")}>
         {assets.map((a, i) => (
           <MediaCell key={`${i}-${a.src.slice(-24)}`} asset={a} />
         ))}

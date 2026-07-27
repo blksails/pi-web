@@ -17,8 +17,10 @@ import { PanesHost } from "@blksails/pi-web-panes-kit/react";
 import { aigcPanesDefinition } from "../../web/panes/index.js";
 import { imageRendererExtension } from "./image-renderer.js";
 import { mediaRendererExtension } from "./media-renderer.js";
-// 登录/身份(headerRight):mock 自定义扩展,日后接 pi-clouds(见 ./auth/mock-identity)。
+// 登录/身份(headerRight):读宿主 `/api/auth/me`,pi-clouds AuthUser 形态(见 ./auth/identity)。
 import { AuthStatus } from "./auth-status.js";
+// 输入区工具排(promptToolbar):＋ 分栏工具菜单 / 图钉快捷 pill / 意图胶囊 / 图像参数。
+import { AigcPromptToolbar } from "./prompt-toolbar.js";
 
 // advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
 const panesConfig = {
@@ -69,6 +71,7 @@ export default defineWebExtension({
   slots: {
     panelRight: ConfiguredPanesHost,
     headerRight: AuthStatus,
+    promptToolbar: AigcPromptToolbar,
   },
   // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
   renderers: {
