@@ -49,3 +49,7 @@ e2e/fixtures/iphone-mpf.jpg
 # 本地工具产物(代码索引/编辑器),不入库
 .codegraph/
 .cursor/
+
+# playwright-mcp 的临时快照与本地验证截图
+.playwright-mcp/
+aigc-in-pi-clouds*.png

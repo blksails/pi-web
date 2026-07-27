@@ -80,11 +80,53 @@ function Workbench(): React.JSX.Element {
   );
 }
 
+/**
+ * 握手竞态兜底 —— **URL 文档形态专有**,同源 `srcDoc` 形态不会踩到。
+ *
+ * PanesHost 有两条握手触发路径:收到 guest 的 `pane:ready`,或 iframe 的 `load`。而 module
+ * 脚本会**延迟** load 事件直到执行完毕,于是时序成了:
+ *   ① module 执行 → `createRoot().render()`(React 只是调度,effect 尚未跑)
+ *   ② module 执行完 → iframe `load` → host `connect()` 发出 `pane:connected`
+ *   ③ React effect 才跑 → `PaneGuestProvider` 内部 `connectPaneGuest()` 注册监听 —— **晚了一步**
+ *   ④ guest 发 `pane:ready`,但 host 见 `connections.current` 已有同 epoch 连接,**直接 return 不重发**
+ *   ⑤ guest 15s 后 `Pane host handshake timed out`
+ * srcDoc 形态里脚本是同步 inline、执行早于 load,故 ③ 恒早于 ②,从不暴露。
+ *
+ * 故在 render **之前**先挂一个捕获监听把早到的 `pane:connected` 收下,并**劫持
+ * `window.addEventListener`**:Provider 的监听一注册就把缓存的**原始事件对象**直接喂给它。
+ *
+ * 为何非得直接喂、不能 `dispatchEvent` 重放:guest 按 `event.source === window.parent` 校验来源,
+ * 而 `new MessageEvent(..., {source})` 无法伪造一个跨源 WindowProxy —— 重放出来的事件 source 不
+ * 成立,必被 guest 丢弃(实测如此)。直接调用监听器则 `source`/`ports` 全是原始值,校验自然通过。
+ *
+ * 劫持 3s 后自动撤除;期间其它库注册的 message 监听也会收到这几条,它们按 type 判别后自会忽略。
+ */
+function bridgeEarlyHandshake(): void {
+  const early: MessageEvent[] = [];
+  const capture = (event: MessageEvent): void => {
+    if ((event.data as { type?: string } | undefined)?.type === "pane:connected") early.push(event);
+  };
+  window.addEventListener("message", capture);
+
+  const originalAdd = window.addEventListener.bind(window) as typeof window.addEventListener;
+  window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: unknown) => {
+    originalAdd(type as never, listener as never, options as never);
+    if (type !== "message" || early.length === 0 || typeof listener !== "function") return;
+    for (const event of early) queueMicrotask(() => (listener as (e: MessageEvent) => void)(event));
+  }) as typeof window.addEventListener;
+
+  setTimeout(() => {
+    window.addEventListener = originalAdd;
+    window.removeEventListener("message", capture);
+  }, 3000);
+}
+
 const paneRoot = document.getElementById("pane-root");
 if (paneRoot !== null) {
   injectStyles();
   const paneId =
     (window as unknown as { __PANE_ID__?: string }).__PANE_ID__ ?? "aigc-workbench";
+  bridgeEarlyHandshake();
   createRoot(paneRoot).render(
     <PaneGuestProvider paneId={paneId} fallback={<main className="center muted">正在连接会话…</main>}>
       <Workbench />
