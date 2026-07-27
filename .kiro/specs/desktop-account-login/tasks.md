@@ -327,3 +327,32 @@
 ★ 顺带记一个构建期的坑:`bundle_dmg.sh` 会被**上一次残留的挂载卷**卡死
 (`/Volumes/dmg.XXXXXX` + `bundle/macos/rw.*.dmg`),报错只说 "failed to run
 bundle_dmg.sh",不提挂载。解法:`hdiutil detach -force` 那个卷 + 删掉 `rw.*.dmg` 再构建。
+
+## 12. 登录成功路径的证据补强(2026-07-27)
+
+- [x] 12.1 端到端成功路径集成测(除云端外全真实组件)
+  - 新建 `packages/server/test/identity/login-success-path.test.ts`(12 例)
+  - 真 `createCloudLoginClient` + 真 `createDesktopCapabilitiesClient` + 真
+    `createDesktopPasswordIdentityProvider` + 真 `createIdentityRoutes` + 真 `AuthSessionState`;
+    **只**把 `fetch` 换成按实测云端契约应答的桩(`POST /login → {token}`、
+    `POST /capabilities → {tenant,egress,sources}`)
+  - 覆盖:200 + 已认证 + 展示名 / 凭据落登录态 / 能力端点带的是**刚签发的那个** token /
+    响应体不含密码与任何 token / sources 与 egress 随即可用 / GET 与 exchange 同一身份 /
+    一次登录只打一次云端 / 三条降级分支 / 登出清缓存
+  - ★ **变异验证**:把当初那个 bug(按 `credential` 解而非 `token`)注回去,
+    3 条断言立刻转红 —— 证明这组测试确实盯着那个缺口,不是摆设。验完已 `git checkout` 还原
+  - ⚠ 它**证明不了**云端真实响应就是这个形状。那一条仍需持有账号的人重登一次 ——
+    而这正是首版把 `token` 写成 `credential` 却全绿的那个缺口所在
+  - _Requirements: 2.1, 2.6, 4.1, 4.3, 4.4, 4.5, 5.1, 5.3, 7.1, 8.1, 8.2_
+  - _Boundary: packages/server/test/identity/login-success-path.test.ts_
+
+### 当前证据状态
+
+| 路径 | 真机 | 集成 | 单测 |
+|---|---|---|---|
+| 登录失败(401 真打 pi-cloud) | ✓ | ✓ | ✓ |
+| 未配置云端 → 404 / 门禁放行 | ✓ | — | ✓ |
+| 固化默认值三向 | ✓ | — | ✓ |
+| **登录成功** | **✗** | ✓ | ✓ |
+
+登录成功仍是唯一没有真机证据的路径。
