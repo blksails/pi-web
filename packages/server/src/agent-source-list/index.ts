@@ -29,6 +29,16 @@ export {
   type FavoritesStore,
   type FavoritesStoreOptions,
 } from "./favorites-store.js";
+export {
+  readInstalledReceipt,
+  createInstalledRegistryIndex,
+  REGISTRY_RECEIPT_FILENAME,
+} from "./installed-registry-index.js";
+export type {
+  InstalledReceipt,
+  InstalledRegistryEntry,
+  InstalledRegistryIndex,
+} from "./installed-registry-index.js";
 export type {
   AgentSourceProvider,
   AgentSourceRecord,

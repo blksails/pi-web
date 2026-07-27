@@ -14,7 +14,7 @@
   - _Requirements: 8.1_
   - _Boundary: online-source-id_
 
-- [ ] 1.2 (P) 已安装线上源的本机索引
+- [x] 1.2 (P) 已安装线上源的本机索引
   - 新建 `packages/server/src/agent-source-list/installed-registry-index.ts`：`readInstalledReceipt(dir)` 与 `createInstalledRegistryIndex({ roots })`（含 `lookup(sourceId)`）。
   - 只读回执中的 `sourceId` 与 `channel`（`version` 可选、仅诊断用）；**容忍未知字段**，缺任一必需字段即返回 `undefined`（视为非本通道目录并降级）。
   - 仅用 Node `fs`/`path`；**不得** import `@pi-clouds/registry-client`。JSON 解析失败、目录不可读一律降级为「无回执」而非抛出。
