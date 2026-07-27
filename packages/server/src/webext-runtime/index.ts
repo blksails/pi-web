@@ -34,3 +34,10 @@ export {
   webextContentTypeFor,
   type WebextDistDeps,
 } from "./dist-handler.js";
+
+// 本机磁盘载体的现成实现(可选件;云宿主本地开发形态亦可直接注入)。
+export {
+  createDiskWebextLocator,
+  type DiskWebextLocator,
+  type DiskWebextLocatorOptions,
+} from "./disk-locator.js";
