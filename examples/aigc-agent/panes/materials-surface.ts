@@ -29,24 +29,77 @@ export interface MaterialsFilter {
   readonly scope?: "session" | "all";
 }
 
+/** 素材目录(小热态:名字与父子关系,不含素材本体)。 */
+export interface MaterialsFolder {
+  readonly id: string;
+  readonly name: string;
+  /** 顶层目录无 parentId。 */
+  readonly parentId?: string;
+}
+
 export interface MaterialsState {
   /** 选中素材(attachmentId 引用,整替语义,去重保序)。 */
   readonly selectedIds: readonly string[];
   readonly filter: MaterialsFilter;
+  /** 目录树(R-0c:仅结构,素材本体留数据面)。 */
+  readonly folders: readonly MaterialsFolder[];
+  /** 素材归属:attachmentId → folderId(仅**已分类**者入表,未分类不占位)。 */
+  readonly itemFolder: Readonly<Record<string, string>>;
 }
 
 export function emptyMaterialsState(): MaterialsState {
-  return { selectedIds: [], filter: {} };
+  return { selectedIds: [], filter: {}, folders: [], itemFolder: {} };
 }
 
 const KINDS = new Set(["image", "video", "audio"]);
 const SCOPES = new Set(["session", "all"]);
+const MAX_FOLDERS = 200;
+const MAX_NAME = 64;
 
 function invalidArgs(message: string): {
   ok: false;
   error: { code: string; message: string };
 } {
   return { ok: false, error: { code: "invalid_args", message } };
+}
+
+function notFound(message: string): {
+  ok: false;
+  error: { code: string; message: string };
+} {
+  return { ok: false, error: { code: "not_found", message } };
+}
+
+/** 目录名归一:去首尾空白;空 / 超长 / 非串 → undefined(调用方回 invalid_args)。 */
+function normName(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const s = raw.trim();
+  return s === "" || s.length > MAX_NAME ? undefined : s;
+}
+
+/** `id` 是否为 `ancestor` 的自身或后代(移动目录时防环)。 */
+function isDescendant(
+  folders: readonly MaterialsFolder[],
+  id: string,
+  ancestor: string,
+): boolean {
+  let cur: string | undefined = id;
+  const seen = new Set<string>();
+  while (cur !== undefined && !seen.has(cur)) {
+    if (cur === ancestor) return true;
+    seen.add(cur);
+    cur = folders.find((f) => f.id === cur)?.parentId;
+  }
+  return false;
+}
+
+/** 目录 id:优先 crypto.randomUUID,无则退化为计数式(仅需进程内唯一)。 */
+function newFolderId(existing: readonly MaterialsFolder[]): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid !== undefined) return `fld_${uuid.slice(0, 8)}`;
+  let n = existing.length + 1;
+  while (existing.some((f) => f.id === `fld_${n}`)) n += 1;
+  return `fld_${n}`;
 }
 
 /**
@@ -92,6 +145,135 @@ export function makeMaterialsSurfaceExtension(
             };
             ctx.setState((s) => ({ ...s, filter }));
             return { filter };
+          },
+
+          /**
+           * 建目录:{ name, parentId? }。控制面写路径(R-0a 只约束数据面;权威写者恒为 agent)。
+           * 名字去重不强制(同名目录合法,如同文件系统的不同路径)。
+           */
+          "create-folder": (args, ctx) => {
+            const a = (args ?? {}) as { name?: unknown; parentId?: unknown };
+            const name = normName(a.name);
+            if (name === undefined) {
+              return invalidArgs(`create-folder 需 { name: 非空字符串(≤${MAX_NAME}) }`);
+            }
+            const parentId = typeof a.parentId === "string" ? a.parentId : undefined;
+            const cur = ctx.get();
+            if (cur.folders.length >= MAX_FOLDERS) {
+              return invalidArgs(`目录数已达上限 ${MAX_FOLDERS}`);
+            }
+            if (parentId !== undefined && !cur.folders.some((f) => f.id === parentId)) {
+              return notFound(`父目录不存在: ${parentId}`);
+            }
+            const folder: MaterialsFolder = {
+              id: newFolderId(cur.folders),
+              name,
+              ...(parentId !== undefined ? { parentId } : {}),
+            };
+            ctx.setState((s) => ({ ...s, folders: [...s.folders, folder] }));
+            return { folder };
+          },
+
+          /** 改名:{ id, name }。 */
+          "rename-folder": (args, ctx) => {
+            const a = (args ?? {}) as { id?: unknown; name?: unknown };
+            const name = normName(a.name);
+            if (typeof a.id !== "string" || name === undefined) {
+              return invalidArgs("rename-folder 需 { id: string, name: 非空字符串 }");
+            }
+            const id = a.id;
+            if (!ctx.get().folders.some((f) => f.id === id)) {
+              return notFound(`目录不存在: ${id}`);
+            }
+            ctx.setState((s) => ({
+              ...s,
+              folders: s.folders.map((f) => (f.id === id ? { ...f, name } : f)),
+            }));
+            return { id, name };
+          },
+
+          /**
+           * 移目录:{ id, parentId? }(parentId 省略 = 移到顶层)。
+           * 防环:目标父不得是自身或自身后代。
+           */
+          "move-folder": (args, ctx) => {
+            const a = (args ?? {}) as { id?: unknown; parentId?: unknown };
+            if (typeof a.id !== "string") return invalidArgs("move-folder 需 { id: string }");
+            const id = a.id;
+            const parentId = typeof a.parentId === "string" ? a.parentId : undefined;
+            const cur = ctx.get();
+            if (!cur.folders.some((f) => f.id === id)) return notFound(`目录不存在: ${id}`);
+            if (parentId !== undefined) {
+              if (!cur.folders.some((f) => f.id === parentId)) {
+                return notFound(`父目录不存在: ${parentId}`);
+              }
+              if (isDescendant(cur.folders, parentId, id)) {
+                return invalidArgs("不能移入自身或其后代");
+              }
+            }
+            ctx.setState((s) => ({
+              ...s,
+              folders: s.folders.map((f) =>
+                f.id === id
+                  ? { ...f, ...(parentId !== undefined ? { parentId } : { parentId: undefined }) }
+                  : f,
+              ),
+            }));
+            return { id, parentId: parentId ?? null };
+          },
+
+          /**
+           * 删目录:{ id }。连同后代目录一并删,其下素材归属清空(素材本体不动——
+           * 权威在数据面,此处只解除分类)。
+           */
+          "delete-folder": (args, ctx) => {
+            const a = (args ?? {}) as { id?: unknown };
+            if (typeof a.id !== "string") return invalidArgs("delete-folder 需 { id: string }");
+            const id = a.id;
+            const cur = ctx.get();
+            if (!cur.folders.some((f) => f.id === id)) return notFound(`目录不存在: ${id}`);
+            const doomed = new Set(
+              cur.folders.filter((f) => isDescendant(cur.folders, f.id, id)).map((f) => f.id),
+            );
+            ctx.setState((s) => {
+              const itemFolder: Record<string, string> = {};
+              for (const [att, fid] of Object.entries(s.itemFolder)) {
+                if (!doomed.has(fid)) itemFolder[att] = fid;
+              }
+              return { ...s, folders: s.folders.filter((f) => !doomed.has(f.id)), itemFolder };
+            });
+            return { removed: [...doomed] };
+          },
+
+          /**
+           * 素材归类:{ ids: string[], folderId: string | null }(null = 移出目录)。
+           * 只写引用(attachmentId → folderId),二进制永不进快照(R-0b)。
+           */
+          "move-items": (args, ctx) => {
+            const a = (args ?? {}) as { ids?: unknown; folderId?: unknown };
+            const ids = a.ids;
+            if (!Array.isArray(ids) || ids.some((x) => typeof x !== "string")) {
+              return invalidArgs("move-items 需 { ids: string[] }");
+            }
+            const folderId =
+              a.folderId === null || a.folderId === undefined ? null : a.folderId;
+            if (folderId !== null && typeof folderId !== "string") {
+              return invalidArgs("move-items 的 folderId 需 string | null");
+            }
+            const cur = ctx.get();
+            if (folderId !== null && !cur.folders.some((f) => f.id === folderId)) {
+              return notFound(`目录不存在: ${folderId}`);
+            }
+            const unique = [...new Set(ids as string[])];
+            ctx.setState((s) => {
+              const itemFolder = { ...s.itemFolder };
+              for (const att of unique) {
+                if (folderId === null) delete itemFolder[att];
+                else itemFolder[att] = folderId;
+              }
+              return { ...s, itemFolder };
+            });
+            return { ids: unique, folderId };
           },
         },
       },
