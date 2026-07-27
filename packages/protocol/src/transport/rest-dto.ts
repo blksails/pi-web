@@ -270,6 +270,10 @@ export const AgentSourceItemSchema = z.object({
    * 缺省时前端用标题/名称首字母兜底。来源:`pi-web.avatar` / registry.avatar。
    */
   avatar: z.string().optional(),
+  /** 是否可在当前部署形态下运行;缺省(undefined)= 未判定,按可运行处理。 */
+  runnable: z.boolean().optional(),
+  /** `runnable === false` 时的人读原因;供 UI 就地展示。 */
+  reason: z.string().optional(),
 });
 export type AgentSourceItem = z.infer<typeof AgentSourceItemSchema>;
 

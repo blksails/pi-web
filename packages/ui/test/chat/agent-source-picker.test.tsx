@@ -288,6 +288,137 @@ describe("AgentSourcePicker — source list", () => {
     expect(onSubmit).toHaveBeenCalledWith("/a");
   });
 
+  it("runnable:false → 按钮 disabled 且点击不触发 onSubmit(picker-runnable-state R1.1)", async () => {
+    const onSubmit = vi.fn();
+    const unavailableSource: ListAgentSourcesResponse = {
+      sources: [
+        {
+          id: "/u",
+          source: "/u",
+          name: "Unavailable",
+          kind: "dir",
+          origin: "registry",
+          mode: "cli",
+          runnable: false,
+          reason: "云版暂不支持",
+        },
+      ],
+    };
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        enableSourceList
+        listAgentSources={list(unavailableSource)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Unavailable")).toBeTruthy());
+    const item = container.querySelector(
+      "[data-agent-source-item]",
+    ) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+    fireEvent.click(item);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("runnable:false 且有 reason → 渲染该 reason(picker-runnable-state R1.2)", async () => {
+    const withReason: ListAgentSourcesResponse = {
+      sources: [
+        {
+          id: "/u",
+          source: "/u",
+          name: "Unavailable",
+          kind: "dir",
+          origin: "registry",
+          mode: "cli",
+          runnable: false,
+          reason: "云版暂不支持",
+        },
+      ],
+    };
+    render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={list(withReason)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("云版暂不支持")).toBeTruthy());
+  });
+
+  it("runnable:false 且无 reason → 渲染 i18n 兜底文案(picker-runnable-state R1.2)", async () => {
+    const noReason: ListAgentSourcesResponse = {
+      sources: [
+        {
+          id: "/u",
+          source: "/u",
+          name: "Unavailable",
+          kind: "dir",
+          origin: "registry",
+          mode: "cli",
+          runnable: false,
+        },
+      ],
+    };
+    render(
+      <AgentSourcePicker
+        onSubmit={() => {}}
+        enableSourceList
+        listAgentSources={list(noReason)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Unavailable")).toBeTruthy());
+    expect(screen.getByText("当前不可用")).toBeTruthy();
+  });
+
+  it("runnable 未提供 → 交互与改动前一致(可点、能提交)(picker-runnable-state R2.3/R4.2)", async () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        enableSourceList
+        listAgentSources={list(twoSources)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    const item = container.querySelector(
+      "[data-agent-source-item]",
+    ) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    fireEvent.click(item);
+    expect(onSubmit).toHaveBeenCalledWith("/a");
+  });
+
+  it("runnable:true → 交互与改动前一致(可点、能提交)(picker-runnable-state R1.3)", async () => {
+    const onSubmit = vi.fn();
+    const runnableTrue: ListAgentSourcesResponse = {
+      sources: [
+        {
+          id: "/r",
+          source: "/r",
+          name: "Runnable",
+          kind: "dir",
+          origin: "registry",
+          mode: "cli",
+          runnable: true,
+        },
+      ],
+    };
+    const { container } = render(
+      <AgentSourcePicker
+        onSubmit={onSubmit}
+        enableSourceList
+        listAgentSources={list(runnableTrue)}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Runnable")).toBeTruthy());
+    const item = container.querySelector(
+      "[data-agent-source-item]",
+    ) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    fireEvent.click(item);
+    expect(onSubmit).toHaveBeenCalledWith("/r");
+  });
+
   it("未启用门控 → 不显示列表,仅手输框(Req 6.4)", () => {
     render(
       <AgentSourcePicker

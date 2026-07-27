@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  AgentSourceItemSchema,
   CreateSessionRequestSchema,
   DeleteSessionRequestSchema,
   ForkRequestSchema,
@@ -195,6 +196,31 @@ describe("SessionListItemSchema (session-source-protocol)", () => {
     });
     expect(res.sessions[0]?.source).toBe("builtin:default-agent");
     expect(res.sessions[1]?.source).toBeUndefined();
+  });
+});
+
+describe("AgentSourceItemSchema (picker-runnable-state)", () => {
+  const base = {
+    id: "id-1",
+    source: "./agent",
+    name: "agent",
+    kind: "dir" as const,
+    origin: "scan" as const,
+    mode: "cli" as const,
+  };
+  it("含 runnable/reason 的项能通过校验且值原样保留", () => {
+    const parsed = AgentSourceItemSchema.parse({
+      ...base,
+      runnable: false,
+      reason: "缺少必要的入口文件",
+    });
+    expect(parsed.runnable).toBe(false);
+    expect(parsed.reason).toBe("缺少必要的入口文件");
+  });
+  it("不含 runnable/reason 的项能通过校验,且两键为 undefined(锁定无默认值)", () => {
+    const parsed = AgentSourceItemSchema.parse({ ...base });
+    expect(parsed.runnable).toBeUndefined();
+    expect(parsed.reason).toBeUndefined();
   });
 });
 

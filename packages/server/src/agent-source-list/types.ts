@@ -25,6 +25,10 @@ export interface AgentSourceRecord {
   readonly description?: string;
   /** 可选头像(图片 URL/data-URI 或短文本/emoji)。 */
   readonly avatar?: string;
+  /** 是否可在当前部署形态下运行;缺省(undefined)= 未判定,按可运行处理。 */
+  readonly runnable?: boolean;
+  /** `runnable === false` 时的人读原因;供 UI 就地展示。 */
+  readonly reason?: string;
 }
 
 /** 统一枚举抽象:只读、无副作用。 */

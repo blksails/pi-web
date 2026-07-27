@@ -187,6 +187,71 @@ describe("GET /agent-sources", () => {
     expect(parsed.sources.some((s) => s.kind === "git")).toBe(true);
   });
 
+  it("记录带 runnable/reason → 响应透传(Req 2.1/2.2)", async () => {
+    const records = [
+      {
+        id: "/blocked",
+        source: "/blocked",
+        name: "blocked",
+        kind: "dir" as const,
+        origin: "scan" as const,
+        mode: "custom" as const,
+        runnable: false,
+        reason: "缺少入口文件",
+      },
+    ];
+    const store = new InMemorySessionStore(true);
+    const manager = new SessionManager({ store, idleMs: 0 });
+    const routes = createAgentSourcesRoutes({
+      scanRoots: [],
+      registryPath: "unused",
+      provider: { list: () => Promise.resolve(records) },
+    });
+    const handler = createPiWebHandler({
+      manager,
+      store,
+      routes,
+      authResolver: () => ({ anonymous: true }),
+    });
+    const parsed = ListAgentSourcesResponseSchema.parse(
+      await readJson(await handler(url(""))),
+    );
+    expect(parsed.sources).toHaveLength(1);
+    expect(parsed.sources[0]!.runnable).toBe(false);
+    expect(parsed.sources[0]!.reason).toBe("缺少入口文件");
+  });
+
+  it("记录不带 runnable/reason → 输出逐字段等同于改动前(不含这两个键)", async () => {
+    const records = [
+      {
+        id: "/plain",
+        source: "/plain",
+        name: "plain",
+        kind: "dir" as const,
+        origin: "scan" as const,
+        mode: "custom" as const,
+      },
+    ];
+    const store = new InMemorySessionStore(true);
+    const manager = new SessionManager({ store, idleMs: 0 });
+    const routes = createAgentSourcesRoutes({
+      scanRoots: [],
+      registryPath: "unused",
+      provider: { list: () => Promise.resolve(records) },
+    });
+    const handler = createPiWebHandler({
+      manager,
+      store,
+      routes,
+      authResolver: () => ({ anonymous: true }),
+    });
+    const raw = await readJson(await handler(url("")));
+    const sources = raw.sources as Array<Record<string, unknown>>;
+    expect(sources).toHaveLength(1);
+    expect("runnable" in sources[0]!).toBe(false);
+    expect("reason" in sources[0]!).toBe(false);
+  });
+
   it("只读:请求前后 fixture 目录字节与 mtime 不变(Req 6.1)", async () => {
     await mkAgent("ro");
     const entryPath = join(root, "ro", "index.ts");
