@@ -36,6 +36,13 @@ export interface ExtSlotRegionProps {
   readonly className?: string;
   /** 共享状态接入(state-injection-bridge);宿主提供时经 SlotHost 透给 slot 组件。 */
   readonly state?: WebExtStateAccess;
+  /**
+   * http-api 基址与当前会话 id。`SlotHost` 早已支持(panelRight 一直在传),此处补上转发,
+   * 使区域插槽(如 sidebarLeft 的会话列表)同样能按标准端点自取数据,不必从 DOM 猜。
+   * 宿主未提供时不注入,slot 组件自行降级。
+   */
+  readonly baseUrl?: string;
+  readonly sessionId?: string;
 }
 
 /**
@@ -48,13 +55,21 @@ export function ExtSlotRegion({
   as = "div",
   className,
   state,
+  baseUrl,
+  sessionId,
 }: ExtSlotRegionProps): React.ReactNode {
   if (resolveSlot(ext, slot) === undefined) return null;
   const dataAttr = RESERVED_SLOT_DATA_ATTR[slot] ?? `data-pi-ext-${slot}`;
   const Tag = as as React.ElementType;
   return (
     <Tag {...{ [dataAttr]: "" }} className={className}>
-      <SlotHost ext={ext} slot={slot} {...(state !== undefined ? { state } : {})} />
+      <SlotHost
+        ext={ext}
+        slot={slot}
+        {...(state !== undefined ? { state } : {})}
+        {...(baseUrl !== undefined ? { baseUrl } : {})}
+        {...(sessionId !== undefined ? { sessionId } : {})}
+      />
     </Tag>
   );
 }

@@ -1839,6 +1839,9 @@ export function PiChat({
         slot="sidebarLeft"
         as="aside"
         className="hidden shrink-0 md:block"
+        {...(webextState !== undefined ? { state: webextState } : {})}
+        baseUrl={client?.baseUrl ?? ""}
+        {...(sessionId !== undefined ? { sessionId } : {})}
       />
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
