@@ -173,6 +173,26 @@ describe("materials surface · 写命令闭环(G2)", () => {
     expect(r.error?.code).toBe("unknown_action");
   });
 
+  it("rename-item 登记热态覆盖名;空串清除覆盖(回落数据面原名)", async () => {
+    const { handle, snap } = makeEnv();
+    expect((await handle.dispatch("rename-item", { id: "att_a", name: " 主视觉 " })).ok).toBe(true);
+    expect(snap().itemName).toEqual({ att_a: "主视觉" });
+
+    // 空串 = 清除覆盖,该键不留占位。
+    expect((await handle.dispatch("rename-item", { id: "att_a", name: "  " })).ok).toBe(true);
+    expect(snap().itemName).toEqual({});
+  });
+
+  it("rename-item 缺 id / 非串 name / 超长 → invalid_args 且快照不动", async () => {
+    const { handle, store } = makeEnv();
+    expect((await handle.dispatch("rename-item", { name: "x" })).error?.code).toBe("invalid_args");
+    expect((await handle.dispatch("rename-item", { id: "att_a" })).error?.code).toBe("invalid_args");
+    expect(
+      (await handle.dispatch("rename-item", { id: "att_a", name: "x".repeat(201) })).error?.code,
+    ).toBe("invalid_args");
+    expect(store.get(KEY)).toEqual(emptyMaterialsState());
+  });
+
   it("agent_end 轮末收敛:剔除已失效的选中 id", async () => {
     const { listeners, handle, snap } = makeEnv(["att_live"]);
     await handle.dispatch("select", { ids: ["att_live", "att_gone"] });

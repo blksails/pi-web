@@ -60,10 +60,51 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .tree-row:hover .tree-act{color:#475569}
 .tree-act.danger{color:#b91c1c}
 .tree-add{margin-top:6px;border:1px dashed #cbd5e1;border-radius:8px;background:none;padding:6px 8px;color:#64748b;cursor:pointer;text-align:left}
+.notice{margin:8px 12px 0;padding:6px 10px;border:1px solid #fcd34d;background:#fffbeb;color:#92400e;border-radius:8px;font-size:12px;cursor:pointer}
+.content.dropping{outline:2px dashed #2563eb;outline-offset:-6px;background:#eff6ff}
+/* 素材卡(复刻 aigc-agent .aigc-asset):保持比例不裁切 + 扫光占位 + 悬浮动作 */
+.asset{position:relative;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden;aspect-ratio:1}
+.asset[draggable=true]{cursor:grab}
+.asset.sel{outline:2px solid #2563eb;outline-offset:-2px}
+.asset-img{display:block;width:100%;height:100%;object-fit:contain;background:#f1f5f9;opacity:0;transition:opacity .25s;cursor:pointer}
+.asset-img.loaded{opacity:1}
+.asset-shimmer{position:absolute;inset:0;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 37%,#f1f5f9 63%);background-size:400% 100%;animation:pane-shimmer 1.4s ease infinite}
+@keyframes pane-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.asset-ck{position:absolute;left:6px;top:6px;width:18px;height:18px;border-radius:5px;border:1px solid #cbd5e1;background:rgb(255 255 255/.9);color:#2563eb;font-size:11px;line-height:1;display:grid;place-items:center;cursor:pointer;opacity:0;transition:opacity .15s}
+.asset:hover .asset-ck,.asset-ck.on,.asset-ck.any{opacity:1}
+.asset-ck.on{border-color:#2563eb}
+.asset-menu{position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:6px;border:none;background:rgb(20 22 35/.66);color:#fff;cursor:pointer;opacity:0;transition:opacity .15s;line-height:1}
+.asset:hover .asset-menu{opacity:1}
+.asset-name{position:absolute;left:0;right:0;bottom:0;padding:4px 7px;font-size:11px;color:#fff;background:linear-gradient(transparent,rgb(0 0 0/.55));overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 卡片动作菜单(portal 到 body,useFitPos 夹进视口) */
+.asset-backdrop{position:fixed;inset:0;z-index:40}
+.asset-pop{position:fixed;z-index:41;min-width:150px;padding:4px;border:1px solid #e2e8f0;border-radius:10px;background:#fff;box-shadow:0 10px 30px rgb(0 0 0/.18);display:flex;flex-direction:column}
+.asset-pop>button{display:block;width:100%;text-align:left;border:0;background:none;padding:7px 10px;border-radius:7px;cursor:pointer;white-space:nowrap}
+.asset-pop>button:hover:not(:disabled){background:#f1f5f9}
+.asset-pop>button:disabled{color:#94a3b8;cursor:not-allowed}
+.pop-sep{height:1px;margin:4px 2px;background:#e2e8f0}
+.pop-sub{display:flex;gap:4px;padding:2px}
+.pop-input{flex:1;min-width:0;padding:5px 7px}
+.pop-sub>button{border:1px solid #cbd5e1;border-radius:7px;background:none;padding:4px 9px;cursor:pointer}
+/* 「移动到目录」弹窗 */
+.dlg-backdrop{position:fixed;inset:0;z-index:45;display:grid;place-items:center;padding:24px;background:rgb(0 0 0/.35)}
+.dlg{display:flex;flex-direction:column;width:min(360px,100%);max-height:70vh;border:1px solid #e2e8f0;border-radius:12px;background:#fff;overflow:hidden;box-shadow:0 20px 60px rgb(0 0 0/.3)}
+.dlg-head{padding:11px 14px;border-bottom:1px solid #e2e8f0;font-weight:600}
+.dlg-body{padding:6px;display:flex;flex-direction:column;gap:2px}
+.dlg-row{text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;cursor:pointer}
+.dlg-row:hover{background:#f1f5f9}
+.dlg-foot{padding:8px 12px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end}
 @media(prefers-color-scheme:dark){:root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
-.toolbar,.card,input,.button,.empty,.side{background:#111827;border-color:#334155}
+.toolbar,.card,input,.button,.empty,.side,.asset,.asset-pop,.dlg{background:#111827;border-color:#334155}
 .noimg{background:#1e293b}.muted,.name{color:#94a3b8}
-.tree-row.on{background:#1e293b}.tree-add{border-color:#334155}}
+.tree-row.on{background:#1e293b}.tree-add{border-color:#334155}
+.asset-img{background:#1e293b}
+.asset-shimmer{background:linear-gradient(90deg,#1e293b 25%,#334155 37%,#1e293b 63%);background-size:400% 100%}
+.asset-ck{background:rgb(17 24 39/.9);border-color:#334155}
+.asset-pop>button:hover:not(:disabled),.dlg-row:hover{background:#1e293b}
+.pop-sep,.dlg-head,.dlg-foot{border-color:#334155}
+.notice{background:#422006;border-color:#a16207;color:#fde68a}
+.content.dropping{background:#0b1220}}
 `;
 
 function htmlDocument(title: string, script: string, extraCss = ""): string {

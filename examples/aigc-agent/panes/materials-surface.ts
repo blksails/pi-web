@@ -45,16 +45,26 @@ export interface MaterialsState {
   readonly folders: readonly MaterialsFolder[];
   /** 素材归属:attachmentId → folderId(仅**已分类**者入表,未分类不占位)。 */
   readonly itemFolder: Readonly<Record<string, string>>;
+  /**
+   * 素材显示名覆盖:attachmentId → name(仅**改过名**者入表)。
+   *
+   * 素材名的原始来源是数据面(`assets-list` 的 `meta.name`,权威在平台后端),故改名不写数据面,
+   * 而在此登记一层热态覆盖 —— UI 显示时优先取它。与 `itemFolder` 同构:只存引用与短字符串,
+   * 二进制永不进快照(R-0b)。
+   */
+  readonly itemName: Readonly<Record<string, string>>;
 }
 
 export function emptyMaterialsState(): MaterialsState {
-  return { selectedIds: [], filter: {}, folders: [], itemFolder: {} };
+  return { selectedIds: [], filter: {}, folders: [], itemFolder: {}, itemName: {} };
 }
 
 const KINDS = new Set(["image", "video", "audio"]);
 const SCOPES = new Set(["session", "all"]);
 const MAX_FOLDERS = 200;
 const MAX_NAME = 64;
+/** 素材名上限(对齐源项目输入框的「≤200 字」提示)。 */
+const MAX_ITEM_NAME = 200;
 
 function invalidArgs(message: string): {
   ok: false;
@@ -274,6 +284,32 @@ export function makeMaterialsSurfaceExtension(
               return { ...s, itemFolder };
             });
             return { ids: unique, folderId };
+          },
+
+          /**
+           * 素材改名:{ id, name }(name 为空串 = 清除覆盖,回落数据面原名)。
+           * 只登记热态覆盖名,不写数据面(见 `MaterialsState.itemName`)。
+           */
+          "rename-item": (args, ctx) => {
+            const a = (args ?? {}) as { id?: unknown; name?: unknown };
+            if (typeof a.id !== "string" || a.id === "") {
+              return invalidArgs("rename-item 需 { id: string }");
+            }
+            if (typeof a.name !== "string") {
+              return invalidArgs("rename-item 需 { name: string }(空串 = 清除覆盖)");
+            }
+            const id = a.id;
+            const name = a.name.trim();
+            if (name.length > MAX_ITEM_NAME) {
+              return invalidArgs(`素材名过长(≤${MAX_ITEM_NAME})`);
+            }
+            ctx.setState((s) => {
+              const itemName = { ...s.itemName };
+              if (name === "") delete itemName[id];
+              else itemName[id] = name;
+              return { ...s, itemName };
+            });
+            return { id, name: name === "" ? null : name };
           },
         },
       },

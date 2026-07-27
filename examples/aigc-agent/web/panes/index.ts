@@ -27,9 +27,25 @@ export const aigcPanesDefinition = definePanes({
       capabilities: {
         routes: [{ name: "assets-list", methods: ["GET"] }],
         surfaceKeys: ["surface:materials"],
+        // 授权面须覆盖 guest 实际会发的每条命令 —— 白名单外的一律被 PanesHost 逐请求拒掉。
+        // 目录树(建/改名/移动/删)、素材归类与素材改名都在控制面,故一并授权。
         surfaceCommands: [
-          { domain: "materials", actions: ["select", "set-filter"] },
+          {
+            domain: "materials",
+            actions: [
+              "select",
+              "set-filter",
+              "create-folder",
+              "rename-folder",
+              "move-folder",
+              "delete-folder",
+              "move-items",
+              "rename-item",
+            ],
+          },
         ],
+        // 素材上传经宿主附件端口落库(大二进制走制品面,不进帧)。
+        attachments: "read-write",
         conversation: "submit",
       },
     },
