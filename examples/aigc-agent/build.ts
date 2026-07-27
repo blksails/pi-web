@@ -130,6 +130,10 @@ export async function buildAigcAgent(): Promise<BuildResult> {
     entryDir: resolve(ROOT, ".pi", "web"),
     outDir,
     capabilities: ["slots", "renderers", "config"],
+    // 另产自包含 `web-extension.isolated.mjs`:隔离宿主(opaque-origin iframe 车道,如 pi-clouds
+    // cloud 的 pane-loader)里扩展跑在独立 realm,拿不到宿主单例桥,external 版无法加载。
+    // manifest 不变(仍指 external 版),同源宿主行为零改变。
+    alsoSelfContained: true,
   });
 }
 

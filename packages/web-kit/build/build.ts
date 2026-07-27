@@ -38,6 +38,19 @@ export interface BuildOptions {
   /** 提供则用 Ed25519 私钥(base64 pkcs8)对 manifest 签名。 */
   readonly signKey?: string;
   readonly capabilities?: readonly WebExtensionCapability[];
+  /**
+   * 额外产一份**自包含**产物 `web-extension.isolated.mjs`(react / react-dom / jsx-runtime /
+   * pi-web-kit 全部打进去,只留 `ai` external)。
+   *
+   * 为何需要:隔离宿主(opaque-origin iframe 车道)里的扩展跑在**独立 realm** —— 宿主的单例桥
+   * (`globalThis.__PI_WEBEXT_SINGLETONS__`)在其中不存在,import map 也无从指向宿主实例,故
+   * external 版无法加载。自包含版供这类宿主直接 `<script type="module" src>`。
+   *
+   * 两份并存、各司其职:同源宿主(pi-web 自身)恒用 external 版(`manifest.entry`),与宿主共享
+   * 同一 React 实例;隔离宿主按**约定名**取 isolated 版,realm 内自成一体、经 RPC 与宿主通信。
+   * manifest **不变**(仍指 external 版),故对既有宿主零影响。
+   */
+  readonly alsoSelfContained?: boolean;
 }
 
 export interface BuildResult {
@@ -45,7 +58,12 @@ export interface BuildResult {
   readonly cssOut?: string;
   readonly manifest: WebExtensionManifest;
   readonly cssErrors: readonly string[];
+  /** `alsoSelfContained` 时的自包含产物路径(隔离宿主用;manifest 不含它)。 */
+  readonly selfContainedOut?: string;
 }
+
+/** 隔离宿主取自包含产物的**约定名**(与 `manifest.entry` 并存,不入 manifest)。 */
+export const SELF_CONTAINED_ENTRY_NAME = "web-extension.isolated.mjs";
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -91,6 +109,31 @@ export async function buildWebExtension(opts: BuildOptions): Promise<BuildResult
   const entryOutName = "web-extension.mjs";
   await writeFile(join(opts.outDir, entryOutName), code, "utf8");
 
+  // 2.5) 可选:自包含产物(隔离宿主用)。同一入口、同一 jsx 配置,但把 react 系与 pi-web-kit
+  //      **打进去** —— 隔离 iframe 是独立 realm,拿不到宿主单例桥。故此产物刻意**不过**
+  //      externals 守卫(守卫是 external 版的不变量)。manifest 不含它,按约定名取用。
+  let selfContainedOut: string | undefined;
+  if (opts.alsoSelfContained === true) {
+    const sc = await esbuild({
+      entryPoints: [entry],
+      bundle: true,
+      format: "esm",
+      platform: "browser",
+      target: "es2022",
+      jsx: "automatic",
+      // `ai` 仍 external:它只在类型/可选路径出现,打进来会显著膨胀且隔离 pane 用不到。
+      external: ["ai"],
+      define: { "process.env.NODE_ENV": '"production"' },
+      minify: true,
+      write: false,
+      legalComments: "none",
+    });
+    const scOut = sc.outputFiles?.[0];
+    if (scOut === undefined) throw new Error("esbuild 未产出自包含文件");
+    selfContainedOut = join(opts.outDir, SELF_CONTAINED_ENTRY_NAME);
+    await writeFile(selfContainedOut, scOut.text, "utf8");
+  }
+
   // 3) CSS scoping(若有)
   let cssOutName: string | undefined;
   const cssErrors: string[] = [];
@@ -132,6 +175,7 @@ export async function buildWebExtension(opts: BuildOptions): Promise<BuildResult
   return {
     entryOut: join(opts.outDir, entryOutName),
     ...(cssOutName !== undefined ? { cssOut: join(opts.outDir, cssOutName) } : {}),
+    ...(selfContainedOut !== undefined ? { selfContainedOut } : {}),
     manifest,
     cssErrors,
   };
