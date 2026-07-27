@@ -42,6 +42,9 @@ import {
   createCompositeSourceProvider,
   createScanSourceProvider,
   createRegistrySourceProvider,
+  createRegistryHttpSourceProvider,
+  createDesktopCapabilitiesClient,
+  resolveDesktopCapabilitiesUrl,
   defaultAgentEntryPath,
   createAigcModelsRoute,
   createVisionModelsRoute,
@@ -812,6 +815,34 @@ function buildSingleton(): HandlerSingleton {
     cwd: config.defaultCwd,
   });
 
+  // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
+  // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
+  const sourcesScanRoots = resolveSourcesScanRoots(config.defaultCwd);
+  const sourcesRegistryPathValue =
+    process.env.PI_WEB_SOURCES_REGISTRY ?? path.join(config.agentDir, "sources.json");
+  const localFileRegistry = createRegistrySourceProvider({
+    registryPath: sourcesRegistryPathValue,
+  });
+  const localScan = createScanSourceProvider({ roots: sourcesScanRoots });
+  const capabilitiesUrl = resolveDesktopCapabilitiesUrl(process.env);
+  const desktopCapabilitiesClient =
+    cloudLoginConfig !== undefined && capabilitiesUrl !== undefined
+      ? createDesktopCapabilitiesClient({
+          capabilitiesUrl,
+          getDesktopCredential: () => authSessionState.currentCredential(),
+        })
+      : undefined;
+  const agentSourcesProvider =
+    desktopCapabilitiesClient !== undefined
+      ? createCompositeSourceProvider(
+          createRegistryHttpSourceProvider({
+            getGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+          }),
+          localFileRegistry,
+          localScan,
+        )
+      : createCompositeSourceProvider(localFileRegistry, localScan);
+
   // ── M3:16 个能力面经 composeCapabilities 强制表态后装配(spec host-contract-capability-composition)──
   // HostDeps 一次构造(deps 并集,D4);条件挂载(llm/ai/auth)以**可选字段**表达——未配置时
   // 字段为 undefined,对应 factory 产空路由集(等价现状三元 `cond ? createX(...) : []`)。
@@ -830,10 +861,9 @@ function buildSingleton(): HandlerSingleton {
     sessionsManageEnabled:
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
-    sourcesScanRoots: resolveSourcesScanRoots(config.defaultCwd),
-    sourcesRegistryPath:
-      process.env.PI_WEB_SOURCES_REGISTRY ??
-      path.join(config.agentDir, "sources.json"),
+    sourcesScanRoots,
+    sourcesRegistryPath: sourcesRegistryPathValue,
+    agentSourcesProvider,
     llmGateway: config.llmGateway?.serve
       ? {
           secret: resolveLlmGatewaySecret(process.env),

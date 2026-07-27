@@ -40,6 +40,11 @@ import {
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
 import { LoginControl } from "./auth/login-control.js";
+import {
+  DesktopAuthProvider,
+  desktopAuthListIdentity,
+  useDesktopAuth,
+} from "./auth/use-desktop-auth.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -337,12 +342,29 @@ function deriveSourceTitle(source: string): string | undefined {
 }
 
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
+  // DesktopAuthProvider:LoginControl 与 agent-sources 刷新共享同一登录态(不可各挂 useDesktopAuth)。
+  return (
+    <DesktopAuthProvider>
+      <ChatAppBody {...props} />
+    </DesktopAuthProvider>
+  );
+}
+
+function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // Logging panel config (Req 6.6 + 6.1/6.2): defaults until config loads.
   const logsPanelConfig = useLogsPanelConfig();
 
   // agent-sources-list:源选择器的只读列表数据源(注入 PiClient.listAgentSources)。
   // 与 SessionListPanel 同构的注入式接线——组件不持接线,便于测试。
   const pickerClient = React.useMemo(() => createPiClient("/api"), []);
+
+  // desktop-hybrid-agent-sources:登录/登出后重拉 /agent-sources(与 LoginControl 同 Provider)。
+  const desktopAuth = useDesktopAuth();
+  const authListIdentity = desktopAuthListIdentity(desktopAuth);
+  const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
+  React.useEffect(() => {
+    setAgentSourcesRefreshKey((n) => n + 1);
+  }, [authListIdentity]);
 
   // sidebar-launcher-rail:收藏集合(供选择器星标高亮 + 切换)。选择器(session===undefined)
   // 与侧栏导航区(SessionView 内)是互斥视图,故此处仅服务选择器的星标态;导航区锚点由
@@ -458,6 +480,7 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
           defaultSource={props.defaultSource}
           enableSourceList={sourcePickerEnabled()}
           listAgentSources={pickerClient.listAgentSources}
+          refreshSignal={agentSourcesRefreshKey}
           {...(launcherRailEnabled()
             ? { favoriteSources, onToggleFavorite }
             : {})}
@@ -475,6 +498,10 @@ export function ChatApp(props: ChatAppProps): React.JSX.Element {
           onReset={onReset}
           onNewByAgentSource={onNewByAgentSource}
           onLaunchSource={onSubmit}
+          agentSourcesRefreshKey={agentSourcesRefreshKey}
+          onAgentSourcesRefresh={() =>
+            setAgentSourcesRefreshKey((n) => n + 1)
+          }
           logsPanelVisible={logsPanelConfig.panelVisible}
           logsPanelPosition={logsPanelConfig.panelPosition}
         />
@@ -489,6 +516,8 @@ function SessionView({
   onReset,
   onNewByAgentSource,
   onLaunchSource,
+  agentSourcesRefreshKey: parentAgentSourcesRefreshKey = 0,
+  onAgentSourcesRefresh,
   logsPanelVisible,
   logsPanelPosition,
 }: {
@@ -499,6 +528,10 @@ function SessionView({
   readonly onNewByAgentSource: () => void;
   /** sidebar-launcher-rail:以某 source 新建会话(收藏锚点点击)。 */
   readonly onLaunchSource: (source: string) => void;
+  /** 父级登录/登出触发的 agent-sources 刷新信号。 */
+  readonly agentSourcesRefreshKey?: number;
+  /** install 成功等会话内事件需要再 bump 父级刷新信号。 */
+  readonly onAgentSourcesRefresh?: () => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
   readonly logsPanelVisible?: boolean;
   /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
@@ -621,18 +654,18 @@ function SessionView({
     setSessionListRefreshKey((n) => n + 1);
   }, []);
 
-  // agent source 选择器刷新信号(spec install-host-command,任务 4.2):`/install install|uninstall`
-  // 装/卸 agent 源成功后,host handler 回填 `effect:"panel-refresh"`;bump 此计数使两处
-  // <AgentSourcePicker> 的只读列表(GET /agent-sources)重拉,免刷新即可见新增/移除的源
-  // (与上方 sessionListRefreshKey「事件驱动重拉」同构)。
-  const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
+  // agent source 选择器刷新:父级登录态变化 + 本会话 `/install` panel-refresh 合并为单一信号。
+  const [localInstallRefreshKey, setLocalInstallRefreshKey] = React.useState(0);
+  const agentSourcesRefreshKey =
+    parentAgentSourcesRefreshKey + localInstallRefreshKey;
   const onCommandResult = React.useCallback(
     (_name: string, outcome: CommandOutcome): void => {
       if (outcome.ok && outcome.result?.effect === "panel-refresh") {
-        setAgentSourcesRefreshKey((n) => n + 1);
+        setLocalInstallRefreshKey((n) => n + 1);
+        onAgentSourcesRefresh?.();
       }
     },
-    [],
+    [onAgentSourcesRefresh],
   );
 
   // sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源即新建会话。

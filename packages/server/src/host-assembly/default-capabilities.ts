@@ -24,6 +24,7 @@ import { createExtensionsConfigRoutes } from "../config/extensions-config-routes
 import { createSessionListRoutes } from "../session-list/session-list-routes.js";
 import { createSessionActionsRoutes } from "../session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "../agent-source-list/agent-sources-routes.js";
+import type { AgentSourceProvider } from "../agent-source-list/types.js";
 import { createFavoritesRoutes } from "../agent-source-list/favorites-routes.js";
 import { createLlmGatewayRoutes } from "../llm-gateway/gateway-routes.js";
 import { createAiGatewayRoutes } from "../ai-gateway/routes.js";
@@ -73,6 +74,12 @@ export interface HostDeps {
   readonly sessionsManageEnabled: boolean;
   readonly sourcesScanRoots: readonly string[];
   readonly sourcesRegistryPath: string;
+  /**
+   * 可选:整包 agent source provider(desktop-hybrid-agent-sources)。
+   * 提供时 `agentSource.list` 注入该 provider(忽略 scanRoots/registryPath 的默认 composite);
+   * 缺省 = 既有「本地 registry 文件 ∪ 扫描根」。
+   */
+  readonly agentSourcesProvider?: AgentSourceProvider;
   /** 仅 `config.llmGateway?.serve` 时构造(否则 undefined);gateway.llm 据此挂载。 */
   readonly llmGateway?: LlmGatewayOpts;
   /** 仅 AI 网关已配置时构造;gateway.ai 据此挂载。 */
@@ -136,7 +143,19 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
     { id: "config.extensions", factory: (d) => asRoutes(createExtensionsConfigRoutes({ agentDir: d.agentDir, defaultCwd: d.defaultCwd })) },
     { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ storeConfig: d.sessionStoreConfig, globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd })) },
     { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ storeConfig: d.sessionStoreConfig, agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled })) },
-    { id: "agentSource.list", factory: (d) => asRoutes(createAgentSourcesRoutes({ scanRoots: d.sourcesScanRoots, registryPath: d.sourcesRegistryPath })) },
+    {
+      id: "agentSource.list",
+      factory: (d) =>
+        asRoutes(
+          createAgentSourcesRoutes({
+            scanRoots: d.sourcesScanRoots,
+            registryPath: d.sourcesRegistryPath,
+            ...(d.agentSourcesProvider !== undefined
+              ? { provider: d.agentSourcesProvider }
+              : {}),
+          }),
+        ),
+    },
     { id: "agentSource.favorites", factory: (d) => asRoutes(createFavoritesRoutes({ agentDir: d.agentDir })) },
     { id: "gateway.llm", factory: (d) => (d.llmGateway !== undefined ? asRoutes(createLlmGatewayRoutes(d.llmGateway)) : []) },
     { id: "gateway.ai", factory: (d) => (d.aiGateway !== undefined ? asRoutes(createAiGatewayRoutes(d.aiGateway)) : []) },

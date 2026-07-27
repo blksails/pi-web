@@ -9,6 +9,9 @@
  *
  * login 成功后**双汇**:① 已写入 server 进程内登录态(POST 返回即代表);② 经桌面壳桥持久化
  * keychain(Req 2.1/2.3),失败不阻断登录态(内存态仍有效)。
+ *
+ * desktop-hybrid-agent-sources:状态经 {@link DesktopAuthProvider} **共享**——LoginControl 与
+ * ChatApp 必须读同一实例,否则登录/登出不会 bump agent-sources 刷新信号。
  */
 import * as React from "react";
 import { getPiWebDesktopBridge } from "@/lib/app/desktop-bridge.js";
@@ -51,7 +54,49 @@ type MeResponse =
 
 const NOT_ENABLED: DesktopAuthState = { enabled: false, loggedIn: false };
 
+const DesktopAuthContext = React.createContext<UseDesktopAuthResult | null>(null);
+
+/**
+ * 组件树内单一桌面登录态。ChatApp 必须包一层;LoginControl 与列表刷新共用同一 state。
+ */
+export function DesktopAuthProvider(props: {
+  readonly children: React.ReactNode;
+}): React.JSX.Element {
+  const value = useDesktopAuthState();
+  return (
+    <DesktopAuthContext.Provider value={value}>
+      {props.children}
+    </DesktopAuthContext.Provider>
+  );
+}
+
+/**
+ * 读共享桌面登录态。**必须**在 {@link DesktopAuthProvider} 内调用。
+ */
 export function useDesktopAuth(): UseDesktopAuthResult {
+  const ctx = React.useContext(DesktopAuthContext);
+  if (ctx === null) {
+    throw new Error(
+      "useDesktopAuth must be used within DesktopAuthProvider (shared login state for agent-sources refresh)",
+    );
+  }
+  return ctx;
+}
+
+/**
+ * 从登录身份键派生 agent-sources 列表刷新依赖(纯函数,便于单测)。
+ * 登录/登出/切号均改变返回值 → 驱动 refreshSignal bump。
+ */
+export function desktopAuthListIdentity(auth: {
+  readonly loggedIn: boolean;
+  readonly userId?: string;
+}): string {
+  if (!auth.loggedIn) return "logged-out";
+  return `logged-in:${auth.userId ?? ""}`;
+}
+
+/** 实际状态实现(仅 Provider 使用)。 */
+function useDesktopAuthState(): UseDesktopAuthResult {
   const [state, setState] = React.useState<DesktopAuthState>(NOT_ENABLED);
   const [loading, setLoading] = React.useState(true);
 
@@ -59,7 +104,6 @@ export function useDesktopAuth(): UseDesktopAuthResult {
     try {
       const res = await fetch("/api/auth/me", { method: "GET" });
       if (res.status === 404) {
-        // 端点未挂载 = 云端登录未启用(Req 4.2)。
         setState(NOT_ENABLED);
         return;
       }
@@ -81,7 +125,6 @@ export function useDesktopAuth(): UseDesktopAuthResult {
         setState({ enabled: true, loggedIn: false });
       }
     } catch {
-      // 网络/契约缺失:降级为未启用(无登录入口,本地路径可用,Req 7.3)。
       setState(NOT_ENABLED);
     } finally {
       setLoading(false);
@@ -103,7 +146,6 @@ export function useDesktopAuth(): UseDesktopAuthResult {
         const reason = res.status === 401 ? "expired" : "invalid";
         return { ok: false, reason };
       }
-      // 双汇之二:持久化到 keychain(桌面壳态;浏览器态无桥,静默跳过)。失败不阻断。
       await getPiWebDesktopBridge()?.storeCredential?.(credential);
       await refresh();
       return { ok: true };

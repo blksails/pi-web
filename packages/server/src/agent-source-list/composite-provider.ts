@@ -1,8 +1,10 @@
 /**
- * CompositeSourceProvider — 合并多路来源、按 id 去重、稳定排序(Req 4.1–4.3)。
+ * CompositeSourceProvider — 合并多路来源、按 id 去重、稳定排序(Req 4.1–4.3;
+ * desktop-hybrid-agent-sources: N 路 providers)。
  *
- * - 合并顺序:先注册表(registry)后扫描(scan);按 `id` 去重,**先见者胜** → registry
- *   记录覆盖 scan 记录的元数据(Req 4.1/4.2)。
+ * - 合并顺序:调用方传入的 providers **从左到右优先**;按 `id` 去重,**先见者胜**。
+ * - 二元调用 `createCompositeSourceProvider(registry, scan)` 与历史行为一致
+ *   (registry 覆盖 scan 元数据)。
  * - 稳定排序:registry 优先(origin),其后按 name(localeCompare),再按 id 兜底全序(Req 4.3)。
  * - 容错:任一子 provider 抛错退化为空贡献,不使整体失败。
  */
@@ -38,24 +40,22 @@ export function compareAgentSourceRecords(
 }
 
 /**
- * @param registry 注册表 provider(优先级更高,覆盖同 id)。
- * @param scan 目录扫描 provider。
+ * 合并任意数量的 `AgentSourceProvider`。
+ *
+ * @param providers 从高到低优先;同 id 保留先出现的记录。
  */
 export function createCompositeSourceProvider(
-  registry: AgentSourceProvider,
-  scan: AgentSourceProvider,
+  ...providers: readonly AgentSourceProvider[]
 ): AgentSourceProvider {
   return {
     async list(): Promise<AgentSourceRecord[]> {
-      const [reg, scanned] = await Promise.all([
-        safeList(registry),
-        safeList(scan),
-      ]);
-      // registry 先入,占据 id;scan 仅补充未出现的 id(registry 覆盖 scan)。
+      const lists = await Promise.all(providers.map((p) => safeList(p)));
       const byId = new Map<string, AgentSourceRecord>();
-      for (const r of reg) if (!byId.has(r.id)) byId.set(r.id, r);
-      for (const r of scanned) if (!byId.has(r.id)) byId.set(r.id, r);
-
+      for (const recs of lists) {
+        for (const r of recs) {
+          if (!byId.has(r.id)) byId.set(r.id, r);
+        }
+      }
       return [...byId.values()].sort(compareAgentSourceRecords);
     },
   };

@@ -14,6 +14,13 @@ export {
   compareAgentSourceRecords,
 } from "./composite-provider.js";
 export {
+  createRegistryHttpSourceProvider,
+  DEFAULT_REGISTRY_CHANNEL,
+  type SourcesGrant,
+  type RegistryFetch,
+  type RegistryHttpSourceProviderOptions,
+} from "./registry-http-provider.js";
+export {
   createFavoritesRoutes,
   type FavoritesRoutesOptions,
 } from "./favorites-routes.js";

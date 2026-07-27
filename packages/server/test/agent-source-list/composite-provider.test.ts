@@ -70,4 +70,43 @@ describe("CompositeSourceProvider", () => {
       createCompositeSourceProvider(failing(), failing()).list(),
     ).resolves.toEqual([]);
   });
+
+  it("N 路:先见者胜(云 registry 覆盖本地登记与扫描)", async () => {
+    const cloud = fixed([
+      {
+        id: "acme/bot",
+        source: "acme/bot@stable",
+        name: "Cloud Bot",
+        kind: "dir",
+        origin: "registry",
+        mode: "cli",
+      },
+    ]);
+    const fileReg = fixed([
+      {
+        id: "acme/bot",
+        source: "/local/acme-bot",
+        name: "Local File",
+        kind: "dir",
+        origin: "registry",
+        mode: "custom",
+      },
+      regRec("/only-file", "FileOnly"),
+    ]);
+    const scan = fixed([
+      scanRec("acme/bot", "Scan Bot"),
+      scanRec("/only-scan", "ScanOnly"),
+    ]);
+    const recs = await createCompositeSourceProvider(cloud, fileReg, scan).list();
+    const byId = Object.fromEntries(recs.map((r) => [r.id, r]));
+    expect(byId["acme/bot"]!.name).toBe("Cloud Bot");
+    expect(byId["acme/bot"]!.source).toBe("acme/bot@stable");
+    expect(byId["/only-file"]!.name).toBe("FileOnly");
+    expect(byId["/only-scan"]!.name).toBe("ScanOnly");
+    expect(recs).toHaveLength(3);
+  });
+
+  it("零路 providers → 空列表", async () => {
+    await expect(createCompositeSourceProvider().list()).resolves.toEqual([]);
+  });
 });

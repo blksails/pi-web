@@ -1,0 +1,23 @@
+{
+  "feature_name": "desktop-hybrid-agent-sources",
+  "created_at": "2026-07-24T14:15:51Z",
+  "updated_at": "2026-07-24T14:26:30Z",
+  "language": "zh",
+  "phase": "implementation-complete",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation_note": "2026-07-24 P1 落地: N-way composite + RegistryHttpSourceProvider + DesktopCapabilitiesClient + pi-handler hybrid 装配 + 登录态刷新 agent-sources。server 相关 59 tests 绿, tsc 0。线上源可运行(P2)未做。"
+}
