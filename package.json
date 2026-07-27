@@ -48,7 +48,7 @@
     "e2e:sandbox-baked": "node e2e/sandbox-baked-image.local.mjs",
     "e2e:sandbox-browser": "node e2e/sandbox-browser.local.mjs",
     "e2e:llm-gateway": "node e2e/llm-gateway/gateway-chain.local.mjs",
-    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit && pnpm run typecheck:examples",
     "e2e:desktop:real": "node e2e/desktop/desktop-real.mjs",
     "e2e:desktop:nonode": "node e2e/desktop/desktop-no-node.mjs",
     "e2e:desktop:packaged": "node e2e/desktop/desktop-packaged.mjs",

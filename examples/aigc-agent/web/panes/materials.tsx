@@ -59,11 +59,37 @@ const STATUS_LABEL: Readonly<Record<DistributeStatus, string>> = {
   failed: "分发失败",
 };
 
+type Kind = "image" | "video" | "audio";
+type Scope = "session" | "all";
+
+interface Filter {
+  readonly kind?: Kind;
+  readonly scope?: Scope;
+}
+
 interface MaterialsSnapshot {
   readonly selectedIds?: readonly string[];
+  readonly filter?: Filter;
   readonly folders?: readonly Folder[];
   readonly itemFolder?: Readonly<Record<string, string>>;
   readonly itemName?: Readonly<Record<string, string>>;
+}
+
+/** 类型过滤(复刻源项目 material-drawer.tsx:66 的 FILTERS);`undefined` = 全部。 */
+const KIND_TABS: ReadonlyArray<{ readonly label: string; readonly kind?: Kind }> = [
+  { label: "全部" },
+  { label: "图片", kind: "image" },
+  { label: "视频", kind: "video" },
+  { label: "音频", kind: "audio" },
+];
+
+/** 按天分栏(复刻源项目 `dayOf`);createdAt 缺席者(刚上传、尚未落库)归「最近」。 */
+function dayOf(iso: string | undefined): string {
+  if (iso === undefined || iso === "") return "最近";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "最近";
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 function unwrapItems(raw: unknown): AssetItem[] {
@@ -421,6 +447,8 @@ export function MaterialsApp(): React.JSX.Element {
   const [folders, setFolders] = React.useState<readonly Folder[]>([]);
   const [itemFolder, setItemFolder] = React.useState<Readonly<Record<string, string>>>({});
   const [itemName, setItemName] = React.useState<Readonly<Record<string, string>>>({});
+  /** 过滤条件同为权威热态:UI 只发 set-filter,取数依回流后的值(单写者 C1-2)。 */
+  const [filter, setFilter] = React.useState<Filter>({});
   const [phase, setPhase] = React.useState<"busy" | "done" | "error">("busy");
   const [message, setMessage] = React.useState("");
   /** 数据面降级说明(常驻,非一次性提示):区分「平台没接」与「真的没素材」。 */
@@ -453,16 +481,23 @@ export function MaterialsApp(): React.JSX.Element {
    */
   const load = React.useCallback(async (): Promise<void> => {
     setPhase("busy");
+    const kindQ: Record<string, string> =
+      filter.kind !== undefined ? { kind: filter.kind } : {};
     try {
       const [listed, gallery] = await Promise.all([
-        guest.query("assets-list", { kind: "image", limit: "200" }),
-        guest.query("session-gallery", { kind: "image" }).catch(() => ({ items: [] })),
+        // scope=session 时不取全库(源项目「素材库」tab 即此语义)。
+        filter.scope === "session"
+          ? Promise.resolve({ items: [] })
+          : guest.query("assets-list", { ...kindQ, limit: "200" }),
+        guest.query("session-gallery", kindQ).catch(() => ({ items: [] })),
       ]);
       const err = (listed as { error?: unknown } | null)?.error;
       setDataNote(
         err === "platform_unavailable"
           ? "素材库未接入平台数据面 —— 此处只列本会话产出与本次上传"
-          : "",
+          : filter.scope === "session"
+            ? "仅本会话:已切到会话范围,未列全库素材"
+            : "",
       );
       // 会话画廊在前(最近产出优先);同一 attachmentId 以落库记录为准。
       const listedItems = unwrapItems(listed);
@@ -480,7 +515,7 @@ export function MaterialsApp(): React.JSX.Element {
       setMessage(e instanceof Error ? e.message : String(e));
       setPhase("error");
     }
-  }, [guest]);
+  }, [guest, filter.kind, filter.scope]);
   React.useEffect(() => {
     void load();
   }, [load]);
@@ -493,6 +528,7 @@ export function MaterialsApp(): React.JSX.Element {
         if (Array.isArray(s.selectedIds)) {
           setPicked(new Set(s.selectedIds.filter((x): x is string => typeof x === "string")));
         }
+        if (s.filter !== undefined && s.filter !== null) setFilter(s.filter);
         if (Array.isArray(s.folders)) setFolders(s.folders);
         if (s.itemFolder !== undefined && s.itemFolder !== null) setItemFolder(s.itemFolder);
         if (s.itemName !== undefined && s.itemName !== null) setItemName(s.itemName);
@@ -613,6 +649,22 @@ export function MaterialsApp(): React.JSX.Element {
     (a.attachmentId !== undefined ? itemName[a.attachmentId] : undefined) ??
     a.meta?.name ??
     a.assetId;
+
+  /**
+   * 按天分栏(源项目「素材库」tab 的形态)。分组保持 visible 的原序,故每项带上其在 visible
+   * 里的下标 —— 灯箱图库仍是整个 visible,跨栏左右切换不断。
+   */
+  const days: ReadonlyArray<readonly [string, ReadonlyArray<{ a: AssetItem; i: number }>]> =
+    (() => {
+      const buckets = new Map<string, { a: AssetItem; i: number }[]>();
+      visible.forEach((a, i) => {
+        const day = dayOf(a.createdAt);
+        const g = buckets.get(day);
+        if (g === undefined) buckets.set(day, [{ a, i }]);
+        else g.push({ a, i });
+      });
+      return [...buckets.entries()];
+    })();
 
   /** 预览图库 = 当前可见列表(与网格同序,故 index 可直接复用)。 */
   const gallery: readonly PreviewItem[] = visible.map((a) => ({
@@ -745,6 +797,32 @@ export function MaterialsApp(): React.JSX.Element {
             </button>
           </>
         ) : null}
+        {/* 类型 / 范围过滤:只发命令,取数依快照回流后的 filter(单写者)。 */}
+        <div className="segs" role="group" aria-label="素材类型">
+          {KIND_TABS.map((t) => (
+            <button
+              key={t.label}
+              type="button"
+              className={filter.kind === t.kind ? "seg on" : "seg"}
+              onClick={() => void run("set-filter", { kind: t.kind, scope: filter.scope })}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={filter.scope === "session" ? "button button-primary" : "button"}
+          title={filter.scope === "session" ? "当前:仅本会话" : "当前:全部素材"}
+          onClick={() =>
+            void run("set-filter", {
+              kind: filter.kind,
+              scope: filter.scope === "session" ? "all" : "session",
+            })
+          }
+        >
+          {filter.scope === "session" ? "仅本会话" : "全部"}
+        </button>
         <button
           type="button"
           className="button"
@@ -842,33 +920,42 @@ export function MaterialsApp(): React.JSX.Element {
               {dataNote !== "" ? <div className="muted">{dataNote}</div> : null}
             </div>
           ) : null}
-          <div className="grid">
-            {visible.map((a, i) => {
-              const id = a.attachmentId;
-              return (
-                <AssetCell
-                  key={a.assetId}
-                  onPreview={() => setPreview(i)}
-                  url={a.displayUrl}
-                  name={nameOf(a)}
-                  {...(id !== undefined ? { attachmentId: id } : {})}
-                  selected={id !== undefined && picked.has(id)}
-                  anySelected={picked.size > 0}
-                  {...(id !== undefined && status[id] !== undefined ? { status: status[id] } : {})}
-                  {...(id !== undefined ? { onToggleSelect: () => toggle(id) } : {})}
-                  {...(id !== undefined
-                    ? { onEditInCanvas: () => void editInCanvas([id], `素材「${nameOf(a)}」`) }
-                    : {})}
-                  {...(id !== undefined
-                    ? { onRename: (next: string) => void run("rename-item", { id, name: next }) }
-                    : {})}
-                  {...(id !== undefined ? { onRequestMove: () => setMoving([id]) } : {})}
-                  onDragStart={(e) => onDragStart(e, a)}
-                  onNotice={setMessage}
-                />
-              );
-            })}
-          </div>
+          {days.map(([day, group]) => (
+            <section key={day}>
+              {days.length > 1 ? <div className="day">{day}</div> : null}
+              <div className="grid">
+                {group.map(({ a, i }) => {
+                  const id = a.attachmentId;
+                  return (
+                    <AssetCell
+                      key={a.assetId}
+                      onPreview={() => setPreview(i)}
+                      url={a.displayUrl}
+                      name={nameOf(a)}
+                      {...(id !== undefined ? { attachmentId: id } : {})}
+                      selected={id !== undefined && picked.has(id)}
+                      anySelected={picked.size > 0}
+                      {...(id !== undefined && status[id] !== undefined
+                        ? { status: status[id] }
+                        : {})}
+                      {...(id !== undefined ? { onToggleSelect: () => toggle(id) } : {})}
+                      {...(id !== undefined
+                        ? { onEditInCanvas: () => void editInCanvas([id], `素材「${nameOf(a)}」`) }
+                        : {})}
+                      {...(id !== undefined
+                        ? {
+                            onRename: (next: string) => void run("rename-item", { id, name: next }),
+                          }
+                        : {})}
+                      {...(id !== undefined ? { onRequestMove: () => setMoving([id]) } : {})}
+                      onDragStart={(e) => onDragStart(e, a)}
+                      onNotice={setMessage}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
 

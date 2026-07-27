@@ -40,6 +40,12 @@ input{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:8px 10p
 .content{padding:12px}.scroll{overflow:auto}
 .center{height:100%;display:grid;place-items:center}.muted{color:#64748b}.error{color:#b91c1c}
 .hint{cursor:help;opacity:.75}
+/* 类型过滤分段控件 + 按天分栏标头 */
+.segs{display:inline-flex;padding:2px;border-radius:8px;background:#f1f5f9;gap:2px}
+.seg{border:0;background:none;padding:3px 9px;border-radius:6px;font-size:12px;color:#475569;cursor:pointer}
+.seg:hover{background:#e2e8f0}
+.seg.on{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.day{position:sticky;top:0;z-index:1;padding:4px 2px;font-size:11px;color:#64748b;background:inherit}
 .empty{min-height:160px;display:grid;place-items:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
 .card{margin:0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden}
@@ -126,6 +132,7 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .asset-ck{background:rgb(17 24 39/.9);border-color:#334155}
 .asset-pop>button:hover:not(:disabled),.dlg-row:hover{background:#1e293b}
 .pop-sep,.dlg-head,.dlg-foot{border-color:#334155}
+.segs{background:#1e293b}.seg{color:#94a3b8}.seg:hover{background:#334155}.seg.on{background:#0f172a;color:#e2e8f0}
 .notice{background:#422006;border-color:#a16207;color:#fde68a}
 .content.dropping{background:#0b1220}}
 `;
