@@ -1,0 +1,14 @@
+{
+  "feature_name": "desktop-account-login",
+  "created_at": "2026-07-27T10:00:00Z",
+  "updated_at": "2026-07-27T10:00:00Z",
+  "language": "zh",
+  "phase": "initialized",
+  "approvals": {
+    "requirements": { "generated": false, "approved": false },
+    "design": { "generated": false, "approved": false },
+    "tasks": { "generated": false, "approved": false }
+  },
+  "ready_for_implementation": false,
+  "open_decision": "身份获取落在哪一层:A 扩宿主契约(新增 IdentityProvider 或给 CapabilityProvider 加身份获取)/ B 视为桌面 CapabilityProvider 实现的内部细节。选 A 边界大值得独立成 spec;选 B 应并入 desktop-cloud-login 任务组 9。进 requirements 前须先定。"
+}
