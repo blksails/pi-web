@@ -310,3 +310,20 @@
   - Rust 侧加守卫测试:标记被删 → 转红(否则故障形态是「全新安装没有登录入口且无报错」)
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5_
   - _Boundary: lib/app/cloud-defaults.ts, desktop/src-tauri/src/server_supervisor.rs_
+
+### 任务 11.2 真机验证结果(2026-07-27,打包态)
+
+固化默认值此前只有单测,无真机证据。本轮补齐,三条都实测:
+
+| 场景 | 结果 |
+|---|---|
+| 桌面壳 + **无** `cloud.json` → `GET /api/identity` | **200** `anonymous/canExchange:true` —— 固化默认值生效,全新安装即可登录(Req 11.1) |
+| **非桌面**(`pnpm dev`)+ 无 `cloud.json` | **404** —— 云端登录整体关闭,本地用法不受影响(Req 11.4) |
+| `pnpm dev` + `PI_WEB_DESKTOP=1` | **200** —— 判据确实是那个标记,不是别的巧合 |
+
+第二条是这项改动存在的全部理由:少了它,每个 `pnpm dev` / npm CLI 用户开机就会
+撞上一堵他过不去的登录墙。它现在有真机证据了。
+
+★ 顺带记一个构建期的坑:`bundle_dmg.sh` 会被**上一次残留的挂载卷**卡死
+(`/Volumes/dmg.XXXXXX` + `bundle/macos/rw.*.dmg`),报错只说 "failed to run
+bundle_dmg.sh",不提挂载。解法:`hdiutil detach -force` 那个卷 + 删掉 `rw.*.dmg` 再构建。
