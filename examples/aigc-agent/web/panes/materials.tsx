@@ -23,6 +23,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { PaneGuestProvider, usePaneGuest } from "@blksails/pi-web-panes-kit/react";
+import { ImageLightbox, type PreviewItem } from "./image-lightbox.js";
 
 interface AssetItem {
   readonly assetId: string;
@@ -99,6 +100,7 @@ function AssetCell({
   selected,
   anySelected,
   onToggleSelect,
+  onPreview,
   onRename,
   onRequestMove,
   onDragStart,
@@ -111,6 +113,8 @@ function AssetCell({
   readonly selected: boolean;
   readonly anySelected: boolean;
   readonly onToggleSelect?: () => void;
+  /** 点缩略图 / 菜单「预览」→ 由所属区域开 lightbox(带上下切换)。 */
+  readonly onPreview?: () => void;
   readonly onRename?: (next: string) => void;
   readonly onRequestMove?: () => void;
   readonly onDragStart: (e: React.DragEvent) => void;
@@ -173,7 +177,8 @@ function AssetCell({
         draggable={false}
         loading="lazy"
         decoding="async"
-        onClick={() => onToggleSelect?.()}
+        title={onPreview !== undefined ? "点击查看完整图" : undefined}
+        onClick={() => (onPreview !== undefined ? onPreview() : onToggleSelect?.())}
         onLoad={() => setLoaded(true)}
         onError={() => setLoaded(true)}
       />
@@ -225,6 +230,17 @@ function AssetCell({
                 style={fit.style}
                 onClick={(e) => e.stopPropagation()}
               >
+                {onPreview !== undefined ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenu(null);
+                      onPreview();
+                    }}
+                  >
+                    预览
+                  </button>
+                ) : null}
                 <button type="button" onClick={copyLink}>
                   复制链接
                 </button>
@@ -352,6 +368,8 @@ export function MaterialsApp(): React.JSX.Element {
   const [draft, setDraft] = React.useState<{ kind: "create" | "rename"; id?: string; value: string } | null>(null);
   const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
   const [moving, setMoving] = React.useState<readonly string[] | null>(null);
+  /** 预览灯箱:以当前可见列表为图库(左右切换),起始 index 为点中的那张。 */
+  const [preview, setPreview] = React.useState<number | null>(null);
   /**
    * 刚上传的素材(乐观入列)。数据面 `assets-list` 的权威来自平台后端;后端未接时它恒回
    * `{ error:"platform_unavailable", items: [] }`,故上传结果先在本地可见,后端接上后
@@ -469,6 +487,12 @@ export function MaterialsApp(): React.JSX.Element {
     (a.attachmentId !== undefined ? itemName[a.attachmentId] : undefined) ??
     a.meta?.name ??
     a.assetId;
+
+  /** 预览图库 = 当前可见列表(与网格同序,故 index 可直接复用)。 */
+  const gallery: readonly PreviewItem[] = visible.map((a) => ({
+    url: a.displayUrl,
+    name: nameOf(a),
+  }));
 
   const bring = async (): Promise<void> => {
     const refs = [...picked];
@@ -652,11 +676,12 @@ export function MaterialsApp(): React.JSX.Element {
             <div className="empty">此处暂无素材(可把图片拖进来上传)</div>
           ) : null}
           <div className="grid">
-            {visible.map((a) => {
+            {visible.map((a, i) => {
               const id = a.attachmentId;
               return (
                 <AssetCell
                   key={a.assetId}
+                  onPreview={() => setPreview(i)}
                   url={a.displayUrl}
                   name={nameOf(a)}
                   {...(id !== undefined ? { attachmentId: id } : {})}
@@ -675,6 +700,15 @@ export function MaterialsApp(): React.JSX.Element {
           </div>
         </div>
       </div>
+
+      {preview !== null ? (
+        <ImageLightbox
+          items={gallery}
+          index={Math.min(preview, Math.max(gallery.length - 1, 0))}
+          onIndex={setPreview}
+          onClose={() => setPreview(null)}
+        />
+      ) : null}
 
       {moving !== null ? (
         <MovePop

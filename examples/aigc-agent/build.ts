@@ -94,6 +94,23 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .dlg-row{text-align:left;border:0;background:none;padding:8px 10px;border-radius:8px;cursor:pointer}
 .dlg-row:hover{background:#f1f5f9}
 .dlg-foot{padding:8px 12px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end}
+/* 富预览灯箱(复刻 aigc-agent .aigc-ilb) */
+.ilb{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgb(8 10 18/.88);overflow:hidden}
+.ilb-stage{max-width:92vw;max-height:88vh;display:grid;place-items:center;overflow:hidden}
+.ilb-img{max-width:92vw;max-height:88vh;object-fit:contain;transition:transform .12s ease-out;user-select:none;-webkit-user-drag:none}
+.ilb-x{position:fixed;top:14px;right:16px;width:34px;height:34px;border-radius:50%;border:none;background:rgb(255 255 255/.12);color:#fff;font-size:16px;cursor:pointer}
+.ilb-x:hover{background:rgb(255 255 255/.22)}
+.ilb-nav{position:fixed;top:50%;translate:0 -50%;width:44px;height:64px;border:none;border-radius:10px;background:rgb(255 255 255/.1);color:#fff;font-size:28px;line-height:1;cursor:pointer}
+.ilb-nav:hover{background:rgb(255 255 255/.2)}
+.ilb-nav.left{left:16px}.ilb-nav.right{right:16px}
+.ilb-tools{position:fixed;left:50%;bottom:22px;translate:-50% 0;display:flex;align-items:center;gap:2px;padding:5px 8px;border-radius:12px;background:rgb(255 255 255/.1);backdrop-filter:blur(8px);color:#fff}
+.ilb-tools button{width:30px;height:28px;border:none;border-radius:7px;background:none;color:#fff;font-size:15px;line-height:1;cursor:pointer}
+.ilb-tools button:hover{background:rgb(255 255 255/.18)}
+.ilb-tools button.on{background:rgb(37 99 235/.75)}
+.ilb-tools .pct{min-width:44px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
+.ilb-tools .sep{width:1px;height:16px;margin:0 4px;background:rgb(255 255 255/.25)}
+.ilb-count{position:fixed;left:50%;top:16px;translate:-50% 0;color:rgb(255 255 255/.8);font-size:12px}
+.ilb-dims{position:fixed;right:16px;bottom:22px;color:rgb(255 255 255/.65);font-size:12px;font-variant-numeric:tabular-nums}
 @media(prefers-color-scheme:dark){:root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
 .toolbar,.card,input,.button,.empty,.side,.asset,.asset-pop,.dlg{background:#111827;border-color:#334155}
 .noimg{background:#1e293b}.muted,.name{color:#94a3b8}
