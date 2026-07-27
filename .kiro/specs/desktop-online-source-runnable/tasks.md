@@ -36,7 +36,7 @@
 
 - [ ] 3. 应用层：安装端口与解析插件
 
-- [ ] 3.1 注册表安装端口
+- [x] 3.1 注册表安装端口
   - 新建 `lib/app/online-source/registry-install-port.ts`：取 P1 授予 → 构造消费面 `HttpRegistryAdapter` → 调 `installFromRegistry(port, sourceId, { channel, targetDir })` → 把结果归一为 `{ ok: true, dir }` 或 `{ ok: false, failure }`。
   - `InstallFailure` 判别联合：`NOT_AUTHENTICATED` / `GRANT_UNAVAILABLE` / `NOT_FOUND` / `UNSUPPORTED_DISTRIBUTION` / `DOWNLOAD_FAILED` / `EXTRACT_FAILED` / `INTEGRITY_MISMATCH` / `TARGET_OCCUPIED`。
   - **无凭据时直接返回 `NOT_AUTHENTICATED`，不得发起任何网络请求**。
