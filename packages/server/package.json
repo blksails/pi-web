@@ -10,7 +10,8 @@
     "./model-options": "./src/config/model-options.ts",
     "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
     "./testing": "./src/workspace/testing/index.ts",
-    "./host-assembly": "./src/host-assembly/index.ts"
+    "./host-assembly": "./src/host-assembly/index.ts",
+    "./webext-runtime": "./src/webext-runtime/index.ts"
   },
   "engines": {
     "node": ">=22.19.0"
