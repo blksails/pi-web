@@ -45,8 +45,9 @@ describe("aigc 源发布编译(pi-web.json → CompiledPackage)", () => {
     if (!r.ok) throw new Error(JSON.stringify(r.error));
     const paths = normalized((r.value as { bundlePaths: readonly string[] }).bundlePaths);
     expect(paths.some((p) => p.endsWith(".pi/web/dist/web-extension.isolated.mjs"))).toBe(true);
-    // 同源 external 版与 manifest 亦在包内(同源宿主用)。
+    // 分派器(manifest.entry)与 external 版(同源宿主用)、manifest 亦须在包内。
     expect(paths.some((p) => p.endsWith(".pi/web/dist/web-extension.mjs"))).toBe(true);
+    expect(paths.some((p) => p.endsWith(".pi/web/dist/web-extension.external.mjs"))).toBe(true);
     expect(paths.some((p) => p.endsWith(".pi/web/dist/manifest.json"))).toBe(true);
     expect(paths.some((p) => p.endsWith(".pi/web/dist/ext.css"))).toBe(true);
   });

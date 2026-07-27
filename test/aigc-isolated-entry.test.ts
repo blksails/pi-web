@@ -10,13 +10,16 @@
  *
  * 依赖 `pnpm build:example:aigc` 先产物(CI 中 build 步骤在 test 之前)。
  */
+import { createHash } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const DIST = resolve(__dirname, "..", "examples", "aigc-agent", ".pi", "web", "dist");
 const ISOLATED = resolve(DIST, "web-extension.isolated.mjs");
-const EXTERNAL = resolve(DIST, "web-extension.mjs");
+/** manifest.entry 指的分派器(按 realm 选下面两份之一);见 examples/aigc-agent/build.ts。 */
+const DISPATCHER = resolve(DIST, "web-extension.mjs");
+const EXTERNAL = resolve(DIST, "web-extension.external.mjs");
 
 /** 取 ESM 里的裸 specifier(排除相对路径/绝对 URL)。 */
 function bareSpecifiers(code: string): string[] {
@@ -57,10 +60,24 @@ describe("aigc 隔离宿主产物(web-extension.isolated.mjs)", () => {
     expect(bare).toContain("@blksails/pi-web-kit");
   });
 
-  it("对照:manifest 仍只指 external 版 —— 既有宿主与 SRI/签名链零影响", () => {
+  it("分派器:manifest.entry 恒为 web-extension.mjs,内容按 realm 选另两份之一", () => {
     const manifest = JSON.parse(readFileSync(resolve(DIST, "manifest.json"), "utf8")) as {
       entry?: string;
+      integrity?: string;
     };
     expect(manifest.entry).toBe("web-extension.mjs");
+    const code = readFileSync(DISPATCHER, "utf8");
+    // 判据只能是「import("react") 是否可解析」——同源宿主有 import map,隔离 realm 没有。
+    expect(code).toContain('await import("react")');
+    expect(code).toContain("./web-extension.external.mjs");
+    expect(code).toContain("./web-extension.isolated.mjs");
+  });
+
+  it("分派器 SRI 与 manifest.integrity 一致 —— 否则同源宿主 verifyExtension 直接拒", () => {
+    const manifest = JSON.parse(readFileSync(resolve(DIST, "manifest.json"), "utf8")) as {
+      integrity?: string;
+    };
+    const digest = createHash("sha384").update(readFileSync(DISPATCHER)).digest("base64");
+    expect(manifest.integrity).toBe(`sha384-${digest}`);
   });
 });

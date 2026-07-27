@@ -10,6 +10,7 @@
  * (改 web/panes/*.tsx 后重跑并提交 pane-documents.generated.ts)。
  */
 import { build } from "esbuild";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -164,6 +165,52 @@ async function buildSelfContainedEntry(outDir: string, canvasCss: string): Promi
   await writeFile(resolve(outDir, "web-extension.isolated.mjs"), out.text, "utf8");
 }
 
+/**
+ * 把 `manifest.entry` 指向的 `web-extension.mjs` 换成一枚**运行时分派器**,原 external 产物
+ * 改名 `web-extension.external.mjs`。
+ *
+ * 为何非如此不可:`WebExtensionManifest` 只有**一个** `entry` 字段(schema 见
+ * packages/protocol/src/web-ext/manifest.ts,未知字段被 zod strip 掉),而两类宿主要的字节不同:
+ *   - 同源宿主(pi-web):经 **import map** 解析裸 `react` 等 → 必须用 external 版共享单例;
+ *   - 隔离宿主(pi-clouds pane-loader,opaque-origin iframe):独立 realm、无 import map →
+ *     裸 specifier 解析失败,脚本加载即死,必须用自包含版。
+ * 消费侧(cloud `resolveCloudWebext` → `paneLoaderUrl(hash, manifest.entry, …)`)只认
+ * `manifest.entry` 这一个名字,故只能在**这一个入口内部**分派。
+ *
+ * 判据用 `await import("react")` 成败,而非某个私有全局:同源宿主的 import map 必能解析它,
+ * 隔离 realm 必抛 —— 不依赖任何宿主实现细节,两侧都不会误判。
+ *
+ * ★代价(有意接受):宿主对 entry 字节做 SRI(`verifyExtension`),但分派器**动态 import** 的两个
+ *   子模块不在该校验覆盖内。本 example 的三份产物同出一次构建、同随 bundle 分发、同被 registry
+ *   的 `webext.integrity`(对 manifest.json)与逐文件回源核验覆盖,故本地/发布链完整性仍成立;
+ *   若将来要严守「entry 字节即全部代码」的 SRI 语义,应改为给 manifest 增设隔离入口字段(公共面
+ *   改动),而不是在此处放宽。
+ */
+async function buildEntryDispatcher(outDir: string): Promise<void> {
+  const entryPath = resolve(outDir, "web-extension.mjs");
+  const externalPath = resolve(outDir, "web-extension.external.mjs");
+  await writeFile(externalPath, await readFile(entryPath, "utf8"), "utf8");
+
+  const dispatcher =
+    `// 由 examples/aigc-agent/build.ts 生成 —— 按 realm 分派到 external / isolated 产物。\n` +
+    `let m;\n` +
+    `try {\n` +
+    `  await import("react");\n` +
+    `  m = await import("./web-extension.external.mjs");\n` +
+    `} catch {\n` +
+    `  m = await import("./web-extension.isolated.mjs");\n` +
+    `}\n` +
+    `export default m.default;\n`;
+  await writeFile(entryPath, dispatcher, "utf8");
+
+  // manifest 的 SRI 覆盖 entry 字节,entry 换了内容就必须重算,否则同源宿主 `verifyExtension`
+  // 直接 rejected(算法同 packages/web-kit/build/manifest-emit.ts:computeIntegrity)。
+  const manifestPath = resolve(outDir, "manifest.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+  manifest["integrity"] = `sha384-${createHash("sha384").update(dispatcher).digest("base64")}`;
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
+
 export async function buildAigcAgent(): Promise<BuildResult> {
   const { canvasCss } = await buildPaneDocuments();
   const outDir = resolve(ROOT, ".pi", "web", "dist");
@@ -176,6 +223,7 @@ export async function buildAigcAgent(): Promise<BuildResult> {
     capabilities: ["slots", "renderers", "config"],
   });
   await buildSelfContainedEntry(outDir, canvasCss);
+  await buildEntryDispatcher(outDir);
   return built;
 }
 
