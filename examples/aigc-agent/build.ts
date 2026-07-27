@@ -120,21 +120,55 @@ async function buildPaneDocuments(): Promise<string> {
   return target;
 }
 
+/**
+ * 额外产一份**自包含** webext 产物 `web-extension.isolated.mjs`(react 系与 pi-web-kit 全打进去)。
+ *
+ * 为何要:隔离宿主(opaque-origin iframe 车道,如 pi-clouds cloud 的 pane-loader 以
+ * `<script type=module src>` 加载 dist entry)里,扩展跑在**独立 realm** —— 宿主的单例桥
+ * `globalThis.__PI_WEBEXT_SINGLETONS__` 在其中不存在,import map 亦无从指向宿主实例,
+ * 故标准产物里那句裸 `import "react"` 无从解析,脚本加载即失败。
+ *
+ * 为何**只在本 example 内**做、不进 `buildWebExtension` 公共面:它不过是再调一次 esbuild;
+ * 公共面的不变量恰恰是「单例必须 external」(assertNoBundledSingletons 守卫),此产物有意违之,
+ * 属本源自用的补充形态,不宜污染公共契约。
+ *
+ * 两份并存、各司其职:同源宿主(pi-web 自身)恒用 `manifest.entry` 指的 external 版,与宿主共享
+ * 同一 React 实例;隔离宿主取本产物,realm 内自成一体、经 panes-kit RPC 与宿主通信。
+ * manifest **不含**本产物,故对既有宿主与 SRI/签名链零影响。
+ */
+async function buildSelfContainedEntry(outDir: string): Promise<void> {
+  const result = await build({
+    entryPoints: [resolve(ROOT, ".pi", "web", "web.config.tsx")],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    jsx: "automatic",
+    // `ai` 仍 external:只在类型/可选路径出现,打进来显著膨胀且隔离 pane 用不到。
+    external: ["ai"],
+    define: { "process.env.NODE_ENV": '"production"' },
+    minify: true,
+    legalComments: "none",
+  });
+  const out = result.outputFiles?.[0];
+  if (out === undefined) throw new Error("自包含 webext 未产出文件");
+  await writeFile(resolve(outDir, "web-extension.isolated.mjs"), out.text, "utf8");
+}
+
 export async function buildAigcAgent(): Promise<BuildResult> {
   await buildPaneDocuments();
   const outDir = resolve(ROOT, ".pi", "web", "dist");
   await mkdir(outDir, { recursive: true });
-  return await buildWebExtension({
+  const built = await buildWebExtension({
     id: "aigc-studio",
     targetApiVersion: "^0.5.0",
     entryDir: resolve(ROOT, ".pi", "web"),
     outDir,
     capabilities: ["slots", "renderers", "config"],
-    // 另产自包含 `web-extension.isolated.mjs`:隔离宿主(opaque-origin iframe 车道,如 pi-clouds
-    // cloud 的 pane-loader)里扩展跑在独立 realm,拿不到宿主单例桥,external 版无法加载。
-    // manifest 不变(仍指 external 版),同源宿主行为零改变。
-    alsoSelfContained: true,
   });
+  await buildSelfContainedEntry(outDir);
+  return built;
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
