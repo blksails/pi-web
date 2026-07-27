@@ -60,6 +60,14 @@ function MaterialsApp(): React.JSX.Element {
   const [view, setView] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<{ kind: "create" | "rename"; id?: string; value: string } | null>(null);
   const [confirmDel, setConfirmDel] = React.useState<string | null>(null);
+  /**
+   * 刚上传的素材(乐观入列)。数据面 `assets-list` 的权威来自平台后端;后端未接时它恒回
+   * `{ error:"platform_unavailable", items: [] }`,故上传结果先在本地可见,后端接上后
+   * 由 route 返回的真实列表覆盖(按 attachmentId 去重)。
+   */
+  const [uploaded, setUploaded] = React.useState<readonly AssetItem[]>([]);
+  const [busyUp, setBusyUp] = React.useState(false);
+  const fileRef = React.useRef<HTMLInputElement>(null);
 
   const load = React.useCallback(async (): Promise<void> => {
     setPhase("busy");
@@ -111,8 +119,47 @@ function MaterialsApp(): React.JSX.Element {
     applyPicked(next);
   };
 
+  /**
+   * 上传写-读回环:`guest.upload` 经宿主附件端口落库(大二进制走制品面,不进帧 R-0b)→
+   * 得 attachmentId → 以引用走 `move-items` 登记进当前目录(控制面写)→ 本地乐观入列。
+   */
+  const uploadFiles = React.useCallback(
+    async (files: readonly File[]): Promise<void> => {
+      if (files.length === 0) return;
+      setBusyUp(true);
+      const added: AssetItem[] = [];
+      try {
+        for (const file of files) {
+          const r = await guest.upload(file);
+          added.push({
+            assetId: r.attachmentId,
+            attachmentId: r.attachmentId,
+            displayUrl: r.displayUrl,
+            createdAt: "",
+            meta: { name: file.name },
+          });
+        }
+        if (added.length > 0) {
+          setUploaded((prev) => [...added, ...prev]);
+          if (view !== null && view !== "__none") {
+            await run("move-items", { ids: added.map((a) => a.attachmentId as string), folderId: view });
+          }
+        }
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusyUp(false);
+      }
+    },
+    [guest, run, view],
+  );
+
+  // 乐观项在前;route 返回同一 attachmentId 时以 route 为准(权威在数据面)。
+  const seen = new Set(items.map((a) => a.attachmentId).filter((x): x is string => typeof x === "string"));
+  const merged = [...uploaded.filter((a) => a.attachmentId === undefined || !seen.has(a.attachmentId)), ...items];
+
   // 当前目录过滤:null=全部;"__none"=未分类。
-  const visible = items.filter((a) => {
+  const visible = merged.filter((a) => {
     if (view === null) return true;
     const id = a.attachmentId;
     if (id === undefined) return view === "__none";
@@ -233,9 +280,22 @@ function MaterialsApp(): React.JSX.Element {
         <button type="button" className="button button-primary" disabled={picked.size === 0} onClick={() => void bring()}>
           带入对话
         </button>
+        <button type="button" className="button" onClick={() => fileRef.current?.click()} disabled={busyUp}>
+          {busyUp ? "上传中…" : "上传"}
+        </button>
         <button type="button" className="button" onClick={() => void load()} disabled={phase === "busy"}>
           刷新
         </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            void uploadFiles([...(e.target.files ?? [])]);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       <div className="split">
@@ -273,7 +333,19 @@ function MaterialsApp(): React.JSX.Element {
           )}
         </aside>
 
-        <div className="content scroll grow" style={{ minHeight: 0 }}>
+        <div
+          className="content scroll grow"
+          style={{ minHeight: 0 }}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            const files = [...e.dataTransfer.files];
+            if (files.length === 0) return;
+            e.preventDefault();
+            void uploadFiles(files);
+          }}
+        >
           {phase === "busy" ? <div className="empty">加载中…</div> : null}
           {phase === "error" ? <div className="empty error">{message}</div> : null}
           {phase === "done" && visible.length === 0 ? <div className="empty">此处暂无素材</div> : null}

@@ -44,7 +44,7 @@
 | M2 | 「带入对话」（attachmentId 引用经 prompt 通道） | `materials.tsx:76 bring` | ✅ |
 | M3 | 选中态权威在 agent（`surface:materials` 订阅回流） | `panes/materials-surface.ts`(120) | ✅ |
 | M4 | 全局素材库（跨会话） | `material-drawer.tsx`(1969) | ⬜ |
-| M5 | 目录树：浏览 / 建目录 / 重命名 / 移动 / 删除 / 素材归类 | 同上 + `app/api/materials/folders`、`materials/tree` | 🟡 写命令已成（`panes/materials-surface.ts` 五命令 + 11 例自检），guest UI 未接 |
+| M5 | 目录树：浏览 / 建目录 / 重命名 / 移动 / 删除 / 素材归类 | 同上 + `app/api/materials/folders`、`materials/tree` | ✅ 五命令（`panes/materials-surface.ts`，11 例自检）+ guest 左栏树 UI（`web/panes/materials.tsx`） |
 | M6 | 上传素材（进度、失败重试） | 同上 + `app/api/material-uploads` | ⬜ 经 `PanesUpload` + 登记命令 |
 | M7 | 分发到广告账户 | `components/distribute-dialog.tsx`(326) + `app/api/material-distribute` | ⬜ |
 | M8 | 失败角标 + 逐项重试 | `lib/app/material-upload-status.ts`、`app/api/material-uploads/retry` | ⬜ |
