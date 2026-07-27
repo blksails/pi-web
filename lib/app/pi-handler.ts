@@ -49,6 +49,7 @@ import {
   deriveLoginUrlFromEgressBase,
   createCloudLoginClient,
   createDesktopPasswordIdentityProvider,
+  resolveShellToken,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
@@ -972,6 +973,8 @@ function buildSingleton(): HandlerSingleton {
         : undefined,
     authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
     identityProvider: desktopIdentityProvider,
+    // 壳凭据取回 token(Req 12)。仅桌面壳注入该 env;为空则该端点不挂载。
+    shellToken: resolveShellToken(process.env),
     attachmentStore,
     resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
     store,

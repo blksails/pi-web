@@ -35,6 +35,13 @@ export interface PiWebDesktopBridge {
   readonly storeCredential?: (credential: string) => Promise<boolean>;
   /** 清除 keychain 中的桌面凭据(登出,Req 2.5)。失败静默 resolve `false`,绝不 reject。 */
   readonly clearCredential?: () => Promise<boolean>;
+  /**
+   * 让壳把当前登录凭据同步进钥匙串(spec desktop-account-login Req 12)。
+   *
+   * ★ **不传凭据** —— 只是个「去取一次」的信号;壳自己带 token 向本地 server 取。
+   * 凭据因此不经渲染层(Req 12.5)。best-effort:失败不影响本次会话的登录态。
+   */
+  readonly syncCredential?: () => Promise<boolean>;
 }
 
 /** Tauri `withGlobalTauri` 注入的全局对象中,本模块用到的最小形状。 */
@@ -93,6 +100,17 @@ function bridgeFromTauri(tauri: TauriGlobal): PiWebDesktopBridge {
         return true;
       } catch (err) {
         console.error("[desktop-bridge] store_credential 调用失败:", err);
+        return false;
+      }
+    },
+    syncCredential: async (): Promise<boolean> => {
+      try {
+        await invoke("sync_credential");
+        return true;
+      } catch (err) {
+        // best-effort:钥匙串不可用(Linux 无 Secret Service 等)时只记日志,
+        // 不向上抛 —— 登录状态在 server 内存里,本次会话完全不受影响。
+        console.error("[desktop-bridge] sync_credential 调用失败:", err);
         return false;
       }
     },

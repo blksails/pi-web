@@ -356,3 +356,54 @@ bundle_dmg.sh",不提挂载。解法:`hdiutil detach -force` 那个卷 + 删掉 
 | **登录成功** | **✗** | ✓ | ✓ |
 
 登录成功仍是唯一没有真机证据的路径。
+
+## 13. Req 12 · 登录跨重启(方案 A:壳经受 token 保护的回环端点取回)
+
+> 用户裁定「我们需要保存登陆的状态,每次开应用都重新登陆影响体验」→ 否决了此前倾向的
+> 「不持久化」;并在 A(本地端点)与 A′(stdout 控制帧)之间选定 **A**。
+
+- [x] 13.1 服务端取回端点
+  - 新建 `packages/server/src/auth/shell-credential-route.ts`:`GET /desktop/credential`
+  - **未配置 `PI_WEB_SHELL_TOKEN` 则整条路由不挂载** —— 不是「存在但拒绝」(Req 12.7)
+  - token 比对用**定长时间**算法:朴素 `===` 会因短路泄漏前缀匹配长度,使 token 可被逐字节试探
+  - ★ 未登录/已过期 → **200 + `credential: null`,不是 404**。壳据此清钥匙串;
+    若用 404,壳分不清「没登录」与「端点不存在」,只能什么都不做 → 登出后钥匙串残留
+  - _Requirements: 12.1, 12.4, 12.5, 12.7_
+
+- [x] 13.2 端点测试(19 例)
+  - 三条门:token 校验(含"前缀正确但被截断"这一逐字节试探形态)/ 未登录返回 null / 过期不下发
+  - 401 响应体不含凭据与 token;响应字段集封闭
+  - _Requirements: 12.1, 12.4, 12.6, 12.7_
+
+- [x] 13.3 Rust:壳 token + 取回 + 落钥匙串
+  - 新建 `shell_token.rs`:每次进程启动经 `getrandom` 生成 32 字节强随机;
+    **拿不到 OS 熵源即 panic**,不退化成弱随机(那会让端点在用户不知情时变成敞开的)
+  - 新建 `credential_sync.rs`:裸 `TcpStream` 手写回环 GET —— 固定明文单次小响应,
+    引 `reqwest` 只会带进用不上的 TLS/连接池/重定向 API 面;解析单独成函数以便无网络单测
+  - `build_child_env` 下发 `PI_WEB_SHELL_TOKEN`
+  - `sync_credential` command:取回 → 有则写钥匙串、无则清条目
+  - Rust 测试 84 全绿(新增 7 条,含「错误文案不得含凭据」的机械守卫)
+  - _Requirements: 12.1, 12.4, 12.5, 12.6_
+
+- [x] 13.4 前端接线
+  - `desktop-bridge` 增 `syncCredential()` —— ★ **调用不带凭据**,只是「去取一次」的信号
+  - `use-identity` 登录成功与登出后各调一次;登出走**同一条路径**(server 返回 null → 壳清条目),
+    避免「登录一条路、登出另一条路」各自维护
+  - **best-effort**:失败只记日志,不影响本次会话登录态
+  - _Requirements: 12.1, 12.4, 12.5_
+
+### ⚠ 已知缺口(不因本次实现而消失)
+
+1. **残留风险**:token 在壳进程 env 里,同用户的其它进程读得到,从而能取走凭据。
+   本方案**不声称**能挡住同用户攻击者 —— 它挡的是「任何本地进程随手 curl 一下就拿到凭据」。
+   要彻底关掉需把服务端从 TCP 换成 0600 的 Unix domain socket,是另一个量级的改动。
+   选型时已向用户说明并被接受。
+
+2. **Windows / Linux 钥匙串未经真机验证**。`keyring` v3 按平台绑 Credential Manager /
+   Secret Service,`credential_store.rs` 文件头即声明「仅 macOS 做过真实验证」。
+   Linux 上 Secret Service 是 D-Bus 守护进程,**headless / SSH / 精简窗管 / 容器内均不存在**,
+   写入会直接失败。故实现按 best-effort 设计:写不进只是下次要重登,登录本身不受影响。
+   此项从 `desktop-cloud-login` 的悬置项**升格**为 Req 12 的已知缺口 —— 它现在有用户可感知的后果。
+
+3. **重启后自动登录未真机验证**。读的那半边(keychain → base_env → 播种 → `current()` 补加载)
+   是既有链路且有单测,但整条「登录 → 关应用 → 重开仍登录」尚未在真机走过一次。

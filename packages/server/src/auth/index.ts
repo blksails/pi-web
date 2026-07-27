@@ -31,3 +31,11 @@ export {
   type CloudLoginFetch,
   type CloudLoginResult,
 } from "./cloud-login-client.js";
+// desktop-account-login Req 11/12:桌面壳标记 + 凭据交接端点(壳经受 token 保护的回环端点取)。
+export * from "./desktop-marker.js";
+export {
+  createShellCredentialRoutes,
+  resolveShellToken,
+  SHELL_TOKEN_ENV,
+  type ShellCredentialRoutesOptions,
+} from "./shell-credential-route.js";

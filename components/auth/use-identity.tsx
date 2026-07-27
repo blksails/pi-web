@@ -217,9 +217,10 @@ function useIdentityState(): UseIdentityResult {
       }
       setState(parseView((await res.json()) as IdentityViewBody));
       setNeedsReauth(false);
-      // 桌面壳持久化 at-rest 副本。★ 这里**不传密码**,由壳自己去服务端取凭据的时代
-      // 尚未到来 —— 当前壳桥的 storeCredential 需要凭据串,而凭据不进渲染层(Req 8.2),
-      // 故此处只触发一次刷新,持久化由服务端启动播种链路承担。
+      // 让壳把凭据同步进钥匙串,使登录跨重启保留(Req 12)。
+      // ★ 这个调用**不带凭据** —— 壳自己带 token 向本地 server 取,凭据不经渲染层(Req 12.5)。
+      // best-effort:失败不影响本次会话的登录态,只是下次开应用要重登。
+      await getPiWebDesktopBridge()?.syncCredential?.();
       await refresh();
       return { ok: true };
     },
@@ -230,7 +231,9 @@ function useIdentityState(): UseIdentityResult {
     try {
       await fetch("/api/identity", { method: "DELETE" });
     } finally {
-      await getPiWebDesktopBridge()?.clearCredential?.();
+      // 登出:同样交给壳同步一次 —— 此时 server 返回 credential:null,壳据此清钥匙串。
+      // 走同一条路径(而非直接 clearCredential),避免「登录一条路、登出另一条路」各自维护。
+      await getPiWebDesktopBridge()?.syncCredential?.();
       setNeedsReauth(false);
       await refresh();
     }

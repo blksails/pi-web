@@ -92,6 +92,12 @@ pub fn build_child_env(
     //
     // 这一件事只有壳自己知道,故只能由它声明;它**不是**配置读取(那属 Node 的配置域机制)。
     env.insert("PI_WEB_DESKTOP".into(), "1".into());
+    // 壳凭据取回 token(Req 12)。server 据此**挂载** /api/desktop/credential;
+    // 没有这个 env,那条路由压根不存在(不是"存在但拒绝")。
+    env.insert(
+        "PI_WEB_SHELL_TOKEN".into(),
+        crate::shell_token::shell_token().to_string(),
+    );
     env.insert(
         "PI_WEB_NODE_BIN".into(),
         node_bin.to_string_lossy().into_owned(),

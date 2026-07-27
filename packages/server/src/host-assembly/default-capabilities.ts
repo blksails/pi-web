@@ -30,6 +30,7 @@ import { createLlmGatewayRoutes } from "../llm-gateway/gateway-routes.js";
 import { createAiGatewayRoutes } from "../ai-gateway/routes.js";
 import { createAuthRoutes } from "../auth/auth-routes.js";
 import { createIdentityRoutes } from "../identity/identity-routes.js";
+import { createShellCredentialRoutes } from "../auth/shell-credential-route.js";
 import type { IdentityProvider } from "../identity/types.js";
 import { createAttachmentRoutes } from "../http/routes/attachment-routes.js";
 import { createBashRoutes } from "../http/routes/bash-routes.js";
@@ -99,6 +100,13 @@ export interface HostDeps {
    * 新形态而非新领域。
    */
   readonly identityProvider?: IdentityProvider;
+  /**
+   * 壳凭据取回 token(spec desktop-account-login Req 12)。仅桌面壳下非空。
+   *
+   * ★ 为空即**不挂载** `/desktop/credential` —— `pnpm dev` / npm CLI 下该端点
+   * 压根不存在,而不是"存在但会拒绝"。
+   */
+  readonly shellToken?: string;
   readonly attachmentStore: Parameters<typeof createAttachmentRoutes>[0];
   readonly resolveWriteBackend: AttachmentOpts["resolveWriteBackend"];
   readonly store: Parameters<typeof createBashRoutes>[0];
@@ -181,6 +189,9 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
           ...(d.authState !== undefined ? createAuthRoutes({ state: d.authState }) : []),
           ...(d.identityProvider !== undefined
             ? createIdentityRoutes({ provider: d.identityProvider })
+            : []),
+          ...(d.authState !== undefined && d.shellToken !== undefined
+            ? createShellCredentialRoutes({ state: d.authState, token: d.shellToken })
             : []),
         ]),
     },

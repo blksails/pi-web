@@ -19,8 +19,9 @@
  *    桌面包,不该逼他们改源码;留一个构建期入口,值随 esbuild 进 `dist/server.mjs`。
  */
 
-/** 桌面壳自述标记(由 `desktop/src-tauri/src/server_supervisor.rs` 写入)。 */
-export const DESKTOP_MARKER_ENV = "PI_WEB_DESKTOP";
+// 单一事实源在 server 包(壳凭据端点也要用它);此处 import + 重导出,不另写一份字符串。
+import { DESKTOP_MARKER_ENV } from "@blksails/pi-web-server";
+export { DESKTOP_MARKER_ENV };
 
 /** 构建期覆盖固化默认值用的 env 键(读取发生在打包时,不是运行时)。 */
 export const BAKED_CLOUD_EGRESS_BASE_ENV = "PI_WEB_BAKED_CLOUD_EGRESS_BASE";

@@ -7,6 +7,8 @@
 //! **不注入 agent 配置目录覆盖** → 会话默认落 `~/.pi/agent`，与 CLI 共享（Req 5.5）。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod credential_sync;
+mod shell_token;
 mod credential_store;
 mod dialog;
 mod external_link;
@@ -259,6 +261,41 @@ fn install_signal_handlers(app: &AppHandle) {
 #[cfg(not(unix))]
 fn install_signal_handlers(_app: &AppHandle) {}
 
+/// 把当前登录凭据同步进钥匙串(spec desktop-account-login,Req 12)。
+///
+/// 渲染层登录/登出成功后调用 —— **调用里不带任何凭据**,只是个「去取一次」的信号。
+/// 壳自己带 token 向本地 server 取,故凭据不经渲染层(Req 12.5)。
+///
+/// ★ **best-effort**:写钥匙串失败(Linux 无 Secret Service、用户拒绝授权、
+///   Windows 凭据管理器不可用)时**不得**让登录失败 —— 本次会话的登录态在 server
+///   内存里,完全不受影响,只是下次开应用要重登。故返回 `Result<bool,_>` 里的
+///   `Err` 也只用于渲染层记日志,不阻断任何流程。
+#[tauri::command]
+async fn sync_credential(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let port = {
+        let sup = state
+            .supervisor
+            .lock()
+            .map_err(|_| "supervisor 状态锁不可用".to_string())?;
+        sup.port()
+    };
+    let Some(port) = port else {
+        return Err("server 尚未就绪".into());
+    };
+    match credential_sync::fetch_credential(port, shell_token::shell_token())? {
+        Some(cred) => {
+            credential_store::store_credential_sync(&cred)?;
+            Ok(true)
+        }
+        // 未登录 → 清条目。若在此「保守地什么都不做」,登出后钥匙串会残留上一次的凭据,
+        // 下次启动又被播种回去 —— 用户会发现自己「登出了但又登着」。
+        None => {
+            credential_store::clear_credential_sync()?;
+            Ok(false)
+        }
+    }
+}
+
 fn main() {
     let server_origin: ServerOrigin = Arc::new(Mutex::new(None));
 
@@ -276,6 +313,7 @@ fn main() {
             credential_store::store_credential,
             credential_store::load_credential,
             credential_store::clear_credential,
+            sync_credential,
             pane_relay::pane_relay_bind,
             pane_relay::pane_relay_unbind,
             pane_relay::pane_relay_to_guest,
