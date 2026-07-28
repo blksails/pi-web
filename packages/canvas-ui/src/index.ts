@@ -69,6 +69,9 @@ export {
   useCanvasView,
   useCanvasOpen,
   canvasOpenStore,
+  // 跨 realm 驱动的「工作台目标图」:pane 车道由宿主经 pane:signal 下发后写入。
+  canvasFocusStore,
+  useCanvasFocus,
   canvasViewStore,
   CANVAS_PAGE_SIZE,
 } from "./use-canvas-view.js";

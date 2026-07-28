@@ -92,6 +92,53 @@ function createOpenStore(): OpenStore {
 /** module-level 单例(同一 app bundle 内 launcher / panel 共享)。 */
 export const canvasOpenStore: OpenStore = createOpenStore();
 
+/**
+ * 「工作台该打开哪张图」的可订阅 store(`att_id`;`null` = 回画廊)。
+ *
+ * 抽出来是因为**触发源可能不在 CanvasPanel 所在的 realm**:
+ *  - 槽形态:`CanvasPanel` 自己挂 document 委托监听,点聊天工具卡的图 → 写这个 store;
+ *  - Pane 形态:聊天在**宿主** document、面板在 iframe,那个监听收不到点击。改由宿主侧
+ *    监听后经 `pane:signal` 下发,pane 收到再写这个 store —— CanvasPanel 只认 store,
+ *    对触发源在哪个 realm 完全无感。
+ *
+ * 不落 localStorage:它是**一次性意图**而非偏好,持久化会让刷新后莫名弹回某张图。
+ */
+export interface FocusStore {
+  getSnapshot(): string | null;
+  subscribe(listener: () => void): () => void;
+  set(attachmentId: string | null): void;
+}
+
+function createFocusStore(): FocusStore {
+  let focus: string | null = null;
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => focus,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    set: (next) => {
+      if (focus === next) return;
+      focus = next;
+      for (const l of listeners) l();
+    },
+  };
+}
+
+export const canvasFocusStore: FocusStore = createFocusStore();
+
+const SERVER_FOCUS = (): string | null => null;
+
+/** 订阅「工作台目标图」。 */
+export function useCanvasFocus(): string | null {
+  return useSyncExternalStore(
+    canvasFocusStore.subscribe,
+    canvasFocusStore.getSnapshot,
+    SERVER_FOCUS,
+  );
+}
+
 const SERVER_OPEN = (): boolean => false;
 
 /** 订阅跨 slot 的画廊开合态。 */

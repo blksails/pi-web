@@ -20,7 +20,7 @@ import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
 import { fetchVisionModels, type VisionModelOption } from "./vision-op.js";
 import { collectCanvasPluginBundles } from "./plugin-aggregation.js";
-import { useCanvasOpen } from "./use-canvas-view.js";
+import { useCanvasOpen, useCanvasFocus, canvasFocusStore } from "./use-canvas-view.js";
 import type { UploadFn } from "@blksails/pi-web-canvas-kit";
 
 const DOMAIN = "canvas";
@@ -143,6 +143,17 @@ export function CanvasPanel({
   const on = enabled ?? true;
   const { open, setOpen } = useCanvasOpen();
   const [openId, setOpenId] = React.useState<string | null>(null);
+  // 跨 realm 驱动的「工作台目标图」:槽形态由下方 document 监听写入;pane 形态由宿主经
+  // `pane:signal` 下发、pane 侧写入(那条 document 监听在 iframe 里收不到宿主的点击)。
+  // CanvasPanel 只认这个 store,对触发源在哪个 realm 无感。
+  const focusId = useCanvasFocus();
+  React.useEffect(() => {
+    if (focusId === null) return;
+    setOpenId(focusId);
+    setOpen(true);
+    // 一次性意图:消费后清空,否则关掉工作台会被立刻再次拉回同一张图。
+    canvasFocusStore.set(null);
+  }, [focusId, setOpen]);
   // 领域聚合:已装载扩展 → canvas 插件捆(附 manifestId 命名空间)。useMemo 稳定引用,使
   // 下游工作台 kernel 装配(registerPluginBundles)不因每次渲染的新数组重建(per-mount 契约)。
   const plugins = React.useMemo(() => collectCanvasPluginBundles(extensions), [extensions]);
@@ -164,8 +175,9 @@ export function CanvasPanel({
       if (img.closest("[data-pi-tool-images]") === null) return; // 仅工具卡图片
       const id = img.getAttribute("data-att-id");
       if (id === null || id === "") return;
-      setOpenId(id);
-      setOpen(true);
+      // 经 focus store 出口(与 pane 车道同一条路径),而非直接 setOpenId ——
+      // 两条车道共用一个出口,行为才不会随 realm 分叉。
+      canvasFocusStore.set(id);
     };
     document.addEventListener("click", onDocClick);
     // canvas 活跃期给 body 打标记 → 工具图悬浮态显「可点」affordance(见 styles.css)。
