@@ -65,7 +65,7 @@ echo '// smoke' > index.ts
 | env | 必需？ | 说明 |
 |---|---|---|
 | `PI_CLOUDS_REGISTRY_PUBLISH_TOKEN_SECRET` | ✅ **本次新增** | **必须与 apps/cloud 同值** |
-| `PI_CLOUDS_REGISTRY_OSS_BUCKET` / `_REGION` / `_ENDPOINT` / `_ACCESS_KEY_ID` / `_ACCESS_KEY_SECRET` | ✅ | **五项缺一即视为不支持 oss**（不半开）。缺了会在 uploadBundle 失败（不烧版本号） |
+| `PI_CLOUDS_REGISTRY_OSS_BUCKET` + `_ACCESS_KEY_ID` + `_ACCESS_KEY_SECRET` + (`_REGION` **或** `_ENDPOINT`) | ✅ | **不是五项全要**：region 与 endpoint **二选一**（公有云给 region，私有 OSS/MinIO 给 endpoint）。条件不满足则整体禁用（不半开），会在 uploadBundle 失败（**不烧版本号**）。启动日志会明说 `[registry] OSS disabled (...)` |
 | `PI_CLOUDS_DATABASE_URL` | ✅ | 既有 |
 | `PI_CLOUDS_REGISTRY_CONSUME_TOKEN_SECRET` | 既有 | 消费面，与本次无关但别动掉 |
 
@@ -83,6 +83,16 @@ echo '// smoke' > index.ts
 > **cloud 侧缺 secret 会怎样**：能力快照**省略** `publish` 字段（不抛），
 > 于是 `/agent publish` 回到 `PUBLISH_NOT_AVAILABLE` —— 看起来像「没接入」，
 > 而不是「配错了」。这是刻意的诚实降级，但排查时要知道。
+
+### 生产现状（2026-07-28 实测，只读 `config:keys`，未打印任何值）
+
+| 项 | pi-registry | pi-cloud |
+|---|---|---|
+| `PI_CLOUDS_REGISTRY_PUBLISH_TOKEN_SECRET` | ✅ 已配（本次新增） | ✅ 已配（本次新增，**与 registry 同值**，经 sha256 比对确认） |
+| OSS | ✅ BUCKET + AK/SK + REGION（满足条件） | — |
+| `PI_CLOUDS_REGISTRY_HTTP_BASE_URL` | — | ✅ `https://pi-registry.apps.blksails.cn`（真实 registry，非 cloud 代理面） |
+
+secret 用 `config:set --no-restart` 写入，**尚未生效** —— 下一次部署时随新容器加载。
 
 ### 部署
 
@@ -205,7 +215,7 @@ jq -r .publicKey ~/.pi-web/keys/publish.json   # 与上面返回的 publicKey �
 | `PUBLISH_KIND_MISMATCH` | 本地前置 | 否 | 用 `/agent` 还是 `/plugin` 搞反了 |
 | `KEY_MALFORMED` | 本地前置 | 否 | 密钥文件坏了。**别删** —— 先看第 4 步 |
 | `PUBLISH_KEY_NOT_REGISTERED` | 本地前置 | 否 | 回到第 4 步 |
-| `PUBLISH_UPLOAD_FAILED` | 上传 | **否** | 多半是 registry 的 **OSS 五项 env 没配齐**。可用同一版本号重试 |
+| `PUBLISH_UPLOAD_FAILED` | 上传 | **否** | 多半是 registry 的 **OSS 未满足条件**（看启动日志 `[registry] OSS disabled`）。可用同一版本号重试 |
 | `PUBLISH_REGISTER_FAILED` | 登记 | ✅ **是** | 见下 |
 | 卡片说「已登记，但通道未移」 | 移通道 | 否（版本已登记） | **别改版本号**，重试只需移通道 |
 
