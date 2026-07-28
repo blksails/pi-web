@@ -9,7 +9,7 @@ import { build as esbuild } from "esbuild";
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { join } from "node:path";
 import { Buffer } from "node:buffer";
-import type { WebExtensionCapability, WebExtensionManifest } from "@blksails/pi-web-protocol";
+import type { WebExtensionCapability, WebExtensionManifest, WebExtPane } from "@blksails/pi-web-protocol";
 import { assertNoBundledSingletons } from "./externals-guard.js";
 import { scopeCss } from "./css-scope-plugin.js";
 import { emitManifest } from "./manifest-emit.js";
@@ -38,6 +38,8 @@ export interface BuildOptions {
   /** 提供则用 Ed25519 私钥(base64 pkcs8)对 manifest 签名。 */
   readonly signKey?: string;
   readonly capabilities?: readonly WebExtensionCapability[];
+  /** 本扩展贡献的隔离 pane 清单(写进 manifest;隔离宿主唯一的 pane 来源)。 */
+  readonly panes?: readonly WebExtPane[];
 }
 
 export interface BuildResult {
@@ -121,6 +123,7 @@ export async function buildWebExtension(opts: BuildOptions): Promise<BuildResult
     entryBytes,
     ...(cssOutName !== undefined ? { css: cssOutName } : {}),
     ...(opts.capabilities !== undefined ? { capabilities: opts.capabilities } : {}),
+    ...(opts.panes !== undefined ? { panes: opts.panes } : {}),
     ...(opts.signKey !== undefined ? { signKey: opts.signKey } : {}),
   });
   await writeFile(

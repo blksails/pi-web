@@ -42,7 +42,26 @@ export function redactProbeSecrets(input: string): string {
     .replace(/(bearer\s+)[A-Za-z0-9._~+/-]+=*/gi, "$1***");
 }
 
-function createProbeTransport(config: McpTransportConfig): Transport {
+function remoteHeaders(
+  config: Extract<McpTransportConfig, { type: "sse" | "streamable-http" }>,
+  hostAuthorization: string | undefined,
+): Record<string, string> {
+  const headers = { ...(config.headers ?? {}) };
+  if (!config.hostAuthorization) return headers;
+  if (Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+    throw new Error("MCP host authorization conflicts with a configured Authorization header");
+  }
+  const authorization = hostAuthorization?.trim();
+  if (authorization === undefined || authorization.length === 0) {
+    throw new Error("MCP host authorization is unavailable for this session");
+  }
+  return { ...headers, Authorization: authorization };
+}
+
+function createProbeTransport(
+  config: McpTransportConfig,
+  hostAuthorization?: string,
+): Transport {
   switch (config.type) {
     case "stdio":
       return new StdioClientTransport({
@@ -50,20 +69,24 @@ function createProbeTransport(config: McpTransportConfig): Transport {
         args: [...(config.args ?? [])],
         env: { ...getDefaultEnvironment(), ...(config.env ?? {}) },
       });
-    case "sse":
+    case "sse": {
+      const headers = remoteHeaders(config, hostAuthorization);
       return new SSEClientTransport(
         new URL(config.url),
-        config.headers !== undefined && Object.keys(config.headers).length > 0
-          ? { requestInit: { headers: { ...config.headers } } }
+        Object.keys(headers).length > 0
+          ? { requestInit: { headers } }
           : undefined,
       );
-    case "streamable-http":
+    }
+    case "streamable-http": {
+      const headers = remoteHeaders(config, hostAuthorization);
       return new StreamableHTTPClientTransport(
         new URL(config.url),
-        config.headers !== undefined && Object.keys(config.headers).length > 0
-          ? { requestInit: { headers: { ...config.headers } } }
+        Object.keys(headers).length > 0
+          ? { requestInit: { headers } }
           : undefined,
       );
+    }
     default: {
       const unknown = config as { readonly type?: unknown };
       throw new Error(`unsupported MCP transport type: ${String(unknown.type)}`);
@@ -91,6 +114,8 @@ export interface McpProbeServiceOptions {
   readonly probeOne?: (server: McpServerConfig, timeoutMs: number) => Promise<McpProbeResult>;
   /** 注入点:时间源,便于断言 checkedAt。 */
   readonly now?: () => number;
+  /** 当前宿主 Authorization；只用于显式 hostAuthorization 的远程条目。 */
+  readonly hostAuthorization?: () => string | undefined;
 }
 
 /**
@@ -101,11 +126,13 @@ export class McpProbeService {
   private readonly cache = new Map<string, McpProbeResult>();
   private readonly timeoutMs: number;
   private readonly now: () => number;
+  private readonly hostAuthorization: () => string | undefined;
   private readonly probeOne: (server: McpServerConfig, timeoutMs: number) => Promise<McpProbeResult>;
 
   constructor(options: McpProbeServiceOptions = {}) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
     this.now = options.now ?? (() => Date.now());
+    this.hostAuthorization = options.hostAuthorization ?? (() => undefined);
     this.probeOne = options.probeOne ?? ((s, ms) => this.defaultProbeOne(s, ms));
   }
 
@@ -115,7 +142,10 @@ export class McpProbeService {
   ): Promise<McpProbeResult> {
     let client: Client | undefined;
     try {
-      const transport = createProbeTransport(server.transport);
+      const transport = createProbeTransport(
+        server.transport,
+        this.hostAuthorization(),
+      );
       client = new Client({ name: "pi-web-probe", version: "1.0.0" }, { capabilities: {} });
       await withTimeout(client.connect(transport), timeoutMs, `probe ${server.name}`);
       const listed = await withTimeout(client.listTools(), timeoutMs, `probe ${server.name}`);

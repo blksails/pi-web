@@ -22,6 +22,11 @@ import { adaptMcpTool } from "../../src/mcp/tool-adapter.js";
 import { runMcpExtension } from "../../src/mcp/mcp-extension.js";
 import { loadMcpConfig } from "../../src/mcp/config-loader.js";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
+import type { SessionStateAccess } from "../../src/session-state.js";
+import { createMcpCallPort } from "../../src/mcp/call-port.js";
+import { createSurface } from "../../src/surface/create-surface.js";
+import { getSurfaceRegistry } from "../../src/surface/surface-registry.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = join(HERE, "fixtures", "echo-mcp-server.mjs");
@@ -50,7 +55,63 @@ afterAll(async () => {
   await Promise.all(managers.map((m) => m.closeAll()));
 });
 
+const unavailableAttachments: AttachmentToolContext = {
+  available: false,
+  async resolve() { throw new Error("unavailable"); },
+  async putOutput() { throw new Error("unavailable"); },
+  async publish() { throw new Error("unavailable"); },
+  async listBySession() { throw new Error("unavailable"); },
+  async getMeta() { return undefined; },
+  async setMeta() { return undefined; },
+};
+
+const noState: SessionStateAccess = {
+  available: true,
+  get: () => undefined,
+  set: () => undefined,
+  delete: () => undefined,
+  snapshot: () => ({}),
+};
+
 describe("e2e:真实 stdio MCP server 全链路", () => {
+  it("Surface command 经 CallPort 复用真实 manager 调 tools/call", async () => {
+    const m = manager();
+    const [outcome] = await m.connectAll([echoServer("surface")]);
+    expect(outcome?.status, outcome?.error).toBe("connected");
+    const port = createMcpCallPort((serverName) =>
+      m.handleFor(serverName, outcome?.tools ?? []),
+    );
+    const scope: Record<string, unknown> = {};
+    const surface = createSurface(
+      { registerCommand() {} } as unknown as ExtensionAPI,
+      {
+        domain: "mcp-e2e",
+        initialState: {},
+        commands: {
+          echo: (args, ctx) =>
+            ctx.mcp.call({ serverName: "surface", toolName: "echo", args }),
+        },
+      },
+      {
+        scope,
+        getSessionState: () => noState,
+        getSurfaceRegistry: () => getSurfaceRegistry(scope),
+        getAttachmentToolContext: () => unavailableAttachments,
+        getMcpCallPort: () => port,
+        schedule: (fn) => fn(),
+      },
+    );
+
+    const result = await surface.dispatch("echo", { text: "surface" });
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        ok: true,
+        result: { content: [{ type: "text", text: "echo:surface" }] },
+      },
+    });
+  }, 30_000);
+
   it("连接真实 server 并发现其工具(Req 1.3, 3.1)", async () => {
     const m = manager();
     const [outcome] = await m.connectAll([echoServer()]);

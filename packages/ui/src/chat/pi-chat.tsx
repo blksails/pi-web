@@ -32,6 +32,11 @@ import { InstallResultRenderer } from "./install-result-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
+  attachmentRefsFromDataTransfer,
+  hasAttachmentRef,
+} from "./attachment-dnd.js";
+import { createInputHistory } from "../elements/input-history.js";
+import {
   ChatError,
   Conversation,
   Message,
@@ -541,6 +546,8 @@ export function PiChat({
 
   const [input, setInput] = React.useState<string>("");
   const [webSearch, setWebSearch] = React.useState<boolean>(false);
+  // 输入历史(IDE 终端式,会话内内存态):态机见 elements/input-history.ts。
+  const inputHistory = React.useRef(createInputHistory());
   // agent-attachment-catalog:换写状态机的 getValue 读最新 input(避免 onAccept 闭包捕获旧值,
   // 物化是异步的,完成时用户可能已继续输入)。
   const inputValueRef = React.useRef(input);
@@ -875,6 +882,9 @@ export function PiChat({
       const trimmed = text.trim();
       const hasAttachments = attachments.items.length > 0;
       if (trimmed.length === 0 && !hasAttachments) return;
+
+      // 输入历史:记入已发文本(空串/连续重复由态机忽略),并退出翻阅态。
+      inputHistory.current.push(trimmed);
 
       const webSearchHint = t("chat.webSearchHint");
       const outgoing = !webSearch
@@ -1379,11 +1389,28 @@ export function PiChat({
         ? "bash-no-context"
         : "bash"
       : undefined;
+  // 输入历史翻阅:态机决定是否接管(空输入才进翻阅;编辑中返回 null 不劫持光标移动)。
+  const onHistoryNav = React.useCallback(
+    (dir: "prev" | "next"): boolean => {
+      const v = inputHistory.current.nav(dir, input);
+      if (v === null) return false;
+      setInput(v);
+      return true;
+    },
+    [input],
+  );
+  // 手动编辑即退出翻阅态(翻阅回填经 setInput 直写,不走本回调,不受影响)。
+  const onInputChange = React.useCallback((v: string): void => {
+    inputHistory.current.resetBrowse();
+    setInput(v);
+  }, []);
+
   const promptInput = (
     <PromptInput
       value={input}
-      onChange={setInput}
+      onChange={onInputChange}
       onSubmit={onSubmit}
+      onHistoryNav={onHistoryNav}
       mode={bashMode}
       disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
@@ -1430,8 +1457,31 @@ export function PiChat({
       </div>
     ) : null;
 
+  // composer attachmentId 受口:业务侧 chip 以 `text/att-id` 拖入 → 零上传入列为已落库
+  // 引用 chip,候 submit 一并以 id 上行(「入框候 submit」);文件拖放不带该 mime,零回归。
+  const onComposerDragOver = React.useCallback(
+    (e: React.DragEvent<HTMLDivElement>): void => {
+      if (hasAttachmentRef(e.dataTransfer)) e.preventDefault();
+    },
+    [],
+  );
+  const onComposerDrop = React.useCallback(
+    (e: React.DragEvent<HTMLDivElement>): void => {
+      const refs = attachmentRefsFromDataTransfer(e.dataTransfer);
+      if (refs === null || refs.length === 0) return;
+      e.preventDefault();
+      attachments.addExisting?.(refs);
+    },
+    [attachments],
+  );
+
   const inputWithWidgets = (
-    <div className="relative" data-pi-input-wrapper>
+    <div
+      className="relative"
+      data-pi-input-wrapper
+      onDragOver={onComposerDragOver}
+      onDrop={onComposerDrop}
+    >
       {readinessIndicator}
       {/* `/` 命令面板:与 `@` 补全一致,经 caret 锚定 fixed 定位(不再全宽贴顶)。 */}
       {controls !== undefined ? (
@@ -1789,6 +1839,9 @@ export function PiChat({
         slot="sidebarLeft"
         as="aside"
         className="hidden shrink-0 md:block"
+        {...(webextState !== undefined ? { state: webextState } : {})}
+        baseUrl={client?.baseUrl ?? ""}
+        {...(sessionId !== undefined ? { sessionId } : {})}
       />
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
@@ -1990,6 +2043,7 @@ export function PiChat({
         ext={extension}
         slot="dialogLayer"
         className="pointer-events-none fixed inset-0 z-[60]"
+        conversation={conversation}
       />
 
       {keybindings !== undefined && keybindings.length > 0 ? (

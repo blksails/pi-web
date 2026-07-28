@@ -8,6 +8,7 @@ import {
 } from "../../src/surface/create-surface.js";
 import type { SessionStateAccess } from "../../src/session-state.js";
 import { getSurfaceRegistry } from "../../src/surface/surface-registry.js";
+import { createMcpCallPort } from "../../src/mcp/call-port.js";
 
 interface StateRecorder {
   access: SessionStateAccess;
@@ -76,6 +77,38 @@ function fakePi(registerCommand: ReturnType<typeof vi.fn>): ExtensionAPI {
 const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("createSurface", () => {
+  it("MCP 晚于 surface 装配仍在 dispatch 时懒取", async () => {
+    const scope: Record<string, unknown> = {};
+    const rec = makeStateRecorder();
+    const deps = makeDeps(scope, rec.access);
+    let port = createMcpCallPort(() => undefined);
+    deps.getMcpCallPort = () => port;
+    const handle = createSurface(
+      fakePi(deps.registerCommand),
+      {
+        domain: "demo",
+        initialState: { count: 0 },
+        commands: {
+          remote: (_args, ctx) =>
+            ctx.mcp.call({ serverName: "business", toolName: "echo" }),
+        },
+      },
+      deps,
+    );
+
+    port = createMcpCallPort(() => ({
+      serverName: "business",
+      tools: [{ name: "echo" }],
+      callTool: async () => ({ content: [{ type: "text", text: "late" }] }),
+    }));
+
+    const result = await handle.dispatch("remote", {});
+    expect(result).toMatchObject({
+      ok: true,
+      data: { ok: true, result: { content: [{ type: "text", text: "late" }] } },
+    });
+  });
+
   it("update → getSessionState().set('surface:<domain>', snapshot)", () => {
     const scope: Record<string, unknown> = {};
     const rec = makeStateRecorder();

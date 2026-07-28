@@ -19,6 +19,7 @@ import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-age
 import { createLogger } from "@blksails/pi-web-logger";
 import { MCP_TOOL_NAME_SEPARATOR, type McpServerConfig } from "@blksails/pi-web-protocol";
 import { McpClientManager, type McpConnectOutcome } from "./client-manager.js";
+import { createMcpCallPort, installMcpCallPort } from "./call-port.js";
 import { adaptMcpTool } from "./tool-adapter.js";
 import { loadMcpConfig } from "./config-loader.js";
 
@@ -226,4 +227,12 @@ export default async function mcpExtension(pi: ExtensionAPI): Promise<void> {
       return handle.callTool;
     },
   });
+
+  installMcpCallPort(
+    createMcpCallPort((serverName) => {
+      const outcome = outcomeTools.get(serverName);
+      return manager.handleFor(serverName, outcome?.tools ?? []);
+    }),
+    () => manager.closeAll(),
+  );
 }

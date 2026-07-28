@@ -29,6 +29,9 @@ const config: Config = {
     // canvas-ui 迁出的 canvas 领域组件带 Tailwind 类(canvas-ui-m15 2.1)。
     "./node_modules/@blksails/pi-web-canvas-ui/src/**/*.{ts,tsx}",
     "./packages/canvas-ui/src/**/*.{ts,tsx}",
+    // examples 的 webext 走构建期静态 import 车道(lib/app/webext-registry),组件里的
+    // Tailwind 类须纳入扫描(aigc-agent 壳层工作区等)。
+    "./examples/*/.pi/web/**/*.{ts,tsx}",
   ],
   plugins: [],
 };

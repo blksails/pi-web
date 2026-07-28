@@ -14,6 +14,9 @@
     "vite.config.ts"
   ],
   "scripts": {
+    "typecheck:examples": "tsc -p examples/aigc-agent/tsconfig.json --noEmit",
+    "build:example:aigc": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs examples/aigc-agent/build.ts",
+    "test:example:aigc": "vitest run test/aigc-materials-surface.test.ts test/aigc-isolated-entry.test.ts test/aigc-publish-compile.test.ts test/aigc-session-history.test.ts test/aigc-material-status.test.ts test/aigc-media-preview.test.ts test/aigc-pane-authorization.test.ts test/aigc-session-gallery.test.ts",
     "dev": "node scripts/dev-all.mjs",
     "dev:e2b": "cross-env PI_WEB_TRANSPORT=e2b node scripts/dev-all.mjs",
     "dev:e2b:local": "node scripts/dev-e2b-local.mjs",
@@ -45,7 +48,7 @@
     "e2e:sandbox-baked": "node e2e/sandbox-baked-image.local.mjs",
     "e2e:sandbox-browser": "node e2e/sandbox-browser.local.mjs",
     "e2e:llm-gateway": "node e2e/llm-gateway/gateway-chain.local.mjs",
-    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit",
+    "typecheck": "pnpm -r run typecheck && tsc -p tsconfig.json --noEmit && pnpm run typecheck:examples",
     "e2e:desktop:real": "node e2e/desktop/desktop-real.mjs",
     "e2e:desktop:nonode": "node e2e/desktop/desktop-no-node.mjs",
     "e2e:desktop:packaged": "node e2e/desktop/desktop-packaged.mjs",
@@ -62,6 +65,7 @@
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.0",
+    "@aigc-agent/media-tools": "workspace:*",
     "@blksails/pi-web-canvas-ui": "workspace:*",
     "@blksails/pi-web-kit": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
@@ -73,11 +77,14 @@
     "@blksails/pi-web-ui": "workspace:*",
     "@hono/node-server": "^2.0.8",
     "@pi-clouds/registry-client": "npm:@blksails/registry-client@^0.0.2",
+    "@tanstack/react-query": "^5.101.2",
     "ai": "^5.0.0",
     "hono": "^4.12.28",
+    "lucide-react": "^0.470.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router": "^8.2.0"
+    "react-router": "^8.2.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

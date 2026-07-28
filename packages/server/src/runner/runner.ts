@@ -19,7 +19,9 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
+import { disposeMcpCallPort } from "@blksails/pi-web-tool-kit/mcp-runtime";
 import type { AgentContext } from "./agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
@@ -472,6 +474,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
         clearQueueWiring,
         agentRoutesWiring,
         attachmentCatalogWiring,
+        { cleanup: disposeMcpCallPort },
         frameChannel,
       ],
       process.stderr,
@@ -508,9 +511,12 @@ export async function main(argv: readonly string[]): Promise<void> {
 }
 
 // Execute when run as the process entry (not when imported by tests).
+// ★ pathToFileURL:Windows 的 `C:\...` 手拼 `file://` 得不到 `file:///C:/...`,
+//   判据恒 false → 直跑本文件时静默不启动(真实链路经 runner-bootstrap.mjs 显式调 main,
+//   故此前未暴露)。
 const invokedDirectly =
   typeof process.argv[1] === "string" &&
-  import.meta.url === `file://${process.argv[1]}`;
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
   void main(process.argv.slice(2));
 }

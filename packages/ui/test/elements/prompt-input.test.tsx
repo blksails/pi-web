@@ -273,3 +273,70 @@ describe("PromptInput 富输入外壳", () => {
     });
   });
 });
+
+describe("PromptInput 输入历史翻阅受口(R9 A-3)", () => {
+  it("↑ 询问 onHistoryNav;接管(true)时 preventDefault", async () => {
+    const user = userEvent.setup();
+    const onHistoryNav = vi.fn(() => true);
+    render(
+      <PromptInput value="" onChange={vi.fn()} onSubmit={vi.fn()} onHistoryNav={onHistoryNav} />,
+    );
+    screen.getByRole("textbox").focus();
+    await user.keyboard("{ArrowUp}");
+    expect(onHistoryNav).toHaveBeenCalledWith("prev");
+    await user.keyboard("{ArrowDown}");
+    expect(onHistoryNav).toHaveBeenCalledWith("next");
+  });
+
+  it("装配层返回 false(编辑中)→ 不拦截默认光标行为", async () => {
+    const user = userEvent.setup();
+    const onHistoryNav = vi.fn(() => false);
+    render(
+      <PromptInput value="editing" onChange={vi.fn()} onSubmit={vi.fn()} onHistoryNav={onHistoryNav} />,
+    );
+    const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(3, 3);
+    await user.keyboard("{ArrowUp}");
+    expect(onHistoryNav).toHaveBeenCalledWith("prev");
+    // 未接管:光标默认行为不被 preventDefault(jsdom 中表现为 selection 仍可由浏览器逻辑处理,
+    // 这里以「未抛异常且未被再次调用」为契约面;真实光标移动属浏览器行为,不在 jsdom 断言)。
+  });
+
+  it("Alt+↑ 让位给取回(不询问历史);补全浮层占用时不询问", async () => {
+    const user = userEvent.setup();
+    const onHistoryNav = vi.fn(() => true);
+    const onRequestRetrieve = vi.fn();
+    render(
+      <PromptInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onHistoryNav={onHistoryNav}
+        onRequestRetrieve={onRequestRetrieve}
+        canRetrieve
+      />,
+    );
+    screen.getByRole("textbox").focus();
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(onRequestRetrieve).toHaveBeenCalledTimes(1);
+    expect(onHistoryNav).not.toHaveBeenCalled();
+  });
+
+  it("suppressEnterSubmit(补全浮层)时 ↑ 不询问历史", async () => {
+    const user = userEvent.setup();
+    const onHistoryNav = vi.fn(() => true);
+    render(
+      <PromptInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onHistoryNav={onHistoryNav}
+        suppressEnterSubmit
+      />,
+    );
+    screen.getByRole("textbox").focus();
+    await user.keyboard("{ArrowUp}");
+    expect(onHistoryNav).not.toHaveBeenCalled();
+  });
+});

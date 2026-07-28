@@ -36,6 +36,14 @@ export const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9](?:_(?!_)|[A-Za-z0-9-])*$/;
 /** 工具注册名的 server/tool 分隔符。 */
 export const MCP_TOOL_NAME_SEPARATOR = "__";
 
+/**
+ * runner 内远程 MCP 传输读取的宿主鉴权头。
+ *
+ * 值是完整 Authorization header（如 `Bearer ...`），仅经会话 spawn env 注入；
+ * `mcp.json` 只保存 `hostAuthorization:true`，不保存动态凭据。
+ */
+export const MCP_HOST_AUTHORIZATION_ENV = "PI_WEB_MCP_HOST_AUTHORIZATION";
+
 // ── 服务端校验 schema ─────────────────────────────────────────────────────────
 
 const stdioTransportSchema = z
@@ -55,6 +63,8 @@ const sseTransportSchema = z
     /** Req 2.3:远程传输要求服务端地址。 */
     url: z.string().url(),
     headers: z.record(z.string()).default({}),
+    /** 运行时采用宿主注入的 Authorization；配置文件不含凭据。 */
+    hostAuthorization: z.boolean().optional(),
   })
   .passthrough();
 
@@ -63,6 +73,7 @@ const streamableHttpTransportSchema = z
     type: z.literal("streamable-http"),
     url: z.string().url(),
     headers: z.record(z.string()).default({}),
+    hostAuthorization: z.boolean().optional(),
   })
   .passthrough();
 
@@ -130,6 +141,14 @@ const remoteTransportFields: readonly FieldDescriptor[] = [
     label: "自定义请求头",
     description: "常用于携带鉴权令牌;值以掩码保存与显示,不会回读明文。",
     required: false,
+  },
+  {
+    key: "hostAuthorization",
+    kind: "boolean",
+    label: "使用宿主登录凭据",
+    description: "运行时注入当前宿主鉴权；配置文件不保存令牌。",
+    required: false,
+    default: false,
   },
 ];
 
