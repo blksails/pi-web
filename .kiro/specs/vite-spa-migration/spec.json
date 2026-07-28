@@ -1,7 +1,7 @@
 {
   "feature_name": "vite-spa-migration",
   "created_at": "2026-07-09T04:01:32Z",
-  "updated_at": "2026-07-09T06:00:14Z",
+  "updated_at": "2026-07-28T00:00:00Z",
   "language": "zh",
   "phase": "implemented",
   "approvals": {
@@ -18,5 +18,14 @@
       "approved": true
     }
   },
-  "ready_for_implementation": true
+  "ready_for_implementation": true,
+  "scope_decision": {
+    "date": "2026-07-28",
+    "decided_by": "user",
+    "not_doing": [
+      "10.4"
+    ],
+    "reason": "这些任务都需要在 Windows/Linux 上真实启动打包后的应用(6.1 还需 Linux 真实 WebView + WebDriver)。构建面已由 GitHub Actions run 30334803821 验证通过;未覆盖「真实启动」这一层的风险由用户接受。",
+    "status": "明确不做,非受阻 —— 不应再作为待办反复提起"
+  }
 }

@@ -221,6 +221,9 @@
   - 本项覆盖 macOS 因缺少 WebView 驱动而测不到的「渲染层经桥拿到路径」这条路径，同时是 **Windows/Linux 的 WebView 在严格 CSP 下 IPC 是否仍可用的唯一自动化证据**（macOS 的 WKWebView 走 messageHandlers 不受 `connect-src` 约束，其余平台机制不同）
   - 若 IPC 被页面 CSP 拦截，兜底为在桌面态放行 `ipc:` 到 pi-web server 的 `connect-src`（仅桌面壳加载时生效，不影响浏览器部署）
   - 观察完成：Linux 环境下 WebDriver 套件跑绿，日志中可见目录选择返回 stub 路径
+  - 🚫 **2026-07-28 用户裁定:不做。** 非因受阻,是范围决定。
+    构建面已由 run 30334803821 验证(四个 triple 全绿、Windows/Linux 首次构建成功);
+    未覆盖的是「在 Windows/Linux 上真实启动应用」这一层,该风险由用户接受。
   - ⚠ 未达成：本项要的是 Linux 上 `tauri-driver` + WebKitWebDriver + xvfb 驱动**真实 WebView**。
     run 30334803821 的 smoke 是在 macOS 上用普通浏览器访问壳的回环端点——
     验的是「壳 → server → runner」链路，**不是** WebView 内的 IPC。两者不可互相替代。
@@ -238,7 +241,10 @@
   - ⚠ **2026-07-28 部分达成**（run 30334803821）：Windows 与 Linux 的 `package` job
     **首次构建成功**并产出安装包工件。但**未勾**——本项还要求「在对应平台上启动安装后的
     应用能完成一次真实会话」，而 `smoke` job 只在 macOS 上跑。Windows/Linux 的产物
-    构建出来了，从未被启动过。补齐需要在这两个平台各加一个 smoke job。
+    构建出来了，从未被启动过。
+  - 🚫 **2026-07-28 用户裁定:不做。** 非因受阻,是范围决定。
+    构建面已由 run 30334803821 验证(四个 triple 全绿、Windows/Linux 首次构建成功);
+    未覆盖的是「在 Windows/Linux 上真实启动应用」这一层,该风险由用户接受。
   - ⚠ **状态：未完成**。本次实现环境为 macOS，无法产出或运行 Windows/Linux 安装包。
     已验证的是 CI 矩阵的**核心机制**：`node scripts/fetch-node-sidecar.mjs --target x86_64-apple-darwin`
     正确取到 x64 sidecar（并因异架构而跳过执行自检），且 `cargo build --target x86_64-apple-darwin --release`
