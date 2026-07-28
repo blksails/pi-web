@@ -6,4 +6,4 @@
 export {
   WEBEXT_SINGLETON_GLOBAL,
   WEBEXT_IMPORT_MAP,
-} from "@blksails/pi-web-server/webext-runtime";
+} from "@blksails/pi-web-server/webext-runtime/singletons";

@@ -97,6 +97,33 @@ const FALLBACK_MODELS: readonly string[] = ["gpt-image-2", "qwen-image-2.0"];
 const FALLBACK_SIZES: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
 const COUNTS: readonly number[] = [1, 2, 4];
 
+// 构建期注册表直接载入 TS 描述符，不经过 webext 的 ext.css 管线；故工具栏自带最小关键样式。
+// 独立发布形态仍由 styles.css 供全量样式，两路视觉同构。
+const PROMPT_TOOLBAR_CSS = `
+[data-pi-attachments-add]{display:none!important}
+[data-aigc-prompt-toolbar]{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pw-aigc-studio-qp{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:1px solid hsl(var(--border));border-radius:999px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:12px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+.pw-aigc-studio-qp:hover{background:hsl(var(--muted));color:hsl(var(--foreground))}
+.pw-aigc-studio-qp.pw-aigc-studio-on{border-color:transparent;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}
+.pw-aigc-studio-tool-plus{order:-1;padding:0 7px}
+.pw-aigc-studio-intent-x{display:inline-flex;margin-left:2px;padding:0;border:0;background:none;color:inherit;cursor:pointer;opacity:.75}
+.pw-aigc-studio-pop-backdrop{position:fixed;inset:0;z-index:70}
+.pw-aigc-studio-pop{position:fixed;z-index:71;display:flex;flex-direction:column;gap:1px;min-width:132px;padding:4px;border:1px solid hsl(var(--border));border-radius:10px;background:hsl(var(--popover));color:hsl(var(--popover-foreground));box-shadow:0 10px 30px rgb(0 0 0/.18)}
+.pw-aigc-studio-pop button{border:0;background:none;color:inherit;cursor:pointer}
+.pw-aigc-studio-pop button:hover:not(:disabled){background:hsl(var(--muted))}
+.pw-aigc-studio-menu-sec,.pw-aigc-studio-pop-title{padding:6px 9px 2px;color:hsl(var(--muted-foreground));font-size:10.5px;letter-spacing:.04em}
+.pw-aigc-studio-menu-item{display:flex;align-items:center}
+.pw-aigc-studio-menu-row{display:inline-flex;flex:1;align-items:center;gap:8px;min-width:0;padding:6px 9px;border-radius:7px;font-size:12.5px;text-align:left}
+.pw-aigc-studio-menu-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pw-aigc-studio-menu-pin{flex:none;margin-right:4px;padding:4px;border-radius:5px;color:hsl(var(--muted-foreground));opacity:0}
+.pw-aigc-studio-menu-item:hover .pw-aigc-studio-menu-pin,.pw-aigc-studio-menu-pin.pw-aigc-studio-on{opacity:1}
+.pw-aigc-studio-pill-pop{max-height:320px;overflow-y:auto}
+.pw-aigc-studio-pill-pop button{display:flex;width:100%;align-items:center;justify-content:flex-start;padding:8px 10px;border-radius:7px;font-size:13px;line-height:1.3;text-align:left;white-space:nowrap}
+.pw-aigc-studio-pill-pop button:hover:not(:disabled){background:hsl(var(--muted));color:hsl(var(--foreground))}
+.pw-aigc-studio-pill-pop button.pw-aigc-studio-on{background:hsl(var(--accent));color:hsl(var(--accent-foreground));font-weight:600}
+.pw-aigc-studio-pill-pop .pw-aigc-studio-hint{margin-left:auto;padding-left:12px;color:hsl(var(--muted-foreground));font-size:10.5px}
+`;
+
 // ── 会话 KV 订阅 ─────────────────────────────────────────────────────────────
 function useStateKey(state: WebExtStateAccess, key: string): unknown {
   const subscribe = React.useCallback((cb: () => void) => state.subscribe(key, cb), [state, key]);
@@ -192,10 +219,15 @@ function Pop({
 
 export function AigcPromptToolbar(props: PromptToolbarProps): React.JSX.Element | null {
   const { state } = props;
+  const [composerToolbar, setComposerToolbar] = React.useState<HTMLElement | null>(null);
   const [menu, setMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [param, setParam] = React.useState<{ kind: "model" | "size" | "count"; x: number; y: number } | null>(null);
   const [targeted, setTargeted] = React.useState<string | null>(null);
   const [pins, setPins] = React.useState<readonly string[]>(DEFAULT_PINS);
+
+  React.useEffect(() => {
+    setComposerToolbar(document.querySelector<HTMLElement>("[data-pi-prompt-input-toolbar]"));
+  }, []);
 
   React.useEffect(() => {
     try {
@@ -281,12 +313,22 @@ export function AigcPromptToolbar(props: PromptToolbarProps): React.JSX.Element 
     const r = e.currentTarget.getBoundingClientRect();
     setParam({ kind, x: r.left, y: r.bottom + 4 });
   };
+  const plusButton = (
+    <button
+      type="button"
+      className={c("qp", "tool-plus")}
+      aria-label="工具与添加附件"
+      title="工具 / 添加附件"
+      onClick={openMenu}
+    >
+      <Plus size={14} />
+    </button>
+  );
 
   return (
     <span className={c("ptb")} data-aigc-prompt-toolbar>
-      <button type="button" className={c("qp", "tool-plus")} title="工具 / 添加附件" onClick={openMenu}>
-        <Plus size={14} />
-      </button>
+      <style>{PROMPT_TOOLBAR_CSS}</style>
+      {composerToolbar !== null ? createPortal(plusButton, composerToolbar) : plusButton}
 
       {targetedTool !== undefined ? (
         <>
@@ -376,7 +418,7 @@ export function AigcPromptToolbar(props: PromptToolbarProps): React.JSX.Element 
 
       {/* 图像工具参数下拉 */}
       {param !== null ? (
-        <Pop anchor={param} width={200} className={c("pill-pop")} onClose={() => setParam(null)}>
+        <Pop anchor={param} width={param.kind === "model" ? 292 : 210} className={c("pill-pop")} onClose={() => setParam(null)}>
           {param.kind === "model" ? (
             <>
               <div className={c("pop-title")}>图像模型</div>

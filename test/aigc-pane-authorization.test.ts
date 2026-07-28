@@ -34,8 +34,10 @@ const paneById = (id: string) => {
 describe("pane 授权面 ↔ guest 实际调用", () => {
   it("materials guest 发的每条 surface 命令都在白名单内", () => {
     const src = guestSource("materials.tsx");
-    // 排除 `guest.surface.run("materials", action, …)` —— 那处首参是 domain,不是 action。
-    const used = [...src.matchAll(/(?<!surface\.)\brun\("([a-z-]+)"/g)].map((m) => m[1]);
+    const used = [
+      ...[...src.matchAll(/(?<!surface\.)\brun\("([a-z-]+)"/g)].map((m) => m[1]),
+      ...[...src.matchAll(/surface\.run\("materials",\s*"([a-z-]+)"/g)].map((m) => m[1]),
+    ];
     expect(used.length).toBeGreaterThan(0);
 
     const granted = new Set(

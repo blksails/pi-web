@@ -211,7 +211,9 @@ export default defineAgent({
 
 ### 命令处理器契约
 
-`SurfaceCtx<S>` 给命令处理器三样东西（`create-surface.ts:33-41`）：`get()` 读当前快照、`setState(reducer)` 改快照（自动推下行帧）、`attachments` 复用既有 attachment 工具上下文（resolve `att_` / 落库产物，二进制永不进快照）。
+`SurfaceCtx<S>` 给命令处理器四样东西（`create-surface.ts`）：`get()` 读当前快照、`setState(reducer)` 改快照（自动推下行帧）、`attachments` 复用既有 attachment 工具上下文（resolve `att_` / 落库产物，二进制永不进快照）、`mcp` 调用本会话已连接的 MCP server。`mcp` 只暴露 `serverName/toolName/args/signal` 与结构化结果，不暴露 MCP SDK `Client`；每次命令 dispatch 才懒取 seam，故 surface 与内建 MCP extension 的装配先后不影响调用。纯确定性远端业务动作可走此口，不必伪装成 prompt 交给 LLM。
+
+远程 MCP 可在 `mcp.json` 的 SSE / Streamable HTTP transport 上声明 `hostAuthorization:true`。配置只保存该布尔声明；当前宿主 Authorization 由会话 spawn env `PI_WEB_MCP_HOST_AUTHORIZATION` 注入，缺失或与静态 `Authorization` header 冲突即明确失败。桌面端据当前登录凭据装配，Pi-clouds 可复用同一跨宿主契约。
 
 命令处理器返回值有三种归一化路径（`create-surface.ts:167-190`）：正常返回值 → dispatch 包成 `{ok:true,data}`；返回 `{ok:false,error:{code,message}}` → 透传保留稳定领域码；抛 `SurfaceCommandError(code,msg)` → `.code` 传播进结果。
 

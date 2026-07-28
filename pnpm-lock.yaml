@@ -13,7 +13,7 @@ importers:
         version: 2.0.206(react@19.2.7)(zod@3.25.76)
       '@aigc-agent/media-tools':
         specifier: workspace:*
-        version: link:packages/aigc-media-tools
+        version: link:examples/aigc-agent/media-tools
       '@blksails/pi-web-canvas-ui':
         specifier: workspace:*
         version: link:packages/canvas-ui
@@ -127,6 +127,31 @@ importers:
         specifier: ^2.11.0
         version: 2.11.4
 
+  examples/aigc-agent/media-tools:
+    dependencies:
+      '@blksails/pi-web-agent-kit':
+        specifier: workspace:*
+        version: link:../../../packages/agent-kit
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../../../packages/logger
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:*
+        version: link:../../../packages/tool-kit
+    devDependencies:
+      '@earendil-works/pi-ai':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
   packages/agent-kit:
     dependencies:
       '@blksails/pi-web-logger':
@@ -145,31 +170,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@25.9.3)(jsdom@25.0.1)
-
-  packages/aigc-media-tools:
-    dependencies:
-      '@blksails/pi-web-agent-kit':
-        specifier: workspace:*
-        version: link:../agent-kit
-      '@blksails/pi-web-logger':
-        specifier: workspace:*
-        version: link:../logger
-      '@blksails/pi-web-tool-kit':
-        specifier: workspace:*
-        version: link:../tool-kit
-    devDependencies:
-      '@earendil-works/pi-ai':
-        specifier: ^0.80.3
-        version: 0.80.3(ws@8.21.0)(zod@3.25.76)
-      '@earendil-works/pi-coding-agent':
-        specifier: ^0.80.3
-        version: 0.80.3(ws@8.21.0)(zod@3.25.76)
-      '@types/node':
-        specifier: ^22.10.0
-        version: 22.19.21
-      typescript:
-        specifier: ^5.6.3
-        version: 5.9.3
 
   packages/canvas-kit:
     dependencies:

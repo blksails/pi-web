@@ -22,6 +22,7 @@ import {
   installLivePreviewSink,
 } from "../../src/surface/live-preview-seam.js";
 import type { SurfaceCtx } from "../../src/surface/create-surface.js";
+import { getMcpCallPort } from "../../src/mcp/call-port.js";
 import type {
   CanvasCapability,
   GalleryState,
@@ -242,6 +243,7 @@ function makeCmdHarness(
       current = reducer(current);
     },
     attachments,
+    mcp: getMcpCallPort({}),
   };
   return { ctx, state: () => current };
 }

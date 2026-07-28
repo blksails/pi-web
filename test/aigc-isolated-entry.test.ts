@@ -20,6 +20,7 @@ const ISOLATED = resolve(DIST, "web-extension.isolated.mjs");
 /** manifest.entry 指的分派器(按 realm 选下面两份之一);见 examples/aigc-agent/build.ts。 */
 const DISPATCHER = resolve(DIST, "web-extension.mjs");
 const EXTERNAL = resolve(DIST, "web-extension.external.mjs");
+const WEB_SOURCE = resolve(__dirname, "..", "examples", "aigc-agent", ".pi", "web");
 
 /** 取 ESM 里的裸 specifier(排除相对路径/绝对 URL)。 */
 function bareSpecifiers(code: string): string[] {
@@ -35,6 +36,14 @@ function bareSpecifiers(code: string): string[] {
 }
 
 describe("aigc 隔离宿主产物(web-extension.isolated.mjs)", () => {
+  it("身份交还宿主:无第二套 AuthStatus 与旧 /api/auth/* 链", () => {
+    const config = readFileSync(resolve(WEB_SOURCE, "web.config.tsx"), "utf8");
+    expect(config).not.toContain("AuthStatus");
+    expect(config).not.toContain("/api/auth/");
+    expect(existsSync(resolve(WEB_SOURCE, "auth-status.tsx"))).toBe(false);
+    expect(existsSync(resolve(WEB_SOURCE, "auth", "identity.ts"))).toBe(false);
+  });
+
   it("产物存在(需先跑 build:example:aigc)", () => {
     expect(existsSync(ISOLATED)).toBe(true);
   });

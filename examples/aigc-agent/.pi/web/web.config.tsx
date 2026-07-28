@@ -17,12 +17,8 @@ import { PanesHost } from "@blksails/pi-web-panes-kit/react";
 import { aigcPanesDefinition } from "../../web/panes/index.js";
 import { imageRendererExtension } from "./image-renderer.js";
 import { mediaRendererExtension } from "./media-renderer.js";
-// 登录/身份(headerRight):读宿主 `/api/auth/me`,pi-clouds AuthUser 形态(见 ./auth/identity)。
-import { AuthStatus } from "./auth-status.js";
 // 输入区工具排(promptToolbar):＋ 分栏工具菜单 / 图钉快捷 pill / 意图胶囊 / 图像参数。
 import { AigcPromptToolbar } from "./prompt-toolbar.js";
-// 历史会话侧栏(sidebarLeft):分组列表 + 重命名 / 分享 / 删除(接宿主 session-list·actions 端点)。
-import { SessionHistory } from "./session-history.js";
 // 对话区浮标(accessoryBelowEditor):「定位我的输入」+ 输入导航弹层。
 import { ChatInputNav } from "./chat-input-nav.js";
 // 对话内媒体预览(dialogLayer):点图开灯箱(跨整段对话切换)+ hover pill(编辑 / 下载 / 下载全部)。
@@ -73,12 +69,10 @@ export default defineWebExtension({
     },
   },
   // 右栏挂通用 PanesHost(宿主只负责 placement 与能力注入,pane 隔离由 panes-kit 承担);
-  // headerRight 挂账号状态(登录 mock 自定义扩展,日后接 pi-clouds)。
+  // 登录、登出与桌面凭据同步由宿主统一 IdentityGate/useIdentity 承担。
   slots: {
     panelRight: ConfiguredPanesHost,
-    headerRight: AuthStatus,
     promptToolbar: AigcPromptToolbar,
-    sidebarLeft: SessionHistory,
     accessoryBelowEditor: ChatInputNav,
     dialogLayer: MediaPreviewHost,
   },

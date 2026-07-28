@@ -21,6 +21,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
+import { disposeMcpCallPort } from "@blksails/pi-web-tool-kit/mcp-runtime";
 import type { AgentContext } from "./agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
@@ -473,6 +474,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
         clearQueueWiring,
         agentRoutesWiring,
         attachmentCatalogWiring,
+        { cleanup: disposeMcpCallPort },
         frameChannel,
       ],
       process.stderr,

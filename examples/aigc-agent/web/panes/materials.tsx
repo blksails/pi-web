@@ -7,7 +7,7 @@
  * 用 `useFitPos` 夹进视口,数据面 / 控制面走 pane guest 通道而非 Next API。
  *
  * 全通道谱:
- *  - route GET:`guest.query("assets-list")` → 素材列表(数据面,只读 R-0a);
+ *  - surface 命令:`sync-library` → `ctx.mcp` → webapp materials_search;
  *  - route GET:`guest.query("session-gallery")` → 本会话画廊(双数据源的另一半,读 canvas 快照);
  *  - route GET:`guest.query("material-status")` → 分发状态角标(只读台账;发起/重试是写路径,不授权);
  *  - surface 订阅:`surface:materials` 回流选中集 / 目录树 / 归属 / 改名(权威在 agent,单写者 C1-2);
@@ -73,6 +73,12 @@ interface MaterialsSnapshot {
   readonly folders?: readonly Folder[];
   readonly itemFolder?: Readonly<Record<string, string>>;
   readonly itemName?: Readonly<Record<string, string>>;
+  readonly library?: {
+    readonly phase?: "idle" | "ready" | "error";
+    readonly items?: readonly AssetItem[];
+    readonly total?: number;
+    readonly error?: { readonly code?: string; readonly message?: string };
+  };
 }
 
 /** 类型过滤(复刻源项目 material-drawer.tsx:66 的 FILTERS);`undefined` = 全部。 */
@@ -442,7 +448,8 @@ function MovePop({
 
 export function MaterialsApp(): React.JSX.Element {
   const guest = usePaneGuest();
-  const [items, setItems] = React.useState<AssetItem[]>([]);
+  const [libraryItems, setLibraryItems] = React.useState<AssetItem[]>([]);
+  const [galleryItems, setGalleryItems] = React.useState<AssetItem[]>([]);
   const [picked, setPicked] = React.useState<ReadonlySet<string>>(new Set());
   const [folders, setFolders] = React.useState<readonly Folder[]>([]);
   const [itemFolder, setItemFolder] = React.useState<Readonly<Record<string, string>>>({});
@@ -476,42 +483,34 @@ export function MaterialsApp(): React.JSX.Element {
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   /**
-   * 双数据源(复刻源项目素材抽屉):已落库素材 ∪ 本会话画廊。前者权威在平台数据面,平台未接时
-   * 恒空;后者读 canvas 权威快照,故刚生成的图立刻可见。两条都只读,失败各自降级、互不牵连。
-   *
-   * `platform_unavailable` 如实呈现:否则「平台没接」与「真的没素材」在界面上一模一样。
+   * 双数据源: webapp MCP 的当前页权威投影 ∪ 本会话画廊。MCP 失败显式提示，但不遮断画廊。
    */
   const load = React.useCallback(async (): Promise<void> => {
     setPhase("busy");
     const kindQ: Record<string, string> =
       filter.kind !== undefined ? { kind: filter.kind } : {};
     try {
-      const [listed, gallery] = await Promise.all([
-        // scope=session 时不取全库(源项目「素材库」tab 即此语义)。
-        filter.scope === "session"
-          ? Promise.resolve({ items: [] })
-          : guest.query("assets-list", { ...kindQ, limit: "200" }),
+      const [gallery] = await Promise.all([
         guest.query("session-gallery", kindQ).catch(() => ({ items: [] })),
       ]);
-      const err = (listed as { error?: unknown } | null)?.error;
-      setDataNote(
-        err === "platform_unavailable"
-          ? "素材库未接入平台数据面 —— 此处只列本会话产出与本次上传"
-          : filter.scope === "session"
-            ? "仅本会话:已切到会话范围,未列全库素材"
-            : "",
-      );
-      // 会话画廊在前(最近产出优先);同一 attachmentId 以落库记录为准。
-      const listedItems = unwrapItems(listed);
-      const known = new Set(
-        listedItems.map((a) => a.attachmentId).filter((x): x is string => typeof x === "string"),
-      );
-      setItems([
-        ...unwrapItems(gallery).filter(
-          (a) => a.attachmentId === undefined || !known.has(a.attachmentId),
-        ),
-        ...listedItems,
-      ]);
+      setGalleryItems(unwrapItems(gallery));
+      if (filter.scope === "session") {
+        setDataNote("仅本会话:已切到会话范围,未列全库素材");
+      } else {
+        setDataNote("");
+        try {
+          await guest.surface.run("materials", "sync-library", {
+            ...(filter.kind !== undefined ? { kind: filter.kind } : {}),
+            pageSize: 60,
+          });
+        } catch (e) {
+          setDataNote(
+            `素材库 MCP 不可用 —— 此处仍列本会话产出: ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        }
+      }
       setPhase("done");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -534,8 +533,19 @@ export function MaterialsApp(): React.JSX.Element {
         if (Array.isArray(s.folders)) setFolders(s.folders);
         if (s.itemFolder !== undefined && s.itemFolder !== null) setItemFolder(s.itemFolder);
         if (s.itemName !== undefined && s.itemName !== null) setItemName(s.itemName);
+        if (s.library?.phase === "ready" && Array.isArray(s.library.items)) {
+          setLibraryItems(s.library.items as AssetItem[]);
+          if (filter.scope !== "session") setDataNote("");
+        } else if (s.library?.phase === "error") {
+          setLibraryItems([]);
+          setDataNote(
+            `素材库 MCP 不可用 —— 此处仍列本会话产出: ${
+              s.library.error?.message ?? s.library.error?.code ?? "unknown error"
+            }`,
+          );
+        }
       }),
-    [guest],
+    [guest, filter.scope],
   );
 
   const run = React.useCallback(
@@ -595,7 +605,21 @@ export function MaterialsApp(): React.JSX.Element {
     [guest, run, view],
   );
 
-  // 乐观项在前;route 返回同一 attachmentId 时以 route 为准(权威在数据面)。
+  // 会话画廊在前;同一 attachmentId 以已落库记录为准。远端 material 无 attachmentId。
+  const visibleLibrary = filter.scope === "session" ? [] : libraryItems;
+  const knownLibrary = new Set(
+    visibleLibrary
+      .map((a) => a.attachmentId)
+      .filter((x): x is string => typeof x === "string"),
+  );
+  const items = [
+    ...galleryItems.filter(
+      (a) => a.attachmentId === undefined || !knownLibrary.has(a.attachmentId),
+    ),
+    ...visibleLibrary,
+  ];
+
+  // 乐观项在前;已落库返回同一 attachmentId 时以权威记录为准。
   const seen = new Set(items.map((a) => a.attachmentId).filter((x): x is string => typeof x === "string"));
   const merged = [...uploaded.filter((a) => a.attachmentId === undefined || !seen.has(a.attachmentId)), ...items];
 

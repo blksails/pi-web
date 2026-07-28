@@ -18,6 +18,7 @@
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
 import type { EgressModel } from "@blksails/pi-web-server";
+import { MCP_HOST_AUTHORIZATION_ENV } from "@blksails/pi-web-protocol";
 
 /** 服务端配置 env(启用判别 = base)。 */
 export const CLOUD_LOGIN_EGRESS_BASE_ENV = "PI_WEB_CLOUD_LOGIN_EGRESS_BASE";
@@ -32,6 +33,22 @@ export const RUNNER_CREDENTIAL_ENV = "PI_WEB_DESKTOP_CREDENTIAL";
 export const RUNNER_EGRESS_BASE_ENV = "PI_WEB_CLOUD_EGRESS_BASE";
 /** runner 侧读取的 egress 模型清单 env(JSON)。 */
 export const RUNNER_EGRESS_MODELS_ENV = "PI_WEB_CLOUD_EGRESS_MODELS";
+
+/**
+ * 当前桌面凭据转为远程 MCP 的宿主 Authorization。
+ *
+ * 独立于模型 egress 配置：业务 MCP 不应因模型清单未配置而失去登录态。返回值仅进入
+ * 受信 agent runner 的会话 env，不落 mcp.json、日志或历史。Pi-clouds 可复用同一 env 契约
+ * 注入其短期宿主凭据。
+ */
+export function computeMcpHostAuthorizationSpawnEnv(
+  credential: string | undefined,
+): Record<string, string> {
+  const value = credential?.trim();
+  return value === undefined || value.length === 0
+    ? {}
+    : { [MCP_HOST_AUTHORIZATION_ENV]: `Bearer ${value}` };
+}
 
 /**
  * 请求超时下限(毫秒):不短于云端网关首字(30s)/空闲(60s)上限,避免长响应被本地提前

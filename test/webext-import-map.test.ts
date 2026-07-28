@@ -37,4 +37,17 @@ describe("webext import map", () => {
       expect(url.startsWith("/api/webext/singletons/")).toBe(true);
     }
   });
+
+  it("浏览器桥只取纯单例子路径，不引入含 node:fs 的运行时 barrel", () => {
+    const source = readFileSync(
+      join(process.cwd(), "lib/app/webext-singletons.ts"),
+      "utf8",
+    );
+    expect(source).toContain(
+      '"@blksails/pi-web-server/webext-runtime/singletons"',
+    );
+    expect(source).not.toContain(
+      'from "@blksails/pi-web-server/webext-runtime";',
+    );
+  });
 });

@@ -31,23 +31,24 @@ const PANE_CSS = String.raw`
 *{box-sizing:border-box}html,body,#root{height:100%;margin:0}button,input{font:inherit;color:inherit}
 button:focus-visible,input:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
 .pane-layout{height:100%;min-height:0;display:flex;flex-direction:column}
-.toolbar{display:flex;gap:8px;padding:10px 12px;border-bottom:1px solid #e2e8f0;background:#fff}
+.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;border-bottom:1px solid #e2e8f0;background:#fff}
+.toolbar>.muted{flex-basis:100%}
 .grow{flex:1;min-width:0}
 input{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:8px 10px}
-.button{display:inline-flex;align-items:center;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:7px 12px;cursor:pointer;white-space:nowrap}
+.button{display:inline-flex;flex:none;align-items:center;height:30px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:5px 9px;cursor:pointer;white-space:nowrap}
 .button:disabled{opacity:.5;cursor:not-allowed}
 .button-primary{border-color:#2563eb;background:#2563eb;color:#fff}
 .content{padding:12px}.scroll{overflow:auto}
 .center{height:100%;display:grid;place-items:center}.muted{color:#64748b}.error{color:#b91c1c}
 .hint{cursor:help;opacity:.75}
 /* 类型过滤分段控件 + 按天分栏标头 */
-.segs{display:inline-flex;padding:2px;border-radius:8px;background:#f1f5f9;gap:2px}
-.seg{border:0;background:none;padding:3px 9px;border-radius:6px;font-size:12px;color:#475569;cursor:pointer}
+.segs{display:inline-flex;flex:none;padding:2px;border-radius:8px;background:#f1f5f9;gap:2px}
+.seg{border:0;background:none;padding:3px 8px;border-radius:6px;font-size:12px;color:#475569;cursor:pointer;white-space:nowrap}
 .seg:hover{background:#e2e8f0}
 .seg.on{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgb(0 0 0/.12)}
 .day{position:sticky;top:0;z-index:1;padding:4px 2px;font-size:11px;color:#64748b;background:inherit}
 .empty{min-height:160px;display:grid;place-items:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-top:8px}
 .card{margin:0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden}
 .card img{display:block;width:100%;aspect-ratio:1;object-fit:cover}
 .noimg{display:grid;place-items:center;aspect-ratio:1;color:#94a3b8;background:#f1f5f9}
@@ -59,7 +60,7 @@ figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12p
 .card.on{outline:2px solid #2563eb;outline-offset:-2px}
 .card[draggable=true]{cursor:grab}
 .split{flex:1;min-height:0;display:flex}
-.side{width:210px;flex:none;border-right:1px solid #e2e8f0;background:#fff;padding:8px 6px;display:flex;flex-direction:column;gap:2px}
+.side{width:148px;flex:none;border-right:1px solid #e2e8f0;background:#fff;padding:8px 6px;display:flex;flex-direction:column;gap:2px}
 .tree-row{display:flex;align-items:center;gap:2px;border-radius:7px;padding:1px 2px}
 .tree-row.on{background:#eef2ff}
 .tree-name{flex:1;min-width:0;text-align:left;border:0;background:none;padding:5px 6px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

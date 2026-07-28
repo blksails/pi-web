@@ -39,6 +39,7 @@ export const aigcPanesDefinition = definePanes({
           {
             domain: "materials",
             actions: [
+              "sync-library",
               "select",
               "set-filter",
               "create-folder",

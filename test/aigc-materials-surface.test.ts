@@ -19,7 +19,10 @@ import {
 
 const KEY = surfaceStateKey(MATERIALS_DOMAIN);
 
-function makeEnv(liveAttachmentIds?: readonly string[]) {
+function makeEnv(
+  liveAttachmentIds?: readonly string[],
+  mcpCall?: (input: unknown) => Promise<unknown>,
+) {
   const store = new Map<string, unknown>();
   const registered: string[] = [];
   const listeners = new Map<string, () => void>();
@@ -31,6 +34,9 @@ function makeEnv(liveAttachmentIds?: readonly string[]) {
             listBySession: async () => liveAttachmentIds.map((id) => ({ id })),
           }),
         }
+      : {}),
+    ...(mcpCall !== undefined
+      ? { getMcpCallPort: () => ({ call: mcpCall }) }
       : {}),
     getSessionState: () => ({
       available: true,
@@ -64,6 +70,68 @@ describe("materials surface · 读侧热态(既有)", () => {
     expect(snap().folders).toEqual([]);
     expect(snap().itemFolder).toEqual({});
     expect(registered).toContain(MATERIALS_DOMAIN);
+  });
+
+  it("sync-library 经 MCP 写当前页权威投影", async () => {
+    const calls: unknown[] = [];
+    const { handle, snap } = makeEnv(undefined, async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        result: {
+          structuredContent: {
+            items: [{
+              id: 9,
+              name: "hero.png",
+              type: "IMAGE",
+              file_url: "https://cdn.example/hero.png",
+              created_at: "2026-07-28T00:00:00Z",
+            }],
+            total: 1,
+          },
+        },
+      };
+    });
+    const result = await handle.dispatch("sync-library", {
+      kind: "image",
+      pageSize: 100,
+    });
+    expect(result).toMatchObject({ ok: true, data: { count: 1 } });
+    expect(calls).toEqual([
+      expect.objectContaining({
+        serverName: "pi-labs",
+        toolName: "materials_search",
+        args: expect.objectContaining({ type: "IMAGE", pageSize: 60 }),
+      }),
+    ]);
+    expect(snap().library).toMatchObject({
+      phase: "ready",
+      total: 1,
+      items: [{
+        assetId: "material:9",
+        displayUrl: "https://cdn.example/hero.png",
+        meta: { materialId: "9", name: "hero.png" },
+      }],
+    });
+  });
+
+  it("sync-library MCP 缺席 → 显式 error 快照与领域错误", async () => {
+    const { handle, snap } = makeEnv(undefined, async () => ({
+      ok: false,
+      error: {
+        code: "mcp_server_unavailable",
+        message: "MCP server unavailable.",
+      },
+    }));
+    const result = await handle.dispatch("sync-library", {});
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "mcp_server_unavailable" },
+    });
+    expect(snap().library).toMatchObject({
+      phase: "error",
+      error: { code: "mcp_server_unavailable" },
+    });
   });
 
   it("select 整替选中集(去重)", async () => {

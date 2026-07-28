@@ -27,6 +27,33 @@ pi-web ./examples/aigc-agent
 - **平台接缝可选**：`PLATFORM_CALLBACK_URL` + `PLATFORM_CALLBACK_TOKEN` 二者齐备才启用（多租户 key 解析、素材台账）；缺失 → `available:false` 全链路优雅降级（key 回落 env 直传、台账静默跳过、`@` 素材目录为空）。
 - 安全边界：本 agent `noTools: "builtin"`（无 bash），预取写入 `process.env` 的租户 key 不会经孙进程 shell 外泄（源码 `platform-keys.ts` 头注详述）。
 
+### 接入 webapp 素材 MCP
+
+webapp 配置其 Pi-clouds 凭据验证端点：
+
+```dotenv
+PI_CLOUDS_DESKTOP_CAPABILITIES_URL=https://cloud.example/api/desktop/capabilities
+```
+
+在 `~/.pi/agent/mcp.json` 配置业务端点（令牌不写此文件）：
+
+```json
+{
+  "servers": [
+    {
+      "name": "pi-labs",
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://webapp.example/api/mcp/pi-labs",
+        "hostAuthorization": true
+      }
+    }
+  ]
+}
+```
+
+桌面端登录后新建会话；宿主把当前凭据仅经会话环境注入 `Authorization`。未登录、云端拒绝或 MCP 不可达时，素材 Pane 显式显示降级原因，仍保留本会话画廊。
+
 ## Slash 命令
 
 `/img-gen <提示词>`（文生图）· `/img-edit <提示词>`（图生图，取最近 `[attachment id=att_…]`）· 媒体族命令见 `@aigc-agent/media-tools` 的 `mediaSlashCompletions`。

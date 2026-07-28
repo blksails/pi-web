@@ -26,6 +26,10 @@ import {
 } from "../session-state.js";
 import { getAttachmentToolContext as defaultGetAttachmentToolContext } from "../attachment/seam.js";
 import {
+  getMcpCallPort as defaultGetMcpCallPort,
+  type McpCallPort,
+} from "../mcp/call-port.js";
+import {
   getSurfaceRegistry as defaultGetSurfaceRegistry,
   type SurfaceRegistry,
 } from "./surface-registry.js";
@@ -38,6 +42,8 @@ export interface SurfaceCtx<S> {
   setState(reducer: (prev: S) => S): void;
   /** 复用既有 attachment 工具上下文(Bulk:resolve `att_` / putOutput)。 */
   readonly attachments: AttachmentToolContext;
+  /** 懒取 session-scoped MCP 调用口；不暴露 SDK Client。 */
+  readonly mcp: McpCallPort;
 }
 
 /**
@@ -90,6 +96,7 @@ export interface CreateSurfaceDeps {
   getSessionState?: (scope?: Record<string, unknown>) => SessionStateAccess;
   getSurfaceRegistry?: (scope?: Record<string, unknown>) => SurfaceRegistry;
   getAttachmentToolContext?: (scope?: Record<string, unknown>) => AttachmentToolContext;
+  getMcpCallPort?: (scope?: Record<string, unknown>) => McpCallPort;
   /** 装配期延后推快照的调度器(默认 `setTimeout(fn, 0)`);测试可注入同步实现。 */
   schedule?: (fn: () => void) => void;
 }
@@ -137,6 +144,7 @@ export function createSurface<S>(
   const getSurfaceRegistry = deps.getSurfaceRegistry ?? defaultGetSurfaceRegistry;
   const getAttachmentToolContext =
     deps.getAttachmentToolContext ?? defaultGetAttachmentToolContext;
+  const getMcpCallPort = deps.getMcpCallPort ?? defaultGetMcpCallPort;
   const schedule =
     deps.schedule ??
     ((fn: () => void): void => {
@@ -162,6 +170,7 @@ export function createSurface<S>(
     get: () => current,
     setState: applyReducer,
     attachments: getAttachmentToolContext(scope),
+    mcp: getMcpCallPort(scope),
   });
 
   const dispatch = async (

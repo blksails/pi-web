@@ -38,6 +38,24 @@ describe("mcpConfigSchema — 三传输校验(Req 2.1-2.3, 2.5)", () => {
     }
   });
 
+  it("远程传输可声明运行时宿主鉴权，且不持久化令牌字段", () => {
+    const r = mcpConfigSchema.parse({
+      servers: [{
+        name: "business",
+        transport: {
+          type: "streamable-http",
+          url: "https://example.com/mcp",
+          hostAuthorization: true,
+        },
+      }],
+    });
+    expect(r.servers[0]?.transport).toMatchObject({
+      hostAuthorization: true,
+      headers: {},
+    });
+    expect(JSON.stringify(r)).not.toContain("Bearer ");
+  });
+
   it("非法 url → 拒绝(Req 2.5)", () => {
     const r = mcpConfigSchema.safeParse({
       servers: [{ name: "s", transport: { type: "sse", url: "not-a-url" } }],
@@ -110,6 +128,7 @@ describe("mcpFormSchema — 表单 IR(Req 2.4, 4.1, 4.5, 7.2)", () => {
     expect(keysOf("stdio")).toContain("command");
     expect(keysOf("sse")).toContain("url");
     expect(keysOf("streamable-http")).toContain("url");
+    expect(keysOf("streamable-http")).toContain("hostAuthorization");
   });
 
   it("env / headers 的值一律按 secret 掩码(Req 7.2)", () => {

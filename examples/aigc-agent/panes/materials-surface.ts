@@ -2,9 +2,8 @@
  * materials surface — 素材域热态状态面(Wave 5 · G2②,agent 权威)。
  *
  * 单写者(C1-2):UI 只发命令(`surface.run("materials", …)`)并订阅 `surface:materials`
- * 回流,权威快照由本扩展经上游 `createSurface` 写入。R-0c:快照仅热态
- * `{selectedIds, filter}`,大宗素材数据留数据面(assets-list route);R-0b:选中集只存
- * attachmentId 引用,二进制永不进快照。
+ * 回流,权威快照由本扩展经上游 `createSurface` 写入。MCP 仅投影当前页(≤60 条)短字段到
+ * 热态 `library`;大宗素材仍不进快照。R-0b:选中集只存 attachmentId 引用,二进制永不进快照。
  *
  * 属 runtime 层(经 `@blksails/pi-web-tool-kit/runtime` 加载),不得被前端 bundle import——
  * 前端以 `surfaceStateKey("materials")` 字面契约对接。
@@ -37,6 +36,25 @@ export interface MaterialsFolder {
   readonly parentId?: string;
 }
 
+/** webapp materials_search 的当前页瘦投影；无二进制、无全量库。 */
+export interface MaterialsLibraryItem {
+  readonly assetId: string;
+  readonly displayUrl: string;
+  readonly createdAt: string;
+  readonly meta: {
+    readonly name?: string;
+    readonly materialId: string;
+    readonly type?: string;
+  };
+}
+
+export interface MaterialsLibraryState {
+  readonly phase: "idle" | "ready" | "error";
+  readonly items: readonly MaterialsLibraryItem[];
+  readonly total: number;
+  readonly error?: { readonly code: string; readonly message: string };
+}
+
 export interface MaterialsState {
   /** 选中素材(attachmentId 引用,整替语义,去重保序)。 */
   readonly selectedIds: readonly string[];
@@ -53,10 +71,19 @@ export interface MaterialsState {
    * 二进制永不进快照(R-0b)。
    */
   readonly itemName: Readonly<Record<string, string>>;
+  /** webapp MCP 当前页只读投影；命令回包不作 UI 权威。 */
+  readonly library: MaterialsLibraryState;
 }
 
 export function emptyMaterialsState(): MaterialsState {
-  return { selectedIds: [], filter: {}, folders: [], itemFolder: {}, itemName: {} };
+  return {
+    selectedIds: [],
+    filter: {},
+    folders: [],
+    itemFolder: {},
+    itemName: {},
+    library: { phase: "idle", items: [], total: 0 },
+  };
 }
 
 const KINDS = new Set(["image", "video", "audio"]);
@@ -112,6 +139,33 @@ function newFolderId(existing: readonly MaterialsFolder[]): string {
   return `fld_${n}`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function projectLibraryItem(value: unknown): MaterialsLibraryItem | undefined {
+  const row = asRecord(value);
+  if (row === undefined) return undefined;
+  const materialId = String(row.id ?? "").trim();
+  if (materialId === "") return undefined;
+  const fileUrl =
+    typeof row.file_url === "string" ? row.file_url : "";
+  const coverUrl =
+    typeof row.cover_url === "string" ? row.cover_url : "";
+  return {
+    assetId: `material:${materialId}`,
+    displayUrl: coverUrl || fileUrl,
+    createdAt: typeof row.created_at === "string" ? row.created_at : "",
+    meta: {
+      materialId,
+      ...(typeof row.name === "string" ? { name: row.name } : {}),
+      ...(typeof row.type === "string" ? { type: row.type } : {}),
+    },
+  };
+}
+
 /**
  * 构造可注入依赖的 materials 装配函数(测试注入 fake getSessionState/registry;
  * 生产缺省取真实 seam,对齐 makeCanvasSurfaceExtension 范式)。
@@ -129,6 +183,81 @@ export function makeMaterialsSurfaceExtension(
         domain: MATERIALS_DOMAIN,
         initialState: emptyMaterialsState(),
         commands: {
+          /**
+           * webapp MCP → 当前素材页瘦投影。命令只报告数量；UI 一律订阅 library 快照。
+           * MCP 缺席/鉴权失败皆落稳定 error 态，不回退伪数据。
+           */
+          "sync-library": async (args, ctx) => {
+            const a = (args ?? {}) as {
+              kind?: unknown;
+              search?: unknown;
+              pageSize?: unknown;
+            };
+            const kind =
+              typeof a.kind === "string" && KINDS.has(a.kind)
+                ? a.kind
+                : undefined;
+            const pageSize =
+              typeof a.pageSize === "number" && Number.isInteger(a.pageSize)
+                ? Math.min(60, Math.max(1, a.pageSize))
+                : 60;
+            const call = await ctx.mcp.call({
+              serverName: "pi-labs",
+              toolName: "materials_search",
+              args: {
+                ...(kind !== undefined
+                  ? { type: kind.toUpperCase() }
+                  : {}),
+                ...(typeof a.search === "string" && a.search.trim() !== ""
+                  ? { search: a.search.trim() }
+                  : {}),
+                page: 1,
+                pageSize,
+              },
+            });
+            if (!call.ok) {
+              ctx.setState((s) => ({
+                ...s,
+                library: {
+                  phase: "error",
+                  items: [],
+                  total: 0,
+                  error: call.error,
+                },
+              }));
+              return { ok: false as const, error: call.error };
+            }
+            const result = call.result;
+            if (result.isError === true) {
+              const error = {
+                code: "mcp_tool_error",
+                message: "Materials MCP tool reported an error.",
+              };
+              ctx.setState((s) => ({
+                ...s,
+                library: { phase: "error", items: [], total: 0, error },
+              }));
+              return { ok: false as const, error };
+            }
+            const structured = asRecord(result.structuredContent);
+            const rawItems = Array.isArray(structured?.items)
+              ? structured.items
+              : [];
+            const items = rawItems
+              .map(projectLibraryItem)
+              .filter((item): item is MaterialsLibraryItem => item !== undefined);
+            const total = Number(structured?.total ?? items.length);
+            ctx.setState((s) => ({
+              ...s,
+              library: {
+                phase: "ready",
+                items,
+                total: Number.isFinite(total) ? total : items.length,
+              },
+            }));
+            return { count: items.length };
+          },
+
           /** 整替选中集:{ ids: string[] }。 */
           select: (args, ctx) => {
             const ids = (args as { ids?: unknown } | null)?.ids;

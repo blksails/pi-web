@@ -36,6 +36,7 @@
   opacity: 0.6;
 }
 .tool-plus {
+  order: -1;
   padding: 0 7px;
 }
 .intent {

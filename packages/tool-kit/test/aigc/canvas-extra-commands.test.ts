@@ -25,6 +25,7 @@ import type {
 } from "../../src/surface/create-surface.js";
 import type { GalleryState } from "../../src/aigc/canvas/schema.js";
 import type { runImageTool } from "../../src/aigc/run-image-tool.js";
+import { getMcpCallPort } from "../../src/mcp/call-port.js";
 
 type RunImageTool = typeof runImageTool;
 
@@ -77,6 +78,7 @@ function makeCmdHarness(seed: GalleryState): CmdHarness {
       current = reducer(current);
     },
     attachments,
+    mcp: getMcpCallPort({}),
   };
   return { ctx, state: () => current };
 }
