@@ -151,9 +151,15 @@ describe("aigcExtension integration", () => {
     delete process.env.OPENROUTER_API_KEY;
   });
 
-  it("image_edit 主图+mask+参考图>3 → 超限降级(ok:false)", async () => {
+  // ★原用例断言「主图+mask+参考图 > 3 → 本地超限拦截」。该硬上限已按需求移除
+  // (dashscope.ts 的 IMAGE_EDIT_MAX_IMAGES 校验),故改为锁定**移除后**的行为:
+  //   1. 4 张图不再被本地拦下 —— 全部进入发往 provider 的请求体;
+  //   2. provider 未回有效图时,工具仍优雅降级 ok:false(不崩)——原用例真正想守的性质。
+  it("image_edit 主图+mask+参考图>3 → 不再本地设限,4 张图全部进请求;provider 无图仍优雅降级", async () => {
     installSeam();
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => "{}", headers: { get: () => "application/json" }, status: 200 } as unknown as Response)));
+    // 形参显式声明:否则 mock 推断为零参,`calls[i][1]` 取 init 会越界(TS2493)。
+    const fetchMock = vi.fn(async (_url: unknown, _init?: { body?: unknown }) => ({ ok: true, text: async () => "{}", headers: { get: () => "application/json" }, status: 200 } as unknown as Response));
+    vi.stubGlobal("fetch", fetchMock);
 
     const edit = collectAigcTools().find((t) => t.name === "image_edit")!;
     const result = await edit.execute(
@@ -169,8 +175,15 @@ describe("aigcExtension integration", () => {
       undefined,
       noUI,
     );
+    // ① 请求确实发到了 provider(本地没拦):找到携带指令文本的那次调用。
+    const providerCall = fetchMock.mock.calls.find((c) => String(c[1]?.body ?? "").includes("改背景"));
+    expect(providerCall, "未发出 provider 请求 —— 说明仍被本地拦截").toBeDefined();
+    // ② 主图 + mask + 2 张参考图共 4 张全部进了请求体。
+    const body = String(providerCall![1]?.body ?? "");
+    for (const f of ["main.png", "mask.png", "r1.png", "r2.png"]) expect(body).toContain(f);
+    // ③ provider 未回有效图 → 仍是优雅降级,且错误不再是"本地超限"。
     const d = result.details as { ok: boolean; error?: string };
     expect(d.ok).toBe(false);
-    expect(d.error).toMatch(/上限|超过/);
+    expect(d.error).not.toMatch(/上限|超过/);
   });
 });

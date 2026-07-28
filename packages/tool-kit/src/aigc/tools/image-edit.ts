@@ -204,11 +204,14 @@ const PARAMETER_FIELDS = {
         "Do NOT infer a size from the subject matter.",
     }),
   ),
+  // 原描述把 DashScope 的「总图 ≤ 3」写成了**全局**约束,导致 LLM 对任何模型都自我设限。
+  // 该上限(连同 dashscope.ts 的硬校验)已按需求移除:本地不再设限,张数由各 provider 端裁定。
   reference_images: Type.Optional(
     Type.Array(Type.String(), {
       description:
         "Optional reference images for style/character consistency. " +
-        "Main image + mask + reference images must total ≤ 3 (DashScope limit).",
+        "No fixed local limit on how many; the accepted count is decided by the provider/model, " +
+        "and exceeding it surfaces as an upstream error.",
     }),
   ),
   response_format: Type.Optional(

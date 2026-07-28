@@ -154,25 +154,19 @@ interface ImageEditArgs {
   seed?: number;
 }
 
-/** 单次请求可携带的最大图数(主图 + mask + 参考图 ≤ 3)。 */
-const IMAGE_EDIT_MAX_IMAGES = 3;
-
 /**
  * DashScope qwen-image-edit 系列图像编辑请求体。
  *
  * content 顺序: 主图 → mask(若有)→ 参考图 → text 指令。
  * 有 mask 时在 prompt 前加局部重绘提示,让模型理解图2是遮罩区域。
+ *
+ * ★图数不再本地设限(原有「主图 + mask + 参考图 ≤ 3」的硬校验已按需求移除):
+ * 张数由 DashScope 端裁定,超限则以上游报错呈现,而非本地预先拦截。
  */
 function buildImageEditBody(model: string) {
   return (args: Record<string, unknown>) => {
     const a = args as unknown as ImageEditArgs;
     const refs = a.reference_images ?? [];
-    const totalImages = 1 + (a.mask ? 1 : 0) + refs.length;
-    if (totalImages > IMAGE_EDIT_MAX_IMAGES) {
-      throw new Error(
-        `image_edit 总图数超过上限:主图 + ${a.mask ? "mask + " : ""}${refs.length} 张参考图 = ${totalImages},最多 ${IMAGE_EDIT_MAX_IMAGES} 张。`,
-      );
-    }
     const content: Record<string, unknown>[] = [{ image: a.image }];
     if (a.mask) content.push({ image: a.mask });
     for (const url of refs) content.push({ image: url });
