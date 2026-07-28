@@ -97,3 +97,66 @@ describe("失败态", () => {
     expect(c.querySelector("[data-pi-publish-parse-error]")).not.toBeNull();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// spec publish-execution:真实发布结果
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PUBLISHED: PublishPreviewData = {
+  ...OK,
+  disclaimers: { unsigned: false, grantNotChecked: false },
+  published: {
+    sourceId: "blksails/x",
+    version: "1.0.0",
+    bundle: "bundles/abc.tgz",
+    channel: "stable",
+    channelMoved: true,
+    publisherId: "pub-1",
+    org: "blksails",
+  },
+};
+
+describe("已发布结果(spec publish-execution)", () => {
+  it("渲染已发布块:包标识、发布者身份、通道", () => {
+    const c = renderCard(PUBLISHED);
+    expect(c.querySelector("[data-pi-publish-published]")).not.toBeNull();
+    expect(c.querySelector("[data-pi-publish-published-id]")?.textContent).toBe("blksails/x@1.0.0");
+    expect(c.querySelector("[data-pi-publish-identity]")?.textContent).toContain("pub-1");
+    expect(c.querySelector("[data-pi-publish-identity]")?.textContent).toContain("blksails");
+    expect(c.querySelector("[data-pi-publish-channel]")).not.toBeNull();
+  });
+
+  it("★ 不可逆提示恒在 —— 发布不像安装那样可以撤销", () => {
+    expect(renderCard(PUBLISHED).querySelector("[data-pi-publish-immutable]")).not.toBeNull();
+  });
+
+  it("已发布时不出预览声明(两位皆 false)", () => {
+    expect(renderCard(PUBLISHED).querySelector("[data-pi-publish-disclaimer]")).toBeNull();
+  });
+
+  it("★ 通道未移 → 部分成功可单独辨认,且**不是**普通的通道行", () => {
+    const c = renderCard({
+      ...PUBLISHED,
+      published: { ...PUBLISHED.published!, channelMoved: false },
+    });
+    expect(c.querySelector("[data-pi-publish-channel-not-moved]")).not.toBeNull();
+    expect(c.querySelector("[data-pi-publish-channel]")).toBeNull();
+    // 结构化标记而非文案匹配 —— 改文案不该让这条断言静默失效。
+    expect(
+      c.querySelector("[data-pi-publish-published]")?.getAttribute("data-pi-publish-channel-moved"),
+    ).toBe("false");
+  });
+
+  it("头行状态区分「已发布」与「已登记」", () => {
+    expect(renderCard(PUBLISHED).textContent).toContain("已发布");
+    const partial = renderCard({
+      ...PUBLISHED,
+      published: { ...PUBLISHED.published!, channelMoved: false },
+    });
+    expect(partial.textContent).toContain("已登记");
+  });
+
+  it("预览结果不带 published → 不渲染已发布块(既有路径零影响)", () => {
+    expect(renderCard(OK).querySelector("[data-pi-publish-published]")).toBeNull();
+  });
+});

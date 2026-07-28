@@ -267,10 +267,28 @@ comment on column public.companies.org_name_status is
 | 云端代管代签 | 云端 | pi-web 最轻（永不碰私钥）；但"发布者身份由本地密钥证明"这条不再成立，验签退化为云端自证 |
 | 每用户本机持钥 | 用户机器 | 追责到人，验签语义完整；多用户 web 部署发不了（只能桌面版），且要做备份/轮换 |
 
-**已倾向裁定：云端代管代签。** 但有一条**必须记下的后果**：一旦云端代签，
-`registry` 的"验签是发布授权本体"就变成"云端说是谁就是谁"。
-建议在 registry 侧把这类 publisher 显式标记（如 `custodial: true`），
-避免将来分不清哪些签名代表真实的本地密钥持有。
+~~已倾向裁定：云端代管代签。~~ **✅ 最终裁定（用户决策，2026-07-28）：每用户本机持钥。**
+
+理由正是上表里被列为"代价"的那条反过来看更重要：云端代签会让 registry 的
+"验签是发布授权本体"退化为"云端说是谁就是谁"，而那是整个 registry 授权模型的地基。
+`custodial: true` 标记只是把问题记下来，不解决它。
+
+**已落地**（spec `publish-key-lifecycle`）：
+
+| 关注点 | 落法 |
+|---|---|
+| 谁生成 | 本机**自动**生成，用户无需先学会 keygen（`server/cli/publish/keystore.ts`） |
+| 存哪 | `~/.pi-web/keys/publish.json`，文件 `0600` / 目录 `0700`；私钥永不离开本机 |
+| 怎么登记 | 桌面把**公钥**报到 `POST /api/desktop/publish/keys`；`publisherId` 由认证 companyId 派生，请求体里没有身份 |
+| 备份 | **不做**。丢私钥不是灾难：已发布签名仍有效，新生成一把登记即可（`PublisherKey[]` 支持多钥并存） |
+| 轮换 | 服务端 `disablePublisherKey` 已存在；用户侧入口另议 |
+| 可追责 | `PublisherKey` 补了 `createdAt` + `label`（每机一把，标签默认取主机名） |
+
+**多用户 web 部署发不了**这条代价被接受：发布本就是桌面场景。
+
+⚠ 随之作废的一条安全断言：`apps/cloud/lib/registry.ts` 曾写着
+「`addPublisherKey` 仍然没有任何入口」。它现在有一条了（上表第三行），
+收窄条件见该文件的 `ProvisioningTokenVerifier` 注释。
 
 ### Q3 · org / tenantId 应当**派生**而非接收（合并原 Q3+Q4）
 
@@ -350,12 +368,34 @@ fail-closed 沿用既有规矩：缺 secret / 缺 registry base → 省略 `publ
 
 | 期 | 内容 | 可独立验收 |
 |---|---|---|
-| **P0** | `companies.org_name` + `org_name_status` 迁移 + org、tenantId 改为从 token 派生 | 是 —— 迁移 + registry 侧收紧，**不可逆数据风险先消除** |
-| **P1** | cloud 签发 publish 授予 + provision publisher；pi-web 契约加 `publish` 字段 | 是 —— pi-web 侧可用"授予存在但不真发布"验证链路 |
-| **P2** | pi-web 打通 `uploadBundle → registerVersion → setChannel`（裸 `publish` 开始工作，语义不变） | 是 |
-| **P3** | 可见性选择（含 `createSource`）与 UI 文案（**org ≠ 口语 private**） | 是 |
+| **P0** ✅ | `companies.org_name` + `org_name_status` 迁移 + org、tenantId 改为从 token 派生 | 已交付（spec `registry-org-identity`） |
+| **P1** ✅ | cloud 签发 publish 授予 + provision publisher；pi-web 契约加 `publish` 字段 | 已交付（spec `publish-grant-issuance`，Req 4 路由接线待许可） |
+| **密钥** ✅ | 本机自动生成 + 公钥自助登记 + `PublisherKey` 溯源元数据 | 已交付（spec `publish-key-lifecycle`）—— 见 §2 Q2 |
+| **P2** ✅ | pi-web 打通 `uploadBundle → registerVersion → setChannel`（裸 `publish` 开始工作，语义不变） | 已交付（spec `publish-execution`） |
+| **P3** | 可见性选择（含 `createSource`）与 UI 文案（**org ≠ 口语 private**） | 未开始 |
 
 P0 建议**先做**：`bindOrg` 不可逆，等有真实数据再改就要做迁移。
+
+### P2 交付时发现的一处真阻塞（记下来，别再踩）
+
+`HmacPublishTokenVerifier` 在 P1 就已造好**并测过**，却**从未接进 `apps/registry` 的
+`buildTokenVerifier()`** —— cloud 签得出 token、真实 registry 一律拒绝。
+造好而未接线的组件不会有任何报错，只会在真机上表现为"登录了也发不出去"。
+现已接入（`PI_CLOUDS_REGISTRY_PUBLISH_TOKEN_SECRET` 配了才启用，与 consume 面同构），
+并把**装配点本身**纳入了验收（`apps/registry/test/token-verifier.test.ts`）。
+
+### P3 的剩余缺口
+
+- 发布时选可见性需要显式 `createSource`（自动建 source 走的是缺省可见性）；
+- host 命令要加一个可见性参数，且 UI 文案必须讲清 **`org` ≠ 口语里的 private**；
+- 已发布 source 的可见性变更入口（改的是 source 而非 version，不需要发新版）。
+
+### 部署前置（P2 生效所需）
+
+| env | 位于 | 作用 |
+|---|---|---|
+| `PI_CLOUDS_REGISTRY_PUBLISH_TOKEN_SECRET` | **apps/cloud 与 apps/registry 两侧同值** | 签发 ↔ 验签同一把 HMAC 密钥；任一侧缺失 → 发布不可用（诚实降级，非报错） |
+| `PI_CLOUDS_REGISTRY_HTTP_BASE_URL` | apps/cloud | 授予里的 `baseUrl`，须指向**真实 registry**（不是 cloud 的只读代理面） |
 
 ## 5. 本稿未覆盖
 

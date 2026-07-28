@@ -66,6 +66,13 @@ function harness(opts: {
     async getSourcesGrant() {
       return undefined;
     },
+    // 发布相关的两项对本文件的登录场景无关紧要,给出"不可用"的诚实缺省即可。
+    async getPublishGrant() {
+      return undefined;
+    },
+    async registerPublishKey() {
+      return { ok: false, kind: "no-grant" } as const;
+    },
     cachedStatic() {
       return undefined;
     },
@@ -177,6 +184,8 @@ describe("DesktopPasswordIdentityProvider — 登出与切号(Req 7.1/7.2)", () 
       capabilitiesClient: {
         async loadStatic() { return { tenant }; },
         async getSourcesGrant() { return undefined; },
+        async getPublishGrant() { return undefined; },
+        async registerPublishKey() { return { ok: false, kind: "no-grant" } as const; },
         cachedStatic() { return undefined; },
         clearCache() { calls.clearCacheCount += 1; },
       },

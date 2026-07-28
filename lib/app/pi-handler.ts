@@ -160,6 +160,9 @@ import {
   type PackageHostCommandDeps,
 } from "./package-host-command.js";
 import { createInstaller } from "../../server/cli/install/installer.js";
+import { ensurePublishKey } from "../../server/cli/publish/keystore.js";
+import { ensurePublishKeyRegistered, isKeyInPlace } from "./publish-key-registration.js";
+import { executePublish } from "./publish-execute.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
 // 线上源可运行(spec desktop-online-source-runnable,任务 3.1/3.2):安装端口与解析插件。
@@ -882,6 +885,45 @@ function buildSingleton(): HandlerSingleton {
     // 枚举 provider(与 GET /agent-sources 同一实例)。惰性求值:provider 在下方构造。
     listAgentSources: async () => await agentSourcesProvider.list(),
     cwd: config.defaultCwd,
+    // 发布前确保本机公钥已登记(spec publish-key-lifecycle)。惰性求值,理由同上。
+    // 未登录 / 未配置云端 → 直接跳过(编排器内部对 grant 缺席即返回),不产生任何请求。
+    ensurePublishKeyRegistered: async () => {
+      if (desktopCapabilitiesClient === undefined) return;
+      await ensurePublishKeyRegistered({
+        ensureKey: () => ensurePublishKey(),
+        getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+        registerPublishKey: (input) => desktopCapabilitiesClient.registerPublishKey(input),
+      });
+    },
+    // 真实发布(spec publish-execution)。恒注入 —— 未配置云端时 `getPublishGrant` 取不到授予,
+    // `executePublish` 自己就会返回 `PUBLISH_NOT_AVAILABLE`(与本 spec 引入前逐字相同的文案),
+    // 故不必在此再判一次"有没有云端"(判两次 = 两处文案要同步)。
+    executePublish: (input) =>
+      executePublish(input, {
+        getPublishGrant: async () => desktopCapabilitiesClient?.getPublishGrant(),
+        // ★ 与 dry-run 路径不同:这里是**硬前置**。公钥没登记则服务端验签必然失败,
+        //   而那次失败会烧掉一个版本号。`already`(回执命中)同样算就位。
+        ensureKeyRegistered: async () => {
+          if (desktopCapabilitiesClient === undefined) return false;
+          const outcome = await ensurePublishKeyRegistered({
+            ensureKey: () => ensurePublishKey(),
+            getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+            registerPublishKey: (i) => desktopCapabilitiesClient.registerPublishKey(i),
+          });
+          return isKeyInPlace(outcome);
+        },
+      }),
+    auditPublish: (event): void => {
+      defaultOnAudit({
+        actor: "host-command",
+        at: new Date().toISOString(),
+        // 审计动作词表沿用既有三态,发布归入 install(它也是"把东西放进注册表")。
+        action: "install",
+        source: event.source ?? "publish",
+        outcome: event.outcome === "succeeded" ? "success" : "failure",
+        reason: redactReason(event.reason ?? event.outcome),
+      });
+    },
   };
   const agentHostCommand = createPackageHostCommand("agent", packageCommandDeps);
   const pluginHostCommand = createPackageHostCommand("plugin", packageCommandDeps);

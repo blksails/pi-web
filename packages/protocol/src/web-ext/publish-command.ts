@@ -31,7 +31,9 @@ export type PublishFile = z.infer<typeof PublishFileSchema>;
 
 /**
  * 预览与真实发布的差异声明。两位都为 true 即"这只是一次编译校验"。
- * 将来接上真实发布时,发布成功的结果不应携带本对象(或两位皆 false)。
+ *
+ * **真实发布成功时两位皆 `false`**(spec publish-execution R4.4)—— 那时结果是签过名的、
+ * 授予与属主关系都已由服务端判定过的。渲染器据此不出"仅预览"提示。
  */
 export const PublishDisclaimersSchema = z.object({
   /** 未签名 → 结果不含发布者身份(publisher 指纹)与签名。 */
@@ -40,6 +42,29 @@ export const PublishDisclaimersSchema = z.object({
   grantNotChecked: z.boolean(),
 });
 export type PublishDisclaimers = z.infer<typeof PublishDisclaimersSchema>;
+
+/**
+ * **已发布**的结果(spec publish-execution R2.5 / R4.1 / R5.4)。仅真实发布成功时存在。
+ *
+ * ## 为什么 `channelMoved` 是一等布尔位而不是并进 `ok`
+ *
+ * "版本已登记、但通道没移过去"是一个**部分成功**态:包确实进了注册表、版本号确实被占用了,
+ * 只是没有哪个通道指向它。把它渲染成失败会让用户以为可以原版本重试(不能,版本号已占用);
+ * 渲染成纯成功则会让用户以为消费方已经能拿到新版本(拿不到)。它必须能被单独看见。
+ */
+export const PublishedResultSchema = z.object({
+  sourceId: z.string(),
+  version: z.string(),
+  /** 内容寻址的 bundle key。可公开 —— 它不是凭据,回源要另经授权。 */
+  bundle: z.string(),
+  channel: z.string(),
+  /** 通道是否已指向该版本。`false` = 版本已登记但通道未移(部分成功)。 */
+  channelMoved: z.boolean(),
+  /** 以谁的身份、在哪个命名空间下发 —— 发布不可逆,得让用户看得见。 */
+  publisherId: z.string(),
+  org: z.string(),
+});
+export type PublishedResult = z.infer<typeof PublishedResultSchema>;
 
 /** `/…​ publish` 结果卡片的 data 契约。所有 string 字段在组装时已过 `redactSecrets`。 */
 export const PublishPreviewDataSchema = z.object({
@@ -58,6 +83,10 @@ export const PublishPreviewDataSchema = z.object({
   /** 编译期非阻断告警。**一等字段**,不得并入 steps。 */
   warnings: z.array(z.string()).default([]),
   disclaimers: PublishDisclaimersSchema,
+  /**
+   * 仅**真实发布**成功时存在。可选 —— 预览与失败结果不带它,故既有断言与渲染路径零影响。
+   */
+  published: PublishedResultSchema.optional(),
   /** 失败时的可区分说明;`hint` 给"改哪里"。 */
   error: z
     .object({

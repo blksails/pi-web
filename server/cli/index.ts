@@ -89,6 +89,7 @@ import { createPluginInstaller, type PluginInstaller } from "./install/plugin-in
 import { HttpRegistryAdapter } from "./registry/http-registry-adapter.js";
 import type { RegistryPort } from "./registry/registry-port.js";
 import { publish as runPublishOrchestrator } from "./publish/publish-orchestrator.js";
+import { ensurePublishKey, describeKeystoreError } from "./publish/keystore.js";
 import {
   listRegistryInstalls,
   findRegistryInstalls,
@@ -518,13 +519,22 @@ async function runPublish(
   const cwd = deps.cwd ?? process.cwd();
   const env = deps.env ?? process.env;
 
-  if (!dryRun && keyPath === undefined) {
-    return usageError(reporter, "publish", "缺少 --key <path>(签名私钥)。dry-run 亦需私钥以产出签名清单。");
+  // 签名密钥:显式 `--key` 最高优先;省略则用**本机密钥**(不存在即自动生成)。
+  // spec publish-key-lifecycle R1.1:发布不该被一道密码学准备工作卡住 ——
+  // 在此之前全仓没有任何密钥生成入口,用户拿不到可用私钥。
+  const keyRes = ensurePublishKey({
+    ...(keyPath !== undefined ? { explicitPath: keyPath } : {}),
+    env,
+  });
+  if (!keyRes.ok) {
+    reporter.fail("publish", { code: keyRes.error.code, message: describeKeystoreError(keyRes.error) });
+    return 1;
   }
-  // dry-run 也要签名(验收:打印将发布的清单),故 key 必需
-  if (keyPath === undefined) {
-    return usageError(reporter, "publish", "缺少 --key <path>(签名私钥)。");
-  }
+  const resolvedKeyPath = keyRes.value.path;
+  // 首次自动生成时告知路径与指纹 —— **私钥永不进任何输出面**(R1.4),这里只有可公开物。
+  const keyNote = keyRes.value.created
+    ? `;已在本机生成签名密钥 ${resolvedKeyPath}(指纹 ${keyRes.value.fingerprint},私钥仅存本机)`
+    : "";
 
   // dry-run 不需要 registry;正式发布需要
   const registry = buildRegistryFromEnv(env, deps.registry);
@@ -533,7 +543,7 @@ async function runPublish(
     return 1;
   }
 
-  reporter.start("publish", dryRun ? "演练(dry-run)" : "发布到注册表");
+  reporter.start("publish", `${dryRun ? "演练(dry-run)" : "发布到注册表"}${keyNote}`);
   // dry-run 用一个「永不外部写」的占位 registry(orchestrator 在签名后短路,不会触达它)
   const port: RegistryPort = registry ?? {
     async resolve() { return { ok: false, error: { code: "OTHER", detail: "dry-run" } }; },
@@ -545,7 +555,7 @@ async function runPublish(
 
   const res = await runPublishOrchestrator(port, {
     packageDir: cwd,
-    keyPath,
+    keyPath: resolvedKeyPath,
     dryRun,
     commitOnly,
     ...(channel !== undefined ? { channel } : {}),
@@ -596,7 +606,9 @@ export function describeCompileError(e: CompileError): string {
     case "MANIFEST_INVALID":
       return `${PI_WEB_MANIFEST_FILENAME} 格式不合法:${e.issues.join("; ")}`;
     case "KEY_UNUSABLE":
-      return `签名私钥不可用(${e.reason})。请检查 --key 指向的文件是否存在且为 {publicKey, privateKey} 结构。`;
+      // 省略 --key 时用的是本机密钥(`~/.pi-web/keys/publish.json`,keystore 保证其存在且合法),
+      // 故走到这里通常意味着显式 --key 指错了、或本机密钥在生成后被外部改坏。
+      return `签名私钥不可用(${e.reason})。请检查 --key 指向的文件是否存在且为 {publicKey, privateKey} 结构;未指定 --key 时用的是本机密钥。`;
   }
 }
 

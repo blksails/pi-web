@@ -78,6 +78,37 @@ export interface PackageHostCommandDeps {
    * 候选,执行与补全必须同基准,否则选中候选直接提交会解析失败。
    */
   readonly cwd?: string;
+  /**
+   * 发布前确保本机公钥已登记(spec publish-key-lifecycle,Req 2.1)。
+   *
+   * **best-effort**:未注入、或调用失败,`/agent publish` 的行为与输出**完全不变** ——
+   * 登记只是发布的准备,不是发布本身。
+   */
+  readonly ensurePublishKeyRegistered?: () => Promise<unknown>;
+  /**
+   * 真实发布(spec publish-execution)。**未注入 → 裸 `publish` 仍返回
+   * `PUBLISH_NOT_AVAILABLE`**,即"该部署未接入发布身份",语义与本 spec 引入前一致。
+   */
+  readonly executePublish?: (input: {
+    readonly packageDir: string;
+    readonly expectedKind: PluginKind;
+    readonly channel?: string;
+  }) => Promise<{ readonly data: PublishPreviewData; readonly message: string }>;
+  /**
+   * 发布结果审计。与 {@link audit} 分开:那个的 `outcome` 只有 `rejected`
+   * (它服务的是门控拒绝),而发布需要记成功/失败两态。
+   */
+  readonly auditPublish?: (event: PublishAuditEvent) => void;
+}
+
+/** 发布动作的审计事件(spec publish-execution R6.4)。**不含任何凭据**。 */
+export interface PublishAuditEvent {
+  readonly action: "publish";
+  readonly outcome: "succeeded" | "failed";
+  /** `sourceId@version`;仅成功(或部分成功)时有。 */
+  readonly source?: string;
+  /** 失败时的错误码(**不是** message —— message 可能含用户路径)。 */
+  readonly reason?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -100,6 +131,7 @@ function usageTextFor(kind: PackageCommandKind): string {
       "  install <source>     安装 agent 源(本地目录、npm 包、git 仓库,或 registry 标识如 org/name)",
       "  uninstall <id>       卸载已安装的 agent 源",
       "  list                 列出已安装的 agent 源",
+      "  publish <dir> [--channel <名>]  发布到注册表(需已登录;版本一经发布不可更改)",
       "  publish <dir> --dry-run   发布前预览(编译校验,不签名、不上传)",
       "注:本命令恒按 agent 处理来源,npm/git 直连来源亦然;plugin 请用 /plugin。",
       "注:来源/包标识暂不支持包含空格的路径。",
@@ -111,6 +143,7 @@ function usageTextFor(kind: PackageCommandKind): string {
     "  uninstall <id>       卸载已安装的 plugin",
     "  list [--outdated]    列出已安装 plugin(--outdated 如实转达底层是否支持)",
     "  update [id]          更新 plugin",
+    "  publish <dir> [--channel <名>]  发布到注册表(需已登录;版本一经发布不可更改)",
     "  publish <dir> --dry-run   发布前预览(编译校验,不签名、不上传)",
     "注:本命令恒按 plugin 处理来源;agent 源请用 /agent。",
     "注:来源/包标识暂不支持包含空格的路径。",
@@ -130,6 +163,8 @@ interface ParsedOptions {
   readonly hasKindFlag: boolean;
   readonly outdated: boolean;
   readonly dryRun: boolean;
+  /** `--channel <name>`(publish 用)。未给 → undefined,由下游落缺省。 */
+  readonly channel?: string;
 }
 
 function tokenize(argv: string): string[] {
@@ -142,6 +177,7 @@ function parseOptions(tokens: readonly string[]): ParsedOptions {
   let hasKindFlag = false;
   let outdated = false;
   let dryRun = false;
+  let channel: string | undefined;
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i]!;
     if (tok === "--kind") {
@@ -151,11 +187,15 @@ function parseOptions(tokens: readonly string[]): ParsedOptions {
       outdated = true;
     } else if (tok === "--dry-run") {
       dryRun = true;
+    } else if (tok === "--channel") {
+      // 取值同样要跳过,否则会被当成位置参数(与 --kind 同一坑)。
+      channel = tokens[i + 1];
+      i += 1;
     } else {
       positional.push(tok);
     }
   }
-  return { positional, hasKindFlag, outdated, dryRun };
+  return { positional, hasKindFlag, outdated, dryRun, ...(channel !== undefined ? { channel } : {}) };
 }
 
 interface ValidatedInstall {
@@ -179,6 +219,8 @@ interface ValidatedPublish {
   readonly dir: string;
   /** `--dry-run` = 预览;缺省 = **真正发布的意图**(见下方裁断)。 */
   readonly dryRun: boolean;
+  /** `--channel <name>`;未给时由下游落缺省(`stable`)。 */
+  readonly channel?: string;
 }
 
 type Validated =
@@ -248,7 +290,15 @@ function parseArgv(kind: PackageCommandKind, argv: string): ParseOutcome {
         message: `publish 缺少 <dir> 参数。\n用法: /${kind} publish <dir> --dry-run`,
       };
     }
-    return { ok: true, value: { action: "publish", dir, dryRun: opts.dryRun } };
+    return {
+      ok: true,
+      value: {
+        action: "publish",
+        dir,
+        dryRun: opts.dryRun,
+        ...(opts.channel !== undefined ? { channel: opts.channel } : {}),
+      },
+    };
   }
 
   return { ok: true, value: { action: "update", packageId: opts.positional[0] } };
@@ -484,33 +534,62 @@ export function createPackageHostCommand(
   /**
    * `publish` 子动作。
    *
-   * ★ 语义裁断:`--dry-run` = 预览;**裸 `publish` = 真正发布的意图**,返回
-   *   `PUBLISH_NOT_AVAILABLE`。若让裸 `publish` 直接等于预览,用户就无从得知"我其实
-   *   没发布出去",且与 CLI 语义(裸 publish 即真发布)分叉。云端发布身份就绪后,
-   *   裸 publish 直接开始工作,**语义不变、文案无需改**。
+   * ★ 语义裁断(agent-plugin-commands 原文,**至今未变**):`--dry-run` = 预览;
+   *   **裸 `publish` = 真正发布的意图**。当时它返回 `PUBLISH_NOT_AVAILABLE`,并写着
+   *   「云端发布身份就绪后,裸 publish 直接开始工作,语义不变、文案无需改」——
+   *   spec publish-execution 兑现的正是这句:此处换成真实发布,语义与文案确实一字未改。
+   *
+   * 未注入 `executePublish`(该部署未接入发布身份)→ 仍返回 `PUBLISH_NOT_AVAILABLE`。
    */
   async function publishPreview(
     dir: string,
     dryRun: boolean,
     cwd: string | undefined,
+    channel?: string,
   ): Promise<CommandResult> {
     if (!dryRun) {
-      const message =
-        "该部署尚未接入发布身份,无法执行真正的发布。";
-      return publishResult(
-        {
-          ok: false,
-          files: [],
-          warnings: [],
-          disclaimers: { unsigned: true, grantNotChecked: true },
-          error: {
-            code: "PUBLISH_NOT_AVAILABLE",
-            message,
-            hint: "加 --dry-run 可做发布前预览(编译校验、文件清单与告警),不产生任何外部写。",
+      if (deps.executePublish === undefined) {
+        const message = "该部署尚未接入发布身份,无法执行真正的发布。";
+        return publishResult(
+          {
+            ok: false,
+            files: [],
+            warnings: [],
+            disclaimers: { unsigned: true, grantNotChecked: true },
+            error: {
+              code: "PUBLISH_NOT_AVAILABLE",
+              message,
+              hint: "加 --dry-run 可做发布前预览(编译校验、文件清单与告警),不产生任何外部写。",
+            },
           },
-        },
-        message,
-      );
+          message,
+        );
+      }
+      // 真实发布。相对路径基准与预览一致(见下方同一裁断)。
+      const absDir = path.isAbsolute(dir) ? dir : path.resolve(cwd ?? process.cwd(), dir);
+      const outcome = await deps.executePublish({
+        packageDir: absDir,
+        expectedKind: kind,
+        ...(channel !== undefined ? { channel } : {}),
+      });
+      // 审计:记录动作与结果,**不含任何凭据**(结果数据本身已保证无 token)。
+      deps.auditPublish?.({
+        action: "publish",
+        outcome: outcome.data.ok ? "succeeded" : "failed",
+        ...(outcome.data.published !== undefined
+          ? { source: `${outcome.data.published.sourceId}@${outcome.data.published.version}` }
+          : {}),
+        ...(outcome.data.error !== undefined ? { reason: outcome.data.error.code } : {}),
+      });
+      return publishResult(outcome.data, outcome.message);
+    }
+    // 发布前**尽力**确保本机公钥已登记(spec publish-key-lifecycle)。
+    // ★ 刻意吞掉一切失败且不改下方任何输出:预览本可以照常给出编译校验与文件清单,
+    //   登记不上不该让它整个崩。
+    try {
+      await deps.ensurePublishKeyRegistered?.();
+    } catch {
+      /* best-effort;失败对本命令的输出零影响 */
     }
     // 相对路径以会话 cwd 为基准 —— 必须与补全端点同基准,否则选中候选提交即失败。
     const abs = path.isAbsolute(dir) ? dir : path.resolve(cwd ?? process.cwd(), dir);
@@ -618,7 +697,7 @@ export function createPackageHostCommand(
       }
 
       if (v.action === "publish") {
-        return publishPreview(v.dir, v.dryRun, cwd);
+        return publishPreview(v.dir, v.dryRun, cwd, v.channel);
       }
 
       // update:仅 plugin 命令可达(agent 命令的 update 已在解析层按未知子动作拒绝)。

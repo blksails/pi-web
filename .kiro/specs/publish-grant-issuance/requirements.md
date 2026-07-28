@@ -181,8 +181,21 @@ publish 授予，registry 认它并解出 `{publisherId, tenantId, org}`。pi-we
 
 ### P2 / P3 未启动的原因
 
-- **P2（打通真实发布）**：发布的授权本体是**验签**，而当前 provision 出的 publisher 是**空钥**的，
-  `registerVersion` 会在 `publisher.keys.some(...)` 上必然失败。缺的不是接线，是
-  **公钥从哪来**（设计稿 Q2，三个候选：本机生成上报 / 云端代生成代管 / 企业自带上传）。
-  该问未决，P2 写出来也是死的。
+- **P2（打通真实发布）**：~~发布的授权本体是**验签**，而当前 provision 出的 publisher 是**空钥**的~~
+  → **该前置已由 spec `publish-key-lifecycle` 解除（2026-07-28）**：本机自动生成密钥、
+  公钥经 `POST /api/desktop/publish/keys` 自动登记，`publisher.keys` 不再恒空。
+  P2 剩余的是**接线本身**（`uploadBundle → registerVersion → setChannel`）与
+  Req 4 的路由接线（见上）。
 - **P3（可见性选择）**：依赖 P2 的 `createSource` 调用点存在。
+
+### 2026-07-28 追记：P2 已交付（spec `publish-execution`）
+
+★ 交付时发现一处**本 spec 遗留的真阻塞**：`HmacPublishTokenVerifier` 在本 spec 造好并测过，
+却**从未接进 `apps/registry` 的 `buildTokenVerifier()`** —— 即上表 Req 3 标 ✅ 只覆盖了
+「校验器写对了」，没覆盖「它被装上了」。cloud 签得出 token、真实 registry 一律拒绝，
+而这不会有任何报错，只在真机上表现为"登录了也发不出去"。
+
+已在 `publish-execution` 任务 1.1 接入，并把**装配点本身**纳入验收
+（`apps/registry/test/token-verifier.test.ts`，四种 env 组合）。
+
+**教训**：造好一个组件并为它写测试，不等于它在跑。装配点要么被测试覆盖，要么在验收清单里点名。

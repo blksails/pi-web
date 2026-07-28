@@ -211,6 +211,42 @@ describe("host 命令 · publish 子动作", () => {
     expect(text).not.toMatch(/token|PI_WEB_REGISTRY|\.key|privateKey/i);
   });
 
+  // ── spec publish-key-lifecycle:登记是 best-effort,对本命令的输出必须**零影响** ──
+  it("★ 登记钩子抛错 → 预览输出与不接钩子时**逐字段相同**", async () => {
+    const argv = "publish ./examples/plugin-code-review-agent --dry-run";
+    const baseline = await createPackageHostCommand("plugin", baseDeps()).execute({ session, argv });
+    const withFailingHook = await createPackageHostCommand(
+      "plugin",
+      baseDeps({
+        ensurePublishKeyRegistered: async () => {
+          throw new Error("cloud down");
+        },
+      }),
+    ).execute({ session, argv });
+
+    expect(withFailingHook.dataPart).toBe(baseline.dataPart);
+    expect(withFailingHook.message).toBe(baseline.message);
+    expect(withFailingHook.data).toEqual(baseline.data);
+  });
+
+  it("登记钩子在预览**之前**被调用一次(发布前确保公钥已登记)", async () => {
+    const hook = vi.fn(async () => undefined);
+    await createPackageHostCommand("plugin", baseDeps({ ensurePublishKeyRegistered: hook })).execute({
+      session,
+      argv: "publish ./examples/plugin-code-review-agent --dry-run",
+    });
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it("裸 publish(非 dry-run)**不**触发登记 —— 那条路径根本走不到签名", async () => {
+    const hook = vi.fn(async () => undefined);
+    await createPackageHostCommand("agent", baseDeps({ ensurePublishKeyRegistered: hook })).execute({
+      session,
+      argv: "publish ./examples/plugin-code-review-agent",
+    });
+    expect(hook).not.toHaveBeenCalled();
+  });
+
   it("缺 <dir> → 用法文本,不触达任何编译", async () => {
     const cmd = createPackageHostCommand("agent", baseDeps());
     const r = await cmd.execute({ session, argv: "publish" });

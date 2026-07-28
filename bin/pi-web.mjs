@@ -177,7 +177,7 @@ const SUBCOMMAND_SPECS = {
 
 选项:
       --dry-run        演练模式:编译与全部校验但不发起任何外部写操作
-      --key <path>      签名私钥路径
+      --key <path>      签名私钥路径(可选;省略则用本机密钥 ~/.pi-web/keys/publish.json,不存在时自动生成)
       --channel <name>  发布通道(未指定时使用稳定通道)
       --commit-only     只提交版本,不移动发布通道指向
   -h, --help            显示本帮助并退出
