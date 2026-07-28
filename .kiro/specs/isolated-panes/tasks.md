@@ -182,3 +182,65 @@
 按本仓已备好的 `PaneAgentModule` 模式执行迁移并各自取证(该仓侧的工作项)。
 
 本仓侧的 isolated-panes 地基(Wave 1–4 + pi-web 接缝)至此全部完成。
+
+## Wave 5 前置演练:aigc-canvas-agent 就地迁 Pane(2026-07-28)
+
+**6.1/6.2/6.3 仍不勾。** 本轮做的是**本仓一个真实业务示例的 slots → panes 就地迁移**,
+作为跨仓迁移的前置演练与参照实现;它不满足 6.1 的验收(「按素材、Canvas、任务、历史等领域
+拆 Pane;原型 UI/UX 在 Pane 架构下恢复」)——本示例只有 canvas 一个域,原型 UI 仍在外部仓。
+
+### 为什么值得单做一轮
+
+上面那节的结论(本仓 kit 侧「已全部完成」)**不完全成立**。把一个真实业务 UI 推过 iframe
+边界后,立刻暴露了两个 panes-kit 结构性缺陷——它们在槽(slot)形态下不可能出现,
+因此 `panes-agent` 与全部既有 conformance 测试都测不到:
+
+| # | 缺陷 | 故障表现 | 修法 |
+|---|---|---|---|
+| 1 | `PanesHost.connect()` 把 surface 订阅**一次性绑死**在建连那一刻的 `surface` 上;宿主 `surfaceAccess` 由 `useMemo` 依赖会话连接/命令表构造,就绪握手后即换新实例,新快照落进新 store | pane 起来了、能力探针也对,**快照永远为空** | 抽 `bindSurface`,`surface` 换身份时整组退订重绑并立即重推当前值 |
+| 2 | 建连仅两个触发点(iframe `onLoad`、guest `pane:ready`),`srcDoc` 无网络、解析完即执行,**刷新**时 workspace 从 localStorage 同步恢复、iframe 首帧即在,两者可同时早于宿主就绪 | tab/iframe/guest 脚本都在,`PaneGuestProvider` 空等 `pane:connected`,渲染 45 字符空壳;**只在刷新后复现** | 按 epoch 幂等补一次主动扫描;`pane:ready` 改**强制重连**(语义即「guest 重启、需新端口」) |
+
+★ 修 #2 时曾**只跑 panes-kit 单测(31/31 绿)就下结论**,而那套测试覆盖不到该时序:
+补连扫描在 guest 未就绪时抢先建连、epoch 守卫又挡掉真正的 `pane:ready`,导致 4 套 e2e 全红,
+比修前更差。教训:**panes-kit 绿 ≠ 真实浏览器里连得上**,pane 时序问题必须以 browser e2e 为判据。
+
+第三个缺陷在示例侧但同样有普遍性:`guest.query<T>()` 的泛型是**断言不是校验**,
+route 未声明时宿主把 404 错误体当正常结果 resolve 回来,直接解构即渲染期崩溃、整个 pane 被卸载。
+pane 的四条通道(route/surface/attachment/conversation)回来的都是未校验数据。
+
+### 迁移决策(外部仓照搬时同样适用)
+
+1. **`launcherRail` 入口必须撤** —— `canvasOpenStore` 是 module-level store,不跨 realm,留着是死按钮。
+2. **`promptToolbar` 必须留** —— 它在宿主 realm,经 state 桥 KV 与子进程图像工具通信,与 pane 化无关;位置(发送键旁)即语义。
+3. **轮末 auto-sync 需宿主侧补一手** —— `syncSignal` 不在 pane 协议里,由 `web.config.tsx` 的
+   `ConfiguredPanesHost` 包装器代发 `run("canvas","sync")`。**刻意不往协议加通用 host-signal**:
+   「一轮结束该 reconcile」是 canvas 域策略,多数 pane 不在对话语境里。
+4. **pane 内容要给宿主浮层让位** —— 宿主的 `[data-pi-panel-ratio-switch]`(`absolute bottom-4 right-4 z-40`)
+   会盖住 pane 右下角的动作按钮(实测点击被拦截,真实用户同样点不动);pane 侧加底部内边距,不改宿主 chrome。
+
+### 改动面
+
+- 新增 `examples/aigc-canvas-agent/{pane-meta.ts,panes-modules.ts,build.ts,web/}`;删 `.pi/web/web.config.tsx`
+  与 `routes/index.ts`(pane 形态下 `PaneAgentModule` 即汇总点);`pi-web.json` 升 1.1.0(**未发布**)。
+- `packages/panes-kit/src/react/panes-host.tsx` 三处(bindSurface / 补连扫描 / ready 强制重连);
+  `test/panes-host.test.tsx` 改为在 `render` 前经 `HTMLIFrameElement.prototype.contentWindow`
+  getter 装录制器,使断言对「宿主何时建连」不敏感(守的内容未放宽)。
+- `lib/app/webext-registry.ts` 改导入编译产物;`scripts/build-webext-examples.ts` 接入本示例构建。
+- 文档:`examples/aigc-canvas-agent/README.md` 新增「从 slots 迁到 panes」;
+  `docs/product/16-canvas-workbench.md`(中英)与 `docs/surface-extension-standard.md` 的槽车道
+  范例改指 `examples/canvas-plugin-stickers`(该示例仍是完整三槽形态)。
+
+### 取证(2026-07-28 新鲜运行)
+
+- browser e2e 4 套 **12 passed**(含未迁移的 `canvas-plugin-stickers` / `aigc-canvas-degrade`,
+  证实 panes-kit 改动未波及槽车道)
+- 根 app 测试 897 passed;panes-kit 31/31;真实 runner 集成 `canvas-surface.integration` 4/4
+- 示例 tsc / 根 tsc 均 EXIT=0(★ 根 tsconfig `exclude: ["examples"]`,**examples 无 typecheck 面**,
+  本轮用临时 tsconfig 补检——这是仓库既有缺口,非本轮引入)
+- ⚠ **`e2e/sandbox-browser/aigc-canvas-sandbox.e2e.ts` 已按 `frameLocator` 同步改写但未运行** ——
+  需真实 e2b + API key + 重新烘焙镜像,本机无法取证。
+
+### 对 6.1 的意义
+
+外部仓迁移时,上述 4 条决策与 3 个缺陷会原样重现,而那边**没有这套 e2e 兜底**。
+本示例可作为 6.1 的参照实现直接对照。

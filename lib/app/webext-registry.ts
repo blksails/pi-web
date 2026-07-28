@@ -14,7 +14,7 @@ import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
 import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
-import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/web.config";
+import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
@@ -83,7 +83,10 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-background-agent", ext: backgroundExt },
   // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
   { match: "aigc-agent", ext: aigcExt },
-  // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——launcherRail 入口 + panelRight 画廊/工作台。
+  // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
+  // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
+  // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),
+  // `.pi/web` 不存作者源码——源在 `web/`。
   // 注:match 顺序在 "aigc-agent" 之后,但 resolveExtensionForSource 用 includes 首命中;
   // "aigc-canvas-agent" 不含子串 "aigc-agent"(-canvas- 打断),故独立命中,无需担心顺序。
   { match: "aigc-canvas-agent", ext: aigcCanvasExt },

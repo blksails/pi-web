@@ -10,6 +10,7 @@
 import { resolve } from "node:path";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { buildPanesAgent } from "../examples/panes-agent/build.js";
+import { buildAigcCanvasAgent } from "../examples/aigc-canvas-agent/build.js";
 
 const EXAMPLES = [
   "webext-layout",
@@ -41,8 +42,11 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[built] ${name} → ${result.entryOut} (${result.manifest.integrity})`);
   }
+  // 自带 pane 文档构建的示例(esbuild 打 iframe srcDoc + 内联 CSS),各自有 build.ts。
   const panes = await buildPanesAgent();
   console.log(`[built] panes → ${panes.entryOut} (${panes.manifest.integrity})`);
+  const aigcCanvas = await buildAigcCanvasAgent();
+  console.log(`[built] aigc-canvas → ${aigcCanvas.entryOut} (${aigcCanvas.manifest.integrity})`);
 }
 
 void main().catch((err: unknown) => {
