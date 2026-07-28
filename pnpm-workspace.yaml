@@ -1,4 +1,3 @@
 packages:
   - 'packages/*'
   - 'desktop'
-  - 'examples/aigc-agent/media-tools'

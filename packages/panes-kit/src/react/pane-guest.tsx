@@ -23,8 +23,7 @@ export function PaneGuestProvider({
   React.useEffect(() => {
     let mounted = true;
     let active: PaneGuestConnection | undefined;
-    const controller = new AbortController();
-    void connectPaneGuest({ expectedPaneId: paneId, signal: controller.signal }).then(
+    void connectPaneGuest({ expectedPaneId: paneId }).then(
       (next) => {
         if (!mounted) next.close();
         else {
@@ -38,7 +37,6 @@ export function PaneGuestProvider({
     );
     return () => {
       mounted = false;
-      controller.abort();
       active?.close();
     };
   }, [paneId]);

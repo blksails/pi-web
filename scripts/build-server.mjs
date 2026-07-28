@@ -19,7 +19,7 @@
 import * as esbuild from "esbuild";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -153,10 +153,7 @@ export async function buildCliCommands() {
 
 export { CLI_COMMANDS_OUT_FILE };
 
-// ★ 必须走 pathToFileURL:Windows 下 argv[1] 是 `C:\...`,手拼 `file://` 得不到
-//   `file:///C:/...`,判据恒 false → 脚本静默 exit 0、零产物(Windows 上 `pnpm build:server`
-//   曾因此无声失败,CLI 子命令产物 dist/cli-commands.mjs 永不生成)。
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   const { outfile } = await buildServer();
   process.stdout.write(`[build-server] → ${outfile}\n`);
   const { outfile: cliOutfile } = await buildCliCommands();

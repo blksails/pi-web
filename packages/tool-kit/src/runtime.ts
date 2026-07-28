@@ -210,18 +210,5 @@ export { McpClientManager, redactSecrets, DEFAULT_MCP_CONNECT_TIMEOUT_MS } from 
 export { createMcpTransport, UnsupportedMcpTransportError } from "./mcp/transport-factory.js";
 export { adaptMcpTool, composeToolName, resolveParameterSchema } from "./mcp/tool-adapter.js";
 export { loadMcpConfig, mcpConfigPath, resolveAgentDir, MCP_CONFIG_FILENAME } from "./mcp/config-loader.js";
-export {
-  createMcpCallPort,
-  getMcpCallPort,
-  installMcpCallPort,
-  disposeMcpCallPort,
-  MCP_CALL_PORT_SEAM_KEY,
-} from "./mcp/call-port.js";
 export type { McpConnectOutcome, McpServerHandle } from "./mcp/client-manager.js";
 export type { McpToolDescriptor, McpToolCallResult } from "./mcp/tool-adapter.js";
-export type {
-  McpCallInput,
-  McpCallResult,
-  McpCallPort,
-  McpCallPortInstallation,
-} from "./mcp/call-port.js";

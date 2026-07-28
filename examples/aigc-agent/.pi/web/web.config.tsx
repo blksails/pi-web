@@ -1,86 +1,150 @@
 /**
- * examples/aigc-agent 的 ③ Web UI 扩展 —— 隔离 PanesHost 形态。
+ * aigc-agent UI 扩展:Tier2 自定义 tool 渲染器,让 text_to_image / image_edit 产物显示为图片,
+ * **同时保留默认工具卡片外观**(工具名 / 状态 / 可折叠明细)。
  *
- * 弃自造工作区壳(WorkspacePanel/rail/toolbar/主题),转 pi-web 基础风格(以 aigc-canvas-agent 为基准)。
- * 右侧三业务域(搜图 / 素材 / 画布)各为独立 iframe pane(sandbox="allow-scripts"、不透明 origin、
- * MessageChannel + epoch 握手),经通用 PanesHost(panes-kit)+ 本源 aigcPanesDefinition 承载;
- * 数据按 capability 白名单经 Agent Routes、Surface、附件系统收敛,Guest 不持宿主对象/会话凭证。
+ * 做法:复用宿主的 `PiToolPart` 壳,仅把它的 `output`(默认是 content 数组 → JSON 代码块)
+ * 替换为 **markdown 字符串**;`PiToolPart` 对 string 型 output 走 `<Response>` 富渲染,
+ * 其中 `![name](displayUrl)`(工具 content 携带的带签名、带 `/api` 前缀的可达 URL)被渲成 `<img>`。
  *
- * import 只触及宿主提供的公开包(`@blksails/pi-web-kit` / `-panes-kit`)与本源文件,不 bundle 依赖——
- * 任何 pi-web 宿主加载 ./examples/aigc-agent 即得同一套 UI。
- *
- * 渲染器:image_generation/image_edit 产物渲成 <img>;媒体工具(视频/音频)产物同法渲染。
+ * 之所以从 content 取 URL 而非 details:pi 的 tool result 消息流只携带 content,details 不到前端。
  */
 import * as React from "react";
-import { defineWebExtension, type SlotRenderProps } from "@blksails/pi-web-kit";
-import { PanesHost } from "@blksails/pi-web-panes-kit/react";
-import { aigcPanesDefinition } from "../../web/panes/index.js";
-import { imageRendererExtension } from "./image-renderer.js";
-import { mediaRendererExtension } from "./media-renderer.js";
-// 输入区工具排(promptToolbar):＋ 分栏工具菜单 / 图钉快捷 pill / 意图胶囊 / 图像参数。
-import { AigcPromptToolbar } from "./prompt-toolbar.js";
-// 对话区浮标(accessoryBelowEditor):「定位我的输入」+ 输入导航弹层。
-import { ChatInputNav } from "./chat-input-nav.js";
-// 对话内媒体预览(dialogLayer):点图开灯箱(跨整段对话切换)+ hover pill(编辑 / 下载 / 下载全部)。
-import { MediaPreviewHost } from "./media-preview-host.js";
+import { defineWebExtension } from "@blksails/pi-web-kit";
+import { PiToolPart } from "@blksails/pi-web-ui";
 
-// advanced:可拖拽 tabs、IDE 分栏、命令面板(与 examples/panes-agent 同姿态)。
-const panesConfig = {
-  interactionMode: "advanced" as const,
-  allowTabReorder: true,
-  showCommandPalette: true,
-};
+/** content 数组 → 合并各 text part 的文本。 */
+function joinTextParts(parts: ReadonlyArray<unknown>): string {
+  return parts
+    .map((c) =>
+      c && typeof c === "object" && "text" in c
+        ? String((c as { text?: unknown }).text ?? "")
+        : "",
+    )
+    .join("\n");
+}
 
-function ConfiguredPanesHost(props: SlotRenderProps): React.JSX.Element {
-  return <PanesHost {...props} definition={aigcPanesDefinition} config={panesConfig} />;
+/**
+ * 把 tool part 的 output 归一为 markdown 文本(含 `![](displayUrl)`),兼容两条路径的形态:
+ *  - 即时 streaming 与历史回放现已同构:output = 工具结果对象 `{ content, details }`
+ *    (即时经 translate-event 透传 event.result;历史经 agent-message-to-ui 透传 m.details
+ *    —— pi 持久化历史**确实保留** details)→ 优先用 `details.assets[].displayUrl`;
+ *  - 纯 `content` 数组(无 details 的工具 / 旧消息)→ 合并其 text;
+ *  - string:原样。
+ */
+function extractText(output: unknown): string {
+  if (typeof output === "string") return output;
+  if (Array.isArray(output)) return joinTextParts(output);
+  if (output && typeof output === "object") {
+    const o = output as { content?: unknown; details?: unknown };
+    // 即时路径:details.assets 直接带签名 displayUrl,优先据此产 markdown 图片。
+    const assets = (o.details as { assets?: unknown } | undefined)?.assets;
+    if (Array.isArray(assets)) {
+      const md = assets
+        .map((a) => {
+          const x = a as { name?: unknown; displayUrl?: unknown };
+          return typeof x.displayUrl === "string"
+            ? `![${String(x.name ?? "image")}](${x.displayUrl})`
+            : "";
+        })
+        .filter(Boolean)
+        .join("\n");
+      if (md.length > 0) return md;
+    }
+    // 退而取 content(可能已含 markdown 图片)。
+    if (o.content !== undefined) return extractText(o.content);
+  }
+  return "";
+}
+
+/** 取工具结果的 content(剥 details);content 数组 / string 原样。 */
+function contentOf(output: unknown): unknown {
+  if (
+    output &&
+    typeof output === "object" &&
+    !Array.isArray(output) &&
+    "content" in output
+  ) {
+    return (output as { content?: unknown }).content;
+  }
+  return output;
+}
+
+/** 视图切换按钮样式(active 高亮)。 */
+function tabStyle(active: boolean): React.CSSProperties {
+  return {
+    fontSize: 11,
+    lineHeight: 1.4,
+    padding: "2px 10px",
+    borderRadius: 6,
+    border: "1px solid #d4d4d8",
+    background: active ? "#7c3aed" : "transparent",
+    color: active ? "#fff" : "#71717a",
+    cursor: "pointer",
+  };
+}
+
+function AigcImageRenderer({
+  part,
+  message,
+}: {
+  part: { output?: unknown; [k: string]: unknown };
+  message?: unknown;
+}): React.JSX.Element {
+  // 视图切换:image(默认,渲成图片)/ json(归一后的 content 走默认 JsonBlock,便于调试)。
+  const [view, setView] = React.useState<"image" | "json">("image");
+
+  // image:把 output 换成 markdown(含 `![](displayUrl)`),由 PiToolPart 的 Response 渲成图;
+  // json:展示工具调用——输入参数 input(prompt/model 等)+ 输出 content。
+  //   PiToolPart 在完成态只渲染 output,故把 input 一并并入,使调用参数可见。
+  // TODO(设置选项):output 的 details(ok/variant/assets/displayUrl)暂不显示(冗余,图已呈现);
+  //   未来在设置里加「显示工具明细 details」开关再放出完整 { input, output }。
+  const output =
+    view === "image"
+      ? extractText(part.output)
+      : { input: part.input, output: contentOf(part.output) };
+  const patched = { ...part, output };
+
+  return (
+    <div data-testid="aigc-tool-card">
+      <div
+        style={{
+          display: "flex",
+          gap: 4,
+          justifyContent: "flex-end",
+          marginBottom: 4,
+        }}
+      >
+        <button
+          type="button"
+          data-testid="aigc-view-image"
+          aria-pressed={view === "image"}
+          onClick={() => setView("image")}
+          style={tabStyle(view === "image")}
+        >
+          图片
+        </button>
+        <button
+          type="button"
+          data-testid="aigc-view-json"
+          aria-pressed={view === "json"}
+          onClick={() => setView("json")}
+          style={tabStyle(view === "json")}
+        >
+          JSON
+        </button>
+      </div>
+      <PiToolPart part={patched as never} message={message as never} />
+    </div>
+  );
 }
 
 export default defineWebExtension({
-  manifestId: "aigc-studio",
-  capabilities: ["slots", "renderers", "config"],
-  config: {
-    panelRatio: "centered",
-    logsPanelPosition: "bottom",
-    // 空态:图像起手式;mergeCommands:"replace" 覆盖宿主默认建议,只呈现这些图像起手式。
-    empty: {
-      title: "图像工作台",
-      subtitle: "描述画面直接生成;或上传图片做局部重绘 / 风格迁移 / 扩图。右侧可开搜图 / 素材 / 画布面板。",
-      starters: [
-        {
-          id: "gen-poster",
-          label: "生成海报",
-          value: "生成一张国潮风格的新年海报,主体是一只戴红围巾的兔子,竖版",
-          mode: "fill",
-        },
-        {
-          id: "gen-ip",
-          label: "IP 三视图",
-          value: "为一个圆脸猫咪 IP 设计正面 / 侧面 / 背面三视图设定,扁平插画风",
-          mode: "fill",
-        },
-        {
-          id: "edit-inpaint",
-          label: "局部重绘",
-          value: "把图中背景替换为夕阳海滩(请先在输入框上传要编辑的图片)",
-          mode: "fill",
-        },
-      ],
-      mergeCommands: "replace",
-    },
-  },
-  // 右栏挂通用 PanesHost(宿主只负责 placement 与能力注入,pane 隔离由 panes-kit 承担);
-  // 登录、登出与桌面凭据同步由宿主统一 IdentityGate/useIdentity 承担。
-  slots: {
-    panelRight: ConfiguredPanesHost,
-    promptToolbar: AigcPromptToolbar,
-    accessoryBelowEditor: ChatInputNav,
-    dialogLayer: MediaPreviewHost,
-  },
-  // 图像(image_generation/image_edit)+ 媒体(视频/音频/ffmpeg)渲染器合并。
+  manifestId: "aigc",
+  capabilities: ["renderers"],
   renderers: {
     tools: {
-      ...(imageRendererExtension.renderers?.tools ?? {}),
-      ...(mediaRendererExtension.renderers?.tools ?? {}),
+      image_generation: AigcImageRenderer as never,
+      image_edit: AigcImageRenderer as never,
     },
   },
 });

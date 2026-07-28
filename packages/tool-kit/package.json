@@ -12,8 +12,7 @@
     "./commands": "./src/commands/index.ts",
     "./extension-entry": "./src/extension-tools/entry-path.ts",
     "./auto-title-entry": "./src/auto-title/entry-path.ts",
-    "./mcp-entry": "./src/mcp/entry-path.ts",
-    "./mcp-runtime": "./src/mcp/call-port.ts"
+    "./mcp-entry": "./src/mcp/entry-path.ts"
   },
   "engines": {
     "node": ">=22.19.0"

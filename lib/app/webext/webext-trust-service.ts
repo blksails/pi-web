@@ -17,17 +17,14 @@ import {
 import { verifyManifestSignature } from "./server-gate.js";
 import type { TrustedPublisherRegistry } from "./trusted-publisher-registry.js";
 
-// 契约类型已上提包面(REQ-A10:云宿主同用),此处 re-export 保持调用点零改;实现仍在本文件。
-export type {
-  VettedManifest,
-  TrustVerdict,
-  WebextTrustService,
-} from "@blksails/pi-web-server/webext-runtime";
-import type {
-  TrustVerdict,
-  VettedManifest,
-  WebextTrustService as TrustSvc,
-} from "@blksails/pi-web-server/webext-runtime";
+/** 服务端已验签、可安全下发浏览器的 manifest(去 signature,标记已预校验)。 */
+export type VettedManifest = Omit<WebExtensionManifest, "signature"> & {
+  readonly signaturePreVerified: true;
+};
+
+export type TrustVerdict =
+  | { readonly ok: true; readonly vetted: VettedManifest; readonly unsafeWarning?: string }
+  | { readonly ok: false; readonly reason: string };
 
 export interface TrustServiceConfig {
   readonly registry: TrustedPublisherRegistry;
@@ -35,6 +32,10 @@ export interface TrustServiceConfig {
   readonly requireSignature: boolean;
   /** 是否生产环境:生产强制签名、免签开关无效。 */
   readonly isProduction: boolean;
+}
+
+export interface WebextTrustService {
+  verifyManifest(manifest: WebExtensionManifest): Promise<TrustVerdict>;
 }
 
 function strip(manifest: WebExtensionManifest): VettedManifest {
@@ -45,7 +46,7 @@ function strip(manifest: WebExtensionManifest): VettedManifest {
 
 export function createWebextTrustService(
   cfg: TrustServiceConfig,
-): TrustSvc {
+): WebextTrustService {
   // 生产强制签名:免签开关无效(Req 10.2)。
   const enforceSignature = cfg.isProduction || cfg.requireSignature;
   return {

@@ -9,15 +9,9 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import {
   createMcpTransport,
-  McpHostAuthorizationConflictError,
-  McpHostAuthorizationUnavailableError,
-  resolveMcpRemoteHeaders,
   UnsupportedMcpTransportError,
 } from "../../src/mcp/transport-factory.js";
-import {
-  MCP_HOST_AUTHORIZATION_ENV,
-  type McpTransportConfig,
-} from "@blksails/pi-web-protocol";
+import type { McpTransportConfig } from "@blksails/pi-web-protocol";
 
 describe("createMcpTransport — 三种标准传输(Req 2.1)", () => {
   it("stdio → StdioClientTransport(Req 2.2)", () => {
@@ -47,41 +41,6 @@ describe("createMcpTransport — 三种标准传输(Req 2.1)", () => {
         headers: { Authorization: "Bearer t" },
       }),
     ).not.toThrow();
-  });
-
-  it("hostAuthorization 从会话 env 注入，不改写配置", () => {
-    const config = {
-      type: "streamable-http" as const,
-      url: "https://example.com/mcp",
-      headers: { "X-Trace": "t" },
-      hostAuthorization: true,
-    };
-    expect(resolveMcpRemoteHeaders(config, {
-      [MCP_HOST_AUTHORIZATION_ENV]: "Bearer desktop.credential",
-    })).toEqual({
-      "X-Trace": "t",
-      Authorization: "Bearer desktop.credential",
-    });
-    expect(config.headers).toEqual({ "X-Trace": "t" });
-  });
-
-  it("hostAuthorization 缺凭据或与静态 Authorization 冲突 → 稳定失败", () => {
-    expect(() =>
-      resolveMcpRemoteHeaders({
-        type: "sse",
-        url: "https://example.com/sse",
-        headers: {},
-        hostAuthorization: true,
-      }, {}),
-    ).toThrow(McpHostAuthorizationUnavailableError);
-    expect(() =>
-      resolveMcpRemoteHeaders({
-        type: "streamable-http",
-        url: "https://example.com/mcp",
-        headers: { authorization: "Bearer static" },
-        hostAuthorization: true,
-      }, { [MCP_HOST_AUTHORIZATION_ENV]: "Bearer dynamic" }),
-    ).toThrow(McpHostAuthorizationConflictError);
   });
 
   it("未知传输类型 → 明确报错,不静默降级、不自动回退", () => {

@@ -267,19 +267,10 @@ export function PanesHost({
     return undefined;
   }, [baseUrl, conversation, sessionId, surface, upload]);
 
-  /**
-   * `force`:`pane:ready` 路径专用 —— guest 以此声明「我刚就绪、手上还没有通道」,故必须重建,
-   * 不能因 host 侧还留着同 epoch 的旧记录就沉默(那条记录必然对应一个已消失的文档实例)。
-   *
-   * 不加 force 会在 **URL 文档 pane**(`document.kind === "html"` 且给 `src`)上死锁:module 脚本
-   * 会延迟 iframe 的 `load`,于是 host 先于 guest 注册监听就发了 `pane:connected`(消息丢失),
-   * guest 随后发 `pane:ready` 却被这里的 epoch 短路挡掉、host 不再重发 → guest 15s 后
-   * `Pane host handshake timed out`。同源 `srcDoc` 形态里 inline 脚本执行早于 load,故从不暴露。
-   */
-  const connect = React.useCallback((instance: PaneInstance, force = false): void => {
+  const connect = React.useCallback((instance: PaneInstance): void => {
     const frame = frames.current.get(instance.instanceId);
     if (frame?.contentWindow === null || frame?.contentWindow === undefined) return;
-    if (!force && connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
+    if (connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
     closeConnection(instance.instanceId, false);
     const pane = paneById(definition, instance.paneId);
     const channel = new MessageChannel();
@@ -333,7 +324,7 @@ export function PanesHost({
         const frame = frames.current.get(candidate.instanceId);
         return candidate.paneId === data.paneId && frame?.contentWindow === event.source;
       });
-      if (instance !== undefined) connect(instance, true);
+      if (instance !== undefined) connect(instance);
     };
     window.addEventListener("message", onGuestReady);
     return () => window.removeEventListener("message", onGuestReady);

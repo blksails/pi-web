@@ -55,15 +55,6 @@ export type UploadAttachmentFn = (
   file: File,
 ) => Promise<UploadAttachmentResponse>;
 
-/** 已落库附件引用(composer 拖放受口等零上传摄入;id 必须是 server 铸造的正式 id)。 */
-export interface ExistingAttachmentRef {
-  readonly attachmentId: string;
-  readonly name?: string;
-  readonly mimeType?: string;
-  /** 展示 URL(根相对时按 hook baseUrl 解析);缺省则 chip 无缩略图,提交不受影响。 */
-  readonly displayUrl?: string;
-}
-
 export interface UseAttachmentsOptions {
   /** 当前会话/agent 是否支持图片输入;默认 true。由上层依据能力决定。 */
   readonly supported?: boolean;
@@ -85,11 +76,6 @@ export interface UseAttachmentsResult {
    * 经 setItems 推进至 ready/error。
    */
   add(files: FileList | File[]): Promise<{ rejected: string[] }>;
-  /**
-   * 摄入已落库附件引用(零上传,直接 ready;composer 拖放 attachmentId 受口用)。
-   * 按 attachmentId 与既有项去重。始终由 hook 提供;声明为可选仅为对既有 mock 向后兼容。
-   */
-  addExisting?(refs: ReadonlyArray<ExistingAttachmentRef>): void;
   remove(id: string): void;
   clear(): void;
   /** 把 items 映射为 pi 的 ImageContent[](data 为裸 base64)。 */
@@ -276,35 +262,6 @@ export function useAttachments(
     [supported, nextId, markReady, markError],
   );
 
-  const addExisting = useCallback(
-    (refs: ReadonlyArray<ExistingAttachmentRef>): void => {
-      setItems((prev) => {
-        const known = new Set(
-          prev.map((it) => it.attachmentId).filter((v) => v != null),
-        );
-        const additions: PendingAttachment[] = [];
-        for (const r of refs) {
-          if (r.attachmentId === "" || known.has(r.attachmentId)) continue;
-          known.add(r.attachmentId);
-          additions.push({
-            id: nextId(),
-            name: r.name ?? r.attachmentId,
-            mimeType: r.mimeType ?? "image/*",
-            // 引用项无本地字节:dataUrl 置空,toImageContents 会跳过(仅按 id 引用提交)。
-            dataUrl: "",
-            status: "ready",
-            attachmentId: r.attachmentId,
-            ...(r.displayUrl !== undefined
-              ? { displayUrl: resolveDisplayUrl(baseUrlRef.current, r.displayUrl) }
-              : {}),
-          });
-        }
-        return additions.length > 0 ? [...prev, ...additions] : prev;
-      });
-    },
-    [nextId],
-  );
-
   const remove = useCallback((id: string): void => {
     setItems((prev) => prev.filter((it) => it.id !== id));
   }, []);
@@ -317,27 +274,21 @@ export function useAttachments(
   itemsRef.current = items;
 
   const toImageContents = useCallback((): ImageContent[] => {
-    // 引用项(addExisting,无本地字节)跳过——它们仅经 referenceIds 以 id 提交。
-    return itemsRef.current
-      .filter((it) => it.dataUrl !== "")
-      .map((it) => ({
-        type: "image",
-        data: base64FromDataUrl(it.dataUrl),
-        mimeType: it.mimeType,
-      }));
+    return itemsRef.current.map((it) => ({
+      type: "image",
+      data: base64FromDataUrl(it.dataUrl),
+      mimeType: it.mimeType,
+    }));
   }, []);
 
   const toFileParts = useCallback((): FileUIPart[] => {
-    return itemsRef.current
-      // 引用项无 displayUrl 时无可展示 URL,不产 file part(历史由 get_messages 重建)。
-      .filter((it) => it.displayUrl !== undefined || it.dataUrl !== "")
-      .map((it) => ({
-        type: "file",
-        mediaType: it.mimeType,
-        filename: it.name,
-        // 优先落库分发 URL(轻量);未就绪回退本地预览 dataUrl(当场可得)。
-        url: it.displayUrl ?? it.dataUrl,
-      }));
+    return itemsRef.current.map((it) => ({
+      type: "file",
+      mediaType: it.mimeType,
+      filename: it.name,
+      // 优先落库分发 URL(轻量);未就绪回退本地预览 dataUrl(当场可得)。
+      url: it.displayUrl ?? it.dataUrl,
+    }));
   }, []);
 
   const referenceIds = useCallback((): string[] => {
@@ -356,7 +307,6 @@ export function useAttachments(
       items,
       supported,
       add,
-      addExisting,
       remove,
       clear,
       toImageContents,
@@ -367,7 +317,6 @@ export function useAttachments(
       items,
       supported,
       add,
-      addExisting,
       remove,
       clear,
       toImageContents,

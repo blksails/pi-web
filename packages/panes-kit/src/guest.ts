@@ -131,36 +131,21 @@ export function connectPaneGuest(options: {
   readonly expectedPaneId: string;
   readonly timeoutMs?: number;
   readonly window?: Window;
-  readonly signal?: AbortSignal;
 }): Promise<PaneGuestConnection> {
   const guestWindow = options.window ?? globalThis.window;
   return new Promise((resolve, reject) => {
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = (): void => {
-      if (timeout !== undefined) clearTimeout(timeout);
+    const timeout = setTimeout(() => {
       guestWindow.removeEventListener("message", onConnect);
-      options.signal?.removeEventListener("abort", onAbort);
-    };
-    const onAbort = (): void => {
-      cleanup();
-      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake cancelled", { retryable: true }));
-    };
+      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake timed out", { retryable: true }));
+    }, options.timeoutMs ?? 15_000);
     const onConnect = (event: MessageEvent<unknown>): void => {
       const data = event.data as Partial<PaneConnectedMessage> | undefined;
       if (event.source !== guestWindow.parent || data?.type !== "pane:connected" || event.ports.length !== 1) return;
       if (data.protocol !== PANE_PROTOCOL_VERSION || data.instance?.paneId !== options.expectedPaneId) return;
-      cleanup();
+      clearTimeout(timeout);
+      guestWindow.removeEventListener("message", onConnect);
       resolve(createConnection(data as PaneConnectedMessage, event.ports[0]!, options.timeoutMs ?? 15_000));
     };
-    if (options.signal?.aborted === true) {
-      onAbort();
-      return;
-    }
-    timeout = setTimeout(() => {
-      cleanup();
-      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake timed out", { retryable: true }));
-    }, options.timeoutMs ?? 15_000);
-    options.signal?.addEventListener("abort", onAbort, { once: true });
     guestWindow.addEventListener("message", onConnect);
     // readiness 与 iframe load 双触发配合：无论 React effect 与 load 谁先发生，Host 都能握手。
     guestWindow.parent.postMessage({

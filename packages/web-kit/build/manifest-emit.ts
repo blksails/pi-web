@@ -11,7 +11,6 @@ import {
   canonicalManifestBytes,
   type WebExtensionManifest,
   type WebExtensionCapability,
-  type WebExtPane,
 } from "@blksails/pi-web-protocol";
 
 export { canonicalManifestBytes };
@@ -69,11 +68,6 @@ export interface EmitManifestInput {
   readonly entryBytes?: Uint8Array;
   readonly css?: string;
   readonly capabilities?: readonly WebExtensionCapability[];
-  /**
-   * 本扩展贡献的隔离 pane 清单。**隔离宿主唯一的 pane 来源** —— 它读不到 entry 的运行时
-   * 描述符(见 protocol `WebExtPaneSchema` 注释),缺了这段就只能把多域扩展压成单 pane。
-   */
-  readonly panes?: readonly WebExtPane[];
   /** Ed25519 私钥(base64 pkcs8);提供则对 manifest 签名。 */
   readonly signKey?: string;
 }
@@ -91,9 +85,6 @@ export async function emitManifest(
       : {}),
     ...(input.capabilities !== undefined
       ? { capabilities: [...input.capabilities] }
-      : {}),
-    ...(input.panes !== undefined && input.panes.length > 0
-      ? { panes: input.panes.map((p) => ({ ...p })) }
       : {}),
   };
   if (input.signKey !== undefined) {

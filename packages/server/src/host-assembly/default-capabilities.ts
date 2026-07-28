@@ -18,7 +18,6 @@ import type { HostCommandHandler } from "../commands/host-command-registry.js";
 import { asCommands, asRoutes, type HostContribution } from "./host-contribution.js";
 import { createConfigRoutes } from "../config/config-routes.js";
 import { createMcpConfigRoutes } from "../config/mcp-config-routes.js";
-import { McpProbeService } from "../config/mcp-probe.js";
 import { createSandboxProjectRoutes } from "../config/sandbox-project-routes.js";
 import { createSourceSettingsRoutes } from "../config/source-settings-routes.js";
 import { createExtensionsConfigRoutes } from "../config/extensions-config-routes.js";
@@ -132,23 +131,7 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
     // 若 config.domains 在前,GET /config/mcp 会被 `:domain`(="mcp") 抢匹配 → DOMAIN_NOT_FOUND。
     // 故 config.mcp **必须**排在 config.domains 之前(复刻现状 pi-handler 的既有约束)。
     // 顺序不同于 HOST_CAPABILITY_IDS_V1 名册,但 id 集相等(装配级测试守卫①)。
-    {
-      id: "config.mcp",
-      factory: (d) =>
-        asRoutes(
-          createMcpConfigRoutes({
-            agentDir: d.agentDir,
-            probeService: new McpProbeService({
-              hostAuthorization: () => {
-                const credential = d.authState?.currentCredential()?.trim();
-                return credential === undefined || credential.length === 0
-                  ? undefined
-                  : `Bearer ${credential}`;
-              },
-            }),
-          }),
-        ),
-    },
+    { id: "config.mcp", factory: (d) => asRoutes(createMcpConfigRoutes({ agentDir: d.agentDir })) },
     // config.domains / config.source:透传可选 `workspace`(注入承载) 与 `adminPolicy`(鉴权)——
     // 提供时走注入分支(config-workspace-injection);缺省则 rootDir 路径 + 默认放行(现状零变化)。
     {
