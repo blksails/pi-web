@@ -135,14 +135,19 @@ describe("ChatApp × panelRight controlled width", () => {
     expect(props?.panelWidth).toBe(900);
   });
 
-  it("left host button closes and reopens panelRight without changing its controlled width", async () => {
+  it("top-right pane button stays independent from the history sidebar", async () => {
     stubLoggingConfig({ outputs: {} });
     await startSession("C:/workcode/pi-web/examples/panes-agent");
     const toggle = document.querySelector("[data-panel-right-toggle]");
     expect(toggle).not.toBeNull();
+    expect(toggle?.classList.contains("right-2")).toBe(true);
+    expect(toggle?.classList.contains("top-2")).toBe(true);
+    expect(document.querySelector("[data-sidebar-collapse]")).not.toBeNull();
     expect(piChatSpy.mock.calls.at(-1)?.[0]?.panelRatio).toBe("2:1");
 
     await act(async () => fireEvent.click(toggle as Element));
+    expect(document.querySelector("[data-sidebar-collapse]")).not.toBeNull();
+    expect(document.querySelector("[data-sidebar-expand]")).toBeNull();
     expect(piChatSpy.mock.calls.at(-1)?.[0]).toMatchObject({
       panelRatio: "centered",
       panelWidth: 760,

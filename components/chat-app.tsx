@@ -836,22 +836,9 @@ function SessionView({
     // 折叠整条左栏:不提供 sidebar 槽 → PiChat 不渲染 aside,对话区吃满宽度。
     // 展开入口(浮钮)在 SessionView 内、PiChat 之上渲染(见 return)。
     if (sidebarCollapsed) return {};
-    // 左上宿主工具：业务 pane 开关(若有 panelRight)与会话栏折叠。
+    // 会话栏自身仅控制会话栏；Pane 开关独立置于应用右上。
     const sidebarTools = (
       <div className="flex shrink-0 items-center px-0.5 pt-0.5">
-        {hasPanelRight ? (
-          <button
-            type="button"
-            data-panel-right-toggle
-            onClick={togglePanelRight}
-            aria-expanded={panelRightOpen}
-            aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            className="inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-          >
-            <PanelRightIcon />
-          </button>
-        ) : null}
         <button
           type="button"
           data-sidebar-collapse
@@ -966,9 +953,6 @@ function SessionView({
     t,
     sidebarCollapsed,
     toggleSidebar,
-    hasPanelRight,
-    panelRightOpen,
-    togglePanelRight,
   ]);
 
   // Tier5 声明式 documentTitle:agent source 载入后把浏览器标签页标题同步为扩展声明值;
@@ -1045,31 +1029,29 @@ function SessionView({
       >
         {/* 侧栏折叠态:浮于对话区左上角的展开钮(侧栏已不渲染,须在此提供展开入口)。 */}
         {sidebarCollapsed ? (
-          <div className="absolute left-2 top-2 z-30 flex items-center gap-1">
-            <button
-              type="button"
-              data-sidebar-expand
-              onClick={toggleSidebar}
-              aria-label={t("chatApp.expandSidebar")}
-              title={t("chatApp.expandSidebar")}
-              className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-            >
-              <PanelToggleIcon />
-            </button>
-            {hasPanelRight ? (
-              <button
-                type="button"
-                data-panel-right-toggle
-                onClick={togglePanelRight}
-                aria-expanded={panelRightOpen}
-                aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-                title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-                className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-              >
-                <PanelRightIcon />
-              </button>
-            ) : null}
-          </div>
+          <button
+            type="button"
+            data-sidebar-expand
+            onClick={toggleSidebar}
+            aria-label={t("chatApp.expandSidebar")}
+            title={t("chatApp.expandSidebar")}
+            className="absolute left-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          >
+            <PanelToggleIcon />
+          </button>
+        ) : null}
+        {hasPanelRight ? (
+          <button
+            type="button"
+            data-panel-right-toggle
+            onClick={togglePanelRight}
+            aria-expanded={panelRightOpen}
+            aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            className="absolute right-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          >
+            <PanelRightIcon />
+          </button>
         ) : null}
         {/* Tier5 空态声明式配置(config.empty)→ PiChat props,与上方 theme/layout 同构。
             优先级契约在 PiChat 边界:PiChat 不读 extension.config,只认显式 props,故显式 props
