@@ -7,6 +7,7 @@
  *
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容
+ *  - `gemini-3.1-flash-image-newapi` NewAPI —— Gemini 3.1 Flash,providerModel gemini-3.1-flash-image
  *  - `gpt-image-2-sufy`          sufy(七牛云)—— OpenAI 兼容,providerModel openai/gpt-image-2
  *  - `gemini-3.1-flash-lite-image-sufy` sufy —— Gemini 3.1 Flash Lite,providerModel google/gemini-3.1-flash-lite-image
  *  - `wan2.7-image-pro`          DashScope sync —— 旗舰文生图
@@ -52,6 +53,17 @@ const ROUTES: readonly ImageRoute[] = [
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
+  // 路由键带 `-newapi` 后缀:裸键 `gemini-3.1-flash-image` 已被 OpenRouter 同名模型占用
+  // (openrouter-models.ts,走 /chat/completions);此处经 NewAPI 走 OpenAI 兼容 images 协议,
+  // providerModel 回到网关上的裸模型名。pricing 未知,故不声明(纯元数据,缺省不影响执行)。
+  createNewApiImage({
+    model: "gemini-3.1-flash-image-newapi",
+    label: "Gemini 3.1 Flash Image · NewAPI",
+    description:
+      "Google Gemini 3.1 Flash image generation via NewAPI gateway (OpenAI-compatible images). " +
+      "Fast & low-cost. Needs NEWAPI_API_KEY.",
+    providerModel: "gemini-3.1-flash-image",
+  }),
   createSufyImage(
     {
       model: "gpt-image-2-sufy",

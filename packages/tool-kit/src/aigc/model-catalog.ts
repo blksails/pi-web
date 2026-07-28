@@ -25,6 +25,7 @@ export interface AigcCatalogEntry {
 
 export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "gpt-image-2", label: "GPT Image 2 · NewAPI", provider: "newapi" },
+  { model: "gemini-3.1-flash-image-newapi", label: "Gemini 3.1 Flash Image · NewAPI", provider: "newapi" },
   { model: "gpt-image-2-sufy", label: "GPT Image 2 · sufy", provider: "sufy" },
   { model: "gemini-3.1-flash-lite-image-sufy", label: "Gemini 3.1 Flash Lite Image · sufy", provider: "sufy" },
   { model: "gemini-3.1-flash-image", label: "Gemini 3.1 Flash Image · OpenRouter", provider: "openrouter" },

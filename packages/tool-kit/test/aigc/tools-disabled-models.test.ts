@@ -5,7 +5,7 @@
  * (Req 2.1/2.6);被禁模型从路由集移除后,请求它经 selectRoute 回退默认(Req 2.4,过滤后自然成立)。
  */
 import { describe, it, expect } from "vitest";
-import { registerImageGeneration } from "../../src/aigc/tools/image-generation.js";
+import { registerImageGeneration, IMAGE_GENERATION_ROUTES } from "../../src/aigc/tools/image-generation.js";
 import { registerImageEdit } from "../../src/aigc/tools/image-edit.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -48,20 +48,9 @@ describe("registerImageGeneration/Edit 按 disabledModels 收敛", () => {
   });
 
   it("全禁 → 保留默认模型(工具仍注册且枚举非空,Req 2.5)", () => {
-    // 用一个不可能全命中的大集合模拟"尽量全禁";默认 gpt-image-2 必须仍在。
-    const many = new Set([
-      "wan2.7-image-pro",
-      "wan2.7-image-pro-bailian",
-      "gemini-3.1-flash-image",
-      "gemini-3-pro-image",
-      "gemini-2.5-flash-image",
-      "gpt-5-image",
-      "gpt-5-image-mini",
-      "gpt-5.4-image-2",
-      "gpt-image-2-sufy",
-      "gemini-3.1-flash-lite-image-sufy",
-      "gpt-image-2",
-    ]);
+    // 从路由表**派生**全集(而非手抄模型名):手抄清单在新增模型后会静默失去「全禁」语义,
+    // 变成「禁了一部分」——Req 2.5 的兜底分支就跑不到了。派生即真·全禁。
+    const many = new Set(IMAGE_GENERATION_ROUTES.map((r) => r.model));
     const t = collect(registerImageGeneration, many);
     // 全禁保留默认 → 描述至少含默认模型 gpt-image-2
     expect(t.description).toContain("`gpt-image-2`");
