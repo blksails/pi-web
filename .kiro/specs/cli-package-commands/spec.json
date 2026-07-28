@@ -1,9 +1,9 @@
 {
   "feature_name": "cli-package-commands",
   "created_at": "2026-07-09T08:37:16Z",
-  "updated_at": "2026-07-09T09:20:22Z",
+  "updated_at": "2026-07-28T00:00:00Z",
   "language": "zh",
-  "phase": "tasks-generated",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -18,5 +18,13 @@
       "approved": true
     }
   },
-  "ready_for_implementation": true
+  "ready_for_implementation": true,
+  "bookkeeping": {
+    "date": "2026-07-28",
+    "action": "phase 对账:统一为 implemented",
+    "basis": "tasks.md 中全部任务已勾选(实施当时留下的记录)",
+    "caveat": "★ 这是记账对账,不是新的完成验证。本次未重跑任何测试、未做真机核实。若需要完成宣称,须走 /kiro validate-impl 取新鲜证据。",
+    "previous_phase": "tasks-generated",
+    "tasks": "43/43"
+  }
 }
