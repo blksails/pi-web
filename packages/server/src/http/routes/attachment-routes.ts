@@ -224,6 +224,17 @@ export function makeRawAttachmentHandler(store: AttachmentStore): RouteHandler {
     const headers = new Headers();
     headers.set("Content-Type", mimeType);
     headers.set("Cache-Control", RAW_CACHE_CONTROL);
+    // ★ 允许**任意源**读取字节(isolated-panes:pane 是 srcdoc + sandbox="allow-scripts",
+    // 源为 opaque "null")。Canvas 舞台主图用 `crossOrigin="anonymous"` 加载 —— B 档客户端
+    // 编辑要把图画进 canvas 且不污染它,这是硬要求。缺 CORS 头时该请求失败,表现为舞台裂图,
+    // 而不带 crossOrigin 的版本条缩略图却正常,极易被误判成「URL 坏了」。
+    //
+    // 这不削弱访问控制:本端点的凭据**在 URL 里**(HMAC 签名 + 过期,见上方步骤 2),
+    // 不依赖 cookie/源。持有签名 URL 者本就能直接取到字节;CORS 只决定 JS 能否读取
+    // 这些**已经对他可读**的字节。
+    // ⚠ 因此绝不能同时设 `Access-Control-Allow-Credentials: true` —— 那才会让浏览器
+    // 带上环境凭据,把「URL 即凭据」变成「URL + 身份」,语义完全不同。
+    headers.set("Access-Control-Allow-Origin", "*");
     return new Response(toWebStream(stream), { status: 200, headers });
   };
 }

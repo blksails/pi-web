@@ -98,6 +98,28 @@ describe("makeRawAttachmentHandler (isolated)", () => {
     expect((await readBytes(res)).toString("utf8")).toBe("raw bytes here");
   });
 
+  it("★ 200 带 Access-Control-Allow-Origin: * 且**不带** Allow-Credentials(isolated-panes)", async () => {
+    // pane 是 srcdoc + sandbox="allow-scripts",源为 opaque "null";Canvas 舞台主图用
+    // `crossOrigin="anonymous"` 加载(B 档要把图画进 canvas 且不污染)。缺 ACAO 时该请求失败,
+    // 表现为舞台裂图、而不带 crossOrigin 的缩略图正常——极易被误判成 URL 坏了。
+    const store = makeStore();
+    const { displayUrl } = await seed(store, "png bytes", "image/png");
+    const handler = makeRawAttachmentHandler(store);
+
+    const req = rawRequest(displayUrl);
+    const res = await handler({
+      req,
+      auth: { anonymous: true } as AuthContext,
+      url: new URL(req.url),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    // ⚠ 守住不可放宽的一侧:本端点凭据在 URL 里(HMAC + 过期),开了 credentials 就变成
+    // 「URL + 环境身份」,语义完全不同。这条断言是有意的护栏,不是冗余。
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeNull();
+  });
+
   it("无签名(缺 exp/sig)→ 401,不返回字节", async () => {
     const store = makeStore();
     const { id } = await seed(store, "secret", "text/plain");
