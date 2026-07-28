@@ -267,10 +267,10 @@ export function PanesHost({
     return undefined;
   }, [baseUrl, conversation, sessionId, surface, upload]);
 
-  const connect = React.useCallback((instance: PaneInstance): void => {
+  const connect = React.useCallback((instance: PaneInstance, force = false): void => {
     const frame = frames.current.get(instance.instanceId);
     if (frame?.contentWindow === null || frame?.contentWindow === undefined) return;
-    if (connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
+    if (!force && connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
     closeConnection(instance.instanceId, false);
     const pane = paneById(definition, instance.paneId);
     const channel = new MessageChannel();
@@ -324,7 +324,8 @@ export function PanesHost({
         const frame = frames.current.get(candidate.instanceId);
         return candidate.paneId === data.paneId && frame?.contentWindow === event.source;
       });
-      if (instance !== undefined) connect(instance);
+      // ready 表示当前 guest 尚无通道；旧同 epoch 记录属于已卸载文档，须重建。
+      if (instance !== undefined) connect(instance, true);
     };
     window.addEventListener("message", onGuestReady);
     return () => window.removeEventListener("message", onGuestReady);

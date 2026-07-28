@@ -153,7 +153,13 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       protocol: PANE_PROTOCOL_VERSION,
       instance: { instanceId: "uploader-1", paneId: "uploader", epoch: 1 },
     });
-    const port = posted[0]!.ports[0]!;
+    // guest 重挂后同 epoch 再发 ready；host 必须废弃旧通道并重建。
+    window.dispatchEvent(new MessageEvent("message", {
+      data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "uploader" },
+      source: frame.contentWindow,
+    }));
+    expect(posted).toHaveLength(2);
+    const port = posted[1]!.ports[0]!;
     const results: Array<{ type?: string; requestId?: string; key?: string; value?: unknown }> = [];
     port.onmessage = ({ data }: MessageEvent) => results.push(data as never);
 
