@@ -233,3 +233,68 @@ describe("extractText", () => {
     expect(extractText(msg)).toBe("");
   });
 });
+
+describe("★ 写回时机(C 方案:用一次就不再问)", () => {
+  const VISION_B = model("qiniu", "gpt-5.4-mini");
+
+  /**
+   * 有 UI 且弹层返回指定 label —— 模拟用户在弹层里做了选择。
+   * `selectReturns` 必须是 **label 全文**(select 返回选中的字符串本身,非索引;
+   * label 形如 `provider/id — name`,见 select-model 的 modelLabel)。
+   */
+  function ctxWithPick(label = "apiservices/gpt-5.4 — gpt-5.4") {
+    const registry = fakeRegistry({ available: [VISION_A, VISION_B] });
+    return fakeCtx({ registry, hasUI: true, selectReturns: label });
+  }
+
+  it("弹层选过 → 写回所选模型", async () => {
+    const remembered: string[] = [];
+    const { ctx } = ctxWithPick();
+    const run = createVisionRunner(
+      deps({ rememberModel: (m: string) => remembered.push(m) }),
+    );
+
+    const res = await run({ image: "att_a", question: "?" }, ctx, undefined);
+
+    expect(res.ok).toBe(true);
+    expect(remembered).toEqual(["apiservices/gpt-5.4"]);
+  });
+
+  it("★ LLM 显式传 model → **不**写回(一次性指定,不代表用户取向)", async () => {
+    const remembered: string[] = [];
+    const { ctx } = ctxWithPick();
+    const run = createVisionRunner(
+      deps({ rememberModel: (m: string) => remembered.push(m) }),
+    );
+
+    await run(
+      { image: "att_a", question: "?", model: "qiniu/gpt-5.4-mini" },
+      ctx,
+      undefined,
+    );
+
+    expect(remembered).toEqual([]);
+  });
+
+  it("★ 已有配置默认 → **不**写回(本就是它自己,重复写盘无意义)", async () => {
+    const remembered: string[] = [];
+    const { ctx } = ctxWithPick();
+    const run = createVisionRunner(
+      deps({
+        defaultModel: () => "apiservices/gpt-5.4",
+        rememberModel: (m: string) => remembered.push(m),
+      }),
+    );
+
+    await run({ image: "att_a", question: "?" }, ctx, undefined);
+
+    expect(remembered).toEqual([]);
+  });
+
+  it("未注入 rememberModel → 正常完成,不抛(可选依赖)", async () => {
+    const { ctx } = ctxWithPick();
+    const run = createVisionRunner(deps());
+    const res = await run({ image: "att_a", question: "?" }, ctx, undefined);
+    expect(res.ok).toBe(true);
+  });
+});

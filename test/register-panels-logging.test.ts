@@ -34,6 +34,7 @@ vi.mock("@blksails/pi-web-ui", () => ({
   // aigc-tool-settings 后 register-panels 亦注册 aigcModelToggles 渲染器(register-panels.ts:146),
   // mock 须同步补齐,否则被测模块 import 即崩(与被测断言无关的装配依赖)。
   AigcModelTogglesField: vi.fn(),
+  VisionModelSelectField: vi.fn(),
 }));
 
 // protocol 是纯 schema 包(无运行时副作用),故整体透传真实导出而非逐项白名单:

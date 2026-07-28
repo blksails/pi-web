@@ -13,7 +13,8 @@
 import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { getAttachmentToolContext } from "../attachment/seam.js";
 import { registerImgVisionCommand } from "./command.js";
-import { createVisionRunner, envDefaultModel } from "./run-vision-tool.js";
+import { createVisionRunner } from "./run-vision-tool.js";
+import { visionModelResolver, writeVisionModelPreference } from "./model-preference.js";
 import { registerImageVision } from "./tools/image-vision.js";
 import { VISION_MODEL_ENV, type CompleteFn, type VisionRunnerDeps } from "./types.js";
 
@@ -49,7 +50,9 @@ function defaultDeps(): VisionRunnerDeps {
   return {
     complete: lazyComplete,
     getAttachmentCtx: () => getAttachmentToolContext(),
-    defaultModel: envDefaultModel(VISION_MODEL_ENV),
+    // config 域 `aigc.visionModel` > env;每次现读,使弹层写回立即生效(不必等下次会话)。
+    defaultModel: visionModelResolver(VISION_MODEL_ENV),
+    rememberModel: (model) => writeVisionModelPreference(model),
   };
 }
 
