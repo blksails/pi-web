@@ -366,6 +366,18 @@ fn main() {
                     handle.exit(0);
                 });
             }
+            // 事件循环即将退出：再收一次尾。
+            //
+            // ★ 不是对 ExitRequested 的重复：实测（2026-07-28）macOS 的 Apple Event 退出
+            //   （`osascript 'tell application "pi-web" to quit'`，与 ⌘Q 同路径）**不触发**
+            //   ExitRequested —— 壳进程消失而 server 存活、PPID=1、继续占端口。
+            //   这里是同步收尾，不 spawn：事件循环已在退出，派出去的任务不保证跑得到。
+            RunEvent::Exit => {
+                let state = app.state::<AppState>();
+                if let Ok(mut sup) = state.supervisor.lock() {
+                    sup.stop();
+                };
+            }
             // macOS：Dock 点击且无窗口 → 重开（Req 1.6）。
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {

@@ -98,6 +98,13 @@ pub fn build_child_env(
         "PI_WEB_SHELL_TOKEN".into(),
         crate::shell_token::shell_token().to_string(),
     );
+    // 壳自己的 pid(spec desktop-exit-orphan)。server 据此守望:壳一消失即自尽。
+    //
+    // ★ 这不是对 `stop()` 的重复,是它**覆盖不到**的那一半:
+    //   ① 实测 macOS 的 Apple Event 退出不触发 `RunEvent::ExitRequested`,`stop()` 根本没跑;
+    //   ② 壳被 SIGKILL 时它没有任何机会执行收尾。
+    //   而 server 是独立进程组组长(为能整组杀 runner 孙进程),故也不会随父进程被内核回收。
+    env.insert("PI_WEB_SHELL_PID".into(), std::process::id().to_string());
     env.insert(
         "PI_WEB_NODE_BIN".into(),
         node_bin.to_string_lossy().into_owned(),

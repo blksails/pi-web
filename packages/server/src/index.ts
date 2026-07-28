@@ -97,6 +97,8 @@ export * from "./capability/index.js";
 // 身份端口 P5(spec: desktop-account-login;契约 §6)。类型 + 两个实现 + 路由工厂,
 // 全部 pi-SDK-free(只依赖 auth/ 的纯类型面与 http/)。
 export * from "./identity/index.js";
+// 父进程守望(spec desktop-exit-orphan):壳死则 server 自尽,不留孤儿占端口。
+export * from "./parent-watchdog.js";
 // host-manifest:纯类型 + 纯常量名册 + 纯函数,零外部依赖(连 node builtins 也不用)。
 export * from "./host-manifest/index.js";
 // config-domain:外部依赖为 `zod`(仅 `import type { ZodTypeAny }`)与 `@blksails/pi-web-protocol`
