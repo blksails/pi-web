@@ -20,6 +20,18 @@
  */
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SourcesGrant } from "../agent-source-list/registry-http-provider.js";
+
+/**
+ * 发布授予(spec publish-grant-issuance)。在 sources 授予之上多两项**可展示**的身份:
+ * `publisherId` 与 `org` —— 发布不可逆,得让用户看得见以谁的身份、在哪个命名空间下发。
+ */
+export interface PublishGrant {
+  readonly baseUrl: string;
+  /** ⚠ 凭据:禁止写盘/日志/任何其它载荷。 */
+  readonly token: string;
+  readonly publisherId: string;
+  readonly org: string;
+}
 import type {
   CapabilityEgressGrant,
   CapabilityTenant,
@@ -111,6 +123,16 @@ export interface DesktopCapabilitiesClient {
    * 连本地源都看不到 —— 那是明确的回归。需要 fail-hard 语义请用 {@link loadStatic}。
    */
   getSourcesGrant(): Promise<SourcesGrant | undefined>;
+  /**
+   * 取发布授予;失败/未登录/企业未配置 org → `undefined`。
+   *
+   * ★ 与 {@link getSourcesGrant} **同规:必须吞掉一切异常**。发布命令的正确降级是给出
+   * 「该部署未接入发布身份」的失败卡片,而不是让整条命令抛成 500。
+   *
+   * ⚠ 返回 `undefined` 有三种成因(未登录 / 云端抖动 / 企业未配置 org),本方法**不区分** ——
+   * 需要区分请读 {@link loadStatic} 的完整快照。
+   */
+  getPublishGrant(): Promise<PublishGrant | undefined>;
   /** 清内存缓存(登出/切号时**必须**调用,否则下一个用户读到上一个用户的授予)。 */
   clearCache(): void;
 }
@@ -385,6 +407,28 @@ export function createDesktopCapabilitiesClient(
       if (cred === undefined || cred !== cache.credential) return undefined;
       if (Math.floor(now() / 1000) >= cache.refreshAfter) return undefined;
       return cache.snapshot;
+    },
+
+    async getPublishGrant(): Promise<PublishGrant | undefined> {
+      // 同 getSourcesGrant:catch 是刻意的,发布不可用应降级为失败卡片而非 500。
+      let snapshot: StaticCapabilitySnapshot;
+      try {
+        snapshot = await loadStatic();
+      } catch {
+        return undefined;
+      }
+      const publish = snapshot.publish;
+      if (publish === undefined) {
+        // 不 warn:企业未配置 org 时缺席是**正常**状态,不是异常
+        // (对比 sources 缺席 —— 那是配置问题,值得 warn)。
+        return undefined;
+      }
+      return {
+        baseUrl: publish.baseUrl,
+        token: publish.token,
+        publisherId: publish.publisherId,
+        org: publish.org,
+      };
     },
 
     async getSourcesGrant(): Promise<SourcesGrant | undefined> {

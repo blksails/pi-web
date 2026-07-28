@@ -95,6 +95,17 @@ export interface CapabilityTokenGrant extends CapabilityGrantBase {
 }
 
 /**
+ * 发布授予:在 {@link CapabilityTokenGrant} 之上附带发布身份。
+ *
+ * `publisherId` / `org` **不是**凭据,可展示;`token` 是凭据,同 `sources.token` 规矩。
+ */
+export interface CapabilityPublishGrant extends CapabilityTokenGrant {
+  readonly publisherId: string;
+  /** 包标识首段(= 企业的 org_name)。仅在企业已配置 org 时才会有本授予。 */
+  readonly org: string;
+}
+
+/**
  * 一次能力加载的结果快照。
  *
  * **各字段独立可选**(Req 5.1):任一字段缺失即表示该项能力不可用,消费方**必须**降级到
@@ -105,6 +116,19 @@ export interface CapabilitySnapshot {
   readonly tenant?: CapabilityTenant;
   readonly egress?: CapabilityEgressGrant;
   readonly sources?: CapabilityTokenGrant;
+  /**
+   * 发布授予(spec publish-grant-issuance)。
+   *
+   * 与 `sources` 同为「端点 + 短期 token」形态,额外携带**发布身份**:`publisherId` 与
+   * `org`(包标识首段)。`org` 之所以要给到客户端,是为了让用户看得见"以谁的身份、
+   * 在哪个命名空间下发布" —— 发布不可逆,不该让人蒙着发。
+   *
+   * **缺席即不可发布**,消费方降级到"该部署未接入发布身份"。宿主在企业未配置 org 时
+   * 会省略本字段(占位 org 不得进入已发布包的永久标识)。
+   *
+   * ⚠ `token` 是凭据,与 `sources.token` 同规:禁止写入 Workspace、日志或任何持久介质。
+   */
+  readonly publish?: CapabilityPublishGrant;
   /**
    * 附件远端后端授予。**只可能**出现在 {@link CapabilityProvider.loadForSession} 的返回里,
    * 且作用域限定于该会话(Req 5.3/5.4)。静态路径由 {@link StaticCapabilitySnapshot} 禁止它。
