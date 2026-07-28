@@ -41,6 +41,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.0.8
         version: 2.0.8(hono@4.12.28)
+      '@pi-clouds/registry-client':
+        specifier: npm:@blksails/registry-client@^0.0.2
+        version: '@blksails/registry-client@0.0.2'
       ai:
         specifier: ^5.0.0
         version: 5.0.204(zod@3.25.76)
@@ -856,6 +859,10 @@ packages:
   '@babel/types@7.29.7':
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
+
+  '@blksails/registry-client@0.0.2':
+    resolution: {integrity: sha512-hPy3xIZzmFzdjYcqB3MP+DmtaaUIKpjBFQkgEdgXQsO4Z8NLU/7YvRpuOkL6MJu/Ku28JdTV1LlZZg+tGZeC1A==}
+    engines: {node: '>=22.19.0'}
 
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
@@ -5820,6 +5827,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@blksails/registry-client@0.0.2': {}
 
   '@braintree/sanitize-url@7.1.2': {}
 

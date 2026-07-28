@@ -72,6 +72,7 @@
     "@blksails/pi-web-tool-kit": "workspace:*",
     "@blksails/pi-web-ui": "workspace:*",
     "@hono/node-server": "^2.0.8",
+    "@pi-clouds/registry-client": "npm:@blksails/registry-client@^0.0.2",
     "ai": "^5.0.0",
     "hono": "^4.12.28",
     "react": "^19.0.0",
