@@ -116,3 +116,39 @@ test("未登录时只有本地源,registry 条目不出现", async ({ page }) =>
   const ids = (body.sources ?? []).map((s) => s.id);
   expect(ids).not.toContain("acme/hello-cloud");
 });
+
+/**
+ * 能力边界(当前事实,非缺陷):registry 标识**不能**经 `/agent install` 安装。
+ *
+ * 两条路径的分工:
+ *  - source 选择器选中 registry 源 → `onlineSourceResolver` 查本地索引,未安装则经
+ *    registry 安装端口下载到扫描根,装完即被 scan-provider 枚举 —— 这是**受支持**的路径。
+ *  - `/agent install <registry-id>` → host 命令走 `Installer.install()`,其 `resolveSource`
+ *    对 registry 形态直接返回 REGISTRY_NOT_IMPLEMENTED(installer.ts)。CLI 侧的
+ *    `pi-web install` 另有一条经注册表的分支,但那条不在 `Installer` 端口里。
+ *
+ * 该用例钉住当前边界:哪天 Installer 接上 registry,它会失败并提醒更新此处与用法文本。
+ */
+test("registry 标识经 /agent install 安装 → 如实报 REGISTRY_NOT_IMPLEMENTED", async ({
+  page,
+}) => {
+  await login(page);
+  await page.locator("[data-agent-source-input]").fill("./examples");
+  await page.locator("[data-agent-source-submit]").click();
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+
+  const input = page.locator("[data-pi-input-textarea]");
+  await input.click();
+  await input.fill("/agent install acme/hello-cloud");
+  await page.waitForTimeout(600);
+  await input.press("Enter");
+  await page.waitForTimeout(300);
+  await input.press("Enter");
+
+  const card = page.locator("[data-pi-install-result]");
+  await expect(card).toBeVisible({ timeout: 20000 });
+  await expect(card).toHaveAttribute("data-pi-install-ok", "false");
+  await expect(card.locator("[data-pi-install-error]")).toContainText(
+    "REGISTRY_NOT_IMPLEMENTED",
+  );
+});
