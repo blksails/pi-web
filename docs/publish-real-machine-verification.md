@@ -94,6 +94,35 @@ echo '// smoke' > index.ts
 
 secret 用 `config:set --no-restart` 写入，**尚未生效** —— 下一次部署时随新容器加载。
 
+### ⚠️ 部署拓扑（2026-07-28 实测，踩过才知道）
+
+**别假设"两个应用都从 `main` 部署"。实测三条线各不相同：**
+
+| | dokku deploy branch | 实际推的是什么 |
+|---|---|---|
+| `pi-registry` | `main` | 本地 `main`（本次推成 `dfb0fd9`，fast-forward，成功） |
+| `pi-cloud` | `main` | ★ **`chore/npm-mirror-scope-split` 的某个点** —— 有人把该分支推成了远端的 `main` 引用 |
+
+后果：`git push dokku-cloud main:main` 会被拒（non-fast-forward），**这是对的** ——
+强推会抹掉线上 13 个提交。遇到这个拒绝**不要 `--force`**，先查：
+
+```bash
+git ls-remote dokku-cloud                       # 远端各 ref 指向
+git merge-base --is-ancestor <线上rev> main     # ★ 必须验祖先,不能只 rev-list --count
+```
+
+**★ 更根本的一条：本地 `main` 不是团队的集成分支。**
+真正的集成点是 GitHub 的 `origin/main`（提交带 PR 编号 `(#NN)`）。
+本地 `main` 是一条陈旧分支，上面的东西在 origin 上多已以 squash PR 的形式合过（同内容不同 hash）。
+**改动要上线，走 `origin/main` 的 PR，而不是往本地 `main` 合。**
+
+判别方法：
+
+```bash
+git rev-list --left-right --count origin/main...main   # 两边都非零 = 已分叉
+git log --oneline -1 origin/main                       # 带 (#NN) 的才是集成分支
+```
+
 ### 部署
 
 ```bash
