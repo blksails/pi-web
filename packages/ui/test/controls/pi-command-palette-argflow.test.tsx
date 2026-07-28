@@ -13,7 +13,7 @@ const PLUGIN_SPEC = {
   command: "plugin",
   subcommands: [
     { name: "install", aliases: ["add"], terminal: false, argKind: "localSource" as const },
-    { name: "uninstall", aliases: ["remove"], terminal: false, argKind: "installedExt" as const },
+    { name: "uninstall", aliases: ["remove"], terminal: false, argKind: "installedPlugin" as const },
     { name: "list", aliases: ["ls"], terminal: true },
   ],
 };

@@ -16,7 +16,7 @@ const PLUGIN: CommandArgSpec = {
       name: "uninstall",
       aliases: ["remove"],
       terminal: false,
-      argKind: "installedExt",
+      argKind: "installedPlugin",
     },
     { name: "list", aliases: ["ls"], terminal: true },
   ],

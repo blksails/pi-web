@@ -15,6 +15,14 @@ export interface CommandArgItem {
   readonly detail?: string;
 }
 
+/**
+ * 参数候选的数据域。
+ * - `localSource`:按会话 cwd 扫描出的可安装本地来源(`GET /sessions/:id/install-sources`)。
+ * - `installedAgent`:已安装的 agent 源(`GET /agent-sources`)。
+ * - `installedPlugin`:已安装的 plugin(`GET /extensions`)。
+ */
+export type CommandArgKind = "localSource" | "installedAgent" | "installedPlugin";
+
 /** 某命令的一个子命令规格。 */
 export interface SubcommandSpec {
   readonly name: string;
@@ -22,10 +30,16 @@ export interface SubcommandSpec {
   /** 终态:无需后续参数(如 list),靠 Enter 执行。 */
   readonly terminal: boolean;
   /**
-   * 非终态的参数类型,驱动 listArgs 的数据源。`installedExt` 为 `/plugin` 遗留(仅装/卸插件);
-   * `installedPackage` 为 `/install` 通用候选(插件 ∪ agent 源合并,见 install-arg-provider)。
+   * 非终态的参数类型,驱动 listArgs 的数据源。取值**域感知**(spec agent-plugin-commands):
+   * 类别由命令名决定后,不再需要"插件 ∪ agent 源合并"这种模糊候选,也不再需要给候选拼接
+   * `--kind` 后缀来纠正通道。
    */
-  readonly argKind?: "installedExt" | "localSource" | "installedPackage";
+  readonly argKind?: CommandArgKind;
+  /**
+   * 子动作说明的 i18n 字典键;命令面板据此渲染候选说明。缺省时回退 `<argKind>` 占位符,
+   * 使未声明说明的 spec 仍可用。
+   */
+  readonly descriptionKey?: string;
 }
 
 /** 某命令的参数补全规格。 */

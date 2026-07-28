@@ -16,6 +16,7 @@ import { defaultAdminPolicy } from "./security/admin-policy.js";
 import { defaultOnAudit } from "./security/audit.js";
 import { makeListExtensionsHandler } from "./routes/list-extensions.js";
 import { makeInstallSourcesHandler } from "./routes/install-sources.js";
+import { createScanInstallSourceProvider } from "./install-sources/scan-provider.js";
 import { makeInstallExtensionHandler } from "./routes/install-extension.js";
 import { makeRemoveExtensionHandler } from "./routes/remove-extension.js";
 import {
@@ -35,7 +36,12 @@ export function createExtensionRoutes(
   const timeoutMs = opts.piInstallTimeoutMs;
 
   const listHandler = makeListExtensionsHandler(opts.piCli);
-  const installSourcesHandler = makeInstallSourcesHandler(opts.store);
+  // 可安装来源枚举:缺省本地扫描实现;非本地形态经 opts.installSourceProvider 换实现
+  // (spec agent-plugin-commands,Req 8.3)。
+  const installSourcesHandler = makeInstallSourcesHandler(
+    opts.store,
+    opts.installSourceProvider ?? createScanInstallSourceProvider(),
+  );
   const installHandler = makeInstallExtensionHandler({
     piCli: opts.piCli,
     adminPolicy,

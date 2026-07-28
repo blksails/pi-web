@@ -15,6 +15,17 @@ export {
 } from "./install/install-args.js";
 export { landTrust } from "./install/trust-landing.js";
 
+// 可安装来源枚举端口 + 本地扫描实现(spec agent-plugin-commands,任务 1.1/1.2)。
+export type {
+  InstallSourceProvider,
+  InstallSourceQuery,
+  InstallSourceRecord,
+} from "./install-sources/types.js";
+export {
+  createScanInstallSourceProvider,
+  type ScanInstallSourceOptions,
+} from "./install-sources/scan-provider.js";
+
 export {
   ChildProcessPiCli,
   PiCliNotFoundError,

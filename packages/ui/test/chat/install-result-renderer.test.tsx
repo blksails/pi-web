@@ -1,5 +1,6 @@
 /**
- * InstallResultRenderer — `/install` 结果卡片(spec install-host-command,任务 3.2)。
+ * InstallResultRenderer — `/agent`、`/plugin` 结果卡片(part 名 data-install-result 未变;
+ * 原 spec install-host-command 任务 3.2,现服务 spec agent-plugin-commands)。
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";

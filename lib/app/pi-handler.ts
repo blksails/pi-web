@@ -155,9 +155,10 @@ import { resolveBakedCloudEgressBase } from "./cloud-defaults.js";
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
-  createInstallHostCommand,
+  createPackageHostCommand,
   type InstallAuditEvent,
-} from "./install-host-command.js";
+  type PackageHostCommandDeps,
+} from "./package-host-command.js";
 import { createInstaller } from "../../server/cli/install/installer.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
@@ -821,14 +822,15 @@ function buildSingleton(): HandlerSingleton {
     await session.restartRunner();
   };
 
-  // /install host 命令(spec install-host-command):web 面按 kind 安装 agent/plugin,
-  // 复用 CLI install 子域(createInstaller/createPluginInstaller 直调,零第二份编排)。
-  // 治理与 REST /extensions 同源:extAllowlist(白名单)/extAllowMutate(admin 门)/extPiCli。
-  // agent 落盘目标与 GET /agent-sources 的「扫描 ∪ 注册表」同值,装完选择器天然可见。
+  // /agent 与 /plugin host 命令(spec agent-plugin-commands):命令名即类别,取代原先靠
+  // `--kind` 分派的单一 /install。复用 CLI install 子域(createInstaller/createPluginInstaller
+  // 直调,零第二份编排)。治理与 REST /extensions 同源:extAllowlist(白名单)/
+  // extAllowMutate(admin 门)/extPiCli。agent 落盘目标与 GET /agent-sources 的
+  // 「扫描 ∪ 注册表」同值,装完选择器天然可见。
   const installRegistryPath =
     process.env.PI_WEB_SOURCES_REGISTRY ??
     path.join(config.agentDir, "sources.json");
-  const installHostCommand = createInstallHostCommand({
+  const packageCommandDeps: PackageHostCommandDeps = {
     installer: createInstaller({
       allowlistConfig: extAllowlist,
       piCli: extPiCli,
@@ -852,8 +854,13 @@ function buildSingleton(): HandlerSingleton {
         reason: redactReason(event.reason),
       });
     },
+    // `/agent list` 的数据源:CLI 的 agent 通道只有装/卸,没有列举能力,故接既有的 agent 源
+    // 枚举 provider(与 GET /agent-sources 同一实例)。惰性求值:provider 在下方构造。
+    listAgentSources: async () => await agentSourcesProvider.list(),
     cwd: config.defaultCwd,
-  });
+  };
+  const agentHostCommand = createPackageHostCommand("agent", packageCommandDeps);
+  const pluginHostCommand = createPackageHostCommand("plugin", packageCommandDeps);
 
   // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
   // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
@@ -987,7 +994,7 @@ function buildSingleton(): HandlerSingleton {
       allowlist: extAllowlist,
       reloadSession: reloadRunner,
     },
-    hostCommandHandlers: [createClearHostCommand(), installHostCommand],
+    hostCommandHandlers: [createClearHostCommand(), agentHostCommand, pluginHostCommand],
   };
 
   // pi-web 对 16 个能力面**全表态 use**(静态、可读);条件挂载的启停由各 factory 内部读
@@ -1016,8 +1023,8 @@ function buildSingleton(): HandlerSingleton {
     manager,
     store,
     // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
-    // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
-    // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
+    // 前端 clear-transcript;/agent 与 /plugin = 按命令名所指类别装/卸/列(spec
+    // agent-plugin-commands,取代原 /install)。
     // M3:命令贡献经 composeCapabilities 分拣而来 —— host.commands 与 15 个路由能力面在
     // 同一次强制表态中一起被表态(spec host-contract-capability-composition,D5)。
     hostCommands: createHostCommandRegistry(composedCommands),

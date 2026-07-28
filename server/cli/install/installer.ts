@@ -297,6 +297,13 @@ function determineKind(
   resolved: Extract<ResolvedSource, { via: "direct" }>,
   kindHint: PluginKind | undefined,
 ): PluginKind {
+  // ★ component 是**真实判据压过提示**的唯一情形(spec agent-plugin-commands 的 e2e 抓到):
+  //   本地来源的 kind 来自目标目录 `pi-web.json`,是已读到的事实,而 `kindHint` 只是
+  //   "下载前无从得知时" 的提示。`/agent install <某 component 包>` 会恒传 kindHint:"agent",
+  //   若让提示压过事实,component 包就会被当 agent 装进源根 —— 绕开下方那道本该拒绝它的门。
+  if (resolved.source.kind === "local" && resolved.kind === "component") {
+    return "component";
+  }
   if (kindHint !== undefined) return kindHint;
   // 本地路径:resolveSource() 已读取 pi-web.json 得到真实 kind,直接信任。
   if (resolved.source.kind === "local") return resolved.kind;

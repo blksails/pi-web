@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * install-host-command 浏览器 e2e — `/install` host 命令的安装旅程与 component 拒绝
- * (.kiro/specs/install-host-command 任务 5.2)。
+ * agent-plugin-commands 浏览器 e2e — `/agent` host 命令的安装旅程与 component 拒绝
+ * (.kiro/specs/agent-plugin-commands 任务 4.2;迁自 install-host-command.e2e)。
  *
  * 对专用第三套 pi-web server 运行(playwright.config.ts project "install"):放行 env
  * (PI_WEB_EXT_ADMIN_ALLOW_ANY/PI_WEB_EXT_ALLOW_LOCAL)+ 隔离落盘(临时 agentDir/
@@ -11,7 +11,7 @@ import { test, expect } from "@playwright/test";
  * 会话源用 `./examples`(通用 CLI 模式,cwd 下多个可作为 install local: 源的子目录),
  * 与已删除的 plugin-subcommand-completion.e2e.ts 同一布置。
  *
- * `/install install <arg>` 的提交机制:命令面板对声明了 argSpec 的命令(install 属于此类)
+ * `/agent install <arg>` 的提交机制:命令面板对声明了 argSpec 的命令(/agent 属于此类)
  * 在有候选时拦截 Enter(命令面板 Req 3.3/4);直接键入完整参数段(如 `local:./examples/hello-agent`)
  * 时,该段作为 stage.query 送 `GET /sessions/:id/install-sources?q=` 查询,候选按
  * `path.includes(q)` 过滤 —— 带 `local:` 前缀的完整参数段不是任何候选 path 的子串,候选
@@ -39,7 +39,7 @@ async function startSession(
 }
 
 /**
- * 键入完整 `/install install local:<rel>` 并等命令面板候选清空(query 不匹配任何本地源)
+ * 键入完整 `/agent install local:<rel>` 并等命令面板候选清空(query 不匹配任何本地源)
  * 后再提交,规避面板拦截 Enter(不选中候选)。
  */
 async function submitInstallCommand(
@@ -56,14 +56,14 @@ async function submitInstallCommand(
   await input.press("Enter");
 }
 
-test("install: 安装本地 agent 源成功→data-install-result 卡片→选择器免刷新可见新 source(Req 7.1, 4.3)", async ({
+test("agent: 安装本地 agent 源成功→data-install-result 卡片→选择器免刷新可见新 source(Req 1.2/1.7, 5.1)", async ({
   page,
 }) => {
   await startSession(page);
 
   await submitInstallCommand(
     page,
-    "/install install local:./examples/hello-agent",
+    "/agent install local:./examples/hello-agent",
   );
 
   const card = page.locator("[data-pi-install-result]");
@@ -82,14 +82,14 @@ test("install: 安装本地 agent 源成功→data-install-result 卡片→选�
   ).toBeVisible({ timeout: 10000 });
 });
 
-test("install: component 包被拒绝→失败卡片含 pi-web add 指引(Req 7.2, 2.5/2.6)", async ({
+test("agent: component 包被拒绝→失败卡片含 pi-web add 指引(Req 5.1)", async ({
   page,
 }) => {
   await startSession(page);
 
   await submitInstallCommand(
     page,
-    "/install install local:./examples/canvas-component-watermark",
+    "/agent install local:./examples/canvas-component-watermark",
   );
 
   const card = page.locator("[data-pi-install-result]");

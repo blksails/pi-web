@@ -357,7 +357,13 @@ export function PiCommandPalette({
       return subEntries.map((s) => ({
         key: s.name,
         label: `/${cmdName} ${s.name}`,
-        ...(s.terminal ? {} : { detail: `<${s.argKind ?? "arg"}>` }),
+        // 说明优先取 i18n 字典(spec agent-plugin-commands,Req 4.6);未声明说明键的 spec
+        // 回退旧占位符形态,保证第三方/历史 spec 不炸。
+        ...(s.descriptionKey !== undefined
+          ? { detail: t(s.descriptionKey) }
+          : s.terminal
+            ? {}
+            : { detail: `<${s.argKind ?? "arg"}>` }),
         select: () => selectSub(s),
       }));
     }
@@ -367,7 +373,7 @@ export function PiCommandPalette({
       ...(it.detail !== undefined ? { detail: it.detail } : {}),
       select: () => selectArg(it),
     }));
-  }, [inArgFlow, stage, subEntries, argItems, cmdName, selectSub, selectArg]);
+  }, [inArgFlow, stage, subEntries, argItems, cmdName, selectSub, selectArg, t]);
 
   React.useEffect(() => {
     setActive(0);

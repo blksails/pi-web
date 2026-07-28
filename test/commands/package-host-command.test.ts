@@ -1,15 +1,21 @@
 // @vitest-environment node
 /**
- * install-host-command 单测(spec install-host-command,任务 2.1-2.4)。
+ * package-host-command 单测(spec agent-plugin-commands,任务 2.1/2.2;迁自
+ * install-host-command.test.ts 并按两条命令重组)。
  *
  * 全程注入 fake 端口(installer/pluginInstaller/reloadRunner/audit),绝不真的调用 CLI
- * install 子域或 pi 子进程。覆盖:argv 解析全矩阵、adminGate 门控 + 审计、脱敏、
- * 生效分道(reloadRunner 调用次数与时序)、effect 取值、guidance 内容、component 直通、
+ * install 子域或 pi 子进程。覆盖:argv 解析全矩阵(含 `--kind` 已移除、agent 侧 update
+ * 越界)、类别锁定(kindHint 恒等于命令名)、adminGate 门控 + 审计、脱敏、生效分道
+ * (reloadRunner 调用次数与时序)、effect 取值、guidance 内容、component 直通、
  * list/update 编排,以及每个执行类结果对 `InstallResultDataSchema` 的 safeParse 校验。
  */
 import { describe, expect, it, vi } from "vitest";
 import { InstallResultDataSchema } from "@blksails/pi-web-protocol";
-import { createInstallHostCommand, type InstallAuditEvent } from "@/lib/app/install-host-command";
+import {
+  createPackageHostCommand,
+  type InstallAuditEvent,
+  type PackageHostCommandDeps,
+} from "@/lib/app/package-host-command";
 import type { Installer, InstallerError, InstallOutcome, UninstallOutcome } from "@/server/cli/install/installer";
 import type {
   PluginInstallError,
@@ -20,7 +26,7 @@ import type { InstalledExtension } from "@blksails/pi-web-server";
 
 type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: E };
 
-/** uninstall 结果缺省与 install 结果同构造(仅用于测试场景里两者错误码/kind 一致的简单场景)。 */
+/** uninstall 结果缺省与 install 结果同构造(仅用于两者错误码/kind 一致的简单场景)。 */
 function asUninstallResult(r: Result<InstallOutcome, InstallerError>): Result<UninstallOutcome, InstallerError> {
   if (!r.ok) return r;
   if (r.value.kind === "agent") {
@@ -73,90 +79,153 @@ function makeSession(): unknown {
   return { id: "session-1" };
 }
 
-function baseDeps(overrides: Partial<Parameters<typeof createInstallHostCommand>[0]> = {}) {
+function baseDeps(overrides: Partial<PackageHostCommandDeps> = {}): PackageHostCommandDeps {
   const { installer } = okInstaller({
     ok: true,
     value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } },
   });
-  const reloadRunner = vi.fn(async () => undefined);
-  const audit = vi.fn((_event: InstallAuditEvent) => undefined);
   return {
     installer,
     pluginInstaller: makePluginInstaller(),
     adminGate: () => true,
-    reloadRunner,
-    audit,
+    reloadRunner: vi.fn(async () => undefined),
+    audit: vi.fn((_event: InstallAuditEvent) => undefined),
+    listAgentSources: vi.fn(async () => []),
     ...overrides,
   };
 }
 
+const agentCmd = (o?: Partial<PackageHostCommandDeps>) => createPackageHostCommand("agent", baseDeps(o));
+const pluginCmd = (o?: Partial<PackageHostCommandDeps>) => createPackageHostCommand("plugin", baseDeps(o));
+
 // ---------------------------------------------------------------------------
-// argv 解析全矩阵(1.5/1.6/2.3/2.4)
+// 命令身份(1.1/2.1/3.1)
 // ---------------------------------------------------------------------------
 
-describe("createInstallHostCommand argv parsing (usage paths, effect:none, 无 data)", () => {
-  it("裸 /install -> 用法帮助,effect:none,无 data", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({ session: makeSession() as never, argv: "" });
-    expect(r.effect).toBe("none");
-    expect(r.data).toBeUndefined();
-    expect(r.message).toMatch(/用法/);
+describe("命令身份", () => {
+  it("工厂产出的 handler 名与结果 command 字段恒等于承载类别", async () => {
+    expect(agentCmd().name).toBe("agent");
+    expect(pluginCmd().name).toBe("plugin");
+    const r = await agentCmd().execute({ session: makeSession() as never, argv: "" });
+    expect(r.command).toBe("agent");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// argv 解析全矩阵(1.5/1.6/2.6/3.4)
+// ---------------------------------------------------------------------------
+
+describe("argv 解析(用法路径,effect:none,无 data)", () => {
+  it("裸 /agent 与裸 /plugin -> 各自专属用法帮助", async () => {
+    const a = await agentCmd().execute({ session: makeSession() as never, argv: "" });
+    expect(a.effect).toBe("none");
+    expect(a.data).toBeUndefined();
+    expect(a.message).toMatch(/用法: \/agent/);
+
+    const p = await pluginCmd().execute({ session: makeSession() as never, argv: "" });
+    expect(p.message).toMatch(/用法: \/plugin/);
   });
 
   it("未知子动作 -> 用法错误,effect:none,无 data", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({ session: makeSession() as never, argv: "frobnicate x" });
+    const r = await agentCmd().execute({ session: makeSession() as never, argv: "frobnicate x" });
     expect(r.effect).toBe("none");
     expect(r.data).toBeUndefined();
     expect(r.message).toMatch(/未知子动作/);
   });
 
-  it("install 缺少 <source> -> 用法错误", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({ session: makeSession() as never, argv: "install" });
-    expect(r.effect).toBe("none");
-    expect(r.data).toBeUndefined();
-    expect(r.message).toMatch(/缺少 <source>/);
-  });
-
-  it("uninstall 缺少 <id> -> 用法错误", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({ session: makeSession() as never, argv: "uninstall" });
-    expect(r.effect).toBe("none");
-    expect(r.message).toMatch(/缺少 <id>/);
-  });
-
-  it("--kind 非法取值 -> 用法错误", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({
+  // agent 侧没有 update 通道:CLI 的 AgentChannel 只有装/卸,故按未知子动作处理而非静默降级。
+  it("/agent update -> 未知子动作(update 仅 plugin 有),且不触达任何 installer", async () => {
+    const pluginInstaller = makePluginInstaller();
+    const r = await agentCmd({ pluginInstaller }).execute({
       session: makeSession() as never,
-      argv: "install local:/x --kind whatever",
+      argv: "update npm:foo",
     });
     expect(r.effect).toBe("none");
-    expect(r.message).toMatch(/--kind 取值须为 agent 或 plugin/);
+    expect(r.message).toMatch(/未知子动作 "update"/);
+    expect(pluginInstaller.update).not.toHaveBeenCalled();
   });
 
-  it("update 携带任意 --kind -> 用法错误(update 仅支持 plugin 通道)", async () => {
-    const cmd = createInstallHostCommand(baseDeps());
-    const r = await cmd.execute({
-      session: makeSession() as never,
-      argv: "update npm:foo --kind plugin",
-    });
-    expect(r.effect).toBe("none");
-    expect(r.message).toMatch(/update 不支持 --kind/);
+  it("install 缺少 <source> / uninstall 缺少 <id> -> 用法错误", async () => {
+    const a = await pluginCmd().execute({ session: makeSession() as never, argv: "install" });
+    expect(a.message).toMatch(/缺少 <source>/);
+    const b = await pluginCmd().execute({ session: makeSession() as never, argv: "uninstall" });
+    expect(b.message).toMatch(/缺少 <id>/);
+  });
+
+  // 拆分的核心:类别由命令名决定,`--kind` 静默忽略会让沿用旧习惯的人以为覆盖生效了。
+  it("出现 --kind(任意取值)-> 参数错误,且 installer 零调用", async () => {
+    for (const [cmd, argv] of [
+      [agentCmd, "install local:/x --kind plugin"],
+      [agentCmd, "install local:/x --kind agent"],
+      [pluginCmd, "uninstall foo --kind agent"],
+      [pluginCmd, "update npm:foo --kind plugin"],
+    ] as const) {
+      const { installer, installCalls, uninstallCalls } = okInstaller({
+        ok: true,
+        value: { kind: "agent", result: { method: "local", location: "/x", created: true } },
+      });
+      const r = await cmd({ installer }).execute({ session: makeSession() as never, argv });
+      expect(r.effect).toBe("none");
+      expect(r.data).toBeUndefined();
+      expect(r.message).toMatch(/--kind 选项已移除/);
+      expect(installCalls).toHaveLength(0);
+      expect(uninstallCalls).toHaveLength(0);
+    }
   });
 
   it("list 不要求参数", async () => {
-    const deps = baseDeps();
-    const cmd = createInstallHostCommand(deps);
-    const r = await cmd.execute({ session: makeSession() as never, argv: "list" });
+    const r = await pluginCmd().execute({ session: makeSession() as never, argv: "list" });
     expect(r.effect).toBe("notify");
     expect(r.data).toBeDefined();
   });
 });
 
 // ---------------------------------------------------------------------------
-// adminGate 拒绝 + 审计(3.2/3.5)
+// 类别锁定(1.2/1.3/2.2)
+// ---------------------------------------------------------------------------
+
+describe("类别锁定", () => {
+  it("/agent 的装/卸恒以 kindHint:agent 调用 installer", async () => {
+    const { installer, installCalls, uninstallCalls } = okInstaller(
+      { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } } },
+      { ok: true, value: { kind: "agent", result: { id: "x" } } },
+    );
+    const cmd = agentCmd({ installer });
+    await cmd.execute({ session: makeSession() as never, argv: "install local:./x" });
+    await cmd.execute({ session: makeSession() as never, argv: "uninstall x" });
+    expect(installCalls[0]?.[1]).toMatchObject({ kindHint: "agent" });
+    expect(uninstallCalls[0]?.[1]).toMatchObject({ kindHint: "agent" });
+  });
+
+  it("/plugin 的装/卸恒以 kindHint:plugin 调用 installer", async () => {
+    const { installer, installCalls, uninstallCalls } = okInstaller(
+      { ok: true, value: { kind: "plugin", result: { id: "npm:foo", stdout: "" } } },
+      { ok: true, value: { kind: "plugin", result: { id: "npm:foo", stdout: "" } } },
+    );
+    const cmd = pluginCmd({ installer });
+    await cmd.execute({ session: makeSession() as never, argv: "install npm:foo@1.0.0" });
+    await cmd.execute({ session: makeSession() as never, argv: "uninstall npm:foo" });
+    expect(installCalls[0]?.[1]).toMatchObject({ kindHint: "plugin" });
+    expect(uninstallCalls[0]?.[1]).toMatchObject({ kindHint: "plugin" });
+  });
+
+  // 有意的行为变化:直连 npm/git 来源在 /agent 下按 agent 处理,绕过 installer 那条
+  // 「直连来源不可信、保守按 plugin」的默认约定(命令名即意图)。
+  it("/agent install <npm 包> 仍以 kindHint:agent 下发", async () => {
+    const { installer, installCalls } = okInstaller({
+      ok: true,
+      value: { kind: "agent", result: { method: "npm", location: "/root/agents/foo", created: true } },
+    });
+    await agentCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: "install npm:@scope/foo@1.0.0",
+    });
+    expect(installCalls[0]?.[1]).toMatchObject({ kindHint: "agent" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// adminGate 拒绝 + 审计(6.1)
 // ---------------------------------------------------------------------------
 
 describe("adminGate 拒绝", () => {
@@ -166,13 +235,7 @@ describe("adminGate 拒绝", () => {
       value: { kind: "agent", result: { method: "local", location: "/x", created: true } },
     });
     const audit = vi.fn((_e: InstallAuditEvent) => undefined);
-    const cmd = createInstallHostCommand({
-      installer,
-      pluginInstaller: makePluginInstaller(),
-      adminGate: () => false,
-      reloadRunner: vi.fn(async () => undefined),
-      audit,
-    });
+    const cmd = agentCmd({ installer, adminGate: () => false, audit });
 
     const r = await cmd.execute({ session: makeSession() as never, argv: "install local:/x" });
 
@@ -190,7 +253,7 @@ describe("adminGate 拒绝", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 脱敏(5.3):Bearer/token/URL 凭据样本
+// 脱敏(6.3):Bearer/token/URL 凭据样本
 // ---------------------------------------------------------------------------
 
 describe("脱敏:message 与 steps 不得泄露凭据", () => {
@@ -202,9 +265,10 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
       ok: false,
       error: { code: "PLUGIN_INSTALL_FAILED", message: leaky },
     });
-    const cmd = createInstallHostCommand(baseDeps({ installer }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "install npm:x@1.0.0" });
+    const r = await pluginCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: "install npm:x@1.0.0",
+    });
 
     const serialized = JSON.stringify(r);
     expect(serialized).not.toMatch(/sk-abcdefghij1234567890/);
@@ -213,7 +277,7 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
     expect(serialized).not.toMatch(/hunter2/);
   });
 
-  // 复核抓到的真实泄露路径(Req 5.3):source/id 本身就是凭据来源——用户 argv 原样输入
+  // 复核抓到的真实泄露路径(Req 6.3):source/id 本身就是凭据来源——用户 argv 原样输入
   // `user:token@host` 形式的 URL,过去未脱敏直进卡片 data.id 与审计事件 source。
   const CRED_SOURCE = "git:https://user:hunter2@github.com/org/repo.git";
 
@@ -222,8 +286,10 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
       ok: true,
       value: { kind: "agent", result: { method: "git", location: "/root/agents/repo", created: true } },
     });
-    const cmd = createInstallHostCommand(baseDeps({ installer }));
-    const r = await cmd.execute({ session: makeSession() as never, argv: `install ${CRED_SOURCE}` });
+    const r = await agentCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: `install ${CRED_SOURCE}`,
+    });
     const serialized = JSON.stringify(r);
     expect(serialized).not.toContain("hunter2");
     expect(serialized).toContain("[redacted]@");
@@ -235,8 +301,10 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
       error: { code: "ALLOWLIST_REJECTED", message: `source rejected: ${CRED_SOURCE}` },
     });
     const audit = vi.fn((_event: InstallAuditEvent) => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, audit }));
-    const r = await cmd.execute({ session: makeSession() as never, argv: `install ${CRED_SOURCE}` });
+    const r = await agentCmd({ installer, audit }).execute({
+      session: makeSession() as never,
+      argv: `install ${CRED_SOURCE}`,
+    });
     expect(JSON.stringify(r)).not.toContain("hunter2");
     expect(audit).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(audit.mock.calls[0])).not.toContain("hunter2");
@@ -247,8 +315,10 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
       { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } } },
       { ok: true, value: { kind: "agent", result: { id: "/root/agents/x" } } },
     );
-    const cmdOk = createInstallHostCommand(baseDeps({ installer: okCase.installer }));
-    const rOk = await cmdOk.execute({ session: makeSession() as never, argv: `uninstall ${CRED_SOURCE}` });
+    const rOk = await agentCmd({ installer: okCase.installer }).execute({
+      session: makeSession() as never,
+      argv: `uninstall ${CRED_SOURCE}`,
+    });
     expect(JSON.stringify(rOk)).not.toContain("hunter2");
 
     const failCase = okInstaller(
@@ -256,15 +326,17 @@ describe("脱敏:message 与 steps 不得泄露凭据", () => {
       { ok: false, error: { code: "ALLOWLIST_REJECTED", message: `rejected: ${CRED_SOURCE}` } },
     );
     const audit = vi.fn((_event: InstallAuditEvent) => undefined);
-    const cmdFail = createInstallHostCommand(baseDeps({ installer: failCase.installer, audit }));
-    const rFail = await cmdFail.execute({ session: makeSession() as never, argv: `uninstall ${CRED_SOURCE}` });
+    const rFail = await agentCmd({ installer: failCase.installer, audit }).execute({
+      session: makeSession() as never,
+      argv: `uninstall ${CRED_SOURCE}`,
+    });
     expect(JSON.stringify(rFail)).not.toContain("hunter2");
     expect(JSON.stringify(audit.mock.calls)).not.toContain("hunter2");
   });
 });
 
 // ---------------------------------------------------------------------------
-// 本地源解析基准 = 会话 cwd(与 install-sources 补全端点同基准;e2e 阶段抓到的缺陷)
+// 本地源解析基准 = 会话 cwd(6.4;与 install-sources 补全端点同基准)
 // ---------------------------------------------------------------------------
 
 describe("本地源解析基准", () => {
@@ -273,8 +345,7 @@ describe("本地源解析基准", () => {
       ok: true,
       value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } },
     });
-    const cmd = createInstallHostCommand(baseDeps({ installer, cwd: "/assembly/default" }));
-    await cmd.execute({
+    await agentCmd({ installer, cwd: "/assembly/default" }).execute({
       session: { id: "s1", cwd: "/session/workdir" } as never,
       argv: "install local:./hello-agent",
     });
@@ -286,26 +357,29 @@ describe("本地源解析基准", () => {
       { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/x", created: true } } },
       { ok: true, value: { kind: "agent", result: { id: "x" } } },
     );
-    const cmd = createInstallHostCommand(baseDeps({ installer, cwd: "/assembly/default" }));
-    await cmd.execute({ session: makeSession() as never, argv: "uninstall x" });
+    await agentCmd({ installer, cwd: "/assembly/default" }).execute({
+      session: makeSession() as never,
+      argv: "uninstall x",
+    });
     expect(uninstallCalls[0]?.[1]).toMatchObject({ cwd: "/assembly/default" });
   });
 });
 
 // ---------------------------------------------------------------------------
-// 生效分道:reloadRunner 调用次数与时序(4.1/4.2)
+// 生效分道(1.7/2.5)
 // ---------------------------------------------------------------------------
 
 describe("生效分道", () => {
-  it("agent install 成功 -> effect panel-refresh,reloadRunner 恒不被调用,guidance 提到选择器", async () => {
+  it("/agent install 成功 -> effect panel-refresh,reloadRunner 恒不被调用,guidance 提到选择器", async () => {
     const { installer } = okInstaller({
       ok: true,
       value: { kind: "agent", result: { method: "local", location: "/root/agents/foo", created: true } },
     });
     const reloadRunner = vi.fn(async () => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "install local:/foo" });
+    const r = await agentCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "install local:/foo",
+    });
 
     expect(reloadRunner).not.toHaveBeenCalled();
     expect(r.effect).toBe("panel-refresh");
@@ -319,21 +393,22 @@ describe("生效分道", () => {
     }
   });
 
-  it("agent uninstall 成功 -> effect panel-refresh,reloadRunner 恒不被调用", async () => {
+  it("/agent uninstall 成功 -> effect panel-refresh,reloadRunner 恒不被调用", async () => {
     const { installer } = okInstaller(
       { ok: true, value: { kind: "agent", result: { method: "local", location: "/root/agents/foo", created: true } } },
       { ok: true, value: { kind: "agent", result: { id: "foo" } } },
     );
     const reloadRunner = vi.fn(async () => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "uninstall foo --kind agent" });
+    const r = await agentCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "uninstall foo",
+    });
 
     expect(reloadRunner).not.toHaveBeenCalled();
     expect(r.effect).toBe("panel-refresh");
   });
 
-  it("plugin install 成功 -> reloadRunner 恰被调用一次,且早于返回(effect notify)", async () => {
+  it("/plugin install 成功 -> reloadRunner 恰被调用一次,且早于返回(effect notify)", async () => {
     const order: string[] = [];
     const { installer } = okInstaller({
       ok: true,
@@ -342,9 +417,10 @@ describe("生效分道", () => {
     const reloadRunner = vi.fn(async () => {
       order.push("reload");
     });
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "install npm:foo@1.0.0" });
+    const r = await pluginCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "install npm:foo@1.0.0",
+    });
     order.push("returned");
 
     expect(reloadRunner).toHaveBeenCalledOnce();
@@ -358,15 +434,16 @@ describe("生效分道", () => {
     }
   });
 
-  it("plugin uninstall 成功 -> reloadRunner 恰被调用一次", async () => {
+  it("/plugin uninstall 成功 -> reloadRunner 恰被调用一次", async () => {
     const { installer } = okInstaller(
       { ok: true, value: { kind: "plugin", result: { id: "npm:foo", stdout: "" } } },
       { ok: true, value: { kind: "plugin", result: { id: "npm:foo", stdout: "removed\n" } } },
     );
     const reloadRunner = vi.fn(async () => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "uninstall npm:foo" });
+    const r = await pluginCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "uninstall npm:foo",
+    });
 
     expect(reloadRunner).toHaveBeenCalledOnce();
     expect(r.effect).toBe("notify");
@@ -378,9 +455,10 @@ describe("生效分道", () => {
       error: { code: "PLUGIN_INSTALL_FAILED", message: "boom" },
     });
     const reloadRunner = vi.fn(async () => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "install npm:foo@1.0.0" });
+    const r = await pluginCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "install npm:foo@1.0.0",
+    });
 
     expect(reloadRunner).not.toHaveBeenCalled();
     expect(r.data && (r.data as { ok: boolean }).ok).toBe(false);
@@ -388,7 +466,7 @@ describe("生效分道", () => {
 });
 
 // ---------------------------------------------------------------------------
-// component 错误直通(2.5)
+// component 错误直通
 // ---------------------------------------------------------------------------
 
 describe("component 包直通失败卡片", () => {
@@ -401,9 +479,7 @@ describe("component 包直通失败卡片", () => {
       },
     });
     const reloadRunner = vi.fn(async () => undefined);
-    const cmd = createInstallHostCommand(baseDeps({ installer, reloadRunner }));
-
-    const r = await cmd.execute({
+    const r = await agentCmd({ installer, reloadRunner }).execute({
       session: makeSession() as never,
       argv: "install local:/examples/canvas-component-watermark",
     });
@@ -421,19 +497,57 @@ describe("component 包直通失败卡片", () => {
 });
 
 // ---------------------------------------------------------------------------
-// list(1.3)
+// list:两条命令各自的数据源(1.4/2.3)
 // ---------------------------------------------------------------------------
 
-describe("list 子动作", () => {
+describe("/agent list", () => {
+  it("取装配注入的 agent 源枚举,items 标注 kind:agent,且不触达 pluginInstaller", async () => {
+    const pluginInstaller = makePluginInstaller();
+    const listAgentSources = vi.fn(async () => [{ id: "/root/agents/foo" }, { id: "/root/agents/bar" }]);
+    const r = await agentCmd({ pluginInstaller, listAgentSources }).execute({
+      session: makeSession() as never,
+      argv: "list",
+    });
+
+    expect(listAgentSources).toHaveBeenCalledOnce();
+    expect(pluginInstaller.listInstalled).not.toHaveBeenCalled();
+    const parsed = InstallResultDataSchema.safeParse(r.data);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.ok).toBe(true);
+      expect(parsed.data.items).toEqual([
+        { id: "/root/agents/foo", kind: "agent" },
+        { id: "/root/agents/bar", kind: "agent" },
+      ]);
+    }
+  });
+
+  // 未注入枚举源时如实转达,而不是假装"没有已安装 agent 源"。
+  it("装配未注入枚举源 -> 失败卡片 AGENT_LIST_NOT_SUPPORTED", async () => {
+    const deps = baseDeps();
+    delete (deps as { listAgentSources?: unknown }).listAgentSources;
+    const r = await createPackageHostCommand("agent", deps).execute({
+      session: makeSession() as never,
+      argv: "list",
+    });
+    const parsed = InstallResultDataSchema.safeParse(r.data);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.ok).toBe(false);
+      expect(parsed.data.error?.code).toBe("AGENT_LIST_NOT_SUPPORTED");
+      expect(parsed.data.items).toBeUndefined();
+    }
+  });
+});
+
+describe("/plugin list", () => {
   it("空列表 -> ok:true,items 为空数组", async () => {
     const pluginInstaller = makePluginInstaller({
       listInstalled: vi.fn(
         async (): Promise<Result<readonly InstalledExtension[], PluginInstallError>> => ({ ok: true, value: [] }),
       ),
     });
-    const cmd = createInstallHostCommand(baseDeps({ pluginInstaller }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "list" });
+    const r = await pluginCmd({ pluginInstaller }).execute({ session: makeSession() as never, argv: "list" });
 
     const parsed = InstallResultDataSchema.safeParse(r.data);
     expect(parsed.success).toBe(true);
@@ -452,9 +566,10 @@ describe("list 子动作", () => {
         }),
       ),
     });
-    const cmd = createInstallHostCommand(baseDeps({ pluginInstaller }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "list --outdated" });
+    const r = await pluginCmd({ pluginInstaller }).execute({
+      session: makeSession() as never,
+      argv: "list --outdated",
+    });
 
     const parsed = InstallResultDataSchema.safeParse(r.data);
     expect(parsed.success).toBe(true);
@@ -465,7 +580,7 @@ describe("list 子动作", () => {
     }
   });
 
-  it("list 有数据时 items 含 id/version/scope/kind", async () => {
+  it("有数据时 items 含 id/version/scope/kind", async () => {
     const pluginInstaller = makePluginInstaller({
       listInstalled: vi.fn(
         async (): Promise<Result<readonly InstalledExtension[], PluginInstallError>> => ({
@@ -474,9 +589,7 @@ describe("list 子动作", () => {
         }),
       ),
     });
-    const cmd = createInstallHostCommand(baseDeps({ pluginInstaller }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "list" });
+    const r = await pluginCmd({ pluginInstaller }).execute({ session: makeSession() as never, argv: "list" });
 
     const parsed = InstallResultDataSchema.safeParse(r.data);
     expect(parsed.success).toBe(true);
@@ -487,10 +600,10 @@ describe("list 子动作", () => {
 });
 
 // ---------------------------------------------------------------------------
-// update(1.4/5.4)
+// update(2.4/2.5)
 // ---------------------------------------------------------------------------
 
-describe("update 子动作", () => {
+describe("/plugin update", () => {
   it("全部成功(无 hasFailures) -> ok:true,reloadRunner 恰被调用一次", async () => {
     const reloadRunner = vi.fn(async () => undefined);
     const pluginInstaller = makePluginInstaller({
@@ -501,9 +614,10 @@ describe("update 子动作", () => {
         }),
       ),
     });
-    const cmd = createInstallHostCommand(baseDeps({ pluginInstaller, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "update" });
+    const r = await pluginCmd({ pluginInstaller, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "update",
+    });
 
     expect(reloadRunner).toHaveBeenCalledOnce();
     const parsed = InstallResultDataSchema.safeParse(r.data);
@@ -527,9 +641,10 @@ describe("update 子动作", () => {
         }),
       ),
     });
-    const cmd = createInstallHostCommand(baseDeps({ pluginInstaller, reloadRunner }));
-
-    const r = await cmd.execute({ session: makeSession() as never, argv: "update" });
+    const r = await pluginCmd({ pluginInstaller, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "update",
+    });
 
     expect(reloadRunner).not.toHaveBeenCalled();
     const parsed = InstallResultDataSchema.safeParse(r.data);

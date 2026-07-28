@@ -86,6 +86,41 @@ describe("makeInstallSourcesHandler", () => {
     expect(res.status).toBe(404);
   });
 
+  // ── 端口化(spec agent-plugin-commands,任务 1.3) ──
+
+  it("经注入的端口取数,端点自身不触碰文件系统", async () => {
+    const session = { cwd } as unknown as PiSession;
+    const calls: { cwd: string; query: string }[] = [];
+    const stub = {
+      list: async (q: { cwd: string; query: string }) => {
+        calls.push(q);
+        return [{ path: "./from-port", insertText: "local:./from-port" }];
+      },
+    };
+    const res = await makeInstallSourcesHandler(storeWith(session), stub)(
+      ctxFor("s1", "abc"),
+    );
+    expect(res.status).toBe(200);
+    const sources = (await body(res)).sources as { path: string }[];
+    // 真实 cwd 下有 agent-a / pkg-b,若端点仍自己扫盘就不会只见桩数据。
+    expect(sources.map((s) => s.path)).toEqual(["./from-port"]);
+    expect(calls).toEqual([{ cwd, query: "abc" }]);
+  });
+
+  it("端口抛错 → 降级为 200 空候选,不返回 5xx", async () => {
+    const session = { cwd } as unknown as PiSession;
+    const failing = {
+      list: async () => {
+        throw new Error("port exploded");
+      },
+    };
+    const res = await makeInstallSourcesHandler(storeWith(session), failing)(
+      ctxFor("s1"),
+    );
+    expect(res.status).toBe(200);
+    expect((await body(res)).sources).toEqual([]);
+  });
+
   it("空目录 → 200 空列表", async () => {
     const empty = await fs.mkdtemp(join(tmpdir(), "install-src-empty-"));
     const session = { cwd: empty } as unknown as PiSession;

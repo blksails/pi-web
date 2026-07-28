@@ -1,15 +1,18 @@
 /**
- * createInstallArgProvider — `/install` 子命令/参数补全的默认数据 provider
- * (spec install-host-command,任务 3.3)。取代 `plugin-arg-provider.ts`(旧 `/plugin` 命令
- * 已摘除,见 tool-kit ExtensionManagerRemoval)。
+ * createPackageArgProvider — `/agent` 与 `/plugin` 的子命令/参数补全数据 provider
+ * (spec agent-plugin-commands,任务 3.2;取代 `install-arg-provider.ts`)。
  *
- * 静态 argSpec 覆盖四子动作(install/uninstall/list/update);参数候选经现成 REST 取数:
- *   - install(localSource)      → `GET /sessions/:id/install-sources?q`(扫会话 cwd,同 /plugin 旧径)。
- *   - uninstall(installedPackage) → `GET /extensions` ∪ `GET /agent-sources` 合并(agent 项
- *     insertText 追加 " --kind agent",规避缺省 kind 走错通道,见 handler kind 分派)。
- *   - update(installedPackage)  → 仅 `GET /extensions`(update 只有 plugin 通道,CLI 亦无 agent 更新)。
- *   - list:terminal,无参数候选。
- * 命令面板只依赖 CommandArgProvider 窄接口,本工厂在装配层(知道 baseUrl/sessionId)构造。
+ * **单个** provider 同时服务两条命令:命令面板只接受一个 `commandArgProvider`
+ * (见 PiChat 装配与 palette 的 `specFor(cmdName)` 单点查询),故此处按命令名分派两套 spec,
+ * 而非并列两个工厂。
+ *
+ * 候选来源按域分道(不再有"插件 ∪ agent 源"的合并候选):
+ *   - agent install / plugin install → `GET /sessions/:id/install-sources?q`(扫会话 cwd)
+ *   - agent uninstall                → `GET /agent-sources`
+ *   - plugin uninstall / update      → `GET /extensions`
+ *   - list                           → terminal,无参数候选
+ *
+ * 类别锁定后,agent 候选**不再**拼接 `--kind agent`:命令名已经决定通道。
  */
 import type {
   CommandArgItem,
@@ -18,14 +21,53 @@ import type {
 } from "./command-arg.js";
 import { findSubcommand } from "./command-arg.js";
 
-const INSTALL_SPEC: CommandArgSpec = {
-  command: "install",
+const AGENT_SPEC: CommandArgSpec = {
+  command: "agent",
   subcommands: [
-    { name: "install", terminal: false, argKind: "localSource" },
-    { name: "uninstall", terminal: false, argKind: "installedPackage" },
-    { name: "list", terminal: true },
-    { name: "update", terminal: false, argKind: "installedPackage" },
+    {
+      name: "install",
+      terminal: false,
+      argKind: "localSource",
+      descriptionKey: "commandArg.agent.install",
+    },
+    {
+      name: "uninstall",
+      terminal: false,
+      argKind: "installedAgent",
+      descriptionKey: "commandArg.agent.uninstall",
+    },
+    { name: "list", terminal: true, descriptionKey: "commandArg.agent.list" },
   ],
+};
+
+const PLUGIN_SPEC: CommandArgSpec = {
+  command: "plugin",
+  subcommands: [
+    {
+      name: "install",
+      terminal: false,
+      argKind: "localSource",
+      descriptionKey: "commandArg.plugin.install",
+    },
+    {
+      name: "uninstall",
+      terminal: false,
+      argKind: "installedPlugin",
+      descriptionKey: "commandArg.plugin.uninstall",
+    },
+    { name: "list", terminal: true, descriptionKey: "commandArg.plugin.list" },
+    {
+      name: "update",
+      terminal: false,
+      argKind: "installedPlugin",
+      descriptionKey: "commandArg.plugin.update",
+    },
+  ],
+};
+
+const SPECS: Readonly<Record<string, CommandArgSpec>> = {
+  agent: AGENT_SPEC,
+  plugin: PLUGIN_SPEC,
 };
 
 interface InstalledExtensionDto {
@@ -56,15 +98,15 @@ function join(baseUrl: string, path: string): string {
   return `${b}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-export interface InstallArgProviderOptions {
+export interface PackageArgProviderOptions {
   readonly baseUrl: string;
   readonly sessionId: string;
   /** 注入式 fetch(默认全局 fetch),便于测试。 */
   readonly fetchImpl?: typeof fetch;
 }
 
-export function createInstallArgProvider(
-  opts: InstallArgProviderOptions,
+export function createPackageArgProvider(
+  opts: PackageArgProviderOptions,
 ): CommandArgProvider {
   const doFetch = opts.fetchImpl ?? fetch;
 
@@ -111,8 +153,8 @@ export function createInstallArgProvider(
       .map((s) => ({
         id: s.id,
         label: s.name,
-        // agent 候选须显式带 --kind agent:uninstall 缺省探测可能落错通道(见 installer kind 分派)。
-        insertText: `${s.id} --kind agent`,
+        // 命令名已锁定 agent 通道 → 插入文本只含标识本身(拆分前需拼 " --kind agent")。
+        insertText: s.id,
         detail: "agent",
       }));
   }
@@ -139,19 +181,21 @@ export function createInstallArgProvider(
   }
 
   return {
-    specFor: (command) => (command === "install" ? INSTALL_SPEC : undefined),
+    specFor: (command) => SPECS[command],
     listArgs: (command, sub, query, signal) => {
-      if (command !== "install") return Promise.resolve([]);
-      const spec = findSubcommand(INSTALL_SPEC, sub);
-      if (spec?.argKind === "localSource") return localSources(query, signal);
-      if (spec?.argKind === "installedPackage") {
-        if (spec.name === "update") return installedPlugins(query, signal);
-        return Promise.all([
-          installedPlugins(query, signal),
-          installedAgentSources(query, signal),
-        ]).then(([plugins, agents]) => [...plugins, ...agents]);
+      const spec = SPECS[command];
+      if (spec === undefined) return Promise.resolve([]);
+      const subSpec = findSubcommand(spec, sub);
+      switch (subSpec?.argKind) {
+        case "localSource":
+          return localSources(query, signal);
+        case "installedAgent":
+          return installedAgentSources(query, signal);
+        case "installedPlugin":
+          return installedPlugins(query, signal);
+        default:
+          return Promise.resolve([]);
       }
-      return Promise.resolve([]);
     },
   };
 }

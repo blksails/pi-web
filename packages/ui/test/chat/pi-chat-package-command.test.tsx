@@ -1,7 +1,8 @@
 /**
- * PiChat — `/install` host 命令结果的通用卡片追加(spec install-host-command,任务 3.1)。
+ * PiChat — `/agent`、`/plugin` host 命令结果的通用卡片追加
+ * (spec agent-plugin-commands,任务 3.4;迁自 pi-chat-install-command)。
  *
- * 验证:声明了 `resultDataPart` 的内置命令(/install)执行后,`result.data` 存在 → 追加
+ * 验证:声明了 `resultDataPart` 的内置命令执行后,`result.data` 存在 → 追加
  * `data-install-result` 卡片(bang 模式同构);仅 `message`(用法/帮助,无 data)→ 纯文本追加;
  * 未声明 resultDataPart 的命令(/clear)行为不变(不追加卡片,只应用 effect)。
  */
@@ -13,7 +14,7 @@ import { mockSession, mockControls, MockTransport } from "../fixtures/mock-sessi
 import type { UsePiSessionResult } from "@blksails/pi-web-react";
 import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 
-const INSTALL_CMD: RpcSlashCommand = { name: "install", source: "builtin" };
+const AGENT_CMD: RpcSlashCommand = { name: "agent", source: "builtin" };
 const CLEAR_CMD: RpcSlashCommand = { name: "clear", source: "builtin" };
 
 function setupClient(uiRpcCommand: ReturnType<typeof vi.fn>) {
@@ -56,12 +57,12 @@ function setup(
   return { submit, container };
 }
 
-describe("PiChat /install 结果卡片追加", () => {
+describe("PiChat /agent 与 /plugin 结果卡片追加", () => {
   it("data 存在 + 词条声明 resultDataPart → 追加 data-install-result 卡片", async () => {
     const uiRpcCommand = vi.fn(async () => ({
       ok: true,
       result: {
-        command: "install",
+        command: "agent",
         effect: "panel-refresh",
         data: {
           action: "install",
@@ -73,11 +74,11 @@ describe("PiChat /install 结果卡片追加", () => {
       },
     }));
     const { submit, container } = setup(
-      [INSTALL_CMD],
-      { install: "data-install-result" },
+      [AGENT_CMD],
+      { agent: "data-install-result" },
       uiRpcCommand,
     );
-    submit("/install install local:./examples/hello-agent");
+    submit("/agent install local:./examples/hello-agent");
     await waitFor(() => {
       expect(container.querySelector("[data-pi-install-result]")).not.toBeNull();
     });
@@ -87,20 +88,20 @@ describe("PiChat /install 结果卡片追加", () => {
   it("仅 message(无 data,如用法文本)→ 以纯文本追加,不出卡片", async () => {
     const uiRpcCommand = vi.fn(async () => ({
       ok: true,
-      result: { command: "install", effect: "none", message: "用法: /install install source" },
+      result: { command: "agent", effect: "none", message: "用法: /agent install source" },
     }));
     const { submit, container } = setup(
-      [INSTALL_CMD],
-      { install: "data-install-result" },
+      [AGENT_CMD],
+      { agent: "data-install-result" },
       uiRpcCommand,
     );
-    // 载体取参数阶段的输入而非裸 `/install`:命令名阶段的 Enter/Tab 由命令面板捕获,
+    // 载体取参数阶段的输入而非裸 `/agent`:命令名阶段的 Enter/Tab 由命令面板捕获,
     // 对有 argSpec 的命令一律只填 `/cmd ` 进入子命令阶段、不执行(见 pi-command-palette
     // 的 select:argSpec 分支先于 builtin 分支)。此处要验的是"结果仅有 message 时以纯文本
     // 追加",与用哪条 argv 触发无关。
-    submit("/install install foo");
+    submit("/agent install foo");
     await waitFor(() => {
-      expect(container.textContent).toContain("用法: /install install source");
+      expect(container.textContent).toContain("用法: /agent install source");
     });
     expect(container.querySelector("[data-pi-install-result]")).toBeNull();
   });
