@@ -56,6 +56,7 @@ export const zh: Record<string, string> = {
   "installResult.guidance": "提示",
   "installResult.steps": "步骤",
   "installResult.items": "列表",
+  "installResult.empty": "没有条目",
   "installResult.parseError": "结果解析失败,原始数据如下:",
   // /agent 与 /plugin 的子动作说明(spec agent-plugin-commands)。
   "commandArg.agent.install": "安装 agent 源(本地目录或 npm/git 来源)",
@@ -283,6 +284,7 @@ export const en: Record<string, string> = {
   "installResult.guidance": "Guidance",
   "installResult.steps": "Steps",
   "installResult.items": "Items",
+  "installResult.empty": "No items",
   "installResult.parseError": "Failed to parse result, raw data below:",
   "commandArg.agent.install": "Install an agent source (local dir or npm/git)",
   "commandArg.agent.uninstall": "Uninstall an installed agent source",
