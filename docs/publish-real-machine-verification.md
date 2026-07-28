@@ -170,8 +170,12 @@ import("./packages/registry-client/src/ports/publish-token.ts").then(m => {
 
 **✅ 验证**（公钥分发端点是**公开可读**的）：
 
+> ★ **路径无 `/v1` 前缀**（实测更正）：只有 `/v1/admin/*` 与 `/v1/bakes*` 在 `/v1` 下，
+> `sources` / `publishers` 这些**公开面在根路径**。打 `/v1/sources` 会得到 404 而不是 401,
+> 很容易误判成"服务没起来"。
+
 ```bash
-curl -s "$REGISTRY_BASE/v1/publishers/pub-1/keys" | jq
+curl -s "$REGISTRY_BASE/publishers/pub-1/keys" | jq   # ★ 无 /v1 前缀
 ```
 
 该看到一把 `status: "enabled"` 的公钥，且带 `createdAt` 与 `label`（默认是你的主机名）。
@@ -253,7 +257,7 @@ jq -r .publicKey ~/.pi-web/keys/publish.json   # 与上面返回的 publicKey �
 验证完把 smoke 包 yank 掉（版本删不掉，但可以标记为不可用）：
 
 ```bash
-curl -X POST "$REGISTRY_BASE/v1/sources/blksails%2Fsmoke-test/versions/0.0.1/yank" \
+curl -X POST "$REGISTRY_BASE/sources/blksails%2Fsmoke-test/versions/0.0.1/yank" \
   -H "authorization: Bearer <publish token>"
 ```
 
@@ -273,7 +277,7 @@ flowchart LR
 | 环节 | 失败特征 | 为什么难查 |
 |---|---|---|
 | ② | `/agent publish` 说「未接入发布身份」 | 三种成因客户端**看起来完全一样**，必须看 cloud 日志 |
-| ④ | 什么都不说 | best-effort，静默 —— 靠 `GET /v1/publishers/pub-1/keys` 才看得见 |
+| ④ | 什么都不说 | best-effort，静默 —— 靠 `GET /publishers/pub-1/keys` 才看得见 |
 | ⑤ | 有明确错误码 | 这一环是唯一**有阶段化诊断**的，照上面的表走 |
 | ⑥ | 装不到 | 先分清是「取不回」还是「看不见」（可见性 `org`） |
 
