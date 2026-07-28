@@ -40,6 +40,8 @@ export interface PanesHostConfig {
   readonly interactionMode?: "standard" | "advanced";
   readonly allowTabReorder?: boolean;
   readonly showCommandPalette?: boolean;
+  /** 可选 UI 编排：事件发布后激活已打开的目标 pane；不参与数据中继授权。 */
+  readonly eventTargets?: Readonly<Record<string, string>>;
 }
 
 export interface PanesHostProps {
@@ -107,6 +109,8 @@ export function PanesHost({
   const sequence = React.useRef(0);
   const nextId = React.useCallback((paneId: string) => createInstanceId(paneId, ++sequence.current), [createInstanceId]);
   const [workspace, setWorkspace] = React.useState(() => createPaneWorkspace(definition, (paneId) => nextId(paneId)));
+  const workspaceRef = React.useRef(workspace);
+  workspaceRef.current = workspace;
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [draggedId, setDraggedId] = React.useState<string>();
   const [hostError, setHostError] = React.useState<PaneHostError>();
@@ -254,6 +258,34 @@ export function PanesHost({
       if (surface === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Surface is not ready", { retryable: true });
       return surface.run(request.domain, request.action, request.args);
     }
+    if (request.operation === "event.publish") {
+      let delivered = 0;
+      const current = workspaceRef.current;
+      for (const target of current.instances) {
+        const targetPane = paneById(definition, target.paneId);
+        if (!targetPane.capabilities.events.subscribe.includes(request.topic)) continue;
+        const targetLive = connections.current.get(target.instanceId);
+        if (targetLive?.epoch !== target.epoch) continue;
+        targetLive.port.postMessage({
+          type: "pane:event",
+          topic: request.topic,
+          payload: request.payload,
+          source: { instanceId: instance.instanceId, paneId: instance.paneId },
+        } satisfies PaneHostMessage);
+        delivered += 1;
+      }
+      const targetPaneId = config.eventTargets?.[request.topic];
+      const target = targetPaneId === undefined
+        ? undefined
+        : current.instances.find((candidate) => candidate.paneId === targetPaneId);
+      if (target !== undefined) {
+        setWorkspace((latest) => reducePaneWorkspace(definition, latest, {
+          type: "activate",
+          instanceId: target.instanceId,
+        }));
+      }
+      return { delivered };
+    }
     if (request.operation === "attachment.put") {
       if (upload === undefined || baseUrl === undefined || sessionId === undefined) {
         throw new PaneHostError("ATTACHMENT_FAILED", "Attachment service is not ready", { retryable: true });
@@ -265,7 +297,7 @@ export function PanesHost({
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
     return undefined;
-  }, [baseUrl, conversation, sessionId, surface, upload]);
+  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, surface, upload]);
 
   const connect = React.useCallback((instance: PaneInstance, force = false): void => {
     const frame = frames.current.get(instance.instanceId);

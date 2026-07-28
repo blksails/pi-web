@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { definePanes, PANE_PROTOCOL_VERSION } from "../src/index.js";
 import { PanesHost } from "../src/react/index.js";
 
@@ -276,5 +276,88 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     expect(mirrorsOf(0)).toHaveLength(2);
     expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
     expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
+  });
+
+  it("仅向获订阅授权的 pane 中继事件，并按宿主映射激活目标 pane", async () => {
+    const eventDefinition = definePanes({
+      id: "event-test",
+      initialPaneIds: ["materials", "canvas"],
+      panes: [
+        {
+          id: "materials",
+          title: "Materials",
+          document: { kind: "inline", srcDoc: "<!doctype html><p>materials</p>" },
+          capabilities: { events: { publish: ["aigc.canvas.import"] } },
+        },
+        {
+          id: "canvas",
+          title: "Canvas",
+          document: { kind: "inline", srcDoc: "<!doctype html><p>canvas</p>" },
+          capabilities: { events: { subscribe: ["aigc.canvas.import"] } },
+        },
+      ],
+    });
+    let sequence = 0;
+    const view = render(<PanesHost
+      definition={eventDefinition}
+      config={{ eventTargets: { "aigc.canvas.import": "canvas" } }}
+      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+    />);
+    const frames = [...view.container.querySelectorAll("iframe")];
+    const ports = new Map<string, MessagePort>();
+    for (const frame of frames) {
+      const paneId = frame.title.toLowerCase();
+      const posted: Array<{ ports: readonly MessagePort[] }> = [];
+      frame.contentWindow!.postMessage = ((_message: unknown, _target: unknown, transfer?: readonly MessagePort[]) => {
+        posted.push({ ports: transfer ?? [] });
+      }) as unknown as typeof window.postMessage;
+      window.dispatchEvent(new MessageEvent("message", {
+        data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId },
+        source: frame.contentWindow,
+      }));
+      ports.set(paneId, posted[0]!.ports[0]!);
+    }
+    const sourceResults: Array<Record<string, unknown>> = [];
+    const targetMessages: Array<Record<string, unknown>> = [];
+    ports.get("materials")!.onmessage = ({ data }: MessageEvent) => sourceResults.push(data as never);
+    ports.get("canvas")!.onmessage = ({ data }: MessageEvent) => targetMessages.push(data as never);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Materials" }));
+    await act(async () => {
+      ports.get("materials")!.postMessage({
+        type: "pane:request",
+        requestId: "event-ok",
+        operation: "event.publish",
+        topic: "aigc.canvas.import",
+        payload: { attachmentIds: ["att_1"] },
+      });
+      await until(() =>
+        sourceResults.some((message) => message.requestId === "event-ok")
+        && targetMessages.some((message) => message.type === "pane:event"));
+    });
+
+    expect(sourceResults.find((message) => message.requestId === "event-ok")).toMatchObject({
+      ok: true,
+      data: { delivered: 1 },
+    });
+    expect(targetMessages.find((message) => message.type === "pane:event")).toEqual({
+      type: "pane:event",
+      topic: "aigc.canvas.import",
+      payload: { attachmentIds: ["att_1"] },
+      source: { instanceId: "materials-1", paneId: "materials" },
+    });
+    expect(screen.getByRole("tab", { name: "Canvas" }).getAttribute("aria-selected")).toBe("true");
+
+    ports.get("materials")!.postMessage({
+      type: "pane:request",
+      requestId: "event-denied",
+      operation: "event.publish",
+      topic: "admin.delete",
+    });
+    await until(() => sourceResults.some((message) => message.requestId === "event-denied"));
+    expect(sourceResults.find((message) => message.requestId === "event-denied")).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_DENIED" },
+    });
   });
 });

@@ -23,7 +23,14 @@ describe("connectPaneGuest", () => {
       type: "pane:connected",
       protocol: PANE_PROTOCOL_VERSION,
       instance: { instanceId: "materials-1", paneId: "materials", epoch: 1 },
-      grants: { routes: [], surfaceCommands: [], surfaceKeys: [], attachments: "none", conversation: "none" },
+      grants: {
+        routes: [],
+        surfaceCommands: [],
+        surfaceKeys: [],
+        events: { publish: [], subscribe: [] },
+        attachments: "none",
+        conversation: "none",
+      },
       interactionMode: "standard",
     }, "*", [channel.port2]);
 

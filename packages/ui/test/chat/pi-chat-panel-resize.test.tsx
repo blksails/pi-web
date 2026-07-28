@@ -40,6 +40,7 @@ describe("panelRight 连续宽度(全受控)", () => {
   it("传 panelWidth(number) → aside 宽度为对应 px 且渲染拖拽分隔条", () => {
     render(<PiChat session={mockSession()} extension={panelExt} panelWidth={480} />);
     expect(aside().style.width).toBe("480px");
+    expect(aside().className).toContain("border-l");
     expect(document.querySelector("[data-pi-panel-resizer]")).not.toBeNull();
   });
 

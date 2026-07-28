@@ -13,6 +13,7 @@ const capabilities: PaneCapabilities = {
   routes: [{ name: "data", methods: ["GET", "POST"], maxRequestBytes: 1024 }],
   surfaceKeys: ["surface:canvas"],
   surfaceCommands: [{ domain: "canvas", actions: ["sync"] }],
+  events: { publish: ["canvas.import"], subscribe: ["canvas.changed"] },
   attachments: "read-write",
   conversation: "submit",
 };
@@ -74,17 +75,20 @@ describe("pane contract and instance model", () => {
 });
 
 describe("default-deny authorization", () => {
-  it("allows declared routes and surface commands", () => {
+  it("allows declared routes, surface commands and events", () => {
     const route = PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "1", operation: "route.query", route: "data" });
     const surface = PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "2", operation: "surface.run", domain: "canvas", action: "sync" });
+    const event = PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "3", operation: "event.publish", topic: "canvas.import", payload: { attachmentId: "a1" } });
     expect(() => authorizePaneRequest(capabilities, route)).not.toThrow();
     expect(() => authorizePaneRequest(capabilities, surface)).not.toThrow();
+    expect(() => authorizePaneRequest(capabilities, event)).not.toThrow();
   });
 
-  it("rejects undeclared route, method and surface action", () => {
+  it("rejects undeclared route, surface action and event topic", () => {
     for (const request of [
       PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "1", operation: "route.query", route: "secret" }),
       PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "2", operation: "surface.run", domain: "canvas", action: "delete-all" }),
+      PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "3", operation: "event.publish", topic: "admin.delete" }),
     ]) {
       expect(() => authorizePaneRequest(capabilities, request)).toThrowError(PaneHostError);
     }

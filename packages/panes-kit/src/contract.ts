@@ -22,6 +22,10 @@ export const PaneCapabilitiesSchema = z.object({
   routes: z.array(PaneRouteGrantSchema).default([]),
   surfaceKeys: z.array(NonEmptyIdSchema).default([]),
   surfaceCommands: z.array(PaneSurfaceCommandGrantSchema).default([]),
+  events: z.object({
+    publish: z.array(NonEmptyIdSchema).default([]),
+    subscribe: z.array(NonEmptyIdSchema).default([]),
+  }).default({}),
   attachments: z.enum(["none", "read", "read-write"]).default("none"),
   conversation: z.enum(["none", "submit"]).default("none"),
 });
@@ -90,6 +94,11 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     args: z.unknown().optional(),
   }),
   RequestBaseSchema.extend({
+    operation: z.literal("event.publish"),
+    topic: NonEmptyIdSchema,
+    payload: z.unknown().optional(),
+  }),
+  RequestBaseSchema.extend({
     operation: z.literal("attachment.put"),
     name: z.string().min(1).max(255),
     mimeType: z.string().max(255),
@@ -143,6 +152,12 @@ export type PaneHostMessage =
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: true; readonly data: unknown }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: false; readonly error: PaneErrorData }
   | { readonly type: "pane:surface"; readonly key: string; readonly value: unknown }
+  | {
+      readonly type: "pane:event";
+      readonly topic: string;
+      readonly payload: unknown;
+      readonly source: Pick<PaneInstance, "instanceId" | "paneId">;
+    }
   | { readonly type: "pane:lifecycle"; readonly state: "visible" | "hidden" | "closing" };
 
 export function definePaneDefinition(input: PaneDefinitionInput): PaneDefinition {

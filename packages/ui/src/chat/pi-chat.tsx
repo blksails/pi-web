@@ -1871,7 +1871,7 @@ export function PiChat({
             // relative:为连续模式拖拽分隔条(absolute left)提供定位上下文。
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
-            "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
+            "relative hidden min-h-0 shrink-0 border-l border-[hsl(var(--border))] lg:flex lg:flex-col",
             panelRatioActive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
