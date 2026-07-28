@@ -232,3 +232,40 @@ describe("无 argSpec 命令不回归", () => {
     expect(screen.getByText("/help")).toBeInTheDocument();
   });
 });
+
+describe("命令名匹配紧密度排序", () => {
+  // 回归(dev 实机抓到):命令名过滤是子串匹配,`skill:agent-browser` 也含 "agent" 且在
+  // 清单里更靠前 —— 没有紧密度排序时,用户打全名 `/agent` 按 Tab 反而选中 skill 那条。
+  function SortHarness(): React.JSX.Element {
+    const [value, setValue] = React.useState("/agent");
+    const mk = (name: string): RpcSlashCommand => ({
+      name,
+      description: name,
+      source: "prompt",
+      sourceInfo: {
+        path: "/tmp",
+        source: "builtin",
+        scope: "project" as const,
+        origin: "top-level" as const,
+      },
+    });
+    const controls = mockControls({
+      // 故意把子串匹配项排在精确匹配项之前(真实清单里 skill 命令就在前面)。
+      commands: [mk("skill:agent-browser"), mk("skill:agent-runner"), mk("agent")],
+    });
+    return (
+      <div>
+        <PiCommandPalette controls={controls} value={value} onChange={setValue} />
+        <span data-testid="value">{value}</span>
+      </div>
+    );
+  }
+
+  it("精确匹配项排在子串匹配项之前,Tab 选中它", () => {
+    render(<SortHarness />);
+    act(() => {
+      fireEvent.keyDown(document, { key: "Tab" });
+    });
+    expect((screen.getByTestId("value") as HTMLElement).textContent).toBe("/agent ");
+  });
+});

@@ -110,6 +110,17 @@ function queryOf(value: string): string {
 }
 
 /** 按策略判定某命令是否应在补全中可见(非扩展命令始终可见)。 */
+/**
+ * 命令名与查询的匹配紧密度:0=精确、1=前缀、2=子串。小者优先。
+ * 调用方保证 `name` 已经含 `query`(过滤在前),空 query 时全部同级(保持原顺序)。
+ */
+function matchRank(name: string, query: string): number {
+  if (query.length === 0) return 0;
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  return 2;
+}
+
 function isCommandVisible(
   c: RpcSlashCommand,
   policy: ExtensionCommandPolicy | undefined,
@@ -186,12 +197,18 @@ export function PiCommandPalette({
   const query = queryOf(value).toLowerCase();
   const filtered = React.useMemo(
     () =>
-      mergedCommands.filter(
-        // extension 命令默认隐藏(web 端会卡死,永不发 agent_end);可经策略放行。
-        (c) =>
-          isCommandVisible(c, extensionCommands) &&
-          c.name.toLowerCase().includes(query),
-      ),
+      mergedCommands
+        .filter(
+          // extension 命令默认隐藏(web 端会卡死,永不发 agent_end);可经策略放行。
+          (c) =>
+            isCommandVisible(c, extensionCommands) &&
+            c.name.toLowerCase().includes(query),
+        )
+        // 匹配紧密度排序:精确 > 前缀 > 子串,同级保持原顺序(稳定排序)。
+        // 没有它,子串匹配会让"打全名"这一最强意图表达反而选不中目标——例如输入
+        // `/agent` 时 `skill:agent-browser` 因也含 "agent" 且在清单里更靠前,会抢走
+        // 首个高亮位,用户按 Tab/Enter 得到的不是自己打的那条命令。
+        .sort((a, b) => matchRank(a.name.toLowerCase(), query) - matchRank(b.name.toLowerCase(), query)),
     [mergedCommands, query, extensionCommands],
   );
 
