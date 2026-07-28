@@ -19,7 +19,7 @@ import {
   createDashscopeImageEdit,
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
-import { createNewApiImageEdit } from "../providers/newapi.js";
+import { createNewApiImageEdit, createNewApiGeminiImageEdit } from "../providers/newapi.js";
 import { createSufyImageEdit } from "../providers/sufy.js";
 import { createAiGatewayImageEdit } from "../providers/ai-gateway.js";
 import { openRouterImageEditRoutes } from "../providers/openrouter-models.js";
@@ -51,14 +51,15 @@ const ROUTES: readonly ImageRoute[] = [
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
-  // 与 image-generation.ts 同一路由键(`-newapi` 后缀避让 OpenRouter 占用的裸键);
-  // 走 NewAPI 的 /v1/images/edits multipart。pricing 未知,不声明。
-  createNewApiImageEdit({
+  // 与 image-generation.ts 同一路由键(`-newapi` 后缀避让 OpenRouter 占用的裸键)。
+  // ★同样走 Gemini 原生 relay:输入图经 contents[].parts[].inlineData 随请求提交,
+  // 与文生图共用一个端点(Gemini 无独立 edits 端点)。详见 gemini-relay.ts 头注释。
+  createNewApiGeminiImageEdit({
     model: "gemini-3.1-flash-image-newapi",
     label: "Gemini 3.1 Flash Image · NewAPI",
     description:
-      "Google Gemini 3.1 Flash image editing via NewAPI gateway (OpenAI-compatible edits). " +
-      "Faithful edit (keeps input, applies instruction). Needs NEWAPI_API_KEY.",
+      "Google Gemini 3.1 Flash image editing via NewAPI gemini relay. " +
+      "Faithful edit (keeps input, applies instruction). Slow (~170s). Needs NEWAPI_API_KEY.",
     providerModel: "gemini-3.1-flash-image",
   }),
   createSufyImageEdit(

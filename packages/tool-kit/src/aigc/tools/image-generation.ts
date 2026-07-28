@@ -19,7 +19,7 @@ import {
   createDashscopeSyncT2I,
   DASHSCOPE_MODELS,
 } from "../providers/dashscope.js";
-import { createNewApiImage } from "../providers/newapi.js";
+import { createNewApiImage, createNewApiGeminiImage } from "../providers/newapi.js";
 import { createSufyImage } from "../providers/sufy.js";
 import { createAiGatewayImage } from "../providers/ai-gateway.js";
 import { openRouterImageRoutes } from "../providers/openrouter-models.js";
@@ -54,14 +54,16 @@ const ROUTES: readonly ImageRoute[] = [
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
   ),
   // 路由键带 `-newapi` 后缀:裸键 `gemini-3.1-flash-image` 已被 OpenRouter 同名模型占用
-  // (openrouter-models.ts,走 /chat/completions);此处经 NewAPI 走 OpenAI 兼容 images 协议,
-  // providerModel 回到网关上的裸模型名。pricing 未知,故不声明(纯元数据,缺省不影响执行)。
-  createNewApiImage({
+  // (openrouter-models.ts,走 /chat/completions);providerModel 回到网关上的裸模型名。
+  // ★走 **Gemini 原生 relay** 而非 OpenAI 兼容 images:后者对 Gemini 系直接拒绝
+  // (only imagen models are supported,2026-07-28 实测)。详见 gemini-relay.ts 头注释。
+  // 实测出图约 170s(远慢于 gpt-image-2);pricing 未知,故不声明。
+  createNewApiGeminiImage({
     model: "gemini-3.1-flash-image-newapi",
     label: "Gemini 3.1 Flash Image · NewAPI",
     description:
-      "Google Gemini 3.1 Flash image generation via NewAPI gateway (OpenAI-compatible images). " +
-      "Fast & low-cost. Needs NEWAPI_API_KEY.",
+      "Google Gemini 3.1 Flash image generation via NewAPI gemini relay. " +
+      "High quality but slow (~170s). Needs NEWAPI_API_KEY.",
     providerModel: "gemini-3.1-flash-image",
   }),
   createSufyImage(

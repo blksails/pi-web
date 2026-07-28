@@ -22,6 +22,12 @@ import {
   type OpenAiCompatConfig,
   type OpenAiCompatModelArgs,
 } from "./openai-compat.js";
+import {
+  createGeminiRelayImage,
+  createGeminiRelayImageEdit,
+  type GeminiRelayConfig,
+  type GeminiRelayModelArgs,
+} from "./gemini-relay.js";
 
 // ── 网关配置 ─────────────────────────────────────────────────────────────────
 
@@ -63,4 +69,43 @@ export function createNewApiImageEdit(
   extras: Partial<ImageRoute> = {},
 ): ImageRoute {
   return createOpenAiCompatImageEdit(NEWAPI_CONFIG, args, extras);
+}
+
+// ── Gemini relay(与上面的 OpenAI 兼容面**并存的第二条协议**)──────────────────
+
+/**
+ * NewAPI 的 Gemini 原生 relay 配置(`/v1beta/models/<model>:generateContent`)。
+ *
+ * ★为什么 Gemini 系不能走上面的 `createNewApiImage`(2026-07-28 真机实测):
+ *   - `/v1/images/generations` → `not supported model for image generation, only imagen
+ *     models are supported`;
+ *   - `/v1/chat/completions`   → 挂满 180s 无响应;
+ *   - `/v1beta/models/<model>:generateContent` → 出图(1024×1024 JPEG,约 170s)。
+ *
+ * base 独立成 `NEWAPI_GEMINI_BASE_URL` 占位而非从 `NEWAPI_BASE_URL` 推导:后者是 `${VAR}`
+ * 占位符、在 var-resolver 展开前无法做 `/v1`→`/v1beta` 的字符串替换。默认值指向同一网关。
+ */
+const NEWAPI_GEMINI_CONFIG: GeminiRelayConfig = {
+  baseUrl: "${NEWAPI_GEMINI_BASE_URL:-https://www.apiservices.top/v1beta}",
+  apiKeyVar: "NEWAPI_API_KEY",
+  provider: "newapi",
+};
+
+/** 工厂入参别名(与 {@link NewApiModelArgs} 同形,分开命名以示协议不同)。 */
+export type NewApiGeminiModelArgs = GeminiRelayModelArgs;
+
+/** 创建 NewAPI 上的 Gemini relay 文生图路由项。 */
+export function createNewApiGeminiImage(
+  args: NewApiGeminiModelArgs,
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
+  return createGeminiRelayImage(NEWAPI_GEMINI_CONFIG, args, extras);
+}
+
+/** 创建 NewAPI 上的 Gemini relay 图像编辑路由项(同端点,输入图经 inlineData 提交)。 */
+export function createNewApiGeminiImageEdit(
+  args: NewApiGeminiModelArgs,
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
+  return createGeminiRelayImageEdit(NEWAPI_GEMINI_CONFIG, args, extras);
 }
