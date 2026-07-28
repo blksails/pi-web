@@ -39,9 +39,24 @@ const PORT_ATTACH = PORT_FS + 3;
 // 不需真实模型调用(主对话经 egress 由集成测试 7.2 覆盖),故 egress base 指一个不必可达的
 // 占位地址即可驱动登录状态机。门控关闭档在既有 fs server(无该 env)上验证。
 const PORT_LOGIN = PORT_FS + 4;
+// registry agent 源(第六套 webServer,spec agent-plugin-commands 任务 4.4):与 login 档的区别是
+// egress base 指向一个**真实可达**的假 cloud(e2e/fixtures/fake-cloud-server.mjs),于是
+// 登录 → capabilities 换 sources 授予 → GET /sources → 并入 /agent-sources 这一整条能真跑通。
+const PORT_REGISTRY = PORT_FS + 5;
+// 假 cloud 自身的端口(同时充当 registry 宿主)。
+const PORT_FAKE_CLOUD = PORT_FS + 6;
 const externalServer = process.env.PI_WEB_E2E_EXTERNAL_SERVER === "1";
 
 // attachment-tool-bridge 专用 stub 的绝对路径(服务端据 PI_WEB_STUB_AGENT_PATH 派生 spawn 规格)。
+// ⚠ playwright 按 CJS 转译本文件,`import.meta` 会直接语法错 —— 路径一律经 process.cwd()
+// (与 ATTACHMENT_STUB_PATH 同惯例)。
+const FAKE_CLOUD_PATH = path.join(
+  process.cwd(),
+  "e2e",
+  "fixtures",
+  "fake-cloud-server.mjs",
+);
+
 const ATTACHMENT_STUB_PATH = path.join(
   process.cwd(),
   "e2e",
@@ -189,7 +204,7 @@ export default defineConfig({
       // 专用 server 上的 spec 从 fs project 排除:
       //  - agent-plugin-commands.e2e.ts 需放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+ 隔离落盘;
       //  - attachment-tool-bridge.e2e.ts 需专用 stub(PI_WEB_STUB_AGENT_PATH)驱动真实附件工具链。
-      testIgnore: /(agent-plugin-commands|attachment-tool-bridge|desktop-cloud-login)\.e2e\.ts/,
+      testIgnore: /(agent-plugin-commands|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -220,6 +235,15 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_ATTACH}`,
+      },
+    },
+    {
+      // registry agent 源(spec agent-plugin-commands 任务 4.4):真实可达的假 cloud + registry。
+      name: "registry",
+      testMatch: /registry-agent-sources\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_REGISTRY}`,
       },
     },
     {
@@ -342,6 +366,46 @@ export default defineConfig({
               ),
               PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "http://127.0.0.1:59999/v1",
               PI_WEB_CLOUD_LOGIN_MODELS: JSON.stringify([{ id: "test-model" }]),
+            },
+          },
+          {
+            // 假 cloud + 假 registry(spec agent-plugin-commands 任务 4.4)。纯 node http 夹具,
+            // 无需构建产物;pi-web server 那条经 egress base 指向它。
+            command: `node ${FAKE_CLOUD_PATH}`,
+            port: PORT_FAKE_CLOUD,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 30_000,
+            env: { FAKE_CLOUD_PORT: String(PORT_FAKE_CLOUD) },
+          },
+          {
+            // registry agent 源:云端登录启用 + egress base 指向上面那台**可达**的假 cloud。
+            // capabilities URL 由 pi-web 自 egress base 推导,故不必单独配。
+            // command 附独立 argv 标记去重。
+            command: `node ${SERVER_ENTRY} --store=registry`,
+            port: PORT_REGISTRY,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_REGISTRY),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-registry-fs-"),
+              ),
+              // 隔离落盘:本地扫描/注册表都指到空临时目录,使 /agent-sources 里出现的条目
+              // **只可能**来自 registry —— 断言因此是确定的,不受开发机既有本地源影响。
+              PI_WEB_AGENT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-registry-agent-")),
+              PI_WEB_SOURCES_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-registry-src-")),
+              PI_WEB_CLOUD_LOGIN_EGRESS_BASE: `http://127.0.0.1:${PORT_FAKE_CLOUD}/api/desktop/egress/v1`,
+              PI_WEB_CLOUD_LOGIN_MODELS: JSON.stringify([{ id: "test-model" }]),
+              // host 命令的执行类动作(含只读的 list)都要过 adminGate,不放行会得到
+              // ADMIN_DENIED 失败卡片而不是列表。
+              PI_WEB_EXT_ADMIN_ALLOW_ANY: "1",
+              NEXT_PUBLIC_PI_WEB_SOURCE_PICKER: "1",
             },
           },
         ],

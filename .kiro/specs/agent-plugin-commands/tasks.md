@@ -126,6 +126,17 @@
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
   - _Depends: 4.2_
 
+- [x] 4.4 补 registry 取数的真实 HTTP e2e
+  - 假 cloud + 假 registry 夹具收进 e2e 夹具目录:实现登录、capabilities、registry 三端点,
+    并提供请求审计端点供用例断言链路真的走过
+  - 新增第六套 webServer(pi-web + 假 cloud 两个进程)与专用 project;落盘隔离到空临时目录,
+    使列表中出现的条目只可能来自 registry
+  - 用例覆盖:登录后 REST 面并入 registry 源且 plugin 条目被过滤、`/agent list` 卡片列出远端源、
+    未登录时 registry 条目不出现
+  - 完成态:该 project 的 e2e 全绿,且相邻 project(fs/install/login)不受影响
+  - _Requirements: 7.4_
+  - _Depends: 4.2_
+
 ## Implementation Notes
 
 - **`kindHint` 恒传的连锁反应**(任务 2.2 → 4.2):命令锁定类别后,一个本地 component 包会被
@@ -136,6 +147,12 @@
 - **`/agent list` 的数据源**(任务 2.2):CLI 的 `AgentChannel` 只有装/卸,没有列举能力,故由装配层
   注入 `listAgentSources`,接既有的 agent 源枚举 provider(与 `GET /agent-sources` 同一实例)。
   未注入时如实返回 `AGENT_LIST_NOT_SUPPORTED`,不假装空列表。
+- **registry 取数此前只有替身覆盖**(任务 4.4):`registry-http-provider` / `hybrid-agent-sources`
+  两个单测都注入 fetch 替身,`desktop-cloud-login` e2e 又把 egress base 指向不可达占位地址 ——
+  「登录之后真的能从 registry 取到源」这件事没有任何端到端证据。第六套 webServer 补上了这段。
+  两个坑:①playwright 按 CJS 转译 config,`import.meta` 直接语法错,路径一律走 `process.cwd()`;
+  ②host 命令的执行类动作**含只读的 list** 也过 adminGate,webServer env 漏 `PI_WEB_EXT_ADMIN_ALLOW_ANY`
+  会得到 ADMIN_DENIED 卡片而不是列表。
 - **worktree 缺 gitignored 产物**:`examples/*/.pi/web/dist` 是构建产物且被 gitignore,新 worktree
   首次跑根测试面会有 3 个 webext 用例失败;跑一次 playwright(其 globalSetup 幂等重建 dist)后即绿。
   定责手法:同一用例在主仓对照跑。
