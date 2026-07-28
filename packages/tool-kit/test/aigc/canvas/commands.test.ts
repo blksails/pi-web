@@ -4,7 +4,6 @@ import type { SurfaceCtx } from "../../../src/surface/create-surface.js";
 import { createCanvasCommands } from "../../../src/aigc/canvas/commands.js";
 import type { GalleryState } from "../../../src/aigc/canvas/schema.js";
 import type { runImageTool } from "../../../src/aigc/run-image-tool.js";
-import { getMcpCallPort } from "../../../src/mcp/call-port.js";
 
 type RunImageTool = typeof runImageTool;
 
@@ -64,7 +63,6 @@ function makeHarness(over?: Partial<AttachmentToolContext>): Harness {
       current = reducer(current);
     },
     attachments,
-    mcp: getMcpCallPort({}),
   };
   return { ctx, state: () => current, setMeta, resolve, listBySession };
 }

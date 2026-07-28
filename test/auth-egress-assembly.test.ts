@@ -5,14 +5,12 @@ import { describe, it, expect } from "vitest";
 import {
   resolveCloudLoginConfig,
   computeAuthEgressSpawnEnv,
-  computeMcpHostAuthorizationSpawnEnv,
   CloudLoginConfigError,
   CLOUD_LOGIN_MIN_TIMEOUT_MS,
   RUNNER_CREDENTIAL_ENV,
   RUNNER_EGRESS_BASE_ENV,
   RUNNER_EGRESS_MODELS_ENV,
 } from "@/lib/app/auth-egress-assembly";
-import { MCP_HOST_AUTHORIZATION_ENV } from "@blksails/pi-web-protocol";
 
 describe("resolveCloudLoginConfig", () => {
   it("未设 base → undefined(功能关闭,Req 4.2)", () => {
@@ -91,14 +89,5 @@ describe("computeAuthEgressSpawnEnv", () => {
     expect(env[RUNNER_CREDENTIAL_ENV]).toBe("cred.sig");
     expect(env[RUNNER_EGRESS_BASE_ENV]).toBe("https://egress/v1");
     expect(JSON.parse(env[RUNNER_EGRESS_MODELS_ENV] ?? "null")).toEqual([{ id: "m1" }]);
-  });
-});
-
-describe("computeMcpHostAuthorizationSpawnEnv", () => {
-  it("无凭据不注入；有凭据只产出完整 Bearer header", () => {
-    expect(computeMcpHostAuthorizationSpawnEnv(undefined)).toEqual({});
-    expect(computeMcpHostAuthorizationSpawnEnv("  credential.sig  ")).toEqual({
-      [MCP_HOST_AUTHORIZATION_ENV]: "Bearer credential.sig",
-    });
   });
 });

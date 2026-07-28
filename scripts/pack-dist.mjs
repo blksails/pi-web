@@ -42,7 +42,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = resolve(process.env.PI_WEB_DIST ?? join(ROOT, "dist"));
@@ -454,8 +454,7 @@ export function packDist() {
   return { dist: DIST, hoistedCount: hoisted.size, assetCount, pruned };
 }
 
-// ★ pathToFileURL:手拼 `file://` 在 Windows 恒不等(见 build-server.mjs 同处注释)。
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   const { dist, hoistedCount, assetCount, pruned } = packDist();
   process.stdout.write(
     `[pack-dist] → ${dist} (hoist ${hoistedCount} 个运行时包, ${assetCount} 个运行时资源)\n`,

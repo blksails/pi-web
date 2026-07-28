@@ -142,7 +142,6 @@ import {
   resolveCloudLoginConfig,
   readCloudDomainEgressBase,
   computeEgressSpawnEnvFromGrant,
-  computeMcpHostAuthorizationSpawnEnv,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
@@ -799,9 +798,6 @@ function buildSingleton(): HandlerSingleton {
           authSessionState.currentCredential(),
           desktopCapabilitiesClient?.cachedStatic()?.egress,
         ),
-        // 远程 MCP 只在配置显式 hostAuthorization 时读取此值；mcp.json 不持久化凭据。
-        // 独立于模型 egress 门控，故桌面登录可直接承载业务 MCP，Pi-clouds 后续复用同一契约。
-        ...computeMcpHostAuthorizationSpawnEnv(authSessionState.currentCredential()),
       },
     };
     return new PiRpcProcess(spec);

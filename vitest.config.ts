@@ -20,7 +20,6 @@ export default defineConfig({
       "@blksails/pi-web-tool-kit/commands": path.resolve(__dirname, "packages/tool-kit/src/commands/index.ts"),
       "@blksails/pi-web-tool-kit/extension-entry": path.resolve(__dirname, "packages/tool-kit/src/extension-tools/entry-path.ts"),
       "@blksails/pi-web-tool-kit/auto-title-entry": path.resolve(__dirname, "packages/tool-kit/src/auto-title/entry-path.ts"),
-      "@blksails/pi-web-tool-kit/runtime": path.resolve(__dirname, "packages/tool-kit/src/runtime.ts"),
       "@blksails/pi-web-tool-kit": path.resolve(__dirname, "packages/tool-kit/src/index.ts"),
       // webext-registry 静态载入 examples 的 .pi/web:stickers.tsx 直连 canvas-kit(非根声明依赖,
       // Next 走 tsconfig paths 可解析,vitest 不读 paths 须显式 alias);canvas-ui 同规则对齐。

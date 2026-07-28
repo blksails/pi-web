@@ -13,10 +13,7 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import {
-  MCP_HOST_AUTHORIZATION_ENV,
-  type McpTransportConfig,
-} from "@blksails/pi-web-protocol";
+import type { McpTransportConfig } from "@blksails/pi-web-protocol";
 
 /** 未知/不支持的传输类型。调用方应把该条目记为失败并跳过,而非中断整个装配。 */
 export class UnsupportedMcpTransportError extends Error {
@@ -25,41 +22,6 @@ export class UnsupportedMcpTransportError extends Error {
     super(`unsupported MCP transport type: ${transportType}`);
     this.name = "UnsupportedMcpTransportError";
   }
-}
-
-/** 配置要求宿主鉴权、但当前会话没有可用凭据。 */
-export class McpHostAuthorizationUnavailableError extends Error {
-  readonly code = "host-authorization-unavailable";
-  constructor() {
-    super("MCP host authorization is unavailable for this session");
-    this.name = "McpHostAuthorizationUnavailableError";
-  }
-}
-
-/** 配置同时声明静态 Authorization 与宿主鉴权，语义冲突。 */
-export class McpHostAuthorizationConflictError extends Error {
-  readonly code = "host-authorization-conflict";
-  constructor() {
-    super("MCP host authorization conflicts with a configured Authorization header");
-    this.name = "McpHostAuthorizationConflictError";
-  }
-}
-
-/** 合并远程请求头；动态凭据只从会话 env 读取，绝不写回配置。 */
-export function resolveMcpRemoteHeaders(
-  config: Extract<McpTransportConfig, { type: "sse" | "streamable-http" }>,
-  env: NodeJS.ProcessEnv = process.env,
-): Readonly<Record<string, string>> {
-  const headers = { ...(config.headers ?? {}) };
-  if (!config.hostAuthorization) return headers;
-  if (Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
-    throw new McpHostAuthorizationConflictError();
-  }
-  const authorization = env[MCP_HOST_AUTHORIZATION_ENV]?.trim();
-  if (authorization === undefined || authorization.length === 0) {
-    throw new McpHostAuthorizationUnavailableError();
-  }
-  return { ...headers, Authorization: authorization };
 }
 
 /**
@@ -90,15 +52,9 @@ export function createMcpTransport(config: McpTransportConfig): Transport {
     case "sse":
       // SSE 在 MCP SDK 1.29 已标记 deprecated(规范层面正被 Streamable HTTP 取代),但仍需支持:
       // 存量 SSE-only server 只能用它接入(Req 2.1/2.3)。待上游移除时本分支须随之处置。
-      return new SSEClientTransport(
-        new URL(config.url),
-        toTransportOptions(resolveMcpRemoteHeaders(config)),
-      );
+      return new SSEClientTransport(new URL(config.url), toTransportOptions(config.headers));
     case "streamable-http":
-      return new StreamableHTTPClientTransport(
-        new URL(config.url),
-        toTransportOptions(resolveMcpRemoteHeaders(config)),
-      );
+      return new StreamableHTTPClientTransport(new URL(config.url), toTransportOptions(config.headers));
     default: {
       // 判别联合已穷尽;运行期仍可能收到磁盘上的非法值(schema 之外的路径),故显式报错。
       const unknown = config as { readonly type?: unknown };

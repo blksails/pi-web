@@ -40,5 +40,4 @@ if (process.env.PI_WEB_TRANSPORT === 'e2b') {
     'server/index.ts',
   ])
 }
-// .bin/vite 是 POSIX shim,Windows 上 shell:false spawn 直接 ENOENT;直呼 JS 入口跨平台等义
-run(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')])
+run(path.join(root, 'node_modules', '.bin', 'vite'), [])

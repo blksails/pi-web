@@ -32,8 +32,6 @@ export interface McpToolDescriptor {
 /** MCP `tools/call` 的结果(只取适配所需字段)。 */
 export interface McpToolCallResult {
   readonly content?: readonly unknown[];
-  /** MCP 结构化工具结果；Surface 等确定性消费者无需解析展示文本。 */
-  readonly structuredContent?: Readonly<Record<string, unknown>>;
   readonly isError?: boolean;
 }
 
