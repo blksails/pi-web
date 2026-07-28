@@ -80,12 +80,14 @@ export async function runEndpoint(
     resolvedHeaders[k] = resolveVars(v);
   }
 
-  // Effective fetch: injected impl → proxy fetch → global fetch.
+  // Effective fetch: injected impl → proxyFetch(代理与直连都经它)。
+  // ★直连分支原为 `globalThis.fetch`,那条路无法配置 dispatcher,只能吃 undici 的
+  // 300s 默认超时(图像端点常被掐断,见 proxy-fetch.ts 的 TRANSPORT_TIMEOUT_MS)。
+  // 改为一律经 proxyFetch:proxyUrl 为空时它走放宽超时的直连传输。
   const effectiveFetch: typeof fetch =
     options.fetchImpl ??
-    (proxyUrl
-      ? ((u: string | URL | Request, init?: RequestInit) => proxyFetch(u as string | URL, init, proxyUrl)) as typeof fetch
-      : globalThis.fetch);
+    (((u: string | URL | Request, init?: RequestInit) =>
+      proxyFetch(u as string | URL, init, proxyUrl)) as typeof fetch);
 
   const body = behavior.buildBody
     ? await Promise.resolve(behavior.buildBody(args as Record<string, unknown>, { proxyUrl, fetchImpl: options.fetchImpl }))
@@ -227,7 +229,8 @@ async function runStreaming(
     r = await fetchFn(url, init);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") throw err;
-    throw new Error(`${url}: upstream request failed → ${String(err)}`);
+    // 保留原始 err 为 cause,便于上层做错误分类(而非只能字符串匹配)。
+    throw new Error(`${url}: upstream request failed → ${describeError(err)}`, { cause: err });
   }
   if (!r.ok) {
     const text = await r.text().catch(() => "");
@@ -296,6 +299,24 @@ async function runStreaming(
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
+/**
+ * 把错误连同 `cause` 链一并渲染成可读文本。
+ *
+ * ★undici 的网络错误一律包装成 `TypeError: fetch failed`,真因只在 `err.cause` 里
+ * (`HeadersTimeoutError` / `ConnectTimeoutError` / `ECONNREFUSED` / 证书错误 …)。
+ * 原实现 `String(err)` 把 cause 整个丢掉,日志只剩 "fetch failed" —— 2026-07-28 排查
+ * 图像编辑失败时,只能靠「四次精确 302s」的时间规律反推超时,代价极高。此处逐层展开。
+ *
+ * 深度上限 3,防 cause 自引用导致无限递归。
+ */
+export function describeError(err: unknown, depth = 0): string {
+  if (!(err instanceof Error)) return String(err);
+  const head = err.message ? `${err.name}: ${err.message}` : err.name;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause === undefined || cause === null || depth >= 3) return head;
+  return `${head} ← ${describeError(cause, depth + 1)}`;
+}
+
 async function callOnce(
   url: string,
   headers: Record<string, string>,
@@ -322,7 +343,8 @@ async function callOnce(
     r = await fetchFn(url, init);
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") throw err;
-    throw new Error(`${url}: upstream request failed → ${String(err)}`);
+    // 保留原始 err 为 cause,便于上层做错误分类(而非只能字符串匹配)。
+    throw new Error(`${url}: upstream request failed → ${describeError(err)}`, { cause: err });
   }
 
   if (!r.ok) {
