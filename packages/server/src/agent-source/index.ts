@@ -24,6 +24,7 @@ export {
   isOnlineSourceRef,
   parseOnlineSourceRef,
   formatOnlineSourceRef,
+  isValidSourceId,
 } from "./online-source-id.js";
 export type { OnlineSourceRef } from "./online-source-id.js";
 export {

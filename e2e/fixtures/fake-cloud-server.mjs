@@ -22,6 +22,11 @@
  * 供用例断言链路真的走过、以及排障时看卡在哪一步。
  */
 import { createServer } from "node:http";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const PORT = Number(process.env.FAKE_CLOUD_PORT ?? 4599);
 
@@ -49,8 +54,11 @@ const hits = [];
 
 /**
  * registry 返回的源清单。`kind:"plugin"` 那条**应当被 provider 过滤掉**(plugin 不进会话 agent
- * 选择器,registry-http-provider.ts),用例据此断言过滤真的生效 —— 这也是 registry 目前只有
- * agent source 粒度这一事实的可执行文档。
+ * 选择器,registry-http-provider.ts),用例据此断言过滤真的生效。
+ *
+ * ⚠ 该过滤是**列举面**的行为,不代表「registry 上没有 plugin」—— registry 的发布清单本就支持
+ * `kind: "plugin"`,且能经 `/plugin install` 安装(见下方 REGISTRY_PACKAGES 与安装通道端点)。
+ * 早先把这条过滤当成「registry 只有 agent 粒度」的依据,是错的。
  */
 const REGISTRY_SOURCES = [
   {
@@ -72,6 +80,56 @@ const REGISTRY_SOURCES = [
     kind: "plugin",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// 假 registry 的 resolve / bundle(spec installer-registry-channel,任务 4.1)
+//
+// 端点路径取自 `@pi-clouds/registry-client` 的 `RegistryHttpClient`:
+//   GET {base}/sources/{encodeURIComponent(id)}/resolve?channel=...  → ResolveResponse
+//   GET {base}/sources/{encodeURIComponent(id)}/bundle?key=...       → { dataBase64 }
+// 注意两点契约细节,猜错就整条跑不通:
+//   · id 里的 `/` 被 encodeURIComponent 编码,故 pathname 形如 `/registry/sources/acme%2Fx/resolve`
+//     —— Node 的 URL 会**自动解码** pathname,所以下面按解码后的形态匹配;
+//   · bundle 走 **base64-in-JSON**(不是裸字节流),字段名 `dataBase64`。
+// ---------------------------------------------------------------------------
+
+/**
+ * ★ bundle 与 manifest 的 integrity 必须自洽,故**启动时现场打包并现算** ——
+ * 硬编码两个常量必然随内容漂移,而 integrity 一旦不符,安装侧的 sha384 复核必然失败,
+ * 症状(「INTEGRITY_MISMATCH」)与病灶(「夹具里的常量过期了」)隔了一层,极难排查。
+ */
+function buildBundle(entryContent) {
+  const stage = mkdtempSync(join(tmpdir(), "fake-reg-src-"));
+  mkdirSync(join(stage, ".pi"), { recursive: true });
+  writeFileSync(join(stage, "index.ts"), entryContent);
+  const out = mkdtempSync(join(tmpdir(), "fake-reg-tgz-"));
+  const tgz = join(out, "b.tgz");
+  // strip=0:bundle 根即文件树(与 registry 侧默认、与 installFromRegistry 的解包方式对齐)。
+  execFileSync("tar", ["-czf", tgz, "-C", stage, "."]);
+  const bytes = readFileSync(tgz);
+  rmSync(stage, { recursive: true, force: true });
+  return {
+    base64: bytes.toString("base64"),
+    integrity: `sha384-${createHash("sha384").update(entryContent).digest("base64")}`,
+    cleanup: () => rmSync(out, { recursive: true, force: true }),
+  };
+}
+
+/** 可经 registry 通道安装的包。kind 显式写死 —— 两侧缺省相反,安装侧不接受缺省。 */
+const REGISTRY_PACKAGES = {
+  "acme/hello-cloud": { kind: "agent", version: "1.0.0", entry: "export default { name: 'hello-cloud' };\n" },
+  // 供「/agent install 一个 plugin 包 → 指路 /plugin」这条边界用例。
+  "acme/some-plugin": { kind: "plugin", version: "0.3.0", entry: "export default { name: 'some-plugin' };\n" },
+};
+for (const pkg of Object.values(REGISTRY_PACKAGES)) {
+  const built = buildBundle(pkg.entry);
+  pkg.bundleBase64 = built.base64;
+  pkg.integrity = built.integrity;
+  pkg.cleanup = built.cleanup;
+}
+process.on("exit", () => {
+  for (const pkg of Object.values(REGISTRY_PACKAGES)) pkg.cleanup?.();
+});
 
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -129,6 +187,42 @@ const server = createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/registry/sources") {
     if (bearer(req) !== SOURCES_TOKEN) return json(res, 401, { error: "unauthorized" });
     return json(res, 200, { sources: REGISTRY_SOURCES });
+  }
+
+  // ── registry 安装通道:resolve / bundle ──
+  // ★ Node 的 `new URL()` **不会**解码 pathname 里的 `%2F`,所以这里拿到的是
+  //   `acme%2Fhello-cloud`,必须显式 decodeURIComponent —— 否则查表恒 miss,
+  //   表现为「源不存在」,与真正的 404 无法区分。(本条由夹具冒烟实测抓到。)
+  const regMatch = /^\/registry\/sources\/([^/]+)\/(resolve|bundle)$/.exec(url.pathname);
+  if (req.method === "GET" && regMatch) {
+    if (bearer(req) !== SOURCES_TOKEN) return json(res, 401, { error: "unauthorized" });
+    const sourceId = decodeURIComponent(regMatch[1]);
+    const action = regMatch[2];
+    const pkg = REGISTRY_PACKAGES[sourceId];
+    // 错误体形状取自 registry-client 的 parseErrorBody:{ error: { code, message } }。
+    // ★ code 必须用 registry-client 认识的**线上码** `NOT_FOUND`(它再映射成本仓的
+    //   `SOURCE_ABSENT`)。早先这里直接写 `SOURCE_ABSENT` —— 那是本仓侧的名字,
+    //   registry-client 不认,会落到 `OTHER`,于是「源不存在」被报成别的原因。
+    if (!pkg) {
+      return json(res, 404, { error: { code: "NOT_FOUND", message: `no such source: ${sourceId}` } });
+    }
+    if (action === "resolve") {
+      return json(res, 200, {
+        sourceId,
+        version: pkg.version,
+        origin: { type: "oss", bundle: `bundle-${sourceId}` },
+        hydrate: "runtime",
+        policy: {},
+        capabilities: {},
+        publisherFingerprint: "fake-fingerprint",
+        // ★ kind 显式声明:安装侧以它为权威判据,缺失会被判 MANIFEST_KIND_UNKNOWN。
+        manifest: {
+          kind: pkg.kind,
+          entry: { path: "index.ts", integrity: pkg.integrity },
+        },
+      });
+    }
+    return json(res, 200, { dataBase64: pkg.bundleBase64 });
   }
 
   json(res, 404, { error: "not found", path: url.pathname });

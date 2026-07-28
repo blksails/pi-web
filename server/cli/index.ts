@@ -84,18 +84,17 @@ import { scaffold, type ScaffoldError } from "./scaffold/scaffold-writer.js";
 import { listTemplates, resolveExamplesRoot } from "./scaffold/template-catalog.js";
 import { createCliContext } from "./context.js";
 import { createProgressReporter, type ProgressReporter, type CliError } from "./reporter.js";
-import { createInstaller, type Installer } from "./install/installer.js";
+import { createInstaller, type Installer, type InstallOutcome } from "./install/installer.js";
 import { createPluginInstaller, type PluginInstaller } from "./install/plugin-installer.js";
 import { HttpRegistryAdapter } from "./registry/http-registry-adapter.js";
 import type { RegistryPort } from "./registry/registry-port.js";
 import { publish as runPublishOrchestrator } from "./publish/publish-orchestrator.js";
-import { installFromRegistry, registryInstallDirName } from "./install/registry-install.js";
 import {
   listRegistryInstalls,
   findRegistryInstalls,
   updateRegistryInstalls,
 } from "./install/registry-update.js";
-import { classifySourceForm } from "./install/source-resolver.js";
+import { createRegistryChannel } from "./install/registry-channel.js";
 
 /** 已知子命令名(与 `bin/pi-web.mjs` 的 `SUBCOMMAND_NAMES` 同一份契约,此处独立声明避免
  * 从 `.mjs` 反向 import 类型)。Wave 1 五个 + `publish`(Wave 2,尚未接入)。 */
@@ -283,24 +282,11 @@ async function runInstall(
   }
 
   const cwd = deps.cwd ?? process.cwd();
-  const env = deps.env ?? process.env;
 
-  // 注册表标识 + 已配 registry → 经注册表安装(resolve→代理下载→复核→物化)。
-  // 否则落既有直连安装路径(git/npm/本地)。
-  const registry = buildRegistryFromEnv(env, deps.registry);
-  if (classifySourceForm(source) === "registry" && registry) {
-    const targetBase = registryInstallRoot(env, cwd);
-    const targetDir = join(targetBase, registryInstallDirName(source));
-    reporter.start("install", `${source}(经注册表)`);
-    const r = await installFromRegistry(registry, source, { targetDir });
-    if (!r.ok) {
-      reporter.fail("install", { code: `REGISTRY_INSTALL_${r.error.code}`, message: JSON.stringify(r.error) });
-      return 1;
-    }
-    reporter.complete("install", `${r.value.sourceId}@${r.value.version} 已装到 ${r.value.targetDir}(复核 ${r.value.verifiedFiles} 文件)`);
-    return 0;
-  }
-
+  // 注册表标识与直连来源(git/npm/本地)现在走**同一个** `Installer` —— registry 分派在
+  // `Installer.install()` 内部完成(spec installer-registry-channel,任务 3.2)。
+  // 此处此前有一段绕开 `Installer` 的独立 registry 编排,已删:两条并行路径必然漂移,
+  // 且 host 命令那侧永远享受不到它。
   const installer = deps.installer ?? createDefaultInstaller(deps);
 
   reporter.start("install", source);
@@ -313,8 +299,21 @@ async function runInstall(
     reporter.fail("install", { code: res.error.code, message: res.error.message });
     return 1;
   }
-  reporter.complete("install", `${res.value.kind}: ${JSON.stringify(res.value.result)}`);
+  // registry 通道成功时打印与收敛前**等效**的完成信息(id@版本 / 落点 / 复核文件数);
+  // 直连来源无溯源信息,沿用原本的结果摘要。
+  const prov = res.value.registry;
+  reporter.complete(
+    "install",
+    prov !== undefined
+      ? `${prov.sourceId}@${prov.version} 已装到 ${installLocationOf(res.value)}(复核 ${prov.verifiedFiles} 文件)`
+      : `${res.value.kind}: ${JSON.stringify(res.value.result)}`,
+  );
   return 0;
+}
+
+/** 成功结果里的落点:agent 通道有 `location`,plugin 通道由 pi 管理,退回包 id。 */
+function installLocationOf(outcome: InstallOutcome): string {
+  return outcome.kind === "agent" ? outcome.result.location : outcome.result.id;
 }
 
 async function runUninstall(
@@ -460,12 +459,24 @@ async function runUpdate(
 /** 装配生产 `Installer`:依据 `CliContext` 得到 `sourcesRoot`/`agentDir`(注册表路径)。 */
 function createDefaultInstaller(deps: RunSubcommandDeps): Installer {
   const ctx = createCliContext({ cwd: deps.cwd, env: deps.env });
+  const env = deps.env ?? process.env;
+  const cwd = deps.cwd ?? process.cwd();
   return createInstaller({
     env: deps.env,
     agentInstallerOptions: {
       sourcesRoot: ctx.sourcesRoot,
       registryPath: join(ctx.agentDir, "sources.json"),
     },
+    // registry 通道(spec installer-registry-channel,任务 3.2)。此前 `runInstall` 里有一条
+    // **绕开 `Installer`** 的独立 registry 编排,与 host 命令各走各的、必然漂移;现收敛到同一
+    // 通道,宿主差异只体现在这里注入什么(授予来源 + 落点)。
+    registryChannel: createRegistryChannel({
+      getRegistry: async () => buildRegistryFromEnv(env, deps.registry),
+      // 落点保持与收敛前的独立分支**逐字节一致**,存量安装与 `pi-web update` 的目录匹配不受影响。
+      agentTargetRoot: registryInstallRoot(env, cwd),
+      // plugin 落点在 agent 落点之外:落进去会被源枚举当成 agent 源。
+      pluginTargetRoot: join(ctx.agentDir, "registry-plugins"),
+    }),
   });
 }
 

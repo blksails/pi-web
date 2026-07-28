@@ -37,6 +37,12 @@ const AGENT_SPEC: CommandArgSpec = {
       descriptionKey: "commandArg.agent.uninstall",
     },
     { name: "list", terminal: true, descriptionKey: "commandArg.agent.list" },
+    {
+      name: "publish",
+      terminal: false,
+      argKind: "publishableDir",
+      descriptionKey: "commandArg.agent.publish",
+    },
   ],
 };
 
@@ -61,6 +67,12 @@ const PLUGIN_SPEC: CommandArgSpec = {
       terminal: false,
       argKind: "installedPlugin",
       descriptionKey: "commandArg.plugin.update",
+    },
+    {
+      name: "publish",
+      terminal: false,
+      argKind: "publishableDir",
+      descriptionKey: "commandArg.plugin.publish",
     },
   ],
 };
@@ -180,6 +192,31 @@ export function createPackageArgProvider(
     }));
   }
 
+  /**
+   * 可发布目录候选。走**独立端点** `/publish-sources` —— 判据是「含发布清单」,
+   * 与安装候选(入口/包描述文件)不同;且 insertText 是目录路径本身,不带 `local:` 前缀。
+   */
+  async function publishableDirs(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<readonly CommandArgItem[]> {
+    const url = join(
+      opts.baseUrl,
+      `/sessions/${encodeURIComponent(opts.sessionId)}/publish-sources?q=${encodeURIComponent(query)}`,
+    );
+    const res = await doFetch(url, {
+      ...(signal !== undefined ? { signal } : {}),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { sources?: InstallSourceDto[] };
+    return (data.sources ?? []).map((s) => ({
+      id: s.path,
+      label: s.path,
+      insertText: s.insertText,
+      detail: "publishable",
+    }));
+  }
+
   return {
     specFor: (command) => SPECS[command],
     listArgs: (command, sub, query, signal) => {
@@ -193,6 +230,8 @@ export function createPackageArgProvider(
           return installedAgentSources(query, signal);
         case "installedPlugin":
           return installedPlugins(query, signal);
+        case "publishableDir":
+          return publishableDirs(query, signal);
         default:
           return Promise.resolve([]);
       }

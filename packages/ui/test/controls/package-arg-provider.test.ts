@@ -23,16 +23,19 @@ function makeProvider(fetchImpl: unknown) {
 describe("createPackageArgProvider — spec 分道", () => {
   it("同时识别 agent 与 plugin,子动作集合各不相同", () => {
     const p = makeProvider(vi.fn());
+    // publish 于 spec publish-host-command 加入两条命令(发布前预览)。
     expect(p.specFor("agent")?.subcommands.map((s) => s.name)).toEqual([
       "install",
       "uninstall",
       "list",
+      "publish",
     ]);
     expect(p.specFor("plugin")?.subcommands.map((s) => s.name)).toEqual([
       "install",
       "uninstall",
       "list",
       "update",
+      "publish",
     ]);
   });
 

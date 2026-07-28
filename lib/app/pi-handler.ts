@@ -166,6 +166,7 @@ import { resolveSourcesRoot } from "../../server/cli/context.js";
 // 二者位于应用层而非 packages/server —— 它们经 server/cli 间接依赖 @pi-clouds/registry-client,
 // 而 P1 的范围铁律要求该依赖不得进入包内(判别与索引已下沉包内,纯 fs)。
 import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
+import { createLazyRegistryChannel } from "./online-source/registry-channel-adapter.js";
 import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -837,6 +838,29 @@ function buildSingleton(): HandlerSingleton {
       agentInstallerOptions: {
         sourcesRoot: resolveSourcesRoot(process.env, config.defaultCwd),
         registryPath: installRegistryPath,
+      },
+      // registry 通道(spec installer-registry-channel):`/agent install <registry-id>` 与
+      // source 选择器路径走同一份安装实现。
+      //
+      // ★ 全程惰性:`desktopCapabilitiesClient` 与 `sourcesScanRoots` 都在下方才构造,故这里
+      //   不能直接引用它们的值 —— 与 `listAgentSources` 同一手法(闭包内取,调用时才求值),
+      //   而不是把 packageCommandDeps 的构造整块下移(牵连面大得多)。
+      // ★ 未登录 / 未配置云端 → 通道报 NOT_AUTHENTICATED → 上浮为 REGISTRY_UNAVAILABLE,
+      //   是诚实降级,不是「不支持」。
+      registryChannel: {
+        async materialize(spec, opts) {
+          if (desktopCapabilitiesClient === undefined) {
+            return { ok: false, error: { code: "NOT_AUTHENTICATED" } };
+          }
+          return createLazyRegistryChannel({
+            getSourcesGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+            // agent 落点 = 第一个扫描根,装完即被 scan-provider 枚举(与选择器路径同根)。
+            agentTargetRoot: sourcesScanRoots[0] ?? defaultSourcesRoot(),
+            // plugin 落点刻意**在扫描根之外**:落进去会被源枚举当成 agent 源列出来。
+            // 是长期位置,不是暂存 —— pi 只把路径记进台账,不拷贝内容。
+            pluginTargetRoot: path.join(config.agentDir, "registry-plugins"),
+          }).materialize(spec, opts);
+        },
       },
     }),
     pluginInstaller: createPluginInstaller({ piCli: extPiCli }),

@@ -22,12 +22,21 @@ import type {
   HostCommandHandler,
   PiSession,
 } from "@blksails/pi-web-server";
-import type { CommandResult, InstallResultData, InstallStep, PluginKind } from "@blksails/pi-web-protocol";
+import type {
+  CommandResult,
+  InstallResultData,
+  InstallStep,
+  PluginKind,
+  PublishPreviewData,
+} from "@blksails/pi-web-protocol";
+import { PUBLISH_PREVIEW_DATA_PART } from "@blksails/pi-web-protocol";
+import * as path from "node:path";
 // 相对路径 + `.js` 后缀是仓库唯一在三条解析链(vite dev / jiti 服务端 / esbuild 产物)上
 // 都成立的形态——`@/` 别名 jiti 不认(bun dev 实证崩)、esbuild 靠自建插件才认。
 import type { Installer, InstallerError } from "../../server/cli/install/installer.js";
 import type { PluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { redactSecrets } from "../../server/cli/reporter.js";
+import { previewPublish } from "./publish-preview.js";
 
 /**
  * 拒绝路径的审计事件(仅 adminGate 拒绝 / allowlist 拒绝两条路径触发,与既有 REST 安装的
@@ -35,7 +44,7 @@ import { redactSecrets } from "../../server/cli/reporter.js";
  * 复用 REST 的 `OnAudit`;装配层负责补 actor/at 后转发给同一个 `onAudit` 实例。
  */
 export interface InstallAuditEvent {
-  readonly action: "install" | "uninstall" | "list" | "update";
+  readonly action: "install" | "uninstall" | "list" | "update" | "publish";
   readonly source?: string;
   readonly outcome: "rejected";
   readonly reason: string;
@@ -75,10 +84,10 @@ export interface PackageHostCommandDeps {
 // 每类别的静态元数据(子动作集合 + 用法文本)
 // ---------------------------------------------------------------------------
 
-type Action = "install" | "uninstall" | "list" | "update";
+type Action = "install" | "uninstall" | "list" | "update" | "publish";
 
-const AGENT_ACTIONS: readonly Action[] = ["install", "uninstall", "list"];
-const PLUGIN_ACTIONS: readonly Action[] = ["install", "uninstall", "list", "update"];
+const AGENT_ACTIONS: readonly Action[] = ["install", "uninstall", "list", "publish"];
+const PLUGIN_ACTIONS: readonly Action[] = ["install", "uninstall", "list", "update", "publish"];
 
 function actionsFor(kind: PackageCommandKind): readonly Action[] {
   return kind === "agent" ? AGENT_ACTIONS : PLUGIN_ACTIONS;
@@ -87,20 +96,22 @@ function actionsFor(kind: PackageCommandKind): readonly Action[] {
 function usageTextFor(kind: PackageCommandKind): string {
   if (kind === "agent") {
     return [
-      "用法: /agent <install|uninstall|list> [参数]",
-      "  install <source>     安装 agent 源(本地目录、npm 包或 git 仓库)",
+      "用法: /agent <install|uninstall|list|publish> [参数]",
+      "  install <source>     安装 agent 源(本地目录、npm 包、git 仓库,或 registry 标识如 org/name)",
       "  uninstall <id>       卸载已安装的 agent 源",
       "  list                 列出已安装的 agent 源",
+      "  publish <dir> --dry-run   发布前预览(编译校验,不签名、不上传)",
       "注:本命令恒按 agent 处理来源,npm/git 直连来源亦然;plugin 请用 /plugin。",
       "注:来源/包标识暂不支持包含空格的路径。",
     ].join("\n");
   }
   return [
-    "用法: /plugin <install|uninstall|list|update> [参数]",
-    "  install <source>     安装 plugin(本地目录、npm 包或 git 仓库)",
+    "用法: /plugin <install|uninstall|list|update|publish> [参数]",
+    "  install <source>     安装 plugin(本地目录、npm 包、git 仓库,或 registry 标识如 org/name)",
     "  uninstall <id>       卸载已安装的 plugin",
     "  list [--outdated]    列出已安装 plugin(--outdated 如实转达底层是否支持)",
     "  update [id]          更新 plugin",
+    "  publish <dir> --dry-run   发布前预览(编译校验,不签名、不上传)",
     "注:本命令恒按 plugin 处理来源;agent 源请用 /agent。",
     "注:来源/包标识暂不支持包含空格的路径。",
   ].join("\n");
@@ -118,6 +129,7 @@ interface ParsedOptions {
   readonly positional: readonly string[];
   readonly hasKindFlag: boolean;
   readonly outdated: boolean;
+  readonly dryRun: boolean;
 }
 
 function tokenize(argv: string): string[] {
@@ -129,6 +141,7 @@ function parseOptions(tokens: readonly string[]): ParsedOptions {
   const positional: string[] = [];
   let hasKindFlag = false;
   let outdated = false;
+  let dryRun = false;
   for (let i = 0; i < tokens.length; i += 1) {
     const tok = tokens[i]!;
     if (tok === "--kind") {
@@ -136,11 +149,13 @@ function parseOptions(tokens: readonly string[]): ParsedOptions {
       i += 1; // 跳过其取值,避免它被当成位置参数。
     } else if (tok === "--outdated") {
       outdated = true;
+    } else if (tok === "--dry-run") {
+      dryRun = true;
     } else {
       positional.push(tok);
     }
   }
-  return { positional, hasKindFlag, outdated };
+  return { positional, hasKindFlag, outdated, dryRun };
 }
 
 interface ValidatedInstall {
@@ -159,8 +174,19 @@ interface ValidatedUpdate {
   readonly action: "update";
   readonly packageId: string | undefined;
 }
+interface ValidatedPublish {
+  readonly action: "publish";
+  readonly dir: string;
+  /** `--dry-run` = 预览;缺省 = **真正发布的意图**(见下方裁断)。 */
+  readonly dryRun: boolean;
+}
 
-type Validated = ValidatedInstall | ValidatedUninstall | ValidatedList | ValidatedUpdate;
+type Validated =
+  | ValidatedInstall
+  | ValidatedUninstall
+  | ValidatedList
+  | ValidatedUpdate
+  | ValidatedPublish;
 
 type ParseOutcome =
   | { readonly ok: true; readonly value: Validated }
@@ -214,6 +240,17 @@ function parseArgv(kind: PackageCommandKind, argv: string): ParseOutcome {
     return { ok: true, value: { action: "list", outdated: opts.outdated } };
   }
 
+  if (action === "publish") {
+    const dir = opts.positional[0];
+    if (dir === undefined) {
+      return {
+        ok: false,
+        message: `publish 缺少 <dir> 参数。\n用法: /${kind} publish <dir> --dry-run`,
+      };
+    }
+    return { ok: true, value: { action: "publish", dir, dryRun: opts.dryRun } };
+  }
+
   return { ok: true, value: { action: "update", packageId: opts.positional[0] } };
 }
 
@@ -254,6 +291,14 @@ function guidanceForInstallerError(error: InstallerError): string | undefined {
   if (error.code === "PROJECT_NOT_TRUSTED" && error.hint !== undefined) {
     return error.hint;
   }
+  // registry 通道(spec installer-registry-channel):把「为什么不行」变成「该怎么办」。
+  // 具体该改用哪条命令由 Installer 依**清单里的真实 kind** 写进 message,本层不重复判断。
+  if (error.code === "REGISTRY_KIND_MISMATCH") {
+    return "类别由命令名决定:请改用与该包实际类别匹配的那条命令重新安装。";
+  }
+  if (error.code === "REGISTRY_UNAVAILABLE") {
+    return "线上包需要 registry 通道:请先登录;自托管部署请确认已配置云端地址(或 PI_WEB_REGISTRY_URL)。";
+  }
   return undefined;
 }
 
@@ -282,19 +327,32 @@ export function createPackageHostCommand(
     return { command: COMMAND_NAME, effect: "none", message };
   }
 
+  const ADMIN_DENIED_MESSAGE =
+    "管理员权限校验未通过,拒绝执行。设置环境变量 PI_WEB_EXT_ADMIN_ALLOW_ANY=1 以放行" +
+    "(仅限 dev/单用户自托管场景)。";
+
   function adminDeniedResult(action: Action): CommandResult {
     const reason = "admin authorization denied";
     deps.audit?.({ action, outcome: "rejected", reason });
+    // publish 的结果形状与安装类不同 —— 拒绝态也必须走 publish 卡片,
+    // 否则前端会拿 install 渲染器去渲染一个没有 action 字段的对象。
+    if (action === "publish") {
+      return publishResult(
+        {
+          ok: false,
+          files: [],
+          warnings: [],
+          disclaimers: { unsigned: true, grantNotChecked: true },
+          error: { code: "ADMIN_DENIED", message: ADMIN_DENIED_MESSAGE },
+        },
+        ADMIN_DENIED_MESSAGE,
+      );
+    }
     const data: InstallResultData = {
       action,
       ok: false,
       steps: [],
-      error: {
-        code: "ADMIN_DENIED",
-        message:
-          "管理员权限校验未通过,拒绝执行。设置环境变量 PI_WEB_EXT_ADMIN_ALLOW_ANY=1 以放行" +
-          "(仅限 dev/单用户自托管场景)。",
-      },
+      error: { code: "ADMIN_DENIED", message: ADMIN_DENIED_MESSAGE },
     };
     return { command: COMMAND_NAME, effect: "notify", message: data.error!.message, data };
   }
@@ -411,6 +469,55 @@ export function createPackageHostCommand(
     return { command: COMMAND_NAME, effect: "notify", data };
   }
 
+  /** publish 类结果:卡片形状与安装类不同,故经 `dataPart` 显式指定渲染器。 */
+  function publishResult(data: PublishPreviewData, message: string): CommandResult {
+    return {
+      command: COMMAND_NAME,
+      // 预览不改变会话可用能力,故不重载会话、不刷面板。
+      effect: "notify",
+      message,
+      data,
+      dataPart: PUBLISH_PREVIEW_DATA_PART,
+    };
+  }
+
+  /**
+   * `publish` 子动作。
+   *
+   * ★ 语义裁断:`--dry-run` = 预览;**裸 `publish` = 真正发布的意图**,返回
+   *   `PUBLISH_NOT_AVAILABLE`。若让裸 `publish` 直接等于预览,用户就无从得知"我其实
+   *   没发布出去",且与 CLI 语义(裸 publish 即真发布)分叉。云端发布身份就绪后,
+   *   裸 publish 直接开始工作,**语义不变、文案无需改**。
+   */
+  async function publishPreview(
+    dir: string,
+    dryRun: boolean,
+    cwd: string | undefined,
+  ): Promise<CommandResult> {
+    if (!dryRun) {
+      const message =
+        "该部署尚未接入发布身份,无法执行真正的发布。";
+      return publishResult(
+        {
+          ok: false,
+          files: [],
+          warnings: [],
+          disclaimers: { unsigned: true, grantNotChecked: true },
+          error: {
+            code: "PUBLISH_NOT_AVAILABLE",
+            message,
+            hint: "加 --dry-run 可做发布前预览(编译校验、文件清单与告警),不产生任何外部写。",
+          },
+        },
+        message,
+      );
+    }
+    // 相对路径以会话 cwd 为基准 —— 必须与补全端点同基准,否则选中候选提交即失败。
+    const abs = path.isAbsolute(dir) ? dir : path.resolve(cwd ?? process.cwd(), dir);
+    const outcome = await previewPublish(abs, kind);
+    return publishResult(outcome.data, outcome.message);
+  }
+
   async function updatePlugins(
     packageId: string | undefined,
     session: PiSession,
@@ -508,6 +615,10 @@ export function createPackageHostCommand(
 
       if (v.action === "list") {
         return kind === "agent" ? listAgentSources() : listPlugins(v.outdated);
+      }
+
+      if (v.action === "publish") {
+        return publishPreview(v.dir, v.dryRun, cwd);
       }
 
       // update:仅 plugin 命令可达(agent 命令的 update 已在解析层按未知子动作拒绝)。

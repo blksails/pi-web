@@ -21,7 +21,12 @@ export interface CommandArgItem {
  * - `installedAgent`:已安装的 agent 源(`GET /agent-sources`)。
  * - `installedPlugin`:已安装的 plugin(`GET /extensions`)。
  */
-export type CommandArgKind = "localSource" | "installedAgent" | "installedPlugin";
+export type CommandArgKind =
+  | "localSource"
+  | "installedAgent"
+  | "installedPlugin"
+  /** 可发布目录(含发布清单)——判据与 localSource 不同,见 scan-provider。 */
+  | "publishableDir";
 
 /** 某命令的一个子命令规格。 */
 export interface SubcommandSpec {

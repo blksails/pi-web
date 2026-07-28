@@ -1,0 +1,8 @@
+{
+  "$schema": "https://pi-web.dev/schema/pi-web.json",
+  "id": "e2e/publish-sample",
+  "version": "0.1.0",
+  "kind": "agent",
+  "displayName": "Publish Sample Agent",
+  "description": "publish 预览 e2e 夹具:最小可编译 agent 包"
+}

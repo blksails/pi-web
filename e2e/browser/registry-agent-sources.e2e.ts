@@ -118,20 +118,17 @@ test("未登录时只有本地源,registry 条目不出现", async ({ page }) =>
 });
 
 /**
- * 能力边界(当前事实,非缺陷):registry 标识**不能**经 `/agent install` 安装。
+ * registry 安装通道(spec installer-registry-channel)。
  *
- * 两条路径的分工:
- *  - source 选择器选中 registry 源 → `onlineSourceResolver` 查本地索引,未安装则经
- *    registry 安装端口下载到扫描根,装完即被 scan-provider 枚举 —— 这是**受支持**的路径。
- *  - `/agent install <registry-id>` → host 命令走 `Installer.install()`,其 `resolveSource`
- *    对 registry 形态直接返回 REGISTRY_NOT_IMPLEMENTED(installer.ts)。CLI 侧的
- *    `pi-web install` 另有一条经注册表的分支,但那条不在 `Installer` 端口里。
+ * 此前这里钉的是「`/agent install <registry-id>` → REGISTRY_NOT_IMPLEMENTED」这条**能力边界**;
+ * 通道接入后该边界已不存在,故改写为成功路径。两条路径现在走**同一份**安装实现:
+ *  - source 选择器选中 registry 源 → `onlineSourceResolver` → registry 安装端口;
+ *  - `/agent install <registry-id>` → `Installer` 的 registry 通道 → 同一个 `installFromRegistry`。
  *
- * 该用例钉住当前边界:哪天 Installer 接上 registry,它会失败并提醒更新此处与用法文本。
+ * 链路全程真实 HTTP:假 cloud 同时扮演 registry,`resolve` 返回的 integrity 由夹具**现场**
+ * 对真实 bundle 算出,故 sha384 复核是真的在验字节,不是走过场。
  */
-test("registry 标识经 /agent install 安装 → 如实报 REGISTRY_NOT_IMPLEMENTED", async ({
-  page,
-}) => {
+test("registry 标识经 /agent install 安装成功,且随后可被源枚举看到", async ({ page }) => {
   await login(page);
   await page.locator("[data-agent-source-input]").fill("./examples");
   await page.locator("[data-agent-source-submit]").click();
@@ -146,9 +143,40 @@ test("registry 标识经 /agent install 安装 → 如实报 REGISTRY_NOT_IMPLEM
   await input.press("Enter");
 
   const card = page.locator("[data-pi-install-result]");
-  await expect(card).toBeVisible({ timeout: 20000 });
+  await expect(card).toBeVisible({ timeout: 30000 });
+  await expect(card).toHaveAttribute("data-pi-install-ok", "true");
+  await expect(card).toHaveAttribute("data-pi-install-action", "install");
+
+  // 装完落在扫描根内 → 被 scan-provider 枚举 → 与选择器同源的 /agent-sources 能看到它。
+  // (registry 列举面本来也含这个 id,故断言落点:origin 应已变为本地扫描而非 registry。)
+  const res = await page.request.get("/api/agent-sources");
+  const body = (await res.json()) as { sources?: { id: string; origin?: string }[] };
+  const found = (body.sources ?? []).filter((s) => s.id.includes("hello-cloud"));
+  expect(found.length).toBeGreaterThan(0);
+});
+
+/**
+ * kind 门:清单说 plugin、命令说 agent → 拒绝,并指路另一条命令。
+ *
+ * 这是「**清单里的 kind 是权威判据**」的端到端证据 —— 与 component 那条修正同构:
+ * 真实判据压过命令名带来的假设,不让包落进错误的目录。
+ */
+test("registry 上的 plugin 包经 /agent install → 拒绝并指向 /plugin install", async ({ page }) => {
+  await login(page);
+  await page.locator("[data-agent-source-input]").fill("./examples");
+  await page.locator("[data-agent-source-submit]").click();
+  await expect(page.locator("[data-session-active]")).toBeVisible();
+
+  const input = page.locator("[data-pi-input-textarea]");
+  await input.click();
+  await input.fill("/agent install acme/some-plugin");
+  await page.waitForTimeout(600);
+  await input.press("Enter");
+  await page.waitForTimeout(300);
+  await input.press("Enter");
+
+  const card = page.locator("[data-pi-install-result]");
+  await expect(card).toBeVisible({ timeout: 30000 });
   await expect(card).toHaveAttribute("data-pi-install-ok", "false");
-  await expect(card.locator("[data-pi-install-error]")).toContainText(
-    "REGISTRY_NOT_IMPLEMENTED",
-  );
+  await expect(card.locator("[data-pi-install-error]")).toContainText("/plugin install");
 });

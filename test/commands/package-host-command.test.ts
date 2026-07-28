@@ -655,3 +655,93 @@ describe("/plugin update", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// registry 通道(spec installer-registry-channel,任务 3.4)
+// ---------------------------------------------------------------------------
+
+describe("registry 标识的安装结果卡片", () => {
+  it("成功 → 与直连 agent 安装同形状的卡片(panel-refresh,不重载会话)", async () => {
+    const reloadRunner = vi.fn(async () => undefined);
+    const { installer, installCalls } = okInstaller({
+      ok: true,
+      value: {
+        kind: "agent",
+        result: { method: "registry", location: "/root/agents/acme_hello-cloud", created: true },
+        registry: { sourceId: "acme/hello-cloud", version: "1.2.3", verifiedFiles: 4 },
+      },
+    });
+    const r = await agentCmd({ installer, reloadRunner }).execute({
+      session: makeSession() as never,
+      argv: "install acme/hello-cloud",
+    });
+
+    // 类别仍在构造时固化 —— registry 标识不改变「命令名即意图」这条。
+    expect(installCalls[0]?.[1]).toMatchObject({ kindHint: "agent" });
+    expect(r.effect).toBe("panel-refresh");
+    expect(reloadRunner).not.toHaveBeenCalled();
+    const parsed = InstallResultDataSchema.safeParse(r.data);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.ok).toBe(true);
+      expect(parsed.data.kind).toBe("agent");
+      expect(parsed.data.location).toBe("/root/agents/acme_hello-cloud");
+    }
+  });
+
+  it("通道不可用 → REGISTRY_UNAVAILABLE 卡片 + 登录/配置指路(不再是 not yet supported)", async () => {
+    const { installer } = okInstaller({
+      ok: false,
+      error: { code: "REGISTRY_UNAVAILABLE", message: "registry 不可用:当前未登录或未取得源授予。" },
+    });
+    const r = await agentCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: "install acme/hello-cloud",
+    });
+
+    const parsed = InstallResultDataSchema.safeParse(r.data);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.ok).toBe(false);
+    expect(parsed.data.error?.code).toBe("REGISTRY_UNAVAILABLE");
+    expect(parsed.data.guidance).toContain("登录");
+    expect(JSON.stringify(parsed.data)).not.toContain("not yet supported");
+  });
+
+  it("清单 kind 与命令不符 → 卡片指出应改用哪条命令", async () => {
+    const { installer } = okInstaller({
+      ok: false,
+      error: {
+        code: "REGISTRY_KIND_MISMATCH",
+        message: '该 registry 包声明的类别是 "plugin",而当前命令按 "agent" 安装。请改用 /plugin install。',
+      },
+    });
+    const r = await agentCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: "install acme/some-plugin",
+    });
+
+    const parsed = InstallResultDataSchema.safeParse(r.data);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.ok).toBe(false);
+    expect(parsed.data.error?.code).toBe("REGISTRY_KIND_MISMATCH");
+    expect(parsed.data.error?.message).toContain("/plugin install");
+    expect(parsed.data.guidance).toBeDefined();
+  });
+
+  it("registry 标识里若夹带凭据,输出面一律脱敏(安装调用仍用原值)", async () => {
+    const { installer, installCalls } = okInstaller({
+      ok: false,
+      error: { code: "REGISTRY_UNAVAILABLE", message: "registry 不可用。" },
+    });
+    const raw = "https://user:s3cr3t@example.com/org/name";
+    const r = await agentCmd({ installer }).execute({
+      session: makeSession() as never,
+      argv: `install ${raw}`,
+    });
+
+    expect(installCalls[0]?.[0]).toBe(raw); // 安装调用需要原值
+    expect(JSON.stringify(r.data)).not.toContain("s3cr3t"); // 卡片不得泄露
+  });
+});

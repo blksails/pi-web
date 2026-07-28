@@ -23,6 +23,7 @@ export type {
 } from "./install-sources/types.js";
 export {
   createScanInstallSourceProvider,
+  createScanPublishSourceProvider,
   type ScanInstallSourceOptions,
 } from "./install-sources/scan-provider.js";
 

@@ -16,7 +16,10 @@ import { defaultAdminPolicy } from "./security/admin-policy.js";
 import { defaultOnAudit } from "./security/audit.js";
 import { makeListExtensionsHandler } from "./routes/list-extensions.js";
 import { makeInstallSourcesHandler } from "./routes/install-sources.js";
-import { createScanInstallSourceProvider } from "./install-sources/scan-provider.js";
+import {
+  createScanInstallSourceProvider,
+  createScanPublishSourceProvider,
+} from "./install-sources/scan-provider.js";
 import { makeInstallExtensionHandler } from "./routes/install-extension.js";
 import { makeRemoveExtensionHandler } from "./routes/remove-extension.js";
 import {
@@ -41,6 +44,12 @@ export function createExtensionRoutes(
   const installSourcesHandler = makeInstallSourcesHandler(
     opts.store,
     opts.installSourceProvider ?? createScanInstallSourceProvider(),
+  );
+  // 可发布目录枚举(spec publish-host-command,任务 3.2):复用同一 handler,只换 provider ——
+  // 判据是「含发布清单」而非安装那套入口/包描述文件,故不能共用同一个端点。
+  const publishSourcesHandler = makeInstallSourcesHandler(
+    opts.store,
+    opts.publishSourceProvider ?? createScanPublishSourceProvider(),
   );
   const installHandler = makeInstallExtensionHandler({
     piCli: opts.piCli,
@@ -68,6 +77,11 @@ export function createExtensionRoutes(
       method: "GET",
       path: "/sessions/:id/install-sources",
       handler: installSourcesHandler,
+    },
+    {
+      method: "GET",
+      path: "/sessions/:id/publish-sources",
+      handler: publishSourcesHandler,
     },
     { method: "POST", path: "/extensions", handler: installHandler },
     { method: "DELETE", path: "/extensions/:extId", handler: removeHandler },

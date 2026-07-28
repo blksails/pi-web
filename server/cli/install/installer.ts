@@ -85,7 +85,13 @@ import {
   type AgentInstallResult,
   type AgentUninstallError as AgentUninstallErrorFromChannel,
 } from "./agent-installer.js";
-import { resolveSource, CLI_ALLOWLIST, type ResolveError, type ResolvedSource } from "./source-resolver.js";
+import {
+  resolveSource,
+  classifySourceForm,
+  CLI_ALLOWLIST,
+  type ResolveError,
+  type ResolvedSource,
+} from "./source-resolver.js";
 
 export type Result<T, E> =
   | { readonly ok: true; readonly value: T }
@@ -139,6 +145,89 @@ export interface PluginChannel {
 }
 
 // ---------------------------------------------------------------------------
+// registry 通道端口(spec installer-registry-channel)
+// ---------------------------------------------------------------------------
+
+/**
+ * registry 通道的物化结果 —— **清单里的 `kind` 是权威判据**。
+ *
+ * - `kind === "agent"`:`dir` 落在 agent 源扫描根内。
+ * - `kind === "plugin"`:`dir` 落在 plugin 专用根内,随后由 `Installer` 交给 plugin 通道
+ *   (`pi install <dir>`)登记。
+ *
+ * ★★ 两种 kind 的 `dir` 都是**长期存在的最终位置**,不是暂存目录 —— 这条由实测裁定:
+ * `pi install <本地目录>` **不拷贝内容**,它把该目录路径写进 pi 的 `settings.json#plugins[]`,
+ * 运行时从原目录加载。因此物化目录一旦删除,插件即失效。早先「落 tmpdir、转交后清理」的
+ * 设想是错的,已废弃。
+ *
+ * 之所以让通道只物化、由 `Installer` 完成 plugin 转交:通道的职责是「按清单取回可信字节」,
+ * 认识 pi 的包台账不是它的事;而 `Installer` 本就持有 `pluginChannel`,组合天然发生在分派器里。
+ */
+export interface RegistryMaterialization {
+  readonly kind: Exclude<PluginKind, "component">;
+  readonly sourceId: string;
+  readonly version: string;
+  /** 最终安装目录(两种 kind 皆然,**不得删除**,见上)。 */
+  readonly dir: string;
+  readonly verifiedFiles: number;
+}
+
+/**
+ * registry 通道失败分类。
+ *
+ * ★ 刻意**不携带**底层 `detail`:底层错误信息可能夹带含授予令牌的请求 URL
+ * (与 `lib/app/online-source/registry-install-port.ts` 确立的凭据卫生一致)。
+ * 宁可少一点诊断信息,也不冒泄露风险。
+ */
+export type RegistryChannelError =
+  | { readonly code: "NOT_AUTHENTICATED" }
+  /** 有凭据但被拒(令牌过期 / 无权访问该源)。 */
+  | { readonly code: "GRANT_UNAVAILABLE" }
+  | { readonly code: "NOT_FOUND"; readonly sourceId: string }
+  /**
+   * 解析阶段的其余失败。`reason` 是**受控枚举**而非自由文本 —— 底层 detail 可能夹带含令牌的
+   * 请求 URL,但把一切都压成"未登录"又会让用户去查错方向(真机实测踩到:标识写错却提示登录过期)。
+   * 枚举既保住凭据卫生,又让提示指向真正的原因。
+   */
+  | { readonly code: "RESOLVE_FAILED"; readonly reason: "unreachable" | "rejected" | "other" }
+  /** 清单 `kind` 与调用方锁定的类别不符(此时**尚未下载任何字节**)。 */
+  | { readonly code: "KIND_MISMATCH"; readonly actual: PluginKind; readonly expected: PluginKind }
+  /**
+   * 清单未声明 `kind` 或取值非法。
+   * ★ 不能猜:pi-web 侧 `pi-web.json#kind` 缺省 `plugin`、registry 侧 `SourceManifest.kind`
+   * 缺省 `agent`,**两侧相反**,任何缺省推断都必错一半。故如实报错,要求发布方显式声明。
+   */
+  | { readonly code: "MANIFEST_KIND_UNKNOWN" }
+  | { readonly code: "KIND_COMPONENT_UNSUPPORTED" }
+  | { readonly code: "UNSUPPORTED_DISTRIBUTION"; readonly originType: string }
+  | { readonly code: "DOWNLOAD_FAILED" }
+  | { readonly code: "EXTRACT_FAILED" }
+  | { readonly code: "INTEGRITY_MISMATCH" }
+  | { readonly code: "TARGET_OCCUPIED"; readonly dir: string }
+  /** 安装后端不可解析(应用层惰性 `import()` 失败);dist 生产模式不会出现。 */
+  | { readonly code: "BACKEND_UNAVAILABLE" };
+
+export interface RegistryMaterializeOptions {
+  /**
+   * 调用方锁定的类别。host 命令恒传(命令名即意图);CLI 不带 `--kind` 时不传 ——
+   * registry 有可信清单,没有猜的必要,清单说什么就是什么。
+   */
+  readonly expectedKind?: PluginKind;
+}
+
+/**
+ * registry 通道端口。接口在此声明、实现由装配层注入(依赖倒置)——
+ * 实现经 `server/cli/registry/**` 间接依赖 `@pi-clouds/registry-client`(跨仓 alias,非 npm 依赖),
+ * 本文件对其零感知。
+ */
+export interface RegistryChannel {
+  materialize(
+    spec: string,
+    options: RegistryMaterializeOptions,
+  ): Promise<Result<RegistryMaterialization, RegistryChannelError>>;
+}
+
+// ---------------------------------------------------------------------------
 // Installer 端口(调用方唯一入口,不感知通道差异)
 // ---------------------------------------------------------------------------
 
@@ -157,9 +246,24 @@ export interface UninstallOptions {
   readonly cwd?: string;
 }
 
+/** registry 通道成功时附带的溯源信息(直连来源恒 undefined)。 */
+export interface RegistryProvenance {
+  readonly sourceId: string;
+  readonly version: string;
+  readonly verifiedFiles: number;
+}
+
 export type InstallOutcome =
-  | { readonly kind: "agent"; readonly result: AgentInstallResult }
-  | { readonly kind: "plugin"; readonly result: InstallPluginResult };
+  | {
+      readonly kind: "agent";
+      readonly result: AgentInstallResult;
+      readonly registry?: RegistryProvenance;
+    }
+  | {
+      readonly kind: "plugin";
+      readonly result: InstallPluginResult;
+      readonly registry?: RegistryProvenance;
+    };
 
 export type UninstallOutcome =
   | { readonly kind: "agent"; readonly result: AgentUninstallResult }
@@ -167,7 +271,18 @@ export type UninstallOutcome =
 
 export type InstallerErrorCode =
   | "ALLOWLIST_REJECTED"
+  /**
+   * ⚠ 历史码。registry 通道接入后**经 `Installer` 已不可达** —— `install()` 在
+   * `resolveSource()` 之前就用 `classifySourceForm()` 把 registry 形态分派走了。
+   * 保留只因 `ResolveError` 仍有该成员(`source-resolver.ts` 是独立的只读模块)。
+   */
   | "REGISTRY_NOT_IMPLEMENTED"
+  /** registry 通道未注入(未登录 / 未配置云端 / 未配 registry env)。 */
+  | "REGISTRY_UNAVAILABLE"
+  /** 清单声明的 kind 与命令锁定的类别不符;message 指出应改用哪条命令。 */
+  | "REGISTRY_KIND_MISMATCH"
+  /** registry 通道其余失败(解析 / 下载 / 解包 / 完整性复核);message 含子码。 */
+  | "REGISTRY_INSTALL_FAILED"
   | "AGENT_SCOPE_UNSUPPORTED"
   | "PROJECT_NOT_TRUSTED"
   | "AGENT_INSTALL_FAILED"
@@ -210,6 +325,11 @@ export interface CreateInstallerOptions {
    * (host 命令装配层)对 allowlist 的取舍已经做完,本文件不重复判断。
    */
   readonly allowlistConfig?: AllowlistConfig;
+  /**
+   * registry 通道(spec installer-registry-channel)。未注入 → registry 形态的标识返回
+   * `REGISTRY_UNAVAILABLE`(诚实降级),而不是此前的 `REGISTRY_NOT_IMPLEMENTED`。
+   */
+  readonly registryChannel?: RegistryChannel;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,9 +436,88 @@ function mapResolveError(error: ResolveError): InstallerError {
     case "ALLOWLIST_REJECTED":
       return { code: "ALLOWLIST_REJECTED", message: error.reason };
     case "REGISTRY_NOT_IMPLEMENTED":
+      // ⚠ 经 `install()` 不可达:registry 形态在 `resolveSource()` 之前已被分派到
+      // registry 通道。保留分支只为类型穷尽 —— 若它出现在日志里,说明分派顺序被改坏了。
       return {
         code: "REGISTRY_NOT_IMPLEMENTED",
         message: `registry sources are not yet supported: ${error.spec}`,
+      };
+  }
+}
+
+/** registry 通道失败 → `InstallerError`(含可操作指引)。 */
+function mapRegistryChannelError(error: RegistryChannelError): InstallerError {
+  switch (error.code) {
+    case "NOT_AUTHENTICATED":
+      return {
+        code: "REGISTRY_UNAVAILABLE",
+        message:
+          "registry 不可用:当前未登录或未取得源授予。登录后重试;自托管场景请确认已配置云端地址。",
+      };
+    case "GRANT_UNAVAILABLE":
+      return {
+        code: "REGISTRY_UNAVAILABLE",
+        message: "registry 拒绝了本次访问:登录可能已过期,或当前账号无权访问该源。",
+      };
+    case "RESOLVE_FAILED":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message:
+          error.reason === "unreachable"
+            ? "[RESOLVE_FAILED] 无法连接 registry,请检查网络或云端地址配置。"
+            : error.reason === "rejected"
+              ? "[RESOLVE_FAILED] registry 拒绝了该版本(验签 / 完整性 / 回源失败)。"
+              : "[RESOLVE_FAILED] 解析该源时 registry 返回了未预期的错误。",
+      };
+    case "BACKEND_UNAVAILABLE":
+      return {
+        code: "REGISTRY_UNAVAILABLE",
+        message:
+          "registry 不可用:安装后端不可解析(开发模式下常见于兄弟仓 pi-clouds 不在预期位置)。",
+      };
+    case "NOT_FOUND":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message: `[NOT_FOUND] registry 上找不到该源:${error.sourceId}`,
+      };
+    case "KIND_MISMATCH":
+      return {
+        code: "REGISTRY_KIND_MISMATCH",
+        message:
+          `该 registry 包声明的类别是 "${error.actual}",而当前命令按 "${error.expected}" 安装。` +
+          `请改用 /${error.actual} install。`,
+      };
+    case "MANIFEST_KIND_UNKNOWN":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message:
+          "[MANIFEST_KIND_UNKNOWN] 该 registry 包的发布清单未声明 kind,无法判定应装为 agent 还是 plugin。" +
+          "请发布方在清单中显式声明 kind(两侧缺省值相反,不能推断)。",
+      };
+    case "KIND_COMPONENT_UNSUPPORTED":
+      return {
+        code: "KIND_COMPONENT_UNSUPPORTED",
+        message:
+          "component packages are not supported by install/uninstall; run `pi-web add` inside the target source directory instead.",
+      };
+    case "UNSUPPORTED_DISTRIBUTION":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message: `[UNSUPPORTED_DISTRIBUTION] 该版本的分发形态暂不支持:${error.originType}`,
+      };
+    case "DOWNLOAD_FAILED":
+      return { code: "REGISTRY_INSTALL_FAILED", message: "[DOWNLOAD_FAILED] 下载包体失败。" };
+    case "EXTRACT_FAILED":
+      return { code: "REGISTRY_INSTALL_FAILED", message: "[EXTRACT_FAILED] 解包失败。" };
+    case "INTEGRITY_MISMATCH":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message: "[INTEGRITY_MISMATCH] 完整性复核未通过,已回滚,未留下半安装状态。",
+      };
+    case "TARGET_OCCUPIED":
+      return {
+        code: "REGISTRY_INSTALL_FAILED",
+        message: `[TARGET_OCCUPIED] 目标目录已被占用且非本通道安装,拒绝覆盖:${error.dir}`,
       };
   }
 }
@@ -351,10 +550,75 @@ export function createInstaller(options: CreateInstallerOptions = {}): Installer
     };
   }
 
+  /**
+   * registry 形态的安装编排(spec installer-registry-channel)。
+   *
+   * 通道只负责「按清单取回可信字节并物化」;类别由**清单**裁定(通道内完成,它是唯一读得到
+   * 清单的地方)。plugin 的最后一段 —— 把物化目录交给 `pi install` —— 在这里完成:
+   * 分派器本就持有 `pluginChannel`,让通道去认识 pi 的包台账反而会让职责越界。
+   */
+  async function installViaRegistry(
+    spec: string,
+    opts: { readonly kindHint: PluginKind | undefined; readonly scope: Scope },
+  ): Promise<Result<InstallOutcome, InstallerError>> {
+    const channel = options.registryChannel;
+    if (channel === undefined) {
+      return {
+        ok: false,
+        error: {
+          code: "REGISTRY_UNAVAILABLE",
+          message:
+            "registry 不可用:该部署未接入注册表通道(未登录、未配置云端,或未设置 PI_WEB_REGISTRY_URL)。",
+        },
+      };
+    }
+
+    const materialized = await channel.materialize(spec, {
+      ...(opts.kindHint !== undefined ? { expectedKind: opts.kindHint } : {}),
+    });
+    if (!materialized.ok) {
+      return { ok: false, error: mapRegistryChannelError(materialized.error) };
+    }
+    const m = materialized.value;
+    const provenance: RegistryProvenance = {
+      sourceId: m.sourceId,
+      version: m.version,
+      verifiedFiles: m.verifiedFiles,
+    };
+
+    if (m.kind === "agent") {
+      // agent 已由通道落到扫描根 —— 直接成为普通本地源,选择器与 /agent list 立即可见。
+      return {
+        ok: true,
+        value: {
+          kind: "agent",
+          result: { method: "registry", location: m.dir, created: true },
+          registry: provenance,
+        },
+      };
+    }
+
+    // plugin:把物化目录登记进 pi 的包台账(`pi install <dir>`)。
+    // ★ 这里**没有**清理步骤,且不能有:实测证明 pi 只记路径、不拷内容,删掉 m.dir 会让插件失效。
+    const res = await pluginChannel.install({ kind: "local", path: m.dir }, opts.scope);
+    if (!res.ok) {
+      return { ok: false, error: { code: "PLUGIN_INSTALL_FAILED", message: res.error.message } };
+    }
+    return { ok: true, value: { kind: "plugin", result: res.value, registry: provenance } };
+  }
+
   return {
     async install(spec, installOptions = {}) {
       const scope: Scope = installOptions.scope ?? "user";
       const cwd = installOptions.cwd ?? process.cwd();
+
+      // ★ registry 分派必须**前置于** `resolveSource()`:后者对 registry 形态直接返回
+      //   REGISTRY_NOT_IMPLEMENTED 失败,永远走不到 `via: "registry"` 分支。
+      //   同时这也让 registry 标识不经 `checkAllowlist` —— 直连来源的 npm scope / git host
+      //   白名单规则对注册表标识没有意义,不应误拒(Req 6.3);治理由上游 adminGate 承担。
+      if (classifySourceForm(spec) === "registry") {
+        return installViaRegistry(spec, { kindHint: installOptions.kindHint, scope });
+      }
 
       const allowlistConfig = options.allowlistConfig ?? buildAllowlistConfig(env);
       const resolved = await resolveSource(spec, { allowlistConfig, cwd });

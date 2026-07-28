@@ -117,3 +117,62 @@ describe("PiChat /agent 与 /plugin 结果卡片追加", () => {
     expect(container.querySelector("[data-pi-install-result]")).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 卡片类型优先级(spec publish-host-command,任务 1.3)
+//
+// 决策 2 的护栏:此前卡片类型**只**按命令名查表,一个命令因此只能有一种结果卡片。
+// `/agent install` 与 `/agent publish` 的结果形状完全不同,故让服务端经
+// `CommandResult.dataPart` 逐次指定,优先于查表。
+// ---------------------------------------------------------------------------
+
+describe("卡片类型:result.dataPart 优先于按命令名查表", () => {
+  it("同一个 /agent,result.dataPart 指定 publish 卡片 → 渲染 publish 卡片而非 install 卡片", async () => {
+    const uiRpcCommand = vi.fn(async () => ({
+      ok: true,
+      result: {
+        command: "agent",
+        effect: "notify",
+        dataPart: "data-publish-preview",
+        data: {
+          ok: true,
+          package: { id: "acme/x", version: "1.0.0", kind: "agent", displayName: "X" },
+          files: [{ path: "index.ts", integrity: "sha384-aaaaaaaaaaaaaaaa" }],
+          warnings: [],
+          disclaimers: { unsigned: true, grantNotChecked: true },
+        },
+      },
+    }));
+    // 查表里 agent → data-install-result;若优先级写反,渲染出的会是 install 卡片。
+    const { submit, container } = setup(
+      [AGENT_CMD],
+      { agent: "data-install-result" },
+      uiRpcCommand,
+    );
+    submit("/agent publish ./examples/x --dry-run");
+    await waitFor(() => {
+      expect(container.querySelector("[data-pi-publish-preview]")).not.toBeNull();
+    });
+    expect(container.querySelector("[data-pi-install-result]")).toBeNull();
+  });
+
+  it("未给 dataPart → 仍按命令名查表(既有行为不变)", async () => {
+    const uiRpcCommand = vi.fn(async () => ({
+      ok: true,
+      result: {
+        command: "agent",
+        effect: "panel-refresh",
+        data: { action: "install", ok: true, kind: "agent", id: "x", steps: [] },
+      },
+    }));
+    const { submit, container } = setup(
+      [AGENT_CMD],
+      { agent: "data-install-result" },
+      uiRpcCommand,
+    );
+    submit("/agent install x");
+    await waitFor(() => {
+      expect(container.querySelector("[data-pi-install-result]")).not.toBeNull();
+    });
+  });
+});

@@ -152,4 +152,10 @@ export interface ExtManagementOptions {
    * 非本地形态(云端/沙箱)在此换实现,`GET /sessions/:id/install-sources` 无须改动。
    */
   readonly installSourceProvider?: InstallSourceProvider;
+  /**
+   * 可**发布**目录枚举端口(spec publish-host-command)。缺省为「含发布清单」的本地扫描。
+   * 与 `installSourceProvider` 分开是因为**判据不同** —— 安装看入口/包描述文件,
+   * 发布看发布清单;共用一个会把不可发布的目录也列成 publish 候选。
+   */
+  readonly publishSourceProvider?: InstallSourceProvider;
 }

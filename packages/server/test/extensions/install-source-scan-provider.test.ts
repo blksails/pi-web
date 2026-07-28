@@ -5,10 +5,13 @@
  * 迁移前逐条一致 —— 这些断言就是「迁移未走样」的判据。
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { promises as fs } from "node:fs";
+import { promises as fs, mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createScanInstallSourceProvider } from "../../src/extensions/install-sources/scan-provider.js";
+import {
+  createScanInstallSourceProvider,
+  createScanPublishSourceProvider,
+} from "../../src/extensions/install-sources/scan-provider.js";
 
 let cwd: string;
 
@@ -108,5 +111,55 @@ describe("createScanInstallSourceProvider", () => {
       query: "",
     });
     expect(items).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// publish 候选枚举(spec publish-host-command,任务 3.1/3.4)
+// ---------------------------------------------------------------------------
+
+describe("createScanPublishSourceProvider", () => {
+  it("只产出**含发布清单**的目录,且 insertText 是目录路径本身(无 local: 前缀)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-pubscan-"));
+    // a:含发布清单 → 应命中;b:只有安装判据(package.json)→ **不应**命中。
+    mkdirSync(join(root, "a"), { recursive: true });
+    writeFileSync(join(root, "a", "pi-web.json"), '{"kind":"agent"}');
+    mkdirSync(join(root, "b"), { recursive: true });
+    writeFileSync(join(root, "b", "package.json"), "{}");
+
+    const got = await createScanPublishSourceProvider().list({ cwd: root, query: "" });
+
+    expect(got.map((r) => r.path)).toEqual(["./a"]);
+    // publish 接受目录本身;带 `local:` 前缀会让选中的候选直接解析失败。
+    expect(got[0]?.insertText).toBe("./a");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("安装 provider 对同一目录树的行为**逐条不变**(参数化不得改既有默认)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-pubscan-"));
+    mkdirSync(join(root, "a"), { recursive: true });
+    writeFileSync(join(root, "a", "pi-web.json"), '{"kind":"agent"}');
+    mkdirSync(join(root, "b"), { recursive: true });
+    writeFileSync(join(root, "b", "package.json"), "{}");
+
+    const got = await createScanInstallSourceProvider().list({ cwd: root, query: "" });
+
+    // b 有 package.json → 命中;a 有 .pi? 没有,但 pi-web.json 不是安装判据 → a 不命中。
+    expect(got.map((r) => r.path)).toEqual(["./b"]);
+    expect(got[0]?.insertText).toBe("local:./b");
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("越界防护仍生效:指向基准外的符号链接不进候选(安全边界,不是便利检查)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-pubscan-"));
+    const outside = mkdtempSync(join(tmpdir(), "pi-pubout-"));
+    writeFileSync(join(outside, "pi-web.json"), '{"kind":"agent"}');
+    symlinkSync(outside, join(root, "escape"), "dir");
+
+    const got = await createScanPublishSourceProvider().list({ cwd: root, query: "" });
+
+    expect(got).toEqual([]);
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   });
 });

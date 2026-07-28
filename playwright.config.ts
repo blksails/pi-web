@@ -204,7 +204,7 @@ export default defineConfig({
       // 专用 server 上的 spec 从 fs project 排除:
       //  - agent-plugin-commands.e2e.ts 需放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+ 隔离落盘;
       //  - attachment-tool-bridge.e2e.ts 需专用 stub(PI_WEB_STUB_AGENT_PATH)驱动真实附件工具链。
-      testIgnore: /(agent-plugin-commands|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources)\.e2e\.ts/,
+      testIgnore: /(agent-plugin-commands|publish-command|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -222,7 +222,8 @@ export default defineConfig({
     {
       // agent-plugin-commands(原 install-host-command 任务 5.1):专用 server(放行 env + 隔离落盘),只跑安装旅程 spec。
       name: "install",
-      testMatch: /agent-plugin-commands\.e2e\.ts/,
+      // publish 预览也跑这套(spec publish-host-command):同样需要 admin 放行与隔离落盘。
+      testMatch: /(agent-plugin-commands|publish-command)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_INSTALL}`,

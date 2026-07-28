@@ -38,7 +38,15 @@ const CHANNEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
  */
 const MAX_ID_SEGMENTS = 2;
 
-function isValidSourceId(id: string): boolean {
+/**
+ * 判定一个**裸** sourceId(不含 `@channel`)是否合法。
+ *
+ * 导出理由:registry 安装通道(`server/cli/install/registry-channel.ts`)要接受裸标识
+ * ——`/agent install acme/hello-cloud` 正是不带 channel 的形态,而 `parseOnlineSourceRef`
+ * 对它返回 `undefined`(它要求恰有一个 `@`)。若不导出,通道就得自写第二套字符集与路径穿越
+ * 规则,两处必然漂移。此处只加 `export`,判定逻辑一字未改。
+ */
+export function isValidSourceId(id: string): boolean {
   if (id.length === 0) return false;
   // 路径穿越与隐藏段:任一分段为 `.` / `..` 即拒绝。
   const segments = id.split("/");
