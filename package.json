@@ -20,7 +20,7 @@
     "dev:acs": "node scripts/dev-acs.mjs",
     "dev:client": "vite",
     "build": "pnpm build:dist",
-    "build:client": "vite build",
+    "build:client": "pnpm build:webext-examples && vite build",
     "build:server": "node scripts/build-server.mjs",
     "build:agent-image": "node scripts/build-agent-image.mjs",
     "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs && pnpm build:unpacker && pnpm build:payload",
@@ -57,7 +57,8 @@
     "build:payload": "node scripts/pack-payload.mjs",
     "e2e:runtime:conc": "node e2e/runtime-payload/concurrency.mjs",
     "e2e:runtime:recovery": "node e2e/runtime-payload/recovery.mjs",
-    "e2e:desktop:corrupt": "node e2e/desktop/desktop-corrupt-payload.mjs"
+    "e2e:desktop:corrupt": "node e2e/desktop/desktop-corrupt-payload.mjs",
+    "build:webext-examples": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-webext-examples.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.0",
