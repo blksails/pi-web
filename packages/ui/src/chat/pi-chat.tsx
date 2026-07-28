@@ -29,6 +29,7 @@ import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import { BashResultRenderer } from "./bash-result-renderer.js";
 import { InstallResultRenderer } from "./install-result-renderer.js";
+import { PublishPreviewRenderer } from "./publish-preview-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
@@ -73,7 +74,7 @@ import {
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
-import { createInstallArgProvider } from "../controls/install-arg-provider.js";
+import { createPackageArgProvider } from "../controls/package-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import type { RpcSlashCommand, CompletionItem } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
@@ -90,7 +91,7 @@ import {
 import { cn } from "../lib/cn.js";
 import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
-import { SurfaceCommandResultSchema } from "@blksails/pi-web-protocol";
+import { SurfaceCommandResultSchema, PUBLISH_PREVIEW_DATA_PART } from "@blksails/pi-web-protocol";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -501,8 +502,12 @@ export function PiChat({
     registerBuiltinDataPartRenderers(registry);
     // bang shell 命令结果卡片(spec bang-shell-command,Req 4.x)。
     registry.registerDataPartRenderer("data-bash-result", BashResultRenderer);
-    // /install host 命令结果卡片(spec install-host-command,任务 3.2)。
+    // /agent 与 /plugin host 命令结果卡片(spec agent-plugin-commands;part 名沿用
+    // data-install-result —— 结果数据形状未变,卡片自带 action/kind 可自证归属)。
     registry.registerDataPartRenderer("data-install-result", InstallResultRenderer);
+    // publish 预览卡片(spec publish-host-command):形状与安装类不同,故独立渲染器。
+    // handler 经 `CommandResult.dataPart` 指定它,不走按命令名查表。
+    registry.registerDataPartRenderer(PUBLISH_PREVIEW_DATA_PART, PublishPreviewRenderer);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -671,11 +676,12 @@ export function PiChat({
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cursor, setCursor] = React.useState<number>(0);
 
-  // /install 子命令/参数补全 provider(spec install-host-command,任务 3.3):有 client+sessionId
-  // 时构造,经现成 GET /extensions、/agent-sources、install-sources 端点取候选。
+  // /agent 与 /plugin 的子命令/参数补全 provider(spec agent-plugin-commands,任务 3.4):
+  // 有 client+sessionId 时构造,经现成 GET /extensions、/agent-sources、install-sources 端点
+  // 按域分道取候选。面板只接受**单个** provider,故由它同时认两条命令。
   const commandArgProvider = React.useMemo(() => {
     if (client === undefined || sessionId === undefined) return undefined;
-    return createInstallArgProvider({ baseUrl: client.baseUrl, sessionId });
+    return createPackageArgProvider({ baseUrl: client.baseUrl, sessionId });
   }, [client, sessionId]);
 
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
@@ -973,9 +979,14 @@ export function PiChat({
               chatRef.current.setMessages?.([]);
             }
             // 通用卡片追加(spec install-host-command,任务 3.1):仅对声明了 resultDataPart 的
-            // 词条(如 /install)生效——bang 命令同型,追加一条 assistant 消息。result.data 存在
+            // 词条(如 /agent、/plugin)生效——bang 命令同型,追加一条 assistant 消息。result.data 存在
             // → data part 卡片;仅 message(用法/帮助等无 data 的结果)→ 纯文本 part。
-            const partType = builtinResultDataParts?.[cmd.name];
+            // 卡片类型:**服务端逐次指定优先**,缺省才按命令名查表(spec publish-host-command)。
+            // 按命令名查表意味着一个命令只能有一种结果卡片,而 `/agent install` 与
+            // `/agent publish` 的结果形状完全不同 —— 故由 handler 经 `result.dataPart` 指定。
+            // ★ `dataPart` 只来自服务端第一方 handler,不来自用户输入;未知取值不匹配任何
+            //   渲染器 → 静默不渲染(fail-soft),不构成注入面。
+            const partType = outcome.result?.dataPart ?? builtinResultDataParts?.[cmd.name];
             if (partType !== undefined && outcome.ok) {
               const result = outcome.result;
               if (result?.data !== undefined) {

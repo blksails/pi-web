@@ -32,5 +32,17 @@ export const CommandResultSchema = z.object({
   message: z.string().optional(),
   /** 附带数据(如刷新用的列表快照)。 */
   data: z.unknown().optional(),
+  /**
+   * `data` 应渲染成哪种 data part(spec publish-host-command,任务 1.2)。
+   *
+   * 缺省时消费侧按**命令名**查 `BuiltinCommandSpec.resultDataPart` —— 那意味着一个命令
+   * 只能有一种结果卡片。`/agent` 的 install 与 publish 结果形状完全不同,故加此字段让
+   * **服务端逐次指定**,优先于按命令名查表。
+   *
+   * ★ 安全边界:本字段**只允许服务端 handler 写入**(它们是第一方代码),
+   *   **不得**接到任何用户可控的数据上 —— 否则等于让用户指定渲染组件。
+   *   消费侧对未知取值不匹配任何渲染器 → 静默不渲染(fail-soft),不构成注入面。
+   */
+  dataPart: z.string().optional(),
 });
 export type CommandResult = z.infer<typeof CommandResultSchema>;

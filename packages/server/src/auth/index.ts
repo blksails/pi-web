@@ -20,6 +20,10 @@ export {
   type DesktopCapabilitiesClient,
   type DesktopCapabilitiesClientOptions,
   type CapabilitiesFetch,
+  // spec publish-grant-issuance / publish-key-lifecycle / publish-execution:
+  // 应用层(lib/app)要按这两个类型接发布链路,故一并导出。
+  type PublishGrant,
+  type RegisterPublishKeyOutcome,
 } from "./desktop-capabilities-client.js";
 // desktop-account-login:账号密码登录客户端(pi-SDK-free,只用 fetch)。
 export {

@@ -93,8 +93,11 @@ export interface AgentInstallError {
 }
 
 export interface AgentInstallResult {
-  /** 落盘方式:git 浅克隆 / npm 发布产物解包 / 本地路径登记。 */
-  readonly method: "git" | "npm" | "local";
+  /**
+   * 落盘方式:git 浅克隆 / npm 发布产物解包 / 本地路径登记 / registry 通道下载解包。
+   * `"registry"` 由 `Installer` 的 registry 通道产出(本文件不产出该值)。
+   */
+  readonly method: "git" | "npm" | "local" | "registry";
   /** 落盘绝对路径(`git`/`npm`),或已登记的本地目录 realpath(`local`)。 */
   readonly location: string;
   /** true = 本次新建/新登记;false = 已存在同一目标,幂等短路(未触碰任何内容)。 */

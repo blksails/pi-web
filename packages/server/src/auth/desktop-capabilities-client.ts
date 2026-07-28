@@ -20,6 +20,32 @@
  */
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SourcesGrant } from "../agent-source-list/registry-http-provider.js";
+
+/**
+ * 发布授予(spec publish-grant-issuance)。在 sources 授予之上多两项**可展示**的身份:
+ * `publisherId` 与 `org` —— 发布不可逆,得让用户看得见以谁的身份、在哪个命名空间下发。
+ */
+export interface PublishGrant {
+  readonly baseUrl: string;
+  /** ⚠ 凭据:禁止写盘/日志/任何其它载荷。 */
+  readonly token: string;
+  readonly publisherId: string;
+  readonly org: string;
+}
+
+/**
+ * 公钥登记结果(spec publish-key-lifecycle,Req 2.5)。
+ *
+ * 失败以**判别式**返回而非抛 —— 五种失败对调用方的含义不同:
+ * `no-credential` / `no-grant` 是"本就没到能发布的阶段"(静默),
+ * `conflict` 是"这把钥匙属于别人"(值得记),`network` / `bad-status` 是暂态。
+ */
+export type RegisterPublishKeyOutcome =
+  | { readonly ok: true; readonly fingerprint: string; readonly publisherId: string }
+  | {
+      readonly ok: false;
+      readonly kind: "no-credential" | "unauthorized" | "no-grant" | "conflict" | "network" | "bad-status";
+    };
 import type {
   CapabilityEgressGrant,
   CapabilityTenant,
@@ -111,6 +137,30 @@ export interface DesktopCapabilitiesClient {
    * 连本地源都看不到 —— 那是明确的回归。需要 fail-hard 语义请用 {@link loadStatic}。
    */
   getSourcesGrant(): Promise<SourcesGrant | undefined>;
+  /**
+   * 取发布授予;失败/未登录/企业未配置 org → `undefined`。
+   *
+   * ★ 与 {@link getSourcesGrant} **同规:必须吞掉一切异常**。发布命令的正确降级是给出
+   * 「该部署未接入发布身份」的失败卡片,而不是让整条命令抛成 500。
+   *
+   * ⚠ 返回 `undefined` 有三种成因(未登录 / 云端抖动 / 企业未配置 org),本方法**不区分** ——
+   * 需要区分请读 {@link loadStatic} 的完整快照。
+   */
+  getPublishGrant(): Promise<PublishGrant | undefined>;
+  /**
+   * 把**本机公钥**登记到当前企业的 publisher 下(spec publish-key-lifecycle,Req 2)。
+   *
+   * ★ 与本客户端的其它 fail-soft 方法同规:**不抛**,失败以判别式返回。
+   *   登记是"发布前的尽力而为",它失败不该让发布预览崩 —— 那会把一个可降级的问题
+   *   升级成整条命令不可用。
+   *
+   * ⚠ 请求体只有 `{publicKey, label}`。归属由服务端从认证身份派生,**客户端无从指定** ——
+   *   这是越权防线的结构性一环,不要在这里加 `publisherId` 之类的入参。
+   */
+  registerPublishKey(input: {
+    readonly publicKey: string;
+    readonly label: string;
+  }): Promise<RegisterPublishKeyOutcome>;
   /** 清内存缓存(登出/切号时**必须**调用,否则下一个用户读到上一个用户的授予)。 */
   clearCache(): void;
 }
@@ -387,6 +437,28 @@ export function createDesktopCapabilitiesClient(
       return cache.snapshot;
     },
 
+    async getPublishGrant(): Promise<PublishGrant | undefined> {
+      // 同 getSourcesGrant:catch 是刻意的,发布不可用应降级为失败卡片而非 500。
+      let snapshot: StaticCapabilitySnapshot;
+      try {
+        snapshot = await loadStatic();
+      } catch {
+        return undefined;
+      }
+      const publish = snapshot.publish;
+      if (publish === undefined) {
+        // 不 warn:企业未配置 org 时缺席是**正常**状态,不是异常
+        // (对比 sources 缺席 —— 那是配置问题,值得 warn)。
+        return undefined;
+      }
+      return {
+        baseUrl: publish.baseUrl,
+        token: publish.token,
+        publisherId: publish.publisherId,
+        org: publish.org,
+      };
+    },
+
     async getSourcesGrant(): Promise<SourcesGrant | undefined> {
       // ★ 这里的 catch 是刻意的,不是遗漏。见接口注释:源列表枚举必须 fail-soft。
       let snapshot: StaticCapabilitySnapshot;
@@ -402,5 +474,68 @@ export function createDesktopCapabilitiesClient(
       }
       return { baseUrl: sources.baseUrl, token: sources.token };
     },
+
+    async registerPublishKey(input): Promise<RegisterPublishKeyOutcome> {
+      const cred = opts.getDesktopCredential();
+      if (cred === undefined || cred.trim().length === 0) return { ok: false, kind: "no-credential" };
+      if (fetchImpl === undefined) return { ok: false, kind: "network" };
+
+      const url = publishKeysUrlFrom(opts.capabilitiesUrl);
+      if (url === undefined) return { ok: false, kind: "network" };
+
+      let status: number;
+      let text: string;
+      try {
+        const res = await fetchImpl(url, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            // ★ 桌面凭据,**不是** publish grant 的 token —— 后者是发布面凭据,
+            //   拿来做登记会扩大它的用途面。
+            authorization: `Bearer ${cred}`,
+          },
+          body: JSON.stringify({ publicKey: input.publicKey, label: input.label }),
+        });
+        status = res.status;
+        text = await res.text();
+      } catch {
+        logger.warn("publish key registration network failure");
+        return { ok: false, kind: "network" };
+      }
+
+      if (status === 401 || status === 403) return { ok: false, kind: status === 401 ? "unauthorized" : "no-grant" };
+      if (status === 409) return { ok: false, kind: "conflict" };
+      if (status < 200 || status >= 300) {
+        logger.warn("publish key registration rejected", { status });
+        return { ok: false, kind: "bad-status" };
+      }
+
+      try {
+        const body = JSON.parse(text) as { fingerprint?: unknown; publisherId?: unknown };
+        if (typeof body.fingerprint !== "string" || typeof body.publisherId !== "string") {
+          return { ok: false, kind: "bad-status" };
+        }
+        // 只记指纹(公开物),不记 publicKey 全文、不记凭据。
+        logger.info("publish key registered", { fingerprint: body.fingerprint });
+        return { ok: true, fingerprint: body.fingerprint, publisherId: body.publisherId };
+      } catch {
+        return { ok: false, kind: "bad-status" };
+      }
+    },
   };
+}
+
+/**
+ * `.../api/desktop/capabilities` → `.../api/desktop/publish/keys`。
+ *
+ * 从 capabilities URL 推导而非另加一项配置:二者**必须同源同部署**,分成两个配置项就多了一种
+ * "指向两个不同云端"的错误配置,而那种错配的表现是"登记成功但发布时说没这把钥匙"——极难定位。
+ */
+function publishKeysUrlFrom(capabilitiesUrl: string): string | undefined {
+  const trimmed = capabilitiesUrl.trim();
+  if (trimmed.length === 0) return undefined;
+  const marker = "/capabilities";
+  if (!trimmed.endsWith(marker)) return undefined;
+  return `${trimmed.slice(0, -marker.length)}/publish/keys`;
 }

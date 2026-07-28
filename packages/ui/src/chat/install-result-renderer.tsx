@@ -112,6 +112,14 @@ export const InstallResultRenderer: DataPartRenderer = ({ part }) => {
           </div>
         ) : null}
 
+        {/* 空列表必须有可见的空态:否则卡片体整片空白,用户无从区分"执行了但没有条目"
+            与"没执行/渲染坏了"(dev 实机反馈)。 */}
+        {result.items !== undefined && result.items.length === 0 ? (
+          <p data-pi-install-empty className="text-[hsl(var(--muted-foreground))]">
+            {t("installResult.empty")}
+          </p>
+        ) : null}
+
         {result.items !== undefined && result.items.length > 0 ? (
           <div data-pi-install-items>
             <p className="font-medium">{t("installResult.items")}</p>

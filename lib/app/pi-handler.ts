@@ -155,16 +155,21 @@ import { resolveBakedCloudEgressBase } from "./cloud-defaults.js";
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
-  createInstallHostCommand,
+  createPackageHostCommand,
   type InstallAuditEvent,
-} from "./install-host-command.js";
+  type PackageHostCommandDeps,
+} from "./package-host-command.js";
 import { createInstaller } from "../../server/cli/install/installer.js";
+import { ensurePublishKey } from "../../server/cli/publish/keystore.js";
+import { ensurePublishKeyRegistered, isKeyInPlace } from "./publish-key-registration.js";
+import { executePublish } from "./publish-execute.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
 // 线上源可运行(spec desktop-online-source-runnable,任务 3.1/3.2):安装端口与解析插件。
 // 二者位于应用层而非 packages/server —— 它们经 server/cli 间接依赖 @pi-clouds/registry-client,
 // 而 P1 的范围铁律要求该依赖不得进入包内(判别与索引已下沉包内,纯 fs)。
 import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
+import { createLazyRegistryChannel } from "./online-source/registry-channel-adapter.js";
 import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
@@ -821,20 +826,44 @@ function buildSingleton(): HandlerSingleton {
     await session.restartRunner();
   };
 
-  // /install host 命令(spec install-host-command):web 面按 kind 安装 agent/plugin,
-  // 复用 CLI install 子域(createInstaller/createPluginInstaller 直调,零第二份编排)。
-  // 治理与 REST /extensions 同源:extAllowlist(白名单)/extAllowMutate(admin 门)/extPiCli。
-  // agent 落盘目标与 GET /agent-sources 的「扫描 ∪ 注册表」同值,装完选择器天然可见。
+  // /agent 与 /plugin host 命令(spec agent-plugin-commands):命令名即类别,取代原先靠
+  // `--kind` 分派的单一 /install。复用 CLI install 子域(createInstaller/createPluginInstaller
+  // 直调,零第二份编排)。治理与 REST /extensions 同源:extAllowlist(白名单)/
+  // extAllowMutate(admin 门)/extPiCli。agent 落盘目标与 GET /agent-sources 的
+  // 「扫描 ∪ 注册表」同值,装完选择器天然可见。
   const installRegistryPath =
     process.env.PI_WEB_SOURCES_REGISTRY ??
     path.join(config.agentDir, "sources.json");
-  const installHostCommand = createInstallHostCommand({
+  const packageCommandDeps: PackageHostCommandDeps = {
     installer: createInstaller({
       allowlistConfig: extAllowlist,
       piCli: extPiCli,
       agentInstallerOptions: {
         sourcesRoot: resolveSourcesRoot(process.env, config.defaultCwd),
         registryPath: installRegistryPath,
+      },
+      // registry 通道(spec installer-registry-channel):`/agent install <registry-id>` 与
+      // source 选择器路径走同一份安装实现。
+      //
+      // ★ 全程惰性:`desktopCapabilitiesClient` 与 `sourcesScanRoots` 都在下方才构造,故这里
+      //   不能直接引用它们的值 —— 与 `listAgentSources` 同一手法(闭包内取,调用时才求值),
+      //   而不是把 packageCommandDeps 的构造整块下移(牵连面大得多)。
+      // ★ 未登录 / 未配置云端 → 通道报 NOT_AUTHENTICATED → 上浮为 REGISTRY_UNAVAILABLE,
+      //   是诚实降级,不是「不支持」。
+      registryChannel: {
+        async materialize(spec, opts) {
+          if (desktopCapabilitiesClient === undefined) {
+            return { ok: false, error: { code: "NOT_AUTHENTICATED" } };
+          }
+          return createLazyRegistryChannel({
+            getSourcesGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+            // agent 落点 = 第一个扫描根,装完即被 scan-provider 枚举(与选择器路径同根)。
+            agentTargetRoot: sourcesScanRoots[0] ?? defaultSourcesRoot(),
+            // plugin 落点刻意**在扫描根之外**:落进去会被源枚举当成 agent 源列出来。
+            // 是长期位置,不是暂存 —— pi 只把路径记进台账,不拷贝内容。
+            pluginTargetRoot: path.join(config.agentDir, "registry-plugins"),
+          }).materialize(spec, opts);
+        },
       },
     }),
     pluginInstaller: createPluginInstaller({ piCli: extPiCli }),
@@ -852,8 +881,52 @@ function buildSingleton(): HandlerSingleton {
         reason: redactReason(event.reason),
       });
     },
+    // `/agent list` 的数据源:CLI 的 agent 通道只有装/卸,没有列举能力,故接既有的 agent 源
+    // 枚举 provider(与 GET /agent-sources 同一实例)。惰性求值:provider 在下方构造。
+    listAgentSources: async () => await agentSourcesProvider.list(),
     cwd: config.defaultCwd,
-  });
+    // 发布前确保本机公钥已登记(spec publish-key-lifecycle)。惰性求值,理由同上。
+    // 未登录 / 未配置云端 → 直接跳过(编排器内部对 grant 缺席即返回),不产生任何请求。
+    ensurePublishKeyRegistered: async () => {
+      if (desktopCapabilitiesClient === undefined) return;
+      await ensurePublishKeyRegistered({
+        ensureKey: () => ensurePublishKey(),
+        getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+        registerPublishKey: (input) => desktopCapabilitiesClient.registerPublishKey(input),
+      });
+    },
+    // 真实发布(spec publish-execution)。恒注入 —— 未配置云端时 `getPublishGrant` 取不到授予,
+    // `executePublish` 自己就会返回 `PUBLISH_NOT_AVAILABLE`(与本 spec 引入前逐字相同的文案),
+    // 故不必在此再判一次"有没有云端"(判两次 = 两处文案要同步)。
+    executePublish: (input) =>
+      executePublish(input, {
+        getPublishGrant: async () => desktopCapabilitiesClient?.getPublishGrant(),
+        // ★ 与 dry-run 路径不同:这里是**硬前置**。公钥没登记则服务端验签必然失败,
+        //   而那次失败会烧掉一个版本号。`already`(回执命中)同样算就位。
+        ensureKeyRegistered: async () => {
+          if (desktopCapabilitiesClient === undefined) return false;
+          const outcome = await ensurePublishKeyRegistered({
+            ensureKey: () => ensurePublishKey(),
+            getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+            registerPublishKey: (i) => desktopCapabilitiesClient.registerPublishKey(i),
+          });
+          return isKeyInPlace(outcome);
+        },
+      }),
+    auditPublish: (event): void => {
+      defaultOnAudit({
+        actor: "host-command",
+        at: new Date().toISOString(),
+        // 审计动作词表沿用既有三态,发布归入 install(它也是"把东西放进注册表")。
+        action: "install",
+        source: event.source ?? "publish",
+        outcome: event.outcome === "succeeded" ? "success" : "failure",
+        reason: redactReason(event.reason ?? event.outcome),
+      });
+    },
+  };
+  const agentHostCommand = createPackageHostCommand("agent", packageCommandDeps);
+  const pluginHostCommand = createPackageHostCommand("plugin", packageCommandDeps);
 
   // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
   // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
@@ -987,7 +1060,7 @@ function buildSingleton(): HandlerSingleton {
       allowlist: extAllowlist,
       reloadSession: reloadRunner,
     },
-    hostCommandHandlers: [createClearHostCommand(), installHostCommand],
+    hostCommandHandlers: [createClearHostCommand(), agentHostCommand, pluginHostCommand],
   };
 
   // pi-web 对 16 个能力面**全表态 use**(静态、可读);条件挂载的启停由各 factory 内部读
@@ -1016,8 +1089,8 @@ function buildSingleton(): HandlerSingleton {
     manager,
     store,
     // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
-    // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
-    // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
+    // 前端 clear-transcript;/agent 与 /plugin = 按命令名所指类别装/卸/列(spec
+    // agent-plugin-commands,取代原 /install)。
     // M3:命令贡献经 composeCapabilities 分拣而来 —— host.commands 与 15 个路由能力面在
     // 同一次强制表态中一起被表态(spec host-contract-capability-composition,D5)。
     hostCommands: createHostCommandRegistry(composedCommands),
