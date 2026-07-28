@@ -45,21 +45,28 @@ describe("POST /api/sessions/:id/bash (启用 + stub 真实执行 shell)", () =>
     expect(typeof sessionId).toBe("string");
   });
 
-  it("执行成功 → 200 且返回结构化结果(output 含命令输出,exit 0)", async () => {
-    const res = await route.POST(
-      req(`/api/sessions/${sessionId}/bash`, {
-        method: "POST",
-        body: JSON.stringify({ command: "echo pi-bash-hi" }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      result: { output: string; exitCode?: number; cancelled: boolean };
-    };
-    expect(body.result.output).toContain("pi-bash-hi");
-    expect(body.result.exitCode).toBe(0);
-    expect(body.result.cancelled).toBe(false);
-  });
+  // ★ 首个用例独享宽限超时:它要付 stub agent 子进程冷启 + 会话就绪握手的一次性代价
+  // (孤立跑实测 ~3.8s),默认 5s 在全量套件并行、CPU 争用时会被顶破而假性失败。
+  // 后续用例复用已热的 runner,仅十几毫秒,故不需要放宽。
+  it(
+    "执行成功 → 200 且返回结构化结果(output 含命令输出,exit 0)",
+    async () => {
+      const res = await route.POST(
+        req(`/api/sessions/${sessionId}/bash`, {
+          method: "POST",
+          body: JSON.stringify({ command: "echo pi-bash-hi" }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        result: { output: string; exitCode?: number; cancelled: boolean };
+      };
+      expect(body.result.output).toContain("pi-bash-hi");
+      expect(body.result.exitCode).toBe(0);
+      expect(body.result.cancelled).toBe(false);
+    },
+    30_000,
+  );
 
   it("excludeFromContext 透传 → 200(!! 链路成功)", async () => {
     const res = await route.POST(

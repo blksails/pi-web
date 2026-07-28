@@ -206,6 +206,9 @@ describe("defaultCapabilities × composeCapabilities(装配级等价,M3 任务 4
         ...createAgentSourcesRoutes({
           scanRoots: deps.sourcesScanRoots,
           registryPath: deps.sourcesRegistryPath,
+          ...(deps.agentSourcesProvider !== undefined
+            ? { provider: deps.agentSourcesProvider }
+            : {}),
         }),
         ...createFavoritesRoutes({ agentDir: deps.agentDir }),
         ...createLlmGatewayRoutes(deps.llmGateway!),

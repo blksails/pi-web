@@ -32,7 +32,7 @@ fn open_entry(service: &str, account: &str) -> Result<Entry, String> {
 }
 
 /// 写入生产条目的同步实现；`store_credential` command 与测试均落到此处，避免逻辑分叉。
-fn store_credential_sync(credential: &str) -> Result<(), String> {
+pub fn store_credential_sync(credential: &str) -> Result<(), String> {
     let e = entry()?;
     e.set_password(credential)
         .map_err(|e| format!("写入 keychain 失败: {e}"))
@@ -49,7 +49,7 @@ fn load_credential_result_sync() -> Result<Option<String>, String> {
 }
 
 /// 清除生产条目的同步实现；条目本就不存在也视为已清除成功（幂等，登出可重复调用）。
-fn clear_credential_sync() -> Result<(), String> {
+pub fn clear_credential_sync() -> Result<(), String> {
     let e = entry()?;
     match e.delete_credential() {
         Ok(()) => Ok(()),

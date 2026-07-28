@@ -20,6 +20,7 @@
 // ⚠ 必须是第一个 import:加载 `.env` / `.env.local`(旧宿主由 Next 内置完成)。
 // 下面的模块在求值时就会读 process.env(如 isProduction、pi-handler 的 loadConfig)。
 import "./load-env.js";
+import { startParentWatchdog } from "@blksails/pi-web-server";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { getHandler, shutdownHandler } from "../lib/app/pi-handler.js";
@@ -142,3 +143,14 @@ async function shutdown(): Promise<void> {
 }
 process.on("SIGTERM", () => void shutdown());
 process.on("SIGINT", () => void shutdown());
+
+// 父进程守望(spec desktop-exit-orphan):桌面壳消失即自尽,避免成为占着端口的孤儿。
+// 仅当壳经 PI_WEB_SHELL_PID 告知自己的 pid 时启用 —— `pnpm dev:server` / npm CLI /
+// 容器等形态下「父进程没了」是正常的(nohup/systemd/docker),自尽反而是错的。
+// 走与信号相同的 shutdown(),保证 server.close() 与既有收尾逻辑都跑到。
+startParentWatchdog({
+  env: process.env,
+  onParentGone: () => {
+    void shutdown();
+  },
+});

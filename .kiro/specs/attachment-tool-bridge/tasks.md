@@ -2,7 +2,7 @@
 
 > 前置依赖:`attachment-store`(L0/L1:`BlobStore`/`LocalFsBlobBackend`/`AttachmentRegistry`/`UrlSigner`/`AttachmentStore` 门面、`attachmentStoreConfigFromEnv`、`Attachment`/`AttachmentOrigin` DTO、`PI_WEB_ATTACHMENT_DIR`、`/raw` 分发)需先落地。本计划复用其契约,不重定义。
 
-- [ ] 1. 基础:子进程 store 与测试脚手架
+- [x] 1. 基础:子进程 store 与测试脚手架
 - [x] 1.1 子进程 store 客户端工厂(从 env 实例化、指向同一后端、env 缺失降级)
   - 实现从 `process.env` 读取 `PI_WEB_ATTACHMENT_DIR` + `PI_WEB_ATTACHMENT_SECRET`(二者均由 attachment-store 经 spawn env 下发),组合 `attachment-store` 受认可复用面(`attachmentStoreConfigFromEnv` + `LocalFsBlobBackend`/`AttachmentRegistry`/`UrlSigner`)实例化**上游 `AttachmentStore` 门面**作为子进程 store 客户端(`ChildAttachmentStore` 即上游门面别名,不自定义重名访问器/不内联 meta)
   - 经上游门面暴露读元信息(`head`)、读流(`getReadStream`,meta=上游 `BlobMeta`)、本地落盘路径(`localPath(id)`)、按属主列举(`listBySession(sessionId)`)、落库(`put` 来源 `tool-output`)、签发展示 URL(`presignUrl`)的能力,全部经门面调用、不绕过门面抠后端内部
@@ -21,7 +21,7 @@
   - _Boundary: pi-handler 子进程 env 校验（assertion-only，无 spawn-env 编辑）_
   - _Depends: 1.1_
 
-- [ ] 2. L2 投影与临时文件回收
+- [x] 2. L2 投影与临时文件回收
 - [x] 2.1 (P) 临时文件登记与两级回收
   - 实现临时文件登记器:按工具调用维度与会话维度登记懒下载产生的临时文件,提供"调用结束回收"与"会话结束回收"两入口
   - 本地后端路径不登记(无临时文件,no-op);回收失败吞错记日志不阻断主流程
@@ -38,7 +38,7 @@
   - _Boundary: AttachmentHandle, resolve_
   - _Depends: 1.1, 2.1_
 
-- [ ] 3. 闸门与回流(横切层)
+- [x] 3. 闸门与回流(横切层)
 - [x] 3.1 (P) beforeToolCall 属主校验闸门
   - 实现工具执行前闸门:从工具参数提取附件引用(`attachmentId`),校验当前会话是否为该附件属主
   - 越权或引用不存在 → 阻断(block),不进入执行;参数不含附件引用 → 放行
@@ -69,7 +69,7 @@
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 9.1_
   - _Boundary: reference-injection_
 
-- [ ] 4. tool 接入范式与示例 tool
+- [x] 4. tool 接入范式与示例 tool
 - [x] 4.1 tool 接入上下文(暴露 store 句柄给 tool 作者)
   - 实现让工具在其执行逻辑内取得子进程 store 句柄的接入上下文(解析输入附件、落库产出附件、可用性标记);经 agent-kit 暴露类型给工具作者按 `@blksails/pi-web-agent-kit` 引用
   - 观察完成:工具作者可经 agent-kit 引用上下文类型;上下文在存储能力不可用时 available 为 false
@@ -85,7 +85,7 @@
   - _Boundary: 示例 AgentTool_
   - _Depends: 4.1_
 
-- [ ] 5. runner 集成接线
+- [x] 5. runner 集成接线
 - [x] 5.1 把闸门与子进程 store 接入 runner 装配
   - 在 runner 装配运行时与循环配置处:实例化子进程 store 客户端,把属主校验接到执行前闸门、把 base64 剥离接到结果出口闸门,把 store 句柄经 tool 接入上下文透给 customTools
   - 会话生命周期结束时触发会话级临时文件回收
@@ -102,7 +102,7 @@
   - _Boundary: 该文件为**服务端** prompt 构造,与 attachment-store 拥有的**客户端**文件(`packages/react/src/transport/agent-message-to-ui.ts`、`packages/react/src/hooks/use-attachments.ts`、`packages/ui/src/elements/attachments.tsx`、`packages/ui/src/chat/pi-chat.tsx`)**不相交**;本任务不触碰任何 client 文件_
   - _Depends: 3.4_
 
-- [ ] 6. 验证
+- [x] 6. 验证
 - [x] 6.1 单元/集成测试套件(新鲜运行)
   - 汇总并跑通覆盖 L2 四形态、临时文件回收、子进程 store 指向同一后端、属主校验阻断、base64 剥离、tool-output 回流、引用注入、双进程同后端一致性、runner hook 接线、示例 tool 子进程端到端的单元/集成测试
   - 观察完成:`vitest` 新鲜运行全绿,输出作为证据

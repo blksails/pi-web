@@ -24,10 +24,14 @@ import { createExtensionsConfigRoutes } from "../config/extensions-config-routes
 import { createSessionListRoutes } from "../session-list/session-list-routes.js";
 import { createSessionActionsRoutes } from "../session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "../agent-source-list/agent-sources-routes.js";
+import type { AgentSourceProvider } from "../agent-source-list/types.js";
 import { createFavoritesRoutes } from "../agent-source-list/favorites-routes.js";
 import { createLlmGatewayRoutes } from "../llm-gateway/gateway-routes.js";
 import { createAiGatewayRoutes } from "../ai-gateway/routes.js";
 import { createAuthRoutes } from "../auth/auth-routes.js";
+import { createIdentityRoutes } from "../identity/identity-routes.js";
+import { createShellCredentialRoutes } from "../auth/shell-credential-route.js";
+import type { IdentityProvider } from "../identity/types.js";
 import { createAttachmentRoutes } from "../http/routes/attachment-routes.js";
 import { createBashRoutes } from "../http/routes/bash-routes.js";
 import { createExtensionRoutes } from "../extensions/routes.js";
@@ -73,12 +77,36 @@ export interface HostDeps {
   readonly sessionsManageEnabled: boolean;
   readonly sourcesScanRoots: readonly string[];
   readonly sourcesRegistryPath: string;
+  /**
+   * 可选:整包 agent source provider(desktop-hybrid-agent-sources)。
+   * 提供时 `agentSource.list` 注入该 provider(忽略 scanRoots/registryPath 的默认 composite);
+   * 缺省 = 既有「本地 registry 文件 ∪ 扫描根」。
+   */
+  readonly agentSourcesProvider?: AgentSourceProvider;
   /** 仅 `config.llmGateway?.serve` 时构造(否则 undefined);gateway.llm 据此挂载。 */
   readonly llmGateway?: LlmGatewayOpts;
   /** 仅 AI 网关已配置时构造;gateway.ai 据此挂载。 */
   readonly aiGateway?: AiGatewayOpts;
   /** 仅云登录已配置时非空;auth.session 据此挂载。 */
   readonly authState?: AuthOpts["state"];
+  /**
+   * 身份端口 P5(spec: desktop-account-login)。仅云登录已配置时非空。
+   *
+   * ★ **刻意与 `authState` 同挂在 `auth.session` 能力面下,不新增能力 id。**
+   * `HOST_CAPABILITY_IDS_V1` 是冻结名册,而 `composeCapabilities` 要求宿主对**每一个**
+   * 描述符显式表态 —— 新增第 17 个 id 会让所有既有宿主(pi-clouds / 桌面)当场抛
+   * `missing-decision`,那是实质破坏性变更,契约 §1 要求升 v2 才允许。
+   * 语义上也说得通:`auth.session` 本就是「登录这件事」的能力面,`/identity` 是它的
+   * 新形态而非新领域。
+   */
+  readonly identityProvider?: IdentityProvider;
+  /**
+   * 壳凭据取回 token(spec desktop-account-login Req 12)。仅桌面壳下非空。
+   *
+   * ★ 为空即**不挂载** `/desktop/credential` —— `pnpm dev` / npm CLI 下该端点
+   * 压根不存在,而不是"存在但会拒绝"。
+   */
+  readonly shellToken?: string;
   readonly attachmentStore: Parameters<typeof createAttachmentRoutes>[0];
   readonly resolveWriteBackend: AttachmentOpts["resolveWriteBackend"];
   readonly store: Parameters<typeof createBashRoutes>[0];
@@ -136,11 +164,37 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
     { id: "config.extensions", factory: (d) => asRoutes(createExtensionsConfigRoutes({ agentDir: d.agentDir, defaultCwd: d.defaultCwd })) },
     { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ storeConfig: d.sessionStoreConfig, globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd })) },
     { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ storeConfig: d.sessionStoreConfig, agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled })) },
-    { id: "agentSource.list", factory: (d) => asRoutes(createAgentSourcesRoutes({ scanRoots: d.sourcesScanRoots, registryPath: d.sourcesRegistryPath })) },
+    {
+      id: "agentSource.list",
+      factory: (d) =>
+        asRoutes(
+          createAgentSourcesRoutes({
+            scanRoots: d.sourcesScanRoots,
+            registryPath: d.sourcesRegistryPath,
+            ...(d.agentSourcesProvider !== undefined
+              ? { provider: d.agentSourcesProvider }
+              : {}),
+          }),
+        ),
+    },
     { id: "agentSource.favorites", factory: (d) => asRoutes(createFavoritesRoutes({ agentDir: d.agentDir })) },
     { id: "gateway.llm", factory: (d) => (d.llmGateway !== undefined ? asRoutes(createLlmGatewayRoutes(d.llmGateway)) : []) },
     { id: "gateway.ai", factory: (d) => (d.aiGateway !== undefined ? asRoutes(createAiGatewayRoutes(d.aiGateway)) : []) },
-    { id: "auth.session", factory: (d) => (d.authState !== undefined ? asRoutes(createAuthRoutes({ state: d.authState })) : []) },
+    // auth.session = 「登录」这一整个能力面:既有 /auth/*(凭据串形态)+ /identity/*
+    // (账号密码形态)。两者共存,前者降级为兜底,后者是主路径(desktop-account-login Req 3.4)。
+    {
+      id: "auth.session",
+      factory: (d) =>
+        asRoutes([
+          ...(d.authState !== undefined ? createAuthRoutes({ state: d.authState }) : []),
+          ...(d.identityProvider !== undefined
+            ? createIdentityRoutes({ provider: d.identityProvider })
+            : []),
+          ...(d.authState !== undefined && d.shellToken !== undefined
+            ? createShellCredentialRoutes({ state: d.authState, token: d.shellToken })
+            : []),
+        ]),
+    },
     { id: "attachment.routes", factory: (d) => asRoutes(createAttachmentRoutes(d.attachmentStore, { resolveWriteBackend: d.resolveWriteBackend })) },
     { id: "shell.bash", factory: (d) => asRoutes(createBashRoutes(d.store, { enabled: d.bashEnabled })) },
     { id: "extension.manage", factory: (d) => asRoutes(createExtensionRoutes(d.extension)) },

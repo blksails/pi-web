@@ -126,6 +126,8 @@ function toItem(r: AgentSourceRecord): AgentSourceItem {
     ...(r.title !== undefined ? { title: r.title } : {}),
     ...(r.description !== undefined ? { description: r.description } : {}),
     ...(r.avatar !== undefined ? { avatar: r.avatar } : {}),
+    ...(r.runnable !== undefined ? { runnable: r.runnable } : {}),
+    ...(r.reason !== undefined ? { reason: r.reason } : {}),
   };
 }
 

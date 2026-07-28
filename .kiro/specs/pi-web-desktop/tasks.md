@@ -3,7 +3,7 @@
 > 复用既有 standalone 产物与 CLI 启动原语;后端仅一处向后兼容改动。
 > Foundation(1)先建接缝 → Core(2)并行实现主进程模块 → Integration(3)串联 + 打包 → Validation(4)e2e。
 
-- [ ] 1. Foundation:后端注入接缝、复用原语、桌面工程脚手架
+- [x] 1. Foundation:后端注入接缝、复用原语、桌面工程脚手架
 
 - [x] 1.1 runner spawn 支持注入的 Node 二进制
   - 让 spawn 装配从其已构造的 env 读取 Node 二进制路径,存在则用作子进程可执行文件,缺省回退现有默认 `node`;custom 与 cli 两条分支一致处理
@@ -24,7 +24,7 @@
   - _Requirements: 9.1_
   - _Boundary: desktop 工程配置_
 
-- [ ] 2. Core:主进程模块(脚手架就绪后并行)
+- [x] 2. Core:主进程模块(脚手架就绪后并行)
 
 - [x] 2.1 (P) 运行模式判定与产物入口定位
   - 以「是否打包态」为主判据、叠加显式开发开关判定 dev / packaged 模式(不猜测);packaged 态从随包资源目录定位 standalone server 入口,dev 态返回空并交由壳改指开发服务器地址
@@ -61,7 +61,7 @@
   - _Boundary: showStartupError_
   - _Depends: 1.3_
 
-- [ ] 3. Integration:主进程编排与打包
+- [x] 3. Integration:主进程编排与打包
 
 - [x] 3.1 主进程编排入口
   - 串联启动链:判定模式 → 定位产物入口(dev 分支直接加载开发地址,不拉起)→ 受监管拉起 server → 就绪后窗口加载本地回环 UI;失败走可见错误呈现并收尾;app 退出(before-quit)触发进程树收尾;不注入 agent 配置目录覆盖,使会话默认落 `~/.pi/agent` 与 CLI 共享
@@ -77,7 +77,7 @@
   - _Boundary: electron-builder 配置_
   - _Depends: 1.3, 3.1_
 
-- [ ] 4. Validation:集成与端到端
+- [x] 4. Validation:集成与端到端
 
 - [x] 4.1 (P) ServerSupervisor 集成测试(真实子进程)
   - 覆盖:就绪返回 url/端口;server 立即退出 → 早退错误且无遗留子进程;env 透传断言(子进程 env 含注入的 Node 二进制路径与运行标记、主进程 env 不含运行标记);stop 后进程组不存活、端口释放

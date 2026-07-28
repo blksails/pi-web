@@ -1,0 +1,36 @@
+{
+  "feature_name": "desktop-hybrid-agent-sources",
+  "created_at": "2026-07-24T14:15:51Z",
+  "updated_at": "2026-07-27T06:20:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation_note": "2026-07-24 P1 落地: N-way composite + RegistryHttpSourceProvider + DesktopCapabilitiesClient + pi-handler hybrid 装配 + 登录态刷新 agent-sources。server 相关 59 tests 绿, tsc 0。线上源可运行(P2)未做。",
+  "validation": {
+    "phase": "validate-impl",
+    "date": "2026-07-27",
+    "decision": "GO",
+    "code_commit": "01df222",
+    "coverage": "21/21 验收准则、8/8 需求",
+    "mechanical": "全仓 14 包 pnpm -r run test EXIT=0(0 FAIL);TBD/TODO CLEAN;密钥 CLEAN;运行时烟雾 PASS(真实 server GET /api/agent-sources 200:空根→空列表不 500、根=examples→5 条 origin:scan、未登录不发 capabilities)",
+    "boundary": "CLEAN —— @pi-clouds/registry-client 零真实 import;新增代码零 install/resolve/spawn(无 P2 越界);装配序 [registryHttp, fileRegistry, scan] 合设计;推导不出 capabilities URL 时退化二元 composite",
+    "highest_risk_cleared": "Req 2.5 登出后 grant 缓存 —— 缓存与凭据绑定,desktop-capabilities-client.ts:134-138 在读缓存前先验凭据(缺失即清),缓存不可能活过凭据,不依赖调用方调 clearCache()",
+    "warning": "hybrid 并集下的跨页分页无专门回归测试(机制可证:游标载荷=排序键三分量、与列表共用全序比较器 origin→name→id、name 固定 en locale)。判为测试覆盖薄弱而非缺陷,建议接 P2 时补。",
+    "note": "三个并行验证子代理均未交件(反复空闲不返回结构化结果),本次结论全部由主上下文独立取证,未采信任何未经核实的转述。"
+  },
+  "next": "P2(线上源选中后 resolve/install 并建会话)尚未立 spec;P1 明确不声称线上源可运行(Req 7)。"
+}

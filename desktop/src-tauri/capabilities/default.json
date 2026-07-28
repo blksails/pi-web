@@ -19,6 +19,7 @@
     "allow-store-credential",
     "allow-load-credential",
     "allow-clear-credential",
+    "allow-sync-credential",
     "allow-pane-relay-host"
   ]
 }

@@ -72,9 +72,29 @@
   - _Depends: 4.1_
   - _Boundary: server e2e_
 
-- [ ]* 5.2 浏览器 e2e（补充：可视化结构化表单与门控）
+- [x]* 5.2 浏览器 e2e（补充：可视化结构化表单与门控）
   - Playwright（隔离构建 + 外部 server）打开设置→扩展，对种入的已装假包断言渲染出结构化表单（含动态键 map 条目控件），对未装包断言无表单。
   - 观察完成：浏览器用例可见 record 条目控件与类型化字段，未装扩展无表单；作为 5.1 之上的可视化补充验证 1.1/3.1/7.1。
   - _Requirements: 1.1, 3.1, 7.1_
   - _Depends: 4.2_
   - _Boundary: browser e2e_
+
+## 5.2 实现记录(2026-07-24)
+
+本项原为 `*` 可选补充,现已实现:`e2e/browser/extension-settings-schema.e2e.ts`(2 用例)。
+
+**夹具**(种在 `playwright.config.ts` 的隔离 agentDir 内,不触碰真实 `~/.pi/agent`)——
+对应 schema-resolver 来源①「包自带」的三件套:
+1. `settings.json` 的 `packages[]` 含假扩展(install 门控只处理已装扩展);
+2. `<agentDir>/npm/node_modules/pi-e2e-schema-ext/package.json` 的 `pi.settings = {file, schema}`;
+3. 包内 schema 文件(含一个 record 型属性 `headers`,用于驱动动态键 map 条目控件)。
+
+**断言**(用仓库真实 `data-pi-*` 属性,不猜 testid):`data-pi-config-file` 卡片可见、
+卡片内存在 `data-pi-field`(证明 schema 抵达前端、未回退裸 JSON)、`data-pi-record-entry="X-E2E"`
+(证明动态键 map 条目控件渲染);另一用例断言未装扩展不产生卡片(门控)。
+
+**★ 变异验证(证明用例有牙)**:把夹具的 `packages[]` 清空(模拟扩展未安装)后,
+第一个用例**转红**(`data-pi-record-entry` 不可见)—— 证明它真在验证「install 门控 + schema
+抵达」链路,而非恒真断言。还原后 2/2 复绿。
+
+**回归**:既有 `settings-config.e2e.ts` 2/2 通过,新夹具未污染。

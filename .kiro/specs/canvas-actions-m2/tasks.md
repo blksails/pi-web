@@ -2,7 +2,7 @@
 
 > 基线 0377b12(canvas-ui-m15 已合 main,canvas e2e 6/6 绿)。行号引用开工时以 grep 重校准;黄金基准恒取 `git show HEAD:`。前置事实:piweb_state 粘性登记已在 main(136d2bd,含专测)——Req 5 验证型,零实现任务。
 
-- [ ] 1. Foundation:canvas-kit 动作契约与注册面
+- [x] 1. Foundation:canvas-kit 动作契约与注册面
 - [x] 1.1 动作契约与纯函数决策器
   - actions.ts:CanvasCapability/ActionInput/CanvasActionPlugin\<TOp\>(execution 二选一:via:"prompt" 的 buildOp 泛型载荷 / via:"command")/ResolvedAction/defineCanvasAction/resolveAction(via:"command" 且 command ∉ input.capability.actions 先行排除;match 抛错经 opts.onError 隔离为不适用;同分取注册序先者;空候选 null;不修改入参,同输入同输出)
   - 单测 actions.test.ts:最高分/false 排除/抛错隔离/同分稳定/空表 null/command 白名单过滤/defineCanvasAction 恒等,全带变异证据(注入违规即红,Edit 精确还原,严禁 git checkout/restore)
@@ -17,7 +17,7 @@
   - _Requirements: 1.4, 1.6, 6.1, 6.2, 3.3_
   - _Boundary: packages/canvas-kit(registry+出口)_
 
-- [ ] 2. Core:agent 侧能力清单下发
+- [x] 2. Core:agent 侧能力清单下发
 - [x] 2.1 (P) 模型清单同源推导与 capability 生成
   - active-models.ts:自 extension.ts publishAigcCatalog 提取「activeRoutes→有序模型清单(model/label/provider)」纯函数 deriveActiveModels;extension.ts 改调之(aigc.models/modelLabels/modelProviders/sizes KV 键值顺序零变,纯提取重构)
   - capability.ts:buildCanvasCapability(models 带 provider→尺寸族规则:dashscope→["1024x1024","1280x720","720x1280"],其余→["1024x1024","1536x1024","1024x1536"];全局 sizes=现 RATIO_OPTIONS 三档守恒(1:1/16:9/9:16);actions=A 档 6 命令名字面量);读设置异常兜底 catalog 全量确定性输出,不抛不阻塞装配
@@ -34,7 +34,7 @@
   - _Depends: 2.1_
   - _Boundary: packages/tool-kit(canvas schema/extension/commands)_
 
-- [ ] 3. Core:内置动作自举与前端接线
+- [x] 3. Core:内置动作自举与前端接线
 - [x] 3.1 (P) 六内置动作插件
   - generate-actions.ts:BUILTIN_GENERATE_ACTIONS 六插件(评分 outpaint=100/inpaint=90/reference=80/variants=70/reframe=60/edit=10 恒兜底;match/buildArgs 逐分支复刻 decideGenerate if 链——公共 base={image,prompt}+model?/size? 非空才带、outpaint 删 size、reference 附 reference_images 与条件 n(variants≥2)、variants 附 n;黄金基准=git show HEAD: 的 decideGenerate 本体)+ toGenerateDecision 映射(union 字面量保持)+ registerBuiltinGenerateActions(reg);execution 全 via:"prompt",buildOp 走既有 buildSurfaceOp 路径(TOp=SurfaceOp)
   - 依赖说明:defineCanvasAction 公开出口与 registerAction 注册面均落 1.2,故依赖 1.2(传递含 1.1);(P) 与 tool-kit 2.x 并行不冲突

@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-server",
-  "version": "0.5.3",
+  "version": "0.6.1",
   "private": false,
   "type": "module",
   "sideEffects": false,
@@ -17,14 +17,16 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:^",
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "e2b": "^2.33.0",
     "jiti": "^2.7.0",
     "pg": "^8.13.1",

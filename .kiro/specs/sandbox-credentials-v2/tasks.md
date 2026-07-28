@@ -64,7 +64,7 @@
   - _Boundary: LlmGatewayRoutes, LlmGatewayAssembly_
   - _Depends: 1.2, 2.3, 3.3_
 
-- [ ] 4. 端到端与文档
+- [x] 4. 端到端与文档
 - [x] 4.1 e2e:LLM 网关三进程链(改造并移除 aigc-proxy e2e)
   - 将 `e2e/aigc-proxy` 编排改造为 `e2e/llm-gateway`:子进程(仅持 token,断言 env 无任何 PROVIDER_KEY_NAMES 真实值)→宿主 dev 网关(真实 stub key)→stub SSE 上游;断言流式回复逐字节到达、上游收到 Bearer=stub 真 key、错误 token/错 scope 401/403、`/api/aigc-proxy/*` 返回 404;改造完成后删除原 `e2e/aigc-proxy/` 目录与 package.json 的 aigc-proxy e2e 脚本
   - 观察:`pnpm e2e:llm-gateway` exit 0 含上述全部断言;package.json 增 llm-gateway e2e 脚本、无 aigc-proxy e2e 残留

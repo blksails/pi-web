@@ -35,14 +35,14 @@
   - _Boundary: stub-agent-process_
   - _Depends: 1.1_
 
-- [ ] 3. Integration: 前端接线 + 示例 agent
+- [x] 3. Integration: 前端接线 + 示例 agent
 - [x] 3.1 在 pi-interaction.tsx 的 select 分支接入富卡片
   - `isAskTitle(request.title)` 命中 → `decodeAskTitle` → 渲染 AskUserQuestionCard，提交走既有 `submit`（回传编码 value / 留痕人类可读摘要），取消走既有 cancel
   - 未命中或载荷损坏（decodeAskTitle 返回 undefined）→ 回落原生 select 渲染；confirm/input/editor 分支保持不变
   - 可观察：富 select 请求渲染为富卡片、作答经既有链路回传并在留痕卡显示可读摘要；普通 select/confirm/input/editor 请求渲染与行为不变（回归）
   - _Requirements: 2.1, 3.1, 4.1, 4.3, 5.4_
   - _Depends: 1.1, 2.2_
-- [ ] 3.2 (P) 新增 examples/ask-user-question-agent 并登记
+- [x] 3.2 (P) 新增 examples/ask-user-question-agent 并登记
   - `defineAgent` + `customTools:[askUserQuestionTool]` + systemPrompt（指导模型在方案决策时调用工具、勿自行臆测）；配 README（既有风格）
   - examples/README.md 在「server-driven UI 与交互」段新增示例行
   - 可观察：示例目录含 index.ts 与 README；README 表格新增该行；index.ts 声明引用 askUserQuestionTool
@@ -50,13 +50,13 @@
   - _Boundary: examples/ask-user-question-agent_
   - _Depends: 2.1_
 
-- [ ] 4. Validation: UI 单测 + node e2e
-- [ ] 4.1 (P) 为 AskUserQuestionCard 与 pi-interaction 富分支编写 UI 单测
+- [x] 4. Validation: UI 单测 + node e2e
+- [x] 4.1 (P) 为 AskUserQuestionCard 与 pi-interaction 富分支编写 UI 单测
   - 覆盖：多题 header Tabs（一次展示当前题、切换保留状态、可访问 ARIA 与键盘切换）、单选互斥+默认首项、多选可 0..n、Other 输入并提交、提交编码回传可还原、取消回调；并断言非哨兵 select 请求仍走原生 select 渲染（R4.3 回归）
   - 可观察：ui 包测试新增用例全绿
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.3, 4.3, 6.2_
   - _Depends: 2.2, 3.1_
-- [ ] 4.2 编写 node e2e 证明富卡片帧级闭环
+- [x] 4.2 编写 node e2e 证明富卡片帧级闭环
   - 经真实 HTTP handler（REST+SSE）驱动 stub ext-askq：断言 SSE `extension_ui_request(select)` 帧 title 含哨兵；POST `/ui-response` 富答案 value 后 stub echo 出解码答案并 finish
   - 断言 protocolVersion 仍为 0.1.0（零协议改动佐证）
   - 可观察：`pnpm e2e:node` 该用例绿，证明「发起富问题组 → 富作答回传 → 续跑得结构化结果」闭环
@@ -70,3 +70,34 @@
   - _Requirements: 2.6, 2.7, 3.1_
   - _Boundary: AskUserQuestionCard_
   - _Depends: 2.2, 3.1_
+
+## 收尾记录(2026-07-24)
+
+按 kiro 规范逐任务核实,3.2 与 4.1 **早已完成但未回勾**,4.2 是**真实缺口**,已补齐。
+
+| 任务 | 状态与证据 |
+|---|---|
+| 3.2 示例 agent | 已存在:`examples/ask-user-question-agent/{index.ts,README.md}`;`index.ts:7,17` 引用 `askUserQuestionTool` + `customTools`;`examples/README.md:52` 已有示例行 —— 三项验收全中 |
+| 4.1 UI 单测 | 已存在:`packages/ui/test/elements/{ask-user-question-card,pi-interaction}.test.tsx`,**29 passed**(2026-07-24) |
+| 4.2 node e2e | **本次新增**:`e2e/node/ask-user-question-card.e2e.test.ts`(2 用例) |
+
+### 4.2 实现说明
+
+stub 侧接缝**本已就绪**(`lib/app/stub-agent-process.mjs` 的 `ext-askq` sentinel + 确定性富问题
+夹具 `STUB_ASK_QUESTION_GROUP`),缺的只是 e2e 用例本身。
+
+用例经真实 HTTP handler(REST+SSE)驱动:
+1. 带 `ext-askq` 的 prompt → 断言 SSE `extension_ui_request` 帧的 **title 含 `ASK_TITLE_SENTINEL`**;
+   并用协议函数 `isAskTitle` + `decodeAskTitle` 做**往返校验**(解回富问题组,比对 header 与选项),
+   而非字符串猜测;
+2. 以 `encodeAskAnswers` 编出富答案 POST `/ui-response` → 断言 stub echo 出结构化结果
+   (header/选项/other 俱在)且 **不含 `degraded`**;
+3. 独立用例断言 `protocolVersion === "0.1.0"`,佐证富卡片承载于既有 select 方法、**零协议改动**(Req 6.3)。
+
+**★ 变异验证(证明用例有牙)**:把回传值从哨兵编码改为裸文本 `"Canary"` 后用例**转红**,
+帧中出现 `AskUserQuestion answer: degraded: Canary` —— 证明它真在区分「富答案往返」与「降级」,
+而非恒真断言。还原后 2/2 复绿。
+
+**踩坑记录**:初稿把判定函数写成 `isAskRequestTitle`(猜的),真名是 **`isAskTitle`**;
+`AskAnswer` 还必填 `question` 字段。均以 `packages/protocol/src/rpc/ask-user-question.ts`
+的真实导出为准修正 —— 再次印证「API 名不能凭记忆」。

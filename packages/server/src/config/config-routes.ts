@@ -17,6 +17,7 @@ import {
   settingsConfigSchema,
   sandboxConfigSchema,
   aigcConfigSchema,
+  cloudConfigSchema,
 } from "@blksails/pi-web-protocol";
 import type { ConfigDomainId } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
@@ -37,6 +38,9 @@ const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   logging: loggingConfigSchema,
   // AIGC 图像工具设置域(aigc-tool-settings):写 `<agentDir>/aigc.json`,aigcExtension 装配期读取。
   aigc: aigcConfigSchema,
+  // 云端接入域(desktop-cloud-login Req 8):写 `<agentDir>/cloud.json`,装配期解析云端登录启用与否。
+  // 之所以需要它:云端地址此前只能来自 env,而打包桌面版拿不到 env → 登录入口永远不出现。
+  cloud: cloudConfigSchema,
 };
 
 /** PUT body 形状。 */

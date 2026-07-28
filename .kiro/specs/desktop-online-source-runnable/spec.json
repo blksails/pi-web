@@ -1,0 +1,34 @@
+{
+  "feature_name": "desktop-online-source-runnable",
+  "created_at": "2026-07-27T06:30:00Z",
+  "updated_at": "2026-07-27T08:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "validation": {
+    "phase": "validate-impl",
+    "date": "2026-07-27",
+    "decision": "GO",
+    "coverage": "28/28 验收准则、8/8 需求;16/16 任务",
+    "mechanical": "全仓 14 包 pnpm -r run test EXIT=0(0 FAIL);根测试面 835/835;tsc EXIT=0;TBD/密钥 CLEAN",
+    "smoke": "真机 dev:server 7s 就绪、启动期 0 错误;列表 3 条 origin=scan;本地源建会话 201;线上源未登录 401+NOT_AUTHENTICATED",
+    "boundary": "CLEAN —— packages/server/src 零 registry-client 真实 import,且有会失败的守卫用例(注入即红/撤销即绿已实证)",
+    "key_finding": "★ @pi-clouds/registry-client 不是 npm 依赖,经 vitest/tsconfig/esbuild 三处别名指向兄弟仓源码。静态引入会让 828 单测+tsc 全绿而 pnpm dev:server 整个启动即 MODULE_NOT_FOUND。故安装后端必须惰性动态引入 —— 此问题仅真机烟雾可发现。",
+    "scope_change": "实施期新增任务 4.2(失败分类经 HTTP 呈现):设计假设既有错误映射会呈现,实测 mapEngineError 兜底 500 INTERNAL 使 Req 4.1/5.1 落空。"
+  },
+  "next": "更新/卸载/版本切换、安装进度与「可运行/需安装」徽标等前端形态,均已划为后续 spec。"
+}

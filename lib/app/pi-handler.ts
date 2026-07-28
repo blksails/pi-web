@@ -42,6 +42,17 @@ import {
   createCompositeSourceProvider,
   createScanSourceProvider,
   createRegistrySourceProvider,
+  createRegistryHttpSourceProvider,
+  createDesktopCapabilitiesClient,
+  resolveDesktopCapabilitiesUrl,
+  deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
+  createCloudLoginClient,
+  createDesktopPasswordIdentityProvider,
+  resolveShellToken,
+  // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
+  createInstalledRegistryIndex,
+  type SourceResolverPlugin,
   defaultAgentEntryPath,
   createAigcModelsRoute,
   createVisionModelsRoute,
@@ -129,18 +140,19 @@ import {
 import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 import {
   resolveCloudLoginConfig,
-  computeAuthEgressSpawnEnv,
+  readCloudDomainEgressBase,
+  computeEgressSpawnEnvFromGrant,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
 // 保守默认值——沿用 llm-gateway 同一常量,语义详见 llm-gateway-config.ts 注释)。
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
+// 随包固化的云端默认接入地址(仅桌面壳生效;见该文件顶部三条约束)。
+import { resolveBakedCloudEgressBase } from "./cloud-defaults.js";
 // 扩展管理扩展文件路径解析(纯路径模块,不拉 pi SDK,安全进 Next bundle):
 // spec extension-install-agent-tools —— 经 spawn env 下发给 agent 子进程强制注入。
-import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
 // 自动会话标题扩展文件路径解析(同样为纯路径模块,不拉 pi SDK):spec auto-session-title ——
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
-import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
   createInstallHostCommand,
@@ -149,6 +161,11 @@ import {
 import { createInstaller } from "../../server/cli/install/installer.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
+// 线上源可运行(spec desktop-online-source-runnable,任务 3.1/3.2):安装端口与解析插件。
+// 二者位于应用层而非 packages/server —— 它们经 server/cli 间接依赖 @pi-clouds/registry-client,
+// 而 P1 的范围铁律要求该依赖不得进入包内(判别与索引已下沉包内,纯 fs)。
+import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
+import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
 import { resolveLoggingEnvDefault } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
@@ -165,7 +182,17 @@ import { systemResourceArgs } from "./system-resource-args.js";
  * cwd-independent module-resolution roots. `agentDir` is threaded through when
  * the app pins an isolated PI_CODING_AGENT_DIR.
  */
-function makeRealResolver(config: AppConfig): {
+function makeRealResolver(
+  config: AppConfig,
+  /**
+   * 线上源解析插件(spec desktop-online-source-runnable,任务 4.1)。
+   *
+   * 经 `ResolveOptions.sourceResolver` 送进 `identify()`,其判别优先于 builtin/git/本地目录。
+   * 仅在云登录与能力端点均已配置时由装配处传入;缺省不传 → 解析链路与本特性引入前完全一致
+   * (Req 8.2)。`create-session` 的新建与恢复两条路径共用本 wrapper,故一处接入即全覆盖。
+   */
+  sourceResolver?: SourceResolverPlugin,
+): {
   resolve: (
     source: string | undefined,
     opts?: { cwd?: string; trust?: boolean },
@@ -232,6 +259,7 @@ function makeRealResolver(config: AppConfig): {
         // DTO `trust` → 显式信任意图;缺省时由 trustPolicy(信任库/trustedRoots/默认)决定。
         ...(opts?.trust !== undefined ? { requestTrust: opts.trust } : {}),
         ...(extraArgs.length > 0 ? { extraArgs } : {}),
+        ...(sourceResolver !== undefined ? { sourceResolver } : {}),
       });
     },
   };
@@ -452,7 +480,16 @@ function buildSingleton(): HandlerSingleton {
   // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
   // → fail-fast 抛出。进程内登录态由启动 env(桌面壳经 base_env 播种 PI_WEB_DESKTOP_CREDENTIAL)
   // 初始化,鉴权端点运行时更新;会话 spawn 读同一实例注入 runner egress env。
-  const cloudLoginConfig = resolveCloudLoginConfig(process.env);
+  // env 优先、回落 `<agentDir>/cloud.json`(spec desktop-cloud-login Req 8)。
+  // 没有回落时打包桌面版永远启用不了登录:壳不转发 env、Finder 无 shell 环境、
+  // `.env` 落在会被 GC 的运行时目录 —— 实测表现为 /api/auth/me 404、登录入口不渲染。
+  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json` > 随包固化默认值(仅桌面壳)。
+  // 固化值排最后,故用户在设置面板改过的地址永远压得住它 —— 反过来会让「改了保存也没用」
+  // 这种静默失效发生(spec desktop-account-login Req 11)。
+  const cloudLoginConfig = resolveCloudLoginConfig(
+    process.env,
+    readCloudDomainEgressBase(config.agentDir) ?? resolveBakedCloudEgressBase(process.env),
+  );
   const authSessionState = new AuthSessionState();
   if (cloudLoginConfig !== undefined) {
     const seededCredential = process.env[RUNNER_CREDENTIAL_ENV];
@@ -533,14 +570,12 @@ function buildSingleton(): HandlerSingleton {
   // custom 模式经 env `PI_WEB_SANDBOX_ENTRY` 由 runner option-mapper 追加到 additionalExtensionPaths。
   // 未安装时为 undefined → 跳过注入(不报错,行为回退到默认发现)。
   const sandboxEntry = resolveSandboxEntry(config.agentDir);
-  // 扩展管理扩展入口(spec extension-install-agent-tools):强制注入每个会话,经 spawn env
-  // 下发,runner option-mapper 加入 forcedExtensionPaths。解析不到(异常布局)→ undefined,跳过注入。
-  const extToolsEntry = extensionManagerEntryPath();
-  // 自动会话标题扩展入口(spec auto-session-title):总开关 PI_WEB_AUTO_TITLE 默认开,
-  // 关闭(="0")时不解析、不下发 → 扩展根本不注入(服务端权威门控,零开销)。
-  // 解析不到(异常布局)→ undefined,跳过注入,不阻塞会话创建。
-  const autoTitleEnabled = process.env.PI_WEB_AUTO_TITLE !== "0";
-  const autoTitleEntry = autoTitleEnabled ? autoTitleEntryPath() : undefined;
+  // ⚠ 三个 pi-web 自带内置扩展(ext-tools / auto-title / mcp)的入口**不再由主进程解析下发**
+  // (spec runner-self-resolved-builtins):它们改由 runner 侧从**自身安装树**自解析
+  // (packages/server/src/runner/builtin-extensions.ts)。原机制隐含「主进程与 runner 同文件
+  // 系统」的前提,在 e2b 沙箱下不成立,导致这些扩展在沙箱中静默不可用。
+  // 自动标题总开关 PI_WEB_AUTO_TITLE 的判定已随之下沉到扩展内部(关闭即不注册 handler),
+  // 用户可观察语义不变。sandboxEntry 不在此列:其入口在 agent 包内,仍由主进程解析下发。
 
   // 附件存储(attachment-store,Req 7.1):在主进程实例化一次,经 env 约定解析落盘目录
   // (PI_WEB_ATTACHMENT_DIR)与稳定签名 secret(PI_WEB_ATTACHMENT_SECRET),构造本地后端门面。
@@ -741,10 +776,9 @@ function buildSingleton(): HandlerSingleton {
         ...config.providerKeys,
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
-        // 扩展管理扩展入口 → runner forcedExtensionPaths(spec extension-install-agent-tools)。
-        ...(extToolsEntry !== undefined ? { PI_WEB_EXT_TOOLS_ENTRY: extToolsEntry } : {}),
-        // 自动会话标题扩展入口 → runner forcedExtensionPaths(spec auto-session-title)。
-        ...(autoTitleEntry !== undefined ? { PI_WEB_AUTO_TITLE_ENTRY: autoTitleEntry } : {}),
+        // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
+        // (spec runner-self-resolved-builtins)。这消除了「宿主机绝对路径在沙箱内不存在」
+        // 的失效面,也使新增内置扩展不必再在此处接线。
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
         // 配置,保证主/子进程一致(子进程产出的 tool-output /raw 签名 URL 才能在主进程通过校验)。
         ...attachmentSpawnEnv(
@@ -756,9 +790,13 @@ function buildSingleton(): HandlerSingleton {
         // 清单经 spawn env 下发 runner(runner option-mapper 据此注入内存 ModelRegistry 走 egress)。
         // 未启用/未登录/凭据过期 → 空对象,runner 走本地 auth.json 默认(Req 4.1/4.4)。凭据仅经 env
         // 下发(同 providerKeys 信任边界),不入日志/历史(Req 5.2)。sk-gw 云端换取,不下发(B-pure)。
-        ...computeAuthEgressSpawnEnv(
+        // desktop-account-login 任务 6.1/6.2(Req 4.5):有 `egress` 授予时以授予为准,
+        // 否则完全退回上面那套 env 配置行为。cachedStatic() 是同步读(不打网络)——
+        // spawn spec 的构造是同步路径,为读一个已在内存里的值把整条链改成异步不划算。
+        ...computeEgressSpawnEnvFromGrant(
           cloudLoginConfig,
           authSessionState.currentCredential(),
+          desktopCapabilitiesClient?.cachedStatic()?.egress,
         ),
       },
     };
@@ -817,6 +855,86 @@ function buildSingleton(): HandlerSingleton {
     cwd: config.defaultCwd,
   });
 
+  // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
+  // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
+  const sourcesScanRoots = resolveSourcesScanRoots(config.defaultCwd);
+  const sourcesRegistryPathValue =
+    process.env.PI_WEB_SOURCES_REGISTRY ?? path.join(config.agentDir, "sources.json");
+  const localFileRegistry = createRegistrySourceProvider({
+    registryPath: sourcesRegistryPathValue,
+  });
+  const localScan = createScanSourceProvider({ roots: sourcesScanRoots });
+  // capabilities URL:env 显式值优先,否则由**已解析的**云端出口地址推导。
+  // ★ 必须用 cloudLoginConfig.egressBaseUrl 而非 process.env —— 后者在打包桌面版里为空
+  //   (配置来自 `<agentDir>/cloud.json`),只读 env 会让 capabilities 客户端恒为 undefined,
+  //   进而线上源解析插件不注入、选中线上源报 500。此坑由打包态真机烟雾发现(Req 8.3)。
+  const capabilitiesUrl =
+    resolveDesktopCapabilitiesUrl(process.env) ??
+    (cloudLoginConfig !== undefined
+      ? deriveCapabilitiesUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
+      : undefined);
+  const desktopCapabilitiesClient =
+    cloudLoginConfig !== undefined && capabilitiesUrl !== undefined
+      ? createDesktopCapabilitiesClient({
+          capabilitiesUrl,
+          getDesktopCredential: () => authSessionState.currentCredential(),
+        })
+      : undefined;
+  // 身份端口 P5(spec desktop-account-login,任务 6.2,Req 2.1/2.5/2.6)。
+  //
+  // ★ 登录 URL 由 **cloudLoginConfig.egressBaseUrl** 推导,不读 process.env ——
+  //   打包桌面版里 env 为空(壳不转发、Finder 无 shell 环境、.env 落在会被 GC 的运行时
+  //   目录),配置实际来自 `<agentDir>/cloud.json`。此坑已由 desktop-cloud-login Req 8.3
+  //   与 desktop-online-source-runnable 各踩过一次,不要再从 env 读。
+  //
+  // 未配置云端 → undefined → 能力面不挂载 → GET /api/identity 404 → 前端不渲染登录入口
+  // (Req 2.5),链路与本特性引入前完全一致。
+  const cloudLoginUrl =
+    cloudLoginConfig !== undefined
+      ? deriveLoginUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
+      : undefined;
+  const desktopIdentityProvider =
+    desktopCapabilitiesClient !== undefined && cloudLoginUrl !== undefined
+      ? createDesktopPasswordIdentityProvider({
+          loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
+          capabilitiesClient: desktopCapabilitiesClient,
+          authState: authSessionState,
+        })
+      : undefined;
+
+  const agentSourcesProvider =
+    desktopCapabilitiesClient !== undefined
+      ? createCompositeSourceProvider(
+          createRegistryHttpSourceProvider({
+            getGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+          }),
+          localFileRegistry,
+          localScan,
+        )
+      : createCompositeSourceProvider(localFileRegistry, localScan);
+
+  // 线上源可运行(spec desktop-online-source-runnable,任务 4.1)。
+  //
+  // 仅在云登录与能力端点均已配置时构造;否则保持 undefined → makeRealResolver 不注入插件,
+  // 解析链路与本特性引入前**完全一致**(Req 8.2)。
+  //
+  // ★ 索引每次 lookup 现建,而非装配时建一次:刚安装好的源必须在**下一次**解析时即可见,
+  // 否则会被判为「未安装」而重复下载。一次 readdir 的开销可忽略,换取新鲜度正确。
+  const onlineSourceResolver: SourceResolverPlugin | undefined =
+    desktopCapabilitiesClient !== undefined
+      ? createRegistrySourceResolver({
+          index: {
+            lookup: (sourceId) =>
+              createInstalledRegistryIndex({ roots: sourcesScanRoots }).lookup(sourceId),
+          },
+          port: createRegistryInstallPort({
+            getSourcesGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+            // 落点 = 第一个扫描根,使装完即被 scan-provider 枚举(Req 1.4)。
+            targetRoot: sourcesScanRoots[0] ?? defaultSourcesRoot(),
+          }),
+        })
+      : undefined;
+
   // ── M3:16 个能力面经 composeCapabilities 强制表态后装配(spec host-contract-capability-composition)──
   // HostDeps 一次构造(deps 并集,D4);条件挂载(llm/ai/auth)以**可选字段**表达——未配置时
   // 字段为 undefined,对应 factory 产空路由集(等价现状三元 `cond ? createX(...) : []`)。
@@ -835,10 +953,9 @@ function buildSingleton(): HandlerSingleton {
     sessionsManageEnabled:
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
-    sourcesScanRoots: resolveSourcesScanRoots(config.defaultCwd),
-    sourcesRegistryPath:
-      process.env.PI_WEB_SOURCES_REGISTRY ??
-      path.join(config.agentDir, "sources.json"),
+    sourcesScanRoots,
+    sourcesRegistryPath: sourcesRegistryPathValue,
+    agentSourcesProvider,
     llmGateway: config.llmGateway?.serve
       ? {
           secret: resolveLlmGatewaySecret(process.env),
@@ -855,6 +972,9 @@ function buildSingleton(): HandlerSingleton {
           }
         : undefined,
     authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
+    identityProvider: desktopIdentityProvider,
+    // 壳凭据取回 token(Req 12)。仅桌面壳注入该 env;为空则该端点不挂载。
+    shellToken: resolveShellToken(process.env),
     attachmentStore,
     resolveWriteBackend: (sessionId) => store.get(sessionId)?.getAttachmentWriteProfile(),
     store,
@@ -909,7 +1029,7 @@ function buildSingleton(): HandlerSingleton {
     // custom/cli spawn specs are cwd-independent and never crash on a
     // placeholder path. In stub mode the resolved spec is discarded by
     // createChannel, but resolve() still runs without throwing.
-    resolver: makeRealResolver(config),
+    resolver: makeRealResolver(config, onlineSourceResolver),
     createChannel,
     // Cold-resume reader: POST /sessions { resumeId } loads {source, cwd, model}
     // from the configured SessionEntryStore (same SESSION_STORE backend) by id.

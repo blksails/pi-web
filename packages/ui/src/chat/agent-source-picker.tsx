@@ -256,15 +256,23 @@ export function AgentSourcePicker({
               <ul className="grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                 {visibleItems.map((item) => {
                   const isFav = favoriteSources?.has(item.source) ?? false;
+                  // picker-runnable-state:缺省(undefined)视为可运行,仅显式 false 才禁用
+                  // (不能用 !item.runnable,会把「未提供」也当成不可用)。
+                  const unavailable = item.runnable === false;
                   return (
                     <li key={item.id} className="relative">
                       <button
                         type="button"
-                        disabled={loading}
+                        disabled={loading || unavailable}
                         data-agent-source-item
                         data-source={item.source}
+                        data-unavailable={unavailable ? "true" : "false"}
                         onClick={() => submit(item.source)}
-                        className="flex h-full w-full flex-col gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 text-left transition-colors hover:border-[hsl(var(--ring))] hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+                        className={`flex h-full w-full flex-col gap-2 rounded-lg border p-3 text-left transition-colors disabled:opacity-50 ${
+                          unavailable
+                            ? "border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5"
+                            : "border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))] hover:bg-[hsl(var(--accent))]"
+                        }`}
                       >
                         <span className="flex items-center gap-2">
                           <SourceAvatar item={item} />
@@ -283,6 +291,14 @@ export function AgentSourcePicker({
                         {item.description !== undefined ? (
                           <span className="line-clamp-3 text-xs text-[hsl(var(--muted-foreground))]">
                             {item.description}
+                          </span>
+                        ) : null}
+                        {unavailable ? (
+                          <span
+                            data-agent-source-unavailable-reason
+                            className="text-xs text-[hsl(var(--destructive))]"
+                          >
+                            {item.reason ?? t("agentSourcePicker.unavailable")}
                           </span>
                         ) : null}
                       </button>

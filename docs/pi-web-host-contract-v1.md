@@ -125,6 +125,7 @@
 | P2 | `CapabilityProvider` | 能力授予（egress / sources / attachments / tenant） | 云端可选；桌面必须 |
 | P3 | `CapabilityDescriptor` + `defaultCapabilities()` | 能力面装配清单 | **必须显式表态** |
 | P4 | `ConfigDomainRegistry` | 配置域注册 | 可选（默认注册内建域） |
+| P5 | `IdentityProvider` | 身份获取（`current` / 可选 `exchange` / 可选 `revoke`） | `current()` **两端必须**；`exchange` / `revoke` 可选（身份来自既有会话的宿主不实现，属正常） |
 
 ---
 
@@ -544,6 +545,72 @@ export interface ConfigDomainRegistry {
 3. **`aigc` 不在默认集**——它是工具领域，由 source 侧注册（集成设计 §5.5）。
 4. 宿主可注册宿主特有域（云端配额、桌面偏好）。
 5. 落盘键 = `<id>.json`，落 `workspace.user`。id 必须满足 §3.2 键空间规则且不含 `/`。
+
+---
+
+## 6.5 P5 · `IdentityProvider`
+
+> 由 spec `desktop-account-login` 引入。**纯新增**，不改动任何既有端口的签名或语义，故仍属 v1 增量演进（§1）。
+
+### 6.5.1 为什么需要它
+
+P2 `CapabilityProvider` 定义了「**用身份换授予**」，却没有定义「**身份怎么来**」。桌面实现因此卡在起点：没有身份就拿不到任何授予，而契约里没有一处说明用户该如何取得身份。P5 补的正是这个缺口，与 P2 **正交**：
+
+> **P5 答「身份怎么来」 → P2 答「身份能换到什么」**
+
+两类宿主同口不同实现：
+
+| 宿主 | 身份来源 | 是否需要交互 | 实现 `exchange`？ |
+|---|---|---|---|
+| 桌面 | 账号密码 → 云端签发桌面凭据 | **需要**（用户填表单） | **是** |
+| 云端多租户 web | 既有会话（cookie / Bearer） | **不需要**（打开即已有身份） | **否**（正常，非缺陷） |
+
+### 6.5.2 接口
+
+```ts
+export type IdentityState =
+  | { readonly kind: "authenticated"; readonly tenant: CapabilityTenant }
+  | { readonly kind: "anonymous" };
+
+export interface IdentityPasswordCredentials {
+  readonly method: "password";
+  readonly email: string;
+  readonly password: string;
+}
+export type IdentityCredentials = IdentityPasswordCredentials;
+
+export type IdentityExchangeFailure =
+  | "invalid-credentials"   // 云端明确拒绝；用户应更正账号密码
+  | "invalid-request"       // 入参不合法
+  | "cloud-unreachable"     // 不可达/超时/响应形状非预期；可原样重试
+  | "capabilities-failed";  // 凭据已取得但授予加载失败 —— 不得进入已登录态
+
+export type IdentityExchangeResult =
+  | { readonly ok: true; readonly state: IdentityState }
+  | { readonly ok: false; readonly reason: IdentityExchangeFailure };
+
+export interface IdentityProvider {
+  readonly contractVersion: 1;
+  current(): Promise<IdentityState>;
+  exchange?(credentials: IdentityCredentials): Promise<IdentityExchangeResult>;
+  revoke?(): Promise<void>;
+}
+```
+
+### 6.5.3 语义保证
+
+1. **「身份不可得」是正常态，不是错误。** 这是 P5 与 P2 最重要的语义差别：P2 已假定身份存在，故用抛错表达加载失败；P5 处在更前一步，「拿不到身份」正是它要表达的正常结果之一。故 `current()` 与 `exchange()` **均不抛** —— 实现内部的探测异常须自行吞掉并降级为 `anonymous`，否则宿主无法区分「未登录」与「探测失败」，而两者都应让宿主以未登录形态正常启动。
+2. **身份是完整的或根本没有。** `IdentityState` 是判别联合而非 `{ authenticated: boolean; tenant?: … }` —— 后者允许表达「已认证但没有身份」这一非法组合。
+3. **「是否支持凭据交换」只有一个事实源**：`exchange` 这个可选方法是否存在。实现**不得**另设 `supported: boolean` 标志位；给 UI 的布尔投影由 HTTP 层从方法存在性**派生**。两个事实源必然漂移，而不一致只会在用户点「登录」那一刻暴露。
+4. **交换的顺序义务**：实现须在**授予到手之后**才落定登录态。反之会产生「有凭据、无授予」的半登录态 —— UI 显示已登录、线上源却空，用户无从判断该重试还是该重登。这是 §4.2「失败即拒绝」在身份获取侧的对应义务。
+5. **`revoke()` 须一并清除授予缓存**：只清身份不清授予，下一个登录的用户会读到上一个用户的 token。
+6. **凭据材料不外泄**：密码与凭据明文不得进入日志、响应体或任何持久介质；凭据只存 OS 钥匙串。
+
+### 6.5.4 挂载
+
+身份 HTTP 面（`GET /identity`、`POST /identity/exchange`、`DELETE /identity`）挂在**既有能力面 `auth.session`** 之下，**不新增能力 id**。
+
+原因是机械的：`HOST_CAPABILITY_IDS_V1` 是冻结名册（§5.3），而 `composeCapabilities` 要求宿主对**每一个**描述符显式表态 —— 新增第 17 个 id 会让所有既有宿主当场抛 `missing-decision`，那是实质破坏性变更，须升 v2 才允许。语义上也说得通：`auth.session` 本就是「登录这件事」的能力面。
 
 ---
 

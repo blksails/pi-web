@@ -49,7 +49,7 @@
   - _Boundary: guest.ts, react/pane-guest.tsx_
   - _Depends: 2.2_
 
-- [ ] 3. Wave 2:pi-web 接缝(轨道 D) (P)
+- [x] 3. Wave 2:pi-web 接缝(轨道 D) (P)
 - [x] 3.1 Agent Route adapter 与结构化错误
   - 标准地址 `GET/POST {baseUrl}/sessions/{sessionId}/agent-routes/{route}`;`SESSION_NOT_FOUND`→`HOST_UNAVAILABLE` 显式提示;装配窗口 `ROUTE_NOT_FOUND` 有界指数退避;409→`REVISION_CONFLICT`;其余→`ROUTE_FAILED` 保留 status/retryable。
   - 观察完成:route 测试覆盖成功、SESSION_NOT_FOUND、冲突、非 JSON、超大响应;失效会话不显示裸 HTTP 404,不跨会话重放 mutation。
@@ -158,3 +158,27 @@
 ### 合并纪律
 
 见 design.md「Migration Strategy」:A 独占公开契约;B/C 不修改业务状态;D 不修改实例状态机;E 不复制 Host core;Desktop 只替换 adapter;AIGC 迁移不得早于 Browser、pi-web seam 和一致性范例验收。
+
+
+## Wave 5 跨仓阻塞与记账更正(2026-07-24)
+
+**记账更正**:`3.` 组标题(Wave 2 pi-web 接缝)的 4 个子任务(3.1–3.4)均已 `[x]`,
+但组标题此前漏勾,本次补勾。
+
+**Wave 5(6.1/6.2/6.3)在本仓无法执行 —— 属跨仓工作,保持未勾。**
+
+依据任务 6 自带的前置说明与 `docs/aigc-agent-tab-integration-analysis.md`:
+- 迁移的原型 UI(`SearchPage` / `CanvasWorkspace` / `MaterialDrawer`)位于**外部 AIGC 项目仓**
+  (文档首行标注源在 `C:\workcode\aigc-agent`,即另一机器/另一仓),**不在 pi-web 本仓**,
+  本机亦无该仓副本(`../aigc*` 无匹配)。
+- 本仓的职责是「提供 kit 侧承载」,这部分**已全部完成**:
+  - 载体 `PaneAgentModule` + `composePaneAgentModules`(`tool-kit/src/panes/agent-modules.ts`)
+  - 样板 `examples/panes-agent/panes-modules.ts`
+  - 6.1 的前置 4.3(Canvas Pane 复用既有链路)、5.3(双宿主 conformance)均已 `[x]`
+- 6.1/6.2/6.3 的验收全部要求**外部仓的组件在 Pane 架构下恢复**(UI/UX 恢复、业务闭环恢复、
+  视觉回归)——离开那个仓无从执行,也无从取证。
+
+**不标记完成**——标完成等于谎报未做过、也无法在本仓做的迁移。解除条件:在 AIGC 项目仓
+按本仓已备好的 `PaneAgentModule` 模式执行迁移并各自取证(该仓侧的工作项)。
+
+本仓侧的 isolated-panes 地基(Wave 1–4 + pi-web 接缝)至此全部完成。

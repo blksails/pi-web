@@ -153,7 +153,10 @@ pub fn describe_unpack_error(err: &UnpackError) -> String {
         "lock-timeout" => "等待其他进程完成运行时解包超时。请确认没有其他实例卡住，然后重试。",
         _ => "解包运行时失败。",
     };
-    format!("{hint}\n\n详情：{}", err.message)
+    // 机器码必须出现在文案里:`payload-missing` 与 `payload-corrupt` 共用同一句 hint,
+    // 只看提示无法区分「载荷缺失」与「载荷损坏」—— 支持排障与 e2e 判别式断言都需要原始码。
+    // (spec shared-runtime-payload:desktop-corrupt-payload e2e 断言 stderr 含 payload-corrupt。)
+    format!("{hint}\n\n详情：{}（{}）", err.message, err.code)
 }
 
 #[cfg(test)]

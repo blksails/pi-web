@@ -49,11 +49,24 @@ export interface CapabilityGrantBase {
   readonly expiresAt: number;
 }
 
-/** 租户身份。三字段皆必填:身份是完整的或根本没有,半个身份无法用于鉴权。 */
+/**
+ * 租户身份。前三字段皆必填:身份是完整的或根本没有,半个身份无法用于鉴权。
+ *
+ * `displayName` 是**可选**增量(契约 §1 允许加可选成员,不升版本):它只用于展示,
+ * 不参与任何鉴权判定。故意与三个必填字段区别对待 —— 一个宿主拿不到人类可读名字
+ * 是常事(旧版云端、未填资料的账号),不该因此让整个身份不可用。
+ */
 export interface CapabilityTenant {
   readonly userId: string;
   readonly companyId: string;
   readonly role: string;
+  /**
+   * 人类可读的用户名(云端 `profiles.name`)。缺失时展示层退回 `userId`。
+   *
+   * ⚠ **不得**用于鉴权、配额归属或任何判定 —— 它可重名、可为空、可被用户随时改。
+   * 身份的权威标识始终是 `userId`。
+   */
+  readonly displayName?: string;
 }
 
 /**

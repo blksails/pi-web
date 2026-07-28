@@ -86,6 +86,25 @@ pub fn build_child_env(
     env.insert("PORT".into(), port.to_string());
     env.insert("HOSTNAME".into(), host.to_string());
     env.insert("PI_WEB_AUTOSTART".into(), "1".into());
+    // ★ 「我是桌面壳」的自述。随包固化的云端默认地址**只**在此标记下生效
+    //   (见 `lib/app/cloud-defaults.ts`)——因为 dist 载荷同时随 npm 包与 .app 分发,
+    //   无条件生效会让每个 `pnpm dev` / npm CLI 用户撞上一堵他过不去的登录墙。
+    //
+    // 这一件事只有壳自己知道,故只能由它声明;它**不是**配置读取(那属 Node 的配置域机制)。
+    env.insert("PI_WEB_DESKTOP".into(), "1".into());
+    // 壳凭据取回 token(Req 12)。server 据此**挂载** /api/desktop/credential;
+    // 没有这个 env,那条路由压根不存在(不是"存在但拒绝")。
+    env.insert(
+        "PI_WEB_SHELL_TOKEN".into(),
+        crate::shell_token::shell_token().to_string(),
+    );
+    // 壳自己的 pid(spec desktop-exit-orphan)。server 据此守望:壳一消失即自尽。
+    //
+    // ★ 这不是对 `stop()` 的重复,是它**覆盖不到**的那一半:
+    //   ① 实测 macOS 的 Apple Event 退出不触发 `RunEvent::ExitRequested`,`stop()` 根本没跑;
+    //   ② 壳被 SIGKILL 时它没有任何机会执行收尾。
+    //   而 server 是独立进程组组长(为能整组杀 runner 孙进程),故也不会随父进程被内核回收。
+    env.insert("PI_WEB_SHELL_PID".into(), std::process::id().to_string());
     env.insert(
         "PI_WEB_NODE_BIN".into(),
         node_bin.to_string_lossy().into_owned(),
@@ -356,6 +375,20 @@ mod tests {
             Some("/A.app/Contents/MacOS/node")
         );
         assert_eq!(env.get("PI_WEB_DEFAULT_SOURCE").map(String::as_str), Some("/x/agent"));
+    }
+
+    #[test]
+    fn child_env_declares_desktop_marker() {
+        // ★ 随包固化的云端默认地址**只**在此标记下生效(lib/app/cloud-defaults.ts)。
+        //   删掉这一行的后果不是「默认值失效」那么温和 —— 是全新安装的桌面版打开后
+        //   压根没有登录入口,用户无从下手,而且没有任何报错。
+        let base = BTreeMap::new();
+        let env = build_child_env(&base, "127.0.0.1", 1, Path::new("/n"));
+        assert_eq!(
+            env.get("PI_WEB_DESKTOP").map(String::as_str),
+            Some("1"),
+            "桌面壳须自述 PI_WEB_DESKTOP=1,否则随包固化的云端默认地址不生效"
+        );
     }
 
     #[test]

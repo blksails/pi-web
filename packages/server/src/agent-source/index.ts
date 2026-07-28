@@ -20,6 +20,17 @@ export {
 } from "./git-clone.js";
 export { assemble } from "./assemble-spawn.js";
 export { SourceKindError, GitResolveError, EntryOverrideError, AgentSourceError } from "./errors.js";
+export {
+  isOnlineSourceRef,
+  parseOnlineSourceRef,
+  formatOnlineSourceRef,
+} from "./online-source-id.js";
+export type { OnlineSourceRef } from "./online-source-id.js";
+export {
+  OnlineSourceInstallError,
+  onlineSourceFailureStatus,
+} from "./online-source-errors.js";
+export type { OnlineSourceFailureCode } from "./online-source-errors.js";
 
 export type {
   ResolvedSource,
