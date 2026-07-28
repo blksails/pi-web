@@ -94,7 +94,11 @@ describe("PiChat /install 结果卡片追加", () => {
       { install: "data-install-result" },
       uiRpcCommand,
     );
-    submit("/install");
+    // 载体取参数阶段的输入而非裸 `/install`:命令名阶段的 Enter/Tab 由命令面板捕获,
+    // 对有 argSpec 的命令一律只填 `/cmd ` 进入子命令阶段、不执行(见 pi-command-palette
+    // 的 select:argSpec 分支先于 builtin 分支)。此处要验的是"结果仅有 message 时以纯文本
+    // 追加",与用哪条 argv 触发无关。
+    submit("/install install foo");
     await waitFor(() => {
       expect(container.textContent).toContain("用法: /install install source");
     });

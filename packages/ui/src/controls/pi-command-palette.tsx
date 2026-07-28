@@ -394,15 +394,18 @@ export function PiCommandPalette({
 
   const select = React.useCallback(
     (cmd: RpcSlashCommand): void => {
+      // 有 argSpec 的命令(如 /install):只填 `/cmd ` 进入子命令阶段,绝不裸执行。
+      // **必须排在 builtin 分支之前**:这类命令同时也是 builtin,若先走 builtin 就会以空 argv
+      // 立刻执行,host 侧只能返回用法文本,于是"说明"被当成 assistant 消息追进对话
+      // (pi-chat 的 dispatchBuiltin:仅 message 无 data → 纯文本 part)。
+      if (commandArgProvider?.specFor(cmd.name) !== undefined) {
+        onChange(`/${cmd.name} `);
+        return;
+      }
       // 内置命令:执行 harness 逻辑,不填输入框、不发提示(builtin-plugin-command)。
       if (cmd.source === "builtin") {
         onBuiltinSelect?.(cmd, value);
         onChange("");
-        return;
-      }
-      // 有 argSpec 的命令(如 /plugin):只填 `/cmd ` 进入子命令阶段,不提交执行。
-      if (commandArgProvider?.specFor(cmd.name) !== undefined) {
-        onChange(`/${cmd.name} `);
         return;
       }
       onChange(`/${cmd.name} `);
