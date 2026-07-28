@@ -46,17 +46,6 @@ export function LoginPage(): React.JSX.Element {
             /* 登录页没有可返回之处;Esc 不做任何事。 */
           }}
         />
-        <button
-          type="button"
-          className="mt-4 w-full rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
-          data-testid="login-skip"
-          onClick={() => identity.skipLogin()}
-        >
-          暂不登录,仅使用本地功能
-        </button>
-        <p className="mt-2 text-center text-xs text-muted-foreground/70">
-          本地 agent 与本地模型无需登录即可使用;登录后可额外获得线上源与云端模型。
-        </p>
       </div>
     </div>
   );
@@ -70,13 +59,10 @@ export function LoginPage(): React.JSX.Element {
 export function IdentityGate(props: {
   readonly children: React.ReactNode;
 }): React.JSX.Element | null {
-  const { state, skipped } = useIdentity();
+  const { state } = useIdentity();
 
   // 还不知道该不该拦。渲染空白而非登录页 —— 先闪一下登录页再跳走,比短暂空白更糟。
   if (state.kind === "loading") return null;
-
-  // 用户已明确选择「暂不登录」——放行(登录入口仍在头部,随时可登)。
-  if (skipped) return <>{props.children}</>;
 
   // 云端未配置 / 该宿主不支持凭据交换 → 本层不介入,直接放行(见文件顶部表格)。
   if (state.kind === "disabled") return <>{props.children}</>;

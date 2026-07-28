@@ -61,42 +61,8 @@ export type IdentityExchangeReason =
   | "capabilities-failed"
   | "unsupported";
 
-/**
- * 「暂不登录」的记忆键(localStorage)。
- *
- * ★ 为什么要持久化:不记的话用户每次开应用都要再点一次「暂不登录」——
- * 那和硬门禁的体验差别不大,等于没给出口。
- */
-export const SKIP_LOGIN_KEY = "pi-web:skip-login";
-
-function readSkip(): boolean {
-  try {
-    return globalThis.localStorage?.getItem(SKIP_LOGIN_KEY) === "1";
-  } catch {
-    // 隐私模式/禁用存储 → 当作没跳过。不因存储不可用而崩。
-    return false;
-  }
-}
-
-function writeSkip(v: boolean): void {
-  try {
-    if (v) globalThis.localStorage?.setItem(SKIP_LOGIN_KEY, "1");
-    else globalThis.localStorage?.removeItem(SKIP_LOGIN_KEY);
-  } catch {
-    /* 存不下就只在本次会话内生效,不影响功能 */
-  }
-}
-
 export interface UseIdentityResult {
   readonly state: IdentityUiState;
-  /**
-   * 用户选择「暂不登录,仅用本地功能」。
-   *
-   * ★ 这个出口是必需的:pi-web 的核心能力(本地 agent、本地模型)不依赖云端,
-   * 把它们锁在登录后面等于让没有云端账号的人完全用不了。云端登录是**增强**,不是前提。
-   */
-  readonly skipped: boolean;
-  readonly skipLogin: () => void;
   /** 用账号密码换身份。 */
   readonly exchange: (
     email: string,
@@ -184,12 +150,6 @@ function parseView(body: IdentityViewBody): IdentityUiState {
 function useIdentityState(): UseIdentityResult {
   const [state, setState] = React.useState<IdentityUiState>({ kind: "loading" });
   const [needsReauth, setNeedsReauth] = React.useState(false);
-  const [skipped, setSkipped] = React.useState<boolean>(() => readSkip());
-
-  const skipLogin = React.useCallback(() => {
-    writeSkip(true);
-    setSkipped(true);
-  }, []);
 
   const refresh = React.useCallback(async () => {
     try {
@@ -257,9 +217,6 @@ function useIdentityState(): UseIdentityResult {
       }
       setState(parseView((await res.json()) as IdentityViewBody));
       setNeedsReauth(false);
-      // 登录成功即撤销「暂不登录」——用户已经表达了相反的意愿。
-      writeSkip(false);
-      setSkipped(false);
       // 让壳把凭据同步进钥匙串,使登录跨重启保留(Req 12)。
       // ★ 这个调用**不带凭据** —— 壳自己带 token 向本地 server 取,凭据不经渲染层(Req 12.5)。
       // best-effort:失败不影响本次会话的登录态,只是下次开应用要重登。
@@ -286,5 +243,5 @@ function useIdentityState(): UseIdentityResult {
     setNeedsReauth(true);
   }, []);
 
-  return { state, skipped, skipLogin, exchange, revoke, refresh, markSessionAuthFailure, needsReauth };
+  return { state, exchange, revoke, refresh, markSessionAuthFailure, needsReauth };
 }

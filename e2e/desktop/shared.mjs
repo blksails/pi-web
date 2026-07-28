@@ -307,18 +307,6 @@ export async function runSessionViaBrowser(port, replyToken, { screenshotPath } 
   try {
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
-
-    // 登录门禁(spec desktop-account-login Req 10):随包固化云端地址后,**任何新机器**
-    // 上云端都算「已配置」,未登录即被拦在登录页。CI 机器没有账号,处境与普通新用户
-    // 完全相同,故走产品自带的「暂不登录,仅使用本地功能」出口。
-    //
-    // ★ 不用 env 绕过:那样测的就不是用户实际会走的路径了。这里点的是真按钮,
-    //   顺带把「出口确实能用」也纳入了打包态验收 —— 它没了,本地用户就被锁死。
-    const skip = page.locator("[data-testid=login-skip]");
-    if (await skip.isVisible({ timeout: 15_000 }).catch(() => false)) {
-      await skip.click();
-    }
-
     await page.waitForSelector("[data-pi-input-textarea]", { timeout: 30_000 });
     const onSessionUrl = /\/session\//.test(page.url());
 

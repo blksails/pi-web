@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as React from "react";
-import { render, screen, waitFor, act, cleanup } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { IdentityGate, LoginPage } from "../../components/auth/login-page.js";
 import { IdentityStateProvider } from "../../components/auth/use-identity.js";
 
@@ -38,11 +38,6 @@ function mountGate(body: unknown, status = 200): void {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  try {
-    globalThis.localStorage?.clear();
-  } catch {
-    /* jsdom 下总有 localStorage;这里只是防御 */
-  }
 });
 
 describe("★ 不拦的三条路径", () => {
@@ -116,48 +111,5 @@ describe("LoginPage 自身", () => {
     );
     await waitFor(() => expect(screen.getByTestId("login-form")).toBeTruthy());
     expect(screen.queryByTestId("login-cancel")).toBeNull();
-  });
-});
-
-describe("★ 「暂不登录」出口(随包固化云端地址后的必需品)", () => {
-  it("点「暂不登录」→ 立刻进入主页面", async () => {
-    mountGate({ state: "anonymous", canExchange: true });
-    await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
-    await act(async () => {
-      screen.getByTestId("login-skip").click();
-    });
-    await waitFor(() => expect(screen.getByTestId(MAIN)).toBeTruthy());
-    expect(screen.queryByTestId("login-page")).toBeNull();
-  });
-
-  it("★ 选择被记住 —— 重新挂载后**不再**拦(否则等于没给出口)", async () => {
-    mountGate({ state: "anonymous", canExchange: true });
-    await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
-    await act(async () => {
-      screen.getByTestId("login-skip").click();
-    });
-    cleanup();
-    mountGate({ state: "anonymous", canExchange: true });
-    await waitFor(() => expect(screen.getByTestId(MAIN)).toBeTruthy());
-  });
-
-  it("localStorage 不可用时不崩,只是本次会话内有效", async () => {
-    const orig = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-    Object.defineProperty(globalThis, "localStorage", {
-      configurable: true,
-      get() {
-        throw new Error("storage disabled");
-      },
-    });
-    try {
-      mountGate({ state: "anonymous", canExchange: true });
-      await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
-      await act(async () => {
-        screen.getByTestId("login-skip").click();
-      });
-      await waitFor(() => expect(screen.getByTestId(MAIN)).toBeTruthy());
-    } finally {
-      if (orig) Object.defineProperty(globalThis, "localStorage", orig);
-    }
   });
 });
