@@ -1,9 +1,9 @@
 {
   "feature_name": "desktop-cloud-login",
   "created_at": "2026-07-18T15:29:34Z",
-  "updated_at": "2026-07-27T09:30:00Z",
+  "updated_at": "2026-07-28T00:00:00Z",
   "language": "zh",
-  "phase": "implementation-complete",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -25,5 +25,13 @@
     "reason": "实测发现打包桌面版无法启用云端登录:壳不转发 env、Finder 双击无 shell 环境、.env 落在会被 GC 的运行时目录 → GET /api/auth/me 404、登录入口不渲染,Req 1.1 在打包态不成立。",
     "solution": "新增 cloud 配置域(~/.pi/agent/cloud.json)+ 设置面板;resolveCloudLoginConfig 改为 env 优先、回落配置域;capabilities URL 同步由已解析出口地址推导。桌面壳零改动,浏览器与 CLI 部署同样受益。",
     "verification": "protocol 415/415、server config 313/313、根 848/848、tsc 0;打包态真机(零环境变量):写配置 → /api/auth/me 200 且线上源建会话 401 NOT_AUTHENTICATED;清配置 → 回到 404 未启用、本地源建会话 201、启动期 0 错误。"
+  },
+  "bookkeeping": {
+    "date": "2026-07-28",
+    "action": "phase 对账:统一为 implemented",
+    "basis": "tasks.md 中全部任务已勾选(实施当时留下的记录)",
+    "caveat": "★ 这是记账对账,不是新的完成验证。本次未重跑任何测试、未做真机核实。若需要完成宣称,须走 /kiro validate-impl 取新鲜证据。",
+    "previous_phase": "implementation-complete",
+    "tasks": "32/32"
   }
 }

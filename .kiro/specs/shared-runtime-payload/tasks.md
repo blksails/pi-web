@@ -230,12 +230,18 @@
 
 ## 8. 发布流水线
 
-- [ ] 8.1 `desktop-release.yml` 改产出载荷工件
+- [x] 8.1 `desktop-release.yml` 改产出载荷工件
   - `build-dist` job：`pnpm build:dist` 后上传 `payload/`（非 `dist.tgz`）
   - 各平台矩阵下载 `payload/` 并**校验** `payload.json.digest` 与实际归档的 sha256 一致，不一致即 job 失败
   - `smoke` job：清空 runtimeRoot 后跑 `desktop-packaged.mjs`，强制经历一次真实首启解包
   - `release` job 仍 `needs: smoke`
   - 完成条件：**在真实 GitHub Actions 上跑通一次**
+  - ✅ **2026-07-28 达成**（run 30334803821，整体 success）。四条逐一有日志证据：
+    · 四个平台均 `[verify-payload] ✓ dist.tar.zst 11.0 MB / 10889 条目 / sha256 28f8363dfc61…`
+      —— 摘要校验确实在跑且四平台一致；
+    · `✓ 解包前运行时目录不存在(本次必然经历真实首启解包)`；
+    · `✓ 打包 app 首启解包并拉起本地回环后端`、`✓ 运行时目录已落地且带完整性标记(.ok)`；
+    · `✓ 安装包不再内嵌未压缩的 dist/ 树`。
   - ⚠ 现状：工作流结构已自检（4 个 job 的 needs 链、release 的 tag 门控、smoke 含冷解包步骤均正确），
     `scripts/verify-payload.mjs` 已做正反两向验证（正常载荷通过 / 篡改一字节退出码 1）。
     但**从未在真实 GitHub Actions 上运行过**，也未在 Windows / Linux 上打包过。故不打勾。

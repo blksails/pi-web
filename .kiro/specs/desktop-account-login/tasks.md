@@ -472,3 +472,26 @@ Req 12.1 / 12.2 至此有真机证据。登录成功路径(Req 2.1/2.6)同轮一
 
 未验证 ⌘Q(真实用户退出路径)是否同样如此 —— osascript quit 只是它的近似。
 应另立 spec 处理(涉及 `RunEvent::ExitRequested` → `supervisor.stop()` 的实际生效路径)。
+
+## 15. Req 13 · 登录硬性 + 烟雾走真实登录链路(2026-07-28)
+
+- [x] 15.1 撤销「暂不登录」出口
+  - `git revert 49d6b651`。用户裁定桌面登录是硬性的、绑定默认远程端点
+  - ★ **我的判断错在哪**:打包态烟雾在无账号的 CI 机器上挂了,我把它读成
+    「产品把本地用户锁死了」,于是加了旁路。实际上那只是**测试没有账号**,
+    产品要的就是硬门禁。把测试的困境当成产品缺陷 —— 这个错值得记住
+  - _Requirements: 13.1, 13.2_
+
+- [x] 15.2 烟雾测试起 mock 云端,走**完整真实登录链路**
+  - `startMockCloud()`:`/api/desktop/login`(校验邮箱密码,返回 `{token}`)
+    + `/api/desktop/capabilities`(校验 Bearer,返回 tenant + sources)
+  - 凭据用真实形态 `base64url(payload) + "." + sig`,否则 `AuthSessionState` 判为非法
+  - 打包态烟雾经 `PI_WEB_CLOUD_LOGIN_EGRESS_BASE` 指向它(env 优先级最高,压过固化默认值)
+  - 浏览器侧**填表单、点登录**,等 `login-status` 出现后才等聊天输入框
+  - ★ 比绕过覆盖得多:表单 → 本地服务端 → 云端 → 凭据 → capabilities → 授予,
+    整条链任何一环断了烟雾都会红
+  - 新增两条断言:云端登录端点被调用 ≥1、凭据被用于换 capabilities ≥1 ——
+    少任一条都说明门禁被绕过或授予没落地,而那时「会话跑通」仍可能是绿的
+  - mock 云端**不给 egress**:给了会把模型清单换成云端的,
+    反而测不到「本地 mock provider 被真实 runner 调用」那条
+  - _Requirements: 13.4_

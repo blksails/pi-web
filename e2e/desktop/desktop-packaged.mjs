@@ -30,6 +30,7 @@ import {
   reportAndExit,
   runSessionViaBrowser,
   startMockProvider,
+  startMockCloud,
   stopShell,
   waitNoShellNodeProcesses,
   waitPortFree,
@@ -73,6 +74,9 @@ async function main() {
   check("解包前运行时目录不存在(本次必然经历真实首启解包)", !existsSync(targetDir));
 
   const mock = await startMockProvider(REPLY_TOKEN);
+  // 桌面版登录是硬性的(spec desktop-account-login Req 10)且绑定默认远程端点(Req 11)。
+  // CI 没有真实账号,故起一个 mock 云端,让烟雾走完整的真实登录链路。
+  const cloud = await startMockCloud();
   const agentDir = makeAgentDir(mock.port);
   mkdirSync(EVIDENCE_DIR, { recursive: true });
 
@@ -84,6 +88,8 @@ async function main() {
       PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),
       PI_WEB_DEFAULT_CWD: ROOT,
       PI_WEB_RUNTIME_ROOT: runtime.dir,
+      // 显式指向 mock 云端,压过随包固化的默认地址(env 优先级最高)。
+      PI_WEB_CLOUD_LOGIN_EGRESS_BASE: cloud.egressBase,
     },
   });
 
@@ -97,10 +103,18 @@ async function main() {
     check("解包出的产物根含入口 server.mjs", existsSync(join(targetDir, "dist", "server.mjs")));
 
     const session = await runSessionViaBrowser(PORT, REPLY_TOKEN, {
+      login: { email: cloud.email, password: cloud.password },
       screenshotPath: join(EVIDENCE_DIR, "desktop-packaged.png"),
     });
     check("打包 app 真实会话跑通", session.sawToken);
     check(`mock provider 被真实 runner 调用(≥1 次, 实际 ${mock.getCalls()})`, mock.getCalls() >= 1);
+    // 登录链路的两端各验一次:表单确实打到了云端登录端点,凭据确实被用来换了授予。
+    // 少任一条都说明门禁被绕过或授予没落地,而那时上面两条仍可能是绿的。
+    check(`云端登录端点被调用(≥1 次, 实际 ${cloud.getLogins()})`, cloud.getLogins() >= 1);
+    check(
+      `凭据被用于换取 capabilities(≥1 次, 实际 ${cloud.getCapabilityCalls()})`,
+      cloud.getCapabilityCalls() >= 1,
+    );
   } finally {
     await stopShell(shell.proc);
     check("退出后本地端口释放", await waitPortFree(PORT));
@@ -110,6 +124,7 @@ async function main() {
     check(`退出后无孤儿随包 node 进程(残留 ${countShellNodeProcesses(APP_NODE)})`, clean);
 
     mock.server.close();
+    cloud.server.close();
     cleanupAgentDir(agentDir);
   }
   reportAndExit();

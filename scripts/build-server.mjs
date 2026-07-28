@@ -57,10 +57,11 @@ const ALIAS = {
     "packages/tool-kit/src/auto-title/entry-path.ts",
   "@blksails/pi-web-tool-kit/runtime": "packages/tool-kit/src/runtime.ts",
   "@blksails/pi-web-tool-kit": "packages/tool-kit/src/index.ts",
-  // cli-package-commands:registry 客户端(签名/摘要纯函数 + HTTP 客户端)。**首个越仓 alias**
-  // —— 指向兄弟仓 pi-clouds 源码,构建期 inline 进 cli-commands.mjs,运行时零依赖。
-  // registry-client 是纯包(零运行时依赖,只用 node:crypto),bundle 干净;不进 EXTERNAL。
-  "@pi-clouds/registry-client": "../pi-clouds/packages/registry-client/src/index.ts",
+  // registry 客户端曾是**唯一的越仓 alias**(指向兄弟仓 pi-clouds 源码)。
+  // ★ 已移除:那个 alias 要求构建机上 pi-clouds 就躺在旁边 —— 本地成立、CI 不成立,
+  //   导致 desktop-release 工作流从 v0.3.0 起就在第一个 job 挂掉,四个平台一次都没构建过。
+  //   现改为正常 npm 依赖(@blksails/registry-client,经 package.json 别名声明为旧包名),
+  //   由 node_modules 解析;它仍是零运行时依赖的纯包,继续 inline 进 bundle、不进 EXTERNAL。
 };
 
 /**

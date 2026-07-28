@@ -6,6 +6,7 @@ import * as React from "react";
 import { act, cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { PiCommandPalette } from "../../src/controls/pi-command-palette.js";
 import type { CommandArgProvider } from "../../src/controls/command-arg.js";
+import type { RpcSlashCommand } from "@blksails/pi-web-protocol";
 import { mockControls, sampleCommands } from "../fixtures/mock-session.js";
 
 const PLUGIN_SPEC = {
@@ -157,6 +158,69 @@ describe("PiCommandPalette 参数补全", () => {
     expect((screen.getByTestId("value") as HTMLElement).textContent).toBe(
       "/plugin install local:./examples/a ",
     );
+  });
+});
+
+describe("builtin 且有 argSpec 的命令:命令名阶段确认不得裸执行", () => {
+  function BuiltinHarness({
+    onBuiltinSelect,
+  }: {
+    onBuiltinSelect: (cmd: RpcSlashCommand, raw: string) => void;
+  }): React.JSX.Element {
+    const [value, setValue] = React.useState("/plug");
+    const controls = mockControls({
+      commands: [
+        {
+          name: "plugin",
+          description: "安装/卸载 plugin",
+          source: "builtin",
+          sourceInfo: {
+            path: "/tmp",
+            source: "builtin",
+            scope: "project" as const,
+            origin: "top-level" as const,
+          },
+        },
+      ],
+    });
+    return (
+      <div>
+        <PiCommandPalette
+          controls={controls}
+          value={value}
+          onChange={setValue}
+          commandArgProvider={makeProvider(async () => [])}
+          onBuiltinSelect={onBuiltinSelect}
+        />
+        <span data-testid="value">{value}</span>
+      </div>
+    );
+  }
+
+  // 回归:argSpec 分支必须排在 builtin 分支之前。否则 Tab 会以空 argv 立刻执行 host 命令,
+  // 其唯一可能的返回就是用法文本,被 pi-chat 当成 assistant 消息追进对话("说明进入对话")。
+  it("Tab 确认只填 `/plugin `,不触发 builtin 执行", () => {
+    const onBuiltinSelect = vi.fn();
+    render(<BuiltinHarness onBuiltinSelect={onBuiltinSelect} />);
+    act(() => {
+      fireEvent.keyDown(document, { key: "Tab" });
+    });
+    expect((screen.getByTestId("value") as HTMLElement).textContent).toBe(
+      "/plugin ",
+    );
+    expect(onBuiltinSelect).not.toHaveBeenCalled();
+  });
+
+  it("Enter 确认同样只填入不执行", () => {
+    const onBuiltinSelect = vi.fn();
+    render(<BuiltinHarness onBuiltinSelect={onBuiltinSelect} />);
+    act(() => {
+      fireEvent.keyDown(document, { key: "Enter" });
+    });
+    expect((screen.getByTestId("value") as HTMLElement).textContent).toBe(
+      "/plugin ",
+    );
+    expect(onBuiltinSelect).not.toHaveBeenCalled();
   });
 });
 

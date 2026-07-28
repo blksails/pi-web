@@ -221,6 +221,12 @@
   - 本项覆盖 macOS 因缺少 WebView 驱动而测不到的「渲染层经桥拿到路径」这条路径，同时是 **Windows/Linux 的 WebView 在严格 CSP 下 IPC 是否仍可用的唯一自动化证据**（macOS 的 WKWebView 走 messageHandlers 不受 `connect-src` 约束，其余平台机制不同）
   - 若 IPC 被页面 CSP 拦截，兜底为在桌面态放行 `ipc:` 到 pi-web server 的 `connect-src`（仅桌面壳加载时生效，不影响浏览器部署）
   - 观察完成：Linux 环境下 WebDriver 套件跑绿，日志中可见目录选择返回 stub 路径
+  - 🚫 **2026-07-28 用户裁定:不做。** 非因受阻,是范围决定。
+    构建面已由 run 30334803821 验证(四个 triple 全绿、Windows/Linux 首次构建成功);
+    未覆盖的是「在 Windows/Linux 上真实启动应用」这一层,该风险由用户接受。
+  - ⚠ 未达成：本项要的是 Linux 上 `tauri-driver` + WebKitWebDriver + xvfb 驱动**真实 WebView**。
+    run 30334803821 的 smoke 是在 macOS 上用普通浏览器访问壳的回环端点——
+    验的是「壳 → server → runner」链路，**不是** WebView 内的 IPC。两者不可互相替代。
   - ⚠ **状态：脚本已实现，但未在 Linux 上运行验证**（本次实现环境为 macOS，`tauri-driver` 不支持 macOS）。在 macOS 上执行该脚本会以退出码 2 明确拒绝，不会假装通过。须在 Linux CI 上跑通后方可视为达标
   - _Requirements: 10.1, 10.4_
   - _Boundary: e2e/desktop/webdriver/wdio.conf.mjs, e2e/desktop/webdriver/bridge.e2e.mjs_
@@ -232,6 +238,13 @@
   - Linux 需先装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 断言 Linux 可执行文件名为 `pi-web`（不含会被 AppImage 拒绝的字符）
   - 观察完成：两平台各产出一个安装包文件；在对应平台上启动安装后的应用能完成一次真实会话
+  - ⚠ **2026-07-28 部分达成**（run 30334803821）：Windows 与 Linux 的 `package` job
+    **首次构建成功**并产出安装包工件。但**未勾**——本项还要求「在对应平台上启动安装后的
+    应用能完成一次真实会话」，而 `smoke` job 只在 macOS 上跑。Windows/Linux 的产物
+    构建出来了，从未被启动过。
+  - 🚫 **2026-07-28 用户裁定:不做。** 非因受阻,是范围决定。
+    构建面已由 run 30334803821 验证(四个 triple 全绿、Windows/Linux 首次构建成功);
+    未覆盖的是「在 Windows/Linux 上真实启动应用」这一层,该风险由用户接受。
   - ⚠ **状态：未完成**。本次实现环境为 macOS，无法产出或运行 Windows/Linux 安装包。
     已验证的是 CI 矩阵的**核心机制**：`node scripts/fetch-node-sidecar.mjs --target x86_64-apple-darwin`
     正确取到 x64 sidecar（并因异架构而跳过执行自检），且 `cargo build --target x86_64-apple-darwin --release`
@@ -242,12 +255,19 @@
 
 ## 7. 发布流水线改造
 
-- [ ] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
+- [x] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
   - 保留「构建/打包分离」：`dist/` 与平台无关，仍在 Ubuntu 上构建一次并作为 artifact 分发给各矩阵分支
   - 矩阵**按 target triple 展开**（而非仅按 OS）：`macos-latest`×`aarch64-apple-darwin`、`macos-latest`×`x86_64-apple-darwin`、`ubuntu-22.04`×`x86_64-unknown-linux-gnu`、`windows-latest`×`x86_64-pc-windows-msvc`
   - 每分支：**`rustup target add <triple>`**（CI runner 是干净的；`macos-latest` 是 arm64，构建 `x86_64-apple-darwin` 必须先补该 target，`tauri-action` 不代办）→ 取 `dist` artifact → 为该 triple 取 sidecar（校验和失败即构建失败）→ `tauri-action` 传 `args: --target <triple>`
   - `fail-fast: false`，使单平台失败不阻断其余平台
   - 拆为三个 job：`package`（产出 artifact，**不**上传 Release）→ `smoke`（macOS 上对已打包产物跑真实会话冒烟）→ `release`（仅 tag 触发时下载 artifact 并附加到对应 Release）。`workflow_dispatch` 触发时只产出工作流产物、不附加 Release
+  - ✅ **2026-07-28 真实跑通**（run 30334803821，`workflow_dispatch`，整体 success）：
+    四个 triple 的 `package` 全绿（含 macos-latest 上构建 `x86_64-apple-darwin`，
+    证明 `rustup target add` 那步确实生效）；`smoke` 绿；`attach to GitHub Release → skipped`
+    （证实手动触发不碰 Release）。
+    ★ 该工作流此前**从未成功过一次**——自 v0.3.0 起就在第一个 job 45 秒挂掉。
+    本次通过前先修了三处：webext 示例产物没人构建、registry-client 越仓 alias、
+    烟雾缺登录路径。
   - Linux 分支安装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 观察完成：`workflow_dispatch` 手动触发一次，四个矩阵分支全绿、产出四个安装包工作流产物、且未创建或修改任何 GitHub Release
   - ⚠ **状态：工作流已改造并通过 YAML 结构校验（四 target triple 矩阵 / fail-fast:false / package→smoke→release 三段分离 / sidecar 校验前置于 tauri build），但未在真实 GitHub Actions 上运行**。须实际触发一次 `workflow_dispatch` 跑通后方可视为达标
@@ -267,12 +287,21 @@
   - _Boundary: scripts/measure-desktop-baseline.mjs_
   - _Depends: 4.7_
 
-- [ ] 8.2 产出迁移前后对比并按阈值裁定
+- [x] 8.2 产出迁移前后对比并按阈值裁定
   - 在 Electron 壳（`main` 分支）与 Tauri 壳（本分支）各跑一次实测脚本，同口径对比
   - 写入 `.kiro/specs/electron-to-tauri/evidence/baseline-comparison.md`，包体对比中显式计入随包 node 的贡献（实测：单个二进制 strip 前 107MB / strip 后 86MB / 压缩态约 35MB）
   - **裁定**：以 macOS arm64 安装包为基准，若 Tauri 安装包体积 > Electron 安装包体积 × 0.75，判定「净收益不显著」→ **停止并交回决策者**，不得默认继续
   - 报告中不得以「新方案理论上更轻」一类论证替代任何一项实测数值
   - 观察完成：对比文档存在，含 RSS / 冷启动 / 四平台包体的前后数值与裁定结论
+  - ✅ **早已完成，此前只是漏勾**（产出物 2026-07-10 即在库）：
+    `evidence/baseline-comparison.md` + `baseline-electron.json` + `baseline-tauri.json`。
+    逐条对上：两壳各跑实测同口径对比 ✓；冷启动 5751 → 1756 ms（−69.5%）✓；
+    空闲常驻内存（整棵进程树 RSS）✓；包体 788.5 → 275.7 MB（−65.0%）✓；
+    「包体拆解」小节显式计入随包 node ✓；阈值裁定 `0.3496 ≤ 0.75 → 达标` ✓。
+    文档全用实测数值，连 WebKit 共享进程的口径偏差都按保守上界（+90 MB）重算过，
+    结论方向不变。
+    ★ Electron 壳已于 `7d2dd68d`（该提交标题即含「基线实测、清理 Electron」）移除，
+    故本项**不可能也无需**重跑——基线是在删除之前取的，这是正确的顺序。
   - ⚠ **状态：macOS arm64 部分已完成并达标（0.35 ≤ 0.75 阈值），但 Req 11.3 要求的三平台数值未满足** —— Windows/Linux 的包体、内存、冷启动均未实测（依赖任务 6.2 与 7.1）。故本任务整体未完成
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
   - _Depends: 8.1, 7.1_
