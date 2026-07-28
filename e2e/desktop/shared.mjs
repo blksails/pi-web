@@ -170,6 +170,91 @@ export function startMockProvider(replyToken) {
   });
 }
 
+/**
+ * mock pi-cloud：`/api/desktop/login` + `/api/desktop/capabilities`。
+ *
+ * ★ 为什么烟雾测试需要它:桌面版**登录是硬性的**且绑定默认远程端点(spec
+ *   desktop-account-login Req 10/11)——未登录进不了主界面。CI 机器没有真实账号,
+ *   所以给它一个假的云端,让它走**完整的真实登录链路**(表单 → 本地服务端 →
+ *   云端 → 凭据 → capabilities → 授予)。
+ *
+ * 这比「绕过登录」覆盖得多:整条链路上任何一环断了,烟雾都会红。
+ *
+ * 返回的凭据用桌面凭据的真实形态 `base64url(payload) + "." + sig`(本仓只解 payload、
+ * 不验签,验签在云端 egress),否则 AuthSessionState 会判为非法。
+ */
+export function startMockCloud({ email = "smoke@example.test", password = "smoke-pass" } = {}) {
+  let logins = 0;
+  let capabilityCalls = 0;
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  const token =
+    Buffer.from(
+      JSON.stringify({ userId: "smoke-user", companyId: "smoke-co", scope: "desktop", exp }),
+      "utf8",
+    ).toString("base64url") + ".smoke-signature";
+
+  const server = createServer((req, res) => {
+    const url = req.url ?? "";
+    const json = (code, body) => {
+      res.writeHead(code, { "content-type": "application/json" });
+      res.end(JSON.stringify(body));
+    };
+    if (req.method === "POST" && url.endsWith("/api/desktop/login")) {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", () => {
+        let b = {};
+        try { b = JSON.parse(raw || "{}"); } catch { /* 交给下面按缺参处理 */ }
+        if (!b.email || !b.password) return json(400, { error: "email and password required" });
+        if (b.email !== email || b.password !== password) {
+          return json(401, { error: "Invalid login credentials" });
+        }
+        logins += 1;
+        // ★ 字段名是 token,不是 credential —— 与真实云端一致(首版曾在此处解错)。
+        json(200, { token });
+      });
+      return;
+    }
+    if (req.method === "POST" && url.endsWith("/api/desktop/capabilities")) {
+      capabilityCalls += 1;
+      const auth = req.headers.authorization ?? "";
+      if (auth !== `Bearer ${token}`) return json(401, { error: "unauthorized" });
+      json(200, {
+        tenant: {
+          userId: "smoke-user",
+          companyId: "smoke-co",
+          role: "member",
+          displayName: "Smoke User",
+        },
+        // 不给 egress:烟雾要验的是**本地** mock provider 被调用,
+        // 给了 egress 会把模型清单换成云端的,反而测不到那条链路。
+        sources: {
+          baseUrl: `http://127.0.0.1:0/registry`,
+          token: "smoke-sources-token",
+          expiresAt: exp,
+        },
+      });
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  return new Promise((done) => {
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      done({
+        server,
+        port,
+        email,
+        password,
+        // 桌面侧从 egressBase 反推 login/capabilities URL,故给出同款形状。
+        egressBase: `http://127.0.0.1:${port}/api/desktop/egress/v1`,
+        getLogins: () => logins,
+        getCapabilityCalls: () => capabilityCalls,
+      });
+    });
+  });
+}
+
 /** 写一个最小临时 agent-dir，把默认模型指向 mock provider。 */
 export function makeAgentDir(mockPort) {
   const dir = mkdtempSync(join(tmpdir(), "pi-web-desktop-e2e-"));
@@ -301,12 +386,24 @@ export async function waitNoShellNodeProcesses(nodeBin = SHELL_NODE_BIN, timeout
  * 这不验证 Tauri 窗口内的渲染（macOS 无 WebDriver），但完整验证了
  * 壳 → server → pi runner 子进程 → mock provider 这条链路。
  */
-export async function runSessionViaBrowser(port, replyToken, { screenshotPath } = {}) {
+export async function runSessionViaBrowser(port, replyToken, { screenshotPath, login } = {}) {
   const { chromium } = await import("@playwright/test");
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+
+    // 登录门禁(spec desktop-account-login Req 10):桌面版登录是**硬性**的,
+    // 未登录进不了主界面。烟雾走**完整的真实登录链路**(表单 → 本地服务端 → mock 云端
+    // → 凭据 → capabilities → 授予),而不是绕过它 —— 链路上任何一环断了这里都会红。
+    if (login !== undefined) {
+      await page.waitForSelector("[data-testid=login-email]", { timeout: 20_000 });
+      await page.fill("[data-testid=login-email]", login.email);
+      await page.fill("[data-testid=login-password]", login.password);
+      await page.click("[data-testid=login-submit]");
+      // 登录成功后门禁才放行,主界面随之挂载。
+      await page.waitForSelector("[data-testid=login-status]", { timeout: 30_000 });
+    }
     await page.waitForSelector("[data-pi-input-textarea]", { timeout: 30_000 });
     const onSessionUrl = /\/session\//.test(page.url());
 
