@@ -221,6 +221,9 @@
   - 本项覆盖 macOS 因缺少 WebView 驱动而测不到的「渲染层经桥拿到路径」这条路径，同时是 **Windows/Linux 的 WebView 在严格 CSP 下 IPC 是否仍可用的唯一自动化证据**（macOS 的 WKWebView 走 messageHandlers 不受 `connect-src` 约束，其余平台机制不同）
   - 若 IPC 被页面 CSP 拦截，兜底为在桌面态放行 `ipc:` 到 pi-web server 的 `connect-src`（仅桌面壳加载时生效，不影响浏览器部署）
   - 观察完成：Linux 环境下 WebDriver 套件跑绿，日志中可见目录选择返回 stub 路径
+  - ⚠ 未达成：本项要的是 Linux 上 `tauri-driver` + WebKitWebDriver + xvfb 驱动**真实 WebView**。
+    run 30334803821 的 smoke 是在 macOS 上用普通浏览器访问壳的回环端点——
+    验的是「壳 → server → runner」链路，**不是** WebView 内的 IPC。两者不可互相替代。
   - ⚠ **状态：脚本已实现，但未在 Linux 上运行验证**（本次实现环境为 macOS，`tauri-driver` 不支持 macOS）。在 macOS 上执行该脚本会以退出码 2 明确拒绝，不会假装通过。须在 Linux CI 上跑通后方可视为达标
   - _Requirements: 10.1, 10.4_
   - _Boundary: e2e/desktop/webdriver/wdio.conf.mjs, e2e/desktop/webdriver/bridge.e2e.mjs_
@@ -232,6 +235,10 @@
   - Linux 需先装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 断言 Linux 可执行文件名为 `pi-web`（不含会被 AppImage 拒绝的字符）
   - 观察完成：两平台各产出一个安装包文件；在对应平台上启动安装后的应用能完成一次真实会话
+  - ⚠ **2026-07-28 部分达成**（run 30334803821）：Windows 与 Linux 的 `package` job
+    **首次构建成功**并产出安装包工件。但**未勾**——本项还要求「在对应平台上启动安装后的
+    应用能完成一次真实会话」，而 `smoke` job 只在 macOS 上跑。Windows/Linux 的产物
+    构建出来了，从未被启动过。补齐需要在这两个平台各加一个 smoke job。
   - ⚠ **状态：未完成**。本次实现环境为 macOS，无法产出或运行 Windows/Linux 安装包。
     已验证的是 CI 矩阵的**核心机制**：`node scripts/fetch-node-sidecar.mjs --target x86_64-apple-darwin`
     正确取到 x64 sidecar（并因异架构而跳过执行自检），且 `cargo build --target x86_64-apple-darwin --release`
@@ -242,12 +249,19 @@
 
 ## 7. 发布流水线改造
 
-- [ ] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
+- [x] 7.1 改造 GitHub 发布工作流为按目标架构的矩阵
   - 保留「构建/打包分离」：`dist/` 与平台无关，仍在 Ubuntu 上构建一次并作为 artifact 分发给各矩阵分支
   - 矩阵**按 target triple 展开**（而非仅按 OS）：`macos-latest`×`aarch64-apple-darwin`、`macos-latest`×`x86_64-apple-darwin`、`ubuntu-22.04`×`x86_64-unknown-linux-gnu`、`windows-latest`×`x86_64-pc-windows-msvc`
   - 每分支：**`rustup target add <triple>`**（CI runner 是干净的；`macos-latest` 是 arm64，构建 `x86_64-apple-darwin` 必须先补该 target，`tauri-action` 不代办）→ 取 `dist` artifact → 为该 triple 取 sidecar（校验和失败即构建失败）→ `tauri-action` 传 `args: --target <triple>`
   - `fail-fast: false`，使单平台失败不阻断其余平台
   - 拆为三个 job：`package`（产出 artifact，**不**上传 Release）→ `smoke`（macOS 上对已打包产物跑真实会话冒烟）→ `release`（仅 tag 触发时下载 artifact 并附加到对应 Release）。`workflow_dispatch` 触发时只产出工作流产物、不附加 Release
+  - ✅ **2026-07-28 真实跑通**（run 30334803821，`workflow_dispatch`，整体 success）：
+    四个 triple 的 `package` 全绿（含 macos-latest 上构建 `x86_64-apple-darwin`，
+    证明 `rustup target add` 那步确实生效）；`smoke` 绿；`attach to GitHub Release → skipped`
+    （证实手动触发不碰 Release）。
+    ★ 该工作流此前**从未成功过一次**——自 v0.3.0 起就在第一个 job 45 秒挂掉。
+    本次通过前先修了三处：webext 示例产物没人构建、registry-client 越仓 alias、
+    烟雾缺登录路径。
   - Linux 分支安装构建依赖：`libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`
   - 观察完成：`workflow_dispatch` 手动触发一次，四个矩阵分支全绿、产出四个安装包工作流产物、且未创建或修改任何 GitHub Release
   - ⚠ **状态：工作流已改造并通过 YAML 结构校验（四 target triple 矩阵 / fail-fast:false / package→smoke→release 三段分离 / sidecar 校验前置于 tauri build），但未在真实 GitHub Actions 上运行**。须实际触发一次 `workflow_dispatch` 跑通后方可视为达标
@@ -273,6 +287,8 @@
   - **裁定**：以 macOS arm64 安装包为基准，若 Tauri 安装包体积 > Electron 安装包体积 × 0.75，判定「净收益不显著」→ **停止并交回决策者**，不得默认继续
   - 报告中不得以「新方案理论上更轻」一类论证替代任何一项实测数值
   - 观察完成：对比文档存在，含 RSS / 冷启动 / 四平台包体的前后数值与裁定结论
+  - ⚠ 未达成：本项要在 Electron 壳与 Tauri 壳**各跑一次实测脚本**并写对比文档，
+    与 CI 构建无关。run 30334803821 不覆盖它。
   - ⚠ **状态：macOS arm64 部分已完成并达标（0.35 ≤ 0.75 阈值），但 Req 11.3 要求的三平台数值未满足** —— Windows/Linux 的包体、内存、冷启动均未实测（依赖任务 6.2 与 7.1）。故本任务整体未完成
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6_
   - _Depends: 8.1, 7.1_
