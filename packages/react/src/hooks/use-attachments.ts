@@ -22,6 +22,8 @@ import type { FileUIPart } from "ai";
 import type { ImageContent, UploadAttachmentResponse } from "@blksails/pi-web-protocol";
 import { uploadAttachment as defaultUploadAttachment } from "../transport/attachment-upload.js";
 import { joinUrl } from "../client/request.js";
+import { compressImage } from "../attachments/compress-image.js";
+import { mapWithLimit } from "../attachments/concurrency.js";
 
 /** 待提交附件的上传状态机。 */
 export type PendingAttachmentStatus = "uploading" | "ready" | "error";
@@ -99,6 +101,14 @@ export interface UseAttachmentsResult {
    */
   referenceIds?(): string[];
 }
+
+/**
+ * 附件预处理(压缩 + 读取预览)的并发上限。
+ *
+ * 取 3 而非无上限:单张 4000×3000 的解码位图约 48MB,一次拖入 20 张即近 1GB。
+ * 3 路并行足以掩盖单张的解码/编码延迟,同时把内存峰值压在可控范围。
+ */
+const ATTACHMENT_PREPARE_CONCURRENCY = 3;
 
 function isImage(file: File): boolean {
   return file.type.startsWith("image/");
@@ -225,23 +235,30 @@ export function useAttachments(
         }
       }
 
-      // 先读本地预览 dataUrl,以 uploading 态入列(Req 5.4),并记录待上传 File。
-      const additions = await Promise.all(
-        accepted.map(
-          async (
-            file,
-          ): Promise<{ entry: PendingAttachment; file: File }> => {
-            const dataUrl = await readAsDataUrl(file);
-            const entry: PendingAttachment = {
-              id: nextId(),
-              name: file.name,
-              mimeType: file.type,
-              dataUrl,
-              status: "uploading",
-            };
-            return { entry, file };
-          },
-        ),
+      // 先压缩,再读本地预览 dataUrl,以 uploading 态入列(Req 5.4),并记录待上传 File。
+      //
+      // ★压缩结果必须**同时**用于预览与上传(spec upload-image-compression Req 1.6):
+      // 若只把 readAsDataUrl 的入参换成压缩版、却把原 file 继续交给上传,就会出现
+      // 「预览已压、传上去仍是原图」的分裂 —— 那等于什么都没优化。故此处 dataUrl、
+      // entry 的 name/mimeType、返回的 file 三者统一取自同一个 `source`。
+      //
+      // ★并发受限(Req 5.1):原为无上限 Promise.all,一次拖 20 张图会同时存在 20 份
+      // 解码副本(单张 4000×3000 位图约 48MB)。mapWithLimit 保序,故入列顺序不变。
+      const additions = await mapWithLimit(
+        accepted,
+        ATTACHMENT_PREPARE_CONCURRENCY,
+        async (file): Promise<{ entry: PendingAttachment; file: File }> => {
+          const source = await compressImage(file);
+          const dataUrl = await readAsDataUrl(source);
+          const entry: PendingAttachment = {
+            id: nextId(),
+            name: source.name,
+            mimeType: source.type,
+            dataUrl,
+            status: "uploading",
+          };
+          return { entry, file: source };
+        },
       );
 
       if (additions.length > 0) {
