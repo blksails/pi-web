@@ -31,6 +31,13 @@ export interface PaneGuestConnection {
   mutate<T = unknown>(route: string, body: unknown): Promise<T>;
   upload(file: File): Promise<{ attachmentId: string; displayUrl: string }>;
   submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): Promise<void>;
+  /**
+   * 读宿主具名信号的当前值(最后值即真值;从未推送过 → undefined)。
+   * 见 contract 的 `pane:signal`:搬运的是只存在于宿主 realm 的东西(主题、宿主 chrome 事件)。
+   */
+  getSignal<T = unknown>(name: string): T | undefined;
+  /** 订阅宿主具名信号;**订阅即以当前值回调一次**(若已有值),故不依赖订阅早于推送。 */
+  onSignal(name: string, listener: (value: unknown) => void): () => void;
   onLifecycle(listener: (state: "visible" | "hidden" | "closing") => void): () => void;
   close(): void;
 }
@@ -45,6 +52,9 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
   const pending = new Map<string, PendingCall>();
   const states = new Map<string, unknown>();
   const surfaceListeners = new Map<string, Set<(value: unknown) => void>>();
+  // 宿主具名信号:最后值即真值。与 states 分开存 —— 事实源不同(agent 快照 vs 宿主 realm)。
+  const signals = new Map<string, unknown>();
+  const signalListeners = new Map<string, Set<(value: unknown) => void>>();
   const lifecycleListeners = new Set<(state: "visible" | "hidden" | "closing") => void>();
 
   const request = <T,>(operation: string, payload: Record<string, unknown>, transfer: Transferable[] = []): Promise<T> => {
@@ -73,6 +83,11 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
     if (data.type === "pane:surface") {
       states.set(data.key, data.value);
       for (const listener of surfaceListeners.get(data.key) ?? []) listener(data.value);
+      return;
+    }
+    if (data.type === "pane:signal") {
+      signals.set(data.name, data.value);
+      for (const listener of signalListeners.get(data.name) ?? []) listener(data.value);
       return;
     }
     if (data.type === "pane:lifecycle") {
@@ -110,6 +125,18 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       text,
       ...(options?.attachmentIds !== undefined ? { attachmentIds: options.attachmentIds } : {}),
     }),
+    getSignal: <T,>(name: string) => signals.get(name) as T | undefined,
+    onSignal: (name, listener) => {
+      const listeners = signalListeners.get(name) ?? new Set();
+      listeners.add(listener);
+      signalListeners.set(name, listeners);
+      // ★ 订阅即以当前值回调一次(若已有)。信号是「最后值即真值」而非事件流:
+      // pane 内的组件挂载时机不可控,若只等下一次推送,首帧就会用错值渲染
+      // (例如宿主是暗色、pane 先亮一下再跳暗)。
+      const current = signals.get(name);
+      if (current !== undefined) listener(current);
+      return () => listeners.delete(listener);
+    },
     onLifecycle: (listener) => {
       lifecycleListeners.add(listener);
       return () => lifecycleListeners.delete(listener);

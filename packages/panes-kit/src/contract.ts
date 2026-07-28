@@ -143,6 +143,20 @@ export type PaneHostMessage =
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: true; readonly data: unknown }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: false; readonly error: PaneErrorData }
   | { readonly type: "pane:surface"; readonly key: string; readonly value: unknown }
+  /**
+   * 宿主 → pane 的**具名信号**(纯下行,无应答)。
+   *
+   * 与 `pane:surface` 的区别是事实源:`pane:surface` 搬运的是 **agent 权威快照**,
+   * 而信号搬运的是**只存在于宿主 realm 的东西** —— 主题类、宿主 chrome 上的点击、轮次边沿。
+   * 这些既不属于 agent 状态、也无法由 pane 自己观察到(iframe 是独立 document)。
+   *
+   * 加这条之前,同一个缺口已经被绕过三次:轮末 `syncSignal`(示例侧包装器代发命令)、
+   * 宿主主题切换(pane 永远亮色)、聊天工具卡点图打开工作台(document 监听落在 iframe 里)。
+   * 三次绕不过去说明缺的是原语,不是用法。
+   *
+   * 语义:**最后值即真值**(非事件流)。新建连接时宿主重推全部当前值,故 pane 晚连也不丢。
+   */
+  | { readonly type: "pane:signal"; readonly name: string; readonly value: unknown }
   | { readonly type: "pane:lifecycle"; readonly state: "visible" | "hidden" | "closing" };
 
 export function definePaneDefinition(input: PaneDefinitionInput): PaneDefinition {
