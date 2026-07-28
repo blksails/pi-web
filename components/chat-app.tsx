@@ -656,6 +656,20 @@ function SessionView({
   const togglePanelRight = React.useCallback(() => {
     setPanelRightOpen((open) => !open);
   }, []);
+  // 收起态：入口在应用右上。展开态：按钮退到 pane 分隔线左侧，免遮 pane tabs。
+  const panelRightToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (!panelRightOpen) return undefined;
+    const width =
+      panelWidth ??
+      (effectivePanelRatio === "3:7"
+        ? "70%"
+        : effectivePanelRatio === "2:1"
+          ? "33.333%"
+          : "0px");
+    return {
+      right: `calc(${typeof width === "number" ? `${width}px` : width} + 1rem)`,
+    };
+  }, [effectivePanelRatio, panelRightOpen, panelWidth]);
 
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
@@ -1048,7 +1062,8 @@ function SessionView({
             aria-expanded={panelRightOpen}
             aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
             title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            className="absolute right-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${panelRightOpen ? "" : " right-2"}`}
+            style={panelRightToggleStyle}
           >
             <PanelRightIcon />
           </button>

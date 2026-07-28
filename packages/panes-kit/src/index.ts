@@ -4,6 +4,7 @@ export {
   PaneSurfaceCommandGrantSchema,
   PaneCapabilitiesSchema,
   PaneDocumentSchema,
+  UNLIMITED_PANE_COUNT,
   PaneDefinitionSchema,
   PanesDefinitionSchema,
   PaneGuestRequestSchema,

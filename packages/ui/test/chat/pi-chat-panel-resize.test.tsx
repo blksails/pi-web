@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { act, render, fireEvent } from "@testing-library/react";
 import type { WebExtension } from "@blksails/pi-web-kit";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
@@ -16,11 +16,11 @@ class MockPointerEvent extends MouseEvent {
 globalThis.PointerEvent = MockPointerEvent as unknown as typeof PointerEvent;
 
 /**
- * panelRight 连续拖拽宽度(全受控)。
+ * panelRight 连续拖拽宽度。
  * 设计: docs/superpowers/specs/2026-07-16-panelright-resizable-width-design.md
  *
- * panelWidth !== undefined → 连续模式(宿主受控 style.width + 内置拖拽分隔条,
- * 离散档段控切换器隐藏);否则沿用 panelRatio 离散档(零回归)。
+ * panelWidth !== undefined → 外壳 rAF 跟手，内容拖毕重排并回传受控宽度；
+ * 否则沿用 panelRatio 离散档(零回归)。
  */
 
 const panelExt: WebExtension = {
@@ -34,12 +34,25 @@ function aside(): HTMLElement {
   return el as HTMLElement;
 }
 
-beforeEach(() => vi.clearAllMocks());
+let animationFrame: FrameRequestCallback | undefined;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  animationFrame = undefined;
+  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    animationFrame = callback;
+    return 1;
+  });
+  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {
+    animationFrame = undefined;
+  });
+});
 
 describe("panelRight 连续宽度(全受控)", () => {
   it("传 panelWidth(number) → aside 宽度为对应 px 且渲染拖拽分隔条", () => {
     render(<PiChat session={mockSession()} extension={panelExt} panelWidth={480} />);
     expect(aside().style.width).toBe("480px");
+    expect(aside().style.maxWidth).toBe("70%");
     expect(aside().className).toContain("border-l");
     expect(document.querySelector("[data-pi-panel-resizer]")).not.toBeNull();
   });
@@ -54,7 +67,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(document.querySelector("[data-pi-panel-ratio-switch]")).toBeNull();
   });
 
-  it("拖拽分隔条 → onPanelWidthChange 回传 clamp 后宽度", () => {
+  it("拖动时仅逐帧预览外壳；内容宽度不变，拖毕方回传", () => {
     const onChange = vi.fn();
     render(
       <PiChat
@@ -82,10 +95,20 @@ describe("panelRight 连续宽度(全受控)", () => {
     } as DOMRect);
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(
+      (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
+    ).toBe("480px");
+    act(() => animationFrame?.(0));
+    expect(aside().style.width).toBe("400px");
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 600 });
     expect(onChange).toHaveBeenCalledWith(400);
+    expect(
+      (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
+    ).toBe("100%");
   });
 
-  it("拖拽越界 → 钳制到 max", () => {
+  it("拖拽越界 → 取配置上限与容器 70% 较小值", () => {
     const onChange = vi.fn();
     render(
       <PiChat
@@ -103,10 +126,34 @@ describe("panelRight 连续宽度(全受控)", () => {
       right: 1000, left: 0, width: 1000, top: 0, bottom: 0, height: 0, x: 0, y: 0,
       toJSON: () => ({}),
     } as DOMRect);
-    // clientX=100 → 原始宽 900 > max 800 → 钳制 800。
+    // clientX=100 → 原始宽 900；配置 max 800，容器 70%=700 → 钳制 700。
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 100 });
-    expect(onChange).toHaveBeenCalledWith(800);
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 100 });
+    expect(onChange).toHaveBeenCalledWith(700);
+  });
+
+  it("窄容器中 70% 保护线优先于配置下限", () => {
+    const onChange = vi.fn();
+    render(
+      <PiChat
+        session={mockSession()}
+        extension={panelExt}
+        panelWidth={320}
+        onPanelWidthChange={onChange}
+        minPanelWidth={320}
+      />,
+    );
+    const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
+    const tree = document.querySelector("[data-pi-chat-pro]") as HTMLElement;
+    vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+      right: 400, left: 0, width: 400, top: 0, bottom: 0, height: 0, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 80 });
+    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 0 });
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 0 });
+    expect(onChange).toHaveBeenCalledWith(280);
   });
 
   it("不传 panelWidth → 沿用离散档(零回归):aside 走百分比宽、切换器仍在、无分隔条", () => {

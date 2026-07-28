@@ -37,6 +37,9 @@ export const PaneDocumentSchema = z.discriminatedUnion("kind", [
 ]);
 export type PaneDocument = z.infer<typeof PaneDocumentSchema>;
 
+/** Explicit sentinel for hosts that intentionally impose no pane-count policy. */
+export const UNLIMITED_PANE_COUNT = Number.MAX_SAFE_INTEGER;
+
 export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
@@ -44,7 +47,7 @@ export const PaneDefinitionSchema = z.object({
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
-  maxInstances: z.number().int().min(1).max(32).default(1),
+  maxInstances: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(1),
   lifecycle: z.object({
     keepAlive: z.boolean().default(true),
     suspendWhenHidden: z.boolean().default(false),
@@ -57,7 +60,7 @@ export const PanesDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   panes: z.array(PaneDefinitionSchema).min(1),
   initialPaneIds: z.array(NonEmptyIdSchema).min(1).optional(),
-  maxOpenPanes: z.number().int().min(1).max(64).default(16),
+  maxOpenPanes: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(16),
 });
 export type PanesDefinition = z.infer<typeof PanesDefinitionSchema>;
 export type PanesDefinitionInput = z.input<typeof PanesDefinitionSchema>;

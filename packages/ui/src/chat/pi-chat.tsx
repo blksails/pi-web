@@ -146,11 +146,11 @@ export interface PiChatProps {
    * 详见 spec 2026-07-16-panelright-resizable-width。
    */
   readonly panelWidth?: number | string;
-  /** 拖拽分隔条回传的目标宽度(px);宿主 setState → panelWidth 回流(可自行 rAF 节流)。 */
+  /** 拖拽结束回传目标宽度(px);拖动中 PiChat 以 rAF 预览外壳，panel 内容不重排。 */
   readonly onPanelWidthChange?: (widthPx: number) => void;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
-  /** 连续模式拖拽上界(px),缺省 容器宽 − 360(留对话区底)。 */
+  /** 连续模式拖拽上界(px);最终仍受容器宽度 70% 的宿主保护线约束。 */
   readonly maxPanelWidth?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
@@ -620,38 +620,80 @@ export function PiChat({
     setPanelRatio(panelRatioInitial ?? "2:1");
   }, [panelRatioInitial]);
 
-  // panelRight 连续宽度(全受控):宿主传 panelWidth 即启用;拖拽分隔条经 onPanelWidthChange
-  // 回传 clamp 后目标宽度(px),PiChat 不持宽度 state。详见 panelright-resizable spec。
+  // panelRight 连续宽度:外壳按 rAF 跟手；内容宽度拖毕才提交，避免 iframe 实时重排。
   const panelResizeTreeRef = React.useRef<HTMLDivElement | null>(null);
   const panelDraggingRef = React.useRef(false);
+  const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
+  const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  const [panelPreviewWidth, setPanelPreviewWidth] = React.useState<number>();
+  const [panelContentWidth, setPanelContentWidth] = React.useState<number>();
+  React.useEffect(
+    () => () => {
+      if (panelResizeFrameRef.current !== undefined) {
+        cancelAnimationFrame(panelResizeFrameRef.current);
+      }
+    },
+    [],
+  );
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
-      const min = minPanelWidth ?? 240;
-      const max = maxPanelWidth ?? rect.width - 360;
+      const availableMax = rect.width * 0.7;
+      const min = Math.min(minPanelWidth ?? 240, availableMax);
+      const max = Math.max(
+        min,
+        Math.min(maxPanelWidth ?? Number.POSITIVE_INFINITY, availableMax),
+      );
       const raw = rect.right - e.clientX;
-      onPanelWidthChange?.(Math.max(min, Math.min(max, raw)));
+      panelPendingWidthRef.current = Math.max(min, Math.min(max, raw));
+      if (panelResizeFrameRef.current !== undefined) return;
+      panelResizeFrameRef.current = requestAnimationFrame(() => {
+        panelResizeFrameRef.current = undefined;
+        setPanelPreviewWidth(panelPendingWidthRef.current);
+      });
     },
-    [minPanelWidth, maxPanelWidth, onPanelWidthChange],
+    [minPanelWidth, maxPanelWidth],
   );
-  const onPanelResizeDown = React.useCallback((e: React.PointerEvent) => {
-    panelDraggingRef.current = true;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
-    }
-  }, []);
-  const onPanelResizeUp = React.useCallback((e: React.PointerEvent) => {
-    panelDraggingRef.current = false;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // 同上。
-    }
-  }, []);
+  const onPanelResizeDown = React.useCallback(
+    (e: React.PointerEvent) => {
+      panelDraggingRef.current = true;
+      const currentWidth =
+        typeof panelWidth === "number"
+          ? panelWidth
+          : e.currentTarget.parentElement?.getBoundingClientRect().width;
+      panelPendingWidthRef.current = currentWidth;
+      setPanelPreviewWidth(currentWidth);
+      setPanelContentWidth(currentWidth);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
+      }
+    },
+    [panelWidth],
+  );
+  const onPanelResizeUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      panelDraggingRef.current = false;
+      if (panelResizeFrameRef.current !== undefined) {
+        cancelAnimationFrame(panelResizeFrameRef.current);
+        panelResizeFrameRef.current = undefined;
+      }
+      const width = panelPendingWidthRef.current;
+      panelPendingWidthRef.current = undefined;
+      if (width !== undefined) onPanelWidthChange?.(width);
+      setPanelPreviewWidth(undefined);
+      setPanelContentWidth(undefined);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // 同上。
+      }
+    },
+    [onPanelWidthChange],
+  );
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -1229,7 +1271,12 @@ export function PiChat({
   // 宽度解析:连续模式 number→px、string 原样;否则离散档取预设宽;再否则不设(沿用 w-96 类)。
   let asideWidth: string | undefined;
   if (resizablePanel) {
-    asideWidth = typeof panelWidth === "number" ? `${panelWidth}px` : panelWidth;
+    asideWidth =
+      panelPreviewWidth !== undefined
+        ? `${panelPreviewWidth}px`
+        : typeof panelWidth === "number"
+          ? `${panelWidth}px`
+          : panelWidth;
   } else if (panelRatioActive) {
     asideWidth = PANEL_RATIO_ASIDE_WIDTH[panelRatio];
   }
@@ -1874,14 +1921,21 @@ export function PiChat({
             "relative hidden min-h-0 shrink-0 border-l border-[hsl(var(--border))] lg:flex lg:flex-col",
             panelRatioActive ? "" : "w-96",
           )}
-          {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
+          {...(asideWidth !== undefined
+            ? {
+                style: {
+                  width: asideWidth,
+                  ...(resizablePanel ? { maxWidth: "70%" } : {}),
+                },
+              }
+            : {})}
           data-pi-chat-aside
           {...(panelRatioActive && !resizablePanel
             ? { "data-pi-panel-ratio": panelRatio }
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 连续模式拖拽分隔条:aside 左缘(对话区↔aside 之间);全受控经 onPanelWidthChange 回传。 */}
+          {/* 连续模式拖拽分隔条:aside 左缘；外壳逐帧预览，拖毕方回传受控宽度。 */}
           {resizablePanel ? (
             <div
               data-pi-panel-resizer
@@ -1895,28 +1949,39 @@ export function PiChat({
             />
           ) : null}
           {showPanelRight ? (
-            <SlotHost
-              ext={extension}
-              slot="panelRight"
-              state={webextState}
-              surface={surfaceAccess}
-              upload={uploadAttachment ?? defaultUploadAttachment}
-              baseUrl={client?.baseUrl ?? ""}
-              syncSignal={panelSyncSignal}
-              {...(sessionId !== undefined ? { sessionId } : {})}
-              // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
-              {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
-              // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
-              // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
-              conversation={conversation}
-              // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
-              // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
-              onSubmitPrompt={(text: string) => doSend(text)}
-              // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
-              // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
-              // 就绪时此处天然扩展为完整数组,注入面无需再改。
-              extensions={extension !== undefined ? [extension] : []}
-            />
+            <div
+              className="min-h-0 flex-1 overflow-hidden"
+              data-pi-panel-content-viewport
+            >
+              <div
+                className="ml-auto h-full shrink-0"
+                data-pi-panel-content
+                style={{ width: panelContentWidth ?? "100%" }}
+              >
+                <SlotHost
+                  ext={extension}
+                  slot="panelRight"
+                  state={webextState}
+                  surface={surfaceAccess}
+                  upload={uploadAttachment ?? defaultUploadAttachment}
+                  baseUrl={client?.baseUrl ?? ""}
+                  syncSignal={panelSyncSignal}
+                  {...(sessionId !== undefined ? { sessionId } : {})}
+                  // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
+                  {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
+                  // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
+                  // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
+                  conversation={conversation}
+                  // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
+                  // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
+                  onSubmitPrompt={(text: string) => doSend(text)}
+                  // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
+                  // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
+                  // 就绪时此处天然扩展为完整数组,注入面无需再改。
+                  extensions={extension !== undefined ? [extension] : []}
+                />
+              </div>
+            </div>
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
               flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}

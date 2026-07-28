@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "lucide-react": "^0.468.0",
     "zod": "^3.23.8"
   },
   "peerDependencies": {

@@ -6,6 +6,7 @@ import {
   definePanes,
   PaneHostError,
   reducePaneWorkspace,
+  UNLIMITED_PANE_COUNT,
   type PaneCapabilities,
 } from "../src/index.js";
 
@@ -71,6 +72,23 @@ describe("pane contract and instance model", () => {
     state = reducePaneWorkspace(definition, state, { type: "open", paneId: "canvas", instanceId: "canvas-extra" });
     state = reducePaneWorkspace(definition, state, { type: "open", paneId: "canvas", instanceId: "canvas-denied" });
     expect(state.instances.filter((item) => item.paneId === "canvas")).toHaveLength(2);
+  });
+
+  it("supports an explicit unlimited pane-count policy", () => {
+    const unlimited = definePanes({
+      id: "unlimited",
+      maxOpenPanes: UNLIMITED_PANE_COUNT,
+      panes: [{
+        id: "editor",
+        title: "Editor",
+        document: { kind: "inline", srcDoc: "" },
+        capabilities,
+        allowMultiple: true,
+        maxInstances: UNLIMITED_PANE_COUNT,
+      }],
+    });
+    expect(unlimited.maxOpenPanes).toBe(UNLIMITED_PANE_COUNT);
+    expect(unlimited.panes[0]?.maxInstances).toBe(UNLIMITED_PANE_COUNT);
   });
 });
 
