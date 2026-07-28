@@ -92,15 +92,23 @@ async function setup(): Promise<{ fake: FakeRegistry; calls: string[]; port: Reg
     name: "Acme",
     keys: [{ publicKey: key.value.publicKey }],
   });
-  // ⚠ **跨仓事实**:pi-web 的 `@pi-clouds/registry-client` 别名指向 pi-clouds **主仓**,
-  //   而 spec registry-org-identity(P0,让 registerVersion 能从 token 派生 tenantId 自动建 source)
-  //   目前还在 pi-clouds 的 worktree 分支上、未合主仓。所以本夹具里的 registry 仍是旧语义:
+  // ⚠ **跨仓事实(实测,别凭直觉)**:`tsconfig.json` 把 `@pi-clouds/registry-client` 指到
+  //   `../pi-clouds/packages/registry-client/src/index.ts`,而 `../pi-clouds` 是一条**符号链接**,
+  //   指向 pi-clouds 的**主仓工作目录**。也就是说:本测试用的是**那个目录当前检出的分支**,
+  //   而不是 pi-clouds 的 `main`。把 P0 合进 main **并不会**改变这里解析到的代码。
+  //
+  //   撰写时该目录检出的是 `chore/npm-mirror-scope-split`(不含 P0),故 registry 仍是旧语义:
   //   首次发布必须由平台先建 source,否则抛
   //   `publisher "acme" has no tenant association yet ... must be provisioned by the platform`。
   //
   //   这里显式建一次 source —— 本文件测的是 **`executePublish` 这一层的接线**,
   //   registry 侧的自动建 source 归 P0 管,不该由本测试代为验证。
-  //   P0 合入主仓后这一步可以删,届时删掉它反而是一条有价值的回归断言。
+  //
+  //   ★ 该目录切到含 P0 的分支后,这一步可以删;**删掉它反而变成一条有价值的回归断言**
+  //     (证明"首次发布无需平台预先建 source"真的成立)。
+  //
+  //   注:这条只影响**进程内契约测试**。真机发布时服务端语义来自部署的 apps/registry,
+  //   pi-web 只用 registry-client 的签名/指纹纯函数(P0 未触碰),故不受此影响。
   await fake.api.createSource(fake.adminToken, {
     id: SOURCE_ID,
     displayName: "Acme Pack",
