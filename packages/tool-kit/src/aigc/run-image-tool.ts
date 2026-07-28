@@ -204,6 +204,61 @@ async function resolveAndNormalizeImage(
   return normalizeImageDataUri(resolved);
 }
 
+// ── payload 体积兜底(spec upload-image-compression Req 7)─────────────────────
+
+/**
+ * 单次调用允许的媒体 payload 上限。
+ *
+ * 依据 2026-07-28 真机实测:同一张 764×763 照片,174KB 的 JPEG 152s 正常出图,
+ * 766KB 的 PNG **23 分钟无响应**(不是慢,是根本不返回)。放宽传输层超时并不能救 ——
+ * 那只会把「5 分钟明确失败」变成「无限期挂起」,体验更差。故在派发前直接拦下。
+ *
+ * 取 1.5MB 而非贴着 766KB:多图场景合计体积天然更大,过紧会误伤本可成功的调用;
+ * 本上限的职责是**兜住必然失败者**,不是精确划线。
+ */
+const MAX_PAYLOAD_BYTES = 1_500_000;
+
+/** data URI 的 base64 段还原为字节数(每 4 字符 → 3 字节,减去尾部 padding)。 */
+function dataUriByteLength(uri: string): number {
+  const comma = uri.indexOf(",");
+  if (comma < 0 || !uri.startsWith("data:")) return 0;
+  const payload = uri.length - comma - 1;
+  const padding = uri.endsWith("==") ? 2 : uri.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((payload * 3) / 4) - padding);
+}
+
+function formatBytes(n: number): string {
+  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.round(n / 1024)}KB`;
+}
+
+/**
+ * 统计已解析媒体字段的合计体积,超限则返回可读错误(Req 7.1/7.2)。
+ *
+ * ★对用户上传图与工具**生成**图一视同仁(Req 7.4)——二者在此都已是 data URI,
+ * 无从区分来源,这正是本兜底能覆盖前端压缩盲区(canvas 二创拿生成图再编辑)的原因。
+ */
+export function checkPayloadLimit(
+  merged: Readonly<Record<string, unknown>>,
+  mediaFields: readonly string[],
+): string | undefined {
+  let total = 0;
+  for (const name of mediaFields) {
+    const val = merged[name];
+    if (typeof val === "string") {
+      total += dataUriByteLength(val);
+    } else if (Array.isArray(val)) {
+      for (const elem of val) {
+        if (typeof elem === "string") total += dataUriByteLength(elem);
+      }
+    }
+  }
+  if (total <= MAX_PAYLOAD_BYTES) return undefined;
+  return (
+    `图片过大无法处理:输入图合计 ${formatBytes(total)},超过上限 ${formatBytes(MAX_PAYLOAD_BYTES)}。` +
+    `请改用更小的图片,或先压缩后再试。`
+  );
+}
+
 /** 对显式 mediaFields(string 或 string[])逐字段解析。 */
 async function resolveMediaFields(
   mediaFields: readonly string[],
@@ -361,6 +416,14 @@ export async function runImageTool(
   log.debug("tool execute start", { tool: toolName, model: route.model });
   try {
     await resolveMediaFields(mediaFields, merged, ctx);
+
+    // 派发前兜底:超大 payload 会让上游根本不返回(实测 766KB PNG 挂 23 分钟),
+    // 与其无限期转圈,不如就地给出可读失败(Req 7.1/7.3;走既有 errResult 路径)。
+    const oversize = checkPayloadLimit(merged, mediaFields);
+    if (oversize) {
+      log.warn("payload over limit; aborting before dispatch", { tool: toolName, model: route.model });
+      return errResult(oversize);
+    }
 
     // 提示词优化(aigc-tool-settings Req 4.3):会话开关为真时,在派发 provider 前对 prompt 调
     // 优化接缝并回写;为假/未设则完全不调用、prompt 透传(与既有行为一致)。本期接缝为无改写占位。
