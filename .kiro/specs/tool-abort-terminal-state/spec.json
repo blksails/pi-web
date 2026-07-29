@@ -1,0 +1,28 @@
+{
+  "feature_name": "tool-abort-terminal-state",
+  "created_at": "2026-07-29T13:25:00Z",
+  "updated_at": "2026-07-29T14:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "bookkeeping": {
+    "date": "2026-07-29",
+    "tasks": "5/5",
+    "evidence": "ui 855 passed(含新增 9 条);全仓 typecheck 干净;守卫自检 3 条精确变红;★真机:点击后 102ms 落终态 Completed/定格 9.8s/按钮消失/显示已取消,后端 stopReason=aborted",
+    "action": "实施完成 + 真机验收"
+  }
+}

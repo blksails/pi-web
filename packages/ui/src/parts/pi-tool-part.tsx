@@ -20,12 +20,13 @@
  * 字符串型 output 经 Response 富渲染。
  */
 import * as React from "react";
-import { ChevronDown, ChevronRight, Loader2, Timer, Wrench } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Square, Timer, Wrench } from "lucide-react";
 import type { UIMessage } from "ai";
 import { Card } from "../ui/card.js";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
+import { useTurnAbort } from "../chat/turn-abort-context.js";
 import {
   useMaskPaths,
   useMaskPathsDeep,
@@ -216,14 +217,32 @@ export function ToolHeader({
 }: ToolHeaderProps): React.JSX.Element {
   const t = useI18n();
   const isError = phase === "error";
+  // 「终止本轮」能力(spec aigc-tool-abort UI 扩展):仅在本轮运行中且宿主提供了能力时出现。
+  // ★ 语义是终止**本轮**而非单个工具 —— 协议层只有会话级 abort,没有单工具取消端点。
+  const abortTurn = useTurnAbort();
+  const isRunningPhase = phase === "start" || phase === "update";
+  const showStop = isRunningPhase && abortTurn !== undefined;
+
+  // ★ 这里由 <button> 改为 <div role="button">:HTML **禁止 button 嵌套 button**,
+  // 而停止按钮必须落在 header 行内。改用可聚焦 div + 显式键盘处理保持原有可达性
+  // (Enter/Space 触发折叠,aria-expanded/aria-controls 不变)。
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
+    if (e.target !== e.currentTarget) return; // 来自内部停止按钮的键盘事件不触发折叠
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onToggle?.();
+    }
+  };
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       aria-expanded={open}
       aria-controls={contentId}
       onClick={onToggle}
+      onKeyDown={onKeyDown}
       className={cn(
-        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
     >
@@ -261,8 +280,25 @@ export function ToolHeader({
           ) : null}
           {t(PHASE_LABEL_KEY[phase])}
         </span>
+        {showStop ? (
+          <button
+            type="button"
+            data-pi-tool-stop
+            // ★ 文案是「终止本轮」不是「停止此工具」:协议层只有会话级 abort。多工具并行时
+            // 点它会把整轮停掉 —— 说清楚好过让用户预期落空。
+            title={t("toolPart.stopTurn")}
+            aria-label={t("toolPart.stopTurn")}
+            onClick={(e) => {
+              e.stopPropagation(); // 不要顺带触发外层的折叠
+              abortTurn?.();
+            }}
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          >
+            <Square className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
+          </button>
+        ) : null}
       </span>
-    </button>
+    </div>
   );
 }
 

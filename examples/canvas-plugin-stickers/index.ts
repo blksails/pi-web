@@ -46,7 +46,8 @@ function styleTransferPrompt(strength: number): string {
   ].join(" ");
 }
 
-// 复用内置 `reference` 命令(参考图融合):其内部 `runImageTool(reference_images=[…])` → 落库
+// 复用内置 `reference` 命令(参考图融合):命令层仍用 canvas 契约的 `image` + `reference_images`,
+// 由 `executeImageEdit` 归一为工具契约的单一 `images` 数组(首项主图 + 其余参考图)→ 落库
 // prepend(derivedFrom = image)。取一次纯内置命令表(无 extraCommands 注入 → 纯 builtin),
 // capability 由 surface 快照继承(命令 reducer 从 s.capabilities 继承,不依赖此处 capability)。
 const builtinCommands = createCanvasCommands();
@@ -88,7 +89,8 @@ export default defineAgent({
   systemPrompt: [
     "You are canvas-plugin-stickers, a pi-web example showing a two-sided Canvas plugin.",
     "- Use `image_generation` to generate images; use `image_edit` to edit an uploaded image",
-    "  (copy the public id from the [attachment id=att_… …] marker into the tool's `image`).",
+    "  (copy the public id from the [attachment id=att_… …] marker into the tool's `images`",
+    "  array — first entry = the image being edited, any further entries = style references).",
     "Generated images land as attachments and are aggregated by the Canvas gallery.",
     "In the Canvas workbench the user can drop emoji stickers as plugin layers and run",
     "`style_transfer` (a plugin command) directly; those actions bypass the LLM. Keep chat replies concise.",

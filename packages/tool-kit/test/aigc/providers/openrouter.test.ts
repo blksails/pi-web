@@ -3,7 +3,7 @@
  *
  * 覆盖:
  *  - createOpenRouterImage: buildBody 形态 + pickResult 提取
- *  - createOpenRouterImageEdit: buildBody 形态(OpenAI 化字段 prompt/image,无 mask inline)+ pickResult
+ *  - createOpenRouterImageEdit: buildBody 形态(统一入参 prompt/images[],无 mask inline)+ pickResult
  */
 
 import { describe, it, expect } from "vitest";
@@ -59,6 +59,26 @@ describe("createOpenRouterImage", () => {
     const text = messages[0]?.content as string;
     expect(text).toContain("Avoid:");
     expect(text).toContain("blur, fog");
+  });
+
+  it("buildBody: 带 images 参考图时 content 切换为 multi-part", async () => {
+    const v = createOpenRouterImage({
+      model: "google/gemini-flash",
+      label: "OR T2I",
+      description: "desc",
+    });
+    const ref = "data:image/png;base64,cmVm";
+    const body = await v.buildBody?.({ prompt: "a cat", images: [ref] }, ctx) as Record<
+      string,
+      unknown
+    >;
+    const messages = body.messages as { role: string; content: unknown[] }[];
+    const content = (messages[0]?.content ?? []) as {
+      type: string;
+      image_url?: { url: string };
+    }[];
+    expect(content.map((p) => p.type)).toEqual(["text", "image_url"]);
+    expect(content[1]?.image_url?.url).toBe(ref);
   });
 
   it("pickResult 从 choices[].message.images 提取 URL", () => {
@@ -144,16 +164,16 @@ describe("createOpenRouterImageEdit", () => {
     expect(v.requiredVars).toContain("OPENROUTER_API_KEY");
   });
 
-  it("buildBody 图像编辑: prompt + image → multi-part content", async () => {
+  it("buildBody 图像编辑: prompt + images[0] → multi-part content", async () => {
     const v = createOpenRouterImageEdit({
       model: "openai/gpt-5-image",
       label: "OR Edit",
       description: "d",
     });
-    // image 已经是 data URI(模拟编译器解析后的结果)
+    // images 已经是 data URI 数组(模拟编译器解析后的结果)
     const dataUri = "data:image/png;base64,aGVsbG8=";
     const body = await v.buildBody?.(
-      { prompt: "add stars to sky", image: dataUri },
+      { prompt: "add stars to sky", images: [dataUri] },
       ctx,
     ) as Record<string, unknown>;
     expect(body.modalities).toEqual(["image", "text"]);
@@ -168,5 +188,43 @@ describe("createOpenRouterImageEdit", () => {
     );
     expect(textPart?.text).toBe("add stars to sky");
     expect(imgPart?.image_url?.url).toBe(dataUri);
+  });
+
+  it("buildBody: images 首项为主图、其余为参考图,按序进 image_url parts", async () => {
+    const v = createOpenRouterImageEdit({
+      model: "openai/gpt-5-image",
+      label: "OR Edit",
+      description: "d",
+    });
+    const main = "data:image/png;base64,bWFpbg==";
+    const ref1 = "data:image/png;base64,cmVmMQ==";
+    const ref2 = "data:image/png;base64,cmVmMg==";
+    const body = await v.buildBody?.(
+      { prompt: "restyle", images: [main, ref1, ref2], mask: "data:image/png;base64,bWFzaw==" },
+      ctx,
+    ) as Record<string, unknown>;
+    const messages = body.messages as { role: string; content: unknown[] }[];
+    const content = (messages[0]?.content ?? []) as {
+      type: string;
+      image_url?: { url: string };
+    }[];
+    const urls = content.filter((p) => p.type === "image_url").map((p) => p.image_url?.url);
+    // 次序即 [主图, ...参考图],与统一入参前的上行次序一致
+    expect(urls).toEqual([main, ref1, ref2]);
+    // mask 不进 payload(OpenRouter 无 mask 概念)
+    expect(JSON.stringify(body)).not.toContain("bWFzaw==");
+  });
+
+  it("buildBody: 无 images 时只发 text part,不抛错", async () => {
+    const v = createOpenRouterImageEdit({
+      model: "openai/gpt-5-image",
+      label: "OR Edit",
+      description: "d",
+    });
+    const body = await v.buildBody?.({ prompt: "no image" }, ctx) as Record<string, unknown>;
+    const messages = body.messages as { role: string; content: unknown[] }[];
+    const content = (messages[0]?.content ?? []) as { type: string }[];
+    expect(content).toHaveLength(1);
+    expect(content[0]?.type).toBe("text");
   });
 });

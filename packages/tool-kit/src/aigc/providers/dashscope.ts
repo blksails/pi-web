@@ -143,12 +143,16 @@ function buildSyncT2IBody(model: string) {
 /** image_edit 用 args 形态(OpenAI 化字段)。 */
 interface ImageEditArgs {
   prompt: string;
-  /** 主图(已解析为 data URI 或 https URL)。 */
-  image: string;
+  /**
+   * 待编辑图集合(已解析为 data URI 或 https URL)。
+   *
+   * ★入参契约统一(image_edit 工具层):原先的 `image`(单数,主图)+ `reference_images`
+   * (参考图数组)两个字段已合并为单一数组 —— 首项 = 主图,其余 = 参考图。
+   * 这里只改「从哪里读」,发往 DashScope 的 content 协议(每项一个 `image` 键)保持原样。
+   */
+  images?: string[];
   /** 可选 B/W mask;白色区域重绘。 */
   mask?: string;
-  /** 可选参考图(数组,已解析)。 */
-  reference_images?: string[];
   n?: number;
   size?: string;
   seed?: number;
@@ -166,8 +170,14 @@ interface ImageEditArgs {
 function buildImageEditBody(model: string) {
   return (args: Record<string, unknown>) => {
     const a = args as unknown as ImageEditArgs;
-    const refs = a.reference_images ?? [];
-    const content: Record<string, unknown>[] = [{ image: a.image }];
+    // ★入参契约统一:主图/参考图统一从 `images` 数组读 —— 首项主图,其余参考图。
+    // 线上协议不变:仍是 messages[0].content 里一串 { image } 块,且顺序仍为
+    // 主图 → mask → 参考图(mask 必须排第 2 位,下方 prompt 文案指名「图2」)。
+    const imgs = a.images ?? [];
+    const main = imgs[0];
+    const refs = imgs.slice(1);
+    // 无图时沿用原有的「不本地拦截」策略:不塞 image 块,直接交由 DashScope 端报错。
+    const content: Record<string, unknown>[] = main ? [{ image: main }] : [];
     if (a.mask) content.push({ image: a.mask });
     for (const url of refs) content.push({ image: url });
     const textInstruction = a.mask
