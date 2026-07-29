@@ -66,6 +66,88 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
 - [ ] **agent-authoritative-surface** — 通用 AAS SDK:agent 侧 `createSurface({domain,initialState,commands,hydrate})` + UI 侧 `useSurface(domain)→{state,run,available}` + `SurfaceCommandPayload/Result`(细化 ui-rpc payload,走 agent 转发)+ 能力探针 `surface:<domain>` + 退化契约;宿主零领域语义。_Dependencies: state-injection-bridge_
 - [ ] **aigc-canvas** — AIGC Canvas:画廊(attachment 派生视图,9宫格/密度可切换/分页)+ 工作台(格子展开/关闭)+ 二次创作(A 档 image_edit 指令/inpaint mask/参考图/变体、B 档客户端裁剪拼贴、C 档血缘树/参数复用/对比)+ image_edit 集成(ui-rpc 转发调 runImageTool)+ 非 AIGC source 优雅退化;门控 `NEXT_PUBLIC_PI_WEB_CANVAS`。_Dependencies: agent-authoritative-surface_
 
+## 宿主内置 panes + 形态化登录 + 会话活跃态波次(2026-07-28 discovery · Path E)
+
+> 背景:五项用户诉求 ——(1) 本地 web 形态彻底旁路登录(仅 pi-clouds 与桌面版强制登录);
+> (2) auto-title 对所有 agent 默认生效;(3) session-list 显示会话生成中/工具调用中的转圈状态;
+> (4) panes 提层为宿主能力,任何 agent 零改动即可见;(5) 新增 file_explorer / browser /
+> code editor 三个内置 pane,并把现有 logging 面板转换为内置 pane。
+> 上游地基:`isolated-panes`(Wave 0–4 已完成,含 `panes-kit` 契约、`PanesHost`、Guest SDK、
+> agent-route adapter、`PaneAgentModule` 载体)。
+
+### 方案决策(2026-07-28)
+
+- **登录门控**:引入**显式部署形态**(`local-web` / `desktop` / `cloud`)。今天 `IdentityGate`
+  只有「云端探测失败/未配置就放行」这种**隐式**逻辑,本地 web 一旦配了云端 env 就被门住。
+  改为形态权威判定:本地 web 形态下 gate 直接旁路且 identity/auth 路由不挂载。
+  **Rejected**:仅去掉强制跳转(治症不治因,隐式判定仍会在别的 env 组合下复发);
+  登录改「可选」(用户明确要求本地彻底不登录,保留入口即保留复发面)。
+- **panes 提层**:**宿主内置 pane 集合 + agent 追加合并**。宿主默认给每个会话装载一组内置
+  pane 定义,agent 若声明 `PaneAgentModule` 则在其之上追加。
+  **Rejected**:在 runner 装配期给每个 agent 强注一份默认 panes 模块(把宿主能力伪装成 agent
+  声明,内置 pane 的宿主侧能力无处安放);只让内置 agent 默认带(第三方/示例 agent 仍看不到)。
+- **内置 pane 车道**:**统一走 iframe guest**,与第三方 pane 同构、同一 MessageChannel + 五种
+  operation。**Rejected**:宿主原生 React 特权面板(实现快但与第三方 pane 双轨,隔离性弱,
+  且会让「宿主能力面」这条安全边界不必要地消失)。
+- **文件能力边界**:**限会话 cwd 子树,可读可写**。realpath 校验,拒符号链接逃逸。
+  **Rejected**:只读(code editor 名不副实);全盘可读写(本地 web 形态下等于把宿主文件系统
+  暴露给 pane)。
+- **browser pane**:**桌面 Tauri 原生 webview + web 形态降级为同源预览器**。
+  **Rejected**:宿主加转发代理剥 `frame-ancestors`(把宿主变成开放代理,引入 SSRF 面)。
+- **auto-title**:不立 spec,走**直接实现**。机制已在 `BUILTIN_EXTENSIONS` 单一清单且
+  `PI_WEB_AUTO_TITLE !== "0"` 默认开;先取新鲜证据定位真实缺口,无缺口则补 e2e 取证。
+
+### Boundary Strategy
+
+- **Why this split**:① 提层机制(宿主装载 + 合并语义)与 ② 宿主能力面(文件/日志 route +
+  授权)与 ③ 具体 pane UI 是三条独立收敛的责任线 —— 能力面是**安全边界**,值得独立 review,
+  不能被 pane UI 的实现进度裹挟;browser pane 跨桌面壳、技术栈与取证方式(需打包态)与另外
+  三个完全不同,混在一起会拖住可交付部分。
+- **Shared seams to watch**:
+  - **宿主 pane 定义与 agent 定义的合并与冲突语义**(ID 撞车、agent 是否可覆盖内置)——
+    归 `host-builtin-panes`,勿被 `builtin-pane-suite` 各自实现。
+  - **grant 只源于已装载定义**(`isolated-panes` Req 4.1/4.2 的默认拒绝)对内置 pane 同样
+    成立 —— 内置身份**不产生**额外权限,能力仍须逐项 grant。
+  - **会话 cwd 的权威来源**是 agent 会话装配态,不是 pane 自报 —— 归 `pane-host-capabilities`。
+  - **部署形态判定**须单一权威函数,禁止调用方各写 `if (isDesktop)`(`identity/types.ts:16`
+    已立此纪律)——归 `desktop-account-login` 扩展。
+  - **会话活跃态**(生成中/工具调用中)是 `PiSession` 生命周期的派生投影,列表项只消费 ——
+    归 `sessions-list` 扩展,勿在前端靠 SSE 文本猜测。
+  - ★ **pane 时序问题必须以 browser e2e 为判据**(`isolated-panes` Wave 5 教训:panes-kit
+    单测全绿而真实浏览器 4 套 e2e 全红)。
+  - ★ **pane 四条通道回来的都是未校验数据**,`guest.query<T>()` 泛型是断言不是校验 ——
+    内置 pane 必须在 guest 侧做运行期校验,否则 404 错误体被当结果解构即崩。
+
+### Existing Spec Updates
+
+- [ ] **desktop-account-login** — 引入显式部署形态(`local-web`/`desktop`/`cloud`)单一权威判定;
+  本地 web 形态下 `IdentityGate` 旁路、identity/auth 路由不挂载、前端不出现登录页;
+  pi-clouds 与桌面版保持强制登录不变。_Dependencies: none_
+- [ ] **sessions-list** — 会话活跃态显示:server 侧从 `PiSession` 聚合「生成中 / 工具调用中 /
+  空闲」并经实时通道下推,列表 DTO 增活跃态字段,列表项在非空闲时显示转圈 loading。
+  _Dependencies: none_
+
+### Direct Implementation Candidates
+
+- [ ] **auto-title 缺口诊断与修补** — 机制已默认集成,须先以新鲜证据(内置 agent / 示例 agent /
+  第三方 source 三形态实测)定位「哪种形态下未生效」。无缺口 → 只补 e2e 取证与文档;
+  有缺口 → 定点修。为一个尚未证实存在的缺口立 spec 不划算。
+
+### Specs (dependency order)
+
+- [ ] **host-builtin-panes** — panes 提层:宿主侧内置 pane 定义集合 + 装载点 + 与 agent
+  `PaneAgentModule` 的追加合并与冲突语义;任何 agent(含无 web extension 的)零改动即可见
+  panes;内置身份不产生额外权限。_Dependencies: none_
+- [ ] **pane-host-capabilities** — 内置 pane 的宿主能力面:会话 cwd 子树的文件树枚举 / 读文件 /
+  写回 route + 授权(realpath 越界与符号链接逃逸拒绝、大小上限)+ 日志流能力;
+  能力面与 pane UI 解耦,可独立安全 review。_Dependencies: host-builtin-panes_
+- [ ] **builtin-pane-suite** — 三个内置 pane 的 guest 实现:`file_explorer`(文件树浏览)、
+  `code_editor`(编辑 + 写回)、`logging`(由现有 logs 面板转换为 pane);guest 侧对四条通道
+  返回值做运行期校验。_Dependencies: pane-host-capabilities_
+- [ ] **builtin-pane-browser** — `browser` 内置 pane:桌面(Tauri)用原生 webview 开任意站点,
+  纯 web 形态降级为同源/可控来源预览器;形态判定复用 `desktop-account-login` 扩展落地的
+  单一权威。_Dependencies: host-builtin-panes, desktop-account-login(形态判定)_
+
 ## Future / Out of MVP scope(不进入本批次,仅作排序与一致性意识)
 
 - `embed-integrations` — `@pi-web/embed`:Web Component `<pi-web-chat>` + iframe widget(非 React 集成)。
