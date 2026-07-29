@@ -1,6 +1,6 @@
 # Design: ai-gateway-providers（ai-gateway 专属 provider 套件）
 
-> 依据：`specs/ai-gateway-providers/requirements.md`（6 Story / 27 EARS）；
+> 依据：`.kiro/specs/ai-gateway-providers/requirements.md`（6 Story / 27 EARS）；
 > 上位大纲：`~/Projects/BlackSail/agents/ai-gateway/docs/pi-web-integration.md`。
 > 本文只讲 pi-web 侧如何落地；网关侧协议/计费/池化能力视为既成事实。
 
