@@ -341,3 +341,77 @@ describe("configureFileOutput — integration with createLogger", () => {
     expect(nodeFs.existsSync(logPath)).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// configureFileOutputFromEnv（真机回归）
+//
+// ★ 背景：`PI_WEB_LOG_FILE` 的解析原本**内联在 `initConfigFromEnv()` 里**，而 pi-web
+//   主进程刻意不调那个函数（它用 `configureLogger()` 自行门控，好让 Settings 配置能赢）。
+//   后果：该变量长期**只在 runner 子进程生效** —— 日志文件确实被创建、看着一切正常，
+//   里面却没有一行主进程的日志。真机排查发布链时因此完全失明，判据最后只能靠回执文件。
+//
+//   拆出本函数后，两处共用同一份解析（而不是各写一遍、迟早漂移）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("configureFileOutputFromEnv", () => {
+  // 本组自建临时目录:上面那组的 `tmpDir` 是其 describe 内的局部变量,取不到。
+  let envTmpDir: string;
+  beforeEach(() => {
+    envTmpDir = nodeFs.mkdtempSync(nodePath.join(os.tmpdir(), "pi-log-env-"));
+  });
+  afterEach(() => {
+    nodeFs.rmSync(envTmpDir, { recursive: true, force: true });
+  });
+
+  it("★ 单独调用即可装上文件 sink —— 不必经 initConfigFromEnv", async () => {
+    const { configureFileOutputFromEnv, getFileSink, configureFileOutput } = await import(
+      "../config.js"
+    );
+    // 先关掉:此后写入不应产生任何文件。
+    // ★ 断言的是**行为**(写没写进去),不是 getFileSink() 的内部表示 ——
+    //   关闭态下它返回的是空操作 sink 而非 null,拿 null 当判据会写出一条假断言。
+    configureFileOutput({ enabled: false, path: "", maxSizeMb: 1, maxFiles: 1 });
+    const logPath = nodePath.join(envTmpDir, "from-env.log");
+    getFileSink()?.({ level: "info", ns: "t", msg: "should-not-appear", ts: 1 });
+    expect(nodeFs.existsSync(logPath)).toBe(false);
+
+    expect(configureFileOutputFromEnv({ PI_WEB_LOG_FILE: logPath })).toBe(true);
+    getFileSink()?.({ level: "info", ns: "t", msg: "hello", ts: 1 });
+    const written = nodeFs.readFileSync(logPath, "utf8");
+    expect(written).toContain("hello");
+    expect(written).not.toContain("should-not-appear");
+  });
+
+  it("未设 PI_WEB_LOG_FILE → 返回 false 且不动既有 sink（不误关已配的输出）", async () => {
+    const { configureFileOutputFromEnv, getFileSink, configureFileOutput } = await import(
+      "../config.js"
+    );
+    const logPath = nodePath.join(envTmpDir, "keep.log");
+    configureFileOutput({ enabled: true, path: logPath, maxSizeMb: 1, maxFiles: 1 });
+
+    expect(configureFileOutputFromEnv({})).toBe(false);
+    expect(configureFileOutputFromEnv({ PI_WEB_LOG_FILE: "   " })).toBe(false);
+
+    // 既有输出仍然有效 —— 空 env 不得把已配好的文件输出悄悄关掉。
+    getFileSink()?.({ level: "info", ns: "t", msg: "kept", ts: 1 });
+    expect(nodeFs.readFileSync(logPath, "utf8")).toContain("kept");
+  });
+
+  it("非法 maxSize/maxFiles 落回缺省，不产出坏配置", async () => {
+    const { configureFileOutputFromEnv, getFileSink } = await import("../config.js");
+    const logPath = nodePath.join(envTmpDir, "bad-nums.log");
+    expect(
+      configureFileOutputFromEnv({
+        PI_WEB_LOG_FILE: logPath,
+        PI_WEB_LOG_FILE_MAXSIZE: "not-a-number",
+        PI_WEB_LOG_FILE_MAXFILES: "-3",
+      }),
+    ).toBe(true);
+    getFileSink()?.({ level: "info", ns: "t", msg: "still works", ts: 1 });
+    expect(nodeFs.readFileSync(logPath, "utf8")).toContain("still works");
+  });
+
+  it("env 缺席（浏览器环境）→ 返回 false 而非抛", async () => {
+    const { configureFileOutputFromEnv } = await import("../config.js");
+    expect(configureFileOutputFromEnv(undefined)).toBe(false);
+  });
+});

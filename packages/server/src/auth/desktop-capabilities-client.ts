@@ -48,6 +48,7 @@ export type RegisterPublishKeyOutcome =
     };
 import type {
   CapabilityEgressGrant,
+  CapabilityPublishGrant,
   CapabilityTenant,
   CapabilityTokenGrant,
   StaticCapabilitySnapshot,
@@ -274,6 +275,43 @@ function parseSourcesTokenGrant(
 }
 
 /**
+ * 解析 publish 授予(spec publish-grant-issuance Req 5.1)。
+ *
+ * ★ **四项缺一即整体作废**:`baseUrl`/`token`/`publisherId`/`org` 里少任何一个,
+ *   拿到的都是一个「不知道以谁的身份、往哪个命名空间发」的半身份 —— 用它去发布只会在
+ *   服务端以难懂的方式失败(FORBIDDEN),不如在此判为无授予,走既有的诚实降级。
+ *
+ * ⚠ 本函数**曾经缺失**:P1 给类型加了 `publish` 字段、也写了 `getPublishGrant()` 去读它,
+ *   却没写这个解析器 —— 于是 `snapshot.publish` 恒 undefined,公钥登记永远静默跳过,
+ *   真机上表现为"登录了也发不出去"。单测没抓到,是因为当时只用 stub 喂 `getPublishGrant()`,
+ *   从没用**真实响应体**走过一遍解析(而隔壁 `sources` 正是那样测的)。
+ */
+function parsePublishGrant(parsed: unknown, nowS: number): CapabilityPublishGrant | undefined {
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const publish = (parsed as { publish?: unknown }).publish;
+  if (typeof publish !== "object" || publish === null) return undefined;
+  const obj = publish as {
+    baseUrl?: unknown;
+    token?: unknown;
+    publisherId?: unknown;
+    org?: unknown;
+    expiresAt?: unknown;
+  };
+  const baseUrl = typeof obj.baseUrl === "string" ? obj.baseUrl.trim() : "";
+  const token = typeof obj.token === "string" ? obj.token : "";
+  const publisherId = typeof obj.publisherId === "string" ? obj.publisherId.trim() : "";
+  const org = typeof obj.org === "string" ? obj.org.trim() : "";
+  if (baseUrl.length === 0 || token.length === 0 || publisherId.length === 0 || org.length === 0) {
+    return undefined;
+  }
+  const expiresAt =
+    typeof obj.expiresAt === "number" && Number.isFinite(obj.expiresAt)
+      ? Math.floor(obj.expiresAt)
+      : parseExpiresAt(parsed, nowS);
+  return { baseUrl, token, publisherId, org, expiresAt };
+}
+
+/**
  * 从云登录 egress base 推导 capabilities URL。
  *
  * 例:`https://host/api/desktop/egress/v1` → `https://host/api/desktop/capabilities`
@@ -406,10 +444,16 @@ export function createDesktopCapabilitiesClient(
       tenant: parseTenant(parsed),
       egress: parseEgressGrant(parsed, nowS),
       sources: parseSourcesTokenGrant(parsed, nowS),
+      publish: parsePublishGrant(parsed, nowS),
     };
 
     // 缓存到最早到期的那一项之前;三项皆无则短缓存 60s,避免每次请求都打云端。
-    const expiries = [snapshot.egress?.expiresAt, snapshot.sources?.expiresAt].filter(
+    // publish 也参与:它的 TTL 比 sources 短(发布凭据短时),漏算会让缓存在它过期后仍被复用。
+    const expiries = [
+      snapshot.egress?.expiresAt,
+      snapshot.sources?.expiresAt,
+      snapshot.publish?.expiresAt,
+    ].filter(
       (x): x is number => typeof x === "number",
     );
     const earliest = expiries.length > 0 ? Math.min(...expiries) : nowS + 60;

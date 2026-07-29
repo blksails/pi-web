@@ -97,7 +97,11 @@ import {
   type CreateChannelOpts,
 } from "@blksails/pi-web-server";
 import { loggingConfigSchema } from "@blksails/pi-web-protocol";
-import { configureLogger, createLogger } from "@blksails/pi-web-logger";
+import {
+  configureFileOutputFromEnv,
+  configureLogger,
+  createLogger,
+} from "@blksails/pi-web-logger";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
@@ -537,6 +541,31 @@ function buildSingleton(): HandlerSingleton {
   // 时主进程与 runner 同步开启。(注:此为主进程自身日志门控,runner 日志→UI 仍由
   // loggingConfigProvider/gateConfig 单独控制。)
   configureLogger(resolveLoggingEnvDefault());
+  // ★ 文件输出必须在此**单独**配一次:`configureLogger` 只管 enabled/level/namespaces,
+  //   而文件 sink 装在 `initConfigFromEnv()` 里 —— 主进程刻意不调那个(见上),
+  //   于是 `PI_WEB_LOG_FILE` 长期**只在 runner 子进程生效**:日志文件确实被创建、
+  //   看着一切正常,里面却没有一行主进程的日志。真机排查发布链时因此完全失明。
+  // ★★ 文件 sink 的 `fs` 来自 `globalThis.__PI_WEB_FS__` 接缝 —— logger 包本身**不含任何
+  //     `node:` 说明符**(否则浏览器/Next 构建会去解析 Node 内置模块),故必须由 Node-only 的
+  //     调用方来填。此前**只有 runner 填过**(`packages/server/src/runner/runner.ts:248`),
+  //     主进程从没填 → `getFsRef()` 恒 null → 每次文件写入都是**静默空操作**。
+  //
+  //     后果:`PI_WEB_LOG_FILE` 看似生效(文件被 runner 创建、内容也在增长),
+  //     里面却只有 runner 子进程的行,主进程一条都没有。真机排查发布链时因此完全失明。
+  //     ⚠ 只配 `configureFileOutputFromEnv` 是**不够的** —— 两步缺一,文件就是空的。
+  //
+  //     这里可以同步填(本文件已静态 `import fs from "node:fs"`),不必像 runner 那样 await。
+  (globalThis as Record<string, unknown>)["__PI_WEB_FS__"] ??= fs;
+
+  const fileLogEnabled = configureFileOutputFromEnv(process.env);
+  // 一条**必定触发**的启动行:没有它,"日志到底通没通"无从判断 ——
+  // 主进程在装配期原本一条日志都不记,于是「文件是空的」既可能是没配好、
+  // 也可能是压根没事发生,两者无法区分。真机排查发布链时正是卡在这个盲区上
+  // (文件确实存在、看着一切正常,里面却只有 runner 子进程的行)。
+  hostAssemblyLogger.info("logging configured", {
+    level: process.env.PI_WEB_LOG_LEVEL ?? "info",
+    file: fileLogEnabled ? process.env.PI_WEB_LOG_FILE : undefined,
+  });
 
   const store = new InMemorySessionStore(true);
 

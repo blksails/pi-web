@@ -14,6 +14,7 @@ export { LOG_SENTINEL, serializeLogLine, nodeSink } from "./node-sink.js";
 // File sink
 export type { FileOutputConfig } from "./file-sink.js";
 export { createFileSink } from "./file-sink.js";
+export { configureFileOutputFromEnv } from "./config.js";
 // Browser bus
 export {
   BROWSER_LOG_CAPACITY,
