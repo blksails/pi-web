@@ -252,7 +252,11 @@ describe("computeBakePlan × 真实 fs — Dockerfile 文本形状", () => {
   it("bundle 形态:FROM/COPY staged\\//ENV AGENT_CWD/ENV AGENT_CMD(--agent index.js)+编译缓存预热,逐行精确", () => {
     const plan = planOrThrow(opts());
     const agentCmd =
-      "node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
+      // ★ 包名段随引导脚本迁包同步(spec: runner-package-extraction 任务 4.2):
+      //   pi-web-server → pi-web-runner。AGENT_CMD 是与基础镜像的**字节契约**,
+      //   故这里与 packages/server/test/sandbox-image/bake-plan.test.ts 各有一份
+      //   写死全串的断言 —— 两处都要改,漏一处就只有跑全量才会发现(实测栽过)。
+      "node /usr/local/lib/node_modules/@blksails/pi-web-runner/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
     expect(plan.dockerfile).toBe(
       [
         `FROM ${BASE_IMAGE}`,
