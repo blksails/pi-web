@@ -4,6 +4,7 @@ export {
   PaneSurfaceCommandGrantSchema,
   PaneCapabilitiesSchema,
   PaneDocumentSchema,
+  UNLIMITED_PANE_COUNT,
   PaneDefinitionSchema,
   PanesDefinitionSchema,
   PaneGuestRequestSchema,
@@ -57,4 +58,4 @@ export type { AgentRouteClientOptions } from "./agent-routes.js";
 export { fromMessagePort } from "./host-ports.js";
 export type { PanePort, PaneViewHandle, PaneViewAdapter } from "./host-ports.js";
 export { connectPaneGuest } from "./guest.js";
-export type { PaneGuestConnection, PaneGuestSurface } from "./guest.js";
+export type { PaneGuestConnection, PaneGuestEvents, PaneGuestSurface } from "./guest.js";

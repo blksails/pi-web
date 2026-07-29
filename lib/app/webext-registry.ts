@@ -13,7 +13,6 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
-import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/web.config";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
@@ -81,15 +80,11 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
-  { match: "aigc-agent", ext: aigcExt },
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——launcherRail 入口 + panelRight 画廊/工作台。
-  // 注:match 顺序在 "aigc-agent" 之后,但 resolveExtensionForSource 用 includes 首命中;
-  // "aigc-canvas-agent" 不含子串 "aigc-agent"(-canvas- 打断),故独立命中,无需担心顺序。
   { match: "aigc-canvas-agent", ext: aigcCanvasExt },
   // aigc-canvas-nosurface-agent:贡献 Canvas 面板但 agent 无 canvas surface —— 降级
   // (unavailable / 只读图库)端到端验证 fixture。source 路径含子串 "aigc-canvas-nosurface-agent",
-  // 不含 "aigc-canvas-agent"(-nosurface- 打断)也不含 "aigc-agent",故独立命中,与上方两项互不误配。
+  // 不含 "aigc-canvas-agent"(-nosurface- 打断),故独立命中。
   { match: "aigc-canvas-nosurface-agent", ext: aigcCanvasNoSurfaceExt },
   // canvas-plugin-stickers(canvas-plugins-m3):Canvas 插件双端范例 source —— 复用 CanvasLauncher/
   // CanvasPanel + 车道① canvasPlugins:[stickersBundle](贴纸图层/工具 + 风格迁移动作)。canvasPlugins

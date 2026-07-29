@@ -22,6 +22,10 @@ export const PaneCapabilitiesSchema = z.object({
   routes: z.array(PaneRouteGrantSchema).default([]),
   surfaceKeys: z.array(NonEmptyIdSchema).default([]),
   surfaceCommands: z.array(PaneSurfaceCommandGrantSchema).default([]),
+  events: z.object({
+    publish: z.array(NonEmptyIdSchema).default([]),
+    subscribe: z.array(NonEmptyIdSchema).default([]),
+  }).default({}),
   attachments: z.enum(["none", "read", "read-write"]).default("none"),
   conversation: z.enum(["none", "submit"]).default("none"),
 });
@@ -33,6 +37,9 @@ export const PaneDocumentSchema = z.discriminatedUnion("kind", [
 ]);
 export type PaneDocument = z.infer<typeof PaneDocumentSchema>;
 
+/** Explicit sentinel for hosts that intentionally impose no pane-count policy. */
+export const UNLIMITED_PANE_COUNT = Number.MAX_SAFE_INTEGER;
+
 export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
@@ -40,7 +47,7 @@ export const PaneDefinitionSchema = z.object({
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
-  maxInstances: z.number().int().min(1).max(32).default(1),
+  maxInstances: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(1),
   lifecycle: z.object({
     keepAlive: z.boolean().default(true),
     suspendWhenHidden: z.boolean().default(false),
@@ -53,7 +60,7 @@ export const PanesDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   panes: z.array(PaneDefinitionSchema).min(1),
   initialPaneIds: z.array(NonEmptyIdSchema).min(1).optional(),
-  maxOpenPanes: z.number().int().min(1).max(64).default(16),
+  maxOpenPanes: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(16),
 });
 export type PanesDefinition = z.infer<typeof PanesDefinitionSchema>;
 export type PanesDefinitionInput = z.input<typeof PanesDefinitionSchema>;
@@ -88,6 +95,11 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     domain: NonEmptyIdSchema,
     action: NonEmptyIdSchema,
     args: z.unknown().optional(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("event.publish"),
+    topic: NonEmptyIdSchema,
+    payload: z.unknown().optional(),
   }),
   RequestBaseSchema.extend({
     operation: z.literal("attachment.put"),
@@ -143,6 +155,12 @@ export type PaneHostMessage =
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: true; readonly data: unknown }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: false; readonly error: PaneErrorData }
   | { readonly type: "pane:surface"; readonly key: string; readonly value: unknown }
+  | {
+      readonly type: "pane:event";
+      readonly topic: string;
+      readonly payload: unknown;
+      readonly source: Pick<PaneInstance, "instanceId" | "paneId">;
+    }
   | { readonly type: "pane:lifecycle"; readonly state: "visible" | "hidden" | "closing" };
 
 export function definePaneDefinition(input: PaneDefinitionInput): PaneDefinition {

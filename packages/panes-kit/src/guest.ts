@@ -20,6 +20,11 @@ export interface PaneGuestSurface {
   hasCommand(name: string): boolean;
 }
 
+export interface PaneGuestEvents {
+  publish(topic: string, payload?: unknown): Promise<{ readonly delivered: number }>;
+  subscribe(topic: string, listener: (payload: unknown, source: { readonly instanceId: string; readonly paneId: string }) => void): () => void;
+}
+
 export interface PaneGuestConnection {
   readonly instanceId: string;
   readonly paneId: string;
@@ -27,6 +32,7 @@ export interface PaneGuestConnection {
   readonly interactionMode: "standard" | "advanced";
   readonly grants: PaneCapabilities;
   readonly surface: PaneGuestSurface;
+  readonly events: PaneGuestEvents;
   query<T = unknown>(route: string, query?: Record<string, string>): Promise<T>;
   mutate<T = unknown>(route: string, body: unknown): Promise<T>;
   upload(file: File): Promise<{ attachmentId: string; displayUrl: string }>;
@@ -45,6 +51,7 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
   const pending = new Map<string, PendingCall>();
   const states = new Map<string, unknown>();
   const surfaceListeners = new Map<string, Set<(value: unknown) => void>>();
+  const eventListeners = new Map<string, Set<(payload: unknown, source: { readonly instanceId: string; readonly paneId: string }) => void>>();
   const lifecycleListeners = new Set<(state: "visible" | "hidden" | "closing") => void>();
 
   const request = <T,>(operation: string, payload: Record<string, unknown>, transfer: Transferable[] = []): Promise<T> => {
@@ -75,6 +82,10 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       for (const listener of surfaceListeners.get(data.key) ?? []) listener(data.value);
       return;
     }
+    if (data.type === "pane:event") {
+      for (const listener of eventListeners.get(data.topic) ?? []) listener(data.payload, data.source);
+      return;
+    }
     if (data.type === "pane:lifecycle") {
       for (const listener of lifecycleListeners) listener(data.state);
     }
@@ -99,6 +110,15 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       },
       hasCommand: (name) => grants.surfaceCommands.some((grant) =>
         name === `surface:${grant.domain}` || grant.actions.some((action) => name === `surface:${grant.domain}:${action}`)),
+    },
+    events: {
+      publish: (topic, payload) => request("event.publish", { topic, ...(payload !== undefined ? { payload } : {}) }),
+      subscribe: (topic, listener) => {
+        const listeners = eventListeners.get(topic) ?? new Set();
+        listeners.add(listener);
+        eventListeners.set(topic, listeners);
+        return () => listeners.delete(listener);
+      },
     },
     query: (route, query = {}) => request("route.query", { route, query }),
     mutate: (route, body) => request("route.mutate", { route, body }),
@@ -131,21 +151,36 @@ export function connectPaneGuest(options: {
   readonly expectedPaneId: string;
   readonly timeoutMs?: number;
   readonly window?: Window;
+  readonly signal?: AbortSignal;
 }): Promise<PaneGuestConnection> {
   const guestWindow = options.window ?? globalThis.window;
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = (): void => {
+      if (timeout !== undefined) clearTimeout(timeout);
       guestWindow.removeEventListener("message", onConnect);
-      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake timed out", { retryable: true }));
-    }, options.timeoutMs ?? 15_000);
+      options.signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = (): void => {
+      cleanup();
+      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake cancelled", { retryable: true }));
+    };
     const onConnect = (event: MessageEvent<unknown>): void => {
       const data = event.data as Partial<PaneConnectedMessage> | undefined;
       if (event.source !== guestWindow.parent || data?.type !== "pane:connected" || event.ports.length !== 1) return;
       if (data.protocol !== PANE_PROTOCOL_VERSION || data.instance?.paneId !== options.expectedPaneId) return;
-      clearTimeout(timeout);
-      guestWindow.removeEventListener("message", onConnect);
+      cleanup();
       resolve(createConnection(data as PaneConnectedMessage, event.ports[0]!, options.timeoutMs ?? 15_000));
     };
+    if (options.signal?.aborted === true) {
+      onAbort();
+      return;
+    }
+    timeout = setTimeout(() => {
+      cleanup();
+      reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake timed out", { retryable: true }));
+    }, options.timeoutMs ?? 15_000);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
     guestWindow.addEventListener("message", onConnect);
     // readiness 与 iframe load 双触发配合：无论 React effect 与 load 谁先发生，Host 都能握手。
     guestWindow.parent.postMessage({

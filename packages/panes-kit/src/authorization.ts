@@ -34,6 +34,15 @@ export function authorizePaneRequest(capabilities: PaneCapabilities, request: Pa
     }
     return;
   }
+  if (request.operation === "event.publish") {
+    if (!capabilities.events.publish.includes(request.topic)) {
+      throw new PaneHostError("CAPABILITY_DENIED", `Pane event ${request.topic} is not granted`);
+    }
+    if (estimatePayloadBytes(request.payload) > DEFAULT_PANE_REQUEST_BYTES) {
+      throw new PaneHostError("PAYLOAD_TOO_LARGE", "Pane event exceeds the pane limit");
+    }
+    return;
+  }
   if (request.operation === "attachment.put") {
     if (capabilities.attachments !== "read-write") throw new PaneHostError("CAPABILITY_DENIED", "Attachment upload is not granted");
     if (request.bytes.byteLength > DEFAULT_PANE_ATTACHMENT_BYTES) {
