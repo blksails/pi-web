@@ -362,6 +362,37 @@ peerDependencies:  @earendil-works/pi-coding-agent（optional，源码中仅 1 �
 五路并发验证（构建冒烟 / 需求覆盖 / 设计一致性 / 跨任务集成 / 边界审计）+ 主对话独立核验。
 **验证过程本身产出了 4 处修正** —— 记在这里是因为它们都属于「测试全绿也看不出来」的那一类。
 
+### 需求覆盖矩阵（23/23，逐条机械证据）
+
+派出的第五路（需求覆盖）**始终未交付报告**（连续 5 次只报 idle）。其职责面由主对话独立核验补齐；
+下表是逐条证据，不是「已覆盖」的断言 —— 声称与证据不匹配正是本 spec 一路在防的东西。
+
+| 条 | 判定 | 机械证据 |
+|---|---|---|
+| 1.1 | MET | 名册判 neutral/core 的 **32** 个模块全在 core 包；新增守卫 `module-roster.test.ts` 双向断言（搬走 `trust` / 改判 `auth` 均报红） |
+| 1.2 | MET | `package-deps.test.ts` 查 `dependencies` **与** `devDependencies`；注入 7 个被禁依赖逐条报「名 @ 字段」 |
+| 1.3 | MET | agent SDK 仅 `peerDependencies`；源码侧扫值导入 —— core/src 只剩 1 处 `import type`（`session-store/mirror.ts:14`）；插一行值导入立刻报红指名文件 |
+| 1.4 | MET | 同上，判别力自证已实测 |
+| 1.5 | MET | `createRequire(server/package.json).resolve` 三态全 OK：裸名→`core/src/index.ts`、深路径→`core/src/session/index.ts`、具名子路径→`core/src/trust/index.ts`，**无任何预构建** |
+| 2.1 | MET | `server/package.json` exports **6** 个：`.` `./trust` `./model-options` `./vision-model-options` `./testing` `./host-assembly`，逐个 `test -f` 目标存在 |
+| 2.2 | MET | `dump-main-entry-symbols.mjs` 与入库基准 `diff` 为空（**313**）；已固化为常驻测试 |
+| 2.3 | MET | `index` 与 `host-assembly` 均在 `packages/server/src/` |
+| 2.4 | MET | 313 未增；基线文件自 `b557a102` 入库后未被改动（`git diff b557a102..HEAD -- test/compat/` 只有新增测试） |
+| 2.5 | MET | 消费方（`lib/app`）仅装配点补传 4 行，无导入路径改动 |
+| 3.1 | MET | `model-catalog/service.ts` 零 `ai-gateway` 值导入（依赖方向守卫 0 违规） |
+| 3.2 | MET | `mergeCatalog` 进 **既有** `ModelCatalogServiceDeps`；装配点 `pi-handler.ts:541` |
+| 3.3 | MET | 未注入时 `chatOptions()` 返回 `listSelfChat()` **同一引用**（`toBe` 断言，引用级透传） |
+| 3.4 | MET | `KNOWN_DEBT.length === 0`（实测）；守卫另有「陈旧条目」反向断言 |
+| 4.1 | MET | 守卫扫两包根；实测 **116** 条跨包 specifier 中 **115** 条靠通配解析、unresolved 0 |
+| 4.2 | MET | 分档守卫覆盖两包全部 285 个测试文件 |
+| 4.3 | MET | `assertEveryRootContributed`；把 server 包根改成不存在路径 → 两守卫均报「该包根扫到 0 个」 |
+| 4.4 | MET | 把 `template-name` 改判 assembly → 报出 `sandbox-image(adapters) → template-name(assembly)` 带 `file:line` |
+| 5.1 | MET | 连续两次全量逐档计数完全一致；285 文件 / 2564 用例 ≥ 快照 283 / 2547，差额逐条可归因 |
+| 5.2 | MET | 两包 + 仓库根 `tsc --noEmit` 均 exit 0 |
+| 5.3 | MET | 根 `vitest.config.ts` 数组 alias + 正则 `.js`→`.ts`；根 `test:app` 105/1021 全绿 |
+| 5.4 | MET | 本文件与提交信息均给实测输出（含耗时），非「全绿」结论 |
+| 5.5 | MET | 根 `pnpm test:fast`（两包）**7.5 s** < 10 s |
+
 ### 修正 1 · 一条会主动误导后人的注释
 
 `host-assembly/model-sources.ts` 的文件头写着「必须由 `runner-bootstrap.mjs` 导入」。
