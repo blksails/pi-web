@@ -11,6 +11,7 @@
  * absent are never injected, preserving pi's default discovery behaviour.
  */
 import { basename, extname } from "node:path";
+import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import type { AgentDefinition, AgentModel } from "./agent-definition.js";
 import {
@@ -26,8 +27,21 @@ import {
 import type { ResolveProjectTrust } from "./project-trust.js";
 // desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
 // 不经 server barrel;egress-model-source 见 auth/)。
-import { resolveEgressModelSourceFromEnv } from "../auth/egress-model-source.js";
+import {
+  createSharedModelServices,
+  registerEgressProvider,
+  resolveEgressSpecFromEnv,
+} from "../auth/egress-model-source.js";
+// spec ai-gateway-session-models:网关目录模型的会话侧注册(与 egress 共用同一 registry)。
+import {
+  AI_GATEWAY_PROVIDER_NAME,
+  registerAiGatewayProvider,
+  resolveAiGatewaySessionSpecFromEnv,
+} from "../ai-gateway/session-model-source.js";
 import { resolveBuiltinExtensionEntries } from "./builtin-extensions.js";
+
+/** runner 侧模型来源注册的日志出口(Req 7.1:记 provider 名与条目数,绝不记凭据)。 */
+const runnerLog = createLogger({ namespace: "server:runner:model-source" });
 
 type ResourceLoaderOptions = NonNullable<
   CreateAgentSessionServicesOptions["resourceLoaderOptions"]
@@ -231,9 +245,19 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
   }
   const found = registry.find(model.provider, model.modelId);
   if (found === undefined) {
-    throw new Error(
-      `Model not found in registry: provider="${model.provider}" modelId="${model.modelId}"`,
-    );
+    const base = `Model not found in registry: provider="${model.provider}" modelId="${model.modelId}"`;
+    // spec ai-gateway-session-models Req 1.4/4.2:网关来源的失败有其特有成因(目录 TTL
+    // 已过期、模型是 :batch/embedding 等不可对话变体、网关套件未启用),裸抛注册表内部
+    // 文案会让用户无从下手。非网关来源的文案保持逐字不变。
+    if (model.provider === AI_GATEWAY_PROVIDER_NAME) {
+      throw new Error(
+        `${base} — 该模型来自 ai-gateway 目录。常见成因:` +
+          `(1) 网关套件未启用或凭据缺失,会话侧未注册该 provider;` +
+          `(2) 目录快照已变化,该模型已从上游下线;` +
+          `(3) 该条目并非对话模型(如 :batch 变体、embedding/tts),不可用于会话。`,
+      );
+    }
+    throw new Error(base);
   }
   return found as SessionModel;
 }
@@ -317,16 +341,30 @@ export function buildRuntimeFactory(
     // desktop-cloud-login(Req 3.1/3.2/4.1/4.3):登录态经 runner env 注入指向云端 egress 的
     // 内存 ModelRegistry(复用共享 auth.json,零落盘,不改 agentDir)。未登录/未启用 →
     // undefined,保持 SDK 默认(共享 auth.json + models.json),字节级等价今日本地路径。
-    const egressServices = resolveEgressModelSourceFromEnv(agentDir, process.env);
+    //
+    // spec ai-gateway-session-models(design.md §D2,Req 1.1/1.3/3.1/3.4):会话服务只有
+    // `modelRegistry` 一个位置,而 egress 与 ai-gateway 两个来源都要注册 provider ——
+    // 谁自建 registry 谁就顶掉对方。故改为「先各自解析,再合成单一 registry」。
+    // 两者皆无 → 完全不触碰 servicesOptions,保持 SDK 默认(共享 auth.json + models.json),
+    // 与本 spec 实施前逐字节等价。
+    const egressSpec = resolveEgressSpecFromEnv(process.env);
+    const gatewaySpec = resolveAiGatewaySessionSpecFromEnv(process.env);
     const servicesOptions: CreateAgentSessionServicesOptions = {
       cwd,
       agentDir,
       resourceLoaderOptions,
       resourceLoaderReloadOptions: { resolveProjectTrust: trust },
     };
-    if (egressServices !== undefined) {
-      servicesOptions.authStorage = egressServices.authStorage;
-      servicesOptions.modelRegistry = egressServices.modelRegistry;
+    if (egressSpec !== undefined || gatewaySpec !== undefined) {
+      const shared = createSharedModelServices(agentDir);
+      if (egressSpec !== undefined) {
+        registerEgressProvider(shared.modelRegistry, egressSpec);
+      }
+      if (gatewaySpec !== undefined) {
+        registerAiGatewayProvider(shared.modelRegistry, gatewaySpec, runnerLog);
+      }
+      servicesOptions.authStorage = shared.authStorage;
+      servicesOptions.modelRegistry = shared.modelRegistry;
     }
     const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 

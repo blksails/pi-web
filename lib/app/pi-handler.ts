@@ -140,6 +140,8 @@ import {
 // e2b 分支按会话铸造 scope="ai-gateway" token,注入沙箱可达 base + token(增量可选,
 // 不替换任何既有 provider key,与 llm-gateway 的强制 credential-switch 语义不同)。
 import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
+// spec ai-gateway-session-models(任务 2.2):本地分支的网关会话模型下发。
+import { computeAiGatewaySessionSpawnEnv } from "./ai-gateway-session-assembly.js";
 import {
   resolveCloudLoginConfig,
   readCloudDomainEgressBase,
@@ -809,6 +811,18 @@ function buildSingleton(): HandlerSingleton {
           authSessionState.currentCredential(),
           desktopCapabilitiesClient?.cachedStatic()?.egress,
         ),
+        // spec ai-gateway-session-models(任务 2.2,Req 1.3/2.1/2.5):把网关基址 + 凭据 +
+        // 目录 id 清单经 spawn env 下发本地 runner,runner 据此注册 `ai-gateway` provider,
+        // 使清单里的网关模型能被 registry 解析(否则选中即「模型未找到」)。
+        // 未启用套件 / 无凭据 / 目录为空 → 空对象,行为与本 spec 实施前一致。
+        // 凭据经 env 下发,与上面 `config.providerKeys` 同一信任边界、同一形态(design §D1)。
+        // `catalog.get()` 是同步快照(stale-while-revalidate,不打网络),契合 spawn spec
+        // 的同步构造路径。
+        ...computeAiGatewaySessionSpawnEnv({
+          aiGatewayConfig: aiGwConfig,
+          apiKey: process.env.BLKSAILS_GATEWAY_API_KEY ?? process.env.AI_GATEWAY_API_KEY,
+          catalog: gatewayModelCatalog?.get() ?? [],
+        }).env,
       },
     };
     return new PiRpcProcess(spec);

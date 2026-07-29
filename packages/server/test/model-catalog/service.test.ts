@@ -142,12 +142,13 @@ describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 
       hiddenProviders: new Set(),
     });
     const chat = svc.chatOptions();
-    // providers 仅含 self 来源 provider(去重排序),不含 ai-gateway 与任何渠道名。
-    expect(chat.providers).toEqual(["dashscope", "openrouter"]);
+    // ★spec ai-gateway-session-models Req 6.1:providers 追加 ai-gateway(网关模型已可
+    // 接入会话);渠道名仍恒不进入。availability 同步由 "catalog" 修订为 "session"(Req 5.1)。
+    expect(chat.providers).toEqual(["dashscope", "openrouter", "ai-gateway"]);
     // 默认 precedence=gateway:网关块在前,self 块在后。
     expect(chat.models).toEqual([
-      { provider: "ai-gateway", id: "gpt-4o", name: "gpt-4o", source: "ai-gateway", channel: "openai-compat", availability: "catalog" },
-      { provider: "ai-gateway", id: "qwen-max", name: "qwen-max", source: "ai-gateway", channel: "dashscope-token-plan", availability: "catalog" },
+      { provider: "ai-gateway", id: "gpt-4o", name: "gpt-4o", source: "ai-gateway", channel: "openai-compat", availability: "session" },
+      { provider: "ai-gateway", id: "qwen-max", name: "qwen-max", source: "ai-gateway", channel: "dashscope-token-plan", availability: "session" },
       { provider: "openrouter", id: "gpt-5", name: "GPT-5", source: "self", availability: "session" },
       { provider: "dashscope", id: "qwen-max", name: "Qwen Max", source: "self", availability: "session" },
     ]);

@@ -17,6 +17,10 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
 import type { KeyResolver } from "./key-resolver.js";
+import {
+  AI_GATEWAY_PROVIDER_NAME,
+  isSessionCapableGatewayModel,
+} from "./session-model-source.js";
 
 // 与 routes.ts 同一命名空间:目录收敛结果与拉取失败均属 ai-gateway 的运维可观测面。
 const log = createLogger({ namespace: "server:ai-gateway" });
@@ -194,13 +198,27 @@ export type ModelPrecedence = "gateway" | "self";
  * Req 1.1–1.3, 2.1–2.3, 3.1):不改入参,不做网络/IO。
  *
  * - 网关条目映射为 `{ provider: "ai-gateway", id, name, source: "ai-gateway",
- *   channel: ownedBy, availability: "catalog" }`;self 条目附
+ *   channel: ownedBy, availability: "session" }`;self 条目附
  *   `source: "self", availability: "session"`。
+ *
+ *   ★ `availability` 于 spec **ai-gateway-session-models** 由 `"catalog"` 翻为 `"session"`
+ *   (model-catalog spec 在 `model-select-field.tsx` 留下的 P2:「网关接入会话后翻转标记
+ *   即可」已兑现)。翻转的前提是会话侧确实能跑 —— runner 经
+ *   `ai-gateway/session-model-source.ts` 注册同名 provider,`registry.find("ai-gateway", id)`
+ *   可解析。**若该注册被移除,此处必须同步翻回 `"catalog"`**,否则用户选中即
+ *   「模型未找到」。
  * - 去重 key = `${provider}/${id}`(防御性;self 与 gateway 的 provider 恒不同,
  *   理论无碰撞);同 key 重复时保留先出现者,后块不覆盖前块。
  * - `precedence` 仅决定两块在 models 数组中的先后(`"gateway"` = 网关块在前,
  *   `"self"` = self 块在前;块内保持入参原有顺序),不做跨归属覆盖删除。
- * - `providers` 仅含 self 来源 provider 去重排序(不含 `"ai-gateway"` 与渠道名)。
+ * - `providers` = self 来源 provider 去重排序,**且在存在网关条目时追加 `"ai-gateway"`**
+ *   (渠道名仍不进入)。
+ *
+ *   ★这是对 model-catalog spec 已冻结约定「providers 仅含 self 来源」的**有意修订**
+ *   (spec ai-gateway-session-models Req 6.4)。原约定的理由是「providers 是可设为默认的
+ *   集合,而网关条目当时不可接入会话」;该前提已随 availability 翻转而消失 —— 网关模型
+ *   现在能跑,把它排除在默认 provider 之外就成了纯粹的功能缺失(本轮需求的直接触发点)。
+ *   无网关条目时输出与修订前逐字节一致。
  *
  * 零侵入语义分界(Req 1.3):「未启用 ai-gateway 套件时响应逐字节一致」由装配层
  * 保证(`aiGwConfig` 为 undefined 时不调用本函数);一旦调用(聚合形态),即便
@@ -216,14 +234,21 @@ export function mergeModelCatalog(
     source: "self" as const,
     availability: "session" as const,
   }));
-  const gatewayTagged: ModelOption[] = gatewayEntries.map((g) => ({
-    provider: "ai-gateway",
-    id: g.model,
-    name: g.model,
-    source: "ai-gateway" as const,
-    channel: g.ownedBy,
-    availability: "catalog" as const,
-  }));
+  // 剔除明确不可对话的变体(Req 4.1):既然网关条目现在可选中,就不该把一个已知会 401
+  // 的条目呈现为正常选项。判据与装配层下发 spawn env 时**同源**,两侧漂移就会出现
+  // 「列表里看得到、选中却说模型未找到」。
+  const gatewayTagged: ModelOption[] = gatewayEntries
+    .filter((g) => isSessionCapableGatewayModel(g.model))
+    .map((g) => ({
+      // ★与 session-model-source 的 provider 命名空间同源:两处必须逐字一致,
+      // 否则前端选中的条目在 runner registry 里查不到。
+      provider: AI_GATEWAY_PROVIDER_NAME,
+      id: g.model,
+      name: g.model,
+      source: "ai-gateway" as const,
+      channel: g.ownedBy,
+      availability: "session" as const,
+    }));
 
   // precedence 只做块排序;防御性去重保留先出现者(不吞并语义,Req 1.2)。
   const ordered =
@@ -237,7 +262,10 @@ export function mergeModelCatalog(
   }
 
   const models = [...byKey.values()];
-  // providers 仅含 self 来源 provider(可设为默认的集合,Req 2.2/3.1)。
+  // providers = 可设为默认的 provider 集合。self 来源恒在;网关在其条目非空时加入
+  // (spec ai-gateway-session-models Req 6.1/6.3——网关模型已可接入会话)。
+  // 空网关时不追加,保证「未接入任何网关条目」的输出与修订前逐字节一致。
   const providers = [...new Set(selfTagged.map((m) => m.provider))].sort();
+  if (gatewayTagged.length > 0) providers.push(AI_GATEWAY_PROVIDER_NAME);
   return { providers, models };
 }

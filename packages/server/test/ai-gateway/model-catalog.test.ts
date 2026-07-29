@@ -149,7 +149,10 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     expect(self?.availability).toBe("session");
     const gw = merged.models.find((m) => m.id === "gateway-only");
     expect(gw?.source).toBe("ai-gateway");
-    expect(gw?.availability).toBe("catalog");
+    // ★spec ai-gateway-session-models Req 5.1:由 "catalog" 修订为 "session"。
+    // 前提是 runner 侧确实注册了同名 provider(session-model-source.ts);
+    // 若该注册被移除,此断言与实现都必须翻回 "catalog",否则用户选中即「模型未找到」。
+    expect(gw?.availability).toBe("session");
   });
 
   it("同 id 跨归属不吞并(Req 1.1/1.2/6.1):self 与 gateway 两条并存,任一 precedence 都不做覆盖删除", () => {
@@ -179,12 +182,22 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     }
   });
 
-  it("providers 仅含 self 来源 provider(去重排序),不含 ai-gateway 与任何渠道名(Req 2.2/3.1/6.2)", () => {
+  // ★spec ai-gateway-session-models Req 6.1/6.3/6.4:本用例原名「providers 仅含 self 来源」,
+  // 是 model-catalog spec 冻结的约定。该约定的理由是「providers 是可设为默认的集合,而网关
+  // 条目当时不可接入会话」—— 前提已随 availability 翻转消失,故有意修订为「self 来源 +
+  // 存在网关条目时追加 ai-gateway」。渠道名仍不进入(这部分未变,继续钉住)。
+  it("providers = self 来源(去重排序)+ 网关(存在网关条目时);渠道名恒不进入", () => {
     const merged = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
-    expect(merged.providers).toEqual(["dashscope", "openrouter"]);
-    expect(merged.providers).not.toContain("ai-gateway");
+    expect(merged.providers).toEqual(["dashscope", "openrouter", "ai-gateway"]);
+    // 渠道名(ownedBy)绝不进 providers —— 它只是条目上的 channel 元数据。
     expect(merged.providers).not.toContain("anthropic");
     expect(merged.providers).not.toContain("openai-compat");
+  });
+
+  it("无网关条目时 providers 与修订前逐字节一致(不追加 ai-gateway,Req 6.3)", () => {
+    const merged = mergeModelCatalog(selfEntries, [], "gateway");
+    expect(merged.providers).toEqual(["dashscope", "openrouter"]);
+    expect(merged.providers).not.toContain("ai-gateway");
   });
 
   it("modelPrecedence=gateway → 网关块在前;=self → self 块在前(块内保持入参原有顺序)", () => {
