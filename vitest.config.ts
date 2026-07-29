@@ -40,6 +40,26 @@ export default defineConfig({
       //   内核不再导出它们 —— 留着指向已搬走文件的 alias,比没有 alias 更难排查。
       { find: "@blksails/pi-web-core/", replacement: path.resolve(__dirname, "packages/core/src") + "/" },
       { find: "@blksails/pi-web-core", replacement: path.resolve(__dirname, "packages/core/src/index.ts") },
+      // runner 包同规则:`"./*.js": "./src/*.ts"` 通配导出 + 一条 `.mjs` 引导脚本子路径。
+      // 顺序与 core 那组逐字同构 —— 正则在最前,具名子路径次之,前缀条与裸名殿后。
+      {
+        find: /^@blksails\/pi-web-runner\/(.*)\.js$/,
+        replacement: path.resolve(__dirname, "packages/runner/src") + "/$1.ts",
+      },
+      // ★ 这条具名子路径**不能省**:引导脚本是包**根部**的 `.mjs`,不在 `src/` 下。
+      //   上面的正则只吃 `.js` 结尾、吃不到它;而下面的前缀条会把它拼成
+      //   `packages/runner/src/runner-bootstrap.mjs` —— 磁盘上不存在的位置。
+      { find: "@blksails/pi-web-runner/runner-bootstrap.mjs", replacement: path.resolve(__dirname, "packages/runner/runner-bootstrap.mjs") },
+      // ★ 裸包名必须用**$ 锚定的正则**,且排在下面那条前缀条之前(实测得出,与 core 那组的
+      //   写法不同 —— core 那条字符串裸名条其实是死代码,从未被匹配到)。
+      //   原因:vite 的字符串 alias 是朴素前缀匹配,`"@blksails/pi-web-runner/"` 这条会把
+      //   **裸** specifier 也吃掉,解析成目录 `packages/runner/src`,再由目录索引找 `index.ts`。
+      //   core 恰好有 `src/index.ts` 所以蒙对了;runner 的主入口在 `src/runner/index.ts`,
+      //   于是裸名解析失败(实测:目标文件存在也照样 Failed to resolve)。
+      //   不能改用字符串裸名条排在前面 —— 朴素前缀匹配会连深路径一起吞掉。
+      { find: /^@blksails\/pi-web-runner$/, replacement: path.resolve(__dirname, "packages/runner/src/runner/index.ts") },
+      { find: "@blksails/pi-web-runner/", replacement: path.resolve(__dirname, "packages/runner/src") + "/" },
+      { find: "@blksails/pi-web-runner", replacement: path.resolve(__dirname, "packages/runner/src/runner/index.ts") },
       { find: "@blksails/pi-web-logger", replacement: path.resolve(__dirname, "packages/logger/src/index.ts") },
       { find: "@blksails/pi-web-agent-kit", replacement: path.resolve(__dirname, "packages/agent-kit/src/index.ts") },
       { find: "@blksails/pi-web-tool-kit/aigc-canvas-schema", replacement: path.resolve(__dirname, "packages/tool-kit/src/aigc/canvas/schema.ts") },

@@ -30,7 +30,7 @@
   - 可观测完成态：`pnpm --filter @blksails/pi-web-runner typecheck` exit 0；分档编排脚本能被调起并**明确报出「fast 档为空」**，而非静默通过
   - _Requirements: 6.4_
 
-- [ ] 1.3 在全仓解析配置中登记新包
+- [x] 1.3 在全仓解析配置中登记新包
   - 仓库根测试配置加入新包的别名条目；★ `.js`→`.ts` 的正则条目**必须排在具名子路径之前**（字符串 find 是前缀匹配，否则拼出四不像路径）
   - 确认服务端构建的别名表**不加**新包 —— 与内核同理，走通配子路径导出由解析器原生展开
   - 仓库根的 fast / e2e 测试脚本纳入新包
@@ -162,3 +162,6 @@
 - 1.2：`tsconfig.include` 除 `src`/`test` 外还纳入两个 vitest 配置文件 —— `src/` 在任务 3.1 前为空，不纳入别的文件 tsc 会因「无输入」报错。src 填充后这条无害且顺带检查了配置本身。
 - ★ 1.2：**仓库根 `pnpm -r run typecheck` 是既有红**（`desktop` 的 `cargo check` 失败），与本 spec 无关。任何以「根类型检查 exit 0」为判据的地方都必须排除 `desktop`，否则会把既有红误记成本次改动的回归。已同步修正 1.3 与 6.1 的判据。
 - ★ 1.2：新包真的进了根类型检查，由判别性实验证明 —— 在 `packages/runner/src/` 埋一个类型错误，根 typecheck 报 `packages/runner typecheck: src/__probe.ts(1,14): error TS2322` 并 exit 2；移除后回到 exit 0。只跑一次绿无法区分「检查了且没问题」与「压根没检查」。
+- ★ 1.3：**vite 的字符串 alias 是朴素前缀匹配** —— `"@blksails/pi-web-X/"`（带尾斜杠）那条会把**裸** specifier 一起吃掉，解析成目录 `packages/X/src`，再由目录索引找 `index.ts`。因此两个包的**字符串裸名条都是死代码，从未被匹配到**（实测：把 core 的裸名条指向不存在的文件，裸 core 照样解析；把前缀条打断，裸 core 立刻失败）。core 蒙对是因为它恰好有 `src/index.ts`；runner 主入口在 `src/runner/index.ts`，于是裸名解析失败（目标文件存在也照样失败）。修法是加一条 **`$` 锚定的正则**裸名条排在前缀条之前 —— 不能改用字符串裸名条排前面，朴素前缀匹配会连深路径一起吞掉。
+- ★ 1.3：根 `test:fast` / `test:e2e` 的串联把 runner 排在**末尾**。它在任务 3.3 前必然失败（fast 档为空），排在中间会短路掉后面的包 —— 实测过一次：`core && runner && server` 时 server 完全没跑到。排末尾后 core（122 文件）与 server（71 文件）在整个搬迁期间继续受检。
+- ★ 1.3：根 `pnpm test:app` 有**既有崩溃**：`Tests 1019 passed | 2 skipped (1031)` —— 1019+2=1021≠1031，10 个用例没跑，worker `heap out of memory`。该文件自基线 `99d122a3` 起本分支从未碰过，属上游存量。验收时须核对汇总行算术，否则会被计成「0 failed」。
