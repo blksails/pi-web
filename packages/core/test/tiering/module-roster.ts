@@ -20,6 +20,10 @@
  *
  * ★ 新增 `src/` 顶层模块时**必须**在此归类,否则守卫报红。这是刻意的:
  *   一个默认无人管的新模块,正是边界腐化的入口。
+ *
+ * ★ 名册按**层**归类,不按**包**归类(spec: core-package-extraction,任务 2.1 起本文件住在 core)。
+ *   模块搬进哪个包是层归属的**结果**,不是另一份需要维护的事实 —— 两份事实必然漂移。
+ *   包根清单另见 `package-roots.ts`;同名模块在不同包里含义不同时,用 `ROSTER_OVERRIDES`。
  */
 
 export type Layer = "neutral" | "core" | "runner" | "adapters" | "assembly";
@@ -148,6 +152,19 @@ export const KNOWN_DEBT: readonly {
 ];
 
 /**
+ * **按包根覆写**的层归属。用于同名模块在不同包里含义不同的情形。
+ *
+ * 目前只有一例:`index`。core 包的 `src/index.ts` 是**内核主入口**(只聚合 core 模块,
+ * 层归 core);兼容层包的 `src/index.ts` 是**装配 barrel**(同时引用 core 与 adapters,
+ * 层归 assembly)。两者同名但是两个不同的东西,不覆写就必然有一个被判错层。
+ *
+ * ★ 覆写表只应收录**真实的同名冲突**。拿它来绕过某条报红的边,等于关掉守卫。
+ */
+export const ROSTER_OVERRIDES: Readonly<Record<string, Readonly<Record<string, Layer>>>> = {
+  core: { index: "core" },
+};
+
+/**
  * 由模块路径(相对 `src/`,如 `rpc-channel/foo.ts`)取其顶层模块名。
  *
  * ★ 扩展名要同时剥 `.ts` 与 `.js`:NodeNext 约定下 import specifier 写的是 `.js`
@@ -158,9 +175,14 @@ export function moduleNameOf(relPathFromSrc: string): string {
   return first.replace(/\.(ts|js)$/, "");
 }
 
-/** 取模块所属层。未知模块**抛错**而非静默归类 —— 新增模块必须显式表态。 */
-export function layerOf(moduleName: string): Layer {
-  const layer = MODULE_ROSTER[moduleName];
+/**
+ * 取模块所属层。未知模块**抛错**而非静默归类 —— 新增模块必须显式表态。
+ *
+ * @param rootName 模块所在的包根短名;给定时先查该包根的覆写表。
+ */
+export function layerOf(moduleName: string, rootName?: string): Layer {
+  const override = rootName === undefined ? undefined : ROSTER_OVERRIDES[rootName]?.[moduleName];
+  const layer = override ?? MODULE_ROSTER[moduleName];
   if (layer === undefined) {
     throw new Error(
       `模块 "${moduleName}" 未在 MODULE_ROSTER 中归类。` +

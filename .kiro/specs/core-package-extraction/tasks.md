@@ -27,7 +27,7 @@
 
 ## 2. 测试机制下沉
 
-- [ ] 2.1 把分档机制与模块名册下沉到 core
+- [x] 2.1 把分档机制与模块名册下沉到 core
   - 分档判据、运行期哨兵、子进程守卫、模块层名册迁入 core 的测试目录
   - 兼容层包的分档配置改为引用 core 的共享件（core 是更低的包，方向正确）
   - **观察完成**：两个包各自的快档均能运行且哨兵确实装上
@@ -36,7 +36,7 @@
   - _Requirements: 4.1, 4.2_
   - _Boundary: 测试机制共享件_
 
-- [ ] 2.2 两个守卫改为扫描多个包根，且空扫即失败
+- [x] 2.2 两个守卫改为扫描多个包根，且空扫即失败
   - 依赖方向守卫与分档守卫改为接收包根列表
   - **每个包根都必须至少贡献一个文件**，否则失败并指出是哪个包根扫到了 0 个
   - **观察完成**：把某个包根改成不存在的路径时守卫报红（判别力自证）；
@@ -139,3 +139,48 @@
   这一步本属任务 5.x，但验证 R1.5 就必须先做，故提前。
 - **根测试 alias 的子路径顺序**：4 条子路径 alias 全部排在裸包名之前（仓内已有同类教训注释）。
 - 快档实测 **5.6 s**，根测试解析未受影响。
+
+## Implementation Notes（任务 2.x）
+
+**搬迁面**：8 个文件 `git mv` 进 core（`test/setup/{fast-sentinel,child-process-guard}.ts` +
+`test/tiering/{tier-rules,module-roster}.ts` 及其 4 个测试）；新增 `test/tiering/package-roots.ts`
+（包根名册 + 空扫断言）、`vitest.config.ts`、`vitest.workspace.ts`、`scripts/run-tests.mjs`。
+
+**判别力自证（★ 不能只看跑绿，本仓已被骗过两次）**——四条全部实测转红：
+
+| 人为破坏 | 实际报出 |
+|---|---|
+| core 快档里 `spawnSync("echo")` | `[fast 档违规] child_process.spawnSync("echo")` |
+| core 快档里 `fetch(...)` | `[fast 档违规] fetch("http://127.0.0.1:1/nope")` |
+| **兼容层包**快档里 `spawnSync` | 同上 —— 证明跨包引用 core 的 setup 真的装上了 |
+| `PACKAGE_ROOTS` 的 server 路径改错 | `以下包根扫到了 0 个测试文件/顶层模块，守卫实际上什么都没在守：· server —— …` |
+
+额外收获：制造违规时**分档守卫同时报出了 `core/…` 与 `server/…` 两个探针文件**——
+这是 R4.1/R4.2「守卫确实覆盖两个包根」最直接的证据，比断言计数更难自欺。
+
+**四个实测坑**：
+
+1. ★ **包内缺 `vitest.config.ts` 会静默继承仓库根配置**。core 起初只建了
+   `vitest.workspace.ts`，9 个测试文件躺在 `test/tiering/` 却报 `No test files found`——
+   vitest 向上找到了根配置（jsdom + 根 `test/setup.ts` + 根 include）。故 core 补了一份
+   与 server 同形的 `vitest.config.ts`，文件头写明"看似多余但必须存在"。
+2. ★ **`--passWithNoTests` 只给 fast-mock / it / e2e，fast 档故意不给**。core 现阶段还没有
+   这三类测试，空档 exit 1 会让"还没有这类测试"与"测试全炸了"同码；但 fast 档装着两个守卫，
+   它变空必须是一次响亮的失败。
+3. **跨包 specifier 必须一并解析**（R4.4）。搬迁后 `../auth/x.js` 会写成
+   `@blksails/pi-web-server/...`，只认相对路径的话，**一次搬迁就能让所有跨层边集体消失**、
+   守卫从此永远绿。子路径→模块名由各包 `exports` 声明推导，不靠名字猜——
+   `./model-options` 指的是 `config` 模块而非 `model-options` 模块。
+4. **`index` 是唯一的同名冲突**：core 主入口（core 层）vs 兼容层装配 barrel（assembly 层）。
+   由 `ROSTER_OVERRIDES` 按包根覆写；名册本身仍按**层**归类，不按包——
+   模块在哪个包是层归属的结果，两份事实必然漂移。
+
+**两张名册的路径加了包根前缀**（`server/test/...`）。任务 4.2 搬测试文件时须同步改前缀。
+
+**实测数据**（此步之后）：
+
+- 根 `pnpm test:fast`（两包）**7.0 s**，仍在 10 s 预算内（R5.5）
+- 全量：core 4 文件/43 用例 · server fast 188/1817 · fast-mock 5/31 · it 83/657
+  → 合计 **283 文件 / 2551 用例**（含 e2e 3/3）。文件数与快照持平；
+  用例 +4 = 本步新增的 4 条守卫自证用例，逐条可归因。
+- it 档串行耗时 153.4 s；两个包 `tsc --noEmit` 均 exit 0。

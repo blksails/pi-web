@@ -2,8 +2,8 @@
 /**
  * 产出 fast / fastMock / it / e2e 四档的归属清单(spec: test-tiering-fast-lane,任务 1.1)。
  *
- * 判据**不在本文件**,而是复用 `test/tiering/tier-rules.ts` —— 与全量扫描守卫
- * (`test/tiering/tier-guard.test.ts`)同一份实现。设计把 tier-rules 定为「分档判据的单一
+ * 判据**不在本文件**,而是复用 `../core/test/tiering/tier-rules.ts` —— 与全量扫描守卫
+ * (core 包的 `test/tiering/tier-guard.test.ts`)同一份实现。设计把 tier-rules 定为「分档判据的单一
  * 事实来源」,若此处再抄一份,归位清单与守卫就会各说各话。
  *
  * e2e 档**不由源文本推断**(整文件凭据门控写法任意,静态判不稳),由下方名册显式列出;
@@ -21,7 +21,7 @@ import { createJiti } from "jiti";
 const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const jiti = createJiti(import.meta.url);
 const { classifyTestSource, E2E_ROSTER, RUNTIME_DETECTED_IT } = await jiti.import(
-  path.join(pkgDir, "test/tiering/tier-rules.ts"),
+  path.join(pkgDir, "../core/test/tiering/tier-rules.ts"),
 );
 
 

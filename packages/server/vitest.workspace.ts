@@ -38,8 +38,18 @@
  */
 import { fileURLToPath } from "node:url";
 
+/**
+ * ★ 两个 setup 共享件住在 **core 包**(spec: core-package-extraction,任务 2.1)。
+ *   core 是更低的包,兼容层引用它方向正确;反过来会让 core 的测试依赖兼容层,
+ *   正是这次拆包要根除的东西。改路径时注意:setup 文件必须用**绝对路径**,
+ *   相对路径会被解析到本包根下而静默指空 —— 而没装上的哨兵报出的绿,
+ *   和真的没有违规长得一模一样(本仓已被这一坑骗过两次)。
+ */
 const childProcessGuard = fileURLToPath(
-  new URL("./test/setup/child-process-guard.ts", import.meta.url),
+  new URL("../core/test/setup/child-process-guard.ts", import.meta.url),
+);
+const fastSentinel = fileURLToPath(
+  new URL("../core/test/setup/fast-sentinel.ts", import.meta.url),
 );
 
 const base = { environment: "node", testTimeout: 30_000 } as const;
@@ -69,7 +79,7 @@ export default [
       ],
       pool: "threads",
       // isolate 见文件头 ① —— 必须由 CLI `--no-isolate` 传入,写在这里无效。
-      setupFiles: ["./test/setup/fast-sentinel.ts"],
+      setupFiles: [fastSentinel],
     },
   },
   {
@@ -82,7 +92,7 @@ export default [
       pool: "threads",
       // 隔离必须保持开启(vitest 默认即开):这些文件靠 `vi.mock` 覆盖模块导出,关隔离即失效。
       // 故本档**绝不可**与 fast 档合并到同一次带 `--no-isolate` 的调用里。
-      setupFiles: ["./test/setup/fast-sentinel.ts"],
+      setupFiles: [fastSentinel],
     },
   },
   {

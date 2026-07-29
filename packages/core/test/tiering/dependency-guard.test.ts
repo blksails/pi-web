@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   ALLOWED_EDGES,
   KNOWN_DEBT,
@@ -10,12 +9,19 @@ import {
   moduleNameOf,
   type Layer,
 } from "./module-roster.js";
+import {
+  PACKAGE_ROOTS,
+  assertEveryRootContributed,
+  exportsMapOf,
+  type PackageRoot,
+} from "./package-roots.js";
 
 /**
- * 依赖方向守卫(spec: kernel-boundary-decoupling,任务 1.2)。
+ * 依赖方向守卫(spec: kernel-boundary-decoupling 任务 1.2;core-package-extraction 任务 2.2 改为跨包)。
  *
- * 断言 `src/` 内部不存在**跨层反向依赖** —— 即包内的依赖方向对 core / runner / adapters
- * 三分已经成立。守卫转绿 = 「可以开始搬文件了」。
+ * 断言本仓各包的 `src/` 之间不存在**跨层反向依赖** —— 即依赖方向对
+ * neutral / core / {runner, adapters} / assembly 的分层已经成立。
+ * 守卫转绿 = 「可以搬文件了」;拆包之后它继续守着「不许再搬回去」。
  *
  * ★ 只看**直接**导入,不做传递分析。传递分析已被上游 spec 实测证伪:barrel 把整个模块图
  *   拉进来,198 个候选中 116 个(59%)误报。跨层边是**声明**层面的事实,直接导入足以判定。
@@ -23,13 +29,15 @@ import {
  * ★ 区分值导入与 `import type`:类型在编译期擦除,跨包 `import type` 合法。
  *   不区分的话 `capability → auth` 这条合法边会被误报。
  *
+ * ★ **跨包 specifier 一并解析**(R4.4)。拆包后 `../auth/x.js` 会写成
+ *   `@blksails/pi-web-server/...`,若只认相对路径,一次搬迁就能让所有跨层边**集体消失**,
+ *   守卫从此永远绿。那是本守卫最容易出现、也最难察觉的失效方式。
+ *
  * 本文件跑在 fast 档:只读文件,不起子进程、不写盘。
  */
 
-const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const srcDir = path.join(pkgDir, "src");
-
 interface CrossEdge {
+  readonly fromRoot: string;
   readonly fromModule: string;
   readonly toModule: string;
   readonly fromLayer: Layer;
@@ -39,21 +47,13 @@ interface CrossEdge {
   readonly typeOnly: boolean;
 }
 
-function walk(dir: string, out: string[] = []): string[] {
+function walk(dir: string, base: string, out: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(full, out);
-    else if (entry.name.endsWith(".ts")) out.push(path.relative(srcDir, full));
+    if (entry.isDirectory()) walk(full, base, out);
+    else if (entry.name.endsWith(".ts")) out.push(path.relative(base, full));
   }
   return out;
-}
-
-/** 把 `../auth/egress-model-source.js` 这类相对 specifier 解析成相对 `src/` 的路径。 */
-function resolveToSrcRelative(fromRel: string, specifier: string): string | undefined {
-  if (!specifier.startsWith(".")) return undefined;
-  const abs = path.resolve(path.dirname(path.join(srcDir, fromRel)), specifier);
-  const rel = path.relative(srcDir, abs);
-  return rel.startsWith("..") ? undefined : rel;
 }
 
 /**
@@ -79,9 +79,32 @@ const IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)[ \t]+(type[ \t]+)?[^;]*?from[
  */
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-/** 收集单个文件里所有指向**别的顶层模块**的导入。 */
-function crossModuleImports(fileRel: string): CrossEdge[] {
-  const source = fs.readFileSync(path.join(srcDir, fileRel), "utf8");
+/** 跨包 specifier → 目标模块。由各包 `exports` 声明推导,不靠子路径名猜。 */
+const CROSS_PACKAGE_TARGETS = new Map<string, { root: PackageRoot; module: string }>();
+for (const root of PACKAGE_ROOTS) {
+  for (const [specifier, srcRel] of exportsMapOf(root)) {
+    CROSS_PACKAGE_TARGETS.set(specifier, { root, module: moduleNameOf(srcRel) });
+  }
+}
+
+/** 把 specifier 解析成 `{ 包根, 模块名 }`;不指向本仓包时返回 undefined。 */
+function resolveTarget(
+  root: PackageRoot,
+  fromRel: string,
+  specifier: string,
+): { root: PackageRoot; module: string } | undefined {
+  if (specifier.startsWith(".")) {
+    const srcDir = path.join(root.dir, "src");
+    const abs = path.resolve(path.dirname(path.join(srcDir, fromRel)), specifier);
+    const rel = path.relative(srcDir, abs);
+    return rel.startsWith("..") ? undefined : { root, module: moduleNameOf(rel) };
+  }
+  return CROSS_PACKAGE_TARGETS.get(specifier);
+}
+
+/** 收集单个文件里所有指向**别的顶层模块**的导入(含跨包)。 */
+function crossModuleImports(root: PackageRoot, fileRel: string): CrossEdge[] {
+  const source = fs.readFileSync(path.join(root.dir, "src", fileRel), "utf8");
   const fromModule = moduleNameOf(fileRel);
   const out: CrossEdge[] = [];
 
@@ -89,16 +112,17 @@ function crossModuleImports(fileRel: string): CrossEdge[] {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
-      const target = resolveToSrcRelative(fileRel, m[specIndex]!);
+      const target = resolveTarget(root, fileRel, m[specIndex]!);
       if (target === undefined) continue;
-      const toModule = moduleNameOf(target);
-      if (toModule === fromModule) continue;
+      // 同包同模块内部的导入不是跨模块边。跨包时即便模块同名也是两个模块(如 index)。
+      if (target.root.name === root.name && target.module === fromModule) continue;
       out.push({
+        fromRoot: root.name,
         fromModule,
-        toModule,
-        fromLayer: layerOf(fromModule),
-        toLayer: layerOf(toModule),
-        file: `src/${fileRel}`,
+        toModule: target.module,
+        fromLayer: layerOf(fromModule, root.name),
+        toLayer: layerOf(target.module, target.root.name),
+        file: `${root.name}/src/${fileRel}`,
         line: source.slice(0, m.index).split("\n").length,
         typeOnly: typeIndex > 0 && m[typeIndex] !== undefined,
       });
@@ -108,7 +132,6 @@ function crossModuleImports(fileRel: string): CrossEdge[] {
   scan(DYNAMIC_IMPORT_RE, 1, 0);
   return out;
 }
-
 
 function isDebt(edge: CrossEdge): boolean {
   return KNOWN_DEBT.some((d) => d.from === edge.fromModule && d.to === edge.toModule);
@@ -124,8 +147,15 @@ function isExempt(edge: CrossEdge): boolean {
   );
 }
 
-const files = walk(srcDir).sort();
-const allEdges = files.flatMap(crossModuleImports);
+const fileCounts = new Map<string, number>();
+const allEdges: CrossEdge[] = [];
+for (const root of PACKAGE_ROOTS) {
+  const srcDir = path.join(root.dir, "src");
+  const files = fs.existsSync(srcDir) ? walk(srcDir, srcDir).sort() : [];
+  fileCounts.set(root.name, files.length);
+  for (const rel of files) allEdges.push(...crossModuleImports(root, rel));
+}
+
 const reverseValueEdges = allEdges.filter(
   (e) => isReverseEdge(e.fromLayer, e.toLayer) && !e.typeOnly && !isExempt(e),
 );
@@ -148,7 +178,7 @@ function render(edges: readonly CrossEdge[]): string {
     .join("\n");
 }
 
-describe("依赖方向守卫 —— src/ 内部不得有跨层反向依赖", () => {
+describe("依赖方向守卫 —— 各包 src/ 之间不得有跨层反向依赖", () => {
   it("不存在跨层反向的值依赖", () => {
     expect(
       violations.length,
@@ -179,9 +209,11 @@ describe("依赖方向守卫 —— src/ 内部不得有跨层反向依赖", () 
     ).toEqual([]);
   });
 
-  it("名册覆盖被扫描到的每个模块", () => {
-    // layerOf 对未知模块抛错,故此处只需确认扫描本身没抛。
-    expect(files.length).toBeGreaterThan(0);
+  it("每个包根都被真的扫到了(R4.3:空扫必须失败,不得静默通过)", () => {
+    // ★ 这条是本守卫最重要的自证。见 package-roots.ts 的说明:
+    //   扫不到文件的守卫报出的绿,和真的没有违规长得一模一样。
+    expect(() => assertEveryRootContributed(fileCounts, "源文件")).not.toThrow();
+    // 名册覆盖:layerOf 对未知模块抛错,故扫描本身没抛即为覆盖完整。
     expect(allEdges.length).toBeGreaterThan(0);
   });
 });

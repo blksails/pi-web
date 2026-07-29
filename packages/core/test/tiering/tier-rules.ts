@@ -4,6 +4,10 @@
  * 由测试文件的源文本判定它属于哪一档。被 `tier-guard.test.ts`(全量扫描守卫)与
  * `scripts/classify-tiers.mjs`(一次性归位清单生成)共用 —— 判据只此一份,不得复制。
  *
+ * ★ 两张名册的路径**带包根前缀**(`server/test/...`),因为守卫自 core-package-extraction
+ *   任务 2.2 起同时扫多个包根。不带前缀的话,两个包里的同名测试文件会互相顶掉名册条目 ——
+ *   表现为某个文件莫名其妙地被判成了另一档。搬迁测试文件时须同步改前缀。
+ *
  * ★ 只做**直接**导入分析,不递归模块图。
  *   传递依赖扫描已被实测证伪:barrel(`src/agent-source/index.ts` 等)把整个模块图拉进来,
  *   198 个 fast 候选文件中有 116 个(59%)被误判(证据见 research.md §4.1)。
@@ -217,9 +221,9 @@ export function isDeclarationAcceptable(declared: TestTier, classified: TestTier
  *    `self-resolved-builtins.e2e.test.ts` 判定是 fast,却因历史命名带着 `.e2e`。)
  */
 export const E2E_ROSTER: readonly string[] = [
-  "test/rpc-channel/e2b-transport.e2e.test.ts",
-  "test/rpc-channel/sandbox-ws-transport.e2e.test.ts",
-  "test/rpc-channel/sandbox-ws-transport.pi.e2e.test.ts",
+  "server/test/rpc-channel/e2b-transport.e2e.test.ts",
+  "server/test/rpc-channel/sandbox-ws-transport.e2e.test.ts",
+  "server/test/rpc-channel/sandbox-ws-transport.pi.e2e.test.ts",
 ];
 
 /**
@@ -229,22 +233,22 @@ export const E2E_ROSTER: readonly string[] = [
  * 由运行期哨兵扫描 fast 候选时暴露:204 个候选中 16 个文件 / 51 个用例违规。
  */
 export const RUNTIME_DETECTED_IT: readonly string[] = [
-  "test/attachment/http/http-attachment-registry.it.test.ts",
-  "test/attachment/http/http-blob-store.it.test.ts",
-  "test/auth/stub-egress.it.test.ts",
-  "test/extensions/ext.e2e.it.test.ts",
-  "test/extensions/ext.integration.it.test.ts",
-  "test/http/http.e2e.it.test.ts",
-  "test/http/http.integration.it.test.ts",
-  "test/rpc-channel/pi-rpc-process.e2e.it.test.ts",
-  "test/rpc-channel/pi-rpc-process.integration.it.test.ts",
-  "test/rpc-channel/pi-rpc-process.lifecycle.it.test.ts",
-  "test/rpc-channel/pi-rpc-process.restart.it.test.ts",
-  "test/rpc-channel/pi-rpc-process.unit.it.test.ts",
-  "test/session/pi-session.logging.realprocess.it.test.ts",
-  "test/session/readiness.it.test.ts",
-  "test/session/session.e2e.it.test.ts",
-  "test/session/session.integration.it.test.ts",
+  "server/test/attachment/http/http-attachment-registry.it.test.ts",
+  "server/test/attachment/http/http-blob-store.it.test.ts",
+  "server/test/auth/stub-egress.it.test.ts",
+  "server/test/extensions/ext.e2e.it.test.ts",
+  "server/test/extensions/ext.integration.it.test.ts",
+  "server/test/http/http.e2e.it.test.ts",
+  "server/test/http/http.integration.it.test.ts",
+  "server/test/rpc-channel/pi-rpc-process.e2e.it.test.ts",
+  "server/test/rpc-channel/pi-rpc-process.integration.it.test.ts",
+  "server/test/rpc-channel/pi-rpc-process.lifecycle.it.test.ts",
+  "server/test/rpc-channel/pi-rpc-process.restart.it.test.ts",
+  "server/test/rpc-channel/pi-rpc-process.unit.it.test.ts",
+  "server/test/session/pi-session.logging.realprocess.it.test.ts",
+  "server/test/session/readiness.it.test.ts",
+  "server/test/session/session.e2e.it.test.ts",
+  "server/test/session/session.integration.it.test.ts",
 ];
 
 /** 综合名册与源文本,给出一个文件**应当**声明的档位。 */
