@@ -10,9 +10,11 @@
  * 沙箱下**静默不可用**。
  *
  * 改为 runner 侧自解析后:各 entry-path 函数用自身 `import.meta.url` 推算入口,而 runner
- * 的模块解析根是 **server 包目录**(`runner-bootstrap.mjs` 的 `createJiti(here)`);tool-kit
- * 已是 server 的运行时依赖,故这些模块位于 server 的 `node_modules` 内,推算结果在**任何形态**
- * (本地 monorepo / 沙箱镜像 / standalone)都是该环境下的有效路径。**零新解析机制**。
+ * 的模块解析根是**引导脚本所在的包目录**(`runner-bootstrap.mjs` 的 `createJiti(here)`)
+ * —— 自 spec runner-package-extraction 起该目录是 **runner 包**(此前是 server 包);
+ * tool-kit 是 runner 包的运行时依赖,故这些模块位于其 `node_modules` 内,推算结果在
+ * **任何形态**(本地 monorepo / 沙箱镜像 / standalone)都是该环境下的有效路径。
+ * **零新解析机制**。
  *
  * ## 清单范围(★ 只含 pi-web 自带的三个)
  *

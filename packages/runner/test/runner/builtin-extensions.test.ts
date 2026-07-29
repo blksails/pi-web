@@ -3,6 +3,7 @@
  * Req 1.1, 1.3, 1.4, 1.5, 5.2, 5.3)。
  */
 import { describe, it, expect } from "vitest";
+import { existsSync } from "node:fs";
 import {
   BUILTIN_EXTENSIONS,
   resolveBuiltinExtensionEntries,
@@ -33,6 +34,18 @@ describe("BUILTIN_EXTENSIONS — 单一清单(Req 5.2)", () => {
     const entries = resolveBuiltinExtensionEntries();
     expect(entries).toHaveLength(3);
     for (const p of entries) expect(p.length).toBeGreaterThan(0);
+  });
+
+  it("★ 默认清单在**新包**解析根下装载成功:3 条且每条真实存在(spec: runner-package-extraction,Req 4.1/4.3)", () => {
+    // 判据取「3 条 + 每条 existsSync」——**不取**「没有 warn」:后者与「三个都解析不到
+    // 但日志没人读」无法区分(design C4)。三个 entry-path 用自身 import.meta.url 推算,
+    // 故本断言实测的是 tool-kit 是否为**本包**(runner)的可解析运行时依赖:
+    // 把 packages/runner/package.json 的 @blksails/pi-web-tool-kit 摘掉,此处转红。
+    const entries = resolveBuiltinExtensionEntries();
+    expect(entries).toHaveLength(3);
+    for (const p of entries) {
+      expect(existsSync(p), `builtin extension entry should exist on disk: ${p}`).toBe(true);
+    }
   });
 });
 
@@ -71,5 +84,35 @@ describe("resolveBuiltinExtensionEntries — 解析与降级(Req 1.3, 1.4, 5.3)"
       resolveBuiltinExtensionEntries([spec("mcp", () => undefined)]),
     ).not.toThrow();
     expect(resolveBuiltinExtensionEntries([spec("mcp", () => undefined)])).toEqual([]);
+  });
+});
+
+describe("内置扩展的依赖声明(spec: runner-package-extraction 任务 5.1,Req 4.1)", () => {
+  /**
+   * ★ 为什么单独要这一条,上面那条「默认清单解析出 3 条」不够:
+   *
+   * 三个 entry-path 用自身 `import.meta.url` 推算,而 Node 解析会**向上走目录**。
+   * 在本 monorepo 里,即便把 `@blksails/pi-web-tool-kit` 从本包 `dependencies` 里摘掉、
+   * 连 `packages/runner/node_modules` 下的链接也一并删除,解析**仍会命中仓库根的
+   * `node_modules/@blksails/pi-web-tool-kit`**,于是照样返回 3 条。**实测如此。**
+   *
+   * 也就是说:那条解析断言在本地**恒真**,守不住「依赖声明漏了」——
+   * 而真实安装树(沙箱镜像 / standalone,只装 runner 包、没有仓库根那层)恰恰会炸,
+   * 表现是三个内置扩展**静默不可用**(`resolve()` 返回 undefined → 记 warn → 跳过)。
+   * 该失效模式历史上已发生过一次(见 `builtin-extensions.ts` 文件头)。
+   *
+   * 故此处改测**声明本身**:它是静态事实,摘掉即红,不受 monorepo 提升的干扰。
+   */
+  it("tool-kit 必须声明在 runner 包自己的 dependencies 里(monorepo 提升会掩盖遗漏)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const pkgUrl = new URL("../../package.json", import.meta.url);
+    const pkg = JSON.parse(await readFile(pkgUrl, "utf8")) as {
+      dependencies?: Record<string, string>;
+    };
+    expect(
+      pkg.dependencies?.["@blksails/pi-web-tool-kit"],
+      "内置扩展的三个入口都来自 tool-kit;它必须是**本包**的运行时依赖。" +
+        "仅靠仓库根的提升能在本地跑通,但沙箱与 standalone 只装本包,届时扩展会静默不可用。",
+    ).toBeDefined();
   });
 });

@@ -18,7 +18,11 @@ describe("e2e:零 env 自解析(Req 1.2)", () => {
   });
 
   it("解析出的入口是**真实存在的文件**(可被 SDK 加载)", () => {
-    for (const entry of resolveBuiltinExtensionEntries()) {
+    const entries = resolveBuiltinExtensionEntries();
+    // ★ 长度断言不可省:只留下面的 for 循环时,三个都解析不到 → 空数组 → 循环体零次执行
+    //   → 用例照常绿。空扫即通过正是本 spec 要根除的失效模式(Req 4.3)。
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
       expect(existsSync(entry), `${entry} should exist`).toBe(true);
     }
   });
