@@ -252,6 +252,8 @@ export const zh: Record<string, string> = {
   "reasoning.label": "Reasoning",
   "reasoning.thinking": "Thinking",
   "toolPart.status.running": "Running",
+  // ★ 措辞刻意是「终止本轮」而非「停止此工具」:协议层只有会话级 abort,没有单工具取消。
+  "toolPart.stopTurn": "终止本轮",
   "toolPart.status.streaming": "Streaming",
   "toolPart.status.completed": "Completed",
   "toolPart.status.error": "Error",
@@ -506,6 +508,8 @@ export const en: Record<string, string> = {
   "reasoning.label": "Reasoning",
   "reasoning.thinking": "Thinking",
   "toolPart.status.running": "Running",
+  // ★ 措辞刻意是「终止本轮」而非「停止此工具」:协议层只有会话级 abort,没有单工具取消。
+  "toolPart.stopTurn": "Stop this turn",
   "toolPart.status.streaming": "Streaming",
   "toolPart.status.completed": "Completed",
   "toolPart.status.error": "Error",
