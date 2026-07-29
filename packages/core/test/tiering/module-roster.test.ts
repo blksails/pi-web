@@ -103,7 +103,7 @@ describe("名册完整性", () => {
     // ★ 名册完整性靠「磁盘上有什么」来判定。某个包根扫到 0 个模块时,
     //   「无遗漏」会因为无物可漏而通过 —— 那是最像绿的一种失效。
     const { counts } = topLevelModules();
-    expect(() => assertEveryRootContributed(counts, "顶层模块")).not.toThrow();
+    expect(() => assertEveryRootContributed(counts, "srcModules")).not.toThrow();
   });
 
   it("按包覆写只用于真实的同名冲突,且覆写目标确实存在于名册", () => {

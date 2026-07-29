@@ -120,6 +120,6 @@ describe("分档守卫 —— 文件名声明必须与判定一致", () => {
   it("每个包根都被真的扫到了(R4.3:空扫必须失败,不得静默通过)", () => {
     // ★ 见 package-roots.ts:扫不到文件的守卫报出的绿,与真的没有违规无法区分。
     //   拆包过程中测试文件会大批搬家,路径写错的代价就是本守卫悄悄变成空转。
-    expect(() => assertEveryRootContributed(fileCounts, "测试文件")).not.toThrow();
+    expect(() => assertEveryRootContributed(fileCounts, "testFiles")).not.toThrow();
   });
 });

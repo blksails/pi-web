@@ -230,7 +230,7 @@ describe("依赖方向守卫 —— 各包 src/ 之间不得有跨层反向依�
   it("每个包根都被真的扫到了(R4.3:空扫必须失败,不得静默通过)", () => {
     // ★ 这条是本守卫最重要的自证。见 package-roots.ts 的说明:
     //   扫不到文件的守卫报出的绿,和真的没有违规长得一模一样。
-    expect(() => assertEveryRootContributed(fileCounts, "源文件")).not.toThrow();
+    expect(() => assertEveryRootContributed(fileCounts, "srcFiles")).not.toThrow();
     // 名册覆盖:layerOf 对未知模块抛错,故扫描本身没抛即为覆盖完整。
     expect(allEdges.length).toBeGreaterThan(0);
   });
