@@ -226,3 +226,11 @@ export {
 } from "./canvas/use-canvas-view.js";
 export * from "./canvas/client-image-ops.js";
 /* ses-h1-exempt-end */
+
+// 「终止本轮」能力下发(spec aigc-tool-abort UI 扩展):宿主包 Provider,工具卡消费。
+export {
+  TurnAbortProvider,
+  useTurnAbort,
+  type TurnAbortHandle,
+  type TurnAbortProviderProps,
+} from "./chat/turn-abort-context.js";

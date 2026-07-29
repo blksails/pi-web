@@ -381,6 +381,10 @@ export async function runImageTool(
     let sawImagePreview = false;
     const THROTTLE_MS = 100;
     const onStream = (ev: StreamEvent): void => {
+      // ★ 终止后不再推送任何增量(spec aigc-tool-abort,Req 2.3):SSE 读取虽已接 signal,
+      // 但中断前可能仍有一两帧在途;若继续 emit,UI 会在用户点了停止之后又闪出新预览图,
+      // 看起来像"没停下来"。
+      if (signal?.aborted === true) return;
       if (ev.kind === "image") {
         // 流式图:data URI(includeDataUri)。先喂全局 seam(canvas 渐进),再喂 chat 卡片早弹。
         const preview = previewAssetsFromPicked(ev.picked, toolName, { includeDataUri: true });
@@ -435,6 +439,9 @@ export async function runImageTool(
         proxyFetch(u, i, persistProxyUrl)) as unknown as typeof fetch);
     const assets = await persistPicked(picked, ctx, {
       fetchImpl: persistFetch,
+      // 取消信号(spec aigc-tool-abort,Req 1.2):此前落盘段收不到 signal,用户点停止后
+      // 要干等最多 30s 超时。这是整条链路上唯一停不掉的一段。
+      signal,
       // prompt 摘要前缀:多张单图产物此前恒为 `<toolName>-0.png` 同名(@ 引用列表对不上、
       // 对不上助手回复的 att_ id)。用 prompt 摘要命名 → `赛博朋克2077风格的游戏画面-0.png`。
       namePrefix: promptToNamePrefix(merged.prompt, toolName),
@@ -460,8 +467,16 @@ export async function runImageTool(
     // 区分「attachment 未注入」与「cloud 存储失败」两类原因(R7.2)。不新增跨包依赖(duck-typing;
     // tool-kit 不依赖 pi-web-server,类型契约归其所有)——快速失败、不静默挂起(R7.1)。
     const errName = err instanceof Error ? err.name : undefined;
-    const display =
-      errName === "AttachmentCapabilityUnavailableError"
+    // ★ 用户主动取消须与真实失败可区分(spec aigc-tool-abort,Req 2.1/2.2):否则「我点了
+    // 停止」会显示成「生成失败:xxx」,看起来像出了故障。
+    //
+    // 判据以 `signal.aborted` **优先**、`AbortError` 名称兜底:前者是我们自己的状态、可靠;
+    // 后者依赖各 fetch 实现的抛错细节(undici 抛 DOMException"AbortError",但代理传输层或
+    // 第三方实现未必一致),只能作为补充而非唯一依据(D4)。
+    const aborted = signal?.aborted === true || errName === "AbortError";
+    const display = aborted
+      ? "已取消:本次生成被用户终止"
+      : errName === "AttachmentCapabilityUnavailableError"
         ? "生成失败:附件能力不可用(attachment 上下文未注入)"
         : errName === "RemoteAttachmentError" || errName === "ToolOutputPutError"
           ? `生成失败:附件存储失败(${message})`

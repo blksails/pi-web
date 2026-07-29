@@ -1,0 +1,29 @@
+{
+  "feature_name": "aigc-tool-abort",
+  "created_at": "2026-07-29T12:30:00Z",
+  "updated_at": "2026-07-29T12:55:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "bookkeeping": {
+    "date": "2026-07-29",
+    "action": "实施完成(真机待做)",
+    "tasks": "6/6",
+    "evidence": "tool-kit 597 passed/10 skipped(含新增 10 条终止测试);全仓 typecheck 干净;守卫自检 4 条精确变红",
+    "caveat": "★ 真机验证(UI 点停止)尚未做 —— 需在下载阶段点击,属任务 3.2 后半"
+  }
+}
