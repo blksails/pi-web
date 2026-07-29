@@ -76,8 +76,8 @@ interface LayerPlacement {
 const LAYER_PLACEMENT: Readonly<Record<Layer, LayerPlacement>> = {
   neutral: { root: "core" },
   core: { root: "core" },
-  // runner 实现要到 spec runner-package-extraction 任务 3.1 才搬进新包,此刻仍住在兼容层。
-  runner: { root: "runner", stagedIn: "server" },
+  // spec runner-package-extraction 任务 3.1 已把 runner 实现搬进新包,`stagedIn` 随之过期删除。
+  runner: { root: "runner" },
   adapters: { root: "server" },
   assembly: { root: "server" },
 };
@@ -95,8 +95,14 @@ function pendingSrcModuleRoots(roots: readonly PackageRoot[] = PACKAGE_ROOTS): R
  * ★ 判据的严格性是**自动恢复**的:过渡期只由 `pendingContributions` 一个开关托着,
  *   而那个开关本身是自毁的(搬进第一个文件就报红要求删掉)。因此不存在「忘了收紧」的状态。
  */
-function expectedRootOf(layer: Layer, pending: ReadonlySet<string>): string {
-  const place = LAYER_PLACEMENT[layer];
+function expectedRootOf(
+  layer: Layer,
+  pending: ReadonlySet<string>,
+  // ★ 可注入:搬迁落地后真实表里已没有任何 stagedIn,若只能读真实表,「过渡期判暂存包」
+  //   这半条性质就再也测不到了 —— 而下一次搬迁又会用到它。注入让它继续被合成输入驱动。
+  placement: Readonly<Record<Layer, LayerPlacement>> = LAYER_PLACEMENT,
+): string {
+  const place = placement[layer];
   return place.stagedIn !== undefined && pending.has(place.root) ? place.stagedIn : place.root;
 }
 
@@ -295,11 +301,13 @@ describe("名册完整性", () => {
     const rootNames = new Set(["core", "server", "runner"]);
 
     // 搬迁前:runner 包被要求为空,该层模块应当还在暂存包里。
-    expect(expectedRootOf("runner", new Set(["runner"]))).toBe("server");
+    expect(expectedRootOf("runner", new Set(["runner"]), table)).toBe("server");
     // 搬迁后(pending 已被 assertRootsContributed 逼退):判据自己收紧,无需任何人记得改。
-    expect(expectedRootOf("runner", new Set())).toBe("runner");
+    expect(expectedRootOf("runner", new Set(), table)).toBe("runner");
     // 没有暂存声明的层不受影响。
-    expect(expectedRootOf("core", new Set(["runner"]))).toBe("core");
+    expect(expectedRootOf("core", new Set(["runner"]), table)).toBe("core");
+    // ★ 真实表此刻已无任何暂存声明 —— 任务 3.1 搬完后判据就该无条件判最终包。
+    expect(expectedRootOf("runner", new Set(["runner"]))).toBe("runner");
 
     // 而遗留的 stagedIn 会在同一时刻过期报红 —— 豁免只能靠让守卫变红来退场。
     expect(() => assertPlacementTableSound(table, rootNames, new Set(["runner"]))).not.toThrow();

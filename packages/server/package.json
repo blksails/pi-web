@@ -10,7 +10,9 @@
     "./model-options": "./src/model-sources/model-options.ts",
     "./vision-model-options": "./src/model-sources/vision-model-options.ts",
     "./testing": "./src/compat/testing.ts",
-    "./host-assembly": "./src/host-assembly/index.ts"
+    "./host-assembly": "./src/host-assembly/index.ts",
+    "./host-assembly/session-store.js": "./src/host-assembly/session-store.ts",
+    "./host-assembly/model-sources.js": "./src/host-assembly/model-sources.ts"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -25,6 +27,7 @@
     "@blksails/pi-web-core": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-runner": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:^",
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",

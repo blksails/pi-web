@@ -32,7 +32,7 @@ import {
 import {
   registerModelSource,
   setSharedModelServicesFactory,
-} from "../runner/model-source-registrar.js";
+} from "@blksails/pi-web-runner/runner/model-source-registrar.js";
 
 /**
  * 登记 pi-web 内置的模型源。幂等:重复调用不会重复登记同名 provider。

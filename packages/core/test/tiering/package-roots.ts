@@ -69,10 +69,9 @@ export const PACKAGE_ROOTS: readonly PackageRoot[] = [
     name: "runner",
     dir: path.join(packagesDir, "runner"),
     packageName: "@blksails/pi-web-runner",
-    // spec runner-package-extraction:包骨架已在任务 1.1/1.2 成立,但 `src/` 与 `test/`
-    // 要到任务 3.1 / 3.3 才搬进来。守卫必须**先于**搬迁装上(见该 spec 计划开头的次序警告),
-    // 故此处三个维度全部声明为 pending;搬迁把它们逐一逼退。
-    pendingContributions: ["srcModules", "srcFiles", "testFiles"],
+    // spec runner-package-extraction:任务 3.1 已把 `src/` 搬进来,`srcModules` / `srcFiles`
+    // 两个维度的 pending 随之过期删除。`test/` 要到任务 3.3 才搬,故 `testFiles` 保留。
+    pendingContributions: ["testFiles"],
   },
 ];
 

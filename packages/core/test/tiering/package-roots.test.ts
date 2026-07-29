@@ -81,7 +81,8 @@ describe("assertRootsContributed —— 空扫与过期豁免两个方向都要�
 
   it("声明了 pending 的维度扫到 0 个 → 放行", () => {
     expect(() =>
-      assertRootsContributed([runner!], new Map([["runner", 0]]), "srcFiles"),
+      // 取 `testFiles`:任务 3.1 搬完 `src/` 后,runner 唯一仍 pending 的维度就是它。
+      assertRootsContributed([runner!], new Map([["runner", 0]]), "testFiles"),
     ).not.toThrow();
   });
 
@@ -89,8 +90,8 @@ describe("assertRootsContributed —— 空扫与过期豁免两个方向都要�
     // 没有这条,一条过渡期豁免会永久留下 —— 于是「这个包将来真的变空」再也不会响,
     // 而那正是空扫断言存在的全部理由。
     expect(() =>
-      assertRootsContributed([runner!], new Map([["runner", 3]]), "srcFiles"),
-    ).toThrowError(/豁免过期了[\s\S]*3 个源文件[\s\S]*pendingContributions 中的 "srcFiles"/);
+      assertRootsContributed([runner!], new Map([["runner", 3]]), "testFiles"),
+    ).toThrowError(/豁免过期了[\s\S]*3 个测试文件[\s\S]*pendingContributions 中的 "testFiles"/);
   });
 
   it("豁免按维度独立:未声明 pending 的维度仍要求非空", () => {
@@ -102,19 +103,24 @@ describe("assertRootsContributed —— 空扫与过期豁免两个方向都要�
 });
 
 describe("runner 的 pending 声明与磁盘现实一致", () => {
-  it("声明为 pending 的三个维度,此刻在磁盘上确实为空", () => {
+  it("仍声明为 pending 的维度,此刻在磁盘上确实为空;已退场的维度确实非空", () => {
     // 名册里的豁免必须是对现实的**描述**,不能是凭空的通行证。
-    // 任务 3.1 / 3.3 把文件搬进来后,上面的「豁免自毁」断言会逼着这条声明退场。
-    expect([...(runner!.pendingContributions ?? [])].sort()).toEqual([
-      "srcFiles",
-      "srcModules",
-      "testFiles",
-    ]);
-    for (const sub of ["src", "test"]) {
-      const dir = path.join(runner!.dir, sub);
-      const entries = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
-      expect(entries, `packages/runner/${sub} 已经有内容了,pending 声明该退场了`).toEqual([]);
-    }
+    // 任务 3.1 已把 `src/` 搬进来,`srcModules` / `srcFiles` 两条声明随之退场;
+    // `test/` 要到任务 3.3 才搬,故 `testFiles` 是此刻唯一还站得住的那条。
+    expect([...(runner!.pendingContributions ?? [])].sort()).toEqual(["testFiles"]);
+
+    const testDir = path.join(runner!.dir, "test");
+    const testEntries = fs.existsSync(testDir) ? fs.readdirSync(testDir) : [];
+    expect(testEntries, "packages/runner/test 已经有内容了,pending 声明该退场了").toEqual([]);
+
+    // ★ 反向也要断言:否则「src 搬进来了但声明忘了删」与「src 还没搬」长得一样 ——
+    //   只查为空的那一半,豁免退场就成了一件全凭自觉的事。
+    const srcDir = path.join(runner!.dir, "src");
+    const srcEntries = fs.existsSync(srcDir) ? fs.readdirSync(srcDir) : [];
+    expect(
+      srcEntries,
+      "packages/runner/src 是空的 —— 任务 3.1 的搬迁没落地,或 srcFiles 的 pending 被过早删掉了",
+    ).not.toEqual([]);
   });
 
   it("core 与 server 不带任何 pending 豁免", () => {

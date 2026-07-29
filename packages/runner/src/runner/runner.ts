@@ -337,7 +337,11 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     try {
       // ★ 动态 import 取装配缝:store 的**选型工厂**属 adapters,与 runner 同层,
       //   静态 import 就是一条反向依赖(守卫会拦)。同 model-sources 的处理。
-      const { createSessionEntryStore } = await import("../host-assembly/session-store.js");
+      // ★ 拆包后写成包级 specifier:兼容层**不在**本包的依赖声明里(那会是一条反向的
+      //   包依赖),由宿主在运行期提供 —— 见 composeModelSources 的长注释。
+      const { createSessionEntryStore } = await import(
+        "@blksails/pi-web-server/host-assembly/session-store.js"
+      );
       const store = await createSessionEntryStore(storeConfig);
       await mirrorSessionManagerToStore(sessionManager, store, (err) =>
         process.stderr.write(`runner: session-store mirror error: ${String(err)}\n`),
@@ -498,14 +502,16 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
  *     故必须落在两条入口的**汇合点**,也就是 main()。
  *   - 用动态导入而非静态 import:静态 import 会让 `runner → host-assembly → adapters`
  *     成为编译期依赖,切包后 runner 包直接拖上 adapters 包。动态导入把它降级为
- *     **运行期组合** —— 拆包后由宿主提供该模块,runner 侧声明为可选依赖。
+ *     **运行期组合** —— 拆包已完成,该模块由宿主在运行期提供:兼容层**不出现在**
+ *     本包的依赖声明里(那会是一条反向的包依赖),specifier 由 Node 从宿主的
+ *     node_modules 解析。取不到时走下面的 catch,退化为「两个源都未配置 env」。
  *   ★ 这条边**已在依赖守卫的 ALLOWED_EDGES 中显式登记**,并非靠"守卫看不见"蒙混过关。
  *
  * 失败不阻断启动:未装配模型源时的行为等同「两个源都未配置 env」,即 SDK 默认路径。
  */
 async function composeModelSources(): Promise<void> {
   try {
-    const mod = await import("../host-assembly/model-sources.js");
+    const mod = await import("@blksails/pi-web-server/host-assembly/model-sources.js");
     mod.registerBuiltinModelSources();
   } catch (error) {
     bootLog.warn("model sources not composed", {
