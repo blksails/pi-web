@@ -108,3 +108,32 @@ describe("checkPayloadLimit —— 输入形态健壮性", () => {
     expect(checkPayloadLimit({ image: generated }, ["image"])).toBeDefined();
   });
 });
+
+/**
+ * 新入参契约(2026-07-29):`images` 是**数组**字段。
+ *
+ * ★ 体积上限检查依赖 checkPayloadLimit 能遍历数组元素 —— 若它只认 string,合计体积会被
+ * 严重低估(多图编辑时只算到 0),大 payload 就会绕过本地拦截直接打到 provider 挂死。
+ * 这条用例把「数组字段也计入合计」钉死。
+ */
+describe("images 数组字段(入参契约统一后)", () => {
+  it("数组内各图体积累加计入合计", () => {
+    const err = checkPayloadLimit(
+      { images: [dataUriOfBytes(1_600_000), dataUriOfBytes(1_600_000), dataUriOfBytes(1_600_000)] },
+      ["images", "mask"],
+    );
+    expect(err, "3 × 1.6MB 应超过上限").toBeDefined();
+  });
+
+  it("单图数组在限内时放行", () => {
+    expect(checkPayloadLimit({ images: [dataUriOfBytes(174 * 1024)] }, ["images", "mask"])).toBeUndefined();
+  });
+
+  it("images 与 mask 合计计算", () => {
+    const err = checkPayloadLimit(
+      { images: [dataUriOfBytes(3_000_000)], mask: dataUriOfBytes(3_000_000) },
+      ["images", "mask"],
+    );
+    expect(err).toBeDefined();
+  });
+});
