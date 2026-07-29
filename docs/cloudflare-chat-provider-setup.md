@@ -121,19 +121,80 @@ Could not finish the message because max_tokens or model output limit was reache
 
 给这类模型设置默认输出上限时，需为推理留出余量。
 
-## 六、已知局限
+## 六、模型现已可用于会话
 
-**收敛后的目录仍含不可对话的变体。** 白名单是 provider 级的，收不掉同一厂商下的
-`:batch`（批处理 API，需另一套凭据）、embedding / tts / whisper / moderation 等条目 ——
-它们的 `owned_by` 与对话模型相同。用户若在选择器中选中这类条目，调用会失败。
+> 自 spec `ai-gateway-session-models`（2026-07-29）起。此前网关模型**只可见不可选** ——
+> 在模型选择器中呈灰色、标注「未接入会话」。
 
-暂不处理的原因：判定「哪些模型可对话」需要模型能力元数据，而 Cloudflare 目录仅提供
-`id` / `owned_by` / `cost_*`，靠 id 模式匹配属脆弱的启发式，容易误伤合法模型。
+现在：
 
-## 七、相关
+- 网关条目的 `availability` 为 `session`，在模型选择器中**可正常选中**；
+- 「默认 Provider」下拉中出现 `ai-gateway`，可设为默认；
+- runner 侧会把网关注册为进程内存 provider（**不写 `models.json`**，网关目录是 TTL
+  刷新的动态数据，落盘只会漂移）。
 
-- 规格：`.kiro/specs/cloudflare-chat-provider/`（含全部真机探测记录）
-- 实现：`packages/server/src/ai-gateway/{config,model-catalog}.ts`
+无需额外配置 —— 沿用第一节的两个变量即可。启用后服务端会记一条：
+
+```
+[server:runner:model-source] ai-gateway session provider registered { provider: "ai-gateway", models: 445, baseUrl: "…/compat/v1" }
+```
+
+### ★`max_tokens` 兼容性（曾导致 OpenAI 模型静默失败）
+
+pi SDK 的 `openai-completions` 默认发 `max_tokens`，而 **OpenAI 推理模型（gpt-5 / gpt-5.5 系）
+拒收该参数**：
+
+```
+Unsupported parameter: 'max_tokens' is not supported with this model.
+Use 'max_completion_tokens' instead.
+```
+
+症状很有迷惑性：assistant 消息 `content` 为空数组、`stopReason: "error"`，服务端**无任何
+日志** —— 看起来像超时或凭据问题。
+
+已在 `session-model-source.ts` 中统一设置 `compat.maxTokensField = "max_completion_tokens"`。
+三家上游经网关实调确认均接受该参数，故不按模型分支（靠 id 猜「哪些是推理模型」是脆弱
+启发式，且上游随时会加新型号）。
+
+## 七、已知局限
+
+### 已处理：`:batch` 变体
+
+批处理 API 变体（`…:batch`）需另一套凭据，选中即 401。既然网关条目现在可选中，就不该
+把已知会失败的条目呈现为正常选项，故已从清单中剔除。
+
+判据基于**实测统计**而非印象 —— 2026-07-29 对收敛后的 470 条统计，含冒号者 68 条：
+
+| 后缀 | 条数 | 处置 |
+|---|---|---|
+| `:batch` | 25 | **剔除**（批处理 API 变体） |
+| `:free` | 20 | 保留（正常对话模型的路由变体） |
+| `:beta` | 14 | 保留 |
+| `:thinking` | 3 | 保留 |
+| `:exacto` / `:extended` / `:nitro` 等 | 各 1 | 保留 |
+
+故**不能**一刀切排除含冒号者 —— 那会误伤 43 条合法模型。收敛后清单为 **445 条**。
+
+### 未处理：其他非对话条目
+
+embedding / tts / whisper / moderation 等条目的 `owned_by` 与对话模型相同，provider 级
+白名单收不掉，也无法靠 id 模式可靠识别（Cloudflare 目录仅提供 `id` / `owned_by` /
+`cost_*`，没有能力元数据）。
+
+用户若选中这类条目，会得到一条**带来源与成因指引**的错误，而非裸抛的注册表内部文案：
+
+```
+Model not found in registry: provider="ai-gateway" modelId="…" — 该模型来自 ai-gateway 目录。
+常见成因:(1) 网关套件未启用或凭据缺失…(2) 目录快照已变化…(3) 该条目并非对话模型…
+```
+
+## 八、相关
+
+- 规格：`.kiro/specs/cloudflare-chat-provider/`（目录接入，含全部真机探测记录）
+- 规格：`.kiro/specs/ai-gateway-session-models/`（会话接入，即第六、七节）
+- 实现：`packages/server/src/ai-gateway/{config,model-catalog,session-model-source}.ts`
+- 实现：`packages/server/src/runner/option-mapper.ts`（runner 侧注册）
+- 实现：`lib/app/ai-gateway-session-assembly.ts`（spawn env 下发）
 - 上游文档：https://developers.cloudflare.com/ai-gateway/usage/chat-completion/
   （注意：CF 称 `/compat/chat/completions` 有弃用倾向，推荐迁往
   `api.cloudflare.com/client/v4/accounts/{id}/ai/v1/chat/completions`；但实测该新端点的

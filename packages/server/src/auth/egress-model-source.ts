@@ -71,46 +71,40 @@ function toProviderModel(m: EgressModel): {
 }
 
 /**
- * 依登录态构造注入项。
+ * 解析所得的 egress 来源(不含 agentDir —— registry 的构造已上移到调用方)。
  *
- * @returns 登录且启用且有模型 → `{ authStorage, modelRegistry }`;否则 `undefined`。
+ * spec ai-gateway-session-models 任务 1.2:拆出「解析」与「注册」两层,使 egress 与
+ * ai-gateway 两个来源能注册进**同一个** registry。`servicesOptions.modelRegistry` 只有
+ * 一个位置,谁自建 registry 谁就会顶掉对方。
  */
-export function buildEgressModelSource(
-  input: EgressModelSourceInput,
-): InjectedModelServices | undefined {
+export interface EgressSpec {
+  readonly egressBaseUrl: string;
+  readonly credential: string;
+  readonly models: ReadonlyArray<EgressModel>;
+}
+
+/**
+ * 纯解析:判定 egress 来源是否具备条件。
+ *
+ * @returns 三要素齐全 → spec;任一缺失(未启用/未登录/无模型)→ `undefined`。
+ */
+export function resolveEgressSpec(input: {
+  readonly egressBaseUrl?: string;
+  readonly credential?: string;
+  readonly models: ReadonlyArray<EgressModel>;
+}): EgressSpec | undefined {
   const base = input.egressBaseUrl?.trim();
   const credential = input.credential?.trim();
   if (base === undefined || base.length === 0) return undefined;
   if (credential === undefined || credential.length === 0) return undefined;
   if (input.models.length === 0) return undefined;
-
-  // 复用共享 auth.json(与 SDK 默认同源),不改 agentDir。
-  const authStorage = AuthStorage.create(path.join(input.agentDir, "auth.json"));
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
-  modelRegistry.registerProvider(EGRESS_PROVIDER_NAME, {
-    baseUrl: base,
-    apiKey: credential,
-    api: EGRESS_API,
-    // authHeader:true → pi SDK 出 `Authorization: Bearer <credential>`,egress 据此验签换 sk-gw。
-    authHeader: true,
-    models: input.models.map(toProviderModel),
-  });
-  return { authStorage, modelRegistry };
+  return { egressBaseUrl: base, credential, models: input.models };
 }
 
-/**
- * runner 侧从自身 env 解析并构造注入项(装配层 computeAuthEgressSpawnEnv 下发的三件套)。
- *
- * 读 `PI_WEB_CLOUD_EGRESS_BASE` / `PI_WEB_DESKTOP_CREDENTIAL` / `PI_WEB_CLOUD_EGRESS_MODELS`;
- * 任一缺失或模型 JSON 非法 → 返回 `undefined`(runner 走 SDK 默认,不因登录配置异常打断本地路径)。
- *
- * @param agentDir 会话 agentDir(auth 复用 `<agentDir>/auth.json`)。
- * @param env 环境变量来源(runner 传 `process.env`)。
- */
-export function resolveEgressModelSourceFromEnv(
-  agentDir: string,
+/** 从 runner 自身 env 解析 egress 来源(不构造 registry)。 */
+export function resolveEgressSpecFromEnv(
   env: NodeJS.ProcessEnv,
-): InjectedModelServices | undefined {
+): EgressSpec | undefined {
   const egressBaseUrl = env.PI_WEB_CLOUD_EGRESS_BASE;
   const credential = env.PI_WEB_DESKTOP_CREDENTIAL;
   const rawModels = env.PI_WEB_CLOUD_EGRESS_MODELS;
@@ -128,5 +122,62 @@ export function resolveEgressModelSourceFromEnv(
   } catch {
     return undefined;
   }
-  return buildEgressModelSource({ agentDir, egressBaseUrl, credential, models });
+  return resolveEgressSpec({ egressBaseUrl, credential, models });
+}
+
+/** 把 egress 来源注册进给定 registry(只注册,不自建 —— 见 {@link EgressSpec})。 */
+export function registerEgressProvider(
+  registry: ModelRegistry,
+  spec: EgressSpec,
+): void {
+  registry.registerProvider(EGRESS_PROVIDER_NAME, {
+    baseUrl: spec.egressBaseUrl,
+    apiKey: spec.credential,
+    api: EGRESS_API,
+    // authHeader:true → pi SDK 出 `Authorization: Bearer <credential>`,egress 据此验签换 sk-gw。
+    authHeader: true,
+    models: spec.models.map(toProviderModel),
+  });
+}
+
+/** 构造共享 auth.json 之上的空内存 registry(两个来源共用,见 {@link EgressSpec})。 */
+export function createSharedModelServices(agentDir: string): InjectedModelServices {
+  // 复用共享 auth.json(与 SDK 默认同源),不改 agentDir。
+  const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
+  return { authStorage, modelRegistry: ModelRegistry.inMemory(authStorage) };
+}
+
+/**
+ * 依登录态构造注入项。
+ *
+ * @returns 登录且启用且有模型 → `{ authStorage, modelRegistry }`;否则 `undefined`。
+ */
+export function buildEgressModelSource(
+  input: EgressModelSourceInput,
+): InjectedModelServices | undefined {
+  const spec = resolveEgressSpec(input);
+  if (spec === undefined) return undefined;
+  const services = createSharedModelServices(input.agentDir);
+  registerEgressProvider(services.modelRegistry, spec);
+  return services;
+}
+
+/**
+ * runner 侧从自身 env 解析并构造注入项(装配层 computeAuthEgressSpawnEnv 下发的三件套)。
+ *
+ * 读 `PI_WEB_CLOUD_EGRESS_BASE` / `PI_WEB_DESKTOP_CREDENTIAL` / `PI_WEB_CLOUD_EGRESS_MODELS`;
+ * 任一缺失或模型 JSON 非法 → 返回 `undefined`(runner 走 SDK 默认,不因登录配置异常打断本地路径)。
+ *
+ * @param agentDir 会话 agentDir(auth 复用 `<agentDir>/auth.json`)。
+ * @param env 环境变量来源(runner 传 `process.env`)。
+ */
+export function resolveEgressModelSourceFromEnv(
+  agentDir: string,
+  env: NodeJS.ProcessEnv,
+): InjectedModelServices | undefined {
+  const spec = resolveEgressSpecFromEnv(env);
+  if (spec === undefined) return undefined;
+  const services = createSharedModelServices(agentDir);
+  registerEgressProvider(services.modelRegistry, spec);
+  return services;
 }

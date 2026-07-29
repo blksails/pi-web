@@ -46,6 +46,13 @@ const gwPort = (gwServer.address() as AddressInfo).port;
 
 // ai-gateway 套件启用:AI_GATEWAY_BASE_URL 已配置(Req 1.1)。
 process.env.AI_GATEWAY_BASE_URL = `http://127.0.0.1:${gwPort}`;
+// ★spec cloudflare-chat-provider 给目录加了**默认 provider 白名单**
+// (anthropic/openai/google-ai-studio),而本夹具的 owned_by 是 `openai-compat`——
+// 不在默认白名单内,会被 filterByOwner 静默滤空,导致网关条目永远不出现。
+// 该 spec 引入白名单时漏改了本夹具(是既有回归,非本 spec 所致)。
+// 显式放行本夹具的渠道名:GW_CHANNEL 刻意取一个与任何 self provider 都不同的值,
+// 用于断言「渠道名不进 providers」,故不能改用 `openai` 代替。
+process.env.PI_WEB_AI_GATEWAY_PROVIDER_ALLOWLIST = GW_CHANNEL;
 process.env.PI_WEB_AI_GATEWAY_SECRET = "test-ai-gateway-secret-abcdef0123456789";
 
 const route = await import("@/lib/app/api-route");
@@ -113,7 +120,11 @@ interface ChatModel {
 }
 
 describe("聚合形态:目录端点经组装服务取数(model-catalog spec 任务 3.1)", () => {
-  it("GET /api/config/models:providers = 全部 self 归属(无渠道名/无 ai-gateway),models 并入网关条目且 provider 恒为 'ai-gateway'(Req 1.1/6.2)", async () => {
+  // ★spec ai-gateway-session-models Req 6.1/6.4:本用例原断言「providers 不含 ai-gateway」,
+  // 那是 model-catalog spec 在网关条目**不可接入会话**时冻结的约定。availability 已翻为
+  // "session"(网关模型现在能跑),故 providers 有意追加 ai-gateway —— 否则用户无法把网关
+  // 设为默认 Provider。渠道名不进入这一条未变,继续钉住。
+  it("GET /api/config/models:providers = 全部 self 归属 + ai-gateway(无渠道名),models 并入网关条目且 provider 恒为 'ai-gateway'(Req 1.1/6.2)", async () => {
     // 首次调用触发 stale-while-revalidate 后台刷新(返回空快照),轮询直至网关条目并入。
     const body = await vi.waitFor(
       async () => {
@@ -126,13 +137,12 @@ describe("聚合形态:目录端点经组装服务取数(model-catalog spec 任�
       { timeout: 5000, interval: 100 },
     );
 
-    // (a) providers 恢复含**全部** self 归属(providers 集合 = self 条目 provider 集合),
-    // 且不含渠道名、不含 "ai-gateway"(Req 1.1/2.2/3.1)。
+    // (a) providers 含**全部** self 归属,外加 ai-gateway(网关条目非空时);
+    // 渠道名恒不进入(Req 1.1/2.2/3.1 + ai-gateway-session-models Req 6.1)。
     const selfProviders = new Set(
       body.models.filter((m) => m.source === "self").map((m) => m.provider),
     );
-    expect(new Set(body.providers)).toEqual(selfProviders);
-    expect(body.providers).not.toContain("ai-gateway");
+    expect(new Set(body.providers)).toEqual(new Set([...selfProviders, "ai-gateway"]));
     expect(body.providers).not.toContain(GW_CHANNEL);
 
     // (b) 网关条目 provider 全收敛为 "ai-gateway",渠道名降级为 channel 元数据。

@@ -1,0 +1,43 @@
+{
+  "feature_name": "ai-gateway-session-models",
+  "created_at": "2026-07-29T00:00:00Z",
+  "updated_at": "2026-07-29T00:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "note": "用户以 /goal「使用 kiro 流程完成需求，进行测试」授权自主推进三道规划闸门。"
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "lineage": {
+    "predecessors": [
+      "model-catalog",
+      "cloudflare-chat-provider",
+      "ai-gateway-providers"
+    ],
+    "note": "本 spec 是 model-catalog 在 model-select-field.tsx 注释中明确留下的 P2:「网关接入会话后翻转标记即可」。"
+  },
+  "decisions": {
+    "req2_revised": "初稿「凭据一律不进 agent 进程」被调研推翻——本地 spawn env 本就携带 config.providerKeys 真实 key,换钥网关专为 e2b 边界而建。已修订为按边界分述。",
+    "e2b_out_of_scope": "沙箱分支无真机验证条件,不做无法验证的接线。",
+    "req4_conditional": "不可对话变体的收敛改为证据驱动:实施期先统计目录形态再决定窄规则或放弃收敛。"
+  },
+  "validation": {
+    "date": "2026-07-29",
+    "tasks": "16/16",
+    "e2e": "真实实例 :3210 跨三厂商对话全通(anthropic/openai/google-ai-studio)",
+    "defect_found_by_e2e": "pi SDK 发 max_tokens 被 OpenAI 推理模型拒收 → 已修(compat.maxTokensField)",
+    "pre_existing_regression_fixed": "ai-gateway-route-mount.integration 夹具 owned_by 不在 cloudflare-chat-provider 新增的默认白名单内(该 spec 漏改)"
+  }
+}

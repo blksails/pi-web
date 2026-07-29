@@ -33,3 +33,15 @@ export {
   type GatewayModelCatalogDeps,
   type ModelPrecedence,
 } from "./model-catalog.js";
+// spec ai-gateway-session-models:会话侧模型来源(装配层需 env 常量以构造 spawn env)。
+export {
+  AI_GATEWAY_PROVIDER_NAME,
+  RUNNER_AI_GATEWAY_BASE_ENV,
+  RUNNER_AI_GATEWAY_KEY_ENV,
+  RUNNER_AI_GATEWAY_MODELS_ENV,
+  registerAiGatewayProvider,
+  resolveAiGatewaySessionSpecFromEnv,
+  isSessionCapableGatewayModel,
+  type AiGatewaySessionSpec,
+  type AiGatewaySessionLogger,
+} from "./session-model-source.js";
