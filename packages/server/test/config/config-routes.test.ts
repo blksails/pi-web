@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionManager } from "../../src/session/session-manager.js";
-import { createConfigRoutes } from "../../src/config/config-routes.js";
+import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
 import type { AuthContext } from "../../src/http/index.js";
 
 let tmpDir: string;

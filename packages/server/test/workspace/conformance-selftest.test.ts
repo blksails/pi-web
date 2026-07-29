@@ -13,7 +13,7 @@ import {
   createTornMemoryWorkspace,
   type MemoryWorkspaceHandle,
   type MemoryWorkspaceOptions,
-} from "./fixtures/memory-workspace.js";
+} from "../../src/workspace/testing/memory-workspace.js";
 
 /**
  * host-contract-ports 任务 3.1 —— **套件自检**(Req 8.1/8.2)。

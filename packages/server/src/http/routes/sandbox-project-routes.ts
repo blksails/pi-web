@@ -16,8 +16,8 @@
 import { promises as fs } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { sandboxConfigSchema } from "@blksails/pi-web-protocol";
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
+import { errorResponse, jsonResponse } from "../index.js";
+import type { AuthContext, InjectedRoute, RequestContext } from "../index.js";
 
 /** adminPolicy 接缝(与 config-routes 同构);默认放行(本地单用户)。 */
 export type SandboxAdminPolicy = (auth: AuthContext) => boolean;

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionManager } from "../../src/session/session-manager.js";
-import { createExtensionsConfigRoutes } from "../../src/config/extensions-config-routes.js";
+import { createExtensionsConfigRoutes } from "../../src/http/routes/extensions-config-routes.js";
 import { createSchemaRegistry } from "../../src/config/schema-registry.js";
 import { seedAgentDir } from "./ext-schema-fixtures.js";
 

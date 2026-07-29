@@ -63,13 +63,13 @@ import path from "node:path";
 import { z } from "zod";
 import { FormSchemaZodSchema } from "@blksails/pi-web-protocol";
 import type { FieldDescriptor, FieldKind, FormSchema } from "@blksails/pi-web-protocol";
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
-import { isSourceKey, sourceKey as deriveSourceKey } from "../source-key.js";
-import { resolvePiPlugin } from "../plugin/resolve-plugin.js";
-import { SourceSettingsCodec, type SourceSettingsScope } from "./source-settings-codec.js";
-import type { Workspace } from "../workspace/index.js";
-import { maskSecrets, mergeSecrets } from "./secret-merge.js";
+import { errorResponse, jsonResponse } from "../index.js";
+import type { AuthContext, InjectedRoute, RequestContext } from "../index.js";
+import { isSourceKey, sourceKey as deriveSourceKey } from "../../source-key.js";
+import { resolvePiPlugin } from "../../plugin/resolve-plugin.js";
+import { SourceSettingsCodec, type SourceSettingsScope } from "../../config/source-settings-codec.js";
+import type { Workspace } from "../../workspace/index.js";
+import { maskSecrets, mergeSecrets } from "../../config/secret-merge.js";
 
 /** 门控 env(`"1"` 关断;默认开启)。请求时读取,不缓存(与 agent-route-routes 同款)。 */
 export const SOURCE_SETTINGS_DISABLED_ENV = "PI_WEB_SOURCE_SETTINGS_DISABLED";

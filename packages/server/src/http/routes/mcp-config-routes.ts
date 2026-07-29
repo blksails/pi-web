@@ -21,10 +21,10 @@ import {
   buildMcpConfigForWrite,
   type McpServerConfig,
 } from "@blksails/pi-web-protocol";
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
-import { maskMcpSecrets, mergeMcpSecrets } from "./mcp-secrets.js";
-import { McpProbeService } from "./mcp-probe.js";
+import { errorResponse, jsonResponse } from "../index.js";
+import type { AuthContext, InjectedRoute, RequestContext } from "../index.js";
+import { maskMcpSecrets, mergeMcpSecrets } from "../../config/mcp-secrets.js";
+import { McpProbeService } from "../../config/mcp-probe.js";
 
 const MCP_FILE = "mcp.json";
 

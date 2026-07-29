@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { ConfigCodec } from "../../src/config/config-codec.js";
-import { createMemoryWorkspace } from "../workspace/fixtures/memory-workspace.js";
+import { createMemoryWorkspace } from "@blksails/pi-web-server/testing";
 
 describe("ConfigCodec Workspace 注入(Req 1)", () => {
   it("注入 namespace:缺键→{}、deepMerge、merge:false 覆盖", async () => {

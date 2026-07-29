@@ -20,13 +20,13 @@ import {
   cloudConfigSchema,
 } from "@blksails/pi-web-protocol";
 import type { ConfigDomainId } from "@blksails/pi-web-protocol";
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { InjectedRoute, RequestContext } from "../http/index.js";
-import type { AuthContext } from "../http/index.js";
-import { ConfigCodec } from "./config-codec.js";
-import type { Workspace } from "../workspace/index.js";
-import { maskSecrets, mergeSecrets } from "./secret-merge.js";
-import type { ModelOptions } from "./model-options.types.js";
+import { errorResponse, jsonResponse } from "../index.js";
+import type { InjectedRoute, RequestContext } from "../index.js";
+import type { AuthContext } from "../index.js";
+import { ConfigCodec } from "../../config/config-codec.js";
+import type { Workspace } from "../../workspace/index.js";
+import { maskSecrets, mergeSecrets } from "../../config/secret-merge.js";
+import type { ModelOptions } from "../../config/model-options.types.js";
 
 /** 已知域的 zod 校验 schema 表。 */
 const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {

@@ -485,7 +485,35 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
 }
 
 /** Process entry: parse argv, start the runner, surface fatal errors. */
+/**
+ * 装配 pi-web 内置模型源(spec: kernel-boundary-decoupling,任务 4.3)。
+ *
+ * ★ 为什么在这里、而且用**动态**导入:
+ *   - runner 有**两条被支持的入口**:`runner-bootstrap.mjs`(生产)与直接跑
+ *     `src/runner/runner.ts`(本文件顶部注释就文档化了这种用法,另有 2 个 it 档 +
+ *     4 个 node e2e 这么起)。装配缝只放在 bootstrap 会让直接入口静默丢掉模型源 ——
+ *     表现正是「会话起得来但模型找不到」(实测被 egress 登录闭环用例抓到)。
+ *     故必须落在两条入口的**汇合点**,也就是 main()。
+ *   - 用动态导入而非静态 import:静态 import 会让 `runner → host-assembly → adapters`
+ *     成为编译期依赖,切包后 runner 包直接拖上 adapters 包。动态导入把它降级为
+ *     **运行期组合** —— 拆包后由宿主提供该模块,runner 侧声明为可选依赖。
+ *   ★ 这条边**已在依赖守卫的 ALLOWED_EDGES 中显式登记**,并非靠"守卫看不见"蒙混过关。
+ *
+ * 失败不阻断启动:未装配模型源时的行为等同「两个源都未配置 env」,即 SDK 默认路径。
+ */
+async function composeModelSources(): Promise<void> {
+  try {
+    const mod = await import("../host-assembly/model-sources.js");
+    mod.registerBuiltinModelSources();
+  } catch (error) {
+    bootLog.warn("model sources not composed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 export async function main(argv: readonly string[]): Promise<void> {
+  await composeModelSources();
   let args: RunnerArgs;
   try {
     args = parseRunnerArgs(argv);

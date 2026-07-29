@@ -3,7 +3,7 @@
  * 覆盖正常返回、空集回退(无接缝/抛错)、以及路由顺序(不被 /config/:domain 吃成未知域)。
  */
 import { describe, it, expect } from "vitest";
-import { createConfigRoutes } from "../../src/config/config-routes.js";
+import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionManager } from "../../src/session/session-manager.js";

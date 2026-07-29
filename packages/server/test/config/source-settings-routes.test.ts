@@ -15,7 +15,7 @@ import {
   createSourceSettingsRoutes,
   type ResolvedSourceSettings,
   SOURCE_SETTINGS_DISABLED_ENV,
-} from "../../src/config/source-settings-routes.js";
+} from "../../src/http/routes/source-settings-routes.js";
 import { SourceSettingsCodec } from "../../src/config/source-settings-codec.js";
 import { sourceKey } from "../../src/source-key.js";
 import type { AuthContext } from "../../src/http/index.js";

@@ -26,7 +26,7 @@
  *   复用基础镜像 runner-entry 的 AGENT_CMD 兜底路径,沙箱内零新组件(Req 2.2/2.6)。
  */
 import { createHash } from "node:crypto";
-import { deriveImageName, deriveTemplateName } from "./template-name.js";
+import { deriveImageName, deriveTemplateName } from "../template-name.js";
 
 // ---------------------------------------------------------------------------
 // 端口与结果类型

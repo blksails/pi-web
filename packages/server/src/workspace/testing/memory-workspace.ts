@@ -1,4 +1,14 @@
 /**
+ * ★ 位置说明(spec: kernel-boundary-decoupling,任务 5.1):本模块原是
+ *   `test/workspace/fixtures/memory-workspace.ts`,由 spec `host-contract-ports`
+ *   **刻意**留在 test 目录、不对外暴露(理由:「只认 LocalWorkspace 一个参照实现」)。
+ *
+ *   本 spec **有意推翻**那条决定,因为前提变了:测试分档改造后,fast 档的判据之一是
+ *   「不写真实文件系统」,而 Workspace 是内核的读写底座 —— 没有受支持的内存实现,
+ *   fast 档无从测试任何碰 Workspace 的代码。原决定要防的是「参照实现二义」,
+ *   而这里导出的是**测试替身**、经 `testing` 子路径出口,不进运行期主入口,
+ *   不构成第二个参照实现。
+ *
  * 内存 Workspace 夹具(spec: host-contract-ports,任务 3.1)。
  *
  * ⚠ **测试夹具,非参照实现。** 刻意落在 `test/` 镜像目录而非 `src/workspace/testing/`,
@@ -10,10 +20,10 @@
  *  - {@link createMemoryWorkspace}   合规:校验键、按契约语义读写。
  *  - {@link createLaxMemoryWorkspace} 违规:**故意不校验键**,用于证明套件真的会失败。
  */
-import { HOST_CONTRACT_VERSION } from "../../../src/host-contract-version.js";
-import { validateWorkspaceKey } from "../../../src/workspace/key.js";
-import { deepMergeJson } from "../../../src/workspace/merge.js";
-import { DEFAULT_WORKSPACE_MAX_VALUE_BYTES } from "../../../src/workspace/limit-config.js";
+import { HOST_CONTRACT_VERSION } from "../../host-contract-version.js";
+import { validateWorkspaceKey } from "../key.js";
+import { deepMergeJson } from "../merge.js";
+import { DEFAULT_WORKSPACE_MAX_VALUE_BYTES } from "../limit-config.js";
 import {
   WorkspaceCorruptError,
   WorkspaceKeyError,
@@ -23,7 +33,7 @@ import {
   type WorkspaceKey,
   type WorkspaceNamespace,
   type WorkspaceWriteOptions,
-} from "../../../src/workspace/types.js";
+} from "../types.js";
 
 export interface MemoryWorkspaceOptions {
   readonly maxValueBytes?: number;

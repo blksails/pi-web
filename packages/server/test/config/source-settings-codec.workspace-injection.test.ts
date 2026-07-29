@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { SourceSettingsCodec } from "../../src/config/source-settings-codec.js";
-import { createMemoryWorkspace } from "../workspace/fixtures/memory-workspace.js";
+import { createMemoryWorkspace } from "@blksails/pi-web-server/testing";
 
 const KEY = "0123456789abcdef"; // 合法 16-hex sourceKey
 

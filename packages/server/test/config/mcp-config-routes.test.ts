@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionManager } from "../../src/session/session-manager.js";
-import { createMcpConfigRoutes } from "../../src/config/mcp-config-routes.js";
+import { createMcpConfigRoutes } from "../../src/http/routes/mcp-config-routes.js";
 import { McpProbeService } from "../../src/config/mcp-probe.js";
 
 let agentDir: string;

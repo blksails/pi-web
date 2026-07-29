@@ -12,7 +12,7 @@ import {
   templateResolveMissingMessage,
   type TemplateResolveInput,
 } from "../../src/rpc-channel/template-resolve.js";
-import { deriveTemplateName } from "../../src/sandbox-image/template-name.js";
+import { deriveTemplateName } from "../../src/template-name.js";
 import { E2B_CONFIG_MISSING_MESSAGE } from "../../src/rpc-channel/e2b-config.js";
 
 /** 便捷构造:env 快照恒含 E2B_API_KEY(前置条件:e2b 配置已可解析)。 */

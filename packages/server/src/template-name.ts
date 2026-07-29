@@ -1,4 +1,10 @@
 /**
+ * ★ 位置说明(spec: kernel-boundary-decoupling,任务 2.1):本模块原住 `sandbox-image/` 下,
+ *   但它是**构建期(镜像烘焙,adapters)与运行期(模板解析,core)共用的纯命名逻辑** ——
+ *   两侧必须派生出一致的名字,否则构建出的镜像名与运行时解析的模板名对不上。
+ *   放在 adapters 目录里会让 core 反向依赖 adapters,故上移到顶层中立位置,
+ *   与同形的 `source-key.ts` 并列。**不得**在任何一侧留第二份实现。
+ *
  * sandbox-image · source 标识派生(`sandbox-baked-agent-image` spec,任务 1.1;Req 2.6/3.2)。
  *
  * 从 resolver 的稳定来源标识(policySource 语义:dir 绝对路径 / git url / `builtin:<name>`)

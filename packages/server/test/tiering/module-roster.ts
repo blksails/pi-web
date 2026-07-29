@@ -1,0 +1,182 @@
+/**
+ * `src/` 顶层模块的**层归属名册**(spec: kernel-boundary-decoupling,任务 1.1)。
+ *
+ * 内核提取波次要把 `packages/server` 切成 core / runner / adapters 三包。切包之前,
+ * 包内的依赖方向必须已经对三分成立 —— 否则一搬文件就变成循环或反向依赖。
+ * 本名册是那条判据的事实来源,由 `dependency-guard.test.ts` 消费。
+ *
+ * 层序(依赖只能从右往左):
+ *
+ *     neutral  ←  core  ←  { runner, adapters }  ←  assembly
+ *
+ * - **neutral**:不属于任何一层的**纯逻辑**,被多层共用。判据是「零业务依赖、
+ *   只用 node builtins 或纯计算」。放错层的代价是它会把某一层拖进另一层。
+ * - **core**:headless 内核 —— 会话引擎、传输抽象、框架无关 HTTP、宿主契约端口。
+ * - **runner**:子进程实现,值导入 pi SDK 与 jiti。
+ * - **adapters**:绑定具体外部系统(云沙箱 / 数据库 / 对象存储 / LLM 网关 / 凭据 / 包注册表)。
+ * - **assembly**:把上面三层**组装**起来的那一层 —— 主 barrel 与默认能力面清单。
+ *   它按定义会同时引用 core 与 adapters,那不是违规而是它的职责。切包时它**留在兼容层包**,
+ *   不进 core 包。★ 这条是守卫实测揪出来的:初版名册把它俩归为 core,于是报出 11 条假边。
+ *
+ * ★ 新增 `src/` 顶层模块时**必须**在此归类,否则守卫报红。这是刻意的:
+ *   一个默认无人管的新模块,正是边界腐化的入口。
+ */
+
+export type Layer = "neutral" | "core" | "runner" | "adapters" | "assembly";
+
+/** 层序。数值越小越底层;依赖只允许指向**不大于**自身的层。 */
+export const LAYER_ORDER: Readonly<Record<Layer, number>> = {
+  neutral: 0,
+  core: 1,
+  runner: 2,
+  adapters: 2,
+  assembly: 3,
+};
+
+/**
+ * 每个模块的层归属。键是 `src/` 下的顶层目录名或顶层单文件名(不含 `.ts`)。
+ *
+ * 归类依据逐条可查:adapters 的判据是「绑定某个具体外部系统」,
+ * core 的判据是「不绑定任何外部系统的宿主能力」。
+ */
+export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
+  // ── neutral:纯逻辑,多层共用 ────────────────────────────────
+  "source-key": "neutral", // 源标识键派生(仅 node:crypto)
+  "host-contract-version": "neutral", // 契约版本常量与错误类型(零 import)
+  "template-name": "neutral", // 镜像/模板命名派生(仅 node:crypto);任务 2.1 迁入
+  "model-provider-names": "neutral", // provider 命名空间常量;三层共享的标识,任务 4.2 迁入 // 镜像/模板命名派生(仅 node:crypto);任务 2.1 迁入
+
+  // ── core:headless 内核 ────────────────────────────────────
+  "agent-source": "core",
+  "agent-source-list": "core",
+  attachment: "core",
+  "attachment-bridge": "core",
+  "builtin-agents": "core",
+  capability: "core",
+  commands: "core",
+  completion: "core",
+  config: "core",
+  "config-domain": "core",
+  "host-manifest": "core",
+  http: "core",
+  logging: "core",
+  "model-catalog": "core",
+  plugin: "core",
+  "rpc-channel": "core", // 传输**抽象**;e2b 具体实现属 adapters,由后续 spec 分离
+  sandbox: "core", // 沙箱入口解析(纯路径逻辑,不绑定具体沙箱厂商)
+  session: "core",
+  "session-actions": "core",
+  "session-list": "core",
+  "session-store": "core", // 接口与内存实现;postgres 实现属 adapters,由后续 spec 分离
+  state: "core",
+  trust: "core",
+  workspace: "core",
+  "aigc-settings": "core", // 薄设置读写路由,不绑定具体 provider
+  "vision-settings": "core", // 同上
+  "parent-watchdog": "core",
+  "runner-bootstrap-path": "core", // 仅路径解析,不加载 runner 实现
+
+  // ── runner:子进程实现 ─────────────────────────────────────
+  runner: "runner",
+
+  // ── assembly:组装层,按定义同时引用 core 与 adapters ─────────
+  index: "assembly", // 主 barrel
+  "host-assembly": "assembly", // 默认能力面清单;其文件头自述「import 真实工厂,绝不经主 barrel 导出」
+
+  // ── adapters:绑定具体外部系统 ──────────────────────────────
+  "ai-gateway": "adapters", // Cloudflare 等 AI 网关
+  auth: "adapters", // 桌面凭据 / egress
+  identity: "adapters", // 身份端口的具体实现
+  "llm-gateway": "adapters", // dev/自部署 LLM 网关
+  "sandbox-image": "adapters", // 云沙箱镜像烘焙
+  extensions: "adapters", // 包安装(注册表 / 网络)
+  tokens: "adapters", // 分面 scoped token 签发(与凭据体系绑定)
+};
+
+/**
+ * 显式豁免的跨层边。
+ *
+ * ★ 每条豁免**必须写出理由** —— 一条没有理由的豁免，和一个漏网的违规长得一模一样。
+ * ★ `typeOnly: true` 的豁免只对 `import type` 成立;同一对模块的**值导入**仍会被拦。
+ */
+export const ALLOWED_EDGES: readonly {
+  readonly from: string;
+  readonly to: string;
+  readonly typeOnly: boolean;
+  readonly why: string;
+}[] = [
+  {
+    from: "capability",
+    to: "auth",
+    typeOnly: true,
+    why: "capability/types.ts 只 import type auth/egress-model.js(本身是零 import 的纯类型别名)。类型在编译期擦除,切包后跨包 import type 合法,故不必解耦。",
+  },
+  {
+    from: "runner",
+    to: "host-assembly",
+    typeOnly: false,
+    why: "runner.ts 的 main() 以**动态** import 组合 host-assembly/model-sources(装配内置模型源)。runner 有两条被支持的入口(runner-bootstrap.mjs 与直接跑 runner.ts,后者在其文件头被文档化,另有 2 个 it + 4 个 node e2e 这么起),装配缝只放在 bootstrap 会让直接入口静默丢掉模型源 —— 表现是「会话起得来但模型找不到」(实测被 egress 登录闭环用例抓到)。故必须落在两条入口的汇合点。用动态导入使其为**运行期组合**而非编译期依赖:拆包后由宿主提供该模块,runner 侧声明可选依赖。★ 守卫已一并扫描动态 import,本条是显式登记而非漏网。",
+  },
+  {
+    from: "builtin-agents",
+    to: "runner",
+    typeOnly: true,
+    why: "builtin-agents/default-agent 只 import type runner 的 AgentDefinition 形状,用于给内置 agent 的默认导出标注类型。类型编译期擦除,切包后跨包 import type 合法(runner 包会导出该类型)。",
+  },
+];
+
+/**
+ * **已知欠债**:确实是违规、但本 spec 不修的跨层边。
+ *
+ * ★ 与 `ALLOWED_EDGES` 严格分开 —— 后者是「合法，不必修」，前者是「不合法，暂不修」。
+ *   混在一起写，几个月后没人分得清哪些是设计、哪些是欠账。
+ * ★ 守卫对本表的条目**不报错但计数**:条目只能减不能增(见 dependency-guard 的欠债断言),
+ *   使欠债无法无声增长。
+ */
+export const KNOWN_DEBT: readonly {
+  readonly from: string;
+  readonly to: string;
+  readonly why: string;
+  readonly owner: string;
+}[] = [
+  {
+    from: "model-catalog",
+    to: "ai-gateway",
+    why: "model-catalog/service.ts 值导入 ai-gateway/model-catalog.js 的 mergeModelCatalog。该函数**不是自足纯函数** —— 它依赖 ai-gateway 的 provider 命名空间与会话可用性判据,故不能上移到 core。正解是把它改为经 ModelCatalogServiceDeps 注入(注入结构已存在),但那要改 lib/app 装配点与 15 处测试调用,超出本 spec 已批准的需求范围(R1.1-R1.3 只列了传输/凭据/配置三条边)。",
+    owner: "core-package-extraction",
+  },
+];
+
+/**
+ * 由模块路径(相对 `src/`,如 `rpc-channel/foo.ts`)取其顶层模块名。
+ *
+ * ★ 扩展名要同时剥 `.ts` 与 `.js`:NodeNext 约定下 import specifier 写的是 `.js`
+ *   (`../host-contract-version.js`),而磁盘上是 `.ts`。只剥一种会让顶层单文件模块查不到。
+ */
+export function moduleNameOf(relPathFromSrc: string): string {
+  const first = relPathFromSrc.split("/")[0] ?? "";
+  return first.replace(/\.(ts|js)$/, "");
+}
+
+/** 取模块所属层。未知模块**抛错**而非静默归类 —— 新增模块必须显式表态。 */
+export function layerOf(moduleName: string): Layer {
+  const layer = MODULE_ROSTER[moduleName];
+  if (layer === undefined) {
+    throw new Error(
+      `模块 "${moduleName}" 未在 MODULE_ROSTER 中归类。` +
+        `新增 src/ 顶层模块时必须显式指定其层(neutral / core / runner / adapters),` +
+        `否则它会成为边界腐化的入口。`,
+    );
+  }
+  return layer;
+}
+
+/**
+ * 是否为**跨层反向**依赖 —— 即依赖指向了比自身更外层的模块。
+ *
+ * `runner` 与 `adapters` 同序(都是 2):它们互不依赖,故彼此之间的边也算反向。
+ */
+export function isReverseEdge(from: Layer, to: Layer): boolean {
+  if (from === to) return false;
+  return LAYER_ORDER[to] >= LAYER_ORDER[from];
+}

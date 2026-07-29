@@ -16,11 +16,11 @@
 import type { CapabilityDescriptor } from "../host-manifest/index.js";
 import type { HostCommandHandler } from "../commands/host-command-registry.js";
 import { asCommands, asRoutes, type HostContribution } from "./host-contribution.js";
-import { createConfigRoutes } from "../config/config-routes.js";
-import { createMcpConfigRoutes } from "../config/mcp-config-routes.js";
-import { createSandboxProjectRoutes } from "../config/sandbox-project-routes.js";
-import { createSourceSettingsRoutes } from "../config/source-settings-routes.js";
-import { createExtensionsConfigRoutes } from "../config/extensions-config-routes.js";
+import { createConfigRoutes } from "../http/routes/config-routes.js";
+import { createMcpConfigRoutes } from "../http/routes/mcp-config-routes.js";
+import { createSandboxProjectRoutes } from "../http/routes/sandbox-project-routes.js";
+import { createSourceSettingsRoutes } from "../http/routes/source-settings-routes.js";
+import { createExtensionsConfigRoutes } from "../http/routes/extensions-config-routes.js";
 import { createSessionListRoutes } from "../session-list/session-list-routes.js";
 import { createSessionActionsRoutes } from "../session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "../agent-source-list/agent-sources-routes.js";

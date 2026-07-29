@@ -1,6 +1,6 @@
 import { describe, it } from "vitest";
 import { runWorkspaceConformance } from "../../src/workspace/testing/index.js";
-import { createMemoryWorkspace } from "./fixtures/memory-workspace.js";
+import { createMemoryWorkspace } from "@blksails/pi-web-server/testing";
 
 /**
  * host-contract-ports 任务 3.1 —— 以**真实调用形态**驱动一致性套件(Req 8.1/8.2)。

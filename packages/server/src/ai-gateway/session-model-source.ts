@@ -35,7 +35,11 @@ export const RUNNER_AI_GATEWAY_MODELS_ENV = "PI_WEB_AI_GATEWAY_SESSION_MODELS";
  * ★与 `mergeModelCatalog` 中 `provider: "ai-gateway"` 同源 —— 两处任一改动都必须同步,
  * 否则清单里的条目在 registry 中查不到(表现为「选了就报模型未找到」)。
  */
-export const AI_GATEWAY_PROVIDER_NAME = "ai-gateway";
+// 常量下沉到中立模块(spec kernel-boundary-decoupling 任务 4.2):runner 的失败文案分化
+// 需要认得这个命名空间,从本模块引入会制造 runner → adapters 的跨层边。此处原样 re-export,
+// 既有消费方零改动。
+import { AI_GATEWAY_PROVIDER_NAME } from "../model-provider-names.js";
+export { AI_GATEWAY_PROVIDER_NAME };
 
 /** 网关为 OpenAI 兼容出口(CF `/compat` 已实测),provider/model 的 api 固定于此。 */
 const AI_GATEWAY_API = "openai-completions";

@@ -12,7 +12,7 @@ import {
   createExtensionsConfigRoutes,
   settingsToForm,
   applyFormToSettings,
-} from "../../src/config/extensions-config-routes.js";
+} from "../../src/http/routes/extensions-config-routes.js";
 
 let tmpDir: string;
 

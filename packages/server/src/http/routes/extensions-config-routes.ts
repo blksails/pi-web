@@ -13,10 +13,10 @@
 import { promises as fs } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { extensionsConfigSchema } from "@blksails/pi-web-protocol";
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { AuthContext, InjectedRoute, RequestContext } from "../http/index.js";
-import { resolveInstalledExtensionSchemas } from "./schema-resolver.js";
-import { createSchemaRegistry, type SchemaRegistry } from "./schema-registry.js";
+import { errorResponse, jsonResponse } from "../index.js";
+import type { AuthContext, InjectedRoute, RequestContext } from "../index.js";
+import { resolveInstalledExtensionSchemas } from "../../config/schema-resolver.js";
+import { createSchemaRegistry, type SchemaRegistry } from "../../config/schema-registry.js";
 
 export type ExtensionsAdminPolicy = (auth: AuthContext) => boolean;
 const defaultAdminPolicy: ExtensionsAdminPolicy = () => true;

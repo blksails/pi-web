@@ -43,11 +43,11 @@ import type { HostCommandHandler } from "../../src/commands/host-command-registr
 // 守卫②的**独立基线**:直接 import 15 个真实路由工厂,与 defaultCapabilities 分离地各调一次
 // 作为「第二份真相」。绑错/漏绑工厂只改 defaultCapabilities 一侧 → 与此基线对不上 → 转红。
 // ★ 不得用 `descriptors.flatMap(d.factory)`(那是同一份 factory 自我对比,恒等,对绑错零反应)。
-import { createConfigRoutes } from "../../src/config/config-routes.js";
-import { createMcpConfigRoutes } from "../../src/config/mcp-config-routes.js";
-import { createSandboxProjectRoutes } from "../../src/config/sandbox-project-routes.js";
-import { createSourceSettingsRoutes } from "../../src/config/source-settings-routes.js";
-import { createExtensionsConfigRoutes } from "../../src/config/extensions-config-routes.js";
+import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
+import { createMcpConfigRoutes } from "../../src/http/routes/mcp-config-routes.js";
+import { createSandboxProjectRoutes } from "../../src/http/routes/sandbox-project-routes.js";
+import { createSourceSettingsRoutes } from "../../src/http/routes/source-settings-routes.js";
+import { createExtensionsConfigRoutes } from "../../src/http/routes/extensions-config-routes.js";
 import { createSessionListRoutes } from "../../src/session-list/session-list-routes.js";
 import { createSessionActionsRoutes } from "../../src/session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "../../src/agent-source-list/agent-sources-routes.js";

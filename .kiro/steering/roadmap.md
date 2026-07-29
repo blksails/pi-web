@@ -128,10 +128,14 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
   _Dependencies: none_ — 14 任务完成(2026-07-29)。fast 档 **6.25s**(188+1 文件/1821 用例);
   连续两次全量计数一致(基线做不到);与基线对账零缺口。★ 实测推翻两条设计假设:
   vitest project 级 `isolate` 被忽略(同 `fileParallelism`)、`-c` 配置的 `setupFiles` 被忽略。
-- [ ] **kernel-boundary-decoupling** — **原地**解三条越界边:`rpc-channel → sandbox-image`(传输抽象
+- [x] **kernel-boundary-decoupling** — **原地**解三条越界边:`rpc-channel → sandbox-image`(传输抽象
   剥离 e2b 烘焙计划)、`runner → auth`(egress 模型源改注入)、`config → http`(配置域与路由分离);
   并把 `MemoryWorkspace` 从 test fixture 提升为 `src/testing` 正式导出。**不移动任何文件到新包**。
-  _Dependencies: test-tiering-fast-lane_
+  _Dependencies: test-tiering-fast-lane_ — 12 任务完成(2026-07-29)。依赖方向守卫由红转绿(39/39);
+  主入口符号 313→313 diff 空;全量连跑两次一致(283 文件/2547 用例)。
+  ★ 守卫揪出 design 未预见的两件事:① `host-assembly` 与 `index` 是**装配层**不是 core,
+  **不应进 core 包**(core-package-extraction 的 brief 需据此修订);② `model-catalog → ai-gateway`
+  是第四条边,已登记为 KNOWN_DEBT 移交 core-package-extraction。
 - [ ] **core-package-extraction** — 建 `@blksails/pi-web-core`(headless 内核:session / rpc-channel 抽象 /
   框架无关 http handler / workspace / capability / config-domain / host-manifest / host-contract-version /
   session-store 接口 / attachment L0–L1 接口 / completion / commands / runner **契约**),

@@ -27,17 +27,15 @@ import {
 import type { ResolveProjectTrust } from "./project-trust.js";
 // desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
 // 不经 server barrel;egress-model-source 见 auth/)。
+// spec kernel-boundary-decoupling(任务 4.2):模型源改为经**注册表**取得,不再直接
+// import auth / ai-gateway 的具体实现 —— 那两条 import 是 runner → adapters 的跨层边,
+// 切包后会让 runner 包拖上 adapters 包。具体实现由 assembly 层在启动前自注册。
 import {
-  createSharedModelServices,
-  registerEgressProvider,
-  resolveEgressSpecFromEnv,
-} from "../auth/egress-model-source.js";
-// spec ai-gateway-session-models:网关目录模型的会话侧注册(与 egress 共用同一 registry)。
-import {
-  AI_GATEWAY_PROVIDER_NAME,
-  registerAiGatewayProvider,
-  resolveAiGatewaySessionSpecFromEnv,
-} from "../ai-gateway/session-model-source.js";
+  getSharedModelServicesFactory,
+  listModelSources,
+} from "./model-source-registrar.js";
+// 仅取**命名空间常量**(中立模块),不取任何 adapter 实现 —— 见该文件的位置说明。
+import { AI_GATEWAY_PROVIDER_NAME } from "../model-provider-names.js";
 import { resolveBuiltinExtensionEntries } from "./builtin-extensions.js";
 
 /** runner 侧模型来源注册的日志出口(Req 7.1:记 provider 名与条目数,绝不记凭据)。 */
@@ -249,6 +247,9 @@ function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel 
     // spec ai-gateway-session-models Req 1.4/4.2:网关来源的失败有其特有成因(目录 TTL
     // 已过期、模型是 :batch/embedding 等不可对话变体、网关套件未启用),裸抛注册表内部
     // 文案会让用户无从下手。非网关来源的文案保持逐字不变。
+    // ★ 判据必须是 provider **命名空间**,不能是「该源是否已注册」——
+    //   这段文案本身就把「网关套件未启用、会话侧未注册」列为成因之一,
+    //   用注册状态当判据会让最需要它的场景恰好拿不到它(实测被 it 档抓到)。
     if (model.provider === AI_GATEWAY_PROVIDER_NAME) {
       throw new Error(
         `${base} — 该模型来自 ai-gateway 目录。常见成因:` +
@@ -347,21 +348,32 @@ export function buildRuntimeFactory(
     // 谁自建 registry 谁就顶掉对方。故改为「先各自解析,再合成单一 registry」。
     // 两者皆无 → 完全不触碰 servicesOptions,保持 SDK 默认(共享 auth.json + models.json),
     // 与本 spec 实施前逐字节等价。
-    const egressSpec = resolveEgressSpecFromEnv(process.env);
-    const gatewaySpec = resolveAiGatewaySessionSpecFromEnv(process.env);
+    // 逐个已登记的模型源解析其 env 配置;全部未配置 → 完全不触碰 servicesOptions,
+    // 保持 SDK 默认(共享 auth.json + models.json),与本改动前逐字节等价。
+    const resolved = listModelSources()
+      .map((registrar) => ({ registrar, spec: registrar.resolveSpecFromEnv(process.env) }))
+      .filter((r): r is { registrar: typeof r.registrar; spec: NonNullable<typeof r.spec> } =>
+        r.spec !== undefined,
+      );
     const servicesOptions: CreateAgentSessionServicesOptions = {
       cwd,
       agentDir,
       resourceLoaderOptions,
       resourceLoaderReloadOptions: { resolveProjectTrust: trust },
     };
-    if (egressSpec !== undefined || gatewaySpec !== undefined) {
-      const shared = createSharedModelServices(agentDir);
-      if (egressSpec !== undefined) {
-        registerEgressProvider(shared.modelRegistry, egressSpec);
+    if (resolved.length > 0) {
+      const makeShared = getSharedModelServicesFactory();
+      if (makeShared === undefined) {
+        // 有源可注册却没有共享服务构造器 —— 装配漏了一半。静默跳过会表现为
+        // 「模型列表里有、选中却说找不到」,故 fail-fast。
+        throw new Error(
+          "模型源已登记但共享服务构造器缺失:assembly 层须同时调用 " +
+            "setSharedModelServicesFactory()。",
+        );
       }
-      if (gatewaySpec !== undefined) {
-        registerAiGatewayProvider(shared.modelRegistry, gatewaySpec, runnerLog);
+      const shared = makeShared(agentDir);
+      for (const { registrar, spec } of resolved) {
+        registrar.register(shared.modelRegistry, spec, runnerLog);
       }
       servicesOptions.authStorage = shared.authStorage;
       servicesOptions.modelRegistry = shared.modelRegistry;

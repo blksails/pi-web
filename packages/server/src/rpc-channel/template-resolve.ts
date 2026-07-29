@@ -31,7 +31,7 @@ import { e2bTransportConfigFromEnv } from "./e2b-config.js";
 import {
   deriveTemplateName,
   type SourceIdentityInput,
-} from "../sandbox-image/template-name.js";
+} from "../template-name.js";
 
 /**
  * 模板解析的 source 输入 —— 对 design 签名 `SourceIdentityInput` 的最小充实:

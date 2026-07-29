@@ -10,7 +10,7 @@ export {
   deriveImageName,
   deriveTemplateName,
   type SourceIdentityInput,
-} from "./template-name.js";
+} from "../template-name.js";
 export {
   computeBakePlan,
   isBakeExcluded,
