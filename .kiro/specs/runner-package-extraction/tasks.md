@@ -16,7 +16,7 @@
   - 可观测完成态：`pnpm install` 后 `packages/runner` 出现在工作区包列表中，且其 `dependencies` 不含 `e2b` / `pg` / `ws` / MCP SDK 四者中任何一个
   - _Requirements: 1.2, 1.3, 1.5_
 
-- [ ] 1.2 建立新包的类型检查与分档测试基建
+- [x] 1.2 建立新包的类型检查与分档测试基建
   - 以内核包的同名文件为样板建 `tsconfig.json`、`vitest.config.ts`、分档 workspace 配置与分档编排脚本
   - ★ **并补上新包 `package.json` 的 `scripts` 块**（`typecheck` / `test` / `test:fast` / `test:e2e`）——
     任务 1.1 有意未建（当时编排脚本还不存在）。缺它时根 `pnpm -r run typecheck` 会**跳过**新包：
@@ -34,7 +34,8 @@
   - 仓库根测试配置加入新包的别名条目；★ `.js`→`.ts` 的正则条目**必须排在具名子路径之前**（字符串 find 是前缀匹配，否则拼出四不像路径）
   - 确认服务端构建的别名表**不加**新包 —— 与内核同理，走通配子路径导出由解析器原生展开
   - 仓库根的 fast / e2e 测试脚本纳入新包
-  - 可观测完成态：仓库根 `pnpm test:app` 与 `tsc --noEmit` 均不因新包而失败
+  - ★ **仓库根 `pnpm -r run typecheck` 本来就是红的** —— `desktop` 包的 typecheck 是 `cargo check`，在本机挂在 Rust 构建上，与本 spec 无关。故判据须**排除 desktop** 取范围，或改用「加入新包前后同一范围的结果不变」的对照式判据
+  - 可观测完成态：仓库根 `pnpm test:app` 与 `tsc -p tsconfig.json --noEmit` 均不因新包而失败
   - _Requirements: 6.4, 1.5_
 
 - [ ] 2. 守卫先行：三包全覆盖（★ 必须早于任务 3）
@@ -134,7 +135,7 @@
 - [ ] 6.1 本仓通过面与类型检查不回退
   - 三个包的测试与仓库根测试面全量运行，**连跑两次**并比对
   - ★ 核对汇总行算术：通过数 + 跳过数是否等于总数。不相等意味着有 worker 静默崩溃 —— 那会被计成「0 failed」（本仓已被骗过一次）
-  - 三包与仓库根的类型检查均 exit 0
+  - 三包与仓库根的类型检查均 exit 0；★ 根 `pnpm -r` 需排除 `desktop`（其 `cargo check` 是既有红，与本 spec 无关，见 1.3 的说明）
   - 可观测完成态：两次运行的文件数与用例数**逐档一致**且不低于开工快照；实测输出（含耗时）留档
   - _Requirements: 6.1, 6.2_
 
@@ -158,3 +159,6 @@
 
 - 1.1：新包 `package.json` 刻意**不含** `scripts` 块 —— 脚本要指向任务 1.2 才建的分档编排文件，先写会指向不存在的路径。已把补 `scripts` 的要求写进 1.2，并记下其静默性质：`pnpm -r run typecheck` 跳过无该脚本的包，根类型检查照样 exit 0。
 - 1.1：peer 版本取 `^0.80.3`（与兼容层现有依赖一致）而非内核用的 `*`。宿主仍可在范围内选版本，且记录了实测通过的范围。
+- 1.2：`tsconfig.include` 除 `src`/`test` 外还纳入两个 vitest 配置文件 —— `src/` 在任务 3.1 前为空，不纳入别的文件 tsc 会因「无输入」报错。src 填充后这条无害且顺带检查了配置本身。
+- ★ 1.2：**仓库根 `pnpm -r run typecheck` 是既有红**（`desktop` 的 `cargo check` 失败），与本 spec 无关。任何以「根类型检查 exit 0」为判据的地方都必须排除 `desktop`，否则会把既有红误记成本次改动的回归。已同步修正 1.3 与 6.1 的判据。
+- ★ 1.2：新包真的进了根类型检查，由判别性实验证明 —— 在 `packages/runner/src/` 埋一个类型错误，根 typecheck 报 `packages/runner typecheck: src/__probe.ts(1,14): error TS2322` 并 exit 2；移除后回到 exit 0。只跑一次绿无法区分「检查了且没问题」与「压根没检查」。
