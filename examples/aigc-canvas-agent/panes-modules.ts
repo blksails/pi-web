@@ -18,7 +18,7 @@ export const paneModules: readonly PaneAgentModule[] = [
   {
     pane: canvasPaneMeta,
     // Canvas pane 自带其域全部工具:AAS surface + 图像生成/编辑 + 视觉识别。
-    extensions: [canvasSurfaceExtension, aigcExtension, visionExtension],
+    extensions: [canvasSurfaceExtension, aigcExtension, /* visionExtension */],
     // 该 pane 自带的声明式 HTTP route(与 pane-meta 的 routes 授予一一对应)。
     routes: [galleryStatsRoute],
   },
