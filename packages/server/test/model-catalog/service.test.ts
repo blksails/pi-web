@@ -186,3 +186,69 @@ describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 
     ]);
   });
 });
+
+/**
+ * Cloudflare 图像目录并入(spec cloudflare-aigc-provider,Req 4.2)。
+ *
+ * ★ 这组用例是补一个**已发生的缺口**:该 spec 的 design 只覆盖了 tool-kit 内的路由与目录,
+ * 漏掉了宿主侧 `/aigc/models` 的装配层(本 service + lib/app/pi-handler.ts),导致 provider
+ * 实现完成、工具侧可用,但设置页的模型开关面板里一条 Cloudflare 模型都列不出来。
+ * 真机 `curl /api/aigc/models` 返回 17 条、cloudflare 0 条时才暴露。
+ */
+const CLOUDFLARE_IMAGE_CATALOG: readonly AigcCatalogEntry[] = [
+  { model: "gpt-image-2-cf", label: "GPT Image 2 · Cloudflare", provider: "cloudflare" },
+  { model: "flux-1-schnell-cf", label: "FLUX.1 schnell · Cloudflare", provider: "cloudflare" },
+];
+
+describe("ModelCatalogService — Cloudflare 图像目录并入(Req 4.2)", () => {
+  it("两套可选 provider 都未注入时仍是引用级透传(字节一致不回归)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    expect(svc.imageEntries()).toBe(IMAGE_CATALOG);
+  });
+
+  it("只注入 cloudflareImageCatalog:self 附 source=self,CF 条目附 source=cloudflare", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      cloudflareImageCatalog: CLOUDFLARE_IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    const entries = svc.imageEntries();
+    expect(entries).toHaveLength(IMAGE_CATALOG.length + CLOUDFLARE_IMAGE_CATALOG.length);
+    for (const e of entries.slice(0, IMAGE_CATALOG.length)) expect(e.source).toBe("self");
+    for (const e of entries.slice(IMAGE_CATALOG.length)) expect(e.source).toBe("cloudflare");
+    expect(entries.map((e) => e.model)).toContain("gpt-image-2-cf");
+  });
+
+  it("★ 只注入网关时输出与 Cloudflare 引入前逐字节一致(不回归既有行为)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      gatewayImageCatalog: GATEWAY_IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    expect(svc.imageEntries()).toEqual([
+      ...IMAGE_CATALOG.map((e) => ({ ...e, source: "self" })),
+      ...GATEWAY_IMAGE_CATALOG.map((e) => ({ ...e, source: "ai-gateway" })),
+    ]);
+  });
+
+  it("两者同时注入:顺序为 self → ai-gateway → cloudflare,三段 source 各自正确", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      gatewayImageCatalog: GATEWAY_IMAGE_CATALOG,
+      cloudflareImageCatalog: CLOUDFLARE_IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    expect(svc.imageEntries().map((e) => e.source)).toEqual([
+      ...IMAGE_CATALOG.map(() => "self"),
+      ...GATEWAY_IMAGE_CATALOG.map(() => "ai-gateway"),
+      ...CLOUDFLARE_IMAGE_CATALOG.map(() => "cloudflare"),
+    ]);
+  });
+});

@@ -137,12 +137,43 @@ describe("canvas commands", () => {
     await cmds.inpaint!({ image: "att_s", prompt: "p", mask: "att_m" }, h.ctx);
     const params = runImage.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(params.mask).toBe("att_m");
-    expect(params.image).toBe("att_s");
+    // 入参契约统一:canvas 的 `image` 归一为工具契约的 `images` 数组(首项=主图),旧键不再透传。
+    expect(params.images).toEqual(["att_s"]);
+    expect(params.image).toBeUndefined();
     // ext=undefined + requiredParams:[] 安全约束。
     expect(runImage.mock.calls[0]?.[1]).toBeUndefined();
     const opts = runImage.mock.calls[0]?.[4] as { requiredParams: readonly unknown[]; toolName: string };
     expect(opts.requiredParams).toEqual([]);
     expect(opts.toolName).toBe("image_edit");
+  });
+
+  it("reference → image + reference_images 归一为单一 images 数组(主图在首位,旧键剥离)", async () => {
+    const h = makeHarness();
+    const runImage = vi.fn(okRun([{ attachmentId: "att_o" }]));
+    const cmds = createCanvasCommands({ runImageTool: runImage, now: () => NOW });
+    const res = await cmds.reference!(
+      { image: "att_s", prompt: "p", reference_images: ["att_r1", "att_r2"] },
+      h.ctx,
+    );
+    expect(res).toEqual({ ids: ["att_o"] });
+    const params = runImage.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(params.images).toEqual(["att_s", "att_r1", "att_r2"]);
+    expect(params.image).toBeUndefined();
+    expect(params.reference_images).toBeUndefined();
+    // 血缘仍按 canvas 契约取主图,不受归一影响。
+    expect(h.state().assets[0]?.derivedFrom).toBe("att_s");
+  });
+
+  it("variants 每次调用都带归一后的 images(主图在首位)", async () => {
+    const h = makeHarness();
+    const runImage = vi.fn(okRun([{ attachmentId: "att_v" }]));
+    const cmds = createCanvasCommands({ runImageTool: runImage, now: () => NOW });
+    await cmds.variants!({ image: "att_s", prompt: "p", n: 1, models: ["m1", "m2"] }, h.ctx);
+    for (const call of runImage.mock.calls) {
+      const params = call[0] as Record<string, unknown>;
+      expect(params.images).toEqual(["att_s"]);
+      expect(params.image).toBeUndefined();
+    }
   });
 
   it("variants 多模型 → 逐一执行汇总 ids", async () => {

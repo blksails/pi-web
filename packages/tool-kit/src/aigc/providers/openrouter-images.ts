@@ -54,8 +54,18 @@ interface T2IArgs {
 }
 
 interface EditArgs extends T2IArgs {
-  /** 主图(编译器已解析为 data URI)。 */
-  image: string;
+  /**
+   * 输入图数组:首项 = 待编辑主图,其余 = 参考图(编排层 mediaFields 已逐项解析为 data URI)。
+   *
+   * ★ 入参契约统一(2026-07-29):原 `image`(单数)+ `reference_images` 已合并为单一 `images`
+   * 数组,与 `tools/image-edit.ts` 的 PARAMETER_FIELDS 对齐。
+   *
+   * ⚠ 本 provider 走 OpenAI Images `/images/edits` 的**流式**形态,其 body 只接受单个
+   * `image` 字段(与走 chat multi-part 的 `openrouter.ts` 不同,后者天然支持多图)。
+   * 故此处取 `images[0]` 作主图,其余参考图**该端点无处承载**,只能忽略 —— 需要多图参考时
+   * 应改用 `openrouter.ts` 的 chat 形态路由。
+   */
+  images?: string[];
 }
 
 function buildGenBody(model: string, partialImages: number) {
@@ -82,7 +92,8 @@ function buildEditBody(model: string, partialImages: number) {
     const body: Record<string, unknown> = {
       model,
       prompt,
-      image: a.image, // 已由 mediaFields 解析为 data URI
+      // 取首项作主图;该端点 body 只有单个 image 字段,其余参考图无处承载(见 EditArgs 注释)。
+      image: (a.images ?? [])[0],
       n: a.n ?? 1,
       stream: true,
       partial_images: partialImages,

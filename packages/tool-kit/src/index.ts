@@ -31,5 +31,13 @@ export { aigcSlashCompletions } from "./aigc/slash-completions.js";
 export {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
+  CLOUDFLARE_AIGC_CATALOG,
   type AigcCatalogEntry,
 } from "./aigc/model-catalog.js";
+
+// Cloudflare 通路的启用判据(spec cloudflare-aigc-provider)。runner 侧 aigcExtension 与
+// 宿主侧 /aigc/models 目录装配共用这一个函数,避免判据漂移。纯函数、零 pi SDK,前端安全。
+export {
+  isCloudflareConfigured,
+  CLOUDFLARE_REQUIRED_ENV,
+} from "./aigc/providers/cloudflare.js";

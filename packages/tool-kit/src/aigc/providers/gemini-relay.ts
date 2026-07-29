@@ -79,10 +79,12 @@ interface RelayT2IArgs {
 }
 
 interface RelayEditArgs extends RelayT2IArgs {
-  /** 主图,已由编排层解析为 data URI。 */
-  image: string;
-  /** 参考图(可选,已解析为 data URI)。 */
-  reference_images?: string[];
+  /**
+   * 待编辑图集合(入参契约统一的一部分:原 `image` + `reference_images` 两字段合一)。
+   * 约定 **首项 = 主图**,其余 = 参考图(风格/角色一致性);均已由编排层解析为 data URI。
+   * Gemini 原生协议本就把所有图平铺进 `contents[].parts[]`,与单数组形态天然同构。
+   */
+  images?: string[];
 }
 
 // ── 尺寸 → 宽高比 ─────────────────────────────────────────────────────────────
@@ -189,8 +191,10 @@ function buildEditBody() {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<unknown> => {
     const a = args as unknown as RelayEditArgs;
     // 图在前、指令在后:与 Gemini 多模态编辑的惯例一致(先给素材再给指令)。
+    // images 首项即主图、其余为参考图;此处按序全部下发 —— 上游协议不变,只是读取口径
+    // 从 image + reference_images 换成统一数组(顺序即语义,故不做重排)。
     const parts: GeminiPart[] = [];
-    for (const uri of [a.image, ...(a.reference_images ?? [])]) {
+    for (const uri of a.images ?? []) {
       if (!uri) continue;
       const inline = parseDataUri(uri);
       // 非 data URI(如 https 直链)无法进 inlineData —— 编排层的 mediaFields 已负责解析,

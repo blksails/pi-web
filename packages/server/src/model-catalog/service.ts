@@ -36,13 +36,18 @@ export interface ModelCatalogServiceDeps {
   readonly imageCatalog: readonly AigcCatalogEntry[];
   /** 网关图像静态目录;未启用时不注入。 */
   readonly gatewayImageCatalog?: readonly AigcCatalogEntry[];
+  /**
+   * Cloudflare AI Gateway 图像静态目录(spec cloudflare-aigc-provider,Req 4.2);
+   * 未启用(三个 `CLOUDFLARE_*` env 未齐备)时不注入。
+   */
+  readonly cloudflareImageCatalog?: readonly AigcCatalogEntry[];
   /** chat 命名空间隐藏 provider 集合(image 命名空间不受其影响)。 */
   readonly hiddenProviders: ReadonlySet<string>;
 }
 
 /** 图像目录输出条目:静态条目 + 可选来源标记(仅聚合形态附带,响应只增不改)。 */
 export type CatalogImageEntry = AigcCatalogEntry & {
-  readonly source?: "self" | "ai-gateway";
+  readonly source?: "self" | "ai-gateway" | "cloudflare";
 };
 
 /** chat/image 双命名空间目录的组装与过滤单一权威。 */
@@ -63,6 +68,7 @@ export function createModelCatalogService(
     modelPrecedence,
     imageCatalog,
     gatewayImageCatalog,
+    cloudflareImageCatalog,
     hiddenProviders,
   } = deps;
   return {
@@ -84,15 +90,17 @@ export function createModelCatalogService(
       return excludeProviders(merged, hiddenProviders);
     },
     imageEntries(): readonly CatalogImageEntry[] {
-      if (gatewayImageCatalog === undefined) {
-        // 未启用网关:引用级透传,字节一致(Req 4.3)。
+      if (gatewayImageCatalog === undefined && cloudflareImageCatalog === undefined) {
+        // 两套可选 provider 都未启用:引用级透传,字节一致(Req 4.3)。
         return imageCatalog;
       }
-      // 聚合形态:self 块在前附 source="self",网关块在后附 source="ai-gateway"
+      // 聚合形态:self 块在前附 source="self",其后依次是网关块与 Cloudflare 块
       // (Req 4.1/4.5);不应用 hiddenProviders(Req 5.2)。
+      // 只启用其一时,另一块为空数组 —— 输出与该 provider 未引入前逐字节一致。
       return [
         ...imageCatalog.map((e) => ({ ...e, source: "self" as const })),
-        ...gatewayImageCatalog.map((e) => ({ ...e, source: "ai-gateway" as const })),
+        ...(gatewayImageCatalog ?? []).map((e) => ({ ...e, source: "ai-gateway" as const })),
+        ...(cloudflareImageCatalog ?? []).map((e) => ({ ...e, source: "cloudflare" as const })),
       ];
     },
   };

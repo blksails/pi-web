@@ -1,0 +1,29 @@
+{
+  "feature_name": "cloudflare-aigc-provider",
+  "created_at": "2026-07-29T02:35:00Z",
+  "updated_at": "2026-07-29T11:30:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "bookkeeping": {
+    "date": "2026-07-29",
+    "action": "实施完成 + 真机验收 + 补 3 条被 design 漏掉的消费链(目录装配/判据同源/前端徽章)",
+    "tasks": "19/19",
+    "evidence": "新 key(cfut_)+代理:gpt-image-2 文生图 294KB/27.4s、图像编辑 57.3s 语义正确;tool-kit 571 passed/10 skipped;/api/aigc/models 23 条(cloudflare 6)",
+    "caveat": "★ 离线全绿未能发现宿主装配与前端徽章两处缺口:前者靠重启打真实端点暴露,后者靠用户截图暴露"
+  }
+}

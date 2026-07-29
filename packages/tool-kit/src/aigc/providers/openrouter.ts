@@ -36,8 +36,12 @@ interface T2IArgs {
   prompt: string;
   negative_prompt?: string;
   n?: number;
-  /** 参考图(已解析为 data URI 或 https URL)。 */
-  reference_images?: string[];
+  /**
+   * 统一图像入参(已解析为 data URI 或 https URL)。
+   * 入参契约统一后只剩这一个数组字段(取代原先的 `reference_images`);
+   * T2I 无「主图」概念,故整个数组都当参考图用。
+   */
+  images?: string[];
   size?: string;
 }
 
@@ -45,12 +49,13 @@ interface T2IArgs {
 
 interface ImageEditArgs {
   prompt: string;
-  /** 主图(已解析为 data URI 或 https URL)。 */
-  image: string;
+  /**
+   * 统一图像入参(已解析为 data URI 或 https URL)——**首项 = 待编辑主图,其余 = 参考图**。
+   * 这是入参契约统一的一部分:取代原先的 `image`(单数)+ `reference_images` 两个字段。
+   */
+  images?: string[];
   /** mask — OpenRouter 不支持 mask 概念,静默忽略。 */
   mask?: string;
-  /** 参考图(可选,已解析)。 */
-  reference_images?: string[];
   n?: number;
   size?: string;
 }
@@ -89,7 +94,8 @@ function buildT2IBody(model: string) {
     const userText = a.negative_prompt
       ? `${a.prompt}\n\nAvoid: ${a.negative_prompt}`
       : a.prompt;
-    const refs = a.reference_images ?? [];
+    // 入参契约统一:图像一律从 `images` 数组读。T2I 没有主图,数组整体即参考图。
+    const refs = a.images ?? [];
 
     const content: unknown =
       refs.length === 0
@@ -122,8 +128,10 @@ function buildT2IBody(model: string) {
 function buildImageEditBody(model: string) {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<unknown> => {
     const a = args as unknown as ImageEditArgs;
-    // 主图永远是第一张;额外 refs 跟后;mask 静默忽略
-    const images = [a.image, ...(a.reference_images ?? [])];
+    // 入参契约统一:主图与参考图合并为一个 `images` 数组(首项主图、其余参考图),
+    // 而数组次序恰好就是原先 [主图, ...refs] 的上行次序 —— 故直接透传,线上协议不变。
+    // mask 仍静默忽略(OpenRouter 无 mask 概念);无图时只发 text part,与改动前一样不抛错。
+    const imgs = a.images ?? [];
 
     const body: Record<string, unknown> = {
       model,
@@ -134,7 +142,7 @@ function buildImageEditBody(model: string) {
           role: "user",
           content: [
             { type: "text", text: a.prompt },
-            ...images.map((u) => ({
+            ...imgs.map((u) => ({
               type: "image_url",
               image_url: { url: u },
             })),

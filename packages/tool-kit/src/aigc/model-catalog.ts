@@ -20,7 +20,15 @@ export interface AigcCatalogEntry {
   /** 展示标签。 */
   readonly label: string;
   /** 归属 provider(供字母徽章)。 */
-  readonly provider: "openrouter" | "newapi" | "sufy" | "dashscope" | "ai-gateway";
+  readonly provider:
+    | "openrouter"
+    | "newapi"
+    | "sufy"
+    | "dashscope"
+    /** BlackSail 自建网关,**不是** Cloudflare。 */
+    | "ai-gateway"
+    /** Cloudflare AI Gateway(spec cloudflare-aigc-provider)。 */
+    | "cloudflare";
 }
 
 export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
@@ -49,4 +57,26 @@ export const AI_GATEWAY_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "gpt-image-1", label: "GPT Image 1 · ai-gateway", provider: "ai-gateway" },
   { model: "gpt-image-2-ai-gateway", label: "GPT Image 2 · ai-gateway", provider: "ai-gateway" },
   { model: "qwen-image", label: "Qwen Image · ai-gateway", provider: "ai-gateway" },
+];
+
+/**
+ * Cloudflare AI Gateway 图像静态目录(spec cloudflare-aigc-provider,Req 4.1/4.2)。
+ *
+ * 与 `CLOUDFLARE_IMAGE_ROUTES` ∪ `CLOUDFLARE_IMAGE_EDIT_ROUTES` 的路由键去重集对齐
+ * (生成路由在前,编辑独有在后;当前两表键集相同),由 `test/aigc/model-catalog.test.ts`
+ * 的第三组 sync 断言守卫。同样零 import / 零 env 读取(双入口纪律)。
+ *
+ * ⚠ `provider: "cloudflare"` 指 **Cloudflare AI Gateway**,与上面的 `"ai-gateway"`
+ * (BlackSail 自建网关)是两条不同通路,勿混。
+ */
+export const CLOUDFLARE_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
+  { model: "gpt-image-2-cf", label: "GPT Image 2 · Cloudflare", provider: "cloudflare" },
+  { model: "gpt-image-1.5-cf", label: "GPT Image 1.5 · Cloudflare", provider: "cloudflare" },
+  { model: "imagen-4-cf", label: "Imagen 4 · Cloudflare", provider: "cloudflare" },
+  { model: "nano-banana-2-cf", label: "Nano Banana 2 · Cloudflare", provider: "cloudflare" },
+  { model: "nano-banana-pro-cf", label: "Nano Banana Pro · Cloudflare", provider: "cloudflare" },
+  { model: "flux-2-pro-cf", label: "FLUX.2 Pro · Cloudflare", provider: "cloudflare" },
+  // ⚠ Workers AI 原生模型(flux-1-schnell-cf / lucid-origin-cf)已验证可用但**暂不入目录**:
+  // 它们不走 Unified 统一计费,吃每日 10,000 neurons 免费额度,耗尽即 429。
+  // 见 tools/image-generation.ts 的 CLOUDFLARE_WORKERS_AI_ROUTES 说明。
 ];

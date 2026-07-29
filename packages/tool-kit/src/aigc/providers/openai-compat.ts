@@ -47,12 +47,16 @@ interface T2IArgs {
 
 interface ImageEditArgs {
   prompt: string;
-  /** 主图(已解析为 data URI 或 https URL)。 */
-  image: string;
-  /** 可选 B/W 遮罩(已解析)。 */
+  /**
+   * 图像序列(已由编排器逐项解析为 data URI 或 https URL)。
+   * ★ 入参契约统一(2026-07-29):首项 = 待编辑主图,其余 = 参考图;
+   * 取代原先的 `image`(单数)+ `reference_images` 两个字段。
+   * 对本 provider 而言这个统一是**天然**的:OpenAI edits 的 multipart 本就把主图和参考图
+   * 一视同仁地按顺序装成多个 `image[]` part,原先拆两字段只是为了在这里再拼回一个数组。
+   */
+  images?: string[];
+  /** 可选 B/W 遮罩(已解析,仍是单个 string)。 */
   mask?: string;
-  /** 参考图(可选,已解析)。 */
-  reference_images?: string[];
   n?: number;
   size?: string;
   /** url | b64_json。 */
@@ -179,7 +183,10 @@ async function fetchImagePart(url: string): Promise<{ blob: Blob; filename: stri
 function buildImageEditBody(model: string) {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<FormData> => {
     const a = args as unknown as ImageEditArgs;
-    const sources = [a.image, ...(a.reference_images ?? [])].filter(
+    // 取值来源改为统一的 `images` 数组(首项主图、其余参考图);发往上游的形态不变 ——
+    // 仍按顺序装成多个 `image[]` part。无图时 sources 为空 → 不 append 任何 image part,
+    // 保持原有的「静默交由上游报错」策略(本地不抛,以免与网关的入参校验话术冲突)。
+    const sources = (a.images ?? []).filter(
       (u): u is string => typeof u === "string" && u.length > 0,
     );
     const parts = await Promise.all(sources.map((u) => fetchImagePart(u)));
