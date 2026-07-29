@@ -216,6 +216,9 @@ importers:
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:^
+        version: link:../tool-kit
       '@earendil-works/pi-coding-agent':
         specifier: '*'
         version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)

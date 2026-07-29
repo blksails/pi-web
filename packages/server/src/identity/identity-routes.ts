@@ -19,9 +19,9 @@
  * 响应体只回 {@link IdentityView} —— 没有 credential、没有 password、没有任何授予 token。
  * 密码只出现在请求体的解析过程中,不回显、不入日志。
  */
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { InjectedRoute } from "../http/index.js";
-import type { CapabilityTenant } from "../capability/types.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
+import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
 import type { IdentityExchangeFailure, IdentityProvider, IdentityState } from "./types.js";
 
 /**

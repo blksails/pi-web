@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { AuthSessionState } from "../../src/auth/auth-session-state.js";
 import { createAuthRoutes } from "../../src/auth/auth-routes.js";
-import type { InjectedRoute } from "../../src/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 
 function makeCredential(payload: Record<string, unknown>): string {
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");

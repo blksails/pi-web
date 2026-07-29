@@ -6,8 +6,8 @@
  * 真实 key、入站 token 不外泄)、SSE 逐帧转发、429 限额头标注、abort 联动。
  */
 import { describe, expect, it, vi } from "vitest";
-import { Router } from "../../src/http/router.js";
-import type { SessionStore } from "../../src/session/index.js";
+import { Router } from "@blksails/pi-web-core/http/router.js";
+import type { SessionStore } from "@blksails/pi-web-core/session/index.js";
 import { mintScopedToken } from "../../src/tokens/index.js";
 import { createAiGatewayRoutes } from "../../src/ai-gateway/routes.js";
 import type { KeyResolver } from "../../src/ai-gateway/key-resolver.js";

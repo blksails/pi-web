@@ -10,13 +10,13 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
-import { createPiWebHandler } from "../../src/http/index.js";
-import { PiRpcProcess } from "../../src/rpc-channel/index.js";
-import { PiSession } from "../../src/session/pi-session.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
-import type { ResolvedSource } from "../../src/agent-source/index.js";
-import type { SessionChannel } from "../../src/session/index.js";
+import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
+import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/index.js";
+import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
+import type { ResolvedSource } from "@blksails/pi-web-core/agent-source/index.js";
+import type { SessionChannel } from "@blksails/pi-web-core/session/index.js";
 import { createExtensionRoutes } from "../../src/extensions/routes.js";
 import { createDefaultAdminPolicy } from "../../src/extensions/security/admin-policy.js";
 import type {

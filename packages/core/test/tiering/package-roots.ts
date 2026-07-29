@@ -57,12 +57,37 @@ export function exportsMapOf(root: PackageRoot): ReadonlyMap<string, string> {
   };
   const out = new Map<string, string>();
   for (const [subpath, target] of Object.entries(pkg.exports ?? {})) {
+    // 通配子路径(`"./*.js": "./src/*.ts"`)不进具名表 —— 它匹配的是**任意**深路径,
+    // 塞进 Map 会得到一个键为 `.../*.js` 的条目,`moduleNameOf` 拿它算出模块名 `*`,
+    // 而 `layerOf("*")` 抛错。见 `hasSrcWildcard`:通配由前缀剥离处理。
+    if (subpath.includes("*")) continue;
     const specifier =
       subpath === "." ? root.packageName : `${root.packageName}${subpath.slice(1)}`;
     // "./src/trust/index.ts" → "trust/index.ts"
     out.set(specifier, target.replace(/^\.\/src\//, ""));
   }
   return out;
+}
+
+/**
+ * 该包是否声明了指向 `src/` 的**通配子路径**(如 `"./*.js": "./src/*.ts"`)。
+ *
+ * core 需要它:兼容层包有 51 个不同的深路径目标要引用(`http/routes/*`、
+ * `attachment-bridge/*` 等大多**刻意不在**主入口导出),逐条列具名子路径既维护不动,
+ * 也会把"跨仓公开 API"和"同仓装配方的内部通路"混为一谈。
+ *
+ * ★ 通配**不等于**放弃封装:对跨仓消费方,公开面仍是那几个具名子路径;
+ *   真正挡住依赖污染的是包的 `dependencies` 声明与依赖方向守卫,不是导出面的窄。
+ */
+export function hasSrcWildcard(root: PackageRoot): boolean {
+  const pkgPath = path.join(root.dir, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+    exports?: Record<string, string>;
+  };
+  return Object.entries(pkg.exports ?? {}).some(
+    ([sub, target]) => sub.includes("*") && target.startsWith("./src/"),
+  );
 }
 
 /**

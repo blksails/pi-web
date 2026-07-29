@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { makeListExtensionsHandler } from "../../src/extensions/routes/list-extensions.js";
 import { PiListError } from "../../src/extensions/cli/pi-cli.js";
 import { FakePiCli, readJson } from "./helpers.js";
-import type { RequestContext } from "../../src/http/index.js";
+import type { RequestContext } from "@blksails/pi-web-core/http/index.js";
 
 function ctx(): RequestContext {
   return {

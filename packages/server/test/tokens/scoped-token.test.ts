@@ -13,7 +13,7 @@
  *   同一 secret,产物也互不可换认(Req 1.4)。
  */
 import { describe, expect, it } from "vitest";
-import { createUrlSigner } from "../../src/attachment/url-signer.js";
+import { createUrlSigner } from "@blksails/pi-web-core/attachment/url-signer.js";
 import {
   mintScopedToken,
   verifyScopedToken,

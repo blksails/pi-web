@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { EventEmitter } from "node:events";
 import { wireAttachmentCatalogBridge } from "../../src/runner/attachment-catalog-wiring.js";
-import type { AgentAttachmentCatalogDecl } from "../../src/runner/agent-definition.js";
+import type { AgentAttachmentCatalogDecl } from "@blksails/pi-web-core/agent-definition.js";
 
 type Harness = {
   stdin: EventEmitter;

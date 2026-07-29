@@ -30,9 +30,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
-import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import { PiSession } from "../../src/session/pi-session.js";
-import { makeResolved } from "../session/fixtures.js";
+import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
+import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
+import { makeResolved } from "../../../core/test/session/fixtures.js";
 import { startStubEgress, type StubEgress } from "../auth/stub-egress.js";
 
 const here = dirname(fileURLToPath(import.meta.url));

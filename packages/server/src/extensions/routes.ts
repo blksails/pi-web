@@ -9,8 +9,8 @@
  * 注:`DELETE /extensions/:extId` 的路径参数命名为 `:extId`(非 `:id`),以避免 http-api Router
  * 把扩展 id 当作 sessionId 做会话存在性校验 / 会话级授权。
  */
-import { defaultTrustPolicy } from "../agent-source/index.js";
-import type { InjectedRoute } from "../http/index.js";
+import { defaultTrustPolicy } from "@blksails/pi-web-core/agent-source/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 import { DEFAULT_ALLOWLIST } from "./install/source-allowlist.js";
 import { defaultAdminPolicy } from "./security/admin-policy.js";
 import { defaultOnAudit } from "./security/audit.js";

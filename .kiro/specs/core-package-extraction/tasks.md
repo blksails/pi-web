@@ -61,7 +61,7 @@
 
 ## 4. 模块搬迁
 
-- [ ] 4.1 搬迁 neutral 与 core 的源码模块
+- [x] 4.1 搬迁 neutral 与 core 的源码模块
   - 依权威名册搬 32 个模块（182 个文件），一律 `git mv` 保留历史
   - 修正跨模块相对路径；对仍在旧包的 runner/adapters 的引用改为跨包导入
   - **观察完成**：类型检查通过；`git status` 显示为重命名（R）
@@ -69,7 +69,7 @@
   - _Requirements: 1.1_
   - _Boundary: core src 模块_
 
-- [ ] 4.2 搬迁对应的测试文件
+- [x] 4.2 搬迁对应的测试文件
   - 搬 186 个测试文件，修正相对路径深度
   - **观察完成**：两个包的测试文件数之和仍为 283（无遗失）；分档守卫覆盖全部
   - _Depends: 4.1_
@@ -215,3 +215,80 @@
 
 **累计计数**：283 文件 / 2555 用例（快照 283 / 2547）。
 用例 +8 全部可归因：+4 任务 2.x 的守卫自证，+4 本任务的注入契约。
+
+## Implementation Notes（任务 4.1 / 4.2）
+
+### ★ 实施中发现的 spec 级冲突：R1.2 与「adapters 归后续 spec」不可兼得
+
+搬完才暴露：6 个文件把 `e2b` / `pg` / MCP SDK 拖进了 core —— 它们躺在名册判为 core 的模块里
+（`rpc-channel` / `session-store` / `config` / `attachment-bridge`），而名册注释正写着
+「具体实现属 adapters，由后续 spec 分离」。这与 **R1.2** 直接冲突，而 R1.2 是本 spec 的头号价值。
+
+**先排除的便宜解法**：把重依赖声明成 optional peerDependencies。它对依赖树确实有效，
+**但在本仓行不通** —— core 走**源码直连**导出，消费方 `tsc` 会编译到这些文件，缺类型即失败。
+源码分发下 optional peer 不是可用选项。这条判据决定了必须摘出去（用户已确认此路径）。
+
+**摘出结果**（4 个新 adapters 模块，均经兼容层主 barrel 原样导出，主入口符号面不变）：
+
+| 新模块 | 内容 | 内核留下什么 |
+|---|---|---|
+| `sandbox-transport` | e2b-config / e2b-transport / sandbox-ws-transport / template-resolve | `RpcTransport` 端口 + `PiRpcSession` 核心（接缝就是端口） |
+| `session-store-postgres` | postgres-store + 按 env 选型的工厂 | 接口、编解码、fs / sqlite 实现，**以及配置形状与 env 解析**（`config.ts`，零后端依赖） |
+| `mcp-probe` | MCP 探测实现 | 端口 `config/mcp-probe-port.ts`（只写路由真正用到的三个方法） |
+| `attachment-example-tool` | 示例工具（值导入 agent SDK） | —（零生产引用） |
+
+**三处依赖倒置**（都是被 R1.2 逼出来的，非顺手改）：
+
+1. `mcp-config-routes` —— 注入缝**早就在**（`opts.probeService ?? new McpProbeService()`），
+   只是默认值把实现拖了进来。改为**必传**而非"缺省降级"：一个静默不探测的 MCP 端点，
+   表现是"状态永远 unknown"，看不出是漏装配还是真探不到。
+2. `session-list-routes` / `session-actions-routes` —— `storeConfig` 换成 `createEntryStore` 工厂。
+   副产品：`session-list-store-retry` 那个用例**不再需要 `vi.mock`**（原先靠替换模块图才能
+   让构造失败），直接注入受控工厂即可，少一层模块 mock 而判据不变。
+3. `runner` → store 选型工厂是 adapters，与 runner **同层**。沿用仓内已有先例：
+   经 `host-assembly/session-store.ts` 动态 import（`runner → host-assembly` 已登记为运行期组合）。
+
+**同时消除了两条 typeOnly 豁免**（不是保留成跨包 import type，是让方向自然成立）：
+`egress-model` → 归位 `capability`（契约侧），`agent-definition` → 上移为顶层 core 模块
+（全 `import type`，pi SDK 仅类型）。豁免表从 3 条降到 1 条。
+
+### ★ 一个被回退掩盖的真实断裂
+
+`runnerBootstrapPath()` 从**自身位置**推算包根。搬进 core 后 `serverPkgDir` 算出 `packages/core`，
+主路径指向不存在的 `packages/core/runner-bootstrap.mjs` —— 而 cwd 回退在开发态**恰好还能命中**，
+于是测试全绿、真机照跑，只会在换机/打包后现形。已让它随 `runner-bootstrap.mjs` 留在兼容层包，
+并在其文件头写明"必须与该文件同包"。同类修正：`builtin-agents/entry-path.ts` 的 cwd 回退常量。
+
+### 跨包解析机制（先用**一个模块**验证，再批量搬）
+
+- core 声明**通配子路径** `"./*.js": "./src/*.ts"`。理由：兼容层有 **51 个不同深路径目标**要引用，
+  其中大多**刻意不在**主入口导出；逐条列具名子路径既维护不动，也会把"跨仓公开 API"与
+  "同仓装配方的内部通路"混为一谈。通配不等于放弃封装 —— 挡依赖污染的是 `dependencies` 声明
+  与依赖方向守卫，不是导出面的窄。
+- 保留 `.js` 后缀使批量改写成为**纯前缀替换**（`../session/x.js` → `@blksails/pi-web-core/session/x.js`），
+  94 处无需动扩展名。
+- 根 `vitest.config.ts` 加前缀 alias `@blksails/pi-web-core/`，**排在具名子路径之后、裸包名之前**：
+  排具名之前会把 `/model-options` 错映射到 `src/model-options`（真身在 `src/config/`）；
+  排裸名之后则深路径被裸名前缀吞掉。
+- 守卫同步识别通配（`resolveWildcard`）。★ 少了这条，拆包后所有深路径跨包引用都会被当成
+  "外部依赖"跳过 —— **一次搬迁就让全部跨层边集体消失，守卫从此永远绿**。
+  判别力已实测：把 `template-name` 临时改判 assembly，守卫立刻报出
+  `sandbox-image(adapters) → template-name(assembly)` 并带 file:line。
+- `packages/server/tsconfig.json` 的 `rootDir` 须放宽到 `..`：源码直连使 server 编译时会拉入
+  `packages/core/src/**`，原 `rootDir: "."` 直接报 TS6059。
+
+### 搬迁面（实测）
+
+- **源码**：32 个模块搬入 core，673 处 specifier 改写；随后 6 个适配器文件回摘 server。
+  最终 core/src **185** 文件、server/src **90** 文件。
+- **测试**：196 个 `git mv` 进 core，92 处跨包 specifier 改写；随后 7 个"测的是兼容层"的文件回迁。
+  最终 core/test **184** 个 `.test.ts`、server/test **99** 个，**合计 283 —— 与开工快照持平**。
+- 跨包**测试 helper**（`http/helpers`、`session/fixtures`、`session-store/contract`）走相对路径：
+  测试目录不在任何包的 `exports` 里，也不该在。
+
+### 验证
+
+- 两包 `tsc --noEmit` 均 **exit 0**；仓库根 `tsc --noEmit` exit 0
+- **主入口符号 313 个逐字未变**（与任务 1.1 留底 `diff` 为空）
+- 依赖方向守卫 0 违规；`ALLOWED_EDGES` 3 → 1 条，`KNOWN_DEBT` 为空
+- core 快档 121 文件 / 1135 用例 + fast-mock 3 / 9 全绿

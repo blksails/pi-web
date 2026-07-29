@@ -2,7 +2,7 @@
  * 单元:McpProbeService(spec: builtin-mcp-client,任务 3.2;Req 6.1-6.4, 7.1)。
  */
 import { describe, it, expect } from "vitest";
-import { McpProbeService, redactProbeSecrets } from "../../src/config/mcp-probe.js";
+import { McpProbeService, redactProbeSecrets } from "../../src/mcp-probe.js";
 import type { McpServerConfig } from "@blksails/pi-web-protocol";
 
 const server = (name: string, enabled = true): McpServerConfig =>

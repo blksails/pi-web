@@ -9,7 +9,10 @@ export * from "./credential.js";
 export * from "./auth-session-state.js";
 export * from "./auth-routes.js";
 // egress 模型描述(pi-SDK-free 纯类型);工厂本体 egress-model-source 不在此。
-export * from "./egress-model.js";
+// egress-model 的**纯类型**已归位到 capability(spec: core-package-extraction 任务 4.1):
+// capability 是 core 层契约,auth 是适配器;类型放在契约侧,方向才是 adapters→core。
+// 此处原样 re-export,本 barrel 的导出面逐字不变。
+export * from "@blksails/pi-web-core/capability/egress-model.js";
 // desktop-hybrid-agent-sources:capabilities 客户端(pi-SDK-free)。
 export {
   createDesktopCapabilitiesClient,

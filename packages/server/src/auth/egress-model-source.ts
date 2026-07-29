@@ -19,13 +19,13 @@ import {
   AuthStorage,
   ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
-import type { EgressModel } from "./egress-model.js";
+import type { EgressModel } from "@blksails/pi-web-core/capability/egress-model.js";
 
 export type { EgressModel };
 
 /** egress provider 命名空间(会话 model 引用形如 `pi-cloud/<id>`)。 */
 // 同 AI_GATEWAY_PROVIDER_NAME:常量下沉到中立模块,此处原样 re-export。
-import { EGRESS_PROVIDER_NAME } from "../model-provider-names.js";
+import { EGRESS_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 export { EGRESS_PROVIDER_NAME };
 
 /** `buildEgressModelSource` 的输入。 */

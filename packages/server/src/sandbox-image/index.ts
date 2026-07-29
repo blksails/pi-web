@@ -10,7 +10,7 @@ export {
   deriveImageName,
   deriveTemplateName,
   type SourceIdentityInput,
-} from "../template-name.js";
+} from "@blksails/pi-web-core/template-name.js";
 export {
   computeBakePlan,
   isBakeExcluded,

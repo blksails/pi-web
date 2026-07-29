@@ -16,6 +16,8 @@
  * 只在路由 handler 运行时才调),故用「真实轻量对象 + 结构化 stub」拼出代表性 HostDeps ——
  * 见 STUBS_USED 记录(交付报告)。
  */
+import { McpProbeService } from "../../src/mcp-probe.js";
+import { createSessionEntryStore } from "../../src/session-store-postgres/index.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,33 +32,33 @@ import {
   composeCapabilities,
   HOST_CAPABILITY_IDS_V1,
   type CapabilityDecision,
-} from "../../src/host-manifest/index.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
+} from "@blksails/pi-web-core/host-manifest/index.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
 import { AuthSessionState } from "../../src/auth/auth-session-state.js";
-import { AttachmentStore } from "../../src/attachment/attachment-store.js";
-import { createUrlSigner } from "../../src/attachment/url-signer.js";
-import { LocalFsBlobBackend } from "../../src/attachment/local-fs-backend.js";
-import { AttachmentRegistry } from "../../src/attachment/attachment-registry.js";
+import { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
+import { createUrlSigner } from "@blksails/pi-web-core/attachment/url-signer.js";
+import { LocalFsBlobBackend } from "@blksails/pi-web-core/attachment/local-fs-backend.js";
+import { AttachmentRegistry } from "@blksails/pi-web-core/attachment/attachment-registry.js";
 import type { PiCli } from "../../src/extensions/ext.types.js";
-import type { HostCommandHandler } from "../../src/commands/host-command-registry.js";
+import type { HostCommandHandler } from "@blksails/pi-web-core/commands/host-command-registry.js";
 // 守卫②的**独立基线**:直接 import 15 个真实路由工厂,与 defaultCapabilities 分离地各调一次
 // 作为「第二份真相」。绑错/漏绑工厂只改 defaultCapabilities 一侧 → 与此基线对不上 → 转红。
 // ★ 不得用 `descriptors.flatMap(d.factory)`(那是同一份 factory 自我对比,恒等,对绑错零反应)。
-import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
-import { createMcpConfigRoutes } from "../../src/http/routes/mcp-config-routes.js";
-import { createSandboxProjectRoutes } from "../../src/http/routes/sandbox-project-routes.js";
-import { createSourceSettingsRoutes } from "../../src/http/routes/source-settings-routes.js";
-import { createExtensionsConfigRoutes } from "../../src/http/routes/extensions-config-routes.js";
-import { createSessionListRoutes } from "../../src/session-list/session-list-routes.js";
-import { createSessionActionsRoutes } from "../../src/session-actions/session-actions-routes.js";
-import { createAgentSourcesRoutes } from "../../src/agent-source-list/agent-sources-routes.js";
-import { createFavoritesRoutes } from "../../src/agent-source-list/favorites-routes.js";
+import { createConfigRoutes } from "@blksails/pi-web-core/http/routes/config-routes.js";
+import { createMcpConfigRoutes } from "@blksails/pi-web-core/http/routes/mcp-config-routes.js";
+import { createSandboxProjectRoutes } from "@blksails/pi-web-core/http/routes/sandbox-project-routes.js";
+import { createSourceSettingsRoutes } from "@blksails/pi-web-core/http/routes/source-settings-routes.js";
+import { createExtensionsConfigRoutes } from "@blksails/pi-web-core/http/routes/extensions-config-routes.js";
+import { createSessionListRoutes } from "@blksails/pi-web-core/session-list/session-list-routes.js";
+import { createSessionActionsRoutes } from "@blksails/pi-web-core/session-actions/session-actions-routes.js";
+import { createAgentSourcesRoutes } from "@blksails/pi-web-core/agent-source-list/agent-sources-routes.js";
+import { createFavoritesRoutes } from "@blksails/pi-web-core/agent-source-list/favorites-routes.js";
 import { createLlmGatewayRoutes } from "../../src/llm-gateway/gateway-routes.js";
 import { createAiGatewayRoutes } from "../../src/ai-gateway/routes.js";
 import { createAuthRoutes } from "../../src/auth/auth-routes.js";
-import { createAttachmentRoutes } from "../../src/http/routes/attachment-routes.js";
-import { createBashRoutes } from "../../src/http/routes/bash-routes.js";
+import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
+import { createBashRoutes } from "@blksails/pi-web-core/http/routes/bash-routes.js";
 import { createExtensionRoutes } from "../../src/extensions/routes.js";
 
 /**
@@ -183,7 +185,7 @@ describe("defaultCapabilities × composeCapabilities(装配级等价,M3 任务 4
     // 在 conditional:true 下非空。
     const directRoutes = sortRoutes(
       [
-        ...createMcpConfigRoutes({ agentDir: deps.agentDir }),
+        ...createMcpConfigRoutes({ probeService: new McpProbeService(), agentDir: deps.agentDir }),
         ...createConfigRoutes({ rootDir: deps.agentDir, listModelOptions: deps.listModelOptions }),
         ...createSandboxProjectRoutes({ defaultCwd: deps.defaultCwd }),
         ...createSourceSettingsRoutes({
@@ -194,12 +196,12 @@ describe("defaultCapabilities × composeCapabilities(装配级等价,M3 任务 4
         }),
         ...createExtensionsConfigRoutes({ agentDir: deps.agentDir, defaultCwd: deps.defaultCwd }),
         ...createSessionListRoutes({
-          storeConfig: deps.sessionStoreConfig,
+          createEntryStore: () => createSessionEntryStore(deps.sessionStoreConfig),
           globalEnabled: deps.sessionsGlobalEnabled,
           defaultCwd: deps.defaultCwd,
         }),
         ...createSessionActionsRoutes({
-          storeConfig: deps.sessionStoreConfig,
+          createEntryStore: () => createSessionEntryStore(deps.sessionStoreConfig),
           agentDir: deps.agentDir,
           manageEnabled: deps.sessionsManageEnabled,
         }),

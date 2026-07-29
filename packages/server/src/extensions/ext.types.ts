@@ -10,18 +10,18 @@
  * 导出对应 schema,应改为从 `@blksails/pi-web-protocol` 导入并移除本地定义。命令清单 DTO 归 `http-api`
  * 的 `GET /sessions/:id/commands`,本层不定义。
  */
-import type { AuthContext } from "../http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
 import type { InstallSourceProvider } from "./install-sources/types.js";
 import type {
   SessionManager,
   SessionStore,
   PiSession,
-} from "../session/index.js";
+} from "@blksails/pi-web-core/session/index.js";
 import type {
   AgentMode,
   TrustDecision,
   TrustFragment,
-} from "../agent-source/index.js";
+} from "@blksails/pi-web-core/agent-source/index.js";
 
 export type { AgentMode, TrustDecision, TrustFragment };
 

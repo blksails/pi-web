@@ -11,6 +11,11 @@
  *
  * Layout:  packages/server/src/runner-bootstrap-path.ts  (this file)
  *          packages/server/runner-bootstrap.mjs          (target, one dir up)
+ *
+ * ★ 本模块**必须与 `runner-bootstrap.mjs` 同包**(spec: core-package-extraction 任务 4.1)。
+ *   内核提取时它一度被搬进 core,于是 `serverPkgDir` 算出 `packages/core`,主路径指向一个
+ *   不存在的文件 —— 而 cwd 回退在开发态恰好还能命中,**测试全绿、真机也照跑**。
+ *   这类"被回退掩盖的断裂"只会在换机/打包后才现形。故它留在兼容层包,不随内核走。
  */
 import path from "node:path";
 import { existsSync } from "node:fs";

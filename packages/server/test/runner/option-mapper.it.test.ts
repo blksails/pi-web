@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
-import type { AgentDefinition } from "../../src/runner/agent-definition.js";
+import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
 import {
   isModelRef,
   mapResourceLoaderOptions,

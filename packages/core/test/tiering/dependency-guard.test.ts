@@ -13,6 +13,7 @@ import {
   PACKAGE_ROOTS,
   assertEveryRootContributed,
   exportsMapOf,
+  hasSrcWildcard,
   type PackageRoot,
 } from "./package-roots.js";
 
@@ -79,12 +80,29 @@ const IMPORT_RE = /(?:^|\n)[ \t]*(?:import|export)[ \t]+(type[ \t]+)?[^;]*?from[
  */
 const DYNAMIC_IMPORT_RE = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-/** 跨包 specifier → 目标模块。由各包 `exports` 声明推导,不靠子路径名猜。 */
+/** 跨包**具名**子路径 specifier → 目标模块。由各包 `exports` 声明推导,不靠子路径名猜。 */
 const CROSS_PACKAGE_TARGETS = new Map<string, { root: PackageRoot; module: string }>();
+/** 声明了 `src/` 通配子路径的包 —— 其深路径 specifier 按前缀剥离解析。 */
+const WILDCARD_ROOTS = PACKAGE_ROOTS.filter(hasSrcWildcard);
 for (const root of PACKAGE_ROOTS) {
   for (const [specifier, srcRel] of exportsMapOf(root)) {
     CROSS_PACKAGE_TARGETS.set(specifier, { root, module: moduleNameOf(srcRel) });
   }
+}
+
+/**
+ * 通配子路径的解析:`@blksails/pi-web-core/http/routes/x.js` → `{ core, "http" }`。
+ *
+ * ★ 这条路径**必须**存在,否则拆包后所有深路径跨包引用都被守卫当作"外部依赖"跳过 ——
+ *   于是一次搬迁就让全部跨层边集体消失,守卫从此永远绿。这是本守卫最难察觉的失效方式。
+ */
+function resolveWildcard(specifier: string): { root: PackageRoot; module: string } | undefined {
+  for (const root of WILDCARD_ROOTS) {
+    const prefix = `${root.packageName}/`;
+    if (!specifier.startsWith(prefix)) continue;
+    return { root, module: moduleNameOf(specifier.slice(prefix.length)) };
+  }
+  return undefined;
 }
 
 /** 把 specifier 解析成 `{ 包根, 模块名 }`;不指向本仓包时返回 undefined。 */
@@ -99,7 +117,7 @@ function resolveTarget(
     const rel = path.relative(srcDir, abs);
     return rel.startsWith("..") ? undefined : { root, module: moduleNameOf(rel) };
   }
-  return CROSS_PACKAGE_TARGETS.get(specifier);
+  return CROSS_PACKAGE_TARGETS.get(specifier) ?? resolveWildcard(specifier);
 }
 
 /** 收集单个文件里所有指向**别的顶层模块**的导入(含跨包)。 */

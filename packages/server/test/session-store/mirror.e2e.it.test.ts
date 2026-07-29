@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteSessionEntryStore } from "../../src/session-store/index.js";
+import { SqliteSessionEntryStore } from "@blksails/pi-web-core/session-store/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");

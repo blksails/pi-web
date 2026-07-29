@@ -24,10 +24,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // ── Real store imports (relative, not barrel) ────────────────────────────────
-import { createUrlSigner } from "../../packages/server/src/attachment/url-signer.js";
-import { LocalFsBlobBackend } from "../../packages/server/src/attachment/local-fs-backend.js";
-import { AttachmentRegistry } from "../../packages/server/src/attachment/attachment-registry.js";
-import { AttachmentStore } from "../../packages/server/src/attachment/attachment-store.js";
+import { createUrlSigner } from "../../packages/core/src/attachment/url-signer.js";
+import { LocalFsBlobBackend } from "../../packages/core/src/attachment/local-fs-backend.js";
+import { AttachmentRegistry } from "../../packages/core/src/attachment/attachment-registry.js";
+import { AttachmentStore } from "../../packages/core/src/attachment/attachment-store.js";
 
 // ── tool-kit runtime imports (relative — @blksails/pi-web-tool-kit not in root node_modules) ──
 import { aigcExtension, SEAM_KEY } from "../../packages/tool-kit/src/runtime.js";

@@ -7,8 +7,8 @@
  * 编排:adminPolicy 门控 → 在已安装清单定位 extId(不存在 404,不执行)→ `pi remove`
  * (非交互)→ 成功 ack / 失败脱敏错误 → 审计(成功/失败/被拒绝)。
  */
-import { errorResponse, jsonResponse } from "../../http/index.js";
-import type { RequestContext, RouteHandler } from "../../http/index.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { RequestContext, RouteHandler } from "@blksails/pi-web-core/http/index.js";
 import type { AdminPolicy, OnAudit, PiCli } from "../ext.types.js";
 import { assembleRemoveArgs } from "../install/install-args.js";
 import { buildAuditRecord } from "../security/audit.js";

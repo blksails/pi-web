@@ -8,8 +8,8 @@
  * 经 `createPiWebHandler` 的 routes 注入 seam 挂载(与 createConfigRoutes 并列),`/api` 下可达。
  * 凭据明文绝不回显、绝不入日志(Req 5.2)。
  */
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { InjectedRoute } from "../http/index.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 import type { AuthSessionState, AuthSnapshot } from "./auth-session-state.js";
 
 export interface AuthRoutesOptions {

@@ -24,7 +24,7 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { Sandbox, ConnectionConfig } from "e2b";
-import { e2bTransportConfigFromEnv } from "../../src/rpc-channel/e2b-config.js";
+import { e2bTransportConfigFromEnv } from "../../src/sandbox-transport/e2b-config.js";
 
 const RUN = process.env.PI_WEB_E2B_LOCAL === "1";
 const proxyApiUrl = process.env.PI_WEB_E2B_API_URL ?? "http://127.0.0.1:13000";

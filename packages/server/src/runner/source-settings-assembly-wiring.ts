@@ -18,9 +18,9 @@
  */
 import { dirname } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { resolvePiPlugin } from "../plugin/resolve-plugin.js";
-import { sourceKey as deriveSourceKey } from "../source-key.js";
-import { SourceSettingsCodec } from "../config/source-settings-codec.js";
+import { resolvePiPlugin } from "@blksails/pi-web-core/plugin/resolve-plugin.js";
+import { sourceKey as deriveSourceKey } from "@blksails/pi-web-core/source-key.js";
+import { SourceSettingsCodec } from "@blksails/pi-web-core/config/source-settings-codec.js";
 
 /** 装配期注入所需的最小输入面。 */
 export interface AssemblySourceSettingsParams {

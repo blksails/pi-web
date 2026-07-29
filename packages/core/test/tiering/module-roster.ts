@@ -51,6 +51,7 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   "model-provider-names": "neutral", // provider 命名空间常量;三层共享的标识,任务 4.2 迁入 // 镜像/模板命名派生(仅 node:crypto);任务 2.1 迁入
 
   // ── core:headless 内核 ────────────────────────────────────
+  "agent-definition": "core", // agent 编写契约(全 import type,pi SDK 仅类型);任务 4.1 由 runner 上移
   "agent-source": "core",
   "agent-source-list": "core",
   attachment: "core",
@@ -78,13 +79,14 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   "aigc-settings": "core", // 薄设置读写路由,不绑定具体 provider
   "vision-settings": "core", // 同上
   "parent-watchdog": "core",
-  "runner-bootstrap-path": "core", // 仅路径解析,不加载 runner 实现
 
   // ── runner:子进程实现 ─────────────────────────────────────
   runner: "runner",
 
   // ── assembly:组装层,按定义同时引用 core 与 adapters ─────────
   index: "assembly", // 主 barrel
+  compat: "assembly", // 四个子路径的薄转发面(实现已随内核搬走);只转发,不增不减
+  "runner-bootstrap-path": "assembly", // 解析**本包根**的 runner-bootstrap.mjs;必须与该文件同包(见其文件头)
   "host-assembly": "assembly", // 默认能力面清单;其文件头自述「import 真实工厂,绝不经主 barrel 导出」
 
   // ── adapters:绑定具体外部系统 ──────────────────────────────
@@ -95,6 +97,13 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   "sandbox-image": "adapters", // 云沙箱镜像烘焙
   extensions: "adapters", // 包安装(注册表 / 网络)
   tokens: "adapters", // 分面 scoped token 签发(与凭据体系绑定)
+  // ↓ core-package-extraction 任务 4.1 从内核摘出:判据是"值依赖 e2b / pg / MCP SDK",
+  //   而内核包的依赖声明不得出现这三者(R1.2)。内核走源码直连分发,消费方 tsc 会编译到
+  //   每个文件,故"声明成 optional peer"在本仓不可用 —— 缺类型即编译失败。
+  "sandbox-transport": "adapters", // e2b / ws-runner 传输实现 + 配置与模板解析(依赖 e2b)
+  "session-store-postgres": "adapters", // pg 实现 + 按 env 选型的构造工厂(依赖 pg)
+  "mcp-probe": "adapters", // MCP 探测实现(依赖 MCP SDK);内核只留端口 config/mcp-probe-port
+  "attachment-example-tool": "adapters", // 示例工具(值导入 agent SDK);零生产引用,仅测试消费
 };
 
 /**
@@ -109,23 +118,15 @@ export const ALLOWED_EDGES: readonly {
   readonly typeOnly: boolean;
   readonly why: string;
 }[] = [
-  {
-    from: "capability",
-    to: "auth",
-    typeOnly: true,
-    why: "capability/types.ts 只 import type auth/egress-model.js(本身是零 import 的纯类型别名)。类型在编译期擦除,切包后跨包 import type 合法,故不必解耦。",
-  },
+  // ★ 曾有两条 typeOnly 豁免(capability→auth、builtin-agents→runner),已在
+  //   core-package-extraction 任务 4.1 **消除**而非保留:两个被引用的目标都是纯类型文件,
+  //   把它们归位到契约侧(egress-model → capability,agent-definition → 顶层 core 模块)
+  //   即让方向自然成立。豁免能少一条就少一条 —— 每条豁免都是一处后人要重新判断的地方。
   {
     from: "runner",
     to: "host-assembly",
     typeOnly: false,
     why: "runner.ts 的 main() 以**动态** import 组合 host-assembly/model-sources(装配内置模型源)。runner 有两条被支持的入口(runner-bootstrap.mjs 与直接跑 runner.ts,后者在其文件头被文档化,另有 2 个 it + 4 个 node e2e 这么起),装配缝只放在 bootstrap 会让直接入口静默丢掉模型源 —— 表现是「会话起得来但模型找不到」(实测被 egress 登录闭环用例抓到)。故必须落在两条入口的汇合点。用动态导入使其为**运行期组合**而非编译期依赖:拆包后由宿主提供该模块,runner 侧声明可选依赖。★ 守卫已一并扫描动态 import,本条是显式登记而非漏网。",
-  },
-  {
-    from: "builtin-agents",
-    to: "runner",
-    typeOnly: true,
-    why: "builtin-agents/default-agent 只 import type runner 的 AgentDefinition 形状,用于给内置 agent 的默认导出标注类型。类型编译期擦除,切包后跨包 import type 合法(runner 包会导出该类型)。",
   },
 ];
 

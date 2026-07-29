@@ -13,7 +13,7 @@
 import { basename, extname } from "node:path";
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
-import type { AgentDefinition, AgentModel } from "./agent-definition.js";
+import type { AgentDefinition, AgentModel } from "@blksails/pi-web-core/agent-definition.js";
 import {
   type AgentSessionServices,
   createAgentSessionFromServices,
@@ -35,7 +35,7 @@ import {
   listModelSources,
 } from "./model-source-registrar.js";
 // 仅取**命名空间常量**(中立模块),不取任何 adapter 实现 —— 见该文件的位置说明。
-import { AI_GATEWAY_PROVIDER_NAME } from "../model-provider-names.js";
+import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 import { resolveBuiltinExtensionEntries } from "./builtin-extensions.js";
 
 /** runner 侧模型来源注册的日志出口(Req 7.1:记 provider 名与条目数,绝不记凭据)。 */

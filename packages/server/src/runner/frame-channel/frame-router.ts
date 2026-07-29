@@ -13,7 +13,7 @@
  *    handler 拿不到 `process.stdout`——结构上杜绝云上误路由到 log 通道(见 `line-writer.ts`)。
  *  - **优雅降级**:install 失败 → `installed:false` 不抛;handler 抛错 → catch 记诊断不外泄(Req 6.4)。
  */
-import { JsonlLineReader } from "../../rpc-channel/jsonl-reader.js";
+import { JsonlLineReader } from "@blksails/pi-web-core/rpc-channel/jsonl-reader.js";
 import { makeLineWriter } from "./line-writer.js";
 import type { DataListener, ReadableLike, WritableLike } from "./stream-views.js";
 

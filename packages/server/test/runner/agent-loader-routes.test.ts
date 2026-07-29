@@ -18,7 +18,7 @@ import { AgentRouteDeclDtoSchema } from "@blksails/pi-web-protocol";
 import type {
   AgentContext,
   AgentRouteRequest,
-} from "../../src/runner/agent-definition.js";
+} from "@blksails/pi-web-core/agent-definition.js";
 import {
   InvalidAgentDefinitionError,
   loadAgentDefinition,

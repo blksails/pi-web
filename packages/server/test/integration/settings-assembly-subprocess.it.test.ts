@@ -23,11 +23,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
-import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import { PiSession } from "../../src/session/pi-session.js";
-import { makeResolved } from "../session/fixtures.js";
-import { sourceKey } from "../../src/source-key.js";
-import { SourceSettingsCodec } from "../../src/config/source-settings-codec.js";
+import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
+import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
+import { makeResolved } from "../../../core/test/session/fixtures.js";
+import { sourceKey } from "@blksails/pi-web-core/source-key.js";
+import { SourceSettingsCodec } from "@blksails/pi-web-core/config/source-settings-codec.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // test/integration -> packages/server

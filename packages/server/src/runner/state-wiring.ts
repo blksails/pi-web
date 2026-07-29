@@ -23,7 +23,7 @@ import { SESSION_STATE_SEAM_KEY } from "./frame-channel/index.js";
 import {
   createSessionStateStore,
   type SessionStateStore,
-} from "../state/session-state-store.js";
+} from "@blksails/pi-web-core/state/session-state-store.js";
 
 /** 约定 globalThis seam key(自 `frame-channel/seam-keys` 单一来源再导出,兼容既有引用)。 */
 export { SESSION_STATE_SEAM_KEY };

@@ -6,7 +6,7 @@ import {
   createDefaultAdminPolicy,
   defaultAdminPolicy,
 } from "../../src/extensions/security/admin-policy.js";
-import type { AuthContext } from "../../src/http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
 
 const anon: AuthContext = { anonymous: true };
 const user = (id: string): AuthContext => ({ anonymous: false, userId: id });

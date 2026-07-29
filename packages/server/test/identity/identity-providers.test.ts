@@ -10,7 +10,7 @@ import { AuthSessionState } from "../../src/auth/auth-session-state.js";
 import { CapabilitiesLoadError } from "../../src/auth/desktop-capabilities-client.js";
 import type { DesktopCapabilitiesClient } from "../../src/auth/desktop-capabilities-client.js";
 import type { CloudLoginClient, CloudLoginResult } from "../../src/auth/cloud-login-client.js";
-import type { StaticCapabilitySnapshot } from "../../src/capability/types.js";
+import type { StaticCapabilitySnapshot } from "@blksails/pi-web-core/capability/types.js";
 import { createDesktopPasswordIdentityProvider } from "../../src/identity/desktop-password-identity-provider.js";
 import { createSessionIdentityProvider } from "../../src/identity/session-identity-provider.js";
 

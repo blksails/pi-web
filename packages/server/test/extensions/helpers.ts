@@ -2,10 +2,10 @@
  * extension-management 测试共享 helper:可注入的 FakePiCli(记录调用,模拟结果),
  * AuthContext 构造,审计收集器,以及 createPiWebHandler 装配器。
  */
-import { createPiWebHandler } from "../../src/http/index.js";
-import type { AuthContext } from "../../src/http/index.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
+import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
 import { createExtensionRoutes } from "../../src/extensions/routes.js";
 import type {
   AuditRecord,

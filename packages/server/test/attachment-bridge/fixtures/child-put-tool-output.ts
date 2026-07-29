@@ -10,7 +10,7 @@
  *   - 能力不可用(env 未下发)→ `{"available":false}`;
  *   - 落库成功 → `{"available":true,"id":"att_…","backend":"…" | null}`。
  */
-import { createChildAttachmentStore } from "../../../src/attachment-bridge/child-store.js";
+import { createChildAttachmentStore } from "@blksails/pi-web-core/attachment-bridge/child-store.js";
 
 async function main(): Promise<void> {
   const store = createChildAttachmentStore(process.env);

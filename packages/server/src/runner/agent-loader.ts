@@ -20,7 +20,7 @@ import type {
   AgentContext,
   AgentDefinition,
   AgentRouteHandler,
-} from "./agent-definition.js";
+} from "@blksails/pi-web-core/agent-definition.js";
 import { createJiti } from "jiti";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
 import type { AgentRouteMethod, SlashCompletionDecl } from "@blksails/pi-web-protocol";

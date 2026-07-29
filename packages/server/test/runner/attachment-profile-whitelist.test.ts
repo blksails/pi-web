@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { InvalidAgentDefinitionError } from "../../src/runner/agent-loader.js";
 import { validateAttachmentProfileWhitelist } from "../../src/runner/runner.js";
 import { ATTACHMENT_PROFILE_DISABLED_ENV } from "../../src/runner/attachment-profile-wiring.js";
-import { ATTACHMENT_BACKENDS_ENV } from "../../src/attachment/backends-config.js";
+import { ATTACHMENT_BACKENDS_ENV } from "@blksails/pi-web-core/attachment/backends-config.js";
 
 const AGENT_PATH = "/tmp/agents/whitelist-agent.ts";
 

@@ -10,9 +10,9 @@
  *
  * 扩展安装 = RCE;沙箱/容器隔离为生产硬化关注点(§11.2),本层引用而不实现(Req 9.1)。
  */
-import { errorResponse, jsonResponse } from "../../http/index.js";
-import type { RequestContext, RouteHandler } from "../../http/index.js";
-import { validateBody } from "../../http/validate.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { RequestContext, RouteHandler } from "@blksails/pi-web-core/http/index.js";
+import { validateBody } from "@blksails/pi-web-core/http/validate.js";
 import type {
   AdminPolicy,
   AllowlistConfig,

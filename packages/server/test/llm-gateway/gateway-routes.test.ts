@@ -7,8 +7,8 @@
  * `Authorization: Bearer <真实key>`、入站 token 不出现在出站 headers。
  */
 import { describe, expect, it, vi } from "vitest";
-import { Router } from "../../src/http/router.js";
-import type { SessionStore } from "../../src/session/index.js";
+import { Router } from "@blksails/pi-web-core/http/router.js";
+import type { SessionStore } from "@blksails/pi-web-core/session/index.js";
 import { mintScopedToken } from "../../src/tokens/index.js";
 import { createLlmGatewayRoutes } from "../../src/llm-gateway/gateway-routes.js";
 import type { LlmGatewayProviderTable } from "../../src/llm-gateway/provider-registry.js";

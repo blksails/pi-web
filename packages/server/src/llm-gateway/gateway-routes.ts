@@ -26,12 +26,12 @@
  * 每请求另记 `{sessionId, provider, status, durationMs}`,绝不落 key/token 明文。
  */
 import { createLogger } from "@blksails/pi-web-logger";
-import { errorResponse } from "../http/error-map.js";
+import { errorResponse } from "@blksails/pi-web-core/http/error-map.js";
 import type {
   InjectedRoute,
   RequestContext,
   RouteHandler,
-} from "../http/handler.types.js";
+} from "@blksails/pi-web-core/http/handler.types.js";
 import { verifyScopedToken } from "../tokens/index.js";
 import { lookupLlmGatewayProvider } from "./provider-registry.js";
 import type { LlmGatewayProviderTable } from "./provider-registry.js";

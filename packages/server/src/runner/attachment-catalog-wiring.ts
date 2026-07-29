@@ -42,9 +42,9 @@ import {
   type AttachmentCatalogResultFrame,
   type CatalogEntryDto,
 } from "@blksails/pi-web-protocol";
-import { JsonlLineReader } from "../rpc-channel/jsonl-reader.js";
-import type { AgentAttachmentCatalogDecl } from "./agent-definition.js";
-import type { ChildAttachmentStore } from "../attachment-bridge/child-store.js";
+import { JsonlLineReader } from "@blksails/pi-web-core/rpc-channel/jsonl-reader.js";
+import type { AgentAttachmentCatalogDecl } from "@blksails/pi-web-core/agent-definition.js";
+import type { ChildAttachmentStore } from "@blksails/pi-web-core/attachment-bridge/child-store.js";
 
 /** data 监听器签名(agent-routes-wiring 同构)。 */
 type DataListener = (chunk: string | Buffer) => void;

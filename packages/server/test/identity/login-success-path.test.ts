@@ -23,7 +23,7 @@ import { createCloudLoginClient } from "../../src/auth/cloud-login-client.js";
 import { createDesktopCapabilitiesClient } from "../../src/auth/desktop-capabilities-client.js";
 import { createDesktopPasswordIdentityProvider } from "../../src/identity/desktop-password-identity-provider.js";
 import { createIdentityRoutes } from "../../src/identity/identity-routes.js";
-import type { InjectedRoute } from "../../src/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 
 const CLOUD = "https://cloud.example";
 const LOGIN_URL = `${CLOUD}/api/desktop/login`;

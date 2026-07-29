@@ -12,10 +12,10 @@
  */
 import { describe, expect, it } from "vitest";
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
-import { createModelCatalogService } from "../../src/model-catalog/index.js";
+import { createModelCatalogService } from "@blksails/pi-web-core/model-catalog/index.js";
 import { mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "../../src/ai-gateway/model-catalog.js";
-import type { ModelOptions } from "../../src/config/model-options.types.js";
+import type { ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
 
 const SELF_CHAT: ModelOptions = {
   providers: ["dashscope", "openrouter"],

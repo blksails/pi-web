@@ -11,7 +11,7 @@ import {
   readJson,
   userAuth,
 } from "./helpers.js";
-import type { AuthContext, RequestContext } from "../../src/http/index.js";
+import type { AuthContext, RequestContext } from "@blksails/pi-web-core/http/index.js";
 
 const adminPolicy = createDefaultAdminPolicy({ adminUserIds: ["root"] });
 

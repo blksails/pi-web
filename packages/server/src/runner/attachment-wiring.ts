@@ -38,14 +38,14 @@ import type { Attachment, AttachmentEventFrame } from "@blksails/pi-web-protocol
 import {
   createChildAttachmentStore,
   type ChildAttachmentStore,
-} from "../attachment-bridge/child-store.js";
+} from "@blksails/pi-web-core/attachment-bridge/child-store.js";
 import {
   createTempFileTracker,
   type TempFileTracker,
-} from "../attachment-bridge/temp-files.js";
-import { makeBeforeToolCall } from "../attachment-bridge/ownership-guard.js";
-import { makeAfterToolCall } from "../attachment-bridge/base64-gate.js";
-import { createAttachmentToolContext } from "../attachment-bridge/tool-context.js";
+} from "@blksails/pi-web-core/attachment-bridge/temp-files.js";
+import { makeBeforeToolCall } from "@blksails/pi-web-core/attachment-bridge/ownership-guard.js";
+import { makeAfterToolCall } from "@blksails/pi-web-core/attachment-bridge/base64-gate.js";
+import { createAttachmentToolContext } from "@blksails/pi-web-core/attachment-bridge/tool-context.js";
 import {
   composeBeforeToolCall,
   composeAfterToolCall,

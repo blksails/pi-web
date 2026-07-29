@@ -6,10 +6,10 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./trust": "./src/trust/index.ts",
-    "./model-options": "./src/config/model-options.ts",
-    "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
-    "./testing": "./src/workspace/testing/index.ts",
+    "./trust": "./src/compat/trust.ts",
+    "./model-options": "./src/compat/model-options.ts",
+    "./vision-model-options": "./src/compat/vision-model-options.ts",
+    "./testing": "./src/compat/testing.ts",
     "./host-assembly": "./src/host-assembly/index.ts"
   },
   "engines": {

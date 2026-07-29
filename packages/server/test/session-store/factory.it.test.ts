@@ -1,3 +1,7 @@
+import {
+  createSessionEntryStore,
+  PostgresSessionEntryStore,
+} from "../../src/session-store-postgres/index.js";
 /**
  * createSessionEntryStore / sessionStoreConfigFromEnv 单测:
  * 验证按配置/环境选择正确 adapter,且选出的 store 可正常读写;并校验 env 解析与错误。
@@ -7,13 +11,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  createSessionEntryStore,
   FsSessionEntryStore,
-  PostgresSessionEntryStore,
   sessionStoreConfigFromEnv,
   SqliteSessionEntryStore,
-} from "../../src/session-store/index.js";
-import { collect, header, msg } from "./contract.js";
+} from "@blksails/pi-web-core/session-store/index.js";
+import { collect, header, msg } from "../../../core/test/session-store/contract.js";
 
 describe("createSessionEntryStore 工厂选择 adapter", () => {
   it("kind=fs → FsSessionEntryStore,且可创建/追加/读回", async () => {

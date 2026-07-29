@@ -21,14 +21,14 @@ import {
   attachmentStoreConfigFromEnv,
   ATTACHMENT_DIR_ENV,
   ATTACHMENT_SECRET_ENV,
-} from "../../src/attachment/config.js";
-import type { AttachmentStore } from "../../src/attachment/attachment-store.js";
-import type { AgentDefinition } from "../../src/runner/agent-definition.js";
-import { createAttachmentToolContext } from "../../src/attachment-bridge/index.js";
+} from "@blksails/pi-web-core/attachment/config.js";
+import type { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
+import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
+import { createAttachmentToolContext } from "@blksails/pi-web-core/attachment-bridge/index.js";
 import {
   createEditImageTool,
   type EditImageToolDetails,
-} from "../../src/attachment-bridge/example-tool.js";
+} from "../../src/attachment-example-tool.js";
 
 const SECRET = "stable-secret-for-example-tool-test";
 const SESSION = "sess-example";

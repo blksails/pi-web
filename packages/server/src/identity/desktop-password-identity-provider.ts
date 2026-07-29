@@ -19,8 +19,8 @@
 import type { AuthSessionState } from "../auth/auth-session-state.js";
 import type { CloudLoginClient } from "../auth/cloud-login-client.js";
 import type { DesktopCapabilitiesClient } from "../auth/desktop-capabilities-client.js";
-import { HOST_CONTRACT_VERSION } from "../host-contract-version.js";
-import type { CapabilityTenant } from "../capability/types.js";
+import { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-version.js";
+import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
 import type {
   IdentityCredentials,
   IdentityExchangeResult,

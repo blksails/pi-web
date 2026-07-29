@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createAgentSessionFromServices } from "@earendil-works/pi-coding-agent";
-import type { AgentContext } from "../../src/runner/agent-definition.js";
+import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { loadAgentDefinition } from "../../src/runner/agent-loader.js";
 import { makeResolveProjectTrust } from "../../src/runner/project-trust.js";
 

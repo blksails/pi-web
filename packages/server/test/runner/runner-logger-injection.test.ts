@@ -12,7 +12,7 @@
  * launch) is covered by the existing runner.e2e.test.ts.
  */
 import { describe, expect, it } from "vitest";
-import type { AgentContext } from "../../src/runner/agent-definition.js";
+import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { parseRunnerArgs } from "../../src/runner/runner.js";
 import { createLogger } from "@blksails/pi-web-logger";
 import { LOG_SENTINEL } from "@blksails/pi-web-logger";

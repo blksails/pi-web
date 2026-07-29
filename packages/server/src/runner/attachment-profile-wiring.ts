@@ -15,7 +15,7 @@ import type { NormalizedAgentRuntimeFactory } from "./agent-loader.js";
 import {
   ATTACHMENT_PROFILE_DISABLED_ENV,
   isAttachmentProfileDisabled,
-} from "../attachment/backends-config.js";
+} from "@blksails/pi-web-core/attachment/backends-config.js";
 
 /**
  * 运维关断 env(`"1"` 关断;默认开启,与 `PI_WEB_AGENT_ROUTES_DISABLED` 同风格,Req 5.1/5.2)。

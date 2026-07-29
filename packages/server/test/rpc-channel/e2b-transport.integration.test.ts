@@ -13,9 +13,9 @@
  *   npx vitest run test/rpc-channel/e2b-transport.integration.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { E2bTransport } from "../../src/rpc-channel/e2b-transport.js";
-import { PiRpcSession } from "../../src/rpc-channel/pi-rpc-session.js";
-import { e2bTransportConfigFromEnv } from "../../src/rpc-channel/e2b-config.js";
+import { E2bTransport } from "../../src/sandbox-transport/e2b-transport.js";
+import { PiRpcSession } from "@blksails/pi-web-core/rpc-channel/pi-rpc-session.js";
+import { e2bTransportConfigFromEnv } from "../../src/sandbox-transport/e2b-config.js";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 
 const HAS_CREDS =

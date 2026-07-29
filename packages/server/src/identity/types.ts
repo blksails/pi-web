@@ -36,8 +36,8 @@
  * pi-SDK-free:只从纯类型文件取 `CapabilityTenant` 与 `HOST_CONTRACT_VERSION`,零运行期
  * 依赖,可安全经主 barrel 重导出。
  */
-import type { HOST_CONTRACT_VERSION } from "../host-contract-version.js";
-import type { CapabilityTenant } from "../capability/types.js";
+import type { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-version.js";
+import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
 
 /**
  * 当前身份状态。

@@ -14,8 +14,8 @@
  * ★ **本实现刻意不提供 `exchange`**。任何人想给它加上,应先回答:这个宿主的用户
  *   已经登录过了,再让他登录一次是要解决什么问题?
  */
-import { HOST_CONTRACT_VERSION } from "../host-contract-version.js";
-import type { CapabilityTenant } from "../capability/types.js";
+import { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-version.js";
+import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
 import type { IdentityProvider, IdentityState } from "./types.js";
 
 export interface SessionIdentityProviderOptions {

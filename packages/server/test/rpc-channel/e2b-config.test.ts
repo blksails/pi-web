@@ -10,7 +10,7 @@ import {
   e2bTransportConfigFromEnv,
   e2bDataPlaneFromEnv,
   E2B_CONFIG_MISSING_MESSAGE,
-} from "../../src/rpc-channel/e2b-config.js";
+} from "../../src/sandbox-transport/e2b-config.js";
 
 describe("e2bTransportConfigFromEnv — 缺配置清晰失败 (Req 3.3)", () => {
   it("缺 E2B_API_KEY 抛出携带指引的错误", () => {

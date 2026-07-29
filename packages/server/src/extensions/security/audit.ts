@@ -5,7 +5,7 @@
  * env 敏感值与凭据(Req 8.2/9.3)。`onAudit` 接缝默认实现至少结构化输出(stderr),生产
  * 可替换为持久化落库(Req 8.3,§11.7)。
  */
-import type { AuthContext } from "../../http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
 import type { AuditRecord, OnAudit } from "../ext.types.js";
 
 /** 从鉴权上下文提取操作者标识(匿名 → "anonymous")。 */

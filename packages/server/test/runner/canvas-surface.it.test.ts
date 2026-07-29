@@ -26,8 +26,8 @@ import {
   attachmentStoreConfigFromEnv,
   ATTACHMENT_DIR_ENV,
   ATTACHMENT_SECRET_ENV,
-} from "../../src/attachment/config.js";
-import type { AttachmentStore } from "../../src/attachment/attachment-store.js";
+} from "@blksails/pi-web-core/attachment/config.js";
+import type { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");

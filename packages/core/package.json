@@ -9,7 +9,8 @@
     "./trust": "./src/trust/index.ts",
     "./model-options": "./src/config/model-options.ts",
     "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
-    "./testing": "./src/workspace/testing/index.ts"
+    "./testing": "./src/workspace/testing/index.ts",
+    "./*.js": "./src/*.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -28,7 +29,8 @@
   "dependencies": {
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@blksails/pi-web-tool-kit": "workspace:^"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"

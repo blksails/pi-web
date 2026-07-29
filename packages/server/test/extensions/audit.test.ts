@@ -7,7 +7,7 @@ import {
   buildAuditRecord,
   redactReason,
 } from "../../src/extensions/security/audit.js";
-import type { AuthContext } from "../../src/http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
 
 const anon: AuthContext = { anonymous: true };
 const user: AuthContext = { anonymous: false, userId: "root" };

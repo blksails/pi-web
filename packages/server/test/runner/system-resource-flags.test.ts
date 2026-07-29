@@ -4,7 +4,7 @@
  * spec: system-resource-toggle-fix(Req 1.x / 2.x / 3.x / 5.1)。
  */
 import { describe, expect, it } from "vitest";
-import type { SkillsOverride } from "../../src/runner/agent-definition.js";
+import type { SkillsOverride } from "@blksails/pi-web-core/agent-definition.js";
 import { mapResourceLoaderOptions } from "../../src/runner/option-mapper.js";
 import { parseRunnerArgs } from "../../src/runner/runner.js";
 

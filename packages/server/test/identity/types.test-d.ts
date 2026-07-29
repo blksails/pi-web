@@ -8,7 +8,7 @@
  * `@ts-expect-error` 挡「本该禁止的写法变得合法」。后者是纯正向断言给不了的方向——
  * 把 `tenant` 从必填改成可选,只写正向断言的文件依然全绿。
  */
-import type { CapabilityTenant } from "../../src/capability/index.js";
+import type { CapabilityTenant } from "@blksails/pi-web-core/capability/index.js";
 import type {
   IdentityCredentials,
   IdentityExchangeFailure,

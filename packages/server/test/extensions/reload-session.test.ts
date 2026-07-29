@@ -6,12 +6,15 @@ import {
   makeReloadSessionHandler,
   ReloadNotConfiguredError,
 } from "../../src/extensions/routes/reload-session.js";
-import { defaultTrustPolicy } from "../../src/agent-source/index.js";
+import { defaultTrustPolicy } from "@blksails/pi-web-core/agent-source/index.js";
 import { createDefaultAdminPolicy } from "../../src/extensions/security/admin-policy.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { MockSession, asPiSession } from "../http/helpers.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+// ★ 跨包引用**测试** helper 用相对路径,不走包 specifier:测试目录不在任何包的
+//   `exports` 里(也不该在 —— 它不是公开 API)。本仓两包同处一个 workspace,
+//   相对路径是此处唯一诚实的写法。等 adapters 提取完成后本文件会随扩展一起归位。
+import { MockSession, asPiSession } from "../../../core/test/http/helpers.js";
 import { adminAuth, anonAuth, readJson, userAuth } from "./helpers.js";
-import type { AuthContext, RequestContext } from "../../src/http/index.js";
+import type { AuthContext, RequestContext } from "@blksails/pi-web-core/http/index.js";
 import type {
   SessionReloader,
   TrustDecision,

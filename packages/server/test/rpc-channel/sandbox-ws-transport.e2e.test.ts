@@ -10,7 +10,7 @@
  *   npx vitest run test/rpc-channel/sandbox-ws-transport.local.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { SandboxWsTransport } from "../../src/rpc-channel/sandbox-ws-transport.js";
+import { SandboxWsTransport } from "../../src/sandbox-transport/sandbox-ws-transport.js";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 
 const RUN = process.env.PI_WEB_E2B_LOCAL === "1";

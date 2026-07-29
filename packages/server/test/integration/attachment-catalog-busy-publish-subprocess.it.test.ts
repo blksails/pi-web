@@ -16,10 +16,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SpawnSpec, SseFrame } from "@blksails/pi-web-protocol";
-import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import { PiSession } from "../../src/session/pi-session.js";
-import { attachmentStoreConfigFromEnv } from "../../src/attachment/config.js";
-import { makeResolved } from "../session/fixtures.js";
+import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
+import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
+import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/config.js";
+import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");
@@ -170,7 +170,7 @@ beforeAll(async () => {
   session = new PiSession({
     id: "attcatalog-busy-0",
     resolved: makeResolved(),
-    channel: channel as unknown as import("../../src/session/session.types.js").SessionChannel,
+    channel: channel as unknown as import("@blksails/pi-web-core/session/session.types.js").SessionChannel,
     idleMs: 0,
     readinessHandshake: true,
     readinessProbeTimeoutMs: 15_000,

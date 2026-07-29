@@ -24,12 +24,12 @@
  * durationMs}`;model 从请求体浅解析(失败记 "-"),绝不落 key/token 明文。
  */
 import { createLogger } from "@blksails/pi-web-logger";
-import { errorResponse } from "../http/error-map.js";
+import { errorResponse } from "@blksails/pi-web-core/http/error-map.js";
 import type {
   InjectedRoute,
   RequestContext,
   RouteHandler,
-} from "../http/handler.types.js";
+} from "@blksails/pi-web-core/http/handler.types.js";
 import { verifyScopedToken } from "../tokens/index.js";
 import type { KeyResolver } from "./key-resolver.js";
 

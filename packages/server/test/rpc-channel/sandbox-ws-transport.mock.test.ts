@@ -120,10 +120,10 @@ class FakeWebSocket {
 }
 
 const { SandboxWsTransport } = await import(
-  "../../src/rpc-channel/sandbox-ws-transport.js"
+  "../../src/sandbox-transport/sandbox-ws-transport.js"
 );
 const { SpawnError } = await import(
-  "../../src/rpc-channel/pi-rpc-process.errors.js"
+  "@blksails/pi-web-core/rpc-channel/pi-rpc-process.errors.js"
 );
 
 function spec(env: Record<string, string> = {}): SpawnSpec {

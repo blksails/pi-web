@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@earendil-works/pi-coding-agent";
-import { bucketDirName, FsSessionEntryStore, type SessionEntry } from "../../src/session-store/index.js";
+import { bucketDirName, FsSessionEntryStore, type SessionEntry } from "@blksails/pi-web-core/session-store/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");

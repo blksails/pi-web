@@ -13,7 +13,7 @@ import {
   waitForReady,
   distServerJs,
 } from "@/bin/pi-web.mjs";
-import { isHotReloadEnabled } from "@/packages/server/src/rpc-channel/hot-reload";
+import { isHotReloadEnabled } from "@/packages/core/src/rpc-channel/hot-reload";
 
 const BASE = "/home/user/proj";
 const ENV = { PATH: "/usr/bin", ANTHROPIC_API_KEY: "sk-secret" };

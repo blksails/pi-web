@@ -6,8 +6,8 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeInstallSourcesHandler } from "../../src/extensions/routes/install-sources.js";
-import type { PiSession, SessionStore } from "../../src/session/index.js";
-import type { RequestContext } from "../../src/http/index.js";
+import type { PiSession, SessionStore } from "@blksails/pi-web-core/session/index.js";
+import type { RequestContext } from "@blksails/pi-web-core/http/index.js";
 
 let cwd: string;
 

@@ -19,7 +19,7 @@
  * 「不可用」与「加载失败」必须可区分。
  */
 import { createLogger } from "@blksails/pi-web-logger";
-import type { SourcesGrant } from "../agent-source-list/registry-http-provider.js";
+import type { SourcesGrant } from "@blksails/pi-web-core/agent-source-list/registry-http-provider.js";
 
 /**
  * 发布授予(spec publish-grant-issuance)。在 sources 授予之上多两项**可展示**的身份:
@@ -52,8 +52,8 @@ import type {
   CapabilityTenant,
   CapabilityTokenGrant,
   StaticCapabilitySnapshot,
-} from "../capability/types.js";
-import type { EgressModel } from "./egress-model.js";
+} from "@blksails/pi-web-core/capability/types.js";
+import type { EgressModel } from "@blksails/pi-web-core/capability/egress-model.js";
 
 const logger = createLogger({ namespace: "server:auth:desktop-capabilities" });
 

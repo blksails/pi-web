@@ -7,7 +7,7 @@
  *  2. **响应体逐字段扫描不含敏感材料** —— 密码/凭据/token 一个都不许回显(Req 8.2)。
  */
 import { describe, it, expect } from "vitest";
-import { HOST_CONTRACT_VERSION } from "../../src/host-contract-version.js";
+import { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-version.js";
 import { createIdentityRoutes } from "../../src/identity/identity-routes.js";
 import type {
   IdentityExchangeFailure,
@@ -15,7 +15,7 @@ import type {
   IdentityState,
 } from "../../src/identity/types.js";
 import { createSessionIdentityProvider } from "../../src/identity/session-identity-provider.js";
-import type { InjectedRoute } from "../../src/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 
 const TENANT = { userId: "u1", companyId: "c1", role: "member" };
 const PASSWORD = "p@ssw0rd-marker";

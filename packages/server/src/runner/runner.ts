@@ -20,7 +20,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
-import type { AgentContext } from "./agent-definition.js";
+import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
 import {
@@ -30,11 +30,10 @@ import {
 import { makeResolveProjectTrust } from "./project-trust.js";
 import { resolveAssemblySourceSettings } from "./source-settings-assembly-wiring.js";
 import {
-  createSessionEntryStore,
   mirrorSessionManagerToStore,
   sessionStoreConfigFromEnv,
-} from "../session-store/index.js";
-import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "../attachment/backends-config.js";
+} from "@blksails/pi-web-core/session-store/index.js";
+import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "@blksails/pi-web-core/attachment/backends-config.js";
 import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { wireStateBridge } from "./state-wiring.js";
@@ -336,6 +335,9 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const storeConfig = sessionStoreConfigFromEnv();
   if (storeConfig.kind !== "fs") {
     try {
+      // ★ 动态 import 取装配缝:store 的**选型工厂**属 adapters,与 runner 同层,
+      //   静态 import 就是一条反向依赖(守卫会拦)。同 model-sources 的处理。
+      const { createSessionEntryStore } = await import("../host-assembly/session-store.js");
       const store = await createSessionEntryStore(storeConfig);
       await mirrorSessionManagerToStore(sessionManager, store, (err) =>
         process.stderr.write(`runner: session-store mirror error: ${String(err)}\n`),

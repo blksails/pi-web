@@ -13,8 +13,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { wireAttachmentCatalogBridge } from "../../src/runner/attachment-catalog-wiring.js";
-import type { AgentAttachmentCatalogDecl } from "../../src/runner/agent-definition.js";
-import type { ChildAttachmentStore } from "../../src/attachment-bridge/child-store.js";
+import type { AgentAttachmentCatalogDecl } from "@blksails/pi-web-core/agent-definition.js";
+import type { ChildAttachmentStore } from "@blksails/pi-web-core/attachment-bridge/child-store.js";
 import type { Attachment } from "@blksails/pi-web-protocol";
 
 /** 内存态假 store:只实现桥实际调用的四个方法(put/listBySession/getMeta/setMeta)。 */

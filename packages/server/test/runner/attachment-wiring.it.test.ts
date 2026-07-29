@@ -20,19 +20,19 @@ import {
   attachmentStoreConfigFromEnv,
   ATTACHMENT_DIR_ENV,
   ATTACHMENT_SECRET_ENV,
-} from "../../src/attachment/config.js";
-import type { AttachmentStore } from "../../src/attachment/attachment-store.js";
+} from "@blksails/pi-web-core/attachment/config.js";
+import type { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
 import {
   createTempFileTracker,
   type TempFileTracker,
-} from "../../src/attachment-bridge/index.js";
+} from "@blksails/pi-web-core/attachment-bridge/index.js";
 import {
   wireAttachmentBridge,
   ATTACHMENT_TOOL_CONTEXT_KEY,
   type WireAttachmentBridgeInput,
 } from "../../src/runner/attachment-wiring.js";
 import type { AgentSessionRuntime } from "@earendil-works/pi-coding-agent";
-import type { AttachmentToolContext } from "../../src/attachment-bridge/tool-context.js";
+import type { AttachmentToolContext } from "@blksails/pi-web-core/attachment-bridge/tool-context.js";
 
 const SECRET = "stable-secret-for-wiring-test";
 const SESSION_ID = "sess-owner";

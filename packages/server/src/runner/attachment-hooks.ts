@@ -20,11 +20,11 @@
  *  - after:既有 hook 先改写 → 以改写后的 content/details 为剥离输入 → 叠加 base64 剥离;
  *    闸门无改写则透传既有 hook 结果。
  */
-import type { ToolCallGuardEvent } from "../attachment-bridge/ownership-guard.js";
+import type { ToolCallGuardEvent } from "@blksails/pi-web-core/attachment-bridge/ownership-guard.js";
 import type {
   AfterToolCallGuardEvent,
   ToolResultContent,
-} from "../attachment-bridge/base64-gate.js";
+} from "@blksails/pi-web-core/attachment-bridge/base64-gate.js";
 
 /** pi `Agent.beforeToolCall` context 的最小同形视图。 */
 export interface PiBeforeToolCallContext {

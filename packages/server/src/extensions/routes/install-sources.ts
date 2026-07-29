@@ -6,9 +6,9 @@
  * `InstallSourceProvider`(缺省为本地扫描实现),使非本地形态可替换实现而无须改动本端点。
  * 只读端点,不强制管理员门控。
  */
-import { errorResponse, jsonResponse } from "../../http/index.js";
-import type { RequestContext, RouteHandler } from "../../http/index.js";
-import type { SessionStore } from "../../session/index.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { RequestContext, RouteHandler } from "@blksails/pi-web-core/http/index.js";
+import type { SessionStore } from "@blksails/pi-web-core/session/index.js";
 import type { InstallSourceProvider } from "../install-sources/types.js";
 import { createScanInstallSourceProvider } from "../install-sources/scan-provider.js";
 

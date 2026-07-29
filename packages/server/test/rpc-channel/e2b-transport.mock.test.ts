@@ -55,9 +55,9 @@ vi.mock("e2b", () => {
 });
 
 // mock 声明后再导入被测模块(vi.mock 已提升,顺序无碍)。
-const { E2bTransport } = await import("../../src/rpc-channel/e2b-transport.js");
+const { E2bTransport } = await import("../../src/sandbox-transport/e2b-transport.js");
 const { SpawnError } = await import(
-  "../../src/rpc-channel/pi-rpc-process.errors.js"
+  "@blksails/pi-web-core/rpc-channel/pi-rpc-process.errors.js"
 );
 
 function spec(env: Record<string, string> = {}): SpawnSpec {

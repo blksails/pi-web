@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AgentContext } from "../../src/runner/agent-definition.js";
+import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import {
   InvalidAgentDefinitionError,
   loadAgentDefinition,

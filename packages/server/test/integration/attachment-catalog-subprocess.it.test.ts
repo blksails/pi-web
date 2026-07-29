@@ -16,11 +16,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
-import { PiRpcProcess } from "../../src/rpc-channel/pi-rpc-process.js";
-import { PiSession } from "../../src/session/pi-session.js";
-import type { SessionChannel } from "../../src/session/session.types.js";
-import { attachmentStoreConfigFromEnv } from "../../src/attachment/config.js";
-import { makeResolved } from "../session/fixtures.js";
+import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
+import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
+import type { SessionChannel } from "@blksails/pi-web-core/session/session.types.js";
+import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/config.js";
+import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");

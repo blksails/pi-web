@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GatewayModelCatalog, mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "../../src/ai-gateway/model-catalog.js";
-import type { ModelOption } from "../../src/config/model-options.types.js";
+import type { ModelOption } from "@blksails/pi-web-core/config/model-options.types.js";
 
 function modelsResponse(ids: Array<{ id: string; owned_by?: string }>): Response {
   return new Response(JSON.stringify({ data: ids }), {

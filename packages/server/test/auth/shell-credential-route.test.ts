@@ -15,7 +15,7 @@ import {
   resolveShellToken,
   SHELL_TOKEN_ENV,
 } from "../../src/auth/shell-credential-route.js";
-import type { InjectedRoute } from "../../src/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 
 const TOKEN = "a".repeat(64);
 const NOW = 1_700_000_000_000;

@@ -7,7 +7,7 @@
  *
  * 安装 / 卸载 / 重载路由在入口调用;只读端点(GET /extensions)不调用(Req 7.1/7.4)。
  */
-import type { AuthContext } from "../../http/index.js";
+import type { AuthContext } from "@blksails/pi-web-core/http/index.js";
 import type { AdminPolicy } from "../ext.types.js";
 
 /**

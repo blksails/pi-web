@@ -5,8 +5,8 @@
 import type { Pool } from "pg";
 import { newDb } from "pg-mem";
 import { describe, expect, it } from "vitest";
-import { PostgresSessionEntryStore } from "../../src/session-store/postgres-store.js";
-import { collect, header, msg, runStoreContract } from "./contract.js";
+import { PostgresSessionEntryStore } from "../../src/session-store-postgres/postgres-store.js";
+import { collect, header, msg, runStoreContract } from "../../../core/test/session-store/contract.js";
 
 /** 用 pg-mem 造一个与 pg 兼容的 Pool;返回的多个 Pool 共享同一内存库。 */
 function memDb() {

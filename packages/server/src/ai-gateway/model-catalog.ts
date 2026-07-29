@@ -15,7 +15,7 @@
  * 的 `createConfigRoutes({ listModelOptions })` 装配处。
  */
 import { createLogger } from "@blksails/pi-web-logger";
-import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
+import type { ModelOption, ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
 import type { KeyResolver } from "./key-resolver.js";
 import {
   AI_GATEWAY_PROVIDER_NAME,
@@ -33,8 +33,8 @@ const log = createLogger({ namespace: "server:ai-gateway" });
  *   下沉的原因是解除 `model-catalog(core) → ai-gateway(adapters)` 的跨层反向值依赖:
  *   目录服务需要这两个类型来描述注入契约,而它不该认识适配器。
  */
-export type { GatewayModelEntry, ModelPrecedence } from "../model-catalog/types.js";
-import type { GatewayModelEntry, ModelPrecedence } from "../model-catalog/types.js";
+export type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
+import type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
 
 /** `GatewayModelCatalog` 的注入依赖。 */
 export interface GatewayModelCatalogDeps {

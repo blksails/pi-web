@@ -11,8 +11,8 @@
  * key,成本较高;已在 `routes.test.ts` 用 mock 上游覆盖该断言矩阵(见该文件),此处不重复。
  */
 import { describe, expect, it } from "vitest";
-import { Router } from "../../src/http/router.js";
-import type { SessionStore } from "../../src/session/index.js";
+import { Router } from "@blksails/pi-web-core/http/router.js";
+import type { SessionStore } from "@blksails/pi-web-core/session/index.js";
 import { mintScopedToken } from "../../src/tokens/index.js";
 import { createAiGatewayRoutes } from "../../src/ai-gateway/routes.js";
 import { EnvKeyResolver } from "../../src/ai-gateway/key-resolver.js";

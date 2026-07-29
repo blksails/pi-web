@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   selectTransport,
   E2B_CONFIG_MISSING_MESSAGE,
-} from "../../src/rpc-channel/e2b-config.js";
+} from "../../src/sandbox-transport/e2b-config.js";
 
 describe("selectTransport — 默认与 local (Req 3.1)", () => {
   it("未设置 PI_WEB_TRANSPORT → local(默认零变化)", () => {

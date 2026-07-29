@@ -33,8 +33,8 @@
  * 「任何本地进程随手 curl 一下就拿到凭据」。要彻底关掉需把服务端从 TCP 换成
  * 0600 的 Unix domain socket,那是另一个量级的改动。
  */
-import { errorResponse, jsonResponse } from "../http/index.js";
-import type { InjectedRoute } from "../http/index.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 import type { AuthSessionState } from "./auth-session-state.js";
 
 /** 壳每次启动随机生成并经子进程 env 下发的取回 token。 */

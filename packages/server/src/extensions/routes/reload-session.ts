@@ -9,9 +9,9 @@
  *     子进程 / `new_session` 重建运行时(重启编排归 session-engine,本层仅消费,Req 4.1)。
  *   - 重载完成 → ack;不静默丢弃请求(以 ack 或错误明确收束,Req 4.4/4.5)。
  */
-import { errorResponse, jsonResponse } from "../../http/index.js";
-import type { RequestContext, RouteHandler } from "../../http/index.js";
-import type { SessionStore } from "../../session/index.js";
+import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
+import type { RequestContext, RouteHandler } from "@blksails/pi-web-core/http/index.js";
+import type { SessionStore } from "@blksails/pi-web-core/session/index.js";
 import type {
   AdminPolicy,
   SessionReloader,

@@ -13,7 +13,7 @@
  *
  * 本层仅"消费"上游决策与映射,不重定义默认值或决策算法(Req 6.6)。
  */
-import { applyTrust, defaultTrustPolicy } from "../../agent-source/index.js";
+import { applyTrust, defaultTrustPolicy } from "@blksails/pi-web-core/agent-source/index.js";
 import type {
   AgentMode,
   TrustDecision,
