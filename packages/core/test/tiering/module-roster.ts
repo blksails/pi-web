@@ -86,7 +86,7 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   // ── assembly:组装层,按定义同时引用 core 与 adapters ─────────
   index: "assembly", // 主 barrel
   compat: "assembly", // 四个子路径的薄转发面(实现已随内核搬走);只转发,不增不减
-  "runner-bootstrap-path": "assembly", // 解析**本包根**的 runner-bootstrap.mjs;必须与该文件同包(见其文件头)
+  "runner-bootstrap-path": "assembly", // 只**解析** runner 包的 runner-bootstrap.mjs 路径,绝不 import 其实现(见其文件头)
   "host-assembly": "assembly", // 默认能力面清单;其文件头自述「import 真实工厂,绝不经主 barrel 导出」
 
   // ── adapters:绑定具体外部系统 ──────────────────────────────
