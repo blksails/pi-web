@@ -73,6 +73,8 @@ import {
   type RendererRegistry,
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
+import { TurnAbortProvider } from "./turn-abort-context.js";
+import { runStopTurn, type StopTurnHandle } from "./stop-turn.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { createPackageArgProvider } from "../controls/package-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
@@ -1195,9 +1197,25 @@ export function PiChat({
     runBash,
   ]);
 
+  // 停止本轮的兜底定时器句柄(spec tool-abort-terminal-state);卸载时取消,避免定时器泄漏。
+  const stopHandleRef = React.useRef<StopTurnHandle | undefined>(undefined);
+  React.useEffect(() => {
+    return () => stopHandleRef.current?.cancelFallback();
+  }, []);
+
+  /**
+   * 停止本轮。决策逻辑在 {@link runStopTurn}(独立可测),这里只做接线。
+   *
+   * ★ 关键:abort 成功时**不**本地停止 —— 本地停止会当场切断 SSE 流,后端随后推送的
+   * 「工具已取消」终态帧就收不到,工具卡永久停在 Running(真机观测计时器走到 1:31)。
+   * 让终态由后端帧驱动;本地停止仅作三种兜底,详见 stop-turn.ts。
+   */
   const onStop = React.useCallback((): void => {
-    if (controls !== undefined) void controls.abort().catch(() => undefined);
-    stop();
+    stopHandleRef.current?.cancelFallback();
+    stopHandleRef.current = runStopTurn({
+      ...(controls !== undefined ? { abortTurn: () => controls.abort() } : {}),
+      localStop: stop,
+    });
   }, [controls, stop]);
 
   // message-queue-ui「取回」:把已排队消息取回编辑器(Esc / Alt+↑)。经 clearQueue 端点清空 agent
@@ -1672,7 +1690,14 @@ export function PiChat({
       />
     );
 
+  // 「终止本轮」能力下发给工具卡(spec aigc-tool-abort UI 扩展):让用户在卡片上就地停止,
+  // 不必跑回输入框 —— 图像生成常耗时 20~60s,视线一直在卡片上。
+  // 仅在本轮运行中(isBusy)提供;否则传 undefined,工具卡据此**不渲染**停止按钮,
+  // 而不是渲染一个点了没反应的按钮。
+  const abortTurnForTools = isBusy ? onStop : undefined;
+
   const conversationBody = (
+    <TurnAbortProvider onAbortTurn={abortTurnForTools}>
     <div className="relative flex min-h-0 flex-1 flex-col">
       <Conversation className="flex-1">
         <div
@@ -1809,6 +1834,7 @@ export function PiChat({
         </div>
       </div>
     </div>
+    </TurnAbortProvider>
   );
 
   const tree = (

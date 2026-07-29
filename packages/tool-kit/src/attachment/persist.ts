@@ -42,6 +42,17 @@ export interface PersistedAsset {
 interface PersistOptions {
   fetchImpl?: typeof fetch;
   namePrefix?: string;
+  /**
+   * 取消信号(spec aigc-tool-abort,Req 1.2)。
+   *
+   * ★ 此前落盘下载调 `fetchImpl(url)` **不传 init**,signal 无从进入 —— 用户点停止后只能
+   * 干等 {@link PERSIST_TIMEOUT_MS}(下载与 arrayBuffer 各一个 30s 窗口,最坏 60s)。而这
+   * 恰是「图已生成、正在取回」的阶段,是最容易想按停止的时刻之一。
+   *
+   * 与 `withTimeout` 是**互补**关系:signal 面向「用户主动取消」,超时面向「对端无响应」。
+   * 未传 signal 的调用方行为完全不变,仍受超时兜底保护(Req 4.2)。
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -56,18 +67,26 @@ export async function persistPicked(
   ctx: AttachmentToolContext,
   opts: PersistOptions = {},
 ): Promise<PersistedAsset[]> {
-  const { fetchImpl = globalThis.fetch, namePrefix = "aigc" } = opts;
+  const { fetchImpl = globalThis.fetch, namePrefix = "aigc", signal } = opts;
 
   const urls = pickedImageUrls(picked);
   // Wave 1: non-image kinds (video, audio, text, choices, raw) are not persisted.
   if (urls === null) return [];
 
-  // Parallel fetch + persist. Serial download made the per-image latency stack up,
-  // so the tool's completion lagged well behind the provider actually returning the
-  // images. Promise.all keeps result order aligned with input order (stable naming
-  // index); any rejection fails the whole call → caught by runExecute's top-level
-  // try/catch → no partial references are returned (Req 3.1).
-  return Promise.all(
+  // ── 阶段一:并行**下载**全部字节(可中断)──────────────────────────────────────
+  //
+  // Parallel fetch. Serial download made the per-image latency stack up, so the tool's
+  // completion lagged well behind the provider actually returning the images.
+  // Promise.all keeps result order aligned with input order (stable naming index).
+  //
+  // ★ 为什么下载与入库要**拆成两阶段**(spec aigc-tool-abort D2,Req 3.2):
+  // 原实现在同一个 map 里「下完一张就入库一张」。多图并行时,用户在第 2 张下载中点停止,
+  // 第 1 张可能**已经入库**了 —— 留下不属于任何一次成功调用的孤儿附件。拆开后,只要
+  // 终止发生在下载期,阶段一整体抛出,一张都不会入库。
+  //
+  // ★ 内存上界(免得后人误以为这里疏忽了):所有图片字节会同时驻留内存。单图受
+  // MAX_PAYLOAD_BYTES = 4MiB 约束、n 上限 10,最坏约 40MB —— 可接受。
+  const downloaded = await Promise.all(
     urls.map(async (url, i) => {
       // Inline `data:` images (e.g. gpt-image `b64_json`) decode locally — no second
       // network round-trip. Providers that hand back a remote URL (DashScope, or
@@ -80,29 +99,49 @@ export async function persistPicked(
       if (inline) {
         ({ bytes, mimeType } = decodeDataUri(url));
       } else {
-        const resp = await withTimeout(fetchImpl(url), PERSIST_TIMEOUT_MS, `fetch[${i}]`);
+        // ★ 第二参 init 是本次修复的关键:signal 由此进入下载,使停止立即生效
+        // 而不是干等 PERSIST_TIMEOUT_MS。withTimeout 保留作为无 signal 时的兜底。
+        const resp = await withTimeout(fetchImpl(url, { signal }), PERSIST_TIMEOUT_MS, `fetch[${i}]`);
         if (!resp.ok) {
           throw new Error(`persistPicked: failed to fetch image at ${url}: ${resp.status}`);
         }
         mimeType = detectMimeType(resp, url);
+        // fetch 被 abort 时 body 流随之中断,arrayBuffer() 会 reject —— 无需额外接 signal。
         bytes = new Uint8Array(
           await withTimeout(resp.arrayBuffer(), PERSIST_TIMEOUT_MS, `arrayBuffer[${i}]`),
         );
       }
-      const ext = extFromMime(mimeType);
-      const name = `${namePrefix}-${i}.${ext}`;
-      const ref = await withTimeout(
-        ctx.putOutput({ bytes, name, mimeType }),
-        PERSIST_TIMEOUT_MS,
-        `putOutput[${i}]`,
-      );
-      log.debug("image persisted", {
+      log.debug("image downloaded", {
         index: i,
         source: inline ? "inline" : "download",
         mimeType,
         bytes: bytes.length,
         ms: Date.now() - startedAt,
       });
+      return { bytes, mimeType, index: i };
+    }),
+  );
+
+  // 下载全部完成后统一检查一次:覆盖「最后一张刚下完、用户此刻点停止」的窗口。
+  if (signal?.aborted === true) {
+    throw new DOMException("persistPicked aborted before persist", "AbortError");
+  }
+
+  // ── 阶段二:统一入库(不再响应 abort)────────────────────────────────────────
+  //
+  // ★ 这一段刻意**不**检查 signal(spec aigc-tool-abort D5):putOutput 是本地操作、
+  // 毫秒级,中途打断反而更容易留下半态。窗口极短,语义收益低于风险。
+  // 任一 putOutput 失败仍会整体抛出 → 上层 fail-soft → 不返回部分引用(Req 3.1)。
+  return Promise.all(
+    downloaded.map(async ({ bytes, mimeType, index }) => {
+      const ext = extFromMime(mimeType);
+      const name = `${namePrefix}-${index}.${ext}`;
+      const ref = await withTimeout(
+        ctx.putOutput({ bytes, name, mimeType }),
+        PERSIST_TIMEOUT_MS,
+        `putOutput[${index}]`,
+      );
+      log.debug("image persisted", { index, mimeType, bytes: bytes.length });
       return {
         attachmentId: ref.attachmentId,
         displayUrl: ref.displayUrl,
