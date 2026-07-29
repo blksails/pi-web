@@ -8,7 +8,7 @@
 
 - [ ] 1. 基础：新包骨架与解析登记
 
-- [ ] 1.1 建立 runner 包的清单与依赖面
+- [x] 1.1 建立 runner 包的清单与依赖面
   - 新建包目录与 `package.json`：包名 `@blksails/pi-web-runner`，ESM，源码直连（无构建步骤）
   - 导出面三条：主入口、**引导脚本子路径**、以及与内核同形的通配子路径
   - 运行时依赖仅：内核 / 协议 / 日志 / 工具包 + 模块加载器；agent 运行时 SDK 声明为 **peer 且不标可选**
@@ -18,6 +18,9 @@
 
 - [ ] 1.2 建立新包的类型检查与分档测试基建
   - 以内核包的同名文件为样板建 `tsconfig.json`、`vitest.config.ts`、分档 workspace 配置与分档编排脚本
+  - ★ **并补上新包 `package.json` 的 `scripts` 块**（`typecheck` / `test` / `test:fast` / `test:e2e`）——
+    任务 1.1 有意未建（当时编排脚本还不存在）。缺它时根 `pnpm -r run typecheck` 会**跳过**新包：
+    新包悄悄不在根类型检查里，而根类型检查照样 exit 0
   - `tsconfig` 的 `rootDir` 取上一层 —— 跨包引用内核的 `.ts` 否则触发 TS6059
   - ★ `vitest.config.ts` **必须存在**，哪怕看起来多余：包内缺它会静默继承仓库根配置，症状是「No test files found」
   - ★ 分档 workspace 里的 setup 共享件**跨包引用内核包的对应文件**（兼容层已是这么做的）；且根级 setupFiles 在存在 workspace 文件时会被**完全忽略**，必须写进每个 project
@@ -150,3 +153,8 @@
   - 可观测完成态：证据矩阵覆盖全部 29 条验收标准，每行给出命令与实测输出摘要；未验项单独成节
   - _Requirements: 3.6, 6.5, 4.3_
   - _Depends: 6.1, 6.2_
+
+## Implementation Notes
+
+- 1.1：新包 `package.json` 刻意**不含** `scripts` 块 —— 脚本要指向任务 1.2 才建的分档编排文件，先写会指向不存在的路径。已把补 `scripts` 的要求写进 1.2，并记下其静默性质：`pnpm -r run typecheck` 跳过无该脚本的包，根类型检查照样 exit 0。
+- 1.1：peer 版本取 `^0.80.3`（与兼容层现有依赖一致）而非内核用的 `*`。宿主仍可在范围内选版本，且记录了实测通过的范围。
