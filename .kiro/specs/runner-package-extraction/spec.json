@@ -1,0 +1,28 @@
+{
+  "feature_name": "runner-package-extraction",
+  "created_at": "2026-07-29T15:28:00Z",
+  "updated_at": "2026-07-29T12:40:00Z",
+  "language": "zh",
+  "phase": "requirements-generated",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": false
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
+  },
+  "ready_for_implementation": false,
+  "scope_decisions": {
+    "date": "2026-07-29",
+    "bootstrap_verification": "dist 树实证 + pnpm e2e:cli:reloc 换机复现 + standalone 启动;desktop 与 e2b 烘焙态列为已知未验并写明风险",
+    "docs_sync": "81 个写死旧路径的文档不纳入本 spec,另开一轮",
+    "cross_repo": "pi-clouds 的 Dockerfile.pi 只登记为 Revalidation Trigger,本 spec 不跨仓改动"
+  }
+}
