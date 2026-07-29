@@ -9,7 +9,7 @@
  * here (in the spawned subprocess), never inside the pi-web backend process.
  *
  * Launch (example):
- *   node --import jiti/register packages/server/src/runner/runner.ts \
+ *   node --import jiti/register packages/runner/src/runner/runner.ts \
  *     --agent <entry> --cwd <work> [--agent-dir <dir>]
  */
 import {

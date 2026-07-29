@@ -174,9 +174,24 @@ const ENTRY_CANDIDATES = ["index.js", "index.ts"] as const;
 /** 沙箱内源固定落点(基础镜像 `/workspace/node_modules` symlink 的解析前提)。 */
 const AGENT_WORKDIR = "/workspace/agent";
 
-/** runner-bootstrap 全局安装路径(基础镜像 build 期已校验存在;挪动即 Revalidation Trigger)。 */
+/**
+ * runner-bootstrap 全局安装路径(基础镜像 build 期已校验存在;挪动即 Revalidation Trigger)。
+ *
+ * ★ **已挪动一次,按上述触发器在此登记**(spec: runner-package-extraction 任务 4.2):
+ * 引导脚本自 `@blksails/pi-web-server` 迁至 `@blksails/pi-web-runner`,故本常量的包名段
+ * 同步改为后者。
+ *
+ * ⚠ **本仓全绿不代表真机可用** —— 这条路径指向的是**基础镜像里 `npm i -g` 装好的已发布
+ * npm 包**,不是本仓源码树。本仓的测试只校验本常量被正确拼进 `AGENT_CMD` 字面量;
+ * 路径是否真的存在,要到基础镜像**重新烘焙**后才现形。因此配套的跨仓改动为:
+ *   - `pi-clouds` 仓 `demo/cloud-e2e/Dockerfile.pi` 的 `npm i -g` 需增加/换成
+ *     `@blksails/pi-web-runner`(引导脚本随该包分发);
+ *   - 新版 `@blksails/pi-web-runner` 需先**发布到 npm**,再重烘焙基础镜像。
+ * 这三步**均在本 spec 范围外**(本 spec 不跨仓改动),此处只作登记。在它们完成前,
+ * 沙箱烘焙形态属**已知未验**。
+ */
 const RUNNER_BOOTSTRAP_PATH =
-  "/usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs";
+  "/usr/local/lib/node_modules/@blksails/pi-web-runner/runner-bootstrap.mjs";
 
 /** 缺省 tag(内容哈希)长度:sha256 hex 前 12 位。 */
 const TAG_HASH_LEN = 12;
