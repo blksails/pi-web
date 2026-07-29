@@ -66,6 +66,83 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
 - [ ] **agent-authoritative-surface** — 通用 AAS SDK:agent 侧 `createSurface({domain,initialState,commands,hydrate})` + UI 侧 `useSurface(domain)→{state,run,available}` + `SurfaceCommandPayload/Result`(细化 ui-rpc payload,走 agent 转发)+ 能力探针 `surface:<domain>` + 退化契约;宿主零领域语义。_Dependencies: state-injection-bridge_
 - [ ] **aigc-canvas** — AIGC Canvas:画廊(attachment 派生视图,9宫格/密度可切换/分页)+ 工作台(格子展开/关闭)+ 二次创作(A 档 image_edit 指令/inpaint mask/参考图/变体、B 档客户端裁剪拼贴、C 档血缘树/参数复用/对比)+ image_edit 集成(ui-rpc 转发调 runImageTool)+ 非 AIGC source 优雅退化;门控 `NEXT_PUBLIC_PI_WEB_CANVAS`。_Dependencies: agent-authoritative-surface_
 
+## 内核提取波次(2026-07-29 discovery · Path D)
+
+> 背景:`packages/server` 已膨胀到 ≈33k 行 / 35 个模块目录,把 headless 内核与外部接线
+> (e2b/postgres/s3/网关/凭据/registry)、runner 子进程实现混装在一个包里。宿主契约 v1
+> (`docs/pi-web-host-contract-v1.md`,P1–P5 端口)与 host-contract M1–M4 已落地,端口抽象
+> 就位,但**物理包边界仍未切开** —— 契约有了,包还是一坨。本波次把它切成
+> core(headless 内核)/ runner(子进程实现)/ adapters(外部接线)三包。
+>
+> 工作分支:`refactor/core-extraction`,worktree `.claude/worktrees/core-extraction`,基于 main `6b638622`。
+
+### 方案决策(2026-07-29)
+
+- **Chosen**:四层切分 —— `protocol ← core ← {runner, adapters} ← 宿主(lib/app · server/ · desktop · pi-clouds)`。
+  `@blksails/pi-web-server` **保留为兼容 re-export 层**,包名与现有 exports 全部不变。
+- **Why**:
+  ① 三条外围边界实测比预期干净 —— `hono` 全仓只在 `server/index.ts` 一处(`packages/server/src/http`
+     已是框架无关的 `Request/Response` handler);`registry-client` 只有 4 处真实 import,全在
+     `server/cli`;UI 包对 `pi-web-server` 零依赖。切包的阻力主要在**包内**,不在包间。
+  ② 保留兼容层使 `lib/app`(1161 行 pi-handler)、`examples/`(40 个)、`e2e/`、跨仓消费方
+     **零改动**,把回归面压到 `packages/` 内部。
+- **Rejected alternatives**:
+  ① 直接拆解不留兼容层 —— diff 更干净,但要同时改 lib/app、server/cli、examples、e2e、desktop
+     与跨仓引用,回归面成倍放大,且该包已发 npm(0.6.1)。
+  ② 只切 core、adapters 暂留 server —— 回归面更小,但 `rpc-channel→sandbox-image` 这类越界边
+     会以「core 反向依赖遗留 server」的形态留存,等于把问题推迟。
+  ③ 命名用 `pi-web-kernel` —— 与仓内既有 `@blksails/pi-web-kit`(web-kit)两个名字易混。
+
+### Scope
+
+- **In**:`packages/server` 的包内切分(core / runner / adapters 三个新包 + server 兼容层);
+  三条越界边原地解耦;测试面三档重建(fast / it / e2e)。
+- **Out**:宿主装配层(`lib/app/pi-handler.ts`)重排;`server/cli` 的 pi-clouds 接线独立成包;
+  desktop 与 UI 包的任何改动。以上均为后续波次候选,本波次**不动**。
+
+### Constraints
+
+- 内核判据可机械校验:`pi-web-core` 的 package.json **不得**出现 `hono` / `e2b` / `pg` /
+  `@modelcontextprotocol/sdk` / `registry-client`;`@earendil-works/pi-*` 只能是 peer 且仅 `import type`。
+- 基线(main `6b638622` 实测):server unit 档 267 文件 / 2420 用例,墙钟 ~86-116s。
+  ★ 该基线**本身不稳定** —— 同一提交两次全量运行,一次 4 文件/5 用例红、一次全绿。
+  故「不低于基线」须以**稳定绿**为准,不能拿单次绿当证据。
+- 语言:`spec.json.language = zh`。
+
+### Boundary Strategy
+
+- **Why this split**:测试面先行,给后面三次大搬迁提供 <10s 的回归闸门(否则每轮等 85s);
+  越界边先**原地**解耦再搬文件,使「解耦」与「移动」两类 diff 可分别复核 ——
+  混在一起时,一个搬错位置的文件和一条被悄悄改掉的依赖在 diff 里长得一样。
+- **Shared seams to watch**:`rpc-channel → sandbox-image`(不先断则 core 抽出即反向依赖 adapters)/
+  `runner → auth`(egress 凭据须改注入)/ `config → http`(配置域与路由 co-locate)/
+  `MemoryWorkspace`(现为 test fixture,须升为内核包正式 test double 导出,fast 档才有得依赖)/
+  `pi-web-server` 兼容层的 exports 表面(6 个子路径导出,一个都不能丢)。
+
+### Specs (dependency order)
+
+- [x] **test-tiering-fast-lane** — 测试面切三档(fast:无子进程/无 pi SDK/无网络/无真实 fs,目标 <10s;
+  it:spawn 子进程与真实 fs,独占串行;e2e:手动或 CI 触发)+ 把 25 个错档文件(挂 `.integration`/`.e2e`
+  后缀却跑在 unit 档、真实 spawn 子进程)重命名归位 + 依赖守卫测试(fast 档 import 命中
+  `node:child_process`/pi SDK/`e2b`/`pg`/`registry-client` 即红)+ 新增 `pnpm test:fast` 入口。
+  _Dependencies: none_ — 14 任务完成(2026-07-29)。fast 档 **6.25s**(188+1 文件/1821 用例);
+  连续两次全量计数一致(基线做不到);与基线对账零缺口。★ 实测推翻两条设计假设:
+  vitest project 级 `isolate` 被忽略(同 `fileParallelism`)、`-c` 配置的 `setupFiles` 被忽略。
+- [ ] **kernel-boundary-decoupling** — **原地**解三条越界边:`rpc-channel → sandbox-image`(传输抽象
+  剥离 e2b 烘焙计划)、`runner → auth`(egress 模型源改注入)、`config → http`(配置域与路由分离);
+  并把 `MemoryWorkspace` 从 test fixture 提升为 `src/testing` 正式导出。**不移动任何文件到新包**。
+  _Dependencies: test-tiering-fast-lane_
+- [ ] **core-package-extraction** — 建 `@blksails/pi-web-core`(headless 内核:session / rpc-channel 抽象 /
+  框架无关 http handler / workspace / capability / config-domain / host-manifest / host-contract-version /
+  session-store 接口 / attachment L0–L1 接口 / completion / commands / runner **契约**),
+  `@blksails/pi-web-server` 降为兼容 re-export 层(包名与 6 个子路径导出全部保留)。
+  _Dependencies: kernel-boundary-decoupling_
+- [ ] **runner-package-extraction** — 建 `@blksails/pi-web-runner`:runner 子进程实现 + jiti 载入,
+  pi SDK 列为 peer;core 只保留契约类型。_Dependencies: core-package-extraction_
+- [ ] **adapters-package-extraction** — 建 `@blksails/pi-web-adapters`:e2b transport / postgres store /
+  s3 blob backend / ai-gateway / llm-gateway / auth / identity / sandbox-image / registry-install
+  (≈5k 行)。_Dependencies: core-package-extraction_(与 runner-package-extraction 可并行)
+
 ## Future / Out of MVP scope(不进入本批次,仅作排序与一致性意识)
 
 - `embed-integrations` — `@pi-web/embed`:Web Component `<pi-web-chat>` + iframe widget(非 React 集成)。

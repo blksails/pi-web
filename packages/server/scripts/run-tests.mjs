@@ -1,30 +1,36 @@
 #!/usr/bin/env node
 /**
- * server 包测试启动器:让 `test/integration/**` 独占一相运行。
+ * 测试分档编排(spec: test-tiering-fast-lane)。
  *
- * 为什么需要它(而不是直接 `vitest run`):
- *   9 个集成测试文件各自 spawn 真实 agent 子进程。与其余 254 个单测并发时子进程
- *   互相饿死,会话就绪从常态 ~4.3s 被拖过 DEFAULT_READINESS_PROBE_TIMEOUT_MS
- *   (30s,src/session/pi-session.ts:156)→ 会话落 error{probe-timeout},测试空等到
- *   自己的 40s 死线报 "Timed out waiting for…"。表现为每次全量跑随机某个集成文件变红,
- *   孤立跑必绿。
+ * 档位定义在 `vitest.workspace.ts`(按文件名后缀),本脚本只负责**怎么跑**:
  *
- * 为什么不是调大超时:这些用例已是 waitFor 40s / testTimeout 50s 仍失败,阈值不是
- *   瓶颈;探针的 30s 是产品语义(真实会话超 30s 未就绪本就该报错),为迁就测试放宽
- *   会掩盖真实退化。
+ *   pnpm test            全量 = fast → fast-mock → it(三相;e2e 不在内)
+ *   pnpm test:fast       仅快档 = fast → fast-mock
+ *   pnpm test:e2e        仅 e2e(需外部服务凭据)
+ *   pnpm test -- <args>  开发者过滤:退回单次调用,行为与分档改造前一致
  *
- * 为什么不是 vitest workspace 的 project 级 fileParallelism:实测(2.1.9)该字段在
- *   project 配置里**被完全忽略**——`vitest run --project integration` 用时 24.2s(9 个文件
- *   仍并发),加上 CLI `--no-file-parallelism` 才是 63.7s(≈各文件耗时之和,真串行)。
- *   且两个 project 之间本就并发调度。故串行**必须**由下面的 CLI 标志保证,不能只写配置。
- *   ★ 只看「跑绿了」不足以验证此修复,必须比对耗时/并发证据,否则会被偶然的绿骗过。
+ * ★ 为什么这些标志必须由本脚本经 CLI 传,而不是写进配置(两条都是实测,不是偏好):
  *
- * 为什么不是 `vitest run --project unit && vitest run --project integration`:
- *   pnpm 把 `test -- <args>` 追加到整条脚本串尾,会只作用于后半条,破坏既有的
- *   `pnpm --filter @blksails/pi-web-server test -- --run <pattern>` 过滤用法。
- *   故有显式参数时退回单次调用,语义与改造前完全一致。
+ *   ① `--no-file-parallelism`(it/e2e 串行)—— vitest 2.1.9 **忽略 project 级
+ *      `fileParallelism`**:带该字段跑 `--project integration` 仍是 24.2s 并发,
+ *      加 CLI 标志才 63.7s 真串行。串行是 it 档的正确性前提:这些文件各自 spawn 真实
+ *      agent 子进程,并发时互相饿死,会话就绪被拖过 30s 探针死线 → 随机某个文件变红、
+ *      孤立跑必绿。**治并发,不治超时数字** —— 放宽探针会掩盖真实退化。
+ *
+ *   ② `--no-isolate`(fast 档提速)—— 同族坑,第二次踩到:配置里写 `isolate: false`
+ *      实测无效(fast 档 12.34s,prepare 12.85s),加 CLI 标志才生效(4.03s,prepare 1.16s)。
+ *      而 `--no-isolate` 是**全局**开关、不分 project,故 fast 与 fast-mock
+ *      **必须分两次调用**:fast-mock 那几个文件靠 `vi.mock` 覆盖模块导出,关隔离即失效
+ *      (那正是它们单独成档的原因)。合并成一次跑会让它们静默失效或变红。
+ *
+ * ★ 为什么有显式参数时退回单次调用:`pnpm` 把 `test -- <args>` 追加到整条脚本串尾,
+ *   多相编排会让参数只作用于最后一相,破坏既有的
+ *   `pnpm --filter @blksails/pi-web-server test -- --run <pattern>` 用法。
+ *
+ * ★ 验收提醒:并发/串行类改动**不能只看「跑绿了」** —— 必须比对耗时证据,否则会被
+ *   偶然的绿骗过。本脚本各相均输出 vitest 自带的耗时摘要。
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);
 const shell = process.platform === "win32";
@@ -35,11 +41,39 @@ function vitest(extra) {
   return res.status ?? 1;
 }
 
-// 开发者过滤用法:单次调用,行为与改造前一致。
-if (args.length > 0) process.exit(vitest(args));
+/**
+ * 快档两相。必须是**两次调用**(理由见文件头 ②),但可以**并发**跑 —— 两相合计 vitest 用时
+ * ~6.6s,串起来再加两次进程启动就会顶破 10s 的快档预算,并发后墙钟压回 ~8s。
+ *
+ * fast-mock 只有几个文件、~1s 跑完,其输出**缓冲后补打**在 fast 之后 ——
+ * 两个 vitest 同时 inherit stdio 会让摘要交错,读起来比省下的两秒更贵。
+ */
+async function runFastLane() {
+  let mockOut = "";
+  const mock = spawn("vitest", ["run", "--project", "fast-mock"], { shell });
+  mock.stdout.on("data", (d) => (mockOut += d));
+  mock.stderr.on("data", (d) => (mockOut += d));
+  const mockDone = new Promise((resolve) => mock.on("close", resolve));
 
-// 全量:先并行跑单测,再独占且**串行**跑集成。两相都跑完再汇总退出码,便于一次看全失败。
-// `--no-file-parallelism` 不可省:它是集成文件之间真正串行的唯一保证(见上方说明)。
-const unit = vitest(["--project", "unit"]);
-const integration = vitest(["--project", "integration", "--no-file-parallelism"]);
-process.exit(unit || integration);
+  const fast = vitest(["--project", "fast", "--no-isolate"]);
+  const mockStatus = await mockDone;
+  process.stdout.write(mockOut);
+  return fast || (mockStatus ?? 1);
+}
+
+const mode = args[0];
+
+// 开发者过滤用法:单次调用,行为与分档改造前一致。
+if (args.length > 0 && mode !== "--fast" && mode !== "--e2e") {
+  process.exit(vitest(args));
+}
+
+if (mode === "--fast") process.exit(await runFastLane());
+
+// e2e 需外部服务凭据,**不在**默认路径里;整文件被门控者在无凭据时整体 skip。
+if (mode === "--e2e") process.exit(vitest(["--project", "e2e", "--no-file-parallelism"]));
+
+// 全量:快档两相 → it 档串行。三相都跑完再汇总退出码,便于一次看全所有失败。
+const fastLane = await runFastLane();
+const it = vitest(["--project", "it", "--no-file-parallelism"]);
+process.exit(fastLane || it);
