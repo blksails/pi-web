@@ -514,6 +514,9 @@ function buildSingleton(): HandlerSingleton {
           baseUrl: aiGwConfig.baseUrl,
           ttlMs: aiGwConfig.catalogTtlMs,
           keyResolver: aiGatewayKeyResolver,
+          // 目录收敛(spec cloudflare-chat-provider Req 2):Cloudflare AI Gateway 实测
+          // 返回 2465 条,原样下发会压垮模型选择器。按上游归属白名单过滤,新型号仍自动可见。
+          allowedOwners: aiGwConfig.providerAllowlist,
         })
       : undefined;
 
