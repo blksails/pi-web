@@ -99,23 +99,55 @@ export function initConfigFromEnv(): void {
 
   configureLogger(partial);
 
-  // ── File output from env ────────────────────────────────────────────────
-  // PI_WEB_LOG_FILE         — absolute path to log file (enables file output)
-  // PI_WEB_LOG_FILE_MAXSIZE — max file size in MB before rotation (default: 10)
-  // PI_WEB_LOG_FILE_MAXFILES — max number of rotated backup files (default: 5)
+  configureFileOutputFromEnv(env);
+}
+
+/**
+ * Configure file output from `PI_WEB_LOG_*` env vars.
+ *
+ *   PI_WEB_LOG_FILE          — absolute path to log file (enables file output)
+ *   PI_WEB_LOG_FILE_MAXSIZE  — max file size in MB before rotation (default: 10)
+ *   PI_WEB_LOG_FILE_MAXFILES — max number of rotated backup files (default: 5)
+ *
+ * ## Why this is separate from {@link initConfigFromEnv}
+ *
+ * `initConfigFromEnv()` does two things: apply enabled/level/namespaces **and**
+ * wire the file sink.  The pi-web **main process** deliberately does not call it —
+ * it applies its own gating via `configureLogger()` so that the Settings-managed
+ * config can win (see `lib/app/pi-handler.ts`).  The side effect was that
+ * `PI_WEB_LOG_FILE` only ever took effect in the **runner** subprocess: the log
+ * file existed and looked healthy, but contained nothing from the main process.
+ * That cost a long real-machine debugging session — the file was there, so it
+ * read as "logging is on".
+ *
+ * Exposing this half separately lets the main process opt into file output
+ * without taking the env-driven gating it intentionally overrides — and, more
+ * importantly, keeps the parsing (defaults, clamping) in **one** place rather
+ * than duplicating it at each call site, where the two copies would drift.
+ *
+ * @returns whether file output was enabled by this call.
+ */
+export function configureFileOutputFromEnv(
+  env: Record<string, string | undefined> | undefined = (
+    globalThis as Record<string, unknown> & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env,
+): boolean {
+  if (env === undefined) return false;
   const rawFile = env["PI_WEB_LOG_FILE"];
-  if (rawFile !== undefined && rawFile.trim().length > 0) {
-    const maxSizeMbRaw = env["PI_WEB_LOG_FILE_MAXSIZE"];
-    const maxFilesRaw = env["PI_WEB_LOG_FILE_MAXFILES"];
-    const maxSizeMb = maxSizeMbRaw !== undefined ? parseFloat(maxSizeMbRaw) : 10;
-    const maxFiles = maxFilesRaw !== undefined ? parseInt(maxFilesRaw, 10) : 5;
-    configureFileOutput({
-      enabled: true,
-      path: rawFile.trim(),
-      maxSizeMb: isFinite(maxSizeMb) && maxSizeMb > 0 ? maxSizeMb : 10,
-      maxFiles: isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 5,
-    });
-  }
+  if (rawFile === undefined || rawFile.trim().length === 0) return false;
+  const maxSizeMbRaw = env["PI_WEB_LOG_FILE_MAXSIZE"];
+  const maxFilesRaw = env["PI_WEB_LOG_FILE_MAXFILES"];
+  const maxSizeMb = maxSizeMbRaw !== undefined ? parseFloat(maxSizeMbRaw) : 10;
+  const maxFiles = maxFilesRaw !== undefined ? parseInt(maxFilesRaw, 10) : 5;
+  configureFileOutput({
+    enabled: true,
+    path: rawFile.trim(),
+    maxSizeMb: isFinite(maxSizeMb) && maxSizeMb > 0 ? maxSizeMb : 10,
+    maxFiles: isFinite(maxFiles) && maxFiles > 0 ? maxFiles : 5,
+  });
+  return true;
 }
 
 // ── File output configuration ─────────────────────────────────────────────
