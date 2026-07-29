@@ -22,6 +22,7 @@
     "test:e2e": "node scripts/run-tests.mjs --e2e"
   },
   "dependencies": {
+    "@blksails/pi-web-core": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:^",

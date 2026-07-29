@@ -208,6 +208,21 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
 
+  packages/core:
+    dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+
   packages/logger:
     devDependencies:
       typescript:
@@ -358,6 +373,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@blksails/pi-web-core':
+        specifier: workspace:*
+        version: link:../core
       '@blksails/pi-web-logger':
         specifier: workspace:*
         version: link:../logger

@@ -1,0 +1,41 @@
+{
+  "name": "@blksails/pi-web-core",
+  "version": "0.1.0",
+  "description": "pi-web headless 内核:会话引擎、传输抽象、框架无关 HTTP、宿主契约端口。不绑定任何外部系统",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./trust": "./src/trust/index.ts",
+    "./model-options": "./src/config/model-options.ts",
+    "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
+    "./testing": "./src/workspace/testing/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "test:fast": "node scripts/run-tests.mjs --fast",
+    "test:e2e": "node scripts/run-tests.mjs --e2e"
+  },
+  "dependencies": {
+    "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}

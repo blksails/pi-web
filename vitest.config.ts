@@ -14,6 +14,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "."),
+      // ★ 子路径必须排在裸包名之前:否则子路径被裸名吞掉,且报错与顺序无关、极难定位
+      // (packages/server/src/workspace/testing/index.ts 的注释里记过同类教训)。
+      "@blksails/pi-web-core/testing": path.resolve(__dirname, "packages/core/src/workspace/testing/index.ts"),
+      "@blksails/pi-web-core/trust": path.resolve(__dirname, "packages/core/src/trust/index.ts"),
+      "@blksails/pi-web-core/model-options": path.resolve(__dirname, "packages/core/src/config/model-options.ts"),
+      "@blksails/pi-web-core/vision-model-options": path.resolve(__dirname, "packages/core/src/vision-settings/vision-model-options.ts"),
+      "@blksails/pi-web-core": path.resolve(__dirname, "packages/core/src/index.ts"),
       "@blksails/pi-web-logger": path.resolve(__dirname, "packages/logger/src/index.ts"),
       "@blksails/pi-web-agent-kit": path.resolve(__dirname, "packages/agent-kit/src/index.ts"),
       "@blksails/pi-web-tool-kit/aigc-canvas-schema": path.resolve(__dirname, "packages/tool-kit/src/aigc/canvas/schema.ts"),
