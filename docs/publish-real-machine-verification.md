@@ -312,3 +312,67 @@ flowchart LR
 
 ② 和 ④ 都是**静默降级**，这是刻意的设计（发布是可选能力，不该拖垮整份能力快照），
 但代价就是排查时得主动去看。这份清单存在的意义正在于此。
+
+---
+
+# 真机验证结果（2026-07-29，全链通过）
+
+生产环境 `pi-cloud` / `pi-registry` 上跑通了完整六环。**以下每条都是独立核实的，不是照抄卡片。**
+
+| 环节 | 证据 |
+|---|---|
+| ① 登录 | `/api/auth/me` → `companyId: "1"`（黑帆科技） |
+| ② 签发授予 | 用 keychain 凭据直打 capabilities → `publish{publisherId: pub-1, org: blksails, baseUrl: 真实 registry}` |
+| ③ 本机密钥 | `~/.pi-web/keys/publish.json`，`-rw-------`，指纹 `ed25519:D_XKwji6…` |
+| ④ 公钥登记 | `GET /publishers/pub-1/keys` 指纹与本机一致 **+** 客户端回执 `registered.json` |
+| ⑤ 真发布 | `resolve?channel=beta` → `0.0.1` / `origin: oss bundles/923bd736…tgz` / **`publisherFingerprint` 与本机公钥一致** |
+| ⑥ 消费闭环 | 装回 `~/.pi/agent/registry-plugins/blksails_smoke-test`，**文件字节与发布原文逐字一致** |
+
+★ **source 是自动建的** —— 全程没调过 `createSource`。归属由指纹反查 publisher +
+该 publisher 自己的公钥验签确立，`org` 段由认证身份派生。P0「声明变成证明」在真机成立。
+
+## ★ 真机揪出三个缺口（单测全绿，全都只有真机能抓）
+
+三个同族：**组件写对了、接线没接**，而单测的边界恰好停在接线之前。
+
+| # | 缺口 | 组件状态 | 断在哪 |
+|---|---|---|---|
+| 1 | `HmacPublishTokenVerifier` 没接进 `buildTokenVerifier()` | ✅ 17 条单测 | registry 拒收 cloud 签的 token |
+| 2 | capabilities 路由没算 `publishIdentity` | ✅ 8 条单测 | 快照永远没有 `publish` 字段 |
+| 3 | `loadStatic()` 漏解析 `publish` | ✅ 类型 + 读取都有 | `getPublishGrant()` 恒 `undefined` |
+
+**#3 最隐蔽**：类型加了、`getPublishGrant()` 写了、测试也"有"——但测试只用 stub 直接喂
+返回值，从没用**真实 HTTP 响应体**走过解析。而隔壁 `sources` 恰恰是照正确方式测的。
+
+> **教训：测一个取数方法，要从它真正的输入（响应体）喂起，而不是从它的返回值假设起。**
+
+## 四层 fail-soft 叠加 = 全程零报错
+
+这条链上每一环单看都该 fail-soft（发布是可选能力，不该拖垮整份能力快照）：
+
+| 环节 | 缺了它的表现 |
+|---|---|
+| 路由没算 publishIdentity | 快照**省略** publish 字段（不报错） |
+| `getPublishGrant()` | 返回 `undefined`（不抛） |
+| `ensurePublishKeyRegistered()` | 返回 `"skipped"`（**连日志都没有**） |
+| 发布预览卡片 | **照常输出**（登记是 best-effort） |
+
+叠在一起就是「登录了也发不出去，且什么都不说」。
+**判据最后靠的是回执文件与 registry 端点，不是任何一条错误消息。**
+
+## 排查时踩的坑（工具层面，与产品无关）
+
+| 用错的判据 | 错在哪 |
+|---|---|
+| `pkill -f "target/debug/pi-web"` | 相对路径片段跨仓误伤了主仓实例，其 node 变孤儿占住端口 |
+| `lsof -ti tcp:31415` | 把 WebKit 的**客户端连接**当成服务端 → 该加 `-sTCP:LISTEN` |
+| `curl http://127.0.0.1:…` | 走了系统代理返回假 502 → 本机一律 `--noproxy '*'` |
+| `PI_WEB_LOG_FILE` | **主服务进程的日志没落进去**（只有 runner 子进程的），开了等于没开 |
+
+前三条同一个毛病：**没验证"我量的到底是不是我以为的那个东西"**。
+
+## 遗留
+
+- `PI_WEB_LOG_FILE` 收不到主服务进程日志 —— 排查发布链时完全看不见，值得单独修。
+- `tauri dev` 起不来（导航守卫按打包态写，dev 的 `127.0.0.1:1430` 被自己拦掉）。
+  正确跑法：`pnpm build:dist` + **`cargo build`**（不是 `tauri dev`）+ 直接跑壳二进制。
