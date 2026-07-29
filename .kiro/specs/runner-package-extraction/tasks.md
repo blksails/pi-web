@@ -82,7 +82,7 @@
   - _Requirements: 1.1, 2.3_
   - _Depends: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 3.2 迁移引导脚本并修正其内部路径
+- [x] 3.2 迁移引导脚本并修正其内部路径
   - 引导脚本迁入新包根部；其内部指向 runner 实现的路径随之更新
   - 模块解析根（jiti 根）随之变为新包目录 —— 这正是内置扩展可解析性的前提（见任务 5）
   - 可观测完成态：以新包内的引导脚本直接启动一次 runner 子进程能进入就绪状态
@@ -176,3 +176,5 @@
 - ★ 3.1：`stagedIn` 已按守卫要求从映射表删除（搬迁落地即过期），但**机制本身保留**且用可注入的表继续测 —— 否则"过渡期判暂存包"这条逻辑将永远无人覆盖。`pendingContributions` 只剩 `testFiles`（测试到 3.3 才搬）。
 - ★ 3.1：命名陷阱已避开 —— 三个 `RUNNER_` 前缀常量仍在 `ai-gateway/session-model-source.ts`（adapters 层）。权威判据是主入口符号基准用例通过，而非人工比对。
 - ⚠ 3.1：我在派单里写的校验「根 `pnpm -r`（排除 desktop）typecheck exit 0」**在 3.3 前不可能成立** —— `packages/server/test/runner/*` 仍指向旧址，53 个 TS2307。这是我自己的判据错误，不是实施缺陷。该判据应推迟到 3.3 之后。
+- ★ 3.2：核心交付是**真实起一次子进程**，父层独立复跑：以新包内的引导脚本启动 `examples/builtin-tools-agent`，6 秒后进程仍存活，stderr 走完 `runner boot → runtime built → attachment wiring → entering rpc mode`，stdout 发出真实 UI 帧（sandbox 状态 10 domains / schedule-prompts widget / mcp 状态）。判据取「进程存活且进入 rpc 模式」，不取「没报错」—— 一个卡在 MODULE_NOT_FOUND 立刻退出的进程同样什么都不打印。
+- ★ 3.2：搬走后 `runnerBootstrapPath()` 的**两条路径都指向已删除的文件**（主路径与 cwd 回退都是 `packages/server/runner-bootstrap.mjs`）。这是预期的中间状态，也把本 spec 要治的病演示了一遍：第二级不做存在性检查就返回，调用方要到 spawn 时才拿到 ENOENT。4.1 修。

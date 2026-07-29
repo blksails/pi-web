@@ -50,7 +50,6 @@
     "access": "public"
   },
   "files": [
-    "src",
-    "runner-bootstrap.mjs"
+    "src"
   ]
 }

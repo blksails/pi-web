@@ -426,6 +426,9 @@ importers:
       '@blksails/pi-web-protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@blksails/pi-web-runner':
+        specifier: workspace:*
+        version: link:../runner
       '@blksails/pi-web-tool-kit':
         specifier: workspace:^
         version: link:../tool-kit
