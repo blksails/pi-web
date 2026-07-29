@@ -159,8 +159,8 @@ describe("loadAgentDefinition — invalid routes fail assembly (Req 1.2/1.3)", (
   });
 });
 
-describe("server mirror AgentRouteRequest stays aligned with agent-kit (Req 3.1)", () => {
-  // `packages/server` intentionally does NOT depend on `@blksails/pi-web-agent-kit`
+describe("runner mirror AgentRouteRequest stays aligned with agent-kit (Req 3.1)", () => {
+  // `packages/runner` intentionally does NOT depend on `@blksails/pi-web-agent-kit`
   // (types-only authoring package; the loader duck-types user exports), so the
   // authoritative `AgentRouteRequest` from `packages/agent-kit/src/types.ts`
   // cannot be imported for a direct two-way assignability check. Instead the

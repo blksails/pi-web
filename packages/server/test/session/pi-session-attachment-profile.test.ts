@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
 import { ATTACHMENT_BACKENDS_ENV } from "@blksails/pi-web-core/attachment/backends-config.js";
-import { ATTACHMENT_PROFILE_DISABLED_ENV } from "../../src/runner/attachment-profile-wiring.js";
+import { ATTACHMENT_PROFILE_DISABLED_ENV } from "@blksails/pi-web-runner/runner/attachment-profile-wiring.js";
 import { MockChannel } from "../../../core/test/session/mock-channel.js";
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 

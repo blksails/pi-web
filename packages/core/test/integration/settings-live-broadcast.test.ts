@@ -28,9 +28,9 @@ import { MockChannel } from "../session/mock-channel.js";
 import { makeResolved } from "../session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// ★ fixture 目录随 runner 留在兼容层包(spec: core-package-extraction 任务 4.2)。
+// ★ fixture 目录随 runner 测试迁入 runner 包(spec: runner-package-extraction 任务 3.3)。
 // 测试目录不在任何包的 `exports` 里,跨包只能走相对路径 —— 这是此处唯一诚实的写法。
-const fixturesDir = join(here, "..", "..", "..", "server", "test", "runner", "fixtures");
+const fixturesDir = join(here, "..", "..", "..", "runner", "test", "runner", "fixtures");
 const SOURCE_FIXTURE = join(fixturesDir, "settings-assembly-source-e2e-agent");
 const PROJECT_FIXTURE = join(fixturesDir, "settings-assembly-project-e2e-agent");
 const SOURCE_FIXTURE_SK = sourceKey("settings-assembly-source-e2e-agent");

@@ -5,7 +5,7 @@
  * design.md Implementation Notes 明确要求本任务必须用**真实子进程**证明回归(stub
  * 抓不到装配期注入类回归,与 state-injection-bridge 同教训)——因此不 mock
  * `resolvePiPlugin`/`SourceSettingsCodec`/runner 装配流程,而是真 spawn
- * `packages/server/src/runner/runner.ts`,用 fixture(见 `test/runner/fixtures/
+ * `packages/runner/src/runner/runner.ts`,用 fixture(见 `test/runner/fixtures/
  * settings-assembly-*-e2e-agent`)的 shape-(b) 工厂把 runner 注入的 `ctx.settings`
  * 经 agent-declared-routes(非 LLM RPC 通道,先例 `agent-routes-subprocess.test.ts`)
  * 回吐,断言子进程内真实收到的值。
@@ -30,10 +30,10 @@ import { sourceKey } from "@blksails/pi-web-core/source-key.js";
 import { SourceSettingsCodec } from "@blksails/pi-web-core/config/source-settings-codec.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// test/integration -> packages/server
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const fixturesDir = join(serverPkgDir, "test", "runner", "fixtures");
+// test/integration -> packages/runner
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const fixturesDir = join(runnerPkgDir, "test", "runner", "fixtures");
 
 const SOURCE_FIXTURE = join(fixturesDir, "settings-assembly-source-e2e-agent");
 const PROJECT_FIXTURE = join(fixturesDir, "settings-assembly-project-e2e-agent");
@@ -74,8 +74,8 @@ function spawnRunner(opts: {
       opts.agentDir,
       ...(opts.trusted === true ? ["--trusted"] : []),
     ],
-    // jiti/register 从 cwd 解析:必须以 server 包为 cwd(state-bridge/routes-subprocess 先例)。
-    cwd: serverPkgDir,
+    // jiti/register 从 cwd 解析:必须以 runner 包为 cwd(state-bridge/routes-subprocess 先例)。
+    cwd: runnerPkgDir,
     env: { ...process.env } as Record<string, string>,
   };
   const channel = new PiRpcProcess(spec);

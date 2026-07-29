@@ -23,9 +23,9 @@ import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/c
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const fixture = join(serverPkgDir, "test", "runner", "fixtures", "attachment-catalog-e2e-agent.ts");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const fixture = join(runnerPkgDir, "test", "runner", "fixtures", "attachment-catalog-e2e-agent.ts");
 
 const SECRET = "attachment-catalog-subprocess-secret-0123456789";
 
@@ -79,7 +79,7 @@ function spawnRunner(): PiSession {
       "--agent-dir",
       agentDir,
     ],
-    cwd: serverPkgDir,
+    cwd: runnerPkgDir,
     env: {
       ...process.env,
       PI_WEB_ATTACHMENT_DIR: attachDir,

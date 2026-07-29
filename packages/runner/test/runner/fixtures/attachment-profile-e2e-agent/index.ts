@@ -3,7 +3,7 @@
 // that calls the runner-injected AttachmentToolContext's `putOutput`, so the
 // integration test can synchronously trigger a subprocess-side tool-output
 // write without needing an LLM (agent-declared-routes is a non-LLM RPC channel,
-// same technique as `packages/server/test/integration/agent-routes-subprocess.test.ts`).
+// same technique as `packages/runner/test/integration/agent-routes-subprocess.it.test.ts`).
 const ATTACHMENT_CTX_KEY = "__piWebAttachmentToolContext__";
 
 interface AttachmentToolContextLike {

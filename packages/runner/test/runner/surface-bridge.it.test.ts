@@ -21,9 +21,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { protocolVersion } from "@blksails/pi-web-protocol";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const exampleAgent = join(serverPkgDir, "..", "..", "examples", "surface-demo-agent");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const exampleAgent = join(runnerPkgDir, "..", "..", "examples", "surface-demo-agent");
 
 interface RunnerHandle {
   proc: ChildProcessWithoutNullStreams;
@@ -50,7 +50,7 @@ function launchRunner(): RunnerHandle {
       "--agent-dir",
       agentDir,
     ],
-    { cwd: serverPkgDir, stdio: ["pipe", "pipe", "pipe"] },
+    { cwd: runnerPkgDir, stdio: ["pipe", "pipe", "pipe"] },
   );
 
   const frames: unknown[] = [];

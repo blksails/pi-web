@@ -24,7 +24,11 @@ import { bucketDirName, FsSessionEntryStore, type SessionEntry } from "@blksails
 
 const here = dirname(fileURLToPath(import.meta.url));
 const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+// ★ 本用例测的是 **server** 的 file-session-agent 落盘链路,只是拿真实 runner 当载具 ——
+// 故文件留在兼容层包,而 runner 入口随实现迁去 runner 包(spec runner-package-extraction 3.1/3.3)。
+// spawn cwd 也必须跟着走:`jiti/register` 从 cwd 解析。
+const runnerPkgDir = join(serverPkgDir, "..", "runner");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const exampleAgent = join(serverPkgDir, "..", "..", "examples", "file-session-agent");
 
 type AppendArg = Parameters<SessionManager["appendMessage"]>[0];
@@ -105,7 +109,7 @@ function launchRunner(agentDir: string): RunnerHandle {
   const proc = spawn(
     process.execPath,
     ["--import", "jiti/register", runnerEntry, "--agent", exampleAgent, "--cwd", cwd, "--agent-dir", agentDir],
-    { cwd: serverPkgDir, stdio: ["pipe", "pipe", "pipe"] },
+    { cwd: runnerPkgDir, stdio: ["pipe", "pipe", "pipe"] },
   );
   return wrapProc(proc);
 }
@@ -203,7 +207,7 @@ describe.skipIf(!enableLlm)(
         const proc = spawn(
           process.execPath,
           ["--import", "jiti/register", runnerEntry, "--agent", exampleAgent, "--cwd", cwd, "--agent-dir", realAgentDir],
-          { cwd: serverPkgDir, stdio: ["pipe", "pipe", "pipe"] },
+          { cwd: runnerPkgDir, stdio: ["pipe", "pipe", "pipe"] },
         );
         handle = wrapProc(proc);
         handle.send({ id: "p1", type: "prompt", message: "Reply with the single word: ok" });

@@ -16,9 +16,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const examplesDir = join(serverPkgDir, "..", "..", "examples");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const examplesDir = join(runnerPkgDir, "..", "..", "examples");
 const realAgentDir = join(homedir(), ".pi", "agent");
 const enableLlm = process.env["PI_WEB_E2E_LLM"] === "1" && existsSync(join(realAgentDir, "auth.json"));
 
@@ -45,7 +45,7 @@ function launch(agentName: string, cwd: string): RunnerHandle {
       "--agent-dir",
       realAgentDir,
     ],
-    { cwd: serverPkgDir, stdio: ["pipe", "pipe", "pipe"] },
+    { cwd: runnerPkgDir, stdio: ["pipe", "pipe", "pipe"] },
   );
   const frames: unknown[] = [];
   let stdoutBuf = "";

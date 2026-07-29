@@ -30,9 +30,9 @@ import {
 import type { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const exampleAgent = join(serverPkgDir, "..", "..", "examples", "aigc-canvas-agent");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const exampleAgent = join(runnerPkgDir, "..", "..", "examples", "aigc-canvas-agent");
 
 const SECRET = "canvas-integration-secret";
 
@@ -70,7 +70,7 @@ function launchRunner(sessionId: string, dir: string, extraEnv: NodeJS.ProcessEn
       sessionId,
     ],
     {
-      cwd: serverPkgDir,
+      cwd: runnerPkgDir,
       stdio: ["pipe", "pipe", "pipe"],
       env: {
         ...process.env,

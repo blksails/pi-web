@@ -22,10 +22,10 @@ import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/c
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const fixtureAgent = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
@@ -159,7 +159,7 @@ beforeAll(async () => {
       "--agent-dir",
       agentDir,
     ],
-    cwd: serverPkgDir,
+    cwd: runnerPkgDir,
     env: {
       ...process.env,
       PI_WEB_ATTACHMENT_DIR: attachDir,

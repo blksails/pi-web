@@ -88,7 +88,7 @@
   - 可观测完成态：以新包内的引导脚本直接启动一次 runner 子进程能进入就绪状态
   - _Requirements: 1.1_
 
-- [ ] 3.3 迁移 runner 的测试并保住分档归位
+- [x] 3.3 迁移 runner 的测试并保住分档归位
   - 单元档与集成档测试整体迁入新包；跨包测试固件的相对路径随之修正
   - ★ **文件名后缀逐字保留**：fast 档把子进程模块别名到抛错守卫（导入不报错、**调用才报错**），真实启动子进程的测试一旦丢了集成档后缀会在调用点炸
   - ★ 迁移脚本若按扩展名过滤，注意非 `.ts` 的子进程固件 —— 类型检查对这类运行时路径字符串**完全无感**（上一个 spec 因此漏搬 5 个固件）
@@ -178,3 +178,7 @@
 - ⚠ 3.1：我在派单里写的校验「根 `pnpm -r`（排除 desktop）typecheck exit 0」**在 3.3 前不可能成立** —— `packages/server/test/runner/*` 仍指向旧址，53 个 TS2307。这是我自己的判据错误，不是实施缺陷。该判据应推迟到 3.3 之后。
 - ★ 3.2：核心交付是**真实起一次子进程**，父层独立复跑：以新包内的引导脚本启动 `examples/builtin-tools-agent`，6 秒后进程仍存活，stderr 走完 `runner boot → runtime built → attachment wiring → entering rpc mode`，stdout 发出真实 UI 帧（sandbox 状态 10 domains / schedule-prompts widget / mcp 状态）。判据取「进程存活且进入 rpc 模式」，不取「没报错」—— 一个卡在 MODULE_NOT_FOUND 立刻退出的进程同样什么都不打印。
 - ★ 3.2：搬走后 `runnerBootstrapPath()` 的**两条路径都指向已删除的文件**（主路径与 cwd 回退都是 `packages/server/runner-bootstrap.mjs`）。这是预期的中间状态，也把本 spec 要治的病演示了一遍：第二级不做存在性检查就返回，调用方要到 spawn 时才拿到 ENOENT。4.1 修。
+- ★ 3.3：79 个 `git mv`。逐档核对与基线一致 —— fast 27（基线 27）、it 20（基线 12 + 8 个 `*-subprocess.it`），合计 47。**4 个非 `.ts` 固件一并搬迁**（上个 spec 正是漏了这类，类型检查对运行时路径字符串完全无感）。
+- ★ 3.3：`packages/server` 的 53 个 TS2307 清零，整仓（排除 desktop）typecheck exit 0 —— 3.1 以来首次恢复。
+- ★ 3.3：`testFiles` 的 pending 已按守卫要求删除。至此 2.1/2.2 立的三个「只能通过变红来退场」的豁免（`srcModules` / `srcFiles` / `testFiles` + `stagedIn`）**全部如期退场，无一被遗忘在代码里**。
+- 3.3：算术核对全部自洽 —— runner fast 198+1=199 / it 76+5=81（文件 19+1=20），core 1169+3=1172，server 525+5=530。根 `pnpm test:fast` 串联恢复 exit 0（1.3 记的「runner 档必然失败」的中间状态结束）。

@@ -29,11 +29,11 @@ import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// test/integration -> packages/server
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+// test/integration -> packages/runner
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const fixtureAgent = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
@@ -190,8 +190,8 @@ beforeAll(async () => {
       "--agent-dir",
       agentDir,
     ],
-    // jiti/register 从 cwd 解析:必须以 server 包为 cwd(state-bridge 先例)。
-    cwd: serverPkgDir,
+    // jiti/register 从 cwd 解析:必须以 runner 包为 cwd(state-bridge 先例)。
+    cwd: runnerPkgDir,
     env: { ...process.env } as Record<string, string>,
   };
   channel = new PiRpcProcess(spec);

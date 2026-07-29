@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AI_GATEWAY_PROVIDER_NAME } from "../../src/ai-gateway/session-model-source.js";
+import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 import { buildRuntimeFactory } from "../../src/runner/option-mapper.js";
 
 async function attemptBuild(provider: string, modelId: string, agentDir: string) {

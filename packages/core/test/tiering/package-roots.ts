@@ -65,14 +65,10 @@ const packagesDir = path.dirname(coreDir);
 export const PACKAGE_ROOTS: readonly PackageRoot[] = [
   { name: "core", dir: coreDir, packageName: "@blksails/pi-web-core" },
   { name: "server", dir: path.join(packagesDir, "server"), packageName: "@blksails/pi-web-server" },
-  {
-    name: "runner",
-    dir: path.join(packagesDir, "runner"),
-    packageName: "@blksails/pi-web-runner",
-    // spec runner-package-extraction:任务 3.1 已把 `src/` 搬进来,`srcModules` / `srcFiles`
-    // 两个维度的 pending 随之过期删除。`test/` 要到任务 3.3 才搬,故 `testFiles` 保留。
-    pendingContributions: ["testFiles"],
-  },
+  // spec runner-package-extraction:任务 3.1 搬入 `src/`、任务 3.3 搬入 `test/` 之后,
+  // 三个维度(`srcModules` / `srcFiles` / `testFiles`)的 pending 全部过期删除 ——
+  // 守卫由此对 runner 恢复「每个维度都必须非空」的严格判据,与 core / server 同待遇。
+  { name: "runner", dir: path.join(packagesDir, "runner"), packageName: "@blksails/pi-web-runner" },
 ];
 
 /**

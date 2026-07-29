@@ -33,12 +33,12 @@ import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
 import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
 import { makeResolved } from "../../../core/test/session/fixtures.js";
-import { startStubEgress, type StubEgress } from "../auth/stub-egress.js";
+import { startStubEgress, type StubEgress } from "../../../server/test/auth/stub-egress.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// test/integration -> packages/server
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+// test/integration -> packages/runner
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const fixtureAgent = join(here, "fixtures", "egress-login-agent");
 
 /** 造一枚桌面凭据串(credential.test.ts 先例):`base64url(JSON(payload)) + "." + sig`。 */
@@ -185,8 +185,8 @@ function spawnSpec(agentDir: string, cwdDir: string, extraEnv: Record<string, st
       "--agent-dir",
       agentDir,
     ],
-    // jiti/register 从 cwd 解析:必须以 server 包为 cwd(agent-routes-subprocess.test.ts 先例)。
-    cwd: serverPkgDir,
+    // jiti/register 从 cwd 解析:必须以 runner 包为 cwd(agent-routes-subprocess.test.ts 先例)。
+    cwd: runnerPkgDir,
     env: { ...process.env, ...extraEnv } as Record<string, string>,
   };
 }

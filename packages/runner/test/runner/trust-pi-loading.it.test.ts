@@ -19,11 +19,11 @@ import { afterEach, describe, expect, it } from "vitest";
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const bootstrapEntry = join(serverPkgDir, "runner-bootstrap.mjs");
-const exampleAgent = join(serverPkgDir, "..", "..", "examples", "hello-agent");
+const runnerPkgDir = join(here, "..", "..");
+const bootstrapEntry = join(runnerPkgDir, "runner-bootstrap.mjs");
+const exampleAgent = join(runnerPkgDir, "..", "..", "examples", "hello-agent");
 // 完整自包含示例:examples/pi-probe-agent(自带 .pi/extensions|agents|skills)。
-const probeExampleDir = join(serverPkgDir, "..", "..", "examples", "pi-probe-agent");
+const probeExampleDir = join(runnerPkgDir, "..", "..", "examples", "pi-probe-agent");
 
 // 零依赖的项目级扩展:不 import 任何包(避免临时 cwd 下的模块解析问题),
 // 仅注册一个斜杠命令,供 get_commands 断言其加载。

@@ -27,9 +27,9 @@ import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/c
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const fixture = join(serverPkgDir, "test", "runner", "fixtures", "attachment-catalog-e2e-agent.ts");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const fixture = join(runnerPkgDir, "test", "runner", "fixtures", "attachment-catalog-e2e-agent.ts");
 
 const SECRET = "attachment-catalog-restart-secret-0123456789";
 
@@ -76,7 +76,7 @@ describe("agent-attachment-catalog — 子进程重启(Req 5.1/5.2)", () => {
         "--agent-dir",
         agentDir,
       ],
-      cwd: serverPkgDir,
+      cwd: runnerPkgDir,
       env: {
         ...process.env,
         PI_WEB_ATTACHMENT_DIR: attachDir,

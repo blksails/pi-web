@@ -31,17 +31,17 @@ import { ATTACHMENT_PROFILE_DISABLED_ENV } from "@blksails/pi-web-core/attachmen
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const validFixture = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
   "attachment-profile-e2e-agent",
 );
 const undeclaredFixture = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
@@ -115,7 +115,7 @@ function spawnRunner(agentPath: string, extraEnv: Record<string, string> = {}): 
       "--agent-dir",
       agentDir,
     ],
-    cwd: serverPkgDir,
+    cwd: runnerPkgDir,
     env: {
       ...process.env,
       PI_WEB_ATTACHMENT_DIR: dirPrimary,

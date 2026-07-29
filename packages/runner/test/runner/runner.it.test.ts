@@ -22,16 +22,16 @@ import { AgentEventSchema, RpcResponseSchema } from "@blksails/pi-web-protocol";
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-// test/runner -> packages/server
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+// test/runner -> packages/runner
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 // The production real-mode entry: a cwd-independent bootstrap that constructs
 // jiti itself (no `--import jiti/register`). It must boot even when spawned from
 // the agent's working directory, which has no node_modules.
-const bootstrapEntry = join(serverPkgDir, "runner-bootstrap.mjs");
-const exampleAgent = join(serverPkgDir, "..", "..", "examples", "hello-agent");
+const bootstrapEntry = join(runnerPkgDir, "runner-bootstrap.mjs");
+const exampleAgent = join(runnerPkgDir, "..", "..", "examples", "hello-agent");
 // agent-slash-completion fixture: declares slashCompletions (no pi SDK tools).
-const slashAgent = join(serverPkgDir, "test", "runner", "fixtures", "slash-agent");
+const slashAgent = join(runnerPkgDir, "test", "runner", "fixtures", "slash-agent");
 
 const hasApiKey =
   typeof process.env.ANTHROPIC_API_KEY === "string" &&
@@ -52,7 +52,7 @@ interface RunnerHandle {
 interface LaunchOptions {
   /**
    * "jiti" → legacy `node --import jiti/register <runner.ts>` (spawned with
-   *   cwd=serverPkgDir so jiti resolves);
+   *   cwd=runnerPkgDir so jiti resolves);
    * "bootstrap" → production entry `node <runner-bootstrap.mjs>` spawned with
    *   cwd=<agent work dir> to prove cwd-independent module resolution.
    */
@@ -74,7 +74,7 @@ function launchRunner(opts: LaunchOptions = {}): RunnerHandle {
   const proc = spawn(process.execPath, spawnArgs, {
     // bootstrap is cwd-independent: run it from the agent's work dir (which has
     // no node_modules) to exercise the real-mode failure mode that caused 404s.
-    cwd: mode === "bootstrap" ? cwd : serverPkgDir,
+    cwd: mode === "bootstrap" ? cwd : runnerPkgDir,
     stdio: ["pipe", "pipe", "pipe"],
   });
 

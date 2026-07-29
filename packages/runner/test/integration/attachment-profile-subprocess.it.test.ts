@@ -27,18 +27,18 @@ import { attachmentStoreConfigFromEnv } from "@blksails/pi-web-core/attachment/c
 import { makeResolved } from "../../../core/test/session/fixtures.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// test/integration -> packages/server
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
+// test/integration -> packages/runner
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
 const validFixture = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
   "attachment-profile-e2e-agent",
 );
 const invalidFixture = join(
-  serverPkgDir,
+  runnerPkgDir,
   "test",
   "runner",
   "fixtures",
@@ -112,7 +112,7 @@ function spawnRunner(agentPath: string, extraEnv: Record<string, string> = {}): 
       "--agent-dir",
       agentDir,
     ],
-    cwd: serverPkgDir,
+    cwd: runnerPkgDir,
     env: {
       ...process.env,
       PI_WEB_ATTACHMENT_DIR: dirPrimary,

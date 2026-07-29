@@ -14,9 +14,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const serverPkgDir = join(here, "..", "..");
-const runnerEntry = join(serverPkgDir, "src", "runner", "runner.ts");
-const exampleAgent = join(serverPkgDir, "..", "..", "examples", "state-bridge-agent");
+const runnerPkgDir = join(here, "..", "..");
+const runnerEntry = join(runnerPkgDir, "src", "runner", "runner.ts");
+const exampleAgent = join(runnerPkgDir, "..", "..", "examples", "state-bridge-agent");
 
 interface RunnerHandle {
   proc: ChildProcessWithoutNullStreams;
@@ -43,7 +43,7 @@ function launchRunner(): RunnerHandle {
       "--agent-dir",
       agentDir,
     ],
-    { cwd: serverPkgDir, stdio: ["pipe", "pipe", "pipe"] },
+    { cwd: runnerPkgDir, stdio: ["pipe", "pipe", "pipe"] },
   );
 
   const frames: unknown[] = [];
