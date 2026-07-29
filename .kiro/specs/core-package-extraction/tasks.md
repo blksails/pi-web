@@ -78,14 +78,14 @@
 
 ## 5. 导出面与兼容层
 
-- [ ] 5.1 编写 core 主入口
+- [x] 5.1 编写 core 主入口
   - 只聚合 core 模块；**不得**包含装配层、runner 实现与 adapters 的任何符号
   - **观察完成**：core 主入口可被加载且不连带拉起 agent 运行时 SDK
   - _Depends: 4.2_
   - _Requirements: 1.1, 1.3_
   - _Boundary: core 主入口_
 
-- [ ] 5.2 兼容层降为转发并逐字比对符号集合
+- [x] 5.2 兼容层降为转发并逐字比对符号集合
   - 兼容层主入口转发 core + 保留本地装配/adapters 符号；5 个子路径改薄转发，
     装配层子路径不变
   - ★ 逐条核对**刻意不导出**的缺口，不得顺手补全 —— 那些是为挡依赖污染有意为之的
@@ -96,7 +96,7 @@
   - _Requirements: 2.1, 2.2, 2.4, 2.5_
   - _Boundary: 兼容层转发面_
 
-- [ ] 5.3 声明 core 的依赖并加包依赖守卫
+- [x] 5.3 声明 core 的依赖并加包依赖守卫
   - core 的依赖声明只保留其真实需要者；agent 运行时 SDK 列 peer
   - 守卫查 `dependencies` 与 `devDependencies` 两个字段
     —— 只查前者会漏掉「被误列为 devDependency 的重依赖」
@@ -108,18 +108,18 @@
 
 ## 6. 验证
 
-- [ ] 6.1 守卫全绿且覆盖完整
+- [x] 6.1 守卫全绿且覆盖完整
   - **观察完成**：依赖方向守卫、分档守卫、包依赖守卫、符号比对四者全绿；
     每个守卫的空扫断言成立（改坏包根即红）
   - _Depends: 5.3_
   - _Requirements: 1.4, 2.2, 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 6.2 类型检查与快档时延
+- [x] 6.2 类型检查与快档时延
   - **观察完成**：两个包的类型检查均 exit 0；两包快档合计仍 < 10 秒（报实测耗时）
   - _Depends: 6.1_
   - _Requirements: 5.2, 5.5_
 
-- [ ] 6.3 与开工快照逐项比对并留证
+- [x] 6.3 与开工快照逐项比对并留证
   - 连续两次运行全量，与快照比对文件数、用例数、跳过数，任何差异逐条归因
   - **观察完成**：两次结果彼此一致且不低于快照（283 文件 / 2547 用例）；
     交付含快档与 it 档的**实测运行输出（含耗时）**，而非仅「全绿」的结论
@@ -292,3 +292,65 @@
 - **主入口符号 313 个逐字未变**（与任务 1.1 留底 `diff` 为空）
 - 依赖方向守卫 0 违规；`ALLOWED_EDGES` 3 → 1 条，`KNOWN_DEBT` 为空
 - core 快档 121 文件 / 1135 用例 + fast-mock 3 / 9 全绿
+
+## Implementation Notes（任务 5.x / 6.x）
+
+**5.1 core 主入口**：把兼容层主 barrel 原有的 25 条 core 导出**逐条**搬成 core 的 `src/index.ts`，
+顺序与写法（含刻意的具名导出）一并保留。刻意不在此的三类：两个取数闭包（值导入 agent SDK）
+与 `workspace/testing`（测试套件，进主入口会随之进运行期产物）——各有独立子路径。
+
+**5.2 兼容层收敛为一条转发**：25 条 `export *` 收敛成 `export * from "@blksails/pi-web-core"`，
+清单只此一份、不会两处漂移；4 个子路径（`./trust` `./testing` 两条走 `src/compat/` 薄转发，
+两个 model-options 子路径直指 `src/model-sources/`）。符号比对已固化为**常驻测试**
+（`test/compat/main-entry-symbols.it.test.ts`，归 it 档：它要 jiti 加载真实主入口）。
+该测试额外断言**基准文件非空且无重复** —— 一个被清空的基准会让主断言恒真，
+那是与真正通过长得一模一样的空扫式失效。
+
+**5.3 又摘出一个模块（R1.3 的源码侧判据）**：`config/model-options.ts` 与
+`vision-settings/vision-model-options.ts` **值**导入 `AuthStorage.create` / `ModelRegistry.create`，
+与 R1.3「源码中仅以类型方式引用」冲突。判据与 e2b/pg 那轮**同源**——源码直连分发下，
+把 SDK 声明成 optional peer 挡不住消费方的 `tsc`。二者摘去兼容层包的 `model-sources` 模块；
+它们本就刻意不进主 barrel，只经两个子路径暴露，对外形态逐字不变。
+
+**包依赖守卫**（6 条断言，含三条判别力自证）：
+- 声明层查 `dependencies` **与** `devDependencies` 两个字段 —— 只查前者会漏掉
+  「被误列为 devDependency 的重依赖」；`peerDependencies` 不查（agent SDK 正该在那里）
+- 源码侧扫 core/src 的 agent SDK **值**导入（跨行正则；逐行扫会整条漏掉多行 import）
+- 判别力实测：逐个注入 7 个被禁依赖 → 逐条报出「依赖名 @ 字段」；
+  在 `host-contract-version.ts` 插一行值导入 → 立刻报红并指名文件
+
+### ★ 内核包依赖树的终态（本 spec 的头号价值，现已机械可校验）
+
+```
+dependencies:      @blksails/pi-web-logger, @blksails/pi-web-protocol, zod, @blksails/pi-web-tool-kit
+devDependencies:   @types/node, typescript, vitest
+peerDependencies:  @earendil-works/pi-coding-agent（optional，源码中仅 1 处 import type）
+```
+
+**不出现**：`hono` / `e2b` / `pg` / `@modelcontextprotocol/sdk` / 包注册表客户端 / `ws`。
+只要会话引擎的宿主，不再被迫安装云沙箱 SDK 与数据库驱动。
+
+### 6.x 验证留证（实测输出，非「全绿」结论）
+
+连续两次全量运行，逐档计数一致：
+
+| | 文件 | 用例 | 耗时 |
+|---|---|---|---|
+| core fast | 122（2 skip） | 1141（3 skip） | 2.1 s |
+| core fast-mock | 3 | 9 | 1.6 s |
+| core it | 48 | 474 | 17.1 s |
+| server fast | 71（1 skip） | 729（6 skip） | 3.0 s |
+| server fast-mock | 2 | 22 | 0.5 s |
+| server it | 36（1 skip） | 185（6 skip） | 130.2 s |
+| e2e（不进默认路径） | 3 | 3 | — |
+| **合计** | **285** | **2563** | |
+
+每档均核对 `passed + skipped == 总数`。与开工快照（283 / 2547）的差额**逐条可归因**：
+文件 +2 = 包依赖守卫 + 符号比对测试；用例 +16 = 4（任务 2.x 守卫自证）+ 4（任务 3.1 注入契约）
++ 6（包依赖守卫）+ 2（符号比对）。
+
+- 四个守卫全绿：依赖方向、分档、包依赖、符号比对；每个的空扫/判别力断言均已实测转红
+- 两包 `tsc --noEmit` exit 0；仓库根 `tsc --noEmit` exit 0
+- 根 `pnpm test:fast`（两包）**7.5 s**，在 10 s 预算内（R5.5）
+- 根 `pnpm test:app` 仅剩 3 个**存量红**（`publish-preview`，已用 `git stash` 在 `6025bb51`
+  上复现同样 3 个失败），与本 spec 无关

@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listVisionModelOptions } from "../../src/vision-settings/vision-model-options.js";
+import { listVisionModelOptions } from "../../src/model-sources/vision-model-options.js";
 
 const dirs: string[] = [];
 

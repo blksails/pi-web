@@ -136,16 +136,27 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
   ★ 守卫揪出 design 未预见的两件事:① `host-assembly` 与 `index` 是**装配层**不是 core,
   **不应进 core 包**(core-package-extraction 的 brief 需据此修订);② `model-catalog → ai-gateway`
   是第四条边,已登记为 KNOWN_DEBT 移交 core-package-extraction。
-- [ ] **core-package-extraction** — 建 `@blksails/pi-web-core`(headless 内核:session / rpc-channel 抽象 /
+- [x] **core-package-extraction** — 建 `@blksails/pi-web-core`(headless 内核:session / rpc-channel 抽象 /
   框架无关 http handler / workspace / capability / config-domain / host-manifest / host-contract-version /
   session-store 接口 / attachment L0–L1 接口 / completion / commands / runner **契约**),
   `@blksails/pi-web-server` 降为兼容 re-export 层(包名与 6 个子路径导出全部保留)。
   _Dependencies: kernel-boundary-decoupling_
+  ✅ 2026-07-29 完成(13/13):core 185 src / 173 test,server 90 src / 110 test;
+  主入口 313 符号逐字未变;两包全量连跑两次一致 285 文件 / 2563 用例;四守卫全绿且判别力自证。
+  ★ **实施中发现 R1.2 与「adapters 归后续 spec」不可兼得**:6 个文件把 e2b / pg / MCP SDK
+  拖进 core,而 core 走**源码直连**分发使「声明成 optional peer」不可用(消费方 tsc 会编译到
+  那些文件)。经用户定夺**提前摘出**,建了 5 个 adapters 模块(sandbox-transport /
+  session-store-postgres / mcp-probe / model-sources / attachment-example-tool)——
+  这部分工作已从 adapters-package-extraction 前移,该 spec 的剩余面相应缩小。
+  core 依赖树终态:logger / protocol / zod / tool-kit + agent SDK(optional peer,仅类型引用)。
 - [ ] **runner-package-extraction** — 建 `@blksails/pi-web-runner`:runner 子进程实现 + jiti 载入,
   pi SDK 列为 peer;core 只保留契约类型。_Dependencies: core-package-extraction_
 - [ ] **adapters-package-extraction** — 建 `@blksails/pi-web-adapters`:e2b transport / postgres store /
   s3 blob backend / ai-gateway / llm-gateway / auth / identity / sandbox-image / registry-install
   (≈5k 行)。_Dependencies: core-package-extraction_(与 runner-package-extraction 可并行)
+  ⚠ 范围已缩小:core-package-extraction 因 R1.2 提前摘出了 5 个 adapters 模块
+  (sandbox-transport / session-store-postgres / mcp-probe / model-sources / attachment-example-tool),
+  它们**已在兼容层包内独立成模块**,本 spec 只需把它们连同其余 adapters 搬进新包。
 
 ## Future / Out of MVP scope(不进入本批次,仅作排序与一致性意识)
 

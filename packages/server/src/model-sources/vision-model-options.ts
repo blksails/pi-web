@@ -1,4 +1,16 @@
 /**
+ * model-sources — 取自 agent 运行时 SDK 的**模型取数闭包**(adapters 层)。
+ *
+ * 由 core-package-extraction 任务 5.3 从内核摘出,判据与 sandbox-transport / mcp-probe 同源:
+ * 这两个文件**值**导入 `@earendil-works/pi-coding-agent`(`AuthStorage.create` /
+ * `ModelRegistry.create`),而 R1.3 要求内核对 agent 运行时 SDK **仅以类型方式引用**。
+ * 内核走源码直连分发,消费方 `tsc` 会编译到每个文件 —— 把 SDK 声明成 optional peer
+ * 挡不住这一点,缺类型即编译失败。
+ *
+ * 它们本就**刻意不进主 barrel**(见主 barrel 注释:"取数闭包不在此导出,由装配层注入"),
+ * 只经 `@blksails/pi-web-server` 的两个子路径暴露 —— 那两个子路径的对外形态逐字不变。
+ */
+/**
  * vision-model-options — 用 pi SDK 在进程内列出「已配置凭证 **且支持图像输入**」的模型,
  * 供 Canvas 提示词栏的视觉模型选择器列举(spec canvas-vision-readout)。
  *
@@ -16,7 +28,7 @@
  */
 import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import type { VisionModelOptions } from "./vision-model-options.types.js";
+import type { VisionModelOptions } from "@blksails/pi-web-core/vision-settings/vision-model-options.types.js";
 
 /**
  * 列出 `<agentDir>` 下「已配置凭证且支持图像输入」的模型。

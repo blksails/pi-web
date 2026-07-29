@@ -35,8 +35,9 @@ export default defineConfig({
       // ★ 具名子路径必须排在裸包名之前:否则被裸名吞掉,且报错与顺序无关、极难定位。
       { find: "@blksails/pi-web-core/testing", replacement: path.resolve(__dirname, "packages/core/src/workspace/testing/index.ts") },
       { find: "@blksails/pi-web-core/trust", replacement: path.resolve(__dirname, "packages/core/src/trust/index.ts") },
-      { find: "@blksails/pi-web-core/model-options", replacement: path.resolve(__dirname, "packages/core/src/config/model-options.ts") },
-      { find: "@blksails/pi-web-core/vision-model-options", replacement: path.resolve(__dirname, "packages/core/src/vision-settings/vision-model-options.ts") },
+      // ⚠ 曾有 `@blksails/pi-web-core/{model-options,vision-model-options}` 两条 alias。
+      //   两个取数闭包**值**导入 agent 运行时 SDK(违 R1.3),已摘去兼容层包的 `model-sources`,
+      //   内核不再导出它们 —— 留着指向已搬走文件的 alias,比没有 alias 更难排查。
       { find: "@blksails/pi-web-core/", replacement: path.resolve(__dirname, "packages/core/src") + "/" },
       { find: "@blksails/pi-web-core", replacement: path.resolve(__dirname, "packages/core/src/index.ts") },
       { find: "@blksails/pi-web-logger", replacement: path.resolve(__dirname, "packages/logger/src/index.ts") },

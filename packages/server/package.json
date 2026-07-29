@@ -7,8 +7,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./trust": "./src/compat/trust.ts",
-    "./model-options": "./src/compat/model-options.ts",
-    "./vision-model-options": "./src/compat/vision-model-options.ts",
+    "./model-options": "./src/model-sources/model-options.ts",
+    "./vision-model-options": "./src/model-sources/vision-model-options.ts",
     "./testing": "./src/compat/testing.ts",
     "./host-assembly": "./src/host-assembly/index.ts"
   },
