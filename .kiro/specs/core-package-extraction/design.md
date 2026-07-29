@@ -9,8 +9,15 @@
 **Users**：pi-clouds 云端、desktop 与未来的 edge 宿主 —— 切开后它们不再被迫安装云沙箱 SDK
 与数据库驱动。
 
-**Impact**：`packages/server` 从 283 个测试文件降到 97 个；新包承接 186 个。
+**Impact**：`packages/server` 从 283 个测试文件降到 112 个；新包承接 173 个。
 对外导出符号集合**逐字不变**（313 个），既有消费方零改动。
+
+> **实施后回写（validate-impl，2026-07-29）**：实测 core/src **185** 文件、server/src **90**；
+> 测试 core **173** + server **112**（含 3 个不进默认路径的 e2e）= **285**，
+> 较开工快照 283 多出的 2 个是本 spec 新增的守卫（包依赖守卫、符号比对）。
+> 测试的最终分布与设计估算（186 / 97）有出入，因为归属判据在实施中被修正为
+> **「起谁的进程」而不只是「import 谁」**：11 个测试 import 的全是 core，
+> 真启的却是 server 里的 runner，只能留在兼容层包。
 
 ### Goals
 
@@ -74,9 +81,23 @@
   **不读 tsconfig paths** —— 新包必须同步加 alias，否则根 `test/` 静默解析失败。
 - `packages/server` 现有 6 个子路径导出：`.` / `./trust` / `./model-options` /
   `./vision-model-options` / `./testing` / `./host-assembly`。
-  前 5 个的实现都会搬进 core，第 6 个（装配层）留下。
+  前 5 个的实现原计划全部搬进 core，第 6 个（装配层）留下。
+
+  > **实施后回写（validate-impl，2026-07-29）**：实际只有 `./trust` 与 `./testing` 的实现进了 core
+  > （经 `src/compat/` 薄转发保住子路径）。`./model-options` 与 `./vision-model-options` 的实现
+  > **留在兼容层包**的 `src/model-sources/` —— 它们**值**导入 `AuthStorage.create` /
+  > `ModelRegistry.create`，与 R1.3「源码中仅以类型方式引用」冲突；而内核走源码直连分发，
+  > 把 SDK 声明成 optional peer 挡不住消费方的 `tsc`。两条子路径的对外形态逐字不变。
 
 ### Architecture Pattern & Boundary Map
+
+> **实施后回写（validate-impl，2026-07-29）**：adapters 由设计时的 7 模块增至 **12**。
+> 新增的 5 个是从 core **回摘**的：`sandbox-transport` / `session-store-postgres` / `mcp-probe` /
+> `model-sources` / `attachment-example-tool`。回摘判据只有一条 —— 它们值依赖
+> `e2b` / `pg` / MCP SDK / agent SDK，与 R1.2、R1.3 冲突，而**源码直连分发使 optional peer 不可用**
+> （消费方 `tsc` 会编译到每个文件）。此外 `runner-bootstrap-path` 由 core 改判 assembly 并留在 server：
+> 它从自身位置推算包根去找同包的 `runner-bootstrap.mjs`，搬进 core 后主路径失效、只靠 cwd 回退
+> 在开发态侥幸命中。逐条理由见 `tasks.md` 的 Implementation Notes（任务 4.1 / 5.3）。
 
 ```mermaid
 graph TB
@@ -89,8 +110,8 @@ graph TB
     end
     subgraph ServerContent[server 保留]
         Runner[runner 实现]
-        Adapters[adapters 7 模块]
-        Assembly[装配层 主入口 与 默认能力面]
+        Adapters[adapters 12 模块]
+        Assembly[装配层 主入口 默认能力面 compat转发 runner-bootstrap-path]
     end
     Core --> Protocol
     Server --> Core
@@ -127,14 +148,16 @@ graph TB
 ```
 packages/
 ├── core/                                  # 新建
-│   ├── package.json                       # exports 5 子路径;禁依赖不得出现
+│   ├── package.json                       # exports:3 具名 + 1 通配;禁依赖不得出现
+│   │                                      # ★ 通配 "./*.js": "./src/*.ts" —— 兼容层有 115 条
+│   │                                      #   深路径导入,具名子路径表达不了(实施后回写)
 │   ├── tsconfig.json
 │   ├── vitest.workspace.ts                # 四档,与 server 同形
 │   ├── scripts/run-tests.mjs              # 三相编排,与 server 同形
-│   ├── src/                               # 迁入 32 模块(182 文件)
+│   ├── src/                               # 实际 185 文件(设计估 182);模块 32 个如期
 │   │   ├── index.ts                       # core 主入口(新写:只聚合 core 模块)
 │   │   ├── {source-key,host-contract-version,template-name,model-provider-names}.ts
-│   │   ├── {parent-watchdog,runner-bootstrap-path}.ts
+│   │   ├── parent-watchdog.ts             # ⚠ runner-bootstrap-path.ts 未进 core,见上方回写
 │   │   └── <28 个 core 模块目录>/
 │   └── test/                              # 迁入 186 个测试
 │       ├── setup/{fast-sentinel,child-process-guard}.ts   # 迁入:分档机制下沉到 core

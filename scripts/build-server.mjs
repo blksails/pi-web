@@ -41,7 +41,18 @@ export const EXTERNAL = [
   "pg-native",
 ];
 
-/** 与 `vite.config.ts` / `vitest.node-e2e.config.ts` 一致的工作区别名。 */
+/**
+ * 与 `vite.config.ts` / `vitest.node-e2e.config.ts` 一致的工作区别名。
+ *
+ * ★ **`@blksails/pi-web-core` 刻意不在本表里,那不是漏了**(spec: core-package-extraction)。
+ *   本表的键是**精确的包名/子路径**,而兼容层包对内核有 115 条不同的深路径导入
+ *   (`@blksails/pi-web-core/session/index.js` 等)——精确键的 map 表达不了它们。
+ *   内核改用 package.json 的**通配子路径导出** `"./*.js": "./src/*.ts"`,
+ *   由解析器原生展开。三条链路均已实测:esbuild(本文件)exit 0 且产物里
+ *   `pi-web-core` 字面量残留为 0(全部内联)、vite exit 0、Node 原生
+ *   `require.resolve` 认这条通配。
+ *   ⚠ 想"顺手补上"之前请先想清楚要补 115 条还是别的什么。
+ */
 const ALIAS = {
   "@blksails/pi-web-logger": "packages/logger/src/index.ts",
   "@blksails/pi-web-agent-kit": "packages/agent-kit/src/index.ts",

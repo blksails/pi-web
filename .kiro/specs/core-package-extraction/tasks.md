@@ -354,3 +354,84 @@ peerDependencies:  @earendil-works/pi-coding-agent（optional，源码中仅 1 �
 - 根 `pnpm test:fast`（两包）**7.5 s**，在 10 s 预算内（R5.5）
 - 根 `pnpm test:app` 仅剩 3 个**存量红**（`publish-preview`，已用 `git stash` 在 `6025bb51`
   上复现同样 3 个失败），与本 spec 无关
+
+---
+
+## Validation Notes（kiro validate-impl，2026-07-29）
+
+五路并发验证（构建冒烟 / 需求覆盖 / 设计一致性 / 跨任务集成 / 边界审计）+ 主对话独立核验。
+**验证过程本身产出了 4 处修正** —— 记在这里是因为它们都属于「测试全绿也看不出来」的那一类。
+
+### 修正 1 · 一条会主动误导后人的注释
+
+`host-assembly/model-sources.ts` 的文件头写着「必须由 `runner-bootstrap.mjs` 导入」。
+实测 `runner-bootstrap.mjs` **根本没有 import 它** —— 真正的装配缝在 `runner.ts` 的 `main()` 里
+（`composeModelSources()` 动态 import）。
+
+危险在于这不是无害的过时：kernel-boundary-decoupling 当初正是因为「缝只放 bootstrap 会让**直接跑
+runner.ts** 这条入口静默丢掉模型源」才改成现在这样（被 egress 登录闭环用例实测抓到）。
+后人照注释把缝挪回 bootstrap 就会复活那个缺陷，而**测试面未必立刻转红**。
+已改写并写明「⚠ 改动此处前先读这一段」。
+
+### 修正 2 · 补上 R1.1 缺失的机械判据（新增守卫）
+
+原先**没有任何守卫**断言「名册判 neutral/core 的模块，物理上就在内核包里」。
+后续两个提取 spec 要搬 runner 与 adapters，把一个 core 模块带错包在类型层完全可能通过
+——源码直连 + 跨包导入使它照样编译、照样跑测试，只是内核悄悄少一块，要到消费方装包才暴露。
+
+新断言的两端来自**两个独立事实源**（名册 = 人写的层归属声明；磁盘 = 实际在哪个包），
+故不是重言式。双向判别力已实测：
+- 把 `trust` 搬去 server → 报 `trust(core) 不在 core 包`
+- 把 `auth` 改判 core → 报 `auth(core) 不在 core 包`
+
+### 修正 3 · design.md 文本滞后于实施（4 处回写）
+
+实施偏离本身已经过用户批准并记在 Implementation Notes，但 design.md 正文仍写着旧数字/旧清单，
+而**下游两个 spec 会读它**。已回写并标注「实施后回写」：子路径归属、adapters 7→12、
+文件计数、core/server 目录清单。
+
+### 修正 4 · 清理 20 个搬迁残留空目录
+
+### 信息性结论 · 打包器 alias 表里没有 core，**这不是漏了**
+
+`scripts/build-server.mjs` 与 `vite.config.ts` 对 11 个 `@blksails/*` 包有显式 alias，唯独没有 core。
+那张表的键是**精确包名/子路径**，而兼容层对内核有 **115 条**不同深路径导入 —— 精确键表达不了。
+内核改用 exports 通配由解析器原生展开。三条链路实测均通：
+esbuild exit 0 且**产物内 `pi-web-core` 字面量残留为 0**（全部内联）、vite exit 0、
+Node `require.resolve` 认这条通配。理由已写进 ALIAS 表注释，防止后人「补全」。
+
+### 运行期存活（此前从未验过 —— 只跑过测试与类型检查）
+
+`pnpm build:server` exit 0（2.9 MB）→ `pnpm build:client` exit 0 → `pack-dist` 自动把新包纳入
+（`dist/node_modules/@blksails/pi-web-core` 链接已建，无需白名单）→ 真实起服务：
+`pi-web on http://127.0.0.1:3199`，`GET /` 200、`GET /api/sessions` 200（走的是 core 的 session 栈）。
+
+★ 打包器与 `tsc` / `vitest` 是**三套不同的解析器**。通配子路径在前两者下成立，不能从第三者推断。
+
+### 一处此前陈述的更正
+
+那 3 个 `publish-preview` 失败是**偶发**，不是稳定存量红。清掉两条失效 alias 后补跑：
+两次全量 + 单文件孤立跑 5 次，全绿。先前两次报红都出现在**全量并发**下，
+符合本仓已知的并发饿死特征。当时「已在 6025bb51 上复现」是事实，但据此下的「稳定存量」结论是错的。
+
+### ★ 一个「全绿」掩盖的未执行测试（存量，非本 spec）
+
+app 段汇总行写着 `104 passed | 1 skipped (106)` —— **104+1=105 ≠ 106**；
+用例 `1019 passed | 2 skipped` 对 **1031** 总数，**10 个用例根本没跑**。
+差集法定位到 `test/chat-app-logs-wiring.test.tsx`，日志里是
+`FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`
+—— worker 崩了，而 vitest 把它算成「0 failed」。
+
+归属 **UPSTREAM**：孤立跑同样崩；该文件最后改动是 `5a4488b2`(desktop pane 集成)，
+`git diff 99d122a3..HEAD` 对它无输出，本次改动未触及。
+
+★ 记在这里是因为**只看「全绿」会漏掉它**。每次报告测试结果都要核对
+`passed + skipped == 总数` —— 本仓已经因此被骗过。
+
+### 已知但**不在本 spec 修**的两条（移交下游）
+
+- `runner` 的两处动态 import 装配缝是 **fail-soft**：漏装配时只写一行 stderr / 一条 warn，
+  session 镜像与自定义模型源会**静默消失**。缝本身是 kernel-boundary-decoupling 建立的，
+  当前两个目标文件都在、缝是通的。移交 `runner-package-extraction`：拆包后 host-assembly
+  成为可选模块，那时 fail-soft 的代价会变大。
+- `createMcpConfigRoutes` 只靠 TS 必填、无运行期断言。当前生产装配点是 TS，不可达。

@@ -122,6 +122,53 @@ describe("名册完整性", () => {
     }
   });
 
+  it("★ 层归属 ⟹ 物理归位:名册判 neutral/core 的模块必须真在内核包里(R1.1)", () => {
+    // 这条是 R1.1「内核包包含名册全部 neutral 与 core 模块」的**机械判据**。
+    //
+    // ★ 它很容易被写成重言式。防重言的关键在于:判据的两端来自**两个独立事实源** ——
+    //   左边是名册(人写的层归属声明),右边是磁盘(实际在哪个包)。改任何一边而不改另一边都会报红。
+    //   若哪天有人"为了让守卫过"去改名册,那属于改声明,会出现在 diff 里被 review 看到。
+    //
+    // ★ 为什么必须有:后续两个提取 spec 要搬 runner 与 adapters。搬错包(把一个 core 模块
+    //   带去 runner 包)在类型层完全可能通过 —— 源码直连 + 跨包导入使它照样能编译、能跑测试,
+    //   只是内核包悄悄少了一块。没有这条断言,那种错误要到消费方装包时才暴露。
+    const roots = new Map(
+      PACKAGE_ROOTS.map((r) => {
+        const srcDir = path.join(r.dir, "src");
+        const names = fs.existsSync(srcDir)
+          ? fs
+              .readdirSync(srcDir, { withFileTypes: true })
+              .filter((e) => e.isDirectory() || e.name.endsWith(".ts"))
+              .map((e) => (e.isDirectory() ? e.name : e.name.slice(0, -3)))
+          : [];
+        return [r.name, new Set(names)];
+      }),
+    );
+    const inCore = roots.get("core")!;
+    expect(inCore.size, "core/src 扫到 0 个模块 —— 空扫的绿与真正的绿无法区分").toBeGreaterThan(0);
+
+    // ① 名册判 neutral/core 的,必须在 core 包里。
+    const misplaced = Object.entries(MODULE_ROSTER)
+      .filter(([name, layer]) => (layer === "core" || layer === "neutral") && !inCore.has(name))
+      .map(([name, layer]) => `${name}(${layer}) 不在 core 包`);
+
+    // ② 反向:落在 core 包里的模块,层归属必须是 neutral/core。
+    //    查询要经 layerOf(name, "core") 以套用按包覆写 —— `index` 在两个包里是两个不同的东西。
+    const strays = [...inCore]
+      .filter((name) => {
+        const layer = layerOf(name, "core");
+        return layer !== "core" && layer !== "neutral";
+      })
+      .map((name) => `${name}(${layerOf(name, "core")}) 落在 core 包里`);
+
+    expect(
+      [...misplaced, ...strays],
+      `模块的**层归属**与**物理归位**不一致:\n` +
+        [...misplaced, ...strays].map((m) => `  ${m}\n`).join("") +
+        `二者必须同时成立 —— 要么把模块搬到对的包,要么改名册的层归属(那是一次有意的声明改动)。`,
+    ).toEqual([]);
+  });
+
   it("覆写只对指定包根生效,不影响其它包根的查询", () => {
     // index 是唯一的同名冲突:core 的主入口 vs 兼容层的装配 barrel。
     expect(layerOf("index", "core")).toBe("core");
