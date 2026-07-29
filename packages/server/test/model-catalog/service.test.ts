@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
 import { createModelCatalogService } from "../../src/model-catalog/index.js";
+import { mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "../../src/ai-gateway/model-catalog.js";
 import type { ModelOptions } from "../../src/config/model-options.types.js";
 
@@ -100,6 +101,8 @@ describe("ModelCatalogService — hidden 含 ai-gateway 时网关条目整体剔
     const svc = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
       gatewayChat: { get: () => GATEWAY_CHAT },
+      // 合并能力经装配层注入(spec: core-package-extraction 任务 3.1);与 gatewayChat 同进同出。
+      mergeCatalog: mergeModelCatalog,
       imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(["ai-gateway"]),
     });
@@ -138,6 +141,8 @@ describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 
     const svc = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
       gatewayChat: { get: () => GATEWAY_CHAT },
+      // 合并能力经装配层注入(spec: core-package-extraction 任务 3.1);与 gatewayChat 同进同出。
+      mergeCatalog: mergeModelCatalog,
       imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(),
     });
@@ -158,6 +163,8 @@ describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 
     const svc = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
       gatewayChat: { get: () => GATEWAY_CHAT },
+      // 合并能力经装配层注入(spec: core-package-extraction 任务 3.1);与 gatewayChat 同进同出。
+      mergeCatalog: mergeModelCatalog,
       modelPrecedence: "self",
       imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(),
@@ -175,6 +182,8 @@ describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 
     const svc = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
       gatewayChat: { get: () => [] },
+      // 合并能力经装配层注入(spec: core-package-extraction 任务 3.1);与 gatewayChat 同进同出。
+      mergeCatalog: mergeModelCatalog,
       imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(),
     });
@@ -250,5 +259,68 @@ describe("ModelCatalogService — Cloudflare 图像目录并入(Req 4.2)", () =>
       ...GATEWAY_IMAGE_CATALOG.map(() => "ai-gateway"),
       ...CLOUDFLARE_IMAGE_CATALOG.map(() => "cloudflare"),
     ]);
+  });
+});
+
+/**
+ * 欠债解除后的注入契约(spec: core-package-extraction,任务 3.1;Req 3.2/3.3)。
+ *
+ * 目录服务属内核层,不再值导入 ai-gateway 适配器;合并能力经 `mergeCatalog` 注入。
+ * 这组断言守的是**注入与否的两种形态都正确**,尤其是「漏注入」这一种 ——
+ * 它是唯一一种能跑通、但结果悄悄错掉的形态。
+ */
+describe("ModelCatalogService — 合并能力的注入契约", () => {
+  it("两者都不注入时,行为与「网关套件未启用」逐字节一致(Req 3.3)", () => {
+    const withoutAnything = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    // 引用级透传是「逐字节一致」最强的判据:连对象都没被重建过。
+    expect(withoutAnything.chatOptions()).toBe(SELF_CHAT);
+  });
+
+  it("只注入 mergeCatalog、不注入 gatewayChat 时,仍走未启用路径", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      mergeCatalog: mergeModelCatalog,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    // 启用判别始终是 gatewayChat 注入与否(与装配层/runner 侧判据同源),不是 mergeCatalog。
+    expect(svc.chatOptions()).toBe(SELF_CHAT);
+  });
+
+  it("注入了 gatewayChat 却漏了 mergeCatalog 时**当场抛错**,不静默降级(Req 3.2)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      gatewayChat: { get: () => GATEWAY_CHAT },
+      // mergeCatalog 故意不传 —— 模拟装配点漏传。
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    // ★ 若这里改成静默退回未启用形态,测试会变成 `toBe(SELF_CHAT)` 并**照样通过**,
+    //   而真机表现是「网关模型从列表里凭空消失」—— 没有任何报错可循。
+    expect(() => svc.chatOptions()).toThrowError(/gatewayChat 却没有注入 mergeCatalog/);
+  });
+
+  it("注入的合并能力确实被调用(而非服务内部另有一条硬编码路径)", () => {
+    const calls: unknown[][] = [];
+    const spy = ((...args: unknown[]) => {
+      calls.push(args);
+      return { providers: [], models: [] };
+    }) as unknown as typeof mergeModelCatalog;
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      gatewayChat: { get: () => GATEWAY_CHAT },
+      mergeCatalog: spy,
+      modelPrecedence: "self",
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    expect(svc.chatOptions()).toEqual({ providers: [], models: [] });
+    expect(calls).toHaveLength(1);
+    // 三个入参逐一核对:漏传 precedence 会让 env 配的块排序静默失效。
+    expect(calls[0]).toEqual([SELF_CHAT.models, GATEWAY_CHAT, "self"]);
   });
 });

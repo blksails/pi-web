@@ -68,8 +68,10 @@ export * from "./llm-gateway/index.js";
 // http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./ai-gateway/index.js";
 // model-catalog(model-catalog spec):chat/image 双命名空间目录组装服务
-// (createModelCatalogService)。纯组装零 env 零 IO,依赖仅 ai-gateway 纯函数 +
-// config 纯过滤器 + tool-kit 主入口纯类型,无 pi SDK 值导入,可安全经 barrel 重导出。
+// (createModelCatalogService)。纯组装零 env 零 IO,依赖仅 config 纯过滤器 +
+// tool-kit 主入口纯类型,无 pi SDK 值导入,可安全经 barrel 重导出。
+// ⚠ 网关合并能力自 core-package-extraction 任务 3.1 起改为**注入**(mergeCatalog),
+//   本模块不再值导入 ai-gateway —— 那曾是内核提取继承的最后一条跨层反向依赖。
 // ⚠ 取数闭包(config/model-options.ts,含 pi SDK)不在此导出,由装配层注入。
 export * from "./model-catalog/index.js";
 // ───────── 宿主契约 v1(spec: host-contract-ports,任务 6.2;Req 9.1、10.1、10.4)─────────

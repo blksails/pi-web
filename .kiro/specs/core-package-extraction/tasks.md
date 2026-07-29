@@ -47,7 +47,7 @@
 
 ## 3. 解除继承欠债（唯一的逻辑改动，单独一轮）
 
-- [ ] 3.1 模型目录服务改为注入网关合并能力
+- [x] 3.1 模型目录服务改为注入网关合并能力
   - 在其**既有**注入结构上新增可选的合并能力；移除对网关适配器的值导入
   - 两个纯类型随契约进 core；网关适配器改为从 core 引入并原样 re-export（导出面不变）
   - 未注入时行为须与「网关套件未启用」逐字节一致
@@ -184,3 +184,34 @@
   → 合计 **283 文件 / 2551 用例**（含 e2e 3/3）。文件数与快照持平；
   用例 +4 = 本步新增的 4 条守卫自证用例，逐条可归因。
 - it 档串行耗时 153.4 s；两个包 `tsc --noEmit` 均 exit 0。
+
+## Implementation Notes（任务 3.1 · 唯一的逻辑改动）
+
+**做法**：三个纯类型（`GatewayModelEntry` / `ModelPrecedence` / 新增的 `MergeModelCatalog`）
+下沉到 `src/model-catalog/types.ts`；`ai-gateway/model-catalog.ts` 从那里引入并**原样 re-export**，
+故适配器导出面逐字不变，`lib/app/ai-gateway-session-assembly.ts` 等既有消费方零改动。
+`mergeCatalog?: MergeModelCatalog` 加进**既有的** `ModelCatalogServiceDeps`，装配点
+`lib/app/pi-handler.ts` 补传。
+
+★ **类型下沉，实现留在适配器**。`mergeModelCatalog` 不是自足纯函数——它依赖网关的 provider
+命名空间与「该模型能否用于会话」的判据。把实现一起搬进 core 只是把 adapters 的知识换个位置
+继续违规，那正是欠债当初被登记而非顺手修掉的原因。
+
+★ **漏注入必须当场抛错**。退回「未启用」形态在这里是**能跑通**的：网关模型只是从列表里消失，
+没有任何报错。那种症状会被当成网关故障排查很久，真因却是装配点漏传了一个依赖。
+测试里专门写下这一点——若改成静默降级，断言会变成 `toBe(SELF_CHAT)` 并**照样通过**。
+
+新增 4 条注入契约用例，其中一条用 spy 核对**三个入参逐一传对**：漏传 `precedence`
+会让 env 配的块排序静默失效，而输出看上去完全正常。
+
+**验证**：
+
+- 依赖方向守卫 0 违规，`KNOWN_DEBT` 清空（守卫的「只减不增/无陈旧条目」双向断言均绿）
+- 主入口符号集合与 1.1 留底 **313 个逐字相同**（`diff` 为空）
+- server 全量 exit 0：fast 188/1821 · fast-mock 5/31 · it 83/657（it 档 155.1 s）
+- 两包 + 根 `tsc --noEmit` 均 exit 0
+- 根 `pnpm test:app`：**3 个存量红**（`test/commands/publish-preview.test.ts`），
+  已用 `git stash` 在 `6025bb51` 上复现同样的 3 个失败——与本改动无关，未修
+
+**累计计数**：283 文件 / 2555 用例（快照 283 / 2547）。
+用例 +8 全部可归因：+4 任务 2.x 的守卫自证，+4 本任务的注入契约。

@@ -84,6 +84,7 @@ import {
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
   // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
   createModelCatalogService,
+  mergeModelCatalog,
   // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
   // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
   AuthSessionState,
@@ -535,6 +536,9 @@ function buildSingleton(): HandlerSingleton {
     createModelCatalogService({
       listSelfChat: () => listModelOptions(config.agentDir),
       gatewayChat: gatewayModelCatalog,
+      // 合并能力由装配层注入(spec: core-package-extraction 任务 3.1)。目录服务属内核层,
+      // 不认识 ai-gateway 适配器;它与 gatewayChat 同进同出,漏传会当场抛错而非静默降级。
+      mergeCatalog: mergeModelCatalog,
       modelPrecedence: aiGwConfig?.modelPrecedence,
       imageCatalog: AIGC_MODEL_CATALOG,
       gatewayImageCatalog:

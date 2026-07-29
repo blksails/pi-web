@@ -19,10 +19,9 @@
  * `GET /api/aigc/models` 均改经本服务取数(task 3.1)。
  */
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
-import { mergeModelCatalog } from "../ai-gateway/model-catalog.js";
-import type { GatewayModelEntry, ModelPrecedence } from "../ai-gateway/model-catalog.js";
 import { excludeProviders } from "../config/model-options-filter.js";
 import type { ModelOptions } from "../config/model-options.types.js";
+import type { GatewayModelEntry, MergeModelCatalog, ModelPrecedence } from "./types.js";
 
 /** `createModelCatalogService` 的注入依赖(装配期一次性构造)。 */
 export interface ModelCatalogServiceDeps {
@@ -32,6 +31,14 @@ export interface ModelCatalogServiceDeps {
   readonly gatewayChat?: { get(): readonly GatewayModelEntry[] };
   /** 同名排序偏好(merge 的块排序,不做覆盖删除;缺省 `"gateway"`)。 */
   readonly modelPrecedence?: ModelPrecedence;
+  /**
+   * self 与网关目录的合并能力,由装配层注入(spec: core-package-extraction,任务 3.1)。
+   *
+   * ★ 与 `gatewayChat` **同进同出**:注入了网关目录就必须一并注入本项。缺失时
+   *   `chatOptions()` 会**立即抛错**,而不是悄悄退回「网关未启用」的形态 ——
+   *   静默降级的表现是「网关模型从列表里凭空消失」,那种症状极难归因到装配点漏传。
+   */
+  readonly mergeCatalog?: MergeModelCatalog;
   /** 图像静态目录(self)。 */
   readonly imageCatalog: readonly AigcCatalogEntry[];
   /** 网关图像静态目录;未启用时不注入。 */
@@ -66,6 +73,7 @@ export function createModelCatalogService(
     listSelfChat,
     gatewayChat,
     modelPrecedence,
+    mergeCatalog,
     imageCatalog,
     gatewayImageCatalog,
     cloudflareImageCatalog,
@@ -79,14 +87,20 @@ export function createModelCatalogService(
         // 快路径,返回 self 原引用(字节一致,Req 1.3)。
         return excludeProviders(self, hiddenProviders);
       }
+      if (mergeCatalog === undefined) {
+        // ★ 快速失败,不静默降级。退回「未启用」形态在这里是**能跑通**的:网关模型
+        //   只是从列表里消失,没有任何报错。那种症状会被当成网关问题排查很久,
+        //   而真因是装配点漏传了一个依赖。
+        throw new Error(
+          "ModelCatalogService: 注入了 gatewayChat 却没有注入 mergeCatalog。" +
+            "两者必须同进同出 —— 缺少合并能力时网关模型会从目录里静默消失。" +
+            "请在装配处一并传入 mergeModelCatalog。",
+        );
+      }
       // 聚合形态:merge(不吞并 + provider 收敛 "ai-gateway" + 块排序)后应用 hidden
       // 过滤。hidden 含 "ai-gateway" 时网关条目因 provider="ai-gateway" 被整体剔除
       // (Req 5.3);providers 本就 self-only,不受影响。
-      const merged = mergeModelCatalog(
-        self.models,
-        gatewayChat.get(),
-        modelPrecedence,
-      );
+      const merged = mergeCatalog(self.models, gatewayChat.get(), modelPrecedence);
       return excludeProviders(merged, hiddenProviders);
     },
     imageEntries(): readonly CatalogImageEntry[] {

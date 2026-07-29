@@ -25,14 +25,16 @@ import {
 // 与 routes.ts 同一命名空间:目录收敛结果与拉取失败均属 ai-gateway 的运维可观测面。
 const log = createLogger({ namespace: "server:ai-gateway" });
 
-/** 网关模型目录单条目。 */
-export interface GatewayModelEntry {
-  /** `/v1/models` 的 id。 */
-  readonly model: string;
-  /** `owned_by` → UI 徽章分组。 */
-  readonly ownedBy: string;
-  readonly source: "ai-gateway";
-}
+/**
+ * ★ `GatewayModelEntry` 与 `ModelPrecedence` 的定义已下沉到 `model-catalog/types.ts`
+ *   (spec: core-package-extraction 任务 3.1),此处**原样 re-export** 以保持本模块导出面
+ *   逐字不变 —— 既有消费方无需跟随改动。
+ *
+ *   下沉的原因是解除 `model-catalog(core) → ai-gateway(adapters)` 的跨层反向值依赖:
+ *   目录服务需要这两个类型来描述注入契约,而它不该认识适配器。
+ */
+export type { GatewayModelEntry, ModelPrecedence } from "../model-catalog/types.js";
+import type { GatewayModelEntry, ModelPrecedence } from "../model-catalog/types.js";
 
 /** `GatewayModelCatalog` 的注入依赖。 */
 export interface GatewayModelCatalogDeps {
@@ -186,12 +188,6 @@ export class GatewayModelCatalog {
     }
   }
 }
-
-/**
- * `mergeModelCatalog` 的块排序偏好(model-catalog spec):决定合并 models 数组中
- * 网关块与 self 块的先后顺序,不再是同名覆盖取舍。
- */
-export type ModelPrecedence = "gateway" | "self";
 
 /**
  * 目录 merge 纯函数(model-catalog spec design.md「mergeModelCatalog(重写)」,

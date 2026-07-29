@@ -143,12 +143,10 @@ export const KNOWN_DEBT: readonly {
   readonly why: string;
   readonly owner: string;
 }[] = [
-  {
-    from: "model-catalog",
-    to: "ai-gateway",
-    why: "model-catalog/service.ts 值导入 ai-gateway/model-catalog.js 的 mergeModelCatalog。该函数**不是自足纯函数** —— 它依赖 ai-gateway 的 provider 命名空间与会话可用性判据,故不能上移到 core。正解是把它改为经 ModelCatalogServiceDeps 注入(注入结构已存在),但那要改 lib/app 装配点与 15 处测试调用,超出本 spec 已批准的需求范围(R1.1-R1.3 只列了传输/凭据/配置三条边)。",
-    owner: "core-package-extraction",
-  },
+  // (空)—— 内核提取继承的唯一一条欠债 model-catalog → ai-gateway
+  // 已由 core-package-extraction 任务 3.1 解除:合并能力改经 ModelCatalogServiceDeps 注入。
+  // ★ 空表是**有意保留**的,不要删掉这个常量:下一次有人想「先欠着」时,
+  //   这里是唯一合法的登记处,而守卫会盯着它只减不增。
 ];
 
 /**
