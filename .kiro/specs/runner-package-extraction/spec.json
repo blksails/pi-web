@@ -1,9 +1,9 @@
 {
   "feature_name": "runner-package-extraction",
   "created_at": "2026-07-29T15:28:00Z",
-  "updated_at": "2026-07-29T13:40:00Z",
+  "updated_at": "2026-07-29T13:55:00Z",
   "language": "zh",
-  "phase": "design-approved",
+  "phase": "tasks-approved",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -14,11 +14,11 @@
       "approved": true
     },
     "tasks": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     }
   },
-  "ready_for_implementation": false,
+  "ready_for_implementation": true,
   "scope_decisions": {
     "date": "2026-07-29",
     "bootstrap_verification": "dist 树实证 + pnpm e2e:cli:reloc 换机复现 + standalone 启动;desktop 与 e2b 烘焙态列为已知未验并写明风险",
@@ -27,7 +27,8 @@
   },
   "approval_notes": {
     "requirements": "经用户 /goal「使用 kiro 流程实现」的自主执行授权批准(auto 模式:多道闸门收敛为一道)",
-    "design": "经用户 /goal「使用 kiro 流程实现」的自主执行授权批准；design 评审闸门机械检查 29/29 通过"
+    "design": "经用户 /goal「使用 kiro 流程实现」的自主执行授权批准；design 评审闸门机械检查 29/29 通过",
+    "tasks": "经用户 /goal「使用 kiro 流程实现」的自主执行授权批准；覆盖 29/29，评审闸门修正 1 处矛盾（fast 档空档判据）"
   },
   "design_decisions": {
     "bootstrap_resolution": "方案(b) createRequire 包解析 —— 已在真实 dist 树实测解析链成立；三级解析，第③级抛错为唯一逻辑变更须单列任务",
