@@ -7,6 +7,7 @@ import {
   AiGatewayConfigError,
   DEFAULT_CATALOG_TTL_MS,
   DEFAULT_TIMEOUT_MS,
+  DEFAULT_PROVIDER_ALLOWLIST,
 } from "../../src/ai-gateway/config.js";
 
 describe("resolveAiGatewayConfig — 缺省", () => {
@@ -63,6 +64,9 @@ describe("resolveAiGatewayConfig — 合法配置", () => {
       timeoutMs: DEFAULT_TIMEOUT_MS,
       catalogTtlMs: DEFAULT_CATALOG_TTL_MS,
       modelPrecedence: "gateway",
+      // spec cloudflare-chat-provider Req 2.2:未配置白名单时回落内置默认
+      // (排除聚合型 openrouter)。默认值本身由 model-catalog-allowlist.test.ts 钉住。
+      providerAllowlist: new Set(DEFAULT_PROVIDER_ALLOWLIST),
     });
   });
 

@@ -32,6 +32,41 @@ export const AI_GATEWAY_CATALOG_TTL_MS_ENV = "AI_GATEWAY_CATALOG_TTL_MS";
 /** 同名模型优先级环境变量名;未设置时默认 `"gateway"`。 */
 export const AI_GATEWAY_MODEL_PRECEDENCE_ENV = "PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE";
 
+/** 上游归属白名单环境变量名(逗号分隔);未设置时用 {@link DEFAULT_PROVIDER_ALLOWLIST}。 */
+export const AI_GATEWAY_PROVIDER_ALLOWLIST_ENV = "PI_WEB_AI_GATEWAY_PROVIDER_ALLOWLIST";
+
+/**
+ * 内置默认白名单(spec `cloudflare-chat-provider` Req 2.2)。
+ *
+ * 依据 2026-07-29 对 Cloudflare AI Gateway 的实测目录分布(共 2465 条):
+ * openrouter 1067 / openai 215 / aws-bedrock 163 / azure-openai 141 /
+ * google-ai-studio 133 / anthropic 122 / …
+ *
+ * ★刻意**排除 openrouter** —— 它是聚合型上游,一家就占 43%,且其条目与 openai /
+ * anthropic 等直连厂商大量重复覆盖,放进选择器只会制造噪声。保留三家主流直连厂商;
+ * 部署方需要更多(如 aws-bedrock / workers-ai)时经 env 覆盖。
+ */
+export const DEFAULT_PROVIDER_ALLOWLIST: readonly string[] = [
+  "anthropic",
+  "openai",
+  "google-ai-studio",
+];
+
+/**
+ * 解析逗号分隔的归属白名单。
+ *
+ * ★空白值**回落默认**而非解释为「全部滤除」:后者会让部署方对着一个空模型清单
+ * 束手无策,而这几乎总是误配(如 `EXPORT VAR=` 写成空)而非本意。真要全部滤除,
+ * 应通过配置一个不存在的归属名达成,那是显式意图。
+ */
+function parseProviderAllowlist(raw: string | undefined): ReadonlySet<string> {
+  const items = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length > 0);
+  return new Set(items.length > 0 ? items : DEFAULT_PROVIDER_ALLOWLIST);
+}
+
 /** 默认请求超时(毫秒)。长 SSE 由流式空闲控制,这里只是转发单次上游请求的兜底上限。 */
 export const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -48,6 +83,11 @@ export interface AiGatewayConfig {
   readonly catalogTtlMs: number;
   /** 同名模型优先级;默认 `"gateway"`。env `PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE`。 */
   readonly modelPrecedence: "gateway" | "self";
+  /**
+   * 允许纳入模型清单的上游归属(目录条目的 `owned_by`),用于收敛庞大网关目录。
+   * env `PI_WEB_AI_GATEWAY_PROVIDER_ALLOWLIST`;未配置时为 {@link DEFAULT_PROVIDER_ALLOWLIST}。
+   */
+  readonly providerAllowlist: ReadonlySet<string>;
 }
 
 /** 装配期配置不合法时抛出的错误(fail-fast,Req 1.4)。 */
@@ -146,5 +186,6 @@ export function resolveAiGatewayConfig(
     timeoutMs,
     catalogTtlMs,
     modelPrecedence,
+    providerAllowlist: parseProviderAllowlist(env[AI_GATEWAY_PROVIDER_ALLOWLIST_ENV]),
   };
 }

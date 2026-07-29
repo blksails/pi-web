@@ -14,8 +14,12 @@
  * 输出仅含 self 来源 provider(可设为默认的集合)。接入点见 `lib/app/pi-handler.ts`
  * 的 `createConfigRoutes({ listModelOptions })` 装配处。
  */
+import { createLogger } from "@blksails/pi-web-logger";
 import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
 import type { KeyResolver } from "./key-resolver.js";
+
+// 与 routes.ts 同一命名空间:目录收敛结果与拉取失败均属 ai-gateway 的运维可观测面。
+const log = createLogger({ namespace: "server:ai-gateway" });
 
 /** 网关模型目录单条目。 */
 export interface GatewayModelEntry {
@@ -34,10 +38,44 @@ export interface GatewayModelCatalogDeps {
   readonly ttlMs: number;
   /** 可选:携带凭据请求 `/v1/models`(网关若要求鉴权)。未注入则匿名请求。 */
   readonly keyResolver?: KeyResolver;
+  /**
+   * 可选:允许的上游归属集合(对应目录条目的 `owned_by`),用于收敛庞大目录
+   * (spec `cloudflare-chat-provider` Req 2)。
+   *
+   * ★`undefined` = **不过滤**,保证既有部署(非 CF 网关)行为逐字节不变;空集 = 全部滤除。
+   * 比对忽略大小写与首尾空白,故传入前无需归一化。
+   *
+   * 为什么按**归属**而非模型 id 过滤:Cloudflare AI Gateway 实测返回 2465 条,仅
+   * openrouter 一家就 1067 条且与其他 provider 大量重复覆盖。按归属收敛既能排除重复大户,
+   * 又使白名单内厂商发布新型号时**无需改代码**即可出现(Req 2.4)。
+   */
+  readonly allowedOwners?: ReadonlySet<string>;
   /** 测试接缝:缺省 `globalThis.fetch`。 */
   readonly fetchImpl?: typeof fetch;
   /** 测试接缝:缺省 `Date.now`。 */
   readonly nowFn?: () => number;
+  /** 测试接缝:收敛结果与拉取失败的观测出口;缺省走 `server:ai-gateway` 日志。 */
+  readonly logger?: GatewayCatalogLogger;
+}
+
+/** 目录组件的最小日志出口(测试可注入以断言可观测性)。 */
+export interface GatewayCatalogLogger {
+  info(msg: string, data?: Record<string, unknown>): void;
+  warn(msg: string, data?: Record<string, unknown>): void;
+}
+
+/**
+ * 按归属过滤目录条目(纯函数)。
+ *
+ * @param allowed `undefined` → 原样返回(不过滤);否则仅保留 `ownedBy` 命中者。
+ */
+export function filterByOwner(
+  entries: readonly GatewayModelEntry[],
+  allowed: ReadonlySet<string> | undefined,
+): readonly GatewayModelEntry[] {
+  if (allowed === undefined) return entries;
+  const normalized = new Set([...allowed].map((o) => o.trim().toLowerCase()));
+  return entries.filter((e) => normalized.has(e.ownedBy.trim().toLowerCase()));
 }
 
 /** `GET /v1/models` 响应体的宽松形状(OpenAI 兼容:`{ data: [{ id, owned_by }] }`)。 */
@@ -67,8 +105,10 @@ export class GatewayModelCatalog {
   private readonly baseUrl: string;
   private readonly ttlMs: number;
   private readonly keyResolver: KeyResolver | undefined;
+  private readonly allowedOwners: ReadonlySet<string> | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly nowFn: () => number;
+  private readonly logger: GatewayCatalogLogger;
 
   private snapshot: readonly GatewayModelEntry[] = [];
   /** 上次**成功**刷新的时刻;`undefined` = 从未成功过。 */
@@ -79,8 +119,10 @@ export class GatewayModelCatalog {
     this.baseUrl = deps.baseUrl;
     this.ttlMs = deps.ttlMs;
     this.keyResolver = deps.keyResolver;
+    this.allowedOwners = deps.allowedOwners;
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.nowFn = deps.nowFn ?? Date.now;
+    this.logger = deps.logger ?? log;
   }
 
   /**
@@ -104,22 +146,39 @@ export class GatewayModelCatalog {
 
   /** 主动刷新一次(可等待,便于测试构造确定性场景)。拉取失败 → 沿用上次快照(fail-soft)。 */
   async refresh(): Promise<void> {
+    // 请求 URL 提到 try 外:失败诊断需要它(Req 4.1 —— 地址层级配错是最常见的失误,
+    // 日志不含实际地址就只能对着空目录猜)。URL 本身不含凭据,记录安全。
+    const url = `${this.baseUrl}/v1/models`;
     try {
       const headers: Record<string, string> = {};
       if (this.keyResolver !== undefined) {
         const key = await this.keyResolver.resolve({});
         if (key !== undefined) headers.authorization = `Bearer ${key}`;
       }
-      const res = await this.fetchImpl(`${this.baseUrl}/v1/models`, { headers });
+      const res = await this.fetchImpl(url, { headers });
       if (!res.ok) {
         throw new Error(`ai-gateway /v1/models responded with status ${res.status}`);
       }
       const json = (await res.json()) as unknown;
-      this.snapshot = parseModelsResponse(json);
+      const parsed = parseModelsResponse(json);
+      this.snapshot = filterByOwner(parsed, this.allowedOwners);
+      // 收敛可观测(Req 2.5):白名单过窄会静默产出空/瘦目录,不记数就无从判断。
+      if (this.allowedOwners !== undefined) {
+        this.logger.info("gateway catalog filtered", {
+          kept: this.snapshot.length,
+          dropped: parsed.length - this.snapshot.length,
+          allowed: [...this.allowedOwners],
+        });
+      }
       this.lastSuccessAt = this.nowFn();
-    } catch {
-      // fail-soft(Req 4.4):沿用上次成功快照,不更新 lastSuccessAt——下次 get() 仍视为
-      // 过期,持续按 TTL 节奏重试,不在此记录敏感的上游异常细节。
+    } catch (err) {
+      // fail-soft(Req 4.2):沿用上次成功快照,不更新 lastSuccessAt——下次 get() 仍视为
+      // 过期,持续按 TTL 节奏重试。★记录**请求地址与错因**(Req 4.1):凭据不入日志
+      // (headers 不记),但没有地址就无法诊断「baseUrl 层级配错」这一最常见故障。
+      this.logger.warn("gateway catalog refresh failed", {
+        url,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 }
