@@ -11,8 +11,14 @@ import type { ExtensionAPI, ExtensionFactory } from "@earendil-works/pi-coding-a
 import {
   registerImageGeneration,
   AI_GATEWAY_IMAGE_ROUTES,
+  CLOUDFLARE_IMAGE_ROUTES,
 } from "./tools/image-generation.js";
-import { registerImageEdit, AI_GATEWAY_IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
+import {
+  registerImageEdit,
+  AI_GATEWAY_IMAGE_EDIT_ROUTES,
+  CLOUDFLARE_IMAGE_EDIT_ROUTES,
+} from "./tools/image-edit.js";
+import { isCloudflareConfigured } from "./providers/cloudflare.js";
 import { getSessionState } from "../session-state.js";
 import { resolveAigcToolSettings } from "./model-config.js";
 import { deriveActiveModels } from "./active-models.js";
@@ -124,16 +130,33 @@ export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
   const aiGatewayEnabled =
     typeof process.env.BLKSAILS_GATEWAY_BASE_URL === "string" &&
     process.env.BLKSAILS_GATEWAY_BASE_URL.trim().length > 0;
-  const genExtraRoutes: readonly ImageRoute[] | undefined = aiGatewayEnabled
-    ? AI_GATEWAY_IMAGE_ROUTES
-    : undefined;
-  const editExtraRoutes: readonly ImageRoute[] | undefined = aiGatewayEnabled
-    ? AI_GATEWAY_IMAGE_EDIT_ROUTES
-    : undefined;
+  // Cloudflare AI Gateway 路由组条件并入(spec cloudflare-aigc-provider,Req 5.1/5.2/5.5)。
+  // 三个 env **全部**齐备才启用 —— 缺配时不提供该 provider 的模型,而非等到调用才失败。
+  //
+  // ★ 凭据 env 名是 `CLOUDFLARE_API_TOKEN`,**不得**改用 `AI_GATEWAY_API_KEY`(Req 5.3):
+  // 后者是 pi-ai SDK 内建 Vercel AI Gateway 的官方凭据 env,一旦出现在与 pi 同进程的环境
+  // 里会劫持**全部**模型调用去 Vercel(401),而不只是图像工具(pi-clouds 8.2 真机事故;
+  // 同款说明见上方 normalizeGatewayEnvNames 与 providers/cloudflare.ts)。
+  // 判据来自 providers/cloudflare.ts 的单一事实源 —— 宿主侧 `/aigc/models` 目录装配
+  // (lib/app/pi-handler.ts)用的是同一个函数,避免两处漂移导致「设置页列得出但工具里
+  // 选不到」的错位。
+  const cloudflareEnabled = isCloudflareConfigured(process.env);
+  const genExtras: ImageRoute[] = [
+    ...(aiGatewayEnabled ? AI_GATEWAY_IMAGE_ROUTES : []),
+    ...(cloudflareEnabled ? CLOUDFLARE_IMAGE_ROUTES : []),
+  ];
+  const editExtras: ImageRoute[] = [
+    ...(aiGatewayEnabled ? AI_GATEWAY_IMAGE_EDIT_ROUTES : []),
+    ...(cloudflareEnabled ? CLOUDFLARE_IMAGE_EDIT_ROUTES : []),
+  ];
+  // 两套 provider 都未启用时保持 `undefined`(而非空数组):`registerImage*` 对
+  // `extraRoutes !== undefined` 才走拼接分支,传空数组会改变既有代码路径(Req 5.5/7.1)。
+  const genExtraRoutes: readonly ImageRoute[] | undefined =
+    genExtras.length > 0 ? genExtras : undefined;
+  const editExtraRoutes: readonly ImageRoute[] | undefined =
+    editExtras.length > 0 ? editExtras : undefined;
   registerImageGeneration(pi, { disabledModels, extraRoutes: genExtraRoutes });
   registerImageEdit(pi, { disabledModels, extraRoutes: editExtraRoutes });
-  const publishExtraRoutes: readonly ImageRoute[] = aiGatewayEnabled
-    ? [...AI_GATEWAY_IMAGE_ROUTES, ...AI_GATEWAY_IMAGE_EDIT_ROUTES]
-    : [];
+  const publishExtraRoutes: readonly ImageRoute[] = [...genExtras, ...editExtras];
   publishAigcCatalog(disabledModels, enablePromptOptimization, publishExtraRoutes);
 };

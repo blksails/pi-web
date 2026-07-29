@@ -192,10 +192,10 @@ describe("createNewApiImageEdit", () => {
       label: "L",
       description: "d",
     });
-    // image 已是 data URI(编译器解析后)
+    // images 各项已是 data URI(编译器解析后);首项 = 主图
     const dataUri = "data:image/png;base64,aGVsbG8=";
     const body = await v.buildBody?.(
-      { prompt: "add stars", image: dataUri, n: 1 },
+      { prompt: "add stars", images: [dataUri], n: 1 },
       ctx,
     ) as FormData;
     expect(body instanceof FormData).toBe(true);
@@ -217,7 +217,7 @@ describe("createNewApiImageEdit", () => {
     const body = await v.buildBody?.(
       {
         prompt: "edit",
-        image: dataUri,
+        images: [dataUri],
         mask: maskUri,
         size: "1024*1024",
         response_format: "b64_json",

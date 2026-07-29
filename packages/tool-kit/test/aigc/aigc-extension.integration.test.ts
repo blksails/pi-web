@@ -165,9 +165,10 @@ describe("aigcExtension integration", () => {
     const result = await edit.execute(
       "c2",
       {
-        image: "https://a/main.png",
+        // 入参契约统一(2026-07-29):`image` + `reference_images` 合一为 `images`
+        // (首项=待编辑主图,其余=参考图)。断言的性质不变:4 张图全部进请求。
+        images: ["https://a/main.png", "https://a/r1.png", "https://a/r2.png"],
         mask: "https://a/mask.png",
-        reference_images: ["https://a/r1.png", "https://a/r2.png"],
         prompt: "改背景",
         model: "qwen-image-edit-max",
       },

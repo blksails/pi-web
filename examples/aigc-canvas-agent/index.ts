@@ -35,7 +35,11 @@ export default defineAgent({
   systemPrompt: [
     "You are aigc-canvas-agent, a pi-web example combining AIGC image tools with a Canvas surface.",
     "- Use `image_generation` to generate images; use `image_edit` to edit an uploaded image",
-    "  (copy the public id from the [attachment id=att_… …] marker into the tool's `image`).",
+    "  (copy the public id from the [attachment id=att_… …] marker into the tool's `images`).",
+    "  `image_edit` takes a single `images` array of att_ ids and/or URLs: the FIRST entry is the",
+    "  image being edited, every further entry is a style/character-consistency reference. Collect",
+    "  the ids the same way (from the [attachment id=att_… …] markers) and pass as many as you need;",
+    "  there is no fixed local limit — the accepted count is decided by the provider/model.",
     "- Use `image_vision` to *look at* an image in the gallery and answer a question about it.",
     "  Gallery images appear in your context only as [attachment id=att_… …] text markers —",
     "  you can read the id, NOT the pixels. Pass that id as `image` to actually see it",
