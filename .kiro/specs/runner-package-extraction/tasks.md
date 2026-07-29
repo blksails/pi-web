@@ -139,7 +139,7 @@
   - 可观测完成态：两次运行的文件数与用例数**逐档一致**且不低于开工快照；实测输出（含耗时）留档
   - _Requirements: 6.1, 6.2_
 
-- [ ] 6.2 部署态证据：换机复现与产物包解析
+- [x] 6.2 部署态证据：换机复现与产物包解析
   - 构建完整产物；跑换机复现的端到端验证（藏起构建目录）
   - 在真实产物树里实测：从产物入口位置解析新包的引导脚本子路径，须解析到真实存在的文件
   - ★ **开发态运行与单元测试的通过不作为本项证据** —— 开发态下主路径与兜底路径恒等命中，它们的绿对引导路径正确性零信息量
@@ -217,3 +217,20 @@
 - ★★ 6.1 **抓到一个真回归（本 spec 引入，非既有红）**：`test/sandbox-image-build.integration.test.ts:255` 是 `AGENT_CMD` 字节契约的**第二处**逐行断言，任务 4.2 改常量时只更新了 `packages/server/test/sandbox-image/bake-plan.test.ts`，漏了仓库根这处。隐蔽点在于 4.2 自己跑的 `server test:fast` / `core test:fast` / `typecheck` **全绿**，只有跑到根 app 档才现形。
 - ★ 6.1 区分「新失败」与「既有红」靠的是与**记录在案的基线形态逐字比对**：既有 heap OOM 的表现是 `104 passed | 1 skipped (106)`；出问题时是 `1 failed | 103 passed | 1 skipped (106)` —— 总数缺口都是 1，很容易连新增的 `1 failed` 一起当老毛病放过。修复后回到基线形态逐字相同。已在两处断言各加注释说明彼此存在。
 - 6.1 既有红复核（形态未变，非本次引入）：① `desktop` 的 `typecheck` 是 `cargo check`，挂在 Rust 构建；② 根 app 档 worker heap OOM 吞掉 10 个用例（`chat-app-logs-wiring.test.tsx`，本分支自基线起从未碰过）。
+
+### 6.2 部署态证据（dev 态与单测的绿**不计入**，见 R3.5）
+
+| 证据 | 命令 | 结果 |
+|---|---|---|
+| 产物构建 | `pnpm build:dist` | 成功 |
+| 新包进产物 | — | `dist/packages/runner/{package.json,runner-bootstrap.mjs,src}` 齐全 |
+| 产物内包链接 | — | `dist/node_modules/@blksails/pi-web-runner → ../../packages/runner`（`pack-dist` 自动扫描，**零改动**） |
+| ★ 产物树包解析 | `createRequire(<dist/server.mjs>).resolve(...)` | → `dist/packages/runner/runner-bootstrap.mjs`，`existsSync: true` |
+| ★ 旧包名对照 | 同上 | `ERR_PACKAGE_PATH_NOT_EXPORTED`（如期失败） |
+| ★★ 换机复现 | `pnpm e2e:cli:reloc` | **PASS 全部通过**（14 项） |
+| 产物完整性 | `pnpm e2e:cli` | 清单全过（含 `packages/runner/runner-bootstrap.mjs`）；浏览器冒烟 1 项失败 → **既有红**，见下 |
+
+`e2e:cli:reloc` 里三条最要紧的：「运行时落在与构建目录无关的绝对路径」「解包出的产物激活真实会话（无模块/CLI 解析错误）」「mock 被真实 runner 调用」—— 产物搬到与构建位置无关处后，runner **真的被拉起并跑通了会话**（R3.4）。
+
+- ★ 6.2 加了**旧包名对照实验**：只证明新路径能解析不够，还要证明旧路径**确实断了**。否则两个都能解析时，说不清生效的是哪条。
+- ★ 6.2 识别出**第三处既有红**：`pnpm e2e:cli` 的浏览器冒烟超时，页面停在登录页。根因是 `62ea71fe`「Revert 登录页加『暂不登录』出口」（2026-07-28），**是本 spec 起点 `802e2e50`（2026-07-29）的祖先**（`git merge-base --is-ancestor` 验证）。本 spec 未碰任何前端/登录代码（`git diff --name-only 802e2e50..HEAD` 内唯二匹配 login 的是 3.3 搬迁的 runner 测试固件）。
