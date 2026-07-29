@@ -2,8 +2,11 @@
  * `image_edit` 工具注册函数 — 图像编辑(对齐 OpenAI Images `/v1/images/edits`)。
  *
  * detoolspec-unify-builtin-tools:由原 ToolSpec 数据声明改写为 `pi.registerTool` 注册函数。
- * 手写 `parameters` + `execute` 调运行时编排器 {@link runImageTool}。`image`/`mask`/
- * `reference_images` 经 `mediaFields` 在发往 provider 前由编排器解析为 data URI。
+ * 手写 `parameters` + `execute` 调运行时编排器 {@link runImageTool}。
+ *
+ * ★ 图像入参契约(2026-07-29 起):单一 `images: string[]` —— **首项 = 待编辑主图,其余 = 参考图**。
+ * 取代原先的 `image`(单数)+ `reference_images` 两个字段。`images` 与 `mask` 经 `mediaFields`
+ * 在发往 provider 前由编排器逐项解析为 data URI。
  *
  * model 路由:
  *  - `gpt-image-2`               NewAPI(默认)—— OpenAI 兼容 edits(整图改写)
@@ -22,6 +25,7 @@ import {
 import { createNewApiImageEdit, createNewApiGeminiImageEdit } from "../providers/newapi.js";
 import { createSufyImageEdit } from "../providers/sufy.js";
 import { createAiGatewayImageEdit } from "../providers/ai-gateway.js";
+import { createCloudflareImageEdit } from "../providers/cloudflare.js";
 import { openRouterImageEditRoutes } from "../providers/openrouter-models.js";
 import {
   runImageTool,
@@ -113,9 +117,10 @@ const ROUTES: readonly ImageRoute[] = [
 export const IMAGE_EDIT_ROUTES: readonly ImageRoute[] = ROUTES;
 export const IMAGE_EDIT_DEFAULT_MODEL = DEFAULT_MODEL;
 export const IMAGE_EDIT_MEDIA_FIELDS: readonly string[] = [
-  "image",
+  // `images` 是**数组**字段:编排器的 mediaFields 解析支持 string | string[],逐项解析为 data URI。
+  // 取代原先的 "image" + "reference_images" 两个字段(首项主图、其余参考图)。
+  "images",
   "mask",
-  "reference_images",
 ];
 
 /**
@@ -153,6 +158,40 @@ export const AI_GATEWAY_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
   ),
 ];
 
+/**
+ * Cloudflare AI Gateway 图像编辑路由组(spec cloudflare-aigc-provider,Req 2.1/2.4)。
+ *
+ * 与 `CLOUDFLARE_IMAGE_ROUTES`(image-generation.ts)同一批已真机验证的模型;同样**不**
+ * 并入 `ROUTES`/`IMAGE_EDIT_ROUTES`,由 runtime 层按 `CLOUDFLARE_*` 三 env 条件并入。
+ *
+ * ★ 仅纳入**真机确认支持编辑**的模型(Req 2.4)。文生图组有 8 个模型,但编辑组只有 2 个
+ * ——CF 文档指向 OpenAI 系支持编辑,且这两个已实测经 `input.images` 数组正确编辑(保原图
+ * 构图、按指令修改)。其余(imagen-4 / nano-banana / flux 等)未验证编辑语义,故不提供,
+ * 避免用户选中后拿到一张与参考图无关的新图。
+ */
+export const CLOUDFLARE_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
+  createCloudflareImageEdit(
+    {
+      model: "gpt-image-2-cf",
+      label: "GPT Image 2 · Cloudflare",
+      description:
+        "OpenAI gpt-image-2 editing via Cloudflare AI Gateway (unified billing — no OpenAI key needed). " +
+        "Needs CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_AIG_GATEWAY_ID / CLOUDFLARE_API_TOKEN.",
+      providerModel: "openai/gpt-image-2",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImageEdit(
+    {
+      model: "gpt-image-1.5-cf",
+      label: "GPT Image 1.5 · Cloudflare",
+      description: "OpenAI gpt-image-1.5 editing via Cloudflare AI Gateway. Supports transparent PNG.",
+      providerModel: "openai/gpt-image-1.5",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+];
+
 const REQUIRED_PARAMS: readonly InteractionParam[] = [
   { param: "model", via: "select", title: "选择编辑模型", options: ["$models"] },
   {
@@ -173,15 +212,34 @@ const REQUIRED_PARAMS: readonly InteractionParam[] = [
 const BASE_DESCRIPTION =
   "Edit an existing image based on a text prompt. " +
   "Supports inpainting (mask-aware) via DashScope and whole-image rewrite via NewAPI. " +
-  "Provide image and prompt; optionally provide mask (B/W, white = repaint region) and reference_images. " +
+  "Pass `images` (first item = the image to edit, any further items = reference images) and `prompt`; " +
+  "optionally provide mask (B/W, white = repaint region). " +
   "IMPORTANT: pass `prompt` in the user's original language verbatim; do NOT translate it to English.";
 
 const PARAMETER_FIELDS = {
-  image: Type.String({
-    description:
-      "Attachment id (att_...) or URL of the image to edit. " +
-      "Attachment ids are resolved to data URIs before being sent to the provider.",
-  }),
+  /**
+   * 单一图像入参(取代原先的 `image` + `reference_images` 两个字段)。
+   *
+   * 首项 = 待编辑的主图;其余为可选的参考图(风格/角色一致性)。这样与各 provider 的实际
+   * 协议更贴近 —— Cloudflare 的 `input.images`、Gemini relay 的 `contents[].parts[]`、
+   * OpenRouter 的多图消息本就是**一个有序图像序列**,拆成「主图 + 参考图」两个字段反而
+   * 要在每个 provider 里再拼回去。只接受单图的 provider(如 DashScope 编辑)取首项、
+   * 其余按其协议当参考图处理。
+   */
+  images: Type.Array(
+    Type.String({
+      description: "Attachment id (att_...) or URL.",
+    }),
+    {
+      minItems: 1,
+      description:
+        "Images for the edit, in order: the FIRST item is the image being edited; " +
+        "any additional items are reference images for style/character consistency. " +
+        "Attachment ids are resolved to data URIs before being sent to the provider. " +
+        "No fixed local limit on count — the accepted number is decided by the provider/model, " +
+        "and exceeding it surfaces as an upstream error.",
+    },
+  ),
   prompt: Type.String({
     description:
       "What to change, in the user's original language (do NOT translate to English). " +
@@ -204,16 +262,9 @@ const PARAMETER_FIELDS = {
         "Do NOT infer a size from the subject matter.",
     }),
   ),
-  // 原描述把 DashScope 的「总图 ≤ 3」写成了**全局**约束,导致 LLM 对任何模型都自我设限。
-  // 该上限(连同 dashscope.ts 的硬校验)已按需求移除:本地不再设限,张数由各 provider 端裁定。
-  reference_images: Type.Optional(
-    Type.Array(Type.String(), {
-      description:
-        "Optional reference images for style/character consistency. " +
-        "No fixed local limit on how many; the accepted count is decided by the provider/model, " +
-        "and exceeding it surfaces as an upstream error.",
-    }),
-  ),
+  // `reference_images` 已并入上方的 `images` 数组(首项主图、其余参考图),不再单列。
+  // 原本还有一句「DashScope 总图 ≤ 3」被误写成全局约束、导致 LLM 对任何模型都自我设限,
+  // 该上限连同 dashscope.ts 的硬校验早已移除:本地不设限,张数由各 provider 端裁定。
   response_format: Type.Optional(
     Type.Union([Type.Literal("url"), Type.Literal("b64_json")], {
       description: "Output format. OpenAI models only.",
@@ -260,7 +311,7 @@ export function registerImageEdit(pi: ExtensionAPI, opts?: RegisterImageToolOpti
         routes: activeRoutes,
         defaultModel: DEFAULT_MODEL,
         requiredParams: REQUIRED_PARAMS,
-        mediaFields: ["image", "mask", "reference_images"],
+        mediaFields: IMAGE_EDIT_MEDIA_FIELDS,
       });
     },
   });

@@ -122,6 +122,8 @@ import {
 import {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
+  CLOUDFLARE_AIGC_CATALOG,
+  isCloudflareConfigured,
 } from "@blksails/pi-web-tool-kit";
 // listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
 // (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
@@ -522,6 +524,12 @@ function buildSingleton(): HandlerSingleton {
       imageCatalog: AIGC_MODEL_CATALOG,
       gatewayImageCatalog:
         aiGwConfig !== undefined ? AI_GATEWAY_AIGC_CATALOG : undefined,
+      // Cloudflare 图像目录(spec cloudflare-aigc-provider,Req 4.2):启用判据用的是
+      // 与 runner 侧 aigcExtension **同一个** isCloudflareConfigured,两处判据不会漂移
+      // ——否则会出现「设置页列得出模型但工具里选不到」的错位。同样每请求求值,env 即时生效。
+      cloudflareImageCatalog: isCloudflareConfigured(process.env)
+        ? CLOUDFLARE_AIGC_CATALOG
+        : undefined,
       hiddenProviders: parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS),
     });
 

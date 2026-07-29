@@ -99,7 +99,8 @@ describe("createSufyImageEdit", () => {
     const ref1 = "data:image/png;base64,cmVmMQ==";
     const ref2 = "data:image/png;base64,cmVmMg==";
     const form = (await v.buildBody?.(
-      { prompt: "merge", image: main, reference_images: [ref1, ref2], n: 1 },
+      // 统一入参:images 首项 = 主图,其余 = 参考图
+      { prompt: "merge", images: [main, ref1, ref2], n: 1 },
       ctx,
     )) as FormData;
     expect(form instanceof FormData).toBe(true);
@@ -115,7 +116,7 @@ describe("createSufyImageEdit", () => {
     const main = "data:image/png;base64,aGVsbG8=";
     const mask = "data:image/png;base64,bWFzaw==";
     const form = (await v.buildBody?.(
-      { prompt: "edit", image: main, mask, size: "1024*1024" },
+      { prompt: "edit", images: [main], mask, size: "1024*1024" },
       ctx,
     )) as FormData;
     expect(form.get("size")).toBe("1024x1024");

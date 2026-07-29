@@ -21,8 +21,9 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import type { AttachmentToolContext } from "@blksails/pi-web-agent-kit";
-import { checkRequiredVars } from "../engine/var-resolver.js";
+import { checkRequiredVars, resolveVarsOptional } from "../engine/var-resolver.js";
 import { runEndpoint } from "../engine/endpoint-adapter.js";
+import { proxyFetch } from "../engine/proxy-fetch.js";
 import { optimizePrompt } from "./optimize-prompt.js";
 import type { StreamEvent } from "../engine/endpoint-types.js";
 import { emitLivePreview } from "../surface/live-preview-seam.js";
@@ -67,7 +68,7 @@ export interface RunImageToolOptions {
   defaultModel: string;
   /** 业务必选项交互补全声明(顺序即补全顺序)。 */
   requiredParams: readonly InteractionParam[];
-  /** 需解析为 data URI 的图像字段名(如 ["image","mask","reference_images"])。 */
+  /** 需解析为 data URI 的图像字段名(如 ["images","mask"];值可为 string 或 string[],数组逐项解析)。 */
   mediaFields: readonly string[];
   /** 注入依赖(测试用)。 */
   deps?: RunImageToolDeps;
@@ -488,8 +489,19 @@ export async function runImageTool(
     }
 
     const persistStartedAt = Date.now();
+    // ★ 落盘下载必须与 provider 请求走**同一条出网路径**(2026-07-29 真机暴露):
+    // 多数 provider 的 pickResult 返回的是远程 URL(CDN / R2 预签名),这里要二次下载整张图。
+    // 此前该下载恒用裸 `globalThis.fetch`,不理会 route.proxy —— 于是出现「provider 请求成功
+    // (网关后台有 200 记录)、工具却报 fetch failed」的割裂:失败发生在取图这一跳,极易被误判
+    // 成响应格式不匹配。route 未声明 proxy 或 env 未配时 resolveVarsOptional 得 undefined,
+    // proxyFetch 走直连,行为与既有一致。
+    const persistProxyUrl = resolveVarsOptional(route.proxy);
+    const persistFetch =
+      deps?.fetchImpl ??
+      (((u: string | URL, i?: RequestInit) =>
+        proxyFetch(u, i, persistProxyUrl)) as unknown as typeof fetch);
     const assets = await persistPicked(picked, ctx, {
-      fetchImpl: deps?.fetchImpl,
+      fetchImpl: persistFetch,
       // prompt 摘要前缀:多张单图产物此前恒为 `<toolName>-0.png` 同名(@ 引用列表对不上、
       // 对不上助手回复的 att_ id)。用 prompt 摘要命名 → `赛博朋克2077风格的游戏画面-0.png`。
       namePrefix: promptToNamePrefix(merged.prompt, toolName),

@@ -7,7 +7,8 @@
  *  - 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment
  *    store 落库 → 工具回 `att_<id>` 引用,默认工具卡片展示;
  *  - 用户上传图(主进程注入 `[attachment id=att_… …]` 引用)→ 模型把 att_id 抄进
- *    `image_edit({ image, prompt })` → 编辑器解析输入附件为 data URI → provider 编辑 →
+ *    `image_edit({ images: [att_…], prompt })`(`images` 首项=主图,其余=参考图)→ 编辑器解析
+ *    输入附件为 data URI → provider 编辑 →
  *    产物落库回引用。
  *  - **回看**:落库后的图在上下文里只剩 att_ 文本标记(读得到 id、读不到像素)。模型把 att_id
  *    抄进 `image_vision({ image, question })` → 取回字节 → 委派给一个支持图像输入的模型 →
@@ -35,7 +36,8 @@ export default defineAgent({
     "You are aigc-agent, a pi-web example exposing AIGC generation tools.",
     "- Use `image_generation` to generate one or more images from a text prompt.",
     "- Use `image_edit` to edit an uploaded image: copy the public id from the",
-    "  [attachment id=att_… …] marker verbatim into the tool's `image` parameter.",
+    "  [attachment id=att_… …] marker verbatim into the tool's `images` array (first entry =",
+    "  the image being edited; any further entries are style/consistency reference images).",
     "- Use `image_vision` to *look at* an image and answer a question about it.",
     "  Images you generated earlier appear in your context only as",
     "  [attachment id=att_… …] text markers — you can read the id, NOT the pixels.",
@@ -48,7 +50,7 @@ export default defineAgent({
     "- `/img-gen <提示词>` → 调用 `image_generation` 工具生成图像",
     "  (把 `<提示词>` 原样作为工具的 `prompt`,保持用户原语言,不要翻译)。",
     "- `/img-edit <提示词>` → 调用 `image_edit` 工具编辑最近上传的图像",
-    "  (从对话中最近的 [attachment id=att_… …] 取 id 填入工具的 `image` 参数,",
+    "  (从对话中最近的 [attachment id=att_… …] 取 id 填入工具的 `images` 数组首项,",
     "  `<提示词>` 作为编辑指令)。",
     "",
     "Each tool persists its output as an attachment and returns a reference; report the",

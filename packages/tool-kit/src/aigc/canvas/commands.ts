@@ -61,6 +61,29 @@ function fail(code: string, message: string): ExplicitFailure {
 }
 
 /**
+ * canvas 命令 args → `image_edit` 工具入参的**归一**(图像编辑入参契约统一的一部分)。
+ *
+ * 两层契约刻意解耦,故需要这一次转换:
+ *  - canvas schema(`canvas/schema.ts`)用 `image`(主图)+ `reference_images`(参考图)——那是
+ *    **面向命令/UI 的稳定契约**:工作台按钮、插件命令(如 examples 的 `style_transfer`)、快照血缘
+ *    都按这个形状读写,不应随 provider 演进而变形,故保持不变;
+ *  - `image_edit` 工具入参是**面向 provider 的契约**,已统一为单一数组 `images`
+ *    (首项=待编辑主图,其余=风格/角色一致性参考图),取代原先的 `image` + `reference_images`。
+ *
+ * 归一放在 A 档唯一出口 `executeImageEdit`(全部编辑命令都经它),并**删除旧键**——若把 `image` /
+ * `reference_images` 一并透传,下游 `mediaFields`(`["images","mask"]`)不会解析它们,却仍会原样落到
+ * `args` 上传给 provider,形成两套字段并存的歧义。
+ */
+function toImageEditParams(params: Record<string, unknown>): Record<string, unknown> {
+  const { image, reference_images: refs, ...rest } = params;
+  const images: string[] = [
+    ...(typeof image === "string" ? [image] : []),
+    ...(Array.isArray(refs) ? refs.filter((r): r is string => typeof r === "string") : []),
+  ];
+  return { ...rest, images };
+}
+
+/**
  * A 档:调 `runImageTool` 执行一次图像编辑,映射产物为画廊资产、写血缘、prepend 快照。
  * `details.ok===false` / 未产出 → 显式失败(不留半态)。返回新 att_ id 列表。
  */
@@ -75,7 +98,11 @@ async function executeImageEdit(
   // 流式渐进预览(由糊变清)不在此接线:runImageTool 内部经全局 live-preview seam 广播,canvas
   // surface 的 sink 投影进 `livePreview`(见 canvas/extension.ts + surface/live-preview-seam.ts),
   // 对话流 LLM 工具与命令旁路两条路径统一覆盖。故此处 onUpdate 仍为 undefined。
-  const result = await deps.runImageTool(params, undefined, undefined, undefined, {
+  //
+  // 入参先经 `toImageEditParams` 归一:canvas 的 `image` + `reference_images` → 工具契约的单一
+  // `images` 数组(见该函数注释)。血缘(`lineage.derivedFrom` = 主图 att_)仍走 canvas 形状,
+  // 不受此归一影响。
+  const result = await deps.runImageTool(toImageEditParams(params), undefined, undefined, undefined, {
     toolName: "image_edit",
     routes: IMAGE_EDIT_ROUTES,
     defaultModel: IMAGE_EDIT_DEFAULT_MODEL,

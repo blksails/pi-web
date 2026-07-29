@@ -8,7 +8,7 @@
  * 覆盖:
  *  - URL 拼接(`<base>/models/<providerModel>:generateContent`)与 providerModel 区分路由键
  *  - buildBody:文生图 contents/generationConfig;negative_prompt 并入正文;size → aspectRatio
- *  - buildBody(编辑):data URI 拆成 inlineData,图在前指令在后
+ *  - buildBody(编辑):统一 images 数组(首项主图、其余参考图)拆成 inlineData,图在前指令在后
  *  - pickResult:单图 / 多图 / 仅文本 / 无内容;snake_case inline_data 兼容
  *  - detectError:relay error 与 promptFeedback 拒答
  */
@@ -100,7 +100,7 @@ describe("buildBody(编辑)", () => {
 
   it("data URI 拆成 inlineData,图在前、指令在后", async () => {
     const body = (await v.buildBody?.(
-      { prompt: "变成蓝色", image: "data:image/png;base64,AAAB" },
+      { prompt: "变成蓝色", images: ["data:image/png;base64,AAAB"] },
       ctx,
     )) as Record<string, any>;
     expect(body.contents[0].parts).toEqual([
@@ -109,12 +109,11 @@ describe("buildBody(编辑)", () => {
     ]);
   });
 
-  it("参考图一并进 parts,顺序在主图之后", async () => {
+  it("images 首项为主图,其余参考图按序跟在其后", async () => {
     const body = (await v.buildBody?.(
       {
         prompt: "合成",
-        image: "data:image/png;base64,MAIN",
-        reference_images: ["data:image/jpeg;base64,REF1"],
+        images: ["data:image/png;base64,MAIN", "data:image/jpeg;base64,REF1"],
       },
       ctx,
     )) as Record<string, any>;
@@ -127,10 +126,17 @@ describe("buildBody(编辑)", () => {
 
   it("非 data URI(如 https 直链)静默跳过,不拖垮整次调用", async () => {
     const body = (await v.buildBody?.(
-      { prompt: "p", image: "https://example.com/a.png" },
+      { prompt: "p", images: ["https://example.com/a.png"] },
       ctx,
     )) as Record<string, any>;
     expect(body.contents[0].parts).toEqual([{ text: "p" }]);
+  });
+
+  it("images 缺失/空数组 → 只发指令 part(沿用原静默策略,不抛错)", async () => {
+    const none = (await v.buildBody?.({ prompt: "p" }, ctx)) as Record<string, any>;
+    expect(none.contents[0].parts).toEqual([{ text: "p" }]);
+    const empty = (await v.buildBody?.({ prompt: "p", images: [] }, ctx)) as Record<string, any>;
+    expect(empty.contents[0].parts).toEqual([{ text: "p" }]);
   });
 });
 

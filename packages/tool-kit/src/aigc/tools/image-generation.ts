@@ -22,6 +22,7 @@ import {
 import { createNewApiImage, createNewApiGeminiImage } from "../providers/newapi.js";
 import { createSufyImage } from "../providers/sufy.js";
 import { createAiGatewayImage } from "../providers/ai-gateway.js";
+import { createCloudflareImage } from "../providers/cloudflare.js";
 import { openRouterImageRoutes } from "../providers/openrouter-models.js";
 import {
   runImageTool,
@@ -217,6 +218,115 @@ export const AI_GATEWAY_IMAGE_ROUTES: readonly ImageRoute[] = [
       description: "Qwen text-to-image generation via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
     },
     { pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
+  ),
+];
+
+/**
+ * Cloudflare AI Gateway 文生图路由组(spec cloudflare-aigc-provider,Req 1.1/4.4/4.5)。
+ *
+ * 与 `AI_GATEWAY_IMAGE_ROUTES` 同款纪律:**不**并入 `ROUTES`/`IMAGE_GENERATION_ROUTES`
+ * (那两者始终无条件注册);由 runtime 层 `extension.ts` 按三个 `CLOUDFLARE_*` env 是否
+ * 齐备决定是否经 `registerImageGeneration` 的 `opts.extraRoutes` 并入。
+ *
+ * ★ 首批仅纳入**已真机验证可出图**的模型(Req 4.5:不照文档全量写入,否则选择器会列出
+ * 本账号网关上实际不可用的模型)。其余候选由 spec 任务 5.4 逐个真机确认后追加。
+ *
+ * ★ 路由键 `gpt-image-2-cf` 与既有三个同名模型全部区分:`gpt-image-2`(NewAPI)、
+ * `gpt-image-2-sufy`(sufy)、`gpt-image-2-ai-gateway`(BlackSail 自建网关)。
+ */
+export const CLOUDFLARE_IMAGE_ROUTES: readonly ImageRoute[] = [
+  createCloudflareImage(
+    {
+      model: "gpt-image-2-cf",
+      label: "GPT Image 2 · Cloudflare",
+      description:
+        "OpenAI gpt-image-2 generation via Cloudflare AI Gateway (unified billing — no OpenAI key needed). " +
+        "Needs CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_AIG_GATEWAY_ID / CLOUDFLARE_API_TOKEN.",
+      providerModel: "openai/gpt-image-2",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "gpt-image-1.5-cf",
+      label: "GPT Image 1.5 · Cloudflare",
+      description: "OpenAI gpt-image-1.5 generation via Cloudflare AI Gateway. Supports transparent PNG.",
+      providerModel: "openai/gpt-image-1.5",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "imagen-4-cf",
+      label: "Imagen 4 · Cloudflare",
+      description: "Google Imagen 4 photorealistic generation via Cloudflare AI Gateway.",
+      providerModel: "google/imagen-4",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "nano-banana-2-cf",
+      label: "Nano Banana 2 · Cloudflare",
+      description: "Google Gemini image model (fast) via Cloudflare AI Gateway.",
+      providerModel: "google/nano-banana-2",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "nano-banana-pro-cf",
+      label: "Nano Banana Pro · Cloudflare",
+      description: "Google Gemini image model (higher quality) via Cloudflare AI Gateway.",
+      providerModel: "google/nano-banana-pro",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "flux-2-pro-cf",
+      label: "FLUX.2 Pro · Cloudflare",
+      description: "Black Forest Labs FLUX.2 pro-preview via Cloudflare AI Gateway.",
+      providerModel: "black-forest-labs/flux-2-pro-preview",
+    },
+    { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
+  ),
+  // ── Workers AI 原生(@cf/*)——**暂不暴露**,见下方说明 ────────────────────────
+];
+
+/**
+ * Workers AI 原生模型(`@cf/*`)——**已验证可用但暂不入目录**(2026-07-29 用户裁定)。
+ *
+ * 为什么摘掉:这类模型不走 Unified 统一计费,吃的是账号的**每日 10,000 neurons 免费额度**,
+ * 耗尽后返回
+ *   `429 AiError: you have used up your daily free allocation of 10,000 neurons`(code 4006)。
+ * 留在目录里会让用户选中后随机失败(额度何时耗尽不可预期),体验差于「不提供」。
+ *
+ * ★ 注意本表**不是死代码**:`pickResult` 的裸 base64 分支(Req 3.2/3.3)仍由
+ * `test/aigc/providers/cloudflare.test.ts` 的单测守卫,能力完好。开通 Workers Paid 后
+ * 把本表并入 {@link CLOUDFLARE_IMAGE_ROUTES} 即可恢复,无需改动 provider 实现。
+ *
+ * 真机记录(2026-07-29,额度耗尽前):`flux-1-schnell` 1.7~2.5s、`lucid-origin` 4.9s,
+ * 两者均返回裸 base64 JPEG 并经 MIME 嗅探正常落盘。
+ */
+export const CLOUDFLARE_WORKERS_AI_ROUTES: readonly ImageRoute[] = [
+  createCloudflareImage(
+    {
+      model: "flux-1-schnell-cf",
+      label: "FLUX.1 schnell · Cloudflare",
+      description: "Cloudflare Workers AI native FLUX.1 schnell (fast, ~3s). Consumes daily free neurons.",
+      providerModel: "@cf/black-forest-labs/flux-1-schnell",
+    },
+    { pricing: { amount: 0.01, currency: "USD", unit: "image" } },
+  ),
+  createCloudflareImage(
+    {
+      model: "lucid-origin-cf",
+      label: "Lucid Origin · Cloudflare",
+      description: "Cloudflare Workers AI native Leonardo Lucid Origin. Consumes daily free neurons.",
+      providerModel: "@cf/leonardo/lucid-origin",
+    },
+    { pricing: { amount: 0.01, currency: "USD", unit: "image" } },
   ),
 ];
 

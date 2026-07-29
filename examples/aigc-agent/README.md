@@ -10,7 +10,7 @@
 | 场景 | 链路 |
 |---|---|
 | 文生图 | 用户发文本 prompt → 模型调 `image_generation({ prompt })` → provider 生成 → 产物经 attachment store 落库 → 工具回 `att_<id>` 引用 |
-| 图编辑 | 用户上传图（主进程注入 `[attachment id=att_… …]` 引用）→ 模型把 att_id 抄进 `image_edit({ instruction, image })` → 编辑器解析输入附件为 data URI → provider 编辑 → 产物落库回引用 |
+| 图编辑 | 用户上传图（主进程注入 `[attachment id=att_… …]` 引用）→ 模型把 att_id 抄进 `image_edit({ instruction, images: [att_…] })`（`images` 首项=待编辑主图，其余=参考图） → 编辑器解析输入附件为 data URI → provider 编辑 → 产物落库回引用 |
 | **回看** | 落库后的图在上下文里只剩 `att_` 文本标记（读得到 id、**读不到像素**）→ 模型把 att_id 抄进 `image_vision({ image, question })` → 取回字节 → 委派给一个支持图像输入的模型 → 返回文字结论 |
 
 于是「生成一张图 → 让 agent 描述它到底画了什么」这个闭环得以成立——在 `image_vision` 之前它做不到。
