@@ -70,20 +70,26 @@ export function buildRuntimeFactory(
 ): CreateAgentSessionRuntimeFactory & {
   slashCompletions?: readonly SlashCompletionDecl[];
 } {
-  // 主来源=runner 侧自解析(与文件系统无关);env 仅作过渡兼容与 sandbox 入口(已去重)。
-  const forcedExtensionPaths = collectExtensionPaths(process.env);
-  const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
-    forcedExtensionPaths,
-    ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
-    ...(systemResources.noExtensions !== undefined
-      ? { noExtensions: systemResources.noExtensions }
-      : {}),
-  });
   const session = mapSessionFields(def);
 
   const factory: CreateAgentSessionRuntimeFactory & {
     slashCompletions?: readonly SlashCompletionDecl[];
   } = async ({ cwd, agentDir, sessionManager, sessionStartEvent }) => {
+    // 主来源=runner 侧自解析(与文件系统无关);env 仅作过渡兼容与 sandbox 入口(已去重)。
+    //
+    // ★ 在 factory **内部**求值,不在 buildRuntimeFactory 求值一次后闭包捕获:factory 会被
+    //   进程内的 new_session / switchSession / fork 多次调用,而捕获式写法会把首次求得的
+    //   路径集永久钉死。当前 runner 是 per-session 子进程、env 进程内不变,故两种写法结果
+    //   相同 —— 但一旦进程被复用(池化预 spawn),捕获式就会静默沿用陈旧值,表现是「新会话
+    //   的内置扩展是上一个会话的」。放在这里使正确性不依赖「进程不复用」这个外部前提。
+    const forcedExtensionPaths = collectExtensionPaths(process.env);
+    const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
+      forcedExtensionPaths,
+      ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
+      ...(systemResources.noExtensions !== undefined
+        ? { noExtensions: systemResources.noExtensions }
+        : {}),
+    });
     // desktop-cloud-login(Req 3.1/3.2/4.1/4.3):登录态经 runner env 注入指向云端 egress 的
     // 内存 ModelRegistry(复用共享 auth.json,零落盘,不改 agentDir)。未登录/未启用 →
     // undefined,保持 SDK 默认(共享 auth.json + models.json),字节级等价今日本地路径。

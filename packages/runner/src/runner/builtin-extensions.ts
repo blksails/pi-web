@@ -56,18 +56,29 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   { id: "mcp", resolve: mcpEntryPath },
 ];
 
+/** 诊断出口的最小视图(默认 `process.stderr`;单测注入以捕获)。 */
+export interface DiagnosticSink {
+  write(s: string): unknown;
+}
+
 /**
  * 解析全部可用的内置扩展入口。
  *
  * - 顺序稳定(Req 1.5);
- * - 解析不到的条目**跳过并记日志**,不抛出(Req 1.4/5.3)——某形态的安装树缺该代码时
+ * - 解析不到的条目**跳过并记诊断**,不抛出(Req 1.4/5.3)——某形态的安装树缺该代码时
  *   降级为该能力不可用,而非会话失败;
  * - 单个条目抛错同样被吞掉(entry-path 内部理论上不抛,此处为防御)。
  *
+ * ★ 诊断同时走 logger 与 stderr:日志**默认关闭**,只记 log 等于「fail-soft + 默认静音」
+ *   —— 用户看到的是「MCP / 自动标题莫名不工作」且无任何线索。这里丢的是一整个**能力**,
+ *   不是一次调用失败,可见性必须无条件(与 runner 装配期其他能力级失败同一处置)。
+ *
  * @param specs 注入点:便于单测替换清单。缺省用 {@link BUILTIN_EXTENSIONS}。
+ * @param diag  诊断出口(默认 `process.stderr`);单测注入以避免噪声并直接断言。
  */
 export function resolveBuiltinExtensionEntries(
   specs: readonly BuiltinExtensionSpec[] = BUILTIN_EXTENSIONS,
+  diag: DiagnosticSink = process.stderr,
 ): readonly string[] {
   const entries: string[] = [];
   for (const spec of specs) {
@@ -75,15 +86,18 @@ export function resolveBuiltinExtensionEntries(
     try {
       resolved = spec.resolve();
     } catch (err: unknown) {
-      log.warn("builtin extension entry resolve threw", {
-        id: spec.id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      const error = err instanceof Error ? err.message : String(err);
+      log.warn("builtin extension entry resolve threw", { id: spec.id, error });
+      diag.write(`runner: builtin extension "${spec.id}" resolve threw: ${error}\n`);
       continue;
     }
     if (resolved === undefined || resolved.length === 0) {
       // Req 5.3:不可解析对维护者可观测,而非无声缺失。
       log.warn("builtin extension entry not resolvable in this install tree", { id: spec.id });
+      diag.write(
+        `runner: builtin extension "${spec.id}" not resolvable in this install tree ` +
+          `(capability unavailable for this session)\n`,
+      );
       continue;
     }
     entries.push(resolved);

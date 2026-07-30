@@ -58,6 +58,22 @@ export type { RunnerArgs };
 const bootLog = createLogger({ namespace: "runner:boot" });
 
 /**
+ * 装配期「降级但不致命」的失败出口。
+ *
+ * ★ 两处都写,缺一不可:
+ *  - `bootLog` 受日志门控,开启时进文件 sink —— 事后排查线上问题只能靠它;
+ *  - `stderr` 无条件可见 —— 日志**默认关闭**,不写 stderr 就等于这条失败从未发生过。
+ *
+ * 改造前 session-store 与 piweb.session 两处只写 stderr,恰恰是「进不了日志文件」的
+ * 那两条;而其余装配失败只走 bootLog,又是「默认配置下看不见」的那些。统一到此。
+ */
+function reportBootFailure(what: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  bootLog.error(what, { message });
+  process.stderr.write(`runner: ${what}: ${message}\n`);
+}
+
+/**
  * 装配期白名单校验(spec agent-attachment-profile,任务 3.1;Req 2.1/2.2/5.1)。
  *
  * 权威在子进程:definition(`factory.attachmentProfile`)与拓扑 env 都在子进程手里。
@@ -210,12 +226,10 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
       );
       const store = await createSessionEntryStore(storeConfig);
       await mirrorSessionManagerToStore(sessionManager, store, (err) =>
-        process.stderr.write(`runner: session-store mirror error: ${String(err)}\n`),
+        reportBootFailure("session-store mirror error", err),
       );
     } catch (err) {
-      process.stderr.write(
-        `runner: failed to init session store (${storeConfig.kind}): ${String(err)}\n`,
-      );
+      reportBootFailure(`failed to init session store (${storeConfig.kind})`, err);
     }
   }
 
@@ -229,9 +243,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
         ...(args.model !== undefined ? { model: args.model } : {}),
       });
     } catch (err) {
-      process.stderr.write(
-        `runner: failed to write piweb.session metadata: ${String(err)}\n`,
-      );
+      reportBootFailure("failed to write piweb.session metadata", err);
     }
   }
 
@@ -275,12 +287,9 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
       env: process.env,
       shared: {},
     },
-    (id, error) => {
-      bootLog.warn("session bridge failed to wire", {
-        bridge: id,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    },
+    // 桥装配失败 = 该能力本会话整个缺失,与 session-store 同属「降级但不致命」,
+    // 走同一出口(日志 + stderr),不因日志默认关闭而隐身。
+    (id, error) => reportBootFailure(`session bridge "${id}" failed to wire`, error),
   );
   bootLog.debug("session bridges wired", { installed });
 
