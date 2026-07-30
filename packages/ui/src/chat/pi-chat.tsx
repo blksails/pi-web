@@ -991,8 +991,8 @@ export function PiChat({
    * 而待迁移的**存量** agent 恰恰只声明旧槽 —— 只诊断并存态就等于对全部迁移对象静默。
    *
    * 旧槽收宿主 realm 的 React 节点,pane 是 opaque-origin iframe,两者之间没有机械转换:
-   * 伸手进宿主 realm 的东西(React context / surfaceAccess / canvas 插件组件)都要改成经
-   * MessageChannel + 显式授权说话的 guest。故诊断给的是**迁移途径**,不是「换个键名」。
+   * 伸手进宿主 realm 的东西(React context / surfaceAccess / 宿主 realm 的插件组件)都要改成
+   * 经 MessageChannel + 显式授权说话的 guest。故诊断给的是**迁移途径**,不是「换个键名」。
    */
   React.useEffect(() => {
     if (!hasLegacySlot) return;

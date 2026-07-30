@@ -58,8 +58,14 @@ test("webext declarative: 纯声明 source 不渲染扩展区域(零 bundle, 回
   await page.locator("[data-agent-source-submit]").click();
 
   await expect(page.locator("[data-session-active]")).toBeVisible();
-  // 声明式仅 theme/layout,无 slot 组件 → 无扩展面板。
-  await expect(page.locator("[data-pi-ext-panel-right]")).toHaveCount(0);
+  // 声明式仅 theme/layout,无 slot 组件 → 扩展不贡献任何面板内容。
+  //
+  // ★ 2026-07-30(spec host-builtin-panes):本断言原为面板容器 count 0。R1.1 正当推翻了它 ——
+  // 宿主内置 pane 使面板在任何 agent 下都出现,包括零 bundle 的纯声明式扩展。故判据改为
+  // 「面板里只有内置 pane,没有扩展槽渲染物」,原意(零 bundle 不产生扩展 UI)完整保留。
+  await expect(page.locator("[data-panes-host]")).toHaveCount(1);
+  await expect(page.locator("[data-panes-host] iframe")).toHaveCount(1);
+  await expect(page.locator('iframe[title="会话信息"]')).toHaveCount(1);
   // 但默认聊天界面仍可用。
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
 });

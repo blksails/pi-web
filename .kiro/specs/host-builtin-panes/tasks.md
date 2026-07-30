@@ -227,7 +227,34 @@
   - _Depends: 5.1, 6.1, 6.2_
   - _Boundary: e2e — `e2e/browser/host-builtin-panes.e2e.test.ts`_
 
-- [ ] 6.5 全量回归与既有 panes 不回退核验
+- [x] 6.5 全量回归与既有 panes 不回退核验
+
+  > **实测记录(2026-07-30)**
+  > - `pnpm typecheck` EXIT=0 —— 6.2 的镜像↔canonical 双向可赋值断言真正的判据在这里
+  >   (vitest 只转译不做类型检查,那两条在 vitest 跑绿**不代表**成立)。
+  > - `pnpm test` EXIT=0,**22 个测试面**,5626 passed / 25 skipped / 0 failed。
+  >   逐面算术核对 `passed+skipped+failed == total` 全部自洽。
+  >   ★ 首次累加得 0 —— 数值带 ANSI 颜色码,剥掉后重算才对。「为 0 就换第二种方法复算」。
+  >   交叉核验:6.4 时为 5599,加 6.2 的 13 例 + 6.3 的 14 例 = 5626,逐数对得上。
+  > - 既有 pane e2e(canvas ×3 / logs-panel / webext ×2)17/17,`PLAYWRIGHT_EXIT=0`。
+  > - 全量 playwright 134 例:121 passed / 6 failed / 7 skipped。
+  >   ★ 那 6 例(attachment-tool-bridge ×1、desktop-cloud-login ×5)**已实测证明为存量红**:
+  >   checkout 到本 spec 起点 `efa3bd9e` 重建 dist 后重跑,**同样的 6 例、同样的失败**。
+  >   这条必须实测而非推断 —— 本 spec 改了 `hasSurfacePanel`(它控制空闲控制流是否开启),
+  >   而内置 pane 使几乎所有会话都多开一条控制流,与 attachment「会话始终连不上」的症状
+  >   在因果上是接得起来的。基线红排除了这条链。
+  >   (login 那 5 例的根因另有线索:主仓未提交的 `readDesktopScopedCloudEgressBase` 修复
+  >   本 worktree 没有 —— 与 6.4 撞到的「本地 dev 被拦成登录页」同族,属 `desktop-account-login`。)
+  >
+  > **两条既有 e2e 断言被本 spec 正当推翻**(不是修 bug,是契约变更):
+  > `aigc-canvas.e2e.ts` 的「非 AIGC source ⇒ 面板宿主 count 0」与 `webext.e2e.ts` 的
+  > 「纯声明式扩展 ⇒ 面板容器 count 0」——两者守的都是「agent 无贡献 ⇒ 面板整体不存在」,
+  > 而 R1.1 的核心恰恰是让内置 pane 在这种情形下出现。**没有删断言**(删了就丢掉「agent 的
+  > pane 不该泄漏进来」这层保护),改为「面板在,但里面**只有**内置那一个 iframe」——
+  > 原意完整保留且比原断言更精确。
+  >
+  > 另:全量 test 首轮曾红一例,是本人在 `pi-chat.tsx` 注释里写了领域词,被 SES-H1 宿主中立线
+  > 守卫抓到。守卫是对的(pi-chat 是宿主中立层),改的是注释。
   - 跑全部测试面(含各子包)与类型检查;核对汇总行算术(passed+skipped 是否等于总数)——
     worker 静默崩溃会伪装成「0 failed」
   - 专项核验 canvas 示例与 panes 示例的既有 pane e2e 仍通过

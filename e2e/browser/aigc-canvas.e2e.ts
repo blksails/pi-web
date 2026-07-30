@@ -198,8 +198,16 @@ test("canvas: 非 AIGC source(hello-agent)不挂载 pane 宿主,pi-web 照常运
 }) => {
   await selectSource(page, UNRELATED_SOURCE);
 
-  // 该 source 未声明 canvas webext → 宿主不挂载 PanesHost,也就没有画廊 iframe。
-  await expect(page.locator("[data-panes-host]")).toHaveCount(0);
+  // 该 source 未声明 canvas webext → 没有画廊 pane。
+  //
+  // ★ 2026-07-30(spec host-builtin-panes):本断言原为 `[data-panes-host]` count 0 ——
+  // 那守的是「agent 无贡献 ⇒ 面板整体不存在」。R1.1 正当推翻了它:宿主内置 pane 使面板
+  // 在**任何** agent 下都出现。故判据改为「宿主 pane 宿主在,但里面只有内置那一个」——
+  // 原意(canvas 退化时不得泄漏画廊)完整保留,且比原断言更精确。
+  await expect(page.locator("[data-panes-host]")).toHaveCount(1);
+  // 只有内置 pane 一个 iframe:画廊 pane 若被错误地挂上来,这条立刻报红。
+  await expect(page.locator("[data-panes-host] iframe")).toHaveCount(1);
+  await expect(page.locator('iframe[title="会话信息"]')).toHaveCount(1);
 
   // 独立性:输入可用、可对话,不因 canvas 缺失报错。
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
