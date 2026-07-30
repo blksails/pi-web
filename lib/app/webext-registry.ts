@@ -14,6 +14,7 @@ import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
+import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
@@ -105,6 +106,16 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
   // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。
   { match: "plugin-code-review-agent", ext: codeReviewExt },
+  // panes-agent:五个独立 iframe panes,已迁到**可枚举的 pane 声明键**(spec host-builtin-panes
+  // 任务 5.1),不再自渲染 panelRight 槽 —— 宿主据此把它与内置 pane 合并。
+  //
+  // 本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),`.pi/web` 不存作者源码。
+  // b181e677 曾以「stale static import」移除本项;现产物随 `build:webext-examples` 常规产出,
+  // 且迁移后本 webext 不含 React 组件,故可稳定走构建期静态车道。
+  //
+  // ⚠ 为何不走运行时 `/api/webext/resolve` 车道:该车道要求代码 webext **已签名**,未签名会被
+  // 拒(实测 `rejectedReason: "代码 webext 未签名"`)。示例产物不签名,故只能走静态车道。
+  { match: "panes-agent", ext: panesExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */

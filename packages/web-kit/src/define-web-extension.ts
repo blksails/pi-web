@@ -151,6 +151,17 @@ export interface PaneContributionBundle {
   readonly initialPaneIds?: readonly string[];
   /** 该 agent 期望的同时打开上限;与内置集合合并时取两者较大者。 */
   readonly maxOpenPanes?: number;
+  /**
+   * pane 宿主的交互配置(交互模式、tab 重排、命令面板、事件目标映射等),由宿主**原样透传**给
+   * pane 宿主组件,不解析。
+   *
+   * 为什么需要它:迁移到本声明键之前,agent 是自己实例化 pane 宿主组件的,交互配置直接作为
+   * 该组件的 prop。改由宿主实例化后,这份配置若无处可放就会静默丢失 —— 表现为 advanced 交互
+   * 模式、tab 重排、命令面板等能力无声消失(一次真实的行为回退)。
+   *
+   * 形状与 `canvasPlugins` 同一手法:位宽型 `unknown`,canonical 家在 panes-kit。
+   */
+  readonly config?: unknown;
 }
 
 /** 运行时 WebExtension 描述符(`.pi/web` 入口默认导出)。 */

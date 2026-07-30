@@ -155,7 +155,7 @@
 
 - [ ] 5. Integration:agent 声明路径验证
 
-- [ ] 5.1 把 panes 示例 agent 迁到新声明键
+- [x] 5.1 把 panes 示例 agent 迁到新声明键
   - 该示例改用可枚举的 pane 声明键,不再自行渲染右侧面板槽 —— 用它验证合并路径真的通
   - ★ **刻意不动** canvas 示例:保留其旧槽形态作为「既有形态不回退」的活体回归守卫。
     两个都迁则旧槽路径再无活的测试守着
@@ -203,7 +203,7 @@
   - _Depends: 2.2_
   - _Boundary: 授权测试 — `packages/panes-kit/test/builtin-identity-no-escalation.test.ts`_
 
-- [ ] 6.4 真实浏览器端到端取证(四种组合)
+- [x] 6.4 真实浏览器端到端取证(四种组合)
   - 组合一:**不带 web extension 的 agent** — 打开会话 → 右侧面板可见 → 点开会话信息 pane →
     显示真实会话标识。这是本 spec 的核心验收路径
   - 组合二:**cli 模式 agent** — 同上链路成立

@@ -960,6 +960,11 @@ export function PiChat({
     return mergePaneSources(sources);
   }, [hasLegacySlot, hostPaneSource, agentPaneDecl, extension?.manifestId]);
   const mergedPanes = paneMerge?.definition;
+  // agent 声明的 pane 交互配置(交互模式/tab 重排/命令面板/事件目标):领域中立地原样透传。
+  // 迁移到声明键之前这是 agent 自己给 PanesHost 的 prop —— 不透传就会静默丢失那些能力。
+  const agentPaneConfig = agentPaneDecl?.config as
+    | React.ComponentProps<typeof PanesHost>["config"]
+    | undefined;
   // 拒绝记录在**会话装载期**上报,不推迟到用户点开 pane(Req 3.4)。
   const paneRejections = paneMerge?.rejections;
   React.useEffect(() => {
@@ -2134,6 +2139,7 @@ export function PiChat({
                     {...(sessionId !== undefined ? { sessionId } : {})}
                     conversation={conversation}
                     signals={hostPaneSignals}
+                    {...(agentPaneConfig !== undefined ? { config: agentPaneConfig } : {})}
                     onHostError={(error) => {
                       log.error("pane host error", { code: error.code, message: error.message });
                     }}
