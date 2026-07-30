@@ -88,6 +88,7 @@ WorkspaceError
 WorkspaceIoError
 WorkspaceKeyError
 WorkspaceLimitError
+WorkspaceSessionMetaIndex
 applyFormToSettings
 applyTrust
 assemble

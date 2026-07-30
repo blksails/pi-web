@@ -6,6 +6,10 @@
  */
 export type { SessionMetaEntry, SessionMetaIndex } from "./types.js";
 export {
+  WorkspaceSessionMetaIndex,
+  type WorkspaceSessionMetaIndexOptions,
+} from "./workspace-index.js";
+export {
   JsonFileSessionMetaIndex,
   defaultSessionMetaIndexPath,
   sessionMetaIndexPathFromEnv,

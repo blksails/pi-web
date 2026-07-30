@@ -129,8 +129,17 @@ export class JsonFileSessionMetaIndex implements SessionMetaIndex {
     return this.#path;
   }
 
-  async read(): Promise<ReadonlyMap<string, SessionMetaEntry>> {
-    return this.#readMap();
+  async read(
+    sessionIds?: readonly string[],
+  ): Promise<ReadonlyMap<string, SessionMetaEntry>> {
+    const all = await this.#readMap();
+    if (sessionIds === undefined) return all;
+    // 整份存储读全量本就最优,但**语义必须与分键实现一致**:给了 ids 就只返回这些。
+    // (一致性套件会抓这条 —— 端口若两边行为不同,调用方就无法依赖它。)
+    const want = new Set(sessionIds);
+    const out = new Map<string, SessionMetaEntry>();
+    for (const [id, entry] of all) if (want.has(id)) out.set(id, entry);
+    return out;
   }
 
   async merge(sessionId: string, patch: SessionMetaEntry): Promise<void> {

@@ -52,8 +52,9 @@ import {
   parseBackendsEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
-  // 会话展示元数据索引(spec session-meta-index):集中 JSON 文件实现。
+  // 会话展示元数据索引(spec session-meta-index):本地文件实现 + Workspace 实现 + 端口类型。
   JsonFileSessionMetaIndex,
+  type SessionMetaIndex,
   ConfigCodec,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
   // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
@@ -696,10 +697,20 @@ function buildSingleton(): HandlerSingleton {
   // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
   // ⚠ 与 readinessHandshake 存在耦合:lifecycle 仅经 setLifecycle 入快照(后者在握手关闭时早返回),
   // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
-  // 会话展示元数据索引(spec session-meta-index):集中 JSON 文件,置于 sessions 目录**之外**
-  // (默认 ~/.pi/agent/piweb-session-index.json,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖)。
-  // 定位是缓存:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
-  const sessionMetaIndex = new JsonFileSessionMetaIndex();
+  // 会话展示元数据索引(spec session-meta-index)。两条实现,按宿主形态选:
+  //
+  //  - **本地**(本装配:桌面 / dev / npm CLI)→ `JsonFileSessionMetaIndex`:整份 JSON 文件
+  //    (默认 `~/.pi/agent/piweb-session-index.json`,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖,
+  //    置于 sessions 目录**之外**)+ 跨进程锁。本地形态多进程共写同一份文件(web + 桌面 + CLI),
+  //    而 Workspace 契约**不提供**跨进程锁 —— 故这里保留带锁的文件实现,不为统一而牺牲
+  //    本地的并发保证。
+  //  - **云端**(pi-clouds 自行装配)→ 传 `HostDeps.sessionMetaIndex =
+  //    new WorkspaceSessionMetaIndex(tenantWorkspace.user)`:每会话一键,持久化经宿主状态端口,
+  //    天然获得租户隔离。该字段的类型就是端口本身,故云端无需改动 pi-web 即可接入。
+  //
+  // 两条实现由 `test/session-meta/conformance.it.test.ts` 的同一批断言共同验收。
+  // 定位都是**缓存**:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
+  const sessionMetaIndex: SessionMetaIndex = new JsonFileSessionMetaIndex();
 
   // 启动时清一次残留(Req 5.3):索引对会话是**弱引用** —— 绕过 pi-web 的删除(手工 rm、
   // pi CLI 删、换机器、换存储后端)会留下孤儿键。孤儿不影响正确性(列表以实际会话为准),

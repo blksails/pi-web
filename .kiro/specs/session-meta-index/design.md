@@ -407,6 +407,37 @@ export interface SessionMetaIndex {
 - Validation: 条目级校验必须**逐字段**进行，不得因一个坏字段丢弃整条（3.3）。
 - Risks: 高并发下写入放弃率上升 → 表现为元数据延迟补齐，可由后续 `merge` 自愈；索引与实际会话漂移由 `prune` + 列表以 store 为准兜住。
 
+#### WorkspaceSessionMetaIndex（云端可实现的第二条实现）
+
+| Field | Detail |
+|-------|--------|
+| Intent | 让元数据持久化经**宿主状态端口**，使 pi-clouds 注入 TenantWorkspace 后云端可用 |
+| Requirements | 1.x, 3.x, 4.1, 4.2, 5.1, 5.3 |
+
+**Responsibilities & Constraints**
+
+- 建在 `WorkspaceNamespace` 之上（本地传 `createLocalWorkspaceNamespace(agentDir)`，
+  云端传注入的 `workspace.user`）。M2/M4 已把 config / favorites / per-source / sources
+  迁到该端口，本实现补齐会话展示元数据这一块 —— 绕过该端口的持久化在云端根本不可用。
+- ★ **每会话一键** `session-meta/<sessionId>.json`，而非整份索引存一个键。这是契约语义
+  逼出来的：契约保证「单键原子可见性」但**不提供**跨进程锁，本地 `writeJson(merge:true)`
+  就是 `read → deepMerge → writeFileAtomic`；整份索引存一个键时，两个进程并发写不同会话
+  会互相覆盖 —— 正是文件实现用自制锁解决的问题，而这里没有锁可用。分键之后不同会话写
+  不同键，单键原子性就够，也不需要契约不提供的跨键事务。
+- 代价是读放大：全量读要 `list` + N 次 `readJson`。故端口的 `read(sessionIds?)` 允许只读
+  当前页 —— 列表常态路径只读 ≤limit 条，全量读只在搜索分支付出。
+- **键空间是安全边界**：`sessionId` 来自请求参数，不能假定是 uuid。含 `/`、`..`、控制字符
+  等一律拒绝写入（元数据是展示增强，拒写远好过越界）。
+
+**选型（装配层）**
+
+| 形态 | 实现 | 理由 |
+|---|---|---|
+| 本地（桌面 / dev / npm CLI） | `JsonFileSessionMetaIndex` | 多进程共写同一文件，需要跨进程锁；Workspace 契约不提供 |
+| 云端（pi-clouds 自行装配） | `WorkspaceSessionMetaIndex` | 租户隔离由 TenantWorkspace 负责；经 `HostDeps.sessionMetaIndex` 注入，无需改动 pi-web |
+
+两条实现由**一致性套件**（同一批断言跑两遍）共同验收；pi-clouds 可复用该套件形状验收自己那条。
+
 ### core / 活跃态派生
 
 #### deriveActivity

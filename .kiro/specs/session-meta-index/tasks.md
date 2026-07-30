@@ -187,6 +187,32 @@
   - _Requirements: 5.3_
   - _Boundary: 启动清理接线 — `lib/app/pi-handler.ts`, `packages/core/test/session-meta/prune-on-startup.it.test.ts`_
 
+- [x] 8. 增量：元数据持久化经宿主状态端口（云端可实现）
+- [x] 8.1 端口读取支持按需取用
+  - 读取方法接受可选的会话标识集合：给定时只读这些会话，省略则读全量。
+  - **两个实现语义必须一致**（整份存储的实现也要尊重该参数），否则调用方无法依赖。
+  - 观察完成：一致性套件中「只返回指定会话」的用例在两个实现上都通过（初版文件实现忽略
+    该参数直接返回全量，被套件当场抓到）。
+  - _Requirements: 2.1, 2.2_
+  - _Boundary: 端口 — `packages/core/src/session-meta/types.ts`, `packages/core/src/session-meta/json-file-index.ts`_
+
+- [x] 8.2 实现建在宿主状态端口上的第二条实现
+  - 按**每会话一键**存储（而非整份索引一个键）：契约保证单键原子可见性但不提供跨进程锁，
+    整份存储在并发写下会互相覆盖，分键后不同会话写不同键即天然安全。
+  - 会话标识用作键的一段前必须校验（键空间是安全边界），不合规静默拒写。
+  - 所有方法绝不抛，失败即「无元数据」。
+  - 观察完成：一致性套件（同一批断言跑两个实现）全绿；键空间安全用例证明危险标识一个都写不进去。
+  - _Requirements: 1.1, 1.2, 1.3, 3.1, 3.3, 3.5, 4.1, 4.2, 5.1, 5.3_
+  - _Boundary: WorkspaceSessionMetaIndex — `packages/core/src/session-meta/workspace-index.ts`, `packages/core/test/session-meta/conformance.it.test.ts`_
+
+- [x] 8.3 列表按页读取元数据 + 装配层选型
+  - 列表端点非搜索路径改为**分页之后**按标识精确读取当前页（对分键实现是数量级差别）；
+    搜索路径仍需全量。
+  - 装配层按宿主形态选实现：本地用带锁的文件实现，云端经宿主依赖注入 Workspace 实现。
+  - 观察完成：列表既有测试与投影测试全绿；导出面基准登记新符号后守卫通过。
+  - _Requirements: 2.1, 2.4_
+  - _Boundary: 装配与读取 — `packages/core/src/session-list/session-list-routes.ts`, `lib/app/pi-handler.ts`, `packages/server/test/compat/main-entry-symbols.txt`_
+
 ## Implementation Notes
 
 ### 实测数据(Req 2.5 的机械证据)
@@ -274,6 +300,17 @@ Chrome 真机演示暴露了 Req 8.5 那条边界的实际观感:会话 B 在等
 (二者是「显示来源」一件事的两种表现,门控只管其一会在关闭时漏出来源信息)。
 
 这与本 spec 之前发现的两个同类缺口是一个模式:组件、DTO、门控都就绪,唯独装配层少一根线。
+
+### Workspace 化:为什么不是「整份索引存一个键」
+
+用户问「线上的 pi-cloud 可以实现吗」时,第一直觉是把索引整份塞进 Workspace 的一个键 ——
+`writeJson(merge:true)` 是深度合并,看起来正好能避免丢键。查了本地实现才发现:
+`writeJson` = `read → deepMergeJson → writeFileAtomic`,**没有跨进程锁**。契约明写
+「单键原子可见性 + 无跨键事务」,并不保证 read-modify-write 原子。
+
+所以整份存一个键 = 把文件实现用锁解决的丢键问题原样搬回来,且这次没有锁可用。
+改为**每会话一键**后,不同会话写不同键,契约给的单键原子性就够了,也不需要它不提供的
+跨键事务。代价(全量读放大)由端口的 `read(sessionIds?)` 化解 —— 列表常态只读当前页。
 
 ### 一次被我误判的"存量红"(记录以免重蹈)
 

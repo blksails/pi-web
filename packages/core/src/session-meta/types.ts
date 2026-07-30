@@ -38,11 +38,19 @@ export interface SessionMetaEntry {
  */
 export interface SessionMetaIndex {
   /**
-   * 读取全量元数据。索引不存在 / 内容不可解析 / 版本不识 / 无权限 → 返回空 Map(Req 3.1/3.2)。
+   * 读取元数据。存储不存在 / 内容不可解析 / 版本不识 / 无权限 → 返回空 Map(Req 3.1/3.2)。
    * 单条目内某字段不合法只丢弃该字段,保留同条目其余字段与其他条目(Req 3.3)。
    * 永不返回部分写入的中间态(Req 4.2)。
+   *
+   * `sessionIds` 给定时**只读这些会话**(列表通常只需当前页);省略则读全量(搜索分支需要)。
+   * 这不只是优化:按会话分键存储的实现(`WorkspaceSessionMetaIndex`)全量读要 N 次 IO,
+   * 而列表一页只需 ≤limit 条 —— 有了这个参数,分键实现才不必在读侧付无谓代价。
+   * 整份存储的实现(`JsonFileSessionMetaIndex`)读全量本就最优,但**仍须尊重该参数** ——
+   * 端口的两个实现行为若不一致,调用方就无法依赖它(一致性套件会抓这条)。
    */
-  read(): Promise<ReadonlyMap<string, SessionMetaEntry>>;
+  read(
+    sessionIds?: readonly string[],
+  ): Promise<ReadonlyMap<string, SessionMetaEntry>>;
   /**
    * 字段级合并写入(patch 中缺省的字段保持原值,不整条覆盖)。
    * 同字段先后写入不同值时后写者赢(Req 4.4)。

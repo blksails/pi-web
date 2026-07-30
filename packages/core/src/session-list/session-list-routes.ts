@@ -298,21 +298,32 @@ export function createSessionListRoutes(
         // 故不做进程内缓存(避免缓存失效带来的第二类错误)。读失败即空 Map,全部退化到既有路径。
         // 端口契约说 read() 绝不抛,但端点**不信任**注入实现会遵守 —— 元数据是展示增强,
         // 任何读失败都不得把列表请求拖成 500(Req 3.5)。
-        let meta: ReadonlyMap<string, SessionMetaEntry> = EMPTY_META;
-        if (opts.metaIndex !== undefined) {
+        // 元数据读取(spec session-meta-index)。读失败即空表,全部退化到既有路径。
+        //
+        // ★ 读**多少**取决于分支:搜索要按标题过滤全量会话,故读全量;非搜索路径只需当前页,
+        //   故先分页再按 id 精确读 —— 这对「每会话一键」的 Workspace 实现是数量级差别
+        //   (N 次 IO vs ≤limit 次),对整份文件实现则无差别。
+        const readMeta = async (
+          ids?: readonly string[],
+        ): Promise<ReadonlyMap<string, SessionMetaEntry>> => {
+          if (opts.metaIndex === undefined) return EMPTY_META;
           try {
-            meta = await opts.metaIndex.read();
+            return await opts.metaIndex.read(ids);
           } catch {
-            meta = EMPTY_META;
+            // 端口契约说不抛,但端点不信任注入实现会遵守 —— 元数据是展示增强,
+            // 任何读失败都不得把列表请求拖成 500(Req 3.5)。
+            return EMPTY_META;
           }
-        }
+        };
 
         const qRaw = q.get("q");
         const qNorm = qRaw !== null ? qRaw.trim().toLowerCase() : "";
         let filtered: SessionMeta[];
+        let meta: ReadonlyMap<string, SessionMetaEntry> = EMPTY_META;
         if (qNorm.length === 0) {
           filtered = metas;
         } else {
+          meta = await readMeta(); // 搜索按标题过滤 → 需全量
           const enrichedForSearch = await resolveTitles(
             store,
             metas,
@@ -332,6 +343,11 @@ export function createSessionListRoutes(
         const last = page[page.length - 1];
         const nextCursor =
           hasMore && last !== undefined ? encodeCursor(last) : undefined;
+
+        // 非搜索路径:分页之后才读元数据,且只读这一页(见 readMeta 注释)。
+        if (qNorm.length === 0) {
+          meta = await readMeta(page.map((m) => m.sessionId));
+        }
 
         // 标题解析(auto-session-title Req 8.4 + session-meta-index Req 2.2/2.3):索引命中即用,
         // 未命中走既有 displayName 派生并回填;sqlite/postgres(不实现 displayName)整页原样返回。
