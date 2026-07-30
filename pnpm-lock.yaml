@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^2.0.0
         version: 2.0.206(react@19.2.7)(zod@3.25.76)
+      '@blksails/pi-web-adapters':
+        specifier: workspace:*
+        version: link:packages/adapters
       '@blksails/pi-web-canvas-ui':
         specifier: workspace:*
         version: link:packages/canvas-ui

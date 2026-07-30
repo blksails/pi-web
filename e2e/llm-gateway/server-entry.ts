@@ -32,11 +32,15 @@ import {
   createPiWebHandler,
   SessionManager,
   InMemorySessionStore,
-  createLlmGatewayRoutes,
+} from "@blksails/pi-web-server";
+import {
   mintScopedToken,
   resolveLlmGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  createLlmGatewayRoutes,
   type LlmGatewayProviderTable,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/llm-gateway/index.js";
 import { buildSandboxLlmEnv } from "../../lib/app/llm-gateway-config.js";
 
 const PORT = Number(process.env.PORT ?? 0);

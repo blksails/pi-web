@@ -17,7 +17,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type { EgressModel } from "@blksails/pi-web-server";
+import type { EgressModel } from "@blksails/pi-web-adapters/auth/index.js";
 
 /** 服务端配置 env(启用判别 = base)。 */
 export const CLOUD_LOGIN_EGRESS_BASE_ENV = "PI_WEB_CLOUD_LOGIN_EGRESS_BASE";

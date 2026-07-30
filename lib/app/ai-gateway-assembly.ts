@@ -18,8 +18,11 @@
  * 本地(非 e2b)分支不调用本函数——本地 agent 进程与 pi-web server 同机,是否需要类似
  * 注入留待后续切片按实际 agent-side 消费方式接线(design.md §6 交付边界)。
  */
-import { mintScopedToken, resolveAiGatewaySecret } from "@blksails/pi-web-server";
-import type { AiGatewayConfig } from "@blksails/pi-web-server";
+import {
+  mintScopedToken,
+  resolveAiGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 
 /** ai-gateway 会话 token 的 scope(`verifyScopedToken({ expectedScope: "ai-gateway" })` 对齐)。 */
 export const AI_GATEWAY_TOKEN_SCOPE = "ai-gateway";

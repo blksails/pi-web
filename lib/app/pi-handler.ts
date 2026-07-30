@@ -25,13 +25,7 @@ import {
   PiRpcProcess,
   // e2b 云沙盒传输(spec e2b-sandbox-transport):传输无关会话核心 + e2b adapter + 配置解析。
   PiRpcSession,
-  E2bTransport,
-  SandboxWsTransport,
-  selectTransport,
-  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
-  resolveSandboxTemplate,
   AgentSourceResolver,
-  resolvePiCliEntry,
   runnerBootstrapPath,
   // 15 个路由能力面工厂已移至 host-assembly/default-capabilities(M3 经 composeCapabilities 装配);
   // 此处不再直接 import。保留下方 resolve*/broadcast* 等辅助(HostDeps 构造仍需)。
@@ -43,13 +37,6 @@ import {
   createScanSourceProvider,
   createRegistrySourceProvider,
   createRegistryHttpSourceProvider,
-  createDesktopCapabilitiesClient,
-  resolveDesktopCapabilitiesUrl,
-  deriveCapabilitiesUrlFromEgressBase,
-  deriveLoginUrlFromEgressBase,
-  createCloudLoginClient,
-  createDesktopPasswordIdentityProvider,
-  resolveShellToken,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
@@ -57,10 +44,6 @@ import {
   createAigcModelsRoute,
   createVisionModelsRoute,
   createHostCommandRegistry,
-  ChildProcessPiCli,
-  DEFAULT_ALLOWLIST,
-  defaultOnAudit,
-  redactReason,
   attachmentStoreConfigFromEnv,
   ATTACHMENT_PROFILE_DISABLED_ENV,
   // 附件拓扑条件透传判定(spec sandbox-baked-agent-image 任务 4.2):e2b 分支按拓扑
@@ -70,33 +53,62 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
+  // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
+  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
+  createModelCatalogService,
+  // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
+  composeCapabilities,
+  HOST_CAPABILITY_IDS_V1,
+  type CapabilityDecision,
+  type ResolvedSource,
+  type SessionChannel,
+  type CreateChannelOpts,
+} from "@blksails/pi-web-server";
+import {
+  resolvePiCliEntry,
+  ChildProcessPiCli,
+  DEFAULT_ALLOWLIST,
+  defaultOnAudit,
+  redactReason,
+  type AllowlistConfig,
+} from "@blksails/pi-web-adapters/extensions/index.js";
+import {
+  resolveLlmGatewaySecret,
+  resolveAiGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  createDesktopCapabilitiesClient,
+  resolveDesktopCapabilitiesUrl,
+  deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
+  createCloudLoginClient,
+  resolveShellToken,
+  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
+  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
+  AuthSessionState,
+} from "@blksails/pi-web-adapters/auth/index.js";
+import {
   // LLM 网关 provider 登记表 + secret 解析(HostDeps 构造 gateway.llm 用;路由工厂
   // createLlmGatewayRoutes 已移至 host-assembly/default-capabilities)。
   resolveLlmGatewayProviderTable,
-  resolveLlmGatewaySecret,
+} from "@blksails/pi-web-adapters/llm-gateway/index.js";
+import {
   // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
   // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
   // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
   resolveAiGatewayConfig,
   EnvKeyResolver,
   GatewayModelCatalog,
-  resolveAiGatewaySecret,
-  // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
-  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
-  createModelCatalogService,
   mergeModelCatalog,
-  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
-  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
-  AuthSessionState,
-  // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
-  composeCapabilities,
-  HOST_CAPABILITY_IDS_V1,
-  type CapabilityDecision,
-  type AllowlistConfig,
-  type ResolvedSource,
-  type SessionChannel,
-  type CreateChannelOpts,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
+import { createDesktopPasswordIdentityProvider } from "@blksails/pi-web-adapters/identity/index.js";
+import {
+  E2bTransport,
+  SandboxWsTransport,
+  selectTransport,
+  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
+  resolveSandboxTemplate,
+} from "@blksails/pi-web-adapters/sandbox-transport/index.js";
 import { loggingConfigSchema } from "@blksails/pi-web-protocol";
 import {
   configureFileOutputFromEnv,

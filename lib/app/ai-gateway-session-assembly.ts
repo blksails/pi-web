@@ -20,8 +20,11 @@ import {
   RUNNER_AI_GATEWAY_KEY_ENV,
   RUNNER_AI_GATEWAY_MODELS_ENV,
   isSessionCapableGatewayModel,
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
+import type {
+  GatewayModelEntry,
 } from "@blksails/pi-web-server";
-import type { AiGatewayConfig, GatewayModelEntry } from "@blksails/pi-web-server";
+import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 
 /**
  * 模型清单序列化字节数告警阈值。

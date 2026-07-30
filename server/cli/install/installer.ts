@@ -67,7 +67,7 @@ import {
   type AllowlistConfig,
   type ExtSource,
   type PiCli,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
 import type { PluginKind } from "@blksails/pi-web-protocol";
 import {

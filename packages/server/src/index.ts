@@ -27,7 +27,6 @@ export {};
 // attachment-tool-bridge(L2 投影 + 子进程 store + 闸门 + 回流 + 注入):本切片(task 1.1)
 // 导出子进程 store 客户端工厂 createChildAttachmentStore + ChildAttachmentStore(上游门面别名)。
 // 纯 node builtins + attachment-store 复用面(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
-export * from "@blksails/pi-web-adapters/extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 // sourceKey(地基 G3,spec source-settings-and-slots 任务 0.1):纯 node builtins(crypto),
 // 面⑦ per-source 配置目录/DB 主键、面⑤ dist 寻址/源匹配复用的单一事实来源。
@@ -41,21 +40,6 @@ export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 // session-actions(session-list-item-actions):删除/重命名/收藏 写端点的注入路由工厂 + 会话收藏存储。
 // 仅 node builtins + session-store 复用面(无 pi SDK 值导入),可安全经 barrel 重导出。
 // sandbox 强制注入入口解析(仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出)。
-// tokens(sandbox-credentials-v2):分面 scoped token 签发/校验原语(mintScopedToken /
-// verifyScopedToken)。仅 node builtins(node:crypto),无 pi SDK 值导入,可安全经 barrel 重导出。
-export * from "@blksails/pi-web-adapters/tokens/index.js";
-// auth(desktop-cloud-login):桌面凭据解析 + 进程内登录态 + 鉴权注入路由(createAuthRoutes)。
-// 仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
-// ⚠ egress-model-source(引 pi SDK 值)不在此,由 runner 装配层子路径直接引入。
-export * from "@blksails/pi-web-adapters/auth/index.js";
-// llm-gateway(sandbox-credentials-v2):provider 登记表 + dev/自部署 LLM 网关路由
-// (createLlmGatewayRoutes)。仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK
-// 值导入,可安全经 barrel 重导出。
-export * from "@blksails/pi-web-adapters/llm-gateway/index.js";
-// ai-gateway(ai-gateway-providers):config 解析 + KeyResolver + 主对话转发路由
-// (createAiGatewayRoutes),与 llm-gateway 同层平行、分离共存。仅 node builtins + 既有
-// http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
-export * from "@blksails/pi-web-adapters/ai-gateway/index.js";
 // model-catalog(model-catalog spec):chat/image 双命名空间目录组装服务
 // (createModelCatalogService)。纯组装零 env 零 IO,依赖仅 config 纯过滤器 +
 // tool-kit 主入口纯类型,无 pi SDK 值导入,可安全经 barrel 重导出。
@@ -81,19 +65,24 @@ export * from "@blksails/pi-web-adapters/ai-gateway/index.js";
 // 值的 egress-model-source 不在此」的告警,而 `auth/egress-model.ts` 是与之同目录、不同文件的
 // 纯类型别名——两者只差一个文件名。此处若含糊写成「零 import」,读者恰好会漏掉这条唯一需要
 // 他警觉的边。
-// 身份端口 P5(spec: desktop-account-login;契约 §6)。类型 + 两个实现 + 路由工厂,
-// 全部 pi-SDK-free(只依赖 auth/ 的纯类型面与 http/)。
-export * from "@blksails/pi-web-adapters/identity/index.js";
-// ───────── 从内核包摘回的适配器实现(spec: core-package-extraction 任务 4.1)─────────
-// 这三处的搬迁判据是同一条硬约束:它们值依赖 e2b / pg / MCP SDK,而内核包的依赖声明
-// 不得出现云沙箱 SDK、数据库驱动与 MCP SDK(R1.2)。内核走**源码直连**分发,消费方的
-// `tsc` 会编译到每个文件 —— 故"声明成 optional peer"在本仓不可用:缺类型即编译失败。
-// 从主 barrel 看,这三组符号的导入路径与摘出前**逐字不变**。
-export * from "@blksails/pi-web-adapters/sandbox-transport/index.js";
-export * from "@blksails/pi-web-adapters/session-store-postgres/index.js";
-// ⚠ mcp-probe **不进主 barrel** —— 它搬出来之前也不在(内核的 config barrel 从未导出它)。
-//   "顺手补全"会让主入口符号数变多,而那正是 R2.4 明令禁止的:刻意的缺口是刻意的。
-//   装配层经 `./src/mcp-probe.js` 直接引入。
+// ───────── adapters 转发面的**收窄**(spec: adapters-package-extraction,任务 5.1)─────────
+// 原本这里有 8 条 `export * from "@blksails/pi-web-adapters/<模块>/index.js"`
+// (extensions / tokens / auth / llm-gateway / ai-gateway / identity / sandbox-transport /
+// session-store-postgres)。它们是任务 3.1 搬迁期为「每一步都可独立编译」而临时保留的转发,
+// 现整体移除 —— 兼容层不再代理 adapters 的导出面。
+//
+// ★ 这是**有意的破坏性契约变更**(R3.1/R3.2),不是「不小心弄丢」。两者在 diff 上长得一样,
+//   唯一的区别是留了痕:
+//   · 被移除的 161 个符号(89 个运行期值 + 72 个纯类型)**逐一枚举**在
+//     `test/compat/main-entry-symbols.removed-5.1.txt`,按模块分组、带 value/type-only 标注
+//   · 收窄前的 313 值符号基准另存为 `test/compat/main-entry-symbols.before-adapters-extraction.txt`
+//   · 新基准仍是 `test/compat/main-entry-symbols.txt`(224 个),守卫继续以「与之逐字相同」把关(R3.4)
+// ⚠ 那份基准是 `Object.keys` 的产物,**只看得见值** —— 它记录的收窄是 313 → 224(89 个),
+//   比真实契约损失少了 72 个纯类型。评估本次影响面须读移除清单,不能只读基准。
+// ⇒ 消费方改从 `@blksails/pi-web-adapters/<模块>/index.js` 深路径导入(本仓消费方已随本任务改完)。
+//
+// ⚠ mcp-probe 一如既往**不在**导出面 —— 它在内核的 config barrel 里也从未出现。装配层经
+//   `@blksails/pi-web-adapters/mcp-probe.js` 直接引入。
 
 // 父进程守望(spec desktop-exit-orphan):壳死则 server 自尽,不留孤儿占端口。
 // host-manifest:纯类型 + 纯常量名册 + 纯函数,零外部依赖(连 node builtins 也不用)。

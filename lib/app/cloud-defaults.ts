@@ -20,7 +20,7 @@
  */
 
 // 单一事实源在 server 包(壳凭据端点也要用它);此处 import + 重导出,不另写一份字符串。
-import { DESKTOP_MARKER_ENV } from "@blksails/pi-web-server";
+import { DESKTOP_MARKER_ENV } from "@blksails/pi-web-adapters/auth/index.js";
 export { DESKTOP_MARKER_ENV };
 
 /** 构建期覆盖固化默认值用的 env 键(读取发生在打包时,不是运行时)。 */
