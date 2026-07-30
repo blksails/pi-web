@@ -1,9 +1,9 @@
 {
   "feature_name": "host-builtin-panes",
   "created_at": "2026-07-30T11:44:38Z",
-  "updated_at": "2026-07-30T12:15:00Z",
+  "updated_at": "2026-07-30T14:40:00.000Z",
   "language": "zh",
-  "phase": "tasks-approved",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -25,5 +25,11 @@
   "source_docs": [
     ".kiro/specs/host-builtin-panes/brief.md",
     ".kiro/steering/roadmap.md"
-  ]
+  ],
+  "implementation": {
+    "completed": true,
+    "tasks_total": 18,
+    "tasks_done": 18,
+    "validation": "typecheck 0;22 测试面 5626 passed/25 skipped/0 failed;既有 pane e2e 17/17;全量 playwright 6 例失败已实测证明为存量红(基线 efa3bd9e 同样失败)"
+  }
 }

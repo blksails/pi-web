@@ -7,7 +7,7 @@
 > panes-kit 单测 31/31 绿而真实浏览器 4 套 e2e 全红。每条「不应出现」类断言,必须先证明
 > 它在缺陷存在时会报红,否则「正确地没出现」与「判据根本没装上」在观察上无法区分。
 
-- [ ] 1. Foundation:内置 pane 构建管道与 agent 声明契约
+- [x] 1. Foundation:内置 pane 构建管道与 agent 声明契约
 
 - [x] 1.1 (P) 建立内置 pane guest 的构建管道
   - 新增构建脚本,把内置 pane 的 guest 源码打成自足的内联文档字符串,形态镜像既有
@@ -31,7 +31,7 @@
   - _Requirements: 2.2_
   - _Boundary: WebExtension 契约 — `packages/web-kit/src/define-web-extension.ts`_
 
-- [ ] 2. Core:pane 来源合并原语
+- [x] 2. Core:pane 来源合并原语
 
 - [x] 2.1 实现来源合并的顺序与上限合成
   - 实现纯函数:接受若干 pane 来源(每个来源带类型、来源标识、定义),输出单一合并定义
@@ -86,7 +86,7 @@
   - _Requirements: 6.1_
   - _Boundary: panes-kit 协议常量 — `packages/panes-kit/src/protocol-version.ts`, `packages/panes-kit/src/contract.ts`, `packages/panes-kit/src/guest.ts`, `packages/panes-kit/src/index.ts`_
 
-- [ ] 3. Core:最小内置 pane 与宿主清单
+- [x] 3. Core:最小内置 pane 与宿主清单
 
 - [x] 3.1 (P) 实现会话信息 pane 的 guest 侧
   - guest 入口连接宿主通道,订阅承载会话信息的具名信号并渲染会话标识、agent 源、工作目录
@@ -115,7 +115,7 @@
   - _Depends: 3.1, 2.2_
   - _Boundary: 内置清单 — `lib/app/builtin-panes/index.ts`, `lib/app/builtin-panes/session-info.ts`, `lib/app/builtin-panes/session-signal.ts`, `test/panes/builtin-panes-manifest.test.ts`_
 
-- [ ] 4. Integration:宿主侧装载
+- [x] 4. Integration:宿主侧装载
 
 - [x] 4.1 改写面板启用判据并接受宿主 pane 定义
   - 会话外壳接受宿主 pane 定义与宿主具名信号两个入参;对 pane 内容零认知
@@ -153,7 +153,7 @@
   - _Depends: 3.2, 4.1_
   - _Boundary: 会话装配 — `components/chat-app.tsx`_
 
-- [ ] 5. Integration:agent 声明路径验证
+- [x] 5. Integration:agent 声明路径验证
 
 - [x] 5.1 把 panes 示例 agent 迁到新声明键
   - 该示例改用可枚举的 pane 声明键,不再自行渲染右侧面板槽 —— 用它验证合并路径真的通
@@ -165,7 +165,7 @@
   - _Depends: 1.2, 4.2_
   - _Boundary: panes 示例 — `examples/panes-agent/web/web.config.tsx`_
 
-- [ ] 6. Validation:判据矩阵与真机取证
+- [x] 6. Validation:判据矩阵与真机取证
 
 - [x] 6.1 (P) 装载判据的组件级矩阵测试
   - 覆盖四种输入组合:内置有无 × agent 贡献有无,断言面板容器/开关/比例切换器的出现与否
