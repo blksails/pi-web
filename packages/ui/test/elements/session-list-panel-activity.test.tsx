@@ -27,8 +27,6 @@ function item(
 
 const resp = (sessions: SessionListItem[]): ListSessionsResponse => ({
   sessions,
-  scope: "cwd",
-  globalEnabled: false,
 });
 
 function renderPanel(sessions: SessionListItem[], showSource = true) {
@@ -38,8 +36,6 @@ function renderPanel(sessions: SessionListItem[], showSource = true) {
       listSessions={listSessions}
       onResume={vi.fn()}
       showSource={showSource}
-      currentCwd="/work"
-      globalEnabled={false}
     />,
   );
   return { ...view, listSessions };

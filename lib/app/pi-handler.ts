@@ -1218,9 +1218,6 @@ function buildSingleton(): HandlerSingleton {
     // session.actions 改名写标题、删除清条目。
     sessionMetaIndex,
     sessionActivityOf,
-    sessionsGlobalEnabled:
-      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
-      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
     sessionsManageEnabled:
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",

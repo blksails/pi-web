@@ -68,8 +68,6 @@ function makeHandler(
     store,
     routes: createSessionListRoutes({
       createEntryStore: async () => entryStore,
-      globalEnabled: false,
-      defaultCwd: cwd,
       metaIndex: idx,
     }),
     authResolver: () => ({ anonymous: true }),
@@ -80,7 +78,7 @@ async function listOne(
   handler: (req: Request) => Promise<Response>,
 ): Promise<ReturnType<typeof ListSessionsResponseSchema.parse>["sessions"][number]> {
   const res = await handler(
-    new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}`),
+    new Request("http://x/sessions"),
   );
   const body = ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
   const first = body.sessions[0];
@@ -131,8 +129,6 @@ describe("跨会话活跃态的即时性(Req 8.5 —— 已接受的边界)", ()
       store,
       routes: createSessionListRoutes({
         createEntryStore: async () => entryStore,
-        globalEnabled: false,
-        defaultCwd: cwd,
         metaIndex: idx,
         activityOf: () => (busy ? "working" : undefined),
       }),

@@ -23,8 +23,6 @@ function makeHandler(): (req: Request) => Promise<Response> {
   const manager = new SessionManager({ store, idleMs: 0 });
   const routes = createSessionListRoutes({
     createEntryStore: () => createStore(),
-    globalEnabled: false,
-    defaultCwd: "/proj",
   });
   return createPiWebHandler({ manager, store, routes, authResolver: () => ({ anonymous: true }) });
 }

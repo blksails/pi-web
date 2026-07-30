@@ -213,6 +213,29 @@
   - _Requirements: 2.1, 2.4_
   - _Boundary: 装配与读取 — `packages/core/src/session-list/session-list-routes.ts`, `lib/app/pi-handler.ts`, `packages/server/test/compat/main-entry-symbols.txt`_
 
+- [x] 9. 增量：会话列表全局化（移除按项目目录区分）
+- [x] 9.1 契约与端点：恒全局
+  - 列表请求删除视图范围、目标目录、按会话解析目录三个参数；响应删除视图回显与门控标志。
+    端点恒返回本机全部工作目录下的会话；列表项保留所属目录字段。
+  - 观察完成：端点不带任何参数即返回跨目录会话；旧的范围参数被忽略而非报错；
+    既有分页/排序/搜索/错误码语义不变。
+  - _Requirements: 见 sessions-list spec 的行为变更说明_
+  - _Boundary: 契约与端点 — `packages/protocol/src/transport/rest-dto.ts`, `packages/core/src/session-list/session-list-routes.ts`, `packages/core/test/session-list/session-list-routes.test.ts`_
+
+- [x] 9.2 装配与前端：移除门控与视图切换
+  - 装配层删除系统视图门控依赖与默认目录依赖；应用层删除对应运行时开关与其下发。
+  - 面板删除视图状态、双 Tab 切换与相关 props；搜索入口改为全局搜索。
+  - 观察完成：前端无任何视图切换控件；类型检查全绿；既有面板测试（含操作菜单、收藏、
+    刷新信号、轮询）全部通过。
+  - _Boundary: 装配与前端 — `packages/server/src/host-assembly/default-capabilities.ts`, `lib/app/pi-handler.ts`, `lib/app/runtime-features.ts`, `server/bootstrap.ts`, `components/chat-app.tsx`, `packages/ui/src/elements/session-list-panel.tsx`, `packages/ui/src/elements/launcher-rail.tsx`, `packages/react/src/client/pi-client.ts`_
+
+- [x] 9.3 文档与 e2e 随行为更新
+  - 产品文档四处（会话列表、配置、部署、HTTP API）改为全局语义，并保留一条显式的行为变更说明。
+  - 浏览器 e2e 中验证「视图门控 403」「无『全部』Tab 是因门控关闭」的断言随行为移除，
+    改为验证「不存在视图切换」与「不带范围参数即可列出」。
+  - 观察完成：三套会话列表 e2e 共 12 例通过；真机以两个不同项目目录各一个会话验证互相可见。
+  - _Boundary: 文档与 e2e — `docs/product/{06,14,19,24}-*.md`, `e2e/browser/sessions-list.e2e.ts`_
+
 ## Implementation Notes
 
 ### 实测数据(Req 2.5 的机械证据)
@@ -311,6 +334,21 @@ Chrome 真机演示暴露了 Req 8.5 那条边界的实际观感:会话 B 在等
 所以整份存一个键 = 把文件实现用锁解决的丢键问题原样搬回来,且这次没有锁可用。
 改为**每会话一键**后,不同会话写不同键,契约给的单键原子性就够了,也不需要它不提供的
 跨键事务。代价(全量读放大)由端口的 `read(sessionIds?)` 化解 —— 列表常态只读当前页。
+
+### 全局化:被删掉的东西比加上的多
+
+用户要求「session-list 总是全局的,不再区分项目目录」,并选了**彻底移除**而非默认值改变。
+于是删掉的有:请求的 `scope`/`cwd`/`sessionId` 三个参数、响应的 `scope`/`globalEnabled` 两个
+字段、`SessionListRoutesOptions` 的 `globalEnabled`/`defaultCwd`、`HostDeps.sessionsGlobalEnabled`、
+运行时开关 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 及其 bootstrap 下发、面板的 `scope` 状态与
+双 Tab 切换 UI、launcher-rail 的按目录搜索。
+
+★ 处理既有测试的原则:**验证「已被移除的行为」的用例应随之删除,而不是改造成通过**。
+`session-list-routes.test.ts` 里「默认 scope=cwd」「由 sessionId 解析目标目录」「门控 403」
+等 5 例直接删掉并在注释里写明来由;分页用例只改数据集断言(5 → 7,分页逻辑本身没变)。
+
+★ 一处只有 tsc 抓得到的残留:server 与 react 两个包的**测试文件**仍在传旧字段,而 vitest
+不做类型检查 —— 两包测试全绿、tsc 却是红的。这类缺口只能靠逐包跑 tsc 发现。
 
 ### 一次被我误判的"存量红"(记录以免重蹈)
 

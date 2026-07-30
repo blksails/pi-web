@@ -45,12 +45,11 @@ pi-web 已脱离 Next.js（前端为 Vite + SPA，后端为 Hono 宿主，服务
 | `NEXT_PUBLIC_PI_WEB_SOURCE_PICKER` | `sourcePicker` | 关 | 选源页展示可浏览的源列表 |
 | `NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL` | `launcherRail` | 关 | 侧栏启动导航区 |
 | `NEXT_PUBLIC_PI_WEB_BASH_ENABLED` | `bashEnabled` | 关 | 前端识别 `!`/`!!` bash 前缀（体验开关） |
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `sessionsGlobal` | 关 | 显示「全部」系统会话 Tab |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | `sessionsManage` | **开** | 会话写操作（删除/重命名/收藏）；`false`/`0` 关闭 |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sessionsSlot` | `sidebar` | 会话列表宿主插槽 |
 | `NEXT_PUBLIC_PI_WEB_DISABLE_READINESS_HANDSHAKE` | — | 关 | 关闭会话就绪握手（调试用） |
 
-> **两端一致仍然重要**：前端门控现在走 `/api/bootstrap`，但**后端**对同名变量仍**直接读 `process.env`** 做权威门控（例如 `scope=all` 请求在 `lib/app/pi-handler.ts:464-465` 判定 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL`）。两端读同一个变量名、同一进程 env，故只需在启动进程时设一次即可对齐；不再存在「构建期烧进前端、运行时改后端」的错位。
+> **两端一致仍然重要**：前端门控走 `/api/bootstrap`，而**后端**对同名变量直接读 `process.env` 做权威门控（如写操作开关 `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE`）。两端读同一个变量名、同一进程 env，故只需在启动进程时设一次即可对齐；不再存在「构建期烧进前端、运行时改后端」的错位。
 
 ---
 
@@ -215,15 +214,13 @@ SESSION_STORE_PATH=/data/pi-web-sessions.db
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | （未设，关闭） | 取 `true` / `1` 时显示「全部」（系统 / 全机器）会话 Tab；关闭时后端对 `scope=all` 直接返回 `403 SESSIONS_GLOBAL_DISABLED`、不触达存储 |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | （未设，**默认开**） | 会话写操作（删除 / 重命名 / 收藏）门控；取 `false` / `0` 时写端点 `403`、不触达存储，前端亦隐藏写入口 |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | 会话列表面板的宿主插槽：`sidebar` / `header` / `footer` / `empty`；非法值回落 `sidebar` |
 
-> 后端门控见 `lib/app/pi-handler.ts:464-478`（`scope=all` 与写操作判定）；前端门控字段见 `lib/app/runtime-features.ts:59-64`。完整说明见 [14 · 会话列表](./14-sessions-list.md)。
+> 会话列表**恒为全局**（不按项目目录区分），已无视图门控；写操作门控见 `lib/app/pi-handler.ts`。完整说明见 [14 · 会话列表](./14-sessions-list.md)。
 
 ```bash
 # 启用系统会话视图并把列表移到顶栏
-NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=1
 NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT=header
 ```
 

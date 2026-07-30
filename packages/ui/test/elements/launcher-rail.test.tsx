@@ -57,8 +57,6 @@ describe("LauncherRail", () => {
           req.q === "hit"
             ? [{ sessionId: "s1", name: "Hit One", cwd: "/w", createdAt: "t" }]
             : [],
-        scope: "cwd",
-        globalEnabled: false,
       });
     const onResume = vi.fn();
     render(<LauncherRail {...baseProps({ listSessions, onResume })} />);

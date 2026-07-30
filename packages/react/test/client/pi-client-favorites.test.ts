@@ -30,10 +30,10 @@ function mockFetch(response: Response): {
 describe("PiClient — search + favorites", () => {
   it("listSessions 把 q 序列化进 URL", async () => {
     const { fetch, calls } = mockFetch(
-      makeJsonResponse({ sessions: [], scope: "cwd", globalEnabled: false }),
+      makeJsonResponse({ sessions: [] }),
     );
     const client = createPiClient("http://api.test", fetch);
-    await client.listSessions({ scope: "cwd", q: "auth" });
+    await client.listSessions({ q: "auth" });
     expect(calls[0]!.url).toContain("q=auth");
   });
 

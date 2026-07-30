@@ -17,7 +17,6 @@ export interface RuntimeFeatures {
   readonly sourcePicker: boolean;
   readonly launcherRail: boolean;
   readonly bashEnabled: boolean;
-  readonly sessionsGlobal: boolean;
   readonly sessionsManage: boolean;
   readonly sessionsSlot: string;
   readonly extensionCommands: string;
@@ -55,7 +54,6 @@ function envFeatures(): RuntimeFeatures {
     sourcePicker: truthy(env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER),
     launcherRail: truthy(env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL),
     bashEnabled: truthy(env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED),
-    sessionsGlobal: truthy(env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL),
     // 默认启用;仅显式 false/0 关闭(与服务端同名门控一致)。
     sessionsManage:
       env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&

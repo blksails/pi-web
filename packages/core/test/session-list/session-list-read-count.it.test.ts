@@ -85,14 +85,12 @@ async function listAndCount(
     store,
     routes: createSessionListRoutes({
       createEntryStore: async () => entryStore,
-      globalEnabled: false,
-      defaultCwd: cwd,
       ...(metaIndex !== undefined ? { metaIndex } : {}),
     }),
     authResolver: () => ({ anonymous: true }),
   });
   const res = await handler(
-    new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}&limit=${PAGE}`),
+    new Request(`http://x/sessions?limit=${PAGE}`),
   );
   const body = ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
   return { calls, names: body.sessions.map((s) => s.name) };

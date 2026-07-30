@@ -107,7 +107,7 @@ cd dist && PORT=3000 HOST=0.0.0.0 NODE_ENV=production node server.mjs
 - **在运行时设置这些开关现在才真正生效**——例如 `NEXT_PUBLIC_PI_WEB_CANVAS=1 node dist/server.mjs` 才能打开 Canvas 面板。旧文档说的「构建期内联、CLI 运行时设无效」已不成立。
 - 服务端权威门控（如 `PI_WEB_BASH_ENABLED`）与前端体验开关（如 `NEXT_PUBLIC_PI_WEB_BASH_ENABLED`）仍是两条独立变量：前者决定端点是否存在（关闭时 `POST /sessions/:id/bash` 返回 404），后者只影响 UI 提示。两者须同开方完整可用。
 
-常见运行时开关：`NEXT_PUBLIC_PI_WEB_CANVAS`（Canvas 工作台，默认关）、`NEXT_PUBLIC_PI_WEB_SOURCE_PICKER`、`NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL`、`NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL`。完整清单见 [06-configuration.md](./06-configuration.md)。
+常见运行时开关：`NEXT_PUBLIC_PI_WEB_CANVAS`（Canvas 工作台，默认关）、`NEXT_PUBLIC_PI_WEB_SOURCE_PICKER`、`NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL`。完整清单见 [06-configuration.md](./06-configuration.md)。
 
 ---
 

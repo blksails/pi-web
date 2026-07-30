@@ -246,9 +246,6 @@ export function createPiClient(
       post<CreateSessionResponse>("/sessions", req),
     listSessions: async (req) => {
       const p = new URLSearchParams();
-      if (req.scope !== undefined) p.set("scope", req.scope);
-      if (req.cwd !== undefined) p.set("cwd", req.cwd);
-      if (req.sessionId !== undefined) p.set("sessionId", req.sessionId);
       if (req.limit !== undefined) p.set("limit", String(req.limit));
       if (req.cursor !== undefined) p.set("cursor", req.cursor);
       if (req.q !== undefined) p.set("q", req.q);

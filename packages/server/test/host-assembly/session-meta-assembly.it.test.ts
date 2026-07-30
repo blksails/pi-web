@@ -82,7 +82,6 @@ function wire(activityOf?: (sessionId: string) => SessionActivity | undefined): 
     resolveSourceSettings: async () => undefined,
     onSourceSettingsSaved: () => {},
     sessionStoreConfig: { kind: "fs", root: sessionsRoot },
-    sessionsGlobalEnabled: true,
     sessionsManageEnabled: true,
     sourcesScanRoots: [],
     sourcesRegistryPath: join(agentDir, "agent-sources-registry.json"),
@@ -133,7 +132,7 @@ async function listSessions(
   w: Wired,
   cwd: string,
 ): Promise<ReturnType<typeof ListSessionsResponseSchema.parse>> {
-  const res = await w.fetch(new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}`));
+  const res = await w.fetch(new Request("http://x/sessions"));
   expect(res.status).toBe(200);
   return ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
 }

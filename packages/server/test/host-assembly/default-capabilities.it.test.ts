@@ -119,7 +119,6 @@ function buildDeps(opts: { readonly conditional: boolean }): HostDeps {
     resolveSourceSettings: async () => undefined,
     onSourceSettingsSaved: () => {},
     sessionStoreConfig: { kind: "fs", root: join(agentDir, "sessions") },
-    sessionsGlobalEnabled: true,
     sessionsManageEnabled: true,
     sourcesScanRoots: [],
     sourcesRegistryPath: join(agentDir, "agent-sources-registry.json"),
@@ -190,15 +189,12 @@ describe("defaultCapabilities × composeCapabilities(装配级等价,M3 任务 4
         ...createSandboxProjectRoutes({ defaultCwd: deps.defaultCwd }),
         ...createSourceSettingsRoutes({
           rootDir: deps.agentDir,
-          defaultCwd: deps.defaultCwd,
           resolveSettings: deps.resolveSourceSettings,
           onSaved: deps.onSourceSettingsSaved,
         }),
         ...createExtensionsConfigRoutes({ agentDir: deps.agentDir, defaultCwd: deps.defaultCwd }),
         ...createSessionListRoutes({
           createEntryStore: () => createSessionEntryStore(deps.sessionStoreConfig),
-          globalEnabled: deps.sessionsGlobalEnabled,
-          defaultCwd: deps.defaultCwd,
         }),
         ...createSessionActionsRoutes({
           createEntryStore: () => createSessionEntryStore(deps.sessionStoreConfig),

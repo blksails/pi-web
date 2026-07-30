@@ -1,11 +1,13 @@
 /**
  * session-list-routes — GET /sessions 只读会话列表端点(sessions-list)。
  *
- * - GET /sessions?scope=cwd|all&cwd=&limit=&cursor= → ListSessionsResponse
+ * - GET /sessions?limit=&cursor=&q= → ListSessionsResponse(**恒为全局视图**)
  * - 仅用会话头部轻量元数据(经 SessionEntryStore.list/listAll),不读会话正文。
  * - 排序键 `updatedAt ?? createdAt` 倒序,跨 fs/sqlite/postgres 后端一致。
  * - 内存切片分页:不透明游标 `{ts,id}` keyset 续取,保证不重复已返回会话。
- * - `scope=all`(系统/全机器视图)受 `globalEnabled` 门控,关闭时直接 403、不触达存储。
+ * - 会话列表**不按项目目录区分**:恒返回本机全部工作目录下的会话(spec session-meta-index
+ *   增量;原 `scope=cwd|all` 二视图与 `globalEnabled` 部署门控已移除)。列表项仍带 `cwd`,
+ *   故「哪个项目的会话」在项上仍可见。
  * - 单会话元数据损坏由 store 适配器跳过(本端点不另行处理),不使整体请求失败。
  *
  * 经 `createSessionListRoutes(opts)` 返回 `ReadonlyArray<InjectedRoute>`,直接传入
@@ -71,10 +73,6 @@ export interface SessionListRoutesOptions {
    * 惰性调用:仅在首个请求真的需要 store 时才触发(与原本的惰性单例语义一致)。
    */
   readonly createEntryStore: () => Promise<SessionEntryStore>;
-  /** 系统(全机器)视图是否启用;关闭时 scope=all 一律拒绝。 */
-  readonly globalEnabled: boolean;
-  /** scope=cwd 缺省 cwd。 */
-  readonly defaultCwd: string;
   /** 单页默认上限(默认 50)。 */
   readonly defaultPageSize?: number;
   /** 单页硬上限(默认 200)。 */
@@ -238,22 +236,6 @@ export function createSessionListRoutes(
     handler: async (ctx) => {
       const q = ctx.url.searchParams;
 
-      // scope 校验(默认 cwd)。
-      const scopeRaw = q.get("scope") ?? "cwd";
-      if (scopeRaw !== "cwd" && scopeRaw !== "all") {
-        return errorResponse(400, "INVALID_REQUEST", "Invalid scope.", ["scope"]);
-      }
-      const scope: "cwd" | "all" = scopeRaw;
-
-      // 系统视图门控:关闭时拒绝 scope=all,且不触达存储。
-      if (scope === "all" && !opts.globalEnabled) {
-        return errorResponse(
-          403,
-          "SESSIONS_GLOBAL_DISABLED",
-          "System-wide session listing is not enabled.",
-        );
-      }
-
       // limit 校验 + clamp。
       const limit = resolveLimit(q.get("limit"), defaultPageSize, maxPageSize);
       if (limit === undefined) {
@@ -272,23 +254,8 @@ export function createSessionListRoutes(
 
       try {
         const store = await getStore();
-        let metas: SessionMeta[];
-        if (scope === "all") {
-          metas = await store.listAll();
-        } else {
-          // scope=cwd:优先用 sessionId 解析「当前会话所在目录」(agent 解析后的真实
-          // cwd,前端无从可靠推断),回退 cwd 参数 / 默认 cwd。
-          let targetCwd = q.get("cwd") ?? opts.defaultCwd;
-          const sid = q.get("sessionId");
-          if (sid !== null && sid.length > 0) {
-            try {
-              targetCwd = (await store.readHeader(sid)).cwd;
-            } catch {
-              // 会话不存在 → 回退默认/参数 cwd。
-            }
-          }
-          metas = await store.list(targetCwd);
-        }
+        // 恒全局:本机全部工作目录下的会话,不按项目目录切分。
+        const metas: SessionMeta[] = await store.listAll();
 
         // 名称搜索(sidebar-launcher-rail Req 3.2/3.6):非空 q 时按会话**名称/显示名** + 标识
         // 子串(大小写不敏感)过滤,置于排序/分页前;空 q / 无 q 行为不变(向后兼容 Req 6.2)。
@@ -355,8 +322,6 @@ export function createSessionListRoutes(
 
         const body: ListSessionsResponse = {
           sessions: enriched.map((m) => toItem(m, meta, opts.activityOf)),
-          scope,
-          globalEnabled: opts.globalEnabled,
           ...(nextCursor !== undefined ? { nextCursor } : {}),
         };
         return jsonResponse(200, { ...body });

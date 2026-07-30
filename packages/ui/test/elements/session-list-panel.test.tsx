@@ -26,7 +26,7 @@ function item(over: Partial<SessionListItem> & { sessionId: string }): SessionLi
 }
 
 function resp(sessions: SessionListItem[]): ListSessionsResponse {
-  return { sessions, scope: "cwd", globalEnabled: false };
+  return { sessions };
 }
 
 /**
@@ -48,8 +48,6 @@ describe("SessionListPanel × refreshSignal", () => {
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -73,8 +71,6 @@ describe("SessionListPanel × refreshSignal", () => {
 
     const { rerender } = render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -90,8 +86,6 @@ describe("SessionListPanel × refreshSignal", () => {
     // 宿主 bump refreshSignal(模拟一轮 agent 结束后 onTurnEnd)。
     rerender(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={1}
@@ -110,7 +104,6 @@ describe("SessionListPanel × refreshSignal", () => {
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     const props = {
       currentCwd: "/work",
-      globalEnabled: false,
       listSessions,
       onResume: () => {},
       refreshSignal: 7,
@@ -132,8 +125,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-1"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -161,8 +152,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-1"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -185,8 +174,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-2"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -206,8 +193,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -229,8 +214,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -249,8 +232,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -268,8 +249,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}

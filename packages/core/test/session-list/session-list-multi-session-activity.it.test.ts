@@ -87,8 +87,6 @@ async function rig(ids: readonly string[]): Promise<Rig> {
       store,
       routes: createSessionListRoutes({
         createEntryStore: async () => entryStore,
-        globalEnabled: false,
-        defaultCwd: cwd,
         activityOf: sessionActivityOf,
       }),
       authResolver: () => ({ anonymous: true }),
@@ -99,7 +97,7 @@ async function rig(ids: readonly string[]): Promise<Rig> {
 
 async function activities(r: Rig): Promise<Record<string, SessionActivity | undefined>> {
   const res = await r.fetch(
-    new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}`),
+    new Request("http://x/sessions"),
   );
   const body = ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
   return Object.fromEntries(body.sessions.map((s) => [s.sessionId, s.activity]));
@@ -170,14 +168,12 @@ describe("多会话并行的工作状态", () => {
       store,
       routes: createSessionListRoutes({
         createEntryStore: async () => entryStore,
-        globalEnabled: false,
-        defaultCwd: cwd,
         activityOf: (id) => store.get(id)?.activity,
       }),
       authResolver: () => ({ anonymous: true }),
     });
     const res = await handler(
-      new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}`),
+      new Request("http://x/sessions"),
     );
     const body = ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
     const map = Object.fromEntries(body.sessions.map((s) => [s.sessionId, s.activity]));

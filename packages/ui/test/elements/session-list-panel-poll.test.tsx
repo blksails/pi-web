@@ -24,8 +24,6 @@ function item(
 
 const resp = (sessions: SessionListItem[]): ListSessionsResponse => ({
   sessions,
-  scope: "cwd",
-  globalEnabled: false,
 });
 
 /** 依次返回给定各页;用完后重复最后一页。 */
@@ -47,8 +45,6 @@ function renderPanel(
     <SessionListPanel
       listSessions={listSessions}
       onResume={vi.fn()}
-      currentCwd="/work"
-      globalEnabled={false}
       showSource
       {...(activityPollMs !== undefined ? { activityPollMs } : {})}
     />,
@@ -266,8 +262,6 @@ describe("轮询只更新状态(Req 8.8)", () => {
       <SessionListPanel
         listSessions={listSessions}
         onResume={vi.fn()}
-        currentCwd="/work"
-        globalEnabled={false}
         activityPollMs={1_000}
       />,
     );

@@ -102,8 +102,6 @@ function makeHandler(opts: HandlerOpts = {}): {
       };
       return entryStore;
     },
-    globalEnabled: false,
-    defaultCwd: cwdA,
     ...(opts.metaIndex !== undefined ? { metaIndex: opts.metaIndex } : {}),
     ...(opts.activityOf !== undefined ? { activityOf: opts.activityOf } : {}),
   });

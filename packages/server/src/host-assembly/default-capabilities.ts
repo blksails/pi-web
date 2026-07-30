@@ -76,7 +76,6 @@ export interface HostDeps {
   readonly resolveSourceSettings: SourceSettingsOpts["resolveSettings"];
   readonly onSourceSettingsSaved: SourceSettingsOpts["onSaved"];
   readonly sessionStoreConfig: SessionStoreConfig;
-  readonly sessionsGlobalEnabled: boolean;
   readonly sessionsManageEnabled: boolean;
   readonly sourcesScanRoots: readonly string[];
   readonly sourcesRegistryPath: string;
@@ -175,7 +174,7 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
         ),
     },
     { id: "config.extensions", factory: (d) => asRoutes(createExtensionsConfigRoutes({ agentDir: d.agentDir, defaultCwd: d.defaultCwd })) },
-    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd, ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}), ...(d.sessionActivityOf !== undefined ? { activityOf: d.sessionActivityOf } : {}) })) },
+    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}), ...(d.sessionActivityOf !== undefined ? { activityOf: d.sessionActivityOf } : {}) })) },
     { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled, ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}) })) },
     {
       id: "agentSource.list",

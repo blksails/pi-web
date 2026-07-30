@@ -141,7 +141,6 @@ SPA 启动时首先拉取此端点，取回渲染选源页/会话页所需的运
     "sourcePicker": false,    // NEXT_PUBLIC_PI_WEB_SOURCE_PICKER
     "launcherRail": false,    // NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL
     "bashEnabled": false,     // NEXT_PUBLIC_PI_WEB_BASH_ENABLED
-    "sessionsGlobal": false,  // NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL
     "sessionsManage": true,   // 仅显式 false/0 才关
     "sessionsSlot": "sidebar",
     "extensionCommands": "",
@@ -213,8 +212,6 @@ curl -X POST http://localhost:3000/api/sessions \
 | 参数 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `scope` | `"cwd"` \| `"all"` | 否 | 缺省 `cwd`（当前目录）；`all`（系统/全机器）受全局门控 |
-| `cwd` | string | 否 | `scope=cwd` 的目标目录（`sessionId` 不可用时的回退） |
-| `sessionId` | string | 否 | `scope=cwd` 时优先以该会话的持久化 cwd 为目标目录 |
 | `limit` | 正整数 | 否 | 单页上限，默认 50，硬 clamp 到 200 |
 | `cursor` | string | 否 | 不透明 keyset 游标（`base64url(JSON.stringify({ ts, id }))`），续取下一页 |
 | `q` | string | 否 | 名称搜索关键字（sidebar-launcher-rail）：非空时按会话名称/标识子串（大小写不敏感）过滤，置于排序/分页前；缺省/空串行为不变（向后兼容）。限长 100。仅匹配名称，不检索正文 |
@@ -233,8 +230,6 @@ curl -X POST http://localhost:3000/api/sessions \
     }
   ],
   "nextCursor": "eyJ0cyI6...",  // 缺省表示无更多页
-  "scope": "cwd",                // 回显生效的 scope
-  "globalEnabled": true,         // 系统视图是否启用，供前端确认入口可用性
   "protocolVersion": "0.1.0"
 }
 ```
@@ -244,14 +239,13 @@ curl -X POST http://localhost:3000/api/sessions \
 | 状态 | code | 触发 |
 |---|---|---|
 | 400 | `INVALID_REQUEST` | `scope` / `limit` / `cursor` 非法（响应含出错字段） |
-| 403 | `SESSIONS_GLOBAL_DISABLED` | `scope=all` 但系统视图未启用（不触达存储，不返回任何会话数据） |
 | 500 | `INTERNAL` | 存储读取异常 |
 
 ```bash
-curl "http://localhost:3000/api/sessions?scope=cwd&limit=50"
+curl "http://localhost:3000/api/sessions?limit=50"
 ```
 
-> 系统视图（`scope=all`）默认关闭，需部署方设 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`。分页、门控、前端三态与重定位等完整机制详见 [14 · 会话列表](14-sessions-list.md)。
+> 会话列表**恒为全局**：返回本机全部工作目录下的会话，不按项目目录区分（原 `scope=cwd|all` 二视图与 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 门控已移除）。列表项仍带 `cwd`，故「哪个项目的会话」在项上仍可见。分页、前端三态与重定位等完整机制详见 [14 · 会话列表](14-sessions-list.md)。
 >
 > **实现参考**：`packages/server/src/session-list/session-list-routes.ts`
 

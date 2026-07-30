@@ -289,7 +289,6 @@ const extensionCommandPolicy = memoizeFeature(
  *   sessionsSlot   → 展示位置 sidebar|header|footer|empty(默认 sidebar)
  * 与后端门控同名,两端对系统视图是否启用保持一致。
  */
-const sessionsGlobalEnabled = memoizeFeature((f) => f.sessionsGlobal);
 
 // session-list-item-actions:会话项管理写操作(删除/重命名/收藏)是否启用。默认启用;
 // 关闭时隐藏写入口(与后端同名门控两端一致:服务端亦拒绝写请求)。
@@ -850,8 +849,6 @@ function SessionView({
         {...(session.sessionId !== undefined
           ? { currentSessionId: session.sessionId }
           : {})}
-        currentCwd={create.cwd ?? "."}
-        globalEnabled={sessionsGlobalEnabled()}
         listSessions={piClient.listSessions}
         onResume={onResumeSession}
         refreshSignal={sessionListRefreshKey}
@@ -955,7 +952,6 @@ function SessionView({
           onResume={onResumeSession}
           onLaunchSource={onLaunchSource}
           listSessions={piClient.listSessions}
-          currentCwd={create.cwd ?? "."}
           listFavorites={piClient.listFavorites}
           setFavorites={piClient.setFavorites}
           favoritesRefreshSignal={favoritesSignal}

@@ -1,8 +1,9 @@
 /**
  * SessionListPanel — 会话列表面板(sessions-list + session-list-item-actions)。
  *
- * 展示历史会话并触发恢复。两类视图经 Tab 切换:「当前目录」(scope=cwd)与「全部」
- * (scope=all,系统/全机器);「全部」入口仅在 `globalEnabled` 时出现(Req 2.2/6.1)。
+ * 展示历史会话并触发恢复。**恒为全局视图**:列出本机全部工作目录下的会话,不按项目目录
+ * 区分(spec session-meta-index 增量;原「当前目录 / 全部」双 Tab 与 `globalEnabled`
+ * 部署门控已移除)。列表项仍显示所属 cwd,故「哪个项目的会话」在项上仍可见。
  * 列表项仅展示头部轻量元数据(名称/标识、时间、所属目录,Req 3.1);不持 pi 接线——
  * 数据经注入的 `listSessions` 函数获取(Req 3.2)。每项整行可点击,直接重新载入该会话:
  * 点击经 `onResume` 回调上抛(Req 4.1),由宿主导航到 /session/:id 冷恢复并回溯 agent source。
@@ -36,12 +37,8 @@ import { SessionItemMenu, SessionRenameField } from "./session-item-menu.js";
 type SessionListItemWithSource = SessionListItem;
 
 export interface SessionListPanelProps {
-  /** 当前活跃会话标识;在场时「当前目录」视图以其持久化 cwd 为准(优先于 currentCwd)。 */
+  /** 当前活跃会话标识;用于高亮当前项。 */
   readonly currentSessionId?: string;
-  /** 当前工作目录(scope=cwd 视图的回退目标,sessionId 不可用时使用)。 */
-  readonly currentCwd: string;
-  /** 系统(全机器)视图是否启用;false 时隐藏「全部」Tab(Req 2.2)。 */
-  readonly globalEnabled: boolean;
   /** 注入的列表数据源(经 PiClient.listSessions);保持本组件不持 pi 接线。 */
   readonly listSessions: (
     req: ListSessionsRequest,
@@ -49,8 +46,8 @@ export interface SessionListPanelProps {
   /** 触发恢复某会话(由宿主走 resumeId 链路,Req 4.1)。 */
   readonly onResume: (sessionId: string) => void;
   /**
-   * 外部刷新信号:值变化时重拉**当前 scope** 首页(保留用户所在 Tab,沿用竞态守卫)。
-   * 面板自身只在 scope/数据源变化时加载,无法感知「新会话落库」「自动标题(auto_title)持久化」
+   * 外部刷新信号:值变化时重拉首页(沿用竞态守卫)。
+   * 面板自身只在数据源变化时加载,无法感知「新会话落库」「自动标题(auto_title)持久化」
    * 等发生在加载之后的服务端变更;宿主在「一轮 agent 运行结束」等时机 bump 此值,使列表及时刷新。
    */
   readonly refreshSignal?: unknown;
@@ -125,7 +122,6 @@ type Status = "idle" | "loading" | "error";
  * 停掉会造成「列表全空闲 → 不轮询 → 永远发现不了别的会话变忙」的鸡生蛋。 */
 const IDLE_POLL_FACTOR = 3;
 
-type Scope = "cwd" | "all";
 
 /** 列表项展示时间:最近更新优先,回退创建;非法时间退化为原串。 */
 function formatTime(item: SessionListItem): string {
@@ -140,8 +136,6 @@ export function SessionListPanel(
   const t = useI18n();
   const {
     currentSessionId,
-    currentCwd,
-    globalEnabled,
     listSessions,
     onResume,
     refreshSignal,
@@ -172,7 +166,6 @@ export function SessionListPanel(
   const actionErrorLabel =
     props.actionErrorLabel ?? t("sessionList.actionError");
 
-  const [scope, setScope] = React.useState<Scope>("cwd");
   const [items, setItems] = React.useState<ReadonlyArray<SessionListItemWithSource>>([]);
   const [nextCursor, setNextCursor] = React.useState<string | undefined>(
     undefined,
@@ -195,7 +188,6 @@ export function SessionListPanel(
 
   const fetchPage = React.useCallback(
     async (
-      targetScope: Scope,
       cursor: string | undefined,
       mode: "reset" | "append",
     ): Promise<void> => {
@@ -203,12 +195,6 @@ export function SessionListPanel(
       setStatus("loading");
       try {
         const res = await listSessions({
-          scope: targetScope,
-          ...(targetScope === "cwd"
-            ? currentSessionId !== undefined
-              ? { sessionId: currentSessionId }
-              : { cwd: currentCwd }
-            : {}),
           ...(pageSize !== undefined ? { limit: pageSize } : {}),
           ...(cursor !== undefined ? { cursor } : {}),
         });
@@ -223,14 +209,14 @@ export function SessionListPanel(
         setStatus("error");
       }
     },
-    [listSessions, currentSessionId, currentCwd, pageSize],
+    [listSessions, pageSize],
   );
 
-  // 切 scope(或 cwd/数据源变化)→ 重置并加载首页;宿主 bump `refreshSignal` 时亦重拉当前 scope 首页
-  //(覆盖加载之后的服务端变更:新会话落库、auto_title 自动标题持久化)。竞态守卫保证仅最新响应可写。
+  // 数据源变化 → 加载首页;宿主 bump `refreshSignal` 时亦重拉首页(覆盖加载之后的服务端
+  // 变更:新会话落库、auto_title 自动标题持久化)。竞态守卫保证仅最新响应可写。
   React.useEffect(() => {
-    void fetchPage(scope, undefined, "reset");
-  }, [scope, fetchPage, refreshSignal]);
+    void fetchPage(undefined, "reset");
+  }, [fetchPage, refreshSignal]);
 
   /**
    * 状态轮询(Req 8.6-8.9):只更新**已显示项**的活跃态,不动列表的长度、顺序与已加载的分页。
@@ -261,12 +247,6 @@ export function SessionListPanel(
     const tick = async (): Promise<void> => {
       try {
         const res = await listSessions({
-          scope,
-          ...(scope === "cwd"
-            ? currentSessionId !== undefined
-              ? { sessionId: currentSessionId }
-              : { cwd: currentCwd }
-            : {}),
           ...(pageSize !== undefined ? { limit: pageSize } : {}),
         });
         if (cancelled) return;
@@ -308,9 +288,6 @@ export function SessionListPanel(
     hasActiveItems,
     pageVisible,
     listSessions,
-    scope,
-    currentSessionId,
-    currentCwd,
     pageSize,
   ]);
 
@@ -382,8 +359,6 @@ export function SessionListPanel(
       !items.some((i) => i.sessionId === pendingSession.sessionId)
       ? pendingSession
       : undefined;
-
-  const showTabs = globalEnabled;
   // 有占位行时:不视作「初始加载中/空」——立即展示占位,避免闪 loading/空态(更符合人类预期)。
   const isInitialLoading =
     status === "loading" && items.length === 0 && pending === undefined;
@@ -548,39 +523,6 @@ export function SessionListPanel(
         </span>
       </div>
 
-      {showTabs ? (
-        <div
-          data-pi-session-list-tabs=""
-          className="flex gap-1 px-1"
-          role="tablist"
-        >
-          {(
-            [
-              { key: "cwd" as const, label: cwdTabLabel },
-              { key: "all" as const, label: allTabLabel },
-            ]
-          ).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              role="tab"
-              data-pi-session-list-tab={t.key}
-              data-active={scope === t.key ? "" : undefined}
-              aria-selected={scope === t.key}
-              onClick={() => setScope(t.key)}
-              className={cn(
-                "rounded-[var(--radius)] px-2 py-1 text-xs transition-colors",
-                scope === t.key
-                  ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
-                  : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       {actionError !== undefined ? (
         <div
           data-pi-session-list-action-error=""
@@ -605,7 +547,7 @@ export function SessionListPanel(
               variant="outline"
               size="sm"
               className="ml-2"
-              onClick={() => void fetchPage(scope, undefined, "reset")}
+              onClick={() => void fetchPage(undefined, "reset")}
             >
               {retryLabel}
             </Button>
@@ -664,7 +606,7 @@ export function SessionListPanel(
                     size="sm"
                     data-pi-session-list-load-more=""
                     disabled={status === "loading"}
-                    onClick={() => void fetchPage(scope, nextCursor, "append")}
+                    onClick={() => void fetchPage(nextCursor, "append")}
                     className="w-full"
                   >
                     {loadMoreLabel}

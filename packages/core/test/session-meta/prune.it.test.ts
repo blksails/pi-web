@@ -58,13 +58,11 @@ describe("残留条目不进列表(Req 5.2)", () => {
       store,
       routes: createSessionListRoutes({
         createEntryStore: async () => entryStore,
-        globalEnabled: false,
-        defaultCwd: cwd,
         metaIndex: idx,
       }),
       authResolver: () => ({ anonymous: true }),
     });
-    const res = await handler(new Request(`http://x/sessions?cwd=${encodeURIComponent(cwd)}`));
+    const res = await handler(new Request("http://x/sessions"));
     const body = ListSessionsResponseSchema.parse(JSON.parse(await res.text()));
     expect(body.sessions.map((s) => s.sessionId)).toEqual(["alive"]);
     // 索引里仍有幽灵键(列表只是不呈现它),需靠 prune 清

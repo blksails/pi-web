@@ -69,8 +69,6 @@ export interface LauncherRailProps {
   readonly listSessions: (
     req: ListSessionsRequest,
   ) => Promise<ListSessionsResponse>;
-  /** 搜索目标目录(scope=cwd)。 */
-  readonly currentCwd: string;
   /** 收藏读取(注入 PiClient.listFavorites)。 */
   readonly listFavorites: () => Promise<ListFavoritesResponse>;
   /** 收藏写入(注入 PiClient.setFavorites)。 */
@@ -97,7 +95,6 @@ export function LauncherRail({
   onResume,
   onLaunchSource,
   listSessions,
-  currentCwd,
   listFavorites,
   setFavorites,
   favoritesRefreshSignal,
@@ -133,7 +130,7 @@ export function LauncherRail({
     const myId = searchReqIdRef.current + 1;
     searchReqIdRef.current = myId;
     setSearchStatus("loading");
-    void listSessions({ scope: "cwd", cwd: currentCwd, q })
+    void listSessions({ q })
       .then((res) => {
         if (searchReqIdRef.current !== myId) return; // 过期响应丢弃
         setResults(res.sessions);
@@ -143,7 +140,7 @@ export function LauncherRail({
         if (searchReqIdRef.current !== myId) return;
         setSearchStatus("error");
       });
-  }, [searchOpen, query, currentCwd, listSessions]);
+  }, [searchOpen, query, listSessions]);
 
   const closeSearch = (): void => {
     setSearchOpen(false);

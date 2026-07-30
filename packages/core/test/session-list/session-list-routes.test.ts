@@ -46,13 +46,11 @@ async function seed(): Promise<void> {
   await mk("b2", cwdB, "2026-06-01T00:00:07.000Z");
 }
 
-function makeHandler(globalEnabled: boolean): (req: Request) => Promise<Response> {
+function makeHandler(): (req: Request) => Promise<Response> {
   const store = new InMemorySessionStore(true);
   const manager = new SessionManager({ store, idleMs: 0 });
   const routes = createSessionListRoutes({
     createEntryStore: async () => new FsSessionEntryStore(tmpDir),
-    globalEnabled,
-    defaultCwd: cwdA,
   });
   return createPiWebHandler({
     manager,
@@ -69,61 +67,47 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 
 const url = (qs: string): Request => new Request(`http://x/sessions${qs}`);
 
-describe("GET /sessions — current-directory view", () => {
-  it("returns the cwd's sessions, schema-valid and in non-increasing time order", async () => {
+describe("GET /sessions — 全局视图(不再区分项目目录)", () => {
+  // ★ 行为变更(spec session-meta-index 增量):原先默认只列「当前目录」会话,并以
+  //   scope=all + 部署门控提供「全机器」视图。现恒为全局 —— 用户在多个项目间穿梭时,
+  //   「当前目录」这个切面制造的是隔阂而非聚焦。原先验证 scope 默认值、cwd 参数、
+  //   由 sessionId 解析目标目录、门控 403 的用例随行为一并移除(不是改造成通过)。
+  it("返回本机全部目录的会话,schema 合法且按时间非升序", async () => {
     await seed();
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const handler = makeHandler();
+    const res = await handler(url(""));
     expect(res.status).toBe(200);
 
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
-    expect(parsed.scope).toBe("cwd");
-    expect(parsed.globalEnabled).toBe(false);
+    // cwdA 的 5 个 + cwdB 的 2 个,一个都不少
     expect(parsed.sessions.map((s) => s.sessionId).sort()).toEqual([
       "a1",
       "a2",
       "a3",
       "a4",
       "a5",
+      "b1",
+      "b2",
     ]);
-    // 倒序:排序键(updatedAt??createdAt)非升序(fs 后端 updatedAt=mtime,近似相等亦满足)。
     const keys = parsed.sessions.map((s) => s.updatedAt ?? s.createdAt);
     for (let i = 1; i < keys.length; i += 1) {
       expect(keys[i - 1]! >= keys[i]!).toBe(true);
     }
   });
 
-  it("defaults scope to cwd and uses defaultCwd when cwd omitted", async () => {
+  it("列表项仍带 cwd:「哪个项目的会话」在项上仍可见", async () => {
     await seed();
-    const handler = makeHandler(false);
-    const res = await handler(url(""));
-    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
-    expect(parsed.scope).toBe("cwd");
-    expect(parsed.sessions).toHaveLength(5); // defaultCwd = cwdA
+    const parsed = ListSessionsResponseSchema.parse(
+      await readJson(await makeHandler()(url(""))),
+    );
+    const b1 = parsed.sessions.find((s) => s.sessionId === "b1");
+    expect(b1?.cwd).toBe(cwdB);
   });
 
-  it("resolves the target directory from sessionId (current session's cwd)", async () => {
-    await seed();
-    const handler = makeHandler(false);
-    // 以 cwdB 的会话 b1 解析「当前目录」→ 返回 cwdB 的会话(b1,b2),而非 defaultCwd(cwdA)。
-    const res = await handler(url("?scope=cwd&sessionId=b1"));
-    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
-    expect(parsed.sessions.map((s) => s.sessionId).sort()).toEqual(["b1", "b2"]);
-  });
-
-  it("falls back to default cwd when sessionId does not exist", async () => {
-    await seed();
-    const handler = makeHandler(false);
-    const res = await handler(url("?scope=cwd&sessionId=does-not-exist"));
-    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
-    expect(parsed.sessions).toHaveLength(5); // defaultCwd = cwdA
-  });
-
-  it("returns an empty list for a directory with no sessions", async () => {
-    await seed();
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent("/tmp/empty")}`));
-    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+  it("一个会话都没有时返回空列表", async () => {
+    const parsed = ListSessionsResponseSchema.parse(
+      await readJson(await makeHandler()(url(""))),
+    );
     expect(parsed.sessions).toEqual([]);
     expect(parsed.nextCursor).toBeUndefined();
   });
@@ -141,8 +125,8 @@ describe("GET /sessions — display name enrichment (auto-title)", () => {
       name: "自动生成的标题",
     } as never);
 
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const handler = makeHandler();
+    const res = await handler(url(""));
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.find((s) => s.sessionId === "n1")?.name).toBe("自动生成的标题");
   });
@@ -166,8 +150,8 @@ describe("GET /sessions — display name enrichment (auto-title)", () => {
       name: "最新的自动标题",
     } as never);
 
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const handler = makeHandler();
+    const res = await handler(url(""));
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.find((s) => s.sessionId === "h1")?.name).toBe("最新的自动标题");
   });
@@ -183,8 +167,8 @@ describe("GET /sessions — display name enrichment (auto-title)", () => {
       name: "仅 header 命名",
     });
 
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`));
+    const handler = makeHandler();
+    const res = await handler(url(""));
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.find((s) => s.sessionId === "h2")?.name).toBe("仅 header 命名");
   });
@@ -193,14 +177,14 @@ describe("GET /sessions — display name enrichment (auto-title)", () => {
 describe("GET /sessions — pagination", () => {
   it("paginates via cursor without repeating sessions and converges", async () => {
     await seed();
-    const handler = makeHandler(false);
+    const handler = makeHandler();
     const ids: string[] = [];
     let cursor: string | undefined;
     let guard = 0;
     do {
       const res = await handler(
         url(
-          `?scope=cwd&cwd=${encodeURIComponent(cwdA)}&limit=2${cursor !== undefined ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+          `?limit=2${cursor !== undefined ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
         ),
       );
       const parsed = ListSessionsResponseSchema.parse(await readJson(res));
@@ -210,52 +194,21 @@ describe("GET /sessions — pagination", () => {
       guard += 1;
     } while (cursor !== undefined && guard < 10);
 
-    expect(ids.sort()).toEqual(["a1", "a2", "a3", "a4", "a5"]);
-    expect(new Set(ids).size).toBe(5); // 无重复
-  });
-});
-
-describe("GET /sessions — system (all) view gating", () => {
-  it("rejects scope=all with 403 when global view is disabled", async () => {
-    await seed();
-    const handler = makeHandler(false);
-    const res = await handler(url("?scope=all"));
-    expect(res.status).toBe(403);
-    const body = await readJson(res);
-    expect((body["error"] as Record<string, unknown>)["code"]).toBe(
-      "SESSIONS_GLOBAL_DISABLED",
-    );
-  });
-
-  it("aggregates across all cwds when global view is enabled", async () => {
-    await seed();
-    const handler = makeHandler(true);
-    const res = await handler(url("?scope=all"));
-    expect(res.status).toBe(200);
-    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
-    expect(parsed.scope).toBe("all");
-    expect(parsed.globalEnabled).toBe(true);
-    expect(parsed.sessions.map((s) => s.sessionId).sort()).toEqual([
-      "a1",
-      "a2",
-      "a3",
-      "a4",
-      "a5",
-      "b1",
-      "b2",
-    ]);
+    // 全局视图:两个目录的会话一并分页(分页逻辑本身未变,变的是数据集范围)
+    expect(ids.sort()).toEqual(["a1", "a2", "a3", "a4", "a5", "b1", "b2"]);
+    expect(new Set(ids).size).toBe(7); // 无重复
   });
 });
 
 describe("GET /sessions — request validation", () => {
   it("returns 400 for an undecodable cursor", async () => {
-    const handler = makeHandler(false);
-    const res = await handler(url("?scope=cwd&cursor=%%%not-base64%%%"));
+    const handler = makeHandler();
+    const res = await handler(url("?cursor=%%%not-base64%%%"));
     expect(res.status).toBe(400);
   });
 
   it("returns 400 for a non-positive / non-numeric limit", async () => {
-    const handler = makeHandler(false);
+    const handler = makeHandler();
     expect((await handler(url("?limit=0"))).status).toBe(400);
     expect((await handler(url("?limit=abc"))).status).toBe(400);
   });
@@ -268,8 +221,6 @@ describe("GET /sessions — request validation", () => {
       // 构造失败 → handler catch → 500(原用 postgres 缺 connectionString 触发,
       // 工厂随 pg 实现搬去兼容层包后,直接注入一个必然失败的构造,判据不变)。
       createEntryStore: () => Promise.reject(new Error("store construction failed")),
-      globalEnabled: false,
-      defaultCwd: cwdA,
     });
     const handler = createPiWebHandler({
       manager,
@@ -277,7 +228,7 @@ describe("GET /sessions — request validation", () => {
       routes,
       authResolver: () => ({ anonymous: true }),
     });
-    const res = await handler(url("?scope=cwd"));
+    const res = await handler(url(""));
     expect(res.status).toBe(500);
   });
 });
@@ -295,16 +246,16 @@ describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
 
   it("q 命中(大小写不敏感)只返回匹配名称的会话(Req 3.2)", async () => {
     await seedNamed();
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=fix`));
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=fix`));
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s2"]);
   });
 
   it("q 未命中 → 空结果(Req 3.4),不使请求失败", async () => {
     await seedNamed();
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=zzz-nomatch`));
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=zzz-nomatch`));
     expect(res.status).toBe(200);
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions).toEqual([]);
@@ -312,12 +263,12 @@ describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
 
   it("空 q 与不传 q 一致(向后兼容 Req 6.2)", async () => {
     await seedNamed();
-    const handler = makeHandler(false);
+    const handler = makeHandler();
     const base = ListSessionsResponseSchema.parse(
-      await readJson(await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}`))),
+      await readJson(await handler(url(""))),
     );
     const withEmptyQ = ListSessionsResponseSchema.parse(
-      await readJson(await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=`))),
+      await readJson(await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=`))),
     );
     expect(withEmptyQ.sessions.map((s) => s.sessionId)).toEqual(
       base.sessions.map((s) => s.sessionId),
@@ -326,8 +277,8 @@ describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
 
   it("q 也可按 sessionId 子串命中", async () => {
     await seedNamed();
-    const handler = makeHandler(false);
-    const res = await handler(url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=s3`));
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=s3`));
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s3"]);
   });
@@ -346,10 +297,10 @@ describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
       type: "session_info",
       name: "Investigate Payment Bug",
     } as never);
-    const handler = makeHandler(false);
+    const handler = makeHandler();
     // 按显示名子串搜索 → 命中该 header 未命名会话(修复前只匹配 header name 会漏)。
     const res = await handler(
-      url(`?scope=cwd&cwd=${encodeURIComponent(cwdA)}&q=payment`),
+      url(`?cwd=${encodeURIComponent(cwdA)}&q=payment`),
     );
     const parsed = ListSessionsResponseSchema.parse(await readJson(res));
     expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["auto1"]);
