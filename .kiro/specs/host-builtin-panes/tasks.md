@@ -72,6 +72,20 @@
   - _Requirements: 2.2, 3.1_
   - _Boundary: panes-kit 出口 — `packages/panes-kit/src/index.ts`_
 
+- [x] 2.5 把协议常量从 schema 模块抽出,使 guest bundle 不再内联 zod
+  - **实测根因**(本任务由实现期发现,非原计划):guest SDK 从 schema 模块 import 一个
+    `= 1 as const` 的协议版本常量,而该模块顶层是一串 `z.object({...})` 副作用表达式 ——
+    打包器不敢摘,于是**只导入一个常量就拖进约 62KB 的 zod**。实测:barrel 与深路径导入
+    都是 65KB,单独 import 该常量仍是 62KB,可见与 barrel 无关
+  - 把该常量(及其同类纯常量)移到一个**零依赖**的小模块,schema 模块与 guest SDK 都从那里取;
+    schema 模块 re-export 以保持既有导入点零破坏
+  - 为什么现在做:内置 pane 的文档是**内联进宿主 bundle 的字符串**,下游还要加 3–4 个内置
+    pane,每个都会重复内联一份 zod。留到下游等于把一个已知的体积问题乘以 4
+  - 可观察完成:同一份 guest 探针的 bundle 体积从约 65KB 降到不含 zod 的量级,且产物中
+    `ZodError` 出现次数为 0;panes-kit 既有测试与类型检查不回退
+  - _Requirements: 6.1_
+  - _Boundary: panes-kit 协议常量 — `packages/panes-kit/src/protocol-version.ts`, `packages/panes-kit/src/contract.ts`, `packages/panes-kit/src/guest.ts`, `packages/panes-kit/src/index.ts`_
+
 - [ ] 3. Core:最小内置 pane 与宿主清单
 
 - [ ] 3.1 (P) 实现会话信息 pane 的 guest 侧

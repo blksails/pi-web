@@ -4,7 +4,10 @@ import type {
   PaneErrorData,
   PaneHostMessage,
 } from "./contract.js";
-import { PANE_PROTOCOL_VERSION } from "./contract.js";
+// ★ 从零依赖的 protocol-version 取,**不要**从 contract 取:后者顶层的 z.object(...) 是打包器
+// 眼里的副作用表达式,只为一个版本号 import 它会把整个 zod(约 62KB)内联进 guest bundle。
+// guest 侧格外敏感 —— 内置 pane 的文档是内联进宿主 bundle 的字符串,每个 pane 重复一份。
+import { PANE_PROTOCOL_VERSION } from "./protocol-version.js";
 import { PaneHostError } from "./errors.js";
 
 interface PendingCall {

@@ -1,6 +1,10 @@
 import { z } from "zod";
+// 纯常量住在零依赖模块里(见该文件的说明):本模块顶层的 z.object(...) 是打包器眼里的副作用
+// 表达式,不敢 tree-shake —— 常量若留在这里,guest 只为取一个版本号就会内联整个 zod。
+// 此处 re-export 保持既有导入点零破坏。
+import { PANE_PROTOCOL_VERSION, UNLIMITED_PANE_COUNT } from "./protocol-version.js";
 
-export const PANE_PROTOCOL_VERSION = 1 as const;
+export { PANE_PROTOCOL_VERSION, UNLIMITED_PANE_COUNT };
 
 const NonEmptyIdSchema = z.string().min(1).max(128);
 
@@ -36,9 +40,6 @@ export const PaneDocumentSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("html"), src: z.string().min(1) }),
 ]);
 export type PaneDocument = z.infer<typeof PaneDocumentSchema>;
-
-/** Explicit sentinel for hosts that intentionally impose no pane-count policy. */
-export const UNLIMITED_PANE_COUNT = Number.MAX_SAFE_INTEGER;
 
 export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
