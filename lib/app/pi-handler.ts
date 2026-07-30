@@ -25,13 +25,7 @@ import {
   PiRpcProcess,
   // e2b 云沙盒传输(spec e2b-sandbox-transport):传输无关会话核心 + e2b adapter + 配置解析。
   PiRpcSession,
-  E2bTransport,
-  SandboxWsTransport,
-  selectTransport,
-  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
-  resolveSandboxTemplate,
   AgentSourceResolver,
-  resolvePiCliEntry,
   runnerBootstrapPath,
   // 15 个路由能力面工厂已移至 host-assembly/default-capabilities(M3 经 composeCapabilities 装配);
   // 此处不再直接 import。保留下方 resolve*/broadcast* 等辅助(HostDeps 构造仍需)。
@@ -43,13 +37,6 @@ import {
   createScanSourceProvider,
   createRegistrySourceProvider,
   createRegistryHttpSourceProvider,
-  createDesktopCapabilitiesClient,
-  resolveDesktopCapabilitiesUrl,
-  deriveCapabilitiesUrlFromEgressBase,
-  deriveLoginUrlFromEgressBase,
-  createCloudLoginClient,
-  createDesktopPasswordIdentityProvider,
-  resolveShellToken,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
@@ -57,10 +44,6 @@ import {
   createAigcModelsRoute,
   createVisionModelsRoute,
   createHostCommandRegistry,
-  ChildProcessPiCli,
-  DEFAULT_ALLOWLIST,
-  defaultOnAudit,
-  redactReason,
   attachmentStoreConfigFromEnv,
   ATTACHMENT_PROFILE_DISABLED_ENV,
   // 附件拓扑条件透传判定(spec sandbox-baked-agent-image 任务 4.2):e2b 分支按拓扑
@@ -70,34 +53,68 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   ConfigCodec,
+  // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
+  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
+  createModelCatalogService,
+  // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
+  composeCapabilities,
+  HOST_CAPABILITY_IDS_V1,
+  type CapabilityDecision,
+  type ResolvedSource,
+  type SessionChannel,
+  type CreateChannelOpts,
+} from "@blksails/pi-web-server";
+import {
+  resolvePiCliEntry,
+  ChildProcessPiCli,
+  DEFAULT_ALLOWLIST,
+  defaultOnAudit,
+  redactReason,
+  type AllowlistConfig,
+} from "@blksails/pi-web-adapters/extensions/index.js";
+import {
+  resolveLlmGatewaySecret,
+  resolveAiGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  createDesktopCapabilitiesClient,
+  resolveDesktopCapabilitiesUrl,
+  deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
+  createCloudLoginClient,
+  resolveShellToken,
+  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
+  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
+  AuthSessionState,
+} from "@blksails/pi-web-adapters/auth/index.js";
+import {
   // LLM 网关 provider 登记表 + secret 解析(HostDeps 构造 gateway.llm 用;路由工厂
   // createLlmGatewayRoutes 已移至 host-assembly/default-capabilities)。
   resolveLlmGatewayProviderTable,
-  resolveLlmGatewaySecret,
+} from "@blksails/pi-web-adapters/llm-gateway/index.js";
+import {
   // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
   // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
   // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
   resolveAiGatewayConfig,
   EnvKeyResolver,
   GatewayModelCatalog,
-  resolveAiGatewaySecret,
-  // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
-  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
-  createModelCatalogService,
-  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
-  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
-  AuthSessionState,
-  // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
-  composeCapabilities,
-  HOST_CAPABILITY_IDS_V1,
-  type CapabilityDecision,
-  type AllowlistConfig,
-  type ResolvedSource,
-  type SessionChannel,
-  type CreateChannelOpts,
-} from "@blksails/pi-web-server";
-import { loggingConfigSchema } from "@blksails/pi-web-protocol";
-import { configureLogger, createLogger } from "@blksails/pi-web-logger";
+  mergeModelCatalog,
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
+import { createDesktopPasswordIdentityProvider } from "@blksails/pi-web-adapters/identity/index.js";
+import {
+  E2bTransport,
+  SandboxWsTransport,
+  selectTransport,
+  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
+  resolveSandboxTemplate,
+} from "@blksails/pi-web-adapters/sandbox-transport/index.js";
+import { loggingConfigSchema, type LoggingConfig } from "@blksails/pi-web-protocol";
+import {
+  configureFileOutputFromEnv,
+  configureLogger,
+  createLogger,
+} from "@blksails/pi-web-logger";
 // trust 策略经子路径导入(不走 barrel),使 Next serverExternalPackages 对 pi SDK 的
 // external 正确生效,避免 pi SDK/pi-ai 被打进路由 bundle(node:fs 解析失败)。
 import { makeProjectTrustPolicy } from "@blksails/pi-web-server/trust";
@@ -130,6 +147,7 @@ import {
 import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
+import { readyTimeoutFromEnv } from "./readiness-config.js";
 // LLM 网关凭据切换决策(spec sandbox-credentials-v2,任务 3.3):e2b 分支的
 // providerKeysForE2b/sandboxLlmEnv 计算抽成纯函数,便于脱离真实传输单测。
 import {
@@ -159,18 +177,26 @@ import { resolveBakedCloudEgressBase } from "./cloud-defaults.js";
 // 总开关 PI_WEB_AUTO_TITLE 开启(默认)时经 spawn env 下发给 agent 子进程强制注入。
 import { createClearHostCommand } from "./clear-host-command.js";
 import {
-  createInstallHostCommand,
+  createPackageHostCommand,
   type InstallAuditEvent,
-} from "./install-host-command.js";
+  type PackageHostCommandDeps,
+} from "./package-host-command.js";
 import { createInstaller } from "../../server/cli/install/installer.js";
+import { ensurePublishKey } from "../../server/cli/publish/keystore.js";
+import { ensurePublishKeyRegistered, isKeyInPlace } from "./publish-key-registration.js";
+import { executePublish } from "./publish-execute.js";
 import { createPluginInstaller } from "../../server/cli/install/plugin-installer.js";
 import { resolveSourcesRoot } from "../../server/cli/context.js";
 // 线上源可运行(spec desktop-online-source-runnable,任务 3.1/3.2):安装端口与解析插件。
 // 二者位于应用层而非 packages/server —— 它们经 server/cli 间接依赖 @pi-clouds/registry-client,
 // 而 P1 的范围铁律要求该依赖不得进入包内(判别与索引已下沉包内,纯 fs)。
 import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
+import { createLazyRegistryChannel } from "./online-source/registry-channel-adapter.js";
 import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
-import { resolveLoggingEnvDefault } from "./logging-default.js";
+import {
+  resolveEnabledWithSource,
+  resolveLoggingEnvDefault,
+} from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
@@ -525,6 +551,9 @@ function buildSingleton(): HandlerSingleton {
     createModelCatalogService({
       listSelfChat: () => listModelOptions(config.agentDir),
       gatewayChat: gatewayModelCatalog,
+      // 合并能力由装配层注入(spec: core-package-extraction 任务 3.1)。目录服务属内核层,
+      // 不认识 ai-gateway 适配器;它与 gatewayChat 同进同出,漏传会当场抛错而非静默降级。
+      mergeCatalog: mergeModelCatalog,
       modelPrecedence: aiGwConfig?.modelPrecedence,
       imageCatalog: AIGC_MODEL_CATALOG,
       gatewayImageCatalog:
@@ -544,6 +573,104 @@ function buildSingleton(): HandlerSingleton {
   // 时主进程与 runner 同步开启。(注:此为主进程自身日志门控,runner 日志→UI 仍由
   // loggingConfigProvider/gateConfig 单独控制。)
   configureLogger(resolveLoggingEnvDefault());
+  // ★ 文件输出必须在此**单独**配一次:`configureLogger` 只管 enabled/level/namespaces,
+  //   而文件 sink 装在 `initConfigFromEnv()` 里 —— 主进程刻意不调那个(见上),
+  //   于是 `PI_WEB_LOG_FILE` 长期**只在 runner 子进程生效**:日志文件确实被创建、
+  //   看着一切正常,里面却没有一行主进程的日志。真机排查发布链时因此完全失明。
+  // ★★ 文件 sink 的 `fs` 来自 `globalThis.__PI_WEB_FS__` 接缝 —— logger 包本身**不含任何
+  //     `node:` 说明符**(否则浏览器/Next 构建会去解析 Node 内置模块),故必须由 Node-only 的
+  //     调用方来填。此前**只有 runner 填过**(`packages/server/src/runner/runner.ts:248`),
+  //     主进程从没填 → `getFsRef()` 恒 null → 每次文件写入都是**静默空操作**。
+  //
+  //     后果:`PI_WEB_LOG_FILE` 看似生效(文件被 runner 创建、内容也在增长),
+  //     里面却只有 runner 子进程的行,主进程一条都没有。真机排查发布链时因此完全失明。
+  //     ⚠ 只配 `configureFileOutputFromEnv` 是**不够的** —— 两步缺一,文件就是空的。
+  //
+  //     这里可以同步填(本文件已静态 `import fs from "node:fs"`),不必像 runner 那样 await。
+  (globalThis as Record<string, unknown>)["__PI_WEB_FS__"] ??= fs;
+
+  const fileLogEnabled = configureFileOutputFromEnv(process.env);
+  // 一条**必定触发**的启动行:没有它,"日志到底通没通"无从判断 ——
+  // 主进程在装配期原本一条日志都不记,于是「文件是空的」既可能是没配好、
+  // 也可能是压根没事发生,两者无法区分。真机排查发布链时正是卡在这个盲区上
+  // (文件确实存在、看着一切正常,里面却只有 runner 子进程的行)。
+  hostAssemblyLogger.info("logging configured", {
+    level: process.env.PI_WEB_LOG_LEVEL ?? "info",
+    file: fileLogEnabled ? process.env.PI_WEB_LOG_FILE : undefined,
+  });
+
+  /**
+   * 解析日志门控:Settings 原始值 + env 覆盖 + dev/生产默认(优先级见
+   * {@link resolveEnabledWithSource})。
+   */
+  const resolveLoggingGate = async (): Promise<LoggingConfig> => {
+    let raw: unknown = null;
+    try {
+      raw = await new ConfigCodec(config.agentDir).load("logging");
+    } catch {
+      raw = null; // 读失败按「无配置」处理,继续走 env / 默认。
+    }
+    const { enabled, source } = resolveEnabledWithSource(raw);
+    const base =
+      raw !== null && typeof raw === "object" && Object.keys(raw).length > 0
+        ? raw
+        : resolveLoggingEnvDefault();
+    const parsed = loggingConfigSchema.parse(base);
+    // ★ enabled 一律以 resolveEnabledWithSource 为准,覆盖 parse 出来的值 ——
+    //   否则 env 覆盖与 dev 默认都会被 Settings 里存盘的旧值顶掉。
+    const gate = { ...parsed, enabled };
+    if (source !== lastLoggingGateSource) {
+      lastLoggingGateSource = source;
+      // 门控从哪来、值是多少 —— 「日志为什么不显示」的第一现场。必定输出一次。
+      hostAssemblyLogger.info("logging gate resolved", {
+        enabled,
+        level: gate.level,
+        source,
+      });
+    }
+    return gate;
+  };
+
+  /**
+   * 最近一次解析出的日志门控。spawn env 组装是**同步**路径,而门控解析要读配置文件
+   * (异步),故缓存于此。
+   *
+   * 种子取 env/模式默认(纯同步,不读盘);装配期立刻发起一次异步刷新收敛到 Settings。
+   * 会话创建必然在一次 HTTP 请求之后,窗口实际为零 —— 但即便命中该窗口,后果也只是
+   * 首个会话的子进程按默认门控运行(服务端门控仍然正确),不会错发日志给前端。
+   */
+  let lastLoggingGateSource: string | undefined;
+  let lastLoggingGate: LoggingConfig = loggingConfigSchema.parse(
+    resolveLoggingEnvDefault(),
+  );
+  void resolveLoggingGate().then((g) => {
+    lastLoggingGate = g;
+  });
+
+  /**
+   * 下发给 runner 子进程的日志 env(★ 门控下沉到**产生端**)。
+   *
+   * 改造前:子进程 logger 库默认 `enabled: true`,而服务端门控默认关 —— 于是子进程把每条
+   * 日志序列化成 JSON 写 stderr,主进程解析完**全部丢弃**(`pi-session.ts` 的 `!gate.enabled`
+   * → continue)。白烧 CPU、刷终端,且「关掉日志」这个动作在产生端毫无体现。
+   *
+   * 现在把已解析的门控原样下发,子进程 `initConfigFromEnv()` 据此自我关闭 —— 关闭时
+   * **一行都不产生**。三个键与 logger 包既有的 env 契约同名,不新增 env 名。
+   *
+   * 注:e2b/沙箱分支未接(那条路 env 还要过 `envPassthrough` 白名单),沙箱内维持现状。
+   */
+  const loggingSpawnEnv = (): Record<string, string> => {
+    const gate = lastLoggingGate;
+    const out: Record<string, string> = {
+      PI_WEB_LOG_ENABLED: gate.enabled ? "1" : "false",
+      PI_WEB_LOG_LEVEL: gate.level,
+    };
+    const on = Object.entries(gate.namespaces ?? {})
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (on.length > 0) out.PI_WEB_LOG_NAMESPACES = on.join(",");
+    return out;
+  };
 
   const store = new InMemorySessionStore(true);
 
@@ -552,16 +679,10 @@ function buildSingleton(): HandlerSingleton {
   // 非 "false" 时强制开启，无需经 Settings；级别/命名空间一并取自 PI_WEB_LOG_* env，
   // 见 resolveLoggingEnvDefault）。有内容 → parse(raw) 应用 Settings 已保存的配置。
   const loggingConfigProvider = async () => {
-    try {
-      const codec = new ConfigCodec(config.agentDir);
-      const raw = await codec.load("logging");
-      if (raw === null || typeof raw !== "object" || Object.keys(raw).length === 0) {
-        return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-      }
-      return loggingConfigSchema.parse(raw);
-    } catch {
-      return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-    }
+    const resolved = await resolveLoggingGate();
+    // 缓存供**同步**路径读取(spawn env 组装是同步的,见 loggingSpawnEnv)。
+    lastLoggingGate = resolved;
+    return resolved;
   };
 
   // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
@@ -575,6 +696,7 @@ function buildSingleton(): HandlerSingleton {
     idleMs: 0,
     loggingConfigProvider,
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
+    readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
   });
 
@@ -787,6 +909,9 @@ function buildSingleton(): HandlerSingleton {
       env: {
         ...resolved.spawnSpec.env,
         ...config.providerKeys,
+        // ★ 日志门控下沉到产生端:把已解析的门控下发子进程,关闭时 runner **一行都不产生**
+        //   (改造前是子进程照产、主进程解析后全丢)。见 loggingSpawnEnv 的说明。
+        ...loggingSpawnEnv(),
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
         // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
@@ -846,20 +971,44 @@ function buildSingleton(): HandlerSingleton {
     await session.restartRunner();
   };
 
-  // /install host 命令(spec install-host-command):web 面按 kind 安装 agent/plugin,
-  // 复用 CLI install 子域(createInstaller/createPluginInstaller 直调,零第二份编排)。
-  // 治理与 REST /extensions 同源:extAllowlist(白名单)/extAllowMutate(admin 门)/extPiCli。
-  // agent 落盘目标与 GET /agent-sources 的「扫描 ∪ 注册表」同值,装完选择器天然可见。
+  // /agent 与 /plugin host 命令(spec agent-plugin-commands):命令名即类别,取代原先靠
+  // `--kind` 分派的单一 /install。复用 CLI install 子域(createInstaller/createPluginInstaller
+  // 直调,零第二份编排)。治理与 REST /extensions 同源:extAllowlist(白名单)/
+  // extAllowMutate(admin 门)/extPiCli。agent 落盘目标与 GET /agent-sources 的
+  // 「扫描 ∪ 注册表」同值,装完选择器天然可见。
   const installRegistryPath =
     process.env.PI_WEB_SOURCES_REGISTRY ??
     path.join(config.agentDir, "sources.json");
-  const installHostCommand = createInstallHostCommand({
+  const packageCommandDeps: PackageHostCommandDeps = {
     installer: createInstaller({
       allowlistConfig: extAllowlist,
       piCli: extPiCli,
       agentInstallerOptions: {
         sourcesRoot: resolveSourcesRoot(process.env, config.defaultCwd),
         registryPath: installRegistryPath,
+      },
+      // registry 通道(spec installer-registry-channel):`/agent install <registry-id>` 与
+      // source 选择器路径走同一份安装实现。
+      //
+      // ★ 全程惰性:`desktopCapabilitiesClient` 与 `sourcesScanRoots` 都在下方才构造,故这里
+      //   不能直接引用它们的值 —— 与 `listAgentSources` 同一手法(闭包内取,调用时才求值),
+      //   而不是把 packageCommandDeps 的构造整块下移(牵连面大得多)。
+      // ★ 未登录 / 未配置云端 → 通道报 NOT_AUTHENTICATED → 上浮为 REGISTRY_UNAVAILABLE,
+      //   是诚实降级,不是「不支持」。
+      registryChannel: {
+        async materialize(spec, opts) {
+          if (desktopCapabilitiesClient === undefined) {
+            return { ok: false, error: { code: "NOT_AUTHENTICATED" } };
+          }
+          return createLazyRegistryChannel({
+            getSourcesGrant: () => desktopCapabilitiesClient.getSourcesGrant(),
+            // agent 落点 = 第一个扫描根,装完即被 scan-provider 枚举(与选择器路径同根)。
+            agentTargetRoot: sourcesScanRoots[0] ?? defaultSourcesRoot(),
+            // plugin 落点刻意**在扫描根之外**:落进去会被源枚举当成 agent 源列出来。
+            // 是长期位置,不是暂存 —— pi 只把路径记进台账,不拷贝内容。
+            pluginTargetRoot: path.join(config.agentDir, "registry-plugins"),
+          }).materialize(spec, opts);
+        },
       },
     }),
     pluginInstaller: createPluginInstaller({ piCli: extPiCli }),
@@ -877,8 +1026,52 @@ function buildSingleton(): HandlerSingleton {
         reason: redactReason(event.reason),
       });
     },
+    // `/agent list` 的数据源:CLI 的 agent 通道只有装/卸,没有列举能力,故接既有的 agent 源
+    // 枚举 provider(与 GET /agent-sources 同一实例)。惰性求值:provider 在下方构造。
+    listAgentSources: async () => await agentSourcesProvider.list(),
     cwd: config.defaultCwd,
-  });
+    // 发布前确保本机公钥已登记(spec publish-key-lifecycle)。惰性求值,理由同上。
+    // 未登录 / 未配置云端 → 直接跳过(编排器内部对 grant 缺席即返回),不产生任何请求。
+    ensurePublishKeyRegistered: async () => {
+      if (desktopCapabilitiesClient === undefined) return;
+      await ensurePublishKeyRegistered({
+        ensureKey: () => ensurePublishKey(),
+        getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+        registerPublishKey: (input) => desktopCapabilitiesClient.registerPublishKey(input),
+      });
+    },
+    // 真实发布(spec publish-execution)。恒注入 —— 未配置云端时 `getPublishGrant` 取不到授予,
+    // `executePublish` 自己就会返回 `PUBLISH_NOT_AVAILABLE`(与本 spec 引入前逐字相同的文案),
+    // 故不必在此再判一次"有没有云端"(判两次 = 两处文案要同步)。
+    executePublish: (input) =>
+      executePublish(input, {
+        getPublishGrant: async () => desktopCapabilitiesClient?.getPublishGrant(),
+        // ★ 与 dry-run 路径不同:这里是**硬前置**。公钥没登记则服务端验签必然失败,
+        //   而那次失败会烧掉一个版本号。`already`(回执命中)同样算就位。
+        ensureKeyRegistered: async () => {
+          if (desktopCapabilitiesClient === undefined) return false;
+          const outcome = await ensurePublishKeyRegistered({
+            ensureKey: () => ensurePublishKey(),
+            getPublishGrant: () => desktopCapabilitiesClient.getPublishGrant(),
+            registerPublishKey: (i) => desktopCapabilitiesClient.registerPublishKey(i),
+          });
+          return isKeyInPlace(outcome);
+        },
+      }),
+    auditPublish: (event): void => {
+      defaultOnAudit({
+        actor: "host-command",
+        at: new Date().toISOString(),
+        // 审计动作词表沿用既有三态,发布归入 install(它也是"把东西放进注册表")。
+        action: "install",
+        source: event.source ?? "publish",
+        outcome: event.outcome === "succeeded" ? "success" : "failure",
+        reason: redactReason(event.reason ?? event.outcome),
+      });
+    },
+  };
+  const agentHostCommand = createPackageHostCommand("agent", packageCommandDeps);
+  const pluginHostCommand = createPackageHostCommand("plugin", packageCommandDeps);
 
   // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
   // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
@@ -1012,7 +1205,7 @@ function buildSingleton(): HandlerSingleton {
       allowlist: extAllowlist,
       reloadSession: reloadRunner,
     },
-    hostCommandHandlers: [createClearHostCommand(), installHostCommand],
+    hostCommandHandlers: [createClearHostCommand(), agentHostCommand, pluginHostCommand],
   };
 
   // pi-web 对 16 个能力面**全表态 use**(静态、可读);条件挂载的启停由各 factory 内部读
@@ -1041,8 +1234,8 @@ function buildSingleton(): HandlerSingleton {
     manager,
     store,
     // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
-    // 前端 clear-transcript;/install = 按 kind 装 agent/plugin(spec install-host-command,
-    // 旧 agent 侧 /plugin 命令已随该 spec 摘除)。
+    // 前端 clear-transcript;/agent 与 /plugin = 按命令名所指类别装/卸/列(spec
+    // agent-plugin-commands,取代原 /install)。
     // M3:命令贡献经 composeCapabilities 分拣而来 —— host.commands 与 15 个路由能力面在
     // 同一次强制表态中一起被表态(spec host-contract-capability-composition,D5)。
     hostCommands: createHostCommandRegistry(composedCommands),

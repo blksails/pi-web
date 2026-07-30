@@ -1,0 +1,189 @@
+# 主入口 adapters 转发面 —— 移除清单(spec: adapters-package-extraction,任务 5.1;R3.2 / R3.3)
+#
+# 这是一次**有意的破坏性契约变更**:`packages/server/src/index.ts` 移除了 8 条
+# `export * from "@blksails/pi-web-adapters/<模块>/index.js"`(extensions / tokens / auth /
+# llm-gateway / ai-gateway / identity / sandbox-transport / session-store-postgres)。
+#
+# ★ 本文件存在的唯一理由:「有意移除」与「不小心弄丢」在 diff 上长得一模一样。
+#   数量差回答不了「少的是哪几个」—— 下面逐一枚举,共 161 个符号
+#   (89 个运行期值 + 72 个纯类型)。
+#
+# 格式:`<原转发模块>` TAB `<符号名>` TAB `<value|type-only>`,一符号一行;`#` 开头为注释。
+# 消费方迁移路径:改从 `@blksails/pi-web-adapters/<原转发模块>/index.js` 深路径导入。
+#
+# ★★ 为什么必须分 value / type-only 两类 —— 一条**容易踩空的**事实:
+#   常驻基准 `main-entry-symbols.txt` 是 `Object.keys(await jiti.import(...))` 的产物,
+#   **只看得见运行期值**。故那份基准记录的收窄是 313 → 224(差 89 个值),
+#   而真实的契约损失是 161 个 —— 另外 72 个纯类型在基准里**从来没出现过**,
+#   它们消失时基准一声不响。跨仓消费方的 `tsc` 会照样报红(本仓实测:AiGatewayConfig /
+#   EgressModel / LlmGatewayProviderTable 等就是这样暴露的)。⇒ 只读符号基准会**低估**本次变更。
+#
+# ⚠ 有 5 个符号**不在**本清单里,因为它们同时由内核包导出、经 `export * from
+#   "@blksails/pi-web-core"` 仍在主入口上,不属于被移除:
+#     session-store-postgres/{SessionStoreConfig, SessionStoreKind, sessionStoreConfigFromEnv}
+#     ai-gateway/{GatewayModelEntry, ModelPrecedence}
+#   ⇒ 8 个模块导出并集 166 个,减去这 5 个 = 本清单 161 个。
+#
+# 收窄前的完整 313 值符号基准另存为 `main-entry-symbols.before-adapters-extraction.txt`(可考古)。
+# 收窄后由 `main-entry-symbols.txt` + `main-entry-symbols.it.test.ts` 继续以「逐字相同」把关(R3.4)。
+extensions	actorOf	value
+extensions	AdminPolicy	type-only
+extensions	AllowlistConfig	type-only
+extensions	AllowlistDecision	type-only
+extensions	assembleInstallArgs	value
+extensions	assembleRemoveArgs	value
+extensions	AuditRecord	type-only
+extensions	buildAuditRecord	value
+extensions	checkAllowlist	value
+extensions	ChildProcessPiCli	value
+extensions	ChildProcessPiCliOptions	type-only
+extensions	createDefaultAdminPolicy	value
+extensions	createExtensionRoutes	value
+extensions	createScanInstallSourceProvider	value
+extensions	createScanPublishSourceProvider	value
+extensions	DEFAULT_ALLOWLIST	value
+extensions	defaultAdminPolicy	value
+extensions	DefaultAdminPolicyConfig	type-only
+extensions	defaultOnAudit	value
+extensions	defaultSessionReloader	value
+extensions	ExtManagementOptions	type-only
+extensions	ExtScope	type-only
+extensions	ExtSource	type-only
+extensions	ExtSourceKind	type-only
+extensions	InstallArgs	type-only
+extensions	InstalledExtension	type-only
+extensions	InstallExtensionDeps	type-only
+extensions	InstallExtensionRequest	type-only
+extensions	InstallExtensionRequestSchema	value
+extensions	InstallResultResponse	type-only
+extensions	InstallResultResponseSchema	value
+extensions	InstallSourceProvider	type-only
+extensions	InstallSourceQuery	type-only
+extensions	InstallSourceRecord	type-only
+extensions	landTrust	value
+extensions	makeInstallExtensionHandler	value
+extensions	makeListExtensionsHandler	value
+extensions	makeReloadSessionHandler	value
+extensions	makeRemoveExtensionHandler	value
+extensions	OnAudit	type-only
+extensions	parsePiList	value
+extensions	PiCli	type-only
+extensions	PiCliNotFoundError	value
+extensions	PiCommandResult	type-only
+extensions	PiListError	value
+extensions	redactReason	value
+extensions	ReloadNotConfiguredError	value
+extensions	ReloadSessionDeps	type-only
+extensions	RemoveExtensionDeps	type-only
+extensions	resolvePiCliEntry	value
+extensions	ScanInstallSourceOptions	type-only
+extensions	SessionReloader	type-only
+tokens	AI_GATEWAY_SECRET_ENV	value
+tokens	LLM_GATEWAY_SECRET_ENV	value
+tokens	mintScopedToken	value
+tokens	resolveAiGatewaySecret	value
+tokens	resolveLlmGatewaySecret	value
+tokens	resolveScopedTokenSecret	value
+tokens	ScopedTokenFailureReason	type-only
+tokens	ScopedTokenService	type-only
+tokens	verifyScopedToken	value
+auth	AuthRoutesOptions	type-only
+auth	AuthSessionState	value
+auth	AuthSnapshot	type-only
+auth	CapabilitiesFetch	type-only
+auth	CapabilitiesLoadError	value
+auth	CLOUD_LOGIN_REQUEST_TIMEOUT_MS	value
+auth	CloudLoginClient	type-only
+auth	CloudLoginClientOptions	type-only
+auth	CloudLoginFailure	type-only
+auth	CloudLoginFetch	type-only
+auth	CloudLoginResult	type-only
+auth	createAuthRoutes	value
+auth	createCloudLoginClient	value
+auth	createDesktopCapabilitiesClient	value
+auth	createShellCredentialRoutes	value
+auth	credentialStatus	value
+auth	CredentialStatus	type-only
+auth	deriveCapabilitiesUrlFromEgressBase	value
+auth	deriveLoginUrlFromEgressBase	value
+auth	DESKTOP_MARKER_ENV	value
+auth	DesktopCapabilitiesClient	type-only
+auth	DesktopCapabilitiesClientOptions	type-only
+auth	DesktopCredentialPayload	type-only
+auth	EgressModel	type-only
+auth	parseDesktopCredential	value
+auth	PublishGrant	type-only
+auth	RegisterPublishKeyOutcome	type-only
+auth	resolveDesktopCapabilitiesUrl	value
+auth	resolveShellToken	value
+auth	SetCredentialResult	type-only
+auth	SHELL_TOKEN_ENV	value
+auth	ShellCredentialRoutesOptions	type-only
+llm-gateway	createLlmGatewayRoutes	value
+llm-gateway	CreateLlmGatewayRoutesDeps	type-only
+llm-gateway	LLM_GATEWAY_PROVIDERS_ENV	value
+llm-gateway	LlmGatewayProviderConfigError	value
+llm-gateway	LlmGatewayProviderEntry	type-only
+llm-gateway	LlmGatewayProviderTable	type-only
+llm-gateway	llmGatewayTokenEnvName	value
+llm-gateway	lookupLlmGatewayProvider	value
+llm-gateway	resolveLlmGatewayProviderTable	value
+ai-gateway	AI_GATEWAY_BASE_URL_ENV	value
+ai-gateway	AI_GATEWAY_CATALOG_TTL_MS_ENV	value
+ai-gateway	AI_GATEWAY_MODEL_PRECEDENCE_ENV	value
+ai-gateway	AI_GATEWAY_PROVIDER_NAME	value
+ai-gateway	AI_GATEWAY_TIMEOUT_MS_ENV	value
+ai-gateway	AiGatewayConfig	type-only
+ai-gateway	AiGatewayConfigError	value
+ai-gateway	AiGatewaySessionLogger	type-only
+ai-gateway	AiGatewaySessionSpec	type-only
+ai-gateway	createAiGatewayRoutes	value
+ai-gateway	CreateAiGatewayRoutesDeps	type-only
+ai-gateway	DEFAULT_CATALOG_TTL_MS	value
+ai-gateway	DEFAULT_TIMEOUT_MS	value
+ai-gateway	EnvKeyResolver	value
+ai-gateway	GatewayModelCatalog	value
+ai-gateway	GatewayModelCatalogDeps	type-only
+ai-gateway	isSessionCapableGatewayModel	value
+ai-gateway	KeyResolveInput	type-only
+ai-gateway	KeyResolver	type-only
+ai-gateway	mergeModelCatalog	value
+ai-gateway	NotImplementedError	value
+ai-gateway	PerUserKeyResolver	value
+ai-gateway	registerAiGatewayProvider	value
+ai-gateway	resolveAiGatewayConfig	value
+ai-gateway	resolveAiGatewaySessionSpecFromEnv	value
+ai-gateway	RUNNER_AI_GATEWAY_BASE_ENV	value
+ai-gateway	RUNNER_AI_GATEWAY_KEY_ENV	value
+ai-gateway	RUNNER_AI_GATEWAY_MODELS_ENV	value
+identity	createDesktopPasswordIdentityProvider	value
+identity	createIdentityRoutes	value
+identity	createSessionIdentityProvider	value
+identity	DesktopPasswordIdentityProviderOptions	type-only
+identity	IdentityCredentials	type-only
+identity	IdentityExchangeFailure	type-only
+identity	IdentityExchangeResult	type-only
+identity	IdentityPasswordCredentials	type-only
+identity	IdentityProvider	type-only
+identity	IdentityRoutesOptions	type-only
+identity	IdentityState	type-only
+identity	IdentityView	type-only
+identity	SessionIdentityProviderOptions	type-only
+sandbox-transport	E2B_CONFIG_MISSING_MESSAGE	value
+sandbox-transport	E2bDataPlane	type-only
+sandbox-transport	e2bDataPlaneFromEnv	value
+sandbox-transport	E2bTransport	value
+sandbox-transport	E2bTransportConfig	type-only
+sandbox-transport	e2bTransportConfigFromEnv	value
+sandbox-transport	ResolvedE2bConfig	type-only
+sandbox-transport	resolveSandboxTemplate	value
+sandbox-transport	SandboxWsTransport	value
+sandbox-transport	SandboxWsTransportConfig	type-only
+sandbox-transport	selectTransport	value
+sandbox-transport	TemplateResolution	type-only
+sandbox-transport	TemplateResolveInput	type-only
+sandbox-transport	templateResolveMissingMessage	value
+sandbox-transport	TemplateResolveSource	type-only
+sandbox-transport	TransportSelection	type-only
+session-store-postgres	createSessionEntryStore	value
+session-store-postgres	PostgresSessionEntryStore	value

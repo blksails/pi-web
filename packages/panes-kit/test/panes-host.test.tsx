@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { definePanes, PANE_PROTOCOL_VERSION } from "../src/index.js";
 import { PanesHost } from "../src/react/index.js";
 
@@ -176,8 +176,9 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       hasCommand: () => true,
     };
     const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
     try {
-      render(<PanesHost
+      view = render(<PanesHost
         definition={protocolDefinition}
         baseUrl="/api"
         sessionId="s1"
@@ -196,7 +197,15 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       protocol: PANE_PROTOCOL_VERSION,
       instance: { instanceId: "uploader-1", paneId: "uploader", epoch: 1 },
     });
-    const port = posted[0]!.ports[0]!;
+    // guest 重挂后同 epoch 再发 ready;host 必须废弃旧通道并重建。
+    // ★ recorder.restore() 只还原 prototype 上的 contentWindow getter,已被替换过的那个
+    //   window 的 postMessage 仍是录制版,故 restore 之后发生的 postMessage 照样记进 posted。
+    window.dispatchEvent(new MessageEvent("message", {
+      data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "uploader" },
+      source: view!.container.querySelector("iframe")!.contentWindow,
+    }));
+    expect(posted).toHaveLength(2);
+    const port = posted[1]!.ports[0]!;
     const results: Array<{ type?: string; requestId?: string; key?: string; value?: unknown }> = [];
     port.onmessage = ({ data }: MessageEvent) => results.push(data as never);
 
@@ -371,5 +380,88 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     />);
     await new Promise((r) => setTimeout(r, 30));
     expect(signalsSeen()).toHaveLength(2);
+  });
+
+  it("仅向获订阅授权的 pane 中继事件，并按宿主映射激活目标 pane", async () => {
+    const eventDefinition = definePanes({
+      id: "event-test",
+      initialPaneIds: ["materials", "canvas"],
+      panes: [
+        {
+          id: "materials",
+          title: "Materials",
+          document: { kind: "inline", srcDoc: "<!doctype html><p>materials</p>" },
+          capabilities: { events: { publish: ["aigc.canvas.import"] } },
+        },
+        {
+          id: "canvas",
+          title: "Canvas",
+          document: { kind: "inline", srcDoc: "<!doctype html><p>canvas</p>" },
+          capabilities: { events: { subscribe: ["aigc.canvas.import"] } },
+        },
+      ],
+    });
+    let sequence = 0;
+    const view = render(<PanesHost
+      definition={eventDefinition}
+      config={{ eventTargets: { "aigc.canvas.import": "canvas" } }}
+      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+    />);
+    const frames = [...view.container.querySelectorAll("iframe")];
+    const ports = new Map<string, MessagePort>();
+    for (const frame of frames) {
+      const paneId = frame.title.toLowerCase();
+      const posted: Array<{ ports: readonly MessagePort[] }> = [];
+      frame.contentWindow!.postMessage = ((_message: unknown, _target: unknown, transfer?: readonly MessagePort[]) => {
+        posted.push({ ports: transfer ?? [] });
+      }) as unknown as typeof window.postMessage;
+      window.dispatchEvent(new MessageEvent("message", {
+        data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId },
+        source: frame.contentWindow,
+      }));
+      ports.set(paneId, posted[0]!.ports[0]!);
+    }
+    const sourceResults: Array<Record<string, unknown>> = [];
+    const targetMessages: Array<Record<string, unknown>> = [];
+    ports.get("materials")!.onmessage = ({ data }: MessageEvent) => sourceResults.push(data as never);
+    ports.get("canvas")!.onmessage = ({ data }: MessageEvent) => targetMessages.push(data as never);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Materials" }));
+    await act(async () => {
+      ports.get("materials")!.postMessage({
+        type: "pane:request",
+        requestId: "event-ok",
+        operation: "event.publish",
+        topic: "aigc.canvas.import",
+        payload: { attachmentIds: ["att_1"] },
+      });
+      await until(() =>
+        sourceResults.some((message) => message.requestId === "event-ok")
+        && targetMessages.some((message) => message.type === "pane:event"));
+    });
+
+    expect(sourceResults.find((message) => message.requestId === "event-ok")).toMatchObject({
+      ok: true,
+      data: { delivered: 1 },
+    });
+    expect(targetMessages.find((message) => message.type === "pane:event")).toEqual({
+      type: "pane:event",
+      topic: "aigc.canvas.import",
+      payload: { attachmentIds: ["att_1"] },
+      source: { instanceId: "materials-1", paneId: "materials" },
+    });
+    expect(screen.getByRole("tab", { name: "Canvas" }).getAttribute("aria-selected")).toBe("true");
+
+    ports.get("materials")!.postMessage({
+      type: "pane:request",
+      requestId: "event-denied",
+      operation: "event.publish",
+      topic: "admin.delete",
+    });
+    await until(() => sourceResults.some((message) => message.requestId === "event-denied"));
+    expect(sourceResults.find((message) => message.requestId === "event-denied")).toMatchObject({
+      ok: false,
+      error: { code: "CAPABILITY_DENIED" },
+    });
   });
 });

@@ -7,21 +7,21 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ListAgentSourcesResponseSchema } from "@blksails/pi-web-protocol";
-import { createPiWebHandler } from "../../src/http/index.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
-import { createAgentSourcesRoutes } from "../../src/agent-source-list/agent-sources-routes.js";
-import { createCompositeSourceProvider } from "../../src/agent-source-list/composite-provider.js";
-import { createScanSourceProvider } from "../../src/agent-source-list/scan-provider.js";
+import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
+import { createAgentSourcesRoutes } from "@blksails/pi-web-core/agent-source-list/agent-sources-routes.js";
+import { createCompositeSourceProvider } from "@blksails/pi-web-core/agent-source-list/composite-provider.js";
+import { createScanSourceProvider } from "@blksails/pi-web-core/agent-source-list/scan-provider.js";
 import {
   createRegistryHttpSourceProvider,
   type RegistryFetch,
-} from "../../src/agent-source-list/registry-http-provider.js";
+} from "@blksails/pi-web-core/agent-source-list/registry-http-provider.js";
 import {
   createDesktopCapabilitiesClient,
   type CapabilitiesFetch,
-} from "../../src/auth/desktop-capabilities-client.js";
-import type { AgentSourceProvider } from "../../src/agent-source-list/types.js";
+} from "@blksails/pi-web-adapters/auth/desktop-capabilities-client.js";
+import type { AgentSourceProvider } from "@blksails/pi-web-core/agent-source-list/types.js";
 
 let scanRoot: string;
 

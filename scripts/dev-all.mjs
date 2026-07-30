@@ -40,4 +40,4 @@ if (process.env.PI_WEB_TRANSPORT === 'e2b') {
     'server/index.ts',
   ])
 }
-run(path.join(root, 'node_modules', '.bin', 'vite'), [])
+run(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')])

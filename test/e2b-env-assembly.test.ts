@@ -139,16 +139,6 @@ class FakeChannel {
 vi.mock("@blksails/pi-web-server", async () => {
   const actual =
     await vi.importActual<typeof import("@blksails/pi-web-server")>("@blksails/pi-web-server");
-  class CapturingE2bTransport {
-    constructor(spec: CapturedTransport["spec"], config: CapturedTransport["config"]) {
-      capturedE2b.push({ spec, config });
-    }
-  }
-  class CapturingSandboxWsTransport {
-    constructor(spec: CapturedTransport["spec"], config: CapturedTransport["config"]) {
-      capturedWs.push({ spec, config });
-    }
-  }
   class FakePiRpcSession extends FakeChannel {
     constructor(_transport: unknown) {
       super();
@@ -162,10 +152,33 @@ vi.mock("@blksails/pi-web-server", async () => {
   }
   return {
     ...actual,
-    E2bTransport: CapturingE2bTransport,
-    SandboxWsTransport: CapturingSandboxWsTransport,
     PiRpcSession: FakePiRpcSession,
     PiRpcProcess: FakePiRpcProcess,
+  };
+});
+
+// ★ 两个 transport 的桩必须挂在 **adapters 包**上,不能挂在兼容层主入口:
+//   spec adapters-package-extraction 任务 5.1 移除了主入口的 adapters 转发,pi-handler 改从
+//   `@blksails/pi-web-adapters/sandbox-transport/index.js` 直接导入。桩留在旧路径上不会报错,
+//   只是**拦不住** —— 真实 E2bTransport 会被构造,而断言只看到 `capturedE2b` 为空。
+vi.mock("@blksails/pi-web-adapters/sandbox-transport/index.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("@blksails/pi-web-adapters/sandbox-transport/index.js")
+  >("@blksails/pi-web-adapters/sandbox-transport/index.js");
+  class CapturingE2bTransport {
+    constructor(spec: CapturedTransport["spec"], config: CapturedTransport["config"]) {
+      capturedE2b.push({ spec, config });
+    }
+  }
+  class CapturingSandboxWsTransport {
+    constructor(spec: CapturedTransport["spec"], config: CapturedTransport["config"]) {
+      capturedWs.push({ spec, config });
+    }
+  }
+  return {
+    ...actual,
+    E2bTransport: CapturingE2bTransport,
+    SandboxWsTransport: CapturingSandboxWsTransport,
   };
 });
 

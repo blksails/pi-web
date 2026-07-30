@@ -16,7 +16,7 @@
  * 跑法:`node e2e/cli/cli-install-local.mjs`(或 `pnpm e2e:cli:install`)。
  *
  * ★ CACHE_CHECK(任务 6.2 要求自行查证):`RegistrySourceProvider.list()`
- * (`packages/server/src/agent-source-list/registry-provider.ts`)每次调用都
+ * (`packages/core/src/agent-source-list/registry-provider.ts`)每次调用都
  * `fs.readFile(registryPath)`,无任何内存缓存 —— 故 uninstall 后**无需重启实例**即可
  * 观察到源列表变化,本脚本对同一个运行中的实例先后两次请求 `GET /api/agent-sources`。
  */

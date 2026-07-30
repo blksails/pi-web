@@ -1,0 +1,38 @@
+{
+  "feature_name": "core-package-extraction",
+  "created_at": "2026-07-29T09:15:00Z",
+  "updated_at": "2026-07-29T09:40:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令「使用 kiro 流程完成需求」= 端到端总闸门批准"
+    },
+    "design": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令 = 端到端总闸门批准"
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令 = 端到端总闸门批准"
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation": {
+    "date": "2026-07-29",
+    "branch": "refactor/core-extraction",
+    "tasks": "13/13",
+    "evidence": "两包全量连跑两次一致 285 文件/2563 用例;主入口 313 符号逐字未变;四守卫全绿且判别力自证;core 依赖树不含 e2b/pg/MCP/hono/registry;两包与根 tsc exit 0;根 test:fast 7.5s"
+  },
+  "validation": {
+    "date": "2026-07-29",
+    "phase": "validate-impl",
+    "dimensions": 5,
+    "corrections": 4,
+    "note": "验证产出 4 处修正:误导性注释、R1.1 缺失的机械判据(新增守卫,双向判别力自证)、design.md 4 处回写、20 个残留空目录;另更正 publish-preview 为偶发而非稳定存量红"
+  }
+}

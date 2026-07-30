@@ -34,7 +34,18 @@ export type PublishOutcome =
 export type PublishError =
   | { readonly stage: "compile"; readonly error: CompileError }
   | { readonly stage: "sign"; readonly error: CompileError }
-  | { readonly stage: "upload" | "register" | "channel"; readonly error: RegistryError };
+  | { readonly stage: "upload" | "register"; readonly error: RegistryError }
+  /**
+   * 通道阶段失败。**携带已登记的版本信息**(spec publish-execution R5.4)——
+   * 此时版本已经进了注册表、版本号已被占用,只是没有通道指向它。
+   * 少了这份信息,上层就只能把它呈现成"发布失败",而那会诱导用户改版本号重试
+   * (改了也没用:旧版本仍在,而通道要移的是它)。
+   */
+  | {
+      readonly stage: "channel";
+      readonly error: RegistryError;
+      readonly registered: { readonly sourceId: string; readonly version: string; readonly bundle: string };
+    };
 
 export type PublishResult = { readonly ok: true; readonly value: PublishOutcome } | { readonly ok: false; readonly error: PublishError };
 
@@ -92,7 +103,17 @@ export async function publish(registry: RegistryPort, opts: PublishOptions): Pro
   }
   const channel = opts.channel ?? "stable";
   const moved = await registry.setChannel(pkg.id, channel, pkg.version);
-  if (!moved.ok) return { ok: false, error: { stage: "channel", error: moved.error } };
+  if (!moved.ok) {
+    return {
+      ok: false,
+      error: {
+        stage: "channel",
+        error: moved.error,
+        // 版本此刻**已在注册表里**;把这个事实带出去,上层才能给出正确的重试指导。
+        registered: { sourceId: pkg.id, version: pkg.version, bundle },
+      },
+    };
+  }
 
   return { ok: true, value: { kind: "published", sourceId: pkg.id, version: pkg.version, bundle, channelMoved: true, warnings: pkg.warnings } };
 }

@@ -5,7 +5,7 @@
  * `AI_GATEWAY_BASE_URL` 已配置时,`createAiGatewayRoutes` 必须经 pi-handler 挂载到
  * `/api/ai-gateway/*`——本测试只断言"路由已挂载且按门控响应"(无 token → 401,白名单外
  * → 404),不复测网关内部换钥/透传细节(那是 2.x 的范围,已在
- * `packages/server/test/ai-gateway/` 覆盖)。
+ * `packages/adapters/test/ai-gateway/` 覆盖)。
  *
  * 关闭态(路由不注册 → 404)由姊妹文件 `ai-gateway-route-mount-disabled.integration.test.ts`
  * 覆盖 —— 配置是否注册需要在模块导入前经 env 决定,而 handler 单例 pin 在 globalThis

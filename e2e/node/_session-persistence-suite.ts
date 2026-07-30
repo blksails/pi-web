@@ -8,9 +8,9 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  createSessionEntryStore,
   sessionStoreConfigFromEnv,
 } from "@blksails/pi-web-server";
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 
 type Route = {
   GET: (req: Request) => Promise<Response>;

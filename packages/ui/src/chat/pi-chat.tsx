@@ -29,6 +29,7 @@ import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
 import { BashResultRenderer } from "./bash-result-renderer.js";
 import { InstallResultRenderer } from "./install-result-renderer.js";
+import { PublishPreviewRenderer } from "./publish-preview-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
@@ -75,7 +76,7 @@ import {
 import { TurnAbortProvider } from "./turn-abort-context.js";
 import { runStopTurn, type StopTurnHandle } from "./stop-turn.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
-import { createInstallArgProvider } from "../controls/install-arg-provider.js";
+import { createPackageArgProvider } from "../controls/package-arg-provider.js";
 import type { ExtensionCommandPolicy } from "../controls/pi-command-palette.js";
 import type { RpcSlashCommand, CompletionItem } from "@blksails/pi-web-protocol";
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
@@ -92,7 +93,7 @@ import {
 import { cn } from "../lib/cn.js";
 import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
-import { SurfaceCommandResultSchema } from "@blksails/pi-web-protocol";
+import { SurfaceCommandResultSchema, PUBLISH_PREVIEW_DATA_PART } from "@blksails/pi-web-protocol";
 import {
   SlotHost,
   applyExtensionRenderers,
@@ -148,11 +149,11 @@ export interface PiChatProps {
    * 详见 spec 2026-07-16-panelright-resizable-width。
    */
   readonly panelWidth?: number | string;
-  /** 拖拽分隔条回传的目标宽度(px);宿主 setState → panelWidth 回流(可自行 rAF 节流)。 */
+  /** 拖拽结束回传目标宽度(px);拖动中 PiChat 以 rAF 预览外壳，panel 内容不重排。 */
   readonly onPanelWidthChange?: (widthPx: number) => void;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
-  /** 连续模式拖拽上界(px),缺省 容器宽 − 360(留对话区底)。 */
+  /** 连续模式拖拽上界(px);最终仍受容器宽度 70% 的宿主保护线约束。 */
   readonly maxPanelWidth?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
@@ -208,6 +209,11 @@ export interface PiChatProps {
    * 默认 true（面板可见）。
    */
   readonly logsPanelVisible?: boolean;
+  /**
+   * 服务端权威日志门控是否开启;透传给 {@link LogsPanel},使「已关闭」与「暂无日志」
+   * 在 UI 上可区分(两者此前都只是一片空白)。undefined = 加载中。
+   */
+  readonly loggingEnabled?: boolean;
   /**
    * 日志面板位置，对应 logging 配置的 outputs.panelPosition（Req 6.1/6.2）。
    * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式；"top" 为顶部横条
@@ -354,6 +360,7 @@ export function PiChat({
   enableBash = false,
   logsPanelVisible = true,
   logsPanelPosition = "bottom",
+  loggingEnabled,
   attachmentBaseUrl,
   uploadAttachment,
   className,
@@ -503,8 +510,12 @@ export function PiChat({
     registerBuiltinDataPartRenderers(registry);
     // bang shell 命令结果卡片(spec bang-shell-command,Req 4.x)。
     registry.registerDataPartRenderer("data-bash-result", BashResultRenderer);
-    // /install host 命令结果卡片(spec install-host-command,任务 3.2)。
+    // /agent 与 /plugin host 命令结果卡片(spec agent-plugin-commands;part 名沿用
+    // data-install-result —— 结果数据形状未变,卡片自带 action/kind 可自证归属)。
     registry.registerDataPartRenderer("data-install-result", InstallResultRenderer);
+    // publish 预览卡片(spec publish-host-command):形状与安装类不同,故独立渲染器。
+    // handler 经 `CommandResult.dataPart` 指定它,不走按命令名查表。
+    registry.registerDataPartRenderer(PUBLISH_PREVIEW_DATA_PART, PublishPreviewRenderer);
   }, [registry]);
 
   // Tier2:把扩展渲染器并入 registry(extId 命名空间);卸载/换扩展时清理(Req 3.x)。
@@ -622,38 +633,80 @@ export function PiChat({
     setPanelRatio(panelRatioInitial ?? "2:1");
   }, [panelRatioInitial]);
 
-  // panelRight 连续宽度(全受控):宿主传 panelWidth 即启用;拖拽分隔条经 onPanelWidthChange
-  // 回传 clamp 后目标宽度(px),PiChat 不持宽度 state。详见 panelright-resizable spec。
+  // panelRight 连续宽度:外壳按 rAF 跟手；内容宽度拖毕才提交，避免 iframe 实时重排。
   const panelResizeTreeRef = React.useRef<HTMLDivElement | null>(null);
   const panelDraggingRef = React.useRef(false);
+  const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
+  const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  const [panelPreviewWidth, setPanelPreviewWidth] = React.useState<number>();
+  const [panelContentWidth, setPanelContentWidth] = React.useState<number>();
+  React.useEffect(
+    () => () => {
+      if (panelResizeFrameRef.current !== undefined) {
+        cancelAnimationFrame(panelResizeFrameRef.current);
+      }
+    },
+    [],
+  );
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
-      const min = minPanelWidth ?? 240;
-      const max = maxPanelWidth ?? rect.width - 360;
+      const availableMax = rect.width * 0.7;
+      const min = Math.min(minPanelWidth ?? 240, availableMax);
+      const max = Math.max(
+        min,
+        Math.min(maxPanelWidth ?? Number.POSITIVE_INFINITY, availableMax),
+      );
       const raw = rect.right - e.clientX;
-      onPanelWidthChange?.(Math.max(min, Math.min(max, raw)));
+      panelPendingWidthRef.current = Math.max(min, Math.min(max, raw));
+      if (panelResizeFrameRef.current !== undefined) return;
+      panelResizeFrameRef.current = requestAnimationFrame(() => {
+        panelResizeFrameRef.current = undefined;
+        setPanelPreviewWidth(panelPendingWidthRef.current);
+      });
     },
-    [minPanelWidth, maxPanelWidth, onPanelWidthChange],
+    [minPanelWidth, maxPanelWidth],
   );
-  const onPanelResizeDown = React.useCallback((e: React.PointerEvent) => {
-    panelDraggingRef.current = true;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
-    }
-  }, []);
-  const onPanelResizeUp = React.useCallback((e: React.PointerEvent) => {
-    panelDraggingRef.current = false;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // 同上。
-    }
-  }, []);
+  const onPanelResizeDown = React.useCallback(
+    (e: React.PointerEvent) => {
+      panelDraggingRef.current = true;
+      const currentWidth =
+        typeof panelWidth === "number"
+          ? panelWidth
+          : e.currentTarget.parentElement?.getBoundingClientRect().width;
+      panelPendingWidthRef.current = currentWidth;
+      setPanelPreviewWidth(currentWidth);
+      setPanelContentWidth(currentWidth);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
+      }
+    },
+    [panelWidth],
+  );
+  const onPanelResizeUp = React.useCallback(
+    (e: React.PointerEvent) => {
+      panelDraggingRef.current = false;
+      if (panelResizeFrameRef.current !== undefined) {
+        cancelAnimationFrame(panelResizeFrameRef.current);
+        panelResizeFrameRef.current = undefined;
+      }
+      const width = panelPendingWidthRef.current;
+      panelPendingWidthRef.current = undefined;
+      if (width !== undefined) onPanelWidthChange?.(width);
+      setPanelPreviewWidth(undefined);
+      setPanelContentWidth(undefined);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // 同上。
+      }
+    },
+    [onPanelWidthChange],
+  );
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -673,11 +726,12 @@ export function PiChat({
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const [cursor, setCursor] = React.useState<number>(0);
 
-  // /install 子命令/参数补全 provider(spec install-host-command,任务 3.3):有 client+sessionId
-  // 时构造,经现成 GET /extensions、/agent-sources、install-sources 端点取候选。
+  // /agent 与 /plugin 的子命令/参数补全 provider(spec agent-plugin-commands,任务 3.4):
+  // 有 client+sessionId 时构造,经现成 GET /extensions、/agent-sources、install-sources 端点
+  // 按域分道取候选。面板只接受**单个** provider,故由它同时认两条命令。
   const commandArgProvider = React.useMemo(() => {
     if (client === undefined || sessionId === undefined) return undefined;
-    return createInstallArgProvider({ baseUrl: client.baseUrl, sessionId });
+    return createPackageArgProvider({ baseUrl: client.baseUrl, sessionId });
   }, [client, sessionId]);
 
   // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
@@ -975,9 +1029,14 @@ export function PiChat({
               chatRef.current.setMessages?.([]);
             }
             // 通用卡片追加(spec install-host-command,任务 3.1):仅对声明了 resultDataPart 的
-            // 词条(如 /install)生效——bang 命令同型,追加一条 assistant 消息。result.data 存在
+            // 词条(如 /agent、/plugin)生效——bang 命令同型,追加一条 assistant 消息。result.data 存在
             // → data part 卡片;仅 message(用法/帮助等无 data 的结果)→ 纯文本 part。
-            const partType = builtinResultDataParts?.[cmd.name];
+            // 卡片类型:**服务端逐次指定优先**,缺省才按命令名查表(spec publish-host-command)。
+            // 按命令名查表意味着一个命令只能有一种结果卡片,而 `/agent install` 与
+            // `/agent publish` 的结果形状完全不同 —— 故由 handler 经 `result.dataPart` 指定。
+            // ★ `dataPart` 只来自服务端第一方 handler,不来自用户输入;未知取值不匹配任何
+            //   渲染器 → 静默不渲染(fail-soft),不构成注入面。
+            const partType = outcome.result?.dataPart ?? builtinResultDataParts?.[cmd.name];
             if (partType !== undefined && outcome.ok) {
               const result = outcome.result;
               if (result?.data !== undefined) {
@@ -1247,7 +1306,12 @@ export function PiChat({
   // 宽度解析:连续模式 number→px、string 原样;否则离散档取预设宽;再否则不设(沿用 w-96 类)。
   let asideWidth: string | undefined;
   if (resizablePanel) {
-    asideWidth = typeof panelWidth === "number" ? `${panelWidth}px` : panelWidth;
+    asideWidth =
+      panelPreviewWidth !== undefined
+        ? `${panelPreviewWidth}px`
+        : typeof panelWidth === "number"
+          ? `${panelWidth}px`
+          : panelWidth;
   } else if (panelRatioActive) {
     asideWidth = PANEL_RATIO_ASIDE_WIDTH[panelRatio];
   }
@@ -1742,7 +1806,7 @@ export function PiChat({
                 data-pi-logs-region
                 className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
               >
-                <LogsPanel logsResult={logsResult} />
+                <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} />
               </div>
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
@@ -1766,7 +1830,7 @@ export function PiChat({
                   data-pi-logs-region
                   className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
                 >
-                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
+                  <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
                   {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
                   <ExtSlotRegion ext={extension} slot="logs" />
                 </div>
@@ -1858,7 +1922,7 @@ export function PiChat({
               lay.content,
             )}
           >
-            <LogsPanel logsResult={logsResult} className="min-h-0 flex-1" fill />
+            <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="min-h-0 flex-1" fill />
             {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
             <ExtSlotRegion ext={extension} slot="logs" />
           </div>
@@ -1897,17 +1961,24 @@ export function PiChat({
             // relative:为连续模式拖拽分隔条(absolute left)提供定位上下文。
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
-            "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
+            "relative hidden min-h-0 shrink-0 border-l border-[hsl(var(--border))] lg:flex lg:flex-col",
             panelRatioActive ? "" : "w-96",
           )}
-          {...(asideWidth !== undefined ? { style: { width: asideWidth } } : {})}
+          {...(asideWidth !== undefined
+            ? {
+                style: {
+                  width: asideWidth,
+                  ...(resizablePanel ? { maxWidth: "70%" } : {}),
+                },
+              }
+            : {})}
           data-pi-chat-aside
           {...(panelRatioActive && !resizablePanel
             ? { "data-pi-panel-ratio": panelRatio }
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 连续模式拖拽分隔条:aside 左缘(对话区↔aside 之间);全受控经 onPanelWidthChange 回传。 */}
+          {/* 连续模式拖拽分隔条:aside 左缘；外壳逐帧预览，拖毕方回传受控宽度。 */}
           {resizablePanel ? (
             <div
               data-pi-panel-resizer
@@ -1921,28 +1992,39 @@ export function PiChat({
             />
           ) : null}
           {showPanelRight ? (
-            <SlotHost
-              ext={extension}
-              slot="panelRight"
-              state={webextState}
-              surface={surfaceAccess}
-              upload={uploadAttachment ?? defaultUploadAttachment}
-              baseUrl={client?.baseUrl ?? ""}
-              syncSignal={panelSyncSignal}
-              {...(sessionId !== undefined ? { sessionId } : {})}
-              // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
-              {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
-              // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
-              // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
-              conversation={conversation}
-              // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
-              // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
-              onSubmitPrompt={(text: string) => doSend(text)}
-              // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
-              // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
-              // 就绪时此处天然扩展为完整数组,注入面无需再改。
-              extensions={extension !== undefined ? [extension] : []}
-            />
+            <div
+              className="min-h-0 flex-1 overflow-hidden"
+              data-pi-panel-content-viewport
+            >
+              <div
+                className="ml-auto h-full shrink-0"
+                data-pi-panel-content
+                style={{ width: panelContentWidth ?? "100%" }}
+              >
+                <SlotHost
+                  ext={extension}
+                  slot="panelRight"
+                  state={webextState}
+                  surface={surfaceAccess}
+                  upload={uploadAttachment ?? defaultUploadAttachment}
+                  baseUrl={client?.baseUrl ?? ""}
+                  syncSignal={panelSyncSignal}
+                  {...(sessionId !== undefined ? { sessionId } : {})}
+                  // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
+                  {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
+                  // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
+                  // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
+                  conversation={conversation}
+                  // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
+                  // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
+                  onSubmitPrompt={(text: string) => doSend(text)}
+                  // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
+                  // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
+                  // 就绪时此处天然扩展为完整数组,注入面无需再改。
+                  extensions={extension !== undefined ? [extension] : []}
+                />
+              </div>
+            </div>
           ) : null}
           {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
               flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}
@@ -1951,7 +2033,7 @@ export function PiChat({
               data-pi-logs-region
               className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
             >
-              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
+              <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
             </div>

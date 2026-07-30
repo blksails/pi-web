@@ -21,7 +21,11 @@ vi.mock("@blksails/pi-web-ui", async () => ({
     .AgentSourcePicker,
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
-    return <div data-test-pi-chat />;
+    return (
+      <div data-test-pi-chat>
+        {(props.slots as { readonly sidebar?: React.ReactNode } | undefined)?.sidebar}
+      </div>
+    );
   },
   PiChatBasic: (): React.JSX.Element => <div data-test-pi-chat-basic />,
   SessionListPanel: (): React.JSX.Element => <div data-test-session-list />,
@@ -129,6 +133,34 @@ describe("ChatApp × panelRight controlled width", () => {
     });
     props = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
     expect(props?.panelWidth).toBe(900);
+  });
+
+  it("pane button clears tabs when open and returns top-right when closed", async () => {
+    stubLoggingConfig({ outputs: {} });
+    await startSession("C:/workcode/pi-web/examples/panes-agent");
+    const toggle = document.querySelector("[data-panel-right-toggle]");
+    expect(toggle).not.toBeNull();
+    expect(toggle?.classList.contains("right-2")).toBe(false);
+    expect(toggle?.classList.contains("top-2")).toBe(true);
+    expect((toggle as HTMLElement | null)?.style.right).toBe("calc(760px + 1rem)");
+    expect(document.querySelector("[data-sidebar-collapse]")).not.toBeNull();
+    expect(piChatSpy.mock.calls.at(-1)?.[0]?.panelRatio).toBe("2:1");
+
+    await act(async () => fireEvent.click(toggle as Element));
+    expect(toggle?.classList.contains("right-2")).toBe(true);
+    expect((toggle as HTMLElement | null)?.style.right).toBe("");
+    expect(document.querySelector("[data-sidebar-collapse]")).not.toBeNull();
+    expect(document.querySelector("[data-sidebar-expand]")).toBeNull();
+    expect(piChatSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+      panelRatio: "centered",
+      panelWidth: 760,
+    });
+
+    await act(async () => fireEvent.click(toggle as Element));
+    expect(piChatSpy.mock.calls.at(-1)?.[0]).toMatchObject({
+      panelRatio: "2:1",
+      panelWidth: 760,
+    });
   });
 });
 

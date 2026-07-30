@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { SqliteSessionEntryStore } from "../../packages/server/src/session-store/index.js";
+import { SqliteSessionEntryStore } from "../../packages/core/src/session-store/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // e2e/node -> 仓库根

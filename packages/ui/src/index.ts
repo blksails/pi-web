@@ -81,9 +81,9 @@ export {
   type CommandStage,
 } from "./controls/command-arg.js";
 export {
-  createInstallArgProvider,
-  type InstallArgProviderOptions,
-} from "./controls/install-arg-provider.js";
+  createPackageArgProvider,
+  type PackageArgProviderOptions,
+} from "./controls/package-arg-provider.js";
 
 // interaction 层(原 dialog/PiPermissionDialog 重命名为 elements/PiInteraction)
 export {

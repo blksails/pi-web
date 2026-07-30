@@ -1,7 +1,9 @@
 import * as React from "react";
+import { Command, Plus, X } from "lucide-react";
 import {
   PaneGuestRequestSchema,
   PANE_PROTOCOL_VERSION,
+  UNLIMITED_PANE_COUNT,
   type PaneCapabilities,
   type PaneDefinition,
   type PaneGuestRequest,
@@ -40,6 +42,8 @@ export interface PanesHostConfig {
   readonly interactionMode?: "standard" | "advanced";
   readonly allowTabReorder?: boolean;
   readonly showCommandPalette?: boolean;
+  /** 可选 UI 编排：事件发布后激活已打开的目标 pane；不参与数据中继授权。 */
+  readonly eventTargets?: Readonly<Record<string, string>>;
 }
 
 export interface PanesHostProps {
@@ -103,6 +107,17 @@ const buttonStyle: React.CSSProperties = {
   font: "inherit",
 };
 
+const hostInteractionStyles = `
+[data-panes-host] button { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
+[data-panes-host] button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+[data-panes-host] [data-pane-icon-button]:hover,
+[data-panes-host] [data-pane-tab]:hover,
+[data-panes-host] [data-pane-palette-item]:hover:not(:disabled) {
+  background: hsl(var(--accent)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+`;
+
 export function PanesHost({
   definition,
   baseUrl,
@@ -120,6 +135,8 @@ export function PanesHost({
   const sequence = React.useRef(0);
   const nextId = React.useCallback((paneId: string) => createInstanceId(paneId, ++sequence.current), [createInstanceId]);
   const [workspace, setWorkspace] = React.useState(() => createPaneWorkspace(definition, (paneId) => nextId(paneId)));
+  const workspaceRef = React.useRef(workspace);
+  workspaceRef.current = workspace;
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [draggedId, setDraggedId] = React.useState<string>();
   const [hostError, setHostError] = React.useState<PaneHostError>();
@@ -267,6 +284,34 @@ export function PanesHost({
       if (surface === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Surface is not ready", { retryable: true });
       return surface.run(request.domain, request.action, request.args);
     }
+    if (request.operation === "event.publish") {
+      let delivered = 0;
+      const current = workspaceRef.current;
+      for (const target of current.instances) {
+        const targetPane = paneById(definition, target.paneId);
+        if (!targetPane.capabilities.events.subscribe.includes(request.topic)) continue;
+        const targetLive = connections.current.get(target.instanceId);
+        if (targetLive?.epoch !== target.epoch) continue;
+        targetLive.port.postMessage({
+          type: "pane:event",
+          topic: request.topic,
+          payload: request.payload,
+          source: { instanceId: instance.instanceId, paneId: instance.paneId },
+        } satisfies PaneHostMessage);
+        delivered += 1;
+      }
+      const targetPaneId = config.eventTargets?.[request.topic];
+      const target = targetPaneId === undefined
+        ? undefined
+        : current.instances.find((candidate) => candidate.paneId === targetPaneId);
+      if (target !== undefined) {
+        setWorkspace((latest) => reducePaneWorkspace(definition, latest, {
+          type: "activate",
+          instanceId: target.instanceId,
+        }));
+      }
+      return { delivered };
+    }
     if (request.operation === "attachment.put") {
       if (upload === undefined || baseUrl === undefined || sessionId === undefined) {
         throw new PaneHostError("ATTACHMENT_FAILED", "Attachment service is not ready", { retryable: true });
@@ -278,7 +323,7 @@ export function PanesHost({
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
     return undefined;
-  }, [baseUrl, conversation, sessionId, surface, upload]);
+  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, surface, upload]);
 
   /**
    * 绑定(或**重新**绑定)某条连接的 surface 订阅。
@@ -401,6 +446,7 @@ export function PanesHost({
         const frame = frames.current.get(candidate.instanceId);
         return candidate.paneId === data.paneId && frame?.contentWindow === event.source;
       });
+      // ready 表示当前 guest 尚无通道;旧同 epoch 记录属于已卸载文档,须重建。
       // force:guest 宣告就绪即以新端口重连,压过补连扫描可能建立的「半连接」(见 connect 的 force 说明)。
       if (instance !== undefined) connect(instance, true);
     };
@@ -442,8 +488,9 @@ export function PanesHost({
 
   return (
     <section data-panes-host className={className} style={{ position: "relative", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 4, padding: 8, borderBottom: "1px solid hsl(var(--border))" }}>
-        <nav aria-label="Panes" role="tablist" style={{ display: "flex", flex: 1, gap: 2, minWidth: 0, overflowX: "auto" }}>
+      <style>{hostInteractionStyles}</style>
+      <header style={{ display: "flex", minHeight: 42, alignItems: "center", gap: 6, padding: "6px 8px", borderBottom: "1px solid hsl(var(--border))", background: "hsl(var(--muted) / .22)" }}>
+        <nav aria-label="Panes" role="tablist" style={{ display: "flex", flex: 1, gap: 4, minWidth: 0, overflowX: "auto" }}>
           {workspace.instances.map((instance, index) => {
             const pane = paneById(definition, instance.paneId);
             const count = workspace.instances.filter((candidate) => candidate.paneId === instance.paneId);
@@ -453,22 +500,35 @@ export function PanesHost({
               <div key={instance.instanceId} role="presentation" draggable={advanced && config.allowTabReorder !== false}
                 onDragStart={() => setDraggedId(instance.instanceId)} onDragOver={(event) => event.preventDefault()}
                 onDrop={() => { if (draggedId !== undefined) dispatch({ type: "move", instanceId: draggedId, beforeInstanceId: instance.instanceId }); setDraggedId(undefined); }}
-                style={{ display: "flex", alignItems: "center", borderRadius: 8, background: selected ? "hsl(var(--accent))" : "transparent" }}>
+                style={{ display: "flex", alignItems: "center", border: `1px solid ${selected ? "hsl(var(--border))" : "transparent"}`, borderRadius: 8, background: selected ? "hsl(var(--background))" : "transparent", boxShadow: selected ? "0 1px 2px rgb(0 0 0 / .06)" : "none" }}>
                 <button type="button" role="tab" aria-selected={selected} aria-controls={`pane-view-${instance.instanceId}`}
+                  data-pane-tab
                   title={`${pane.title} · Alt+${index + 1}`} onClick={() => dispatch({ type: "activate", instanceId: instance.instanceId })}
                   style={{ ...buttonStyle, padding: "7px 5px 7px 9px", whiteSpace: "nowrap", color: selected ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))" }}>
-                  <span aria-hidden="true">{pane.icon}</span> {pane.title}{count.length > 1 ? ` ${ordinal}` : ""}
+                  {pane.icon !== undefined ? <span aria-hidden="true">{pane.icon} </span> : null}
+                  {pane.title}{count.length > 1 ? ` ${ordinal}` : ""}
                 </button>
                 <button type="button" aria-label={`关闭 ${pane.title}`} title="关闭 Pane" onClick={() => closePane(instance.instanceId)}
-                  style={{ ...buttonStyle, padding: "4px 7px", color: "hsl(var(--muted-foreground))" }}>×</button>
+                  data-pane-icon-button
+                  style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "4px 7px", color: "hsl(var(--muted-foreground))" }}>
+                  <X size={14} aria-hidden />
+                </button>
               </div>
             );
           })}
         </nav>
-        <button type="button" aria-label="新开 Pane" title="新开 Pane" onClick={() => setPaletteOpen(true)} style={{ ...buttonStyle, padding: "4px 9px", fontSize: 18 }}>+</button>
-        {config.showCommandPalette !== false ? <button type="button" aria-label="打开 Pane 切换器" title="Ctrl/Cmd+K" onClick={() => setPaletteOpen(true)} style={{ ...buttonStyle, border: "1px solid hsl(var(--border))", padding: "5px 8px" }}>⌘K</button> : null}
+        <button type="button" aria-label="新开 Pane" title="新开 Pane" onClick={() => setPaletteOpen(true)}
+          data-pane-icon-button
+          style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "6px" }}>
+          <Plus size={16} aria-hidden />
+        </button>
+        {config.showCommandPalette !== false ? <button type="button" aria-label="打开 Pane 切换器" title="Ctrl/Cmd+K" onClick={() => setPaletteOpen(true)}
+          data-pane-icon-button
+          style={{ ...buttonStyle, display: "grid", placeItems: "center", border: "1px solid hsl(var(--border))", padding: "6px" }}>
+          <Command size={15} aria-hidden />
+        </button> : null}
       </header>
-      {hostError !== undefined ? <div role="alert" data-pane-host-error={hostError.code} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 10px", background: "hsl(var(--destructive) / .1)", color: "hsl(var(--destructive))", fontSize: 12 }}><span>{hostError.message}</span><button type="button" onClick={() => setHostError(undefined)} style={buttonStyle}>×</button></div> : null}
+      {hostError !== undefined ? <div role="alert" data-pane-host-error={hostError.code} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 10px", background: "hsl(var(--destructive) / .1)", color: "hsl(var(--destructive))", fontSize: 12 }}><span>{hostError.message}</span><button type="button" aria-label="关闭错误提示" onClick={() => setHostError(undefined)} style={{ ...buttonStyle, display: "grid", placeItems: "center" }}><X size={14} aria-hidden /></button></div> : null}
       <div style={{ position: "relative", flex: 1, minHeight: 0 }}>
         {workspace.instances.length === 0 ? <div style={{ height: "100%", display: "grid", placeItems: "center", color: "hsl(var(--muted-foreground))" }}><button type="button" onClick={() => setPaletteOpen(true)} style={{ ...buttonStyle, border: "1px solid hsl(var(--border))", padding: "8px 12px" }}>打开一个 Pane</button></div> : null}
         {workspace.instances.map((instance) => {
@@ -489,8 +549,10 @@ export function PanesHost({
             const openCount = workspace.instances.filter((instance) => instance.paneId === pane.id).length;
             const disabled = openCount >= pane.maxInstances || workspace.instances.length >= definition.maxOpenPanes;
             return <button key={pane.id} type="button" autoFocus={index === 0} disabled={disabled} onClick={() => openPane(pane.id)}
+              data-pane-palette-item
               style={{ ...buttonStyle, width: "100%", display: "flex", justifyContent: "space-between", padding: "9px 10px", textAlign: "left", opacity: disabled ? .45 : 1 }}>
-              <span>{pane.icon} {pane.title}</span><span>{openCount}/{pane.maxInstances}</span>
+              <span>{pane.icon !== undefined ? `${pane.icon} ` : ""}{pane.title}</span>
+              <span>{pane.maxInstances === UNLIMITED_PANE_COUNT ? `已开 ${openCount}` : `${openCount}/${pane.maxInstances}`}</span>
             </button>;
           })}
         </div>

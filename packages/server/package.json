@@ -1,42 +1,42 @@
 {
   "name": "@blksails/pi-web-server",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./trust": "./src/trust/index.ts",
-    "./model-options": "./src/config/model-options.ts",
-    "./vision-model-options": "./src/vision-settings/vision-model-options.ts",
-    "./testing": "./src/workspace/testing/index.ts",
-    "./host-assembly": "./src/host-assembly/index.ts"
+    "./trust": "./src/compat/trust.ts",
+    "./model-options": "./src/compat/model-options.ts",
+    "./vision-model-options": "./src/compat/vision-model-options.ts",
+    "./testing": "./src/compat/testing.ts",
+    "./host-assembly": "./src/host-assembly/index.ts",
+    "./host-assembly/session-store.js": "./src/host-assembly/session-store.ts",
+    "./host-assembly/model-sources.js": "./src/host-assembly/model-sources.ts"
   },
   "engines": {
     "node": ">=22.19.0"
   },
   "scripts": {
     "test": "node scripts/run-tests.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:fast": "node scripts/run-tests.mjs --fast",
+    "test:e2e": "node scripts/run-tests.mjs --e2e"
   },
   "dependencies": {
+    "@blksails/pi-web-adapters": "workspace:*",
+    "@blksails/pi-web-core": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-runner": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:^",
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "e2b": "^2.33.0",
     "jiti": "^2.7.0",
-    "pg": "^8.13.1",
-    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "@types/pg": "^8.11.10",
-    "@types/ws": "^8.18.1",
-    "pg-mem": "^3.0.5",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
   },
@@ -44,7 +44,6 @@
     "access": "public"
   },
   "files": [
-    "src",
-    "runner-bootstrap.mjs"
+    "src"
   ]
 }

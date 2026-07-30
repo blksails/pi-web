@@ -13,7 +13,6 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
-import aigcExt from "../../examples/aigc-agent/.pi/web/web.config";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
@@ -21,7 +20,6 @@ import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/web.config";
 import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
-import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -81,18 +79,16 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:Tier2 工具渲染器,把 image_generation / image_edit 产物渲染为 <img>。
-  { match: "aigc-agent", ext: aigcExt },
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
   // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
   // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),
   // `.pi/web` 不存作者源码——源在 `web/`。
-  // 注:match 顺序在 "aigc-agent" 之后,但 resolveExtensionForSource 用 includes 首命中;
-  // "aigc-canvas-agent" 不含子串 "aigc-agent"(-canvas- 打断),故独立命中,无需担心顺序。
+  // 注:曾有一条 "aigc-agent" 表项在此之前(main 的 e3b10665 已把该 example 移出本仓),
+  // 故原先关于 includes 首命中顺序的提醒不再适用。
   { match: "aigc-canvas-agent", ext: aigcCanvasExt },
   // aigc-canvas-nosurface-agent:贡献 Canvas 面板但 agent 无 canvas surface —— 降级
   // (unavailable / 只读图库)端到端验证 fixture。source 路径含子串 "aigc-canvas-nosurface-agent",
-  // 不含 "aigc-canvas-agent"(-nosurface- 打断)也不含 "aigc-agent",故独立命中,与上方两项互不误配。
+  // 不含 "aigc-canvas-agent"(-nosurface- 打断),故独立命中。
   { match: "aigc-canvas-nosurface-agent", ext: aigcCanvasNoSurfaceExt },
   // canvas-plugin-stickers(canvas-plugins-m3):Canvas 插件双端范例 source —— 复用 CanvasLauncher/
   // CanvasPanel + 车道① canvasPlugins:[stickersBundle](贴纸图层/工具 + 风格迁移动作)。canvasPlugins
@@ -109,9 +105,6 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
   // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。
   { match: "plugin-code-review-agent", ext: codeReviewExt },
-  // panes-agent:五个独立 React iframe panes + Agent Routes/Surface/附件数据面。
-  // 本项刻意导入编译产物；`.pi/web` 不存作者源码。
-  { match: "panes-agent", ext: panesExt },
 ];
 
 /** 按 source 路径匹配返回扩展(无匹配 undefined → 宿主默认 UI)。 */

@@ -19,7 +19,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PiCli, PiCommandResult } from "@blksails/pi-web-server";
+import type {
+  PiCli,
+  PiCommandResult,
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import {
   createInstaller,
   isAllowAnyNpmEnabled,
@@ -692,6 +695,34 @@ describe("Installer rejects component kind on both install and uninstall (Req 2.
     }
     expect(agentChannel.installCalls).toHaveLength(0);
     expect(pluginChannel.installCalls).toHaveLength(0);
+  });
+
+  // 回归(spec agent-plugin-commands,e2e 抓到):`/agent install` 恒传 kindHint:"agent",
+  // 若提示压过本地 pi-web.json 的真实 kind,component 包就会被当 agent 装进源根,绕过这道门。
+  it("install:本地 component 包即便带 kindHint 'agent'/'plugin' 也恒被拒绝", async () => {
+    const localDir = join(root, "my-component-2");
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(
+      join(localDir, "pi-web.json"),
+      JSON.stringify({ id: "my-component-2", version: "1.0.0", kind: "component" }),
+    );
+
+    for (const kindHint of ["agent", "plugin"] as const) {
+      const agentChannel = makeAgentChannelStub();
+      const pluginChannel = makePluginChannelStub();
+      const installer = createInstaller({
+        agentChannel,
+        pluginChannel,
+        trustPolicy: makeAlwaysTrustPolicy(),
+      });
+
+      const result = await installer.install(`local:${localDir}`, { kindHint });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe("KIND_COMPONENT_UNSUPPORTED");
+      expect(agentChannel.installCalls).toHaveLength(0);
+      expect(pluginChannel.installCalls).toHaveLength(0);
+    }
   });
 
   it("uninstall:显式 kindHint 'component' -> KIND_COMPONENT_UNSUPPORTED,两条通道零调用", async () => {

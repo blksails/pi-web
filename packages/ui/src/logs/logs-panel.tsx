@@ -171,6 +171,16 @@ export interface LogsPanelProps {
    * 默认 false(bottom dock 语义,保持既有行为)。
    */
   readonly fill?: boolean;
+  /**
+   * 服务端权威日志门控是否开启。`false` → 面板给出**显式**的「已关闭」说明。
+   *
+   * ★ 为什么必须显式:门控关闭与「确实没有日志」在 UI 上完全同形(都是空面板),
+   *   用户无从区分「没开」和「没事发生」。这与主进程文件输出曾踩过的盲区是同一个
+   *   ——那次靠加一条必定输出的启动行解决,面板缺同样的东西。
+   *
+   * `undefined` = 尚未取到配置(加载中)→ 按开启渲染,不闪一下「已关闭」。
+   */
+  readonly loggingEnabled?: boolean;
 }
 
 /**
@@ -179,7 +189,12 @@ export interface LogsPanelProps {
  * When `logsResult` is not provided, the component creates its own internal
  * store (useful for standalone usage; task 3.4 wires the real session store).
  */
-export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): React.JSX.Element {
+export function LogsPanel({
+  logsResult,
+  className,
+  fill,
+  loggingEnabled,
+}: LogsPanelProps): React.JSX.Element {
   const t = useI18n();
   // Use injected result or fall back to internal hook driven by default store.
   const internal = useLogs({ store: getDefaultStore() });
@@ -276,7 +291,10 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
     >
       {/* Title bar */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-[hsl(var(--border))] shrink-0 bg-[hsl(var(--muted)/0.4)]">
-        <span className="text-xs font-semibold text-[hsl(var(--foreground))]">
+        <span
+          data-pi-logs-title
+          className="text-xs font-semibold text-[hsl(var(--foreground))]"
+        >
           {t("logs.title")}
           {entries.length > 0 && (
             <span className="ml-1.5 opacity-60">{`· ${entries.length}`}</span>
@@ -358,6 +376,23 @@ export function LogsPanel({ logsResult, className, fill }: LogsPanelProps): Reac
                 entry={entry}
               />
             ))}
+
+          {/* 空态:区分「日志已关闭」与「已开启但暂无条目」—— 两者此前都只是一片空白。 */}
+          {expanded && entries.length === 0 && (
+            <li
+              data-pi-logs-empty={loggingEnabled === false ? "disabled" : "idle"}
+              className="px-3 py-4 text-xs opacity-60 leading-relaxed"
+            >
+              {loggingEnabled === false ? (
+                <>
+                  <div className="font-medium">{t("logs.disabled.title")}</div>
+                  <div className="mt-1">{t("logs.disabled.hint")}</div>
+                </>
+              ) : (
+                t("logs.empty")
+              )}
+            </li>
+          )}
         </ul>
 
         {/* Jump-to-latest button — shown only when paused with unread entries */}

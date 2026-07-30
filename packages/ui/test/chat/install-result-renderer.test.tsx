@@ -1,5 +1,6 @@
 /**
- * InstallResultRenderer — `/install` 结果卡片(spec install-host-command,任务 3.2)。
+ * InstallResultRenderer — `/agent`、`/plugin` 结果卡片(part 名 data-install-result 未变;
+ * 原 spec install-host-command 任务 3.2,现服务 spec agent-plugin-commands)。
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
@@ -87,5 +88,30 @@ describe("InstallResultRenderer", () => {
     expect(container.querySelector("[data-pi-install-parse-error]")).not.toBeNull();
     const pre = container.querySelector("pre");
     expect(pre?.textContent).toContain("totally");
+  });
+});
+
+describe("list 空态", () => {
+  // 回归(dev 实机反馈):items 为空数组时若什么都不画,卡片体整片空白,用户无从区分
+  // "执行了但没有条目" 与 "没执行"。
+  it("items 为空数组 → 渲染空态文案而非空白", () => {
+    const { container } = renderCard({
+      action: "list",
+      ok: true,
+      items: [],
+      steps: [],
+    });
+    expect(container.querySelector("[data-pi-install-empty]")).not.toBeNull();
+    expect(container.textContent).toContain("没有条目");
+  });
+
+  it("items 有数据时不出空态", () => {
+    const { container } = renderCard({
+      action: "list",
+      ok: true,
+      items: [{ id: "npm:foo", kind: "npm" }],
+      steps: [],
+    });
+    expect(container.querySelector("[data-pi-install-empty]")).toBeNull();
   });
 });

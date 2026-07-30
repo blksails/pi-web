@@ -3,12 +3,13 @@
  * Req 1.3/2.1/2.3/2.5/7.1)。
  */
 import { describe, expect, it } from "vitest";
-import type { AiGatewayConfig, GatewayModelEntry } from "@blksails/pi-web-server";
+import type { GatewayModelEntry } from "@blksails/pi-web-server";
+import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 import {
   RUNNER_AI_GATEWAY_BASE_ENV,
   RUNNER_AI_GATEWAY_KEY_ENV,
   RUNNER_AI_GATEWAY_MODELS_ENV,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
 import {
   MODELS_ENV_WARN_BYTES,
   computeAiGatewaySessionSpawnEnv,

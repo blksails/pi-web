@@ -1,0 +1,31 @@
+{
+  "feature_name": "kernel-boundary-decoupling",
+  "created_at": "2026-07-29T08:09:13Z",
+  "updated_at": "2026-07-29T09:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令「使用 kiro 流程完成需求」= 端到端总闸门批准"
+    },
+    "design": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令「使用 kiro 流程完成需求」= 端到端总闸门批准"
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令「使用 kiro 流程完成需求」= 端到端总闸门批准"
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation": {
+    "date": "2026-07-29",
+    "branch": "refactor/core-extraction",
+    "tasks": "12/12",
+    "evidence": "守卫由红转绿(39/39);主入口符号 313→313 diff 空;全量连跑两次一致 283 文件/2547 用例;tsc exit 0"
+  }
+}

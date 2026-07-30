@@ -11,6 +11,9 @@ importers:
       '@ai-sdk/react':
         specifier: ^2.0.0
         version: 2.0.206(react@19.2.7)(zod@3.25.76)
+      '@blksails/pi-web-adapters':
+        specifier: workspace:*
+        version: link:packages/adapters
       '@blksails/pi-web-canvas-ui':
         specifier: workspace:*
         version: link:packages/canvas-ui
@@ -118,6 +121,58 @@ importers:
         specifier: ^2.11.0
         version: 2.11.4
 
+  packages/adapters:
+    dependencies:
+      '@blksails/pi-web-core':
+        specifier: workspace:*
+        version: link:../core
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@earendil-works/pi-ai':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@3.25.76)
+      e2b:
+        specifier: ^2.33.0
+        version: 2.33.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.21.0
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      pg-mem:
+        specifier: ^3.0.5
+        version: 3.0.14
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
   packages/agent-kit:
     dependencies:
       '@blksails/pi-web-logger':
@@ -208,6 +263,34 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
 
+  packages/core:
+    dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:^
+        version: link:../tool-kit
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
   packages/logger:
     devDependencies:
       typescript:
@@ -219,6 +302,9 @@ importers:
 
   packages/panes-kit:
     dependencies:
+      lucide-react:
+        specifier: ^0.468.0
+        version: 0.468.0(react@19.2.7)
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -353,8 +439,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
 
-  packages/server:
+  packages/runner:
     dependencies:
+      '@blksails/pi-web-core':
+        specifier: workspace:*
+        version: link:../core
       '@blksails/pi-web-logger':
         specifier: workspace:*
         version: link:../logger
@@ -364,27 +453,52 @@ importers:
       '@blksails/pi-web-tool-kit':
         specifier: workspace:^
         version: link:../tool-kit
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
+  packages/server:
+    dependencies:
+      '@blksails/pi-web-adapters':
+        specifier: workspace:*
+        version: link:../adapters
+      '@blksails/pi-web-core':
+        specifier: workspace:*
+        version: link:../core
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@blksails/pi-web-runner':
+        specifier: workspace:*
+        version: link:../runner
+      '@blksails/pi-web-tool-kit':
+        specifier: workspace:^
+        version: link:../tool-kit
       '@earendil-works/pi-ai':
         specifier: ^0.80.3
         version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
       '@earendil-works/pi-coding-agent':
         specifier: ^0.80.3
         version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.29.0
-        version: 1.29.0(zod@3.25.76)
-      e2b:
-        specifier: ^2.33.0
-        version: 2.33.0
       jiti:
         specifier: ^2.7.0
         version: 2.7.0
-      pg:
-        specifier: ^8.13.1
-        version: 8.21.0
-      ws:
-        specifier: ^8.18.0
-        version: 8.21.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -392,15 +506,6 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.21
-      '@types/pg':
-        specifier: ^8.11.10
-        version: 8.20.0
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
-      pg-mem:
-        specifier: ^3.0.5
-        version: 3.0.14
       typescript:
         specifier: ^5.6.3
         version: 5.9.3

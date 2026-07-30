@@ -22,6 +22,10 @@ export const PaneCapabilitiesSchema = z.object({
   routes: z.array(PaneRouteGrantSchema).default([]),
   surfaceKeys: z.array(NonEmptyIdSchema).default([]),
   surfaceCommands: z.array(PaneSurfaceCommandGrantSchema).default([]),
+  events: z.object({
+    publish: z.array(NonEmptyIdSchema).default([]),
+    subscribe: z.array(NonEmptyIdSchema).default([]),
+  }).default({}),
   attachments: z.enum(["none", "read", "read-write"]).default("none"),
   conversation: z.enum(["none", "submit"]).default("none"),
 });
@@ -33,6 +37,9 @@ export const PaneDocumentSchema = z.discriminatedUnion("kind", [
 ]);
 export type PaneDocument = z.infer<typeof PaneDocumentSchema>;
 
+/** Explicit sentinel for hosts that intentionally impose no pane-count policy. */
+export const UNLIMITED_PANE_COUNT = Number.MAX_SAFE_INTEGER;
+
 export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
@@ -40,7 +47,7 @@ export const PaneDefinitionSchema = z.object({
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
-  maxInstances: z.number().int().min(1).max(32).default(1),
+  maxInstances: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(1),
   lifecycle: z.object({
     keepAlive: z.boolean().default(true),
     suspendWhenHidden: z.boolean().default(false),
@@ -53,7 +60,7 @@ export const PanesDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   panes: z.array(PaneDefinitionSchema).min(1),
   initialPaneIds: z.array(NonEmptyIdSchema).min(1).optional(),
-  maxOpenPanes: z.number().int().min(1).max(64).default(16),
+  maxOpenPanes: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(16),
 });
 export type PanesDefinition = z.infer<typeof PanesDefinitionSchema>;
 export type PanesDefinitionInput = z.input<typeof PanesDefinitionSchema>;
@@ -88,6 +95,11 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     domain: NonEmptyIdSchema,
     action: NonEmptyIdSchema,
     args: z.unknown().optional(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("event.publish"),
+    topic: NonEmptyIdSchema,
+    payload: z.unknown().optional(),
   }),
   RequestBaseSchema.extend({
     operation: z.literal("attachment.put"),
@@ -155,8 +167,18 @@ export type PaneHostMessage =
    * 三次绕不过去说明缺的是原语,不是用法。
    *
    * 语义:**最后值即真值**(非事件流)。新建连接时宿主重推全部当前值,故 pane 晚连也不丢。
+   *
+   * ⚠ 与下方 `pane:event` 是**两条不同的下行原语**,勿合并:
+   * `pane:signal` 是宿主 realm → pane 的具名**状态值**(最后值即真值,无发送方身份);
+   * `pane:event` 是 pane ↔ pane 的**代理事件流**(带 `source` 标识发送方,不保留最后值)。
    */
   | { readonly type: "pane:signal"; readonly name: string; readonly value: unknown }
+  | {
+      readonly type: "pane:event";
+      readonly topic: string;
+      readonly payload: unknown;
+      readonly source: Pick<PaneInstance, "instanceId" | "paneId">;
+    }
   | { readonly type: "pane:lifecycle"; readonly state: "visible" | "hidden" | "closing" };
 
 export function definePaneDefinition(input: PaneDefinitionInput): PaneDefinition {

@@ -9,6 +9,7 @@ export * from "./manifest.js";
 export * from "./ui-rpc.js";
 export * from "./command.js";
 export * from "./install-command.js";
+export * from "./publish-command.js";
 export * from "./descriptor.js";
 export * from "./artifact.js";
 export * from "./state.js";

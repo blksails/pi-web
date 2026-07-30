@@ -1,0 +1,27 @@
+{
+  "feature_name": "ai-gateway-providers",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "迁移自根级 specs/(早于 kiro 目录契约);三件工件齐全且任务 20/20 已完成,依工件补录"
+    },
+    "design": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "迁移自根级 specs/(早于 kiro 目录契约);三件工件齐全且任务 20/20 已完成,依工件补录"
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "迁移自根级 specs/(早于 kiro 目录契约);三件工件齐全且任务 20/20 已完成,依工件补录"
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation": {
+    "tasks": "20/20",
+    "note": "本 spec 早于 .kiro 目录契约,原在根级 specs/。2026-07-29 迁入并补录 spec.json —— 补录依据是磁盘工件(tasks.md 20/20 全勾),不是事后追认。★ 不可删除:源码有 11+ 处溯源注释指向其具体章节(design.md §2.4/§3、Req 4.2、Req 5.2/5.3、任务 6.2),model-catalog spec 亦明写依赖它已交付的网关目录拉取与 AI_GATEWAY_BASE_URL 启用判别。"
+  }
+}

@@ -8,7 +8,7 @@ import {
   AI_GATEWAY_SANDBOX_BASE_ENV,
   AI_GATEWAY_SANDBOX_TOKEN_ENV,
 } from "@/lib/app/ai-gateway-assembly";
-import { resolveAiGatewayConfig } from "@blksails/pi-web-server";
+import { resolveAiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 
 describe("computeAiGatewaySessionEnv — 套件未启用(Req 1.2)", () => {
   it("aiGatewayConfig undefined → 零注入", () => {
@@ -68,7 +68,7 @@ describe("computeAiGatewaySessionEnv — 已启用 + public base 可用", () => 
   });
 
   it("token 可被 verifyScopedToken 以 scope='ai-gateway' 校验通过,且携带正确 sessionId", async () => {
-    const { verifyScopedToken } = await import("@blksails/pi-web-server");
+    const { verifyScopedToken } = await import("@blksails/pi-web-adapters/tokens/index.js");
     const secret = "test-ai-gateway-secret";
     const result = computeAiGatewaySessionEnv({
       aiGatewayConfig,

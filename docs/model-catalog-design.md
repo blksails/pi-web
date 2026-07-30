@@ -3,7 +3,7 @@
 > 状态:设计讨论稿(未立 spec)。触发:启用 ai-gateway providers 后,/settings
 > 「默认 Provider」下拉与会话模型选择器出现数据污染与不一致(2026-07-18 实测)。
 >
-> 相关 spec:`specs/ai-gateway-providers/`(已实现合 main)、
+> 相关 spec:`.kiro/specs/ai-gateway-providers/`(已实现合 main)、
 > `.kiro/specs/aigc-tool-settings/`(模型开关)。
 
 ## 1. 触发缺陷(全部已实测复现)
