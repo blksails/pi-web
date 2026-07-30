@@ -1,0 +1,29 @@
+{
+  "feature_name": "adapters-package-extraction",
+  "created_at": "2026-07-30T04:40:00Z",
+  "updated_at": "2026-07-30T04:40:00Z",
+  "language": "zh",
+  "phase": "initialized",
+  "approvals": {
+    "requirements": {
+      "generated": false,
+      "approved": false
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": false,
+      "approved": false
+    }
+  },
+  "ready_for_implementation": false,
+  "scope_decisions": {
+    "date": "2026-07-30",
+    "scope": "全口径 —— 搬全部 12 个 adapters 模块(57 文件 / 7612 行),兼容层缩到约 570 行装配壳",
+    "main_entry_contract": "允许缩减主入口导出面 —— 8 个 adapters 模块的符号从主 barrel 移除。★ 有意的破坏性变更:须 major 版本;313 基准须**有意重生成并记录理由**,不得表现为「改基准迁就实现」;跨仓消费方只登记不改",
+    "identity_port": "待定 —— core 无 IdentityProvider 端口,是按普通模块搬还是补端口,须在 requirements/design 决;补端口属逻辑变更须单列"
+  },
+  "brief_revised": "2026-07-30 据实测修订 —— 初稿中心论证(让 core 守卫转绿)已由 core-package-extraction 达成"
+}
