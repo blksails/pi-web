@@ -232,7 +232,7 @@
   - _Depends: 1.5, 4.1_
   - _Boundary: 降级 source — `examples/aigc-canvas-nosurface-agent/`, `e2e/browser/aigc-canvas-degrade.e2e.ts`_
 
-- [ ] 4.3 插件 source 改构建期组合并迁为 pane  ⚠ **主体完成,余 1 条 e2e**
+- [x] 4.3 插件 source 改构建期组合并迁为 pane
 
   > **✅ 已完成并验证**:插件 source 已迁 pane,插件在**构建期**与画布组件一起打包
   > (`mountCanvasPane(plugins, namespace)`)。勘察结论完全成立 —— 插件**不需要跨 realm 传组件**,
@@ -259,13 +259,20 @@
   > `style-transfer`。旧槽下面板走宿主访问器、不受 pane 白名单约束;pane 下受约束 ——
   > 这正是隔离模型该有的行为。已在该 source 的 pane 定义里补上。
   >
-  > ## 余下 1 条
+  > ## ✅ 最后一条已修复(2026-07-31)
   >
-  > 「风格迁移经 command 通道回流画廊」仍红:命令发出、但画廊版本数未 +1(期望 3 实际 2)。
-  > 补授权后现象未变 ⇒ 动作名可能不是裸 `style-transfer`(插件动作经命名空间前缀,
-  > 实际可能是 `canvas-plugin-stickers:style-transfer`),或该动作走的是「按胜者 via 分道」
-  > 的另一条通道。**下一轮第一步**:在 pane 内打一行日志看 `surface.run` 实际发出的
-  > domain/action,再据此补授权 —— 不要再猜动作名。
+  > 根因是**授权名写错**:插件里 `id: "style-transfer"` 是**动作的 UI 标识**(命名空间前缀后
+  > 为 `canvas-plugin-stickers:style-transfer`),而实际的 surface **命令名是 `style_transfer`
+  > (下划线)** —— 两者不是一回事。我起初照 UI id 授了连字符版本。
+  >
+  > 表现极隐蔽:按钮在、点得动、命令发出去却没有任何回流。插件的 `match` 还用
+  > `capability.actions.includes("style_transfer")` 做能力匹配,故授权名不对时该动作
+  > 根本不会启用。
+  >
+  > ★ 定位方式值得记:上一轮想靠**跑探测**看实际发出的 domain/action,两次都超时;
+  > 这次直接**读插件源码**,零成本命中。能静态读出来的事实,不要用动态探测去猜。
+  >
+  > 验证:stickers e2e **2/2 通过**。
 
 - [ ] 5. Validation:删除与收尾
 

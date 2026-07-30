@@ -23,7 +23,12 @@ export const panesDefinition = definePanes({
             domain: "canvas",
             actions: [
               ...(canvasPaneMeta.capabilities?.surfaceCommands?.[0]?.actions ?? []),
-              "style-transfer",
+              // ★ 命令名是 **style_transfer(下划线)** —— 插件里的 `id: "style-transfer"`
+              // 是**动作的 UI 标识**(命名空间前缀后为 canvas-plugin-stickers:style-transfer),
+              // 两者不是一回事。授错了的表现是:按钮在、点得动、命令发出去却没有任何回流。
+              // 插件的 `match` 还用 `capability.actions.includes("style_transfer")` 做能力匹配,
+              // 故授权名不对时该动作根本不会启用。
+              "style_transfer",
             ],
           },
         ],
