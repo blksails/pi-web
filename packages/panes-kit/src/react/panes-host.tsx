@@ -342,17 +342,19 @@ export function PanesHost({
     }
     if (request.operation === "state.set" || request.operation === "state.delete") {
       // 只有**写回**走上行请求;读与订阅由宿主按授权键主动推 `pane:state`(任务 1.2)。
-      if (state === undefined) {
+      const stateAccess = stateRef.current;
+      if (stateAccess === undefined) {
         throw new PaneHostError("HOST_UNAVAILABLE", "Shared state is not ready", { retryable: true });
       }
-      if (request.operation === "state.set") await state.set(request.key, request.value);
-      else await state.delete(request.key);
+      if (request.operation === "state.set") await stateAccess.set(request.key, request.value);
+      else await stateAccess.delete(request.key);
       return undefined;
     }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
     return undefined;
-  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, state, surface, upload]);
+    // ★ `state` 刻意**不在** deps 里 —— 见 stateRef 处的说明(它换身份会导致连接重建)。
+  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, surface, upload]);
 
   /**
    * 绑定(或**重新**绑定)某条连接的 surface 订阅。
@@ -387,19 +389,34 @@ export function PanesHost({
    * 两者的清理函数分开持有 —— 合并进同一个数组的话,`surface` 换身份会顺手把状态订阅也
    * 退掉却不重建,反之亦然。
    */
+  /**
+   * ★ `state` 以 ref 持有,**不进任何建连回调的依赖链**。
+   *
+   * 它由宿主 useMemo 依赖会话连接构造,换身份非常频繁。一旦进入 `handleRequest` /
+   * 建连回调的 deps,那些回调就跟着换身份 → 触发连接重建 → 旧 MessagePort 被 close;
+   * 而 guest 只在启动时 await 一次握手、此后一直持有那个 port ⇒ 请求发进虚空,
+   * promise 永不 settle。症状是「pane 渲染正常、按钮可点,但点了毫无反应、也不报错」。
+   *
+   * 实测:该形态只在**宿主装载路径**下暴露(内置 ⊕ agent 合并);旧槽路径由 agent 自建
+   * 面板宿主、不传 state,故一直没被发现。
+   */
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+
   const bindState = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
     live.stateCleanup?.();
-    live.stateCleanup = bindPaneState(state, pane.capabilities.state.read, (key, value) => {
+    live.stateCleanup = bindPaneState(stateRef.current, pane.capabilities.state.read, (key, value) => {
       live.port.postMessage({ type: "pane:state", key, value } satisfies PaneHostMessage);
     });
-  }, [state]);
+    // deps 刻意为空:绑定读的是 ref,重绑由下面的 effect 按 state 身份变化驱动。
+  }, []);
 
-  // `state` 换身份 → 同样整组重绑。
+  // `state` 换身份 → 同样整组重绑(经 effect,不经回调身份)。
   React.useEffect(() => {
     for (const live of connections.current.values()) {
       bindState(live, paneById(definition, live.paneId));
     }
-  }, [bindState, definition]);
+  }, [bindState, definition, state]);
 
   // `surface` 换身份 → 所有在世连接整组重绑(不销毁 iframe,pane 内部状态不丢)。
   React.useEffect(() => {

@@ -31,6 +31,7 @@ async function main(): Promise<void> {
 
   let count = readCount(conn.state.get(KEY));
 
+
   const render = (): void => {
     root.replaceChildren();
     const panel = el("div", {

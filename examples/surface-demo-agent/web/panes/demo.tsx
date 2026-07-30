@@ -92,6 +92,7 @@ async function main(): Promise<void> {
       );
     }
     if (lastError !== undefined) {
+      // 命令失败必须可见 —— 否则表现为「点了没反应」,是最难查的一类症状。
       panel.appendChild(el("div", { "data-testid": "surface-demo-error", style: "font-size:12px;color:#c00" }, lastError));
     }
     if (snap !== undefined && snap.log.length > 0) {

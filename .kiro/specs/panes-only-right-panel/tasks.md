@@ -97,12 +97,23 @@
   > - 命令返回 `ok:false` —— 已改为检查返回值(该访问器失败时不抛而返回 ok:false),仍无错误;
   > - 页面 404 —— 唯一 404 是 `/api/identity`(云登录未启用,与本链路无关)。
   >
-  > **下一步方向**:`handleRequest` 的**任何**失败路径都会回一条 `pane:result`,而 promise
-  > 永不 settle ⇒ 请求很可能**没到宿主的消息处理器**。应从「宿主侧 MessagePort 的 onmessage
-  > 是否在该 pane 上挂上了」查起,而不是继续查授权与命令链路。
-  > 对照组:`aigc-canvas` 的 pane 走**旧槽自建 PanesHost**、同样用 surface.run 且 e2e 全绿 ——
-  > 差别正在于本 source 走的是**宿主装载路径**(内置 ⊕ agent 合并,两个 pane 同时在世)。
-  > 这个差别是最值得先查的一条。
+  > **2026-07-31 续查:范围已收窄,但根因未清。**
+  >
+  > 已做的一处修复(保留,是真缺陷):`state` 原本进了 `handleRequest` 与建连回调的依赖链,
+  > 而它由 useMemo 依赖会话连接构造、换身份频繁 ⇒ 建连回调跟着换身份 → 连接重建 →
+  > 旧 MessagePort 被 close,而 guest 只在启动时 await 一次握手、仍持有旧 port。
+  > 已改为 ref 持有,重绑由 effect 按身份变化驱动。**但这不是 2.2 的根因** —— 修完仍红。
+  >
+  > **3.1 的探针数据(高价值,勿重测)**:pane 内实测 `grants.state` =
+  > `{"read":["count"],"write":["count"]}`(授权正确);建连时收到**一帧**初值推送;
+  > 此后 agent 写入 `count=1`,pane **再未收到任何帧**。
+  >
+  > ⇒ 范围收窄到:**宿主侧共享状态的订阅回调未被触发**(而非授权、协议或 guest 侧)。
+  > 下一轮应直接查 `createWebExtStateAccess` 的 `subscribe` 在本路径下是否真的接到了
+  > controlStore,以及 agent 写入是否进了 `states["count"]`。
+  >
+  > 另:3.1 的 e2e 定位器已改 frameLocator(此前是我漏改,不是产品缺陷),面板现已正常渲染,
+  > 只余下行推送这一条。
   - ★ **纯 UI 改写,零协议工作**:该示例用的读快照/订阅/执行命令/探测可用性四件套,
     guest SDK **已全部具备**(勘察 I4 修正了 brief 中「中高成本」的预判)
   - 保留其能力退化路径:会话未就绪或命令不可用时的降级表现不变
