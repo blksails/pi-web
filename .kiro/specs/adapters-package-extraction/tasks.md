@@ -109,7 +109,7 @@
 
 - [ ] 4. 装配层接线
 
-- [ ] 4.1 把装配层对 adapters 的 3 处引用改为包级 specifier
+- [x] 4.1 把装配层对 adapters 的 3 处引用改为包级 specifier
   - 装配层引用真实工厂属其职责（assembly → adapters 正向），只改引用形式不改语义
   - ★ 改错会让**默认能力面静默缺失**（不报错、能力消失），故判据取**装配测试通过**而非「没报错」
   - 可观测完成态：默认能力面装配测试通过，会话存储与 MCP 探测能力仍可取得
@@ -221,3 +221,6 @@
 - ★ 3.3 断言针对 `peerDependencies` 而非 `dependencies` —— 本包把 SDK 两包都声明为 peer（1.1 定的）。照抄上一轮 runner 那条（查 `dependencies`）会写出一条**永远为真**的断言。
 - ★ 3.3 报红消息把要害写清了：「解析器只按字符串向上找 `node_modules`、从不读清单，故本仓漏声明也照样解析成功；但沙箱/standalone 只装本包时会装不出 SDK，pi CLI 扩展操作（install/list/remove）整体失效」。
 - 3.3 顺带修了 4 处**注释里的交叉引用**（`e2e/llm-gateway/server-entry.ts`、3 个根级 integration 测试）—— 指向已搬走的测试目录，留着会误导人。属轻微越界但方向正确。
+- ★ 4.1 实际是 **12 处**引用而非我先前勘察说的 3 处 —— 当时只 grep 了 `session-store-postgres` 与 `mcp-probe` 两个模块名，漏了网关（llm-gateway / ai-gateway routes）、认证（auth-routes / shell-credential-route / egress-model-source）、身份（identity-routes / types）、扩展（extensions/routes）那批。**这是本轮我勘察偏窄的第三次**（前两次：漏动态导入 ⇒ 漏 `ws`；本次漏引用点）。教训：勘察引用面要按**目标包**整体 grep，不要按记得的模块名逐个查。
+- ★ 4.1 判据取「装配测试通过」而非「没报错」，并由**判别实验**证明该测试真的在守那些引用：打断 12 处中的一处（`mcp-probe`）→ `Test Files 1 failed`；还原后 7 用例全绿。若不做这一步，就只知道「测试是绿的」，不知道「它是否覆盖了这些引用」。
+- 4.1：`IdentityProvider` 确认是 **adapters 包内的本地类型**（`identity/types.js`），不是内核端口 —— 与 brief 修订时的实测一致（R4.2 因此不为它造端口）。
