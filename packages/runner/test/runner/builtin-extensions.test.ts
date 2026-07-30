@@ -49,41 +49,100 @@ describe("BUILTIN_EXTENSIONS — 单一清单(Req 5.2)", () => {
   });
 });
 
+/** 捕获式诊断出口(同时避免用例往真实 stderr 喷噪声)。 */
+function sink(): { lines: string[]; write(s: string): void } {
+  const lines: string[] = [];
+  return { lines, write: (s: string) => void lines.push(s) };
+}
+
 describe("resolveBuiltinExtensionEntries — 解析与降级(Req 1.3, 1.4, 5.3)", () => {
   it("按清单顺序返回可解析入口", () => {
-    const entries = resolveBuiltinExtensionEntries([
-      spec("extension-tools", () => "/a/ext.ts"),
-      spec("auto-title", () => "/a/title.ts"),
-      spec("mcp", () => "/a/mcp.ts"),
-    ]);
+    const diag = sink();
+    const entries = resolveBuiltinExtensionEntries(
+      [
+        spec("extension-tools", () => "/a/ext.ts"),
+        spec("auto-title", () => "/a/title.ts"),
+        spec("mcp", () => "/a/mcp.ts"),
+      ],
+      diag,
+    );
     expect(entries).toEqual(["/a/ext.ts", "/a/title.ts", "/a/mcp.ts"]);
+    // 全部解析成功 → 零诊断(正常路径不该有输出)。
+    expect(diag.lines).toEqual([]);
   });
 
   it("解析不到的条目被跳过,其余照常返回(Req 1.4)", () => {
-    const entries = resolveBuiltinExtensionEntries([
-      spec("extension-tools", () => undefined),
-      spec("auto-title", () => "/a/title.ts"),
-      spec("mcp", () => ""),
-    ]);
+    const diag = sink();
+    const entries = resolveBuiltinExtensionEntries(
+      [
+        spec("extension-tools", () => undefined),
+        spec("auto-title", () => "/a/title.ts"),
+        spec("mcp", () => ""),
+      ],
+      diag,
+    );
     // 变异判据:若不过滤 undefined/空串,长度会变 3 → 转红。
     expect(entries).toEqual(["/a/title.ts"]);
   });
 
   it("单个条目抛错被吞掉,不影响其余、不外溢(Req 1.4)", () => {
-    const entries = resolveBuiltinExtensionEntries([
-      spec("extension-tools", () => {
-        throw new Error("boom");
-      }),
-      spec("mcp", () => "/a/mcp.ts"),
-    ]);
+    const diag = sink();
+    const entries = resolveBuiltinExtensionEntries(
+      [
+        spec("extension-tools", () => {
+          throw new Error("boom");
+        }),
+        spec("mcp", () => "/a/mcp.ts"),
+      ],
+      diag,
+    );
     expect(entries).toEqual(["/a/mcp.ts"]);
   });
 
   it("全部不可解析 → 空数组,不抛出(降级为无内置扩展)", () => {
+    const diag = sink();
     expect(() =>
-      resolveBuiltinExtensionEntries([spec("mcp", () => undefined)]),
+      resolveBuiltinExtensionEntries([spec("mcp", () => undefined)], diag),
     ).not.toThrow();
-    expect(resolveBuiltinExtensionEntries([spec("mcp", () => undefined)])).toEqual([]);
+    expect(resolveBuiltinExtensionEntries([spec("mcp", () => undefined)], diag)).toEqual(
+      [],
+    );
+  });
+
+  describe("能力缺失必须无条件可见(不因日志默认关闭而静音)", () => {
+    it("解析不到 → 诊断出口收到含 id 的一行", () => {
+      const diag = sink();
+      resolveBuiltinExtensionEntries([spec("mcp", () => undefined)], diag);
+      expect(diag.lines).toHaveLength(1);
+      expect(diag.lines[0]).toContain("mcp");
+      expect(diag.lines[0]).toContain("not resolvable");
+    });
+
+    it("resolve 抛错 → 诊断出口收到含 id 与错误原文的一行", () => {
+      const diag = sink();
+      resolveBuiltinExtensionEntries(
+        [
+          spec("auto-title", () => {
+            throw new Error("boom");
+          }),
+        ],
+        diag,
+      );
+      expect(diag.lines).toHaveLength(1);
+      expect(diag.lines[0]).toContain("auto-title");
+      expect(diag.lines[0]).toContain("boom");
+    });
+
+    it("多个条目缺失 → 每个各记一行(不合并、不只报第一个)", () => {
+      const diag = sink();
+      resolveBuiltinExtensionEntries(
+        [spec("extension-tools", () => undefined), spec("mcp", () => "")],
+        diag,
+      );
+      expect(diag.lines).toHaveLength(2);
+      expect(diag.lines.join("")).toContain("extension-tools");
+      expect(diag.lines.join("")).toContain("mcp");
+    });
   });
 });
 

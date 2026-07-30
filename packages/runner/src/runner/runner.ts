@@ -19,6 +19,7 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
@@ -34,15 +35,21 @@ import {
   sessionStoreConfigFromEnv,
 } from "@blksails/pi-web-core/session-store/index.js";
 import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "@blksails/pi-web-core/attachment/backends-config.js";
-import { wireAttachmentBridge } from "./attachment-wiring.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
-import { wireStateBridge } from "./state-wiring.js";
-import { wireSurfaceBridge } from "./surface-wiring.js";
-import { wireClearQueueBridge } from "./clear-queue-wiring.js";
-import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
 import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
 import { openOrCreateSession } from "./open-or-create-session.js";
-import { wireAttachmentCatalogBridge } from "./attachment-catalog-wiring.js";
+import { wireSessionBridges } from "./session-bridges.js";
+import {
+  deriveAgentNamespace,
+  parseRunnerArgs,
+  RunnerArgsError,
+  type RunnerArgs,
+} from "./runner-args.js";
+
+// argv 解析与命名空间推导已析出至 `runner-args.ts`(SRP);此处原样再导出,
+// 使既有 `from ".../runner.js"` 的 import 路径零改动。
+export { deriveAgentNamespace, parseRunnerArgs, RunnerArgsError };
+export type { RunnerArgs };
 
 // runner 自身启动生命周期日志(命名空间 runner:boot)。走 stderr(nodeSink 默认),
 // 绝不写 stdout —— 主 stdout 是 RPC 协议帧通道。与下方注入 agent 的 ctx.logger
@@ -50,154 +57,20 @@ import { wireAttachmentCatalogBridge } from "./attachment-catalog-wiring.js";
 // initConfigFromEnv() 在 startRunner 内先跑,门控在首次日志调用时才生效。
 const bootLog = createLogger({ namespace: "runner:boot" });
 
-/** Parsed runner CLI arguments. */
-export interface RunnerArgs {
-  agent: string;
-  cwd: string;
-  agentDir?: string;
-  /** External trust decision (default: untrusted). */
-  trusted: boolean;
-  /**
-   * Explicit session id. Mirrors pi CLI semantics (main.js:255-261): if a session
-   * with this id already exists it is opened (history loaded); otherwise a new
-   * session is created with this id — aligning the persisted file id with the
-   * host's sessionId for URL-based resume.
-   */
-  sessionId?: string;
-  /** Model id recorded into the piweb.session creation metadata. */
-  model?: string;
-  /** Agent source recorded into the piweb.session creation metadata (for cold resume). */
-  sourceMeta?: string;
-  /**
-   * `--no-skills`:`true` → 不载入系统/包/内置 skills(对齐 pi CLI `--no-skills`)。
-   * `undefined`(未传)→ 按默认载入。`--no-skills=false` → 显式开启(`false`)。
-   */
-  noSkills?: boolean;
-  /**
-   * `--no-extensions`:`true` → 不载入系统/包 extensions(经强制注入路径提供的扩展
-   * 如 pi-sandbox 仍加载)。语义与 `noSkills` 对称,二者相互独立。
-   */
-  noExtensions?: boolean;
-}
-
-/** Raised for missing/invalid CLI arguments. */
-export class RunnerArgsError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RunnerArgsError";
-  }
-}
-
 /**
- * Parse runner argv (the portion after `node script.js`). Recognizes
- * `--agent`, `--cwd`, `--agent-dir`, `--trusted`, `--session-id`, `--model`,
- * `--source-meta`. Throws {@link RunnerArgsError} when `--agent` is missing.
- */
-export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
-  let agent: string | undefined;
-  let cwd: string | undefined;
-  let agentDir: string | undefined;
-  let trusted = false;
-  let sessionId: string | undefined;
-  let model: string | undefined;
-  let sourceMeta: string | undefined;
-  let noSkills: boolean | undefined;
-  let noExtensions: boolean | undefined;
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const takeValue = (name: string): string => {
-      const eq = arg!.indexOf("=");
-      if (eq !== -1) return arg!.slice(eq + 1);
-      const next = argv[i + 1];
-      if (next === undefined) {
-        throw new RunnerArgsError(`Missing value for ${name}`);
-      }
-      i++;
-      return next;
-    };
-    if (arg === "--agent" || arg!.startsWith("--agent=")) {
-      agent = takeValue("--agent");
-    } else if (arg === "--cwd" || arg!.startsWith("--cwd=")) {
-      cwd = takeValue("--cwd");
-    } else if (arg === "--agent-dir" || arg!.startsWith("--agent-dir=")) {
-      agentDir = takeValue("--agent-dir");
-    } else if (arg === "--session-id" || arg!.startsWith("--session-id=")) {
-      sessionId = takeValue("--session-id");
-    } else if (arg === "--model" || arg!.startsWith("--model=")) {
-      model = takeValue("--model");
-    } else if (arg === "--source-meta" || arg!.startsWith("--source-meta=")) {
-      sourceMeta = takeValue("--source-meta");
-    } else if (arg === "--trusted" || arg!.startsWith("--trusted=")) {
-      if (arg === "--trusted") {
-        trusted = true;
-      } else {
-        trusted = takeValue("--trusted") !== "false";
-      }
-    } else if (arg === "--no-skills" || arg!.startsWith("--no-skills=")) {
-      // 系统资源开关:裸 flag → true(关闭);`=false` → 显式开启。与 `--trusted` 同款。
-      noSkills = arg === "--no-skills" ? true : takeValue("--no-skills") !== "false";
-    } else if (arg === "--no-extensions" || arg!.startsWith("--no-extensions=")) {
-      noExtensions =
-        arg === "--no-extensions" ? true : takeValue("--no-extensions") !== "false";
-    }
-  }
-
-  if (agent === undefined || agent === "") {
-    throw new RunnerArgsError("Missing required argument: --agent <entry path>");
-  }
-
-  const resolvedCwd = cwd ?? process.cwd();
-  const result: RunnerArgs = { agent, cwd: resolvedCwd, trusted };
-  if (agentDir !== undefined) result.agentDir = agentDir;
-  if (sessionId !== undefined) result.sessionId = sessionId;
-  if (model !== undefined) result.model = model;
-  if (sourceMeta !== undefined) result.sourceMeta = sourceMeta;
-  if (noSkills !== undefined) result.noSkills = noSkills;
-  if (noExtensions !== undefined) result.noExtensions = noExtensions;
-  return result;
-}
-
-/**
- * Generic entry-point basenames that should fall back to parent directory name.
- * Extend this set when additional conventional entry names are found in the wild.
- */
-const GENERIC_ENTRY_NAMES = new Set(["index", "main", "mod", "entry"]);
-
-/**
- * Derive the logger namespace for a runner agent from its entry-file path.
+ * 装配期「降级但不致命」的失败出口。
  *
- * Rules (in priority order):
- * 1. Strip the file extension from the basename.
- * 2. If that basename is a generic entry name (index, main, mod, entry …),
- *    fall back to the **parent directory** name.
- * 3. If the result is still empty, fall back to the literal string "agent".
- * 4. The returned value is always prefixed with "agent:".
+ * ★ 两处都写,缺一不可:
+ *  - `bootLog` 受日志门控,开启时进文件 sink —— 事后排查线上问题只能靠它;
+ *  - `stderr` 无条件可见 —— 日志**默认关闭**,不写 stderr 就等于这条失败从未发生过。
  *
- * @example
- *   deriveAgentNamespace("./examples/logging-demo-agent/index.ts")
- *   // → "agent:logging-demo-agent"
- *   deriveAgentNamespace("/path/to/my-agent.ts")
- *   // → "agent:my-agent"
+ * 改造前 session-store 与 piweb.session 两处只写 stderr,恰恰是「进不了日志文件」的
+ * 那两条;而其余装配失败只走 bootLog,又是「默认配置下看不见」的那些。统一到此。
  */
-export function deriveAgentNamespace(agentPath: string): string {
-  // Normalise separators so we can use a single split strategy.
-  const normalised = agentPath.replace(/\\/g, "/");
-  const parts = normalised.split("/").filter((p) => p !== "");
-
-  // basename without extension (last non-empty segment).
-  const rawBasename = parts[parts.length - 1] ?? "";
-  const basename = rawBasename.replace(/\.[^.]+$/, "");
-
-  let name: string;
-  if (GENERIC_ENTRY_NAMES.has(basename) || basename === "") {
-    // Fall back to parent directory name.
-    name = parts[parts.length - 2] ?? "";
-  } else {
-    name = basename;
-  }
-
-  return `agent:${name || "agent"}`;
+function reportBootFailure(what: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  bootLog.error(what, { message });
+  process.stderr.write(`runner: ${what}: ${message}\n`);
 }
 
 /**
@@ -264,6 +137,15 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     trusted: args.trusted,
     ...(args.model !== undefined ? { model: args.model } : {}),
   });
+
+  // 未识别的 CLI 开关:解析器刻意放行(调用方可能比 runner 新),但必须可见 ——
+  // 静默吞掉会让拼错的开关无声退回默认行为。同时写 stderr,因为日志默认关闭时
+  // bootLog 不产生任何输出,而这条恰恰是「我明明传了参数却没生效」的唯一线索。
+  if (args.unknownArgs !== undefined) {
+    const names = args.unknownArgs.join(", ");
+    bootLog.warn("unrecognized runner arguments (ignored)", { args: args.unknownArgs });
+    process.stderr.write(`runner: unrecognized arguments ignored: ${names}\n`);
+  }
 
   // RPC 模式(headless)下 pi SDK 从不调用 initTheme,而 ctx.ui.theme 仍是读 globalThis
   // 主题单例的 Proxy —— 任何扩展调用 `ctx.ui.theme.fg(...)`(如 npm:pi-sandbox 在
@@ -344,12 +226,10 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
       );
       const store = await createSessionEntryStore(storeConfig);
       await mirrorSessionManagerToStore(sessionManager, store, (err) =>
-        process.stderr.write(`runner: session-store mirror error: ${String(err)}\n`),
+        reportBootFailure("session-store mirror error", err),
       );
     } catch (err) {
-      process.stderr.write(
-        `runner: failed to init session store (${storeConfig.kind}): ${String(err)}\n`,
-      );
+      reportBootFailure(`failed to init session store (${storeConfig.kind})`, err);
     }
   }
 
@@ -363,9 +243,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
         ...(args.model !== undefined ? { model: args.model } : {}),
       });
     } catch (err) {
-      process.stderr.write(
-        `runner: failed to write piweb.session metadata: ${String(err)}\n`,
-      );
+      reportBootFailure("failed to write piweb.session metadata", err);
     }
   }
 
@@ -375,22 +253,6 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionManager,
   });
   bootLog.debug("runtime built");
-
-  // attachment-tool-bridge 装配(task 5.1):实例化子进程 store、把属主校验闸门接到
-  // 执行前 hook、把 base64 剥离闸门接到结果出口 hook、把 tool 接入上下文经 globalThis seam
-  // 透给运行在本子进程的 customTools;store env 缺失时优雅降级(闸门 fail-closed / ctx
-  // available:false),不崩溃。env 由 attachment-store 经 spawn env 下发(DIR + SECRET)。
-  // writeProfile:白名单校验已通过(或关断/未声明为 undefined)的 profile 名,静态覆盖写路由
-  // (agent-attachment-profile spec,Req 3.2)。
-  const effectiveWriteProfile = attachmentProfileDisabled
-    ? undefined
-    : factory.attachmentProfile;
-  const attachmentWiring = wireAttachmentBridge(runtime, {
-    env: process.env,
-    sessionId: runtime.session.sessionId,
-    writeProfile: effectiveWriteProfile,
-  });
-  bootLog.debug("attachment wiring", { available: attachmentWiring.available });
 
   // 标题持久化(spec auto-session-title, Req 8):包装 uiContext.setTitle,使经 ctx.ui.setTitle
   // 设置的标题在原展示(ambient.title 帧)之外,持久化为会话名(appendSessionInfo)→ 经既有镜像
@@ -412,46 +274,24 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId: runtime.session.sessionId,
   });
 
-  // 状态注入桥(state-injection-bridge):建子进程权威 KV、挂 globalThis seam(供作者工具经
-  // getSessionState 读写)、订阅变更→帧通道下行 piweb_state 帧、注册 piweb_state_set/_delete 写回。
-  // 失败优雅降级(内部吞错),不阻断会话启动。
-  const stateWiring = wireStateBridge(frameChannel, {
-    sessionId: runtime.session.sessionId,
-  });
-
-  // agent 权威 surface(agent-authoritative-surface)桥:向帧通道注册 ui_rpc 帧,截获 surface 命令
-  // (point=command/action=execute + SurfaceCommandPayload),按 domain 派发进程内 surface 注册表,
-  // 经 ctx.send 回流 ui_rpc_response。非 surface 行放行;无注册惰性 no-op。
-  // 装配序:wireStateBridge 之后(命令内 ctx.setState 复用 wireStateBridge 的下行)。
-  const surfaceWiring = wireSurfaceBridge(frameChannel, {
-    sessionId: runtime.session.sessionId,
-  });
-
-  // message-queue-ui「取回」桥(clearQueue):向帧通道注册 piweb_clear_queue 请求帧 →
-  // 调当前 session.clearQueue() → ctx.send 回写结果帧。优雅降级,不阻断会话启动。
-  const clearQueueWiring = wireClearQueueBridge(frameChannel, runtime, {
-    sessionId: runtime.session.sessionId,
-  });
-
-  // agent-declared-routes 分发桥:装配期 routes 非空则经装配期声明帧发一条 agent_routes 声明帧
-  // (纯数据投影,handler 不出进程),并向帧通道注册 piweb_agent_route_request 请求帧 → 进程内
-  // registry 派发 handler → ctx.send 结果帧。空声明零帧零注册(存量 source 零行为变化)。
-  // 装配序:state/surface/clearQueue 之后、runRpcMode 之前。
-  const agentRoutesWiring = wireAgentRoutesBridge(frameChannel, {
-    sessionId: runtime.session.sessionId,
-    routes: factory.routes,
-  });
-
-  // agent-attachment-catalog 分发桥:装配期声明存在则经 stdout 发一条 agent_attachment_catalog
-  // 声明帧,并在 runRpcMode 之前给 stdin 挂第三个读取器,只消费 piweb_attachment_catalog_request
-  // 请求帧 → list 派发到 agent handler / materialize 走幂等物化通路(经 attachmentWiring.store
-  // 落库,继承拓扑/profile 写路由)→ fd1 直写结果帧。无声明零帧零读取器(存量 source 零行为变化)。
-  // 装配序:agent-routes 之后、runRpcMode 之前。优雅降级(内部吞错),不阻断会话启动。
-  const attachmentCatalogWiring = wireAttachmentCatalogBridge({
-    sessionId: runtime.session.sessionId,
-    catalog: factory.attachmentCatalog,
-    store: attachmentWiring.store,
-  });
+  // 会话桥装配:清单与顺序语义见 `session-bridges.ts`(attachment → state → surface →
+  // clear-queue → agent-routes → attachment-catalog)。各桥内部实现未变,此处只是把
+  // 「逐个手工接线 + 手工维护 dispose 数组」换成按单一清单遍历 —— 新增桥只改清单一处。
+  // 单桥装配抛错不阻断其余(与各 wiring 既有的优雅降级语义一致)。
+  const { wirings, installed } = wireSessionBridges(
+    {
+      channel: frameChannel,
+      runtime,
+      sessionId: runtime.session.sessionId,
+      factory,
+      env: process.env,
+      shared: {},
+    },
+    // 桥装配失败 = 该能力本会话整个缺失,与 session-store 同属「降级但不致命」,
+    // 走同一出口(日志 + stderr),不因日志默认关闭而隐身。
+    (id, error) => reportBootFailure(`session bridge "${id}" failed to wire`, error),
+  );
+  bootLog.debug("session bridges wired", { installed });
 
   // agent-slash-completion:把 agent 声明的静态 slash 补全候选经 stdout 帧推给 server
   // 主进程(在 runRpcMode 接管 stdout 之前)。无声明则不发帧,会话行为不变。
@@ -468,24 +308,25 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // best-effort 在同样的终止信号上触发。disposeAll 遍历 cleanup、单点抛错记诊断并续跑,永不抛。
   // 帧通道最后释放(卸载唯一 stdin 读取器);各桥 cleanup 先解绑各自注册。
   // 注:session-title 是 prototype patch(机制 C),按既有行为不随会话结束还原,不入此列表。
+  // `process.once` 只保证「每个事件一次」,四个事件可能先后触发(SIGTERM → exit)。各桥的
+  // cleanup 本就声明为幂等,但在此显式收口一次,使收尾语义不依赖下游每个实现都记得幂等。
+  let cleanedUp = false;
   const runSessionCleanup = (): void => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     bootLog.debug("runner cleanup");
-    disposeAll(
-      [
-        attachmentWiring,
-        stateWiring,
-        surfaceWiring,
-        clearQueueWiring,
-        agentRoutesWiring,
-        attachmentCatalogWiring,
-        frameChannel,
-      ],
-      process.stderr,
-    );
+    disposeAll([...wirings, frameChannel], process.stderr);
   };
   process.once("SIGTERM", runSessionCleanup);
   process.once("SIGINT", runSessionCleanup);
   process.once("beforeExit", runSessionCleanup);
+  // ★ `beforeExit` 在**显式 `process.exit()` 时不触发**,而 runRpcMode 正是在 stdin end
+  //   / SIGTERM 后 dispose 运行时并 `process.exit` —— 即最常见的正常退出路径恰好绕开上面
+  //   三个钩子,会话级临时文件不回收。补挂 `exit`。
+  //   注意:`exit` 处理器内只有**同步**工作会完成,`disposeAll` 中返回 Promise 的
+  //   cleanup(attachment 桥的临时文件回收)其同步段之后的部分不保证跑完 —— 这是 Node
+  //   的硬约束,不是本处可以修的。`process.once` 保证与上面三条互不重复执行。
+  process.once("exit", runSessionCleanup);
 
   return runRpcMode(runtime);
 }
@@ -543,10 +384,27 @@ export async function main(argv: readonly string[]): Promise<void> {
   }
 }
 
+/**
+ * 本模块是否就是进程入口(而非被测试 import)。
+ *
+ * ★ 必须用 `pathToFileURL` 而非拼 `file://${argv1}`:后者不做 percent 编码,路径含空格
+ *   (`/Users/a b/x.ts` → 真实 URL 是 `file:///Users/a%20b/x.ts`)或在 Windows 上
+ *   (`file:///C:/…` vs `file://C:\…`)一律不相等 → `main()` 不执行、进程零输出以 0 退出。
+ *   那是最难归因的失败形态:看起来「跑完了」,实际什么都没做。
+ *
+ * 抽成纯函数以便直测(两个入参都可注入,不依赖真实 `import.meta` / `process.argv`)。
+ */
+export function isEntryModule(metaUrl: string, argv1: string | undefined): boolean {
+  if (typeof argv1 !== "string" || argv1.length === 0) return false;
+  try {
+    return metaUrl === pathToFileURL(argv1).href;
+  } catch {
+    // argv[1] 不是合法路径(理论上不可能)——不误判为入口。
+    return false;
+  }
+}
+
 // Execute when run as the process entry (not when imported by tests).
-const invokedDirectly =
-  typeof process.argv[1] === "string" &&
-  import.meta.url === `file://${process.argv[1]}`;
-if (invokedDirectly) {
+if (isEntryModule(import.meta.url, process.argv[1])) {
   void main(process.argv.slice(2));
 }
