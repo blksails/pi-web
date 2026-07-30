@@ -347,7 +347,18 @@
   - _Depends: 5.2_
   - _Boundary: 断言清理 — `packages/ui/test/chat/host-panes-gating.test.tsx`, `packages/ui/test/chat/host-panes-dispatch.test.tsx`, `.kiro/specs/host-builtin-panes/design.md`_
 
-- [ ] 5.4 全量回归与等价性总核验
+- [ ] 5.4 全量回归与等价性总核验  ⚠ **单测面已通过;浏览器 e2e 跑到 66/134 时被环境终止**
+
+  > **✅ 已完成的部分(2026-07-31)**
+  > - `pnpm typecheck` **EXIT=0**;
+  > - `pnpm test`:**22 个测试面 · 5656 passed / 26 skipped / 0 failed**;
+  > - ★ 逐面算术核对 `passed+skipped+failed == total`,**22 面全 OK、零 MISMATCH**
+  >   (防 worker 静默崩溃伪装成「零失败」);
+  > - 浏览器 e2e 跑到 66/134 被环境终止,已跑部分 **65 passed / 1 failed** ——
+  >   唯一失败是 4.3 那条已知的「风格迁移版本回流」,**所有迁移过的 source 全部通过**。
+  >
+  > **余下**:重跑完整浏览器 e2e(134 条),并与基线存量红比对
+  > (`attachment-tool-bridge`×1 + `desktop-cloud-login`×5 为已实测的基线失败,不计入本波)。
   - 一次运行同时给出:类型检查、各测试面、面板相关端到端验收三者结果
   - ★ 核对汇总行算术(通过+跳过+失败 是否等于总数)—— worker 静默崩溃会伪装成「零失败」;
     ★ 数值可能带终端颜色码,累加得零时须剥掉重算(本作者上一轮吃过)
