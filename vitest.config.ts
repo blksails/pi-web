@@ -60,6 +60,18 @@ export default defineConfig({
       { find: /^@blksails\/pi-web-runner$/, replacement: path.resolve(__dirname, "packages/runner/src/runner/index.ts") },
       { find: "@blksails/pi-web-runner/", replacement: path.resolve(__dirname, "packages/runner/src") + "/" },
       { find: "@blksails/pi-web-runner", replacement: path.resolve(__dirname, "packages/runner/src/runner/index.ts") },
+      // adapters 包:`exports` **只有通配** `"./*.js": "./src/*.ts"`,**没有** `"."` 主入口
+      // (未规划 `src/index.ts`),兼容层与装配层一律按深路径消费。故这里**只需一条**正则,
+      // 与 core / runner 那两组不同:
+      //   ✗ 不加 `$` 锚定的裸名条 —— 没有主入口文件可指,加了就是指向不存在的位置;
+      //   ✗ 不加带尾斜杠的前缀条 —— 它是朴素前缀匹配,会把裸 specifier 一起吃掉、解析成
+      //     目录 `packages/adapters/src` 再找 `index.ts`(不存在),把「无主入口」这个事实
+      //     变成一句含糊的 Failed to resolve;而所有真实导入都带 `.js`,本正则已全覆盖。
+      // ⇒ **任何裸包名导入都应当失败,那是正确行为**(与包 `exports` 一致)。
+      {
+        find: /^@blksails\/pi-web-adapters\/(.*)\.js$/,
+        replacement: path.resolve(__dirname, "packages/adapters/src") + "/$1.ts",
+      },
       { find: "@blksails/pi-web-logger", replacement: path.resolve(__dirname, "packages/logger/src/index.ts") },
       { find: "@blksails/pi-web-agent-kit", replacement: path.resolve(__dirname, "packages/agent-kit/src/index.ts") },
       { find: "@blksails/pi-web-tool-kit/aigc-canvas-schema", replacement: path.resolve(__dirname, "packages/tool-kit/src/aigc/canvas/schema.ts") },

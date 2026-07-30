@@ -26,7 +26,7 @@
   - 可观测完成态：新包 `typecheck` exit 0；分档脚本可调起并明确报出「fast 档为空」
   - _Requirements: 6.4_
 
-- [ ] 1.3 在全仓解析配置中登记新包
+- [x] 1.3 在全仓解析配置中登记新包
   - 仓库根测试配置加新包别名；★ 裸包名须用 **`$` 锚定的正则**且排在前缀条**之前**
     （字符串 alias 是朴素前缀匹配，带尾斜杠那条会把裸 specifier 一起吃掉）
   - 仓库根 fast / e2e 脚本串上新包，★ **排在末尾** —— 它在 3.2 前必然失败，排中间会短路掉后面的包
@@ -175,3 +175,6 @@
 - ★ 1.2：新包真的进了根类型检查，由**判别实验**证明 —— 在 `src/` 埋类型错误，根检查报 `packages/adapters typecheck: src/__probe.ts(1,14): error TS2322` 并 exit 2（**错误归属到本包**）；移除后回 exit 0。只跑一次绿分不出「检查了且没问题」与「压根没检查」。
 - 1.2：fast 档为空按设计**响亮失败**（`No test files found, exiting with code 1`），同一次运行里 fast-mock 报 `code 0` —— 那道刻意的不对称保住了：fast 档装守卫，变空必须响。
 - 1.2：分档 workspace 的两个 setup 共享件**跨包引内核包**（`../core/test/setup/*`），且注释记明「根级 setupFiles 在本文件存在时被完全忽略，必须写进每个 project」「setup 文件必须用绝对路径」。
+- ★ 1.3：只加**一条** `.js`→`.ts` 正则 alias，**没有**裸名条也没有前缀条 —— 与 runner 那轮的 4 条不同。理由：新包无 `"."` 主入口、无 `src/index.ts`，深路径按 NodeNext 约定都带 `.js` 后缀，故一条正则足够。判别实验双向验过：深路径 `@blksails/pi-web-adapters/__probe.js` 解析成功；**裸包名 `Failed to resolve`** —— 那是**正确行为**，不是缺陷。
+- 1.3：串联顺序 `core → server → runner → adapters`，新包**排末尾**。实测四包全部跑到，adapters 在末尾如期失败（fast 档为空）。上一轮实测过排中间会短路掉后面的包（`core && runner && server` 时 server 完全没跑到）。
+- 1.3：根 app 档 `104 passed | 1 skipped (106)` / `1019 passed | 2 skipped (1031)` —— 与既有 heap OOM 形态**逐字相同**，无新增 `N failed`。判据取逐字比对而非「全绿」：上一轮正是这样认出新增的 `1 failed`（当时总数缺口同样是 1，极易连新账一起当老账）。
