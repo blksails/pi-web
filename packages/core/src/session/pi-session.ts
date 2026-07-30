@@ -156,6 +156,18 @@ const GATE_DEFAULT: LoggingConfig = {
 const DEFAULT_READINESS_PROBE_TIMEOUT_MS = 30_000;
 
 /**
+ * 就绪探针**重发间隔**(毫秒)。
+ *
+ * 存在的理由见 {@link PiSession.startReadinessProbe} 的判别实验:早于子进程挂上 stdin
+ * 读取器写入的探针请求会被**静默丢弃**,只发一次就会永远等不到回应。
+ *
+ * 取 1s 是两头夹出来的:小于它则在慢启动(实测带 5 个声明包时约 9–22s)期间堆积几十条
+ * 永不 resolve 的 pending 记录;大于它则子进程刚就绪的那一刻要多等一拍才被发现。
+ * 首发仍在 spawn 后立即进行,故**快路径零额外延迟**,重发只在首发落空时才起作用。
+ */
+const READINESS_PROBE_RETRY_MS = 1_000;
+
+/**
  * restart 后重发探针前的 settle 延迟(毫秒):requestRestart 触发的子进程重生是异步的,
  * 此间 stdin 仍指向将死的旧进程;延迟后再发 getCommands 使其落到重生后的子进程
  * (避免写入旧 stdin 而永挂)。探针自身超时仍兜底真正失败的 restart。
@@ -275,6 +287,8 @@ export class PiSession {
    */
   private readonly snapshotAuthority: boolean;
   private probeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 就绪探针的重发定时器(见 {@link READINESS_PROBE_RETRY_MS});与 probeTimer 同生共死。 */
+  private probeRetryTimer: ReturnType<typeof setInterval> | undefined;
   private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
   /**
    * 状态桥(`control:"state"`)rev 跨 runner 重启保持**单调**。dev 热重载 / 显式 restart 会重生
@@ -390,6 +404,10 @@ export class PiSession {
     if (this.probeTimer !== undefined) {
       clearTimeout(this.probeTimer);
       this.probeTimer = undefined;
+    }
+    if (this.probeRetryTimer !== undefined) {
+      clearInterval(this.probeRetryTimer);
+      this.probeRetryTimer = undefined;
     }
     if (this.restartSettleTimer !== undefined) {
       clearTimeout(this.restartSettleTimer);
@@ -517,47 +535,97 @@ export class PiSession {
    * 发起只读就绪探针(Req 1.3 / 1.4 / 4.1):以 `getCommands` 的**首条响应**为真实就绪锚点
    * (有响应即证明 agent 读循环已起、session 已绑定);超时未响应 → error{probe-timeout};
    * 通道拒绝 → error{probe-failed}。仅在 active 且 initializing 时生效;先后到达只认首个。
+   *
+   * ## ★ 为什么必须**重发**而不是只发一次
+   *
+   * 本方法在构造函数里紧跟 spawn 调用,此时子进程**尚未挂上 stdin 读取器**
+   * ——「先写进 stdin 的那一行会被静默丢弃」在本仓实测成立,而不是被缓冲后补读。
+   *
+   * 判别实验(同一 runner / 同一 agent 目录 / 同一帧,唯一变量是写入时机):
+   *
+   * | 写入时机 | runner 进入 rpc 模式 | 结果 |
+   * |---|---|---|
+   * | spawn 瞬间(t=0) | 2991 ms | **70 秒全程无回应** |
+   * | 启动之后(t=40s)  | 3116 ms | **9 ms 收到 response** |
+   *
+   * ⇒ 丢的是**请求**,不是响应迟到。由此推出两条,少想一条就会修错方向:
+   *   ① **把超时调大完全无效** —— 实测把 `readinessProbeTimeoutMs` 抬到 120s 仍旧
+   *      `probe-timeout`(120003 ms)。请求已经不在了,等多久都不会有人回。
+   *   ② **症状是间歇的**,因为它是竞态:启动快慢随扩展/包数量与机器负载漂移,
+   *      同一份配置连跑三次可能 2.5s ready / 22s ready / 直接超时。
+   *      「偶发」在这里不是玄学,是竞态的正常表现。
+   *
+   * 故改为**在截止前周期性重发**,收到首个响应即就绪。这样做安全的前提是
+   * `get_commands` 是**只读**命令(本方法契约的第一行就写着「只读就绪探针」)——
+   * 重发不产生副作用,顶多在通道里多留几条永不 resolve 的 pending 记录,
+   * 它们随通道关闭一并释放。
+   *
+   * ⚠ **通道拒绝(reject)不重试**:那是 `ChannelClosedError` 一类的确定性失败,
+   *   重试只会把 `probe-failed` 拖成 `probe-timeout`,让报错从「准确」变成「含糊」。
    */
   private startReadinessProbe(): void {
     if (this._status !== "active" || this._lifecycle !== "initializing") return;
     let settled = false;
-    const timer = setTimeout(() => {
+
+    const finish = (fn: () => void): void => {
       if (settled) return;
       settled = true;
-      this.probeTimer = undefined;
-      this.setLifecycle("error", "probe-timeout", "readiness probe timed out");
+      if (this.probeTimer !== undefined) {
+        clearTimeout(this.probeTimer);
+        this.probeTimer = undefined;
+      }
+      if (this.probeRetryTimer !== undefined) {
+        clearInterval(this.probeRetryTimer);
+        this.probeRetryTimer = undefined;
+      }
+      fn();
+    };
+
+    const timer = setTimeout(() => {
+      finish(() =>
+        this.setLifecycle("error", "probe-timeout", "readiness probe timed out"),
+      );
     }, this.readinessProbeTimeoutMs);
     if (typeof timer.unref === "function") timer.unref();
     this.probeTimer = timer;
 
-    let probe: Promise<RpcResponse>;
-    try {
-      probe = this.channel.getCommands();
-    } catch (err) {
-      // 同步抛出(极少):归一为探针失败。
-      settled = true;
-      clearTimeout(timer);
-      this.probeTimer = undefined;
-      this.setLifecycle("error", "probe-failed", `readiness probe threw: ${String(err)}`);
-      return;
-    }
-    void probe.then(
-      () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        this.probeTimer = undefined;
-        // 有响应(含 error 响应)即就绪:读循环已处理命令并回包(Req 1.4)。
-        this.setLifecycle("ready");
-      },
-      () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        this.probeTimer = undefined;
-        this.setLifecycle("error", "probe-failed", "readiness probe rejected");
-      },
-    );
+    const attempt = (): void => {
+      if (settled) return;
+      // 会话已不在探针适用状态(关闭/重生中):停止重发,交由对应路径收尾。
+      if (this._status !== "active" || this._lifecycle !== "initializing") {
+        if (this.probeRetryTimer !== undefined) {
+          clearInterval(this.probeRetryTimer);
+          this.probeRetryTimer = undefined;
+        }
+        return;
+      }
+      let probe: Promise<RpcResponse>;
+      try {
+        probe = this.channel.getCommands();
+      } catch (err) {
+        // 同步抛出(极少):归一为探针失败,不重试(确定性失败)。
+        finish(() =>
+          this.setLifecycle("error", "probe-failed", `readiness probe threw: ${String(err)}`),
+        );
+        return;
+      }
+      void probe.then(
+        () => {
+          // 有响应(含 error 响应)即就绪:读循环已处理命令并回包(Req 1.4)。
+          finish(() => this.setLifecycle("ready"));
+        },
+        () => {
+          finish(() => this.setLifecycle("error", "probe-failed", "readiness probe rejected"));
+        },
+      );
+    };
+
+    attempt(); // 首发保持原有时序:子进程若已就绪,这一发即命中,零额外延迟。
+    if (settled) return;
+
+    const retry = setInterval(attempt, READINESS_PROBE_RETRY_MS);
+    if (typeof retry.unref === "function") retry.unref();
+    this.probeRetryTimer = retry;
   }
 
   // ───────────────────────── 广播订阅(Req 3.x) ─────────────────────────
@@ -1373,6 +1441,10 @@ export class PiSession {
         clearTimeout(this.probeTimer);
         this.probeTimer = undefined;
       }
+      if (this.probeRetryTimer !== undefined) {
+        clearInterval(this.probeRetryTimer);
+        this.probeRetryTimer = undefined;
+      }
       this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
       if (typeof this.channel.onRestart !== "function") {
         if (this.restartSettleTimer !== undefined) {
@@ -1595,6 +1667,10 @@ export class PiSession {
       if (this.probeTimer !== undefined) {
         clearTimeout(this.probeTimer);
         this.probeTimer = undefined;
+      }
+      if (this.probeRetryTimer !== undefined) {
+        clearInterval(this.probeRetryTimer);
+        this.probeRetryTimer = undefined;
       }
       if (this.restartSettleTimer !== undefined) {
         clearTimeout(this.restartSettleTimer);

@@ -77,6 +77,41 @@ class DeferredProbeChannel extends MockChannel {
   }
 }
 
+/**
+ * 模拟「早写入的请求被子进程静默丢弃」:前 N 发返回一个**永不 settle** 的 Promise
+ * (正是真实故障的形状 —— 请求没了,没人会回,也不会报错),第 N+1 发才可被 settle。
+ */
+class DroppingProbeChannel extends MockChannel {
+  attempts = 0;
+  private resolveProbe?: (r: RpcResponse) => void;
+  constructor(private readonly dropFirst: number) {
+    super();
+  }
+  requestRestart(): void {
+    this.calls.push({ method: "request_restart", args: [] });
+  }
+  override getCommands(): Promise<RpcResponse> {
+    this.calls.push({ method: "get_commands", args: [] });
+    this.attempts += 1;
+    if (this.attempts <= this.dropFirst) {
+      return new Promise<RpcResponse>(() => {
+        /* 被丢弃:永不 settle */
+      });
+    }
+    return new Promise<RpcResponse>((res) => {
+      this.resolveProbe = res;
+    });
+  }
+  settleReady(): void {
+    this.resolveProbe?.({
+      type: "response",
+      id: "1",
+      command: "get_commands",
+      success: true,
+    } as RpcResponse);
+  }
+}
+
 describe("PiSession 就绪握手 (Task 2.6)", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -139,6 +174,41 @@ describe("PiSession 就绪握手 (Task 2.6)", () => {
       state: "error",
       code: "probe-timeout",
     });
+  });
+
+  it("★ 首发探针被子进程丢弃时,重发把它救回来(不再等到 probe-timeout)", async () => {
+    // 回归的是一条**实测过的真实故障**:探针在构造函数里紧跟 spawn 写进子进程 stdin,
+    // 此时 runner 还没挂上读取器,那一行被**静默丢弃**。判别实验(同一 runner / 同一帧,
+    // 唯一变量是写入时机):t=0 写入 → 70 秒无回应;t=40s 写入 → 9 ms 回应。
+    //
+    // ★ 由此推出本用例的判据形状:丢的是**请求**不是响应,所以
+    //   「把超时调大」救不回来(实测抬到 120s 仍 probe-timeout)—— 只有重发能救。
+    //   故这里断言的不是「最终 ready」,而是「在**远早于超时**的时刻 ready」。
+    const channel = new DroppingProbeChannel(2); // 前 2 发被丢弃,第 3 发才被受理
+    const session = new PiSession({
+      id: "rd-dropped-first",
+      resolved: makeResolved(),
+      channel,
+      idleMs: 0,
+      readinessHandshake: true,
+      readinessProbeTimeoutMs: 60_000,
+    });
+    const frames: SseFrame[] = [];
+    session.subscribe((f) => frames.push(f));
+
+    // 首发已落空,此刻仍是 initializing —— 若这里就 ready,说明桩没真的丢弃,用例失去判别力。
+    expect(session.lifecycle).toBe("initializing");
+
+    // 推进到第 3 发(重发间隔 1s),远早于 60s 超时。
+    await vi.advanceTimersByTimeAsync(3_000);
+    channel.settleReady();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(session.lifecycle).toBe("ready");
+    expect(statuses(frames)).toContain("ready");
+    expect(lastStatusFrame(frames)?.code).toBeUndefined();
+    // 确实重发过:被丢弃的 2 发 + 被受理的 1 发。
+    expect(channel.attempts).toBeGreaterThanOrEqual(3);
   });
 
   it("探针通道拒绝 → error{probe-failed}", async () => {
