@@ -1,7 +1,7 @@
 /**
  * 面板启用判据矩阵(spec host-builtin-panes 任务 6.1;Req 1.1/1.7)。
  *
- * 本特性把判据从「agent 是否声明 panelRight 槽」改为「旧槽 ∨ 宿主内置非空 ∨ agent 声明键」。
+ * 判据现为「宿主内置非空 ∨ agent 声明键」——右侧面板槽已删除(spec panes-only-right-panel)。
  * 该判据不成立时缺的不只是 pane —— 面板容器、显示/隐藏开关、比例切换器、连续宽度拖拽
  * **整套**都不存在。故这里按四种输入组合逐格断言。
  *
@@ -35,12 +35,6 @@ const agentWithPanesKey: WebExtension = {
     id: "agent",
     panes: [{ id: "agent:p", title: "Agent Pane", document: DOC, capabilities: {} }],
   }),
-};
-
-/** 只声明旧槽的 agent(既有形态)。 */
-const agentWithLegacySlot: WebExtension = {
-  manifestId: "agent-legacy",
-  slots: { panelRight: <div data-testid="legacy-panel" /> },
 };
 
 /** 既不声明槽也不声明 pane 键的 agent(绝大多数第三方 agent 的形态)。 */
@@ -109,30 +103,16 @@ describe("面板启用判据矩阵(内置有无 × agent 贡献有无)", () => {
   });
 });
 
-describe("旧槽形态不回退(Req 1.2/5.1/5.3)", () => {
-  it("agent 声明旧槽 → 走旧槽路径,槽内容渲染", () => {
-    const view = render(<PiChat session={mockSession()} extension={agentWithLegacySlot} />);
-    expect(view.queryByTestId("legacy-panel")).not.toBeNull();
-    expect(query().aside).not.toBeNull();
-  });
-
-  it("★ agent 声明旧槽 + 宿主有内置 → 内置让位,旧槽内容仍在(design D3)", () => {
-    const view = render(
-      <PiChat session={mockSession()} extension={agentWithLegacySlot} hostPaneSource={hostSource} />,
-    );
-    // 让位:旧槽渲染器占满面板,内置 panes 不显示。
-    expect(view.queryByTestId("legacy-panel")).not.toBeNull();
-    // 内置 pane 的 iframe 不应出现(它让位了)。
-    expect(document.querySelector('iframe[title="内置探针"]')).toBeNull();
-  });
-
-  it("★ 旧槽 + agent 同时声明 pane 键 → 旧槽优先(声明键被忽略)", () => {
-    const both: WebExtension = { ...agentWithLegacySlot, panes: agentWithPanesKey.panes };
-    const view = render(<PiChat session={mockSession()} extension={both} hostPaneSource={hostSource} />);
-    expect(view.queryByTestId("legacy-panel")).not.toBeNull();
-    expect(document.querySelector('iframe[title="Agent Pane"]')).toBeNull();
-  });
-});
+/*
+ * 已移除:`describe("旧槽形态不回退(Req 1.2/5.1/5.3)")`(spec panes-only-right-panel 任务 5.3)。
+ *
+ * **触发条件已不可能成立**:三条用例都以 `slots: { panelRight: … }` 构造被测扩展,而该槽已从
+ * 契约中删除 —— 这样的描述符现在连类型都过不了。「旧槽优先」「内置让位」是双机制并存期的
+ * 规则,机制收敛后规则本身作废(来自上游 spec 的 design D3,已随本 spec 一并终结)。
+ *
+ * 保护面未丢:这三条守的是「旧槽存在时内置让位」,而现在**内置永远不让位** ——
+ * 由本文件的「面板启用判据矩阵」与下方「宿主装载路径渲染 panes」共同覆盖。
+ */
 
 describe("宿主装载路径渲染 panes(Req 1.1/2.1)", () => {
   it("内置 pane 以 iframe 形态挂载(与第三方 pane 同构)", () => {

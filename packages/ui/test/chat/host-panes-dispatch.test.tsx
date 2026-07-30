@@ -151,58 +151,38 @@ const INJECTION_LEDGER: Readonly<
   extensions: { gap: "宿主 realm 对象图,跨 realm 需先定义可序列化投影" },
 };
 
-describe("注入面完整性(以旧槽实收 prop 键全集为事实源)", () => {
-  it("★ 旧槽路径的每个 prop 都在登记表里(新增注入项未登记即报红)", () => {
-    render(<PiChat session={mockSession()} extension={agentWithLegacySlot} />);
-    expect(captured.slot).toHaveLength(1);
+describe("注入面完整性(宿主路径必须注入的能力)", () => {
+  /*
+   * ★ 事实源变更记录(任务 5.3)。
+   *
+   * 原实现以**旧槽路径实收的 prop 键全集**为事实源,好处是「新增注入项只接到旧槽、忘了宿主
+   * 路径」会自动报红。右侧面板槽删除后那个事实源不复存在。
+   *
+   * **这是一次真实的保护面削弱,不掩饰**:现在只能对着显式清单断言,失去了「自动发现新增注入
+   * 项」的能力 —— 这是单路径下的必然,没有第二条路径可比对了。
+   * 补偿:清单逐项写明该注入项**为什么**必须在,使漏接时能从失败信息直接看出后果。
+   */
+  const REQUIRED_PROPS: ReadonlyArray<{ readonly key: string; readonly why: string }> = [
+    { key: "definition", why: "没有它 pane 宿主无从知道要渲染什么" },
+    { key: "surface", why: "agent 权威快照与命令通道;缺失则 pane 只能空转" },
+    { key: "upload", why: "pane 侧产物落附件的唯一途径" },
+    { key: "baseUrl", why: "agent route 与附件分发的地址前缀" },
+    { key: "conversation", why: "pane 把操作组装成用户消息回流对话流的能力" },
+    { key: "signals", why: "★ 轮末同步信号在此;缺失曾直接表现为「LLM 生了图,画廊不更新」" },
+  ];
 
-    const slotKeys = Object.keys(captured.slot[0] as Record<string, unknown>).sort();
-    // 先证明探针真的抓到了东西 —— 空集合会让下面的 forEach 静默通过(那正是假绿)。
-    expect(slotKeys.length).toBeGreaterThan(5);
-
-    const unregistered = slotKeys.filter((k) => INJECTION_LEDGER[k] === undefined);
-    // 报红时把未登记的键名带出来,免得读测试的人还得自己去 diff。
-    expect(unregistered).toEqual([]);
-  });
-
-  it("★ 登记为 prop/signal 的项在宿主路径确实存在(接线验证)", () => {
-    // 两条路径在同一测试里各渲染一次:conditional 项的判据需要旧槽实收键作为门。
-    render(<PiChat session={mockSession()} extension={agentWithLegacySlot} />);
-    const slotKeys = new Set(Object.keys(captured.slot[0] as Record<string, unknown>));
-    captured.panes.length = 0;
-
+  it("★ 宿主路径注入了全部必需项(失败信息带上「为什么」)", () => {
     render(<PiChat session={mockSession()} extension={agentWithNothing} hostPaneSource={hostSource} />);
     expect(captured.panes).toHaveLength(1);
     const paneProps = captured.panes[0] as Record<string, unknown>;
-    const signals = paneProps.signals as Record<string, unknown> | undefined;
-    expect(signals).toBeDefined();
-
-    const missing: string[] = [];
-    let checked = 0;
-    for (const [legacyKey, carrier] of Object.entries(INJECTION_LEDGER)) {
-      if (!("prop" in carrier) && !("signal" in carrier)) continue;
-      // 条件性项:旧槽这次也没带 ⇒ 源值本轮为 undefined,两条路径同步缺失,不是接线问题。
-      if (carrier.conditional === true && !slotKeys.has(legacyKey)) continue;
-      checked += 1;
-      if ("prop" in carrier) {
-        if (!(carrier.prop in paneProps)) missing.push(`${legacyKey} → prop:${carrier.prop}`);
-      } else if (signals?.[carrier.signal] === undefined) {
-        missing.push(`${legacyKey} → signal:${carrier.signal}`);
-      }
-    }
-    // 先证明确实检了东西 —— 若 conditional 门把全部项都跳过了,missing 恒为空即假绿。
-    expect(checked).toBeGreaterThan(4);
+    const missing = REQUIRED_PROPS.filter((r) => !(r.key in paneProps)).map((r) => `${r.key} —— ${r.why}`);
     expect(missing).toEqual([]);
   });
 
-  it("★ 已知缺口必须写明去向(空字符串或占位即报红)", () => {
-    // 缺口登记的价值全在那句说明上。允许留空 == 允许把「没做」伪装成「已登记」。
-    for (const [key, carrier] of Object.entries(INJECTION_LEDGER)) {
-      if ("gap" in carrier) {
-        expect(carrier.gap.length, `${key} 的缺口说明过短`).toBeGreaterThan(10);
-        expect(carrier.gap).not.toMatch(/^(TODO|TBD|待定)/);
-      }
-    }
+  it("★ 轮末同步信号确实在 signals 里(不是只挂了个空对象)", () => {
+    render(<PiChat session={mockSession()} extension={agentWithNothing} hostPaneSource={hostSource} />);
+    const signals = (captured.panes[0] as Record<string, unknown>).signals as Record<string, unknown>;
+    expect(signals).toHaveProperty("host:syncSignal");
   });
 });
 
@@ -261,43 +241,11 @@ describe("拒绝清单的上报时机(Req 3.4/7.1)", () => {
   });
 });
 
-describe("slots.panelRight 的废弃诊断", () => {
-  it("★ 只声明旧槽也产生废弃诊断(存量待迁移 agent 正是这个形态)", () => {
-    render(<PiChat session={mockSession()} extension={agentWithLegacySlot} />);
-    const deprecation = captured.warns.find((w) => w.msg.includes("deprecated"));
-    expect(deprecation).toBeDefined();
-    // 诊断必须指明迁移途径 —— 只说「已废弃」的诊断读者无从下手。
-    expect(JSON.stringify(deprecation?.fields)).toContain("panes");
-  });
-
-  it("诊断带 manifestId(多扩展装载时须能定位是哪个 agent)", () => {
-    render(<PiChat session={mockSession()} extension={agentWithLegacySlot} />);
-    const deprecation = captured.warns.find((w) => w.msg.includes("deprecated"));
-    expect((deprecation?.fields as Record<string, unknown> | undefined)?.manifestId).toBe(
-      "agent-legacy",
-    );
-  });
-
-  it("旧槽与声明键并存时,诊断额外说明「旧槽优先」(design D3)", () => {
-    const both: WebExtension = {
-      ...agentWithLegacySlot,
-      panes: definePanes({
-        id: "agent",
-        panes: [{ id: "agent:p", title: "Agent Pane", document: DOC, capabilities: {} }],
-      }),
-    };
-    render(<PiChat session={mockSession()} extension={both} />);
-    const deprecation = captured.warns.find((w) => w.msg.includes("deprecated"));
-    const fields = deprecation?.fields as Record<string, unknown> | undefined;
-    expect(fields?.alsoDeclaresPanesKey).toBe(true);
-    expect(fields?.resolution).toBe("slot wins");
-  });
-
-  it("★ 不声明旧槽则无废弃诊断(否则诊断变噪声,迁完了还在报)", () => {
-    render(<PiChat session={mockSession()} extension={agentWithNothing} hostPaneSource={hostSource} />);
-    expect(captured.warns.some((w) => w.msg.includes("deprecated"))).toBe(false);
-  });
-});
+/*
+ * 已移除:`describe("slots.panelRight 的废弃诊断")`(任务 5.3)。
+ * **触发条件已不可能成立**:诊断的触发条件是「agent 声明了右侧面板槽」,而该槽已从契约删除。
+ * 过渡期诊断随过渡期结束而终结 —— 它连同 pi-chat 里的实现一起删除,不留单边残骸。
+ */
 
 // ── 镜像 ↔ canonical 双向可赋值 ───────────────────────────────────────────────
 
