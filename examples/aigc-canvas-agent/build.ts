@@ -14,76 +14,25 @@
  * CSP:pane 文档只允许内联 style/script,图片放开到 blob:/data:/http(s):(画廊要显示
  * 附件签名 URL 与本地 blob 预览),其余一律 `default-src 'none'`。
  */
-import { build } from "esbuild";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildWebExtension, type BuildResult } from "@blksails/pi-web-kit/build";
-import postcss from "postcss";
-import tailwindcss from "tailwindcss";
-import type { Config } from "tailwindcss";
-import { piWebPreset } from "../../packages/ui/tailwind-preset.js";
+import { buildCanvasPaneDocument } from "@blksails/pi-web-canvas-ui/build/pane-document";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(ROOT, "..", "..");
 
-/** 画廊自身的基础样式:iframe 里没有宿主的 body 样式,得自带高度与配色基线。 */
-const PANE_BASE_CSS = String.raw`
-html,body,#root{height:100%;margin:0}
-body{background:hsl(var(--background));color:hsl(var(--foreground))}
-*{box-sizing:border-box}
-`;
-
-async function buildCanvasCss(): Promise<string> {
-  const config: Config = {
-    presets: [piWebPreset as Config],
-    content: [
-      resolve(ROOT, "web", "panes", "canvas.tsx"),
-      resolve(REPO, "packages", "canvas-ui", "src", "**", "*.{ts,tsx}"),
-      resolve(REPO, "packages", "canvas-kit", "src", "**", "*.{ts,tsx}"),
-      resolve(REPO, "packages", "primitives", "src", "**", "*.{ts,tsx}"),
-    ],
-  };
-  const generated = await postcss([tailwindcss(config)]).process(
-    "@tailwind base; @tailwind components; @tailwind utilities;",
-    { from: undefined },
-  );
-  const [uiStyles, canvasStyles] = await Promise.all([
-    readFile(resolve(REPO, "packages", "ui", "src", "styles.css"), "utf8"),
-    readFile(resolve(REPO, "packages", "canvas-ui", "src", "styles.css"), "utf8"),
-  ]);
-  return `${uiStyles}\n${canvasStyles}\n${generated.css}\n${PANE_BASE_CSS}`;
-}
-
-function htmlDocument(title: string, script: string, css: string): string {
-  // `</script` 出现在 bundle 字面量里会提前闭合标签 —— 必须转义。
-  const safeScript = script.replace(/<\/script/gi, "<\\/script");
-  return (
-    `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width">` +
-    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data: http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">` +
-    `<title>${title}</title><style>${css}</style></head>` +
-    `<body><div id="root"></div><script>${safeScript}</script></body></html>`
-  );
-}
-
 async function buildPaneDocuments(): Promise<string> {
-  const css = await buildCanvasCss();
-  const result = await build({
-    entryPoints: [resolve(ROOT, "web", "panes", "canvas.tsx")],
-    bundle: true,
-    write: false,
-    format: "iife",
-    platform: "browser",
-    target: "es2022",
-    jsx: "automatic",
-    minify: true,
-    legalComments: "none",
-    define: { "process.env.NODE_ENV": '"production"' },
-  });
-  const output = result.outputFiles?.[0];
-  if (output === undefined) throw new Error("canvas pane 未生成 bundle");
-  const documents = { canvas: htmlDocument("画廊", output.text, css) };
+  // ★ 流水线本身已抽到 canvas-ui/build(spec panes-only-right-panel 任务 1.5):
+  // 内容安全策略、样式基线、`</script` 转义只有一份,不会与另一个 source 漂开。
+  const documents = {
+    canvas: await buildCanvasPaneDocument({
+      repoRoot: REPO,
+      entry: resolve(ROOT, "web", "panes", "canvas.tsx"),
+      title: "画廊",
+    }),
+  };
   const target = resolve(ROOT, "web", "pane-documents.generated.ts");
   await writeFile(
     target,
