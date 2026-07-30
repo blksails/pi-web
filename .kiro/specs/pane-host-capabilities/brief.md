@@ -25,6 +25,15 @@
 - 缺口:不存在宿主自有的、非 agent 声明的 pane 能力 route;不存在会话 cwd 的对 pane 暴露面;
   不存在文件写回路径与其鉴权。
 
+> **2026-07-30 复核**(内核提取波次已合入 main,`packages/server` → `packages/{core,runner,adapters}`):
+> - 会话装配态(cwd 权威来源)现在在 **`packages/core/src`**(`agent-source/assemble-spawn.ts`
+>   产出 `SpawnSpec.cwd`;session 引擎同在 core)。
+> - **能力面的包归属是本 spec 要先定的一个边界问题**:`packages/core` 是内核,
+>   `packages/adapters` 是宿主适配层(identity/auth 已在此)。文件系统能力是「宿主环境相关」
+>   而非「内核语义」—— 放错包会让 core 重新依赖宿主文件系统,破坏内核提取波次刚建立的分层。
+> - **cli 模式**(`assemble-spawn.ts` cli 分支)同样有 `SpawnSpec.cwd`,故 cwd 权威在两模式下
+>   都成立;但须显式验证,不可假定。
+
 ## Desired Outcome
 
 - 内置 pane 可经**明确授权**的宿主能力,枚举会话工作目录子树、读文件、写回文件、订阅日志。

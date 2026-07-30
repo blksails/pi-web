@@ -15,8 +15,12 @@
 - 内置 pane 的装载与合并:由 `host-builtin-panes` 提供(上游)。
 - 文件树 / 读 / 写 / 日志订阅能力:由 `pane-host-capabilities` 提供(上游)。
 - Guest SDK 已有:`connectPaneGuest` + `PaneGuestProvider` / `usePaneGuest` / `withPaneGuest`。
-- 现有 logs 面板:`logs-panel-right-layout` 已实现,是 shell 内特设面板,非 pane。
+- 现有 logs 面板:`logs-panel-right-layout` 已实现,是 shell 内特设面板,非 pane;
+  其配置装载在 `components/logging-config-loader.tsx`。
 - 参照实现:`examples/aigc-canvas-agent/web/`(真实业务 UI 推过 iframe 边界的完整样例)。
+- 2026-07-30 复核:本 spec 的引用面(Guest SDK / logs 面板 / 示例)未受内核提取波次影响;
+  但 `examples/aigc-canvas-agent` 正在 `feat/aigc-canvas-panes-migration` 分支被改动,
+  拿它当参照时须确认看的是哪个版本。
 
 ## Desired Outcome
 

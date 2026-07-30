@@ -6,13 +6,20 @@
 `slots.panelRight` 渲染 `PanesHost`,`definition` 全部来自 agent 侧的 `pane-meta.ts` /
 `PaneAgentModule`。后果是:
 
-- **任何没写 web extension 的 agent 都看不到 panes** —— 包括内置 default-agent、
-  绝大多数第三方 agent source、以及用户自己临时起的 agent 目录。
+- **任何没写 web extension 的 agent 都看不到 panes** —— 包括内置 default-agent
+  (`packages/core/src/builtin-agents/default-agent/index.ts`,纯数据 `AgentDefinition`,
+  不带 web extension)、绝大多数第三方 agent source、以及用户自己临时起的 agent 目录。
+- **cli 模式会话更彻底**:`assemble-spawn.ts` 的 cli 分支直接 spawn pi CLI `--mode rpc`,
+  连 runner 都不经过 —— 「宿主对所有会话都成立」这句承诺在 cli 模式下要单独验证,
+  不能只在 custom 模式取证(同类事实已在 auto-title 上吃过一次:三个内置扩展在 cli 模式静默失效)。
 - 宿主想提供**通用**能力(文件浏览、编辑、日志、浏览器)时无处安放:这些不是某个 agent 的
   领域投影,而是宿主对**所有**会话都成立的能力,却被迫伪装成 agent 声明。
 - 结果是 panes 这套已建成的地基(`isolated-panes` Wave 0–4)使用面极窄。
 
 ## Current State
+
+> **2026-07-30 复核**:内核提取波次已合入 main(`packages/server` → `packages/{core,runner,adapters}`)。
+> panes-kit / tool-kit 路径未变;新增事实见下方桌面车道与 cli 模式两条。
 
 已有(`isolated-panes` 已实现并合入):
 
@@ -26,10 +33,15 @@
 - agent 侧载体 `PaneAgentModule` + `composePaneAgentModules`
   (`packages/tool-kit/src/panes/agent-modules.ts`),把「pane 元信息 + 其 extensions +
   其 routes」绑成一体,装配期校验。
+- 桌面车道:`host-ports.ts`(`PanePort`/`PaneViewHandle`/`PaneViewAdapter`)+
+  `adapters/{relay,tauri,tauri-bootstrap}.ts` + Rust `desktop/src-tauri/src/pane_relay.rs`。
+  ⚠ `createTauriPaneViewAdapter` 目前**只在 conformance 测试**被使用,未接入生产装配 ——
+  宿主装载点若要覆盖桌面形态,须留出这条接线的位置。
 - 参照实现:`examples/panes-agent`、`examples/aigc-canvas-agent`(slots→panes 就地迁移)。
 
-缺口:宿主侧**零**默认 pane;`PanesHost` 的装载点在 agent 的 `web.config.tsx` 里,宿主没有
-自己的装载时机;不存在「宿主定义 + agent 定义」的合并语义。
+缺口:宿主侧**零**默认 pane(全仓 grep 无 `builtinPanes`/`BUILTIN_PANES` 任何形态);
+`PanesHost` 的装载点在 agent 的 `web.config.tsx` 里,宿主没有自己的装载时机;
+不存在「宿主定义 + agent 定义」的合并语义。
 
 ## Desired Outcome
 
@@ -93,3 +105,8 @@
   单测 31/31 全绿而真实浏览器 4 套 e2e 全红。合并/装载改动同属时序敏感面。
 - 既有示例 `panes-agent` / `aigc-canvas-agent` 的 e2e 必须继续通过。
 - `examples/` 无 typecheck 面(根 tsconfig `exclude: ["examples"]`),涉及示例改动须临时 tsconfig 补检。
+- ★ **须先与 in-flight 分支 `feat/aigc-canvas-panes-migration` 对齐**:`isolated-panes`
+  Wave 5(任务 6.1/6.2/6.3 AIGC 迁移)仍未勾,该分支正在改同一批装载相关文件。
+  本 spec 改 `PanesHost` 装载点会与之直接相撞 —— 开工前先确认那条分支是合入、放弃还是并行。
+- ★ 「所有 agent 都能见 panes」的判据必须覆盖 **custom 与 cli 两种模式**,且要有一个
+  在缺陷存在时**会报红**的用例;只在 custom 模式跑绿不构成达标。
