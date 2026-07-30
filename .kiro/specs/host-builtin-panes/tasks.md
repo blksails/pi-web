@@ -101,7 +101,7 @@
   - _Depends: 1.1_
   - _Boundary: session-info guest — `panes/session-info/main.tsx`, `panes/session-info/view.ts`, `test/panes/session-info-view.test.ts`_
 
-- [ ] 3.2 建立内置 pane 单一权威清单与会话信号组装
+- [x] 3.2 建立内置 pane 单一权威清单与会话信号组装
   - 建立内置 pane 清单:**新增内置 pane = 加一个文件 + 清单加一行**(镜像内置扩展清单纪律)
   - 会话信息 pane 的定义使用保留前缀标识,`capabilities` **全空** —— 它不需要任何授权,
     同时充当「内置身份不提权」的活体证据
@@ -113,7 +113,7 @@
     清单置空时来源组装返回空
   - _Requirements: 1.1, 6.1, 7.2_
   - _Depends: 3.1, 2.2_
-  - _Boundary: 内置清单 — `lib/app/builtin-panes/index.ts`, `lib/app/builtin-panes/session-info.ts`, `lib/app/builtin-panes/session-signal.ts`, `lib/app/builtin-panes/index.test.ts`_
+  - _Boundary: 内置清单 — `lib/app/builtin-panes/index.ts`, `lib/app/builtin-panes/session-info.ts`, `lib/app/builtin-panes/session-signal.ts`, `test/panes/builtin-panes-manifest.test.ts`_
 
 - [ ] 4. Integration:宿主侧装载
 
