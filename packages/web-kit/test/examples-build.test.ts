@@ -16,13 +16,19 @@ import { Buffer } from "node:buffer";
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 
+/**
+ * ★ 本列表只含**源码直接放在 `.pi/web` 下**的示例。
+ *
+ * 迁到 pane 形态的 source(state-bridge / surface-demo / aigc-canvas 系)源码在 `web/`、
+ * 各有自己的 `build.ts`(要先把 pane 文档打成内联 srcDoc),故不走这条通用构建路径 ——
+ * 它们由 `scripts/build-webext-examples.ts` 统一构建并在那里验证。
+ */
 const EXAMPLES = [
   { id: "webext-layout", name: "webext-layout-agent" },
   { id: "webext-renderer", name: "webext-renderer-agent" },
   { id: "webext-contrib", name: "webext-contrib-agent" },
   { id: "webext-artifact", name: "webext-artifact-agent" },
   { id: "webext-background", name: "webext-background-agent" },
-  { id: "state-bridge", name: "state-bridge-agent" },
   { id: "webext-slots", name: "webext-slots-agent" },
 ];
 

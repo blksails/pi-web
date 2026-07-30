@@ -24,7 +24,6 @@ import { mockSession } from "../fixtures/mock-session.js";
 // ── 探针:捕获两条路径实际收到的 props ────────────────────────────────────────
 
 const captured = vi.hoisted(() => ({
-  slot: [] as Array<Record<string, unknown>>,
   panes: [] as Array<Record<string, unknown>>,
   warns: [] as Array<{ msg: string; fields: unknown }>,
 }));
@@ -37,18 +36,6 @@ vi.mock("@blksails/pi-web-logger", async (importOriginal) => {
   return {
     ...actual,
     createLogger: () => ({ debug: rec, info: rec, warn: rec, error: rec }),
-  };
-});
-
-vi.mock("../../src/web-ext/apply-extension.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../src/web-ext/apply-extension.js")>();
-  return {
-    ...actual,
-    SlotHost: (props: Record<string, unknown>) => {
-      // 只记 panelRight 槽 —— 同一组件也渲染 header/footer 等槽,混进来会污染键全集。
-      if (props.slot === "panelRight") captured.slot.push(props);
-      return null;
-    },
   };
 });
 
@@ -77,15 +64,9 @@ const hostSource: PaneSource = {
   }),
 };
 
-const agentWithLegacySlot: WebExtension = {
-  manifestId: "agent-legacy",
-  slots: { panelRight: <div data-testid="legacy-panel" /> },
-};
-
 const agentWithNothing: WebExtension = { manifestId: "agent-plain" };
 
 beforeEach(() => {
-  captured.slot.length = 0;
   captured.panes.length = 0;
   captured.warns.length = 0;
 });

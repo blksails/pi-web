@@ -133,10 +133,10 @@ export interface CanvasPluginBundle {
  *
  * ## 为什么需要这个键
  *
- * 在它之前,agent 的 pane 定义只活在自己 `slots.panelRight` 渲染器的闭包里,宿主**无从枚举**
+ * 在它之前,agent 的 pane 定义只活在自己右侧面板槽渲染器的闭包里,宿主**无从枚举**
  * —— 也就无法把它与宿主内置 pane 合并。有了它,宿主才能领域中立地搬运并合并。
  *
- * ## 与 `slots.panelRight` 互斥
+ * ## 唯一的右侧面板机制
  *
  * 同时声明两者时**旧槽优先、本键被忽略**,并在会话装载期输出一条说明迁移途径的诊断。
  * 原因:槽渲染器占满整个面板区域,内置 panes 无处安放;两套面板并存会让用户看到分裂的
@@ -191,7 +191,7 @@ export interface WebExtension {
    * 该 agent 贡献的 pane 定义。与宿主内置 pane 集合在会话装载期合并(内置在前、本键在后),
    * 宿主对其领域中立:只搬运与合并,不解析 pane 内部语义。
    *
-   * 与 `slots.panelRight` **互斥** —— 同时声明时旧槽优先、本键被忽略并记诊断。
+   * 右侧面板的**唯一**声明途径(spec panes-only-right-panel:旧的具名槽已删除)。
    * 详见 {@link PaneContributionBundle}。
    */
   readonly panes?: PaneContributionBundle;

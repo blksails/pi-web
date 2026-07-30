@@ -645,7 +645,7 @@ function SessionView({
   );
   const extension = buildTimeExtension ?? runtimeWebext.extension;
 
-  // panelRight 连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
+  // 右侧面板的连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
   // extension/source 切换时重置，避免把上一个 Agent 的用户拖拽宽度泄漏到下一个 Agent。
   const configuredPanelWidth = extension?.config?.panelWidth;
   const [panelWidth, setPanelWidth] = React.useState<number | undefined>(configuredPanelWidth);
@@ -666,31 +666,30 @@ function SessionView({
       }),
     [session.sessionId, create.source, create.cwd],
   );
-  // ★ 判据须与 PiChat 内部的同名判据**同源**:三项输入(旧槽 / 内置来源 / agent 声明键)
-  // 任一存在即有面板。不同步会导致「外层容器与内层内容一个显示一个不显示」。
-  const hasPanelRight =
-    extension?.slots?.panelRight !== undefined ||
-    hostPaneSource !== undefined ||
-    extension?.panes !== undefined;
+  // ★ 判据须与 PiChat 内部的同名判据**同源**:两项输入(内置来源 / agent 声明键)任一存在
+  // 即有面板。不同步会导致「外层容器与内层内容一个显示一个不显示」。
+  // (旧的具名槽分支已随 spec panes-only-right-panel 删除。)
+  const hasSidePanel =
+    hostPaneSource !== undefined || extension?.panes !== undefined;
   const configuredPanelRatio = extension?.config?.panelRatio;
-  const [panelRightOpen, setPanelRightOpen] = React.useState(
-    () => hasPanelRight && configuredPanelRatio !== "centered",
+  const [sidePanelOpen, setSidePanelOpen] = React.useState(
+    () => hasSidePanel && configuredPanelRatio !== "centered",
   );
   React.useEffect(() => {
-    setPanelRightOpen(hasPanelRight && configuredPanelRatio !== "centered");
-  }, [extension?.manifestId, configuredPanelRatio, hasPanelRight]);
+    setSidePanelOpen(hasSidePanel && configuredPanelRatio !== "centered");
+  }, [extension?.manifestId, configuredPanelRatio, hasSidePanel]);
   const effectivePanelRatio: React.ComponentProps<typeof PiChat>["panelRatio"] =
-    !hasPanelRight || !panelRightOpen
+    !hasSidePanel || !sidePanelOpen
       ? "centered"
       : configuredPanelRatio === undefined || configuredPanelRatio === "centered"
         ? "2:1"
         : configuredPanelRatio;
   const togglePanelRight = React.useCallback(() => {
-    setPanelRightOpen((open) => !open);
+    setSidePanelOpen((open) => !open);
   }, []);
   // 收起态：入口在应用右上。展开态：按钮退到 pane 分隔线左侧，免遮 pane tabs。
-  const panelRightToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
-    if (!panelRightOpen) return undefined;
+  const sidePanelToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (!sidePanelOpen) return undefined;
     const width =
       panelWidth ??
       (effectivePanelRatio === "3:7"
@@ -701,7 +700,7 @@ function SessionView({
     return {
       right: `calc(${typeof width === "number" ? `${width}px` : width} + 1rem)`,
     };
-  }, [effectivePanelRatio, panelRightOpen, panelWidth]);
+  }, [effectivePanelRatio, sidePanelOpen, panelWidth]);
 
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
@@ -1086,16 +1085,16 @@ function SessionView({
             <PanelToggleIcon />
           </button>
         ) : null}
-        {hasPanelRight ? (
+        {hasSidePanel ? (
           <button
             type="button"
             data-panel-right-toggle
             onClick={togglePanelRight}
-            aria-expanded={panelRightOpen}
-            aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${panelRightOpen ? "" : " right-2"}`}
-            style={panelRightToggleStyle}
+            aria-expanded={sidePanelOpen}
+            aria-label={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            title={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${sidePanelOpen ? "" : " right-2"}`}
+            style={sidePanelToggleStyle}
           >
             <PanelRightIcon />
           </button>
@@ -1130,7 +1129,7 @@ function SessionView({
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
             : {})}
-          {...(hasPanelRight ? { panelRatio: effectivePanelRatio } : {})}
+          {...(hasSidePanel ? { panelRatio: effectivePanelRatio } : {})}
           {...(panelWidth !== undefined
             ? {
                 panelWidth,

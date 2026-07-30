@@ -278,7 +278,7 @@
   - _Requirements: 1.4, 1.5, 7.3, 7.4_
   - _Boundary: 守卫 — `scripts/check-no-panel-right.ts`, `test/guards/no-panel-right.test.ts`_
 
-- [ ] 5.2 删除槽键与双路径分派
+- [x] 5.2 删除槽键与双路径分派
 
   > **★ 前置已达成(2026-07-31 实测)——下一轮可直接开始本任务。**
   >
@@ -333,7 +333,7 @@
   - _Depends: 2.1, 2.2, 3.1, 4.1, 4.2, 4.3, 5.1_
   - _Boundary: 契约删除 — `packages/web-kit/src/{slots,define-web-extension}.ts`, `packages/protocol/src/web-ext/{config,descriptor}.ts`, `packages/protocol/src/plugin/plugin-manifest.ts`, `packages/ui/src/chat/pi-chat.tsx`, `components/chat-app.tsx`_
 
-- [ ] 5.3 清理因删除而失效的断言与死代码
+- [x] 5.3 清理因删除而失效的断言与死代码
   - 上游 spec 的「旧槽让位」规则随之作废:其让位断言与过渡期废弃诊断的断言一并移除
   - ★ 移除的判据是「该断言的触发条件已不可能成立」,不是「它碍事」——
     逐条说明为何不可能成立
