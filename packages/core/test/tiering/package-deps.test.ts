@@ -112,7 +112,7 @@ const PACKAGE_DEP_POLICIES: Readonly<Record<string, DepPolicy>> = {
     // ★ `ws` **刻意不禁**:`sandbox-transport/sandbox-ws-transport.ts:218` 有
     //   `await import("ws")`,该模块正是任务 3.1 要搬进本包的。禁了它会在 3.1 变成一条
     //   **误报**,而误报会教人去放宽判据 —— 那比没有这条禁令更糟。
-    //   (兼容层现声明了 `ws` 但已无引用,其去留不在本 spec 的 R2 范围内,故两边都不动。)
+    //   (兼容层原先也声明了 `ws` 但已无引用,任务 5.2 已将其移除并加进 server 的 `forbidden`。)
     peerOnly: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
     // 本包对 agent SDK 有 7 处**值**导入(任务 1.1),peer 也刻意不标 optional ——
     // 对它套「源码仅类型引用」是错的,会在 3.1 搬入实现时误报(同 runner)。
@@ -123,24 +123,17 @@ const PACKAGE_DEP_POLICIES: Readonly<Record<string, DepPolicy>> = {
     //   「兼容层重新引入三者即失败」必须是一条**活的**机械判据,
     //   而 exempt 意味着兼容层的依赖面完全无人看管(上一轮它就是这个状态)。
     kind: "audited",
-    forbidden: ["hono", "e2b", "pg", "@modelcontextprotocol/sdk"],
-    // ★ 三者此刻**仍在** `dependencies` 里,要到任务 5.2 才移除(5.2 依赖 5.1、5.1 依赖搬迁)。
-    //   故用 pendingRemoval 把判据**翻转**为「此刻必须仍然违规」,而不是把禁令关掉:
-    //   5.2 一落地,「标记未过期」一条立刻报红要求删标记,禁令随之自动生效。
-    pendingRemoval: [
-      {
-        name: "e2b",
-        why: "云沙箱 SDK 由任务 5.2 从兼容层 dependencies 移除(实现要先在 3.1 搬进 adapters 包)",
-      },
-      {
-        name: "pg",
-        why: "数据库驱动由任务 5.2 从兼容层 dependencies 移除(实现要先在 3.1 搬进 adapters 包)",
-      },
-      {
-        name: "@modelcontextprotocol/sdk",
-        why: "MCP SDK 由任务 5.2 从兼容层 dependencies 移除;⚠ 闭包层预期仍经 tool-kit 传递引入(design C2),本判据只管**自身声明**",
-      },
-    ],
+    // ★ 任务 5.2 已把 `e2b` / `pg` / MCP SDK 从兼容层 `dependencies` 移除,过渡期的
+    //   `pendingRemoval` 标记随之**到期报红**并被删除 —— 三条禁令自此**正向**生效
+    //   (R2.4:重新引入任何一个即失败并指出依赖名与所在字段)。
+    //
+    // ★ `ws` 是 5.2 补上的一条缺口:兼容层对它已零引用(唯一使用者 `sandbox-transport`
+    //   随包搬走),但它原先不在本表里 ⇒ 那条**死声明守卫抓不到**。它随本任务一并移除,
+    //   故直接进 `forbidden` 而不经 `pendingRemoval`(后者语义是「此刻必须仍然违规」,
+    //   对一个当场就清掉的名字用它会立即自毁)。
+    forbidden: ["hono", "e2b", "pg", "ws", "@modelcontextprotocol/sdk"],
+    // ⚠ 本判据只管**自身声明**:MCP SDK 仍经既有依赖 `@blksails/pi-web-tool-kit`
+    //   出现在兼容层的依赖**闭包**里(design C2 已预期),那不是本包声明的,也不由本条看守。
     // ★ 兼容层是**装配层**,它硬依赖 agent 运行时 SDK 属其职责(它就是那个把 agent 跑起来的包),
     //   故这里刻意为空 —— peer-only 判据只对**被消费的库包**(core / runner / adapters)成立。
     //   空集不会让本包静默失守:上面的 forbidden 有 4 项且 `hono` 此刻是活的。
