@@ -118,6 +118,49 @@ importers:
         specifier: ^2.11.0
         version: 2.11.4
 
+  packages/adapters:
+    dependencies:
+      '@blksails/pi-web-core':
+        specifier: workspace:*
+        version: link:../core
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
+      '@blksails/pi-web-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@earendil-works/pi-ai':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@3.25.76)
+      e2b:
+        specifier: ^2.33.0
+        version: 2.33.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.21.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
   packages/agent-kit:
     dependencies:
       '@blksails/pi-web-logger':

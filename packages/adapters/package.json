@@ -1,0 +1,35 @@
+{
+  "name": "@blksails/pi-web-adapters",
+  "version": "0.1.0",
+  "description": "pi-web 外部系统绑定层:云沙箱传输、Postgres 会话存储、MCP 探测、认证/网关/令牌/模型来源等 adapters。三个重依赖(e2b / pg / MCP SDK)在本仓中只应出现在此处",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./*.js": "./src/*.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@blksails/pi-web-core": "workspace:*",
+    "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "e2b": "^2.33.0",
+    "pg": "^8.13.1",
+    "zod": "^3.23.8"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}
