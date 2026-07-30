@@ -42,11 +42,25 @@ export class PiCliNotFoundError extends Error {
  */
 export function resolvePiCliEntry(): string {
   // 依次从多个基准向上定位包目录:
-  //  ① 本模块位置(import.meta.url):dev 命中 packages/server/node_modules;同路径 standalone 亦可。
-  //  ② 运行时 cwd:standalone 产物以 cwd=产物根启动,命中顶层 node_modules/@earendil-works/pi-coding-agent。
-  // ②必要,因 webpack 把 standalone bundle 里的 import.meta.url **内联成构建机绝对路径**,
-  // 产物换机/换 OS 后①走的是不存在的构建路径(参见 pack-standalone 的可重定位处理)。
-  // 且 Windows 上 `fileURLToPath` 对 Linux 内联 URL 直接抛 ERR_INVALID_FILE_URL_PATH,
+  //  ① 本模块位置(import.meta.url):dev 命中 packages/adapters/node_modules → 向上到仓库根;
+  //     同路径 standalone 亦可。
+  //  ② 运行时 cwd:产物以 cwd=产物根启动,命中顶层 node_modules/@earendil-works/pi-coding-agent。
+  //
+  // ⚠ 本注释此前声称「webpack 把 standalone bundle 里的 import.meta.url **内联成构建机
+  //   绝对路径**,故①换机必失效、只能依赖②」—— **实测证伪**
+  //   (spec: runner-package-extraction 任务 4.2 / adapters-package-extraction 任务 6.2)。
+  //   那是 **webpack/Next 时代**的行为;迁到 Vite + esbuild(`format: "esm"`)后
+  //   esbuild **保留** import.meta.url,①在产物里是活的。复核命令:
+  //
+  //       grep -c "import.meta.url" dist/server.mjs   # → 7(活的,未内联)
+  //
+  //   ★ 这句错话当年是**复制传播**的:同一论断散落三处(本文件、
+  //     `packages/server/src/runner-bootstrap-path.ts`、`scripts/build-server.mjs`),
+  //     前两处已在上一轮修正,本处是第三处。
+  //
+  // ②仍然必要,但理由不同:并非「①必然失效」,而是①的解析根随**本包的安装位置**变化 ——
+  // 真实安装树里 adapters 可能被扁平化到别处,②给出与 cwd 绑定的第二条通路。
+  // Windows 上 `fileURLToPath` 对 Linux 内联 URL 会抛 ERR_INVALID_FILE_URL_PATH,
   // 故 try 包裹:抛错则跳过①,仅用②cwd。
   const bases: string[] = [];
   try {

@@ -41,7 +41,7 @@
  *   响应体不泄露(仅 INTERNAL / Internal server error),修复指引(三条路径:
  *   TEMPLATE_MAP / TEMPLATE_DERIVE / TEMPLATE)打在 dev 进程 stderr。
  *
- * 门控(仿 packages/server/test/rpc-channel/sandbox-ws-transport.local.test.ts 语义):
+ * 门控(仿 packages/adapters/test/rpc-channel/sandbox-ws-transport.local.test.ts 语义):
  *   kubectl 不可达 / agent-sandbox 未就绪 / docker 不可用 / kind 集群缺失 / 基座镜像
  *   缺失 / 端口被占 → 打印 SKIP 原因后 exit 0(CI 无 kind 不红)。
  *
