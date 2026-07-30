@@ -88,16 +88,18 @@
 
 - [ ] 3. Core:最小内置 pane 与宿主清单
 
-- [ ] 3.1 (P) 实现会话信息 pane 的 guest 侧
+- [x] 3.1 (P) 实现会话信息 pane 的 guest 侧
   - guest 入口连接宿主通道,订阅承载会话信息的具名信号并渲染会话标识、agent 源、工作目录
   - **对信号载荷做运行期校验**:字段缺失时显示空态而非崩溃 —— 通道返回值的泛型是断言不是校验,
     同类缺陷已在既有 pane 迁移中出现过(错误体被当正常结果解构,整个 pane 被卸载)
   - guest 代码不从宿主 realm 引入任何东西(它跑在独立 realm)
+  - ★ 校验与渲染抽到**零副作用**的视图模块,入口只做接线 —— 入口顶层有 `void main()`,
+    import 它就会尝试建连,测试无从引用;而「缺字段不把 pane 打死」恰恰是最该被测的行为
   - 可观察完成:构建后的文档在浏览器中打开能完成握手并显示传入的会话信息;喂入缺字段的
     信号时显示空态且不卸载
   - _Requirements: 6.2, 6.3_
   - _Depends: 1.1_
-  - _Boundary: session-info guest — `panes/session-info/main.tsx`_
+  - _Boundary: session-info guest — `panes/session-info/main.tsx`, `panes/session-info/view.ts`, `test/panes/session-info-view.test.ts`_
 
 - [ ] 3.2 建立内置 pane 单一权威清单与会话信号组装
   - 建立内置 pane 清单:**新增内置 pane = 加一个文件 + 清单加一行**(镜像内置扩展清单纪律)
