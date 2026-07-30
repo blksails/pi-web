@@ -123,22 +123,51 @@ function CanvasPane(): React.JSX.Element {
 
   // 主题跟随:宿主给它自己的 <html> 加 `dark` 类,跨不过 iframe;由宿主经信号下发后在此落地。
   // `onSignal` 订阅即以当前值回调一次,故首帧就是对的,不会先亮一下再跳暗。
+  //
+  // ★ 改用**宿主内置信号**(spec panes-only-right-panel 任务 1.4):迁移前由本 source 在宿主
+  // realm 挂 MutationObserver 自行计算 —— 那在隔离形态下做不到,也不该让每个 agent 各写一份。
+  // 值是 "light" | "dark",不再是布尔。
   React.useEffect(
     () =>
-      guest.onSignal("theme:dark", (value) => {
-        document.documentElement.classList.toggle("dark", value === true);
+      guest.onSignal("host:theme", (value) => {
+        document.documentElement.classList.toggle("dark", value === "dark");
       }),
     [guest],
   );
 
   // 「点聊天工具卡的图 → 进 Canvas 编辑」:点击发生在**宿主** document,由宿主转成信号下发。
-  // 值形如 `att_xxx#<seq>`,seq 只为让连点同一张图也产生新值(信号是最后值即真值,不是事件流)。
+  //
+  // ★ 改用**宿主内置信号**(任务 1.4)。值形如 `{ id, seq }`,`seq` 单调递增,只为让连点同一张
+  // 图也产生新值(信号是最后值即真值,不是事件流)。宿主侧原用时间戳,同毫秒连点会失效;
+  // 内置化时换成了序号,严格更强。
   React.useEffect(
     () =>
-      guest.onSignal("canvas:focus", (value) => {
-        if (typeof value !== "string" || value === "") return;
-        const attachmentId = value.split("#")[0] ?? "";
+      guest.onSignal("host:transcriptFocus", (value) => {
+        const focus = value as { id?: unknown } | undefined;
+        const attachmentId = typeof focus?.id === "string" ? focus.id : "";
         if (attachmentId !== "") canvasFocusStore.set(attachmentId);
+      }),
+    [guest],
+  );
+
+  // ★ 轮末 auto-sync **下沉进 pane 自己**(任务 4.1)。
+  //
+  // 迁移前这段在宿主 realm 的包装层里:宿主 bump 轮末同步信号 → 包装层代发
+  // `surface.run("canvas","sync")`。那是因为当时 pane 协议不传该信号。现在宿主已把它作为
+  // `host:syncSignal` 推进来,guest 本就能执行 surface 命令 ⇒ 该由 pane 自己发,包装层消失。
+  //
+  // ★ 这条链断了的表现只是「生成了但画廊没刷新」,极易被当成后端问题 —— 有前科,
+  //   故 e2e 里有一条独立断言直接检查同步结果。
+  const syncSeen = React.useRef(false);
+  React.useEffect(
+    () =>
+      guest.onSignal("host:syncSignal", () => {
+        // 首次回调是订阅即回放的当前值,不是真的轮末边沿 —— 跳过,免得装配期多一次无谓往返。
+        if (!syncSeen.current) {
+          syncSeen.current = true;
+          return;
+        }
+        void Promise.resolve(guest.surface.run("canvas", "sync")).catch(() => undefined);
       }),
     [guest],
   );

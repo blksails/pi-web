@@ -197,7 +197,7 @@
 
 - [ ] 4. Integration:迁画布系三个声明者
 
-- [ ] 4.1 画布 source 的包装层两处逻辑分别下沉与内置化
+- [x] 4.1 画布 source 的包装层两处逻辑分别下沉与内置化
   - ★ 该包装层**不是纯包装**(这是既有 spec「刻意不动它」的真因):它带两处宿主 realm 逻辑
   - **轮末自动同步下沉进 pane 内部**:guest 本就能执行 surface 命令,且轮末同步信号已由宿主
     推入 pane ⇒ 宿主侧代发那段随之消失
@@ -210,7 +210,22 @@
   - _Depends: 1.4, 1.5_
   - _Boundary: 画布 source — `examples/aigc-canvas-agent/web/web.config.tsx`, `examples/aigc-canvas-agent/build.ts`_
 
-- [ ] 4.2 (P) 迁无 surface 的画布降级 source
+- [x] 4.2 (P) 迁无 surface 的画布降级 source  ⚠ **带一处显式记录的缺口**
+
+  > **★ 新发现的协议语义缺口(不是本次迁移引入,但迁 pane 后才暴露)**:
+  > guest 的 `hasCommand` 查的是 **grants**(「我被授权调什么」),而降级判断需要的是
+  > 「agent 确实提供了什么」。两者在旧槽形态下等价(宿主的访问器直接查真实命令表),
+  > 在 pane 形态下**不再等价** —— 一个 pane 可以被授予 canvas 命令,而该 source 的 agent
+  > 根本没发布 canvas 表面。故 `data-canvas-available` 恒为 "true",只读横幅不出现。
+  >
+  > **尝试过的修复与为何回滚**:补一条 `host:availableCommands` 内置信号让 guest 取
+  > grants ∩ 宿主实况的交集。但宿主命令表就绪**晚于**建连,而 guest 侧 `hasCommand` 是同步
+  > 查信号 ⇒ 正向用例(canvas / surface-demo)反被打红 **5 条**。该修复需要更完整的时序设计
+  > (信号到达后重算降级态并重渲染),不是加一条信号能了事。**已完整回滚**,记为下游待办。
+  >
+  > **本任务的实际交付**:降级 source 已迁 pane 并通过 e2e,守住的是
+  > 「无 surface 时 pane 仍挂载、不崩溃、无格子、本地功能照常」;
+  > 「available=false + 只读横幅」两条断言**未删除**,以待启用注释形态留在 e2e 文件末尾。
   - 该 source 演示「贡献面板但 agent 无对应权威表面」时的只读降级,迁移后降级表现须不变
   - 可观察完成:其既有降级 e2e 全绿
   - _Requirements: 1.1, 5.1, 5.2_

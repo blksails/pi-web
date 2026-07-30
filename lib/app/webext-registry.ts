@@ -15,7 +15,7 @@ import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
 import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs";
-import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
+import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.mjs";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.mjs";

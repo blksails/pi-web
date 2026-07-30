@@ -13,6 +13,7 @@ import { buildPanesAgent } from "../examples/panes-agent/build.js";
 import { buildAigcCanvasAgent } from "../examples/aigc-canvas-agent/build.js";
 import { buildSurfaceDemoAgent } from "../examples/surface-demo-agent/build.js";
 import { buildStateBridgeAgent } from "../examples/state-bridge-agent/build.js";
+import { buildAigcCanvasNosurfaceAgent } from "../examples/aigc-canvas-nosurface-agent/build.js";
 
 const EXAMPLES = [
   "webext-layout",
@@ -55,6 +56,8 @@ async function main(): Promise<void> {
   // state-bridge 是新增共享状态通道的唯一真实消费者(spec panes-only-right-panel 任务 3.1)。
   const stateBridge = await buildStateBridgeAgent();
   console.log(`[built] state-bridge → ${stateBridge.entryOut} (${stateBridge.manifest.integrity})`);
+  const nosurface = await buildAigcCanvasNosurfaceAgent();
+  console.log(`[built] aigc-canvas-nosurface → ${nosurface.entryOut} (${nosurface.manifest.integrity})`);
 }
 
 void main().catch((err: unknown) => {
