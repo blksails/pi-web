@@ -48,7 +48,7 @@
   - _Depends: 1.1_
   - _Boundary: guest SDK — `packages/panes-kit/src/guest.ts`, `packages/panes-kit/test/guest.test.ts`_
 
-- [ ] 1.4 (P) 宿主环境信号族:主题与对话流焦点
+- [x] 1.4 (P) 宿主环境信号族:主题与对话流焦点
   - 主题明暗由宿主权威状态计算并推送,agent 不再自行观察 DOM
   - 对话流内可聚焦元素被点击时以**领域中立**形式通知,通知内容足以识别被点击对象
   - ★ **连点同一目标两次必须都触达**:下行具名信号是「最后值即真值」,值不变不重推。

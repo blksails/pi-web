@@ -74,6 +74,7 @@ import {
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
 import { createLogger } from "@blksails/pi-web-logger";
+import { useHostEnvironmentSignals } from "./host-signals.js";
 import {
   mergePaneSources,
   type PaneMergeRejection,
@@ -1416,13 +1417,18 @@ export function PiChat({
    * 宿主保留 `host:` 前缀命名信号;调用方经 `paneSignals` 传入的键原样保留(后写覆盖,
    * 使 app 层可按需覆盖宿主默认值)。
    */
+  // 宿主环境信号族(spec panes-only-right-panel 任务 1.4):主题与对话流焦点。
+  // 只在真的会渲染 pane 时启用 —— 无人消费就不该往文档上挂监听、打样式钩子。
+  const environmentSignals = useHostEnvironmentSignals(mergedPanes !== undefined);
+
   const hostPaneSignals = React.useMemo<Readonly<Record<string, unknown>>>(
     () => ({
+      ...environmentSignals,
       "host:syncSignal": panelSyncSignal,
       ...(livePreviewImage !== undefined ? { "host:livePreviewImage": livePreviewImage } : {}),
       ...(paneSignals ?? {}),
     }),
-    [panelSyncSignal, livePreviewImage, paneSignals],
+    [environmentSignals, panelSyncSignal, livePreviewImage, paneSignals],
   );
   const hasArtifactAside =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
