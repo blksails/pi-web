@@ -1,9 +1,9 @@
 {
   "feature_name": "adapters-package-extraction",
   "created_at": "2026-07-30T04:40:00Z",
-  "updated_at": "2026-07-30T05:20:00Z",
+  "updated_at": "2026-07-30T06:40:00Z",
   "language": "zh",
-  "phase": "tasks-approved",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -36,5 +36,12 @@
     "contract_shrink": "移除主入口 8 条 export *；基准有意重生成 + **逐一枚举的移除清单**工件；旧基准另存；主版本号",
     "agent_sdk_static_assertion": "★ 必须加静态声明断言 —— pi-cli.ts 的 locatePackageDir 逐级向上查找，仓库根有 SDK，漏声明在 monorepo 里恒能解析成功（与上一轮 tool-kit 陷阱同构）",
     "closure_vs_declaration": "★ 2.1 达成范围须表述为「兼容层**自身声明**不再含三者」；闭包层预期仍有 MCP SDK 经 tool-kit 传递，须显式说明来源"
+  },
+  "implementation": {
+    "completed_tasks": "16/16",
+    "completed_at": "2026-07-30",
+    "delivery_artifact": ".kiro/specs/adapters-package-extraction/validation.md",
+    "evidence_summary": "四包两轮逐档逐字相同 284 文件/2623 用例；六项类型检查 exit 0；30 条验收标准逐条留证",
+    "known_gaps": "R2.2 闭包层未兑现（四个重依赖仍随 adapters 进入兼容层闭包）；R1.2 按字面不成立（tool-kit 另有一份 MCP SDK，不在守卫包根名册内）；U1-U6 见 validation.md §8"
   }
 }
