@@ -8,7 +8,9 @@
 
 /** 内核包声明层禁止出现的依赖(前缀匹配,`x` 命中 `x` 与 `x/...`)。 */
 export const FORBIDDEN_PACKAGE_DEPS: readonly { readonly name: string; readonly why: string }[] = [
-  { name: "hono", why: "HTTP 框架 —— 内核只有框架无关的 Request/Response 处理" },
+  // `why` 是**跨包根**共用的一句话(禁令表是单一事实源,各包根规则只引名字),
+  // 故不能写成只对内核成立的措辞 —— 兼容层同样禁它(本仓 hono 只在仓库根的入口进程里)。
+  { name: "hono", why: "HTTP 框架 —— 库包一律只做框架无关的 Request/Response 处理" },
   { name: "e2b", why: "云沙箱 SDK" },
   { name: "pg", why: "数据库驱动" },
   { name: "@modelcontextprotocol/sdk", why: "MCP SDK" },
@@ -20,8 +22,17 @@ export const FORBIDDEN_PACKAGE_DEPS: readonly { readonly name: string; readonly 
 /**
  * 只允许以 **peer** 形式出现的依赖(R1.3)。出现在 `dependencies` / `devDependencies`
  * 里即违规 —— 那会让每个消费方无条件装下整套 agent 运行时。
+ *
+ * ★ 本清单只决定「出现在 deps/devDeps 里算不算违规」,**不**决定「必须出现在谁的 peerDeps 里」
+ *   —— 后者按包根声明(见测试文件 `PACKAGE_DEP_POLICIES` 的 `peerOnly`)。两者分开是必要的:
+ *   `@earendil-works/pi-ai` 只有 adapters 包声明为 peer(spec adapters-package-extraction 任务 1.1
+ *   定的两包 peer),内核与 runner 根本不引用它 —— 若把「必须在 peerDeps」也挂在本清单上,
+ *   那两个包会因「没声明一个它们不用的 peer」凭空变红。
  */
-export const PEER_ONLY_DEPS: readonly string[] = ["@earendil-works/pi-coding-agent"];
+export const PEER_ONLY_DEPS: readonly string[] = [
+  "@earendil-works/pi-coding-agent",
+  "@earendil-works/pi-ai",
+];
 
 export interface PackageManifest {
   readonly dependencies?: Readonly<Record<string, string>>;

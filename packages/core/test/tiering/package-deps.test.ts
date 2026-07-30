@@ -29,8 +29,10 @@ const FORBIDDEN_BY_NAME = new Map(FORBIDDEN_PACKAGE_DEPS.map((f) => [f.name, f] 
 /**
  * 一个包根的依赖策略。
  *
- * ★ 为什么不能对所有包根执行同一套禁令:兼容层 `packages/server` 是**装配层**,
- *   它的 `dependencies` 里 e2b / pg / ws / MCP SDK 全都合法(adapters 尚未切出)。
+ * ★ 为什么不能对所有包根执行同一套禁令:同一份禁令表要对不同包根给出**相反**的答案。
+ *   `core` / `runner` 禁云沙箱 SDK / 数据库驱动 / MCP SDK;**adapters 允许**它们 ——
+ *   那正是它存在的理由(spec adapters-package-extraction R1.2:本仓中三者**只应**出现在此处);
+ *   兼容层 `packages/server` 则由「允许」翻成**禁止**(R2.4 的守卫化,见 design C2)。
  *   一刀切会逼人去放宽禁令清单本身,那才是真正的倒退。故按包根区分 ——
  *   但必须是**显式声明**,不是「查得到就查、查不到就放行」。
  */
@@ -41,6 +43,21 @@ type DepPolicy =
       readonly forbidden: readonly string[];
       /** 必须出现在 `peerDependencies`、且不得出现在 deps/devDeps 的依赖。 */
       readonly peerOnly: readonly string[];
+      /**
+       * **禁令已定但此刻尚未生效**的依赖:它们此刻**必须仍然**出现在本包的
+       * deps/devDeps 里,清理干净的那一刻本标记即过期报红。
+       *
+       * ★ 语义与 `package-roots.ts` 的 `pendingContributions` 同构,理由也同构:
+       *   R2.4 要求「兼容层重新引入三者即失败」,而三者要到任务 5.2 才移得掉 ——
+       *   守卫必须先装上,于是过渡期里判据被**翻转**而不是被关掉:
+       *   标记在时"必须仍然违规",标记不在时"必须不违规",
+       *   **没有一刻是无人看管的**,也没有留下需要后人回来打开的开关 ——
+       *   标记只能通过让守卫变红来退场(见「pendingRemoval 标记未过期」一条)。
+       *
+       * ★ 它**不是**「豁免这个名字」:一个不在本表里的被禁项(如兼容层的 `hono`)
+       *   照样当场报红并指出依赖名与所在字段,所以禁令此刻是**活的**,不是空转。
+       */
+      readonly pendingRemoval?: readonly { readonly name: string; readonly why: string }[];
       /**
        * 是否同时执行 R1.3 的**源码侧**判据(src 里对 agent SDK 只有 `import type`)。
        *
@@ -65,7 +82,8 @@ const PACKAGE_DEP_POLICIES: Readonly<Record<string, DepPolicy>> = {
   core: {
     kind: "audited",
     forbidden: FORBIDDEN_PACKAGE_DEPS.map((f) => f.name),
-    peerOnly: PEER_ONLY_DEPS,
+    // 内核只要 pi-coding-agent 一个 peer(且是 optional);它不引用 pi-ai。
+    peerOnly: ["@earendil-works/pi-coding-agent"],
     srcTypeOnlyAgentSdk: true,
   },
   runner: {
@@ -73,15 +91,61 @@ const PACKAGE_DEP_POLICIES: Readonly<Record<string, DepPolicy>> = {
     // WebSocket 实现、MCP SDK 四类在 runner 目录里零引用,却随旧包被沙箱镜像装下。
     kind: "audited",
     forbidden: ["e2b", "pg", "ws", "@modelcontextprotocol/sdk"],
-    peerOnly: PEER_ONLY_DEPS,
+    peerOnly: ["@earendil-works/pi-coding-agent"],
+    srcTypeOnlyAgentSdk: false,
+  },
+  adapters: {
+    // spec adapters-package-extraction R1.2 / design C1:三个重依赖(e2b / pg / MCP SDK)
+    // **归此包**,故它们对本包**合法**,不在 forbidden 里 —— 这是本包存在的理由。
+    // 仍然被禁的是不属本包职责的那些:
+    kind: "audited",
+    forbidden: [
+      // HTTP 框架:adapters 绑定的是外部系统的**出向**客户端,不承载入向 HTTP
+      // (本仓 hono 只出现在仓库根的 `server/index.ts`,不在任何 packages/* 里)。
+      "hono",
+      // 包注册表客户端:design C1 的 Allowed Dependencies 逐项列出了本包允许的依赖
+      // (core / logger / protocol / zod + e2b / pg / MCP SDK),注册表客户端不在其中;
+      // 实测 12 个待搬模块对它零引用。
+      "@pi-clouds/registry-client",
+      "@blksails/registry-client",
+    ],
+    // ★ `ws` **刻意不禁**:`sandbox-transport/sandbox-ws-transport.ts:218` 有
+    //   `await import("ws")`,该模块正是任务 3.1 要搬进本包的。禁了它会在 3.1 变成一条
+    //   **误报**,而误报会教人去放宽判据 —— 那比没有这条禁令更糟。
+    //   (兼容层现声明了 `ws` 但已无引用,其去留不在本 spec 的 R2 范围内,故两边都不动。)
+    peerOnly: ["@earendil-works/pi-coding-agent", "@earendil-works/pi-ai"],
+    // 本包对 agent SDK 有 7 处**值**导入(任务 1.1),peer 也刻意不标 optional ——
+    // 对它套「源码仅类型引用」是错的,会在 3.1 搬入实现时误报(同 runner)。
     srcTypeOnlyAgentSdk: false,
   },
   server: {
-    kind: "exempt",
-    why:
-      "装配层兼容包:e2b / pg / ws / MCP SDK 正是它要装配的适配器实现," +
-      "adapters 尚未切出(并行 spec adapters-package-extraction)。" +
-      "该 spec 落地后应把本项改成 audited,而不是继续豁免。",
+    // ★ 由 exempt 翻成 audited:这是 R2.4 / design C2 的守卫化 ——
+    //   「兼容层重新引入三者即失败」必须是一条**活的**机械判据,
+    //   而 exempt 意味着兼容层的依赖面完全无人看管(上一轮它就是这个状态)。
+    kind: "audited",
+    forbidden: ["hono", "e2b", "pg", "@modelcontextprotocol/sdk"],
+    // ★ 三者此刻**仍在** `dependencies` 里,要到任务 5.2 才移除(5.2 依赖 5.1、5.1 依赖搬迁)。
+    //   故用 pendingRemoval 把判据**翻转**为「此刻必须仍然违规」,而不是把禁令关掉:
+    //   5.2 一落地,「标记未过期」一条立刻报红要求删标记,禁令随之自动生效。
+    pendingRemoval: [
+      {
+        name: "e2b",
+        why: "云沙箱 SDK 由任务 5.2 从兼容层 dependencies 移除(实现要先在 3.1 搬进 adapters 包)",
+      },
+      {
+        name: "pg",
+        why: "数据库驱动由任务 5.2 从兼容层 dependencies 移除(实现要先在 3.1 搬进 adapters 包)",
+      },
+      {
+        name: "@modelcontextprotocol/sdk",
+        why: "MCP SDK 由任务 5.2 从兼容层 dependencies 移除;⚠ 闭包层预期仍经 tool-kit 传递引入(design C2),本判据只管**自身声明**",
+      },
+    ],
+    // ★ 兼容层是**装配层**,它硬依赖 agent 运行时 SDK 属其职责(它就是那个把 agent 跑起来的包),
+    //   故这里刻意为空 —— peer-only 判据只对**被消费的库包**(core / runner / adapters)成立。
+    //   空集不会让本包静默失守:上面的 forbidden 有 4 项且 `hono` 此刻是活的。
+    peerOnly: [],
+    srcTypeOnlyAgentSdk: false,
   },
 };
 
@@ -104,6 +168,14 @@ function matchesName(declared: string, ruleName: string): boolean {
 function scopedAudit(policy: Extract<DepPolicy, { kind: "audited" }>, pkg: PackageManifest) {
   const inScope = [...policy.forbidden, ...policy.peerOnly];
   return auditPackageDeps(pkg).filter((v) => inScope.some((n) => matchesName(v.name, n)));
+}
+
+/** 该违规是否被本包的「禁令尚未生效」标记暂时接住(语义:此刻**必须**仍然违规)。 */
+function isPendingRemoval(
+  policy: Extract<DepPolicy, { kind: "audited" }>,
+  name: string,
+): boolean {
+  return (policy.pendingRemoval ?? []).some((p) => matchesName(name, p.name));
 }
 
 const describeViolations = (vs: readonly DepViolation[]) =>
@@ -154,12 +226,20 @@ describe("包依赖守卫 —— 策略表必须覆盖全部包根", () => {
   it("判别力自证:新增包根却没给它定规则时,报红并指名是哪个包根", () => {
     // ★ 对应任务 2.4 的硬要求:「将来新增包根却忘了给它定规则」必须是一次**响亮的失败**,
     //   而不是默默按最宽松处理。用注入的假名册驱动,不必去改 package-roots.ts。
-    const withFourth: readonly PackageRoot[] = [
+    //
+    // ★ 假包根的名字必须是一个**不会成真**的名字。这里原先用的是 "adapters" ——
+    //   adapters 包真的成立之后,它在策略表里有了规则,这条用例便只能靠
+    //   「注入的重名项也被算作缺规则」而侥幸通过,判别力实际已经失去。
+    const withExtra: readonly PackageRoot[] = [
       ...PACKAGE_ROOTS,
-      { name: "adapters", dir: "/nonexistent/adapters", packageName: "@blksails/pi-web-adapters" },
+      {
+        name: "no-such-package",
+        dir: "/nonexistent/no-such-package",
+        packageName: "@blksails/pi-web-no-such-package",
+      },
     ];
-    expect(() => assertPoliciesCoverRoots(withFourth)).toThrowError(/未在 PACKAGE_DEP_POLICIES/);
-    expect(() => assertPoliciesCoverRoots(withFourth)).toThrowError(/adapters/);
+    expect(() => assertPoliciesCoverRoots(withExtra)).toThrowError(/未在 PACKAGE_DEP_POLICIES/);
+    expect(() => assertPoliciesCoverRoots(withExtra)).toThrowError(/no-such-package/);
   });
 
   it("判别力自证:策略表里有对不上包根的死规则时报红", () => {
@@ -168,20 +248,54 @@ describe("包依赖守卫 —— 策略表必须覆盖全部包根", () => {
     expect(() => assertPoliciesCoverRoots(shrunk)).toThrowError(/runner/);
   });
 
-  it("audited 包根至少两个,且与策略表声明一致(空扫即失败)", () => {
+  it("四个包根全部在被审,且与策略表声明一致(空扫即失败)", () => {
     // 找不到包根时,下面每条 per-root 断言都会因为"无物可查"而通过 —— 那是最像绿的一种失效。
     const declared = Object.entries(PACKAGE_DEP_POLICIES)
       .filter(([, p]) => p.kind === "audited")
       .map(([n]) => n)
       .sort();
     expect(auditedRoots.map((r) => r.name).sort()).toEqual(declared);
-    expect(auditedRoots.length, "没有任何包根在被审 —— 守卫空转").toBeGreaterThanOrEqual(2);
+    // ★ 下限由 2 提到 4(R5.1 / design C5:守卫覆盖四包)。兼容层改成 audited 之后
+    //   本仓**不再有任何 exempt 包根** —— 把这件事写成判据,免得哪天有人靠"改回 exempt"
+    //   让红变绿:那正是本轮要根除的形态。
+    expect(auditedRoots.length, "有包根不在被审 —— 守卫对它空转").toBeGreaterThanOrEqual(4);
   });
 
   it("每条 exempt 都写明了理由", () => {
+    // 目前**一条 exempt 都没有**(四包全 audited),故本条此刻为空循环 —— 它是留给
+    // 将来的:一旦有人重新引入豁免,理由就必须写出来。空理由的豁免与「忘了定规则」无法区分。
     for (const [name, policy] of Object.entries(PACKAGE_DEP_POLICIES)) {
       if (policy.kind !== "exempt") continue;
       expect(policy.why.trim().length, `包根 ${name} 的豁免没有理由`).toBeGreaterThan(20);
+    }
+  });
+
+  it("执行 peer-only 判据的包根至少三个(空 peerOnly 不得悄悄扩散)", () => {
+    // ★ `peerOnly: []` 让两条 per-root 断言变成空循环。兼容层那一项是**有理由的**空集
+    //   (它是装配层),但空集不能成为让 peer 判据静默消失的通路 ——
+    //   core / runner / adapters 三个库包必须始终在执行它。
+    const enforcing = auditedRoots.filter((r) => r.policy.peerOnly.length > 0).map((r) => r.name);
+    expect(enforcing.sort(), "库包的 agent SDK peer-only 判据被清空了").toEqual([
+      "adapters",
+      "core",
+      "runner",
+    ]);
+  });
+
+  it("pendingRemoval 只引用本包 forbidden 里的名字,且每条都写明理由", () => {
+    // ★ 引用了一个本包并不禁止的名字,这条标记就**永远不可能过期** —— 它接不住任何违规,
+    //   于是"标记未过期"一条也永远说不清自己在守什么。与上一条死规则断言同理。
+    for (const root of auditedRoots) {
+      for (const pending of root.policy.pendingRemoval ?? []) {
+        expect(
+          root.policy.forbidden,
+          `${root.name} 的 pendingRemoval 引用了本包并未禁止的 "${pending.name}" —— 死标记`,
+        ).toContain(pending.name);
+        expect(
+          pending.why.trim().length,
+          `${root.name} 的 pendingRemoval "${pending.name}" 没写明何时移除`,
+        ).toBeGreaterThan(20);
+      }
     }
   });
 
@@ -208,7 +322,9 @@ describe.each(auditedRoots)("包依赖守卫 —— $name 的声明层必须干�
   });
 
   it("dependencies / devDependencies 均不含本包被禁的依赖", () => {
-    const violations = scopedAudit(root.policy, manifestOf(root.dir));
+    const all = scopedAudit(root.policy, manifestOf(root.dir));
+    // 「禁令尚未生效」的名字在此被接住,其自身由下一条("标记未过期")反向看守。
+    const violations = all.filter((v) => !isPendingRemoval(root.policy, v.name));
     expect(
       describeViolations(violations),
       `包 ${root.name} 的依赖声明出现了被禁项。源码干净但 package.json 里挂着它们,` +
@@ -216,6 +332,26 @@ describe.each(auditedRoots)("包依赖守卫 —— $name 的声明层必须干�
         `修法:把用到它的实现摘去兼容层包(参考 sandbox-transport / session-store-postgres),` +
         `而不是放宽本名单、也不是把本包改成 exempt。`,
     ).toEqual([]);
+  });
+
+  it("pendingRemoval 标记未过期(标记在,则该依赖此刻必须仍被声明)", () => {
+    // ★ 这是标记的**自毁装置**,与 `package-roots.ts` 里 pendingContributions 的
+    //   「豁免过期即报红」完全同构。少了它,一条为过渡期加的标记会永久留下,
+    //   而 R2.4 要求的「兼容层重新引入即失败」就永远不会响 —— 那正是本条存在的理由。
+    //   于是两条约束在任何时刻恰有一条生效:标记在时"必须仍然违规",标记不在时"必须不违规"。
+    //   **没有一刻是无人看管的,也没有留下需要后人回来打开的开关。**
+    const all = scopedAudit(root.policy, manifestOf(root.dir));
+    for (const pending of root.policy.pendingRemoval ?? []) {
+      const hits = all.filter((v) => matchesName(v.name, pending.name));
+      expect(
+        describeViolations(hits),
+        `包 ${root.name} 的 "${pending.name}" 已经不在依赖声明里了 —— ` +
+          `pendingRemoval 标记过期,请把它从 PACKAGE_DEP_POLICIES.${root.name}.pendingRemoval 里删掉。\n` +
+          `标记的语义是「此刻必须仍然违规」,而不是「可以违规」:留着它等于让这个依赖` +
+          `**永久**免于禁令,将来它被重新引入时就没人会响了(R2.4)。\n` +
+          `该标记登记的移除时机:${pending.why}`,
+      ).not.toEqual([]);
+    }
   });
 
   it("agent 运行时 SDK 以 peer 形式声明,而非硬依赖(R1.3)", () => {

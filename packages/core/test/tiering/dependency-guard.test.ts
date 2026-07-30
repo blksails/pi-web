@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ALLOWED_EDGES,
   KNOWN_DEBT,
+  MODULE_ROSTER,
   isReverseEdge,
   layerOf,
   moduleNameOf,
@@ -95,8 +96,12 @@ const WILDCARD_ROOTS = PACKAGE_ROOTS.filter(hasSrcWildcard);
  * ★ 兼容层包(`server`)**不在**此列:它只开具名子路径,是有意的窄公开面。
  *   它的深路径引用因此解析不到 —— 那条缝由「跨包 specifier 必须全部解析得到」那条用例兜住,
  *   而不是靠给它补一条通配导出。
+ *
+ * ★ `adapters`(spec: adapters-package-extraction 任务 2.3)是这份名单里**最不能少**的一项:
+ *   它整个包**只有**通配导出、没有 `"."` 主入口,兼容层将来全部按深路径消费它。
+ *   漏声明通配不会有任何一处导入报错,只会让它的每一条跨包边都被当成外部依赖跳过。
  */
-const WILDCARD_REQUIRED_ROOTS: readonly string[] = ["core", "runner"];
+const WILDCARD_REQUIRED_ROOTS: readonly string[] = ["core", "runner", "adapters"];
 for (const root of PACKAGE_ROOTS) {
   for (const [specifier, srcRel] of exportsMapOf(root)) {
     CROSS_PACKAGE_TARGETS.set(specifier, { root, module: moduleNameOf(srcRel) });
@@ -351,6 +356,80 @@ describe("依赖方向守卫 —— 各包 src/ 之间不得有跨层反向依�
       repoPackageOf(deep)?.packageName,
       `深路径 ${deep} 没被认出属于本仓包 —— 那样它会被当成 node_modules 里的外部依赖跳过`,
     ).toBe("@blksails/pi-web-server");
+  });
+
+  it("新包(adapters)的深路径解析得到,且它对装配层的导入被判为反向(R5.4)", () => {
+    // ★ 与上面 runner 那条同构,理由也同构:adapters 的 `src/` 要到 spec
+    //   adapters-package-extraction 任务 3.1 才填充,在那之前全量扫描在它上面扫不到任何文件
+    //   (名册里三个维度都声明了 pendingContributions,语义是「必须恰好为空」),
+    //   于是「守卫看得见新包的跨包边」这件事**没有任何用例在证**。
+    //   而这个包恰恰是最不能失明的那个:它整包**只有**通配导出,没有 `"."` 主入口,
+    //   兼容层将来全部按深路径消费它 —— 通配剥离一旦不认它,它的边会**全部**消失。
+    //   故这里拿真实的解析器 + 真实的名册,对将来必然出现的 specifier 直接判一次;
+    //   它不依赖 adapters 有没有文件,搬迁后也不需要有人回来把什么开关打开。
+    const adapters = PACKAGE_ROOTS.find((r) => r.name === "adapters");
+    expect(adapters, "PACKAGE_ROOTS 里没有 adapters 包根 —— 新包的覆盖无从谈起").toBeDefined();
+    const server = PACKAGE_ROOTS.find((r) => r.name === "server");
+    expect(server, "PACKAGE_ROOTS 里没有 server 包根 —— 装配层的引用方无从谈起").toBeDefined();
+
+    // ① 通配剥离:兼容层按深路径引用新包时,必须解析到 `{ adapters, 顶层模块 }`。
+    //    解析不到不会报错 —— 只会被 resolveTarget 当成 node_modules 里的外部依赖静默跳过。
+    expect(
+      resolveTarget(server!, "index.ts", "@blksails/pi-web-adapters/sandbox-transport/factory.js"),
+      `兼容层按深路径引用新包时解析不到模块 —— 那条真实存在的跨包边会被当成外部依赖放行,` +
+        `守卫对新包永远绿。检查新包 package.json 的通配导出与 WILDCARD_REQUIRED_ROOTS。`,
+    ).toEqual({ root: adapters, module: "sandbox-transport" });
+
+    // ② 新包(adapters 层)对兼容层**装配层**导出面的导入必须一律判反向。
+    const adapterModules = Object.entries(MODULE_ROSTER)
+      .filter(([, layer]) => layer === "adapters")
+      .map(([name]) => name);
+    expect(
+      adapterModules.length,
+      "名册里一个 adapters 层模块都没有 —— 判据会变成一条空断言",
+    ).toBeGreaterThan(0);
+    const named = [...CROSS_PACKAGE_TARGETS.entries()].filter(
+      ([, t]) => t.root.packageName === "@blksails/pi-web-server",
+    );
+    const toAssembly = named.filter(([, t]) => layerOf(t.module, t.root.name) === "assembly");
+    expect(
+      toAssembly.length,
+      "兼容层一条装配层导出都没解析出来 —— 判据会变成一条空断言",
+    ).toBeGreaterThan(0);
+    const notReverse = adapterModules.flatMap((from) =>
+      toAssembly
+        .filter(([, t]) => !isReverseEdge(layerOf(from, "adapters"), layerOf(t.module, t.root.name)))
+        .map(([spec]) => `${from} → ${spec}`),
+    );
+    expect(
+      notReverse,
+      `新包(adapters 层)对兼容层装配层导出的以下导入未被判为反向:${notReverse.join(", ")}。` +
+        `兼容层是装配层(assembly),adapters 依赖它属反向 —— design 的 Allowed Dependencies ` +
+        `明写「新包不得依赖兼容层」,本轮的 adapters 集合对装配层完全闭合。`,
+    ).toEqual([]);
+
+    // ★ 兼容层还有几条具名导出指向 **adapters 层**模块(`model-options` 等,其实现在 3.1
+    //   随包搬入新包)。那是**同层**边,按层序定义不算反向 —— 本条不该把它当违规。
+    //   「adapters 层模块还留在兼容层包里」这件事由层⟹物理归位断言(module-roster.test.ts)守,
+    //   不是本守卫的职责;两者判据不同,不可互相顶替。
+    const nonAssembly = named
+      .filter(([, t]) => layerOf(t.module, t.root.name) !== "assembly")
+      .map(([spec, t]) => `${spec}(${layerOf(t.module, t.root.name)})`);
+    expect(
+      named.filter(([, t]) => {
+        const layer = layerOf(t.module, t.root.name);
+        return layer !== "assembly" && layer !== "adapters";
+      }),
+      `兼容层具名导出里出现了既非 assembly 也非 adapters 层的目标:${nonAssembly.join(", ")}。` +
+        `本条用例按这两类划分兼容层导出面,出现第三类说明划分已失效,须重新判定它算不算反向。`,
+    ).toEqual([]);
+
+    // ③ 同序互斥:`runner` 与 `adapters` 层序相同(都是 2),互不依赖 ——
+    //    新包引用 runner 包同样是反向(design Allowed Dependencies:「新包不得依赖 runner 包」)。
+    expect(
+      isReverseEdge(layerOf("sandbox-transport", "adapters"), layerOf("runner", "runner")),
+      "新包对 runner 包的导入未被判为反向 —— 两者层序相同、互不依赖",
+    ).toBe(true);
   });
 
   it("每个包根都被真的扫到了(R4.3:空扫必须失败,不得静默通过)", () => {

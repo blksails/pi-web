@@ -78,7 +78,12 @@ const LAYER_PLACEMENT: Readonly<Record<Layer, LayerPlacement>> = {
   core: { root: "core" },
   // spec runner-package-extraction 任务 3.1 已把 runner 实现搬进新包,`stagedIn` 随之过期删除。
   runner: { root: "runner" },
-  adapters: { root: "server" },
+  // spec adapters-package-extraction 任务 2.2:归宿已改指新包(design C5),但 12 个模块的实现
+  // 要到任务 3.1 才 `git mv` 过去 —— 过渡期由 `stagedIn` 承接,判「必须在兼容层」(仍是一条会响
+  // 的约束,不是跳过)。它只在 `packages/adapters` 的 `srcModules` 仍 pending 时被接受;
+  // 3.1 搬进第一个模块,pending 被 `assertRootsContributed` 逼退,本行的 stagedIn 随即过期报红。
+  adapters: { root: "adapters", stagedIn: "server" },
+  // ⚠ 装配层**留在**兼容层 —— 它是装配方,不参与本轮搬迁。
   assembly: { root: "server" },
 };
 
@@ -306,8 +311,15 @@ describe("名册完整性", () => {
     expect(expectedRootOf("runner", new Set(), table)).toBe("runner");
     // 没有暂存声明的层不受影响。
     expect(expectedRootOf("core", new Set(["runner"]), table)).toBe("core");
-    // ★ 真实表此刻已无任何暂存声明 —— 任务 3.1 搬完后判据就该无条件判最终包。
+
+    // ★ 真实表上同一性质的两端(spec adapters-package-extraction 任务 2.2):
+    //   runner 层已搬完 —— 无论 pending 与否都判最终包(它的 stagedIn 已过期删除)。
     expect(expectedRootOf("runner", new Set(["runner"]))).toBe("runner");
+    expect(expectedRootOf("runner", new Set())).toBe("runner");
+    //   adapters 层正处过渡期 —— 目标包根仍 pending 时判暂存的兼容层,
+    //   任务 3.1 搬完(pending 退场)后自动判新包。没有第三种状态,也不需要谁记得来收紧。
+    expect(expectedRootOf("adapters", new Set(["adapters"]))).toBe("server");
+    expect(expectedRootOf("adapters", new Set())).toBe("adapters");
 
     // 而遗留的 stagedIn 会在同一时刻过期报红 —— 豁免只能靠让守卫变红来退场。
     expect(() => assertPlacementTableSound(table, rootNames, new Set(["runner"]))).not.toThrow();
@@ -318,6 +330,17 @@ describe("名册完整性", () => {
     expect(() =>
       assertPlacementTableSound(table, new Set(["core", "server"]), new Set(["runner"])),
     ).toThrowError(/映射到不存在的包根 "runner"/);
+
+    // ★ 同一自毁装置装在**真实表**上,而不只是合成表上:adapters 的 stagedIn 一旦
+    //   目标包根停止 pending 就过期报红。少了这条,真实表可能带着一条永不过期的暂存声明,
+    //   而合成表的用例照样全绿 —— 又是一次「装在别处的守卫报出的绿」。
+    const realRoots = new Set(PACKAGE_ROOTS.map((r) => r.name));
+    expect(() =>
+      assertPlacementTableSound(LAYER_PLACEMENT, realRoots, pendingSrcModuleRoots()),
+    ).not.toThrow();
+    expect(() => assertPlacementTableSound(LAYER_PLACEMENT, realRoots, new Set())).toThrowError(
+      /层 "adapters" 仍声明暂存于 "server".*暂存声明过期了/s,
+    );
   });
 
   it("覆写只对指定包根生效,不影响其它包根的查询", () => {
