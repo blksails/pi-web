@@ -29,7 +29,7 @@ async function buildPaneDocuments(): Promise<string> {
   const documents = {
     canvas: await buildCanvasPaneDocument({
       repoRoot: REPO,
-      entry: resolve(ROOT, "web", "panes", "canvas.tsx"),
+      entry: resolve(ROOT, "web", "panes", "main.tsx"),
       title: "画廊",
     }),
   };

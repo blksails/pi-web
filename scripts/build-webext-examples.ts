@@ -14,6 +14,7 @@ import { buildAigcCanvasAgent } from "../examples/aigc-canvas-agent/build.js";
 import { buildSurfaceDemoAgent } from "../examples/surface-demo-agent/build.js";
 import { buildStateBridgeAgent } from "../examples/state-bridge-agent/build.js";
 import { buildAigcCanvasNosurfaceAgent } from "../examples/aigc-canvas-nosurface-agent/build.js";
+import { buildCanvasPluginStickersAgent } from "../examples/canvas-plugin-stickers/build.js";
 
 const EXAMPLES = [
   "webext-layout",
@@ -58,6 +59,8 @@ async function main(): Promise<void> {
   console.log(`[built] state-bridge → ${stateBridge.entryOut} (${stateBridge.manifest.integrity})`);
   const nosurface = await buildAigcCanvasNosurfaceAgent();
   console.log(`[built] aigc-canvas-nosurface → ${nosurface.entryOut} (${nosurface.manifest.integrity})`);
+  const stickers = await buildCanvasPluginStickersAgent();
+  console.log(`[built] canvas-plugin-stickers → ${stickers.entryOut} (${stickers.manifest.integrity})`);
 }
 
 void main().catch((err: unknown) => {

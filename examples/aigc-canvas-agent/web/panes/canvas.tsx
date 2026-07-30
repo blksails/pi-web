@@ -103,7 +103,18 @@ function StatsBar({ revision }: { readonly revision: unknown }): React.JSX.Eleme
   );
 }
 
-function CanvasPane(): React.JSX.Element {
+/**
+ * @param plugins 构建期组合进来的画布插件捆(spec panes-only-right-panel 任务 4.3)。
+ * @param pluginNamespace 插件命名空间 —— 它决定工具/图层锚点的前缀,**必须与 source 标识一致**。
+ *
+ * ★ 插件不跨 realm 传递:pane 文档已是自足 bundle,React 与画布组件就跑在里面,插件只是
+ * 和它们一起打包的普通模块。这里把它们包成扩展描述符交给面板,由既有聚合逻辑接入 ——
+ * 与旧槽形态下宿主做的事完全一样。
+ */
+function CanvasPane({ plugins, pluginNamespace }: {
+  readonly plugins?: readonly unknown[];
+  readonly pluginNamespace?: string;
+}): React.JSX.Element {
   const guest = usePaneGuest();
 
   // CanvasPanel 内部读 canvasOpenStore 决定是否渲染。pane 形态下「打开」等价于「这个 tab 存在」,
@@ -219,6 +230,9 @@ function CanvasPane(): React.JSX.Element {
       */}
       <div className="min-h-0 flex-1 pb-14">
         <CanvasPanel
+          {...(plugins !== undefined && plugins.length > 0 && pluginNamespace !== undefined
+            ? { extensions: [{ manifestId: pluginNamespace, canvasPlugins: plugins }] as never }
+            : {})}
           enabled
           surface={surface}
           upload={upload}
@@ -239,12 +253,23 @@ function CanvasPane(): React.JSX.Element {
   );
 }
 
-const root = document.getElementById("root");
-if (root === null) throw new Error("Pane root missing");
-createRoot(root).render(
-  <React.StrictMode>
-    <PaneGuestProvider paneId="canvas">
-      <CanvasPane />
-    </PaneGuestProvider>
-  </React.StrictMode>,
-);
+/**
+ * 挂载画廊 pane(spec panes-only-right-panel 任务 4.3 第一步:只抽入口,不改行为)。
+ *
+ * 抽成函数是为了让**带插件的 source** 能复用同一个 pane 实现 —— 插件在构建期与画布组件
+ * 一起打包,不跨 realm 传递。本步刻意不加任何插件参数:上一轮三处一起动,红了之后无法定位。
+ */
+export function mountCanvasPane(plugins?: readonly unknown[], pluginNamespace?: string): void {
+  const root = document.getElementById("root");
+  if (root === null) throw new Error("Pane root missing");
+  createRoot(root).render(
+    <React.StrictMode>
+      <PaneGuestProvider paneId="canvas">
+        <CanvasPane
+          {...(plugins !== undefined ? { plugins } : {})}
+          {...(pluginNamespace !== undefined ? { pluginNamespace } : {})}
+        />
+      </PaneGuestProvider>
+    </React.StrictMode>,
+  );
+}

@@ -21,7 +21,7 @@
  */
 import { bundlePaneEntry, renderPaneDocument, PANE_BASE_CSS } from "@blksails/pi-web-kit/build/pane-document";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import type { Config } from "tailwindcss";
@@ -54,6 +54,12 @@ async function buildCss(options: CanvasPaneBuildOptions): Promise<string> {
   const config: Config = {
     presets: [preset.piWebPreset],
     content: [
+      // ★ 扫**入口所在目录整棵树**,而不只是入口文件本身。
+      //
+      // 入口一旦变成一个只做转发的薄文件(`main.tsx` 里只有一行 import + 调用),真正带类名的
+      // 组件就不再被扫描 ⇒ 工具类不生成 ⇒ pane 里元素还在、布局却崩了。实测症状极具误导性:
+      // 按钮能被定位到、却点不动(被别的元素盖住),看起来像交互缺陷而不是样式缺失。
+      resolve(dirname(entry), "**", "*.{ts,tsx}"),
       entry,
       resolve(repoRoot, "packages", "canvas-ui", "src", "**", "*.{ts,tsx}"),
       resolve(repoRoot, "packages", "canvas-kit", "src", "**", "*.{ts,tsx}"),
