@@ -132,24 +132,28 @@ describe("pending 豁免与磁盘现实一致", () => {
     }
   });
 
-  it("adapters 三个维度都声明 pending(搬迁尚未开始)", () => {
-    // spec adapters-package-extraction:守卫先行(任务 2)、搬迁在后(3.1 src / 3.2 test),
-    // 故此刻三个维度都必须在册声明为「尚未填充」。少声明一个 → 空扫断言当场报红;
-    // 多声明或搬完不删 → 下面那条反向断言与 `assertRootsContributed` 的自毁分支报红。
-    expect(adapters!.pendingContributions).toEqual(["srcModules", "srcFiles", "testFiles"]);
+  it("adapters 只剩 testFiles 声明 pending(实现已搬入,测试尚未)", () => {
+    // spec adapters-package-extraction:守卫先行(任务 2)、搬迁在后(3.1 src / 3.2 test)。
+    // 3.1 落地后 `srcModules` / `srcFiles` 的豁免已被 `assertRootsContributed` 的自毁分支
+    // 逼着删掉,只剩 `testFiles`。少声明它 → 空扫断言当场报红(test/ 确实还不存在);
+    // 3.2 搬完不删 → 同一自毁分支报「豁免过期」。
+    expect(adapters!.pendingContributions).toEqual(["testFiles"]);
   });
 
-  it("★ 反向断言:adapters 的 src/ 与 test/ 在磁盘上确实还是空的", () => {
-    // 豁免的语义是「必须**恰好**为空」,不是「可以为空」。只看名册分不出
-    // 「还没搬,声明正确」与「已经搬了,声明忘删」—— 故必须直接看磁盘。
-    for (const dim of ["src", "test"]) {
-      const dir = path.join(adapters!.dir, dim);
-      const entries = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
-      expect(
-        entries,
-        `packages/adapters/${dim} 已有文件 —— 搬迁落地了,请删掉对应的 pendingContributions 维度`,
-      ).toEqual([]);
-    }
+  it("★ 反向断言:adapters 的 src/ 在磁盘上已非空,而 test/ 仍是空的", () => {
+    // 豁免的语义是「必须**恰好**为空」,不是「可以为空」;反过来,已退场的维度必须
+    // 确实非空。只看名册分不出「还没搬,声明正确」与「已经搬了,声明忘删」—— 故必须直接看磁盘。
+    const srcDir = path.join(adapters!.dir, "src");
+    expect(
+      fs.existsSync(srcDir) ? fs.readdirSync(srcDir) : [],
+      "packages/adapters/src 是空的 —— 任务 3.1 的搬迁没落地,或 pending 被过早删掉了",
+    ).not.toEqual([]);
+
+    const testDir = path.join(adapters!.dir, "test");
+    expect(
+      fs.existsSync(testDir) ? fs.readdirSync(testDir) : [],
+      "packages/adapters/test 已有文件 —— 任务 3.2 落地了,请删掉 testFiles 维度的 pendingContributions",
+    ).toEqual([]);
   });
 
   it("★ 反向断言:runner 的 src/ 与 test/ 在磁盘上确实非空", () => {

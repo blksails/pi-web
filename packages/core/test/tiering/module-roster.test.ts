@@ -78,11 +78,11 @@ const LAYER_PLACEMENT: Readonly<Record<Layer, LayerPlacement>> = {
   core: { root: "core" },
   // spec runner-package-extraction 任务 3.1 已把 runner 实现搬进新包,`stagedIn` 随之过期删除。
   runner: { root: "runner" },
-  // spec adapters-package-extraction 任务 2.2:归宿已改指新包(design C5),但 12 个模块的实现
-  // 要到任务 3.1 才 `git mv` 过去 —— 过渡期由 `stagedIn` 承接,判「必须在兼容层」(仍是一条会响
-  // 的约束,不是跳过)。它只在 `packages/adapters` 的 `srcModules` 仍 pending 时被接受;
-  // 3.1 搬进第一个模块,pending 被 `assertRootsContributed` 逼退,本行的 stagedIn 随即过期报红。
-  adapters: { root: "adapters", stagedIn: "server" },
+  // spec adapters-package-extraction 任务 3.1 已把 12 个模块的实现搬进新包,`srcModules`
+  // 的 pending 随之退场,过渡期的 `stagedIn: "server"` 因此过期删除 —— 判据回到
+  // 「adapters 层必须住在 packages/adapters」。自毁装置按设计工作过一次,机制仍留在
+  // 合成表用例里被测(见下方 `expectedRootOf` 的过渡语义断言)。
+  adapters: { root: "adapters" },
   // ⚠ 装配层**留在**兼容层 —— 它是装配方,不参与本轮搬迁。
   assembly: { root: "server" },
 };
@@ -316,9 +316,10 @@ describe("名册完整性", () => {
     //   runner 层已搬完 —— 无论 pending 与否都判最终包(它的 stagedIn 已过期删除)。
     expect(expectedRootOf("runner", new Set(["runner"]))).toBe("runner");
     expect(expectedRootOf("runner", new Set())).toBe("runner");
-    //   adapters 层正处过渡期 —— 目标包根仍 pending 时判暂存的兼容层,
-    //   任务 3.1 搬完(pending 退场)后自动判新包。没有第三种状态,也不需要谁记得来收紧。
-    expect(expectedRootOf("adapters", new Set(["adapters"]))).toBe("server");
+    //   adapters 层的过渡期已在任务 3.1 结束(实现搬进新包、pending 退场、stagedIn 删除):
+    //   与 runner 同待遇 —— 无论 pending 与否都判最终包。这两对断言合起来说明真实表里
+    //   **已不存在**任何还靠 pending 托着的层;过渡语义本身继续由上面的合成表 `table` 驱动。
+    expect(expectedRootOf("adapters", new Set(["adapters"]))).toBe("adapters");
     expect(expectedRootOf("adapters", new Set())).toBe("adapters");
 
     // 而遗留的 stagedIn 会在同一时刻过期报红 —— 豁免只能靠让守卫变红来退场。
@@ -331,16 +332,17 @@ describe("名册完整性", () => {
       assertPlacementTableSound(table, new Set(["core", "server"]), new Set(["runner"])),
     ).toThrowError(/映射到不存在的包根 "runner"/);
 
-    // ★ 同一自毁装置装在**真实表**上,而不只是合成表上:adapters 的 stagedIn 一旦
-    //   目标包根停止 pending 就过期报红。少了这条,真实表可能带着一条永不过期的暂存声明,
-    //   而合成表的用例照样全绿 —— 又是一次「装在别处的守卫报出的绿」。
+    // ★ 真实表此刻**不应再有任何暂存声明** —— 任务 3.1 搬完 adapters 实现后,
+    //   `stagedIn: "server"` 被自毁装置逼着删掉(它按设计工作过一次)。这里改判「真实表
+    //   干净且自洽」:无论传入哪个 pending 集合都不得抛错 —— 因为没有 stagedIn 可过期。
+    //   若将来有人往真实表里加回一条暂存声明而忘了配 pending,第二条断言会当场报红。
+    //   过渡语义本身仍由上面的合成表用例把关(声明退场,机制留下并继续被测)。
     const realRoots = new Set(PACKAGE_ROOTS.map((r) => r.name));
     expect(() =>
       assertPlacementTableSound(LAYER_PLACEMENT, realRoots, pendingSrcModuleRoots()),
     ).not.toThrow();
-    expect(() => assertPlacementTableSound(LAYER_PLACEMENT, realRoots, new Set())).toThrowError(
-      /层 "adapters" 仍声明暂存于 "server".*暂存声明过期了/s,
-    );
+    expect(() => assertPlacementTableSound(LAYER_PLACEMENT, realRoots, new Set())).not.toThrow();
+    expect(Object.values(LAYER_PLACEMENT).filter((p) => p.stagedIn !== undefined)).toEqual([]);
   });
 
   it("覆写只对指定包根生效,不影响其它包根的查询", () => {

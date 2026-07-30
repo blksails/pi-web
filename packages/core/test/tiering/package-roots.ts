@@ -72,15 +72,16 @@ export const PACKAGE_ROOTS: readonly PackageRoot[] = [
   // 守卫由此对 runner 恢复「每个维度都必须非空」的严格判据,与 core / server 同待遇。
   { name: "runner", dir: path.join(packagesDir, "runner"), packageName: "@blksails/pi-web-runner" },
   // spec adapters-package-extraction:守卫必须**先于**搬迁扩到四包(见 tasks.md 开头的次序约束),
-  // 故此刻 `packages/adapters` 只有 `package.json` —— `src/` 与 `test/` 都还不存在
-  // (实现在任务 3.1 搬入、测试在 3.2 搬入)。三个维度因此全部声明 pending,
-  // 语义是**必须恰好为空**:任何一个维度一旦搬进第一个文件,`assertRootsContributed`
-  // 立刻报「豁免过期」并要求删掉对应的维度键,判据随之恢复严格。
+  // 故 2.1 建立本条时三个维度全部声明 pending,语义是**必须恰好为空**。
+  // 任务 3.1 已把 12 个模块的实现 `git mv` 进 `src/`,`srcModules` / `srcFiles` 两个维度
+  // 的 pending 随之被 `assertRootsContributed` 判为「豁免过期」而删除 —— 这两个维度的判据
+  // 由此恢复严格(必须非空)。`testFiles` 仍 pending:测试要到任务 3.2 才搬入,
+  // 那一刻同一装置会再逼着删掉最后这个维度键。
   {
     name: "adapters",
     dir: path.join(packagesDir, "adapters"),
     packageName: "@blksails/pi-web-adapters",
-    pendingContributions: ["srcModules", "srcFiles", "testFiles"],
+    pendingContributions: ["testFiles"],
   },
 ];
 

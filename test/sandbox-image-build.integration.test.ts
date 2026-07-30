@@ -30,7 +30,8 @@ import {
   createNodeBakeFs,
   loadBakePlanModule,
 } from "../scripts/build-agent-image.mjs";
-import type * as bakePlanNs from "../packages/server/src/sandbox-image/bake-plan.js";
+// spec adapters-package-extraction 任务 3.1:`sandbox-image/` 已搬进 adapters 包。
+import type * as bakePlanNs from "../packages/adapters/src/sandbox-image/bake-plan.js";
 
 const FIXTURE_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),

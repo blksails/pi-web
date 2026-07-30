@@ -11,4 +11,4 @@
  * ★ 与 model-sources 同一考量:runner 有**两条**被支持的入口,装配缝只放一条上会让另一条
  *   静默丢能力。此处由 runner 的公共路径调用,两条入口都经过。
  */
-export { createSessionEntryStore } from "../session-store-postgres/factory.js";
+export { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/factory.js";

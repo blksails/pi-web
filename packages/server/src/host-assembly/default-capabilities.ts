@@ -18,26 +18,26 @@ import type { HostCommandHandler } from "@blksails/pi-web-core/commands/host-com
 import { asCommands, asRoutes, type HostContribution } from "./host-contribution.js";
 import { createConfigRoutes } from "@blksails/pi-web-core/http/routes/config-routes.js";
 import { createMcpConfigRoutes } from "@blksails/pi-web-core/http/routes/mcp-config-routes.js";
-import { McpProbeService } from "../mcp-probe.js";
+import { McpProbeService } from "@blksails/pi-web-adapters/mcp-probe.js";
 import type { SessionStoreConfig } from "@blksails/pi-web-core/session-store/config.js";
 import { createSandboxProjectRoutes } from "@blksails/pi-web-core/http/routes/sandbox-project-routes.js";
 import { createSourceSettingsRoutes } from "@blksails/pi-web-core/http/routes/source-settings-routes.js";
 import { createExtensionsConfigRoutes } from "@blksails/pi-web-core/http/routes/extensions-config-routes.js";
-import { createSessionEntryStore } from "../session-store-postgres/factory.js";
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/factory.js";
 import { createSessionListRoutes } from "@blksails/pi-web-core/session-list/session-list-routes.js";
 import { createSessionActionsRoutes } from "@blksails/pi-web-core/session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "@blksails/pi-web-core/agent-source-list/agent-sources-routes.js";
 import type { AgentSourceProvider } from "@blksails/pi-web-core/agent-source-list/types.js";
 import { createFavoritesRoutes } from "@blksails/pi-web-core/agent-source-list/favorites-routes.js";
-import { createLlmGatewayRoutes } from "../llm-gateway/gateway-routes.js";
-import { createAiGatewayRoutes } from "../ai-gateway/routes.js";
-import { createAuthRoutes } from "../auth/auth-routes.js";
-import { createIdentityRoutes } from "../identity/identity-routes.js";
-import { createShellCredentialRoutes } from "../auth/shell-credential-route.js";
-import type { IdentityProvider } from "../identity/types.js";
+import { createLlmGatewayRoutes } from "@blksails/pi-web-adapters/llm-gateway/gateway-routes.js";
+import { createAiGatewayRoutes } from "@blksails/pi-web-adapters/ai-gateway/routes.js";
+import { createAuthRoutes } from "@blksails/pi-web-adapters/auth/auth-routes.js";
+import { createIdentityRoutes } from "@blksails/pi-web-adapters/identity/identity-routes.js";
+import { createShellCredentialRoutes } from "@blksails/pi-web-adapters/auth/shell-credential-route.js";
+import type { IdentityProvider } from "@blksails/pi-web-adapters/identity/types.js";
 import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
 import { createBashRoutes } from "@blksails/pi-web-core/http/routes/bash-routes.js";
-import { createExtensionRoutes } from "../extensions/routes.js";
+import { createExtensionRoutes } from "@blksails/pi-web-adapters/extensions/routes.js";
 
 // 借工厂 opts 类型(避免手写/跟踪每个 opts 类型名;工厂本就在本模块 import)。
 type ConfigOpts = NonNullable<Parameters<typeof createConfigRoutes>[0]>;

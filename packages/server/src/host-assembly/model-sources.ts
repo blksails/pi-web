@@ -23,12 +23,12 @@ import {
   registerEgressProvider,
   resolveEgressSpecFromEnv,
   EGRESS_PROVIDER_NAME,
-} from "../auth/egress-model-source.js";
+} from "@blksails/pi-web-adapters/auth/egress-model-source.js";
 import {
   AI_GATEWAY_PROVIDER_NAME,
   registerAiGatewayProvider,
   resolveAiGatewaySessionSpecFromEnv,
-} from "../ai-gateway/session-model-source.js";
+} from "@blksails/pi-web-adapters/ai-gateway/session-model-source.js";
 import {
   registerModelSource,
   setSharedModelServicesFactory,

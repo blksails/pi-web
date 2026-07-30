@@ -27,7 +27,7 @@ export {};
 // attachment-tool-bridge(L2 投影 + 子进程 store + 闸门 + 回流 + 注入):本切片(task 1.1)
 // 导出子进程 store 客户端工厂 createChildAttachmentStore + ChildAttachmentStore(上游门面别名)。
 // 纯 node builtins + attachment-store 复用面(无 pi SDK 值导入),可安全经 barrel `export *` 重导出。
-export * from "./extensions/index.js";
+export * from "@blksails/pi-web-adapters/extensions/index.js";
 export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 // sourceKey(地基 G3,spec source-settings-and-slots 任务 0.1):纯 node builtins(crypto),
 // 面⑦ per-source 配置目录/DB 主键、面⑤ dist 寻址/源匹配复用的单一事实来源。
@@ -43,19 +43,19 @@ export { runnerBootstrapPath } from "./runner-bootstrap-path.js";
 // sandbox 强制注入入口解析(仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出)。
 // tokens(sandbox-credentials-v2):分面 scoped token 签发/校验原语(mintScopedToken /
 // verifyScopedToken)。仅 node builtins(node:crypto),无 pi SDK 值导入,可安全经 barrel 重导出。
-export * from "./tokens/index.js";
+export * from "@blksails/pi-web-adapters/tokens/index.js";
 // auth(desktop-cloud-login):桌面凭据解析 + 进程内登录态 + 鉴权注入路由(createAuthRoutes)。
 // 仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
 // ⚠ egress-model-source(引 pi SDK 值)不在此,由 runner 装配层子路径直接引入。
-export * from "./auth/index.js";
+export * from "@blksails/pi-web-adapters/auth/index.js";
 // llm-gateway(sandbox-credentials-v2):provider 登记表 + dev/自部署 LLM 网关路由
 // (createLlmGatewayRoutes)。仅 node builtins + 既有 http-api InjectedRoute 契约,无 pi SDK
 // 值导入,可安全经 barrel 重导出。
-export * from "./llm-gateway/index.js";
+export * from "@blksails/pi-web-adapters/llm-gateway/index.js";
 // ai-gateway(ai-gateway-providers):config 解析 + KeyResolver + 主对话转发路由
 // (createAiGatewayRoutes),与 llm-gateway 同层平行、分离共存。仅 node builtins + 既有
 // http-api InjectedRoute 契约,无 pi SDK 值导入,可安全经 barrel 重导出。
-export * from "./ai-gateway/index.js";
+export * from "@blksails/pi-web-adapters/ai-gateway/index.js";
 // model-catalog(model-catalog spec):chat/image 双命名空间目录组装服务
 // (createModelCatalogService)。纯组装零 env 零 IO,依赖仅 config 纯过滤器 +
 // tool-kit 主入口纯类型,无 pi SDK 值导入,可安全经 barrel 重导出。
@@ -83,14 +83,14 @@ export * from "./ai-gateway/index.js";
 // 他警觉的边。
 // 身份端口 P5(spec: desktop-account-login;契约 §6)。类型 + 两个实现 + 路由工厂,
 // 全部 pi-SDK-free(只依赖 auth/ 的纯类型面与 http/)。
-export * from "./identity/index.js";
+export * from "@blksails/pi-web-adapters/identity/index.js";
 // ───────── 从内核包摘回的适配器实现(spec: core-package-extraction 任务 4.1)─────────
 // 这三处的搬迁判据是同一条硬约束:它们值依赖 e2b / pg / MCP SDK,而内核包的依赖声明
 // 不得出现云沙箱 SDK、数据库驱动与 MCP SDK(R1.2)。内核走**源码直连**分发,消费方的
 // `tsc` 会编译到每个文件 —— 故"声明成 optional peer"在本仓不可用:缺类型即编译失败。
 // 从主 barrel 看,这三组符号的导入路径与摘出前**逐字不变**。
-export * from "./sandbox-transport/index.js";
-export * from "./session-store-postgres/index.js";
+export * from "@blksails/pi-web-adapters/sandbox-transport/index.js";
+export * from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 // ⚠ mcp-probe **不进主 barrel** —— 它搬出来之前也不在(内核的 config barrel 从未导出它)。
 //   "顺手补全"会让主入口符号数变多,而那正是 R2.4 明令禁止的:刻意的缺口是刻意的。
 //   装配层经 `./src/mcp-probe.js` 直接引入。
