@@ -984,12 +984,24 @@ export function PiChat({
       });
     }
   }, [paneRejections, onPaneMergeRejections]);
-  // agent 同时声明旧槽与 pane 声明键时的迁移指引(design D3):旧槽优先,声明键被忽略。
+  /**
+   * `slots.panelRight` 的**废弃诊断**。
+   *
+   * ★ 触发条件是「声明了旧槽」,不是「旧槽与声明键并存」。后者只覆盖已经开始迁移的 agent,
+   * 而待迁移的**存量** agent 恰恰只声明旧槽 —— 只诊断并存态就等于对全部迁移对象静默。
+   *
+   * 旧槽收宿主 realm 的 React 节点,pane 是 opaque-origin iframe,两者之间没有机械转换:
+   * 伸手进宿主 realm 的东西(React context / surfaceAccess / canvas 插件组件)都要改成经
+   * MessageChannel + 显式授权说话的 guest。故诊断给的是**迁移途径**,不是「换个键名」。
+   */
   React.useEffect(() => {
-    if (!hasLegacySlot || agentPaneDecl === undefined) return;
-    log.warn("agent declares both panelRight slot and panes key; slot wins", {
+    if (!hasLegacySlot) return;
+    log.warn("slots.panelRight is deprecated; migrate to the panes declaration key", {
       manifestId: extension?.manifestId,
-      hint: "移除 slots.panelRight 即可让该 agent 的 pane 与宿主内置 pane 合并显示",
+      // 并存态额外说明「谁赢」——按 design D3 旧槽优先、声明键被整体忽略。
+      ...(agentPaneDecl !== undefined ? { alsoDeclaresPanesKey: true, resolution: "slot wins" } : {}),
+      hint: "移除 slots.panelRight,改用 panes 声明键(内容需重写为 iframe guest);"
+        + "宿主据此把该 agent 的 pane 与内置 pane 合并显示",
     });
   }, [hasLegacySlot, agentPaneDecl, extension?.manifestId]);
 
