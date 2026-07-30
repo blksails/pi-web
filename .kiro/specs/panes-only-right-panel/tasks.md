@@ -279,6 +279,24 @@
   - _Boundary: 守卫 — `scripts/check-no-panel-right.ts`, `test/guards/no-panel-right.test.ts`_
 
 - [ ] 5.2 删除槽键与双路径分派
+
+  > **★ 前置已达成(2026-07-31 实测)——下一轮可直接开始本任务。**
+  >
+  > 守卫扫出 143 处残留,但**按性质分解后前置成立**:
+  > - `examples/` 下 8 处 —— **全部是迁移史注释**(「迁移前 `slots.panelRight` 挂的是…」),
+  >   **零个实际声明**。9 个 agent 侧声明者已全部迁完。
+  > - 产品源码 72 处 —— 集中在装载点与契约:`pi-chat.tsx` 27 / `chat-app.tsx` 12 /
+  >   `protocol/web-ext/config.ts` 7 / `canvas-launcher.tsx` 4 / `define-web-extension.ts` 3 /
+  >   `slots.ts` 1 / `plugin-manifest.ts` 1 / `descriptor.ts` 1 / `layout.ts` 1 /
+  >   `webext-registry.ts` 2 / `server/cli/component/*` 3 / canvas-ui 其余 2。
+  > - 测试与 e2e 71 处 —— 属任务 5.3 的清理范围。
+  >
+  > ⇒ **删除可以开始**。建议顺序:装载点双路径分派 → 契约类型 → 守卫白名单收紧
+  > (删完后 `examples/` 的注释也应清掉,使守卫真正归零)。
+  >
+  > ⚠ `server/cli/component/*` 与 `canvas-launcher.tsx` 的命中需先看清语义 ——
+  > 前者是脚手架的接线指引文案,后者是旧槽形态的 canvas 入口(已随迁移撤掉但代码仍在)。
+
   - 前置:任务 5.1 的核验必须**已通过**(零声明者),否则不执行删除
   - 删除契约与协议中的该槽键;删除装载点的旧路径分派与内外两层的双路径判据
   - 终结插件声明键作为宿主 realm 用途的部分
