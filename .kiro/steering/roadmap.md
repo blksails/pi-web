@@ -149,7 +149,7 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
   session-store-postgres / mcp-probe / model-sources / attachment-example-tool)——
   这部分工作已从 adapters-package-extraction 前移,该 spec 的剩余面相应缩小。
   core 依赖树终态:logger / protocol / zod / tool-kit + agent SDK(optional peer,仅类型引用)。
-- [ ] **runner-package-extraction** — 建 `@blksails/pi-web-runner`:runner 子进程实现 + jiti 载入,
+- [x] **runner-package-extraction** — 建 `@blksails/pi-web-runner`:runner 子进程实现 + jiti 载入,
   pi SDK 列为 peer;core 只保留契约类型。_Dependencies: core-package-extraction_
 - [ ] **adapters-package-extraction** — 建 `@blksails/pi-web-adapters`:e2b transport / postgres store /
   s3 blob backend / ai-gateway / llm-gateway / auth / identity / sandbox-image / registry-install
