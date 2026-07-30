@@ -11,7 +11,7 @@
 > ★ 存量红基线:`attachment-tool-bridge`×1 + `desktop-cloud-login`×5 已实测为基线失败
 > (基线 `efa3bd9e` 同样红)。不得计为本波回归,**也不得作为放宽验收的理由**。
 
-- [ ] 1. Foundation:能力补齐(B 类迁移的前置)
+- [x] 1. Foundation:能力补齐(B 类迁移的前置)
 
 - [x] 1.1 扩展 pane 协议:共享状态的读/订阅授权与写回操作
   - 请求判别式增写回操作(设置与删除);能力结构增**读键表与写键表两张**——
@@ -71,7 +71,7 @@
   - _Requirements: 4.1, 4.5_
   - _Boundary: 构建函数 — `packages/canvas-ui/src/build-canvas-pane.ts`, `examples/aigc-canvas-agent/build.ts`_
 
-- [ ] 2. Integration:迁低成本声明者
+- [x] 2. Integration:迁低成本声明者
 
 - [x] 2.1 (P) 槽车道夹具改挂其余保留槽
   - 五个夹具(多槽渲染、运行时代码、签名有效/无效/被篡改)改用其余任一保留槽承载
@@ -195,7 +195,7 @@
   - _Depends: 1.2, 1.3_
   - _Boundary: 状态桥 — `examples/state-bridge-agent/`, `e2e/browser/state-bridge.e2e.ts`_
 
-- [ ] 4. Integration:迁画布系三个声明者
+- [x] 4. Integration:迁画布系三个声明者
 
 - [x] 4.1 画布 source 的包装层两处逻辑分别下沉与内置化
   - ★ 该包装层**不是纯包装**(这是既有 spec「刻意不动它」的真因):它带两处宿主 realm 逻辑
@@ -274,7 +274,7 @@
   >
   > 验证:stickers e2e **2/2 通过**。
 
-- [ ] 5. Validation:删除与收尾
+- [x] 5. Validation:删除与收尾
 
 - [x] 5.1 零声明者的机械核验守卫
   - 实现一条可执行核验:全仓不存在该槽键的声明、类型定义与引用
@@ -354,18 +354,23 @@
   - _Depends: 5.2_
   - _Boundary: 断言清理 — `packages/ui/test/chat/host-panes-gating.test.tsx`, `packages/ui/test/chat/host-panes-dispatch.test.tsx`, `.kiro/specs/host-builtin-panes/design.md`_
 
-- [ ] 5.4 全量回归与等价性总核验  ⚠ **单测面已通过;浏览器 e2e 跑到 66/134 时被环境终止**
+- [x] 5.4 全量回归与等价性总核验
 
-  > **✅ 已完成的部分(2026-07-31)**
+  > **✅ 全部完成(2026-07-31)**
   > - `pnpm typecheck` **EXIT=0**;
   > - `pnpm test`:**22 个测试面 · 5656 passed / 26 skipped / 0 failed**;
   > - ★ 逐面算术核对 `passed+skipped+failed == total`,**22 面全 OK、零 MISMATCH**
   >   (防 worker 静默崩溃伪装成「零失败」);
-  > - 浏览器 e2e 跑到 66/134 被环境终止,已跑部分 **65 passed / 1 failed** ——
-  >   唯一失败是 4.3 那条已知的「风格迁移版本回流」,**所有迁移过的 source 全部通过**。
+  > - 浏览器 e2e **完整 134 条**:120 passed / 7 skipped / 7 failed。
   >
-  > **余下**:重跑完整浏览器 e2e(134 条),并与基线存量红比对
-  > (`attachment-tool-bridge`×1 + `desktop-cloud-login`×5 为已实测的基线失败,不计入本波)。
+  > **7 条失败的逐条归因(R5.6 要求区分本波与存量,两个方向都不放过)**:
+  > - **6 条 = 已实测的基线存量红** —— `attachment-tool-bridge`×1 + `desktop-cloud-login`×5。
+  >   这 6 条在本 spec 开始前的基线 `efa3bd9e` 上跑过,同样失败(见上游 spec 的记录)。
+  > - **1 条 = flaky,非回归** —— `slash-command-palette:142`。它不在基线红清单里,故按 R5.6
+  >   单独隔离重跑:**8/8 全过**。全量跑耗时 7.8 分钟、134 条并发,判定为资源竞争导致的
+  >   不稳定,与本波无关(该用例与 pane 机制无任何交集)。
+  >
+  > ⇒ **本波引入的回归:0 条。**
   - 一次运行同时给出:类型检查、各测试面、面板相关端到端验收三者结果
   - ★ 核对汇总行算术(通过+跳过+失败 是否等于总数)—— worker 静默崩溃会伪装成「零失败」;
     ★ 数值可能带终端颜色码,累加得零时须剥掉重算(本作者上一轮吃过)
