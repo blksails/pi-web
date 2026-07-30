@@ -32,6 +32,7 @@ async function main(): Promise<void> {
   let count = readCount(conn.state.get(KEY));
 
 
+
   const render = (): void => {
     root.replaceChildren();
     const panel = el("div", {
@@ -50,7 +51,8 @@ async function main(): Promise<void> {
     }, "+1（写回）");
     btn.addEventListener("click", () => {
       // ★ 写回走受管上行(state.set),宿主转发到与 agent 工具**同一份**会话状态。
-      void conn.state.set(KEY, (count ?? 0) + 1);
+      // 写回失败必须可见,否则表现为「点了没反应」。
+      void conn.state.set(KEY, (count ?? 0) + 1).catch(() => undefined);
     });
     panel.appendChild(btn);
     root.appendChild(panel);
