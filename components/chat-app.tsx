@@ -86,6 +86,8 @@ function PanelRightIcon(): React.JSX.Element {
 }
 
 type LogsPanelConfig = {
+  /** 服务端权威门控是否开启;undefined = 配置尚未取到(加载中)。 */
+  readonly loggingEnabled?: boolean;
   readonly panelVisible: boolean;
   readonly panelPosition: "bottom" | "right" | "drawer" | "top";
 };
@@ -111,6 +113,7 @@ function useLogsPanelConfig(): LogsPanelConfig {
         if (!res.ok) return;
         const json = (await res.json()) as {
           values?: {
+            enabled?: boolean;
             outputs?: {
               panelVisible?: boolean;
               panelPosition?: "bottom" | "right" | "drawer" | "top";
@@ -118,6 +121,7 @@ function useLogsPanelConfig(): LogsPanelConfig {
           };
         };
         const outputs = json.values?.outputs;
+        const loggingEnabled = json.values?.enabled;
         setConfig((prev) => {
           const panelVisible =
             typeof outputs?.panelVisible === "boolean"
@@ -130,7 +134,11 @@ function useLogsPanelConfig(): LogsPanelConfig {
             outputs?.panelPosition === "top"
               ? outputs.panelPosition
               : prev.panelPosition;
-          return { panelVisible, panelPosition };
+          return {
+            panelVisible,
+            panelPosition,
+            ...(typeof loggingEnabled === "boolean" ? { loggingEnabled } : {}),
+          };
         });
       } catch {
         // Silent fallback: keep safe defaults.
@@ -528,6 +536,7 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
           }
           logsPanelVisible={logsPanelConfig.panelVisible}
           logsPanelPosition={logsPanelConfig.panelPosition}
+          loggingEnabled={logsPanelConfig.loggingEnabled}
         />
       )}
     </PiProvider>
@@ -544,6 +553,7 @@ function SessionView({
   onAgentSourcesRefresh,
   logsPanelVisible,
   logsPanelPosition,
+  loggingEnabled,
 }: {
   readonly create: CreateSessionRequest;
   readonly resumeId?: string;
@@ -558,6 +568,8 @@ function SessionView({
   readonly onAgentSourcesRefresh?: () => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
   readonly logsPanelVisible?: boolean;
+  /** 服务端权威日志门控;透传给 LogsPanel 以区分「已关闭」与「暂无日志」。 */
+  readonly loggingEnabled?: boolean;
   /** Controls LogsPanel position per logging config (Req 6.1/6.2). Default "bottom". */
   readonly logsPanelPosition?: "bottom" | "right" | "drawer" | "top";
 }): React.JSX.Element {
@@ -1091,6 +1103,7 @@ function SessionView({
           enableBash={bashEnabled()}
           logsPanelVisible={logsPanelVisible ?? true}
           logsPanelPosition={logsPanelPosition ?? "bottom"}
+          loggingEnabled={loggingEnabled}
           {...(extension !== undefined ? { extension } : {})}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }

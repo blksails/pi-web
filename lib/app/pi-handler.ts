@@ -109,7 +109,7 @@ import {
   // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
   resolveSandboxTemplate,
 } from "@blksails/pi-web-adapters/sandbox-transport/index.js";
-import { loggingConfigSchema } from "@blksails/pi-web-protocol";
+import { loggingConfigSchema, type LoggingConfig } from "@blksails/pi-web-protocol";
 import {
   configureFileOutputFromEnv,
   configureLogger,
@@ -193,7 +193,10 @@ import { resolveSourcesRoot } from "../../server/cli/context.js";
 import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
 import { createLazyRegistryChannel } from "./online-source/registry-channel-adapter.js";
 import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
-import { resolveLoggingEnvDefault } from "./logging-default.js";
+import {
+  resolveEnabledWithSource,
+  resolveLoggingEnvDefault,
+} from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
@@ -596,6 +599,79 @@ function buildSingleton(): HandlerSingleton {
     file: fileLogEnabled ? process.env.PI_WEB_LOG_FILE : undefined,
   });
 
+  /**
+   * 解析日志门控:Settings 原始值 + env 覆盖 + dev/生产默认(优先级见
+   * {@link resolveEnabledWithSource})。
+   */
+  const resolveLoggingGate = async (): Promise<LoggingConfig> => {
+    let raw: unknown = null;
+    try {
+      raw = await new ConfigCodec(config.agentDir).load("logging");
+    } catch {
+      raw = null; // 读失败按「无配置」处理,继续走 env / 默认。
+    }
+    const { enabled, source } = resolveEnabledWithSource(raw);
+    const base =
+      raw !== null && typeof raw === "object" && Object.keys(raw).length > 0
+        ? raw
+        : resolveLoggingEnvDefault();
+    const parsed = loggingConfigSchema.parse(base);
+    // ★ enabled 一律以 resolveEnabledWithSource 为准,覆盖 parse 出来的值 ——
+    //   否则 env 覆盖与 dev 默认都会被 Settings 里存盘的旧值顶掉。
+    const gate = { ...parsed, enabled };
+    if (source !== lastLoggingGateSource) {
+      lastLoggingGateSource = source;
+      // 门控从哪来、值是多少 —— 「日志为什么不显示」的第一现场。必定输出一次。
+      hostAssemblyLogger.info("logging gate resolved", {
+        enabled,
+        level: gate.level,
+        source,
+      });
+    }
+    return gate;
+  };
+
+  /**
+   * 最近一次解析出的日志门控。spawn env 组装是**同步**路径,而门控解析要读配置文件
+   * (异步),故缓存于此。
+   *
+   * 种子取 env/模式默认(纯同步,不读盘);装配期立刻发起一次异步刷新收敛到 Settings。
+   * 会话创建必然在一次 HTTP 请求之后,窗口实际为零 —— 但即便命中该窗口,后果也只是
+   * 首个会话的子进程按默认门控运行(服务端门控仍然正确),不会错发日志给前端。
+   */
+  let lastLoggingGateSource: string | undefined;
+  let lastLoggingGate: LoggingConfig = loggingConfigSchema.parse(
+    resolveLoggingEnvDefault(),
+  );
+  void resolveLoggingGate().then((g) => {
+    lastLoggingGate = g;
+  });
+
+  /**
+   * 下发给 runner 子进程的日志 env(★ 门控下沉到**产生端**)。
+   *
+   * 改造前:子进程 logger 库默认 `enabled: true`,而服务端门控默认关 —— 于是子进程把每条
+   * 日志序列化成 JSON 写 stderr,主进程解析完**全部丢弃**(`pi-session.ts` 的 `!gate.enabled`
+   * → continue)。白烧 CPU、刷终端,且「关掉日志」这个动作在产生端毫无体现。
+   *
+   * 现在把已解析的门控原样下发,子进程 `initConfigFromEnv()` 据此自我关闭 —— 关闭时
+   * **一行都不产生**。三个键与 logger 包既有的 env 契约同名,不新增 env 名。
+   *
+   * 注:e2b/沙箱分支未接(那条路 env 还要过 `envPassthrough` 白名单),沙箱内维持现状。
+   */
+  const loggingSpawnEnv = (): Record<string, string> => {
+    const gate = lastLoggingGate;
+    const out: Record<string, string> = {
+      PI_WEB_LOG_ENABLED: gate.enabled ? "1" : "false",
+      PI_WEB_LOG_LEVEL: gate.level,
+    };
+    const on = Object.entries(gate.namespaces ?? {})
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (on.length > 0) out.PI_WEB_LOG_NAMESPACES = on.join(",");
+    return out;
+  };
+
   const store = new InMemorySessionStore(true);
 
   // 日志门控 provider（Req 6.4/6.5/6.6 / task 4.4）：每次新会话创建时读取最新配置。
@@ -603,16 +679,10 @@ function buildSingleton(): HandlerSingleton {
   // 非 "false" 时强制开启，无需经 Settings；级别/命名空间一并取自 PI_WEB_LOG_* env，
   // 见 resolveLoggingEnvDefault）。有内容 → parse(raw) 应用 Settings 已保存的配置。
   const loggingConfigProvider = async () => {
-    try {
-      const codec = new ConfigCodec(config.agentDir);
-      const raw = await codec.load("logging");
-      if (raw === null || typeof raw !== "object" || Object.keys(raw).length === 0) {
-        return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-      }
-      return loggingConfigSchema.parse(raw);
-    } catch {
-      return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-    }
+    const resolved = await resolveLoggingGate();
+    // 缓存供**同步**路径读取(spawn env 组装是同步的,见 loggingSpawnEnv)。
+    lastLoggingGate = resolved;
+    return resolved;
   };
 
   // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
@@ -839,6 +909,9 @@ function buildSingleton(): HandlerSingleton {
       env: {
         ...resolved.spawnSpec.env,
         ...config.providerKeys,
+        // ★ 日志门控下沉到产生端:把已解析的门控下发子进程,关闭时 runner **一行都不产生**
+        //   (改造前是子进程照产、主进程解析后全丢)。见 loggingSpawnEnv 的说明。
+        ...loggingSpawnEnv(),
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
         // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
