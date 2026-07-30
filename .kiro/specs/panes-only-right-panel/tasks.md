@@ -81,7 +81,7 @@
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
   - _Boundary: 槽夹具 — `examples/webext-layout-agent/`, `examples/webext-slots-agent/`, `examples/webext-runtime-code-agent/`, `examples/webext-slots-runtime-{,badsig-,tampered-}agent/`_
 
-- [ ] 2.2 (P) 迁 surface 演示 source 为 pane  ⛔ **受阻(实施中)**
+- [x] 2.2 (P) 迁 surface 演示 source 为 pane
 
   > **2026-07-31 受阻记录。** 代码已写(guest / 定义 / 构建 / 注册表 / e2e 改 frameLocator),
   > pane 能挂载、面板能渲染、按钮可见且 `data-surface-available="true"`,但**命令闭环不通**:
@@ -170,11 +170,21 @@
   >    随轮末同步信号换身份是嫌疑之一)。但这只是回避,props 换身份本身是合法的。
   >
   > ⚠ 修复后须回归 `aigc-canvas` 的 e2e(它走旧槽、当前全绿,不能被 guest 侧改动打破)。
+  >
+  > **★ 已修复并验证通过(2026-07-31)。** 采纳方向 1:`connectPaneGuest` 的握手监听器改为
+  > **常驻**,首次握手只清超时、不摘监听器;收到后续 `pane:connected` 时调用新增的
+  > `rebind(port)` —— 关闭旧 port、换绑新 port、重挂消息处理器,连接对象与其全部缓存/订阅
+  > 保持不变(宿主重连后会重推,保留只会更早可用)。旧 port 上的 in-flight 请求就地以
+  > `STALE_INSTANCE` 拒绝,而不是留着永远超时。
+  >
+  > 验证:state-bridge + surface-demo e2e **3/3 通过**;回归 canvas ×3 + webext ×3 共
+  > **21/21 通过**(旧槽路径未被 guest 侧改动打破)。
 
-- [ ] 3.1 迁状态桥 source 为 pane  ⛔ **阻塞于 2.2**
+- [x] 3.1 迁状态桥 source 为 pane
 
-  > 代码已写(guest / 定义 / 构建 / 注册表 / `PanesHost` 的 state 注入接线),但未验证 ——
-  > 它与 2.2 共用同一条 pane 上行请求链路,2.2 的根因未清前验它没有意义。
+  > **已解锁并通过**(2026-07-31):根因是 guest 只握手一次而宿主会换 port,修复见 2.2 记录。
+  > 该 source 是本 spec 新增共享状态通道的**活体验证** —— 人点 +1 → 写回 → agent 侧读到新值,
+  > 整条人机共驾闭环在 e2e 中跑通。
   - 该示例是**唯一**真正需要新通道的声明者:它演示「人在面板点 +1 → agent 工具下次读到新值」
     的人机共驾闭环,单向信号结构上无法承载
   - 它同时是任务 1.1–1.3 的活体验证 —— 通道做错了这里会直接暴露
