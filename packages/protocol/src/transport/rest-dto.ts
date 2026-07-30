@@ -221,8 +221,17 @@ export const SessionListItemSchema = z.object({
    * 可选、纯增量:无此字段的存储后端解析仍通过,含此字段的项经 `.parse()` 保留而非被 strip。
    */
   source: z.string().optional(),
+  /**
+   * 运行时活跃态(spec session-meta-index, Req 7.x):`working` 轮次进行中 /
+   * `awaiting-input` 在等用户回应交互 / `error` 会话进程异常。
+   *
+   * **缺省即空闲** —— 未加载的历史会话恒缺省(取状态不加载会话)。永不持久化:落盘的
+   * busy 在进程异常退出后会永久骗人。可选、纯增量:旧消费者按未知字段忽略。
+   */
+  activity: z.enum(["working", "awaiting-input", "error"]).optional(),
 });
 export type SessionListItem = z.infer<typeof SessionListItemSchema>;
+export type SessionActivity = NonNullable<SessionListItem["activity"]>;
 
 export const ListSessionsResponseSchema = z.object({
   sessions: z.array(SessionListItemSchema),

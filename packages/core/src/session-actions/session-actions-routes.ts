@@ -38,6 +38,7 @@ import {
   createSessionFavoritesStore,
   type SessionFavoritesStore,
 } from "./session-favorites-store.js";
+import type { SessionMetaIndex } from "../session-meta/types.js";
 
 
 export interface SessionActionsRoutesOptions {
@@ -60,6 +61,11 @@ export interface SessionActionsRoutesOptions {
   readonly favoritesStore?: SessionFavoritesStore;
   /** 可选:注入自定义会话事件 store(测试用)。提供时忽略 storeConfig。 */
   readonly entryStore?: SessionEntryStore;
+  /**
+   * 会话展示元数据索引(spec session-meta-index)。注入时:改名写标题(Req 1.3)、
+   * 删除清条目(Req 5.1)。**可选**,未注入即这两处不做任何元数据动作,行为与改造前一致。
+   */
+  readonly metaIndex?: SessionMetaIndex;
 }
 
 /** 读取并 JSON 解析请求体;非法返回 undefined(由调用方转 400)。 */
@@ -128,6 +134,9 @@ export function createSessionActionsRoutes(
           // 目标不存在 → 幂等成功(已达成「不在列表」的目标状态,Req 2.6)。
           if (!(err instanceof SessionStoreNotFoundError)) throw err;
         }
+        // 元数据条目随会话一同消亡(spec session-meta-index, Req 5.1)。fire-and-forget + 吞错:
+        // 不改变本端点的响应码与时序(Req 3.5)。
+        void opts.metaIndex?.remove(parsed.data.sessionId).catch(() => {});
         return jsonResponse(200, { ok: true });
       } catch {
         return errorResponse(500, "INTERNAL", "Failed to delete session.");
@@ -174,6 +183,8 @@ export function createSessionActionsRoutes(
           timestamp: new Date().toISOString(),
         };
         await store.append(sessionId, entry);
+        // 标题同步进元数据索引(spec session-meta-index, Req 1.3):下次列出即快读命中。
+        void opts.metaIndex?.merge(sessionId, { title: name }).catch(() => {});
         const res: RenameSessionResponse = { sessionId, name };
         return jsonResponse(200, { ...res });
       } catch {

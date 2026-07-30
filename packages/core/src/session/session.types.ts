@@ -174,6 +174,14 @@ export interface PiSessionOptions {
    * 既有行为零变化(不发帧)。
    */
   readonly initialTitle?: string;
+  /**
+   * 标题变化通知(spec session-meta-index, Req 1.2):处理 `setTitle` extension-ui 请求时触发,
+   * 供装配层把标题同步进会话元数据索引(供列表快读)。
+   *
+   * 领域无关:本层只报告「标题变成了什么」,不认识索引实现。**回调抛错必须被吞掉**,
+   * 绝不影响会话流程(元数据是展示增强,Req 3.5)。
+   */
+  readonly onTitleChanged?: (id: SessionId, title: string) => void;
 }
 
 /** SessionManager.createSession 入参(注入已建立通道与已解析结果)。 */

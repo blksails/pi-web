@@ -21,6 +21,8 @@ import type {
   SessionListItem,
 } from "@blksails/pi-web-protocol";
 import { Button } from "../ui/button.js";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { sourceAccentColor } from "./session-source-color.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
 import { SessionItemMenu, SessionRenameField } from "./session-item-menu.js";
@@ -60,6 +62,21 @@ export interface SessionListPanelProps {
    * 无 `source` 时同样不渲染(不留空行)。
    */
   readonly showSource?: boolean;
+  /**
+   * 会话工作状态的轮询周期(毫秒,spec session-meta-index Req 8.6-8.9)。默认 5000;
+   * 设为 0 或负数即**关闭**轮询,行为回到仅由 `refreshSignal` 驱动。
+   *
+   * 为何需要它:列表刷新只由宿主的边沿信号(当前会话忙态翻转、交互挂起变化)触发,
+   * 所以「**别的**会话开始忙」这件事没有任何触发点 —— 用户不动就看不到。
+   *
+   * ★ 周期**分层**而不是「全空闲就停」:停掉会造成鸡生蛋 —— 列表全空闲时不轮询,于是
+   *   「别的会话开始忙」永远发现不了,而这正是本机制存在的唯一理由(Chrome 真机实测抓到)。
+   *   故:有非空闲项时按本周期轮询;全空闲时按 `IDLE_POLL_FACTOR` 倍的更长周期轮询。
+   *   页面不可见则一律不轮询(后台标签页不烧请求,Req 8.7)。
+   */
+  readonly activityPollMs?: number;
+  /** 未设置标题时列表项显示的占位名;缺省取 i18n 的「新对话」。 */
+  readonly untitledLabel?: string;
   /**
    * 乐观占位(new-session placeholder):新建会话尚未落库、未进列表数据时,由宿主传入其 id,
    * 面板立即在顶部渲染一个占位行(更符合人类预期:一发起就看到条目)。当真实数据(refreshSignal
@@ -104,6 +121,10 @@ export interface SessionListPanelProps {
 }
 
 type Status = "idle" | "loading" | "error";
+/** 全空闲时的轮询周期倍数(相对 `activityPollMs`):闲时放慢,但**不停** ——
+ * 停掉会造成「列表全空闲 → 不轮询 → 永远发现不了别的会话变忙」的鸡生蛋。 */
+const IDLE_POLL_FACTOR = 3;
+
 type Scope = "cwd" | "all";
 
 /** 列表项展示时间:最近更新优先,回退创建;非法时间退化为原串。 */
@@ -126,6 +147,7 @@ export function SessionListPanel(
     refreshSignal,
     pageSize,
     showSource = false,
+    activityPollMs = 5_000,
     pendingSession,
     className,
     manageEnabled = false,
@@ -142,6 +164,7 @@ export function SessionListPanel(
   const errorLabel = props.errorLabel ?? t("sessionList.error");
   const retryLabel = props.retryLabel ?? t("sessionList.retry");
   const loadMoreLabel = props.loadMoreLabel ?? t("sessionList.loadMore");
+  const untitledLabel = props.untitledLabel ?? t("sessionList.untitled");
   const pendingSessionLabel =
     props.pendingSessionLabel ?? t("sessionList.pendingSession");
   const favoritesSectionLabel =
@@ -208,6 +231,88 @@ export function SessionListPanel(
   React.useEffect(() => {
     void fetchPage(scope, undefined, "reset");
   }, [scope, fetchPage, refreshSignal]);
+
+  /**
+   * 状态轮询(Req 8.6-8.9):只更新**已显示项**的活跃态,不动列表的长度、顺序与已加载的分页。
+   *
+   * ★ 刻意不复用 `fetchPage(..., "reset")`:那会把用户已「加载更多」的内容打回首页 ——
+   *   既有 refreshSignal 是每轮末一次的低频信号,这个副作用可以忍;5 秒一次就不行了(Req 8.8)。
+   *   故这里单独取一页、按 sessionId 只合并 `activity` 字段。
+   *
+   * 新会话的出现仍由 `refreshSignal` 负责(轮询不增删项)。
+   */
+  const hasActiveItems = items.some((i) => i.activity !== undefined);
+  const [pageVisible, setPageVisible] = React.useState<boolean>(
+    () => typeof document === "undefined" || !document.hidden,
+  );
+  React.useEffect(() => {
+    const onVis = (): void => setPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  React.useEffect(() => {
+    if (activityPollMs <= 0) return; // 部署方关闭(Req 8.9)
+    if (!pageVisible) return; // 后台标签页不烧请求(Req 8.7)
+    // 分层周期:忙时快、全闲时慢但**不停** —— 停掉就发现不了别的会话开始忙。
+    const period = hasActiveItems ? activityPollMs : activityPollMs * IDLE_POLL_FACTOR;
+
+    let cancelled = false;
+    const tick = async (): Promise<void> => {
+      try {
+        const res = await listSessions({
+          scope,
+          ...(scope === "cwd"
+            ? currentSessionId !== undefined
+              ? { sessionId: currentSessionId }
+              : { cwd: currentCwd }
+            : {}),
+          ...(pageSize !== undefined ? { limit: pageSize } : {}),
+        });
+        if (cancelled) return;
+        const next = new Map(res.sessions.map((x) => [x.sessionId, x]));
+        setItems((prev) => {
+          let changed = false;
+          // ① 更新已显示项的状态(只动 activity,不动其余字段与顺序)
+          const merged = prev.map((it) => {
+            const fresh = next.get(it.sessionId);
+            if (fresh === undefined) return it;
+            if (it.activity === fresh.activity) return it;
+            changed = true;
+            const { activity: _drop, ...rest } = it;
+            return fresh.activity === undefined
+              ? rest
+              : { ...rest, activity: fresh.activity };
+          });
+          // ② 追加列表尚无的会话 —— 这是「别的会话开始忙」能被看到的前提:
+          //    A 的列表里本来就没有后建的 B,只更新状态永远变不出 B 来。
+          //    置于顶部(列表按最近更新倒序,新会话本就该在前);既有项一个不删、顺序不动,
+          //    故用户已「加载更多」的内容不受影响(Req 8.8)。
+          const prevIds = new Set(prev.map((i) => i.sessionId));
+          const added = res.sessions.filter((x) => !prevIds.has(x.sessionId));
+          if (added.length > 0) return [...added, ...merged];
+          return changed ? merged : prev;
+        });
+      } catch {
+        // 轮询失败静默:状态是展示增强,不得把列表推入错误态。
+      }
+    };
+
+    const timer = setInterval(() => void tick(), period);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    activityPollMs,
+    hasActiveItems,
+    pageVisible,
+    listSessions,
+    scope,
+    currentSessionId,
+    currentCwd,
+    pageSize,
+  ]);
 
   // ── 项级管理操作 ──────────────────────────────────────────────
   // 在途包裹:标记 busy(禁用重复触发,Req 5.2)+ 清错;失败展示可见错误(Req 2.7/3.6/4.8)。
@@ -301,12 +406,69 @@ export function SessionListPanel(
   const favoriteItems = items.filter((i) => favoriteSet.has(i.sessionId));
   const normalItems = items.filter((i) => !favoriteSet.has(i.sessionId));
 
+  /**
+   * 列表项标题(spec session-meta-index, Req 6.7):有标题就显示标题;没有则显示「新对话」占位。
+   *
+   * ★ 刻意**不再回退到 sessionId**:一串 uuid 对用户没有任何识别价值,反而挤掉了真正有用的
+   *   信息。标题的来源是 auto-title 或用户改名,两者都写进会话历史与元数据索引;
+   *   `name` 缺省本身就完备表达了「标题尚未设置」,故不为此另设状态字段(避免第二事实源)。
+   *   sessionId 仍在 hover 提示里可查。
+   */
+  const titleOf = (item: SessionListItemWithSource): string =>
+    item.name !== undefined && item.name.length > 0 ? item.name : untitledLabel;
+
+  /**
+   * 会话工作状态指示(spec session-meta-index, Req 7.1-7.3/7.6)。
+   *
+   * `activity` 缺省即空闲 → 返回 null,**不占位、不显示任何东西**(Req 7.6:空闲不加视觉噪声)。
+   * 三态各有可辨形态:生成中转圈 / 等待回应实心点 / 异常叹号。
+   */
+  const renderActivity = (
+    item: SessionListItemWithSource,
+  ): React.ReactElement | null => {
+    const activity = item.activity;
+    if (activity === undefined) return null;
+    const label =
+      activity === "working"
+        ? t("sessionList.activityWorking")
+        : activity === "awaiting-input"
+          ? t("sessionList.activityAwaiting")
+          : t("sessionList.activityError");
+    return (
+      <span
+        data-pi-session-list-item-activity={activity}
+        title={label}
+        aria-label={label}
+        className="mr-1 flex size-3.5 shrink-0 items-center justify-center"
+      >
+        {activity === "working" ? (
+          // shadcn 风格 spinner:与 pi-tool-part / attachments 同一写法(Loader2 + animate-spin),
+          // 不另造自制圆环,保持全站 loading 视觉一致。
+          <Loader2
+            className="size-3.5 animate-spin text-[hsl(var(--muted-foreground))]"
+            aria-hidden="true"
+          />
+        ) : activity === "awaiting-input" ? (
+          // 闪烁圆点:等待用户回应是**需要人动手**的状态,用呼吸动画把它和静态装饰区分开。
+          <span className="size-2 animate-pulse rounded-full bg-[hsl(var(--primary))]" />
+        ) : (
+          <AlertCircle className="size-3.5 text-[hsl(var(--destructive))]" />
+        )}
+      </span>
+    );
+  };
+
   /** 渲染单个会话项(收藏分区与普通列表共用)。 */
   const renderRow = (item: SessionListItemWithSource): React.ReactElement => {
     const isActive = item.sessionId === currentSessionId;
     const isFav = favoriteSet.has(item.sessionId);
     const editing = editingId === item.sessionId;
     const busy = busyIds.has(item.sessionId);
+    // 来源色条(Req 6.3/6.4):同来源恒同色。无来源则整条不渲染,布局不占位(Req 6.5)。
+    // 与来源副标题同受 `showSource` 门控 —— 二者是「显示来源」这一件事的两种表现,
+    // 若门控只管其一,关掉门控后仍会漏出来源信息。
+    const hasSource =
+      showSource && item.source !== undefined && item.source.length > 0;
     return (
       <li
         key={item.sessionId}
@@ -315,10 +477,19 @@ export function SessionListPanel(
       >
         {/* 整行可点击恢复;右侧 hover/聚焦显现 ⋯ 菜单。编辑态时标题位替换为内联输入。 */}
         <div className="group relative flex items-center gap-0.5">
+          {hasSource ? (
+            <span
+              data-pi-session-list-item-accent={item.source}
+              aria-hidden="true"
+              style={{ backgroundColor: sourceAccentColor(item.source) }}
+              className="mr-0.5 h-5 w-0.5 shrink-0 rounded-full"
+            />
+          ) : null}
+          {renderActivity(item)}
           {editing ? (
             <SessionRenameField
               sessionId={item.sessionId}
-              initialValue={item.name ?? item.sessionId}
+              initialValue={item.name ?? ""}
               onSubmit={handleRenameSubmit}
               onCancel={() => setEditingId(undefined)}
               className="flex-1"
@@ -330,7 +501,7 @@ export function SessionListPanel(
               data-active={isActive ? "" : undefined}
               disabled={busy}
               onClick={() => onResume(item.sessionId)}
-              title={`${formatTime(item)} · ${item.cwd}`}
+              title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
                 "block min-w-0 flex-1 truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
                 isActive
@@ -338,7 +509,7 @@ export function SessionListPanel(
                   : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
               )}
             >
-              {item.name ?? item.sessionId}
+              {titleOf(item)}
             </button>
           )}
           {canManage && !editing ? (

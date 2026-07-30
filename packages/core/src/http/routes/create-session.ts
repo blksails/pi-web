@@ -19,6 +19,7 @@ import type {
   RouteHandler,
 } from "../handler.types.js";
 import { validateBody } from "../validate.js";
+import type { SessionMetaIndex } from "../../session-meta/types.js";
 
 // 命名空间 session:create —— POST /sessions 建会话生命周期里程碑(server stderr)。
 const createLog = createLogger({ namespace: "session:create" });
@@ -37,6 +38,30 @@ export interface CreateSessionDeps {
   ) => SessionChannel;
   /** 冷会话恢复读取器;未注入时恢复请求一律视为"会话不存在"。 */
   readonly loadResumeMeta?: (id: string) => Promise<ResumeMeta | undefined>;
+  /**
+   * 会话展示元数据索引(spec session-meta-index, Req 1.1)。**可选**:注入时在会话创建成功后
+   * 记下其所属 agent-source(取 resolver 的稳定来源标识 `policySource`),供列表快读。
+   * fire-and-forget + 吞错:绝不改变本端点的响应码、响应体与时序(Req 3.5)。
+   */
+  readonly sessionMetaIndex?: SessionMetaIndex;
+}
+
+/**
+ * 记录会话的所属 agent-source。`policySource` 缺省时**不写**该字段 —— 宁可让列表不显示来源,
+ * 也不用 cwd 之类冒充来源(Req 1.1)。
+ */
+function recordAgentSource(
+  index: SessionMetaIndex | undefined,
+  sessionId: string,
+  resolved: ResolvedSource,
+): void {
+  const agentSource = resolved.policySource;
+  if (index === undefined || agentSource === undefined || agentSource.length === 0) {
+    return;
+  }
+  void index.merge(sessionId, { agentSource }).catch(() => {
+    // 静默:元数据是展示增强(Req 3.5)。
+  });
 }
 
 export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler {
@@ -100,6 +125,7 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
           // 冷恢复标题回填(方案A):把持久化的会话名 seed 成初始 ambient.title,重开即见标题。
           ...(meta.name !== undefined ? { initialTitle: meta.name } : {}),
         });
+        recordAgentSource(deps.sessionMetaIndex, id, resolved);
         createLog.info("session created", { sessionId: id });
         return jsonResponse(201, { sessionId: id });
       } catch (err) {
@@ -127,6 +153,7 @@ export function makeCreateSessionHandler(deps: CreateSessionDeps): RouteHandler 
         ...(body.model !== undefined ? { model: body.model } : {}),
       });
       deps.manager.createSession({ resolved, channel, id: sessionId });
+      recordAgentSource(deps.sessionMetaIndex, sessionId, resolved);
       createLog.info("session created", { sessionId });
       return jsonResponse(201, { sessionId });
     } catch (err) {

@@ -11,13 +11,21 @@
  * 经 `createSessionListRoutes(opts)` 返回 `ReadonlyArray<InjectedRoute>`,直接传入
  * `createPiWebHandler({ routes })` 的 `routes?` 注入接缝(与 createConfigRoutes 同构)。
  */
-import type { ListSessionsResponse, SessionListItem } from "@blksails/pi-web-protocol";
+import type {
+  ListSessionsResponse,
+  SessionActivity,
+  SessionListItem,
+} from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../http/index.js";
 import type { InjectedRoute } from "../http/index.js";
 import {
   type SessionEntryStore,
   type SessionMeta,
 } from "../session-store/index.js";
+import type { SessionMetaEntry, SessionMetaIndex } from "../session-meta/types.js";
+
+/** 元数据缺席时的共享空表(避免每请求新建)。 */
+const EMPTY_META: ReadonlyMap<string, SessionMetaEntry> = new Map();
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
@@ -71,6 +79,17 @@ export interface SessionListRoutesOptions {
   readonly defaultPageSize?: number;
   /** 单页硬上限(默认 200)。 */
   readonly maxPageSize?: number;
+  /**
+   * 会话展示元数据索引(spec session-meta-index)。**可选**:省略时行为与本特性引入前完全一致
+   * (标题走既有派生、source 留空),既有测试与部署无需改动。
+   */
+  readonly metaIndex?: SessionMetaIndex;
+  /**
+   * 活跃态查询(spec session-meta-index, Req 7.5):由装配层从**活跃会话注册表**构造。
+   * 会话未加载 → 返回 undefined(视为空闲)。本端点**不**为取状态加载任何会话,
+   * 也刻意不认识 SessionManager —— 只收这一个回调。
+   */
+  readonly activityOf?: (sessionId: string) => SessionActivity | undefined;
 }
 
 /** 不透明游标载荷:上一页最后一项的排序键 + 会话标识。 */
@@ -125,37 +144,65 @@ function decodeCursor(raw: string): CursorPayload | undefined {
 }
 
 /**
- * 对一页会话 meta 富集显示名(spec auto-session-title, Req 8.4):对**每一项**调用
- * `store.displayName`(若实现)派生最新 `session_info` 名,派生到即覆盖 header.name ——
- * 与 sqlite/postgres 后端(append session_info 时 `UPDATE name` 列)的「session_info 优先于
- * header」语义对齐,保证跨后端一致(不再因 header 已命名而跳过、显示陈旧 header 名)。
- * 无 session_info 派生结果时保留 header.name(原样返回);store 不支持 displayName 时整页原样返回。
- * 任一项派生失败静默忽略(展示增强,绝不让列表请求失败)。
- * 注意:fs 后端每项 displayName 需顺读整份 jsonl,故本步开销与「当前页项数」成正比;
- * 为避免大页无界并发造成 fd/IO 峰值,经有界池限并发到 DISPLAY_NAME_CONCURRENCY。
+ * 标题解析(spec session-meta-index, Req 2.2/2.3/9.5/9.7)——按**后端是否自维护名称**分流:
+ *
+ * - store **不实现** `displayName`(sqlite/postgres:append session_info 时已 UPDATE name 列)
+ *   → `SessionMeta.name` 即最新,直接用,索引不参与标题(不产生第二权威,Req 9.5)。
+ * - store **实现** `displayName`(fs:`name` 仅来自 header、**不随** session_info 更新)→
+ *   ① 索引命中 title 即用之,**不调用** displayName(命中即不扫整份 jsonl,Req 2.2);
+ *   ② 未命中则走既有派生(有界并发池),派生到即用并**回填**索引(Req 3.6/9.7,回填失败静默);
+ *   ③ 派生不到保留 header 的 name。
+ *
+ * 这一分流是必要的:若一律「name 非空就跳过派生」,fs 后端所有创建时即命名的会话会显示
+ * **陈旧的 header 名** —— 既有代码刻意用 session_info 名覆盖它。
  */
-async function enrichDisplayNames(
+async function resolveTitles(
   store: SessionEntryStore,
-  page: readonly SessionMeta[],
+  items: readonly SessionMeta[],
+  meta: ReadonlyMap<string, SessionMetaEntry>,
+  metaIndex: SessionMetaIndex | undefined,
 ): Promise<SessionMeta[]> {
-  if (typeof store.displayName !== "function") return [...page];
-  return mapWithConcurrency(page, DISPLAY_NAME_CONCURRENCY, async (m) => {
+  if (typeof store.displayName !== "function") return [...items];
+  return mapWithConcurrency(items, DISPLAY_NAME_CONCURRENCY, async (m) => {
+    const cached = meta.get(m.sessionId)?.title;
+    if (cached !== undefined && cached.length > 0) return { ...m, name: cached };
     try {
-      const name = await store.displayName!(m.sessionId);
-      return name !== undefined && name.length > 0 ? { ...m, name } : m;
+      const derived = await store.displayName!(m.sessionId);
+      if (derived !== undefined && derived.length > 0) {
+        // 回填:下次列出该会话即命中索引,不必再顺读整份 jsonl。fire-and-forget。
+        void metaIndex?.merge(m.sessionId, { title: derived });
+        return { ...m, name: derived };
+      }
+      return m;
     } catch {
       return m;
     }
   });
 }
 
-function toItem(m: SessionMeta): SessionListItem {
+function toItem(
+  m: SessionMeta,
+  meta: ReadonlyMap<string, SessionMetaEntry>,
+  activityOf: ((sessionId: string) => SessionActivity | undefined) | undefined,
+): SessionListItem {
+  const agentSource = meta.get(m.sessionId)?.agentSource;
+  // 活跃态:运行时投影,取不到即空闲(字段省略)。聚合器抛错不得拖垮整个列表。
+  let activity: SessionActivity | undefined;
+  try {
+    activity = activityOf?.(m.sessionId);
+  } catch {
+    activity = undefined;
+  }
   return {
     sessionId: m.sessionId,
     cwd: m.cwd,
     createdAt: m.createdAt,
     ...(m.name !== undefined ? { name: m.name } : {}),
     ...(m.updatedAt !== undefined ? { updatedAt: m.updatedAt } : {}),
+    ...(agentSource !== undefined && agentSource.length > 0
+      ? { source: agentSource }
+      : {}),
+    ...(activity !== undefined ? { activity } : {}),
   };
 }
 
@@ -247,13 +294,31 @@ export function createSessionListRoutes(
         // 子串(大小写不敏感)过滤,置于排序/分页前;空 q / 无 q 行为不变(向后兼容 Req 6.2)。
         // header 未命名的会话其标题在 session_info(auto-title),故有搜索关键字时先富集全量
         // displayName 再过滤(有界并发,O(n) 仅在搜索时付出;空 q 不付此代价)。不检索正文(Req 3.6)。
+        // 元数据索引整份读一次(spec session-meta-index):一次文件读远低于 per-item 扫 jsonl,
+        // 故不做进程内缓存(避免缓存失效带来的第二类错误)。读失败即空 Map,全部退化到既有路径。
+        // 端口契约说 read() 绝不抛,但端点**不信任**注入实现会遵守 —— 元数据是展示增强,
+        // 任何读失败都不得把列表请求拖成 500(Req 3.5)。
+        let meta: ReadonlyMap<string, SessionMetaEntry> = EMPTY_META;
+        if (opts.metaIndex !== undefined) {
+          try {
+            meta = await opts.metaIndex.read();
+          } catch {
+            meta = EMPTY_META;
+          }
+        }
+
         const qRaw = q.get("q");
         const qNorm = qRaw !== null ? qRaw.trim().toLowerCase() : "";
         let filtered: SessionMeta[];
         if (qNorm.length === 0) {
           filtered = metas;
         } else {
-          const enrichedForSearch = await enrichDisplayNames(store, metas);
+          const enrichedForSearch = await resolveTitles(
+            store,
+            metas,
+            meta,
+            opts.metaIndex,
+          );
           filtered = enrichedForSearch.filter((m) =>
             `${m.name ?? ""} ${m.sessionId}`.toLowerCase().includes(qNorm),
           );
@@ -268,13 +333,12 @@ export function createSessionListRoutes(
         const nextCursor =
           hasMore && last !== undefined ? encodeCursor(last) : undefined;
 
-        // 自动标题展示(spec auto-session-title, Req 8.4):对当前页每一项经 store.displayName
-        // 派生最新 session_info 名并覆盖 header.name,与 sqlite/postgres「session_info 优先」语义对齐。
-        // sqlite/postgres 已在 append 时维护 name 列(不实现 displayName)→ enrich 整页原样返回、不重复查。
-        const enriched = await enrichDisplayNames(store, page);
+        // 标题解析(auto-session-title Req 8.4 + session-meta-index Req 2.2/2.3):索引命中即用,
+        // 未命中走既有 displayName 派生并回填;sqlite/postgres(不实现 displayName)整页原样返回。
+        const enriched = await resolveTitles(store, page, meta, opts.metaIndex);
 
         const body: ListSessionsResponse = {
-          sessions: enriched.map(toItem),
+          sessions: enriched.map((m) => toItem(m, meta, opts.activityOf)),
           scope,
           globalEnabled: opts.globalEnabled,
           ...(nextCursor !== undefined ? { nextCursor } : {}),

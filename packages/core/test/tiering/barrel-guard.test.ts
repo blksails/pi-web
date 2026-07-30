@@ -49,6 +49,7 @@ const ALLOWED_EXPORTS: ReadonlySet<string> = new Set([
   "./source-key.js",
   "./config/index.js",
   "./session-list/index.js",
+  "./session-meta/index.js",
   "./agent-source-list/index.js",
   "./aigc-settings/index.js",
   "./vision-settings/index.js",

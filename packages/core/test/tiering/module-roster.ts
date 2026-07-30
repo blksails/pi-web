@@ -72,6 +72,8 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   session: "core",
   "session-actions": "core",
   "session-list": "core",
+  "session-meta": "core", // 会话展示元数据索引(端口 + 集中 JSON 文件实现);仅 node builtins
+
   "session-store": "core", // 接口与内存实现;postgres 实现属 adapters,由后续 spec 分离
   state: "core",
   trust: "core",

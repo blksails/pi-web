@@ -20,6 +20,7 @@ import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   RpcResponse,
+  SessionActivity,
   SessionLifecycleState,
   SessionSnapshot,
   SlashCompletionDecl,
@@ -108,6 +109,7 @@ import {
 } from "./session.types.js";
 import { translateEvent } from "./translate/translate-event.js";
 import { INITIAL_SNAPSHOT, reduceSnapshot } from "./reduce-snapshot.js";
+import { deriveActivity } from "./derive-activity.js";
 import { PendingRequests } from "./pending-requests.js";
 import { TrailingThrottle } from "./trailing-throttle.js";
 import { AgentDeclarations } from "./agent-declarations.js";
@@ -184,6 +186,8 @@ export class PiSession {
   private readonly channel: SessionChannel;
   private readonly idleMs: number;
   private readonly onClosed?: (id: SessionId, reason: SessionEndReason) => void;
+  /** 标题变化通知(spec session-meta-index, Req 1.2);抛错由调用点吞掉。 */
+  private readonly onTitleChanged?: (id: SessionId, title: string) => void;
 
   private readonly emitter = new EventEmitter();
   private readonly pendingExtensionUI = new Map<string, RpcExtensionUIRequest>();
@@ -295,6 +299,7 @@ export class PiSession {
     this.policySource = opts.resolved.policySource;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
+    this.onTitleChanged = opts.onTitleChanged;
     this.logPipe = new SessionLogPipe({
       ...(opts.loggingConfigProvider !== undefined
         ? { provider: opts.loggingConfigProvider }
@@ -421,6 +426,24 @@ export class PiSession {
   /** 当前业务就绪态(spec session-readiness-handshake);未开启握手时恒为 `initializing`。 */
   get lifecycle(): SessionLifecycleState {
     return this._lifecycle;
+  }
+
+  /**
+   * 会话活跃态投影(spec session-meta-index, Req 7.x):供会话列表显示「工作中 / 等待用户交互 /
+   * 异常」。纯投影 —— 输入全是**既有权威事实**(权威快照的 busy/lifecycle + extension-ui 挂起表),
+   * 本 getter 不新增任何状态、不改挂起表登记规则、不改快照归约。
+   *
+   * ★ 挂起表按 method 过滤到交互四类:表里**确实**混有推送类(notify/setTitle 等永不回包),
+   *   不过滤会让发过一次通知的会话永久显示「等待用户交互」。详见 `derive-activity.ts`。
+   *
+   * 空闲返回 `undefined`,列表据此省略 DTO 字段(Req 7.6)。
+   */
+  get activity(): SessionActivity | undefined {
+    return deriveActivity({
+      busy: this._snapshot.busy,
+      lifecycle: this._lifecycle,
+      pendingMethods: [...this.pendingExtensionUI.values()].map((r) => r.method),
+    });
   }
 
   describe(): SessionDescriptor {
@@ -1314,6 +1337,15 @@ export class PiSession {
   private handleExtensionUIRequest(req: RpcExtensionUIRequest): void {
     if (this._status !== "active") return;
     this.touch();
+    // 标题变化通知(spec session-meta-index, Req 1.2):setTitle 是标题变化的唯一入站通道
+    // (auto-title 扩展经此下发)。吞错:元数据是展示增强,绝不影响会话流程。
+    if (req.method === "setTitle") {
+      try {
+        this.onTitleChanged?.(this.id, req.title);
+      } catch {
+        // 静默:装配层的索引写入失败不得波及会话。
+      }
+    }
     // 登记挂起表(Req 5.1)。
     this.pendingExtensionUI.set(req.id, req);
     // 经事件广播以旁路 control 帧通知订阅者(Req 5.1)。

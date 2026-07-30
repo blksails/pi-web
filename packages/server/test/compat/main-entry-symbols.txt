@@ -40,6 +40,7 @@ HostContractVersionError
 HttpAttachmentRegistry
 HttpBlobStore
 InMemorySessionStore
+JsonFileSessionMetaIndex
 JsonlLineReader
 KEEP_INLINE_FLAG
 KNOWN_ENTRY_TYPES
@@ -148,6 +149,7 @@ defaultAttachmentDir
 defaultAuthResolver
 defaultAuthorizeSession
 defaultGitCacheRoot
+defaultSessionMetaIndexPath
 defaultSessionsRoot
 defaultTrustPolicy
 deriveCachePath
@@ -214,6 +216,7 @@ serializeEntry
 serializeHeader
 serializeToken
 sessionFileName
+sessionMetaIndexPathFromEnv
 sessionStoreConfigFromEnv
 settingsToForm
 sourceKey

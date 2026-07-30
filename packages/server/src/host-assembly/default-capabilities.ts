@@ -116,6 +116,16 @@ export interface HostDeps {
   readonly bashEnabled: boolean;
   readonly extension: ExtensionOpts;
   readonly hostCommandHandlers: readonly HostCommandHandler[];
+  /**
+   * 会话展示元数据索引(spec session-meta-index)。注入时:`session.list` 投影标题/来源、
+   * `session.actions` 改名写标题与删除清条目。可选 —— 未注入即本特性整体不生效。
+   */
+  readonly sessionMetaIndex?: SessionListOpts["metaIndex"];
+  /**
+   * 会话活跃态查询(spec session-meta-index, Req 7.5)。由 pi-handler 从**活跃会话注册表**
+   * 构造(注意与持久化 store 同名不同物);未加载的会话返回 undefined = 空闲。
+   */
+  readonly sessionActivityOf?: SessionListOpts["activityOf"];
 }
 
 type HostDescriptor = CapabilityDescriptor<HostDeps, HostContribution>;
@@ -165,8 +175,8 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
         ),
     },
     { id: "config.extensions", factory: (d) => asRoutes(createExtensionsConfigRoutes({ agentDir: d.agentDir, defaultCwd: d.defaultCwd })) },
-    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd })) },
-    { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled })) },
+    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd, ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}), ...(d.sessionActivityOf !== undefined ? { activityOf: d.sessionActivityOf } : {}) })) },
+    { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled, ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}) })) },
     {
       id: "agentSource.list",
       factory: (d) =>

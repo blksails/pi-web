@@ -52,6 +52,8 @@ import {
   parseBackendsEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
+  // 会话展示元数据索引(spec session-meta-index):集中 JSON 文件实现。
+  JsonFileSessionMetaIndex,
   ConfigCodec,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
   // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
@@ -64,6 +66,7 @@ import {
   type SessionChannel,
   type CreateChannelOpts,
 } from "@blksails/pi-web-server";
+import type { SessionActivity } from "@blksails/pi-web-protocol";
 import {
   resolvePiCliEntry,
   ChildProcessPiCli,
@@ -691,10 +694,24 @@ function buildSingleton(): HandlerSingleton {
   // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
   // ⚠ 与 readinessHandshake 存在耦合:lifecycle 仅经 setLifecycle 入快照(后者在握手关闭时早返回),
   // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
+  // 会话展示元数据索引(spec session-meta-index):集中 JSON 文件,置于 sessions 目录**之外**
+  // (默认 ~/.pi/agent/piweb-session-index.json,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖)。
+  // 定位是缓存:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
+  const sessionMetaIndex = new JsonFileSessionMetaIndex();
+
+  // 会话活跃态查询(Req 7.5):从**活跃会话注册表**(store,非持久化 SessionEntryStore)按标识
+  // 取会话的活跃态投影。未加载的历史会话 → undefined = 空闲,且**不为取状态加载任何会话**。
+  const sessionActivityOf = (sessionId: string): SessionActivity | undefined =>
+    store.get(sessionId)?.activity;
+
   const manager = new SessionManager({
     store,
     idleMs: 0,
     loggingConfigProvider,
+    // 标题变化 → 同步进元数据索引,使列表快读命中(Req 1.2)。回调抛错由 PiSession 吞掉。
+    onTitleChanged: (id, title) => {
+      void sessionMetaIndex.merge(id, { title }).catch(() => {});
+    },
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
     readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
@@ -1165,6 +1182,10 @@ function buildSingleton(): HandlerSingleton {
     onSourceSettingsSaved: (sourceKeyValue, payload) =>
       broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
     sessionStoreConfig: sessionStoreConfigFromEnv(),
+    // 元数据索引 + 活跃态查询(spec session-meta-index):session.list 投影标题/来源/活跃态,
+    // session.actions 改名写标题、删除清条目。
+    sessionMetaIndex,
+    sessionActivityOf,
     sessionsGlobalEnabled:
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
@@ -1252,6 +1273,8 @@ function buildSingleton(): HandlerSingleton {
     // Cold-resume reader: POST /sessions { resumeId } loads {source, cwd, model}
     // from the configured SessionEntryStore (same SESSION_STORE backend) by id.
     loadResumeMeta: makeResumeMetaLoader(sessionStoreConfigFromEnv()),
+    // 建会话时记下所属 agent-source(policySource),供列表显示来源与色条(Req 1.1)。
+    sessionMetaIndex,
     // Inject config endpoints — schema-driven settings UI persistence.
     //  - GET/PUT /config/:domain → ~/.pi/agent/{auth,settings,sandbox}.json
     //    (sandbox = pi-sandbox 全局策略,方案 A)。codec 读 PI_WEB_AGENT_DIR

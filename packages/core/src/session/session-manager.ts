@@ -47,6 +47,11 @@ export interface SessionManagerOptions {
    * 默认关(向后兼容);生产 app 接线开启。
    */
   readonly snapshotAuthority?: boolean;
+  /**
+   * 标题变化通知(spec session-meta-index, Req 1.2):透传给每个 PiSession,供装配层把标题
+   * 同步进会话元数据索引。领域无关;回调抛错由 PiSession 吞掉。
+   */
+  readonly onTitleChanged?: (id: SessionId, title: string) => void;
 }
 
 export class SessionManager {
@@ -57,6 +62,7 @@ export class SessionManager {
   private readonly readinessHandshake: boolean;
   private readonly readyTimeoutMs: number | undefined;
   private readonly snapshotAuthority: boolean;
+  private readonly onTitleChanged: ((id: SessionId, title: string) => void) | undefined;
   private acceptingNew = true;
 
   constructor(opts: SessionManagerOptions = {}) {
@@ -67,6 +73,7 @@ export class SessionManager {
     this.readinessHandshake = opts.readinessHandshake ?? false;
     this.readyTimeoutMs = opts.readyTimeoutMs;
     this.snapshotAuthority = opts.snapshotAuthority ?? false;
+    this.onTitleChanged = opts.onTitleChanged;
   }
 
   /** 暴露存储(供上层经接口检索/列出)。 */
@@ -115,6 +122,10 @@ export class SessionManager {
       snapshotAuthority: this.snapshotAuthority,
       // 冷恢复标题回填(方案A):resume 分支透传初始标题,新建会话为 undefined(不 seed)。
       ...(input.initialTitle !== undefined ? { initialTitle: input.initialTitle } : {}),
+      // 标题变化通知(spec session-meta-index, Req 1.2):透传给会话,由装配层写元数据索引。
+      ...(this.onTitleChanged !== undefined
+        ? { onTitleChanged: this.onTitleChanged }
+        : {}),
       // 去注册接缝:会话进入 stopped 时由 manager 从 store 移除(Req 7.5 / 9.4)。
       onClosed: (id, reason) => {
         createLog.info("session removed", { sessionId: id, reason });

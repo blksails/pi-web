@@ -720,6 +720,12 @@ function SessionView({
   const onTurnEnd = React.useCallback((): void => {
     setSessionListRefreshKey((n) => n + 1);
   }, []);
+  // 活跃态变化(spec session-meta-index, Req 8.1-8.3):忙态**双向**边沿 + 交互挂起边沿都重拉。
+  // 补上 onTurnEnd 缺的那一半 —— 轮次**开始**时列表也要刷,否则转圈往往等到不忙了才出现。
+  // 与 onTurnEnd 合流到同一个刷新信号(面板只认这一个 key)。
+  const onActivityChange = React.useCallback((): void => {
+    setSessionListRefreshKey((n) => n + 1);
+  }, []);
 
   // agent source 选择器刷新:父级登录态变化 + 本会话 `/install` panel-refresh 合并为单一信号。
   const [localInstallRefreshKey, setLocalInstallRefreshKey] = React.useState(0);
@@ -850,6 +856,10 @@ function SessionView({
         onResume={onResumeSession}
         refreshSignal={sessionListRefreshKey}
         manageEnabled={sessionsManageEnabled()}
+        // 来源展示(spec session-meta-index, Req 6.2/6.3):开启后列表项显示来源标识与来源色条。
+        // ★ 此前 `showSource` 门控存在但宿主从未传过 —— 于是 SessionListItem.source 即便有值
+        //   也永远看不见(浏览器 e2e 抓到的接线缺口,单测因显式传 prop 而看不出来)。
+        showSource
         favoriteSessionIds={sessionFavoriteIds}
         onDeleteSession={onDeleteSession}
         onRenameSession={onRenameSession}
@@ -1099,6 +1109,7 @@ function SessionView({
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           onTurnEnd={onTurnEnd}
+          onActivityChange={onActivityChange}
           showLogs={true}
           enableBash={bashEnabled()}
           logsPanelVisible={logsPanelVisible ?? true}

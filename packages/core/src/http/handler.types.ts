@@ -16,6 +16,7 @@ import type { CompletionProvider } from "../completion/index.js";
 import type { AttachmentMetaSource } from "./routes/command-routes.js";
 import type { AttachmentStore } from "../attachment/index.js";
 import type { HostCommandRegistry } from "../commands/host-command-registry.js";
+import type { SessionMetaIndex } from "../session-meta/types.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
 export interface RequestContext {
@@ -95,6 +96,11 @@ export interface PiWebHandlerOptions {
    * 恢复元数据;未找到返回 undefined。未注入时恢复请求一律视为"会话不存在"。
    */
   readonly loadResumeMeta?: (id: string) => Promise<ResumeMeta | undefined>;
+  /**
+   * 会话展示元数据索引(spec session-meta-index)。注入时:建会话记 agent-source。
+   * 可选 —— 未注入即本特性整体不生效,既有行为不变。
+   */
+  readonly sessionMetaIndex?: SessionMetaIndex;
   /** 可选;未提供→默认放行(Req 8.3)。 */
   readonly authResolver?: AuthResolver;
   /** 可选;未提供→默认放行。 */

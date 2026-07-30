@@ -144,6 +144,9 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
         ...(opts.loadResumeMeta !== undefined
           ? { loadResumeMeta: opts.loadResumeMeta }
           : {}),
+        ...(opts.sessionMetaIndex !== undefined
+          ? { sessionMetaIndex: opts.sessionMetaIndex }
+          : {}),
       }),
     },
     {

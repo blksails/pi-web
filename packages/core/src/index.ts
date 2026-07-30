@@ -29,6 +29,9 @@ export * from "./commands/host-command-registry.js";
 export { sourceKey, isSourceKey } from "./source-key.js";
 export * from "./config/index.js";
 export * from "./session-list/index.js";
+// session-meta(session-meta-index):会话展示元数据索引(端口 + 集中 JSON 文件实现)。
+// 仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出。
+export * from "./session-meta/index.js";
 export * from "./agent-source-list/index.js";
 export * from "./aigc-settings/index.js";
 export * from "./vision-settings/index.js";

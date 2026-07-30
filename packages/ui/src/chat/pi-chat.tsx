@@ -192,6 +192,17 @@ export interface PiChatProps {
    * 故每轮结束后重拉列表即可及时反映新会话与最新标题(与内核 stats 的「每轮结束重拉」同构)。
    */
   readonly onTurnEnd?: () => void;
+  /**
+   * 会话**活跃态变化**回调(spec session-meta-index, Req 8.1-8.3)。
+   *
+   * 与 `onTurnEnd` 的区别、以及为何非它不可:`onTurnEnd` 只在忙→闲的**下降**边沿触发,
+   * 于是「会话刚开始干活」这一刻列表**没有**任何刷新触发点 —— 转圈往往等到它已经不忙了
+   * 才出现,体验上会被当成 bug。本回调在以下三种边沿都触发,供宿主重拉会话列表:
+   *   ① 忙态上升(轮次开始) ② 忙态下降(轮次结束) ③ 交互挂起数 0↔非0(开始/结束等用户回应)
+   *
+   * `onTurnEnd` 的触发条件**刻意不动**(另有消费者依赖其「轮末」语义,如画廊物化视图重建)。
+   */
+  readonly onActivityChange?: () => void;
   /** 是否展示内核自有会话用量状态区(PiSessionStats);默认 true。 */
   readonly showSessionStats?: boolean;
   /** 是否展示日志面板(LogsPanel);默认 false。 */
@@ -355,6 +366,7 @@ export function PiChat({
   onCommandResult,
   onRuntimeReloadRequested,
   onTurnEnd,
+  onActivityChange,
   showSessionStats = true,
   showLogs = false,
   enableBash = false,
@@ -854,6 +866,26 @@ export function PiChat({
     }
     turnEndWasBusyRef.current = isBusy;
   }, [isBusy, onTurnEnd]);
+
+  // 活跃态变化(spec session-meta-index, Req 8.1-8.3):忙态**双向**边沿 + 交互挂起数
+  // 0↔非0 边沿都通知宿主重拉列表。上升边沿是改造前缺失的那个触发点。
+  // 只在**边沿**通知(不是每次渲染),故用 ref 记上一拍的判据。
+  // 交互挂起数取 `extensionUI.queue`(useExtensionUI 已只放交互类;推送类走 ambient 切片,
+  // 不进此队列)—— 与服务端 deriveActivity 的 method 过滤同一语义。
+  const awaitingCount = extensionUI?.queue.length ?? 0;
+  const activityWasBusyRef = React.useRef<boolean>(false);
+  const activityWasAwaitingRef = React.useRef<boolean>(false);
+  React.useEffect(() => {
+    const awaiting = awaitingCount > 0;
+    if (
+      activityWasBusyRef.current !== isBusy ||
+      activityWasAwaitingRef.current !== awaiting
+    ) {
+      activityWasBusyRef.current = isBusy;
+      activityWasAwaitingRef.current = awaiting;
+      onActivityChange?.();
+    }
+  }, [isBusy, awaitingCount, onActivityChange]);
 
   // 空闲期 Tier3 贡献点(slash/mention/autocomplete)需持久控制通道:per-prompt 消息流仅在发送时
   // 打开。故仅当**扩展声明了 contributions**(需 ui-rpc)且**空闲时**才另开一条「仅 ui-rpc」订阅
