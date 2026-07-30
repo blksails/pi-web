@@ -100,7 +100,7 @@ export function validateComponentManifest(manifest: PiWebManifest): ValidateResu
   if (spec.wiring.point === "slots" && (spec.wiring.slot === undefined || spec.wiring.slot.length === 0)) {
     issues.push({
       code: "wiring_slot_missing",
-      message: `point:"slots" 必须声明具名槽 key(component.wiring.slot,如 "panelRight")`,
+      message: `point:"slots" 必须声明具名槽 key(component.wiring.slot,如 "sidebarLeft")`,
       field: "component.wiring.slot",
     });
   }

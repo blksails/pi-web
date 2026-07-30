@@ -2,13 +2,13 @@
  * CanvasLauncher / CanvasPanel — 入口 + 面板挂载(aigc-canvas · Req 10.x)。
  *
  * **由 source 声明驱动,免全局门控**:agent source 在 `.pi/web` 把这两个组件挂到
- * launcherRail / panelRight 槽,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
+ * launcherRail / 右侧面板,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
  * 非 AIGC source 不声明这些槽 → 自然不挂载(独立性由声明缺席保证,而非 env 开关)。
  *
  * - **CanvasLauncher**(launcherRail 具名槽):渲染入口按钮,点击经跨 slot 共享的
  *   `canvasOpenStore` 开合画廊面板(激活/关闭回收视图)。
- * - **CanvasPanel**(panelRight 具名槽):宿主经 prop 注入 `surface`(launcherRail slot 拿不到 surface,
- *   故交互画廊 / 工作台落在有 surface 的 panelRight 区);读 `canvasOpen` 开合,展开 CanvasGallery,
+ * - **CanvasPanel**(右侧面板):宿主经 prop 注入 `surface`(launcherRail slot 拿不到 surface,
+ *   故交互画廊 / 工作台落在有 surface 的右侧面板区);读 `canvasOpen` 开合,展开 CanvasGallery,
  *   点格子展开 CanvasWorkbench,关闭回画廊。
  *
  * 两个 slot 是不同子树,经 module-level `canvasOpenStore` 联动(同一 app bundle 内共享)。
@@ -124,7 +124,7 @@ export interface CanvasPanelProps {
   readonly extensions?: readonly WebExtension[];
 }
 
-/** panelRight 画廊 / 工作台面板(门控关或未开 → null)。 */
+/** 画廊 / 工作台面板(门控关或未开 → null)。迁移后由 pane 内部使用,不再挂具名槽。 */
 export function CanvasPanel({
   surface,
   enabled,
