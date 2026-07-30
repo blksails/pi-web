@@ -11,7 +11,7 @@
  *    改成可选,只写正向断言的文件依然全绿。
  */
 import type { EgressModel } from "@blksails/pi-web-core/capability/egress-model.js";
-import type { EgressModelSourceInput } from "../../src/auth/egress-model-source.js";
+import type { EgressModelSourceInput } from "@blksails/pi-web-adapters/auth/egress-model-source.js";
 import type {
   CapabilityEgressGrant,
   CapabilityGrantBase,

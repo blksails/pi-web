@@ -33,7 +33,10 @@ import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { PiRpcProcess } from "@blksails/pi-web-core/rpc-channel/pi-rpc-process.js";
 import { PiSession } from "@blksails/pi-web-core/session/pi-session.js";
 import { makeResolved } from "../../../core/test/session/fixtures.js";
-import { startStubEgress, type StubEgress } from "../../../server/test/auth/stub-egress.js";
+// 出口桩服务器随 `auth` 模块的测试从兼容层搬进 adapters 包
+// (spec: adapters-package-extraction 任务 3.2)。跨包测试固件的相对路径必须随之改 ——
+// 这条边只在**运行期**解析,兼容层里的旧路径不会让任何一个包的 typecheck 报红。
+import { startStubEgress, type StubEgress } from "../../../adapters/test/auth/stub-egress.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // test/integration -> packages/runner

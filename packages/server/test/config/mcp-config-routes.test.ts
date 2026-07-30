@@ -12,7 +12,7 @@ import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
 import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
 import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
 import { createMcpConfigRoutes } from "@blksails/pi-web-core/http/routes/mcp-config-routes.js";
-import { McpProbeService } from "../../src/mcp-probe.js";
+import { McpProbeService } from "@blksails/pi-web-adapters/mcp-probe.js";
 
 let agentDir: string;
 beforeEach(async () => {

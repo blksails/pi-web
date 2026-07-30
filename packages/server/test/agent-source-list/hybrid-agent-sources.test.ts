@@ -20,7 +20,7 @@ import {
 import {
   createDesktopCapabilitiesClient,
   type CapabilitiesFetch,
-} from "../../src/auth/desktop-capabilities-client.js";
+} from "@blksails/pi-web-adapters/auth/desktop-capabilities-client.js";
 import type { AgentSourceProvider } from "@blksails/pi-web-core/agent-source-list/types.js";
 
 let scanRoot: string;

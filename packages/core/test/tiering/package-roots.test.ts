@@ -120,40 +120,48 @@ describe("assertRootsContributed —— 空扫与过期豁免两个方向都要�
 });
 
 describe("pending 豁免与磁盘现实一致", () => {
-  /** 搬迁已落地的包根 —— 它们的豁免必须已经清零。 */
-  const settled = ["core", "server", "runner"];
+  /**
+   * 搬迁已落地的包根 —— 它们的豁免必须已经清零。
+   *
+   * ★ adapters 于 spec adapters-package-extraction 任务 3.2(测试搬入)加入本列表:
+   *   3.1 搬完 `src/` 时 `srcModules` / `srcFiles` 的豁免已被自毁分支逼退,
+   *   3.2 搬完 `test/` 的 57 个文件后最后一个 `testFiles` 也退场。**四包再无豁免**,
+   *   故这里不再是「三包」的白名单,而等于整份名册 —— 下一次谁想加豁免,
+   *   下面那条「名册里一个豁免都不剩」会当场把他挡住。
+   */
+  const settled = ["core", "server", "runner", "adapters"];
 
-  it("★ 已搬完的三包都不带 pending 豁免 —— 搬迁完成后豁免必须清零", () => {
+  it("★ 已搬完的四包都不带 pending 豁免 —— 搬迁完成后豁免必须清零", () => {
     // 名册里的豁免必须是对现实的**描述**,不能是凭空的通行证。runner 的两次搬迁
-    // (spec runner-package-extraction 任务 3.1 的 `src/`、3.3 的 `test/`)都已落地,
-    // 三个维度的声明随之全部退场。
+    // (spec runner-package-extraction 任务 3.1 的 `src/`、3.3 的 `test/`)与 adapters 的
+    // 两次搬迁(adapters-package-extraction 3.1 / 3.2)都已落地,三个维度的声明随之全部退场。
     for (const root of PACKAGE_ROOTS.filter((r) => settled.includes(r.name))) {
       expect(root.pendingContributions, `${root.name} 不应有 pending 豁免`).toBeUndefined();
     }
   });
 
-  it("adapters 只剩 testFiles 声明 pending(实现已搬入,测试尚未)", () => {
-    // spec adapters-package-extraction:守卫先行(任务 2)、搬迁在后(3.1 src / 3.2 test)。
-    // 3.1 落地后 `srcModules` / `srcFiles` 的豁免已被 `assertRootsContributed` 的自毁分支
-    // 逼着删掉,只剩 `testFiles`。少声明它 → 空扫断言当场报红(test/ 确实还不存在);
-    // 3.2 搬完不删 → 同一自毁分支报「豁免过期」。
-    expect(adapters!.pendingContributions).toEqual(["testFiles"]);
+  it("★ 名册里一个 pending 豁免都不剩 —— 白名单不得悄悄漏掉某个包根", () => {
+    // 上一条按 `settled` 白名单遍历,故「新加一个带豁免的包根、但忘了写进白名单」
+    // 对它是**不可见**的 —— 那正是豁免机制最容易松掉的地方。这里对**整份名册**取全集,
+    // 使白名单与名册的差集也被覆盖:任何新豁免都必须先让这条红,而不能默默生效。
+    expect(
+      PACKAGE_ROOTS.filter((r) => r.pendingContributions !== undefined).map((r) => r.name),
+      "有包根仍带 pendingContributions —— 若是新包的过渡态,请把它连同退场条件一并写进本文件",
+    ).toEqual([]);
   });
 
-  it("★ 反向断言:adapters 的 src/ 在磁盘上已非空,而 test/ 仍是空的", () => {
+  it("★ 反向断言:adapters 的 src/ 与 test/ 在磁盘上确实非空", () => {
     // 豁免的语义是「必须**恰好**为空」,不是「可以为空」;反过来,已退场的维度必须
     // 确实非空。只看名册分不出「还没搬,声明正确」与「已经搬了,声明忘删」—— 故必须直接看磁盘。
-    const srcDir = path.join(adapters!.dir, "src");
-    expect(
-      fs.existsSync(srcDir) ? fs.readdirSync(srcDir) : [],
-      "packages/adapters/src 是空的 —— 任务 3.1 的搬迁没落地,或 pending 被过早删掉了",
-    ).not.toEqual([]);
-
-    const testDir = path.join(adapters!.dir, "test");
-    expect(
-      fs.existsSync(testDir) ? fs.readdirSync(testDir) : [],
-      "packages/adapters/test 已有文件 —— 任务 3.2 落地了,请删掉 testFiles 维度的 pendingContributions",
-    ).toEqual([]);
+    // 3.2 之前本条的后半段断言的是 `test/` **为空**;测试搬入后判据随现实翻面。
+    for (const dim of ["src", "test"]) {
+      const dir = path.join(adapters!.dir, dim);
+      const entries = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+      expect(
+        entries,
+        `packages/adapters/${dim} 是空的 —— 搬迁没落地,或 pending 被过早删掉了`,
+      ).not.toEqual([]);
+    }
   });
 
   it("★ 反向断言:runner 的 src/ 与 test/ 在磁盘上确实非空", () => {

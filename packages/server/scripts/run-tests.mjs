@@ -42,6 +42,21 @@ function vitest(extra) {
 }
 
 /**
+ * ★ 允许**空档**的两个档位:fast-mock / e2e(spec: adapters-package-extraction 任务 3.2)。
+ *
+ * 这两档在本包里已经**真的空了**:兼容层原有的 2 个 `.mock.test.ts` 与 3 个 `.e2e.test.ts`
+ * 全部是 `sandbox-transport` 的测试,随实现搬进了 adapters 包。vitest 对空档默认 exit 1,
+ * 那会让「这个包已经没有这类测试」和「这个包的测试全炸了」报出同一个退出码。
+ *
+ * ⚠ **fast 与 it 两档故意不给这个标志**。兼容层收窄后 fast 档仍有 8 个、it 档仍有 5 个文件;
+ *   它们一旦变空,里面装着的东西(主入口符号基准、装配面、runner 真机启动)就集体停摆
+ *   而没有任何人会知道 —— 而这正是本仓已经被骗过两次的失效形态。变空必须是一次响亮的失败。
+ *   与 `../adapters/scripts/run-tests.mjs` 的同名常量刻意保持**不同的档位集合**:
+ *   两个包各自空得起哪一档,取决于各自现存的测试面,不是一份可以照抄的配置。
+ */
+const ALLOW_EMPTY = ["--passWithNoTests"];
+
+/**
  * 快档两相。必须是**两次调用**(理由见文件头 ②),但可以**并发**跑 —— 两相合计 vitest 用时
  * ~6.6s,串起来再加两次进程启动就会顶破 10s 的快档预算,并发后墙钟压回 ~8s。
  *
@@ -50,7 +65,7 @@ function vitest(extra) {
  */
 async function runFastLane() {
   let mockOut = "";
-  const mock = spawn("vitest", ["run", "--project", "fast-mock"], { shell });
+  const mock = spawn("vitest", ["run", "--project", "fast-mock", ...ALLOW_EMPTY], { shell });
   mock.stdout.on("data", (d) => (mockOut += d));
   mock.stderr.on("data", (d) => (mockOut += d));
   const mockDone = new Promise((resolve) => mock.on("close", resolve));
@@ -71,7 +86,8 @@ if (args.length > 0 && mode !== "--fast" && mode !== "--e2e") {
 if (mode === "--fast") process.exit(await runFastLane());
 
 // e2e 需外部服务凭据,**不在**默认路径里;整文件被门控者在无凭据时整体 skip。
-if (mode === "--e2e") process.exit(vitest(["--project", "e2e", "--no-file-parallelism"]));
+if (mode === "--e2e")
+  process.exit(vitest(["--project", "e2e", "--no-file-parallelism", ...ALLOW_EMPTY]));
 
 // 全量:快档两相 → it 档串行。三相都跑完再汇总退出码,便于一次看全所有失败。
 const fastLane = await runFastLane();

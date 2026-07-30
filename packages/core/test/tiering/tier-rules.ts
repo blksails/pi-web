@@ -221,9 +221,9 @@ export function isDeclarationAcceptable(declared: TestTier, classified: TestTier
  *    `self-resolved-builtins.e2e.test.ts` 判定是 fast,却因历史命名带着 `.e2e`。)
  */
 export const E2E_ROSTER: readonly string[] = [
-  "server/test/rpc-channel/e2b-transport.e2e.test.ts",
-  "server/test/rpc-channel/sandbox-ws-transport.e2e.test.ts",
-  "server/test/rpc-channel/sandbox-ws-transport.pi.e2e.test.ts",
+  "adapters/test/rpc-channel/e2b-transport.e2e.test.ts",
+  "adapters/test/rpc-channel/sandbox-ws-transport.e2e.test.ts",
+  "adapters/test/rpc-channel/sandbox-ws-transport.pi.e2e.test.ts",
 ];
 
 /**
@@ -235,9 +235,9 @@ export const E2E_ROSTER: readonly string[] = [
 export const RUNTIME_DETECTED_IT: readonly string[] = [
   "server/test/attachment/http/http-attachment-registry.it.test.ts",
   "server/test/attachment/http/http-blob-store.it.test.ts",
-  "server/test/auth/stub-egress.it.test.ts",
-  "server/test/extensions/ext.e2e.it.test.ts",
-  "server/test/extensions/ext.integration.it.test.ts",
+  "adapters/test/auth/stub-egress.it.test.ts",
+  "adapters/test/extensions/ext.e2e.it.test.ts",
+  "adapters/test/extensions/ext.integration.it.test.ts",
   "server/test/http/http.e2e.it.test.ts",
   "server/test/http/http.integration.it.test.ts",
   "server/test/rpc-channel/pi-rpc-process.e2e.it.test.ts",

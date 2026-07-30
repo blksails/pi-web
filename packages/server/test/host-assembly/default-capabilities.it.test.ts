@@ -16,8 +16,8 @@
  * 只在路由 handler 运行时才调),故用「真实轻量对象 + 结构化 stub」拼出代表性 HostDeps ——
  * 见 STUBS_USED 记录(交付报告)。
  */
-import { McpProbeService } from "../../src/mcp-probe.js";
-import { createSessionEntryStore } from "../../src/session-store-postgres/index.js";
+import { McpProbeService } from "@blksails/pi-web-adapters/mcp-probe.js";
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,12 +35,12 @@ import {
 } from "@blksails/pi-web-core/host-manifest/index.js";
 import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
 import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
-import { AuthSessionState } from "../../src/auth/auth-session-state.js";
+import { AuthSessionState } from "@blksails/pi-web-adapters/auth/auth-session-state.js";
 import { AttachmentStore } from "@blksails/pi-web-core/attachment/attachment-store.js";
 import { createUrlSigner } from "@blksails/pi-web-core/attachment/url-signer.js";
 import { LocalFsBlobBackend } from "@blksails/pi-web-core/attachment/local-fs-backend.js";
 import { AttachmentRegistry } from "@blksails/pi-web-core/attachment/attachment-registry.js";
-import type { PiCli } from "../../src/extensions/ext.types.js";
+import type { PiCli } from "@blksails/pi-web-adapters/extensions/ext.types.js";
 import type { HostCommandHandler } from "@blksails/pi-web-core/commands/host-command-registry.js";
 // 守卫②的**独立基线**:直接 import 15 个真实路由工厂,与 defaultCapabilities 分离地各调一次
 // 作为「第二份真相」。绑错/漏绑工厂只改 defaultCapabilities 一侧 → 与此基线对不上 → 转红。
@@ -54,12 +54,12 @@ import { createSessionListRoutes } from "@blksails/pi-web-core/session-list/sess
 import { createSessionActionsRoutes } from "@blksails/pi-web-core/session-actions/session-actions-routes.js";
 import { createAgentSourcesRoutes } from "@blksails/pi-web-core/agent-source-list/agent-sources-routes.js";
 import { createFavoritesRoutes } from "@blksails/pi-web-core/agent-source-list/favorites-routes.js";
-import { createLlmGatewayRoutes } from "../../src/llm-gateway/gateway-routes.js";
-import { createAiGatewayRoutes } from "../../src/ai-gateway/routes.js";
-import { createAuthRoutes } from "../../src/auth/auth-routes.js";
+import { createLlmGatewayRoutes } from "@blksails/pi-web-adapters/llm-gateway/gateway-routes.js";
+import { createAiGatewayRoutes } from "@blksails/pi-web-adapters/ai-gateway/routes.js";
+import { createAuthRoutes } from "@blksails/pi-web-adapters/auth/auth-routes.js";
 import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
 import { createBashRoutes } from "@blksails/pi-web-core/http/routes/bash-routes.js";
-import { createExtensionRoutes } from "../../src/extensions/routes.js";
+import { createExtensionRoutes } from "@blksails/pi-web-adapters/extensions/routes.js";
 
 /**
  * ★ 真实命令名(dumped,非猜测):`lib/app/clear-host-command.ts` 的
