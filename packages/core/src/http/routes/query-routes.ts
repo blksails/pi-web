@@ -41,66 +41,72 @@ function dataOrError<T>(
   };
 }
 
-/** GET /sessions/:id/state */
-export function makeStateHandler(store: SessionStore): RouteHandler {
+/**
+ * 查询端点的公共骨架:取会话 → 转发一次 RPC → 提取 data → 投影为响应体。
+ *
+ * 六个查询端点(state/stats/messages/commands/models/fork-messages)原本各自把这五步抄了
+ * 一遍,只差三处:调哪个方法、响应键名、要不要后处理。抽成高阶函数后,新增一个查询端点
+ * 是加一个四行的调用,而不是再复制一遍 try/requireSession/dataOrError/jsonResponse/
+ * mapEngineError。
+ *
+ * ★ `logs` 端点**刻意不走这里**:它不发 RPC(直读 ring buffer)且要解析三个查询参数,
+ *   套进来只会让骨架为一个特例长出两个可选钩子。
+ *
+ * @param call    转发的会话方法。
+ * @param project 把成功 data 投影为响应体。可 async(commands 端点要回填 webVisible)。
+ */
+function makeQueryHandler<T>(
+  store: SessionStore,
+  call: (session: PiSession) => Promise<RpcResponse>,
+  project: (data: T) => Record<string, unknown> | Promise<Record<string, unknown>>,
+): RouteHandler {
   return async (ctx): Promise<Response> => {
     try {
       const session = requireSession(store, ctx);
-      const res = await session.getState();
-      const extracted = dataOrError<unknown>(res);
+      const extracted = dataOrError<T>(await call(session));
       if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { state: extracted.data });
+      return jsonResponse(200, await project(extracted.data));
     } catch (err) {
       return mapEngineError(err);
     }
   };
+}
+
+/** GET /sessions/:id/state */
+export function makeStateHandler(store: SessionStore): RouteHandler {
+  return makeQueryHandler<unknown>(
+    store,
+    (s) => s.getState(),
+    (state) => ({ state }),
+  );
 }
 
 /** GET /sessions/:id/stats */
 export function makeStatsHandler(store: SessionStore): RouteHandler {
-  return async (ctx): Promise<Response> => {
-    try {
-      const session = requireSession(store, ctx);
-      const res = await session.getSessionStats();
-      const extracted = dataOrError<unknown>(res);
-      if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { stats: extracted.data });
-    } catch (err) {
-      return mapEngineError(err);
-    }
-  };
+  return makeQueryHandler<unknown>(
+    store,
+    (s) => s.getSessionStats(),
+    (stats) => ({ stats }),
+  );
 }
 
 /** GET /sessions/:id/messages */
 export function makeMessagesQueryHandler(store: SessionStore): RouteHandler {
-  return async (ctx): Promise<Response> => {
-    try {
-      const session = requireSession(store, ctx);
-      const res = await session.getMessages();
-      const extracted = dataOrError<{ messages: unknown[] }>(res);
-      if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { messages: extracted.data.messages });
-    } catch (err) {
-      return mapEngineError(err);
-    }
-  };
+  return makeQueryHandler<{ messages: unknown[] }>(
+    store,
+    (s) => s.getMessages(),
+    ({ messages }) => ({ messages }),
+  );
 }
 
 /** GET /sessions/:id/commands */
 export function makeCommandsHandler(store: SessionStore): RouteHandler {
-  return async (ctx): Promise<Response> => {
-    try {
-      const session = requireSession(store, ctx);
-      const res = await session.getCommands();
-      const extracted = dataOrError<{ commands: unknown[] }>(res);
-      if (!extracted.ok) return extracted.response;
-      // 据各扩展命令所属插件的 pi-web.json(web.commands)回填 webVisible(plugin-system-unification)。
-      const commands = await enrichWebVisibleCommands(extracted.data.commands);
-      return jsonResponse(200, { commands });
-    } catch (err) {
-      return mapEngineError(err);
-    }
-  };
+  return makeQueryHandler<{ commands: unknown[] }>(
+    store,
+    (s) => s.getCommands(),
+    // 据各扩展命令所属插件的 pi-web.json(web.commands)回填 webVisible(plugin-system-unification)。
+    async ({ commands }) => ({ commands: await enrichWebVisibleCommands(commands) }),
+  );
 }
 
 /**
@@ -114,36 +120,20 @@ export function makeModelsHandler(
   env: NodeJS.ProcessEnv = process.env,
 ): RouteHandler {
   const hidden = parseHiddenProviders(env["PI_WEB_HIDE_PROVIDERS"]);
-  return async (ctx): Promise<Response> => {
-    try {
-      const session = requireSession(store, ctx);
-      const res = await session.getAvailableModels();
-      const extracted = dataOrError<{
-        models: ReadonlyArray<{ readonly provider?: unknown }>;
-      }>(res);
-      if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, {
-        models: excludeProviderModels(extracted.data.models, hidden),
-      });
-    } catch (err) {
-      return mapEngineError(err);
-    }
-  };
+  return makeQueryHandler<{ models: ReadonlyArray<{ readonly provider?: unknown }> }>(
+    store,
+    (s) => s.getAvailableModels(),
+    ({ models }) => ({ models: excludeProviderModels(models, hidden) }),
+  );
 }
 
 /** GET /sessions/:id/fork-messages → get_fork_messages 的 `{ messages }`(Req 8.3)。 */
 export function makeForkMessagesHandler(store: SessionStore): RouteHandler {
-  return async (ctx): Promise<Response> => {
-    try {
-      const session = requireSession(store, ctx);
-      const res = await session.getForkMessages();
-      const extracted = dataOrError<{ messages: unknown[] }>(res);
-      if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { messages: extracted.data.messages });
-    } catch (err) {
-      return mapEngineError(err);
-    }
-  };
+  return makeQueryHandler<{ messages: unknown[] }>(
+    store,
+    (s) => s.getForkMessages(),
+    ({ messages }) => ({ messages }),
+  );
 }
 
 /**

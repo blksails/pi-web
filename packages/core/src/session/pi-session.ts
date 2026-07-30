@@ -85,8 +85,7 @@ import {
   parseBackendsEnv,
 } from "../attachment/backends-config.js";
 import type { ExitInfo, Unsubscribe } from "../rpc-channel/index.js";
-import { LogRingBuffer } from "../logging/log-ring-buffer.js";
-import { StderrLogParser } from "../logging/stderr-log-parser.js";
+import { SessionLogPipe } from "./log-pipe.js";
 import {
   AgentRouteTimeoutError,
   AttachmentCatalogTimeoutError,
@@ -108,6 +107,15 @@ import {
 } from "./session.types.js";
 import { translateEvent } from "./translate/translate-event.js";
 import { INITIAL_SNAPSHOT, reduceSnapshot } from "./reduce-snapshot.js";
+import { PendingRequests } from "./pending-requests.js";
+import { TrailingThrottle } from "./trailing-throttle.js";
+import { AgentDeclarations } from "./agent-declarations.js";
+import { ReadinessProbe } from "./readiness-probe.js";
+import {
+  dispatchRawLine,
+  type RawLineEntry,
+  type RawLineTable,
+} from "./raw-line-router.js";
 import { StickyFrameRegistry } from "./sticky-registry.js";
 import {
   createTranslationContext,
@@ -155,17 +163,6 @@ const GATE_DEFAULT: LoggingConfig = {
 /** 就绪探针默认超时(毫秒):超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
 const DEFAULT_READINESS_PROBE_TIMEOUT_MS = 30_000;
 
-/**
- * 就绪探针**重发间隔**(毫秒)。
- *
- * 存在的理由见 {@link PiSession.startReadinessProbe} 的判别实验:早于子进程挂上 stdin
- * 读取器写入的探针请求会被**静默丢弃**,只发一次就会永远等不到回应。
- *
- * 取 1s 是两头夹出来的:小于它则在慢启动(实测带 5 个声明包时约 9–22s)期间堆积几十条
- * 永不 resolve 的 pending 记录;大于它则子进程刚就绪的那一刻要多等一拍才被发现。
- * 首发仍在 spawn 后立即进行,故**快路径零额外延迟**,重发只在首发落空时才起作用。
- */
-const READINESS_PROBE_RETRY_MS = 1_000;
 
 /**
  * restart 后重发探针前的 settle 延迟(毫秒):requestRestart 触发的子进程重生是异步的,
@@ -199,61 +196,35 @@ export class PiSession {
    * `piweb_clear_queue_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
    * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂。
    */
-  private readonly pendingClearQueue = new Map<
-    string,
-    { resolve: (r: ClearQueueResponse) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private readonly pendingClearQueue = new PendingRequests<ClearQueueResponse>();
   /**
    * agent-declared-routes:route 调用在途请求(clearQueue 同构):按关联 id 配对子进程回写的
    * `piweb_agent_route_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
    * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂(Req 3.4 / 5.3)。
    */
-  private readonly pendingAgentRoutes = new Map<
-    string,
-    { resolve: (r: AgentRouteResultFrame) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private readonly pendingAgentRoutes = new PendingRequests<AgentRouteResultFrame>();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
   /**
-   * agent 装配期经 `slash_completions` 帧声明的静态 slash 补全候选(spec
-   * agent-slash-completion)。按会话缓存,供 completion provider 读取实现 per-agent gating。
+   * agent 装配期声明帧的只读投影(slash 补全 / routes / 附件 profile / 目录可用性)。
+   * 四者共同语义(早于就绪门、未声明有确定缺省、一次性、纯数据)见 {@link AgentDeclarations}。
    */
-  private slashCompletions: readonly SlashCompletionDecl[] = [];
-  /**
-   * agent 装配期经 `agent_routes` 帧声明的 routes 纯数据投影(spec agent-declared-routes)。
-   * 按会话缓存为路由表(就绪门前缓存,slash_completions 同族);无声明恒为空数组(Req 2.5)。
-   */
-  private agentRoutesTable: readonly AgentRouteDeclDto[] = [];
-  /**
-   * agent 装配期经 `agent_attachment_profile` 帧声明的附件写目标 profile 名(spec
-   * agent-attachment-profile)。按会话缓存为只读投影;子进程装配期已是白名单校验权威,
-   * 本字段仅供上传路由的 `resolveWriteBackend` 消费(Req 2.1/2.3)。未声明/关断/校验失配恒
-   * 为 `undefined`(Req 5.1)。
-   */
-  private attachmentWriteProfile: string | undefined;
+  private readonly declarations = new AgentDeclarations();
   /**
    * agent-attachment-catalog:catalog 调用(list/materialize)在途请求(clearQueue/agent-routes
    * 同构):按关联 id 配对子进程回写的 `piweb_attachment_catalog_result` 行。超时或会话收尾时
    * reject 以免悬挂(Req 2.4/3.4)。
    */
-  private readonly pendingCatalog = new Map<
-    string,
-    {
-      resolve: (r: AttachmentCatalogResultFrame) => void;
-      reject: (e: Error) => void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
-  /**
-   * agent 装配期经 `agent_attachment_catalog` 帧声明的目录可用性(spec agent-attachment-catalog)。
-   * 按会话缓存为只读投影(slash_completions/agent_routes 同族,就绪门前收帧即可读);
-   * 未声明恒为 `false`(Req 1.2 结构性零变化)。
-   */
-  private catalogAvailable = false;
+  private readonly pendingCatalog = new PendingRequests<AttachmentCatalogResultFrame>();
   /** `control:"attachment"` 尾沿节流状态(design.md,≤1 帧/秒防风暴)。 */
-  private attachmentEventLastEmitAt: number | undefined;
-  private attachmentEventThrottleTimer: ReturnType<typeof setTimeout> | undefined;
-  private attachmentEventPendingPayload: AttachmentControlPayload | undefined;
+  /**
+   * agent-attachment-catalog:`control:"attachment"` 的尾沿节流器(≤1 帧/秒防风暴,
+   * design.md §行为规约)。语义与合并取舍见 {@link TrailingThrottle}。
+   */
+  private readonly attachmentEvents = new TrailingThrottle<AttachmentControlPayload>(
+    ATTACHMENT_EVENT_THROTTLE_MS,
+    (payload) => this.emitter.emit(FRAME_EVENT, makeControlFrame(payload)),
+  );
 
   /**
    * 服务端**唯一权威**会话快照(session-snapshot-authority):lifecycle/busy/turn/stats/model/title。
@@ -286,10 +257,11 @@ export class PiSession {
    * 关 → 开 / 开 → 关 即一步回退(Req 8.2/8.4)。
    */
   private readonly snapshotAuthority: boolean;
-  private probeTimer: ReturnType<typeof setTimeout> | undefined;
-  /** 就绪探针的重发定时器(见 {@link READINESS_PROBE_RETRY_MS});与 probeTimer 同生共死。 */
-  private probeRetryTimer: ReturnType<typeof setInterval> | undefined;
-  private restartSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * 就绪探针的**机制**(定时器与竞态收敛)。生命周期状态本身仍在本类 —— 切分依据见
+   * {@link ReadinessProbe} 的文件头。
+   */
+  private readonly probe: ReadinessProbe;
   /**
    * 状态桥(`control:"state"`)rev 跨 runner 重启保持**单调**。dev 热重载 / 显式 restart 会重生
    * runner 子进程,新状态桥 store 的 rev 从 1 重新计数;客户端 control-store 按 `rev <= cur.rev` 判
@@ -311,20 +283,11 @@ export class PiSession {
   private readonly unsubs: Unsubscribe[] = [];
 
   /** 每会话 stderr 日志解析管道（Req 2.5 / 3.1）。 */
-  private readonly logParser = new StderrLogParser();
-  private readonly logBuffer = new LogRingBuffer();
-
   /**
-   * 服务端权威日志门控（Req 6.4/6.5/6.6 / task 4.4）。
-   * - `gateConfig` 在 loggingConfigProvider 解析前为 `undefined`（表示"待加载"）。
-   * - 首条 stderr chunk 到来时触发异步加载；期间 chunk 入 `pendingStderr` 缓冲队列。
-   * - 配置加载完成后回放缓冲队列（按门控过滤），之后 chunk 直接过门控。
-   * - 无 provider 时（默认/生产默认）同步设为 GATE_DEFAULT（全开，向后兼容）。
+   * stderr 日志管道(解析 / 门控 / ring buffer / 产帧)。语义与门控缓冲的理由见
+   * {@link SessionLogPipe} —— 该簇与会话其它职责无交集,整体提出。
    */
-  private gateConfig: LoggingConfig | undefined;
-  private gateLoading = false;
-  private readonly pendingStderr: string[] = [];
-  private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
+  private readonly logPipe: SessionLogPipe;
 
   constructor(opts: PiSessionOptions) {
     this.id = opts.id;
@@ -335,16 +298,27 @@ export class PiSession {
     this.policySource = opts.resolved.policySource;
     this.idleMs = opts.idleMs ?? DEFAULT_IDLE_MS;
     this.onClosed = opts.onClosed;
-    this.loggingConfigProvider = opts.loggingConfigProvider;
+    this.logPipe = new SessionLogPipe({
+      ...(opts.loggingConfigProvider !== undefined
+        ? { provider: opts.loggingConfigProvider }
+        : {}),
+      defaultGate: GATE_DEFAULT,
+      isActive: () => this._status === "active",
+      emit: (entries) =>
+        this.emitter.emit(FRAME_EVENT, makeControlFrame({ control: "logs", entries })),
+    });
     this.readinessHandshake = opts.readinessHandshake ?? false;
     this.snapshotAuthority = opts.snapshotAuthority ?? false;
     this.readinessProbeTimeoutMs =
       opts.readinessProbeTimeoutMs ?? DEFAULT_READINESS_PROBE_TIMEOUT_MS;
-
-    // 无 provider 时直接使用安全默认（全开，无 async 延迟）。
-    if (!this.loggingConfigProvider) {
-      this.gateConfig = GATE_DEFAULT;
-    }
+    this.probe = new ReadinessProbe({
+      timeoutMs: this.readinessProbeTimeoutMs,
+      probe: () => this.channel.getCommands(),
+      // 仅在 active 且 initializing 时探测;超时与响应的先后收敛在 ReadinessProbe 内。
+      canStart: () => this._status === "active" && this._lifecycle === "initializing",
+      onReady: () => this.setLifecycle("ready"),
+      onFailure: (code, detail) => this.setLifecycle("error", code, detail),
+    });
 
     // EventEmitter 默认 maxListeners=10,多订阅者场景放宽。
     this.emitter.setMaxListeners(0);
@@ -374,7 +348,7 @@ export class PiSession {
       // 原始行:识别 agent 侧 ui-rpc 响应约定(Tier3,Req 4.1)。
       this.channel.onLine((line) => this.handleRawLine(line)),
       // stderr 日志管道:sentinel 行→解析→ring buffer→control:"logs" 帧(Req 3.1)。
-      this.channel.onStderr((chunk) => this.handleStderr(chunk)),
+      this.channel.onStderr((chunk) => this.logPipe.ingest(chunk)),
     );
 
     this.touch();
@@ -390,7 +364,7 @@ export class PiSession {
     // 就绪握手(spec session-readiness-handshake):开启时发只读探针判定真实就绪(Req 1.3)。
     // 异步、不阻塞构造;关闭时完全 no-op(既有行为不变)。
     if (this.readinessHandshake) {
-      this.startReadinessProbe();
+      this.probe.start();
     }
   }
 
@@ -401,20 +375,9 @@ export class PiSession {
     this.stateRevOffset = this.maxForwardedStateRev + 1;
     // ② 就绪握手重探针(仅握手开启 + active)。
     if (!this.readinessHandshake || this._status !== "active") return;
-    if (this.probeTimer !== undefined) {
-      clearTimeout(this.probeTimer);
-      this.probeTimer = undefined;
-    }
-    if (this.probeRetryTimer !== undefined) {
-      clearInterval(this.probeRetryTimer);
-      this.probeRetryTimer = undefined;
-    }
-    if (this.restartSettleTimer !== undefined) {
-      clearTimeout(this.restartSettleTimer);
-      this.restartSettleTimer = undefined;
-    }
+    this.probe.cancel();
     this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
-    this.startReadinessProbe();
+    this.probe.start();
   }
 
   get status(): SessionStatus {
@@ -531,103 +494,6 @@ export class PiSession {
     this.applySnapshot({ ...this._snapshot, ...patch });
   }
 
-  /**
-   * 发起只读就绪探针(Req 1.3 / 1.4 / 4.1):以 `getCommands` 的**首条响应**为真实就绪锚点
-   * (有响应即证明 agent 读循环已起、session 已绑定);超时未响应 → error{probe-timeout};
-   * 通道拒绝 → error{probe-failed}。仅在 active 且 initializing 时生效;先后到达只认首个。
-   *
-   * ## ★ 为什么必须**重发**而不是只发一次
-   *
-   * 本方法在构造函数里紧跟 spawn 调用,此时子进程**尚未挂上 stdin 读取器**
-   * ——「先写进 stdin 的那一行会被静默丢弃」在本仓实测成立,而不是被缓冲后补读。
-   *
-   * 判别实验(同一 runner / 同一 agent 目录 / 同一帧,唯一变量是写入时机):
-   *
-   * | 写入时机 | runner 进入 rpc 模式 | 结果 |
-   * |---|---|---|
-   * | spawn 瞬间(t=0) | 2991 ms | **70 秒全程无回应** |
-   * | 启动之后(t=40s)  | 3116 ms | **9 ms 收到 response** |
-   *
-   * ⇒ 丢的是**请求**,不是响应迟到。由此推出两条,少想一条就会修错方向:
-   *   ① **把超时调大完全无效** —— 实测把 `readinessProbeTimeoutMs` 抬到 120s 仍旧
-   *      `probe-timeout`(120003 ms)。请求已经不在了,等多久都不会有人回。
-   *   ② **症状是间歇的**,因为它是竞态:启动快慢随扩展/包数量与机器负载漂移,
-   *      同一份配置连跑三次可能 2.5s ready / 22s ready / 直接超时。
-   *      「偶发」在这里不是玄学,是竞态的正常表现。
-   *
-   * 故改为**在截止前周期性重发**,收到首个响应即就绪。这样做安全的前提是
-   * `get_commands` 是**只读**命令(本方法契约的第一行就写着「只读就绪探针」)——
-   * 重发不产生副作用,顶多在通道里多留几条永不 resolve 的 pending 记录,
-   * 它们随通道关闭一并释放。
-   *
-   * ⚠ **通道拒绝(reject)不重试**:那是 `ChannelClosedError` 一类的确定性失败,
-   *   重试只会把 `probe-failed` 拖成 `probe-timeout`,让报错从「准确」变成「含糊」。
-   */
-  private startReadinessProbe(): void {
-    if (this._status !== "active" || this._lifecycle !== "initializing") return;
-    let settled = false;
-
-    const finish = (fn: () => void): void => {
-      if (settled) return;
-      settled = true;
-      if (this.probeTimer !== undefined) {
-        clearTimeout(this.probeTimer);
-        this.probeTimer = undefined;
-      }
-      if (this.probeRetryTimer !== undefined) {
-        clearInterval(this.probeRetryTimer);
-        this.probeRetryTimer = undefined;
-      }
-      fn();
-    };
-
-    const timer = setTimeout(() => {
-      finish(() =>
-        this.setLifecycle("error", "probe-timeout", "readiness probe timed out"),
-      );
-    }, this.readinessProbeTimeoutMs);
-    if (typeof timer.unref === "function") timer.unref();
-    this.probeTimer = timer;
-
-    const attempt = (): void => {
-      if (settled) return;
-      // 会话已不在探针适用状态(关闭/重生中):停止重发,交由对应路径收尾。
-      if (this._status !== "active" || this._lifecycle !== "initializing") {
-        if (this.probeRetryTimer !== undefined) {
-          clearInterval(this.probeRetryTimer);
-          this.probeRetryTimer = undefined;
-        }
-        return;
-      }
-      let probe: Promise<RpcResponse>;
-      try {
-        probe = this.channel.getCommands();
-      } catch (err) {
-        // 同步抛出(极少):归一为探针失败,不重试(确定性失败)。
-        finish(() =>
-          this.setLifecycle("error", "probe-failed", `readiness probe threw: ${String(err)}`),
-        );
-        return;
-      }
-      void probe.then(
-        () => {
-          // 有响应(含 error 响应)即就绪:读循环已处理命令并回包(Req 1.4)。
-          finish(() => this.setLifecycle("ready"));
-        },
-        () => {
-          finish(() => this.setLifecycle("error", "probe-failed", "readiness probe rejected"));
-        },
-      );
-    };
-
-    attempt(); // 首发保持原有时序:子进程若已就绪,这一发即命中,零额外延迟。
-    if (settled) return;
-
-    const retry = setInterval(attempt, READINESS_PROBE_RETRY_MS);
-    if (typeof retry.unref === "function") retry.unref();
-    this.probeRetryTimer = retry;
-  }
-
   // ───────────────────────── 广播订阅(Req 3.x) ─────────────────────────
 
   subscribe(
@@ -659,7 +525,7 @@ export class PiSession {
     // 回填：若 ring buffer 非空，立即向该新订阅者发送一帧 control:"logs"，
     // 内容为当前缓冲的全部条目（Req 4.5/5.2/3.1，task 7.3）。
     // 只向刚订阅的 onFrame 发送，不广播（避免重复/打扰既有订阅者）。
-    const buffered = this.logBuffer.getLogs({});
+    const buffered = this.logPipe.getLogs();
     if (buffered.length > 0) {
       frameWrap(makeControlFrame({ control: "logs", entries: buffered }));
     }
@@ -785,197 +651,189 @@ export class PiSession {
   }
 
   /**
-   * 原始行处理(Tier3 ui-rpc 下行约定):agent 以 `{"type":"ui_rpc_response","response":{...}}`
-   * 应答 ui-rpc;识别后翻译为 `control: ui-rpc` 帧广播(按 correlationId 由客户端配对)。
-   * 其余行已由 onEvent/onExtensionUIRequest 路径处理,这里忽略。
+   * 入站原始行的处置表(`type` → 校验 + 处置)。惰性建一次,`handleRawLine` 查表分发。
+   *
+   * ★ 建表而非 if-链:加一个帧类型 = 加一个条目,不必再往一条 185 行的链尾追加。
+   *   这与**子进程侧** `@blksails/pi-web-runner` 的 `frame-channel/frame-router.ts` 同构 ——
+   *   同一条 IPC 通道的两端现在用同一种方式解复用。
+   *
+   * ★ 条目顺序**不承载语义**(Map 查表,不是顺序匹配)。原 if-链里那些「置于 active gate
+   *   之前」的注释,现由各条目的 `requireActive` 显式表达:除 `ui_rpc_response` 外一律
+   *   不设该门 —— 结果帧要在超时/收尾窗口里仍能配对在途请求,装配期声明帧要早于就绪门
+   *   就被缓存。
+   *
+   * ★ `onInvalid` 的有无同样是**刻意**的:结果帧畸形静默丢弃(必有在途请求,超时兜底会
+   *   给出更准的错误);声明帧畸形必须 warn(后果是该能力整个不可用,别处不会报)。
    */
-  private handleRawLine(line: string): void {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      return; // 非 JSON 行忽略
-    }
-    if (parsed === null || typeof parsed !== "object") return;
-    const type = (parsed as { type?: unknown }).type;
+  private rawLineTable: RawLineTable | undefined;
+
+  private getRawLineTable(): RawLineTable {
+    if (this.rawLineTable !== undefined) return this.rawLineTable;
+    const table = new Map<string, RawLineEntry<never>>();
+    const add = <T>(type: string, entry: RawLineEntry<T>): void => {
+      table.set(type, entry as unknown as RawLineEntry<never>);
+    };
+
     // 状态注入桥(state-injection-bridge):子进程上报的权威态变更 → control:"state" 帧。
-    if (type === "piweb_state") {
-      const state = StateDownLineSchema.safeParse(parsed);
-      if (!state.success) return; // 畸形行丢弃,不广播
-      // 客户端 rev 单调化:runner-local rev + 跨重启 offset(见 stateRevOffset 说明)。
-      const forwardedRev = state.data.rev + this.stateRevOffset;
-      if (forwardedRev > this.maxForwardedStateRev) {
-        this.maxForwardedStateRev = forwardedRev;
-      }
-      const frame = makeControlFrame({
-        control: "state",
-        key: state.data.key,
-        value: state.data.value,
-        rev: forwardedRev,
-        ...(state.data.deleted ? { deleted: true } : {}),
-      });
-      // state-injection-bridge 增量:按 key 登记为粘性帧(与 queue/session-state 同构),
-      // 使重连/迟到订阅者回放即得每个 key 的最新值——否则重连后 KV 快照丢失(仅当次会话内存活)。
-      // delete 帧同样登记(而非从表中摘除):重放时前端按 deleted:true 语义删键,
-      // 效果与「表中没有该键」一致,但复用已有 last-value 覆盖机制,无需新增 delete() API。
-      this.sticky.set(`state:${state.data.key}`, frame);
-      this.emitter.emit(FRAME_EVENT, frame);
-      return;
-    }
+    add("piweb_state", {
+      schema: StateDownLineSchema,
+      handle: (data) => {
+        // 客户端 rev 单调化:runner-local rev + 跨重启 offset(见 stateRevOffset 说明)。
+        const forwardedRev = data.rev + this.stateRevOffset;
+        if (forwardedRev > this.maxForwardedStateRev) {
+          this.maxForwardedStateRev = forwardedRev;
+        }
+        const frame = makeControlFrame({
+          control: "state",
+          key: data.key,
+          value: data.value,
+          rev: forwardedRev,
+          ...(data.deleted ? { deleted: true } : {}),
+        });
+        // 按 key 登记为粘性帧(与 queue/session-state 同构),使重连/迟到订阅者回放即得每个
+        // key 的最新值——否则重连后 KV 快照丢失(仅当次会话内存活)。delete 帧同样登记(而非
+        // 从表中摘除):重放时前端按 deleted:true 语义删键,效果与「表中没有该键」一致,但
+        // 复用已有 last-value 覆盖机制,无需新增 delete() API。
+        this.sticky.set(`state:${data.key}`, frame);
+        this.emitter.emit(FRAME_EVENT, frame);
+      },
+    });
 
-    // message-queue-ui「取回」:子进程回写的 clearQueue 结果行 → 按 id 配对 pending 请求 resolve。
-    // 置于 active gate 之前:结果关联在途请求,晚到亦应解析(超时已删除则安全丢弃)。
-    if (type === "piweb_clear_queue_result") {
-      const parsedRes = ClearQueueResultLineSchema.safeParse(parsed);
-      if (!parsedRes.success) return; // 畸形结果行丢弃
-      const pending = this.pendingClearQueue.get(parsedRes.data.id);
-      if (pending === undefined) return; // 未知/已超时 id → 丢弃
-      this.pendingClearQueue.delete(parsedRes.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve({
-        steering: parsedRes.data.steering,
-        followUp: parsedRes.data.followUp,
-      });
-      return;
-    }
+    // 三个结果帧:按 id 配对在途请求。未知/迟到 id 由 PendingRequests.settle 安全丢弃。
+    add("piweb_clear_queue_result", {
+      schema: ClearQueueResultLineSchema,
+      handle: (data) => {
+        this.pendingClearQueue.settle(data.id, {
+          steering: data.steering,
+          followUp: data.followUp,
+        });
+      },
+    });
+    add("piweb_agent_route_result", {
+      schema: AgentRouteResultFrameSchema,
+      handle: (data) => void this.pendingAgentRoutes.settle(data.id, data),
+    });
+    add("piweb_attachment_catalog_result", {
+      schema: AttachmentCatalogResultFrameSchema,
+      handle: (data) => void this.pendingCatalog.settle(data.id, data),
+    });
 
-    // agent-declared-routes:子进程回写的 route 结果帧 → 按 id 配对 pending 请求 resolve。
-    // 置于 active gate 之前(clearQueue 同语义):结果关联在途请求,晚到亦应解析;
-    // 未知/已超时 id 与畸形帧安全丢弃(Req 3.4 / 5.3)。
-    if (type === "piweb_agent_route_result") {
-      const parsedResult = AgentRouteResultFrameSchema.safeParse(parsed);
-      if (!parsedResult.success) return; // 畸形结果帧丢弃
-      const pending = this.pendingAgentRoutes.get(parsedResult.data.id);
-      if (pending === undefined) return; // 未知/迟到 id → 丢弃
-      this.pendingAgentRoutes.delete(parsedResult.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve(parsedResult.data);
-      return;
-    }
-
-    // agent-attachment-catalog:子进程回写的 catalog 结果帧(list/materialize)→ 按 id 配对
-    // pending 请求 resolve。置于 active gate 之前(clearQueue/agent-routes 同语义):结果关联
-    // 在途请求,晚到亦应解析;未知/已超时 id 与畸形帧安全丢弃(Req 2.4/3.4)。
-    if (type === "piweb_attachment_catalog_result") {
-      const parsedCatalogResult = AttachmentCatalogResultFrameSchema.safeParse(parsed);
-      if (!parsedCatalogResult.success) return; // 畸形结果帧丢弃
-      const pending = this.pendingCatalog.get(parsedCatalogResult.data.id);
-      if (pending === undefined) return; // 未知/迟到 id → 丢弃
-      this.pendingCatalog.delete(parsedCatalogResult.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve(parsedCatalogResult.data);
-      return;
-    }
-
-    // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
-    // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
-    if (type === "slash_completions") {
-      const sc = SlashCompletionsFrameSchema.safeParse(parsed);
-      if (sc.success) this.slashCompletions = sc.data.items;
-      return;
-    }
-
-    // agent-declared-routes:装配期 `agent_routes` 声明帧(slash_completions 同族,
-    // 早于就绪门/无 active 约束)。二次 zod 校验失败 → 整帧丢弃并记日志(routes 不挂载,
-    // 清单空、调用 404;Req 2.5 / design Error Handling)。
-    if (type === "agent_routes") {
-      const routesFrame = AgentRoutesFrameSchema.safeParse(parsed);
-      if (!routesFrame.success) {
+    // 四个装配期声明帧:按会话缓存为只读投影,早于就绪门。
+    add("slash_completions", {
+      schema: SlashCompletionsFrameSchema,
+      handle: (data) => {
+        this.declarations.setSlashCompletions(data.items);
+      },
+    });
+    add("agent_routes", {
+      schema: AgentRoutesFrameSchema,
+      // 校验失败 → 整帧丢弃并记日志(routes 不挂载,清单空、调用 404;
+      // Req 2.5 / design Error Handling)。
+      onInvalid: (error) => {
         routesLog.warn("agent_routes frame dropped: schema validation failed", {
           session: this.id,
-          issues: routesFrame.error.issues,
+          issues: (error as { issues?: unknown } | undefined)?.issues,
         });
-        return;
-      }
-      this.agentRoutesTable = routesFrame.data.routes;
-      return;
-    }
-
-    // agent-attachment-profile:装配期 `agent_attachment_profile` 声明帧(slash_completions
-    // 同族,早于就绪门/无 active 约束)。子进程装配期已是白名单校验权威;主进程消费侧仅做
-    // 防御性核对——关断 / 二次 zod 校验失败 / 名字未在本进程视角的拓扑中命中,均 warn+丢弃
-    // 不缓存(不失败会话,回落宿主默认写路由,Req 2.1/2.3/5.1)。
-    if (type === "agent_attachment_profile") {
-      if (isAttachmentProfileDisabled(process.env)) {
-        attachmentProfileLog.warn("agent_attachment_profile frame dropped: disabled", {
-          session: this.id,
-        });
-        return;
-      }
-      const profileFrame = AgentAttachmentProfileFrameSchema.safeParse(parsed);
-      if (!profileFrame.success) {
+      },
+      handle: (data) => {
+        this.declarations.setRoutes(data.routes);
+      },
+    });
+    add("agent_attachment_profile", {
+      schema: AgentAttachmentProfileFrameSchema,
+      onInvalid: (error) => {
         attachmentProfileLog.warn(
           "agent_attachment_profile frame dropped: schema validation failed",
-          { session: this.id, issues: profileFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      const topology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
-      const known = topology?.backends.map((b) => b.name) ?? [];
-      if (!known.includes(profileFrame.data.profile)) {
-        attachmentProfileLog.warn(
-          "agent_attachment_profile frame dropped: profile not in this process's topology view",
-          { session: this.id, profile: profileFrame.data.profile, known },
-        );
-        return;
-      }
-      this.attachmentWriteProfile = profileFrame.data.profile;
-      return;
-    }
-
-    // agent-attachment-catalog:装配期 `agent_attachment_catalog` 声明帧(slash_completions/
-    // agent_routes 同族,早于就绪门/无 active 约束)。二次 zod 校验失败 → 丢弃不缓存
-    // (目录视同未声明,provider 零往返,Req 1.2)。
-    if (type === "agent_attachment_catalog") {
-      const catalogFrame = AgentAttachmentCatalogFrameSchema.safeParse(parsed);
-      if (!catalogFrame.success) {
+      },
+      // 子进程装配期已是白名单校验权威;主进程消费侧仅做防御性核对——关断 / 名字未在本进程
+      // 视角的拓扑中命中,均 warn+丢弃不缓存(不失败会话,回落宿主默认写路由,Req 2.1/2.3/5.1)。
+      handle: (data) => {
+        if (isAttachmentProfileDisabled(process.env)) {
+          attachmentProfileLog.warn("agent_attachment_profile frame dropped: disabled", {
+            session: this.id,
+          });
+          return;
+        }
+        const topology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
+        const known = topology?.backends.map((b) => b.name) ?? [];
+        if (!known.includes(data.profile)) {
+          attachmentProfileLog.warn(
+            "agent_attachment_profile frame dropped: profile not in this process's topology view",
+            { session: this.id, profile: data.profile, known },
+          );
+          return;
+        }
+        this.declarations.setAttachmentWriteProfile(data.profile);
+      },
+    });
+    add("agent_attachment_catalog", {
+      schema: AgentAttachmentCatalogFrameSchema,
+      // 校验失败 → 丢弃不缓存(目录视同未声明,provider 零往返,Req 1.2)。
+      onInvalid: (error) => {
         attachmentCatalogLog.warn(
           "agent_attachment_catalog frame dropped: schema validation failed",
-          { session: this.id, issues: catalogFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      this.catalogAvailable = true;
-      return;
-    }
+      },
+      handle: () => {
+        this.declarations.markAttachmentCatalogAvailable();
+      },
+    });
 
-    // agent-attachment-catalog:子进程主动推送的「新增附件」事件帧(publish 落库后发射)。
-    // 二次 zod 校验失败 → warn+丢弃,不失败会话(design.md §Error Handling)。转发为 SSE
+    // 子进程主动推送的「新增附件」事件帧(publish 落库后发射)。转发为 SSE
     // `control:"attachment"`,尾沿节流 ≤1 帧/秒防风暴(design.md §行为规约)。非粘性:
     // 错过不补(打开会话时前端本就全量枚举目录/附件)。
-    if (type === "piweb_attachment_event") {
-      const eventFrame = AttachmentEventFrameSchema.safeParse(parsed);
-      if (!eventFrame.success) {
+    add("piweb_attachment_event", {
+      schema: AttachmentEventFrameSchema,
+      onInvalid: (error) => {
         attachmentCatalogLog.warn(
           "piweb_attachment_event frame dropped: schema validation failed",
-          { session: this.id, issues: eventFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      this.emitAttachmentEventThrottled({
-        control: "attachment",
-        event: eventFrame.data.event,
-        attachment: eventFrame.data.attachment,
-      });
-      return;
-    }
+      },
+      handle: (data) => {
+        this.attachmentEvents.push({
+          control: "attachment",
+          event: data.event,
+          attachment: data.attachment,
+        });
+      },
+    });
 
-    if (this._status !== "active") return;
     // Tier3 ui-rpc 下行约定:`{"type":"ui_rpc_response","response":{...}}`。
-    if (type !== "ui_rpc_response") return;
-    const res = UiRpcResponseSchema.safeParse(
-      (parsed as { response?: unknown }).response,
-    );
-    if (!res.success) return; // 非法响应丢弃(Req 4.5)
-    this.emitter.emit(
-      FRAME_EVENT,
-      makeControlFrame({ control: "ui-rpc", response: res.data }),
-    );
+    // ★ 唯一设 active 门的条目(原 if-链里那句 `if (this._status !== "active") return;`
+    //   恰位于它之前)。校验对象是**内层** `response` 而非整帧,故包一层取值适配。
+    add("ui_rpc_response", {
+      requireActive: true,
+      schema: {
+        safeParse: (v: unknown) =>
+          UiRpcResponseSchema.safeParse((v as { response?: unknown } | null)?.response),
+      },
+      handle: (data) => {
+        this.emitter.emit(
+          FRAME_EVENT,
+          makeControlFrame({ control: "ui-rpc", response: data }),
+        );
+      },
+    });
+
+    this.rawLineTable = table;
+    return table;
+  }
+
+  /**
+   * 原始行处理:按 `type` 查 {@link getRawLineTable} 分发。未注册类型 / 非 JSON / 校验
+   * 失败的行不消费(其余行已由 onEvent / onExtensionUIRequest 路径处理)。
+   */
+  private handleRawLine(line: string): void {
+    dispatchRawLine(line, this.getRawLineTable(), this._status === "active");
   }
 
   /** agent 装配期声明的静态 slash 补全候选(spec agent-slash-completion)。 */
   getSlashCompletions(): readonly SlashCompletionDecl[] {
-    return this.slashCompletions;
+    return this.declarations.slashCompletions;
   }
 
   /**
@@ -983,7 +841,7 @@ export class PiSession {
    * 无声明 → 空数组;就绪门前收帧即可读(声明帧缓存早于 lifecycle ready)。
    */
   get agentRoutes(): ReadonlyArray<AgentRouteDeclDto> {
-    return this.agentRoutesTable;
+    return this.declarations.routes;
   }
 
   /**
@@ -992,7 +850,7 @@ export class PiSession {
    * (声明帧缓存早于 lifecycle ready,slash_completions/agent_routes 同族)。
    */
   getAttachmentWriteProfile(): string | undefined {
-    return this.attachmentWriteProfile;
+    return this.declarations.attachmentWriteProfile;
   }
 
   /**
@@ -1001,104 +859,7 @@ export class PiSession {
    * slash_completions/agent_routes 同族)。catalog provider 据此实现零往返降级。
    */
   get attachmentCatalogAvailable(): boolean {
-    return this.catalogAvailable;
-  }
-
-  /**
-   * agent-attachment-catalog:尾沿节流转发 `control:"attachment"`(design.md,≤1 帧/秒防风暴)。
-   * 距上次转发 ≥ 节流窗口 → 立即转发;否则挂起最新载荷,窗口到期后一次性补发(合并期间的多次
-   * 事件只保留最新一条 —— 面板重拉是全量枚举,合并无损)。
-   */
-  private emitAttachmentEventThrottled(payload: AttachmentControlPayload): void {
-    const now = Date.now();
-    if (
-      this.attachmentEventLastEmitAt === undefined ||
-      now - this.attachmentEventLastEmitAt >= ATTACHMENT_EVENT_THROTTLE_MS
-    ) {
-      this.attachmentEventLastEmitAt = now;
-      this.emitter.emit(FRAME_EVENT, makeControlFrame(payload));
-      return;
-    }
-    this.attachmentEventPendingPayload = payload;
-    if (this.attachmentEventThrottleTimer === undefined) {
-      const delay = ATTACHMENT_EVENT_THROTTLE_MS - (now - this.attachmentEventLastEmitAt);
-      this.attachmentEventThrottleTimer = setTimeout(() => {
-        this.attachmentEventThrottleTimer = undefined;
-        if (this.attachmentEventPendingPayload !== undefined) {
-          this.attachmentEventLastEmitAt = Date.now();
-          this.emitter.emit(FRAME_EVENT, makeControlFrame(this.attachmentEventPendingPayload));
-          this.attachmentEventPendingPayload = undefined;
-        }
-      }, delay);
-    }
-  }
-
-  /**
-   * stderr 日志管道(Req 2.5 / 3.1):喂 chunk 给 parser → 得到 LogEntry[] →
-   * 每条存入 ring buffer(分配 id)→ 合并成一帧经帧 emitter 广播。
-   * 非 sentinel 的非空文本行由 parser 包装为 proc:stderr 原始日志(Req 4.3)；空白行丢弃。
-   *
-   * 服务端权威门控（Req 6.4/6.5/6.6 / task 4.4）：
-   * 若配置未加载，将 chunk 入队；配置加载完成后回放队列并按门控过滤。
-   * 若配置已加载，直接按门控过滤后入 buffer/产帧。
-   */
-  private handleStderr(chunk: string): void {
-    if (this._status !== "active") return;
-
-    // 门控配置未就绪：缓冲 chunk，按需触发一次异步加载。
-    if (this.gateConfig === undefined) {
-      this.pendingStderr.push(chunk);
-      if (!this.gateLoading) {
-        this.gateLoading = true;
-        const provider = this.loggingConfigProvider!;
-        provider()
-          .catch(() => GATE_DEFAULT)
-          .then((config) => {
-            this.gateConfig = config;
-            // 回放缓冲队列（按门控过滤）。
-            const pending = this.pendingStderr.splice(0);
-            for (const c of pending) {
-              this.processStderrChunk(c);
-            }
-          })
-          .catch(() => {
-            // 极端情况（processStderrChunk 内部抛出），吞错不崩。
-          });
-      }
-      return;
-    }
-
-    // 门控配置已就绪：直接过滤处理。
-    this.processStderrChunk(chunk);
-  }
-
-  /**
-   * 实际处理 stderr chunk：解析 → 按 gateConfig 过滤 → 入 buffer → 产帧。
-   * 调用前必须确保 `gateConfig` 已就绪（非 undefined）。
-   */
-  private processStderrChunk(chunk: string): void {
-    if (this._status !== "active") return;
-    const gate = this.gateConfig!;
-    const raw = this.logParser.ingestChunk(chunk);
-    if (raw.length === 0) return;
-
-    const entries: (LogEntry & { id: string })[] = [];
-    for (const entry of raw) {
-      // 门控过滤（Req 6.4 / 6.5 / 6.6）：
-      //  1. 全局开关关闭 → 全丢。
-      //  2. 条目 level 低于配置 level → 丢。
-      //  3. 命名空间显式关闭 → 丢。
-      if (!gate.enabled) continue;
-      if (!isLevelEnabled(entry.level, gate.level)) continue;
-      if (!isNamespaceEnabled(entry.ns, gate.namespaces)) continue;
-      entries.push(this.logBuffer.ingest(entry));
-    }
-
-    if (entries.length === 0) return;
-    this.emitter.emit(
-      FRAME_EVENT,
-      makeControlFrame({ control: "logs", entries }),
-    );
+    return this.declarations.attachmentCatalogAvailable;
   }
 
   /**
@@ -1110,7 +871,7 @@ export class PiSession {
     limit?: number;
     since?: number;
   }): (LogEntry & { id: string })[] {
-    return this.logBuffer.getLogs(query);
+    return this.logPipe.getLogs(query);
   }
 
   /**
@@ -1243,19 +1004,11 @@ export class PiSession {
     }
     this.touch();
     const id = randomUUID();
-    return new Promise<ClearQueueResponse>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingClearQueue.delete(id);
-        reject(new Error("clear_queue timed out"));
-      }, timeoutMs);
-      this.pendingClearQueue.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id }));
-      } catch (err) {
-        this.pendingClearQueue.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingClearQueue.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new Error("clear_queue timed out"),
+      send: () => this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id })),
     });
   }
 
@@ -1289,19 +1042,11 @@ export class PiSession {
       // GET 无 body:undefined 时不携带 body 键(帧保持最小投影)。
       ...(req.body !== undefined ? { body: req.body } : {}),
     };
-    return new Promise<AgentRouteResultFrame>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingAgentRoutes.delete(id);
-        reject(new AgentRouteTimeoutError(name, timeoutMs));
-      }, timeoutMs);
-      this.pendingAgentRoutes.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify(frame));
-      } catch (err) {
-        this.pendingAgentRoutes.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingAgentRoutes.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new AgentRouteTimeoutError(name, timeoutMs),
+      send: () => this.channel.send(JSON.stringify(frame)),
     });
   }
 
@@ -1331,19 +1076,11 @@ export class PiSession {
       req.op === "list"
         ? { type: "piweb_attachment_catalog_request", id, op: "list", query: req.query }
         : { type: "piweb_attachment_catalog_request", id, op: "materialize", entryId: req.entryId };
-    return new Promise<AttachmentCatalogResultFrame>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingCatalog.delete(id);
-        reject(new AttachmentCatalogTimeoutError(req.op, timeoutMs));
-      }, timeoutMs);
-      this.pendingCatalog.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify(frame));
-      } catch (err) {
-        this.pendingCatalog.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingCatalog.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new AttachmentCatalogTimeoutError(req.op, timeoutMs),
+      send: () => this.channel.send(JSON.stringify(frame)),
     });
   }
 
@@ -1437,25 +1174,10 @@ export class PiSession {
     //(见 handleRunnerRestarted,确定落到新子进程);仅当通道不支持 onRestart 时,退回 settle 定时器
     // best-effort 重探针(避免探针写入将死的旧 stdin,见 RESTART_PROBE_SETTLE_MS)。
     if (this.readinessHandshake) {
-      if (this.probeTimer !== undefined) {
-        clearTimeout(this.probeTimer);
-        this.probeTimer = undefined;
-      }
-      if (this.probeRetryTimer !== undefined) {
-        clearInterval(this.probeRetryTimer);
-        this.probeRetryTimer = undefined;
-      }
+      this.probe.cancel();
       this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
       if (typeof this.channel.onRestart !== "function") {
-        if (this.restartSettleTimer !== undefined) {
-          clearTimeout(this.restartSettleTimer);
-        }
-        const t = setTimeout(() => {
-          this.restartSettleTimer = undefined;
-          this.startReadinessProbe();
-        }, RESTART_PROBE_SETTLE_MS);
-        if (typeof t.unref === "function") t.unref();
-        this.restartSettleTimer = t;
+        this.probe.startAfter(RESTART_PROBE_SETTLE_MS);
       }
     }
     return Promise.resolve();
@@ -1664,18 +1386,7 @@ export class PiSession {
         clearTimeout(this.idleTimer);
         this.idleTimer = undefined;
       }
-      if (this.probeTimer !== undefined) {
-        clearTimeout(this.probeTimer);
-        this.probeTimer = undefined;
-      }
-      if (this.probeRetryTimer !== undefined) {
-        clearInterval(this.probeRetryTimer);
-        this.probeRetryTimer = undefined;
-      }
-      if (this.restartSettleTimer !== undefined) {
-        clearTimeout(this.restartSettleTimer);
-        this.restartSettleTimer = undefined;
-      }
+      this.probe.cancel();
       // R11:清命令-turn watcher 计时器(收尾时不再合成 finish)。
       this.cancelCommandTurnWatcher();
       // 2) 退订通道信号。
@@ -1697,29 +1408,15 @@ export class PiSession {
       }
       // 4) 清挂起表与缓存(Req 5.4)。
       this.pendingExtensionUI.clear();
-      // message-queue-ui:reject 所有在途 clearQueue 请求,避免收尾后悬挂(超时兜底之外的即时收敛)。
-      for (const [, pending] of this.pendingClearQueue) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingClearQueue.clear();
-      // agent-declared-routes:reject 所有在途 route 调用,避免收尾后悬挂(clearQueue 同语义)。
-      for (const [, pending] of this.pendingAgentRoutes) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingAgentRoutes.clear();
-      // agent-attachment-catalog:reject 所有在途 catalog 调用,避免收尾后悬挂(同语义);
+      // reject 所有在途请求,避免收尾后悬挂(超时兜底之外的即时收敛):
+      // clearQueue(message-queue-ui)/ route 调用(agent-declared-routes)/
+      // catalog 调用(agent-attachment-catalog)三者同语义。
+      const stopped = (): Error => new SessionStoppedError(this.id);
+      this.pendingClearQueue.rejectAll(stopped);
+      this.pendingAgentRoutes.rejectAll(stopped);
+      this.pendingCatalog.rejectAll(stopped);
       // 清尾沿节流定时器,避免会话已收尾后仍触发 emitter.emit(已 removeAllListeners 前安全)。
-      for (const [, pending] of this.pendingCatalog) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingCatalog.clear();
-      if (this.attachmentEventThrottleTimer !== undefined) {
-        clearTimeout(this.attachmentEventThrottleTimer);
-        this.attachmentEventThrottleTimer = undefined;
-      }
+      this.attachmentEvents.dispose();
       this.cache = undefined;
       // 5) 向订阅者广播会话结束(Req 7.3 / 7.5)。
       this.emitter.emit(END_EVENT, reason);
