@@ -18,6 +18,7 @@ export default defineWebExtension({
     headerCenter: (
       <span data-testid="runtime-code-header">Runtime Code Agent</span>
     ),
-    panelRight: <RuntimeCodePanel />,
+    // 原挂右侧面板槽;该槽已废弃,改挂 sidebarLeft(守的是运行时代码车道,与槽位无关)。
+    sidebarLeft: <RuntimeCodePanel />,
   },
 });

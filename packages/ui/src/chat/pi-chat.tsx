@@ -2156,6 +2156,10 @@ export function PiChat({
                     baseUrl={client?.baseUrl ?? ""}
                     {...(sessionId !== undefined ? { sessionId } : {})}
                     conversation={conversation}
+                    // 共享状态接入(spec panes-only-right-panel):宿主的访问器与 pane 侧接口
+                    // 形状一致(读/订阅/写/删),故直接透传。授权在 pane 定义里逐键声明,
+                    // 这里不做任何放宽。
+                    {...(webextState !== undefined ? { state: webextState } : {})}
                     signals={hostPaneSignals}
                     {...(agentPaneConfig !== undefined ? { config: agentPaneConfig } : {})}
                     onHostError={(error) => {

@@ -24,6 +24,5 @@ export default defineWebExtension({
   },
   slots: {
     headerCenter: <Slot id="header-center" label="Header C" />,
-    panelRight: <Slot id="panel-right" label="Panel Right" />,
   },
 });

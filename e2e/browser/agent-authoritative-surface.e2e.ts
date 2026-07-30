@@ -4,7 +4,8 @@ import { test, expect } from "@playwright/test";
  * agent 权威 surface(agent-authoritative-surface)浏览器级 e2e —— 端到端命令闭环 + 退化。
  *
  * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行。
- * surface-demo-agent 的 `.pi/web` 在 panelRight 槽渲染 domain="demo" 的权威快照 `{count,log}`:
+ * surface-demo-agent 的 `.pi/web` 以**独立 pane**(iframe)渲染 domain="demo" 的权威快照
+ * `{count,log}`(spec panes-only-right-panel 任务 2.2 迁移;迁移前是 panelRight 槽):
  *
  *  ① 命令闭环(不过 LLM):选 `surface-demo-agent` → 探针 `surface:demo` 可见(available=true)→
  *     点 increment → `surface.run("demo","increment")` → ui-rpc **agent 转发**(payload 无 name →
@@ -50,17 +51,19 @@ test("surface: 命令闭环(increment → agent 转发 → 快照回流 → 计�
 
   await selectSource(page, SURFACE_SOURCE);
 
-  // panelRight 的「人侧」surface 面板已挂载;探针存在 → available=true(非退化)。
-  const panel = page.getByTestId("surface-demo-panel");
+  // 「人侧」surface 面板已挂载;探针存在 → available=true(非退化)。
+  // ★ 迁 pane 后面板在 iframe 内,故经 frameLocator 定位 —— **断言本身一条未改**。
+  const frame = page.frameLocator("[data-panes-host] iframe");
+  const panel = frame.getByTestId("surface-demo-panel");
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute("data-surface-available", "true");
 
-  const increment = page.getByTestId("surface-demo-increment");
+  const increment = frame.getByTestId("surface-demo-increment");
   await expect(increment).toBeVisible();
-  await expect(page.getByTestId("surface-demo-degraded")).toHaveCount(0);
+  await expect(frame.getByTestId("surface-demo-degraded")).toHaveCount(0);
 
   // 尚无该 domain 快照 → 计数占位(—)。
-  const count = page.getByTestId("surface-demo-count");
+  const count = frame.getByTestId("surface-demo-count");
   await expect(count).toHaveText("—");
 
   // 命令闭环:点击 → run("demo","increment") → 快照回流(control:"state")→ 面板计数为 1。
@@ -83,8 +86,10 @@ test("surface: 无关 source(hello-agent)不挂载 surface 面板,pi-web 照常�
 }) => {
   await selectSource(page, UNRELATED_SOURCE);
 
-  // 该 source 与 demo domain 无关:宿主不挂载 surface 面板(探针 surface:demo 亦不存在)。
-  await expect(page.getByTestId("surface-demo-panel")).toHaveCount(0);
+  // 该 source 与 demo domain 无关:该 pane 不属于它,故面板不存在(探针 surface:demo 亦不存在)。
+  // ★ 迁 pane 后宿主内置 pane 会使面板容器存在,但**这个** pane 不在里面 —— 断言的是
+  // 「demo 面板不出现」,与迁移前守的是同一件事。
+  await expect(page.locator("iframe[title='Demo Surface']")).toHaveCount(0);
 
   // 独立性:会话全部既有能力照常 —— 输入可用、可发普通消息并得到 stub 回复,不因 surface 缺失报错。
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();

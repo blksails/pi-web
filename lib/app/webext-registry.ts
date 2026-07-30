@@ -18,8 +18,8 @@ import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs"
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/web.config";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/web.config";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
-import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/web.config";
-import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/web.config";
+import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.mjs";
+import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.mjs";
 import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
@@ -99,9 +99,12 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-declarative-agent", ext: DECLARATIVE },
   // logging-demo-agent:浏览器侧 webext 日志总线验收(webext:logging-demo 命名空间)。
   { match: "logging-demo-agent", ext: loggingDemoExt },
-  // state-bridge-agent:状态注入桥「人侧」panelRight 面板(双向闭环浏览器验收)。
+  // state-bridge-agent:状态注入桥「人侧」面板 —— 已迁 pane 形态(任务 3.1),是本 spec
+  // 新增共享状态通道的活体验证(人点 +1 → agent 工具下次读到新值)。导入编译产物。
   { match: "state-bridge-agent", ext: stateBridgeExt },
   // surface-demo-agent:agent 权威 surface 领域无关示例(命令闭环 + 能力退化浏览器验收)。
+  // 已迁 pane 形态(spec panes-only-right-panel 任务 2.2),故导入**编译产物**
+  // (pane srcDoc 由其 build.ts 内联生成),`.pi/web` 不存作者源码 —— 源在 `web/`。
   { match: "surface-demo-agent", ext: surfaceDemoExt },
   // plugin-code-review-agent(plugin-system-unification):统一插件包的 webext 层——
   // Tier2 渲染器把 pi 扩展 `code_review` 工具产出渲染为富卡(CodeReviewCard)。

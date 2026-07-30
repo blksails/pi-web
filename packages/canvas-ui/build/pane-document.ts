@@ -19,32 +19,15 @@
  *
  * 本模块是**构建期**代码,依赖 node 与 esbuild;不要从浏览器侧入口引用它。
  */
-import { build } from "esbuild";
+import { bundlePaneEntry, renderPaneDocument, PANE_BASE_CSS } from "@blksails/pi-web-kit/build/pane-document";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postcss from "postcss";
 import tailwindcss from "tailwindcss";
 import type { Config } from "tailwindcss";
 
-/** pane 内没有宿主的 body 样式,得自带高度与配色基线。 */
-const PANE_BASE_CSS = String.raw`
-html,body,#root{height:100%;margin:0}
-body{background:hsl(var(--background));color:hsl(var(--foreground))}
-*{box-sizing:border-box}
-`;
-
-/**
- * 单一权威的内容安全策略。
- *
- * `default-src 'none'` 起步,只放开:内联 style/script(文档自足,无外链)、
- * 图片到 blob:/data:/http(s):(要显示附件签名 URL 与本地预览)。
- *
- * ★ 已知缺口(不在本任务范围):未放开 `connect-src`,故 pane 内发起的取数会被拦。
- * 这是 `isolated-panes` 波次的未完成部分,实机可见。集中在此处的好处正是:将来要补,
- * 只改这一处,不会漏掉另一个 source。
- */
-const PANE_CSP =
-  "default-src 'none'; img-src blob: data: http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
+// ★ 内容安全策略、pane 基线样式与 `</script` 转义都在**通用层**(web-kit/build/pane-document),
+// 本模块只叠加画布特有的样式与源码扫描。非画布的 pane 直接用通用层,不必依赖整个画布包。
 
 export interface CanvasPaneBuildOptions {
   /** 仓库根(用于解析各包的样式与源码)。 */
@@ -89,19 +72,6 @@ async function buildCss(options: CanvasPaneBuildOptions): Promise<string> {
   return `${uiStyles}\n${canvasStyles}\n${generated.css}\n${PANE_BASE_CSS}`;
 }
 
-/** 把 bundle 与样式拼成自足文档。 */
-export function renderPaneDocument(title: string, script: string, css: string): string {
-  // ★ `</script` 出现在 bundle 字面量里会提前闭合标签,整份文档就此损坏 —— 必须转义。
-  const safeScript = script.replace(/<\/script/gi, "<\\/script");
-  return (
-    `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width">` +
-    `<meta http-equiv="Content-Security-Policy" content="${PANE_CSP}">` +
-    `<title>${title}</title><style>${css}</style></head>` +
-    `<body><div id="root"></div><script>${safeScript}</script></body></html>`
-  );
-}
-
 /**
  * 构建一份 canvas pane 文档,返回完整 HTML 字符串。
  *
@@ -111,21 +81,7 @@ export async function buildCanvasPaneDocument(
   options: CanvasPaneBuildOptions,
 ): Promise<string> {
   const css = await buildCss(options);
-  const result = await build({
-    entryPoints: [options.entry],
-    bundle: true,
-    write: false,
-    format: "iife",
-    platform: "browser",
-    target: "es2022",
-    jsx: "automatic",
-    minify: true,
-    legalComments: "none",
-    define: { "process.env.NODE_ENV": '"production"' },
-  });
-  const output = result.outputFiles?.[0];
-  if (output === undefined) throw new Error(`pane 未生成 bundle: ${options.entry}`);
-  return renderPaneDocument(options.title, output.text, css);
+  const script = await bundlePaneEntry(options.entry);
+  // PANE_BASE_CSS 已由 buildCss 追加在末尾,此处不再叠加(叠两次会让 pane 基线样式重复)。
+  return renderPaneDocument(options.title, script, css);
 }
-
-export { PANE_CSP, PANE_BASE_CSS };

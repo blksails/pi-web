@@ -73,7 +73,7 @@
 
 - [ ] 2. Integration:迁低成本声明者
 
-- [ ] 2.1 (P) 槽车道夹具改挂其余保留槽
+- [x] 2.1 (P) 槽车道夹具改挂其余保留槽
   - 五个夹具(多槽渲染、运行时代码、签名有效/无效/被篡改)改用其余任一保留槽承载
   - ★ 它们守的是**槽机制本身与签名校验**,与面板形态无关;右侧面板槽只是 19 个保留槽之一
   - ★ 保护面不可缩:签名无效与内容被篡改两种拒绝情形的用例**一条都不能少**
@@ -81,7 +81,28 @@
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
   - _Boundary: 槽夹具 — `examples/webext-layout-agent/`, `examples/webext-slots-agent/`, `examples/webext-runtime-code-agent/`, `examples/webext-slots-runtime-{,badsig-,tampered-}agent/`_
 
-- [ ] 2.2 (P) 迁 surface 演示 source 为 pane
+- [ ] 2.2 (P) 迁 surface 演示 source 为 pane  ⛔ **受阻(实施中)**
+
+  > **2026-07-31 受阻记录。** 代码已写(guest / 定义 / 构建 / 注册表 / e2e 改 frameLocator),
+  > pane 能挂载、面板能渲染、按钮可见且 `data-surface-available="true"`,但**命令闭环不通**:
+  > 计数停在「—」。
+  >
+  > **实测证据**:点击后按钮恒为 `disabled` + `cursor:wait` ⇒ `run()` 的 promise **永不 settle**;
+  > 且整个流程中**零条 ui-rpc 请求发出**(playwright response 监听器实证)。
+  >
+  > **已排除的假设**(逐条实测,勿重复走):
+  > - 授权被拒 —— 无错误载荷,且 `surfaceCommands` 已授予;
+  > - `capabilities: []` 的影响 —— 该字段是 manifest 元数据,枚举里无运行时闸门;
+  > - 空闲控制流未开 —— `needsIdleControl` 含 `mergedPanes !== undefined`,该 source 满足;
+  > - 命令返回 `ok:false` —— 已改为检查返回值(该访问器失败时不抛而返回 ok:false),仍无错误;
+  > - 页面 404 —— 唯一 404 是 `/api/identity`(云登录未启用,与本链路无关)。
+  >
+  > **下一步方向**:`handleRequest` 的**任何**失败路径都会回一条 `pane:result`,而 promise
+  > 永不 settle ⇒ 请求很可能**没到宿主的消息处理器**。应从「宿主侧 MessagePort 的 onmessage
+  > 是否在该 pane 上挂上了」查起,而不是继续查授权与命令链路。
+  > 对照组:`aigc-canvas` 的 pane 走**旧槽自建 PanesHost**、同样用 surface.run 且 e2e 全绿 ——
+  > 差别正在于本 source 走的是**宿主装载路径**(内置 ⊕ agent 合并,两个 pane 同时在世)。
+  > 这个差别是最值得先查的一条。
   - ★ **纯 UI 改写,零协议工作**:该示例用的读快照/订阅/执行命令/探测可用性四件套,
     guest SDK **已全部具备**(勘察 I4 修正了 brief 中「中高成本」的预判)
   - 保留其能力退化路径:会话未就绪或命令不可用时的降级表现不变
@@ -92,7 +113,10 @@
 
 - [ ] 3. Integration:迁共享状态声明者(新通道的活体验证)
 
-- [ ] 3.1 迁状态桥 source 为 pane
+- [ ] 3.1 迁状态桥 source 为 pane  ⛔ **阻塞于 2.2**
+
+  > 代码已写(guest / 定义 / 构建 / 注册表 / `PanesHost` 的 state 注入接线),但未验证 ——
+  > 它与 2.2 共用同一条 pane 上行请求链路,2.2 的根因未清前验它没有意义。
   - 该示例是**唯一**真正需要新通道的声明者:它演示「人在面板点 +1 → agent 工具下次读到新值」
     的人机共驾闭环,单向信号结构上无法承载
   - 它同时是任务 1.1–1.3 的活体验证 —— 通道做错了这里会直接暴露

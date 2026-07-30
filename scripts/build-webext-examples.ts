@@ -11,6 +11,8 @@ import { resolve } from "node:path";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { buildPanesAgent } from "../examples/panes-agent/build.js";
 import { buildAigcCanvasAgent } from "../examples/aigc-canvas-agent/build.js";
+import { buildSurfaceDemoAgent } from "../examples/surface-demo-agent/build.js";
+import { buildStateBridgeAgent } from "../examples/state-bridge-agent/build.js";
 
 const EXAMPLES = [
   "webext-layout",
@@ -47,6 +49,12 @@ async function main(): Promise<void> {
   console.log(`[built] panes → ${panes.entryOut} (${panes.manifest.integrity})`);
   const aigcCanvas = await buildAigcCanvasAgent();
   console.log(`[built] aigc-canvas → ${aigcCanvas.entryOut} (${aigcCanvas.manifest.integrity})`);
+  // surface-demo 迁 pane 后同样需要构建期打 srcDoc(spec panes-only-right-panel 任务 2.2)。
+  const surfaceDemo = await buildSurfaceDemoAgent();
+  console.log(`[built] surface-demo → ${surfaceDemo.entryOut} (${surfaceDemo.manifest.integrity})`);
+  // state-bridge 是新增共享状态通道的唯一真实消费者(spec panes-only-right-panel 任务 3.1)。
+  const stateBridge = await buildStateBridgeAgent();
+  console.log(`[built] state-bridge → ${stateBridge.entryOut} (${stateBridge.manifest.integrity})`);
 }
 
 void main().catch((err: unknown) => {
