@@ -5,7 +5,7 @@
  * SERVE 门控开启(`PI_WEB_LLM_GATEWAY_PUBLIC_BASE` 已配置且未显式关闭 SERVE)时,
  * `createLlmGatewayRoutes` 必须经 pi-handler 挂载到 `/api/llm-gateway/:provider/*`
  * ——本测试只断言"路由已挂载且按门控响应"(无 token → 401),不复测网关内部换钥/透传
- * 细节(那是 2.2/2.3 的范围,已在 `packages/server/test/llm-gateway/` 覆盖)。
+ * 细节(那是 2.2/2.3 的范围,已在 `packages/adapters/test/llm-gateway/` 覆盖)。
  *
  * 门控关闭态(路由不注册 → 404)由姊妹文件
  * `llm-gateway-route-mount-disabled.integration.test.ts` 覆盖 —— 配置是否 serve 需要

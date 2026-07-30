@@ -98,7 +98,7 @@
   - 可观测完成态：新包各档测试文件数与迁移前**逐档相等**；真实启动子进程的测试全部落在允许的档位
   - _Requirements: 6.3, 5.1_
 
-- [ ] 3.3 保障 agent SDK 在新包内可解析（★ 含一条静态断言）
+- [x] 3.3 保障 agent SDK 在新包内可解析（★ 含一条静态断言）
   - 集合内有按字符串**逐级向上**查找 agent SDK 包目录的代码路径，其解析基准随包移动
   - ★ **仓库根有该 SDK，故漏声明在本仓恒能解析成功** —— 只在真实安装树（只装本包）失败。
     与上一轮同类陷阱同构，那次实测过：摘掉声明并删链接，解析仍成功
@@ -217,3 +217,7 @@
 - ★ 3.2：`packages/server/typecheck` 的 186 个错误**清零**；四包 + 整仓（排除 desktop）typecheck 全 exit 0 —— 3.1 以来首次恢复。
 - ★ 3.2：`testFiles` pending 已按守卫要求删除。至此本轮四个翻转判据豁免（`srcModules` / `srcFiles` / `stagedIn` / `testFiles`）**全部如期退场**，只剩 2.4 给兼容层重依赖立的 `pendingRemoval`，它在 5.2 到期。
 - 3.2：父层清理了 9 个搬空后残留的空目录（git 不跟踪空目录，但工作树里是垃圾）。
+- ★★ 3.3 **假绿在本轮实测复现**（不是照抄上一轮结论）：摘掉新包 `peerDependencies` 里的 agent SDK 后，`1 failed | 4 passed` —— 只有新增的**静态断言**报红，那条运行断言（`resolvePiCliEntry()` 返回真实存在的路径）**仍然通过**，因为 `locatePackageDir` 按字符串逐级向上走、命中了仓库根。⇒「能解析出来」在 monorepo 里恒真，守不住依赖声明。
+- ★ 3.3 断言针对 `peerDependencies` 而非 `dependencies` —— 本包把 SDK 两包都声明为 peer（1.1 定的）。照抄上一轮 runner 那条（查 `dependencies`）会写出一条**永远为真**的断言。
+- ★ 3.3 报红消息把要害写清了：「解析器只按字符串向上找 `node_modules`、从不读清单，故本仓漏声明也照样解析成功；但沙箱/standalone 只装本包时会装不出 SDK，pi CLI 扩展操作（install/list/remove）整体失效」。
+- 3.3 顺带修了 4 处**注释里的交叉引用**（`e2e/llm-gateway/server-entry.ts`、3 个根级 integration 测试）—— 指向已搬走的测试目录，留着会误导人。属轻微越界但方向正确。
