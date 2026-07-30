@@ -17,7 +17,7 @@
   - 可观测完成态：工作区可见新包，且其清单里三个重依赖均在、agent SDK 在 peer 且无 optional 标记
   - _Requirements: 1.2, 1.3, 1.5_
 
-- [ ] 1.2 建立新包的类型检查与分档测试基建
+- [x] 1.2 建立新包的类型检查与分档测试基建
   - 以既有包的同名文件为样板建类型配置、测试配置、分档 workspace 与分档编排脚本
   - `tsconfig` 的 `rootDir` 取上一层（跨包引用内核源码否则触发 TS6059）
   - ★ 测试配置文件**必须存在**，否则静默继承仓库根配置，症状是「No test files found」
@@ -171,3 +171,7 @@
 - 1.1：刻意**不含** `scripts` 块（脚本要指向 1.2 才建的分档编排文件）。⚠ 静默性质：`pnpm -r run typecheck` 会**跳过**无该脚本的包，而根类型检查照样 exit 0 —— 1.2 须补上。
 - 1.1：`devDependencies` 加了数据库驱动的类型包；agent SDK **未**误入 devDeps（否则直接触发 peer-only 守卫）。三个重依赖的版本与兼容层现声明**逐字一致**，为 5.2 的移除做对照基准。
 - 1.1：新包依赖中**没有**工具包 —— 与 research.md 的 57 文件扫描一致（该集合零引用工具包）。这与 runner 包不同（runner 必须依赖工具包，内置扩展从那里来）。
+- 1.2：`rootDir` 取 `".."`（跨包引内核源码，取 `"."` 会 TS6059）；`include` 额外纳入两个 vitest 配置 —— `src/` 在 3.1 前为空，不纳入别的文件 tsc 会因「无输入」报错。与 runner 那轮同解。
+- ★ 1.2：新包真的进了根类型检查，由**判别实验**证明 —— 在 `src/` 埋类型错误，根检查报 `packages/adapters typecheck: src/__probe.ts(1,14): error TS2322` 并 exit 2（**错误归属到本包**）；移除后回 exit 0。只跑一次绿分不出「检查了且没问题」与「压根没检查」。
+- 1.2：fast 档为空按设计**响亮失败**（`No test files found, exiting with code 1`），同一次运行里 fast-mock 报 `code 0` —— 那道刻意的不对称保住了：fast 档装守卫，变空必须响。
+- 1.2：分档 workspace 的两个 setup 共享件**跨包引内核包**（`../core/test/setup/*`），且注释记明「根级 setupFiles 在本文件存在时被完全忽略，必须写进每个 project」「setup 文件必须用绝对路径」。

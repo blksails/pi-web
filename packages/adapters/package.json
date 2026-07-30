@@ -13,6 +13,12 @@
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "test:fast": "node scripts/run-tests.mjs --fast",
+    "test:e2e": "node scripts/run-tests.mjs --e2e"
+  },
   "dependencies": {
     "@blksails/pi-web-core": "workspace:*",
     "@blksails/pi-web-logger": "workspace:*",
