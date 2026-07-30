@@ -1,9 +1,9 @@
 {
   "feature_name": "adapters-package-extraction",
   "created_at": "2026-07-30T04:40:00Z",
-  "updated_at": "2026-07-30T05:10:00Z",
+  "updated_at": "2026-07-30T05:20:00Z",
   "language": "zh",
-  "phase": "design-approved",
+  "phase": "tasks-approved",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -14,11 +14,11 @@
       "approved": true
     },
     "tasks": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     }
   },
-  "ready_for_implementation": false,
+  "ready_for_implementation": true,
   "scope_decisions": {
     "date": "2026-07-30",
     "scope": "全口径 —— 搬全部 12 个 adapters 模块(57 文件 / 7612 行),兼容层缩到约 570 行装配壳",
@@ -28,7 +28,8 @@
   "brief_revised": "2026-07-30 据实测修订 —— 初稿中心论证(让 core 守卫转绿)已由 core-package-extraction 达成",
   "approval_notes": {
     "requirements": "经用户 /goal「使用 kiro 流程实现」+「做吧」的自主执行授权批准；评审闸门机械检查 6 领域/30 条通过，修正 1 处非 EARS 触发词",
-    "design": "经用户自主执行授权批准；评审闸门机械检查 30/30 通过"
+    "design": "经用户自主执行授权批准；评审闸门机械检查 30/30 通过",
+    "tasks": "经用户自主执行授权批准；覆盖 30/30，闸门机械检查通过"
   },
   "design_decisions": {
     "identity_port": "不补端口 —— core 无 IdentityProvider，补端口属逻辑变更(R4.2)",
