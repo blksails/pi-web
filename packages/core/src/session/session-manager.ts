@@ -41,7 +41,7 @@ export interface SessionManagerOptions {
    */
   readonly readinessHandshake?: boolean;
   /** 就绪探针超时(毫秒),透传给 PiSession;省略用 PiSession 默认。 */
-  readonly readinessProbeTimeoutMs?: number;
+  readonly readyTimeoutMs?: number;
   /**
    * 权威快照开关(session-snapshot-authority);透传给每个 PiSession。
    * 默认关(向后兼容);生产 app 接线开启。
@@ -55,7 +55,7 @@ export class SessionManager {
   private readonly idFactory: () => SessionId;
   private readonly loggingConfigProvider: (() => Promise<LoggingConfig>) | undefined;
   private readonly readinessHandshake: boolean;
-  private readonly readinessProbeTimeoutMs: number | undefined;
+  private readonly readyTimeoutMs: number | undefined;
   private readonly snapshotAuthority: boolean;
   private acceptingNew = true;
 
@@ -65,7 +65,7 @@ export class SessionManager {
     this.idFactory = opts.idFactory ?? (() => randomUUID());
     this.loggingConfigProvider = opts.loggingConfigProvider;
     this.readinessHandshake = opts.readinessHandshake ?? false;
-    this.readinessProbeTimeoutMs = opts.readinessProbeTimeoutMs;
+    this.readyTimeoutMs = opts.readyTimeoutMs;
     this.snapshotAuthority = opts.snapshotAuthority ?? false;
   }
 
@@ -108,8 +108,8 @@ export class SessionManager {
         : {}),
       // 就绪握手:从 manager 透传开关与探针超时(spec session-readiness-handshake)。
       readinessHandshake: this.readinessHandshake,
-      ...(this.readinessProbeTimeoutMs !== undefined
-        ? { readinessProbeTimeoutMs: this.readinessProbeTimeoutMs }
+      ...(this.readyTimeoutMs !== undefined
+        ? { readyTimeoutMs: this.readyTimeoutMs }
         : {}),
       // 权威快照:从 manager 透传开关(session-snapshot-authority)。
       snapshotAuthority: this.snapshotAuthority,

@@ -30,7 +30,7 @@ export type SessionLifecycleState = z.infer<typeof SessionLifecycleStateSchema>;
  * `control: session-status` 控制帧负载。
  * - `state`:当前生命周期态。
  * - `detail`:人类可读原因(error/ended 场景填,可选)。
- * - `code`:机器可判别码(如 `probe-timeout` / `exit-before-ready`,可选)。
+ * - `code`:机器可判别码(如 `ready-frame-missing` / `exit-before-ready`,可选)。
  */
 export const SessionStatusControlSchema = z.object({
   control: z.literal("session-status"),

@@ -157,8 +157,11 @@ export interface PiSessionOptions {
    * 生命周期帧、不发探针,既有行为完全不变,Req 6.2)。生产由 app 接线开启。
    */
   readonly readinessHandshake?: boolean;
-  /** 就绪探针超时(毫秒),默认 30000;超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
-  readonly readinessProbeTimeoutMs?: number;
+  /**
+   * 就绪看门狗超时(毫秒,spec runner-ready-frame),默认 30000;超时未收到 `runner_ready`
+   * 帧(或 cli 单发未成功)即判定 error{ready-frame-missing}(Req 4.1/4.2)。
+   */
+  readonly readyTimeoutMs?: number;
   /**
    * 权威快照开关(session-snapshot-authority)。开启时:维护单一权威 `SessionSnapshot`
    * (lifecycle/busy/turn/stats/model/title)、变更广播 `control: session-state` 帧、订阅时

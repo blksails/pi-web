@@ -131,7 +131,7 @@ function spawnRunner(agentPath: string, extraEnv: Record<string, string> = {}): 
     channel,
     idleMs: 0,
     readinessHandshake: true,
-    readinessProbeTimeoutMs: 10_000,
+    readyTimeoutMs: 10_000,
   });
   active.push(session);
   return session;

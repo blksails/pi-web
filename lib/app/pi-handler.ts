@@ -147,7 +147,7 @@ import {
 import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
-import { readinessProbeTimeoutFromEnv } from "./readiness-config.js";
+import { readyTimeoutFromEnv } from "./readiness-config.js";
 // LLM 网关凭据切换决策(spec sandbox-credentials-v2,任务 3.3):e2b 分支的
 // providerKeysForE2b/sandboxLlmEnv 计算抽成纯函数,便于脱离真实传输单测。
 import {
@@ -696,7 +696,7 @@ function buildSingleton(): HandlerSingleton {
     idleMs: 0,
     loggingConfigProvider,
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
-    readinessProbeTimeoutMs: readinessProbeTimeoutFromEnv(process.env),
+    readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
   });
 

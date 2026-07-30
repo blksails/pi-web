@@ -37,6 +37,7 @@ import {
 import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "@blksails/pi-web-core/attachment/backends-config.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
+import { installStdinResumeGate } from "./stdin-resume-gate.js";
 import { openOrCreateSession } from "./open-or-create-session.js";
 import { wireSessionBridges } from "./session-bridges.js";
 import {
@@ -301,6 +302,17 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // (Req 2.3/5.1)。已通过白名单校验(disabled 时视同未声明,attachmentProfileDisabled 门控)。
   emitAttachmentProfile(factory, attachmentProfileDisabled);
 
+  // stdin 恢复门 + 就绪帧(spec runner-ready-frame):frame-channel 挂载即 pause 了 stdin
+  // (早到行缓冲不丢,Req 1.2),这里在**所有** data 读取器(frame-channel + 可选的
+  // attachment-catalog)挂载完成后取 baseline —— 此后新增的 data 监听器只会是 pi
+  // runRpcMode 末尾的读取器。侦测到它(或兜底超时)即 resume + 发 runner_ready 帧
+  // (Req 1.3/2.1);显式 pause 是粘性的,pi 只 on("data") 不 resume,恢复义务在此。
+  const resumeGate = installStdinResumeGate({
+    stdin: process.stdin,
+    sendReady: () => frameChannel.send({ type: "runner_ready" }),
+    stderr: process.stderr,
+  });
+
   bootLog.info("entering rpc mode");
 
   // 会话生命周期结束(子进程终止)→ 统一释放所有接线 + 会话级临时文件回收(Req 2.3, 6.3)。
@@ -315,7 +327,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     if (cleanedUp) return;
     cleanedUp = true;
     bootLog.debug("runner cleanup");
-    disposeAll([...wirings, frameChannel], process.stderr);
+    disposeAll([...wirings, resumeGate, frameChannel], process.stderr);
   };
   process.once("SIGTERM", runSessionCleanup);
   process.once("SIGINT", runSessionCleanup);

@@ -90,7 +90,7 @@ describe("agent-attachment-catalog — 子进程重启(Req 5.1/5.2)", () => {
       channel: channel as unknown as SessionChannel,
       idleMs: 0,
       readinessHandshake: true,
-      readinessProbeTimeoutMs: 15_000,
+      readyTimeoutMs: 15_000,
     });
 
     await waitFor(() => session!.lifecycle === "ready", "initial ready");

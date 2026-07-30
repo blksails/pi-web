@@ -173,7 +173,7 @@ beforeAll(async () => {
     channel: channel as unknown as import("@blksails/pi-web-core/session/session.types.js").SessionChannel,
     idleMs: 0,
     readinessHandshake: true,
-    readinessProbeTimeoutMs: 15_000,
+    readyTimeoutMs: 15_000,
   });
   await waitFor(() => session.lifecycle === "ready", "session ready");
   await waitFor(() => session.attachmentCatalogAvailable, "catalog declaration frame cached");

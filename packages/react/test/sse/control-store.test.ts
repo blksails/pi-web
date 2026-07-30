@@ -407,13 +407,13 @@ describe("ControlStore", () => {
       store.applyControlFrame({
         control: "session-status",
         state: "error",
-        detail: "probe timed out",
-        code: "probe-timeout",
+        detail: "runner did not announce readiness",
+        code: "ready-frame-missing",
       });
       const lc = store.getSnapshot().lifecycle;
       expect(lc.state).toBe("error");
-      expect(lc.code).toBe("probe-timeout");
-      expect(lc.detail).toBe("probe timed out");
+      expect(lc.code).toBe("ready-frame-missing");
+      expect(lc.detail).toBe("runner did not announce readiness");
     });
 
     it("相同态不换快照引用(防 useSyncExternalStore 抖动)", () => {

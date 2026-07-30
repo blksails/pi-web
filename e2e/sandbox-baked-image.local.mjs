@@ -421,11 +421,11 @@ async function captureSurface(base, label, promptMarker) {
       `${label} session-status ready`,
     );
     if (status.payload.state !== "ready") {
-      // 已知失败签名(2026-07-15 定位):probe-timeout + 沙箱 Pod 正常 = WS 路由名派生
+      // 已知失败签名(2026-07-15 定位,原 probe-timeout 现 ready-frame-missing):就绪超时 + 沙箱 Pod 正常 = WS 路由名派生
       // 未镜像 agent-sandbox 的 63 字符截断(sandbox-ws-transport.ts #endpointFor),
       // 长模板名(如烘焙模板)全部命中;短模板 piweb-demo 不受影响。
       const hint =
-        label === "sandbox" && status.payload.code === "probe-timeout"
+        label === "sandbox" && status.payload.code === "ready-frame-missing"
           ? "\n  提示:若沙箱 Pod Running 而 WS 连不上 runner,检查 SandboxWsTransport 的路由名" +
             "派生是否截断到 63 字符(K8s 名字上限;manager 实际 sandbox 名被截断," +
             "全长派生名会 502 pod not found)。"

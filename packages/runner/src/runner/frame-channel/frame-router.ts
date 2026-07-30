@@ -136,6 +136,11 @@ export function createInboundFrameRouter(
     };
     stdin.on("data", onData);
     installed = true;
+    // 装配期挂载即暂停(Req 1.2):本通道不驱动流动,只负责解复用。早到的输入行
+    // 缓冲在暂停的 stdin 内,直到 stdin-resume-gate 侦测到 pi runRpcMode 的读取器
+    // 挂载(或兜底超时)后统一 resume——由此消除早期行被本通道单方面提前消费丢失的窗口。
+    // 可选链:无 pause 能力的假 stdin(单测注入)不抛,静默跳过。
+    stdin.pause?.();
   } catch (err) {
     stderr.write(
       `runner: frame-channel stdin reader install error: ${String(err)}\n`,

@@ -1,11 +1,14 @@
 /**
- * 会话就绪握手集成测试(spec session-readiness-handshake, Task 5.1)。
+ * 会话就绪判定集成测试(spec runner-ready-frame,T4;前身为 session-readiness-handshake Task 5.1)。
  *
  * 用**真实 spawn 的子进程**(readiness-stub-process.mjs,经 PiRpcProcess 真实通道)验证:
- *  - 只读探针 get_commands 对真子进程可得到响应 → 驱动 PiSession 迁移为 ready(1.3/1.4)
- *  - 既有订阅者收到广播的 session-status{ready}(2.1)
- *  - **延迟订阅**(晚于 ready)仍立即收到粘性 session-status{ready}(2.4,跨进程防丢帧)
- *  - 子进程就绪前早退 → error{exit-before-ready}(4.2)
+ *  - cli 单发 get_commands 对真子进程可得到响应 → 驱动 PiSession 迁移为 ready(6.1/6.2)
+ *  - runner 形态:子进程主动上报的 `runner_ready` 帧跨真实进程驱动 ready(2.1/2.3)
+ *  - **spawn 后立即写入**的命令不丢失、可得到响应(1.1;真实 runner 的根因级验证
+ *    另由 packages/runner 的 4 个 subprocess it 档承担 —— 它们等真 runner 的
+ *    lifecycle→ready,真 runner 不发帧即超时红)
+ *  - 既有订阅者收到广播的 session-status{ready};延迟订阅粘性回放(7.1)
+ *  - 子进程就绪前早退 → error{exit-before-ready}(4.5)
  *
  * 不使用 MockChannel;断言针对真实子进程产出。
  */
@@ -64,18 +67,21 @@ async function waitFor(
 
 let active: { session: PiSession; channel: SessionChannel }[] = [];
 
-function makeSession(mode?: string): {
+function makeSession(
+  mode?: string,
+  sessionMode: "cli" | "custom" = "cli",
+): {
   session: PiSession;
   channel: SessionChannel;
 } {
   const channel = new PiRpcProcess(makeSpec(mode)) as unknown as SessionChannel;
   const session = new PiSession({
     id: `rd-int-${active.length}`,
-    resolved: makeResolved(),
+    resolved: makeResolved({ mode: sessionMode }),
     channel,
     idleMs: 0,
     readinessHandshake: true,
-    readinessProbeTimeoutMs: 3000,
+    readyTimeoutMs: 3000,
   });
   const entry = { session, channel };
   active.push(entry);
@@ -93,14 +99,38 @@ afterEach(async () => {
   active = [];
 });
 
-describe("会话就绪握手 · 真实子进程集成 (Task 5.1)", () => {
-  it("探针驱动真子进程就绪,既有订阅者收到 session-status{ready}", async () => {
+describe("会话就绪判定 · 真实子进程集成 (runner-ready-frame T4)", () => {
+  it("cli 单发驱动真子进程就绪,既有订阅者收到 session-status{ready}(6.1)", async () => {
     const { session } = makeSession();
     const frames: SseFrame[] = [];
     session.subscribe((f) => frames.push(f));
 
     await waitFor(() => session.lifecycle === "ready");
     expect(statuses(frames)).toContain("ready");
+  });
+
+  it("runner 形态:子进程主动上报 runner_ready 帧 → ready(2.1/2.3,跨真实进程)", async () => {
+    // custom 模式:服务端不发任何探针请求,就绪只能来自子进程的 ready 帧 ——
+    // 若帧未到达/未被识别,本用例将卡到 waitFor 超时(具备判别力)。
+    const { session } = makeSession("ready-frame", "custom");
+    const frames: SseFrame[] = [];
+    session.subscribe((f) => frames.push(f));
+
+    await waitFor(() => session.lifecycle === "ready");
+    expect(statuses(frames)).toContain("ready");
+  });
+
+  it("spawn 后立即写入的命令不丢失,可得到响应(1.1)", async () => {
+    // 构造后**立即**发命令(不等 ready)—— 通道/子进程早期窗口内的行不得丢失。
+    // 若早写行被吞,getCommands 永不 settle,用例在 Promise.race 超时处红。
+    const { session } = makeSession("ready-frame", "custom");
+    const res = await Promise.race([
+      session.getCommands(),
+      new Promise((_, rej) =>
+        setTimeout(() => rej(new Error("early-write lost: no response in 4s")), 4000),
+      ),
+    ]);
+    expect((res as { type: string }).type).toBe("response");
   });
 
   it("延迟订阅(晚于 ready)仍立即收到粘性 session-status{ready}(2.4)", async () => {

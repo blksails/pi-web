@@ -21,6 +21,19 @@ function makeStdin() {
   return ee;
 }
 
+/** 注入用假 stdin,额外附带可断言调用次数的 `pause` 方法(Req 1.2)。 */
+function makeStdinWithPause() {
+  const ee = makeStdin() as EventEmitter & {
+    setEncoding(e: string): void;
+    pause(): void;
+  };
+  let pauseCalls = 0;
+  (ee as unknown as { pause: () => void }).pause = () => {
+    pauseCalls += 1;
+  };
+  return { stdin: ee, getPauseCalls: () => pauseCalls };
+}
+
 /** 恒通过、原样返回的 SafeParser。 */
 function passThrough<T>(): SafeParser<T> {
   return { safeParse: (v) => ({ success: true, data: v as T }) };
@@ -135,6 +148,28 @@ describe("createInboundFrameRouter", () => {
     channel.cleanup(); // 幂等
     feed({ type: "demo" });
     expect(seen).toEqual([]);
+  });
+
+  it("install 成功后立即 pause 假 stdin(Req 1.2:本通道不驱动流动)", () => {
+    const { stdin, getPauseCalls } = makeStdinWithPause();
+    const channel = createInboundFrameRouter({
+      sessionId: "s1",
+      stdin,
+      stderr: { write: () => true },
+    });
+    expect(channel.installed).toBe(true);
+    expect(getPauseCalls()).toBe(1);
+  });
+
+  it("假 stdin 无 pause 能力:install 不抛(可选链跳过)", () => {
+    const stdin = makeStdin(); // 无 pause 方法
+    expect(() =>
+      createInboundFrameRouter({
+        sessionId: "s1",
+        stdin,
+        stderr: { write: () => true },
+      }),
+    ).not.toThrow();
   });
 
   it("install 失败:installed 为 false,不抛(降级)", () => {

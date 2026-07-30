@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { AgentEventSchema, RpcResponseSchema } from "@blksails/pi-web-protocol";
+import {
+  AgentEventSchema,
+  RpcResponseSchema,
+  RunnerReadyFrameSchema,
+} from "@blksails/pi-web-protocol";
 
 /**
  * Integration + e2e for the bootstrap runner (Req 7.2, 7.3, 6.1–6.3).
@@ -145,11 +149,13 @@ function launchRunner(opts: LaunchOptions = {}): RunnerHandle {
   };
 }
 
-/** A frame validates if it parses against either protocol schema. */
+/** A frame validates if it parses against any runner-emitted protocol schema. */
 function validateFrame(frame: unknown): boolean {
   return (
     RpcResponseSchema.safeParse(frame).success ||
-    AgentEventSchema.safeParse(frame).success
+    AgentEventSchema.safeParse(frame).success ||
+    // runner-ready-frame:runner 装配后主动上报的就绪通告(boot 期恒出现一帧)。
+    RunnerReadyFrameSchema.safeParse(frame).success
   );
 }
 

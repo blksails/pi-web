@@ -3,10 +3,12 @@
  * readiness-stub-process — 会话就绪握手集成测试的最小 stub(spec session-readiness-handshake)。
  *
  * 行为(由 env 控制):
- *  - 默认:按 pi RPC JSONL 协议应答任意命令(含探针 get_commands)→ 驱动 PiSession 就绪。
- *  - READINESS_STUB_MODE=silent-exit:**不应答** get_commands,延迟后退出 → 模拟就绪前早退。
+ *  - 默认:按 pi RPC JSONL 协议应答任意命令(含 cli 单发 get_commands)→ 驱动 PiSession 就绪。
+ *  - READINESS_STUB_MODE=ready-frame:启动即主动发一帧 `runner_ready`(runner 形态,
+ *    spec runner-ready-frame),同时保留命令应答能力(早写行不丢的跨进程验证用)。
+ *  - READINESS_STUB_MODE=silent-exit:**不应答**任何命令,延迟后退出 → 模拟就绪前早退。
  *
- * 不依赖真实 agent / LLM;仅验证 server 侧探针→就绪→粘性帧的跨进程链路。
+ * 不依赖真实 agent / LLM;仅验证 server 侧就绪判定→粘性帧的跨进程链路。
  */
 import process from "node:process";
 
@@ -16,10 +18,16 @@ function writeStdout(obj) {
   process.stdout.write(JSON.stringify(obj) + "\n");
 }
 
+if (MODE === "ready-frame") {
+  // runner 形态:启动短延迟后主动上报就绪(模拟真实 runner 装配后经 fd1 发帧)。
+  setTimeout(() => writeStdout({ type: "runner_ready" }), 50);
+}
+
 if (MODE === "silent-exit") {
-  // 就绪前早退:不读 stdin、不应答探针,短延迟后退出(退出码非 0)。
+  // 就绪前早退:不读 stdin、不应答任何命令,短延迟后退出(退出码非 0)。
   setTimeout(() => process.exit(3), 150);
 } else {
+  // respond 与 ready-frame 两模式都保留命令应答能力。
   let buffer = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", (chunk) => {

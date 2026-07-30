@@ -51,9 +51,10 @@ import {
   AgentAttachmentCatalogFrameSchema,
   AttachmentCatalogResultFrameSchema,
   AttachmentEventFrameSchema,
+  RunnerReadyFrameSchema,
 } from "@blksails/pi-web-protocol";
 import { randomUUID } from "node:crypto";
-import { createLogger, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
+import { createLogger } from "@blksails/pi-web-logger";
 
 // 命名空间 session:tool —— 主进程侧工具调用边界:server 收到 runner 的 tool_execution_* 事件
 // 的时刻(对照 runner 内部 toolkit:* 计时,定位时间花在哪一段)。主进程日志落 server stderr,
@@ -110,7 +111,6 @@ import { INITIAL_SNAPSHOT, reduceSnapshot } from "./reduce-snapshot.js";
 import { PendingRequests } from "./pending-requests.js";
 import { TrailingThrottle } from "./trailing-throttle.js";
 import { AgentDeclarations } from "./agent-declarations.js";
-import { ReadinessProbe } from "./readiness-probe.js";
 import {
   dispatchRawLine,
   type RawLineEntry,
@@ -160,16 +160,12 @@ const GATE_DEFAULT: LoggingConfig = {
   panelDefaultLevel: "info",
 };
 
-/** 就绪探针默认超时(毫秒):超时未响应即判定 error{probe-timeout}(Req 4.1)。 */
-const DEFAULT_READINESS_PROBE_TIMEOUT_MS = 30_000;
-
-
 /**
- * restart 后重发探针前的 settle 延迟(毫秒):requestRestart 触发的子进程重生是异步的,
- * 此间 stdin 仍指向将死的旧进程;延迟后再发 getCommands 使其落到重生后的子进程
- * (避免写入旧 stdin 而永挂)。探针自身超时仍兜底真正失败的 restart。
+ * 就绪看门狗默认超时(毫秒,Req 4.2):单一定时器兜底「runner 未主动上报就绪通告」
+ * (版本错配 / 装配异常)。超时未收到 `runner_ready` 帧(或 cli 单发未成功)即判定
+ * error{ready-frame-missing}(Req 4.1)。不发送任何请求、不重发(Req 4.3)。
  */
-const RESTART_PROBE_SETTLE_MS = 500;
+const DEFAULT_READY_TIMEOUT_MS = 30_000;
 
 export class PiSession {
   readonly id: SessionId;
@@ -250,7 +246,7 @@ export class PiSession {
   private _lifecycleDetail: string | undefined;
   private _lifecycleCode: string | undefined;
   private readonly readinessHandshake: boolean;
-  private readonly readinessProbeTimeoutMs: number;
+  private readonly readyTimeoutMs: number;
   /**
    * 权威快照机制开关(session-snapshot-authority)。默认 `false`:不广播/不回放 session-state
    * 帧,完全保留既有行为(单测/legacy 零回归)。生产 app 接线开启(见 pi-handler)。
@@ -258,10 +254,11 @@ export class PiSession {
    */
   private readonly snapshotAuthority: boolean;
   /**
-   * 就绪探针的**机制**(定时器与竞态收敛)。生命周期状态本身仍在本类 —— 切分依据见
-   * {@link ReadinessProbe} 的文件头。
+   * 就绪看门狗定时器(Req 4.2/4.3):单一 `setTimeout`(unref,不钉进程)。到达 ready 或任何
+   * 终态时取消(setLifecycle 内统一处置);cleanup 收尾兜底再清一次,不残留悬挂定时器
+   * (Req 4.4)。构造期开启握手时武装;runner 重启复位 initializing 后重新武装(Req 5.1/5.2)。
    */
-  private readonly probe: ReadinessProbe;
+  private readyWatchdog: ReturnType<typeof setTimeout> | undefined;
   /**
    * 状态桥(`control:"state"`)rev 跨 runner 重启保持**单调**。dev 热重载 / 显式 restart 会重生
    * runner 子进程,新状态桥 store 的 rev 从 1 重新计数;客户端 control-store 按 `rev <= cur.rev` 判
@@ -309,16 +306,7 @@ export class PiSession {
     });
     this.readinessHandshake = opts.readinessHandshake ?? false;
     this.snapshotAuthority = opts.snapshotAuthority ?? false;
-    this.readinessProbeTimeoutMs =
-      opts.readinessProbeTimeoutMs ?? DEFAULT_READINESS_PROBE_TIMEOUT_MS;
-    this.probe = new ReadinessProbe({
-      timeoutMs: this.readinessProbeTimeoutMs,
-      probe: () => this.channel.getCommands(),
-      // 仅在 active 且 initializing 时探测;超时与响应的先后收敛在 ReadinessProbe 内。
-      canStart: () => this._status === "active" && this._lifecycle === "initializing",
-      onReady: () => this.setLifecycle("ready"),
-      onFailure: (code, detail) => this.setLifecycle("error", code, detail),
-    });
+    this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
 
     // EventEmitter 默认 maxListeners=10,多订阅者场景放宽。
     this.emitter.setMaxListeners(0);
@@ -361,23 +349,69 @@ export class PiSession {
         this.channel.onRestart(() => this.handleRunnerRestarted()),
       );
     }
-    // 就绪握手(spec session-readiness-handshake):开启时发只读探针判定真实就绪(Req 1.3)。
+    // 就绪握手(spec runner-ready-frame):开启时武装看门狗兜底(Req 4.1/4.2),
     // 异步、不阻塞构造;关闭时完全 no-op(既有行为不变)。
     if (this.readinessHandshake) {
-      this.probe.start();
+      this.armReadyWatchdog();
+      this.startCliReadinessIfApplicable();
     }
   }
 
-  /** 重生完成:抬升状态桥 rev(恒);握手开启时另复位 initializing 并以新子进程重新探针。 */
+  /**
+   * cli 模式单发就绪判定(D5,决策表,Req 6.1/6.2):无 pi-web runner 装配层,子进程不具备
+   * 主动上报能力 —— 单次 getCommands 成功即判定 ready;无重试、无专用定时器(该形态无
+   * 早期输入丢失问题,单次判定已足够可靠)。失败静默:交给 exit-before-ready 或看门狗收口。
+   *
+   * 构造期与 runner 重启后各触发一次(重启后 custom 靠新子进程重发 ready 帧,cli 则必须
+   * 重新单发 —— 否则重启后无任何就绪信号来源,只会落到看门狗超时)。custom 模式 no-op。
+   */
+  private startCliReadinessIfApplicable(): void {
+    if (this.mode !== "cli") return;
+    void this.channel.getCommands().then(
+      () => this.setLifecycle("ready"),
+      () => {
+        // 静默(D5):由 exit-before-ready / 看门狗兜底收口。
+      },
+    );
+  }
+
+  /** 武装就绪看门狗(重复调用先清后装,幂等)。 */
+  private armReadyWatchdog(): void {
+    this.clearReadyWatchdog();
+    const timer = setTimeout(() => {
+      this.readyWatchdog = undefined;
+      this.setLifecycle(
+        "error",
+        "ready-frame-missing",
+        `runner did not announce readiness within ${this.readyTimeoutMs}ms`,
+      );
+    }, this.readyTimeoutMs);
+    // ★ unref:看门狗不应把进程钉在事件循环里(同探针机制原有的理由)。
+    if (typeof timer.unref === "function") timer.unref();
+    this.readyWatchdog = timer;
+  }
+
+  /** 取消就绪看门狗(幂等)。到达 ready/终态或 cleanup 收尾时调用(Req 4.4)。 */
+  private clearReadyWatchdog(): void {
+    if (this.readyWatchdog !== undefined) {
+      clearTimeout(this.readyWatchdog);
+      this.readyWatchdog = undefined;
+    }
+  }
+
+  /** 重生完成:抬升状态桥 rev(恒);握手开启时另复位 initializing 并重武装看门狗(Req 5.1/5.2)。 */
   private handleRunnerRestarted(): void {
     // ① 状态桥 rev 抬升:offset 抬过历史转发峰值,使新 runner(store rev 归 1)重推的 KV 不被
     //    客户端按 `rev <= cur.rev` 判陈旧丢弃。恒执行,不依赖握手开关。
     this.stateRevOffset = this.maxForwardedStateRev + 1;
-    // ② 就绪握手重探针(仅握手开启 + active)。
+    // ② 就绪握手复位(仅握手开启 + active):custom 形态由新子进程重发 `runner_ready` 帧
+    //    (Req 5.2),cli 形态重新单发一次(此刻子进程已真实重生,stdin 指向新进程);
+    //    并重武装看门狗兜底(Req 5.4)。无 settle 定时器(Req 5.3,该等待仅探针机制需要,
+    //    收帧化下 onRestart 本身就是「已落到新子进程」的时机信号)。
     if (!this.readinessHandshake || this._status !== "active") return;
-    this.probe.cancel();
     this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
-    this.probe.start();
+    this.armReadyWatchdog();
+    this.startCliReadinessIfApplicable();
   }
 
   get status(): SessionStatus {
@@ -434,6 +468,10 @@ export class PiSession {
     this._lifecycle = state;
     this._lifecycleCode = code;
     this._lifecycleDetail = detail;
+    // 到达 ready 或任何终态:取消看门狗,不残留悬挂定时器(Req 4.4)。
+    if (state === "ready" || state === "error" || state === "ended") {
+      this.clearReadyWatchdog();
+    }
     // 生命周期里程碑(真正跃迁才记一条,early-return 守卫已在上方拦截 no-op/终态)。
     if (state === "error") {
       lifecycleLog.error("lifecycle transition", { session: this.id, from, to: state, code, detail });
@@ -673,6 +711,16 @@ export class PiSession {
     const add = <T>(type: string, entry: RawLineEntry<T>): void => {
       table.set(type, entry as unknown as RawLineEntry<never>);
     };
+
+    // runner 就绪通告(spec runner-ready-frame,Req 2.1-2.4):runner 可服务后主动上报一次,
+    // 收帧即迁移为 ready。重复/迟到帧(非 initializing 时收到)由 setLifecycle 既有单向守卫
+    // 消化为 no-op(Req 2.4);握手关闭时 setLifecycle 整体 no-op(Req 3.4)。
+    add("runner_ready", {
+      schema: RunnerReadyFrameSchema,
+      handle: () => {
+        this.setLifecycle("ready");
+      },
+    });
 
     // 状态注入桥(state-injection-bridge):子进程上报的权威态变更 → control:"state" 帧。
     add("piweb_state", {
@@ -1169,16 +1217,14 @@ export class PiSession {
       );
     }
     this.channel.requestRestart();
-    // 就绪握手:重启即重握手(Req 5.1)。立即复位 initializing 并广播 → 前端在重新就绪前**即刻**重新门控
-    //(不等真实重生,关闭过早发送窗口)。重新探针由通道 onRestart 在**真实重生时机**驱动
-    //(见 handleRunnerRestarted,确定落到新子进程);仅当通道不支持 onRestart 时,退回 settle 定时器
-    // best-effort 重探针(避免探针写入将死的旧 stdin,见 RESTART_PROBE_SETTLE_MS)。
+    // 就绪握手:重启即重握手(Req 5.1)。立即复位 initializing 并广播 → 前端在重新就绪前**即刻**
+    // 重新门控(不等真实重生,关闭过早发送窗口)。看门狗重武装收敛到此一处:通道支持 onRestart
+    // 时 handleRunnerRestarted 在**真实重生时机**再次复位+重武装(幂等,覆盖此处的武装);
+    // 不支持 onRestart 的通道(无回调可用)则仅有此处的武装兜底 —— 无 settle 定时器
+    //(Req 5.3,收帧化下不再需要等窗口落到新子进程,看门狗单独兜底真正失败的重启)。
     if (this.readinessHandshake) {
-      this.probe.cancel();
       this.setLifecycle("initializing", undefined, undefined, { forceReset: true });
-      if (typeof this.channel.onRestart !== "function") {
-        this.probe.startAfter(RESTART_PROBE_SETTLE_MS);
-      }
+      this.armReadyWatchdog();
     }
     return Promise.resolve();
   }
@@ -1381,12 +1427,12 @@ export class PiSession {
       //     崩溃/中途停止不经 handleEvent/reduceSnapshot(不会收到 agent_end),故此处显式复位,
       //     避免最后一帧 session-state 以 busy=true 收尾让纯投影前端永久显示忙碌。须在 removeAllListeners 前。
       this.setSnapshot({ busy: false });
-      // 1) 清 idle 计时(Stopping 首步)+ 就绪握手计时器。
+      // 1) 清 idle 计时(Stopping 首步)+ 就绪看门狗(Req 4.4 兜底,通常已由 setLifecycle("ended") 清过)。
       if (this.idleTimer !== undefined) {
         clearTimeout(this.idleTimer);
         this.idleTimer = undefined;
       }
-      this.probe.cancel();
+      this.clearReadyWatchdog();
       // R11:清命令-turn watcher 计时器(收尾时不再合成 finish)。
       this.cancelCommandTurnWatcher();
       // 2) 退订通道信号。
