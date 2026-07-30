@@ -33,7 +33,7 @@
 
 - [ ] 2. Core:pane 来源合并原语
 
-- [ ] 2.1 实现来源合并的顺序与上限合成
+- [x] 2.1 实现来源合并的顺序与上限合成
   - 实现纯函数:接受若干 pane 来源(每个来源带类型、来源标识、定义),输出单一合并定义
   - 顺序权威:内置来源在前、agent 来源在后;输出顺序只由输入顺序决定,不受装载时序影响
   - 同时打开上限取各来源声明值的**最大者**,使 agent 原有可同时打开数量不因内置加入而缩水
@@ -45,7 +45,7 @@
   - _Requirements: 1.6, 2.1, 2.3, 2.4, 2.5_
   - _Boundary: mergePaneSources — `packages/panes-kit/src/merge.ts`, `packages/panes-kit/test/merge.test.ts`_
 
-- [ ] 2.2 实现保留命名空间与冒用拒绝
+- [x] 2.2 实现保留命名空间与冒用拒绝
   - 定义内置 pane 标识的保留前缀常量,使内置与 agent 的标识在结构上不可能相同
   - agent 来源中使用该前缀的 pane 被淘汰并记入拒绝清单,**该来源其余合法 pane 仍保留**(不连坐)
   - 内置来源的 pane 必须使用该前缀,违反者同样被淘汰并记录
@@ -55,7 +55,7 @@
   - _Requirements: 3.1, 3.2, 3.3_
   - _Boundary: mergePaneSources — `packages/panes-kit/src/merge.ts`, `packages/panes-kit/test/merge.test.ts`_
 
-- [ ] 2.3 实现逐来源校验与分级降级
+- [x] 2.3 实现逐来源校验与分级降级
   - 逐来源单独校验后再整体校验 —— 否则无法区分「哪个来源非法」,诊断会指错
   - 单个来源整体非法只淘汰该来源;某内置项非法只淘汰该项,其余内置仍保留
   - 全部来源被淘汰时返回空定义,由调用方落到「面板整体不渲染」的分支
@@ -66,7 +66,7 @@
   - _Requirements: 5.4, 7.1, 7.2_
   - _Boundary: mergePaneSources — `packages/panes-kit/src/merge.ts`, `packages/panes-kit/test/merge.test.ts`_
 
-- [ ] 2.4 导出合并原语与命名空间常量
+- [x] 2.4 导出合并原语与命名空间常量
   - 从 panes-kit 包入口导出合并函数、保留前缀常量与相关类型
   - 可观察完成:从包入口(而非深路径)导入合并函数与前缀常量可通过类型检查
   - _Requirements: 2.2, 3.1_
