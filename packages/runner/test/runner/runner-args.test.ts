@@ -45,4 +45,28 @@ describe("parseRunnerArgs (Req 4.1/4.2)", () => {
   it("throws RunnerArgsError when --agent has no value", () => {
     expect(() => parseRunnerArgs(["--agent"])).toThrowError(RunnerArgsError);
   });
+
+  describe("未识别参数(不静默吞)", () => {
+    it("登记未识别的 -- 开关而不抛错(调用方可能比 runner 新)", () => {
+      const args = parseRunnerArgs(["--agent", "/a", "--no-skill", "--future-flag"]);
+      expect(args.agent).toBe("/a");
+      expect(args.unknownArgs).toEqual(["--no-skill", "--future-flag"]);
+    });
+
+    it("=value 形式只登记名字,不把值带进诊断(值可能含路径/凭据)", () => {
+      const args = parseRunnerArgs(["--agent", "/a", "--secret-thing=hunter2"]);
+      expect(args.unknownArgs).toEqual(["--secret-thing"]);
+    });
+
+    it("全部识别时不出现该字段(既有全字段断言零感知)", () => {
+      const args = parseRunnerArgs(["--agent", "/a", "--trusted"]);
+      expect(args.unknownArgs).toBeUndefined();
+    });
+
+    it("被 takeValue 消费的值不算未识别项", () => {
+      const args = parseRunnerArgs(["--agent", "/a", "--cwd", "--weird-looking-path"]);
+      expect(args.cwd).toBe("--weird-looking-path");
+      expect(args.unknownArgs).toBeUndefined();
+    });
+  });
 });
