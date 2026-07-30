@@ -122,6 +122,37 @@ export interface CanvasPluginBundle {
   readonly actions?: readonly unknown[];
 }
 
+/**
+ * agent 贡献的 pane 定义(**最小结构镜像**,spec host-builtin-panes 任务 1.2)。
+ *
+ * canonical 家在 `@blksails/pi-web-panes-kit`(`PanesDefinitionInput`,那里有 zod schema
+ * 与完整的 pane 形状)。与 {@link CanvasPluginBundle} 同一手法:web-kit 刻意不 import
+ * panes-kit —— 二者无依赖边,故此处只镜像作者声明时需要的结构(稳定的标量键 + 位宽型
+ * `unknown` 的 pane 槽)。真正的校验收敛在宿主消费点(`mergePaneSources` → `definePanes`),
+ * 那里也对镜像与 canonical 下双向可赋值断言,防两者漂移。
+ *
+ * ## 为什么需要这个键
+ *
+ * 在它之前,agent 的 pane 定义只活在自己 `slots.panelRight` 渲染器的闭包里,宿主**无从枚举**
+ * —— 也就无法把它与宿主内置 pane 合并。有了它,宿主才能领域中立地搬运并合并。
+ *
+ * ## 与 `slots.panelRight` 互斥
+ *
+ * 同时声明两者时**旧槽优先、本键被忽略**,并在会话装载期输出一条说明迁移途径的诊断。
+ * 原因:槽渲染器占满整个面板区域,内置 panes 无处安放;两套面板并存会让用户看到分裂的
+ * 标签页与两套实例生命周期。要与内置 pane 合并,就只声明本键、不声明该槽。
+ */
+export interface PaneContributionBundle {
+  /** 该 agent 的 pane 集合标识(仅用于诊断与合并溯源)。 */
+  readonly id: string;
+  /** pane 定义数组;形状由 panes-kit 在宿主侧校验。 */
+  readonly panes: readonly unknown[];
+  /** 会话打开时默认展开的 pane 标识。 */
+  readonly initialPaneIds?: readonly string[];
+  /** 该 agent 期望的同时打开上限;与内置集合合并时取两者较大者。 */
+  readonly maxOpenPanes?: number;
+}
+
 /** 运行时 WebExtension 描述符(`.pi/web` 入口默认导出)。 */
 export interface WebExtension {
   readonly manifestId: string;
@@ -145,6 +176,14 @@ export interface WebExtension {
    * 发生在领域侧(canvas-ui)。
    */
   readonly canvasPlugins?: readonly CanvasPluginBundle[];
+  /**
+   * 该 agent 贡献的 pane 定义。与宿主内置 pane 集合在会话装载期合并(内置在前、本键在后),
+   * 宿主对其领域中立:只搬运与合并,不解析 pane 内部语义。
+   *
+   * 与 `slots.panelRight` **互斥** —— 同时声明时旧槽优先、本键被忽略并记诊断。
+   * 详见 {@link PaneContributionBundle}。
+   */
+  readonly panes?: PaneContributionBundle;
 }
 
 /**

@@ -52,3 +52,8 @@ e2e/fixtures/iphone-mpf.jpg
 
 # 独立业务仓；pi-web 只承载通用 panes 地基。
 /examples/aigc-agent/
+
+# 内置 pane 的 guest 文档产物(spec host-builtin-panes)。由 scripts/build-builtin-panes.ts
+# 生成,类型侧有 panes/generated.d.ts 垫片 —— 刻意不入库,否则「本地绿」可能只是因为工作树里
+# 躺着一份没人生成的产物(本仓已三次踩到)。
+/panes/generated.ts
