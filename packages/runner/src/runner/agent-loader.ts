@@ -11,37 +11,39 @@
  *        marker, attachable via {@link markRuntimeFactory}.
  *
  * User code runs only inside this (subprocess) loader via jiti.
+ *
+ * 两个关注点已析出(SRP),本文件 re-export 其公开符号以保持既有 import 面:
+ *  - jiti `alias` 构造(用户入口的模块解析)→ `module-aliases.ts`
+ *  - 声明字段的权威校验与归一化 → `declaration-validators.ts`
  */
-import { existsSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   AgentAttachmentCatalogDecl,
   AgentContext,
   AgentDefinition,
-  AgentRouteHandler,
 } from "@blksails/pi-web-core/agent-definition.js";
 import { createJiti } from "jiti";
 import type { CreateAgentSessionRuntimeFactory } from "@earendil-works/pi-coding-agent";
-import type { AgentRouteMethod, SlashCompletionDecl } from "@blksails/pi-web-protocol";
+import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import { buildRuntimeFactory } from "./option-mapper.js";
 import type { SystemResourceOverrides } from "./option-mapper.js";
 import type { ResolveProjectTrust } from "./project-trust.js";
+import { buildResolutionAliases } from "./module-aliases.js";
+import {
+  InvalidAgentDefinitionError,
+  normalizeAgentRoutes,
+  normalizeAttachmentCatalog,
+  normalizeAttachmentProfile,
+  type NormalizedAgentRouteDecl,
+} from "./declaration-validators.js";
 
-/**
- * 归一化后的单条 agent route 声明(spec agent-declared-routes)。
- *
- * 与作者声明面(`AgentRouteDecl`)的差别:`methods` 已补缺省(`["GET"]`)且必填。
- * 纯数据投影(name/methods/description)与 protocol 的 `AgentRouteDeclDto` 一致;
- * `handler` 仅存活于子进程内(归一化发生在子进程,函数不过进程边界——下游
- * wiring 消费 handler,装配期声明帧只取纯数据投影)。
- */
-export interface NormalizedAgentRouteDecl {
-  readonly name: string;
-  readonly methods: readonly AgentRouteMethod[];
-  readonly description?: string;
-  readonly handler: AgentRouteHandler;
-}
+export { buildResolutionAliases } from "./module-aliases.js";
+export {
+  InvalidAgentDefinitionError,
+  normalizeAgentRoutes,
+  normalizeAttachmentCatalog,
+  normalizeAttachmentProfile,
+} from "./declaration-validators.js";
+export type { NormalizedAgentRouteDecl } from "./declaration-validators.js";
 
 /** Normalized internal representation shared by all three shapes. */
 export type NormalizedAgentRuntimeFactory = CreateAgentSessionRuntimeFactory & {
@@ -97,161 +99,6 @@ function isBrandedRuntimeFactory(
     typeof value === "function" &&
     (value as unknown as Record<string, unknown>)[RUNTIME_FACTORY_BRAND] === true
   );
-}
-
-/** Thrown when a user entry's default export cannot be normalized. */
-export class InvalidAgentDefinitionError extends Error {
-  constructor(
-    public readonly agentPath: string,
-    reason: string,
-    options?: { cause?: unknown },
-  ) {
-    super(`Invalid agent definition at "${agentPath}": ${reason}`, options);
-    this.name = "InvalidAgentDefinitionError";
-  }
-}
-
-/** route 名称格式(Req 1.2):小写字母/数字开头,仅含小写字母/数字/连字符。 */
-const ROUTE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-
-/** route 允许的 HTTP 方法白名单(Req 1.2)。 */
-const ALLOWED_ROUTE_METHODS: ReadonlySet<string> = new Set(["GET", "POST"]);
-
-/**
- * 权威校验并归一化 `AgentDefinition.routes`(spec agent-declared-routes,Req 1.2/1.3)。
- *
- * 规则:名称匹配 {@link ROUTE_NAME_PATTERN}、同一定义内唯一、methods ⊆ {GET, POST}
- * 且非空(空集合的 route 永不可达,视为声明错误而非静默忽略)、handler 必须是函数
- * (归一化产物携带 handler 引用,下游 wiring 依赖);`methods` 缺省补 `["GET"]`。
- *
- * 非法声明抛 {@link InvalidAgentDefinitionError},消息含 route 名称与失败原因
- * (→ runner 启动失败 → 会话创建失败,而非静默忽略)。无声明返回空数组。
- */
-function normalizeAgentRoutes(
-  routes: AgentDefinition["routes"],
-  agentPath: string,
-): readonly NormalizedAgentRouteDecl[] {
-  if (routes === undefined) {
-    return [];
-  }
-  const fail = (routeName: unknown, reason: string): never => {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid routes declaration: route ${JSON.stringify(routeName)}: ${reason}`,
-    );
-  };
-  if (!Array.isArray(routes)) {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid routes declaration: "routes" must be an array (got ${typeof routes})`,
-    );
-  }
-
-  const seen = new Set<string>();
-  return routes.map((decl, index): NormalizedAgentRouteDecl => {
-    if (typeof decl !== "object" || decl === null) {
-      return fail(index, `declaration at index ${index} must be an object (got ${decl === null ? "null" : typeof decl})`);
-    }
-    const { name, methods, description, handler } = decl;
-
-    if (typeof name !== "string" || !ROUTE_NAME_PATTERN.test(name)) {
-      return fail(
-        name ?? index,
-        "name must be a non-empty string matching ^[a-z0-9][a-z0-9-]*$ (lowercase letters, digits and hyphens, starting with a letter or digit)",
-      );
-    }
-    if (seen.has(name)) {
-      return fail(name, "duplicate route name within one agent definition");
-    }
-    seen.add(name);
-
-    let normalizedMethods: readonly AgentRouteMethod[];
-    if (methods === undefined) {
-      normalizedMethods = ["GET"];
-    } else {
-      if (!Array.isArray(methods) || methods.length === 0) {
-        return fail(name, 'methods must be a non-empty array of "GET" / "POST" (omit the field to default to ["GET"])');
-      }
-      for (const method of methods) {
-        if (typeof method !== "string" || !ALLOWED_ROUTE_METHODS.has(method)) {
-          return fail(name, `method ${JSON.stringify(method)} is not allowed (allowed methods: GET, POST)`);
-        }
-      }
-      normalizedMethods = [...new Set(methods)];
-    }
-
-    if (typeof handler !== "function") {
-      return fail(name, `handler must be a function (got ${handler === null ? "null" : typeof handler})`);
-    }
-
-    return {
-      name,
-      methods: normalizedMethods,
-      ...(description !== undefined ? { description } : {}),
-      handler,
-    };
-  });
-}
-
-/**
- * 权威校验并归一化 `AgentDefinition.attachmentProfile`(spec agent-attachment-profile,
- * Req 1.1/1.3)——**形状**校验:非空字符串、与 route/后端名同规字符格式
- * ({@link ROUTE_NAME_PATTERN})。白名单(是否命中宿主拓扑)不在此校验,由 runner 在装配期
- * 另行对照 `parseBackendsEnv` 执行(loader 阶段尚不便读取拓扑 env 的语义权威,归属见
- * design.md §runner)。
- *
- * 非法形状抛 {@link InvalidAgentDefinitionError};未声明返回 `undefined`。
- */
-function normalizeAttachmentProfile(
-  attachmentProfile: AgentDefinition["attachmentProfile"],
-  agentPath: string,
-): string | undefined {
-  if (attachmentProfile === undefined) return undefined;
-  if (
-    typeof attachmentProfile !== "string" ||
-    !ROUTE_NAME_PATTERN.test(attachmentProfile)
-  ) {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid attachmentProfile declaration: must be a non-empty string matching ^[a-z0-9][a-z0-9-]*$ (got ${JSON.stringify(attachmentProfile)})`,
-    );
-  }
-  return attachmentProfile;
-}
-
-/**
- * 权威校验 `AgentDefinition.attachmentCatalog`(spec agent-attachment-catalog,Req 1.1/1.2)——
- * **形状**校验:声明存在时 `list`/`resolve` 均必须为函数。白名单/子进程侧行为不在此校验。
- *
- * 非法形状抛 {@link InvalidAgentDefinitionError};未声明返回 `undefined`。
- */
-function normalizeAttachmentCatalog(
-  attachmentCatalog: AgentDefinition["attachmentCatalog"],
-  agentPath: string,
-): AgentAttachmentCatalogDecl | undefined {
-  if (attachmentCatalog === undefined) return undefined;
-  if (typeof attachmentCatalog !== "object" || attachmentCatalog === null) {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid attachmentCatalog declaration: must be an object with "list" and "resolve" handlers (got ${
-        attachmentCatalog === null ? "null" : typeof attachmentCatalog
-      })`,
-    );
-  }
-  const { list, resolve } = attachmentCatalog;
-  if (typeof list !== "function") {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid attachmentCatalog declaration: "list" must be a function (got ${typeof list})`,
-    );
-  }
-  if (typeof resolve !== "function") {
-    throw new InvalidAgentDefinitionError(
-      agentPath,
-      `invalid attachmentCatalog declaration: "resolve" must be a function (got ${typeof resolve})`,
-    );
-  }
-  return { list, resolve };
 }
 
 /**
@@ -316,102 +163,6 @@ function getDefaultExport(mod: unknown): unknown {
     return "default" in mod ? (mod as { default: unknown }).default : undefined;
   }
   return mod;
-}
-
-/**
- * Build jiti `alias` entries so a user entry can `import` the pi SDK (and,
- * optionally, `@blksails/pi-web-agent-kit`) regardless of where the entry file lives.
- *
- * The runner's location can resolve these packages (they are workspace deps of
- * `@blksails/pi-web-server`); a user `examples/` file generally cannot. Aliasing maps
- * the bare specifiers to absolute package locations resolvable from here.
- */
-export function buildResolutionAliases(): Record<string, string> {
-  const alias: Record<string, string> = {};
-  // pi's `exports` map blocks resolving `package.json`, so walk node_modules
-  // from the runner upward to find the package directory, then alias the bare
-  // specifier to it (jiti honours the package's own `exports`).
-  const piDir = locatePackageDir(
-    "@earendil-works/pi-coding-agent",
-    fileURLToPath(import.meta.url),
-  );
-  if (piDir !== undefined) {
-    alias["@earendil-works/pi-coding-agent"] = piDir;
-    // pi-ai/pi-agent-core are nested next to pi-coding-agent in its real (pnpm)
-    // node_modules. Alias them too so user entries may import e.g. `Type`.
-    const realScope = dirname(realpathSync(piDir));
-    for (const sibling of ["pi-ai", "pi-agent-core", "pi-tui"]) {
-      const dir = join(realScope, sibling);
-      if (existsSync(join(dir, "package.json"))) {
-        alias[`@earendil-works/${sibling}`] = dir;
-      }
-    }
-    // Subpath exports need explicit aliases: jiti's alias does *prefix*
-    // substitution, so `@earendil-works/pi-ai/compat` would become
-    // `<piAiDir>/compat` — a path that does not exist (the file lives under
-    // `dist/`), and the package's own `exports` map is never consulted for the
-    // rewritten specifier. Worse, `pi-ai`'s `exports["./compat"]` declares only
-    // an `import` condition, so even an unaliased CJS `require` would fail.
-    // Map the subpath straight at its built file. Without this, any agent entry
-    // that (transitively) imports `@earendil-works/pi-ai/compat` — e.g. via
-    // tool-kit's `visionExtension` — dies with
-    // `Cannot find module .../pi-ai/compat` at runner boot.
-    const piAiDir = join(realScope, "pi-ai");
-    const compatFile = join(piAiDir, "dist", "compat.js");
-    if (existsSync(compatFile)) {
-      alias["@earendil-works/pi-ai/compat"] = compatFile;
-    }
-  }
-  // `@blksails/pi-web-agent-kit` is a types-only workspace package that may not be a
-  // declared dependency of the runner (so it is not symlinked into
-  // node_modules). Locate the workspace package directory directly so example/
-  // user entries authored with `defineAgent` resolve regardless of location.
-  const kitDir = locateWorkspacePackageDir(
-    join("packages", "agent-kit"),
-    fileURLToPath(import.meta.url),
-  );
-  if (kitDir !== undefined) {
-    // Alias to the entry source file directly (agent-kit's `exports` maps "."
-    // → "./src/index.ts"); jiti loads the TS entry without package resolution.
-    alias["@blksails/pi-web-agent-kit"] = join(kitDir, "src", "index.ts");
-  }
-
-  return alias;
-}
-
-/** Walk upward from `fromPath` for a `relDir` containing a `package.json`. */
-function locateWorkspacePackageDir(
-  relDir: string,
-  fromPath: string,
-): string | undefined {
-  let dir = dirname(fromPath);
-  for (;;) {
-    const candidate = join(dir, relDir);
-    if (existsSync(join(candidate, "package.json"))) {
-      return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return undefined;
-    }
-    dir = parent;
-  }
-}
-
-/** Walk `node_modules` directories upward from `fromPath` to find `spec`. */
-function locatePackageDir(spec: string, fromPath: string): string | undefined {
-  let dir = dirname(fromPath);
-  for (;;) {
-    const candidate = join(dir, "node_modules", spec);
-    if (existsSync(join(candidate, "package.json"))) {
-      return candidate;
-    }
-    const parent = dirname(dir);
-    if (parent === dir) {
-      return undefined;
-    }
-    dir = parent;
-  }
 }
 
 /**

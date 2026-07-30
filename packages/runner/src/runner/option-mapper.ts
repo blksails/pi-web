@@ -1,19 +1,18 @@
 /**
- * AgentDefinition → pi SDK option mapping.
+ * option-mapper — `AgentDefinition` → `CreateAgentSessionRuntimeFactory` 的**装配**。
  *
- * Splits an {@link AgentDefinition} into:
- *  - resource-class fields → `createAgentSessionServices` `resourceLoaderOptions`
- *    (systemPrompt / extension paths + factories / skills / prompts / contextFiles)
- *  - session-class fields → `createAgentSessionFromServices` inputs
- *    (model / thinkingLevel / scopedModels / tools / excludeTools / noTools / customTools)
+ * 三件事分住三个模块(SRP);本文件只保留第三件,并 re-export 前两件以保持既有 import 面:
+ *  - 资源类映射(systemPrompt / extensions / skills / prompts / contextFiles)
+ *    → `resource-options.ts`
+ *  - 会话类映射(model / thinkingLevel / scopedModels / tools …)与模型解析
+ *    → `session-options.ts`
+ *  - **本文件**:把两者与模型源、trust 钩子组装成 factory。
  *
- * and assembles a `CreateAgentSessionRuntimeFactory`. Optional fields that are
- * absent are never injected, preserving pi's default discovery behaviour.
+ * 缺省字段一律不注入,保留 pi 的默认发现行为。
  */
-import { basename, extname } from "node:path";
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
-import type { AgentDefinition, AgentModel } from "@blksails/pi-web-core/agent-definition.js";
+import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
 import {
   type AgentSessionServices,
   createAgentSessionFromServices,
@@ -21,8 +20,6 @@ import {
   type CreateAgentSessionRuntimeFactory,
   type CreateAgentSessionServicesOptions,
   type CreateAgentSessionFromServicesOptions,
-  type ExtensionFactory,
-  type ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
 import type { ResolveProjectTrust } from "./project-trust.js";
 // desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
@@ -34,281 +31,29 @@ import {
   getSharedModelServicesFactory,
   listModelSources,
 } from "./model-source-registrar.js";
-// 仅取**命名空间常量**(中立模块),不取任何 adapter 实现 —— 见该文件的位置说明。
-import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
-import { resolveBuiltinExtensionEntries } from "./builtin-extensions.js";
+import {
+  collectExtensionPaths,
+  mapResourceLoaderOptions,
+  type SystemResourceOverrides,
+} from "./resource-options.js";
+import { mapSessionFields, resolveModel, type SessionModel } from "./session-options.js";
+
+// 资源类 / 会话类映射已析出;此处原样再导出,使既有
+// `from ".../option-mapper.js"` 的 import 路径零改动。
+export {
+  collectExtensionPaths,
+  collectForcedExtensionPaths,
+  mapResourceLoaderOptions,
+} from "./resource-options.js";
+export type {
+  MappedResourceLoaderOptions,
+  SystemResourceOverrides,
+} from "./resource-options.js";
+export { isModelRef, mapSessionFields } from "./session-options.js";
+export type { MappedSessionFields } from "./session-options.js";
 
 /** runner 侧模型来源注册的日志出口(Req 7.1:记 provider 名与条目数,绝不记凭据)。 */
 const runnerLog = createLogger({ namespace: "server:runner:model-source" });
-
-type ResourceLoaderOptions = NonNullable<
-  CreateAgentSessionServicesOptions["resourceLoaderOptions"]
->;
-
-type SessionModel = NonNullable<CreateAgentSessionFromServicesOptions["model"]>;
-
-/** The SDK `LoadExtensionsResult` — the `base` type passed to `extensionsOverride`. */
-type LoadExtensionsResult = Parameters<
-  NonNullable<ResourceLoaderOptions["extensionsOverride"]>
->[0];
-/** A single loaded extension as carried by `LoadExtensionsResult.extensions`. */
-type LoadedExtension = LoadExtensionsResult["extensions"][number];
-
-/**
- * Derive an extension's name from its `path`: the basename without extension.
- * Compared against `allowExtensions` entries. Kept as a small in-file helper to
- * ease unit testing and calibration against real extension samples.
- */
-function extensionName(ext: LoadedExtension): string {
-  return basename(ext.path, extname(ext.path));
-}
-
-/**
- * Result of mapping the resource-class fields of an {@link AgentDefinition}.
- * Exposed for unit testing the mapping in isolation.
- */
-export interface MappedResourceLoaderOptions {
-  resourceLoaderOptions: ResourceLoaderOptions;
-}
-
-/**
- * pi-web「扩展 → 系统资源」面板开关,由 runner `--no-skills`/`--no-extensions` 透传至此。
- * `true` = 关闭(不载入);`undefined` = 默认载入。二者相互独立。
- */
-export interface SystemResourceOverrides {
-  readonly noSkills?: boolean;
-  readonly noExtensions?: boolean;
-}
-
-/**
- * Result of mapping the session-class fields of an {@link AgentDefinition}.
- * Models are intentionally left unresolved here (still `AgentModel`); the
- * factory resolves `{ provider, modelId }` refs against the registry once
- * services exist. Exposed for unit testing.
- */
-export interface MappedSessionFields {
-  model?: AgentModel;
-  thinkingLevel?: AgentDefinition["thinkingLevel"];
-  scopedModels?: AgentDefinition["scopedModels"];
-  tools?: string[];
-  excludeTools?: string[];
-  noTools?: AgentDefinition["noTools"];
-  customTools?: CreateAgentSessionFromServicesOptions["customTools"];
-}
-
-/** True when `m` is a lightweight `{ provider, modelId }` reference. */
-export function isModelRef(
-  m: AgentModel,
-): m is { provider: string; modelId: string } {
-  // A fully-resolved pi Model carries an `api` discriminator; the lightweight
-  // ref has only `provider` + `modelId`.
-  return !("api" in m);
-}
-
-/**
- * Map the resource-class fields of a definition to `resourceLoaderOptions`,
- * binding the trust hook via `resourceLoaderReloadOptions` is handled by the
- * caller (the factory). Absent fields are omitted entirely.
- */
-export function mapResourceLoaderOptions(
-  def: AgentDefinition,
-  opts: {
-    forcedExtensionPaths?: readonly string[];
-    /** 系统资源开关 `--no-skills`:`true` → 清空 skills 覆盖(优先于 `def.skills`)。 */
-    noSkills?: boolean;
-    /** 系统资源开关 `--no-extensions`:`true` → `noExtensions=true`(强制注入路径仍载入)。 */
-    noExtensions?: boolean;
-  } = {},
-): MappedResourceLoaderOptions {
-  const resourceLoaderOptions: ResourceLoaderOptions = {};
-  // 强制注入路径(如 pi-sandbox):不论 agent 的 extensions/allowExtensions 如何,
-  // 始终随会话加载。SDK 在 noExtensions 下仍加载 additionalExtensionPaths;whitelist
-  // (extensionsOverride)分支须额外放行其 basename(见下)。
-  const forced = (opts.forcedExtensionPaths ?? []).filter((p) => p.length > 0);
-  const forcedBasenames = new Set(forced.map((p) => basename(p)));
-
-  if (def.systemPrompt !== undefined) {
-    const prompt =
-      typeof def.systemPrompt === "function" ? def.systemPrompt() : def.systemPrompt;
-    // The resource loader applies the override on top of any discovered prompt.
-    resourceLoaderOptions.systemPromptOverride = () => prompt;
-  }
-
-  const additionalPaths: string[] = [...forced];
-  if (def.extensions !== undefined) {
-    const factories: ExtensionFactory[] = [];
-    for (const item of def.extensions) {
-      if (typeof item === "string") {
-        additionalPaths.push(item);
-      } else {
-        factories.push(item);
-      }
-    }
-    if (factories.length > 0) {
-      resourceLoaderOptions.extensionFactories = factories;
-    }
-  }
-  if (additionalPaths.length > 0) {
-    resourceLoaderOptions.additionalExtensionPaths = additionalPaths;
-  }
-
-  // allowExtensions: close-all / whitelist semantics for disk-discovered system
-  // extensions. Absent → not injected (SDK default discovery preserved).
-  //
-  // KNOWN LIMITATION (research.md R-1): a NON-EMPTY allowExtensions still loads
-  // every discovered extension first, then filters via `extensionsOverride` — so
-  // a closed extension's module code runs once before being dropped. For strong
-  // isolation (discovery skipped entirely, no closed-extension code executed),
-  // use `allowExtensions: []`, which maps to `noExtensions = true`.
-  if (def.allowExtensions !== undefined) {
-    const allow = new Set(def.allowExtensions);
-    if (allow.size === 0) {
-      // Close all: skip discovery; closed-extension code never runs. Explicitly
-      // appended items are still preserved by the SDK.
-      resourceLoaderOptions.noExtensions = true;
-    } else {
-      // Whitelist: discover, then keep named extensions + explicitly appended ones.
-      const explicitPaths = new Set(
-        (def.extensions ?? [])
-          .filter((e): e is string => typeof e === "string")
-          .map((p) => basename(p)),
-      );
-      resourceLoaderOptions.extensionsOverride = (base) => ({
-        // `...base` preserves `errors` and `runtime` untouched.
-        ...base,
-        extensions: base.extensions.filter((ext) => {
-          if (ext.path.startsWith("<inline:")) return true; // factory-appended item
-          if (forcedBasenames.has(basename(ext.path))) return true; // 强制注入(沙箱)豁免白名单
-          if (explicitPaths.has(basename(ext.path))) return true; // string-path appended item
-          return allow.has(extensionName(ext)); // named whitelist
-        }),
-      });
-    }
-  }
-
-  if (def.skills !== undefined) {
-    resourceLoaderOptions.skillsOverride = def.skills;
-  }
-  if (def.promptTemplates !== undefined) {
-    resourceLoaderOptions.promptsOverride = def.promptTemplates;
-  }
-  if (def.contextFiles !== undefined) {
-    resourceLoaderOptions.agentsFilesOverride = def.contextFiles;
-  }
-
-  // 系统资源开关(pi-web「扩展 → 系统资源」面板,经 runner `--no-skills`/`--no-extensions`)。
-  // 置于 def.* 映射之后,使「关闭」无条件优先于 agent 自声明(对齐 pi CLI 行为)。
-  if (opts.noSkills === true) {
-    // R12-AC2:关闭「系统 skill」(loadSystemSkills=false / --no-skills)时,**仅排除系统/用户/包 skill,
-    // 保留项目 scope 的 skill**(`<cwd>/.pi/skills`,origin top-level)——符合开关名义("系统"),避免误杀
-    // agent 自带 / 插件随包(被装后 .pi/skills)的技能。项目 skill 的 `sourceInfo.scope === "project"`
-    // (loadSkills 已填,见 SDK Skill 类型);用户/包 skill 为 "user",cli 注入为 "temporary",均排除。
-    // 优先于 def.skills(Req 1.4):agent 自声明的非项目 skill 同样被关。
-    resourceLoaderOptions.skillsOverride = ({ skills, diagnostics }) => ({
-      skills: skills.filter((s) => s.sourceInfo?.scope === "project"),
-      diagnostics,
-    });
-  }
-  if (opts.noExtensions === true) {
-    // 跳过磁盘发现的系统/包 extensions;additionalExtensionPaths(强制注入的沙箱)仍由
-    // SDK 加载,沙箱安全门不破(Req 2.3)。白名单 extensionsOverride 在「全关」下无意义,清除。
-    resourceLoaderOptions.noExtensions = true;
-    delete resourceLoaderOptions.extensionsOverride;
-  }
-
-  return { resourceLoaderOptions };
-}
-
-/**
- * Map the session-class fields of a definition. Absent fields are omitted so
- * the SDK keeps its defaults. Models stay as {@link AgentModel} (resolved
- * later, against the registry).
- */
-export function mapSessionFields(def: AgentDefinition): MappedSessionFields {
-  const out: MappedSessionFields = {};
-  if (def.model !== undefined) out.model = def.model;
-  if (def.thinkingLevel !== undefined) out.thinkingLevel = def.thinkingLevel;
-  if (def.scopedModels !== undefined) out.scopedModels = def.scopedModels;
-  if (def.tools !== undefined) out.tools = def.tools;
-  if (def.excludeTools !== undefined) out.excludeTools = def.excludeTools;
-  if (def.noTools !== undefined) out.noTools = def.noTools;
-  if (def.customTools !== undefined) out.customTools = def.customTools;
-  return out;
-}
-
-/** Resolve an {@link AgentModel} to a concrete pi Model via the registry. */
-function resolveModel(model: AgentModel, registry: ModelRegistry): SessionModel {
-  if (!isModelRef(model)) {
-    return model as SessionModel;
-  }
-  const found = registry.find(model.provider, model.modelId);
-  if (found === undefined) {
-    const base = `Model not found in registry: provider="${model.provider}" modelId="${model.modelId}"`;
-    // spec ai-gateway-session-models Req 1.4/4.2:网关来源的失败有其特有成因(目录 TTL
-    // 已过期、模型是 :batch/embedding 等不可对话变体、网关套件未启用),裸抛注册表内部
-    // 文案会让用户无从下手。非网关来源的文案保持逐字不变。
-    // ★ 判据必须是 provider **命名空间**,不能是「该源是否已注册」——
-    //   这段文案本身就把「网关套件未启用、会话侧未注册」列为成因之一,
-    //   用注册状态当判据会让最需要它的场景恰好拿不到它(实测被 it 档抓到)。
-    if (model.provider === AI_GATEWAY_PROVIDER_NAME) {
-      throw new Error(
-        `${base} — 该模型来自 ai-gateway 目录。常见成因:` +
-          `(1) 网关套件未启用或凭据缺失,会话侧未注册该 provider;` +
-          `(2) 目录快照已变化,该模型已从上游下线;` +
-          `(3) 该条目并非对话模型(如 :batch 变体、embedding/tts),不可用于会话。`,
-      );
-    }
-    throw new Error(base);
-  }
-  return found as SessionModel;
-}
-
-/**
- * 从 env 收集强制注入扩展入口路径(custom 模式经 spawn env 下传;空则不注入,行为不变):
- *  - `PI_WEB_SANDBOX_ENTRY`:沙箱 enforcement(不依赖默认发现)。
- *  - `PI_WEB_EXT_TOOLS_ENTRY`:内置「扩展管理扩展」(spec extension-install-agent-tools)。
- *  - `PI_WEB_AUTO_TITLE_ENTRY`:内置「自动会话标题扩展」,由主进程按总开关 PI_WEB_AUTO_TITLE
- *    门控下发(spec auto-session-title)。
- *  - `PI_WEB_MCP_ENTRY`:内置「MCP 客户端扩展」(spec builtin-mcp-client)。
- *
- * ⚠ **自 spec runner-self-resolved-builtins 起,三个 pi-web 自带扩展(ext-tools /
- * auto-title / mcp)的主来源已改为 runner 侧自解析**({@link resolveBuiltinExtensionEntries}),
- * 主进程不再下发其路径。本函数保留仅为**过渡期兼容**:外部编排若仍设置这些 env,识别但不报错
- * (Req 3.3),并由调用方与自解析结果**去重**。
- * `PI_WEB_SANDBOX_ENTRY` 不在自解析范围(入口在 agent 包内,须传 agentDir),仍以 env 为准。
- *
- * 纯函数(env 注入,不读全局),便于单测;顺序固定:sandbox → ext-tools → auto-title → mcp。
- */
-export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[] {
-  return [
-    env["PI_WEB_SANDBOX_ENTRY"],
-    env["PI_WEB_EXT_TOOLS_ENTRY"],
-    env["PI_WEB_AUTO_TITLE_ENTRY"],
-    env["PI_WEB_MCP_ENTRY"],
-  ].filter((p): p is string => p !== undefined && p.length > 0);
-}
-
-/**
- * 本次会话要强制注入的扩展入口 = **自解析的内置扩展** ∪ **env 兼容项**(去重,保序)。
- *
- * 顺序语义:env 项(含 sandbox)在前、自解析项在后 —— 与改造前 `sandbox → ext-tools →
- * auto-title → mcp` 的相对次序一致(改造后 env 通常只剩 sandbox,其余由自解析补齐)。
- *
- * 纯函数(env 与清单均可注入),便于单测。
- */
-export function collectExtensionPaths(
-  env: NodeJS.ProcessEnv,
-  selfResolved: readonly string[] = resolveBuiltinExtensionEntries(),
-): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of [...collectForcedExtensionPaths(env), ...selfResolved]) {
-    if (seen.has(p)) continue;
-    seen.add(p);
-    out.push(p);
-  }
-  return out;
-}
 
 /**
  * Build a `CreateAgentSessionRuntimeFactory` from a normalized definition.
