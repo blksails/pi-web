@@ -138,9 +138,30 @@
   > 宿主访问器(`createWebExtStateAccess`)或控制流是否真的把 agent 写入送进了
   > `controlStore.states["count"]`。
   >
-  > **下一轮的第一步**(不要再从 pane 侧查):在 `pi-chat` 层直接断言
-  > `connection.controlStore.getSnapshot().states["count"]` 在 agent 写入后是否有值。
-  > 若无 → 断点在服务端/控制流;若有 → 断点在 `createWebExtStateAccess.subscribe` 的接线。
+  > **续查四(2026-07-31):宿主侧数据确认到位 —— 断点被夹到最后一段。**
+  >
+  > 在 `pi-chat` 层挂临时探针实测(查完已清理):
+  > | 时点 | hasState | controlStore.states | count | mergedPanes |
+  > |---|---|---|---|---|
+  > | 会话激活 | true | `[]` | null | true |
+  > | agent 写入后 | true | `["count"]` | **1** | true |
+  >
+  > ⇒ **数据确实到了宿主的 controlStore**。加上前几轮结论:
+  > - `bindPaneState` 逻辑正确(假状态源单测,含换身份重绑);
+  > - `controlStore.subscribe` 语义正常(读码确认:emit 遍历调用全部 listener);
+  > - 授权正确(pane 内实测 grants);
+  > - 协议与 guest 门面正确(单测)。
+  >
+  > **断点只能在最后一段**:`createWebExtStateAccess.subscribe` 的包装,或 `bindState` 的
+  > 调用时机(订阅到底有没有真的建立在**当前那个** controlStore 上)。
+  >
+  > **下一轮的第一步(最后一个二分点)**:在 `bindPaneState` 的 subscribe 回调里加一行临时
+  > 日志,跑一次 state-bridge 的 e2e,看回调**到底有没有被调用**。
+  > - 被调用但 pane 没收到 → 问题在 postMessage / port 有效性;
+  > - 根本没被调用 → 问题在 `createWebExtStateAccess.subscribe` 的 `next !== last` 比较,
+  >   或订阅建立在了另一个 controlStore 实例上。
+  >
+  > 这一步之后应当就能定位。**已排除的四段不要重查**。
   - ★ **纯 UI 改写,零协议工作**:该示例用的读快照/订阅/执行命令/探测可用性四件套,
     guest SDK **已全部具备**(勘察 I4 修正了 brief 中「中高成本」的预判)
   - 保留其能力退化路径:会话未就绪或命令不可用时的降级表现不变
