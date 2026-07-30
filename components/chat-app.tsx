@@ -46,6 +46,7 @@ import {
   useIdentity,
 } from "./auth/use-identity.js";
 import { IdentityGate } from "./auth/login-page.js";
+import { builtinPaneSource, buildSessionSignals } from "../lib/app/builtin-panes/index.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -651,7 +652,26 @@ function SessionView({
   React.useEffect(() => {
     setPanelWidth(configuredPanelWidth);
   }, [extension?.manifestId, configuredPanelWidth]);
-  const hasPanelRight = extension?.slots?.panelRight !== undefined;
+  // 宿主内置 pane 来源(spec host-builtin-panes)。清单为空(如构建产物缺席)时为 undefined,
+  // 此时判据退回「只看 agent 有无贡献」,即本特性实施前的行为(Req 1.7)。
+  const hostPaneSource = React.useMemo(() => builtinPaneSource(), []);
+  // 会话事实 → 具名信号。cwd 是**创建请求里的值**;agent 侧解析后可能另有其所(如内置
+  // default-agent 的 cwd 由 resolver 设为用户工作目录),故 pane 的字段语义是「请求的工作目录」。
+  const paneSignals = React.useMemo(
+    () =>
+      buildSessionSignals({
+        sessionId: session.sessionId,
+        agentSource: create.source,
+        cwd: create.cwd,
+      }),
+    [session.sessionId, create.source, create.cwd],
+  );
+  // ★ 判据须与 PiChat 内部的同名判据**同源**:三项输入(旧槽 / 内置来源 / agent 声明键)
+  // 任一存在即有面板。不同步会导致「外层容器与内层内容一个显示一个不显示」。
+  const hasPanelRight =
+    extension?.slots?.panelRight !== undefined ||
+    hostPaneSource !== undefined ||
+    extension?.panes !== undefined;
   const configuredPanelRatio = extension?.config?.panelRatio;
   const [panelRightOpen, setPanelRightOpen] = React.useState(
     () => hasPanelRight && configuredPanelRatio !== "centered",
@@ -1105,6 +1125,8 @@ function SessionView({
           logsPanelPosition={logsPanelPosition ?? "bottom"}
           loggingEnabled={loggingEnabled}
           {...(extension !== undefined ? { extension } : {})}
+          {...(hostPaneSource !== undefined ? { hostPaneSource } : {})}
+          paneSignals={paneSignals}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
             : {})}
