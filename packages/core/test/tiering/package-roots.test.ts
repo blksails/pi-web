@@ -10,7 +10,8 @@ import {
 } from "./package-roots.js";
 
 /**
- * 单元:包根名册自身(spec: runner-package-extraction 任务 2.1)。
+ * 单元:包根名册自身(spec: runner-package-extraction 任务 2.1;
+ * adapters-package-extraction 任务 2.1 扩到第四个包根)。
  *
  * ★ 为什么名册要有自己的测试:三个守卫都靠 `assertEveryRootContributed` 自证「不是空转」,
  *   而那个函数本身没人守。本文件用**构造出来的**包根驱动它,把「弄坏它必须报红」这件事
@@ -18,19 +19,26 @@ import {
  */
 
 const runner = PACKAGE_ROOTS.find((r) => r.name === "runner");
+const adapters = PACKAGE_ROOTS.find((r) => r.name === "adapters");
 
 /** 一个必定不存在的包根路径,用于模拟「名册路径写错」。 */
 const bogusDir = path.join(path.dirname(PACKAGE_ROOTS[0]!.dir), "__no_such_package__");
 
 describe("PACKAGE_ROOTS —— 名册内容", () => {
-  it("三包全在册,且短名不重复", () => {
-    expect(PACKAGE_ROOTS.map((r) => r.name)).toEqual(["core", "server", "runner"]);
+  it("四包全在册,且短名不重复", () => {
+    expect(PACKAGE_ROOTS.map((r) => r.name)).toEqual(["core", "server", "runner", "adapters"]);
   });
 
   it("runner 包根指向 @blksails/pi-web-runner(R5.1)", () => {
     expect(runner, "PACKAGE_ROOTS 里没有名为 runner 的包根").toBeDefined();
     expect(runner!.packageName).toBe("@blksails/pi-web-runner");
     expect(path.basename(runner!.dir)).toBe("runner");
+  });
+
+  it("adapters 包根指向 @blksails/pi-web-adapters(R5.1)", () => {
+    expect(adapters, "PACKAGE_ROOTS 里没有名为 adapters 的包根").toBeDefined();
+    expect(adapters!.packageName).toBe("@blksails/pi-web-adapters");
+    expect(path.basename(adapters!.dir)).toBe("adapters");
   });
 
   it("每个包根都真的解析到本仓对应的包", () => {
@@ -111,12 +119,36 @@ describe("assertRootsContributed —— 空扫与过期豁免两个方向都要�
   });
 });
 
-describe("pending 豁免已全部退场,名册与磁盘现实一致", () => {
-  it("★ 三包都不带 pending 豁免 —— 搬迁完成后豁免必须清零", () => {
+describe("pending 豁免与磁盘现实一致", () => {
+  /** 搬迁已落地的包根 —— 它们的豁免必须已经清零。 */
+  const settled = ["core", "server", "runner"];
+
+  it("★ 已搬完的三包都不带 pending 豁免 —— 搬迁完成后豁免必须清零", () => {
     // 名册里的豁免必须是对现实的**描述**,不能是凭空的通行证。runner 的两次搬迁
-    // (任务 3.1 的 `src/`、任务 3.3 的 `test/`)都已落地,三个维度的声明随之全部退场。
-    for (const root of PACKAGE_ROOTS) {
+    // (spec runner-package-extraction 任务 3.1 的 `src/`、3.3 的 `test/`)都已落地,
+    // 三个维度的声明随之全部退场。
+    for (const root of PACKAGE_ROOTS.filter((r) => settled.includes(r.name))) {
       expect(root.pendingContributions, `${root.name} 不应有 pending 豁免`).toBeUndefined();
+    }
+  });
+
+  it("adapters 三个维度都声明 pending(搬迁尚未开始)", () => {
+    // spec adapters-package-extraction:守卫先行(任务 2)、搬迁在后(3.1 src / 3.2 test),
+    // 故此刻三个维度都必须在册声明为「尚未填充」。少声明一个 → 空扫断言当场报红;
+    // 多声明或搬完不删 → 下面那条反向断言与 `assertRootsContributed` 的自毁分支报红。
+    expect(adapters!.pendingContributions).toEqual(["srcModules", "srcFiles", "testFiles"]);
+  });
+
+  it("★ 反向断言:adapters 的 src/ 与 test/ 在磁盘上确实还是空的", () => {
+    // 豁免的语义是「必须**恰好**为空」,不是「可以为空」。只看名册分不出
+    // 「还没搬,声明正确」与「已经搬了,声明忘删」—— 故必须直接看磁盘。
+    for (const dim of ["src", "test"]) {
+      const dir = path.join(adapters!.dir, dim);
+      const entries = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+      expect(
+        entries,
+        `packages/adapters/${dim} 已有文件 —— 搬迁落地了,请删掉对应的 pendingContributions 维度`,
+      ).toEqual([]);
     }
   });
 

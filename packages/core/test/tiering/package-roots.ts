@@ -1,8 +1,10 @@
 /**
  * 被守卫扫描的**包根名册**(spec: core-package-extraction 任务 2.2;
- * runner-package-extraction 任务 2.1 加入第三个包根)。
+ * runner-package-extraction 任务 2.1 加入第三个包根;
+ * adapters-package-extraction 任务 2.1 加入第四个包根)。
  *
- * 内核提取把 `packages/server` 切成 core / runner / adapters 三包(adapters 尚未切出)。
+ * 内核提取把 `packages/server` 切成 core / runner / adapters 三包,
+ * 加上仍作为装配方的兼容层 server,名册共四项。
  * 三个既有守卫(依赖方向、分档、包依赖审计)必须继续覆盖**全部**模块与测试,否则边界会在
  * 搬迁中悄悄腐化 —— 而腐化的症状恰恰是「守卫还是绿的」。
  *
@@ -69,6 +71,17 @@ export const PACKAGE_ROOTS: readonly PackageRoot[] = [
   // 三个维度(`srcModules` / `srcFiles` / `testFiles`)的 pending 全部过期删除 ——
   // 守卫由此对 runner 恢复「每个维度都必须非空」的严格判据,与 core / server 同待遇。
   { name: "runner", dir: path.join(packagesDir, "runner"), packageName: "@blksails/pi-web-runner" },
+  // spec adapters-package-extraction:守卫必须**先于**搬迁扩到四包(见 tasks.md 开头的次序约束),
+  // 故此刻 `packages/adapters` 只有 `package.json` —— `src/` 与 `test/` 都还不存在
+  // (实现在任务 3.1 搬入、测试在 3.2 搬入)。三个维度因此全部声明 pending,
+  // 语义是**必须恰好为空**:任何一个维度一旦搬进第一个文件,`assertRootsContributed`
+  // 立刻报「豁免过期」并要求删掉对应的维度键,判据随之恢复严格。
+  {
+    name: "adapters",
+    dir: path.join(packagesDir, "adapters"),
+    packageName: "@blksails/pi-web-adapters",
+    pendingContributions: ["srcModules", "srcFiles", "testFiles"],
+  },
 ];
 
 /**
