@@ -108,6 +108,12 @@ import {
 } from "./session.types.js";
 import { translateEvent } from "./translate/translate-event.js";
 import { INITIAL_SNAPSHOT, reduceSnapshot } from "./reduce-snapshot.js";
+import { PendingRequests } from "./pending-requests.js";
+import {
+  dispatchRawLine,
+  type RawLineEntry,
+  type RawLineTable,
+} from "./raw-line-router.js";
 import { StickyFrameRegistry } from "./sticky-registry.js";
 import {
   createTranslationContext,
@@ -187,19 +193,13 @@ export class PiSession {
    * `piweb_clear_queue_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
    * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂。
    */
-  private readonly pendingClearQueue = new Map<
-    string,
-    { resolve: (r: ClearQueueResponse) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private readonly pendingClearQueue = new PendingRequests<ClearQueueResponse>();
   /**
    * agent-declared-routes:route 调用在途请求(clearQueue 同构):按关联 id 配对子进程回写的
    * `piweb_agent_route_result` 行。隔离于 PiRpcProcess 的 RPC pending map(pi 自身对请求行回的
    * Unknown-command 不在此表 → 丢弃)。超时或会话收尾时 reject 以免悬挂(Req 3.4 / 5.3)。
    */
-  private readonly pendingAgentRoutes = new Map<
-    string,
-    { resolve: (r: AgentRouteResultFrame) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  private readonly pendingAgentRoutes = new PendingRequests<AgentRouteResultFrame>();
   private translationCtx: TranslationContext = createTranslationContext();
   private cache: CachedState | undefined;
   /**
@@ -224,14 +224,7 @@ export class PiSession {
    * 同构):按关联 id 配对子进程回写的 `piweb_attachment_catalog_result` 行。超时或会话收尾时
    * reject 以免悬挂(Req 2.4/3.4)。
    */
-  private readonly pendingCatalog = new Map<
-    string,
-    {
-      resolve: (r: AttachmentCatalogResultFrame) => void;
-      reject: (e: Error) => void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >();
+  private readonly pendingCatalog = new PendingRequests<AttachmentCatalogResultFrame>();
   /**
    * agent 装配期经 `agent_attachment_catalog` 帧声明的目录可用性(spec agent-attachment-catalog)。
    * 按会话缓存为只读投影(slash_completions/agent_routes 同族,就绪门前收帧即可读);
@@ -717,192 +710,184 @@ export class PiSession {
   }
 
   /**
-   * 原始行处理(Tier3 ui-rpc 下行约定):agent 以 `{"type":"ui_rpc_response","response":{...}}`
-   * 应答 ui-rpc;识别后翻译为 `control: ui-rpc` 帧广播(按 correlationId 由客户端配对)。
-   * 其余行已由 onEvent/onExtensionUIRequest 路径处理,这里忽略。
+   * 入站原始行的处置表(`type` → 校验 + 处置)。惰性建一次,`handleRawLine` 查表分发。
+   *
+   * ★ 建表而非 if-链:加一个帧类型 = 加一个条目,不必再往一条 185 行的链尾追加。
+   *   这与**子进程侧** `@blksails/pi-web-runner` 的 `frame-channel/frame-router.ts` 同构 ——
+   *   同一条 IPC 通道的两端现在用同一种方式解复用。
+   *
+   * ★ 条目顺序**不承载语义**(Map 查表,不是顺序匹配)。原 if-链里那些「置于 active gate
+   *   之前」的注释,现由各条目的 `requireActive` 显式表达:除 `ui_rpc_response` 外一律
+   *   不设该门 —— 结果帧要在超时/收尾窗口里仍能配对在途请求,装配期声明帧要早于就绪门
+   *   就被缓存。
+   *
+   * ★ `onInvalid` 的有无同样是**刻意**的:结果帧畸形静默丢弃(必有在途请求,超时兜底会
+   *   给出更准的错误);声明帧畸形必须 warn(后果是该能力整个不可用,别处不会报)。
    */
-  private handleRawLine(line: string): void {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      return; // 非 JSON 行忽略
-    }
-    if (parsed === null || typeof parsed !== "object") return;
-    const type = (parsed as { type?: unknown }).type;
+  private rawLineTable: RawLineTable | undefined;
+
+  private getRawLineTable(): RawLineTable {
+    if (this.rawLineTable !== undefined) return this.rawLineTable;
+    const table = new Map<string, RawLineEntry<never>>();
+    const add = <T>(type: string, entry: RawLineEntry<T>): void => {
+      table.set(type, entry as unknown as RawLineEntry<never>);
+    };
+
     // 状态注入桥(state-injection-bridge):子进程上报的权威态变更 → control:"state" 帧。
-    if (type === "piweb_state") {
-      const state = StateDownLineSchema.safeParse(parsed);
-      if (!state.success) return; // 畸形行丢弃,不广播
-      // 客户端 rev 单调化:runner-local rev + 跨重启 offset(见 stateRevOffset 说明)。
-      const forwardedRev = state.data.rev + this.stateRevOffset;
-      if (forwardedRev > this.maxForwardedStateRev) {
-        this.maxForwardedStateRev = forwardedRev;
-      }
-      const frame = makeControlFrame({
-        control: "state",
-        key: state.data.key,
-        value: state.data.value,
-        rev: forwardedRev,
-        ...(state.data.deleted ? { deleted: true } : {}),
-      });
-      // state-injection-bridge 增量:按 key 登记为粘性帧(与 queue/session-state 同构),
-      // 使重连/迟到订阅者回放即得每个 key 的最新值——否则重连后 KV 快照丢失(仅当次会话内存活)。
-      // delete 帧同样登记(而非从表中摘除):重放时前端按 deleted:true 语义删键,
-      // 效果与「表中没有该键」一致,但复用已有 last-value 覆盖机制,无需新增 delete() API。
-      this.sticky.set(`state:${state.data.key}`, frame);
-      this.emitter.emit(FRAME_EVENT, frame);
-      return;
-    }
+    add("piweb_state", {
+      schema: StateDownLineSchema,
+      handle: (data) => {
+        // 客户端 rev 单调化:runner-local rev + 跨重启 offset(见 stateRevOffset 说明)。
+        const forwardedRev = data.rev + this.stateRevOffset;
+        if (forwardedRev > this.maxForwardedStateRev) {
+          this.maxForwardedStateRev = forwardedRev;
+        }
+        const frame = makeControlFrame({
+          control: "state",
+          key: data.key,
+          value: data.value,
+          rev: forwardedRev,
+          ...(data.deleted ? { deleted: true } : {}),
+        });
+        // 按 key 登记为粘性帧(与 queue/session-state 同构),使重连/迟到订阅者回放即得每个
+        // key 的最新值——否则重连后 KV 快照丢失(仅当次会话内存活)。delete 帧同样登记(而非
+        // 从表中摘除):重放时前端按 deleted:true 语义删键,效果与「表中没有该键」一致,但
+        // 复用已有 last-value 覆盖机制,无需新增 delete() API。
+        this.sticky.set(`state:${data.key}`, frame);
+        this.emitter.emit(FRAME_EVENT, frame);
+      },
+    });
 
-    // message-queue-ui「取回」:子进程回写的 clearQueue 结果行 → 按 id 配对 pending 请求 resolve。
-    // 置于 active gate 之前:结果关联在途请求,晚到亦应解析(超时已删除则安全丢弃)。
-    if (type === "piweb_clear_queue_result") {
-      const parsedRes = ClearQueueResultLineSchema.safeParse(parsed);
-      if (!parsedRes.success) return; // 畸形结果行丢弃
-      const pending = this.pendingClearQueue.get(parsedRes.data.id);
-      if (pending === undefined) return; // 未知/已超时 id → 丢弃
-      this.pendingClearQueue.delete(parsedRes.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve({
-        steering: parsedRes.data.steering,
-        followUp: parsedRes.data.followUp,
-      });
-      return;
-    }
+    // 三个结果帧:按 id 配对在途请求。未知/迟到 id 由 PendingRequests.settle 安全丢弃。
+    add("piweb_clear_queue_result", {
+      schema: ClearQueueResultLineSchema,
+      handle: (data) => {
+        this.pendingClearQueue.settle(data.id, {
+          steering: data.steering,
+          followUp: data.followUp,
+        });
+      },
+    });
+    add("piweb_agent_route_result", {
+      schema: AgentRouteResultFrameSchema,
+      handle: (data) => void this.pendingAgentRoutes.settle(data.id, data),
+    });
+    add("piweb_attachment_catalog_result", {
+      schema: AttachmentCatalogResultFrameSchema,
+      handle: (data) => void this.pendingCatalog.settle(data.id, data),
+    });
 
-    // agent-declared-routes:子进程回写的 route 结果帧 → 按 id 配对 pending 请求 resolve。
-    // 置于 active gate 之前(clearQueue 同语义):结果关联在途请求,晚到亦应解析;
-    // 未知/已超时 id 与畸形帧安全丢弃(Req 3.4 / 5.3)。
-    if (type === "piweb_agent_route_result") {
-      const parsedResult = AgentRouteResultFrameSchema.safeParse(parsed);
-      if (!parsedResult.success) return; // 畸形结果帧丢弃
-      const pending = this.pendingAgentRoutes.get(parsedResult.data.id);
-      if (pending === undefined) return; // 未知/迟到 id → 丢弃
-      this.pendingAgentRoutes.delete(parsedResult.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve(parsedResult.data);
-      return;
-    }
-
-    // agent-attachment-catalog:子进程回写的 catalog 结果帧(list/materialize)→ 按 id 配对
-    // pending 请求 resolve。置于 active gate 之前(clearQueue/agent-routes 同语义):结果关联
-    // 在途请求,晚到亦应解析;未知/已超时 id 与畸形帧安全丢弃(Req 2.4/3.4)。
-    if (type === "piweb_attachment_catalog_result") {
-      const parsedCatalogResult = AttachmentCatalogResultFrameSchema.safeParse(parsed);
-      if (!parsedCatalogResult.success) return; // 畸形结果帧丢弃
-      const pending = this.pendingCatalog.get(parsedCatalogResult.data.id);
-      if (pending === undefined) return; // 未知/迟到 id → 丢弃
-      this.pendingCatalog.delete(parsedCatalogResult.data.id);
-      clearTimeout(pending.timer);
-      pending.resolve(parsedCatalogResult.data);
-      return;
-    }
-
-    // agent-slash-completion:装配期 `slash_completions` 帧(早于就绪/无 active 约束)。
-    // 置于 active gate 之前识别并按会话缓存,避免被早期 gate 丢弃。
-    if (type === "slash_completions") {
-      const sc = SlashCompletionsFrameSchema.safeParse(parsed);
-      if (sc.success) this.slashCompletions = sc.data.items;
-      return;
-    }
-
-    // agent-declared-routes:装配期 `agent_routes` 声明帧(slash_completions 同族,
-    // 早于就绪门/无 active 约束)。二次 zod 校验失败 → 整帧丢弃并记日志(routes 不挂载,
-    // 清单空、调用 404;Req 2.5 / design Error Handling)。
-    if (type === "agent_routes") {
-      const routesFrame = AgentRoutesFrameSchema.safeParse(parsed);
-      if (!routesFrame.success) {
+    // 四个装配期声明帧:按会话缓存为只读投影,早于就绪门。
+    add("slash_completions", {
+      schema: SlashCompletionsFrameSchema,
+      handle: (data) => {
+        this.slashCompletions = data.items;
+      },
+    });
+    add("agent_routes", {
+      schema: AgentRoutesFrameSchema,
+      // 校验失败 → 整帧丢弃并记日志(routes 不挂载,清单空、调用 404;
+      // Req 2.5 / design Error Handling)。
+      onInvalid: (error) => {
         routesLog.warn("agent_routes frame dropped: schema validation failed", {
           session: this.id,
-          issues: routesFrame.error.issues,
+          issues: (error as { issues?: unknown } | undefined)?.issues,
         });
-        return;
-      }
-      this.agentRoutesTable = routesFrame.data.routes;
-      return;
-    }
-
-    // agent-attachment-profile:装配期 `agent_attachment_profile` 声明帧(slash_completions
-    // 同族,早于就绪门/无 active 约束)。子进程装配期已是白名单校验权威;主进程消费侧仅做
-    // 防御性核对——关断 / 二次 zod 校验失败 / 名字未在本进程视角的拓扑中命中,均 warn+丢弃
-    // 不缓存(不失败会话,回落宿主默认写路由,Req 2.1/2.3/5.1)。
-    if (type === "agent_attachment_profile") {
-      if (isAttachmentProfileDisabled(process.env)) {
-        attachmentProfileLog.warn("agent_attachment_profile frame dropped: disabled", {
-          session: this.id,
-        });
-        return;
-      }
-      const profileFrame = AgentAttachmentProfileFrameSchema.safeParse(parsed);
-      if (!profileFrame.success) {
+      },
+      handle: (data) => {
+        this.agentRoutesTable = data.routes;
+      },
+    });
+    add("agent_attachment_profile", {
+      schema: AgentAttachmentProfileFrameSchema,
+      onInvalid: (error) => {
         attachmentProfileLog.warn(
           "agent_attachment_profile frame dropped: schema validation failed",
-          { session: this.id, issues: profileFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      const topology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
-      const known = topology?.backends.map((b) => b.name) ?? [];
-      if (!known.includes(profileFrame.data.profile)) {
-        attachmentProfileLog.warn(
-          "agent_attachment_profile frame dropped: profile not in this process's topology view",
-          { session: this.id, profile: profileFrame.data.profile, known },
-        );
-        return;
-      }
-      this.attachmentWriteProfile = profileFrame.data.profile;
-      return;
-    }
-
-    // agent-attachment-catalog:装配期 `agent_attachment_catalog` 声明帧(slash_completions/
-    // agent_routes 同族,早于就绪门/无 active 约束)。二次 zod 校验失败 → 丢弃不缓存
-    // (目录视同未声明,provider 零往返,Req 1.2)。
-    if (type === "agent_attachment_catalog") {
-      const catalogFrame = AgentAttachmentCatalogFrameSchema.safeParse(parsed);
-      if (!catalogFrame.success) {
+      },
+      // 子进程装配期已是白名单校验权威;主进程消费侧仅做防御性核对——关断 / 名字未在本进程
+      // 视角的拓扑中命中,均 warn+丢弃不缓存(不失败会话,回落宿主默认写路由,Req 2.1/2.3/5.1)。
+      handle: (data) => {
+        if (isAttachmentProfileDisabled(process.env)) {
+          attachmentProfileLog.warn("agent_attachment_profile frame dropped: disabled", {
+            session: this.id,
+          });
+          return;
+        }
+        const topology = parseBackendsEnv(process.env[ATTACHMENT_BACKENDS_ENV]);
+        const known = topology?.backends.map((b) => b.name) ?? [];
+        if (!known.includes(data.profile)) {
+          attachmentProfileLog.warn(
+            "agent_attachment_profile frame dropped: profile not in this process's topology view",
+            { session: this.id, profile: data.profile, known },
+          );
+          return;
+        }
+        this.attachmentWriteProfile = data.profile;
+      },
+    });
+    add("agent_attachment_catalog", {
+      schema: AgentAttachmentCatalogFrameSchema,
+      // 校验失败 → 丢弃不缓存(目录视同未声明,provider 零往返,Req 1.2)。
+      onInvalid: (error) => {
         attachmentCatalogLog.warn(
           "agent_attachment_catalog frame dropped: schema validation failed",
-          { session: this.id, issues: catalogFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      this.catalogAvailable = true;
-      return;
-    }
+      },
+      handle: () => {
+        this.catalogAvailable = true;
+      },
+    });
 
-    // agent-attachment-catalog:子进程主动推送的「新增附件」事件帧(publish 落库后发射)。
-    // 二次 zod 校验失败 → warn+丢弃,不失败会话(design.md §Error Handling)。转发为 SSE
+    // 子进程主动推送的「新增附件」事件帧(publish 落库后发射)。转发为 SSE
     // `control:"attachment"`,尾沿节流 ≤1 帧/秒防风暴(design.md §行为规约)。非粘性:
     // 错过不补(打开会话时前端本就全量枚举目录/附件)。
-    if (type === "piweb_attachment_event") {
-      const eventFrame = AttachmentEventFrameSchema.safeParse(parsed);
-      if (!eventFrame.success) {
+    add("piweb_attachment_event", {
+      schema: AttachmentEventFrameSchema,
+      onInvalid: (error) => {
         attachmentCatalogLog.warn(
           "piweb_attachment_event frame dropped: schema validation failed",
-          { session: this.id, issues: eventFrame.error.issues },
+          { session: this.id, issues: (error as { issues?: unknown } | undefined)?.issues },
         );
-        return;
-      }
-      this.emitAttachmentEventThrottled({
-        control: "attachment",
-        event: eventFrame.data.event,
-        attachment: eventFrame.data.attachment,
-      });
-      return;
-    }
+      },
+      handle: (data) => {
+        this.emitAttachmentEventThrottled({
+          control: "attachment",
+          event: data.event,
+          attachment: data.attachment,
+        });
+      },
+    });
 
-    if (this._status !== "active") return;
     // Tier3 ui-rpc 下行约定:`{"type":"ui_rpc_response","response":{...}}`。
-    if (type !== "ui_rpc_response") return;
-    const res = UiRpcResponseSchema.safeParse(
-      (parsed as { response?: unknown }).response,
-    );
-    if (!res.success) return; // 非法响应丢弃(Req 4.5)
-    this.emitter.emit(
-      FRAME_EVENT,
-      makeControlFrame({ control: "ui-rpc", response: res.data }),
-    );
+    // ★ 唯一设 active 门的条目(原 if-链里那句 `if (this._status !== "active") return;`
+    //   恰位于它之前)。校验对象是**内层** `response` 而非整帧,故包一层取值适配。
+    add("ui_rpc_response", {
+      requireActive: true,
+      schema: {
+        safeParse: (v: unknown) =>
+          UiRpcResponseSchema.safeParse((v as { response?: unknown } | null)?.response),
+      },
+      handle: (data) => {
+        this.emitter.emit(
+          FRAME_EVENT,
+          makeControlFrame({ control: "ui-rpc", response: data }),
+        );
+      },
+    });
+
+    this.rawLineTable = table;
+    return table;
+  }
+
+  /**
+   * 原始行处理:按 `type` 查 {@link getRawLineTable} 分发。未注册类型 / 非 JSON / 校验
+   * 失败的行不消费(其余行已由 onEvent / onExtensionUIRequest 路径处理)。
+   */
+  private handleRawLine(line: string): void {
+    dispatchRawLine(line, this.getRawLineTable(), this._status === "active");
   }
 
   /** agent 装配期声明的静态 slash 补全候选(spec agent-slash-completion)。 */
@@ -1175,19 +1160,11 @@ export class PiSession {
     }
     this.touch();
     const id = randomUUID();
-    return new Promise<ClearQueueResponse>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingClearQueue.delete(id);
-        reject(new Error("clear_queue timed out"));
-      }, timeoutMs);
-      this.pendingClearQueue.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id }));
-      } catch (err) {
-        this.pendingClearQueue.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingClearQueue.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new Error("clear_queue timed out"),
+      send: () => this.channel.send(JSON.stringify({ type: "piweb_clear_queue", id })),
     });
   }
 
@@ -1221,19 +1198,11 @@ export class PiSession {
       // GET 无 body:undefined 时不携带 body 键(帧保持最小投影)。
       ...(req.body !== undefined ? { body: req.body } : {}),
     };
-    return new Promise<AgentRouteResultFrame>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingAgentRoutes.delete(id);
-        reject(new AgentRouteTimeoutError(name, timeoutMs));
-      }, timeoutMs);
-      this.pendingAgentRoutes.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify(frame));
-      } catch (err) {
-        this.pendingAgentRoutes.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingAgentRoutes.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new AgentRouteTimeoutError(name, timeoutMs),
+      send: () => this.channel.send(JSON.stringify(frame)),
     });
   }
 
@@ -1263,19 +1232,11 @@ export class PiSession {
       req.op === "list"
         ? { type: "piweb_attachment_catalog_request", id, op: "list", query: req.query }
         : { type: "piweb_attachment_catalog_request", id, op: "materialize", entryId: req.entryId };
-    return new Promise<AttachmentCatalogResultFrame>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pendingCatalog.delete(id);
-        reject(new AttachmentCatalogTimeoutError(req.op, timeoutMs));
-      }, timeoutMs);
-      this.pendingCatalog.set(id, { resolve, reject, timer });
-      try {
-        this.channel.send(JSON.stringify(frame));
-      } catch (err) {
-        this.pendingCatalog.delete(id);
-        clearTimeout(timer);
-        reject(err instanceof Error ? err : new Error(String(err)));
-      }
+    return this.pendingCatalog.issue({
+      id,
+      timeoutMs,
+      onTimeout: () => new AttachmentCatalogTimeoutError(req.op, timeoutMs),
+      send: () => this.channel.send(JSON.stringify(frame)),
     });
   }
 
@@ -1621,25 +1582,14 @@ export class PiSession {
       }
       // 4) 清挂起表与缓存(Req 5.4)。
       this.pendingExtensionUI.clear();
-      // message-queue-ui:reject 所有在途 clearQueue 请求,避免收尾后悬挂(超时兜底之外的即时收敛)。
-      for (const [, pending] of this.pendingClearQueue) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingClearQueue.clear();
-      // agent-declared-routes:reject 所有在途 route 调用,避免收尾后悬挂(clearQueue 同语义)。
-      for (const [, pending] of this.pendingAgentRoutes) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingAgentRoutes.clear();
-      // agent-attachment-catalog:reject 所有在途 catalog 调用,避免收尾后悬挂(同语义);
+      // reject 所有在途请求,避免收尾后悬挂(超时兜底之外的即时收敛):
+      // clearQueue(message-queue-ui)/ route 调用(agent-declared-routes)/
+      // catalog 调用(agent-attachment-catalog)三者同语义。
+      const stopped = (): Error => new SessionStoppedError(this.id);
+      this.pendingClearQueue.rejectAll(stopped);
+      this.pendingAgentRoutes.rejectAll(stopped);
+      this.pendingCatalog.rejectAll(stopped);
       // 清尾沿节流定时器,避免会话已收尾后仍触发 emitter.emit(已 removeAllListeners 前安全)。
-      for (const [, pending] of this.pendingCatalog) {
-        clearTimeout(pending.timer);
-        pending.reject(new SessionStoppedError(this.id));
-      }
-      this.pendingCatalog.clear();
       if (this.attachmentEventThrottleTimer !== undefined) {
         clearTimeout(this.attachmentEventThrottleTimer);
         this.attachmentEventThrottleTimer = undefined;
