@@ -1,13 +1,13 @@
 {
   "feature_name": "adapters-package-extraction",
   "created_at": "2026-07-30T04:40:00Z",
-  "updated_at": "2026-07-30T04:40:00Z",
+  "updated_at": "2026-07-30T04:55:00Z",
   "language": "zh",
-  "phase": "initialized",
+  "phase": "requirements-approved",
   "approvals": {
     "requirements": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     },
     "design": {
       "generated": false,
@@ -25,5 +25,8 @@
     "main_entry_contract": "允许缩减主入口导出面 —— 8 个 adapters 模块的符号从主 barrel 移除。★ 有意的破坏性变更:须 major 版本;313 基准须**有意重生成并记录理由**,不得表现为「改基准迁就实现」;跨仓消费方只登记不改",
     "identity_port": "待定 —— core 无 IdentityProvider 端口,是按普通模块搬还是补端口,须在 requirements/design 决;补端口属逻辑变更须单列"
   },
-  "brief_revised": "2026-07-30 据实测修订 —— 初稿中心论证(让 core 守卫转绿)已由 core-package-extraction 达成"
+  "brief_revised": "2026-07-30 据实测修订 —— 初稿中心论证(让 core 守卫转绿)已由 core-package-extraction 达成",
+  "approval_notes": {
+    "requirements": "经用户 /goal「使用 kiro 流程实现」+「做吧」的自主执行授权批准；评审闸门机械检查 6 领域/30 条通过，修正 1 处非 EARS 触发词"
+  }
 }
