@@ -210,6 +210,11 @@ export interface PiChatProps {
    */
   readonly logsPanelVisible?: boolean;
   /**
+   * 服务端权威日志门控是否开启;透传给 {@link LogsPanel},使「已关闭」与「暂无日志」
+   * 在 UI 上可区分(两者此前都只是一片空白)。undefined = 加载中。
+   */
+  readonly loggingEnabled?: boolean;
+  /**
    * 日志面板位置，对应 logging 配置的 outputs.panelPosition（Req 6.1/6.2）。
    * 默认 "bottom"（底部）；"right" 为右侧；"drawer" 为抽屉模式；"top" 为顶部横条
    * (置于对话/空态之上,利用无 head 后的顶部空间)。
@@ -355,6 +360,7 @@ export function PiChat({
   enableBash = false,
   logsPanelVisible = true,
   logsPanelPosition = "bottom",
+  loggingEnabled,
   attachmentBaseUrl,
   uploadAttachment,
   className,
@@ -1800,7 +1806,7 @@ export function PiChat({
                 data-pi-logs-region
                 className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
               >
-                <LogsPanel logsResult={logsResult} />
+                <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} />
               </div>
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
@@ -1824,7 +1830,7 @@ export function PiChat({
                   data-pi-logs-region
                   className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
                 >
-                  <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
+                  <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
                   {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
                   <ExtSlotRegion ext={extension} slot="logs" />
                 </div>
@@ -1916,7 +1922,7 @@ export function PiChat({
               lay.content,
             )}
           >
-            <LogsPanel logsResult={logsResult} className="min-h-0 flex-1" fill />
+            <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="min-h-0 flex-1" fill />
             {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
             <ExtSlotRegion ext={extension} slot="logs" />
           </div>
@@ -2027,7 +2033,7 @@ export function PiChat({
               data-pi-logs-region
               className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
             >
-              <LogsPanel logsResult={logsResult} className="flex-1 min-h-0" fill />
+              <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
               {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
               <ExtSlotRegion ext={extension} slot="logs" />
             </div>
