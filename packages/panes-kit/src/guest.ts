@@ -23,6 +23,22 @@ export interface PaneGuestSurface {
   hasCommand(name: string): boolean;
 }
 
+/**
+ * 会话级共享状态(spec panes-only-right-panel 任务 1.3;Req 2.1/2.2/2.3)。
+ *
+ * ★ 四个操作与**宿主侧既有的共享状态访问器逐一对应** —— 迁移方从旧槽搬进 pane 时,
+ * 只需改「从哪拿到它」,调用形状一个字都不用改。这是把迁移成本压到最低的关键。
+ *
+ * 读与订阅是本地的(宿主按授权键主动推 `pane:state`,guest 侧只是缓存);
+ * 写与删走上行请求,受 `grants.state.write` 授权。
+ */
+export interface PaneGuestState {
+  get<T = unknown>(key: string): T | undefined;
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export interface PaneGuestEvents {
   publish(topic: string, payload?: unknown): Promise<{ readonly delivered: number }>;
   subscribe(topic: string, listener: (payload: unknown, source: { readonly instanceId: string; readonly paneId: string }) => void): () => void;
@@ -35,6 +51,7 @@ export interface PaneGuestConnection {
   readonly interactionMode: "standard" | "advanced";
   readonly grants: PaneCapabilities;
   readonly surface: PaneGuestSurface;
+  readonly state: PaneGuestState;
   readonly events: PaneGuestEvents;
   query<T = unknown>(route: string, query?: Record<string, string>): Promise<T>;
   mutate<T = unknown>(route: string, body: unknown): Promise<T>;
@@ -61,6 +78,8 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
   const pending = new Map<string, PendingCall>();
   const states = new Map<string, unknown>();
   const surfaceListeners = new Map<string, Set<(value: unknown) => void>>();
+  const stateValues = new Map<string, unknown>();
+  const stateListeners = new Map<string, Set<(value: unknown) => void>>();
   // 宿主具名信号:最后值即真值。与 states 分开存 —— 事实源不同(agent 快照 vs 宿主 realm)。
   const signals = new Map<string, unknown>();
   const signalListeners = new Map<string, Set<(value: unknown) => void>>();
@@ -89,6 +108,11 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       clearTimeout(call.timer);
       if (data.ok) call.resolve(data.data);
       else call.reject(errorFromData(data.error));
+      return;
+    }
+    if (data.type === "pane:state") {
+      stateValues.set(data.key, data.value);
+      for (const listener of stateListeners.get(data.key) ?? []) listener(data.value);
       return;
     }
     if (data.type === "pane:surface") {
@@ -129,6 +153,17 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       },
       hasCommand: (name) => grants.surfaceCommands.some((grant) =>
         name === `surface:${grant.domain}` || grant.actions.some((action) => name === `surface:${grant.domain}:${action}`)),
+    },
+    state: {
+      get: <T,>(key: string) => stateValues.get(key) as T | undefined,
+      subscribe: (key, listener) => {
+        const listeners = stateListeners.get(key) ?? new Set();
+        listeners.add(listener);
+        stateListeners.set(key, listeners);
+        return () => listeners.delete(listener);
+      },
+      set: async (key, value) => { await request("state.set", { key, value }); },
+      delete: async (key) => { await request("state.delete", { key }); },
     },
     events: {
       publish: (topic, payload) => request("event.publish", { topic, ...(payload !== undefined ? { payload } : {}) }),

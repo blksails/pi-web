@@ -12,6 +12,7 @@ import {
   type PanesDefinition,
 } from "../contract.js";
 import { authorizePaneRequest, DEFAULT_PANE_RESPONSE_BYTES } from "../authorization.js";
+import { bindPaneState } from "../state-binding.js";
 import { createAgentRouteClient } from "../agent-routes.js";
 import { asPaneHostError, PaneHostError } from "../errors.js";
 import { createPaneWorkspace, reducePaneWorkspace, type PaneWorkspaceAction } from "../instances.js";
@@ -96,6 +97,8 @@ interface LiveConnection {
   readonly port: MessagePort;
   /** ★ 可变:`surface` 换身份时整组退订重绑(见 bindSurface)。 */
   cleanup: Array<() => void>;
+  /** ★ 与 surface 的清理**分开持有**:合并会导致一方换身份时顺手退掉另一方却不重建。 */
+  stateCleanup?: () => void;
 }
 
 function defaultInstanceId(paneId: string, sequence: number): string {
@@ -169,6 +172,7 @@ export function PanesHost({
     if (live === undefined) return;
     if (lifecycle) live.port.postMessage({ type: "pane:lifecycle", state: "closing" } satisfies PaneHostMessage);
     for (const cleanup of live.cleanup) cleanup();
+    live.stateCleanup?.();
     live.port.close();
     connections.current.delete(instanceId);
   }, []);
@@ -374,6 +378,29 @@ export function PanesHost({
     }
   }, [surface]);
 
+  /**
+   * 绑定(或**重新**绑定)某条连接的共享状态订阅。
+   *
+   * ★ 与 `bindSurface` 同源的重绑理由:`state` 同样不是恒等对象(由宿主 useMemo 依赖会话
+   * 连接构造),换身份后旧订阅挂在旧 store 上永不触发。见 state-binding.ts 的整段说明。
+   *
+   * 两者的清理函数分开持有 —— 合并进同一个数组的话,`surface` 换身份会顺手把状态订阅也
+   * 退掉却不重建,反之亦然。
+   */
+  const bindState = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
+    live.stateCleanup?.();
+    live.stateCleanup = bindPaneState(state, pane.capabilities.state.read, (key, value) => {
+      live.port.postMessage({ type: "pane:state", key, value } satisfies PaneHostMessage);
+    });
+  }, [state]);
+
+  // `state` 换身份 → 同样整组重绑。
+  React.useEffect(() => {
+    for (const live of connections.current.values()) {
+      bindState(live, paneById(definition, live.paneId));
+    }
+  }, [bindState, definition]);
+
   // `surface` 换身份 → 所有在世连接整组重绑(不销毁 iframe,pane 内部状态不丢)。
   React.useEffect(() => {
     for (const live of connections.current.values()) {
@@ -451,6 +478,7 @@ export function PanesHost({
     };
     channel.port1.start();
     bindSurface(live, pane);
+    bindState(live, pane);
     // 信号在握手时即全量下推:pane 首帧就该拿到正确的主题等值,而不是先渲染错再纠正。
     pushAllSignals(channel.port1);
     frame.contentWindow.postMessage({
@@ -461,7 +489,7 @@ export function PanesHost({
       interactionMode: config.interactionMode ?? "standard",
     } satisfies PaneHostMessage, "*", [channel.port2]);
     // surface 订阅由 bindSurface 承担(且能随 surface 换身份重绑),故此处不再直接依赖 surface。
-  }, [bindSurface, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
+  }, [bindState, bindSurface, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
 
   React.useEffect(() => {
     const onGuestReady = (event: MessageEvent<unknown>): void => {

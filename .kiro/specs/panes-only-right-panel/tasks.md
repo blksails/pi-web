@@ -26,7 +26,7 @@
     同步加写回分支与 `state` 入参,不能留到 1.2。
   - _Boundary: 协议与授权 — `packages/panes-kit/src/contract.ts`, `packages/panes-kit/src/authorization.ts`, `packages/panes-kit/src/react/panes-host.tsx`, `packages/panes-kit/test/state-authorization.test.ts`_
 
-- [ ] 1.2 实现共享状态的宿主侧绑定(★ 含换身份重绑)
+- [x] 1.2 实现共享状态的宿主侧绑定(★ 含换身份重绑)
   - 逐授权键读取当前值并订阅,经下行帧推送;形态镜像既有 surface 绑定
   - ★ **访问器换身份 → 所有在世连接整组重绑,且重绑时立即重推当前值**。这不是优化项:
     宿主访问器由 useMemo 依赖会话连接构造,就绪握手与控制流重开都会换出新实例,新实例读的是
@@ -39,7 +39,7 @@
   - _Depends: 1.1_
   - _Boundary: 宿主绑定 — `packages/panes-kit/src/state-binding.ts`, `packages/panes-kit/src/react/panes-host.tsx`, `packages/panes-kit/test/state-binding.test.ts`_
 
-- [ ] 1.3 guest SDK 增共享状态门面
+- [x] 1.3 guest SDK 增共享状态门面
   - 提供读、订阅、写回、删除四个操作,签名与宿主侧既有共享状态访问器保持一致,
     使迁移方只改取得途径、不改调用形状
   - ★ 不得因此把 schema 模块拖进 guest bundle(既有前科:只导入一个常量就内联了整个校验库)
