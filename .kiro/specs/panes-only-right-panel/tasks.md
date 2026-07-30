@@ -138,39 +138,38 @@
   > 宿主访问器(`createWebExtStateAccess`)或控制流是否真的把 agent 写入送进了
   > `controlStore.states["count"]`。
   >
-  > **续查四(2026-07-31):宿主侧数据确认到位 —— 断点被夹到最后一段。**
+  > **★★ 根因已确认(2026-07-31,续查五) —— 有确凿证据。**
   >
-  > 在 `pi-chat` 层挂临时探针实测(查完已清理):
-  > | 时点 | hasState | controlStore.states | count | mergedPanes |
-  > |---|---|---|---|---|
-  > | 会话激活 | true | `[]` | null | true |
-  > | agent 写入后 | true | `["count"]` | **1** | true |
+  > 在宿主与 guest 两侧同时给 MessagePort 打标记后实测:
+  > ```
+  > bindState live.epoch=1 portId=0.0936   ← 连接 A
+  > push to 0.0936 count undefined
+  > guest listening portId=0.2210          ← guest 只监听一次(A 的对端)
+  > bindState live.epoch=1 portId=0.8355   ← 连接 B:epoch 未变、port 却换了 ⇒ 连接被重建
+  > push to 0.8355 count undefined
+  > guest RECV pane:state                  ← 这一帧来自 A 的缓冲(= 真机观察到的 frames=1)
+  > push to 0.8355 count 1                 ← 推到 B,guest 从未监听 B ⇒ 静默丢失
+  > ```
   >
-  > ⇒ **数据确实到了宿主的 controlStore**。加上前几轮结论:
-  > - `bindPaneState` 逻辑正确(假状态源单测,含换身份重绑);
-  > - `controlStore.subscribe` 语义正常(读码确认:emit 遍历调用全部 listener);
-  > - 授权正确(pane 内实测 grants);
-  > - 协议与 guest 门面正确(单测)。
+  > **根因**:宿主重建了连接并改用新 MessagePort,而 guest 的 `connectPaneGuest`
+  > **只 await 一次握手**、此后永远持有旧 port 的对端 ⇒ 所有后续下行帧进虚空。
   >
-  > **断点只能在最后一段**:`createWebExtStateAccess.subscribe` 的包装,或 `bindState` 的
-  > 调用时机(订阅到底有没有真的建立在**当前那个** controlStore 上)。
+  > 这解释了此前全部观察:pane 渲染正常(A 的握手成功)、frames=1(A 的缓冲初值)、
+  > 之后再无任何帧、上行请求也无响应(发往已废弃的 A)。
   >
-  > **下一轮的第一步(最后一个二分点)**:在 `bindPaneState` 的 subscribe 回调里加一行临时
-  > 日志,跑一次 state-bridge 的 e2e,看回调**到底有没有被调用**。
-  > - 被调用但 pane 没收到 → 问题在 postMessage / port 有效性;
-  > - 根本没被调用 → 问题在 `createWebExtStateAccess.subscribe` 的 `next !== last` 比较,
-  >   或订阅建立在了另一个 controlStore 实例上。
+  > **它不是共享状态特有的缺陷** —— `pane:surface`、`pane:signal`、上行请求全都走同一条 port,
+  > 故 2.2(surface)与 3.1(state)是同一个根因,4.x 迁移也会撞上。
   >
-  > 这一步之后应当就能定位。**已排除的四段不要重查**。
-  - ★ **纯 UI 改写,零协议工作**:该示例用的读快照/订阅/执行命令/探测可用性四件套,
-    guest SDK **已全部具备**(勘察 I4 修正了 brief 中「中高成本」的预判)
-  - 保留其能力退化路径:会话未就绪或命令不可用时的降级表现不变
-  - 可观察完成:该 source 的既有 e2e 全绿,逐条列出「原断言 → 新断言」
-  - _Requirements: 1.1, 5.1, 5.2, 5.3_
-  - _Depends: 1.4_
-  - _Boundary: surface 演示 — `examples/surface-demo-agent/`, `e2e/browser/agent-authoritative-surface.e2e.ts`_
-
-- [ ] 3. Integration:迁共享状态声明者(新通道的活体验证)
+  > **为什么旧槽路径没暴露**:agent 自建面板宿主时 props 稳定,连接不重建。
+  > 宿主装载路径的 props(合并定义、宿主信号族、轮末同步信号)会随会话推进换身份。
+  >
+  > **修复方向(二选一,建议前者)**:
+  > 1. **guest 支持重新握手** —— 监听后续 `pane:connected` 并换 port。这是协议层的正确修法:
+  >    宿主重建连接是合法的,guest 必须跟随。需同时处理旧 port 的清理与 in-flight 请求。
+  > 2. 宿主侧消除不必要的重建 —— 需定位触发源(`connect` 的 deps 链中 `pushAllSignals`
+  >    随轮末同步信号换身份是嫌疑之一)。但这只是回避,props 换身份本身是合法的。
+  >
+  > ⚠ 修复后须回归 `aigc-canvas` 的 e2e(它走旧槽、当前全绿,不能被 guest 侧改动打破)。
 
 - [ ] 3.1 迁状态桥 source 为 pane  ⛔ **阻塞于 2.2**
 
