@@ -13,7 +13,7 @@
 
 - [ ] 1. Foundation:能力补齐(B 类迁移的前置)
 
-- [ ] 1.1 扩展 pane 协议:共享状态的读/订阅授权与写回操作
+- [x] 1.1 扩展 pane 协议:共享状态的读/订阅授权与写回操作
   - 请求判别式增写回操作(设置与删除);能力结构增**读键表与写键表两张**——
     读授权不得蕴含写授权(写是显著更强的权力,不该被顺带捎上)
   - 授权判定复用既有结构化错误,**不另立一套**:未授权 → 能力被拒;超限 → 载荷过大
@@ -21,7 +21,10 @@
   - 可观察完成:单测覆盖读/写授权分离、越权读、越权写、键不在授权内;
     且有一条断言证明两种拒绝载荷逐字一致
   - _Requirements: 2.5, 2.6, 2.7, 2.8_
-  - _Boundary: 协议与授权 — `packages/panes-kit/src/contract.ts`, `packages/panes-kit/src/authorization.ts`, `packages/panes-kit/test/state-authorization.test.ts`_
+  - ★ 边界实际外扩一处(实施期发现):`conversation.submit` 原本靠「排除其余全部 operation」
+    收窄,新增两个 operation 后收窄失效 —— 类型检查红而 vitest 绿。故 `panes-host.tsx` 必须
+    同步加写回分支与 `state` 入参,不能留到 1.2。
+  - _Boundary: 协议与授权 — `packages/panes-kit/src/contract.ts`, `packages/panes-kit/src/authorization.ts`, `packages/panes-kit/src/react/panes-host.tsx`, `packages/panes-kit/test/state-authorization.test.ts`_
 
 - [ ] 1.2 实现共享状态的宿主侧绑定(★ 含换身份重绑)
   - 逐授权键读取当前值并订阅,经下行帧推送;形态镜像既有 surface 绑定

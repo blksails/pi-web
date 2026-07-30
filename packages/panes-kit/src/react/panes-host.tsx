@@ -28,6 +28,20 @@ export interface PanesSurfaceAccess {
   hasCommand(name: string): boolean;
 }
 
+/**
+ * 会话级共享状态的宿主侧接入(spec panes-only-right-panel Req 2)。
+ *
+ * 四操作与宿主既有的共享状态访问器**逐一对应**,使迁移方只改取得途径、不改调用形状。
+ * 与 `PanesSurfaceAccess` 的分工:后者是 agent 权威快照(只读),这里是人与 agent 双向读写的
+ * 会话级 KV。
+ */
+export interface PanesStateAccess {
+  get<T = unknown>(key: string): T | undefined;
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export type PanesUpload = (
   baseUrl: string,
   sessionId: string,
@@ -53,6 +67,7 @@ export interface PanesHostProps {
   readonly surface?: PanesSurfaceAccess;
   readonly upload?: PanesUpload;
   readonly conversation?: PanesConversationAccess;
+  readonly state?: PanesStateAccess;
   readonly config?: PanesHostConfig;
   /**
    * 宿主 → pane 的具名信号(见 contract 的 `pane:signal`):搬运**只存在于宿主 realm**
@@ -125,6 +140,7 @@ export function PanesHost({
   surface,
   upload,
   conversation,
+  state,
   config = {},
   signals,
   className,
@@ -320,10 +336,19 @@ export function PanesHost({
       const result = await upload(baseUrl, sessionId, file);
       return { attachmentId: result.attachment.id, displayUrl: result.displayUrl };
     }
+    if (request.operation === "state.set" || request.operation === "state.delete") {
+      // 只有**写回**走上行请求;读与订阅由宿主按授权键主动推 `pane:state`(任务 1.2)。
+      if (state === undefined) {
+        throw new PaneHostError("HOST_UNAVAILABLE", "Shared state is not ready", { retryable: true });
+      }
+      if (request.operation === "state.set") await state.set(request.key, request.value);
+      else await state.delete(request.key);
+      return undefined;
+    }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
     return undefined;
-  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, surface, upload]);
+  }, [baseUrl, config.eventTargets, conversation, definition, sessionId, state, surface, upload]);
 
   /**
    * 绑定(或**重新**绑定)某条连接的 surface 订阅。

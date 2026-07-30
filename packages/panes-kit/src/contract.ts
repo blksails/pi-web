@@ -32,6 +32,19 @@ export const PaneCapabilitiesSchema = z.object({
   }).default({}),
   attachments: z.enum(["none", "read", "read-write"]).default("none"),
   conversation: z.enum(["none", "submit"]).default("none"),
+  /**
+   * 会话级共享状态的逐键授权(spec panes-only-right-panel Req 2)。
+   *
+   * ★ **读与写分成两张表**,而不是一张表加一个布尔。写是显著更强的权力(它改的是 agent 也在
+   * 读的同一份状态),不该被读授权顺带捎上 —— 「订阅这个键」和「能改这个键」是两个决定。
+   *
+   * 与 `surfaceKeys` 的关系:`surfaceKeys` 搬运的是 **agent 权威快照**(只读、由 agent 发布);
+   * 这里搬运的是**会话级共享 KV**(人与 agent 双向读写)。两者事实源不同,故不合并。
+   */
+  state: z.object({
+    read: z.array(NonEmptyIdSchema).default([]),
+    write: z.array(NonEmptyIdSchema).default([]),
+  }).default({}),
 });
 export type PaneCapabilities = z.infer<typeof PaneCapabilitiesSchema>;
 
@@ -114,6 +127,17 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     text: z.string().min(1).max(100_000),
     attachmentIds: z.array(z.string().min(1).max(256)).max(64).optional(),
   }),
+  // 共享状态的**写回**。读与订阅不走上行请求 —— 它们由宿主按授权键主动推 `pane:state`
+  // (与 `pane:surface` 同构),故此处只有写。
+  RequestBaseSchema.extend({
+    operation: z.literal("state.set"),
+    key: NonEmptyIdSchema,
+    value: z.unknown(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("state.delete"),
+    key: NonEmptyIdSchema,
+  }),
 ]);
 export type PaneGuestRequest = z.infer<typeof PaneGuestRequestSchema>;
 
@@ -156,6 +180,13 @@ export type PaneHostMessage =
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: true; readonly data: unknown }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: false; readonly error: PaneErrorData }
   | { readonly type: "pane:surface"; readonly key: string; readonly value: unknown }
+  /**
+   * 宿主 → pane 的**共享状态**推送(spec panes-only-right-panel Req 2.1/2.2)。
+   *
+   * 与 `pane:surface` 形态相同、事实源不同:`pane:surface` 是 agent 权威快照(只读),
+   * 这条是会话级共享 KV(人与 agent 双向读写)。分开是因为混用会让「谁是权威」失去意义。
+   */
+  | { readonly type: "pane:state"; readonly key: string; readonly value: unknown }
   /**
    * 宿主 → pane 的**具名信号**(纯下行,无应答)。
    *

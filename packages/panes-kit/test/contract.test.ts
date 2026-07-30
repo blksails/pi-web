@@ -17,6 +17,7 @@ const capabilities: PaneCapabilities = {
   events: { publish: ["canvas.import"], subscribe: ["canvas.changed"] },
   attachments: "read-write",
   conversation: "submit",
+  state: { read: [], write: [] },
 };
 
 const definition = definePanes({
