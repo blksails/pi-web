@@ -262,3 +262,32 @@
 
 **残余风险集中在两处，均已在 §3 显式登记**：桌面形态（中）、e2b 沙箱烘焙形态（高）。
 后者需跨仓改动 + 发 npm + 基础镜像重烘焙三步才可验，**在三步完成前不得宣称沙箱可用**。
+
+---
+
+## 7. 终验补充：依赖闭包的精确表述（validate-impl 阶段发现）
+
+R1.2 约束的是「依赖**声明**」，该条已由守卫直接验证（新包 `dependencies` 扫描 `banned hits: []`）。
+但终验时额外算了一遍**传递依赖闭包**，结果需要把交付措辞收紧：
+
+| 被禁项 | 在新包**声明**中 | 在**传递闭包**中 |
+|---|---|---|
+| `e2b`（云沙箱 SDK） | 否 ✓ | **否 ✓** |
+| `pg`（数据库驱动） | 否 ✓ | **否 ✓** |
+| `ws`（WebSocket） | 否 ✓ | **否 ✓** |
+| `@modelcontextprotocol/sdk` | 否 ✓ | **是** —— 经 `@blksails/pi-web-tool-kit` |
+
+★ 结论：brief 里最刺眼的那条抱怨（「e2b 沙箱镜像里的 runner 装着 e2b SDK」）以及 `pg` / `ws`
+**三项在声明层与传递层都已消除**，这是本 spec 的核心价值主张，成立。
+
+⚠ 但 **MCP SDK 会经 tool-kit 传递引入**。这不是缺陷：`mcp` 是三个内置扩展之一，实现就住在
+tool-kit，而 R4.1 明确要求它可装载 —— 也就是说 runner 的功能集**需要**它。
+故正确表述是「**声明层**不含 MCP SDK」，而不是「runner 的安装树里没有 MCP SDK」。
+若将来要连传递层一并消除，须先把 `mcp` 内置扩展从 tool-kit 拆出（属另一个 spec 的范围）。
+
+### 依赖方向复核（跨包后）
+
+- `packages/runner/src` 对兼容层**无任何静态 `import`**（grep 到的 3 处均为注释）
+- 仅 2 条**动态**上行边，均指向 `@blksails/pi-web-server/host-assembly/*.js`，
+  已登记于 `ALLOWED_EDGES`（1 条，本 spec **未扩大**）；`KNOWN_DEBT` 仍为空
+- 守卫仍能看见这条跨包边 —— 临时删豁免即报 `runner(runner) → host-assembly(assembly)`

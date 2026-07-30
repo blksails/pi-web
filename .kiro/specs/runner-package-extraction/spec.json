@@ -1,9 +1,9 @@
 {
   "feature_name": "runner-package-extraction",
   "created_at": "2026-07-29T15:28:00Z",
-  "updated_at": "2026-07-29T13:55:00Z",
+  "updated_at": "2026-07-30T04:20:00Z",
   "language": "zh",
-  "phase": "tasks-approved",
+  "phase": "implemented",
   "approvals": {
     "requirements": {
       "generated": true,
@@ -35,5 +35,19 @@
     "model_source_registrar": "随 runner 模块整体搬入新包；host-assembly(3)→runner(2) 跨包后仍正向",
     "agent_sdk_peer": "peerDependencies 非可选 —— runner 有 8 处值导入，标 optional 是谎",
     "guard_extension": "层⟹物理断言从硬编码只查 core 推广为层→包映射表驱动，覆盖三包"
+  },
+  "validation": {
+    "decision": "GO",
+    "date": "2026-07-30",
+    "report": "validation.md",
+    "known_unverified": [
+      "desktop(Tauri) 形态",
+      "e2b 沙箱烘焙形态(需跨仓改动+发 npm+基础镜像重烘焙)"
+    ],
+    "pre_existing_reds": [
+      "desktop typecheck=cargo check",
+      "根 app 档 worker heap OOM 吞 10 用例",
+      "e2e:cli 浏览器冒烟停在登录页(62ea71fe)"
+    ]
   }
 }
