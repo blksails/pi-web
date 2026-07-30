@@ -1,0 +1,29 @@
+{
+  "feature_name": "panes-only-right-panel",
+  "created_at": "2026-07-30T15:00:00Z",
+  "updated_at": "2026-07-30T15:55:00Z",
+  "language": "zh",
+  "phase": "tasks-approved",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "approved_by": "自主档(/goal「用 kiro 实现需求，并测试」授权，闸门收敛为 tasks 后的总闸门)"
+    },
+    "design": {
+      "generated": true,
+      "approved": true,
+      "approved_by": "自主档(/goal 授权，闸门收敛为 tasks 后的总闸门)"
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true,
+      "approved_by": "自主档(/goal「用 kiro 实现需求，并测试」授权)"
+    }
+  },
+  "ready_for_implementation": true,
+  "source_docs": [
+    ".kiro/specs/panes-only-right-panel/brief.md",
+    ".kiro/steering/roadmap.md"
+  ]
+}
