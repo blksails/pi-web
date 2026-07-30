@@ -201,6 +201,8 @@ import {
   resolveLoggingEnvDefault,
 } from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
+// 会话事件 store 工厂(启动时 prune 元数据索引残留用;与冷恢复 / 列表同源)。
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
 /**
@@ -698,6 +700,25 @@ function buildSingleton(): HandlerSingleton {
   // (默认 ~/.pi/agent/piweb-session-index.json,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖)。
   // 定位是缓存:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
   const sessionMetaIndex = new JsonFileSessionMetaIndex();
+
+  // 启动时清一次残留(Req 5.3):索引对会话是**弱引用** —— 绕过 pi-web 的删除(手工 rm、
+  // pi CLI 删、换机器、换存储后端)会留下孤儿键。孤儿不影响正确性(列表以实际会话为准),
+  // 但索引每次写都要整份读写,孤儿越攒越贵。
+  //
+  // 只在启动时清一次:够用且最省 —— 重启即收敛,不必引调度器,也不必让每次列表请求
+  // 付全量扫描的代价。fire-and-forget + 吞错:清不掉就下次启动再清,绝不阻塞装配。
+  void (async (): Promise<void> => {
+    try {
+      const entryStore = await createSessionEntryStore(sessionStoreConfigFromEnv());
+      const existing = (await entryStore.listAll()).map((m) => m.sessionId);
+      const removed = await sessionMetaIndex.prune(existing);
+      if (removed > 0) {
+        hostAssemblyLogger.info("session meta index pruned", { removed });
+      }
+    } catch {
+      // 静默:元数据是展示增强(Req 3.5)。
+    }
+  })();
 
   // 会话活跃态查询(Req 7.5):从**活跃会话注册表**(store,非持久化 SessionEntryStore)按标识
   // 取会话的活跃态投影。未加载的历史会话 → undefined = 空闲,且**不为取状态加载任何会话**。

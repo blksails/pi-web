@@ -176,6 +176,17 @@
   - _Requirements: 7.1, 7.2, 7.3_
   - _Boundary: SessionListPanel — `packages/ui/src/elements/session-list-panel.tsx`_
 
+- [x] 7. 增量：启动时清理索引残留
+- [x] 7.1 装配层接入启动时残留清理
+  - 应用启动构造索引后，异步清理一次「索引里有键但会话已不存在」的残留；现存会话集合
+    取自**存储**（而非索引自身）。fire-and-forget + 吞错，绝不阻塞装配。
+  - ★ 存储读取失败时**必须跳过清理**，不得把「读不到会话」当成「没有会话」而清空整份索引。
+  - 观察完成：单测覆盖「按存储集合清理 / 重复启动幂等 / 存储不可用时索引不受损」；
+    真机以「索引含 3 个孤儿键 + 1 个真实会话」启动，实测孤儿被清、真实会话元数据保留，
+    日志出现 `session meta index pruned {removed:3}`。
+  - _Requirements: 5.3_
+  - _Boundary: 启动清理接线 — `lib/app/pi-handler.ts`, `packages/core/test/session-meta/prune-on-startup.it.test.ts`_
+
 ## Implementation Notes
 
 ### 实测数据(Req 2.5 的机械证据)
