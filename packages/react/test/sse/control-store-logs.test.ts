@@ -6,7 +6,7 @@
  *    to the registered onLogsFrame callback (logsStore.applyLogsFrame).
  *  - The logsStore grows by the expected number of entries.
  *  - Existing routes (notify/stats/queue/error/ui-rpc) are not affected (regression: 9.1).
- *  - When no onLogsFrame callback is registered, the frame is silently discarded.
+ *  - Frames arriving before onLogsFrame registration are buffered and replayed.
  *  - The callback is deregistered by calling the returned cleanup function.
  */
 import { describe, it, expect, vi } from "vitest";
@@ -77,12 +77,15 @@ describe("ControlStore — control:logs routing", () => {
     expect(logsStore.getSnapshot().entries).toHaveLength(1);
   });
 
-  it("silently discards control:logs frame when no callback is registered", () => {
+  it("replays control:logs frames that arrive before callback registration", () => {
     const store = new ControlStore();
-    // No onLogsFrame registered — must not throw.
-    expect(() => {
-      store.applyControlFrame(makeLogsFrame([makeLogEntry("x-1")]));
-    }).not.toThrow();
+    store.applyControlFrame(makeLogsFrame([makeLogEntry("x-1")]));
+    const cb = vi.fn();
+
+    store.onLogsFrame(cb);
+
+    expect(cb).toHaveBeenCalledOnce();
+    expect(cb).toHaveBeenCalledWith([expect.objectContaining({ id: "x-1" })]);
   });
 
   it("stops forwarding after the cleanup function is called", () => {

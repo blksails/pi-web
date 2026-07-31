@@ -12,6 +12,8 @@ export interface PaneViewHandle {
   show(): void;
   hide(): void;
   reload(): void;
+  /** 路由暂离时隐藏并断开宿主监听，保留原生 Webview 供恢复；非原生载体可不实现。 */
+  suspend?(): void;
   dispose(): void;
 }
 

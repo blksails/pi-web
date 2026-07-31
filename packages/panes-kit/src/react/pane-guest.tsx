@@ -1,7 +1,64 @@
 import * as React from "react";
 import { connectPaneGuest, type PaneGuestConnection } from "../guest.js";
+import type { PaneTheme } from "../contract.js";
 
 const PaneGuestContext = React.createContext<PaneGuestConnection | undefined>(undefined);
+
+/** Pane 通用首屏骨架；Guest 握手完成前遮住空白载体。 */
+export function PaneLoadingSkeleton({
+  label = "正在连接 Pane…",
+}: {
+  readonly label?: string;
+}): React.JSX.Element {
+  return (
+    <main
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      data-pane-loading-skeleton
+      style={{
+        height: "100%",
+        minHeight: 160,
+        display: "grid",
+        alignContent: "start",
+        gap: 10,
+        padding: 14,
+        color: "hsl(var(--muted-foreground, 215 16% 47%))",
+        background: "hsl(var(--background, 0 0% 100%))",
+      }}
+    >
+      <style>{`
+        @keyframes pane-loading-shimmer {
+          from { background-position: 100% 50%; }
+          to { background-position: 0 50%; }
+        }
+        [data-pane-loading-skeleton] [data-pane-loading-line] {
+          height: 12px;
+          border-radius: 999px;
+          background: linear-gradient(90deg,
+            hsl(var(--muted, 210 40% 96%)) 25%,
+            hsl(var(--border, 214 32% 91%)) 38%,
+            hsl(var(--muted, 210 40% 96%)) 62%);
+          background-size: 400% 100%;
+          animation: pane-loading-shimmer 1.3s ease infinite;
+        }
+      `}</style>
+      <span style={{ fontSize: 12 }}>{label}</span>
+      <span data-pane-loading-line style={{ width: "44%" }} />
+      <span data-pane-loading-line style={{ width: "72%" }} />
+      <span data-pane-loading-line style={{ width: "58%" }} />
+    </main>
+  );
+}
+
+function applyPaneTheme(theme: PaneTheme | undefined): void {
+  if (theme === undefined || typeof document === "undefined") return;
+  const root = document.documentElement;
+  for (const [name, value] of Object.entries(theme.tokens)) {
+    if (name.startsWith("--")) root.style.setProperty(name, value);
+  }
+  if (theme.colorScheme !== undefined) root.style.colorScheme = theme.colorScheme;
+}
 
 export function usePaneGuest(): PaneGuestConnection {
   const connection = React.useContext(PaneGuestContext);
@@ -12,7 +69,7 @@ export function usePaneGuest(): PaneGuestConnection {
 export function PaneGuestProvider({
   paneId,
   children,
-  fallback = <main aria-live="polite">正在连接 Pane 宿主…</main>,
+  fallback = <PaneLoadingSkeleton />,
 }: {
   readonly paneId: string;
   readonly children: React.ReactNode;
@@ -42,6 +99,12 @@ export function PaneGuestProvider({
       active?.close();
     };
   }, [paneId]);
+
+  React.useEffect(() => {
+    if (connection === undefined) return;
+    applyPaneTheme(connection.theme);
+    return connection.onTheme(applyPaneTheme);
+  }, [connection]);
 
   if (error !== undefined) return <main role="alert">{error.message}</main>;
   if (connection === undefined) return <>{fallback}</>;

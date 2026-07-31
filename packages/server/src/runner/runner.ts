@@ -286,6 +286,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // 因为 per-source settings 的 scope:"project" 注入(下方)复用同一信任判定作门控。
   const trusted = args.trusted || process.env.PI_WEB_TRUST_PROJECT === "1";
   const trust = makeResolveProjectTrust(trusted);
+  if (args.sessionId?.trim()) process.env["PI_WEB_SESSION_ID"] = args.sessionId;
 
   // per-source settings 装配期注入(spec: source-settings-and-slots,任务 3.1,通道 a,
   // Req 4.1-4.5):best-effort 读取该 source 已保存的设置值,失败/未声明一律降级 `{}`,
@@ -368,6 +369,7 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     agentDir,
     sessionManager,
   });
+  process.env["PI_WEB_SESSION_ID"] = runtime.session.sessionId;
   bootLog.debug("runtime built");
 
   // attachment-tool-bridge 装配(task 5.1):实例化子进程 store、把属主校验闸门接到

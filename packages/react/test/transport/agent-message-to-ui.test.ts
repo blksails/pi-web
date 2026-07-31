@@ -127,6 +127,28 @@ describe("agentMessagesToUiMessages", () => {
     });
   });
 
+  it("assistant 成品 image → 保留附件引用的 file part，供对话图片动作使用", () => {
+    const out = agentMessagesToUiMessages(
+      msgs([{
+        role: "assistant",
+        content: [{
+          type: "image",
+          mimeType: "image/png",
+          name: "result.png",
+          attachmentId: "att_result",
+        }],
+      }]),
+      { baseUrl: "/api" },
+    );
+    expect(out[0]?.parts[0]).toMatchObject({
+      type: "file",
+      mediaType: "image/png",
+      filename: "result.png",
+      attachmentId: "att_result",
+      url: "/api/attachments/att_result/raw",
+    });
+  });
+
   it("assistant stopReason=error(content 空)→ 追加 data-pi-error part 承载 errorMessage", () => {
     const out = agentMessagesToUiMessages(
       msgs([

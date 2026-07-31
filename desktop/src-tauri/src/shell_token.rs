@@ -18,6 +18,12 @@ static TOKEN: OnceLock<String> = OnceLock::new();
 /// 本次进程的取回 token（首次调用时生成，之后恒定）。
 pub fn shell_token() -> &'static str {
     TOKEN.get_or_init(|| {
+        if let Ok(value) = std::env::var("PI_WEB_SHELL_TOKEN") {
+            let value = value.trim();
+            if value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit()) {
+                return value.to_ascii_lowercase();
+            }
+        }
         let mut bytes = [0u8; 32];
         // 失败即 panic 是刻意的：拿不到 OS 熵源时**不得**退化成弱随机——
         // 那会让端点在用户毫不知情的情况下变成敞开的。宁可起不来。

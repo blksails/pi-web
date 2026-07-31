@@ -18,7 +18,7 @@ const panesSurface = {
 export const filesPaneMeta: PaneMeta = {
   id: "files",
   title: "文件",
-  icon: "▤",
+  icon: "files",
   allowMultiple: true,
   maxInstances: 3,
   capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] },
@@ -27,7 +27,7 @@ export const filesPaneMeta: PaneMeta = {
 export const editorPaneMeta: PaneMeta = {
   id: "editor",
   title: "编辑",
-  icon: "⌘",
+  icon: "square-pen",
   allowMultiple: true,
   maxInstances: 4,
   capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] },
@@ -36,7 +36,7 @@ export const editorPaneMeta: PaneMeta = {
 export const diffPaneMeta: PaneMeta = {
   id: "diff",
   title: "Diff",
-  icon: "±",
+  icon: "git-compare",
   allowMultiple: true,
   maxInstances: 3,
   capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET"] }] },
@@ -45,7 +45,7 @@ export const diffPaneMeta: PaneMeta = {
 export const canvasPaneMeta: PaneMeta = {
   id: "canvas",
   title: "Canvas",
-  icon: "◇",
+  icon: "palette",
   allowMultiple: true,
   maxInstances: 3,
   capabilities: {
@@ -60,7 +60,7 @@ export const canvasPaneMeta: PaneMeta = {
 export const artifactPaneMeta: PaneMeta = {
   id: "artifact",
   title: "Artifact",
-  icon: "◫",
+  icon: "box",
   allowMultiple: true,
   maxInstances: 3,
   capabilities: { ...panesSurface, routes: [{ name: "pane-data", methods: ["GET", "POST"] }] },

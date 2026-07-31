@@ -17,6 +17,7 @@ const capabilities: PaneCapabilities = {
   events: { publish: ["canvas.import"], subscribe: ["canvas.changed"] },
   attachments: "read-write",
   conversation: "submit",
+  downloads: false,
 };
 
 const definition = definePanes({
@@ -89,6 +90,20 @@ describe("pane contract and instance model", () => {
     });
     expect(unlimited.maxOpenPanes).toBe(UNLIMITED_PANE_COUNT);
     expect(unlimited.panes[0]?.maxInstances).toBe(UNLIMITED_PANE_COUNT);
+  });
+
+  it("preserves a host-native view declaration", () => {
+    const native = definePanes({
+      id: "native",
+      panes: [{
+        id: "logs",
+        title: "Logs",
+        hostView: "logs",
+        document: { kind: "inline", srcDoc: "" },
+        capabilities: {},
+      }],
+    });
+    expect(native.panes[0]?.hostView).toBe("logs");
   });
 });
 

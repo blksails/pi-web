@@ -3,7 +3,7 @@
 [[permission]]
 identifier = "allow-pane-relay-host"
 description = "允许宿主主窗口绑定 pane 中继并向 pane webview 下行信封"
-commands.allow = ["pane_relay_bind", "pane_relay_unbind", "pane_relay_to_guest"]
+commands.allow = ["pane_relay_bind", "pane_relay_unbind", "pane_relay_to_guest", "pane_webview_hide_all", "pane_webview_cleanup", "pane_webview_window_create", "pane_webview_window_control", "pane_layout_set_mode", "pane_layout_set_metrics", "pane_layout_is_native"]
 
 [[permission]]
 identifier = "allow-pane-relay-guest"

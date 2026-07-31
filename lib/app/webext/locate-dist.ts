@@ -110,6 +110,8 @@ function contentTypeFor(file: string): string {
       return "text/javascript; charset=utf-8";
     case ".css":
       return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
     case ".map":

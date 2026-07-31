@@ -183,4 +183,58 @@ describe("Conversation 自动滚动元件", () => {
     const el = getScroller();
     expect(el).toBeInTheDocument();
   });
+
+  it("用户输入导航居回到底部上方，并跳转至所选历史输入", async () => {
+    const user = userEvent.setup();
+    const scrollIntoView = vi.fn();
+    render(
+      <Conversation
+        controlsBottom={92}
+        controlsClassName="input-content-width"
+        userMessageNavigation={[
+          { id: "user-1", label: "第一条用户输入" },
+          { id: "user-2", label: "第二条用户输入" },
+        ]}
+      >
+        <div data-pi-message-id="user-1" style={{ height: 150 }}>m1</div>
+        <div
+          data-pi-message-id="user-2"
+          ref={(node) => {
+            if (node !== null) node.scrollIntoView = scrollIntoView;
+          }}
+          style={{ height: 150 }}
+        >
+          m2
+        </div>
+      </Conversation>,
+    );
+    const el = getScroller();
+    setScrollGeometry(el, { scrollTop: 0, clientHeight: 100, scrollHeight: 300 });
+    fireScroll(el);
+
+    const anchor = document.querySelector(
+      "[data-pi-conversation-scroll-anchor]",
+    ) as HTMLElement | null;
+    expect(anchor).not.toBeNull();
+    expect(anchor).toHaveStyle({ bottom: "92px" });
+    expect(anchor?.querySelector(".input-content-width")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "回到底部" }),
+    ).toBeInTheDocument();
+    const navigator = screen.getByRole("button", { name: "定位用户输入" });
+    const toBottom = screen.getByRole("button", { name: "回到底部" });
+    expect(
+      navigator.compareDocumentPosition(toBottom) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(navigator);
+    await user.click(screen.getByRole("menuitem", { name: /第二条用户输入/ }));
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(screen.queryByRole("menu", { name: "用户输入历史" }))
+      .not.toBeInTheDocument();
+  });
 });

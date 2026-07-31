@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pane 菜单</title>
+  <style>
+    :root{font:13px/1.4 ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color-scheme:light}
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}
+    body{padding:4px;color:hsl(var(--foreground,222 47% 11%))}
+    main{height:100%;overflow:hidden;border:1px solid hsl(var(--border,214 32% 91%));border-radius:10px;background:hsl(var(--background,0 0% 100%))}
+    header{display:flex;height:42px;align-items:center;gap:8px;padding:0 8px 0 12px;border-bottom:1px solid hsl(var(--border,214 32% 91%))}
+    strong{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+    button{font:inherit;color:inherit}
+    #close{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:7px;background:transparent;cursor:pointer}
+    #close:hover,.item:hover:not(:disabled){background:hsl(var(--accent,210 40% 96%))}
+    #items{height:calc(100% - 42px);overflow:auto;padding:4px}
+    .item{display:flex;width:100%;min-height:34px;align-items:center;gap:10px;border:0;border-radius:7px;background:transparent;padding:6px 9px;text-align:left;cursor:pointer}
+    .item:disabled{cursor:not-allowed;opacity:.42}
+    .label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .meta{flex:none;color:hsl(var(--muted,215 16% 47%));font-size:11px}
+    ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{border:2px solid transparent;border-radius:999px;background:hsl(var(--muted,215 16% 47%)/.35);background-clip:padding-box}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <strong id="title"></strong>
+      <button id="close" type="button" aria-label="关闭">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <div id="items" role="menu"></div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const instanceId = params.get("instanceId") || "panes-overlay-menu";
+    const token = Number(params.get("token") || 0);
+    const title = params.get("title") || "Pane";
+    let items = [];
+    let theme = {};
+    try { items = JSON.parse(params.get("items") || "[]"); } catch {}
+    try { theme = JSON.parse(params.get("theme") || "{}"); } catch {}
+    document.title = title;
+    document.querySelector("#title").textContent = title;
+    document.documentElement.style.colorScheme = theme.colorScheme || "light";
+    for (const [name, value] of Object.entries({
+      background: theme.background,
+      foreground: theme.foreground,
+      border: theme.border,
+      accent: theme.accent,
+      muted: theme.muted,
+    })) if (typeof value === "string" && value) document.documentElement.style.setProperty(`--${name}`, value);
+    const send = (message) => {
+      const invoke = globalThis.__TAURI__?.core?.invoke ?? globalThis.__TAURI_INTERNALS__?.invoke;
+      if (!invoke) return Promise.reject(new Error("Tauri runtime unavailable"));
+      return invoke("pane_relay_to_host", {
+        envelope: { instanceId, epoch: 0, message: { ...message, token } },
+      });
+    };
+    const close = () => void send({ type: "pane:overlay-close" }).catch(() => undefined);
+    document.querySelector("#close").addEventListener("click", close);
+    const list = document.querySelector("#items");
+    for (const item of items) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "item";
+      button.role = "menuitem";
+      button.disabled = item.disabled === true;
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = String(item.label || "");
+      button.append(label);
+      if (item.meta) {
+        const meta = document.createElement("span");
+        meta.className = "meta";
+        meta.textContent = String(item.meta);
+        button.append(meta);
+      }
+      button.addEventListener("click", () => {
+        void send({ type: "pane:overlay-select", value: String(item.id) }).catch(() => undefined);
+      });
+      list.append(button);
+    }
+    addEventListener("keydown", (event) => {
+      if (event.key === "Escape") close();
+    });
+    let focused = false;
+    addEventListener("focus", () => { focused = true; });
+    addEventListener("blur", () => { if (focused) close(); });
+    let attempts = 0;
+    const ready = () => {
+      attempts += 1;
+      void send({ type: "pane:overlay-ready" }).then(() => {
+        if (attempts > 1) clearInterval(timer);
+      }).catch(() => undefined);
+      if (attempts >= 25) clearInterval(timer);
+    };
+    const timer = setInterval(ready, 200);
+    ready();
+  </script>
+</body>
+</html>

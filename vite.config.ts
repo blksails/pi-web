@@ -72,6 +72,7 @@ export default defineConfig({
   },
   server: {
     port: Number(process.env.PI_WEB_DEV_CLIENT_PORT ?? 5173),
+    strictPort: true,
     // 开发期把 API 面代理到独立跑的宿主进程(server/index.ts),
     // 使前端 HMR 与后端会话进程解耦——这正是脱离 Next 后消失的那类 dev 冲突。
     proxy: {

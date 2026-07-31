@@ -20,7 +20,10 @@
  * ```
  */
 import { TAURI_PANE_RELAY_TO_HOST_COMMAND } from "./tauri.js";
-import { createPaneGuestRealmBridge } from "./relay.js";
+import {
+  createPaneGuestRealmBridge,
+  type PaneRelayEnvelope,
+} from "./relay.js";
 
 export function installTauriPaneBootstrap(options: {
   readonly instanceId: string;
@@ -29,13 +32,84 @@ export function installTauriPaneBootstrap(options: {
   /** 对应 `listen(TAURI_PANE_RELAY_GUEST_EVENT, …)`(本 webview 作用域)。 */
   onRelayMessage(listener: (envelope: unknown) => void): () => void;
 }): () => void {
+  let disposed = false;
+  let connected = false;
+  let readyEnvelope: PaneRelayEnvelope | undefined;
+  let readyInFlight = false;
+  let retryDelay = 50;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const messageType = (envelope: unknown): unknown => {
+    const message = typeof envelope === "object" && envelope !== null
+      ? (envelope as { message?: unknown }).message
+      : undefined;
+    return typeof message === "object" && message !== null
+      ? (message as { type?: unknown }).type
+      : undefined;
+  };
+  const scheduleReady = (): void => {
+    if (disposed || connected || readyEnvelope === undefined || retryTimer !== undefined) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      sendReady();
+    }, retryDelay);
+  };
+  const sendReady = (): void => {
+    if (disposed || connected || readyEnvelope === undefined || readyInFlight) return;
+    readyInFlight = true;
+    const envelope = readyEnvelope;
+    void new Promise<boolean>((resolve) => {
+      let settled = false;
+      const deadline = setTimeout(() => {
+        settled = true;
+        resolve(false);
+      }, 400);
+      void options.invoke(TAURI_PANE_RELAY_TO_HOST_COMMAND, { envelope })
+        .then(() => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(deadline);
+          resolve(true);
+        })
+        .catch(() => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(deadline);
+          resolve(false);
+        });
+    })
+      .then((delivered) => {
+        retryDelay = delivered ? 100 : Math.min(1_000, retryDelay * 2);
+      })
+      .finally(() => {
+        readyInFlight = false;
+        scheduleReady();
+      });
+  };
   const bridge = createPaneGuestRealmBridge({
     instanceId: options.instanceId,
     window: options.window,
-    sendToHost: (envelope) => void options.invoke(TAURI_PANE_RELAY_TO_HOST_COMMAND, { envelope }).catch(() => undefined),
+    sendToHost: (envelope) => {
+      if (messageType(envelope) === "pane:ready") {
+        readyEnvelope = envelope;
+        sendReady();
+        return;
+      }
+      void options.invoke(TAURI_PANE_RELAY_TO_HOST_COMMAND, { envelope }).catch(() => undefined);
+    },
   });
-  const off = options.onRelayMessage((envelope) => bridge.deliverFromHost(envelope));
+  const off = options.onRelayMessage((envelope) => {
+    const candidate = envelope as PaneRelayEnvelope;
+    if (messageType(candidate) === "pane:connected") {
+      connected = true;
+      readyEnvelope = undefined;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
+    bridge.deliverFromHost(envelope);
+  });
   return () => {
+    disposed = true;
+    if (retryTimer !== undefined) clearTimeout(retryTimer);
     off();
     bridge.dispose();
   };

@@ -7,16 +7,17 @@
 //! **不注入 agent 配置目录覆盖** → 会话默认落 `~/.pi/agent`，与 CLI 共享（Req 5.5）。
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod credential_sync;
-mod shell_token;
 mod credential_store;
+mod credential_sync;
 mod dialog;
 mod external_link;
 mod pane_relay;
+mod native_layout;
 mod ready_probe;
 mod resolve_artifact;
 mod runtime_mode;
 mod server_supervisor;
+mod shell_token;
 mod startup_error;
 mod types;
 mod unpack_runtime;
@@ -27,7 +28,7 @@ use server_supervisor::{ServerStartOptions, ServerSupervisor};
 use startup_error::describe_startup_error;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, RunEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
 use types::{ResolveError, RuntimeMode, ServerSource};
 use window::ServerOrigin;
 
@@ -65,6 +66,27 @@ fn start_port() -> u16 {
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(DEFAULT_START_PORT)
+}
+
+fn dev_api_port() -> Option<u16> {
+    if !matches!(
+        runtime_mode::resolve_from_env(is_packaged()),
+        RuntimeMode::Dev { .. }
+    ) {
+        return None;
+    }
+    let raw =
+        std::env::var("PI_WEB_DEV_API_URL").unwrap_or_else(|_| "http://127.0.0.1:3000".into());
+    let url = url::Url::parse(&raw).ok()?;
+    let host = url.host_str()?;
+    if host != "localhost"
+        && !host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+    {
+        return None;
+    }
+    url.port_or_known_default()
 }
 
 /// 后端基础环境：默认源、默认 cwd、（若 keychain 有登录态）桌面凭据。**不含 agentDir**（Req 5.5）。
@@ -128,15 +150,20 @@ fn launch(app: &AppHandle) {
 
     // dev：加载已运行的开发服务器，不拉起 standalone（保留前端热更新，Req 1.1）。
     if let RuntimeMode::Dev { dev_url } = &mode {
-        if let Some(win) = window::main_window(app) {
-            if let Ok(mut origin) = state.server_origin.lock() {
-                *origin = url::Url::parse(dev_url)
-                    .ok()
-                    .map(|u| u.origin().ascii_serialization());
+        if let (Some(port), Some(credential)) =
+            (dev_api_port(), credential_store::load_credential_sync())
+        {
+            if let Err(error) = credential_sync::seed_credential(port, &credential) {
+                eprintln!("[desktop] 开发 server 登录态回灌失败: {error}");
             }
-            if let Err(e) = window::navigate(&win, dev_url) {
-                show_startup_error(app, "无法加载开发地址", &e);
-            }
+        }
+        if let Ok(mut origin) = state.server_origin.lock() {
+            *origin = url::Url::parse(dev_url)
+                .ok()
+                .map(|u| u.origin().ascii_serialization());
+        }
+        if let Err(e) = window::navigate_for_runtime(app, dev_url) {
+            show_startup_error(app, "无法加载开发地址", &e);
         }
         return;
     }
@@ -218,10 +245,8 @@ fn launch(app: &AppHandle) {
                     .ok()
                     .map(|u| u.origin().ascii_serialization());
             }
-            if let Some(win) = window::main_window(app) {
-                if let Err(e) = window::navigate(&win, &result.url) {
-                    show_startup_error(app, "无法加载本地界面", &e);
-                }
+            if let Err(e) = window::navigate_for_runtime(app, &result.url) {
+                show_startup_error(app, "无法加载本地界面", &e);
             }
         }
         Err(err) => {
@@ -290,7 +315,7 @@ async fn sync_credential(state: tauri::State<'_, AppState>) -> Result<bool, Stri
             .map_err(|_| "supervisor 状态锁不可用".to_string())?;
         sup.port()
     };
-    let Some(port) = port else {
+    let Some(port) = port.or_else(dev_api_port) else {
         return Err("server 尚未就绪".into());
     };
     match credential_sync::fetch_credential(port, shell_token::shell_token())? {
@@ -308,7 +333,15 @@ async fn sync_credential(state: tauri::State<'_, AppState>) -> Result<bool, Stri
 }
 
 fn main() {
-    let server_origin: ServerOrigin = Arc::new(Mutex::new(None));
+    // `tauri dev` 会在 setup 内建窗时立即把 WebviewUrl::App 解析成 build.devUrl；
+    // 先登记开发 origin，免 on_navigation 在 launch() 异步写入前误拒首航。
+    let initial_origin = match runtime_mode::resolve_from_env(is_packaged()) {
+        RuntimeMode::Dev { dev_url } => url::Url::parse(&dev_url)
+            .ok()
+            .map(|url| url.origin().ascii_serialization()),
+        _ => None,
+    };
+    let server_origin: ServerOrigin = Arc::new(Mutex::new(initial_origin));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -319,6 +352,7 @@ fn main() {
             quitting: Mutex::new(false),
         })
         .manage(pane_relay::PaneRelayState::default())
+        .manage(native_layout::NativeWebviewLayoutManager::default())
         .invoke_handler(tauri::generate_handler![
             dialog::pick_directory,
             credential_store::store_credential,
@@ -329,6 +363,13 @@ fn main() {
             pane_relay::pane_relay_unbind,
             pane_relay::pane_relay_to_guest,
             pane_relay::pane_relay_to_host,
+            pane_relay::pane_webview_hide_all,
+            pane_relay::pane_webview_cleanup,
+            pane_relay::pane_webview_window_create,
+            pane_relay::pane_webview_window_control,
+            native_layout::pane_layout_set_mode,
+            native_layout::pane_layout_set_metrics,
+            native_layout::pane_layout_is_native,
             retry,
             quit
         ])
@@ -337,7 +378,7 @@ fn main() {
             // SIGTERM/SIGINT → 优雅退出（否则 server 与 runner 成孤儿；黑盒 e2e 依赖此路径）。
             install_signal_handlers(&handle);
             // ★ 先建窗加载随包加载页，再做任何后端动作 → 任何分支都不出现空白窗口（Req 1.4）。
-            window::create_main_window(&handle, server_origin.clone())?;
+            window::create_main_window_for_runtime(&handle, server_origin.clone())?;
             // 拉起含阻塞的就绪轮询（最长 60s），必须离开主线程，否则窗口无法绘制。
             tauri::async_runtime::spawn_blocking(move || launch(&handle));
             Ok(())
@@ -345,6 +386,32 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("构建 pi-web 桌面壳失败")
         .run(|app, event| match event {
+            // 浮层路径：Pane 是独立顶层 HWND，主窗 move 须平移；resize/DPI 通知前端重采槽。
+            // 内部 child 路径：子 WebView 随父 HWND 原生跟随；move 时再 set_bounds 会令
+            // WebView2 合成白屏。仅 resize / DPI 变化时 apply_layout。
+            RunEvent::WindowEvent { label, event, .. } if label == window::MAIN_WINDOW_LABEL => {
+                let native = window::native_child_webviews_enabled();
+                match event {
+                    WindowEvent::Moved(position) => {
+                        if !native {
+                            pane_relay::follow_host_window_moved(app, position.x, position.y);
+                            let _ = app.emit_to(window::MAIN_WINDOW_LABEL, "pane-host-layout", ());
+                        }
+                        // native child：无布局工作，勿 apply_layout。
+                    }
+                    WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                        if native {
+                            let _ = app
+                                .state::<native_layout::NativeWebviewLayoutManager>()
+                                .apply_layout(app);
+                            let _ = app.emit_to(window::HOST_WEBVIEW_LABEL, "pane-host-layout", ());
+                        } else {
+                            let _ = app.emit_to(window::MAIN_WINDOW_LABEL, "pane-host-layout", ());
+                        }
+                    }
+                    _ => {}
+                }
+            }
             // 退出前收尾 server 进程树（Req 4.1）。preventExit 一次，避免重入。
             RunEvent::ExitRequested { api, .. } => {
                 let state = app.state::<AppState>();
@@ -381,9 +448,9 @@ fn main() {
             // macOS：Dock 点击且无窗口 → 重开（Req 1.6）。
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { .. } => {
-                if window::main_window(app).is_none() {
+                if !window::main_window_exists(app) {
                     let origin = app.state::<AppState>().server_origin.clone();
-                    if let Err(e) = window::create_main_window(app, origin) {
+                    if let Err(e) = window::create_main_window_for_runtime(app, origin) {
                         eprintln!("[desktop] 重开窗口失败: {e}");
                     }
                     // 若后端已就绪，直接导航回它；否则加载页会停在初始态。
@@ -394,8 +461,8 @@ fn main() {
                         .ok()
                         .and_then(|s| s.port())
                         .map(|p| format!("http://{HOST}:{p}"));
-                    if let (Some(win), Some(url)) = (window::main_window(app), url) {
-                        let _ = window::navigate(&win, &url);
+                    if let Some(url) = url {
+                        let _ = window::navigate_for_runtime(app, &url);
                     }
                 }
             }

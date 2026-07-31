@@ -6,6 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./pane": "./src/pane.ts",
+    "./pane/guest": "./src/pane-guest.tsx",
     "./styles.css": "./src/styles.css"
   },
   "engines": {
@@ -18,13 +20,15 @@
   "dependencies": {
     "@blksails/pi-web-canvas-kit": "workspace:*",
     "@blksails/pi-web-kit": "workspace:*",
+    "@blksails/pi-web-panes-kit": "workspace:*",
     "@blksails/pi-web-primitives": "workspace:*",
     "@blksails/pi-web-react": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:*",
     "lucide-react": "^0.468.0"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

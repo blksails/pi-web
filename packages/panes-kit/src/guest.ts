@@ -3,9 +3,11 @@ import type {
   PaneConnectedMessage,
   PaneErrorData,
   PaneHostMessage,
+  PaneTheme,
 } from "./contract.js";
 import { PANE_PROTOCOL_VERSION } from "./contract.js";
 import { PaneHostError } from "./errors.js";
+import { installGlobalTauriPaneBootstrap } from "./adapters/tauri-runtime.js";
 
 interface PendingCall {
   resolve(value: unknown): void;
@@ -31,6 +33,7 @@ export interface PaneGuestConnection {
   readonly epoch: number;
   readonly interactionMode: "standard" | "advanced";
   readonly grants: PaneCapabilities;
+  readonly theme?: PaneTheme;
   readonly surface: PaneGuestSurface;
   readonly events: PaneGuestEvents;
   query<T = unknown>(route: string, query?: Record<string, string>): Promise<T>;
@@ -38,6 +41,7 @@ export interface PaneGuestConnection {
   upload(file: File): Promise<{ attachmentId: string; displayUrl: string }>;
   submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): Promise<void>;
   onLifecycle(listener: (state: "visible" | "hidden" | "closing") => void): () => void;
+  onTheme(listener: (theme: PaneTheme) => void): () => void;
   close(): void;
 }
 
@@ -53,6 +57,8 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
   const surfaceListeners = new Map<string, Set<(value: unknown) => void>>();
   const eventListeners = new Map<string, Set<(payload: unknown, source: { readonly instanceId: string; readonly paneId: string }) => void>>();
   const lifecycleListeners = new Set<(state: "visible" | "hidden" | "closing") => void>();
+  const themeListeners = new Set<(theme: PaneTheme) => void>();
+  let theme = message.theme;
 
   const request = <T,>(operation: string, payload: Record<string, unknown>, transfer: Transferable[] = []): Promise<T> => {
     if (closed) return Promise.reject(new PaneHostError("HOST_UNAVAILABLE", "Pane connection is closed"));
@@ -86,6 +92,11 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       for (const listener of eventListeners.get(data.topic) ?? []) listener(data.payload, data.source);
       return;
     }
+    if (data.type === "pane:theme") {
+      theme = data.theme;
+      for (const listener of themeListeners) listener(data.theme);
+      return;
+    }
     if (data.type === "pane:lifecycle") {
       for (const listener of lifecycleListeners) listener(data.state);
     }
@@ -99,6 +110,9 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
     epoch: message.instance.epoch,
     interactionMode: message.interactionMode,
     grants,
+    get theme() {
+      return theme;
+    },
     surface: {
       run: (domain, action, args) => request("surface.run", { domain, action, ...(args !== undefined ? { args } : {}) }),
       getState: <T,>(key: string) => states.get(key) as T | undefined,
@@ -134,6 +148,10 @@ function createConnection(message: PaneConnectedMessage, port: MessagePort, time
       lifecycleListeners.add(listener);
       return () => lifecycleListeners.delete(listener);
     },
+    onTheme: (listener) => {
+      themeListeners.add(listener);
+      return () => themeListeners.delete(listener);
+    },
     close() {
       if (closed) return;
       closed = true;
@@ -154,10 +172,13 @@ export function connectPaneGuest(options: {
   readonly signal?: AbortSignal;
 }): Promise<PaneGuestConnection> {
   const guestWindow = options.window ?? globalThis.window;
+  installGlobalTauriPaneBootstrap(guestWindow);
   return new Promise((resolve, reject) => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let readinessInterval: ReturnType<typeof setInterval> | undefined;
     const cleanup = (): void => {
       if (timeout !== undefined) clearTimeout(timeout);
+      if (readinessInterval !== undefined) clearInterval(readinessInterval);
       guestWindow.removeEventListener("message", onConnect);
       options.signal?.removeEventListener("abort", onAbort);
     };
@@ -182,11 +203,17 @@ export function connectPaneGuest(options: {
     }, options.timeoutMs ?? 15_000);
     options.signal?.addEventListener("abort", onAbort, { once: true });
     guestWindow.addEventListener("message", onConnect);
-    // readiness 与 iframe load 双触发配合：无论 React effect 与 load 谁先发生，Host 都能握手。
-    guestWindow.parent.postMessage({
-      type: "pane:ready",
-      protocol: PANE_PROTOCOL_VERSION,
-      paneId: options.expectedPaneId,
-    }, "*");
+    const announceReady = (): void => {
+      // WebView2 首个脚本帧可能早于 Tauri runtime 注入；沿既有 ready 轮询补装桥。
+      installGlobalTauriPaneBootstrap(guestWindow);
+      guestWindow.parent.postMessage({
+        type: "pane:ready",
+        protocol: PANE_PROTOCOL_VERSION,
+        paneId: options.expectedPaneId,
+      }, "*");
+    };
+    announceReady();
+    // Host effect 可能晚于 srcDoc 脚本；有界重发使握手不再依赖 iframe load 的竞态。
+    readinessInterval = setInterval(announceReady, 250);
   });
 }

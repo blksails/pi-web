@@ -12,11 +12,26 @@
 use crate::external_link::decide_external_open;
 use crate::types::ExternalOpenDecision;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Manager, WebviewBuilder, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowBuilder,
+};
 use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 pub const MAIN_WINDOW_LABEL: &str = "main";
+pub const HOST_WEBVIEW_LABEL: &str = "main-host";
+
+/// 新载体开关：显式 opt-in，便于旧浮层方案随时回退。
+pub fn native_child_webviews_enabled() -> bool {
+    matches!(
+        std::env::var("PI_WEB_NATIVE_CHILD_WEBVIEWS")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
 
 /// 当前已拉起的后端 origin（如 `http://127.0.0.1:34810`）。导航放行判据之一。
 ///
@@ -64,10 +79,17 @@ pub fn create_main_window(
     server_origin: ServerOrigin,
 ) -> tauri::Result<WebviewWindow> {
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+    let builder =
+        WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
         .title("pi-web")
         .inner_size(1200.0, 800.0)
-        .background_color(tauri::window::Color(0x0b, 0x0b, 0x0c, 0xff))
+        .background_color(tauri::window::Color(0x0b, 0x0b, 0x0c, 0xff));
+    #[cfg(windows)]
+    let builder = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+        Ok(args) if !args.trim().is_empty() => builder.additional_browser_args(args.trim()),
+        _ => builder,
+    };
+    builder
         .on_navigation(move |url| {
             let raw = url.as_str();
             let origin = server_origin.lock().ok().and_then(|g| g.clone());
@@ -88,15 +110,95 @@ pub fn create_main_window(
         .build()
 }
 
+/// 以无 Webview 原生 Window 承载 host child Webview。
+#[cfg(feature = "unstable")]
+pub fn create_native_main_window(
+    app: &AppHandle,
+    server_origin: ServerOrigin,
+) -> tauri::Result<()> {
+    let handle = app.clone();
+    let window = WindowBuilder::new(app, MAIN_WINDOW_LABEL)
+        .title("pi-web")
+        .inner_size(1200.0, 800.0)
+        .build()?;
+    let builder = WebviewBuilder::new(HOST_WEBVIEW_LABEL, WebviewUrl::App("index.html".into()))
+        .on_navigation(move |url| {
+            let raw = url.as_str();
+            let origin = server_origin.lock().ok().and_then(|g| g.clone());
+            match decide_navigation(raw, origin.as_deref()) {
+                NavigationDecision::Allow => true,
+                NavigationDecision::OpenExternally => {
+                    if let Err(e) = handle.opener().open_url(raw, None::<&str>) {
+                        eprintln!("[desktop] 打开外链失败: {e}");
+                    }
+                    false
+                }
+                NavigationDecision::Block => {
+                    eprintln!("[desktop] 拒绝导航: {raw}");
+                    false
+                }
+            }
+        });
+    let host = window.add_child(
+        builder,
+        tauri::LogicalPosition::new(0.0, 0.0),
+        tauri::LogicalSize::new(1200.0, 800.0),
+    )?;
+    host.set_auto_resize(false)?;
+    Ok(())
+}
+
+pub fn create_main_window_for_runtime(
+    app: &AppHandle,
+    server_origin: ServerOrigin,
+) -> tauri::Result<()> {
+    if native_child_webviews_enabled() {
+        #[cfg(feature = "unstable")]
+        {
+            return create_native_main_window(app, server_origin);
+        }
+        #[cfg(not(feature = "unstable"))]
+        {
+            eprintln!("[desktop] child Webview feature unavailable; fallback to WebviewWindow");
+        }
+    }
+    create_main_window(app, server_origin).map(|_| ())
+}
+
 /// 取主窗口（可能已被关闭）。
 pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(MAIN_WINDOW_LABEL)
+}
+
+pub fn main_window_exists(app: &AppHandle) -> bool {
+    if native_child_webviews_enabled() {
+        app.get_window(MAIN_WINDOW_LABEL).is_some()
+    } else {
+        main_window(app).is_some()
+    }
 }
 
 /// 导航到指定 URL（后端就绪后调用）。
 pub fn navigate(window: &WebviewWindow, url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|e| format!("非法 URL {url}: {e}"))?;
     window.navigate(parsed).map_err(|e| e.to_string())
+}
+
+pub fn navigate_for_runtime(app: &AppHandle, url: &str) -> Result<(), String> {
+    let parsed = Url::parse(url).map_err(|e| format!("非法 URL {url}: {e}"))?;
+    if native_child_webviews_enabled() {
+        let host = app
+            .get_window(MAIN_WINDOW_LABEL)
+            .ok_or_else(|| "主窗口不存在".to_string())?
+            .webviews()
+            .into_iter()
+            .find(|view| view.label() == HOST_WEBVIEW_LABEL)
+            .ok_or_else(|| "宿主 Webview 不存在".to_string())?;
+        host.navigate(parsed).map_err(|e| e.to_string())
+    } else {
+        let window = main_window(app).ok_or_else(|| "主窗口不存在".to_string())?;
+        navigate(&window, url)
+    }
 }
 
 #[cfg(test)]

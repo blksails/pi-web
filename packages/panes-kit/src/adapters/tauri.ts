@@ -11,7 +11,7 @@
  * 收窄(仅事件监听 + `pane_relay_to_host`),不授予导航、shell、opener 等任何权限。
  */
 import type { PaneViewAdapter, PaneViewHandle } from "../host-ports.js";
-import { createRelayPanePort } from "./relay.js";
+import { createRelayPanePort, isPaneRelayEnvelope } from "./relay.js";
 
 export const TAURI_PANE_RELAY_BIND_COMMAND = "pane_relay_bind";
 export const TAURI_PANE_RELAY_UNBIND_COMMAND = "pane_relay_unbind";
@@ -28,10 +28,10 @@ export function paneWebviewLabel(instanceId: string): string {
 }
 
 export interface TauriPaneWebview {
-  show(): void;
-  hide(): void;
-  reload(): void;
-  close(): void;
+  show(): void | Promise<void>;
+  hide(): void | Promise<void>;
+  reload(): void | Promise<void>;
+  close(): void | Promise<void>;
 }
 
 export interface TauriPaneEnv {
@@ -43,6 +43,8 @@ export interface TauriPaneEnv {
     readonly label: string;
     readonly url: string;
     readonly instanceId: string;
+    readonly container?: HTMLElement;
+    readonly visible?: boolean;
   }): Promise<TauriPaneWebview> | TauriPaneWebview;
 }
 
@@ -51,6 +53,8 @@ export interface TauriPaneMountTarget {
   readonly paneId: string;
   readonly epoch: number;
   readonly url: string;
+  readonly container?: HTMLElement;
+  readonly visible?: boolean;
 }
 
 export function createTauriPaneViewAdapter(
@@ -63,33 +67,93 @@ export function createTauriPaneViewAdapter(
       if (!allowedProtocols.includes(new URL(target.url).protocol)) {
         throw new Error(`Pane document protocol is not declared: ${target.url}`);
       }
-      const label = paneWebviewLabel(target.instanceId);
-      await env.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
-        instanceId: target.instanceId,
-        epoch: target.epoch,
-        label,
+      // WebView 在最终槽内隐藏加载，可能早于 mount() 返回便发出 pane:ready。
+      // 先占中继监听并缓冲本实例消息，免握手事件落入订阅空窗。
+      const earlyMessages: unknown[] = [];
+      const relayListeners = new Set<(envelope: unknown) => void>();
+      const stopRelay = env.onRelayMessage((envelope) => {
+        if (!isPaneRelayEnvelope(envelope) || envelope.instanceId !== target.instanceId) return;
+        if (relayListeners.size === 0) {
+          earlyMessages.push(envelope);
+          return;
+        }
+        for (const listener of relayListeners) listener(envelope);
       });
-      const view = await env.createPaneWebview({ label, url: target.url, instanceId: target.instanceId });
+      // WebView label 含 epoch：普通路由 remount 复用同一 label/child WebView；
+      // 会话切换或显式 reload 提升 epoch，先关闭旧 child 再创建新载体，避免竞态。
+      const label = paneWebviewLabel(`${target.instanceId}-${target.epoch}`);
+      let view: TauriPaneWebview;
+      try {
+        await env.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
+          instanceId: target.instanceId,
+          epoch: target.epoch,
+          label,
+        });
+        view = await env.createPaneWebview({
+          label,
+          url: target.url,
+          instanceId: target.instanceId,
+          container: target.container,
+          visible: target.visible,
+        });
+      } catch (error) {
+        stopRelay();
+        throw error;
+      }
       const port = createRelayPanePort({
         instanceId: target.instanceId,
         epoch: target.epoch,
         // 发送失败(旧 epoch 被 Rust 拒绝、webview 已关)按失联处理,不抛给宿主循环。
         send: (envelope) => void Promise.resolve(env.invoke(TAURI_PANE_RELAY_TO_GUEST_COMMAND, { envelope })).catch(() => undefined),
-        subscribe: (listener) => env.onRelayMessage(listener),
+        subscribe(listener) {
+          relayListeners.add(listener);
+          const queued = earlyMessages.splice(0);
+          for (const envelope of queued) listener(envelope);
+          return () => relayListeners.delete(listener);
+        },
       });
+      let disposed = false;
+      let controls = Promise.resolve();
+      const enqueue = (
+        action: () => void | Promise<void>,
+        allowDisposed = false,
+      ): void => {
+        controls = controls
+          .then(async () => {
+            if (disposed && !allowDisposed) return;
+            await action();
+          })
+          .catch(() => undefined);
+      };
       return {
         port,
-        show: () => view.show(),
-        hide: () => view.hide(),
-        reload: () => view.reload(),
-        dispose: () => {
+        show: () => enqueue(() => view.show()),
+        hide: () => enqueue(() => view.hide()),
+        reload: () => enqueue(() => view.reload()),
+        suspend: () => {
+          if (disposed) return;
           port.close();
+          stopRelay();
+          void Promise.resolve(env.invoke(TAURI_PANE_RELAY_UNBIND_COMMAND, {
+            instanceId: target.instanceId,
+            epoch: target.epoch,
+          })).catch(() => undefined);
+          enqueue(() => view.hide());
+        },
+        dispose: () => {
+          if (disposed) return;
+          disposed = true;
+          port.close();
+          stopRelay();
           // epoch 匹配才解绑:同 instanceId 已被更高 epoch 重绑时,旧 handle 不误伤新绑定。
           void Promise.resolve(env.invoke(TAURI_PANE_RELAY_UNBIND_COMMAND, {
             instanceId: target.instanceId,
             epoch: target.epoch,
           })).catch(() => undefined);
-          view.close();
+          enqueue(async () => {
+            await view.hide();
+            await view.close();
+          }, true);
         },
       };
     },

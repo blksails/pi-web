@@ -224,6 +224,8 @@ export function makeRawAttachmentHandler(store: AttachmentStore): RouteHandler {
     const headers = new Headers();
     headers.set("Content-Type", mimeType);
     headers.set("Cache-Control", RAW_CACHE_CONTROL);
+    // sandboxed srcDoc Pane 的 origin 为 null；签名 URL 已自鉴权，允许匿名跨源读取供 Canvas 像素编辑。
+    headers.set("Access-Control-Allow-Origin", "*");
     return new Response(toWebStream(stream), { status: 200, headers });
   };
 }

@@ -5,10 +5,7 @@
  * (经白名单拉取)。内置离线快照(schema-registry.data.json),`PI_WEB_SCHEMA_REGISTRY_URL`
  * 可指向远端 registry 覆盖/刷新快照。远端拉取一律走 host 白名单,根除 SSRF。
  */
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-const BUILTIN_SNAPSHOT = require("./schema-registry.data.json") as SchemaRegistrySnapshot;
+import BUILTIN_SNAPSHOT from "./schema-registry.data.json" with { type: "json" };
 
 /** 默认放行的远端 host(registry 远端与 entry.schema URL 共用)。 */
 export const DEFAULT_ALLOW_HOSTS: readonly string[] = ["raw.githubusercontent.com", "pi.dev"];
