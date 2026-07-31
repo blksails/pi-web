@@ -78,3 +78,42 @@ pnpm dev
 然后在 `http://localhost:5273/` 依次用四个 source 建会话:
 `builtin:default-agent` / 任意无 `index.ts` 的目录 / `examples/panes-agent` /
 `examples/aigc-canvas-agent`。
+
+---
+
+# 真机取证 — panes-only-right-panel(2026-07-31)
+
+Chrome 实机 + 真实 dev server(`PORT=3100` / vite `5273` / `PI_WEB_AGENT_DIR=/tmp/pi-e2e-agent-dir`)。
+
+## ① 不带 web extension 的 agent(`builtin:default-agent`)—— 本 spec 的核心目标
+
+pane 内显示 `会话标识 ffffaab1-eec4-44e3-af90-06849fca4177`,**与 URL 逐字一致**;
+agent 源、工作目录、实例 epoch 均正确。右侧面板、比例切换器(居中/2:1/4:6/3:7)全在。
+
+⇒ **不声明任何 UI 扩展的 agent 现在也有内置 pane。** 这是收敛旧槽后才可能的 ——
+旧机制下,只要 agent 声明了旧槽,内置 pane 就整体让位。
+
+隔离验证:宿主 realm **读不到** iframe 的 `contentDocument`(sandbox 无 `allow-same-origin`),
+内容只能经 a11y 树或截图取证 —— 这正是隔离生效的证据。
+
+## ② 共享状态双向闭环(`state-bridge-agent`)—— 本 spec 新增通道的活体验证
+
+pane 内点「+1(写回)」**连续两次**:`—` → `1` → `2`(截图
+`panes-only-state-bridge-writeback.png`)。
+
+这一条走通意味着整条链路都对:
+pane 点击 → guest `state.set` 上行 → 宿主授权(读写分离,write 表含 `count`)→
+`client.setState` → 服务端 → agent 侧状态 → 控制流回流 → `controlStore` →
+`bindPaneState` 订阅触发 → `pane:state` 下行帧 → guest 重渲染。
+
+★ 它同时验证了那个五轮排查才定位的 **MessagePort 重建后 guest 换 port** 修复 ——
+未修时下行帧会全部进虚空,表现为「点了没反应、也不报错」。
+
+★ agent pane 出现而内置 pane 不在初始打开集,是 **Req 2.5 的预期行为**
+(agent 的 initialPaneIds 完整保留、内置默认项让位),可经「新开 Pane」打开。
+
+## 已知遗留(不影响功能)
+
+`[data-pi-ext-panel-right]` 这个 **DOM 属性名**仍在(`pi-chat.tsx:2099`)。它现在标记的是
+**面板区域容器**而非槽 —— 槽本身已删除。属性名带 `panel-right` 有历史包袱,但它是对外的
+DOM 契约,改名会波及依赖它的 e2e,故本波不动,留档。
