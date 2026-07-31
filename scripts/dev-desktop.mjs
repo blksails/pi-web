@@ -13,11 +13,17 @@ const webappRoot = process.env.PI_WEB_DEV_WEBAPP_DIR?.trim()
 const webappUrl = process.env.PI_LABS_WEBAPP_URL
   ?? process.env.PI_WEB_DEV_WEBAPP_URL
   ?? "http://127.0.0.1:4000";
-const cloudRoot = process.env.PI_WEB_DEV_CLOUD_DIR?.trim()
+// PI_WEB_DEV_SKIP_CLOUD=1：不 spawn cloud（已在外部起 4100 时用）；仍可按 CLOUD_URL 注 capabilities。
+const skipCloudSpawn = process.env.PI_WEB_DEV_SKIP_CLOUD === "1"
+  || process.env.PI_WEB_DEV_SKIP_CLOUD === "true";
+const cloudRoot = !skipCloudSpawn && process.env.PI_WEB_DEV_CLOUD_DIR?.trim()
   ? path.resolve(root, process.env.PI_WEB_DEV_CLOUD_DIR)
   : undefined;
 const cloudUrl = process.env.PI_WEB_DEV_CLOUD_URL ?? "http://127.0.0.1:4100";
 const cloudPort = new URL(cloudUrl).port || "4100";
+const useExternalCloud = skipCloudSpawn
+  || process.env.PI_WEB_DEV_CLOUD_URL?.trim()
+  || process.env.PI_CLOUDS_DESKTOP_CAPABILITIES_URL?.trim();
 const devUrl = process.env.PI_WEB_DESKTOP_DEV_URL
   ?? `http://127.0.0.1:${process.env.PI_WEB_DEV_CLIENT_PORT ?? 5173}`;
 const apiUrl = process.env.PI_WEB_DEV_API_URL
@@ -40,9 +46,11 @@ const devEnv = {
     ? webviewArgs
     : `${webviewArgs} --remote-debugging-port=${webviewCdpPort}`.trim(),
   ...(webappRoot !== undefined ? { PI_LABS_WEBAPP_URL: webappUrl } : {}),
-  ...(cloudRoot !== undefined ? {
-    PI_WEB_CLOUD_LOGIN_EGRESS_BASE: `${cloudUrl.replace(/\/+$/, "")}/api/desktop/egress/v1`,
-    PI_CLOUDS_DESKTOP_CAPABILITIES_URL: `${cloudUrl.replace(/\/+$/, "")}/api/desktop/capabilities`,
+  ...((cloudRoot !== undefined || useExternalCloud) ? {
+    PI_WEB_CLOUD_LOGIN_EGRESS_BASE: process.env.PI_WEB_CLOUD_LOGIN_EGRESS_BASE
+      ?? `${cloudUrl.replace(/\/+$/, "")}/api/desktop/egress/v1`,
+    PI_CLOUDS_DESKTOP_CAPABILITIES_URL: process.env.PI_CLOUDS_DESKTOP_CAPABILITIES_URL
+      ?? `${cloudUrl.replace(/\/+$/, "")}/api/desktop/capabilities`,
   } : {}),
 };
 const children = [];
@@ -74,21 +82,25 @@ async function waitForBase() {
   const apiReadyUrl = new URL("/api/bootstrap", apiUrl);
   const timeoutMs = Number(process.env.PI_WEB_DEV_READY_TIMEOUT_MS ?? 90_000);
   const until = Date.now() + timeoutMs;
+  const probes = [
+    { url: webUrl },
+    { url: apiReadyUrl.toString() },
+    ...(webappRoot !== undefined ? [{ url: webappUrl }] : []),
+    // 外部已起的 cloud 也纳入 ready 门闩。
+    ...((cloudRoot !== undefined || skipCloudSpawn) ? [{ url: cloudUrl }] : []),
+  ];
   while (Date.now() < until) {
     try {
-       const responses = await Promise.all([
-         fetch(webUrl),
-         fetch(apiReadyUrl),
-         ...(webappRoot !== undefined ? [fetch(webappUrl, { redirect: "manual" })] : []),
-         ...(cloudRoot !== undefined ? [fetch(cloudUrl, { redirect: "manual" })] : []),
-       ]);
-       if (responses.every((response) => response.status < 500)) return;
+      const responses = await Promise.all(probes.map((p) => fetch(p.url, { redirect: "manual" })));
+      for (let i = 0; i < probes.length; i++) probes[i].status = responses[i].status;
+      if (responses.every((response) => response.status < 500)) return;
     } catch {
       // Vite 或 API 尚未就绪。
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error(`Timed out waiting for ${webUrl} and ${apiReadyUrl}`);
+  const detail = probes.map((p) => `${p.url} -> ${p.status ?? "unreachable"}`).join("; ");
+  throw new Error(`Timed out waiting for base after ${timeoutMs}ms. ${detail}`);
 }
 
 process.once("SIGINT", () => stop(0));

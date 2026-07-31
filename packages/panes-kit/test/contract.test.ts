@@ -65,7 +65,8 @@ describe("pane contract and instance model", () => {
     expect(state.instances.find((item) => item.instanceId === "editor-3")?.epoch).toBe(2);
     state = reducePaneWorkspace(definition, state, { type: "close", instanceId: "editor-3" });
     expect(state.instances.map((item) => item.instanceId)).toEqual(["editor-1", "canvas-2"]);
-    expect(state.activeInstanceId).toBe("canvas-2");
+    // MRU:最近打开的 editor-3 在最前,关闭后激活剩余最近使用(editor-1)。
+    expect(state.activeInstanceId).toBe("editor-1");
   });
 
   it("enforces maxInstances and maxOpenPanes", () => {

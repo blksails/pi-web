@@ -318,22 +318,24 @@ describe("PanesHost multi-open UI", () => {
     add();
     const controlsOrder = (): string[] =>
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-controls") ?? "");
-    expect(controlsOrder()).toEqual(["pane-view-editor-1", "pane-view-editor-2", "pane-view-editor-3"]);
+    // MRU:新打开的排最前,故 editor-3/2/1。
+    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
 
-    // 切换:点第二个 tab,选中态与 iframe 可见性同步
+    // 切换:点第二个 tab(editor-2),MRU 前置并选中,iframe 可见性同步
     fireEvent.click(screen.getAllByRole("tab")[1]!);
-    expect(screen.getAllByRole("tab")[1]!.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-selected")).toBe("true");
+    expect(controlsOrder()).toEqual(["pane-view-editor-2", "pane-view-editor-3", "pane-view-editor-1"]);
     const frameById = (id: string): HTMLIFrameElement =>
       view.container.querySelector<HTMLIFrameElement>(`#pane-view-${id}`)!;
     expect(frameById("editor-2").style.display).toBe("block");
     expect(frameById("editor-1").style.display).toBe("none");
 
-    // 拖排:把第三个 tab 拖到第一个之前
+    // 拖排:把最后一个 tab(editor-1)拖到第一个之前
     const wrappers = screen.getAllByRole("tab").map((tab) => tab.parentElement!);
     fireEvent.dragStart(wrappers[2]!);
     fireEvent.dragOver(wrappers[0]!);
     fireEvent.drop(wrappers[0]!);
-    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-1", "pane-view-editor-2"]);
+    expect(controlsOrder()).toEqual(["pane-view-editor-1", "pane-view-editor-2", "pane-view-editor-3"]);
 
     // 空态:全部关闭后出现空工作区入口,可重新打开恢复
     for (let remaining = 3; remaining > 0; remaining -= 1) {

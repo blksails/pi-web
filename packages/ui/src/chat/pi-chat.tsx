@@ -575,10 +575,18 @@ export function PiChat({
 
   // 日志面板:per-session logsStore + control:logs 帧接线（Req 3.4）。
   // 一个 useMemo 保证每次 sessionId 变更时重建 store（新会话新 store，不跨会话混日志）。
+  // ★ logsActive = showLogs || logsInPanes:扩展在 panes 里声明了 `hostView:"logs"` 的一级 tab
+  //   （如 aigc-agent / cloud 隔离车道）时,该 tab 恒渲染公共 LogsPanel 并有完整数据链路
+  //   （实时帧 + getLogs 历史),不受 showLogs 门控 —— 门控只作用于 legacy 位置面板(bottom 等)。
+  const logsPaneHosted =
+    (extension?.panes?.definition as PanesDefinition | undefined)?.panes.some(
+      (pane) => pane.hostView === "logs",
+    ) === true;
+  const logsActive = showLogs || logsPaneHosted;
   const logsStore = React.useMemo(
-    () => (showLogs ? createLogsStore() : undefined),
+    () => (logsActive ? createLogsStore() : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showLogs, sessionId],
+    [logsActive, sessionId],
   );
 
   // 订阅 control:logs 帧 → logsStore.applyLogsFrame（实时链路 3.2→3.4）。
@@ -589,18 +597,18 @@ export function PiChat({
     });
   }, [logsStore, connection]);
 
-  // getLogs 历史拉取器（4.2 链路），仅在 showLogs 且 client+sessionId 就绪时注入。
+  // getLogs 历史拉取器（4.2 链路），仅在 logsActive 且 client+sessionId 就绪时注入。
   // LogHistoryFetcher 的 level 是 string（宽类型）；client.getLogs 的 level 是 LogLevel
   // 严类型——做桥接时把 string 向下转型为 LogLevel（调用侧已从枚举传入，运行时安全）。
   const logsFetcher = React.useMemo((): LogHistoryFetcher | undefined => {
-    if (!showLogs || client === undefined || sessionId === undefined) return undefined;
+    if (!logsActive || client === undefined || sessionId === undefined) return undefined;
     const capturedClient = client;
     const capturedSessionId = sessionId;
     return (query) =>
       capturedClient.getLogs(capturedSessionId, query as Parameters<typeof capturedClient.getLogs>[1]);
-  }, [showLogs, client, sessionId]);
+  }, [logsActive, client, sessionId]);
 
-  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 showLogs 时启用）。
+  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 logsActive 时启用）。
   const logsResult = useLogs(
     logsStore !== undefined
       ? { store: logsStore, ...(logsFetcher !== undefined ? { fetcher: logsFetcher } : {}) }
@@ -1431,7 +1439,7 @@ export function PiChat({
   // panelRight 让位比例解析:仅扩展声明 panelRight 时启用切换器;artifact-only aside 沿用固定 w-96。
   const panesDefinition = extension?.panes?.definition as PanesDefinition | undefined;
   const hasPanelRight = extension?.slots?.panelRight !== undefined || panesDefinition !== undefined;
-  const logsInPanes = panesDefinition?.panes.some((pane) => pane.hostView === "logs") === true;
+  const logsInPanes = logsPaneHosted;
   const showLegacyLogs = showLogs && !logsInPanes;
   const hasArtifactAside =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
@@ -2246,7 +2254,7 @@ export function PiChat({
                     {...(onPaneEvent !== undefined ? { onEvent: onPaneEvent } : {})}
                     {...(paneHostEvent !== undefined ? { hostEvent: paneHostEvent } : {})}
                     renderHostView={(hostView) => {
-                      if (hostView !== "logs" || !showLogs) return undefined;
+                      if (hostView !== "logs" || !logsActive) return undefined;
                       return (
                         <div className="flex h-full min-h-0 flex-col overflow-hidden p-2" data-pi-logs-region>
                           <LogsPanel logsResult={logsResult} className="min-h-0 flex-1" fill />

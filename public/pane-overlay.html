@@ -30,6 +30,8 @@
     #close:hover,.item:hover:not(:disabled){background:hsl(var(--accent,210 40% 96%))}
     #items{min-height:0;flex:1;overflow:auto;padding:4px}
     .item{display:flex;width:100%;min-height:34px;align-items:center;gap:10px;border:0;border-radius:7px;background:transparent;padding:6px 9px;text-align:left;cursor:pointer}
+    .item.selected{background:hsl(var(--accent,210 40% 96%))}
+    .item.selected .label{font-weight:500;color:hsl(var(--foreground,222 47% 11%))}
     .item:disabled{cursor:not-allowed;opacity:.42}
     .label{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .meta{flex:none;color:hsl(var(--muted,215 16% 47%));font-size:11px}
@@ -80,8 +82,12 @@
       })) if (typeof value === "string" && value) document.documentElement.style.setProperty(`--${name}`, value);
     };
 
+    /** 渲染后短时忽略 blur，避免 host show→focus 抖动把菜单立刻关掉。 */
+    let blurGuardUntil = 0;
+
     const renderMenu = (title, items, placement) => {
       closed = false;
+      blurGuardUntil = Date.now() + 800;
       document.title = title || "Pane";
       document.querySelector("#title").textContent = title || "";
       document.querySelector("#panel").dataset.placement =
@@ -92,9 +98,10 @@
       for (const item of items || []) {
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "item";
+        button.className = "item" + (item.selected === true ? " selected" : "");
         button.role = "menuitem";
         button.disabled = item.disabled === true;
+        if (item.selected === true) button.setAttribute("aria-current", "true");
         const label = document.createElement("span");
         label.className = "label";
         label.textContent = String(item.label || "");
@@ -105,6 +112,13 @@
           meta.textContent = String(item.meta);
           button.append(meta);
         }
+        if (item.selected === true) {
+          const check = document.createElement("span");
+          check.className = "meta";
+          check.setAttribute("aria-hidden", "true");
+          check.textContent = "✓";
+          button.append(check);
+        }
         button.addEventListener("click", () => {
           void send({ type: "pane:overlay-select", value: String(item.id) }).catch(() => undefined);
         });
@@ -112,7 +126,7 @@
       }
     };
 
-    // URL 首载参数（兼容 navigate 路径）
+    // URL 首载（open 主路径：host navigate 带 title/items）
     let bootItems = [];
     let bootTheme = {};
     try { bootItems = JSON.parse(params.get("items") || "[]"); } catch {}
@@ -137,13 +151,14 @@
       if (blurTimer) clearTimeout(blurTimer);
       blurTimer = setTimeout(() => {
         blurTimer = 0;
+        if (Date.now() < blurGuardUntil) return;
         if (!document.hasFocus() && token !== 0) close();
-      }, 280);
+      }, 320);
     });
 
-    // 宿主 configure：热更新菜单，免二次 navigate。
-    const onGuest = (payload) => {
-      const env = payload?.payload ?? payload;
+    // 可选 configure 热路径（保留兼容；主路径是 URL navigate）
+    const onGuest = (event) => {
+      const env = event?.payload ?? event;
       if (!env || env.instanceId !== instanceId) return;
       const msg = env.message;
       if (!msg || msg.type !== "pane:overlay-configure") return;
@@ -152,21 +167,22 @@
       renderMenu(msg.title || "Pane", msg.items || [], msg.placement);
       void send({ type: "pane:overlay-ready" }).catch(() => undefined);
     };
-    const listen = globalThis.__TAURI__?.event?.listen;
+    const listen = globalThis.__TAURI__?.event?.listen
+      ?? globalThis.__TAURI_INTERNALS__?.event?.listen;
     if (typeof listen === "function") {
       void listen("pane-relay-guest", onGuest).catch(() => undefined);
     }
 
-    // warm shell / 首载：上报 ready（token=0 时 host 只记 shellReady，不 show）
+    // warm(token=0) / 首载：上报 ready；token>0 时 host 会 show
     let attempts = 0;
     const ready = () => {
       attempts += 1;
       void send({ type: "pane:overlay-ready" }).then(() => {
         if (attempts > 1) clearInterval(timer);
       }).catch(() => undefined);
-      if (attempts >= 25) clearInterval(timer);
+      if (attempts >= 30) clearInterval(timer);
     };
-    const timer = setInterval(ready, 200);
+    const timer = setInterval(ready, 120);
     ready();
   </script>
 </body>

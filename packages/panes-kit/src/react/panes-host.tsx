@@ -144,12 +144,13 @@ interface NativePaneCarrierProps {
   readonly pane: PaneDefinition;
   readonly active: boolean;
   readonly ready: boolean;
+  readonly shown: boolean;
   readonly error?: PaneHostError;
   readonly onReload: () => void;
   readonly mount: (instance: PaneInstance, pane: PaneDefinition, target: HTMLElement | null) => void;
 }
 
-function NativePaneCarrier({ instance, pane, active, ready, error, onReload, mount }: NativePaneCarrierProps): React.JSX.Element {
+function NativePaneCarrier({ instance, pane, active, ready, shown, error, onReload, mount }: NativePaneCarrierProps): React.JSX.Element {
   const carrierRef = React.useRef<HTMLDivElement>(null);
   React.useLayoutEffect(() => {
     mount(instance, pane, carrierRef.current);
@@ -161,7 +162,7 @@ function NativePaneCarrier({ instance, pane, active, ready, error, onReload, mou
     aria-label={pane.title}
     data-pane-carrier="tauri-webview"
     ref={carrierRef}
-    style={{ display: active ? "block" : "none", width: "100%", height: "100%", overflow: "hidden" }}
+    style={{ display: active && (error !== undefined || !ready || shown) ? "block" : "none", width: "100%", height: "100%", overflow: "hidden" }}
   >
     {error !== undefined ? (
       <div
@@ -243,16 +244,28 @@ function restoredPaneWorkspace(
     const saved = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`) ?? "null") as PersistedPaneWorkspace | null;
     if (!Array.isArray(saved?.paneIds)) throw new Error("missing paneIds");
     const declared = new Set(definition.panes.map((pane) => pane.id));
-    let restored: PaneWorkspaceState = { instances: [] };
+    // 直接按持久化顺序构造实例(而非逐个 reduce open):MRU 语义下 open 会前置,
+    // 复用 open 会让顺序逐次翻转;构造后仅 activate 活跃实例(其前置为最近使用,稳定)。
+    const instances: PaneInstance[] = [];
+    const seenPanes = new Set<string>();
     for (const [index, paneId] of saved.paneIds.entries()) {
       if (typeof paneId !== "string" || !declared.has(paneId)) continue;
+      const pane = paneById(definition, paneId);
+      if (!pane.allowMultiple && seenPanes.has(paneId)) continue;
+      seenPanes.add(paneId);
       const persistedInstanceId = saved.instanceIds?.[index];
       const instanceId = typeof persistedInstanceId === "string" && persistedInstanceId.length > 0
         ? persistedInstanceId
         : idFactory(paneId);
-      restored = reducePaneWorkspace(definition, restored, { type: "open", paneId, instanceId });
+      instances.push({
+        instanceId,
+        paneId: pane.id,
+        epoch: 1,
+        state: instances.length === 0 ? "connecting" as const : "hidden" as const,
+      });
     }
-    const active = saved.activeIndex === undefined ? undefined : restored.instances[saved.activeIndex];
+    const restored: PaneWorkspaceState = { instances, activeInstanceId: instances[0]?.instanceId };
+    const active = saved.activeIndex === undefined ? undefined : instances[saved.activeIndex];
     return active === undefined
       ? restored
       : reducePaneWorkspace(definition, restored, { type: "activate", instanceId: active.instanceId });
@@ -356,6 +369,8 @@ export function PanesHost({
   const [nativeErrors, setNativeErrors] =
     React.useState<ReadonlyMap<string, PaneHostError>>(() => new Map());
   const [nativeReadyKeys, setNativeReadyKeys] = React.useState<ReadonlySet<string>>(() => new Set());
+  // native child 实际 show 完成（避免 ready 后 show 前的 carrier 空白帧闪烁）。
+  const [nativeShownKeys, setNativeShownKeys] = React.useState<ReadonlySet<string>>(() => new Set());
   const frames = React.useRef(new Map<string, HTMLIFrameElement>());
   const connections = React.useRef(new Map<string, LiveConnection>());
   const pendingHostEvents = React.useRef(
@@ -565,15 +580,38 @@ export function PanesHost({
     const host = hostRoot.current;
     // 仅侧栏折叠等 chrome 隐藏时 hide content；面积 0 / overlay 打开不关 content。
     const hostChromeOk = host !== null && !isPanesHostChromeHidden(host);
-    for (const instance of workspaceRef.current.instances) {
-      const native = nativeMounts.current.get(instance.instanceId);
-      if (native?.ready !== true) continue;
-      const active =
-        instance.instanceId === workspaceRef.current.activeInstanceId &&
-        !parkedRef.current.has(instance.instanceId);
-      if (hostChromeOk && active) native.handle?.show();
-      else native.handle?.hide();
+    const activeId = workspaceRef.current.activeInstanceId;
+    const activeMount =
+      activeId === undefined ? undefined : nativeMounts.current.get(activeId);
+    if (
+      !hostChromeOk ||
+      activeId === undefined ||
+      activeMount === undefined ||
+      activeMount.ready !== true ||
+      parkedRef.current.has(activeId)
+    ) {
+      for (const instance of workspaceRef.current.instances) {
+        const native = nativeMounts.current.get(instance.instanceId);
+        if (native?.ready !== true) continue;
+        native.handle?.hide();
+      }
+      return;
     }
+    // show-first：先显活跃（await），成功后再隐其余，避免切 tab 的空白/旧帧闪烁。
+    const activeNative = activeMount;
+    void Promise.resolve(activeNative.handle?.show()).then(() => {
+      if (workspaceRef.current.activeInstanceId !== activeId) return;
+      setNativeShownKeys((current) => {
+        const next = new Set(current);
+        next.add(`${activeId}:${activeNative.epoch}`);
+        return next;
+      });
+      for (const instance of workspaceRef.current.instances) {
+        const native = nativeMounts.current.get(instance.instanceId);
+        if (native?.ready !== true || native === activeNative) continue;
+        native.handle?.hide();
+      }
+    });
   }, []);
 
   React.useLayoutEffect(() => {
@@ -1127,6 +1165,8 @@ export function PanesHost({
               !parkedRef.current.has(instance.instanceId)
             ) {
               await Promise.resolve(handle.show());
+              setNativeShownKeys((current) =>
+                new Set(current).add(`${instance.instanceId}:${instance.epoch}`));
               // show 后一帧补钉（无 settle 循环）。
               if (well !== null) {
                 await ensureTauriContentWellMetrics(well, {
@@ -1211,6 +1251,11 @@ export function PanesHost({
           next.delete(`${instanceId}:${instance.epoch}`);
           return next;
         });
+        setNativeShownKeys((current) => {
+          const next = new Set(current);
+          next.delete(`${instanceId}:${instance.epoch}`);
+          return next;
+        });
         if (mount.readyTimeout !== undefined) clearTimeout(mount.readyTimeout);
         mount.readyTimeout = setTimeout(() => {
           if (mount.disposed || nativeMounts.current.get(instanceId) !== mount) return;
@@ -1238,17 +1283,7 @@ export function PanesHost({
   const tabLimit = Math.max(1, Math.min(6, Math.floor(tabNavWidth / 108)));
   const visibleInstances = tabInstances.length <= tabLimit
     ? tabInstances
-    : (() => {
-        const ids = new Set(
-          tabInstances.slice(0, Math.max(1, tabLimit - 1))
-            .map((instance) => instance.instanceId),
-        );
-        if (workspace.activeInstanceId !== undefined) {
-          ids.add(workspace.activeInstanceId);
-        }
-        return tabInstances.filter((instance) => ids.has(instance.instanceId))
-          .slice(0, tabLimit);
-      })();
+    : tabInstances.slice(0, tabLimit);
   const visibleInstanceIds = new Set(
     visibleInstances.map((instance) => instance.instanceId),
   );
@@ -1284,11 +1319,9 @@ export function PanesHost({
         return {
           id: pane.id,
           label: pane.title,
-          meta: parked
-            ? "后台保活"
-            : pane.maxInstances === UNLIMITED_PANE_COUNT
-              ? `已开 ${openCount}`
-              : `${openCount}/${pane.maxInstances}`,
+          meta: pane.maxInstances === UNLIMITED_PANE_COUNT
+            ? `已开 ${openCount}`
+            : `${openCount}/${pane.maxInstances}`,
           disabled,
         };
       });
@@ -1316,6 +1349,7 @@ export function PanesHost({
           id: instance.instanceId,
           label: pane.title,
           disabled: false,
+          selected: instance.instanceId === workspace.activeInstanceId,
         };
       });
       void nativeOverlay.open({
@@ -1519,6 +1553,7 @@ export function PanesHost({
               pane={pane}
               active={active}
               ready={nativeReadyKeys.has(`${instance.instanceId}:${instance.epoch}`)}
+              shown={nativeShownKeys.has(`${instance.instanceId}:${instance.epoch}`)}
               error={nativeErrors.get(instance.instanceId)}
               onReload={() => reloadPane(instance.instanceId)}
               mount={mountNativePane}
@@ -1559,11 +1594,13 @@ export function PanesHost({
             >
               {hiddenInstances.map((instance) => {
                 const pane = paneById(definition, instance.paneId);
+                const selected = instance.instanceId === workspace.activeInstanceId;
                 return (
                   <button
                     key={instance.instanceId}
                     type="button"
                     role="menuitem"
+                    aria-current={selected ? "true" : undefined}
                     onClick={() => {
                       dispatch({ type: "activate", instanceId: instance.instanceId });
                       if (nativeErrors.has(instance.instanceId)) {
@@ -1572,6 +1609,7 @@ export function PanesHost({
                       closeChromeMenus();
                     }}
                     data-pane-palette-item
+                    data-pane-tab-selected={selected ? "true" : "false"}
                     style={{
                       ...buttonStyle,
                       width: "100%",
@@ -1580,10 +1618,14 @@ export function PanesHost({
                       gap: 7,
                       padding: "7px 9px",
                       textAlign: "left",
+                      background: selected ? "hsl(var(--muted))" : "transparent",
+                      color: selected ? "hsl(var(--foreground))" : undefined,
+                      fontWeight: selected ? 500 : undefined,
                     }}
                   >
                     <PaneIcon name={pane.icon} />
-                    <span>{pane.title}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pane.title}</span>
+                    {selected ? <span aria-hidden="true" style={{ color: "hsl(var(--muted-foreground))", fontSize: 12 }}>✓</span> : null}
                   </button>
                 );
               })}
@@ -1653,11 +1695,9 @@ export function PanesHost({
                       {pane.title}
                     </span>
                     <span>
-                      {parked
-                        ? "后台保活"
-                        : pane.maxInstances === UNLIMITED_PANE_COUNT
-                          ? `已开 ${openCount}`
-                          : `${openCount}/${pane.maxInstances}`}
+                      {pane.maxInstances === UNLIMITED_PANE_COUNT
+                        ? `已开 ${openCount}`
+                        : `${openCount}/${pane.maxInstances}`}
                     </span>
                   </button>
                 );

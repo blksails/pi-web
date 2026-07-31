@@ -49,21 +49,24 @@ export function reducePaneWorkspace(
       state: instance.state === "disposed" ? "disposed" as const : "hidden" as const,
     }));
     return {
-      instances: [...instances, { instanceId: action.instanceId, paneId: pane.id, epoch: 1, state: "connecting" }],
+      instances: [{ instanceId: action.instanceId, paneId: pane.id, epoch: 1, state: "connecting" }, ...instances],
       activeInstanceId: action.instanceId,
     };
   }
   if (action.type === "activate") {
-    if (!state.instances.some((instance) => instance.instanceId === action.instanceId)) return state;
-    return {
-      instances: state.instances.map((instance) => ({
-        ...instance,
-        state: instance.instanceId === action.instanceId
-          ? (instance.state === "failed" ? "failed" : "ready")
-          : (instance.state === "disposed" ? "disposed" : "hidden"),
-      })),
-      activeInstanceId: action.instanceId,
+    const target = state.instances.find((instance) => instance.instanceId === action.instanceId);
+    if (target === undefined) return state;
+    const activated = {
+      ...target,
+      state: target.state === "failed" ? "failed" as const : "ready" as const,
     };
+    const others = state.instances
+      .filter((instance) => instance.instanceId !== action.instanceId)
+      .map((instance) => ({
+        ...instance,
+        state: instance.state === "disposed" ? "disposed" as const : "hidden" as const,
+      }));
+    return { instances: [activated, ...others], activeInstanceId: action.instanceId };
   }
   if (action.type === "close") {
     const index = state.instances.findIndex((instance) => instance.instanceId === action.instanceId);

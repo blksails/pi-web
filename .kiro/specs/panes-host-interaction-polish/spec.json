@@ -1,0 +1,27 @@
+{
+  "feature_name": "panes-host-interaction-polish",
+  "created_at": "2026-07-31T11:14:44Z",
+  "updated_at": "2026-07-31T11:14:44Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": false,
+  "bookkeeping": {
+    "action": "retrospective alignment record",
+    "basis": "approved requirements and verified as-built evidence",
+    "caveat": "non-authoritative; must not drive implementation"
+  }
+}

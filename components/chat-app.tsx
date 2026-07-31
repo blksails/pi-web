@@ -467,14 +467,18 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // (即便选中同一 source)。
   const [nonce, setNonce] = React.useState<number>(0);
 
-  const destroyPaneWebviews = React.useCallback((): void => {
-    void getPiWebDesktopBridge()?.destroyPaneWebviews?.();
+  // 切源/新建/恢复会话:先隐藏旧 pane webview 再销毁。销毁(cleanup)为异步 IPC,remount
+  // 骨架屏渲染期间未销毁完的旧 webview 会残留一帧旧内容;先发 hide_all 可立即遮蔽该闪帧。
+  const hideThenDestroyPaneWebviews = React.useCallback((): void => {
+    const bridge = getPiWebDesktopBridge();
+    void bridge?.hidePaneWebviews?.();
+    void bridge?.destroyPaneWebviews?.();
   }, []);
 
   const onSubmit = (source: string): void => {
     const resolved = source.length > 0 ? source : (props.defaultSource ?? ".");
-    // 换源 / 新建会话：销毁旧 pane webview（非隐藏）。
-    destroyPaneWebviews();
+    // 换源 / 新建会话：先隐藏再销毁旧 pane webview（非隐藏）。
+    hideThenDestroyPaneWebviews();
     // New session: no resumeId. bump nonce 强制 SessionView 重挂 —— 使侧栏「新建聊天」
     // 即便选中当前同一 source 也得到全新会话(usePiSession 不响应 create 变化重建,须靠
     // key 重挂)。原顶栏「新建会话」按钮已移除,同源新建统一由「新建聊天」承担。
@@ -483,8 +487,8 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   };
 
   const onReset = (): void => {
-    // 退出会话回源选择：销毁 pane。
-    destroyPaneWebviews();
+    // 退出会话回源选择：先隐藏再销毁 pane。
+    hideThenDestroyPaneWebviews();
     setSession(undefined);
     // 返回选择器:重拉收藏,反映会话内导航区对收藏的增删(避免星标态陈旧)。
     setFavoritesReloadKey((n) => n + 1);
@@ -501,6 +505,7 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // 重挂,得到同一 source 的全新会话。仅 rail 关闭态账户区仍提供此入口(rail 开启时由
   // 侧栏「新建聊天」承担,见 SessionView 账户区)。
   const onNewByAgentSource = (): void => {
+    hideThenDestroyPaneWebviews();
     setSession((s) => (s === undefined ? s : { create: s.create }));
     setNonce((n) => n + 1);
   };
@@ -743,8 +748,10 @@ function SessionView({
   const onResumeSession = React.useCallback((id: string): void => {
     if (typeof window === "undefined") return;
     const navigate = (): void => window.location.assign(`/session/${id}`);
-    // 切到另一会话：销毁当前 pane 再导航。
-    const destroy = getPiWebDesktopBridge()?.destroyPaneWebviews;
+    // 切到另一会话：先隐藏再销毁当前 pane 再导航。
+    const bridge = getPiWebDesktopBridge();
+    if (bridge?.hidePaneWebviews !== undefined) void bridge.hidePaneWebviews();
+    const destroy = bridge?.destroyPaneWebviews;
     if (destroy === undefined) {
       navigate();
       return;
