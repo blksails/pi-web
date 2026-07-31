@@ -13,6 +13,10 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
+// spec multi-gateway-providers(任务 3.7,Req 6.5):失败文案的来源判据须覆盖全部
+// **实际注册**的网关实例名,而非模块级常量 —— 需要认得网关来源的 sourceId 才能从
+// `resolved`(下方)里挑出它,取中立命名空间常量,不引入具体 adapter 实现。
+import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 import {
   type AgentSessionServices,
   createAgentSessionFromServices,
@@ -140,13 +144,27 @@ export function buildRuntimeFactory(
     const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 
     const registry = services.modelRegistry;
+    // spec multi-gateway-providers(任务 3.7,Req 6.5):从已解析的模型源中挑出网关
+    // 来源(按 `sourceId` 而非假定它是唯一来源),回读其**运行时实际注册**的全部
+    // provider 名 —— 传给 `resolveModel` 使非缺省实例(如 `cloudflare`/`blksails-ai`)
+    // 的解析失败也命中来源专属文案。网关来源本次未解析出 spec(未配置/未启用)时留
+    // `undefined`,`resolveModel` 回退到其模块内的缺省单实例常量,行为与改造前等价。
+    const gatewayModelSourceEntry = resolved.find(
+      ({ registrar }) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
+    );
+    const gatewayProviderNames =
+      gatewayModelSourceEntry !== undefined
+        ? gatewayModelSourceEntry.registrar.providerNamesOf(gatewayModelSourceEntry.spec)
+        : undefined;
     const model =
-      session.model !== undefined ? resolveModel(session.model, registry) : undefined;
+      session.model !== undefined
+        ? resolveModel(session.model, registry, gatewayProviderNames)
+        : undefined;
     const scopedModels =
       session.scopedModels !== undefined
         ? session.scopedModels.map((entry) => {
             const resolved: { model: SessionModel; thinkingLevel?: AgentDefinition["thinkingLevel"] } = {
-              model: resolveModel(entry.model, registry),
+              model: resolveModel(entry.model, registry, gatewayProviderNames),
             };
             if (entry.thinkingLevel !== undefined) {
               resolved.thinkingLevel = entry.thinkingLevel;
