@@ -90,12 +90,19 @@
   - _Requirements: 1.1, 1.3_
   - _Depends: 3.2, 3.3, 3.5_
 
-- [x] 3.7 使失败文案的来源判据覆盖全部实例名
+- [ ] 3.7 使失败文案的来源判据覆盖全部实例名
   - `session-options.ts` 的来源判据当前是硬编码单元素数组（只含缺省实例名），多实例下非缺省实例（如 `cloudflare` / `blksails-ai`）的模型解析失败会退回裸文案，拿不到「网关套件未启用 / 凭据缺失 / 目录已变化」这类来源专属指引
   - 判据须取自运行时实际注册的 provider 名集合（模型源契约已提供该回读能力），而非模块级常量
   - 完成判据：新增用例断言非缺省实例名的解析失败也给出来源专属文案；**该用例在改动前必须能报红**（当前实现下它会拿到裸文案）
   - _Requirements: 6.5_
   - _Depends: 3.5_
+
+- [ ] 4.0 落实键空间合并的前置归一（**必须早于 4.1 接路由**）
+  - 把 image 侧 `ai-gateway`（BlackSail 自建网关）归一为 `blksails-ai` 写进存量标识映射表 —— 这是本特性唯一一处真映射
+  - 把 AIGC 既有 `openrouter` 从保留名清单豁免（它是 pi-web 自己的图像路由键，与 SDK 的对话 provider 是两套东西）
+  - 完成判据：新增**非幂等**的真映射用例（现有用例只覆盖幂等，把映射表清空也不会报红）；另补一条断言豁免后自定义 `openrouter` 不再被拒
+  - _Requirements: 2.2, 2.3, 7.6, 9.3_
+  - _Boundary: packages/core/src/model-catalog/provider-identity.ts, packages/core/test/model-catalog/provider-identity.test.ts_
 
 ## 4. 目录统一与端点合一
 
@@ -314,3 +321,41 @@ workflow 进程中途退出，已按铁律跑 `recover-run.mjs` 重建账本（�
 - `packages/runner` 全量 20 通过 + 1 跳过 / 91 通过 + 5 跳过（算术核对：20+1=21、91+5=96 ✓）
 - `packages/core` 全量 57 文件 / 568 用例绿
 - **仓根 `test/ai-gateway*` 6 文件 / 40 用例绿** ← 这一面是复查者点名的盲点：包级 `--filter` 跑不到仓根 `test/`，而 `pi-handler` 的真实接线正在那里被端到端验证
+
+### 第三批（3.7 + Phase 4）完整性批评与回退（2026-07-31）
+
+结果：3.7 与 4.1 判 done，**4.2 / 4.4 被打回**，4.3 因 4.4 阻塞未执行。收尾批评发现 6 个 gap，逐条核实后**回退全部未提交的 Phase 4 改动**（diff 已备份），理由见下。
+
+**① 仓根 `test/` 被打红（本轮引入的真回归，非存量）**
+
+`GET /api/aigc/models` 的「与主干静态目录逐字节一致」守卫失败 —— AIGC 条目新增了 `input`/`output` 两键。实测 6 文件中 1 失败、39/40 用例通过；回退后恢复 40/40。
+
+★ 这正是我在第一批 Implementation Notes 里**已经写下的盲点**（包级 `--filter` 跑不到仓根 `test/`），但第三批的验收命令仍只有 `pnpm --filter core && --filter adapters`。**记录了却没执行，等于没记。** → 已把 `npx vitest run test/ai-gateway*` 写进 design 迁移表的验收要求。
+
+**② 3.7 的实现有真缺陷（我上轮的验证不充分，结论需推翻）**
+
+`option-mapper.ts` 从 `resolved`（**已成功解析出 spec** 的模型源）取 `gatewayProviderNames`；网关源未解析出 spec 时为 `undefined`，`resolveModel` 回退单元素常量。
+
+而 `session-options.ts` 里**原有的告警注释白纸黑字禁止了这种做法**：
+
+> ★ 判据必须是 provider **命名空间**，不能是「该源是否已注册」—— 这段文案本身就把「网关套件未启用、会话侧未注册」列为成因之一
+
+即：**恰好在文案头号成因的场景下，`cloudflare`/`blksails-ai` 仍拿到裸文案**。同类场景还有实例凭据缺失被 fail-soft 跳过、`defaultProvider` 指向已关停实例。
+
+我上轮做过「判据能否报红」的实测并据此提交，但那个实测只覆盖了「传了集合」的路径，**没覆盖「源未解析」的路径** —— 验证不充分。3.7 已改回未勾选，需重做：判据取值来源改为「已登记来源在当前 env 下**声明**要注册的实例名」（直接解析 env 取全集），使其在来源未启用时仍有判别力；并补一条走 `buildRuntimeFactory` 的 it 用例。
+
+**③ 4.1 把 4.2 补的模态声明吃掉了（两任务各自绿、合起来错）**
+
+`toImageCatalogModel` 写死 `normalizeModalities({ output: ["image"] })`，完全不读 `e.input`/`e.output`，于是 input 恒为空。后果：`query({ input: "image" })` —— 即 Req 4.5 用来顶替视觉端点的那个查询 —— **不返回任何 AIGC 读图模型**，Req 4.7「模型条目声明覆盖继承值」在图像来源上不成立。
+
+**④ 4.1 的边界里混着被打回的 4.4 的内容**
+
+`service.ts` 的 `computeImageBase(applyHidden)` 与 `imageEntries()` 走 `computeImageBase(true)` 属 4.4；`tool-kit/aigc/extension.ts` 把 hidden 并进 disabledModels 亦属 4.4。done 与 blocked 的产物躺在同一份工作树里无法分割提交 —— 这也是回退重做而非挑拣的原因。
+
+**⑤ 键空间合并的前置决策未落地就动了 `query()`**
+
+`LEGACY_PROVIDER_ID_MAP` 仍是空表，`ai-gateway` 同名不同义未消除，而 `query()` 已把两个命名空间并进单一 provider 键空间 → 同一份 providers 列表里一个 `ai-gateway` 同时代表两个上游。4.4 的部分实现让它立即可观测：`PI_WEB_HIDE_PROVIDERS=ai-gateway` 会连带干掉 3 条 BlackSail 图像模型，`=openrouter` 干掉 6 条。
+
+→ 已在 design.md 迁移策略表补齐四行决策，并新增 **任务 4.0** 作为 4.1 的前置。
+
+**⑥ `/api/config/models` 响应也新增了 `input`/`output`** —— 同属未走破坏性变更流程，已写进迁移表。

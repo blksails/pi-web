@@ -498,5 +498,15 @@ flowchart LR
 | `aigc.json` 的 `visionModel`（复合键） | 消费面自行拼 `${provider}/${id}`，格式不变，**零迁移** | 同上 |
 | 旧 env `BLKSAILS_GATEWAY_BASE_URL` | 保留支持，合成缺省实例 | Req 9.1 |
 | 旧路径 `POST /sessions/:id/model` | 返回可辨识错误指向新路径 | Req 3.8 |
+| **image 侧 `ai-gateway`（= BlackSail 自建网关）** | **归一为 `blksails-ai`**，写进 `LEGACY_PROVIDER_ID_MAP`。这是本特性**唯一一处真映射**，必须有非幂等用例覆盖 | Req 2.2, 2.3, 9.3 |
+| **AIGC 既有 `openrouter`（6 条在用条目）** | **从保留名清单中豁免**，不归并进 SDK 内置 openrouter。理由：这 6 条是 pi-web 自己的 AIGC 路由键，与 SDK 的对话 provider 是两套东西；归并会让图像路由错误地继承 SDK 的对话 provider 定义 | Req 2.1, 7.6 |
+| **`GET /api/config/models` 条目新增 `input`/`output`** | **破坏性变更，须显式承认**：既有守卫「响应与主干逐字节一致」会失败，应随本变更更新守卫而非绕过 | Req 3.3, 4.1 |
+| **`GET /api/aigc/models` 条目新增 `input`/`output`** | 同上。★ 该守卫在**仓根 `test/`**，包级 `--filter` 跑不到 —— 每轮验收必须含 `npx vitest run test/ai-gateway*` | Req 3.3, 4.1 |
+
+### ★ 键空间合并的前置条件（硬约束）
+
+`query()` 把 chat 与 image 合并进**单一 provider 键空间**后，同名不同义会立即变成可观测缺陷：合并前 `PI_WEB_HIDE_PROVIDERS=ai-gateway` 只影响对话侧，合并后会**连带干掉 3 条 BlackSail 图像模型**；`=openrouter` 会干掉 6 条 AIGC 条目。
+
+因此上表前两行的归一**必须先落地**，`query()` 才可以接上任何路由。这不是先后顺序偏好，是正确性前提。
 
 **行为变化须在发布说明中标注**：视觉模型清单今天**不含**网关模型（vision 端点只读 `models.json`，`research.md` §1.1）；合一后按 `input=image` 筛选会**多出**网关的读图模型。这是预期内的能力增强，但对习惯旧清单的用户是可见变化。
