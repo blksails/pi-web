@@ -20,10 +20,25 @@ import {
 } from "../../src/ai-gateway/config.js";
 
 const ENTRIES: GatewayModelEntry[] = [
-  { model: "openai/gpt-5.5", ownedBy: "openai", source: "ai-gateway" },
-  { model: "anthropic/claude-opus-5", ownedBy: "anthropic", source: "ai-gateway" },
-  { model: "openrouter/some/dup", ownedBy: "openrouter", source: "ai-gateway" },
-  { model: "aws-bedrock/anthropic.claude-opus-5", ownedBy: "aws-bedrock", source: "ai-gateway" },
+  { model: "openai/gpt-5.5", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" },
+  {
+    model: "anthropic/claude-opus-5",
+    ownedBy: "anthropic",
+    source: "ai-gateway",
+    instanceId: "ai-gateway",
+  },
+  {
+    model: "openrouter/some/dup",
+    ownedBy: "openrouter",
+    source: "ai-gateway",
+    instanceId: "ai-gateway",
+  },
+  {
+    model: "aws-bedrock/anthropic.claude-opus-5",
+    ownedBy: "aws-bedrock",
+    source: "ai-gateway",
+    instanceId: "ai-gateway",
+  },
 ];
 
 /** 造一个 `/v1/models` 的 OpenAI 兼容响应(形态取自 CF 真机)。 */
@@ -73,7 +88,12 @@ describe("filterByOwner —— 纯函数(Req 2.1/2.3)", () => {
   it("按归属过滤 → 该归属下的新模型自动纳入,无需改代码(Req 2.4)", () => {
     const withNewModel = [
       ...ENTRIES,
-      { model: "openai/gpt-6-future", ownedBy: "openai", source: "ai-gateway" as const },
+      {
+        model: "openai/gpt-6-future",
+        ownedBy: "openai",
+        source: "ai-gateway" as const,
+        instanceId: "ai-gateway",
+      },
     ];
     const out = filterByOwner(withNewModel, new Set(["openai"]));
     expect(out.map((e) => e.model)).toContain("openai/gpt-6-future");

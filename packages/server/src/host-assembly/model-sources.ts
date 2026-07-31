@@ -27,7 +27,7 @@ import {
 import {
   AI_GATEWAY_PROVIDER_NAME,
   registerAiGatewayProvider,
-  resolveAiGatewaySessionSpecFromEnv,
+  resolveAiGatewaySessionSpecsFromEnv,
 } from "@blksails/pi-web-adapters/ai-gateway/session-model-source.js";
 import {
   registerModelSource,
@@ -44,22 +44,32 @@ export function registerBuiltinModelSources(): void {
   setSharedModelServicesFactory(createSharedModelServices);
 
   registerModelSource({
-    providerName: EGRESS_PROVIDER_NAME,
+    sourceId: EGRESS_PROVIDER_NAME,
     resolveSpecFromEnv: (env) => resolveEgressSpecFromEnv(env),
+    // ★ 当前恒为单元素:egress 来源今日只注册一个 provider。任务 3.5 只扩展契约形状,
+    //   实际"一个来源多个 provider"的接线属后续任务(3.6)。
+    providerNamesOf: () => [EGRESS_PROVIDER_NAME],
     register: (registry, spec) => {
       registerEgressProvider(registry, spec as Parameters<typeof registerEgressProvider>[1]);
     },
   });
 
   registerModelSource({
-    providerName: AI_GATEWAY_PROVIDER_NAME,
-    resolveSpecFromEnv: (env) => resolveAiGatewaySessionSpecFromEnv(env),
-    register: (registry, spec, log) => {
-      registerAiGatewayProvider(
-        registry,
-        spec as Parameters<typeof registerAiGatewayProvider>[1],
-        log,
-      );
+    sourceId: AI_GATEWAY_PROVIDER_NAME,
+    // ★ spec multi-gateway-providers 任务 3.5(Req 1.1/6.2/6.5):spec 形状改为一批
+    //   实例条目(每条各自的 providerName + spec),不再是单个 spec —— 一个来源(网关套件)
+    //   今后可注册多个 provider(每个网关实例一个)。空数组视为未启用,与其余来源的
+    //   `undefined` 约定对齐。
+    resolveSpecFromEnv: (env) => {
+      const entries = resolveAiGatewaySessionSpecsFromEnv(env);
+      return entries.length > 0 ? entries : undefined;
+    },
+    // ★ 从解析结果**派生**,不再是硬编码常量 —— 回读能力须反映真实实例数(Req 6.5)。
+    providerNamesOf: (entries) => entries.map((e) => e.providerName),
+    register: (registry, entries, log) => {
+      for (const { providerName, spec } of entries) {
+        registerAiGatewayProvider(registry, spec, log, providerName);
+      }
     },
   });
 }

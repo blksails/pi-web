@@ -44,8 +44,13 @@ describe("GatewayModelCatalog — 刷新成功", () => {
     });
     await catalog.refresh();
     expect(catalog.get()).toEqual([
-      { model: "gpt-image-1", ownedBy: "openai", source: "ai-gateway" },
-      { model: "doubao-seed-2-0-lite", ownedBy: "bytedance", source: "ai-gateway" },
+      { model: "gpt-image-1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" },
+      {
+        model: "doubao-seed-2-0-lite",
+        ownedBy: "bytedance",
+        source: "ai-gateway",
+        instanceId: "ai-gateway",
+      },
     ]);
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://gw.example.com/v1/models",
@@ -84,13 +89,13 @@ describe("GatewayModelCatalog — TTL 过期后台刷新", () => {
       nowFn: () => now,
     });
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
 
     now = 5000; // 超过 TTL
     // get() 触发后台刷新;为测试确定性,显式等待一个 microtask 队列的刷新 promise。
     catalog.get();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(catalog.get()).toEqual([{ model: "m2", ownedBy: "anthropic", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m2", ownedBy: "anthropic", source: "ai-gateway", instanceId: "ai-gateway" }]);
   });
 });
 
@@ -106,9 +111,9 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
   });
 
   it("refresh() 拉取失败(非 2xx 状态) → 快照沿用上次成功值", async () => {
@@ -123,7 +128,7 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
     });
     await catalog.refresh();
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
   });
 });
 
@@ -133,14 +138,26 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     { provider: "dashscope", id: "self-only", name: "Self Only" },
   ];
   const gatewayEntries: GatewayModelEntry[] = [
-    { model: "shared-model", ownedBy: "anthropic", source: "ai-gateway" },
-    { model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" },
+    { model: "shared-model", ownedBy: "anthropic", source: "ai-gateway", instanceId: "ai-gateway" },
+    {
+      model: "gateway-only",
+      ownedBy: "openai-compat",
+      source: "ai-gateway",
+      instanceId: "ai-gateway",
+    },
   ];
 
   it("无冲突模型:两侧并集全部保留;self 附 source=self/availability=session,gateway 附 source=ai-gateway/availability=catalog", () => {
     const merged = mergeModelCatalog(
       [{ provider: "dashscope", id: "self-only", name: "Self Only" }],
-      [{ model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" }],
+      [
+        {
+          model: "gateway-only",
+          ownedBy: "openai-compat",
+          source: "ai-gateway",
+          instanceId: "ai-gateway",
+        },
+      ],
       "gateway",
     );
     expect(merged.models).toHaveLength(2);
@@ -200,6 +217,22 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     expect(merged.providers).not.toContain("ai-gateway");
   });
 
+  it("两个网关实例同时启用:各自模型的 provider 归属对应实例标识,且两者均出现在 providers 清单(spec multi-gateway-providers 任务 3.2,Req 1.2/1.3)", () => {
+    const merged = mergeModelCatalog(
+      [],
+      [
+        { model: "model-a", ownedBy: "openai", source: "ai-gateway", instanceId: "gw-a" },
+        { model: "model-b", ownedBy: "anthropic", source: "ai-gateway", instanceId: "gw-b" },
+      ],
+      "gateway",
+    );
+    expect(merged.models).toHaveLength(2);
+    expect(merged.models.find((m) => m.id === "model-a")?.provider).toBe("gw-a");
+    expect(merged.models.find((m) => m.id === "model-b")?.provider).toBe("gw-b");
+    // provider 清单按实例逐个列出,两个实例同时启用时分别出现(不折叠为单一常量)。
+    expect(merged.providers).toEqual(["gw-a", "gw-b"]);
+  });
+
   it("modelPrecedence=gateway → 网关块在前;=self → self 块在前(块内保持入参原有顺序)", () => {
     const gwFirst = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
     expect(gwFirst.models.map((m) => `${m.provider}/${m.id}`)).toEqual([
@@ -222,8 +255,8 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     const merged = mergeModelCatalog(
       [],
       [
-        { model: "dup", ownedBy: "first", source: "ai-gateway" },
-        { model: "dup", ownedBy: "second", source: "ai-gateway" },
+        { model: "dup", ownedBy: "first", source: "ai-gateway", instanceId: "ai-gateway" },
+        { model: "dup", ownedBy: "second", source: "ai-gateway", instanceId: "ai-gateway" },
       ],
       "gateway",
     );

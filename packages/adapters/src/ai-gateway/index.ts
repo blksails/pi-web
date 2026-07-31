@@ -13,18 +13,24 @@ export {
   AI_GATEWAY_MODEL_PRECEDENCE_ENV,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_CATALOG_TTL_MS,
+  envSafeInstanceId,
+  instanceEnvPrefix,
   type AiGatewayConfig,
 } from "./config.js";
 export {
   EnvKeyResolver,
+  InstanceEnvKeyResolver,
   PerUserKeyResolver,
   NotImplementedError,
   type KeyResolver,
   type KeyResolveInput,
+  type InstanceEnvKeyResolverOptions,
 } from "./key-resolver.js";
 export {
   createAiGatewayRoutes,
+  aiGatewayScope,
   type CreateAiGatewayRoutesDeps,
+  type AiGatewayInstanceRouteEntry,
 } from "./routes.js";
 export {
   GatewayModelCatalog,
@@ -39,9 +45,23 @@ export {
   RUNNER_AI_GATEWAY_BASE_ENV,
   RUNNER_AI_GATEWAY_KEY_ENV,
   RUNNER_AI_GATEWAY_MODELS_ENV,
+  AI_GATEWAY_SESSION_INSTANCES_ENV,
   registerAiGatewayProvider,
   resolveAiGatewaySessionSpecFromEnv,
+  resolveAiGatewaySessionSpecsFromEnv,
+  sessionInstanceEnvPrefix,
   isSessionCapableGatewayModel,
   type AiGatewaySessionSpec,
+  type AiGatewaySessionSpecEntry,
   type AiGatewaySessionLogger,
 } from "./session-model-source.js";
+// spec multi-gateway-providers 任务 3.1/3.3:多实例 env 解析 + 每实例目录聚合器(装配层
+// 接通多实例见任务 3.6,`lib/app/pi-handler.ts`)。
+export {
+  GATEWAY_INSTANCES_ENV,
+  DEFAULT_GATEWAY_INSTANCE_ID,
+  resolveGatewayInstances,
+  createGatewayCatalogs,
+  type GatewayInstanceConfig,
+  type GatewayCatalogAggregatorDeps,
+} from "./instances.js";

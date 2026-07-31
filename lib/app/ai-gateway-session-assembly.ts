@@ -16,10 +16,13 @@
  * 本模块只产出 `PI_WEB_AI_GATEWAY_SESSION_*` 前缀的键。
  */
 import {
+  AI_GATEWAY_PROVIDER_NAME,
+  AI_GATEWAY_SESSION_INSTANCES_ENV,
   RUNNER_AI_GATEWAY_BASE_ENV,
   RUNNER_AI_GATEWAY_KEY_ENV,
   RUNNER_AI_GATEWAY_MODELS_ENV,
   isSessionCapableGatewayModel,
+  sessionInstanceEnvPrefix,
 } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 import type { GatewayModelEntry } from "@blksails/pi-web-server";
 import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
@@ -104,4 +107,120 @@ export function computeAiGatewaySessionSpawnEnv(input: {
       [RUNNER_AI_GATEWAY_MODELS_ENV]: serialized,
     },
   };
+}
+
+/** 单个网关实例的会话 spawn env 输入(多实例版,spec multi-gateway-providers 任务 3.6)。 */
+export interface AiGatewaySessionInstanceInput {
+  /** 实例标识(即其会话 provider 名,Req 1.2)。 */
+  readonly instanceId: string;
+  /** 该实例的网关 base URL(不含尾斜杠;`/v1` 由本函数补)。 */
+  readonly baseUrl: string;
+  /** 该实例的凭据;`undefined`/空白 → 该实例视为未启用(fail-soft,不影响其他实例)。 */
+  readonly apiKey: string | undefined;
+  /** 该实例已按白名单收敛的目录快照。 */
+  readonly catalog: readonly GatewayModelEntry[];
+}
+
+/**
+ * 计算注入本地 runner 的**多实例**网关会话 env(spec multi-gateway-providers 任务 3.6,
+ * Req 1.1/1.3)。
+ *
+ * 纯函数,零 IO;逐实例套用与单实例版 {@link computeAiGatewaySessionSpawnEnv} 相同的
+ * 门控(缺凭据 / 目录为空 → 该实例跳过,不影响其余实例——fail-soft,与
+ * `resolveAiGatewaySessionSpecsFromEnv` runner 侧的解析同惯例)。
+ *
+ * 序列化形态按有效实例数分两态:
+ * - **零个有效实例** → 空对象(套件未启用/全部实例未就绪)。
+ * - **恰好一个有效实例且其标识等于缺省实例 id**({@link AI_GATEWAY_PROVIDER_NAME},
+ *   即旧名单实例部署合成的那个)→ 产出**扁平三件套**(`PI_WEB_AI_GATEWAY_SESSION_
+ *   BASE/_KEY/_MODELS`),与改造前逐字节一致(Req 9.1)——runner 侧
+ *   `resolveAiGatewaySessionSpecFromEnv` 的回落路径按此形态解析。
+ * - **其余情形**(2+ 个有效实例;或恰好 1 个但标识非缺省)→ 产出
+ *   {@link AI_GATEWAY_SESSION_INSTANCES_ENV} 列出全部有效实例标识,逐实例再产出
+ *   `PI_WEB_AI_GATEWAY_SESSION_<ID>_BASE/_KEY/_MODELS`(`<ID>` 派生规则见
+ *   {@link sessionInstanceEnvPrefix},与 runner 侧 `resolveAiGatewaySessionSpecsFromEnv`
+ *   同一函数,防止两侧漂移)——即便只有一个非缺省标识的实例,也走本形态,否则
+ *   runner 会把它注册成 `ai-gateway`(缺省名),与部署级目录里该实例的真实标识错位。
+ *
+ * @param input.instances 逐实例输入;调用方(`lib/app/pi-handler.ts`)按
+ *   `resolveGatewayInstances` 的解析结果 + 各自的 `GatewayModelCatalog.get()` 快照构造。
+ * @param input.logger 可选;每个产出的实例各记一条 info(**绝不记凭据**,Req 2.3/7.1)。
+ */
+export function computeAiGatewaySessionsSpawnEnv(input: {
+  readonly instances: readonly AiGatewaySessionInstanceInput[];
+  readonly logger?: AiGatewaySessionAssemblyLogger;
+}): AiGatewaySessionSpawnEnvResult {
+  const { instances, logger } = input;
+
+  interface Resolved {
+    readonly instanceId: string;
+    readonly baseUrl: string;
+    readonly apiKey: string;
+    readonly modelIds: readonly string[];
+  }
+
+  const resolved: Resolved[] = [];
+  for (const instance of instances) {
+    const key = instance.apiKey?.trim();
+    if (key === undefined || key.length === 0) continue;
+    // ★与单实例版同一判据(Req 4.1):两侧若漂移会出现「列表里看得到、选中却说模型未找到」。
+    const modelIds = instance.catalog
+      .map((e) => e.model)
+      .filter((id) => id.length > 0 && isSessionCapableGatewayModel(id));
+    if (modelIds.length === 0) continue;
+    resolved.push({
+      instanceId: instance.instanceId,
+      baseUrl: `${instance.baseUrl.replace(/\/+$/, "")}/v1`,
+      apiKey: key,
+      modelIds,
+    });
+  }
+
+  if (resolved.length === 0) return { env: {} };
+
+  function logDelivered(instanceId: string, modelIds: readonly string[]): void {
+    const serialized = JSON.stringify(modelIds);
+    const bytes = Buffer.byteLength(serialized, "utf8");
+    if (bytes > MODELS_ENV_WARN_BYTES) {
+      logger?.warn("ai-gateway session models env is large", {
+        instanceId,
+        models: modelIds.length,
+        bytes,
+        threshold: MODELS_ENV_WARN_BYTES,
+      });
+    }
+    logger?.info("ai-gateway session models delivered", {
+      instanceId,
+      models: modelIds.length,
+      bytes,
+    });
+  }
+
+  // 恰好一个有效实例且为缺省实例 id → 扁平三件套,逐字节兼容改造前(Req 9.1)。
+  if (resolved.length === 1 && resolved[0]!.instanceId === AI_GATEWAY_PROVIDER_NAME) {
+    const only = resolved[0]!;
+    const serialized = JSON.stringify(only.modelIds);
+    logDelivered(only.instanceId, only.modelIds);
+    return {
+      env: {
+        [RUNNER_AI_GATEWAY_BASE_ENV]: only.baseUrl,
+        [RUNNER_AI_GATEWAY_KEY_ENV]: only.apiKey,
+        [RUNNER_AI_GATEWAY_MODELS_ENV]: serialized,
+      },
+    };
+  }
+
+  // 2+ 个有效实例,或恰好 1 个但标识非缺省 → 多实例形态(须与 runner 侧
+  // `resolveAiGatewaySessionSpecsFromEnv` 的解析规则逐字一致)。
+  const env: Record<string, string> = {
+    [AI_GATEWAY_SESSION_INSTANCES_ENV]: resolved.map((r) => r.instanceId).join(","),
+  };
+  for (const r of resolved) {
+    const prefix = sessionInstanceEnvPrefix(r.instanceId);
+    env[`${prefix}BASE`] = r.baseUrl;
+    env[`${prefix}KEY`] = r.apiKey;
+    env[`${prefix}MODELS`] = JSON.stringify(r.modelIds);
+    logDelivered(r.instanceId, r.modelIds);
+  }
+  return { env };
 }

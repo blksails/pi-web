@@ -8,12 +8,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   AI_GATEWAY_PROVIDER_NAME,
+  AI_GATEWAY_SESSION_INSTANCES_ENV,
   RUNNER_AI_GATEWAY_BASE_ENV,
   RUNNER_AI_GATEWAY_KEY_ENV,
   RUNNER_AI_GATEWAY_MODELS_ENV,
   isSessionCapableGatewayModel,
   registerAiGatewayProvider,
   resolveAiGatewaySessionSpecFromEnv,
+  resolveAiGatewaySessionSpecsFromEnv,
 } from "../../src/ai-gateway/session-model-source.js";
 import {
   createSharedModelServices,
@@ -110,6 +112,72 @@ describe("resolveAiGatewaySessionSpecFromEnv", () => {
       }),
     );
     expect(spec?.modelIds).toEqual(["openai/gpt-5.5", "anthropic/claude-sonnet-5"]);
+  });
+});
+
+// spec multi-gateway-providers 任务 3.5(Req 1.1/6.2/6.5):会话侧 env 契约多实例化。
+describe("resolveAiGatewaySessionSpecsFromEnv", () => {
+  it("两实例 env → 解析出两个 spec,各自 providerName 正确", () => {
+    const env: NodeJS.ProcessEnv = {
+      [AI_GATEWAY_SESSION_INSTANCES_ENV]: "cloudflare, blksails-ai",
+      PI_WEB_AI_GATEWAY_SESSION_CLOUDFLARE_BASE: "https://cf.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_CLOUDFLARE_KEY: "cf-key",
+      PI_WEB_AI_GATEWAY_SESSION_CLOUDFLARE_MODELS: JSON.stringify(["anthropic/claude-opus-5"]),
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_BASE: "https://blksails.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_KEY: "bs-key",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_MODELS: JSON.stringify(["openai/gpt-5.5"]),
+    };
+    const entries = resolveAiGatewaySessionSpecsFromEnv(env);
+    expect(entries).toHaveLength(2);
+    expect(entries.map((e) => e.providerName)).toEqual(["cloudflare", "blksails-ai"]);
+    expect(entries[0]?.spec).toEqual({
+      baseUrl: "https://cf.example.com/compat/v1",
+      apiKey: "cf-key",
+      modelIds: ["anthropic/claude-opus-5"],
+    });
+    expect(entries[1]?.spec).toEqual({
+      baseUrl: "https://blksails.example.com/compat/v1",
+      apiKey: "bs-key",
+      modelIds: ["openai/gpt-5.5"],
+    });
+  });
+
+  it("只设扁平三件套(未设实例清单)→ 合成缺省实例,与改动前逐字节等价", () => {
+    const entries = resolveAiGatewaySessionSpecsFromEnv(envOf());
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.providerName).toBe(AI_GATEWAY_PROVIDER_NAME);
+    expect(entries[0]?.spec).toEqual(resolveAiGatewaySessionSpecFromEnv(envOf()));
+  });
+
+  it("两者都未设置 → 空数组", () => {
+    expect(resolveAiGatewaySessionSpecsFromEnv({})).toEqual([]);
+  });
+
+  it("某实例 models 非法(JSON 解析失败)→ 只该实例缺席,其余实例不受影响", () => {
+    const env: NodeJS.ProcessEnv = {
+      [AI_GATEWAY_SESSION_INSTANCES_ENV]: "good,bad",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_BASE: "https://good.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_KEY: "good-key",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_MODELS: JSON.stringify(["openai/gpt-5.5"]),
+      PI_WEB_AI_GATEWAY_SESSION_BAD_BASE: "https://bad.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BAD_KEY: "bad-key",
+      PI_WEB_AI_GATEWAY_SESSION_BAD_MODELS: "{不是数组",
+    };
+    const entries = resolveAiGatewaySessionSpecsFromEnv(env);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.providerName).toBe("good");
+  });
+
+  it("实例标识清单里含空白项 → 被过滤,不产生空实例", () => {
+    const env: NodeJS.ProcessEnv = {
+      [AI_GATEWAY_SESSION_INSTANCES_ENV]: "solo, ,",
+      PI_WEB_AI_GATEWAY_SESSION_SOLO_BASE: "https://solo.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_SOLO_KEY: "solo-key",
+      PI_WEB_AI_GATEWAY_SESSION_SOLO_MODELS: JSON.stringify(["openai/gpt-5.5"]),
+    };
+    const entries = resolveAiGatewaySessionSpecsFromEnv(env);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.providerName).toBe("solo");
   });
 });
 
@@ -234,6 +302,31 @@ describe("registerAiGatewayProvider", () => {
       models: 2,
     });
     expect(JSON.stringify(lines)).not.toContain("super-secret-token");
+  });
+
+  // spec multi-gateway-providers 任务 3.5(Req 1.1/6.2/6.5):自定义 providerName
+  // 须真正落地 —— 把它改回恒用 AI_GATEWAY_PROVIDER_NAME 常量,本用例必须报红。
+  it("★传入自定义 providerName → 按该名可解析,日志 provider 字段为该名", () => {
+    const { modelRegistry } = createSharedModelServices(agentDir);
+    const lines: Array<{ msg: string; data?: Record<string, unknown> }> = [];
+    registerAiGatewayProvider(
+      modelRegistry,
+      {
+        baseUrl: "https://gw.example.com/compat/v1",
+        apiKey: "k",
+        modelIds: ["anthropic/claude-opus-5"],
+      },
+      { info: (msg, data) => lines.push({ msg, ...(data ? { data } : {}) }) },
+      "my-custom-gateway",
+    );
+    expect(
+      modelRegistry.find("my-custom-gateway", "anthropic/claude-opus-5"),
+    ).toBeDefined();
+    // 未注册进默认命名空间。
+    expect(
+      modelRegistry.find(AI_GATEWAY_PROVIDER_NAME, "anthropic/claude-opus-5"),
+    ).toBeUndefined();
+    expect(lines[0]?.data).toMatchObject({ provider: "my-custom-gateway" });
   });
 });
 

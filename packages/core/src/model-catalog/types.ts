@@ -21,7 +21,19 @@ export interface GatewayModelEntry {
   readonly model: string;
   /** `owned_by` → UI 徽章分组。 */
   readonly ownedBy: string;
-  readonly source: "ai-gateway";
+  /**
+   * ★ 放宽为 `string`(spec multi-gateway-providers 任务 3.2):此前固定字面量
+   * `"ai-gateway"` 隐含「网关条目只可能来自单一来源」的假设,与多实例/多来源目录
+   * 不兼容。放宽后其含义仍是「该条目属于 ai-gateway 类适配器产出」,具体归属哪个
+   * 网关实例由 {@link GatewayModelEntry.instanceId} 承载。
+   */
+  readonly source: string;
+  /**
+   * 所属网关实例标识(spec multi-gateway-providers 任务 3.2,Req 1.2/1.3):
+   * `mergeModelCatalog` 据此收敛条目的 `provider` 字段,而非硬拍固定常量 ——
+   * 使两个同时启用的网关实例各自以其标识出现在 provider 清单中。
+   */
+  readonly instanceId: string;
 }
 
 /** 同名条目的**块排序**偏好(不做覆盖删除)。`"gateway"` = 网关块在前。 */

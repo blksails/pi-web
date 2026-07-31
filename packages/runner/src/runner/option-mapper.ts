@@ -22,7 +22,7 @@ import {
   type CreateAgentSessionFromServicesOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { ResolveProjectTrust } from "./project-trust.js";
-// desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
+// desktop-cloud-login:登录态注入指向 egress 的共享 ModelRegistry(引 pi SDK 值,按子路径直引,
 // 不经 server barrel;egress-model-source 见 auth/)。
 // spec kernel-boundary-decoupling(任务 4.2):模型源改为经**注册表**取得,不再直接
 // import auth / ai-gateway 的具体实现 —— 那两条 import 是 runner → adapters 的跨层边,
@@ -91,8 +91,10 @@ export function buildRuntimeFactory(
         : {}),
     });
     // desktop-cloud-login(Req 3.1/3.2/4.1/4.3):登录态经 runner env 注入指向云端 egress 的
-    // 内存 ModelRegistry(复用共享 auth.json,零落盘,不改 agentDir)。未登录/未启用 →
-    // undefined,保持 SDK 默认(共享 auth.json + models.json),字节级等价今日本地路径。
+    // 共享 ModelRegistry。★ 该 registry 由 `ModelRegistry.create` 读 `<agentDir>/models.json`
+    // 构造,各模型源在其上**叠加** registerProvider(spec multi-gateway-providers 任务 2.1,
+    // Req 6.1/6.3/6.4)—— 只读不写,不改 agentDir。此前用 inMemory 会顶掉磁盘上的自定义
+    // provider 与覆写。未登录/未启用 → undefined,保持 SDK 默认,字节级等价今日本地路径。
     //
     // spec ai-gateway-session-models(design.md §D2,Req 1.1/1.3/3.1/3.4):会话服务只有
     // `modelRegistry` 一个位置,而 egress 与 ai-gateway 两个来源都要注册 provider ——
@@ -124,6 +126,12 @@ export function buildRuntimeFactory(
       }
       const shared = makeShared(agentDir);
       for (const { registrar, spec } of resolved) {
+        // spec multi-gateway-providers 任务 3.5:一个来源今后可注册多个 provider,
+        // 日志改按 `providerNamesOf` 回读而非假定"来源=provider"一一对应。
+        runnerLog.info("model source resolved", {
+          sourceId: registrar.sourceId,
+          providers: registrar.providerNamesOf(spec),
+        });
         registrar.register(shared.modelRegistry, spec, runnerLog);
       }
       servicesOptions.authStorage = shared.authStorage;

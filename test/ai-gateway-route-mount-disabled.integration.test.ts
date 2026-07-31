@@ -57,9 +57,9 @@ describe("AI_GATEWAY_BASE_URL 未配置:/api/ai-gateway/* 未挂载", () => {
     sessionId = ((await res.json()) as { sessionId: string }).sessionId;
   });
 
-  it("/api/ai-gateway/v1/chat/completions → 404(路由未注册,非网关内部 404)", async () => {
+  it("/api/ai-gateway/ai-gateway/v1/chat/completions → 404(路由未注册,非网关内部 404;Req 1.3 新路径形态)", async () => {
     const res = await route.POST(
-      req("/api/ai-gateway/v1/chat/completions", {
+      req("/api/ai-gateway/ai-gateway/v1/chat/completions", {
         method: "POST",
         body: JSON.stringify({}),
       }),
@@ -68,7 +68,7 @@ describe("AI_GATEWAY_BASE_URL 未配置:/api/ai-gateway/* 未挂载", () => {
   });
 
   it("GET 亦 404", async () => {
-    const res = await route.GET(req("/api/ai-gateway/v1/models"));
+    const res = await route.GET(req("/api/ai-gateway/ai-gateway/v1/models"));
     expect(res.status).toBe(404);
   });
 

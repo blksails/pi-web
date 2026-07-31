@@ -47,14 +47,14 @@
 
 ## 3. 多网关实例
 
-- [ ] 3.1 支持从环境解析多个网关实例
+- [x] 3.1 支持从环境解析多个网关实例
   - 以实例清单加逐实例配置的形式解析，实例标识即其 provider 名
   - 任一实例配置不合法（地址、取值域、超时）即在启动期抛错并指明是哪个实例的哪个字段
   - 未配置实例清单但配置了既有单实例变量时，合成一个标识沿用旧名的缺省实例，行为与改造前逐字节一致
   - 完成判据：单测覆盖多实例解析、缺省实例合成、非法配置的错误信息含实例标识
   - _Requirements: 1.1, 1.2, 1.6, 9.1, 10.2_
 
-- [ ] 3.2 使目录合并按实例标识归属而非固定常量
+- [x] 3.2 使目录合并按实例标识归属而非固定常量
   - 网关条目的 provider 取其所属实例标识，上游渠道名仍降级为展示用元数据
   - provider 清单按实例逐个列出，两个实例同时启用时分别出现
   - 同名模型的取舍仍只影响排序，不做覆盖删除
@@ -63,20 +63,20 @@
   - _Requirements: 1.2, 1.3, 10.3_
   - _Depends: 3.1_
 
-- [ ] 3.3 使凭据解析与目录缓存按实例独立
+- [x] 3.3 使凭据解析与目录缓存按实例独立
   - 每个实例独立解析其凭据，独立持有目录快照与过期时间
   - 单个实例拉取失败时仅其自身为空集，其余实例与本地模型不受影响
   - 完成判据：集成测试构造两个实例、令其一失败，断言另一实例的模型仍完整
   - _Requirements: 1.5_
   - _Depends: 3.1_
 
-- [ ] 3.4 使网关转发路由按实例分流
+- [x] 3.4 使网关转发路由按实例分流
   - 转发路径与授权范围按实例区分，不再使用单一固定范围
   - 完成判据：集成测试断言两个实例的转发互不串扰
   - _Requirements: 1.3_
   - _Depends: 3.1_
 
-- [ ] 3.5 扩展模型源契约以支持一个来源注册多个 provider
+- [x] 3.5 扩展模型源契约以支持一个来源注册多个 provider
   - 去重键改为来源身份；新增「该配置将注册哪些 provider 名」的回读能力
   - 会话侧的环境变量契约改为可承载多实例
   - 失败文案的判据改为按来源判定，不再与单一常量比对
@@ -84,11 +84,18 @@
   - _Requirements: 1.1, 6.2, 6.5_
   - _Depends: 1.4, 3.1_
 
-- [ ] 3.6 在装配层接通多实例
+- [x] 3.6 在装配层接通多实例
   - 装配处由单变量改为按实例集合构造；会话启动时下发的多实例配置须能被子进程正确还原
   - 完成判据：集成测试断言两实例同时挂载时，部署级目录与会话可用清单均含两者
   - _Requirements: 1.1, 1.3_
   - _Depends: 3.2, 3.3, 3.5_
+
+- [ ] 3.7 使失败文案的来源判据覆盖全部实例名
+  - `session-options.ts` 的来源判据当前是硬编码单元素数组（只含缺省实例名），多实例下非缺省实例（如 `cloudflare` / `blksails-ai`）的模型解析失败会退回裸文案，拿不到「网关套件未启用 / 凭据缺失 / 目录已变化」这类来源专属指引
+  - 判据须取自运行时实际注册的 provider 名集合（模型源契约已提供该回读能力），而非模块级常量
+  - 完成判据：新增用例断言非缺省实例名的解析失败也给出来源专属文案；**该用例在改动前必须能报红**（当前实现下它会拿到裸文案）
+  - _Requirements: 6.5_
+  - _Depends: 3.5_
 
 ## 4. 目录统一与端点合一
 
@@ -230,3 +237,80 @@
   - 完成判据：给出测试与类型检查的实际输出，而非「应该通过」的断言
   - _Requirements: 10.1_
   - _Depends: 8.2_
+
+## Implementation Notes
+
+### 第一批（1.1-1.4, 2.1）完整性批评发现（2026-07-31）
+
+**已修复：**
+
+1. **分档守卫真红（我方引入）** —— 1.4 新建的测试命名为 `.test.ts`（fast 档）却 import 了 pi SDK，跨包分档守卫判定其为 it 档，导致 `packages/core` 的 `test/tiering/tier-guard.test.ts` 报红。★ 这条**只在跑 core 包时暴露**，跑 runner 包（1.4 的边界）恒绿 —— 正是逐任务复查看不见的缝。已按守卫提示改名为 `model-source-registrar.it.test.ts`，两侧复验转绿。
+2. **2.1 漏订正的第二处注释** —— `session-model-source.ts` 文件头与 `option-mapper.ts` 两处仍称「纯内存 / 内存 ModelRegistry」，与改后事实相反。已订正。
+
+**遗留给后续任务的输入（不是本轮的完成）：**
+
+3. **验收命令选错了面** —— 本轮下发的 `pnpm test:app` 与本轮改动**零交集**（改动全在 `packages/*/test` 下，而 `test:app` = 根 `vitest run` 只跑仓根 `test/`），且它本身当前就有 8 个文件失败（publish-preview / panes-agent-build / no-panel-right 守卫 / chat-app 等，**全部与本 spec 无关的存量红**）。
+   → **任务 8.3 必须按包指定验收命令**：`pnpm --filter @blksails/pi-web-{core,runner,adapters,ui,protocol} test`；且根 `pnpm typecheck` 会因 desktop 的 `cargo check` 先失败而**提前中断、根 tsc 根本没跑**，需单独跑 `tsc -p tsconfig.json --noEmit`。
+
+4. **2.1 的证据只到 adapters 层** —— 断言停在 `registry.find("local-custom", ...)`（在注入对象上直接查），没有走到会话装配路径（`option-mapper` → `getSharedModelServicesFactory` → `createAgentSessionServices`）或会话级模型清单端点。Req 6.1/6.4 声称的「部署级目录里有的在会话中不缺失」仍缺端到端可观测证据。
+   → **在 3.5 或 8.3 补一条 runner 包 it 用例**：准备含自定义 provider 的 `agentDir/models.json` + 一个已登记模型源的 env，走 option-mapper 装配路径，断言会话可用清单同时含 egress provider 与 local-custom。
+
+5. **保留名与 AIGC 既有 provider 冲突（4.2/5.1 之前必须定）** —— `RESERVED_PROVIDER_IDS` 把 `openrouter` 列为保留名（手抄自 pi SDK 的 33 项内置 provider），但 AIGC 静态目录里已有 **6 条在用的 `provider: "openrouter"`**。Req 2.1 要求合并为单一标识空间后，这批条目要么撞保留名、要么须归并进 SDK 内置 openrouter，取舍未定。
+   → 写进 design 迁移策略表后再动 4.2。
+
+6. **`LEGACY_PROVIDER_ID_MAP` 交付为空，但已知有一项必须迁移** —— 注释断言「本特性引入时尚无需要迁移的已知记录」，然而需求与决策表明确要求消除 image 侧 `ai-gateway`（= BlackSail 自建网关）这个同名不同义标识、自建网关实例 id 定为 `blksails-ai`。于是 Req 9.3 目前是恒等函数 + 空表，零可观测。
+   → **在 3.1/4.2 中把 image 侧 `ai-gateway` → `blksails-ai` 写进该表**，并补「真映射」用例（现有用例只覆盖幂等）。
+
+7. **`RESERVED_PROVIDER_IDS` 是手抄快照，无守卫** —— 与 pi SDK 0.80.3 的 `BUILT_IN_PROVIDER_DISPLAY_NAMES` 逐项比对一致（33 项），但仓内没有任何测试把它钉在 SDK 上，SDK 升级后漂移无声。
+   → 建议加一条比对守卫测试（pi SDK 是 optional peer，放 it 档）。
+
+### 第二批（Phase 3）中断与账本重建（2026-07-31）
+
+workflow 进程中途退出，已按铁律跑 `recover-run.mjs` 重建账本（派出 34 个子代理 / 返回 32 / 中断时在飞 2）。判定：
+
+| 任务 | 判定 | 三视角复查 |
+|---|---|---|
+| 3.1 | ✅ OK | 全 pass |
+| 3.2 | ✅ OK | 2 pass / 1 reject（多数决通过） |
+| 3.3 | ✅ OK | 全 pass |
+| 3.4 | ✅ OK | 混合，多数决通过 |
+| **3.5** | ❌ **REJECTED** | 边界/验收/证据三视角**全票打回**，调试结论 `RETRY_TASK` |
+| 3.6 | ✅ OK | 边界 pass，另两视角**未返回**（中断时在飞） |
+
+★ **3.6 建立在被打回的 3.5 之上**，且其自身有两个视角的复查未完成 —— 两者都需重做或补验。
+
+**从子代理经验中捞到的、必须由父层落盘的约束：**
+
+1. **`session-options.ts` 的 `GATEWAY_SOURCE_PROVIDER_NAMES` 仍是模块级单元素数组** —— 把它接到真实的 per-instance provider 名集合需要改 `resolveModel` 签名，明确超出 3.5/3.6 当前划定的范围。→ 需单列一个任务，否则「失败文案按来源分化」在多实例下会漏判非默认实例名。
+
+2. **多实例 env 命名契约（design.md 未写全，由 3.1 推定并已落地）**：`PI_WEB_GATEWAYS=<id1>,<id2>` 列实例；逐实例 `PI_WEB_GATEWAY_<ID>_{BASE_URL,API_KEY,ALLOWLIST,TTL_MS,TIMEOUT_MS,INPUT,OUTPUT}`，`<ID>` = id 大写且 `-`→`_`（与 `PI_LLM_TOKEN_<ID>` 同源）。归一规则的单一事实源是 `config.ts` 的 `envSafeInstanceId`，后续任何 env 名派生须 import 它而非重写正则。
+
+3. **e2b 沙箱分支仍硬编码默认实例** —— `lib/app/ai-gateway-assembly.ts` 的 token 铸造未多实例化。design.md 的 3.6 文件表未列该文件，故留作后续任务，不擅自扩大 3.6 边界。
+
+4. **`CreateAiGatewayRoutesDeps.timeoutMs` 是全局单值而非按实例** —— 3.4 的契约限制，装配层暂取第一个实例的超时作为务实默认。
+
+5. **跨层约束**：`lib/app` 不是 `@blksails/pi-web-core` 的直接依赖（只依赖 adapters），故 `lib/app` 下引用 core 常量必须经 adapters 的 re-export barrel，直连 `@blksails/pi-web-core/*.js` 会让根 tsc 报 TS2307。
+
+6. **测试环境限制**：jsdom 不实现 `AbortSignal.any`，任何走到 ai-gateway 路由真实上游 fetch 的集成测试都会崩；验证鉴权/scope 对齐要让 KeyResolver 解析不出 key，使 handler 在 fetch 前以 502 短路。
+
+7. **flaky 噪声**：`packages/core` 偶发 SQLite `database is locked`（并发临时文件锁），干净重跑即过 —— 单次此类失败按基建噪声处理，但必须重跑一次确认。
+
+**3.5 打回项的处置（父层裁定）：**
+
+复查打回的三条理由，逐条核对当前代码后的结论：
+
+| 打回理由 | 当前状态 | 处置 |
+|---|---|---|
+| (b) 会话侧 env 契约未多实例化 | **已由 3.6 补上** —— 新增 `computeAiGatewaySessionsSpawnEnv`（复数），单实例且 id 等于缺省名时才回落旧的扁平 env 名 | 已解决 |
+| (c) 来源判据常量声明后从未引用（零判别力） | **已接线** —— `session-options.ts:94` 现在用 `GATEWAY_SOURCE_PROVIDER_NAMES.includes(model.provider)` | 部分解决 |
+| (c) 遗留：该数组仍是**单元素硬编码** | 多实例下非缺省实例名不在其中，仍会退回裸文案 | **单列为任务 3.7** |
+| `registerAiGatewayProvider` 的 `providerName` 第四参当时是死代码 | 3.6 已实际传参使用 | 已解决 |
+
+★ 另一条打回理由指「3.1/3.2/3.3 在 tasks.md 里仍是 `[ ]` 却被当作既成前提」—— 这是复查者不了解 kiro 的状态回写机制（铁律 2：勾选归编排层，workflow 内子代理禁止改 tasks.md），非真实缺陷。
+
+**验证证据（父层实跑，非采信自述）：**
+
+- `packages/adapters` 全量 11 文件 / 96 用例绿
+- `packages/runner` 全量 20 通过 + 1 跳过 / 91 通过 + 5 跳过（算术核对：20+1=21、91+5=96 ✓）
+- `packages/core` 全量 57 文件 / 568 用例绿
+- **仓根 `test/ai-gateway*` 6 文件 / 40 用例绿** ← 这一面是复查者点名的盲点：包级 `--filter` 跑不到仓根 `test/`，而 `pi-handler` 的真实接线正在那里被端到端验证

@@ -26,9 +26,14 @@ const SELF_CHAT: ModelOptions = {
 };
 
 const GATEWAY_CHAT: readonly GatewayModelEntry[] = [
-  { model: "gpt-4o", ownedBy: "openai-compat", source: "ai-gateway" },
+  { model: "gpt-4o", ownedBy: "openai-compat", source: "ai-gateway", instanceId: "ai-gateway" },
   // 与 self 同 id 跨归属:不吞并,两条并存(merge key = provider/id)。
-  { model: "qwen-max", ownedBy: "dashscope-token-plan", source: "ai-gateway" },
+  {
+    model: "qwen-max",
+    ownedBy: "dashscope-token-plan",
+    source: "ai-gateway",
+    instanceId: "ai-gateway",
+  },
 ];
 
 const IMAGE_CATALOG: readonly AigcCatalogEntry[] = [
