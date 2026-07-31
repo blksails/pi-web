@@ -94,3 +94,30 @@ describe("★ 徽章覆盖率 — 目录中出现的 provider 必须全部登记
     expect(residual, `残留 provider 后缀: ${JSON.stringify(residual)}`).toEqual([]);
   });
 });
+
+describe("★ 归一后的 provider 标识同样要有徽章(multi-gateway-providers 任务 4.0 交叉)", () => {
+  /**
+   * 上一组覆盖率断言吃的是**目录原始值**(`ai-gateway`),而消费面拿到的是统一目录端点
+   * `GET /config/models` 的**投影结果** —— 它会按 `LEGACY_PROVIDER_ID_MAP` 把 image 侧的
+   * `ai-gateway` 归一成 `blksails-ai`。于是原始值有徽章、归一值没有,上一组照样全绿,
+   * 而 /settings「启用的图像模型」里这三条会退化成纯文字 + 拖着 ` · ai-gateway` 后缀。
+   *
+   * 归一表住在 `@blksails/pi-web-core`(canvas-ui 不依赖它),此处按其值面写死校验;
+   * 表若再扩项,新增映射的目标 id 需同步补进本清单与 PROVIDER_META。
+   */
+  const NORMALIZED: Readonly<Record<string, string>> = { "ai-gateway": "blksails-ai" };
+
+  it("归一目标 id 在 PROVIDER_META 中有徽章", () => {
+    const missing = Object.values(NORMALIZED).filter((p) => PROVIDER_META[p] === undefined);
+    expect(missing, `归一后的 provider 没有徽章: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("label 仍写旧名时,按归一后的 provider 也能剥掉冗余后缀", () => {
+    for (const e of AI_GATEWAY_AIGC_CATALOG) {
+      const normalized = NORMALIZED[e.provider] ?? e.provider;
+      const shown = displayNameOf(e.label, normalized);
+      expect(shown, `${e.model} 残留后缀`).not.toMatch(/ · ai-gateway$/i);
+      expect(shown.length).toBeGreaterThan(0);
+    }
+  });
+});

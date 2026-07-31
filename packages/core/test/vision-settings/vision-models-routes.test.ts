@@ -104,6 +104,19 @@ describe("GET /config/models?input=image — 与旧 GET /vision/models 等价(Re
 
     expect(withImageCatalog.models.length).toBe(withoutImageCatalog.models.length + 1);
     expect(withImageCatalog.models.map((m) => m.id)).toContain(IMAGE_ENTRY.model);
+    // ↑ 这条增量是端点语义的正确行为(单条件 input=image);「视觉理解」这一**消费面**
+    // (VisionModelSelectField / Canvas 解读弹层,任务 6.3)必须再加 output=text 约束,
+    // 见下一条用例。
+  });
+
+  it("视觉理解消费面契约:?input=image&output=text 排除图像目录条目(六批完整性批评 gap 4,任务 6.3)", async () => {
+    // 图像目录条目缺省 output=["image"](service.ts DEFAULT_IMAGE_OUTPUT)——它是「文生图/
+    // 图生图」模型,不是「读图产文本」的视觉理解模型。只按 input=image 筛(旧/错误契约)
+    // 会把它纳入「视觉模型」下拉与画布解读弹层;消费面必须同时约束 output=text 才能排除它。
+    const body = await getModels(makeHandler({ imageCatalog: true }), "?input=image&output=text");
+    const ids = body.models.map((m) => `${m.provider}/${m.id}`);
+    expect(ids).toContain("apiservices/gpt-5.4-vision");
+    expect(body.models.map((m) => m.id)).not.toContain(IMAGE_ENTRY.model);
   });
 
   it("旧路径 GET /vision/models 已不存在(路由未注册)", async () => {

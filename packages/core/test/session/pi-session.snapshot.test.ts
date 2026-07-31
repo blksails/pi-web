@@ -5,7 +5,7 @@
  * 开关关闭(默认):不发任何 session-state 帧(legacy 零回归)。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, SessionSnapshot, SseFrame } from "@blksails/pi-web-protocol";
+import type { AgentEvent, RpcResponse, SessionSnapshot, SseFrame } from "@blksails/pi-web-protocol";
 import { PiSession } from "../../src/session/pi-session.js";
 import { MockChannel } from "./mock-channel.js";
 import { makeResolved } from "./fixtures.js";
@@ -122,5 +122,62 @@ describe("PiSession snapshot authority", () => {
     ch.emitEvent(start);
     ch.emitEvent(end);
     expect(sessionStateSnapshots(frames)).toHaveLength(0);
+  });
+});
+
+describe("★ 当前模型入快照(multi-gateway-providers Req 11.8)", () => {
+  const MODEL = { provider: "openrouter", id: "anthropic/claude-sonnet-4.6" };
+
+  function withModelState(): MockChannel {
+    const ch = new MockChannel();
+    ch.responseFor = (command) =>
+      ({
+        type: "response",
+        id: "1",
+        command,
+        success: true,
+        data:
+          command === "get_state"
+            ? { model: MODEL, sessionId: "s1", isStreaming: false }
+            : command === "set_model"
+              ? MODEL
+              : undefined,
+      }) as unknown as RpcResponse;
+    return ch;
+  }
+
+  it("get_state 的 model 同步入快照 —— 使『从未切过模型』的会话刷新后仍有选中态", async () => {
+    // 此前 snapshot.model 只由 set_model / cycle_model 写入,于是刷新页面后只有本会话内
+    // 切过模型的才打勾;而 RpcSessionState.model 恰是该会话当前实际使用的模型。
+    const ch = withModelState();
+    const s = newSession(ch, true);
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+
+    await s.getState();
+
+    const snaps = sessionStateSnapshots(frames);
+    expect(snaps.at(-1)?.model).toEqual(MODEL);
+  });
+
+  it("get_state 未带 model(或 data 非对象)时不写入,不把快照污染成非法值", async () => {
+    const ch = new MockChannel();
+    ch.responseFor = (command) =>
+      ({
+        type: "response",
+        id: "1",
+        command,
+        success: true,
+        data: command === "get_state" ? { sessionId: "s1", isStreaming: false } : undefined,
+      }) as unknown as RpcResponse;
+    const s = newSession(ch, true);
+    const frames: SseFrame[] = [];
+    s.subscribe((f) => frames.push(f));
+
+    await s.getState();
+
+    for (const snap of sessionStateSnapshots(frames)) {
+      expect(snap.model).toBeUndefined();
+    }
   });
 });

@@ -47,7 +47,7 @@ server/index.ts  (Hono 宿主, 默认 PORT=3000)
 | agent 源枚举 | `GET /agent-sources`、`GET·PUT /agent-sources/favorites` |
 | 事件订阅 | `GET /sessions/:id/stream`（SSE） |
 | 发消息 / 引导 | `POST /sessions/:id/messages`、`/steer`、`/follow_up`、`/abort` |
-| 会话控制 | `POST /sessions/:id/model`、`/thinking`、`/fork`、`/ui-response`、`/ui-rpc` |
+| 会话控制 | `POST /sessions/:id/models`、`/thinking`、`/fork`、`/ui-response`、`/ui-rpc` |
 | 状态注入桥 | `POST /sessions/:id/state`（写回；下行经 SSE `control:state` 帧） |
 | 会话查询 | `GET /sessions/:id/state`、`/stats`、`/messages`、`/commands`、`/models`、`/fork-messages`、`/completion` |
 | Agent 声明式 routes | `GET /sessions/:id/agent-routes`、`GET·POST /sessions/:id/agent-routes/:name` |
@@ -454,12 +454,16 @@ curl -X POST http://localhost:3000/api/sessions/sess_abc/messages \
 
 ---
 
-### POST /api/sessions/:id/model — 切换模型
+### POST /api/sessions/:id/models — 切换模型
+
+> **已变更**（spec `multi-gateway-providers` 任务 6.5）：旧路径 `POST /api/sessions/:id/model`（单数）已废弃，恒返回 **410 `ENDPOINT_MOVED`** 并在消息里给出新路径——不静默 404，既有集成方能立刻辨识出是接口变更而非会话不存在。
+>
+> 新路径与查询端点 `GET /api/sessions/:id/models` **同路径、仅方法不同**：`GET` 取该会话可用的模型清单，`POST` 设定当前模型。
 
 **请求体** (`SetModelRequestSchema`)：`{ "provider": "anthropic", "modelId": "claude-sonnet-4-5" }`（两字段均必填；注意是 `provider` + `modelId`，不是单字段 `model`）
 
 **成功响应** 200：`{ "ok": true }`  
-**错误**：400、404、409
+**错误**：400、404、409；旧路径 410
 
 ---
 

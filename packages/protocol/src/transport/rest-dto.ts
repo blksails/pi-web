@@ -7,7 +7,7 @@
  *   POST /sessions/:id/messages            PromptRequest        → CommandAck
  *   POST /sessions/:id/{steer,follow_up}   SteerRequest         → CommandAck
  *   POST /sessions/:id/abort               —                    → CommandAck
- *   POST /sessions/:id/model               SetModelRequest      → CommandAck
+ *   POST /sessions/:id/models              SetModelRequest      → CommandAck
  *   POST /sessions/:id/thinking            SetThinkingRequest   → CommandAck
  *   GET  /sessions/:id/state               —                    → GetStateResponse
  *   GET  /sessions/:id/stats               —                    → GetStatsResponse

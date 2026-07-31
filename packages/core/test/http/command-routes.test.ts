@@ -79,7 +79,7 @@ describe("command routes", () => {
     const { handler, session } = setup();
     await handler(post("/sessions/sess-1/steer", { message: "s" }));
     await handler(post("/sessions/sess-1/follow_up", { message: "f" }));
-    await handler(post("/sessions/sess-1/model", { provider: "p", modelId: "m" }));
+    await handler(post("/sessions/sess-1/models", { provider: "p", modelId: "m" }));
     await handler(post("/sessions/sess-1/thinking", { level: "medium" }));
     const methods = session.calls.map((c) => c.method);
     expect(methods).toContain("steer");
@@ -296,7 +296,7 @@ describe("command routes", () => {
     ["messages", { message: "hi" }],
     ["steer", { message: "s" }],
     ["follow_up", { message: "f" }],
-    ["model", { provider: "dashscope", modelId: "qwen" }],
+    ["models", { provider: "dashscope", modelId: "qwen" }],
     ["thinking", { level: "medium" }],
     ["abort", undefined],
   ] as const)("%s upstream success:false → 502 with error text", async (path, body) => {
@@ -310,11 +310,35 @@ describe("command routes", () => {
 
   it("success:true 仍然 ack 200(零回归)", async () => {
     const { handler } = setup();
-    const res = await handler(post("/sessions/sess-1/model", {
+    const res = await handler(post("/sessions/sess-1/models", {
       provider: "dashscope",
       modelId: "qwen",
     }));
     expect(res.status).toBe(200);
+  });
+
+  // ── 模型切换路径变更(Req 3.7/3.8)────────────────────────────────────
+  it("POST /sessions/:id/models switches the model (new path)", async () => {
+    const { handler, session } = setup();
+    const res = await handler(
+      post("/sessions/sess-1/models", { provider: "p", modelId: "m" }),
+    );
+    expect(res.status).toBe(200);
+    expect(session.calls.some((c) => c.method === "setModel")).toBe(true);
+  });
+
+  it("POST /sessions/:id/model (old path) is not silently 404 — tells caller it moved", async () => {
+    const { handler, session } = setup();
+    const res = await handler(
+      post("/sessions/sess-1/model", { provider: "p", modelId: "m" }),
+    );
+    expect(res.status).not.toBe(404);
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { error?: { code?: string; message?: string } };
+    expect(body.error?.code).toBe("ENDPOINT_MOVED");
+    expect(body.error?.message).toContain("/sessions/:id/models");
+    // 未转发到会话——旧路径不是"改写语义后转发",而是拒绝并指路。
+    expect(session.calls.some((c) => c.method === "setModel")).toBe(false);
   });
 
   it("unknown attachmentId is skipped (no marker, original kept)", async () => {

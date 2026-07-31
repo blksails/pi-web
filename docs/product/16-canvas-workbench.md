@@ -150,10 +150,10 @@ curl -s http://localhost:3000/api/sessions/<sessionId>/agent-routes/gallery-stat
 
 两个陷阱：
 
-- **视觉模型选择器**从 `GET /api/vision/models` 拉取（`canvas-launcher.tsx:66-92`、`vision-op.ts:92-112`）；任何失败（无 baseUrl / 网络 / 非 2xx / 解析异常）都折成空清单，此时**解读仍可用**——载荷不带 `model`，由 `image_vision` 工具弹层兜底。
+- **视觉模型选择器**从统一目录端点 `GET /api/config/models?input=image&output=text` 拉取（`canvas-launcher.tsx` 的 `useVisionModels` → `vision-op.ts` 的 `fetchVisionModels`；原专用端点 `GET /api/vision/models` 已随 spec `multi-gateway-providers` 任务 4.3 删除）；任何失败（网络 / 非 2xx / 解析异常）都折成空清单并留一行 `console.error`，此时**解读仍可用**——载荷不带 `model`，由 `image_vision` 工具弹层兜底。pane（iframe）车道传的是哨兵 `pane://host`，直接短路成空清单、不取数：那里的视觉模型选择已下沉到 agent。
 - 解读的 `model` 取值是 **`provider/modelId`**（与工具 `model` 参数对齐），⚠ 与提示词栏「生成模型」选择器的**裸 id** 格式不同，不可混用（`vision-op.ts:16-18`）。
 
-`image_vision` 工具本身、`/img_vision` 命令、`GET /vision/models` 端点见 [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
+`image_vision` 工具本身、`/img_vision` 命令、视觉模型枚举查询见 [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
 
 ---
 
@@ -233,9 +233,9 @@ export default defineWebExtension({
 - Canvas 依赖的第二条通信平面（`createSurface` / `useSurface` / CQRS 单写者） → [04 Surface 权威表面栈](./04-surface-stack.md)
 - Canvas 组件所在的包（`@blksails/pi-web-canvas-ui` / `-canvas-kit`）与依赖图 → [05 分层包](./05-packages.md)
 - `NEXT_PUBLIC_PI_WEB_CANVAS` 门控与配置目录 → [06 配置参考](./06-configuration.md)
-- `image_vision` 工具、`/img_vision` 命令、AIGC 图像工具与 `GET /vision/models` → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
+- `image_vision` 工具、`/img_vision` 命令、AIGC 图像工具与视觉模型枚举查询 → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
 - `launcherRail` / `panelRight` / `promptToolbar` 槽模型与 5-tier 挂载机制 → [12 Web UI 扩展](./12-web-ui-extension.md)
 - 自定义图层/工具/动作、`defineCanvasAction` 三件套（插件作者面） → [17 Canvas 插件开发](./17-canvas-plugins.md)
 - `gallery-stats` 用到的声明式 HTTP route、`getSessionState()` 作者面 → [08 自定义 Agent 开发](./08-agent-development.md)
-- `agent-routes` 调用契约、`control:"state"` 帧、`GET /api/vision/models` → [24 HTTP/SSE API 参考](./24-http-api-reference.md)
+- `agent-routes` 调用契约、`control:"state"` 帧、`GET /api/config/models` → [24 HTTP/SSE API 参考](./24-http-api-reference.md)
 - 五分钟跑通与 `pnpm dev` 双进程编排 → [01 快速开始](./01-quickstart.md)

@@ -86,7 +86,10 @@ describe("GET /config/models?output=image — 与旧 GET /aigc/models 等价(Req
     expect(withGateway.models.length).toBe(withoutGateway.models.length + 1);
     const added = withGateway.models.find((m) => m.id === GATEWAY_IMAGE_ENTRY.model);
     expect(added).toBeDefined();
-    expect(added!.provider).toBe(GATEWAY_IMAGE_ENTRY.provider);
+    // ★ provider 与 source 在此处**故意不同**:目录投影会按 design.md 迁移策略表把 image 侧的存量
+    // 标识 `ai-gateway` 归一为 `blksails-ai`(任务 4.0,`LEGACY_PROVIDER_ID_MAP`),否则它会与 chat
+    // 侧「缺省网关实例」同名而无法区分两条通路;而 `source` 记的是**来源渠道**,仍是 `ai-gateway`。
+    expect(added!.provider).toBe("blksails-ai");
     expect(added!.source).toBe("ai-gateway");
   });
 

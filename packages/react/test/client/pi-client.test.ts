@@ -96,7 +96,7 @@ describe("createPiClient request shaping", () => {
       id: "u1",
       confirmed: true,
     });
-    expect(calls[0]?.url).toBe("http://api.test/sessions/s1/model");
+    expect(calls[0]?.url).toBe("http://api.test/sessions/s1/models");
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
       provider: "anthropic",
       modelId: "x",

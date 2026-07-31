@@ -295,8 +295,9 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/abort`),
     clearQueue: (id) =>
       post<ClearQueueResponse>(`/sessions/${enc(id)}/clear_queue`),
+    // Req 3.7:与会话模型查询(GET /sessions/:id/models)共用同一路径,仅方法区分。
     setModel: (id, req) =>
-      post<CommandAck>(`/sessions/${enc(id)}/model`, req),
+      post<CommandAck>(`/sessions/${enc(id)}/models`, req),
     setThinking: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/thinking`, req),
     uiResponse: (id, req) =>

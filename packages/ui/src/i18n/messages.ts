@@ -170,6 +170,9 @@ export const zh: Record<string, string> = {
   "modelSelector.triggerLabel": "模型",
   "modelSelector.searchPlaceholder": "搜索模型…",
   "modelSelector.empty": "无匹配模型",
+  // 当前模型已不在可用清单中(Req 11.9):不静默消失,单列一组标出。
+  "modelSelector.orphanGroup": "当前模型（已不在可用清单）",
+  "modelSelector.orphanHint": "该模型不在当前会话的可用清单中，可能是所属 provider 已停用或被隐藏。",
   "autocomplete.listboxLabel": "自动补全",
   "sources.title": "来源",
   "sources.untitled": "无标题来源",
@@ -412,6 +415,8 @@ export const en: Record<string, string> = {
   "modelSelector.triggerLabel": "Model",
   "modelSelector.searchPlaceholder": "Search models…",
   "modelSelector.empty": "No matching models",
+  "modelSelector.orphanGroup": "Current model (no longer listed)",
+  "modelSelector.orphanHint": "This model is not in the session's available list — its provider may have been disabled or hidden.",
   "autocomplete.listboxLabel": "Autocomplete",
   "sources.title": "Sources",
   "sources.untitled": "Untitled source",

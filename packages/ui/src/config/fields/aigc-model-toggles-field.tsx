@@ -1,9 +1,12 @@
 /**
  * AigcModelTogglesField — AIGC 图像「模型开关」字段(widget: "aigcModelToggles",aigc-tool-settings)。
  *
- * config 域 `aigc` 的 `disabledModels` 字段(值 = 被禁 model id 数组)。渲染为图像模型勾选清单:
- * 勾选 = 启用,取消 = 禁用(加入 disabledModels)。清单来自 `GET /api/aigc/models`(纯模型目录,
- * 每项含 label + provider),复用选择器同款 provider 字母徽章与显示名。
+ * config 域 `aigc` 的 `disabledModels` 字段(值 = 被禁 model id 数组,裸 id、非 `provider/id`
+ * 复合键——存量语义不变)。渲染为图像模型勾选清单:勾选 = 启用,取消 = 禁用(加入
+ * disabledModels)。清单来自 `GET /api/config/models?output=image`(multi-gateway-providers
+ * 任务 4.3/6.2:唯一部署级模型目录端点按输出类型筛选,取代已删除的独立 `GET /api/aigc/models`;
+ * 响应字段为 `id`/`name`/`provider`/`source?`,与 ModelSelectField 同形态),复用选择器同款
+ * provider 字母徽章与显示名。
  *
  * 取数按模块级 Promise 缓存(整页一次);测试经 __setAigcModelsFetchImpl / __resetAigcModelsCache
  * 注入与复位(仿 ModelSelectField)。
@@ -16,15 +19,17 @@ import { FieldShell, errorAt } from "./field-shell.js";
 import { ProviderBadge, displayNameOf } from "../../canvas/aigc-model-meta.js";
 
 interface CatalogEntry {
-  readonly model: string;
-  readonly label: string;
+  readonly id: string;
+  readonly name: string;
   readonly provider: string;
   /**
    * 来源标记(model-catalog spec,Req 4.5):`"ai-gateway"` = 网关托管目录条目,
    * `"self"` = 自配静态目录条目。仅装配端启用 ai-gateway 套件聚合后才出现;
-   * 未启用时该字段不存在,不渲染徽章(与启用前逐字节一致)。
+   * 未启用时该字段不存在,不渲染徽章(与启用前逐字节一致)。放宽为 `string`
+   * (与 `/config/models` 统一投影一致——multi-gateway-providers 任务 4.1):
+   * 徽章渲染仍只认 `"ai-gateway"` 字面值,其余来源标记不渲染徽章。
    */
-  readonly source?: "self" | "ai-gateway";
+  readonly source?: string;
 }
 interface CatalogResponse {
   readonly models: readonly CatalogEntry[];
@@ -44,12 +49,16 @@ async function loadCatalog(): Promise<CatalogResponse> {
   if (cache === undefined) {
     cache = (async () => {
       try {
-        const res = await fetchImpl("/api/aigc/models", { method: "GET" });
+        const res = await fetchImpl("/api/config/models?output=image", { method: "GET" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as Partial<CatalogResponse>;
         return { models: json.models ?? [] };
-      } catch {
-        return { models: [] }; // 取数失败回退空集(不阻断面板)
+      } catch (err) {
+        // 取数失败回退空集(不阻断面板),但不再静默——留一行可辨识的控制台错误
+        // (本任务 6.2 的验收点:此前的静默 catch 让「目录端点被删除」这类真实
+        // 破坏在界面上只表现为「清单为空」,与「本来就没配模型」无法区分)。
+        console.error("[AigcModelTogglesField] GET /api/config/models?output=image failed:", err);
+        return { models: [] };
       }
     })();
   }
@@ -99,20 +108,20 @@ export function AigcModelTogglesField({
       ) : (
         <ul data-aigc-model-toggles className="space-y-1">
           {models.map((m) => {
-            const enabled = !disabledSet.has(m.model);
+            const enabled = !disabledSet.has(m.id);
             return (
-              <li key={m.model} className="flex items-center gap-2">
+              <li key={m.id} className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  data-aigc-model-toggle={m.model}
-                  aria-label={m.model}
+                  data-aigc-model-toggle={m.id}
+                  aria-label={m.id}
                   checked={enabled}
                   disabled={disabled}
-                  onChange={(e) => toggle(m.model, e.target.checked)}
+                  onChange={(e) => toggle(m.id, e.target.checked)}
                 />
                 <ProviderBadge providerId={m.provider} />
-                <span className="truncate text-sm" title={m.model}>
-                  {displayNameOf(m.label, m.provider)}
+                <span className="truncate text-sm" title={m.id}>
+                  {displayNameOf(m.name, m.provider)}
                 </span>
                 {/* 网关来源徽章(Req 4.5,与 modelSelect 同视觉语言);self/无 source 不渲染 */}
                 {m.source === "ai-gateway" && (

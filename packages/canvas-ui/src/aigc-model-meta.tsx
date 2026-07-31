@@ -7,7 +7,7 @@
 import * as React from "react";
 
 /**
- * provider → 字母徽章元数据(无图标资源,取首字母表示)。首字母互不冲突(O/N/S/D/G/C)。
+ * provider → 字母徽章元数据(无图标资源,取首字母表示)。首字母互不冲突(O/N/S/D/G/B/C)。
  * `name` 用于去掉 label 里冗余的 ` · <name>` 后缀 + 徽章 hover 提示。
  *
  * ⚠ **本表是徽章的准入闸门**:{@link ProviderBadge} 对表中没有的 provider 直接返回 null。
@@ -16,16 +16,39 @@ import * as React from "react";
  * 两条通路曾因此漏登记。
  */
 export const PROVIDER_META: Readonly<
-  Record<string, { readonly letter: string; readonly name: string; readonly bg: string }>
+  Record<
+    string,
+    {
+      readonly letter: string;
+      readonly name: string;
+      readonly bg: string;
+      /**
+       * 该 provider 在**存量 label 后缀**里可能出现的其它写法。{@link displayNameOf} 用它
+       * 判定后缀是否冗余。归一改名(`ai-gateway` → `blksails-ai`)之后,静态目录里的 label
+       * 仍写着旧名,不列别名的话后缀剥不掉。
+       */
+      readonly aliases?: readonly string[];
+    }
+  >
 > = {
   openrouter: { letter: "O", name: "OpenRouter", bg: "#6366f1" },
   newapi: { letter: "N", name: "NewAPI", bg: "#10b981" },
   sufy: { letter: "S", name: "Sufy", bg: "#f59e0b" },
   dashscope: { letter: "D", name: "DashScope", bg: "#0ea5e9" },
-  // BlackSail 自建网关(BLKSAILS_GATEWAY_*)。取 G(Gateway)而非 A:后者易被读成
-  // Anthropic/Aliyun。
+  // 网关**实例**的缺省 id(单实例配置 AI_GATEWAY_BASE_URL 时合成出来的那个)。它指向
+  // 「部署方配置的那台网关」,具体是谁取决于 env——所以名字只能是通用的 AI Gateway。
+  // 取 G(Gateway)而非 A:后者易被读成 Anthropic/Aliyun。
   "ai-gateway": { letter: "G", name: "AI Gateway", bg: "#8b5cf6" },
-  // Cloudflare AI Gateway(CLOUDFLARE_*),与上面的自建网关是**两条不同通路**。
+  // BlackSail 自建网关的图像通路。image 侧存量标识 `ai-gateway` 被归一成这个 id
+  // (multi-gateway-providers 任务 4.0 `LEGACY_PROVIDER_ID_MAP`),正是为了与上面那个
+  // 「缺省实例」区分开——两者曾同名,导致隐藏其一会连带干掉另一条通路的模型。
+  "blksails-ai": {
+    letter: "B",
+    name: "BlackSail AI",
+    bg: "#14b8a6",
+    aliases: ["ai-gateway", "AI Gateway"],
+  },
+  // Cloudflare AI Gateway(CLOUDFLARE_*),与上面两条都是**不同通路**。
   // 用 Cloudflare 官方品牌橙 #f6821f:与 sufy 的琥珀 #f59e0b 邻近但更饱和偏红,
   // 且字母不同(C/S),不至混淆。
   cloudflare: { letter: "C", name: "Cloudflare", bg: "#f6821f" },
@@ -46,9 +69,8 @@ export function displayNameOf(label: string, providerId: string | undefined): st
   // 徽章已代表 provider 却仍拖着冗余后缀。
   const norm = (s: string): string => s.toLowerCase().replace(/[\s_-]+/g, "");
   const n = norm(suffix);
-  return n === norm(meta.name) || (providerId !== undefined && n === norm(providerId))
-    ? label.slice(0, idx).trim()
-    : label;
+  const accepted = [meta.name, providerId ?? "", ...(meta.aliases ?? [])].map(norm);
+  return accepted.includes(n) ? label.slice(0, idx).trim() : label;
 }
 
 /** provider 字母徽章(无图标资源时的字母表示);未知 provider → 不渲染。 */

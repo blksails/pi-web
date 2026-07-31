@@ -1,7 +1,7 @@
 /**
  * http-api — 命令转发端点(Req 3.x)。
  *
- * `POST /sessions/:id/{messages,steer,follow_up,abort,model,thinking,ui-response}`:
+ * `POST /sessions/:id/{messages,steer,follow_up,abort,models,thinking,ui-response}`:
  * 校验对应 protocol DTO → 转发到 `PiSession` 命令方法 → 返回 ack;仅转发不改写语义。
  * 校验失败→400(不转发);已停止会话→409;未知 ui-response ID→409(经 error-map)。
  */
@@ -217,7 +217,7 @@ export function makeClearQueueHandler(store: SessionStore): RouteHandler {
   };
 }
 
-/** POST /sessions/:id/model → PiSession.setModel */
+/** POST /sessions/:id/models → PiSession.setModel(与会话模型查询共用同一路径,仅方法区分,Req 3.7) */
 export function makeModelHandler(store: SessionStore): RouteHandler {
   return async (ctx): Promise<Response> => {
     const parsed = await validateBody(ctx.req, SetModelRequestSchema);
@@ -230,6 +230,20 @@ export function makeModelHandler(store: SessionStore): RouteHandler {
       return mapEngineError(err);
     }
   };
+}
+
+/**
+ * POST /sessions/:id/model(旧路径,已废弃,Req 3.8)——模型切换改挂到
+ * `POST /sessions/:id/models`(与查询同路径,仅方法区分,与 `/model` 仅差单复数的旧路径不再使用)。
+ * 既有集成方调用此旧路径时不静默 404:显式返回 410 + 指向新路径的文案,使调用方可辨识变更。
+ */
+export function makeModelPathMovedHandler(): RouteHandler {
+  return async (): Promise<Response> =>
+    errorResponse(
+      410,
+      "ENDPOINT_MOVED",
+      "POST /sessions/:id/model has moved to POST /sessions/:id/models. Update your integration to call the new path.",
+    );
 }
 
 /** POST /sessions/:id/thinking → PiSession.setThinkingLevel */

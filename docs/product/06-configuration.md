@@ -379,7 +379,7 @@ AIGC 图像工具设置落 `~/.pi/agent/aigc.json`，由 `aigcExtension` 在装�
 }
 ```
 
-> 该配置域的 schema 驱动设置界面（`aigcModelToggles` widget + `GET /api/aigc/models` 数据端点）详见 [13 · 配置 UI](./13-config-ui.md)；被禁模型如何从 LLM 枚举与下发清单同源移除详见 [11 · AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
+> 该配置域的 schema 驱动设置界面（`aigcModelToggles` widget + `GET /api/config/models?output=image` 数据端点）详见 [13 · 配置 UI](./13-config-ui.md)；被禁模型如何从 LLM 枚举与下发清单同源移除详见 [11 · AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
 
 ---
 

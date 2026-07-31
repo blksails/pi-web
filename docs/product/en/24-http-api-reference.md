@@ -47,7 +47,7 @@ server/index.ts  (Hono host, default PORT=3000)
 | Agent-source enumeration | `GET /agent-sources`, `GET·PUT /agent-sources/favorites` |
 | Event subscription | `GET /sessions/:id/stream` (SSE) |
 | Send message / steer | `POST /sessions/:id/messages`, `/steer`, `/follow_up`, `/abort` |
-| Session control | `POST /sessions/:id/model`, `/thinking`, `/fork`, `/ui-response`, `/ui-rpc` |
+| Session control | `POST /sessions/:id/models`, `/thinking`, `/fork`, `/ui-response`, `/ui-rpc` |
 | State-injection bridge | `POST /sessions/:id/state` (write-back; downstream via SSE `control:state` frame) |
 | Session queries | `GET /sessions/:id/state`, `/stats`, `/messages`, `/commands`, `/models`, `/fork-messages`, `/completion` |
 | Agent-declared routes | `GET /sessions/:id/agent-routes`, `GET·POST /sessions/:id/agent-routes/:name` |
@@ -460,7 +460,11 @@ Aborts the current in-progress inference round.
 
 ---
 
-### POST /api/sessions/:id/model — Switch Model
+### POST /api/sessions/:id/models — Switch Model
+
+> **Changed** (spec `multi-gateway-providers`, task 6.5): the old path `POST /api/sessions/:id/model` (singular) is deprecated and now always returns **410 `ENDPOINT_MOVED`** with the new path in the message — it does not 404 silently, so existing integrations can tell an interface change from a missing session.
+>
+> The new path shares its URL with the query endpoint `GET /api/sessions/:id/models`, differing only by method: `GET` lists the models available to that session, `POST` sets the current one.
 
 **Request body** (`SetModelRequestSchema`): `{ "provider": "anthropic", "modelId": "claude-sonnet-4-5" }` (both fields are required; note it is `provider` + `modelId`, not a single `model` field)
 

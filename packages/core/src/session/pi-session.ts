@@ -1284,6 +1284,15 @@ export class PiSession {
     switch (res.command) {
       case "get_state":
         this.cache = { ...(this.cache ?? {}), state: data, updatedAt: now };
+        // `RpcSessionState.model` 即该会话**当前实际使用**的模型。同步入快照(Req 11.8):
+        // 否则 snapshot.model 只在本会话内切过模型(set_model/cycle_model)时才有值,
+        // 「从未切过模型」的会话刷新后选择器一律显示为未选择 —— 那才是常见情形。
+        {
+          const stateModel = (data as { model?: unknown } | null)?.model;
+          if (typeof stateModel === "object" && stateModel !== null) {
+            this.setSnapshot({ model: stateModel });
+          }
+        }
         break;
       case "get_session_stats":
         this.cache = { ...(this.cache ?? {}), stats: data, updatedAt: now };

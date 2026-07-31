@@ -1,8 +1,10 @@
 /**
  * AigcModelTogglesField 组件测试(aigc-tool-settings)。
  *
- * 覆盖:清单来自注入的 /api/aigc/models、勾选态 = 未被禁、切换更新 disabledModels 数组、
- * label + provider 徽章渲染、取数失败回退占位。fetch 经 __setAigcModelsFetchImpl 注入。
+ * 覆盖:清单来自注入的 /api/config/models?output=image、勾选态 = 未被禁、切换更新
+ * disabledModels 数组、label + provider 徽章渲染、取数失败回退占位且不再静默(留一行
+ * 可辨识的 console.error——multi-gateway-providers 任务 6.2 的核心验收点)。
+ * fetch 经 __setAigcModelsFetchImpl 注入。
  */
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -25,18 +27,23 @@ const descriptor: FieldDescriptor = {
 
 const CATALOG = {
   models: [
-    { model: "gpt-image-2", label: "GPT Image 2 · NewAPI", provider: "newapi" },
-    { model: "wan2.7-image-pro", label: "Wan 2.7 Image Pro", provider: "dashscope" },
+    { id: "gpt-image-2", name: "GPT Image 2 · NewAPI", provider: "newapi" },
+    { id: "wan2.7-image-pro", name: "Wan 2.7 Image Pro", provider: "dashscope" },
   ],
 };
 
 function mockFetch(body: unknown, ok = true): void {
   __setAigcModelsFetchImpl(
-    vi.fn(async () => ({
-      ok,
-      status: ok ? 200 : 500,
-      json: async () => body,
-    })) as unknown as typeof fetch,
+    vi.fn(async (input: RequestInfo | URL) => {
+      // 断言取数命中统一部署级目录端点(带 output=image 筛选,multi-gateway-providers
+      // 任务 6.2):不再打已删除的独立 /api/aigc/models。
+      expect(String(input)).toBe("/api/config/models?output=image");
+      return {
+        ok,
+        status: ok ? 200 : 500,
+        json: async () => body,
+      };
+    }) as unknown as typeof fetch,
   );
 }
 
@@ -57,7 +64,7 @@ describe("AigcModelTogglesField", () => {
     vi.restoreAllMocks();
   });
 
-  it("清单来自 /api/aigc/models,被禁项未勾选、其余勾选", async () => {
+  it("清单来自 /api/config/models?output=image,被禁项未勾选、其余勾选", async () => {
     renderField(["gpt-image-2"]);
     const disabled = await waitFor(() => {
       const el = document.querySelector<HTMLInputElement>(
@@ -76,7 +83,7 @@ describe("AigcModelTogglesField", () => {
     expect(document.body.textContent).not.toContain("· NewAPI");
   });
 
-  it("取消勾选某模型 → onChange 加入 disabledModels 数组", async () => {
+  it("取消勾选某模型 → onChange 加入 disabledModels 数组(裸 model id,存量语义不变)", async () => {
     const onChange = renderField([]);
     const box = await waitFor(() => {
       const el = document.querySelector<HTMLInputElement>(
@@ -102,21 +109,25 @@ describe("AigcModelTogglesField", () => {
     expect(onChange).toHaveBeenCalledWith([]);
   });
 
-  it("取数失败 → 回退占位,不崩", async () => {
+  it("取数失败 → 回退占位,不崩,且在控制台留一行可辨识错误(不再静默,任务 6.2 核心验收点)", async () => {
     __resetAigcModelsCache();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mockFetch({}, false);
     renderField([]);
     await waitFor(() =>
       expect(document.body.textContent).toContain("模型清单加载中"),
     );
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    const [message] = consoleError.mock.calls[0] ?? [];
+    expect(String(message)).toContain("/api/config/models?output=image");
   });
 });
 
 describe("AigcModelTogglesField — 来源标记(model-catalog 任务 4.2,Req 4.5)", () => {
   const MIXED_CATALOG = {
     models: [
-      { model: "gpt-image-2", label: "GPT Image 2", provider: "newapi", source: "self" },
-      { model: "gw-flux", label: "GW Flux", provider: "ai-gateway", source: "ai-gateway" },
+      { id: "gpt-image-2", name: "GPT Image 2", provider: "newapi", source: "self" },
+      { id: "gw-flux", name: "GW Flux", provider: "ai-gateway", source: "ai-gateway" },
     ],
   };
 

@@ -150,10 +150,10 @@ At the top of the workbench there is a "👁 Read" button: it asks a question ab
 
 Two pitfalls:
 
-- The **vision model selector** is fetched from `GET /api/vision/models` (`canvas-launcher.tsx:66-92`, `vision-op.ts:92-112`); any failure (no baseUrl / network / non-2xx / parse exception) collapses into an empty list, and in that case **Read still works** — the payload carries no `model`, and the `image_vision` tool's popover falls back.
+- The **vision model selector** is fetched from the unified catalog endpoint `GET /api/config/models?input=image&output=text` (`useVisionModels` in `canvas-launcher.tsx` → `fetchVisionModels` in `vision-op.ts`; the former dedicated `GET /api/vision/models` was removed by spec `multi-gateway-providers`, task 4.3); any failure (network / non-2xx / parse exception) collapses into an empty list plus one `console.error`, and in that case **Read still works** — the payload carries no `model`, and the `image_vision` tool's popover falls back. The pane (iframe) lane passes the sentinel `pane://host`, which short-circuits to an empty list without fetching: there, vision-model selection has been pushed down to the agent.
 - The `model` value for Read is **`provider/modelId`** (aligned with the tool's `model` parameter), ⚠ which differs from the **bare id** format of the prompt bar's "generation model" selector and must not be mixed (`vision-op.ts:16-18`).
 
-The `image_vision` tool itself, the `/img_vision` command, and the `GET /vision/models` endpoint are covered in [11 AIGC and Vision Tools](./11-aigc-and-vision-tools.md).
+The `image_vision` tool itself, the `/img_vision` command, and the vision-model enumeration query are covered in [11 AIGC and Vision Tools](./11-aigc-and-vision-tools.md).
 
 ---
 
@@ -233,9 +233,9 @@ The `launcherRail` slot does not receive a surface (it only handles open/close);
 - The second communication plane Canvas depends on (`createSurface` / `useSurface` / CQRS single writer) → [04 Surface Authoritative Surface Stack](./04-surface-stack.md)
 - The packages that house the Canvas components (`@blksails/pi-web-canvas-ui` / `-canvas-kit`) and the dependency graph → [05 Layered Packages](./05-packages.md)
 - The `NEXT_PUBLIC_PI_WEB_CANVAS` gate and configuration directories → [06 Configuration Reference](./06-configuration.md)
-- The `image_vision` tool, the `/img_vision` command, AIGC image tools, and `GET /vision/models` → [11 AIGC and Vision Tools](./11-aigc-and-vision-tools.md)
+- The `image_vision` tool, the `/img_vision` command, AIGC image tools, and the vision-model enumeration query → [11 AIGC and Vision Tools](./11-aigc-and-vision-tools.md)
 - The `launcherRail` / `panelRight` / `promptToolbar` slot model and the 5-tier mount mechanism → [12 Web UI Extensions](./12-web-ui-extension.md)
 - Custom layers/tools/actions and the `defineCanvasAction` trio (plugin-author perspective) → [17 Canvas Plugin Development](./17-canvas-plugins.md)
 - The declarative HTTP route used by `gallery-stats` and the `getSessionState()` author perspective → [08 Agent Development](./08-agent-development.md)
-- The `agent-routes` call contract, the `control:"state"` frame, and `GET /api/vision/models` → [24 HTTP/SSE API Reference](./24-http-api-reference.md)
+- The `agent-routes` call contract, the `control:"state"` frame, and `GET /api/config/models` → [24 HTTP/SSE API Reference](./24-http-api-reference.md)
 - The five-minute run-through and `pnpm dev` dual-process orchestration → [01 Quickstart](./01-quickstart.md)
