@@ -21,7 +21,9 @@ The key design point: **most of the user's re-creation operations never disturb 
 
 **Canvas does not appear by default.** It is not a feature lit up by a global switch, but rather **driven by agent source declaration**: Canvas appears only when a source mounts `CanvasLauncher` / `CanvasPanel` into the `launcherRail` / `panelRight` named slots (see the slot model in [12 Web UI Extensions](./12-web-ui-extension.md)) inside its `.pi/web/web.config.tsx`. An ordinary agent source declares neither slot, so Canvas is naturally absent — independence is guaranteed by "declaring absence", not by some env falling back to disable it (`packages/canvas-ui/src/canvas-launcher.tsx:1-15`).
 
-So "how to turn it on" = **switch to a source that declares the Canvas slots**; the easiest is the bundled `examples/aigc-canvas-agent` (`examples/aigc-canvas-agent/.pi/web/web.config.tsx:22-29`).
+So "how to turn it on" = **switch to a source that declares the Canvas slots**; the easiest is the bundled `examples/canvas-plugin-stickers` (`examples/canvas-plugin-stickers/.pi/web/web.config.tsx:21-25`).
+
+> **`examples/aigc-canvas-agent` has moved to the isolated Pane lane** (spec `isolated-panes` Wave 5): the gallery no longer occupies the `launcherRail`/`panelRight` slots but runs inside a dedicated `PanesHost` iframe, entered through a pane tab rather than a button. It remains the most complete end-to-end Canvas example, but the **slot wiring recipe** below refers to `canvas-plugin-stickers`; for the pane lane see the "从 slots 迁到 panes" section in `examples/aigc-canvas-agent/README.md`.
 
 ### About `NEXT_PUBLIC_PI_WEB_CANVAS`
 
@@ -45,11 +47,15 @@ The following steps get the gallery running with the bundled example, and each s
 
 2. **Open `http://localhost:5173` in the browser**, and on the source-picker page select (or create a new session pointing at) the `examples/aigc-canvas-agent` source.
 
-   Expected: the launcher rail on the left (launcherRail) shows a "🖼️ Canvas Gallery" entry button (`canvas-launcher.tsx:52-62`, DOM anchor `data-canvas-launcher`). If you switch to an ordinary source that does **not** declare the Canvas slots, this button does not appear — that is "off by default".
+   Expected: the right panel (panelRight) shows a pane tab bar with the "🖼️ Gallery" tab already open (this example uses the **Pane lane**, `initialPaneIds: ["canvas"]`). If you switch to an ordinary source that does **not** declare Canvas, the whole pane host (`data-panes-host`) is absent — that is "off by default".
 
-3. **Click the "Canvas Gallery" entry**: the right panel (panelRight) expands the gallery grid (`data-canvas-panel`).
+   > To see the **slot lane** (a `launcherRail` entry button plus a `panelRight` panel, DOM anchor `data-canvas-launcher`), switch the source to `examples/canvas-plugin-stickers`: there you must click the entry button before the gallery expands.
+
+3. **The gallery grid**: rendered inside the pane (`data-canvas-gallery`).
 
    Expected: the image attachments already in the session (empty state if none) are shown in a grid. Have the agent generate an image (e.g. type `/img-gen a cat`), and at the end of the turn the gallery automatically reconciles the new image.
+
+   > On the Pane lane the end-of-turn reconcile needs a host-side assist: `syncSignal` is not part of the pane protocol, so the `ConfiguredPanesHost` wrapper in this example's `web/web.config.tsx` issues `run("canvas","sync")` on its behalf. On the slot lane `CanvasGallery` watches `syncSignal` itself.
 
 4. **Click any cell in the gallery**: you enter the `CanvasWorkbench` canvas editor; click "Back to gallery" at the top left (`data-canvas-workbench-close`) to return.
 
@@ -85,7 +91,7 @@ Expected response for an empty gallery (`examples/aigc-canvas-agent/README.md:10
 - **`available === true`** (the source registered a `surface:canvas` probe) → the full gallery: grid by default + density switching (overview / masonry / focus) + client-side pagination + lineage / time grouping; thumbnails use a signed `displayUrl` (a binary bypass that does not go through the command channel); an idle edge at the end of the turn (a change in `syncSignal`) triggers `run("sync")` to reconcile (`canvas-gallery.tsx:7-8`).
 - **`available === false`** (a non-AIGC source, no probe) → **graceful degradation** to a read-only image library, sourced from the host-injected message-history images `historyImages`, with Track A generation disabled, no commands sent, and no errors (Track B local editing is still available on the workbench side, `canvas-gallery.tsx:9-10`).
 
-The reason the gallery is a "materialized view" rather than independent state: its data is not in the frontend but in the authoritative snapshot maintained on the agent-subprocess side by `canvasSurfaceExtension` via `hydrate()` (enumerating the current session's image attachments + reading lineage meta to reconstruct) plus `sync` reconciliation, mirrored downstream via the `control:"state"` frame (`key="surface:canvas"`) (`examples/aigc-canvas-agent/index.ts:9-11`). This is precisely the single-writer model of Surface CQRS.
+The reason the gallery is a "materialized view" rather than independent state: its data is not in the frontend but in the authoritative snapshot maintained on the agent-subprocess side by `canvasSurfaceExtension` via `hydrate()` (enumerating the current session's image attachments + reading lineage meta to reconstruct) plus `sync` reconciliation, mirrored downstream via the `control:"state"` frame (`key="surface:canvas"`) (`examples/aigc-canvas-agent/index.ts:16-21`). This is precisely the single-writer model of Surface CQRS.
 
 In addition, `CanvasPanel` attaches a document-level delegated listener: clicking an image carrying `data-att-id` in a conversation-stream tool card automatically opens the panel and switches the workbench to that att_id (`canvas-launcher.tsx:158-177`), realizing "click an image in chat → enter Canvas editing".
 
@@ -170,7 +176,7 @@ Canvas is the **reference consumer** of the [04 Surface Authoritative Surface St
 └────────────────────────────────────────────────┘
 ```
 
-- **State downstream**: on every `set`, the subprocess `createSurface` writes the `GalleryState` snapshot to `key="surface:canvas"`, mirrored to the frontend via the `control:"state"` sticky frame (`examples/aigc-canvas-agent/index.ts:9-11`).
+- **State downstream**: on every `set`, the subprocess `createSurface` writes the `GalleryState` snapshot to `key="surface:canvas"`, mirrored to the frontend via the `control:"state"` sticky frame (`examples/aigc-canvas-agent/index.ts:16-21`).
 - **Command upstream**: the workbench's `run("register")` / `run("sync")` / Track A generation go through `useSurface` → ui-rpc forwarding → dispatch inside the subprocess by `wireSurfaceBridge`. Generation uses `submitOp` (Prompt channel), while local-edit registration uses `run` (command channel).
 - **Three degradation states**: `bridge.opChannel` is one of `prompt` (normal) / `command` (command-only) / `unavailable` (probe missing), and the UI renders accordingly (`canvas-workbench.tsx:1818-1826`).
 
@@ -182,7 +188,7 @@ A real-subprocess integration test covers the whole path (fd1 backflow + `setSta
 
 In your agent source, Canvas is two wiring points (`examples/aigc-canvas-agent/index.ts` + `.pi/web/web.config.tsx`):
 
-**1. Agent side** — load three extensions (`examples/aigc-canvas-agent/index.ts:47-48`):
+**1. Agent side** — load three extensions (`examples/canvas-plugin-stickers/index.ts`):
 
 ```ts
 import { aigcExtension, canvasSurfaceExtension, visionExtension }
@@ -198,7 +204,7 @@ export default defineAgent({
 - `visionExtension`: the `image_vision` tool + the `/img_vision` command (backing "Read");
 - `canvasSurfaceExtension`: the authoritative surface with `domain="canvas"` (gallery materialized view + Track A re-creation commands).
 
-**2. UI side** — declare the slots in `.pi/web/web.config.tsx` (`examples/aigc-canvas-agent/.pi/web/web.config.tsx:22-29`):
+**2. UI side** — declare the slots in `.pi/web/web.config.tsx` (`examples/canvas-plugin-stickers/.pi/web/web.config.tsx:21-25`):
 
 ```tsx
 import { CanvasLauncher, CanvasPanel, AigcQuickSettings }

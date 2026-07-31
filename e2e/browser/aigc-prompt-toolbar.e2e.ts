@@ -14,6 +14,11 @@ import { test, expect } from "@playwright/test";
  *     交互追问写回)→ 选择器回显自动变化,无刷新(Req 5.2 回归守卫:宿主漏透传 state 或组件
  *     漏订阅时此断言失败)。
  *  ④ 退化/独立性:hello-agent 未声明 promptToolbar → 零渲染快捷设置,输入区照常可用(Req 7.1)。
+ *
+ * 注:`aigc-canvas-agent` 已迁隔离 Pane 形态(isolated-panes Wave 5),画廊进了 iframe ——
+ * 但 `promptToolbar` **刻意保留为槽**:快捷设置挂在输入区(宿主 realm),经 state 桥 KV 与
+ * agent 进程里的图像工具通信,与 pane 化无关;它的位置(发送键旁)本身就是它的语义。
+ * 故本文件的定位全在宿主 realm,迁移后一行未改 —— 这也正是「该 pane 化的才 pane 化」的验证。
  */
 
 const CANVAS_SOURCE = "./examples/aigc-canvas-agent";

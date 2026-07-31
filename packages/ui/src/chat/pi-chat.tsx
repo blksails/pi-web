@@ -73,7 +73,18 @@ import {
   type RendererRegistry,
   type DataPartRenderer,
 } from "../registry/renderer-registry.js";
+import { createLogger } from "@blksails/pi-web-logger";
+import { useHostEnvironmentSignals } from "./host-signals.js";
+import {
+  mergePaneSources,
+  type PaneMergeRejection,
+  type PaneSource,
+} from "@blksails/pi-web-panes-kit";
+import { PanesHost } from "@blksails/pi-web-panes-kit/react";
 import { TurnAbortProvider } from "./turn-abort-context.js";
+
+/** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
+const log = createLogger({ namespace: "ui:panes" });
 import { runStopTurn, type StopTurnHandle } from "./stop-turn.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { createPackageArgProvider } from "../controls/package-arg-provider.js";
@@ -139,8 +150,25 @@ export interface PiChatProps {
   /** 布局预设(Req 7);缺省等价现行版面。 */
   readonly layout?: LayoutPreset;
   /**
-   * panelRight 让位的「初始」比例(对话区 : 右侧面板);仅在扩展声明 panelRight 时生效。
-   * 宿主据此渲染段控切换器,运行时可在 居中/2:1/3:7 间动态切换;缺省 `2:1`(≈现行 w-96)。
+   * 宿主内置 pane 来源(spec host-builtin-panes,Req 1.1)。
+   *
+   * 提供它即让右侧面板对**任何** agent 可用 —— 面板的启用判据不再是「agent 是否声明了
+   * panelRight 槽」。本组件对 pane 内容**零认知**:只把它与 agent 的声明合并后交给 PanesHost,
+   * 不知道里面是文件浏览器还是会话信息。领域内容留在 app 层(SES-H1 宿主中立线的同类纪律)。
+   *
+   * 不传、或其 panes 为空 → 行为与本特性实施前逐字一致(Req 1.7)。
+   */
+  readonly hostPaneSource?: PaneSource;
+  /**
+   * 宿主 realm 的具名信号,透传给 PanesHost(承载会话信息等)。
+   * 语义是最后值即真值;pane 晚连、重连、刷新重建都不丢。
+   */
+  readonly paneSignals?: Readonly<Record<string, unknown>>;
+  /** 合并期的拒绝记录回调(诊断出口);不传则内部按 warn 级输出。 */
+  readonly onPaneMergeRejections?: (rejections: readonly PaneMergeRejection[]) => void;
+  /**
+   * panelRight 让位的「初始」比例(对话区 : 右侧面板);扩展声明 panelRight 或宿主提供内置
+   * pane 时生效。宿主据此渲染段控切换器,运行时可在 居中/2:1/3:7 间动态切换;缺省 `2:1`。
    */
   readonly panelRatio?: PanelRatio;
   /**
@@ -340,6 +368,9 @@ export function PiChat({
   registry = defaultRendererRegistry,
   extension,
   extensionBaseUrl,
+  hostPaneSource,
+  paneSignals,
+  onPaneMergeRejections,
   slots,
   gateUntilReady,
   suggestionsPresets,
@@ -931,7 +962,70 @@ export function PiChat({
   // ControlStore.states——故声明 panelRight 的 webext 须在空闲期常开该流,否则命令后的快照更新丢失
   // (计数停初值 / 画廊新图不进廊)。与 contributions/artifact 同理需要持久下行通道;由 `!isBusy`
   // 门控保证仅空闲期开(prompt 期由 per-prompt 流处理 control 帧,不重蹈 prompt-流回归)。
-  const hasSurfacePanel = extension?.slots?.panelRight !== undefined;
+  // ───────────────────────────────────────────────────────────────────────────
+  // 宿主内置 panes(spec host-builtin-panes,Req 1.x/2.x/3.x/5.x)
+  //
+  // 装载分派的**唯一**判定处,下面的 hasSurfacePanel / hasPanelRight 都从这里派生。
+  // 三态而非二态:
+  //   legacy-slot → agent 自带 panelRight 槽渲染器,走旧路径,内置 panes 让位(Req 1.2)
+  //   host-panes  → 由本组件渲染 PanesHost,定义 = 内置 ⊕ agent 声明
+  //   none        → 两者都没有,面板整体不渲染(Req 1.7,逐字回到本特性实施前)
+  //
+  // ★ 合并是**渲染期纯计算**,不放进 effect —— 否则首帧无定义,PanesHost 会以空定义建连,
+  //   产生一次无效握手(既有 pane 时序缺陷的同一症状族)。
+  const agentPaneDecl = extension?.panes;
+  const paneMerge = React.useMemo(() => {
+    const sources: PaneSource[] = [];
+    if (hostPaneSource !== undefined) sources.push(hostPaneSource);
+    if (agentPaneDecl !== undefined) {
+      sources.push({
+        kind: "agent",
+        origin: extension?.manifestId ?? "agent",
+        // agent 侧声明键是 panes-kit 定义的**最小结构镜像**(两包刻意无依赖边),此处交由
+        // mergePaneSources → definePanes 做真正的校验。镜像与 canonical 的双向可赋值断言
+        // 落在本层的测试里(见任务 6.2)。
+        definition: agentPaneDecl as PaneSource["definition"],
+      });
+    }
+    if (sources.length === 0) return undefined;
+    return mergePaneSources(sources);
+  }, [hostPaneSource, agentPaneDecl, extension?.manifestId]);
+  const mergedPanes = paneMerge?.definition;
+  // agent 声明的 pane 交互配置(交互模式/tab 重排/命令面板/事件目标):领域中立地原样透传。
+  // 迁移到声明键之前这是 agent 自己给 PanesHost 的 prop —— 不透传就会静默丢失那些能力。
+  const agentPaneConfig = agentPaneDecl?.config as
+    | React.ComponentProps<typeof PanesHost>["config"]
+    | undefined;
+  // 拒绝记录在**会话装载期**上报,不推迟到用户点开 pane(Req 3.4)。
+  const paneRejections = paneMerge?.rejections;
+  React.useEffect(() => {
+    if (paneRejections === undefined || paneRejections.length === 0) return;
+    if (onPaneMergeRejections !== undefined) {
+      onPaneMergeRejections(paneRejections);
+      return;
+    }
+    for (const rejection of paneRejections) {
+      log.warn("pane source rejected", {
+        origin: rejection.origin,
+        kind: rejection.kind,
+        scope: rejection.scope,
+        paneIds: rejection.paneIds,
+        reason: rejection.reason,
+        detail: rejection.detail,
+      });
+    }
+  }, [paneRejections, onPaneMergeRejections]);
+
+  // panelRight 区域是唯一被注入 `surface`(WebExtSurfaceAccess)的区域(launcherRail 拿不到 surface,
+  // 见画布域 web.config 注释)。agent-authoritative-surface / AIGC 画布域的 surface 命令在**空闲期**
+  // 触发,其权威快照回流(control:"state",key=surface:<domain>)只能由空闲控制流承载并应用进
+  // ControlStore.states——故承载 surface 的面板须在空闲期常开该流,否则命令后的快照更新丢失
+  // (计数停初值 / 画廊新图不进廊)。与 contributions/artifact 同理需要持久下行通道;由 `!isBusy`
+  // 门控保证仅空闲期开(prompt 期由 per-prompt 流处理 control 帧,不重蹈 prompt-流回归)。
+  //
+  // ★ 宿主内置 panes 同样经该区域注入 surface,故判据必须一并涵盖 —— 漏掉会表现为
+  //   「pane 起来了、能力也对,但 agent 快照永不更新」,而那极易被误判成 agent 没发快照。
+  const hasSurfacePanel = mergedPanes !== undefined;
   // 空闲控制流开启条件:有贡献点(Tier3 回包)/ artifact rpc / panelRight surface 槽 / 就绪握手未就绪期
   //(接粘性 session-status)/ 扩展命令窗口(extCtrlActive,承载 fire-and-forget 命令的 ctx.ui 反馈)。
   const needsIdleControl =
@@ -1319,7 +1413,33 @@ export function PiChat({
   const lay = layoutClassNames(layout);
 
   // panelRight 让位比例解析:仅扩展声明 panelRight 时启用切换器;artifact-only aside 沿用固定 w-96。
-  const hasPanelRight = extension?.slots?.panelRight !== undefined;
+  // ★ 与上方 hasSurfacePanel 同源:旧槽 ∨ 合并出了内置/agent panes。两者必须同时改 ——
+  // 一个控制面板容器与宽度/比例控件,另一个控制空闲控制流,只改一处会让两者对不上。
+  const hasPanelRight = mergedPanes !== undefined;
+
+  /**
+   * 宿主装载路径下 pane 可见的具名信号。
+   *
+   * 旧槽路径有 `syncSignal` / `livePreviewImage` 两个专有 prop,而 PanesHost 的接口里没有 ——
+   * 它只有统一的具名信号通道。故此处把两者**并入信号**,使两条路径的注入面语义等价。
+   * 这不是可选的细节:轮末同步信号缺失曾直接表现为「LLM 生了图,画廊不更新」。
+   *
+   * 宿主保留 `host:` 前缀命名信号;调用方经 `paneSignals` 传入的键原样保留(后写覆盖,
+   * 使 app 层可按需覆盖宿主默认值)。
+   */
+  // 宿主环境信号族(spec panes-only-right-panel 任务 1.4):主题与对话流焦点。
+  // 只在真的会渲染 pane 时启用 —— 无人消费就不该往文档上挂监听、打样式钩子。
+  const environmentSignals = useHostEnvironmentSignals(mergedPanes !== undefined);
+
+  const hostPaneSignals = React.useMemo<Readonly<Record<string, unknown>>>(
+    () => ({
+      ...environmentSignals,
+      "host:syncSignal": panelSyncSignal,
+      ...(livePreviewImage !== undefined ? { "host:livePreviewImage": livePreviewImage } : {}),
+      ...(paneSignals ?? {}),
+    }),
+    [environmentSignals, panelSyncSignal, livePreviewImage, paneSignals],
+  );
   const hasArtifactAside =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
   const panelRatioActive = hasPanelRight;
@@ -2033,27 +2153,29 @@ export function PiChat({
                 data-pi-panel-content
                 style={{ width: panelContentWidth ?? "100%" }}
               >
-                <SlotHost
-                  ext={extension}
-                  slot="panelRight"
-                  state={webextState}
+                {/*
+                  右侧面板的**唯一**机制(spec panes-only-right-panel):定义 = 宿主内置 ⊕
+                  agent 声明键。旧的具名槽分派已删除 —— 它收的是宿主同 realm 的渲染物,
+                  与 pane 的隔离模型不可兼容,且它的存在迫使内置 pane 在声明了该槽的 agent 下
+                  整体让位。
+                */}
+                <PanesHost
+                  definition={mergedPanes}
                   surface={surfaceAccess}
                   upload={uploadAttachment ?? defaultUploadAttachment}
                   baseUrl={client?.baseUrl ?? ""}
-                  syncSignal={panelSyncSignal}
                   {...(sessionId !== undefined ? { sessionId } : {})}
-                  // 宿主转发:当前轮流式 AIGC 图像预览(由糊变清)——图已随对话流到浏览器,slot 直接复用。
-                  {...(livePreviewImage !== undefined ? { livePreviewImage } : {})}
-                  // 会话能力对象(契约 §4.2 能力对象注入):slot 组件经 conversation.submitUserMessage
-                  // 把操作组装成用户消息发进对话流,由 LLM 调工具执行 —— 操作天然回流对话历史。
                   conversation={conversation}
-                  // 过渡别名(@deprecated):onSubmitPrompt 与 conversation.submitUserMessage 等价,
-                  // 保留一个大版本供既有 slot 消费者零破坏(Req 6.2/6.4)。
-                  onSubmitPrompt={(text: string) => doSend(text)}
-                  // 领域中立注入:把当前已装载的扩展描述符以数组形态搬运给 slot 组件,slot 自行按需
-                  // 提取消费(宿主不解析)。当前宿主只持有单个 extension,故注入单元素数组;多扩展装载
-                  // 就绪时此处天然扩展为完整数组,注入面无需再改。
-                  extensions={extension !== undefined ? [extension] : []}
+                  // 共享状态接入:宿主访问器与 pane 侧接口形状一致(读/订阅/写/删),直接透传。
+                  // 授权在 pane 定义里逐键声明,这里不做任何放宽。
+                  {...(webextState !== undefined ? { state: webextState } : {})}
+                  // ★ 轮末同步信号与流式预览图以**具名信号**并入 —— pane 接口没有这两个专有 prop。
+                  // 少任何一项都是静默失效面:轮末同步缺失曾表现为「LLM 生了图,画廊不更新」。
+                  signals={hostPaneSignals}
+                  {...(agentPaneConfig !== undefined ? { config: agentPaneConfig } : {})}
+                  onHostError={(error) => {
+                    log.error("pane host error", { code: error.code, message: error.message });
+                  }}
                 />
               </div>
             </div>

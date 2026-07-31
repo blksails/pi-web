@@ -85,7 +85,7 @@ export const ComponentWiringSchema = z.object({
   /** 插件点:宿主 defineWebExtension 配置里的目标键。 */
   point: z.enum(["canvasPlugins", "renderers", "slots"]),
   /**
-   * 具名槽 key(仅 point:"slots" 有意义,业务校验要求必填;如 `panelRight`/
+   * 具名槽 key(仅 point:"slots" 有意义,业务校验要求必填;如 `sidebarLeft`/
    * `launcherRail`/`promptToolbar`)。自由字符串:宿主槽位集合是开放的,不在契约层钉死。
    */
   slot: z.string().min(1).optional(),

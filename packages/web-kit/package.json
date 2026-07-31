@@ -6,7 +6,8 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./build": "./build/index.ts"
+    "./build": "./build/index.ts",
+    "./build/pane-document": "./build/pane-document.ts"
   },
   "bin": {
     "pi-web": "./build/cli.ts"

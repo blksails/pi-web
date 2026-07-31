@@ -99,16 +99,32 @@ export function createVisionRunner(
       if (isAborted(signal)) return fail("aborted", "取图后被中止");
 
       // 3) 选模型。
+      const configuredDefault = deps.defaultModel();
       const picked = await selectVisionModel({
         requested: params.model,
         registry: ctx.modelRegistry,
         ui: ctx.hasUI ? ctx.ui : undefined,
         hasUI: ctx.hasUI,
-        defaultModel: deps.defaultModel(),
+        defaultModel: configuredDefault,
       });
       if ("ok" in picked && picked.ok === false) return picked;
       const model = picked as Model<Api>;
       const key = modelKey(model);
+
+      // 选择来自**交互弹层**时静默记住(C 方案:用一次就不再问)。
+      //
+      // 判据是「本次既没有显式 model 参数、也没有已配置默认」——那么 selectVisionModel 唯一
+      // 可能走的就是弹层分支。不直接问 selectVisionModel「你走了哪条路」是为了不改它的返回契约;
+      // 这两个条件在此处已完全可知。
+      //
+      // 只在这一种情况下写:显式 `params.model` 是一次性指定(LLM 传的,不代表用户取向),
+      // 已配置默认则本就是它自己。
+      if (
+        (params.model === undefined || params.model === "") &&
+        (configuredDefault === undefined || configuredDefault === "")
+      ) {
+        deps.rememberModel?.(key);
+      }
 
       if (isAborted(signal)) return fail("aborted", "选模型后被中止");
 

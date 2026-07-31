@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
 import type { WebExtension } from "@blksails/pi-web-kit";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 
 function withMessages(msgs: UIMessage[]) {
   return mockSession({
@@ -134,14 +135,21 @@ describe("layout 预设 (Req 7.2/10.4)", () => {
     expect(document.querySelector("[data-pi-chat-aside]")).toBeNull();
   });
 
-  it("split + panelRight 让位区内容时渲染 aside", () => {
+  it("split + 右侧面板有内容时渲染 aside", () => {
+    // ★ 夹具改用 pane 声明键(任务 5.3):右侧面板槽已废弃。本用例测的是 **split 布局在有
+    // 面板内容时渲染 aside**,只需面板出现 —— 原先断言槽内 testid,现改为断言 pane 宿主在场
+    // (pane 内容在 iframe 里,宿主 realm 查不到,这是隔离形态的必然而非保护面缩水)。
     const ext: WebExtension = {
       manifestId: "split-with-panel",
-      slots: { panelRight: <div data-testid="split-panel" /> },
+      panes: definePanes({
+        id: "split-with-panel",
+        initialPaneIds: ["p"],
+        panes: [{ id: "p", title: "P", document: { kind: "inline", srcDoc: "<!doctype html><p>p</p>" }, capabilities: {} }],
+      }),
     };
     render(<PiChat session={mockSession()} layout="split" extension={ext} />);
     expect(document.querySelector("[data-pi-chat-aside]")).not.toBeNull();
-    expect(screen.getByTestId("split-panel")).toBeInTheDocument();
+    expect(document.querySelector("[data-panes-host]")).not.toBeNull();
   });
 });
 

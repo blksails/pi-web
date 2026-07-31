@@ -3,9 +3,7 @@
  * Req 1.3/2.1/2.3/2.5/7.1)。
  */
 import { describe, expect, it } from "vitest";
-import type {
-  GatewayModelEntry,
-} from "@blksails/pi-web-server";
+import type { GatewayModelEntry } from "@blksails/pi-web-server";
 import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 import {
   RUNNER_AI_GATEWAY_BASE_ENV,

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type FrameLocator, type Page } from "@playwright/test";
 
 /**
  * aigc-canvas **沙盒(e2b baked)Chrome e2e** —— 真实链路全功能面验收。
@@ -16,7 +16,7 @@ import { test, expect, type Page } from "@playwright/test";
  *    行为面一致(对比验证)。
  *
  * 用例序(serial,共享一个会话;真实生成为昂贵操作,只做一次,后续用例围绕其产物展开):
- *  T1 装配面(免 LLM):就绪握手 → 4:6 布局 → launcher 入口 → 画廊挂载 available=true 空
+ *  T1 装配面(免 LLM):就绪握手 → 4:6 布局 → 画廊 pane 挂载 available=true 空
  *     → slash 补全(/img-gen、/img-edit)→ agent routes(gallery-stats 零值结构)
  *  T2 真实生成闭环:对话流指令 → LLM 调 image_generation → 产物落 S3 附件 → 轮末 auto-sync
  *     画廊 +1 → **presigned displayUrl 真实可加载**(S3 X-Amz-Expires ≤ 7 天;曾抓 10 年 TTL
@@ -69,10 +69,29 @@ async function waitTurnEnd(page: Page, timeoutMs: number): Promise<void> {
   });
 }
 
+/**
+ * 画廊 pane 的 iframe(isolated-panes Wave 5 迁移后)。
+ *
+ * 迁移前画廊在宿主同 realm,靠点 `[data-canvas-launcher]` 打开;现在它是 `PanesHost` 里的
+ * 独立 iframe,由 `initialPaneIds: ["canvas"]` 开箱即在 —— 入口按钮已随迁移撤掉
+ * (`canvasOpenStore` 不跨 realm,留着会是死按钮)。
+ */
+function canvasFrame(page: Page): FrameLocator {
+  return page.frameLocator("[data-panes-host] iframe");
+}
+
+/** 等画廊 pane 建连就绪(沙箱链路更慢,超时给足)。 */
+async function waitCanvasPane(page: Page): Promise<FrameLocator> {
+  await expect(page.locator("[data-panes-host]")).toBeVisible({ timeout: 60_000 });
+  const frame = canvasFrame(page);
+  await expect(frame.locator("[data-canvas-gallery]")).toBeVisible({ timeout: 60_000 });
+  return frame;
+}
+
 test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
   let sessionUrl: string;
 
-  test("T1 装配面:就绪/布局/入口/画廊/slash 补全/agent routes", async ({ page }) => {
+  test("T1 装配面:就绪/布局/画廊 pane/slash 补全/agent routes", async ({ page }) => {
     await startSession(page, CANVAS_SOURCE);
     sessionUrl = page.url();
 
@@ -82,12 +101,22 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
       "4:6",
     );
 
-    // launcherRail 入口 → 画廊挂载(真实 agent 注册了 canvas surface → available=true;空)。
-    await page.locator("[data-canvas-launcher]").click();
-    const gallery = page.locator("[data-canvas-gallery]");
-    await expect(gallery).toBeVisible();
-    await expect(gallery).toHaveAttribute("data-canvas-available", "true");
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(0);
+    // 画廊 pane 开箱即在(真实 agent 注册了 canvas surface → available=true;空)。
+    const frame = await waitCanvasPane(page);
+    await expect(frame.locator("[data-canvas-gallery]")).toHaveAttribute(
+      "data-canvas-available",
+      "true",
+    );
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(0);
+
+    // pane 侧统计条:经受授权的 gallery-stats route 取数(pane → route.query),
+    // 与下方外部 HTTP 调用读的是同一 handler —— 两条路径都验,少一条就分不清是
+    // 「route 挂了」还是「pane 的能力授予没生效」。
+    await expect(frame.locator("[data-testid=gallery-stats]")).toHaveAttribute(
+      "data-assets",
+      "0",
+      { timeout: 60_000 },
+    );
 
     // slash 补全:装配期声明帧(aigcSlashCompletions)。
     const input = page.locator("[data-pi-input-textarea]");
@@ -121,8 +150,7 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
     test.setTimeout(300_000);
     await page.goto(sessionUrl);
     await expect(page.locator("[data-pi-input-textarea]")).toBeEnabled({ timeout: 60_000 });
-    await page.locator("[data-canvas-launcher]").click();
-    await expect(page.locator("[data-canvas-gallery]")).toBeVisible();
+    const frame = await waitCanvasPane(page);
 
     await sendChat(
       page,
@@ -132,10 +160,12 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
     );
 
     // 轮末 auto-sync:生成产物经附件 store(S3)收编进画廊 —— 不刷新页面。
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 240_000 });
+    // pane 形态下这条靠 web.config 的宿主侧包装器补发 run("canvas","sync")(syncSignal 不过 pane 协议)。
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 240_000 });
 
     // presigned displayUrl 真实可加载(回归守卫:S3 presign TTL 超 604800s 被 400 拒签)。
-    const img = page.locator("[data-canvas-cell] img").first();
+    // ★ iframe 内的 img:CSP 已放行 img-src blob:/data:/http(s):,故这里同时验了 pane 文档的 CSP。
+    const img = frame.locator("[data-canvas-cell] img").first();
     await expect(img).toBeVisible();
     const loaded = await img.evaluate(
       (el: HTMLImageElement) =>
@@ -157,12 +187,12 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
     expect(stats).toMatchObject({ assets: 1, byOrigin: { "tool-output": 1 } });
   });
 
-  test("T3 刷新回放:粘性 control:state 回放,画廊快照仍在", async ({ page }) => {
+  test("T3 刷新回放:粘性 control:state 回放,画廊快照仍在(pane 重建后)", async ({ page }) => {
     await page.goto(sessionUrl);
     await expect(page.locator("[data-session-active]")).toBeVisible({ timeout: 60_000 });
-    await page.locator("[data-canvas-launcher]").click();
-    await expect(page.locator("[data-canvas-gallery]")).toBeVisible();
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 30_000 });
+    // pane iframe 整个重建 + 重新握手,iframe 内没有任何存活前端状态可依赖 —— 比同 realm 回放更强。
+    const frame = await waitCanvasPane(page);
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 30_000 });
   });
 
   test("T4 A 档二创经对话流:快捷设置偏好 → 工作台指令 edit → image_edit → 新图进画廊", async ({
@@ -180,12 +210,12 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
     await page.locator("[data-aigc-size-select]").click();
     await page.locator('[role="option"][title="1024x1024"]').click();
 
-    await page.locator("[data-canvas-launcher]").click();
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 30_000 });
+    const frame = await waitCanvasPane(page);
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(1, { timeout: 30_000 });
 
     // 点格子 → 工作台。
-    await page.locator("[data-canvas-cell]").first().click();
-    await expect(page.locator("[data-canvas-workbench]")).toBeVisible();
+    await frame.locator("[data-canvas-cell]").first().click();
+    await expect(frame.locator("[data-canvas-workbench]")).toBeVisible();
 
     // A 档:生成经对话流(A 方案)——组装 image_edit 指令经 /messages 发用户消息。
     const promptCalls: string[] = [];
@@ -195,9 +225,10 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
         promptCalls.push(req.url());
       }
     });
-    await page.locator("[data-canvas-prompt]").fill("把画面色调调成黄昏暖色");
-    await page.locator('[data-canvas-action="edit"]').click();
-    await expect.poll(() => promptCalls.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await frame.locator("[data-canvas-prompt]").fill("把画面色调调成黄昏暖色");
+    await frame.locator('[data-canvas-action="edit"]').click();
+    // pane 里点「生成」经 conversation 能力穿回宿主发用户消息 —— 跨边界成功的证据。
+    await expect.poll(() => promptCalls.length, { timeout: 20_000 }).toBeGreaterThan(0);
 
     // 操作回流对话历史:用户气泡含 image_edit。
     await expect(
@@ -205,26 +236,27 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
     ).toContainText("image_edit");
 
     // LLM 真实编辑 → 轮末 auto-sync → 关工作台回画廊,产物 +1(共 2 格)。
-    await page.locator("[data-canvas-workbench-close]").click();
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(2, { timeout: 240_000 });
+    await frame.locator("[data-canvas-workbench-close]").click();
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(2, { timeout: 240_000 });
   });
 
   test("T5 B 档客户端二创:旋转 → 上传 att_ → register 回流画廊", async ({ page }) => {
     test.setTimeout(180_000);
     await page.goto(sessionUrl);
     await expect(page.locator("[data-pi-input-textarea]")).toBeEnabled({ timeout: 60_000 });
-    await page.locator("[data-canvas-launcher]").click();
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(2, { timeout: 30_000 });
+    const frame = await waitCanvasPane(page);
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(2, { timeout: 30_000 });
 
-    await page.locator("[data-canvas-cell]").first().click();
-    await expect(page.locator("[data-canvas-workbench]")).toBeVisible();
+    await frame.locator("[data-canvas-cell]").first().click();
+    await expect(frame.locator("[data-canvas-workbench]")).toBeVisible();
 
-    // B 档旋转:宿主注入 upload 后启用;源图能加载(presign 已修)→ 客户端旋转产物上传回流。
-    const rotate = page.locator("[data-canvas-b-rotate]");
+    // B 档旋转:pane 的 upload 能力(capabilities.attachments="read-write")放行后启用;
+    // 源图能加载(presign 已修)→ iframe 内客户端旋转产物经协议转移给宿主上传回流。
+    const rotate = frame.locator("[data-canvas-b-rotate]");
     await expect(rotate).toBeEnabled();
     await rotate.click();
-    await page.locator("[data-canvas-workbench-close]").click();
-    await expect(page.locator("[data-canvas-cell]")).toHaveCount(3, { timeout: 60_000 });
+    await frame.locator("[data-canvas-workbench-close]").click();
+    await expect(frame.locator("[data-canvas-cell]")).toHaveCount(3, { timeout: 60_000 });
   });
 
   test("T6 视觉识别(显式 model):image_vision 委派视觉模型回答图片内容", async ({ page }) => {
@@ -272,13 +304,12 @@ test.describe.serial("aigc-canvas 沙盒真实链路(同会话贯穿)", () => {
   });
 });
 
-test("T8 退化:非 canvas source 不挂载入口/画廊,对话照常(真实 LLM)", async ({ page }) => {
+test("T8 退化:非 canvas source 不挂载画廊 pane,对话照常(真实 LLM)", async ({ page }) => {
   test.setTimeout(240_000);
   await startSession(page, HELLO_SOURCE);
 
-  // 无 surface:canvas 探针 + 未声明 canvas 槽 → 不挂载。
-  await expect(page.locator("[data-canvas-launcher]")).toHaveCount(0);
-  await expect(page.locator("[data-canvas-gallery]")).toHaveCount(0);
+  // 未声明 canvas webext → 宿主不挂载 PanesHost,也就没有画廊 iframe。
+  await expect(page.locator("[data-panes-host]")).toHaveCount(0);
 
   // 独立性:真实 LLM 对话可用。
   await sendChat(page, "只回复两个字:你好");

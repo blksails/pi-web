@@ -73,6 +73,8 @@ const sqlitePath =
   path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-sqlite-")), "sessions.db");
 process.env.PI_WEB_E2E_FS_ROOT = fsRoot;
 process.env.PI_WEB_E2E_SQLITE_PATH = sqlitePath;
+// fs 档的附件落盘目录:主进程与 stub 子进程共用(secret 一并钉死,见下方 webServer env)。
+const fsAttachmentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-fs-attach-"));
 
 // Isolated pi agent config dir for the e2e servers (PI_WEB_AGENT_DIR override).
 // Two reasons:
@@ -274,6 +276,14 @@ export default defineConfig({
               PORT: String(PORT_FS),
               SESSION_STORE: "fs",
               SESSION_STORE_ROOT: fsRoot,
+              // ★ 钉死附件目录 + secret(与 attach 档同一已知坑):缺省时主进程用**随机** secret
+              // 且不写回 env,stub 子进程签出的 /raw URL 一律 401。
+              //
+              // canvas e2e 需要它,是因为 B 档 register 要签出**真实 HTTP 分发 URL** ——
+              // 此前一律 data: URI,而 data: 不受 CORS 约束,于是 pane 里带
+              // `crossOrigin="anonymous"` 的舞台主图永远走不到跨源路径,真机裂图 e2e 却全绿。
+              PI_WEB_ATTACHMENT_DIR: fsAttachmentDir,
+              PI_WEB_ATTACHMENT_SECRET: "pi-e2e-attachment-stable-secret",
             },
           },
           {

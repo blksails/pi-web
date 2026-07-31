@@ -14,8 +14,8 @@ export const LayoutPresetSchema = z.string();
 export type LayoutPreset = z.infer<typeof LayoutPresetSchema>;
 
 /**
- * panelRight 让位比例(对话区 : 右侧领域检视面板)。声明的是「初始」比例;
- * 宿主在有 panelRight 时渲染一个段控切换器,允许运行时在四档间动态切换:
+ * 右侧面板 让位比例(对话区 : 右侧领域检视面板)。声明的是「初始」比例;
+ * 宿主在有 右侧面板 时渲染一个段控切换器,允许运行时在四档间动态切换:
  * - `centered` 收起面板、对话居中(经典版面);
  * - `2:1` 对话 ~66% / 面板 ~33%;
  * - `4:6` 对话 40% / 面板 60%(面板主导,适合 Canvas 等创作台型 agent);
@@ -26,9 +26,9 @@ export type PanelRatio = z.infer<typeof PanelRatioSchema>;
 
 /**
  * 日志面板位置(声明式,per-source 覆盖宿主全局默认):
- * - `bottom`(默认)对话区下方;`right` 进右侧 aside 与 panelRight 垂直堆叠;
+ * - `bottom`(默认)对话区下方;`right` 进右侧 aside 与 右侧面板 垂直堆叠;
  * - `drawer` 底部抽屉;`top` 对话区上方。
- * 占 panelRight 的 source(如 Canvas)宜声明 `bottom`,避免日志面板挤占右侧 aside。
+ * 占 右侧面板 的 source(如 Canvas)宜声明 `bottom`,避免日志面板挤占右侧 aside。
  */
 export const LogsPanelPositionSchema = z.enum(["bottom", "right", "drawer", "top"]);
 export type LogsPanelPosition = z.infer<typeof LogsPanelPositionSchema>;
@@ -63,10 +63,10 @@ export type EmptyConfig = z.infer<typeof EmptyConfigSchema>;
 export const WebExtConfigSchema = z.object({
   theme: ThemeTokensSchema.optional(),
   layout: LayoutPresetSchema.optional(),
-  /** panelRight 让位的初始比例(运行时可由宿主切换器改写)。 */
+  /** 右侧面板 让位的初始比例(运行时可由宿主切换器改写)。 */
   panelRatio: PanelRatioSchema.optional(),
   /**
-   * panelRight 连续拖拽模式的初始像素宽度。存在即由宿主以受控模式接入 PiChat
+   * 右侧面板 连续拖拽模式的初始像素宽度。存在即由宿主以受控模式接入 PiChat
    * `panelWidth/onPanelWidthChange`，并隐藏离散比例切换器。
    */
   panelWidth: z.number().finite().int().min(240).max(4096).optional(),
@@ -74,7 +74,7 @@ export const WebExtConfigSchema = z.object({
   minPanelWidth: z.number().finite().int().min(160).max(4096).optional(),
   /** 连续拖拽最大宽度；仅与 panelWidth 同时生效。 */
   maxPanelWidth: z.number().finite().int().min(240).max(8192).optional(),
-  /** 日志面板位置(覆盖宿主全局默认);占 panelRight 的 source 宜声明 `bottom`。 */
+  /** 日志面板位置(覆盖宿主全局默认);占 右侧面板 的 source 宜声明 `bottom`。 */
   logsPanelPosition: LogsPanelPositionSchema.optional(),
   empty: EmptyConfigSchema.optional(),
   /**

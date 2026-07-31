@@ -58,7 +58,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
     expect(canvasUi).toBeTypeOf("object");
   });
 
-  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4) + collectCanvasPluginBundles(task 3.1),共 45 项,无内部件泄漏(快照)", () => {
+  it("出口纪律:包根值导出=8 文件并集 + generate-actions 2 项 + resolveToolRailTitle(task 3.4) + collectCanvasPluginBundles(task 3.1),共 47 项(含跨 realm 的 canvasFocusStore/useCanvasFocus,pane 车道据此驱动工作台目标图),无内部件泄漏(快照)", () => {
     expect(Object.keys(canvasUi).sort()).toEqual([
       "ANNOTATION_COLOR",
       "ANNOTATION_PALETTE",
@@ -78,6 +78,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "buildSurfaceOp",
       "buildToolPrompt",
       "buildVisionOp",
+      "canvasFocusStore",
       "canvasOpenStore",
       "canvasViewStore",
       "clampRect",
@@ -103,6 +104,7 @@ describe("@blksails/pi-web-canvas-ui public exports", () => {
       "rotatedSize",
       "strokesToMask",
       "uploadDataUri",
+      "useCanvasFocus",
       "useCanvasOpen",
       "useCanvasView",
     ]);

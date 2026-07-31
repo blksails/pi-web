@@ -34,5 +34,10 @@ export {
   __setAigcModelsFetchImpl,
   __resetAigcModelsCache,
 } from "./fields/aigc-model-toggles-field.js";
+export {
+  VisionModelSelectField,
+  __setVisionModelsFetchImpl,
+  __resetVisionModelsCache,
+} from "./fields/vision-model-select-field.js";
 export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
 export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";

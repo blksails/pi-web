@@ -21,9 +21,7 @@ import {
   RUNNER_AI_GATEWAY_MODELS_ENV,
   isSessionCapableGatewayModel,
 } from "@blksails/pi-web-adapters/ai-gateway/index.js";
-import type {
-  GatewayModelEntry,
-} from "@blksails/pi-web-server";
+import type { GatewayModelEntry } from "@blksails/pi-web-server";
 import type { AiGatewayConfig } from "@blksails/pi-web-adapters/ai-gateway/index.js";
 
 /**

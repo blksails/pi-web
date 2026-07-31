@@ -14,13 +14,13 @@
     "vite.config.ts"
   ],
   "scripts": {
-    "dev": "node scripts/dev-all.mjs",
+    "dev": "pnpm build:builtin-panes && node scripts/dev-all.mjs",
     "dev:e2b": "cross-env PI_WEB_TRANSPORT=e2b node scripts/dev-all.mjs",
     "dev:e2b:local": "node scripts/dev-e2b-local.mjs",
     "dev:acs": "node scripts/dev-acs.mjs",
     "dev:client": "vite",
     "build": "pnpm build:dist",
-    "build:client": "pnpm build:webext-examples && vite build",
+    "build:client": "pnpm build:builtin-panes && pnpm build:webext-examples && vite build",
     "build:server": "node scripts/build-server.mjs",
     "build:agent-image": "node scripts/build-agent-image.mjs",
     "build:dist": "pnpm build:client && pnpm build:server && node scripts/pack-dist.mjs && pnpm build:unpacker && pnpm build:payload",
@@ -60,7 +60,8 @@
     "e2e:runtime:conc": "node e2e/runtime-payload/concurrency.mjs",
     "e2e:runtime:recovery": "node e2e/runtime-payload/recovery.mjs",
     "e2e:desktop:corrupt": "node e2e/desktop/desktop-corrupt-payload.mjs",
-    "build:webext-examples": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-webext-examples.ts"
+    "build:webext-examples": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-webext-examples.ts",
+    "build:builtin-panes": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-builtin-panes.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.0",

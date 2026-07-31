@@ -39,6 +39,7 @@ import {
   ModelSelectField,
   NamespaceTogglesField,
   AigcModelTogglesField,
+  VisionModelSelectField,
 } from "@blksails/pi-web-ui";
 
 let registered = false;
@@ -148,6 +149,9 @@ export function registerConfigPanels(): void {
   registerFieldRendererByKey("logNamespaceToggles", NamespaceTogglesField);
   // AIGC 图像「模型开关」自定义控件（aigcModelToggles widget 键;清单来自 GET /api/aigc/models）。
   registerFieldRendererByKey("aigcModelToggles", AigcModelTogglesField);
+  // 视觉模型选择(visionModelSelect widget;清单来自 GET /api/vision/models)。
+  // ★ 该字段双向:用户在此设,`image_vision` 也会在用户于弹层选过后写回同一字段。
+  registerFieldRendererByKey("visionModelSelect", VisionModelSelectField);
 
   // 扩展:一个「扩展」菜单项 + 全局/项目 Tab。固定区=Slash 命令可用性,KV 区=per-扩展参数。
   // - 全局:写 `~/.pi/agent/settings.json`。

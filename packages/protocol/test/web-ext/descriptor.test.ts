@@ -9,7 +9,8 @@ import {
 
 describe("SlotKey", () => {
   it("accepts known slot keys", () => {
-    for (const k of ["background", "panelRight", "accessoryInlineLeft", "artifactSurface"]) {
+    // 右侧面板槽已删除(spec panes-only-right-panel);其余保留槽一个不少。
+    for (const k of ["background", "sidebarLeft", "accessoryInlineLeft", "artifactSurface"]) {
       expect(SlotKeySchema.safeParse(k).success).toBe(true);
     }
   });
@@ -27,7 +28,7 @@ describe("WebExtConfig (Tier 5 declarative)", () => {
     expect(r.success).toBe(true);
   });
 
-  it("accepts controlled panelRight width and rejects unsafe bounds", () => {
+  it("accepts controlled side-panel width and rejects unsafe bounds", () => {
     expect(WebExtConfigSchema.safeParse({
       panelWidth: 760,
       minPanelWidth: 420,
@@ -62,7 +63,7 @@ describe("WebExtensionDescriptorMeta", () => {
   it("accepts a meta with slots + artifact", () => {
     const r = WebExtensionDescriptorMetaSchema.safeParse({
       manifestId: "acme",
-      slots: ["panelRight", "headerCenter"],
+      slots: ["sidebarLeft", "headerCenter"],
       artifact: { entry: "artifact.html", initialHeight: 240 },
     });
     expect(r.success).toBe(true);

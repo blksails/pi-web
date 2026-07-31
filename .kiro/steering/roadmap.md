@@ -262,24 +262,29 @@ HTTP 层在引擎上;前端(react/ui)与后端经协议解耦;整站与扩展管
   以及 `cloud` 形态如何判定;③ 若引入,本地 web 形态下 `IdentityGate` 旁路、identity/auth
   路由不挂载、前端不出现登录页。**先把工作区那笔改动提交并观察**,再定 ②③ 是否还必要 ——
   可能已无需完整三形态。_Dependencies: none_
-- [~] **sessions-list** — 会话活跃态显示:server 侧从 `PiSession` 聚合「生成中 / 工具调用中 /
-  空闲」并经实时通道下推,列表 DTO 增活跃态字段(现
-  `packages/core/src/session-list/session-list-routes.ts` **无任何**活跃态字段),
-  `packages/ui/src/elements/session-list-panel.tsx` 的列表项在非空闲时显示转圈 loading。
-  ⚠ **本条已被新 spec `session-meta-index` 全包吸收**(2026-07-30 discovery 定夺:活跃态与
-  会话展示元数据「帽子」同一批文件、同一端点,拆开会在 DTO/routes/panel 三处交叠)——
-  勿在 `sessions-list` 上另行实现。_Dependencies: none_
+- [x] **sessions-list** — 会话活跃态显示。⚠ **已被 `session-meta-index` 全包吸收并完成**
+  (2026-07-30 discovery 定夺:活跃态与会话展示元数据「帽子」同一批文件、同一端点,拆开会在
+  DTO/routes/panel 三处交叠)—— 勿在 `sessions-list` 上另行实现。_Dependencies: none_
 
 ### Specs (dependency order)
 
-- [ ] **session-meta-index** — 会话展示元数据「帽子」+ 工作状态:集中索引文件
-  (`~/.pi/agent/piweb-session-index.json`,置于 sessions 目录**外**)承载 `title`/`icon`/
-  `agentSource`,经端口注入、sqlite/postgres 改落库列;根治 `enrichDisplayNames` 每项顺读整份
-  jsonl(session-list-routes.ts:137);`SessionListItem.source`(rest-dto.ts:223)由空壳变为真有值;
-  活跃态由 `SessionSnapshot.busy` 经 `GET /sessions` 聚合投影(**不落盘**),面板非空闲转圈。
-  jsonl 字节格式零改动。★ 主风险 = 集中索引的多进程并发写(pi-web × N / 桌面版 / CLI)整文件替换
-  会丢别人的键 → 须锁下 RMW + tmp+rename,且索引仅为缓存、可从 jsonl 重建。
-  _Dependencies: none_ · brief: `.kiro/specs/session-meta-index/brief.md`
+- [x] **session-meta-index** — 会话展示元数据「帽子」+ 列表工作状态(2026-07-31 完成,5 提交)。
+  - **帽子**:`SessionMetaIndex` 端口 + **三条实现** —— 整份 JSON 文件(本地默认,带跨进程锁)/
+    每会话一键的 Workspace 实现(云端,经 `HostDeps.sessionMetaIndex` 注入 TenantWorkspace)/
+    SQLite 行存储(本地重度,事务+WAL,无需自制锁)。存 `title`/`agentSource`,jsonl 字节格式零改动。
+    三条由**一致性套件**(同一批断言跑三遍)共同验收。根治 `enrichDisplayNames` 每项顺读整份
+    jsonl:索引全命中时该页历史文件读取次数为 **0**(实测);`SessionListItem.source` 由空壳变真有值。
+  - **状态**:工作中 / 请求人操作 / 异常三态,由 `SessionSnapshot.busy` + lifecycle +
+    extension-ui 挂起表(按 method 过滤交互类)投影,**不落盘**;面板 spinner / 闪烁圆点 / 图标。
+  - **来源色条**:由来源标识确定性派生(取代原计划的 icon —— agent 定义里本就没有图标字段)。
+  - **刷新**:轮次开始/结束 + 交互挂起边沿 bump,外加按需轮询(忙 5s / 闲 15s,页面隐藏不跑)。
+  - ★ 顺带发现并修:`showSource` 门控宿主从未传过(source 有值也不显示)、默认路径没跟随
+    `PI_WEB_AGENT_DIR`(测试会写进用户真实 `~/.pi/agent`)、原子写 `.tmp` 残留。
+  - _Dependencies: none_ · spec: `.kiro/specs/session-meta-index/`
+
+- [x] **sessions-list 全局化**(同批完成,破坏性变更)— 会话列表**恒为全局**,不再按项目目录区分:
+  移除 `scope`/`cwd`/`sessionId` 请求参数、`globalEnabled` 响应字段与部署门控、面板双 Tab。
+  列表项保留 `cwd`,项目归属仍可见。
 
 ### Direct Implementation Candidates
 

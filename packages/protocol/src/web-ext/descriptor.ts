@@ -31,7 +31,6 @@ export const SlotKeySchema = z.enum([
   "headerCenter",
   "headerRight",
   "sidebarLeft",
-  "panelRight",
   "empty",
   "footer",
   "promptInput",

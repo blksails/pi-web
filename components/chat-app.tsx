@@ -46,6 +46,7 @@ import {
   useIdentity,
 } from "./auth/use-identity.js";
 import { IdentityGate } from "./auth/login-page.js";
+import { builtinPaneSource, buildSessionSignals } from "../lib/app/builtin-panes/index.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -643,33 +644,51 @@ function SessionView({
   );
   const extension = buildTimeExtension ?? runtimeWebext.extension;
 
-  // panelRight 连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
+  // 右侧面板的连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
   // extension/source 切换时重置，避免把上一个 Agent 的用户拖拽宽度泄漏到下一个 Agent。
   const configuredPanelWidth = extension?.config?.panelWidth;
   const [panelWidth, setPanelWidth] = React.useState<number | undefined>(configuredPanelWidth);
   React.useEffect(() => {
     setPanelWidth(configuredPanelWidth);
   }, [extension?.manifestId, configuredPanelWidth]);
-  const hasPanelRight = extension?.slots?.panelRight !== undefined;
+  // 宿主内置 pane 来源(spec host-builtin-panes)。清单为空(如构建产物缺席)时为 undefined,
+  // 此时判据退回「只看 agent 有无贡献」,即本特性实施前的行为(Req 1.7)。
+  const hostPaneSource = React.useMemo(() => builtinPaneSource(), []);
+  // 会话事实 → 具名信号。cwd 是**创建请求里的值**;agent 侧解析后可能另有其所(如内置
+  // default-agent 的 cwd 由 resolver 设为用户工作目录),故 pane 的字段语义是「请求的工作目录」。
+  const paneSignals = React.useMemo(
+    () =>
+      buildSessionSignals({
+        sessionId: session.sessionId,
+        agentSource: create.source,
+        cwd: create.cwd,
+      }),
+    [session.sessionId, create.source, create.cwd],
+  );
+  // ★ 判据须与 PiChat 内部的同名判据**同源**:两项输入(内置来源 / agent 声明键)任一存在
+  // 即有面板。不同步会导致「外层容器与内层内容一个显示一个不显示」。
+  // (旧的具名槽分支已随 spec panes-only-right-panel 删除。)
+  const hasSidePanel =
+    hostPaneSource !== undefined || extension?.panes !== undefined;
   const configuredPanelRatio = extension?.config?.panelRatio;
-  const [panelRightOpen, setPanelRightOpen] = React.useState(
-    () => hasPanelRight && configuredPanelRatio !== "centered",
+  const [sidePanelOpen, setSidePanelOpen] = React.useState(
+    () => hasSidePanel && configuredPanelRatio !== "centered",
   );
   React.useEffect(() => {
-    setPanelRightOpen(hasPanelRight && configuredPanelRatio !== "centered");
-  }, [extension?.manifestId, configuredPanelRatio, hasPanelRight]);
+    setSidePanelOpen(hasSidePanel && configuredPanelRatio !== "centered");
+  }, [extension?.manifestId, configuredPanelRatio, hasSidePanel]);
   const effectivePanelRatio: React.ComponentProps<typeof PiChat>["panelRatio"] =
-    !hasPanelRight || !panelRightOpen
+    !hasSidePanel || !sidePanelOpen
       ? "centered"
       : configuredPanelRatio === undefined || configuredPanelRatio === "centered"
         ? "2:1"
         : configuredPanelRatio;
   const togglePanelRight = React.useCallback(() => {
-    setPanelRightOpen((open) => !open);
+    setSidePanelOpen((open) => !open);
   }, []);
   // 收起态：入口在应用右上。展开态：按钮退到 pane 分隔线左侧，免遮 pane tabs。
-  const panelRightToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
-    if (!panelRightOpen) return undefined;
+  const sidePanelToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
+    if (!sidePanelOpen) return undefined;
     const width =
       panelWidth ??
       (effectivePanelRatio === "3:7"
@@ -680,7 +699,7 @@ function SessionView({
     return {
       right: `calc(${typeof width === "number" ? `${width}px` : width} + 1rem)`,
     };
-  }, [effectivePanelRatio, panelRightOpen, panelWidth]);
+  }, [effectivePanelRatio, sidePanelOpen, panelWidth]);
 
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
@@ -1072,16 +1091,16 @@ function SessionView({
             <PanelToggleIcon />
           </button>
         ) : null}
-        {hasPanelRight ? (
+        {hasSidePanel ? (
           <button
             type="button"
             data-panel-right-toggle
             onClick={togglePanelRight}
-            aria-expanded={panelRightOpen}
-            aria-label={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            title={t(panelRightOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${panelRightOpen ? "" : " right-2"}`}
-            style={panelRightToggleStyle}
+            aria-expanded={sidePanelOpen}
+            aria-label={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            title={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
+            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${sidePanelOpen ? "" : " right-2"}`}
+            style={sidePanelToggleStyle}
           >
             <PanelRightIcon />
           </button>
@@ -1112,10 +1131,12 @@ function SessionView({
           logsPanelPosition={logsPanelPosition ?? "bottom"}
           loggingEnabled={loggingEnabled}
           {...(extension !== undefined ? { extension } : {})}
+          {...(hostPaneSource !== undefined ? { hostPaneSource } : {})}
+          paneSignals={paneSignals}
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
             : {})}
-          {...(hasPanelRight ? { panelRatio: effectivePanelRatio } : {})}
+          {...(hasSidePanel ? { panelRatio: effectivePanelRatio } : {})}
           {...(panelWidth !== undefined
             ? {
                 panelWidth,

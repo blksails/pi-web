@@ -66,7 +66,6 @@ export default defineWebExtension({
     headerCenter: <Slot id="header-center" label="Header C" />,
     headerRight: <Slot id="header-right" label="Header R" />,
     sidebarLeft: <Slot id="sidebar-left" label="Sidebar L" />,
-    panelRight: <Slot id="panel-right" label="Panel Right" />,
     toolbar: <Slot id="toolbar" label="Toolbar" />,
     accessoryAboveEditor: <Slot id="accessory-above" label="Above Editor" />,
     accessoryBelowEditor: <Slot id="accessory-below" label="Below Editor" />,
