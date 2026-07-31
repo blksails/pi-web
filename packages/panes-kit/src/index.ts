@@ -62,3 +62,14 @@ export { observePaneResizeFrame } from "./resize-frame.js";
 export type { PaneResizeFrame } from "./resize-frame.js";
 export { connectPaneGuest } from "./guest.js";
 export type { PaneGuestConnection, PaneGuestEvents, PaneGuestSurface } from "./guest.js";
+export {
+  observePanesHostPresence,
+  observeAllPanesHostsInDocument,
+  isPanesHostElementVisible,
+  createDefaultPanesHostPresenceBackend,
+} from "./host-presence.js";
+export type {
+  PanesHostPresenceState,
+  PanesHostPresenceBackend,
+  ObservePanesHostPresenceOptions,
+} from "./host-presence.js";

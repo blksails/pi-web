@@ -45,6 +45,7 @@ import {
   tauriPaneDocumentUrl,
 } from "../adapters/tauri-runtime.js";
 import type { TauriPaneMountTarget } from "../adapters/tauri.js";
+import { observePanesHostPresence } from "../host-presence.js";
 import { PaneLoadingSkeleton } from "./pane-guest.js";
 import {
   PANES_WORKSPACE_DOMAIN,
@@ -389,6 +390,21 @@ export function PanesHost({
     };
   }, []);
 
+  // 公共能力：监控 data-panes-host 挂载/可见 → 无挂载销毁、不可见隐藏、可见恢复。
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const el = hostRoot.current;
+    if (el === null) return undefined;
+    return observePanesHostPresence(el, {
+      onStateChange: (state) => {
+        if (state === "visible") {
+          window.dispatchEvent(new Event("pi-panes-content-well-sync"));
+          window.dispatchEvent(new Event("pi-panes-restore-visible"));
+        }
+      },
+    });
+  }, []);
+
   React.useEffect(() => {
     if (!nativeLayoutActive || typeof window === "undefined") return undefined;
     const well = contentWellRef.current;
@@ -475,13 +491,14 @@ export function PanesHost({
   }, []);
 
   React.useEffect(() => () => {
-    // Ordinary route unmount hides the child WebViews; session-boundary cleanup above
-    // remains the only path that disposes them. This preserves one WebView per pane.
+    // 组件卸载：observePanesHostPresence dispose 会 destroyAll native webview。
+    // 此处只清 React 侧挂载表与连接；OS 侧由 host-presence 统一销毁。
     for (const instanceId of [...connections.current.keys()]) closeConnection(instanceId, false);
     for (const mount of nativeMounts.current.values()) {
       mount.disposed = true;
       if (mount.readyTimeout !== undefined) clearTimeout(mount.readyTimeout);
       mount.stopReady?.();
+      // presence 已负责 destroy；此处避免双重 close 竞态，仅 suspend 标记。
       mount.handle?.suspend?.();
     }
     nativeMounts.current.clear();

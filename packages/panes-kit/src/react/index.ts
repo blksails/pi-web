@@ -24,3 +24,14 @@ export type {
   TauriPaneLayoutMode,
   TauriPaneLayoutMetrics,
 } from "../adapters/tauri-runtime.js";
+export {
+  observePanesHostPresence,
+  observeAllPanesHostsInDocument,
+  isPanesHostElementVisible,
+  createDefaultPanesHostPresenceBackend,
+} from "../host-presence.js";
+export type {
+  PanesHostPresenceState,
+  PanesHostPresenceBackend,
+  ObservePanesHostPresenceOptions,
+} from "../host-presence.js";
