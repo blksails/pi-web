@@ -1012,11 +1012,22 @@ export function PanesHost({
            });
            setNativeReadyKeys((current) => new Set(current).add(fallbackKey));
            bindConnection(instance, pane, handle.port, (connected) => handle.port.post(connected), false, true);
+          // ready 后先推 content-well 几何，再 show（强制 workspace + z-order）。
+          if (contentWellRef.current !== null) {
+            void publishTauriContentWellMetrics(contentWellRef.current, { minWidth: 240 });
+          }
+          window.dispatchEvent(new Event("pi-panes-content-well-sync"));
           if (
             !nativeOccludedRef.current &&
-            workspaceRef.current.activeInstanceId === instance.instanceId
-          ) handle.show();
-          else handle.hide();
+            workspaceRef.current.activeInstanceId === instance.instanceId &&
+            !parkedRef.current.has(instance.instanceId)
+          ) {
+            void Promise.resolve(handle.show()).then(() => {
+              window.dispatchEvent(new Event("pi-panes-restore-visible"));
+            });
+          } else {
+            handle.hide();
+          }
         });
       }).catch((reason: unknown) => {
         if (mount.disposed) return;

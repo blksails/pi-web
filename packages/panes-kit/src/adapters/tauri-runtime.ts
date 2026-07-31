@@ -244,12 +244,13 @@ export function publishTauriContentWellMetrics(
 ): Promise<void> {
   const target = options.target ?? window;
   const rect = well.getBoundingClientRect();
-  if (!(rect.width > 0) || !(rect.height > 0)) return Promise.resolve();
+  // 槽宽高过小（侧栏收起/未布局）勿上报，避免把 Rust 槽压成 1×1 白屏。
+  if (!(rect.width >= 48) || !(rect.height >= 48)) return Promise.resolve();
   const bottomHeight = Math.max(0, target.innerHeight - rect.bottom);
   return setTauriPaneLayoutMetrics({
     leftWidth: Math.max(0, rect.left),
     topHeight: Math.max(0, rect.top),
-    paneWidth: Math.max(1, rect.width),
+    paneWidth: Math.max(48, rect.width),
     bottomHeight,
     minWidth: options.minWidth ?? 240,
   }, target);

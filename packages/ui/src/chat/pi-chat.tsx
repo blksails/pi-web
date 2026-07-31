@@ -760,20 +760,12 @@ export function PiChat({
     },
     [],
   );
-  const applyPanelResizePreview = React.useCallback((asideWidthPx: number): void => {
-    const tree = panelResizeTreeRef.current?.getBoundingClientRect();
+  // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交（避免 chat 跟手重排）。
+  const applyAsideWidthPreview = React.useCallback((asideWidthPx: number): void => {
     const aside = panelAsideRef.current;
-    const conversation = panelConversationColumnRef.current;
     if (aside === null) return;
-    const treeWidth = tree?.width ?? asideWidthPx;
-    // 对话列与侧栏同帧贴合，避免 absolute 侧栏与冻结对话列之间露白缝。
-    const conversationWidth = Math.max(0, treeWidth - asideWidthPx);
     aside.style.width = `${asideWidthPx}px`;
-    if (conversation !== null) {
-      conversation.style.width = `${conversationWidth}px`;
-      conversation.style.flex = `0 0 ${conversationWidth}px`;
-    }
-    // 通知 PanesHost 立刻重采 content-well → native child 跟槽，消抖白缝。
+    // 仅 pane content-well 跟侧栏；主 chat 列不动。
     window.dispatchEvent(new Event("pi-panes-content-well-sync"));
   }, []);
   const onPanelResizeMove = React.useCallback(
@@ -797,10 +789,10 @@ export function PiChat({
       panelResizeFrameRef.current = requestAnimationFrame(() => {
         panelResizeFrameRef.current = undefined;
         const width = panelPendingWidthRef.current;
-        if (width !== undefined) applyPanelResizePreview(width);
+        if (width !== undefined) applyAsideWidthPreview(width);
       });
     },
-    [applyPanelResizePreview, minPanelWidth, maxPanelWidth, maxPanelWidthRatio],
+    [applyAsideWidthPreview, minPanelWidth, maxPanelWidth, maxPanelWidthRatio],
   );
   const onPanelResizeDown = React.useCallback(
     (e: React.PointerEvent) => {
@@ -817,16 +809,11 @@ export function PiChat({
             ? panelWidth
             : undefined;
       panelPendingWidthRef.current = currentWidth;
-      if (currentWidth !== undefined) {
-        applyPanelResizePreview(currentWidth);
-        setPanelConversationWidth(
-          Math.max(
-            0,
-            (panelResizeTreeRef.current?.getBoundingClientRect().width ?? currentWidth) -
-              currentWidth,
-          ),
-        );
-      }
+      // 冻结对话列当前宽，拖拽全程不变；侧栏 absolute 叠在其上。
+      setPanelConversationWidth(
+        panelConversationColumnRef.current?.getBoundingClientRect().width,
+      );
+      if (currentWidth !== undefined) applyAsideWidthPreview(currentWidth);
       setPanelDragging(true);
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -834,7 +821,7 @@ export function PiChat({
         // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
       }
     },
-    [applyPanelResizePreview, panelWidth],
+    [applyAsideWidthPreview, panelWidth],
   );
   const onPanelResizeUp = React.useCallback(
     (e: React.PointerEvent) => {
@@ -845,15 +832,11 @@ export function PiChat({
       }
       const width = panelPendingWidthRef.current;
       panelPendingWidthRef.current = undefined;
-      if (width !== undefined) applyPanelResizePreview(width);
+      if (width !== undefined) applyAsideWidthPreview(width);
+      // 松手后 idle 帧才提交受控宽并解冻对话列，避免拖中 chat 重排。
       panelResizeIdleRef.current = scheduleIdleFrame(() => {
         panelResizeIdleRef.current = undefined;
         if (width !== undefined) onPanelWidthChange?.(width);
-        // 清掉预览 inline，交回受控 width / flex。
-        if (panelConversationColumnRef.current !== null) {
-          panelConversationColumnRef.current.style.width = "";
-          panelConversationColumnRef.current.style.flex = "";
-        }
         setPanelDragging(false);
         setPanelConversationWidth(undefined);
         window.dispatchEvent(new Event("pi-panes-content-well-sync"));
@@ -864,7 +847,7 @@ export function PiChat({
         // 同上。
       }
     },
-    [applyPanelResizePreview, onPanelWidthChange],
+    [applyAsideWidthPreview, onPanelWidthChange],
   );
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);

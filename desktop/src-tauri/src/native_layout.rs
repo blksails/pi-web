@@ -283,18 +283,29 @@ impl NativeWebviewLayoutManager {
         );
         let webviews = window.webviews();
         if let Some(host) = webviews.iter().find(|view| view.label() == HOST_WEBVIEW_LABEL) {
+            // host 铺满供 chat/tabs；仅在尺寸变化时 set_bounds，避免每帧 show 抢 z-order 盖住 pane。
             host.set_bounds(to_rect(host_bounds))
                 .map_err(|e| e.to_string())?;
-            host.show().map_err(|e| e.to_string())?;
             if mode == LayoutMode::HostFullscreen {
+                host.show().map_err(|e| e.to_string())?;
                 host.set_focus().map_err(|e| e.to_string())?;
             }
         }
-        // Pane 共享右侧槽：始终用 Rust 计算的 pane_bounds，勿回落 create 时
-        // 从前端 display:none 槽采到的 1×1 / 屏幕坐标转换误差（会导致切 tab 白屏）。
+        // metrics 尚未上报时 pane 槽可能过小 → 回落右栏默认，避免 1×1 白屏。
+        let mut slot = pane_bounds;
+        if mode == LayoutMode::Workspace && (slot.width < 48.0 || slot.height < 48.0) {
+            let fallback_w = (logical_width * 0.34).max(280.0).min(logical_width.max(1.0));
+            slot = PaneBounds {
+                x: (logical_width - fallback_w).max(0.0),
+                y: 0.0,
+                width: fallback_w,
+                height: logical_height.max(1.0),
+            };
+        }
+        // Pane 共享右侧槽；后设 bounds + show，保证压在 host 之上。
+        let mut top_label: Option<String> = None;
         for (label, _recorded_bounds, recorded_visible, keep_alive, initialized, _last_active) in panes
         {
-            // 浮动菜单 webview 不进槽表；若误注册也跳过，避免压到 content-well。
             if label.starts_with("pane-overlay") {
                 continue;
             }
@@ -308,12 +319,20 @@ impl NativeWebviewLayoutManager {
                 view.hide().map_err(|e| e.to_string())?;
                 continue;
             }
-            view.set_bounds(to_rect(pane_bounds))
+            view.set_bounds(to_rect(slot))
                 .map_err(|e| e.to_string())?;
             if recorded_visible {
                 view.show().map_err(|e| e.to_string())?;
+                top_label = Some(label);
             } else {
                 view.hide().map_err(|e| e.to_string())?;
+            }
+        }
+        // 最后再 focus 当前可见 pane，防止 host set_bounds 后仍盖住 child。
+        if let Some(label) = top_label {
+            if let Some(view) = webviews.iter().find(|view| view.label() == label) {
+                let _ = view.show();
+                let _ = view.set_focus();
             }
         }
         Ok(())

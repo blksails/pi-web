@@ -556,20 +556,27 @@ pub async fn pane_webview_window_create(
             }
             // content pane：忽略屏幕坐标，以 window+metrics 槽为准。
             let _ = (x, y, width, height);
+            // 创建即进入 workspace，避免卡在 HostFullscreen 导致永远 hide。
+            let _ = layout.set_mode(crate::native_layout::LayoutMode::Workspace);
             let provisional = PaneBounds {
                 x: 0.0,
                 y: 0.0,
-                width: 1.0,
-                height: 1.0,
+                width: 320.0,
+                height: 480.0,
             };
             if let Some(existing) = parent
                 .webviews()
                 .into_iter()
                 .find(|view| view.label() == label)
             {
-                let _ = existing.hide();
+                // 复用实例须重新导航，否则可能停在空白页。
+                existing.navigate(url).map_err(|e| e.to_string())?;
                 layout.register_pane(label, provisional, visible, true)?;
                 layout.apply_layout(&app)?;
+                if visible {
+                    let _ = existing.show();
+                    let _ = existing.set_focus();
+                }
                 return Ok(());
             }
             let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(url.clone()))
@@ -582,9 +589,15 @@ pub async fn pane_webview_window_create(
                 )
                 .map_err(|e| e.to_string())?;
             view.set_auto_resize(false).map_err(|e| e.to_string())?;
-            let _ = view.hide();
-            layout.register_pane(label, provisional, visible, true)?;
+            // 先 register 再 layout；visible=false 时仍占位尺寸，ready 后 show 顶起。
+            layout.register_pane(label.clone(), provisional, visible, true)?;
             layout.apply_layout(&app)?;
+            if visible {
+                view.show().map_err(|e| e.to_string())?;
+                let _ = view.set_focus();
+            } else {
+                let _ = view.hide();
+            }
             return Ok(());
         }
         #[cfg(not(feature = "unstable"))]
@@ -689,16 +702,24 @@ pub fn pane_webview_window_control(
                         let _ = view.set_focus();
                         return Ok(());
                     }
+                    // 必须先退出 HostFullscreen，否则 apply_layout 会继续 hide 全部 content。
+                    layout.set_mode(crate::native_layout::LayoutMode::Workspace)?;
                     layout.set_pane_visibility(&label, true)?;
-                    layout.apply_layout(&app)
+                    layout.apply_layout(&app)?;
+                    // 再顶一次 z-order（host 全窗时尤为关键）。
+                    view.show().map_err(|e| e.to_string())?;
+                    let _ = view.set_focus();
+                    Ok(())
                 }
                 "hide" => {
                     let view = find_view()?;
                     if floating {
                         return view.hide().map_err(|e| e.to_string());
                     }
+                    // tab 切换：记 visible=false 并 hide。勿 apply_layout（会误触其它 pane 的 show 路径）。
+                    // hide_all / HostFullscreen 不走此分支，不抹记忆。
                     layout.set_pane_visibility(&label, false)?;
-                    layout.apply_layout(&app)
+                    view.hide().map_err(|e| e.to_string())
                 }
                 "reload" => find_view()?.reload().map_err(|e| e.to_string()),
                 "focus" => find_view()?.set_focus().map_err(|e| e.to_string()),
