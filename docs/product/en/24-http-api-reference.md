@@ -52,7 +52,7 @@ server/index.ts  (Hono host, default PORT=3000)
 | Session queries | `GET /sessions/:id/state`, `/stats`, `/messages`, `/commands`, `/models`, `/fork-messages`, `/completion` |
 | Agent-declared routes | `GET /sessions/:id/agent-routes`, `GET·POST /sessions/:id/agent-routes/:name` |
 | Configuration | `GET·PUT /config/:domain`, `GET /config/models` |
-| Model enumeration (tool side) | `GET /aigc/models`, `GET /vision/models` |
+| Model enumeration (by type) | `GET /config/models?input=&output=` |
 | Attachments | `POST /sessions/:id/attachments`, `GET /attachments/:id/raw` |
 
 > The full prefix for every endpoint on the browser/curl side is `/api/**` (the handler's internal routes carry no `/api`; that is aligned by `sse.basePath`). webext and `/bootstrap` are mounted directly by the host; everything else goes through `app.all('/api/*')` → handler.
@@ -790,45 +790,57 @@ When the `listModelOptions` seam is not configured, returns `{ "providers": [], 
 
 ## Model Enumeration API — Tool-Side Model Enumeration
 
-Two **read-only** endpoints that feed the AIGC/vision tools' settings controls and the Canvas picker with model lists. They are independent of the text-conversation models (`/config/models` and `GET /sessions/:id/models`): image/vision models do not go through `models.json`/`ModelRegistry`, but through their own module-level route tables (see [11 · AIGC & Vision Tools](11-aigc-and-vision-tools.md)).
+> ⚠ **Changed (spec multi-gateway-providers, task 4.3)**: `GET /api/aigc/models` and
+> `GET /api/vision/models` have been **removed**. Their capability is covered by type
+> filtering on the unified catalog endpoint `GET /api/config/models` — the model catalog
+> is no longer split into per-purpose endpoints; it is one list queried by **input/output type**.
 
-### GET /api/aigc/models — List the AIGC Image-Model Catalog
+### Filtering models by type (replaces both endpoints above)
 
-Used by the "model switches" custom widget on `/settings` for enumeration (that page has no session state, so it cannot get the `aigc.models` delivered at runtime by `aigcExtension`). The data source is the tool-kit main entry's pure `AIGC_MODEL_CATALOG` (zero pi SDK). The "disabled models" read/write goes through the standard config domain `/api/config/aigc` (persisted to `<agentDir>/aigc.json`), not here.
+`GET /api/config/models` accepts `input` / `output` query parameters over the value domain
+`text` / `image` / `video` / `audio`. Entries use unified field names:
+`{ provider, id, name, input, output, source }`.
+
+| Old endpoint | Equivalent query | Meaning |
+|---|---|---|
+| `GET /api/aigc/models` | `GET /api/config/models?output=image` | Image **generation** models (produce images) |
+| `GET /api/vision/models` | `GET /api/config/models?input=image&output=text` | Vision **understanding** models (read images, produce text) |
+
+★ The vision list must also constrain `output=text`: filtering on `input=image` alone would
+pull in image-to-image / editing models (`input` contains `image`, `output` is `image`),
+which is not what "vision understanding" means.
+
+★ The composite `value` (`provider/modelId`) that the old endpoint returned is **no longer
+produced server-side**; consumers compose `${provider}/${id}` themselves. Existing
+`visionModel` values stored in `aigc.json` therefore keep their format.
 
 **Success response** 200:
 
 ```json
 {
+  "providers": ["anthropic", "cloudflare", "blksails-ai"],
   "models": [
-    { "model": "gemini-3.1-flash-image", "label": "Gemini 3.1 Flash Image", "provider": "openrouter" }
+    {
+      "provider": "anthropic",
+      "id": "claude-opus-4-5",
+      "name": "Claude Opus 4.5",
+      "input": ["text", "image"],
+      "output": ["text"],
+      "source": "self"
+    }
   ]
 }
 ```
 
-> **Implementation reference**: `packages/server/src/aigc-settings/aigc-models-routes.ts:14`
-
-### GET /api/vision/models — List Available Vision Models
-
-Read-only, returns the list of models "with configured credentials and image-input support," for the vision-model picker in the Canvas prompt bar. `value` is `provider/modelId`, which can be **passed verbatim** into the `image_vision` tool's `model` parameter (note this format must not be mixed with the bare ids of image-generation models).
-
-**Success response** 200:
-
-```json
-{
-  "models": [
-    { "value": "anthropic/claude-opus-4-5", "label": "Claude Opus 4.5", "provider": "anthropic" }
-  ]
-}
-```
-
-**Degradation**: if fetching throws (e.g. `models.json` corrupt) → returns **200 + an empty list**, rather than leaking a 500 to the frontend; the frontend degrades to "pick the model from the tool's popover," and the readout feature still works.
+**Degradation**: if the lookup throws (e.g. corrupt `models.json`) the endpoint returns
+**200 + an empty list** rather than surfacing a 500 to the frontend.
 
 ```bash
-curl http://localhost:3000/api/vision/models
+curl 'http://localhost:3000/api/config/models?input=image&output=text'
 ```
 
-> **Implementation reference**: `packages/server/src/vision-settings/vision-models-routes.ts:27`
+> **Implementation reference**: `packages/core/src/http/routes/config-routes.ts`, `packages/core/src/model-catalog/service.ts`
+
 
 ---
 
@@ -1049,7 +1061,7 @@ The following steps demonstrate the complete flow from creating a session to rec
 - [04 · Surface Authoritative Surface Stack](04-surface-stack.md) — the author side of the state-injection bridge (`getSessionState`) and the `control:state` frame context
 - [06 · Configuration](06-configuration.md) — environment variables such as `PI_WEB_HIDE_PROVIDERS`, `PI_WEB_ATTACHMENT_SECRET`, and the `NEXT_PUBLIC_*` gates
 - [09 · Attachment System](09-attachment-system.md) — the full mechanism of attachment storage, signed URLs, and the tool-bridge
-- [11 · AIGC & Vision Tools](11-aigc-and-vision-tools.md) — the tool semantics of `GET /aigc/models` and `GET /vision/models`
+- [11 · AIGC & Vision Tools](11-aigc-and-vision-tools.md) — tool semantics for image/vision models (list retrieval now folded into `GET /config/models` type filtering)
 - [14 · Sessions List](14-sessions-list.md) — `GET /sessions` pagination/gating and the `/bootstrap` runtime features
 - [18 · CLI](18-cli.md) — usage of bin/pi-web.mjs for standalone deployment
 - [19 · Deployment & Operations](19-deployment.md) — the esbuild single-file `dist/server.mjs` artifact and production CSP

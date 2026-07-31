@@ -52,7 +52,7 @@ server/index.ts  (Hono 宿主, 默认 PORT=3000)
 | 会话查询 | `GET /sessions/:id/state`、`/stats`、`/messages`、`/commands`、`/models`、`/fork-messages`、`/completion` |
 | Agent 声明式 routes | `GET /sessions/:id/agent-routes`、`GET·POST /sessions/:id/agent-routes/:name` |
 | 配置 | `GET·PUT /config/:domain`、`GET /config/models` |
-| 模型枚举（工具侧） | `GET /aigc/models`、`GET /vision/models` |
+| 模型枚举（按类型筛选） | `GET /config/models?input=&output=` |
 | 附件 | `POST /sessions/:id/attachments`、`GET /attachments/:id/raw` |
 
 > 所有端点在浏览器/curl 侧的完整前缀是 `/api/**`（handler 内部路由不含 `/api`，由 `sse.basePath` 对齐）。webext 与 `/bootstrap` 由宿主直挂，其余经 `app.all('/api/*')` → handler。
@@ -784,45 +784,52 @@ curl -X DELETE http://localhost:3000/api/sessions/sess_abc
 
 ## Model Enumeration API — 工具侧模型枚举
 
-两条**只读**端点，为 AIGC/视觉工具的设置控件与 Canvas 选择器提供模型清单。它们独立于文本对话模型（`/config/models` 与 `GET /sessions/:id/models`）：图像/视觉模型不走 `models.json`/`ModelRegistry`，而是各自模块级路由表（详见 [11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md)）。
+> ⚠ **已变更（spec multi-gateway-providers 任务 4.3）**：`GET /api/aigc/models` 与
+> `GET /api/vision/models` **已删除**。两者的能力由统一目录端点 `GET /api/config/models`
+> 的类型筛选覆盖 —— 模型目录不再按用途分裂成多个端点，而是同一份清单按**输入/输出类型**查询。
 
-### GET /api/aigc/models — 列出 AIGC 图像模型目录
+### 按类型筛选模型（顶替上述两个端点）
 
-供 `/settings` 的「模型开关」自定义 widget 列举（该页无会话态，拿不到 `aigcExtension` 运行期下发的 `aigc.models`）。数据源是 tool-kit 主入口的纯 `AIGC_MODEL_CATALOG`（零 pi SDK）。「被禁模型」的读写走标准 config 域 `/api/config/aigc`（落 `<agentDir>/aigc.json`），不在此。
+`GET /api/config/models` 接受 `input` / `output` 两个查询参数，取值域 `text` / `image` /
+`video` / `audio`。条目字段统一为 `{ provider, id, name, input, output, source }`。
 
-**成功响应** 200：
+| 旧端点 | 等价查询 | 说明 |
+|---|---|---|
+| `GET /api/aigc/models` | `GET /api/config/models?output=image` | 图像**生成**模型（产出图像） |
+| `GET /api/vision/models` | `GET /api/config/models?input=image&output=text` | 视觉**理解**模型（读图产出文本） |
 
-```json
-{
-  "models": [
-    { "model": "gemini-3.1-flash-image", "label": "Gemini 3.1 Flash Image", "provider": "openrouter" }
-  ]
-}
-```
+★ 视觉清单必须同时限定 `output=text`：只按 `input=image` 会把图生图/图像编辑模型
+（`input` 含 `image`、`output` 为 `image`）一并纳入，那不是「视觉理解」要的东西。
 
-> **实现参考**：`packages/server/src/aigc-settings/aigc-models-routes.ts:14`
-
-### GET /api/vision/models — 列出可用视觉模型
-
-只读返回「已配置凭证且支持图像输入」的模型清单，供 Canvas 提示词栏的视觉模型选择器列举。`value` 是 `provider/modelId`，可**原样填进** `image_vision` 工具的 `model` 参数（注意此格式与图像生成模型的裸 id 不可混用）。
+★ 旧端点里 `value` 形如 `provider/modelId` 的复合标识**不再由服务端产出**，改由消费面
+自行拼 `${provider}/${id}`。`aigc.json` 中已存的 `visionModel` 值格式因此保持不变。
 
 **成功响应** 200：
 
 ```json
 {
+  "providers": ["anthropic", "cloudflare", "blksails-ai"],
   "models": [
-    { "value": "anthropic/claude-opus-4-5", "label": "Claude Opus 4.5", "provider": "anthropic" }
+    {
+      "provider": "anthropic",
+      "id": "claude-opus-4-5",
+      "name": "Claude Opus 4.5",
+      "input": ["text", "image"],
+      "output": ["text"],
+      "source": "self"
+    }
   ]
 }
 ```
 
-**降级**：取数抛错（如 `models.json` 损坏）→ 返回 **200 + 空清单**，而非把 500 透给前端；前端退化为「由工具弹层选择模型」，解读功能仍可用。
+**降级**：取数抛错（如 `models.json` 损坏）→ 返回 **200 + 空清单**，而非把 500 透给前端。
 
 ```bash
-curl http://localhost:3000/api/vision/models
+curl 'http://localhost:3000/api/config/models?input=image&output=text'
 ```
 
-> **实现参考**：`packages/server/src/vision-settings/vision-models-routes.ts:27`
+> **实现参考**：`packages/core/src/http/routes/config-routes.ts`、`packages/core/src/model-catalog/service.ts`
+
 
 ---
 
@@ -1043,7 +1050,7 @@ SSE 流包含两类顶层帧，由 `@blksails/pi-web-protocol` 的 `SseFrameSche
 - [04 · Surface 权威表面栈](04-surface-stack.md) — 状态注入桥的作者面（`getSessionState`）与 `control:state` 帧上下文
 - [06 · 配置](06-configuration.md) — `PI_WEB_HIDE_PROVIDERS`、`PI_WEB_ATTACHMENT_SECRET`、`NEXT_PUBLIC_*` 门控等环境变量
 - [09 · 附件系统](09-attachment-system.md) — 附件存储、签名 URL 与 tool-bridge 完整机制
-- [11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md) — `GET /aigc/models`、`GET /vision/models` 的工具语义
+- [11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md) — 图像/视觉模型的工具语义（清单取数已并入 `GET /config/models` 的类型筛选）
 - [14 · 会话列表](14-sessions-list.md) — `GET /sessions` 分页/门控与 `/bootstrap` 运行时特性
 - [18 · CLI](18-cli.md) — 独立部署时的 bin/pi-web.mjs 用法
 - [19 · 部署与运维](19-deployment.md) — esbuild 单文件 `dist/server.mjs` 产物与生产 CSP
