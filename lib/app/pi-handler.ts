@@ -54,6 +54,7 @@ import {
   sessionStoreConfigFromEnv,
   // 会话展示元数据索引(spec session-meta-index):本地文件实现 + Workspace 实现 + 端口类型。
   createLocalSessionMetaIndex,
+  JsonFileSessionMetaIndex,
   type SessionMetaIndex,
   ConfigCodec,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
@@ -721,6 +722,10 @@ function buildSingleton(): HandlerSingleton {
   // 付全量扫描的代价。fire-and-forget + 吞错:清不掉就下次启动再清,绝不阻塞装配。
   void (async (): Promise<void> => {
     try {
+      // 顺带清掉原子写留下的 tmp 残留(进程被杀时会留下,单个无害但会累积)。
+      if (sessionMetaIndex instanceof JsonFileSessionMetaIndex) {
+        await sessionMetaIndex.cleanupStaleTemps();
+      }
       const entryStore = await createSessionEntryStore(sessionStoreConfigFromEnv());
       const existing = (await entryStore.listAll()).map((m) => m.sessionId);
       const removed = await sessionMetaIndex.prune(existing);

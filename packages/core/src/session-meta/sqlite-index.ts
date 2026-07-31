@@ -47,9 +47,19 @@ CREATE TABLE IF NOT EXISTS session_meta (
 const loadNodeSqlite = (): typeof import("node:sqlite") =>
   createRequire(join(process.cwd(), "noop.cjs"))("node:sqlite");
 
-/** 默认库路径:`~/.pi/agent/piweb-session-meta.db`(在 sessions 目录**之外**,同文件实现的取位)。 */
-export function defaultSessionMetaDbPath(): string {
-  return join(homedir(), ".pi", "agent", "piweb-session-meta.db");
+/**
+ * 默认库路径:`<agentDir>/piweb-session-meta.db`(在 sessions 目录**之外**,同文件实现的取位)。
+ * 同样必须跟随 `PI_WEB_AGENT_DIR` —— 理由见 `json-file-index.ts` 的同名函数注释。
+ */
+export function defaultSessionMetaDbPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const agentDir = env["PI_WEB_AGENT_DIR"];
+  const root =
+    agentDir !== undefined && agentDir.trim().length > 0
+      ? agentDir
+      : join(homedir(), ".pi", "agent");
+  return join(root, "piweb-session-meta.db");
 }
 
 /** 解析库路径:env 覆盖优先,否则默认路径。 */
@@ -59,7 +69,7 @@ export function sessionMetaDbPathFromEnv(
   const override = env["PI_WEB_SESSION_META_DB_PATH"];
   return override !== undefined && override.length > 0
     ? override
-    : defaultSessionMetaDbPath();
+    : defaultSessionMetaDbPath(env);
 }
 
 /** 取行里的可选字符串列;NULL/空串/类型不符 → 缺省。 */

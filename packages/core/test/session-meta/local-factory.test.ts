@@ -59,3 +59,48 @@ describe("createLocalSessionMetaIndex", () => {
     (sqlite as SqliteSessionMetaIndex).close();
   });
 });
+
+describe("★ 默认路径必须跟随 PI_WEB_AGENT_DIR(否则会写进用户真实目录)", () => {
+  it("JSON 索引默认路径落在 agentDir 下", async () => {
+    const { defaultSessionMetaIndexPath, sessionMetaIndexPathFromEnv } = await import(
+      "../../src/session-meta/json-file-index.js"
+    );
+    expect(defaultSessionMetaIndexPath({ PI_WEB_AGENT_DIR: "/tmp/fake-agent" })).toBe(
+      "/tmp/fake-agent/piweb-session-index.json",
+    );
+    // env 覆盖仍优先
+    expect(
+      sessionMetaIndexPathFromEnv({
+        PI_WEB_AGENT_DIR: "/tmp/fake-agent",
+        PI_WEB_SESSION_META_INDEX_PATH: "/tmp/explicit.json",
+      }),
+    ).toBe("/tmp/explicit.json");
+    // 未设 agentDir 时才回落到用户主目录
+    expect(defaultSessionMetaIndexPath({})).toMatch(/\.pi[/\\]agent[/\\]piweb-session-index\.json$/);
+  });
+
+  it("SQLite 库默认路径落在 agentDir 下", async () => {
+    const { defaultSessionMetaDbPath, sessionMetaDbPathFromEnv } = await import(
+      "../../src/session-meta/sqlite-index.js"
+    );
+    expect(defaultSessionMetaDbPath({ PI_WEB_AGENT_DIR: "/tmp/fake-agent" })).toBe(
+      "/tmp/fake-agent/piweb-session-meta.db",
+    );
+    expect(
+      sessionMetaDbPathFromEnv({
+        PI_WEB_AGENT_DIR: "/tmp/fake-agent",
+        PI_WEB_SESSION_META_DB_PATH: "/tmp/explicit.db",
+      }),
+    ).toBe("/tmp/explicit.db");
+    expect(defaultSessionMetaDbPath({})).toMatch(/\.pi[/\\]agent[/\\]piweb-session-meta\.db$/);
+  });
+
+  it("空白 agentDir 按未设处理(不产生 ' /piweb-...' 这种路径)", async () => {
+    const { defaultSessionMetaIndexPath } = await import(
+      "../../src/session-meta/json-file-index.js"
+    );
+    expect(defaultSessionMetaIndexPath({ PI_WEB_AGENT_DIR: "   " })).toMatch(
+      /\.pi[/\\]agent[/\\]/,
+    );
+  });
+});

@@ -18,9 +18,9 @@
  *
  * 零新增依赖:互斥用 `mkdir` 的原子性实现(内核包不得引入第三方依赖)。
  */
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SessionMetaEntry, SessionMetaIndex } from "./types.js";
 
@@ -38,9 +38,23 @@ const LOCK_RETRY_MS = 25;
 /** 锁被认定为陈旧的年龄(毫秒)——覆盖持锁进程崩溃未释放的情形。 */
 const LOCK_STALE_MS = 10_000;
 
-/** 默认索引路径:`~/.pi/agent/piweb-session-index.json`(**不在** sessions 目录内)。 */
-export function defaultSessionMetaIndexPath(): string {
-  return join(homedir(), ".pi", "agent", "piweb-session-index.json");
+/**
+ * 默认索引路径:`<agentDir>/piweb-session-index.json`(**不在** sessions 目录内)。
+ *
+ * ★ 必须跟随 `PI_WEB_AGENT_DIR`(与 config-codec / local-workspace 同一惯例),不能直接取
+ *   `homedir()` —— 否则 e2e 与测试虽把 `PI_WEB_AGENT_DIR` 指到临时目录,索引仍会写进
+ *   **用户真实的** `~/.pi/agent/`。这不是理论风险:本 spec 开发期间就已经在真实目录里
+ *   留下了索引文件与多个原子写的 `.tmp` 残留。
+ */
+export function defaultSessionMetaIndexPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const agentDir = env["PI_WEB_AGENT_DIR"];
+  const root =
+    agentDir !== undefined && agentDir.trim().length > 0
+      ? agentDir
+      : join(homedir(), ".pi", "agent");
+  return join(root, "piweb-session-index.json");
 }
 
 /** 解析索引路径:env 覆盖优先,否则默认路径。 */
@@ -50,7 +64,7 @@ export function sessionMetaIndexPathFromEnv(
   const override = env["PI_WEB_SESSION_META_INDEX_PATH"];
   return override !== undefined && override.length > 0
     ? override
-    : defaultSessionMetaIndexPath();
+    : defaultSessionMetaIndexPath(env);
 }
 
 /** 磁盘格式:`{ v, sessions }`。 */
@@ -127,6 +141,36 @@ export class JsonFileSessionMetaIndex implements SessionMetaIndex {
   /** 索引文件路径(诊断/测试用)。 */
   get path(): string {
     return this.#path;
+  }
+
+  /**
+   * 清理本目录下遗留的原子写临时文件(`<索引名>.<pid>.tmp`)。
+   *
+   * 为什么需要:`#writeAtomically` 是「写 tmp → rename」两步,进程若在两步之间被杀
+   * (e2e 收尾 kill、Ctrl-C、崩溃),tmp 就永久留在那儿。单个残留无害(读路径只认索引本身),
+   * 但会随时间累积成一堆垃圾文件 —— 本 spec 开发期间就在真实目录里留下了 7 个。
+   *
+   * 只删**本索引**的 tmp(前缀匹配),不碰同目录其它文件。失败静默。
+   */
+  async cleanupStaleTemps(): Promise<number> {
+    const dir = dirname(this.#path);
+    const prefix = `${basename(this.#path)}.`;
+    let removed = 0;
+    try {
+      for (const name of await readdir(dir)) {
+        if (!name.startsWith(prefix) || !name.endsWith(".tmp")) continue;
+        try {
+          await rm(join(dir, name), { force: true });
+          removed += 1;
+        } catch {
+          /* 删不掉就留着,不影响正确性 */
+        }
+      }
+    } catch {
+      /* 目录不存在等 —— 无事可做 */
+    }
+    if (removed > 0) log.debug("removed stale index temp files", { dir, removed });
+    return removed;
   }
 
   async read(
