@@ -136,6 +136,16 @@
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
   - _Depends: 4.1_
 
+- [ ] 4.5 使网关实例声明的模态真正作用于其目录条目
+  - 第六批完整性批评 gap 4 遗留:3.1 已解析逐实例的 `_INPUT`/`_OUTPUT`,但 4.2 给网关条目写死
+    `GATEWAY_DEFAULT_MODALITY = ["text"]`,于是 design 承诺的「网关的读图模型进视觉清单」
+    至今不成立 —— 配了 `PI_WEB_GATEWAY_<ID>_INPUT=text,image` 也没有任何可观察效果
+  - 未声明模态的实例保持现有缺省(不改变零配置下的行为)
+  - 完成判据:集成测试断言给某实例声明 `input=text,image` 后,其模型出现在
+    `GET /api/config/models?input=image&output=text` 的结果里;撤掉声明即消失
+  - _Requirements: 2.4, 2.5, 3.3_
+  - _Depends: 3.1, 4.2_
+
 ## 5. 自定义 provider 配置
 
 - [ ] 5.1 定义 providers 配置域的校验与表单结构 (P)
