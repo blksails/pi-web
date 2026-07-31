@@ -5,10 +5,11 @@
  * 纯工厂:给定「本次会话是否登录 + egress 配置」,产出注入 pi SDK `createAgentSessionServices`
  * 的 `{ authStorage, modelRegistry }`。
  *
- * - 登录态:复用共享 `<agentDir>/auth.json`(`AuthStorage.create`)+ `ModelRegistry.inMemory`
- *   + `registerProvider("pi-cloud", { baseUrl:<egress>, apiKey:<桌面凭据>, authHeader:true, models })`。
- *   **纯内存零落盘**:不写 `~/.pi/agent/models.json`、不改 agentDir(守 Req 5.3/5.5);sk-gw 云端换取
- *   (B-pure),本仓 registry 只持桌面凭据、绝不含 sk-gw(Req 3.3/5.1)。
+ * - 登录态:复用共享 `<agentDir>/auth.json`(`AuthStorage.create`)+ `ModelRegistry.create` 叠加
+ *   `registerProvider("pi-cloud", { baseUrl:<egress>, apiKey:<桌面凭据>, authHeader:true, models })`。
+ *   **只读本地 `<agentDir>/models.json`、绝不写入**:磁盘上既有的自定义 provider 与覆写照常生效
+ *   (spec multi-gateway-providers 任务 2.1,Req 6.1/6.3/6.4),仍不改 agentDir、不新增文件
+ *   (守 Req 5.3/5.5);sk-gw 云端换取(B-pure),本仓 registry 只持桌面凭据、绝不含 sk-gw(Req 3.3/5.1)。
  * - 未登录/未启用:返回 `undefined` → 调用方保持 SDK 默认(共享 auth.json + models.json)。
  *
  * ⚠ provider 名固定 `pi-cloud` 命名空间:不得与 `auth.json` 已有 provider 撞名,否则 auth.json 的
@@ -142,11 +143,23 @@ export function registerEgressProvider(
   });
 }
 
-/** 构造共享 auth.json 之上的空内存 registry(两个来源共用,见 {@link EgressSpec})。 */
+/**
+ * 构造共享 auth.json + `<agentDir>/models.json` 之上的 registry(两个来源共用,见 {@link EgressSpec})。
+ *
+ * spec multi-gateway-providers 任务 2.1 缺陷修复:此前用 `ModelRegistry.inMemory` 起一个空
+ * registry,任何模型源一启用就会**替换**掉本地磁盘配置 —— 使用者在 `models.json` 里的自定义
+ * provider、内置 provider 覆写、以及以此形式提供的凭据全部消失(Req 6.1/6.3)。
+ * 改用 `ModelRegistry.create` 先加载磁盘配置,egress/ai-gateway 两个来源随后在其上**叠加**
+ * `registerProvider`(Req 6.4)—— 只读不写,不改变「不落盘」的既有约束。
+ */
 export function createSharedModelServices(agentDir: string): InjectedModelServices {
   // 复用共享 auth.json(与 SDK 默认同源),不改 agentDir。
   const authStorage = AuthStorage.create(path.join(agentDir, "auth.json"));
-  return { authStorage, modelRegistry: ModelRegistry.inMemory(authStorage) };
+  const modelRegistry = ModelRegistry.create(
+    authStorage,
+    path.join(agentDir, "models.json"),
+  );
+  return { authStorage, modelRegistry };
 }
 
 /**
