@@ -539,6 +539,18 @@ export function PanesHost({
     return () => observer.disconnect();
   }, []);
 
+  const restoreNativeVisibility = React.useCallback((): void => {
+    for (const instance of workspaceRef.current.instances) {
+      const native = nativeMounts.current.get(instance.instanceId);
+      if (native?.ready !== true) continue;
+      const active =
+        instance.instanceId === workspaceRef.current.activeInstanceId &&
+        !parkedRef.current.has(instance.instanceId);
+      if (!nativeOccludedRef.current && active) native.handle?.show();
+      else native.handle?.hide();
+    }
+  }, []);
+
   React.useLayoutEffect(() => {
     for (const instance of workspace.instances) {
       connections.current.get(instance.instanceId)?.port.post({
@@ -549,17 +561,16 @@ export function PanesHost({
             ? "visible"
             : "hidden",
       } satisfies PaneHostMessage);
-      const native = nativeMounts.current.get(instance.instanceId);
-      if (native?.ready === true) {
-        if (
-          !nativeOccluded &&
-          instance.instanceId === workspace.activeInstanceId &&
-          !parkedInstanceIds.has(instance.instanceId)
-        ) native.handle?.show();
-        else native.handle?.hide();
-      }
     }
-  }, [nativeOccluded, parkedInstanceIds, workspace.activeInstanceId, workspace.instances]);
+    restoreNativeVisibility();
+  }, [nativeOccluded, parkedInstanceIds, restoreNativeVisibility, workspace.activeInstanceId, workspace.instances]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onRestore = (): void => restoreNativeVisibility();
+    window.addEventListener("pi-panes-restore-visible", onRestore);
+    return () => window.removeEventListener("pi-panes-restore-visible", onRestore);
+  }, [restoreNativeVisibility]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -1035,6 +1046,8 @@ export function PanesHost({
       dispatch({ type: "open", paneId, instanceId: nextId(paneId) });
     }
     setPaletteOpen(false);
+    setOverlayMenuOpen(false);
+    window.dispatchEvent(new Event("pi-panes-restore-visible"));
   };
 
   const closePane = (instanceId: string): void => {
@@ -1123,76 +1136,24 @@ export function PanesHost({
   )
     ? workspace.activeInstanceId
     : undefined;
-  const openPaletteMenu = (anchor?: Element): void => {
-    if (nativeOverlay === undefined || anchor === undefined) {
-      setOverlayMenuOpen(false);
-      setPaletteOpen(true);
-      return;
-    }
-    setPaletteOpen(false);
+  // native child 盖住 host DOM 弹层：先遮挡 content webview，再开 DOM 菜单（稳、不闪）。
+  // 不再默认走第二套 overlay webview（易与 hide_all / apply_layout 竞态闪退）。
+  const openPaletteMenu = (_anchor?: Element): void => {
     setTabMenuOpen(false);
     setOverlayMenuOpen(true);
-    void nativeOverlay.open({
-      title: "新开 Pane",
-      anchor,
-      placement: anchor === hostRoot.current ? "center" : "anchor-end",
-      items: definition.panes.map((pane) => {
-        const openCount = workspace.instances.filter(
-          (instance) => instance.paneId === pane.id,
-        ).length;
-        const parked = workspace.instances.some(
-          (instance) =>
-            instance.paneId === pane.id &&
-            parkedInstanceIds.has(instance.instanceId),
-        );
-        return {
-          id: pane.id,
-          label: pane.title,
-          meta: parked
-            ? "后台保活"
-            : pane.maxInstances === UNLIMITED_PANE_COUNT
-              ? `已开 ${openCount}`
-              : `${openCount}/${pane.maxInstances}`,
-          disabled:
-            !parked &&
-            (openCount >= pane.maxInstances ||
-              workspace.instances.length >= definition.maxOpenPanes),
-        };
-      }),
-      onSelect: openPane,
-      onClose: () => setOverlayMenuOpen(false),
-    }).then(() => undefined).catch((error: unknown) => {
-      setOverlayMenuOpen(false);
-      setHostError(asPaneHostError(error));
-      setPaletteOpen(true);
-    });
+    setPaletteOpen(true);
   };
   openPaletteRequestRef.current = openPaletteMenu;
-  const openHiddenTabsMenu = (anchor: Element): void => {
-    if (nativeOverlay === undefined) {
-      setOverlayMenuOpen(false);
-      setTabMenuOpen((open) => !open);
-      return;
-    }
-    setTabMenuOpen(false);
+  const openHiddenTabsMenu = (_anchor: Element): void => {
+    setPaletteOpen(false);
     setOverlayMenuOpen(true);
-    void nativeOverlay.open({
-      title: "更多 Pane",
-      anchor,
-      items: hiddenInstances.map((instance) => ({
-        id: instance.instanceId,
-        label: paneById(definition, instance.paneId).title,
-      })),
-      onSelect: (instanceId) => {
-        dispatch({ type: "activate", instanceId });
-        if (nativeErrors.has(instanceId)) reloadPane(instanceId);
-      },
-      onClose: () => setOverlayMenuOpen(false),
-    }).then(() => undefined).catch((error: unknown) => {
-      setOverlayMenuOpen(false);
-      setHostError(asPaneHostError(error));
-      setTabMenuOpen(true);
-    });
+    setTabMenuOpen(true);
+  };
+  const closeChromeMenus = (): void => {
+    setPaletteOpen(false);
+    setTabMenuOpen(false);
+    setOverlayMenuOpen(false);
+    window.dispatchEvent(new Event("pi-panes-restore-visible"));
   };
 
   return (
@@ -1204,18 +1165,18 @@ export function PanesHost({
       style={{ position: "relative", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}
     >
       <style>{hostInteractionStyles}</style>
-      {/* Pane 层 chrome：紧凑 tabs；选中用主题色轻高亮，不抢眼。 */}
+      {/* Pane 层 chrome：紧凑扁平 tabs，选中仅底色/字色区分。 */}
       <header
         data-panes-chrome
         data-panes-tabs
         style={{
           display: "flex",
-          minHeight: 26,
+          minHeight: 28,
           alignItems: "center",
-          gap: 2,
-          padding: "1px 4px",
+          gap: 1,
+          padding: "2px 4px",
           borderBottom: "1px solid hsl(var(--border))",
-          background: "hsl(var(--muted) / .18)",
+          background: "hsl(var(--muted) / .12)",
         }}
       >
         {onRequestClose !== undefined ? (
@@ -1250,16 +1211,12 @@ export function PanesHost({
                   display: "flex",
                   flex: "0 1 auto",
                   minWidth: 0,
-                  maxWidth: 112,
+                  maxWidth: 120,
                   alignItems: "center",
-                  borderRadius: 5,
-                  border: selected
-                    ? "1px solid hsl(var(--primary) / .35)"
-                    : "1px solid transparent",
-                  background: selected
-                    ? "hsl(var(--primary) / .1)"
-                    : "transparent",
-                  boxShadow: selected ? "inset 0 -1px 0 hsl(var(--primary) / .45)" : "none",
+                  borderRadius: 4,
+                  border: "none",
+                  background: selected ? "hsl(var(--muted))" : "transparent",
+                  boxShadow: "none",
                 }}>
                 <button type="button" role="tab" aria-selected={selected} aria-controls={`pane-view-${instance.instanceId}`}
                   data-pane-tab
@@ -1276,19 +1233,19 @@ export function PanesHost({
                     minWidth: 0,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    padding: "3px 3px 3px 6px",
-                    lineHeight: 1.15,
+                    padding: "4px 4px 4px 8px",
+                    lineHeight: 1.2,
                     fontSize: 12,
                     whiteSpace: "nowrap",
                     color: selected ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                    fontWeight: selected ? 600 : 400,
+                    fontWeight: selected ? 500 : 400,
                   }}>
-                  {pane.icon !== undefined ? <span aria-hidden="true" style={{ display: "inline-grid", marginRight: 3, verticalAlign: -1, opacity: selected ? .9 : .7 }}><PaneIcon name={pane.icon} /></span> : null}
+                  {pane.icon !== undefined ? <span aria-hidden="true" style={{ display: "inline-grid", marginRight: 4, verticalAlign: -1, opacity: .75 }}><PaneIcon name={pane.icon} /></span> : null}
                   {pane.title}{count.length > 1 ? ` ${ordinal}` : ""}
                 </button>
                 <button type="button" aria-label={`关闭 ${pane.title}`} title="关闭 Pane" onClick={() => closePane(instance.instanceId)}
                   data-pane-icon-button
-                  style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "2px 4px", color: "hsl(var(--muted-foreground))" }}>
+                  style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "2px 5px", color: "hsl(var(--muted-foreground))" }}>
                   <X size={12} aria-hidden />
                 </button>
               </div>
@@ -1346,7 +1303,7 @@ export function PanesHost({
           <button
             type="button"
             aria-label="关闭更多 Pane 菜单"
-            onClick={() => setTabMenuOpen(false)}
+            onClick={closeChromeMenus}
             style={{ position: "absolute", inset: 0, zIndex: 19, border: 0, background: "transparent" }}
           />
           <div
@@ -1356,7 +1313,7 @@ export function PanesHost({
               position: "absolute",
               right: 8,
               top: 32,
-              zIndex: 20,
+              zIndex: 40,
               minWidth: 180,
               padding: 4,
               border: "1px solid hsl(var(--border))",
@@ -1377,7 +1334,7 @@ export function PanesHost({
                     if (nativeErrors.has(instance.instanceId)) {
                       reloadPane(instance.instanceId);
                     }
-                    setTabMenuOpen(false);
+                    closeChromeMenus();
                   }}
                   data-pane-palette-item
                   style={{ ...buttonStyle, width: "100%", display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", textAlign: "left" }}
@@ -1443,7 +1400,7 @@ export function PanesHost({
             style={{ display: active ? "block" : "none", width: "100%", height: "100%", border: 0 }} />;
         })}
       </div>
-      {paletteOpen ? <div role="dialog" aria-modal="true" aria-label="新开 Pane" onMouseDown={() => setPaletteOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 30, display: "grid", placeItems: "start center", paddingTop: 60, background: "rgb(0 0 0 / .28)" }}>
+      {paletteOpen ? <div role="dialog" aria-modal="true" aria-label="新开 Pane" onMouseDown={closeChromeMenus} style={{ position: "absolute", inset: 0, zIndex: 40, display: "grid", placeItems: "start center", paddingTop: 60, background: "rgb(0 0 0 / .28)" }}>
         <div onMouseDown={(event) => event.stopPropagation()} style={{ width: "min(360px, calc(100% - 24px))", padding: 8, border: "1px solid hsl(var(--border))", borderRadius: 12, background: "hsl(var(--popover, var(--background)))", boxShadow: "0 18px 45px rgb(0 0 0 / .18)" }}>
           <strong style={{ display: "block", padding: "7px 10px" }}>新开 Pane</strong>
           {definition.panes.map((pane, index) => {

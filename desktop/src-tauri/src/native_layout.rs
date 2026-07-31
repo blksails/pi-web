@@ -102,12 +102,9 @@ impl NativeWebviewLayoutManager {
             .0
             .lock()
             .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        // 只改模式。HostFullscreen 时 apply_layout 会 hide 全部 content pane，
+        // 但不得抹掉 visible 记忆——侧栏再开 workspace 时才能按原可见性恢复，否则白屏。
         state.mode = mode;
-        if mode == LayoutMode::HostFullscreen {
-            for pane in state.panes.values_mut() {
-                pane.visible = false;
-            }
-        }
         Ok(())
     }
 

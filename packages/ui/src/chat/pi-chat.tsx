@@ -1466,7 +1466,11 @@ export function PiChat({
       return undefined;
     }
     nativePaneLayoutActiveRef.current = true;
-    void setTauriPaneLayoutMode("workspace");
+    void setTauriPaneLayoutMode("workspace").then(() => {
+      // 回 workspace 后重采 content-well，并通知 PanesHost 把当前 tab show 回来。
+      window.dispatchEvent(new Event("pi-panes-content-well-sync"));
+      window.dispatchEvent(new Event("pi-panes-restore-visible"));
+    });
     return undefined;
   }, [hasPanelRight, showPanelRight]);
   React.useEffect(() => () => {

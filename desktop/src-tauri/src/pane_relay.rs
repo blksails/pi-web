@@ -429,31 +429,28 @@ fn set_window_owner(
     Ok(())
 }
 
-/// 隐藏全部 content pane（保留 webview 供侧栏再开 / 同会话恢复）；不销毁。
-/// 浮动 overlay 菜单一并隐藏。
+/// 隐藏全部 **content** pane（保留 webview 与 visible 记忆）；不销毁、不碰 overlay 菜单。
 #[tauri::command]
 pub fn pane_webview_hide_all(window: tauri::Window, app: AppHandle) -> Result<(), String> {
     require_host(window.label())?;
     if native_child_webviews_enabled() {
         let manager = app.state::<NativeWebviewLayoutManager>();
+        // 仅切模式 + hide；勿写 visible=false，否则回 workspace 时全员不可见 → 白屏。
         let _ = manager.set_mode(crate::native_layout::LayoutMode::HostFullscreen);
         if let Some(host) = app.get_window(MAIN_WINDOW_LABEL) {
             for view in host.webviews() {
                 let label = view.label().to_string();
-                if !label.starts_with("pane-") {
+                if !label.starts_with("pane-") || is_floating_overlay_label(&label) {
                     continue;
                 }
                 let _ = view.hide();
-                if !is_floating_overlay_label(&label) {
-                    let _ = manager.set_pane_visibility(&label, false);
-                }
             }
         }
         let _ = manager.apply_layout(&app);
         return Ok(());
     }
     for (label, view) in app.webview_windows() {
-        if label.starts_with("pane-") {
+        if label.starts_with("pane-") && !is_floating_overlay_label(&label) {
             let _ = view.hide();
         }
     }
