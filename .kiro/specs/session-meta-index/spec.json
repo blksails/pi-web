@@ -33,11 +33,12 @@
     "tasks_approval": "2026-07-30 经 /goal 授权放行任务闸门,直接进 impl",
     "polling": "2026-07-30 验收演示后用户追加。周期分层(忙 5s / 闲 15s,页面不可见不跑),合并语义=更新已显示项状态 + 追加新出现会话,不移除不重排。初版的「全空闲即停」与「不增项」两个缺陷由 Chrome 真机实测抓到并修正。",
     "workspace_port": "2026-07-30 用户问「pi-cloud 可以实现吗」后补:元数据持久化增加 Workspace 实现(每会话一键,因契约不提供跨进程锁),云端经 HostDeps.sessionMetaIndex 注入;本地保留带锁文件实现。两条实现由一致性套件共同验收。",
-    "global_only_list": "2026-07-30 用户要求「session-list 总是全局,不再区分项目目录」,选彻底移除 scope 与门控(非默认值改变)。已删请求 3 参数/响应 2 字段/装配 2 依赖/1 个运行时开关/面板双 Tab;列表项保留 cwd 以保项目归属可见。"
+    "global_only_list": "2026-07-30 用户要求「session-list 总是全局,不再区分项目目录」,选彻底移除 scope 与门控(非默认值改变)。已删请求 3 参数/响应 2 字段/装配 2 依赖/1 个运行时开关/面板双 Tab;列表项保留 cwd 以保项目归属可见。",
+    "sqlite_impl": "2026-07-31 用户要求本地 sqlite 版:行存储 + 事务 + WAL,单行 upsert + COALESCE 字段级合并(无需先读后写、无需自制锁);损坏即重建;经 createLocalSessionMetaIndex 按 env 选型(显式 > 跟随 SESSION_STORE > 默认 json)。"
   },
   "implementation": {
     "date": "2026-07-30",
-    "tasks": "34/34",
+    "tasks": "36/36",
     "evidence": {
       "date": "2026-07-30(最终一次完整回归的实测值)",
       "protocol": "421 passed (46 files)",

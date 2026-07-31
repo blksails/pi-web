@@ -6,6 +6,17 @@
  */
 export type { SessionMetaEntry, SessionMetaIndex } from "./types.js";
 export {
+  createLocalSessionMetaIndex,
+  sessionMetaStoreKindFromEnv,
+  type SessionMetaStoreKind,
+} from "./local-factory.js";
+export {
+  SqliteSessionMetaIndex,
+  defaultSessionMetaDbPath,
+  sessionMetaDbPathFromEnv,
+  type SqliteSessionMetaIndexOptions,
+} from "./sqlite-index.js";
+export {
   WorkspaceSessionMetaIndex,
   type WorkspaceSessionMetaIndexOptions,
 } from "./workspace-index.js";

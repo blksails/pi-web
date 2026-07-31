@@ -429,14 +429,36 @@ export interface SessionMetaIndex {
 - **键空间是安全边界**：`sessionId` 来自请求参数，不能假定是 uuid。含 `/`、`..`、控制字符
   等一律拒绝写入（元数据是展示增强，拒写远好过越界）。
 
+#### SqliteSessionMetaIndex（本地重度使用）
+
+| Field | Detail |
+|-------|--------|
+| Intent | 会话量大 / 多进程共写频繁时，替代整份 JSON 重写 |
+| Requirements | 1.x, 3.x, 4.1, 4.2, 4.4, 5.1, 5.3 |
+
+**Responsibilities & Constraints**
+
+- 建在 `node:sqlite`（Node **内置**，同 `session-store/sqlite-store.ts` 的既有用法）之上 ——
+  内核包的依赖声明里不会出现数据库驱动，符合 `core-package-extraction` R1.2。
+- ★ **没有任何自制锁**：并发交给数据库事务 + WAL。JSON 实现之所以要 `mkdir` 锁 + 读-合并-写，
+  是因为「整份文件」这个形态下两个进程的 RMW 会互相覆盖；行存储 + `ON CONFLICT DO UPDATE`
+  天然是原子的字段级更新，写谁的行就只动谁的行。
+- 字段级合并靠 `COALESCE(excluded.x, session_meta.x)`：patch 未给的字段传 NULL 即保留原值，
+  **不需要先读后写**，故连 RMW 都不存在。
+- **损坏即重建**：构造期打不开或建表失败 → 删掉库（连同 `-wal`/`-shm`）重开一次；仍失败则
+  整个实例降级为「无元数据」而**不抛** —— 装配阶段一个坏文件不该拖垮宿主。
+
 **选型（装配层）**
 
 | 形态 | 实现 | 理由 |
 |---|---|---|
-| 本地（桌面 / dev / npm CLI） | `JsonFileSessionMetaIndex` | 多进程共写同一文件，需要跨进程锁；Workspace 契约不提供 |
-| 云端（pi-clouds 自行装配） | `WorkspaceSessionMetaIndex` | 租户隔离由 TenantWorkspace 负责；经 `HostDeps.sessionMetaIndex` 注入，无需改动 pi-web |
+| 本地默认 | `JsonFileSessionMetaIndex` | 零依赖、可直接查看/编辑；会话量不大时够用 |
+| 本地 `SESSION_META_STORE=sqlite`，或 `SESSION_STORE=sqlite` 时自动跟随 | `SqliteSessionMetaIndex` | 单行 upsert 而非整份重写；并发交给数据库 |
+| 云端（pi-clouds 自行装配） | `WorkspaceSessionMetaIndex` | 租户隔离由 TenantWorkspace 负责；经 `HostDeps.sessionMetaIndex` 注入 |
 
-两条实现由**一致性套件**（同一批断言跑两遍）共同验收；pi-clouds 可复用该套件形状验收自己那条。
+本地两条由 `createLocalSessionMetaIndex()` 按 env 选型（显式指定 > 跟随会话存储 > 默认 json；
+非法值按缺省，不抛）。三条实现由**一致性套件**（同一批断言跑三遍）共同验收；
+pi-clouds 可复用该套件形状验收自己那条。
 
 ### core / 活跃态派生
 

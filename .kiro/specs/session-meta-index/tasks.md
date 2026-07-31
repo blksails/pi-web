@@ -236,6 +236,26 @@
   - 观察完成：三套会话列表 e2e 共 12 例通过；真机以两个不同项目目录各一个会话验证互相可见。
   - _Boundary: 文档与 e2e — `docs/product/{06,14,19,24}-*.md`, `e2e/browser/sessions-list.e2e.ts`_
 
+- [x] 10. 增量：本地 SQLite 实现
+- [x] 10.1 以行存储实现元数据索引
+  - 建在 Node 内置 sqlite 之上（内核包依赖声明不出现数据库驱动）；单表以会话标识为主键。
+  - 写为单行 upsert + 列级 COALESCE：patch 未给的字段保留原值，**不需要先读后写**，
+    因而不存在读-改-写竞态，也不需要任何应用层锁。
+  - 开启 WAL；库损坏时**先尝试重建**（删库连同边文件重开），仍失败则降级为「无元数据」而不抛。
+  - 观察完成：一致性套件三实现同一批断言全绿；SQLite 特有用例覆盖持久化跨实例、
+    **真起 6 个 node 进程并发写**一条不丢、字段级 upsert 不误清、损坏重建后可正常读写
+    （该用例能区分「重建」与「彻底禁用」）。
+  - _Requirements: 1.1, 1.2, 1.3, 3.1, 3.2, 3.5, 4.1, 4.2, 4.4, 5.1, 5.3_
+  - _Boundary: SqliteSessionMetaIndex — `packages/core/src/session-meta/sqlite-index.ts`, `packages/core/test/session-meta/sqlite-index.it.test.ts`, `packages/core/test/session-meta/conformance.it.test.ts`_
+
+- [x] 10.2 本地实现选型
+  - 选型规则：显式配置优先；未指定时**跟随会话存储**（会话已用 sqlite 则元数据也用 sqlite）；
+    其余用 JSON。非法值按缺省处理且不抛。
+  - 观察完成：选型单测覆盖四条规则；真机以 sqlite 后端启动，建会话后库中出现该会话的来源列，
+    列表响应体的 source 字段取自该库。
+  - _Requirements: 1.1_
+  - _Boundary: 选型 — `packages/core/src/session-meta/local-factory.ts`, `packages/core/test/session-meta/local-factory.test.ts`, `lib/app/pi-handler.ts`_
+
 ## Implementation Notes
 
 ### 实测数据(Req 2.5 的机械证据)
@@ -349,6 +369,22 @@ Chrome 真机演示暴露了 Req 8.5 那条边界的实际观感:会话 B 在等
 
 ★ 一处只有 tsc 抓得到的残留:server 与 react 两个包的**测试文件**仍在传旧字段,而 vitest
 不做类型检查 —— 两包测试全绿、tsc 却是红的。这类缺口只能靠逐包跑 tsc 发现。
+
+### SQLite 版:锁没了,因为存储形态变了
+
+三条实现的并发保证各不相同,但**都不是靠更聪明的锁**,而是靠存储形态:
+
+| 实现 | 形态 | 并发怎么保证 |
+|---|---|---|
+| JSON 文件 | 整份文件 | 只能自制跨进程锁 + 锁内读-合并-写 |
+| Workspace | 每会话一键 | 契约的单键原子性(不同会话不写同一键) |
+| SQLite | 行 + 列 | 数据库事务;`COALESCE` 让字段级合并**连读都不用先做** |
+
+即:把"整份重写"换成"只动自己那一行",锁这个问题就消失了。这也是为什么 SQLite 版反而是
+三条里最短的一条实现。
+
+一个偶发:多进程用例单跑必过、全套并发跑偶发超时(6 个 node 冷启动抢 CPU)。这是负载问题
+不是并发正确性问题,加大子进程超时后连跑三次稳定。
 
 ### 一次被我误判的"存量红"(记录以免重蹈)
 

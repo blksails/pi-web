@@ -53,7 +53,7 @@ import {
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
   // 会话展示元数据索引(spec session-meta-index):本地文件实现 + Workspace 实现 + 端口类型。
-  JsonFileSessionMetaIndex,
+  createLocalSessionMetaIndex,
   type SessionMetaIndex,
   ConfigCodec,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
@@ -699,18 +699,19 @@ function buildSingleton(): HandlerSingleton {
   // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
   // 会话展示元数据索引(spec session-meta-index)。两条实现,按宿主形态选:
   //
-  //  - **本地**(本装配:桌面 / dev / npm CLI)→ `JsonFileSessionMetaIndex`:整份 JSON 文件
+  //  - **本地默认**(桌面 / dev / npm CLI)→ `JsonFileSessionMetaIndex`:整份 JSON 文件
   //    (默认 `~/.pi/agent/piweb-session-index.json`,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖,
-  //    置于 sessions 目录**之外**)+ 跨进程锁。本地形态多进程共写同一份文件(web + 桌面 + CLI),
-  //    而 Workspace 契约**不提供**跨进程锁 —— 故这里保留带锁的文件实现,不为统一而牺牲
-  //    本地的并发保证。
+  //    置于 sessions 目录**之外**)+ 跨进程锁。零依赖、可直接查看/编辑,适合会话量不大的场景。
+  //  - **本地 sqlite**(`SESSION_META_STORE=sqlite`,或会话存储本身已是 sqlite)→
+  //    `SqliteSessionMetaIndex`:行存储 + 事务 + WAL。单次写是一行 upsert 而非整份重写,
+  //    并发控制交给数据库(无需自制锁)。会话量大或多进程共写频繁时选它。
   //  - **云端**(pi-clouds 自行装配)→ 传 `HostDeps.sessionMetaIndex =
   //    new WorkspaceSessionMetaIndex(tenantWorkspace.user)`:每会话一键,持久化经宿主状态端口,
   //    天然获得租户隔离。该字段的类型就是端口本身,故云端无需改动 pi-web 即可接入。
   //
   // 两条实现由 `test/session-meta/conformance.it.test.ts` 的同一批断言共同验收。
   // 定位都是**缓存**:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
-  const sessionMetaIndex: SessionMetaIndex = new JsonFileSessionMetaIndex();
+  const sessionMetaIndex: SessionMetaIndex = createLocalSessionMetaIndex();
 
   // 启动时清一次残留(Req 5.3):索引对会话是**弱引用** —— 绕过 pi-web 的删除(手工 rm、
   // pi CLI 删、换机器、换存储后端)会留下孤儿键。孤儿不影响正确性(列表以实际会话为准),
