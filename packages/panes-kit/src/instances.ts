@@ -56,17 +56,12 @@ export function reducePaneWorkspace(
   if (action.type === "activate") {
     const target = state.instances.find((instance) => instance.instanceId === action.instanceId);
     if (target === undefined) return state;
-    const activated = {
-      ...target,
-      state: target.state === "failed" ? "failed" as const : "ready" as const,
+    return {
+      instances: state.instances.map((instance) => instance.instanceId === action.instanceId
+        ? { ...target, state: target.state === "failed" ? "failed" as const : "ready" as const }
+        : { ...instance, state: instance.state === "disposed" ? "disposed" as const : "hidden" as const }),
+      activeInstanceId: action.instanceId,
     };
-    const others = state.instances
-      .filter((instance) => instance.instanceId !== action.instanceId)
-      .map((instance) => ({
-        ...instance,
-        state: instance.state === "disposed" ? "disposed" as const : "hidden" as const,
-      }));
-    return { instances: [activated, ...others], activeInstanceId: action.instanceId };
   }
   if (action.type === "close") {
     const index = state.instances.findIndex((instance) => instance.instanceId === action.instanceId);
