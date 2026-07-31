@@ -46,6 +46,20 @@ export interface TauriPaneEnv {
     readonly container?: HTMLElement;
     readonly visible?: boolean;
   }): Promise<TauriPaneWebview> | TauriPaneWebview;
+  /**
+   * 可选：领取启动时预建的隐藏 content webview 标签。
+   * 有则 mount 用该 label（create 走 navigate 复用），免冷创建。
+   */
+  claimWarmLabel?(): string | undefined;
+  /**
+   * 可选：短等预热池 ready（首挂常与 warm 竞态）。超时返回 undefined → 冷建。
+   */
+  waitWarmLabel?(timeoutMs: number): Promise<string | undefined>;
+  /**
+   * 可选：dispose 时把 webview 还回预热池（hide+空壳 navigate），勿 close。
+   * 返回 true 表示已回收；false 则走正常 close。
+   */
+  releaseWarmLabel?(label: string): boolean | Promise<boolean>;
 }
 
 export interface TauriPaneMountTarget {
@@ -79,9 +93,14 @@ export function createTauriPaneViewAdapter(
         }
         for (const listener of relayListeners) listener(envelope);
       });
-      // WebView label 含 epoch：普通路由 remount 复用同一 label/child WebView；
-      // 会话切换或显式 reload 提升 epoch，先关闭旧 child 再创建新载体，避免竞态。
-      const label = paneWebviewLabel(`${target.instanceId}-${target.epoch}`);
+      // 优先领预热池 label（启动已建、隐藏）；否则 instance-epoch 冷建。
+      // epoch 提升时旧 handle dispose 还池或 close，再 mount 新载体。
+      let warmLabel = env.claimWarmLabel?.();
+      if (warmLabel === undefined && env.waitWarmLabel !== undefined) {
+        warmLabel = await env.waitWarmLabel(500);
+      }
+      const label = warmLabel ?? paneWebviewLabel(`${target.instanceId}-${target.epoch}`);
+      const fromWarmPool = warmLabel !== undefined;
       let view: TauriPaneWebview;
       try {
         await env.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
@@ -97,6 +116,7 @@ export function createTauriPaneViewAdapter(
           visible: target.visible,
         });
       } catch (error) {
+        if (fromWarmPool) void Promise.resolve(env.releaseWarmLabel?.(label)).catch(() => undefined);
         stopRelay();
         throw error;
       }
@@ -152,6 +172,10 @@ export function createTauriPaneViewAdapter(
           })).catch(() => undefined);
           enqueue(async () => {
             await view.hide();
+            if (fromWarmPool) {
+              const recycled = await Promise.resolve(env.releaseWarmLabel?.(label));
+              if (recycled === true) return;
+            }
             await view.close();
           }, true);
         },

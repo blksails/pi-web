@@ -82,6 +82,8 @@ struct PaneRecord {
     keep_alive: bool,
     initialized: bool,
     last_active: u64,
+    /// 上一次 apply 是否已对句柄 show；用于 metrics 跟手时跳过重复 show/focus。
+    applied_visible: bool,
 }
 
 #[derive(Debug, Default)]
@@ -90,6 +92,18 @@ struct LayoutState {
     metrics: LayoutMetrics,
     panes: HashMap<String, PaneRecord>,
     active_tick: u64,
+    /// 上次成功下发的 host / 槽矩形；未变则跳过 set_bounds。
+    last_host_bounds: Option<PaneBounds>,
+    last_slot_bounds: Option<PaneBounds>,
+    last_top_label: Option<String>,
+}
+
+/// 逻辑像素近似相等（侧栏拖拽亚像素抖动不重下发）。
+fn bounds_near(a: PaneBounds, b: PaneBounds) -> bool {
+    (a.x - b.x).abs() < 0.5
+        && (a.y - b.y).abs() < 0.5
+        && (a.width - b.width).abs() < 0.5
+        && (a.height - b.height).abs() < 0.5
 }
 
 /// 受控的原生布局状态；真实 Webview 句柄仍由 Tauri manager 持有。
@@ -116,11 +130,53 @@ impl NativeWebviewLayoutManager {
         {
             return Err("PANE_LAYOUT_INVALID_METRICS".to_string());
         }
-        self.0
+        let mut state = self
+            .0
             .lock()
-            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?
-            .metrics = metrics;
+            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        state.metrics = metrics;
+        // 仅槽几何变：只作废 last_slot。勿清 last_host——拖拽每帧 host set_bounds 极重、不跟手。
+        state.last_slot_bounds = None;
         Ok(())
+    }
+
+    /// show 前调用：丢掉 last_slot，保证 apply 一定写 child bounds。
+    pub fn invalidate_applied_bounds(&self) -> Result<(), String> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        state.last_slot_bounds = None;
+        state.last_host_bounds = None;
+        Ok(())
+    }
+
+    /// 公开算槽（create 首建位置用，避免 (0,0) 临时坐标）。
+    pub fn slot_for_window(
+        &self,
+        window_width: f64,
+        window_height: f64,
+    ) -> Result<PaneBounds, String> {
+        let state = self
+            .0
+            .lock()
+            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        let (_host, mut slot) = Self::calculate_bounds(
+            state.mode,
+            state.metrics,
+            window_width,
+            window_height,
+        );
+        if state.mode == LayoutMode::Workspace && (slot.width < 48.0 || slot.height < 48.0) {
+            let fallback_w = (window_width * 0.34).max(280.0).min(window_width.max(1.0));
+            slot = PaneBounds {
+                x: (window_width - fallback_w).max(0.0),
+                y: 0.0,
+                width: fallback_w,
+                height: window_height.max(1.0),
+            };
+        }
+        Ok(slot)
     }
 
     pub fn register_pane(
@@ -144,6 +200,7 @@ impl NativeWebviewLayoutManager {
                 keep_alive,
                 initialized: true,
                 last_active: tick,
+                applied_visible: false,
             },
         );
         Ok(())
@@ -164,6 +221,8 @@ impl NativeWebviewLayoutManager {
         };
         pane.visible = visible;
         pane.last_active = tick;
+        // control hide/show 可能绕过 apply；标脏使下次 apply 强制对齐可见性。
+        pane.applied_visible = !visible;
         Ok(())
     }
 
@@ -240,6 +299,9 @@ impl NativeWebviewLayoutManager {
     }
 
     /// 原子地把宿主与所有 child panes 应用到同一窗口 client 坐标系。
+    ///
+    /// 侧栏拖拽时 metrics 每帧都到；几何未变跳过 set_bounds，可见性未变跳过 show/focus，
+    /// 避免「每帧 show+set_focus」抢 z-order 造成过度插帧感。
     pub fn apply_layout(&self, app: &AppHandle) -> Result<(), String> {
         if !native_child_webviews_enabled() {
             return Ok(());
@@ -249,7 +311,7 @@ impl NativeWebviewLayoutManager {
             .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?;
         let size = window.inner_size().map_err(|e| e.to_string())?;
         let scale = window.scale_factor().map_err(|e| e.to_string())?;
-        let (mode, metrics, panes) = {
+        let (mode, metrics, panes, last_host, last_slot, last_top) = {
             let state = self
                 .0
                 .lock()
@@ -263,14 +325,16 @@ impl NativeWebviewLayoutManager {
                     .map(|(label, pane)| {
                         (
                             label.clone(),
-                            pane.bounds,
                             pane.visible,
                             pane.keep_alive,
                             pane.initialized,
-                            pane.last_active,
+                            pane.applied_visible,
                         )
                     })
                     .collect::<Vec<_>>(),
+                state.last_host_bounds,
+                state.last_slot_bounds,
+                state.last_top_label.clone(),
             )
         };
         let logical_width = f64::from(size.width) / scale.max(0.01);
@@ -282,10 +346,13 @@ impl NativeWebviewLayoutManager {
             logical_height,
         );
         let webviews = window.webviews();
+        let host_changed = last_host.map(|b| !bounds_near(b, host_bounds)).unwrap_or(true);
         if let Some(host) = webviews.iter().find(|view| view.label() == HOST_WEBVIEW_LABEL) {
-            // host 铺满供 chat/tabs；仅在尺寸变化时 set_bounds，避免每帧 show 抢 z-order 盖住 pane。
-            host.set_bounds(to_rect(host_bounds))
-                .map_err(|e| e.to_string())?;
+            // host 铺满供 chat/tabs；仅尺寸/位置变化时 set_bounds。
+            if host_changed {
+                host.set_bounds(to_rect(host_bounds))
+                    .map_err(|e| e.to_string())?;
+            }
             if mode == LayoutMode::HostFullscreen {
                 host.show().map_err(|e| e.to_string())?;
                 host.set_focus().map_err(|e| e.to_string())?;
@@ -302,10 +369,12 @@ impl NativeWebviewLayoutManager {
                 height: logical_height.max(1.0),
             };
         }
-        // Pane 共享右侧槽；后设 bounds + show，保证压在 host 之上。
+        let slot_changed = last_slot.map(|b| !bounds_near(b, slot)).unwrap_or(true);
+        // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
-        for (label, _recorded_bounds, recorded_visible, keep_alive, initialized, _last_active) in panes
-        {
+        let mut raise_top = host_changed;
+        let mut applied_visibility: Vec<(String, bool)> = Vec::new();
+        for (label, recorded_visible, keep_alive, initialized, was_applied_visible) in panes {
             if label.starts_with("pane-overlay") {
                 continue;
             }
@@ -316,23 +385,68 @@ impl NativeWebviewLayoutManager {
                 continue;
             }
             if mode == LayoutMode::HostFullscreen {
-                view.hide().map_err(|e| e.to_string())?;
+                // 全屏宿主：内容 pane 一律 hide。勿因 applied_visible 跳过——
+                // 外部 show 路径可能已把句柄露出而状态未同步。
+                let _ = view.hide();
+                applied_visibility.push((label, false));
                 continue;
             }
-            view.set_bounds(to_rect(slot))
-                .map_err(|e| e.to_string())?;
+            if slot_changed {
+                view.set_bounds(to_rect(slot))
+                    .map_err(|e| e.to_string())?;
+            }
             if recorded_visible {
-                view.show().map_err(|e| e.to_string())?;
-                top_label = Some(label);
+                if !was_applied_visible {
+                    view.show().map_err(|e| e.to_string())?;
+                    raise_top = true;
+                }
+                top_label = Some(label.clone());
+                applied_visibility.push((label, true));
             } else {
-                view.hide().map_err(|e| e.to_string())?;
+                if was_applied_visible {
+                    view.hide().map_err(|e| e.to_string())?;
+                }
+                applied_visibility.push((label, false));
             }
         }
-        // 最后再 focus 当前可见 pane，防止 host set_bounds 后仍盖住 child。
-        if let Some(label) = top_label {
-            if let Some(view) = webviews.iter().find(|view| view.label() == label) {
-                let _ = view.show();
-                let _ = view.set_focus();
+        // host 几何变过或 top 切换时再 focus，防止 host set_bounds 盖住 child。
+        // 纯 metrics 跟手（槽宽变、可见性不变）不抢 focus。
+        if top_label.as_ref() != last_top.as_ref() {
+            raise_top = true;
+        }
+        let overlay_top = crate::pane_relay::overlay_wants_top();
+        if raise_top {
+            if let Some(label) = top_label.as_ref() {
+                if let Some(view) = webviews.iter().find(|view| view.label() == label) {
+                    let _ = view.show();
+                    // 菜单在顶时 content 只 show 不 focus，避免抢焦关菜单。
+                    if !overlay_top {
+                        let _ = view.set_focus();
+                    }
+                }
+            }
+        }
+        // 菜单 overlay 打开时：content set_bounds/show 可能抢 z，最后再抬 overlay。
+        // content **保持 show**，只调整叠放，绝不 hide content 去「让路」。
+        if overlay_top {
+            for view in &webviews {
+                let label = view.label();
+                if label.starts_with("pane-overlay") {
+                    let _ = view.show();
+                    let _ = view.set_focus();
+                }
+            }
+        }
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        state.last_host_bounds = Some(host_bounds);
+        state.last_slot_bounds = Some(slot);
+        state.last_top_label = top_label;
+        for (label, applied) in applied_visibility {
+            if let Some(pane) = state.panes.get_mut(&label) {
+                pane.applied_visible = applied;
             }
         }
         Ok(())

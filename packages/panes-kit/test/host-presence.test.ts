@@ -68,6 +68,37 @@ describe("isPanesHostElementVisible", () => {
   });
 });
 
+describe("observeAllPanesHostsInDocument", () => {
+  it("host 从 document 移除时 hide+destroy（设置路由场景）", async () => {
+    const el = hostEl();
+    const backend: PanesHostPresenceBackend = {
+      hideAll: vi.fn(() => Promise.resolve()),
+      destroyAll: vi.fn(() => Promise.resolve()),
+      restoreVisible: vi.fn(),
+    };
+    const { observeAllPanesHostsInDocument } = await import("../src/host-presence.js");
+    const off = observeAllPanesHostsInDocument(document, { backend });
+    await vi.waitFor(() => expect(backend.restoreVisible).toHaveBeenCalled());
+    el.remove();
+    await vi.waitFor(() => expect(backend.hideAll).toHaveBeenCalled(), { timeout: 1000 });
+    await vi.waitFor(() => expect(backend.destroyAll).toHaveBeenCalled(), { timeout: 1000 });
+    off();
+  });
+
+  it("无 host 冷装时即 destroy（设置页整页进入）", async () => {
+    const backend: PanesHostPresenceBackend = {
+      hideAll: vi.fn(() => Promise.resolve()),
+      destroyAll: vi.fn(() => Promise.resolve()),
+      restoreVisible: vi.fn(),
+    };
+    const { observeAllPanesHostsInDocument } = await import("../src/host-presence.js");
+    const off = observeAllPanesHostsInDocument(document, { backend });
+    await vi.waitFor(() => expect(backend.destroyAll).toHaveBeenCalled());
+    expect(backend.restoreVisible).not.toHaveBeenCalled();
+    off();
+  });
+});
+
 describe("observePanesHostPresence", () => {
   it("初始可见时 restore，卸载时 destroy", async () => {
     const el = hostEl();

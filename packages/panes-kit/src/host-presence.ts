@@ -1,11 +1,18 @@
 /**
- * PanesHost 元素存在性/可见性 → 侧栏 native webview 生命周期（公共能力）。
+ * PanesHost 元素存在性/可见性 → 侧栏 native webview 生命周期（**唯一**公共闸门）。
  *
- * - 未挂载（disconnect / unmount）→ destroy 全部 content pane webview
- * - 已挂载但不可见（收起侧栏、opacity/display、祖先折叠）→ hide 全部
- * - 已挂载且可见 → 通知恢复（可选 restore）
+ * - 未挂载（disconnect / unmount / 路由切走）→ destroy 全部 content pane webview
+ * - 已挂载但不可见（收起侧栏、opacity/display、祖先折叠）→ hide 全部（保活）
+ * - 已挂载且可见 → restore（workspace + 重采几何）
  *
- * 不依赖具体宿主路由；只要挂了 `[data-panes-host]` 即可。
+ * ## 为何设置页也会被盖住？
+ * `/settings` 是**完整 SPA 路由**（不是浮层）：切过去时会话树卸载，`[data-panes-host]`
+ * 从 document 消失。正确反应是 **missing→destroy**，不是在 settings.tsx 里主动 hide。
+ *
+ * ## 收敛安装点
+ * 用 `installDocumentPanesHostPresence()` 在应用根装**一次** document 级观察：
+ * MutationObserver 看 host 增删，不依赖某个 React effect 是否绑上 ref。
+ * 设置/登录等业务页 **零** pane 生命周期代码。
  */
 
 export type PanesHostPresenceState = "missing" | "hidden" | "visible";
@@ -62,6 +69,30 @@ export function createDefaultPanesHostPresenceBackend(
 }
 
 /**
+ * 侧栏/折叠等**显式** chrome 隐藏（不含面积）。
+ * show 决策用此函数：jsdom 与布局首帧 rect=0 时不得误判为 hidden。
+ */
+export function isPanesHostChromeHidden(
+  el: Element,
+  options: { readonly target?: Window } = {},
+): boolean {
+  if (!el.isConnected) return true;
+  const win = options.target ?? el.ownerDocument.defaultView ?? window;
+  let node: Element | null = el;
+  while (node !== null) {
+    if (node.getAttribute("aria-hidden") === "true") return true;
+    if (node.getAttribute("data-pi-panel-collapsed") === "true") return true;
+    if (node.getAttribute("data-pi-panel-open") === "false") return true;
+    const style = win.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") return true;
+    const opacity = Number.parseFloat(style.opacity);
+    if (Number.isFinite(opacity) && opacity <= 0.01) return true;
+    node = node.parentElement;
+  }
+  return false;
+}
+
+/**
  * 判定元素相对「用户可感知可见」：
  * 自身或祖先 display/visibility/opacity/aria-hidden/data-pi-panel-collapsed，
  * 以及几何面积。
@@ -70,21 +101,9 @@ export function isPanesHostElementVisible(
   el: Element,
   options: { readonly minVisibleArea?: number; readonly target?: Window } = {},
 ): boolean {
-  if (!el.isConnected) return false;
+  if (isPanesHostChromeHidden(el, options)) return false;
   const minArea = options.minVisibleArea ?? 32 * 32;
   const win = options.target ?? el.ownerDocument.defaultView ?? window;
-
-  let node: Element | null = el;
-  while (node !== null) {
-    if (node.getAttribute("aria-hidden") === "true") return false;
-    if (node.getAttribute("data-pi-panel-collapsed") === "true") return false;
-    if (node.getAttribute("data-pi-panel-open") === "false") return false;
-    const style = win.getComputedStyle(node);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    const opacity = Number.parseFloat(style.opacity);
-    if (Number.isFinite(opacity) && opacity <= 0.01) return false;
-    node = node.parentElement;
-  }
 
   const rect = el.getBoundingClientRect();
   if (!(rect.width * rect.height >= minArea)) return false;
@@ -127,6 +146,8 @@ export function observePanesHostPresence(
     last = state;
     options.onStateChange?.(state);
     if (state === "missing") {
+      // hide 立刻腾屏 + destroy 回收（并行，互不阻塞）；设置页卸 host 走此支。
+      void Promise.resolve(backend.hideAll()).catch(() => undefined);
       void Promise.resolve(backend.destroyAll()).catch(() => undefined);
       return;
     }
@@ -195,8 +216,9 @@ export function observePanesHostPresence(
     }
   }
 
+  // 不听 pi-panes-content-well-sync：那是几何刷新通道，拖拽时每帧都会打，
+  // 叠进 presence 评估会多余 rAF + 偶发 restore 风暴。
   target.addEventListener("resize", schedule);
-  target.addEventListener("pi-panes-content-well-sync", schedule);
 
   return () => {
     if (disposed) return;
@@ -205,7 +227,6 @@ export function observePanesHostPresence(
     io?.disconnect();
     mo?.disconnect();
     target.removeEventListener("resize", schedule);
-    target.removeEventListener("pi-panes-content-well-sync", schedule);
     // 元素卸载 = missing → 销毁（force，无视 disposed 短路）
     apply("missing", true);
     disposed = true;
@@ -215,15 +236,20 @@ export function observePanesHostPresence(
 /**
  * 在 document 内查找 `[data-panes-host]` 并绑定监控（可选多实例，各自独立）。
  * 返回总 dispose。
+ *
+ * 路由切到无 host 的页（如 `/settings`）时，host 节点从树移除 → unbind → destroy。
  */
 export function observeAllPanesHostsInDocument(
   doc: Document = document,
   options: ObservePanesHostPresenceOptions = {},
 ): () => void {
+  const target = options.target ?? doc.defaultView ?? window;
+  const backend = options.backend ?? createDefaultPanesHostPresenceBackend(target);
+  const merged = { ...options, backend };
   const disposers = new Map<Element, () => void>();
   const bind = (el: Element): void => {
     if (disposers.has(el)) return;
-    disposers.set(el, observePanesHostPresence(el, options));
+    disposers.set(el, observePanesHostPresence(el, merged));
   };
   const unbind = (el: Element): void => {
     const off = disposers.get(el);
@@ -232,7 +258,24 @@ export function observeAllPanesHostsInDocument(
     disposers.delete(el);
   };
 
+  /** 扫离线 host + 无 host 时强制 hide/destroy（防整页跳转漏 dispose）。 */
+  const sweep = (): void => {
+    for (const el of [...disposers.keys()]) {
+      if (!el.isConnected) unbind(el);
+    }
+    doc.querySelectorAll(HOST_SELECTOR).forEach(bind);
+    if (doc.querySelector(HOST_SELECTOR) === null) {
+      void Promise.resolve(backend.hideAll()).catch(() => undefined);
+      void Promise.resolve(backend.destroyAll()).catch(() => undefined);
+    }
+  };
+
   doc.querySelectorAll(HOST_SELECTOR).forEach(bind);
+  // 冷进设置页 / 无 host：清孤儿 child。
+  if (doc.querySelector(HOST_SELECTOR) === null) {
+    void Promise.resolve(backend.hideAll()).catch(() => undefined);
+    void Promise.resolve(backend.destroyAll()).catch(() => undefined);
+  }
 
   const mo =
     typeof MutationObserver === "undefined"
@@ -241,21 +284,65 @@ export function observeAllPanesHostsInDocument(
           for (const record of records) {
             record.removedNodes.forEach((node) => {
               if (!(node instanceof Element)) return;
-              if (node.matches(HOST_SELECTOR)) unbind(node);
+              if (node.matches?.(HOST_SELECTOR)) unbind(node);
               node.querySelectorAll?.(HOST_SELECTOR).forEach(unbind);
             });
             record.addedNodes.forEach((node) => {
               if (!(node instanceof Element)) return;
-              if (node.matches(HOST_SELECTOR)) bind(node);
+              if (node.matches?.(HOST_SELECTOR)) bind(node);
               node.querySelectorAll?.(HOST_SELECTOR).forEach(bind);
             });
           }
+          sweep();
         });
   mo?.observe(doc.documentElement, { childList: true, subtree: true });
 
+  const onNav = (): void => {
+    // SPA / 返回前进：MO 偶发漏扫时补一刀。
+    queueMicrotask(sweep);
+  };
+  target.addEventListener("popstate", onNav);
+  target.addEventListener("pageshow", onNav);
+
   return () => {
     mo?.disconnect();
+    target.removeEventListener("popstate", onNav);
+    target.removeEventListener("pageshow", onNav);
     for (const off of disposers.values()) off();
     disposers.clear();
   };
+}
+
+/** 应用根单例：document 级 presence。重复 install 会先卸旧再装新。 */
+let documentPresenceOff: (() => void) | undefined;
+
+/**
+ * 在应用入口装一次（如 `Providers`）。此后任意路由挂/卸 `[data-panes-host]`
+ * 都由本闸处理 hide/destroy/restore；业务页勿再调 hide_all。
+ *
+ * 另导出 `notifyPanesHostPresenceSweep` 供路由变更后主动扫（无 host → hide+destroy）。
+ */
+export function installDocumentPanesHostPresence(
+  doc: Document = document,
+  options: ObservePanesHostPresenceOptions = {},
+): () => void {
+  documentPresenceOff?.();
+  documentPresenceOff = observeAllPanesHostsInDocument(doc, options);
+  return () => {
+    if (documentPresenceOff !== undefined) {
+      documentPresenceOff();
+      documentPresenceOff = undefined;
+    }
+  };
+}
+
+/** 路由 pathname 变化后调用：无 `[data-panes-host]` 则 hide+destroy。 */
+export function notifyPanesHostPresenceSweep(
+  doc: Document = document,
+  target: Window = window,
+): void {
+  if (doc.querySelector(HOST_SELECTOR) !== null) return;
+  const backend = createDefaultPanesHostPresenceBackend(target);
+  void Promise.resolve(backend.hideAll()).catch(() => undefined);
+  void Promise.resolve(backend.destroyAll()).catch(() => undefined);
 }

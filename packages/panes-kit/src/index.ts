@@ -44,6 +44,14 @@ export type {
   PaneWorkspaceReport,
   PanesWorkspaceSnapshot,
 } from "./workspace-protocol.js";
+export {
+  PI_PANES_WORKSPACE_INTENT_EVENT,
+  PI_PANES_PANEL_OPEN_EVENT,
+  requestPaneWorkspaceIntent,
+  requestPanesPanelOpen,
+  openOrActivatePaneFromHost,
+} from "./workspace-intent.js";
+export type { PaneWorkspaceHostIntent } from "./workspace-intent.js";
 export { PaneHostError, asPaneHostError } from "./errors.js";
 export {
   DEFAULT_PANE_REQUEST_BYTES,
@@ -65,7 +73,10 @@ export type { PaneGuestConnection, PaneGuestEvents, PaneGuestSurface } from "./g
 export {
   observePanesHostPresence,
   observeAllPanesHostsInDocument,
+  installDocumentPanesHostPresence,
+  notifyPanesHostPresenceSweep,
   isPanesHostElementVisible,
+  isPanesHostChromeHidden,
   createDefaultPanesHostPresenceBackend,
 } from "./host-presence.js";
 export type {

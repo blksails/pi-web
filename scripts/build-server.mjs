@@ -112,7 +112,7 @@ function sharedBuildOptions(entry, outfile) {
     plugins: [aliasPlugin],
     // `.js` 扩展名的相对 import 实际指向 `.ts` 源(NodeNext 约定)。
     resolveExtensions: [".ts", ".tsx", ".mjs", ".js", ".json"],
-    loader: { ".ts": "ts", ".tsx": "tsx" },
+    loader: { ".ts": "ts", ".tsx": "tsx", ".json": "json" },
     // pi SDK 的 CJS/ESM 混用依赖 `require` 存在;ESM 产物需自建 shim。
     banner: {
       js: [
@@ -153,7 +153,7 @@ export async function buildCliCommands() {
 
 export { CLI_COMMANDS_OUT_FILE };
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { outfile } = await buildServer();
   process.stdout.write(`[build-server] → ${outfile}\n`);
   const { outfile: cliOutfile } = await buildCliCommands();

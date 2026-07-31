@@ -19,6 +19,9 @@ export {
   setTauriPaneLayoutMetrics,
   isTauriNativePaneLayout,
   publishTauriContentWellMetrics,
+  ensureTauriContentWellMetrics,
+  hideTauriContentPanes,
+  destroyTauriContentPanes,
 } from "../adapters/tauri-runtime.js";
 export type {
   TauriPaneLayoutMode,
@@ -27,7 +30,10 @@ export type {
 export {
   observePanesHostPresence,
   observeAllPanesHostsInDocument,
+  installDocumentPanesHostPresence,
+  notifyPanesHostPresenceSweep,
   isPanesHostElementVisible,
+  isPanesHostChromeHidden,
   createDefaultPanesHostPresenceBackend,
 } from "../host-presence.js";
 export type {

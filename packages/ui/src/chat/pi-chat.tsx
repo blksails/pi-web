@@ -7,7 +7,6 @@ import * as React from "react";
 import {
   PaneLoadingSkeleton,
   PanesHost,
-  setTauriPaneLayoutMode,
   type PaneHostEvent,
   type PanesHostConfig,
 } from "@blksails/pi-web-panes-kit/react";
@@ -760,13 +759,13 @@ export function PiChat({
     },
     [],
   );
-  // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交（避免 chat 跟手重排）。
+  // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交。
+  // content-well 几何由 ResizeObserver 单路 rAF 合并上报（见 publishTauriContentWellMetrics），
+  // 此处不再额外 dispatch sync，避免「拖拽 rAF + RO + sync」三层插帧。
   const applyAsideWidthPreview = React.useCallback((asideWidthPx: number): void => {
     const aside = panelAsideRef.current;
     if (aside === null) return;
     aside.style.width = `${asideWidthPx}px`;
-    // 仅 pane content-well 跟侧栏；主 chat 列不动。
-    window.dispatchEvent(new Event("pi-panes-content-well-sync"));
   }, []);
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
@@ -785,6 +784,7 @@ export function PiChat({
       const prev = panelPendingWidthRef.current;
       if (prev !== undefined && Math.abs(prev - next) < 1) return;
       panelPendingWidthRef.current = next;
+      // 同帧合并：只保留最后一次 pointer 样点，一帧写一次 aside 宽。
       if (panelResizeFrameRef.current !== undefined) return;
       panelResizeFrameRef.current = requestAnimationFrame(() => {
         panelResizeFrameRef.current = undefined;
@@ -1438,27 +1438,8 @@ export function PiChat({
   const panelRatioActive = hasPanelRight;
   // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
-  // 宿主槽职责：workspace / host-fullscreen 模式 + aside 宽度/resize。
-  // content-well 几何（tabs 下内容区）由 PanesHost 上报，勿在此用残缺 metrics 覆盖。
-  const nativePaneLayoutActiveRef = React.useRef(false);
-  React.useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    if (!hasPanelRight || !showPanelRight) {
-      nativePaneLayoutActiveRef.current = false;
-      void setTauriPaneLayoutMode("host-fullscreen");
-      return undefined;
-    }
-    nativePaneLayoutActiveRef.current = true;
-    void setTauriPaneLayoutMode("workspace").then(() => {
-      // 回 workspace 后重采 content-well，并通知 PanesHost 把当前 tab show 回来。
-      window.dispatchEvent(new Event("pi-panes-content-well-sync"));
-      window.dispatchEvent(new Event("pi-panes-restore-visible"));
-    });
-    return undefined;
-  }, [hasPanelRight, showPanelRight]);
-  React.useEffect(() => () => {
-    if (nativePaneLayoutActiveRef.current) void setTauriPaneLayoutMode("host-fullscreen");
-  }, []);
+  // native child 生命周期只由 PanesHost 上 observePanesHostPresence 驱动
+  // （挂载/可见 → restore，收起 → hide，卸载 → destroy），PiChat 不主动 hide。
   // 日志面板位置安全降级:"right"(aside 布局)当前有未根治的 React #185 渲染循环
   // (LogsPanel 内 radix Select 在 aside 中 ref 抖动 → Maximum update depth → 整页崩),
   // 暂降级为 "bottom" 防崩;待右侧布局重构后恢复。详见 spec 报告/记忆。
@@ -2186,7 +2167,10 @@ export function PiChat({
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
             "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
-            showPanelRight ? "border-l border-[hsl(var(--border))]" : "overflow-hidden border-0",
+            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明），勿 -translate-x-full 甩出造成双线。
+            showPanelRight
+              ? "border-l border-[hsl(var(--border))]"
+              : "overflow-hidden border-0",
             panelRatioActive || keepPanesHostAlive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined
@@ -2209,14 +2193,19 @@ export function PiChat({
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 宿主槽：侧栏 resize（与 panes tabs chrome 分离；iframe/webview 共用）。 */}
+          {/* 命中条叠在 border 上；默认透明只留 border，hover/drag 才加粗同一缘。 */}
           {resizablePanel && showPanelRight ? (
             <div
               data-pi-panel-resizer
               data-panes-host-slot-resizer
               role="separator"
               aria-orientation="vertical"
-              className="absolute -left-px top-0 z-10 hidden h-full w-1.5 -translate-x-full cursor-col-resize touch-none bg-transparent hover:bg-[hsl(var(--border))] lg:block"
+              className={cn(
+                "absolute inset-y-0 left-0 z-10 hidden w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
+                panelDragging
+                  ? "bg-[hsl(var(--border))]"
+                  : "bg-transparent hover:bg-[hsl(var(--border))]",
+              )}
               onPointerDown={onPanelResizeDown}
               onPointerMove={onPanelResizeMove}
               onPointerUp={onPanelResizeUp}

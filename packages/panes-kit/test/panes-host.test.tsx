@@ -147,13 +147,35 @@ describe("PanesHost multi-open UI", () => {
     expect(view.container.querySelector("iframe")).toBeNull();
     expect(view.container.querySelector('[data-pane-carrier="tauri-webview"]')).not.toBeNull();
     expect(screen.getByRole("status", { name: "正在加载Editor…" })).not.toBeNull();
-    await waitFor(() => expect(created).toHaveLength(1));
-    expect(created[0]!.label).toMatch(/^pane-editor-native-\d+$/);
-    expect(created[0]!.url).toBe(
+    // 启动预热：content shell + overlay shell 可能先 create；内容以 URL 认 editor。
+    await waitFor(() => {
+      expect(
+        created.some((c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native")),
+      ).toBe(true);
+    });
+    // mock 无真实页面 load：补发 overlay warm shell ready（token 0）。
+    await act(async () => {
+      for (const listener of relayListeners) {
+        listener({
+          payload: {
+            instanceId: "panes-overlay-menu",
+            epoch: 0,
+            message: { type: "pane:overlay-ready", token: 0 },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+    const editorCreate = created.find(
+      (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+    )!;
+    // 预热池命中 → pane-warm-N；未命中 → pane-editor-native-N。
+    expect(editorCreate.label).toMatch(/^pane-(warm|editor-native)-\d+$/);
+    expect(editorCreate.url).toBe(
       "https://panes.example/editor.html?pi-pane-instance=editor-native#pi-pane-instance=editor-native",
     );
-    expect(created[0]!.visible).toBe(false);
-    expect(created[0]).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });
+    expect(editorCreate.visible).toBe(false);
+    expect(editorCreate).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });
     await act(async () => {
       for (const listener of relayListeners) {
         listener({
@@ -169,18 +191,18 @@ describe("PanesHost multi-open UI", () => {
     await waitFor(() => expect(actions).toContain("show"));
     const beforePalette = actions.length;
     fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-    await waitFor(() => expect(created).toHaveLength(2));
-    expect(created[1]!.label).toBe("pane-overlay-menu");
+    // open 热路径会 set-bounds；等 token 升到 1 后再模拟 guest ready。
+    await waitFor(() => {
+      expect(actions.slice(beforePalette)).toContain("set-bounds");
+    });
     expect(actions.slice(beforePalette)).not.toContain("hide");
-    const overlayUrl = new URL(created[1]!.url);
-    const overlayToken = Number(overlayUrl.searchParams.get("token"));
     await act(async () => {
       for (const listener of relayListeners) {
         listener({
           payload: {
             instanceId: "panes-overlay-menu",
             epoch: 0,
-            message: { type: "pane:overlay-ready", token: overlayToken },
+            message: { type: "pane:overlay-ready", token: 1 },
           },
         });
       }
@@ -189,8 +211,9 @@ describe("PanesHost multi-open UI", () => {
     await waitFor(() => expect(actions).toContain("focus"));
     fireEvent.click(screen.getByRole("button", { name: "刷新当前 Pane" }));
     await waitFor(() => expect(actions).toContain("reload"));
-    expect(created).toHaveLength(2);
     expect(view.container.querySelector("iframe")).toBeNull();
+    const createdAfterReloadClick = created.length;
+    expect(closed).toBe(0);
 
     view.rerender(
       <StrictMode>
@@ -202,7 +225,7 @@ describe("PanesHost multi-open UI", () => {
       </StrictMode>,
     );
     await act(async () => Promise.resolve());
-    expect(created).toHaveLength(2);
+    expect(created.length).toBe(createdAfterReloadClick);
     expect(closed).toBe(0);
 
     view.rerender(
@@ -214,9 +237,17 @@ describe("PanesHost multi-open UI", () => {
         />
       </StrictMode>,
     );
-    await waitFor(() => expect(created).toHaveLength(3));
-    expect(created[2]!.label).toMatch(/^pane-editor-native-\d+$/);
-    expect(created[2]!.label).not.toBe(created[0]!.label);
+    await waitFor(() => {
+      const editors = created.filter(
+        (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+      );
+      expect(editors.length).toBeGreaterThanOrEqual(2);
+    });
+    const editorCreates = created.filter(
+      (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+    );
+    // 会话切换：第二枚 editor 文档导航（池回收 navigate 或冷建）。
+    expect(editorCreates.at(-1)!.label).toMatch(/^pane-(warm|editor-native)-\d+$/);
     expect(view.container.querySelector("iframe")).toBeNull();
   });
 

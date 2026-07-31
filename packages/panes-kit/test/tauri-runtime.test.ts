@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createGlobalTauriPaneViewAdapter,
   isTauriNativePaneLayout,
+  ensureTauriContentWellMetrics,
   publishTauriContentWellMetrics,
   resolveTauriPaneInstanceId,
   setTauriPaneLayoutMetrics,
@@ -67,16 +68,23 @@ describe("Tauri Pane runtime", () => {
     });
   });
 
-  it("publishes content-well geometry for native child overlay", async () => {
+  it("publishes content-well geometry for native child overlay (coalesced rAF)", async () => {
     const invoke = vi.fn(() => Promise.resolve());
+    let rafCb: FrameRequestCallback | undefined;
     const target = {
       innerHeight: 800,
+      requestAnimationFrame: (cb: FrameRequestCallback) => {
+        rafCb = cb;
+        return 1;
+      },
+      cancelAnimationFrame: () => undefined,
       __TAURI__: {
         core: { invoke },
         window: { getCurrentWindow: () => ({}) },
       },
     } as unknown as Window;
     const well = {
+      isConnected: true,
       getBoundingClientRect: () => ({
         left: 520,
         top: 40,
@@ -91,7 +99,10 @@ describe("Tauri Pane runtime", () => {
     } as unknown as Element;
 
     await publishTauriContentWellMetrics(well, { minWidth: 240, target });
-
+    await publishTauriContentWellMetrics(well, { minWidth: 240, target });
+    expect(invoke).not.toHaveBeenCalled();
+    rafCb?.(0);
+    expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith("pane_layout_set_metrics", {
       metrics: {
         leftWidth: 520,
@@ -101,6 +112,55 @@ describe("Tauri Pane runtime", () => {
         minWidth: 240,
       },
     });
+  });
+
+  it("ensure metrics awaits IPC before show (no rAF race)", async () => {
+    const invoke = vi.fn(() => Promise.resolve());
+    const rafCbs: FrameRequestCallback[] = [];
+    const target = {
+      innerHeight: 800,
+      requestAnimationFrame: (cb: FrameRequestCallback) => {
+        rafCbs.push(cb);
+        return rafCbs.length;
+      },
+      cancelAnimationFrame: () => undefined,
+      __TAURI__: {
+        core: { invoke },
+        window: { getCurrentWindow: () => ({}) },
+      },
+    } as unknown as Window;
+    const well = {
+      isConnected: true,
+      getBoundingClientRect: () => ({
+        left: 600,
+        top: 36,
+        width: 380,
+        height: 720,
+        right: 980,
+        bottom: 756,
+        x: 600,
+        y: 36,
+        toJSON: () => ({}),
+      }),
+    } as unknown as Element;
+
+    // 默认 settle:false — 同步 await IPC（拖拽/补钉路径）
+    await ensureTauriContentWellMetrics(well, {
+      minWidth: 240,
+      target,
+      force: true,
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith("pane_layout_set_metrics", {
+      metrics: {
+        leftWidth: 600,
+        topHeight: 36,
+        paneWidth: 380,
+        bottomHeight: 44,
+        minWidth: 240,
+      },
+    });
+    expect(rafCbs).toHaveLength(0);
   });
 
   it("detects native layout flag via pane_layout_is_native", async () => {

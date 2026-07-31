@@ -494,12 +494,8 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
     }
   };
 
-  // 离开会话页（设置等）但未显式 onReset：仅隐藏 pane，同会话返回可恢复。
-  React.useEffect(() => {
-    return () => {
-      void getPiWebDesktopBridge()?.hidePaneWebviews?.();
-    };
-  }, []);
+  // pane webview 生命周期：由 panes-kit observePanesHostPresence 统一驱动
+  // （host 卸载 destroy / 不可见 hide），此处不主动 hide，避免与公共能力分叉。
 
   // 同源新建:保持当前 agent source、丢弃 resumeId,bump nonce 变更 SessionView 的 key 强制
   // 重挂,得到同一 source 的全新会话。仅 rail 关闭态账户区仍提供此入口(rail 开启时由
@@ -609,7 +605,14 @@ function SessionView({
     // header is not persisted yet (the resume-meta fallback cannot recover it).
     onSessionId: (id) => {
       if (typeof window === "undefined") return;
-      window.history.replaceState(null, "", `/session/${id}`);
+      const path = `/session/${id}`;
+      window.history.replaceState(null, "", path);
+      // 设置页「返回」用：回到当前会话，而非 agent 选择页。
+      try {
+        sessionStorage.setItem("pi-web:last-session-path", path);
+      } catch {
+        // private mode / 配额：忽略。
+      }
       if (create.source.length > 0 && create.source !== ".") {
         void fetch("/api/session-source", {
           method: "POST",
@@ -704,6 +707,14 @@ function SessionView({
     setPanelRightOpen(true);
     persistPanel({ open: true });
   }, [persistPanel]);
+  // panes 侧栏入口（Canvas 画廊等）经 pi-panes-panel-open 请求展开右栏。
+  React.useEffect(() => {
+    const onOpen = (): void => {
+      openPanelRight();
+    };
+    window.addEventListener("pi-panes-panel-open", onOpen);
+    return () => window.removeEventListener("pi-panes-panel-open", onOpen);
+  }, [openPanelRight]);
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
@@ -962,7 +973,23 @@ function SessionView({
           </div>
         ) : null}
         <div className="flex items-center gap-1">
-          <a href="/settings" data-settings-link className={accountBtnClass}>
+          <a
+            href="/settings"
+            data-settings-link
+            className={accountBtnClass}
+            onClick={() => {
+              // 进设置前记回跳点（含 replaceState 后的 /session/:id）。
+              // RR 拦截同 origin <a> 做 SPA 切换 → host 卸载 → document presence destroy。
+              try {
+                sessionStorage.setItem(
+                  "pi-web:settings-return",
+                  window.location.pathname + window.location.search,
+                );
+              } catch {
+                // ignore
+              }
+            }}
+          >
             {t("chatApp.settings")}
           </a>
           <span className="ml-auto flex items-center gap-1">

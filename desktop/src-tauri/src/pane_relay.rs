@@ -17,6 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{
     AppHandle, Emitter, Manager, WebviewBuilder, WebviewUrl, WebviewWindowBuilder,
@@ -24,13 +25,24 @@ use tauri::{
 #[cfg(not(windows))]
 use tauri::{LogicalPosition, LogicalSize};
 
-use crate::native_layout::{NativeWebviewLayoutManager, PaneBounds};
+use crate::native_layout::NativeWebviewLayoutManager;
 use crate::window::{native_child_webviews_enabled, HOST_WEBVIEW_LABEL, MAIN_WINDOW_LABEL};
 
 /// Rust → 宿主主窗口的上行事件名（与 panes-kit `TAURI_PANE_RELAY_HOST_EVENT` 一致）。
 pub const HOST_EVENT: &str = "pane-relay-host";
 /// Rust → pane webview 的下行事件名（与 panes-kit `TAURI_PANE_RELAY_GUEST_EVENT` 一致）。
 pub const GUEST_EVENT: &str = "pane-relay-guest";
+
+/// 浮动菜单 overlay 正在展示：apply_layout 改 content bounds 后须再抬 z，勿盖住菜单。
+static OVERLAY_WANTS_TOP: AtomicBool = AtomicBool::new(false);
+
+pub fn overlay_wants_top() -> bool {
+    OVERLAY_WANTS_TOP.load(Ordering::SeqCst)
+}
+
+fn set_overlay_wants_top(on: bool) {
+    OVERLAY_WANTS_TOP.store(on, Ordering::SeqCst);
+}
 
 /// 原生 IPC 信封：只包路由标识，`message` 原样透传（Req 9.3）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -518,7 +530,7 @@ pub async fn pane_webview_window_create(
             let parent = app
                 .get_window(MAIN_WINDOW_LABEL)
                 .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?;
-            // 浮动菜单：显式屏幕坐标 → 局部 bounds，盖在 content 之上，不进槽表。
+            // 浮动菜单：透明 child，屏幕坐标 → 局部 bounds，盖在 content 之上；不进槽表、不 hide content。
             if is_floating_overlay_label(&label) {
                 let (local_x, local_y, local_w, local_h) =
                     screen_to_local_bounds(&parent, x, y, width, height)?;
@@ -527,17 +539,25 @@ pub async fn pane_webview_window_create(
                     .into_iter()
                     .find(|view| view.label() == label)
                 {
-                    let _ = existing.hide();
+                    // 复用：只改 bounds + 导航，勿先 hide（闪一下再关是旧路径）。
                     set_child_local_bounds(&existing, local_x, local_y, local_w, local_h)?;
                     existing.navigate(url).map_err(|e| e.to_string())?;
                     if visible {
                         existing.show().map_err(|e| e.to_string())?;
                         let _ = existing.set_focus();
+                        set_overlay_wants_top(true);
+                    } else {
+                        // ready 前保持隐藏；导航期间不抬 z。
+                        let _ = existing.hide();
+                        set_overlay_wants_top(false);
                     }
                     return Ok(());
                 }
+                // 透明底：菜单卡片外可见底下 content webview（html body 亦 transparent）。
                 let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(url.clone()))
-                    .initialization_script(init_script);
+                    .initialization_script(init_script)
+                    .transparent(true)
+                    .background_color(tauri::window::Color(0, 0, 0, 0));
                 let view = parent
                     .add_child(
                         builder,
@@ -549,8 +569,10 @@ pub async fn pane_webview_window_create(
                 if visible {
                     view.show().map_err(|e| e.to_string())?;
                     let _ = view.set_focus();
+                    set_overlay_wants_top(true);
                 } else {
                     let _ = view.hide();
+                    set_overlay_wants_top(false);
                 }
                 return Ok(());
             }
@@ -558,12 +580,12 @@ pub async fn pane_webview_window_create(
             let _ = (x, y, width, height);
             // 创建即进入 workspace，避免卡在 HostFullscreen 导致永远 hide。
             let _ = layout.set_mode(crate::native_layout::LayoutMode::Workspace);
-            let provisional = PaneBounds {
-                x: 0.0,
-                y: 0.0,
-                width: 320.0,
-                height: 480.0,
-            };
+            // 首建位置用当前 metrics 算槽，禁止 (0,0) 临时坐标（否则 ready 前会闪在左上）。
+            let size = parent.inner_size().map_err(|e| e.to_string())?;
+            let scale = parent.scale_factor().map_err(|e| e.to_string())?;
+            let logical_w = f64::from(size.width) / scale.max(0.01);
+            let logical_h = f64::from(size.height) / scale.max(0.01);
+            let slot = layout.slot_for_window(logical_w, logical_h)?;
             if let Some(existing) = parent
                 .webviews()
                 .into_iter()
@@ -571,7 +593,8 @@ pub async fn pane_webview_window_create(
             {
                 // 复用实例须重新导航，否则可能停在空白页。
                 existing.navigate(url).map_err(|e| e.to_string())?;
-                layout.register_pane(label, provisional, visible, true)?;
+                layout.register_pane(label, slot, visible, true)?;
+                let _ = layout.invalidate_applied_bounds();
                 layout.apply_layout(&app)?;
                 if visible {
                     let _ = existing.show();
@@ -584,13 +607,14 @@ pub async fn pane_webview_window_create(
             let view = parent
                 .add_child(
                     builder,
-                    tauri::LogicalPosition::new(provisional.x, provisional.y),
-                    tauri::LogicalSize::new(provisional.width, provisional.height),
+                    tauri::LogicalPosition::new(slot.x, slot.y),
+                    tauri::LogicalSize::new(slot.width.max(1.0), slot.height.max(1.0)),
                 )
                 .map_err(|e| e.to_string())?;
             view.set_auto_resize(false).map_err(|e| e.to_string())?;
             // 先 register 再 layout；visible=false 时仍占位尺寸，ready 后 show 顶起。
-            layout.register_pane(label.clone(), provisional, visible, true)?;
+            layout.register_pane(label.clone(), slot, visible, true)?;
+            let _ = layout.invalidate_applied_bounds();
             layout.apply_layout(&app)?;
             if visible {
                 view.show().map_err(|e| e.to_string())?;
@@ -700,20 +724,27 @@ pub fn pane_webview_window_control(
                     if floating {
                         view.show().map_err(|e| e.to_string())?;
                         let _ = view.set_focus();
+                        set_overlay_wants_top(true);
                         return Ok(());
                     }
                     // 必须先退出 HostFullscreen，否则 apply_layout 会继续 hide 全部 content。
                     layout.set_mode(crate::native_layout::LayoutMode::Workspace)?;
                     layout.set_pane_visibility(&label, true)?;
+                    // show 必写 bounds：丢 last_slot，避免 near 短路留下 create 时的错位。
+                    layout.invalidate_applied_bounds()?;
                     layout.apply_layout(&app)?;
                     // 再顶一次 z-order（host 全窗时尤为关键）。
                     view.show().map_err(|e| e.to_string())?;
-                    let _ = view.set_focus();
+                    // 菜单打开时勿抢 focus：否则 overlay blur → 一闪而逝。
+                    if !overlay_wants_top() {
+                        let _ = view.set_focus();
+                    }
                     Ok(())
                 }
                 "hide" => {
                     let view = find_view()?;
                     if floating {
+                        set_overlay_wants_top(false);
                         return view.hide().map_err(|e| e.to_string());
                     }
                     // tab 切换：记 visible=false 并 hide。勿 apply_layout（会误触其它 pane 的 show 路径）。
