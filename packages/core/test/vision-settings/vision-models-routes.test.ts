@@ -1,79 +1,114 @@
 /**
- * 单元:createVisionModelsRoute —— GET /vision/models(spec canvas-vision-readout,Req 3.1/3.6)。
- * 直接以最小 RequestContext 调 handler(避开 createPiWebHandler alias 陷阱)。
+ * 集成:GET /config/models?input=image —— 端点合一后的部署级目录查询
+ * (multi-gateway-providers 任务 4.3,Req 3.1, 3.2, 3.4)。
  *
- * 取数经 deps 注入,故本测试**不加载 pi SDK**。
+ * 原独立的 `GET /vision/models`(`createVisionModelsRoute`,曾住在
+ * `src/vision-settings/vision-models-routes.ts`)已随本任务删除 —— 其能力由部署级目录
+ * 端点的类型筛选完全覆盖(Req 3.2, 4.5)。本文件原是那个已删除路由的单测,现改为验证
+ * 「新端点的 input=image 筛选结果与旧视觉模型清单等价」这条迁移不变式
+ * (design.md「集成测试」§2)。
+ *
+ * 旧清单(`packages/tool-kit/src/vision/select-model.ts` 的 `listVisionModels`)=
+ * `registry.getAvailable()`(已配置凭证的对话模型)中声明 `input` 含 `"image"` 的子集,
+ * `value` 形如 `provider/id`。这与 `listModelOptions(agentDir)` 输出的 self chat 目录
+ * 经 `query({input:"image"})` 筛选的子集是同一份数据、同一个筛选谓词
+ * (`m.input.includes("image")`),故此处以等价的 self `ModelOption` 夹具模拟
+ * (core 测试的既有纪律:不加载 pi SDK)。
+ *
+ * ★ 视觉清单今天不含图像静态目录/网关模型(旧端点只读 self models.json);合一后
+ * `input=image` 会多出这部分(design.md 迁移说明「预期内的能力增强」)——单独断言该
+ * 增量,不当回归。
  */
-import { describe, it, expect, vi } from "vitest";
-import { createVisionModelsRoute } from "../../src/vision-settings/vision-models-routes.js";
-import type { VisionModelOptions } from "../../src/vision-settings/vision-model-options.types.js";
+import { describe, it, expect } from "vitest";
+import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
+import { createPiWebHandler } from "../../src/http/index.js";
+import { InMemorySessionStore } from "../../src/session/session-store.js";
+import { SessionManager } from "../../src/session/session-manager.js";
+import { createModelCatalogService } from "../../src/model-catalog/service.js";
+import type { CatalogQuery } from "../../src/model-catalog/service.js";
+import type { ModelOptions } from "../../src/config/model-options.types.js";
+import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
 
-function ctxOf(req: Request) {
-  return { req, auth: {} as never, url: new URL(req.url) };
-}
-
-function routeOf(listModels: () => VisionModelOptions) {
-  const routes = createVisionModelsRoute({ listModels });
-  const get = routes.find((r) => r.method === "GET" && r.path === "/vision/models");
-  expect(get).toBeDefined();
-  return get!;
-}
-
-const SAMPLE: VisionModelOptions = {
+// 模拟 listModelOptions(agentDir) 的输出:一个可读图(旧视觉清单会含)、一个纯文本
+// (旧视觉清单不会含)的已配置对话模型 —— 同构 pi SDK `Model` 经任务 4.2 补齐后的形态。
+const SELF_CHAT: ModelOptions = {
+  providers: ["apiservices"],
   models: [
-    { value: "apiservices/gpt-5.4", label: "GPT-5.4", provider: "apiservices" },
-    { value: "apiservices/gpt-5.4-mini", label: "GPT-5.4 Mini", provider: "apiservices" },
+    { provider: "apiservices", id: "gpt-5.4", name: "GPT-5.4", input: ["text"], output: ["text"] },
+    {
+      provider: "apiservices",
+      id: "gpt-5.4-vision",
+      name: "GPT-5.4 Vision",
+      input: ["text", "image"],
+      output: ["text"],
+    },
   ],
 };
 
-describe("createVisionModelsRoute", () => {
-  it("GET /vision/models → 200 + { models: [{value,label,provider}] }(3.1)", async () => {
-    const res = await routeOf(() => SAMPLE).handler(ctxOf(new Request("http://x/vision/models")));
+const IMAGE_ENTRY: AigcCatalogEntry = { model: "img-1", label: "Image 1", provider: "self-image" };
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as VisionModelOptions;
-    expect(body.models).toHaveLength(2);
-    expect(body.models[0]).toEqual({
-      value: "apiservices/gpt-5.4",
-      label: "GPT-5.4",
-      provider: "apiservices",
-    });
+function makeHandler(opts: { imageCatalog?: boolean } = {}) {
+  const service = createModelCatalogService({
+    listSelfChat: () => SELF_CHAT,
+    imageCatalog: opts.imageCatalog ? [IMAGE_ENTRY] : [],
+    hiddenProviders: new Set(),
+  });
+  const store = new InMemorySessionStore(true);
+  const manager = new SessionManager({ store, idleMs: 0 });
+  const routes = createConfigRoutes({
+    listModelOptions: (q) =>
+      service.query({
+        input: q.input as CatalogQuery["input"],
+        output: q.output as CatalogQuery["output"],
+      }),
+  });
+  return createPiWebHandler({ manager, store, routes, authResolver: () => ({ anonymous: true }) });
+}
+
+type ResponseModel = {
+  readonly provider: string;
+  readonly id: string;
+  readonly name: string;
+  readonly input: readonly string[];
+  readonly output: readonly string[];
+};
+
+async function getModels(
+  handler: ReturnType<typeof makeHandler>,
+  qs: string,
+): Promise<{ providers: string[]; models: ResponseModel[] }> {
+  const res = await handler(new Request(`http://x/config/models${qs}`));
+  expect(res.status).toBe(200);
+  return JSON.parse(await res.text()) as { providers: string[]; models: ResponseModel[] };
+}
+
+describe("GET /config/models?input=image — 与旧 GET /vision/models 等价(Req 3.2, 4.5)", () => {
+  it("旧视觉清单里 input 含 image 的对话模型均出现,纯文本模型被排除", async () => {
+    const body = await getModels(makeHandler(), "?input=image");
+    const ids = body.models.map((m) => `${m.provider}/${m.id}`);
+    expect(ids).toContain("apiservices/gpt-5.4-vision");
+    expect(ids).not.toContain("apiservices/gpt-5.4");
   });
 
-  it("value 形如 provider/id —— 可直接填进工具的 model 参数", async () => {
-    const res = await routeOf(() => SAMPLE).handler(ctxOf(new Request("http://x/vision/models")));
-    const body = (await res.json()) as VisionModelOptions;
-    for (const m of body.models) {
-      expect(m.value).toMatch(/^[^/]+\/.+$/);
-      expect(m.value.startsWith(`${m.provider}/`)).toBe(true);
-    }
+  it("字段值与旧清单一致 —— provider/id 可拼成旧 value 形态,name 不变", async () => {
+    const body = await getModels(makeHandler(), "?input=image");
+    const found = body.models.find((m) => m.id === "gpt-5.4-vision");
+    expect(found).toBeDefined();
+    expect(found!.provider).toBe("apiservices");
+    expect(found!.name).toBe("GPT-5.4 Vision");
   });
 
-  it("返回体不含任何凭据 / baseUrl 字段(端点是公开只读的)", async () => {
-    const res = await routeOf(() => SAMPLE).handler(ctxOf(new Request("http://x/vision/models")));
-    const raw = JSON.stringify(await res.json());
-    expect(raw).not.toContain("apiKey");
-    expect(raw).not.toContain("baseUrl");
-    expect(raw).not.toContain("sk-");
+  it("★ 增量:图像静态目录默认声明 input 含 image,合一后会多出 —— 预期内的能力增强,不是回归", async () => {
+    const withoutImageCatalog = await getModels(makeHandler({ imageCatalog: false }), "?input=image");
+    const withImageCatalog = await getModels(makeHandler({ imageCatalog: true }), "?input=image");
+
+    expect(withImageCatalog.models.length).toBe(withoutImageCatalog.models.length + 1);
+    expect(withImageCatalog.models.map((m) => m.id)).toContain(IMAGE_ENTRY.model);
   });
 
-  it("取数抛错 → 200 + 空清单(降级,不把 500 透给前端;3.6)", async () => {
-    const listModels = vi.fn(() => {
-      throw new Error("models.json 损坏");
-    });
-    const res = await routeOf(listModels).handler(ctxOf(new Request("http://x/vision/models")));
-
-    expect(res.status).toBe(200);
-    // jsonResponse 会附加 protocolVersion,故只断言 models 字段。
-    expect(await res.json()).toMatchObject({ models: [] });
-    expect(listModels).toHaveBeenCalledTimes(1);
-  });
-
-  it("空清单 → 200 + { models: [] }(不是 404)", async () => {
-    const res = await routeOf(() => ({ models: [] })).handler(
-      ctxOf(new Request("http://x/vision/models")),
-    );
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ models: [] });
+  it("旧路径 GET /vision/models 已不存在(路由未注册)", async () => {
+    const handler = makeHandler();
+    const res = await handler(new Request("http://x/vision/models"));
+    expect(res.status).not.toBe(200);
   });
 });

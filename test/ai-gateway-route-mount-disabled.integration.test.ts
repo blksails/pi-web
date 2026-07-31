@@ -14,7 +14,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import path from "node:path";
 // 静态目录单一事实源(零 env 读取、零 pi SDK,import 顺序无害):未启用形态下
-// GET /api/aigc/models 必须与它逐字节一致(model-catalog spec 任务 3.1,Req 4.3/6.3)。
+// GET /api/config/models?output=image 必须与它逐字节一致(model-catalog spec 任务 3.1;
+// 独立的 GET /api/aigc/models 已随 multi-gateway-providers 任务 4.3 删除,Req 3.2)。
 import { AIGC_MODEL_CATALOG } from "@blksails/pi-web-tool-kit";
 
 process.env.PI_WEB_STUB_AGENT = "1";
@@ -89,16 +90,28 @@ describe("AI_GATEWAY_BASE_URL 未配置:/api/ai-gateway/* 未挂载", () => {
     }
   });
 
-  it("GET /api/aigc/models 与主干静态目录逐字节一致(无 source 等附加字段,Req 4.3/6.3)", async () => {
+  it("GET /api/aigc/models 已删除(★ 已承认的破坏性变更,multi-gateway-providers 任务 4.3,Req 3.2):独立端点不再注册,能力改由 GET /api/config/models?output=image 覆盖", async () => {
     const res = await route.GET(req("/api/aigc/models"));
+    expect(res.status).not.toBe(200);
+  });
+
+  it("GET /api/config/models?output=image 与旧 GET /aigc/models 的静态目录输出等价(Req 3.2,任务 4.2 的 input/output 字段随目录条目一并出现)", async () => {
+    const res = await route.GET(req("/api/config/models?output=image"));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { models: Array<Record<string, unknown>> };
-    // 逐字节一致语义:models 载荷深等于静态目录(响应信封的 protocolVersion 是主干
-    // 既有形态,不属本 spec 增量),且每条目键集恰为 {model,label,provider}
-    // (toEqual 不抓「多出的键」以外的形态差,键集断言补齐)。
-    expect(body.models).toEqual([...AIGC_MODEL_CATALOG]);
-    for (const m of body.models) {
-      expect(Object.keys(m).sort()).toEqual(["label", "model", "provider"]);
+    const body = (await res.json()) as {
+      models: Array<{ id: string; name: string; provider: string; input: string[]; output: string[] }>;
+    };
+    expect(body.models.length).toBe(AIGC_MODEL_CATALOG.length);
+    const byId = new Map(body.models.map((m) => [m.id, m]));
+    for (const old of AIGC_MODEL_CATALOG) {
+      const found = byId.get(old.model);
+      expect(found, `缺少旧目录条目 ${old.model}`).toBeDefined();
+      expect(found!.name).toBe(old.label);
+      expect(found!.provider).toBe(old.provider);
+      // 非空断言(multi-gateway-providers 任务 4.2 完成判据:三类来源的条目均有
+      // 非空的输入与输出类型)。
+      expect(found!.input.length).toBeGreaterThan(0);
+      expect(found!.output).toContain("image");
     }
   });
 });

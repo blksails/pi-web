@@ -41,8 +41,6 @@ import {
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
   defaultAgentEntryPath,
-  createAigcModelsRoute,
-  createVisionModelsRoute,
   createHostCommandRegistry,
   attachmentStoreConfigFromEnv,
   ATTACHMENT_PROFILE_DISABLED_ENV,
@@ -58,8 +56,11 @@ import {
   type SessionMetaIndex,
   ConfigCodec,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
-  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
+  // 统一入口。GET /config/models 经 query() 取数(multi-gateway-providers 任务 4.3:
+  // 端点合一后唯一的部署级目录端点,原独立的 GET /aigc/models / GET /vision/models
+  // 已删除,其能力由 `?input=`/`?output=` 类型筛选覆盖)。
   createModelCatalogService,
+  type CatalogQuery,
   // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
   composeCapabilities,
   HOST_CAPABILITY_IDS_V1,
@@ -147,18 +148,14 @@ import {
   listModelOptions,
   parseHiddenProviders,
 } from "@blksails/pi-web-server/model-options";
-// 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全,
-// server 的 aigc-settings 路由同款引法):供 ModelCatalogService 的 image 命名空间组装
-// (spec model-catalog,任务 3.1)。
+// 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全):
+// 供 ModelCatalogService 的 image 命名空间组装(spec model-catalog,任务 3.1)。
 import {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
   CLOUDFLARE_AIGC_CATALOG,
   isCloudflareConfigured,
 } from "@blksails/pi-web-tool-kit";
-// listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
-// (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
-import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
 import { readyTimeoutFromEnv } from "./readiness-config.js";
@@ -1266,7 +1263,31 @@ function buildSingleton(): HandlerSingleton {
   const hostDeps: HostDeps = {
     agentDir: config.agentDir,
     defaultCwd: config.defaultCwd,
-    listModelOptions: () => makeModelCatalog().chatOptions(),
+    // GET /config/models 唯一部署级目录取数(multi-gateway-providers 任务 4.3,Req 3.1,
+    // 3.2, 3.4):带 `input`/`output` 筛选参数时转发给 `ModelCatalogService.query()`,取代
+    // 此前独立的 GET /aigc/models(output=image)与 GET /vision/models(input=image)。
+    //
+    // ★ 未带任何筛选参数时**刻意不**调用 `query({})` —— 那会无条件把 image 命名空间
+    //   (AIGC 静态目录,与本特性的网关/自定义 provider 无关,一直存在)并入结果,
+    //   在 settings 的通用 provider/model 下拉(`model-select-field.tsx`,尚未迁移到
+    //   显式筛选参数,属任务 6.1)里混入 `newapi`/`sufy`/`dashscope` 等图像专用
+    //   provider——这些从不是可选的对话 provider。`query()` 还会给每条目无条件盖章
+    //   `source`(默认 `"self"`),而未注入网关时的旧 `chatOptions()` 完全不带该字段。
+    //   两者都不是「零筛选 = 行为不变」(Req 10.1),故未带筛选参数时继续走
+    //   `chatOptions()`,与本特性引入前逐字节一致;只有调用方显式传参(即消费方已
+    //   按 Req 11.2 迁移到「按类型呈现」)才切到 `query()` 的合并/筛选路径。
+    //   原始查询字符串未经取值域校验直传 —— 非法取值不匹配任何条目,`query()`
+    //   静默返回空集而非报错(见 config-routes.ts)。
+    listModelOptions: (query) => {
+      const catalog = makeModelCatalog();
+      if (query.input === undefined && query.output === undefined) {
+        return catalog.chatOptions();
+      }
+      return catalog.query({
+        input: query.input as CatalogQuery["input"],
+        output: query.output as CatalogQuery["output"],
+      });
+    },
     resolveSourceSettings: makeSourceSettingsResolver(config),
     onSourceSettingsSaved: (sourceKeyValue, payload) =>
       broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
@@ -1389,16 +1410,15 @@ function buildSingleton(): HandlerSingleton {
       // (spec host-contract-capability-composition,D5)。各能力面的原挂载条件(llm/ai/auth 的
       // 网关/登录门控)已内聚到 defaultCapabilities 对应 factory 内(读 hostDeps 可选字段),
       // 行为等价现状三元 `cond ? createX(...) : []`;secret 等惰性求值在 hostDeps 构造处完成。
+      //
+      // ★ 独立的 GET /aigc/models(image-toggles-field)与 GET /vision/models(canvas 解读)
+      //   两个只读端点已随 multi-gateway-providers 任务 4.3(Req 3.1, 3.2, 3.4)删除 ——
+      //   其能力由上面 `config.domains` 能力面挂载的 `GET /config/models?input=&output=`
+      //   完全覆盖(config.mcp 之后进入的 composedRoutes 已含该端点,见 hostDeps.listModelOptions)。
+      //   前端消费方(aigc-model-toggles-field / vision-model-select-field / canvas-ui
+      //   vision-op)迁移到统一端点属后续任务(6.1-6.3),在其落地前旧路径会 404 ——
+      //   这是本任务预期内的过渡态,不是遗留缺陷。
       ...composedRoutes,
-      // aigc.models / vision.models 不入 16 名册(集成设计 §5.4 判定为领域泄漏,删除属后续 spec)。
-      // M3 维持其现状接线(compose 之外);Router 对 injected 顺序不敏感,置于末尾不影响行为。
-      // ⚠ vision 端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
-      ...createAigcModelsRoute({
-        listEntries: () => makeModelCatalog().imageEntries(),
-      }),
-      ...createVisionModelsRoute({
-        listModels: () => listVisionModelOptions(config.agentDir),
-      }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.

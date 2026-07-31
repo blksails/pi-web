@@ -5,6 +5,10 @@
  * - PUT  /config/:domain ← `{ values }` → zod 校验 → secret 合并 → codec.save → 200
  * - 未知域 → 404
  * - adminPolicy 接缝(默认放行):拒绝时 → 403
+ * - GET /config/models?input=&output= → 唯一部署级模型目录查询(multi-gateway-providers
+ *   任务 4.3,Req 3.1, 3.2, 3.4)。原先独立的 `GET /aigc/models`(图像)与
+ *   `GET /vision/models`(视觉)两个端点已删除,其能力由本端点的类型筛选完全覆盖 ——
+ *   `output=image` 等价旧 AIGC 目录,`input=image` 等价旧视觉模型清单(Req 3.2)。
  *
  * 经 `createConfigRoutes(opts)` 返回 `ReadonlyArray<InjectedRoute>`,可直接传入
  * `createPiWebHandler({ routes })` 的 `routes?` 注入接缝。
@@ -48,6 +52,18 @@ const PutConfigBodySchema = z.object({
   values: z.record(z.unknown()),
 });
 
+/**
+ * `GET /config/models` 的查询参数(multi-gateway-providers 任务 4.3,Req 3.1, 3.2, 3.4):
+ * 按输入 / 输出类型筛选,取代此前按用途拆分的 `/aigc/models`(图像)与 `/vision/models`
+ * (视觉)两个端点。原始字符串直传给注入的 `listModelOptions` 接缝——非法取值不匹配
+ * 任何条目的 `input`/`output`(经 `ModelCatalogService.query()` 的 `matchesFilter`),
+ * 结果为空集而非报错,故本层无需重复做取值域校验。
+ */
+export interface ModelsQuery {
+  readonly input?: string;
+  readonly output?: string;
+}
+
 /** adminPolicy 接缝类型(与 extension-management 同构)。 */
 export type ConfigAdminPolicy = (auth: AuthContext) => boolean;
 
@@ -67,10 +83,13 @@ export interface ConfigRoutesOptions {
   readonly adminPolicy?: ConfigAdminPolicy;
   /**
    * 可选:运行时列模型接缝。提供时挂载数据端点 GET /config/models,前端的
-   * provider/model 可搜索下拉(widget)据此渲染。省略则该端点返回空集(前端回退
-   * 自由文本输入)。经依赖注入而非直接调用 pi SDK,使本模块测试与 pi SDK 解耦。
+   * provider/model 可搜索下拉(widget)、AIGC 模型开关、视觉模型选择器均据此渲染
+   * (multi-gateway-providers 任务 4.3:端点合一后唯一的部署级目录数据源)。省略则
+   * 该端点返回空集(前端回退自由文本输入)。经依赖注入而非直接调用 pi SDK,使本模块
+   * 测试与 pi SDK 解耦;`query` 携带 URL 上的 `input`/`output` 筛选参数,由装配层的
+   * `ModelCatalogService.query()` 消费(Req 3.4)。
    */
-  readonly listModelOptions?: () => ModelOptions | Promise<ModelOptions>;
+  readonly listModelOptions?: (query: ModelsQuery) => ModelOptions | Promise<ModelOptions>;
 }
 
 /** 从 URL pathname 提取 `/config/:domain` 中的 domain 段。 */
@@ -119,9 +138,10 @@ export function createConfigRoutes(
     return jsonResponse(200, { formSchema, values });
   };
 
-  // GET /config/models — 列出已配置凭证的可用 provider/模型,供 settings 的
-  // provider/model 可搜索下拉(widget)渲染。无 listModelOptions 接缝或取数抛错时
-  // 返回空集(前端回退自由文本输入),绝不阻断。
+  // GET /config/models — 唯一部署级模型目录(multi-gateway-providers 任务 4.3,
+  // Req 3.1, 3.2, 3.4):列出已配置凭证的可用 provider/模型,支持 `?input=`/`?output=`
+  // 按类型筛选,取代此前拆分的 `/aigc/models`(图像)与 `/vision/models`(视觉)两个端点。
+  // 无 listModelOptions 接缝或取数抛错时返回空集(前端回退自由文本输入),绝不阻断。
   const modelsHandler = async (ctx: RequestContext): Promise<Response> => {
     if (!adminPolicy(ctx.auth)) {
       return ctx.auth.anonymous
@@ -131,8 +151,12 @@ export function createConfigRoutes(
     if (opts.listModelOptions === undefined) {
       return jsonResponse(200, { providers: [], models: [] });
     }
+    const query: ModelsQuery = {
+      input: ctx.url.searchParams.get("input") ?? undefined,
+      output: ctx.url.searchParams.get("output") ?? undefined,
+    };
     try {
-      const modelOptions = await opts.listModelOptions();
+      const modelOptions = await opts.listModelOptions(query);
       return jsonResponse(200, {
         providers: modelOptions.providers,
         models: modelOptions.models,

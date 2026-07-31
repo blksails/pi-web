@@ -13,9 +13,10 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
-// spec multi-gateway-providers(任务 3.7,Req 6.5):失败文案的来源判据须覆盖全部
-// **实际注册**的网关实例名,而非模块级常量 —— 需要认得网关来源的 sourceId 才能从
-// `resolved`(下方)里挑出它,取中立命名空间常量,不引入具体 adapter 实现。
+// spec multi-gateway-providers(任务 3.7,Req 6.5):失败文案的来源判据须覆盖该来源
+// **声明**要注册的全部网关实例名(与是否已成功解析无关),而非模块级常量 —— 需要认得
+// 网关来源的 sourceId 才能从 `listModelSources()` 里挑出它,取中立命名空间常量,
+// 不引入具体 adapter 实现。
 import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 import {
   type AgentSessionServices,
@@ -144,18 +145,43 @@ export function buildRuntimeFactory(
     const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 
     const registry = services.modelRegistry;
-    // spec multi-gateway-providers(任务 3.7,Req 6.5):从已解析的模型源中挑出网关
-    // 来源(按 `sourceId` 而非假定它是唯一来源),回读其**运行时实际注册**的全部
-    // provider 名 —— 传给 `resolveModel` 使非缺省实例(如 `cloudflare`/`blksails-ai`)
-    // 的解析失败也命中来源专属文案。网关来源本次未解析出 spec(未配置/未启用)时留
-    // `undefined`,`resolveModel` 回退到其模块内的缺省单实例常量,行为与改造前等价。
-    const gatewayModelSourceEntry = resolved.find(
+    // spec multi-gateway-providers(任务 3.7,Req 6.5)—— 重做:上一版从 `resolved`
+    // (本次已成功解析出 spec 的源)取 provider 名,网关源本次未解析出 spec 时整体
+    // 退回缺省单实例常量。但失败文案本身把「网关套件未启用 / 凭据缺失 / 会话侧未
+    // 注册」列为头号成因 —— 恰在这些场景下 `resolveSpecFromEnv` 会返回 `undefined`,
+    // 判据因而在它最该起作用的地方失效(完整性复查抓到:`cloudflare`/`blksails-ai`
+    // 仍拿裸文案)。★ 判据不能是「该源是否已注册成功」。
+    //
+    // 改为:判据取自该来源在当前 env 下**声明**要注册的全部实例名 ——
+    // `declaredProviderNamesFromEnv`(见 `model-source-registrar.ts`),直接解析 env
+    // 取全集,与 `resolveSpecFromEnv` 是否解析成功无关。故从**已登记的全部来源**
+    // (`listModelSources()`,不再限定 `resolved`)里按 `sourceId` 挑出网关来源后调用。
+    //
+    // ★ 与「声明集」取**并集**,而不是「声明集存在就整体取代已解析集」——若只用 `??`
+    //   短路,一旦来源实现了 `declaredProviderNamesFromEnv` 却在当前 env 下返回空数组
+    //   (如:未配置任何网关 env),`[] ?? x` 的结果仍是 `[]` 而非落到 `x`,判据会被
+    //   收窄成空集,连缺省名 `ai-gateway` 都拿不到来源文案 —— 相对改造前是回归
+    //   (违反 Req 9.1 的逐字节等价)。并集为空 → 显式传 `undefined`,让 `resolveModel`
+    //   落回其模块内的 `DEFAULT_GATEWAY_PROVIDER_NAMES`,与改造前逐字节等价。
+    const gatewaySource = listModelSources().find(
+      (registrar) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
+    );
+    const gatewayResolvedEntry = resolved.find(
       ({ registrar }) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
     );
-    const gatewayProviderNames =
-      gatewayModelSourceEntry !== undefined
-        ? gatewayModelSourceEntry.registrar.providerNamesOf(gatewayModelSourceEntry.spec)
+    const declaredGatewayProviderNames = gatewaySource?.declaredProviderNamesFromEnv?.(
+      process.env,
+    );
+    const resolvedGatewayProviderNames =
+      gatewayResolvedEntry !== undefined
+        ? gatewayResolvedEntry.registrar.providerNamesOf(gatewayResolvedEntry.spec)
         : undefined;
+    const gatewayProviderNamesUnion = new Set<string>([
+      ...(declaredGatewayProviderNames ?? []),
+      ...(resolvedGatewayProviderNames ?? []),
+    ]);
+    const gatewayProviderNames =
+      gatewayProviderNamesUnion.size > 0 ? Array.from(gatewayProviderNamesUnion) : undefined;
     const model =
       session.model !== undefined
         ? resolveModel(session.model, registry, gatewayProviderNames)

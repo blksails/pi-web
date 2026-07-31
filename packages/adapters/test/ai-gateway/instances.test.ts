@@ -7,6 +7,7 @@ import type { ProviderId } from "@blksails/pi-web-core/model-catalog/provider-id
 import { AiGatewayConfigError } from "../../src/ai-gateway/config.js";
 import {
   createGatewayCatalogs,
+  declaredGatewayInstanceIdsFromEnv,
   DEFAULT_GATEWAY_INSTANCE_ID,
   resolveGatewayInstances,
   type GatewayInstanceConfig,
@@ -210,6 +211,64 @@ describe("resolveGatewayInstances — 非法配置 fail-fast,错误信息含实�
     expect(() =>
       resolveGatewayInstances({ PI_WEB_GATEWAYS: "openai" }),
     ).toThrow(AiGatewayConfigError);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// declaredGatewayInstanceIdsFromEnv —— 声明集判据(spec multi-gateway-providers 任务 3.7,
+// Req 6.5)。★ 与 resolveGatewayInstances 的核心区别:绝不抛异常、不做合法性校验。
+// ─────────────────────────────────────────────────────────────────────────
+describe("declaredGatewayInstanceIdsFromEnv — 声明集(不校验、不抛,Req 6.5)", () => {
+  it("未设置 PI_WEB_GATEWAYS 且未设置存量单实例变量 → 空数组", () => {
+    expect(declaredGatewayInstanceIdsFromEnv({})).toEqual([]);
+  });
+
+  it("设置 PI_WEB_GATEWAYS → 按逗号切分、trim,原样返回", () => {
+    expect(
+      declaredGatewayInstanceIdsFromEnv({ PI_WEB_GATEWAYS: " cloudflare , blksails-ai " }),
+    ).toEqual(["cloudflare", "blksails-ai"]);
+  });
+
+  it("未设置 PI_WEB_GATEWAYS,仅设存量 BLKSAILS_GATEWAY_BASE_URL → 缺省实例标识", () => {
+    expect(
+      declaredGatewayInstanceIdsFromEnv({
+        BLKSAILS_GATEWAY_BASE_URL: "http://gw.example.com:8080",
+      }),
+    ).toEqual([DEFAULT_GATEWAY_INSTANCE_ID]);
+  });
+
+  it("未设置 PI_WEB_GATEWAYS,仅设旧名 AI_GATEWAY_BASE_URL → 同样为缺省实例标识", () => {
+    expect(
+      declaredGatewayInstanceIdsFromEnv({ AI_GATEWAY_BASE_URL: "http://gw.example.com:8080" }),
+    ).toEqual([DEFAULT_GATEWAY_INSTANCE_ID]);
+  });
+
+  it("PI_WEB_GATEWAYS 与存量单实例变量同时设置 → 只取 PI_WEB_GATEWAYS(不合并)", () => {
+    expect(
+      declaredGatewayInstanceIdsFromEnv({
+        PI_WEB_GATEWAYS: "cloudflare",
+        BLKSAILS_GATEWAY_BASE_URL: "http://gw.example.com:8080",
+      }),
+    ).toEqual(["cloudflare"]);
+  });
+
+  it("PI_WEB_GATEWAYS 含不合法标识(大写)→ 不抛,原样计入声明集", () => {
+    expect(() => declaredGatewayInstanceIdsFromEnv({ PI_WEB_GATEWAYS: "Bad-ID" })).not.toThrow();
+    expect(declaredGatewayInstanceIdsFromEnv({ PI_WEB_GATEWAYS: "Bad-ID" })).toEqual(["Bad-ID"]);
+  });
+
+  it("PI_WEB_GATEWAYS 含 pi SDK 保留名(如 openai)→ 不抛,原样计入声明集", () => {
+    expect(() => declaredGatewayInstanceIdsFromEnv({ PI_WEB_GATEWAYS: "openai" })).not.toThrow();
+    expect(declaredGatewayInstanceIdsFromEnv({ PI_WEB_GATEWAYS: "openai" })).toEqual(["openai"]);
+  });
+
+  it("PI_WEB_GATEWAYS 为空白字符串 → 视同未设置,回落存量单实例判据", () => {
+    expect(
+      declaredGatewayInstanceIdsFromEnv({
+        PI_WEB_GATEWAYS: "   ",
+        BLKSAILS_GATEWAY_BASE_URL: "http://gw.example.com:8080",
+      }),
+    ).toEqual([DEFAULT_GATEWAY_INSTANCE_ID]);
   });
 });
 

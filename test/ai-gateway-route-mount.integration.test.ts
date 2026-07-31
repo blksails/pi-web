@@ -166,13 +166,18 @@ describe("聚合形态:目录端点经组装服务取数(model-catalog spec 任�
     expect(injected!.channel).toBe(GW_CHANNEL);
   });
 
-  it("GET /api/aigc/models:含三条网关条目且 source='ai-gateway',self 条目附 source='self'(Req 4.1/6.2)", async () => {
+  it("GET /api/aigc/models 已删除(multi-gateway-providers 任务 4.3,Req 3.2)", async () => {
     const res = await route.GET(req("/api/aigc/models"));
+    expect(res.status).not.toBe(200);
+  });
+
+  it("GET /api/config/models?output=image:含三条网关条目且 source='ai-gateway',self 条目附 source='self'(Req 3.2, 4.1, 6.2 —— 取代已删除的 GET /api/aigc/models)", async () => {
+    const res = await route.GET(req("/api/config/models?output=image"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      models: Array<{ model: string; provider: string; source?: string }>;
+      models: Array<{ id: string; provider: string; source?: string }>;
     };
-    const byId = new Map(body.models.map((m) => [m.model, m]));
+    const byId = new Map(body.models.map((m) => [m.id, m]));
     for (const id of ["gpt-image-1", "gpt-image-2-ai-gateway", "qwen-image"]) {
       const entry = byId.get(id);
       expect(entry, `缺网关条目 ${id}`).toBeDefined();

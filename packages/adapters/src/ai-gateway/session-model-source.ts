@@ -38,6 +38,7 @@
  */
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { envSafeInstanceId } from "./config.js";
+import { declaredGatewayInstanceIdsFromEnv } from "./instances.js";
 
 /** runner 侧读取的网关基址 env(已含 `/v1`)。跨进程契约。 */
 export const RUNNER_AI_GATEWAY_BASE_ENV = "PI_WEB_AI_GATEWAY_SESSION_BASE";
@@ -277,6 +278,68 @@ export function resolveAiGatewaySessionSpecsFromEnv(
     if (spec !== undefined) entries.push({ providerName: id, spec });
   }
   return entries;
+}
+
+/**
+ * 会话侧网关来源在当前 env 下**声明**要注册的全部 provider 名 —— 与它们是否已被
+ * {@link resolveAiGatewaySessionSpecsFromEnv} **成功**解析出 spec 无关
+ * (spec multi-gateway-providers,任务 3.7,Req 6.5)。
+ *
+ * ★ 为什么不能只读 {@link AI_GATEWAY_SESSION_INSTANCES_ENV}(`PI_WEB_AI_GATEWAY_SESSIONS`):
+ *   会话侧装配(`lib/app/ai-gateway-session-assembly.ts`)对每个候选实例逐一
+ *   `continue`(跳过)凭据缺失/目录为空的实例,只把**已解析成功**的实例 id 写进该 env
+ *   ——解析失败的实例根本不会出现在清单里。若判据只读这一个 env,声明集会恒等于
+ *   已解析集,等于没解决 Req 6.5 要解的问题(完整性复查抓到这一点)。
+ *
+ * 真正与解析成败无关、且运行时可见的声明源是部署侧 `PI_WEB_GATEWAYS`
+ * ({@link declaredGatewayInstanceIdsFromEnv},`instances.ts`)——它经
+ * `lib/app/pi-handler.ts` 的 `baseEnv = process.env` 与
+ * `packages/core/src/agent-source/assemble-spawn.ts` 的展开被本地 runner 子进程继承,
+ * 与该实例本次是否解析出可用 spec 无关。
+ *
+ * 取三路并集(去重,保留首次出现的顺序):
+ * 1. {@link AI_GATEWAY_SESSION_INSTANCES_ENV} 逗号切分(会话侧已知的实例标识清单);
+ * 2. {@link declaredGatewayInstanceIdsFromEnv}(部署侧 `PI_WEB_GATEWAYS` 声明的全部
+ *    实例标识);
+ * 3. 仅当 (1) 为空、且扁平三件套之一({@link RUNNER_AI_GATEWAY_BASE_ENV})存在时,追加
+ *    {@link AI_GATEWAY_PROVIDER_NAME}(Req 9.1 的缺省实例名,与改造前逐字节等价)。
+ *
+ * 全空 → `[]`。绝不抛异常、绝不做合法性校验(与 {@link declaredGatewayInstanceIdsFromEnv}
+ * 同惯例 —— 判据函数不能让"给用户的提示"本身先崩溃)。
+ *
+ * ★ e2b 沙箱分支走 `envPassthrough` 白名单,拿不到 `PI_WEB_GATEWAYS` → 该并集的第 2 路
+ *   为空,判据退回既有两路,不比改造前差(不是缺陷,是已知的能力边界)。
+ */
+export function declaredAiGatewaySessionProviderNamesFromEnv(
+  env: NodeJS.ProcessEnv,
+): readonly string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string | undefined): void => {
+    if (name === undefined) return;
+    const trimmed = name.trim();
+    if (trimmed.length === 0 || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    names.push(trimmed);
+  };
+
+  const rawSessionList = env[AI_GATEWAY_SESSION_INSTANCES_ENV]?.trim();
+  const sessionIds =
+    rawSessionList !== undefined && rawSessionList.length > 0
+      ? rawSessionList
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+  sessionIds.forEach(add);
+
+  declaredGatewayInstanceIdsFromEnv(env).forEach(add);
+
+  if (sessionIds.length === 0 && (env[RUNNER_AI_GATEWAY_BASE_ENV]?.trim().length ?? 0) > 0) {
+    add(AI_GATEWAY_PROVIDER_NAME);
+  }
+
+  return names;
 }
 
 /**

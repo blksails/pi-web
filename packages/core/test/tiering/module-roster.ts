@@ -78,8 +78,9 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   state: "core",
   trust: "core",
   workspace: "core",
-  "aigc-settings": "core", // 薄设置读写路由,不绑定具体 provider
-  "vision-settings": "core", // 同上
+  // aigc-settings 已随 multi-gateway-providers 任务 4.3 整体删除(GET /aigc/models 端点
+  // 合入 GET /config/models,Req 3.2);不再是独立模块。
+  "vision-settings": "core", // 薄设置读写路由(现只余纯类型,路由已随任务 4.3 删除)
   "parent-watchdog": "core",
 
   // ── runner:子进程实现 ─────────────────────────────────────

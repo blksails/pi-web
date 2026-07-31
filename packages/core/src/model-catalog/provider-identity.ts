@@ -49,6 +49,14 @@ const PROVIDER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * 该常量未经包的公开 `exports` 字段导出,core 包又刻意零 pi SDK 值导入
  * (`@earendil-works/pi-coding-agent` 是 optional peer dep),因此只能维护一份
  * 手工快照而非运行时导入 —— pi SDK 升级新增内置 provider 时需手工同步本列表。
+ *
+ * ★ `openrouter` 刻意从本快照中豁免(design.md 迁移策略表;Req 2.1, 7.6),与
+ * pi SDK 实际内置 openrouter 的事实不符——这是本项目层面的例外,而非快照抓取
+ * 疏漏。理由:AIGC 静态目录里已有 6 条在用的 `provider: "openrouter"` 条目,
+ * 是 pi-web 自己的图像路由键,与 SDK 的同名对话 provider 是两套独立的东西。
+ * 若保留为冲突名,键空间合并后这 6 条会撞冲突校验;若归并进 SDK 内置
+ * openrouter,图像路由会错误地继承 SDK 的对话 provider 定义。因此豁免,允许
+ * 自定义/既有条目使用 `"openrouter"` 这个标识。
  */
 export const RESERVED_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "anthropic",
@@ -74,7 +82,7 @@ export const RESERVED_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "opencode",
   "opencode-go",
   "openai",
-  "openrouter",
+  // "openrouter" 刻意豁免,不在此列 —— 见下方独立说明(Req 2.1, 7.6)。
   "together",
   "vercel-ai-gateway",
   "xai",
@@ -142,12 +150,21 @@ export function findProviderIdConflicts(
 /**
  * 存量归一表:把历史 provider 标识映射到当前标识。
  *
- * 本特性引入时尚无需要迁移的已知记录 ——「默认网关实例沿用旧名 `ai-gateway`」
- * 是刻意保留、不是需要迁移的标识变化(design.md 迁移策略表)。后续任务如有确切
- * 的迁移场景(如 AIGC 侧去重),在此追加映射项即可;`normalizeLegacyProviderId`
- * 的幂等性不依赖本表是否为空。
+ * `"ai-gateway": "blksails-ai"` 是本特性**唯一一处真映射**(design.md 迁移策略表;
+ * Req 2.2, 2.3, 9.3)。注意与 Req 9.1 的另一处「`ai-gateway`」刻意区分:
+ * `settings.json` 的 `defaultProvider: "ai-gateway"` 指的是**对话侧缺省网关实例
+ * id**,原样有效、不在此归一之列;这里归一的是**image 侧**历史标识——AIGC 静态
+ * 目录里把 BlackSail 自建网关的图像模型标成了 `provider: "ai-gateway"`,与对话侧
+ * 的实例 id 撞了同名不同义。键空间合并后二者会被当成同一个 provider,因此把
+ * image 侧的 `ai-gateway` 归一到自建网关的当前标识 `blksails-ai`,消除同名不同义。
+ *
+ * `normalizeLegacyProviderId` 的幂等性不依赖本表是否为空;但本表非空后必须有
+ * **非幂等**用例覆盖(即断言归一后的值确实不同于输入),否则把本表清空也不会
+ * 让任何单测报红。
  */
-export const LEGACY_PROVIDER_ID_MAP: LegacyProviderIdMap = {};
+export const LEGACY_PROVIDER_ID_MAP: LegacyProviderIdMap = {
+  "ai-gateway": "blksails-ai",
+};
 
 /**
  * 存量归一:把历史标识映射到当前标识;无映射时原样返回。

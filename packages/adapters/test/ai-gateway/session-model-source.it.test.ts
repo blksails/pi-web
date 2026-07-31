@@ -16,6 +16,7 @@ import {
   registerAiGatewayProvider,
   resolveAiGatewaySessionSpecFromEnv,
   resolveAiGatewaySessionSpecsFromEnv,
+  declaredAiGatewaySessionProviderNamesFromEnv,
 } from "../../src/ai-gateway/session-model-source.js";
 import {
   createSharedModelServices,
@@ -178,6 +179,65 @@ describe("resolveAiGatewaySessionSpecsFromEnv", () => {
     const entries = resolveAiGatewaySessionSpecsFromEnv(env);
     expect(entries).toHaveLength(1);
     expect(entries[0]?.providerName).toBe("solo");
+  });
+});
+
+// declaredAiGatewaySessionProviderNamesFromEnv —— 声明集判据(spec multi-gateway-providers
+// 任务 3.7,Req 6.5)。★ 与 resolveAiGatewaySessionSpecsFromEnv 的核心区别:与「本次是否
+// 已成功解析出 spec」无关,直接解析 env 取全集,不抛异常。
+describe("declaredAiGatewaySessionProviderNamesFromEnv — 声明集(与解析成败无关,Req 6.5)", () => {
+  it("仅设会话侧实例清单(PI_WEB_AI_GATEWAY_SESSIONS)→ 原样返回", () => {
+    expect(
+      declaredAiGatewaySessionProviderNamesFromEnv({
+        [AI_GATEWAY_SESSION_INSTANCES_ENV]: "cloudflare, blksails-ai",
+      }),
+    ).toEqual(["cloudflare", "blksails-ai"]);
+  });
+
+  it("仅设部署侧 PI_WEB_GATEWAYS(会话侧三件套全缺,凭据缺失场景)→ 仍原样返回,不因解析失败而丢名字", () => {
+    expect(
+      declaredAiGatewaySessionProviderNamesFromEnv({ PI_WEB_GATEWAYS: "cloudflare,blksails-ai" }),
+    ).toEqual(["cloudflare", "blksails-ai"]);
+  });
+
+  it("两路都设置且有重叠 → 取并集去重,不重复", () => {
+    expect(
+      declaredAiGatewaySessionProviderNamesFromEnv({
+        [AI_GATEWAY_SESSION_INSTANCES_ENV]: "cloudflare",
+        PI_WEB_GATEWAYS: "cloudflare,blksails-ai",
+      }),
+    ).toEqual(["cloudflare", "blksails-ai"]);
+  });
+
+  it("仅设扁平旧形态三件套(未设任何实例清单)→ [ai-gateway]", () => {
+    expect(declaredAiGatewaySessionProviderNamesFromEnv(envOf())).toEqual([
+      AI_GATEWAY_PROVIDER_NAME,
+    ]);
+  });
+
+  it("全空 → 空数组", () => {
+    expect(declaredAiGatewaySessionProviderNamesFromEnv({})).toEqual([]);
+  });
+
+  it("PI_WEB_GATEWAYS 含不合法标识(大写)与保留名 → 不抛,原样计入", () => {
+    expect(() =>
+      declaredAiGatewaySessionProviderNamesFromEnv({ PI_WEB_GATEWAYS: "Bad-ID" }),
+    ).not.toThrow();
+    expect(
+      declaredAiGatewaySessionProviderNamesFromEnv({ PI_WEB_GATEWAYS: "Bad-ID" }),
+    ).toEqual(["Bad-ID"]);
+    expect(() =>
+      declaredAiGatewaySessionProviderNamesFromEnv({ PI_WEB_GATEWAYS: "openai" }),
+    ).not.toThrow();
+  });
+
+  it("已设会话侧实例清单时,即便扁平三件套也存在,不再追加缺省名(清单非空则不回落)", () => {
+    expect(
+      declaredAiGatewaySessionProviderNamesFromEnv({
+        [AI_GATEWAY_SESSION_INSTANCES_ENV]: "cloudflare",
+        ...envOf(),
+      }),
+    ).toEqual(["cloudflare"]);
   });
 });
 

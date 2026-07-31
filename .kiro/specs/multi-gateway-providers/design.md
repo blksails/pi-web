@@ -215,7 +215,7 @@ packages/adapters/src/ai-gateway/
 | 6.2 | 会话可多出运行时来源并标明 | `model-source-registrar.ts` 的 `providerNamesOf` | `GET /api/sessions/:id/models` |
 | 6.3 | 登录态保留本地 provider | 同 6.1（同一修复） | — |
 | 6.4 | 追加而非替换 | `ModelRegistry.create(...)` + `registerProvider` 叠加 | — |
-| 6.5 | 默认 provider 不可用时提示 | `session-options.ts` 文案分化 | — |
+| 6.5 | 默认 provider 不可用时提示 | `session-options.ts` 文案分化;判据取值链 `option-mapper.ts`(声明∪已解析集,并集消费方)← `model-source-registrar.ts` 的可选契约 `declaredProviderNamesFromEnv` ← 唯一生产接线点 `host-assembly/model-sources.ts` ← `adapters/ai-gateway/{instances.ts,session-model-source.ts}` 的声明集纯函数(`declaredGatewayInstanceIdsFromEnv`/`declaredAiGatewaySessionProviderNamesFromEnv`) | — |
 | 7.1 | 列出全部并标明来源 | `domains/providers.ts`, `ProviderRegistry` | providers 配置域 |
 | 7.2 | 新增后模型出现在目录 | `CustomProviderSource` | providers 配置域 |
 | 7.3 | 凭据只写不回显 | `provider-secrets.ts` | `SecretMask`/`SecretWrite` |

@@ -38,6 +38,7 @@ const log = createLogger({ namespace: "server:ai-gateway" });
  */
 export type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
 import type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
+import type { Modality } from "@blksails/pi-web-core/model-catalog/modality.js";
 
 /** `GatewayModelCatalog` 的注入依赖。 */
 export interface GatewayModelCatalogDeps {
@@ -95,6 +96,21 @@ export function filterByOwner(
   const normalized = new Set([...allowed].map((o) => o.trim().toLowerCase()));
   return entries.filter((e) => normalized.has(e.ownedBy.trim().toLowerCase()));
 }
+
+/**
+ * 网关条目的缺省模态声明(multi-gateway-providers spec 任务 4.2,Req 4.1/4.3)。
+ *
+ * `GET /v1/models` 不携带模态信息,单条目也无从声明;design.md「输入/输出取值域」表
+ * 「网关目录条目 | 由实例配置声明或缺省 `["text"]`」两方向的缺省值相同 —— 与
+ * pi SDK `Model`(只有 input、output 单向缺省)不同,网关条目在两个方向都缺省为
+ * `["text"]`(对话网关的基线假设:纯文本模型)。
+ *
+ * ★「由实例配置声明」的那一半(即 `GatewayInstanceConfig.input`/`output`,已由任务 3.1
+ *   解析就位)尚未在本函数接线 —— 该声明是 per-instance 的,而本函数按 per-entry 合并,
+ *   贯通两者需要扩展 `mergeModelCatalog` 的签名或 `GatewayModelEntry` 的形状,超出本任务
+ *   划定的三个来源文件边界,留给后续任务(网关 provider 级模态继承)。
+ */
+const GATEWAY_DEFAULT_MODALITY: readonly Modality[] = ["text"];
 
 /** `GET /v1/models` 响应体的宽松形状(OpenAI 兼容:`{ data: [{ id, owned_by }] }`)。 */
 interface RawModelsResponse {
@@ -269,6 +285,10 @@ export function mergeModelCatalog(
       source: "ai-gateway" as const,
       channel: g.ownedBy,
       availability: "session" as const,
+      // multi-gateway-providers 任务 4.2(Req 4.1/4.3):网关条目均补齐非空的
+      // 输入/输出类型,见 GATEWAY_DEFAULT_MODALITY 的文档注释。
+      input: GATEWAY_DEFAULT_MODALITY,
+      output: GATEWAY_DEFAULT_MODALITY,
     }));
 
   // precedence 只做块排序;防御性去重保留先出现者(不吞并语义,Req 1.2)。

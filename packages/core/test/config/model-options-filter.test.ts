@@ -3,6 +3,12 @@
  *
  * 覆盖 parseHiddenProviders(逗号分隔解析、空白/空项处理)与 excludeProviders
  * (剔除指定 provider 的模型与 provider 名、空名单零拷贝、不改入参)。
+ *
+ * multi-gateway-providers spec 任务 4.4(Req 5.1):补一组 `excludeProviders` 泛型化
+ * 的回归用例 —— 用一个**非** `ModelOptions` 的形状(镜像 `ModelCatalogService.query()`
+ * 的 `CatalogQueryResult`,含 `input`/`output`/`source` 等 chat 侧没有的字段)驱动同一
+ * 函数,证明过滤逻辑不依赖 chat 命名空间的具体字段集,可被 `query()` 复用于统一投影,
+ * 使隐藏名单对 image 侧模型同样生效(不因类型不同而例外)。
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -73,6 +79,37 @@ describe("excludeProviders", () => {
     const before = JSON.stringify(SAMPLE);
     excludeProviders(SAMPLE, new Set(["openai"]));
     expect(JSON.stringify(SAMPLE)).toBe(before);
+  });
+});
+
+describe("excludeProviders(泛型化,非 ModelOptions 形状 —— 镜像 query() 的 CatalogQueryResult)", () => {
+  /** 镜像 CatalogModel:字段集与 ModelOption 不同(多 input/output/source,无强制 name)。 */
+  interface CatalogLikeModel {
+    readonly provider: string;
+    readonly id: string;
+    readonly input: readonly string[];
+    readonly output: readonly string[];
+    readonly source: string;
+  }
+
+  const CATALOG_LIKE: { providers: readonly string[]; models: readonly CatalogLikeModel[] } = {
+    providers: ["newapi", "ai-gateway"],
+    models: [
+      { provider: "newapi", id: "gpt-image-2", input: ["text"], output: ["image"], source: "self" },
+      { provider: "ai-gateway", id: "qwen-image", input: ["text"], output: ["image"], source: "ai-gateway" },
+    ],
+  };
+
+  it("对非 ModelOptions 形状(image/统一投影)同样剔除隐藏 provider", () => {
+    const out = excludeProviders(CATALOG_LIKE, new Set(["ai-gateway"]));
+    expect(out.providers).toEqual(["newapi"]);
+    expect(out.models.map((m) => m.id)).toEqual(["gpt-image-2"]);
+    expect(out.models.every((m) => m.provider !== "ai-gateway")).toBe(true);
+  });
+
+  it("空名单 → 原样返回(零拷贝快路径),该形状同样成立", () => {
+    const out = excludeProviders(CATALOG_LIKE, new Set());
+    expect(out).toBe(CATALOG_LIKE);
   });
 });
 

@@ -108,7 +108,6 @@ composeCapabilities
 computePassthroughEnv
 createAgentSlashProvider
 createAgentSourcesRoutes
-createAigcModelsRoute
 createAttachmentHandle
 createAttachmentProvider
 createAttachmentRoutes
@@ -144,7 +143,6 @@ createSourceSettingsRoutes
 createTempFileTracker
 createTranslationContext
 createUrlSigner
-createVisionModelsRoute
 decideMode
 deepMergeJson
 defaultAgentEntryPath

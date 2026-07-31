@@ -64,6 +64,21 @@ export interface ModelSourceRegistrar<TSpec = unknown> {
   providerNamesOf(spec: TSpec): readonly string[];
   /** 把该源注册进共享 registry。仅在 `resolveSpecFromEnv` 返回非空时被调用。 */
   register(registry: ModelRegistry, spec: TSpec, log: ModelSourceLogger): void;
+  /**
+   * 该来源在当前 env 下**声明**要注册的全部 provider 名 —— 与 `resolveSpecFromEnv`
+   * 是否**成功**解析出 `TSpec` 无关(spec multi-gateway-providers,任务 3.7,Req 6.5)。
+   *
+   * ★ 为什么不能靠 `providerNamesOf(resolveSpecFromEnv(env))`:`resolveSpecFromEnv`
+   *   在配置缺失/非法时整体返回 `undefined`(fail-soft,不抛),此时没有 `TSpec` 可传给
+   *   `providerNamesOf`。而消费方(`option-mapper.ts` 的失败文案分化)恰恰最需要在
+   *   这种场景 —— 网关套件未启用、凭据缺失 —— 仍能认出某个失败的 provider 名属于本
+   *   来源,才能给出「常见成因」提示而非裸文案。用「是否已成功注册」当判据,会让判据
+   *   在它最该起作用的地方失效(完整性复查抓到的缺口)。
+   * ★ 可选。未实现的来源(如仅注册单一固定 provider 的来源)不必提供 —— 调用方按
+   *   `resolveSpecFromEnv` 是否已成功解析退回既有取值,不比未提供本方法更差。
+   * ★ 须无副作用,且不依赖 `resolveSpecFromEnv` 是否已被调用过。
+   */
+  declaredProviderNamesFromEnv?(env: NodeJS.ProcessEnv): readonly string[];
 }
 
 const registrars: ModelSourceRegistrar[] = [];

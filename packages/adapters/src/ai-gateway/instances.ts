@@ -239,6 +239,39 @@ export function resolveGatewayInstances(
 }
 
 /**
+ * 该来源在当前 env 下**声明**要注册的全部网关实例标识 —— 与 {@link resolveGatewayInstances}
+ * 不同,本函数只做字符串层面的解析,**绝不做合法性校验、绝不抛异常**
+ * (spec multi-gateway-providers,任务 3.7,Req 6.5)。
+ *
+ * ★ 为什么不能复用 {@link resolveGatewayInstances}:它对非法配置(标识形态、base URL、
+ *   取值域)一律 fail-fast 抛 {@link AiGatewayConfigError}(`instances.test.ts` 已覆盖该
+ *   契约)。本函数的消费方是**失败文案的来源判据**(`packages/runner/src/runner/
+ *   option-mapper.ts`)——那条路径本身就是在"配置有问题"时给用户提示,若判据函数自己
+ *   先抛异常,会把"提示"变成"崩溃"。
+ *
+ * - {@link GATEWAY_INSTANCES_ENV}(`PI_WEB_GATEWAYS`)设置且非空白 → 按逗号切分、trim、
+ *   去空,原样返回(不做 `validateProviderId` 校验 —— 非法标识仍应作为「声明过」计入,
+ *   由判据的消费方决定如何处理,不在此处吞掉)。
+ * - 未设置/空白 → 若存量单实例变量(`AI_GATEWAY_BASE_URL_ENV` 或其 LEGACY 名)存在,
+ *   返回 `[DEFAULT_GATEWAY_INSTANCE_ID]`(Req 9.1 的缺省实例);否则 `[]`。
+ */
+export function declaredGatewayInstanceIdsFromEnv(
+  env: NodeJS.ProcessEnv,
+): readonly string[] {
+  const rawList = env[GATEWAY_INSTANCES_ENV]?.trim();
+  if (rawList !== undefined && rawList.length > 0) {
+    return rawList
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  const hasLegacyBaseUrl =
+    (env[AI_GATEWAY_BASE_URL_ENV]?.trim().length ?? 0) > 0 ||
+    (env[AI_GATEWAY_BASE_URL_ENV_LEGACY]?.trim().length ?? 0) > 0;
+  return hasLegacyBaseUrl ? [DEFAULT_GATEWAY_INSTANCE_ID] : [];
+}
+
+/**
  * {@link createGatewayCatalogs} 的注入依赖(测试接缝;缺省与 {@link GatewayModelCatalog}
  * 同源:未传即各自缺省 `globalThis.fetch` / `Date.now` / `server:ai-gateway` 日志)。
  */

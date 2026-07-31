@@ -56,7 +56,7 @@ describe("validateProviderId — 形态合法性", () => {
 
 describe("validateProviderId — 保留名冲突(Req 2.2/7.6)", () => {
   it("与 pi SDK 内置 provider 同名的自定义标识被拒绝", () => {
-    for (const raw of ["openai", "anthropic", "google", "openrouter"]) {
+    for (const raw of ["openai", "anthropic", "google"]) {
       expect(RESERVED_PROVIDER_IDS.has(raw)).toBe(true);
       const result = validateProviderId(raw);
       expect(result.ok).toBe(false);
@@ -74,6 +74,21 @@ describe("validateProviderId — 保留名冲突(Req 2.2/7.6)", () => {
 
   it("非保留名的自定义标识不受影响", () => {
     expect(validateProviderId("qiniu").ok).toBe(true);
+  });
+});
+
+describe("validateProviderId — openrouter 从保留名清单豁免(Req 2.1/7.6)", () => {
+  it("openrouter 不在保留名清单中", () => {
+    // AIGC 静态目录已有 6 条在用的 provider: "openrouter" 条目,与 SDK 内置的
+    // 同名对话 provider 是两套独立的东西;归并会让图像路由错误地继承 SDK 的
+    // 对话 provider 定义,因此从保留名清单中豁免(design.md 迁移策略表)。
+    expect(RESERVED_PROVIDER_IDS.has("openrouter")).toBe(false);
+  });
+
+  it("豁免后,自定义/既有 openrouter 标识不再被 validateProviderId 拒绝", () => {
+    const result = validateProviderId("openrouter");
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.id).toBe("openrouter");
   });
 });
 
@@ -165,7 +180,32 @@ describe("normalizeLegacyProviderId — 归一幂等(Req 9.3)", () => {
     expect(normalizeLegacyProviderId(result, legacyMap)).toBe(result);
   });
 
-  it("默认(无显式传入 legacyMap)使用模块内置表,当前无已知映射,原样返回", () => {
-    expect(normalizeLegacyProviderId("ai-gateway")).toBe("ai-gateway");
+  it("默认(无显式传入 legacyMap)使用模块内置表,无映射的标识原样返回", () => {
+    expect(normalizeLegacyProviderId("qiniu")).toBe("qiniu");
+  });
+});
+
+describe("normalizeLegacyProviderId — image 侧 ai-gateway → blksails-ai(本特性唯一真映射,Req 2.2/2.3/9.3)", () => {
+  it("非幂等用例:使用默认内置表归一 ai-gateway,结果实际发生变化(不等于原值)", () => {
+    // 与既有幂等用例的区别:那些用例的输入本就无映射,归一前后恒等,把
+    // LEGACY_PROVIDER_ID_MAP 清空也不会报红。这条用真实的默认表断言归一
+    // 确实把 "ai-gateway" 变成了 "blksails-ai" —— 清空该表本用例会立刻报红。
+    const result = normalizeLegacyProviderId("ai-gateway");
+    expect(result).toBe("blksails-ai");
+    expect(result).not.toBe("ai-gateway");
+  });
+
+  it("归一结果本身幂等:对已归一的 blksails-ai 再次归一,结果不再变化", () => {
+    const once = normalizeLegacyProviderId("ai-gateway");
+    const twice = normalizeLegacyProviderId(once);
+    expect(twice).toBe("blksails-ai");
+    expect(twice).toBe(once);
+  });
+
+  it("不影响对话侧缺省实例 id:显式传入的自定义表若不含该映射,ai-gateway 原样返回(Req 9.1 对照)", () => {
+    // 对话侧 settings.json 的 defaultProvider: "ai-gateway" 是缺省网关实例 id,
+    // 与本任务归一的 image 侧标识是两回事;此处用空表模拟"未启用该项归一"的
+    // 场景,证明归一行为完全由传入的 legacyMap 决定,不是硬编码特判。
+    expect(normalizeLegacyProviderId("ai-gateway", {})).toBe("ai-gateway");
   });
 });

@@ -10,6 +10,9 @@
 export {
   createModelCatalogService,
   type CatalogImageEntry,
+  type CatalogModel,
+  type CatalogQuery,
+  type CatalogQueryResult,
   type ModelCatalogService,
   type ModelCatalogServiceDeps,
 } from "./service.js";

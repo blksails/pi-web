@@ -51,7 +51,8 @@ const ALLOWED_EXPORTS: ReadonlySet<string> = new Set([
   "./session-list/index.js",
   "./session-meta/index.js",
   "./agent-source-list/index.js",
-  "./aigc-settings/index.js",
+  // aigc-settings 已随 multi-gateway-providers 任务 4.3 整体删除(GET /aigc/models 端点
+  // 合入 GET /config/models,Req 3.2)。
   "./vision-settings/index.js",
   "./session-actions/index.js",
   "./sandbox/entry.js",

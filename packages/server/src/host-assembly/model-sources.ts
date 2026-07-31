@@ -28,6 +28,7 @@ import {
   AI_GATEWAY_PROVIDER_NAME,
   registerAiGatewayProvider,
   resolveAiGatewaySessionSpecsFromEnv,
+  declaredAiGatewaySessionProviderNamesFromEnv,
 } from "@blksails/pi-web-adapters/ai-gateway/session-model-source.js";
 import {
   registerModelSource,
@@ -71,5 +72,13 @@ export function registerBuiltinModelSources(): void {
         registerAiGatewayProvider(registry, spec, log, providerName);
       }
     },
+    // ★ spec multi-gateway-providers 任务 3.7(Req 6.5)重做:失败文案的来源判据不能
+    //   只靠「本次是否已成功解析出 spec」(即上面的 `providerNamesOf(resolveSpecFromEnv(env))`
+    //   路径)——网关套件未启用 / 凭据缺失 / 会话侧未注册,恰恰是该文案列出的头号成因,
+    //   此时 `resolveSpecFromEnv` 整体返回 `undefined`,判据会在它最该起作用的场景失效。
+    //   本回调直接解析 env 取「声明」的全集,与解析成败无关(唯一的生产接线点 ——
+    //   `packages/runner/src/runner/option-mapper.ts` 经 `declaredProviderNamesFromEnv`
+    //   回读)。
+    declaredProviderNamesFromEnv: (env) => declaredAiGatewaySessionProviderNamesFromEnv(env),
   });
 }

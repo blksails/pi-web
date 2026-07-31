@@ -26,6 +26,7 @@
 import { join } from "node:path";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import type { ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
+import { normalizeModalities } from "@blksails/pi-web-core/model-catalog/modality.js";
 
 // 经本(`./model-options`)子路径转出 provider 排除过滤(纯函数,定义在不引 pi SDK 的
 // model-options-filter),便于 handler 装配层与取数一并 import。
@@ -42,11 +43,21 @@ export {
 export function listModelOptions(agentDir: string): ModelOptions {
   const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
   const registry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
-  const models = registry.getAvailable().map((m) => ({
-    provider: m.provider,
-    id: m.id,
-    name: m.name,
-  }));
+  const models = registry.getAvailable().map((m) => {
+    // multi-gateway-providers spec 任务 4.2(Req 2.4, 4.1, 4.3):pi SDK 的 Model 直接
+    // 携带 `input`(design.md「输入/输出取值域」表:「pi SDK Model | 直接映射」,恒为
+    // 非空数组),但不带 `output` —— 经 `normalizeModalities` 按对话模型缺省补齐为
+    // `["text"]`(任务 1.2 既定规则),使本地模型来源的条目与网关/图像来源对齐,
+    // 均携带非空的输入/输出类型。
+    const modality = normalizeModalities({ input: m.input });
+    return {
+      provider: m.provider,
+      id: m.id,
+      name: m.name,
+      input: modality.input,
+      output: modality.output,
+    };
+  });
   const providers = [...new Set(models.map((m) => m.provider))].sort();
   return { providers, models };
 }

@@ -264,6 +264,20 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     expect(merged.models[0]?.channel).toBe("first");
   });
 
+  // ★ 边界补充(spec multi-gateway-providers 任务 4.2,Req 4.1/4.3):本文件是
+  // mergeModelCatalog 的直接单测,4.2 的目标文件列表未列出本文件,但 4.2 对该函数
+  // 的修改(网关条目补齐非空 input/output)恰由本文件验证,故在此补一条用例
+  // (无需改动本文件其余既有断言 —— 均以 .find()/.filter() 挑字段,不受新增字段影响)。
+  it("网关条目均携带非空的 input/output(spec multi-gateway-providers 任务 4.2,Req 4.1/4.3)", () => {
+    const merged = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
+    const gw = merged.models.filter((m) => m.source === "ai-gateway");
+    expect(gw.length).toBeGreaterThan(0);
+    for (const m of gw) {
+      expect(m.input?.length ?? 0).toBeGreaterThan(0);
+      expect(m.output?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
   it("gateway 入参为空数组:models 的 provider/id/name 与 self 完全一致(含顺序),providers = self providers", () => {
     // 语义分界(design.md「mergeModelCatalog(重写)」/ Req 1.3 零侵入辨析):
     // 「未启用 ai-gateway 套件时响应逐字节一致」由装配层保证——aiGwConfig 为 undefined 时
