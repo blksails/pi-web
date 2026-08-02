@@ -27,6 +27,7 @@ import {
   AI_GATEWAY_AIGC_CATALOG,
   CLOUDFLARE_AIGC_CATALOG,
 } from "./model-catalog.js";
+import { normalizeLegacyProviderId } from "@blksails/pi-web-protocol";
 import type { ImageRoute } from "./types.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
@@ -152,7 +153,15 @@ function parseHiddenProviders(raw: string | undefined): ReadonlySet<string> {
 function hiddenModelIds(hiddenProviders: ReadonlySet<string>): ReadonlySet<string> {
   if (hiddenProviders.size === 0) return new Set();
   const all = [...AIGC_MODEL_CATALOG, ...AI_GATEWAY_AIGC_CATALOG, ...CLOUDFLARE_AIGC_CATALOG];
-  return new Set(all.filter((e) => hiddenProviders.has(e.provider)).map((e) => e.model));
+  // ★ 比对**归一后**的标识,与目录端点 `query()` 同一键空间(multi-gateway-providers
+  // 任务 4.0 的 LEGACY_PROVIDER_ID_MAP;第七批完整性批评 gap 1)。静态目录里 BlackSail
+  // 自建网关的三条图像模型仍写着历史值 `ai-gateway`,而界面/目录里它们已是 `blksails-ai`。
+  // 拿原始值比对会两个方向都错:隐藏 `blksails-ai` → 界面看不见但工具照常能跑;
+  // 隐藏 `ai-gateway`(意在屏蔽对话侧缺省网关实例)→ 反而连带禁掉这三条图像模型。
+  // 只归一**条目**、不归一名单:名单里的 `ai-gateway` 指对话侧实例,本就不该命中它们。
+  return new Set(
+    all.filter((e) => hiddenProviders.has(normalizeLegacyProviderId(e.provider))).map((e) => e.model),
+  );
 }
 
 export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {

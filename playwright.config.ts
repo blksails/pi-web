@@ -45,6 +45,21 @@ const PORT_LOGIN = PORT_FS + 4;
 const PORT_REGISTRY = PORT_FS + 5;
 // 假 cloud 自身的端口(同时充当 registry 宿主)。
 const PORT_FAKE_CLOUD = PORT_FS + 6;
+// 多网关实例(第七套 webServer,spec multi-gateway-providers 任务 8.2):两个本机可控的
+// ai-gateway 目录桩(cloudflare / blksails-ai,各自独立端口 + 独立模型 id)+ 一台声明
+// `PI_WEB_GATEWAYS=cloudflare,blksails-ai` 的 pi-web server,验证两个实例同时启用时在
+// provider 下拉中分别可见(Req 1.3)。绝不打真实上游网关。
+const PORT_GATEWAY_STUB_CF = PORT_FS + 7;
+const PORT_GATEWAY_STUB_BLK = PORT_FS + 8;
+const PORT_GATEWAYS = PORT_FS + 9;
+// 会话侧模型选择器观测点(第九套 webServer,spec multi-gateway-providers 任务 8.2 修复轮,
+// Req 11.3):专用 stub(PI_WEB_STUB_AGENT_PATH → e2e/fixtures/model-catalog-stub-agent.mjs)
+// 的 `get_available_models` 经**真实**装配点 `registerBuiltinModelSources()` 合成模型
+// 清单,使自定义 provider(经 PUT /api/config/providers 写入其专属 agentDir)的模型能在
+// GET /api/sessions/:id/models 与聊天区 `[data-pi-model-selector]` 被观测到 —— 这条
+// 生产链路(runner.ts→composeModelSources→…→pi SDK modelRegistry.getAvailable()）在其余
+// 8 套 server 上都被默认 stub 的写死模型清单挡住,无法被浏览器 e2e 触达。
+const PORT_SESSION_MODELS = PORT_FS + 10;
 const externalServer = process.env.PI_WEB_E2E_EXTERNAL_SERVER === "1";
 
 // attachment-tool-bridge 专用 stub 的绝对路径(服务端据 PI_WEB_STUB_AGENT_PATH 派生 spawn 规格)。
@@ -62,6 +77,22 @@ const ATTACHMENT_STUB_PATH = path.join(
   "e2e",
   "fixtures",
   "attachment-tool-bridge-stub.mjs",
+);
+
+const AI_GATEWAY_STUB_PATH = path.join(
+  process.cwd(),
+  "e2e",
+  "fixtures",
+  "ai-gateway-catalog-stub-server.mjs",
+);
+
+// 会话侧模型选择器观测点(任务 8.2 修复轮)专用 stub 的绝对路径(同上惯例:playwright 按
+// CJS 转译本文件,路径一律经 process.cwd()）。
+const SESSION_MODELS_STUB_PATH = path.join(
+  process.cwd(),
+  "e2e",
+  "fixtures",
+  "model-catalog-stub-agent.mjs",
 );
 
 // Isolated temp storage per run; exposed via env so the spec can assert artifacts.
@@ -159,6 +190,15 @@ process.env.PI_WEB_E2E_INSTALL_SOURCES_ROOT = installSourcesRoot;
 fs.mkdirSync(installSourcesRoot, { recursive: true });
 const installSourcesRegistry = path.join(installAgentDir, "sources.json");
 
+// 会话侧模型选择器观测点(任务 8.2 修复轮):独立 agentDir——`custom-provider-session-
+// selector.e2e.ts` 经 PUT /api/config/providers 写入其 providers.json,必须与其余
+// server 的 agentDir 互不共享,避免与 custom-provider-model-selector.e2e.ts(fs 项目)
+// 的同名并发写入互相踩踏。
+const sessionModelsAgentDir = fs.mkdtempSync(
+  path.join(os.tmpdir(), "pi-e2e-session-models-agent-"),
+);
+fs.mkdirSync(sessionModelsAgentDir, { recursive: true });
+
 // 隔离产物目录:`vite build --outDir` / esbuild 的 PI_WEB_DIST 均可指向它,
 // 使 e2e 构建不与开发态产物互相覆盖。默认 `dist`。
 //
@@ -206,7 +246,13 @@ export default defineConfig({
       // 专用 server 上的 spec 从 fs project 排除:
       //  - agent-plugin-commands.e2e.ts 需放行 env(PI_WEB_EXT_ALLOW_LOCAL/ADMIN_ALLOW_ANY)+ 隔离落盘;
       //  - attachment-tool-bridge.e2e.ts 需专用 stub(PI_WEB_STUB_AGENT_PATH)驱动真实附件工具链。
-      testIgnore: /(agent-plugin-commands|publish-command|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources)\.e2e\.ts/,
+      //  - multi-gateway-instances.e2e.ts 需要 PI_WEB_GATEWAYS 声明的两个网关实例
+      //    (fs server 无该 env,provider 下拉只会有 self,断言必然落空)。
+      //  - custom-provider-session-selector.e2e.ts(任务 8.2 修复轮)需要专用 stub
+      //    (PI_WEB_STUB_AGENT_PATH → model-catalog-stub-agent.mjs)驱动会话侧真实模型源
+      //    合成 —— fs server 用默认 stub(写死 AVAILABLE_MODELS,与 providers.json 解耦),
+      //    断言必然落空。
+      testIgnore: /(agent-plugin-commands|publish-command|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources|multi-gateway-instances|custom-provider-session-selector)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -257,6 +303,24 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_LOGIN}`,
+      },
+    },
+    {
+      // 多网关实例(任务 8.2):专用 server(PI_WEB_GATEWAYS 声明两个实例),只跑该 spec。
+      name: "gateways",
+      testMatch: /multi-gateway-instances\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_GATEWAYS}`,
+      },
+    },
+    {
+      // 会话侧模型选择器观测点(任务 8.2 修复轮,Req 11.3):专用 stub server,只跑该 spec。
+      name: "session-models",
+      testMatch: /custom-provider-session-selector\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_SESSION_MODELS}`,
       },
     },
   ],
@@ -417,6 +481,87 @@ export default defineConfig({
               // ADMIN_DENIED 失败卡片而不是列表。
               PI_WEB_EXT_ADMIN_ALLOW_ANY: "1",
               NEXT_PUBLIC_PI_WEB_SOURCE_PICKER: "1",
+            },
+          },
+          {
+            // 多网关实例(任务 8.2)第一个桩:cloudflare 实例的目录源。纯 node http 夹具,
+            // 无需构建产物。
+            command: `node ${AI_GATEWAY_STUB_PATH}`,
+            port: PORT_GATEWAY_STUB_CF,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 30_000,
+            env: {
+              AI_GATEWAY_STUB_PORT: String(PORT_GATEWAY_STUB_CF),
+              AI_GATEWAY_STUB_MODEL_ID: "e2e-cf-mesh-model",
+            },
+          },
+          {
+            // 多网关实例(任务 8.2)第二个桩:blksails-ai 实例的目录源。command 附独立标记
+            // (脚本路径相同但端口/模型 id 不同的两条 command 字符串不同,天然去重,无需
+            // 额外 argv 标记)。
+            command: `node ${AI_GATEWAY_STUB_PATH}`,
+            port: PORT_GATEWAY_STUB_BLK,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 30_000,
+            env: {
+              AI_GATEWAY_STUB_PORT: String(PORT_GATEWAY_STUB_BLK),
+              AI_GATEWAY_STUB_MODEL_ID: "e2e-blk-mesh-model",
+            },
+          },
+          {
+            // 多网关实例(任务 8.2):声明两个实例(cloudflare/blksails-ai),各自指向上面
+            // 两个本机可控的桩。契约见 `.env.local.example`「Multi-gateway instances」段。
+            // command 附独立 argv 标记去重。
+            command: `node ${SERVER_ENTRY} --store=gateways`,
+            port: PORT_GATEWAYS,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_GATEWAYS),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-gateways-fs-"),
+              ),
+              PI_WEB_AGENT_DIR: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-gateways-agent-"),
+              ),
+              PI_WEB_GATEWAYS: "cloudflare,blksails-ai",
+              PI_WEB_GATEWAY_CLOUDFLARE_BASE_URL: `http://127.0.0.1:${PORT_GATEWAY_STUB_CF}`,
+              PI_WEB_GATEWAY_CLOUDFLARE_API_KEY: "e2e-cloudflare-key",
+              PI_WEB_GATEWAY_BLKSAILS_AI_BASE_URL: `http://127.0.0.1:${PORT_GATEWAY_STUB_BLK}`,
+              PI_WEB_GATEWAY_BLKSAILS_AI_API_KEY: "e2e-blksails-ai-key",
+              // aiGateway 装配点在实例非空时无条件解析该 secret(lib/app/pi-handler.ts),
+              // 不设会在启动期直接抛错(资源解析在 resolveAiGatewaySecret 里,回退复用
+              // PI_WEB_ATTACHMENT_SECRET 也可,这里显式钉死更可读)。
+              PI_WEB_AI_GATEWAY_SECRET: "pi-e2e-gateways-stable-secret",
+            },
+          },
+          {
+            // 会话侧模型选择器观测点(任务 8.2 修复轮,Req 11.3):专用 stub(见
+            // SESSION_MODELS_STUB_PATH 头注释)+ 独立 agentDir + 独立落盘。command 附独立
+            // argv 标记去重。
+            command: `node ${SERVER_ENTRY} --store=session-models`,
+            port: PORT_SESSION_MODELS,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_SESSION_MODELS),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(
+                path.join(os.tmpdir(), "pi-e2e-session-models-fs-"),
+              ),
+              PI_WEB_AGENT_DIR: sessionModelsAgentDir,
+              PI_WEB_STUB_AGENT_PATH: SESSION_MODELS_STUB_PATH,
             },
           },
         ],

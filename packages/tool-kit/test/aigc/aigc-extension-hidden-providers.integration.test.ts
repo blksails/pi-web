@@ -129,3 +129,48 @@ describe("aigcExtension — 隐藏 provider 名单彻底禁用工具侧模型(�
     expect(models).toContain(DASHSCOPE_MODEL);
   });
 });
+
+// ── 键空间一致性(第七批完整性批评 gap 1;任务 4.0 与 4.4 的交叉)─────────────────
+// 目录端点 `query()` 按**归一后**的 provider 过滤隐藏名单(image 侧 `ai-gateway` →
+// `blksails-ai`),工具侧此前按**归一前**的原始值过滤同一份 PI_WEB_HIDE_PROVIDERS。
+// 两个方向都会错,且都表现为「界面与工具不一致」:
+//   隐藏 blksails-ai → 界面看不见但工具照常能跑(Req 5.2/5.4 要根治的正是这个);
+//   隐藏 ai-gateway  → 界面列着但工具跑不了(反向)。
+// 上面那批用例全用 openrouter —— 一个不在归一表里的 id,对这条缝零判别力。
+describe("★ 隐藏名单的键空间须与目录端点一致(归一后比对)", () => {
+  /** BlackSail 自建网关静态目录里的一条图像模型(其 provider 字面量仍是 ai-gateway)。 */
+  const BLKSAILS_MODEL = "gpt-image-1";
+  let prevGatewayBase: string | undefined;
+
+  beforeEach(() => {
+    prevGatewayBase = process.env.BLKSAILS_GATEWAY_BASE_URL;
+    // 启用自建网关路由组,否则其三条图像模型根本不进可用集,断言无从判别。
+    process.env.BLKSAILS_GATEWAY_BASE_URL = "http://127.0.0.1:9/gw";
+  });
+  afterEach(() => {
+    if (prevGatewayBase === undefined) delete process.env.BLKSAILS_GATEWAY_BASE_URL;
+    else process.env.BLKSAILS_GATEWAY_BASE_URL = prevGatewayBase;
+  });
+
+  it("基线:不隐藏时,自建网关的图像模型在工具侧可用", () => {
+    delete process.env.PI_WEB_HIDE_PROVIDERS;
+    const { state } = runExtension();
+    expect(state.get("aigc.models") as string[]).toContain(BLKSAILS_MODEL);
+  });
+
+  it("PI_WEB_HIDE_PROVIDERS=blksails-ai(界面上显示的那个 id)→ 工具侧同样禁用", () => {
+    process.env.PI_WEB_HIDE_PROVIDERS = "blksails-ai";
+    const { state, tools } = runExtension();
+    expect(state.get("aigc.models") as string[]).not.toContain(BLKSAILS_MODEL);
+    const gen = tools.find((t) => t.name === "image_generation");
+    expect(JSON.stringify(gen?.parameters)).not.toContain(`"${BLKSAILS_MODEL}"`);
+  });
+
+  it("PI_WEB_HIDE_PROVIDERS=ai-gateway(对话侧缺省网关实例)→ 不连带禁掉图像模型", () => {
+    // 归一后这三条是 `blksails-ai`,与对话侧的实例 id `ai-gateway` 是**两个** provider
+    // (任务 4.0 拆开它们的全部意义所在)。只归一条目、不归一名单,故此处不命中。
+    process.env.PI_WEB_HIDE_PROVIDERS = "ai-gateway";
+    const { state } = runExtension();
+    expect(state.get("aigc.models") as string[]).toContain(BLKSAILS_MODEL);
+  });
+});

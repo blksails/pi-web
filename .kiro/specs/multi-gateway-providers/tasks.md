@@ -222,14 +222,14 @@
 
 ## 7. 存量兼容
 
-- [ ] 7.1 使存量配置在改造后继续生效
+- [x] 7.1 使存量配置在改造后继续生效
   - 存量的默认 provider 与默认模型继续有效；因标识变化而需映射的自动归一，不静默丢弃
   - 存量的图像模型启停设置与视觉模型偏好继续生效
   - 完成判据：集成测试以改造前的配置文件内容为输入，断言默认模型、图像开关、视觉偏好三者均仍生效
   - _Requirements: 9.1, 9.2, 9.3_
   - _Depends: 3.1, 4.3_
 
-- [ ] 7.2 使指向已不存在 provider 的设置可辨识
+- [x] 7.2 使指向已不存在 provider 的设置可辨识
   - 存量设置指向的 provider 不存在时保留该值并给出提示，不静默清除
   - 会话中默认 provider 不可用时给出可辨识提示，不静默回落
   - 完成判据：组件测试断言失效值带可辨识标记而非被移除
@@ -237,18 +237,18 @@
 
 ## 8. 验证
 
-- [ ] 8.1 补齐诊断信息
+- [x] 8.1 补齐诊断信息
   - 各来源在组装时记录其提供数、经类型筛选后数、经隐藏过滤后数，使「模型为何没出现」可从日志判定
   - 完成判据：单测断言日志含上述计数
   - _Requirements: 10.3_
 
-- [ ] 8.2 端到端验证多实例与自定义 provider
+- [x] 8.2 端到端验证多实例与自定义 provider
   - 浏览器 e2e：两个网关实例同时启用时在 provider 下拉中分别可见；新增一个自定义 provider 后其模型出现在会话模型选择器
   - 完成判据：e2e 用例通过，且用例在功能未接线时能报红
   - _Requirements: 1.3, 7.2, 11.3_
   - _Depends: 3.6, 5.4, 6.6_
 
-- [ ] 8.3 全量回归与类型检查
+- [x] 8.3 全量回归与类型检查
   - 全部工作区包的测试与类型检查通过；核对测试汇总的算术（通过数加跳过数等于总数），防止 worker 崩溃被计为全绿
   - 逐条复核本特性的验收标准，对未被自动化覆盖者说明其人工验证方式
   - 完成判据：给出测试与类型检查的实际输出，而非「应该通过」的断言
@@ -369,3 +369,111 @@ workflow 进程中途退出，已按铁律跑 `recover-run.mjs` 重建账本（�
 → 已在 design.md 迁移策略表补齐四行决策，并新增 **任务 4.0** 作为 4.1 的前置。
 
 **⑥ `/api/config/models` 响应也新增了 `input`/`output`** —— 同属未走破坏性变更流程，已写进迁移表。
+
+### 第七批（4.5, 5.1-5.4, 6.6, 7.x, 8.1, 8.2）完整性批评发现（2026-08-03）
+
+**① 隐藏名单在两层用了不同的 provider 键空间（已修）** —— 目录端点 `query()` 按**归一后**的
+`blksails-ai` 比对 `PI_WEB_HIDE_PROVIDERS`，而工具侧 `hiddenModelIds()`（任务 4.4）与
+`imageEntries()` 仍按**归一前**的 `ai-gateway` 比对同一份名单。两个方向都错：
+隐藏 `blksails-ai` → 界面看不见但工具照常能跑（正是 Req 5.2/5.4 要根治的）；
+隐藏 `ai-gateway`（意在屏蔽对话侧缺省实例）→ 反而连带禁掉那 3 条图像模型。
+
+两批用例各自全绿，是因为 4.4 的用例只用了 `openrouter` —— 一个不在归一表里的 id，
+对这条缝零判别力。
+
+→ 归一表 `LEGACY_PROVIDER_ID_MAP` / `normalizeLegacyProviderId` **下沉至 protocol**
+（`packages/protocol/src/model-catalog/legacy-provider-id.ts`），core 原样再导出。
+理由：消费方分居依赖图两侧，tool-kit 不依赖 core（也不该依赖 —— core 是服务端内核，
+tool-kit 跑在 agent 子进程），两者共同的最内层是 protocol。这是与任务 5.1 同款的分层
+约束（protocol 不能反向 import core），但解法相反：5.1 走注入，这里必须走下沉，因为
+`hiddenModelIds()` 在扩展装配期从 env 读取，没有注入点。
+判据：`packages/tool-kit/test/aigc/aigc-extension-hidden-providers.integration.test.ts`
+末尾的三条（基线 + 两个方向），撤回归一后两条报红，已实测。
+
+**② Req 11.4 在「自定义 provider 声明 output=image」组合下不成立（已知缺口，未修）**
+—— 5.1/5.3 允许自定义 provider 声明 `output: ["image"]`，6.2 又把设置页的图像开关清单
+换成了统一端点 `?output=image` 的全集；而 AIGC 工具的可路由集合恒为 tool-kit 的三张
+**静态**路由表。于是这类模型会出现在开关清单里、勾掉它只是往 `aigc.disabledModels`
+写一个不匹配任何真实路由的裸 id —— 一个惰性开关。
+
+取舍：本 spec 不交付「自定义 provider 的图像路由」（Out of scope 已排除视频/音频工具，
+图像工具的自定义路由同属工具侧能力，不在目录体系范围内）。留作已知缺口，修复方向二选一：
+开关清单按「工具可路由」再过滤一次，或对目录里有、工具无路由的条目沿用任务 6.4/7.2 的
+`data-pi-model-orphan` 同款可辨识语义 —— 不要让它长得像一个正常可用的开关。
+
+**③ Req 9.3 的交付形态是「零迁移闸门 + 论证」，不是迁移器** —— 任务卡写的是「视觉偏好的
+复合键前缀会随归一而变，须映射」，7.1 实际交付的是回归闸门并**删除**了上一提交已落地的
+`normalizeLegacyCompoundModelKey`。核对后该反转成立，论证如下，此处留档以免有人按任务卡
+再实现一遍、把现在正确的对话侧 `ai-gateway` 也归一掉：
+
+- `aigc.disabledModels` 存的是**裸 model id**，不含 provider 前缀 → 改名不影响。
+- `aigc.visionModel` 存的是 `provider/modelId` 复合键，但视觉清单的查询串是
+  `?input=image&output=text`；归一只发生在 `toImageCatalogModel`，而 image 侧条目的
+  `output` 恒为 `image`，**从不进入视觉候选集**。能进候选的是对话侧条目，对话侧不归一。
+- `settings.json` 的 `defaultProvider: "ai-gateway"` 指对话侧缺省网关实例，原样有效。
+
+→ 结论：**没有任何存量存储值需要迁移**，唯一的真映射只作用于 image 目录条目自身。
+Req 9.3 的验证方式是「回归闸门 + 上述论证」，8.3 逐条复核时按此记录，不按「有无迁移器」判。
+
+**④ 多实例段漏写 secret 硬前置（已修）** —— 启用任一实例即需 `PI_WEB_AI_GATEWAY_SECRET`
+（或回退 `PI_WEB_ATTACHMENT_SECRET`），两者皆缺则**启动期直接抛错**。该要求原先只写在
+`.env.local.example` 的旧单实例段，新增的「Multi-gateway instances」段没有重申 ——
+只按新段落配置的部署方会撞启动崩溃。已在多实例段补明（属 Req 10.2 的文档面）。
+
+### 任务 8.3 —— 全量回归与逐条验收复核（2026-08-03）
+
+#### 实测输出（串行；每面均核对 `passed + skipped == 总数`）
+
+| 面 | 结果 |
+|---|---|
+| `packages/protocol` | 47 文件 / **436 passed**（436） |
+| `packages/core` | 197 文件 / **1955 passed + 3 skipped**（1958） |
+| `packages/ui` | 114 文件 / **969 passed**（969） |
+| `packages/react` | 49 文件 / **398 passed**（398） |
+| `packages/canvas-ui` | 11 文件 / **118 passed**（118） |
+| `packages/server` | 17 文件 / **117 passed + 1 skipped**（118） |
+| `packages/adapters` | 52 文件 / **643 passed + 8 skipped**（651） |
+| `packages/runner` | 51 文件 / **325 passed + 6 skipped**（331） |
+| `packages/tool-kit` | 72 文件 / **610 passed + 10 skipped**（620） |
+| **仓根 `test/`** | 114 文件 / **1097 passed + 2 skipped + 4 failed**（1103） |
+| `e2e:node` | 24 文件 / **64 passed + 17 failed**（81） |
+| `tsc --noEmit` | 根 + 九个子包，**全部 0 error** |
+
+**必须串行**：并发跑会让 vitest worker 崩溃被计成「0 failed」，本 spec 前几批实测出现过
+351 字节日志 + exit 0 的假绿。九个测试面缺一不可 —— 仓根 `test/` 是包级 `--filter` 跑不到的
+盲点，前三批各漏一次；而**类型检查面同样是九个**：`packages/server/test/host-assembly/
+default-capabilities.it.test.ts` 的 `aiGateway` 依赖形状在任务 3.4 后失效，根 tsconfig 不含
+server 测试目录，只有逐包 tsc 才看得见（本批修复）。
+
+#### 红项归因（无一属本特性回归）
+
+仓根 4 红：`panes-agent-build` / `webext-slots-runtime` / `publish-preview` 三项在主仓 `main`
+上同样红（存量）；`guards/no-panel-right` 是**另一 spec 的陈旧守卫** —— `panelRight` 已被
+`2ed745de` 删净，该守卫按其自身注释本应反转为「必须为空」却未反转。它在主仓跑是**绿的**，
+但那是假绿：主仓扫描会走进 `.claude/worktrees/`，命中其他 worktree 里尚未迁移的副本。
+只报不改（不属本特性范围）。
+
+`e2e:node` 17 红与主仓 `main` 基线**逐条一致**（16 红 + 1 flake）。根因是 runner 包提取后
+遗留的死路径 `packages/server/src/runner/runner.ts`（该目录在两处仓库都不存在），四个 e2e
+文件仍硬编码它。`attachment-completion` 单跑 3/3 绿，属并发压载下的 flake。
+
+#### 60 项验收标准的覆盖方式
+
+| 需求 | 项数 | 覆盖 |
+|---|---|---|
+| 1 多实例并存与身份可辨识 | 6 | 自动化（`test/ai-gateway-multi-instance.integration.test.ts`、`packages/adapters/test/ai-gateway/instances.test.ts`）；1.3 的界面可见性另由浏览器 e2e `multi-gateway-instances.e2e.ts` 覆盖 |
+| 2 身份两侧统一 | 4 | 自动化（`provider-identity.test.ts`、`packages/server/test/model-catalog/service.test.ts` 的归一段） |
+| 3 端点合一 | 8 | 自动化（`aigc-models-routes.test.ts` 等价性、`command-routes.test.ts` 的 410 指路、`ai-gateway-route-mount.integration.test.ts`） |
+| 4 类型维度与过滤 | 7 | 自动化（`modality.test.ts`、`ai-gateway-instance-modality.integration.test.ts` 的双向判据） |
+| 5 隐藏名单彻底禁用 | 4 | 自动化；**本批补齐跨层键空间一致性**（`aigc-extension-hidden-providers.integration.test.ts` 末三条，撤回归一后两条报红实测） |
+| 6 会话对目录单向包含 | 5 | 自动化（`model-source-registrar.it.test.ts`、`option-mapper` 的来源判据） |
+| 7 自定义 provider 配置 | 7 | 自动化（`providers-domain.test.ts`、`provider-secrets.test.ts`、`custom-provider-catalog.integration.test.ts`）；7.1 的界面新增流程由 `provider-management.e2e.ts` 覆盖 |
+| 8 云端来源预留 | 3 | **论证 + 零回归闸门**。该来源未接入，8.2 要求「表现得与该来源不存在时完全一致」由 `customProviders` 未注入路径的零侵入用例覆盖；8.1/8.3 属结构预留，人工核验方式：读 `ProviderRegistry` 契约确认云端来源可与本地/网关并列注册，取舍规则见 design.md |
+| 9 存量不失效 | 4 | 自动化闸门 + **论证**。9.3 的验证方式是「回归闸门 + 论证」而非迁移器 —— 见上文第七批发现③，**没有任何存量存储值需要迁移** |
+| 10 零侵入与可诊断 | 3 | 自动化（零侵入字节一致用例、`service.test.ts` 的逐来源三段计数）；10.2 的启动期 fail-fast 由 id 冲突用例覆盖，secret 缺失一路已补进 `.env.local.example` |
+| 11 消费面统一 | 9 | 自动化（各消费面组件测试 + `provider-hot-reflect.e2e.ts`）。**11.4 存在已知缺口**：自定义 provider 声明 `output=image` 时，其模型进设置页开关清单但工具侧无路由 —— 见上文第七批发现②，取舍已记录 |
+
+**未被自动化覆盖者的人工验证方式**：Req 8（云端来源）需在云端实现接入后按 design.md 的
+取舍规则复核；浏览器 e2e（`multi-gateway-instances` / `provider-management` /
+`provider-hot-reflect` / `custom-provider-*`）需 `pnpm e2e` 在装好 Playwright 浏览器的环境
+执行，本轮未跑（其 fixture 与 webServer 配置已随本批落地）。

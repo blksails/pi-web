@@ -64,3 +64,11 @@ export {
   maskHomePaths,
   maskHomePathsDeep,
 } from "./privacy/mask-home-paths.js";
+
+// model-catalog 层(provider 标识存量归一表 —— core 与 tool-kit 的单一事实源,
+// 两者分居依赖图两侧且 tool-kit 不依赖 core,故归一表落在共同最内层)
+export {
+  type LegacyProviderIdMap,
+  LEGACY_PROVIDER_ID_MAP,
+  normalizeLegacyProviderId,
+} from "./model-catalog/legacy-provider-id.js";

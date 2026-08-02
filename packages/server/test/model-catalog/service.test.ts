@@ -12,7 +12,7 @@
  * 另:注入 gateway 时 chatOptions 经 mergeModelCatalog(providers=self-only、网关条目
  * provider="ai-gateway"),gateway 空快照 = merge 空数组(fail-soft 透传,1.4)。
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
 import { createModelCatalogService } from "@blksails/pi-web-core/model-catalog/index.js";
 import { mergeModelCatalog } from "@blksails/pi-web-adapters/ai-gateway/model-catalog.js";
@@ -23,6 +23,8 @@ import {
   type ProviderDefinition,
 } from "@blksails/pi-web-core/model-catalog/provider-source.js";
 import type { CustomProviderModel } from "@blksails/pi-web-core/model-catalog/custom-provider-source.js";
+import { configureLogger, getRuntimeConfig } from "@blksails/pi-web-logger";
+import type { LogEntry, LoggerRuntimeConfig, Sink } from "@blksails/pi-web-logger";
 
 const SELF_CHAT: ModelOptions = {
   providers: ["dashscope", "openrouter"],
@@ -635,5 +637,273 @@ describe("ModelCatalogService — customProviders 第三类来源(任务 5.3,Req
       hiddenProviders: new Set(),
     });
     expect(svc.query({}).models.some((m) => m.source === "custom")).toBe(false);
+  });
+});
+
+/**
+ * 诊断日志(multi-gateway-providers 任务 8.1,design.md Error Handling 表「可观测性」;
+ * Req 10.3;修复轮):「模型为何没出现」——没注册、被类型筛掉,还是被隐藏名单干掉——
+ * 在界面上长得一模一样,须靠日志逐来源判定,而非只报一个总数。
+ *
+ * ★ 完成判据须先能报红:若某入口完全不产出诊断日志,下面对应断言都会因 `entries`
+ *   为空数组而失败(`find` 返回 `undefined`)。
+ * ★ 分桶按 `(ns, source, provider)` 三元组(修复轮的核心改动):同一 `sourceId`
+ *   (`${ns}:${source}`)下,`provider` 不同即各自成一条日志行,不合并计数——
+ *   `sumCounts` 帮助把「同一来源下多个 provider 桶」重新汇总为总数,用于验证总量
+ *   守恒,同时下方专门的多实例用例断言「不合并」这件事本身。
+ */
+function makeSink(): { sink: Sink; entries: LogEntry[] } {
+  const entries: LogEntry[] = [];
+  const sink: Sink = (entry) => entries.push(entry);
+  return { sink, entries };
+}
+
+type DiagnosticData = {
+  entry?: string;
+  sourceId?: string;
+  source?: string;
+  provider?: string;
+  provided: number;
+  afterModality: number;
+  afterHidden: number;
+};
+
+/** 汇总 `entries` 里全部匹配 `sourceId` 的诊断行(可能因不同 `provider` 拆成多行)。 */
+function sumBySourceId(
+  entries: LogEntry[],
+  sourceId: string,
+): { provided: number; afterModality: number; afterHidden: number; rows: DiagnosticData[] } {
+  const rows = entries
+    .filter((e) => e.ns === "server:model-catalog")
+    .map((e) => e.data as DiagnosticData)
+    .filter((d) => d.sourceId === sourceId);
+  // 显式给出累加器类型:不写的话 TS 会把 acc 推成 DiagnosticData(元素类型),
+  // 于是 `acc.rows` 报「属性不存在」——根 tsconfig 不含 server 测试,只有逐包 tsc 看得见。
+  return rows.reduce<{
+    provided: number;
+    afterModality: number;
+    afterHidden: number;
+    rows: DiagnosticData[];
+  }>(
+    (acc, d) => ({
+      provided: acc.provided + d.provided,
+      afterModality: acc.afterModality + d.afterModality,
+      afterHidden: acc.afterHidden + d.afterHidden,
+      rows: acc.rows,
+    }),
+    { provided: 0, afterModality: 0, afterHidden: 0, rows },
+  );
+}
+
+describe("ModelCatalogService — 诊断日志(任务 8.1 修复轮,Req 10.3)", () => {
+  // 测试卫生:仅本 describe 内部改动全局 logger 配置,且还原到**进入前的快照**而非
+  // 写死的常量——否则其余用例也会往 stderr 打 PILOG(本任务修复轮实测踩过的坑)。
+  let prevLoggerConfig: LoggerRuntimeConfig;
+
+  beforeEach(() => {
+    prevLoggerConfig = { ...getRuntimeConfig() };
+    configureLogger({ enabled: true, level: "debug", namespaces: {} });
+  });
+
+  afterEach(() => {
+    configureLogger(prevLoggerConfig);
+  });
+
+  it("query():命名空间为 server:model-catalog,逐来源记 {sourceId, provided, afterModality, afterHidden} 三段计数", () => {
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      gatewayImageCatalog: GATEWAY_IMAGE_CATALOG,
+      hiddenProviders: new Set(["openrouter"]),
+      loggerSink: sink,
+    });
+    svc.query({ output: "image" });
+
+    const diagnostics = entries.filter((e) => e.ns === "server:model-catalog");
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((e) => (e.data as DiagnosticData).entry === "query")).toBe(true);
+
+    // image:self —— IMAGE_CATALOG 两条(1 条 openrouter、1 条 newapi,provider 不同,
+    // 各自成桶),output=image 全部命中类型筛选(afterModality 合计=2),隐藏 openrouter
+    // 后只剩 1 条(afterHidden 合计=1)——三段数字须能区分「类型筛掉」与「隐藏名单
+    // 干掉」两种不同成因。
+    const imageSelf = sumBySourceId(entries, "image:self");
+    expect(imageSelf.rows.length).toBe(2); // newapi、openrouter 各一行,不合并
+    expect(imageSelf.provided).toBe(IMAGE_CATALOG.length);
+    expect(imageSelf.afterModality).toBe(IMAGE_CATALOG.length);
+    expect(imageSelf.afterHidden).toBe(IMAGE_CATALOG.length - 1);
+
+    // image:ai-gateway —— GATEWAY_IMAGE_CATALOG 两条(newapi、dashscope,provider 不同),
+    // 均非 openrouter,不受隐藏名单影响。
+    const imageGateway = sumBySourceId(entries, "image:ai-gateway");
+    expect(imageGateway.rows.length).toBe(2);
+    expect(imageGateway.provided).toBe(GATEWAY_IMAGE_CATALOG.length);
+    expect(imageGateway.afterModality).toBe(GATEWAY_IMAGE_CATALOG.length);
+    expect(imageGateway.afterHidden).toBe(GATEWAY_IMAGE_CATALOG.length);
+
+    // chat:self —— SELF_CHAT 两条(openrouter、dashscope,provider 不同),output=image
+    // 筛选下两条都不含 image(afterModality 合计=0)。
+    const chatSelf = sumBySourceId(entries, "chat:self");
+    expect(chatSelf.rows.length).toBe(2);
+    expect(chatSelf.provided).toBe(SELF_CHAT.models.length);
+    expect(chatSelf.afterModality).toBe(0);
+    expect(chatSelf.afterHidden).toBe(0);
+  });
+
+  it("★ cloudflare 来源单独计数(本 spec 起点场景:新增的 cloudflare provider 没显示,须能判定是三者中的哪一种)", () => {
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      cloudflareImageCatalog: CLOUDFLARE_IMAGE_CATALOG,
+      hiddenProviders: new Set(["cloudflare"]),
+      loggerSink: sink,
+    });
+    svc.query({});
+
+    // CLOUDFLARE_IMAGE_CATALOG 两条模型的 provider 均为 "cloudflare"(同一实例),
+    // 合并进同一桶 —— 与「不同 provider 各自成桶」并不矛盾:此处本就只有一个 provider。
+    const cloudflare = entries.find(
+      (e) => e.ns === "server:model-catalog" && (e.data as DiagnosticData).sourceId === "image:cloudflare",
+    );
+    expect(cloudflare).toBeDefined();
+    const data = cloudflare?.data as DiagnosticData;
+    // 未指定 input/output 筛选:两条都通过类型筛选(afterModality=2),隐藏名单命中
+    // provider=cloudflare 后全部剔除(afterHidden=0)——由此可判定该来源是被隐藏名单
+    // 干掉,而非没注册(provided>0)或被类型筛掉(afterModality=provided)。
+    expect(data.provided).toBe(CLOUDFLARE_IMAGE_CATALOG.length);
+    expect(data.afterModality).toBe(CLOUDFLARE_IMAGE_CATALOG.length);
+    expect(data.afterHidden).toBe(0);
+  });
+
+  it("query():customProviders 来源以 sourceId=custom 计数,不与 chat/image 混同", () => {
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      customProviders: createProviderRegistry<CustomProviderModel>([
+        {
+          sourceId: "custom-providers",
+          list: () => [
+            {
+              id: "my-custom",
+              enabled: true,
+              output: ["image"],
+              models: [{ id: "m1" }, { id: "m2" }],
+            },
+          ],
+        },
+      ]),
+      loggerSink: sink,
+    });
+    svc.query({});
+
+    const custom = entries.find(
+      (e) => e.ns === "server:model-catalog" && (e.data as DiagnosticData).sourceId === "custom",
+    );
+    expect(custom).toBeDefined();
+    const data = custom?.data as DiagnosticData;
+    expect(data.provided).toBe(2);
+    expect(data.afterModality).toBe(2);
+    expect(data.afterHidden).toBe(2);
+  });
+
+  /**
+   * chatOptions()/imageEntries() 入口覆盖(修复轮的核心报红判据):首轮实现只在
+   * `query()` 内联诊断,这两个入口完全不产出诊断行——而 `chatOptions()` 正是
+   * `lib/app/pi-handler.ts:1291-1293` 保留的、未带类型筛选参数时的生产路径
+   * (Req 10.1 字节一致快路径),运维一次不带参的 curl 排查「provider 为什么没出现」
+   * 恰好落在零日志的分支上。
+   */
+  it("chatOptions() 独立产出 chat 侧诊断(entry=chatOptions),不含 image/custom 桶", () => {
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      loggerSink: sink,
+    });
+    svc.chatOptions();
+
+    const diagnostics = entries
+      .filter((e) => e.ns === "server:model-catalog")
+      .map((e) => e.data as DiagnosticData);
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((d) => d.entry === "chatOptions")).toBe(true);
+    expect(diagnostics.every((d) => d.sourceId?.startsWith("chat"))).toBe(true);
+    expect(diagnostics.some((d) => d.sourceId === "custom")).toBe(false);
+    // 该入口无类型筛选(design 里注释为入口语义,非计数失效):afterModality===provided。
+    for (const d of diagnostics) {
+      expect(d.afterModality).toBe(d.provided);
+    }
+  });
+
+  it("imageEntries() 独立产出 image 侧诊断(entry=imageEntries),不含 chat/custom 桶", () => {
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      gatewayImageCatalog: GATEWAY_IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      loggerSink: sink,
+    });
+    svc.imageEntries();
+
+    const diagnostics = entries
+      .filter((e) => e.ns === "server:model-catalog")
+      .map((e) => e.data as DiagnosticData);
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(diagnostics.every((d) => d.entry === "imageEntries")).toBe(true);
+    expect(diagnostics.every((d) => d.sourceId?.startsWith("image"))).toBe(true);
+    for (const d of diagnostics) {
+      expect(d.afterModality).toBe(d.provided);
+    }
+  });
+
+  /**
+   * 两个不同 instanceId 的 chat 网关实例各自成桶(修复轮第二个报红判据):现有
+   * `GATEWAY_CHAT` fixture 只有单一 `instanceId="ai-gateway"`(全文件 :38/:44),
+   * 不足以暴露「分桶键取 m.source 而非 m.provider」的缺陷——两个实例的 source 恒为
+   * 字面量常量 "ai-gateway",只有 provider(= instanceId)才携带实例身份。
+   */
+  it("两个不同 instanceId 的 chat 网关实例各自成桶,计数互不合并", () => {
+    const GATEWAY_CHAT_TWO_INSTANCES: readonly GatewayModelEntry[] = [
+      { model: "gpt-4o", ownedBy: "openai-compat", source: "ai-gateway", instanceId: "ai-gateway" },
+      {
+        model: "claude-4",
+        ownedBy: "anthropic-compat",
+        source: "ai-gateway",
+        instanceId: "ai-gateway-2",
+      },
+    ];
+    const { sink, entries } = makeSink();
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      gatewayChat: { get: () => GATEWAY_CHAT_TWO_INSTANCES },
+      mergeCatalog: mergeModelCatalog,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      loggerSink: sink,
+    });
+    svc.chatOptions();
+
+    const gatewayRows = entries
+      .filter((e) => e.ns === "server:model-catalog")
+      .map((e) => e.data as DiagnosticData)
+      .filter((d) => d.sourceId === "chat:ai-gateway");
+
+    // ★ 若分桶键退回 `chat:${m.source}`(修复前的缺陷),两个实例会被合并进同一行,
+    //   `gatewayRows.length` 会是 1、且 provided 会是 2 —— 本断言即报红判据。
+    expect(gatewayRows.length).toBe(2);
+    const providers = gatewayRows.map((d) => d.provider).sort();
+    expect(providers).toEqual(["ai-gateway", "ai-gateway-2"]);
+    for (const row of gatewayRows) {
+      // 每个实例各贡献 1 条模型,互不合并。
+      expect(row.provided).toBe(1);
+      expect(row.afterModality).toBe(1);
+      expect(row.afterHidden).toBe(1);
+    }
   });
 });

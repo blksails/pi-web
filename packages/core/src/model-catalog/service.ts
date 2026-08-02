@@ -43,11 +43,36 @@
  * `.providers()` 已按 `enabled` 过滤(停用即从目录消失),`.find()` 不受过滤影响
  * (配置仍在,供再次启用)。装配处见 `packages/core/src/model-catalog/
  * custom-provider-source.ts` 的 `createCustomProviderSource`。
+ *
+ * **诊断日志**(multi-gateway-providers 任务 8.1,Req 10.3;修复轮):三个公开入口
+ * ——`chatOptions()`/`imageEntries()`/`query()`——**各自**在组装完成后产出逐来源
+ * (`chat:self`/`chat:ai-gateway`/`image:self`/`image:ai-gateway`/`image:cloudflare`/
+ * `custom`)三段计数 `{entry, sourceId, source, provider, provided, afterModality,
+ * afterHidden}`,经 `createLogger({ namespace: "server:model-catalog" })` 产出(命名
+ * 空间沿用既有约定,参考 `ai-gateway/routes.ts` 的 `"server:ai-gateway"`;服务端权威
+ * 门控、默认关闭)。
+ * ★ 首轮实现曾只把诊断埋在 `query()` 内联块里 —— `chatOptions()`/`imageEntries()`
+ *   完全不产出诊断行,而 `chatOptions()` 恰是 `lib/app/pi-handler.ts:1291-1293`
+ *   明确保留的**未带类型筛选参数时的生产路径**(Req 10.1 字节一致快路径),运维一次
+ *   不带参的 `curl /api/config/models` 排查「provider 为什么没出现」正好落在零日志
+ *   分支上。故诊断须挂在三个入口共用的组装接缝上,而非只挂 `query()`。
+ * ★ 分桶键按 `(ns, source, provider)` 三元组(而非只 `${ns}:${source}`):chat 侧
+ *   `source` 对全部网关实例恒为字面量常量 `"ai-gateway"`(`ai-gateway/model-catalog.ts`
+ *   的 `source: "ai-gateway" as const`),真正携带实例身份的是 `provider`(=
+ *   `instanceId`,同文件 `provider: g.instanceId`);多实例聚合发生在
+ *   `lib/app/pi-handler.ts:568-573` 的 `flatMap`。只按 `source` 分桶会让两个及以上
+ *   chat 网关实例的计数合并进同一桶,「是哪个实例没给模型」仍答不出。`sourceId` 字段
+ *   保留粗粒度 `${ns}:${source}`(与既有约定的字符串形态兼容),`provider` 单列——
+ *   同一 `sourceId` 下出现多条 `provider` 不同的日志行即代表分桶已按实例区分。
+ * 「模型为何没出现」——没注册、被类型筛掉,还是被隐藏名单干掉——在界面上长得一模
+ * 一样,只有总数答不出「是哪个来源没给模型」,故须逐来源。`loggerSink` 仅供测试注入。
  */
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
-import { excludeProviderModels, excludeProviders } from "../config/model-options-filter.js";
+import { createLogger, getRuntimeConfig, isLevelEnabled, isNamespaceEnabled } from "@blksails/pi-web-logger";
+import type { Sink } from "@blksails/pi-web-logger";
+import { excludeProviders } from "../config/model-options-filter.js";
 import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
-import { matchesFilter, normalizeModalities, type Modality } from "./modality.js";
+import { matchesFilter, normalizeModalities, type Modality, type ModalityFilter } from "./modality.js";
 import { normalizeLegacyProviderId } from "./provider-identity.js";
 import type { CustomProviderModel } from "./custom-provider-source.js";
 import type { ProviderRegistry } from "./provider-source.js";
@@ -92,6 +117,13 @@ export interface ModelCatalogServiceDeps {
    * provider,`query()` 的输出与该来源不存在时一致(零侵入,Req 10.1 的自然延伸)。
    */
   readonly customProviders?: ProviderRegistry<CustomProviderModel>;
+  /**
+   * 注入 logger 的 sink(仅测试用;multi-gateway-providers 任务 8.1,Req 10.3);
+   * 未注入时使用默认 sink(node: stderr / browser: bus)。诊断日志用命名空间
+   * `"server:model-catalog"`(沿用既有约定,参考 `ai-gateway/routes.ts` 的
+   * `"server:ai-gateway"`)。
+   */
+  readonly loggerSink?: Sink;
 }
 
 /** 图像目录输出条目:静态条目 + 可选来源标记(仅聚合形态附带,响应只增不改)。 */
@@ -216,6 +248,61 @@ function toImageCatalogModel(e: CatalogImageEntry): CatalogModel {
   };
 }
 
+/**
+ * 单个 `(ns, source, provider)` 三元组的诊断计数(multi-gateway-providers 任务 8.1,
+ * design.md Error Handling 表「可观测性」;修复轮:分桶键须携带实例身份,见模块文档
+ * 顶部说明)。`ns`/`source`/`provider` 随桶一并保存,供emit 时还原字段,不必从
+ * Map key 反解析字符串。
+ */
+interface SourceDiagnosticBucket {
+  readonly ns: string;
+  readonly source: string;
+  readonly provider: string;
+  provided: number;
+  afterModality: number;
+  afterHidden: number;
+}
+
+/** 诊断日志三个生产入口的标识(任务 8.1 修复轮:埋点须挂在三处组装接缝上)。 */
+type DiagnosticEntryPoint = "query" | "chatOptions" | "imageEntries";
+
+/**
+ * 按 `(ns, source, provider)` 三元组累计一条模型的三段计数(任务 8.1 修复轮,Req 10.3):
+ * - `provided`:该来源组装出的原始条数(筛选/隐藏前)。
+ * - `afterModality`:再经 `input`/`output` 类型筛选后仍保留的条数。
+ * - `afterHidden`:再叠加隐藏名单后仍保留的条数 —— 与实际进入结果的条数一致。
+ *
+ * ★ 分桶键含 `provider`(不再只是 `${ns}:${source}`):chat 侧 `source` 对全部网关
+ *   实例恒为常量 `"ai-gateway"`,`provider`(= instanceId)才是真正的实例身份 ——
+ *   同一 `source` 下不同 `provider` 必须各自成桶,否则多实例聚合(`pi-handler.ts:
+ *   568-573` 的 flatMap)会把不同实例的计数合并,「是哪个实例没给模型」仍答不出。
+ *
+ * 三段计数彼此独立可比:`provided > afterModality` 说明该来源的模型被类型筛选剔除;
+ * `afterModality > afterHidden` 说明剩余部分被隐藏名单剔除;两者都不小于则该来源
+ * 全数进入结果 —— 「模型为何没出现」可据此三级判定,而非只有一个总数。
+ */
+function recordSourceDiagnostic(
+  buckets: Map<string, SourceDiagnosticBucket>,
+  ns: string,
+  model: CatalogModel,
+  filter: ModalityFilter,
+  applyHidden: boolean,
+  hiddenProviders: ReadonlySet<string>,
+): void {
+  const key = `${ns}:${model.source}:${model.provider}`;
+  const bucket =
+    buckets.get(key) ??
+    { ns, source: model.source, provider: model.provider, provided: 0, afterModality: 0, afterHidden: 0 };
+  bucket.provided += 1;
+  if (matchesFilter(model, filter)) {
+    bucket.afterModality += 1;
+    if (!applyHidden || !hiddenProviders.has(model.provider)) {
+      bucket.afterHidden += 1;
+    }
+  }
+  buckets.set(key, bucket);
+}
+
 /** 构造目录组装服务(纯组装,零 env 读取、零 IO)。 */
 export function createModelCatalogService(
   deps: ModelCatalogServiceDeps,
@@ -230,7 +317,67 @@ export function createModelCatalogService(
     cloudflareImageCatalog,
     hiddenProviders,
     customProviders,
+    loggerSink,
   } = deps;
+
+  /**
+   * 诊断日志(multi-gateway-providers 任务 8.1,Req 10.3):「模型为何没出现」——是
+   * 没注册、被类型筛掉,还是被隐藏名单干掉——在界面上长得一模一样,须靠日志逐来源
+   * 判定。命名空间沿用既有约定(参考 `ai-gateway/routes.ts` 的 `"server:ai-gateway"`)。
+   */
+  const logger = createLogger({
+    namespace: "server:model-catalog",
+    ...(loggerSink !== undefined ? { sink: loggerSink } : {}),
+  });
+
+  /**
+   * 前置短路(任务 8.1 修复轮,可选优化项):日志关闭/门控拦截时,不做任何投影与
+   * 计数(`createLogger` 的三道门在 `logger.info()` 内部本就会丢弃日志,这里只是
+   * 提前避免热路径上的无谓 map/分桶开销,不改变最终产出的日志内容)。三道门与
+   * `create-logger.ts` 的 `emit()` 完全对应:enabled → level → namespace。
+   */
+  function diagnosticsEnabled(): boolean {
+    const cfg = getRuntimeConfig();
+    if (!cfg.enabled) return false;
+    if (!isLevelEnabled("info", cfg.level)) return false;
+    if (!isNamespaceEnabled("server:model-catalog", cfg.namespaces)) return false;
+    return true;
+  }
+
+  /**
+   * 诊断日志的公共实现(任务 8.1 修复轮):三个公开入口各自调用本函数,而非只有
+   * `query()` 内联一份 —— 见模块文档顶部「首轮实现曾只把诊断埋在 query() 内联块里」
+   * 的说明。`buildGroups` 用 thunk 延迟求值,门控未通过时不执行投影计算。
+   */
+  function emitSourceDiagnostics(
+    entry: DiagnosticEntryPoint,
+    buildGroups: () => readonly { readonly ns: string; readonly models: readonly CatalogModel[] }[],
+    filter: ModalityFilter,
+    applyHidden: boolean,
+  ): void {
+    if (!diagnosticsEnabled()) return;
+    const buckets = new Map<string, SourceDiagnosticBucket>();
+    for (const group of buildGroups()) {
+      for (const m of group.models) {
+        recordSourceDiagnostic(buckets, group.ns, m, filter, applyHidden, hiddenProviders);
+      }
+    }
+    for (const counts of buckets.values()) {
+      // sourceId 收敛为粗粒度 `${ns}:${source}`(custom 侧 ns===source 时直接用该值,
+      // 不产出冗余的 "custom:custom"),provider 单列携带实例身份 —— 与既有
+      // sourceId 字符串形态(`chat:self`/`image:ai-gateway`/`custom` 等)兼容。
+      const sourceId = counts.ns === counts.source ? counts.ns : `${counts.ns}:${counts.source}`;
+      logger.info("model-catalog source diagnostics", {
+        entry,
+        sourceId,
+        source: counts.source,
+        provider: counts.provider,
+        provided: counts.provided,
+        afterModality: counts.afterModality,
+        afterHidden: counts.afterHidden,
+      });
+    }
+  }
 
   /**
    * chat 侧组装,**不**含 hidden 过滤(供 `chatOptions()` 与 `query()` 共用同一份
@@ -257,10 +404,20 @@ export function createModelCatalogService(
   }
 
   function chatOptions(): ModelOptions {
+    const assembled = assembleChatOptions();
+    // 诊断(任务 8.1 修复轮):该入口无类型筛选(filter={}),故 afterModality===provided
+    // 恒成立 —— 这是入口语义(chatOptions() 本就不按 input/output 筛),不是计数失效。
+    // applyHidden 恒为 true,与本函数下方实际的 excludeProviders 调用一致。
+    emitSourceDiagnostics(
+      "chatOptions",
+      () => [{ ns: "chat", models: assembled.models.map(toChatCatalogModel) }],
+      {},
+      true,
+    );
     // hidden 过滤;hidden 空集时 excludeProviders 走零拷贝快路径,未启用网关时
     // 返回 self 原引用(字节一致,Req 1.3)。hidden 含 "ai-gateway" 时网关条目因
     // provider="ai-gateway" 被整体剔除(Req 5.3);providers 本就 self-only,不受影响。
-    return excludeProviders(assembleChatOptions(), hiddenProviders);
+    return excludeProviders(assembled, hiddenProviders);
   }
 
   /**
@@ -284,10 +441,26 @@ export function createModelCatalogService(
   }
 
   function imageEntries(): readonly CatalogImageEntry[] {
+    const assembled = assembleImageEntries();
+    // 诊断(任务 8.1 修复轮):该入口无类型筛选(filter={}),applyHidden 恒为 true,
+    // 与本函数下方实际的 hidden 过滤一致。
+    emitSourceDiagnostics(
+      "imageEntries",
+      () => [{ ns: "image", models: assembled.map(toImageCatalogModel) }],
+      {},
+      true,
+    );
     // hidden 过滤(任务 4.4,Req 5.1/5.2):image 侧不再是「不吃 hidden」的例外。
-    // hidden 空集时 excludeProviderModels 走零拷贝快路径,未启用网关/Cloudflare 时
-    // 返回 imageCatalog 原引用(字节一致,Req 4.3/10.1)。
-    return excludeProviderModels(assembleImageEntries(), hiddenProviders);
+    // hidden 空集时走零拷贝快路径,未启用网关/Cloudflare 时返回 imageCatalog 原引用
+    // (字节一致,Req 4.3/10.1)。
+    //
+    // ★ 比对**归一后**的 provider,与 `query()` 同一键空间(第七批完整性批评 gap 1)。
+    // 直接用 `excludeProviderModels(assembled, …)` 会拿归一前的 `ai-gateway` 去比对,
+    // 而 `query()` 比的是归一后的 `blksails-ai` —— 同一份 hidden 名单在两个入口给出
+    // 相反结果。这里不复用那个通用过滤器,正因为它按定义比对原始 `provider` 字段
+    // (会话 RPC 侧的模型形状由 agent 决定,不该被本仓的归一表改写)。
+    if (hiddenProviders.size === 0) return assembled;
+    return assembled.filter((e) => !hiddenProviders.has(normalizeLegacyProviderId(e.provider)));
   }
 
   /**
@@ -341,6 +514,25 @@ export function createModelCatalogService(
       matchesFilter(m, filter),
     );
     const providers = [...new Set(models.map((m) => m.provider))].sort();
+
+    // ★ 诊断计数(任务 8.1,Req 10.3):逐来源记录 provided/afterModality/afterHidden 三段数,
+    //   而非只有总数 —— 只报总数仍答不出「是哪个来源没给模型」(本 spec 的起点即
+    //   「新增的 cloudflare provider 没显示」,当时无从判断是没注册、被类型筛掉,还是
+    //   被隐藏名单干掉,三者在界面上长得一模一样)。计数基于**未经 hidden 预过滤的
+    //   原始投影**(`chatRaw`/`imageProjected`/`customRaw`),与 `chatModels`/
+    //   `imageModels`/`customModels`(已按 `applyHidden` 预过滤)是两条独立算的路径,
+    //   不影响结果本身。
+    emitSourceDiagnostics(
+      "query",
+      () => [
+        { ns: "chat", models: chatRaw.models.map(toChatCatalogModel) },
+        { ns: "image", models: imageProjected },
+        { ns: "custom", models: customRaw },
+      ],
+      filter,
+      applyHidden,
+    );
+
     return { providers, models };
   }
 

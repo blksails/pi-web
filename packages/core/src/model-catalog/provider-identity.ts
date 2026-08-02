@@ -37,7 +37,6 @@ export interface ProviderIdConflict {
 }
 
 /** 存量标识 → 当前标识的归一表。 */
-export type LegacyProviderIdMap = Readonly<Record<string, string>>;
 
 const PROVIDER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -148,74 +147,16 @@ export function findProviderIdConflicts(
 }
 
 /**
- * 存量归一表:把历史 provider 标识映射到当前标识。
+ * 存量归一表与归一函数的**单一事实源已下沉至 `@blksails/pi-web-protocol`**
+ * (`model-catalog/legacy-provider-id.ts`)——因为工具侧(`@blksails/pi-web-tool-kit`
+ * 的 AIGC 扩展)也要按同一张表比对隐藏名单,而 tool-kit 不依赖 core。此处原样再导出,
+ * 既有 `from ".../model-catalog/provider-identity.js"` 的 import 点无需改动。
  *
- * `"ai-gateway": "blksails-ai"` 是本特性**唯一一处真映射**(design.md 迁移策略表;
- * Req 2.2, 2.3, 9.3)。注意与 Req 9.1 的另一处「`ai-gateway`」刻意区分:
- * `settings.json` 的 `defaultProvider: "ai-gateway"` 指的是**对话侧缺省网关实例
- * id**,原样有效、不在此归一之列;这里归一的是**image 侧**历史标识——AIGC 静态
- * 目录里把 BlackSail 自建网关的图像模型标成了 `provider: "ai-gateway"`,与对话侧
- * 的实例 id 撞了同名不同义。键空间合并后二者会被当成同一个 provider,因此把
- * image 侧的 `ai-gateway` 归一到自建网关的当前标识 `blksails-ai`,消除同名不同义。
- *
- * `normalizeLegacyProviderId` 的幂等性不依赖本表是否为空;但本表非空后必须有
- * **非幂等**用例覆盖(即断言归一后的值确实不同于输入),否则把本表清空也不会
- * 让任何单测报红。
+ * ★ 两侧用不同键空间比对同一份 `PI_WEB_HIDE_PROVIDERS` 曾造成双向失效,见 protocol
+ *   侧模块头注释。
  */
-export const LEGACY_PROVIDER_ID_MAP: LegacyProviderIdMap = {
-  "ai-gateway": "blksails-ai",
-};
-
-/**
- * 存量归一:把历史标识映射到当前标识;无映射时原样返回。
- *
- * 幂等(Req 9.3):对同一输入反复调用,结果不再变化——即便归一表含链式映射
- * (a→b→c)也会一次性追至链尾,且对自环/循环映射有防护,不会死循环。
- *
- * @param legacyMap 默认使用模块内置的 `LEGACY_PROVIDER_ID_MAP`;显式传入以支持
- *   调用方(或测试)注入自定义归一表。
- */
-export function normalizeLegacyProviderId(
-  raw: string,
-  legacyMap: LegacyProviderIdMap = LEGACY_PROVIDER_ID_MAP,
-): string {
-  const visited = new Set<string>();
-  let current = raw;
-  while (!visited.has(current)) {
-    const next = legacyMap[current];
-    if (next === undefined) break;
-    visited.add(current);
-    current = next;
-  }
-  return current;
-}
-
-/**
- * 存量**复合键**归一(spec: multi-gateway-providers,任务 7.1;Req 9.1, 9.2, 9.3)。
- *
- * `aigc.json` 的 `visionModel` 等字段存的是 `${provider}/${modelId}` 复合键
- * (design.md「存量兼容」表)。当 provider 段经 {@link normalizeLegacyProviderId} 迁移后
- * (目前唯一真映射是 image 侧 `ai-gateway` → `blksails-ai`),存量存的复合键原样字符串
- * 不再命中归一后的目录条目 —— 存量写着 `ai-gateway/qwen-image` 的值,归一后目录里的
- * 条目已是 `blksails-ai/qwen-image`,直接字符串比较会判定为「未选择」,不是「零迁移」
- * 而是静默失效(tasks.md 任务 7.1 描述的真实缺陷)。
- *
- * 本函数只归一复合键的 **provider 段**(以复合键中**首个** `/` 切分),modelId 段原样
- * 保留 —— modelId 本身可能含 `/`(如 `openrouter/amazon/nova-2-lite-v1` 的 modelId 段是
- * `amazon/nova-2-lite-v1`,research.md §0 的实测样本),故不能按最后一个 `/` 或整体重新
- * 拼装。不含 `/` 的输入(非复合键形态)原样返回。
- *
- * 幂等性与 {@link normalizeLegacyProviderId} 一致:对已归一的复合键再次归一,结果不变。
- */
-export function normalizeLegacyCompoundModelKey(
-  compoundKey: string,
-  legacyMap: LegacyProviderIdMap = LEGACY_PROVIDER_ID_MAP,
-): string {
-  const slashIndex = compoundKey.indexOf("/");
-  if (slashIndex === -1) return compoundKey;
-  const provider = compoundKey.slice(0, slashIndex);
-  const modelId = compoundKey.slice(slashIndex + 1);
-  const normalizedProvider = normalizeLegacyProviderId(provider, legacyMap);
-  if (normalizedProvider === provider) return compoundKey;
-  return `${normalizedProvider}/${modelId}`;
-}
+export {
+  type LegacyProviderIdMap,
+  LEGACY_PROVIDER_ID_MAP,
+  normalizeLegacyProviderId,
+} from "@blksails/pi-web-protocol";
