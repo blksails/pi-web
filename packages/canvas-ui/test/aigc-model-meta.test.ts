@@ -1,11 +1,18 @@
 /**
  * aigc-model-meta — provider 徽章表与显示名规则测试。
  *
- * ★ 本套件的核心是最后那组**覆盖率断言**:PROVIDER_META 是徽章的准入闸门,
- * `ProviderBadge` 对表中没有的 provider 直接返回 null。新增 provider 时若忘了在此登记,
- * 模型在选择器里会表现为「纯文字、无色块、且保留冗余的 ` · xxx` 后缀」,而**所有既有测试
- * 依然全绿**——ai-gateway 与 cloudflare 两条通路就是这么漏掉的(2026-07-29 用户截图发现)。
- * 交叉断言把「目录里出现的 provider」与「徽章表登记的 provider」绑在一起,下次漏登记即红。
+ * ★ 本套件的核心是最后那组**覆盖率断言**:PROVIDER_META 是「精美品牌徽章」的准入闸门
+ * (字母 + 品牌色 + 剥冗余后缀)。新增**产品已知**的 provider 时若忘了在此登记,模型在
+ * 选择器里会表现为「保留冗余的 ` · xxx` 后缀」,而**所有既有测试依然全绿**——ai-gateway
+ * 与 cloudflare 两条通路就是这么漏掉的(2026-07-29 用户截图发现)。交叉断言把「目录里
+ * 出现的 provider」与「徽章表登记的 provider」绑在一起,下次漏登记即红。
+ *
+ * ★★(multi-gateway-providers 任务 5.4)使用者**自定义**的 provider 标识不可能预先
+ * 登记进这张表——`ProviderBadge` 对表外 provider 已改为渲染中性色兜底徽章而非 `null`
+ * (见 `../src/aigc-model-meta.tsx` 的 `fallbackLetterFor`/`FALLBACK_BADGE_BG`),使其
+ * 不至于退化成纯文字。本文件不重复断言该兜底路径的渲染细节(那是 DOM 行为,交给
+ * `ProviderBadge` 消费方的组件测试);此处只测未改动的部分:登记表本身的完整性
+ * (覆盖率断言)与 `displayNameOf` 的后缀剥离规则。
  */
 import { describe, it, expect } from "vitest";
 import {

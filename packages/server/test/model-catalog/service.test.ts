@@ -18,6 +18,11 @@ import { createModelCatalogService } from "@blksails/pi-web-core/model-catalog/i
 import { mergeModelCatalog } from "@blksails/pi-web-adapters/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "@blksails/pi-web-adapters/ai-gateway/model-catalog.js";
 import type { ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
+import {
+  createProviderRegistry,
+  type ProviderDefinition,
+} from "@blksails/pi-web-core/model-catalog/provider-source.js";
+import type { CustomProviderModel } from "@blksails/pi-web-core/model-catalog/custom-provider-source.js";
 
 const SELF_CHAT: ModelOptions = {
   providers: ["dashscope", "openrouter"],
@@ -512,5 +517,123 @@ describe("ModelCatalogService — image 侧存量标识归一(Req 2.2/2.3/9.3)",
     const ids = svc.query({ output: "image" }).models.map((m) => m.id);
     // 归一前:该条目 provider === "ai-gateway" 会被 hidden 连带剔除。
     expect(ids).toContain("gpt-image-1");
+  });
+});
+
+/**
+ * 自定义 provider 作为第三类来源(spec: multi-gateway-providers,任务 5.3;
+ * design.md「核心抽象:ProviderSource」的 `CustomProviderSource`;Req 7.2, 7.5)。
+ *
+ * `customProviders` 经 `ProviderRegistry` 注入 —— `.providers()` 已按 `enabled`
+ * 过滤,`query()` 因此不必重复判断 enabled;停用后 `.find()` 仍可查到定义,证明
+ * 「配置仍在」是 `ProviderRegistry` 本身的性质,不需要 `service.ts` 另开一条通路。
+ */
+describe("ModelCatalogService — customProviders 第三类来源(任务 5.3,Req 7.2/7.5)", () => {
+  function registryOf(
+    defs: readonly ProviderDefinition<CustomProviderModel>[],
+  ) {
+    return createProviderRegistry<CustomProviderModel>([
+      { sourceId: "custom-providers", list: () => defs },
+    ]);
+  }
+
+  it("新增一个启用的自定义 provider 后,其模型出现在 query() 结果里(Req 7.2)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      customProviders: registryOf([
+        {
+          id: "my-custom",
+          enabled: true,
+          output: ["image"],
+          models: [{ id: "m1", name: "Model One" }],
+        },
+      ]),
+    });
+
+    const result = svc.query({});
+    expect(result.providers).toContain("my-custom");
+    expect(result.models).toContainEqual(
+      expect.objectContaining({
+        provider: "my-custom",
+        id: "m1",
+        name: "Model One",
+        output: ["image"],
+        source: "custom",
+      }),
+    );
+  });
+
+  it("按输出类型筛选时同样命中自定义 provider 的模型(与 chat/image 两侧同一套筛选)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      customProviders: registryOf([
+        {
+          id: "my-custom",
+          enabled: true,
+          output: ["image"],
+          models: [{ id: "m1" }],
+        },
+      ]),
+    });
+
+    expect(svc.query({ output: "image" }).models.some((m) => m.provider === "my-custom")).toBe(
+      true,
+    );
+    expect(svc.query({ output: "text" }).models.some((m) => m.provider === "my-custom")).toBe(
+      false,
+    );
+  });
+
+  it("停用后其模型从 query() 结果中消失,但注册表里的定义仍可查到(Req 7.5:配置保留)", () => {
+    const registry = registryOf([
+      {
+        id: "my-custom",
+        enabled: false,
+        output: ["image"],
+        models: [{ id: "m1" }],
+      },
+    ]);
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      customProviders: registry,
+    });
+
+    expect(svc.query({}).models.some((m) => m.provider === "my-custom")).toBe(false);
+    expect(svc.query({}).providers).not.toContain("my-custom");
+    // 配置仍在:停用不等于删除,find() 不受 enabled 过滤影响。
+    const stillThere = registry.find("my-custom");
+    expect(stillThere).toBeDefined();
+    expect(stillThere?.enabled).toBe(false);
+    expect(stillThere?.models).toEqual([{ id: "m1" }]);
+  });
+
+  it("hidden 名单对自定义 provider 同样生效(与 chat/image 两侧一致)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(["my-custom"]),
+      customProviders: registryOf([
+        { id: "my-custom", enabled: true, output: ["image"], models: [{ id: "m1" }] },
+      ]),
+    });
+    expect(svc.query({}).models.some((m) => m.provider === "my-custom")).toBe(false);
+    expect(svc.query({ applyHidden: false }).models.some((m) => m.provider === "my-custom")).toBe(
+      true,
+    );
+  });
+
+  it("未注入 customProviders 时行为与该来源不存在时一致(零侵入)", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+    });
+    expect(svc.query({}).models.some((m) => m.source === "custom")).toBe(false);
   });
 });

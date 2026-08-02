@@ -32,6 +32,7 @@
 import * as React from "react";
 import type { FieldProps } from "../field-registry.js";
 import { FieldShell, errorAt } from "./field-shell.js";
+import { useI18n } from "../../i18n/index.js";
 /* ses-h1-exempt: config 域对统一目录 SDK 的合法跨包消费(设置面板字段;视觉模型取数与
    缓存,和解读弹层共用同一实现,沿用 aigcModelToggles 先例——multi-gateway-providers 任务 6.3) */
 import {
@@ -63,6 +64,8 @@ export function VisionModelSelectField({
   errors,
   disabled,
 }: FieldProps): React.JSX.Element {
+  const t = useI18n();
+  const orphanHint = t("modelSelector.orphanHint");
   const [models, setModels] = React.useState<readonly VisionModelOption[]>([]);
   const [loaded, setLoaded] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -118,8 +121,13 @@ export function VisionModelSelectField({
                   // 已配置但不在可用清单里:凭据被撤 / 模型下架 / models.json 改过。
                   // 此时工具会**忽略**它并回落弹层(select-model 的 findByKey 不命中即跳过),
                   // 所以这不是坏数据,但用户该知道它当前不生效。
+                  //
+                  // 标记与提示复用会话模型选择器 / provider·模型下拉同一套语义
+                  // (任务 7.2,Req 6.5/9.4:`data-pi-model-orphan` + `modelSelector.orphanHint`),
+                  // 不为本字段另造一套「stale」标记。
                   <span
-                    data-vision-model-stale
+                    data-pi-model-orphan="true"
+                    title={orphanHint}
                     className="ml-2 rounded bg-[hsl(var(--destructive)/0.12)] px-1.5 py-0.5 text-[10px] text-[hsl(var(--destructive))]"
                   >
                     当前不可用,解读时仍会询问

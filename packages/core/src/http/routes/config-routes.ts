@@ -22,6 +22,7 @@ import {
   sandboxConfigSchema,
   aigcConfigSchema,
   cloudConfigSchema,
+  createProvidersConfigSchema,
 } from "@blksails/pi-web-protocol";
 import type { ConfigDomainId } from "@blksails/pi-web-protocol";
 import { errorResponse, jsonResponse } from "../index.js";
@@ -30,6 +31,8 @@ import type { AuthContext } from "../index.js";
 import { ConfigCodec } from "../../config/config-codec.js";
 import type { Workspace } from "../../workspace/index.js";
 import { maskSecrets, mergeSecrets } from "../../config/secret-merge.js";
+import { maskProviderSecrets, mergeProviderSecrets } from "../../config/provider-secrets.js";
+import { RESERVED_PROVIDER_IDS } from "../../model-catalog/provider-identity.js";
 import type { ModelOptions } from "../../config/model-options.types.js";
 
 /** 已知域的 zod 校验 schema 表。 */
@@ -45,6 +48,12 @@ const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   // 云端接入域(desktop-cloud-login Req 8):写 `<agentDir>/cloud.json`,装配期解析云端登录启用与否。
   // 之所以需要它:云端地址此前只能来自 env,而打包桌面版拿不到 env → 登录入口永远不出现。
   cloud: cloudConfigSchema,
+  // 自定义 provider 域(multi-gateway-providers 任务 5.4;Req 7.1, 7.6, 11.7):写
+  // `<agentDir>/providers.json`。保留名集合在此处**注入真实值**(core 包内可直接 import
+  // `provider-identity.ts`,不受 protocol 包"零 core 值依赖"的约束——那条约束只对
+  // `packages/protocol` 自身成立,见 `domains/providers.ts` 头注释)。构造一次即可复用,
+  // 保留名清单是模块级常量、不随请求变化。
+  providers: createProvidersConfigSchema(RESERVED_PROVIDER_IDS),
 };
 
 /** PUT body 形状。 */
@@ -133,7 +142,11 @@ export function createConfigRoutes(
 
     const rawValues = await codec.load(domain);
     const formSchema = CONFIG_FORM_SCHEMAS[domain];
-    const values = maskSecrets(domain, rawValues, formSchema);
+    // providers 域的 secret 嵌在 objectList 条目内(`providers[].apiKey`),通用 `maskSecrets`
+    // 只认顶层 secret 字段与单层 record 子字段,对 objectList 会原样透传——明文泄漏
+    // (`provider-secrets.ts` 头注释;单测已实证)。故按 domain 分支到专用掩码实现。
+    const values =
+      domain === "providers" ? (maskProviderSecrets(rawValues) as Record<string, unknown>) : maskSecrets(domain, rawValues, formSchema);
 
     return jsonResponse(200, { formSchema, values });
   };
@@ -203,8 +216,12 @@ export function createConfigRoutes(
     const diskValues = await codec.load(domain);
     const formSchema = CONFIG_FORM_SCHEMAS[domain];
 
-    // 先做 secret 合并(将掩码/哨兵替换为磁盘原值)。
-    const merged = mergeSecrets(domain, incomingValues, diskValues, formSchema);
+    // 先做 secret 合并(将掩码/哨兵替换为磁盘原值)。providers 域同上分支到专用实现
+    // (objectList 内的三态 keep/clear/set,通用实现不支持,见 GET 分支同一处注释)。
+    const merged =
+      domain === "providers"
+        ? (mergeProviderSecrets(incomingValues, diskValues) as Record<string, unknown>)
+        : mergeSecrets(domain, incomingValues, diskValues, formSchema);
 
     // 对合并后的结果做域 schema 校验(此时 secret 字段已是磁盘明文,可正确校验)。
     const domainSchema = DOMAIN_SCHEMAS[domain];

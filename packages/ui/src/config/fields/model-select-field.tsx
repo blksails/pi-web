@@ -12,10 +12,18 @@
  * 注:本版改为**从列表选**(与全站 ModelSelector 统一);不再支持列表外自由输入 / fuzzy
  * pattern。存量自定义值仍会在 trigger 上原样显示(可见),但只能改选为列表内选项。
  *
- * 取数缓存按筛选参数分桶(Req 11.5:变更后各消费面无需重启即反映;不同参数的取数
- * 互不串扰,取代此前"整页一次"的模块级单 Promise——不同筛选参数的请求会共用同一个
- * 缓存槽,导致后到的参数吃到先到的结果)。测试经 __setModelOptionsFetchImpl /
- * __resetModelOptionsCache 注入与复位。
+ * 取数缓存按筛选参数分桶(任务 6.1,Req 11.5:变更后各消费面无需重启即反映;不同参数的
+ * 取数互不串扰,取代此前"整页一次"的模块级单 Promise——不同筛选参数的请求会共用同一个
+ * 缓存槽,导致后到的参数吃到先到的结果)。
+ *
+ * ★ 分桶只解决了"互不串扰",没解决"清得掉"(任务 6.6,Req 11.3/11.4/11.5):按参数分桶后
+ * 每个桶若只按墙钟 TTL 过期,provider 新增/停用/删除后仍要等到 TTL 到期才反映——"看起来
+ * 没生效"的窗口只是从"永久"缩到"TTL 时长"。真正消除该窗口的是**变更事件驱动失效**(主
+ * 机制):`useConfigDomain` 的 `save()` 成功后广播 `"pi-web:config-saved"`,本文件监听该
+ * 事件即清空全部筛选桶,使用者保存后下一次挂载立即重新取数,不必等待。TTL
+ * (`MODEL_OPTIONS_CACHE_TTL_MS`)仍保留,作为带外变更(磁盘被直接改、另一标签页改)的
+ * 兜底。测试经 __setModelOptionsFetchImpl / __resetModelOptionsCache /
+ * __setModelOptionsNowFn 注入与复位。
  *
  * provider 徽章(仅 modelSelect 组渲染)按来源实例标识展示(design.md「徽章按实例名」):
  * 徽章文案取 `CatalogModel.source` 原始字符串(即产出该条目的来源 sourceId,Req 3.5),
@@ -76,17 +84,48 @@ interface ModelOptionsFilter {
   readonly output?: string;
 }
 
-// ── 取数(按筛选参数分桶的缓存 + 测试注入)──
+// ── 取数(按筛选参数分桶 + TTL 失效的缓存 + 测试注入)──
 let fetchImpl: typeof fetch = (...args) => globalThis.fetch(...args);
 export function __setModelOptionsFetchImpl(f: typeof fetch): void {
   fetchImpl = f;
 }
+
+/**
+ * 缓存条目的存活时长(任务 6.6,Req 11.5)。够短:provider 变更后不必等整页刷新,下一次
+ * 挂载(切到其它设置面板再切回)大概率已过期;够长:同一面板停留期间的重复挂载(如
+ * React 严格模式的二次渲染)仍命中缓存,不放大请求频率。与 e2e(provider-management 相关
+ * 用例)约定的等待时长须同步——改动本值须同时检查那侧的等待时间。
+ */
+export const MODEL_OPTIONS_CACHE_TTL_MS = 5_000;
+
 // ★ 按筛选参数分桶(multi-gateway-providers 任务 6.1,Req 11.5/11.6):此前是模块级
 // **单个** Promise,不同筛选参数的取数会共用同一缓存槽——先到的参数决定结果,后到的
 // 参数被吃掉(串扰)。改为以查询串为 key 的 Map,不同参数各自独立缓存、互不串扰。
-const cacheByFilter = new Map<string, Promise<ModelOptionsResponse>>();
+interface CacheEntry {
+  readonly promise: Promise<ModelOptionsResponse>;
+  /** 过期时刻(`nowFn()` 同刻度);到达后视为不存在,下一次取数会发起新请求。 */
+  readonly expiresAt: number;
+}
+const cacheByFilter = new Map<string, CacheEntry>();
 export function __resetModelOptionsCache(): void {
   cacheByFilter.clear();
+}
+
+// ★ 变更事件驱动失效(任务 6.6,Req 11.3/11.4/11.5 的**主机制**,TTL 只是兜底):使用者
+// 保存 provider 配置成功后,`useConfigDomain` 广播 `"pi-web:config-saved"`(事件名字面量
+// 硬编码——本包不 import `@blksails/pi-web-react`,避免反向依赖)。监听后立即清空本模块
+// 全部筛选桶,使下一次挂载不必等 TTL 过期即重新取数。TTL(`MODEL_OPTIONS_CACHE_TTL_MS`)
+// 仍保留,兜底带外变更(磁盘被直接改、另一标签页改)。
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("pi-web:config-saved", () => {
+    __resetModelOptionsCache();
+  });
+}
+
+/** 测试注入「当前时刻」(任务 6.6):驱动 TTL 过期而不必真实等待。默认 `Date.now`。 */
+let nowFn: () => number = () => Date.now();
+export function __setModelOptionsNowFn(f: () => number): void {
+  nowFn = f;
 }
 
 function filterQueryString(filter: ModelOptionsFilter): string {
@@ -98,22 +137,24 @@ function filterQueryString(filter: ModelOptionsFilter): string {
 
 async function loadModelOptions(filter: ModelOptionsFilter = {}): Promise<ModelOptionsResponse> {
   const key = filterQueryString(filter);
-  let cached = cacheByFilter.get(key);
-  if (cached === undefined) {
-    cached = (async (): Promise<ModelOptionsResponse> => {
-      try {
-        const url = key.length > 0 ? `/api/config/models?${key}` : "/api/config/models";
-        const res = await fetchImpl(url, { method: "GET" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as Partial<ModelOptionsResponse>;
-        return { providers: json.providers ?? [], models: json.models ?? [] };
-      } catch {
-        return { providers: [], models: [] };
-      }
-    })();
-    cacheByFilter.set(key, cached);
+  const now = nowFn();
+  const cached = cacheByFilter.get(key);
+  if (cached !== undefined && cached.expiresAt > now) {
+    return cached.promise;
   }
-  return cached;
+  const promise = (async (): Promise<ModelOptionsResponse> => {
+    try {
+      const url = key.length > 0 ? `/api/config/models?${key}` : "/api/config/models";
+      const res = await fetchImpl(url, { method: "GET" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as Partial<ModelOptionsResponse>;
+      return { providers: json.providers ?? [], models: json.models ?? [] };
+    } catch {
+      return { providers: [], models: [] };
+    }
+  })();
+  cacheByFilter.set(key, { promise, expiresAt: now + MODEL_OPTIONS_CACHE_TTL_MS });
+  return promise;
 }
 
 /**
@@ -203,6 +244,10 @@ export function ModelSelectField({
   const error = errorAt(errors, path);
   const current = typeof value === "string" ? value : "";
   const [groups, setGroups] = React.useState<readonly OptGroup[]>([]);
+  // 是否已完成至少一次取数(任务 7.2):orphan 判定须等选项集就位后才可靠——挂载瞬间
+  // groups 恒为空,若不设此闸门,任何已有值的字段都会在首帧被误判为"指向不存在的
+  // provider"而闪现 orphan 标记。
+  const [loaded, setLoaded] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const isDisabled = disabled ?? descriptor.readOnly ?? false;
 
@@ -212,7 +257,10 @@ export function ModelSelectField({
     // 即会话可对话的模型——按 output=text 筛选(Req 11.2/11.6),取代此前的零筛选整份
     // 目录(会混入图像专用 provider)。
     void loadModelOptions({ output: "text" }).then((d) => {
-      if (alive) setGroups(buildGroups(descriptor.widget, d));
+      if (alive) {
+        setGroups(buildGroups(descriptor.widget, d));
+        setLoaded(true);
+      }
     });
     return () => {
       alive = false;
@@ -224,6 +272,21 @@ export function ModelSelectField({
     current.length > 0
       ? (selectedLabel ?? current)
       : (descriptor.placeholder ?? t("config.modelSelect.triggerPlaceholder"));
+
+  /**
+   * orphan(任务 7.2,Req 6.5/9.4):存量设置(defaultProvider/defaultModel)指向的
+   * provider/模型在统一目录中已不存在。此时**保留该值、给出可辨识提示**,而不是静默
+   * 清除或让选择器假装它未设置。
+   *
+   * 语义与标记(`data-pi-model-orphan`)与会话模型选择器(任务 6.4,
+   * `elements/model-selector.tsx`)共用同一套——同一失效状态在设置页与会话内的
+   * 呈现方式不各造一套。
+   */
+  const isCurrentListed =
+    current.length > 0 && groups.some((g) => g.options.some((o) => o.value === current));
+  const isOrphan = loaded && current.length > 0 && !isCurrentListed;
+  const orphanGroupLabel = t("modelSelector.orphanGroup");
+  const orphanHint = t("modelSelector.orphanHint");
 
   const commit = (v: string): void => {
     onChange(v);
@@ -243,9 +306,12 @@ export function ModelSelectField({
               aria-expanded={open}
               aria-invalid={error !== undefined}
               disabled={isDisabled}
+              title={isOrphan ? orphanHint : undefined}
+              data-pi-model-orphan={isOrphan ? "true" : undefined}
               className={cn(
                 "w-full justify-between font-normal",
                 current.length === 0 && "text-[hsl(var(--muted-foreground))]",
+                isOrphan && "text-[hsl(var(--destructive))]",
               )}
             >
               <span className="truncate">{triggerText}</span>
@@ -263,6 +329,26 @@ export function ModelSelectField({
               />
               <CommandList>
                 <CommandEmpty>{t("config.modelSelect.empty")}</CommandEmpty>
+                {/*
+                  orphan 组(任务 7.2,Req 6.5/9.4):当前值不在任何组内时单列一个不可选的
+                  条目,与会话模型选择器(model-selector.tsx)同款——保留该值可见 + 附
+                  提示,而不是让它悄悄消失或与"未设置"混同。
+                */}
+                {isOrphan && (
+                  <CommandGroup heading={orphanGroupLabel} data-pi-model-group>
+                    <CommandItem
+                      value={`__orphan__ ${current}`}
+                      disabled
+                      title={orphanHint}
+                      data-pi-model-option
+                      data-pi-model-orphan="true"
+                      data-pi-model-current="true"
+                    >
+                      <Check className="h-4 w-4 shrink-0 opacity-100" aria-hidden="true" />
+                      <span className="truncate">{current}</span>
+                    </CommandItem>
+                  </CommandGroup>
+                )}
                 {groups.map((g) => {
                   const items = g.options.map((o) => {
                     const selected = o.value === current;

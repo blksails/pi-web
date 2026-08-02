@@ -132,6 +132,46 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
   });
 });
 
+describe("GatewayModelCatalog — 逐实例声明的模态(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3)", () => {
+  it("构造时声明 input/output → refresh() 后每条产出条目都携带该声明", async () => {
+    const fetchImpl = vi.fn(async () =>
+      modelsResponse([{ id: "vision-model", owned_by: "openai" }]),
+    );
+    const catalog = new GatewayModelCatalog({
+      baseUrl: "https://gw.example.com",
+      ttlMs: 300_000,
+      instanceId: "inst-with-modality",
+      input: ["text", "image"],
+      output: ["text"],
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await catalog.refresh();
+    expect(catalog.get()).toEqual([
+      {
+        model: "vision-model",
+        ownedBy: "openai",
+        source: "ai-gateway",
+        instanceId: "inst-with-modality",
+        input: ["text", "image"],
+        output: ["text"],
+      },
+    ]);
+  });
+
+  it("未声明 input/output(缺省)→ 产出条目不携带这两个字段,与改造前逐字节一致", async () => {
+    const fetchImpl = vi.fn(async () => modelsResponse([{ id: "m1", owned_by: "openai" }]));
+    const catalog = new GatewayModelCatalog({
+      baseUrl: "https://gw.example.com",
+      ttlMs: 300_000,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await catalog.refresh();
+    expect(catalog.get()).toEqual([
+      { model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" },
+    ]);
+  });
+});
+
 describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-catalog spec)", () => {
   const selfEntries: ModelOption[] = [
     { provider: "openrouter", id: "shared-model", name: "Shared Model (self)" },
@@ -276,6 +316,33 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
       expect(m.input?.length ?? 0).toBeGreaterThan(0);
       expect(m.output?.length ?? 0).toBeGreaterThan(0);
     }
+  });
+
+  it("网关条目自身携带的 input/output(逐实例声明,任务 4.5)覆盖 GATEWAY_DEFAULT_MODALITY;撤掉声明即回落缺省(Req 2.4/2.5/3.3)", () => {
+    const withDeclaredModality: GatewayModelEntry[] = [
+      {
+        model: "vision-model",
+        ownedBy: "openai",
+        source: "ai-gateway",
+        instanceId: "inst-a",
+        // ★ 未在 GatewayModelEntry 类型上声明(与 model-catalog.ts 的宽松类型断言配套),
+        //   但 mergeModelCatalog 须能读到 —— 断言其对模拟的「实例已转发声明」条目生效。
+        ...({ input: ["text", "image"], output: ["text"] } as Record<string, unknown>),
+      },
+    ];
+    const merged = mergeModelCatalog([], withDeclaredModality, "gateway");
+    const model = merged.models.find((m) => m.id === "vision-model");
+    expect(model?.input).toEqual(["text", "image"]);
+    expect(model?.output).toEqual(["text"]);
+
+    // 撤掉声明(同一条目,不带 input/output)→ 回落到 GATEWAY_DEFAULT_MODALITY(["text"])。
+    const withoutDeclaredModality: GatewayModelEntry[] = [
+      { model: "vision-model", ownedBy: "openai", source: "ai-gateway", instanceId: "inst-a" },
+    ];
+    const mergedWithout = mergeModelCatalog([], withoutDeclaredModality, "gateway");
+    const modelWithout = mergedWithout.models.find((m) => m.id === "vision-model");
+    expect(modelWithout?.input).toEqual(["text"]);
+    expect(modelWithout?.output).toEqual(["text"]);
   });
 
   it("gateway 入参为空数组:models 的 provider/id/name 与 self 完全一致(含顺序),providers = self providers", () => {

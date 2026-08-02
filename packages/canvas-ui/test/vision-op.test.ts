@@ -14,6 +14,8 @@ import {
   fetchVisionModels,
   __setVisionModelCatalogFetchImpl,
   __resetVisionModelCatalogCache,
+  __setVisionModelCatalogNowFn,
+  VISION_MODEL_CATALOG_CACHE_TTL_MS,
   DEFAULT_READOUT_QUESTION,
 } from "../src/vision-op.js";
 
@@ -273,5 +275,88 @@ describe("★ fetchVisionModels — 一切失败都折成空数组,绝不抛出,
     __resetVisionModelCatalogCache();
     __setVisionModelCatalogFetchImpl(async () => okRes({}));
     expect(await fetchVisionModels("/api")).toEqual([]);
+  });
+});
+
+describe("fetchVisionModels — 缓存 TTL 失效(multi-gateway-providers 任务 6.6,Req 11.3/11.4/11.5)", () => {
+  beforeEach(() => {
+    __resetVisionModelCatalogCache();
+  });
+  afterEach(() => {
+    __resetVisionModelCatalogCache();
+    __setVisionModelCatalogNowFn(() => Date.now()); // 复位为默认时钟,避免污染其它用例
+    vi.restoreAllMocks();
+  });
+
+  it("TTL 内:同一 baseUrl 的后续调用仍命中缓存(不重复请求)", async () => {
+    let clock = 1_000_000;
+    __setVisionModelCatalogNowFn(() => clock);
+    const spy = vi.fn(async () => okRes({ models: [{ provider: "p", id: "m", name: "M" }] }));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    await fetchVisionModels("/api");
+    clock += VISION_MODEL_CATALOG_CACHE_TTL_MS - 1; // 差 1ms 未到期
+    await fetchVisionModels("/api");
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ TTL 过期后:同一 baseUrl 的下一次调用重新取数,拿到新增 provider(不必整页刷新)", async () => {
+    let clock = 1_000_000;
+    __setVisionModelCatalogNowFn(() => clock);
+    const before = { models: [{ provider: "existing", id: "m1", name: "M1" }] };
+    const after = {
+      models: [
+        { provider: "existing", id: "m1", name: "M1" },
+        { provider: "brand-new", id: "m2", name: "M2" },
+      ],
+    };
+    const spy = vi.fn(async () =>
+      okRes(clock < 1_000_000 + VISION_MODEL_CATALOG_CACHE_TTL_MS ? before : after),
+    );
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    const first = await fetchVisionModels("/api");
+    expect(first).toEqual([{ value: "existing/m1", label: "M1", provider: "existing" }]);
+
+    clock += VISION_MODEL_CATALOG_CACHE_TTL_MS + 1;
+    const second = await fetchVisionModels("/api");
+
+    expect(second).toEqual([
+      { value: "existing/m1", label: "M1", provider: "existing" },
+      { value: "brand-new/m2", label: "M2", provider: "brand-new" },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("★ TTL 未过期(时钟不推进),但收到 pi-web:config-saved 事件 → 下一次调用立即刷新(任务 6.6 主机制;修复前只有 TTL 时本用例必须报红)", async () => {
+    const clock = 1_000_000; // 恒定不推进——仅靠事件驱动失效,不能靠 TTL 兜底救场。
+    __setVisionModelCatalogNowFn(() => clock);
+    const before = { models: [{ provider: "existing", id: "m1", name: "M1" }] };
+    const after = {
+      models: [
+        { provider: "existing", id: "m1", name: "M1" },
+        { provider: "brand-new", id: "m2", name: "M2" },
+      ],
+    };
+    let saved = false;
+    const spy = vi.fn(async () => okRes(saved ? after : before));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    const first = await fetchVisionModels("/api");
+    expect(first).toEqual([{ value: "existing/m1", label: "M1", provider: "existing" }]);
+
+    // 保存成功后 useConfigDomain 会广播该事件;这里直接模拟广播,不经 React 组件。
+    saved = true;
+    globalThis.dispatchEvent(
+      new CustomEvent("pi-web:config-saved", { detail: { domain: "settings" } }),
+    );
+    const second = await fetchVisionModels("/api");
+
+    expect(second).toEqual([
+      { value: "existing/m1", label: "M1", provider: "existing" },
+      { value: "brand-new/m2", label: "M2", provider: "brand-new" },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

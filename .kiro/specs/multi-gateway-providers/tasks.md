@@ -136,19 +136,19 @@
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
   - _Depends: 4.1_
 
-- [ ] 4.5 使网关实例声明的模态真正作用于其目录条目
+- [x] 4.5 使网关实例声明的模态真正作用于其目录条目
   - 第六批完整性批评 gap 4 遗留:3.1 已解析逐实例的 `_INPUT`/`_OUTPUT`,但 4.2 给网关条目写死
     `GATEWAY_DEFAULT_MODALITY = ["text"]`,于是 design 承诺的「网关的读图模型进视觉清单」
     至今不成立 —— 配了 `PI_WEB_GATEWAY_<ID>_INPUT=text,image` 也没有任何可观察效果
   - 未声明模态的实例保持现有缺省(不改变零配置下的行为)
   - 完成判据:集成测试断言给某实例声明 `input=text,image` 后,其模型出现在
     `GET /api/config/models?input=image&output=text` 的结果里;撤掉声明即消失
-  - _Requirements: 2.4, 2.5, 3.3_
+  - _Requirements: 4.5, 4.6, 4.7_
   - _Depends: 3.1, 4.2_
 
 ## 5. 自定义 provider 配置
 
-- [ ] 5.1 定义 providers 配置域的校验与表单结构 (P)
+- [x] 5.1 定义 providers 配置域的校验与表单结构 (P)
   - 以可增删的条目列表承载：标识、显示名、启用开关、访问地址、凭据、输入/输出类型、模型清单
   - 标识唯一性与保留名冲突在保存时校验，错误须精确指向出错条目
   - 校验结构与表单结构两侧手写并保持同步（生成器不支持所需的列表与多态形态）
@@ -156,7 +156,7 @@
   - _Requirements: 7.1, 7.5, 7.6, 7.7_
   - _Boundary: packages/protocol/src/config/domains/providers.ts, packages/protocol/test/config/providers-domain.test.ts_
 
-- [ ] 5.2 实现列表内凭据的掩码与合并 (P)
+- [x] 5.2 实现列表内凭据的掩码与合并 (P)
   - 通用实现不遍历数组，故需一个能下钻到列表条目内的掩码与合并遍历器
   - 读回时凭据只呈现掩码态，明文绝不回传
   - 写入支持保留、清除、覆盖三态
@@ -164,7 +164,7 @@
   - _Requirements: 7.3, 7.4_
   - _Boundary: packages/core/src/config/provider-secrets.ts, packages/core/test/config/provider-secrets.test.ts_
 
-- [ ] 5.3 将自定义 provider 接入目录与会话
+- [x] 5.3 将自定义 provider 接入目录与会话
   - 自定义 provider 作为一类来源进入注册表，其模型出现在部署级目录
   - 同一份定义在会话侧注册，使其模型在会话中同样可用
   - 停用某 provider 时其模型从目录消失但配置保留
@@ -172,7 +172,7 @@
   - _Requirements: 7.2, 7.5_
   - _Depends: 1.3, 5.1, 5.2, 3.5_
 
-- [ ] 5.4 在设置界面提供 provider 管理入口
+- [x] 5.4 在设置界面提供 provider 管理入口
   - 注册配置面板，使新增、编辑、启停 provider 可在界面内完成
   - 列表标明每个 provider 来自内置注册、云端下发还是使用者自定义
   - 完成判据：浏览器 e2e 能新增一个 provider 并在保存后看到它出现在列表中
@@ -214,7 +214,7 @@
   - 完成判据：集成测试断言新路径生效、旧路径返回含新路径指引的错误
   - _Requirements: 3.7, 3.8_
 
-- [ ] 6.6 使 provider 变更在各消费面反映
+- [x] 6.6 使 provider 变更在各消费面反映
   - provider 新增、停用或删除后，各消费面无需重启即反映变化；工具侧清单若受会话生命周期限制，须在界面明示生效时机
   - 完成判据：e2e 断言新增 provider 后设置界面无需重启即出现该 provider
   - _Requirements: 11.3, 11.4, 11.5_

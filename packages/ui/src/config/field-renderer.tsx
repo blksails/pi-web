@@ -17,6 +17,7 @@ import { defaultFieldRegistry, defaultSourceFieldRegistry } from "./field-regist
 import { StringField } from "./fields/string-field.js";
 import { SecretField } from "./fields/secret-field.js";
 import { EnumField } from "./fields/enum-field.js";
+import { MultiEnumField } from "./fields/multi-enum-field.js";
 import { RecordField } from "./fields/record-field.js";
 import { BooleanField } from "./fields/boolean-field.js";
 import { NumberField } from "./fields/number-field.js";
@@ -48,6 +49,7 @@ const DEFAULTS: Partial<
   string: StringField,
   secret: SecretField,
   enum: EnumField,
+  multiEnum: MultiEnumField,
   record: RecordField,
   boolean: BooleanField,
   number: NumberField,

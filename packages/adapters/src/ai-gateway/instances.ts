@@ -308,6 +308,10 @@ export interface GatewayCatalogAggregatorDeps {
  * 那个)额外回落到 `EnvKeyResolver` 的两个存量全局凭据名(Req 9.1 的逐字节兼容);
  * 显式声明的实例(经 `PI_WEB_GATEWAYS` 列出)只认自己的 `_API_KEY`,不做任何回落。
  *
+ * 每个实例声明的模态(`GatewayInstanceConfig.input`/`output`)也在此逐实例转发给
+ * 各自的 `GatewayModelCatalog`(任务 4.5,Req 2.4/2.5/3.3),使该实例产出的每条目录
+ * 条目携带其声明,而不再是各实例共用同一个写死的缺省值。
+ *
  * @param instances {@link resolveGatewayInstances} 的解析结果。
  * @param deps 测试接缝与 env 来源;不传则与生产装配同构(读 `process.env`)。
  * @returns 以实例标识为键的只读 Map,一对一对应入参的每个实例。
@@ -330,6 +334,14 @@ export function createGatewayCatalogs(
         instanceId: instance.id,
         keyResolver,
         allowedOwners: instance.allowedOwners,
+        // 实例声明的模态转发(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3):
+        // `instance.input`/`output` 由 `resolveExplicitInstance` 解析自
+        // `PI_WEB_GATEWAY_<ID>_INPUT`/`_OUTPUT`(任务 3.1),此前从未离开
+        // `GatewayInstanceConfig` —— 未接线到此处即是「配了也没用」的那半个缺口
+        // (第六批完整性批评 gap 4)。未声明(`undefined`)时不传,`GatewayModelCatalog`
+        // 落到其自身的缺省值,行为不变。
+        ...(instance.input !== undefined ? { input: instance.input } : {}),
+        ...(instance.output !== undefined ? { output: instance.output } : {}),
         ...(deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {}),
         ...(deps.nowFn !== undefined ? { nowFn: deps.nowFn } : {}),
         ...(deps.logger !== undefined ? { logger: deps.logger } : {}),

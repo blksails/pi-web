@@ -37,12 +37,20 @@
  *
  * 消费方:lib/app/pi-handler 装配处构造一次,`GET /api/config/models` 与
  * `GET /api/aigc/models` 均改经本服务取数(task 3.1)。
+ *
+ * `customProviders`(multi-gateway-providers 任务 5.3,Req 7.2, 7.5):自定义 provider
+ * 作为第三类来源并入 `query()`(chat/image 之外)。经 `ProviderRegistry` 注入 ——
+ * `.providers()` 已按 `enabled` 过滤(停用即从目录消失),`.find()` 不受过滤影响
+ * (配置仍在,供再次启用)。装配处见 `packages/core/src/model-catalog/
+ * custom-provider-source.ts` 的 `createCustomProviderSource`。
  */
 import type { AigcCatalogEntry } from "@blksails/pi-web-tool-kit";
 import { excludeProviderModels, excludeProviders } from "../config/model-options-filter.js";
 import type { ModelOption, ModelOptions } from "../config/model-options.types.js";
 import { matchesFilter, normalizeModalities, type Modality } from "./modality.js";
 import { normalizeLegacyProviderId } from "./provider-identity.js";
+import type { CustomProviderModel } from "./custom-provider-source.js";
+import type { ProviderRegistry } from "./provider-source.js";
 import type { GatewayModelEntry, MergeModelCatalog, ModelPrecedence } from "./types.js";
 
 /** `createModelCatalogService` 的注入依赖(装配期一次性构造)。 */
@@ -75,6 +83,15 @@ export interface ModelCatalogServiceDeps {
    * image 两个命名空间**一致生效** —— 彻底禁用,不因用途不同而例外。
    */
   readonly hiddenProviders: ReadonlySet<string>;
+  /**
+   * 自定义 provider 来源(multi-gateway-providers 任务 5.3,design.md
+   * `CustomProviderSource`;Req 7.2, 7.5):由装配层读取 providers 配置域、组装为
+   * `ProviderRegistry` 后注入。`providers()` 已按 `enabled` 过滤 —— 停用的 provider
+   * 在 `query()` 结果中不再出现,但其定义仍留在注册表里(`find()` 可查),配置本身
+   * 不因停用而丢失(Req 7.5「保留其配置以便再次启用」)。未注入 = 未启用任何自定义
+   * provider,`query()` 的输出与该来源不存在时一致(零侵入,Req 10.1 的自然延伸)。
+   */
+  readonly customProviders?: ProviderRegistry<CustomProviderModel>;
 }
 
 /** 图像目录输出条目:静态条目 + 可选来源标记(仅聚合形态附带,响应只增不改)。 */
@@ -212,6 +229,7 @@ export function createModelCatalogService(
     gatewayImageCatalog,
     cloudflareImageCatalog,
     hiddenProviders,
+    customProviders,
   } = deps;
 
   /**
@@ -272,6 +290,29 @@ export function createModelCatalogService(
     return excludeProviderModels(assembleImageEntries(), hiddenProviders);
   }
 
+  /**
+   * 自定义 provider 组装(任务 5.3,Req 7.2):`customProviders.providers()` 已按
+   * `enabled` 过滤(停用的 provider 在此已经消失,Req 7.5),故这里不再重复判断
+   * enabled —— 与 chat/image 两侧「先无条件组装、query() 里统一套 applyHidden」
+   * 的结构不同:enabled 过滤在 `ProviderRegistry` 层已经发生,不属于 hidden 名单
+   * 语义(两者是两件事:hidden 是部署方强制屏蔽,enabled 是使用者自己的开关)。
+   * 未注入 = 空数组,与该来源不存在时一致(零侵入)。
+   */
+  function assembleCustomProviderModels(): readonly CatalogModel[] {
+    if (customProviders === undefined) return [];
+    return customProviders.providers().flatMap((def) => {
+      const { input, output } = normalizeModalities({ input: def.input, output: def.output });
+      return def.models.map((m) => ({
+        provider: def.id,
+        id: m.id,
+        name: m.name ?? m.id,
+        input,
+        output,
+        source: "custom",
+      }));
+    });
+  }
+
   function query(q: CatalogQuery = {}): CatalogQueryResult {
     const applyHidden = q.applyHidden ?? true;
     const chatRaw = assembleChatOptions();
@@ -288,9 +329,17 @@ export function createModelCatalogService(
     const imageModels = applyHidden
       ? imageProjected.filter((m) => !hiddenProviders.has(m.provider))
       : imageProjected;
+    // 自定义 provider(任务 5.3,Req 7.2):enabled 过滤已在 ProviderRegistry 层完成;
+    // hidden 名单同样对其生效(与 chat/image 两侧一致,部署方可强制屏蔽任何来源)。
+    const customRaw = assembleCustomProviderModels();
+    const customModels = applyHidden
+      ? customRaw.filter((m) => !hiddenProviders.has(m.provider))
+      : customRaw;
 
     const filter = { input: q.input, output: q.output };
-    const models = [...chatModels, ...imageModels].filter((m) => matchesFilter(m, filter));
+    const models = [...chatModels, ...imageModels, ...customModels].filter((m) =>
+      matchesFilter(m, filter),
+    );
     const providers = [...new Set(models.map((m) => m.provider))].sort();
     return { providers, models };
   }

@@ -11,6 +11,7 @@ import {
   validateProviderId,
   findProviderIdConflicts,
   normalizeLegacyProviderId,
+  normalizeLegacyCompoundModelKey,
   RESERVED_PROVIDER_IDS,
 } from "../../src/model-catalog/provider-identity.js";
 
@@ -207,5 +208,46 @@ describe("normalizeLegacyProviderId — image 侧 ai-gateway → blksails-ai(本
     // 与本任务归一的 image 侧标识是两回事;此处用空表模拟"未启用该项归一"的
     // 场景,证明归一行为完全由传入的 legacyMap 决定,不是硬编码特判。
     expect(normalizeLegacyProviderId("ai-gateway", {})).toBe("ai-gateway");
+  });
+});
+
+describe("normalizeLegacyCompoundModelKey — 复合键的存量兼容(任务 7.1,Req 9.1-9.3)", () => {
+  it("★ 存量视觉偏好复合键 ai-gateway/xxx 归一后前缀随之变化(非幂等,证明确有映射发生)", () => {
+    // aigc.json 的 visionModel 存的正是这种复合键;image 侧归一落地后,原样字符串
+    // 不再命中新目录里的 blksails-ai/xxx 条目 —— 这是任务 7.1 描述指出的真实缺陷。
+    const result = normalizeLegacyCompoundModelKey("ai-gateway/qwen-image");
+    expect(result).toBe("blksails-ai/qwen-image");
+    expect(result).not.toBe("ai-gateway/qwen-image");
+  });
+
+  it("modelId 段本身含 `/` 时只归一首个 `/` 之前的 provider 段,其余原样保留", () => {
+    // 复合键真实样本(research.md §0 实测):value 形如 "openrouter/amazon/nova-2-lite-v1",
+    // provider 段是 "openrouter",modelId 段是 "amazon/nova-2-lite-v1"。用一个自定义
+    // legacyMap 模拟 openrouter 也被归一的场景,断言 modelId 段的内部 `/` 未被误切。
+    const legacyMap = { openrouter: "or-alt" };
+    expect(
+      normalizeLegacyCompoundModelKey("openrouter/amazon/nova-2-lite-v1", legacyMap),
+    ).toBe("or-alt/amazon/nova-2-lite-v1");
+  });
+
+  it("provider 段无映射时复合键原样返回(零迁移,Req 9.2/9.3 的多数场景)", () => {
+    expect(normalizeLegacyCompoundModelKey("dashscope/qwen-vl-max")).toBe(
+      "dashscope/qwen-vl-max",
+    );
+  });
+
+  it("不含 `/` 的输入(非复合键形态)原样返回", () => {
+    expect(normalizeLegacyCompoundModelKey("qwen-vl-max")).toBe("qwen-vl-max");
+  });
+
+  it("空字符串原样返回", () => {
+    expect(normalizeLegacyCompoundModelKey("")).toBe("");
+  });
+
+  it("幂等:对已归一的复合键再次归一,结果不再变化", () => {
+    const once = normalizeLegacyCompoundModelKey("ai-gateway/qwen-image");
+    const twice = normalizeLegacyCompoundModelKey(once);
+    expect(twice).toBe(once);
+    expect(twice).toBe("blksails-ai/qwen-image");
   });
 });

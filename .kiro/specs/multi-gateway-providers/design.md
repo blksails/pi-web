@@ -161,7 +161,8 @@ packages/adapters/src/ai-gateway/
 | `packages/runner/src/runner/model-source-registrar.ts` | 契约：`providerName: string` → `sourceId` + `providerNamesOf(spec)` |
 | `packages/runner/src/runner/option-mapper.ts` | 适配新契约 |
 | `packages/runner/src/runner/session-options.ts` | 失败文案判据改按来源而非常量比对 |
-| `packages/server/src/host-assembly/model-sources.ts` | 每实例注册；新增 CustomProviderSource 登记 |
+| `packages/server/src/host-assembly/model-sources.ts` | 每实例注册；新增 CustomProviderSource 登记（会话侧） |
+| `packages/server/src/host-assembly/custom-providers.ts` | **新增**：`createCustomProviderRegistry(agentDir)`——部署级目录侧的 `CustomProviderSource` 装配出口（任务 5.3 修复轮补记：此前本表漏列，导致部署级目录侧从未接入生产装配，只有会话侧接了线） |
 | `packages/tool-kit/src/aigc/model-catalog.ts` | `AigcCatalogEntry.provider` 封闭联合 → string；条目补 `input`/`output` |
 | `packages/tool-kit/src/aigc/extension.ts` | KV 发布沿用，provider 变更提示「下次新建会话生效」 |
 | `packages/protocol/src/config/index.ts` | 导出 providers 域 + `ConfigDomainId` 加值 + `CONFIG_FORM_SCHEMAS` |
@@ -172,7 +173,7 @@ packages/adapters/src/ai-gateway/
 | `packages/react/src/hooks/use-models.ts` | `current` 从会话快照派生（Req 11.8/11.9） |
 | `packages/core/src/http/routes/command-routes.ts` | `POST /sessions/:id/model` → `/models`（Req 3.7），旧路径返回可辨识错误（Req 3.8） |
 | `packages/react/src/client/pi-client.ts` | `setModel` 路径同步 |
-| `lib/app/pi-handler.ts` | 装配多实例；三处目录装配点合一 |
+| `lib/app/pi-handler.ts` | 装配多实例；三处目录装配点合一；`makeModelCatalog()` 注入 `customProviders: createCustomProviderRegistry(config.agentDir)`（任务 5.3 修复轮补记：此前本表未指认该文件要注入 customProviders，导致目录侧实现完成后从未真正接线，`GET /api/config/models` 上自定义 provider 恒为死代码——教训见 tasks.md Implementation Notes） |
 | `lib/app/ai-gateway-session-assembly.ts` | spawn env 多实例序列化 |
 | `lib/settings/register-panels.ts` | 注册 providers 面板 |
 

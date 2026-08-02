@@ -73,22 +73,47 @@ export function displayNameOf(label: string, providerId: string | undefined): st
   return accepted.includes(n) ? label.slice(0, idx).trim() : label;
 }
 
-/** provider 字母徽章(无图标资源时的字母表示);未知 provider → 不渲染。 */
+/**
+ * 未登记 provider 的兜底徽章外观(灰色 + id 首字母)—— 不依赖 {@link PROVIDER_META}
+ * (multi-gateway-providers 任务 5.4;Req 7.1/11.7 相邻缺口):自定义 provider 的标识是
+ * 使用者在设置面板里现填的,不可能预先登记进这张手工维护的静态表(登记进去的是「产品
+ * 已知的少数几个内置 provider」)。此前 {@link ProviderBadge} 对表外 provider 直接返回
+ * `null`,使自定义 provider 的模型在图像/视觉清单里退化成「纯文字、无色块」—— 与本表头
+ * 注释警告的"忘了登记"是同一症状,但这里不是遗漏登记(不可能穷举使用者的自定义标识),
+ * 是徽章机制本身需要一条不查表也能画的兜底路径。用固定中性色(不挑战既有品牌色语义),
+ * 字母取标识首个字母(非字母数字时退化为 "•"),使徽章仍是"有一块色 + 一个记号"而非空白。
+ */
+const FALLBACK_BADGE_BG = "#64748b"; // slate-500:中性,不与 PROVIDER_META 任何品牌色雷同。
+
+function fallbackLetterFor(providerId: string): string {
+  const m = /[a-zA-Z0-9]/.exec(providerId);
+  return m !== null ? m[0]!.toUpperCase() : "•";
+}
+
+/**
+ * provider 字母徽章(无图标资源时的字母表示)。
+ * `providerId === undefined`(压根没有 provider 可标)→ 不渲染;
+ * `providerId` 有值但不在 {@link PROVIDER_META}(自定义 / 尚未登记的 provider)→ 兜底徽章,
+ * 不再是 `null`(见上方兜底说明)。
+ */
 export function ProviderBadge({
   providerId,
 }: {
   readonly providerId: string | undefined;
 }): React.JSX.Element | null {
-  const meta = providerId !== undefined ? PROVIDER_META[providerId] : undefined;
-  if (meta === undefined) return null;
+  if (providerId === undefined) return null;
+  const meta = PROVIDER_META[providerId];
+  const letter = meta?.letter ?? fallbackLetterFor(providerId);
+  const bg = meta?.bg ?? FALLBACK_BADGE_BG;
+  const title = meta?.name ?? providerId;
   return (
     <span
       aria-hidden
-      title={meta.name}
+      title={title}
       className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none text-white"
-      style={{ backgroundColor: meta.bg }}
+      style={{ backgroundColor: bg }}
     >
-      {meta.letter}
+      {letter}
     </span>
   );
 }

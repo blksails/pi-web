@@ -94,24 +94,29 @@ describe("VisionModelSelectField", () => {
     expect(onChange).toHaveBeenCalledWith("dashscope/qwen-vl-max");
   });
 
-  it("存量偏好值(裸复合键)命中清单 → 无「当前不可用」标记(Req 11.6:零迁移)", async () => {
+  it("存量偏好值(裸复合键)命中清单 → 无 orphan 标记(Req 11.6:零迁移)", async () => {
     mockFetch(CATALOG);
     renderField("dashscope/qwen-vl-max");
     await waitFor(() => {
       expect(document.querySelector('[data-vision-model-count]')).not.toBeNull();
     });
-    expect(document.querySelector("[data-vision-model-stale]")).toBeNull();
+    expect(document.querySelector('[data-pi-model-orphan="true"]')).toBeNull();
     expect(
       document.querySelector('[data-vision-model-current="dashscope/qwen-vl-max"]'),
     ).not.toBeNull();
   });
 
-  it("存量偏好值不在清单里 → 标记为当前不可用,不静默丢弃", async () => {
+  it("存量偏好值不在清单里 → 标记为可辨识的 orphan(data-pi-model-orphan,任务 7.2,Req 6.5/9.4),不静默丢弃且值仍原样保留", async () => {
     mockFetch(CATALOG);
     renderField("removed-provider/removed-model");
     await waitFor(() => {
-      expect(document.querySelector("[data-vision-model-stale]")).not.toBeNull();
+      expect(document.querySelector('[data-pi-model-orphan="true"]')).not.toBeNull();
     });
+    // 与设置页 provider/模型下拉(model-select-field.tsx)及会话模型选择器
+    // (elements/model-selector.tsx)共用同一套标记语义,不各造一套。
+    expect(
+      document.querySelector('[data-vision-model-current="removed-provider/removed-model"]'),
+    ).not.toBeNull();
   });
 
   it("取数失败 → 回退占位,不崩,且在控制台留一行可辨识错误(不再静默,任务 6.3 核心验收点)", async () => {

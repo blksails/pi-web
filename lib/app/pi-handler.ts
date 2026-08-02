@@ -148,6 +148,11 @@ import {
   listModelOptions,
   parseHiddenProviders,
 } from "@blksails/pi-web-server/model-options";
+// 自定义 provider 部署级注册表装配(spec multi-gateway-providers,任务 5.3 修复轮,
+// Req 7.2/7.5):经 host-assembly 子路径转出(D0 同惯例) —— 根 package.json 只依赖
+// @blksails/pi-web-server,无法 deep-import core 的子路径;custom-provider-source.ts
+// 走 fs IO,不允许并入零 IO 的 core/server 主 barrel。
+import { createCustomProviderRegistry } from "@blksails/pi-web-server/host-assembly/custom-providers.js";
 // 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全):
 // 供 ModelCatalogService 的 image 命名空间组装(spec model-catalog,任务 3.1)。
 import {
@@ -614,6 +619,10 @@ function buildSingleton(): HandlerSingleton {
         ? CLOUDFLARE_AIGC_CATALOG
         : undefined,
       hiddenProviders: parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS),
+      // 自定义 provider(spec multi-gateway-providers,任务 5.3 修复轮,Req 7.2/7.5):
+      // 每请求重新组装(与本函数其余依赖同惯例) —— `createCustomProviderSource().list()`
+      // 每次调用重新读 `<agentDir>/providers.json`,使新增/停用免重启即时生效。
+      customProviders: createCustomProviderRegistry(config.agentDir),
     });
 
   // 主进程自身 logger 的 runtime 门控:主进程不像 runner 那样调 initConfigFromEnv,

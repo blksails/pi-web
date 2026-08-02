@@ -375,4 +375,45 @@ describe("createGatewayCatalogs — 凭据解析与目录缓存按实例独立(R
     const catalogs = createGatewayCatalogs(instances, { env: {} });
     expect(catalogs.get(pid("gw-a"))).not.toBe(catalogs.get(pid("gw-b")));
   });
+
+  // ★ 第六批完整性批评 gap 4(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3):
+  // 3.1 已解析逐实例 `_INPUT`/`_OUTPUT`,但此前从未转发给 `GatewayModelCatalog`——配了
+  // 也没有任何可观察效果。本用例断言接线后声明确实生效,且撤掉声明会消失(回落缺省)。
+  it("实例声明的 input/output 转发到其 GatewayModelCatalog:产出条目携带该声明;未声明的实例保持缺省(Req 2.4/2.5/3.3)", async () => {
+    const instances: readonly GatewayInstanceConfig[] = [
+      makeInstance({ id: pid("gw-vision"), baseUrl: "http://vision.example.com", input: ["text", "image"], output: ["text"] }),
+      makeInstance({ id: pid("gw-plain"), baseUrl: "http://plain.example.com" }),
+    ];
+
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      const href = url.toString();
+      const id = href.startsWith("http://vision.example.com") ? "vision-model" : "plain-model";
+      return new Response(JSON.stringify({ data: [{ id, owned_by: "openai" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const catalogs = createGatewayCatalogs(instances, {
+      env: {},
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await catalogs.get(pid("gw-vision"))!.refresh();
+    await catalogs.get(pid("gw-plain"))!.refresh();
+
+    expect(catalogs.get(pid("gw-vision"))!.get()).toEqual([
+      {
+        model: "vision-model",
+        ownedBy: "openai",
+        source: "ai-gateway",
+        instanceId: "gw-vision",
+        input: ["text", "image"],
+        output: ["text"],
+      },
+    ]);
+    // 未声明模态的实例:产出条目不携带 input/output 字段(缺省,零配置行为不变)。
+    expect(catalogs.get(pid("gw-plain"))!.get()).toEqual([
+      { model: "plain-model", ownedBy: "openai", source: "ai-gateway", instanceId: "gw-plain" },
+    ]);
+  });
 });

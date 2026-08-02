@@ -100,7 +100,7 @@ interface CatalogModelsResponse {
   readonly models: readonly CatalogModelEntry[];
 }
 
-// ── 取数(模块级 Promise 缓存,按 baseUrl 分桶;测试可注入 fetch 实现)──────────────
+// ── 取数(模块级 Promise 缓存,按 baseUrl 分桶 + TTL 失效;测试可注入 fetch 实现)────────
 // 缓存跨消费面共享(multi-gateway-providers 任务 6.3,Req 11.1/11.2):设置页的视觉模型
 // 选择字段与本文件的解读弹层 `useVisionModels` 都调用 `fetchVisionModels`;同一 baseUrl
 // 下并发/重复调用只发一次请求。
@@ -108,6 +108,13 @@ interface CatalogModelsResponse {
 // ⚠ 生产形态下这两处**并不落在同一个桶**:设置字段写死 `"/api"`,而 CanvasPanel 目前唯一的
 // 生产挂载形态是 pane(iframe),传的是哨兵 `pane://host`(见下方 isFetchableBase)。缓存共享
 // 是本函数的真实性质,但「两处共用一次取数」在当前接线下并不发生 —— 别把它当成已生效的验收。
+//
+// ★ 分桶只解决了"互不串扰",没解决"清得掉"(任务 6.6,Req 11.3/11.4/11.5):按 baseUrl 分桶
+// 后每个桶若只按墙钟 TTL 过期,provider 新增/停用/删除后仍要等 TTL 到期才反映。真正消除
+// 该窗口的是**变更事件驱动失效**(主机制):设置面板保存成功后广播
+// "pi-web:config-saved",本文件监听后立即清空全部 baseUrl 桶,下一次调用(设置面板切走
+// 再切回、Canvas 弹层重新打开)立即重新取数,不必等待。TTL 仍保留,作为带外变更(磁盘被
+// 直接改、另一标签页改)的兜底。
 let fetchImpl: typeof fetch = (...args) => globalThis.fetch(...args);
 export function __setVisionModelCatalogFetchImpl(f: typeof fetch): void {
   fetchImpl = f;
@@ -121,9 +128,31 @@ function isFetchableBase(baseUrl: string): boolean {
   return /^https?:\/\//i.test(baseUrl);
 }
 
-const cacheByBaseUrl = new Map<string, Promise<readonly VisionModelOption[]>>();
+/** 缓存条目存活时长(任务 6.6,Req 11.5);与 ui 包 model-select-field 的同名常量同规格同值。 */
+export const VISION_MODEL_CATALOG_CACHE_TTL_MS = 5_000;
+
+interface VisionCacheEntry {
+  readonly promise: Promise<readonly VisionModelOption[]>;
+  readonly expiresAt: number;
+}
+const cacheByBaseUrl = new Map<string, VisionCacheEntry>();
 export function __resetVisionModelCatalogCache(): void {
   cacheByBaseUrl.clear();
+}
+
+// ★ 变更事件驱动失效(任务 6.6,Req 11.3/11.4/11.5 的**主机制**,TTL 只是兜底,见
+// ui 包 model-select-field.tsx 同名处理的注释)。事件名字面量硬编码——canvas-ui 不能
+// 反向依赖 react/ui(架构分层单向),浏览器原生事件是唯一零耦合的广播通道。
+if (typeof globalThis.addEventListener === "function") {
+  globalThis.addEventListener("pi-web:config-saved", () => {
+    __resetVisionModelCatalogCache();
+  });
+}
+
+/** 测试注入「当前时刻」(任务 6.6):驱动 TTL 过期而不必真实等待。默认 `Date.now`。 */
+let nowFn: () => number = () => Date.now();
+export function __setVisionModelCatalogNowFn(f: () => number): void {
+  nowFn = f;
 }
 
 /**
@@ -154,8 +183,11 @@ export async function fetchVisionModels(
   // 选择已下沉到 agent,本就不该取数)。不短路的话每次打开 Canvas pane 都会对一个按设计不可达
   // 的 URL 报一次 console.error,把常态路径变成常态报错、并淹没真正的破坏信号。
   if (!isFetchableBase(baseUrl)) return [];
+  const now = nowFn();
   const cached = cacheByBaseUrl.get(baseUrl);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined && cached.expiresAt > now) {
+    return cached.promise;
+  }
 
   const url = `${baseUrl}/config/models?input=image&output=text`;
   const promise = (async (): Promise<readonly VisionModelOption[]> => {
@@ -179,6 +211,6 @@ export async function fetchVisionModels(
       return [];
     }
   })();
-  cacheByBaseUrl.set(baseUrl, promise);
+  cacheByBaseUrl.set(baseUrl, { promise, expiresAt: now + VISION_MODEL_CATALOG_CACHE_TTL_MS });
   return promise;
 }

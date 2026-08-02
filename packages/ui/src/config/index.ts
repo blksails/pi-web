@@ -39,5 +39,10 @@ export {
   __setVisionModelsFetchImpl,
   __resetVisionModelsCache,
 } from "./fields/vision-model-select-field.js";
+export {
+  ProviderRegistrySummary,
+  __setProviderRegistryFetchImpl,
+  __resetProviderRegistryFetchImpl,
+} from "./provider-registry-summary.js";
 export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
 export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";

@@ -6,7 +6,6 @@
  * 可辨识的 console.error——multi-gateway-providers 任务 6.2 的核心验收点)。
  * fetch 经 __setAigcModelsFetchImpl 注入。
  */
-import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import type { FieldDescriptor } from "@blksails/pi-web-protocol";
@@ -14,6 +13,8 @@ import {
   AigcModelTogglesField,
   __setAigcModelsFetchImpl,
   __resetAigcModelsCache,
+  __setAigcModelsNowFn,
+  AIGC_MODELS_CACHE_TTL_MS,
 } from "../../src/config/fields/aigc-model-toggles-field.js";
 import type { FieldProps } from "../../src/config/field-registry.js";
 
@@ -179,5 +180,111 @@ describe("AigcModelTogglesField — 来源标记(model-catalog 任务 4.2,Req 4.
     expect(box.checked).toBe(true);
     fireEvent.click(box);
     expect(onChange).toHaveBeenCalledWith(["gw-flux"]);
+  });
+});
+
+describe("AigcModelTogglesField — 缓存 TTL 失效 + 会话生效时机提示(任务 6.6,Req 11.3/11.4/11.5)", () => {
+  beforeEach(() => {
+    __resetAigcModelsCache();
+  });
+  afterEach(() => {
+    cleanup();
+    __resetAigcModelsCache();
+    __setAigcModelsNowFn(() => Date.now()); // 复位为默认时钟,避免污染其它用例
+    vi.restoreAllMocks();
+  });
+
+  it("★ TTL 过期后:下一次挂载重新取数,拿到新增 provider 的模型(不必整页刷新)", async () => {
+    let clock = 1_000_000;
+    __setAigcModelsNowFn(() => clock);
+    const before = { models: [{ id: "gpt-image-2", name: "GPT Image 2", provider: "newapi" }] };
+    const after = {
+      models: [
+        { id: "gpt-image-2", name: "GPT Image 2", provider: "newapi" },
+        { id: "brand-new-model", name: "Brand New", provider: "brand-new" },
+      ],
+    };
+    const fetchMock = vi.fn(async () => {
+      const body = clock < 1_000_000 + AIGC_MODELS_CACHE_TTL_MS ? before : after;
+      return { ok: true, status: 200, json: async () => body };
+    });
+    __setAigcModelsFetchImpl(fetchMock as unknown as typeof fetch);
+
+    const { unmount } = render(
+      <AigcModelTogglesField
+        descriptor={descriptor}
+        value={[]}
+        onChange={vi.fn()}
+        path={["disabledModels"]}
+        errors={{}}
+      />,
+    );
+    await waitFor(() => {
+      expect(document.querySelector('[data-aigc-model-toggle="gpt-image-2"]')).not.toBeNull();
+    });
+    expect(document.querySelector('[data-aigc-model-toggle="brand-new-model"]')).toBeNull();
+    unmount();
+
+    // 过期(TTL 之后)—— 模拟"新增 provider 后,用户切走再切回 AIGC 设置面板"。
+    clock += AIGC_MODELS_CACHE_TTL_MS + 1;
+    renderField([]);
+    await waitFor(() => {
+      expect(document.querySelector('[data-aigc-model-toggle="brand-new-model"]')).not.toBeNull();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("★ TTL 未过期(时钟不推进),但收到 pi-web:config-saved 事件 → 下一次挂载立即取新模型(任务 6.6 主机制;修复前只有 TTL 时本用例必须报红)", async () => {
+    const clock = 1_000_000; // 恒定不推进——仅靠事件驱动失效,不能靠 TTL 兜底救场。
+    __setAigcModelsNowFn(() => clock);
+    const before = { models: [{ id: "gpt-image-2", name: "GPT Image 2", provider: "newapi" }] };
+    const after = {
+      models: [
+        { id: "gpt-image-2", name: "GPT Image 2", provider: "newapi" },
+        { id: "brand-new-model", name: "Brand New", provider: "brand-new" },
+      ],
+    };
+    let saved = false;
+    const fetchMock = vi.fn(async () => {
+      const body = saved ? after : before;
+      return { ok: true, status: 200, json: async () => body };
+    });
+    __setAigcModelsFetchImpl(fetchMock as unknown as typeof fetch);
+
+    const { unmount } = render(
+      <AigcModelTogglesField
+        descriptor={descriptor}
+        value={[]}
+        onChange={vi.fn()}
+        path={["disabledModels"]}
+        errors={{}}
+      />,
+    );
+    await waitFor(() => {
+      expect(document.querySelector('[data-aigc-model-toggle="gpt-image-2"]')).not.toBeNull();
+    });
+    unmount();
+
+    // 保存成功后 useConfigDomain 会广播该事件;这里直接模拟广播,不经 React 组件。
+    saved = true;
+    globalThis.dispatchEvent(
+      new CustomEvent("pi-web:config-saved", { detail: { domain: "aigc" } }),
+    );
+    renderField([]);
+    await waitFor(() => {
+      expect(document.querySelector('[data-aigc-model-toggle="brand-new-model"]')).not.toBeNull();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("渲染「会话生效时机」提示(工具侧清单受会话生命周期限制,须明示而非静默)", async () => {
+    mockFetch(CATALOG);
+    renderField([]);
+    const note = await waitFor(() => {
+      const el = document.querySelector("[data-aigc-model-toggles-scope-note]");
+      if (el === null) throw new Error("not yet");
+      return el;
+    });
+    expect(note.textContent).toContain("已打开的会话");
   });
 });
