@@ -27,7 +27,6 @@
         { "path": "src/parts/pi-tool-part.tsx", "type": "registry:component" },
         { "path": "src/parts/pi-reasoning.tsx", "type": "registry:component" },
         { "path": "src/elements/pi-interaction.tsx", "type": "registry:component" },
-        { "path": "src/controls/pi-model-selector.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-thinking-level.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-session-stats.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-command-palette.tsx", "type": "registry:component" },
@@ -86,7 +85,7 @@
       "name": "pi-controls",
       "type": "registry:component",
       "title": "Pi controls",
-      "description": "PiModelSelector / PiThinkingLevel / PiSessionStats / PiCommandPalette。",
+      "description": "PiThinkingLevel / PiSessionStats / PiCommandPalette。",
       "dependencies": [
         "@blksails/pi-web-react",
         "@radix-ui/react-select",
@@ -95,7 +94,6 @@
         "tailwind-merge"
       ],
       "files": [
-        { "path": "src/controls/pi-model-selector.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-thinking-level.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-session-stats.tsx", "type": "registry:component" },
         { "path": "src/controls/pi-command-palette.tsx", "type": "registry:component" },

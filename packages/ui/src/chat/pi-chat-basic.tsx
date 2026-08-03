@@ -18,7 +18,6 @@ import type {
 import { PartRenderer } from "./part-renderer.js";
 import type { PiChatSlots } from "./slots.js";
 import { PiInteraction } from "../elements/pi-interaction.js";
-import { PiModelSelector } from "../controls/pi-model-selector.js";
 import { PiThinkingLevel } from "../controls/pi-thinking-level.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
 import { Button } from "../ui/button.js";
@@ -34,7 +33,7 @@ export interface PiChatBasicProps {
   /** 来自 useExtensionUI;驱动权限弹窗。 */
   readonly extensionUI?: UseExtensionUIResult;
   readonly slots?: PiChatSlots;
-  /** 是否展示内置控制面板(模型/思考/stats),默认 true。 */
+  /** 是否展示内置控制面板(思考/stats),默认 true。 */
   readonly showControls?: boolean;
   /** 可注入隔离的渲染器注册表(默认用模块级单例)。 */
   readonly registry?: RendererRegistry;
@@ -108,7 +107,6 @@ export function PiChatBasic({
             className="flex flex-wrap items-end gap-2 border-b border-[hsl(var(--border))] pb-2"
             data-pi-chat-controls
           >
-            <PiModelSelector controls={controls} />
             <PiThinkingLevel controls={controls} />
             <div className="ml-auto">
               <PiSessionStats controls={controls} />
