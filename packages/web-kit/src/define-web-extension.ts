@@ -14,6 +14,7 @@ import type {
   WebExtensionCapability,
 } from "@blksails/pi-web-protocol";
 import type { UiRpcClient } from "./rpc-client.js";
+import type { ConversationImageAction } from "./conversation-image-action.js";
 
 /** 插槽贡献:静态节点或受 props 的组件。 */
 export interface SlotRenderProps {
@@ -122,6 +123,7 @@ export interface CanvasPluginBundle {
   readonly actions?: readonly unknown[];
 }
 
+/** 声明式右侧 panes；宿主负责渲染 PanesHost 与能力注入。 */
 /**
  * agent 贡献的 pane 定义(**最小结构镜像**,spec host-builtin-panes 任务 1.2)。
  *
@@ -187,6 +189,8 @@ export interface WebExtension {
    * 发生在领域侧(canvas-ui)。
    */
   readonly canvasPlugins?: readonly CanvasPluginBundle[];
+  /** 对话流 AIGC 成品图动作；宿主统一渲染毛玻璃操作条。 */
+  readonly conversationImageActions?: readonly ConversationImageAction[];
   /**
    * 该 agent 贡献的 pane 定义。与宿主内置 pane 集合在会话装载期合并(内置在前、本键在后),
    * 宿主对其领域中立:只搬运与合并,不解析 pane 内部语义。

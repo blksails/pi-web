@@ -43,6 +43,7 @@ beforeAll(() => {
   const dist = path.join(FIXTURE, ".pi", "web", "dist");
   mkdirSync(dist, { recursive: true });
   writeFileSync(path.join(dist, "manifest.json"), JSON.stringify(MANIFEST, null, 2), "utf8");
+  writeFileSync(path.join(dist, "pane.html"), "<!doctype html><title>Pane</title>", "utf8");
   // 供「目录穿越被拒」用：dist 之外放一个真实存在的文件，
   // 否则那条断言可能因为「目标本就不存在」而假绿。
   writeFileSync(path.join(FIXTURE, "secret.txt"), "must-not-be-readable", "utf8");
@@ -83,6 +84,8 @@ describe("readDistFile — 安全", () => {
     const f = await readDistFile(dist, "manifest.json");
     expect(f).toBeDefined();
     expect(f?.contentType).toContain("application/json");
+    const html = await readDistFile(dist, "pane.html");
+    expect(html?.contentType).toBe("text/html; charset=utf-8");
   });
 
   it("目录穿越被拒（../ 越出 dist）", async () => {

@@ -475,8 +475,18 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // (即便选中同一 source)。
   const [nonce, setNonce] = React.useState<number>(0);
 
+  // 切源/新建/恢复会话:先隐藏旧 pane webview 再销毁。销毁(cleanup)为异步 IPC,remount
+  // 骨架屏渲染期间未销毁完的旧 webview 会残留一帧旧内容;先发 hide_all 可立即遮蔽该闪帧。
+  const hideThenDestroyPaneWebviews = React.useCallback((): void => {
+    const bridge = getPiWebDesktopBridge();
+    void bridge?.hidePaneWebviews?.();
+    void bridge?.destroyPaneWebviews?.();
+  }, []);
+
   const onSubmit = (source: string): void => {
     const resolved = source.length > 0 ? source : (props.defaultSource ?? ".");
+    // 换源 / 新建会话：先隐藏再销毁旧 pane webview（非隐藏）。
+    hideThenDestroyPaneWebviews();
     // New session: no resumeId. bump nonce 强制 SessionView 重挂 —— 使侧栏「新建聊天」
     // 即便选中当前同一 source 也得到全新会话(usePiSession 不响应 create 变化重建,须靠
     // key 重挂)。原顶栏「新建会话」按钮已移除,同源新建统一由「新建聊天」承担。
@@ -485,6 +495,8 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   };
 
   const onReset = (): void => {
+    // 退出会话回源选择：先隐藏再销毁 pane。
+    hideThenDestroyPaneWebviews();
     setSession(undefined);
     // 返回选择器:重拉收藏,反映会话内导航区对收藏的增删(避免星标态陈旧)。
     setFavoritesReloadKey((n) => n + 1);
@@ -494,10 +506,14 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
     }
   };
 
+  // pane webview 生命周期：由 panes-kit observePanesHostPresence 统一驱动
+  // （host 卸载 destroy / 不可见 hide），此处不主动 hide，避免与公共能力分叉。
+
   // 同源新建:保持当前 agent source、丢弃 resumeId,bump nonce 变更 SessionView 的 key 强制
   // 重挂,得到同一 source 的全新会话。仅 rail 关闭态账户区仍提供此入口(rail 开启时由
   // 侧栏「新建聊天」承担,见 SessionView 账户区)。
   const onNewByAgentSource = (): void => {
+    hideThenDestroyPaneWebviews();
     setSession((s) => (s === undefined ? s : { create: s.create }));
     setNonce((n) => n + 1);
   };
@@ -606,7 +622,14 @@ function SessionView({
     // header is not persisted yet (the resume-meta fallback cannot recover it).
     onSessionId: (id) => {
       if (typeof window === "undefined") return;
-      window.history.replaceState(null, "", `/session/${id}`);
+      const path = `/session/${id}`;
+      window.history.replaceState(null, "", path);
+      // 设置页「返回」用：回到当前会话，而非 agent 选择页。
+      try {
+        sessionStorage.setItem("pi-web:last-session-path", path);
+      } catch {
+        // private mode / 配额：忽略。
+      }
       if (create.source.length > 0 && create.source !== ".") {
         void fetch("/api/session-source", {
           method: "POST",
@@ -646,11 +669,12 @@ function SessionView({
 
   // 右侧面板的连续宽度由宿主持有：webext 只声明初值/边界，PiChat 内置分隔条持续回传 px。
   // extension/source 切换时重置，避免把上一个 Agent 的用户拖拽宽度泄漏到下一个 Agent。
+  const panelPersistenceKey = (
+    extension?.panes?.config as { readonly persistenceKey?: unknown } | undefined
+  )?.persistenceKey;
+  const persistedPanelKey = typeof panelPersistenceKey === "string" ? `${panelPersistenceKey}:sidebar` : undefined;
   const configuredPanelWidth = extension?.config?.panelWidth;
   const [panelWidth, setPanelWidth] = React.useState<number | undefined>(configuredPanelWidth);
-  React.useEffect(() => {
-    setPanelWidth(configuredPanelWidth);
-  }, [extension?.manifestId, configuredPanelWidth]);
   // 宿主内置 pane 来源(spec host-builtin-panes)。清单为空(如构建产物缺席)时为 undefined,
   // 此时判据退回「只看 agent 有无贡献」,即本特性实施前的行为(Req 1.7)。
   const hostPaneSource = React.useMemo(() => builtinPaneSource(), []);
@@ -675,8 +699,33 @@ function SessionView({
     () => hasSidePanel && configuredPanelRatio !== "centered",
   );
   React.useEffect(() => {
-    setSidePanelOpen(hasSidePanel && configuredPanelRatio !== "centered");
-  }, [extension?.manifestId, configuredPanelRatio, hasSidePanel]);
+    let saved: { open?: unknown; width?: unknown } | undefined;
+    if (persistedPanelKey !== undefined && typeof window !== "undefined") {
+      try {
+        saved = JSON.parse(window.localStorage.getItem(persistedPanelKey) ?? "null") as typeof saved;
+      } catch {
+        saved = undefined;
+      }
+    }
+    setPanelWidth(typeof saved?.width === "number" ? saved.width : configuredPanelWidth);
+    setSidePanelOpen(typeof saved?.open === "boolean"
+      ? saved.open && hasSidePanel
+      : hasSidePanel && configuredPanelRatio !== "centered");
+  }, [extension?.manifestId, configuredPanelRatio, configuredPanelWidth, hasSidePanel, persistedPanelKey]);
+  const persistPanel = React.useCallback((patch: { readonly open?: boolean; readonly width?: number }): void => {
+    if (persistedPanelKey === undefined || typeof window === "undefined") return;
+    let current: { open?: boolean; width?: number } = {};
+    try {
+      current = JSON.parse(window.localStorage.getItem(persistedPanelKey) ?? "{}") as typeof current;
+    } catch {
+      // 损坏偏好直接覆写。
+    }
+    window.localStorage.setItem(persistedPanelKey, JSON.stringify({ ...current, ...patch }));
+  }, [persistedPanelKey]);
+  const changePanelWidth = React.useCallback((width: number): void => {
+    setPanelWidth(width);
+    persistPanel({ width });
+  }, [persistPanel]);
   const effectivePanelRatio: React.ComponentProps<typeof PiChat>["panelRatio"] =
     !hasSidePanel || !sidePanelOpen
       ? "centered"
@@ -684,8 +733,27 @@ function SessionView({
         ? "2:1"
         : configuredPanelRatio;
   const togglePanelRight = React.useCallback(() => {
-    setSidePanelOpen((open) => !open);
-  }, []);
+    setSidePanelOpen((open) => {
+      persistPanel({ open: !open });
+      return !open;
+    });
+  }, [persistPanel]);
+  const closePanelRight = React.useCallback(() => {
+    setSidePanelOpen(false);
+    persistPanel({ open: false });
+  }, [persistPanel]);
+  const openPanelRight = React.useCallback(() => {
+    setSidePanelOpen(true);
+    persistPanel({ open: true });
+  }, [persistPanel]);
+  // panes 侧栏入口（Canvas 画廊等）经 pi-panes-panel-open 请求展开右栏。
+  React.useEffect(() => {
+    const onOpen = (): void => {
+      openPanelRight();
+    };
+    window.addEventListener("pi-panes-panel-open", onOpen);
+    return () => window.removeEventListener("pi-panes-panel-open", onOpen);
+  }, [openPanelRight]);
   // 收起态：入口在应用右上。展开态：按钮退到 pane 分隔线左侧，免遮 pane tabs。
   const sidePanelToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     if (!sidePanelOpen) return undefined;
@@ -727,10 +795,30 @@ function SessionView({
   // (冷恢复 + 历史回放 + source 反查),失败时由该路由的 SessionView 错误态提示。
   const piClient = React.useMemo(() => createPiClient("/api"), []);
   const onResumeSession = React.useCallback((id: string): void => {
-    if (typeof window !== "undefined") {
-      window.location.assign(`/session/${id}`);
+    if (typeof window === "undefined") return;
+    const navigate = (): void => window.location.assign(`/session/${id}`);
+    // 切到另一会话：先隐藏再销毁当前 pane 再导航。
+    const bridge = getPiWebDesktopBridge();
+    if (bridge?.hidePaneWebviews !== undefined) void bridge.hidePaneWebviews();
+    const destroy = bridge?.destroyPaneWebviews;
+    if (destroy === undefined) {
+      navigate();
+      return;
     }
+    void destroy().then(navigate, navigate);
   }, []);
+  const onPaneEvent = React.useCallback((topic: string, payload: unknown): boolean => {
+    if (topic !== "pi.session.locate") return false;
+    const sessionId =
+      typeof payload === "object" &&
+      payload !== null &&
+      typeof (payload as { sessionId?: unknown }).sessionId === "string"
+        ? (payload as { sessionId: string }).sessionId
+        : undefined;
+    if (sessionId === undefined) return false;
+    onResumeSession(sessionId);
+    return true;
+  }, [onResumeSession]);
   // 会话列表刷新信号:面板自身只在 scope/数据源变化时加载,感知不到「加载之后」的服务端变更
   // (新会话镜像落库、auto_title 自动标题持久化都发生在 agent_end 时)。故每轮 agent 运行结束
   // (PiChat onTurnEnd)bump 此计数 → 面板重拉当前 scope 首页,及时反映新会话与最新标题。
@@ -891,6 +979,18 @@ function SessionView({
     // 会话栏自身仅控制会话栏；Pane 开关独立置于应用右上。
     const sidebarTools = (
       <div className="flex shrink-0 items-center px-0.5 pt-0.5">
+        {buildTimeExtension === undefined && create.source.length > 0 ? (
+          <button
+            type="button"
+            data-webext-reload
+            onClick={() => setWebextReloadNonce(Date.now())}
+            aria-label="刷新扩展"
+            title="刷新扩展"
+            className="inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          >
+            ↻
+          </button>
+        ) : null}
         <button
           type="button"
           data-sidebar-collapse
@@ -937,7 +1037,23 @@ function SessionView({
           </div>
         ) : null}
         <div className="flex items-center gap-1">
-          <a href="/settings" data-settings-link className={accountBtnClass}>
+          <a
+            href="/settings"
+            data-settings-link
+            className={accountBtnClass}
+            onClick={() => {
+              // 进设置前记回跳点（含 replaceState 后的 /session/:id）。
+              // RR 拦截同 origin <a> 做 SPA 切换 → host 卸载 → document presence destroy。
+              try {
+                sessionStorage.setItem(
+                  "pi-web:settings-return",
+                  window.location.pathname + window.location.search,
+                );
+              } catch {
+                // ignore
+              }
+            }}
+          >
             {t("chatApp.settings")}
           </a>
           <span className="ml-auto flex items-center gap-1">
@@ -964,7 +1080,7 @@ function SessionView({
         </div>,
       );
     return sessionListSlots(
-      <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)] p-1.5">
+      <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)]">
         {sidebarTools}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
@@ -1120,7 +1236,8 @@ function SessionView({
           onCommandResult={onCommandResult}
           // 装/卸插件命令(/plugin、/reload-runtime)提交后 bump nonce → 重解析 webext
           // (装后即时双路生效之路②;spec plugin-system-unification Req 7)。
-          onRuntimeReloadRequested={() => setWebextReloadNonce((n) => n + 1)}
+          onRuntimeReloadRequested={() => setWebextReloadNonce(Date.now())}
+          onPaneEvent={onPaneEvent}
           attachmentBaseUrl="/api"
           slots={sessionListSlot}
           onTurnEnd={onTurnEnd}
@@ -1136,16 +1253,25 @@ function SessionView({
           {...(narrowLayoutPreset(extension?.config?.layout) !== undefined
             ? { layout: narrowLayoutPreset(extension?.config?.layout) }
             : {})}
-          {...(hasSidePanel ? { panelRatio: effectivePanelRatio } : {})}
+          {...(hasSidePanel
+            ? {
+                panelRatio: effectivePanelRatio,
+                onPanelClose: closePanelRight,
+                onPanelOpen: openPanelRight,
+              }
+            : {})}
           {...(panelWidth !== undefined
             ? {
                 panelWidth,
-                onPanelWidthChange: setPanelWidth,
+                onPanelWidthChange: changePanelWidth,
                 ...(extension?.config?.minPanelWidth !== undefined
                   ? { minPanelWidth: extension.config.minPanelWidth }
                   : {}),
                 ...(extension?.config?.maxPanelWidth !== undefined
                   ? { maxPanelWidth: extension.config.maxPanelWidth }
+                  : {}),
+                ...(extension?.config?.maxPanelWidthRatio !== undefined
+                  ? { maxPanelWidthRatio: extension.config.maxPanelWidthRatio }
                   : {}),
               }
             : {})}

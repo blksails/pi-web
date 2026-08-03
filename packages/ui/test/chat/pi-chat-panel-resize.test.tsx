@@ -20,7 +20,7 @@ globalThis.PointerEvent = MockPointerEvent as unknown as typeof PointerEvent;
  * panelRight 连续拖拽宽度。
  * 设计: docs/superpowers/specs/2026-07-16-panelright-resizable-width-design.md
  *
- * panelWidth !== undefined → 外壳 rAF 跟手，内容拖毕重排并回传受控宽度；
+ * panelWidth !== undefined → Pane 外壳 rAF 跟手，对话列冻结，空闲帧方重排回传；
  * 否则沿用 panelRatio 离散档(零回归)。
  */
 
@@ -48,16 +48,31 @@ function aside(): HTMLElement {
 }
 
 let animationFrame: FrameRequestCallback | undefined;
+let idleFrame: (() => void) | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
   animationFrame = undefined;
+  idleFrame = undefined;
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
     animationFrame = callback;
     return 1;
   });
   vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {
     animationFrame = undefined;
+  });
+  Object.defineProperty(window, "requestIdleCallback", {
+    configurable: true,
+    value: vi.fn((callback: () => void) => {
+      idleFrame = callback;
+      return 2;
+    }),
+  });
+  Object.defineProperty(window, "cancelIdleCallback", {
+    configurable: true,
+    value: vi.fn(() => {
+      idleFrame = undefined;
+    }),
   });
 });
 
@@ -80,7 +95,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(document.querySelector("[data-pi-panel-ratio-switch]")).toBeNull();
   });
 
-  it("拖动时仅逐帧预览外壳；内容宽度不变，拖毕方回传", () => {
+  it("拖动时 Pane 逐帧跟手、对话列冻结；空闲帧方回传并重排", () => {
     const onChange = vi.fn();
     render(
       <PiChat
@@ -95,6 +110,9 @@ describe("panelRight 连续宽度(全受控)", () => {
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
     // 容器右缘固定 1000;clientX=600 → 期望宽 = 1000-600 = 400(在 [240,800] 内)。
     const tree = document.querySelector("[data-pi-chat-pro]") as HTMLElement;
+    const conversation = document.querySelector(
+      "[data-pi-chat-conversation-column]",
+    ) as HTMLElement;
     vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
       right: 1000,
       left: 0,
@@ -106,19 +124,26 @@ describe("panelRight 连续宽度(全受控)", () => {
       y: 0,
       toJSON: () => ({}),
     } as DOMRect);
+    vi.spyOn(conversation, "getBoundingClientRect").mockReturnValue({
+      right: 520, left: 0, width: 520, top: 0, bottom: 0, height: 0, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
+    expect(conversation.style.width).toBe("520px");
+    expect(aside().style.position).toBe("absolute");
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
     expect(onChange).not.toHaveBeenCalled();
     expect(
       (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
-    ).toBe("480px");
+    ).toBe("100%");
     act(() => animationFrame?.(0));
     expect(aside().style.width).toBe("400px");
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 600 });
+    expect(onChange).not.toHaveBeenCalled();
+    act(() => idleFrame?.());
     expect(onChange).toHaveBeenCalledWith(400);
-    expect(
-      (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
-    ).toBe("100%");
+    expect(conversation.style.width).toBe("");
+    expect(aside().style.position).toBe("");
   });
 
   it("拖拽越界 → 取配置上限与容器 70% 较小值", () => {
@@ -143,6 +168,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 100 });
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 100 });
+    act(() => idleFrame?.());
     expect(onChange).toHaveBeenCalledWith(700);
   });
 
@@ -166,6 +192,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 80 });
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 0 });
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 0 });
+    act(() => idleFrame?.());
     expect(onChange).toHaveBeenCalledWith(280);
   });
 

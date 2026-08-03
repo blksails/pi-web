@@ -22,3 +22,9 @@
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
+
+/* Pane 页面统一扁平视觉：层级靠留白与底色，不靠投影。 */
+[data-canvas-workbench] *,
+[data-canvas-gallery] * {
+  box-shadow: none !important;
+}

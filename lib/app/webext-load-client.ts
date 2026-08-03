@@ -56,14 +56,23 @@ export function useRuntimeWebext(
     extension: undefined,
     status: "idle",
   });
+  const loadedExtensionRef = React.useRef<WebExtension | undefined>(undefined);
 
   React.useEffect(() => {
     if (skip || source === undefined || source.length === 0 || source === ".") {
+      loadedExtensionRef.current = undefined;
       setState({ extension: undefined, status: "idle" });
       return;
     }
     let cancelled = false;
-    setState({ extension: undefined, status: "loading" });
+    const previousExtension = reloadNonce > 0 ? loadedExtensionRef.current : undefined;
+    // 手动刷新保留当前扩展树，待新模块通过 SRI/动态 import 后一次替换；
+    // 禁止刷新瞬间回落默认 UI，避免右栏与输入区产生可见重排。
+    setState((previous) =>
+      previousExtension !== undefined && previous.extension !== undefined
+        ? { ...previous, status: "loading" }
+        : { extension: undefined, status: "loading" },
+    );
 
     void (async (): Promise<void> => {
       try {
@@ -71,14 +80,14 @@ export function useRuntimeWebext(
           `/api/webext/resolve?source=${encodeURIComponent(source)}`,
         );
         if (!res.ok) {
-          if (!cancelled) setState({ extension: undefined, status: "none" });
+          if (!cancelled) setState({ extension: previousExtension, status: "none" });
           return;
         }
         const data = (await res.json()) as ResolveResponse;
         if (cancelled) return;
         if (!data.found || data.manifest === undefined) {
           setState({
-            extension: undefined,
+            extension: previousExtension,
             status: data.rejectedReason !== undefined ? "rejected" : "none",
             ...(data.rejectedReason !== undefined ? { reason: data.rejectedReason } : {}),
           });
@@ -89,7 +98,19 @@ export function useRuntimeWebext(
         const isCode =
           typeof (data.manifest as { entry?: unknown }).entry === "string";
         const deps = isCode
-          ? browserLoaderDeps()
+          ? (() => {
+              const base = browserLoaderDeps();
+              // 原生 ESM 按 URL 缓存；reloadNonce 必须进入 fetch 与 import 的同一 URL，
+              // 否则按钮只会重复取得旧模块实例。
+              const withReload = (url: string): string =>
+                reloadNonce === 0
+                  ? url
+                  : `${url}${url.includes("?") ? "&" : "?"}reload=${reloadNonce}`;
+              return {
+                fetchBytes: (url: string) => base.fetchBytes(withReload(url)),
+                importModule: (url: string) => base.importModule(withReload(url)),
+              };
+            })()
           : {
               fetchBytes: (): Promise<Uint8Array> => {
                 throw new Error("declarative ext needs no fetch");
@@ -106,10 +127,11 @@ export function useRuntimeWebext(
         });
         if (cancelled) return;
         if (outcome.status === "loaded" || outcome.status === "declarative") {
+          loadedExtensionRef.current = outcome.extension;
           setState({ extension: outcome.extension, status: outcome.status });
         } else {
           setState({
-            extension: undefined,
+            extension: previousExtension,
             status: "rejected",
             reason: outcome.reason,
           });
@@ -119,7 +141,7 @@ export function useRuntimeWebext(
         // eslint-disable-next-line no-console
         console.error("[webext-load] failed:", reason);
         if (!cancelled) {
-          setState({ extension: undefined, status: "rejected", reason });
+          setState({ extension: previousExtension, status: "rejected", reason });
         }
       }
     })();

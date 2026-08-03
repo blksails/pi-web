@@ -758,11 +758,25 @@ export function CanvasWorkbench({
   React.useEffect(() => {
     const el = stageRef.current;
     if (el === null || typeof ResizeObserver === "undefined") return;
-    const measure = (): void => setStageSize({ w: el.offsetWidth, h: el.offsetHeight });
+    let frame: number | undefined;
+    const measure = (): void => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        const next = { w: el.offsetWidth, h: el.offsetHeight };
+        React.startTransition(() => {
+          setStageSize((current) =>
+            current?.w === next.w && current.h === next.h ? current : next);
+        });
+      });
+    };
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     measure();
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, []);
 
   // 滚轮缩放(native 非 passive,才能 preventDefault 阻止页面滚动)。
@@ -1824,7 +1838,12 @@ export function CanvasWorkbench({
   if (annotations.length > 0) editSummaryBits.push(`标注 ${annotations.length}`);
 
   const promptBar = (
-    <div className="pointer-events-none absolute inset-x-0 bottom-2 z-50 flex justify-center px-14">
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-x-0 bottom-2 z-50 flex justify-center px-14",
+        stageSize !== null && stageSize.w < 640 && "bottom-12",
+      )}
+    >
       <Card
         data-canvas-prompt-bar
         className={cn("pointer-events-auto flex w-full max-w-xl flex-col gap-2 p-2", FLOAT_LAYER)}

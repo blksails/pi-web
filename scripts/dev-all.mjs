@@ -40,4 +40,7 @@ if (process.env.PI_WEB_TRANSPORT === 'e2b') {
     'server/index.ts',
   ])
 }
-run(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')])
+const viteArgs = [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js')]
+if (process.env.PI_WEB_DEV_CLIENT_HOST) viteArgs.push('--host', process.env.PI_WEB_DEV_CLIENT_HOST)
+if (process.env.PI_WEB_DEV_CLIENT_PORT) viteArgs.push('--port', process.env.PI_WEB_DEV_CLIENT_PORT)
+run(process.execPath, viteArgs)

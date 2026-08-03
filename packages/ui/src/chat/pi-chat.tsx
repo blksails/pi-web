@@ -4,6 +4,11 @@
  * slots(整块) > components(细粒度) > 默认。缺省时与定制引入前行为一致。
  */
 import * as React from "react";
+import {
+  PaneLoadingSkeleton,
+  PanesHost,
+  type PaneHostEvent,
+} from "@blksails/pi-web-panes-kit/react";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import {
@@ -35,6 +40,7 @@ import { PiQueuePanel } from "./pi-queue-panel.js";
 import {
   ChatError,
   Conversation,
+  ConversationImageGallery,
   Message,
   type MessageProps,
   PromptInput,
@@ -80,7 +86,6 @@ import {
   type PaneMergeRejection,
   type PaneSource,
 } from "@blksails/pi-web-panes-kit";
-import { PanesHost } from "@blksails/pi-web-panes-kit/react";
 import { TurnAbortProvider } from "./turn-abort-context.js";
 
 /** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
@@ -102,7 +107,11 @@ import {
   type MentionPreview,
 } from "../completion/index.js";
 import { cn } from "../lib/cn.js";
-import type { WebExtension, ConversationAccess } from "@blksails/pi-web-kit";
+import type {
+  WebExtension,
+  ConversationAccess,
+  ConversationImageAsset,
+} from "@blksails/pi-web-kit";
 import { createWebExtStateAccess, createWebExtSurfaceAccess } from "@blksails/pi-web-kit";
 import { SurfaceCommandResultSchema, PUBLISH_PREVIEW_DATA_PART } from "@blksails/pi-web-protocol";
 import {
@@ -112,12 +121,88 @@ import {
 import { ExtSlotRegion } from "../web-ext/extension-slots.js";
 import { ArtifactSurface } from "../web-ext/artifact-surface.js";
 
+type IdleFrameTask = {
+  readonly id: number;
+  readonly kind: "idle" | "frame";
+};
+
+type IdleFrameWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { readonly timeout: number }) => number;
+  cancelIdleCallback?: (id: number) => void;
+};
+
+function scheduleIdleFrame(callback: () => void): IdleFrameTask {
+  const idleWindow = window as IdleFrameWindow;
+  if (idleWindow.requestIdleCallback !== undefined) {
+    return {
+      id: idleWindow.requestIdleCallback(callback, { timeout: 120 }),
+      kind: "idle",
+    };
+  }
+  return { id: requestAnimationFrame(callback), kind: "frame" };
+}
+
+function cancelIdleFrame(task: IdleFrameTask): void {
+  const idleWindow = window as IdleFrameWindow;
+  if (task.kind === "idle") idleWindow.cancelIdleCallback?.(task.id);
+  else cancelAnimationFrame(task.id);
+}
+
 export type ToolbarControl =
   | "attachments"
   | "model"
   | "speech"
   | "webSearch"
   | "submit";
+
+type UiFilePart = UIMessage["parts"][number] & {
+  readonly type: "file";
+  readonly url?: unknown;
+  readonly mediaType?: unknown;
+  readonly filename?: unknown;
+  readonly attachmentId?: unknown;
+};
+
+function attachmentIdFromImageUrl(url: string): string | undefined {
+  const match = /\/attachments\/([^/?#]+)\/raw(?:[?#]|$)/.exec(url);
+  if (match?.[1] === undefined) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function isImageFilePart(part: UIMessage["parts"][number]): part is UiFilePart {
+  if (part.type !== "file") return false;
+  const file = part as UiFilePart;
+  return (
+    typeof file.url === "string" &&
+    file.url !== "" &&
+    typeof file.mediaType === "string" &&
+    file.mediaType.startsWith("image/")
+  );
+}
+
+function conversationImagesOf(message: UIMessage): ConversationImageAsset[] {
+  if (message.role !== "assistant") return [];
+  return message.parts.flatMap((part, index) => {
+    if (!isImageFilePart(part)) return [];
+    const attachmentId =
+      typeof part.attachmentId === "string" && part.attachmentId !== ""
+        ? part.attachmentId
+        : attachmentIdFromImageUrl(part.url as string);
+    return [{
+      id: `${message.id}:image:${index}`,
+      url: part.url as string,
+      mediaType: part.mediaType as string,
+      ...(typeof part.filename === "string" && part.filename !== ""
+        ? { filename: part.filename }
+        : {}),
+      ...(attachmentId !== undefined ? { attachmentId } : {}),
+    }];
+  });
+}
 
 export interface PiChatProps {
   readonly session: UsePiSessionResult;
@@ -179,10 +264,18 @@ export interface PiChatProps {
   readonly panelWidth?: number | string;
   /** 拖拽结束回传目标宽度(px);拖动中 PiChat 以 rAF 预览外壳，panel 内容不重排。 */
   readonly onPanelWidthChange?: (widthPx: number) => void;
+  /** 宿主控制的 Pane 侧栏收起动作；入口渲染于 Pane 标签栏最左。 */
+  readonly onPanelClose?: () => void;
+  /** 宿主控制的 Pane 侧栏展开动作；对话图片等外部动作触发 Pane 前调用。 */
+  readonly onPanelOpen?: () => void;
+  /** 受权 Pane 事件交宿主处理。 */
+  readonly onPaneEvent?: (topic: string, payload: unknown) => boolean | void | Promise<boolean | void>;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
   /** 连续模式拖拽上界(px);最终仍受容器宽度 70% 的宿主保护线约束。 */
   readonly maxPanelWidth?: number;
+  /** 连续模式拖拽上界占聊天容器比例；缺省 70%。 */
+  readonly maxPanelWidthRatio?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
@@ -386,8 +479,12 @@ export function PiChat({
   panelRatio: panelRatioInitial,
   panelWidth,
   onPanelWidthChange,
+  onPanelClose,
+  onPanelOpen,
+  onPaneEvent,
   minPanelWidth,
   maxPanelWidth,
+  maxPanelWidthRatio = 0.7,
   theme,
   toolbarOrder,
   extensionCommands,
@@ -409,6 +506,17 @@ export function PiChat({
   className,
 }: PiChatProps): React.JSX.Element {
   const t = useI18n();
+  const [paneHostEvent, setPaneHostEvent] = React.useState<PaneHostEvent>();
+  const paneHostEventSequence = React.useRef(0);
+  const publishPaneEvent = React.useCallback((topic: string, payload?: unknown): void => {
+    onPanelOpen?.();
+    paneHostEventSequence.current += 1;
+    setPaneHostEvent({
+      id: paneHostEventSequence.current,
+      topic,
+      ...(payload !== undefined ? { payload } : {}),
+    });
+  }, [onPanelOpen]);
   const emptyTitle = emptyTitleProp ?? t("chat.empty.title");
   const emptySubtitle = emptySubtitleProp ?? t("chat.empty.subtitle");
   const defaultStarters = React.useMemo<ReadonlyArray<Suggestion>>(
@@ -513,10 +621,18 @@ export function PiChat({
 
   // 日志面板:per-session logsStore + control:logs 帧接线（Req 3.4）。
   // 一个 useMemo 保证每次 sessionId 变更时重建 store（新会话新 store，不跨会话混日志）。
+  // ★ logsActive = showLogs || logsInPanes:扩展在 panes 里声明了 `hostView:"logs"` 的一级 tab
+  //   （如 aigc-agent / cloud 隔离车道）时,该 tab 恒渲染公共 LogsPanel 并有完整数据链路
+  //   （实时帧 + getLogs 历史),不受 showLogs 门控 —— 门控只作用于 legacy 位置面板(bottom 等)。
+  const logsPaneHosted = extension?.panes?.panes.some(
+    (pane) => typeof pane === "object" && pane !== null &&
+      (pane as { readonly hostView?: unknown }).hostView === "logs",
+  ) === true;
+  const logsActive = showLogs || logsPaneHosted;
   const logsStore = React.useMemo(
-    () => (showLogs ? createLogsStore() : undefined),
+    () => (logsActive ? createLogsStore() : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showLogs, sessionId],
+    [logsActive, sessionId],
   );
 
   // 订阅 control:logs 帧 → logsStore.applyLogsFrame（实时链路 3.2→3.4）。
@@ -527,18 +643,18 @@ export function PiChat({
     });
   }, [logsStore, connection]);
 
-  // getLogs 历史拉取器（4.2 链路），仅在 showLogs 且 client+sessionId 就绪时注入。
+  // getLogs 历史拉取器（4.2 链路），仅在 logsActive 且 client+sessionId 就绪时注入。
   // LogHistoryFetcher 的 level 是 string（宽类型）；client.getLogs 的 level 是 LogLevel
   // 严类型——做桥接时把 string 向下转型为 LogLevel（调用侧已从枚举传入，运行时安全）。
   const logsFetcher = React.useMemo((): LogHistoryFetcher | undefined => {
-    if (!showLogs || client === undefined || sessionId === undefined) return undefined;
+    if (!logsActive || client === undefined || sessionId === undefined) return undefined;
     const capturedClient = client;
     const capturedSessionId = sessionId;
     return (query) =>
       capturedClient.getLogs(capturedSessionId, query as Parameters<typeof capturedClient.getLogs>[1]);
-  }, [showLogs, client, sessionId]);
+  }, [logsActive, client, sessionId]);
 
-  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 showLogs 时启用）。
+  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 logsActive 时启用）。
   const logsResult = useLogs(
     logsStore !== undefined
       ? { store: logsStore, ...(logsFetcher !== undefined ? { fetcher: logsFetcher } : {}) }
@@ -676,59 +792,90 @@ export function PiChat({
     setPanelRatio(panelRatioInitial ?? "2:1");
   }, [panelRatioInitial]);
 
-  // panelRight 连续宽度:外壳按 rAF 跟手；内容宽度拖毕才提交，避免 iframe 实时重排。
+  // panelRight 连续宽度:Pane 外壳按 rAF 跟手；对话列冻结，空闲帧才一次提交重排。
   const panelResizeTreeRef = React.useRef<HTMLDivElement | null>(null);
+  const panelConversationColumnRef = React.useRef<HTMLDivElement | null>(null);
+  const panelAsideRef = React.useRef<HTMLElement | null>(null);
   const panelDraggingRef = React.useRef(false);
   const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
+  const panelResizeIdleRef = React.useRef<IdleFrameTask | undefined>(undefined);
   const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
-  const [panelPreviewWidth, setPanelPreviewWidth] = React.useState<number>();
-  const [panelContentWidth, setPanelContentWidth] = React.useState<number>();
+  const [panelDragging, setPanelDragging] = React.useState(false);
+  const [panelConversationWidth, setPanelConversationWidth] = React.useState<number>();
   React.useEffect(
     () => () => {
       if (panelResizeFrameRef.current !== undefined) {
         cancelAnimationFrame(panelResizeFrameRef.current);
       }
+      if (panelResizeIdleRef.current !== undefined) {
+        cancelIdleFrame(panelResizeIdleRef.current);
+      }
     },
     [],
   );
+  // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交。
+  // content-well 几何由 ResizeObserver 单路 rAF 合并上报（见 publishTauriContentWellMetrics），
+  // 此处不再额外 dispatch sync，避免「拖拽 rAF + RO + sync」三层插帧。
+  const applyAsideWidthPreview = React.useCallback((asideWidthPx: number): void => {
+    const aside = panelAsideRef.current;
+    if (aside === null) return;
+    aside.style.width = `${asideWidthPx}px`;
+  }, []);
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
-      const availableMax = rect.width * 0.7;
+      const availableMax = rect.width * maxPanelWidthRatio;
       const min = Math.min(minPanelWidth ?? 240, availableMax);
       const max = Math.max(
         min,
         Math.min(maxPanelWidth ?? Number.POSITIVE_INFINITY, availableMax),
       );
       const raw = rect.right - e.clientX;
-      panelPendingWidthRef.current = Math.max(min, Math.min(max, raw));
+      // 1px 迟滞，边界处不因亚像素/重排来回夹紧而颤动。
+      const next = Math.max(min, Math.min(max, raw));
+      const prev = panelPendingWidthRef.current;
+      if (prev !== undefined && Math.abs(prev - next) < 1) return;
+      panelPendingWidthRef.current = next;
+      // 同帧合并：只保留最后一次 pointer 样点，一帧写一次 aside 宽。
       if (panelResizeFrameRef.current !== undefined) return;
       panelResizeFrameRef.current = requestAnimationFrame(() => {
         panelResizeFrameRef.current = undefined;
-        setPanelPreviewWidth(panelPendingWidthRef.current);
+        const width = panelPendingWidthRef.current;
+        if (width !== undefined) applyAsideWidthPreview(width);
       });
     },
-    [minPanelWidth, maxPanelWidth],
+    [applyAsideWidthPreview, minPanelWidth, maxPanelWidth, maxPanelWidthRatio],
   );
   const onPanelResizeDown = React.useCallback(
     (e: React.PointerEvent) => {
+      if (panelResizeIdleRef.current !== undefined) {
+        cancelIdleFrame(panelResizeIdleRef.current);
+        panelResizeIdleRef.current = undefined;
+      }
       panelDraggingRef.current = true;
+      const measuredWidth = panelAsideRef.current?.getBoundingClientRect().width;
       const currentWidth =
-        typeof panelWidth === "number"
-          ? panelWidth
-          : e.currentTarget.parentElement?.getBoundingClientRect().width;
+        measuredWidth !== undefined && measuredWidth > 0
+          ? measuredWidth
+          : typeof panelWidth === "number"
+            ? panelWidth
+            : undefined;
       panelPendingWidthRef.current = currentWidth;
-      setPanelPreviewWidth(currentWidth);
-      setPanelContentWidth(currentWidth);
+      // 冻结对话列当前宽，拖拽全程不变；侧栏 absolute 叠在其上。
+      setPanelConversationWidth(
+        panelConversationColumnRef.current?.getBoundingClientRect().width,
+      );
+      if (currentWidth !== undefined) applyAsideWidthPreview(currentWidth);
+      setPanelDragging(true);
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
         // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
       }
     },
-    [panelWidth],
+    [applyAsideWidthPreview, panelWidth],
   );
   const onPanelResizeUp = React.useCallback(
     (e: React.PointerEvent) => {
@@ -739,16 +886,22 @@ export function PiChat({
       }
       const width = panelPendingWidthRef.current;
       panelPendingWidthRef.current = undefined;
-      if (width !== undefined) onPanelWidthChange?.(width);
-      setPanelPreviewWidth(undefined);
-      setPanelContentWidth(undefined);
+      if (width !== undefined) applyAsideWidthPreview(width);
+      // 松手后 idle 帧才提交受控宽并解冻对话列，避免拖中 chat 重排。
+      panelResizeIdleRef.current = scheduleIdleFrame(() => {
+        panelResizeIdleRef.current = undefined;
+        if (width !== undefined) onPanelWidthChange?.(width);
+        setPanelDragging(false);
+        setPanelConversationWidth(undefined);
+        window.dispatchEvent(new Event("pi-panes-content-well-sync"));
+      });
       try {
         e.currentTarget.releasePointerCapture(e.pointerId);
       } catch {
         // 同上。
       }
     },
-    [onPanelWidthChange],
+    [applyAsideWidthPreview, onPanelWidthChange],
   );
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
@@ -1440,30 +1593,37 @@ export function PiChat({
     }),
     [environmentSignals, panelSyncSignal, livePreviewImage, paneSignals],
   );
+  const logsInPanes = logsPaneHosted;
+  const showLegacyLogs = showLogs && !logsInPanes;
   const hasArtifactAside =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
   const panelRatioActive = hasPanelRight;
   // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
+  // native child 生命周期只由 PanesHost 上 observePanesHostPresence 驱动
+  // （挂载/可见 → restore，收起 → hide，卸载 → destroy），PiChat 不主动 hide。
   // 日志面板位置安全降级:"right"(aside 布局)当前有未根治的 React #185 渲染循环
   // (LogsPanel 内 radix Select 在 aside 中 ref 抖动 → Maximum update depth → 整页崩),
   // 暂降级为 "bottom" 防崩;待右侧布局重构后恢复。详见 spec 报告/记忆。
   const effectiveLogsPosition = logsPanelPosition;
   // 日志 right 位置 aside(level 过滤已改原生 select,不再 #185)。
   const showLogsRight =
-    showLogs && logsPanelVisible && effectiveLogsPosition === "right";
-  const showAside = showPanelRight || hasArtifactAside || showLogsRight;
+    showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "right";
+  // 有 panes 时 aside 保持挂载（宽 0 / 不可见），PanesHost 不卸载 → webview 只隐藏不销毁。
+  const keepPanesHostAlive = extension?.panes !== undefined;
+  const showAside =
+    showPanelRight || hasArtifactAside || showLogsRight || keepPanesHostAlive;
   // 连续宽度(全受控):宿主传 panelWidth 即启用,替离散 panelRatio 档。
   const resizablePanel = hasPanelRight && panelWidth !== undefined;
   // 宽度解析:连续模式 number→px、string 原样;否则离散档取预设宽;再否则不设(沿用 w-96 类)。
   let asideWidth: string | undefined;
-  if (resizablePanel) {
+  if (!showPanelRight && keepPanesHostAlive) {
+    asideWidth = "0px";
+  } else if (resizablePanel) {
     asideWidth =
-      panelPreviewWidth !== undefined
-        ? `${panelPreviewWidth}px`
-        : typeof panelWidth === "number"
-          ? `${panelWidth}px`
-          : panelWidth;
+      typeof panelWidth === "number"
+        ? `${panelWidth}px`
+        : panelWidth;
   } else if (panelRatioActive) {
     asideWidth = PANEL_RATIO_ASIDE_WIDTH[panelRatio];
   }
@@ -1857,7 +2017,27 @@ export function PiChat({
   const conversationBody = (
     <TurnAbortProvider onAbortTurn={abortTurnForTools}>
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <Conversation className="flex-1">
+      <Conversation
+        className="flex-1"
+        controlsBottom={dockHeight + 8}
+        controlsClassName={lay.content}
+        userMessageNavigation={messages.flatMap((message, index) => {
+          if (message.role !== "user") return [];
+          const label = message.parts
+            .map((part) =>
+              part.type === "text" && typeof part.text === "string"
+                ? part.text
+                : "",
+            )
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          return [{
+            id: message.id,
+            label: label === "" ? `用户输入 ${index + 1}` : label,
+          }];
+        })}
+      >
         <div
           className={cn(lay.content, "space-y-4 px-3 pt-3 md:px-0")}
           data-pi-chat-messages
@@ -1889,25 +2069,39 @@ export function PiChat({
               .trim();
             const MessageComp: React.ComponentType<MessageProps> =
               components?.Message?.[message.role as MessageRole] ?? Message;
+            const conversationImages = conversationImagesOf(message);
+            const firstConversationImagePart = message.parts.findIndex(isImageFilePart);
             const body = (
               <div className="space-y-2">
-                {message.parts.map((part, i) => (
-                  <PartRenderer
-                    key={`${message.id}-${i}`}
-                    part={part}
-                    message={message}
-                    registry={registry}
-                    {...(components?.Markdown !== undefined
-                      ? { markdown: components.Markdown }
-                      : {})}
-                    {...(components?.Reasoning !== undefined
-                      ? { reasoning: components.Reasoning }
-                      : {})}
-                    {...(components?.ToolPart !== undefined
-                      ? { toolPart: components.ToolPart }
-                      : {})}
-                  />
-                ))}
+                {message.parts.map((part, i) => {
+                  if (message.role === "assistant" && isImageFilePart(part)) {
+                    return i === firstConversationImagePart ? (
+                      <ConversationImageGallery
+                        key={`${message.id}-completed-images`}
+                        assets={conversationImages}
+                        actions={extension?.conversationImageActions}
+                        publishPaneEvent={publishPaneEvent}
+                      />
+                    ) : null;
+                  }
+                  return (
+                    <PartRenderer
+                      key={`${message.id}-${i}`}
+                      part={part}
+                      message={message}
+                      registry={registry}
+                      {...(components?.Markdown !== undefined
+                        ? { markdown: components.Markdown }
+                        : {})}
+                      {...(components?.Reasoning !== undefined
+                        ? { reasoning: components.Reasoning }
+                        : {})}
+                      {...(components?.ToolPart !== undefined
+                        ? { toolPart: components.ToolPart }
+                        : {})}
+                    />
+                  );
+                })}
                 {slots?.messageActions !== undefined ? (
                   <div data-pi-message-actions>
                     {slots.messageActions(message)}
@@ -1924,7 +2118,15 @@ export function PiChat({
                 : {}),
               ...branchProps,
             };
-            return <MessageComp key={message.id} {...messageProps} />;
+            return (
+              <div
+                key={message.id}
+                data-pi-message-id={message.id}
+                data-pi-message-role={message.role}
+              >
+                <MessageComp {...messageProps} />
+              </div>
+            );
           })}
           <ChatError message={errorMessage} />
           {extensionUI !== undefined ? (
@@ -1952,7 +2154,7 @@ export function PiChat({
             </div>
           ) : null}
           {/* bottom 位置（默认）：dock 下方渲染日志面板 */}
-          {showLogs && logsPanelVisible && effectiveLogsPosition === "bottom" ? (
+          {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "bottom" ? (
             <>
               <div
                 data-pi-logs-region
@@ -1965,7 +2167,7 @@ export function PiChat({
             </>
           ) : null}
           {/* drawer 位置：toggle 按钮（showLogs && logsPanelVisible 门控）+ 底部抽屉覆盖层 */}
-          {showLogs && logsPanelVisible && effectiveLogsPosition === "drawer" ? (
+          {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "drawer" ? (
             <>
               <button
                 type="button"
@@ -1998,7 +2200,7 @@ export function PiChat({
   const tree = (
     <div
       className={cn(
-        "relative flex h-full w-full gap-3 text-[hsl(var(--foreground))]",
+        "relative flex h-full w-full px-1 text-[hsl(var(--foreground))]",
         className,
       )}
       ref={panelResizeTreeRef}
@@ -2035,7 +2237,19 @@ export function PiChat({
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
           app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。 */}
-      <div className="relative isolate flex min-w-0 flex-1 flex-col">
+      <div
+        ref={panelConversationColumnRef}
+        className="relative isolate flex min-w-0 flex-1 flex-col"
+        data-pi-chat-conversation-column
+        {...(panelConversationWidth !== undefined
+          ? {
+              style: {
+                width: panelConversationWidth,
+                flex: `0 0 ${panelConversationWidth}px`,
+              },
+            }
+          : {})}
+      >
         {backgroundLayer}
 
         {slots?.header !== undefined ? (
@@ -2065,7 +2279,7 @@ export function PiChat({
 
         {/* top 位置：对话/空态之上的横向日志条,利用无 head 后的顶部空间;与内容同宽居中,
             bounded 高度内滚动(不吃右侧列宽)。 */}
-        {showLogs && logsPanelVisible && effectiveLogsPosition === "top" ? (
+        {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "top" ? (
           <div
             data-pi-logs-region
             data-pi-logs-top=""
@@ -2109,49 +2323,75 @@ export function PiChat({
         // Tier1 panelRight + Tier4 artifact(独立 origin sandbox iframe)。
         // panelRatioActive 时宽度由比例百分比驱动(对话列 flex-1 吃余量);否则沿用固定 w-96。
         <aside
+          ref={panelAsideRef}
           className={cn(
             // relative:为连续模式拖拽分隔条(absolute left)提供定位上下文。
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
-            "relative hidden min-h-0 shrink-0 border-l border-[hsl(var(--border))] lg:flex lg:flex-col",
-            panelRatioActive ? "" : "w-96",
+            "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
+            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明），勿 -translate-x-full 甩出造成双线。
+            showPanelRight
+              ? "border-l border-[hsl(var(--border))]"
+              : "overflow-hidden border-0",
+            panelRatioActive || keepPanesHostAlive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined
             ? {
                 style: {
                   width: asideWidth,
-                  ...(resizablePanel ? { maxWidth: "70%" } : {}),
+                  ...(resizablePanel && showPanelRight
+                    ? { maxWidth: `${maxPanelWidthRatio * 100}%` }
+                    : {}),
+                  ...(panelDragging
+                    ? { position: "absolute" as const, insetBlock: 0, right: 0, zIndex: 20 }
+                    : {}),
                 },
               }
             : {})}
           data-pi-chat-aside
+          data-pi-panel-open={showPanelRight ? "true" : "false"}
           {...(panelRatioActive && !resizablePanel
             ? { "data-pi-panel-ratio": panelRatio }
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 连续模式拖拽分隔条:aside 左缘；外壳逐帧预览，拖毕方回传受控宽度。 */}
-          {resizablePanel ? (
+          {/* 命中条叠在 border 上；默认透明只留 border，hover/drag 才加粗同一缘。 */}
+          {resizablePanel && showPanelRight ? (
             <div
               data-pi-panel-resizer
+              data-panes-host-slot-resizer
               role="separator"
               aria-orientation="vertical"
-              className="absolute left-0 top-0 z-10 hidden h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none bg-transparent hover:bg-[hsl(var(--border))] lg:block"
+              className={cn(
+                "absolute inset-y-0 left-0 z-10 hidden w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
+                panelDragging
+                  ? "bg-[hsl(var(--border))]"
+                  : "bg-transparent hover:bg-[hsl(var(--border))]",
+              )}
               onPointerDown={onPanelResizeDown}
               onPointerMove={onPanelResizeMove}
               onPointerUp={onPanelResizeUp}
               onPointerCancel={onPanelResizeUp}
             />
           ) : null}
-          {showPanelRight ? (
+          {/*
+            侧栏收起(showPanelRight=false)时仍挂载 PanesHost，仅 CSS 隐藏：
+            native webview 走 host-fullscreen 隐藏，再开侧栏复用同一批实例，不销毁。
+          */}
+          {(showPanelRight || extension?.panes !== undefined) ? (
             <div
-              className="min-h-0 flex-1 overflow-hidden"
+              className={cn(
+                "min-h-0 flex-1 overflow-hidden",
+                !showPanelRight && "pointer-events-none absolute inset-0 opacity-0",
+              )}
               data-pi-panel-content-viewport
+              data-pi-panel-collapsed={showPanelRight ? "false" : "true"}
+              aria-hidden={!showPanelRight}
             >
               <div
                 className="ml-auto h-full shrink-0"
                 data-pi-panel-content
-                style={{ width: panelContentWidth ?? "100%" }}
+                style={{ width: "100%" }}
               >
                 {/*
                   右侧面板的**唯一**机制(spec panes-only-right-panel):定义 = 宿主内置 ⊕
@@ -2159,13 +2399,28 @@ export function PiChat({
                   与 pane 的隔离模型不可兼容,且它的存在迫使内置 pane 在声明了该槽的 agent 下
                   整体让位。
                 */}
-                <PanesHost
-                  definition={mergedPanes}
+                {readinessGating && !sessionReady ? (
+                  <PaneLoadingSkeleton label={t("chat.readiness.connectingAgent")} />
+                ) : (
+                  <PanesHost
+                  definition={mergedPanes!}
                   surface={surfaceAccess}
                   upload={uploadAttachment ?? defaultUploadAttachment}
                   baseUrl={client?.baseUrl ?? ""}
                   {...(sessionId !== undefined ? { sessionId } : {})}
                   conversation={conversation}
+                  {...(onPanelClose !== undefined ? { onRequestClose: onPanelClose } : {})}
+                  {...(onPaneEvent !== undefined ? { onEvent: onPaneEvent } : {})}
+                  {...(paneHostEvent !== undefined ? { hostEvent: paneHostEvent } : {})}
+                  renderHostView={(hostView) => {
+                    if (hostView !== "logs" || !logsActive) return undefined;
+                    return (
+                      <div className="flex h-full min-h-0 flex-col overflow-hidden p-2" data-pi-logs-region>
+                        <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="min-h-0 flex-1" fill />
+                        <ExtSlotRegion ext={extension} slot="logs" />
+                      </div>
+                    );
+                  }}
                   // 共享状态接入:宿主访问器与 pane 侧接口形状一致(读/订阅/写/删),直接透传。
                   // 授权在 pane 定义里逐键声明,这里不做任何放宽。
                   {...(webextState !== undefined ? { state: webextState } : {})}
@@ -2176,7 +2431,8 @@ export function PiChat({
                   onHostError={(error) => {
                     log.error("pane host error", { code: error.code, message: error.message });
                   }}
-                />
+                  />
+                )}
               </div>
             </div>
           ) : null}

@@ -201,6 +201,10 @@ export function LogsPanel({
   const logs = logsResult ?? internal;
 
   const { entries, filters, setFilters, autoscroll, setAutoscroll } = logs;
+  // Pane 可晚于会话日志首帧挂载；挂载时再取一次历史，闭合「初次空拉取→日志随后到达」竞态。
+  useEffect(() => {
+    void logs.fetchHistory({});
+  }, [logs.fetchHistory]);
 
   // Collapsed/expanded state — default expanded so e2e can see the panel.
   const [expanded, setExpanded] = useState(true);
@@ -401,7 +405,7 @@ export function LogsPanel({
             type="button"
             data-pi-logs-jump-latest
             onClick={handleJumpLatest}
-            className="absolute bottom-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium shadow-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+            className="absolute bottom-2 right-2 z-10 flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
           >
             {t("logs.unread").replace("{count}", String(unreadCount))}
           </button>

@@ -1,10 +1,29 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { definePanes, PANE_PROTOCOL_VERSION } from "../src/index.js";
 import { PanesHost } from "../src/react/index.js";
 
-afterEach(cleanup);
+beforeEach(() => {
+  const values = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    },
+  });
+  Reflect.deleteProperty(window, "__TAURI__");
+});
+
+afterEach(() => {
+  cleanup();
+  Reflect.deleteProperty(window, "__TAURI__");
+  vi.unstubAllGlobals();
+});
 
 /**
  * 录制宿主发给 iframe 的 `pane:connected`(含转移的 MessagePort)。
@@ -68,7 +87,240 @@ const definition = definePanes({
 });
 
 describe("PanesHost multi-open UI", () => {
-  it("opens three independent iframe instances of the same pane and closes one", () => {
+  it("restores opted-in local pane order, duplicates and active tab", () => {
+    const persistenceKey = "test:panes";
+    window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
+      paneIds: ["editor", "editor"],
+      activeIndex: 0,
+    }));
+    let sequence = 0;
+    const view = render(<PanesHost
+      definition={definition}
+      config={{ interactionMode: "advanced", persistenceKey }}
+      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+    />);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(2);
+    expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-selected")).toBe("true");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
+    const persisted = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`)!);
+    expect(persisted.paneIds).toEqual(["editor"]);
+    expect(persisted.instanceIds).toEqual(["editor-2"]);
+    expect(persisted.activeIndex).toBe(0);
+  });
+
+  it("restores persisted instance ids so native child WebViews can be reused", () => {
+    const persistenceKey = "test:panes:instance-ids";
+    window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
+      paneIds: ["editor"],
+      instanceIds: ["editor-native"],
+      activeIndex: 0,
+    }));
+    const view = render(<PanesHost
+      definition={definition}
+      config={{ persistenceKey }}
+    />);
+    expect(view.container.querySelector("[id=\"pane-view-editor-native\"]")).not.toBeNull();
+  });
+
+  it("auto-selects an embedded Tauri WebView carrier without changing pane declarations", async () => {
+    const created: Array<{
+      label: string;
+      url: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      visible?: boolean;
+    }> = [];
+    let closed = 0;
+    const actions: string[] = [];
+    const relayListeners = new Set<(event: { payload: unknown }) => void>();
+    class FakeResizeObserver {
+      observe(): void {}
+      disconnect(): void {}
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    Object.defineProperty(window, "__TAURI__", {
+      configurable: true,
+      value: {
+        core: {
+          invoke: vi.fn(async (command: string, args?: Record<string, unknown>) => {
+            if (command === "pane_webview_window_create") {
+              created.push(args as typeof created[number]);
+            }
+            if (command === "pane_webview_window_control") {
+              actions.push(String(args?.action));
+              if (args?.action === "close") closed += 1;
+            }
+          }),
+        },
+        event: {
+          listen: vi.fn(async (
+            _event: string,
+            listener: (event: { payload: unknown }) => void,
+          ) => {
+            relayListeners.add(listener);
+            return () => relayListeners.delete(listener);
+          }),
+        },
+        webview: {},
+        window: { getCurrentWindow: () => ({
+          innerPosition: async () => ({ x: 0, y: 0 }),
+          scaleFactor: async () => 1,
+          onMoved: async () => () => {},
+        }) },
+      },
+    });
+
+    const nativeDefinition = definePanes({
+      ...definition,
+      panes: definition.panes.map((pane) => ({
+        ...pane,
+        document: { kind: "html" as const, src: "https://panes.example/editor.html" },
+      })),
+    });
+    const createInstanceId = (): string => "editor-native";
+    const view = render(
+      <StrictMode>
+        <PanesHost
+          definition={nativeDefinition}
+          createInstanceId={createInstanceId}
+          sessionId="session-a"
+        />
+      </StrictMode>,
+    );
+    expect(view.container.querySelector("iframe")).toBeNull();
+    expect(view.container.querySelector('[data-pane-carrier="tauri-webview"]')).not.toBeNull();
+    expect(screen.getByRole("status", { name: "正在加载Editor…" })).not.toBeNull();
+    // 启动预热：content shell + overlay shell 可能先 create；内容以 URL 认 editor。
+    await waitFor(() => {
+      expect(
+        created.some((c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native")),
+      ).toBe(true);
+    });
+    // mock 无真实页面 load：补发 overlay warm shell ready（token 0）。
+    await act(async () => {
+      for (const listener of relayListeners) {
+        listener({
+          payload: {
+            instanceId: "panes-overlay-menu",
+            epoch: 0,
+            message: { type: "pane:overlay-ready", token: 0 },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+    const editorCreate = created.find(
+      (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+    )!;
+    // 预热池命中 → pane-warm-N；未命中 → pane-editor-native-N。
+    expect(editorCreate.label).toMatch(/^pane-(warm|editor-native)-\d+$/);
+    expect(editorCreate.url).toBe(
+      "https://panes.example/editor.html?pi-pane-instance=editor-native#pi-pane-instance=editor-native",
+    );
+    expect(editorCreate.visible).toBe(false);
+    expect(editorCreate).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });
+    await act(async () => {
+      for (const listener of relayListeners) {
+        listener({
+          payload: {
+            instanceId: "editor-native",
+            epoch: 0,
+            message: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "editor" },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(actions).toContain("show"));
+    const beforePalette = actions.length;
+    fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
+    // open 热路径会 set-bounds；等 token 升到 1 后再模拟 guest ready。
+    await waitFor(() => {
+      expect(actions.slice(beforePalette)).toContain("set-bounds");
+    });
+    expect(actions.slice(beforePalette)).not.toContain("hide");
+    await act(async () => {
+      for (const listener of relayListeners) {
+        listener({
+          payload: {
+            instanceId: "panes-overlay-menu",
+            epoch: 0,
+            message: { type: "pane:overlay-ready", token: 1 },
+          },
+        });
+      }
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(actions).toContain("focus"));
+    fireEvent.click(screen.getByRole("button", { name: "刷新当前 Pane" }));
+    await waitFor(() => expect(actions).toContain("reload"));
+    expect(view.container.querySelector("iframe")).toBeNull();
+    const createdAfterReloadClick = created.length;
+    expect(closed).toBe(0);
+
+    view.rerender(
+      <StrictMode>
+        <PanesHost
+          definition={nativeDefinition}
+          createInstanceId={createInstanceId}
+          sessionId="session-a"
+        />
+      </StrictMode>,
+    );
+    await act(async () => Promise.resolve());
+    expect(created.length).toBe(createdAfterReloadClick);
+    expect(closed).toBe(0);
+
+    view.rerender(
+      <StrictMode>
+        <PanesHost
+          definition={nativeDefinition}
+          createInstanceId={createInstanceId}
+          sessionId="session-b"
+        />
+      </StrictMode>,
+    );
+    await waitFor(() => {
+      const editors = created.filter(
+        (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+      );
+      expect(editors.length).toBeGreaterThanOrEqual(2);
+    });
+    const editorCreates = created.filter(
+      (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
+    );
+    // 会话切换：第二枚 editor 文档导航（池回收 navigate 或冷建）。
+    expect(editorCreates.at(-1)!.label).toMatch(/^pane-(warm|editor-native)-\d+$/);
+    expect(view.container.querySelector("iframe")).toBeNull();
+  });
+
+  it("renders declared host-native views without an iframe", () => {
+    const native = definePanes({
+      id: "native-host-test",
+      panes: [{
+        id: "logs",
+        title: "Logs",
+        icon: "scroll-text",
+        hostView: "logs",
+        document: { kind: "inline", srcDoc: "" },
+        capabilities: {},
+      }],
+    });
+    const view = render(
+      <PanesHost
+        definition={native}
+        renderHostView={(hostView) => hostView === "logs" ? <div>session logs</div> : undefined}
+      />,
+    );
+    expect(screen.getByRole("tabpanel", { name: "Logs" }).textContent).toContain("session logs");
+    expect(screen.getByRole("tab", { name: /Logs/ }).querySelector("svg")).not.toBeNull();
+    expect(view.container.querySelector("iframe")).toBeNull();
+  });
+
+  it("opens three independent iframe instances and parks a closed tab without reloading it", () => {
     let sequence = 0;
     const view = render(<PanesHost
       definition={definition}
@@ -85,8 +337,16 @@ describe("PanesHost multi-open UI", () => {
     expect(frames).toHaveLength(3);
     expect(new Set(frames.map((frame) => frame.id)).size).toBe(3);
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Editor 1", "Editor 2", "Editor 3"]);
+    const firstFrame = frames[0];
     fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(2);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(firstFrame!.style.display).toBe("none");
+    fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
+    expect(view.container.querySelectorAll("iframe")[0]).toBe(firstFrame);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
   it("activates on tab click, reorders via drag and recovers from an empty workspace", () => {
@@ -104,32 +364,46 @@ describe("PanesHost multi-open UI", () => {
     add();
     const controlsOrder = (): string[] =>
       screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-controls") ?? "");
-    expect(controlsOrder()).toEqual(["pane-view-editor-1", "pane-view-editor-2", "pane-view-editor-3"]);
+    // MRU:新打开的排最前,故 editor-3/2/1。
+    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
 
-    // 切换:点第二个 tab,选中态与 iframe 可见性同步
+    // 切换:点第二个 tab(editor-2),选中但不改变顺序(仅新开才置前)
     fireEvent.click(screen.getAllByRole("tab")[1]!);
     expect(screen.getAllByRole("tab")[1]!.getAttribute("aria-selected")).toBe("true");
+    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
     const frameById = (id: string): HTMLIFrameElement =>
       view.container.querySelector<HTMLIFrameElement>(`#pane-view-${id}`)!;
     expect(frameById("editor-2").style.display).toBe("block");
     expect(frameById("editor-1").style.display).toBe("none");
 
-    // 拖排:把第三个 tab 拖到第一个之前
+    // 拖排:把最后一个 tab(editor-1)拖到第一个之前
     const wrappers = screen.getAllByRole("tab").map((tab) => tab.parentElement!);
     fireEvent.dragStart(wrappers[2]!);
     fireEvent.dragOver(wrappers[0]!);
     fireEvent.drop(wrappers[0]!);
-    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-1", "pane-view-editor-2"]);
+    expect(controlsOrder()).toEqual(["pane-view-editor-1", "pane-view-editor-3", "pane-view-editor-2"]);
 
     // 空态:全部关闭后出现空工作区入口,可重新打开恢复
     for (let remaining = 3; remaining > 0; remaining -= 1) {
       fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
     }
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(0);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "打开一个 Pane" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(1);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
     expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("refreshes the active pane beside the new-pane control", () => {
+    const view = render(<PanesHost
+      definition={definition}
+      createInstanceId={() => "editor-refresh"}
+    />);
+    const before = view.container.querySelector("iframe");
+    fireEvent.click(screen.getByRole("button", { name: "刷新当前 Pane" }));
+    const after = view.container.querySelector("iframe");
+    expect(after).not.toBe(before);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(1);
   });
 });
 
@@ -143,6 +417,7 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       document: { kind: "inline", srcDoc: "<!doctype html><p>uploader</p>" },
       capabilities: {
         attachments: "read-write",
+        downloads: true,
         surfaceKeys: ["surface:canvas"],
         surfaceCommands: [{ domain: "canvas", actions: ["ping"] }],
       },
@@ -169,6 +444,7 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       return { attachment: { id: "att_1" }, displayUrl: "blob:preview" };
     });
     const run = vi.fn(async () => ({ ok: true }));
+    const closeSidebar = vi.fn();
     const surface = {
       run,
       getState: <T,>(_key: string): T | undefined => ({ revision: 1 }) as T,
@@ -176,20 +452,21 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       hasCommand: () => true,
     };
     const recorder = recordFrameMessages();
-    let view: ReturnType<typeof render>;
-    try {
-      view = render(<PanesHost
-        definition={protocolDefinition}
-        baseUrl="/api"
-        sessionId="s1"
-        upload={upload}
-        surface={surface}
-        createInstanceId={(paneId) => `${paneId}-1`}
-      />);
-    } finally {
-      recorder.restore();
-    }
+    const view = render(<PanesHost
+      definition={protocolDefinition}
+      baseUrl="/api"
+      sessionId="s1"
+      upload={upload}
+      surface={surface}
+      onRequestClose={closeSidebar}
+      createInstanceId={(paneId) => `${paneId}-1`}
+    />);
+    recorder.restore();
     const posted = recorder.posted;
+    fireEvent.click(screen.getByRole("button", { name: "收起 Pane 侧栏" }));
+    expect(closeSidebar).toHaveBeenCalledOnce();
+    const frame = view.container.querySelector("iframe")!;
+    expect(frame.getAttribute("sandbox")).toContain("allow-downloads");
     // 宿主挂载即补连(不依赖 onLoad / pane:ready 是否被错过),故此处已有且仅有一条。
     expect(posted).toHaveLength(1);
     expect(posted[0]!.message).toMatchObject({
@@ -313,13 +590,13 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     for (const listener of [...listeners]) listener(canvasState);
     await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 2));
 
-    // 关闭第一个实例:其订阅解除,其余端口继续收镜像,关闭端口静默。
+    // 关闭 tab 后 Pane 后台保活；三个端口仍继续收权威镜像。
     fireEvent.click(screen.getAllByRole("button", { name: "关闭 Canvas" })[0]!);
-    expect(listeners.size).toBe(2);
+    expect(listeners.size).toBe(3);
     canvasState = { revision: 3 };
     for (const listener of [...listeners]) listener(canvasState);
-    await until(() => [1, 2].every((index) => mirrorsOf(index).length === 3));
-    expect(mirrorsOf(0)).toHaveLength(2);
+    await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 3));
+    expect(mirrorsOf(0)[2]).toEqual({ revision: 3 });
     expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
     expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
   });
@@ -402,9 +679,11 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       ],
     });
     let sequence = 0;
+    const onEvent = vi.fn(() => true);
     const view = render(<PanesHost
       definition={eventDefinition}
       config={{ eventTargets: { "aigc.canvas.import": "canvas" } }}
+      onEvent={onEvent}
       createInstanceId={(paneId) => `${paneId}-${++sequence}`}
     />);
     const frames = [...view.container.querySelectorAll("iframe")];
@@ -442,8 +721,9 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
 
     expect(sourceResults.find((message) => message.requestId === "event-ok")).toMatchObject({
       ok: true,
-      data: { delivered: 1 },
+      data: { delivered: 2 },
     });
+    expect(onEvent).toHaveBeenCalledWith("aigc.canvas.import", { attachmentIds: ["att_1"] });
     expect(targetMessages.find((message) => message.type === "pane:event")).toEqual({
       type: "pane:event",
       topic: "aigc.canvas.import",
@@ -451,6 +731,35 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       source: { instanceId: "materials-1", paneId: "materials" },
     });
     expect(screen.getByRole("tab", { name: "Canvas" }).getAttribute("aria-selected")).toBe("true");
+
+    view.rerender(<PanesHost
+      definition={eventDefinition}
+      config={{ eventTargets: { "aigc.canvas.import": "canvas" } }}
+      onEvent={onEvent}
+      hostEvent={{
+        id: 1,
+        topic: "aigc.canvas.import",
+        payload: { attachmentIds: ["att_host"] },
+      }}
+      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+    />);
+    await until(() => targetMessages.some(
+      (message) =>
+        message.type === "pane:event" &&
+        (message.payload as { attachmentIds?: string[] } | undefined)?.attachmentIds?.[0] ===
+          "att_host",
+    ));
+    expect(targetMessages.find(
+      (message) =>
+        message.type === "pane:event" &&
+        (message.payload as { attachmentIds?: string[] } | undefined)?.attachmentIds?.[0] ===
+          "att_host",
+    )).toEqual({
+      type: "pane:event",
+      topic: "aigc.canvas.import",
+      payload: { attachmentIds: ["att_host"] },
+      source: { instanceId: "host", paneId: "host" },
+    });
 
     ports.get("materials")!.postMessage({
       type: "pane:request",

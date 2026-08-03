@@ -467,8 +467,8 @@ type GlobalWithHandler = typeof globalThis & {
 /**
  * Build the stub spawn spec (local node + stub script), inheriting env.
  *
- * `--import jiti/register` lets the stub `.mjs` import the TS-source `@blksails/pi-web-server`
- * (no dist build) so it can persist/resume via the shared `SessionEntryStore`.
+ * Stub 先以 plain Node 应答 readiness，再在进程内惰性启 Jiti 导入 TS-source
+ * `@blksails/pi-web-server`，使冷编译不占用宿主 readiness 时限。
  * Session identity + creation metadata are passed via `PI_WEB_STUB_*` env so the
  * stub aligns its persisted session id with the host sessionId and can cold-resume.
  * `SESSION_STORE*` is already inherited from `process.env`.
@@ -481,14 +481,12 @@ function stubSpawnSpec(
   attachmentPassthroughEnv: Record<string, string> = {},
   attachmentProfileDisabledValue?: string,
 ): SpawnSpec {
-  // Run with cwd = @blksails/pi-web-server package dir so `--import jiti/register`
-  // resolves jiti from the server package (pnpm does not hoist it to the app
-  // root). The session cwd is conveyed separately via PI_WEB_STUB_CWD (used by
-  // the stub to write the session header / piweb.session metadata).
+  // cwd 保持 @blksails/pi-web-server 包目录，供 stub 的 programmatic Jiti
+  // 解析该包自带依赖与 TS source。会话 cwd 另经 PI_WEB_STUB_CWD 传入。
   const serverPkgDir = path.dirname(runnerBootstrapPath());
   return {
     cmd: process.execPath,
-    args: ["--import", "jiti/register", stubAgentPath()],
+    args: [stubAgentPath()],
     cwd: serverPkgDir,
     env: {
       ...process.env,

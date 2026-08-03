@@ -157,6 +157,7 @@ type Listener = () => void;
 
 /** 可订阅的 control 旁路 store。 */
 export class ControlStore {
+  private static readonly MAX_PENDING_LOG_ENTRIES = 1_000;
   private snapshot: ControlSnapshot = INITIAL_SNAPSHOT;
   private readonly listeners = new Set<Listener>();
   /** editorText 信号计数器(单调递增,从 1 起)。 */
@@ -173,10 +174,17 @@ export class ControlStore {
   >();
   /** control:"logs" 帧转发回调(由装配方注入,转交 logsStore.applyLogsFrame)。 */
   private _onLogsFrame: ((entries: LogEntry[]) => void) | undefined;
+  /** React effect 接线前已到达的日志；有界暂存，注册回调时一次补发。 */
+  private pendingLogs: LogEntry[] = [];
 
   /** 注册 control:"logs" 帧处理回调(由 logsStore 在装配时注入)。返回取消注册函数。 */
   readonly onLogsFrame = (cb: (entries: LogEntry[]) => void): (() => void) => {
     this._onLogsFrame = cb;
+    if (this.pendingLogs.length > 0) {
+      const pending = this.pendingLogs;
+      this.pendingLogs = [];
+      cb(pending);
+    }
     return () => {
       if (this._onLogsFrame === cb) this._onLogsFrame = undefined;
     };
@@ -253,6 +261,14 @@ export class ControlStore {
         // 实时 Node 日志帧:转发给注入的 logsStore 回调,不进 ControlSnapshot。
         if (this._onLogsFrame !== undefined) {
           this._onLogsFrame(payload.entries as LogEntry[]);
+        } else {
+          this.pendingLogs.push(...(payload.entries as LogEntry[]));
+          if (this.pendingLogs.length > ControlStore.MAX_PENDING_LOG_ENTRIES) {
+            this.pendingLogs.splice(
+              0,
+              this.pendingLogs.length - ControlStore.MAX_PENDING_LOG_ENTRIES,
+            );
+          }
         }
         break;
       case "state":

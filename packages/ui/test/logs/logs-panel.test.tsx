@@ -82,6 +82,7 @@ describe("LogsPanel — 渲染（5.1/5.2）", () => {
     mockLogsResult = makeResult();
     const { container } = render(<LogsPanel />);
     expect(container.querySelector("[data-pi-logs-region]")).not.toBeNull();
+    expect(mockFetchHistory).toHaveBeenCalledWith({});
   });
 
   it("渲染三条日志行，每行带 data-pi-log-level 和 data-pi-log-ns", () => {

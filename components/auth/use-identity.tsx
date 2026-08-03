@@ -231,6 +231,8 @@ function useIdentityState(): UseIdentityResult {
     try {
       await fetch("/api/identity", { method: "DELETE" });
     } finally {
+      // 登出:销毁全部 pane webview（会话已结束，不可仅隐藏）。
+      await getPiWebDesktopBridge()?.destroyPaneWebviews?.();
       // 登出:同样交给壳同步一次 —— 此时 server 返回 credential:null,壳据此清钥匙串。
       // 走同一条路径(而非直接 clearCredential),避免「登录一条路、登出另一条路」各自维护。
       await getPiWebDesktopBridge()?.syncCredential?.();

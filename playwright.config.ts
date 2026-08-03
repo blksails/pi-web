@@ -209,6 +209,10 @@ const SERVER_ENTRY = path.join(DIST_DIR, "server.mjs");
 
 const stubEnv = {
   PI_WEB_STUB_AGENT: "1",
+  PI_WEB_DESKTOP: "0",
+  PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "",
+  // AIGC panes 是本仓本地运行时扩展；e2e 验其加载与 pane 协议，不测试发布签名链。
+  PI_WEB_EXT_REQUIRE_SIGNATURE: "false",
   PI_WEB_DEFAULT_SOURCE: "./examples/hello-agent",
   PI_WEB_DEFAULT_MODEL: "stub-model",
   PI_WEB_AGENT_DIR: agentDir,
@@ -239,6 +243,9 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     trace: "on-first-retry",
+    ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH !== undefined
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } }
+      : {}),
   },
   projects: [
     {

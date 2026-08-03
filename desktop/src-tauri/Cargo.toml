@@ -5,6 +5,10 @@ description = "pi-web 桌面版 — Tauri 薄壳，复用 standalone 自包含�
 edition = "2021"
 rust-version = "1.77"
 
+[features]
+default = ["unstable"]
+unstable = ["tauri/unstable"]
+
 # 可执行名恒为 pi-web：Linux 的 AppImage 拒绝含 `@` 的派生名（旧 electron-builder
 # 曾从包名 `@blksails/pi-web-desktop` 派生出非法名），显式钉死可执行名以规避。
 [[bin]]
@@ -16,7 +20,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # ★ 下限 2.11.1：GHSA-7gmj-67g7-phm9（is_local_url() 在 Windows/Android 有 origin 绕过）。
-tauri = { version = "2.11.1", features = [] }
+tauri = { version = "2.11.1", features = ["unstable"] }
 # 原生「选择文件夹」对话框（仅 Rust 侧调用，渲染层不授予 dialog:allow-open）。
 tauri-plugin-dialog = "2"
 # 外链交系统默认浏览器。

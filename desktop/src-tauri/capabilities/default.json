@@ -2,13 +2,16 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "pi-web-desktop",
   "description": "pi-web 桌面壳：允许本地回环远端页面调用受控的宿主命令",
-  "windows": [
-    "main"
+  "webviews": [
+    "main",
+    "main-host"
   ],
   "remote": {
     "urls": [
       "http://127.0.0.1:*",
-      "http://127.0.0.1:*/*"
+      "http://127.0.0.1:*/*",
+      "http://localhost:*",
+      "http://localhost:*/*"
     ]
   },
   "permissions": [

@@ -7,7 +7,7 @@
  *   中间以 JS 忠实镜像 pane_relay.rs 注册表语义(绑定单调/epoch 匹配/标签鉴权);
  *   Rust 端同一语义另有 cargo 单测锁定。
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PanePort, PaneViewHandle } from "../../src/host-ports.js";
 import type { PaneRelayEnvelope } from "../../src/adapters/relay.js";
 import {
@@ -187,7 +187,82 @@ function makeTauriHarness(): TransportHarness {
 runPaneTransportConformance("browser-iframe", makeBrowserHarness);
 runPaneTransportConformance("tauri-webview", makeTauriHarness);
 
+describe("installTauriPaneBootstrap lifecycle", () => {
+  it("retries a rejected first ready until the host connects", async () => {
+    vi.useFakeTimers();
+    try {
+      const guestWindow = new FakeGuestWindow();
+      let deliver: ((envelope: unknown) => void) | undefined;
+      let attempts = 0;
+      const uninstall = installTauriPaneBootstrap({
+        instanceId: "materials-1",
+        window: guestWindow.asWindow(),
+        invoke() {
+          attempts += 1;
+          if (attempts === 1) return new Promise<never>(() => undefined);
+          queueMicrotask(() => deliver?.({
+            instanceId: "materials-1",
+            epoch: 1,
+            message: { type: "pane:connected", protocol: 1, instanceId: "materials-1" },
+          }));
+          return Promise.resolve();
+        },
+        onRelayMessage(listener) {
+          deliver = listener;
+          return () => {
+            deliver = undefined;
+          };
+        },
+      });
+
+      guestWindow.postMessage({ type: "pane:ready", protocol: 1, paneId: "materials" });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(attempts).toBe(2);
+      uninstall();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("createTauriPaneViewAdapter guardrails", () => {
+  it("buffers pane:ready emitted before mount returns", async () => {
+    const listeners = new Set<(envelope: unknown) => void>();
+    const env: TauriPaneEnv = {
+      async invoke() {
+        return undefined;
+      },
+      onRelayMessage(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      createPaneWebview({ instanceId }) {
+        for (const listener of listeners) {
+          listener({
+            instanceId,
+            epoch: 0,
+            message: { type: "pane:ready", protocol: 1, paneId: "materials" },
+          });
+        }
+        return { show() {}, hide() {}, reload() {}, close() {} };
+      },
+    };
+    const adapter = createTauriPaneViewAdapter(env);
+    const handle = await adapter.mount({
+      instanceId: "materials-1",
+      paneId: "materials",
+      epoch: 1,
+      url: "https://pane.local/materials",
+    });
+    const seen: unknown[] = [];
+    handle.port.listen((message) => seen.push(message));
+    expect(seen).toEqual([
+      { type: "pane:ready", protocol: 1, paneId: "materials" },
+    ]);
+    handle.dispose();
+  });
+
   it("rejects undeclared document protocols at mount", async () => {
     const adapter = createTauriPaneViewAdapter(makeTauriEnv().env);
     await expect(

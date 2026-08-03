@@ -7,6 +7,11 @@
 export { Conversation, type ConversationProps } from "./conversation.js";
 export { Message, type MessageProps } from "./message.js";
 export {
+  ConversationImageGallery,
+  downloadConversationImage,
+  type ConversationImageGalleryProps,
+} from "./conversation-image-gallery.js";
+export {
   useAutoScroll,
   type UseAutoScrollOptions,
   type UseAutoScrollResult,

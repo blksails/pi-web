@@ -41,6 +41,12 @@ importers:
       '@blksails/pi-web-ui':
         specifier: workspace:*
         version: link:packages/ui
+      '@earendil-works/pi-ai':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent':
+        specifier: ^0.80.3
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
       '@hono/node-server':
         specifier: ^2.0.8
         version: 2.0.8(hono@4.12.28)
@@ -225,6 +231,9 @@ importers:
       '@blksails/pi-web-kit':
         specifier: workspace:*
         version: link:../web-kit
+      '@blksails/pi-web-panes-kit':
+        specifier: workspace:*
+        version: link:../panes-kit
       '@blksails/pi-web-primitives':
         specifier: workspace:*
         version: link:../primitives

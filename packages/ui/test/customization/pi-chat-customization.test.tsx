@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
@@ -176,5 +176,42 @@ describe("向后兼容回归 (Req 1.1/10.5)", () => {
       document.querySelector("[data-pi-chat-messages]")?.className,
     ).toContain("max-w-3xl");
     expect(screen.getByLabelText("发送")).toBeInTheDocument();
+  });
+});
+
+describe("对话流 AIGC 成品图片动作", () => {
+  it("仅 assistant file 图片换成成品图容器；用户图片仍走原渲染，工具卡不受影响", async () => {
+    const run = vi.fn();
+    const image = {
+      type: "file",
+      mediaType: "image/png",
+      url: "/api/attachments/att_done/raw",
+      filename: "done.png",
+    };
+    render(
+      <PiChat
+        session={withMessages([
+          { id: "u1", role: "user", parts: [image] } as unknown as UIMessage,
+          { id: "a1", role: "assistant", parts: [image] } as unknown as UIMessage,
+        ])}
+        extension={{
+          manifestId: "image-actions",
+          conversationImageActions: [{
+            id: "canvas:open",
+            label: "在画布中打开",
+            icon: "palette",
+            run,
+          }],
+        }}
+      />,
+    );
+    expect(document.querySelectorAll("[data-pi-conversation-images]")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-pi-message-image]")).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "在画布中打开" }));
+    });
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({
+      asset: expect.objectContaining({ attachmentId: "att_done" }),
+    }));
   });
 });

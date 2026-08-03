@@ -224,6 +224,7 @@ export function makeRawAttachmentHandler(store: AttachmentStore): RouteHandler {
     const headers = new Headers();
     headers.set("Content-Type", mimeType);
     headers.set("Cache-Control", RAW_CACHE_CONTROL);
+    // sandboxed srcDoc Pane 的 origin 为 null；签名 URL 已自鉴权，允许匿名跨源读取供 Canvas 像素编辑。
     // ★ 允许**任意源**读取字节(isolated-panes:pane 是 srcdoc + sandbox="allow-scripts",
     // 源为 opaque "null")。Canvas 舞台主图用 `crossOrigin="anonymous"` 加载 —— B 档客户端
     // 编辑要把图画进 canvas 且不污染它,这是硬要求。缺 CORS 头时该请求失败,表现为舞台裂图,

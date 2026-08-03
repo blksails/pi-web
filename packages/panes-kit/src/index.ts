@@ -26,6 +26,7 @@ export type {
   PaneGuestRequest,
   PaneErrorCode,
   PaneErrorData,
+  PaneTheme,
   PaneConnectedMessage,
   PaneReadyMessage,
   PaneHostMessage,
@@ -43,6 +44,14 @@ export type {
   PaneWorkspaceReport,
   PanesWorkspaceSnapshot,
 } from "./workspace-protocol.js";
+export {
+  PI_PANES_WORKSPACE_INTENT_EVENT,
+  PI_PANES_PANEL_OPEN_EVENT,
+  requestPaneWorkspaceIntent,
+  requestPanesPanelOpen,
+  openOrActivatePaneFromHost,
+} from "./workspace-intent.js";
+export type { PaneWorkspaceHostIntent } from "./workspace-intent.js";
 export { PaneHostError, asPaneHostError } from "./errors.js";
 export {
   DEFAULT_PANE_REQUEST_BYTES,
@@ -65,5 +74,21 @@ export { createAgentRouteClient } from "./agent-routes.js";
 export type { AgentRouteClientOptions } from "./agent-routes.js";
 export { fromMessagePort } from "./host-ports.js";
 export type { PanePort, PaneViewHandle, PaneViewAdapter } from "./host-ports.js";
+export { observePaneResizeFrame } from "./resize-frame.js";
+export type { PaneResizeFrame } from "./resize-frame.js";
 export { connectPaneGuest } from "./guest.js";
 export type { PaneGuestConnection, PaneGuestEvents, PaneGuestSurface } from "./guest.js";
+export {
+  observePanesHostPresence,
+  observeAllPanesHostsInDocument,
+  installDocumentPanesHostPresence,
+  notifyPanesHostPresenceSweep,
+  isPanesHostElementVisible,
+  isPanesHostChromeHidden,
+  createDefaultPanesHostPresenceBackend,
+} from "./host-presence.js";
+export type {
+  PanesHostPresenceState,
+  PanesHostPresenceBackend,
+  ObservePanesHostPresenceOptions,
+} from "./host-presence.js";

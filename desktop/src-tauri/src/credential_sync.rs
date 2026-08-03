@@ -73,6 +73,40 @@ pub fn fetch_credential(port: u16, token: &str) -> FetchResult {
     parse_response(&raw)
 }
 
+/// 开发态外置 server 不由壳 supervisor 拉起；从钥匙串恢复登录时直接回灌其内存态。
+pub fn seed_credential(port: u16, credential: &str) -> Result<(), String> {
+    let addr = format!("127.0.0.1:{port}");
+    let mut stream = TcpStream::connect(&addr).map_err(|_| "无法连接本地 server".to_string())?;
+    stream.set_read_timeout(Some(TIMEOUT)).ok();
+    stream.set_write_timeout(Some(TIMEOUT)).ok();
+    let body = serde_json::to_vec(&serde_json::json!({ "credential": credential }))
+        .map_err(|_| "无法编码凭据请求".to_string())?;
+    let head = format!(
+        "POST /api/auth/session HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n\
+         Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream
+        .write_all(head.as_bytes())
+        .and_then(|_| stream.write_all(&body))
+        .map_err(|_| "发送凭据请求失败".to_string())?;
+    let mut raw = String::new();
+    stream
+        .read_to_string(&mut raw)
+        .map_err(|_| "读取凭据响应失败".to_string())?;
+    let status = raw
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|code| code.parse::<u16>().ok())
+        .ok_or_else(|| "响应缺少状态行".to_string())?;
+    if (200..300).contains(&status) {
+        Ok(())
+    } else {
+        Err(format!("凭据回灌端点返回 {status}"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

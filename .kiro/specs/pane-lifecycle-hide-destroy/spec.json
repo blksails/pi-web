@@ -1,0 +1,27 @@
+{
+  "feature_name": "pane-lifecycle-hide-destroy",
+  "created_at": "2026-07-31T04:30:00Z",
+  "updated_at": "2026-07-31T08:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": false,
+  "bookkeeping": {
+    "action": "retrospective alignment record",
+    "basis": "approved requirements and verified as-built evidence",
+    "caveat": "non-authoritative; must not drive implementation"
+  }
+}

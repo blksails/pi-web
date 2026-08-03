@@ -53,8 +53,10 @@ describe("getPiWebDesktopBridge(桌面桥访问器)", () => {
 
   it("仅 __TAURI__ 存在 → 合成同形状桥,pickDirectory 经 invoke 回传路径(Req 6.1/6.3)", async () => {
     const invoke = vi.fn(async (cmd: string) => {
-      expect(cmd).toBe("pick_directory");
-      return "/Users/x/agents/demo";
+      if (cmd === "pick_directory") return "/Users/x/agents/demo";
+      if (cmd === "pane_webview_hide_all") return undefined;
+      if (cmd === "pane_webview_cleanup") return undefined;
+      throw new Error(`unexpected command: ${cmd}`);
     });
     (window as TestWindow).__TAURI__ = { core: { invoke } };
 
@@ -63,6 +65,10 @@ describe("getPiWebDesktopBridge(桌面桥访问器)", () => {
     expect(bridge?.readonly).toBe(true);
     expect(typeof bridge?.pickDirectory).toBe("function");
     await expect(bridge?.pickDirectory?.()).resolves.toBe("/Users/x/agents/demo");
+    await expect(bridge?.hidePaneWebviews?.()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("pane_webview_hide_all");
+    await expect(bridge?.destroyPaneWebviews?.()).resolves.toBe(true);
+    expect(invoke).toHaveBeenCalledWith("pane_webview_cleanup");
     expect(invoke).toHaveBeenCalledWith("pick_directory");
   });
 

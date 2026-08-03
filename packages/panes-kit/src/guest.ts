@@ -3,12 +3,14 @@ import type {
   PaneConnectedMessage,
   PaneErrorData,
   PaneHostMessage,
+  PaneTheme,
 } from "./contract.js";
 // ★ 从零依赖的 protocol-version 取,**不要**从 contract 取:后者顶层的 z.object(...) 是打包器
 // 眼里的副作用表达式,只为一个版本号 import 它会把整个 zod(约 62KB)内联进 guest bundle。
 // guest 侧格外敏感 —— 内置 pane 的文档是内联进宿主 bundle 的字符串,每个 pane 重复一份。
 import { PANE_PROTOCOL_VERSION } from "./protocol-version.js";
 import { PaneHostError } from "./errors.js";
+import { installGlobalTauriPaneBootstrap } from "./adapters/tauri-runtime.js";
 
 interface PendingCall {
   resolve(value: unknown): void;
@@ -50,6 +52,7 @@ export interface PaneGuestConnection {
   readonly epoch: number;
   readonly interactionMode: "standard" | "advanced";
   readonly grants: PaneCapabilities;
+  readonly theme?: PaneTheme;
   readonly surface: PaneGuestSurface;
   readonly state: PaneGuestState;
   readonly events: PaneGuestEvents;
@@ -65,6 +68,7 @@ export interface PaneGuestConnection {
   /** 订阅宿主具名信号;**订阅即以当前值回调一次**(若已有值),故不依赖订阅早于推送。 */
   onSignal(name: string, listener: (value: unknown) => void): () => void;
   onLifecycle(listener: (state: "visible" | "hidden" | "closing") => void): () => void;
+  onTheme(listener: (theme: PaneTheme) => void): () => void;
   close(): void;
 }
 
@@ -99,6 +103,8 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
   // 代理事件(pane ↔ pane):不保留最后值,故只有 listeners、没有值表。与 signals 刻意分开。
   const eventListeners = new Map<string, Set<(payload: unknown, source: { readonly instanceId: string; readonly paneId: string }) => void>>();
   const lifecycleListeners = new Set<(state: "visible" | "hidden" | "closing") => void>();
+  const themeListeners = new Set<(theme: PaneTheme) => void>();
+  let theme = message.theme;
 
   const request = <T,>(operation: string, payload: Record<string, unknown>, transfer: Transferable[] = []): Promise<T> => {
     if (closed) return Promise.reject(new PaneHostError("HOST_UNAVAILABLE", "Pane connection is closed"));
@@ -142,6 +148,11 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       for (const listener of eventListeners.get(data.topic) ?? []) listener(data.payload, data.source);
       return;
     }
+    if (data.type === "pane:theme") {
+      theme = data.theme;
+      for (const listener of themeListeners) listener(data.theme);
+      return;
+    }
     if (data.type === "pane:lifecycle") {
       for (const listener of lifecycleListeners) listener(data.state);
     }
@@ -159,6 +170,9 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
     epoch: message.instance.epoch,
     interactionMode: message.interactionMode,
     grants,
+    get theme() {
+      return theme;
+    },
     surface: {
       run: (domain, action, args) => request("surface.run", { domain, action, ...(args !== undefined ? { args } : {}) }),
       getState: <T,>(key: string) => states.get(key) as T | undefined,
@@ -217,6 +231,10 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       lifecycleListeners.add(listener);
       return () => lifecycleListeners.delete(listener);
     },
+    onTheme: (listener) => {
+      themeListeners.add(listener);
+      return () => themeListeners.delete(listener);
+    },
     close() {
       if (closed) return;
       closed = true;
@@ -251,13 +269,16 @@ export function connectPaneGuest(options: {
   readonly signal?: AbortSignal;
 }): Promise<PaneGuestConnection> {
   const guestWindow = options.window ?? globalThis.window;
+  installGlobalTauriPaneBootstrap(guestWindow);
   return new Promise((resolve, reject) => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let readinessInterval: ReturnType<typeof setInterval> | undefined;
     // ★ 首次握手成功后**只清超时,不摘监听器** —— 宿主会重建连接并换用新 port
     // (它的 props 随会话推进换身份),guest 必须跟随换绑,否则此后所有帧进虚空。
     let handle: ReturnType<typeof createConnection> | undefined;
     const settleFirst = (): void => {
       if (timeout !== undefined) clearTimeout(timeout);
+      if (readinessInterval !== undefined) clearInterval(readinessInterval);
       options.signal?.removeEventListener("abort", onAbort);
     };
     const cleanup = (): void => {
@@ -292,11 +313,17 @@ export function connectPaneGuest(options: {
     }, options.timeoutMs ?? 15_000);
     options.signal?.addEventListener("abort", onAbort, { once: true });
     guestWindow.addEventListener("message", onConnect);
-    // readiness 与 iframe load 双触发配合：无论 React effect 与 load 谁先发生，Host 都能握手。
-    guestWindow.parent.postMessage({
-      type: "pane:ready",
-      protocol: PANE_PROTOCOL_VERSION,
-      paneId: options.expectedPaneId,
-    }, "*");
+    const announceReady = (): void => {
+      // WebView2 首个脚本帧可能早于 Tauri runtime 注入；沿既有 ready 轮询补装桥。
+      installGlobalTauriPaneBootstrap(guestWindow);
+      guestWindow.parent.postMessage({
+        type: "pane:ready",
+        protocol: PANE_PROTOCOL_VERSION,
+        paneId: options.expectedPaneId,
+      }, "*");
+    };
+    announceReady();
+    // Host effect 可能晚于 srcDoc 脚本；有界重发使握手不再依赖 iframe load 的竞态。
+    readinessInterval = setInterval(announceReady, 250);
   });
 }

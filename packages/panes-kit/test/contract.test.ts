@@ -17,6 +17,7 @@ const capabilities: PaneCapabilities = {
   events: { publish: ["canvas.import"], subscribe: ["canvas.changed"] },
   attachments: "read-write",
   conversation: "submit",
+  downloads: false,
   state: { read: [], write: [] },
 };
 
@@ -65,7 +66,8 @@ describe("pane contract and instance model", () => {
     expect(state.instances.find((item) => item.instanceId === "editor-3")?.epoch).toBe(2);
     state = reducePaneWorkspace(definition, state, { type: "close", instanceId: "editor-3" });
     expect(state.instances.map((item) => item.instanceId)).toEqual(["editor-1", "canvas-2"]);
-    expect(state.activeInstanceId).toBe("canvas-2");
+    // MRU:最近打开的 editor-3 在最前,关闭后激活剩余最近使用(editor-1)。
+    expect(state.activeInstanceId).toBe("editor-1");
   });
 
   it("enforces maxInstances and maxOpenPanes", () => {
@@ -90,6 +92,20 @@ describe("pane contract and instance model", () => {
     });
     expect(unlimited.maxOpenPanes).toBe(UNLIMITED_PANE_COUNT);
     expect(unlimited.panes[0]?.maxInstances).toBe(UNLIMITED_PANE_COUNT);
+  });
+
+  it("preserves a host-native view declaration", () => {
+    const native = definePanes({
+      id: "native",
+      panes: [{
+        id: "logs",
+        title: "Logs",
+        hostView: "logs",
+        document: { kind: "inline", srcDoc: "" },
+        capabilities: {},
+      }],
+    });
+    expect(native.panes[0]?.hostView).toBe("logs");
   });
 });
 

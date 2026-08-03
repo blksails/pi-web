@@ -221,6 +221,19 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-user").getAttribute("title")).toBe(TENANT.userId);
   });
 
+  it("长展示名单行省略，完整名称保留于可访问名称且不挤压登出按钮", async () => {
+    const name = "这是一个很长很长的宿主用户展示名称";
+    mount({
+      state: "authenticated",
+      tenant: { ...TENANT, displayName: name },
+      canExchange: true,
+    });
+    const user = await screen.findByTestId("login-user");
+    expect(user).toHaveClass("truncate", "whitespace-nowrap", "min-w-0");
+    expect(user).toHaveAttribute("aria-label", name);
+    expect(screen.getByTestId("logout")).toHaveClass("shrink-0");
+  });
+
   it("无 displayName → 退回 userId(云端未提供时行为与之前一致)", async () => {
     mount({ state: "authenticated", tenant: TENANT, canExchange: true });
     await waitFor(() =>

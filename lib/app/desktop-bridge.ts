@@ -42,6 +42,11 @@ export interface PiWebDesktopBridge {
    * 凭据因此不经渲染层(Req 12.5)。best-effort:失败不影响本次会话的登录态。
    */
   readonly syncCredential?: () => Promise<boolean>;
+  /** 会话导航前立即隐藏并回收旧 Pane WebView；新会话只在 ready 且完成新槽定位后展示。 */
+  /** 隐藏全部 pane webview（侧栏收起 / 暂离设置页）；不销毁。 */
+  readonly hidePaneWebviews?: () => Promise<boolean>;
+  /** 销毁全部 pane webview（登出、换源、会话结束）。 */
+  readonly destroyPaneWebviews?: () => Promise<boolean>;
 }
 
 /** Tauri `withGlobalTauri` 注入的全局对象中,本模块用到的最小形状。 */
@@ -111,6 +116,28 @@ function bridgeFromTauri(tauri: TauriGlobal): PiWebDesktopBridge {
         // best-effort:钥匙串不可用(Linux 无 Secret Service 等)时只记日志,
         // 不向上抛 —— 登录状态在 server 内存里,本次会话完全不受影响。
         console.error("[desktop-bridge] sync_credential 调用失败:", err);
+        return false;
+      }
+    },
+    hidePaneWebviews: async (): Promise<boolean> => {
+      try {
+        await invoke("pane_webview_hide_all");
+        return true;
+      } catch {
+        // 旧壳无 hide_all 时降级销毁，避免裸 webview 挡设置页。
+        try {
+          await invoke("pane_webview_cleanup");
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    },
+    destroyPaneWebviews: async (): Promise<boolean> => {
+      try {
+        await invoke("pane_webview_cleanup");
+        return true;
+      } catch {
         return false;
       }
     },

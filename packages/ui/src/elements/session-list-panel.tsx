@@ -513,7 +513,7 @@ export function SessionListPanel(
     <div
       data-pi-session-list=""
       className={cn(
-        "flex h-full w-60 shrink-0 flex-col gap-2 overflow-hidden text-sm",
+        "flex h-full shrink-0 flex-col gap-2 overflow-hidden text-sm",
         className,
       )}
     >
@@ -532,7 +532,7 @@ export function SessionListPanel(
         </div>
       ) : null}
 
-      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto px-1">
+      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto">
         {isInitialLoading ? (
           <div
             data-pi-session-list-loading=""

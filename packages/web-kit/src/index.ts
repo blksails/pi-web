@@ -39,6 +39,11 @@ export {
   type ConversationAccess,
 } from "./host-context.js";
 export { renderSurfaceOp, type SurfaceOp, type SubmitOpResult } from "./surface-op.js";
+export type {
+  ConversationImageAsset,
+  ConversationImageActionContext,
+  ConversationImageAction,
+} from "./conversation-image-action.js";
 export {
   createWebExtStateAccess,
   type WebExtStateAccessDeps,

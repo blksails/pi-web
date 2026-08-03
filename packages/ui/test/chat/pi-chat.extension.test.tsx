@@ -96,10 +96,10 @@ describe("PiChat × WebExtension", () => {
     expect(aside21.getAttribute("data-pi-panel-ratio")).toBe("2:1");
     expect(aside21.style.width).toBe("33.333%");
 
-    // 切到 居中:收起 aside(panelRight 不渲染),但切换器仍在场可切回。
+    // 切到 居中:收起 aside 但保留 Pane 宿主挂载，以复用实例生命周期；切换器仍在场可切回。
     fireEvent.click(screen.getByText("居中"));
-    expect(container.querySelector("[data-pi-chat-aside]")).toBeNull();
-    expect(container.querySelector("[data-panes-host]")).toBeNull();
+    expect(container.querySelector("[data-pi-chat-aside]")?.getAttribute("data-pi-panel-open")).toBe("false");
+    expect(container.querySelector("[data-panes-host]")).not.toBeNull();
     expect(
       container.querySelector("[data-pi-panel-ratio-switch]"),
     ).not.toBeNull();

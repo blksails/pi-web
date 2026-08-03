@@ -17,15 +17,32 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
+use tauri::{
+    AppHandle, Emitter, Manager, WebviewBuilder, WebviewUrl, WebviewWindowBuilder,
+};
+#[cfg(not(windows))]
+use tauri::{LogicalPosition, LogicalSize};
 
-use crate::window::MAIN_WINDOW_LABEL;
+use crate::native_layout::NativeWebviewLayoutManager;
+use crate::window::{native_child_webviews_enabled, HOST_WEBVIEW_LABEL, MAIN_WINDOW_LABEL};
 
 /// Rust → 宿主主窗口的上行事件名（与 panes-kit `TAURI_PANE_RELAY_HOST_EVENT` 一致）。
 pub const HOST_EVENT: &str = "pane-relay-host";
 /// Rust → pane webview 的下行事件名（与 panes-kit `TAURI_PANE_RELAY_GUEST_EVENT` 一致）。
 pub const GUEST_EVENT: &str = "pane-relay-guest";
+
+/// 浮动菜单 overlay 正在展示：apply_layout 改 content bounds 后须再抬 z，勿盖住菜单。
+static OVERLAY_WANTS_TOP: AtomicBool = AtomicBool::new(false);
+
+pub fn overlay_wants_top() -> bool {
+    OVERLAY_WANTS_TOP.load(Ordering::SeqCst)
+}
+
+fn set_overlay_wants_top(on: bool) {
+    OVERLAY_WANTS_TOP.store(on, Ordering::SeqCst);
+}
 
 /// 原生 IPC 信封：只包路由标识，`message` 原样透传（Req 9.3）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +83,8 @@ struct Binding {
 #[derive(Debug, Default)]
 pub struct PaneRelayRegistry {
     bindings: HashMap<String, Binding>,
+    bounds_revisions: HashMap<String, u64>,
+    host_position: Option<(i32, i32)>,
 }
 
 impl PaneRelayRegistry {
@@ -91,6 +110,23 @@ impl PaneRelayRegistry {
         if self.bindings.get(instance_id).map(|b| b.epoch) == Some(epoch) {
             self.bindings.remove(instance_id);
         }
+    }
+
+    fn accept_bounds_revision(&mut self, label: &str, revision: u64) -> bool {
+        if self.bounds_revisions.get(label).is_some_and(|latest| revision <= *latest) {
+            return false;
+        }
+        self.bounds_revisions.insert(label.to_owned(), revision);
+        true
+    }
+
+    fn clear_bounds_revision(&mut self, label: &str) {
+        self.bounds_revisions.remove(label);
+    }
+
+    fn record_host_position(&mut self, x: i32, y: i32) -> Option<(i32, i32)> {
+        let previous = self.host_position.replace((x, y));
+        previous.map(|(old_x, old_y)| (x - old_x, y - old_y))
     }
 
     /// 宿主 → Guest：校验绑定与 epoch，返回目标 webview 标签。
@@ -128,6 +164,76 @@ impl PaneRelayRegistry {
 #[derive(Default)]
 pub struct PaneRelayState(pub Mutex<PaneRelayRegistry>);
 
+/// 主窗口移动时在壳层同步平移所有原生 Pane。
+///
+/// JS 的 getBoundingClientRect 负责槽位尺寸；但主窗移动不改变它，不能等待前端重排。
+/// 此处直接按宿主物理坐标增量平移，首帧即随窗移动；后续 JS 绝对 bounds 仅作校正。
+pub fn follow_host_window_moved(app: &AppHandle, x: i32, y: i32) {
+    let delta = app
+        .state::<PaneRelayState>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|mut registry| registry.record_host_position(x, y));
+    let Some((delta_x, delta_y)) = delta.filter(|(dx, dy)| *dx != 0 || *dy != 0) else {
+        return;
+    };
+    #[cfg(windows)]
+    {
+        const SWP_NOZORDER: u32 = 0x0004;
+        const SWP_NOACTIVATE: u32 = 0x0010;
+        #[repr(C)]
+        struct Rect {
+            left: i32,
+            top: i32,
+            right: i32,
+            bottom: i32,
+        }
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetWindowRect(hwnd: isize, rect: *mut Rect) -> i32;
+            fn SetWindowPos(
+                hwnd: isize,
+                insert_after: isize,
+                x: i32,
+                y: i32,
+                width: i32,
+                height: i32,
+                flags: u32,
+            ) -> i32;
+        }
+        for (label, view) in app.webview_windows() {
+            if !label.starts_with("pane-") {
+                continue;
+            }
+            let Ok(hwnd) = view.hwnd() else {
+                continue;
+            };
+            let mut rect = Rect {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
+            let moved = unsafe {
+                GetWindowRect(hwnd.0 as isize, &mut rect) != 0
+                    && SetWindowPos(
+                        hwnd.0 as isize,
+                        0,
+                        rect.left + delta_x,
+                        rect.top + delta_y,
+                        (rect.right - rect.left).max(1),
+                        (rect.bottom - rect.top).max(1),
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    ) != 0
+            };
+            if !moved {
+                eprintln!("[panes] failed to follow host move: {label}");
+            }
+        }
+    }
+}
+
 fn require_host(label: &str) -> Result<(), String> {
     if label == MAIN_WINDOW_LABEL {
         Ok(())
@@ -139,7 +245,10 @@ fn require_host(label: &str) -> Result<(), String> {
 fn lock<'a>(
     state: &'a tauri::State<'_, PaneRelayState>,
 ) -> Result<std::sync::MutexGuard<'a, PaneRelayRegistry>, String> {
-    state.0.lock().map_err(|_| "PANE_RELAY_POISONED".to_string())
+    state
+        .0
+        .lock()
+        .map_err(|_| "PANE_RELAY_POISONED".to_string())
 }
 
 #[tauri::command]
@@ -194,8 +303,537 @@ pub fn pane_relay_to_host(
     lock(&state)?
         .accept_from_guest(&envelope, webview.label())
         .map_err(|e| e.to_string())?;
-    app.emit_to(MAIN_WINDOW_LABEL, HOST_EVENT, &envelope)
+    let target = if native_child_webviews_enabled() {
+        HOST_WEBVIEW_LABEL
+    } else {
+        MAIN_WINDOW_LABEL
+    };
+    app.emit_to(target, HOST_EVENT, &envelope)
         .map_err(|e| e.to_string())
+}
+
+// child bounds 统一由 NativeWebviewLayoutManager::apply_layout 写入；勿在 create/control 里
+// 再套屏幕坐标换算（易把 display:none 槽的 1×1 固化进合成层）。
+
+fn require_pane_label(label: &str) -> Result<(), String> {
+    if label.starts_with("pane-") {
+        Ok(())
+    } else {
+        Err("PANE_WEBVIEW_INVALID_LABEL".to_string())
+    }
+}
+
+/// 菜单/弹层：浮动 child，不进 content-well 槽布局。
+fn is_floating_overlay_label(label: &str) -> bool {
+    label.starts_with("pane-overlay")
+}
+
+#[cfg(feature = "unstable")]
+fn screen_to_local_bounds(
+    parent: &tauri::Window,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(f64, f64, f64, f64), String> {
+    let scale = parent.scale_factor().map_err(|e| e.to_string())?.max(0.01);
+    let origin = parent.inner_position().map_err(|e| e.to_string())?;
+    let local_x = x - f64::from(origin.x) / scale;
+    let local_y = y - f64::from(origin.y) / scale;
+    Ok((local_x, local_y, width.max(1.0), height.max(1.0)))
+}
+
+#[cfg(feature = "unstable")]
+fn set_child_local_bounds(
+    view: &tauri::Webview,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    use tauri::{Position, Rect, Size};
+    view.set_bounds(Rect {
+        position: Position::Logical(tauri::LogicalPosition::new(x, y)),
+        size: Size::Logical(tauri::LogicalSize::new(width.max(1.0), height.max(1.0))),
+    })
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
+fn set_webview_bounds(
+    view: &tauri::WebviewWindow,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    scale_factor: Option<f64>,
+) -> Result<(), String> {
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowPos(
+            hwnd: isize,
+            insert_after: isize,
+            x: i32,
+            y: i32,
+            width: i32,
+            height: i32,
+            flags: u32,
+        ) -> i32;
+    }
+    let hwnd = view.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    let scale = scale_factor
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .map(Ok)
+        .unwrap_or_else(|| view.scale_factor().map_err(|error| error.to_string()))?;
+    let ok = unsafe {
+        SetWindowPos(
+            hwnd,
+            0,
+            (x * scale).round() as i32,
+            (y * scale).round() as i32,
+            (width.max(1.0) * scale).round() as i32,
+            (height.max(1.0) * scale).round() as i32,
+            // 宿主移动/缩放时，异步排队会令子 WebView 落后一拍；命令本已在 UI 线程，
+            // 同步提交可与本帧的 host rect 对齐。revision 仍会拒绝过时采样。
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        )
+    };
+    if ok == 0 {
+        Err(std::io::Error::last_os_error().to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+fn set_webview_bounds(
+    view: &tauri::WebviewWindow,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    _scale_factor: Option<f64>,
+) -> Result<(), String> {
+    view.set_position(LogicalPosition::new(x, y))
+        .map_err(|error| error.to_string())?;
+    view.set_size(LogicalSize::new(width.max(1.0), height.max(1.0)))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
+fn set_window_owner(
+    view: &tauri::WebviewWindow,
+    owner: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    const GWLP_HWNDPARENT: i32 = -8;
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn SetWindowLongPtrW(hwnd: isize, index: i32, value: isize) -> isize;
+    }
+    let child = view.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    let parent = owner.hwnd().map_err(|error| error.to_string())?.0 as isize;
+    // SAFETY: 两个 HWND 均由当前 Tauri 进程持有，且仅改 owner 槽。
+    unsafe {
+        SetWindowLongPtrW(child, GWLP_HWNDPARENT, parent);
+    }
+    Ok(())
+}
+
+/// 隐藏全部 **content** pane（保留 webview 与 visible 记忆）；不销毁、不碰 overlay 菜单。
+#[tauri::command]
+pub fn pane_webview_hide_all(window: tauri::Window, app: AppHandle) -> Result<(), String> {
+    require_host(window.label())?;
+    if native_child_webviews_enabled() {
+        let manager = app.state::<NativeWebviewLayoutManager>();
+        // 仅切模式 + hide；勿写 visible=false，否则回 workspace 时全员不可见 → 白屏。
+        let _ = manager.set_mode(crate::native_layout::LayoutMode::HostFullscreen);
+        if let Some(host) = app.get_window(MAIN_WINDOW_LABEL) {
+            for view in host.webviews() {
+                let label = view.label().to_string();
+                if !label.starts_with("pane-") || is_floating_overlay_label(&label) {
+                    continue;
+                }
+                let _ = view.hide();
+            }
+        }
+        let _ = manager.apply_layout(&app);
+        return Ok(());
+    }
+    for (label, view) in app.webview_windows() {
+        if label.starts_with("pane-") && !is_floating_overlay_label(&label) {
+            let _ = view.hide();
+        }
+    }
+    Ok(())
+}
+
+/// 销毁全部 content / overlay pane webview（会话结束、换源、登出）。
+#[tauri::command]
+pub fn pane_webview_cleanup(window: tauri::Window, app: AppHandle) -> Result<(), String> {
+    require_host(window.label())?;
+    if native_child_webviews_enabled() {
+        let manager = app.state::<NativeWebviewLayoutManager>();
+        if let Some(host) = app.get_window(MAIN_WINDOW_LABEL) {
+            for view in host.webviews() {
+                if view.label().starts_with("pane-") {
+                    let _ = view.hide();
+                    let _ = manager.unregister_pane(view.label());
+                    let _ = view.close();
+                }
+            }
+        }
+        let _ = manager.set_mode(crate::native_layout::LayoutMode::HostFullscreen);
+        let _ = manager.apply_layout(&app);
+        return Ok(());
+    }
+    for (label, view) in app.webview_windows() {
+        if label.starts_with("pane-") {
+            let _ = view.hide();
+            let _ = view.close();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn pane_webview_window_create(
+    window: tauri::Window,
+    app: AppHandle,
+    state: tauri::State<'_, PaneRelayState>,
+    layout: tauri::State<'_, NativeWebviewLayoutManager>,
+    label: String,
+    url: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    visible: bool,
+) -> Result<(), String> {
+    require_host(window.label())?;
+    require_pane_label(&label)?;
+    if let Ok(position) = window.outer_position() {
+        let _ = lock(&state)?.record_host_position(position.x, position.y);
+    }
+    let url = url::Url::parse(&url).map_err(|_| "PANE_WEBVIEW_INVALID_URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("PANE_WEBVIEW_INVALID_URL".to_string());
+    }
+    let init_script = format!(
+        "Object.defineProperty(window,'__PI_TAURI_PANE_LABEL__',{{value:{},configurable:false}});",
+        serde_json::to_string(&label).map_err(|error| error.to_string())?,
+    );
+    if native_child_webviews_enabled() {
+        #[cfg(feature = "unstable")]
+        {
+            let parent = app
+                .get_window(MAIN_WINDOW_LABEL)
+                .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?;
+            // 浮动菜单：透明 child，屏幕坐标 → 局部 bounds，盖在 content 之上；不进槽表、不 hide content。
+            if is_floating_overlay_label(&label) {
+                let (local_x, local_y, local_w, local_h) =
+                    screen_to_local_bounds(&parent, x, y, width, height)?;
+                if let Some(existing) = parent
+                    .webviews()
+                    .into_iter()
+                    .find(|view| view.label() == label)
+                {
+                    // 复用：只改 bounds + 导航，勿先 hide（闪一下再关是旧路径）。
+                    set_child_local_bounds(&existing, local_x, local_y, local_w, local_h)?;
+                    existing.navigate(url).map_err(|e| e.to_string())?;
+                    if visible {
+                        existing.show().map_err(|e| e.to_string())?;
+                        let _ = existing.set_focus();
+                        set_overlay_wants_top(true);
+                    } else {
+                        // ready 前保持隐藏；导航期间不抬 z。
+                        let _ = existing.hide();
+                        set_overlay_wants_top(false);
+                    }
+                    return Ok(());
+                }
+                // 透明底：菜单卡片外可见底下 content webview（html body 亦 transparent）。
+                let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(url.clone()))
+                    .initialization_script(init_script)
+                    .transparent(true)
+                    .background_color(tauri::window::Color(0, 0, 0, 0));
+                let view = parent
+                    .add_child(
+                        builder,
+                        tauri::LogicalPosition::new(local_x, local_y),
+                        tauri::LogicalSize::new(local_w, local_h),
+                    )
+                    .map_err(|e| e.to_string())?;
+                view.set_auto_resize(false).map_err(|e| e.to_string())?;
+                if visible {
+                    view.show().map_err(|e| e.to_string())?;
+                    let _ = view.set_focus();
+                    set_overlay_wants_top(true);
+                } else {
+                    let _ = view.hide();
+                    set_overlay_wants_top(false);
+                }
+                return Ok(());
+            }
+            // content pane：忽略屏幕坐标，以 window+metrics 槽为准。
+            let _ = (x, y, width, height);
+            // 创建即进入 workspace，避免卡在 HostFullscreen 导致永远 hide。
+            let _ = layout.set_mode(crate::native_layout::LayoutMode::Workspace);
+            // 首建位置用当前 metrics 算槽，禁止 (0,0) 临时坐标（否则 ready 前会闪在左上）。
+            let size = parent.inner_size().map_err(|e| e.to_string())?;
+            let scale = parent.scale_factor().map_err(|e| e.to_string())?;
+            let logical_w = f64::from(size.width) / scale.max(0.01);
+            let logical_h = f64::from(size.height) / scale.max(0.01);
+            let slot = layout.slot_for_window(logical_w, logical_h)?;
+            if let Some(existing) = parent
+                .webviews()
+                .into_iter()
+                .find(|view| view.label() == label)
+            {
+                // 复用实例须重新导航，否则可能停在空白页。
+                existing.navigate(url).map_err(|e| e.to_string())?;
+                layout.register_pane(label, slot, visible, true)?;
+                let _ = layout.invalidate_applied_bounds();
+                layout.apply_layout(&app)?;
+                if visible {
+                    let _ = existing.show();
+                    let _ = existing.set_focus();
+                }
+                return Ok(());
+            }
+            let builder = WebviewBuilder::new(label.clone(), WebviewUrl::External(url.clone()))
+                .initialization_script(init_script);
+            let view = parent
+                .add_child(
+                    builder,
+                    tauri::LogicalPosition::new(slot.x, slot.y),
+                    tauri::LogicalSize::new(slot.width.max(1.0), slot.height.max(1.0)),
+                )
+                .map_err(|e| e.to_string())?;
+            view.set_auto_resize(false).map_err(|e| e.to_string())?;
+            // 先 register 再 layout；visible=false 时仍占位尺寸，ready 后 show 顶起。
+            layout.register_pane(label.clone(), slot, visible, true)?;
+            let _ = layout.invalidate_applied_bounds();
+            layout.apply_layout(&app)?;
+            if visible {
+                view.show().map_err(|e| e.to_string())?;
+                let _ = view.set_focus();
+            } else {
+                let _ = view.hide();
+            }
+            return Ok(());
+        }
+        #[cfg(not(feature = "unstable"))]
+        return Err("PANE_NATIVE_CHILD_UNAVAILABLE".to_string());
+    }
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let build_app = app.clone();
+    #[cfg(not(windows))]
+    let owner_window = app
+        .get_webview_window(MAIN_WINDOW_LABEL)
+        .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?;
+    app.run_on_main_thread(move || {
+        let result = (|| -> Result<(), String> {
+            if let Some(existing) = build_app.get_webview_window(&label) {
+                let _ = existing.hide();
+                let _ = existing.set_shadow(false);
+                existing
+                    .set_ignore_cursor_events(true)
+                    .map_err(|error| error.to_string())?;
+                set_webview_bounds(&existing, x, y, width, height, None)?;
+                existing.navigate(url).map_err(|error| error.to_string())?;
+                if visible {
+                    existing.show().map_err(|error| error.to_string())?;
+                }
+                return Ok(());
+            }
+            // 首建即占宿主槽的最终 bounds，但 ready 前保持原生窗隐藏；
+            // 免去“屏外可见窗移入槽位”的滑行动画与闪烁。
+            let builder = WebviewWindowBuilder::new(&build_app, label, WebviewUrl::External(url))
+                .initialization_script(init_script)
+                .decorations(false)
+                .shadow(false)
+                .skip_taskbar(true)
+                .resizable(false)
+                .focused(false)
+                .visible(visible)
+                .position(x, y)
+                .inner_size(width.max(1.0), height.max(1.0));
+            #[cfg(not(windows))]
+            let builder = builder
+                .parent(&owner_window)
+                .map_err(|error| error.to_string())?;
+            #[cfg(windows)]
+            let builder = match std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS") {
+                Ok(args) if !args.trim().is_empty() => builder.additional_browser_args(args.trim()),
+                _ => builder,
+            };
+            let view = builder.build().map_err(|error| error.to_string())?;
+            let _ = view.set_shadow(false);
+            view.set_ignore_cursor_events(true)
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        })();
+        let _ = sender.send(result);
+    })
+    .map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || receiver.recv())
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|_| "PANE_WEBVIEW_CREATE_CHANNEL_CLOSED".to_string())?
+}
+
+#[tauri::command]
+pub fn pane_webview_window_control(
+    window: tauri::Window,
+    app: AppHandle,
+    state: tauri::State<'_, PaneRelayState>,
+    layout: tauri::State<'_, NativeWebviewLayoutManager>,
+    label: String,
+    action: String,
+    x: Option<f64>,
+    y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
+    scale_factor: Option<f64>,
+    revision: Option<u64>,
+) -> Result<(), String> {
+    require_host(window.label())?;
+    require_pane_label(&label)?;
+    if let Ok(position) = window.outer_position() {
+        let _ = lock(&state)?.record_host_position(position.x, position.y);
+    }
+    if native_child_webviews_enabled() {
+        #[cfg(feature = "unstable")]
+        {
+            let parent = app
+                .get_window(MAIN_WINDOW_LABEL)
+                .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?;
+            let find_view = || {
+                parent
+                    .webviews()
+                    .into_iter()
+                    .find(|candidate| candidate.label() == label)
+                    .ok_or_else(|| "PANE_WEBVIEW_NOT_FOUND".to_string())
+            };
+            let floating = is_floating_overlay_label(&label);
+            return match action.as_str() {
+                "show" => {
+                    let view = find_view()?;
+                    if floating {
+                        view.show().map_err(|e| e.to_string())?;
+                        let _ = view.set_focus();
+                        set_overlay_wants_top(true);
+                        return Ok(());
+                    }
+                    // 必须先退出 HostFullscreen，否则 apply_layout 会继续 hide 全部 content。
+                    layout.set_mode(crate::native_layout::LayoutMode::Workspace)?;
+                    layout.set_pane_visibility(&label, true)?;
+                    // show 必写 bounds：丢 last_slot，避免 near 短路留下 create 时的错位。
+                    layout.invalidate_applied_bounds()?;
+                    layout.apply_layout(&app)?;
+                    // 再顶一次 z-order（host 全窗时尤为关键）。
+                    view.show().map_err(|e| e.to_string())?;
+                    // 菜单打开时勿抢 focus：否则 overlay blur → 一闪而逝。
+                    if !overlay_wants_top() {
+                        let _ = view.set_focus();
+                    }
+                    Ok(())
+                }
+                "hide" => {
+                    let view = find_view()?;
+                    if floating {
+                        set_overlay_wants_top(false);
+                        return view.hide().map_err(|e| e.to_string());
+                    }
+                    // tab 切换：记 visible=false 并 hide。勿 apply_layout（会误触其它 pane 的 show 路径）。
+                    // hide_all / HostFullscreen 不走此分支，不抹记忆。
+                    layout.set_pane_visibility(&label, false)?;
+                    view.hide().map_err(|e| e.to_string())
+                }
+                "reload" => find_view()?.reload().map_err(|e| e.to_string()),
+                "focus" => find_view()?.set_focus().map_err(|e| e.to_string()),
+                "close" => {
+                    let view = find_view()?;
+                    let _ = view.hide();
+                    if !floating {
+                        let _ = layout.unregister_pane(&label);
+                    }
+                    view.close().map_err(|e| e.to_string())
+                }
+                "set-bounds" => {
+                    if let Some(revision) = revision {
+                        if !lock(&state)?.accept_bounds_revision(&label, revision) {
+                            return Ok(());
+                        }
+                    }
+                    let view = find_view()?;
+                    if floating {
+                        let (local_x, local_y, local_w, local_h) = screen_to_local_bounds(
+                            &parent,
+                            x.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                            y.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                            width.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                            height.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                        )?;
+                        let _ = scale_factor;
+                        return set_child_local_bounds(&view, local_x, local_y, local_w, local_h);
+                    }
+                    // content pane：忽略屏幕坐标，重算槽位。
+                    let _ = (x, y, width, height, scale_factor);
+                    layout.apply_layout(&app)
+                }
+                _ => Err("PANE_WEBVIEW_INVALID_ACTION".to_string()),
+            };
+        }
+        #[cfg(not(feature = "unstable"))]
+        return Err("PANE_NATIVE_CHILD_UNAVAILABLE".to_string());
+    }
+    let view = app
+        .get_webview_window(&label)
+        .ok_or_else(|| "PANE_WEBVIEW_NOT_FOUND".to_string())?;
+    match action.as_str() {
+        "show" => {
+            #[cfg(windows)]
+            set_window_owner(
+                &view,
+                &app.get_webview_window(MAIN_WINDOW_LABEL)
+                    .ok_or_else(|| "PANE_LAYOUT_HOST_NOT_FOUND".to_string())?,
+            )?;
+            view.show().map_err(|error| error.to_string())?;
+            view.set_ignore_cursor_events(false)
+                .map_err(|error| error.to_string())
+        }
+        "hide" => {
+            let _ = view.set_ignore_cursor_events(true);
+            view.hide().map_err(|error| error.to_string())
+        }
+        "reload" => view.reload().map_err(|error| error.to_string()),
+        "focus" => view.set_focus().map_err(|error| error.to_string()),
+        "close" => {
+            let _ = view.hide();
+            view.close().map_err(|error| error.to_string())?;
+            lock(&state)?.clear_bounds_revision(&label);
+            Ok(())
+        }
+        "set-bounds" => {
+            if let Some(revision) = revision {
+                if !lock(&state)?.accept_bounds_revision(&label, revision) {
+                    return Ok(());
+                }
+            }
+            set_webview_bounds(
+                &view,
+                x.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                y.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                width.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                height.ok_or_else(|| "PANE_WEBVIEW_INVALID_BOUNDS".to_string())?,
+                scale_factor,
+            )
+        }
+        _ => return Err("PANE_WEBVIEW_INVALID_ACTION".to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -215,11 +853,20 @@ mod tests {
         let mut reg = PaneRelayRegistry::default();
         reg.bind("editor-1", 1, "pane-editor-1").unwrap();
         // 旧 handle 迟到的低 epoch 绑定被拒。
-        assert_eq!(reg.bind("editor-1", 0, "pane-x"), Err(RelayError::StaleEpoch));
+        assert_eq!(
+            reg.bind("editor-1", 0, "pane-x"),
+            Err(RelayError::StaleEpoch)
+        );
         // reload：更高 epoch 重绑生效。
         reg.bind("editor-1", 2, "pane-editor-1").unwrap();
-        assert_eq!(reg.guest_target(&envelope("editor-1", 2)).unwrap(), "pane-editor-1");
-        assert_eq!(reg.guest_target(&envelope("editor-1", 1)), Err(RelayError::StaleEpoch));
+        assert_eq!(
+            reg.guest_target(&envelope("editor-1", 2)).unwrap(),
+            "pane-editor-1"
+        );
+        assert_eq!(
+            reg.guest_target(&envelope("editor-1", 1)),
+            Err(RelayError::StaleEpoch)
+        );
     }
 
     #[test]
@@ -230,16 +877,23 @@ mod tests {
         reg.unbind("editor-1", 1);
         assert!(reg.guest_target(&envelope("editor-1", 2)).is_ok());
         reg.unbind("editor-1", 2);
-        assert_eq!(reg.guest_target(&envelope("editor-1", 2)), Err(RelayError::Unbound));
+        assert_eq!(
+            reg.guest_target(&envelope("editor-1", 2)),
+            Err(RelayError::Unbound)
+        );
     }
 
     #[test]
     fn guest_uplink_enforces_label_and_epoch() {
         let mut reg = PaneRelayRegistry::default();
         reg.bind("editor-1", 3, "pane-editor-1").unwrap();
-        assert!(reg.accept_from_guest(&envelope("editor-1", 3), "pane-editor-1").is_ok());
+        assert!(reg
+            .accept_from_guest(&envelope("editor-1", 3), "pane-editor-1")
+            .is_ok());
         // 握手前 pane:ready（epoch 0）放行。
-        assert!(reg.accept_from_guest(&envelope("editor-1", 0), "pane-editor-1").is_ok());
+        assert!(reg
+            .accept_from_guest(&envelope("editor-1", 0), "pane-editor-1")
+            .is_ok());
         // 他人 webview 冒名被拒；旧 epoch 被拒；未绑定被拒。
         assert_eq!(
             reg.accept_from_guest(&envelope("editor-1", 3), "pane-other"),
@@ -253,6 +907,24 @@ mod tests {
             reg.accept_from_guest(&envelope("ghost", 1), "pane-ghost"),
             Err(RelayError::Unbound)
         );
+    }
+
+    #[test]
+    fn bounds_revision_rejects_late_updates() {
+        let mut reg = PaneRelayRegistry::default();
+        assert!(reg.accept_bounds_revision("pane-editor-1", 1));
+        assert!(!reg.accept_bounds_revision("pane-editor-1", 1));
+        assert!(reg.accept_bounds_revision("pane-editor-1", 3));
+        assert!(!reg.accept_bounds_revision("pane-editor-1", 2));
+        reg.clear_bounds_revision("pane-editor-1");
+        assert!(reg.accept_bounds_revision("pane-editor-1", 1));
+    }
+
+    #[test]
+    fn host_move_reports_physical_delta_after_initial_position() {
+        let mut reg = PaneRelayRegistry::default();
+        assert_eq!(reg.record_host_position(100, 200), None);
+        assert_eq!(reg.record_host_position(132, 184), Some((32, -16)));
     }
 
     #[test]
@@ -284,6 +956,13 @@ mod tests {
             "pane_relay_unbind",
             "pane_relay_to_guest",
             "pane_relay_to_host",
+            "pane_webview_hide_all",
+            "pane_webview_cleanup",
+            "pane_webview_window_create",
+            "pane_webview_window_control",
+            "pane_layout_set_mode",
+            "pane_layout_set_metrics",
+            "pane_layout_is_native",
         ] {
             assert!(
                 toml_src.contains(cmd),
@@ -292,7 +971,8 @@ mod tests {
         }
 
         let perms_of = |src: &str| -> Vec<String> {
-            let cap: serde_json::Value = serde_json::from_str(src).expect("capability 应是合法 JSON");
+            let cap: serde_json::Value =
+                serde_json::from_str(src).expect("capability 应是合法 JSON");
             cap["permissions"]
                 .as_array()
                 .expect("capability 应含 permissions 数组")
@@ -307,7 +987,7 @@ mod tests {
         // pane webview:仅上行 + 事件监听,不得拿到 host 侧命令。
         let panes_cap: serde_json::Value =
             serde_json::from_str(include_str!("../capabilities/panes.json")).unwrap();
-        assert_eq!(panes_cap["windows"], serde_json::json!(["pane-*"]));
+        assert_eq!(panes_cap["webviews"], serde_json::json!(["pane-*"]));
         let panes_perms = perms_of(include_str!("../capabilities/panes.json"));
         assert!(panes_perms.contains(&"allow-pane-relay-guest".to_string()));
         assert!(panes_perms.contains(&"core:event:allow-listen".to_string()));

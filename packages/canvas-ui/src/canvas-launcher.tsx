@@ -5,6 +5,11 @@
  * launcherRail / 右侧面板,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
  * 非 AIGC source 不声明这些槽 → 自然不挂载(独立性由声明缺席保证,而非 env 开关)。
  *
+ * - **CanvasLauncher**(launcherRail 默认):点击经 `canvasOpenStore` 开合 **panelRight** 画廊
+ *   （aigc-canvas-agent 等无 panes 的路径）。
+ * - 若传入 `workspacePaneId`：改为 panes workspace intent（同 `pane_open`/`pane_activate`），
+ *   仅 **声明了 panes 的 source**（如 aigc-agent）应传此 prop，勿默认开启以免伤其它 agent。
+ * - **CanvasPanel**(panelRight / pane guest):画廊与工作台 UI。
  * - **CanvasLauncher**(launcherRail 具名槽):渲染入口按钮,点击经跨 slot 共享的
  *   `canvasOpenStore` 开合画廊面板(激活/关闭回收视图)。
  * - **CanvasPanel**(右侧面板):宿主经 prop 注入 `surface`(launcherRail slot 拿不到 surface,
@@ -16,6 +21,7 @@
 import * as React from "react";
 import type { WebExtSurfaceAccess, ConversationAccess, WebExtension } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
+import { openOrActivatePaneFromHost } from "@blksails/pi-web-panes-kit";
 import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
 import { fetchVisionModels, type VisionModelOption } from "./vision-op.js";
@@ -41,19 +47,34 @@ export interface CanvasLauncherProps {
   readonly surface?: WebExtSurfaceAccess;
   /** 测试 / 强制覆盖门控(缺省读 env)。 */
   readonly enabled?: boolean;
+  /**
+   * 可选：目标 panes tab id（如 `"canvas"`）。
+   * - **未传**（默认）：`canvasOpenStore` 开合 panelRight 画廊 —— 兼容 aigc-canvas-agent 等。
+   * - **传入**：`openOrActivatePaneFromHost(paneId)` —— 仅 panes 源（aigc-agent）使用。
+   */
+  readonly workspacePaneId?: string;
 }
 
 /** launcherRail 入口按钮(被 source 声明挂载即显示;`enabled` 显式传可覆盖,如强制关)。 */
-export function CanvasLauncher({ enabled }: CanvasLauncherProps): React.JSX.Element | null {
+export function CanvasLauncher({
+  enabled,
+  workspacePaneId,
+}: CanvasLauncherProps): React.JSX.Element | null {
   const on = enabled ?? true;
   const { open, toggle } = useCanvasOpen();
   if (!on) return null;
+  const panesMode = workspacePaneId !== undefined && workspacePaneId.length > 0;
   return (
     <button
       type="button"
       data-canvas-launcher
-      aria-expanded={open}
-      onClick={toggle}
+      {...(panesMode
+        ? { "data-canvas-launcher-panes": "", "aria-label": "打开画布" }
+        : { "aria-expanded": open })}
+      onClick={() => {
+        if (panesMode) openOrActivatePaneFromHost(workspacePaneId);
+        else toggle();
+      }}
       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-[hsl(var(--accent))]"
     >
       <span aria-hidden>🖼️</span>

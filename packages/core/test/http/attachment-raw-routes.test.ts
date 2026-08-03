@@ -80,7 +80,7 @@ async function readBytes(res: Response): Promise<Buffer> {
 // ─── 直接调用 handler(隔离) ──────────────────────────────────────────────
 
 describe("makeRawAttachmentHandler (isolated)", () => {
-  it("有效签名 → 200 + 正确 Content-Type + Cache-Control + 字节", async () => {
+  it("有效签名 → 200 + 正确 Content-Type + Cache-Control + Pane CORS + 字节", async () => {
     const store = makeStore();
     const { displayUrl } = await seed(store, "raw bytes here", "image/png");
     const handler = makeRawAttachmentHandler(store);
@@ -95,6 +95,7 @@ describe("makeRawAttachmentHandler (isolated)", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("image/png");
     expect(res.headers.get("Cache-Control")).toBeTruthy();
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
     expect((await readBytes(res)).toString("utf8")).toBe("raw bytes here");
   });
 

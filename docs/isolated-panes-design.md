@@ -439,3 +439,46 @@ contract/typecheck
 - Canvas 使用项目既有 Canvas UI/Surface/附件/Conversation 链路。
 - 普通 Agent、普通 WebExt 和无 panelRight 页面无回归。
 - 文档、类型、契约测试、示例构建和双宿主 conformance 能独立指导第三方接入。
+
+## 9. Tauri 单窗口多 WebView 布局（REQ-A15）
+
+### 9.1 当前实现审计
+
+- 旧路径以 `WebviewWindow` 创建主窗与 Pane 浮层，Pane 位置依赖宿主 DOM 槽位和高频边界同步。
+- `WebviewWindowBuilder.parent()` 仅建立窗口 owner 关系，不是 Tauri child WebView；故无法保证原生并列布局。
+- Tauri 2.11.2 提供 `Window.add_child(WebviewBuilder, position, size)`、`Webview.set_bounds/show/hide/close`；当前启用 `unstable` feature 后可用。
+
+### 9.2 目标状态流
+
+```text
+host route semantic event
+  -> pane_layout_set_mode / pane_layout_set_metrics
+  -> NativeWebviewLayoutManager (Rust, layout source of truth)
+  -> host child + one child WebView per Pane: set_bounds
+  -> show/hide; session boundary only dispose
+```
+
+每个 Pane 实例均独占一个原生 child WebView（`pane-<instanceId>`），保存 `label、bounds、visible、initialized、last_active、keep_alive`。普通路由卸载只 `suspend/hide`；会话、隔离环境或显式重建才 `close/unregister`。
+
+### 9.3 布局与通信
+
+- `workspace`：host 占左侧，Pane child WebView 组占右侧；`host-fullscreen`：隐藏全部 Pane，host 铺满。
+- Rust 统一计算逻辑坐标并一次 `set_bounds`；窗口 resize、DPI、最大化/还原/全屏统一进入 `apply_layout`。
+- 前端仅发送语义模式与少量 `topHeight/leftWidth/paneWidth/paneRatio/minWidth`，不再持续读取 DOM 槽位。
+- `PI_WEB_NATIVE_CHILD_WEBVIEWS=1` 启用新路径；未启用时保留旧浮层路径作为回滚开关。
+
+### 9.4 平台差异与降级
+
+| 平台 | 能力 | 降级 |
+|---|---|---|
+| Windows/WebView2 | child WebView、原生 bounds、焦点可用；创建须避免同步主线程死锁 | 创建失败回退旧 `WebviewWindow` |
+| macOS/WKWebView | child API 可用性随 Tauri/WebKit 版本变化 | feature 关闭或 add_child 失败时回退浮层 |
+| Linux/WebKitGTK | child 层级、输入法及透明度差异较大 | 保留 iframe/浮层路径，记录运行时能力 |
+
+### 9.5 迁移与验证清单
+
+1. 以 feature flag 启用新布局，旧路径保持可回滚。
+2. 验证 workspace/host-fullscreen 往返、窗口连续 resize、DPI、最大化/全屏。
+3. 验证 Pane 多开时一实例一 WebView、路由卸载恢复原实例、会话切换销毁旧实例。
+4. 验证焦点、键盘输入法、鼠标事件、添加 Pane 弹层不被 child WebView 遮挡。
+5. 通过 `cargo check/test`、panes-kit 类型检查与布局/宿主测试；Windows 实机再完成 child WebView 烟测，macOS/Linux 记录降级结果。

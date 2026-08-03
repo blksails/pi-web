@@ -32,6 +32,7 @@ export const PaneCapabilitiesSchema = z.object({
   }).default({}),
   attachments: z.enum(["none", "read", "read-write"]).default("none"),
   conversation: z.enum(["none", "submit"]).default("none"),
+  downloads: z.boolean().default(false),
   /**
    * 会话级共享状态的逐键授权(spec panes-only-right-panel Req 2)。
    *
@@ -58,6 +59,8 @@ export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
   icon: z.string().max(32).optional(),
+  /** 宿主原生视图标识；声明后由 PanesHost 渲染宿主节点，不启动 Guest iframe。 */
+  hostView: NonEmptyIdSchema.optional(),
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
@@ -161,12 +164,18 @@ export interface PaneErrorData {
   readonly status?: number;
 }
 
+export interface PaneTheme {
+  readonly colorScheme?: string;
+  readonly tokens: Readonly<Record<string, string>>;
+}
+
 export interface PaneConnectedMessage {
   readonly type: "pane:connected";
   readonly protocol: typeof PANE_PROTOCOL_VERSION;
   readonly instance: Pick<PaneInstance, "instanceId" | "paneId" | "epoch">;
   readonly grants: PaneCapabilities;
   readonly interactionMode: "standard" | "advanced";
+  readonly theme?: PaneTheme;
 }
 
 export interface PaneReadyMessage {
@@ -177,6 +186,7 @@ export interface PaneReadyMessage {
 
 export type PaneHostMessage =
   | PaneConnectedMessage
+  | { readonly type: "pane:theme"; readonly theme: PaneTheme }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: true; readonly data: unknown }
   | { readonly type: "pane:result"; readonly requestId: string; readonly ok: false; readonly error: PaneErrorData }
   | { readonly type: "pane:surface"; readonly key: string; readonly value: unknown }

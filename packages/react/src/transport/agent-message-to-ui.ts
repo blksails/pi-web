@@ -104,6 +104,22 @@ function imageUrl(raw: ContentItem, baseUrl: string): string {
   return `data:${String(raw.mimeType ?? "")};base64,${String(raw.data ?? "")}`;
 }
 
+function imagePart(raw: ContentItem, baseUrl: string): UIPart {
+  const attachmentId =
+    typeof raw.attachmentId === "string" && raw.attachmentId !== ""
+      ? raw.attachmentId
+      : undefined;
+  const filename =
+    typeof raw.name === "string" && raw.name !== "" ? raw.name : undefined;
+  return {
+    type: "file",
+    mediaType: String(raw.mimeType ?? "application/octet-stream"),
+    url: imageUrl(raw, baseUrl),
+    ...(filename !== undefined ? { filename } : {}),
+    ...(attachmentId !== undefined ? { attachmentId } : {}),
+  } as unknown as UIPart;
+}
+
 /** 把内容数组中的文本拼接为一个字符串(用于 tool 错误文本)。 */
 function joinText(content: readonly ContentItem[]): string {
   return content
@@ -178,11 +194,7 @@ function userParts(content: unknown, baseUrl: string): UIPart[] {
       if (original.includes("[attachment id=") && text === "") continue;
       parts.push({ type: "text", text, state: "done" } as UIPart);
     } else if (raw.type === "image") {
-      parts.push({
-        type: "file",
-        mediaType: String(raw.mimeType ?? "application/octet-stream"),
-        url: imageUrl(raw, baseUrl),
-      } as UIPart);
+      parts.push(imagePart(raw, baseUrl));
     }
   }
   return parts;
@@ -218,6 +230,8 @@ export function agentMessagesToUiMessages(
           parts.push({ type: "text", text: String(c.text ?? ""), state: "done" } as UIPart);
         } else if (c.type === "thinking") {
           parts.push({ type: "reasoning", text: String(c.thinking ?? ""), state: "done" } as UIPart);
+        } else if (c.type === "image") {
+          parts.push(imagePart(c, baseUrl));
         } else if (c.type === "toolCall") {
           const tp: MutableToolPart = {
             type: "dynamic-tool",

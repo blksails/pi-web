@@ -1,0 +1,287 @@
+{
+  "schema_version": 1,
+  "spec_name": "panes-host-interaction-polish",
+  "title": "Pane 交互打磨：MRU tab 排序、菜单计数与选中态、弹窗/闪烁修复、切源先隐藏",
+  "language": "zh",
+  "recorded_at": "2026-07-31T11:14:44Z",
+  "summary": "workspace tab 按最近打开(MRU)前置排序且恢复保序；新开 Pane 菜单显示真实计数、更多 Pane 菜单活跃项带选中态；native overlay 弹窗创建竞态修复与 tab 切换 show-first 防闪；切源/新建先隐藏再销毁 pane webview；扩展声明 hostView:\"logs\" 时日志 tab 恒渲染。",
+  "boundary": {
+    "in_scope": [
+      "workspace reducer MRU（open/activate 前置 + 持久化恢复保序）",
+      "新开 Pane 菜单 meta 计数（native overlay + DOM palette）",
+      "更多 Pane 菜单活跃 tab 选中态（overlay selected + DOM）",
+      "native overlay 弹窗创建竞态修复（ensureShellCreated/ensureWarm 拆分）",
+      "tab 切换 show-first 与 carrier display 门控（nativeShownKeys）",
+      "切源/新建/恢复会话先 hide_all 再销毁 pane webview",
+      "logs hostView tab 恒渲染 LogsPanel",
+      "dev-desktop waitForBase 超时诊断与 SKIP_CLOUD"
+    ],
+    "out_of_scope": [
+      "host-presence 单闸与 WebView warm pool（见 pane-lifecycle-hide-destroy）",
+      "Rust 侧 pane_relay 新增命令",
+      "aigc-agent 业务 pane（见 example 仓）",
+      "iframe 会话状态磁盘持久化细节"
+    ]
+  },
+  "requirements": [
+    {
+      "id": "REQ-101",
+      "title": "tab 按最近打开顺序排序",
+      "user_story": "作为桌面用户，我希望 pane tab 顺序按最近打开排列，以便快速回到刚用过的面板。",
+      "acceptance_criteria": [
+        {
+          "id": "1.1",
+          "when": "用户打开或切换某 pane tab",
+          "shall": "系统将该实例置为 tab 序列最前并保持其余相对顺序（MRU）"
+        },
+        {
+          "id": "2.1",
+          "when": "工作区从持久化状态恢复",
+          "shall": "系统按持久化顺序构造实例并仅将活跃实例前置，避免 MRU 下逐次 open 翻转顺序"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "packages/panes-kit/src/instances.ts",
+        "packages/panes-kit/src/react/panes-host.tsx"
+      ]
+    },
+    {
+      "id": "REQ-102",
+      "title": "新开 Pane 菜单显示真实计数",
+      "user_story": "作为桌面用户，我希望新开 Pane 菜单的元信息始终是实际打开计数，以便判断是否还能再开。",
+      "acceptance_criteria": [
+        {
+          "id": "3.1",
+          "when": "某 pane 实例处于后台保活态",
+          "shall": "系统在新开 Pane 菜单仍显示计数（x/y 或「已开 n」），不显示「后台保活」"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "packages/panes-kit/src/react/panes-host.tsx"
+      ]
+    },
+    {
+      "id": "REQ-103",
+      "title": "更多 Pane 菜单选中态与弹窗可稳定打开",
+      "user_story": "作为桌面用户，我希望更多 Pane 菜单能标出当前活跃 tab，且新开 Pane 弹窗能稳定打开。",
+      "acceptance_criteria": [
+        {
+          "id": "4.1",
+          "when": "活跃 tab 溢出到「更多 Pane」菜单",
+          "shall": "系统在菜单项上标记选中态（✓ / accent 底色 / aria-current）"
+        },
+        {
+          "id": "5.1",
+          "when": "用户首次打开新开 Pane 弹窗",
+          "shall": "系统等待 overlay 壳创建完成后导航，避免预热与打开并发 create 竞态导致弹窗打不开"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "packages/panes-kit/src/react/panes-host.tsx",
+        "packages/panes-kit/src/adapters/tauri-runtime.ts",
+        "public/pane-overlay.html"
+      ]
+    },
+    {
+      "id": "REQ-104",
+      "title": "tab 切换不闪旧内容",
+      "user_story": "作为桌面用户，我希望切换 pane tab 时不再出现先隐藏后显示造成的空白闪帧。",
+      "acceptance_criteria": [
+        {
+          "id": "6.1",
+          "when": "用户切换 pane tab",
+          "shall": "系统先显示活跃 webview 再隐藏其余，且 carrier 在未就绪前以 display 门控隐藏"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "packages/panes-kit/src/react/panes-host.tsx"
+      ]
+    },
+    {
+      "id": "REQ-105",
+      "title": "切源时 pane 内容在骨架屏周期隐藏",
+      "user_story": "作为桌面用户，我希望切换源时右侧 Pane 不残留旧内容闪帧，骨架屏触发与完成期间 pane 内容保持隐藏。",
+      "acceptance_criteria": [
+        {
+          "id": "7.1",
+          "when": "用户新建、切换或恢复会话",
+          "shall": "系统先隐藏再销毁旧 pane webview，避免 remount 骨架屏渲染期间未销毁完的旧内容残留一帧"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "components/chat-app.tsx",
+        "lib/app/desktop-bridge.ts"
+      ]
+    },
+    {
+      "id": "REQ-106",
+      "title": "日志 pane 以 webview tab 接入",
+      "user_story": "作为 AIGC 用户，我希望扩展声明 hostView:\"logs\" 时日志 tab 恒渲染公共 LogsPanel，不依赖 showLogs 开关。",
+      "acceptance_criteria": [
+        {
+          "id": "8.1",
+          "when": "扩展 panes 声明 hostView:\"logs\" 的一级 tab",
+          "shall": "系统恒渲染 LogsPanel 并提供完整数据链路（实时帧 + getLogs 历史），门控只作用于 legacy 位置面板"
+        }
+      ],
+      "evidence": [
+        "docs/REQUIREMENTS-SPEC.md#REQ-A13",
+        "packages/ui/src/chat/pi-chat.tsx"
+      ]
+    }
+  ],
+  "implementation": {
+    "components": [
+      {
+        "name": "instances.reducePaneWorkspace",
+        "responsibility": "open/activate 把实例置为序列最前（MRU），其余保持相对顺序；close 激活剩余最近使用",
+        "evidence": [
+          "packages/panes-kit/src/instances.ts"
+        ]
+      },
+      {
+        "name": "panes-host.restoredPaneWorkspace",
+        "responsibility": "按持久化顺序直接构造实例（而非逐个 open），仅 activate 活跃实例前置，避免恢复顺序翻转",
+        "evidence": [
+          "packages/panes-kit/src/react/panes-host.tsx"
+        ]
+      },
+      {
+        "name": "panes-host.openPaletteMenu",
+        "responsibility": "新开 Pane 菜单 meta 统一显示计数，移除后台保活文案",
+        "evidence": [
+          "packages/panes-kit/src/react/panes-host.tsx"
+        ]
+      },
+      {
+        "name": "panes-host.openHiddenTabsMenu",
+        "responsibility": "更多 Pane 菜单活跃项带 selected/aria-current（native overlay 与 DOM 两路）",
+        "evidence": [
+          "packages/panes-kit/src/react/panes-host.tsx",
+          "public/pane-overlay.html"
+        ]
+      },
+      {
+        "name": "tauri-runtime.ensureShellCreated/ensureWarm",
+        "responsibility": "弹窗打开先等壳创建完成（BIND+CREATE）再导航，与预热并发 create 解耦，修复弹窗打不开",
+        "evidence": [
+          "packages/panes-kit/src/adapters/tauri-runtime.ts"
+        ]
+      },
+      {
+        "name": "panes-host.nativeShownKeys",
+        "responsibility": "tab 切换 show-first（先 await 活跃 show 再 hide 其余），carrier 以 display 门控未就绪帧",
+        "evidence": [
+          "packages/panes-kit/src/react/panes-host.tsx"
+        ]
+      },
+      {
+        "name": "chat-app.hideThenDestroyPaneWebviews",
+        "responsibility": "新建/切源/恢复会话先发 pane_webview_hide_all 再销毁，遮蔽 remount 骨架屏期间的旧内容残帧",
+        "evidence": [
+          "components/chat-app.tsx"
+        ]
+      },
+      {
+        "name": "pi-chat.logsActive",
+        "responsibility": "扩展声明 hostView:\"logs\" 时恒渲染 LogsPanel 并接实时/历史日志链路",
+        "evidence": [
+          "packages/ui/src/chat/pi-chat.tsx"
+        ]
+      },
+      {
+        "name": "dev-desktop.waitForBase",
+        "responsibility": "超时报告各探测 URL 状态；支持 PI_WEB_DEV_SKIP_CLOUD 与外部 cloud 门闩",
+        "evidence": [
+          "scripts/dev-desktop.mjs"
+        ]
+      }
+    ],
+    "verification": [
+      {
+        "command": "cd packages/panes-kit && npx tsc -p tsconfig.json --noEmit",
+        "exit_code": 0
+      },
+      {
+        "command": "cd packages/panes-kit && npx vitest run",
+        "exit_code": 0
+      },
+      {
+        "command": "cd C:/workcode/pi-web && npx tsc -p tsconfig.json --noEmit",
+        "exit_code": 0
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "description": "MRU reducer 与恢复保序：open/activate 前置 + restoredPaneWorkspace 直接构造",
+      "requirement_ids": [
+        "REQ-101"
+      ],
+      "evidence": [
+        "packages/panes-kit/src/instances.ts",
+        "packages/panes-kit/src/react/panes-host.tsx"
+      ]
+    },
+    {
+      "id": "2",
+      "description": "菜单 meta 与选中态：新开 Pane 计数、更多 Pane selected（overlay + DOM）",
+      "requirement_ids": [
+        "REQ-102",
+        "REQ-103"
+      ],
+      "evidence": [
+        "packages/panes-kit/src/react/panes-host.tsx",
+        "public/pane-overlay.html"
+      ]
+    },
+    {
+      "id": "3",
+      "description": "弹窗竞态与切换闪烁：ensureShellCreated/ensureWarm 拆分、nativeShownKeys show-first",
+      "requirement_ids": [
+        "REQ-103",
+        "REQ-104"
+      ],
+      "evidence": [
+        "packages/panes-kit/src/adapters/tauri-runtime.ts",
+        "packages/panes-kit/src/react/panes-host.tsx"
+      ]
+    },
+    {
+      "id": "4",
+      "description": "切源先隐藏再销毁 pane webview（chat-app 四处切源路径）",
+      "requirement_ids": [
+        "REQ-105"
+      ],
+      "evidence": [
+        "components/chat-app.tsx"
+      ]
+    },
+    {
+      "id": "5",
+      "description": "logs hostView tab 恒渲染 LogsPanel（logsActive）",
+      "requirement_ids": [
+        "REQ-106"
+      ],
+      "evidence": [
+        "packages/ui/src/chat/pi-chat.tsx"
+      ]
+    },
+    {
+      "id": "6",
+      "description": "dev-desktop waitForBase 诊断与 SKIP_CLOUD",
+      "requirement_ids": [
+        "REQ-101"
+      ],
+      "evidence": [
+        "scripts/dev-desktop.mjs"
+      ]
+    }
+  ]
+}
