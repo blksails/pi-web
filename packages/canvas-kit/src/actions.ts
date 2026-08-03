@@ -23,6 +23,8 @@ export interface CanvasCapability {
   readonly models: ReadonlyArray<{
     readonly id: string;
     readonly label?: string;
+    /** 归属 provider 标识(供前端渲染徽章与剥后缀);旧 agent 不下发时缺省。 */
+    readonly provider?: string;
     /** 该模型受支持尺寸集(缺省=不收窄,全局 sizes 全可用)。 */
     readonly sizes?: readonly string[];
   }>;
