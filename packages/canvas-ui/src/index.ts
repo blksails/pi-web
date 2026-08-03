@@ -121,5 +121,13 @@ export type {
 } from "./client-image-ops.js";
 
 // ── vision readout(spec canvas-vision-readout):解读载荷构造器 + 模型选项类型 ──────
-export { buildVisionOp, DEFAULT_READOUT_QUESTION } from "./vision-op.js";
+// fetchVisionModels 及其缓存注入/复位(multi-gateway-providers 任务 6.3):设置面板
+// VisionModelSelectField 跨包消费的正是这三个值,与解读弹层共用同一次取数与缓存。
+export {
+  buildVisionOp,
+  DEFAULT_READOUT_QUESTION,
+  fetchVisionModels,
+  __setVisionModelCatalogFetchImpl,
+  __resetVisionModelCatalogCache,
+} from "./vision-op.js";
 export type { BuildVisionOpInput, VisionModelOption } from "./vision-op.js";

@@ -247,14 +247,18 @@ Canvas 建立在 Surface 权威表面栈之上（`domain=canvas` 的 CQRS 单写
 
 供设置界面与 Canvas 选择器列举模型，**取数失败一律降级 200 + 空清单**，不把 500 透给前端：
 
-| 端点 | 用途 | 实现 |
+> ⚠ **已变更（spec `multi-gateway-providers` 任务 4.3）**：曾经的 `GET /api/vision/models` 与 `GET /api/aigc/models` 两条专用路由**已删除**，其能力由唯一的部署级目录端点 `GET /api/config/models` 按模态筛选覆盖。
+
+| 用途 | 查询 | 说明 |
 |---|---|---|
-| `GET /api/vision/models` | 列「已配凭证且支持图像输入」的视觉模型 `{value,label,provider}`，供 Canvas「解读」选择器；`value` 是 `provider/modelId`，可原样填进 `image_vision` 的 `model` | `packages/server/src/vision-settings/vision-models-routes.ts:29` |
-| `GET /api/aigc/models` | 列 AIGC 图像模型展示目录 `{model,label,provider}`，供 `/settings` 的「模型开关」widget；数据源是主入口纯常量 `AIGC_MODEL_CATALOG` | `packages/server/src/aigc-settings/aigc-models-routes.ts:14` |
+| 视觉**理解**模型（Canvas「解读」选择器） | `GET /api/config/models?input=image&output=text` | 判据必须同时约束 `output=text`——只按 `input=image` 会把图生图/改图模型一并纳入 |
+| 图像**生成**模型（`/settings` 的「模型开关」widget） | `GET /api/config/models?output=image` | 数据源含静态 `AIGC_MODEL_CATALOG` 与已启用网关实例的图像目录 |
 
-两条路由经 `routes:` 注入接缝挂进 `createPiWebHandler`（`lib/app/pi-handler.ts:497,502`），宿主用一条 `app.all("/api/*")` 转发全部 API 面（Next 删除后不再需要 per-段转发器）。端点完整参考见 [24 · HTTP/SSE API 参考](./24-http-api-reference.md)。
+响应条目统一为 `{provider,id,name,input,output,source}`（`ModelCatalogService.query()` 投影，`packages/core/src/model-catalog/service.ts`）。视觉侧的复合标识 `provider/modelId`（可原样填进 `image_vision` 的 `model`、也是 `aigc.json` 里 `visionModel` 的存量值格式）由**消费面自行拼装** `${provider}/${id}`，格式不变。
 
-前端可复用 `fetchVisionModels`（`vision-op.ts:92`）拉 `GET /vision/models`：任何失败（无 baseUrl / 非 2xx / 解析异常 / 形状不符）都返回空数组，解读功能仍可用。
+路由经 `routes:` 注入接缝挂进 `createPiWebHandler`，宿主用一条 `app.all("/api/*")` 转发全部 API 面（Next 删除后不再需要 per-段转发器）。端点完整参考见 [24 · HTTP/SSE API 参考](./24-http-api-reference.md)。
+
+前端可复用 `fetchVisionModels`（`packages/canvas-ui/src/vision-op.ts`）：任何失败（无 baseUrl / 非 2xx / 解析异常 / 形状不符）都返回空数组且留一行可辨识的 `console.error`，解读功能仍可用。传入非 http(s) 的哨兵 baseUrl（pane 车道的 `pane://host`）时直接短路返回空清单、不发请求也不报错——pane 里视觉模型的选择已下沉到 agent。
 
 ---
 
@@ -307,7 +311,7 @@ createNewApiImage(
 ),
 ```
 
-新路由的 `model` 会自动进入 `optionalModelEnum` 构造的 LLM 可见枚举，`"$models"` 哨兵展开、装配期清单下发、`GET /aigc/models` 目录均随之更新——单一事实源。
+新路由的 `model` 会自动进入 `optionalModelEnum` 构造的 LLM 可见枚举，`"$models"` 哨兵展开、装配期清单下发、`GET /api/config/models?output=image` 目录均随之更新——单一事实源。
 
 ---
 
@@ -343,5 +347,5 @@ createNewApiImage(
 - [12 · Web UI 扩展](./12-web-ui-extension.md) — `promptToolbar` 槽与 AIGC 快捷设置
 - [13 · 配置 UI](./13-config-ui.md) — `aigc.json` 的 `aigcModelToggles` widget
 - [16 · Canvas 工作台](./16-canvas-workbench.md) — 二创画布编辑器与「解读」按钮的完整交互
-- [24 · HTTP/SSE API 参考](./24-http-api-reference.md) — `GET /vision/models`、`GET /aigc/models` 端点
+- [24 · HTTP/SSE API 参考](./24-http-api-reference.md) — 统一目录端点 `GET /api/config/models` 及其模态筛选参数
 - [23 · 故障排查 FAQ](./23-troubleshooting-faq.md#4-provider--模型问题) — 401／「渠道不存在」、iPhone 多图 JPEG 报错

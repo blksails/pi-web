@@ -7,11 +7,15 @@
  *  ② **空 model 不产生参数行** —— 否则工具收到空 model 会报 `unknown_model`,而不是弹层。
  *  ③ **参数顺序 image → question → model** —— 渲染输出确定性。
  */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { renderSurfaceOp } from "@blksails/pi-web-kit";
 import {
   buildVisionOp,
   fetchVisionModels,
+  __setVisionModelCatalogFetchImpl,
+  __resetVisionModelCatalogCache,
+  __setVisionModelCatalogNowFn,
+  VISION_MODEL_CATALOG_CACHE_TTL_MS,
   DEFAULT_READOUT_QUESTION,
 } from "../src/vision-op.js";
 
@@ -118,71 +122,241 @@ describe("buildVisionOp — 纯函数", () => {
   });
 });
 
-// ── fetchVisionModels(Req 3.1 / 3.6)─────────────────────────────────────────
+// ── fetchVisionModels(multi-gateway-providers 任务 6.3;Req 9.2, 11.1, 11.2, 11.6)───
 // reviewer 首轮指出:useVisionModels 的 fetch 分支**零测试覆盖**。抽成纯函数后逐条锁死。
-// 不变式:**任何失败都折成空数组,绝不抛出** —— 否则解读按钮会被拖垮(3.6)。
+// 不变式:**任何失败都折成空数组,绝不抛出** —— 否则解读按钮会被拖垮。
+//
+// 任务 6.3 变更:改打唯一部署级目录端点 `/config/models?input=image&output=text`(取代已
+// 删除的 `/vision/models`);查询串必须同时约束 output=text,否则会纳入 output 为 image
+// 的 AIGC 图生图/改图模型(六批完整性批评 gap 4)。响应条目为 `{provider,id,name}`,复合
+// 标识 `${provider}/${id}` 由本函数拼装;取数按 baseUrl 分桶模块级缓存,与设置页
+// VisionModelSelectField 共用。
 
 function okRes(body: unknown): Response {
   return { ok: true, json: async () => body } as unknown as Response;
 }
 
-describe("fetchVisionModels — 成功分支(3.1)", () => {
-  it("2xx + 合法 models → 原样返回", async () => {
-    const models = [{ value: "p/m", label: "M", provider: "p" }];
-    const got = await fetchVisionModels("/api", async () => okRes({ models }));
-    expect(got).toEqual(models);
+describe("fetchVisionModels — 取数与缓存(multi-gateway-providers 任务 6.3)", () => {
+  beforeEach(() => {
+    __resetVisionModelCatalogCache();
+  });
+  afterEach(() => {
+    __resetVisionModelCatalogCache();
+    vi.restoreAllMocks();
   });
 
-  it("过滤掉形状不合法的项(缺 value / label)", async () => {
-    const got = await fetchVisionModels("/api", async () =>
-      okRes({ models: [{ value: "p/m", label: "M", provider: "p" }, { value: 1 }, null, {}] }),
+  it("2xx + 合法 models → 拼装 `${provider}/${id}` 复合标识,name 映射为 label(Req 11.6)", async () => {
+    __setVisionModelCatalogFetchImpl(async () =>
+      okRes({ models: [{ provider: "p", id: "m", name: "M" }] }),
     );
+    const got = await fetchVisionModels("/api");
     expect(got).toEqual([{ value: "p/m", label: "M", provider: "p" }]);
   });
 
-  it("请求路径为 `${baseUrl}/vision/models`", async () => {
+  it("过滤掉形状不合法的项(缺 provider / id / name)", async () => {
+    __setVisionModelCatalogFetchImpl(async () =>
+      okRes({
+        models: [
+          { provider: "p", id: "m", name: "M" },
+          { provider: "p", id: "m2" },
+          null,
+          {},
+        ],
+      }),
+    );
+    const got = await fetchVisionModels("/api");
+    expect(got).toEqual([{ value: "p/m", label: "M", provider: "p" }]);
+  });
+
+  it("请求路径为 `${baseUrl}/config/models?input=image&output=text`(唯一部署级目录端点,取代已删除的 /vision/models,且必须约束 output=text 以排除 AIGC 图生图模型)", async () => {
     const spy = vi.fn(async () => okRes({ models: [] }));
-    await fetchVisionModels("/api", spy as unknown as typeof fetch);
-    expect(spy).toHaveBeenCalledWith("/api/vision/models");
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+    await fetchVisionModels("/api");
+    expect(spy).toHaveBeenCalledWith("/api/config/models?input=image&output=text");
+  });
+
+  it("★ 同一 baseUrl 的重复调用共用同一次取数(Req 11.1/11.2:两处消费面共用同一次取数与缓存)", async () => {
+    const spy = vi.fn(async () => okRes({ models: [{ provider: "p", id: "m", name: "M" }] }));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+    const [a, b, c] = await Promise.all([
+      fetchVisionModels("/api"),
+      fetchVisionModels("/api"),
+      fetchVisionModels("/api"),
+    ]);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(a).toEqual(b);
+    expect(b).toEqual(c);
+  });
+
+  it("不同 baseUrl 各自独立取数(缓存按 baseUrl 分桶)", async () => {
+    const spy = vi.fn(async () => okRes({ models: [] }));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+    await fetchVisionModels("/api");
+    await fetchVisionModels("/other");
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 
-describe("★ fetchVisionModels — 一切失败都折成空数组,绝不抛出(3.6)", () => {
+describe("★ fetchVisionModels — 一切失败都折成空数组,绝不抛出,但留可辨识错误", () => {
+  beforeEach(() => {
+    __resetVisionModelCatalogCache();
+  });
+  afterEach(() => {
+    __resetVisionModelCatalogCache();
+    vi.restoreAllMocks();
+  });
+
   it("baseUrl 缺省 / 空串 → [] 且不发请求", async () => {
     const spy = vi.fn();
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
     for (const base of [undefined, ""]) {
-      await expect(fetchVisionModels(base, spy as unknown as typeof fetch)).resolves.toEqual([]);
+      await expect(fetchVisionModels(base)).resolves.toEqual([]);
     }
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("非 2xx → []", async () => {
-    const got = await fetchVisionModels("/api", async () => ({ ok: false }) as Response);
+  it("★ pane 哨兵 baseUrl(`pane://host`)→ [] 且既不发请求、也不报错", async () => {
+    // pane 车道传的是「拿不到宿主 baseUrl」的哨兵而非真 URL(canvas.tsx:239),视觉模型选择
+    // 在 pane 里已下沉到 agent。若不短路,每次打开 Canvas pane 都会对一个按设计不可达的 URL
+    // 报一次 console.error —— 常态路径变常态报错,真正的破坏信号被淹没。
+    const spy = vi.fn();
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(fetchVisionModels("pane://host")).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("相对路径与绝对 http(s) 仍照常取数(短路规则不误伤真实端点)", async () => {
+    for (const base of ["/api", "http://localhost:3000/api", "https://x.example/api"]) {
+      __resetVisionModelCatalogCache();
+      const spy = vi.fn(async () => okRes({ models: [] }));
+      __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+      await fetchVisionModels(base);
+      expect(spy, `${base} 应发请求`).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("非 2xx → [],留一行可辨识的 console.error(带端点路径)", async () => {
+    __setVisionModelCatalogFetchImpl(async () => ({ ok: false, status: 500 }) as Response);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const got = await fetchVisionModels("/api");
     expect(got).toEqual([]);
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(String(consoleError.mock.calls[0]?.[0])).toContain(
+      "/api/config/models?input=image&output=text",
+    );
   });
 
   it("网络错误(fetch 抛) → [],不外泄异常", async () => {
-    await expect(
-      fetchVisionModels("/api", async () => {
-        throw new Error("network down");
-      }),
-    ).resolves.toEqual([]);
+    __setVisionModelCatalogFetchImpl(async () => {
+      throw new Error("network down");
+    });
+    await expect(fetchVisionModels("/api")).resolves.toEqual([]);
   });
 
   it("响应体非法 JSON(json() 抛) → []", async () => {
-    const got = await fetchVisionModels("/api", async () =>
-      ({
-        ok: true,
-        json: async () => {
-          throw new SyntaxError("bad json");
-        },
-      }) as unknown as Response,
+    __setVisionModelCatalogFetchImpl(
+      async () =>
+        ({
+          ok: true,
+          json: async () => {
+            throw new SyntaxError("bad json");
+          },
+        }) as unknown as Response,
     );
+    const got = await fetchVisionModels("/api");
     expect(got).toEqual([]);
   });
 
   it("models 不是数组 → []", async () => {
-    expect(await fetchVisionModels("/api", async () => okRes({ models: "nope" }))).toEqual([]);
-    expect(await fetchVisionModels("/api", async () => okRes({}))).toEqual([]);
+    __setVisionModelCatalogFetchImpl(async () => okRes({ models: "nope" }));
+    expect(await fetchVisionModels("/api")).toEqual([]);
+    __resetVisionModelCatalogCache();
+    __setVisionModelCatalogFetchImpl(async () => okRes({}));
+    expect(await fetchVisionModels("/api")).toEqual([]);
+  });
+});
+
+describe("fetchVisionModels — 缓存 TTL 失效(multi-gateway-providers 任务 6.6,Req 11.3/11.4/11.5)", () => {
+  beforeEach(() => {
+    __resetVisionModelCatalogCache();
+  });
+  afterEach(() => {
+    __resetVisionModelCatalogCache();
+    __setVisionModelCatalogNowFn(() => Date.now()); // 复位为默认时钟,避免污染其它用例
+    vi.restoreAllMocks();
+  });
+
+  it("TTL 内:同一 baseUrl 的后续调用仍命中缓存(不重复请求)", async () => {
+    let clock = 1_000_000;
+    __setVisionModelCatalogNowFn(() => clock);
+    const spy = vi.fn(async () => okRes({ models: [{ provider: "p", id: "m", name: "M" }] }));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    await fetchVisionModels("/api");
+    clock += VISION_MODEL_CATALOG_CACHE_TTL_MS - 1; // 差 1ms 未到期
+    await fetchVisionModels("/api");
+
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ TTL 过期后:同一 baseUrl 的下一次调用重新取数,拿到新增 provider(不必整页刷新)", async () => {
+    let clock = 1_000_000;
+    __setVisionModelCatalogNowFn(() => clock);
+    const before = { models: [{ provider: "existing", id: "m1", name: "M1" }] };
+    const after = {
+      models: [
+        { provider: "existing", id: "m1", name: "M1" },
+        { provider: "brand-new", id: "m2", name: "M2" },
+      ],
+    };
+    const spy = vi.fn(async () =>
+      okRes(clock < 1_000_000 + VISION_MODEL_CATALOG_CACHE_TTL_MS ? before : after),
+    );
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    const first = await fetchVisionModels("/api");
+    expect(first).toEqual([{ value: "existing/m1", label: "M1", provider: "existing" }]);
+
+    clock += VISION_MODEL_CATALOG_CACHE_TTL_MS + 1;
+    const second = await fetchVisionModels("/api");
+
+    expect(second).toEqual([
+      { value: "existing/m1", label: "M1", provider: "existing" },
+      { value: "brand-new/m2", label: "M2", provider: "brand-new" },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it("★ TTL 未过期(时钟不推进),但收到 pi-web:config-saved 事件 → 下一次调用立即刷新(任务 6.6 主机制;修复前只有 TTL 时本用例必须报红)", async () => {
+    const clock = 1_000_000; // 恒定不推进——仅靠事件驱动失效,不能靠 TTL 兜底救场。
+    __setVisionModelCatalogNowFn(() => clock);
+    const before = { models: [{ provider: "existing", id: "m1", name: "M1" }] };
+    const after = {
+      models: [
+        { provider: "existing", id: "m1", name: "M1" },
+        { provider: "brand-new", id: "m2", name: "M2" },
+      ],
+    };
+    let saved = false;
+    const spy = vi.fn(async () => okRes(saved ? after : before));
+    __setVisionModelCatalogFetchImpl(spy as unknown as typeof fetch);
+
+    const first = await fetchVisionModels("/api");
+    expect(first).toEqual([{ value: "existing/m1", label: "M1", provider: "existing" }]);
+
+    // 保存成功后 useConfigDomain 会广播该事件;这里直接模拟广播,不经 React 组件。
+    saved = true;
+    globalThis.dispatchEvent(
+      new CustomEvent("pi-web:config-saved", { detail: { domain: "settings" } }),
+    );
+    const second = await fetchVisionModels("/api");
+
+    expect(second).toEqual([
+      { value: "existing/m1", label: "M1", provider: "existing" },
+      { value: "brand-new/m2", label: "M2", provider: "brand-new" },
+    ]);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });

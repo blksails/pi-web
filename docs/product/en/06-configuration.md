@@ -382,7 +382,7 @@ AIGC image tool settings land in `~/.pi/agent/aigc.json`, read by `aigcExtension
 }
 ```
 
-> The schema-driven settings UI for this config domain (the `aigcModelToggles` widget + the `GET /api/aigc/models` data endpoint) is covered in [13 · Config UI](./13-config-ui.md); how disabled models are removed from both the LLM enumeration and the emitted list from a single source is covered in [11 · AIGC and Vision Tools](./11-aigc-and-vision-tools.md).
+> The schema-driven settings UI for this config domain (the `aigcModelToggles` widget + the `GET /api/config/models?output=image` data endpoint) is covered in [13 · Config UI](./13-config-ui.md); how disabled models are removed from both the LLM enumeration and the emitted list from a single source is covered in [11 · AIGC and Vision Tools](./11-aigc-and-vision-tools.md).
 
 ---
 

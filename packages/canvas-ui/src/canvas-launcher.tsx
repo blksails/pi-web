@@ -104,7 +104,11 @@ export interface CanvasPanelProps {
   // ── B 档上传接缝(可注入)────────────────────────────────────────────────────
   readonly upload?: UploadFn;
   readonly baseUrl?: string;
-  /** 视觉模型清单覆盖(测试 / 宿主直注);缺省时经 `GET {baseUrl}/vision/models` 拉取。 */
+  /**
+   * 视觉模型清单覆盖(测试 / 宿主直注);缺省时经统一部署级目录端点
+   * `GET {baseUrl}/config/models?input=image&output=text` 拉取(multi-gateway-providers
+   * 任务 4.3/6.3,取代已随 4.3 删除的独立 `GET {baseUrl}/vision/models`)。
+   */
   readonly visionModelOptions?: readonly VisionModelOption[];
   readonly sessionId?: string;
   /** 会话能力对象(契约 §4.2;canvas 生成走对话流经此提交,取代 onSubmitPrompt)。 */

@@ -28,9 +28,10 @@ import {
   cloudFormSchema,
   cloudConfigSchema,
   aigcConfigSchema,
-  type FormSchema,
   mcpFormSchema,
   mcpConfigSchema,
+  providersFormSchema,
+  createProvidersConfigSchema,
 } from "@blksails/pi-web-protocol";
 import {
   registerFieldRendererByKey,
@@ -234,5 +235,25 @@ export function registerConfigPanels(): void {
     formSchema: mcpFormSchema,
     validate: zodValidator(mcpConfigSchema),
     ...makeUrlIO("/api/config/mcp", "MCP 配置"),
+  });
+
+  // 自定义 provider(multi-gateway-providers 任务 5.4;Req 7.1, 11.7):写
+  // `<agentDir>/providers.json`,经通用 /config/:domain(不像 mcp 那样需要独立探测端点)。
+  // ★ 保留名冲突校验(Req 7.6)在此处**故意**用空集构造 —— 真实保留名清单
+  // (`RESERVED_PROVIDER_IDS`)住在 `@blksails/pi-web-core`,而本文件是浏览器 bundle 的一部分
+  // (被 `src/routes/settings.tsx` 这类 client 组件 import);全仓没有任何 `src/`/`lib/` 下的
+  // 客户端代码引入过 core,不应由本任务开这个口子。空集不影响正确性:标识重复检测(Req 7.6
+  // 的另一半)仍在本地生效;保留名冲突这半条由**服务端**(`config-routes.ts` 注入真实
+  // `RESERVED_PROVIDER_IDS`)权威把关 —— 提交后端会返回 422,`saveError` 会呈现给用户,
+  // 仍落在"保存时报错"内(只是校验时机从"提交前"退到"提交回执"),不构成静默放行。
+  // 含 secret(apiKey,嵌在 objectList 条目内)故用 secretAwareValidator。
+  registerSettingsPanel({
+    id: "providers",
+    title: "Provider",
+    order: 9,
+    icon: "server",
+    formSchema: providersFormSchema,
+    validate: secretAwareValidator(createProvidersConfigSchema(new Set<string>())),
+    ...makeConfigDomainIO("providers"),
   });
 }

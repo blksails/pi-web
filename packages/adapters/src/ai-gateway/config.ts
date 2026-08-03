@@ -58,8 +58,12 @@ export const DEFAULT_PROVIDER_ALLOWLIST: readonly string[] = [
  * ★空白值**回落默认**而非解释为「全部滤除」:后者会让部署方对着一个空模型清单
  * 束手无策,而这几乎总是误配(如 `EXPORT VAR=` 写成空)而非本意。真要全部滤除,
  * 应通过配置一个不存在的归属名达成,那是显式意图。
+ *
+ * ★导出给 {@link ./instances.js resolveGatewayInstances} 复用(spec
+ * multi-gateway-providers 任务 3.1)——多实例的每实例 `_ALLOWLIST` 覆盖与本模块的单实例
+ * 白名单解析共用同一「空白回落默认」语义。
  */
-function parseProviderAllowlist(raw: string | undefined): ReadonlySet<string> {
+export function parseProviderAllowlist(raw: string | undefined): ReadonlySet<string> {
   const items = (raw ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
@@ -98,14 +102,77 @@ export class AiGatewayConfigError extends Error {
   }
 }
 
-function stripTrailingSlashes(url: string): string {
+/**
+ * 把实例标识规整为可嵌入 env 名的形态:大写、`-` → `_`
+ * (与既有 `PI_LLM_TOKEN_<ID>` 的派生规则同构)。
+ *
+ * ★下沉为独立导出(spec multi-gateway-providers 任务 3.5,Req 1.1/6.2/6.5):
+ * 部署侧(`instanceEnvPrefix`,下方)与会话侧(`session-model-source.ts` 的
+ * `PI_WEB_AI_GATEWAY_SESSION_<ID>_*`)两套 env 前缀字面量不同,但"标识如何变形"
+ * 这条规则必须**同一处定义**——否则两侧对同一实例标识可能派生出不一致的 env 名。
+ */
+export function envSafeInstanceId(id: string): string {
+  return id.toUpperCase().replace(/-/g, "_");
+}
+
+/**
+ * 派生某网关实例的 env 前缀:`PI_WEB_GATEWAY_<ID>_`,`<ID>` = {@link envSafeInstanceId}。
+ *
+ * ★下沉到本模块(而非留在 `instances.ts` 私有)供 {@link ./key-resolver.js
+ * InstanceEnvKeyResolver} 复用(spec multi-gateway-providers 任务 3.3,Req 1.5)——
+ * `instances.ts` 与 `key-resolver.ts` 互相需要对方的类型/类,放在二者共同的上游
+ * `config.ts` 可避免循环导入,同时保证两处对同一实例标识派生出**同一个** env 名。
+ */
+export function instanceEnvPrefix(id: string): string {
+  return `PI_WEB_GATEWAY_${envSafeInstanceId(id)}_`;
+}
+
+/**
+ * 剥离 URL 尾部斜杠。
+ *
+ * ★导出给 {@link ./instances.js resolveGatewayInstances} 复用(spec
+ * multi-gateway-providers 任务 3.1)——多实例的每实例 base URL 校验与本模块的单实例
+ * 校验共用同一实现,避免两处各写一份、行为随时间漂移。
+ */
+export function stripTrailingSlashes(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+/**
+ * 校验并归一化一个网关 base URL:非法 URL / 非 http(s) 协议 → 抛
+ * {@link AiGatewayConfigError}(含 `envName` 便于调用方按场景定制字段提示);
+ * 合法 → 返回剥离尾斜杠后的值。
+ *
+ * ★导出给 {@link ./instances.js resolveGatewayInstances} 复用,使单实例与多实例的
+ * base URL 合法性判据(协议、格式)逐字一致(spec multi-gateway-providers 任务 3.1)。
+ */
+export function parseAndValidateBaseUrl(raw: string, envName: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new AiGatewayConfigError(
+      `${envName} 不是合法的 URL:"${raw}"。请改正为合法的 http/https 地址,或移除该环境变量以关闭 ai-gateway 套件。`,
+    );
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new AiGatewayConfigError(
+      `${envName} 必须是 http:// 或 https:// 地址,实际协议为 "${parsed.protocol}"(值:"${raw}")。`,
+    );
+  }
+  return stripTrailingSlashes(raw);
 }
 
 const ModelPrecedenceSchema = z.enum(["gateway", "self"]);
 
-/** 解析一个正整数覆盖值;缺省/空白返回 `undefined`;存在但非法 → 抛错(含字段名)。 */
-function parsePositiveIntOverride(
+/**
+ * 解析一个正整数覆盖值;缺省/空白返回 `undefined`;存在但非法 → 抛错(含字段名)。
+ *
+ * ★导出给 {@link ./instances.js resolveGatewayInstances} 复用(spec
+ * multi-gateway-providers 任务 3.1)——多实例的每实例 TTL / 超时覆盖与本模块的单实例
+ * 覆盖共用同一校验规则与错误文案形态。
+ */
+export function parsePositiveIntOverride(
   raw: string | undefined,
   fieldName: string,
 ): number | undefined {
@@ -146,19 +213,7 @@ export function resolveAiGatewayConfig(
     return undefined;
   }
 
-  let parsed: URL;
-  try {
-    parsed = new URL(rawBaseUrl);
-  } catch {
-    throw new AiGatewayConfigError(
-      `${AI_GATEWAY_BASE_URL_ENV} 不是合法的 URL:"${rawBaseUrl}"。请改正为合法的 http/https 地址,或移除该环境变量以关闭 ai-gateway 套件。`,
-    );
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new AiGatewayConfigError(
-      `${AI_GATEWAY_BASE_URL_ENV} 必须是 http:// 或 https:// 地址,实际协议为 "${parsed.protocol}"(值:"${rawBaseUrl}")。`,
-    );
-  }
+  const baseUrl = parseAndValidateBaseUrl(rawBaseUrl, AI_GATEWAY_BASE_URL_ENV);
 
   const rawPrecedence = env[AI_GATEWAY_MODEL_PRECEDENCE_ENV]?.trim();
   let modelPrecedence: "gateway" | "self" = "gateway";
@@ -182,7 +237,7 @@ export function resolveAiGatewayConfig(
     ) ?? DEFAULT_CATALOG_TTL_MS;
 
   return {
-    baseUrl: stripTrailingSlashes(rawBaseUrl),
+    baseUrl,
     timeoutMs,
     catalogTtlMs,
     modelPrecedence,

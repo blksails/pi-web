@@ -255,7 +255,7 @@ The `defaultProvider` / `defaultModel` fields of `settings.json` declare the use
 
 ### `aigcModelToggles` (`packages/ui/src/config/fields/aigc-model-toggles-field.tsx`)
 
-The checklist for the AIGC image config domain's `aigc.disabledModels` field (value = an array of disabled model ids): checked = enabled, unchecked = added to `disabledModels`. The list of available models comes from **`GET /api/aigc/models`** (which returns the `AIGC_MODEL_CATALOG` plain catalog, each entry carrying `model` / `label` / `provider`), fetched once for the whole page via a module-level Promise cache; if the fetch fails it falls back to an empty set without blocking the panel (`aigc-model-toggles-field.tsx:36-49`). On the declaration side you only write `widget: "aigcModelToggles"` on the schema field.
+The checklist for the AIGC image config domain's `aigc.disabledModels` field (value = an array of disabled model ids): checked = enabled, unchecked = added to `disabledModels`. The list of available models comes from the unified catalog endpoint **`GET /api/config/models?output=image`** (each entry carrying `provider` / `id` / `name`; the former dedicated `GET /api/aigc/models` was removed by spec `multi-gateway-providers`, task 4.3), fetched once for the whole page via a module-level Promise cache; if the fetch fails it falls back to an empty set without blocking the panel, leaving one identifiable `console.error` (`aigc-model-toggles-field.tsx`). The stored value is still the bare model id and the enable/disable semantics are unchanged. On the declaration side you only write `widget: "aigcModelToggles"` on the schema field.
 
 ### `logNamespaceToggles` (`packages/ui/src/config/fields/namespace-toggles-field.tsx`)
 
@@ -438,5 +438,5 @@ For standalone extension config files that carry a `$schema` field (e.g. `proxy.
 - Extension config domains, sandbox injection → [10 Extensions and Skills](./10-extensions-and-skills.md)
 - AIGC image tool semantics, the runtime effect of `disabledModels` / `enablePromptOptimization` → [11 AIGC and Vision Tools](./11-aigc-and-vision-tools.md)
 - Logging runtime, namespaces and file sinks (the library behind the `logging` domain) → [21 Logging System](./21-logging.md)
-- Complete list of HTTP API endpoints (including `GET·PUT /api/config/:domain`, `GET /api/aigc/models`, `GET·PUT /api/config/mcp`) → [24 HTTP/SSE API Reference](./24-http-api-reference.md)
+- Complete list of HTTP API endpoints (including `GET·PUT /api/config/:domain`, `GET /api/config/models`, `GET·PUT /api/config/mcp`) → [24 HTTP/SSE API Reference](./24-http-api-reference.md)
 - Issues like widget not showing / save returning 422 / secret being cleared → [23 Troubleshooting / FAQ](./23-troubleshooting-faq.md)

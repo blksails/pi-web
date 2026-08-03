@@ -6,7 +6,11 @@
  *   Req 1.1–1.3, 2.1–2.3, 3.1, 6.1, 6.2)。
  */
 import { describe, expect, it, vi } from "vitest";
-import { GatewayModelCatalog, mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
+import {
+  GatewayModelCatalog,
+  mergeModelCatalog,
+  filterByModelId,
+} from "../../src/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "../../src/ai-gateway/model-catalog.js";
 import type { ModelOption } from "@blksails/pi-web-core/config/model-options.types.js";
 
@@ -44,8 +48,13 @@ describe("GatewayModelCatalog — 刷新成功", () => {
     });
     await catalog.refresh();
     expect(catalog.get()).toEqual([
-      { model: "gpt-image-1", ownedBy: "openai", source: "ai-gateway" },
-      { model: "doubao-seed-2-0-lite", ownedBy: "bytedance", source: "ai-gateway" },
+      { model: "gpt-image-1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" },
+      {
+        model: "doubao-seed-2-0-lite",
+        ownedBy: "bytedance",
+        source: "ai-gateway",
+        instanceId: "ai-gateway",
+      },
     ]);
     expect(fetchImpl).toHaveBeenCalledWith(
       "https://gw.example.com/v1/models",
@@ -84,13 +93,13 @@ describe("GatewayModelCatalog — TTL 过期后台刷新", () => {
       nowFn: () => now,
     });
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
 
     now = 5000; // 超过 TTL
     // get() 触发后台刷新;为测试确定性,显式等待一个 microtask 队列的刷新 promise。
     catalog.get();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(catalog.get()).toEqual([{ model: "m2", ownedBy: "anthropic", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m2", ownedBy: "anthropic", source: "ai-gateway", instanceId: "ai-gateway" }]);
   });
 });
 
@@ -106,9 +115,9 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
       fetchImpl: fetchImpl as unknown as typeof fetch,
     });
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
   });
 
   it("refresh() 拉取失败(非 2xx 状态) → 快照沿用上次成功值", async () => {
@@ -123,7 +132,47 @@ describe("GatewayModelCatalog — 失败沿用快照(fail-soft)", () => {
     });
     await catalog.refresh();
     await catalog.refresh();
-    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway" }]);
+    expect(catalog.get()).toEqual([{ model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" }]);
+  });
+});
+
+describe("GatewayModelCatalog — 逐实例声明的模态(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3)", () => {
+  it("构造时声明 input/output → refresh() 后每条产出条目都携带该声明", async () => {
+    const fetchImpl = vi.fn(async () =>
+      modelsResponse([{ id: "vision-model", owned_by: "openai" }]),
+    );
+    const catalog = new GatewayModelCatalog({
+      baseUrl: "https://gw.example.com",
+      ttlMs: 300_000,
+      instanceId: "inst-with-modality",
+      input: ["text", "image"],
+      output: ["text"],
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await catalog.refresh();
+    expect(catalog.get()).toEqual([
+      {
+        model: "vision-model",
+        ownedBy: "openai",
+        source: "ai-gateway",
+        instanceId: "inst-with-modality",
+        input: ["text", "image"],
+        output: ["text"],
+      },
+    ]);
+  });
+
+  it("未声明 input/output(缺省)→ 产出条目不携带这两个字段,与改造前逐字节一致", async () => {
+    const fetchImpl = vi.fn(async () => modelsResponse([{ id: "m1", owned_by: "openai" }]));
+    const catalog = new GatewayModelCatalog({
+      baseUrl: "https://gw.example.com",
+      ttlMs: 300_000,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    await catalog.refresh();
+    expect(catalog.get()).toEqual([
+      { model: "m1", ownedBy: "openai", source: "ai-gateway", instanceId: "ai-gateway" },
+    ]);
   });
 });
 
@@ -133,14 +182,26 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     { provider: "dashscope", id: "self-only", name: "Self Only" },
   ];
   const gatewayEntries: GatewayModelEntry[] = [
-    { model: "shared-model", ownedBy: "anthropic", source: "ai-gateway" },
-    { model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" },
+    { model: "shared-model", ownedBy: "anthropic", source: "ai-gateway", instanceId: "ai-gateway" },
+    {
+      model: "gateway-only",
+      ownedBy: "openai-compat",
+      source: "ai-gateway",
+      instanceId: "ai-gateway",
+    },
   ];
 
   it("无冲突模型:两侧并集全部保留;self 附 source=self/availability=session,gateway 附 source=ai-gateway/availability=catalog", () => {
     const merged = mergeModelCatalog(
       [{ provider: "dashscope", id: "self-only", name: "Self Only" }],
-      [{ model: "gateway-only", ownedBy: "openai-compat", source: "ai-gateway" }],
+      [
+        {
+          model: "gateway-only",
+          ownedBy: "openai-compat",
+          source: "ai-gateway",
+          instanceId: "ai-gateway",
+        },
+      ],
       "gateway",
     );
     expect(merged.models).toHaveLength(2);
@@ -200,6 +261,22 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     expect(merged.providers).not.toContain("ai-gateway");
   });
 
+  it("两个网关实例同时启用:各自模型的 provider 归属对应实例标识,且两者均出现在 providers 清单(spec multi-gateway-providers 任务 3.2,Req 1.2/1.3)", () => {
+    const merged = mergeModelCatalog(
+      [],
+      [
+        { model: "model-a", ownedBy: "openai", source: "ai-gateway", instanceId: "gw-a" },
+        { model: "model-b", ownedBy: "anthropic", source: "ai-gateway", instanceId: "gw-b" },
+      ],
+      "gateway",
+    );
+    expect(merged.models).toHaveLength(2);
+    expect(merged.models.find((m) => m.id === "model-a")?.provider).toBe("gw-a");
+    expect(merged.models.find((m) => m.id === "model-b")?.provider).toBe("gw-b");
+    // provider 清单按实例逐个列出,两个实例同时启用时分别出现(不折叠为单一常量)。
+    expect(merged.providers).toEqual(["gw-a", "gw-b"]);
+  });
+
   it("modelPrecedence=gateway → 网关块在前;=self → self 块在前(块内保持入参原有顺序)", () => {
     const gwFirst = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
     expect(gwFirst.models.map((m) => `${m.provider}/${m.id}`)).toEqual([
@@ -222,13 +299,54 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
     const merged = mergeModelCatalog(
       [],
       [
-        { model: "dup", ownedBy: "first", source: "ai-gateway" },
-        { model: "dup", ownedBy: "second", source: "ai-gateway" },
+        { model: "dup", ownedBy: "first", source: "ai-gateway", instanceId: "ai-gateway" },
+        { model: "dup", ownedBy: "second", source: "ai-gateway", instanceId: "ai-gateway" },
       ],
       "gateway",
     );
     expect(merged.models).toHaveLength(1);
     expect(merged.models[0]?.channel).toBe("first");
+  });
+
+  // ★ 边界补充(spec multi-gateway-providers 任务 4.2,Req 4.1/4.3):本文件是
+  // mergeModelCatalog 的直接单测,4.2 的目标文件列表未列出本文件,但 4.2 对该函数
+  // 的修改(网关条目补齐非空 input/output)恰由本文件验证,故在此补一条用例
+  // (无需改动本文件其余既有断言 —— 均以 .find()/.filter() 挑字段,不受新增字段影响)。
+  it("网关条目均携带非空的 input/output(spec multi-gateway-providers 任务 4.2,Req 4.1/4.3)", () => {
+    const merged = mergeModelCatalog(selfEntries, gatewayEntries, "gateway");
+    const gw = merged.models.filter((m) => m.source === "ai-gateway");
+    expect(gw.length).toBeGreaterThan(0);
+    for (const m of gw) {
+      expect(m.input?.length ?? 0).toBeGreaterThan(0);
+      expect(m.output?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("网关条目自身携带的 input/output(逐实例声明,任务 4.5)覆盖 GATEWAY_DEFAULT_MODALITY;撤掉声明即回落缺省(Req 2.4/2.5/3.3)", () => {
+    const withDeclaredModality: GatewayModelEntry[] = [
+      {
+        model: "vision-model",
+        ownedBy: "openai",
+        source: "ai-gateway",
+        instanceId: "inst-a",
+        // ★ 未在 GatewayModelEntry 类型上声明(与 model-catalog.ts 的宽松类型断言配套),
+        //   但 mergeModelCatalog 须能读到 —— 断言其对模拟的「实例已转发声明」条目生效。
+        ...({ input: ["text", "image"], output: ["text"] } as Record<string, unknown>),
+      },
+    ];
+    const merged = mergeModelCatalog([], withDeclaredModality, "gateway");
+    const model = merged.models.find((m) => m.id === "vision-model");
+    expect(model?.input).toEqual(["text", "image"]);
+    expect(model?.output).toEqual(["text"]);
+
+    // 撤掉声明(同一条目,不带 input/output)→ 回落到 GATEWAY_DEFAULT_MODALITY(["text"])。
+    const withoutDeclaredModality: GatewayModelEntry[] = [
+      { model: "vision-model", ownedBy: "openai", source: "ai-gateway", instanceId: "inst-a" },
+    ];
+    const mergedWithout = mergeModelCatalog([], withoutDeclaredModality, "gateway");
+    const modelWithout = mergedWithout.models.find((m) => m.id === "vision-model");
+    expect(modelWithout?.input).toEqual(["text"]);
+    expect(modelWithout?.output).toEqual(["text"]);
   });
 
   it("gateway 入参为空数组:models 的 provider/id/name 与 self 完全一致(含顺序),providers = self providers", () => {
@@ -248,5 +366,36 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
       expect(m.availability).toBe("session");
       expect(m.channel).toBeUndefined();
     }
+  });
+});
+
+// ── 模型 id 精选白名单(PI_WEB_GATEWAY_<ID>_MODELS)──────────────────────────────
+// 归属白名单是粗筛(排掉聚合大户),本层是精选(只暴露认可的型号)。两者串联,先粗后精。
+describe("filterByModelId — 模型 id 精选", () => {
+  const ENTRIES: readonly GatewayModelEntry[] = [
+    { model: "gpt-5.4", ownedBy: "openai", source: "ai-gateway", instanceId: "cf" },
+    { model: "claude-sonnet-4.6", ownedBy: "anthropic", source: "ai-gateway", instanceId: "cf" },
+    { model: "gemini-3-pro", ownedBy: "google-ai-studio", source: "ai-gateway", instanceId: "cf" },
+  ];
+
+  it("只保留清单内的 model id(跨归属同样生效)", () => {
+    const got = filterByModelId(ENTRIES, new Set(["gpt-5.4", "gemini-3-pro"]));
+    expect(got.map((e) => e.model)).toEqual(["gpt-5.4", "gemini-3-pro"]);
+  });
+
+  it("比对忽略大小写与首尾空白", () => {
+    const got = filterByModelId(ENTRIES, new Set(["  GPT-5.4 "]));
+    expect(got.map((e) => e.model)).toEqual(["gpt-5.4"]);
+  });
+
+  it("★ undefined 与空集都视为不过滤(零侵入 + 空值几乎总是误配)", () => {
+    // 与 parseProviderAllowlist 的「空白回落默认」同一考量:把空值解释成「全部滤除」
+    // 会让部署方对着一个空清单束手无策。真要清空应配一个不存在的 id。
+    expect(filterByModelId(ENTRIES, undefined)).toBe(ENTRIES);
+    expect(filterByModelId(ENTRIES, new Set())).toBe(ENTRIES);
+  });
+
+  it("清单内含目录里没有的 id → 不报错,只是命中不到(配置过时的表现是变少而非崩)", () => {
+    expect(filterByModelId(ENTRIES, new Set(["not-exist"])).length).toBe(0);
   });
 });

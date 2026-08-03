@@ -67,10 +67,10 @@ afterAll(async () => {
   await new Promise<void>((resolve) => gwServer.close(() => resolve()));
 });
 
-describe("AI_GATEWAY_BASE_URL 已配置:/api/ai-gateway/* 已挂载", () => {
+describe("AI_GATEWAY_BASE_URL 已配置:/api/ai-gateway/:instance/* 已挂载(按实例分流,Req 1.3)", () => {
   it("白名单内路径 + 无 token → 401(证明路由已挂载并触达鉴权门控,而非 404)", async () => {
     const res = await route.POST(
-      req("/api/ai-gateway/v1/chat/completions", {
+      req("/api/ai-gateway/ai-gateway/v1/chat/completions", {
         method: "POST",
         body: JSON.stringify({}),
       }),
@@ -79,13 +79,23 @@ describe("AI_GATEWAY_BASE_URL 已配置:/api/ai-gateway/* 已挂载", () => {
   });
 
   it("GET 方法同样触达门控(未带 token → 401,而非路由未注册的 404)", async () => {
-    const res = await route.GET(req("/api/ai-gateway/v1/models"));
+    const res = await route.GET(req("/api/ai-gateway/ai-gateway/v1/models"));
     expect(res.status).toBe(401);
   });
 
   it("白名单外路径 → 404(门控顺序:白名单先于鉴权,仍证明路由本体已挂载)", async () => {
     const res = await route.POST(
-      req("/api/ai-gateway/v1/does-not-exist", {
+      req("/api/ai-gateway/ai-gateway/v1/does-not-exist", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("不带实例段的旧路径 → 404(契约变更钉住:`/ai-gateway/v1/...` 不再是合法路径,Req 1.3)", async () => {
+    const res = await route.POST(
+      req("/api/ai-gateway/v1/chat/completions", {
         method: "POST",
         body: JSON.stringify({}),
       }),
@@ -156,18 +166,26 @@ describe("聚合形态:目录端点经组装服务取数(model-catalog spec 任�
     expect(injected!.channel).toBe(GW_CHANNEL);
   });
 
-  it("GET /api/aigc/models:含三条网关条目且 source='ai-gateway',self 条目附 source='self'(Req 4.1/6.2)", async () => {
+  it("GET /api/aigc/models 已删除(multi-gateway-providers 任务 4.3,Req 3.2)", async () => {
     const res = await route.GET(req("/api/aigc/models"));
+    expect(res.status).not.toBe(200);
+  });
+
+  it("GET /api/config/models?output=image:含三条网关条目且 source='ai-gateway',self 条目附 source='self'(Req 3.2, 4.1, 6.2 —— 取代已删除的 GET /api/aigc/models)", async () => {
+    const res = await route.GET(req("/api/config/models?output=image"));
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      models: Array<{ model: string; provider: string; source?: string }>;
+      models: Array<{ id: string; provider: string; source?: string }>;
     };
-    const byId = new Map(body.models.map((m) => [m.model, m]));
+    const byId = new Map(body.models.map((m) => [m.id, m]));
     for (const id of ["gpt-image-1", "gpt-image-2-ai-gateway", "qwen-image"]) {
       const entry = byId.get(id);
       expect(entry, `缺网关条目 ${id}`).toBeDefined();
       expect(entry!.source).toBe("ai-gateway");
-      expect(entry!.provider).toBe("ai-gateway");
+      // provider 与 source 故意不同:`source` 记**来源渠道**(网关 compat 通路,恒 ai-gateway),
+      // `provider` 是条目自身声明的**归属** —— 2026-08-03 改判为 `cloudflare`(该通路当前
+      // 指向 Cloudflare AI Gateway 的 compat 端点),与原生 Cloudflare 图像组同一 provider。
+      expect(entry!.provider).toBe("cloudflare");
     }
     // self 静态条目在聚合形态附 source="self"(响应只增不改,Req 4.1)。
     const self = byId.get("gpt-image-2");

@@ -213,3 +213,44 @@ describe("ModelSelector 富模型选择器", () => {
     expect(screen.getByText("bare-model")).toBeInTheDocument();
   });
 });
+
+describe("★ 当前模型已不在可用清单(Req 11.9)", () => {
+  const orphan: ModelSelection = { provider: "retired-gw", modelId: "old-model" };
+
+  it("清单里单列出该模型并标记,不静默消失", async () => {
+    const user = userEvent.setup();
+    render(<ModelSelector groups={groups} current={orphan} available onSelect={vi.fn()} />);
+    await user.click(trigger());
+
+    const marked = document.querySelectorAll("[data-pi-model-orphan='true']");
+    expect(marked, "当前模型不在 groups 内时须有可辨识标记").toHaveLength(1);
+    expect(marked[0]).toHaveTextContent("retired-gw/old-model");
+    // 同时仍是「当前项」——打勾语义不因不在清单而丢失。
+    expect(marked[0]?.getAttribute("data-pi-model-current")).toBe("true");
+  });
+
+  it("该项不可选(重选一个已不在清单的模型只会失败)", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(<ModelSelector groups={groups} current={orphan} available onSelect={onSelect} />);
+    await user.click(trigger());
+    const marked = document.querySelector("[data-pi-model-orphan='true']") as HTMLElement;
+    await user.click(marked);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("当前模型在清单内时不出现该标记(不误报)", async () => {
+    const user = userEvent.setup();
+    render(<ModelSelector groups={groups} current={current} available onSelect={vi.fn()} />);
+    await user.click(trigger());
+    expect(document.querySelectorAll("[data-pi-model-orphan='true']")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-pi-model-current='true']")).toHaveLength(1);
+  });
+
+  it("current 未设定时不出现该标记", async () => {
+    const user = userEvent.setup();
+    render(<ModelSelector groups={groups} current={undefined} available onSelect={vi.fn()} />);
+    await user.click(trigger());
+    expect(document.querySelectorAll("[data-pi-model-orphan='true']")).toHaveLength(0);
+  });
+});

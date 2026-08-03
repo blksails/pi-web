@@ -25,6 +25,7 @@ import {
   makeForkHandler,
   makeMessagesHandler,
   makeModelHandler,
+  makeModelPathMovedHandler,
   makeSteerHandler,
   makeThinkingHandler,
   makeUiResponseHandler,
@@ -175,9 +176,16 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
       handler: makeClearQueueHandler(store),
     },
     {
+      // Req 3.7:切换会话当前模型与会话模型查询共用同一路径,仅方法区分。
+      method: "POST",
+      path: "/sessions/:id/models",
+      handler: makeModelHandler(store),
+    },
+    {
+      // Req 3.8:旧路径(与查询路径仅差单复数)已废弃,不静默 404——显式告知新路径。
       method: "POST",
       path: "/sessions/:id/model",
-      handler: makeModelHandler(store),
+      handler: makeModelPathMovedHandler(),
     },
     {
       method: "POST",

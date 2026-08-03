@@ -1,9 +1,14 @@
 /**
- * GET /config/models 数据端点:供 settings 的 provider/model 可搜索下拉(widget)取数。
- * 覆盖正常返回、空集回退(无接缝/抛错)、以及路由顺序(不被 /config/:domain 吃成未知域)。
+ * GET /config/models 数据端点:供 settings 的 provider/model 可搜索下拉(widget)取数,
+ * 端点合一后(multi-gateway-providers 任务 4.3,Req 3.1, 3.2, 3.4)也是唯一的部署级
+ * 模型目录入口 —— 覆盖正常返回、空集回退(无接缝/抛错)、路由顺序(不被 /config/:domain
+ * 吃成未知域),以及 `?input=`/`?output=` 查询参数被原样解析并转发给注入的
+ * `listModelOptions` 接缝(筛选本体在装配层/`ModelCatalogService`,本文件只验证路由层
+ * 的解析与转发,不重复测筛选逻辑本身)。
  */
 import { describe, it, expect } from "vitest";
 import { createConfigRoutes } from "../../src/http/routes/config-routes.js";
+import type { ModelsQuery } from "../../src/http/routes/config-routes.js";
 import { createPiWebHandler } from "../../src/http/index.js";
 import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionManager } from "../../src/session/session-manager.js";
@@ -17,7 +22,7 @@ const SAMPLE: ModelOptions = {
   ],
 };
 
-function makeHandler(listModelOptions?: () => ModelOptions | Promise<ModelOptions>) {
+function makeHandler(listModelOptions?: (query: ModelsQuery) => ModelOptions | Promise<ModelOptions>) {
   const store = new InMemorySessionStore(true);
   const manager = new SessionManager({ store, idleMs: 0 });
   const routes = createConfigRoutes({ listModelOptions });

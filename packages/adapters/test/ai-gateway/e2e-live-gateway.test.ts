@@ -46,12 +46,21 @@ if (!gatewayUp) {
   );
 }
 
+const INSTANCE = "ai-gateway";
+
 describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () => {
   function makeRouter(): Router {
     const routes = createAiGatewayRoutes({
-      baseUrl: GATEWAY_BASE,
+      instances: new Map([
+        [
+          INSTANCE,
+          {
+            baseUrl: GATEWAY_BASE,
+            keyResolver: new EnvKeyResolver({ AI_GATEWAY_API_KEY: TEST_KEY }),
+          },
+        ],
+      ]),
       secret: SECRET,
-      keyResolver: new EnvKeyResolver({ AI_GATEWAY_API_KEY: TEST_KEY }),
       timeoutMs: 30_000,
     });
     return new Router({ store: noopStore, builtins: [], injected: routes });
@@ -59,7 +68,7 @@ describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () =
 
   function mintToken(): string {
     return mintScopedToken({
-      scope: "ai-gateway",
+      scope: `ai-gateway:${INSTANCE}`,
       sessionId: "e2e-sess-1",
       ttlMs: 60_000,
       secret: SECRET,
@@ -71,7 +80,7 @@ describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () =
     const router = makeRouter();
     const token = mintToken();
     const res = await router.route(
-      new Request("http://host/ai-gateway/v1/models", {
+      new Request("http://host/ai-gateway/ai-gateway/v1/models", {
         method: "GET",
         headers: { authorization: `Bearer ${token}` },
       }),
@@ -87,7 +96,7 @@ describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () =
     const router = makeRouter();
     const token = mintToken();
     const res = await router.route(
-      new Request("http://host/ai-gateway/v1/chat/completions", {
+      new Request("http://host/ai-gateway/ai-gateway/v1/chat/completions", {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
@@ -131,7 +140,7 @@ describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () =
     const router = makeRouter();
     const token = mintToken();
     const res = await router.route(
-      new Request("http://host/ai-gateway/v1/images/generations", {
+      new Request("http://host/ai-gateway/ai-gateway/v1/images/generations", {
         method: "POST",
         headers: {
           authorization: `Bearer ${token}`,
@@ -165,7 +174,7 @@ describe.skipIf(!gatewayUp)("ai-gateway e2e(启用组,真实本地网关)", () =
       secret: SECRET,
     });
     const res = await router.route(
-      new Request("http://host/ai-gateway/v1/chat/completions", {
+      new Request("http://host/ai-gateway/ai-gateway/v1/chat/completions", {
         method: "POST",
         headers: { authorization: `Bearer ${wrongScope}` },
       }),

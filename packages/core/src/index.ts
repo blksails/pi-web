@@ -33,7 +33,11 @@ export * from "./session-list/index.js";
 // 仅 node builtins,无 pi SDK 值导入,可安全经 barrel 重导出。
 export * from "./session-meta/index.js";
 export * from "./agent-source-list/index.js";
-export * from "./aigc-settings/index.js";
+// aigc-settings(GET /aigc/models)与 vision-settings 的路由(GET /vision/models)已随
+// multi-gateway-providers 任务 4.3 删除——两个只读目录端点合并进 `GET /config/models`
+// 的类型筛选(config-routes.ts,Req 3.1, 3.2, 3.4)。`aigc-settings` 目录已整体删除;
+// `vision-settings` 保留(其纯类型 `VisionModelOption`/`VisionModelOptions` 仍被
+// `vision-model-options`(pi SDK 取数,单独子路径)等消费方引用)。
 export * from "./vision-settings/index.js";
 export * from "./session-actions/index.js";
 export { resolveSandboxEntry } from "./sandbox/entry.js";

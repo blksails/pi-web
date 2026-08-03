@@ -135,10 +135,20 @@ function buildDeps(opts: { readonly conditional: boolean }): HostDeps {
   return {
     ...base,
     llmGateway: { secret: "test-llm-secret", registry: {} },
+    // multi-gateway-providers 任务 3.4:路由改按实例分流,依赖形状由
+    // `{baseUrl,keyResolver}` 变为 `{instances: Map<实例标识, {baseUrl,keyResolver}>}`。
+    // 本文件只关心「conditional 依赖齐备时 gateway.ai 能力贡献路由」,一个实例即足够。
     aiGateway: {
-      baseUrl: "http://ai-gateway.test",
+      instances: new Map([
+        [
+          "ai-gateway",
+          {
+            baseUrl: "http://ai-gateway.test",
+            keyResolver: { resolve: async () => undefined },
+          },
+        ],
+      ]),
       secret: "test-ai-secret",
-      keyResolver: { resolve: async () => undefined },
     },
     authState: new AuthSessionState(),
   };

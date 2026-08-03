@@ -10,6 +10,7 @@ import {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
   CLOUDFLARE_AIGC_CATALOG,
+  type AigcCatalogEntry,
 } from "../../src/aigc/model-catalog.js";
 import {
   IMAGE_GENERATION_ROUTES,
@@ -64,13 +65,15 @@ describe("AI_GATEWAY_AIGC_CATALOG 与网关 ROUTES 一致", () => {
     expect(catalogModels).toEqual(routeModels);
   });
 
-  it("每个 catalog 条目的 label 与对应 route 一致,provider 恒为 ai-gateway", () => {
+  it("每个 catalog 条目的 label 与对应 route 一致,provider 恒为 cloudflare(2026-08-03 归属改判)", () => {
     for (const entry of AI_GATEWAY_AIGC_CATALOG) {
       const route = byModel.get(entry.model);
       expect(route, `catalog 含网关 ROUTES 外的 model: ${entry.model}`).toBeDefined();
       expect(entry.label).toBe(route?.label);
-      expect(entry.provider).toBe("ai-gateway");
-      expect(route?.provider).toBe("ai-gateway");
+      // 本组走网关的 compat 端点,与 CLOUDFLARE_AIGC_CATALOG 的原生通路同属 cloudflare;
+      // label 以 " · Cloudflare compat" 与原生组区分(两组 model id 不重叠)。
+      expect(entry.provider).toBe("cloudflare");
+      expect(route?.provider).toBe("cloudflare");
     }
   });
 
@@ -182,5 +185,50 @@ describe("Workers AI 原生路由与目录隔离", () => {
     );
     const leaked = CLOUDFLARE_WORKERS_AI_ROUTES.map((r) => r.model).filter((m) => registered.has(m));
     expect(leaked).toEqual([]);
+  });
+});
+
+/**
+ * multi-gateway-providers spec 任务 4.2(Req 2.4, 4.1, 4.3):三个 AIGC 静态目录的条目均
+ * 携带非空的输入/输出类型;`provider` 字段不再受限于封闭字面量联合。
+ */
+describe("AIGC 静态目录条目携带类型信息(spec multi-gateway-providers 任务 4.2)", () => {
+  const allEntries = [...AIGC_MODEL_CATALOG, ...AI_GATEWAY_AIGC_CATALOG, ...CLOUDFLARE_AIGC_CATALOG];
+
+  it("三个目录均非空(前提断言:下面的 every() 在空数组上恒真,不能证明任何东西)", () => {
+    expect(AIGC_MODEL_CATALOG.length).toBeGreaterThan(0);
+    expect(AI_GATEWAY_AIGC_CATALOG.length).toBeGreaterThan(0);
+    expect(CLOUDFLARE_AIGC_CATALOG.length).toBeGreaterThan(0);
+  });
+
+  it("每条目均带非空 input(Req 4.1)", () => {
+    for (const entry of allEntries) {
+      expect(entry.input?.length ?? 0, `${entry.provider}/${entry.model} 的 input 为空`).toBeGreaterThan(0);
+    }
+  });
+
+  it("每条目均带非空 output(Req 4.1/4.3)", () => {
+    for (const entry of allEntries) {
+      expect(entry.output?.length ?? 0, `${entry.provider}/${entry.model} 的 output 为空`).toBeGreaterThan(0);
+    }
+  });
+
+  it("output 均含 image(本目录全部为图像生成/编辑模型)", () => {
+    for (const entry of allEntries) {
+      expect(entry.output).toContain("image");
+    }
+  });
+
+  it("provider 字段接受任意字符串,不受限于封闭字面量联合(Req 2.4:新增 AIGC provider 只需加配置)", () => {
+    // 若 AigcCatalogEntry.provider 仍是封闭联合,以下赋值会在 tsc 阶段报类型错误——
+    // 本用例是编译期证明,运行期断言只是附带确认。
+    const custom: AigcCatalogEntry = {
+      model: "custom-model",
+      label: "Custom Provider Model",
+      provider: "my-new-aigc-provider",
+      input: ["text", "image"],
+      output: ["image"],
+    };
+    expect(custom.provider).toBe("my-new-aigc-provider");
   });
 });

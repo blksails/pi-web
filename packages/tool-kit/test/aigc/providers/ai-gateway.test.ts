@@ -23,7 +23,7 @@ describe("createAiGatewayImage — route 形态", () => {
       description: "desc",
     });
     expect(v.model).toBe("gpt-image-1");
-    expect(v.provider).toBe("ai-gateway");
+    expect(v.provider).toBe("cloudflare"); // 2026-08-03 归属改判:compat 通路归 cloudflare
     // base URL 走占位符(模块顶层不读 env,Req 6.2)。
     expect(v.url).toContain("${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1");
     expect(v.url).toBe(
@@ -82,7 +82,7 @@ describe("createAiGatewayImageEdit — route 形态", () => {
       label: "AI Gateway Edit Test",
       description: "desc",
     });
-    expect(v.provider).toBe("ai-gateway");
+    expect(v.provider).toBe("cloudflare"); // 2026-08-03 归属改判:compat 通路归 cloudflare
     expect(v.url).toBe(
       "${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1/images/edits",
     );

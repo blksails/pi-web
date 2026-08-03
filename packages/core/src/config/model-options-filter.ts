@@ -8,8 +8,13 @@
  * 开关来源:环境变量 `PI_WEB_HIDE_PROVIDERS`(逗号分隔的 provider 名,如
  * `anthropic,openai`)。匹配按 provider 原名精确比较(大小写敏感),与 ModelRegistry
  * 报出的 `provider` 字段同形。
+ *
+ * ★ 隐藏名单语义统一为彻底禁用(multi-gateway-providers spec 任务 4.4,Req 5.1–5.4):
+ * `excludeProviders` 不再只服务 chat 命名空间的 `ModelOptions` 形状 —— 泛型化为
+ * `{providers, models}` 的最小结构约束,使 `ModelCatalogService.query()` 的统一投影
+ * (`CatalogQueryResult`,models 元素为 `CatalogModel`)可复用同一份过滤逻辑,让隐藏名单
+ * 对全部类型(chat 与 image)一致生效,不因用途不同而例外。
  */
-import type { ModelOptions } from "./model-options.types.js";
 
 /**
  * 解析逗号分隔的 provider 排除名单为集合;忽略空白与空项。
@@ -29,11 +34,15 @@ export function parseHiddenProviders(
 /**
  * 从模型选项中剔除 `hidden` 中列出的 provider:同时过滤 `models`(按 `m.provider`)
  * 与去重后的 `providers` 名单。`hidden` 为空 → 原样返回(零拷贝快路径)。纯函数,不改入参。
+ *
+ * 泛型化(任务 4.4):`M` 只约束「有 `provider: string` 字段」,`ModelOptions`(chat 命名空间)
+ * 与 `CatalogQueryResult`(`query()` 统一投影,models 元素为 `CatalogModel`)两种形状均满足,
+ * 复用同一份过滤逻辑;调用方按入参形状推导出结构一致的返回类型。
  */
-export function excludeProviders(
-  options: ModelOptions,
+export function excludeProviders<M extends { readonly provider: string }>(
+  options: { readonly providers: readonly string[]; readonly models: readonly M[] },
   hidden: ReadonlySet<string>,
-): ModelOptions {
+): { readonly providers: readonly string[]; readonly models: readonly M[] } {
   if (hidden.size === 0) return options;
   return {
     providers: options.providers.filter((p) => !hidden.has(p)),

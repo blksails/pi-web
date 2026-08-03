@@ -197,7 +197,7 @@ export const AI_GATEWAY_IMAGE_ROUTES: readonly ImageRoute[] = [
   createAiGatewayImage(
     {
       model: "gpt-image-1",
-      label: "GPT Image 1 · ai-gateway",
+      label: "GPT Image 1 · Cloudflare compat",
       description: "OpenAI gpt-image-1 generation via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },
@@ -205,7 +205,7 @@ export const AI_GATEWAY_IMAGE_ROUTES: readonly ImageRoute[] = [
   createAiGatewayImage(
     {
       model: "gpt-image-2",
-      label: "GPT Image 2 · ai-gateway",
+      label: "GPT Image 2 · Cloudflare compat",
       description: "OpenAI gpt-image-2 generation via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
       providerModel: "gpt-image-2",
     },
@@ -214,7 +214,7 @@ export const AI_GATEWAY_IMAGE_ROUTES: readonly ImageRoute[] = [
   createAiGatewayImage(
     {
       model: "qwen-image",
-      label: "Qwen Image · ai-gateway",
+      label: "Qwen Image · Cloudflare compat",
       description: "Qwen text-to-image generation via ai-gateway. Needs BLKSAILS_GATEWAY_API_KEY.",
     },
     { pricing: { amount: 0.2, currency: "CNY", unit: "image" } },

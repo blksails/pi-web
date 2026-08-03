@@ -63,6 +63,11 @@ export type LivePreview = z.infer<typeof LivePreviewSchema>;
 export const CanvasCapabilityModelSchema = z.object({
   id: z.string(),
   label: z.string().optional(),
+  /**
+   * 归属 provider 标识。供前端渲染字母徽章并剥掉 label 里冗余的 ` · <provider>` 后缀
+   * (与主对话提示词栏的 AIGC 快捷设置同一呈现)。可选:旧 agent 不下发时前端退化为纯文本。
+   */
+  provider: z.string().optional(),
   sizes: z.array(z.string()).optional(),
 });
 export type CanvasCapabilityModel = z.infer<typeof CanvasCapabilityModelSchema>;

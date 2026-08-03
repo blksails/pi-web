@@ -13,6 +13,11 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { SlashCompletionDecl } from "@blksails/pi-web-protocol";
 import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
+// spec multi-gateway-providers(任务 3.7,Req 6.5):失败文案的来源判据须覆盖该来源
+// **声明**要注册的全部网关实例名(与是否已成功解析无关),而非模块级常量 —— 需要认得
+// 网关来源的 sourceId 才能从 `listModelSources()` 里挑出它,取中立命名空间常量,
+// 不引入具体 adapter 实现。
+import { AI_GATEWAY_PROVIDER_NAME } from "@blksails/pi-web-core/model-provider-names.js";
 import {
   type AgentSessionServices,
   createAgentSessionFromServices,
@@ -22,7 +27,7 @@ import {
   type CreateAgentSessionFromServicesOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { ResolveProjectTrust } from "./project-trust.js";
-// desktop-cloud-login:登录态注入指向 egress 的内存 ModelRegistry(引 pi SDK 值,按子路径直引,
+// desktop-cloud-login:登录态注入指向 egress 的共享 ModelRegistry(引 pi SDK 值,按子路径直引,
 // 不经 server barrel;egress-model-source 见 auth/)。
 // spec kernel-boundary-decoupling(任务 4.2):模型源改为经**注册表**取得,不再直接
 // import auth / ai-gateway 的具体实现 —— 那两条 import 是 runner → adapters 的跨层边,
@@ -91,8 +96,10 @@ export function buildRuntimeFactory(
         : {}),
     });
     // desktop-cloud-login(Req 3.1/3.2/4.1/4.3):登录态经 runner env 注入指向云端 egress 的
-    // 内存 ModelRegistry(复用共享 auth.json,零落盘,不改 agentDir)。未登录/未启用 →
-    // undefined,保持 SDK 默认(共享 auth.json + models.json),字节级等价今日本地路径。
+    // 共享 ModelRegistry。★ 该 registry 由 `ModelRegistry.create` 读 `<agentDir>/models.json`
+    // 构造,各模型源在其上**叠加** registerProvider(spec multi-gateway-providers 任务 2.1,
+    // Req 6.1/6.3/6.4)—— 只读不写,不改 agentDir。此前用 inMemory 会顶掉磁盘上的自定义
+    // provider 与覆写。未登录/未启用 → undefined,保持 SDK 默认,字节级等价今日本地路径。
     //
     // spec ai-gateway-session-models(design.md §D2,Req 1.1/1.3/3.1/3.4):会话服务只有
     // `modelRegistry` 一个位置,而 egress 与 ai-gateway 两个来源都要注册 provider ——
@@ -124,6 +131,12 @@ export function buildRuntimeFactory(
       }
       const shared = makeShared(agentDir);
       for (const { registrar, spec } of resolved) {
+        // spec multi-gateway-providers 任务 3.5:一个来源今后可注册多个 provider,
+        // 日志改按 `providerNamesOf` 回读而非假定"来源=provider"一一对应。
+        runnerLog.info("model source resolved", {
+          sourceId: registrar.sourceId,
+          providers: registrar.providerNamesOf(spec),
+        });
         registrar.register(shared.modelRegistry, spec, runnerLog);
       }
       servicesOptions.authStorage = shared.authStorage;
@@ -132,13 +145,52 @@ export function buildRuntimeFactory(
     const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 
     const registry = services.modelRegistry;
+    // spec multi-gateway-providers(任务 3.7,Req 6.5)—— 重做:上一版从 `resolved`
+    // (本次已成功解析出 spec 的源)取 provider 名,网关源本次未解析出 spec 时整体
+    // 退回缺省单实例常量。但失败文案本身把「网关套件未启用 / 凭据缺失 / 会话侧未
+    // 注册」列为头号成因 —— 恰在这些场景下 `resolveSpecFromEnv` 会返回 `undefined`,
+    // 判据因而在它最该起作用的地方失效(完整性复查抓到:`cloudflare`/`blksails-ai`
+    // 仍拿裸文案)。★ 判据不能是「该源是否已注册成功」。
+    //
+    // 改为:判据取自该来源在当前 env 下**声明**要注册的全部实例名 ——
+    // `declaredProviderNamesFromEnv`(见 `model-source-registrar.ts`),直接解析 env
+    // 取全集,与 `resolveSpecFromEnv` 是否解析成功无关。故从**已登记的全部来源**
+    // (`listModelSources()`,不再限定 `resolved`)里按 `sourceId` 挑出网关来源后调用。
+    //
+    // ★ 与「声明集」取**并集**,而不是「声明集存在就整体取代已解析集」——若只用 `??`
+    //   短路,一旦来源实现了 `declaredProviderNamesFromEnv` 却在当前 env 下返回空数组
+    //   (如:未配置任何网关 env),`[] ?? x` 的结果仍是 `[]` 而非落到 `x`,判据会被
+    //   收窄成空集,连缺省名 `ai-gateway` 都拿不到来源文案 —— 相对改造前是回归
+    //   (违反 Req 9.1 的逐字节等价)。并集为空 → 显式传 `undefined`,让 `resolveModel`
+    //   落回其模块内的 `DEFAULT_GATEWAY_PROVIDER_NAMES`,与改造前逐字节等价。
+    const gatewaySource = listModelSources().find(
+      (registrar) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
+    );
+    const gatewayResolvedEntry = resolved.find(
+      ({ registrar }) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
+    );
+    const declaredGatewayProviderNames = gatewaySource?.declaredProviderNamesFromEnv?.(
+      process.env,
+    );
+    const resolvedGatewayProviderNames =
+      gatewayResolvedEntry !== undefined
+        ? gatewayResolvedEntry.registrar.providerNamesOf(gatewayResolvedEntry.spec)
+        : undefined;
+    const gatewayProviderNamesUnion = new Set<string>([
+      ...(declaredGatewayProviderNames ?? []),
+      ...(resolvedGatewayProviderNames ?? []),
+    ]);
+    const gatewayProviderNames =
+      gatewayProviderNamesUnion.size > 0 ? Array.from(gatewayProviderNamesUnion) : undefined;
     const model =
-      session.model !== undefined ? resolveModel(session.model, registry) : undefined;
+      session.model !== undefined
+        ? resolveModel(session.model, registry, gatewayProviderNames)
+        : undefined;
     const scopedModels =
       session.scopedModels !== undefined
         ? session.scopedModels.map((entry) => {
             const resolved: { model: SessionModel; thinkingLevel?: AgentDefinition["thinkingLevel"] } = {
-              model: resolveModel(entry.model, registry),
+              model: resolveModel(entry.model, registry, gatewayProviderNames),
             };
             if (entry.thinkingLevel !== undefined) {
               resolved.thinkingLevel = entry.thinkingLevel;

@@ -7,12 +7,15 @@
  *
  * `mergeModelCatalog` 是纯函数(合并语义见 model-catalog spec,Req 1/2/3.1):
  * `self ∪ gateway` 不吞并——同名判定 key 为 `${provider}/${id}` 二元组,网关条目
- * provider 统一收敛为 `"ai-gateway"`(上游渠道名 `ownedBy` 降级为 `channel` 元数据),
+ * provider **取其所属网关实例标识**(spec multi-gateway-providers 任务 3.2,
+ * Req 1.2/1.3;上游渠道名 `ownedBy` 降级为 `channel` 元数据),
  * 故 self 与 gateway 条目永不同 key,同 id 跨归属两条并存。`modelPrecedence` 仅决定
  * 合并 models 数组中两块的先后顺序(`"gateway"` = 网关块在前,可经
  * `PI_WEB_AI_GATEWAY_MODEL_PRECEDENCE=self` 反转),不再做覆盖删除。`providers`
- * 输出仅含 self 来源 provider(可设为默认的集合)。接入点见 `lib/app/pi-handler.ts`
- * 的 `createConfigRoutes({ listModelOptions })` 装配处。
+ * 输出为 self 来源 provider 加上网关侧**按实例逐个列出**的标识(可设为默认的集合;
+ * 两个网关实例同时启用时分别出现,而非折叠为单一常量)。单实例部署未显式指定
+ * `instanceId` 时,缺省沿用 `AI_GATEWAY_PROVIDER_NAME`,行为与改造前逐字节一致。
+ * 接入点见 `lib/app/pi-handler.ts` 的 `createConfigRoutes({ listModelOptions })` 装配处。
  */
 import { createLogger } from "@blksails/pi-web-logger";
 import type { ModelOption, ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
@@ -35,6 +38,7 @@ const log = createLogger({ namespace: "server:ai-gateway" });
  */
 export type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
 import type { GatewayModelEntry, ModelPrecedence } from "@blksails/pi-web-core/model-catalog/types.js";
+import type { Modality } from "@blksails/pi-web-core/model-catalog/modality.js";
 
 /** `GatewayModelCatalog` 的注入依赖。 */
 export interface GatewayModelCatalogDeps {
@@ -42,6 +46,15 @@ export interface GatewayModelCatalogDeps {
   readonly baseUrl: string;
   /** 目录 TTL(毫秒)。 */
   readonly ttlMs: number;
+  /**
+   * 所属网关实例标识(spec multi-gateway-providers 任务 3.2,Req 1.2/10.3):写入本实例
+   * 产出的每条 {@link GatewayModelEntry.instanceId},并出现在本类的日志中,使多实例
+   * 部署下的拉取/过滤日志可辨识来自哪个实例。
+   *
+   * ★缺省 `AI_GATEWAY_PROVIDER_NAME`(即既有单实例部署沿用的 provider 名):未显式传入
+   *   时行为与改造前逐字节一致——现有单实例装配点(`lib/app/pi-handler.ts`)无需跟随改动。
+   */
+  readonly instanceId?: string;
   /** 可选:携带凭据请求 `/v1/models`(网关若要求鉴权)。未注入则匿名请求。 */
   readonly keyResolver?: KeyResolver;
   /**
@@ -56,12 +69,31 @@ export interface GatewayModelCatalogDeps {
    * 又使白名单内厂商发布新型号时**无需改代码**即可出现(Req 2.4)。
    */
   readonly allowedOwners?: ReadonlySet<string>;
+  /**
+   * 可选:模型 id 白名单(逐实例 `PI_WEB_GATEWAY_<ID>_MODELS`),在 {@link allowedOwners}
+   * 之后再收一层 —— 部署方只想暴露自己认可的那几条最新型号时用。
+   * `undefined` / 空集 = 不过滤(见 {@link filterByModelId})。
+   */
+  readonly allowedModelIds?: ReadonlySet<string>;
   /** 测试接缝:缺省 `globalThis.fetch`。 */
   readonly fetchImpl?: typeof fetch;
   /** 测试接缝:缺省 `Date.now`。 */
   readonly nowFn?: () => number;
   /** 测试接缝:收敛结果与拉取失败的观测出口;缺省走 `server:ai-gateway` 日志。 */
   readonly logger?: GatewayCatalogLogger;
+  /**
+   * 逐实例声明的输入类型(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3):
+   * 源自 `PI_WEB_GATEWAY_<ID>_INPUT`(经 {@link GatewayInstanceConfig.input},任务 3.1
+   * 已解析),由 `instances.ts` 的 `createGatewayCatalogs` 逐实例转发到此处。写入本实例
+   * 每条 {@link GatewayModelEntry} 的模态声明,供 {@link mergeModelCatalog} 读取并覆盖
+   * {@link GATEWAY_DEFAULT_MODALITY}。
+   *
+   * 未声明(`undefined`)= 本实例产出的条目继续落到 `GATEWAY_DEFAULT_MODALITY`
+   * (零配置下行为不变)。
+   */
+  readonly input?: readonly Modality[];
+  /** 同上,输出方向(`PI_WEB_GATEWAY_<ID>_OUTPUT` / {@link GatewayInstanceConfig.output})。 */
+  readonly output?: readonly Modality[];
 }
 
 /** 目录组件的最小日志出口(测试可注入以断言可观测性)。 */
@@ -84,12 +116,65 @@ export function filterByOwner(
   return entries.filter((e) => normalized.has(e.ownedBy.trim().toLowerCase()));
 }
 
+/**
+ * 按**模型 id** 收敛目录(逐实例 `PI_WEB_GATEWAY_<ID>_MODELS`)。
+ *
+ * 与 {@link filterByOwner} 的分工:归属白名单是**粗筛**(按 `owned_by` 排掉聚合大户),
+ * 本函数是**精选**——部署方只想暴露自己认可的那几条最新型号时用。两者串联,先粗后精。
+ *
+ * ★ `undefined` = 不过滤(既有部署逐字节不变);空集同样视为不过滤 —— 与
+ *   `parseProviderAllowlist` 的「空白回落」同一考量:空值几乎总是误配(`VAR=` 写空),
+ *   把它解释成「全部滤除」会让部署方对着空清单束手无策。真要清空应配一个不存在的 id。
+ *
+ * ★ 与归属白名单相反,本表**不**随厂商发新型号自动跟进 —— 这正是「精选」的语义:
+ *   要出新型号就得改配置。选它即接受这份维护成本。
+ *
+ * 比对忽略大小写与首尾空白。
+ */
+export function filterByModelId(
+  entries: readonly GatewayModelEntry[],
+  allowed: ReadonlySet<string> | undefined,
+): readonly GatewayModelEntry[] {
+  if (allowed === undefined || allowed.size === 0) return entries;
+  const normalized = new Set([...allowed].map((m) => m.trim().toLowerCase()));
+  return entries.filter((e) => normalized.has(e.model.trim().toLowerCase()));
+}
+
+/**
+ * 网关条目的缺省模态声明(multi-gateway-providers spec 任务 4.2,Req 4.1/4.3)。
+ *
+ * `GET /v1/models` 不携带模态信息,单条目也无从声明;design.md「输入/输出取值域」表
+ * 「网关目录条目 | 由实例配置声明或缺省 `["text"]`」两方向的缺省值相同 —— 与
+ * pi SDK `Model`(只有 input、output 单向缺省)不同,网关条目在两个方向都缺省为
+ * `["text"]`(对话网关的基线假设:纯文本模型)。
+ *
+ * ★「由实例配置声明」的那一半(即 `GatewayInstanceConfig.input`/`output`,已由任务 3.1
+ *   解析就位)已由任务 4.5 接线:{@link GatewayModelCatalog} 把该声明写入其产出的每条
+ *   {@link GatewayModelEntry}(见 `GatewayModelCatalogDeps.input`/`output`),
+ *   {@link mergeModelCatalog} 优先读取条目自身携带的声明,只有实例未声明该方向时才落到
+ *   本常量 —— 未声明模态的实例(零配置)行为不变。
+ */
+const GATEWAY_DEFAULT_MODALITY: readonly Modality[] = ["text"];
+
+/**
+ * {@link GatewayModelEntry} + 逐实例声明的模态(multi-gateway-providers spec 任务 4.5)。
+ *
+ * ★ 沿用 `model-catalog/service.ts` 的 `toImageCatalogModel` 同款「宽松类型断言」模式:
+ *   `GatewayModelEntry`(core 契约类型)本身尚未声明这两个字段 —— 提升到 core 契约会牵动
+ *   跨包类型改动,超出本任务边界;写入(见 `refresh()`)与读取(见 `mergeModelCatalog`)
+ *   均只在本文件内经这个本地扩展类型进行,`GatewayModelEntry` 的公开形状不变。
+ */
+type GatewayModelEntryWithModality = GatewayModelEntry & {
+  readonly input?: readonly Modality[];
+  readonly output?: readonly Modality[];
+};
+
 /** `GET /v1/models` 响应体的宽松形状(OpenAI 兼容:`{ data: [{ id, owned_by }] }`)。 */
 interface RawModelsResponse {
   readonly data?: ReadonlyArray<{ readonly id?: unknown; readonly owned_by?: unknown }>;
 }
 
-function parseModelsResponse(json: unknown): GatewayModelEntry[] {
+function parseModelsResponse(json: unknown, instanceId: string): GatewayModelEntry[] {
   const data = (json as RawModelsResponse | undefined)?.data;
   if (!Array.isArray(data)) return [];
   const entries: GatewayModelEntry[] = [];
@@ -99,7 +184,7 @@ function parseModelsResponse(json: unknown): GatewayModelEntry[] {
     if (typeof id !== "string" || id.length === 0) continue;
     const ownedByRaw = (item as { owned_by?: unknown }).owned_by;
     const ownedBy = typeof ownedByRaw === "string" && ownedByRaw.length > 0 ? ownedByRaw : "ai-gateway";
-    entries.push({ model: id, ownedBy, source: "ai-gateway" });
+    entries.push({ model: id, ownedBy, source: "ai-gateway", instanceId });
   }
   return entries;
 }
@@ -110,11 +195,16 @@ function parseModelsResponse(json: unknown): GatewayModelEntry[] {
 export class GatewayModelCatalog {
   private readonly baseUrl: string;
   private readonly ttlMs: number;
+  private readonly instanceId: string;
   private readonly keyResolver: KeyResolver | undefined;
   private readonly allowedOwners: ReadonlySet<string> | undefined;
+  private readonly allowedModelIds: ReadonlySet<string> | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly nowFn: () => number;
   private readonly logger: GatewayCatalogLogger;
+  /** 逐实例声明的模态(任务 4.5);`undefined` = 该方向未声明,条目落到 {@link GATEWAY_DEFAULT_MODALITY}。 */
+  private readonly input: readonly Modality[] | undefined;
+  private readonly output: readonly Modality[] | undefined;
 
   private snapshot: readonly GatewayModelEntry[] = [];
   /** 上次**成功**刷新的时刻;`undefined` = 从未成功过。 */
@@ -124,11 +214,15 @@ export class GatewayModelCatalog {
   constructor(deps: GatewayModelCatalogDeps) {
     this.baseUrl = deps.baseUrl;
     this.ttlMs = deps.ttlMs;
+    this.instanceId = deps.instanceId ?? AI_GATEWAY_PROVIDER_NAME;
     this.keyResolver = deps.keyResolver;
     this.allowedOwners = deps.allowedOwners;
+    this.allowedModelIds = deps.allowedModelIds;
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.nowFn = deps.nowFn ?? Date.now;
     this.logger = deps.logger ?? log;
+    this.input = deps.input;
+    this.output = deps.output;
   }
 
   /**
@@ -166,11 +260,26 @@ export class GatewayModelCatalog {
         throw new Error(`ai-gateway /v1/models responded with status ${res.status}`);
       }
       const json = (await res.json()) as unknown;
-      const parsed = parseModelsResponse(json);
-      this.snapshot = filterByOwner(parsed, this.allowedOwners);
-      // 收敛可观测(Req 2.5):白名单过窄会静默产出空/瘦目录,不记数就无从判断。
+      const parsed = parseModelsResponse(json, this.instanceId);
+      // 逐实例声明的模态(任务 4.5,Req 2.4/2.5/3.3):写入本实例每条产出条目;未声明的
+      // 方向留空,交由 mergeModelCatalog 落到 GATEWAY_DEFAULT_MODALITY —— 未声明模态的
+      // 实例(this.input 与 this.output 均为 undefined)不产生新对象,行为逐字节不变。
+      const withModality: readonly GatewayModelEntryWithModality[] =
+        this.input === undefined && this.output === undefined
+          ? parsed
+          : parsed.map((e) => ({
+              ...e,
+              ...(this.input !== undefined ? { input: this.input } : {}),
+              ...(this.output !== undefined ? { output: this.output } : {}),
+            }));
+      const afterOwner = filterByOwner(withModality, this.allowedOwners);
+      this.snapshot = filterByModelId(afterOwner, this.allowedModelIds);
+      // 收敛可观测(Req 2.5/10.3):白名单过窄会静默产出空/瘦目录,不记数就无从判断;
+      // 多实例部署下日志须带实例标识,使拉取/过滤计数可分辨来自哪个实例。
       if (this.allowedOwners !== undefined) {
         this.logger.info("gateway catalog filtered", {
+          instanceId: this.instanceId,
+          keptAfterOwner: afterOwner.length,
           kept: this.snapshot.length,
           dropped: parsed.length - this.snapshot.length,
           allowed: [...this.allowedOwners],
@@ -179,9 +288,11 @@ export class GatewayModelCatalog {
       this.lastSuccessAt = this.nowFn();
     } catch (err) {
       // fail-soft(Req 4.2):沿用上次成功快照,不更新 lastSuccessAt——下次 get() 仍视为
-      // 过期,持续按 TTL 节奏重试。★记录**请求地址与错因**(Req 4.1):凭据不入日志
-      // (headers 不记),但没有地址就无法诊断「baseUrl 层级配错」这一最常见故障。
+      // 过期,持续按 TTL 节奏重试。★记录**请求地址、错因与实例标识**(Req 4.1/10.3):
+      // 凭据不入日志(headers 不记),但没有地址与实例标识就无法诊断多实例部署下
+      // 「哪个实例配错了 baseUrl」这一最常见故障。
       this.logger.warn("gateway catalog refresh failed", {
+        instanceId: this.instanceId,
         url,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -193,22 +304,26 @@ export class GatewayModelCatalog {
  * 目录 merge 纯函数(model-catalog spec design.md「mergeModelCatalog(重写)」,
  * Req 1.1–1.3, 2.1–2.3, 3.1):不改入参,不做网络/IO。
  *
- * - 网关条目映射为 `{ provider: "ai-gateway", id, name, source: "ai-gateway",
- *   channel: ownedBy, availability: "session" }`;self 条目附
+ * - 网关条目映射为 `{ provider: <该条目所属网关实例标识>, id, name, source: "ai-gateway",
+ *   channel: ownedBy, availability: "session" }`(spec multi-gateway-providers
+ *   任务 3.2,Req 1.2/1.3:provider **不再硬拍常量** `"ai-gateway"`,改取
+ *   `GatewayModelEntry.instanceId`——单实例部署未显式指定实例标识时,其缺省值即为
+ *   `AI_GATEWAY_PROVIDER_NAME`,故行为逐字节不变);self 条目附
  *   `source: "self", availability: "session"`。
  *
  *   ★ `availability` 于 spec **ai-gateway-session-models** 由 `"catalog"` 翻为 `"session"`
  *   (model-catalog spec 在 `model-select-field.tsx` 留下的 P2:「网关接入会话后翻转标记
  *   即可」已兑现)。翻转的前提是会话侧确实能跑 —— runner 经
- *   `ai-gateway/session-model-source.ts` 注册同名 provider,`registry.find("ai-gateway", id)`
+ *   `ai-gateway/session-model-source.ts` 注册同名 provider,`registry.find(<实例标识>, id)`
  *   可解析。**若该注册被移除,此处必须同步翻回 `"catalog"`**,否则用户选中即
  *   「模型未找到」。
- * - 去重 key = `${provider}/${id}`(防御性;self 与 gateway 的 provider 恒不同,
- *   理论无碰撞);同 key 重复时保留先出现者,后块不覆盖前块。
+ * - 去重 key = `${provider}/${id}`(self 与 gateway 的 provider 恒不同,理论无碰撞;
+ *   两个网关实例若配出相同标识,则属于装配层的标识冲突校验范畴,本函数不兜底);
+ *   同 key 重复时保留先出现者,后块不覆盖前块。
  * - `precedence` 仅决定两块在 models 数组中的先后(`"gateway"` = 网关块在前,
  *   `"self"` = self 块在前;块内保持入参原有顺序),不做跨归属覆盖删除。
- * - `providers` = self 来源 provider 去重排序,**且在存在网关条目时追加 `"ai-gateway"`**
- *   (渠道名仍不进入)。
+ * - `providers` = self 来源 provider 去重排序,**且追加网关条目各自的实例标识**
+ *   (去重排序;两个实例同时启用时分别出现;渠道名仍不进入)。
  *
  *   ★这是对 model-catalog spec 已冻结约定「providers 仅含 self 来源」的**有意修订**
  *   (spec ai-gateway-session-models Req 6.4)。原约定的理由是「providers 是可设为默认的
@@ -235,16 +350,27 @@ export function mergeModelCatalog(
   // 「列表里看得到、选中却说模型未找到」。
   const gatewayTagged: ModelOption[] = gatewayEntries
     .filter((g) => isSessionCapableGatewayModel(g.model))
-    .map((g) => ({
-      // ★与 session-model-source 的 provider 命名空间同源:两处必须逐字一致,
-      // 否则前端选中的条目在 runner registry 里查不到。
-      provider: AI_GATEWAY_PROVIDER_NAME,
-      id: g.model,
-      name: g.model,
-      source: "ai-gateway" as const,
-      channel: g.ownedBy,
-      availability: "session" as const,
-    }));
+    .map((g) => {
+      // 任务 4.5(Req 2.4/2.5/3.3):条目自身携带的模态声明(由所属实例经
+      // `GatewayModelCatalogDeps.input`/`output` 写入,见 model-catalog.ts 顶部文档)
+      // 优先于缺省值 —— 未声明该方向的实例才落到 GATEWAY_DEFAULT_MODALITY。
+      const declared = g as GatewayModelEntryWithModality;
+      return {
+        // ★provider 取其所属实例标识(spec multi-gateway-providers 任务 3.2,Req 1.2/1.3),
+        // 不再硬拍 `AI_GATEWAY_PROVIDER_NAME` 常量 —— 两个网关实例同时启用时,各自的模型
+        // 归属到各自的 provider 名下,而非被折叠成同一个 "ai-gateway"。
+        // 单实例部署(未显式传 instanceId)时 `g.instanceId` 缺省即为该常量,行为逐字节
+        // 不变。会话侧 registry 注册名(session-model-source.ts)须与此同源。
+        provider: g.instanceId,
+        id: g.model,
+        name: g.model,
+        source: "ai-gateway" as const,
+        channel: g.ownedBy,
+        availability: "session" as const,
+        input: declared.input ?? GATEWAY_DEFAULT_MODALITY,
+        output: declared.output ?? GATEWAY_DEFAULT_MODALITY,
+      };
+    });
 
   // precedence 只做块排序;防御性去重保留先出现者(不吞并语义,Req 1.2)。
   const ordered =
@@ -258,10 +384,12 @@ export function mergeModelCatalog(
   }
 
   const models = [...byKey.values()];
-  // providers = 可设为默认的 provider 集合。self 来源恒在;网关在其条目非空时加入
-  // (spec ai-gateway-session-models Req 6.1/6.3——网关模型已可接入会话)。
-  // 空网关时不追加,保证「未接入任何网关条目」的输出与修订前逐字节一致。
-  const providers = [...new Set(selfTagged.map((m) => m.provider))].sort();
-  if (gatewayTagged.length > 0) providers.push(AI_GATEWAY_PROVIDER_NAME);
+  // providers = 可设为默认的 provider 集合。self 来源恒在;网关侧按**实例标识**逐个列出
+  // (spec multi-gateway-providers 任务 3.2,Req 1.2/1.3):两个网关实例同时启用时分别
+  // 出现,而非折叠为单一常量。空网关(或过滤后无条目)时不追加任何网关 provider,
+  // 保证「未接入任何网关条目」的输出与修订前逐字节一致。
+  const selfProviders = [...new Set(selfTagged.map((m) => m.provider))].sort();
+  const gatewayProviders = [...new Set(gatewayTagged.map((m) => m.provider))].sort();
+  const providers = [...selfProviders, ...gatewayProviders];
   return { providers, models };
 }

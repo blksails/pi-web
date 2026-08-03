@@ -76,7 +76,7 @@ concept-first 全貌见 [04 · Surface 权威表面栈](./04-surface-stack.md)�
 |------|--------------|
 | 附件系统 | `attachment-store` + `attachment-tool-bridge`：引用式四层附件（L0 对象存储 + L2 resolve 句柄 + tool-output 回流）。见 [09](./09-attachment-system.md) |
 | AIGC 图像工具 | `image_generation`/`image_edit` 经 `aigcExtension` + `pi.registerTool` 装载（已去 ToolSpec/compileTool）。见 [11](./11-aigc-and-vision-tools.md) |
-| 视觉识别 | `image-vision-tool`：`image_vision` 工具 + `/img_vision` 命令 + `GET /vision/models`。见 [11](./11-aigc-and-vision-tools.md) |
+| 视觉识别 | `image-vision-tool`：`image_vision` 工具 + `/img_vision` 命令 + 视觉模型枚举端点（现已并入 `GET /api/config/models`）。见 [11](./11-aigc-and-vision-tools.md) |
 | 状态注入桥 | `state-injection-bridge`：双向会话级 KV，权威在 agent 子进程，`POST /sessions/:id/state` 写回 + `control:"state"` 下行镜像帧 |
 | 会话就绪握手 | `SessionLifecycleState` + 粘性 `control:"session-status"` 帧 + `getCommands` 只读就绪探针 |
 | Agent 声明式 routes | `AgentDefinition.routes` → 会话锚定端点 + `slashCompletions` 静态补全。见 [08](./08-agent-development.md) |

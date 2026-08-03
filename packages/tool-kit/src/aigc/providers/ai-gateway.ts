@@ -46,7 +46,12 @@ import {
 const AI_GATEWAY_CONFIG: OpenAiCompatConfig = {
   baseUrl: "${BLKSAILS_GATEWAY_BASE_URL:-http://127.0.0.1:8080}/v1",
   apiKeyVar: "BLKSAILS_GATEWAY_API_KEY",
-  provider: "ai-gateway",
+  // 展示归属(不参与分发 —— 真实上游由上面的 baseUrl + apiKeyVar 决定)。
+  // 2026-08-03 用户决策:本通路当前指向 Cloudflare AI Gateway 的 compat 端点,
+  // 故归到 `cloudflare`,与 providers/cloudflare.ts 的原生图像通路同一 provider。
+  // ⚠ 这把某个部署的配置写进了常量:BLKSAILS_GATEWAY_BASE_URL 可指向任何网关,
+  //   若指向真正的自建网关,界面仍显示 cloudflare(已知取舍,见 model-catalog.ts 注释)。
+  provider: "cloudflare",
   // 零 quirks(Req 5.1):不设 omitResponseFormat(缺省 false,与 NewAPI 一致显式发送
   // response_format),因为网关侧已统一承接协议差异,pi-web 侧不再特判。
 };

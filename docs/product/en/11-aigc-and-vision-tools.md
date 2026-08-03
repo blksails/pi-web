@@ -247,14 +247,18 @@ Canvas is built on top of the Surface authoritative-surface stack (`domain=canva
 
 For the settings UI and the Canvas picker to enumerate models; **any fetch failure degrades to 200 + an empty list** rather than leaking a 500 to the frontend:
 
-| Endpoint | Purpose | Implementation |
+> ⚠ **Changed (spec `multi-gateway-providers`, task 4.3)**: the former dedicated routes `GET /api/vision/models` and `GET /api/aigc/models` have been **removed**. Their capability is covered by modality filtering on the single deployment-level catalog endpoint `GET /api/config/models`.
+
+| Purpose | Query | Notes |
 |---|---|---|
-| `GET /api/vision/models` | Lists the vision models that are "credentialed and support image input" as `{value,label,provider}`, for the Canvas "Read" picker; `value` is `provider/modelId` and can be dropped straight into `image_vision`'s `model` | `packages/server/src/vision-settings/vision-models-routes.ts:29` |
-| `GET /api/aigc/models` | Lists the AIGC image-model display catalog `{model,label,provider}`, for the "model toggles" widget in `/settings`; the data source is the main-entry pure constant `AIGC_MODEL_CATALOG` | `packages/server/src/aigc-settings/aigc-models-routes.ts:14` |
+| Vision **understanding** models (Canvas "Read" picker) | `GET /api/config/models?input=image&output=text` | The predicate must also constrain `output=text` — filtering on `input=image` alone would pull in image-to-image/edit models |
+| Image **generation** models (the "model toggles" widget in `/settings`) | `GET /api/config/models?output=image` | The data source covers the static `AIGC_MODEL_CATALOG` plus the image catalogs of enabled gateway instances |
 
-Both routes are mounted into `createPiWebHandler` through the `routes:` injection seam (`lib/app/pi-handler.ts:497,502`); the host forwards the entire API surface with a single `app.all("/api/*")` (after Next.js was removed, per-segment forwarders are no longer needed). For the full endpoint reference see [24 · HTTP/SSE API Reference](./24-http-api-reference.md).
+Response entries share one shape: `{provider,id,name,input,output,source}` (the `ModelCatalogService.query()` projection, `packages/core/src/model-catalog/service.ts`). On the vision side the composite identifier `provider/modelId` — which can be dropped straight into `image_vision`'s `model`, and is also the stored format of `visionModel` in `aigc.json` — is composed **client-side** as `${provider}/${id}`, so the format is unchanged.
 
-The frontend can reuse `fetchVisionModels` (`vision-op.ts:92`) to pull `GET /vision/models`: any failure (no baseUrl / non-2xx / parse error / shape mismatch) returns an empty array, and the Read feature remains usable.
+Routes are mounted into `createPiWebHandler` through the `routes:` injection seam; the host forwards the entire API surface with a single `app.all("/api/*")` (after Next.js was removed, per-segment forwarders are no longer needed). For the full endpoint reference see [24 · HTTP/SSE API Reference](./24-http-api-reference.md).
+
+The frontend can reuse `fetchVisionModels` (`packages/canvas-ui/src/vision-op.ts`): any failure (no baseUrl / non-2xx / parse error / shape mismatch) returns an empty array and leaves one identifiable `console.error`, and the Read feature remains usable. A non-http(s) sentinel baseUrl (the pane lane's `pane://host`) short-circuits to an empty list with no request and no error — inside a pane, vision-model selection has been pushed down to the agent.
 
 ---
 
@@ -307,7 +311,7 @@ createNewApiImage(
 ),
 ```
 
-The new route's `model` automatically enters the LLM-visible enum built by `optionalModelEnum`, the `"$models"` sentinel expansion, the assembly-time pushed-down list, and the `GET /aigc/models` catalog all update accordingly—single source of truth.
+The new route's `model` automatically enters the LLM-visible enum built by `optionalModelEnum`, the `"$models"` sentinel expansion, the assembly-time pushed-down list, and the `GET /api/config/models?output=image` catalog all update accordingly—single source of truth.
 
 ---
 
@@ -343,5 +347,5 @@ Assistant: [/img_vision command → image_vision kernel recognizes the most rece
 - [12 · Web UI Extension](./12-web-ui-extension.md) — the `promptToolbar` slot and AIGC quick settings
 - [13 · Config UI](./13-config-ui.md) — the `aigcModelToggles` widget for `aigc.json`
 - [16 · Canvas Workbench](./16-canvas-workbench.md) — the derivative canvas editor and the full "Read" button interaction
-- [24 · HTTP/SSE API Reference](./24-http-api-reference.md) — the `GET /vision/models`, `GET /aigc/models` endpoints
+- [24 · HTTP/SSE API Reference](./24-http-api-reference.md) — the unified catalog endpoint `GET /api/config/models` and its modality filters
 - [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md#4-provider--model-issues) — 401 / "channel does not exist", iPhone multi-picture JPEG errors

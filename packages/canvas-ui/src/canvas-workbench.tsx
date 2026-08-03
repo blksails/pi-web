@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@blksails/pi-web-primitives";
 import { Textarea } from "@blksails/pi-web-primitives";
+import { ProviderBadge, displayNameOf } from "./aigc-model-meta.js";
 import { cn } from "@blksails/pi-web-primitives";
 import {
   ANNOTATION_COLOR,
@@ -1795,6 +1796,19 @@ export function CanvasWorkbench({
   // 复用历史参数可能带来清单外的 model:并入候选兜底(否则 Select 显示为空)。
   const modelItems =
     model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
+  // id → 展示元数据(label / provider)。与主对话提示词栏的 AIGC 快捷设置同一呈现:
+  // 字母徽章 + 剥掉冗余 ` · <provider>` 后缀的 label,hover title 恒为原始 model id。
+  // capability 未下发 provider(旧 agent)时退化为纯文本,不报错。
+  const modelMetaById = React.useMemo(() => {
+    const map = new Map<string, { label?: string; provider?: string }>();
+    for (const m of capabilities?.models ?? []) {
+      map.set(m.id, {
+        ...(m.label !== undefined ? { label: m.label } : {}),
+        ...(m.provider !== undefined ? { provider: m.provider } : {}),
+      });
+    }
+    return map;
+  }, [capabilities]);
   // 尺寸选项:全局档位取 capability.sizes(缺失回退 RATIO_OPTIONS);当前选中模型在 capability 中
   // 声明了受支持尺寸集 → 收窄为交集(顺序按全局列表,4.3);未选模型 = 不收窄(守恒)。
   const globalSizes = capabilities?.sizes ?? RATIO_OPTIONS;
@@ -1925,16 +1939,30 @@ export function CanvasWorkbench({
             value={model === "" ? MODEL_DEFAULT_SENTINEL : model}
             onValueChange={(v) => setModel(v === MODEL_DEFAULT_SENTINEL ? "" : v)}
           >
-            <SelectTrigger data-canvas-model aria-label="生成模型" className="h-8 w-36 text-xs">
+            <SelectTrigger
+              data-canvas-model
+              aria-label="生成模型"
+              // 收起态 hover 可见原始 model id(展示文本已被剥后缀/换成 label)。
+              {...(model !== "" ? { title: model } : {})}
+              className="h-8 w-36 text-xs"
+            >
               <SelectValue placeholder="默认模型" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={MODEL_DEFAULT_SENTINEL}>默认模型</SelectItem>
-              {modelItems.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m}
-                </SelectItem>
-              ))}
+              {modelItems.map((m) => {
+                const meta = modelMetaById.get(m);
+                return (
+                  <SelectItem key={m} value={m} title={m}>
+                    <span className="flex items-center gap-1.5">
+                      <ProviderBadge providerId={meta?.provider} />
+                      <span className="truncate">
+                        {displayNameOf(meta?.label ?? m, meta?.provider)}
+                      </span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
 

@@ -57,7 +57,7 @@ describe("computeAiGatewaySessionEnv — 已启用 + public base 可用", () => 
       tokenTtlMs: 3_600_000,
     });
     expect(result.env[AI_GATEWAY_SANDBOX_BASE_ENV]).toBe(
-      "https://sandbox-host.example/api/ai-gateway",
+      "https://sandbox-host.example/api/ai-gateway/ai-gateway",
     );
     expect(typeof result.env[AI_GATEWAY_SANDBOX_TOKEN_ENV]).toBe("string");
     expect(result.env[AI_GATEWAY_SANDBOX_TOKEN_ENV]?.length).toBeGreaterThan(0);
@@ -67,7 +67,7 @@ describe("computeAiGatewaySessionEnv — 已启用 + public base 可用", () => 
     expect(result.warn).toBeUndefined();
   });
 
-  it("token 可被 verifyScopedToken 以 scope='ai-gateway' 校验通过,且携带正确 sessionId", async () => {
+  it("token 可被 verifyScopedToken 以 scope='ai-gateway:ai-gateway' 校验通过,且携带正确 sessionId", async () => {
     const { verifyScopedToken } = await import("@blksails/pi-web-adapters/tokens/index.js");
     const secret = "test-ai-gateway-secret";
     const result = computeAiGatewaySessionEnv({
@@ -78,7 +78,7 @@ describe("computeAiGatewaySessionEnv — 已启用 + public base 可用", () => 
       tokenTtlMs: 3_600_000,
     });
     const token = result.env[AI_GATEWAY_SANDBOX_TOKEN_ENV] as string;
-    const verified = verifyScopedToken({ token, expectedScope: "ai-gateway", secret });
+    const verified = verifyScopedToken({ token, expectedScope: "ai-gateway:ai-gateway", secret });
     expect(verified.ok).toBe(true);
     if (verified.ok) {
       expect(verified.sessionId).toBe("sess-abc");

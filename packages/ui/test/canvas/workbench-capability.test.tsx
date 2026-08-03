@@ -156,3 +156,86 @@ describe("CanvasWorkbench · capability 消费", () => {
     expect(openRatioLabels()).toEqual(["1:1", "16:9", "9:16"]);
   });
 });
+
+/**
+ * 模型下拉的呈现:与主对话提示词栏的 AIGC 快捷设置(AigcQuickSettings 的 PrefSelect)一致 ——
+ * provider 字母徽章 + 剥掉冗余 ` · <provider>` 后缀的 label,hover title 恒为原始 model id。
+ *
+ * ★ 此前这里只渲染裸 model id(`gemini-3.1-flash-image-newapi` 这种),与提示词栏两套观感;
+ *   根因是 capability 载荷里根本没下发 provider(装配期算尺寸族时用过 e.provider 却没放进载荷),
+ *   前端又把 label 一并丢了只取 id。
+ */
+describe("CanvasWorkbench · 模型下拉呈现(与提示词栏同款)", () => {
+  const CAP = {
+    models: [
+      { id: "gpt-image-2", label: "GPT Image 2 · NewAPI", provider: "newapi" },
+      { id: "qwen-image", label: "Qwen Image · Cloudflare compat", provider: "cloudflare" },
+      { id: "bare-model" }, // 旧 agent:无 label / 无 provider → 退化为纯 id
+    ],
+    sizes: [{ label: "1:1", size: "1024x1024" }],
+    actions: [],
+  };
+
+  it("有 label 时展示剥掉 provider 后缀的 label,而不是裸 id", () => {
+    render(
+      <CanvasWorkbench
+        surface={stateSurface({ assets: [], capabilities: CAP } as unknown as GalleryState)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+      />,
+    );
+    const texts = openModelOptions();
+    expect(texts.some((t) => t.includes("GPT Image 2"))).toBe(true);
+    expect(texts.some((t) => t.includes("· NewAPI"))).toBe(false);
+    // ★ 只剥「与 provider 同名」的后缀。` · Cloudflare compat` **刻意保留** ——
+    // compat 通路与原生 Cloudflare 图像组同属 provider `cloudflare`,后缀是两者
+    // 唯一的区分,剥掉就会出现两条同名条目。
+    expect(texts.some((t) => t.includes("Qwen Image · Cloudflare compat"))).toBe(true);
+  });
+
+  it("渲染 provider 字母徽章(表内 provider 才有;缺 provider 的条目不渲染徽章)", () => {
+    render(
+      <CanvasWorkbench
+        surface={stateSurface({ assets: [], capabilities: CAP } as unknown as GalleryState)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+      />,
+    );
+    fireEvent.click(document.querySelector("[data-canvas-model]")!);
+    const options = Array.from(document.querySelectorAll("[role=option]"));
+    const badgeCount = options.filter((o) => o.querySelector("span[title]") !== null).length;
+    // newapi(N)与 cloudflare(C)两条有徽章;bare-model 与「默认模型」无。
+    expect(badgeCount).toBe(2);
+  });
+
+  it("★ hover title 恒为原始 model id(展示文本已变,排障仍要能看到真实 id)", () => {
+    render(
+      <CanvasWorkbench
+        surface={stateSurface({ assets: [], capabilities: CAP } as unknown as GalleryState)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+      />,
+    );
+    fireEvent.click(document.querySelector("[data-canvas-model]")!);
+    const titles = Array.from(document.querySelectorAll("[role=option]")).map((o) =>
+      o.getAttribute("title"),
+    );
+    expect(titles).toContain("gpt-image-2");
+    expect(titles).toContain("qwen-image");
+  });
+
+  it("无 label / 无 provider 的条目退化为纯 id(旧 agent 不下发 provider 时不崩)", () => {
+    render(
+      <CanvasWorkbench
+        surface={stateSurface({ assets: [], capabilities: CAP } as unknown as GalleryState)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+      />,
+    );
+    expect(openModelOptions().some((t) => t.trim() === "bare-model")).toBe(true);
+  });
+});

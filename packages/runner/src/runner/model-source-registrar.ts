@@ -41,26 +41,52 @@ export interface SharedModelServices {
  * 一个模型源的注册器。
  *
  * `TSpec` 是该源自己的配置形状 —— runner 不解释它,只负责「解析到了就注册」。
+ *
+ * ★ 契约扩展(spec multi-gateway-providers,任务 3.5,Req 1.1/6.2/6.5):去重键从
+ *   `providerName` 改为 `sourceId` —— 一个来源(如"网关套件")今后可同时产出多个
+ *   provider(每个网关实例各成一个 provider),故"来源身份"与"该来源注册的 provider 名"
+ *   不再是同一件事,必须拆成两个字段。
  */
 export interface ModelSourceRegistrar<TSpec = unknown> {
   /**
-   * provider 命名空间。
-   * ★ 必须与该源注册进 registry 的名字**逐字一致** —— 前端选中的条目要靠它在 registry 里查到,
-   *   两处漂移的表现是「列表里看得到、选中却说模型未找到」。
+   * 来源身份(去重键)。
+   * ★ 与该源实际注册进 registry 的 provider 名**不再假定相等** —— 一个来源可注册多个
+   *   provider(见 {@link providerNamesOf})。重复登记同一 `sourceId` 时,后者顶替前者。
    */
-  readonly providerName: string;
+  readonly sourceId: string;
   /** 从环境解析该源的配置;未配置返回 `undefined`(不抛)。须无副作用。 */
   resolveSpecFromEnv(env: NodeJS.ProcessEnv): TSpec | undefined;
+  /**
+   * 该 spec 将注册的全部 provider 名(回读能力)。
+   * ★ 供日志、失败文案分化、目录一致性校验共用同一事实源 —— 不是 `providerNames:
+   *   readonly string[]` 这样的静态字段,因为实例数依 env 而定,静态字段表达不了。
+   */
+  providerNamesOf(spec: TSpec): readonly string[];
   /** 把该源注册进共享 registry。仅在 `resolveSpecFromEnv` 返回非空时被调用。 */
   register(registry: ModelRegistry, spec: TSpec, log: ModelSourceLogger): void;
+  /**
+   * 该来源在当前 env 下**声明**要注册的全部 provider 名 —— 与 `resolveSpecFromEnv`
+   * 是否**成功**解析出 `TSpec` 无关(spec multi-gateway-providers,任务 3.7,Req 6.5)。
+   *
+   * ★ 为什么不能靠 `providerNamesOf(resolveSpecFromEnv(env))`:`resolveSpecFromEnv`
+   *   在配置缺失/非法时整体返回 `undefined`(fail-soft,不抛),此时没有 `TSpec` 可传给
+   *   `providerNamesOf`。而消费方(`option-mapper.ts` 的失败文案分化)恰恰最需要在
+   *   这种场景 —— 网关套件未启用、凭据缺失 —— 仍能认出某个失败的 provider 名属于本
+   *   来源,才能给出「常见成因」提示而非裸文案。用「是否已成功注册」当判据,会让判据
+   *   在它最该起作用的地方失效(完整性复查抓到的缺口)。
+   * ★ 可选。未实现的来源(如仅注册单一固定 provider 的来源)不必提供 —— 调用方按
+   *   `resolveSpecFromEnv` 是否已成功解析退回既有取值,不比未提供本方法更差。
+   * ★ 须无副作用,且不依赖 `resolveSpecFromEnv` 是否已被调用过。
+   */
+  declaredProviderNamesFromEnv?(env: NodeJS.ProcessEnv): readonly string[];
 }
 
 const registrars: ModelSourceRegistrar[] = [];
 let sharedServicesFactory: ((agentDir: string) => SharedModelServices) | undefined;
 
-/** 登记一个模型源。由 assembly 层在 runner 启动前调用。重复登记同名 provider 会覆盖。 */
+/** 登记一个模型源。由 assembly 层在 runner 启动前调用。重复登记同一 `sourceId` 会覆盖。 */
 export function registerModelSource<TSpec>(registrar: ModelSourceRegistrar<TSpec>): void {
-  const at = registrars.findIndex((r) => r.providerName === registrar.providerName);
+  const at = registrars.findIndex((r) => r.sourceId === registrar.sourceId);
   if (at >= 0) registrars[at] = registrar as ModelSourceRegistrar;
   else registrars.push(registrar as ModelSourceRegistrar);
 }

@@ -14,6 +14,32 @@ import {
   EGRESS_PROVIDER_NAME,
 } from "../../src/auth/egress-model-source.js";
 
+/** 写一份含自定义 provider 的本地 `models.json`(格式同 vision-model-options.it.test.ts)。 */
+async function writeLocalModelsJson(agentDir: string): Promise<void> {
+  const models = {
+    providers: {
+      "local-custom": {
+        name: "Local Custom",
+        baseUrl: "http://127.0.0.1:1/v1",
+        apiKey: "sk-local-secret",
+        api: "openai-completions",
+        models: [
+          {
+            id: "local-model-one",
+            name: "Local Model One",
+            reasoning: false,
+            input: ["text"],
+            contextWindow: 8192,
+            maxTokens: 4096,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          },
+        ],
+      },
+    },
+  };
+  await fs.writeFile(path.join(agentDir, "models.json"), JSON.stringify(models));
+}
+
 let agentDir: string;
 
 beforeEach(async () => {
@@ -47,6 +73,29 @@ describe("buildEgressModelSource", () => {
     const entries = await fs.readdir(agentDir);
     expect(entries).not.toContain("models.json");
   });
+
+  it(
+    "叠加而非替换:启用 egress 后,agentDir/models.json 里的本地自定义 provider 仍可解析" +
+      "(spec multi-gateway-providers 2.1,Req 6.1/6.3/6.4;修复前用 inMemory 起空 registry" +
+      "会使本地 provider 消失,此用例在修复前必报红)",
+    async () => {
+      await writeLocalModelsJson(agentDir);
+
+      const injected = buildEgressModelSource({
+        agentDir,
+        egressBaseUrl,
+        credential,
+        models,
+      });
+
+      expect(injected).toBeDefined();
+      const registry = injected!.modelRegistry;
+      // egress 来源自身仍可解析(叠加没有顶掉新注册的 provider)。
+      expect(registry.find(EGRESS_PROVIDER_NAME, "test-model")).toBeDefined();
+      // 本地 models.json 的自定义 provider 未被替换掉。
+      expect(registry.find("local-custom", "local-model-one")).toBeDefined();
+    },
+  );
 
   it.each([
     ["缺凭据", { agentDir, egressBaseUrl, credential: undefined, models }],
