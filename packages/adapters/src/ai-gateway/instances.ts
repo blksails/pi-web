@@ -71,6 +71,11 @@ export interface GatewayInstanceConfig {
   readonly apiKey: string;
   /** 允许纳入模型清单的上游归属(目录条目的 `owned_by`)。 */
   readonly allowedOwners: ReadonlySet<string>;
+  /**
+   * 可选:模型 id 精选白名单(`PI_WEB_GATEWAY_<ID>_MODELS`),在 `allowedOwners` 粗筛
+   * 之后再收一层。`undefined` = 未配置 = 不精选(既有部署行为不变)。
+   */
+  readonly allowedModelIds?: ReadonlySet<string>;
   /** 模型目录 TTL(毫秒)。 */
   readonly ttlMs: number;
   /** 请求超时(毫秒)。 */
@@ -112,6 +117,21 @@ function parseModalityListOverride(
     );
   }
   return items as Modality[];
+}
+
+/**
+ * 解析逗号分隔的模型 id 精选白名单(`PI_WEB_GATEWAY_<ID>_MODELS`)。
+ *
+ * ★与归属白名单 `parseProviderAllowlist` 的**空值语义相反**:那边空白回落内置默认表
+ * (因为「没有默认」会让庞大目录不可用),这边空白/未配置一律 `undefined` = 不精选
+ * (因为精选本就是可选加强,没有合理的默认清单——任何写死的型号表都会过时)。
+ */
+function parseModelIdAllowlist(raw: string | undefined): ReadonlySet<string> | undefined {
+  const items = (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return items.length > 0 ? new Set(items) : undefined;
 }
 
 /**
@@ -159,6 +179,7 @@ function resolveExplicitInstance(
     baseUrl,
     apiKey,
     allowedOwners: parseProviderAllowlist(env[`${prefix}ALLOWLIST`]),
+    allowedModelIds: parseModelIdAllowlist(env[`${prefix}MODELS`]),
     ttlMs,
     timeoutMs,
     ...(input !== undefined ? { input } : {}),
@@ -334,6 +355,10 @@ export function createGatewayCatalogs(
         instanceId: instance.id,
         keyResolver,
         allowedOwners: instance.allowedOwners,
+        // 模型 id 精选(任务:cloudflare 目录过大时只暴露认可的型号);未配置 = undefined = 不精选。
+        ...(instance.allowedModelIds !== undefined
+          ? { allowedModelIds: instance.allowedModelIds }
+          : {}),
         // 实例声明的模态转发(spec multi-gateway-providers 任务 4.5,Req 2.4/2.5/3.3):
         // `instance.input`/`output` 由 `resolveExplicitInstance` 解析自
         // `PI_WEB_GATEWAY_<ID>_INPUT`/`_OUTPUT`(任务 3.1),此前从未离开

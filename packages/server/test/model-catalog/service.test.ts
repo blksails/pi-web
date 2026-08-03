@@ -492,33 +492,42 @@ describe("ModelCatalogService — query() 零来源等价(Req 10.1)", () => {
  *   与 chat 侧缺省网关实例同名。把 `service.ts` 里 `normalizeLegacyProviderId(e.provider)`
  *   改回 `e.provider`,本组必须报红。
  */
-describe("ModelCatalogService — image 侧存量标识归一(Req 2.2/2.3/9.3)", () => {
-  const LEGACY_IMAGE_CATALOG: readonly AigcCatalogEntry[] = [
-    // image 侧的 `ai-gateway` 指 BlackSail 自建网关(与 chat 侧缺省实例同名不同义)。
-    { model: "gpt-image-1", label: "GPT Image 1 · BlackSail", provider: "ai-gateway" },
+describe("★ image 侧 hidden 过滤与目录投影处于同一键空间(Req 2.2/2.3/5.1 交叉)", () => {
+  // 归一表已清空(源头改对:AI_GATEWAY_AIGC_CATALOG 直接声明 provider),故这里锁的不再是
+  // 「某个具体映射」,而是那条**不变式**:`query()` 用来做 hidden 过滤的 provider,必须与它
+  // 投影出去的 provider 是同一个值。曾经两者一个用归一后、一个用归一前,导致同一份
+  // PI_WEB_HIDE_PROVIDERS 在目录端点与工具侧给出相反结果。表将来再加映射时,本用例即是闸门。
+  const IMAGE_CATALOG: readonly AigcCatalogEntry[] = [
+    { model: "gpt-image-1", label: "GPT Image 1 · Cloudflare compat", provider: "cloudflare" },
     { model: "gpt-image-2", label: "GPT Image 2 · NewAPI", provider: "newapi" },
   ];
 
-  it("image 条目的 `ai-gateway` 被归一为 `blksails-ai`,不再与 chat 侧缺省实例同名", () => {
-    const svc = createModelCatalogService({
+  it("隐藏某 provider 时,恰好隐藏 query() 投影中该 provider 名下的条目", () => {
+    const visible = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
-      imageCatalog: LEGACY_IMAGE_CATALOG,
+      imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(),
-    });
-    const providers = svc.query({ output: "image" }).models.map((m) => m.provider);
-    expect(providers).toContain("blksails-ai");
-    expect(providers).not.toContain("ai-gateway");
+    }).query({ output: "image" }).models;
+    const hidden = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(["cloudflare"]),
+    }).query({ output: "image" }).models;
+
+    // 差集 = 且仅 = 投影里 provider === "cloudflare" 的那些条目。
+    const removed = visible.filter((v) => !hidden.some((h) => h.id === v.id)).map((m) => m.id);
+    const expected = visible.filter((m) => m.provider === "cloudflare").map((m) => m.id);
+    expect(removed.sort()).toEqual(expected.sort());
+    expect(expected.length).toBeGreaterThan(0); // 非空,否则本断言恒真
   });
 
-  it("隐藏 chat 侧缺省网关实例时,不再连带干掉 BlackSail 的图像模型(Req 5.1 与 2.2 的交叉)", () => {
-    const svc = createModelCatalogService({
+  it("隐藏一个不存在于投影中的名字 → 一条都不少(hidden 不按别的键空间误伤)", () => {
+    const models = createModelCatalogService({
       listSelfChat: () => SELF_CHAT,
-      imageCatalog: LEGACY_IMAGE_CATALOG,
+      imageCatalog: IMAGE_CATALOG,
       hiddenProviders: new Set(["ai-gateway"]),
-    });
-    const ids = svc.query({ output: "image" }).models.map((m) => m.id);
-    // 归一前:该条目 provider === "ai-gateway" 会被 hidden 连带剔除。
-    expect(ids).toContain("gpt-image-1");
+    }).query({ output: "image" }).models;
+    expect(models.map((m) => m.id).sort()).toEqual(["gpt-image-1", "gpt-image-2"]);
   });
 });
 

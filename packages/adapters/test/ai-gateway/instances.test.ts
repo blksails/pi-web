@@ -417,3 +417,32 @@ describe("createGatewayCatalogs — 凭据解析与目录缓存按实例独立(R
     ]);
   });
 });
+
+describe("逐实例模型精选白名单 PI_WEB_GATEWAY_<ID>_MODELS", () => {
+  it("配置后解析为 id 集合;未配置/空白 → undefined(不精选,零侵入)", () => {
+    const base = {
+      PI_WEB_GATEWAYS: "cf",
+      PI_WEB_GATEWAY_CF_BASE_URL: "http://gw.test",
+    };
+    const withList = resolveGatewayInstances({
+      ...base,
+      PI_WEB_GATEWAY_CF_MODELS: " gpt-5.4 , claude-sonnet-4.6 ",
+    });
+    expect([...(withList[0]!.allowedModelIds ?? [])]).toEqual(["gpt-5.4", "claude-sonnet-4.6"]);
+
+    expect(resolveGatewayInstances(base)[0]!.allowedModelIds).toBeUndefined();
+    expect(
+      resolveGatewayInstances({ ...base, PI_WEB_GATEWAY_CF_MODELS: "  ,  " })[0]!.allowedModelIds,
+    ).toBeUndefined();
+  });
+
+  it("★ 与归属白名单相互独立:只配 MODELS 时 ALLOWLIST 仍回落默认(两层各管各的)", () => {
+    const [inst] = resolveGatewayInstances({
+      PI_WEB_GATEWAYS: "cf",
+      PI_WEB_GATEWAY_CF_BASE_URL: "http://gw.test",
+      PI_WEB_GATEWAY_CF_MODELS: "gpt-5.4",
+    });
+    expect(inst!.allowedModelIds).toEqual(new Set(["gpt-5.4"]));
+    expect(inst!.allowedOwners.size).toBeGreaterThan(0); // 默认归属表仍在
+  });
+});

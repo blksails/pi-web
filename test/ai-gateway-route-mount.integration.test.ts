@@ -182,10 +182,10 @@ describe("聚合形态:目录端点经组装服务取数(model-catalog spec 任�
       const entry = byId.get(id);
       expect(entry, `缺网关条目 ${id}`).toBeDefined();
       expect(entry!.source).toBe("ai-gateway");
-      // ★ 归一后 provider 是 `blksails-ai`(任务 4.0 的 `LEGACY_PROVIDER_ID_MAP`),而 source 仍记
-      // 来源渠道 `ai-gateway` —— 两者故意不同,正是为了让 BlackSail 自建网关与 chat 侧缺省网关
-      // 实例在同一份键空间里可分辨(design.md「键空间合并的前置条件」)。
-      expect(entry!.provider).toBe("blksails-ai");
+      // provider 与 source 故意不同:`source` 记**来源渠道**(网关 compat 通路,恒 ai-gateway),
+      // `provider` 是条目自身声明的**归属** —— 2026-08-03 改判为 `cloudflare`(该通路当前
+      // 指向 Cloudflare AI Gateway 的 compat 端点),与原生 Cloudflare 图像组同一 provider。
+      expect(entry!.provider).toBe("cloudflare");
     }
     // self 静态条目在聚合形态附 source="self"(响应只增不改,Req 4.1)。
     const self = byId.get("gpt-image-2");

@@ -6,7 +6,11 @@
  *   Req 1.1–1.3, 2.1–2.3, 3.1, 6.1, 6.2)。
  */
 import { describe, expect, it, vi } from "vitest";
-import { GatewayModelCatalog, mergeModelCatalog } from "../../src/ai-gateway/model-catalog.js";
+import {
+  GatewayModelCatalog,
+  mergeModelCatalog,
+  filterByModelId,
+} from "../../src/ai-gateway/model-catalog.js";
 import type { GatewayModelEntry } from "../../src/ai-gateway/model-catalog.js";
 import type { ModelOption } from "@blksails/pi-web-core/config/model-options.types.js";
 
@@ -362,5 +366,36 @@ describe("mergeModelCatalog — 不吞并 + provider 收敛 + 块排序(model-ca
       expect(m.availability).toBe("session");
       expect(m.channel).toBeUndefined();
     }
+  });
+});
+
+// ── 模型 id 精选白名单(PI_WEB_GATEWAY_<ID>_MODELS)──────────────────────────────
+// 归属白名单是粗筛(排掉聚合大户),本层是精选(只暴露认可的型号)。两者串联,先粗后精。
+describe("filterByModelId — 模型 id 精选", () => {
+  const ENTRIES: readonly GatewayModelEntry[] = [
+    { model: "gpt-5.4", ownedBy: "openai", source: "ai-gateway", instanceId: "cf" },
+    { model: "claude-sonnet-4.6", ownedBy: "anthropic", source: "ai-gateway", instanceId: "cf" },
+    { model: "gemini-3-pro", ownedBy: "google-ai-studio", source: "ai-gateway", instanceId: "cf" },
+  ];
+
+  it("只保留清单内的 model id(跨归属同样生效)", () => {
+    const got = filterByModelId(ENTRIES, new Set(["gpt-5.4", "gemini-3-pro"]));
+    expect(got.map((e) => e.model)).toEqual(["gpt-5.4", "gemini-3-pro"]);
+  });
+
+  it("比对忽略大小写与首尾空白", () => {
+    const got = filterByModelId(ENTRIES, new Set(["  GPT-5.4 "]));
+    expect(got.map((e) => e.model)).toEqual(["gpt-5.4"]);
+  });
+
+  it("★ undefined 与空集都视为不过滤(零侵入 + 空值几乎总是误配)", () => {
+    // 与 parseProviderAllowlist 的「空白回落默认」同一考量:把空值解释成「全部滤除」
+    // 会让部署方对着一个空清单束手无策。真要清空应配一个不存在的 id。
+    expect(filterByModelId(ENTRIES, undefined)).toBe(ENTRIES);
+    expect(filterByModelId(ENTRIES, new Set())).toBe(ENTRIES);
+  });
+
+  it("清单内含目录里没有的 id → 不报错,只是命中不到(配置过时的表现是变少而非崩)", () => {
+    expect(filterByModelId(ENTRIES, new Set(["not-exist"])).length).toBe(0);
   });
 });

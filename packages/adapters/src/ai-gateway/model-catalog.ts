@@ -69,6 +69,12 @@ export interface GatewayModelCatalogDeps {
    * 又使白名单内厂商发布新型号时**无需改代码**即可出现(Req 2.4)。
    */
   readonly allowedOwners?: ReadonlySet<string>;
+  /**
+   * 可选:模型 id 白名单(逐实例 `PI_WEB_GATEWAY_<ID>_MODELS`),在 {@link allowedOwners}
+   * 之后再收一层 —— 部署方只想暴露自己认可的那几条最新型号时用。
+   * `undefined` / 空集 = 不过滤(见 {@link filterByModelId})。
+   */
+  readonly allowedModelIds?: ReadonlySet<string>;
   /** 测试接缝:缺省 `globalThis.fetch`。 */
   readonly fetchImpl?: typeof fetch;
   /** 测试接缝:缺省 `Date.now`。 */
@@ -108,6 +114,30 @@ export function filterByOwner(
   if (allowed === undefined) return entries;
   const normalized = new Set([...allowed].map((o) => o.trim().toLowerCase()));
   return entries.filter((e) => normalized.has(e.ownedBy.trim().toLowerCase()));
+}
+
+/**
+ * 按**模型 id** 收敛目录(逐实例 `PI_WEB_GATEWAY_<ID>_MODELS`)。
+ *
+ * 与 {@link filterByOwner} 的分工:归属白名单是**粗筛**(按 `owned_by` 排掉聚合大户),
+ * 本函数是**精选**——部署方只想暴露自己认可的那几条最新型号时用。两者串联,先粗后精。
+ *
+ * ★ `undefined` = 不过滤(既有部署逐字节不变);空集同样视为不过滤 —— 与
+ *   `parseProviderAllowlist` 的「空白回落」同一考量:空值几乎总是误配(`VAR=` 写空),
+ *   把它解释成「全部滤除」会让部署方对着空清单束手无策。真要清空应配一个不存在的 id。
+ *
+ * ★ 与归属白名单相反,本表**不**随厂商发新型号自动跟进 —— 这正是「精选」的语义:
+ *   要出新型号就得改配置。选它即接受这份维护成本。
+ *
+ * 比对忽略大小写与首尾空白。
+ */
+export function filterByModelId(
+  entries: readonly GatewayModelEntry[],
+  allowed: ReadonlySet<string> | undefined,
+): readonly GatewayModelEntry[] {
+  if (allowed === undefined || allowed.size === 0) return entries;
+  const normalized = new Set([...allowed].map((m) => m.trim().toLowerCase()));
+  return entries.filter((e) => normalized.has(e.model.trim().toLowerCase()));
 }
 
 /**
@@ -168,6 +198,7 @@ export class GatewayModelCatalog {
   private readonly instanceId: string;
   private readonly keyResolver: KeyResolver | undefined;
   private readonly allowedOwners: ReadonlySet<string> | undefined;
+  private readonly allowedModelIds: ReadonlySet<string> | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly nowFn: () => number;
   private readonly logger: GatewayCatalogLogger;
@@ -186,6 +217,7 @@ export class GatewayModelCatalog {
     this.instanceId = deps.instanceId ?? AI_GATEWAY_PROVIDER_NAME;
     this.keyResolver = deps.keyResolver;
     this.allowedOwners = deps.allowedOwners;
+    this.allowedModelIds = deps.allowedModelIds;
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.nowFn = deps.nowFn ?? Date.now;
     this.logger = deps.logger ?? log;
@@ -240,12 +272,14 @@ export class GatewayModelCatalog {
               ...(this.input !== undefined ? { input: this.input } : {}),
               ...(this.output !== undefined ? { output: this.output } : {}),
             }));
-      this.snapshot = filterByOwner(withModality, this.allowedOwners);
+      const afterOwner = filterByOwner(withModality, this.allowedOwners);
+      this.snapshot = filterByModelId(afterOwner, this.allowedModelIds);
       // 收敛可观测(Req 2.5/10.3):白名单过窄会静默产出空/瘦目录,不记数就无从判断;
       // 多实例部署下日志须带实例标识,使拉取/过滤计数可分辨来自哪个实例。
       if (this.allowedOwners !== undefined) {
         this.logger.info("gateway catalog filtered", {
           instanceId: this.instanceId,
+          keptAfterOwner: afterOwner.length,
           kept: this.snapshot.length,
           dropped: parsed.length - this.snapshot.length,
           allowed: [...this.allowedOwners],

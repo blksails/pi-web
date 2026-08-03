@@ -95,7 +95,7 @@ describe("启用组:网关 base URL 已配置", () => {
     }
 
     const providers = state.get("aigc.modelProviders") as Record<string, string>;
-    expect(providers["gpt-image-1"]).toBe("ai-gateway");
+    expect(providers["gpt-image-1"]).toBe("cloudflare"); // 同上:归属改判
 
     const gen = tools.find((t) => t.name === "image_generation");
     expect(JSON.stringify(gen?.parameters)).toContain("gpt-image-1");

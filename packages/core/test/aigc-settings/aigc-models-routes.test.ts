@@ -86,10 +86,9 @@ describe("GET /config/models?output=image — 与旧 GET /aigc/models 等价(Req
     expect(withGateway.models.length).toBe(withoutGateway.models.length + 1);
     const added = withGateway.models.find((m) => m.id === GATEWAY_IMAGE_ENTRY.model);
     expect(added).toBeDefined();
-    // ★ provider 与 source 在此处**故意不同**:目录投影会按 design.md 迁移策略表把 image 侧的存量
-    // 标识 `ai-gateway` 归一为 `blksails-ai`(任务 4.0,`LEGACY_PROVIDER_ID_MAP`),否则它会与 chat
-    // 侧「缺省网关实例」同名而无法区分两条通路;而 `source` 记的是**来源渠道**,仍是 `ai-gateway`。
-    expect(added!.provider).toBe("blksails-ai");
+    // provider 与 source 是两件事:`provider` 是条目自身声明的归属(本 fixture 声明什么就是
+    // 什么 —— 归一表已清空,不再改写),`source` 记的是**来源渠道**,恒为 `ai-gateway`。
+    expect(added!.provider).toBe(GATEWAY_IMAGE_ENTRY.provider);
     expect(added!.source).toBe("ai-gateway");
   });
 

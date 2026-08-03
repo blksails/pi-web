@@ -77,11 +77,23 @@ export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
  * 网关图像静态目录 — `AI_GATEWAY_IMAGE_ROUTES` ∪ `AI_GATEWAY_IMAGE_EDIT_ROUTES` 的路由键
  * 去重序(生成路由在前,编辑独有在后;当前两表键集相同)。⚠ gpt-image-2 条目在路由表经
  * extras 覆盖了路由键为 `gpt-image-2-ai-gateway`,目录对齐**最终**键值。
+ *
+ * ## provider 归属 = `cloudflare`(2026-08-03 用户决策)
+ *
+ * 本组走的是**网关的 OpenAI-compat 端点**(`BLKSAILS_GATEWAY_BASE_URL`),而
+ * {@link CLOUDFLARE_AIGC_CATALOG} 走 Cloudflare 的**原生图像 API**(`CLOUDFLARE_*`)——
+ * 两条不同通路,但当前部署下**同一个上游**,故归到同一个 provider 标识 `cloudflare`,
+ * label 以 ` · Cloudflare compat` 与原生组区分(两组 model id 本就不重,不会撞键)。
+ *
+ * ⚠ **这是把某个部署的配置写进了产品常量**(该决策已知并被接受):`BLKSAILS_GATEWAY_BASE_URL`
+ * 本身可以指向任何网关。若某部署把它指向真正的 BlackSail 自建网关,界面上仍会显示
+ * `cloudflare` —— 名实不符。要让归属跟着配置走,需把此处常量改为读 env 声明
+ * (与对话侧多实例 `PI_WEB_GATEWAYS` 同一原则),那是另一次改动。
  */
 export const AI_GATEWAY_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
-  { model: "gpt-image-1", label: "GPT Image 1 · ai-gateway", provider: "ai-gateway", ...AIGC_ENTRY_MODALITY },
-  { model: "gpt-image-2-ai-gateway", label: "GPT Image 2 · ai-gateway", provider: "ai-gateway", ...AIGC_ENTRY_MODALITY },
-  { model: "qwen-image", label: "Qwen Image · ai-gateway", provider: "ai-gateway", ...AIGC_ENTRY_MODALITY },
+  { model: "gpt-image-1", label: "GPT Image 1 · Cloudflare compat", provider: "cloudflare", ...AIGC_ENTRY_MODALITY },
+  { model: "gpt-image-2-ai-gateway", label: "GPT Image 2 · Cloudflare compat", provider: "cloudflare", ...AIGC_ENTRY_MODALITY },
+  { model: "qwen-image", label: "Qwen Image · Cloudflare compat", provider: "cloudflare", ...AIGC_ENTRY_MODALITY },
 ];
 
 /**
@@ -91,8 +103,10 @@ export const AI_GATEWAY_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
  * (生成路由在前,编辑独有在后;当前两表键集相同),由 `test/aigc/model-catalog.test.ts`
  * 的第三组 sync 断言守卫。同样零 import / 零 env 读取(双入口纪律)。
  *
- * ⚠ `provider: "cloudflare"` 指 **Cloudflare AI Gateway**,与上面的 `"ai-gateway"`
- * (BlackSail 自建网关)是两条不同通路,勿混。
+ * ⚠ 本组与上面的 {@link AI_GATEWAY_AIGC_CATALOG} 现在**同属** `provider: "cloudflare"`,
+ * 但仍是两条不同通路:本组走 Cloudflare 原生图像 API(`CLOUDFLARE_*` 三项凭据),上面那组走
+ * 网关的 OpenAI-compat 端点(`BLKSAILS_GATEWAY_BASE_URL`)。两组 model id 不重叠,
+ * label 以 ` · Cloudflare`(原生)/ ` · Cloudflare compat`(兼容端点)区分。
  */
 export const CLOUDFLARE_AIGC_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "gpt-image-2-cf", label: "GPT Image 2 · Cloudflare", provider: "cloudflare", ...AIGC_ENTRY_MODALITY },

@@ -11,6 +11,7 @@ import {
   validateProviderId,
   findProviderIdConflicts,
   normalizeLegacyProviderId,
+  LEGACY_PROVIDER_ID_MAP,
   RESERVED_PROVIDER_IDS,
 } from "../../src/model-catalog/provider-identity.js";
 
@@ -185,27 +186,25 @@ describe("normalizeLegacyProviderId — 归一幂等(Req 9.3)", () => {
   });
 });
 
-describe("normalizeLegacyProviderId — image 侧 ai-gateway → blksails-ai(本特性唯一真映射,Req 2.2/2.3/9.3)", () => {
-  it("非幂等用例:使用默认内置表归一 ai-gateway,结果实际发生变化(不等于原值)", () => {
-    // 与既有幂等用例的区别:那些用例的输入本就无映射,归一前后恒等,把
-    // LEGACY_PROVIDER_ID_MAP 清空也不会报红。这条用真实的默认表断言归一
-    // 确实把 "ai-gateway" 变成了 "blksails-ai" —— 清空该表本用例会立刻报红。
-    const result = normalizeLegacyProviderId("ai-gateway");
-    expect(result).toBe("blksails-ai");
-    expect(result).not.toBe("ai-gateway");
+describe("normalizeLegacyProviderId — 内置归一表当前为空(2026-08-03 源头修正)", () => {
+  it("内置表为空:任何标识经默认表归一都原样返回", () => {
+    // 曾有唯一一条 ai-gateway → blksails-ai;源头(AI_GATEWAY_AIGC_CATALOG)改为直接
+    // 声明 provider: "cloudflare" 后该映射不再对应任何现存条目,留着反而会让将来写了
+    // ai-gateway 的 image 条目被静默改名。详见 protocol 侧模块头注释。
+    expect(Object.keys(LEGACY_PROVIDER_ID_MAP)).toEqual([]);
+    for (const raw of ["ai-gateway", "blksails-ai", "cloudflare", "qiniu"]) {
+      expect(normalizeLegacyProviderId(raw)).toBe(raw);
+    }
   });
 
-  it("归一结果本身幂等:对已归一的 blksails-ai 再次归一,结果不再变化", () => {
-    const once = normalizeLegacyProviderId("ai-gateway");
-    const twice = normalizeLegacyProviderId(once);
-    expect(twice).toBe("blksails-ai");
-    expect(twice).toBe(once);
-  });
-
-  it("不影响对话侧缺省实例 id:显式传入的自定义表若不含该映射,ai-gateway 原样返回(Req 9.1 对照)", () => {
-    // 对话侧 settings.json 的 defaultProvider: "ai-gateway" 是缺省网关实例 id,
-    // 与本任务归一的 image 侧标识是两回事;此处用空表模拟"未启用该项归一"的
-    // 场景,证明归一行为完全由传入的 legacyMap 决定,不是硬编码特判。
-    expect(normalizeLegacyProviderId("ai-gateway", {})).toBe("ai-gateway");
+  it("★ 表一旦非空,归一必须真的改变取值(算法证明,用注入表而非内置表)", () => {
+    // 这条替代了原来吃内置表的「非幂等」用例:内置表清空后那条会恒真而无从报红。
+    // 用注入表证明算法本身有效 —— 将来给内置表加条目时,须**另**补一条吃内置表的
+    // 非幂等用例,否则清空内置表不会让任何单测报红(见 protocol 侧模块头注释)。
+    const injected = { "ai-gateway": "blksails-ai" };
+    const once = normalizeLegacyProviderId("ai-gateway", injected);
+    expect(once).toBe("blksails-ai");
+    expect(once).not.toBe("ai-gateway");
+    expect(normalizeLegacyProviderId(once, injected)).toBe(once);
   });
 });

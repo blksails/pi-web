@@ -20,6 +20,11 @@ import { join } from "node:path";
 import { aigcExtension } from "../../src/aigc/extension.js";
 import { SESSION_STATE_SEAM_KEY } from "../../src/session-state.js";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  AIGC_MODEL_CATALOG,
+  AI_GATEWAY_AIGC_CATALOG,
+  CLOUDFLARE_AIGC_CATALOG,
+} from "../../src/aigc/model-catalog.js";
 
 interface Collected {
   name: string;
@@ -130,21 +135,19 @@ describe("aigcExtension — 隐藏 provider 名单彻底禁用工具侧模型(�
   });
 });
 
-// ── 键空间一致性(第七批完整性批评 gap 1;任务 4.0 与 4.4 的交叉)─────────────────
-// 目录端点 `query()` 按**归一后**的 provider 过滤隐藏名单(image 侧 `ai-gateway` →
-// `blksails-ai`),工具侧此前按**归一前**的原始值过滤同一份 PI_WEB_HIDE_PROVIDERS。
-// 两个方向都会错,且都表现为「界面与工具不一致」:
-//   隐藏 blksails-ai → 界面看不见但工具照常能跑(Req 5.2/5.4 要根治的正是这个);
-//   隐藏 ai-gateway  → 界面列着但工具跑不了(反向)。
-// 上面那批用例全用 openrouter —— 一个不在归一表里的 id,对这条缝零判别力。
-describe("★ 隐藏名单的键空间须与目录端点一致(归一后比对)", () => {
-  /** BlackSail 自建网关静态目录里的一条图像模型(其 provider 字面量仍是 ai-gateway)。 */
-  const BLKSAILS_MODEL = "gpt-image-1";
+// ── 键空间一致性(第七批完整性批评 gap 1)────────────────────────────────────────
+// 不变式:工具侧 hiddenModelIds() 用来比对 PI_WEB_HIDE_PROVIDERS 的 provider 键空间,
+// 必须与目录端点 query() 投影出去的键空间**同源**。曾经一个比归一后、一个比归一前,
+// 同一份名单在两处给出相反结果:隐藏 A 时「界面看不见但工具照常能跑」,隐藏 B 时反过来。
+// 归一表现已清空(源头改对),但机制保留 —— 本组用例即是表再加映射时的闸门。
+describe("★ 隐藏名单的键空间须与目录端点一致", () => {
+  /** 网关 compat 通路的一条图像模型(2026-08-03 起归属 cloudflare)。 */
+  const GW_COMPAT_MODEL = "gpt-image-1";
   let prevGatewayBase: string | undefined;
 
   beforeEach(() => {
     prevGatewayBase = process.env.BLKSAILS_GATEWAY_BASE_URL;
-    // 启用自建网关路由组,否则其三条图像模型根本不进可用集,断言无从判别。
+    // 启用网关 compat 路由组,否则其三条图像模型根本不进可用集,断言无从判别。
     process.env.BLKSAILS_GATEWAY_BASE_URL = "http://127.0.0.1:9/gw";
   });
   afterEach(() => {
@@ -152,25 +155,42 @@ describe("★ 隐藏名单的键空间须与目录端点一致(归一后比对)"
     else process.env.BLKSAILS_GATEWAY_BASE_URL = prevGatewayBase;
   });
 
-  it("基线:不隐藏时,自建网关的图像模型在工具侧可用", () => {
+  it("基线:不隐藏时,网关 compat 通路的图像模型在工具侧可用", () => {
     delete process.env.PI_WEB_HIDE_PROVIDERS;
     const { state } = runExtension();
-    expect(state.get("aigc.models") as string[]).toContain(BLKSAILS_MODEL);
+    expect(state.get("aigc.models") as string[]).toContain(GW_COMPAT_MODEL);
   });
 
-  it("PI_WEB_HIDE_PROVIDERS=blksails-ai(界面上显示的那个 id)→ 工具侧同样禁用", () => {
-    process.env.PI_WEB_HIDE_PROVIDERS = "blksails-ai";
+  it("隐藏 cloudflare → compat 与原生两组图像模型**一并**禁用(同 provider 即同命运)", () => {
+    process.env.PI_WEB_HIDE_PROVIDERS = "cloudflare";
     const { state, tools } = runExtension();
-    expect(state.get("aigc.models") as string[]).not.toContain(BLKSAILS_MODEL);
+    const models = state.get("aigc.models") as string[];
+    expect(models).not.toContain(GW_COMPAT_MODEL);
+    // 原生 Cloudflare 组同属 cloudflare,同样缺席。
+    for (const m of CLOUDFLARE_AIGC_CATALOG) expect(models).not.toContain(m.model);
     const gen = tools.find((t) => t.name === "image_generation");
-    expect(JSON.stringify(gen?.parameters)).not.toContain(`"${BLKSAILS_MODEL}"`);
+    expect(JSON.stringify(gen?.parameters)).not.toContain(`"${GW_COMPAT_MODEL}"`);
   });
 
-  it("PI_WEB_HIDE_PROVIDERS=ai-gateway(对话侧缺省网关实例)→ 不连带禁掉图像模型", () => {
-    // 归一后这三条是 `blksails-ai`,与对话侧的实例 id `ai-gateway` 是**两个** provider
-    // (任务 4.0 拆开它们的全部意义所在)。只归一条目、不归一名单,故此处不命中。
-    process.env.PI_WEB_HIDE_PROVIDERS = "ai-gateway";
-    const { state } = runExtension();
-    expect(state.get("aigc.models") as string[]).toContain(BLKSAILS_MODEL);
+  it("★ 工具侧过滤所用的键 = 静态目录条目声明的 provider(逐 provider 全覆盖,不遗漏任一组)", () => {
+    // 遍历三张静态目录里出现的每个 provider:隐藏它,则它名下条目全部消失、其余条目不受影响。
+    // 这条比「隐藏某个具体名字」更强:任何一组的 provider 键与过滤键脱节都会立刻报红。
+    const all = [...AIGC_MODEL_CATALOG, ...AI_GATEWAY_AIGC_CATALOG, ...CLOUDFLARE_AIGC_CATALOG];
+    delete process.env.PI_WEB_HIDE_PROVIDERS;
+    const baseline = new Set(runExtension().state.get("aigc.models") as string[]);
+    expect(baseline.size).toBeGreaterThan(0);
+
+    for (const provider of new Set(all.map((e) => e.provider))) {
+      process.env.PI_WEB_HIDE_PROVIDERS = provider;
+      const after = new Set(runExtension().state.get("aigc.models") as string[]);
+      const ownIds = all.filter((e) => e.provider === provider).map((e) => e.model);
+      for (const id of ownIds) {
+        expect(after.has(id), `隐藏 ${provider} 后 ${id} 仍在`).toBe(false);
+      }
+      for (const id of baseline) {
+        if (ownIds.includes(id)) continue;
+        expect(after.has(id), `隐藏 ${provider} 误伤了 ${id}`).toBe(true);
+      }
+    }
   });
 });

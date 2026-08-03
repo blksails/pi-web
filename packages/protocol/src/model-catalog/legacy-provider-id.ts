@@ -24,22 +24,31 @@
 export type LegacyProviderIdMap = Readonly<Record<string, string>>;
 
 /**
- * 存量 provider 标识的归一表。
+ * 存量 provider 标识的归一表 —— **当前为空**。
  *
- * ⚠ 这里归一的是 **image 侧**历史标识:AIGC 静态目录把 BlackSail 自建网关的图像模型
- * 标成了 `provider: "ai-gateway"`,与**对话侧缺省网关实例 id** 撞了同名不同义。键空间
- * 合并后二者会被当成同一个 provider,故把 image 侧的 `ai-gateway` 归一到自建网关的
- * 当前标识 `blksails-ai`。
+ * ## 为什么是空的(2026-08-03)
  *
- * 对话侧的 `ai-gateway`(如 `settings.json` 的 `defaultProvider`)**原样有效**,不在
- * 归一之列 —— 它指的是「部署方配置的那台网关实例」,是另一个东西。
+ * 本表曾有唯一一条 `"ai-gateway" → "blksails-ai"`:AIGC 静态目录把网关图像模型标成了
+ * `provider: "ai-gateway"`,与**对话侧缺省网关实例 id** 撞了同名不同义,归一用于拆开二者。
  *
- * `normalizeLegacyProviderId` 的幂等性不依赖本表是否为空;但本表非空后必须有**非幂等**
- * 用例覆盖(即断言归一后的值确实不同于输入),否则把本表清空也不会让任何单测报红。
+ * 该冲突现已在**源头**消除 —— `AI_GATEWAY_AIGC_CATALOG` 的三条条目直接声明
+ * `provider: "cloudflare"`(用户决策),不再产出 `ai-gateway`。源头改对之后再留着这条映射
+ * 是有害的:它不映射任何现存条目(纯死数据),却会让**将来**任何写了 `ai-gateway` 的
+ * image 条目被静默改名成 `blksails-ai` —— 一个如今只是「某部署的对话侧实例 id」的名字。
+ *
+ * ## 表为空 ≠ 机制无用
+ *
+ * 归一的**调用点**(`toImageCatalogModel` 的条目投影、`imageEntries()` 与工具侧
+ * `hiddenModelIds()` 的隐藏名单比对)一律保留:它们保证目录端点与工具侧**始终处于同一
+ * 键空间**。这条不变式曾被打破过一次(目录侧比归一后、工具侧比归一前,导致隐藏名单两个
+ * 方向都失效),不能因为表暂时为空就把机制拆掉 —— 表一旦再加条目,缝就会立刻重开。
+ *
+ * ## 再加条目时的硬要求
+ *
+ * `normalizeLegacyProviderId` 的幂等性不依赖本表是否为空;但本表**一旦非空**,必须补一条
+ * **非幂等**用例(断言归一后的值确实不同于输入),否则把本表清空也不会让任何单测报红。
  */
-export const LEGACY_PROVIDER_ID_MAP: LegacyProviderIdMap = {
-  "ai-gateway": "blksails-ai",
-};
+export const LEGACY_PROVIDER_ID_MAP: LegacyProviderIdMap = {};
 
 /**
  * 存量归一:把历史标识映射到当前标识;无映射时原样返回。
