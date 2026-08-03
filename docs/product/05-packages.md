@@ -100,7 +100,7 @@ pi-web 由 **11 个**可独立发布的 `@blksails/*` npm 包组成，依赖方�
 
 - `./trust`：信任策略 `FsProjectTrustStore`，读写 `<agentDir>/trust.json`，零 pi SDK 值依赖。
 - `./model-options`：文本模型枚举工厂（[07 · Provider 与模型](07-providers-and-models.md)）。
-- `./vision-model-options`：`GET /vision/models` 用的视觉模型枚举工厂（[11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md)）。
+- `./vision-model-options`：视觉模型枚举工厂（现由 `GET /api/config/models?input=image&output=text` 消费）（[11 · AIGC 与视觉工具](11-aigc-and-vision-tools.md)）。
 
 > **barrel 纪律**（`packages/server/src/index.ts:3-8`）：`./runner` 子路径**不**从主入口 barrel 重导出——runner 加载时静态导入整套 pi SDK，若经 barrel `export *` 会把 SDK 打进被 bundle 的产物、破坏 esbuild external 边界。runner 仅由 `runner-bootstrap.mjs` 在子进程内经 `jiti` 加载 `./runner/runner.ts`；App/Handler 从不直接 import runner。
 

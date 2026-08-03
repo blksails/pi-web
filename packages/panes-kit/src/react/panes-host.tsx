@@ -28,6 +28,7 @@ import {
   type PanesDefinition,
 } from "../contract.js";
 import { authorizePaneRequest, DEFAULT_PANE_RESPONSE_BYTES } from "../authorization.js";
+import { bindPaneState } from "../state-binding.js";
 import { createAgentRouteClient } from "../agent-routes.js";
 import { asPaneHostError, PaneHostError } from "../errors.js";
 import {
@@ -67,6 +68,13 @@ export interface PanesSurfaceAccess {
   hasCommand(name: string): boolean;
 }
 
+export interface PanesStateAccess {
+  get<T = unknown>(key: string): T | undefined;
+  subscribe(key: string, listener: (value: unknown) => void): () => void;
+  set(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<void>;
+}
+
 export type PanesUpload = (
   baseUrl: string,
   sessionId: string,
@@ -101,7 +109,9 @@ export interface PanesHostProps {
   readonly surface?: PanesSurfaceAccess;
   readonly upload?: PanesUpload;
   readonly conversation?: PanesConversationAccess;
+  readonly state?: PanesStateAccess;
   readonly config?: PanesHostConfig;
+  readonly signals?: Readonly<Record<string, unknown>>;
   readonly className?: string;
   readonly onHostError?: (error: PaneHostError) => void;
   /** 宿主控制的右侧栏收起入口；提供时置于 Pane 标签栏最左。 */
@@ -125,7 +135,10 @@ interface LiveConnection {
   readonly epoch: number;
   readonly port: PanePort;
   readonly closePort: boolean;
-  readonly cleanup: readonly (() => void)[];
+  readonly paneId: string;
+  readonly cleanup: Array<() => void>;
+  surfaceCleanup?: () => void;
+  stateCleanup?: () => void;
 }
 
 interface NativePaneMount {
@@ -341,7 +354,9 @@ export function PanesHost({
   surface,
   upload,
   conversation,
+  state,
   config = {},
+  signals,
   className,
   onHostError,
   onRequestClose,
@@ -505,6 +520,8 @@ export function PanesHost({
     const live = connections.current.get(instanceId);
     if (live === undefined) return;
     if (lifecycle) live.port.post({ type: "pane:lifecycle", state: "closing" } satisfies PaneHostMessage);
+    live.surfaceCleanup?.();
+    live.stateCleanup?.();
     for (const cleanup of live.cleanup) cleanup();
     if (live.closePort) live.port.close();
     connections.current.delete(instanceId);
@@ -833,6 +850,9 @@ export function PanesHost({
     void Promise.resolve(surface.run(workspaceDomain, "report", report)).catch(() => undefined);
   }, [definition, parkedInstanceIds, reportTick, surface, workspace, workspaceDomain]);
 
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
+
   const handleRequest = React.useCallback(async (
     instance: PaneInstance,
     pane: PaneDefinition,
@@ -894,10 +914,76 @@ export function PanesHost({
       const result = await upload(baseUrl, sessionId, file);
       return { attachmentId: result.attachment.id, displayUrl: result.displayUrl };
     }
+    if (request.operation === "state.set" || request.operation === "state.delete") {
+      const stateAccess = stateRef.current;
+      if (stateAccess === undefined) {
+        throw new PaneHostError("HOST_UNAVAILABLE", "Shared state is not ready", { retryable: true });
+      }
+      if (request.operation === "state.set") await stateAccess.set(request.key, request.value);
+      else await stateAccess.delete(request.key);
+      return undefined;
+    }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
     return undefined;
   }, [baseUrl, config.eventTargets, conversation, definition, onEvent, sessionId, surface, upload]);
+
+  const bindSurface = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
+    live.surfaceCleanup?.();
+    live.surfaceCleanup = undefined;
+    if (surface === undefined) return;
+    const disposers: Array<() => void> = [];
+    for (const key of pane.capabilities.surfaceKeys) {
+      const push = (value: unknown): void => {
+        live.port.post({ type: "pane:surface", key, value } satisfies PaneHostMessage);
+      };
+      push(surface.getState(key));
+      disposers.push(surface.subscribe(key, push));
+    }
+    live.surfaceCleanup = () => {
+      for (const dispose of disposers) dispose();
+      disposers.length = 0;
+    };
+  }, [surface]);
+
+  const bindState = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
+    live.stateCleanup?.();
+    live.stateCleanup = bindPaneState(stateRef.current, pane.capabilities.state.read, (key, value) => {
+      live.port.post({ type: "pane:state", key, value } satisfies PaneHostMessage);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    for (const live of connections.current.values()) {
+      bindState(live, paneById(definition, live.paneId));
+    }
+  }, [bindState, definition, state]);
+
+  React.useEffect(() => {
+    for (const live of connections.current.values()) {
+      bindSurface(live, paneById(definition, live.paneId));
+    }
+  }, [bindSurface, definition]);
+
+  const pushAllSignals = React.useCallback((port: PanePort): void => {
+    for (const [name, value] of Object.entries(signals ?? {})) {
+      port.post({ type: "pane:signal", name, value } satisfies PaneHostMessage);
+    }
+  }, [signals]);
+
+  const lastSignals = React.useRef<Record<string, unknown>>({});
+  React.useEffect(() => {
+    const next = signals ?? {};
+    const previous = lastSignals.current;
+    const changed = Object.entries(next).filter(([name, value]) => !Object.is(previous[name], value));
+    lastSignals.current = { ...next };
+    if (changed.length === 0) return;
+    for (const live of connections.current.values()) {
+      for (const [name, value] of changed) {
+        live.port.post({ type: "pane:signal", name, value } satisfies PaneHostMessage);
+      }
+    }
+  }, [signals]);
 
   const bindConnection = React.useCallback((
     instance: PaneInstance,
@@ -910,7 +996,14 @@ export function PanesHost({
     if (!force && connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
     closeConnection(instance.instanceId, false);
     const cleanup: Array<() => void> = [];
-    connections.current.set(instance.instanceId, { epoch: instance.epoch, port, closePort, cleanup });
+    const live: LiveConnection = {
+      epoch: instance.epoch,
+      paneId: instance.paneId,
+      port,
+      closePort,
+      cleanup,
+    };
+    connections.current.set(instance.instanceId, live);
     cleanup.push(port.listen((data) => {
       const parsed = PaneGuestRequestSchema.safeParse(data);
       if (!parsed.success) {
@@ -935,12 +1028,9 @@ export function PanesHost({
         },
       );
     }));
-    for (const key of pane.capabilities.surfaceKeys) {
-      if (surface === undefined) break;
-      const push = (value: unknown): void => port.post({ type: "pane:surface", key, value } satisfies PaneHostMessage);
-      push(surface.getState(key));
-      cleanup.push(surface.subscribe(key, push));
-    }
+    bindSurface(live, pane);
+    bindState(live, pane);
+    pushAllSignals(port);
     sendConnected({
       type: "pane:connected",
       protocol: PANE_PROTOCOL_VERSION,
@@ -961,7 +1051,7 @@ export function PanesHost({
         } satisfies PaneHostMessage);
       }
     }
-  }, [closeConnection, config.interactionMode, definition, handleRequest, onHostError, surface]);
+  }, [bindState, bindSurface, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
 
   React.useEffect(() => {
     if (hostEvent === undefined || lastHostEventId.current === hostEvent.id) return;
@@ -1041,6 +1131,20 @@ export function PanesHost({
     };
     window.addEventListener("message", onGuestReady);
     return () => window.removeEventListener("message", onGuestReady);
+  }, [connectFrame, workspace.instances]);
+
+  /**
+   * 补连扫描：iframe 的 `load` 与 guest 的 `pane:ready` 都可能早于宿主
+   * 注册监听或保存 ref；已有 frame 即按 epoch 幂等补建连接。
+   */
+  React.useEffect(() => {
+    for (const instance of workspace.instances) {
+      if (connections.current.get(instance.instanceId)?.epoch === instance.epoch) continue;
+      const frame = frames.current.get(instance.instanceId);
+      if (frame?.contentWindow !== null && frame?.contentWindow !== undefined) {
+        connectFrame(instance);
+      }
+    }
   }, [connectFrame, workspace.instances]);
 
   const mountNativePane = React.useCallback((

@@ -70,7 +70,7 @@ import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import type { ExtSource } from "@blksails/pi-web-server";
+import type { ExtSource } from "@blksails/pi-web-adapters/extensions/index.js";
 import { buildChildEnv } from "../context.js";
 import { redactSecrets } from "../reporter.js";
 import { registerLocalSource, unregisterLocalSource, canonicalize } from "./local-source-registry.js";

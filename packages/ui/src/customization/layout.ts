@@ -8,7 +8,7 @@
 export type LayoutPreset = "centered" | "wide" | "full" | "split";
 
 /**
- * panelRight 让位比例(对话区 : 右侧面板)。运行时可由宿主段控切换器在三档间切换。
+ * 右侧面板的让位比例(对话区 : 右侧面板)。运行时可由宿主段控切换器在三档间切换。
  * 与 protocol `PanelRatio` 同形(此处独立声明,避免 customization 反向依赖契约枚举值)。
  */
 export type PanelRatio = "centered" | "2:1" | "4:6" | "3:7";

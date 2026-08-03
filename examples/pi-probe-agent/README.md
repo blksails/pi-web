@@ -61,7 +61,7 @@ node packages/server/runner-bootstrap.mjs \
 # data.commands 应含 { name:"pi-probe", source:"extension" }。
 ```
 
-> 自动化覆盖:`packages/server/test/runner/trust-pi-loading.e2e.test.ts` 用真启 runner 子进程
+> 自动化覆盖:`packages/runner/test/runner/trust-pi-loading.it.test.ts` 用真启 runner 子进程
 > 验证「带 `PI_WEB_TRUST_PROJECT=1` → `.pi/extensions` 命令出现;不带 → 不出现」。
 
 ## 说明

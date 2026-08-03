@@ -49,7 +49,7 @@ describe("WebExtension.canvasPlugins key (task 2.1)", () => {
   it("canvasPlugins coexists with existing keys (slots/renderers) — Req 4.4", () => {
     const ext = defineWebExtension({
       manifestId: "acme",
-      slots: { panelRight: null },
+      slots: { sidebarLeft: null },
       renderers: { tools: {} },
       canvasPlugins: [{ id: "stickers" }],
     });

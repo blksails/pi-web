@@ -13,28 +13,31 @@
  * HostDeps 与 defaultCapabilities 同置一文件:二者紧密耦合,合并可免去跨文件重复借用工厂 opts
  * 类型(design 的分文件是建议,此处微调)。
  */
-import type { CapabilityDescriptor } from "../host-manifest/index.js";
-import type { HostCommandHandler } from "../commands/host-command-registry.js";
+import type { CapabilityDescriptor } from "@blksails/pi-web-core/host-manifest/index.js";
+import type { HostCommandHandler } from "@blksails/pi-web-core/commands/host-command-registry.js";
 import { asCommands, asRoutes, type HostContribution } from "./host-contribution.js";
-import { createConfigRoutes } from "../config/config-routes.js";
-import { createMcpConfigRoutes } from "../config/mcp-config-routes.js";
-import { createSandboxProjectRoutes } from "../config/sandbox-project-routes.js";
-import { createSourceSettingsRoutes } from "../config/source-settings-routes.js";
-import { createExtensionsConfigRoutes } from "../config/extensions-config-routes.js";
-import { createSessionListRoutes } from "../session-list/session-list-routes.js";
-import { createSessionActionsRoutes } from "../session-actions/session-actions-routes.js";
-import { createAgentSourcesRoutes } from "../agent-source-list/agent-sources-routes.js";
-import type { AgentSourceProvider } from "../agent-source-list/types.js";
-import { createFavoritesRoutes } from "../agent-source-list/favorites-routes.js";
-import { createLlmGatewayRoutes } from "../llm-gateway/gateway-routes.js";
-import { createAiGatewayRoutes } from "../ai-gateway/routes.js";
-import { createAuthRoutes } from "../auth/auth-routes.js";
-import { createIdentityRoutes } from "../identity/identity-routes.js";
-import { createShellCredentialRoutes } from "../auth/shell-credential-route.js";
-import type { IdentityProvider } from "../identity/types.js";
-import { createAttachmentRoutes } from "../http/routes/attachment-routes.js";
-import { createBashRoutes } from "../http/routes/bash-routes.js";
-import { createExtensionRoutes } from "../extensions/routes.js";
+import { createConfigRoutes } from "@blksails/pi-web-core/http/routes/config-routes.js";
+import { createMcpConfigRoutes } from "@blksails/pi-web-core/http/routes/mcp-config-routes.js";
+import { McpProbeService } from "@blksails/pi-web-adapters/mcp-probe.js";
+import type { SessionStoreConfig } from "@blksails/pi-web-core/session-store/config.js";
+import { createSandboxProjectRoutes } from "@blksails/pi-web-core/http/routes/sandbox-project-routes.js";
+import { createSourceSettingsRoutes } from "@blksails/pi-web-core/http/routes/source-settings-routes.js";
+import { createExtensionsConfigRoutes } from "@blksails/pi-web-core/http/routes/extensions-config-routes.js";
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/factory.js";
+import { createSessionListRoutes } from "@blksails/pi-web-core/session-list/session-list-routes.js";
+import { createSessionActionsRoutes } from "@blksails/pi-web-core/session-actions/session-actions-routes.js";
+import { createAgentSourcesRoutes } from "@blksails/pi-web-core/agent-source-list/agent-sources-routes.js";
+import type { AgentSourceProvider } from "@blksails/pi-web-core/agent-source-list/types.js";
+import { createFavoritesRoutes } from "@blksails/pi-web-core/agent-source-list/favorites-routes.js";
+import { createLlmGatewayRoutes } from "@blksails/pi-web-adapters/llm-gateway/gateway-routes.js";
+import { createAiGatewayRoutes } from "@blksails/pi-web-adapters/ai-gateway/routes.js";
+import { createAuthRoutes } from "@blksails/pi-web-adapters/auth/auth-routes.js";
+import { createIdentityRoutes } from "@blksails/pi-web-adapters/identity/identity-routes.js";
+import { createShellCredentialRoutes } from "@blksails/pi-web-adapters/auth/shell-credential-route.js";
+import type { IdentityProvider } from "@blksails/pi-web-adapters/identity/types.js";
+import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
+import { createBashRoutes } from "@blksails/pi-web-core/http/routes/bash-routes.js";
+import { createExtensionRoutes } from "@blksails/pi-web-adapters/extensions/routes.js";
 
 // 借工厂 opts 类型(避免手写/跟踪每个 opts 类型名;工厂本就在本模块 import)。
 type ConfigOpts = NonNullable<Parameters<typeof createConfigRoutes>[0]>;
@@ -72,8 +75,7 @@ export interface HostDeps {
   readonly listModelOptions: ConfigOpts["listModelOptions"];
   readonly resolveSourceSettings: SourceSettingsOpts["resolveSettings"];
   readonly onSourceSettingsSaved: SourceSettingsOpts["onSaved"];
-  readonly sessionStoreConfig: SessionListOpts["storeConfig"];
-  readonly sessionsGlobalEnabled: boolean;
+  readonly sessionStoreConfig: SessionStoreConfig;
   readonly sessionsManageEnabled: boolean;
   readonly sourcesScanRoots: readonly string[];
   readonly sourcesRegistryPath: string;
@@ -113,6 +115,16 @@ export interface HostDeps {
   readonly bashEnabled: boolean;
   readonly extension: ExtensionOpts;
   readonly hostCommandHandlers: readonly HostCommandHandler[];
+  /**
+   * 会话展示元数据索引(spec session-meta-index)。注入时:`session.list` 投影标题/来源、
+   * `session.actions` 改名写标题与删除清条目。可选 —— 未注入即本特性整体不生效。
+   */
+  readonly sessionMetaIndex?: SessionListOpts["metaIndex"];
+  /**
+   * 会话活跃态查询(spec session-meta-index, Req 7.5)。由 pi-handler 从**活跃会话注册表**
+   * 构造(注意与持久化 store 同名不同物);未加载的会话返回 undefined = 空闲。
+   */
+  readonly sessionActivityOf?: SessionListOpts["activityOf"];
 }
 
 type HostDescriptor = CapabilityDescriptor<HostDeps, HostContribution>;
@@ -131,7 +143,7 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
     // 若 config.domains 在前,GET /config/mcp 会被 `:domain`(="mcp") 抢匹配 → DOMAIN_NOT_FOUND。
     // 故 config.mcp **必须**排在 config.domains 之前(复刻现状 pi-handler 的既有约束)。
     // 顺序不同于 HOST_CAPABILITY_IDS_V1 名册,但 id 集相等(装配级测试守卫①)。
-    { id: "config.mcp", factory: (d) => asRoutes(createMcpConfigRoutes({ agentDir: d.agentDir })) },
+    { id: "config.mcp", factory: (d) => asRoutes(createMcpConfigRoutes({ agentDir: d.agentDir, probeService: new McpProbeService() })) },
     // config.domains / config.source:透传可选 `workspace`(注入承载) 与 `adminPolicy`(鉴权)——
     // 提供时走注入分支(config-workspace-injection);缺省则 rootDir 路径 + 默认放行(现状零变化)。
     {
@@ -162,8 +174,8 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
         ),
     },
     { id: "config.extensions", factory: (d) => asRoutes(createExtensionsConfigRoutes({ agentDir: d.agentDir, defaultCwd: d.defaultCwd })) },
-    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ storeConfig: d.sessionStoreConfig, globalEnabled: d.sessionsGlobalEnabled, defaultCwd: d.defaultCwd })) },
-    { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ storeConfig: d.sessionStoreConfig, agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled })) },
+    { id: "session.list", factory: (d) => asRoutes(createSessionListRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}), ...(d.sessionActivityOf !== undefined ? { activityOf: d.sessionActivityOf } : {}) })) },
+    { id: "session.actions", factory: (d) => asRoutes(createSessionActionsRoutes({ createEntryStore: () => createSessionEntryStore(d.sessionStoreConfig), agentDir: d.agentDir, manageEnabled: d.sessionsManageEnabled, ...(d.sessionMetaIndex !== undefined ? { metaIndex: d.sessionMetaIndex } : {}) })) },
     {
       id: "agentSource.list",
       factory: (d) =>

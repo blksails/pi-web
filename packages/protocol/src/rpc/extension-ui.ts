@@ -81,6 +81,47 @@ export const RpcExtensionUIRequestSchema = z.discriminatedUnion("method", [
 ]);
 export type RpcExtensionUIRequest = z.infer<typeof RpcExtensionUIRequestSchema>;
 
+/** 全部 extension-ui 请求 method(自 schema 判别键推导,新增分支自动纳入)。 */
+export type ExtensionUIMethod = RpcExtensionUIRequest["method"];
+
+/**
+ * **需用户回包**的交互类 method —— 单一权威(spec session-meta-index, Req 7.2)。
+ *
+ * 为何需要这份清单:服务端 `PiSession.handleExtensionUIRequest` 把**所有** extension-ui 请求
+ * 无条件登记进挂起表,其中推送类(见下)永不回包、永久滞留。故「挂起表非空」**不等于**
+ * 「会话在等用户」——判定会话活跃态必须先按本集合过滤,否则任何发过 `notify` 的会话会永久
+ * 显示「等待用户交互」。
+ *
+ * 前端 `control-store.routeExtensionUi` 用同一套二分(交互类入 FIFO 对话框队列、推送类写
+ * ambient 切片)。两处清单必须一致,由 `test/rpc/extension-ui-methods.test.ts` 的差集守卫锁住:
+ * 新增一个 method 而不归类,守卫即红。
+ */
+export const INTERACTIVE_EXTENSION_UI_METHODS = [
+  "select",
+  "confirm",
+  "input",
+  "editor",
+] as const satisfies readonly ExtensionUIMethod[];
+
+/** **无需回包**的推送类 method(与交互类互补,合起来穷尽 method 全集)。 */
+export const PUSH_EXTENSION_UI_METHODS = [
+  "notify",
+  "setStatus",
+  "setWidget",
+  "setTitle",
+  "set_editor_text",
+] as const satisfies readonly ExtensionUIMethod[];
+
+export type InteractiveExtensionUIMethod =
+  (typeof INTERACTIVE_EXTENSION_UI_METHODS)[number];
+
+/** 某 method 是否属交互类(需用户回包)。未知 method 归为非交互(失败安全:不误报等待)。 */
+export function isInteractiveExtensionUIMethod(
+  method: string,
+): method is InteractiveExtensionUIMethod {
+  return (INTERACTIVE_EXTENSION_UI_METHODS as readonly string[]).includes(method);
+}
+
 /** pi: RpcExtensionUIResponse(共享 type,以负载字段区分) */
 export const RpcExtensionUIResponseSchema = z.union([
   z.object({

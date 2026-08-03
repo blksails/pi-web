@@ -124,8 +124,45 @@ export interface CanvasPluginBundle {
 }
 
 /** 声明式右侧 panes；宿主负责渲染 PanesHost 与能力注入。 */
-export interface PanesContribution {
-  readonly definition: unknown;
+/**
+ * agent 贡献的 pane 定义(**最小结构镜像**,spec host-builtin-panes 任务 1.2)。
+ *
+ * canonical 家在 `@blksails/pi-web-panes-kit`(`PanesDefinitionInput`,那里有 zod schema
+ * 与完整的 pane 形状)。与 {@link CanvasPluginBundle} 同一手法:web-kit 刻意不 import
+ * panes-kit —— 二者无依赖边,故此处只镜像作者声明时需要的结构(稳定的标量键 + 位宽型
+ * `unknown` 的 pane 槽)。真正的校验收敛在宿主消费点(`mergePaneSources` → `definePanes`),
+ * 那里也对镜像与 canonical 下双向可赋值断言,防两者漂移。
+ *
+ * ## 为什么需要这个键
+ *
+ * 在它之前,agent 的 pane 定义只活在自己右侧面板槽渲染器的闭包里,宿主**无从枚举**
+ * —— 也就无法把它与宿主内置 pane 合并。有了它,宿主才能领域中立地搬运并合并。
+ *
+ * ## 唯一的右侧面板机制
+ *
+ * 同时声明两者时**旧槽优先、本键被忽略**,并在会话装载期输出一条说明迁移途径的诊断。
+ * 原因:槽渲染器占满整个面板区域,内置 panes 无处安放;两套面板并存会让用户看到分裂的
+ * 标签页与两套实例生命周期。要与内置 pane 合并,就只声明本键、不声明该槽。
+ */
+export interface PaneContributionBundle {
+  /** 该 agent 的 pane 集合标识(仅用于诊断与合并溯源)。 */
+  readonly id: string;
+  /** pane 定义数组;形状由 panes-kit 在宿主侧校验。 */
+  readonly panes: readonly unknown[];
+  /** 会话打开时默认展开的 pane 标识。 */
+  readonly initialPaneIds?: readonly string[];
+  /** 该 agent 期望的同时打开上限;与内置集合合并时取两者较大者。 */
+  readonly maxOpenPanes?: number;
+  /**
+   * pane 宿主的交互配置(交互模式、tab 重排、命令面板、事件目标映射等),由宿主**原样透传**给
+   * pane 宿主组件,不解析。
+   *
+   * 为什么需要它:迁移到本声明键之前,agent 是自己实例化 pane 宿主组件的,交互配置直接作为
+   * 该组件的 prop。改由宿主实例化后,这份配置若无处可放就会静默丢失 —— 表现为 advanced 交互
+   * 模式、tab 重排、命令面板等能力无声消失(一次真实的行为回退)。
+   *
+   * 形状与 `canvasPlugins` 同一手法:位宽型 `unknown`,canonical 家在 panes-kit。
+   */
   readonly config?: unknown;
 }
 
@@ -152,9 +189,16 @@ export interface WebExtension {
    * 发生在领域侧(canvas-ui)。
    */
   readonly canvasPlugins?: readonly CanvasPluginBundle[];
-  readonly panes?: PanesContribution;
   /** 对话流 AIGC 成品图动作；宿主统一渲染毛玻璃操作条。 */
   readonly conversationImageActions?: readonly ConversationImageAction[];
+  /**
+   * 该 agent 贡献的 pane 定义。与宿主内置 pane 集合在会话装载期合并(内置在前、本键在后),
+   * 宿主对其领域中立:只搬运与合并,不解析 pane 内部语义。
+   *
+   * 右侧面板的**唯一**声明途径(spec panes-only-right-panel:旧的具名槽已删除)。
+   * 详见 {@link PaneContributionBundle}。
+   */
+  readonly panes?: PaneContributionBundle;
 }
 
 /**

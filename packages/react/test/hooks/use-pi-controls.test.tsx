@@ -42,7 +42,7 @@ describe("usePiControls", () => {
     await act(async () => {
       await result.current.setModel({ provider: "p", modelId: "m" });
     });
-    expect(calls.at(-1)?.url).toBe("http://api.test/sessions/s1/model");
+    expect(calls.at(-1)?.url).toBe("http://api.test/sessions/s1/models");
     expect(result.current.state.setModel).toEqual({
       pending: false,
       error: undefined,

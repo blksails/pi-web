@@ -62,6 +62,14 @@ export {
 } from "./authorization.js";
 export { createPaneWorkspace, reducePaneWorkspace } from "./instances.js";
 export type { PaneWorkspaceState, PaneWorkspaceAction } from "./instances.js";
+export { HOST_PANE_ID_PREFIX, mergePaneSources } from "./merge.js";
+export type {
+  PaneSource,
+  PaneSourceKind,
+  PaneMergeResult,
+  PaneMergeRejection,
+  PaneRejectionReason,
+} from "./merge.js";
 export { createAgentRouteClient } from "./agent-routes.js";
 export type { AgentRouteClientOptions } from "./agent-routes.js";
 export { fromMessagePort } from "./host-ports.js";

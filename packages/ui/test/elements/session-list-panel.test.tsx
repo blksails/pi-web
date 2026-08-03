@@ -26,7 +26,7 @@ function item(over: Partial<SessionListItem> & { sessionId: string }): SessionLi
 }
 
 function resp(sessions: SessionListItem[]): ListSessionsResponse {
-  return { sessions, scope: "cwd", globalEnabled: false };
+  return { sessions };
 }
 
 /**
@@ -48,8 +48,6 @@ describe("SessionListPanel × refreshSignal", () => {
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -60,7 +58,7 @@ describe("SessionListPanel × refreshSignal", () => {
   });
 
   it("用例B:refreshSignal 变化 → 重拉当前 scope 首页,反映新会话与更新后的标题", async () => {
-    // 首次:仅会话 A,且尚未命名(显示 sessionId);第二次:A 拿到 auto_title 名 + 新会话 B 出现。
+    // 首次:仅会话 A,且尚未命名(显示「新对话」占位);第二次:A 拿到 auto_title 名 + 新会话 B 出现。
     const listSessions = vi
       .fn<(req: ListSessionsRequest) => Promise<ListSessionsResponse>>()
       .mockResolvedValueOnce(resp([item({ sessionId: "sess-a" })]))
@@ -73,22 +71,21 @@ describe("SessionListPanel × refreshSignal", () => {
 
     const { rerender } = render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
       />,
     );
-    // 首屏:A 未命名 → 主标题回退为 sessionId。
-    await waitFor(() => expect(screen.getByText("sess-a")).toBeInTheDocument());
+    // 首屏:A 未命名 → 显示「新对话」占位。
+    // ★ 行为变更(spec session-meta-index Req 6.7):此处**原为**回退显示 sessionId 的 uuid,
+    //   现改为占位名 —— uuid 对用户没有识别价值,且挤掉了真正有用的信息(uuid 移到 hover 提示)。
+    await waitFor(() => expect(screen.getByText("新对话")).toBeInTheDocument());
+    expect(screen.queryByText("sess-a")).not.toBeInTheDocument();
     expect(listSessions).toHaveBeenCalledTimes(1);
 
     // 宿主 bump refreshSignal(模拟一轮 agent 结束后 onTurnEnd)。
     rerender(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={1}
@@ -107,7 +104,6 @@ describe("SessionListPanel × refreshSignal", () => {
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     const props = {
       currentCwd: "/work",
-      globalEnabled: false,
       listSessions,
       onResume: () => {},
       refreshSignal: 7,
@@ -129,8 +125,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-1"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -142,7 +136,9 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
         document.querySelector('[data-pi-session-list-pending=""]'),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByText("新会话")).toBeInTheDocument();
+    // 文案变更:占位与「已落库但无标题」统一为「新对话」——二者是同一会话的连续两态,
+    // 文案一跳用户会以为多了一个会话。
+    expect(screen.getByText("新对话")).toBeInTheDocument();
     // 不应出现空态。
     expect(
       document.querySelector("[data-pi-session-list-empty]"),
@@ -156,8 +152,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-1"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -180,8 +174,6 @@ describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {
     render(
       <SessionListPanel
         currentSessionId="new-2"
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -201,8 +193,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -224,8 +214,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -244,8 +232,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     );
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}
@@ -263,8 +249,6 @@ describe("SessionListPanel × showSource(source 极小副标题,Req 6.2/6.3/6.5)
     const listSessions = vi.fn(async () => resp([item({ sessionId: "a", name: "会话A" })]));
     render(
       <SessionListPanel
-        currentCwd="/work"
-        globalEnabled={false}
         listSessions={listSessions}
         onResume={() => {}}
         refreshSignal={0}

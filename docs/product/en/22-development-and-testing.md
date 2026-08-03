@@ -156,7 +156,7 @@ Drives the full HTTP/SSE path of the real `createPiWebHandler`. When Playwright 
 - `streaming.e2e.test.ts` — create session → POST prompt → consume SSE → assert `text-delta` / `reasoning-delta` / `tool-input-available` frames and the permission-dialog round trip;
 - `config-domains.e2e.test.ts`, `attachment-completion.e2e.test.ts`;
 - `state-bridge.e2e.test.ts` — the state-injection bridge `POST /sessions/:id/state` write-back + the `control:state` downstream mirror;
-- `vision-tool.e2e.test.ts` / `vision-models-endpoint.e2e.test.ts` — the `image_vision` tool and `GET /vision/models` enumeration.
+- `vision-tool.e2e.test.ts` / `vision-models-endpoint.e2e.test.ts` — the `image_vision` tool and the vision-model enumeration (the endpoint is now `GET /api/config/models?input=image&output=text`).
 
 ### 22.4.4 Browser e2e (Playwright)
 

@@ -54,7 +54,9 @@ async function main() {
   // 无符号链接产物:pi SDK / jiti 经 dereference 拷贝 hoist 到顶层 node_modules(见 pack-dist)。
   for (const f of [
     "server.mjs",
-    "packages/server/runner-bootstrap.mjs",
+    // 引导脚本已迁至 runner 包(spec: runner-package-extraction 任务 4.2)。
+    // pack-dist 按 `existsSync(<pkg>/runner-bootstrap.mjs)` 自动逐包拷贝,无需登记。
+    "packages/runner/runner-bootstrap.mjs",
     "node_modules/@earendil-works/pi-coding-agent/dist/cli.js",
     "node_modules/jiti",
   ]) {

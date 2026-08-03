@@ -76,7 +76,7 @@ The following capabilities were unrecorded in the early roadmap but are all on `
 |------|--------------|
 | Attachment system | `attachment-store` + `attachment-tool-bridge`: reference-style four-layer attachments (L0 object store + L2 resolve handle + tool-output flow-back). See [09](./09-attachment-system.md) |
 | AIGC image tools | `image_generation`/`image_edit` loaded via `aigcExtension` + `pi.registerTool` (ToolSpec/compileTool already removed). See [11](./11-aigc-and-vision-tools.md) |
-| Vision recognition | `image-vision-tool`: `image_vision` tool + `/img_vision` command + `GET /vision/models`. See [11](./11-aigc-and-vision-tools.md) |
+| Vision recognition | `image-vision-tool`: `image_vision` tool + `/img_vision` command + a vision-model enumeration endpoint (since folded into `GET /api/config/models`). See [11](./11-aigc-and-vision-tools.md) |
 | State injection bridge | `state-injection-bridge`: bidirectional session-level KV, authoritative in the agent child process, `POST /sessions/:id/state` write-back + `control:"state"` downward mirror frame |
 | Session readiness handshake | `SessionLifecycleState` + sticky `control:"session-status"` frame + `getCommands` read-only readiness probe |
 | Agent-declared routes | `AgentDefinition.routes` → session-anchored endpoints + `slashCompletions` static completion. See [08](./08-agent-development.md) |

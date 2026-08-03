@@ -12,7 +12,11 @@
  *   - `PiCliNotFoundError` → 可操作错误(pi 安装指引)。
  */
 import { describe, it, expect } from "vitest";
-import { PiCliNotFoundError, type PiCli, type PiCommandResult } from "@blksails/pi-web-server";
+import {
+  PiCliNotFoundError,
+  type PiCli,
+  type PiCommandResult,
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import {
   createPluginInstaller,
   normalizeExtSourceId,

@@ -1,0 +1,47 @@
+{
+  "feature_name": "adapters-package-extraction",
+  "created_at": "2026-07-30T04:40:00Z",
+  "updated_at": "2026-07-30T06:40:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "scope_decisions": {
+    "date": "2026-07-30",
+    "scope": "全口径 —— 搬全部 12 个 adapters 模块(57 文件 / 7612 行),兼容层缩到约 570 行装配壳",
+    "main_entry_contract": "允许缩减主入口导出面 —— 8 个 adapters 模块的符号从主 barrel 移除。★ 有意的破坏性变更:须 major 版本;313 基准须**有意重生成并记录理由**,不得表现为「改基准迁就实现」;跨仓消费方只登记不改",
+    "identity_port": "待定 —— core 无 IdentityProvider 端口,是按普通模块搬还是补端口,须在 requirements/design 决;补端口属逻辑变更须单列"
+  },
+  "brief_revised": "2026-07-30 据实测修订 —— 初稿中心论证(让 core 守卫转绿)已由 core-package-extraction 达成",
+  "approval_notes": {
+    "requirements": "经用户 /goal「使用 kiro 流程实现」+「做吧」的自主执行授权批准；评审闸门机械检查 6 领域/30 条通过，修正 1 处非 EARS 触发词",
+    "design": "经用户自主执行授权批准；评审闸门机械检查 30/30 通过",
+    "tasks": "经用户自主执行授权批准；覆盖 30/30，闸门机械检查通过"
+  },
+  "design_decisions": {
+    "identity_port": "不补端口 —— core 无 IdentityProvider，补端口属逻辑变更(R4.2)",
+    "contract_shrink": "移除主入口 8 条 export *；基准有意重生成 + **逐一枚举的移除清单**工件；旧基准另存；主版本号",
+    "agent_sdk_static_assertion": "★ 必须加静态声明断言 —— pi-cli.ts 的 locatePackageDir 逐级向上查找，仓库根有 SDK，漏声明在 monorepo 里恒能解析成功（与上一轮 tool-kit 陷阱同构）",
+    "closure_vs_declaration": "★ 2.1 达成范围须表述为「兼容层**自身声明**不再含三者」；闭包层预期仍有 MCP SDK 经 tool-kit 传递，须显式说明来源"
+  },
+  "implementation": {
+    "completed_tasks": "16/16",
+    "completed_at": "2026-07-30",
+    "delivery_artifact": ".kiro/specs/adapters-package-extraction/validation.md",
+    "evidence_summary": "四包两轮逐档逐字相同 284 文件/2623 用例；六项类型检查 exit 0；30 条验收标准逐条留证",
+    "known_gaps": "R2.2 闭包层未兑现（四个重依赖仍随 adapters 进入兼容层闭包）；R1.2 按字面不成立（tool-kit 另有一份 MCP SDK，不在守卫包根名册内）；U1-U6 见 validation.md §8"
+  }
+}

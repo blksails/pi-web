@@ -8,6 +8,6 @@ function Panel(): React.JSX.Element {
 
 export default defineWebExtension({
   manifestId: "ext-a",
-  slots: { panelRight: <Panel /> },
+  slots: { sidebarLeft: <Panel /> },
   capabilities: ["slots"],
 });

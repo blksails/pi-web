@@ -19,7 +19,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PiCli, PiCommandResult } from "@blksails/pi-web-server";
+import type {
+  PiCli,
+  PiCommandResult,
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import {
   createInstaller,
   isAllowAnyNpmEnabled,

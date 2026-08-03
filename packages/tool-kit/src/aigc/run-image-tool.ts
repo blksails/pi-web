@@ -205,6 +205,65 @@ async function resolveAndNormalizeImage(
   return normalizeImageDataUri(resolved);
 }
 
+// ── payload 体积兜底(spec upload-image-compression Req 7)─────────────────────
+
+/**
+ * 单次调用允许的媒体 payload 上限。
+ *
+ * **本上限的职责是兜住离谱输入,不是精确划线** —— 宁可放过一个慢的,不可误伤一个能成的。
+ *
+ * 定 4MiB 的由来(2026-07-28→29 两日实测,含一次自我证伪):
+ *  - 大 payload 显著更慢:同一张 764×763 照片,1.8KB 小图 12s,压缩后 174KB 约 152s,
+ *    原图 0.97MB 则 38s(gpt-image-2)/ 128s(gemini relay)—— 慢意味着更容易撞上
+ *    传输层超时与服务端拥塞,这是压缩与本上限共同的存在理由。
+ *  - ★但「大图必然卡死」是**错误结论**:07-28 该图挂满 23 分钟无响应,07-29 同一负载、
+ *    同一代码路径 38s 正常出图。那是当时 NewAPI 的状态,不是模型的固有属性。
+ *  - ★曾定 1.5MB,会**误伤自家模型的输出**:gpt-image-2 单张输出实测 2.17MB,拿它二创
+ *    (canvas 的核心场景)会被自己的兜底拦死。故放宽到 4MiB。
+ */
+const MAX_PAYLOAD_BYTES = 4 * 1024 * 1024;
+
+/** data URI 的 base64 段还原为字节数(每 4 字符 → 3 字节,减去尾部 padding)。 */
+function dataUriByteLength(uri: string): number {
+  const comma = uri.indexOf(",");
+  if (comma < 0 || !uri.startsWith("data:")) return 0;
+  const payload = uri.length - comma - 1;
+  const padding = uri.endsWith("==") ? 2 : uri.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((payload * 3) / 4) - padding);
+}
+
+function formatBytes(n: number): string {
+  return n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.round(n / 1024)}KB`;
+}
+
+/**
+ * 统计已解析媒体字段的合计体积,超限则返回可读错误(Req 7.1/7.2)。
+ *
+ * ★对用户上传图与工具**生成**图一视同仁(Req 7.4)——二者在此都已是 data URI,
+ * 无从区分来源,这正是本兜底能覆盖前端压缩盲区(canvas 二创拿生成图再编辑)的原因。
+ */
+export function checkPayloadLimit(
+  merged: Readonly<Record<string, unknown>>,
+  mediaFields: readonly string[],
+): string | undefined {
+  let total = 0;
+  for (const name of mediaFields) {
+    const val = merged[name];
+    if (typeof val === "string") {
+      total += dataUriByteLength(val);
+    } else if (Array.isArray(val)) {
+      for (const elem of val) {
+        if (typeof elem === "string") total += dataUriByteLength(elem);
+      }
+    }
+  }
+  if (total <= MAX_PAYLOAD_BYTES) return undefined;
+  return (
+    `图片过大无法处理:输入图合计 ${formatBytes(total)},超过上限 ${formatBytes(MAX_PAYLOAD_BYTES)}。` +
+    `请改用更小的图片,或先压缩后再试。`
+  );
+}
+
 /** 对显式 mediaFields(string 或 string[])逐字段解析。 */
 async function resolveMediaFields(
   mediaFields: readonly string[],
@@ -362,6 +421,14 @@ export async function runImageTool(
   log.debug("tool execute start", { tool: toolName, model: route.model });
   try {
     await resolveMediaFields(mediaFields, merged, ctx);
+
+    // 派发前兜底:超大 payload 会让上游根本不返回(实测 766KB PNG 挂 23 分钟),
+    // 与其无限期转圈,不如就地给出可读失败(Req 7.1/7.3;走既有 errResult 路径)。
+    const oversize = checkPayloadLimit(merged, mediaFields);
+    if (oversize) {
+      log.warn("payload over limit; aborting before dispatch", { tool: toolName, model: route.model });
+      return errResult(oversize);
+    }
 
     // 提示词优化(aigc-tool-settings Req 4.3):会话开关为真时,在派发 provider 前对 prompt 调
     // 优化接缝并回写;为假/未设则完全不调用、prompt 透传(与既有行为一致)。本期接缝为无改写占位。

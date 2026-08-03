@@ -100,7 +100,7 @@ The main entry (`.`) aggregates the session/RPC/HTTP/attachment modules. Its cor
 
 - `./trust`: the trust policy `FsProjectTrustStore`, which reads/writes `<agentDir>/trust.json` and has zero pi SDK value dependencies.
 - `./model-options`: the text-model enumeration factory ([07 · Providers and Models](07-providers-and-models.md)).
-- `./vision-model-options`: the vision-model enumeration factory used by `GET /vision/models` ([11 · AIGC and Vision Tools](11-aigc-and-vision-tools.md)).
+- `./vision-model-options`: the vision-model enumeration factory (now consumed by `GET /api/config/models?input=image&output=text`) ([11 · AIGC and Vision Tools](11-aigc-and-vision-tools.md)).
 
 > **Barrel discipline** (`packages/server/src/index.ts:3-8`): the `./runner` subpath is **not** re-exported from the main-entry barrel. When loaded, the runner statically imports the entire pi SDK; if it went through a barrel `export *`, the SDK would get bundled into the built artifact and break the esbuild external boundary. The runner is loaded only by `runner-bootstrap.mjs` inside the subprocess, via `jiti` loading `./runner/runner.ts`; the App/Handler never import the runner directly.
 

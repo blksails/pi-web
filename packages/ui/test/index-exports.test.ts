@@ -35,7 +35,6 @@ describe("@blksails/pi-web-ui public exports", () => {
     expect(typeof ui.PartRenderer).toBe("function");
     expect(typeof ui.PiToolPart).toBe("function");
     expect(typeof ui.PiReasoning).toBe("function");
-    expect(typeof ui.PiModelSelector).toBe("function");
     expect(typeof ui.PiThinkingLevel).toBe("function");
     expect(typeof ui.PiSessionStats).toBe("function");
     expect(typeof ui.PiCommandPalette).toBe("function");

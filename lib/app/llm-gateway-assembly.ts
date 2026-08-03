@@ -36,8 +36,8 @@
 import {
   mintScopedToken,
   resolveLlmGatewaySecret,
-  resolveLlmGatewayProviderTable,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import { resolveLlmGatewayProviderTable } from "@blksails/pi-web-adapters/llm-gateway/index.js";
 import type { AppConfig } from "./config.js";
 import { buildSandboxLlmEnv } from "./llm-gateway-config.js";
 

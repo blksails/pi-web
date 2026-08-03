@@ -8,7 +8,7 @@
 
 **In scope**
 
-- 两类视图：**当前目录会话**（仅当前 cwd）与**系统会话**（本机全部目录），后者默认关闭、需部署方显式开启。
+- **全局视图**：列出本机全部工作目录下的会话，不按项目目录区分（列表项仍带 `cwd`，故「哪个项目的会话」在项上仍可见）。
 - 列表项展示足以区分会话的**轻量元数据**：名称或标识、时间（创建或最近修改）、所属工作目录。
 - 从列表整行点击直接**恢复**某历史会话进入对话，回放历史上下文。
 - 大规模会话集合下的**分页**（keyset 游标续取）与**倒序排序**。
@@ -29,21 +29,11 @@
 
 ## 2. 两类视图
 
-| 视图 | `scope` | 范围 | 默认状态 |
-|---|---|---|---|
-| 当前目录 | `cwd` | 当前工作目录下已持久化的会话 | 始终可用 |
-| 系统（全机器） | `all` | 本机全部工作目录下的会话 | **默认关闭**，需 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 开启 |
+会话列表**恒为全局**：`GET /api/sessions` 返回本机全部工作目录下的会话，无视图参数、无部署门控。
 
-两类视图均按 `updatedAt ?? createdAt` **倒序**（最新在前），跨 fs / sqlite / postgres 后端一致；单个会话头部元数据损坏 / 无法解析时由 store 适配器**跳过**该会话并继续返回其余，不使整个列表请求失败。
+> **★ 行为变更**：早期版本提供「当前目录 / 系统（全机器）」两类视图（`scope=cwd|all`），系统视图默认关闭、需 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 开启。现已**彻底移除** `scope` 参数、`globalEnabled` 门控与面板上的视图切换 Tab —— 用户在多个项目间穿梭时，「当前目录」这个切面制造的是隔阂而非聚焦。列表项保留 `cwd`，项目归属仍可见。
 
-**系统视图的双重门控**：
 
-- 服务端：`scope=all` 且全局开关关闭时，`GET /api/sessions` 直接返回 `403`，**不触达存储**（不扫描全机器会话桶、不暴露清单）。
-- 前端：全局开关关闭时，面板根本**不渲染「全部」Tab**（仅保留「当前目录」视图）。
-
-要开启系统视图，部署方设置 `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=true`（或 `=1`）——该值由服务端在 `GET /api/bootstrap` 请求时读 `process.env` 下发前端（`server/bootstrap.ts:97`），前端经 `setRuntimeFeatures()` 注入门控（`src/bootstrap.tsx:140`、`lib/app/runtime-features.ts:33`）。改后**重启服务端即生效，无需重新构建**（下发机制见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。
-
-> **当前目录视图如何确定目标 cwd**：前端无从可靠推断「agent 解析后的真实 cwd」，故 `scope=cwd` 请求会带上当前活跃 `sessionId`，服务端以该会话的持久化 cwd 为准（`store.readHeader(sid).cwd`，`session-list-routes.ts:225-236`）；仅当 `sessionId` 缺失 / 无法解析时，才回退到 `cwd` 参数或服务端默认 cwd。
 
 ---
 
@@ -100,7 +90,7 @@
 只读列表端点经现有 `routes:` 注入接缝挂载（`createSessionListRoutes()`，与 `createConfigRoutes` 同构），与内置的 `POST /sessions`、`GET /sessions/:id/*` 共存。
 
 ```
-GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
+GET /api/sessions?limit=&cursor=&q=
 → ListSessionsResponse
 ```
 
@@ -110,9 +100,6 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
 
 | 参数 | 取值 | 说明 |
 |---|---|---|
-| `scope` | `cwd` \| `all` | 缺省 `cwd`；`all` 受全局门控 |
-| `cwd` | string | `scope=cwd` 的目标目录（`sessionId` 不可用时的回退） |
-| `sessionId` | string | `scope=cwd` 时优先以该会话的持久化 cwd 为目标目录 |
 | `limit` | 正整数 | 单页上限，默认 50，硬 clamp 到 200 |
 | `cursor` | string | 不透明 keyset 游标，续取下一页 |
 
@@ -124,25 +111,21 @@ GET /api/sessions?scope=&cwd=&sessionId=&limit=&cursor=
     { "sessionId": "...", "cwd": "...", "createdAt": "...", "updatedAt": "...", "name": "..." }
   ],
   "nextCursor": "...",     // 缺省表示无更多
-  "scope": "cwd",          // 回显生效的 scope
-  "globalEnabled": true     // 供前端确认系统视图可用性
 }
 ```
 
 **试一下**（dev 下 API 在 `:3000`，浏览器 UI 在 `:5173`；curl 直打 API 端口）：
 
 ```bash
-# 当前目录视图首页(默认 scope=cwd, limit=50)——以某活跃会话的持久化 cwd 为目标目录
+# 首页(全局,limit=50)
 curl -s 'http://localhost:3000/api/sessions?sessionId=<活跃会话id>&limit=20' | jq
 
 # 取下一页:把上一次响应里的 nextCursor 原样带回
 curl -s 'http://localhost:3000/api/sessions?limit=20&cursor=<上页 nextCursor>' | jq '.sessions | length'
 
-# 系统(全机器)视图:未开 NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL 时预期 403 SESSIONS_GLOBAL_DISABLED
-curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?scope=all'
 ```
 
-预期：第一条返回 `{ "sessions": [...], "nextCursor": "...", "scope": "cwd", "globalEnabled": false }`；第三条在系统视图关闭时打印 `403`。
+预期：返回 `{ "sessions": [...], "nextCursor": "..." }`。
 
 **分页（keyset）**：游标是 `base64url(JSON.stringify({ ts, id }))`，`ts = updatedAt ?? createdAt`、`id = sessionId`，取自上一页最后一项；服务端在排序序列中返回严格位于 `{ts,id}` 之后的项，保证续取**不重复**已返回会话，最终收敛（游标编解码与倒序比较 `session-list-routes.ts:70-112`，排序 + 切片 + `nextCursor` 生成 `256-263`）。分页在内存切片完成，store 仅提供 `list(cwd)` / `listAll()` 的轻量 header 元数据。
 
@@ -150,8 +133,7 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?sco
 
 | 状态 | code | 触发 |
 |---|---|---|
-| `400` | `INVALID_REQUEST` | `scope` / `limit` / `cursor` 非法（响应含出错字段） |
-| `403` | `SESSIONS_GLOBAL_DISABLED` | `scope=all` 但系统视图未启用（不返回任何会话数据） |
+| `400` | `INVALID_REQUEST` | `limit` / `cursor` 非法（响应含出错字段） |
 | `500` | `INTERNAL` | 存储读取异常（前端展示可重试错误） |
 
 > store 惰性单例：首次请求时 `await createSessionEntryStore(storeConfig)` 构造并缓存，配置与冷恢复同源（`sessionStoreConfigFromEnv()`），保证列表与恢复读到同一后端（`session-list-routes.ts:169-179`）。
@@ -199,7 +181,7 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?sco
 - **空态**：当前范围无会话时显示 `emptyLabel`（默认「暂无会话」），而非报错或空白。
 - **错误**：加载失败显示 `errorLabel` + 可点击的**重试**按钮，而非静默空白。
 
-视图切换仅在 `globalEnabled` 时出现「当前目录 / 全部」Tab；切 Tab 或数据源变化会重置并重新加载首页。`nextCursor` 存在时显示「加载更多」按钮续取并追加。组件内有**竞态守卫**（`reqIdRef`），快速切 Tab / 续取时丢弃过期响应（`session-list-panel.tsx:156`、`177`、`184`）。
+数据源变化会重置并重新加载首页（已无视图切换 Tab）。`nextCursor` 存在时显示「加载更多」按钮续取并追加。组件内有**竞态守卫**（`reqIdRef`），快速续取 / 刷新时丢弃过期响应（`session-list-panel.tsx:156`、`177`、`184`）。
 
 > 列表项、Tab、三态、加载更多均带 `data-pi-session-list-*` 属性，供 e2e 与宿主定位。
 
@@ -209,7 +191,6 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://localhost:3000/api/sessions?sco
 
 | 变量 | 默认 | 作用 | 读取处 |
 |---|---|---|---|
-| `NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` | `false` | `true`/`1` 开启系统（全机器）视图：显示「全部」Tab + 放行 `scope=all` | `bootstrap` 下发 → `chat-app.tsx`（前端）+ `pi-handler.ts:464` 注入 `globalEnabled`（服务端门控） |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` | `sidebar` | 面板展示位置（`sidebar`/`header`/`footer`/`empty`） | `bootstrap` 下发 → `chat-app.tsx`（`sessionsSlot()`） |
 | `NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` | 启用 | **写门控**：设为 `false` / `0` 关闭项级删除 / 重命名 / 收藏（前端隐藏写入口 + 服务端写端点 `403`）;其余取值（含未设）默认启用。读收藏（`GET /sessions/favorites`）不受此门控 | `bootstrap` 下发 → `chat-app.tsx`（前端 `manageEnabled`）+ `pi-handler.ts:477`（注入 `createSessionActionsRoutes({ manageEnabled })`） |
 
@@ -228,10 +209,8 @@ Next 迁移到 Vite+SPA 后，这套门控的读取方式**根本改变**了，�
 
 ## 8. 故障排查 / 注意事项
 
-- **「全部」Tab 不出现 / 切到系统视图报 403**：`NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL` 未开启，或开启后未重启服务端（该值在 `GET /api/bootstrap` 时运行时下发，改后须重启，见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。服务端 403 与前端隐藏 Tab 是同一门控的双重保险，属预期行为。
-- **当前目录视图列出的会话目录不符预期**：`scope=cwd` 以活跃 `sessionId` 的持久化 cwd 为准；若当前无活跃会话或该会话不可解析，会回退到 `cwd` 参数 / 服务端默认 cwd。
 - **面板位置不对**：检查 `NEXT_PUBLIC_PI_WEB_SESSIONS_SLOT` 取值是否落在 `sidebar`/`header`/`footer`/`empty` 之内；非法值静默回退 `sidebar`。
-- **大量历史下首屏慢**：`scope=all` 走 `listAll` 全量扫桶 + 内存切片，开销随历史规模线性——默认关闭全局视图 + 分页（`limit` 默认 50、上限 200）是主要缓解手段。
+- **大量历史下首屏慢**：全局视图走 `listAll` 全量扫桶 + 内存切片，开销随历史规模线性——分页（`limit` 默认 50、上限 200）与会话元数据索引（标题/来源快读，见 [session-meta-index](#) spec）是主要缓解手段。
 - **点恢复后扩展 UI（region slots / background）失效**：恢复须经 `/session/:id` 冷恢复链路回溯 agent source；直接以 `resumeId` 之外的方式重挂会丢失 source。
 - **⋯ 操作菜单不出现 / 删除·重命名·收藏写入口消失**：`NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE` 被显式设为 `false` / `0`（写门控关闭），或改后未重启服务端（该值经 `GET /api/bootstrap` 运行时下发，见 [§7.1](#71-门控为何运行时生效get-apibootstrap)）。此时服务端也会对写请求返回 `403 SESSIONS_MANAGE_DISABLED`，属只读部署的预期行为;注意「收藏」分区仍会按已读收藏置顶展示（读收藏不受门控）。
 - **删的是当前正在查看的会话**：删除成功后宿主会 `window.location.assign("/")` 导航至新会话空态，其余进行中的会话不受影响。
@@ -262,7 +241,7 @@ Next 迁移到 Vite+SPA 后，这套门控的读取方式**根本改变**了，�
 ### 9.3 收藏 / 置顶（独立偏好存储）
 
 - 菜单选「收藏 / 取消收藏」→ 经 `onToggleFavorite(id, favorite)` 上抛宿主，宿主**读→算→写**：先 `listSessionFavorites()`，据目标态增删该 `sessionId`，再 `setSessionFavorites({ sessionIds })` 全量替换落盘，回读结果更新界面。
-- 收藏以 **`sessionId` 为键**持久化在独立文件 `<agentDir>/session-favorites.json`（见 [§5.1](#51-会话操作端点删除--重命名--收藏)），与只读的会话枚举、与 agent-source 收藏均**互不相干**。因此同一会话在「当前目录」与「全部」两视图中收藏状态一致。
+- 收藏以 **`sessionId` 为键**持久化在独立文件 `<agentDir>/session-favorites.json`（见 [§5.1](#51-会话操作端点删除--重命名--收藏)），与只读的会话枚举、与 agent-source 收藏均**互不相干**。收藏状态与列表视图无关。
 - 面板把 `favoriteSessionIds ∩ 当前视图会话` 求交，命中项在列表顶部以独立「**收藏**」分区置顶，并从普通列表中排除以免重复渲染;交集为空则**不渲染**该分区（不留空占位）。指向已删除会话的失效收藏 `sessionId` 因不在当前会话集合而被自然跳过，不报错、不渲染空条目。
 - 收藏项在收藏分区与普通列表中**一致**地展示名称、恢复入口与 `⋯` 菜单（同样可重命名 / 删除 / 取消收藏）。
 - **读收藏不受写门控**：只读部署下已持久化的收藏仍会被拉取用于置顶展示，仅写入（收藏 / 取消收藏）被门控拒绝。

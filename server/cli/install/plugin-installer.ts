@@ -84,7 +84,7 @@ import {
   type ExtSource,
   type InstalledExtension,
   type PiCli,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import { redactSecrets } from "../reporter.js";
 
 export type Result<T, E> =

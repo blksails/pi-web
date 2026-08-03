@@ -1,11 +1,18 @@
 /**
  * aigc-model-meta — provider 徽章表与显示名规则测试。
  *
- * ★ 本套件的核心是最后那组**覆盖率断言**:PROVIDER_META 是徽章的准入闸门,
- * `ProviderBadge` 对表中没有的 provider 直接返回 null。新增 provider 时若忘了在此登记,
- * 模型在选择器里会表现为「纯文字、无色块、且保留冗余的 ` · xxx` 后缀」,而**所有既有测试
- * 依然全绿**——ai-gateway 与 cloudflare 两条通路就是这么漏掉的(2026-07-29 用户截图发现)。
- * 交叉断言把「目录里出现的 provider」与「徽章表登记的 provider」绑在一起,下次漏登记即红。
+ * ★ 本套件的核心是最后那组**覆盖率断言**:PROVIDER_META 是「精美品牌徽章」的准入闸门
+ * (字母 + 品牌色 + 剥冗余后缀)。新增**产品已知**的 provider 时若忘了在此登记,模型在
+ * 选择器里会表现为「保留冗余的 ` · xxx` 后缀」,而**所有既有测试依然全绿**——ai-gateway
+ * 与 cloudflare 两条通路就是这么漏掉的(2026-07-29 用户截图发现)。交叉断言把「目录里
+ * 出现的 provider」与「徽章表登记的 provider」绑在一起,下次漏登记即红。
+ *
+ * ★★(multi-gateway-providers 任务 5.4)使用者**自定义**的 provider 标识不可能预先
+ * 登记进这张表——`ProviderBadge` 对表外 provider 已改为渲染中性色兜底徽章而非 `null`
+ * (见 `../src/aigc-model-meta.tsx` 的 `fallbackLetterFor`/`FALLBACK_BADGE_BG`),使其
+ * 不至于退化成纯文字。本文件不重复断言该兜底路径的渲染细节(那是 DOM 行为,交给
+ * `ProviderBadge` 消费方的组件测试);此处只测未改动的部分:登记表本身的完整性
+ * (覆盖率断言)与 `displayNameOf` 的后缀剥离规则。
  */
 import { describe, it, expect } from "vitest";
 import {
@@ -92,5 +99,32 @@ describe("★ 徽章覆盖率 — 目录中出现的 provider 必须全部登记
       .map((e) => ({ model: e.model, shown: displayNameOf(e.label, e.provider) }))
       .filter(({ shown }) => / · (ai-gateway|cloudflare|newapi|sufy|openrouter|dashscope)$/i.test(shown));
     expect(residual, `残留 provider 后缀: ${JSON.stringify(residual)}`).toEqual([]);
+  });
+});
+
+describe("★ 归一后的 provider 标识同样要有徽章(multi-gateway-providers 任务 4.0 交叉)", () => {
+  /**
+   * 上一组覆盖率断言吃的是**目录原始值**(`ai-gateway`),而消费面拿到的是统一目录端点
+   * `GET /config/models` 的**投影结果** —— 它会按 `LEGACY_PROVIDER_ID_MAP` 把 image 侧的
+   * `ai-gateway` 归一成 `blksails-ai`。于是原始值有徽章、归一值没有,上一组照样全绿,
+   * 而 /settings「启用的图像模型」里这三条会退化成纯文字 + 拖着 ` · ai-gateway` 后缀。
+   *
+   * 归一表住在 `@blksails/pi-web-core`(canvas-ui 不依赖它),此处按其值面写死校验;
+   * 表若再扩项,新增映射的目标 id 需同步补进本清单与 PROVIDER_META。
+   */
+  const NORMALIZED: Readonly<Record<string, string>> = { "ai-gateway": "blksails-ai" };
+
+  it("归一目标 id 在 PROVIDER_META 中有徽章", () => {
+    const missing = Object.values(NORMALIZED).filter((p) => PROVIDER_META[p] === undefined);
+    expect(missing, `归一后的 provider 没有徽章: ${missing.join(", ")}`).toEqual([]);
+  });
+
+  it("label 仍写旧名时,按归一后的 provider 也能剥掉冗余后缀", () => {
+    for (const e of AI_GATEWAY_AIGC_CATALOG) {
+      const normalized = NORMALIZED[e.provider] ?? e.provider;
+      const shown = displayNameOf(e.label, normalized);
+      expect(shown, `${e.model} 残留后缀`).not.toMatch(/ · ai-gateway$/i);
+      expect(shown.length).toBeGreaterThan(0);
+    }
   });
 });

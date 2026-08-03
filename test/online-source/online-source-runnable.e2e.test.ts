@@ -34,7 +34,7 @@ import {
   createRegistryHttpSourceProvider,
 } from "@blksails/pi-web-server";
 // 直引源码:该错误类是本轮新增,server 包的 dist 类型尚未重建,经 barrel 取会报「无此导出」。
-import { OnlineSourceInstallError } from "../../packages/server/src/agent-source/online-source-errors.js";
+import { OnlineSourceInstallError } from "../../packages/core/src/agent-source/online-source-errors.js";
 
 const SOURCE_ID = "acme/canvas";
 const REF = `${SOURCE_ID}@stable`;

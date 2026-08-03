@@ -163,4 +163,4 @@
 | ③ panel | `packages/ui/src/canvas/{canvas-launcher,canvas-gallery,canvas-workbench}.tsx`(launcherRail 入口 + panelRight 画廊/工作台) |
 | ④ 命令表 | schema.ts 的 6 组 ArgsSchema + Register/Sync/Delete |
 | ⑤ 测试 | `packages/ui/test/canvas/*`、tool-kit canvas 单测、e2e(canvas 闭环) |
-| 装配 | `examples/aigc-canvas-agent/index.ts`(`extensions:[aigcExtension, canvasSurfaceExtension]`)+ `.pi/web/web.config.tsx`(三槽) |
+| 装配 | `examples/aigc-canvas-agent/index.ts`(`composePaneAgentModules(paneModules)` → extensions + routes)+ `web/web.config.tsx`(`PanesHost` 挂 `panelRight`,画廊进独立 iframe;`promptToolbar` 仍为槽)。槽形态三槽写法见 `examples/canvas-plugin-stickers/.pi/web/web.config.tsx` |

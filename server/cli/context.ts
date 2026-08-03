@@ -5,7 +5,7 @@
  * 目录 / agent 源根 —— 统一从 `CliContext` 取值,便于测试注入与后续统一改约定。
  *
  * 约定对齐既有实现(不重新发明):
- * - `agentDir` 与 `packages/server/src/config/config-codec.ts` 的 `resolveDefaultRoot()`
+ * - `agentDir` 与 `packages/core/src/config/config-codec.ts` 的 `resolveDefaultRoot()`
  *   同规则:`PI_WEB_AGENT_DIR` 环境变量,未配时回落 `~/.pi/agent`。
  * - `sourcesRoot` 与 `lib/app/pi-handler.ts` 的 `defaultSourcesRoot()` 同默认值
  *   (`~/.pi-web/agents`)。该文件的 `resolveSourcesScanRoots()` 是「多根扫描」语义

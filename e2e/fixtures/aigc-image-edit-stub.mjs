@@ -40,6 +40,12 @@ async function loadServerApi() {
   const mod = await import("@blksails/pi-web-server");
   return mod.default ?? mod;
 }
+// session-store 工厂改自 adapters 包深路径取(spec adapters-package-extraction 任务 5.1
+// 移除了兼容层的转发)。⚠ .mjs 无类型检查覆盖,漏改只在运行期报 "store init failed"。
+async function loadAdaptersStoreApi() {
+  const mod = await import("@blksails/pi-web-adapters/session-store-postgres/index.js");
+  return mod.default ?? mod;
+}
 async function loadToolkit() {
   const mod = await import(TOOLKIT_RUNTIME);
   return mod.default ?? mod;
@@ -82,7 +88,8 @@ async function persistMessage(message) { messages.push(message); await appendEnt
 async function initPersistence() {
   if (SESSION_ID === undefined) return;
   try {
-    const { createSessionEntryStore, sessionStoreConfigFromEnv } = await loadServerApi();
+    const { sessionStoreConfigFromEnv } = await loadServerApi();
+    const { createSessionEntryStore } = await loadAdaptersStoreApi();
     store = await createSessionEntryStore(sessionStoreConfigFromEnv());
   } catch (err) { process.stderr.write(`aigc-stub: store init failed: ${String(err)}\n`); store = null; return; }
   let existing = false;

@@ -27,6 +27,7 @@ vi.mock("@blksails/pi-web-ui", () => ({
   ModelSelectField: vi.fn(),
   NamespaceTogglesField: vi.fn(),
   AigcModelTogglesField: vi.fn(),
+  VisionModelSelectField: vi.fn(),
 }));
 
 beforeEach(() => {

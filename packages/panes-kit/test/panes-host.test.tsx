@@ -25,6 +25,52 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * 录制宿主发给 iframe 的 `pane:connected`(含转移的 MessagePort)。
+ *
+ * ★ 必须在 **render 之前**装:宿主会在挂载时主动补连(见 PanesHost 的补连扫描——
+ * `onLoad` 与 `pane:ready` 都可能被错过,故不能只靠它们)。render 之后再替换
+ * `frame.contentWindow.postMessage` 就晚了,那条 `pane:connected` 已经发走。
+ *
+ * 装在 `HTMLIFrameElement.prototype.contentWindow` 的 getter 上,因此对「宿主何时建连」
+ * 不敏感 —— 无论挂载即连、load 后连还是收到 ready 才连,都录得到。
+ */
+function recordFrameMessages(): {
+  readonly posted: Array<{ message: unknown; ports: readonly MessagePort[] }>;
+  restore(): void;
+} {
+  const posted: Array<{ message: unknown; ports: readonly MessagePort[] }> = [];
+  const original = Object.getOwnPropertyDescriptor(
+    HTMLIFrameElement.prototype,
+    "contentWindow",
+  );
+  Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", {
+    configurable: true,
+    get(this: HTMLIFrameElement) {
+      const win = original?.get?.call(this) as (Window & { __recorded?: true }) | null;
+      if (win !== null && win !== undefined && win.__recorded !== true) {
+        win.__recorded = true;
+        (win as unknown as { postMessage: unknown }).postMessage = (
+          message: unknown,
+          _target: unknown,
+          transfer?: readonly MessagePort[],
+        ) => {
+          posted.push({ message, ports: transfer ?? [] });
+        };
+      }
+      return win;
+    },
+  });
+  return {
+    posted,
+    restore: () => {
+      if (original !== undefined) {
+        Object.defineProperty(HTMLIFrameElement.prototype, "contentWindow", original);
+      }
+    },
+  };
+}
+
 const definition = definePanes({
   id: "host-test",
   initialPaneIds: ["editor"],
@@ -405,6 +451,7 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       subscribe: () => () => {},
       hasCommand: () => true,
     };
+    const recorder = recordFrameMessages();
     const view = render(<PanesHost
       definition={protocolDefinition}
       baseUrl="/api"
@@ -414,29 +461,25 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       onRequestClose={closeSidebar}
       createInstanceId={(paneId) => `${paneId}-1`}
     />);
+    recorder.restore();
+    const posted = recorder.posted;
     fireEvent.click(screen.getByRole("button", { name: "收起 Pane 侧栏" }));
     expect(closeSidebar).toHaveBeenCalledOnce();
     const frame = view.container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toContain("allow-downloads");
-    const posted: Array<{ message: unknown; ports: readonly MessagePort[] }> = [];
-    frame.contentWindow!.postMessage = ((message: unknown, _target: unknown, transfer?: readonly MessagePort[]) => {
-      posted.push({ message, ports: transfer ?? [] });
-    }) as unknown as typeof window.postMessage;
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "uploader" },
-      source: frame.contentWindow,
-    }));
+    // 宿主挂载即补连(不依赖 onLoad / pane:ready 是否被错过),故此处已有且仅有一条。
     expect(posted).toHaveLength(1);
     expect(posted[0]!.message).toMatchObject({
       type: "pane:connected",
       protocol: PANE_PROTOCOL_VERSION,
       instance: { instanceId: "uploader-1", paneId: "uploader", epoch: 1 },
     });
-    // guest 重挂后同 epoch 再发 ready；host 必须废弃旧通道并重建。
+    // guest 重挂后同 epoch 再发 ready;host 必须废弃旧通道并重建。
+    // ★ recorder.restore() 只还原 prototype 上的 contentWindow getter,已被替换过的那个
+    //   window 的 postMessage 仍是录制版,故 restore 之后发生的 postMessage 照样记进 posted。
     window.dispatchEvent(new MessageEvent("message", {
       data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "uploader" },
-      source: frame.contentWindow,
+      source: view!.container.querySelector("iframe")!.contentWindow,
     }));
     expect(posted).toHaveLength(2);
     const port = posted[1]!.ports[0]!;
@@ -502,32 +545,32 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       hasCommand: () => true,
     };
     let sequence = 0;
-    const view = render(<PanesHost
-      definition={canvasDefinition}
-      surface={surface}
-      workspaceDomain={false}
-      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
-    />);
-    const add = (): void => {
-      fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Canvas/ }));
-    };
-    add();
-    add();
-    const frames = [...view.container.querySelectorAll("iframe")];
-    expect(frames).toHaveLength(3);
+    // 录制必须覆盖「挂载 + 两次新开」的全过程:宿主对每个实例都是挂载即补连。
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={canvasDefinition}
+        surface={surface}
+        workspaceDomain={false}
+        createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+      />);
+      const add = (): void => {
+        fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
+        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Canvas/ }));
+      };
+      add();
+      add();
+    } finally {
+      recorder.restore();
+    }
+    expect([...view.container.querySelectorAll("iframe")]).toHaveLength(3);
+    // 三个实例各拿到一条 pane:connected + 一个**独立**端口(F3:互不串扰)。
+    expect(recorder.posted).toHaveLength(3);
     const mirrors = new Map<number, Array<{ type?: string; key?: string; value?: unknown }>>();
     const ports: MessagePort[] = [];
-    frames.forEach((frame, index) => {
-      const posted: Array<{ ports: readonly MessagePort[] }> = [];
-      frame.contentWindow!.postMessage = ((_message: unknown, _target: unknown, transfer?: readonly MessagePort[]) => {
-        posted.push({ ports: transfer ?? [] });
-      }) as unknown as typeof window.postMessage;
-      window.dispatchEvent(new MessageEvent("message", {
-        data: { type: "pane:ready", protocol: PANE_PROTOCOL_VERSION, paneId: "canvas" },
-        source: frame.contentWindow,
-      }));
-      const port = posted[0]!.ports[0]!;
+    recorder.posted.forEach((entry, index) => {
+      const port = entry.ports[0]!;
       ports.push(port);
       const seen: Array<{ type?: string; key?: string; value?: unknown }> = [];
       mirrors.set(index, seen);
@@ -556,6 +599,64 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     expect(mirrorsOf(0)[2]).toEqual({ revision: 3 });
     expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
     expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
+  });
+
+  it("★ 宿主具名信号:握手即全量下推、变更只推变的、未变不推(pane:signal)", async () => {
+    // 信号搬运的是**只存在于宿主 realm** 的东西(主题类、宿主 chrome 点击)——
+    // 它们既不属于 agent 权威快照(那走 surfaceKeys),pane 自己也观察不到(iframe 独立 document)。
+    const signalDefinition = definePanes({
+      id: "signal-test",
+      initialPaneIds: ["p"],
+      panes: [{
+        id: "p",
+        title: "P",
+        document: { kind: "inline", srcDoc: "<!doctype html><p>p</p>" },
+        capabilities: {},
+        allowMultiple: false,
+        maxInstances: 1,
+        lifecycle: {},
+      }],
+    });
+
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={signalDefinition}
+        signals={{ "theme:dark": true }}
+        createInstanceId={(paneId) => `${paneId}-1`}
+      />);
+    } finally {
+      recorder.restore();
+    }
+    const port = recorder.posted[0]!.ports[0]!;
+    const seen: Array<{ type?: string; name?: string; value?: unknown }> = [];
+    port.onmessage = ({ data }: MessageEvent) => seen.push(data as never);
+    const signalsSeen = (): Array<{ name?: string; value?: unknown }> =>
+      seen.filter((m) => m.type === "pane:signal");
+
+    // ★ 握手时即下推当前值:pane 首帧就该是对的,而不是先渲染错再纠正
+    //   (主题若靠「等下一次变更」,暗色宿主下会先亮一下)。
+    await until(() => signalsSeen().length === 1);
+    expect(signalsSeen()[0]).toMatchObject({ name: "theme:dark", value: true });
+
+    // 变更 → 只推变了的 key。theme 未变,不该重推。
+    view!.rerender(<PanesHost
+      definition={signalDefinition}
+      signals={{ "theme:dark": true, "canvas:focus": "att_x#1" }}
+      createInstanceId={(paneId) => `${paneId}-1`}
+    />);
+    await until(() => signalsSeen().length === 2);
+    expect(signalsSeen()[1]).toMatchObject({ name: "canvas:focus", value: "att_x#1" });
+
+    // 同值再渲染 → 一条都不推(否则 pane 侧订阅者会收到大量无变化回调并直接 setState)。
+    view!.rerender(<PanesHost
+      definition={signalDefinition}
+      signals={{ "theme:dark": true, "canvas:focus": "att_x#1" }}
+      createInstanceId={(paneId) => `${paneId}-1`}
+    />);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(signalsSeen()).toHaveLength(2);
   });
 
   it("仅向获订阅授权的 pane 中继事件，并按宿主映射激活目标 pane", async () => {

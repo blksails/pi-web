@@ -1,0 +1,308 @@
+/**
+ * 集成 + 单元:GET /sessions 列表端点经 createPiWebHandler routes? 注入。
+ *
+ * 经完整 handler 路由(而非直调 handler)同时验证 router 能区分 `/sessions`(列表)与
+ * 内置 `/sessions/:id/*`(段数不同,不误匹配)。数据用真实 fs 存储后端(seed 与端点
+ * 内部惰性 store 指向同一 root,文件可见)。
+ */
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ListSessionsResponseSchema } from "@blksails/pi-web-protocol";
+import { createPiWebHandler } from "../../src/http/index.js";
+import { InMemorySessionStore } from "../../src/session/session-store.js";
+import { SessionManager } from "../../src/session/session-manager.js";
+import { FsSessionEntryStore } from "../../src/session-store/index.js";
+import { createSessionListRoutes } from "../../src/session-list/index.js";
+
+let tmpDir: string;
+const cwdA = "/tmp/sess-list-projA";
+const cwdB = "/tmp/sess-list-projB";
+
+beforeEach(async () => {
+  tmpDir = join(
+    tmpdir(),
+    `sess-list-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  await fs.mkdir(tmpDir, { recursive: true });
+});
+
+afterEach(async () => {
+  await fs.rm(tmpDir, { recursive: true, force: true });
+});
+
+/** seed 5 个会话到 cwdA、2 个到 cwdB(不同 timestamp)。 */
+async function seed(): Promise<void> {
+  const store = new FsSessionEntryStore(tmpDir);
+  const mk = (id: string, cwd: string, t: string): Promise<string> =>
+    store.create({ type: "session", id, version: 1, cwd, timestamp: t });
+  await mk("a1", cwdA, "2026-06-01T00:00:01.000Z");
+  await mk("a2", cwdA, "2026-06-01T00:00:02.000Z");
+  await mk("a3", cwdA, "2026-06-01T00:00:03.000Z");
+  await mk("a4", cwdA, "2026-06-01T00:00:04.000Z");
+  await mk("a5", cwdA, "2026-06-01T00:00:05.000Z");
+  await mk("b1", cwdB, "2026-06-01T00:00:06.000Z");
+  await mk("b2", cwdB, "2026-06-01T00:00:07.000Z");
+}
+
+function makeHandler(): (req: Request) => Promise<Response> {
+  const store = new InMemorySessionStore(true);
+  const manager = new SessionManager({ store, idleMs: 0 });
+  const routes = createSessionListRoutes({
+    createEntryStore: async () => new FsSessionEntryStore(tmpDir),
+  });
+  return createPiWebHandler({
+    manager,
+    store,
+    routes,
+    authResolver: () => ({ anonymous: true }),
+  });
+}
+
+async function readJson(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  return text.length > 0 ? (JSON.parse(text) as Record<string, unknown>) : {};
+}
+
+const url = (qs: string): Request => new Request(`http://x/sessions${qs}`);
+
+describe("GET /sessions — 全局视图(不再区分项目目录)", () => {
+  // ★ 行为变更(spec session-meta-index 增量):原先默认只列「当前目录」会话,并以
+  //   scope=all + 部署门控提供「全机器」视图。现恒为全局 —— 用户在多个项目间穿梭时,
+  //   「当前目录」这个切面制造的是隔阂而非聚焦。原先验证 scope 默认值、cwd 参数、
+  //   由 sessionId 解析目标目录、门控 403 的用例随行为一并移除(不是改造成通过)。
+  it("返回本机全部目录的会话,schema 合法且按时间非升序", async () => {
+    await seed();
+    const handler = makeHandler();
+    const res = await handler(url(""));
+    expect(res.status).toBe(200);
+
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    // cwdA 的 5 个 + cwdB 的 2 个,一个都不少
+    expect(parsed.sessions.map((s) => s.sessionId).sort()).toEqual([
+      "a1",
+      "a2",
+      "a3",
+      "a4",
+      "a5",
+      "b1",
+      "b2",
+    ]);
+    const keys = parsed.sessions.map((s) => s.updatedAt ?? s.createdAt);
+    for (let i = 1; i < keys.length; i += 1) {
+      expect(keys[i - 1]! >= keys[i]!).toBe(true);
+    }
+  });
+
+  it("列表项仍带 cwd:「哪个项目的会话」在项上仍可见", async () => {
+    await seed();
+    const parsed = ListSessionsResponseSchema.parse(
+      await readJson(await makeHandler()(url(""))),
+    );
+    const b1 = parsed.sessions.find((s) => s.sessionId === "b1");
+    expect(b1?.cwd).toBe(cwdB);
+  });
+
+  it("一个会话都没有时返回空列表", async () => {
+    const parsed = ListSessionsResponseSchema.parse(
+      await readJson(await makeHandler()(url(""))),
+    );
+    expect(parsed.sessions).toEqual([]);
+    expect(parsed.nextCursor).toBeUndefined();
+  });
+});
+
+describe("GET /sessions — display name enrichment (auto-title)", () => {
+  it("derives the latest session_info name for an unnamed session", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({ type: "session", id: "n1", version: 1, cwd: cwdA, timestamp: "2026-06-01T00:00:01.000Z" });
+    await store.append("n1", {
+      type: "session_info",
+      id: "i1",
+      parentId: null,
+      timestamp: "2026-06-01T00:00:02.000Z",
+      name: "自动生成的标题",
+    } as never);
+
+    const handler = makeHandler();
+    const res = await handler(url(""));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "n1")?.name).toBe("自动生成的标题");
+  });
+
+  it("prefers the latest session_info name over a stale header name (fs parity with sqlite/pg)", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    // header 已命名,但随后 session_info 更新了标题 —— 列表应显示最新 session_info 名,而非陈旧 header 名。
+    await store.create({
+      type: "session",
+      id: "h1",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+      name: "陈旧的 header 名",
+    });
+    await store.append("h1", {
+      type: "session_info",
+      id: "i1",
+      parentId: null,
+      timestamp: "2026-06-01T00:00:03.000Z",
+      name: "最新的自动标题",
+    } as never);
+
+    const handler = makeHandler();
+    const res = await handler(url(""));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "h1")?.name).toBe("最新的自动标题");
+  });
+
+  it("keeps the header name when there is no session_info", async () => {
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({
+      type: "session",
+      id: "h2",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+      name: "仅 header 命名",
+    });
+
+    const handler = makeHandler();
+    const res = await handler(url(""));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.find((s) => s.sessionId === "h2")?.name).toBe("仅 header 命名");
+  });
+});
+
+describe("GET /sessions — pagination", () => {
+  it("paginates via cursor without repeating sessions and converges", async () => {
+    await seed();
+    const handler = makeHandler();
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    let guard = 0;
+    do {
+      const res = await handler(
+        url(
+          `?limit=2${cursor !== undefined ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        ),
+      );
+      const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+      expect(parsed.sessions.length).toBeLessThanOrEqual(2);
+      parsed.sessions.forEach((s) => ids.push(s.sessionId));
+      cursor = parsed.nextCursor;
+      guard += 1;
+    } while (cursor !== undefined && guard < 10);
+
+    // 全局视图:两个目录的会话一并分页(分页逻辑本身未变,变的是数据集范围)
+    expect(ids.sort()).toEqual(["a1", "a2", "a3", "a4", "a5", "b1", "b2"]);
+    expect(new Set(ids).size).toBe(7); // 无重复
+  });
+});
+
+describe("GET /sessions — request validation", () => {
+  it("returns 400 for an undecodable cursor", async () => {
+    const handler = makeHandler();
+    const res = await handler(url("?cursor=%%%not-base64%%%"));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for a non-positive / non-numeric limit", async () => {
+    const handler = makeHandler();
+    expect((await handler(url("?limit=0"))).status).toBe(400);
+    expect((await handler(url("?limit=abc"))).status).toBe(400);
+  });
+
+  it("returns 500 when the store cannot be constructed/read", async () => {
+    // postgres 配置缺 connectionString → createSessionEntryStore 抛 → handler catch → 500。
+    const store = new InMemorySessionStore(true);
+    const manager = new SessionManager({ store, idleMs: 0 });
+    const routes = createSessionListRoutes({
+      // 构造失败 → handler catch → 500(原用 postgres 缺 connectionString 触发,
+      // 工厂随 pg 实现搬去兼容层包后,直接注入一个必然失败的构造,判据不变)。
+      createEntryStore: () => Promise.reject(new Error("store construction failed")),
+    });
+    const handler = createPiWebHandler({
+      manager,
+      store,
+      routes,
+      authResolver: () => ({ anonymous: true }),
+    });
+    const res = await handler(url(""));
+    expect(res.status).toBe(500);
+  });
+});
+
+describe("GET /sessions — name search (q) (sidebar-launcher-rail)", () => {
+  /** seed 命名会话到 cwdA。 */
+  async function seedNamed(): Promise<void> {
+    const store = new FsSessionEntryStore(tmpDir);
+    const mk = (id: string, name: string, t: string): Promise<string> =>
+      store.create({ type: "session", id, version: 1, cwd: cwdA, name, timestamp: t });
+    await mk("s1", "Refactor Auth Module", "2026-06-01T00:00:01.000Z");
+    await mk("s2", "Fix login bug", "2026-06-01T00:00:02.000Z");
+    await mk("s3", "Docs update", "2026-06-01T00:00:03.000Z");
+  }
+
+  it("q 命中(大小写不敏感)只返回匹配名称的会话(Req 3.2)", async () => {
+    await seedNamed();
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=fix`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s2"]);
+  });
+
+  it("q 未命中 → 空结果(Req 3.4),不使请求失败", async () => {
+    await seedNamed();
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=zzz-nomatch`));
+    expect(res.status).toBe(200);
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions).toEqual([]);
+  });
+
+  it("空 q 与不传 q 一致(向后兼容 Req 6.2)", async () => {
+    await seedNamed();
+    const handler = makeHandler();
+    const base = ListSessionsResponseSchema.parse(
+      await readJson(await handler(url(""))),
+    );
+    const withEmptyQ = ListSessionsResponseSchema.parse(
+      await readJson(await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=`))),
+    );
+    expect(withEmptyQ.sessions.map((s) => s.sessionId)).toEqual(
+      base.sessions.map((s) => s.sessionId),
+    );
+  });
+
+  it("q 也可按 sessionId 子串命中", async () => {
+    await seedNamed();
+    const handler = makeHandler();
+    const res = await handler(url(`?cwd=${encodeURIComponent(cwdA)}&q=s3`));
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["s3"]);
+  });
+
+  it("q 匹配 auto-title 显示名(header 未命名,标题在 session_info)(Req 3.2/3.6)", async () => {
+    // header 无 name,标题经 session_info 派生(auto-session-title 路径)。
+    const store = new FsSessionEntryStore(tmpDir);
+    await store.create({
+      type: "session",
+      id: "auto1",
+      version: 1,
+      cwd: cwdA,
+      timestamp: "2026-06-01T00:00:01.000Z",
+    });
+    await store.append("auto1", {
+      type: "session_info",
+      name: "Investigate Payment Bug",
+    } as never);
+    const handler = makeHandler();
+    // 按显示名子串搜索 → 命中该 header 未命名会话(修复前只匹配 header name 会漏)。
+    const res = await handler(
+      url(`?cwd=${encodeURIComponent(cwdA)}&q=payment`),
+    );
+    const parsed = ListSessionsResponseSchema.parse(await readJson(res));
+    expect(parsed.sessions.map((s) => s.sessionId)).toEqual(["auto1"]);
+  });
+});

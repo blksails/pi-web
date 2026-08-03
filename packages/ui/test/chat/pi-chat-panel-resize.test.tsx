@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { act, render, fireEvent } from "@testing-library/react";
 import type { WebExtension } from "@blksails/pi-web-kit";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession } from "../fixtures/mock-session.js";
 
@@ -25,7 +26,19 @@ globalThis.PointerEvent = MockPointerEvent as unknown as typeof PointerEvent;
 
 const panelExt: WebExtension = {
   manifestId: "resize-test",
-  slots: { panelRight: <div data-testid="panel" /> },
+  // ★ 改用 pane 声明键(spec panes-only-right-panel 任务 5.3):右侧面板槽已废弃。
+  // 本文件测的是**面板宽度控制与拖拽**,只需面板出现、不关心其内容 —— 换个让它出现的
+  // 途径,保护面完全不变。
+  panes: definePanes({
+    id: "resize-test",
+    initialPaneIds: ["p"],
+    panes: [{
+      id: "p",
+      title: "P",
+      document: { kind: "inline", srcDoc: "<!doctype html><p>p</p>" },
+      capabilities: {},
+    }],
+  }),
 };
 
 function aside(): HTMLElement {

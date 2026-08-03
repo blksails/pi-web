@@ -93,7 +93,6 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
       sourcePicker: bool(env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER),
       launcherRail: bool(env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL),
       bashEnabled: bool(env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED),
-      sessionsGlobal: bool(env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL),
       // 与 pi-handler 的服务端门控同语义:仅显式 false/0 才关。
       sessionsManage:
         env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&

@@ -54,6 +54,18 @@
   - server / tool-kit / ui / 根集成 全部既有测试套件跑通;全仓 typecheck 通过
   - 完成态:各套件汇总输出零失败(新鲜运行证据)
   - _Requirements: 6.1, 6.2, 6.3_
+> ## ★ 后续 spec 的修订记账(2026-07-29)
+>
+> 本 spec 的两条约定已由 spec **`ai-gateway-session-models`** 有意修订:
+>
+> | 原约定 | 现状 | 理由 |
+> |---|---|---|
+> | 网关条目 `availability: "catalog"`,选择器中不可选中 | 改为 `"session"`,可选中 | 这正是 `model-select-field.tsx:223` 注释里写的 P2:「网关接入会话后翻转标记即可」。runner 侧已注册同名 provider,`registry.find("ai-gateway", id)` 可解析,前提已具备 |
+> | `providers` 仅含 self 来源 | 存在网关条目时追加 `"ai-gateway"` | 原理由是「providers 是可设为默认的集合,而网关条目当时不可接入会话」——该前提已消失。渠道名不进 providers 这条**未变** |
+>
+> 受影响的断言(任务 4.1 的组件测试、5.2 的 e2e 第三条「会话内模型选择器不含网关目录
+> 条目」)已按新期望更新,**未放宽为宽松匹配**。若将来撤销 runner 侧注册,两处都必须翻回。
+
 - [x] 5.2 浏览器端到端验证(启用网关的真实 dev 实例)
   - 设置页·通用:默认 Provider 下拉恢复出现全部 self 归属(如 apiservices/dashscope)且无任何渠道名;默认模型下拉出现 ai-gateway 分组且组内条目不可选中
   - 设置页·AIGC 图像:开关清单出现三条网关条目(带来源标记);禁用其中一条保存后,新会话/重载后的图像工具模型枚举不再含该模型

@@ -14,7 +14,7 @@
  *
  * 覆盖 Req 9.1-9.4:
  *   9.1 manifest 带 entry → loadExtension 走 status:"loaded"。
- *   9.2 加载的 slots 组件渲染到宿主既有槽区挂载点(panelRight/headerLeft/footer/background)。
+ *   9.2 加载的 slots 组件渲染到宿主既有槽区挂载点(sidebarLeft/headerLeft/footer/background)。
  *   9.3 全链经 resolveWebext + dist 读取(不经 webext-registry 静态 import 车道)。
  *   9.4 声明式-only 回归见既有 `test/webext-resolve.test.ts`(纯声明分支零改动,未受本任务触碰)。
  *
@@ -198,11 +198,11 @@ describe("第三方 slots 代码扩展:resolve → dist → loadExtension → im
     expect(ext.slots).toBeDefined();
 
     // 挂进宿主既有槽区(pi-chat.tsx / chat-app.tsx 挂载点同款 SlotHost),验代表性槽:
-    // panelRight(右侧检视面板)、headerLeft(header 三区)、footer、background。SSR 到静态
+    // sidebarLeft、headerLeft(header 三区)、footer、background。SSR 到静态
     // 字符串(非需要 jsdom 的 render()),但走的是同一 SlotHost/ExtErrorBoundary 渲染路径。
     const html = renderToStaticMarkup(
       <div>
-        <SlotHost ext={ext} slot="panelRight" />
+        <SlotHost ext={ext} slot="sidebarLeft" />
         <SlotHost ext={ext} slot="headerLeft" />
         <SlotHost ext={ext} slot="footer" />
         <SlotHost ext={ext} slot="background" />

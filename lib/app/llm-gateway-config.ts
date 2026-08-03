@@ -17,7 +17,7 @@
  *    the derivation rule (`PI_LLM_TOKEN_` + providerId upper-cased, `-` → `_`)
  *    stays in one place shared with the gateway route's own scope naming.
  */
-import { llmGatewayTokenEnvName } from "@blksails/pi-web-server";
+import { llmGatewayTokenEnvName } from "@blksails/pi-web-adapters/llm-gateway/index.js";
 
 /** Env var carrying the operator-configured, sandbox-reachable gateway base URL. */
 const PUBLIC_BASE_ENV_VAR = "PI_WEB_LLM_GATEWAY_PUBLIC_BASE";

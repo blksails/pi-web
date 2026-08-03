@@ -508,8 +508,12 @@ describe("LogsPanel — 标题栏与折叠（任务 6.1）", () => {
   it("渲染含 '日志' 文本的标题栏", () => {
     mockLogsResult = makeResult();
     render(<LogsPanel />);
-    // Title bar should contain the text "日志"
-    expect(screen.getByText(/日志/)).toBeInTheDocument();
+    // ★ 锚在标题元素上,不用全局 getByText(/日志/):后者会被面板内任何含「日志」的
+    //   文案(空态说明等)撞成 multiple elements —— 断言过松,与被测行为无关的文案
+    //   改动都会误报。
+    const title = document.querySelector("[data-pi-logs-title]");
+    expect(title).not.toBeNull();
+    expect(title?.textContent ?? "").toContain("日志");
   });
 
   it("标题栏包含折叠/展开 toggle 按钮", () => {
@@ -717,5 +721,39 @@ describe("LogsPanel — 结构化明细展示态", () => {
     const { container } = render(<LogsPanel />);
     const row = container.querySelector("[data-pi-log-level]")!;
     expect(row).not.toHaveAttribute("data-pi-log-has-detail");
+  });
+});
+
+describe("LogsPanel — 空态区分「已关闭」与「暂无日志」", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockLogsResult = makeResult({ entries: [] });
+  });
+
+  it("★门控关闭 → 显式说明为何为空，并给出开启路径", () => {
+    render(<LogsPanel logsResult={mockLogsResult} loggingEnabled={false} />);
+    const empty = document.querySelector("[data-pi-logs-empty]");
+    expect(empty?.getAttribute("data-pi-logs-empty")).toBe("disabled");
+    // 必须给出可操作的开启路径，否则用户仍不知道下一步做什么。
+    expect(empty?.textContent ?? "").toContain("PI_WEB_LOG_ENABLED");
+  });
+
+  it("门控开启但无条目 → 「暂无日志」，不误报成已关闭", () => {
+    render(<LogsPanel logsResult={mockLogsResult} loggingEnabled={true} />);
+    const empty = document.querySelector("[data-pi-logs-empty]");
+    expect(empty?.getAttribute("data-pi-logs-empty")).toBe("idle");
+    expect(empty?.textContent ?? "").not.toContain("PI_WEB_LOG_ENABLED");
+  });
+
+  it("★配置尚未取到(undefined) → 按开启渲染，不闪一下「已关闭」", () => {
+    render(<LogsPanel logsResult={mockLogsResult} />);
+    const empty = document.querySelector("[data-pi-logs-empty]");
+    expect(empty?.getAttribute("data-pi-logs-empty")).toBe("idle");
+  });
+
+  it("有条目时不渲染任何空态（含门控关闭：历史条目仍要能看）", () => {
+    mockLogsResult = makeResult({ entries: [makeEntry({ id: "1" })] });
+    render(<LogsPanel logsResult={mockLogsResult} loggingEnabled={false} />);
+    expect(document.querySelector("[data-pi-logs-empty]")).toBeNull();
   });
 });

@@ -70,7 +70,7 @@ import {
   DEFAULT_ALLOWLIST,
   type AllowlistConfig,
   type ExtSource,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/extensions/index.js";
 import {
   PI_WEB_MANIFEST_FILENAME,
   PiWebManifestSchema,

@@ -8,7 +8,7 @@
  * source」的 404(经业务错误码 `SOURCE_NOT_FOUND` 区分)。
  *
  * `PI_WEB_DEFAULT_CWD` 指向一个带 `pi-web.json#settings` 清单的 fixture agent 目录
- * (`packages/server/test/runner/fixtures/settings-assembly-source-e2e-agent/`,任务 3.1
+ * (`packages/runner/test/runner/fixtures/settings-assembly-source-e2e-agent/`,任务 3.1
  * 装配期注入复用的同一 fixture)——补task 2.3 的生产 `resolveSettings` 把「未显式指定
  * source 时的隐式激活 agent」纳入候选包根目录集合(见 `lib/app/pi-handler.ts` 的
  * `makeSourceSettingsResolver`),故该 fixture 的 sourceKey 应可查得。
@@ -26,7 +26,7 @@ process.env.PI_CODING_AGENT_DIR = agentDir;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = path.resolve(
   HERE,
-  "../../packages/server/test/runner/fixtures/settings-assembly-source-e2e-agent",
+  "../../packages/runner/test/runner/fixtures/settings-assembly-source-e2e-agent",
 );
 process.env.PI_WEB_DEFAULT_CWD = FIXTURE_DIR;
 // 补task 2.3 的候选目录还并入「已安装/已登记本地目录源」枚举(扫描根 ∪ 注册表)——测试环境

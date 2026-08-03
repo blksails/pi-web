@@ -136,7 +136,7 @@ describe("computeE2bProviderEnv — LLM gateway configured", () => {
   });
 
   it("mints tokens bound to the given sessionId and scoped per provider (verifiable)", async () => {
-    const { verifyScopedToken } = await import("@blksails/pi-web-server");
+    const { verifyScopedToken } = await import("@blksails/pi-web-adapters/tokens/index.js");
     const result = computeE2bProviderEnv({
       config: { providerKeys: REAL_PROVIDER_KEYS, llmGateway: GATEWAY_CONFIG },
       sessionId: "sess-42",

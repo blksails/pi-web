@@ -69,6 +69,9 @@ export function buildCanvasCapability(deps?: {
   const models: CanvasCapabilityModel[] = deriveActiveModels(disabled).map((e) => ({
     id: e.model,
     label: e.label,
+    // provider 一并下发(此前只用于挑尺寸族,没进载荷)——前端据此渲染字母徽章并剥掉
+    // label 里冗余的 ` · <provider>` 后缀,与主对话提示词栏的快捷设置呈现一致。
+    ...(e.provider !== undefined ? { provider: e.provider } : {}),
     sizes: [...sizesForProvider(e.provider)],
   }));
   // actions = A 档六固定序 + extraActions 去重保序(与 A 档重名/自重复剔除)。

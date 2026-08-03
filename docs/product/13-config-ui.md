@@ -255,7 +255,7 @@ registerFieldRendererByKey("modelSelect", ModelSelectField);
 
 ### `aigcModelToggles`（`packages/ui/src/config/fields/aigc-model-toggles-field.tsx`）
 
-AIGC 图像配置域 `aigc.disabledModels`（值 = 被禁用的 model id 数组）的勾选清单：勾选 = 启用，取消 = 加入 `disabledModels`。可选模型清单来自 **`GET /api/aigc/models`**（返回 `AIGC_MODEL_CATALOG` 纯目录，每项含 `model` / `label` / `provider`），按模块级 Promise 缓存整页取一次，取数失败回退空集不阻断面板（`aigc-model-toggles-field.tsx:36-49`）。声明侧只需在 schema 字段写 `widget: "aigcModelToggles"`。
+AIGC 图像配置域 `aigc.disabledModels`（值 = 被禁用的 model id 数组）的勾选清单：勾选 = 启用，取消 = 加入 `disabledModels`。可选模型清单来自统一目录端点 **`GET /api/config/models?output=image`**（每项含 `provider` / `id` / `name`；原专用端点 `GET /api/aigc/models` 已随 spec `multi-gateway-providers` 任务 4.3 删除），按模块级 Promise 缓存整页取一次，取数失败回退空集、不阻断面板但留一行可辨识的 `console.error`（`aigc-model-toggles-field.tsx`）。存储值仍是裸 model id，启停语义不变。声明侧只需在 schema 字段写 `widget: "aigcModelToggles"`。
 
 ### `logNamespaceToggles`（`packages/ui/src/config/fields/namespace-toggles-field.tsx`）
 
@@ -437,5 +437,5 @@ registerSettingsPanel({
 - 扩展配置域、沙箱注入 → [10 扩展与 Skills](./10-extensions-and-skills.md)
 - AIGC 图像工具语义、`disabledModels` / `enablePromptOptimization` 的运行时效果 → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
 - 日志运行时、命名空间与文件 sink（`logging` 域对应的库） → [21 日志系统](./21-logging.md)
-- HTTP API 端点完整列表（含 `GET·PUT /api/config/:domain`、`GET /api/aigc/models`、`GET·PUT /api/config/mcp`）→ [24 HTTP/SSE API 参考](./24-http-api-reference.md)
+- HTTP API 端点完整列表（含 `GET·PUT /api/config/:domain`、`GET /api/config/models`、`GET·PUT /api/config/mcp`）→ [24 HTTP/SSE API 参考](./24-http-api-reference.md)
 - widget 不显示 / 保存 422 / secret 被清空等问题 → [23 故障排查 / FAQ](./23-troubleshooting-faq.md)

@@ -166,7 +166,7 @@ await runRpcMode(runtime);   // ← 之后就是标准 RPC JSONL 协议
 | `GET  /api/sessions/:id/stream` | **SSE**:订阅 pi 事件,服务端翻译成 UIMessage stream chunks 推给前端 |
 | `POST /api/sessions/:id/messages` | 发送 `prompt`(支持 `streamingBehavior: steer/followUp`、images) |
 | `POST /api/sessions/:id/steer` · `/follow_up` · `/abort` | 转向 / 跟进 / 中止 |
-| `POST /api/sessions/:id/model` · `/thinking` | 切模型 / 设思考等级 |
+| `POST /api/sessions/:id/models` · `/thinking` | 切模型 / 设思考等级（旧 `/model` 返 410） |
 | `GET  /api/sessions/:id/state` · `/stats` · `/messages` · `/commands` | 状态 / 成本 token / 历史 / 可用命令 |
 | `POST /api/sessions/:id/ui-response` | 回复 extension UI 弹窗(select/confirm/input/editor) |
 | `DELETE /api/sessions/:id` | 关闭会话、杀子进程 |

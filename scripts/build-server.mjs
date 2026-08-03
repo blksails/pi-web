@@ -4,11 +4,24 @@
  * ★ 入口必须位于**产物根**:`dist/server.mjs`,不能是 `dist/server/index.mjs`。
  *
  * 理由(design 决定性约束):`packages/server` 的 `runnerBootstrapPath()` 与
- * `resolvePiCliEntry()` 采用「① 从 `import.meta.url` 推算 → ② 失败或不存在则回退
- * `process.cwd()`」。esbuild 与 webpack 一样会把 `import.meta.url` 内联为**构建机绝对
- * 路径**,异机/异 OS 下路径 ① 必然失效,只能依赖路径 ②。而 `bin/pi-web.mjs` 以
- * `dirname(serverJs)` 作 cwd —— 入口若在子目录,cwd 就不是产物根,回退全部失效,
- * 真实会话必崩(且只有 `e2e:cli:reloc` 能抓到)。
+ * `resolvePiCliEntry()` 采用「① 以 `import.meta.url` 为基准解析 → ② 失败或不存在则回退
+ * `process.cwd()`」。而 `bin/pi-web.mjs` 以 `dirname(serverJs)` 作 cwd —— 入口若在子目录,
+ * cwd 就不是产物根,② 级兜底全部失效。① 不受入口位置影响,但它**不是**唯一在用的一级
+ * (见下),故结论不变:入口必须在产物根,否则真实会话在 ② 级形态下必崩
+ * (且只有 `e2e:cli:reloc` 能抓到)。
+ *
+ * ⚠ 本注释此前声称「esbuild 与 webpack 一样会把 `import.meta.url` 内联为**构建机绝对
+ * 路径**,故 ① 必然失效,只能依赖 ②」—— **实测证伪**(spec: runner-package-extraction
+ * 任务 4.2)。那是 **webpack/Next 时代**的行为;迁到 Vite + esbuild(本文件
+ * `format: "esm"`)后 esbuild **保留** `import.meta.url`,① 在产物里是活的。复核命令:
+ *
+ *     grep -c "import.meta.url" dist/server.mjs   # → 7(活的,未内联)
+ *     ls -la dist/node_modules/@blksails/         # → 全部指向 ../../packages/* 的符号链接
+ *
+ * 即产物树里 `createRequire(<dist/server.mjs>).resolve(...)` 能解析回工作区包(连通配
+ * 深路径都成立)。留着旧说法会让后人据此否掉「① 走包解析」这一**正确**方案 ——
+ * `runnerBootstrapPath()` 正是靠它做到 cwd-无关的
+ * (见 `packages/server/src/runner-bootstrap-path.ts` 文件头,任务 4.1)。
  *
  * external 清单(design 决策 4):
  *  - pi SDK 两包 + jiti —— agent 子进程在**运行时**经 jiti 动态 import,静态打包它们既无意义
@@ -41,7 +54,18 @@ export const EXTERNAL = [
   "pg-native",
 ];
 
-/** 与 `vite.config.ts` / `vitest.node-e2e.config.ts` 一致的工作区别名。 */
+/**
+ * 与 `vite.config.ts` / `vitest.node-e2e.config.ts` 一致的工作区别名。
+ *
+ * ★ **`@blksails/pi-web-core` 刻意不在本表里,那不是漏了**(spec: core-package-extraction)。
+ *   本表的键是**精确的包名/子路径**,而兼容层包对内核有 115 条不同的深路径导入
+ *   (`@blksails/pi-web-core/session/index.js` 等)——精确键的 map 表达不了它们。
+ *   内核改用 package.json 的**通配子路径导出** `"./*.js": "./src/*.ts"`,
+ *   由解析器原生展开。三条链路均已实测:esbuild(本文件)exit 0 且产物里
+ *   `pi-web-core` 字面量残留为 0(全部内联)、vite exit 0、Node 原生
+ *   `require.resolve` 认这条通配。
+ *   ⚠ 想"顺手补上"之前请先想清楚要补 115 条还是别的什么。
+ */
 const ALIAS = {
   "@blksails/pi-web-logger": "packages/logger/src/index.ts",
   "@blksails/pi-web-agent-kit": "packages/agent-kit/src/index.ts",

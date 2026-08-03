@@ -120,6 +120,10 @@ export {
   type PendingAttachmentStatus,
   type UploadAttachmentFn,
 } from "./hooks/use-attachments.js";
+// 附件预处理(spec upload-image-compression):上传前压缩与限并发映射。
+// 对外导出便于宿主复用同一套压缩策略,亦为单测的入口。
+export { compressImage, shouldCompress, fitWithinMaxEdge } from "./attachments/compress-image.js";
+export { mapWithLimit } from "./attachments/concurrency.js";
 export {
   useBranches,
   type UseBranchesOptions,

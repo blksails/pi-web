@@ -68,7 +68,6 @@ export default defineWebExtension({
     headerRight: <Slot id="header-right" label="Header R" />,
     sidebarLeft: <Slot id="sidebar-left" label="Sidebar L" />,
     // 右侧领域检视面板([data-pi-ext-panel-right],lg 断点显示)。
-    panelRight: <Slot id="panel-right" label="Panel Right" />,
     toolbar: <Slot id="toolbar" label="Toolbar" />,
     accessoryAboveEditor: <Slot id="accessory-above" label="Above Editor" />,
     accessoryBelowEditor: <Slot id="accessory-below" label="Below Editor" />,
