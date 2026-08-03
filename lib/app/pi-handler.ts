@@ -167,7 +167,7 @@ import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 import { computeAiGatewaySessionSpawnEnv } from "./ai-gateway-session-assembly.js";
 import {
   resolveCloudLoginConfig,
-  readCloudDomainEgressBase,
+  readDesktopScopedCloudEgressBase,
   computeEgressSpawnEnvFromGrant,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
@@ -520,12 +520,16 @@ function buildSingleton(): HandlerSingleton {
   // env 优先、回落 `<agentDir>/cloud.json`(spec desktop-cloud-login Req 8)。
   // 没有回落时打包桌面版永远启用不了登录:壳不转发 env、Finder 无 shell 环境、
   // `.env` 落在会被 GC 的运行时目录 —— 实测表现为 /api/auth/me 404、登录入口不渲染。
-  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json` > 随包固化默认值(仅桌面壳)。
+  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json`(仅桌面壳) > 随包固化默认值(仅桌面壳)。
   // 固化值排最后,故用户在设置面板改过的地址永远压得住它 —— 反过来会让「改了保存也没用」
   // 这种静默失效发生(spec desktop-account-login Req 11)。
+  // ★ 后两级都只对桌面壳生效:`<agentDir>` 默认 `~/.pi/agent/` 被桌面壳与 `pnpm dev`/npm CLI
+  //   共用,桌面版登录写下的 cloud.json 曾因此让 dev 也撞上登录门禁(实测,见
+  //   readDesktopScopedCloudEgressBase 的文件内说明)。env 显式值仍对所有宿主有效。
   const cloudLoginConfig = resolveCloudLoginConfig(
     process.env,
-    readCloudDomainEgressBase(config.agentDir) ?? resolveBakedCloudEgressBase(process.env),
+    readDesktopScopedCloudEgressBase(config.agentDir, process.env) ??
+      resolveBakedCloudEgressBase(process.env),
   );
   const authSessionState = new AuthSessionState();
   if (cloudLoginConfig !== undefined) {
