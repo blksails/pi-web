@@ -59,6 +59,11 @@ describe("sessionStoreConfigFromEnv 环境解析", () => {
       kind: "fs",
       root: "/data/s",
     });
+    expect(sessionStoreConfigFromEnv({ PI_CODING_AGENT_SESSION_DIR: "/data/pi-sessions" })).toEqual({
+      kind: "fs",
+      root: "/data/pi-sessions",
+      layout: "flat",
+    });
   });
 
   it("sqlite → 解析 SESSION_STORE_PATH", () => {

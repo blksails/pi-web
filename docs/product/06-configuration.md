@@ -344,6 +344,20 @@ Bang(`!`)shell 命令允许在聊天输入框直接执行 shell 命令：`!cmd` 
 - 注入 `PORT` / `HOSTNAME` / `PI_WEB_AUTOSTART=1` / `PI_WEB_NODE_BIN`（随包 node 绝对路径，供 pi runner 孙进程复用）。
 - **刻意不注入 `PI_WEB_AGENT_DIR`**（Req 5.5）：使桌面版会话默认落 `~/.pi/agent`，与 CLI 共享同一 agent 目录；仅当用户已在外层 env 显式设置时才透传。
 
+### 桌面生产登录与素材 MCP
+
+生产联调时，`PI_WEB_CLOUD_LOGIN_EGRESS_BASE` 指向 `pi-cloud` 的 egress，`PI_CLOUDS_DESKTOP_CAPABILITIES_URL` 指向同一云端的能力端点；Tauri 从系统钥匙串注入 `PI_WEB_DESKTOP_CREDENTIAL`，无需把凭据写入 `.env.local`。桌面登录由邮箱密码表单调用 `POST /api/desktop/login`，成功后凭据同时用于能力端点与远程 MCP。
+
+`~/.pi/agent/mcp.json` 中把 `pi-labs` 的 `transport.url` 设为 `https://blksails.cn/api/mcp/pi-labs`，并设 `transport.hostAuthorization=true`。pi-web 会以当前桌面凭据补发 `Authorization: Bearer`；显式配置的 `transport.headers.Authorization` 优先。切回本地时只需改回 MCP URL 与上述云端地址。
+
+```dotenv
+PI_LABS_WEBAPP_URL=https://blksails.cn
+PI_WEB_DEV_SKIP_CLOUD=1
+PI_WEB_DEV_CLOUD_URL=https://pi-cloud.apps.blksails.cn
+PI_WEB_CLOUD_LOGIN_EGRESS_BASE=https://pi-cloud.apps.blksails.cn/api/desktop/egress/v1
+PI_CLOUDS_DESKTOP_CAPABILITIES_URL=https://pi-cloud.apps.blksails.cn/api/desktop/capabilities
+```
+
 ---
 
 ## `~/.pi/agent` 目录结构与优先级

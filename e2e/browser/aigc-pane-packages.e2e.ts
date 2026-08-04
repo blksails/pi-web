@@ -128,7 +128,7 @@ test("搜索独立包 + 基座 Canvas Pane 直嵌均可用", async ({ page }) =>
   await expect(canvas.getByText("100%", { exact: true })).toBeVisible();
 });
 
-test("工具 Pill 不改写输入；日志为原生 Pane；每类最多两实例", async ({ page }) => {
+test("工具 Pill 不改写输入；日志为隔离 Pane；每类最多两实例", async ({ page }) => {
   const sessionId = await startSession(page);
   await expect.poll(async () => {
     const response = await page.request.get(`/api/sessions/${sessionId}/logs`);
@@ -145,12 +145,11 @@ test("工具 Pill 不改写输入；日志为原生 Pane；每类最多两实例
   ).toBeVisible();
 
   await page.getByRole("button", { name: "展开 Pane 侧栏" }).click();
-  await activatePane(page, "日志");
-  const logsPane = page.locator(
-    '[role="tabpanel"][aria-label="日志"] > [data-pi-logs-region]',
-  );
-  await expect(logsPane).toBeVisible();
-  await expect(page.locator('iframe[title="日志"]')).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "日志" })).toHaveCount(0);
+  await page.getByRole("button", { name: "新开 Pane" }).click();
+  const logsDialog = page.getByRole("dialog", { name: "新开 Pane" });
+  await logsDialog.getByRole("button").filter({ hasText: "日志" }).click();
+  const logsPane = page.frameLocator('iframe[title="日志"]');
   await expect(logsPane.locator('[data-pi-log-ns="agent:stub"]')).toContainText(
     "AIGC stub agent ready",
   );
@@ -187,7 +186,6 @@ test("AIGC 本地恢复 Pane 侧栏开合、宽度、标签与当前项", async 
   await startSession(page);
   await page.getByRole("button", { name: "展开 Pane 侧栏" }).click();
   await closePane(page, "搜图");
-  await closePane(page, "日志");
   await activatePane(page, "素材");
 
   const resizer = page.locator("[data-pi-panel-resizer]");

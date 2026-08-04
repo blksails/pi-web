@@ -57,6 +57,8 @@ export interface CanvasExtensionDeps {
   surfaceDeps?: CreateSurfaceDeps;
   /** 能力清单覆盖(测试用;缺省经装配期 `buildCanvasCapability()` 确定性生成,不抛)。 */
   capability?: CanvasCapability;
+  /** 装配期排除 provider;与 AIGC 工具/会话清单保持同源。 */
+  excludedProviders?: ReadonlySet<string>;
   /**
    * 插件车道注入的额外动作名(canvas-plugins-m3 Req 6.5):缺省 `capability` 时经
    * `buildCanvasCapability({ extraActions })` 并入 A 档六命令之后(去重保序)。
@@ -81,7 +83,10 @@ export function makeCanvasSurfaceExtension(
   // 装配期确定性生成一次(读设置异常已由 buildCanvasCapability 内部兜底,不抛、不阻塞装配)。
   // 权威唯一来源:重建路径(hydrate / agent_end)统一经 withCapabilities 附着此值;命令 reducer 从
   // s.capabilities 继承(见 commands.ts),不在别处二次生成。
-  const capability = deps.capability ?? buildCanvasCapability({ extraActions: deps.extraActions });
+  const capability = deps.capability ?? buildCanvasCapability({
+    excludedProviders: deps.excludedProviders,
+    extraActions: deps.extraActions,
+  });
   const withCapabilities = (state: GalleryState): GalleryState => ({ ...state, capabilities: capability });
 
   return (pi: ExtensionAPI): SurfaceHandle<GalleryState> => {

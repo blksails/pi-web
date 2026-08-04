@@ -41,7 +41,7 @@ const CANVAS_ACTIONS: readonly string[] = [
 
 /** provider → 尺寸族。dashscope 走竖横档,其余走方形/横竖档。 */
 function sizesForProvider(provider?: string): readonly string[] {
-  return provider === "dashscope" ? DASHSCOPE_SIZES : DEFAULT_SIZES;
+  return provider === "dashscope" || provider === "token-plan" ? DASHSCOPE_SIZES : DEFAULT_SIZES;
 }
 
 /**
@@ -54,6 +54,7 @@ function sizesForProvider(provider?: string): readonly string[] {
  */
 export function buildCanvasCapability(deps?: {
   disabledModels?: ReadonlySet<string>;
+  excludedProviders?: ReadonlySet<string>;
   extraActions?: readonly string[];
 }): CanvasCapability {
   let disabled: ReadonlySet<string>;
@@ -66,7 +67,11 @@ export function buildCanvasCapability(deps?: {
       disabled = new Set<string>(); // 读设置异常 → 兜底空集(全量),确定性不阻塞
     }
   }
-  const models: CanvasCapabilityModel[] = deriveActiveModels(disabled).map((e) => ({
+  const models: CanvasCapabilityModel[] = deriveActiveModels(
+    disabled,
+    [],
+    deps?.excludedProviders,
+  ).map((e) => ({
     id: e.model,
     label: e.label,
     sizes: [...sizesForProvider(e.provider)],

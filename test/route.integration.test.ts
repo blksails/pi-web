@@ -92,6 +92,14 @@ describe("config injection + secret safety", () => {
     const cfg = loadConfig({ DASHSCOPE_API_KEY: secret } as unknown as NodeJS.ProcessEnv);
     expect(cfg.providerKeys.DASHSCOPE_API_KEY).toBe(secret);
   });
+
+  it("recognizes DASHSCOPE_TOKEN_PLAN_API_KEY as the separate token-plan provider key", () => {
+    const secret = "sk-sp-test-token-plan-key";
+    const cfg = loadConfig({
+      DASHSCOPE_TOKEN_PLAN_API_KEY: secret,
+    } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.providerKeys.DASHSCOPE_TOKEN_PLAN_API_KEY).toBe(secret);
+  });
 });
 
 describe("POST /api/sessions → create → stream → messages (forwarded to handler)", () => {

@@ -251,27 +251,20 @@ describe("PanesHost multi-open UI", () => {
     expect(view.container.querySelector("iframe")).toBeNull();
   });
 
-  it("renders declared host-native views without an iframe", () => {
-    const native = definePanes({
-      id: "native-host-test",
+  it("renders every declared pane in a Guest iframe", () => {
+    const guest = definePanes({
+      id: "guest-test",
       panes: [{
         id: "logs",
         title: "Logs",
         icon: "scroll-text",
-        hostView: "logs",
         document: { kind: "inline", srcDoc: "" },
         capabilities: {},
       }],
     });
-    const view = render(
-      <PanesHost
-        definition={native}
-        renderHostView={(hostView) => hostView === "logs" ? <div>session logs</div> : undefined}
-      />,
-    );
-    expect(screen.getByRole("tabpanel", { name: "Logs" }).textContent).toContain("session logs");
+    const view = render(<PanesHost definition={guest} />);
     expect(screen.getByRole("tab", { name: /Logs/ }).querySelector("svg")).not.toBeNull();
-    expect(view.container.querySelector("iframe")).toBeNull();
+    expect(view.container.querySelector("iframe")).not.toBeNull();
   });
 
   it("opens three independent iframe instances and parks a closed tab without reloading it", () => {

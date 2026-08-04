@@ -247,7 +247,7 @@ describe("CanvasWorkbench", () => {
     // 人读标题行 + canvas-op 代码块(参数不裸奔)。
     expect(inpaint).toContain("🎨 局部重绘 · 换蓝天");
     expect(inpaint).toContain("```canvas-op");
-    expect(inpaint).toContain("image: att_x");
+    expect(inpaint).toContain("images: [att_x]");
     expect(inpaint).toContain("mask: att_mask");
     expect(inpaint).toContain("prompt: 换蓝天");
     expect(inpaint).toContain("size: 1536x1024");
@@ -255,7 +255,7 @@ describe("CanvasWorkbench", () => {
       action: "reference",
       args: { image: "att_x", prompt: "融合", reference_images: ["att_a", "att_b"], n: 2 },
     });
-    expect(ref).toContain("reference_images: att_a, att_b");
+    expect(ref).toContain("images: [att_x, att_a, att_b]");
     expect(ref).toContain("n: 2");
     // reframe 空 prompt → 自动补比例重构指令。
     const reframe = buildToolPrompt({
@@ -284,7 +284,7 @@ describe("CanvasWorkbench", () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]).toContain("image_edit");
     expect(sent[0]).toContain("🎨 生成 · 整体调亮");
-    expect(sent[0]).toContain("image: att_src");
+    expect(sent[0]).toContain("images: [att_src]");
     expect(sent[0]).toContain("prompt: 整体调亮");
     // 生成类不再走 surface 命令。
     expect(run).not.toHaveBeenCalled();
@@ -310,7 +310,7 @@ describe("CanvasWorkbench", () => {
     const [text] = submitUserMessage.mock.calls[0] as [string, unknown];
     expect(text).toContain("image_edit");
     expect(text).toContain("🎨 生成 · 整体调亮");
-    expect(text).toContain("image: att_src");
+    expect(text).toContain("images: [att_src]");
     expect(text).toContain("prompt: 整体调亮");
     // command 态旁路不触发(conversation 在场 → Prompt 通道优先)。
     expect(run).not.toHaveBeenCalled();

@@ -32,7 +32,9 @@ import {
 import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "../types.js";
 import {
   filterRoutes,
+  filterRoutesByProvider,
   EMPTY_DISABLED,
+  EMPTY_EXCLUDED_PROVIDERS,
   type RegisterImageToolOptions,
 } from "../model-config.js";
 
@@ -107,7 +109,11 @@ const ROUTES: readonly ImageRoute[] = [
         "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
       providerModel: DASHSCOPE_MODELS.wan27ImagePro,
     },
-    { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.2, currency: "CNY", unit: "image" } },
+    {
+      url: TOKEN_PLAN_MULTIMODAL_URL,
+      provider: "token-plan",
+      pricing: { amount: 0.2, currency: "CNY", unit: "image" },
+    },
   ),
 ];
 
@@ -344,7 +350,15 @@ export function registerImageGeneration(
   // 统一生效);未传入(套件未启用)时行为与今天逐字节一致。
   const allRoutes: readonly ImageRoute[] =
     opts?.extraRoutes !== undefined ? [...ROUTES, ...opts.extraRoutes] : ROUTES;
-  const activeRoutes = filterRoutes(allRoutes, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
+  const providerRoutes = filterRoutesByProvider(
+    allRoutes,
+    opts?.excludedProviders ?? EMPTY_EXCLUDED_PROVIDERS,
+  );
+  const activeRoutes = filterRoutes(
+    providerRoutes,
+    opts?.disabledModels ?? EMPTY_DISABLED,
+    DEFAULT_MODEL,
+  );
   pi.registerTool({
     name: "image_generation",
     label: "Text → image",

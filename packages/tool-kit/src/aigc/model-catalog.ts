@@ -25,6 +25,7 @@ export interface AigcCatalogEntry {
     | "newapi"
     | "sufy"
     | "dashscope"
+    | "token-plan"
     /** BlackSail 自建网关,**不是** Cloudflare。 */
     | "ai-gateway"
     /** Cloudflare AI Gateway(spec cloudflare-aigc-provider)。 */
@@ -43,9 +44,9 @@ export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "gpt-5-image-mini", label: "GPT-5 Image Mini · OpenRouter", provider: "openrouter" },
   { model: "gpt-5.4-image-2", label: "GPT-5.4 Image 2 · OpenRouter", provider: "openrouter" },
   { model: "wan2.7-image-pro", label: "Wan 2.7 Image Pro", provider: "dashscope" },
-  { model: "wan2.7-image-pro-bailian", label: "Wan 2.7 Image Pro · token plan", provider: "dashscope" },
+  { model: "wan2.7-image-pro-bailian", label: "Wan 2.7 Image Pro · token plan", provider: "token-plan" },
   { model: "qwen-image-edit-max", label: "Qwen Image Edit Max · sync", provider: "dashscope" },
-  { model: "wan2.7-image-edit-bailian", label: "Wan 2.7 Image Edit · token plan", provider: "dashscope" },
+  { model: "wan2.7-image-edit-bailian", label: "Wan 2.7 Image Edit · token plan", provider: "token-plan" },
 ];
 
 /**

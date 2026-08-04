@@ -9,13 +9,24 @@ import { InMemorySessionStore } from "../../src/session/session-store.js";
 import { SessionStoppedError } from "../../src/session/index.js";
 import { asPiSession, MockSession } from "./helpers.js";
 
-function setup(configure: (s: MockSession) => void): (req: Request) => Promise<Response> {
+type AttachmentStoreOption = NonNullable<
+  Parameters<typeof createPiWebHandler>[0]["attachmentStore"]
+>;
+
+function setup(
+  configure: (s: MockSession) => void,
+  attachmentStore?: AttachmentStoreOption,
+): (req: Request) => Promise<Response> {
   const store = new InMemorySessionStore(true);
   const manager = new SessionManager({ store, idleMs: 0 });
   const session = new MockSession("sess-1");
   configure(session);
   store.create(asPiSession(session));
-  return createPiWebHandler({ manager, store });
+  return createPiWebHandler({
+    manager,
+    store,
+    ...(attachmentStore === undefined ? {} : { attachmentStore }),
+  });
 }
 
 function get(path: string): Request {
@@ -73,6 +84,52 @@ describe("query routes", () => {
     const res = await handler(get("/sessions/sess-1/messages"));
     const body = (await res.json()) as { messages: unknown[] };
     expect(body.messages).toHaveLength(1);
+  });
+
+  it("GET messages → 为历史 attachmentId 补发有效 displayUrl", async () => {
+    const attachmentStore = {
+      head: async (id: string) =>
+        id === "att_img"
+          ? {
+              id,
+              name: "image.png",
+              mimeType: "image/png",
+              size: 3,
+              origin: "upload" as const,
+              sessionId: "sess-1",
+              createdAt: "2026-01-01T00:00:00.000Z",
+            }
+          : undefined,
+      presignUrl: async (id: string) => `/attachments/${id}/raw?exp=999&sig=fresh`,
+    } satisfies AttachmentStoreOption;
+    const handler = setup(
+      (s) =>
+        s.setResponse(
+          () =>
+            ({
+              type: "response",
+              command: "get_messages",
+              success: true,
+              data: {
+                messages: [
+                  {
+                    role: "user",
+                    content: [{ type: "image", attachmentId: "att_img" }],
+                  },
+                ],
+              },
+            }) as unknown as RpcResponse,
+        ),
+      attachmentStore,
+    );
+
+    const res = await handler(get("/sessions/sess-1/messages"));
+    const body = (await res.json()) as {
+      messages: Array<{ content: Array<{ displayUrl?: string }> }>;
+    };
+    expect(body.messages[0]?.content[0]?.displayUrl).toBe(
+      "/attachments/att_img/raw?exp=999&sig=fresh",
+    );
   });
 
   it("GET commands → { commands }", async () => {

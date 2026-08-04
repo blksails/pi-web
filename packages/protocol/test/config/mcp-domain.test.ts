@@ -6,6 +6,7 @@ import {
   mcpConfigSchema,
   mcpFormSchema,
   MCP_TRANSPORT_TYPES,
+  withMcpHostAuthorization,
 } from "../../src/config/domains/mcp.js";
 import type { FieldDescriptor } from "../../src/config/form-schema.js";
 
@@ -79,6 +80,35 @@ describe("mcpConfigSchema — 三传输校验(Req 2.1-2.3, 2.5)", () => {
     const r = mcpConfigSchema.parse({ servers: [stdioServer], futureKey: { a: 1 } });
     expect((r as Record<string, unknown>)["futureKey"]).toEqual({ a: 1 });
   });
+
+  it("远程传输可声明 hostAuthorization 并补 Bearer", () => {
+    const transport = {
+      type: "streamable-http" as const,
+      url: "https://blksails.cn/api/mcp/pi-labs",
+      headers: { "X-Trace": "test" },
+      hostAuthorization: true,
+    };
+    const parsed = mcpConfigSchema.parse({ servers: [{ name: "pi-labs", transport }] });
+    expect(parsed.servers[0]?.transport).toMatchObject(transport);
+    expect(withMcpHostAuthorization(transport, "  desktop-token  ")).toEqual({
+      ...transport,
+      headers: { "X-Trace": "test", Authorization: "Bearer desktop-token" },
+    });
+  });
+
+  it("显式 Authorization 优先，且无凭据不改配置", () => {
+    const transport = {
+      type: "sse" as const,
+      url: "https://example.com/mcp",
+      headers: { authorization: "Bearer explicit" },
+      hostAuthorization: true,
+    };
+    expect(withMcpHostAuthorization(transport, "desktop-token")).toBe(transport);
+    expect(withMcpHostAuthorization({ ...transport, headers: {} }, undefined)).toEqual({
+      ...transport,
+      headers: {},
+    });
+  });
 });
 
 describe("mcpFormSchema — 表单 IR(Req 2.4, 4.1, 4.5, 7.2)", () => {
@@ -121,5 +151,7 @@ describe("mcpFormSchema — 表单 IR(Req 2.4, 4.1, 4.5, 7.2)", () => {
     expect(find("stdio", "env")?.itemKind).toBe("secret");
     expect(find("sse", "headers")?.itemKind).toBe("secret");
     expect(find("streamable-http", "headers")?.itemKind).toBe("secret");
+    expect(find("sse", "hostAuthorization")?.kind).toBe("boolean");
+    expect(find("streamable-http", "hostAuthorization")?.kind).toBe("boolean");
   });
 });

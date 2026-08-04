@@ -22,6 +22,7 @@ export const PROVIDER_META: Readonly<
   newapi: { letter: "N", name: "NewAPI", bg: "#10b981" },
   sufy: { letter: "S", name: "Sufy", bg: "#f59e0b" },
   dashscope: { letter: "D", name: "DashScope", bg: "#0ea5e9" },
+  "token-plan": { letter: "T", name: "Token Plan", bg: "#14b8a6" },
   // BlackSail 自建网关(BLKSAILS_GATEWAY_*)。取 G(Gateway)而非 A:后者易被读成
   // Anthropic/Aliyun。
   "ai-gateway": { letter: "G", name: "AI Gateway", bg: "#8b5cf6" },

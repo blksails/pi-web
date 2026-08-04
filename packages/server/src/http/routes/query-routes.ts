@@ -17,6 +17,75 @@ import {
 } from "../../config/model-options-filter.js";
 import { enrichWebVisibleCommands } from "../../plugin/enrich-web-visible.js";
 
+interface HistoryAttachmentStore {
+  readonly head: (id: string) => Promise<{ readonly sessionId: string } | undefined>;
+  readonly presignUrl?: (id: string) => Promise<string>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function attachmentIdOf(value: Record<string, unknown>): string | undefined {
+  for (const key of ["attachmentId", "outputAttachmentId", "inputAttachmentId"]) {
+    const id = value[key];
+    if (typeof id === "string" && id.length > 0) return id;
+  }
+  return undefined;
+}
+
+/**
+ * 历史消息只保存 attachmentId 时，补一条新的签名 URL。
+ * 原 URL 可能已过期；不在当前会话名下的附件不签发，避免跨会话泄露。
+ */
+async function refreshHistoryAttachmentUrls(
+  messages: readonly unknown[],
+  sessionId: string,
+  attachments: HistoryAttachmentStore,
+): Promise<unknown[]> {
+  if (attachments.presignUrl === undefined) return [...messages];
+
+  const ids = new Set<string>();
+  const collect = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      for (const item of value) collect(item);
+      return;
+    }
+    if (!isRecord(value)) return;
+    const id = attachmentIdOf(value);
+    if (id !== undefined) ids.add(id);
+    for (const child of Object.values(value)) collect(child);
+  };
+  collect(messages);
+
+  const urls = new Map<string, string>();
+  await Promise.all(
+    [...ids].map(async (id) => {
+      try {
+        const attachment = await attachments.head(id);
+        if (attachment?.sessionId === sessionId) {
+          urls.set(id, await attachments.presignUrl!(id));
+        }
+      } catch {
+        // 图片只是展示增强；历史消息本身仍照常返回。
+      }
+    }),
+  );
+
+  const rewrite = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(rewrite);
+    if (!isRecord(value)) return value;
+    const next = Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [key, rewrite(child)]),
+    ) as Record<string, unknown>;
+    const id = attachmentIdOf(value);
+    const url = id === undefined ? undefined : urls.get(id);
+    if (url !== undefined) next["displayUrl"] = url;
+    return next;
+  };
+  return messages.map(rewrite);
+}
+
 function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
   const id = ctx.sessionId ?? "";
   const session = store.get(id);
@@ -72,14 +141,25 @@ export function makeStatsHandler(store: SessionStore): RouteHandler {
 }
 
 /** GET /sessions/:id/messages */
-export function makeMessagesQueryHandler(store: SessionStore): RouteHandler {
+export function makeMessagesQueryHandler(
+  store: SessionStore,
+  attachmentStore?: HistoryAttachmentStore,
+): RouteHandler {
   return async (ctx): Promise<Response> => {
     try {
       const session = requireSession(store, ctx);
       const res = await session.getMessages();
       const extracted = dataOrError<{ messages: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
-      return jsonResponse(200, { messages: extracted.data.messages });
+      const messages =
+        attachmentStore !== undefined
+          ? await refreshHistoryAttachmentUrls(
+              extracted.data.messages,
+              ctx.sessionId ?? "",
+              attachmentStore,
+            )
+          : extracted.data.messages;
+      return jsonResponse(200, { messages });
     } catch (err) {
       return mapEngineError(err);
     }

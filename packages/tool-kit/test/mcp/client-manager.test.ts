@@ -34,6 +34,18 @@ const stdio = (name: string, enabled = true): McpServerConfig =>
     transport: { type: "stdio", command: "node", args: [], env: {} },
   }) as McpServerConfig;
 
+const remote = (name: string): McpServerConfig =>
+  ({
+    name,
+    enabled: true,
+    transport: {
+      type: "streamable-http",
+      url: "https://blksails.cn/api/mcp/pi-labs",
+      headers: {},
+      hostAuthorization: true,
+    },
+  }) as McpServerConfig;
+
 beforeEach(() => {
   connectMock.mockReset().mockResolvedValue(undefined);
   listToolsMock.mockReset().mockResolvedValue({ tools: [{ name: "read", inputSchema: { type: "object" } }] });
@@ -79,6 +91,24 @@ describe("connectAll — 连接语义(Req 1.3-1.5)", () => {
     const out = await m.connectAll([stdio("files")]);
     expect(out[0]).toMatchObject({ serverName: "files", status: "connected" });
     expect(out[0]?.tools.map((t) => t.name)).toEqual(["read"]);
+  });
+
+  it("远程 MCP 按配置携带桌面 Bearer 凭据", async () => {
+    const previous = process.env.PI_WEB_DESKTOP_CREDENTIAL;
+    process.env.PI_WEB_DESKTOP_CREDENTIAL = "desktop-token";
+    try {
+      const m = new McpClientManager();
+      await m.connectAll([remote("pi-labs")]);
+      expect(createTransportMock).toHaveBeenCalledWith({
+        type: "streamable-http",
+        url: "https://blksails.cn/api/mcp/pi-labs",
+        headers: { Authorization: "Bearer desktop-token" },
+        hostAuthorization: true,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.PI_WEB_DESKTOP_CREDENTIAL;
+      else process.env.PI_WEB_DESKTOP_CREDENTIAL = previous;
+    }
   });
 
   it("一个 server 失败不影响其余,且不抛出(Req 1.5)", async () => {

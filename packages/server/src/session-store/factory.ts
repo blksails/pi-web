@@ -5,7 +5,7 @@
  * 路径、postgres 给连接池/连接串)。本工厂把"选哪个后端"收敛成一个配置开关,使切换
  * 后端只改配置/环境变量,下游代码不变。
  */
-import { FsSessionEntryStore } from "./fs-store.js";
+import { defaultSessionsRoot, FsSessionEntryStore, type FsSessionLayout } from "./fs-store.js";
 import { PostgresSessionEntryStore } from "./postgres-store.js";
 import { SqliteSessionEntryStore } from "./sqlite-store.js";
 import type { SessionEntryStore } from "./types.js";
@@ -14,7 +14,7 @@ export type SessionStoreKind = "fs" | "sqlite" | "postgres";
 
 /** 选择并配置一个会话存储后端。 */
 export type SessionStoreConfig =
-  | { kind: "fs"; root?: string }
+  | { kind: "fs"; root?: string; layout?: FsSessionLayout }
   | { kind: "sqlite"; path?: string }
   | { kind: "postgres"; connectionString: string };
 
@@ -26,8 +26,22 @@ export type SessionStoreConfig =
  */
 export async function createSessionEntryStore(config: SessionStoreConfig): Promise<SessionEntryStore> {
   switch (config.kind) {
-    case "fs":
-      return new FsSessionEntryStore(config.root);
+    case "fs": {
+      // 列表、冷恢复、重命名共享同一 FS store，复用路径/标题缓存并避免重复扫描。
+      const root = config.root ?? defaultSessionsRoot();
+      const layout = config.layout ?? "buckets";
+      const key = `${layout}:${root}`;
+      const cached = fsStores.get(key);
+      if (cached !== undefined) return cached;
+      const created = Promise.resolve<SessionEntryStore>(
+        new FsSessionEntryStore(root, layout),
+      ).catch((err: unknown) => {
+        fsStores.delete(key);
+        throw err;
+      });
+      fsStores.set(key, created);
+      return created;
+    }
     case "sqlite":
       return new SqliteSessionEntryStore(config.path ?? ":memory:");
     case "postgres": {
@@ -43,6 +57,8 @@ export async function createSessionEntryStore(config: SessionStoreConfig): Promi
     }
   }
 }
+
+const fsStores = new Map<string, Promise<SessionEntryStore>>();
 
 /**
  * 从环境变量解析存储配置(默认 fs):
@@ -60,8 +76,17 @@ export function sessionStoreConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
       return { kind: "postgres", connectionString: env["DATABASE_URL"] ?? "" };
     case "fs":
     case undefined:
-    case "":
-      return { kind: "fs", root: env["SESSION_STORE_ROOT"] };
+    case "": {
+      const explicitRoot = env["SESSION_STORE_ROOT"];
+      if (explicitRoot !== undefined && explicitRoot !== "") {
+        return { kind: "fs", root: explicitRoot };
+      }
+      const piSessionDir = env["PI_CODING_AGENT_SESSION_DIR"];
+      if (piSessionDir !== undefined && piSessionDir !== "") {
+        return { kind: "fs", root: piSessionDir, layout: "flat" };
+      }
+      return { kind: "fs" };
+    }
     default:
       throw new Error(`unknown SESSION_STORE: ${kind}`);
   }

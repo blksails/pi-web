@@ -13,6 +13,7 @@ export type ImageProviderId =
   | "newapi"
   | "sufy"
   | "dashscope"
+  | "token-plan"
   /** BlackSail 自建网关(`BLKSAILS_GATEWAY_*`),**不是** Cloudflare。 */
   | "ai-gateway"
   /** Cloudflare AI Gateway(`CLOUDFLARE_*`,spec cloudflare-aigc-provider)。 */

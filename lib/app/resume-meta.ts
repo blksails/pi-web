@@ -27,8 +27,14 @@ export function makeResumeMetaLoader(
   storeConfig: SessionStoreConfig = sessionStoreConfigFromEnv(),
 ): (id: string) => Promise<ResumeMeta | undefined> {
   let storeP: Promise<SessionEntryStore> | undefined;
-  const getStore = (): Promise<SessionEntryStore> =>
-    (storeP ??= createSessionEntryStore(storeConfig));
+  const getStore = (): Promise<SessionEntryStore> => {
+    storeP ??= createSessionEntryStore(storeConfig).catch((err: unknown) => {
+      // 瞬态锁/IO 故障不可永久毒化冷恢复；下一次请求重建并重试。
+      storeP = undefined;
+      throw err;
+    });
+    return storeP;
+  };
 
   return async (id: string): Promise<ResumeMeta | undefined> => {
     let store: SessionEntryStore;

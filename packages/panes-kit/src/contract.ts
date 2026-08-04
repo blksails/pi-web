@@ -45,8 +45,6 @@ export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
   icon: z.string().max(32).optional(),
-  /** 宿主原生视图标识；声明后由 PanesHost 渲染宿主节点，不启动 Guest iframe。 */
-  hostView: NonEmptyIdSchema.optional(),
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
@@ -62,7 +60,8 @@ export type PaneDefinitionInput = z.input<typeof PaneDefinitionSchema>;
 export const PanesDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   panes: z.array(PaneDefinitionSchema).min(1),
-  initialPaneIds: z.array(NonEmptyIdSchema).min(1).optional(),
+  /** 显式空数组表示仅注册 Pane，不在进入 Agent 时自动打开任何 Pane。 */
+  initialPaneIds: z.array(NonEmptyIdSchema).optional(),
   maxOpenPanes: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(16),
 });
 export type PanesDefinition = z.infer<typeof PanesDefinitionSchema>;

@@ -46,13 +46,20 @@ function publishAigcCatalog(
   disabledModels: ReadonlySet<string>,
   enablePromptOptimization: boolean,
   extraRoutes: readonly ImageRoute[],
+  excludedProviders: ReadonlySet<string>,
   attempt = 0,
 ): void {
   const state = getSessionState();
   if (!state.available) {
     if (attempt < PUBLISH_MAX_TRIES) {
       setTimeout(
-        () => publishAigcCatalog(disabledModels, enablePromptOptimization, extraRoutes, attempt + 1),
+        () => publishAigcCatalog(
+          disabledModels,
+          enablePromptOptimization,
+          extraRoutes,
+          excludedProviders,
+          attempt + 1,
+        ),
         attempt === 0 ? 0 : PUBLISH_RETRY_MS,
       );
     }
@@ -65,7 +72,7 @@ function publishAigcCatalog(
   // 选择器渲染「可见=label、hover title=id」、provider 映射供字母徽章。extraRoutes(Req 4.2/5.2):
   // 与两工具注册时同一批 ai-gateway 条件路由,使清单下发与工具实际暴露的模型同源(未启用套件
   // 时为空数组,行为逐字节一致)。
-  const entries = deriveActiveModels(disabledModels, extraRoutes);
+  const entries = deriveActiveModels(disabledModels, extraRoutes, excludedProviders);
   const labelByModel: Record<string, string> = {};
   const providerByModel: Record<string, string> = {};
   for (const e of entries) {
@@ -120,8 +127,15 @@ function normalizeGatewayEnvNames(): void {
   }
 }
 
-export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
-  const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
+export interface AigcExtensionOptions {
+  /** 当前 Agent 不展示/注册的 provider;不影响默认 `aigcExtension`。 */
+  readonly excludedProviders?: ReadonlySet<string>;
+}
+
+export function makeAigcExtension(options: AigcExtensionOptions = {}): ExtensionFactory {
+  return (pi: ExtensionAPI) => {
+    const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
+    const excludedProviders = options.excludedProviders ?? new Set<string>();
   // ai-gateway 路由组条件并入(spec ai-gateway-providers,design.md §3,Req 5.2/5.3):
   // 本模块属 runtime 层(经 `@blksails/pi-web-tool-kit/runtime` 加载,含 pi SDK 值导入),
   // 允许读 env——浏览器 bundle 只见声明层的类型/静态 routes,不违双入口边界(Req 6.2)。
@@ -155,8 +169,24 @@ export const aigcExtension: ExtensionFactory = (pi: ExtensionAPI) => {
     genExtras.length > 0 ? genExtras : undefined;
   const editExtraRoutes: readonly ImageRoute[] | undefined =
     editExtras.length > 0 ? editExtras : undefined;
-  registerImageGeneration(pi, { disabledModels, extraRoutes: genExtraRoutes });
-  registerImageEdit(pi, { disabledModels, extraRoutes: editExtraRoutes });
-  const publishExtraRoutes: readonly ImageRoute[] = [...genExtras, ...editExtras];
-  publishAigcCatalog(disabledModels, enablePromptOptimization, publishExtraRoutes);
-};
+    registerImageGeneration(pi, {
+      disabledModels,
+      excludedProviders,
+      extraRoutes: genExtraRoutes,
+    });
+    registerImageEdit(pi, {
+      disabledModels,
+      excludedProviders,
+      extraRoutes: editExtraRoutes,
+    });
+    const publishExtraRoutes: readonly ImageRoute[] = [...genExtras, ...editExtras];
+    publishAigcCatalog(
+      disabledModels,
+      enablePromptOptimization,
+      publishExtraRoutes,
+      excludedProviders,
+    );
+  };
+}
+
+export const aigcExtension: ExtensionFactory = makeAigcExtension();

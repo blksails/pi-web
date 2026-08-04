@@ -18,7 +18,8 @@
  * agent 子进程内执行、不进 LLM、对话 UI 零可见变化(Req 6.1/6.3;见 README「Agent Routes 演示」)。
  *
  * 执行层经 `@blksails/pi-web-tool-kit/runtime` 子入口引入(含 pi SDK 值导入,仅 jiti 子进程加载,
- * 不进 Next 服务端 bundle)。model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。
+ * 不进 Next 服务端 bundle)。model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model；
+ * Token Plan 对话接入亦沿此路径配置，详见 README「对话模型」。
  */
 import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";

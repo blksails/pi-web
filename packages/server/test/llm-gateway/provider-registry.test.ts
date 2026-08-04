@@ -25,6 +25,7 @@ describe("resolveLlmGatewayProviderTable — 内置表", () => {
       [
         "anthropic",
         "dashscope",
+        "dashscope-token-plan",
         "google",
         "mistral",
         "newapi",
@@ -56,6 +57,10 @@ describe("resolveLlmGatewayProviderTable — 内置表", () => {
     expect(lookupLlmGatewayProvider(table, "dashscope")).toEqual({
       upstreamBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       keyEnvCandidates: ["DASHSCOPE_API_KEY"],
+    });
+    expect(lookupLlmGatewayProvider(table, "dashscope-token-plan")).toEqual({
+      upstreamBase: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      keyEnvCandidates: ["DASHSCOPE_TOKEN_PLAN_API_KEY"],
     });
   });
 

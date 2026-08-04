@@ -33,6 +33,9 @@ import {
   type SessionMeta,
 } from "./types.js";
 
+/** pi 显式 sessionDir 使用平铺文件；默认目录使用 cwd 桶。 */
+export type FsSessionLayout = "buckets" | "flat";
+
 /** pi 默认会话根目录。 */
 export function defaultSessionsRoot(): string {
   return join(homedir(), ".pi", "agent", "sessions");
@@ -40,26 +43,46 @@ export function defaultSessionsRoot(): string {
 
 export class FsSessionEntryStore implements SessionEntryStore {
   readonly #root: string;
+  readonly #layout: FsSessionLayout;
   /** sessionId → 文件路径(定位缓存)。 */
   readonly #index = new Map<string, string>();
   /** sessionId → 已见 entry id 集合(幂等)。 */
   readonly #seen = new Map<string, Set<string>>();
   /** sessionId → 串行写锁链。 */
   readonly #chain = new Map<string, Promise<unknown>>();
+  /** sessionId → 最新 displayName；以文件 mtime+size 判断外部追加。 */
+  readonly #displayNameCache = new Map<
+    string,
+    { file: string; mtimeMs: number; size: number; name: string | undefined }
+  >();
+  /** 文件路径 → 已解析的轻量头部；避免每次列表请求重读首行。 */
+  readonly #metaCache = new Map<
+    string,
+    { mtimeMs: number; size: number; meta: SessionMeta }
+  >();
 
-  constructor(root: string = defaultSessionsRoot()) {
+  constructor(
+    root: string = defaultSessionsRoot(),
+    layout: FsSessionLayout = "buckets",
+  ) {
     this.#root = root;
+    this.#layout = layout;
   }
 
   async create(header: SessionHeader): Promise<string> {
     return this.#withLock(header.id, async () => {
       if (await this.#locate(header.id)) throw new SessionStoreConflictError(header.id);
-      const bucket = join(this.#root, bucketDirName(header.cwd));
+      const bucket =
+        this.#layout === "flat"
+          ? this.#root
+          : join(this.#root, bucketDirName(header.cwd));
       await mkdir(bucket, { recursive: true });
       const file = join(bucket, sessionFileName(header.timestamp, header.id));
       await writeFile(file, `${serializeHeader(header)}\n`, { encoding: "utf8", flag: "wx" });
       this.#index.set(header.id, file);
       this.#seen.set(header.id, new Set());
+      this.#metaCache.delete(file);
+      this.#displayNameCache.delete(header.id);
       return header.id;
     });
   }
@@ -85,6 +108,8 @@ export class FsSessionEntryStore implements SessionEntryStore {
       await appendFile(file, buffer, "utf8");
       // 写入成功后才登记到持久 seen——避免写失败污染幂等集合
       for (const entry of fresh) seen.add(entry.id);
+      this.#displayNameCache.delete(sessionId);
+      this.#metaCache.delete(file);
     });
   }
 
@@ -115,10 +140,15 @@ export class FsSessionEntryStore implements SessionEntryStore {
   }
 
   async list(cwd: string): Promise<SessionMeta[]> {
+    if (this.#layout === "flat") {
+      const metas = await this.#listDir(this.#root);
+      return metas.filter((meta) => meta.cwd === cwd);
+    }
     return this.#listDir(join(this.#root, bucketDirName(cwd)));
   }
 
   async listAll(): Promise<SessionMeta[]> {
+    if (this.#layout === "flat") return this.#listDir(this.#root);
     let buckets: string[];
     try {
       buckets = await readdir(this.#root);
@@ -140,6 +170,8 @@ export class FsSessionEntryStore implements SessionEntryStore {
       await unlink(file);
       this.#index.delete(sessionId);
       this.#seen.delete(sessionId);
+      this.#displayNameCache.delete(sessionId);
+      this.#metaCache.delete(file);
     });
   }
 
@@ -149,17 +181,35 @@ export class FsSessionEntryStore implements SessionEntryStore {
    * 全程吞错(best-effort 展示增强,绝不让列表失败)。
    */
   async displayName(sessionId: string): Promise<string | undefined> {
-    let name: string | undefined;
+    const file = await this.#locate(sessionId);
+    if (file === null) return undefined;
     try {
+      const info = await stat(file);
+      const cached = this.#displayNameCache.get(sessionId);
+      if (
+        cached?.file === file &&
+        cached.mtimeMs === info.mtimeMs &&
+        cached.size === info.size
+      ) {
+        return cached.name;
+      }
+
+      let name: string | undefined;
       for await (const entry of this.read(sessionId)) {
         if (entry.type === "session_info") {
           name = (entry as SessionInfoEntry).name;
         }
       }
+      this.#displayNameCache.set(sessionId, {
+        file,
+        mtimeMs: info.mtimeMs,
+        size: info.size,
+        name,
+      });
+      return name;
     } catch {
       return undefined;
     }
-    return name;
   }
 
   // ---- 内部 ----
@@ -186,7 +236,9 @@ export class FsSessionEntryStore implements SessionEntryStore {
       return null;
     }
     const suffix = `_${sessionId}.jsonl`;
-    for (const bucket of buckets) {
+    const candidates =
+      this.#layout === "flat" ? [""] : buckets;
+    for (const bucket of candidates) {
       let files: string[];
       try {
         files = await readdir(join(this.#root, bucket));
@@ -247,6 +299,20 @@ export class FsSessionEntryStore implements SessionEntryStore {
   }
 
   async #metaFromFile(file: string): Promise<SessionMeta | null> {
+    let info: Awaited<ReturnType<typeof stat>>;
+    try {
+      info = await stat(file);
+    } catch {
+      return null;
+    }
+    const cached = this.#metaCache.get(file);
+    if (
+      cached?.mtimeMs === info.mtimeMs &&
+      cached.size === info.size
+    ) {
+      return cached.meta;
+    }
+
     let header: SessionHeader;
     try {
       const parsed = parseLine(await this.#firstLine(file), 0);
@@ -255,14 +321,9 @@ export class FsSessionEntryStore implements SessionEntryStore {
     } catch {
       return null;
     }
-    let updatedAt: string | undefined;
-    try {
-      updatedAt = (await stat(file)).mtime.toISOString();
-    } catch {
-      updatedAt = undefined;
-    }
+    const updatedAt = info.mtime.toISOString();
     this.#index.set(header.id, file);
-    return {
+    const meta: SessionMeta = {
       sessionId: header.id,
       cwd: header.cwd,
       name: header.name,
@@ -270,6 +331,8 @@ export class FsSessionEntryStore implements SessionEntryStore {
       createdAt: header.timestamp,
       updatedAt,
     };
+    this.#metaCache.set(file, { mtimeMs: info.mtimeMs, size: info.size, meta });
+    return meta;
   }
 
   /** 流式逐行读取:按 `\n` 切,剥 `\r`。 */

@@ -28,6 +28,10 @@ const devUrl = process.env.PI_WEB_DESKTOP_DEV_URL
   ?? `http://127.0.0.1:${process.env.PI_WEB_DEV_CLIENT_PORT ?? 5173}`;
 const apiUrl = process.env.PI_WEB_DEV_API_URL
   ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`;
+// Desktop development owns local pi sessions.  Do not make the sidebar depend
+// on an optional Docker/Postgres service inherited from .env.local; callers can
+// opt back into another backend explicitly when they need shared persistence.
+const desktopSessionStore = process.env.PI_WEB_DEV_SESSION_STORE?.trim() || "fs";
 const webviewCdpPort = process.env.PI_WEB_DEV_WEBVIEW_CDP_PORT ?? "9223";
 const webviewArgs = process.env.WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS ?? "";
 const noProxy = [...new Set([
@@ -41,6 +45,7 @@ const devEnv = {
   no_proxy: noProxy,
   PI_WEB_DEV_CLIENT_HOST: process.env.PI_WEB_DEV_CLIENT_HOST ?? "127.0.0.1",
   PI_WEB_DEV_API_URL: apiUrl,
+  SESSION_STORE: desktopSessionStore,
   PI_WEB_SHELL_TOKEN: process.env.PI_WEB_SHELL_TOKEN ?? randomBytes(32).toString("hex"),
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webviewArgs.includes("--remote-debugging-port=")
     ? webviewArgs

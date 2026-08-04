@@ -307,22 +307,22 @@ const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
 
 /**
  * 把生成决策析出为与通道无关的 {@link SurfaceOp}:领域参数组装(工具行执行注解、mask/
- * reference_images 值内注解、reframe 默认提示词、省略规则、标题行意图 ≤48 截断)原样迁移,
+ * images 值内注解、reframe 默认提示词、省略规则、标题行意图 ≤48 截断)原样迁移,
  * fence 固定 `canvas-op`。**不声明 fallback**(canvas 生成无控制面等价,command 态不可提交)。
- * export 供门面/单测。参数按 tool→image→mask→reference_images→prompt→size→n→model 有序组装。
+ * export 供门面/单测。参数按 tool→images→mask→prompt→size→n→model 有序组装。
  */
 export function buildSurfaceOp(d: GenerateDecision, opts?: { maskId?: string }): SurfaceOp {
   const a = d.args;
-  const params: Array<readonly [string, string]> = [["image", String(a.image)]];
+  const refs = a.reference_images;
+  const images = [String(a.image), ...(Array.isArray(refs) ? refs.map(String) : [])];
+  const imageValue = `[${images.join(", ")}]${
+    Array.isArray(refs) && refs.length > 0
+      ? " (首张若为批注图,按其箭头/文字指示修改)"
+      : ""
+  }`;
+  const params: Array<readonly [string, string]> = [["images", imageValue]];
   if (opts?.maskId !== undefined) {
     params.push(["mask", `${opts.maskId}(alpha mask,透明区=需要重绘的区域)`]);
-  }
-  const refs = a.reference_images;
-  if (Array.isArray(refs) && refs.length > 0) {
-    params.push([
-      "reference_images",
-      `${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`,
-    ]);
   }
   if (typeof a.prompt === "string" && a.prompt.trim() !== "") {
     params.push(["prompt", a.prompt]);
@@ -1807,8 +1807,11 @@ export function CanvasWorkbench({
   // 缺省空数组 → 选择器空态,解读仍可用(Req 3.5/3.6/5.4)。
   const visionModelItems: readonly VisionModelOption[] = visionModelOptions ?? [];
   // 复用历史参数可能带来清单外的 model:并入候选兜底(否则 Select 显示为空)。
-  const modelItems =
-    model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
+  const modelIds = model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
+  const modelItems = modelIds.map((id) => ({
+    id,
+    label: capabilities?.models.find((m) => m.id === id)?.label ?? id,
+  }));
   // 尺寸选项:全局档位取 capability.sizes(缺失回退 RATIO_OPTIONS);当前选中模型在 capability 中
   // 声明了受支持尺寸集 → 收窄为交集(顺序按全局列表,4.3);未选模型 = 不收窄(守恒)。
   const globalSizes = capabilities?.sizes ?? RATIO_OPTIONS;
@@ -1944,14 +1947,19 @@ export function CanvasWorkbench({
             value={model === "" ? MODEL_DEFAULT_SENTINEL : model}
             onValueChange={(v) => setModel(v === MODEL_DEFAULT_SENTINEL ? "" : v)}
           >
-            <SelectTrigger data-canvas-model aria-label="生成模型" className="h-8 w-36 text-xs">
+            <SelectTrigger
+              data-canvas-model
+              aria-label="生成模型"
+              className="h-8 max-w-52 min-w-36 gap-1.5 rounded-full text-xs"
+            >
+              <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
               <SelectValue placeholder="默认模型" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={MODEL_DEFAULT_SENTINEL}>默认模型</SelectItem>
               {modelItems.map((m) => (
-                <SelectItem key={m} value={m}>
-                  {m}
+                <SelectItem key={m.id} value={m.id} title={m.id}>
+                  {m.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -34,6 +34,8 @@ export const AIGC_TOOL_SETTINGS_FILE = "aigc.json";
 /** 图像工具注册选项:装配期被禁模型集合(缺省 = 空集,全量)。 */
 export interface RegisterImageToolOptions {
   readonly disabledModels?: ReadonlySet<string>;
+  /** 装配期排除 provider;用于某个 Agent 隐藏不提供的供应商而不改全局路由。 */
+  readonly excludedProviders?: ReadonlySet<string>;
   /**
    * 装配期按 env 条件并入的额外路由组(ai-gateway-providers spec,design.md §3,Req 5.2/5.3):
    * 例如 `AI_GATEWAY_IMAGE_ROUTES`,由 runtime 层 `extension.ts` 按
@@ -46,6 +48,8 @@ export interface RegisterImageToolOptions {
 
 /** 空被禁集合(缺省参数复用,避免每次新建)。 */
 export const EMPTY_DISABLED: ReadonlySet<string> = new Set<string>();
+/** 空 provider 排除集(缺省参数复用,保持默认行为)。 */
+export const EMPTY_EXCLUDED_PROVIDERS: ReadonlySet<string> = new Set<string>();
 
 /**
  * 解析 agent 目录:`PI_WEB_AGENT_DIR`(pi-web 覆盖)> `PI_CODING_AGENT_DIR`(pi 原生)>
@@ -117,4 +121,13 @@ export function filterRoutes<R extends { model: string }>(
   // 全部被禁:保留默认模型对应 route;默认也不在列表则退回首项,保证非空。
   const fallback = routes.find((r) => r.model === defaultModel) ?? routes[0];
   return fallback !== undefined ? [fallback] : routes;
+}
+
+/** 按 provider 过滤路由;不改顺序与元数据,未指定排除集时原样返回。 */
+export function filterRoutesByProvider<R extends { provider?: string }>(
+  routes: readonly R[],
+  excludedProviders: ReadonlySet<string>,
+): readonly R[] {
+  if (excludedProviders.size === 0) return routes;
+  return routes.filter((r) => r.provider === undefined || !excludedProviders.has(r.provider));
 }
