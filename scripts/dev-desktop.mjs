@@ -2,6 +2,7 @@
 // 开发态单入口：基座(API+Vite)就绪后，再启动指向同一 Vite 地址的 Tauri 壳。
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -128,7 +129,15 @@ if (cloudRoot !== undefined) {
   if (pnpmCli === undefined || pnpmCli === "") {
     throw new Error("PI_WEB_DEV_CLOUD_DIR requires launching through pnpm dev:desktop");
   }
-  if ((process.env.PI_CLOUDS_DESKTOP_TOKEN_SECRET ?? "").trim() === "") {
+  const cloudEnvFiles = [path.join(cloudRoot, ".env.local"), path.join(cloudRoot, ".env")];
+  const childCloudHasToken = cloudEnvFiles.some((file) => {
+    try {
+      return /^\s*PI_CLOUDS_DESKTOP_TOKEN_SECRET\s*=\s*[^#\r\n]+/m.test(readFileSync(file, "utf8"));
+    } catch {
+      return false;
+    }
+  });
+  if ((process.env.PI_CLOUDS_DESKTOP_TOKEN_SECRET ?? "").trim() === "" && !childCloudHasToken) {
     throw new Error("PI_WEB_DEV_CLOUD_DIR requires PI_CLOUDS_DESKTOP_TOKEN_SECRET");
   }
   run(
