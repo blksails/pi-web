@@ -1,4 +1,6 @@
 node_modules/
+/.iteration/
+/bin/
 dist/
 .next/
 .next-e2e/
