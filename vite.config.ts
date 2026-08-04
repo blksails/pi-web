@@ -75,7 +75,7 @@ export default defineConfig({
     strictPort: true,
     // Driver/download artifacts can be locked by WebDriver on Windows. Watching them
     // makes chokidar emit an unhandled EBUSY and tears down the whole desktop chain.
-    watch: { ignored: ["**/.tmp/**"] },
+    watch: { ignored: ["**/.tmp/**", "**/src-tauri/target/**"] },
     // Pane iframe 带 sandbox，故其 origin 为 null；Vite 注入的 HMR/React Refresh 脚本
     // 仍从 5173 取。开发服务器须回 ACAO，否则功能虽可用，控制台持续报 CORS。
     cors: true,
