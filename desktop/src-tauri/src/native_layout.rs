@@ -37,11 +37,36 @@ impl LayoutMode {
     }
 }
 
+/// 内容槽的解算结果。
+///
+/// ★ `Hidden` 与「一个宽高为零的矩形」不是一回事：后者仍会被落位流程当成矩形去 `set_bounds`
+///   并 `show`，而前者明确表示「此刻没有可显示的内容槽」，调用方**不得**回落到任何默认矩形。
+///   本缺陷的成因正是「信息不足」被表达成了一个具体的值（0.0），而那个值恰好是最坏的。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ContentSlot {
+    /// 几何已知且可显示；矩形保证落在 chrome 之下。
+    Visible(PaneBounds),
+    /// 几何未知，或模式要求隐藏。
+    Hidden,
+}
+
+impl ContentSlot {
+    fn bounds(self) -> Option<PaneBounds> {
+        match self {
+            Self::Visible(b) => Some(b),
+            Self::Hidden => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LayoutMetrics {
     /// 内容井顶边相对窗口 client 顶（下方留给 Pane content；上方留给 tabs 等 chrome）。
-    pub top_height: f64,
+    ///
+    /// ★ `None` = 宿主尚未量得，**不是** 0。与同结构体的 `left_width` / `pane_width` 语义对齐。
+    ///   `#[serde(default)]` 对 `Option` 产出 `None`，故载荷缺该字段时不会被悄悄补成 `Some(0.0)`。
+    pub top_height: Option<f64>,
     /// 内容井左缘（宿主 chat + resize 在其左）。
     pub left_width: Option<f64>,
     /// 内容井宽度；缺省时用 pane_ratio 或默认 0.34。
@@ -56,7 +81,7 @@ pub struct LayoutMetrics {
 impl Default for LayoutMetrics {
     fn default() -> Self {
         Self {
-            top_height: 0.0,
+            top_height: None,
             left_width: None,
             pane_width: None,
             pane_ratio: Some(0.34),
@@ -94,9 +119,22 @@ struct LayoutState {
     panes: HashMap<String, PaneRecord>,
     active_tick: u64,
     /// 上次成功下发的 host / 槽矩形；未变则跳过 set_bounds。
+    ///
+    /// ★ `last_slot_bounds` 的外层 `Option` 表示「本轮之前是否记录过」（`None` 由
+    ///   `invalidate_applied_bounds` 置入以强制重下发），内层 `ContentSlot` 才表示
+    ///   「当时是否有可显示的槽」。两个含义必须分开——把它们压进同一个 `None`，
+    ///   正是本 spec 要消除的那类错误。
     last_host_bounds: Option<PaneBounds>,
-    last_slot_bounds: Option<PaneBounds>,
+    last_slot_bounds: Option<ContentSlot>,
     last_top_label: Option<String>,
+}
+
+/// 槽位诊断开关（Req 3.5：不重新编译即可开启）。
+fn pane_layout_debug_enabled() -> bool {
+    matches!(
+        std::env::var("PI_WEB_PANE_LAYOUT_DEBUG").ok().as_deref().map(str::trim),
+        Some("1" | "true" | "yes" | "on")
+    )
 }
 
 /// 逻辑像素近似相等（侧栏拖拽亚像素抖动不重下发）。
@@ -124,16 +162,16 @@ impl NativeWebviewLayoutManager {
     }
 
     pub fn set_metrics(&self, metrics: LayoutMetrics) -> Result<(), String> {
-        if !metrics.top_height.is_finite()
-            || metrics.top_height < 0.0
-            || !metrics.min_width.is_finite()
-            || metrics.min_width < 1.0
-        {
+        // 顶边缺席是合法的（表示「尚未量得」）；给了值就必须是有限非负数。
+        let top_invalid = metrics
+            .top_height
+            .is_some_and(|t| !t.is_finite() || t < 0.0);
+        if top_invalid || !metrics.min_width.is_finite() || metrics.min_width < 1.0 {
             // ★ 留痕（spec desktop-pane-chrome-occlusion，Req 3.3）：原实现只返回 Err，
             //   而前端的上报调用没有 catch —— 拒绝作为未处理的异步拒绝逃逸，两侧都看不见。
             //   结果是布局侧继续用旧值/默认值，pane 停在盖住 chrome 的矩形上，且无处可查。
             eprintln!(
-                "[panes] 拒绝几何上报 PANE_LAYOUT_INVALID_METRICS: top_height={} min_width={} \
+                "[panes] 拒绝几何上报 PANE_LAYOUT_INVALID_METRICS: top_height={:?} min_width={} \
                  left_width={:?} pane_width={:?} bottom_height={}",
                 metrics.top_height,
                 metrics.min_width,
@@ -186,11 +224,8 @@ impl NativeWebviewLayoutManager {
                 LayoutMode::HostFullscreen => HOST_FULLSCREEN_MODE,
             },
             metrics: state.metrics,
-            content_slot: match state.mode {
-                LayoutMode::Workspace => Some(slot),
-                // 全屏态没有内容槽，返回一个零矩形会被误读成「算出来是 0」。
-                LayoutMode::HostFullscreen => None,
-            },
+            // `None` 表示「此刻没有可显示的内容槽」——零矩形会被误读成「算出来是 0」。
+            content_slot: slot.bounds(),
             window_width,
             window_height,
             native_enabled: native_child_webviews_enabled(),
@@ -203,27 +238,22 @@ impl NativeWebviewLayoutManager {
         &self,
         window_width: f64,
         window_height: f64,
-    ) -> Result<PaneBounds, String> {
+    ) -> Result<Option<PaneBounds>, String> {
         let state = self
             .0
             .lock()
             .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
-        let (_host, mut slot) = Self::calculate_bounds(
+        let (_host, slot) = Self::calculate_bounds(
             state.mode,
             state.metrics,
             window_width,
             window_height,
         );
-        if state.mode == LayoutMode::Workspace && (slot.width < 48.0 || slot.height < 48.0) {
-            let fallback_w = (window_width * 0.34).max(280.0).min(window_width.max(1.0));
-            slot = PaneBounds {
-                x: (window_width - fallback_w).max(0.0),
-                y: 0.0,
-                width: fallback_w,
-                height: window_height.max(1.0),
-            };
-        }
-        Ok(slot)
+        // ★ 已删除「槽过小则回落到从窗口顶端铺满」的兜底（原 y: 0.0 + 全高）。
+        //   那个兜底与 `apply_layout` 里的同名副本、以及默认 metrics 走正常算式的结果，
+        //   三者产出的是同一个必然盖住 chrome 的矩形。现在「未知」由 ContentSlot::Hidden
+        //   承载，首建时不给矩形；几何到达后 apply_layout 会补上落位。
+        Ok(slot.bounds())
     }
 
     pub fn register_pane(
@@ -301,7 +331,7 @@ impl NativeWebviewLayoutManager {
         metrics: LayoutMetrics,
         window_width: f64,
         window_height: f64,
-    ) -> (PaneBounds, PaneBounds) {
+    ) -> (PaneBounds, ContentSlot) {
         let width = window_width.max(1.0);
         let height = window_height.max(1.0);
         // 宿主始终铺满窗口：tabs / resize / chat 仍在 host WebView 内可点。
@@ -313,8 +343,19 @@ impl NativeWebviewLayoutManager {
             height,
         };
         if mode == LayoutMode::HostFullscreen {
-            return (host_full, PaneBounds::default());
+            return (host_full, ContentSlot::Hidden);
         }
+        // ★ 顶边未知即不产出可显示的内容槽（spec desktop-pane-chrome-occlusion，Req 2.1/2.5）。
+        //
+        //   改动前这里是 `metrics.top_height.clamp(...)`，而 top_height 缺省为 0.0 ——
+        //   于是「几何还没上报」与「chrome 高度真的是 0」不可区分，两者都算出 y=0、高度铺满，
+        //   恰好盖住 tab 栏，用户随即失去切换 pane 的唯一入口。
+        //
+        //   现在「未知」由 Option 承载，且未知时**不给矩形**：没有矩形就没有遮挡。代价是
+        //   几何迟到期间 pane 不显示 —— 这是有意的取舍，chrome 还在，用户仍有恢复手段。
+        let Some(top) = metrics.top_height else {
+            return (host_full, ContentSlot::Hidden);
+        };
         let minimum = metrics.min_width.max(1.0);
         // 优先用前端 content-well 实测的 left/width；否则 ratio 回落。
         let requested = metrics
@@ -331,17 +372,17 @@ impl NativeWebviewLayoutManager {
             .pane_width
             .unwrap_or(requested)
             .clamp(1.0, (width - pane_x).max(1.0));
-        let pane_y = metrics.top_height.clamp(0.0, height);
+        let pane_y = top.clamp(0.0, height);
         let bottom = metrics.bottom_height.clamp(0.0, (height - pane_y).max(0.0));
         let pane_height = (height - pane_y - bottom).max(1.0);
         (
             host_full,
-            PaneBounds {
+            ContentSlot::Visible(PaneBounds {
                 x: pane_x,
                 y: pane_y,
                 width: pane_w,
                 height: pane_height,
-            },
+            }),
         )
     }
 
@@ -386,7 +427,7 @@ impl NativeWebviewLayoutManager {
         };
         let logical_width = f64::from(size.width) / scale.max(0.01);
         let logical_height = f64::from(size.height) / scale.max(0.01);
-        let (host_bounds, pane_bounds) = Self::calculate_bounds(
+        let (host_bounds, pane_slot) = Self::calculate_bounds(
             mode,
             metrics,
             logical_width,
@@ -405,18 +446,37 @@ impl NativeWebviewLayoutManager {
                 host.set_focus().map_err(|e| e.to_string())?;
             }
         }
-        // metrics 尚未上报时 pane 槽可能过小 → 回落右栏默认，避免 1×1 白屏。
-        let mut slot = pane_bounds;
-        if mode == LayoutMode::Workspace && (slot.width < 48.0 || slot.height < 48.0) {
-            let fallback_w = (logical_width * 0.34).max(280.0).min(logical_width.max(1.0));
-            slot = PaneBounds {
-                x: (logical_width - fallback_w).max(0.0),
-                y: 0.0,
-                width: fallback_w,
-                height: logical_height.max(1.0),
-            };
+        // ★ 已删除「槽过小 → 回落右栏默认（y: 0.0 + 全高）」的兜底。
+        //   它与 `slot_for_window` 里的同名副本、以及默认 metrics 走正常算式的结果，
+        //   三者产出的是同一个必然盖住 chrome 的矩形 —— 而 chrome 正在 y=0 那一段。
+        //   现在「几何未知」由 ContentSlot::Hidden 表达：不给矩形、不 show，chrome 保持可达。
+        let slot = pane_slot.bounds();
+        let slot_changed = match (last_slot, pane_slot) {
+            // 都可见：沿用既有的近似去抖，拖拽亚像素抖动不重下发（5.1 的基线）。
+            (Some(ContentSlot::Visible(prev)), ContentSlot::Visible(next)) => {
+                !bounds_near(prev, next)
+            }
+            (Some(ContentSlot::Hidden), ContentSlot::Hidden) => false,
+            // 没记录过（含 invalidate 之后）或可见性翻转：一律视为变了。
+            _ => true,
+        };
+        // 落位快照（Req 3.4/3.5）：只在槽真正变化时打印，故拖拽期也不会刷屏。
+        // 默认关闭，`PI_WEB_PANE_LAYOUT_DEBUG=1` 即可开启，不需要重新编译。
+        if slot_changed && pane_layout_debug_enabled() {
+            match slot {
+                Some(b) => eprintln!(
+                    "[panes] 落位 slot=({:.1},{:.1},{:.1}x{:.1}) 窗口={:.1}x{:.1} \
+                     top_height={:?} mode={:?}",
+                    b.x, b.y, b.width, b.height, logical_width, logical_height,
+                    metrics.top_height, mode,
+                ),
+                // ★ 这一行是诊断的关键：几何未知时不再有矩形可打，直接报「无内容槽」。
+                None => eprintln!(
+                    "[panes] 无内容槽（几何未知或全屏）窗口={:.1}x{:.1} top_height={:?} mode={:?}",
+                    logical_width, logical_height, metrics.top_height, mode,
+                ),
+            }
         }
-        let slot_changed = last_slot.map(|b| !bounds_near(b, slot)).unwrap_or(true);
         // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
         let mut raise_top = host_changed;
@@ -438,8 +498,16 @@ impl NativeWebviewLayoutManager {
                 applied_visibility.push((label, false));
                 continue;
             }
+            // ★ 几何未知：不给 bounds、也不 show。宁可 pane 暂不可见，也不能拿一个
+            //   盖住 chrome 的矩形把用户切换 pane 的唯一入口吃掉（Req 2.1/2.4）。
+            //   几何到达后 set_metrics → apply_layout 会把它补上（Req 2.3）。
+            let Some(slot_bounds) = slot else {
+                let _ = view.hide();
+                applied_visibility.push((label, false));
+                continue;
+            };
             if slot_changed {
-                view.set_bounds(to_rect(slot))
+                view.set_bounds(to_rect(slot_bounds))
                     .map_err(|e| e.to_string())?;
             }
             if recorded_visible {
@@ -489,7 +557,7 @@ impl NativeWebviewLayoutManager {
             .lock()
             .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
         state.last_host_bounds = Some(host_bounds);
-        state.last_slot_bounds = Some(slot);
+        state.last_slot_bounds = Some(pane_slot);
         state.last_top_label = top_label;
         for (label, applied) in applied_visibility {
             if let Some(pane) = state.panes.get_mut(&label) {
@@ -505,7 +573,7 @@ impl NativeWebviewLayoutManager {
         metrics: LayoutMetrics,
         width: f64,
         height: f64,
-    ) -> (PaneBounds, PaneBounds) {
+    ) -> (PaneBounds, ContentSlot) {
         Self::calculate_bounds(mode, metrics, width, height)
     }
 }
@@ -595,17 +663,25 @@ pub fn pane_layout_debug_state(
 mod tests {
     use super::*;
 
+    /// 取可见槽；`Hidden` 直接 panic，避免用例把「没有槽」误当成某个矩形。
+    fn visible(slot: ContentSlot) -> PaneBounds {
+        match slot {
+            ContentSlot::Visible(b) => b,
+            ContentSlot::Hidden => panic!("期望有可显示的内容槽，实得 Hidden"),
+        }
+    }
+
     #[test]
     fn workspace_host_stays_full_window() {
         let metrics = LayoutMetrics {
             left_width: Some(600.0),
-            top_height: 36.0,
+            top_height: Some(36.0),
             pane_width: Some(400.0),
             bottom_height: 0.0,
             min_width: 240.0,
             ..Default::default()
         };
-        let (host, pane) = NativeWebviewLayoutManager::calculate_for_test(
+        let (host, slot) = NativeWebviewLayoutManager::calculate_for_test(
             LayoutMode::Workspace,
             metrics,
             1000.0,
@@ -613,6 +689,7 @@ mod tests {
         );
         // 宿主铺满，tabs/resize 仍在 host WebView。
         assert_eq!(host, PaneBounds { x: 0.0, y: 0.0, width: 1000.0, height: 600.0 });
+        let pane = visible(slot);
         assert_eq!(pane.x, 600.0);
         assert_eq!(pane.y, 36.0);
         assert_eq!(pane.width, 400.0);
@@ -621,32 +698,128 @@ mod tests {
 
     #[test]
     fn host_fullscreen_hides_pane_region() {
-        let (host, pane) = NativeWebviewLayoutManager::calculate_for_test(
+        let (host, slot) = NativeWebviewLayoutManager::calculate_for_test(
             LayoutMode::HostFullscreen,
             LayoutMetrics::default(),
             900.0,
             700.0,
         );
         assert_eq!(host, PaneBounds { x: 0.0, y: 0.0, width: 900.0, height: 700.0 });
-        assert_eq!(pane, PaneBounds::default());
+        assert_eq!(slot, ContentSlot::Hidden);
+    }
+
+    // ───────────────────────────────────────────────────────────────────────────
+    // spec desktop-pane-chrome-occlusion 任务 2.2
+    //
+    // ★ 上面三条既有用例**全部**传入明确的非零 top_height（36/40）或走全屏模式 ——
+    //   也就是说「顶边未知」这条恰恰产生遮挡矩形的路径，此前自动化覆盖为零。
+    //   下面几条补的正是它。
+    // ───────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn unknown_top_height_yields_no_content_slot() {
+        // 缺陷原貌：top_height 缺省为 0.0 → 算出 y=0、高度铺满 → 恰好盖住 y=0 那一段的 chrome，
+        // 用户随即失去切换 pane 的唯一入口。现在「未知」不产出任何矩形。
+        let (_host, slot) = NativeWebviewLayoutManager::calculate_for_test(
+            LayoutMode::Workspace,
+            LayoutMetrics { top_height: None, ..Default::default() },
+            1200.0,
+            800.0,
+        );
+        assert_eq!(slot, ContentSlot::Hidden);
+    }
+
+    #[test]
+    fn unknown_top_height_stays_hidden_across_window_sizes() {
+        // 只测一组尺寸挡不住「某个尺寸下恰好回落成矩形」的错法（原兜底正是按尺寸阈值触发的）。
+        for (w, h) in [(320.0, 240.0), (800.0, 600.0), (1440.0, 900.0), (3840.0, 2160.0)] {
+            let (_host, slot) = NativeWebviewLayoutManager::calculate_for_test(
+                LayoutMode::Workspace,
+                LayoutMetrics {
+                    top_height: None,
+                    left_width: Some(w * 0.6),
+                    pane_width: Some(w * 0.3),
+                    ..Default::default()
+                },
+                w,
+                h,
+            );
+            assert_eq!(slot, ContentSlot::Hidden, "窗口 {w}x{h} 下不应产出内容槽");
+        }
+    }
+
+    #[test]
+    fn known_top_height_never_intersects_chrome_band() {
+        // chrome 占据 [0, top) 这一段；内容槽的顶边必须不小于 top，否则就是遮挡。
+        for top in [1.0, 24.0, 36.0, 48.0, 120.0] {
+            let (_host, slot) = NativeWebviewLayoutManager::calculate_for_test(
+                LayoutMode::Workspace,
+                LayoutMetrics {
+                    top_height: Some(top),
+                    left_width: Some(700.0),
+                    pane_width: Some(400.0),
+                    min_width: 240.0,
+                    ..Default::default()
+                },
+                1200.0,
+                800.0,
+            );
+            let pane = visible(slot);
+            assert!(pane.y >= top, "top={top} 时槽顶 {} 落进了 chrome 区", pane.y);
+            assert!(pane.height > 0.0);
+        }
+    }
+
+    #[test]
+    fn payload_without_top_height_deserializes_to_none() {
+        // ★ 缺了这条，可选化会被序列化默认值悄悄抵消：`#[serde(default)]` 若对 Option 产出
+        //   Some(0.0)，则前端不发该字段时布局侧收到的仍是一个「确定的 0」，缺陷原样复活。
+        let parsed: LayoutMetrics = serde_json::from_str(
+            r#"{"leftWidth":600.0,"paneWidth":400.0,"bottomHeight":0.0,"minWidth":240.0}"#,
+        )
+        .expect("载荷应可解析");
+        assert_eq!(parsed.top_height, None);
+
+        // 给了值就要如实带过来，别把 0 也吞成 None。
+        let with_zero: LayoutMetrics =
+            serde_json::from_str(r#"{"topHeight":0.0,"minWidth":240.0}"#).expect("可解析");
+        assert_eq!(with_zero.top_height, Some(0.0));
+    }
+
+    #[test]
+    fn invalid_top_height_is_rejected_but_absent_one_is_accepted() {
+        let manager = NativeWebviewLayoutManager::default();
+        // 缺席是合法的：表示「尚未量得」。
+        assert!(manager
+            .set_metrics(LayoutMetrics { top_height: None, ..Default::default() })
+            .is_ok());
+        // 给了非法值才拒绝。
+        for bad in [f64::NAN, f64::INFINITY, -1.0] {
+            assert!(
+                manager
+                    .set_metrics(LayoutMetrics { top_height: Some(bad), ..Default::default() })
+                    .is_err(),
+                "top_height={bad} 应被拒绝"
+            );
+        }
     }
 
     #[test]
     fn content_well_bottom_inset_shrinks_pane_height() {
         let metrics = LayoutMetrics {
             left_width: Some(500.0),
-            top_height: 40.0,
+            top_height: Some(40.0),
             pane_width: Some(480.0),
             bottom_height: 24.0,
             min_width: 240.0,
             ..Default::default()
         };
-        let (_host, pane) = NativeWebviewLayoutManager::calculate_for_test(
+        let (_host, slot) = NativeWebviewLayoutManager::calculate_for_test(
             LayoutMode::Workspace,
             metrics,
             1000.0,
             800.0,
         );
-        assert_eq!(pane.height, 800.0 - 40.0 - 24.0);
+        assert_eq!(visible(slot).height, 800.0 - 40.0 - 24.0);
     }
 }

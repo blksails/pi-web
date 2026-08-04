@@ -183,6 +183,36 @@ describe("ensureTauriContentWellMetrics — 调用方能判断布局侧是否已
     expect(outcome.reason).toBe("too-small");
   });
 
+  it("★ 载荷要么带顶边、要么根本不发——绝不发一个「确定的 0」", async () => {
+    // 布局侧把缺席的顶边解释为「未知」。若前端在量不到时补发 topHeight: 0，
+    // 布局侧收到的就是一个确定值，可选化形同虚设，缺陷原样复活。
+    const invoke = vi.fn(
+      (_cmd: string, _args?: { readonly metrics?: Record<string, number> }) =>
+        Promise.resolve(),
+    );
+    const target = {
+      innerHeight: 900,
+      requestAnimationFrame: (cb: FrameRequestCallback) => { cb(0); return 1; },
+      cancelAnimationFrame: () => undefined,
+      __TAURI__: { core: { invoke }, window: { getCurrentWindow: () => ({}) } },
+    } as unknown as Window;
+
+    // 量不到：一次 IPC 都不该发出。
+    await ensureTauriContentWellMetrics(
+      makeWell({ left: 0, top: 0, width: 10, height: 10 }),
+      { minWidth: 240, target, force: true },
+    );
+    expect(invoke).not.toHaveBeenCalled();
+
+    // 量得到：顶边必须如实带上。
+    await ensureTauriContentWellMetrics(
+      makeWell({ left: 504, top: 52, width: 384, height: 704 }),
+      { minWidth: 240, target, force: true },
+    );
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0]?.[1]?.metrics?.topHeight).toBe(52);
+  });
+
   it("量到但送达失败 → failed（不得报成 delivered）", async () => {
     const outcome = await ensureTauriContentWellMetrics(
       makeWell({ left: 503, top: 48, width: 383, height: 703 }),
