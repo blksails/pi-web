@@ -821,7 +821,15 @@ export function PiChat({
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
       if (Math.abs(e.clientX - (panelResizeStartXRef.current ?? e.clientX)) < 2) return;
+      const firstMove = !panelResizeMovedRef.current;
       panelResizeMovedRef.current = true;
+      // 仅真正位移后冻结布局；单击分隔线不触发侧栏脱离 flex。
+      if (firstMove) {
+        setPanelConversationWidth(
+          panelConversationColumnRef.current?.getBoundingClientRect().width,
+        );
+        setPanelDragging(true);
+      }
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
       const availableMax = rect.width * maxPanelWidthRatio;
@@ -863,12 +871,7 @@ export function PiChat({
             ? panelWidth
             : undefined;
       panelPendingWidthRef.current = currentWidth;
-      // 冻结对话列当前宽，拖拽全程不变；侧栏 absolute 叠在其上。
-      setPanelConversationWidth(
-        panelConversationColumnRef.current?.getBoundingClientRect().width,
-      );
       panelResizeStartWidthRef.current = currentWidth;
-      setPanelDragging(true);
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {

@@ -129,9 +129,9 @@ describe("panelRight 连续宽度(全受控)", () => {
       toJSON: () => ({}),
     } as DOMRect);
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
+    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
     expect(conversation.style.width).toBe("520px");
     expect(aside().style.position).toBe("absolute");
-    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
     expect(onChange).not.toHaveBeenCalled();
     expect(
       (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
@@ -160,6 +160,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     );
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 300 });
+    expect(aside().style.position).toBe("");
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 300 });
     expect(onChange).not.toHaveBeenCalled();
     expect(aside().style.width).toBe("700px");
