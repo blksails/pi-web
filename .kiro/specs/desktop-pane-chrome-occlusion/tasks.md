@@ -79,8 +79,12 @@
   - _Boundary: 宿主几何门控 — `packages/panes-kit/src/react/panes-host.tsx`, `packages/panes-kit/test/pane-slot-geometry.test.ts`_
   - _Depends: 2.3_
 
-  - ⚠ 未完成部分：「几何未送达 → 不 show」这一新行为尚无直接断言（需在 React 宿主里模拟
-    native 生效 + 槽零尺寸）。既有 44 条只证明未回归，不证明门控挡得住。任务 4.1 补。
+  - ⚠ 未完成部分：「几何未送达 → 不 show」这一新行为**仍无直接断言**。任务 4.1 尝试过并
+    失败：`pane_layout_is_native` 返回 true 时，内容 pane 在 jsdom 下压根不会被创建
+    （relayListeners 已就绪、overlay-ready 已发，`created` 仍为 0），握手走不完就到不了
+    show 那一步。初版还写成了重言式——把门控整个删掉照样跑绿，红对照当场抓出。
+    已删除该用例而非留一条假绿。这条缺口由真机视觉验收（4.3）兜底，或另开一个
+    「native pane 在 jsdom 下的可测性」的口子解决。
 
 - [ ] 4. 回归与验收
 
@@ -92,7 +96,7 @@
   - _Boundary: 上报器与宿主几何门控回归 — `packages/panes-kit/test/pane-slot-geometry.test.ts`_
   - _Depends: 3.1_
 
-- [ ] 4.2 全量回归与算术核对
+- [x] 4.2 全量回归与算术核对
   - 跑 `pnpm test` **和** `pnpm test:app` 两条；对每个汇总行核对 `failed + passed + skipped === 总数`，文件数与用例数**各算一遍**
   - 跑 `pnpm typecheck`；在 `desktop/src-tauri/` 跑 `cargo test`
   - 与改动前基线比对：根面已知 2 个既存红（`webext-slots-runtime.integration`、`publish-preview`），不得把它们算成新增，也不得拿它们掩盖新增
