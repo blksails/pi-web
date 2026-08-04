@@ -16,7 +16,7 @@
  * 去向)。未登记即报红 —— 这才挡得住「未来的遗漏」而不只是「今天的遗漏」。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import type { WebExtension } from "@blksails/pi-web-kit";
 import { definePanes, type PaneSource, type PaneMergeRejection } from "@blksails/pi-web-panes-kit";
 import { MockTransport, mockSession } from "../fixtures/mock-session.js";
@@ -216,7 +216,9 @@ describe("注入面完整性(宿主路径必须注入的能力)", () => {
       stageUserMessage(text: string, options: { attachmentIds: string[] }): void;
     };
 
-    conversation.stageUserMessage("", { attachmentIds: ["att_material"] });
+    act(() => {
+      conversation.stageUserMessage("", { attachmentIds: ["att_material"] });
+    });
 
     await waitFor(() =>
       expect(screen.getByRole("textbox", { name: /消息输入|message/i })).toHaveValue(
