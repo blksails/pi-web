@@ -328,6 +328,7 @@ export class PiSession {
     // 冷恢复标题回填(方案A):有初始标题时 seed 一帧粘性 setTitle,使任何订阅者(含首个)回放即得
     // ambient.title。冷恢复无 agent 侧 setTitle 帧,否则顶栏无标题。仅 resume 分支传入,新建不受影响。
     if (opts.initialTitle !== undefined && opts.initialTitle.length > 0) {
+      this.setSnapshot({ title: opts.initialTitle });
       this.seedInitialTitle(opts.initialTitle);
     }
 
@@ -1349,6 +1350,7 @@ export class PiSession {
     // 标题变化通知(spec session-meta-index, Req 1.2):setTitle 是标题变化的唯一入站通道
     // (auto-title 扩展经此下发)。吞错:元数据是展示增强,绝不影响会话流程。
     if (req.method === "setTitle") {
+      this.setSnapshot({ title: req.title });
       try {
         this.onTitleChanged?.(this.id, req.title);
       } catch {

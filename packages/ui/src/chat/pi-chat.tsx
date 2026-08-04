@@ -977,7 +977,7 @@ export function PiChat({
 
   const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
   const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
-  const ambientTitle = extensionUI?.title;
+  const ambientTitle = extensionUI?.title ?? controls?.session?.title;
   const dismissNotification = extensionUI?.dismissNotification;
 
   React.useEffect(() => {

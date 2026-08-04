@@ -777,6 +777,31 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     delete host.__TAURI__;
   });
 
+  it("extension title 缺失时以权威会话快照标题投射 Tauri 窗口", () => {
+    const previous = document.title;
+    const setTitle = vi.fn(async () => undefined);
+    const host = window as Window & {
+      __TAURI__?: {
+        window: { getCurrentWindow: () => { setTitle: (title: string) => Promise<void> } };
+      };
+    };
+    host.__TAURI__ = { window: { getCurrentWindow: () => ({ setTitle }) } };
+    const { unmount } = render(
+      <PiChat
+        session={fakeSession()}
+        controls={mockControls({
+          session: { lifecycle: "ready", busy: false, title: "Snapshot Title" },
+        })}
+        extensionUI={mockExtensionUI()}
+      />,
+    );
+    expect(document.title).toBe("Snapshot Title");
+    expect(setTitle).toHaveBeenCalledWith("Snapshot Title");
+    unmount();
+    expect(document.title).toBe(previous);
+    delete host.__TAURI__;
+  });
+
   it("未设 title 且无 statuses → 不渲染内部扩展头部(Req 4.3)", () => {
     const { container } = render(
       <PiChat session={fakeSession()} extensionUI={mockExtensionUI()} />,

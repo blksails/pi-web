@@ -51,6 +51,20 @@ describe("PiSession snapshot authority", () => {
     expect(snaps.at(-1)?.busy).toBe(true); // 迟到订阅者收敛到当前 busy=true
   });
 
+  it("projects setTitle into the sticky authoritative snapshot", () => {
+    const ch = new MockChannel();
+    const s = newSession(ch, true);
+    ch.emitExtensionUIRequest({
+      type: "extension_ui_request",
+      id: "title-1",
+      method: "setTitle",
+      title: "会话标题",
+    });
+    const frames: SseFrame[] = [];
+    s.subscribe((frame) => frames.push(frame));
+    expect(sessionStateSnapshots(frames).at(-1)?.title).toBe("会话标题");
+  });
+
   it("broadcasts busy=true on agent_start and busy=false on agent_end", () => {
     const ch = new MockChannel();
     const s = newSession(ch, true);
