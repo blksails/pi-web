@@ -64,3 +64,37 @@ chrome 占了 29px 布局却不渲染任何内容。可查方向按代价排序�
    `[38;2;138;190;183m Sandbox: 10 domains, 3 write paths[39m`。
 2. 打包版首启会重新解包一份运行时（`0.3.2-9aab56ab6924`），与已安装版本
    （`0.3.2-b4b585c337e8`）并存，会话状态不共享。
+
+---
+
+## 追加：根因范围已用开关判别锁定（2026-08-05）
+
+**`PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 时 chrome 完好，默认（开启原生子 WebView）时 chrome 死。**
+
+同一份打包产物、同一个 agent、同一个会话，只切这一个环境变量：
+
+| 原生子 WebView | chrome 表现 |
+|---|---|
+| 开（默认） | 29px 带子全空，点击无反应 |
+| 关（`=0`） | 「搜图 ×」「素材 ×」「画布 ×」三个标签 + 收起/更多/新开/刷新/切换器按钮**全部正常渲染** |
+
+截图证据：关闭态下放大 `[836,92]-[1058,112]` 可见完整 tab 栏。
+
+### 已排除的两个候选
+
+1. **几何算错** —— 排除。日志实测槽为 `(2957, 29, 479×1386)`，chrome 的 29px 被正确让出。
+2. **预热的 overlay 子 WebView 盖住** —— 排除。`tauri-runtime.ts:763-778` 显示 overlay 壳建在
+   `x=screenX-200, y=screenY-200`、320×240、`visible:false`，在屏幕外且隐藏。
+
+### 下一步该取的证据
+
+`apply_layout` 时把**所有**子 WebView 的 label、bounds、visible 逐条 dump 出来——
+现有的 `pane_layout_debug_state` 只给内容槽，给不出「谁实际盖在那 29px 上」。
+候选：内容 pane 的实际句柄 bounds 与 Rust 下发值不一致；或某个 `pane-warm-N` 壳
+未被隐藏/未被布局管辖（`apply_layout` 的循环对 `!initialized && !keep_alive` 会 `continue`，
+这类句柄的 bounds 从创建后就没人再动过）。
+
+### 给用户的即时规避
+
+启动时设 `PI_WEB_NATIVE_CHILD_WEBVIEWS=0`，pane 切换即可恢复。代价是回退到旧的
+浮层载体（非原生子 WebView），性能与视觉略差，但功能完整。
