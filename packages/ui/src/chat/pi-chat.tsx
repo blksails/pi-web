@@ -793,6 +793,9 @@ export function PiChat({
   const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
   const panelResizeIdleRef = React.useRef<IdleFrameTask | undefined>(undefined);
   const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  const panelResizeStartXRef = React.useRef<number | undefined>(undefined);
+  const panelResizeStartWidthRef = React.useRef<number | undefined>(undefined);
+  const panelResizeMovedRef = React.useRef(false);
   const [panelDragging, setPanelDragging] = React.useState(false);
   const [panelConversationWidth, setPanelConversationWidth] = React.useState<number>();
   React.useEffect(
@@ -817,6 +820,8 @@ export function PiChat({
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
+      if (Math.abs(e.clientX - (panelResizeStartXRef.current ?? e.clientX)) < 2) return;
+      panelResizeMovedRef.current = true;
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
       const availableMax = rect.width * maxPanelWidthRatio;
@@ -848,6 +853,8 @@ export function PiChat({
         panelResizeIdleRef.current = undefined;
       }
       panelDraggingRef.current = true;
+      panelResizeStartXRef.current = e.clientX;
+      panelResizeMovedRef.current = false;
       const measuredWidth = panelAsideRef.current?.getBoundingClientRect().width;
       const currentWidth =
         measuredWidth !== undefined && measuredWidth > 0
@@ -860,7 +867,7 @@ export function PiChat({
       setPanelConversationWidth(
         panelConversationColumnRef.current?.getBoundingClientRect().width,
       );
-      if (currentWidth !== undefined) applyAsideWidthPreview(currentWidth);
+      panelResizeStartWidthRef.current = currentWidth;
       setPanelDragging(true);
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -868,7 +875,7 @@ export function PiChat({
         // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
       }
     },
-    [applyAsideWidthPreview, panelWidth],
+    [panelWidth],
   );
   const onPanelResizeUp = React.useCallback(
     (e: React.PointerEvent) => {
@@ -879,6 +886,25 @@ export function PiChat({
       }
       const width = panelPendingWidthRef.current;
       panelPendingWidthRef.current = undefined;
+      const startWidth = panelResizeStartWidthRef.current;
+      panelResizeStartWidthRef.current = undefined;
+      panelResizeStartXRef.current = undefined;
+      const moved = panelResizeMovedRef.current;
+      panelResizeMovedRef.current = false;
+      const shouldCommit =
+        moved &&
+        width !== undefined &&
+        (startWidth === undefined || Math.abs(width - startWidth) >= 1);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // 同上。
+      }
+      if (!shouldCommit) {
+        setPanelDragging(false);
+        setPanelConversationWidth(undefined);
+        return;
+      }
       if (width !== undefined) applyAsideWidthPreview(width);
       // 松手后 idle 帧才提交受控宽并解冻对话列，避免拖中 chat 重排。
       panelResizeIdleRef.current = scheduleIdleFrame(() => {
@@ -888,11 +914,6 @@ export function PiChat({
         setPanelConversationWidth(undefined);
         window.dispatchEvent(new Event("pi-panes-content-well-sync"));
       });
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // 同上。
-      }
     },
     [applyAsideWidthPreview, onPanelWidthChange],
   );
@@ -2277,10 +2298,10 @@ export function PiChat({
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
             "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
-            // 左边线由绝对定位视觉层绘制，不进入侧栏宽度计算。
+            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明）。
             showPanelRight
-              ? "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-px before:bg-[hsl(var(--border))] before:content-['']"
-              : "overflow-hidden",
+              ? "border-l border-[hsl(var(--border))]"
+              : "overflow-hidden border-0",
             panelRatioActive || keepPanesHostAlive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined
@@ -2303,7 +2324,7 @@ export function PiChat({
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 命中层不参与布局；视觉线独立为 1px，避免拖拽/点击改变侧栏宽度。 */}
+          {/* 命中条叠在 border 上；视觉线宽度保持原样，点击不提交宽度。 */}
           {resizablePanel && showPanelRight ? (
             <div
               data-pi-panel-resizer
@@ -2311,24 +2332,16 @@ export function PiChat({
               role="separator"
               aria-orientation="vertical"
               className={cn(
-                "group absolute inset-y-0 left-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none bg-transparent lg:block",
+                "absolute inset-y-0 left-0 z-10 hidden w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
+                panelDragging
+                  ? "bg-[hsl(var(--border))]"
+                  : "bg-transparent hover:bg-[hsl(var(--border))]",
               )}
               onPointerDown={onPanelResizeDown}
               onPointerMove={onPanelResizeMove}
               onPointerUp={onPanelResizeUp}
               onPointerCancel={onPanelResizeUp}
-            >
-              <span
-                aria-hidden="true"
-                data-pi-panel-resize-visual
-                className={cn(
-                  "pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2",
-                  panelDragging
-                    ? "bg-[hsl(var(--border))]"
-                    : "bg-transparent group-hover:bg-[hsl(var(--border))]",
-                )}
-              />
-            </div>
+            />
           ) : null}
           {/*
             侧栏收起(showPanelRight=false)时仍挂载 PanesHost，仅 CSS 隐藏：
