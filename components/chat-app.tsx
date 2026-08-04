@@ -67,7 +67,7 @@ function PanelToggleIcon(): React.JSX.Element {
   );
 }
 
-/** 右侧业务 pane 开关；与左侧会话栏图标镜像，仍由宿主中立控制。 */
+/** 右侧 Pane 完全收起时的展开图标。 */
 function PanelRightIcon(): React.JSX.Element {
   return (
     <svg
@@ -732,12 +732,6 @@ function SessionView({
       : configuredPanelRatio === undefined || configuredPanelRatio === "centered"
         ? "2:1"
         : configuredPanelRatio;
-  const togglePanelRight = React.useCallback(() => {
-    setSidePanelOpen((open) => {
-      persistPanel({ open: !open });
-      return !open;
-    });
-  }, [persistPanel]);
   const closePanelRight = React.useCallback(() => {
     setSidePanelOpen(false);
     persistPanel({ open: false });
@@ -754,21 +748,6 @@ function SessionView({
     window.addEventListener("pi-panes-panel-open", onOpen);
     return () => window.removeEventListener("pi-panes-panel-open", onOpen);
   }, [openPanelRight]);
-  // 收起态：入口在应用右上。展开态：按钮退到 pane 分隔线左侧，免遮 pane tabs。
-  const sidePanelToggleStyle = React.useMemo<React.CSSProperties | undefined>(() => {
-    if (!sidePanelOpen) return undefined;
-    const width =
-      panelWidth ??
-      (effectivePanelRatio === "3:7"
-        ? "70%"
-        : effectivePanelRatio === "2:1"
-          ? "33.333%"
-          : "0px");
-    return {
-      right: `calc(${typeof width === "number" ? `${width}px` : width} + 1rem)`,
-    };
-  }, [effectivePanelRatio, sidePanelOpen, panelWidth]);
-
   // 内置斜杠命令(builtin-plugin-command):前置合流到命令面板;选中走 harness 分派(不进 LLM)。
   const builtinCommands = React.useMemo(
     () => BUILTIN_COMMANDS.map(toRpcSlashCommand),
@@ -1207,16 +1186,15 @@ function SessionView({
             <PanelToggleIcon />
           </button>
         ) : null}
-        {hasSidePanel ? (
+        {hasSidePanel && !sidePanelOpen ? (
           <button
             type="button"
             data-panel-right-toggle
-            onClick={togglePanelRight}
-            aria-expanded={sidePanelOpen}
-            aria-label={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            title={t(sidePanelOpen ? "chatApp.hidePaneSidebar" : "chatApp.showPaneSidebar")}
-            className={`absolute top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]${sidePanelOpen ? "" : " right-2"}`}
-            style={sidePanelToggleStyle}
+            onClick={openPanelRight}
+            aria-expanded={false}
+            aria-label={t("chatApp.showPaneSidebar")}
+            title={t("chatApp.showPaneSidebar")}
+            className="absolute right-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
           >
             <PanelRightIcon />
           </button>
