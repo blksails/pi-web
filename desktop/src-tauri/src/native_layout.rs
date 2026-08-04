@@ -67,7 +67,8 @@ impl Default for LayoutMetrics {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PaneBounds {
     pub x: f64,
     pub y: f64,
@@ -128,6 +129,18 @@ impl NativeWebviewLayoutManager {
             || !metrics.min_width.is_finite()
             || metrics.min_width < 1.0
         {
+            // ★ 留痕（spec desktop-pane-chrome-occlusion，Req 3.3）：原实现只返回 Err，
+            //   而前端的上报调用没有 catch —— 拒绝作为未处理的异步拒绝逃逸，两侧都看不见。
+            //   结果是布局侧继续用旧值/默认值，pane 停在盖住 chrome 的矩形上，且无处可查。
+            eprintln!(
+                "[panes] 拒绝几何上报 PANE_LAYOUT_INVALID_METRICS: top_height={} min_width={} \
+                 left_width={:?} pane_width={:?} bottom_height={}",
+                metrics.top_height,
+                metrics.min_width,
+                metrics.left_width,
+                metrics.pane_width,
+                metrics.bottom_height,
+            );
             return Err("PANE_LAYOUT_INVALID_METRICS".to_string());
         }
         let mut state = self
@@ -149,6 +162,40 @@ impl NativeWebviewLayoutManager {
         state.last_slot_bounds = None;
         state.last_host_bounds = None;
         Ok(())
+    }
+
+    /// 只读快照，供 `pane_layout_debug_state` 命令使用（Req 3.4）。
+    pub fn debug_state(
+        &self,
+        window_width: f64,
+        window_height: f64,
+    ) -> Result<LayoutDebugState, String> {
+        let state = self
+            .0
+            .lock()
+            .map_err(|_| "PANE_LAYOUT_STATE_POISONED".to_string())?;
+        let (_host, slot) = Self::calculate_bounds(
+            state.mode,
+            state.metrics,
+            window_width,
+            window_height,
+        );
+        Ok(LayoutDebugState {
+            mode: match state.mode {
+                LayoutMode::Workspace => WORKSPACE_MODE,
+                LayoutMode::HostFullscreen => HOST_FULLSCREEN_MODE,
+            },
+            metrics: state.metrics,
+            content_slot: match state.mode {
+                LayoutMode::Workspace => Some(slot),
+                // 全屏态没有内容槽，返回一个零矩形会被误读成「算出来是 0」。
+                LayoutMode::HostFullscreen => None,
+            },
+            window_width,
+            window_height,
+            native_enabled: native_child_webviews_enabled(),
+            pane_count: state.panes.len(),
+        })
     }
 
     /// 公开算槽（create 首建位置用，避免 (0,0) 临时坐标）。
@@ -507,6 +554,41 @@ pub fn pane_layout_is_native(window: Window) -> Result<bool, String> {
         return Err("PANE_RELAY_NOT_HOST".to_string());
     }
     Ok(native_child_webviews_enabled())
+}
+
+/// 当前实际生效的槽位几何（spec desktop-pane-chrome-occlusion，Req 3.4）。
+///
+/// ★ 存在的理由：排查本缺陷时，「布局侧此刻的 top_height 到底是多少」是唯一能直接分辨
+///   「几何没送达」与「送达了但算错了」的证据，而此前**无法从外部取得**——只能读代码反推
+///   默认值是 0.0，再猜它是不是没被覆盖。猜测正是这次排查耗时的来源。
+///
+/// 只读，不改任何状态；无凭据、无路径，可安全暴露给宿主 realm。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutDebugState {
+    pub mode: &'static str,
+    pub metrics: LayoutMetrics,
+    /// 按当前几何与窗口尺寸算出的内容槽；未知几何下为 `None`。
+    pub content_slot: Option<PaneBounds>,
+    pub window_width: f64,
+    pub window_height: f64,
+    pub native_enabled: bool,
+    pub pane_count: usize,
+}
+
+#[tauri::command]
+pub fn pane_layout_debug_state(
+    window: Window,
+    manager: State<'_, NativeWebviewLayoutManager>,
+) -> Result<LayoutDebugState, String> {
+    if window.label() != MAIN_WINDOW_LABEL {
+        return Err("PANE_RELAY_NOT_HOST".to_string());
+    }
+    let size = window.inner_size().map_err(|e| e.to_string())?;
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let width = f64::from(size.width) / scale.max(0.01);
+    let height = f64::from(size.height) / scale.max(0.01);
+    manager.debug_state(width, height)
 }
 
 #[cfg(test)]

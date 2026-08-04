@@ -963,6 +963,7 @@ mod tests {
             "pane_layout_set_mode",
             "pane_layout_set_metrics",
             "pane_layout_is_native",
+            "pane_layout_debug_state",
         ] {
             assert!(
                 toml_src.contains(cmd),

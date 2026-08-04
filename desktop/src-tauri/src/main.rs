@@ -370,6 +370,7 @@ fn main() {
             native_layout::pane_layout_set_mode,
             native_layout::pane_layout_set_metrics,
             native_layout::pane_layout_is_native,
+            native_layout::pane_layout_debug_state,
             retry,
             quit
         ])

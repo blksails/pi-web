@@ -1,3 +1,4 @@
+import { createLogger } from "@blksails/pi-web-logger";
 import type { PaneDocument } from "../contract.js";
 import type { PaneViewAdapter } from "../host-ports.js";
 import {
@@ -18,6 +19,17 @@ const HOST_OVERLAY_MARKER = Symbol.for("pi-web.pane.tauri-host-overlay");
 const OVERLAY_INSTANCE_ID = "panes-overlay-menu";
 const OVERLAY_LABEL = "pane-overlay-menu";
 const TAURI_PANE_HOST_LAYOUT_EVENT = "pane-host-layout";
+
+/**
+ * 几何链路诊断（spec desktop-pane-chrome-occlusion，Req 3.1/3.2/3.5）。
+ *
+ * ★ 为什么这条链路非留痕不可：量槽、上报、门查询三处原本都是 fail-soft 且**一处痕迹都不留**。
+ *   叠加起来的效果是「chrome 被盖住，但没有任何一层报错」——本缺陷只能靠肉眼在真机上撞见，
+ *   调查成本几乎全部花在「分不清断在哪一环」上。诊断的价值不在于有日志，而在于**能判别候选**。
+ *
+ * 沿用仓库既有约定：默认关闭、不重新编译即可开启（`configureLogger`）。
+ */
+const log = createLogger({ namespace: "panes:geometry" });
 
 interface TauriEvent<T = unknown> {
   readonly payload: T;
@@ -68,6 +80,52 @@ export interface TauriPaneLayoutMetrics {
   readonly minWidth?: number;
   readonly scaleFactor?: number;
 }
+
+/** 量槽失败的原因。★ 必须可分辨——「没量到」与「量到 0」是两回事。 */
+export type MeasureRejection =
+  /** 元素已从文档树摘除。 */
+  | "detached"
+  /** 量到了，但宽或高小于可用阈值（侧栏收起 / 首帧未布局）。 */
+  | "too-small";
+
+/**
+ * 量槽结果。
+ *
+ * ★ 之所以不能继续返回裸 `undefined`：调用方无从区分「元素没了」「还没布局」「尺寸真的是 0」，
+ *   于是只能一律当作「跳过」，而跳过的后果是几何永远到不了布局侧、pane 停在默认矩形上。
+ */
+export type MeasureOutcome =
+  | { readonly kind: "measured"; readonly metrics: TauriPaneLayoutMetrics }
+  | {
+      readonly kind: "unavailable";
+      readonly reason: MeasureRejection;
+      /** 被丢弃时的实测矩形；`detached` 时不可得，为 `undefined`。 */
+      readonly rect: { readonly width: number; readonly height: number } | undefined;
+    };
+
+/**
+ * 上报结果。调用方（宿主几何门控）据此决定是否放行 `show`。
+ *
+ * `skipped-unchanged` 与 `delivered` 同样表示「布局侧处于已知态」——几何没变说明先前已送达过。
+ */
+export type PublishOutcome =
+  | { readonly kind: "delivered" }
+  | { readonly kind: "skipped-unchanged" }
+  | { readonly kind: "not-measured"; readonly reason: MeasureRejection }
+  | { readonly kind: "failed"; readonly reason: string };
+
+/**
+ * native 几何门的探测结果。
+ *
+ * ★ 现状把「命令报错」与「本来就不是 native」压成同一个 `false`，两种完全不同的状况因此
+ *   无法分辨。而它们的后果天差地别：前者是故障（几何上报会整条不装），后者是正常的网页/回退形态。
+ */
+export type NativeLayoutProbe =
+  | { readonly kind: "native" }
+  | { readonly kind: "not-native" }
+  /** 运行时不存在（非 Tauri 宿主），连问都问不到。 */
+  | { readonly kind: "no-runtime" }
+  | { readonly kind: "query-failed"; readonly reason: string };
 
 interface TauriInternals {
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
@@ -251,19 +309,54 @@ export function destroyTauriContentPanes(target: Window = window): Promise<void>
 export function setTauriPaneLayoutMetrics(
   metrics: TauriPaneLayoutMetrics,
   target: Window = window,
-): Promise<void> {
+): Promise<PublishOutcome> {
   const runtime = tauriRuntime(target);
-  if (runtime === undefined || !isTauriPaneRuntime(target)) return Promise.resolve();
-  return runtime.core.invoke("pane_layout_set_metrics", { metrics }).then(() => undefined);
+  if (runtime === undefined || !isTauriPaneRuntime(target)) {
+    // 非 Tauri 宿主：本函数无事可做，也不是故障。不留痕，避免网页形态刷屏。
+    return Promise.resolve({ kind: "skipped-unchanged" });
+  }
+  return runtime.core.invoke("pane_layout_set_metrics", { metrics })
+    .then((): PublishOutcome => ({ kind: "delivered" }))
+    .catch((reason: unknown): PublishOutcome => {
+      // ★ 原实现没有 catch：拒绝会作为未处理的异步拒绝逃逸出去，既不报错也不影响流程，
+      //   于是「几何没送到」在任何地方都留不下痕迹。布局侧的校验拒绝正是从这里消失的。
+      const message = reason instanceof Error ? reason.message : String(reason);
+      log.warn("几何上报未送达", { metrics, reason: message });
+      return { kind: "failed", reason: message };
+    });
 }
 
-/** 是否启用内部 child WebView 布局（host 铺满 + content-well 盖 child）。 */
-export function isTauriNativePaneLayout(target: Window = window): Promise<boolean> {
+/**
+ * 探测 native 几何门，四态可分辨（Req 3.2）。
+ *
+ * ★ 与 {@link isTauriNativePaneLayout} 的区别正是本 spec 的重点：后者把 `query-failed`
+ *   压成 `false`，与「本来就不是 native」不可区分。而这两者的后果完全不同——前者意味着
+ *   几何上报链路整条不会安装（child WebView 却照建），也就是 chrome 被永久盖住。
+ */
+export function probeTauriNativePaneLayout(
+  target: Window = window,
+): Promise<NativeLayoutProbe> {
   const runtime = tauriRuntime(target);
-  if (runtime === undefined || !isTauriPaneRuntime(target)) return Promise.resolve(false);
+  if (runtime === undefined || !isTauriPaneRuntime(target)) {
+    return Promise.resolve({ kind: "no-runtime" });
+  }
   return runtime.core.invoke("pane_layout_is_native")
-    .then((value) => value === true)
-    .catch(() => false);
+    .then((value): NativeLayoutProbe =>
+      value === true ? { kind: "native" } : { kind: "not-native" })
+    .catch((reason: unknown): NativeLayoutProbe => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      log.warn("native 几何门查询失败，几何上报将不会安装", { reason: message });
+      return { kind: "query-failed", reason: message };
+    });
+}
+
+/**
+ * 是否启用内部 child WebView 布局（host 铺满 + content-well 盖 child）。
+ *
+ * 保留布尔形态供既有调用点使用；需要分辨故障与形态时用 {@link probeTauriNativePaneLayout}。
+ */
+export function isTauriNativePaneLayout(target: Window = window): Promise<boolean> {
+  return probeTauriNativePaneLayout(target).then((probe) => probe.kind === "native");
 }
 
 /**
@@ -289,21 +382,36 @@ function cancelMetricsRaf(): void {
   metricsRaf = 0;
 }
 
-function measureContentWell(
+export function measureContentWell(
   well: Element,
   target: Window,
   minWidth: number,
-): TauriPaneLayoutMetrics | undefined {
-  if (!well.isConnected) return undefined;
+): MeasureOutcome {
+  if (!well.isConnected) {
+    log.debug("量槽跳过：元素已摘除", { minWidth });
+    return { kind: "unavailable", reason: "detached", rect: undefined };
+  }
   const rect = well.getBoundingClientRect();
   // 槽宽高过小（侧栏收起/未布局）勿上报，避免把 Rust 槽压成 1×1 白屏。
-  if (!(rect.width >= 48) || !(rect.height >= 48)) return undefined;
+  if (!(rect.width >= 48) || !(rect.height >= 48)) {
+    // ★ 留痕而非静默丢弃：这一条是 C2 候选（首帧未布局）的唯一观测点。原实现返回裸
+    //   `undefined`，调用方只能当作「跳过」继续往下走 show，pane 就停在布局侧的默认矩形上。
+    log.debug("量槽跳过：槽尺寸不足", { width: rect.width, height: rect.height });
+    return {
+      kind: "unavailable",
+      reason: "too-small",
+      rect: { width: rect.width, height: rect.height },
+    };
+  }
   return {
-    leftWidth: Math.max(0, rect.left),
-    topHeight: Math.max(0, rect.top),
-    paneWidth: Math.max(48, rect.width),
-    bottomHeight: Math.max(0, target.innerHeight - rect.bottom),
-    minWidth,
+    kind: "measured",
+    metrics: {
+      leftWidth: Math.max(0, rect.left),
+      topHeight: Math.max(0, rect.top),
+      paneWidth: Math.max(48, rect.width),
+      bottomHeight: Math.max(0, target.innerHeight - rect.bottom),
+      minWidth,
+    },
   };
 }
 
@@ -317,20 +425,22 @@ function metricsKey(m: TauriPaneLayoutMetrics): string {
   ].join("|");
 }
 
-function flushContentWellMetrics(): Promise<void> {
+function flushContentWellMetrics(): Promise<PublishOutcome> {
   metricsRaf = 0;
   const target = metricsTarget ?? window;
   const well = metricsWell;
   const minWidth = metricsMinWidth;
   metricsWell = undefined;
   metricsTarget = undefined;
-  if (well === undefined) return Promise.resolve();
-  const metrics = measureContentWell(well, target, minWidth);
-  if (metrics === undefined) return Promise.resolve();
-  const key = metricsKey(metrics);
-  if (key === lastMetricsKey) return Promise.resolve();
+  if (well === undefined) return Promise.resolve({ kind: "skipped-unchanged" });
+  const outcome = measureContentWell(well, target, minWidth);
+  if (outcome.kind === "unavailable") {
+    return Promise.resolve({ kind: "not-measured", reason: outcome.reason });
+  }
+  const key = metricsKey(outcome.metrics);
+  if (key === lastMetricsKey) return Promise.resolve({ kind: "skipped-unchanged" });
   lastMetricsKey = key;
-  return setTauriPaneLayoutMetrics(metrics, target);
+  return setTauriPaneLayoutMetrics(outcome.metrics, target);
 }
 
 export function publishTauriContentWellMetrics(
@@ -370,44 +480,53 @@ export async function ensureTauriContentWellMetrics(
     /** 等布局稳定再下发；默认 false（跟手）。首 show 可 true。 */
     readonly settle?: boolean;
   } = {},
-): Promise<void> {
+): Promise<PublishOutcome> {
   const target = options.target ?? window;
   const minWidth = options.minWidth ?? 240;
   cancelMetricsRaf();
   metricsWell = undefined;
   metricsTarget = undefined;
 
-  const publishOnce = async (force: boolean): Promise<string | undefined> => {
-    const metrics = measureContentWell(well, target, minWidth);
-    if (metrics === undefined) return undefined;
-    const key = metricsKey(metrics);
-    if (!force && key === lastMetricsKey) return key;
+  // ★ 返回值不再是 void：宿主几何门控要据此决定「是否放行 show」（Req 4.2）。
+  //   原实现无论量没量到都静默返回，调用方无从判断布局侧是否已处于已知态。
+  const publishOnce = async (force: boolean): Promise<PublishOutcome> => {
+    const outcome = measureContentWell(well, target, minWidth);
+    if (outcome.kind === "unavailable") {
+      return { kind: "not-measured", reason: outcome.reason };
+    }
+    const key = metricsKey(outcome.metrics);
+    if (!force && key === lastMetricsKey) return { kind: "skipped-unchanged" };
     lastMetricsKey = key;
-    await setTauriPaneLayoutMetrics(metrics, target);
-    return key;
+    return await setTauriPaneLayoutMetrics(outcome.metrics, target);
   };
 
   if (options.settle !== true) {
-    await publishOnce(options.force === true);
-    return;
+    return await publishOnce(options.force === true);
   }
 
   // 稳定采样：中间帧只量不算 IPC，避免「多层插帧」感。
   let prev = "";
+  let lastRejection: MeasureRejection | undefined;
   for (let i = 0; i < 4; i += 1) {
-    const metrics = measureContentWell(well, target, minWidth);
-    if (metrics !== undefined) {
-      const key = metricsKey(metrics);
+    const outcome = measureContentWell(well, target, minWidth);
+    if (outcome.kind === "measured") {
+      const key = metricsKey(outcome.metrics);
       if (key === prev && i > 0) {
         lastMetricsKey = key;
-        await setTauriPaneLayoutMetrics(metrics, target);
-        return;
+        return await setTauriPaneLayoutMetrics(outcome.metrics, target);
       }
       prev = key;
+    } else {
+      lastRejection = outcome.reason;
     }
     await waitAnimationFrame(target);
   }
-  await publishOnce(true);
+  const final = await publishOnce(true);
+  // 四帧里一次都没量到：把最后一次的拒绝原因带出去，别报成「跳过」。
+  if (final.kind === "not-measured" && lastRejection !== undefined) {
+    return { kind: "not-measured", reason: lastRejection };
+  }
+  return final;
 }
 
 /** 测试/强制立即刷出待发 metrics（跳过 rAF）。 */
