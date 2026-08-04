@@ -22,6 +22,10 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 // ★ 未列 `examples/aigc-agent`：该目录不在本仓（`pnpm-workspace.yaml` 里是悬空条目），
 //   静态 import 它会让任何干净检出构建失败（CI 实证 `Cannot find module`）。待该 agent
 //   真正入库或改由运行时解析车道装载后再接。
+import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/dist/web-extension.same-origin.mjs";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.same-origin.mjs";
