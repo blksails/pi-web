@@ -2277,10 +2277,10 @@ export function PiChat({
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
             "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
-            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明），勿 -translate-x-full 甩出造成双线。
+            // 左边线由绝对定位视觉层绘制，不进入侧栏宽度计算。
             showPanelRight
-              ? "border-l border-[hsl(var(--border))]"
-              : "overflow-hidden border-0",
+              ? "before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-px before:bg-[hsl(var(--border))] before:content-['']"
+              : "overflow-hidden",
             panelRatioActive || keepPanesHostAlive ? "" : "w-96",
           )}
           {...(asideWidth !== undefined
@@ -2303,7 +2303,7 @@ export function PiChat({
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 命中条叠在 border 上；默认透明只留 border，hover/drag 才加粗同一缘。 */}
+          {/* 命中层不参与布局；视觉线独立为 1px，避免拖拽/点击改变侧栏宽度。 */}
           {resizablePanel && showPanelRight ? (
             <div
               data-pi-panel-resizer
@@ -2311,16 +2311,24 @@ export function PiChat({
               role="separator"
               aria-orientation="vertical"
               className={cn(
-                "absolute inset-y-0 left-0 z-10 hidden w-1.5 -translate-x-1/2 cursor-col-resize touch-none lg:block",
-                panelDragging
-                  ? "bg-[hsl(var(--border))]"
-                  : "bg-transparent hover:bg-[hsl(var(--border))]",
+                "group absolute inset-y-0 left-0 z-20 hidden w-3 -translate-x-1/2 cursor-col-resize touch-none bg-transparent lg:block",
               )}
               onPointerDown={onPanelResizeDown}
               onPointerMove={onPanelResizeMove}
               onPointerUp={onPanelResizeUp}
               onPointerCancel={onPanelResizeUp}
-            />
+            >
+              <span
+                aria-hidden="true"
+                data-pi-panel-resize-visual
+                className={cn(
+                  "pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2",
+                  panelDragging
+                    ? "bg-[hsl(var(--border))]"
+                    : "bg-transparent group-hover:bg-[hsl(var(--border))]",
+                )}
+              />
+            </div>
           ) : null}
           {/*
             侧栏收起(showPanelRight=false)时仍挂载 PanesHost，仅 CSS 隐藏：

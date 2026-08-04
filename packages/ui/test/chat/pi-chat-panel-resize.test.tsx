@@ -81,8 +81,9 @@ describe("panelRight 连续宽度(全受控)", () => {
     render(<PiChat session={mockSession()} extension={panelExt} panelWidth={480} />);
     expect(aside().style.width).toBe("480px");
     expect(aside().style.maxWidth).toBe("70%");
-    expect(aside().className).toContain("border-l");
+    expect(aside().className).not.toContain("border-l");
     expect(document.querySelector("[data-pi-panel-resizer]")).not.toBeNull();
+    expect(document.querySelector("[data-pi-panel-resize-visual]")?.className).toContain("w-px");
   });
 
   it("传 panelWidth(string) → 原样入 style.width", () => {
@@ -142,6 +143,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(onChange).not.toHaveBeenCalled();
     act(() => idleFrame?.());
     expect(onChange).toHaveBeenCalledWith(400);
+    expect(aside().style.width).toBe("400px");
     expect(conversation.style.width).toBe("");
     expect(aside().style.position).toBe("");
   });
