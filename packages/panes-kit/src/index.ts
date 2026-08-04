@@ -60,7 +60,8 @@ export {
   estimatePayloadBytes,
   authorizePaneRequest,
 } from "./authorization.js";
-export { createPaneWorkspace, reducePaneWorkspace } from "./instances.js";
+export { createPaneWorkspace, reconcilePaneWorkspace, reducePaneWorkspace } from "./instances.js";
+export type { ReconcilePaneWorkspaceInput } from "./instances.js";
 export type { PaneWorkspaceState, PaneWorkspaceAction } from "./instances.js";
 export { HOST_PANE_ID_PREFIX, mergePaneSources } from "./merge.js";
 export type {

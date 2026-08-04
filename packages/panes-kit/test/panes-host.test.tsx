@@ -769,3 +769,109 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     });
   });
 });
+
+/**
+ * workspace 与 definition 的同步(spec panes-workspace-definition-sync 任务 4.1)。
+ *
+ * 缺陷本体是**竞态**:清单异步补齐时 workspace 已按首帧的不完整清单定型,且被写进持久化快照
+ * 自我固化。排查期间曾出现「新建会话偶然全开、reload 又打回」——所以这里的时序一律用
+ * `rerender` 显式构造,不依赖任何真实网络时机或定时器,否则测试本身也会时绿时红。
+ */
+const HOST_PANE_ID = "host:session-info";
+
+function syncPane(id: string, title: string): Parameters<typeof definePanes>[0]["panes"][number] {
+  return {
+    id,
+    title,
+    document: { kind: "inline", srcDoc: `<!doctype html><p>${id}</p>` },
+    capabilities: {},
+  };
+}
+
+/** 首帧形态:清单尚未补齐,只有宿主内置 pane。 */
+const hostOnlyDefinition = definePanes({
+  id: "host-merged",
+  maxOpenPanes: 8,
+  panes: [syncPane(HOST_PANE_ID, "会话信息")],
+});
+
+/** 补齐后形态:agent 声明的两个 pane 到位,且声明为初始打开。 */
+const fullDefinition = definePanes({
+  id: "host-merged",
+  maxOpenPanes: 8,
+  initialPaneIds: ["alpha", "beta"],
+  panes: [syncPane(HOST_PANE_ID, "会话信息"), syncPane("alpha", "Alpha"), syncPane("beta", "Beta")],
+});
+
+const openTabNames = (): string[] =>
+  screen.getAllByRole("tab").map((tab) => tab.textContent?.trim() ?? "");
+
+describe("PanesHost workspace ↔ definition 同步", () => {
+  it("清单在首帧之后才补齐时,声明为初始打开的 pane 被补开", () => {
+    const view = render(<PanesHost definition={hostOnlyDefinition} config={{}} />);
+    // 首帧:清单里只有内置 pane,回退到 panes[0]。
+    expect(openTabNames()).toEqual(["会话信息"]);
+
+    // ★ 时序由 rerender 显式构造 —— 这正是真实场景里 webext 异步到达的那一刻。
+    view.rerender(<PanesHost definition={fullDefinition} config={{}} />);
+
+    expect(openTabNames()).toEqual(["会话信息", "Alpha", "Beta"]);
+  });
+
+  it("可确证被污染的旧格式快照被纠正,并写回带 knownPaneIds 的新快照", () => {
+    const persistenceKey = "test:panes:polluted";
+    // 旧格式:没有 knownPaneIds。内容正是缺陷的产物——只剩宿主内置 pane。
+    window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
+      paneIds: [HOST_PANE_ID],
+      activeIndex: 0,
+    }));
+
+    render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
+
+    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+    // 纠正后写回新格式,故下次进入不会再触发纠正(Req 3.2)。
+    const persisted = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`)!);
+    expect(persisted.knownPaneIds).toEqual([HOST_PANE_ID, "alpha", "beta"]);
+  });
+
+  it("与清单相称的快照原样沿用,不因纠正而丢弃用户布局", () => {
+    const persistenceKey = "test:panes:intact";
+    window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
+      paneIds: ["beta", "alpha"],
+      instanceIds: ["beta-kept", "alpha-kept"],
+      knownPaneIds: [HOST_PANE_ID, "alpha", "beta"],
+      activeIndex: 0,
+    }));
+
+    const view = render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
+
+    // 用户自己排的顺序(beta 在前)必须原样保留。
+    expect(openTabNames()).toEqual(["Beta", "Alpha"]);
+    // instanceId 也原样复用 —— 桌面形态下这决定 WebView 是否被重建。
+    expect(view.container.querySelector('[id="pane-view-beta-kept"]')).not.toBeNull();
+  });
+
+  it("用户关掉的 pane 重新进入后保持关闭", () => {
+    const persistenceKey = "test:panes:user-closed";
+    // knownPaneIds 里有 beta 而 paneIds 里没有 ⇒ 只能是用户主动关掉的。
+    window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
+      paneIds: ["alpha"],
+      knownPaneIds: [HOST_PANE_ID, "alpha", "beta"],
+      activeIndex: 0,
+    }));
+
+    render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
+
+    expect(openTabNames()).toEqual(["Alpha"]);
+    expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
+  });
+
+  it("首帧清单即完整时行为与修复前一致", () => {
+    const view = render(<PanesHost definition={fullDefinition} config={{}} />);
+    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+
+    // 同一份 definition 再渲染一次不得产生任何变化(reconcile 应返回同一引用而跳过 setState)。
+    view.rerender(<PanesHost definition={fullDefinition} config={{}} />);
+    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+  });
+});

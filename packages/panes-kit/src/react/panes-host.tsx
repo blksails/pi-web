@@ -31,8 +31,10 @@ import { authorizePaneRequest, DEFAULT_PANE_RESPONSE_BYTES } from "../authorizat
 import { bindPaneState } from "../state-binding.js";
 import { createAgentRouteClient } from "../agent-routes.js";
 import { asPaneHostError, PaneHostError } from "../errors.js";
+import { HOST_PANE_ID_PREFIX } from "../merge.js";
 import {
   createPaneWorkspace,
+  reconcilePaneWorkspace,
   reducePaneWorkspace,
   type PaneWorkspaceAction,
   type PaneWorkspaceState,
@@ -231,6 +233,22 @@ interface PersistedPaneWorkspace {
   /** Native child WebView label seed; keeps one WebView per pane across route remounts. */
   readonly instanceIds?: readonly string[];
   readonly activeIndex?: number;
+  /**
+   * 写入本快照时 definition 中的**全部** pane id。
+   *
+   * `knownPaneIds − paneIds` 即「用户见过却选择不开」的集合 —— 快照本身只记「开着哪些」,
+   * 分不出「用户主动关掉的」与「因清单尚未补齐而没来得及打开的」,这个字段就是那条分界线。
+   *
+   * 可选:旧快照没有它。旧代码读到带该字段的新快照会忽略它(行为不变);新代码读到旧快照
+   * 则走 {@link restoredPaneWorkspace} 里的降级判定。
+   */
+  readonly knownPaneIds?: readonly string[];
+}
+
+/** {@link restoredPaneWorkspace} 的返回:workspace 之外还要把快照里的已知全集带出给 reconcile 用。 */
+interface RestoredWorkspace {
+  readonly workspace: PaneWorkspaceState;
+  readonly knownPaneIds: readonly string[] | undefined;
 }
 
 const PANE_ICONS: Readonly<Record<string, LucideIcon>> = {
@@ -250,17 +268,56 @@ function PaneIcon({ name }: { readonly name?: string }): React.JSX.Element | nul
   return Icon === undefined ? null : <Icon size={14} strokeWidth={1.8} aria-hidden />;
 }
 
+/**
+ * 判定一份**旧格式**快照(无 `knownPaneIds`)是否可确证为缺陷产物。
+ *
+ * 缺陷会留下唯一形态的快照:清单尚未补齐时 workspace 只开出宿主内置 pane 并就此写盘。
+ * 判据刻意收窄到该形态 —— 旧快照分不出用户意图,宁可少纠正,不可乱纠正(Req 3.3)。
+ *
+ * 不必再单独检查「agent 初始 pane 是否已在快照里」:条件二已保证快照里全是内置前缀,
+ * 而 agent 的 pane 用该前缀会被 `mergePaneSources` 直接拒绝,两者在结构上不可能相交。
+ */
+function isProvablyPollutedSnapshot(
+  definition: PanesDefinition,
+  savedPaneIds: readonly unknown[],
+): boolean {
+  const saved = savedPaneIds.filter((id): id is string => typeof id === "string");
+  // 一:快照非空(空快照走既有的 missing paneIds 分支,不归这里管)。
+  if (saved.length === 0) return false;
+  // 二:快照里**没有任何** agent pane —— 正常使用中用户不会把 agent pane 全关掉却恰好只留内置的。
+  if (!saved.every((paneId) => paneId.startsWith(HOST_PANE_ID_PREFIX))) return false;
+  // 三:当前清单确实声明了 agent 侧的初始 pane(否则无所谓「被污染」,例如纯内置 pane 的会话)。
+  const agentInitial = (definition.initialPaneIds ?? []).filter(
+    (paneId) => !paneId.startsWith(HOST_PANE_ID_PREFIX),
+  );
+  return agentInitial.length > 0;
+}
+
 function restoredPaneWorkspace(
   definition: PanesDefinition,
   idFactory: (paneId: string) => string,
   persistenceKey?: string,
-): PaneWorkspaceState {
+): RestoredWorkspace {
   if (persistenceKey === undefined || typeof window === "undefined") {
-    return createPaneWorkspace(definition, (paneId) => idFactory(paneId));
+    return {
+      workspace: createPaneWorkspace(definition, (paneId) => idFactory(paneId)),
+      knownPaneIds: undefined,
+    };
   }
   try {
     const saved = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`) ?? "null") as PersistedPaneWorkspace | null;
     if (!Array.isArray(saved?.paneIds)) throw new Error("missing paneIds");
+    const knownPaneIds = Array.isArray(saved.knownPaneIds)
+      ? saved.knownPaneIds.filter((id): id is string => typeof id === "string")
+      : undefined;
+    // 旧格式快照且可确证被污染 → 丢弃它,按当前清单的初始集合重建。随后写出的新格式快照
+    // 会带上 knownPaneIds,故纠正只发生这一次(Req 3.2)。
+    if (knownPaneIds === undefined && isProvablyPollutedSnapshot(definition, saved.paneIds)) {
+      return {
+        workspace: createPaneWorkspace(definition, (paneId) => idFactory(paneId)),
+        knownPaneIds: undefined,
+      };
+    }
     const declared = new Set(definition.panes.map((pane) => pane.id));
     // 直接按持久化顺序构造实例(而非逐个 reduce open):MRU 语义下 open 会前置,
     // 复用 open 会让顺序逐次翻转;构造后仅 activate 活跃实例(其前置为最近使用,稳定)。
@@ -284,11 +341,15 @@ function restoredPaneWorkspace(
     }
     const restored: PaneWorkspaceState = { instances, activeInstanceId: instances[0]?.instanceId };
     const active = saved.activeIndex === undefined ? undefined : instances[saved.activeIndex];
-    return active === undefined
+    const workspace = active === undefined
       ? restored
       : reducePaneWorkspace(definition, restored, { type: "activate", instanceId: active.instanceId });
+    return { workspace, knownPaneIds };
   } catch {
-    return createPaneWorkspace(definition, (paneId) => idFactory(paneId));
+    return {
+      workspace: createPaneWorkspace(definition, (paneId) => idFactory(paneId)),
+      knownPaneIds: undefined,
+    };
   }
 }
 
@@ -372,10 +433,15 @@ export function PanesHost({
 }: PanesHostProps): React.JSX.Element {
   const sequence = React.useRef(0);
   const nextId = React.useCallback((paneId: string) => createInstanceId(paneId, ++sequence.current), [createInstanceId]);
-  const [workspace, setWorkspace] = React.useState(() =>
+  // 恢复只发生一次(mount)。除 workspace 外还要留住快照里的「已知全集」——definition 后续补齐时
+  // 靠它区分「用户主动关掉的」与「因清单尚未到达而没来得及打开的」。
+  const [restored] = React.useState(() =>
     restoredPaneWorkspace(definition, (paneId) => nextId(paneId), config.persistenceKey));
+  const [workspace, setWorkspace] = React.useState<PaneWorkspaceState>(restored.workspace);
   const workspaceRef = React.useRef(workspace);
   workspaceRef.current = workspace;
+  /** 最近一次写盘快照所记录的已知全集;每次持久化后更新,供下一轮补齐判定使用。 */
+  const knownPaneIdsRef = React.useRef<readonly string[] | undefined>(restored.knownPaneIds);
   const [parkedInstanceIds, setParkedInstanceIds] =
     React.useState<ReadonlySet<string>>(() => new Set());
   const parkedRef = React.useRef(parkedInstanceIds);
@@ -480,11 +546,30 @@ export function PanesHost({
   );
   const advanced = config.interactionMode === "advanced";
 
+  // definition 换了要做的两件事,合在同一个 effect 里:
+  //  ① 清掉与旧清单绑定的瞬时状态(parked / 各类错误)——原有职责;
+  //  ② 把清单里新出现、且声明为初始打开的 pane 补进已打开集合——新增职责。
+  // 二者无顺序依赖:① 只碰 parked/error 三个 state,② 只碰 workspace,写入集不相交。
+  //
+  // ★ 为什么必须有 ②:workspace 由 useState 惰性初始化建立,**只在首次 mount 跑一次**。
+  //   经在线解析装载的 webext 是异步到达的,首帧清单里只有宿主内置 pane —— 没有 ② 的话
+  //   workspace 就此定型,agent 声明的 pane 永远打不开(且该结果还会被写进持久化快照)。
   React.useEffect(() => {
     setParkedInstanceIds(new Set());
     setNativeErrors(new Map());
     setHostError(undefined);
-  }, [definition]);
+    // 读 ref 而非 workspace:把 workspace 放进依赖会让本 effect 随每次面板操作重跑。
+    const current = workspaceRef.current;
+    const next = reconcilePaneWorkspace({
+      definition,
+      state: current,
+      knownPaneIds: knownPaneIdsRef.current,
+      idFactory: (paneId) => nextId(paneId),
+    });
+    // 无可补开时 reconcile 返回同一引用 —— 据此跳过 setState,避免每次 definition
+    // 变化都白重渲染一轮(首帧清单即完整的 agent 走的正是这条路)。
+    if (next !== current) setWorkspace(next);
+  }, [definition, nextId]);
 
   React.useEffect(() => {
     const element = tabNav.current;
@@ -504,13 +589,19 @@ export function PanesHost({
     const activeIndex = visible.findIndex(
       (instance) => instance.instanceId === workspace.activeInstanceId,
     );
+    // knownPaneIds 必须与 paneIds 在**同一次 setItem** 中写出,否则会留下撕裂快照
+    // (打开集合是新的、已知全集是旧的),下一轮补齐判定就会据此得出错误的用户意图。
+    const knownPaneIds = definition.panes.map((pane) => pane.id);
     window.localStorage.setItem(`${config.persistenceKey}:workspace`, JSON.stringify({
       paneIds: visible.map((instance) => instance.paneId),
       instanceIds: visible.map((instance) => instance.instanceId),
       ...(activeIndex >= 0 ? { activeIndex } : {}),
+      knownPaneIds,
     } satisfies PersistedPaneWorkspace));
+    knownPaneIdsRef.current = knownPaneIds;
   }, [
     config.persistenceKey,
+    definition,
     parkedInstanceIds,
     workspace.activeInstanceId,
     workspace.instances,
