@@ -620,7 +620,7 @@ export function PiChat({
 
   // 日志仅以声明式 Guest Pane 存在：不再把宿主 React 节点注入 Pane。
   // 明确的空 initialPaneIds 保证进入 Agent 时不自动打开日志，避免首帧闪烁。
-  const logsPaneHosted = extension?.panes?.panes.some(
+  const logsPaneHosted = extension?.panes?.panes?.some(
     (pane) => typeof pane === "object" && pane !== null &&
       (pane as { readonly id?: unknown }).id === LOGS_PANE_ID,
   ) === true;
