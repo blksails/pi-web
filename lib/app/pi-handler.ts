@@ -17,6 +17,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { readDesktopScopedConfig, resolveDesktopConfig } from "./desktop-defaults.js";
 import {
   createPiWebHandler,
   type PiWebHandler,
@@ -332,14 +333,37 @@ function defaultSourcesRoot(): string {
  * 回落无需区分 dev/prod:`ScanSourceProvider` 的契约是「root 不存在/无法解析 → 跳过该 root」,
  * 故目录不存在时静默产出空列表,与改动前的 `[]` 行为一致。
  */
-function resolveSourcesScanRoots(defaultCwd: string): readonly string[] {
+function resolveSourcesScanRoots(
+  defaultCwd: string,
+  /** 配置目录;用于读 desktop 域的 sourcesRoot(仅桌面壳生效)。 */
+  agentDir?: string,
+): readonly string[] {
   const raw = process.env.PI_WEB_SOURCES_ROOT;
-  if (raw === undefined || raw.trim().length === 0) return [defaultSourcesRoot()];
-  return raw
-    .split(path.delimiter)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .map((s) => (path.isAbsolute(s) ? s : path.resolve(defaultCwd, s)));
+  if (raw !== undefined && raw.trim().length > 0) {
+    return raw
+      .split(path.delimiter)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => (path.isAbsolute(s) ? s : path.resolve(defaultCwd, s)));
+  }
+  // env 未表态 → 看 desktop 域(桌面用户在设置里指定的扫描目录)。仅桌面壳生效:
+  // `~/.pi/agent` 是壳与 dev/CLI 共用目录,无条件读会让后两者跟着改扫描位置。
+  const desktopRoot = resolveDesktopConfig({
+    env: process.env,
+    userConfig: readDesktopScopedConfig(agentDir, process.env),
+  }).sourcesRoot;
+  if (desktopRoot !== undefined) {
+    return [absolutizeScanRoot(desktopRoot, defaultCwd)];
+  }
+  return [defaultSourcesRoot()];
+}
+
+/** 扫描根绝对化:展开前导 `~`(用户在设置面板里更可能写 `~/agents` 而非绝对路径),再按 cwd 解析。 */
+function absolutizeScanRoot(raw: string, defaultCwd: string): string {
+  const expanded = raw === "~" || raw.startsWith("~/")
+    ? path.join(os.homedir(), raw.slice(1))
+    : raw;
+  return path.isAbsolute(expanded) ? expanded : path.resolve(defaultCwd, expanded);
 }
 
 /** `PI_WEB_SOURCES_REGISTRY` 解析:显式配置优先,回退 `<agentDir>/sources.json`
@@ -371,7 +395,7 @@ function makeSourceSettingsResolver(
 ): (sourceKeyValue: string) => Promise<ResolvedSourceSettings | undefined> {
   const provider = createCompositeSourceProvider(
     createRegistrySourceProvider({ registryPath: sourcesRegistryPath(config) }),
-    createScanSourceProvider({ roots: resolveSourcesScanRoots(config.defaultCwd) }),
+    createScanSourceProvider({ roots: resolveSourcesScanRoots(config.defaultCwd, config.agentDir) }),
   );
 
   return async (sourceKeyValue: string): Promise<ResolvedSourceSettings | undefined> => {
@@ -1189,7 +1213,7 @@ function buildSingleton(): HandlerSingleton {
 
   // desktop-hybrid-agent-sources: 线上 registry ∪ 本地 sources.json ∪ 扫描根(~/.pi-web/agents)。
   // 登录时经桌面凭据换 capabilities.sources;未登录/云失败 → 仅本地(fail-soft)。
-  const sourcesScanRoots = resolveSourcesScanRoots(config.defaultCwd);
+  const sourcesScanRoots = resolveSourcesScanRoots(config.defaultCwd, config.agentDir);
   const sourcesRegistryPathValue =
     process.env.PI_WEB_SOURCES_REGISTRY ?? path.join(config.agentDir, "sources.json");
   const localFileRegistry = createRegistrySourceProvider({

@@ -44,14 +44,37 @@ function candidates(source: string): string[] {
   return out;
 }
 
-/** 定位已装/本地源的 dist 目录;无则 undefined。 */
-export async function locateDist(source: string): Promise<string | undefined> {
-  for (const c of candidates(source)) {
-    if (c.endsWith(DIST_SUFFIX) && (await isDir(c))) {
-      return path.resolve(c);
-    }
+/**
+ * dist 的来源类别。与 {@link candidates} 的分类**同源**,不另立判据:
+ *  - `local`     — 用户给的本地路径(相对 cwd 或绝对)下的 `.pi/web/dist`;
+ *  - `installed` — 按裸名从 `<agentDir>/npm/node_modules/` 定位到的已装包。
+ *
+ * 供签名门控按来源决定是否放宽(spec desktop-runtime-config Req 2):
+ * 用户手工指定的本机目录是一次显式信任表达,与「从 registry 装来的包」不是一回事。
+ */
+export type DistOrigin = "local" | "installed";
+
+export interface LocatedDist {
+  readonly distDir: string;
+  readonly origin: DistOrigin;
+}
+
+/** 定位 dist 目录并给出来源类别;无则 undefined。 */
+export async function locateDistWithOrigin(source: string): Promise<LocatedDist | undefined> {
+  // 顺序与 candidates() 一致:本地路径优先于已装包。
+  const local = path.join(path.resolve(process.cwd(), source), DIST_SUFFIX);
+  if (await isDir(local)) return { distDir: path.resolve(local), origin: "local" };
+
+  if (!source.includes("/") && !source.includes(":") && source !== ".") {
+    const installed = path.join(agentDir(), "npm", "node_modules", source, DIST_SUFFIX);
+    if (await isDir(installed)) return { distDir: path.resolve(installed), origin: "installed" };
   }
   return undefined;
+}
+
+/** 定位已装/本地源的 dist 目录;无则 undefined。 */
+export async function locateDist(source: string): Promise<string | undefined> {
+  return (await locateDistWithOrigin(source))?.distDir;
 }
 
 /** 读取 dist 下 manifest.json 原始 JSON;不存在/非法返回 undefined。 */

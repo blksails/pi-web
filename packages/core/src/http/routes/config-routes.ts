@@ -21,6 +21,7 @@ import {
   settingsConfigSchema,
   sandboxConfigSchema,
   aigcConfigSchema,
+  desktopConfigSchema,
   cloudConfigSchema,
   createProvidersConfigSchema,
 } from "@blksails/pi-web-protocol";
@@ -54,6 +55,10 @@ const DOMAIN_SCHEMAS: Readonly<Record<ConfigDomainId, z.ZodTypeAny>> = {
   // `packages/protocol` 自身成立,见 `domains/providers.ts` 头注释)。构造一次即可复用,
   // 保留名清单是模块级常量、不随请求变化。
   providers: createProvidersConfigSchema(RESERVED_PROVIDER_IDS),
+  // 桌面本机行为域(desktop-runtime-config):写 `<agentDir>/desktop.json`,装配期读功能门控。
+  // 与 cloud 同源的一类问题——GUI 启动的桌面版没有 shell 环境、不读 .env.local,门控若只能
+  // 来自 env 就等于恒定关闭。取值优先级 `env > 本域 > 桌面默认`,裁决在 lib/app/desktop-defaults.ts。
+  desktop: desktopConfigSchema,
 };
 
 /** PUT body 形状。 */

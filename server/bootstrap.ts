@@ -14,6 +14,7 @@
  * Provider 密钥永不出现在响应里。
  */
 import { loadConfig } from "../lib/app/config.js";
+import { readDesktopScopedConfig, resolveDesktopConfig } from "../lib/app/desktop-defaults.js";
 import { makeResumeMetaLoader } from "../lib/app/resume-meta.js";
 import { lookupSessionSource } from "../lib/app/session-source-map.js";
 
@@ -62,12 +63,14 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
   let defaultModel: string | undefined;
   let defaultCwd = process.cwd();
   let autoStart = false;
+  let agentDir: string | undefined;
   try {
     const config = loadConfig();
     defaultSource = config.defaultSource;
     defaultModel = config.defaultModel;
     defaultCwd = config.defaultCwd;
     autoStart = config.autoStart;
+    agentDir = config.agentDir;
   } catch {
     // 与 app/page.tsx 同样的防御:缺 provider key 时仍渲染选源页,不泄漏底层错误。
     defaultSource = env.PI_WEB_DEFAULT_SOURCE;
@@ -77,6 +80,12 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
   const multiTenant = env.PI_WEB_MULTI_TENANT === "1";
   const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  // desktop 域仅在桌面壳宿主下读取(共用 `~/.pi/agent/`,无条件读会让 dev/CLI 跟着改变行为)。
+  const desktopResolved = resolveDesktopConfig({
+    env,
+    userConfig: readDesktopScopedConfig(agentDir, env),
+  });
 
   const sessionId = url.searchParams.get("sessionId") ?? undefined;
   const resumeSource =
@@ -90,7 +99,11 @@ export async function buildBootstrap(url: URL): Promise<BootstrapPayload> {
     multiTenant,
     features: {
       canvas: bool(env.NEXT_PUBLIC_PI_WEB_CANVAS),
-      sourcePicker: bool(env.NEXT_PUBLIC_PI_WEB_SOURCE_PICKER),
+      // ★ 经裁决取值而非直接读 env:打包的桌面版拿不到环境变量(GUI 启动无 shell 环境、
+      //   不读 .env.local),直接读 env 会让该门控在桌面形态下恒定为关 —— 用户遂看不到选源
+      //   列表且无从开启。优先级 `env 显式值 > desktop 域配置 > 桌面默认`,
+      //   非桌面形态下取值与本改动前逐字段一致(见 desktop-defaults.ts 与其单测)。
+      sourcePicker: desktopResolved.sourcePicker,
       launcherRail: bool(env.NEXT_PUBLIC_PI_WEB_LAUNCHER_RAIL),
       bashEnabled: bool(env.NEXT_PUBLIC_PI_WEB_BASH_ENABLED),
       // 与 pi-handler 的服务端门控同语义:仅显式 false/0 才关。

@@ -11,7 +11,7 @@
  *
  * 本模块只导出处理器;路由注册由 `server/index.ts` 统一完成。
  */
-import { getWebextTrust } from "../lib/app/webext/build-trust.js";
+import { getWebextTrustForSource } from "../lib/app/webext/build-trust.js";
 import {
   resolveWebext,
   type WebextResolveResponse,
@@ -56,7 +56,10 @@ export async function handleWebextResolve(url: URL): Promise<Response> {
     return new Response("source query required", { status: 400 });
   }
 
-  const { trust } = await getWebextTrust();
+  // ★ 按**来源**取验签服务:桌面壳 + 用户显式指定的本机目录 → 放宽签名要求;
+  //   registry 装取的包与非桌面形态一律保持严格(spec desktop-runtime-config Req 2)。
+  //   不能改单例的 requireSignature —— 那等于全局放行,来源条件就形同虚设。
+  const { trust } = await getWebextTrustForSource(source);
   let result: WebextResolveResponse;
   try {
     result = await resolveWebext(source, {

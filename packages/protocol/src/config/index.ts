@@ -35,6 +35,10 @@ export * from "./domains/mcp-codec.js";
 // 只读端点,通用 GET/PUT 机制已够用;唯一特殊之处(objectList 内的 secret 掩码/合并)由
 // `config-routes.ts` 按 domain 分支到 `provider-secrets.ts` 处理,不影响此处的注册方式。
 export * from "./domains/providers.js";
+// desktop(desktop-runtime-config):桌面版本机运行行为(功能门控 / 扫描根)。与 cloud 同源的
+// 一类问题——打包的桌面版拿不到进程环境变量(GUI 启动无 shell 环境、不读 .env.local),
+// 故门控须有配置载体。cloud 管「云端在哪」,本域管「本机怎么跑」,语义不同不合并。
+export * from "./domains/desktop.js";
 
 import type { FormSchema } from "./form-schema.js";
 import { authFormSchema } from "./domains/auth.js";
@@ -44,6 +48,7 @@ import { loggingFormSchema } from "./domains/logging.js";
 import { aigcFormSchema } from "./domains/aigc.js";
 import { cloudFormSchema } from "./domains/cloud.js";
 import { providersFormSchema } from "./domains/providers.js";
+import { desktopFormSchema } from "./domains/desktop.js";
 
 /** 配置域 id(P0)。通用 `/config/:domain` 机制覆盖的域。 */
 export type ConfigDomainId =
@@ -53,7 +58,8 @@ export type ConfigDomainId =
   | "logging"
   | "aigc"
   | "cloud"
-  | "providers";
+  | "providers"
+  | "desktop";
 
 /** 域 id → 该域表单 IR(供前端按 id 取 schema)。 */
 export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> = {
@@ -64,4 +70,5 @@ export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> =
   aigc: aigcFormSchema,
   cloud: cloudFormSchema,
   providers: providersFormSchema,
+  desktop: desktopFormSchema,
 };
