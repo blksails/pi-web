@@ -53,13 +53,29 @@ Token Plan 时，在 `~/.pi/agent/models.json` 登记 `dashscope-token-plan`：
 {
   "baseUrl": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
   "apiKey": "$DASHSCOPE_TOKEN_PLAN_API_KEY",
-  "api": "openai-completions"
+  "api": "openai-completions",
+  "models": [
+    {
+      "id": "deepseek-v4-pro",
+      "compat": { "supportsDeveloperRole": false }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "compat": { "supportsDeveloperRole": false }
+    },
+    {
+      "id": "glm-5.2",
+      "compat": { "supportsDeveloperRole": false }
+    }
+  ]
 }
 ```
 
 模型条目至少填 `id`、`name`、`input`、`contextWindow`、`maxTokens`；再将
 `settings.json` 的 `defaultProvider` / `defaultModel` 设为 `dashscope-token-plan` /
-`qwen3.7-max`。Token Plan key 与官方 `DASHSCOPE_API_KEY` 分离，不可混用。
+`qwen3.7-max`。Token Plan 不接受 `developer` 角色，故其模型必须配置
+`compat.supportsDeveloperRole=false`。Token Plan key 与官方 `DASHSCOPE_API_KEY` 分离，
+不可混用。
 
 ## UI(`.pi/web`)
 ## UI(`web/` → 构建产物 `.pi/web/dist/`)
