@@ -56,10 +56,23 @@ Agent 子进程 — bootstrap runner runRpcMode  或  pi --mode rpc(一会话一
 | `pnpm build` | 生产构建(client→server→pack-dist→payload) |
 | `pnpm start` | 跑生产构建(`node dist/server.mjs`) |
 | `pnpm test` | 所有 workspace 包测试 |
-| `pnpm test:app` | 应用级 vitest |
+| `pnpm test:app` | 应用级 vitest(**只覆盖 `test/**`,不含子包**) |
+| `node scripts/scoped-test.mjs <测试文件...>` | **只跑指定测试文件**,自动路由到各自的 vitest 面(见下) |
 | `pnpm e2e` | Playwright e2e |
 | `pnpm e2e:node` | 离线 Node 级流式 e2e(`PI_WEB_STUB_AGENT=1` 桩 agent) |
 | `pnpm typecheck` | 全包 + 应用类型检查 |
+
+### 测试命令按作用域分档(★ 谁跑哪一档是有意区分的)
+
+| 档 | 命令 | 实测耗时 | 谁跑 |
+| --- | --- | --- | --- |
+| 窄(按文件) | `node scripts/scoped-test.mjs <paths>` | 单文件子包 ~1.3s / 混合两面 ~2.8s | 实现者(kiro impl 的 implementer) |
+| 类型检查 | `pnpm typecheck` | ~3.8s(根 `tsc -p tsconfig.json --noEmit`) | 实现者 + 复查者 |
+| 全量(canonical) | `pnpm test` **+** `pnpm test:app` | `test:app` ~18.3s,`pnpm test` 视包数更久 | 复查者(回归判定) + 父层(合并后复核) |
+
+★ **全量必须两条都跑**。`pnpm test:app` 的 include 只有 `test/**`,16 个子包各有自己的 vitest 配置——只跑根命令会漏掉子包的红,而它看起来和"全绿"一模一样。`pnpm test` 走 `pnpm -r --workspace-concurrency=1`,是子包那一面。
+
+★ **`scoped-test.mjs` 存在的原因**:本仓是多测试面 monorepo,没有单条 vitest 命令能吃任意测试文件。根 config 的 alias / jsdom / `test/setup.ts` 与子包各自的配置互不通用,拿错面去跑会因解析不到 alias 而红——那是工具用错了,不是代码坏了,而两者长得一模一样。脚本按路径前缀路由(`packages/<pkg>/` → `pnpm --filter <包名> exec vitest run`,`test/` → 根 vitest),吃绝对路径与相对路径,任一面失败即非零退出;参数里没有任何可路由的测试文件时退出码 2 并明说"本次改动没有自动验证覆盖"——不把"没测试可跑"报成绿。
 
 ## 测试(★ 硬性要求)
 

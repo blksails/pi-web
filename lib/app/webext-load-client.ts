@@ -124,6 +124,10 @@ export function useRuntimeWebext(
           baseUrl: data.baseUrl ?? "",
           opts: browserGateOptions(),
           deps,
+          // pi-web 自身宿主经此路径加载的扩展始终运行在同源分派入口(裸 specifier
+          // 经 import map 解析到宿主单例);隔离入口面向 pi-clouds 等自包含宿主,
+          // 不在本消费方职责范围(design.md Out of Boundary)。
+          hostRealm: "same-origin",
         });
         if (cancelled) return;
         if (outcome.status === "loaded" || outcome.status === "declarative") {

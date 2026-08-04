@@ -82,6 +82,17 @@ export default defineConfig({
       // webext-registry 静态载入 examples 的 .pi/web:stickers.tsx 直连 canvas-kit(非根声明依赖,
       // Next 走 tsconfig paths 可解析,vitest 不读 paths 须显式 alias);canvas-ui 同规则对齐。
       { find: "@blksails/pi-web-canvas-kit", replacement: path.resolve(__dirname, "packages/canvas-kit/src/index.ts") },
+      // ★ 具名子路径必须排在裸包名之前(与上方 core/runner 两组同规则,实测得出):
+      //   `@rollup/plugin-alias`(vite `resolve.alias` 的底层实现)对字符串 `find` 做的是
+      //   **前缀匹配**(`importee === find || importee.startsWith(find + "/")`),不是精确匹配
+      //   ——下面裸包名那条若排在前面,会先把 `@blksails/pi-web-canvas-ui/build/pane-document`
+      //   的 `@blksails/pi-web-canvas-ui` 前缀替换掉,拼出
+      //   `.../packages/canvas-ui/src/index.ts/build/pane-document` 这种在一个 `.ts` **文件**
+      //   路径后面继续拼段的四不像(vite 报 "Failed to resolve import...Does the file exist?"),
+      //   而非解析进 `build/` 目录(spec cli-agent-build 任务 3.8 首次让 root 级测试跨包导入
+      //   `@blksails/pi-web-canvas-ui/build/pane-document` 才踩到——此前的消费方要么在包内部
+      //   用相对路径,要么是 `build.ts` 脚本,走的是真实 node 解析而非 vite alias)。
+      { find: "@blksails/pi-web-canvas-ui/build/pane-document", replacement: path.resolve(__dirname, "packages/canvas-ui/build/pane-document.ts") },
       { find: "@blksails/pi-web-canvas-ui", replacement: path.resolve(__dirname, "packages/canvas-ui/src/index.ts") },
       // registry 客户端已发 npm(@blksails/registry-client),经 package.json 的别名依赖
       // `"@pi-clouds/registry-client": "npm:@blksails/registry-client@^0.0.1"` 正常解析,

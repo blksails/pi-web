@@ -335,7 +335,7 @@ export async function compile(packageDir: string): Promise<Result<CompiledPackag
         ]);
         if (distStat.mtimeMs < srcStat.mtimeMs) {
           warnings.push(
-            `webext 产物可能已过期:${webextDist}/manifest.json 早于 ${WEBEXT_SOURCE_CONFIG},建议重新构建后再发布。`,
+            `webext 产物可能已过期:${webextDist}/manifest.json 早于 ${WEBEXT_SOURCE_CONFIG},请执行 pi-web build 重新构建后再发布。`,
           );
         }
       } catch {

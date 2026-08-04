@@ -77,4 +77,59 @@ describe("manifest-emit", () => {
     expect(m.signature).toBeDefined();
     expect(WebExtensionManifestSchema.safeParse(m).success).toBe(true);
   });
+
+  it("emitManifest(双入口) 各入口 integrity 分别与其自身字节一致", async () => {
+    const dispatcherBytes = Buffer.from(
+      "export default await import('./web-extension-same-origin.mjs')",
+      "utf8",
+    );
+    const isolatedBytes = Buffer.from(
+      "export default { inlined: true }",
+      "utf8",
+    );
+    const m = await emitManifest({
+      id: "acme",
+      targetApiVersion: "^0.1.0",
+      entry: "web-extension.mjs",
+      entryBytes: dispatcherBytes,
+      entries: [
+        { path: "web-extension.mjs", bytes: dispatcherBytes, realm: "same-origin" },
+        { path: "isolated-entry.mjs", bytes: isolatedBytes, realm: "isolated" },
+      ],
+    });
+    expect(WebExtensionManifestSchema.safeParse(m).success).toBe(true);
+    expect(m.entries).toHaveLength(2);
+    const sameOrigin = m.entries?.find((e) => e.realm === "same-origin");
+    const isolated = m.entries?.find((e) => e.realm === "isolated");
+    expect(sameOrigin?.integrity).toBe(computeIntegrity(dispatcherBytes));
+    expect(isolated?.integrity).toBe(computeIntegrity(isolatedBytes));
+    // 两份不同字节必须产出不同 integrity,否则「各自与其字节一致」这条断言对调换
+    // path/bytes 的实现错误零判别力。
+    expect(sameOrigin?.integrity).not.toBe(isolated?.integrity);
+  });
+
+  it("剥离 entries(模拟旧宿主 zod strip)后,单入口字段仍指向分派入口而非隔离入口", async () => {
+    const dispatcherBytes = Buffer.from("dispatcher-bytes", "utf8");
+    const isolatedBytes = Buffer.from("isolated-bytes", "utf8");
+    const m = await emitManifest({
+      id: "acme",
+      targetApiVersion: "^0.1.0",
+      entry: "web-extension.mjs",
+      entryBytes: dispatcherBytes,
+      entries: [
+        { path: "web-extension.mjs", bytes: dispatcherBytes, realm: "same-origin" },
+        { path: "isolated-entry.mjs", bytes: isolatedBytes, realm: "isolated" },
+      ],
+    });
+
+    // 模拟旧宿主(zod strip 掉未知的 `entries` 字段)。
+    const { entries: _stripped, ...strippedManifest } = m;
+    expect(WebExtensionManifestSchema.safeParse(strippedManifest).success).toBe(
+      true,
+    );
+    expect(strippedManifest.entry).toBe("web-extension.mjs");
+    expect(strippedManifest.entry).not.toBe("isolated-entry.mjs");
+    expect(strippedManifest.integrity).toBe(computeIntegrity(dispatcherBytes));
+    expect(strippedManifest.integrity).not.toBe(computeIntegrity(isolatedBytes));
+  });
 });

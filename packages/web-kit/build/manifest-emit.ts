@@ -11,6 +11,7 @@ import {
   canonicalManifestBytes,
   type WebExtensionManifest,
   type WebExtensionCapability,
+  type WebExtEntry,
 } from "@blksails/pi-web-protocol";
 
 export { canonicalManifestBytes };
@@ -61,6 +62,17 @@ export async function signManifest(
   return Buffer.from(sig).toString("base64");
 }
 
+/**
+ * 双入口协议(Phase 2,任务 6.2)下单个入口的产出输入:调用方给出该入口的相对路径、
+ * 最终字节与所属宿主形态,integrity 由本模块从 `bytes` 现算——不接受调用方预算的
+ * integrity,避免「字节已改写、integrity 未同步」的脱节重演(design.md「完整性重算」)。
+ */
+export interface WebExtEntryInput {
+  readonly path: string;
+  readonly bytes: Uint8Array;
+  readonly realm: WebExtEntry["realm"];
+}
+
 export interface EmitManifestInput {
   readonly id: string;
   readonly targetApiVersion: string;
@@ -68,6 +80,14 @@ export interface EmitManifestInput {
   readonly entryBytes?: Uint8Array;
   readonly css?: string;
   readonly capabilities?: readonly WebExtensionCapability[];
+  /**
+   * 双入口协议(Phase 2):同源(分派)入口与隔离(自包含)入口的完整性描述集合。
+   * **与 `entry`/`entryBytes` 相互独立**——`entries` 不参与推导顶层 `entry` 字段,
+   * 顶层 `entry` 恒由调用方显式传入的 `entry`/`entryBytes` 决定。这保证「单入口字段
+   * 必须继续指向分派入口产物、不得改指隔离入口」这一向后兼容约束不依赖调用顺序或
+   * `entries` 数组内的元素顺序(design.md 任务 6.2 完成态)。
+   */
+  readonly entries?: readonly WebExtEntryInput[];
   /** Ed25519 私钥(base64 pkcs8);提供则对 manifest 签名。 */
   readonly signKey?: string;
 }
@@ -85,6 +105,17 @@ export async function emitManifest(
       : {}),
     ...(input.capabilities !== undefined
       ? { capabilities: [...input.capabilities] }
+      : {}),
+    ...(input.entries !== undefined
+      ? {
+          entries: input.entries.map(
+            (e): WebExtEntry => ({
+              path: e.path,
+              integrity: computeIntegrity(e.bytes),
+              realm: e.realm,
+            }),
+          ),
+        }
       : {}),
   };
   if (input.signKey !== undefined) {

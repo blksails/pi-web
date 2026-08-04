@@ -32,9 +32,9 @@ describe("parseCliArgs — 子命令判别(Req 1.1, 1.2)", () => {
     expect(o.argv).toEqual(["my-agent", "--kind", "plugin"]);
   });
 
-  it("SUBCOMMAND_NAMES 恰好含 7 个子命令名(6 个归 cli-package-commands + add 归 cli-component-add)", () => {
+  it("SUBCOMMAND_NAMES 恰好含 8 个子命令名(6 个归 cli-package-commands + add 归 cli-component-add + build 归 cli-agent-build)", () => {
     expect([...SUBCOMMAND_NAMES].sort()).toEqual(
-      ["add", "create", "install", "list", "publish", "uninstall", "update"].sort(),
+      ["add", "build", "create", "install", "list", "publish", "uninstall", "update"].sort(),
     );
   });
 

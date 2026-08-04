@@ -624,10 +624,24 @@ export function PiChat({
   // ★ logsActive = showLogs || logsInPanes:扩展在 panes 里声明了 `hostView:"logs"` 的一级 tab
   //   （如 aigc-agent / cloud 隔离车道）时,该 tab 恒渲染公共 LogsPanel 并有完整数据链路
   //   （实时帧 + getLogs 历史),不受 showLogs 门控 —— 门控只作用于 legacy 位置面板(bottom 等)。
-  const logsPaneHosted = extension?.panes?.panes.some(
-    (pane) => typeof pane === "object" && pane !== null &&
-      (pane as { readonly hostView?: unknown }).hostView === "logs",
-  ) === true;
+  // ★ webext 的 `panes` 有两种实际形态，两者都必须支持：
+  //    - 两层：`{ definition: PanesDefinition, config }` —— agent 需要同时给出 definition 与
+  //      运行期 panesConfig 时的写法（aigc-agent 的 web.config.tsx 即如此），
+  //      `packages/panes-kit/src/merge.ts` 读的正是 `source.definition.panes`；
+  //    - 扁平：`PanesDefinition` 本身（`definePanes()` 的直接返回值）。
+  //  此处原先只读扁平的 `.panes.panes`，遇到两层形态时 `.some` 作用在 undefined 上直接抛，
+  //  整个 <PiChat> 崩成白屏 —— 实测由外部 agent 触发过。宿主内部两处消费方读法不一致是根因，
+  //  这里统一为「先取 definition，取不到再当扁平用」，并对数组做防御。
+  const panesDefinition =
+    (extension?.panes as { readonly definition?: { readonly panes?: unknown } } | undefined)?.definition ??
+    (extension?.panes as { readonly panes?: unknown } | undefined);
+  const declaredPanes = (panesDefinition as { readonly panes?: unknown } | undefined)?.panes;
+  const logsPaneHosted = Array.isArray(declaredPanes)
+    ? declaredPanes.some(
+        (pane) => typeof pane === "object" && pane !== null &&
+          (pane as { readonly hostView?: unknown }).hostView === "logs",
+      )
+    : false;
   const logsActive = showLogs || logsPaneHosted;
   const logsStore = React.useMemo(
     () => (logsActive ? createLogsStore() : undefined),
@@ -1126,7 +1140,16 @@ export function PiChat({
   //
   // ★ 合并是**渲染期纯计算**,不放进 effect —— 否则首帧无定义,PanesHost 会以空定义建连,
   //   产生一次无效握手(既有 pane 时序缺陷的同一症状族)。
-  const agentPaneDecl = extension?.panes;
+  // ★ 与上方 `logsPaneHosted` 同一归一化：webext 的 `panes` 既可能是两层
+  //   `{ definition, config }`（agent 需同时给出运行期 panesConfig 时的写法），也可能是
+  //   `definePanes()` 直接返回的扁平 `PanesDefinition`。这里若不先剥掉外层，
+  //   `mergePaneSources` 拿到的 `source.definition.panes` 就是 undefined，
+  //   `merge.ts` 里的 `for...of` 直接抛 "is not iterable"，整个 <PiChat> 崩成白屏。
+  const rawAgentPanes = extension?.panes as
+    | { readonly definition?: unknown; readonly panes?: unknown }
+    | undefined;
+  const agentPaneDecl =
+    rawAgentPanes?.definition !== undefined ? rawAgentPanes.definition : rawAgentPanes;
   const paneMerge = React.useMemo(() => {
     const sources: PaneSource[] = [];
     if (hostPaneSource !== undefined) sources.push(hostPaneSource);
@@ -1146,7 +1169,9 @@ export function PiChat({
   const mergedPanes = paneMerge?.definition;
   // agent 声明的 pane 交互配置(交互模式/tab 重排/命令面板/事件目标):领域中立地原样透传。
   // 迁移到声明键之前这是 agent 自己给 PanesHost 的 prop —— 不透传就会静默丢失那些能力。
-  const agentPaneConfig = agentPaneDecl?.config as
+  // ★ 从**未剥层**的原始声明取 `config`：两层形态下它是外层字段（与 definition 平级），
+  //   扁平形态下则整个对象上没有 config。剥层后的 `agentPaneDecl` 上取不到它。
+  const agentPaneConfig = (rawAgentPanes as { readonly config?: unknown } | undefined)?.config as
     | React.ComponentProps<typeof PanesHost>["config"]
     | undefined;
   // 拒绝记录在**会话装载期**上报,不推迟到用户点开 pane(Req 3.4)。

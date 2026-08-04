@@ -1,12 +1,19 @@
-import { definePanes } from "@blksails/pi-web-panes-kit";
 import { paneDocuments } from "../pane-documents.generated.js";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 import { canvasPaneMeta } from "../../../aigc-canvas-agent/pane-meta.js";
 
 /**
- * 与 aigc-canvas 同一份 pane 元信息与同一个 guest 入口 —— 差异**只在 agent 侧**
- * (index.ts 不装 canvas surface 扩展)。这正是本示例要验的:同样的面板,
- * 在没有对应权威表面时退化为只读图库,而不是崩溃或空白。
+ * pane 文档用**内联**形态（`{kind:"inline", srcDoc}`）：`pi-web build` 在 webext 打包
+ * **之前**把各 pane 的自足 HTML 落成 `web/pane-documents.generated.ts`（构建产物，
+ * 已被 .gitignore 排除），故此处静态 import 恒可解析。
+ *
+ * ★ 不用 `{kind:"html", src:"pane-<id>.html"}`：那是**相对路径**，而这些示例走宿主的
+ * 构建期静态集成车道，PanesHost 会把 src 原样交给 iframe（无 baseUrl 拼接），最终相对
+ * 宿主页面解析成 `http://<host>/pane-<id>.html` → 404、面板空白。
  */
+const inlineDoc = (paneId: keyof typeof paneDocuments) =>
+  ({ kind: "inline", srcDoc: paneDocuments[paneId] }) as const;
+
 export const panesDefinition = definePanes({
   id: "aigc-canvas-nosurface",
   initialPaneIds: ["canvas"],
@@ -14,7 +21,7 @@ export const panesDefinition = definePanes({
   panes: [
     {
       ...canvasPaneMeta,
-      document: { kind: "inline", srcDoc: paneDocuments.canvas },
+      document: inlineDoc("canvas"),
       lifecycle: { keepAlive: true, suspendWhenHidden: false },
     },
   ],

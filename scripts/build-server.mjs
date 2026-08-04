@@ -28,6 +28,11 @@
  *    也会破坏 pnpm 的 realpath 解析布局(这正是旧 `pack-standalone.mjs` 563 行要修的伤)。
  *  - pg —— 含可选的 `require('pg-native')`,避免 esbuild 静态解析失败。
  *  - `node:sqlite` 是 Node 内置;`zod` 纯 JS —— 均可安全 bundle。
+ *  - esbuild / postcss / tailwindcss / autoprefixer —— `pi-web build` 子命令(spec
+ *    cli-agent-build)在**运行时**动态调用的构建工具链与样式管线。esbuild 内含原生二进制,
+ *    静态内联会破坏该二进制;postcss/tailwindcss/autoprefixer 虽是纯 JS,但作为「工具链」
+ *    整体对待,同样保持 external 并由 `scripts/pack-dist.mjs` 的 `RUNTIME_PACKAGES` 收集进
+ *    分发树的 `node_modules`,而不是打进 `server.mjs`/`cli-commands.mjs` 产物本体。
  */
 import * as esbuild from "esbuild";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -52,6 +57,10 @@ export const EXTERNAL = [
   "jiti",
   "pg",
   "pg-native",
+  "esbuild",
+  "postcss",
+  "tailwindcss",
+  "autoprefixer",
 ];
 
 /**

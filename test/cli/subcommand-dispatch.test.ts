@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { tmpdir } from "node:os";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { runSubcommand, type RunSubcommandDeps, type ScaffoldResult } from "@/server/cli/index";
 import type { Installer } from "@/server/cli/install/installer";
@@ -456,6 +456,25 @@ describe("runSubcommand — update", () => {
     expect(code).not.toBe(0);
     expect(pluginUpdate).toHaveBeenCalled(); // 两通道都跑了
     rmSync(root, { recursive: true, force: true });
+  });
+});
+
+describe("runSubcommand — build(spec cli-agent-build,任务 4.1,Req 1.1, 1.2, 1.4)", () => {
+  it("分发到 runBuild:未探测到可识别的 web 扩展源 → 非零退出码,不产生任何文件系统副作用", async () => {
+    const sourceRoot = mkdtempSync(join(tmpdir(), "pi-dispatch-build-"));
+    try {
+      const code = await runSubcommand("build", [sourceRoot], { reporter: silentReporter() });
+      expect(code).not.toBe(0);
+      // resolve 阶段即终止(design.md「产物目录清空时机」):不应写出任何产物目录。
+      expect(existsSync(join(sourceRoot, ".pi", "web", "dist"))).toBe(false);
+    } finally {
+      rmSync(sourceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("build 下非法选项 → 非零退出码,不触达 resolveAgentSource(不产生任何副作用)", async () => {
+    const code = await runSubcommand("build", ["--bogus-option"], { reporter: silentReporter() });
+    expect(code).not.toBe(0);
   });
 });
 

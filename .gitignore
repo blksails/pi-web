@@ -57,3 +57,8 @@ e2e/fixtures/iphone-mpf.jpg
 # 生成,类型侧有 panes/generated.d.ts 垫片 —— 刻意不入库,否则「本地绿」可能只是因为工作树里
 # 躺着一份没人生成的产物(本仓已三次踩到)。
 /panes/generated.ts
+
+# 仓内示例 agent 的 pane 文档中间产物(spec cli-agent-build)。各 build.ts 在 finally 里已
+# 自行删除,此处属防御性忽略(构建中途失败/被中断时不留脏文件)。类型侧同目录下的
+# pane-documents.generated.d.ts 是手工维护的垫片,不受此规则影响(规则只匹配 .ts)。
+examples/*/web/pane-documents.generated.ts

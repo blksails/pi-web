@@ -48,13 +48,35 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = resolve(process.env.PI_WEB_DIST ?? join(ROOT, "dist"));
 const DIST_NM = join(DIST, "node_modules");
 
-/** 运行时经 jiti 动态加载、不进 bundle 的包(与 build-server.mjs 的 EXTERNAL 对应)。 */
+/**
+ * 运行时经 jiti 动态加载、不进 bundle 的包(与 build-server.mjs 的 EXTERNAL 对应)。
+ *
+ * `esbuild` / `postcss` / `tailwindcss` / `autoprefixer` 是 `pi-web build` 子命令
+ * (spec cli-agent-build)的构建工具链与样式管线——同样是 external,同样必须随分发树
+ * hoist 进 `dist/node_modules`,否则解包形态下 `pi-web build` 会以
+ * `Cannot find module 'esbuild'` 之类错误崩溃(esbuild 还带原生二进制,不能被静态内联)。
+ */
 const RUNTIME_PACKAGES = [
   "@earendil-works/pi-coding-agent",
   "@earendil-works/pi-ai",
   "jiti",
   "pg",
+  "esbuild",
+  "postcss",
+  "tailwindcss",
+  "autoprefixer",
 ];
+
+/**
+ * workspace 包**根目录**下、`src/` 之外的散装文件——它们经 `exports` 的 subpath 出口
+ * 对外暴露(如 `packages/ui/package.json` 的 `"./tailwind-preset"`),但物理文件此前只被
+ * `files` 字段纳入 npm 发布包,并未随 `dist/` 分发树拷贝;解包形态下经该出口 `import()`
+ * 会 `MODULE_NOT_FOUND`(spec cli-agent-build,Req 4.5)。
+ *
+ * 每项是相对 `packages/<pkg>/` 的路径,首段即包目录名(与 `packages/` 下的目录同名,
+ * 非 `package.json` 里的 `name` 字段)。`packWorkspacePackages()` 按此清单逐一拷贝。
+ */
+export const PACKAGE_ROOT_FILES = ["ui/tailwind-preset.ts"];
 
 /** 从 `packages/server` 起解析(pnpm 把 pi SDK 嵌套在此,不在 app 根)。 */
 const requireFromServer = createRequire(join(ROOT, "packages/server/package.json"));
@@ -349,6 +371,17 @@ function packWorkspacePackages() {
     if (existsSync(bootstrap)) cpSync(bootstrap, join(destPkg, "runner-bootstrap.mjs"));
     if (existsSync(join(srcPkg, "build"))) {
       cpSync(join(srcPkg, "build"), join(destPkg, "build"), { recursive: true });
+    }
+    // 第 5 类拷贝:包根散装文件(exports 的 subpath 出口所指的物理文件,不在 src/ 下)。
+    for (const relPath of PACKAGE_ROOT_FILES) {
+      const [ownerPkg, ...rest] = relPath.split("/");
+      if (ownerPkg !== pkg || rest.length === 0) continue;
+      const fileRelPath = rest.join("/");
+      const src = join(srcPkg, fileRelPath);
+      if (!existsSync(src)) continue;
+      const dest = join(destPkg, fileRelPath);
+      mkdirSync(dirname(dest), { recursive: true });
+      cpSync(src, dest);
     }
 
     // node_modules/@blksails/<name> → ../../packages/<pkg>

@@ -31,6 +31,19 @@ export type WebExtensionCapability = z.infer<
 >;
 
 /**
+ * 双入口协议(Phase 2)下的单个入口描述。`realm` 标记该入口面向的宿主形态:
+ * `same-origin` 为既有同源分派入口,`isolated` 为自包含隔离入口。
+ * path 与 integrity 在本对象 schema 上均为必填,因此"每个成员各自成对"
+ * 由结构本身保证,无需额外 superRefine。
+ */
+export const WebExtEntrySchema = z.object({
+  path: z.string().min(1),
+  integrity: z.string().min(1),
+  realm: z.enum(["same-origin", "isolated"]),
+});
+export type WebExtEntry = z.infer<typeof WebExtEntrySchema>;
+
+/**
  * WebExtension 清单。`id` 唯一(CSS/registry 命名空间根);`targetApiVersion` 为
  * 兼容的 `@blksails/pi-web-kit` semver range。entry 存在则 integrity 必填(加载前校验完整性)。
  */
@@ -45,6 +58,12 @@ export const WebExtensionManifestSchema = z
     capabilities: z.array(WebExtensionCapabilitySchema).optional(),
     /** Tier 5 零代码路径:声明式 config 内联于 manifest(无 entry 时由宿主直接应用)。 */
     config: WebExtConfigSchema.optional(),
+    /**
+     * 双入口协议(Phase 2):可与 `entry`/`integrity` 并存,`entry` 语义不变
+     * (继续指向旧宿主可用的分派产物)。旧宿主(zod strip)会丢弃本字段,
+     * 因此在协议双入口普及前,运行时分派器不得依赖它替代 `entry`。
+     */
+    entries: z.array(WebExtEntrySchema).optional(),
   })
   .superRefine((m, ctx) => {
     if (m.entry !== undefined && m.integrity === undefined) {

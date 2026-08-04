@@ -23,6 +23,18 @@
  *
  * 三者天然合一:解包出的运行时落在 `PI_WEB_RUNTIME_ROOT` 指向的临时目录,与构建目录毫无关系。
  *
+ * D) **F1 子命令解析守卫**(spec cli-agent-build 任务 1.1,Req 1.7)：分发形态下**经壳层**
+ *    调用一个既有子命令(`list`),暴露「壳层自己从不解包子命令实现产物」这类缺陷。
+ *
+ * E) **`pi-web build` 分发形态端到端验证**(spec cli-agent-build 任务 7.1,Req 1.7, 4.2,
+ *    4.4)：在同一套解包运行时上,**经壳层**对一个临时 agent source 目录执行真实
+ *    `pi-web build`。这是唯一能暴露「构建工具链(esbuild/postcss/tailwindcss/autoprefixer)
+ *    是否在分发树中存在、画布样式预设能否经包出口解析、esbuild 原生二进制能否在此安装形态下
+ *    加载」的路径——仓库形态因 `node_modules`/`packages/ui` 源码均完整在场,同样的构建代码
+ *    在仓库内跑会百分之百假阳性,测不出「分发给独立仓 agent 作者的那份包是否真的自给自足」。
+ *    随后**刻意移除**分发树里的 `esbuild` 包重跑同一构建,断言由绿转红且报错指向缺失的
+ *    工具链——这是判据本身具备判别力的证明,而非恒真断言。
+ *
  * 跨机/跨 OS 的权威验证仍是 CI 矩阵(Linux 构建 → mac/win 运行);本测试是等价的**本地快反**守卫。
  *
  * 前置:`pnpm build:dist`。跑法:`pnpm e2e:cli:reloc`。
@@ -32,6 +44,7 @@ import { createServer, get as httpGet } from "node:http";
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   renameSync,
@@ -244,6 +257,155 @@ async function main() {
     if (cli) cli.kill("SIGINT");
     await sleep(800);
     mock.server.close();
+  }
+
+  // D) F1 守卫（spec cli-agent-build 任务 1.1，Req 1.7）：分发形态（仅 bin/+payload/，
+  //    无 dist/）下**经壳层**调用一个既有子命令。上方 C 段虽已验证 cli-commands.mjs
+  //    能在解包后被动态加载，但那是测试代码直接 import() 解包产物、绕过了壳层的
+  //    `distCliCommandsJs()` 解析——对「壳层自己从不解包子命令实现产物」这个缺陷零判别力
+  //    （research.md F1/R-1）。本检查改为 spawn `bin/pi-web.mjs <subcommand>`，是唯一
+  //    能暴露该缺陷的路径。
+  //
+  //    ★ 修复前必红：`distCliCommandsJs()`（bin/pi-web.mjs）只看
+  //    `PKG_ROOT/<PI_WEB_DIST_DIR ?? "dist">/cli-commands.mjs`，从不调用三级解析的
+  //    `resolveRuntime()`；本测试的 pkgRoot 刻意不含 dist/，故子命令分发必以
+  //    「未找到子命令实现产物」非零退出。任务 1.2 让该解析回落到已解包的运行时根后，
+  //    本检查应转绿——届时把下方两条 check 的当前红色结果作为转绿对照。
+  try {
+    const subEnv = { ...process.env, PI_WEB_RUNTIME_ROOT: runtimeRoot };
+    delete subEnv.PI_WEB_DIST_DIR;
+    const sub = spawnSync(
+      process.execPath,
+      [join(pkgRoot, "bin", "pi-web.mjs"), "list"],
+      { cwd: tmpdir(), env: subEnv, encoding: "utf8" },
+    );
+    check(
+      "分发形态下经壳层调用既有子命令(list)成功执行(F1 守卫,修复前预期报红)",
+      sub.status === 0,
+    );
+    if (sub.status !== 0) {
+      check(
+        "F1 守卫失败原因确为「未找到子命令实现产物」(而非无关错误)",
+        /未找到子命令实现产物/.test(sub.stderr ?? ""),
+      );
+    }
+  } catch (e) {
+    check(`F1 守卫(经壳层调用既有子命令): ${e.message}`, false);
+  }
+
+  // E) `pi-web build` 分发形态端到端验证（spec cli-agent-build 任务 7.1，Req 1.7, 4.2, 4.4；
+  //    见文件头注释「E」段）。复用上方已建立的 pkgRoot/runtimeRoot（同一套解包运行时）。
+  try {
+    const buildEnv = { ...process.env, PI_WEB_RUNTIME_ROOT: runtimeRoot };
+    delete buildEnv.PI_WEB_DIST_DIR;
+
+    // 与 `test/cli/build/run-build.test.ts` 同一套已验证过的最简 fixture 约定：
+    // `.pi/web/web.config.ts` 无 react 依赖，esbuild 可直接打包；一个包根汇总 pane 声明，
+    // 用以驱动 pane 双形态产物 + panes.json 静态清单这条完整产出链路。
+    const agentDir = mkdtempSync(join(tmpdir(), "pi-web-build-agent-"));
+    const webextEntryDir = join(agentDir, ".pi", "web");
+    mkdirSync(webextEntryDir, { recursive: true });
+    writeFileSync(join(webextEntryDir, "web.config.ts"), `export default { marker: "e2e-build" };\n`);
+
+    const panesDir = join(agentDir, "panes");
+    mkdirSync(panesDir, { recursive: true });
+    writeFileSync(
+      join(panesDir, "hello-entry.ts"),
+      `const root = document.getElementById("root");\nif (root) root.textContent = "ready-hello";\nexport {};\n`,
+    );
+    const VALID_CAPABILITIES = {
+      routes: [],
+      surfaceKeys: [],
+      surfaceCommands: [],
+      attachments: "none",
+      conversation: "none",
+      downloads: false,
+      events: { publish: [], subscribe: [] },
+      state: { read: [], write: [] },
+    };
+    writeFileSync(
+      join(panesDir, "modules.ts"),
+      [
+        "export default {",
+        `  id: "test-panes",`,
+        "  modules: [",
+        "    {",
+        `      id: "hello",`,
+        `      title: "hello",`,
+        `      entry: "./hello-entry.ts",`,
+        `      capabilities: ${JSON.stringify(VALID_CAPABILITIES)},`,
+        "    },",
+        "  ],",
+        "};",
+      ].join("\n"),
+    );
+
+    const buildRun = spawnSync(
+      process.execPath,
+      [join(pkgRoot, "bin", "pi-web.mjs"), "build", agentDir],
+      { cwd: tmpdir(), env: buildEnv, encoding: "utf8" },
+    );
+    check(
+      "分发形态下经壳层对临时 agent source 执行 pi-web build 成功(E 段,Req 1.7, 4.2, 4.4)",
+      buildRun.status === 0,
+    );
+    if (buildRun.status !== 0) {
+      console.error("[build stdout]\n" + (buildRun.stdout ?? ""));
+      console.error("[build stderr]\n" + (buildRun.stderr ?? ""));
+    }
+
+    const outDir = join(agentDir, ".pi", "web", "dist");
+    check("产出统一分派入口 web-extension.mjs", existsSync(join(outDir, "web-extension.mjs")));
+    check("产出同源产物 web-extension.same-origin.mjs", existsSync(join(outDir, "web-extension.same-origin.mjs")));
+    check("产出隔离自包含入口 isolated-entry.mjs", existsSync(join(outDir, "isolated-entry.mjs")));
+    check("产出 manifest.json", existsSync(join(outDir, "manifest.json")));
+    check("产出 pane 静态清单 panes.json", existsSync(join(outDir, "panes.json")));
+    check("产出 pane 可寻址脚本 pane-hello.js", existsSync(join(outDir, "pane-hello.js")));
+    check("产出 pane 可寻址文档 pane-hello.html", existsSync(join(outDir, "pane-hello.html")));
+
+    // 判别力核心：刻意移除分发树里的构建工具链（esbuild），证明上面这套检查在工具链缺失时
+    // 确实会转红——而不是无论工具链存不存在都恒为绿（completion 用语「刻意移除工具链后该
+    // 检查转红」）。移除后必须还原，不影响本文件后续任何检查。
+    const toolchainDir = join(targetDir, DIST, "node_modules", "esbuild");
+    const toolchainHidden = `${toolchainDir}__hidden_e2e`;
+    const toolchainExisted = existsSync(toolchainDir);
+    check("移除前置条件:分发树 node_modules/esbuild 确实存在(判别力前提)", toolchainExisted);
+    try {
+      if (toolchainExisted) renameSync(toolchainDir, toolchainHidden);
+
+      const agentDirNoToolchain = mkdtempSync(join(tmpdir(), "pi-web-build-agent-notool-"));
+      const webextEntryDir2 = join(agentDirNoToolchain, ".pi", "web");
+      mkdirSync(webextEntryDir2, { recursive: true });
+      writeFileSync(join(webextEntryDir2, "web.config.ts"), `export default { marker: "e2e-build-notool" };\n`);
+
+      const buildRunNoToolchain = spawnSync(
+        process.execPath,
+        [join(pkgRoot, "bin", "pi-web.mjs"), "build", agentDirNoToolchain],
+        { cwd: tmpdir(), env: buildEnv, encoding: "utf8" },
+      );
+      check(
+        "工具链缺失时构建以非零码终止(判别力核心,转红对照)",
+        buildRunNoToolchain.status !== 0,
+      );
+      check(
+        "工具链缺失的报错指出缺失的构建工具链(BUILD_TOOLCHAIN_MISSING)",
+        /BUILD_TOOLCHAIN_MISSING/.test(buildRunNoToolchain.stdout ?? "") ||
+          /BUILD_TOOLCHAIN_MISSING/.test(buildRunNoToolchain.stderr ?? ""),
+      );
+      check(
+        "工具链缺失时不产出任何产物(Req 4.4)",
+        !existsSync(join(agentDirNoToolchain, ".pi", "web", "dist", "manifest.json")),
+      );
+      rmSync(agentDirNoToolchain, { recursive: true, force: true });
+    } finally {
+      if (toolchainExisted && existsSync(toolchainHidden) && !existsSync(toolchainDir)) {
+        renameSync(toolchainHidden, toolchainDir);
+      }
+    }
+
+    rmSync(agentDir, { recursive: true, force: true });
+  } catch (e) {
+    check(`pi-web build 分发形态端到端验证(E 段): ${e.message}`, false);
   }
 
   // 二次解析应命中已解包目录（快路径），不再解包。

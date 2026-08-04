@@ -20,6 +20,13 @@ export default defineConfig({
       "@blksails/pi-web-canvas-kit": path.resolve(__dirname, "../canvas-kit/src/index.ts"),
       // primitives 主入口(六薄封装 + cn 的新家,组件 import 改线后的目标)。
       "@blksails/pi-web-primitives": path.resolve(__dirname, "../primitives/src/index.ts"),
+      // web-kit 的 pane-document 构建期子路径(canvas-ui/build/pane-document.ts 依赖它打包
+      // pane 入口;须先于下面的 `@blksails/pi-web-kit` 主入口——否则会被当同前缀匹配,
+      // 拿主入口替换值去拼接子路径,解析到一个不存在的路径)。
+      "@blksails/pi-web-kit/build/pane-document": path.resolve(
+        __dirname,
+        "../web-kit/build/pane-document.ts",
+      ),
       // web-kit 主入口(WebExtSurfaceAccess/WebExtStateAccess/SurfaceOp 等跨包契约)。
       "@blksails/pi-web-kit": path.resolve(__dirname, "../web-kit/src/index.ts"),
       // react 包主入口(useConversationBridge 会话桥)。

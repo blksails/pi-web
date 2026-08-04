@@ -102,7 +102,7 @@ export function describeCompileError(e: CompileError): {
       return {
         code: e.code,
         message: `存在 webext 源(${e.source})但缺少对应产物(${e.expectedDist})。`,
-        hint: "先构建 webext 产物再发布 —— 缺产物会让生产环境的面板直接失效。",
+        hint: "先执行 pi-web build 构建 webext 产物再发布 —— 缺产物会让生产环境的面板直接失效。",
       };
     case "KEY_UNUSABLE":
       // 本轮不签名,理论上不可达;仍穷尽以保证将来接上签名时编译器会提醒补文案。

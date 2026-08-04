@@ -26,10 +26,10 @@
  *
  * 运行:`node --import jiti/register scripts/build-builtin-panes.ts`
  */
-import { build } from "esbuild";
 import { access, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bundlePaneEntry, renderPaneDocument } from "@blksails/pi-web-kit/build/pane-document";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PANES_DIR = resolve(ROOT, "panes");
@@ -63,25 +63,6 @@ dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;font-family:ui-monospace,SF
 }
 `;
 
-/**
- * 把 bundle 包成自足 HTML。
- *
- * CSP 与 examples 的 pane 文档逐字同策:`default-src 'none'` 起步,只放开内联 style/script
- * 与图片来源。pane 不需要网络(数据经 MessageChannel 来),故不放开 connect-src。
- */
-function htmlDocument(title: string, script: string): string {
-  // `</script` 出现在 bundle 字符串里会提前闭合标签 —— 必须转义(examples 同样处理)。
-  const safeScript = script.replace(/<\/script/gi, "<\\/script");
-  return (
-    `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
-    `<meta name="viewport" content="width=device-width">` +
-    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; ` +
-    `img-src blob: data: http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">` +
-    `<title>${title}</title><style>${BASE_CSS}</style></head>` +
-    `<body><div id="root"></div><script>${safeScript}</script></body></html>`
-  );
-}
-
 /** 扫 `panes/<paneId>/main.tsx`,返回 paneId 列表(按名排序,使产物稳定)。 */
 async function discoverPanes(): Promise<string[]> {
   let entries;
@@ -113,21 +94,8 @@ export async function buildBuiltinPanes(): Promise<BuiltinPanesBuildResult> {
   const paneIds = await discoverPanes();
   const documents: Record<string, string> = {};
   for (const id of paneIds) {
-    const result = await build({
-      entryPoints: [resolve(PANES_DIR, id, "main.tsx")],
-      bundle: true,
-      write: false,
-      format: "iife",
-      platform: "browser",
-      target: "es2022",
-      jsx: "automatic",
-      minify: true,
-      legalComments: "none",
-      define: { "process.env.NODE_ENV": '"production"' },
-    });
-    const output = result.outputFiles?.[0];
-    if (output === undefined) throw new Error(`builtin pane ${id} 未生成 bundle`);
-    documents[id] = htmlDocument(id, output.text);
+    const script = await bundlePaneEntry(resolve(PANES_DIR, id, "main.tsx"));
+    documents[id] = renderPaneDocument(id, script, BASE_CSS);
   }
   await writeFile(
     GENERATED,

@@ -9,9 +9,6 @@
     "./build": "./build/index.ts",
     "./build/pane-document": "./build/pane-document.ts"
   },
-  "bin": {
-    "pi-web": "./build/cli.ts"
-  },
   "engines": {
     "node": ">=22.19.0"
   },
@@ -22,7 +19,7 @@
   "dependencies": {
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.28.1"
   },
   "peerDependencies": {
     "ai": "^5.0.0",

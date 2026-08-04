@@ -98,8 +98,16 @@ import {
 import { createRegistryChannel } from "./install/registry-channel.js";
 
 /** 已知子命令名(与 `bin/pi-web.mjs` 的 `SUBCOMMAND_NAMES` 同一份契约,此处独立声明避免
- * 从 `.mjs` 反向 import 类型)。Wave 1 五个 + `publish`(Wave 2,尚未接入)。 */
-export type SubcommandName = "create" | "install" | "uninstall" | "list" | "update" | "publish";
+ * 从 `.mjs` 反向 import 类型)。Wave 1 五个 + `publish`(Wave 2) + `build`(spec
+ * cli-agent-build 任务 4.1,Req 1.1)。 */
+export type SubcommandName =
+  | "create"
+  | "install"
+  | "uninstall"
+  | "list"
+  | "update"
+  | "publish"
+  | "build";
 
 /**
  * `runSubcommand` 的可注入依赖(design.md Error Handling:全部依赖可测试替身注入,
@@ -120,6 +128,20 @@ export interface RunSubcommandDeps {
    * 传入 —— 见任务报告 DIST_ROOT_STRATEGY。
    */
   readonly examplesRootCandidates?: readonly string[];
+  /**
+   * `pi-web build` 解析构建工具链(esbuild/postcss/tailwindcss/autoprefixer)的候选
+   * `node_modules` 根(spec cli-agent-build 任务 1.5,Req 1.7, 4.2)。与
+   * `examplesRootCandidates` 同一「产物根优先、包根兜底」构造模式,由 `bin/pi-web.mjs` 的
+   * `buildCandidatePathDeps()` 构造并注入。消费方为 `server/cli/build/toolchain.ts`
+   * (任务 3.2,尚未实现)——本字段本任务只建立接缝,暂无消费方读取。
+   */
+  readonly toolchainRootCandidates?: readonly string[];
+  /**
+   * `pi-web build` 解析画布样式预设 `tailwind-preset.ts` 的候选路径(spec cli-agent-build
+   * 任务 1.5,Req 1.7, 4.5)。同上,由壳层注入,消费方为 `server/cli/build/toolchain.ts`
+   * (任务 3.2)。
+   */
+  readonly stylePresetCandidates?: readonly string[];
   /** 进度报告器,缺省新建一个真实(`console.log`)实现。 */
   readonly reporter?: ProgressReporter;
   /** 测试替身:`scaffold()` 的注入点(缺省真实实现)。 */
@@ -598,7 +620,7 @@ export function describeCompileError(e: CompileError): string {
     case "ENTRY_OUTSIDE_PACKAGE":
       return `入口解析到包目录之外:${e.resolved}。发布产物只能包含包目录内的文件,请把入口移入包内或修正 "pi-web".entry。`;
     case "WEBEXT_SOURCE_WITHOUT_DIST":
-      return `检测到 webext 源码 ${e.source},但产物 ${e.expectedDist}/manifest.json 不存在 —— 直接发布会得到一个「没有界面」的包。请先构建:\n    pnpm --filter <该包> build\n  构建后重试;若本包确实不需要发布 webext,在 ${PI_WEB_MANIFEST_FILENAME} 中设 {"web":{"autoDetectDist":false}}。`;
+      return `检测到 webext 源码 ${e.source},但产物 ${e.expectedDist}/manifest.json 不存在 —— 直接发布会得到一个「没有界面」的包。请先构建:\n    pi-web build\n  构建后重试;若本包确实不需要发布 webext,在 ${PI_WEB_MANIFEST_FILENAME} 中设 {"web":{"autoDetectDist":false}}。`;
     case "DECLARED_PATH_MISSING":
       return `声明的路径没有匹配到任何文件:${e.paths.join(", ")}。声明可以是文件、目录(自动递归收其下全部文件)或 glob;出现此错误说明该路径不存在、或是一个空目录。请修正 ${PI_WEB_MANIFEST_FILENAME} 中的声明。`;
     case "MANIFEST_MISSING":
@@ -631,6 +653,16 @@ export async function runSubcommand(
       return runUpdate(argv, deps, reporter);
     case "publish":
       return runPublish(argv, deps, reporter);
+    case "build": {
+      // ★ 动态 import 不是风格选择：`./build/index.js` 静态引入了 esbuild / jiti /
+      // web-kit build 这一整条构建工具链，而 esbuild 在 jsdom 环境下会因
+      // `new TextEncoder().encode("") instanceof Uint8Array` 不变式检查直接抛错。
+      // 一旦本模块静态持有它，任何只想用发布/安装逻辑的消费方（如 jsdom 下的
+      // publish-orchestrator 测试）都会被连带拖崩，整个测试文件 0 个用例执行。
+      // 与壳层动态载入 cli-commands 的处理同构：按需才付代价。
+      const { runBuild } = await import("./build/index.js");
+      return runBuild(argv, deps, reporter);
+    }
     default:
       reporter.fail("dispatch", { code: "UNKNOWN_SUBCOMMAND", message: `未知子命令: ${name}` });
       return 1;

@@ -1,8 +1,19 @@
-import { definePanes } from "@blksails/pi-web-panes-kit";
 import { paneDocuments } from "../pane-documents.generated.js";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 import { canvasPaneMeta } from "../../../aigc-canvas-agent/pane-meta.js";
 
-/** 与 aigc-canvas 同一份 pane 元信息;差别只在文档里多打包了贴纸插件捆。 */
+/**
+ * pane 文档用**内联**形态（`{kind:"inline", srcDoc}`）：`pi-web build` 在 webext 打包
+ * **之前**把各 pane 的自足 HTML 落成 `web/pane-documents.generated.ts`（构建产物，
+ * 已被 .gitignore 排除），故此处静态 import 恒可解析。
+ *
+ * ★ 不用 `{kind:"html", src:"pane-<id>.html"}`：那是**相对路径**，而这些示例走宿主的
+ * 构建期静态集成车道，PanesHost 会把 src 原样交给 iframe（无 baseUrl 拼接），最终相对
+ * 宿主页面解析成 `http://<host>/pane-<id>.html` → 404、面板空白。
+ */
+const inlineDoc = (paneId: keyof typeof paneDocuments) =>
+  ({ kind: "inline", srcDoc: paneDocuments[paneId] }) as const;
+
 export const panesDefinition = definePanes({
   id: "canvas-plugin-stickers",
   initialPaneIds: ["canvas"],
@@ -10,7 +21,7 @@ export const panesDefinition = definePanes({
   panes: [
     {
       ...canvasPaneMeta,
-      document: { kind: "inline", srcDoc: paneDocuments.canvas },
+      document: inlineDoc("canvas"),
       lifecycle: { keepAlive: true, suspendWhenHidden: false },
       // ★ 插件贡献的命令需要**显式授予**:共享的 canvasPaneMeta 只列了内置动作,
       // 不含贴纸插件的 style-transfer。旧槽形态下面板走宿主访问器、不受 pane 白名单约束,

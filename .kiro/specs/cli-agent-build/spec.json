@@ -1,0 +1,22 @@
+{
+  "feature_name": "cli-agent-build",
+  "created_at": "2026-08-04T04:03:14.317Z",
+  "updated_at": "2026-08-04T05:36:03.373Z",
+  "language": "zh",
+  "phase": "tasks-approved",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

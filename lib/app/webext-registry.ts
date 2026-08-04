@@ -13,13 +13,18 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
-import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
-import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs";
-import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.mjs";
-import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/dist/web-extension.mjs";
+// ★ 静态车道必须 import **同源产物**而非 `web-extension.mjs`（后者自 cli-agent-build 起
+// 是运行时**分派器**：按宿主形态动态 import 同源/隔离两份产物）。本注册表是构建期静态
+// 集成车道，只服务同源宿主；若经分派器，打包器会把隔离产物（单个示例即 500KB+，六个
+// 示例合计 2MB+）一并拖进 jsdom 测试环境，实测直接 V8 OOM、worker 被杀，且该文件会从
+// vitest 汇总里**静默消失**（既不计 passed 也不计 failed）。
+import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/dist/web-extension.same-origin.mjs";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
-import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.mjs";
-import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.mjs";
+import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.same-origin.mjs";
+import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与

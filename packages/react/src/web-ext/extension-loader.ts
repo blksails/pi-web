@@ -3,7 +3,8 @@
  *
  * 流程:读 manifest → 安全门校验(extension-gate)→
  *   - 纯声明(无 entry):从 manifest.config 合成描述符,**零 bundle**(Tier 5)。
- *   - 代码扩展:fetch entry 字节 → 门控通过后,经 import map 把裸 specifier 解析到宿主
+ *   - 代码扩展:按宿主形态从 `entries`(双入口协议,任务 6.3)选择入口,缺失回落既有
+ *     单入口字段 → fetch 字节 → 门控通过后,经 import map 把裸 specifier 解析到宿主
  *     单例,动态 `import()` 入口,取默认导出描述符。
  * 任何缺失/非法/拒绝 → 返回可回退结果(宿主用默认 UI),不抛、不崩。
  *
@@ -28,12 +29,45 @@ export type LoadOutcome =
   | { readonly status: "skipped"; readonly reason: string }
   | { readonly status: "rejected"; readonly reason: string };
 
+/**
+ * 宿主形态(双入口协议,任务 6.3):`same-origin` 为既有同源分派入口所面向的宿主
+ * (裸 specifier 经 import map 解析到宿主单例),`isolated` 为自包含隔离入口所面向的
+ * 宿主(如 pi-clouds,无 import map)。
+ */
+export type HostRealm = "same-origin" | "isolated";
+
 export interface LoadExtensionInput {
   readonly manifest: WebExtensionManifest;
   /** entry/css 所在的基址 URL(末尾含 `/`)。 */
   readonly baseUrl: string;
   readonly opts: GateOptions;
   readonly deps: LoaderDeps;
+  /** 调用方所处的宿主形态。缺省 `"same-origin"`(pi-web 自身宿主的既有行为)。 */
+  readonly hostRealm?: HostRealm;
+}
+
+/** 选中入口的最小形状(供门控 SRI 校验复用)。 */
+export interface SelectedEntry {
+  readonly path: string;
+  readonly integrity: string;
+}
+
+/**
+ * 按宿主形态从 `entries` 中选择入口;`entries` 缺失或无匹配成员时回落既有单入口字段
+ * (`entry`/`integrity`),使旧清单(仅单入口)下行为与改动前逐字节一致。
+ */
+export function selectManifestEntry(
+  manifest: WebExtensionManifest,
+  realm: HostRealm,
+): SelectedEntry | undefined {
+  const matched = manifest.entries?.find((e) => e.realm === realm);
+  if (matched !== undefined) {
+    return { path: matched.path, integrity: matched.integrity };
+  }
+  if (manifest.entry !== undefined && manifest.integrity !== undefined) {
+    return { path: manifest.entry, integrity: manifest.integrity };
+  }
+  return undefined;
 }
 
 function joinUrl(base: string, rel: string): string {
@@ -42,6 +76,7 @@ function joinUrl(base: string, rel: string): string {
 
 export async function loadExtension(input: LoadExtensionInput): Promise<LoadOutcome> {
   const { manifest, baseUrl, opts, deps } = input;
+  const hostRealm = input.hostRealm ?? "same-origin";
   try {
     // 纯声明(Tier 5):零 bundle,仅校验版本后从 manifest.config 合成描述符。
     if (isDeclarativeOnly(manifest)) {
@@ -54,10 +89,22 @@ export async function loadExtension(input: LoadExtensionInput): Promise<LoadOutc
       return { status: "declarative", extension };
     }
 
-    // 代码扩展:fetch 字节 → 门控(SRI/签名/版本)。
-    const entryUrl = joinUrl(baseUrl, manifest.entry as string);
+    // 代码扩展:按宿主形态选入口 → fetch 字节 → 门控(SRI/签名/版本)。
+    const entry = selectManifestEntry(manifest, hostRealm);
+    if (entry === undefined) {
+      return {
+        status: "rejected",
+        reason: "代码扩展缺少可用入口(entries 与 entry 均未命中)",
+      };
+    }
+    const entryUrl = joinUrl(baseUrl, entry.path);
     const bytes = await deps.fetchBytes(entryUrl);
-    const gate = await verifyExtension({ manifest, entryBytes: bytes, opts });
+    const gate = await verifyExtension({
+      manifest,
+      entryBytes: bytes,
+      opts,
+      entryIntegrity: entry.integrity,
+    });
     if (!gate.ok) return { status: "rejected", reason: gate.reason };
 
     const mod = await deps.importModule(entryUrl);

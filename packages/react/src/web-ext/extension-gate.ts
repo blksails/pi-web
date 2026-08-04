@@ -60,12 +60,20 @@ export async function computeSri(bytes: Uint8Array): Promise<string> {
   return `sha384-${await sha384Base64(bytes)}`;
 }
 
+/** 校验字节的 SRI 是否等于给定的期望值(`entries[].integrity` 或 `manifest.integrity`)。 */
+async function checkIntegrity(
+  expectedIntegrity: string | undefined,
+  entryBytes: Uint8Array,
+): Promise<boolean> {
+  if (expectedIntegrity === undefined) return false;
+  return (await computeSri(entryBytes)) === expectedIntegrity;
+}
+
 export async function verifyIntegrity(
   manifest: WebExtensionManifest,
   entryBytes: Uint8Array,
 ): Promise<boolean> {
-  if (manifest.integrity === undefined) return false;
-  return (await computeSri(entryBytes)) === manifest.integrity;
+  return checkIntegrity(manifest.integrity, entryBytes);
 }
 
 /**
@@ -116,8 +124,13 @@ export async function verifyExtension(input: {
   readonly manifest: WebExtensionManifest;
   readonly entryBytes?: Uint8Array;
   readonly opts: GateOptions;
+  /**
+   * 双入口协议(任务 6.3):调用方已按宿主形态从 `entries` 选中的入口 integrity。
+   * 缺省时回落 `manifest.integrity`(旧单入口清单下行为逐字节不变)。
+   */
+  readonly entryIntegrity?: string;
 }): Promise<GateResult> {
-  const { manifest, entryBytes, opts } = input;
+  const { manifest, entryBytes, opts, entryIntegrity } = input;
 
   const isCode = manifest.entry !== undefined;
   if (!isCode) return { ok: true }; // 纯声明:无 bundle,跳过 SRI/签名
@@ -125,7 +138,7 @@ export async function verifyExtension(input: {
   if (entryBytes === undefined) {
     return { ok: false, reason: "代码扩展缺少 entry 字节,无法校验 SRI" };
   }
-  if (!(await verifyIntegrity(manifest, entryBytes))) {
+  if (!(await checkIntegrity(entryIntegrity ?? manifest.integrity, entryBytes))) {
     return { ok: false, reason: "SRI 完整性校验失败(integrity 与 entry 字节不一致)" };
   }
 

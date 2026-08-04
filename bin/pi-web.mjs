@@ -40,11 +40,13 @@ function looksLikeGitSource(source) {
 }
 
 /**
- * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6;`add` 归 spec cli-component-add)。
- * @typedef {"add" | "create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
+ * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6;`add` 归 spec cli-component-add;
+ * `build` 归 spec cli-agent-build 任务 4.1,Req 1.1)。
+ * @typedef {"add" | "build" | "create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
  */
 export const SUBCOMMAND_NAMES = /** @type {const} */ ([
   "add",
+  "build",
   "create",
   "install",
   "uninstall",
@@ -83,6 +85,27 @@ const SUBCOMMAND_SPECS = {
       --target <dir>  目标 agent source(缺省当前目录;须含 .pi/web/)
       --dry-run       全部校验并列出将写入的文件与接线指引,不写任何文件
       --force         仅将 peer 基线校验失败降级为警告;不覆盖本地改动
+  -h, --help          显示本帮助并退出
+`,
+  },
+  build: {
+    summary: "为 agent source 构建 webext / pane 产物(spec cli-agent-build)",
+    options: {
+      panes: { type: "string" },
+      sign: { type: "string" },
+      out: { type: "string" },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web build [source] [options]
+
+在 agent source 目录内构建 webext / pane 产物,写入约定的产物目录
+(默认 .pi/web/dist)。省略 [source] 时以当前工作目录作为 agent source 根,
+构建工具链与样式预设由 pi-web 自身提供,agent 侧不必声明或自带构建脚本。
+
+选项:
+      --panes <path>  显式指定 pane 声明模块路径(缺省按约定发现)
+      --sign <key>    对 manifest 签名的 Ed25519 私钥(base64 pkcs8)
+      --out <dir>     产物输出目录(缺省为 agent source 的约定产物目录)
   -h, --help          显示本帮助并退出
 `,
   },
@@ -505,6 +528,90 @@ export function distCliCommandsJs() {
 }
 
 /**
+ * 解析出可用的子命令实现产物路径(spec cli-agent-build 任务 1.2,Req 1.7)。
+ *
+ * `distCliCommandsJs()` 只拼 `PKG_ROOT/<dist>/cli-commands.mjs`。分发解包形态下
+ * (npm 安装态:包根只有 `bin/` + `payload/`,没有 `dist/`)该路径必然不存在——子命令因此
+ * 100% 报「未找到子命令实现产物」,即便随包载荷解包出的运行时里明明有这份产物
+ * (research.md F1;e2e/cli/cli-reloc.mjs 任务 1.1 的 F1 守卫复现该红)。
+ *
+ * 修复策略:`distCliCommandsJs()` 直接命中即用,行为与既有环境变量覆盖(`PI_WEB_DIST_DIR`)
+ * 逐字节一致,`distCliCommandsJs()` 自身保持同步纯函数、既有单测零改动;仅在缺失时才
+ * 回落 `resolveRuntime()`——与 `launch()` 解析 `server.mjs` 共用同一套三级解析
+ * (① `PI_WEB_DIST_DIR` ② 仓库内已构建产物 ③ 随包载荷解包),命中已解包运行时时不重复解包,
+ * cli-commands.mjs 与该次解析得到的 `server.mjs` 同处产物根。
+ *
+ * `existsFn` / `resolveRuntimeFn` 是注入接缝(同 `scheduleRuntimeGc(runtime, load)` 的模式):
+ * 默认走真实 `existsSync` / `resolveRuntime`,单测借此在不触碰真实文件系统与解包 I/O 的前提下,
+ * 判别式地证明「direct 缺失时确实改用注入解析结果」而非误报绿(见 discriminant-probe 方法论)。
+ *
+ * @param {{ existsFn?: (p: string) => boolean, resolveRuntimeFn?: () => Promise<{serverJs: string, runtime?: {runtimeRoot: string, runtimeDir: string}}> }} [deps]
+ * @returns {Promise<{cliCommandsJs: string, runtime?: {runtimeRoot: string, runtimeDir: string}}>}
+ */
+export async function resolveCliCommandsJs(deps = {}) {
+  const { existsFn = existsSync, resolveRuntimeFn = resolveRuntime } = deps;
+  const direct = distCliCommandsJs();
+  if (existsFn(direct)) return { cliCommandsJs: direct };
+  const resolved = await resolveRuntimeFn();
+  return {
+    cliCommandsJs: join(dirname(resolved.serverJs), "cli-commands.mjs"),
+    runtime: resolved.runtime,
+  };
+}
+
+/**
+ * 构造注入 `runSubcommand` 的候选路径 deps(spec cli-agent-build 任务 1.5,Req 1.7, 4.2, 4.5)。
+ *
+ * 沿用既有 `examplesRootCandidates` 的两级构造模式(产物根优先、包根兜底),为
+ * `pi-web build`(任务 3.2 起实现)追加同构的两组候选:
+ *  - `toolchainRootCandidates`:解析构建工具链(esbuild/postcss/tailwindcss/autoprefixer)
+ *    的 `node_modules` 根 —— 分发形态下这些包由 `scripts/pack-dist.mjs` 的
+ *    `RUNTIME_PACKAGES` hoist 进 `<distRoot>/node_modules`(任务 1.3);开发形态下兜底到
+ *    `<pkgRoot>/node_modules`。
+ *  - `stylePresetCandidates`:解析画布样式预设 `tailwind-preset.ts` —— 分发形态下由
+ *    `packWorkspacePackages()` 的第 5 类拷贝写入 `<distRoot>/packages/ui/tailwind-preset.ts`
+ *    (任务 1.4);开发形态下兜底到仓库内 `<pkgRoot>/packages/ui/tailwind-preset.ts`。
+ *
+ * 纯函数:只做字符串拼接,不触碰文件系统 —— 消费方(`server/cli/build/toolchain.ts`,
+ * 任务 3.2)用 `resolveFirstExistingCandidate()` 取第一个真实存在者。本任务只建立注入
+ * 接缝,尚未接消费方(未来任务职责)。
+ *
+ * @param {string} distRoot 子命令实现产物所在目录(`cli-commands.mjs` 的 dirname)。
+ * @param {string} pkgRoot 包根(即 `PKG_ROOT`,开发期等于仓库根)。
+ * @returns {{
+ *   examplesRootCandidates: string[],
+ *   toolchainRootCandidates: string[],
+ *   stylePresetCandidates: string[],
+ * }}
+ */
+export function buildCandidatePathDeps(distRoot, pkgRoot) {
+  return {
+    examplesRootCandidates: [join(distRoot, "examples"), join(pkgRoot, "examples")],
+    toolchainRootCandidates: [join(distRoot, "node_modules"), join(pkgRoot, "node_modules")],
+    stylePresetCandidates: [
+      join(distRoot, "packages/ui/tailwind-preset.ts"),
+      join(pkgRoot, "packages/ui/tailwind-preset.ts"),
+    ],
+  };
+}
+
+/**
+ * 从候选路径数组中选出第一个存在者(spec cli-agent-build 任务 1.5,Req 1.7, 4.2, 4.5)。
+ *
+ * 与 `resolveCliCommandsJs()` 同一 `existsFn` 注入接缝:单测借此在不触碰真实文件系统的
+ * 前提下,判别式地证明「首个存在」与「全部缺失」两个分支各自的返回值
+ * (discriminant-probe 方法论)。`buildCandidatePathDeps()` 构造的三组候选均可用本函数解析,
+ * 真正的消费落在 `server/cli/build/toolchain.ts`(任务 3.2)。
+ *
+ * @param {readonly string[]} candidates
+ * @param {(path: string) => boolean} [existsFn]
+ * @returns {string | undefined}
+ */
+export function resolveFirstExistingCandidate(candidates, existsFn = existsSync) {
+  return candidates.find((candidate) => existsFn(candidate));
+}
+
+/**
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
  * @returns {Promise<number>} 子进程退出码
  */
@@ -651,15 +758,16 @@ const dynamicImport = new Function("specifier", "return import(specifier);");
  * Req 1.7)。产物缺失时给出可操作错误并非零退出(与 `launch()` 对 `dist/server.mjs`
  * 缺失的处理一致)。
  *
- * `examplesRootCandidates` 在此(壳层)构造并传入,而非让打包进产物的 `server/cli/index.ts`
+ * `examplesRootCandidates`(及 spec cli-agent-build 任务 1.5 新增的 `toolchainRootCandidates`
+ * / `stylePresetCandidates`)在此(壳层)构造并传入,而非让打包进产物的 `server/cli/index.ts`
  * 自行推断 —— 该模块被 esbuild 打成单文件产物后 `import.meta.url` 会被内联,其"回退
  * process.cwd()"这条路径不可靠(见 `distCliCommandsJs()` 的 docstring)。壳层的 `PKG_ROOT`
  * (真实 `import.meta.url` 解析结果,未被打包)与 `distCliCommandsJs()` 的产物根才是可信来源:
- * 候选路径依次为「产物根旁 `examples/`」(分发后布局)与「仓库根 `examples/`」(开发期布局),
- * `resolveExamplesRoot()`(产物内的纯函数)按序取第一个真实存在的。
+ * `buildCandidatePathDeps()` 按序构造「产物根旁」(分发后布局)与「包根旁」(开发期布局)
+ * 两级候选,消费方各自用「首个存在」的纯函数按序取第一个真实存在的。
  */
 async function runSubcommandFromDist(name, argv) {
-  const cliCommandsJs = distCliCommandsJs();
+  const { cliCommandsJs } = await resolveCliCommandsJs();
   if (!existsSync(cliCommandsJs)) {
     console.error(
       `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +
@@ -668,10 +776,39 @@ async function runSubcommandFromDist(name, argv) {
     return 1;
   }
   const distRoot = dirname(cliCommandsJs);
+  const deps = buildCandidatePathDeps(distRoot, PKG_ROOT);
+
+  // ★ 工具链预检**必须在动态载入 cli-commands 之前**做。
+  // 打包后的 `cli-commands.mjs` 里，构建路径依赖的 `import { build } from "esbuild"` 是
+  // **静态 ESM import**——ESM 的 import 声明无论写在文件哪一行都会提升到模块顶层执行，
+  // 所以实现层再怎么改成「先 resolveToolchain 再动态 import」，在打包产物里都失效：
+  // 工具链缺失时 `import(cli-commands.mjs)` 当场抛裸的 ERR_MODULE_NOT_FOUND，永远走不到
+  // 实现层那句友好报错。壳层是唯一能在模块加载前拦截的位置，而它恰好已经持有工具链候选
+  // 路径（cli-agent-build 任务 1.5）。此处只用 `node:fs`，不破坏薄壳约束。
+  if (name === "build") {
+    const required = ["esbuild", "postcss", "tailwindcss", "autoprefixer"];
+    const roots = deps.toolchainRootCandidates ?? [];
+    const hit = roots.find((root) => required.every((pkg) => existsSync(join(root, pkg, "package.json"))));
+    if (hit === undefined) {
+      const missingByRoot = roots.length === 0
+        ? "  (未构造任何候选 node_modules 根)"
+        : roots
+            .map((root) => {
+              const miss = required.filter((pkg) => !existsSync(join(root, pkg, "package.json")));
+              return `  - ${root}\n      缺失: ${miss.join(", ") || "(无)"}`;
+            })
+            .join("\n");
+      console.error(
+        `✖ build — [BUILD_TOOLCHAIN_MISSING] 构建工具链在当前安装形态下不可用，已终止(不产出任何产物)。\n` +
+          `已尝试的候选根:\n${missingByRoot}\n` +
+          `请检查 pi-web 安装是否完整(重新安装，或在源码仓库内执行一次 \`pnpm build:dist\`)。`,
+      );
+      return 1;
+    }
+  }
+
   const mod = await dynamicImport(pathToFileURL(cliCommandsJs).href);
-  return mod.runSubcommand(name, argv, {
-    examplesRootCandidates: [join(distRoot, "examples"), join(PKG_ROOT, "examples")],
-  });
+  return mod.runSubcommand(name, argv, deps);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -698,7 +835,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (opts.intent === "subcommand" && opts.name === "add") {
     // `add` 的专用最小分发(spec cli-component-add,任务 4):通用 runSubcommand 分发
     // 仍归 cli-package-commands 任务 6.1,落地时本分支并入其词条表。
-    const cliCommandsJs = distCliCommandsJs();
+    const { cliCommandsJs } = await resolveCliCommandsJs();
     if (!existsSync(cliCommandsJs)) {
       console.error(
         `[pi-web] 未找到子命令实现产物 ${cliCommandsJs}\n` +

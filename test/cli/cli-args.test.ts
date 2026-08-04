@@ -12,6 +12,9 @@ import {
   findFreePort,
   waitForReady,
   distServerJs,
+  buildCandidatePathDeps,
+  resolveFirstExistingCandidate,
+  main,
 } from "@/bin/pi-web.mjs";
 import { isHotReloadEnabled } from "@/packages/core/src/rpc-channel/hot-reload";
 
@@ -214,5 +217,128 @@ describe("桌面壳复用的导出原语(pi-web-desktop 1.2)", () => {
     await expect(
       waitForReady("127.0.0.1", 1, { aborted: true }),
     ).rejects.toThrow();
+  });
+});
+
+// spec cli-agent-build 任务 1.5:壳层构造并注入的工具链/样式预设候选路径(Req 4.2, 4.5, 1.7)。
+describe("buildCandidatePathDeps 候选路径构造(cli-agent-build 1.5)", () => {
+  const DIST_ROOT = "/dist-root";
+  const PKG_ROOT_FIXTURE = "/pkg-root";
+
+  it("产出 examples/toolchain/style-preset 三组两级候选,产物根优先、包根兜底", () => {
+    const deps = buildCandidatePathDeps(DIST_ROOT, PKG_ROOT_FIXTURE);
+    expect(deps.examplesRootCandidates).toEqual([
+      "/dist-root/examples",
+      "/pkg-root/examples",
+    ]);
+    expect(deps.toolchainRootCandidates).toEqual([
+      "/dist-root/node_modules",
+      "/pkg-root/node_modules",
+    ]);
+    expect(deps.stylePresetCandidates).toEqual([
+      "/dist-root/packages/ui/tailwind-preset.ts",
+      "/pkg-root/packages/ui/tailwind-preset.ts",
+    ]);
+  });
+
+  it("不触碰文件系统(纯字符串拼接,同一输入恒产出同一结果)", () => {
+    const a = buildCandidatePathDeps(DIST_ROOT, PKG_ROOT_FIXTURE);
+    const b = buildCandidatePathDeps(DIST_ROOT, PKG_ROOT_FIXTURE);
+    expect(a).toEqual(b);
+  });
+});
+
+describe("resolveFirstExistingCandidate 首个存在者解析(cli-agent-build 1.5)", () => {
+  it("首个存在 → 返回该候选路径(命中非首位时仍正确跳过前面不存在的)", () => {
+    const exists = (p: string) => p === "/b/tailwind-preset.ts";
+    const resolved = resolveFirstExistingCandidate(
+      ["/a/tailwind-preset.ts", "/b/tailwind-preset.ts", "/c/tailwind-preset.ts"],
+      exists,
+    );
+    expect(resolved).toBe("/b/tailwind-preset.ts");
+  });
+
+  it("全部缺失 → 返回 undefined,不抛异常", () => {
+    const neverExists = () => false;
+    const resolved = resolveFirstExistingCandidate(
+      ["/a/node_modules", "/b/node_modules"],
+      neverExists,
+    );
+    expect(resolved).toBeUndefined();
+  });
+});
+
+// spec cli-agent-build 任务 4.1:build 子命令接入主 CLI 的壳层选项面(Req 1.1, 1.2, 1.4)。
+describe("parseCliArgs — build 子命令词条(cli-agent-build 4.1)", () => {
+  it("`build [source]` 判别为 subcommand 意图,argv 正确切片,接受 --panes/--sign/--out", () => {
+    const o = parseCliArgs(["build", "./my-agent", "--panes", "panes/modules.ts", "--sign", "key-b64", "--out", "dist"]);
+    expect(o.intent).toBe("subcommand");
+    if (o.intent !== "subcommand") throw new Error("unreachable");
+    expect(o.name).toBe("build");
+    expect(o.argv).toEqual(["./my-agent", "--panes", "panes/modules.ts", "--sign", "key-b64", "--out", "dist"]);
+  });
+
+  it("省略位置参数也判别为 subcommand 意图(缺省当前目录留给实现层处理,Req 1.3)", () => {
+    const o = parseCliArgs(["build"]);
+    expect(o.intent).toBe("subcommand");
+    if (o.intent !== "subcommand") throw new Error("unreachable");
+    expect(o.name).toBe("build");
+    expect(o.argv).toEqual([]);
+  });
+
+  it("`build --help` → help 意图且带 subcommand=build", () => {
+    const o = parseCliArgs(["build", "--help"]);
+    expect(o).toEqual({ intent: "help", subcommand: "build" });
+  });
+
+  it("build 下非法选项抛 CliUsageError,含选项名与查看帮助的提示;解析本身不触碰 fs/网络(同步抛出)(Req 1.4)", () => {
+    try {
+      parseCliArgs(["build", "--bogus"]);
+      throw new Error("应当抛出");
+    } catch (err) {
+      expect(err).toBeInstanceOf(CliUsageError);
+      expect((err as Error).message).toContain("--bogus");
+      expect((err as Error).message).toContain("pi-web build --help");
+    }
+  });
+
+  it("build 的选项不串味:create 不接受 --panes;list 不接受 --sign", () => {
+    expect(() => parseCliArgs(["create", "x", "--panes", "p.ts"])).toThrow(CliUsageError);
+    expect(() => parseCliArgs(["list", "--sign", "k"])).toThrow(CliUsageError);
+  });
+});
+
+describe("main() — 顶层与子命令帮助含 build(cli-agent-build 4.1,Req 1.1, 1.2)", () => {
+  it("main(['--help']) 输出的子命令列表含 build 及一句话说明,退出码 0", async () => {
+    const chunks: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((c: unknown) => {
+      chunks.push(String(c));
+      return true;
+    });
+    try {
+      const code = await main(["--help"]);
+      expect(code).toBe(0);
+      const out = chunks.join("");
+      expect(out).toContain("build");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("main(['build', '--help']) 输出子命令专属用法,退出码 0", async () => {
+    const chunks: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation((c: unknown) => {
+      chunks.push(String(c));
+      return true;
+    });
+    try {
+      const code = await main(["build", "--help"]);
+      expect(code).toBe(0);
+      const out = chunks.join("");
+      expect(out).toContain("pi-web build");
+      expect(out).toContain("--panes");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
