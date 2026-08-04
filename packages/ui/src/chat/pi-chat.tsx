@@ -1693,9 +1693,17 @@ export function PiChat({
   const lay = layoutClassNames(layout);
 
   // panelRight 让位比例解析:仅扩展声明 panelRight 时启用切换器;artifact-only aside 沿用固定 w-96。
-  // ★ 与上方 hasSurfacePanel 同源:旧槽 ∨ 合并出了内置/agent panes。两者必须同时改 ——
-  // 一个控制面板容器与宽度/比例控件,另一个控制空闲控制流,只改一处会让两者对不上。
-  const hasPanelRight = mergedPanes !== undefined;
+  //
+  // ★ 判据取 `panesDefinition` 而**不是** `mergedPanes` —— 二者只差一项:宿主在
+  //   `showLogs && logsPanelVisible` 时注入的日志 pane。取 mergedPanes 会漏掉「只有注入的
+  //   日志 pane、没有任何内置/agent pane」这一情形,后果是 aside 虽被 keepPanesHostAlive
+  //   挂住,却因 showPanelRight=false 而 `aria-hidden` + 宽 0 —— 日志 pane 声明了却永远
+  //   点不开(连「新开 Pane」按钮都摸不到)。
+  //
+  // ★ 与上方 `hasSurfacePanel` 在此**刻意分岔**,勿再合并成同一判据:那一个问的是「有没有
+  //   承载 agent surface 的面板」(注入的日志 pane 不承载 surface,不该让它开启空闲控制流),
+  //   这一个问的是「右侧面板要不要可见」。语义不同,取值来源自然不同。
+  const hasPanelRight = panesDefinition !== undefined;
 
   /**
    * 宿主装载路径下 pane 可见的具名信号。

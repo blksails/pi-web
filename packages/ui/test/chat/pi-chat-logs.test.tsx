@@ -23,7 +23,12 @@ describe("PiChat isolated logs pane", () => {
     await user.click(screen.getByRole("button", { name: /日志/ }));
     const iframe = container.querySelector<HTMLIFrameElement>('iframe[title="日志"]');
     expect(iframe).not.toBeNull();
-    expect(iframe?.getAttribute("src")).toMatch(/^data:text\/html/);
+    // HTML Guest 形态(`kind: "html"` + src),对应构建期写出的 `public/pane-logs.html`。
+    // 断言原先期望 `data:text/html` —— 那是更早的 inline srcDoc 形态遗留,与本用例标题
+    // (「uses an HTML Guest iframe」)自相矛盾;形态改为 URL 时断言没跟上,而 CI 因
+    // `pnpm -r` 首错即停从未跑到 packages/ui,这处不一致遂长期不可见。
+    expect(iframe?.getAttribute("src")).toBe("/pane-logs.html");
+    expect(iframe?.hasAttribute("srcdoc")).toBe(false);
     expect(container.querySelector("[data-pane-carrier=host-view]")).toBeNull();
   });
 

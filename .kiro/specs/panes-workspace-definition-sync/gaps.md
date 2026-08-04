@@ -66,7 +66,7 @@ design 已将其列为 Out of Boundary。
 **建议**：若希望布局按会话隔离，应由 agent 在 key 中带上会话维度，或由宿主提供
 显式的「按会话隔离」选项——属于契约层面的讨论，不是本 spec 的修复对象。
 
-## G4 — `packages/ui` 三个 logs pane 测试既存失败（非本 spec 引入，但需追查）
+## G4 — `packages/ui` 三个 logs pane 测试失败（已修复）
 
 **失败用例**：
 
@@ -74,16 +74,65 @@ design 已将其列为 Out of Boundary。
 - `packages/ui/test/chat/pi-chat-logs.test.tsx` — `opens logs only on demand and uses an HTML Guest iframe`
 - `packages/ui/test/chat/pi-chat-logs-slot.test.tsx` — `does not render a logs contribution into the host tree`
 
-**症状**：三者均报 `Unable to find an accessible element with the role "button" and name "新开 Pane"`，
-页面只渲染出空态（「有什么可以帮你的?」），`PanesHost` 根本没出现。错误堆栈里
-**没有任何 panes-kit / instances.ts / panes-host 的帧**。
+### 归因（本文件初版写错了两处，此处更正）
 
-**归属证据**：用 `git stash` 把本 spec 的全部改动撤下后跑同一组测试，失败数完全相同
-（`pi-chat-logs` 2 failed、`pi-chat-logs-slot` 1 failed）。故**与本 spec 无关**。
+初版写「这三个用例来自 PR #24」「很可能源于合并 PR #24 时的冲突解决」，**两条都不成立**：
 
-**但需要追查**：这三个用例来自 PR #24（`aigc-pane-desktop-integration`），而该 PR 自身的
-CI test job 只红在 `tier-guard` 一项，说明它们当时是绿的。合并该 PR 时曾手工解决
-`packages/ui/src/chat/pi-chat.tsx` 的语义冲突（采纳 PR 的「日志仅作声明式 Guest Pane」
-新语义，同时保留两层 panes 形态归一），**这三处失败很可能源于那次冲突解决**。
+- 测试文件来自更早的 `logging-system` spec（`93859f30` / `49894599`），PR #24 只是重写了它们；
+- 在 **PR #24 分支上（`fd12f4f4`）直接跑同样红**（重装依赖后复验仍红），所以与合并无关。
 
-**建议**：单独排查，不要与本 spec 的改动混在一起判断。
+初版还据「PR 的 CI 只红在 tier-guard」推断「当时是绿的」——这个推断的前提本身是错的，见 G5。
+
+### 真因（两处，都已修）
+
+**其一：`hasPanelRight` 判据取错来源**（`packages/ui/src/chat/pi-chat.tsx`）
+
+`hasPanelRight = mergedPanes !== undefined`，而 `mergedPanes` **不含**宿主在
+`showLogs && logsPanelVisible` 时注入的日志 pane。于是「只有注入的日志 pane、没有任何
+内置/agent pane」时：`panesDefinition` 有值 → `keepPanesHostAlive` 把 aside 挂住，但
+`showPanelRight` 为 false → 容器被打上 `aria-hidden="true"` 且宽度 0。
+
+后果不止是测试红：**日志 pane 声明了却永远点不开** —— 连「新开 Pane」按钮都摸不到。
+testing-library 的 `getByRole` 默认忽略 `aria-hidden` 子树，所以症状表现为「找不到按钮」。
+
+修法：判据改取 `panesDefinition`。注意**不要**顺手把 `hasSurfacePanel` 一起改（源码注释
+曾要求两者同时改）——那一个问的是「有没有承载 agent surface 的面板」，注入的日志 pane
+不承载 surface，不该让它开启空闲控制流。两者在此刻意分岔，已在代码注释中写明。
+
+**其二：`iframe src` 断言形态过时**（`packages/ui/test/chat/pi-chat-logs.test.tsx`）
+
+`createLogsPaneDocument()` 已改为 HTML Guest 形态（`kind: "html"` + `src: "/pane-logs.html"`，
+配套构建期写出 `public/pane-logs.html`），而断言仍期望 `data:text/html`（更早的 inline
+srcDoc 形态）。该断言与**本用例自己的标题**（「uses an HTML Guest iframe」）自相矛盾，
+判定为断言未跟上形态变更，已改为 `toBe("/pane-logs.html")` 并补断 `srcdoc` 不存在。
+
+### 验证
+
+修复后这两个文件 4/4 绿，`packages/ui` 全量 **114/114 文件、950/950 用例**全绿
+（此前为 `2 failed | 112 passed`）。
+
+红对照两轮，证明修复有判别力而非「把红改没」：把 `hasPanelRight` 改回 `mergedPanes`
+→ 精确报红 3 个（正是原失败集）；把日志文档改回 inline → 精确报红 1 个（正是被改的断言）。
+
+## G5 — CI 首错即停，6 个 workspace 包从不被验证（严重，未修）
+
+**证据**：同一份代码，本地 `pnpm -r` 跑出 **20 组**测试汇总，PR #24 的 CI 只有 **14 组**。
+缺失的第 20 组正是 `packages/ui`（114 个测试文件）。
+
+**成因**：CI 的 test job 跑 `pnpm test`（即 `pnpm -r --workspace-concurrency=1 run test`），
+`pnpm -r` 首错即停。`packages/core` 的 `tier-guard` 一红，其后包括 `packages/ui` 在内的
+6 个包便再也不跑。job 耗时 4 分钟、timeout 是 30 分钟，**不是超时**。
+
+**后果**：`tier-guard` 一红，后面全瞎。G4 那三处失败正是这样长期不可见的 —— PR #24 的
+CI 报「只有 tier-guard 失败」，看起来像「其余全绿」，实际是「其余没跑」。**「没跑」与
+「跑了且全绿」在 CI 摘要里长得一模一样**，这正是本仓多次踩到的同一类陷阱。
+
+**建议**（注意其中一个显而易见的做法是**有害**的）：
+
+- ⚠ **不要直接加 `pnpm --no-bail`**。实测其语义是「即使有失败也以 **0 退出码**退出」
+  （`pnpm run --help` 原文），直接加上去会让 CI 从「漏跑一半」变成「永远绿」，比现状更糟。
+- 可行方向：写一层薄包装，逐包跑测试并收集每包结果，**全部跑完后**按「是否存在失败」
+  显式决定退出码；或用 `--no-bail` 跑完再自行解析各包结果并显式 `exit 1`。
+- 另外值得加一道机械校验：在 job 末尾比对「实际产生测试汇总的包数」与「声明了
+  `test` script 的包数」，使**漏跑本身可被机械发现**，而不是靠人去数汇总行——
+  本次正是靠手工数出「本地 20 组 vs CI 14 组」才发现的。
