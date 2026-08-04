@@ -5,13 +5,13 @@ import { test, expect } from "@playwright/test";
  *
  * 覆盖关键用户路径(requirements.md):
  *  - 5.1/5.3  会话列表面板经宿主插槽(默认 sidebar)注入,与对话区共存。
- *  - 2.2      系统(全机器)视图默认关闭 → 前端无「全部」Tab(构建期未开 NEXT_PUBLIC_*)。
- *  - 2.3      后端门控:scope=all 默认关闭 → 403。
- *  - 1.1/3.x  当前目录列表含已持久化会话(经后端 API 断言,避开 cwd 推断)。
+ *  - 1.1/3.x  列表含已持久化会话(经后端 API 断言,避开 cwd 推断)。
  *  - 4.1/4.2  从侧栏列表点击「恢复」→ 进入该会话并回放历史。
  *
- * 注:「全部」Tab 出现(开启态)需以 NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL=1 重新构建
- * (NEXT_PUBLIC_ 构建期内联),不在本默认构建的运行时可切换;此处验证关闭态前端 + 后端门控。
+ * ★ 行为变更(spec session-meta-index 增量):会话列表**恒为全局**,不再区分项目目录。
+ *   原先验证「系统视图默认关闭 → 无『全部』Tab」与「scope=all → 403 门控」的断言随
+ *   该行为一并移除(视图切换与部署门控都已不存在),改为验证「无视图切换 Tab」与
+ *   「不带任何范围参数即可列出会话」。
  */
 
 const SOURCE = "./examples/hello-agent";
@@ -43,36 +43,32 @@ async function sendAndFinishTurn(
   await expect(page.locator("[data-pi-interaction-resolved]")).toBeVisible();
 }
 
-test("panel injected via host sidebar slot; closed global view hides the 'all' tab", async ({
+test("panel injected via host sidebar slot; no view-scope tabs at all", async ({
   page,
 }) => {
   await startSession(page);
   // 面板注入(R5.1/5.3):侧栏出现会话列表,对话区(输入框)仍在、未被遮挡。
   await expect(page.locator("[data-pi-session-list]")).toBeVisible();
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
-  // 关闭态(R2.2):无「全部」Tab(构建期未开全局视图)。
+  // 全局化后不存在视图切换:Tab 区整体不再渲染(不是"被门控隐藏",是压根没有)。
   await expect(page.locator("[data-pi-session-list-tabs]")).toHaveCount(0);
 });
 
-test("backend gates scope=all and lists the current session's directory", async ({
+test("lists sessions globally without any scope parameter", async ({
   page,
   request,
 }) => {
-  // 门控(R2.3):系统范围默认关闭 → 403。
-  const all = await request.get("/api/sessions?scope=all");
-  expect(all.status()).toBe(403);
-
-  // 持久化一轮会话;以 sessionId 解析「当前目录」应含之(R1.1/3.x)。
+  // 持久化一轮会话;不带任何范围参数即应列出它(R1.1/3.x)。
   const id = await startSession(page);
   await sendAndFinishTurn(page, "hello");
-  const res = await request.get(`/api/sessions?sessionId=${id}`);
+  const res = await request.get("/api/sessions");
   expect(res.ok()).toBeTruthy();
   const body = (await res.json()) as {
-    sessions: ReadonlyArray<{ sessionId: string }>;
-    scope: string;
+    sessions: ReadonlyArray<{ sessionId: string; cwd: string }>;
   };
-  expect(body.scope).toBe("cwd");
   expect(body.sessions.map((s) => s.sessionId)).toContain(id);
+  // 列表项仍带 cwd:「哪个项目的会话」在项上仍可见
+  expect(body.sessions.find((s) => s.sessionId === id)?.cwd.length).toBeGreaterThan(0);
 });
 
 test("new session appears in the sidebar after a turn, without reload", async ({
@@ -83,7 +79,7 @@ test("new session appears in the sidebar after a turn, without reload", async ({
   // 完成一轮 → 宿主 onTurnEnd 触发面板刷新;再完成一轮,使刷新必发生在首轮落盘之后(消除竞态)。
   await sendAndFinishTurn(page, "hello");
   await sendAndFinishTurn(page, "again");
-  // 无需 reload:每轮结束后列表重拉当前 cwd 首页 → 该会话出现在侧栏(问题1:及时看到新会话)。
+  // 无需 reload:每轮结束后列表重拉首页 → 该会话出现在侧栏(问题1:及时看到新会话)。
   await expect(
     page.locator(`[data-pi-session-list-resume="${id}"]`),
   ).toBeVisible();

@@ -370,7 +370,7 @@ function packWorkspacePackages() {
 /**
  * 被 bundle 的代码在**运行时** `require()` 的相对资源。
  *
- * `packages/server/src/config/schema-registry.ts` 里有:
+ * `packages/core/src/config/schema-registry.ts` 里有:
  *   const require = createRequire(import.meta.url);
  *   const BUILTIN_SNAPSHOT = require("./schema-registry.data.json");
  *

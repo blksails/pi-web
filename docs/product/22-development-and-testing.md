@@ -156,7 +156,7 @@ pnpm e2e:node   # 无需 API Key、无需浏览器
 - `streaming.e2e.test.ts` — 创建会话 → POST prompt → 消费 SSE → 断言 `text-delta` / `reasoning-delta` / `tool-input-available` 帧及权限对话回环；
 - `config-domains.e2e.test.ts`、`attachment-completion.e2e.test.ts`；
 - `state-bridge.e2e.test.ts` — 状态注入桥 `POST /sessions/:id/state` 写回 + `control:state` 下行镜像；
-- `vision-tool.e2e.test.ts` / `vision-models-endpoint.e2e.test.ts` — `image_vision` 工具与 `GET /vision/models` 枚举。
+- `vision-tool.e2e.test.ts` / `vision-models-endpoint.e2e.test.ts` — `image_vision` 工具与视觉模型枚举（端点已并入 `GET /api/config/models?input=image&output=text`）。
 
 ### 22.4.4 浏览器 e2e（Playwright）
 

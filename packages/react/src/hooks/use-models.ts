@@ -26,6 +26,21 @@ export interface ModelSelection {
   readonly modelId: string;
 }
 
+/**
+ * 从会话快照的 `model`(`unknown`,实为 pi SDK `Model` 形状)提取 `{provider, modelId}`。
+ * 形状不符(缺字段/非对象)时返回 undefined,不抛错(Req 11.8)。
+ */
+function extractModelSelection(model: unknown): ModelSelection | undefined {
+  if (typeof model !== "object" || model === null) return undefined;
+  const rec = model as Record<string, unknown>;
+  const provider = rec.provider;
+  const modelId = rec.id;
+  if (typeof provider !== "string" || typeof modelId !== "string") {
+    return undefined;
+  }
+  return { provider, modelId };
+}
+
 export interface UseModelsOptions {
   readonly sessionId: string | undefined;
   readonly client?: PiClient;
@@ -75,7 +90,10 @@ export function useModels(opts: UseModelsOptions): UseModelsResult {
   const { sessionId, client, controls } = opts;
 
   const [groups, setGroups] = useState<ReadonlyArray<ModelGroup>>([]);
-  const [current, setCurrent] = useState<ModelSelection | undefined>(undefined);
+  // 本地乐观态:select() 尚未回填会话快照前的即时反馈;快照有值时让位于快照(Req 11.8)。
+  const [localCurrent, setLocalCurrent] = useState<ModelSelection | undefined>(
+    undefined,
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(undefined);
   const [loaded, setLoaded] = useState(false);
@@ -124,7 +142,7 @@ export function useModels(opts: UseModelsOptions): UseModelsResult {
         }
         await client.setModel(sessionId, req);
       }
-      setCurrent(req);
+      setLocalCurrent(req);
     },
     [controls, client, sessionId],
   );
@@ -133,6 +151,15 @@ export function useModels(opts: UseModelsOptions): UseModelsResult {
     () => loaded && groups.length > 0,
     [loaded, groups],
   );
+
+  // 权威来源:会话快照(pi-session 把 set_model 结果写入 snapshot.model,Req 11.8)。
+  // 快照未知(尚无 controls / 尚未收到 session-state 帧)时才回退本地乐观态;
+  // 快照给出的模型即便不在 groups 里也原样透出,不因不在清单中而消失(Req 11.9)。
+  const sessionCurrent = useMemo(
+    () => extractModelSelection(controls?.session?.model),
+    [controls?.session?.model],
+  );
+  const current = sessionCurrent ?? localCurrent;
 
   return {
     groups,

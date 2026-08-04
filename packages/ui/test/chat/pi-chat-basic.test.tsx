@@ -15,17 +15,20 @@ describe("PiChatBasic 装配", () => {
     expect(screen.getByRole("button", { name: /发送/ })).toBeInTheDocument();
   });
 
+  // 控制面板 = 思考等级 + 会话统计。模型选择器**不在**本组件 —— 它曾挂在这里但从未
+  // 被喂过 models(恒空),已随 PiModelSelector 一并删除;富组件 PiChat 的提示词栏用的是
+  // elements/ModelSelector,与本处无关。
   it("showControls 时渲染内置控制面板", () => {
-    render(
+    const { container } = render(
       <PiChatBasic
         session={mockSession()}
         controls={mockControls()}
         showControls
       />,
     );
-    expect(
-      screen.getByRole("button", { name: /选择模型/ }),
-    ).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-chat-controls]")).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-thinking-level]")).toBeInTheDocument();
+    expect(container.querySelector("[data-pi-model-selector]")).toBeNull();
   });
 
   it("extensionUI.current 存在时呈现内联交互卡(非模态)", () => {

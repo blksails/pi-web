@@ -1,0 +1,42 @@
+{
+  "name": "@blksails/pi-web-runner",
+  "version": "0.1.0",
+  "description": "pi-web agent runner:子进程实现与 cwd-无关引导脚本。依赖面窄到不含云沙箱 SDK、数据库驱动、WebSocket 与 MCP SDK",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/runner/index.ts",
+    "./runner-bootstrap.mjs": "./runner-bootstrap.mjs",
+    "./*.js": "./src/*.ts"
+  },
+  "main": "./src/runner/index.ts",
+  "types": "./src/runner/index.ts",
+  "files": [
+    "src",
+    "runner-bootstrap.mjs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/run-tests.mjs",
+    "test:fast": "node scripts/run-tests.mjs --fast",
+    "test:e2e": "node scripts/run-tests.mjs --e2e"
+  },
+  "dependencies": {
+    "@blksails/pi-web-core": "workspace:*",
+    "@blksails/pi-web-logger": "workspace:*",
+    "@blksails/pi-web-protocol": "workspace:*",
+    "@blksails/pi-web-tool-kit": "workspace:^",
+    "jiti": "^2.7.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  }
+}

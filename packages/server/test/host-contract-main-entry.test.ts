@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import * as main from "../src/index.js";
-import * as versionModule from "../src/host-contract-version.js";
-import * as workspaceModule from "../src/workspace/index.js";
-import * as capabilityModule from "../src/capability/index.js";
-import * as hostManifestModule from "../src/host-manifest/index.js";
-import * as configDomainModule from "../src/config-domain/index.js";
+import * as versionModule from "@blksails/pi-web-core/host-contract-version.js";
+import * as workspaceModule from "@blksails/pi-web-core/workspace/index.js";
+import * as capabilityModule from "@blksails/pi-web-core/capability/index.js";
+import * as hostManifestModule from "@blksails/pi-web-core/host-manifest/index.js";
+import * as configDomainModule from "@blksails/pi-web-core/config-domain/index.js";
 import type {
   CapabilityDecision,
   CapabilityDescriptor,

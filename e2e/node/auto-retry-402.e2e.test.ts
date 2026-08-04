@@ -3,7 +3,7 @@
  * (spec 402-UI, point ③ acceptance).
  *
  * Wiring choice: drives the real HTTP handler → session engine → SSE encoder →
- * translate layer (packages/server/src/session/translate/translate-event.ts)
+ * translate layer (packages/core/src/session/translate/translate-event.ts)
  * exactly like e2e/node/streaming.e2e.test.ts, feeding it protocol-conformant
  * `auto_retry_start` / `auto_retry_end` / `agent_end` events (the exact wire
  * shapes `AgentEventSchema` in packages/protocol/src/rpc/event.ts declares)

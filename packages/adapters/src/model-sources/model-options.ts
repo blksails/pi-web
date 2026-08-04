@@ -1,0 +1,63 @@
+/**
+ * model-sources — 取自 agent 运行时 SDK 的**模型取数闭包**(adapters 层)。
+ *
+ * 由 core-package-extraction 任务 5.3 从内核摘出,判据与 sandbox-transport / mcp-probe 同源:
+ * 这两个文件**值**导入 `@earendil-works/pi-coding-agent`(`AuthStorage.create` /
+ * `ModelRegistry.create`),而 R1.3 要求内核对 agent 运行时 SDK **仅以类型方式引用**。
+ * 内核走源码直连分发,消费方 `tsc` 会编译到每个文件 —— 把 SDK 声明成 optional peer
+ * 挡不住这一点,缺类型即编译失败。
+ *
+ * 它们本就**刻意不进主 barrel**(见主 barrel 注释:"取数闭包不在此导出,由装配层注入"),
+ * 只经 `@blksails/pi-web-server` 的两个子路径暴露 —— 那两个子路径的对外形态逐字不变。
+ */
+/**
+ * model-options — 用 pi SDK 在进程内列出「已配置凭证、当前可用」的模型,供 settings
+ * 域把 defaultProvider/defaultModel 升级为下拉(见 enrich-settings-models.ts)。
+ *
+ * 取自 pi SDK 的 ModelRegistry(内置 + `<agentDir>/models.json` 自定义 provider),
+ * 经 AuthStorage 解析凭证后只保留 `getAvailable()`(有 auth 的模型) —— 即用户实际
+ * 能选的集合。这是 pi-coding-agent CLI `--list-models` 的同源数据,但走进程内 API
+ * 而非解析表格输出(后者无 JSON 模式,易碎)。
+ *
+ * pi SDK 经 next.config `serverExternalPackages` 外置,在 server 运行时以 Node
+ * require 加载;此模块刻意与 enrich 纯函数分离,使 config-routes 的单测不被迫加载
+ * pi SDK。
+ */
+import { join } from "node:path";
+import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import type { ModelOptions } from "@blksails/pi-web-core/config/model-options.types.js";
+import { normalizeModalities } from "@blksails/pi-web-core/model-catalog/modality.js";
+
+// 经本(`./model-options`)子路径转出 provider 排除过滤(纯函数,定义在不引 pi SDK 的
+// model-options-filter),便于 handler 装配层与取数一并 import。
+export {
+  parseHiddenProviders,
+  excludeProviders,
+} from "@blksails/pi-web-core/config/model-options-filter.js";
+
+/**
+ * 列出 `<agentDir>` 下已配置凭证的可用模型。
+ * 同步:AuthStorage/ModelRegistry 的构造与 getAvailable() 均不触发网络/OAuth 刷新。
+ * 抛错由调用方(config-routes)兜底回退,不阻断配置读取。
+ */
+export function listModelOptions(agentDir: string): ModelOptions {
+  const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
+  const registry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+  const models = registry.getAvailable().map((m) => {
+    // multi-gateway-providers spec 任务 4.2(Req 2.4, 4.1, 4.3):pi SDK 的 Model 直接
+    // 携带 `input`(design.md「输入/输出取值域」表:「pi SDK Model | 直接映射」,恒为
+    // 非空数组),但不带 `output` —— 经 `normalizeModalities` 按对话模型缺省补齐为
+    // `["text"]`(任务 1.2 既定规则),使本地模型来源的条目与网关/图像来源对齐,
+    // 均携带非空的输入/输出类型。
+    const modality = normalizeModalities({ input: m.input });
+    return {
+      provider: m.provider,
+      id: m.id,
+      name: m.name,
+      input: modality.input,
+      output: modality.output,
+    };
+  });
+  const providers = [...new Set(models.map((m) => m.provider))].sort();
+  return { providers, models };
+}

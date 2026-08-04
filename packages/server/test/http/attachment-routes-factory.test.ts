@@ -14,18 +14,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPiWebHandler } from "../../src/http/index.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
+import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
+import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
 import {
   attachmentStoreConfigFromEnv,
   type AttachmentStore,
-} from "../../src/attachment/index.js";
+} from "../../src/index.js";
 import {
-  createAttachmentRoutes,
   RAW_ATTACHMENT_ROUTE,
-} from "../../src/http/routes/attachment-routes.js";
-import { asPiSession, MockSession } from "./helpers.js";
+} from "@blksails/pi-web-core/http/routes/attachment-routes.js";
+import { asPiSession, MockSession } from "../../../core/test/http/helpers.js";
 
 // 顶层(服务包根 barrel)import 面:类型层 import 编译通过即证导出存在。
 import {

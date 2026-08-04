@@ -11,7 +11,6 @@ export const SLOTS = {
   headerCenter: "headerCenter",
   headerRight: "headerRight",
   sidebarLeft: "sidebarLeft",
-  panelRight: "panelRight",
   empty: "empty",
   footer: "footer",
   promptInput: "promptInput",

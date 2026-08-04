@@ -29,6 +29,12 @@ export * from "./domains/cloud.js";
 // `/config/mcp`。故仅导出 schema/FormSchema/codec 供独立路由与前端 import。
 export * from "./domains/mcp.js";
 export * from "./domains/mcp-codec.js";
+// providers(自定义 provider,multi-gateway-providers 任务 5.1/5.4;Req 7.1, 11.7):与 mcp
+// 不同,**并入**通用 `/config/:domain`(design.md 文件表:「导出 providers 域 + ConfigDomainId
+// 加值 + CONFIG_FORM_SCHEMAS」)—— 落盘 `<agentDir>/providers.json`,不像 mcp 那样需要探测类
+// 只读端点,通用 GET/PUT 机制已够用;唯一特殊之处(objectList 内的 secret 掩码/合并)由
+// `config-routes.ts` 按 domain 分支到 `provider-secrets.ts` 处理,不影响此处的注册方式。
+export * from "./domains/providers.js";
 
 import type { FormSchema } from "./form-schema.js";
 import { authFormSchema } from "./domains/auth.js";
@@ -37,9 +43,17 @@ import { sandboxFormSchema } from "./domains/sandbox.js";
 import { loggingFormSchema } from "./domains/logging.js";
 import { aigcFormSchema } from "./domains/aigc.js";
 import { cloudFormSchema } from "./domains/cloud.js";
+import { providersFormSchema } from "./domains/providers.js";
 
 /** 配置域 id(P0)。通用 `/config/:domain` 机制覆盖的域。 */
-export type ConfigDomainId = "auth" | "settings" | "sandbox" | "logging" | "aigc" | "cloud";
+export type ConfigDomainId =
+  | "auth"
+  | "settings"
+  | "sandbox"
+  | "logging"
+  | "aigc"
+  | "cloud"
+  | "providers";
 
 /** 域 id → 该域表单 IR(供前端按 id 取 schema)。 */
 export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> = {
@@ -49,4 +63,5 @@ export const CONFIG_FORM_SCHEMAS: Readonly<Record<ConfigDomainId, FormSchema>> =
   logging: loggingFormSchema,
   aigc: aigcFormSchema,
   cloud: cloudFormSchema,
+  providers: providersFormSchema,
 };

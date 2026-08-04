@@ -50,6 +50,18 @@ export function authorizePaneRequest(capabilities: PaneCapabilities, request: Pa
     }
     return;
   }
+  if (request.operation === "state.set" || request.operation === "state.delete") {
+    // ★ 拒绝消息**刻意不含键名**(Req 2.6):带上它,调用方就能用「消息里回显了我传的键」
+    // 与否来区分「未授权」和「键不存在」——那正是本条要堵的信息泄露。
+    // 与 route 拒绝带 route 名不同:route 是 agent 自己声明的,共享状态的键则可能来自别处。
+    if (!capabilities.state.write.includes(request.key)) {
+      throw new PaneHostError("CAPABILITY_DENIED", "Pane shared state write is not granted");
+    }
+    if (request.operation === "state.set" && estimatePayloadBytes(request.value) > DEFAULT_PANE_REQUEST_BYTES) {
+      throw new PaneHostError("PAYLOAD_TOO_LARGE", "Pane state write exceeds the pane limit");
+    }
+    return;
+  }
   if (capabilities.conversation !== "submit") {
     throw new PaneHostError("CAPABILITY_DENIED", "Conversation submit is not granted");
   }

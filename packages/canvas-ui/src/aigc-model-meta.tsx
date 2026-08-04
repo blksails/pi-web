@@ -7,7 +7,7 @@
 import * as React from "react";
 
 /**
- * provider → 字母徽章元数据(无图标资源,取首字母表示)。首字母互不冲突(O/N/S/D/G/C)。
+ * provider → 字母徽章元数据(无图标资源,取首字母表示)。首字母互不冲突(O/N/S/D/G/B/C)。
  * `name` 用于去掉 label 里冗余的 ` · <name>` 后缀 + 徽章 hover 提示。
  *
  * ⚠ **本表是徽章的准入闸门**:{@link ProviderBadge} 对表中没有的 provider 直接返回 null。
@@ -16,17 +16,40 @@ import * as React from "react";
  * 两条通路曾因此漏登记。
  */
 export const PROVIDER_META: Readonly<
-  Record<string, { readonly letter: string; readonly name: string; readonly bg: string }>
+  Record<
+    string,
+    {
+      readonly letter: string;
+      readonly name: string;
+      readonly bg: string;
+      /**
+       * 该 provider 在**存量 label 后缀**里可能出现的其它写法。{@link displayNameOf} 用它
+       * 判定后缀是否冗余。归一改名(`ai-gateway` → `blksails-ai`)之后,静态目录里的 label
+       * 仍写着旧名,不列别名的话后缀剥不掉。
+       */
+      readonly aliases?: readonly string[];
+    }
+  >
 > = {
   openrouter: { letter: "O", name: "OpenRouter", bg: "#6366f1" },
   newapi: { letter: "N", name: "NewAPI", bg: "#10b981" },
   sufy: { letter: "S", name: "Sufy", bg: "#f59e0b" },
   dashscope: { letter: "D", name: "DashScope", bg: "#0ea5e9" },
   "token-plan": { letter: "T", name: "Token Plan", bg: "#14b8a6" },
-  // BlackSail 自建网关(BLKSAILS_GATEWAY_*)。取 G(Gateway)而非 A:后者易被读成
-  // Anthropic/Aliyun。
+  // 网关**实例**的缺省 id(单实例配置 AI_GATEWAY_BASE_URL 时合成出来的那个)。它指向
+  // 「部署方配置的那台网关」,具体是谁取决于 env——所以名字只能是通用的 AI Gateway。
+  // 取 G(Gateway)而非 A:后者易被读成 Anthropic/Aliyun。
   "ai-gateway": { letter: "G", name: "AI Gateway", bg: "#8b5cf6" },
-  // Cloudflare AI Gateway(CLOUDFLARE_*),与上面的自建网关是**两条不同通路**。
+  // BlackSail 自建网关的图像通路。image 侧存量标识 `ai-gateway` 被归一成这个 id
+  // (multi-gateway-providers 任务 4.0 `LEGACY_PROVIDER_ID_MAP`),正是为了与上面那个
+  // 「缺省实例」区分开——两者曾同名,导致隐藏其一会连带干掉另一条通路的模型。
+  "blksails-ai": {
+    letter: "B",
+    name: "BlackSail AI",
+    bg: "#14b8a6",
+    aliases: ["ai-gateway", "AI Gateway"],
+  },
+  // Cloudflare AI Gateway(CLOUDFLARE_*),与上面两条都是**不同通路**。
   // 用 Cloudflare 官方品牌橙 #f6821f:与 sufy 的琥珀 #f59e0b 邻近但更饱和偏红,
   // 且字母不同(C/S),不至混淆。
   cloudflare: { letter: "C", name: "Cloudflare", bg: "#f6821f" },
@@ -47,27 +70,51 @@ export function displayNameOf(label: string, providerId: string | undefined): st
   // 徽章已代表 provider 却仍拖着冗余后缀。
   const norm = (s: string): string => s.toLowerCase().replace(/[\s_-]+/g, "");
   const n = norm(suffix);
-  return n === norm(meta.name) || (providerId !== undefined && n === norm(providerId))
-    ? label.slice(0, idx).trim()
-    : label;
+  const accepted = [meta.name, providerId ?? "", ...(meta.aliases ?? [])].map(norm);
+  return accepted.includes(n) ? label.slice(0, idx).trim() : label;
 }
 
-/** provider 字母徽章(无图标资源时的字母表示);未知 provider → 不渲染。 */
+/**
+ * 未登记 provider 的兜底徽章外观(灰色 + id 首字母)—— 不依赖 {@link PROVIDER_META}
+ * (multi-gateway-providers 任务 5.4;Req 7.1/11.7 相邻缺口):自定义 provider 的标识是
+ * 使用者在设置面板里现填的,不可能预先登记进这张手工维护的静态表(登记进去的是「产品
+ * 已知的少数几个内置 provider」)。此前 {@link ProviderBadge} 对表外 provider 直接返回
+ * `null`,使自定义 provider 的模型在图像/视觉清单里退化成「纯文字、无色块」—— 与本表头
+ * 注释警告的"忘了登记"是同一症状,但这里不是遗漏登记(不可能穷举使用者的自定义标识),
+ * 是徽章机制本身需要一条不查表也能画的兜底路径。用固定中性色(不挑战既有品牌色语义),
+ * 字母取标识首个字母(非字母数字时退化为 "•"),使徽章仍是"有一块色 + 一个记号"而非空白。
+ */
+const FALLBACK_BADGE_BG = "#64748b"; // slate-500:中性,不与 PROVIDER_META 任何品牌色雷同。
+
+function fallbackLetterFor(providerId: string): string {
+  const m = /[a-zA-Z0-9]/.exec(providerId);
+  return m !== null ? m[0]!.toUpperCase() : "•";
+}
+
+/**
+ * provider 字母徽章(无图标资源时的字母表示)。
+ * `providerId === undefined`(压根没有 provider 可标)→ 不渲染;
+ * `providerId` 有值但不在 {@link PROVIDER_META}(自定义 / 尚未登记的 provider)→ 兜底徽章,
+ * 不再是 `null`(见上方兜底说明)。
+ */
 export function ProviderBadge({
   providerId,
 }: {
   readonly providerId: string | undefined;
 }): React.JSX.Element | null {
-  const meta = providerId !== undefined ? PROVIDER_META[providerId] : undefined;
-  if (meta === undefined) return null;
+  if (providerId === undefined) return null;
+  const meta = PROVIDER_META[providerId];
+  const letter = meta?.letter ?? fallbackLetterFor(providerId);
+  const bg = meta?.bg ?? FALLBACK_BADGE_BG;
+  const title = meta?.name ?? providerId;
   return (
     <span
       aria-hidden
-      title={meta.name}
+      title={title}
       className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] text-[9px] font-semibold leading-none text-white"
-      style={{ backgroundColor: meta.bg }}
+      style={{ backgroundColor: bg }}
     >
-      {meta.letter}
+      {letter}
     </span>
   );
 }

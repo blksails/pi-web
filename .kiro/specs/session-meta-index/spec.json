@@ -1,0 +1,57 @@
+{
+  "feature_name": "session-meta-index",
+  "created_at": "2026-07-30T00:00:00Z",
+  "updated_at": "2026-07-30T00:00:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "decisions": {
+    "date": "2026-07-30",
+    "hat_form": "集中索引文件(用户定夺;sidecar 与 jsonl 内 custom entry 被否)",
+    "hat_location": "置于 ~/.pi/agent/sessions/ 目录之外,避免污染 pi CLI 扫描面",
+    "title_authority": "jsonl(session_info)为权威,索引仅为缓存、可重建",
+    "icon": "不做图标;以来源稳定色条替代",
+    "status_set": "工作中(busy) / 等待用户交互(pendingExtensionUI 非空) / 异常(lifecycle=error);工具调用中与排队中不做",
+    "status_channel": "GET /sessions 读取时聚合,不持久化",
+    "refresh": "轮次开始(agent_start)边沿也 bump 列表刷新,不止 onTurnEnd;跨会话即时性不保证(R8.5)",
+    "requirements_approval": "2026-07-30 用户经 /goal「使用 kiro 流程实现需求,并测试」授权放行需求闸门",
+    "design_approval": "2026-07-30 经 /goal「使用 kiro 流程实现需求,并测试」授权放行设计闸门",
+    "tasks_approval": "2026-07-30 经 /goal 授权放行任务闸门,直接进 impl",
+    "polling": "2026-07-30 验收演示后用户追加。周期分层(忙 5s / 闲 15s,页面不可见不跑),合并语义=更新已显示项状态 + 追加新出现会话,不移除不重排。初版的「全空闲即停」与「不增项」两个缺陷由 Chrome 真机实测抓到并修正。",
+    "workspace_port": "2026-07-30 用户问「pi-cloud 可以实现吗」后补:元数据持久化增加 Workspace 实现(每会话一键,因契约不提供跨进程锁),云端经 HostDeps.sessionMetaIndex 注入;本地保留带锁文件实现。两条实现由一致性套件共同验收。",
+    "global_only_list": "2026-07-30 用户要求「session-list 总是全局,不再区分项目目录」,选彻底移除 scope 与门控(非默认值改变)。已删请求 3 参数/响应 2 字段/装配 2 依赖/1 个运行时开关/面板双 Tab;列表项保留 cwd 以保项目归属可见。",
+    "sqlite_impl": "2026-07-31 用户要求本地 sqlite 版:行存储 + 事务 + WAL,单行 upsert + COALESCE 字段级合并(无需先读后写、无需自制锁);损坏即重建;经 createLocalSessionMetaIndex 按 env 选型(显式 > 跟随 SESSION_STORE > 默认 json)。"
+  },
+  "implementation": {
+    "date": "2026-07-30",
+    "tasks": "36/36",
+    "evidence": {
+      "date": "2026-07-30(最终一次完整回归的实测值)",
+      "protocol": "421 passed (46 files)",
+      "core": "1796 passed / 3 skipped (1799)",
+      "server": "84 passed / 1 skipped (85)",
+      "ui": "1031 passed / 2 skipped(含轮询 10 例)",
+      "react": "393 passed",
+      "app": "1031 passed / 2 skipped (1043)",
+      "typecheck": "root + 7 个包 tsc --noEmit 全部 exit 0",
+      "node_e2e": "session-meta-cli-compat 4 passed(真实 pi CLI 0.80.7)",
+      "browser_e2e": "session-list-meta-activity 4 passed;既有 sessions-list + session-list-item-actions 8 passed(无回归)",
+      "chrome_manual": "真机复验:A 页面全程不操作,后建会话 B 的等待状态自行出现在列表上;error 态改用 AlertCircle 图标"
+    },
+    "caveat": "★ 未在真实 dev 环境手测过多会话并行下的跨会话状态可见性(Req 8.5 已明确其为已接受边界)。"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "feature_name": "test-tiering-fast-lane",
+  "created_at": "2026-07-29T07:03:48Z",
+  "updated_at": "2026-07-29T08:15:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "会话目标指令「使用 kiro 流程实现业务需求，必要时可以用工作流」= 端到端总闸门批准(等价 /kiro auto 的闸门收敛)，非逐阶段口头批准"
+    },
+    "design": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "同 requirements：会话目标指令构成端到端总闸门批准"
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true,
+      "approval_basis": "同 requirements/design：会话目标指令构成端到端总闸门批准"
+    }
+  },
+  "ready_for_implementation": true,
+  "implementation": {
+    "date": "2026-07-29",
+    "branch": "refactor/core-extraction",
+    "base": "f1fdb4fd (会话中途合入 main 的 13 个提交)",
+    "tasks": "14/14",
+    "evidence": "连续两次全量计数一致;fast 6.25s;对账零缺口。详见 tasks.md「验收证据」段"
+  }
+}

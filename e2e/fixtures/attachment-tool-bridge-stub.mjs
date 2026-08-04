@@ -76,6 +76,13 @@ async function loadServerApi() {
   return mod.default ?? mod;
 }
 
+// session-store 工厂改自 adapters 包深路径取(spec adapters-package-extraction 任务 5.1
+// 移除了兼容层的转发)。⚠ .mjs 无类型检查覆盖,漏改只在运行期报 "store init failed"。
+async function loadAdaptersStoreApi() {
+  const mod = await import("@blksails/pi-web-adapters/session-store-postgres/index.js");
+  return mod.default ?? mod;
+}
+
 // ── Session identity / persistence (mirrors the production stub) ──────────────
 const SESSION_ID = process.env.PI_WEB_STUB_SESSION_ID;
 const STUB_CWD = process.env.PI_WEB_STUB_CWD ?? process.cwd();
@@ -143,8 +150,8 @@ async function persistMessage(message) {
 async function initPersistence() {
   if (SESSION_ID === undefined) return;
   try {
-    const { createSessionEntryStore, sessionStoreConfigFromEnv } =
-      await loadServerApi();
+    const { sessionStoreConfigFromEnv } = await loadServerApi();
+    const { createSessionEntryStore } = await loadAdaptersStoreApi();
     store = await createSessionEntryStore(sessionStoreConfigFromEnv());
   } catch (err) {
     process.stderr.write(`att-stub: store init failed: ${String(err)}\n`);

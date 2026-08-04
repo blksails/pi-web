@@ -1,7 +1,7 @@
 /**
  * llm-gateway e2e(spec sandbox-credentials-v2,Task 4.1)—— 真实 pi-web server 侧最小装配。
  *
- * 与 `packages/server/test/llm-gateway/gateway-routes.test.ts` 的最小注入惯例同源
+ * 与 `packages/adapters/test/llm-gateway/gateway-routes.test.ts` 的最小注入惯例同源
  * (`createLlmGatewayRoutes({ secret, registry, ... })`),区别是这里经真实
  * `@hono/node-server` 起一个真实 `node:http` 监听端口 —— 子进程(`sandbox-child.ts`)经真实
  * TCP 连接过来,不共享内存,是完整的进程边界(与集成测试里"同进程直调 handler(Request)"
@@ -32,11 +32,15 @@ import {
   createPiWebHandler,
   SessionManager,
   InMemorySessionStore,
-  createLlmGatewayRoutes,
+} from "@blksails/pi-web-server";
+import {
   mintScopedToken,
   resolveLlmGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  createLlmGatewayRoutes,
   type LlmGatewayProviderTable,
-} from "@blksails/pi-web-server";
+} from "@blksails/pi-web-adapters/llm-gateway/index.js";
 import { buildSandboxLlmEnv } from "../../lib/app/llm-gateway-config.js";
 
 const PORT = Number(process.env.PORT ?? 0);

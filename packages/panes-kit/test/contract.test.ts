@@ -18,6 +18,7 @@ const capabilities: PaneCapabilities = {
   attachments: "read-write",
   conversation: "submit",
   downloads: false,
+  state: { read: [], write: [] },
 };
 
 const definition = definePanes({

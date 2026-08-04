@@ -17,9 +17,9 @@ describe("SlotHost", () => {
   it("渲染扩展声明的插槽内容(ReactNode)到指定位置", () => {
     const ext: WebExtension = {
       manifestId: "acme",
-      slots: { panelRight: <div data-testid="ext-panel">PANEL</div> },
+      slots: { sidebarLeft: <div data-testid="ext-panel">PANEL</div> },
     };
-    render(<SlotHost ext={ext} slot="panelRight" fallback={<span>def</span>} />);
+    render(<SlotHost ext={ext} slot="sidebarLeft" fallback={<span>def</span>} />);
     expect(screen.getByTestId("ext-panel")).toHaveTextContent("PANEL");
   });
 
@@ -38,13 +38,13 @@ describe("SlotHost", () => {
     );
     // slot 组件按生产范式以 `as never` 挂载(对齐 web.config.tsx 的 `CanvasPanel as never`):
     // 注入 props(surface/upload/syncSignal…)由组件自声明,不进最小 SlotRenderProps 契约。
-    const ext: WebExtension = { manifestId: "acme", slots: { panelRight: Panel as never } };
+    const ext: WebExtension = { manifestId: "acme", slots: { sidebarLeft: Panel as never } };
     const { rerender } = render(
-      <SlotHost ext={ext} slot="panelRight" syncSignal={0} />,
+      <SlotHost ext={ext} slot="sidebarLeft" syncSignal={0} />,
     );
     expect(screen.getByTestId("sig")).toHaveTextContent("0");
     // 宿主轮末 bump → slot 组件收到新值(据此触发 run("sync"))。
-    rerender(<SlotHost ext={ext} slot="panelRight" syncSignal={1} />);
+    rerender(<SlotHost ext={ext} slot="sidebarLeft" syncSignal={1} />);
     expect(screen.getByTestId("sig")).toHaveTextContent("1");
   });
 
@@ -65,9 +65,9 @@ describe("SlotHost", () => {
     const conversation: ConversationAccess = { submitUserMessage: submit };
     const ext: WebExtension = {
       manifestId: "acme",
-      slots: { panelRight: Panel as never },
+      slots: { sidebarLeft: Panel as never },
     };
-    render(<SlotHost ext={ext} slot="panelRight" conversation={conversation} />);
+    render(<SlotHost ext={ext} slot="sidebarLeft" conversation={conversation} />);
     const btn = screen.getByTestId("conv");
     // 能力对象到达 slot props(非 undefined),且是宿主注入的同一对象(调用命中 spy)。
     expect(btn).toHaveTextContent("on");
@@ -107,12 +107,12 @@ describe("SlotHost", () => {
     const conversation: ConversationAccess = { submitUserMessage: viaConv };
     const ext: WebExtension = {
       manifestId: "acme",
-      slots: { panelRight: Panel as never },
+      slots: { sidebarLeft: Panel as never },
     };
     render(
       <SlotHost
         ext={ext}
-        slot="panelRight"
+        slot="sidebarLeft"
         conversation={conversation}
         onSubmitPrompt={viaAlias}
       />,
@@ -141,9 +141,9 @@ describe("SlotHost", () => {
     );
     const ext: WebExtension = {
       manifestId: "acme",
-      slots: { panelRight: Panel as never },
+      slots: { sidebarLeft: Panel as never },
     };
-    render(<SlotHost ext={ext} slot="panelRight" extensions={[ext]} />);
+    render(<SlotHost ext={ext} slot="sidebarLeft" extensions={[ext]} />);
     // slot 组件收到宿主注入的描述符数组(单元素:当前宿主只装载单扩展)。
     expect(screen.getByTestId("descriptors")).toHaveTextContent("acme");
   });
@@ -171,12 +171,12 @@ describe("SlotHost", () => {
 
   it("单槽渲染抛错仅该槽降级,同一扩展的其它槽照常渲染(Req 10.4:隔离不连累其它槽/整壳)", () => {
     const Boom = (): React.JSX.Element => {
-      throw new Error("boom in panelRight");
+      throw new Error("boom in sidebarLeft");
     };
     const ext: WebExtension = {
       manifestId: "acme",
       slots: {
-        panelRight: Boom,
+        sidebarLeft: Boom,
         headerLeft: <div data-testid="header-ok">HEADER OK</div>,
         footer: <div data-testid="footer-ok">FOOTER OK</div>,
       },
@@ -184,7 +184,7 @@ describe("SlotHost", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     render(
       <div>
-        <SlotHost ext={ext} slot="panelRight" fallback={<span data-testid="panel-fb">PANEL FB</span>} />
+        <SlotHost ext={ext} slot="sidebarLeft" fallback={<span data-testid="panel-fb">PANEL FB</span>} />
         <SlotHost ext={ext} slot="headerLeft" />
         <SlotHost ext={ext} slot="footer" />
       </div>,

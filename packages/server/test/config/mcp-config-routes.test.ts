@@ -8,11 +8,11 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createPiWebHandler } from "../../src/http/index.js";
-import { InMemorySessionStore } from "../../src/session/session-store.js";
-import { SessionManager } from "../../src/session/session-manager.js";
-import { createMcpConfigRoutes } from "../../src/config/mcp-config-routes.js";
-import { McpProbeService } from "../../src/config/mcp-probe.js";
+import { createPiWebHandler } from "@blksails/pi-web-core/http/index.js";
+import { InMemorySessionStore } from "@blksails/pi-web-core/session/session-store.js";
+import { SessionManager } from "@blksails/pi-web-core/session/session-manager.js";
+import { createMcpConfigRoutes } from "@blksails/pi-web-core/http/routes/mcp-config-routes.js";
+import { McpProbeService } from "@blksails/pi-web-adapters/mcp-probe.js";
 
 let agentDir: string;
 beforeEach(async () => {
@@ -31,7 +31,7 @@ function handler(probeService?: McpProbeService, anonymousAllowed = true) {
     store,
     routes: createMcpConfigRoutes({
       agentDir,
-      probeService,
+      probeService: probeService ?? new McpProbeService(),
       ...(anonymousAllowed ? {} : { adminPolicy: () => false }),
     }),
     authResolver: () => ({ anonymous: true }),

@@ -22,7 +22,7 @@ import type {
   PluginInstaller,
   UpdatePluginsResult,
 } from "@/server/cli/install/plugin-installer";
-import type { InstalledExtension } from "@blksails/pi-web-server";
+import type { InstalledExtension } from "@blksails/pi-web-adapters/extensions/index.js";
 
 type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: E };
 

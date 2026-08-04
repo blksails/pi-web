@@ -101,11 +101,21 @@ export interface VisionRunnerDeps {
   readonly complete: CompleteFn;
   /** 取 runner 注入的附件上下文(默认 `getAttachmentToolContext`)。 */
   readonly getAttachmentCtx: () => AttachmentToolContext;
-  /** 默认视觉模型(`provider/modelId`);默认读 `process.env.PI_WEB_VISION_MODEL`。 */
+  /**
+   * 默认视觉模型(`provider/modelId`)。取值序:config 域 `aigc.visionModel` > env
+   * `PI_WEB_VISION_MODEL` > undefined(交由弹层)。**每次调用现读**,使写回立即生效。
+   */
   readonly defaultModel: () => string | undefined;
+  /**
+   * 记住用户在弹层里选的模型(写回 config 域 `aigc.visionModel`)。
+   *
+   * 可选:未注入 = 不记(单测与无持久化宿主的默认行为)。实现须**自行吞掉所有失败** ——
+   * 写不进配置只该导致「下次还问」,绝不能让本次解读失败。
+   */
+  readonly rememberModel?: (model: string) => void;
 }
 
-/** 默认视觉模型的环境变量名(M1 唯一的默认模型来源;M2 引入 config 域后作为覆盖层保留)。 */
+/** 默认视觉模型的环境变量名(config 域 `aigc.visionModel` 未设时的兜底;无人值守通道依赖它)。 */
 export const VISION_MODEL_ENV = "PI_WEB_VISION_MODEL";
 
 /** 命令入口在 args 为空时使用的默认提问。 */

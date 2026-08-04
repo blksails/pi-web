@@ -3,6 +3,7 @@ export type {
   PanesHostProps,
   PanesHostConfig,
   PanesSurfaceAccess,
+  PanesStateAccess,
   PanesUpload,
   PanesConversationAccess,
   PaneHostEvent,

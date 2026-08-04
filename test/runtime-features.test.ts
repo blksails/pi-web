@@ -19,7 +19,6 @@ const INJECTED: RuntimeFeatures = {
   sourcePicker: true,
   launcherRail: true,
   bashEnabled: true,
-  sessionsGlobal: true,
   sessionsManage: false,
   sessionsSlot: "header",
   extensionCommands: "all",

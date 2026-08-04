@@ -14,8 +14,8 @@
  * factory 会 import 真实工厂(含 pi SDK 传递依赖),若进主 barrel 会拖垮 routes bundle 的
  * `node:fs`。此处仅用 `import type`,零值导入。
  */
-import type { InjectedRoute } from "../http/handler.types.js";
-import type { HostCommandHandler } from "../commands/host-command-registry.js";
+import type { InjectedRoute } from "@blksails/pi-web-core/http/handler.types.js";
+import type { HostCommandHandler } from "@blksails/pi-web-core/commands/host-command-registry.js";
 
 /** 一个能力面的产出:一条注入路由,或一个宿主命令处理器。 */
 export type HostContribution =

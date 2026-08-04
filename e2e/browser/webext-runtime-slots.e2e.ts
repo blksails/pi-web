@@ -16,14 +16,18 @@ import { test, expect } from "@playwright/test";
  * (SlotHost 对声明式/代码扩展一视同仁,不区分「构建期已知」与「运行时下发」)。
  */
 
-/** 18 槽 fixture testid 全集,对齐 `examples/webext-slots-runtime-agent/.pi/web/web.config.tsx`。 */
-const ALL_18_SLOT_TESTIDS = [
+/**
+ * 17 槽 fixture testid 全集,对齐 `examples/webext-slots-runtime-agent/.pi/web/web.config.tsx`。
+ *
+ * ★ 原为 18 槽;右侧面板槽随 spec panes-only-right-panel 废弃,故减一。**其余 17 个一个不少**
+ * —— 本特性只废那一个槽,不动槽机制本身。
+ */
+const ALL_17_SLOT_TESTIDS = [
   "slot-background",
   "slot-header-left",
   "slot-header-center",
   "slot-header-right",
   "slot-sidebar-left",
-  "slot-panel-right",
   "slot-toolbar",
   "slot-accessory-above",
   "slot-accessory-below",
@@ -87,10 +91,12 @@ test.describe("webext 第三方 slots 源:运行时车道全链(resolve → dist
     // webext-registry.ts 里 match:"webext-slots-agent" 的既有条目)。
     await expect(page).toHaveTitle("Slots Runtime Agent · pi-web");
 
-    for (const testid of ALL_18_SLOT_TESTIDS) {
+    for (const testid of ALL_17_SLOT_TESTIDS) {
       await expect(page.getByTestId(testid)).toBeVisible();
     }
-    expect(ALL_18_SLOT_TESTIDS).toHaveLength(18);
+    // ★ 数字与清单必须同步:清单减一而这里没改的话,守卫会以「长度不符」报红 ——
+    // 这正是它存在的意义(防清单被悄悄增删)。右侧面板槽废弃后为 17。
+    expect(ALL_17_SLOT_TESTIDS).toHaveLength(17);
 
     // 去重回归:扩展插槽为追加语义,内核输入框仍可用(与 webext-full.e2e.ts 同款断言,
     // 证明运行时车道加载不破坏宿主壳)。
@@ -134,7 +140,8 @@ test.describe("webext 第三方 slots 源:安全门降级(篡改 / 坏签名),�
 
     // 扩展未生效:fixture 槽内容不出现,浏览器标签页标题未被扩展的 documentTitle 覆盖。
     await expect(page.getByTestId("slot-header-center")).toHaveCount(0);
-    await expect(page.getByTestId("slot-panel-right")).toHaveCount(0);
+    // ★ 保住「两个 testid」的强度:原为 header-center + panel-right,后者已废,换 sidebar-left。
+    await expect(page.getByTestId("slot-sidebar-left")).toHaveCount(0);
     await expect(page).not.toHaveTitle("Slots Runtime Tampered · pi-web");
 
     // 宿主壳不崩:会话正常可用(默认 UI 降级,而非白屏/报错页)。
@@ -161,7 +168,8 @@ test.describe("webext 第三方 slots 源:安全门降级(篡改 / 坏签名),�
     await selectSource(page, "./examples/webext-slots-runtime-badsig-agent");
 
     await expect(page.getByTestId("slot-header-center")).toHaveCount(0);
-    await expect(page.getByTestId("slot-panel-right")).toHaveCount(0);
+    // ★ 保住「两个 testid」的强度:原为 header-center + panel-right,后者已废,换 sidebar-left。
+    await expect(page.getByTestId("slot-sidebar-left")).toHaveCount(0);
     await expect(page).not.toHaveTitle("Slots Runtime Bad Signature · pi-web");
 
     // 宿主壳不崩:会话正常可用。

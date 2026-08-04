@@ -60,6 +60,17 @@ function filterValue(m: ModelGroup["models"][number]): string {
   return `${m.provider} ${m.modelId} ${labelOf(m)}`;
 }
 
+/** current 是否落在 groups 内。 */
+function isListed(
+  current: ModelSelection | undefined,
+  groups: ReadonlyArray<ModelGroup>,
+): boolean {
+  if (current === undefined) return false;
+  return groups.some((g) =>
+    g.models.some((m) => m.provider === current.provider && m.modelId === current.modelId),
+  );
+}
+
 function triggerText(
   current: ModelSelection | undefined,
   groups: ReadonlyArray<ModelGroup>,
@@ -94,6 +105,8 @@ export function ModelSelector({
   const searchPlaceholder =
     searchPlaceholderProp ?? t("modelSelector.searchPlaceholder");
   const emptyLabel = emptyLabelProp ?? t("modelSelector.empty");
+  const orphanGroupLabel = t("modelSelector.orphanGroup");
+  const orphanHint = t("modelSelector.orphanHint");
   const [open, setOpen] = React.useState(false);
 
   const ModelIcon = useIcon("model", ChevronsUpDown);
@@ -148,6 +161,27 @@ export function ModelSelector({
           />
           <CommandList aria-label={triggerLabel} data-pi-model-list>
             <CommandEmpty data-pi-model-empty>{emptyLabel}</CommandEmpty>
+            {/*
+              当前模型不在可用清单里时,单列一组把它标出来(Req 11.9)——不静默消失。
+              仅 trigger 退化成裸 modelId 是不够的:那与"清单里就叫这个名字"无从区分,
+              使用者看不出自己正用着一个已不可选的模型(其 provider 可能已停用/被隐藏)。
+              该项**不可选**:重新选中一个已不在清单里的模型只会失败。
+            */}
+            {current !== undefined && !isListed(current, groups) && (
+              <CommandGroup heading={orphanGroupLabel} data-pi-model-group>
+                <CommandItem
+                  value={`${current.provider} ${current.modelId}`}
+                  disabled
+                  title={orphanHint}
+                  data-pi-model-option
+                  data-pi-model-orphan="true"
+                  data-pi-model-current="true"
+                >
+                  <CheckIcon className="h-3.5 w-3.5 shrink-0 opacity-100" aria-hidden="true" />
+                  <span className="truncate">{`${current.provider}/${current.modelId}`}</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
             {groups.map((g) => (
               <CommandGroup
                 key={g.provider}

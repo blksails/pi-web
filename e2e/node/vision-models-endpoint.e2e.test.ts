@@ -1,5 +1,6 @@
 /**
- * Node 级 e2e — GET /api/vision/models(spec canvas-vision-readout,Req 3.1/3.6)。
+ * Node 级 e2e — 视觉模型清单(spec canvas-vision-readout Req 3.1/3.6;
+ * spec multi-gateway-providers 任务 4.3 后改经统一目录端点的类型筛选)。
  *
  * 经 `lib/app/api-route` 驱动真实单例 `createPiWebHandler`，与宿主
  * (`server/index.ts` 的 `app.all("/api/*")`)走同一条路，免去起 HTTP 服务。
@@ -64,29 +65,38 @@ afterAll(async () => {
   fs.rmSync(agentDir, { recursive: true, force: true });
 });
 
+// 统一目录的条目字段命名(design.md「字段命名决策」):`{provider,id,name}`,
+// 旧视觉端点的复合 `value` 改由消费面自行拼 `${provider}/${id}`。
 interface Body {
-  models: Array<{ value: string; label: string; provider: string }>;
+  models: Array<{ provider: string; id: string; name: string }>;
 }
 
+// spec multi-gateway-providers 任务 4.3:`GET /api/vision/models` 已删除,其能力由统一
+// 目录端点的类型筛选覆盖。★ 判据是 `input=image && output=text`(读图并产出文本)而非
+// 只按 `input=image` —— 后者会把 AIGC 的图生图模型(input 含 image、output 为 image)
+// 一并纳入,那不是「视觉理解」清单要的东西(完整性批评 gap 4)。
 const get = (): Promise<Response> =>
-  api.GET(new Request("http://localhost/api/vision/models"));
+  api.GET(
+    new Request("http://localhost/api/config/models?input=image&output=text"),
+  );
 
-describe("GET /api/vision/models(经真实 handler)", () => {
+describe("GET /api/config/models?input=image&output=text(经真实 handler,顶替旧视觉端点)", () => {
   it("端点可达,返回 200", async () => {
     const res = await get();
     expect(res.status).toBe(200);
   });
 
-  it("只返回支持图像输入的模型,value 形如 provider/id(3.1)", async () => {
+  it("只返回可读图且产出文本的模型;消费面可拼出 provider/id(3.1)", async () => {
     const body = (await (await get()).json()) as Body;
 
     expect(Array.isArray(body.models)).toBe(true);
-    const values = body.models.map((m) => m.value);
+    const values = body.models.map((m) => `${m.provider}/${m.id}`);
     expect(values).toContain("e2eprov/sees-images");
     expect(values).not.toContain("e2eprov/text-only");
 
     for (const m of body.models) {
-      expect(m.value.startsWith(`${m.provider}/`)).toBe(true);
+      expect(typeof m.provider).toBe("string");
+      expect(typeof m.id).toBe("string");
     }
   });
 

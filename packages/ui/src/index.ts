@@ -55,11 +55,6 @@ export {
 
 // controls 层
 export {
-  PiModelSelector,
-  type PiModelSelectorProps,
-  type PiModelOption,
-} from "./controls/pi-model-selector.js";
-export {
   PiThinkingLevel,
   type PiThinkingLevelProps,
 } from "./controls/pi-thinking-level.js";

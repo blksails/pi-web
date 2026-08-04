@@ -36,7 +36,7 @@
  */
 import type { PluginKind } from "@blksails/pi-web-protocol";
 import type { PublishPreviewData } from "@blksails/pi-web-protocol";
-import type { PublishGrant } from "@blksails/pi-web-server";
+import type { PublishGrant } from "@blksails/pi-web-adapters/auth/index.js";
 import { compile, type CompiledPackage } from "../../server/cli/publish/manifest-compiler.js";
 import {
   publish as runPublish,

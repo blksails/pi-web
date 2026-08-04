@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
-  READINESS_PROBE_TIMEOUT_ENV,
-  readinessProbeTimeoutFromEnv,
+  READY_TIMEOUT_ENV,
+  readyTimeoutFromEnv,
 } from "@/lib/app/readiness-config";
 
-describe("readinessProbeTimeoutFromEnv", () => {
+describe("readyTimeoutFromEnv", () => {
   it("accepts a positive integer override", () => {
     expect(
-      readinessProbeTimeoutFromEnv({
-        [READINESS_PROBE_TIMEOUT_ENV]: "60000",
+      readyTimeoutFromEnv({
+        [READY_TIMEOUT_ENV]: "60000",
       }),
     ).toBe(60_000);
   });
@@ -17,10 +17,16 @@ describe("readinessProbeTimeoutFromEnv", () => {
     "preserves the PiSession default for invalid value %s",
     (value) => {
       expect(
-        readinessProbeTimeoutFromEnv({
-          [READINESS_PROBE_TIMEOUT_ENV]: value,
+        readyTimeoutFromEnv({
+          [READY_TIMEOUT_ENV]: value,
         }),
       ).toBeUndefined();
     },
   );
+
+  it("no longer reads the removed probe-era env name (rename, not overlay)", () => {
+    expect(
+      readyTimeoutFromEnv({ PI_WEB_READINESS_PROBE_TIMEOUT_MS: "60000" }),
+    ).toBeUndefined();
+  });
 });

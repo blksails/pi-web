@@ -22,6 +22,12 @@ import { isCloudflareConfigured } from "./providers/cloudflare.js";
 import { getSessionState } from "../session-state.js";
 import { resolveAigcToolSettings } from "./model-config.js";
 import { deriveActiveModels } from "./active-models.js";
+import {
+  AIGC_MODEL_CATALOG,
+  AI_GATEWAY_AIGC_CATALOG,
+  CLOUDFLARE_AIGC_CATALOG,
+} from "./model-catalog.js";
+import { normalizeLegacyProviderId } from "@blksails/pi-web-protocol";
 import type { ImageRoute } from "./types.js";
 
 /** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
@@ -91,6 +97,8 @@ function publishAigcCatalog(
  * 注册 AIGC 图像工具的进程内扩展工厂。
  * aigc-tool-settings:装配期读持久设置得到被禁模型集合,喂给两个工具注册函数并使清单同源过滤——
  * 被禁模型从 LLM 枚举与下发清单一并移除。当前已激活会话不追溯(装配期读取的自然结果)。
+ * multi-gateway-providers 任务 4.4(Req 5.2):被禁模型集合与 `PI_WEB_HIDE_PROVIDERS`
+ * 隐藏名单派生的模型 id 合并后统一过滤,使隐藏名单对工具侧同样彻底生效。
  */
 /** 网关 env 的新名 → 旧名映射(旧名仅为存量部署兼容,见下方函数注释)。 */
 const GATEWAY_ENV_ALIASES: readonly (readonly [string, string])[] = [
@@ -127,6 +135,27 @@ function normalizeGatewayEnvNames(): void {
   }
 }
 
+/**
+ * 隐藏 provider 名单解析(multi-gateway-providers spec 任务 4.4,Req 5.2):`PI_WEB_HIDE_PROVIDERS`
+ * 逗号分隔、trim、忽略空项、大小写敏感 —— 与 core 侧 `parseHiddenProviders` 同语义。
+ */
+function parseHiddenProviders(raw: string | undefined): ReadonlySet<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  );
+}
+
+function hiddenModelIds(hiddenProviders: ReadonlySet<string>): ReadonlySet<string> {
+  if (hiddenProviders.size === 0) return new Set();
+  const all = [...AIGC_MODEL_CATALOG, ...AI_GATEWAY_AIGC_CATALOG, ...CLOUDFLARE_AIGC_CATALOG];
+  return new Set(
+    all.filter((e) => hiddenProviders.has(normalizeLegacyProviderId(e.provider))).map((e) => e.model),
+  );
+}
+
 export interface AigcExtensionOptions {
   /** 当前 Agent 不展示/注册的 provider;不影响默认 `aigcExtension`。 */
   readonly excludedProviders?: ReadonlySet<string>;
@@ -136,6 +165,11 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
   return (pi: ExtensionAPI) => {
     const { disabledModels, enablePromptOptimization } = resolveAigcToolSettings();
     const excludedProviders = options.excludedProviders ?? new Set<string>();
+    const hiddenFromProviders = hiddenModelIds(parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS));
+    const effectiveDisabledModels: ReadonlySet<string> =
+      hiddenFromProviders.size === 0
+        ? disabledModels
+        : new Set([...disabledModels, ...hiddenFromProviders]);
   // ai-gateway 路由组条件并入(spec ai-gateway-providers,design.md §3,Req 5.2/5.3):
   // 本模块属 runtime 层(经 `@blksails/pi-web-tool-kit/runtime` 加载,含 pi SDK 值导入),
   // 允许读 env——浏览器 bundle 只见声明层的类型/静态 routes,不违双入口边界(Req 6.2)。
@@ -170,18 +204,18 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
   const editExtraRoutes: readonly ImageRoute[] | undefined =
     editExtras.length > 0 ? editExtras : undefined;
     registerImageGeneration(pi, {
-      disabledModels,
+      disabledModels: effectiveDisabledModels,
       excludedProviders,
       extraRoutes: genExtraRoutes,
     });
     registerImageEdit(pi, {
-      disabledModels,
+      disabledModels: effectiveDisabledModels,
       excludedProviders,
       extraRoutes: editExtraRoutes,
     });
     const publishExtraRoutes: readonly ImageRoute[] = [...genExtras, ...editExtras];
     publishAigcCatalog(
-      disabledModels,
+      effectiveDisabledModels,
       enablePromptOptimization,
       publishExtraRoutes,
       excludedProviders,

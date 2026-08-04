@@ -3,7 +3,7 @@
  * Req 9.1–9.5)。
  *
  * 只拥有写入语义(登记/除名);读取与列表呈现归既有的 `RegistrySourceProvider`
- * (`packages/server/src/agent-source-list/registry-provider.ts`),本文件既不修改也不
+ * (`packages/core/src/agent-source-list/registry-provider.ts`),本文件既不修改也不
  * 复用该文件的内部实现,只共享同一份 `sources.json` 文件形态与路径约定
  * (`PI_WEB_SOURCES_REGISTRY`,默认 `<agentDir>/sources.json`,由调用方注入)。
  *

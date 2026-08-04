@@ -21,7 +21,9 @@ Canvas 由独立发布的 `@blksails/pi-web-canvas-ui` 提供（组件层）+ `@
 
 **Canvas 默认不出现。** 它不是一个全局开关点亮的特性，而是**由 agent source 声明驱动**：只有当一个 source 在它的 `.pi/web/web.config.tsx` 里，把 `CanvasLauncher` / `CanvasPanel` 挂到 `launcherRail` / `panelRight` 具名槽（见 [12 Web UI 扩展](./12-web-ui-extension.md) 的槽模型），Canvas 才出现。普通 agent source 不声明这两个槽，Canvas 自然缺席——独立性由「声明缺席」保证，而非某个 env 兜底关掉（`packages/canvas-ui/src/canvas-launcher.tsx:1-15`）。
 
-因此「如何开启」= **换用一个声明了 Canvas 槽的 source**，最省事的是仓库自带的 `examples/aigc-canvas-agent`（`examples/aigc-canvas-agent/.pi/web/web.config.tsx:22-29`）。
+因此「如何开启」= **换用一个声明了 Canvas 槽的 source**，最省事的是仓库自带的 `examples/canvas-plugin-stickers`（`examples/canvas-plugin-stickers/.pi/web/web.config.tsx:21-25`）。
+
+> **`examples/aigc-canvas-agent` 已改走隔离 Pane 车道**（spec `isolated-panes` Wave 5）：画廊不再挂 `launcherRail`/`panelRight` 槽，而是跑在 `PanesHost` 的独立 iframe 里，入口是 pane tab 而非按钮。它仍是最完整的 Canvas 端到端示例，但本章下文的**槽接线配方**要看 `canvas-plugin-stickers`；pane 车道的接线见 `examples/aigc-canvas-agent/README.md` 的「从 slots 迁到 panes」。
 
 ### 关于 `NEXT_PUBLIC_PI_WEB_CANVAS`
 
@@ -45,11 +47,15 @@ Canvas 由独立发布的 `@blksails/pi-web-canvas-ui` 提供（组件层）+ `@
 
 2. **在浏览器打开 `http://localhost:5173`**，在选源页选择（或新建会话指向）`examples/aigc-canvas-agent` 这个 source。
 
-   预期：左侧启动导航区（launcherRail）出现「🖼️ Canvas 画廊」入口按钮（`canvas-launcher.tsx:52-62`，DOM 锚点 `data-canvas-launcher`）。若换成一个**没有**声明 Canvas 槽的普通 source，该按钮不出现——这就是「默认关」。
+   预期：右侧面板（panelRight）出现 pane 标签栏，「🖼️ 画廊」标签已默认打开（该示例走 **Pane 车道**，`initialPaneIds: ["canvas"]`）。若换成一个**没有**声明 Canvas 的普通 source，整个 pane 宿主（`data-panes-host`）都不出现——这就是「默认关」。
 
-3. **点「Canvas 画廊」入口**：右侧面板（panelRight）展开画廊网格（`data-canvas-panel`）。
+   > 想看**槽车道**（`launcherRail` 入口按钮 + `panelRight` 面板，DOM 锚点 `data-canvas-launcher`），把 source 换成 `examples/canvas-plugin-stickers`：需要先点入口按钮才展开画廊。
+
+3. **画廊网格**：pane 内呈现九宫格（`data-canvas-gallery`）。
 
    预期：会话里已有的图片附件（若为空则空态）以九宫格呈现。让 agent 生成一张图（如输入 `/img-gen 一只猫`），轮末画廊自动 reconcile 新图。
+
+   > Pane 车道下轮末 reconcile 需要宿主侧补一手：`syncSignal` 不在 pane 协议里，由该示例 `web/web.config.tsx` 的 `ConfiguredPanesHost` 包装器代发 `run("canvas","sync")`。槽车道则由 `CanvasGallery` 自己监听 `syncSignal`。
 
 4. **点画廊里任一格子**：进入 `CanvasWorkbench` 画布编辑器；点左上「返回画廊」（`data-canvas-workbench-close`）退回。
 
@@ -85,7 +91,7 @@ curl -s http://localhost:3000/api/sessions/<sessionId>/agent-routes/gallery-stat
 - **`available === true`**（source 注册了 `surface:canvas` 探针）→ 完整画廊：九宫格默认 + 密度切换（概览 / 瀑布流 / 聚焦）+ 客户端分页 + 血缘 / 时间分组；缩略图用签名 `displayUrl`（二进制旁路，不走命令通道）；轮末 idle 边沿（`syncSignal` 变化）触发 `run("sync")` reconcile（`canvas-gallery.tsx:7-8`）。
 - **`available === false`**（非 AIGC source，无探针）→ **优雅退化**为只读图库，来源是宿主注入的消息历史图片 `historyImages`，A 档生成禁用、不发命令、不报错（B 档本地编辑在工作台侧仍可用，`canvas-gallery.tsx:9-10`）。
 
-画廊之所以是「物化视图」而非独立状态：它的数据不在前端，而是 agent 子进程侧 `canvasSurfaceExtension` 经 `hydrate()`（枚举当前会话图片附件 + 读血缘 meta 重建）+ `sync` reconcile 维护的权威快照，经 `control:"state"` 帧（`key="surface:canvas"`）镜像下行（`examples/aigc-canvas-agent/index.ts:9-11`）。这正是 Surface CQRS 的单写者模型。
+画廊之所以是「物化视图」而非独立状态：它的数据不在前端，而是 agent 子进程侧 `canvasSurfaceExtension` 经 `hydrate()`（枚举当前会话图片附件 + 读血缘 meta 重建）+ `sync` reconcile 维护的权威快照，经 `control:"state"` 帧（`key="surface:canvas"`）镜像下行（`examples/aigc-canvas-agent/index.ts:16-21`）。这正是 Surface CQRS 的单写者模型。
 
 此外，`CanvasPanel` 挂了一个 document 级委托监听：点击对话流工具卡里带 `data-att-id` 的图，会自动开面板并把工作台切到该 att_id（`canvas-launcher.tsx:158-177`），实现「聊天里点图 → 进 Canvas 编辑」。
 
@@ -144,10 +150,10 @@ curl -s http://localhost:3000/api/sessions/<sessionId>/agent-routes/gallery-stat
 
 两个陷阱：
 
-- **视觉模型选择器**从 `GET /api/vision/models` 拉取（`canvas-launcher.tsx:66-92`、`vision-op.ts:92-112`）；任何失败（无 baseUrl / 网络 / 非 2xx / 解析异常）都折成空清单，此时**解读仍可用**——载荷不带 `model`，由 `image_vision` 工具弹层兜底。
+- **视觉模型选择器**从统一目录端点 `GET /api/config/models?input=image&output=text` 拉取（`canvas-launcher.tsx` 的 `useVisionModels` → `vision-op.ts` 的 `fetchVisionModels`；原专用端点 `GET /api/vision/models` 已随 spec `multi-gateway-providers` 任务 4.3 删除）；任何失败（网络 / 非 2xx / 解析异常）都折成空清单并留一行 `console.error`，此时**解读仍可用**——载荷不带 `model`，由 `image_vision` 工具弹层兜底。pane（iframe）车道传的是哨兵 `pane://host`，直接短路成空清单、不取数：那里的视觉模型选择已下沉到 agent。
 - 解读的 `model` 取值是 **`provider/modelId`**（与工具 `model` 参数对齐），⚠ 与提示词栏「生成模型」选择器的**裸 id** 格式不同，不可混用（`vision-op.ts:16-18`）。
 
-`image_vision` 工具本身、`/img_vision` 命令、`GET /vision/models` 端点见 [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
+`image_vision` 工具本身、`/img_vision` 命令、视觉模型枚举查询见 [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)。
 
 ---
 
@@ -170,7 +176,7 @@ Canvas 是 [04 Surface 权威表面栈](./04-surface-stack.md) 的**参考消费
 └────────────────────────────────────────────────┘
 ```
 
-- **状态下行**：子进程 `createSurface` 每次 `set` 都把 `GalleryState` 快照写到 `key="surface:canvas"`，经 `control:"state"` 粘性帧镜像到前端（`examples/aigc-canvas-agent/index.ts:9-11`）。
+- **状态下行**：子进程 `createSurface` 每次 `set` 都把 `GalleryState` 快照写到 `key="surface:canvas"`，经 `control:"state"` 粘性帧镜像到前端（`examples/aigc-canvas-agent/index.ts:16-21`）。
 - **命令上行**：工作台的 `run("register")` / `run("sync")` / A 档生成经 `useSurface` → ui-rpc 转发 → `wireSurfaceBridge` 在子进程内派发。生成用 `submitOp`（Prompt 通道），本地编辑注册用 `run`（命令通道）。
 - **降级三态**：`bridge.opChannel` 为 `prompt`（正常）/ `command`（仅命令可用）/ `unavailable`（探针缺失）三态，UI 据此呈现（`canvas-workbench.tsx:1818-1826`）。
 
@@ -182,7 +188,7 @@ Canvas 是 [04 Surface 权威表面栈](./04-surface-stack.md) 的**参考消费
 
 在你的 agent source 里，Canvas 是两处接线（`examples/aigc-canvas-agent/index.ts` + `.pi/web/web.config.tsx`）：
 
-**1. agent 侧**——装载三个 extension（`examples/aigc-canvas-agent/index.ts:47-48`）：
+**1. agent 侧**——装载三个 extension（`examples/canvas-plugin-stickers/index.ts`）：
 
 ```ts
 import { aigcExtension, canvasSurfaceExtension, visionExtension }
@@ -198,7 +204,7 @@ export default defineAgent({
 - `visionExtension`：`image_vision` 工具 + `/img_vision` 命令（支撑「解读」）；
 - `canvasSurfaceExtension`：`domain="canvas"` 的权威 surface（画廊物化视图 + A 档二创命令）。
 
-**2. UI 侧**——在 `.pi/web/web.config.tsx` 声明槽（`examples/aigc-canvas-agent/.pi/web/web.config.tsx:22-29`）：
+**2. UI 侧**——在 `.pi/web/web.config.tsx` 声明槽（`examples/canvas-plugin-stickers/.pi/web/web.config.tsx:21-25`）：
 
 ```tsx
 import { CanvasLauncher, CanvasPanel, AigcQuickSettings }
@@ -227,9 +233,9 @@ export default defineWebExtension({
 - Canvas 依赖的第二条通信平面（`createSurface` / `useSurface` / CQRS 单写者） → [04 Surface 权威表面栈](./04-surface-stack.md)
 - Canvas 组件所在的包（`@blksails/pi-web-canvas-ui` / `-canvas-kit`）与依赖图 → [05 分层包](./05-packages.md)
 - `NEXT_PUBLIC_PI_WEB_CANVAS` 门控与配置目录 → [06 配置参考](./06-configuration.md)
-- `image_vision` 工具、`/img_vision` 命令、AIGC 图像工具与 `GET /vision/models` → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
+- `image_vision` 工具、`/img_vision` 命令、AIGC 图像工具与视觉模型枚举查询 → [11 AIGC 与视觉工具](./11-aigc-and-vision-tools.md)
 - `launcherRail` / `panelRight` / `promptToolbar` 槽模型与 5-tier 挂载机制 → [12 Web UI 扩展](./12-web-ui-extension.md)
 - 自定义图层/工具/动作、`defineCanvasAction` 三件套（插件作者面） → [17 Canvas 插件开发](./17-canvas-plugins.md)
 - `gallery-stats` 用到的声明式 HTTP route、`getSessionState()` 作者面 → [08 自定义 Agent 开发](./08-agent-development.md)
-- `agent-routes` 调用契约、`control:"state"` 帧、`GET /api/vision/models` → [24 HTTP/SSE API 参考](./24-http-api-reference.md)
+- `agent-routes` 调用契约、`control:"state"` 帧、`GET /api/config/models` → [24 HTTP/SSE API 参考](./24-http-api-reference.md)
 - 五分钟跑通与 `pnpm dev` 双进程编排 → [01 快速开始](./01-quickstart.md)

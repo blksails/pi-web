@@ -25,13 +25,7 @@ import {
   PiRpcProcess,
   // e2b 云沙盒传输(spec e2b-sandbox-transport):传输无关会话核心 + e2b adapter + 配置解析。
   PiRpcSession,
-  E2bTransport,
-  SandboxWsTransport,
-  selectTransport,
-  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
-  resolveSandboxTemplate,
   AgentSourceResolver,
-  resolvePiCliEntry,
   runnerBootstrapPath,
   // 15 个路由能力面工厂已移至 host-assembly/default-capabilities(M3 经 composeCapabilities 装配);
   // 此处不再直接 import。保留下方 resolve*/broadcast* 等辅助(HostDeps 构造仍需)。
@@ -43,24 +37,11 @@ import {
   createScanSourceProvider,
   createRegistrySourceProvider,
   createRegistryHttpSourceProvider,
-  createDesktopCapabilitiesClient,
-  resolveDesktopCapabilitiesUrl,
-  deriveCapabilitiesUrlFromEgressBase,
-  deriveLoginUrlFromEgressBase,
-  createCloudLoginClient,
-  createDesktopPasswordIdentityProvider,
-  resolveShellToken,
   // 线上源可运行(spec desktop-online-source-runnable):已装索引 + 解析插件类型。
   createInstalledRegistryIndex,
   type SourceResolverPlugin,
   defaultAgentEntryPath,
-  createAigcModelsRoute,
-  createVisionModelsRoute,
   createHostCommandRegistry,
-  ChildProcessPiCli,
-  DEFAULT_ALLOWLIST,
-  defaultOnAudit,
-  redactReason,
   attachmentStoreConfigFromEnv,
   ATTACHMENT_PROFILE_DISABLED_ENV,
   // 附件拓扑条件透传判定(spec sandbox-baked-agent-image 任务 4.2):e2b 分支按拓扑
@@ -69,34 +50,81 @@ import {
   parseBackendsEnv,
   resolveSandboxEntry,
   sessionStoreConfigFromEnv,
+  // 会话展示元数据索引(spec session-meta-index):本地文件实现 + Workspace 实现 + 端口类型。
+  createLocalSessionMetaIndex,
+  JsonFileSessionMetaIndex,
+  type SessionMetaIndex,
   ConfigCodec,
-  // LLM 网关 provider 登记表 + secret 解析(HostDeps 构造 gateway.llm 用;路由工厂
-  // createLlmGatewayRoutes 已移至 host-assembly/default-capabilities)。
-  resolveLlmGatewayProviderTable,
-  resolveLlmGatewaySecret,
-  // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
-  // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
-  // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
-  resolveAiGatewayConfig,
-  EnvKeyResolver,
-  GatewayModelCatalog,
-  resolveAiGatewaySecret,
   // 目录组装服务(spec model-catalog,任务 3.1):chat/image 双命名空间的合并 + 过滤
-  // 统一入口,GET /config/models 与 GET /aigc/models 均改经它取数。
+  // 统一入口。GET /config/models 经 query() 取数(multi-gateway-providers 任务 4.3:
+  // 端点合一后唯一的部署级目录端点,原独立的 GET /aigc/models / GET /vision/models
+  // 已删除,其能力由 `?input=`/`?output=` 类型筛选覆盖)。
   createModelCatalogService,
-  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
-  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
-  AuthSessionState,
+  type CatalogQuery,
   // M3 能力面装配(spec host-contract-capability-composition):强制表态引擎 + 冻结名册 + 表态类型。
   composeCapabilities,
   HOST_CAPABILITY_IDS_V1,
   type CapabilityDecision,
-  type AllowlistConfig,
   type ResolvedSource,
   type SessionChannel,
   type CreateChannelOpts,
 } from "@blksails/pi-web-server";
-import { loggingConfigSchema } from "@blksails/pi-web-protocol";
+import type { SessionActivity } from "@blksails/pi-web-protocol";
+import {
+  resolvePiCliEntry,
+  ChildProcessPiCli,
+  DEFAULT_ALLOWLIST,
+  defaultOnAudit,
+  redactReason,
+  type AllowlistConfig,
+} from "@blksails/pi-web-adapters/extensions/index.js";
+import {
+  resolveLlmGatewaySecret,
+  resolveAiGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  createDesktopCapabilitiesClient,
+  resolveDesktopCapabilitiesUrl,
+  deriveCapabilitiesUrlFromEgressBase,
+  deriveLoginUrlFromEgressBase,
+  createCloudLoginClient,
+  resolveShellToken,
+  // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
+  // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
+  AuthSessionState,
+} from "@blksails/pi-web-adapters/auth/index.js";
+import {
+  // LLM 网关 provider 登记表 + secret 解析(HostDeps 构造 gateway.llm 用;路由工厂
+  // createLlmGatewayRoutes 已移至 host-assembly/default-capabilities)。
+  resolveLlmGatewayProviderTable,
+} from "@blksails/pi-web-adapters/llm-gateway/index.js";
+import {
+  // ai-gateway 专属 provider 套件(spec ai-gateway-providers,任务 4.1):config 解析 +
+  // 主对话转发路由 + Key 解析器 + 模型目录聚合,与 llm-gateway 分离共存,未配置
+  // AI_GATEWAY_BASE_URL 时零注册(Req 1.1/1.2)。
+  // 多实例装配(spec multi-gateway-providers 任务 3.6,Req 1.1/1.3):`aiGwConfig`(单实例
+  // 形态)仅保留用于 modelPrecedence 这一**全局**(非按实例)旋钮与 e2b 分支(任务 3.6
+  // 边界外,沿用缺省实例);部署级目录、路由挂载表、本地会话 spawn env 一律改由
+  // `resolveGatewayInstances` 的实例集合构造。
+  resolveAiGatewayConfig,
+  resolveGatewayInstances,
+  createGatewayCatalogs,
+  InstanceEnvKeyResolver,
+  DEFAULT_GATEWAY_INSTANCE_ID,
+  instanceEnvPrefix,
+  mergeModelCatalog,
+  type GatewayModelEntry,
+  type GatewayInstanceConfig,
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
+import { createDesktopPasswordIdentityProvider } from "@blksails/pi-web-adapters/identity/index.js";
+import {
+  E2bTransport,
+  SandboxWsTransport,
+  selectTransport,
+  // 按 source 的三级沙箱模板解析(spec sandbox-baked-agent-image):map→派生→全局→清晰错误。
+  resolveSandboxTemplate,
+} from "@blksails/pi-web-adapters/sandbox-transport/index.js";
+import { loggingConfigSchema, type LoggingConfig } from "@blksails/pi-web-protocol";
 import {
   configureFileOutputFromEnv,
   configureLogger,
@@ -120,34 +148,39 @@ import {
   listModelOptions,
   parseHiddenProviders,
 } from "@blksails/pi-web-server/model-options";
-// 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全,
-// server 的 aigc-settings 路由同款引法):供 ModelCatalogService 的 image 命名空间组装
-// (spec model-catalog,任务 3.1)。
+// 自定义 provider 部署级注册表装配(spec multi-gateway-providers,任务 5.3 修复轮,
+// Req 7.2/7.5):经 host-assembly 子路径转出(D0 同惯例) —— 根 package.json 只依赖
+// @blksails/pi-web-server,无法 deep-import core 的子路径;custom-provider-source.ts
+// 走 fs IO,不允许并入零 IO 的 core/server 主 barrel。
+import { createCustomProviderRegistry } from "@blksails/pi-web-server/host-assembly/custom-providers.js";
+// 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全):
+// 供 ModelCatalogService 的 image 命名空间组装(spec model-catalog,任务 3.1)。
 import {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
   CLOUDFLARE_AIGC_CATALOG,
   isCloudflareConfigured,
 } from "@blksails/pi-web-tool-kit";
-// listVisionModelOptions 同理走子路径(它 import pi SDK):Canvas 提示词栏的视觉模型下拉
-// (spec canvas-vision-readout)。薄路由 createVisionModelsRoute 从 barrel 取(纯类型 + 路由)。
-import { listVisionModelOptions } from "@blksails/pi-web-server/vision-model-options";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
-import { readinessProbeTimeoutFromEnv } from "./readiness-config.js";
+import { readyTimeoutFromEnv } from "./readiness-config.js";
 // LLM 网关凭据切换决策(spec sandbox-credentials-v2,任务 3.3):e2b 分支的
 // providerKeysForE2b/sandboxLlmEnv 计算抽成纯函数,便于脱离真实传输单测。
 import {
   computeE2bProviderEnv,
   deprecatedAigcProxyWarning,
 } from "./llm-gateway-assembly.js";
-// ai-gateway 会话 token 注入决策(spec ai-gateway-providers,design.md §2.5,任务 4.1):
-// e2b 分支按会话铸造 scope="ai-gateway" token,注入沙箱可达 base + token(增量可选,
+// ai-gateway 会话 token 注入决策(spec ai-gateway-providers,design.md §2.5,任务 4.1;
+// 路由/scope 按实例分流见 spec multi-gateway-providers 任务 3.4,Req 1.3):e2b 分支按
+// 会话铸造 scope="ai-gateway:<instance>" token,注入沙箱可达 base + token(增量可选,
 // 不替换任何既有 provider key,与 llm-gateway 的强制 credential-switch 语义不同)。
 import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
+// spec ai-gateway-session-models(任务 2.2):本地分支的网关会话模型下发;多实例序列化见
+// spec multi-gateway-providers 任务 3.6(Req 1.1/1.3)。
+import { computeAiGatewaySessionsSpawnEnv } from "./ai-gateway-session-assembly.js";
 import {
   resolveCloudLoginConfig,
-  readCloudDomainEgressBase,
+  readDesktopScopedCloudEgressBase,
   computeEgressSpawnEnvFromGrant,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
@@ -178,8 +211,13 @@ import { resolveSourcesRoot } from "../../server/cli/context.js";
 import { createRegistryInstallPort } from "./online-source/registry-install-port.js";
 import { createLazyRegistryChannel } from "./online-source/registry-channel-adapter.js";
 import { createRegistrySourceResolver } from "./online-source/registry-source-resolver.js";
-import { resolveLoggingEnvDefault } from "./logging-default.js";
+import {
+  resolveEnabledWithSource,
+  resolveLoggingEnvDefault,
+} from "./logging-default.js";
 import { makeResumeMetaLoader } from "./resume-meta.js";
+// 会话事件 store 工厂(启动时 prune 元数据索引残留用;与冷恢复 / 列表同源)。
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 import { systemResourceArgs } from "./system-resource-args.js";
 
 /**
@@ -473,6 +511,27 @@ function stubSpawnSpec(
 // 不需要跨会话去重。
 const llmGatewayLogger = createLogger({ namespace: "app:llm-gateway" });
 
+/**
+ * 同步解析某网关实例的凭据(spec multi-gateway-providers 任务 3.6,Req 1.5)。
+ *
+ * spawn spec 的构造是**同步**路径(`createChannel` 非 async),故不能走 `KeyResolver`
+ * 的 `resolve()`(异步接口)——本函数按与 {@link InstanceEnvKeyResolver} 逐字节一致的
+ * 规则同步读取:先认该实例自己的 `<prefix>API_KEY`;若为缺省实例
+ * ({@link DEFAULT_GATEWAY_INSTANCE_ID})且自身未配置,再回落两个存量全局凭据名
+ * (新名优先、旧名回落)。显式声明的实例(经 `PI_WEB_GATEWAYS` 列出)不做任何回落,
+ * 避免两个实例意外共享同一把全局 key。
+ */
+function resolveGatewayInstanceApiKeySync(
+  instance: GatewayInstanceConfig,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const own = env[`${instanceEnvPrefix(instance.id)}API_KEY`]?.trim();
+  if (own !== undefined && own.length > 0) return own;
+  if (instance.id !== DEFAULT_GATEWAY_INSTANCE_ID) return undefined;
+  const legacy = env.BLKSAILS_GATEWAY_API_KEY?.trim() || env.AI_GATEWAY_API_KEY?.trim();
+  return legacy !== undefined && legacy.length > 0 ? legacy : undefined;
+}
+
 // M3 能力面装配日志(spec host-contract-capability-composition,D7):onDecline 时把弃用
 // id + reason 记入启动日志(契约 §5.2)。pi-web 本地对 16 id 全 use 故不触发;为两端 decline 而设。
 const hostAssemblyLogger = createLogger({ namespace: "server:host-assembly" });
@@ -483,8 +542,33 @@ function buildSingleton(): HandlerSingleton {
   // ai-gateway 套件装配期配置解析(spec ai-gateway-providers,design.md §2.5,任务 4.1,
   // Req 1.1/1.2/1.4):未配置 AI_GATEWAY_BASE_URL → undefined(套件整体不注册);非法配置
   // (URL/优先级枚举/TTL 覆盖值)→ fail-fast 抛出(不吞错、不静默降级)。
+  // ★多实例接线(spec multi-gateway-providers 任务 3.6,Req 1.1/1.3)后,`aiGwConfig` 只
+  //   还剩两个用途:①`modelPrecedence`(全局旋钮,不按实例区分,`GatewayInstanceConfig`
+  //   本无此字段);②e2b 分支(`computeAiGatewaySessionEnv`,任务 3.6 边界外——沙箱内
+  //   多网关路由留待后续任务,本轮沿用缺省实例)。**不再**用它判定套件是否启用、
+  //   取 baseUrl/timeoutMs/providerAllowlist——那些一律改由下面的 `gatewayInstances`
+  //   逐实例给出。
   const aiGwConfig = resolveAiGatewayConfig(process.env);
-  const aiGatewayKeyResolver = new EnvKeyResolver(process.env);
+
+  // 多网关实例装配(spec multi-gateway-providers 任务 3.1/3.3/3.6,
+  // Req 1.1/1.2/1.3/1.5/1.6):`PI_WEB_GATEWAYS` 显式列出 → 按实例解析;仅有存量单实例
+  // 变量 → 合成一个标识沿用 `AI_GATEWAY_PROVIDER_NAME` 的缺省实例,行为与改造前逐字节
+  // 一致;都未配置 → 空数组(套件整体不注册)。每个实例各自持有独立的
+  // `GatewayModelCatalog`(独立目录快照 / TTL / fail-soft)与独立的
+  // `InstanceEnvKeyResolver`(独立凭据解析)——一个实例拉取失败或凭据缺失只影响其
+  // 自身,不牵连其余实例与本地模型(Req 1.5)。
+  const gatewayInstances = resolveGatewayInstances(process.env);
+  const gatewayEnabled = gatewayInstances.length > 0;
+  const gatewayCatalogs = createGatewayCatalogs(gatewayInstances);
+  // 目录服务 / 路由挂载表 / 本地会话 spawn env 三处消费方共用**同一份**按实例聚合的读数
+  // (design.md「三处目录装配点合一」):逐实例取其 `GatewayModelCatalog.get()` 快照后拼接,
+  // 与 `mergeModelCatalog`(任务 3.2)按 `entry.instanceId` 归属 provider 的语义配套。
+  const gatewayChatAggregate = gatewayEnabled
+    ? {
+        get: (): readonly GatewayModelEntry[] =>
+          gatewayInstances.flatMap((inst) => gatewayCatalogs.get(inst.id)?.get() ?? []),
+      }
+    : undefined;
 
   // desktop-cloud-login(任务 6.1,Req 3.1/4.2/7.3):云端登录 egress 装配期配置解析。未配
   // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
@@ -493,12 +577,16 @@ function buildSingleton(): HandlerSingleton {
   // env 优先、回落 `<agentDir>/cloud.json`(spec desktop-cloud-login Req 8)。
   // 没有回落时打包桌面版永远启用不了登录:壳不转发 env、Finder 无 shell 环境、
   // `.env` 落在会被 GC 的运行时目录 —— 实测表现为 /api/auth/me 404、登录入口不渲染。
-  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json` > 随包固化默认值(仅桌面壳)。
+  // 三级次序:env 显式值 > 用户 `<agentDir>/cloud.json`(仅桌面壳) > 随包固化默认值(仅桌面壳)。
   // 固化值排最后,故用户在设置面板改过的地址永远压得住它 —— 反过来会让「改了保存也没用」
   // 这种静默失效发生(spec desktop-account-login Req 11)。
+  // ★ 后两级都只对桌面壳生效:`<agentDir>` 默认 `~/.pi/agent/` 被桌面壳与 `pnpm dev`/npm CLI
+  //   共用,桌面版登录写下的 cloud.json 曾因此让 dev 也撞上登录门禁(实测,见
+  //   readDesktopScopedCloudEgressBase 的文件内说明)。env 显式值仍对所有宿主有效。
   const cloudLoginConfig = resolveCloudLoginConfig(
     process.env,
-    readCloudDomainEgressBase(config.agentDir) ?? resolveBakedCloudEgressBase(process.env),
+    readDesktopScopedCloudEgressBase(config.agentDir, process.env) ??
+      resolveBakedCloudEgressBase(process.env),
   );
   const authSessionState = new AuthSessionState();
   if (cloudLoginConfig !== undefined) {
@@ -508,30 +596,24 @@ function buildSingleton(): HandlerSingleton {
       authSessionState.set(seededCredential);
     }
   }
-  const gatewayModelCatalog =
-    aiGwConfig !== undefined
-      ? new GatewayModelCatalog({
-          baseUrl: aiGwConfig.baseUrl,
-          ttlMs: aiGwConfig.catalogTtlMs,
-          keyResolver: aiGatewayKeyResolver,
-        })
-      : undefined;
-
   // 目录组装服务(spec model-catalog,design.md「ModelCatalogService」,任务 3.1,
   // Req 1.1/4.1/4.3/5.1–5.4):chat(merge + hidden 过滤)与 image(静态∪网关,附 source)
   // 的统一取数入口。**每请求构造**以保持 PI_WEB_HIDE_PROVIDERS 的既有请求期求值语义
   // (原闭包即每请求 parseHiddenProviders,env 即时生效;service 零 IO 轻对象,每请求
-  // new 无成本)。网关启用判别 = `aiGwConfig !== undefined`(AI_GATEWAY_BASE_URL 已配置),
+  // new 无成本)。网关启用判别 = `gatewayEnabled`(spec multi-gateway-providers 任务 3.6:
+  // 至少有一个网关实例被解析出来,不再单看 `AI_GATEWAY_BASE_URL` 这一个 env),
   // 与路由挂载/runner 侧判据同源;未启用时 gatewayChat/gatewayImageCatalog 均不注入,
   // 两端点输出与主干逐字节一致(Req 1.3/4.3)。
   const makeModelCatalog = () =>
     createModelCatalogService({
       listSelfChat: () => listModelOptions(config.agentDir),
-      gatewayChat: gatewayModelCatalog,
+      gatewayChat: gatewayChatAggregate,
+      // 合并能力由装配层注入(spec: core-package-extraction 任务 3.1)。目录服务属内核层,
+      // 不认识 ai-gateway 适配器;它与 gatewayChat 同进同出,漏传会当场抛错而非静默降级。
+      mergeCatalog: mergeModelCatalog,
       modelPrecedence: aiGwConfig?.modelPrecedence,
       imageCatalog: AIGC_MODEL_CATALOG,
-      gatewayImageCatalog:
-        aiGwConfig !== undefined ? AI_GATEWAY_AIGC_CATALOG : undefined,
+      gatewayImageCatalog: gatewayEnabled ? AI_GATEWAY_AIGC_CATALOG : undefined,
       // Cloudflare 图像目录(spec cloudflare-aigc-provider,Req 4.2):启用判据用的是
       // 与 runner 侧 aigcExtension **同一个** isCloudflareConfigured,两处判据不会漂移
       // ——否则会出现「设置页列得出模型但工具里选不到」的错位。同样每请求求值,env 即时生效。
@@ -539,6 +621,10 @@ function buildSingleton(): HandlerSingleton {
         ? CLOUDFLARE_AIGC_CATALOG
         : undefined,
       hiddenProviders: parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS),
+      // 自定义 provider(spec multi-gateway-providers,任务 5.3 修复轮,Req 7.2/7.5):
+      // 每请求重新组装(与本函数其余依赖同惯例) —— `createCustomProviderSource().list()`
+      // 每次调用重新读 `<agentDir>/providers.json`,使新增/停用免重启即时生效。
+      customProviders: createCustomProviderRegistry(config.agentDir),
     });
 
   // 主进程自身 logger 的 runtime 门控:主进程不像 runner 那样调 initConfigFromEnv,
@@ -573,6 +659,79 @@ function buildSingleton(): HandlerSingleton {
     file: fileLogEnabled ? process.env.PI_WEB_LOG_FILE : undefined,
   });
 
+  /**
+   * 解析日志门控:Settings 原始值 + env 覆盖 + dev/生产默认(优先级见
+   * {@link resolveEnabledWithSource})。
+   */
+  const resolveLoggingGate = async (): Promise<LoggingConfig> => {
+    let raw: unknown = null;
+    try {
+      raw = await new ConfigCodec(config.agentDir).load("logging");
+    } catch {
+      raw = null; // 读失败按「无配置」处理,继续走 env / 默认。
+    }
+    const { enabled, source } = resolveEnabledWithSource(raw);
+    const base =
+      raw !== null && typeof raw === "object" && Object.keys(raw).length > 0
+        ? raw
+        : resolveLoggingEnvDefault();
+    const parsed = loggingConfigSchema.parse(base);
+    // ★ enabled 一律以 resolveEnabledWithSource 为准,覆盖 parse 出来的值 ——
+    //   否则 env 覆盖与 dev 默认都会被 Settings 里存盘的旧值顶掉。
+    const gate = { ...parsed, enabled };
+    if (source !== lastLoggingGateSource) {
+      lastLoggingGateSource = source;
+      // 门控从哪来、值是多少 —— 「日志为什么不显示」的第一现场。必定输出一次。
+      hostAssemblyLogger.info("logging gate resolved", {
+        enabled,
+        level: gate.level,
+        source,
+      });
+    }
+    return gate;
+  };
+
+  /**
+   * 最近一次解析出的日志门控。spawn env 组装是**同步**路径,而门控解析要读配置文件
+   * (异步),故缓存于此。
+   *
+   * 种子取 env/模式默认(纯同步,不读盘);装配期立刻发起一次异步刷新收敛到 Settings。
+   * 会话创建必然在一次 HTTP 请求之后,窗口实际为零 —— 但即便命中该窗口,后果也只是
+   * 首个会话的子进程按默认门控运行(服务端门控仍然正确),不会错发日志给前端。
+   */
+  let lastLoggingGateSource: string | undefined;
+  let lastLoggingGate: LoggingConfig = loggingConfigSchema.parse(
+    resolveLoggingEnvDefault(),
+  );
+  void resolveLoggingGate().then((g) => {
+    lastLoggingGate = g;
+  });
+
+  /**
+   * 下发给 runner 子进程的日志 env(★ 门控下沉到**产生端**)。
+   *
+   * 改造前:子进程 logger 库默认 `enabled: true`,而服务端门控默认关 —— 于是子进程把每条
+   * 日志序列化成 JSON 写 stderr,主进程解析完**全部丢弃**(`pi-session.ts` 的 `!gate.enabled`
+   * → continue)。白烧 CPU、刷终端,且「关掉日志」这个动作在产生端毫无体现。
+   *
+   * 现在把已解析的门控原样下发,子进程 `initConfigFromEnv()` 据此自我关闭 —— 关闭时
+   * **一行都不产生**。三个键与 logger 包既有的 env 契约同名,不新增 env 名。
+   *
+   * 注:e2b/沙箱分支未接(那条路 env 还要过 `envPassthrough` 白名单),沙箱内维持现状。
+   */
+  const loggingSpawnEnv = (): Record<string, string> => {
+    const gate = lastLoggingGate;
+    const out: Record<string, string> = {
+      PI_WEB_LOG_ENABLED: gate.enabled ? "1" : "false",
+      PI_WEB_LOG_LEVEL: gate.level,
+    };
+    const on = Object.entries(gate.namespaces ?? {})
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (on.length > 0) out.PI_WEB_LOG_NAMESPACES = on.join(",");
+    return out;
+  };
+
   const store = new InMemorySessionStore(true);
 
   // 日志门控 provider（Req 6.4/6.5/6.6 / task 4.4）：每次新会话创建时读取最新配置。
@@ -580,16 +739,10 @@ function buildSingleton(): HandlerSingleton {
   // 非 "false" 时强制开启，无需经 Settings；级别/命名空间一并取自 PI_WEB_LOG_* env，
   // 见 resolveLoggingEnvDefault）。有内容 → parse(raw) 应用 Settings 已保存的配置。
   const loggingConfigProvider = async () => {
-    try {
-      const codec = new ConfigCodec(config.agentDir);
-      const raw = await codec.load("logging");
-      if (raw === null || typeof raw !== "object" || Object.keys(raw).length === 0) {
-        return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-      }
-      return loggingConfigSchema.parse(raw);
-    } catch {
-      return loggingConfigSchema.parse(resolveLoggingEnvDefault());
-    }
+    const resolved = await resolveLoggingGate();
+    // 缓存供**同步**路径读取(spawn env 组装是同步的,见 loggingSpawnEnv)。
+    lastLoggingGate = resolved;
+    return resolved;
   };
 
   // readinessHandshake: 开启会话就绪握手(spec session-readiness-handshake) —— 仅生产 app 接线开启,
@@ -598,12 +751,60 @@ function buildSingleton(): HandlerSingleton {
   // 使 busy/stats/lifecycle 经单一权威 session-state 帧投递、前端纯投影。可经 env 关闭以一步回退。
   // ⚠ 与 readinessHandshake 存在耦合:lifecycle 仅经 setLifecycle 入快照(后者在握手关闭时早返回),
   // 故若开此而关 readinessHandshake,snapshot.lifecycle 恒为 initializing。二者应同开同关(默认皆开)。
+  // 会话展示元数据索引(spec session-meta-index)。两条实现,按宿主形态选:
+  //
+  //  - **本地默认**(桌面 / dev / npm CLI)→ `JsonFileSessionMetaIndex`:整份 JSON 文件
+  //    (默认 `~/.pi/agent/piweb-session-index.json`,可经 PI_WEB_SESSION_META_INDEX_PATH 覆盖,
+  //    置于 sessions 目录**之外**)+ 跨进程锁。零依赖、可直接查看/编辑,适合会话量不大的场景。
+  //  - **本地 sqlite**(`SESSION_META_STORE=sqlite`,或会话存储本身已是 sqlite)→
+  //    `SqliteSessionMetaIndex`:行存储 + 事务 + WAL。单次写是一行 upsert 而非整份重写,
+  //    并发控制交给数据库(无需自制锁)。会话量大或多进程共写频繁时选它。
+  //  - **云端**(pi-clouds 自行装配)→ 传 `HostDeps.sessionMetaIndex =
+  //    new WorkspaceSessionMetaIndex(tenantWorkspace.user)`:每会话一键,持久化经宿主状态端口,
+  //    天然获得租户隔离。该字段的类型就是端口本身,故云端无需改动 pi-web 即可接入。
+  //
+  // 两条实现由 `test/session-meta/conformance.it.test.ts` 的同一批断言共同验收。
+  // 定位都是**缓存**:任何读写失败都退化为「无元数据」,不影响会话列出与恢复。
+  const sessionMetaIndex: SessionMetaIndex = createLocalSessionMetaIndex();
+
+  // 启动时清一次残留(Req 5.3):索引对会话是**弱引用** —— 绕过 pi-web 的删除(手工 rm、
+  // pi CLI 删、换机器、换存储后端)会留下孤儿键。孤儿不影响正确性(列表以实际会话为准),
+  // 但索引每次写都要整份读写,孤儿越攒越贵。
+  //
+  // 只在启动时清一次:够用且最省 —— 重启即收敛,不必引调度器,也不必让每次列表请求
+  // 付全量扫描的代价。fire-and-forget + 吞错:清不掉就下次启动再清,绝不阻塞装配。
+  void (async (): Promise<void> => {
+    try {
+      // 顺带清掉原子写留下的 tmp 残留(进程被杀时会留下,单个无害但会累积)。
+      if (sessionMetaIndex instanceof JsonFileSessionMetaIndex) {
+        await sessionMetaIndex.cleanupStaleTemps();
+      }
+      const entryStore = await createSessionEntryStore(sessionStoreConfigFromEnv());
+      const existing = (await entryStore.listAll()).map((m) => m.sessionId);
+      const removed = await sessionMetaIndex.prune(existing);
+      if (removed > 0) {
+        hostAssemblyLogger.info("session meta index pruned", { removed });
+      }
+    } catch {
+      // 静默:元数据是展示增强(Req 3.5)。
+    }
+  })();
+
+  // 会话活跃态查询(Req 7.5):从**活跃会话注册表**(store,非持久化 SessionEntryStore)按标识
+  // 取会话的活跃态投影。未加载的历史会话 → undefined = 空闲,且**不为取状态加载任何会话**。
+  const sessionActivityOf = (sessionId: string): SessionActivity | undefined =>
+    store.get(sessionId)?.activity;
+
   const manager = new SessionManager({
     store,
     idleMs: 0,
     loggingConfigProvider,
+    // 标题变化 → 同步进元数据索引,使列表快读命中(Req 1.2)。回调抛错由 PiSession 吞掉。
+    onTitleChanged: (id, title) => {
+      void sessionMetaIndex.merge(id, { title }).catch(() => {});
+    },
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
-    readinessProbeTimeoutMs: readinessProbeTimeoutFromEnv(process.env),
+    readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
   });
 
@@ -816,6 +1017,9 @@ function buildSingleton(): HandlerSingleton {
       env: {
         ...resolved.spawnSpec.env,
         ...config.providerKeys,
+        // ★ 日志门控下沉到产生端:把已解析的门控下发子进程,关闭时 runner **一行都不产生**
+        //   (改造前是子进程照产、主进程解析后全丢)。见 loggingSpawnEnv 的说明。
+        ...loggingSpawnEnv(),
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
         // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
@@ -840,6 +1044,24 @@ function buildSingleton(): HandlerSingleton {
           authSessionState.currentCredential(),
           desktopCapabilitiesClient?.cachedStatic()?.egress,
         ),
+        // spec ai-gateway-session-models(任务 2.2,Req 1.3/2.1/2.5);多实例序列化见 spec
+        // multi-gateway-providers 任务 3.6(Req 1.1/1.3):逐实例把网关基址 + 凭据 + 目录
+        // id 清单经 spawn env 下发本地 runner,runner 据此为每个实例各自注册同名 provider
+        // (`packages/server/src/host-assembly/model-sources.ts` 的 `resolveAiGatewaySessionSpecsFromEnv`
+        // 已支持多实例还原),使清单里的网关模型能被 registry 解析(否则选中即
+        // 「模型未找到」)。任一实例未启用 / 无凭据 / 目录为空 → 该实例被跳过
+        // (fail-soft,不影响其余实例),零网关实例时行为与本 spec 实施前一致。
+        // 凭据经 env 下发,与上面 `config.providerKeys` 同一信任边界、同一形态(design §D1)。
+        // `catalog.get()` 是同步快照(stale-while-revalidate,不打网络),契合 spawn spec
+        // 的同步构造路径。
+        ...computeAiGatewaySessionsSpawnEnv({
+          instances: gatewayInstances.map((inst) => ({
+            instanceId: inst.id,
+            baseUrl: inst.baseUrl,
+            apiKey: resolveGatewayInstanceApiKeySync(inst, process.env),
+            catalog: gatewayCatalogs.get(inst.id)?.get() ?? [],
+          })),
+        }).env,
       },
     };
     return new PiRpcProcess(spec);
@@ -1052,14 +1274,39 @@ function buildSingleton(): HandlerSingleton {
   const hostDeps: HostDeps = {
     agentDir: config.agentDir,
     defaultCwd: config.defaultCwd,
-    listModelOptions: () => makeModelCatalog().chatOptions(),
+    // GET /config/models 唯一部署级目录取数(multi-gateway-providers 任务 4.3,Req 3.1,
+    // 3.2, 3.4):带 `input`/`output` 筛选参数时转发给 `ModelCatalogService.query()`,取代
+    // 此前独立的 GET /aigc/models(output=image)与 GET /vision/models(input=image)。
+    //
+    // ★ 未带任何筛选参数时**刻意不**调用 `query({})` —— 那会无条件把 image 命名空间
+    //   (AIGC 静态目录,与本特性的网关/自定义 provider 无关,一直存在)并入结果,
+    //   在 settings 的通用 provider/model 下拉(`model-select-field.tsx`,尚未迁移到
+    //   显式筛选参数,属任务 6.1)里混入 `newapi`/`sufy`/`dashscope` 等图像专用
+    //   provider——这些从不是可选的对话 provider。`query()` 还会给每条目无条件盖章
+    //   `source`(默认 `"self"`),而未注入网关时的旧 `chatOptions()` 完全不带该字段。
+    //   两者都不是「零筛选 = 行为不变」(Req 10.1),故未带筛选参数时继续走
+    //   `chatOptions()`,与本特性引入前逐字节一致;只有调用方显式传参(即消费方已
+    //   按 Req 11.2 迁移到「按类型呈现」)才切到 `query()` 的合并/筛选路径。
+    //   原始查询字符串未经取值域校验直传 —— 非法取值不匹配任何条目,`query()`
+    //   静默返回空集而非报错(见 config-routes.ts)。
+    listModelOptions: (query) => {
+      const catalog = makeModelCatalog();
+      if (query.input === undefined && query.output === undefined) {
+        return catalog.chatOptions();
+      }
+      return catalog.query({
+        input: query.input as CatalogQuery["input"],
+        output: query.output as CatalogQuery["output"],
+      });
+    },
     resolveSourceSettings: makeSourceSettingsResolver(config),
     onSourceSettingsSaved: (sourceKeyValue, payload) =>
       broadcastSettingsChanged(manager.getStore(), sourceKeyValue, payload),
     sessionStoreConfig: sessionStoreConfigFromEnv(),
-    sessionsGlobalEnabled:
-      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "true" ||
-      process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_GLOBAL === "1",
+    // 元数据索引 + 活跃态查询(spec session-meta-index):session.list 投影标题/来源/活跃态,
+    // session.actions 改名写标题、删除清条目。
+    sessionMetaIndex,
+    sessionActivityOf,
     sessionsManageEnabled:
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "false" &&
       process.env.NEXT_PUBLIC_PI_WEB_SESSIONS_MANAGE !== "0",
@@ -1072,15 +1319,30 @@ function buildSingleton(): HandlerSingleton {
           registry: resolveLlmGatewayProviderTable(process.env),
         }
       : undefined,
-    aiGateway:
-      aiGwConfig !== undefined
-        ? {
-            baseUrl: aiGwConfig.baseUrl,
-            secret: resolveAiGatewaySecret(process.env),
-            keyResolver: aiGatewayKeyResolver,
-            timeoutMs: aiGwConfig.timeoutMs,
-          }
-        : undefined,
+    // routes.ts 按实例分流(spec multi-gateway-providers 任务 3.4,Req 1.3);本装配点
+    // (任务 3.6,Req 1.1/1.3)按 `gatewayInstances` 逐个构造路由表——两个实例同时启用时
+    // 分别挂载,各自持有独立的 `InstanceEnvKeyResolver`(独立凭据解析,一个实例配错
+    // 凭据不影响另一个的转发)。
+    // ★`timeoutMs` 是 `CreateAiGatewayRoutesDeps` 的**单一**全局字段(路由层未按实例区分
+    //   超时,这是 routes.ts 契约本身的限制,不在本任务边界内),取首个实例的超时值;
+    //   零实例时 `aiGateway` 整体不注册。
+    aiGateway: gatewayEnabled
+      ? {
+          instances: new Map(
+            gatewayInstances.map((inst) => [
+              inst.id,
+              {
+                baseUrl: inst.baseUrl,
+                keyResolver: new InstanceEnvKeyResolver(inst.id, process.env, {
+                  legacyFallback: inst.id === DEFAULT_GATEWAY_INSTANCE_ID,
+                }),
+              },
+            ]),
+          ),
+          secret: resolveAiGatewaySecret(process.env),
+          timeoutMs: gatewayInstances[0]?.timeoutMs,
+        }
+      : undefined,
     authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
     identityProvider: desktopIdentityProvider,
     // 壳凭据取回 token(Req 12)。仅桌面壳注入该 env;为空则该端点不挂载。
@@ -1144,6 +1406,8 @@ function buildSingleton(): HandlerSingleton {
     // Cold-resume reader: POST /sessions { resumeId } loads {source, cwd, model}
     // from the configured SessionEntryStore (same SESSION_STORE backend) by id.
     loadResumeMeta: makeResumeMetaLoader(sessionStoreConfigFromEnv()),
+    // 建会话时记下所属 agent-source(policySource),供列表显示来源与色条(Req 1.1)。
+    sessionMetaIndex,
     // Inject config endpoints — schema-driven settings UI persistence.
     //  - GET/PUT /config/:domain → ~/.pi/agent/{auth,settings,sandbox}.json
     //    (sandbox = pi-sandbox 全局策略,方案 A)。codec 读 PI_WEB_AGENT_DIR
@@ -1157,16 +1421,15 @@ function buildSingleton(): HandlerSingleton {
       // (spec host-contract-capability-composition,D5)。各能力面的原挂载条件(llm/ai/auth 的
       // 网关/登录门控)已内聚到 defaultCapabilities 对应 factory 内(读 hostDeps 可选字段),
       // 行为等价现状三元 `cond ? createX(...) : []`;secret 等惰性求值在 hostDeps 构造处完成。
+      //
+      // ★ 独立的 GET /aigc/models(image-toggles-field)与 GET /vision/models(canvas 解读)
+      //   两个只读端点已随 multi-gateway-providers 任务 4.3(Req 3.1, 3.2, 3.4)删除 ——
+      //   其能力由上面 `config.domains` 能力面挂载的 `GET /config/models?input=&output=`
+      //   完全覆盖(config.mcp 之后进入的 composedRoutes 已含该端点,见 hostDeps.listModelOptions)。
+      //   前端消费方(aigc-model-toggles-field / vision-model-select-field / canvas-ui
+      //   vision-op)迁移到统一端点属后续任务(6.1-6.3),在其落地前旧路径会 404 ——
+      //   这是本任务预期内的过渡态,不是遗留缺陷。
       ...composedRoutes,
-      // aigc.models / vision.models 不入 16 名册(集成设计 §5.4 判定为领域泄漏,删除属后续 spec)。
-      // M3 维持其现状接线(compose 之外);Router 对 injected 顺序不敏感,置于末尾不影响行为。
-      // ⚠ vision 端点还需 app/api/vision/[[...path]]/route.ts 转发器,否则静默 404。
-      ...createAigcModelsRoute({
-        listEntries: () => makeModelCatalog().imageEntries(),
-      }),
-      ...createVisionModelsRoute({
-        listModels: () => listVisionModelOptions(config.agentDir),
-      }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.

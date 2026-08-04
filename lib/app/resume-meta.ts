@@ -9,12 +9,12 @@
  * 读取失败不抛出到调用方(返回 undefined / 退化为仅 cwd),由上层据此回 404 或以 cli 恢复。
  */
 import {
-  createSessionEntryStore,
   sessionStoreConfigFromEnv,
   type ResumeMeta,
   type SessionEntryStore,
   type SessionStoreConfig,
 } from "@blksails/pi-web-server";
+import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 
 /** runner / stub 写入创建元数据所用的 custom entry 类型标识。 */
 export const PIWEB_SESSION_CUSTOM_TYPE = "piweb.session";

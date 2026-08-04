@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import type { WebExtension } from "@blksails/pi-web-kit";
+import { definePanes } from "@blksails/pi-web-panes-kit";
 import { PiChat } from "../../src/chat/pi-chat.js";
 import { mockSession, mockControls, sampleStats } from "../fixtures/mock-session.js";
 
@@ -85,12 +86,15 @@ describe("富版 PiChat × 内核用量区", () => {
     expect(screen.getByTestId("ext-status")).toBeInTheDocument();
   });
 
-  it("用例E:用量区不在 panelRight(aside)内 (4.3)", () => {
+  it("用例E:用量区不在右侧面板(aside)内 (4.3)", () => {
+    // 夹具改用 pane 声明键(任务 5.3);本用例只需面板出现,断言的是用量区的**位置**。
     const ext: WebExtension = {
       manifestId: "acme",
-      slots: {
-        panelRight: <div data-testid="ext-panel">面板</div>,
-      },
+      panes: definePanes({
+        id: "stats-panel",
+        initialPaneIds: ["p"],
+        panes: [{ id: "p", title: "P", document: { kind: "inline", srcDoc: "<!doctype html><p>p</p>" }, capabilities: {} }],
+      }),
     };
     const { container } = render(
       <PiChat

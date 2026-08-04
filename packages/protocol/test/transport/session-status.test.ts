@@ -51,13 +51,13 @@ describe("control:session-status SSE frame", () => {
     const frame = makeControlFrame({
       control: "session-status",
       state: "error",
-      detail: "readiness probe timed out",
-      code: "probe-timeout",
+      detail: "runner did not announce readiness",
+      code: "ready-frame-missing",
     });
     const parsed = SseFrameSchema.parse(frame);
     if (parsed.kind === "control" && parsed.payload.control === "session-status") {
-      expect(parsed.payload.code).toBe("probe-timeout");
-      expect(parsed.payload.detail).toContain("timed out");
+      expect(parsed.payload.code).toBe("ready-frame-missing");
+      expect(parsed.payload.detail).toContain("announce");
     }
   });
 

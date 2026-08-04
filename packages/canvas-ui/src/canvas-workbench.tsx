@@ -54,6 +54,7 @@ import {
   SelectValue,
 } from "@blksails/pi-web-primitives";
 import { Textarea } from "@blksails/pi-web-primitives";
+import { ProviderBadge, displayNameOf } from "./aigc-model-meta.js";
 import { cn } from "@blksails/pi-web-primitives";
 import {
   ANNOTATION_COLOR,
@@ -1807,11 +1808,21 @@ export function CanvasWorkbench({
   // 缺省空数组 → 选择器空态,解读仍可用(Req 3.5/3.6/5.4)。
   const visionModelItems: readonly VisionModelOption[] = visionModelOptions ?? [];
   // 复用历史参数可能带来清单外的 model:并入候选兜底(否则 Select 显示为空)。
-  const modelIds = model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
-  const modelItems = modelIds.map((id) => ({
-    id,
-    label: capabilities?.models.find((m) => m.id === id)?.label ?? id,
-  }));
+  const modelItems =
+    model !== "" && !knownModels.includes(model) ? [model, ...knownModels] : knownModels;
+  // id → 展示元数据(label / provider)。与主对话提示词栏的 AIGC 快捷设置同一呈现:
+  // 字母徽章 + 剥掉冗余 ` · <provider>` 后缀的 label,hover title 恒为原始 model id。
+  // capability 未下发 provider(旧 agent)时退化为纯文本,不报错。
+  const modelMetaById = React.useMemo(() => {
+    const map = new Map<string, { label?: string; provider?: string }>();
+    for (const m of capabilities?.models ?? []) {
+      map.set(m.id, {
+        ...(m.label !== undefined ? { label: m.label } : {}),
+        ...(m.provider !== undefined ? { provider: m.provider } : {}),
+      });
+    }
+    return map;
+  }, [capabilities]);
   // 尺寸选项:全局档位取 capability.sizes(缺失回退 RATIO_OPTIONS);当前选中模型在 capability 中
   // 声明了受支持尺寸集 → 收窄为交集(顺序按全局列表,4.3);未选模型 = 不收窄(守恒)。
   const globalSizes = capabilities?.sizes ?? RATIO_OPTIONS;
@@ -1950,18 +1961,27 @@ export function CanvasWorkbench({
             <SelectTrigger
               data-canvas-model
               aria-label="生成模型"
+              // 收起态 hover 可见原始 model id(展示文本已被剥后缀/换成 label)。
+              {...(model !== "" ? { title: model } : {})}
               className="h-8 max-w-52 min-w-36 gap-1.5 rounded-full text-xs"
             >
-              <Sparkles className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
               <SelectValue placeholder="默认模型" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={MODEL_DEFAULT_SENTINEL}>默认模型</SelectItem>
-              {modelItems.map((m) => (
-                <SelectItem key={m.id} value={m.id} title={m.id}>
-                  {m.label}
-                </SelectItem>
-              ))}
+              {modelItems.map((m) => {
+                const meta = modelMetaById.get(m);
+                return (
+                  <SelectItem key={m} value={m} title={m}>
+                    <span className="flex items-center gap-1.5">
+                      <ProviderBadge providerId={meta?.provider} />
+                      <span className="truncate">
+                        {displayNameOf(meta?.label ?? m, meta?.provider)}
+                      </span>
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
 

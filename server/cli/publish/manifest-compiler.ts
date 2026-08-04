@@ -27,7 +27,7 @@ import { computeFingerprint, computeIntegrity, signManifest } from "@pi-clouds/r
 // ★ 入口判定**复用运行时同一实现**,绝不复制一份 —— 复制即制造会漂移的副本,
 //   而「发布认 A、运行认 B」正是本 spec 要根除的失败模式(R1.7)。
 //   该 barrel 保证「仅 node builtins + agent-source 只读探测,无 pi SDK 值导入」
-//   (packages/server/src/index.ts:43),已有先例 server/cli/install/local-source-registry.ts:40。
+//   (packages/core/src/index.ts:43),已有先例 server/cli/install/local-source-registry.ts:40。
 import { probeEntry, EntryOverrideError, ENTRY_PRIORITY } from "@blksails/pi-web-server";
 
 /** kind 的可选取值(供 MANIFEST_KIND_REQUIRED 提示;与 protocol 的 PluginKindSchema 同源)。 */

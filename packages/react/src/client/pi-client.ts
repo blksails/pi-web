@@ -246,9 +246,6 @@ export function createPiClient(
       post<CreateSessionResponse>("/sessions", req),
     listSessions: async (req) => {
       const p = new URLSearchParams();
-      if (req.scope !== undefined) p.set("scope", req.scope);
-      if (req.cwd !== undefined) p.set("cwd", req.cwd);
-      if (req.sessionId !== undefined) p.set("sessionId", req.sessionId);
       if (req.limit !== undefined) p.set("limit", String(req.limit));
       if (req.cursor !== undefined) p.set("cursor", req.cursor);
       if (req.q !== undefined) p.set("q", req.q);
@@ -298,8 +295,9 @@ export function createPiClient(
       post<CommandAck>(`/sessions/${enc(id)}/abort`),
     clearQueue: (id) =>
       post<ClearQueueResponse>(`/sessions/${enc(id)}/clear_queue`),
+    // Req 3.7:与会话模型查询(GET /sessions/:id/models)共用同一路径,仅方法区分。
     setModel: (id, req) =>
-      post<CommandAck>(`/sessions/${enc(id)}/model`, req),
+      post<CommandAck>(`/sessions/${enc(id)}/models`, req),
     setThinking: (id, req) =>
       post<CommandAck>(`/sessions/${enc(id)}/thinking`, req),
     uiResponse: (id, req) =>

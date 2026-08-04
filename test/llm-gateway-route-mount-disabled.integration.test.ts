@@ -73,8 +73,8 @@ describe("SERVE 门控关闭(网关未配置):/api/llm-gateway/* 未挂载", () 
     expect(sessionId.length).toBeGreaterThan(0);
   });
 
-  it("其余装配未受影响:既有只读路由(GET /api/aigc/models)正常工作", async () => {
-    const res = await route.GET(req("/api/aigc/models"));
+  it("其余装配未受影响:既有只读路由(GET /api/config/models?output=image,取代已删除的 GET /api/aigc/models,multi-gateway-providers 任务 4.3)正常工作", async () => {
+    const res = await route.GET(req("/api/config/models?output=image"));
     expect(res.status).toBe(200);
   });
 });

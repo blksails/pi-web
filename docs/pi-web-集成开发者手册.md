@@ -602,7 +602,7 @@ type InteractionSpec = { param; via:"select"|"input"; title; options?(含哨兵 
 | **GET** | **`/sessions/:id/stream`** | **增量流（唯一 SSE）** | **SSE** |
 | POST | `/sessions/:id/messages` | 发消息 | JSON |
 | POST | `/sessions/:id/steer` · `/follow_up` · `/abort` | 控制 | JSON |
-| POST | `/sessions/:id/model` · `/thinking` | 设模型/思考级 | JSON |
+| POST | `/sessions/:id/models` · `/thinking` | 设模型/思考级（旧路径 `/model` 恒返 410 `ENDPOINT_MOVED`） | JSON |
 | POST | `/sessions/:id/ui-response` · `/ui-rpc` | 扩展 UI 应答 / Tier3 RPC 上行 | JSON |
 | GET | `/sessions/:id/state` · `/stats` · `/messages` · `/commands` | 查询 | JSON |
 | GET | `/sessions/:id/models` · POST `/fork` · GET `/fork-messages` | 富版模型/分支 | JSON |

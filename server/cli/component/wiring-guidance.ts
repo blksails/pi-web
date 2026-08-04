@@ -9,7 +9,7 @@
  *
  * 两种插件点的挂载形态:
  *   - `canvasPlugins`(数组追加):   `canvasPlugins: [watermarkBundle],`
- *   - `slots`(具名槽对象键,JSX):  `slots: { panelRight: <Scene3dPanel /> },`
+ *   - `slots`(具名槽对象键,JSX):  `slots: { sidebarLeft: <Scene3dPanel /> },`
  */
 import type { ComponentWiring } from "@blksails/pi-web-protocol";
 
@@ -29,7 +29,9 @@ export interface WiringGuidance {
 export function buildWiringGuidance(wiring: ComponentWiring): WiringGuidance {
   const importLine = `import { ${wiring.export} } from "${wiring.from}";`;
   if (wiring.point === "slots") {
-    const slot = wiring.slot ?? "panelRight";
+    // ★ 默认槽从右侧面板槽改为 sidebarLeft(spec panes-only-right-panel):
+    // 右侧面板已收敛为唯一的 pane 机制,该槽即将删除,不能再作为脚手架的默认建议。
+    const slot = wiring.slot ?? "sidebarLeft";
     const entry = `<${wiring.export} />`;
     return {
       importLine,

@@ -2,7 +2,7 @@
  * 构建脚本夹具集成测试(spec sandbox-baked-agent-image,任务 3.3;Req 7.1)。
  *
  * 被测对象 = 「真实 fs 适配器(createNodeBakeFs)+ computeBakePlan + staging 决策」的
- * 组合:单测(packages/server/test/sandbox-image/bake-plan.test.ts)已用内存 BakeFsPort
+ * 组合:单测(packages/adapters/test/sandbox-image/bake-plan.test.ts)已用内存 BakeFsPort
  * 覆盖纯决策,本测试在**真实盘面**(os.tmpdir 夹具副本)补齐——真实 fs 适配器契约
  * (listFiles 递归 + 相对路径 + posix 分隔)、staging 文件清单/排除、Dockerfile 文本形状、
  * tag 内容哈希确定性。同时经脚本导出的 loadBakePlanModule 走 jiti 编程式加载,
@@ -30,7 +30,8 @@ import {
   createNodeBakeFs,
   loadBakePlanModule,
 } from "../scripts/build-agent-image.mjs";
-import type * as bakePlanNs from "../packages/server/src/sandbox-image/bake-plan.js";
+// spec adapters-package-extraction 任务 3.1:`sandbox-image/` 已搬进 adapters 包。
+import type * as bakePlanNs from "../packages/adapters/src/sandbox-image/bake-plan.js";
 
 const FIXTURE_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -252,7 +253,11 @@ describe("computeBakePlan × 真实 fs — Dockerfile 文本形状", () => {
   it("bundle 形态:FROM/COPY staged\\//ENV AGENT_CWD/ENV AGENT_CMD(--agent index.js)+编译缓存预热,逐行精确", () => {
     const plan = planOrThrow(opts());
     const agentCmd =
-      "node /usr/local/lib/node_modules/@blksails/pi-web-server/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
+      // ★ 包名段随引导脚本迁包同步(spec: runner-package-extraction 任务 4.2):
+      //   pi-web-server → pi-web-runner。AGENT_CMD 是与基础镜像的**字节契约**,
+      //   故这里与 packages/adapters/test/sandbox-image/bake-plan.test.ts 各有一份
+      //   写死全串的断言 —— 两处都要改,漏一处就只有跑全量才会发现(实测栽过)。
+      "node /usr/local/lib/node_modules/@blksails/pi-web-runner/runner-bootstrap.mjs --agent /workspace/agent/index.js --cwd /workspace/agent --agent-dir /root/.pi/agent";
     expect(plan.dockerfile).toBe(
       [
         `FROM ${BASE_IMAGE}`,

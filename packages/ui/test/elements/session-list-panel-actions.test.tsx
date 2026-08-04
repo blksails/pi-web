@@ -27,7 +27,7 @@ function item(over: Partial<SessionListItem> & { sessionId: string }): SessionLi
   return { cwd: "/work", createdAt: "2026-06-30T00:00:00.000Z", ...over };
 }
 function resp(sessions: SessionListItem[]): ListSessionsResponse {
-  return { sessions, scope: "cwd", globalEnabled: false };
+  return { sessions };
 }
 
 function baseProps(
@@ -35,7 +35,6 @@ function baseProps(
 ) {
   return {
     currentCwd: "/work",
-    globalEnabled: false,
     onResume: vi.fn(),
     listSessions: vi.fn(async () =>
       resp([item({ sessionId: "s1", name: "Alpha" })]),

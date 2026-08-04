@@ -7,9 +7,10 @@
  * 时零注入(Req 1.2);配置后,若同时也配置了 llm-gateway 的 sandbox-reachable public
  * base(`PI_WEB_LLM_GATEWAY_PUBLIC_BASE`——ai-gateway 路由与 llm-gateway 路由挂载在同一
  * pi-web 部署 `/api` 之下,复用同一 public base 概念),则为该会话铸造一枚
- * `scope="ai-gateway"` 的短期 token,连同网关可达 base 一并经 `PI_AI_GATEWAY_BASE` /
- * `PI_AI_GATEWAY_TOKEN` env 下发进 e2b 沙箱——供沙箱内 agent(经烘焙镜像/models.json 自定义
- * provider,超出本仓范围)按需选用 ai-gateway 目录模型时换钥转发到 `/ai-gateway/*`。
+ * `scope="ai-gateway:<instance>"` 的短期 token,连同网关可达 base 一并经
+ * `PI_AI_GATEWAY_BASE` / `PI_AI_GATEWAY_TOKEN` env 下发进 e2b 沙箱——供沙箱内 agent(经
+ * 烘焙镜像/models.json 自定义 provider,超出本仓范围)按需选用 ai-gateway 目录模型时换钥
+ * 转发到 `/ai-gateway/:instance/*`。
  *
  * 缺 public base 时(ai-gateway 已启用但 llm-gateway 未配置 sandbox-reachable base)
  * 不注入、不报错——沙箱内没有可达路径,注入了也无用;返回一条待记的 warn,提示运维如需
@@ -17,12 +18,31 @@
  *
  * 本地(非 e2b)分支不调用本函数——本地 agent 进程与 pi-web server 同机,是否需要类似
  * 注入留待后续切片按实际 agent-side 消费方式接线(design.md §6 交付边界)。
+ *
+ * 路由/scope 按实例分流(spec multi-gateway-providers 3.4,Req 1.3):对外契约已改为
+ * `/ai-gateway/:instance/*` + `scope="ai-gateway:<instance>"`,本函数铸造的 token 与
+ * base 必须与 `packages/adapters/src/ai-gateway/routes.ts` 的 verify 侧同源(经共享的
+ * `aiGatewayScope()`),否则沙箱内 agent 打网关必得 401/404。本轮仍为单实例,固定取
+ * 缺省实例 id({@link AI_GATEWAY_PROVIDER_NAME});多实例序列化留给 3.6。
  */
-import { mintScopedToken, resolveAiGatewaySecret } from "@blksails/pi-web-server";
-import type { AiGatewayConfig } from "@blksails/pi-web-server";
+import {
+  mintScopedToken,
+  resolveAiGatewaySecret,
+} from "@blksails/pi-web-adapters/tokens/index.js";
+import {
+  aiGatewayScope,
+  AI_GATEWAY_PROVIDER_NAME,
+  type AiGatewayConfig,
+} from "@blksails/pi-web-adapters/ai-gateway/index.js";
 
-/** ai-gateway 会话 token 的 scope(`verifyScopedToken({ expectedScope: "ai-gateway" })` 对齐)。 */
-export const AI_GATEWAY_TOKEN_SCOPE = "ai-gateway";
+/**
+ * 计算 ai-gateway 会话 token 的完整 scope(与 routes.ts 的 verify 侧共用
+ * `aiGatewayScope()`,禁止各自重复拼接 `"ai-gateway:" + instanceId` 字面量)。本轮固定
+ * 取缺省实例 id;多实例留给 3.6。
+ */
+export function aiGatewayTokenScope(instanceId: string = AI_GATEWAY_PROVIDER_NAME): string {
+  return aiGatewayScope(instanceId);
+}
 
 /** sandbox-reachable ai-gateway base env 名(沙箱内 agent 读取)。 */
 export const AI_GATEWAY_SANDBOX_BASE_ENV = "PI_AI_GATEWAY_BASE";
@@ -77,15 +97,16 @@ export function computeAiGatewaySessionEnv(input: {
   }
 
   const secret = resolveAiGatewaySecret(env);
+  const instanceId = AI_GATEWAY_PROVIDER_NAME;
   const token = mintScopedToken({
-    scope: AI_GATEWAY_TOKEN_SCOPE,
+    scope: aiGatewayTokenScope(instanceId),
     sessionId,
     ttlMs: tokenTtlMs,
     secret,
   });
   const base = publicBase.replace(/\/+$/, "");
   const sandboxEnv: Record<string, string> = {
-    [AI_GATEWAY_SANDBOX_BASE_ENV]: `${base}/api/ai-gateway`,
+    [AI_GATEWAY_SANDBOX_BASE_ENV]: `${base}/api/ai-gateway/${instanceId}`,
     [AI_GATEWAY_SANDBOX_TOKEN_ENV]: token,
   };
   return { env: sandboxEnv, passthroughKeys: Object.keys(sandboxEnv) };

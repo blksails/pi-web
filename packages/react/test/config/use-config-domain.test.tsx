@@ -106,6 +106,55 @@ describe("useConfigDomain", () => {
     });
   });
 
+  it("★ 保存成功 → 广播 pi-web:config-saved 事件,detail.domain 取 panel.id(任务 6.6,Req 11.3/11.4/11.5 的主机制)", async () => {
+    const save = vi.fn(async () => undefined);
+    const panel = {
+      id: "providers",
+      load: async () => ({ theme: "dark" }),
+      save,
+      validate: zodValidator(settingsConfigSchema),
+    };
+    const listener = vi.fn();
+    globalThis.addEventListener("pi-web:config-saved", listener);
+    try {
+      const { result } = renderHook(() => useConfigDomain(panel));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        await result.current.save();
+      });
+      expect(listener).toHaveBeenCalledTimes(1);
+      const evt = listener.mock.calls[0]?.[0] as CustomEvent<{ domain: string | undefined }>;
+      expect(evt.detail).toEqual({ domain: "providers" });
+    } finally {
+      globalThis.removeEventListener("pi-web:config-saved", listener);
+    }
+  });
+
+  it("保存失败 → 不广播 pi-web:config-saved 事件", async () => {
+    const save = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const panel = {
+      id: "providers",
+      load: async () => ({ theme: "dark" }),
+      save,
+      validate: zodValidator(settingsConfigSchema),
+    };
+    const listener = vi.fn();
+    globalThis.addEventListener("pi-web:config-saved", listener);
+    try {
+      const { result } = renderHook(() => useConfigDomain(panel));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await act(async () => {
+        await result.current.save();
+      });
+      expect(result.current.saveError).toBe("boom");
+      expect(listener).not.toHaveBeenCalled();
+    } finally {
+      globalThis.removeEventListener("pi-web:config-saved", listener);
+    }
+  });
+
   it("加载错误置 loadError", async () => {
     const panel = {
       load: async () => {

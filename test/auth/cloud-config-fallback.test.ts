@@ -12,9 +12,11 @@ import { tmpdir } from "node:os";
 import {
   resolveCloudLoginConfig,
   readCloudDomainEgressBase,
+  readDesktopScopedCloudEgressBase,
   CloudLoginConfigError,
   CLOUD_LOGIN_EGRESS_BASE_ENV,
 } from "@/lib/app/auth-egress-assembly";
+import { DESKTOP_MARKER_ENV } from "@/lib/app/cloud-defaults";
 
 const ENV_BASE = "https://env.example/api/desktop/egress/v1";
 const FILE_BASE = "https://file.example/api/desktop/egress/v1";
@@ -112,5 +114,57 @@ describe("resolveCloudLoginConfig — 优先级", () => {
     const c = resolveCloudLoginConfig({}, readCloudDomainEgressBase(agentDir));
     expect(c).toBeDefined();
     expect(c?.egressBaseUrl).toBe(FILE_BASE);
+  });
+});
+
+/**
+ * cloud.json 回落的**宿主作用域**(实测缺陷回归守卫,2026-07-30)。
+ *
+ * `<agentDir>` 默认 `~/.pi/agent/` 被桌面壳与 `pnpm dev` / npm CLI 共用 —— 桌面版登录写下的
+ * cloud.json 曾让 dev 也启用云端登录,进而被登录页拦住(链路:配置启用 → identityProvider
+ * 挂载 → `canExchange: true` → IdentityGate 拦)。
+ */
+describe("readDesktopScopedCloudEgressBase — 回落只对桌面壳生效", () => {
+  beforeEach(() => {
+    writeCloudJson(JSON.stringify({ egressBase: FILE_BASE }));
+  });
+
+  it("★ 非桌面宿主(dev / npm CLI:无桌面标记)→ 不回落,云端登录整体不启用", () => {
+    expect(readDesktopScopedCloudEgressBase(agentDir, {})).toBeUndefined();
+    // 装配处的真实表达式:回落为空 → 配置为 undefined → 无 identityProvider → 前端不拦。
+    expect(
+      resolveCloudLoginConfig({}, readDesktopScopedCloudEgressBase(agentDir, {})),
+    ).toBeUndefined();
+  });
+
+  it("★ 判别力自证:同一份 cloud.json 在桌面壳下**必须**回落成功", () => {
+    // 若这条与上一条同时为 undefined,说明门控写成了恒 false —— 上一条的绿灯就毫无意义。
+    const env = { [DESKTOP_MARKER_ENV]: "1" };
+    expect(readDesktopScopedCloudEgressBase(agentDir, env)).toBe(FILE_BASE);
+    expect(resolveCloudLoginConfig({}, readDesktopScopedCloudEgressBase(agentDir, env))
+      ?.egressBaseUrl).toBe(FILE_BASE);
+  });
+
+  it("标记存在但值不是 \"1\" → 不回落(标记语义严格)", () => {
+    for (const v of ["", "0", "true", "yes"]) {
+      expect(
+        readDesktopScopedCloudEgressBase(agentDir, { [DESKTOP_MARKER_ENV]: v }),
+      ).toBeUndefined();
+    }
+  });
+
+  it("env 显式值仍对所有宿主有效(Req 8.4:不破坏 dev/CLI 显式接云端的用法)", () => {
+    const c = resolveCloudLoginConfig(
+      { [CLOUD_LOGIN_EGRESS_BASE_ENV]: ENV_BASE },
+      readDesktopScopedCloudEgressBase(agentDir, {}),
+    );
+    expect(c?.egressBaseUrl).toBe(ENV_BASE);
+  });
+
+  it("桌面壳但文件不存在 → undefined(不因门控通过就凭空造值)", () => {
+    rmSync(join(agentDir, "cloud.json"), { force: true });
+    expect(
+      readDesktopScopedCloudEgressBase(agentDir, { [DESKTOP_MARKER_ENV]: "1" }),
+    ).toBeUndefined();
   });
 });

@@ -44,10 +44,12 @@ import * as esbuild from "esbuild";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVER_PKG_JSON = path.join(ROOT, "packages", "server", "package.json");
+// ★ spec adapters-package-extraction 任务 3.1:`sandbox-image/` 已搬进 adapters 包。
+//   这条是**运行时路径字符串**,类型检查对它完全无感 —— 漏改的症状只在真跑烘焙时才出现。
 const BAKE_PLAN_TS = path.join(
   ROOT,
   "packages",
-  "server",
+  "adapters",
   "src",
   "sandbox-image",
   "bake-plan.ts",

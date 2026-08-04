@@ -17,7 +17,10 @@
  */
 import { readFileSync } from "node:fs";
 import { join as joinPath } from "node:path";
-import type { EgressModel } from "@blksails/pi-web-server";
+import {
+  DESKTOP_MARKER_ENV,
+  type EgressModel,
+} from "@blksails/pi-web-adapters/auth/index.js";
 
 /** 服务端配置 env(启用判别 = base)。 */
 export const CLOUD_LOGIN_EGRESS_BASE_ENV = "PI_WEB_CLOUD_LOGIN_EGRESS_BASE";
@@ -242,6 +245,45 @@ export interface EgressGrantLike {
  */
 export function readCloudDomainEgressBase(agentDir: string | undefined): string | undefined {
   if (agentDir === undefined || agentDir.trim().length === 0) return undefined;
+  return readCloudDomainEgressBaseUnscoped(agentDir);
+}
+
+/**
+ * 读 `<agentDir>/cloud.json` 的 `egressBase`,**但仅在桌面壳宿主下生效**。
+ *
+ * ## ★ 为什么这道门控必须存在(实测缺陷,2026-07-30)
+ *
+ * `<agentDir>` 默认是 `~/.pi/agent/` —— 桌面壳、`pnpm dev`、npm CLI **共用同一个目录**。
+ * 于是「桌面版登录过一次」写下的 `cloud.json`,会让此后每一次 `pnpm dev` 也读到
+ * `egressBase` → `resolveCloudLoginConfig` 返回配置 → identityProvider 挂载 →
+ * `GET /api/identity` 报 `canExchange: true` → 前端判定「能登录且未登录」→ **拦成登录页**。
+ * 本地开发者于是被一块登不进去的登录页挡在门外(他甚至没有那个云端的账号)。
+ *
+ * 这正是 `cloud-defaults.ts` 里那条约束想避免的情形,原话:「若无条件生效,每个
+ * `pnpm dev` / npm CLI 用户开机就会撞上登录门禁 …… 把本地用法整个废掉」。固化默认值
+ * 守住了这条,而 `cloud.json` 回落这条路径**绕过了它** —— 因为它是「用户配置」,
+ * 看起来该无条件尊重。但它实际是**桌面壳登录流程写下的产物**,作用域本就该跟着桌面壳。
+ *
+ * ## 优先级不变
+ *
+ * `PI_WEB_CLOUD_LOGIN_EGRESS_BASE`(env 显式值)仍对**所有宿主**有效 —— dev/CLI 下想
+ * 接云端登录,显式给这个变量即可(Req 8.4:既有命令行与自动化用法不被破坏)。本门控只
+ * 约束「未表态时的隐式回落」。
+ *
+ * @param agentDir 配置目录(`config.agentDir`)。
+ * @param env 运行时环境;桌面标记由壳的 `build_child_env` 写入,只有壳知道自己是壳。
+ * @returns 桌面壳 → 与 {@link readCloudDomainEgressBase} 同;其他宿主 → `undefined`。
+ */
+export function readDesktopScopedCloudEgressBase(
+  agentDir: string | undefined,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  if (env[DESKTOP_MARKER_ENV] !== "1") return undefined;
+  return readCloudDomainEgressBase(agentDir);
+}
+
+/** {@link readCloudDomainEgressBase} 的实际读取(已过 agentDir 空值检查)。 */
+function readCloudDomainEgressBaseUnscoped(agentDir: string): string | undefined {
   let raw: string;
   try {
     raw = readFileSync(joinPath(agentDir, "cloud.json"), "utf8");

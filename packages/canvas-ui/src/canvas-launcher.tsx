@@ -2,7 +2,7 @@
  * CanvasLauncher / CanvasPanel — 入口 + 面板挂载(aigc-canvas · Req 10.x)。
  *
  * **由 source 声明驱动,免全局门控**:agent source 在 `.pi/web` 把这两个组件挂到
- * launcherRail / panelRight 槽,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
+ * launcherRail / 右侧面板,即视为"要用 Canvas"——组件被挂载即显示(`enabled` 默认 true)。
  * 非 AIGC source 不声明这些槽 → 自然不挂载(独立性由声明缺席保证,而非 env 开关)。
  *
  * - **CanvasLauncher**(launcherRail 默认):点击经 `canvasOpenStore` 开合 **panelRight** 画廊
@@ -10,6 +10,13 @@
  * - 若传入 `workspacePaneId`：改为 panes workspace intent（同 `pane_open`/`pane_activate`），
  *   仅 **声明了 panes 的 source**（如 aigc-agent）应传此 prop，勿默认开启以免伤其它 agent。
  * - **CanvasPanel**(panelRight / pane guest):画廊与工作台 UI。
+ * - **CanvasLauncher**(launcherRail 具名槽):渲染入口按钮,点击经跨 slot 共享的
+ *   `canvasOpenStore` 开合画廊面板(激活/关闭回收视图)。
+ * - **CanvasPanel**(右侧面板):宿主经 prop 注入 `surface`(launcherRail slot 拿不到 surface,
+ *   故交互画廊 / 工作台落在有 surface 的右侧面板区);读 `canvasOpen` 开合,展开 CanvasGallery,
+ *   点格子展开 CanvasWorkbench,关闭回画廊。
+ *
+ * 两个 slot 是不同子树,经 module-level `canvasOpenStore` 联动(同一 app bundle 内共享)。
  */
 import * as React from "react";
 import type { WebExtSurfaceAccess, ConversationAccess, WebExtension } from "@blksails/pi-web-kit";
@@ -19,7 +26,7 @@ import { CanvasGallery } from "./canvas-gallery.js";
 import { CanvasWorkbench } from "./canvas-workbench.js";
 import { fetchVisionModels, type VisionModelOption } from "./vision-op.js";
 import { collectCanvasPluginBundles } from "./plugin-aggregation.js";
-import { useCanvasOpen } from "./use-canvas-view.js";
+import { useCanvasOpen, useCanvasFocus, canvasFocusStore } from "./use-canvas-view.js";
 import type { UploadFn } from "@blksails/pi-web-canvas-kit";
 
 const DOMAIN = "canvas";
@@ -118,7 +125,11 @@ export interface CanvasPanelProps {
   // ── B 档上传接缝(可注入)────────────────────────────────────────────────────
   readonly upload?: UploadFn;
   readonly baseUrl?: string;
-  /** 视觉模型清单覆盖(测试 / 宿主直注);缺省时经 `GET {baseUrl}/vision/models` 拉取。 */
+  /**
+   * 视觉模型清单覆盖(测试 / 宿主直注);缺省时经统一部署级目录端点
+   * `GET {baseUrl}/config/models?input=image&output=text` 拉取(multi-gateway-providers
+   * 任务 4.3/6.3,取代已随 4.3 删除的独立 `GET {baseUrl}/vision/models`)。
+   */
   readonly visionModelOptions?: readonly VisionModelOption[];
   readonly sessionId?: string;
   /** 会话能力对象(契约 §4.2;canvas 生成走对话流经此提交,取代 onSubmitPrompt)。 */
@@ -138,7 +149,7 @@ export interface CanvasPanelProps {
   readonly extensions?: readonly WebExtension[];
 }
 
-/** panelRight 画廊 / 工作台面板(门控关或未开 → null)。 */
+/** 画廊 / 工作台面板(门控关或未开 → null)。迁移后由 pane 内部使用,不再挂具名槽。 */
 export function CanvasPanel({
   surface,
   enabled,
@@ -157,6 +168,17 @@ export function CanvasPanel({
   const on = enabled ?? true;
   const { open, setOpen } = useCanvasOpen();
   const [openId, setOpenId] = React.useState<string | null>(null);
+  // 跨 realm 驱动的「工作台目标图」:槽形态由下方 document 监听写入;pane 形态由宿主经
+  // `pane:signal` 下发、pane 侧写入(那条 document 监听在 iframe 里收不到宿主的点击)。
+  // CanvasPanel 只认这个 store,对触发源在哪个 realm 无感。
+  const focusId = useCanvasFocus();
+  React.useEffect(() => {
+    if (focusId === null) return;
+    setOpenId(focusId);
+    setOpen(true);
+    // 一次性意图:消费后清空,否则关掉工作台会被立刻再次拉回同一张图。
+    canvasFocusStore.set(null);
+  }, [focusId, setOpen]);
   // 领域聚合:已装载扩展 → canvas 插件捆(附 manifestId 命名空间)。useMemo 稳定引用,使
   // 下游工作台 kernel 装配(registerPluginBundles)不因每次渲染的新数组重建(per-mount 契约)。
   const plugins = React.useMemo(() => collectCanvasPluginBundles(extensions), [extensions]);
@@ -178,8 +200,9 @@ export function CanvasPanel({
       if (img.closest("[data-pi-tool-images]") === null) return; // 仅工具卡图片
       const id = img.getAttribute("data-att-id");
       if (id === null || id === "") return;
-      setOpenId(id);
-      setOpen(true);
+      // 经 focus store 出口(与 pane 车道同一条路径),而非直接 setOpenId ——
+      // 两条车道共用一个出口,行为才不会随 realm 分叉。
+      canvasFocusStore.set(id);
     };
     document.addEventListener("click", onDocClick);
     // canvas 活跃期给 body 打标记 → 工具图悬浮态显「可点」affordance(见 styles.css)。

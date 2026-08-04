@@ -163,15 +163,20 @@ describe("SES-H1 宿主中立线(task 3.1;Req 4.1)", () => {
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
-  it("豁免锚总数恰为 2(index.ts canvas 兼容导出块 + toggles-field import 行;防无档扩散)", () => {
-    // 全 packages/ui/src 计数(含白名单目录——锚只该出现在记档的两处,白名单内也不该有)。
+  it("豁免锚总数恰为 3(index.ts canvas 兼容导出块 + toggles-field / vision-select-field import 行;防无档扩散)", () => {
+    // 全 packages/ui/src 计数(含白名单目录——锚只该出现在记档的三处,白名单内也不该有)。
     const all = listAllFiles(uiSrc);
     const anchorCount = all.reduce((n, f) => n + scanSesH1File(f).anchorCount, 0);
-    expect(anchorCount).toBe(2);
+    expect(anchorCount).toBe(3);
     // 锚落点锚定(位置漂移=记档失真,同样红):
     const indexScan = scanSesH1File(join(uiSrc, "index.ts"));
     expect(indexScan.anchorCount).toBe(1);
     const togglesScan = scanSesH1File(join(uiSrc, "config", "fields", "aigc-model-toggles-field.tsx"));
     expect(togglesScan.anchorCount).toBe(1);
+    // 第三处:视觉模型选择控件(spec canvas-vision-readout 的 /settings 字段),沿用
+    // aigcModelToggles 先例的 config 域跨包消费。硬线随之从 2 抬到 3 —— 抬线必须连同
+    // 落点断言一起加,否则「总数对了但锚跑到别的文件里」这种记档失真会照样过。
+    const visionScan = scanSesH1File(join(uiSrc, "config", "fields", "vision-model-select-field.tsx"));
+    expect(visionScan.anchorCount).toBe(1);
   });
 });
