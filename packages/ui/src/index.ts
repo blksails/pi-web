@@ -16,7 +16,12 @@ export {
 } from "./chat/agent-source-picker.js";
 export { PiQueuePanel, type PiQueuePanelProps } from "./chat/pi-queue-panel.js";
 export type { PiChatSlots } from "./chat/slots.js";
-export { createLogsPaneDocument, LOGS_PANE_ID, type LogsPaneDocument } from "./logs/logs-pane-document.js";
+export {
+  createLogsPaneDocument,
+  LOGS_PANE_HTML,
+  LOGS_PANE_ID,
+  type LogsPaneDocument,
+} from "./logs/logs-pane-document.js";
 
 // 最小拖入聊天组件
 export { PiChatBasic, type PiChatBasicProps } from "./chat/pi-chat-basic.js";

@@ -16,10 +16,10 @@
  * 去向)。未登记即报红 —— 这才挡得住「未来的遗漏」而不只是「今天的遗漏」。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { WebExtension } from "@blksails/pi-web-kit";
 import { definePanes, type PaneSource, type PaneMergeRejection } from "@blksails/pi-web-panes-kit";
-import { mockSession } from "../fixtures/mock-session.js";
+import { MockTransport, mockSession } from "../fixtures/mock-session.js";
 
 // ── 探针:捕获两条路径实际收到的 props ────────────────────────────────────────
 
@@ -164,6 +164,66 @@ describe("注入面完整性(宿主路径必须注入的能力)", () => {
     render(<PiChat session={mockSession()} extension={agentWithNothing} hostPaneSource={hostSource} />);
     const signals = (captured.panes[0] as Record<string, unknown>).signals as Record<string, unknown>;
     expect(signals).toHaveProperty("host:syncSignal");
+  });
+
+  it("会话尚未启动时暂存 pane 消息,transport 就绪后补投", async () => {
+    const start = vi.fn();
+    const idleSession = mockSession({
+      sessionId: undefined,
+      status: "idle",
+      transport: undefined,
+      start,
+    });
+    const { rerender } = render(
+      <PiChat session={idleSession} extension={agentWithNothing} hostPaneSource={hostSource} />,
+    );
+    const conversation = captured.panes.at(-1)?.conversation as {
+      submitUserMessage(text: string): void;
+    };
+
+    conversation.submitUserMessage("局部重绘");
+    expect(start).toHaveBeenCalledTimes(1);
+
+    const transport = new MockTransport();
+    const sendMessages = vi.spyOn(transport, "sendMessages");
+    rerender(
+      <PiChat
+        session={mockSession({
+          transport: transport as unknown as ReturnType<typeof mockSession>["transport"],
+          start,
+        })}
+        extension={agentWithNothing}
+        hostPaneSource={hostSource}
+      />,
+    );
+
+    await waitFor(() => expect(sendMessages).toHaveBeenCalledTimes(1));
+  });
+
+  it("带入对话仅写入输入框附件引用，不自动提交", async () => {
+    const transport = new MockTransport();
+    const sendMessages = vi.spyOn(transport, "sendMessages");
+    render(
+      <PiChat
+        session={mockSession({
+          transport: transport as unknown as ReturnType<typeof mockSession>["transport"],
+        })}
+        extension={agentWithNothing}
+        hostPaneSource={hostSource}
+      />,
+    );
+    const conversation = captured.panes.at(-1)?.conversation as {
+      stageUserMessage(text: string, options: { attachmentIds: string[] }): void;
+    };
+
+    conversation.stageUserMessage("", { attachmentIds: ["att_material"] });
+
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: /消息输入|message/i })).toHaveValue(
+        "@attachment:att_material",
+      ),
+    );
+    expect(sendMessages).not.toHaveBeenCalled();
   });
 });
 

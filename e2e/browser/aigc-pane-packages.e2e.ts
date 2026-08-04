@@ -196,7 +196,7 @@ test("AIGC 本地恢复 Pane 侧栏开合、宽度、标签与当前项", async 
   await page.mouse.move(box!.x - 120, box!.y + 80);
   await page.mouse.up();
   const saved = await page.evaluate(() => JSON.parse(
-    localStorage.getItem("pi-web:aigc-studio:panes:sidebar") ?? "{}",
+    localStorage.getItem("pi-web:aigc-studio:panes:v4:sidebar") ?? "{}",
   ) as { open?: boolean; width?: number });
   expect(saved.open).toBe(true);
   expect(saved.width).toBeGreaterThan(480);

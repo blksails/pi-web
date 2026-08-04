@@ -46,6 +46,7 @@ const devEnv = {
   no_proxy: noProxy,
   PI_WEB_DEV_CLIENT_HOST: process.env.PI_WEB_DEV_CLIENT_HOST ?? "127.0.0.1",
   PI_WEB_DEV_API_URL: apiUrl,
+  PI_WEB_NATIVE_CHILD_WEBVIEWS: process.env.PI_WEB_NATIVE_CHILD_WEBVIEWS ?? "1",
   SESSION_STORE: desktopSessionStore,
   PI_WEB_SHELL_TOKEN: process.env.PI_WEB_SHELL_TOKEN ?? randomBytes(32).toString("hex"),
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: webviewArgs.includes("--remote-debugging-port=")
@@ -129,7 +130,12 @@ if (cloudRoot !== undefined) {
   if (pnpmCli === undefined || pnpmCli === "") {
     throw new Error("PI_WEB_DEV_CLOUD_DIR requires launching through pnpm dev:desktop");
   }
-  const cloudEnvFiles = [path.join(cloudRoot, ".env.local"), path.join(cloudRoot, ".env")];
+  const cloudEnvFiles = [
+    path.join(cloudRoot, "apps", "cloud", ".env.local"),
+    path.join(cloudRoot, "apps", "cloud", ".env"),
+    path.join(cloudRoot, ".env.local"),
+    path.join(cloudRoot, ".env"),
+  ];
   const childCloudHasToken = cloudEnvFiles.some((file) => {
     try {
       return /^\s*PI_CLOUDS_DESKTOP_TOKEN_SECRET\s*=\s*[^#\r\n]+/m.test(readFileSync(file, "utf8"));

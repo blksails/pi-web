@@ -7,7 +7,7 @@ import {
   CANVAS_OPEN_ATTACHMENTS_EVENT,
   parseCanvasOpenAttachmentsEvent,
 } from "./pane-contract.js";
-import { canvasOpenStore } from "./use-canvas-view.js";
+import { canvasFocusStore, canvasOpenStore } from "./use-canvas-view.js";
 
 /** 基座 Canvas 在隔离 Pane 内的标准 Guest；不含任何 Agent 私有代码。 */
 export function CanvasPaneGuest(): React.JSX.Element {
@@ -25,7 +25,9 @@ export function CanvasPaneGuest(): React.JSX.Element {
           event.attachmentIds.map((attachmentId) =>
             guest.surface.run("canvas", "register", { attachmentId }),
           ),
-        ).catch(() => undefined);
+        )
+          .then(() => canvasFocusStore.set(event.attachmentIds[0] ?? null))
+          .catch(() => undefined);
       }),
     [guest],
   );

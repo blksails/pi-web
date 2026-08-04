@@ -13,6 +13,7 @@ import rendererExt from "../../examples/webext-renderer-agent/.pi/web/web.config
 import contribExt from "../../examples/webext-contrib-agent/.pi/web/web.config";
 import artifactExt from "../../examples/webext-artifact-agent/.pi/web/web.config";
 import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.config";
+import aigcExt from "../../examples/aigc-agent/.pi/web/dist/web-extension.mjs";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.mjs";
 import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.mjs";
@@ -80,6 +81,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
+  // aigc-agent:搜图 / 素材 / 画布三 pane；宿主据 `extension.panes` 统一创建 PanesHost。
+  { match: "aigc-agent", ext: aigcExt },
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
   // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
   // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),

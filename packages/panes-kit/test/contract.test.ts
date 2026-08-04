@@ -120,6 +120,17 @@ describe("default-deny authorization", () => {
     expect(() => authorizePaneRequest(capabilities, event)).not.toThrow();
   });
 
+  it("allows staging conversation attachments without submitting", () => {
+    const request = PaneGuestRequestSchema.parse({
+      type: "pane:request",
+      requestId: "stage-1",
+      operation: "conversation.stage",
+      text: "",
+      attachmentIds: ["att_1"],
+    });
+    expect(() => authorizePaneRequest(capabilities, request)).not.toThrow();
+  });
+
   it("rejects undeclared route, surface action and event topic", () => {
     for (const request of [
       PaneGuestRequestSchema.parse({ type: "pane:request", requestId: "1", operation: "route.query", route: "secret" }),

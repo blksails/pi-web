@@ -59,6 +59,7 @@ export interface PaneGuestConnection {
   query<T = unknown>(route: string, query?: Record<string, string>): Promise<T>;
   mutate<T = unknown>(route: string, body: unknown): Promise<T>;
   upload(file: File): Promise<{ attachmentId: string; displayUrl: string }>;
+  stageUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): Promise<void>;
   submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): Promise<void>;
   /**
    * 读宿主具名信号的当前值(最后值即真值;从未推送过 → undefined)。
@@ -211,6 +212,10 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       const bytes = await file.arrayBuffer();
       return request("attachment.put", { name: file.name, mimeType: file.type, bytes }, [bytes]);
     },
+    stageUserMessage: (text, options) => request("conversation.stage", {
+      text,
+      ...(options?.attachmentIds !== undefined ? { attachmentIds: options.attachmentIds } : {}),
+    }),
     submitUserMessage: (text, options) => request("conversation.submit", {
       text,
       ...(options?.attachmentIds !== undefined ? { attachmentIds: options.attachmentIds } : {}),

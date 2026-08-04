@@ -75,7 +75,12 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
   await expect(materials.locator("[data-materials-directory-content]")).toBeVisible();
   const libraryAsset = materials.locator("[data-materials-library] .asset").first();
   const directoryAsset = materials.locator("[data-materials-directory] .asset").first();
-  await expect(libraryAsset.locator(".asset-name")).toHaveText("当前会话示例素材");
+  await expect(libraryAsset.locator(".asset-name")).toHaveText("AIGC 示例素材");
+  await libraryAsset.hover();
+  await expect(materials.locator(".hover-preview")).toBeVisible();
+  await libraryAsset.click({ button: "right" });
+  await expect(materials.locator(".hover-preview")).toHaveCount(0);
+  await materials.locator(".asset-backdrop").click();
   await expect(materials.locator("[data-materials-library] .day")).toBeVisible();
   await expect(directoryAsset).toBeVisible();
   const assetName = directoryAsset.locator(".asset-name");
@@ -221,6 +226,15 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
       hasText: "企业示例素材",
     }),
   ).toBeVisible();
+  const importedAssets = materials.locator("[data-materials-library] .asset", {
+    hasText: "企业示例素材",
+  });
+  const importedCount = await importedAssets.count();
+  const importedAsset = importedAssets.last();
+  await importedAsset.getByRole("button", { name: "素材菜单" }).click();
+  await materials.getByRole("button", { name: "删除", exact: true }).click();
+  await materials.getByRole("button", { name: "再次点击确认删除" }).click();
+  await expect(importedAssets).toHaveCount(importedCount - 1);
 
   const paneAside = page.locator("[data-pi-chat-aside]");
   await paneAside.evaluate((element) =>

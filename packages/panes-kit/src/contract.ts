@@ -129,6 +129,11 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     text: z.string().min(1).max(100_000),
     attachmentIds: z.array(z.string().min(1).max(256)).max(64).optional(),
   }),
+  RequestBaseSchema.extend({
+    operation: z.literal("conversation.stage"),
+    text: z.string().max(100_000),
+    attachmentIds: z.array(z.string().min(1).max(256)).max(64).optional(),
+  }),
   // 共享状态的**写回**。读与订阅不走上行请求 —— 它们由宿主按授权键主动推 `pane:state`
   // (与 `pane:surface` 同构),故此处只有写。
   RequestBaseSchema.extend({

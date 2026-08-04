@@ -22,14 +22,14 @@ use url::Url;
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 
-/// 新载体开关：显式 opt-in，便于旧浮层方案随时回退。
+/// Child WebView 为默认载体；仅显式关闭时回退旧浮层，供故障排查。
 pub fn native_child_webviews_enabled() -> bool {
-    matches!(
+    !matches!(
         std::env::var("PI_WEB_NATIVE_CHILD_WEBVIEWS")
             .ok()
             .as_deref()
             .map(str::trim),
-        Some("1" | "true" | "yes" | "on")
+        Some("0" | "false" | "no" | "off")
     )
 }
 

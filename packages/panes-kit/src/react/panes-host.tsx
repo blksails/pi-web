@@ -86,6 +86,7 @@ export type PanesSessionLogs = (
 ) => Promise<unknown>;
 
 export interface PanesConversationAccess {
+  stageUserMessage?(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
   submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
 }
 
@@ -335,8 +336,7 @@ function readPaneTheme(root: Element): PaneTheme {
 }
 
 const hostInteractionStyles = `
-[data-panes-host] button { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
-[data-panes-host] button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  [data-panes-host] button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 [data-panes-host] [data-pane-icon-button]:hover,
 [data-panes-host] [data-pane-palette-item]:hover:not(:disabled) {
   background: hsl(var(--accent)) !important;
@@ -934,7 +934,13 @@ export function PanesHost({
       return undefined;
     }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
-    conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
+    const options = request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds };
+    if (request.operation === "conversation.stage") {
+      if (conversation.stageUserMessage === undefined) {
+        throw new PaneHostError("HOST_UNAVAILABLE", "Conversation draft is not ready", { retryable: true });
+      }
+      conversation.stageUserMessage(request.text, options);
+    } else conversation.submitUserMessage(request.text, options);
     return undefined;
   }, [baseUrl, config.eventTargets, conversation, definition, onEvent, sessionId, sessionLogs, surface, upload]);
 

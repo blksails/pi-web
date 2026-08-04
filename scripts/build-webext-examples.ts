@@ -10,6 +10,7 @@
 import { resolve } from "node:path";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { buildPanesAgent } from "../examples/panes-agent/build.js";
+import { buildAigcAgent } from "../examples/aigc-agent/build.js";
 import { buildAigcCanvasAgent } from "../examples/aigc-canvas-agent/build.js";
 import { buildSurfaceDemoAgent } from "../examples/surface-demo-agent/build.js";
 import { buildStateBridgeAgent } from "../examples/state-bridge-agent/build.js";
@@ -49,6 +50,8 @@ async function main(): Promise<void> {
   // 自带 pane 文档构建的示例(esbuild 打 iframe srcDoc + 内联 CSS),各自有 build.ts。
   const panes = await buildPanesAgent();
   console.log(`[built] panes → ${panes.entryOut} (${panes.manifest.integrity})`);
+  const aigc = await buildAigcAgent();
+  console.log(`[built] aigc-agent → ${aigc.entryOut} (${aigc.manifest.integrity})`);
   const aigcCanvas = await buildAigcCanvasAgent();
   console.log(`[built] aigc-canvas → ${aigcCanvas.entryOut} (${aigcCanvas.manifest.integrity})`);
   // surface-demo 迁 pane 后同样需要构建期打 srcDoc(spec panes-only-right-panel 任务 2.2)。

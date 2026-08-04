@@ -100,7 +100,7 @@ export function PaneGuestProvider({
     };
   }, [paneId]);
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if (connection === undefined) return;
     applyPaneTheme(connection.theme);
     return connection.onTheme(applyPaneTheme);

@@ -153,6 +153,7 @@ type PaneGuestRequest =
   | { type: "pane:request"; requestId: string; operation: "route.mutate"; route: string; body: unknown }
   | { type: "pane:request"; requestId: string; operation: "surface.run"; domain: string; action: string; args?: unknown }
   | { type: "pane:request"; requestId: string; operation: "attachment.put"; name: string; mimeType: string; bytes: ArrayBuffer }
+  | { type: "pane:request"; requestId: string; operation: "conversation.stage"; text: string; attachmentIds?: string[] }
   | { type: "pane:request"; requestId: string; operation: "conversation.submit"; text: string; attachmentIds?: string[] };
 ```
 
@@ -250,7 +251,7 @@ Host 不能自动把 mutation 重放到另一个会话;会话失效必须显式�
 
 Host 只订阅 grant 中的 `surfaceKeys`,把最新值推到对应实例。Guest 的 Surface proxy 维护本地镜像并实现 `getState/subscribe/hasCommand/run`;`run` 仍需逐 action 授权。
 
-附件上传由 Host 把 `ArrayBuffer` 还原为 File 后调用 pi-web 注入的 upload;Guest 只得到 `attachmentId/displayUrl`。Conversation 只有显式用户动作可调用,不用于后台同步。
+附件上传由 Host 把 `ArrayBuffer` 还原为 File 后调用 pi-web 注入的 upload;Guest 只得到 `attachmentId/displayUrl`。Conversation 只有显式用户动作可调用,不用于后台同步；`stage` 仅写组合器草稿，`submit` 才进入 LLM。
 
 ### 5.4 panelRight 连续宽度
 

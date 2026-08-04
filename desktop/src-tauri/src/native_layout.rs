@@ -1,7 +1,7 @@
 //! 单窗口多 Webview 原生布局管理。
 //!
 //! 该模块只管理载体：矩形、可见性、保活与销毁；不认识 AIGC/素材等业务词。
-//! 通过 `PI_WEB_NATIVE_CHILD_WEBVIEWS=1` 开启，旧顶层 WebviewWindow 载体仍可回退。
+//! 默认启用；仅 `PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 回退旧顶层 WebviewWindow 载体。
 
 use std::collections::HashMap;
 use std::sync::Mutex;

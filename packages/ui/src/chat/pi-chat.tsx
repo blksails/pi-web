@@ -92,6 +92,26 @@ import { TurnAbortProvider } from "./turn-abort-context.js";
 
 /** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
 const log = createLogger({ namespace: "ui:panes" });
+
+type TauriTitleWindow = Window & {
+  readonly __TAURI__?: {
+    readonly window?: {
+      readonly getCurrentWindow?: () => {
+        readonly setTitle?: (title: string) => Promise<void>;
+      };
+    };
+  };
+};
+
+function applyHostTitle(title: string): void {
+  document.title = title;
+  try {
+    const hostWindow = (window as TauriTitleWindow).__TAURI__?.window?.getCurrentWindow?.();
+    void hostWindow?.setTitle?.(title).catch(() => undefined);
+  } catch {
+    // 普通网页或旧版 Tauri 无窗口 API 时，document.title 已完成降级。
+  }
+}
 import { runStopTurn, type StopTurnHandle } from "./stop-turn.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { createPackageArgProvider } from "../controls/package-arg-provider.js";
@@ -104,6 +124,7 @@ import { createLogsPaneDocument, LOGS_PANE_ID } from "../logs/logs-pane-document
 import {
   PiCompletionPopover,
   PiMentionPreviews,
+  scanAttachmentMentions,
   removeAttachmentMention,
   useCatalogMaterialize,
   type MentionPreview,
@@ -553,6 +574,11 @@ export function PiChat({
   const sessionId = session.sessionId;
   const client = session.client;
   const connection = session.connection;
+  const startSession = session.start;
+  const pendingConversationSubmissions = React.useRef<Array<{
+    readonly text: string;
+    readonly options?: Parameters<ConversationAccess["submitUserMessage"]>[1];
+  }>>([]);
 
   // Tier3 ui-rpc 客户端总线(贡献点回 agent 的通道);会话/连接就绪时构造,卸载时释放。
   const uiRpc = React.useMemo(() => {
@@ -680,6 +706,7 @@ export function PiChat({
     transport === undefined
       ? {}
       : {
+        ...(sessionId !== undefined ? { id: sessionId } : {}),
         transport,
         ...(session.initialMessages !== undefined
           ? { messages: session.initialMessages }
@@ -952,6 +979,13 @@ export function PiChat({
   const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
   const ambientTitle = extensionUI?.title;
   const dismissNotification = extensionUI?.dismissNotification;
+
+  React.useEffect(() => {
+    if (ambientTitle === undefined || ambientTitle.length === 0) return;
+    const previous = document.title;
+    applyHostTitle(ambientTitle);
+    return () => applyHostTitle(previous);
+  }, [ambientTitle]);
 
   const widgetItems = React.useMemo<WidgetItem[]>(() => {
     const map = extensionUI?.widgets;
@@ -1320,12 +1354,42 @@ export function PiChat({
     [transport, attachments, webSearch, sendMessage, t, isBusy, controls],
   );
 
+  React.useEffect(() => {
+    if (transport === undefined) return;
+    const timer = window.setTimeout(() => {
+      const pending = pendingConversationSubmissions.current.splice(0);
+      for (const { text, options } of pending) doSend(text, options);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [doSend, transport]);
+
   // 宿主会话能力对象(契约 §4.2;与 webextState / surfaceAccess 同族)。承载「经宿主 Prompt 通道提交
   // 用户消息」这一能力,经 SlotHost 注入 slot 组件,取代事件回调形态的裸注入项 onSubmitPrompt。
   // 领域无关:只搬运 text 与显式 attachmentIds,不解析、不改写内容。随 doSend 引用稳定,避免每渲染重建。
   const conversation = React.useMemo<ConversationAccess>(
-    () => ({ submitUserMessage: (text, opts) => doSend(text, opts) }),
-    [doSend],
+    () => ({
+      stageUserMessage: (text, options) => {
+        setInput((current) => {
+          const mentioned = new Set(scanAttachmentMentions(current));
+          const tokens = (options?.attachmentIds ?? [])
+            .filter((id) => !mentioned.has(id))
+            .map((id) => `@attachment:${id}`);
+          const staged = [text.trim(), ...tokens].filter((part) => part.length > 0).join(" ");
+          if (staged.length === 0) return current;
+          return current.trim().length === 0 ? staged : `${current.trimEnd()} ${staged}`;
+        });
+        window.requestAnimationFrame(() => inputRef.current?.focus());
+      },
+      submitUserMessage: (text, options) => {
+        if (transport === undefined) {
+          pendingConversationSubmissions.current.push({ text, options });
+          startSession();
+          return;
+        }
+        doSend(text, options);
+      },
+    }),
+    [doSend, startSession, transport],
   );
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
@@ -1975,24 +2039,12 @@ export function PiChat({
     </div>
   );
 
-  const hasExtensionHeader =
-    ambientTitle !== undefined || Object.keys(statuses).length > 0;
-  const extensionHeader = hasExtensionHeader ? (
-    <div
-      data-pi-extension-header
-      className="flex flex-wrap items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-2"
-    >
-      {ambientTitle !== undefined ? (
-        <span
-          data-pi-extension-title
-          className="text-sm font-medium text-[hsl(var(--foreground))]"
-        >
-          {ambientTitle}
-        </span>
-      ) : null}
-      <StatusBar statuses={statuses} />
-    </div>
-  ) : null;
+  const extensionStatusBar = (
+    <StatusBar
+      statuses={statuses}
+      className="border-b border-[hsl(var(--border))] px-4 py-2"
+    />
+  );
 
   // 背景层:slots.background 优先,否则 components.ConversationBackground(Req 9.1)。
   const BgComp = components?.ConversationBackground;
@@ -2260,7 +2312,7 @@ export function PiChat({
           </header>
         ) : null}
 
-        {extensionHeader}
+        {extensionStatusBar}
 
         {/* Tier1 保留插槽:扩展状态栏(与 ambient StatusBar 共存)+ 工具条。 */}
         <ExtSlotRegion ext={extension} slot="statusBar" />

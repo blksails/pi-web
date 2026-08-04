@@ -241,6 +241,8 @@ describe("PanesHost multi-open UI", () => {
     await waitFor(() => {
       expect(actions.slice(beforePalette)).toContain("set-bounds");
     });
+    const paletteCreate = created.find((c) => new URL(c.url).searchParams.get("title") === "新开 Pane");
+    expect(paletteCreate?.visible).toBe(true);
     expect(actions.slice(beforePalette)).not.toContain("hide");
     await act(async () => {
       for (const listener of relayListeners) {

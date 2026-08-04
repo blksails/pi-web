@@ -742,7 +742,7 @@ export function createGlobalTauriPaneOverlay(
         label: OVERLAY_LABEL,
       });
 
-      // 唯一可靠开菜单路径：URL 带参 navigate（复用 warm 的 label 时只导航）。
+      // URL 带参 navigate；同次 Rust 调用即 show，勿再等 guest ready 才显（首击/切 tab 会丢 z-order）。
       const url = new URL("/pane-overlay.html", target.location.href);
       url.searchParams.set("instanceId", OVERLAY_INSTANCE_ID);
       url.searchParams.set("token", String(currentToken));
@@ -757,7 +757,7 @@ export function createGlobalTauriPaneOverlay(
         y: initialBounds.y,
         width: initialBounds.width,
         height: initialBounds.height,
-        visible: false,
+        visible: true,
       });
 
       const setBounds = (bounds: PaneScreenBounds): Promise<void> => runtime.core.invoke(
