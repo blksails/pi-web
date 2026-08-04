@@ -477,6 +477,23 @@ impl NativeWebviewLayoutManager {
                 ),
             }
         }
+        // ★ 全量句柄快照：回答「谁**实际**盖在 chrome 那条带子上」。
+        //   上面的槽诊断只说明 Rust **下发**了什么，说明不了句柄实际在哪 —— 真机上
+        //   chrome 被吃掉而槽坐标却正确（y=29 已让出），两者必有一处对不上。
+        //   `apply_layout` 的循环会对 `!initialized && !keep_alive` 直接 continue，
+        //   那类句柄的 bounds 自创建后无人再动，是头号嫌疑。
+        if slot_changed && pane_layout_debug_enabled() {
+            for view in &webviews {
+                let b = view.bounds().ok().map(|r| {
+                    // Rect 内部是物理像素；换算回逻辑像素才好与槽坐标直接比对。
+                    let p = r.position.to_physical::<f64>(scale);
+                    let s = r.size.to_physical::<f64>(scale);
+                    (p.x / scale, p.y / scale, s.width / scale, s.height / scale)
+                });
+                // Tauri v2 的 Webview 没有 is_visible()，可见性只能看我们自己的记账。
+                eprintln!("[panes] 句柄 label={} bounds={:?}", view.label(), b);
+            }
+        }
         // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
         let mut raise_top = host_changed;
