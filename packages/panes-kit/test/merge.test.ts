@@ -174,6 +174,19 @@ describe("mergePaneSources — 逐来源校验与分级降级(任务 2.3)", () =
     });
   });
 
+  it("★ 运行时 panes 形态异常:降级来源,不抛异常", () => {
+    const malformed = {
+      kind: "agent",
+      origin: "aigc-agent",
+      definition: { id: "aigc-agent", panes: undefined },
+    } as unknown as PaneSource;
+    const merged = mergePaneSources([builtin([hostA]), malformed]);
+    expect(merged.definition?.panes.map((p) => p.id)).toEqual([`${HOST_PANE_ID_PREFIX}a`]);
+    expect(merged.rejections).toMatchObject([
+      { origin: "aigc-agent", kind: "agent", scope: "source", reason: "invalid-definition" },
+    ]);
+  });
+
   it("★ 某内置项非法:其余内置仍装载", () => {
     const merged = mergePaneSources([
       builtin([
