@@ -302,7 +302,7 @@ export async function runBuild(
   let panesManifestPath: string | undefined;
   if (discovery !== undefined) {
     try {
-      const needsCanvasCss = discovery.modules.some((module) => module.canvasStyles === true);
+      const needsCanvasCss = discovery.modules.some((module) => module.entry !== undefined && module.canvasStyles === true);
       const canvasCss = needsCanvasCss
         ? await resolveCanvasCss({
             presetPath: toolchain.presetPath,

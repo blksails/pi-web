@@ -48,7 +48,7 @@ import {
 } from "@blksails/pi-web-kit/build/pane-document";
 import { BuildError } from "./errors.js";
 import { createReactSingletonPlugin } from "./react-singleton.js";
-import type { PaneModule } from "./pane-discovery.js";
+import type { PaneEntryModule, PaneModule } from "./pane-discovery.js";
 
 /** `buildPaneArtifacts` 的装配参数。 */
 export interface PaneBuildOptions {
@@ -63,11 +63,16 @@ export interface PaneBuildOptions {
   readonly canvasCss?: string;
 }
 
-/** 单个 pane 写出的一对可寻址文件(URL 形态)。 */
+/** 单个 pane 写出的可寻址文件(URL 形态)。 */
 export interface PaneBuildArtifact {
   readonly id: string;
-  /** 写出的 `pane-<id>.js` 绝对路径。 */
-  readonly scriptPath: string;
+  /**
+   * 写出的 `pane-<id>.js` 绝对路径。
+   *
+   * **预渲染形态没有脚本文件**,故为可选 —— 那类 pane 的 HTML 是声明方给的完整文档,
+   * 构建器不打包也就没有独立脚本可写(spec pane-build-prerendered-document)。
+   */
+  readonly scriptPath?: string;
   /** 写出的 `pane-<id>.html` 绝对路径,`<script src>` 引用 `scriptPath` 的基名。 */
   readonly documentPath: string;
 }
@@ -95,7 +100,7 @@ function paneDocumentFilename(id: string): string {
 }
 
 /** 按 `module.canvasStyles` 选取该 pane 应叠加的样式;不一致声明以 `BuildError` 终止。 */
-function resolvePaneCss(module: PaneModule, canvasCss: string | undefined): string {
+function resolvePaneCss(module: PaneEntryModule, canvasCss: string | undefined): string {
   if (module.canvasStyles !== true) return PANE_BASE_CSS;
   if (canvasCss === undefined) {
     throw new BuildError({
@@ -121,7 +126,7 @@ function resolvePaneCss(module: PaneModule, canvasCss: string | undefined): stri
  * 实际互操作正常(见本文件测试的真实打包结果)。这是纯类型层面的跨包版本偏差,不在本任务
  * 边界内改动两个包各自的 `esbuild` 依赖版本声明。
  */
-async function bundlePane(module: PaneModule, sourceRoot: string): Promise<string> {
+async function bundlePane(module: PaneEntryModule, sourceRoot: string): Promise<string> {
   try {
     return await bundlePaneEntry({
       entry: module.entry,
@@ -158,13 +163,26 @@ export async function buildPaneArtifacts(
   const documents: Record<string, string> = {};
 
   for (const module of modules) {
+    const documentFilename = paneDocumentFilename(module.id);
+    const documentPath = join(options.outDir, documentFilename);
+
+    // ── 预渲染形态:声明方给的已是完整 HTML ─────────────────────────────────────
+    // 不打包、不解析 CSS(该文档自带样式,注入宿主 CSS 会改变其呈现)、不经
+    // renderPaneDocument 二次包装(它不是待包装的脚本)。文件命名与另一形态一致,
+    // 使两者同等可寻址。
+    if (module.document !== undefined) {
+      await writeFile(documentPath, module.document, "utf8");
+      documents[module.id] = module.document;
+      files.push(documentPath);
+      artifacts.push({ id: module.id, documentPath });
+      continue;
+    }
+
     const css = resolvePaneCss(module, options.canvasCss);
     const script = await bundlePane(module, options.sourceRoot);
 
     const scriptFilename = paneScriptFilename(module.id);
-    const documentFilename = paneDocumentFilename(module.id);
     const scriptPath = join(options.outDir, scriptFilename);
-    const documentPath = join(options.outDir, documentFilename);
 
     await writeFile(scriptPath, script, "utf8");
     await writeFile(documentPath, renderPaneUrlDocument(module.title, scriptFilename, css), "utf8");

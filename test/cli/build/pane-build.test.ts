@@ -125,11 +125,11 @@ describe("buildPaneArtifacts: 双形态产物(Req 2.2)", () => {
     const modules = [makeModule({ id: "solo", title: "Solo", entry })];
 
     const first = await buildPaneArtifacts(modules, { sourceRoot, outDir });
-    const firstScript = readFileSync(first.artifacts[0]!.scriptPath, "utf8");
+    const firstScript = readFileSync(first.artifacts[0]!.scriptPath!, "utf8");
     const firstDoc = readFileSync(first.artifacts[0]!.documentPath, "utf8");
 
     const second = await buildPaneArtifacts(modules, { sourceRoot, outDir });
-    const secondScript = readFileSync(second.artifacts[0]!.scriptPath, "utf8");
+    const secondScript = readFileSync(second.artifacts[0]!.scriptPath!, "utf8");
     const secondDoc = readFileSync(second.artifacts[0]!.documentPath, "utf8");
 
     expect(second.files).toEqual(first.files);
@@ -209,7 +209,7 @@ describe("buildPaneArtifacts: 单例插件确实被注入(Req 4.3)", () => {
     const modules = [makeModule({ id: "canvas", title: "Canvas", entry })];
 
     const result = await buildPaneArtifacts(modules, { sourceRoot, outDir });
-    const script = readFileSync(result.artifacts[0]!.scriptPath, "utf8");
+    const script = readFileSync(result.artifacts[0]!.scriptPath!, "utf8");
 
     expect(script).toContain(AGENT_REACT_MARKER);
     expect(script).toContain(AGENT_REACT_DOM_MARKER);

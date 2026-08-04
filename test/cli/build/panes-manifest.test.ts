@@ -10,7 +10,7 @@
 import { describe, it, expect } from "vitest";
 import { assemblePanesManifest } from "@/server/cli/build/panes-manifest";
 import { BuildError } from "@/server/cli/build/errors";
-import type { PaneDiscovery, PaneModule } from "@/server/cli/build/pane-discovery";
+import type { PaneDiscovery, PaneEntryModule, PaneModule } from "@/server/cli/build/pane-discovery";
 
 const validCapabilities: PaneModule["capabilities"] = {
   routes: [],
@@ -23,7 +23,7 @@ const validCapabilities: PaneModule["capabilities"] = {
   state: { read: [], write: [] },
 };
 
-function paneModule(overrides: Partial<PaneModule> & Pick<PaneModule, "id" | "title">): PaneModule {
+function paneModule(overrides: Partial<PaneEntryModule> & Pick<PaneEntryModule, "id" | "title">): PaneEntryModule {
   return {
     entry: `./web/panes/${overrides.id}/entry.tsx`,
     capabilities: validCapabilities,

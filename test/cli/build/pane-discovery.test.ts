@@ -121,7 +121,9 @@ describe("discoverPaneModules: 约定 2 · 包根汇总声明(<source>/panes/mod
     const pane = discovery?.modules[0];
     expect(pane?.id).toBe("canvas");
     expect(pane?.icon).toBe("🖼️");
-    expect(pane?.canvasStyles).toBe(true);
+    // PaneModule 是判别联合;canvasStyles 只存在于 entry 形态,故先收窄再断言。
+    expect(pane?.entry).toBeDefined();
+    expect(pane?.entry !== undefined ? pane.canvasStyles : undefined).toBe(true);
     // entry 相对 modules.ts 自身所在目录解析,不是相对 sourceRoot。
     expect(pane?.entry).toBe(resolve(root, "panes", "canvas.tsx"));
     // capabilities 原样透传,不重新序列化——即使传入带 Set/函数等非 JSON 值也应保真

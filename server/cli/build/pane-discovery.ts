@@ -80,14 +80,42 @@ const PER_PANE_MODULE_FILENAME = "module.ts";
  * `string` 分支)——保留联合类型是为了与 design.md 的字面契约一致,供下游(pane-build.ts)
  * 无需关心声明侧写的是 `URL` 还是相对字符串。
  */
-export interface PaneModule {
+interface PaneModuleBase {
   readonly id: string;
   readonly title: string;
   readonly icon?: string;
-  readonly entry: string | URL;
-  readonly canvasStyles?: boolean;
   readonly capabilities: PaneCapabilitiesInput;
 }
+
+/** 既有形态:给模块入口,由构建器打包成脚本再包进 HTML。 */
+export interface PaneEntryModule extends PaneModuleBase {
+  readonly entry: string | URL;
+  readonly canvasStyles?: boolean;
+  /** ★ 反字段,不是冗余:没有它 TS 无法据 `module.document !== undefined` 收窄联合。 */
+  readonly document?: undefined;
+}
+
+/**
+ * 新增形态:给**已渲染好的完整 HTML**,构建器原样写出(spec pane-build-prerendered-document)。
+ *
+ * 现实中确有这类 pane —— 不含 React、无需打包,自建构建脚本里只是取一段 HTML 常量做变量替换
+ * 后写出。迁到 `pi-web build` 时这类 pane 在声明里无处安放,于是被**静默丢弃**:构建照样成功,
+ * 产物目录里可能还留着上次写出的 `pane-<id>.html`,但 `panes.json` 不声明它,宿主便看不见。
+ * (实证:aigc-agent 的 logs pane,panes.json 3 条而 dist 里有 4 份文档。)
+ */
+export interface PaneDocumentModule extends PaneModuleBase {
+  /** 完整 HTML 文档。构建器不解释其内容,变量替换等由声明方自行完成。 */
+  readonly document: string;
+  readonly entry?: undefined;
+}
+
+/**
+ * pane 声明的两种形态,`entry` 与 `document` **恰有其一**。
+ *
+ * 用判别联合而非「两个可选字段」:漏处理某一形态会是**编译错误**,而不是运行期少一个 pane
+ * —— 后者正是本 spec 要根治的失败模式。
+ */
+export type PaneModule = PaneEntryModule | PaneDocumentModule;
 
 /** `discoverPaneModules` 的成功产出。 */
 export interface PaneDiscovery {
@@ -184,7 +212,24 @@ function normalizePaneModule(raw: unknown, declaringModulePath: string): PaneMod
     throw invalidModuleError(`pane "${id}" 缺少合法的 "capabilities" 字段(须为对象)。`, declaringModulePath);
   }
 
-  const entry = normalizeEntry(record.entry, declaringModulePath, id);
+  // ── 形态判定:entry 与 document 恰有其一 ────────────────────────────────────
+  // 空串/非字符串的 document 一律按「未给出」处理,但要在 detail 里点明类型不符 ——
+  // 否则用户会看到「必须二选一」却不明白自己明明给了 document。
+  const rawDocument = record.document;
+  const hasDocument = typeof rawDocument === "string" && rawDocument.length > 0;
+  const hasEntry = record.entry !== undefined;
+  if (hasEntry && rawDocument !== undefined) {
+    throw invalidModuleError(
+      `pane "${id}" 同时给出了 "entry" 与 "document",二者互斥 —— 打包入口与预渲染文档只能选一种。`,
+      declaringModulePath,
+    );
+  }
+  if (!hasEntry && !hasDocument) {
+    const detail = rawDocument !== undefined
+      ? `pane "${id}" 的 "document" 须为非空字符串(当前为 ${typeof rawDocument});也可改用 "entry" 给出模块入口。`
+      : `pane "${id}" 必须给出 "entry"(模块入口)或 "document"(预渲染 HTML)之一。`;
+    throw invalidModuleError(detail, declaringModulePath);
+  }
 
   const icon = record.icon;
   if (icon !== undefined && typeof icon !== "string") {
@@ -196,12 +241,27 @@ function normalizePaneModule(raw: unknown, declaringModulePath: string): PaneMod
     throw invalidModuleError(`pane "${id}" 的 "canvasStyles" 字段须为布尔值。`, declaringModulePath);
   }
 
-  return {
+  const base = {
     id,
     title,
-    entry,
     capabilities: capabilities as PaneCapabilitiesInput,
     ...(icon !== undefined ? { icon } : {}),
+  };
+
+  if (hasDocument) {
+    // 预渲染形态:canvasStyles 对它无意义(HTML 自带样式),给了也不静默忽略。
+    if (canvasStyles !== undefined) {
+      throw invalidModuleError(
+        `pane "${id}" 同时给出了 "document" 与 "canvasStyles" —— 预渲染文档自带样式,不参与画布样式解析。`,
+        declaringModulePath,
+      );
+    }
+    return { ...base, document: rawDocument as string };
+  }
+
+  return {
+    ...base,
+    entry: normalizeEntry(record.entry, declaringModulePath, id),
     ...(canvasStyles !== undefined ? { canvasStyles } : {}),
   };
 }
