@@ -9,9 +9,11 @@
  */
 export type SessionStoreKind = "fs" | "sqlite" | "postgres";
 
+export type FsSessionLayout = "buckets" | "flat";
+
 /** 选择并配置一个会话存储后端。 */
 export type SessionStoreConfig =
-  | { kind: "fs"; root?: string }
+  | { kind: "fs"; root?: string; layout?: FsSessionLayout }
   | { kind: "sqlite"; path?: string }
   | { kind: "postgres"; connectionString: string };
 
@@ -31,8 +33,17 @@ export function sessionStoreConfigFromEnv(env: NodeJS.ProcessEnv = process.env):
       return { kind: "postgres", connectionString: env["DATABASE_URL"] ?? "" };
     case "fs":
     case undefined:
-    case "":
-      return { kind: "fs", root: env["SESSION_STORE_ROOT"] };
+    case "": {
+      const explicitRoot = env["SESSION_STORE_ROOT"];
+      if (explicitRoot !== undefined && explicitRoot !== "") {
+        return { kind: "fs", root: explicitRoot };
+      }
+      const piSessionDir = env["PI_CODING_AGENT_SESSION_DIR"];
+      if (piSessionDir !== undefined && piSessionDir !== "") {
+        return { kind: "fs", root: piSessionDir, layout: "flat" };
+      }
+      return { kind: "fs" };
+    }
     default:
       throw new Error(`unknown SESSION_STORE: ${kind}`);
   }
