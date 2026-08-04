@@ -129,9 +129,9 @@ describe("panelRight 连续宽度(全受控)", () => {
       toJSON: () => ({}),
     } as DOMRect);
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
+    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
     expect(conversation.style.width).toBe("520px");
     expect(aside().style.position).toBe("absolute");
-    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 600 });
     expect(onChange).not.toHaveBeenCalled();
     expect(
       (document.querySelector("[data-pi-panel-content]") as HTMLElement).style.width,
@@ -142,7 +142,28 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(onChange).not.toHaveBeenCalled();
     act(() => idleFrame?.());
     expect(onChange).toHaveBeenCalledWith(400);
+    expect(aside().style.width).toBe("400px");
     expect(conversation.style.width).toBe("");
+    expect(aside().style.position).toBe("");
+  });
+
+  it("点击最大宽度分隔线不提交宽度", () => {
+    const onChange = vi.fn();
+    render(
+      <PiChat
+        session={mockSession()}
+        extension={panelExt}
+        panelWidth={700}
+        onPanelWidthChange={onChange}
+        maxPanelWidth={800}
+      />,
+    );
+    const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
+    fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 300 });
+    expect(aside().style.position).toBe("");
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 300 });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(aside().style.width).toBe("700px");
     expect(aside().style.position).toBe("");
   });
 

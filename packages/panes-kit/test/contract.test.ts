@@ -94,18 +94,19 @@ describe("pane contract and instance model", () => {
     expect(unlimited.panes[0]?.maxInstances).toBe(UNLIMITED_PANE_COUNT);
   });
 
-  it("preserves a host-native view declaration", () => {
-    const native = definePanes({
-      id: "native",
+  it("allows panes to be declared without opening one initially", () => {
+    const definition = definePanes({
+      id: "deferred",
+      initialPaneIds: [],
       panes: [{
         id: "logs",
         title: "Logs",
-        hostView: "logs",
-        document: { kind: "inline", srcDoc: "" },
+        document: { kind: "html", src: "data:text/html," },
         capabilities: {},
       }],
     });
-    expect(native.panes[0]?.hostView).toBe("logs");
+    expect(definition.initialPaneIds).toEqual([]);
+    expect(createPaneWorkspace(definition, (paneId) => paneId).instances).toHaveLength(0);
   });
 });
 
@@ -117,6 +118,17 @@ describe("default-deny authorization", () => {
     expect(() => authorizePaneRequest(capabilities, route)).not.toThrow();
     expect(() => authorizePaneRequest(capabilities, surface)).not.toThrow();
     expect(() => authorizePaneRequest(capabilities, event)).not.toThrow();
+  });
+
+  it("allows staging conversation attachments without submitting", () => {
+    const request = PaneGuestRequestSchema.parse({
+      type: "pane:request",
+      requestId: "stage-1",
+      operation: "conversation.stage",
+      text: "",
+      attachmentIds: ["att_1"],
+    });
+    expect(() => authorizePaneRequest(capabilities, request)).not.toThrow();
   });
 
   it("rejects undeclared route, surface action and event topic", () => {

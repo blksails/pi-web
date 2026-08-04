@@ -5,7 +5,8 @@
  * 进程内 `ExtensionFactory` 形态提供:agent 经 `extensions: [aigcExtension]` 装载。
  * 属执行层(含 pi SDK 值导入),仅经 `@blksails/pi-web-tool-kit/runtime` 子入口导出。
  */
-export { aigcExtension } from "./extension.js";
+export { aigcExtension, makeAigcExtension } from "./extension.js";
+export type { AigcExtensionOptions } from "./extension.js";
 export { registerImageGeneration } from "./tools/image-generation.js";
 export { registerImageEdit } from "./tools/image-edit.js";
 // aigc-tool-settings:模型开关解析/过滤 + 提示词优化占位接缝。

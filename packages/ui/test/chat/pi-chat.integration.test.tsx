@@ -752,15 +752,54 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     expect(screen.getByText("conv-below")).toBeInTheDocument();
   });
 
-  // -- 内部头部标题 (Req 4.1/4.2/4.3) ---------------------------------------
-  it("注入 title → 头部标题文本可见", () => {
-    render(
+  // -- 会话标题投射 ---------------------------------------------------------
+  it("注入 title → 投射网页与 Tauri 窗口标题，不渲染扩展头部", () => {
+    const previous = document.title;
+    const setTitle = vi.fn(async () => undefined);
+    const host = window as Window & {
+      __TAURI__?: {
+        window: { getCurrentWindow: () => { setTitle: (title: string) => Promise<void> } };
+      };
+    };
+    host.__TAURI__ = { window: { getCurrentWindow: () => ({ setTitle }) } };
+    const { container, unmount } = render(
       <PiChat
         session={fakeSession()}
         extensionUI={mockExtensionUI({ title: "My Session Title" })}
       />,
     );
-    expect(screen.getByText("My Session Title")).toBeInTheDocument();
+    expect(document.title).toBe("My Session Title");
+    expect(setTitle).toHaveBeenCalledWith("My Session Title");
+    expect(container.querySelector("[data-pi-extension-header]")).toBeNull();
+    expect(screen.queryByText("My Session Title")).not.toBeInTheDocument();
+    unmount();
+    expect(document.title).toBe(previous);
+    delete host.__TAURI__;
+  });
+
+  it("extension title 缺失时以权威会话快照标题投射 Tauri 窗口", () => {
+    const previous = document.title;
+    const setTitle = vi.fn(async () => undefined);
+    const host = window as Window & {
+      __TAURI__?: {
+        window: { getCurrentWindow: () => { setTitle: (title: string) => Promise<void> } };
+      };
+    };
+    host.__TAURI__ = { window: { getCurrentWindow: () => ({ setTitle }) } };
+    const { unmount } = render(
+      <PiChat
+        session={fakeSession()}
+        controls={mockControls({
+          session: { lifecycle: "ready", busy: false, title: "Snapshot Title" },
+        })}
+        extensionUI={mockExtensionUI()}
+      />,
+    );
+    expect(document.title).toBe("Snapshot Title");
+    expect(setTitle).toHaveBeenCalledWith("Snapshot Title");
+    unmount();
+    expect(document.title).toBe(previous);
+    delete host.__TAURI__;
   });
 
   it("未设 title 且无 statuses → 不渲染内部扩展头部(Req 4.3)", () => {
@@ -890,7 +929,8 @@ describe("PiChat ambient 面(extensionUI 接线)", () => {
     expect(container.querySelector("[data-pi-status-bar]")).toBeInTheDocument();
     expect(screen.getByText("构建完成")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getByText("My Session Title")).toBeInTheDocument();
+    expect(document.title).toBe("My Session Title");
+    expect(screen.queryByText("My Session Title")).not.toBeInTheDocument();
   });
 });
 

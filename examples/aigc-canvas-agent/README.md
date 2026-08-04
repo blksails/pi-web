@@ -44,6 +44,40 @@ defineAgent({ extensions: [...composed.extensions], routes: composed.routes, ...
     → `wireSurfaceBridge` → 子进程内直调 `runImageTool`(拿 `models.json`/provider/key,不过 LLM)。
   - **血缘**(`derivedFrom`/`genParams`)经上游 `setMeta` 持久到附件不透明扩展 meta。
 
+## 对话模型
+
+`index.ts` 有意省略 `model`，沿 pi 默认路径读取 `~/.pi/agent/settings.json`。接入阿里云百炼
+Token Plan 时，在 `~/.pi/agent/models.json` 登记 `dashscope-token-plan`：
+
+```json
+{
+  "baseUrl": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+  "apiKey": "$DASHSCOPE_TOKEN_PLAN_API_KEY",
+  "api": "openai-completions",
+  "models": [
+    {
+      "id": "deepseek-v4-pro",
+      "compat": { "supportsDeveloperRole": false }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "compat": { "supportsDeveloperRole": false }
+    },
+    {
+      "id": "glm-5.2",
+      "compat": { "supportsDeveloperRole": false }
+    }
+  ]
+}
+```
+
+模型条目至少填 `id`、`name`、`input`、`contextWindow`、`maxTokens`；再将
+`settings.json` 的 `defaultProvider` / `defaultModel` 设为 `dashscope-token-plan` /
+`qwen3.7-max`。Token Plan 不接受 `developer` 角色，故其模型必须配置
+`compat.supportsDeveloperRole=false`。Token Plan key 与官方 `DASHSCOPE_API_KEY` 分离，
+不可混用。
+
+## UI(`.pi/web`)
 ## UI(`web/` → 构建产物 `.pi/web/dist/`)
 
 - `panelRight` 槽:`PanesHost`(panes-kit 通用宿主)+ `panesDefinition`(单个 `canvas` pane)。

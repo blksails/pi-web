@@ -8,6 +8,7 @@
     :root{font:13px/1.4 ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color-scheme:light}
     *{box-sizing:border-box}
     html,body{width:100%;height:100%;margin:0;overflow:hidden;background:transparent}
+    body[data-overlay-closed="true"]>#mask,body[data-overlay-closed="true"]>#panel{visibility:hidden}
     #mask{
       position:absolute;inset:0;margin:0;padding:0;border:0;cursor:default;
       background:rgb(0 0 0 / .32);
@@ -38,7 +39,7 @@
     ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{border:2px solid transparent;border-radius:999px;background:hsl(var(--muted,215 16% 47%)/.35);background-clip:padding-box}
   </style>
 </head>
-<body>
+<body data-overlay-closed="true">
   <button type="button" id="mask" aria-label="关闭菜单"></button>
   <div id="panel" role="dialog" aria-modal="true" data-empty="1">
     <header>
@@ -67,6 +68,7 @@
     const close = () => {
       if (closed || token === 0) return; // warm shell 不关进程，只由 host hide
       closed = true;
+      document.body.dataset.overlayClosed = "true";
       void send({ type: "pane:overlay-close" }).catch(() => undefined);
     };
 
@@ -87,6 +89,7 @@
 
     const renderMenu = (title, items, placement) => {
       closed = false;
+      document.body.dataset.overlayClosed = "false";
       blurGuardUntil = Date.now() + 800;
       document.title = title || "Pane";
       document.querySelector("#title").textContent = title || "";

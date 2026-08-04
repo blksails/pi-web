@@ -14,7 +14,11 @@ import {
   IMAGE_GENERATION_DEFAULT_MODEL,
 } from "./tools/image-generation.js";
 import { IMAGE_EDIT_ROUTES } from "./tools/image-edit.js";
-import { filterRoutes } from "./model-config.js";
+import {
+  filterRoutes,
+  filterRoutesByProvider,
+  EMPTY_EXCLUDED_PROVIDERS,
+} from "./model-config.js";
 import type { ImageProviderId, ImageRoute } from "./types.js";
 
 /** 单个活跃模型条目(稳定 id + 展示标签 + 归属 provider)。 */
@@ -40,9 +44,13 @@ export interface ActiveModelEntry {
 export function deriveActiveModels(
   disabledModels: ReadonlySet<string>,
   extraRoutes: readonly ImageRoute[] = [],
+  excludedProviders: ReadonlySet<string> = EMPTY_EXCLUDED_PROVIDERS,
 ): readonly ActiveModelEntry[] {
   const activeRoutes = filterRoutes(
-    [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES, ...extraRoutes],
+    filterRoutesByProvider(
+      [...IMAGE_GENERATION_ROUTES, ...IMAGE_EDIT_ROUTES, ...extraRoutes],
+      excludedProviders,
+    ),
     disabledModels,
     IMAGE_GENERATION_DEFAULT_MODEL,
   );

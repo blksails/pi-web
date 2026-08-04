@@ -55,6 +55,8 @@ const sseTransportSchema = z
     /** Req 2.3:远程传输要求服务端地址。 */
     url: z.string().url(),
     headers: z.record(z.string()).default({}),
+    /** 以桌面登录凭据生成 Authorization 头。 */
+    hostAuthorization: z.boolean().optional(),
   })
   .passthrough();
 
@@ -63,6 +65,8 @@ const streamableHttpTransportSchema = z
     type: z.literal("streamable-http"),
     url: z.string().url(),
     headers: z.record(z.string()).default({}),
+    /** 以桌面登录凭据生成 Authorization 头。 */
+    hostAuthorization: z.boolean().optional(),
   })
   .passthrough();
 
@@ -110,6 +114,32 @@ export type McpTransportConfig = z.infer<typeof mcpTransportSchema>;
 export type McpServerConfig = z.infer<typeof mcpServerSchema>;
 export type McpConfig = z.infer<typeof mcpConfigSchema>;
 
+/**
+ * 远程 MCP 使用桌面 host authorization 时，复用当前桌面凭据。
+ * 仅补缺失的 Authorization，显式配置头优先；stdio 与未开启该开关均零变化。
+ */
+export function withMcpHostAuthorization(
+  config: McpTransportConfig,
+  credential: string | undefined,
+): McpTransportConfig {
+  if (
+    config.type === "stdio" ||
+    config.hostAuthorization !== true ||
+    credential === undefined ||
+    credential.trim().length === 0
+  ) {
+    return config;
+  }
+  const headers = config.headers ?? {};
+  if (Object.keys(headers).some((key) => key.toLowerCase() === "authorization")) {
+    return config;
+  }
+  return {
+    ...config,
+    headers: { ...headers, Authorization: `Bearer ${credential.trim()}` },
+  };
+}
+
 // ── 前端渲染 IR ───────────────────────────────────────────────────────────────
 
 /** 远程传输(SSE / Streamable HTTP)共用字段:地址 + 自定义请求头(值掩码)。 */
@@ -130,6 +160,14 @@ const remoteTransportFields: readonly FieldDescriptor[] = [
     label: "自定义请求头",
     description: "常用于携带鉴权令牌;值以掩码保存与显示,不会回读明文。",
     required: false,
+  },
+  {
+    key: "hostAuthorization",
+    kind: "boolean",
+    label: "使用桌面凭据鉴权",
+    description: "远程桌面会话以当前桌面登录凭据发送 Authorization。",
+    required: false,
+    default: false,
   },
 ];
 

@@ -12,7 +12,10 @@
  * 属 runtime 层(含 MCP SDK 值导入)。
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import type { McpServerConfig } from "@blksails/pi-web-protocol";
+import {
+  withMcpHostAuthorization,
+  type McpServerConfig,
+} from "@blksails/pi-web-protocol";
 import { createMcpTransport } from "./transport-factory.js";
 import type { McpToolCallResult, McpToolDescriptor } from "./tool-adapter.js";
 
@@ -20,6 +23,7 @@ import type { McpToolCallResult, McpToolDescriptor } from "./tool-adapter.js";
 export const DEFAULT_MCP_CONNECT_TIMEOUT_MS = 15_000;
 
 const CLIENT_INFO = { name: "pi-web", version: "1.0.0" } as const;
+const DESKTOP_CREDENTIAL_ENV = "PI_WEB_DESKTOP_CREDENTIAL";
 
 export interface McpConnectOutcome {
   readonly serverName: string;
@@ -102,7 +106,9 @@ export class McpClientManager {
     }
     let client: Client | undefined;
     try {
-      const transport = createMcpTransport(server.transport);
+      const transport = createMcpTransport(
+        withMcpHostAuthorization(server.transport, process.env[DESKTOP_CREDENTIAL_ENV]),
+      );
       client = new Client(CLIENT_INFO, { capabilities: {} });
       await withTimeout(client.connect(transport), this.timeoutMs, `connect ${server.name}`);
       const listed = await withTimeout(

@@ -5,7 +5,10 @@
  * 路径、postgres 给连接池/连接串)。本工厂把"选哪个后端"收敛成一个配置开关,使切换
  * 后端只改配置/环境变量,下游代码不变。
  */
-import { FsSessionEntryStore } from "@blksails/pi-web-core/session-store/fs-store.js";
+import {
+  defaultSessionsRoot,
+  FsSessionEntryStore,
+} from "@blksails/pi-web-core/session-store/fs-store.js";
 import { PostgresSessionEntryStore } from "./postgres-store.js";
 import { SqliteSessionEntryStore } from "@blksails/pi-web-core/session-store/sqlite-store.js";
 import type { SessionEntryStore } from "@blksails/pi-web-core/session-store/types.js";
@@ -28,8 +31,22 @@ import type { SessionStoreConfig } from "@blksails/pi-web-core/session-store/con
  */
 export async function createSessionEntryStore(config: SessionStoreConfig): Promise<SessionEntryStore> {
   switch (config.kind) {
-    case "fs":
-      return new FsSessionEntryStore(config.root);
+    case "fs": {
+      // 列表、冷恢复、重命名共享同一 FS store，复用路径/标题缓存并避免重复扫描。
+      const root = config.root ?? defaultSessionsRoot();
+      const layout = config.layout ?? "buckets";
+      const key = `${layout}:${root}`;
+      const cached = fsStores.get(key);
+      if (cached !== undefined) return cached;
+      const created = Promise.resolve<SessionEntryStore>(
+        new FsSessionEntryStore(root, layout),
+      ).catch((err: unknown) => {
+        fsStores.delete(key);
+        throw err;
+      });
+      fsStores.set(key, created);
+      return created;
+    }
     case "sqlite":
       return new SqliteSessionEntryStore(config.path ?? ":memory:");
     case "postgres": {
@@ -46,3 +63,4 @@ export async function createSessionEntryStore(config: SessionStoreConfig): Promi
   }
 }
 
+const fsStores = new Map<string, Promise<SessionEntryStore>>();

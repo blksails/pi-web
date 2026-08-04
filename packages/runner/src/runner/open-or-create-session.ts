@@ -18,23 +18,32 @@ export interface OpenOrCreateSessionResult {
  *
  * @param cwd       会话工作目录。
  * @param sessionId 显式会话 id(URL 冷恢复);未给则随机新建。
+ * @param sessionDir 可选会话根目录;省略则跟随 `PI_CODING_AGENT_SESSION_DIR`。
  */
 export async function openOrCreateSession(
   cwd: string,
   sessionId: string | undefined,
+  sessionDir?: string,
 ): Promise<OpenOrCreateSessionResult> {
+  const configuredSessionDir = sessionDir ?? process.env["PI_CODING_AGENT_SESSION_DIR"];
+  const resolvedSessionDir = configuredSessionDir === "" ? undefined : configuredSessionDir;
   if (sessionId === undefined) {
-    return { sessionManager: SessionManager.create(cwd), isNewSession: true };
+    return {
+      sessionManager: SessionManager.create(cwd, resolvedSessionDir),
+      isNewSession: true,
+    };
   }
-  const existing = (await SessionManager.list(cwd)).find((s) => s.id === sessionId);
+  const existing = (await SessionManager.list(cwd, resolvedSessionDir)).find(
+    (s) => s.id === sessionId,
+  );
   if (existing !== undefined) {
     return {
-      sessionManager: SessionManager.open(existing.path, undefined, cwd),
+      sessionManager: SessionManager.open(existing.path, resolvedSessionDir, cwd),
       isNewSession: false,
     };
   }
   return {
-    sessionManager: SessionManager.create(cwd, undefined, { id: sessionId }),
+    sessionManager: SessionManager.create(cwd, resolvedSessionDir, { id: sessionId }),
     isNewSession: true,
   };
 }

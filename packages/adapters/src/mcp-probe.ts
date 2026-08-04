@@ -16,10 +16,15 @@ import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotoc
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { McpServerConfig, McpTransportConfig } from "@blksails/pi-web-protocol";
+import {
+  withMcpHostAuthorization,
+  type McpServerConfig,
+  type McpTransportConfig,
+} from "@blksails/pi-web-protocol";
 
 /** 探测超时:比会话装配期更短 —— 设置页是交互场景,不能让用户干等。 */
 export const DEFAULT_PROBE_TIMEOUT_MS = 8_000;
+const DESKTOP_CREDENTIAL_ENV = "PI_WEB_DESKTOP_CREDENTIAL";
 
 
 // 结果形状与状态枚举随端口住在内核(路由要用它们做响应体),此处原样 re-export
@@ -42,6 +47,7 @@ export function redactProbeSecrets(input: string): string {
 }
 
 function createProbeTransport(config: McpTransportConfig): Transport {
+  config = withMcpHostAuthorization(config, process.env[DESKTOP_CREDENTIAL_ENV]);
   switch (config.type) {
     case "stdio":
       return new StdioClientTransport({

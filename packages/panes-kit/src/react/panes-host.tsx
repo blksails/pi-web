@@ -81,7 +81,12 @@ export type PanesUpload = (
   file: File,
 ) => Promise<{ readonly attachment: { readonly id: string }; readonly displayUrl: string }>;
 
+export type PanesSessionLogs = (
+  query: Readonly<Record<string, string>>,
+) => Promise<unknown>;
+
 export interface PanesConversationAccess {
+  stageUserMessage?(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
   submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
 }
 
@@ -120,8 +125,8 @@ export interface PanesHostProps {
   readonly onEvent?: (topic: string, payload: unknown) => boolean | void | Promise<boolean | void>;
   /** 宿主 UI 向已授权订阅 Pane 发布事件。目标 Pane 未打开时按 eventTargets 自动打开并待就绪投递。 */
   readonly hostEvent?: PaneHostEvent;
-  /** 按声明标识渲染宿主原生 Pane；未命中时回退 Guest iframe。 */
-  readonly renderHostView?: (hostView: string, instance: PaneInstance) => React.ReactNode;
+  /** 受限的会话日志查询；仅供声明 `session.logs` 路由的 Guest 使用。 */
+  readonly sessionLogs?: PanesSessionLogs;
   readonly createInstanceId?: (paneId: string, sequence: number) => string;
   /**
    * LLM 工作区遥控桥的 surface domain(见 workspace-protocol.ts)：订阅
@@ -331,8 +336,7 @@ function readPaneTheme(root: Element): PaneTheme {
 }
 
 const hostInteractionStyles = `
-[data-panes-host] button { transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease; }
-[data-panes-host] button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  [data-panes-host] button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
 [data-panes-host] [data-pane-icon-button]:hover,
 [data-panes-host] [data-pane-palette-item]:hover:not(:disabled) {
   background: hsl(var(--accent)) !important;
@@ -362,7 +366,7 @@ export function PanesHost({
   onRequestClose,
   onEvent,
   hostEvent,
-  renderHostView,
+  sessionLogs,
   createInstanceId = defaultInstanceId,
   workspaceDomain = PANES_WORKSPACE_DOMAIN,
 }: PanesHostProps): React.JSX.Element {
@@ -862,6 +866,12 @@ export function PanesHost({
     if (live?.epoch !== instance.epoch) throw new PaneHostError("STALE_INSTANCE", "Pane instance epoch is stale");
     authorizePaneRequest(pane.capabilities, request);
     if (request.operation === "route.query" || request.operation === "route.mutate") {
+      if (request.operation === "route.query" && request.route === "session.logs") {
+        if (sessionLogs === undefined) {
+          throw new PaneHostError("HOST_UNAVAILABLE", "Session logs are not ready", { retryable: true });
+        }
+        return sessionLogs(request.query ?? {});
+      }
       if (baseUrl === undefined || sessionId === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Agent Route session is not ready", { retryable: true });
       const client = createAgentRouteClient({ baseUrl, sessionId });
       return request.operation === "route.query"
@@ -924,9 +934,15 @@ export function PanesHost({
       return undefined;
     }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
-    conversation.submitUserMessage(request.text, request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds });
+    const options = request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds };
+    if (request.operation === "conversation.stage") {
+      if (conversation.stageUserMessage === undefined) {
+        throw new PaneHostError("HOST_UNAVAILABLE", "Conversation draft is not ready", { retryable: true });
+      }
+      conversation.stageUserMessage(request.text, options);
+    } else conversation.submitUserMessage(request.text, options);
     return undefined;
-  }, [baseUrl, config.eventTargets, conversation, definition, onEvent, sessionId, surface, upload]);
+  }, [baseUrl, config.eventTargets, conversation, definition, onEvent, sessionId, sessionLogs, surface, upload]);
 
   const bindSurface = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
     live.surfaceCleanup?.();
@@ -1635,21 +1651,6 @@ export function PanesHost({
           const active =
             instance.instanceId === workspace.activeInstanceId &&
             !parkedInstanceIds.has(instance.instanceId);
-          const hostView = pane.hostView !== undefined
-            ? renderHostView?.(pane.hostView, instance)
-            : undefined;
-          if (hostView !== undefined) {
-            return <div
-              key={`${instance.instanceId}:${instance.epoch}`}
-              id={`pane-view-${instance.instanceId}`}
-              role="tabpanel"
-              aria-label={pane.title}
-              data-pane-carrier="host-view"
-              style={{ display: active ? "block" : "none", width: "100%", height: "100%", overflow: "hidden" }}
-            >
-              {hostView}
-            </div>;
-          }
           if (nativeAdapter !== undefined && pane.document.kind === "html") {
             return <NativePaneCarrier
               key={`${instance.instanceId}:${instance.epoch}`}

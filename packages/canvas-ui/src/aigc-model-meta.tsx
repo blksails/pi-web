@@ -35,6 +35,7 @@ export const PROVIDER_META: Readonly<
   newapi: { letter: "N", name: "NewAPI", bg: "#10b981" },
   sufy: { letter: "S", name: "Sufy", bg: "#f59e0b" },
   dashscope: { letter: "D", name: "DashScope", bg: "#0ea5e9" },
+  "token-plan": { letter: "T", name: "Token Plan", bg: "#14b8a6" },
   // 网关**实例**的缺省 id(单实例配置 AI_GATEWAY_BASE_URL 时合成出来的那个)。它指向
   // 「部署方配置的那台网关」,具体是谁取决于 env——所以名字只能是通用的 AI Gateway。
   // 取 G(Gateway)而非 A:后者易被读成 Anthropic/Aliyun。

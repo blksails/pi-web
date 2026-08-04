@@ -117,6 +117,23 @@ describe("fs adapter 专项", () => {
     }
   });
 
+  it("显式 pi sessionDir 使用平铺布局,且按 header.cwd 过滤", async () => {
+    const root = await tmpRoot();
+    try {
+      const store = new FsSessionEntryStore(root, "flat");
+      await store.create(header("flat-a", "/a"));
+      await store.create(header("flat-b", "/b"));
+
+      const files = await readdir(root);
+      expect(files).toHaveLength(2);
+      expect(files.every((file) => file.endsWith(".jsonl"))).toBe(true);
+      expect((await store.list("/a")).map((meta) => meta.sessionId)).toEqual(["flat-a"]);
+      expect((await store.listAll()).map((meta) => meta.sessionId)).toEqual(["flat-a", "flat-b"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("同一会话并发追加不交错且均保留(Req 8.3)", async () => {
     const root = await tmpRoot();
     try {

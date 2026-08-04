@@ -70,6 +70,11 @@ const BUILTIN_PROVIDER_TABLE: LlmGatewayProviderTable = {
     upstreamBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     keyEnvCandidates: ["DASHSCOPE_API_KEY"],
   },
+  "dashscope-token-plan": {
+    // Token Plan 是独立凭据/端点；文本对话仍走 OpenAI-compatible v1。
+    upstreamBase: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    keyEnvCandidates: ["DASHSCOPE_TOKEN_PLAN_API_KEY"],
+  },
   openrouter: {
     upstreamBase: "https://openrouter.ai/api/v1",
     keyEnvCandidates: ["OPENROUTER_API_KEY"],

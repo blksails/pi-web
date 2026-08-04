@@ -95,7 +95,8 @@ function partitionByNamespace(source: PaneSource): {
 } {
   const kept: unknown[] = [];
   const violatingIds: string[] = [];
-  for (const pane of source.definition.panes) {
+  const declaredPanes = Array.isArray(source.definition.panes) ? source.definition.panes : [];
+  for (const pane of declaredPanes) {
     const id = paneIdOf(pane);
     // id 缺失或非字符串:不在命名空间层判定,留给 definePanes 报结构错误。
     if (id === undefined) {

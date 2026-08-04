@@ -308,22 +308,22 @@ const ACTION_LABEL: Record<GenerateDecision["action"], string> = {
 
 /**
  * 把生成决策析出为与通道无关的 {@link SurfaceOp}:领域参数组装(工具行执行注解、mask/
- * reference_images 值内注解、reframe 默认提示词、省略规则、标题行意图 ≤48 截断)原样迁移,
+ * images 值内注解、reframe 默认提示词、省略规则、标题行意图 ≤48 截断)原样迁移,
  * fence 固定 `canvas-op`。**不声明 fallback**(canvas 生成无控制面等价,command 态不可提交)。
- * export 供门面/单测。参数按 tool→image→mask→reference_images→prompt→size→n→model 有序组装。
+ * export 供门面/单测。参数按 tool→images→mask→prompt→size→n→model 有序组装。
  */
 export function buildSurfaceOp(d: GenerateDecision, opts?: { maskId?: string }): SurfaceOp {
   const a = d.args;
-  const params: Array<readonly [string, string]> = [["image", String(a.image)]];
+  const refs = a.reference_images;
+  const images = [String(a.image), ...(Array.isArray(refs) ? refs.map(String) : [])];
+  const imageValue = `[${images.join(", ")}]${
+    Array.isArray(refs) && refs.length > 0
+      ? " (首张若为批注图,按其箭头/文字指示修改)"
+      : ""
+  }`;
+  const params: Array<readonly [string, string]> = [["images", imageValue]];
   if (opts?.maskId !== undefined) {
     params.push(["mask", `${opts.maskId}(alpha mask,透明区=需要重绘的区域)`]);
-  }
-  const refs = a.reference_images;
-  if (Array.isArray(refs) && refs.length > 0) {
-    params.push([
-      "reference_images",
-      `${refs.map(String).join(", ")}(首张若为批注图,按其箭头/文字指示修改)`,
-    ]);
   }
   if (typeof a.prompt === "string" && a.prompt.trim() !== "") {
     params.push(["prompt", a.prompt]);
@@ -1963,7 +1963,7 @@ export function CanvasWorkbench({
               aria-label="生成模型"
               // 收起态 hover 可见原始 model id(展示文本已被剥后缀/换成 label)。
               {...(model !== "" ? { title: model } : {})}
-              className="h-8 w-36 text-xs"
+              className="h-8 max-w-52 min-w-36 gap-1.5 rounded-full text-xs"
             >
               <SelectValue placeholder="默认模型" />
             </SelectTrigger>

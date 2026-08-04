@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import {
   InvalidAgentDefinitionError,
+  buildResolutionAliases,
   loadAgentDefinition,
   RUNTIME_FACTORY_BRAND,
 } from "../../src/runner/agent-loader.js";
@@ -53,6 +54,21 @@ describe("loadAgentDefinition — three-shape normalization (Req 2.2/2.3/2.4)", 
         sessionManager: {} as never,
       }),
     ).rejects.toThrowError(/should not be invoked during loading/);
+  });
+});
+
+describe("buildResolutionAliases — external agent workspace imports", () => {
+  it("aliases runtime package entrypoints outside the monorepo", () => {
+    const aliases = buildResolutionAliases();
+    expect(aliases["@blksails/pi-web-tool-kit"]).toMatch(
+      /[\\/]packages[\\/]tool-kit[\\/]src[\\/]index\.ts$/,
+    );
+    expect(aliases["@blksails/pi-web-tool-kit/runtime"]).toMatch(
+      /[\\/]packages[\\/]tool-kit[\\/]src[\\/]runtime\.ts$/,
+    );
+    expect(aliases["@blksails/pi-web-panes-kit/workspace-protocol"]).toMatch(
+      /[\\/]packages[\\/]panes-kit[\\/]src[\\/]workspace-protocol\.ts$/,
+    );
   });
 });
 

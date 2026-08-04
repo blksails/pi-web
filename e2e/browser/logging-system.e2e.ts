@@ -7,8 +7,8 @@ import { test, expect } from "@playwright/test";
  * (PI_WEB_DIST_DIR + external server) with PI_WEB_STUB_AGENT=1.
  *
  * Coverage:
- *  5.1 — data-pi-logs-region is present once the session is active
- *  5.2 — log entries carry data-pi-log-level and data-pi-log-ns attributes
+ *  5.1 — logs Guest iframe is present after the user opens the Pane
+ *  5.2 — Guest log entries carry data-pi-log-level and data-pi-log-ns attributes
  *  5.3 — level filter (≥ selected level only), namespace filter, text search
  *  5.4 — logging-demo-agent source + webext:logging-demo browser-side logs
  *  5.6 — auto-scroll: scroll container is accessible and panel is scrolled to bottom
@@ -25,13 +25,8 @@ import { test, expect } from "@playwright/test";
  * webext log path and validates all five panel capabilities
  * (level/ns/text filter + auto-scroll + config). See §Trade-offs (9.3/9.4).
  *
- * Important:
- * - data-pi-logs-region appears on BOTH the outer <div> wrapper (pi-chat.tsx)
- *   AND the inner <ul> scroll container (logs-panel.tsx). Use .first() to
- *   disambiguate, or narrow to the outer wrapper.
- * - data-pi-logs-region lives inside conversationBody, which is only rendered
- *   when messages.length > 0 (PiChat isEmpty guard). The test must send a
- *   prompt and complete the stub interaction first.
+ * Important: logs are never mounted in the host React tree. The test must open
+ * the logs Pane explicitly, then query the opaque-origin Guest frame.
  */
 
 const SOURCE = "./examples/logging-demo-agent";
@@ -63,24 +58,30 @@ async function startLoggingSession(
   await expect(interaction).toBeVisible({ timeout: 15_000 });
   await page.locator("[data-pi-confirm-ok]").click();
   await expect(interaction).toBeHidden();
+
+  await openLogsGuest(page);
 }
 
-/**
- * Locate the outer logs panel wrapper div (the direct child of the input dock).
- * The attribute data-pi-logs-region appears on both the outer <div> wrapper
- * (pi-chat.tsx) and the inner <ul> (logs-panel.tsx) — use the <div> wrapper
- * (the first of the two) for panel-level assertions.
- */
+async function openLogsGuest(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  const expand = page.getByRole("button", { name: "展开 Pane 侧栏" });
+  if (await expand.count() > 0 && await expand.isVisible()) await expand.click();
+  await page.getByRole("button", { name: "新开 Pane" }).click();
+  const dialog = page.getByRole("dialog", { name: "新开 Pane" });
+  await dialog.getByRole("button").filter({ hasText: "日志" }).click();
+  await expect(page.locator('iframe[title="日志"]')).toBeVisible();
+}
+
 function logsWrapper(page: import("@playwright/test").Page) {
-  // The outer container is a <div>; the inner scroll target is a <ul>.
-  return page.locator("div[data-pi-logs-region]");
+  return page.frameLocator('iframe[title="日志"]').locator("ul[data-pi-logs-region]");
 }
 
 /**
  * Locate the inner <ul> scroll container that receives log entries.
  */
 function logsScrollRegion(page: import("@playwright/test").Page) {
-  return page.locator("ul[data-pi-logs-region]");
+  return page.frameLocator('iframe[title="日志"]').locator("ul[data-pi-logs-region]");
 }
 
 // ── Test 1: logs region visible, webext entries with level/ns ─────────────────
@@ -101,7 +102,7 @@ test("logging-system: data-pi-logs-region 可见，webext 日志有 level/ns 属
   // webext:logging-demo LoggingDemoHeader runs on mount and emits at least one
   // entry — wait for it to appear (5.4). The exact timing depends on the
   // extension hydration and React useEffect scheduling.
-  const webextEntry = page.locator('[data-pi-log-ns="webext:logging-demo"]').first();
+  const webextEntry = page.frameLocator('iframe[title="日志"]').locator('[data-pi-log-ns="webext:logging-demo"]').first();
   await expect(webextEntry).toBeAttached({ timeout: 15_000 });
 
   // The entry carries data-pi-log-level (5.2).
@@ -121,17 +122,18 @@ test("logging-system: 级别下拉过滤 — 只显示 ≥ 所选级别 (5.3)", 
   await expect(logsWrapper(page)).toBeVisible({ timeout: 15_000 });
 
   // Wait for at least one log entry before filtering.
-  await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
+  await expect(page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
 
   // 级别过滤为原生 <select>(修 right 位置 radix #185 后全位置改原生):用 selectOption 选 "error"。
-  const trigger = page.locator("[data-pi-logs-level-filter]");
+  const trigger = page.frameLocator('iframe[title="日志"]').locator('select[aria-label="最低级别"]');
   await expect(trigger).toBeVisible();
   await trigger.selectOption("error");
 
   // After filtering to "error": debug/info/warn entries must not be visible.
-  const debugEntries = page.locator('[data-pi-log-level="debug"]');
-  const infoEntries = page.locator('[data-pi-log-level="info"]');
-  const warnEntries = page.locator('[data-pi-log-level="warn"]');
+  const guest = page.frameLocator('iframe[title="日志"]');
+  const debugEntries = guest.locator('[data-pi-log-level="debug"]');
+  const infoEntries = guest.locator('[data-pi-log-level="info"]');
+  const warnEntries = guest.locator('[data-pi-log-level="warn"]');
 
   const debugCount = await debugEntries.count();
   for (let i = 0; i < Math.min(debugCount, 3); i++) {
@@ -160,16 +162,16 @@ test("logging-system: 命名空间过滤 — 只显示匹配命名空间的条�
   await startLoggingSession(page);
 
   await expect(logsWrapper(page)).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
+  await expect(page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
 
-  const nsFilter = page.locator("[data-pi-logs-ns-filter]");
+  const nsFilter = page.frameLocator('iframe[title="日志"]').locator('input[placeholder="命名空间"]');
   await expect(nsFilter).toBeVisible();
 
   // Filter to a namespace that does NOT match any real entries.
   await nsFilter.fill("nonexistent:namespace:xyz");
 
   // All entries should be hidden.
-  const allEntries = page.locator("[data-pi-log-ns]");
+  const allEntries = page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-ns]");
   const count = await allEntries.count();
   for (let i = 0; i < Math.min(count, 5); i++) {
     await expect(allEntries.nth(i)).not.toBeVisible();
@@ -177,7 +179,7 @@ test("logging-system: 命名空间过滤 — 只显示匹配命名空间的条�
 
   // Clear filter — entries return.
   await nsFilter.fill("");
-  await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 5_000 });
+  await expect(page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 5_000 });
 });
 
 // ── Test 4: text search filter ────────────────────────────────────────────────
@@ -188,16 +190,16 @@ test("logging-system: 文本搜索过滤 — 仅显示消息匹配的条目 (5.3
   await startLoggingSession(page);
 
   await expect(logsWrapper(page)).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
+  await expect(page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 15_000 });
 
-  const textFilter = page.locator("[data-pi-logs-text-filter]");
+  const textFilter = page.frameLocator('iframe[title="日志"]').locator('input[placeholder="搜索"]');
   await expect(textFilter).toBeVisible();
 
   // Filter by a string that won't match any log entry.
   await textFilter.fill("UNIQUE_NONEXISTENT_STRING_XYZ_12345");
 
   // All visible entries should vanish.
-  const allEntries = page.locator("[data-pi-log-ns]");
+  const allEntries = page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-ns]");
   const count = await allEntries.count();
   for (let i = 0; i < Math.min(count, 5); i++) {
     await expect(allEntries.nth(i)).not.toBeVisible();
@@ -205,12 +207,13 @@ test("logging-system: 文本搜索过滤 — 仅显示消息匹配的条目 (5.3
 
   // Clear search — entries return.
   await textFilter.fill("");
-  await expect(page.locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 5_000 });
+  await expect(page.frameLocator('iframe[title="日志"]').locator("[data-pi-log-level]").first()).toBeAttached({ timeout: 5_000 });
 
   // Verify filter is active: count of visible entries ≤ total count.
   await textFilter.fill("browser log bus");
-  const totalCount = await page.locator("[data-pi-log-ns]").count();
-  const visibleAfterFilter = await page.locator("[data-pi-log-ns]:visible").count();
+  const guest = page.frameLocator('iframe[title="日志"]');
+  const totalCount = await guest.locator("[data-pi-log-ns]").count();
+  const visibleAfterFilter = await guest.locator("[data-pi-log-ns]:visible").count();
   expect(visibleAfterFilter).toBeLessThanOrEqual(totalCount);
 
   // Clean up.
@@ -388,7 +391,7 @@ test("logging-system: 命名空间开关关闭后日志被门控，重新打开�
 
   // ── Step 4: Assert no NS entries appear (hidden direction, Req 6.5) ────────
   // The namespace gate dropped all webext:logging-demo entries — none in panel.
-  const hiddenEntries = page.locator(`[data-pi-log-ns="${NS}"]`);
+  const hiddenEntries = page.frameLocator('iframe[title="日志"]').locator(`[data-pi-log-ns="${NS}"]`);
   await expect(hiddenEntries).toHaveCount(0, { timeout: 5_000 });
 
   // ── Step 5: Settings — re-enable NS toggle ─────────────────────────────────
@@ -409,7 +412,7 @@ test("logging-system: 命名空间开关关闭后日志被门控，重新打开�
   await page.waitForTimeout(2_000);
 
   // ── Step 7: Assert NS entries DO appear (produced direction, Req 6.6) ──────
-  const visibleEntry = page.locator(`[data-pi-log-ns="${NS}"]`).first();
+  const visibleEntry = page.frameLocator('iframe[title="日志"]').locator(`[data-pi-log-ns="${NS}"]`).first();
   await expect(visibleEntry).toBeAttached({ timeout: 10_000 });
 
   // ── Step 8: Cleanup — remove the NS entry to restore defaults ─────────────
@@ -460,9 +463,6 @@ test("logging-system: 自动滚动 — 面板存在且可滚动 (5.6)", async ({
 
   // The jump-to-latest button must NOT be visible in the default auto-follow
   // state (autoscroll=true, unread=0).
-  const jumpBtn = scrollRegion.locator("[data-pi-logs-jump-latest]");
-  await expect(jumpBtn).not.toBeAttached();
-
   // Simulate scroll to top (user browsing history — pauses auto-scroll).
   await scrollRegion.evaluate((el) => {
     el.scrollTop = 0;

@@ -47,6 +47,11 @@ export interface WebExtSurfaceAccess {
  * 只搬运 text 与显式 attachmentIds,不解析、不改写内容(领域策略留应用面)。
  */
 export interface ConversationAccess {
+  /** 仅写入组合器草稿；不提交、不触发 agent。 */
+  stageUserMessage?(
+    text: string,
+    opts?: { readonly attachmentIds?: readonly string[] },
+  ): void;
   /**
    * 经宿主 Prompt 通道提交一条用户消息(与用户手动输入同道进入对话流,LLM 在环)。
    * `opts.attachmentIds`:显式附件引用,与 composer 既有引用合并追加(bringToConversation 依此)。

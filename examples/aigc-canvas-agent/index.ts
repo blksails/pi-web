@@ -25,6 +25,7 @@
  *
  * 执行层经 `@blksails/pi-web-tool-kit/runtime` 子入口引入(含 pi SDK 值导入,仅 jiti 子进程
  * 加载,不进服务端 bundle)。model 省略 → 继承 ~/.pi/agent/settings.json 默认 provider/model。
+ * Token Plan 对话接入亦沿此路径配置，详见 README「对话模型」。
  */
 import { defineAgent } from "@blksails/pi-web-agent-kit";
 import { aigcSlashCompletions } from "@blksails/pi-web-tool-kit";

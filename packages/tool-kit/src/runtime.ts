@@ -87,7 +87,8 @@ export type {
 } from "./panes/agent-modules.js";
 
 // ── AIGC extension(进程内 ExtensionFactory)───────────────────────────────────
-export { aigcExtension } from "./aigc/extension.js";
+export { aigcExtension, makeAigcExtension } from "./aigc/extension.js";
+export type { AigcExtensionOptions } from "./aigc/extension.js";
 export { registerImageGeneration } from "./aigc/tools/image-generation.js";
 export { registerImageEdit } from "./aigc/tools/image-edit.js";
 

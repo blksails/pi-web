@@ -16,6 +16,7 @@
   },
   "permissions": [
     "core:default",
+    "core:window:allow-set-title",
     "allow-pick-directory",
     "allow-retry",
     "allow-quit",

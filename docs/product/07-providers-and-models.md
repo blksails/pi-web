@@ -129,7 +129,40 @@ env 变量与 `auth.json` 叠加生效，优先级以 pi SDK 内部逻辑为准�
 }
 ```
 
-### 3.3 校验配置是否生效
+### 3.3 阿里云百炼 Token Plan 对话 provider
+
+Token Plan 文本对话是独立的 OpenAI-compatible provider，须与官方 DashScope 分开登记：
+
+```json
+{
+  "providers": {
+    "dashscope-token-plan": {
+      "name": "DashScope Token Plan",
+      "baseUrl": "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "$DASHSCOPE_TOKEN_PLAN_API_KEY",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen3.7-max",
+          "name": "Qwen3.7 Max",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 131072,
+          "maxTokens": 16384,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}
+```
+
+`$DASHSCOPE_TOKEN_PLAN_API_KEY` 由 pi SDK 按环境变量解析；该 key 不可替代
+`DASHSCOPE_API_KEY`。若运行 `aigc-canvas-agent`，保持其 `model` 省略，设置
+`~/.pi/agent/settings.json` 的 `defaultProvider` / `defaultModel` 为上述 provider/model，
+即可沿示例默认模型路径运行。
+
+### 3.4 校验配置是否生效
 
 ```bash
 pi --list-models

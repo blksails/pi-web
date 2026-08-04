@@ -575,6 +575,18 @@ mod acl_guard_tests {
 
     use std::collections::HashSet;
 
+    #[test]
+    fn main_window_can_follow_conversation_title() {
+        let cap: serde_json::Value = serde_json::from_str(include_str!(
+            "../capabilities/default.json"
+        ))
+        .expect("capability 应是合法 JSON");
+        let permissions = cap["permissions"].as_array().expect("capability 应含 permissions");
+        assert!(permissions.iter().any(|permission| {
+            permission.as_str() == Some("core:window:allow-set-title")
+        }));
+    }
+
     /// 从 `generate_handler![...]` 块里抽出注册的 command 名。
     fn registered_commands(src: &str) -> HashSet<String> {
         let start = src

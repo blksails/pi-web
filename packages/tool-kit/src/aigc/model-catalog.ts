@@ -68,9 +68,9 @@ export const AIGC_MODEL_CATALOG: readonly AigcCatalogEntry[] = [
   { model: "gpt-5-image-mini", label: "GPT-5 Image Mini · OpenRouter", provider: "openrouter", ...AIGC_ENTRY_MODALITY },
   { model: "gpt-5.4-image-2", label: "GPT-5.4 Image 2 · OpenRouter", provider: "openrouter", ...AIGC_ENTRY_MODALITY },
   { model: "wan2.7-image-pro", label: "Wan 2.7 Image Pro", provider: "dashscope", ...AIGC_ENTRY_MODALITY },
-  { model: "wan2.7-image-pro-bailian", label: "Wan 2.7 Image Pro · token plan", provider: "dashscope", ...AIGC_ENTRY_MODALITY },
+  { model: "wan2.7-image-pro-bailian", label: "Wan 2.7 Image Pro · token plan", provider: "token-plan", ...AIGC_ENTRY_MODALITY },
   { model: "qwen-image-edit-max", label: "Qwen Image Edit Max · sync", provider: "dashscope", ...AIGC_ENTRY_MODALITY },
-  { model: "wan2.7-image-edit-bailian", label: "Wan 2.7 Image Edit · token plan", provider: "dashscope", ...AIGC_ENTRY_MODALITY },
+  { model: "wan2.7-image-edit-bailian", label: "Wan 2.7 Image Edit · token plan", provider: "token-plan", ...AIGC_ENTRY_MODALITY },
 ];
 
 /**

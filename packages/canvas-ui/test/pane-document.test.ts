@@ -30,7 +30,9 @@ const ENTRY = resolve(FIXTURES, "entry.tsx");
 describe("canvasContentGlobs(纯函数)", () => {
   it("以 packageRoot 为扫描基准,而非任何入口路径", () => {
     const globs = canvasContentGlobs(PKG_A_ROOT);
-    expect(globs[0]).toBe(resolve(PKG_A_ROOT, "**", "*.{ts,tsx}"));
+    // 只扫 `src/`(与 `panes/`)而非包根:包根下有 node_modules,`**/*.ts` 会把整棵依赖树
+    // 拖进 tailwind 内容扫描(tailwind 自身会警告 accidentally matching all of node_modules)。
+    expect(globs[0]).toBe(resolve(PKG_A_ROOT, "src", "**", "*.{ts,tsx}"));
     // 不应出现任何来自 entry/dirname(entry) 的痕迹——本函数根本不接收 entry 参数。
     expect(globs.some((g) => g.includes("dep-outside"))).toBe(false);
   });

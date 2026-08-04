@@ -94,8 +94,10 @@ describe("★ 真·多进程并发写", () => {
       const { createRequire } = require("node:module");
       const { DatabaseSync } = require("node:sqlite");
       const db = new DatabaseSync(${JSON.stringify(dbPath)});
-      db.exec("PRAGMA journal_mode = WAL");
+      // ★ busy_timeout 必须先设:切 WAL 需要短暂独占锁,6 个进程同时开库时若无 busy_timeout,
+      // 这一句会当场抛 "database is locked"(而不是等待)。顺序颠倒过一次,表现为偶发红。
       db.exec("PRAGMA busy_timeout = 15000");
+      db.exec("PRAGMA journal_mode = WAL");
       db.prepare(
         \`INSERT INTO session_meta (session_id, title, agent_source, updated_at)
          VALUES (?, ?, ?, ?)

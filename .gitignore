@@ -1,4 +1,5 @@
 node_modules/
+/.iteration/
 dist/
 .next/
 .next-e2e/
@@ -45,6 +46,10 @@ e2e/fixtures/iphone-mpf.jpg
 
 # pnpm 本地 store
 .pnpm-store/
+
+# 本地浏览器与桌面开发运行产物
+/.playwright-mcp/
+/.tmp/
 
 # 本地工具产物(代码索引/编辑器),不入库
 .codegraph/

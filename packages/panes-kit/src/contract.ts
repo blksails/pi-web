@@ -59,8 +59,6 @@ export const PaneDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   title: z.string().min(1).max(160),
   icon: z.string().max(32).optional(),
-  /** 宿主原生视图标识；声明后由 PanesHost 渲染宿主节点，不启动 Guest iframe。 */
-  hostView: NonEmptyIdSchema.optional(),
   document: PaneDocumentSchema,
   capabilities: PaneCapabilitiesSchema,
   allowMultiple: z.boolean().default(false),
@@ -76,7 +74,8 @@ export type PaneDefinitionInput = z.input<typeof PaneDefinitionSchema>;
 export const PanesDefinitionSchema = z.object({
   id: NonEmptyIdSchema,
   panes: z.array(PaneDefinitionSchema).min(1),
-  initialPaneIds: z.array(NonEmptyIdSchema).min(1).optional(),
+  /** 显式空数组表示仅注册 Pane，不在进入 Agent 时自动打开任何 Pane。 */
+  initialPaneIds: z.array(NonEmptyIdSchema).optional(),
   maxOpenPanes: z.number().int().min(1).max(UNLIMITED_PANE_COUNT).default(16),
 });
 export type PanesDefinition = z.infer<typeof PanesDefinitionSchema>;
@@ -128,6 +127,11 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
   RequestBaseSchema.extend({
     operation: z.literal("conversation.submit"),
     text: z.string().min(1).max(100_000),
+    attachmentIds: z.array(z.string().min(1).max(256)).max(64).optional(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("conversation.stage"),
+    text: z.string().max(100_000),
     attachmentIds: z.array(z.string().min(1).max(256)).max(64).optional(),
   }),
   // 共享状态的**写回**。读与订阅不走上行请求 —— 它们由宿主按授权键主动推 `pane:state`

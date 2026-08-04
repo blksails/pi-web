@@ -9,6 +9,10 @@ import {
   PanesHost,
   type PaneHostEvent,
 } from "@blksails/pi-web-panes-kit/react";
+import {
+  definePanes,
+  type PanesDefinition,
+} from "@blksails/pi-web-panes-kit";
 import { useChat } from "@ai-sdk/react";
 import type { UIMessage } from "ai";
 import {
@@ -27,8 +31,6 @@ import {
   executeHostCommand,
   type CommandOutcome,
   createLogsStore,
-  useLogs,
-  type LogHistoryFetcher,
 } from "@blksails/pi-web-react";
 import { PartRenderer } from "./part-renderer.js";
 import { registerBuiltinDataPartRenderers } from "./builtin-data-part-renderers.js";
@@ -90,6 +92,26 @@ import { TurnAbortProvider } from "./turn-abort-context.js";
 
 /** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
 const log = createLogger({ namespace: "ui:panes" });
+
+type TauriTitleWindow = Window & {
+  readonly __TAURI__?: {
+    readonly window?: {
+      readonly getCurrentWindow?: () => {
+        readonly setTitle?: (title: string) => Promise<void>;
+      };
+    };
+  };
+};
+
+function applyHostTitle(title: string): void {
+  document.title = title;
+  try {
+    const hostWindow = (window as TauriTitleWindow).__TAURI__?.window?.getCurrentWindow?.();
+    void hostWindow?.setTitle?.(title).catch(() => undefined);
+  } catch {
+    // 普通网页或旧版 Tauri 无窗口 API 时，document.title 已完成降级。
+  }
+}
 import { runStopTurn, type StopTurnHandle } from "./stop-turn.js";
 import { PiCommandPalette } from "../controls/pi-command-palette.js";
 import { createPackageArgProvider } from "../controls/package-arg-provider.js";
@@ -98,10 +120,11 @@ import type { RpcSlashCommand, CompletionItem } from "@blksails/pi-web-protocol"
 import { PiMentionPopover } from "../controls/pi-mention-popover.js";
 import { PiAutocompletePopover } from "../controls/pi-autocomplete-popover.js";
 import { PiSessionStats } from "../controls/pi-session-stats.js";
-import { LogsPanel } from "../logs/logs-panel.js";
+import { createLogsPaneDocument, LOGS_PANE_ID } from "../logs/logs-pane-document.js";
 import {
   PiCompletionPopover,
   PiMentionPreviews,
+  scanAttachmentMentions,
   removeAttachmentMention,
   useCatalogMaterialize,
   type MentionPreview,
@@ -499,8 +522,6 @@ export function PiChat({
   showLogs = false,
   enableBash = false,
   logsPanelVisible = true,
-  logsPanelPosition = "bottom",
-  loggingEnabled,
   attachmentBaseUrl,
   uploadAttachment,
   className,
@@ -553,6 +574,11 @@ export function PiChat({
   const sessionId = session.sessionId;
   const client = session.client;
   const connection = session.connection;
+  const startSession = session.start;
+  const pendingConversationSubmissions = React.useRef<Array<{
+    readonly text: string;
+    readonly options?: Parameters<ConversationAccess["submitUserMessage"]>[1];
+  }>>([]);
 
   // Tier3 ui-rpc 客户端总线(贡献点回 agent 的通道);会话/连接就绪时构造,卸载时释放。
   const uiRpc = React.useMemo(() => {
@@ -619,61 +645,56 @@ export function PiChat({
   }, [uiRpc]);
 
 
-  // 日志面板:per-session logsStore + control:logs 帧接线（Req 3.4）。
-  // 一个 useMemo 保证每次 sessionId 变更时重建 store（新会话新 store，不跨会话混日志）。
-  // ★ logsActive = showLogs || logsInPanes:扩展在 panes 里声明了 `hostView:"logs"` 的一级 tab
-  //   （如 aigc-agent / cloud 隔离车道）时,该 tab 恒渲染公共 LogsPanel 并有完整数据链路
-  //   （实时帧 + getLogs 历史),不受 showLogs 门控 —— 门控只作用于 legacy 位置面板(bottom 等)。
+  // 日志仅以声明式 Guest Pane 存在：不再把宿主 React 节点注入 Pane。
+  // 明确的空 initialPaneIds 保证进入 Agent 时不自动打开日志，避免首帧闪烁。
   // ★ webext 的 `panes` 有两种实际形态，两者都必须支持：
   //    - 两层：`{ definition: PanesDefinition, config }` —— agent 需要同时给出 definition 与
   //      运行期 panesConfig 时的写法（aigc-agent 的 web.config.tsx 即如此），
   //      `packages/panes-kit/src/merge.ts` 读的正是 `source.definition.panes`；
   //    - 扁平：`PanesDefinition` 本身（`definePanes()` 的直接返回值）。
-  //  此处原先只读扁平的 `.panes.panes`，遇到两层形态时 `.some` 作用在 undefined 上直接抛，
-  //  整个 <PiChat> 崩成白屏 —— 实测由外部 agent 触发过。宿主内部两处消费方读法不一致是根因，
-  //  这里统一为「先取 definition，取不到再当扁平用」，并对数组做防御。
-  const panesDefinition =
+  //  只读扁平的 `.panes.panes` 时，遇两层形态该值为 undefined —— 补一个可选链只是把白屏
+  //  换成**判定静默失效**（logsPaneHosted 恒 false，声明了日志 pane 的 agent 拿不到数据链路）。
+  //  故统一为「先取 definition，取不到再当扁平用」，并对数组做防御。
+  // 名字避开下方 `panesDefinition`(宿主合成后的最终定义) —— 此处是**扩展原始声明**的归一结果。
+  const extensionPanesSource =
     (extension?.panes as { readonly definition?: { readonly panes?: unknown } } | undefined)?.definition ??
     (extension?.panes as { readonly panes?: unknown } | undefined);
-  const declaredPanes = (panesDefinition as { readonly panes?: unknown } | undefined)?.panes;
+  const declaredPanes = (extensionPanesSource as { readonly panes?: unknown } | undefined)?.panes;
   const logsPaneHosted = Array.isArray(declaredPanes)
     ? declaredPanes.some(
         (pane) => typeof pane === "object" && pane !== null &&
-          (pane as { readonly hostView?: unknown }).hostView === "logs",
+          (pane as { readonly id?: unknown }).id === LOGS_PANE_ID,
       )
     : false;
-  const logsActive = showLogs || logsPaneHosted;
+  const logsPaneEnabled = showLogs && logsPanelVisible;
   const logsStore = React.useMemo(
-    () => (logsActive ? createLogsStore() : undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [logsActive, sessionId],
+    () => (logsPaneHosted || logsPaneEnabled ? createLogsStore() : undefined),
+    [logsPaneEnabled, logsPaneHosted, sessionId],
   );
-
-  // 订阅 control:logs 帧 → logsStore.applyLogsFrame（实时链路 3.2→3.4）。
   React.useEffect(() => {
     if (logsStore === undefined || connection === undefined) return;
-    return connection.controlStore.onLogsFrame((entries) => {
-      logsStore.applyLogsFrame(entries);
+    return connection.controlStore.onLogsFrame((entries) => logsStore.applyLogsFrame(entries));
+  }, [connection, logsStore]);
+  // Guest 只得授权路由返回值；宿主在此把 REST 历史与 SSE / browser bus 汇入的条目合并。
+  const sessionLogs = React.useCallback(async (query: Readonly<Record<string, string>>): Promise<unknown> => {
+    if (client === undefined || sessionId === undefined) {
+      return logsStore?.getSnapshot().entries ?? [];
+    }
+    const history = await client.getLogs(sessionId, {
+      ...(query.level === "debug" || query.level === "info" || query.level === "warn" || query.level === "error"
+        ? { level: query.level }
+        : {}),
+      ...(query.limit !== undefined && Number.isFinite(Number(query.limit))
+        ? { limit: Number(query.limit) }
+        : {}),
+      ...(query.since !== undefined && Number.isFinite(Number(query.since))
+        ? { since: Number(query.since) }
+        : {}),
     });
-  }, [logsStore, connection]);
-
-  // getLogs 历史拉取器（4.2 链路），仅在 logsActive 且 client+sessionId 就绪时注入。
-  // LogHistoryFetcher 的 level 是 string（宽类型）；client.getLogs 的 level 是 LogLevel
-  // 严类型——做桥接时把 string 向下转型为 LogLevel（调用侧已从枚举传入，运行时安全）。
-  const logsFetcher = React.useMemo((): LogHistoryFetcher | undefined => {
-    if (!logsActive || client === undefined || sessionId === undefined) return undefined;
-    const capturedClient = client;
-    const capturedSessionId = sessionId;
-    return (query) =>
-      capturedClient.getLogs(capturedSessionId, query as Parameters<typeof capturedClient.getLogs>[1]);
-  }, [logsActive, client, sessionId]);
-
-  // useLogs：订阅 logsStore 快照供 LogsPanel 消费（仅 logsActive 时启用）。
-  const logsResult = useLogs(
-    logsStore !== undefined
-      ? { store: logsStore, ...(logsFetcher !== undefined ? { fetcher: logsFetcher } : {}) }
-      : { store: createLogsStore() },
-  );
+    if (logsStore === undefined) return history;
+    logsStore.mergeHistory(history);
+    return logsStore.getSnapshot().entries;
+  }, [client, logsStore, sessionId]);
 
   React.useEffect(() => {
     registry.registerDataPartRenderer("data-source", SourcesDataPartRenderer);
@@ -701,6 +722,7 @@ export function PiChat({
     transport === undefined
       ? {}
       : {
+        ...(sessionId !== undefined ? { id: sessionId } : {}),
         transport,
         ...(session.initialMessages !== undefined
           ? { messages: session.initialMessages }
@@ -814,6 +836,9 @@ export function PiChat({
   const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
   const panelResizeIdleRef = React.useRef<IdleFrameTask | undefined>(undefined);
   const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  const panelResizeStartXRef = React.useRef<number | undefined>(undefined);
+  const panelResizeStartWidthRef = React.useRef<number | undefined>(undefined);
+  const panelResizeMovedRef = React.useRef(false);
   const [panelDragging, setPanelDragging] = React.useState(false);
   const [panelConversationWidth, setPanelConversationWidth] = React.useState<number>();
   React.useEffect(
@@ -838,6 +863,16 @@ export function PiChat({
   const onPanelResizeMove = React.useCallback(
     (e: React.PointerEvent) => {
       if (!panelDraggingRef.current) return;
+      if (Math.abs(e.clientX - (panelResizeStartXRef.current ?? e.clientX)) < 2) return;
+      const firstMove = !panelResizeMovedRef.current;
+      panelResizeMovedRef.current = true;
+      // 仅真正位移后冻结布局；单击分隔线不触发侧栏脱离 flex。
+      if (firstMove) {
+        setPanelConversationWidth(
+          panelConversationColumnRef.current?.getBoundingClientRect().width,
+        );
+        setPanelDragging(true);
+      }
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
       const availableMax = rect.width * maxPanelWidthRatio;
@@ -869,6 +904,8 @@ export function PiChat({
         panelResizeIdleRef.current = undefined;
       }
       panelDraggingRef.current = true;
+      panelResizeStartXRef.current = e.clientX;
+      panelResizeMovedRef.current = false;
       const measuredWidth = panelAsideRef.current?.getBoundingClientRect().width;
       const currentWidth =
         measuredWidth !== undefined && measuredWidth > 0
@@ -877,19 +914,14 @@ export function PiChat({
             ? panelWidth
             : undefined;
       panelPendingWidthRef.current = currentWidth;
-      // 冻结对话列当前宽，拖拽全程不变；侧栏 absolute 叠在其上。
-      setPanelConversationWidth(
-        panelConversationColumnRef.current?.getBoundingClientRect().width,
-      );
-      if (currentWidth !== undefined) applyAsideWidthPreview(currentWidth);
-      setPanelDragging(true);
+      panelResizeStartWidthRef.current = currentWidth;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
         // jsdom / 无 pointer capture 环境:降级为不捕获(功能不依赖)。
       }
     },
-    [applyAsideWidthPreview, panelWidth],
+    [panelWidth],
   );
   const onPanelResizeUp = React.useCallback(
     (e: React.PointerEvent) => {
@@ -900,6 +932,25 @@ export function PiChat({
       }
       const width = panelPendingWidthRef.current;
       panelPendingWidthRef.current = undefined;
+      const startWidth = panelResizeStartWidthRef.current;
+      panelResizeStartWidthRef.current = undefined;
+      panelResizeStartXRef.current = undefined;
+      const moved = panelResizeMovedRef.current;
+      panelResizeMovedRef.current = false;
+      const shouldCommit =
+        moved &&
+        width !== undefined &&
+        (startWidth === undefined || Math.abs(width - startWidth) >= 1);
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // 同上。
+      }
+      if (!shouldCommit) {
+        setPanelDragging(false);
+        setPanelConversationWidth(undefined);
+        return;
+      }
       if (width !== undefined) applyAsideWidthPreview(width);
       // 松手后 idle 帧才提交受控宽并解冻对话列，避免拖中 chat 重排。
       panelResizeIdleRef.current = scheduleIdleFrame(() => {
@@ -909,11 +960,6 @@ export function PiChat({
         setPanelConversationWidth(undefined);
         window.dispatchEvent(new Event("pi-panes-content-well-sync"));
       });
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        // 同上。
-      }
     },
     [applyAsideWidthPreview, onPanelWidthChange],
   );
@@ -944,13 +990,18 @@ export function PiChat({
     return createPackageArgProvider({ baseUrl: client.baseUrl, sessionId });
   }, [client, sessionId]);
 
-  // drawer 模式状态：仅 position="drawer" 时使用，控制日志抽屉是否打开。
-  const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
 
   const notifications = extensionUI?.notifications ?? EMPTY_NOTIFICATIONS;
   const statuses = extensionUI?.statuses ?? EMPTY_STATUSES;
-  const ambientTitle = extensionUI?.title;
+  const ambientTitle = extensionUI?.title ?? controls?.session?.title;
   const dismissNotification = extensionUI?.dismissNotification;
+
+  React.useEffect(() => {
+    if (ambientTitle === undefined || ambientTitle.length === 0) return;
+    const previous = document.title;
+    applyHostTitle(ambientTitle);
+    return () => applyHostTitle(previous);
+  }, [ambientTitle]);
 
   const widgetItems = React.useMemo<WidgetItem[]>(() => {
     const map = extensionUI?.widgets;
@@ -1167,6 +1218,27 @@ export function PiChat({
     return mergePaneSources(sources);
   }, [hostPaneSource, agentPaneDecl, extension?.manifestId]);
   const mergedPanes = paneMerge?.definition;
+  // 日志只作为声明式 Guest Pane 注入，不把宿主 React 节点渲染进 pane。
+  // 空 initialPaneIds 保证进入 Agent 时不自动打开日志，免首帧闪烁。
+  const panesDefinition = React.useMemo((): PanesDefinition | undefined => {
+    const logsPane = {
+      id: LOGS_PANE_ID,
+      title: "日志",
+      icon: "scroll-text",
+      document: createLogsPaneDocument(),
+      capabilities: {
+        routes: [{ name: "session.logs", methods: ["GET" as const], maxResponseBytes: 2 * 1024 * 1024 }],
+      },
+    };
+    if (!logsPaneEnabled || logsPaneHosted) return mergedPanes;
+    if (mergedPanes === undefined) {
+      return definePanes({ id: "pi-web-core", initialPaneIds: [], panes: [logsPane] });
+    }
+    return definePanes({
+      ...mergedPanes,
+      panes: [...mergedPanes.panes, logsPane],
+    });
+  }, [logsPaneEnabled, logsPaneHosted, mergedPanes]);
   // agent 声明的 pane 交互配置(交互模式/tab 重排/命令面板/事件目标):领域中立地原样透传。
   // 迁移到声明键之前这是 agent 自己给 PanesHost 的 prop —— 不透传就会静默丢失那些能力。
   // ★ 从**未剥层**的原始声明取 `config`：两层形态下它是外层字段（与 definition 平级），
@@ -1309,12 +1381,42 @@ export function PiChat({
     [transport, attachments, webSearch, sendMessage, t, isBusy, controls],
   );
 
+  React.useEffect(() => {
+    if (transport === undefined) return;
+    const timer = window.setTimeout(() => {
+      const pending = pendingConversationSubmissions.current.splice(0);
+      for (const { text, options } of pending) doSend(text, options);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [doSend, transport]);
+
   // 宿主会话能力对象(契约 §4.2;与 webextState / surfaceAccess 同族)。承载「经宿主 Prompt 通道提交
   // 用户消息」这一能力,经 SlotHost 注入 slot 组件,取代事件回调形态的裸注入项 onSubmitPrompt。
   // 领域无关:只搬运 text 与显式 attachmentIds,不解析、不改写内容。随 doSend 引用稳定,避免每渲染重建。
   const conversation = React.useMemo<ConversationAccess>(
-    () => ({ submitUserMessage: (text, opts) => doSend(text, opts) }),
-    [doSend],
+    () => ({
+      stageUserMessage: (text, options) => {
+        setInput((current) => {
+          const mentioned = new Set(scanAttachmentMentions(current));
+          const tokens = (options?.attachmentIds ?? [])
+            .filter((id) => !mentioned.has(id))
+            .map((id) => `@attachment:${id}`);
+          const staged = [text.trim(), ...tokens].filter((part) => part.length > 0).join(" ");
+          if (staged.length === 0) return current;
+          return current.trim().length === 0 ? staged : `${current.trimEnd()} ${staged}`;
+        });
+        window.requestAnimationFrame(() => inputRef.current?.focus());
+      },
+      submitUserMessage: (text, options) => {
+        if (transport === undefined) {
+          pendingConversationSubmissions.current.push({ text, options });
+          startSession();
+          return;
+        }
+        doSend(text, options);
+      },
+    }),
+    [doSend, startSession, transport],
   );
 
   // 统一命令层(unified-command-result-layer):内置/host 命令经 ui-rpc command 通道执行,
@@ -1618,8 +1720,6 @@ export function PiChat({
     }),
     [environmentSignals, panelSyncSignal, livePreviewImage, paneSignals],
   );
-  const logsInPanes = logsPaneHosted;
-  const showLegacyLogs = showLogs && !logsInPanes;
   const hasArtifactAside =
     extension?.artifact !== undefined && extensionBaseUrl !== undefined;
   const panelRatioActive = hasPanelRight;
@@ -1627,17 +1727,10 @@ export function PiChat({
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
   // native child 生命周期只由 PanesHost 上 observePanesHostPresence 驱动
   // （挂载/可见 → restore，收起 → hide，卸载 → destroy），PiChat 不主动 hide。
-  // 日志面板位置安全降级:"right"(aside 布局)当前有未根治的 React #185 渲染循环
-  // (LogsPanel 内 radix Select 在 aside 中 ref 抖动 → Maximum update depth → 整页崩),
-  // 暂降级为 "bottom" 防崩;待右侧布局重构后恢复。详见 spec 报告/记忆。
-  const effectiveLogsPosition = logsPanelPosition;
-  // 日志 right 位置 aside(level 过滤已改原生 select,不再 #185)。
-  const showLogsRight =
-    showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "right";
   // 有 panes 时 aside 保持挂载（宽 0 / 不可见），PanesHost 不卸载 → webview 只隐藏不销毁。
-  const keepPanesHostAlive = extension?.panes !== undefined;
+  const keepPanesHostAlive = panesDefinition !== undefined;
   const showAside =
-    showPanelRight || hasArtifactAside || showLogsRight || keepPanesHostAlive;
+    showPanelRight || hasArtifactAside || keepPanesHostAlive;
   // 连续宽度(全受控):宿主传 panelWidth 即启用,替离散 panelRatio 档。
   const resizablePanel = hasPanelRight && panelWidth !== undefined;
   // 宽度解析:连续模式 number→px、string 原样;否则离散档取预设宽;再否则不设(沿用 w-96 类)。
@@ -1973,24 +2066,12 @@ export function PiChat({
     </div>
   );
 
-  const hasExtensionHeader =
-    ambientTitle !== undefined || Object.keys(statuses).length > 0;
-  const extensionHeader = hasExtensionHeader ? (
-    <div
-      data-pi-extension-header
-      className="flex flex-wrap items-center gap-3 border-b border-[hsl(var(--border))] px-4 py-2"
-    >
-      {ambientTitle !== undefined ? (
-        <span
-          data-pi-extension-title
-          className="text-sm font-medium text-[hsl(var(--foreground))]"
-        >
-          {ambientTitle}
-        </span>
-      ) : null}
-      <StatusBar statuses={statuses} />
-    </div>
-  ) : null;
+  const extensionStatusBar = (
+    <StatusBar
+      statuses={statuses}
+      className="border-b border-[hsl(var(--border))] px-4 py-2"
+    />
+  );
 
   // 背景层:slots.background 优先,否则 components.ConversationBackground(Req 9.1)。
   const BgComp = components?.ConversationBackground;
@@ -2178,44 +2259,6 @@ export function PiChat({
               <PiSessionStats controls={controls} />
             </div>
           ) : null}
-          {/* bottom 位置（默认）：dock 下方渲染日志面板 */}
-          {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "bottom" ? (
-            <>
-              <div
-                data-pi-logs-region
-                className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
-              >
-                <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} />
-              </div>
-              {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
-              <ExtSlotRegion ext={extension} slot="logs" />
-            </>
-          ) : null}
-          {/* drawer 位置：toggle 按钮（showLogs && logsPanelVisible 门控）+ 底部抽屉覆盖层 */}
-          {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "drawer" ? (
-            <>
-              <button
-                type="button"
-                data-pi-logs-drawer-toggle
-                aria-label={drawerOpen ? t("chat.logs.drawerCollapse") : t("chat.logs.drawerExpand")}
-                aria-expanded={drawerOpen}
-                onClick={() => setDrawerOpen((v) => !v)}
-                className="mt-1.5 text-xs px-2.5 py-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 backdrop-blur-md text-[hsl(var(--foreground))] opacity-70 hover:opacity-100 transition-opacity"
-              >
-                {t("chat.logs.drawerToggle")}
-              </button>
-              {drawerOpen ? (
-                <div
-                  data-pi-logs-region
-                  className="fixed inset-x-0 bottom-0 z-50 max-h-[40vh] flex flex-col bg-[hsl(var(--background))] border-t border-[hsl(var(--border))] shadow-lg overflow-hidden"
-                >
-                  <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
-                  {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
-                  <ExtSlotRegion ext={extension} slot="logs" />
-                </div>
-              ) : null}
-            </>
-          ) : null}
         </div>
       </div>
     </div>
@@ -2296,28 +2339,11 @@ export function PiChat({
           </header>
         ) : null}
 
-        {extensionHeader}
+        {extensionStatusBar}
 
         {/* Tier1 保留插槽:扩展状态栏(与 ambient StatusBar 共存)+ 工具条。 */}
         <ExtSlotRegion ext={extension} slot="statusBar" />
         <ExtSlotRegion ext={extension} slot="toolbar" />
-
-        {/* top 位置：对话/空态之上的横向日志条,利用无 head 后的顶部空间;与内容同宽居中,
-            bounded 高度内滚动(不吃右侧列宽)。 */}
-        {showLegacyLogs && logsPanelVisible && effectiveLogsPosition === "top" ? (
-          <div
-            data-pi-logs-region
-            data-pi-logs-top=""
-            className={cn(
-              "flex max-h-56 min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]/70 px-0 pt-2 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/60",
-              lay.content,
-            )}
-          >
-            <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="min-h-0 flex-1" fill />
-            {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
-            <ExtSlotRegion ext={extension} slot="logs" />
-          </div>
-        ) : null}
 
         {isEmpty ? (
           <div
@@ -2354,7 +2380,7 @@ export function PiChat({
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
             "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
-            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明），勿 -translate-x-full 甩出造成双线。
+            // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明）。
             showPanelRight
               ? "border-l border-[hsl(var(--border))]"
               : "overflow-hidden border-0",
@@ -2380,7 +2406,7 @@ export function PiChat({
             : {})}
           {...(showPanelRight ? { "data-pi-ext-panel-right": "" } : {})}
         >
-          {/* 命中条叠在 border 上；默认透明只留 border，hover/drag 才加粗同一缘。 */}
+          {/* 命中条叠在 border 上；视觉线宽度保持原样，点击不提交宽度。 */}
           {resizablePanel && showPanelRight ? (
             <div
               data-pi-panel-resizer
@@ -2403,7 +2429,7 @@ export function PiChat({
             侧栏收起(showPanelRight=false)时仍挂载 PanesHost，仅 CSS 隐藏：
             native webview 走 host-fullscreen 隐藏，再开侧栏复用同一批实例，不销毁。
           */}
-          {(showPanelRight || extension?.panes !== undefined) ? (
+          {(showPanelRight || panesDefinition !== undefined) ? (
             <div
               className={cn(
                 "min-h-0 flex-1 overflow-hidden",
@@ -2428,24 +2454,16 @@ export function PiChat({
                   <PaneLoadingSkeleton label={t("chat.readiness.connectingAgent")} />
                 ) : (
                   <PanesHost
-                  definition={mergedPanes!}
+                  definition={panesDefinition!}
                   surface={surfaceAccess}
                   upload={uploadAttachment ?? defaultUploadAttachment}
                   baseUrl={client?.baseUrl ?? ""}
                   {...(sessionId !== undefined ? { sessionId } : {})}
+                  sessionLogs={sessionLogs}
                   conversation={conversation}
                   {...(onPanelClose !== undefined ? { onRequestClose: onPanelClose } : {})}
                   {...(onPaneEvent !== undefined ? { onEvent: onPaneEvent } : {})}
                   {...(paneHostEvent !== undefined ? { hostEvent: paneHostEvent } : {})}
-                  renderHostView={(hostView) => {
-                    if (hostView !== "logs" || !logsActive) return undefined;
-                    return (
-                      <div className="flex h-full min-h-0 flex-col overflow-hidden p-2" data-pi-logs-region>
-                        <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="min-h-0 flex-1" fill />
-                        <ExtSlotRegion ext={extension} slot="logs" />
-                      </div>
-                    );
-                  }}
                   // 共享状态接入:宿主访问器与 pane 侧接口形状一致(读/订阅/写/删),直接透传。
                   // 授权在 pane 定义里逐键声明,这里不做任何放宽。
                   {...(webextState !== undefined ? { state: webextState } : {})}
@@ -2459,18 +2477,6 @@ export function PiChat({
                   />
                 )}
               </div>
-            </div>
-          ) : null}
-          {/* right 位置：日志面板作为 aside 内独立区块（与 panelRight/artifact 共存）。
-              flex-1 + min-h-0 给有界高度,使 LogsPanel 内部 overflow 滚动在固定高度内进行。 */}
-          {showLogsRight ? (
-            <div
-              data-pi-logs-region
-              className="flex min-h-0 flex-1 flex-col overflow-hidden p-2"
-            >
-              <LogsPanel logsResult={logsResult} loggingEnabled={loggingEnabled} className="flex-1 min-h-0" fill />
-              {/* Tier1 保留插槽:扩展 logs 贡献（与内核 LogsPanel 并存，追加语义）。 */}
-              <ExtSlotRegion ext={extension} slot="logs" />
             </div>
           ) : null}
           {extension?.artifact !== undefined && extensionBaseUrl !== undefined ? (

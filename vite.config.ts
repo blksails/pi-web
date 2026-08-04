@@ -73,6 +73,12 @@ export default defineConfig({
   server: {
     port: Number(process.env.PI_WEB_DEV_CLIENT_PORT ?? 5173),
     strictPort: true,
+    // Driver/download artifacts can be locked by WebDriver on Windows. Watching them
+    // makes chokidar emit an unhandled EBUSY and tears down the whole desktop chain.
+    watch: { ignored: ["**/.tmp/**", "**/src-tauri/target/**"] },
+    // Pane iframe 带 sandbox，故其 origin 为 null；Vite 注入的 HMR/React Refresh 脚本
+    // 仍从 5173 取。开发服务器须回 ACAO，否则功能虽可用，控制台持续报 CORS。
+    cors: true,
     // 开发期把 API 面代理到独立跑的宿主进程(server/index.ts),
     // 使前端 HMR 与后端会话进程解耦——这正是脱离 Next 后消失的那类 dev 冲突。
     proxy: {

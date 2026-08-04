@@ -18,10 +18,10 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 // 集成车道，只服务同源宿主；若经分派器，打包器会把隔离产物（单个示例即 500KB+，六个
 // 示例合计 2MB+）一并拖进 jsdom 测试环境，实测直接 V8 OOM、worker 被杀，且该文件会从
 // vitest 汇总里**静默消失**（既不计 passed 也不计 failed）。
-import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.same-origin.mjs";
-import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
-import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
-import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/dist/web-extension.same-origin.mjs";
+//
+// ★ 未列 `examples/aigc-agent`：该目录不在本仓（`pnpm-workspace.yaml` 里是悬空条目），
+//   静态 import 它会让任何干净检出构建失败（CI 实证 `Cannot find module`）。待该 agent
+//   真正入库或改由运行时解析车道装载后再接。
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.same-origin.mjs";
@@ -85,6 +85,7 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
+  // aigc-agent:搜图 / 素材 / 画布三 pane；宿主据 `extension.panes` 统一创建 PanesHost。
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
   // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
   // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),

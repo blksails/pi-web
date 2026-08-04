@@ -35,7 +35,9 @@ import {
 import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "../types.js";
 import {
   filterRoutes,
+  filterRoutesByProvider,
   EMPTY_DISABLED,
+  EMPTY_EXCLUDED_PROVIDERS,
   type RegisterImageToolOptions,
 } from "../model-config.js";
 
@@ -106,7 +108,11 @@ const ROUTES: readonly ImageRoute[] = [
         "Needs DASHSCOPE_API_KEY(token plan key); 端点经 DASHSCOPE_TOKENPLAN_BASE_URL 可配。",
       providerModel: DASHSCOPE_MODELS.wan27ImagePro,
     },
-    { url: TOKEN_PLAN_MULTIMODAL_URL, pricing: { amount: 0.3, currency: "CNY", unit: "image" } },
+    {
+      url: TOKEN_PLAN_MULTIMODAL_URL,
+      provider: "token-plan",
+      pricing: { amount: 0.3, currency: "CNY", unit: "image" },
+    },
   ),
 ];
 
@@ -289,7 +295,15 @@ export function registerImageEdit(pi: ExtensionAPI, opts?: RegisterImageToolOpti
   // extraRoutes(Req 5.2/5.3):同 image-generation.ts,runtime 层按 env 条件传入。
   const allRoutes: readonly ImageRoute[] =
     opts?.extraRoutes !== undefined ? [...ROUTES, ...opts.extraRoutes] : ROUTES;
-  const activeRoutes = filterRoutes(allRoutes, opts?.disabledModels ?? EMPTY_DISABLED, DEFAULT_MODEL);
+  const providerRoutes = filterRoutesByProvider(
+    allRoutes,
+    opts?.excludedProviders ?? EMPTY_EXCLUDED_PROVIDERS,
+  );
+  const activeRoutes = filterRoutes(
+    providerRoutes,
+    opts?.disabledModels ?? EMPTY_DISABLED,
+    DEFAULT_MODEL,
+  );
   pi.registerTool({
     name: "image_edit",
     label: "Image edit",
