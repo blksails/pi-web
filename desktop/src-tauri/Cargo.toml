@@ -20,7 +20,29 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # ★ 下限 2.11.1：GHSA-7gmj-67g7-phm9（is_local_url() 在 Windows/Android 有 origin 绕过）。
-tauri = { version = "2.11.1", features = ["unstable"] }
+# ── macOS 签名相关约定（entitlements.plist 里不能写注释，故记在这里）────────────────
+#
+# 打包签名由 `tauri.conf.json` 的 `bundle.macOS.signingIdentity: "-"`（adhoc）驱动。不配它
+# 的话 Tauri 完全跳过 bundle 签名，产出的 .app 缺 `_CodeSignature`，而二进制自身却带签名 ——
+# `codesign --verify` 失败，用户双击得到「已损坏，无法打开」，右键也绕不过去。
+#
+# 而一旦开启签名，Tauri 会 `--deep` 重签 bundle 内**所有**可执行文件，包括随包的
+# `Contents/MacOS/node`。Node 官方二进制自带的 entitlements 会被整体覆盖丢失，V8 的 JIT
+# 内存映射随即被内核拒绝 —— node 一执行 JS 就 SIGTRAP（退出码 133）。症状很有迷惑性：
+# `node --version` 照样退出 0（不触发 JIT），只有真跑脚本才崩，产品上表现为
+# 「首启解包失败：解包器无任何输出」，完全不像签名问题。
+#
+# 故必须同时配 `bundle.macOS.entitlements: "entitlements.plist"`，把 allow-jit /
+# allow-unsigned-executable-memory / disable-library-validation 三项补回（与 Node 官方
+# 二进制原本携带的一致，不多给）。★ 该 plist 内**不可含 XML 注释** —— 标准 plist 允许，
+# 但 AMFI 的解析器不认，会报 `AMFIUnserializeXML: syntax error`（实测踩过）。
+#
+# macos-private-api:pane_relay 的原生子 WebView 需要 `.transparent(true)`（透明底让菜单卡片
+# 外可见底下的 content webview）。该方法在 macOS 上被 `#[cfg(feature = "macos-private-api")]`
+# 门控，不开就编译不过 —— 而 CI 跑 Linux（`not(target_os = "macos")` 分支恒成立）看不见。
+# 代价:用了私有 API 的应用会被 App Store 拒绝。本产品自分发 dmg（未签名，需 Gatekeeper
+# 绕过），不走 App Store，故可接受。若将来要上架，须改为按平台条件编译并接受 macOS 无透明底。
+tauri = { version = "2.11.1", features = ["unstable", "macos-private-api"] }
 # 原生「选择文件夹」对话框（仅 Rust 侧调用，渲染层不授予 dialog:allow-open）。
 tauri-plugin-dialog = "2"
 # 外链交系统默认浏览器。

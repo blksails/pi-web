@@ -11,7 +11,8 @@
     "windows": [],
     "security": {
       "csp": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
-    }
+    },
+    "macOSPrivateApi": true
   },
   "bundle": {
     "active": true,
@@ -36,7 +37,9 @@
       "../../payload/": "payload/"
     },
     "macOS": {
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "entitlements": "entitlements.plist"
     },
     "linux": {
       "deb": {
