@@ -106,8 +106,8 @@ export function ConversationImageGallery({
   return (
     <div
       className={cn(
-        "grid max-w-full gap-3",
-        assets.length === 1 && "max-w-[420px]",
+        "grid w-fit max-w-full gap-3",
+        assets.length === 1 && "max-w-[min(100%,420px)]",
         assets.length > 1 && "sm:max-w-[840px]",
         assets.length > 1 && "sm:grid-cols-2",
         className,
@@ -127,7 +127,7 @@ export function ConversationImageGallery({
         return (
           <figure
             key={asset.id}
-            className="group relative m-0 flex min-h-0 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-transparent"
+            className="group relative m-0 flex min-h-0 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]"
             data-pi-conversation-image
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- SDK 组件须支持 blob/data/签名 URL。 */}
@@ -135,7 +135,7 @@ export function ConversationImageGallery({
               src={asset.url}
               alt={asset.filename ?? "AIGC 生成图片"}
               className="block h-auto max-w-full object-contain"
-              style={{ maxHeight: "min(56dvh, 560px)" }}
+              style={{ maxHeight: "min(56dvh, 520px)" }}
             />
             <div
               className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-white/25 bg-black/35 p-1 text-white shadow-lg backdrop-blur-md"

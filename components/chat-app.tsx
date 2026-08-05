@@ -71,8 +71,13 @@ function PanelToggleIcon(): React.JSX.Element {
   );
 }
 
-/** 右侧 Pane 完全收起时的展开箭头；避免与左栏折叠按钮重复使用分栏图标。 */
-function PanelRightArrowIcon(): React.JSX.Element {
+/** 侧栏折叠箭头：方向始终指向下一步动作。 */
+function PanelArrowIcon({
+  direction,
+}: {
+  readonly direction: "left" | "right";
+}): React.JSX.Element {
+  const right = direction === "right";
   return (
     <svg
       className="h-4 w-4"
@@ -84,8 +89,8 @@ function PanelRightArrowIcon(): React.JSX.Element {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="M9 6 15 12 9 18" />
-      <path d="M4 12h11" />
+      <path d={right ? "M9 6 15 12 9 18" : "M15 6 9 12 15 18"} />
+      <path d={right ? "M4 12h11" : "M20 12H9"} />
     </svg>
   );
 }
@@ -1078,7 +1083,7 @@ function SessionView({
           title={t("chatApp.collapseSidebar")}
           className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
         >
-          <PanelRightArrowIcon />
+          <PanelArrowIcon direction="left" />
         </button>
       </div>
     );
@@ -1093,64 +1098,55 @@ function SessionView({
         </span>
       </div>
     );
-    // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
-    // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 launcherRailEnabled() 门控),因主流 e2e
-    // 跑在 rail 关闭态且依赖 data-settings-link / data-pi-theme-toggle 等。原「新建会话/切换源」
-    // 已移除(冗余,统一由侧栏「新建聊天」承担);日志面板可见性由 /settings 的「显示日志面板」
-    // 设置项(logging.outputs.panelVisible)控制,账户区不再放开关。
+    // 底部只承载账户与偏好；新建/搜索属于会话导航，固定置于当前 Agent 下方。
     const accountBtnClass =
-      "inline-flex shrink-0 items-center justify-center rounded-[var(--radius)] border border-transparent px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]";
+      "inline-flex h-7 shrink-0 items-center justify-center rounded-[var(--radius)] border border-transparent px-1.5 text-[11px] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]";
     const accountBar = (
       <div
         data-launcher-account
-        className="flex shrink-0 flex-col gap-1 border-t border-[hsl(var(--border))] px-2 pb-2 pt-2"
+        className="flex shrink-0 items-center gap-1 border-t border-[hsl(var(--border))] px-1 pb-2 pt-2"
       >
-        {/* 新建会话:切换源入口已收敛至左栏顶部当前 Agent。 */}
-        {!launcherRailEnabled() ? (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onNewByAgentSource}
-              data-new-session
-              className={`${accountBtnClass} flex-1`}
-            >
-              {t("chatApp.newSession")}
-            </button>
-          </div>
-        ) : null}
-        <div className="flex items-center gap-1">
-          <a
-            href="/settings"
-            data-settings-link
-            className={accountBtnClass}
-            onClick={() => {
-              // 进设置前记回跳点（含 replaceState 后的 /session/:id）。
-              // RR 拦截同 origin <a> 做 SPA 切换 → host 卸载 → document presence destroy。
-              try {
-                sessionStorage.setItem(
-                  "pi-web:settings-return",
-                  window.location.pathname + window.location.search,
-                );
-              } catch {
-                // ignore
-              }
-            }}
-          >
-            {t("chatApp.settings")}
-          </a>
-          <span className="ml-auto flex items-center gap-1">
-            {/* desktop-cloud-login:登录入口/登录态(云端登录未启用时不渲染)。 */}
-            <LoginControl />
-            <LocaleToggleButton />
-            <ThemeToggleButton />
-          </span>
-        </div>
+        {/* 单行优先展示账户名；右侧偏好控件统一 28px，避免底部占高。 */}
+        <LoginControl className="min-w-0 flex-1" />
+        <a
+          href="/settings"
+          data-settings-link
+          className={accountBtnClass}
+          onClick={() => {
+            // 进设置前记回跳点（含 replaceState 后的 /session/:id）。
+            // RR 拦截同 origin <a> 做 SPA 切换 → host 卸载 → document presence destroy。
+            try {
+              sessionStorage.setItem(
+                "pi-web:settings-return",
+                window.location.pathname + window.location.search,
+              );
+            } catch {
+              // ignore
+            }
+          }}
+        >
+          {t("chatApp.settings")}
+        </a>
+        <LocaleToggleButton className="inline-flex h-7 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] px-1.5 text-[11px] font-medium text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]" />
+        <ThemeToggleButton className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] p-0 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]" />
       </div>
     );
     // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
     // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
     // SlotHost 自带 error boundary 隔离(Req 5.4)。
     const launcherContribution = resolveSlot(extension, "launcherRail");
+    const sessionNavigation = (
+      <LauncherRail
+        onNewChat={onNewByAgentSource}
+        onResume={onResumeSession}
+        onLaunchSource={onLaunchSource}
+        listSessions={piClient.listSessions}
+        listFavorites={piClient.listFavorites}
+        setFavorites={piClient.setFavorites}
+        showFavorites={false}
+        className="-mx-1 gap-1"
+      />
+    );
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
     // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
     if (sidebarCollapsed)
@@ -1164,7 +1160,7 @@ function SessionView({
             title={t("chatApp.expandSidebar")}
             className="mt-2 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
         >
-            <PanelRightArrowIcon />
+            <PanelArrowIcon direction="right" />
           </button>
           <button
             type="button"
@@ -1216,15 +1212,19 @@ function SessionView({
       );
     if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
-        <div className="flex h-full w-60 flex-col gap-4 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-4 pb-3 pt-5">
+        <div className="flex h-full w-[280px] flex-col gap-3 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-3 pb-3 pt-4">
           {sidebarTools}
           {currentAgent}
-          <div className="min-h-0 flex-1">{panel}</div>
+          {sessionNavigation}
+          <div className="mx-1 h-px shrink-0 bg-[hsl(var(--border))]" />
+          <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {panel}
+          </div>
           {accountBar}
         </div>,
       );
     return sessionListSlots(
-      <div className="flex h-full w-60 flex-col gap-4 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-4 pb-3 pt-5">
+      <div className="flex h-full w-[280px] flex-col gap-3 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-3 pb-3 pt-4">
         {sidebarTools}
         {currentAgent}
         <LauncherRail

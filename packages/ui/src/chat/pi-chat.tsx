@@ -1921,9 +1921,9 @@ export function PiChat({
       mode={bashMode}
       disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
-      rows={3}
+      rows={1}
       placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
-      className="rounded-[12px] border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3.5 py-3.5 shadow-none"
+      className="rounded-[12px] border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-2.5 shadow-none"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
@@ -2091,12 +2091,26 @@ export function PiChat({
     </div>
   );
 
-  const extensionStatusBar = (
-    <StatusBar
-      statuses={statuses}
-      className="border-b border-[hsl(var(--border))] px-4 py-2"
-    />
-  );
+  const hasAmbientStatuses = Object.keys(statuses).length > 0;
+  const extensionStatusBar =
+    hasAmbientStatuses || (showSessionStats && controls !== undefined) ? (
+      <div
+        className={cn(
+          "mx-auto flex min-h-8 items-center gap-2 border-b border-[hsl(var(--border)/0.45)] bg-[hsl(var(--canvas)/0.38)] px-4 py-1 backdrop-blur-md",
+          lay.content,
+        )}
+        data-pi-top-status-bar
+      >
+        {hasAmbientStatuses ? (
+          <StatusBar statuses={statuses} className="min-w-0 flex-1" />
+        ) : null}
+        {showSessionStats && controls !== undefined ? (
+          <div data-pi-session-stats-region className="ml-auto shrink-0">
+            <PiSessionStats controls={controls} className="px-0 py-0 text-[11px]" />
+          </div>
+        ) : null}
+      </div>
+    ) : null;
 
   // 背景层:slots.background 优先,否则 components.ConversationBackground(Req 9.1)。
   const BgComp = components?.ConversationBackground;
@@ -2271,21 +2285,15 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-[hsl(var(--border))] bg-[hsl(var(--canvas))] px-4 pb-5 pt-3 md:px-12"
+        className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-5 pt-3 md:px-12"
       >
-        <div className={cn("pointer-events-auto", lay.content)}>
+        <div
+          className={cn(
+            "pointer-events-auto mx-auto rounded-[16px] border border-[hsl(var(--border)/0.55)] bg-[hsl(var(--canvas)/0.42)] px-3 py-3 shadow-[0_8px_30px_hsl(var(--foreground)/0.04)] backdrop-blur-md",
+            lay.content,
+          )}
+        >
           {inputWithWidgets}
-          {/* 内核自有会话用量条(非 webext slot):随输入 dock 底部固定,置于输入框下方,
-              与输入框同宽同居中(共用 lay.content),不增列高、不溢出;与顶部 webext
-              statusBar(:887)错开并存。 */}
-          {showSessionStats && controls !== undefined ? (
-            <div
-              data-pi-session-stats-region
-              className="mt-1.5 rounded-[var(--radius)] bg-[hsl(var(--surface))]"
-            >
-              <PiSessionStats controls={controls} />
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

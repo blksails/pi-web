@@ -272,7 +272,7 @@ export function ToolHeader({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-1 text-xs",
+            "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-2 py-0.5 text-[11px] font-medium",
             isError
               ? "text-[hsl(var(--destructive))]"
               : "text-[hsl(var(--muted-foreground))]",

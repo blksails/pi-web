@@ -47,6 +47,8 @@ export interface LauncherRailProps {
   readonly searchPlaceholder?: string;
   readonly searchEmptyLabel?: string;
   readonly favoritesTitle?: string;
+  /** 仅显示会话搜索/新建，不把 agent source 收藏混入侧栏。 */
+  readonly showFavorites?: boolean;
   /** 收起态仅保留图标与浮出式搜索/收藏入口。 */
   readonly compact?: boolean;
   /** 收起态点击任一入口先展开侧栏,再交由入口继续处理。 */
@@ -69,6 +71,7 @@ export function LauncherRail({
   searchLabel,
   searchPlaceholder,
   searchEmptyLabel,
+  showFavorites = true,
   compact = false,
   onCompactActivate,
 }: LauncherRailProps): React.JSX.Element {
@@ -119,6 +122,10 @@ export function LauncherRail({
   // ── 收藏 ────────────────────────────────────────────────────────────────
   const [favorites, setFavs] = React.useState<AgentSourceFavorite[]>([]);
   React.useEffect(() => {
+    if (!showFavorites) {
+      setFavs([]);
+      return;
+    }
     let live = true;
     void listFavorites()
       .then((res) => {
@@ -130,7 +137,7 @@ export function LauncherRail({
     return () => {
       live = false;
     };
-  }, [listFavorites, favoritesRefreshSignal]);
+  }, [listFavorites, favoritesRefreshSignal, showFavorites]);
 
   const removeFavorite = (source: string): void => {
     const next = favorites.filter((f) => f.source !== source);
@@ -237,6 +244,7 @@ export function LauncherRail({
       <button
         type="button"
         data-launcher-new-chat
+        data-new-session
         onClick={() => {
           if (compact) onCompactActivate?.();
           onNewChat();
@@ -251,7 +259,7 @@ export function LauncherRail({
       </button>
 
       {/* 收藏锚点:无标签,自然跟随在新建聊天下方(无收藏则不占位) */}
-      {favorites.length > 0 ? (
+      {showFavorites && favorites.length > 0 ? (
         <div data-launcher-favorites className={compact ? "flex flex-col gap-1" : "flex flex-col gap-0.5"}>
           {favorites.map((f) => (
             <div

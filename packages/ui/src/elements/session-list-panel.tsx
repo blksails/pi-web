@@ -414,7 +414,7 @@ export function SessionListPanel(
         data-pi-session-list-item-activity={activity}
         title={label}
         aria-label={label}
-        className="mr-1 flex size-3.5 shrink-0 items-center justify-center"
+        className="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-[hsl(var(--muted-foreground))]"
       >
         {activity === "working" ? (
           // shadcn 风格 spinner:与 pi-tool-part / attachments 同一写法(Loader2 + animate-spin),
@@ -429,6 +429,7 @@ export function SessionListPanel(
         ) : (
           <AlertCircle className="size-3.5 text-[hsl(var(--destructive))]" />
         )}
+        <span>{label}</span>
       </span>
     );
   };
@@ -450,17 +451,16 @@ export function SessionListPanel(
         data-pi-session-list-item={item.sessionId}
         data-pi-session-list-item-busy={busy ? "" : undefined}
       >
-        {/* 整行可点击恢复;右侧 hover/聚焦显现 ⋯ 菜单。编辑态时标题位替换为内联输入。 */}
-        <div className="group relative flex items-center gap-0.5">
+        {/* 整行可点击恢复;标题、来源与工作状态归于同一卡片。 */}
+        <div className="group relative flex items-stretch">
           {hasSource ? (
             <span
               data-pi-session-list-item-accent={item.source}
               aria-hidden="true"
               style={{ backgroundColor: sourceAccentColor(item.source) }}
-              className="mr-0.5 h-5 w-0.5 shrink-0 rounded-full"
+              className="absolute inset-y-2 left-0 w-0.5 rounded-full"
             />
           ) : null}
-          {renderActivity(item)}
           {editing ? (
             <SessionRenameField
               sessionId={item.sessionId}
@@ -478,13 +478,24 @@ export function SessionListPanel(
               onClick={() => onResume(item.sessionId)}
               title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
-                "block min-w-0 flex-1 truncate rounded-[var(--radius)] border-l-2 border-transparent px-2 py-2 text-left transition-colors focus-visible:outline-none",
+                "flex min-w-0 flex-1 flex-col gap-1 rounded-[calc(var(--radius)+2px)] border border-transparent px-3 py-2.5 text-left transition-colors focus-visible:outline-none",
                 isActive
-                  ? "border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
-                  : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-subtle))] focus-visible:bg-[hsl(var(--surface-subtle))]",
+                  ? "border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--foreground))] hover:border-[hsl(var(--border))] hover:bg-[hsl(var(--surface-subtle)/0.55)] focus-visible:border-[hsl(var(--border))] focus-visible:bg-[hsl(var(--surface-subtle))]",
               )}
             >
-              {titleOf(item)}
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate">{titleOf(item)}</span>
+                {renderActivity(item)}
+              </span>
+              {showSource && item.source !== undefined && item.source.length > 0 ? (
+                <span
+                  data-pi-session-list-item-source=""
+                  className="truncate text-[10px] font-normal leading-tight text-[hsl(var(--muted-foreground))]"
+                >
+                  {item.source}
+                </span>
+              ) : null}
             </button>
           )}
           {canManage && !editing ? (
@@ -497,14 +508,6 @@ export function SessionListPanel(
             />
           ) : null}
         </div>
-        {showSource && item.source !== undefined && item.source.length > 0 ? (
-          <div
-            data-pi-session-list-item-source=""
-            className="truncate px-2 text-[10px] leading-tight text-[hsl(var(--muted-foreground))]"
-          >
-            {item.source}
-          </div>
-        ) : null}
       </li>
     );
   };
@@ -513,12 +516,12 @@ export function SessionListPanel(
     <div
       data-pi-session-list=""
       className={cn(
-        "flex h-full shrink-0 flex-col gap-2 overflow-hidden text-sm",
+        "flex h-full shrink-0 flex-col gap-3 overflow-hidden text-sm",
         className,
       )}
     >
-      <div className="flex items-center justify-between px-2.5 pb-1 pt-1">
-        <span className="text-[11px] font-medium text-[hsl(var(--muted-foreground))]">
+      <div className="flex items-center justify-between px-1 pb-0.5">
+        <span className="text-xs font-medium tracking-tight text-[hsl(var(--muted-foreground))]">
           {title}
         </span>
       </div>
@@ -532,7 +535,7 @@ export function SessionListPanel(
         </div>
       ) : null}
 
-      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto">
+      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto pr-1">
         {isInitialLoading ? (
           <div
             data-pi-session-list-loading=""
@@ -567,13 +570,13 @@ export function SessionListPanel(
                 <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                   {favoritesSectionLabel}
                 </div>
-                <ul className="flex flex-col gap-0.5">
+                <ul className="flex flex-col gap-1">
                   {favoriteItems.map((item) => renderRow(item))}
                 </ul>
               </div>
             ) : null}
 
-            <ul className="flex flex-col gap-0.5">
+            <ul className="flex flex-col gap-1">
               {pending !== undefined ? (
                 <li
                   key={pending.sessionId}
@@ -586,7 +589,7 @@ export function SessionListPanel(
                     data-pi-session-list-resume={pending.sessionId}
                     data-active=""
                     onClick={() => onResume(pending.sessionId)}
-                    className="block w-full truncate rounded-[var(--radius)] border-l-2 border-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] px-2 py-2 text-left font-medium text-[hsl(var(--foreground))] transition-colors focus-visible:outline-none"
+                    className="block w-full truncate rounded-[calc(var(--radius)+2px)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] px-3 py-2.5 text-left font-medium text-[hsl(var(--foreground))] transition-colors focus-visible:outline-none"
                   >
                     {pending.title !== undefined && pending.title.length > 0 ? (
                       pending.title
