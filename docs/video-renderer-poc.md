@@ -34,6 +34,7 @@
 
 ## 已知限制
 
-- 当前 POC 输入为本地路径或纯色源，尚未把 `VideoProject` 的 attachment 解析和最终 MP4 attachment 落库接成一条端到端命令。
+- 当前 POC 已支持图片 attachment → `localPath` → FFmpeg → `putOutput` 的端到端回流；`video_render` Agent 工具可将成功产物写入当前项目导出资产。
+- 当前测试使用 fake attachment port 验证回流；真实远端对象存储、浏览器预览与大文件流式落库仍待单独验收。
 - 未实现音轨、字幕、VFX 多层合成、增量渲染及逐帧预览。
 - 旧 FFmpeg 的滤镜能力不足以证明多种电影级转场；本轮只证明 Adapter 边界与真实文件产出。

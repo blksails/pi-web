@@ -2,6 +2,7 @@
 import { Type } from "@earendil-works/pi-ai";
 import {
   createSurface,
+  getAttachmentToolContext,
   type PaneExtensionFactory,
   type SurfaceHandle,
 } from "@blksails/pi-web-tool-kit/runtime";
@@ -33,6 +34,7 @@ import {
   type VideoStudioState,
 } from "./model.js";
 import { runWorkflow, type WorkflowHandlers, type WorkflowCheckpoint } from "./workflow.js";
+import { renderAttachmentImagesToMp4, type AttachmentVideoRenderRequest } from "./renderer.js";
 import { getSessionState } from "@blksails/pi-web-tool-kit";
 
 type ExtensionAPI = Parameters<PaneExtensionFactory>[0];
@@ -191,6 +193,26 @@ const VideoAnalysisParameters = Type.Object({
   analysis: Type.Any({ description: "带 evidence、confidence、unresolved、corrections 的 VideoAnalysisResult" }),
 });
 
+const VideoRenderParameters = Type.Object({
+  output_name: Type.Optional(Type.String({ description: "输出 MP4 文件名" })),
+  width: Type.Integer({ minimum: 2, maximum: 4096 }),
+  height: Type.Integer({ minimum: 2, maximum: 4096 }),
+  fps: Type.Integer({ minimum: 1, maximum: 60 }),
+  shots: Type.Array(Type.Object({
+    id: Type.String(),
+    duration_sec: Type.Number({ minimum: 0.1, maximum: 3600 }),
+    attachment_id: Type.String({ description: "图片 attachment id" }),
+  }), { minItems: 1, maxItems: 64 }),
+  transitions: Type.Array(Type.Union([
+    Type.Literal("cut"),
+    Type.Literal("dissolve"),
+    Type.Literal("fade"),
+    Type.Literal("wipe"),
+    Type.Literal("match-cut"),
+    Type.Literal("morph"),
+  ]), { minItems: 0, maxItems: 63 }),
+});
+
 function videoWorkflowHandlers(holder: { value: VideoStudioState }): WorkflowHandlers {
   return {
     "video.read": () => ({ output: holder.value }),
@@ -227,6 +249,42 @@ async function runVideoWorkflow(state: VideoStudioState, value: unknown) {
 }
 
 function registerVideoStudioAgentTools(pi: ExtensionAPI, handle: SurfaceHandle<VideoStudioState>): void {
+  pi.registerTool({
+    name: "video_render",
+    label: "渲染视频",
+    description: "将图片 attachment 按镜头与转场渲染为真实 MP4，产物经 attachment putOutput 回流并写入项目导出资产。",
+    parameters: VideoRenderParameters,
+    async execute(_toolCallId, params) {
+      const a = argsObject(params);
+      try {
+        const rawShots = Array.isArray(a.shots) ? a.shots : [];
+        const renderRequest: AttachmentVideoRenderRequest = {
+          ...(textArg(a, "output_name") !== undefined ? { outputName: textArg(a, "output_name") } : {}),
+          width: numberArg(a, "width") ?? 0,
+          height: numberArg(a, "height") ?? 0,
+          fps: numberArg(a, "fps") ?? 0,
+          shots: rawShots.map((item) => {
+            const shot = argsObject(item);
+            return {
+              id: textArg(shot, "id") ?? "",
+              durationSec: numberArg(shot, "duration_sec") ?? 0,
+              source: { kind: "attachment" as const, attachmentId: textArg(shot, "attachment_id") ?? "" },
+            };
+          }),
+          transitions: Array.isArray(a.transitions) ? a.transitions.filter((item): item is AttachmentVideoRenderRequest["transitions"][number] => typeof item === "string") : [],
+        };
+        const rendered = await renderAttachmentImagesToMp4(renderRequest, getAttachmentToolContext());
+        handle.update((state) => setTimelineOutputAsset(state, { attachmentId: rendered.attachmentId, previewUrl: rendered.displayUrl }));
+        return toolResult(`已渲染 MP4 并回流 ${rendered.attachmentId}。`, {
+          attachmentId: rendered.attachmentId,
+          displayUrl: rendered.displayUrl,
+          degradedTransitions: rendered.degradedTransitions,
+        });
+      } catch (error) {
+        return toolResult("视频渲染失败，项目状态未变更。", { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    },
+  });
   pi.registerTool({
     name: "video_analyze",
     label: "写入视频拆解",
