@@ -89,6 +89,11 @@ import {
   type PaneSource,
 } from "@blksails/pi-web-panes-kit";
 import { TurnAbortProvider } from "./turn-abort-context.js";
+import {
+  PromptTemplateCards,
+  SkillPill,
+  type ChatResourceConfig,
+} from "./resource-controls.js";
 
 /** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
 const log = createLogger({ namespace: "ui:panes" });
@@ -176,6 +181,7 @@ export type ToolbarControl =
   | "model"
   | "speech"
   | "webSearch"
+  | "skills"
   | "submit";
 
 type UiFilePart = UIMessage["parts"][number] & {
@@ -303,6 +309,8 @@ export interface PiChatProps {
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
   readonly toolbarOrder?: ReadonlyArray<ToolbarControl>;
+  /** 原生 Skill / Prompt Template 交互；提供后启用工具栏技能 pill 与模板快捷卡片。 */
+  readonly resources?: ChatResourceConfig;
   /** 扩展命令补全可见策略(全局开关 + 白名单);默认隐藏所有扩展命令。 */
   readonly extensionCommands?: ExtensionCommandPolicy;
   /** harness 内置命令(source==="builtin");前置合流到命令面板(builtin-plugin-command)。 */
@@ -399,6 +407,7 @@ const DEFAULT_TOOLBAR_ORDER: ReadonlyArray<ToolbarControl> = [
   "model",
   "speech",
   "webSearch",
+  "skills",
   "submit",
 ];
 
@@ -510,6 +519,7 @@ export function PiChat({
   maxPanelWidthRatio = 0.7,
   theme,
   toolbarOrder,
+  resources,
   extensionCommands,
   builtinCommands,
   builtinResultDataParts,
@@ -1791,6 +1801,10 @@ export function PiChat({
       WebC === null ? null : (
         <WebC enabled={webSearch} onToggle={setWebSearch} />
       ),
+    skills:
+      resources === undefined ? null : (
+        <SkillPill config={resources} value={input} onInsert={setInput} />
+      ),
     submit:
       SubmitC === null ? null : (
         <div className="ml-auto">
@@ -2050,6 +2064,9 @@ export function PiChat({
         previews={mentionPreviews}
         onRemove={onRemoveMention}
       />
+      {resources !== undefined && messages.length === 0 ? (
+        <PromptTemplateCards config={resources} onSelect={setInput} />
+      ) : null}
       {/* promptInput 装饰为绝对覆盖、不移除内核 textarea;inline 配件为绝对定位不挤压输入。 */}
       <div className="relative">
         <ExtSlotRegion

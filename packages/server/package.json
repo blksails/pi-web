@@ -13,7 +13,8 @@
     "./host-assembly": "./src/host-assembly/index.ts",
     "./host-assembly/session-store.js": "./src/host-assembly/session-store.ts",
     "./host-assembly/model-sources.js": "./src/host-assembly/model-sources.ts",
-    "./host-assembly/custom-providers.js": "./src/host-assembly/custom-providers.ts"
+    "./host-assembly/custom-providers.js": "./src/host-assembly/custom-providers.ts",
+    "./builtin-prompt-paths.js": "./src/builtin-prompt-paths.ts"
   },
   "engines": {
     "node": ">=22.19.0"

@@ -83,6 +83,7 @@ import {
 import {
   createPiResourceManager,
   createResourceRoutes,
+  type ResourceAgentTarget,
 } from "@blksails/pi-web-adapters/resources/index.js";
 import {
   resolveLlmGatewaySecret,
@@ -225,6 +226,7 @@ import { makeResumeMetaLoader } from "./resume-meta.js";
 // 会话事件 store 工厂(启动时 prune 元数据索引残留用;与冷恢复 / 列表同源)。
 import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 import { systemResourceArgs } from "./system-resource-args.js";
+import { resolveBuiltinPromptTemplatePaths } from "@blksails/pi-web-server/builtin-prompt-paths.js";
 
 /**
  * Real-mode resolver wrapper.
@@ -256,6 +258,7 @@ function makeRealResolver(
 } {
   const runnerEntry = runnerBootstrapPath();
   const piCliEntry = resolvePiCliEntry();
+  const builtinPromptTemplatePaths = resolveBuiltinPromptTemplatePaths();
   // Pin the pi config dir so the agent process reads ~/.pi/agent/auth.json
   // (credentials from `pi` login) and settings.json (default provider/model,
   // installed packages). assemble-spawn writes this as PI_CODING_AGENT_DIR last,
@@ -307,7 +310,7 @@ function makeRealResolver(
         }
       }
       const extraArgs = await systemResourceArgs(agentDir, resourceCwd);
-      return AgentSourceResolver.resolve(source, {
+      const resolved = await AgentSourceResolver.resolve(source, {
         cwd,
         runnerEntry,
         piCliEntry,
@@ -319,6 +322,24 @@ function makeRealResolver(
         ...(extraArgs.length > 0 ? { extraArgs } : {}),
         ...(sourceResolver !== undefined ? { sourceResolver } : {}),
       });
+      // CLI 型 Agent 不经过 runner 的 SDK 资源映射，显式加载全局内置模板。
+      // 自定义 Agent 已由 runner 注入；E2B 传输不消费宿主 spawn args，故不在此伪注入。
+      if (resolved.mode === "cli" && builtinPromptTemplatePaths.length > 0) {
+        return {
+          ...resolved,
+          spawnSpec: {
+            ...resolved.spawnSpec,
+            args: [
+              ...resolved.spawnSpec.args,
+              ...builtinPromptTemplatePaths.flatMap((templatePath) => [
+                "--prompt-template",
+                templatePath,
+              ]),
+            ],
+          },
+        };
+      }
+      return resolved;
     },
   };
 }
@@ -330,6 +351,77 @@ function makeRealResolver(
  */
 function defaultSourcesRoot(): string {
   return path.join(os.homedir(), ".pi-web", "agents");
+}
+
+/** Agent 资源编辑元数据:发布者/管理者由 agent 清单声明，服务端仅以 userId 判权。 */
+function readAgentResourceAccess(agentRoot: string): {
+  readonly publisherId?: string;
+  readonly managerIds: readonly string[];
+} {
+  const candidates = [path.join(agentRoot, "pi-web.json"), path.join(agentRoot, "package.json")];
+  for (const file of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (typeof parsed !== "object" || parsed === null) continue;
+      const root = parsed as Record<string, unknown>;
+      const nested =
+        typeof root["pi-web"] === "object" && root["pi-web"] !== null
+          ? (root["pi-web"] as Record<string, unknown>)
+          : undefined;
+      const access =
+        typeof root.resourceAccess === "object" && root.resourceAccess !== null
+          ? (root.resourceAccess as Record<string, unknown>)
+          : nested !== undefined &&
+              typeof nested.resourceAccess === "object" &&
+              nested.resourceAccess !== null
+            ? (nested.resourceAccess as Record<string, unknown>)
+            : undefined;
+      if (access === undefined) continue;
+      const publisherId =
+        typeof access.publisherId === "string" && access.publisherId.trim().length > 0
+          ? access.publisherId.trim()
+          : undefined;
+      const managerIds = Array.isArray(access.managerIds)
+        ? access.managerIds.filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0,
+          ).map((id) => id.trim())
+        : [];
+      return { ...(publisherId !== undefined ? { publisherId } : {}), managerIds };
+    } catch {
+      // 清单不存在/损坏时不授予 Agent 编辑权，仍可浏览或复制到个人级。
+    }
+  }
+  return { managerIds: [] };
+}
+
+function resolveLocalAgentTarget(
+  record: {
+    readonly id: string;
+    readonly source: string;
+    readonly name: string;
+    readonly kind: string;
+  },
+): ResourceAgentTarget | undefined {
+  if (record.kind !== "dir") return undefined;
+  const candidate = path.isAbsolute(record.id)
+    ? record.id
+    : path.isAbsolute(record.source)
+      ? record.source
+      : undefined;
+  if (candidate === undefined || !fs.existsSync(candidate)) return undefined;
+  try {
+    if (!fs.statSync(candidate).isDirectory()) return undefined;
+  } catch {
+    return undefined;
+  }
+  const access = readAgentResourceAccess(candidate);
+  return {
+    id: record.id,
+    name: record.name,
+    root: path.resolve(candidate),
+    ...(access.publisherId !== undefined ? { publisherId: access.publisherId } : {}),
+    ...(access.managerIds.length > 0 ? { managerIds: access.managerIds } : {}),
+  };
 }
 
 /**
@@ -1433,6 +1525,56 @@ function buildSingleton(): HandlerSingleton {
     .filter((c): c is Extract<HostContribution, { kind: "command" }> => c.kind === "command")
     .map((c) => c.command);
 
+  const defaultResourceAgent = (): ResourceAgentTarget | undefined =>
+    resolveLocalAgentTarget({
+      id: config.defaultCwd,
+      source: config.defaultCwd,
+      name: path.basename(config.defaultCwd) || "当前 Agent",
+      kind: "dir",
+    });
+  const targetFromSourceRecord = (record: Awaited<ReturnType<typeof agentSourcesProvider.list>>[number]): ResourceAgentTarget | undefined => {
+    const direct = resolveLocalAgentTarget(record);
+    if (direct !== undefined) return direct;
+    const installed = createInstalledRegistryIndex({ roots: sourcesScanRoots }).lookup(record.id);
+    return installed === undefined
+      ? undefined
+      : resolveLocalAgentTarget({
+          id: record.id,
+          source: installed.dir,
+          name: record.name,
+          kind: "dir",
+        });
+  };
+  const resolveResourceAgent = async (id: string): Promise<ResourceAgentTarget | undefined> => {
+    if (id === "." || id === config.defaultCwd || id === "builtin:default-agent") {
+      return defaultResourceAgent();
+    }
+    const records = await agentSourcesProvider.list();
+    const direct = records.find((item) => item.id === id || item.source === id);
+    const normalizedLocalId =
+      id.includes("://") || id.startsWith("builtin:")
+        ? undefined
+        : path.resolve(config.defaultCwd, id);
+    const record = direct ?? (normalizedLocalId === undefined
+      ? undefined
+      : records.find((item) => {
+          if (item.kind !== "dir") return false;
+          const candidates = [item.id, item.source];
+          return candidates.some((candidate) => path.resolve(config.defaultCwd, candidate) === normalizedLocalId);
+        }));
+    return record === undefined ? undefined : targetFromSourceRecord(record);
+  };
+  const listResourceAgents = async (): Promise<readonly ResourceAgentTarget[]> => {
+    const targets = new Map<string, ResourceAgentTarget>();
+    const current = defaultResourceAgent();
+    if (current !== undefined) targets.set(current.id, current);
+    for (const record of await agentSourcesProvider.list()) {
+      const target = targetFromSourceRecord(record);
+      if (target !== undefined) targets.set(target.id, target);
+    }
+    return [...targets.values()];
+  };
+
   const handler = createPiWebHandler({
     manager,
     store,
@@ -1481,9 +1623,30 @@ function buildSingleton(): HandlerSingleton {
       ...composedRoutes,
       ...createResourceRoutes({
         manager: resourceManager,
-        ...(extAllowMutate ? { adminPolicy: () => true } : {}),
+        managerForAgent: (agentRoot) =>
+          createPiResourceManager({
+            cwd: agentRoot,
+            agentDir: config.agentDir,
+            companyRoot: companyResourceRoot,
+          }),
+        resolveAgent: async (id) => resolveResourceAgent(id),
+        listAgents: async () => listResourceAgents(),
       }),
     ],
+    // 资源权限与会话身份共用同一桌面身份端口；未配置云端时保持匿名本地态。
+    authResolver: async () => {
+      const state = await desktopIdentityProvider?.current();
+      if (state?.kind === "authenticated") {
+        return {
+          anonymous: false,
+          userId: state.tenant.userId,
+          tenantId: state.tenant.companyId,
+          companyId: state.tenant.companyId,
+          role: state.tenant.role,
+        };
+      }
+      return { anonymous: true };
+    },
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.
     sse: { basePath: "/api" },

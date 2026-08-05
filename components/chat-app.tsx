@@ -1220,6 +1220,7 @@ function SessionView({
           session={session}
           controls={controls}
           extensionUI={extensionUI}
+          resources={{ agentId: create.source, endpoint: "/api" }}
           gateUntilReady={gateUntilReady()}
           components={PI_CHAT_COMPONENTS}
           extensionCommands={extensionCommandPolicy()}

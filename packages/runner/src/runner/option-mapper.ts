@@ -42,6 +42,7 @@ import {
   mapResourceLoaderOptions,
   type SystemResourceOverrides,
 } from "./resource-options.js";
+import { resolveBuiltinPromptTemplatePaths } from "./builtin-prompt-paths.js";
 import { mapSessionFields, resolveModel, type SessionModel } from "./session-options.js";
 
 // 资源类 / 会话类映射已析出;此处原样再导出,使既有
@@ -94,6 +95,7 @@ export function buildRuntimeFactory(
     const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
       forcedExtensionPaths,
       companyResourcePaths: collectCompanyResourcePaths(process.env),
+      builtinPromptTemplatePaths: resolveBuiltinPromptTemplatePaths(),
       ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
       ...(systemResources.noExtensions !== undefined
         ? { noExtensions: systemResources.noExtensions }
