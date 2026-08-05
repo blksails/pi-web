@@ -1,0 +1,42 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data: http: https:; frame-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:*; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>browser</title><style>
+:root{font:13px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f8fafc;color-scheme:light}
+*{box-sizing:border-box}html,body{height:100%;margin:0}#root{height:100%}
+.pane{height:100%;min-height:0;display:flex;flex-direction:column;overflow:auto}
+.pane-body{flex:1;min-height:0;padding:12px;overflow:auto}
+/* 宿主浮层(比例切换器)固定在面板右下角,会盖住 pane 右下角内容 —— pane 侧留出让位内边距,
+   不改宿主 chrome。 */
+.pane-body{padding-bottom:56px}
+.muted{color:#64748b}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+dl.kv{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:baseline}
+dl.kv dt{color:#64748b;white-space:nowrap}
+dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+.empty{min-height:120px;display:grid;place-items:center;text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff;padding:16px}
+@media(prefers-color-scheme:dark){
+  :root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
+  .muted,dl.kv dt{color:#94a3b8}
+  .empty{background:#111827;border-color:#334155;color:#94a3b8}
+}
+</style></head><body><div id="root"></div><script>"use strict";(()=>{var b=new Set(["http:","https:"]);function p(t){let e=t.trim();if(e.length===0)return;let n=/^[a-z][a-z\d+.-]*:/i.test(e),r=/^(?:\[[^\]]+\]|[^/?#:]+):\d+(?:[/?#]|$)/.test(e);if(n&&!/^https?:\/\//i.test(e)&&!r)return;let l=/^https?:\/\//i.test(e)?e:`https://${e}`;try{let o=new URL(l);return!b.has(o.protocol)||o.username!==""||o.password!==""?void 0:o}catch{return}}function m(t,e){let n=new Set;for(let r of[t,e])if(!(r===void 0||r.length===0))try{let l=new URL(r);b.has(l.protocol)&&n.add(l.origin)}catch{}return n}function h(t,e){return e.has(t.origin)?!0:t.hostname==="localhost"||t.hostname==="127.0.0.1"||t.hostname==="[::1]"||t.hostname==="::1"}function y(){let t=document.getElementById("root");if(t===null)return;t.innerHTML=`
+    <main class="browser-pane pane" data-testid="browser-pane">
+      <form class="browser-toolbar" data-testid="browser-toolbar">
+        <button type="button" data-action="back" aria-label="\u540E\u9000">\u2039</button>
+        <button type="button" data-action="forward" aria-label="\u524D\u8FDB">\u203A</button>
+        <button type="button" data-action="reload" aria-label="\u5237\u65B0">\u21BB</button>
+        <input data-testid="browser-url" aria-label="\u7F51\u5740" autocomplete="url" spellcheck="false"
+          placeholder="\u8F93\u5165\u53D7\u63A7\u7F51\u5740\uFF0C\u4F8B\u5982 http://localhost:3000" />
+        <button type="submit" data-testid="browser-open">\u6253\u5F00</button>
+      </form>
+      <div class="browser-status muted" role="status" data-testid="browser-status">
+        \u4EC5\u9884\u89C8 http/https \u9875\u9762\uFF1B\u9875\u9762\u4E0D\u83B7\u5F97\u5BBF\u4E3B\u6743\u9650\u3002
+      </div>
+      <section class="browser-content">
+        <div class="browser-empty" data-testid="browser-empty">
+          <p>\u8F93\u5165\u7F51\u5740\u5F00\u59CB\u9884\u89C8\u3002</p>
+          <p class="muted">\u4EC5\u5141\u8BB8\u5BBF\u4E3B\u6765\u6E90\u4E0E\u672C\u673A\u5F00\u53D1\u670D\u52A1\uFF1B\u5176\u4ED6\u7F51\u5740\u53EF\u5728\u7CFB\u7EDF\u6D4F\u89C8\u5668\u6253\u5F00\u3002</p>
+          <button type="button" data-action="open-external" hidden>\u5728\u7CFB\u7EDF\u6D4F\u89C8\u5668\u6253\u5F00</button>
+        </div>
+        <iframe title="\u6D4F\u89C8\u5668\u9884\u89C8" data-testid="browser-frame"
+          sandbox="allow-forms allow-popups allow-scripts" referrerpolicy="no-referrer"></iframe>
+      </section>
+    </main>`;let e=t.querySelector("[data-testid=browser-toolbar]"),n=t.querySelector("[data-testid=browser-url]"),r=t.querySelector("[data-testid=browser-frame]"),l=t.querySelector("[data-testid=browser-status]"),o=t.querySelector("[data-testid=browser-empty]"),d=t.querySelector("[data-action=open-external]");if(e===null||n===null||r===null||l===null||o===null||d===null)return;let w=m(document.referrer,window.location.origin),u=[],s=-1,c=a=>{l.textContent=a},f=(a,g=!0)=>{let i=p(a);if(i===void 0){d.hidden=!0,c("\u7F51\u5740\u65E0\u6548\uFF1A\u4EC5\u5141\u8BB8 http:// \u6216 https://\uFF0C\u4E14\u4E0D\u542B\u8D26\u53F7\u5BC6\u7801\u3002");return}if(!h(i,w)){n.value=i.href,o.hidden=!1,d.hidden=!1,d.dataset.url=i.href,c("\u8BE5\u6765\u6E90\u4E0D\u5728\u53D7\u63A7\u767D\u540D\u5355\uFF0C\u4EC5\u53EF\u5728\u7CFB\u7EDF\u6D4F\u89C8\u5668\u6253\u5F00\u3002");return}d.hidden=!0,g&&(u.splice(s+1),u.push(i.href),s=u.length-1),n.value=i.href,r.src=i.href,o.hidden=!0,c(`\u6B63\u5728\u52A0\u8F7D ${i.href}`)};e.addEventListener("submit",a=>{a.preventDefault(),f(n.value)}),t.querySelector("[data-action=back]")?.addEventListener("click",()=>{s<=0||(s-=1,f(u[s],!1))}),t.querySelector("[data-action=forward]")?.addEventListener("click",()=>{s>=u.length-1||(s+=1,f(u[s],!1))}),t.querySelector("[data-action=reload]")?.addEventListener("click",()=>{r.src.length>0&&r.contentWindow?.location.reload()}),d.addEventListener("click",()=>{let a=d.dataset.url;a!==void 0&&window.open(a,"_blank","noopener,noreferrer")}),r.addEventListener("load",()=>{o.hidden&&c(`\u5DF2\u52A0\u8F7D ${n.value}`)})}y();})();
+</script></body></html>

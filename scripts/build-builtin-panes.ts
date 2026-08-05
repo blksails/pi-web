@@ -101,7 +101,9 @@ function htmlDocument(title: string, script: string): string {
     `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width">` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; ` +
-    `img-src blob: data: http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">` +
+      `img-src blob: data: http: https:; ` +
+      `${title === "browser" ? "frame-src 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:*; " : ""}` +
+      `style-src 'unsafe-inline'; script-src 'unsafe-inline'">` +
     `<title>${title}</title><style>${BASE_CSS}</style></head>` +
     `<body><div id="root"></div><script>${safeScript}</script></body></html>`
   );
