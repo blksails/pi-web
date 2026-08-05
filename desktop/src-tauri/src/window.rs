@@ -22,34 +22,29 @@ use url::Url;
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 
-/// 原生 child WebView 载体的开关。**默认关闭**（走 iframe 载体）。
+/// Child WebView 为默认载体；仅显式关闭时回退旧浮层，供故障排查。
 ///
-/// ## 为什么默认关掉（spec desktop-native-webview-chrome-dead）
+/// ## ★ 不要试图用这个开关「修好」pane
 ///
-/// 开启时 pane chrome（tab 栏与新开/刷新/切换器按钮）**既不可见也不可点**，而 tab 栏是
-/// 切换与新开 pane 的唯一入口——用户被锁在首个 pane 里，无法经 UI 恢复。这不是小瑕疵，
-/// 是功能不可用。
+/// 两条载体**当前都有已知缺陷**，翻转默认值只是把一个坏掉的换成另一个坏掉的：
 ///
-/// 排查已把六个候选逐一用机械证据排除：槽位几何正确（`(717,29,479x771)`）、NSView 的
-/// `frame` 与 `layer` 逐字相同、chrome 带内的 `hitTest` 命中的是宿主、宿主 DOM 的
-/// `[data-panes-chrome]` 盒模型 `[1139,0,575,29]` 且 6 个子节点俱全。**DOM、布局、几何、
-/// 图层、命中测试全部正确，唯独该区域不出现在屏幕上**——问题在 WKWebView 的绘制/合成层，
-/// 不在本仓任何 JS/TS/Rust 逻辑内。
+/// - **原生 child WebView（默认）**：pane chrome（tab 栏与按钮）不可见也不可点。
+///   六个候选已用机械证据排除（几何 `(717,29,479x771)` 正确、NSView 的 `frame` 与 `layer`
+///   逐字相同、chrome 带内 `hitTest` 命中宿主、宿主 DOM 盒模型 `[1139,0,575,29]` 且 6 个
+///   子节点俱全），只剩「宿主 WebView 不重绘该区域」——在 WKWebView 合成层，不在本仓逻辑内。
+///   见 spec `desktop-native-webview-chrome-dead`。
+/// - **旧浮层（`=0`）**：pane 内容不是 iframe，而是**独立顶层 WebviewWindow**，位置由
+///   「宿主窗口屏幕坐标 + DOM 槽矩形」算出。真机实测会飘到屏幕角落（用户报「奇怪的悬浮块」），
+///   表现为「tab 点了打不开面板」——其实开了，只是开到别处。
 ///
-/// 既然真因在上游且短期不可控，就不该让用户承受一个功能不可用的默认值。iframe 载体功能
-/// 完整（chrome 正常渲染、可交互），代价是性能与视觉略逊于原生子 WebView。
-///
-/// ## 想开回来
-///
-/// `PI_WEB_NATIVE_CHILD_WEBVIEWS=1`（或 `true`/`yes`/`on`）。留着是为了继续排查上游问题，
-/// 以及在该问题修复后能一键切回——**不要**在默认值上再做判断，直接改这里的语义即可。
+/// 曾经把默认值翻到 `=0` 试图规避前者，**是错的**：那只是换了个坏法。已改回。
 pub fn native_child_webviews_enabled() -> bool {
-    matches!(
+    !matches!(
         std::env::var("PI_WEB_NATIVE_CHILD_WEBVIEWS")
             .ok()
             .as_deref()
             .map(str::trim),
-        Some("1" | "true" | "yes" | "on")
+        Some("0" | "false" | "no" | "off")
     )
 }
 

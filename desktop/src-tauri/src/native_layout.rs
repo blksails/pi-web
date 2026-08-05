@@ -1,9 +1,8 @@
 //! 单窗口多 Webview 原生布局管理。
 //!
 //! 该模块只管理载体：矩形、可见性、保活与销毁；不认识 AIGC/素材等业务词。
-//! ★ **默认关闭**（走 iframe 载体）；`PI_WEB_NATIVE_CHILD_WEBVIEWS=1` 才启用本模块管理的
-//! 原生 child WebView。默认值翻转的理由见 `window.rs::native_child_webviews_enabled` 的注释
-//! ——开启时 pane chrome 不可见也不可点，真因在 WKWebView 合成层，不在本仓逻辑内。
+//! 默认启用；`PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 回退旧顶层 WebviewWindow 载体（两者当前
+//! 都有已知缺陷，见 `window.rs::native_child_webviews_enabled` 的注释）。
 
 use std::collections::HashMap;
 use std::sync::Mutex;
