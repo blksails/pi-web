@@ -20,6 +20,7 @@
 - VideoAnalysis 已覆盖技术、时间线、视觉、叙事、生成五域，并要求 evidence、confidence、unresolved 与人工 correction。
 - `video_workflow` / `video_analyze` / `video_render` / `video_vfx` 已接入 Agent Surface；失败工作流/渲染不提交本地暂态修改，暂停返回 checkpoint，成功渲染/特效回流 MP4 attachment。
 - `video_evaluate` 已接入只读质量报告，区分结构证据、MP4 解码证据与未复核语义 warning。
+- 视频工作室 Pane 已接入直接“运行质量评估”入口；有最终 MP4 时同时执行真实 FFmpeg 解码检查，并保留 Agent 复核入口。
 
 ## 相关模块与 symbol
 
@@ -38,7 +39,7 @@
 - `iteration_gate.py`：退出码 0。
 - `preflight.py --strict`：退出码 0；无 blocker。
 - `pnpm -C examples/agic-video-agent typecheck`：本轮新增代码无错误；全包仍受既有 workspace 缺失 `clsx`、`tailwind-merge`、Radix、`lucide-react` 阻断。
-- `pnpm -C examples/agic-video-agent test`：25/25 通过，含真实八镜头 MP4 解码、图片 attachment 回流、四层 VFX POC 与质量评估。
+- `pnpm -C examples/agic-video-agent test`：25/25 通过，含真实八镜头 MP4 解码、图片 attachment 回流、四层 VFX POC、质量评估与工作流影响失效。
 - `node --import jiti/register media-tools/test/ffmpeg.selfcheck.ts`：通过，本机 ffmpeg → data URI → attachment 回流链路通过。
 - `pnpm -C examples/agic-video-agent build`：受上述既有缺失前端依赖阻断，未生成新构建产物。
 - `pnpm exec vitest run test/webext-registry-agic-video.test.ts`：1/1 通过。
@@ -66,7 +67,7 @@
 | --- | --- | --- | --- |
 | `REQ-20260804-01` | research approved | NotebookLM 调研与 Note | 需求闸、冷闸、Notebook 存在性与来源追踪 |
 | `REQ-20260804-02` | implemented v1 | `examples/agic-video-agent` + 宿主注册 | 历史 v1 证据 |
-| `REQ-20260805-01` | active · foundation iteration complete | `video-studio/model.ts`, `workflow.ts`, `analysis.ts`, `renderer.ts`, `surface.ts` | 19 项 Node 测试、模型/分析/Surface 严格单文件编译、FFmpeg self-check、真实 MP4 解码 |
+| `REQ-20260805-01` | active · foundation iteration complete | `video-studio/model.ts`, `workflow.ts`, `analysis.ts`, `renderer.ts`, `surface.ts`, `guest.tsx` | 25 项 Node 测试、模型/分析/Surface 严格单文件编译、FFmpeg self-check、真实 MP4 解码 |
 
 ## Known failed approaches
 
@@ -80,7 +81,7 @@
 
 ## 本轮 delta
 
-- 变更：统一视频域模型、结构化事务、Workflow Runtime、视频拆解契约、Pi Agent workflow/analyze 工具、FFmpeg Adapter POC、状态与 POC 文档。
+- 变更：统一视频域模型、结构化事务、Workflow Runtime、视频拆解契约、Pi Agent workflow/analyze 工具、FFmpeg Adapter POC、视频工作室质量面板、状态与 POC 文档。
 - 直接影响：仅新增/扩展 `examples/agic-video-agent/video-studio`；既有 `aigc-agent`、公共 UI 与 Pane 宿主行为不变。
 - 验证：需求准入、上下文/迭代闸、19 项 Node 测试、严格单文件编译、ffmpeg self-check、真实 MP4 解码均通过。
 - 质量：CodeGraph ready；全包 typecheck/build 仍受隔离工作树未具备的既有前端依赖阻断。

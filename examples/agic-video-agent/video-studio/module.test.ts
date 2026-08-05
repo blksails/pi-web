@@ -16,5 +16,6 @@ test("video studio pane exposes only declared, bounded controls", () => {
   assert.ok(grants.actions.includes("set-audio-track"));
   assert.ok(grants.actions.includes("apply-transaction"));
   assert.ok(grants.actions.includes("run-workflow"));
+  assert.ok(grants.actions.includes("evaluate"));
   assert.equal(videoStudioStateRoute.name, "video-studio-state");
 });

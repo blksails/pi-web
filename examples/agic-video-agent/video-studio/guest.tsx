@@ -27,6 +27,7 @@ import {
   type VideoShotStatus,
   type VideoStudioState,
 } from "./model.js";
+import type { VideoQualityReport } from "./evaluation.js";
 import { installVideoStudioStyles } from "./styles.js";
 
 function readState(value: unknown): VideoStudioState {
@@ -57,6 +58,16 @@ function numberValue(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function readQualityReport(value: unknown): VideoQualityReport | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const report = (value as { report?: unknown }).report;
+  if (typeof report !== "object" || report === null) return undefined;
+  const candidate = report as Partial<VideoQualityReport>;
+  return typeof candidate.status === "string" && typeof candidate.overallScore === "number"
+    ? report as VideoQualityReport
+    : undefined;
+}
+
 export function VideoStudioApp(): React.JSX.Element {
   const guest = usePaneGuest();
   const [state, setState] = React.useState<VideoStudioState>(() => readState(guest.surface.getState(VIDEO_STUDIO_STATE_KEY)));
@@ -77,6 +88,7 @@ export function VideoStudioApp(): React.JSX.Element {
   const [audioDuration, setAudioDuration] = React.useState("");
   const [audioVolume, setAudioVolume] = React.useState("1");
   const [audioMode, setAudioMode] = React.useState<"replace" | "mix">("replace");
+  const [qualityReport, setQualityReport] = React.useState<VideoQualityReport>();
 
   React.useEffect(() => guest.surface.subscribe(VIDEO_STUDIO_STATE_KEY, (value) => setState(readState(value))), [guest]);
 
@@ -229,6 +241,17 @@ export function VideoStudioApp(): React.JSX.Element {
     await run("trim-audio-track", { trimStartSec: numberValue(audioTrimStart) ?? 0, durationSec: numberValue(audioDuration) ?? 1 });
   };
 
+  const evaluateProject = async (): Promise<void> => {
+    if (project === null) return;
+    const result = await run("evaluate", project.timeline.outputVideo?.attachmentId === undefined
+      ? {}
+      : { artifactAttachmentId: project.timeline.outputVideo.attachmentId });
+    const report = readQualityReport(result);
+    if (report === undefined) return;
+    setQualityReport(report);
+    setMessage(`工程质检完成：${report.status} · ${Math.round(report.overallScore * 100)} 分`);
+  };
+
   const beginEdit = (shot: VideoShot): void => {
     setEditingShotId(shot.id);
     setEditPrompt(shot.prompt);
@@ -287,6 +310,12 @@ export function VideoStudioApp(): React.JSX.Element {
                 <div className="video-label"><span>视频轨道</span><span>{project.targetDurationSec}s · {project.aspectRatio}</span></div>
                 <div className="video-timeline" data-video-timeline>{project.timeline.videoClips.length === 0 ? <span className="video-muted">暂无片段；在镜头视频历史中点击“加入轨道”。</span> : project.timeline.videoClips.map((clip, index) => <div className="video-timeline-item active" key={clip.id}><button type="button" onClick={() => setSelectedShotId(clip.shotId)}><strong>{String(index + 1).padStart(2, "0")}</strong><small>{clip.attachmentId} · {clip.durationSec}s</small></button><button type="button" className="video-icon-button" aria-label="移除轨道片段" title="移除" onClick={() => void run("remove-from-timeline", { clipId: clip.id })}><Trash2 size={13} /></button></div>)}</div>
                 {project.timeline.outputVideo?.attachmentId !== undefined ? <p className="video-muted">最终输出：{project.timeline.outputVideo.attachmentId}</p> : null}
+              </section>
+              <section className="video-card" data-video-quality>
+                <div className="video-label"><span>工程质检</span><span>{project.analysis === undefined ? "尚未拆解" : "已附加拆解"}</span></div>
+                <div className="video-quality-grid"><div><strong>{project.scenes.length}</strong><span>场景</span></div><div><strong>{project.transitions.length}</strong><span>转场</span></div><div><strong>{project.continuity.length}</strong><span>连续性</span></div><div><strong>{project.analysis?.evidence.length ?? 0}</strong><span>证据</span></div></div>
+                <div className="video-actions"><button type="button" className="video-button" onClick={() => void evaluateProject()} disabled={busy !== undefined}><Check size={13} />运行质量评估</button><button type="button" className="video-button" onClick={() => void guest.submitUserMessage(`请调用 video_evaluate 评估当前视频工程${project.timeline.outputVideo?.attachmentId === undefined ? "，先输出结构化工程问题" : `，artifact_attachment_id=${project.timeline.outputVideo.attachmentId}`}；返回技术、时间线、连续性、叙事、生成与 MP4 解码证据。`)} disabled={busy !== undefined}><Sparkles size={13} />让 Agent 复核</button></div>
+                {qualityReport !== undefined ? <div className={`video-quality-status ${qualityReport.status}`}><strong>{qualityReport.status} · {Math.round(qualityReport.overallScore * 100)} 分</strong><span>{qualityReport.checks.filter((check) => check.status === "fail").length} 项失败 · {qualityReport.checks.filter((check) => check.status === "warn").length} 项警告</span><small>{qualityReport.checks.filter((check) => check.status !== "pass").slice(0, 3).map((check) => check.claim).join("；") || "未发现结构化阻断项"}</small></div> : null}
               </section>
               <section className="video-card" data-video-audio-card>
                 <div className="video-label"><span><AudioLines size={14} aria-hidden />音频轨道</span><span>{audioTrack === undefined ? "未设置" : audioTrack.attachmentId}</span></div>

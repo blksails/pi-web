@@ -639,6 +639,23 @@ export function createVideoStudioSurface(
           error: execution.result.error,
         };
       },
+      evaluate: async (args, ctx) => {
+        const project = ctx.get().project;
+        if (project === null) return { ok: false, error: { code: "project_missing", message: "当前没有可评估的视频项目" } };
+        try {
+          const value = argsObject(args);
+          const artifactId = textArg(value, "artifactAttachmentId") ?? textArg(value, "artifact_attachment_id");
+          const report = artifactId === undefined
+            ? evaluateVideoProject(project)
+            : await (async () => {
+              const attachment = await getAttachmentToolContext().resolve(artifactId);
+              return evaluateRenderedVideo(project, artifactId, await attachment.localPath());
+            })();
+          return { ok: true, report };
+        } catch (error) {
+          return { ok: false, error: { code: "evaluation_failed", message: error instanceof Error ? error.message : String(error) } };
+        }
+      },
     },
   });
   registerVideoStudioAgentTools(pi, handle);
