@@ -156,7 +156,7 @@ export function Message({
       </div>
       <div className="flex min-w-0 max-w-[840px] flex-1 flex-col gap-1">
         <div
-          className="border-l-2 border-l-[hsl(var(--primary))] px-3.5 py-1 text-sm leading-relaxed text-[hsl(var(--foreground))]"
+          className="border-l-2 border-l-[hsl(var(--primary))] px-5 py-2 text-sm leading-relaxed text-[hsl(var(--foreground))]"
           data-pi-message-content
         >
           {children}

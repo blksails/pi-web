@@ -22,8 +22,13 @@
 import * as React from "react";
 import { Braces, ChevronDown, ChevronRight, Loader2, Square, Timer } from "lucide-react";
 import type { UIMessage } from "ai";
+import type {
+  ConversationImageAction,
+  ConversationImageAsset,
+} from "@blksails/pi-web-kit";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
+import { ConversationImageGallery } from "../elements/conversation-image-gallery.js";
 import { useI18n } from "../i18n/index.js";
 import { useTurnAbort } from "../chat/turn-abort-context.js";
 import {
@@ -422,6 +427,43 @@ function attIdFromUrl(url: string): string | undefined {
   return /\/attachments\/(att_[^/?#]+)/.exec(url)?.[1];
 }
 
+function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
+  if (typeof value !== "object" || value === null) return [];
+  const assets = (value as { assets?: unknown }).assets;
+  if (!Array.isArray(assets)) return [];
+  return assets.flatMap((item, index) => {
+    if (typeof item !== "object" || item === null) return [];
+    const asset = item as {
+      attachmentId?: unknown;
+      displayUrl?: unknown;
+      mimeType?: unknown;
+      name?: unknown;
+    };
+    if (
+      typeof asset.displayUrl !== "string" ||
+      asset.displayUrl.trim() === "" ||
+      (typeof asset.mimeType === "string" && !asset.mimeType.startsWith("image/"))
+    ) {
+      return [];
+    }
+    const attachmentId =
+      typeof asset.attachmentId === "string" && asset.attachmentId !== ""
+        ? asset.attachmentId
+        : attIdFromUrl(asset.displayUrl);
+    return [{
+      id: attachmentId ?? `${asset.displayUrl}:${index}`,
+      url: asset.displayUrl,
+      mediaType: typeof asset.mimeType === "string" && asset.mimeType !== ""
+        ? asset.mimeType
+        : "image/*",
+      ...(typeof asset.name === "string" && asset.name !== ""
+        ? { filename: asset.name }
+        : {}),
+      ...(attachmentId !== undefined ? { attachmentId } : {}),
+    } satisfies ConversationImageAsset];
+  });
+}
+
 /** 把工具文本分离为「其余文本」与「图片列表」——图片改原生 `<img>` 块渲染,不进 markdown 段落。 */
 function splitToolText(raw: string): {
   text: string;
@@ -437,6 +479,17 @@ function splitToolText(raw: string): {
   return { text, images };
 }
 
+/** 旧工具结果可能把附件 id 写进 headline；只清理可见文案，不动 details/assets。 */
+function sanitizeToolText(raw: string): string {
+  return raw
+    .replace(/\battachment\s*ids?\s*[:：]?\s*/gi, "")
+    .replace(/\batt_[A-Za-z0-9_-]+\b/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 /**
  * 按输出值类型生成默认渲染节点:
  *  - 字符串 → Response 富渲染;
@@ -448,42 +501,54 @@ function splitToolText(raw: string): {
  */
 function DefaultOutputNode({
   output,
+  imageActions,
+  publishPaneEvent,
 }: {
   readonly output: unknown;
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }): React.ReactNode {
   const mask = useMaskPaths();
   const maskDeep = useMaskPathsDeep();
   if (output === undefined) return null;
   if (typeof output === "string") {
-    return <Response>{mask(output)}</Response>;
+    return <Response>{sanitizeToolText(mask(output))}</Response>;
   }
   const raw = textFromToolContent(output);
   if (raw !== undefined) {
     const { text, images } = splitToolText(mask(raw));
-    const details =
+    const outputDetails =
       !Array.isArray(output) &&
       (output as { details?: unknown } | null)?.details !== undefined
-        ? maskDeep((output as { details?: unknown }).details)
+        ? (output as { details?: unknown }).details
+        : undefined;
+    const detailAssets = imageAssetsFromDetails(outputDetails);
+    const visualAssets = detailAssets.length > 0
+      ? detailAssets
+      : images.map((image, index) => {
+          const attachmentId = attIdFromUrl(image.src);
+          return {
+            id: attachmentId ?? `${image.src}:${index}`,
+            url: image.src,
+            filename: image.alt || undefined,
+            mediaType: "image/*",
+            ...(attachmentId !== undefined ? { attachmentId } : {}),
+          } satisfies ConversationImageAsset;
+        });
+    const details =
+      outputDetails !== undefined
+        ? maskDeep(outputDetails)
         : undefined;
     return (
       <div className="space-y-3">
-        {text !== "" ? <Response>{text}</Response> : null}
-        {images.length > 0 ? (
-          <div className="flex flex-wrap gap-2" data-pi-tool-images>
-            {images.map((img, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`${i}-${img.src.slice(0, 32)}`}
-                src={img.src}
-                alt={img.alt}
-                loading="lazy"
-                {...(attIdFromUrl(img.src) !== undefined
-                  ? { "data-att-id": attIdFromUrl(img.src) }
-                  : {})}
-                className="max-h-64 max-w-full rounded-md border border-[hsl(var(--border))] object-contain"
-              />
-            ))}
-          </div>
+        {text !== "" ? <Response>{sanitizeToolText(text)}</Response> : null}
+        {visualAssets.length > 0 ? (
+          <ConversationImageGallery
+            assets={visualAssets}
+            actions={imageActions}
+            publishPaneEvent={publishPaneEvent}
+            className="[&_[data-pi-conversation-image]]:bg-[hsl(var(--surface-subtle))]"
+          />
         ) : null}
         {details !== undefined ? (
           <details className="text-[11px]">
@@ -509,12 +574,16 @@ export interface PiToolPartProps {
   /** 显式展开值;未提供时按状态推导(end/error 展开,start/update 折叠)。 */
   readonly defaultOpen?: boolean;
   readonly className?: string;
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }
 
 export function PiToolPart({
   part,
   defaultOpen,
   className,
+  imageActions,
+  publishPaneEvent,
 }: PiToolPartProps): React.JSX.Element {
   const phase = phaseOf(part);
   const name = toolNameOf(part);
@@ -545,6 +614,8 @@ export function PiToolPart({
             output={
               part.state === "output-available" ? part.output : undefined
             }
+            imageActions={imageActions}
+            publishPaneEvent={publishPaneEvent}
           />
         }
       />

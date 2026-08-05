@@ -172,7 +172,7 @@ describe("AgentSourcePicker — source list", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("列表项渲染 title(优先于 name)、description 与图片/首字母 avatar", async () => {
+  it("列表项渲染 title(优先于 name)与 description,不渲染头像", async () => {
     const rich: ListAgentSourcesResponse = {
       sources: [
         {
@@ -208,12 +208,7 @@ describe("AgentSourcePicker — source list", () => {
     const titles = container.querySelectorAll("[data-agent-source-title]");
     expect(titles[0]!.textContent).toBe("Image Agent");
     expect(titles[1]!.textContent).toBe("Zeta"); // 无 title 回退 name
-    // 图片 avatar 渲染为 <img>。
-    const avatars = container.querySelectorAll("[data-agent-source-avatar]");
-    expect(avatars[0]!.tagName).toBe("IMG");
-    expect(avatars[0]!.getAttribute("src")).toBe("https://example.com/a.png");
-    // 无 avatar → 首字母兜底(Zeta → Z)。
-    expect(avatars[1]!.textContent).toBe("Z");
+    expect(container.querySelectorAll("[data-agent-source-avatar]")).toHaveLength(0);
     // 描述展示。
     expect(screen.getByText("has avatar url")).toBeTruthy();
   });

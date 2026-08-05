@@ -71,8 +71,8 @@ function PanelToggleIcon(): React.JSX.Element {
   );
 }
 
-/** 右侧 Pane 完全收起时的展开图标。 */
-function PanelRightIcon(): React.JSX.Element {
+/** 右侧 Pane 完全收起时的展开箭头；避免与左栏折叠按钮重复使用分栏图标。 */
+function PanelRightArrowIcon(): React.JSX.Element {
   return (
     <svg
       className="h-4 w-4"
@@ -84,8 +84,8 @@ function PanelRightIcon(): React.JSX.Element {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <line x1="15" y1="4" x2="15" y2="20" />
+      <path d="M9 6 15 12 9 18" />
+      <path d="M4 12h11" />
     </svg>
   );
 }
@@ -123,6 +123,26 @@ function RefreshIcon(): React.JSX.Element {
       <path d="M3 4v5h5" />
       <path d="M4 13a8.1 8.1 0 0 0 14.7 4.7L21 15" />
       <path d="M21 20v-5h-5" />
+    </svg>
+  );
+}
+
+function SwitchAgentIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 7h13l-3-3" />
+      <path d="m17 7-3 3" />
+      <path d="M20 17H7l3 3" />
+      <path d="m7 17 3-3" />
     </svg>
   );
 }
@@ -1034,7 +1054,7 @@ function SessionView({
           title="切换 Agent"
           className="inline-flex min-h-[30px] items-center gap-1 rounded-[var(--radius)] px-1.5 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
         >
-          <span className="inline-grid h-5 w-5 place-items-center font-mono text-[11px] text-[hsl(var(--foreground))]">A</span>
+          <SwitchAgentIcon />
           <span>Agent</span>
           <ChevronDownIcon />
         </button>
@@ -1058,26 +1078,20 @@ function SessionView({
           title={t("chatApp.collapseSidebar")}
           className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
         >
-          <PanelToggleIcon />
+          <PanelRightArrowIcon />
         </button>
       </div>
     );
     const currentAgent = (
-      <button
-        type="button"
-        onClick={() => setPickerOpen(true)}
-        title={agentSource}
-        className="group flex min-w-0 items-center gap-2 rounded-[var(--radius)] px-0 py-0 text-left"
+      <div
+        data-current-agent
+        className="flex min-w-0 items-center gap-2 px-0 py-0 text-left"
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] text-xs font-semibold text-[hsl(var(--primary-foreground))]">
-          {agentName.slice(0, 1).toUpperCase()}
-        </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <strong className="truncate text-sm font-semibold tracking-tight">{agentName}</strong>
           <span className="truncate text-[11px] text-[hsl(var(--muted-foreground))]">{agentSource}</span>
         </span>
-        <ChevronDownIcon />
-      </button>
+      </div>
     );
     // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
     // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 launcherRailEnabled() 门控),因主流 e2e
@@ -1149,8 +1163,8 @@ function SessionView({
             aria-label={t("chatApp.expandSidebar")}
             title={t("chatApp.expandSidebar")}
             className="mt-2 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
-          >
-            <PanelToggleIcon />
+        >
+            <PanelRightArrowIcon />
           </button>
           <button
             type="button"
@@ -1161,9 +1175,9 @@ function SessionView({
             }}
             aria-label={agentName}
             title={`${agentName} · ${agentSource}`}
-            className="mt-3 flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] text-xs font-semibold text-[hsl(var(--primary-foreground))]"
+            className="mt-3 flex h-9 w-9 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-transparent text-[hsl(var(--foreground))]"
           >
-            {agentName.slice(0, 1).toUpperCase()}
+            <SwitchAgentIcon />
           </button>
           <LauncherRail
             compact
@@ -1336,7 +1350,7 @@ function SessionView({
             title={t("chatApp.showPaneSidebar")}
             className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
           >
-            <PanelRightIcon />
+            <PanelToggleIcon />
           </button>
         ) : null}
         {/* Tier5 空态声明式配置(config.empty)→ PiChat props,与上方 theme/layout 同构。

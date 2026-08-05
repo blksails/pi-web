@@ -2230,6 +2230,8 @@ export function PiChat({
                       {...(components?.ToolPart !== undefined
                         ? { toolPart: components.ToolPart }
                         : {})}
+                      imageActions={extension?.conversationImageActions}
+                      publishPaneEvent={publishPaneEvent}
                     />
                   );
                 })}

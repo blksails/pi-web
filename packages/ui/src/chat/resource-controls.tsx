@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Sparkles } from "lucide-react";
 import { cn } from "../lib/cn.js";
 
 export interface ChatResourceConfig {
@@ -116,9 +117,9 @@ export function SkillPill({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/70 px-2.5 py-1 text-xs text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]"
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/70 px-3 py-0 text-xs text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]"
       >
-        <span aria-hidden="true">✦</span>技能
+        <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />技能
       </button>
       {open ? (
         <div role="menu" className="absolute bottom-full left-0 z-40 mb-2 min-w-56 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1 text-[hsl(var(--popover-foreground))] shadow-lg">

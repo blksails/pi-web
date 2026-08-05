@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Bot } from "lucide-react";
 import type {
   AgentSourceItem,
   ListAgentSourcesRequest,
@@ -108,45 +109,6 @@ function useAgentSourceList(
   }, [enabled, listAgentSources, refreshSignal]);
 
   return { status, items };
-}
-
-/** avatar 是否为可直接渲染的图片地址(URL / data-URI)。 */
-function isImageAvatar(avatar: string): boolean {
-  return (
-    avatar.startsWith("http://") ||
-    avatar.startsWith("https://") ||
-    avatar.startsWith("data:")
-  );
-}
-
-/** 源头像:图片地址→<img>;短文本/emoji→文字;缺省→标题/名称首字母。 */
-function SourceAvatar({
-  item,
-}: {
-  readonly item: AgentSourceItem;
-}): React.JSX.Element {
-  const label = item.title ?? item.name;
-  const base =
-    "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius)] bg-[hsl(var(--primary))] text-xs font-semibold text-[hsl(var(--primary-foreground))]";
-  if (item.avatar !== undefined && isImageAvatar(item.avatar)) {
-    return (
-      <img
-        src={item.avatar}
-        alt=""
-        data-agent-source-avatar
-        className="h-8 w-8 shrink-0 rounded-[var(--radius)] object-cover"
-      />
-    );
-  }
-  const glyph =
-    item.avatar !== undefined && item.avatar.length > 0
-      ? item.avatar
-      : (label.trim()[0] ?? "?").toUpperCase();
-  return (
-    <span data-agent-source-avatar className={base} aria-hidden>
-      {glyph}
-    </span>
-  );
 }
 
 export function AgentSourcePicker({
@@ -283,8 +245,11 @@ export function AgentSourcePicker({
                             : "bg-transparent hover:border-transparent hover:bg-[hsl(var(--surface-subtle))]"
                         }`}
                       >
-                        <span className="flex items-center gap-2">
-                          <SourceAvatar item={item} />
+                        <span className="flex min-w-0 flex-[0_0_260px] items-center gap-2">
+                          <Bot
+                            className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]"
+                            aria-hidden="true"
+                          />
                           <span className="flex min-w-0 flex-1 flex-col">
                             <span
                               data-agent-source-title
@@ -298,7 +263,7 @@ export function AgentSourcePicker({
                           </span>
                         </span>
                         {item.description !== undefined ? (
-                          <span className="line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+                          <span className="min-w-0 flex-[1.6] line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
                             {item.description}
                           </span>
                         ) : null}

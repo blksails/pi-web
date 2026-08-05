@@ -8,48 +8,9 @@ import type {
   SetFavoritesRequest,
   AgentSourceFavorite,
 } from "@blksails/pi-web-protocol";
-import { Search, SquarePen, X } from "lucide-react";
+import { Bot, Search, SquarePen, X } from "lucide-react";
 import { ExtErrorBoundary } from "../web-ext/ext-error-boundary.js";
 import { useI18n } from "../i18n/index.js";
-
-/** avatar 是否为可直接渲染的图片地址(URL / data-URI)。 */
-function isImageAvatar(avatar: string): boolean {
-  return (
-    avatar.startsWith("http://") ||
-    avatar.startsWith("https://") ||
-    avatar.startsWith("data:")
-  );
-}
-
-/** 收藏源头像:图片地址→<img>;短文本/emoji→文字;缺省→标题/名称首字母。 */
-function FavoriteAvatar({
-  favorite,
-}: {
-  readonly favorite: AgentSourceFavorite;
-}): React.JSX.Element {
-  const label = favorite.title ?? favorite.name;
-  if (favorite.avatar !== undefined && isImageAvatar(favorite.avatar)) {
-    return (
-      <img
-        src={favorite.avatar}
-        alt=""
-        className="h-5 w-5 shrink-0 rounded object-cover"
-      />
-    );
-  }
-  const glyph =
-    favorite.avatar !== undefined && favorite.avatar.length > 0
-      ? favorite.avatar
-      : (label.trim()[0] ?? "?").toUpperCase();
-  return (
-    <span
-      aria-hidden
-      className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[hsl(var(--muted))] text-[11px] font-medium text-[hsl(var(--muted-foreground))]"
-    >
-      {glyph}
-    </span>
-  );
-}
 
 /**
  * LauncherRail — 侧栏顶部固定「启动导航区」(sidebar-launcher-rail)。
@@ -311,7 +272,7 @@ export function LauncherRail({
                   : "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"}
               >
                 <span className={iconClass}>
-                  <FavoriteAvatar favorite={f} />
+                  <Bot className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <span className={compact ? "sr-only" : "truncate"}>{f.title ?? f.name}</span>
               </button>

@@ -3,9 +3,12 @@
 import * as React from "react";
 import {
   Download,
+  ExternalLink,
+  ImagePlus,
   Images,
   Palette,
   Sparkles,
+  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -24,8 +27,11 @@ export interface ConversationImageGalleryProps {
 const ICONS: Readonly<Record<string, LucideIcon>> = {
   download: Download,
   images: Images,
+  "image-plus": ImagePlus,
+  "external-link": ExternalLink,
   palette: Palette,
   sparkles: Sparkles,
+  "wand-sparkles": WandSparkles,
 };
 
 function safeFilename(asset: ConversationImageAsset, index: number): string {
@@ -100,7 +106,9 @@ export function ConversationImageGallery({
   return (
     <div
       className={cn(
-        "grid max-w-full gap-2",
+        "grid max-w-full gap-3",
+        assets.length === 1 && "max-w-[420px]",
+        assets.length > 1 && "sm:max-w-[840px]",
         assets.length > 1 && "sm:grid-cols-2",
         className,
       )}
@@ -155,21 +163,24 @@ export function ConversationImageGallery({
                   </button>
                 );
               })}
-              <button
-                type="button"
-                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
-                aria-label="下载"
-                title="下载"
-                disabled={busy !== undefined}
-                onClick={() =>
-                  run(`${asset.id}:download`, () => downloadConversationImage(asset, index))
-                }
-                data-image-action="download"
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>下载</span>
-              </button>
-              {index === 0 && assets.length > 1 ? (
+              {!applicable.some((action) => action.id === "download") ? (
+                <button
+                  type="button"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                  aria-label="下载"
+                  title="下载"
+                  disabled={busy !== undefined}
+                  onClick={() =>
+                    run(`${asset.id}:download`, () => downloadConversationImage(asset, index))
+                  }
+                  data-image-action="download"
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>下载</span>
+                </button>
+              ) : null}
+              {index === 0 && assets.length > 1 &&
+              !applicable.some((action) => action.id === "download-all") ? (
                 <button
                   type="button"
                   className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"

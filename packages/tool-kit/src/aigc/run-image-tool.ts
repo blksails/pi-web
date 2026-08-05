@@ -294,9 +294,7 @@ function buildImageResult(
 ): ExecuteResult {
   const headline = opts.preview
     ? `图像已生成:${assets.length} 张,正在保存…`
-    : `生成成功:${assets.length} 张图像已保存 (${assets
-        .map((a) => a.attachmentId)
-        .join(", ")})。`;
+    : `生成成功:${assets.length} 张图像已保存。`;
   const summaryLines = [headline, ...assets.map((a) => `![${a.name}](${a.displayUrl})`)];
   return {
     content: [{ type: "text", text: summaryLines.join("\n") }],

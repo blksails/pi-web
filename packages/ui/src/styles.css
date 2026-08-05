@@ -37,6 +37,36 @@
   --pi-json-bool: 0 0% 24%;
 }
 
+/*
+ * UI 尺寸章程：12px 仅用于元信息/次级箭头，14px 用于紧凑工具栏，16px 用于标准
+ * 导航与按钮，20px 以上只用于空态或主视觉。底部输入栏统一 32px 控件高，避免
+ * model/skill/语音/联网/附件各自生长成不同尺寸。
+ */
+[data-pi-prompt-input-toolbar] {
+  align-items: center;
+  gap: 6px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add],
+[data-pi-prompt-input-toolbar] [data-pi-model-trigger],
+[data-pi-prompt-input-toolbar] [data-pi-speech-button],
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle],
+[data-pi-prompt-input-toolbar] [data-pi-skill-pill] > button {
+  min-height: 32px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add],
+[data-pi-prompt-input-toolbar] [data-pi-speech-button],
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle] {
+  width: 32px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add] svg,
+[data-pi-prompt-input-toolbar] [data-pi-model-trigger] svg,
+[data-pi-prompt-input-toolbar] [data-pi-speech-button] svg,
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle] svg,
+[data-pi-prompt-input-toolbar] [data-pi-skill-pill] svg {
+  width: 14px;
+  height: 14px;
+}
+
 .dark {
   --background: 0 0% 4.3%;
   --foreground: 0 0% 96%;
