@@ -16,11 +16,17 @@ import {
   type PaneSource,
 } from "@blksails/pi-web-panes-kit";
 import type { PaneDefinitionInput } from "@blksails/pi-web-panes-kit/contract";
+import { browserPane } from "./browser.js";
 import { sessionInfoPane } from "./session-info.js";
 
-export { SESSION_SIGNAL_NAME, buildSessionSignals } from "./session-signal.js";
+export {
+  IDENTITY_REVISION_SIGNAL_NAME,
+  SESSION_SIGNAL_NAME,
+  buildSessionSignals,
+} from "./session-signal.js";
 export type { SessionSignalFacts, SessionSignalInput } from "./session-signal.js";
 export { SESSION_INFO_PANE_ID } from "./session-info.js";
+export { BROWSER_PANE_ID } from "./browser.js";
 
 /**
  * 内置 pane 的构造器清单。
@@ -30,6 +36,7 @@ export { SESSION_INFO_PANE_ID } from "./session-info.js";
  */
 const BUILTIN_PANE_FACTORIES: ReadonlyArray<() => PaneDefinitionInput | undefined> = [
   sessionInfoPane,
+  browserPane,
 ];
 
 /** 当前可用的内置 pane 定义(已剔除自身前提不满足者)。 */

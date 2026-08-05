@@ -65,6 +65,29 @@ describe("PiChat × WebExtension", () => {
     expect(container.querySelector("[data-pi-ext-header]")).toBeNull();
   });
 
+  it("promptToolbar 保持 agent 可配置,并独立位于公共 composer 上方", () => {
+    const ext: WebExtension = {
+      manifestId: "agent-pills",
+      slots: {
+        promptToolbar: <button data-testid="agent-pill">pill</button>,
+      },
+    };
+    const { container } = render(
+      <PiChat session={mockSession()} controls={mockControls()} extension={ext} />,
+    );
+    const slot = container.querySelector("[data-pi-ext-prompt-toolbar]");
+    const input = container.querySelector("[data-pi-prompt-input]");
+
+    expect(slot).not.toBeNull();
+    expect(slot).toContainElement(screen.getByTestId("agent-pill"));
+    expect(input).not.toBeNull();
+    expect(
+      slot !== null &&
+        input !== null &&
+        Boolean(slot.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+  });
+
   it("右侧面板比例:初始 3:7 + 运行时切换 居中/2:1/3:7", () => {
     // 夹具改用 pane 声明键(任务 5.3);本用例测的是**比例切换器**,只需面板出现。
     const ext: WebExtension = {

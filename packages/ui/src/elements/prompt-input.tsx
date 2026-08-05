@@ -51,6 +51,8 @@ export interface PromptInputProps {
   readonly textareaLabel?: string;
   /** 动作栏插槽(通常承载附件/模型/语音/联网开关/发送按钮)。 */
   readonly toolbar?: React.ReactNode;
+  /** 动作栏布局;PiChat composer 可将动作栏与文本同行。 */
+  readonly toolbarPlacement?: "below" | "inline";
   /** 文本框左侧插槽。 */
   readonly leftSlot?: React.ReactNode;
   /** 文本框右侧插槽。 */
@@ -104,6 +106,7 @@ export function PromptInput({
   maxRows = 10,
   textareaLabel,
   toolbar,
+  toolbarPlacement = "below",
   leftSlot,
   rightSlot,
   children,
@@ -298,9 +301,15 @@ export function PromptInput({
             {rightSlot}
           </div>
         ) : null}
+
+        {toolbar !== undefined && toolbarPlacement === "inline" ? (
+          <div className="contents" data-pi-prompt-input-toolbar>
+            {toolbar}
+          </div>
+        ) : null}
       </div>
 
-      {toolbar !== undefined ? (
+      {toolbar !== undefined && toolbarPlacement !== "inline" ? (
         <div
           className="flex flex-wrap items-center gap-2"
           data-pi-prompt-input-toolbar

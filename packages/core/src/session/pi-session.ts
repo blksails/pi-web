@@ -974,6 +974,13 @@ export class PiSession {
     );
   }
 
+  /** Host-only runner control frame; no SSE/UI event is emitted. */
+  sendRunnerFrame(frame: unknown): void {
+    this.assertActive();
+    this.touch();
+    this.channel.send(JSON.stringify(frame));
+  }
+
   /**
    * 统一命令层(unified-command-result-layer)host 侧回流:服务端**主动合成** ui-rpc 响应帧,
    * 经 `control:"ui-rpc"` 广播(与 handleRawLine 的 agent 回流同形,按 correlationId 客户端配对)。
