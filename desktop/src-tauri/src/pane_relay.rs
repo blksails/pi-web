@@ -585,7 +585,17 @@ pub async fn pane_webview_window_create(
             let scale = parent.scale_factor().map_err(|e| e.to_string())?;
             let logical_w = f64::from(size.width) / scale.max(0.01);
             let logical_h = f64::from(size.height) / scale.max(0.01);
+            // ★ 几何未知时没有可用槽（spec desktop-pane-chrome-occlusion，Req 4.1）。
+            //   改动前这里必得一个矩形，且「未知」那一档正是 y=0 + 铺满全高 —— 首建即盖住
+            //   chrome。现在退回一个**不遮挡**的占位：贴着右下角的最小矩形，仅用于建实例；
+            //   它随即被 register_pane 记为不可见，几何到达后由 apply_layout 落到正确位置。
             let slot = layout.slot_for_window(logical_w, logical_h)?;
+            let placement = slot.unwrap_or(crate::native_layout::PaneBounds {
+                x: (logical_w - 1.0).max(0.0),
+                y: (logical_h - 1.0).max(0.0),
+                width: 1.0,
+                height: 1.0,
+            });
             if let Some(existing) = parent
                 .webviews()
                 .into_iter()
@@ -593,10 +603,11 @@ pub async fn pane_webview_window_create(
             {
                 // 复用实例须重新导航，否则可能停在空白页。
                 existing.navigate(url).map_err(|e| e.to_string())?;
-                layout.register_pane(label, slot, visible, true)?;
+                layout.register_pane(label, placement, visible, true)?;
                 let _ = layout.invalidate_applied_bounds();
                 layout.apply_layout(&app)?;
-                if visible {
+                // 几何未知时不 show：那会把 pane 露在 1×1 占位上，且下一次 apply 才纠正。
+                if visible && slot.is_some() {
                     let _ = existing.show();
                     let _ = existing.set_focus();
                 }
@@ -607,16 +618,16 @@ pub async fn pane_webview_window_create(
             let view = parent
                 .add_child(
                     builder,
-                    tauri::LogicalPosition::new(slot.x, slot.y),
-                    tauri::LogicalSize::new(slot.width.max(1.0), slot.height.max(1.0)),
+                    tauri::LogicalPosition::new(placement.x, placement.y),
+                    tauri::LogicalSize::new(placement.width.max(1.0), placement.height.max(1.0)),
                 )
                 .map_err(|e| e.to_string())?;
             view.set_auto_resize(false).map_err(|e| e.to_string())?;
             // 先 register 再 layout；visible=false 时仍占位尺寸，ready 后 show 顶起。
-            layout.register_pane(label.clone(), slot, visible, true)?;
+            layout.register_pane(label.clone(), placement, visible, true)?;
             let _ = layout.invalidate_applied_bounds();
             layout.apply_layout(&app)?;
-            if visible {
+            if visible && slot.is_some() {
                 view.show().map_err(|e| e.to_string())?;
                 let _ = view.set_focus();
             } else {
@@ -963,6 +974,7 @@ mod tests {
             "pane_layout_set_mode",
             "pane_layout_set_metrics",
             "pane_layout_is_native",
+            "pane_layout_debug_state",
         ] {
             assert!(
                 toml_src.contains(cmd),

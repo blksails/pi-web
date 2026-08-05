@@ -475,6 +475,9 @@ export function PanesHost({
   // SSR/jsdom 无布局观测时采用宽栏基线；浏览器首帧后由 ResizeObserver 收敛到真实余宽。
   const [tabNavWidth, setTabNavWidth] = React.useState(560);
   const [nativeLayoutActive, setNativeLayoutActive] = React.useState(false);
+  // mountNativePane 的回调闭包会捕获渲染期的值；用 ref 取当前值，避免 show 门控读到陈旧的 false。
+  const nativeLayoutActiveRef = React.useRef(false);
+  nativeLayoutActiveRef.current = nativeLayoutActive;
   const nativeAdapter = React.useMemo(
     () => typeof window === "undefined" ? undefined : createGlobalTauriPaneViewAdapter(window),
     [],
@@ -1362,16 +1365,42 @@ export function PanesHost({
             hostEl !== null && !isPanesHostChromeHidden(hostEl);
           const well = contentWellRef.current;
           const placeThenShow = async (): Promise<void> => {
+            // ★ 几何已送达是 show 的**前置条件**（spec desktop-pane-chrome-occlusion，Req 4.2）。
+            //   改动前这里不看量槽结果：量不到也照样 show，pane 遂停在布局侧的默认矩形上
+            //   （y=0、铺满全高），恰好盖住 tab 栏——用户随即失去切换 pane 的唯一入口。
+            //
+            //   几何迟到（首帧尚未布局）不是失败，只是还没轮到：逐帧重试若干次，
+            //   一旦送达就落位并 show（Req 2.3/4.3）。始终没送达则不 show——
+            //   宁可 pane 暂不可见，也不吃掉用户的恢复手段。
+            //   ★ 门控只在 native 布局真正生效时才成立：非 native 时 Rust 并不拥有 child 的
+            //   bounds（走旧的浮层载体），也就不存在「盖住 chrome 的槽」，此时要求几何先到
+            //   毫无意义，只会在 jsdom / 回退形态下白白挡住 show。
+            //   注意载体门（有 __TAURI__ 即用 native 载体）与几何门（pane_layout_is_native）
+            //   是两个门，此处按后者判断——前者为真而后者为假，正是本缺陷的可疑触发条件之一。
+            const needsGeometry = nativeLayoutActiveRef.current;
+            let geometryReady = well === null || !needsGeometry;
             if (well !== null) {
-              // 首 show 前最多 4 帧稳一次；之后拖拽只 RO→publish。
-              await ensureTauriContentWellMetrics(well, {
-                minWidth: 240,
-                force: true,
-                settle: true,
-              });
+              for (let attempt = 0; attempt < 8; attempt += 1) {
+                const outcome = await ensureTauriContentWellMetrics(well, {
+                  minWidth: 240,
+                  force: true,
+                  // 首 show 前最多 4 帧稳一次；之后拖拽只 RO→publish。
+                  settle: attempt === 0,
+                });
+                if (outcome.kind === "delivered" || outcome.kind === "skipped-unchanged") {
+                  geometryReady = true;
+                  break;
+                }
+                // 不需要门控时只量一次就走，别在回退形态下空转 8 帧。
+                if (!needsGeometry) break;
+                await new Promise<void>((resolve) => {
+                  window.requestAnimationFrame(() => resolve());
+                });
+              }
             }
             if (
               hostChromeOk &&
+              geometryReady &&
               workspaceRef.current.activeInstanceId === instance.instanceId &&
               !parkedRef.current.has(instance.instanceId)
             ) {

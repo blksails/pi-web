@@ -323,6 +323,9 @@ importers:
 
   packages/panes-kit:
     dependencies:
+      '@blksails/pi-web-logger':
+        specifier: workspace:*
+        version: link:../logger
       lucide-react:
         specifier: ^0.468.0
         version: 0.468.0(react@19.2.7)
