@@ -11,45 +11,46 @@ import { resolveBuiltinExtensionEntries } from "../../src/runner/builtin-extensi
 import { collectExtensionPaths } from "../../src/runner/option-mapper.js";
 
 describe("e2e:零 env 自解析(Req 1.2)", () => {
-  it("env 完全为空时,三个内置扩展入口仍被解析出来", () => {
+  it("env 完全为空时,四个内置扩展入口仍被解析出来", () => {
     // 变异判据:若自解析未接线、仍只读 env,此处会得到空数组 → 转红。
     const entries = collectExtensionPaths({});
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(4);
   });
 
   it("解析出的入口是**真实存在的文件**(可被 SDK 加载)", () => {
     const entries = resolveBuiltinExtensionEntries();
     // ★ 长度断言不可省:只留下面的 for 循环时,三个都解析不到 → 空数组 → 循环体零次执行
     //   → 用例照常绿。空扫即通过正是本 spec 要根除的失效模式(Req 4.3)。
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(4);
     for (const entry of entries) {
       expect(existsSync(entry), `${entry} should exist`).toBe(true);
     }
   });
 
-  it("三个入口分别指向 extension-tools / auto-title / mcp 扩展文件", () => {
+  it("四个入口分别指向内置扩展文件", () => {
     const entries = resolveBuiltinExtensionEntries();
     expect(entries[0]).toMatch(/extension-tools/);
     expect(entries[1]).toMatch(/auto-title/);
     expect(entries[2]).toMatch(/mcp/);
+    expect(entries[3]).toMatch(/template-tools/);
   });
 });
 
 describe("e2e:与既有 env 机制共存(Req 3.3)", () => {
-  it("外部仍设置旧 env 时不重复注入(去重),数量仍为三", () => {
+  it("外部仍设置旧 env 时不重复注入(去重),数量仍为四", () => {
     const selfResolved = resolveBuiltinExtensionEntries();
     const withEnv = collectExtensionPaths({
       PI_WEB_MCP_ENTRY: selfResolved[2] ?? "",
       PI_WEB_AUTO_TITLE_ENTRY: selfResolved[1] ?? "",
     });
-    expect(withEnv).toHaveLength(3);
-    expect(new Set(withEnv).size).toBe(3);
+    expect(withEnv).toHaveLength(4);
+    expect(new Set(withEnv).size).toBe(4);
   });
 
   it("sandbox 入口仍可经 env 注入(不在自解析范围,范式不同)", () => {
     const out = collectExtensionPaths({ PI_WEB_SANDBOX_ENTRY: "/agent/pi-sandbox/index.ts" });
     expect(out).toContain("/agent/pi-sandbox/index.ts");
-    expect(out).toHaveLength(4); // sandbox + 三个自解析
+    expect(out).toHaveLength(5); // sandbox + 四个自解析
   });
 });
 

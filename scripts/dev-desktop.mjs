@@ -42,6 +42,7 @@ const noProxy = [...new Set([
 ])].join(",");
 const devEnv = {
   ...process.env,
+  NODE_ENV: process.env.NODE_ENV ?? "development",
   NO_PROXY: noProxy,
   no_proxy: noProxy,
   PI_WEB_DEV_CLIENT_HOST: process.env.PI_WEB_DEV_CLIENT_HOST ?? "127.0.0.1",

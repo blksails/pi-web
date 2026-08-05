@@ -104,13 +104,15 @@ export function useIdentity(): UseIdentityResult {
 }
 
 /**
- * 从身份态派生 agent-sources 列表刷新依赖(纯函数,便于单测)。
+ * 从身份态派生身份上下文刷新依赖(纯函数,便于单测)。
  *
- * 登录 / 登出 / 切号均改变返回值 → 驱动 refreshSignal bump。**必须含 userId** ——
- * 只看「是否已登录」的话,A 换成 B 时值不变,列表不会刷新,用户会看到上一个账号的源。
+ * 登录 / 登出 / 切用户 / 切公司均改变返回值 → 驱动列表刷新。
+ * **必须含 userId 与 companyId** —— 同一用户切公司时,runner 另经热刷帧换凭据。
  */
 export function identityListKey(state: IdentityUiState): string {
-  return state.kind === "authenticated" ? `identity:${state.tenant.userId}` : "no-identity";
+  return state.kind === "authenticated"
+    ? `identity:${state.tenant.userId}:${state.tenant.companyId}`
+    : "no-identity";
 }
 
 function parseView(body: IdentityViewBody): IdentityUiState {

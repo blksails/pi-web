@@ -5,12 +5,13 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const devEnv = { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'development' }
 
 const procs = []
 // 非 TTY(后台/CI)下 stdin 会 EOF,vite 见 stdin 关闭即自退,故只在交互终端里透传 stdin
 const stdinMode = process.stdin.isTTY ? 'inherit' : 'ignore'
 function run(cmd, args) {
-  const child = spawn(cmd, args, { cwd: root, stdio: [stdinMode, 'inherit', 'inherit'], shell: false })
+  const child = spawn(cmd, args, { cwd: root, env: devEnv, stdio: [stdinMode, 'inherit', 'inherit'], shell: false })
   child.on('exit', (code) => shutdown(code ?? 0))
   procs.push(child)
   return child

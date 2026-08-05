@@ -3,14 +3,14 @@
  *
  * ## 问题
  *
- * 六个 `*-wiring.ts` 早已长成同一个形状(`WireXInput` + `XWiring{cleanup()}` + `wireX(...)`),
+ * 七个 `*-wiring.ts` 早已长成同一个形状(`WireXInput` + `XWiring{cleanup()}` + `wireX(...)`),
  * 但这个契约没有类型承载,于是 `startRunner` 只能逐个手工接线:一处 import、一段调用、
  * 再往 `disposeAll` 的数组里补一项 —— **加一个桥要改三处**,漏掉第三处的表现是
  * 「帧收得到、退出不回收」,只有 e2e 能抓。
  *
  * ## 解法
  *
- * 把那个已经存在的形状显式命名成 {@link SessionBridge},六个桥各出一个适配器(内部实现
+ * 把那个已经存在的形状显式命名成 {@link SessionBridge},七个桥各出一个适配器(内部实现
  * 零改动),清单集中在 {@link SESSION_BRIDGES}。装配塌缩成一次遍历,`disposeAll` 的入参
  * 由遍历结果直接得到 —— **漏项在机制上不可能发生**。
  *
@@ -35,6 +35,7 @@ import { wireSurfaceBridge } from "./surface-wiring.js";
 import { wireClearQueueBridge } from "./clear-queue-wiring.js";
 import { wireAgentRoutesBridge } from "./agent-routes-wiring.js";
 import { wireAttachmentCatalogBridge } from "./attachment-catalog-wiring.js";
+import { wireCredentialRefreshBridge } from "./credential-refresh-wiring.js";
 import { isAttachmentProfileDisabled } from "./attachment-profile-wiring.js";
 
 /**
@@ -134,6 +135,11 @@ const attachmentCatalogBridge: SessionBridge = {
     }),
 };
 
+const credentialRefreshBridge: SessionBridge = {
+  id: "credential-refresh",
+  wire: (ctx) => wireCredentialRefreshBridge(ctx.channel, { env: ctx.env }),
+};
+
 /**
  * 会话桥单一清单。**顺序即装配序**(见文件头「顺序即装配序」一节)。
  *
@@ -146,6 +152,7 @@ export const SESSION_BRIDGES: readonly SessionBridge[] = [
   clearQueueBridge,
   agentRoutesBridge,
   attachmentCatalogBridge,
+  credentialRefreshBridge,
 ];
 
 /** {@link wireSessionBridges} 的结果。 */

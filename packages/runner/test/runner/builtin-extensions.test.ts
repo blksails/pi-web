@@ -16,11 +16,12 @@ const spec = (id: BuiltinExtensionSpec["id"], resolve: () => string | undefined)
 });
 
 describe("BUILTIN_EXTENSIONS — 单一清单(Req 5.2)", () => {
-  it("含三个 pi-web 自带扩展,顺序稳定(Req 1.5)", () => {
+  it("含四个 pi-web 自带扩展,顺序稳定(Req 1.5)", () => {
     expect(BUILTIN_EXTENSIONS.map((s) => s.id)).toEqual([
       "extension-tools",
       "auto-title",
       "mcp",
+      "template-manager",
     ]);
   });
 
@@ -29,20 +30,20 @@ describe("BUILTIN_EXTENSIONS — 单一清单(Req 5.2)", () => {
     expect(BUILTIN_EXTENSIONS.map((s) => s.id)).not.toContain("sandbox");
   });
 
-  it("真实清单在本仓语境下三项均可解析(Req 2.1)", () => {
-    // 本地 monorepo 中三个 entry-path 都应指向真实存在的文件。
+  it("真实清单在本仓语境下四项均可解析(Req 2.1)", () => {
+    // 本地 monorepo 中四个 entry-path 都应指向真实存在的文件。
     const entries = resolveBuiltinExtensionEntries();
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(4);
     for (const p of entries) expect(p.length).toBeGreaterThan(0);
   });
 
-  it("★ 默认清单在**新包**解析根下装载成功:3 条且每条真实存在(spec: runner-package-extraction,Req 4.1/4.3)", () => {
-    // 判据取「3 条 + 每条 existsSync」——**不取**「没有 warn」:后者与「三个都解析不到
+  it("★ 默认清单在**新包**解析根下装载成功:4 条且每条真实存在(spec: runner-package-extraction,Req 4.1/4.3)", () => {
+    // 判据取「4 条 + 每条 existsSync」——**不取**「没有 warn」:后者与「四个都解析不到
     // 但日志没人读」无法区分(design C4)。三个 entry-path 用自身 import.meta.url 推算,
     // 故本断言实测的是 tool-kit 是否为**本包**(runner)的可解析运行时依赖:
     // 把 packages/runner/package.json 的 @blksails/pi-web-tool-kit 摘掉,此处转红。
     const entries = resolveBuiltinExtensionEntries();
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(4);
     for (const p of entries) {
       expect(existsSync(p), `builtin extension entry should exist on disk: ${p}`).toBe(true);
     }

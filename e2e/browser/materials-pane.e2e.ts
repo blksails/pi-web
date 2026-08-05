@@ -73,9 +73,12 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
   await expect(materials.locator("[data-materials-library]")).toBeVisible();
   await expect(materials.locator("[data-materials-directory]")).toBeVisible();
   await expect(materials.locator("[data-materials-directory-content]")).toBeVisible();
-  const libraryAsset = materials.locator("[data-materials-library] .asset").first();
-  const directoryAsset = materials.locator("[data-materials-directory] .asset").first();
-  await expect(libraryAsset.locator(".asset-name")).toHaveText("AIGC 示例素材");
+  const libraryAssetCard = materials.locator("[data-materials-library] .asset-card").first();
+  const directoryAssetCard = materials.locator("[data-materials-directory] .asset-card").first();
+  const libraryAsset = libraryAssetCard.locator(".asset");
+  const directoryAsset = directoryAssetCard.locator(".asset");
+  await expect(libraryAssetCard.locator(".asset-name")).toHaveText("AIGC 示例素材");
+  await expect(libraryAsset.locator(".asset-name")).toHaveCount(0);
   await libraryAsset.hover();
   await expect(materials.locator(".hover-preview")).toBeVisible();
   await libraryAsset.click({ button: "right" });
@@ -83,7 +86,7 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
   await materials.locator(".asset-backdrop").click();
   await expect(materials.locator("[data-materials-library] .day")).toBeVisible();
   await expect(directoryAsset).toBeVisible();
-  const assetName = directoryAsset.locator(".asset-name");
+  const assetName = directoryAssetCard.locator(".asset-name");
   await expect(assetName).toHaveText("企业示例素材");
   await expect(assetName).toHaveCSS("border-radius", "999px");
   await expect(assetName).toHaveCSS("backdrop-filter", /blur\(9px\)/);
@@ -226,7 +229,7 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
       hasText: "企业示例素材",
     }),
   ).toBeVisible();
-  const importedAssets = materials.locator("[data-materials-library] .asset", {
+  const importedAssets = materials.locator("[data-materials-library] .asset-card", {
     hasText: "企业示例素材",
   });
   const importedCount = await importedAssets.count();

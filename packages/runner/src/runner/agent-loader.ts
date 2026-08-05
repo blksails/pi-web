@@ -179,12 +179,13 @@ export async function loadAgentDefinition(
   ctx: AgentContext,
   trust: ResolveProjectTrust,
   systemResources: SystemResourceOverrides = {},
+  importPath = agentPath,
 ): Promise<NormalizedAgentRuntimeFactory> {
   const jiti = createJiti(import.meta.url, { alias: buildResolutionAliases() });
 
   let mod: unknown;
   try {
-    mod = await jiti.import(agentPath);
+    mod = await jiti.import(importPath);
   } catch (error) {
     throw new InvalidAgentDefinitionError(
       agentPath,

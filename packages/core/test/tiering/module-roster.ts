@@ -99,6 +99,7 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
   "llm-gateway": "adapters", // dev/自部署 LLM 网关
   "sandbox-image": "adapters", // 云沙箱镜像烘焙
   extensions: "adapters", // 包安装(注册表 / 网络)
+  resources: "adapters", // 公司/Agent/个人 pi 资源管理与文件落盘
   tokens: "adapters", // 分面 scoped token 签发(与凭据体系绑定)
   // ↓ core-package-extraction 任务 4.1 从内核摘出:判据是"值依赖 e2b / pg / MCP SDK",
   //   而内核包的依赖声明不得出现这三者(R1.2)。内核走源码直连分发,消费方 tsc 会编译到

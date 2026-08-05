@@ -1,0 +1,70 @@
+{
+  "name": "@blksails/agic-video-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "node --import jiti/register build.ts",
+    "test": "node --import jiti/register --test video-studio/*.test.ts media-tools/test/*.test.ts",
+    "pack:standalone": "pnpm build && npm pack"
+  },
+  "dependencies": {
+    "@blksails/pi-web-agent-kit": "^0.5.0",
+    "@blksails/pi-web-canvas-kit": "^0.2.0",
+    "@blksails/pi-web-canvas-ui": "^0.2.0",
+    "@blksails/pi-web-logger": "^0.2.0",
+    "@blksails/pi-web-panes-kit": "^0.1.0",
+    "@blksails/pi-web-primitives": "^0.2.0",
+    "@blksails/pi-web-tool-kit": "^0.6.0",
+    "@blksails/pi-web-ui": "^0.5.5",
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "ai": "^5.0.0",
+    "lucide-react": "^0.470.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@blksails/pi-web-kit": "^0.5.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.28.1",
+    "jiti": "^2.7.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3"
+  },
+  "files": [
+    ".pi/web",
+    "attachment-catalog.ts",
+    "build.ts",
+    "index.ts",
+    "media-tools/package.json",
+    "media-tools/src",
+    "media-tools/tsconfig.json",
+    "packages/materials-pane/package.json",
+    "packages/materials-pane/src",
+    "packages/search-pane/package.json",
+    "packages/search-pane/src",
+    "panes",
+    "persist-extension.ts",
+    "pi-web.json",
+    "platform-client.ts",
+    "platform-keys.ts",
+    "README.md",
+    "routes",
+    "video-studio",
+    "tsconfig.json"
+  ],
+  "pi-web": {
+    "title": "Agent 视频工作室",
+    "description": "workflow-first 视频创作工作台：创意简报→镜头方案→逐镜头生成/暂停/重试/人工介入→预览导出；复用 AIGC 图像、视频、TTS 与 ffmpeg 媒体工具。",
+    "web": { "dist": ".pi/web/dist" }
+  }
+}

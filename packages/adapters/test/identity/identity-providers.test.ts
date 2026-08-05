@@ -39,6 +39,7 @@ function harness(opts: {
   login?: CloudLoginResult;
   snapshot?: StaticCapabilitySnapshot | (() => StaticCapabilitySnapshot);
   loadThrows?: boolean;
+  onCredentialChanged?: (credential: string | undefined) => void;
 }): Harness {
   const calls = { setCount: 0, clearCacheCount: 0, loadStaticCreds: [] as string[] };
   const authState = new AuthSessionState({ now: () => NOW });
@@ -86,6 +87,7 @@ function harness(opts: {
       loginClient,
       capabilitiesClient,
       authState,
+      onCredentialChanged: opts.onCredentialChanged,
     }),
     authState,
     calls,
@@ -208,6 +210,16 @@ describe("DesktopPasswordIdentityProvider — 登出与切号(Req 7.1/7.2)", () 
       kind: "authenticated",
       tenant: TENANT_B,
     });
+  });
+
+  it("切号/登出通知宿主热刷当前凭据", async () => {
+    const changes: Array<string | undefined> = [];
+    const h = harness({ onCredentialChanged: (credential) => changes.push(credential) });
+    await h.provider.exchange!(PW);
+    await h.provider.revoke!();
+    expect(changes).toHaveLength(2);
+    expect(changes[0]).toBe(credentialFor("u-a"));
+    expect(changes[1]).toBeUndefined();
   });
 });
 
