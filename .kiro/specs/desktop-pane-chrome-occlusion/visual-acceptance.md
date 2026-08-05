@@ -98,3 +98,58 @@ chrome 占了 29px 布局却不渲染任何内容。可查方向按代价排序�
 
 启动时设 `PI_WEB_NATIVE_CHILD_WEBVIEWS=0`，pane 切换即可恢复。代价是回退到旧的
 浮层载体（非原生子 WebView），性能与视觉略差，但功能完整。
+
+---
+
+## 追加：句柄快照读数——四个假设全部被推翻，故障在我们的布局逻辑之下
+
+真机取数（新构建含全量句柄快照，`PI_WEB_PANE_LAYOUT_DEBUG=1`，窗口 1474×908）：
+
+```
+落位 slot=(991.0, 29.0, 479.0x879.0)  top_height=Some(29.0)  mode=Workspace
+句柄 main-host    bounds=(0.0,   0.0, 1474.0, 908.0)
+句柄 pane-warm-6  bounds=(989.0, 29.0,  479.0, 879.0)
+句柄 pane-warm-7  bounds=(989.0, 29.0,  479.0, 879.0)
+句柄 pane-warm-8  bounds=(989.0, 29.0,  479.0, 879.0)
+句柄 pane-warm-9  bounds=(989.0, 29.0,  479.0, 879.0)
+```
+
+出现过的全部 label：`main-host`、`pane-overlay-menu`、`pane-warm-0..9`
+（内容 pane 复用预热壳，故没有独立的 `pane-<id>-N` 标签）。
+
+### 被推翻的四个假设（都有机械证据，别再重查）
+
+| # | 假设 | 判据 | 结论 |
+|---|------|------|------|
+| 1 | 几何算错，槽落在 y=0 | 槽实测 `(991, 29, 479×879)` | **推翻** |
+| 2 | chrome 子树没渲染 | `PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 时完整渲染 | **推翻** |
+| 3 | 某个句柄压在 chrome 带上 | **全部**非宿主句柄 y ≥ 29，无一例外 | **推翻** |
+| 4 | 句柄实际位置与下发值差一个标题栏高度 | 377 个样本 `dy` **恒为 0.0** | **推翻** |
+
+（第 4 项的 `dx` 有 ±6px 波动，那是 resize 过程中「下发」与「读回」之间槽已改变，
+与垂直方向无关。）
+
+### 因此故障在哪一层
+
+我们的布局逻辑**被测量结果洗清**：算得对、下发对、句柄也确实落在对的位置，
+且没有任何东西盖在 chrome 带上。而 chrome 依然不可见、不可点，一关原生子
+WebView 就恢复。剩下的解释空间全在 wry / WKWebView / macOS 合成层：
+
+- 存在 child webview 时宿主 WebView 不重绘右上那 29px（重绘/脏区问题）；
+- child 的 CALayer 超出其 frame（layer ≠ frame），视觉上盖住而 bounds 读数正常；
+- child 的 NSView 进入响应链，吞掉该区域的点击（可解释「点击无反应」）。
+
+三者都能同时解释「看不见」+「点不到」+「关掉即恢复」。
+
+### 下一步该做什么
+
+不再猜。需要 macOS 侧的视图层次证据：把窗口的 NSView 树（frame + layer.frame +
+是否 hidden）dump 一次，或用 Xcode 的 View Debugger 抓一帧。这已经超出本 spec
+（几何）的边界，且需要在 Tauri/wry 层排查，建议另立。
+
+**期间的可用规避不变：`PI_WEB_NATIVE_CHILD_WEBVIEWS=0`。**
+
+### 本轮受阻项
+
+截图能力在取数后失效（`SCContentFilter failure`，此前可用，屏幕未锁），
+故「修复后视觉验收」这一步无法继续。诊断态 `.app` 已存档，能力恢复后可直接重跑。
