@@ -17,6 +17,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { withAgentCompileCache } from "./agent-compile-cache.js";
 import { readDesktopScopedConfig, resolveDesktopConfig } from "./desktop-defaults.js";
 import {
   createPiWebHandler,
@@ -265,7 +266,9 @@ function makeRealResolver(
   // therefore needs the host environment threaded in as baseEnv — without PATH
   // the OS cannot even locate `node`, and the child fails to spawn (exit
   // code:null/signal:null with no stderr) → onClosed → session deleted → 404.
-  const baseEnv = process.env as Record<string, string>;
+  // 首次 custom agent 启动时由 Node 生成 V8 编译缓存；后续 runner 进程直接复用。
+  // 显式 NODE_COMPILE_CACHE / NODE_DISABLE_COMPILE_CACHE 保持最高优先级。
+  const baseEnv = withAgentCompileCache(process.env, os.homedir());
   // 项目信任策略(C-P1/C-P4):复用 pi 的 ProjectTrustStore(同一 agentDir),叠加 trustedRoots。
   // 决定 custom 模式是否向 runner 传放行信号 → SDK 才加载工作目录下的项目级 `.pi/`
   // (扩展/子代理/技能)。仅值导入被 Next serverExternalPackages 外置的 SDK,不打进 bundle。

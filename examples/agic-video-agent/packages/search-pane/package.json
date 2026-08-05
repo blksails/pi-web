@@ -1,0 +1,35 @@
+{
+  "name": "@aigc-agent/search-pane",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./ai": "./src/ai/index.ts",
+    "./guest": "./src/guest.tsx",
+    "./module": "./src/module.ts",
+    "./routes": "./src/routes/index.ts",
+    "./styles": "./src/styles.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@blksails/pi-web-agent-kit": "*",
+    "@blksails/pi-web-panes-kit": "*",
+    "lucide-react": "^0.470.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

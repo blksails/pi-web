@@ -26,6 +26,7 @@ import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-ext
 import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import canvasPluginStickersExt from "../../examples/canvas-plugin-stickers/.pi/web/dist/web-extension.same-origin.mjs";
+import agicVideoExt from "../../examples/agic-video-agent/.pi/web/dist/web-extension.external.mjs";
 import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config";
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.same-origin.mjs";
@@ -89,7 +90,8 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:搜图 / 素材 / 画布三 pane；宿主据 `extension.panes` 统一创建 PanesHost。
+  // agic-video-agent：在 AIGC 模板上增加 workflow-first 视频工作室 Pane。
+  { match: "agic-video-agent", ext: agicVideoExt },
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
   // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
   // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),

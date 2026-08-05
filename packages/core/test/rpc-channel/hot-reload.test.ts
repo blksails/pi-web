@@ -28,9 +28,15 @@ function makeTarget(): HotReloadTarget & { restarts: number } {
 }
 
 describe("hot-reload 门控", () => {
-  it("默认(无 env)关闭", () => {
+  it("开发环境默认开启", () => {
     delete process.env["PI_RUNNER_HOT_RELOAD"];
     process.env["NODE_ENV"] = "development";
+    expect(isHotReloadEnabled()).toBe(true);
+  });
+
+  it("开发环境可显式关闭", () => {
+    process.env["NODE_ENV"] = "development";
+    process.env["PI_RUNNER_HOT_RELOAD"] = "0";
     expect(isHotReloadEnabled()).toBe(false);
   });
 

@@ -124,7 +124,7 @@ export function Message({
         data-pi-message-role={role}
       >
         <div
-          className="max-w-[88%] rounded-[14px] bg-[hsl(var(--primary))] px-3.5 py-2.5 text-sm text-[hsl(var(--primary-foreground))] sm:max-w-[80%] sm:px-4"
+          className="max-w-[88%] rounded-2xl bg-[hsl(var(--muted))] px-3.5 py-2.5 text-sm text-[hsl(var(--foreground))] sm:max-w-[80%] sm:px-4"
           data-pi-message-content
         >
           {children}
@@ -148,7 +148,7 @@ export function Message({
       data-pi-message-role={role}
     >
       <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
         data-pi-message-avatar
         aria-hidden="true"
       >

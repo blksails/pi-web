@@ -1799,7 +1799,6 @@ export function PiChat({
             canSubmit={canSubmit}
             onSubmit={onSubmit}
             onStop={onStop}
-            className="h-8 w-8 rounded-[9px]"
           />
         </div>
       ),
@@ -1810,6 +1809,16 @@ export function PiChat({
     <>
       {order.map((key) => (
         <React.Fragment key={key}>
+          {/* promptToolbar 槽:内核控件之后、发送键之前(source 挂领域快捷设置,宿主不认语义)。 */}
+          {key === "submit" ? (
+            <ExtSlotRegion
+              ext={extension}
+              slot="promptToolbar"
+              as="span"
+              className="flex items-center gap-1"
+              {...(webextState !== undefined ? { state: webextState } : {})}
+            />
+          ) : null}
           {controlNodes[key]}
         </React.Fragment>
       ))}
@@ -1898,11 +1907,10 @@ export function PiChat({
       mode={bashMode}
       disabled={transport === undefined || (readinessGating && !sessionReady)}
       toolbar={toolbar}
-      toolbarPlacement="inline"
-      rows={1}
+      rows={3}
       placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
-      className="rounded-[14px] border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2"
-      textareaClassName="px-2 text-sm"
+      className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+      textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
       onAcceptGhost={() => setInput(input + ghostSuffix)}
@@ -2042,14 +2050,6 @@ export function PiChat({
         previews={mentionPreviews}
         onRemove={onRemoveMention}
       />
-      {/* agent pill 槽:独立于公共 composer,保留 agent 自定义内容与状态桥。 */}
-      <ExtSlotRegion
-        ext={extension}
-        slot="promptToolbar"
-        as="div"
-        className="mb-2 flex flex-wrap items-center gap-2"
-        {...(webextState !== undefined ? { state: webextState } : {})}
-      />
       {/* promptInput 装饰为绝对覆盖、不移除内核 textarea;inline 配件为绝对定位不挤压输入。 */}
       <div className="relative">
         <ExtSlotRegion
@@ -2153,7 +2153,7 @@ export function PiChat({
         })}
       >
         <div
-          className={cn(lay.content, "space-y-[18px] px-4 pt-5 md:px-0")}
+          className={cn(lay.content, "space-y-4 px-3 pt-3 md:px-0")}
           data-pi-chat-messages
           style={{ paddingBottom: dockHeight + 16 }}
         >
@@ -2252,9 +2252,9 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 pb-4 pt-3"
+        className="pointer-events-none absolute inset-x-0 bottom-0 p-4"
       >
-        <div className={cn("pointer-events-auto", lay.content)}>
+        <div className={cn("pointer-events-auto px-3 pb-2 md:px-0", lay.content)}>
           {inputWithWidgets}
           {/* 内核自有会话用量条(非 webext slot):随输入 dock 底部固定,置于输入框下方,
               与输入框同宽同居中(共用 lay.content),不增列高、不溢出;与顶部 webext

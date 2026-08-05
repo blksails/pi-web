@@ -19,10 +19,12 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
+import { prepareAgentEntry } from "./agent-compiler.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
 import {
   emitAttachmentProfile,
@@ -188,10 +190,23 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     logger: createLogger({ namespace: agentNamespace }),
   };
   // 「扩展 → 系统资源」开关透传:custom 模式(shape a/b)据此清空 skills / 关闭系统 extensions。
+  // 仅以 agent 目录为源码根，避免 cwd 指向工作区时扫描整仓；目录内依赖仍由
+  // esbuild bundle，目录外依赖按现有 jiti/module alias 规则解析。
+  const preparedAgent = await prepareAgentEntry(args.agent, dirname(args.agent));
+  if (!preparedAgent.compiled && preparedAgent.reason !== "disabled") {
+    bootLog.warn("agent precompile unavailable; falling back to jiti", {
+      reason: preparedAgent.reason,
+    });
+  } else {
+    bootLog.debug("agent precompile ready", {
+      cacheHit: preparedAgent.cacheHit,
+      compiled: preparedAgent.compiled,
+    });
+  }
   const factory = await loadAgentDefinition(args.agent, ctx, trust, {
     ...(args.noSkills !== undefined ? { noSkills: args.noSkills } : {}),
     ...(args.noExtensions !== undefined ? { noExtensions: args.noExtensions } : {}),
-  });
+  }, preparedAgent.path);
 
   // agent-attachment-profile:装配期白名单校验(Req 2.1/2.2/5.1)。权威在子进程——definition
   // 与拓扑 env 都在这里。未命中(含宿主未声明任何拓扑)抛 InvalidAgentDefinitionError,冒泡到

@@ -30,7 +30,11 @@ import { access, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { bundlePaneEntry, renderPaneDocument } from "@blksails/pi-web-kit/build/pane-document";
+import {
+  bundlePaneEntry,
+  escapeInlineScriptForHtml,
+  renderPaneDocument,
+} from "@blksails/pi-web-kit/build/pane-document";
 import { LOGS_PANE_HTML } from "../packages/ui/src/logs/logs-pane-document.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -57,7 +61,7 @@ async function logsPaneHtml(): Promise<string> {
   if (output === undefined) throw new Error("logs pane Tauri bootstrap 未生成 bundle");
   return LOGS_PANE_HTML.replace(
     "<script>",
-    `<script>${output.text.replace(/<\/script/gi, "<\\/script")}</script><script>`,
+    `<script>${escapeInlineScriptForHtml(output.text)}</script><script>`,
   );
 }
 
