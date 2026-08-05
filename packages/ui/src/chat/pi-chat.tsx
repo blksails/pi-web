@@ -2203,7 +2203,7 @@ export function PiChat({
             const conversationImages = conversationImagesOf(message);
             const firstConversationImagePart = message.parts.findIndex(isImageFilePart);
             const body = (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {message.parts.map((part, i) => {
                   if (message.role === "assistant" && isImageFilePart(part)) {
                     return i === firstConversationImagePart ? (

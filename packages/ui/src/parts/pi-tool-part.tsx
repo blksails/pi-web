@@ -323,7 +323,7 @@ export function ToolContent({
     <div
       id={id}
       className={cn(
-        "px-0 pb-2 pl-6 pt-0.5",
+        "px-0 pb-3 pl-6 pt-1",
         isError && "text-[hsl(var(--destructive))]",
         className,
       )}
@@ -466,7 +466,7 @@ function DefaultOutputNode({
         ? maskDeep((output as { details?: unknown }).details)
         : undefined;
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         {text !== "" ? <Response>{text}</Response> : null}
         {images.length > 0 ? (
           <div className="flex flex-wrap gap-2" data-pi-tool-images>

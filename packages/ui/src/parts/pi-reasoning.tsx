@@ -99,7 +99,7 @@ export function PiReasoning({
       {open ? (
         <div
           id={contentId}
-          className="whitespace-pre-wrap px-6 pb-2 text-sm"
+          className="whitespace-pre-wrap px-6 pb-3 pt-1 text-sm leading-6"
           data-pi-reasoning-content
         >
           {part.text}
