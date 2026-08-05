@@ -46,4 +46,14 @@
 - Boundary:`不改写或删除 examples/aigc-agent；沿用 pi-web 的隔离 Pane 载体与宿主生命周期、TypeScript strict 与既有 Agent/Panes Kit 接口；视频工作室首版不得要求 React Pane 或改动既有 aigc-agent 行为。`
 - Acceptance:`(1) `pnpm -C examples/agic-video-agent typecheck` exit 0；(2) `pnpm -C examples/agic-video-agent build` exit 0 并生成可装载产物；(3) Agent 元数据声明 `agic-video-agent` 与视频工作室 Pane；(4) Pane 首屏可见简报/镜头列表/时间线或预览区域及生成、暂停、重试、人工修改、导出入口；(5) 关键状态迁移与宿主消息契约有自动化测试；(6) 既有 `pnpm typecheck` 与相关 pane/agent 测试不回归。`
 - Traceability:`REQ-20260804-02 → examples/agic-video-agent/index.ts + panes/video-studio* + package metadata → tests/e2e evidence。
+
+### REQ-20260805-01 · LLM 驱动视频拆解、电影级创作与可复用工作流平台
+
+- Approval evidence:`批准`
+- Status:`ACTIVE`
+- Version:`1`
+- Behavior:`平台以 pi Agent 为对话编排层，支持导入视频并进行技术、时间线、视觉、叙事及生成流程拆解；从创意、脚本、素材与分镜生成多镜头视频；以 Scene、Shot、Transition、Continuity 和统一 VideoProject 模型承载可编辑工程；通过结构化 Command/Transaction 修改项目；提供 WorkflowSpec 与可恢复 Workflow Runtime；支持质量评估、增量渲染、MP4 导出、历史提炼工作流、热门视频结构抽象与原创复用。`
+- Boundary:`不预设单一渲染引擎；保留现有 pi-web 隔离 Pane、宿主生命周期、公共 UI 与已验证 aigc-agent 行为；Video Domain、Workflow、Runtime、Renderer、Preview、Export、Evaluation 分层解耦；LLM 只能通过 Schema 校验的 Command、Patch 或 Transaction 改项目；引擎通过 Adapter 接入。`
+- Acceptance:`统一 VideoProject/VideoSpec、Scene/Shot/Transition/Continuity、WorkflowSpec、Command/Transaction 具 Schema 与测试；完成 Level 1/2 图片信息流并导出可播放 MP4；完成不少于 8 镜头、至少 3 种衔接、至少 1 种复杂多层特效的多镜头验收；完成带置信度、依据、人工修正与不可恢复项的视频拆解；完成具 DAG、分支、并行、重试、暂停/恢复、Checkpoint、缓存、影响范围失效与预算限制的 Workflow Runtime；项目修改、渲染、评估、工作流运行均经 pi Agent 结构化工具；单镜头修改只重算受影响范围；工作流须以第二组素材复现并通过质量检查；交付真实 MP4、指定帧/区间预览、可复用演示工程、自动化测试、POC/性能报告、ADR、开发/安全/限制文档。`
+- Traceability:`REQ-20260805-01 → Video Domain/Workflow/Runtime/Renderer/Analysis/Agent tools/UI modules → unit/integration/E2E/real-render evidence → PROJECT-STATE and archive record.`
 ## Revision Ledger

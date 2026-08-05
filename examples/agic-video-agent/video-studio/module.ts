@@ -35,6 +35,8 @@ export const videoStudioPaneModule = {
           "clear-timeline",
           "request-export",
           "sync",
+          "apply-transaction",
+          "run-workflow",
         ],
       },
     ],

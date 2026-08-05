@@ -7,6 +7,7 @@ import {
 } from "@blksails/pi-web-tool-kit/runtime";
 import {
   addVideoToTimeline,
+  applyVideoTransaction,
   buildShotPrompt,
   clearAudioTrack,
   createVideoPlan,
@@ -31,6 +32,7 @@ import {
   type VideoShotStatus,
   type VideoStudioState,
 } from "./model.js";
+import { runWorkflow, type WorkflowHandlers, type WorkflowCheckpoint } from "./workflow.js";
 import { getSessionState } from "@blksails/pi-web-tool-kit";
 
 type ExtensionAPI = Parameters<PaneExtensionFactory>[0];
@@ -156,12 +158,12 @@ const VideoPlanParameters = Type.Object({
   title: Type.String({ description: "项目标题" }),
   brief: Type.String({ description: "用户创意简报" }),
   aspect_ratio: Type.Union([Type.Literal("16:9"), Type.Literal("9:16"), Type.Literal("1:1")]),
-  target_duration_sec: Type.Number({ minimum: 5, maximum: 30 }),
+  target_duration_sec: Type.Number({ minimum: 5, maximum: 3600 }),
   shots: Type.Array(Type.Object({
     title: Type.String({ description: "镜头标题" }),
     prompt: Type.String({ description: "可直接交给视频模型的完整提示词" }),
     duration_sec: Type.Number({ minimum: 1, maximum: 30 }),
-  }), { minItems: 1, maxItems: 6 }),
+  }), { minItems: 1, maxItems: 64 }),
 });
 
 const VideoShotPromptParameters = Type.Object({
@@ -169,7 +171,110 @@ const VideoShotPromptParameters = Type.Object({
   prompt: Type.String({ description: "重新生成的可执行视频提示词" }),
 });
 
+const VideoTransactionParameters = Type.Object({
+  id: Type.String({ description: "事务 ID，需由调用方保持幂等" }),
+  source: Type.Union([Type.Literal("agent"), Type.Literal("user"), Type.Literal("system")]),
+  expectedSchemaVersion: Type.Optional(Type.Integer({ minimum: 1 })),
+  commands: Type.Array(Type.Any(), { minItems: 1, maxItems: 100, description: "经 VideoCommand schema 校验的结构化命令" }),
+});
+
+const VideoWorkflowParameters = Type.Object({
+  workflow: Type.Any({ description: "WorkflowSpec；运行期会再次做 DAG/schema 校验" }),
+  checkpoint: Type.Optional(Type.Any({ description: "上次暂停返回的 WorkflowCheckpoint" })),
+  run_id: Type.Optional(Type.String({ description: "可复用的运行 ID" })),
+  max_parallel: Type.Optional(Type.Integer({ minimum: 1, maximum: 32 })),
+  pause: Type.Optional(Type.Boolean({ description: "在下一个可执行节点前暂停" })),
+  pause_after: Type.Optional(Type.Integer({ minimum: 1, description: "完成指定数量节点后暂停并返回 checkpoint" })),
+});
+
+const VideoAnalysisParameters = Type.Object({
+  analysis: Type.Any({ description: "带 evidence、confidence、unresolved、corrections 的 VideoAnalysisResult" }),
+});
+
+function videoWorkflowHandlers(holder: { value: VideoStudioState }): WorkflowHandlers {
+  return {
+    "video.read": () => ({ output: holder.value }),
+    "video.transaction": ({ runId, node }) => {
+      const input = argsObject(node.input);
+      const commands = Array.isArray(input.commands) ? input.commands : [node.input];
+      const result = applyVideoTransaction(holder.value, {
+        id: `workflow:${runId}:${node.id}`,
+        source: "agent",
+        commands,
+      });
+      if (!result.ok) throw new Error(result.errors.join("；"));
+      holder.value = result.state;
+      return { output: { transactionId: result.transactionId, applied: result.applied } };
+    },
+  };
+}
+
+async function runVideoWorkflow(state: VideoStudioState, value: unknown) {
+  const a = argsObject(value);
+  const holder = { value: normalizeVideoStudioState(state) };
+  let completed = 0;
+  const pauseAfter = numberArg(a, "pause_after");
+  const result = await runWorkflow(a.workflow, videoWorkflowHandlers(holder), {
+    runId: textArg(a, "run_id"),
+    checkpoint: a.checkpoint as WorkflowCheckpoint | undefined,
+    maxParallel: numberArg(a, "max_parallel"),
+    shouldPause: () => a.pause === true || (pauseAfter !== undefined && completed >= pauseAfter),
+    onEvent: (event) => {
+      if (event.type === "node_succeeded" || event.type === "node_skipped") completed += 1;
+    },
+  });
+  return { result, state: result.status === "succeeded" || result.status === "paused" ? holder.value : state };
+}
+
 function registerVideoStudioAgentTools(pi: ExtensionAPI, handle: SurfaceHandle<VideoStudioState>): void {
+  pi.registerTool({
+    name: "video_analyze",
+    label: "写入视频拆解",
+    description: "写入技术、时间线、视觉、叙事与生成流程拆解；结果必须通过 evidence/confidence/schema 校验。",
+    parameters: VideoAnalysisParameters,
+    async execute(_toolCallId, params) {
+      const analysis = argsObject(params).analysis;
+      const result = applyVideoTransaction(currentState(), {
+        id: `analysis:${typeof argsObject(analysis).id === "string" ? argsObject(analysis).id : "invalid"}`,
+        source: "agent",
+        commands: [{ type: "set-analysis", analysis }],
+      });
+      if (result.ok) handle.update(() => result.state);
+      return toolResult(
+        result.ok ? `已写入视频拆解 ${typeof argsObject(analysis).id === "string" ? argsObject(analysis).id : ""}。` : "视频拆解未写入，schema 校验失败。",
+        { ok: result.ok, errors: result.errors, projectId: result.state.project?.id },
+      );
+    },
+  });
+  pi.registerTool({
+    name: "video_workflow",
+    label: "运行视频工作流",
+    description: "运行经 WorkflowSpec 校验的视频工作流；用 video.transaction 节点原子修改项目，失败不提交，暂停返回可恢复 checkpoint。",
+    parameters: VideoWorkflowParameters,
+    async execute(_toolCallId, params) {
+      const execution = await runVideoWorkflow(currentState(), params);
+      const result = execution.result;
+      if (result.status === "succeeded" || result.status === "paused") handle.update(() => execution.state);
+      return toolResult(
+        result.status === "succeeded" ? `视频工作流 ${result.runId} 已完成。` : `视频工作流 ${result.runId} ${result.status === "paused" ? "已暂停，可用 checkpoint 恢复" : "执行失败"}。`,
+        { status: result.status, runId: result.runId, outputs: result.outputs, checkpoint: result.checkpoint, error: result.error },
+      );
+    },
+  });
+  pi.registerTool({
+    name: "video_transaction",
+    label: "应用视频事务",
+    description: "以 schema 校验的原子事务修改视频项目结构；事务中任一命令失败则整体回滚。",
+    parameters: VideoTransactionParameters,
+    async execute(_toolCallId, params) {
+      const result = applyVideoTransaction(currentState(), params);
+      if (result.ok) handle.update(() => result.state);
+      return toolResult(
+        result.ok ? `已应用视频事务 ${result.transactionId}（${result.applied} 个命令）。` : `视频事务 ${result.transactionId} 未应用。`,
+        { transactionId: result.transactionId, applied: result.applied, errors: result.errors },
+      );
+    },
+  });
   pi.registerTool({
     name: "video_plan",
     label: "生成视频镜头方案",
@@ -390,6 +495,23 @@ export function createVideoStudioSurface(
         return { status: "requested" };
       },
       sync: (_args, ctx) => ctx.get(),
+      "apply-transaction": (args, ctx) => {
+        const result = applyVideoTransaction(ctx.get(), args);
+        if (result.ok) ctx.setState(() => result.state);
+        return result.ok
+          ? { ok: true, transactionId: result.transactionId, applied: result.applied }
+          : { ok: false, transactionId: result.transactionId, errors: result.errors };
+      },
+      "run-workflow": async (args, ctx) => {
+        const execution = await runVideoWorkflow(ctx.get(), args);
+        if (execution.result.status === "succeeded" || execution.result.status === "paused") ctx.setState(() => execution.state);
+        return {
+          status: execution.result.status,
+          runId: execution.result.runId,
+          checkpoint: execution.result.checkpoint,
+          error: execution.result.error,
+        };
+      },
     },
   });
   registerVideoStudioAgentTools(pi, handle);

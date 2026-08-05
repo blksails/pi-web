@@ -14,7 +14,12 @@ import {
   selectPromptVersion,
   setVideoShotAsset,
   trimAudioTrack,
+  applyVideoTransaction,
+  MAX_VIDEO_SHOTS,
+  VIDEO_PROJECT_SCHEMA_VERSION,
+  validateVideoProject,
 } from "./model.js";
+import { validateVideoAnalysis } from "./analysis.js";
 
 test("video plan stays within first-version bounds and is editable", () => {
   const state = createVideoPlan(emptyVideoStudioState(), "一只猫在雨夜寻找灯塔", {
@@ -25,7 +30,7 @@ test("video plan stays within first-version bounds and is editable", () => {
   assert.equal(state.project?.title, "雨夜灯塔");
   assert.equal(state.project?.aspectRatio, "9:16");
   assert.equal(state.project?.shots.length, 4);
-  assert.ok((state.project?.shots.length ?? 0) <= 6);
+  assert.ok((state.project?.shots.length ?? 0) <= MAX_VIDEO_SHOTS);
   const first = state.project!.shots[0]!;
   const edited = patchVideoShot(state, first.id, { prompt: "猫在雨幕中抬头，镜头缓慢推进" });
   assert.equal(edited.project?.shots[0]?.prompt, "猫在雨幕中抬头，镜头缓慢推进");
@@ -85,4 +90,102 @@ test("selected video can enter timeline and audio track can be trimmed", () => {
   assert.equal(trimmed.project!.timeline.audioTrack?.trimStartSec, 2);
   assert.equal(trimmed.project!.timeline.audioTrack?.durationSec, 4);
   assert.equal(trimmed.project!.timeline.audioTrack?.mode, "mix");
+});
+
+test("project exposes stable scene, transition, and continuity structure", () => {
+  const first = createVideoPlan(emptyVideoStudioState(), "一只猫在雨夜寻找灯塔", { title: "雨夜灯塔" });
+  const second = createVideoPlan(emptyVideoStudioState(), "一只猫在雨夜寻找灯塔", { title: "雨夜灯塔" });
+  const project = first.project!;
+  assert.equal(project.schemaVersion, VIDEO_PROJECT_SCHEMA_VERSION);
+  assert.equal(project.scenes.length, 1);
+  assert.equal(project.scenes[0]?.shotIds.length, project.shots.length);
+  assert.equal(project.transitions.length, project.shots.length - 1);
+  assert.equal(project.continuity.length, project.shots.length - 1);
+  assert.equal(first.project?.id, second.project?.id);
+  assert.deepEqual(first.project?.shots.map((shot) => shot.id), second.project?.shots.map((shot) => shot.id));
+  assert.deepEqual(first.project?.transitions.map((item) => item.id), second.project?.transitions.map((item) => item.id));
+});
+
+test("video transaction validates structure and rolls back atomically", () => {
+  const planned = createVideoPlan(emptyVideoStudioState(), "海边咖啡店", {});
+  const firstShot = planned.project!.shots[0]!;
+  const secondShot = planned.project!.shots[1]!;
+  const applied = applyVideoTransaction(planned, {
+    id: "tx-structure-1",
+    source: "agent",
+    expectedSchemaVersion: VIDEO_PROJECT_SCHEMA_VERSION,
+    commands: [
+      { type: "set-transition", fromShotId: firstShot.id, toShotId: secondShot.id, transition: "dissolve", durationSec: 0.6 },
+      { type: "set-continuity", fromShotId: firstShot.id, toShotId: secondShot.id, kind: "character", status: "verified", confidence: 0.92 },
+    ],
+  });
+  assert.equal(applied.ok, true);
+  assert.equal(applied.applied, 2);
+  assert.equal(applied.state.project?.transitions[0]?.type, "dissolve");
+  assert.equal(applied.state.project?.continuity.find((item) => item.kind === "character")?.confidence, 0.92);
+
+  const rejected = applyVideoTransaction(applied.state, {
+    id: "tx-structure-2",
+    source: "agent",
+    commands: [{ type: "set-transition", fromShotId: firstShot.id, toShotId: "missing-shot", transition: "fade" }],
+  });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.applied, 0);
+  assert.equal(rejected.state.project?.transitions[0]?.type, "dissolve");
+});
+
+test("project validation rejects legacy-shaped input until normalized", () => {
+  const planned = createVideoPlan(emptyVideoStudioState(), "旧快照", {});
+  const invalid = validateVideoProject({ ...planned.project!, scenes: undefined });
+  assert.equal(invalid.ok, false);
+  assert.ok(invalid.errors.some((error) => error.includes("project.scenes")));
+  const valid = validateVideoProject(planned.project);
+  assert.equal(valid.ok, true);
+  assert.equal(valid.value?.schemaVersion, VIDEO_PROJECT_SCHEMA_VERSION);
+});
+
+test("analysis requires evidence and enters project only through validated transaction", () => {
+  const analysis = {
+    schemaVersion: 1,
+    id: "analysis-1",
+    sourceAttachmentId: "att_source_video",
+    status: "complete" as const,
+    createdAt: "2026-08-05T00:00:00.000Z",
+    technical: {
+      facts: [{ id: "fact-duration", category: "technical", claim: "时长", value: "8 秒", confidence: 0.99, evidenceIds: ["meta-1"] }],
+      durationSec: 8,
+      width: 1920,
+      height: 1080,
+      fps: 24,
+      codec: "h264",
+      hasAudio: true,
+    },
+    timeline: {
+      facts: [],
+      segments: [{ id: "segment-1", startSec: 0, endSec: 8, label: "完整片段", confidence: 0.9, evidenceIds: ["meta-1"] }],
+    },
+    visual: { facts: [], subjects: ["猫"], cameraLanguage: "低机位跟拍", palette: ["蓝"], style: "电影感" },
+    narrative: { facts: [], logline: "猫寻找灯塔", beats: [], characters: ["猫"], locations: ["海边"], tone: "克制" },
+    generation: { facts: [], prompt: "猫在雨夜寻找灯塔", modelHints: ["保持角色连续"], sourceAssets: ["att_source_video"], unavailable: ["无法恢复原始模型 seed"] },
+    evidence: [{ id: "meta-1", source: "metadata" as const, claim: "媒体元数据", confidence: 0.99, locator: "ffprobe" }],
+    corrections: [],
+    unresolved: ["原始生成模型不可恢复"],
+  };
+  assert.equal(validateVideoAnalysis(analysis).ok, true);
+  const planned = createVideoPlan(emptyVideoStudioState(), "猫寻找灯塔", {});
+  const applied = applyVideoTransaction(planned, {
+    id: "tx-analysis-1",
+    source: "agent",
+    commands: [{ type: "set-analysis", analysis }],
+  });
+  assert.equal(applied.ok, true);
+  assert.equal(applied.state.project?.analysis?.sourceAttachmentId, "att_source_video");
+
+  const rejected = applyVideoTransaction(planned, {
+    id: "tx-analysis-2",
+    source: "agent",
+    commands: [{ type: "set-analysis", analysis: { ...analysis, evidence: [] } }],
+  });
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.state.project?.analysis, undefined);
 });
