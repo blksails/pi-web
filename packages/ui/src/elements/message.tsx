@@ -1,11 +1,11 @@
 /**
- * Message — 对话消息(用户气泡 / 助手裸文本 + 头像 + 操作行)+ 分支切换控件
+ * Message — 对话消息(用户气泡 / 助手状态线 + 操作行)+ 分支切换控件
  * (Req 8.1/8.3/8.4、11.4)。
  *
  * 无状态展示元件:不接 pi 数据逻辑,仅负责消息布局、本地分支控件触发与本地操作
  * (复制 / 反馈),由装配层(PiChat)注入 `children`(part 渲染结果)与分支接线。
  * - `role === "user"`:右对齐黑底白字气泡。
- * - 其它(assistant 等):左对齐,头像(默认 Sparkles 方块)+ 浅色内容面,
+ * - 其它(assistant 等):左对齐,无卡片正文 + 状态线,
  *   下方渲染操作行(复制 / 赞 / 踩)。
  * - 可选 `branch`(来自 useBranches.branchOf,`{ entryId, index, total }`):仅当
  *   `branch.total > 1` 时渲染 "‹ N/M ›" 分支控件(Req 8.1);点击调 `onPrev`/`onNext`
@@ -25,11 +25,11 @@ import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
 
 export interface MessageProps {
-  /** 消息角色;"user" 右对齐气泡,其它(assistant 等)左对齐裸文本 + 头像。 */
+  /** 消息角色;"user" 右对齐气泡,其它(assistant 等)左对齐状态线正文。 */
   readonly role: string;
   /** 消息内容(由装配层注入 part 渲染结果)。 */
   readonly children?: React.ReactNode;
-  /** 自定义头像(助手侧);缺省用默认 Sparkles 方块。 */
+  /** 自定义头像(保留兼容);默认头像当前隐藏,由正文状态线表达角色。 */
   readonly avatar?: React.ReactNode;
   /** 用于"复制"按钮的纯文本;提供时复制按钮可用(助手侧)。 */
   readonly copyText?: string;
@@ -140,7 +140,7 @@ export function Message({
     );
   }
 
-  // 助手等:左对齐,浅色内容面 + 左侧状态线 + 操作行 + 分支控件。
+  // 助手等:左对齐,单一状态线 + 裸正文 + 操作行 + 分支控件。
   return (
     <div
       className={cn("flex items-start gap-3", className)}
@@ -156,7 +156,7 @@ export function Message({
       </div>
       <div className="flex min-w-0 max-w-[840px] flex-1 flex-col gap-1">
         <div
-          className="rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface))] px-3.5 py-3 text-sm leading-relaxed text-[hsl(var(--foreground))]"
+          className="border-l-2 border-l-[hsl(var(--primary))] px-3.5 py-1 text-sm leading-relaxed text-[hsl(var(--foreground))]"
           data-pi-message-content
         >
           {children}

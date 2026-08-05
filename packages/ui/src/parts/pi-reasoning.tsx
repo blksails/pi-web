@@ -72,10 +72,7 @@ export function PiReasoning({
 
   return (
     <div
-      className={cn(
-        "rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--muted-foreground))]",
-        className,
-      )}
+      className={cn("text-[hsl(var(--muted-foreground))]", className)}
       data-pi-reasoning
     >
       <button
@@ -83,7 +80,7 @@ export function PiReasoning({
         aria-expanded={open}
         aria-controls={contentId}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        className="flex w-full items-center gap-2 px-0 py-1 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
       >
         {open ? (
           <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -102,7 +99,7 @@ export function PiReasoning({
       {open ? (
         <div
           id={contentId}
-          className="whitespace-pre-wrap px-3 pb-3 text-sm"
+          className="whitespace-pre-wrap px-6 pb-2 text-sm"
           data-pi-reasoning-content
         >
           {part.text}

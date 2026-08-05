@@ -19,6 +19,7 @@
  * 两个 slot 是不同子树,经 module-level `canvasOpenStore` 联动(同一 app bundle 内共享)。
  */
 import * as React from "react";
+import { Images } from "lucide-react";
 import type { WebExtSurfaceAccess, ConversationAccess, WebExtension } from "@blksails/pi-web-kit";
 import type { GalleryAsset, GalleryState } from "@blksails/pi-web-tool-kit/aigc-canvas-schema";
 import { openOrActivatePaneFromHost } from "@blksails/pi-web-panes-kit";
@@ -77,7 +78,7 @@ export function CanvasLauncher({
       }}
       className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-[hsl(var(--accent))]"
     >
-      <span aria-hidden>🖼️</span>
+      <Images className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" aria-hidden="true" />
       <span>Canvas 画廊</span>
     </button>
   );

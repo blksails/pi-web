@@ -20,9 +20,8 @@
  * 字符串型 output 经 Response 富渲染。
  */
 import * as React from "react";
-import { ChevronDown, ChevronRight, Loader2, Square, Timer, Wrench } from "lucide-react";
+import { Braces, ChevronDown, ChevronRight, Loader2, Square, Timer } from "lucide-react";
 import type { UIMessage } from "ai";
-import { Card } from "../ui/card.js";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
@@ -242,7 +241,7 @@ export function ToolHeader({
       onClick={onToggle}
       onKeyDown={onKeyDown}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        "flex w-full cursor-pointer items-center gap-2 px-0 py-1.5 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
     >
@@ -251,7 +250,7 @@ export function ToolHeader({
       ) : (
         <ChevronRight className="h-4 w-4" aria-hidden="true" />
       )}
-      <Wrench className="h-4 w-4 opacity-70" aria-hidden="true" />
+      <Braces className="h-4 w-4 opacity-70" aria-hidden="true" />
       <span className="font-medium" data-pi-tool-name-label>
         {name}
       </span>
@@ -268,10 +267,10 @@ export function ToolHeader({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-[var(--radius)] border px-2 py-0.5 text-xs",
+            "inline-flex items-center gap-1 text-xs",
             isError
-              ? "border-[hsl(var(--destructive))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground))]"
-              : "border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--muted-foreground))]",
+              ? "text-[hsl(var(--destructive))]"
+              : "text-[hsl(var(--muted-foreground))]",
           )}
           data-pi-tool-status
         >
@@ -324,7 +323,7 @@ export function ToolContent({
     <div
       id={id}
       className={cn(
-        "border-t border-[hsl(var(--border))] px-3 py-2",
+        "px-0 pb-2 pl-6 pt-0.5",
         isError && "text-[hsl(var(--destructive))]",
         className,
       )}
@@ -335,7 +334,7 @@ export function ToolContent({
   );
 }
 
-/** 同步 JSON 代码块:轻量 token 高亮 + 代码块外观(muted 背景/圆角),保留缩进与完整文本。 */
+/** 同步 JSON 代码块:仅结构化详情保留轻量背景,避免普通工具输出再套卡片。 */
 function JsonBlock({
   value,
   className,
@@ -563,10 +562,10 @@ export function PiToolPart({
   }
 
   return (
-    <Card
+    <div
       className={cn(
-        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] shadow-none",
-        isError && "border-[hsl(var(--destructive))]",
+        "overflow-hidden",
+        isError && "text-[hsl(var(--destructive))]",
         className,
       )}
       data-pi-tool
@@ -585,6 +584,6 @@ export function PiToolPart({
       <ToolContent id={contentId} open={open} isError={isError}>
         {detail}
       </ToolContent>
-    </Card>
+    </div>
   );
 }

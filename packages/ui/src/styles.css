@@ -85,6 +85,16 @@
   color: hsl(var(--muted-foreground));
 }
 
+/* 用户气泡内的 Response 自带 foreground 类,必须继承气泡反色,避免黑底黑字。 */
+[data-pi-message-role="user"] [data-pi-message-content] [data-pi-response],
+[data-pi-message-role="user"] [data-pi-message-content] [data-pi-response] * {
+  color: hsl(var(--primary-foreground));
+}
+[data-pi-message-role="user"] [data-pi-message-content] a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* 细滚动条:替换原生粗滚动条,配色走主题 token,亮/暗自适应(prompt-input textarea 等)。 */
 .pi-scrollbar-thin {
   scrollbar-width: thin;

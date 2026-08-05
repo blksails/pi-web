@@ -90,6 +90,61 @@ function PanelRightIcon(): React.JSX.Element {
   );
 }
 
+function ChevronDownIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-3.5 w-3.5"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function RefreshIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 11a8.1 8.1 0 0 0-14.7-4.7L3 9" />
+      <path d="M3 4v5h5" />
+      <path d="M4 13a8.1 8.1 0 0 0 14.7 4.7L21 15" />
+      <path d="M21 20v-5h-5" />
+    </svg>
+  );
+}
+
+function SettingsIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+      <path d="m19.4 15 .1.1a2 2 0 0 1-2.8 2.8l-.1-.1a2 2 0 0 0-3.4 1.4v.2a2 2 0 0 1-4 0v-.2a2 2 0 0 0-3.4-1.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A2 2 0 0 0 3.7 12a2 2 0 0 0-.7-1.5l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A2 2 0 0 0 9.2 6.3h.2a2 2 0 0 0 1.5-.7v-.2a2 2 0 1 1 4 0v.2a2 2 0 0 0 1.5.7h.2a2 2 0 0 0 1.4-.6l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A2 2 0 0 0 20.3 12a2 2 0 0 0 .7 1.5l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a2 2 0 0 0-3.4-1.3Z" />
+    </svg>
+  );
+}
+
 type LogsPanelConfig = {
   /** 服务端权威门控是否开启;undefined = 配置尚未取到(加载中)。 */
   readonly loggingEnabled?: boolean;
@@ -981,7 +1036,7 @@ function SessionView({
         >
           <span className="inline-grid h-5 w-5 place-items-center font-mono text-[11px] text-[hsl(var(--foreground))]">A</span>
           <span>Agent</span>
-          <span aria-hidden="true" className="text-[hsl(var(--muted-foreground))]">⌄</span>
+          <ChevronDownIcon />
         </button>
         {buildTimeExtension === undefined && create.source.length > 0 ? (
           <button
@@ -992,7 +1047,7 @@ function SessionView({
             title="刷新扩展"
             className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
           >
-            ↻
+            <RefreshIcon />
           </button>
         ) : null}
         <button
@@ -1021,7 +1076,7 @@ function SessionView({
           <strong className="truncate text-sm font-semibold tracking-tight">{agentName}</strong>
           <span className="truncate text-[11px] text-[hsl(var(--muted-foreground))]">{agentSource}</span>
         </span>
-        <span className="text-xs text-[hsl(var(--muted-foreground))]" aria-hidden="true">⌄</span>
+        <ChevronDownIcon />
       </button>
     );
     // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
@@ -1134,7 +1189,7 @@ function SessionView({
               title={t("chatApp.settings")}
               className="flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
             >
-              S
+              <SettingsIcon />
             </a>
             <span onClick={toggleSidebar}>
               <LocaleToggleButton />
