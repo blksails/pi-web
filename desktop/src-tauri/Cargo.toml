@@ -42,7 +42,15 @@ tauri-build = { version = "2", features = [] }
 # 门控，不开就编译不过 —— 而 CI 跑 Linux（`not(target_os = "macos")` 分支恒成立）看不见。
 # 代价:用了私有 API 的应用会被 App Store 拒绝。本产品自分发 dmg（未签名，需 Gatekeeper
 # 绕过），不走 App Store，故可接受。若将来要上架，须改为按平台条件编译并接受 macOS 无透明底。
-tauri = { version = "2.11.1", features = ["unstable", "macos-private-api"] }
+# devtools：release 下默认关闭，此处显式开启（spec desktop-native-webview-chrome-dead，Req 1）。
+#
+# ★ 为什么 release 也要开：本缺陷只在**打包产物**里复现，而排查已经推进到「需要读宿主
+#   WebView 自身的 DOM 盒模型」这一步 —— 浏览器（iframe 载体）里量到的一切正常，缺的正是
+#   同一份 DOM 在 native 载体下的读数，而那只能在打包的桌面 WebView 里取。
+#
+# 代价：产物体积略增，且用户可右键 Inspect。仅在 PI_WEB_PANE_LAYOUT_DEBUG=1 时自动弹出，
+# 平时不打扰；若将来要对外分发，把这一项摘掉即可（它不影响任何产品逻辑）。
+tauri = { version = "2.11.1", features = ["unstable", "macos-private-api", "devtools"] }
 # 原生「选择文件夹」对话框（仅 Rust 侧调用，渲染层不授予 dialog:allow-open）。
 tauri-plugin-dialog = "2"
 # 外链交系统默认浏览器。
