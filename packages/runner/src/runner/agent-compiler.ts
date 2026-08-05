@@ -55,10 +55,14 @@ function sourceHash(root: string, entryPath: string, excludedRoot?: string): str
     hash.update(readFileSync(file));
     hash.update("\0");
   }
+  // ★ entry 身份必须**无条件**进 key。runner 以 dirname(entry) 为源码根,同一目录里
+  //   放多个单文件 agent 时目录内容哈希完全相同——若 entry 只在「目录外」时才参与,
+  //   这些 agent 会共享同一个 bundle,谁先编译谁赢(附带旁路装配期校验)。
+  hash.update(path.resolve(entryPath));
+  hash.update("\0");
   if (!files.includes(entryPath)) {
-    hash.update(path.resolve(entryPath));
-    hash.update("\0");
     hash.update(readFileSync(entryPath));
+    hash.update("\0");
   }
   return hash.digest("hex").slice(0, 24);
 }
