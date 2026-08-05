@@ -28,13 +28,27 @@ describe("template manager", () => {
   });
 
   it("company scope can derive from the injected prompt root", () => {
-    const previous = process.env.PI_WEB_COMPANY_PROMPTS_DIR;
-    process.env.PI_WEB_COMPANY_PROMPTS_DIR = "C:\\company\\prompts";
+    // ★ 不能把 Windows 路径写死在断言里：`templateRoot` 内部对该 env 做的是
+    //   「dirname 剥掉最后一段 → 再 resolve 拼回 prompts」这一往返，而 POSIX 的
+    //   `dirname` 不认反斜杠 —— "C:\\company\\prompts" 会被当成单个片段，
+    //   dirname 得 "."，resolve(".", "prompts") 就变成 <cwd>/prompts。
+    //   于是该用例只在 Windows 上过，macOS/Linux（含 CI 的 ubuntu）必挂。
+    //   改用平台原生分隔符构造，三个平台语义一致。
+    const previousPrompts = process.env.PI_WEB_COMPANY_PROMPTS_DIR;
+    // RESOURCES_DIR 优先级更高，若外部环境设了它本用例就测不到 PROMPTS_DIR 这条路径。
+    const previousResources = process.env.PI_WEB_COMPANY_RESOURCES_DIR;
+    const promptsDir = join(tmpdir(), "pi-template-company", "prompts");
+    process.env.PI_WEB_COMPANY_PROMPTS_DIR = promptsDir;
+    delete process.env.PI_WEB_COMPANY_RESOURCES_DIR;
     try {
-      expect(templateRoot("company", "C:\\cwd", "C:\\agent")).toBe("C:\\company\\prompts");
+      expect(templateRoot("company", join(tmpdir(), "cwd"), join(tmpdir(), "agent")))
+        .toBe(promptsDir);
     } finally {
-      if (previous === undefined) delete process.env.PI_WEB_COMPANY_PROMPTS_DIR;
-      else process.env.PI_WEB_COMPANY_PROMPTS_DIR = previous;
+      if (previousPrompts === undefined) delete process.env.PI_WEB_COMPANY_PROMPTS_DIR;
+      else process.env.PI_WEB_COMPANY_PROMPTS_DIR = previousPrompts;
+      if (previousResources !== undefined) {
+        process.env.PI_WEB_COMPANY_RESOURCES_DIR = previousResources;
+      }
     }
   });
 
