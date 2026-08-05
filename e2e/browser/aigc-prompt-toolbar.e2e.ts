@@ -6,8 +6,8 @@ import { test, expect } from "@playwright/test";
  * 对真实 pi-web server + 离线 stub agent(PI_WEB_STUB_AGENT=1)运行(隔离产物目录 PI_WEB_DIST_DIR
  * build + PI_WEB_E2E_EXTERNAL_SERVER=1 手动 fs:3100)。
  *
- *  ① 渲染位置:选 aigc-canvas-agent(source 声明 promptToolbar 槽)→ 快捷设置出现在输入区
- *     工具排容器内,且 DOM 顺序位于发送键之前(内核控件后、发送前;Req 1.1/2.1)。
+ *  ① 渲染位置:选 aigc-canvas-agent(source 声明 promptToolbar 槽)→ 快捷设置出现在公共
+ *     composer 上方的独立 pill 排;公共工具排仍保留发送键(Req 1.1/2.1)。
  *  ② 选择与保留:选模型 → 触发器回显;刷新页面 → 回显仍在(localStorage seed + 会话 KV;
  *     Req 2.3/6.1)。stub 未跑 aigcExtension 清单下发 → 选项来自组件 fallback 常量。
  *  ③ 追问写回回显:`set-aigc-pref <model>` 哨兵使 stub 派发 aigc.model 偏好帧(模拟图像工具
@@ -16,8 +16,8 @@ import { test, expect } from "@playwright/test";
  *  ④ 退化/独立性:hello-agent 未声明 promptToolbar → 零渲染快捷设置,输入区照常可用(Req 7.1)。
  *
  * 注:`aigc-canvas-agent` 已迁隔离 Pane 形态(isolated-panes Wave 5),画廊进了 iframe ——
- * 但 `promptToolbar` **刻意保留为槽**:快捷设置挂在输入区(宿主 realm),经 state 桥 KV 与
- * agent 进程里的图像工具通信,与 pane 化无关;它的位置(发送键旁)本身就是它的语义。
+ * 但 `promptToolbar` **刻意保留为槽**:快捷设置挂在输入区上方(宿主 realm),经 state 桥 KV
+ * 与 agent 进程里的图像工具通信,与 pane 化无关。
  * 故本文件的定位全在宿主 realm,迁移后一行未改 —— 这也正是「该 pane 化的才 pane 化」的验证。
  */
 
@@ -36,7 +36,7 @@ async function selectSource(
   await expect(page.locator("[data-pi-input-textarea]")).toBeVisible();
 }
 
-test("toolbar: 快捷设置渲染在工具排内、发送键之前(内核控件后)", async ({ page }) => {
+test("toolbar: 快捷设置渲染在公共 composer 上方、发送键仍可用", async ({ page }) => {
   await selectSource(page, CANVAS_SOURCE);
 
   const qs = page.locator("[data-aigc-quick-settings]");
@@ -44,18 +44,20 @@ test("toolbar: 快捷设置渲染在工具排内、发送键之前(内核控件�
   await expect(page.locator("[data-aigc-model-select]")).toBeVisible();
   await expect(page.locator("[data-aigc-size-select]")).toBeVisible();
 
-  // 位置断言:与发送键同处一个工具排容器,且 DOM 顺序在其之前。
-  const inToolbarBeforeSubmit = await page.evaluate(() => {
+  // 位置断言:agent pill 仍由 promptToolbar 槽提供,公共工具排独立保留发送键。
+  const placement = await page.evaluate(() => {
     const qsEl = document.querySelector("[data-aigc-quick-settings]");
     const submit = document.querySelector("[data-pi-submit-state]");
+    const slot = document.querySelector("[data-pi-ext-prompt-toolbar]");
     const toolbar = document.querySelector("[data-pi-prompt-input-toolbar]");
-    if (!qsEl || !submit || !toolbar) return "missing";
-    if (!toolbar.contains(qsEl) || !toolbar.contains(submit)) return "not-in-toolbar";
-    const pos = qsEl.compareDocumentPosition(submit);
-    // DOCUMENT_POSITION_FOLLOWING(4):submit 在 qs 之后 → qs 位于发送键之前。
+    const input = document.querySelector("[data-pi-prompt-input]");
+    if (!qsEl || !submit || !slot || !toolbar || !input) return "missing";
+    if (!slot.contains(qsEl) || !toolbar.contains(submit)) return "wrong-owner";
+    const pos = slot.compareDocumentPosition(input);
+    // DOCUMENT_POSITION_FOLLOWING(4):输入框在 pill 槽之后。
     return (pos & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 ? "ok" : "wrong-order";
   });
-  expect(inToolbarBeforeSubmit).toBe("ok");
+  expect(placement).toBe("ok");
 });
 
 test("toolbar: 选择模型 → 回显;刷新后选择仍在(本地记忆 + 会话偏好)", async ({ page }) => {
