@@ -146,6 +146,20 @@ fn bounds_near(a: PaneBounds, b: PaneBounds) -> bool {
         && (a.height - b.height).abs() < 0.5
 }
 
+/// 方案 A 的手动触发口（spec desktop-native-webview-chrome-dead）：
+/// pane_relay 的 hide / close / overlay 转换不经 `apply_layout`，但宿主 tab 带的
+/// 像素已经变了；WKWebView 不会自动把被 child 让开的区域标脏，须同样强制重绘。
+#[cfg(target_os = "macos")]
+pub fn force_host_redraw_for(app: &AppHandle) {
+    if let Some(window) = app.get_window(MAIN_WINDOW_LABEL) {
+        if let Ok(ptr) = window.ns_window() {
+            let _ = unsafe { crate::view_tree::force_host_redraw(ptr) };
+        }
+    }
+}
+#[cfg(not(target_os = "macos"))]
+pub fn force_host_redraw_for(_app: &AppHandle) {}
+
 /// 受控的原生布局状态；真实 Webview 句柄仍由 Tauri manager 持有。
 #[derive(Debug, Default)]
 pub struct NativeWebviewLayoutManager(Mutex<LayoutState>);
@@ -550,6 +564,10 @@ impl NativeWebviewLayoutManager {
         // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
         let mut raise_top = host_changed;
+        // ★ 任一 pane 实际 show/hide 过（含 hide 路径——它不置 raise_top）。
+        //   方案 A 的重绘触发要覆盖它：两 pane 同槽叠放切换时 slot 不变、hide 不抬 top，
+        //   但宿主 tab 带的像素已经变了，漏触发即回到「带子空白」（真机踩过）。
+        let mut visibility_flipped = false;
         let mut applied_visibility: Vec<(String, bool)> = Vec::new();
         for (label, recorded_visible, keep_alive, initialized, was_applied_visible) in panes {
             if label.starts_with("pane-overlay") {
@@ -584,12 +602,14 @@ impl NativeWebviewLayoutManager {
                 if !was_applied_visible {
                     view.show().map_err(|e| e.to_string())?;
                     raise_top = true;
+                    visibility_flipped = true;
                 }
                 top_label = Some(label.clone());
                 applied_visibility.push((label, true));
             } else {
                 if was_applied_visible {
                     view.hide().map_err(|e| e.to_string())?;
+                    visibility_flipped = true;
                 }
                 applied_visibility.push((label, false));
             }
@@ -616,7 +636,7 @@ impl NativeWebviewLayoutManager {
         //   让开后可能没被标脏 —— 这正是「几何对、图层对、命中对，却不显示」的形态。
         //   只在槽真变化时做，拖拽已有 bounds_near 去抖，不会每帧刷。
         #[cfg(target_os = "macos")]
-        if slot_changed {
+        if slot_changed || raise_top || visibility_flipped {
             if let Ok(ptr) = window.ns_window() {
                 let ok = unsafe { crate::view_tree::force_host_redraw(ptr) };
                 if !ok && pane_layout_debug_enabled() {
