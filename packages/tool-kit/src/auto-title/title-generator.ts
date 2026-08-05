@@ -20,7 +20,8 @@ export type AgentMessage = AgentEndEvent["messages"][number];
 export const TITLE_SYSTEM_PROMPT =
   "You generate a very short, descriptive title for a chat conversation. " +
   "Reply with ONLY the title text — no quotes, no punctuation at the end, " +
-  "no prefix like 'Title:'. Keep it concise (a few words).";
+  "no prefix like 'Title:'. Keep it concise (a few words). " +
+  "Ignore attachment markers such as [attachment id=…]; never use attachment ids as titles.";
 
 /** 控制字符(C0 + DEL),统一在清洗时折叠为空格。 */
 // eslint-disable-next-line no-control-regex
@@ -38,6 +39,22 @@ const STRAY_ANGLES = /[<>]/gu;
  * (`/image_generation 一只赛博朋克` → `一只赛博朋克`);裸命令(如 `/help`,其后无空白)不匹配、保持原样不被清空。
  */
 const LEADING_SLASH_COMMAND = /^\/[\w-]+\s+/u;
+
+/**
+ * 附件引用标记(上传/工具产出注入的 `[attachment id=att_… type=… name=…]`)。
+ * 按字段结构匹配:完整标记与被截断的残片(无闭合 `]`,如 `[attachment id=att_VVYx9`)
+ * 一并移除,避免 id 泄漏进标题(截断前整体移除是关键:否则 maxLen 会把标记切成半截 id)。
+ * 残片不会吞掉标记后的用户正文(只吃 id/type/name 字段形态)。
+ */
+const ATTACHMENT_REF =
+  /\[attachment\s+id=att_[^\s\]]*(?:\s+type=[^\s\]]+)?(?:\s+name=[^\]]*)?\]?/gu;
+
+/**
+ * 从**完整**附件标记提取 `name=` 值,供「仅附件、无用户正文」时作友好回退
+ * (用文件名而不是 att_ id)。残片无闭合 `]` 时不提取。
+ */
+const ATTACHMENT_NAME =
+  /\[attachment\s+id=att_[^\s\]]*(?:\s+type=[^\s\]]+)?\s+name=([^\]]*)\]/gu;
 
 /** 判断内容块是否文本块。 */
 function isTextContent(c: unknown): c is TextContent {
@@ -59,21 +76,49 @@ function contentToText(content: string | readonly unknown[]): string {
 }
 
 /**
+ * 剥离附件引用标记;顺带收集完整标记里的 `name=` 供空正文回退。
+ * 标记整体替换为空格(后续空白归一),绝不保留 `att_` id。
+ */
+function stripAttachmentRefs(raw: string): { text: string; names: string[] } {
+  const names: string[] = [];
+  for (const m of raw.matchAll(ATTACHMENT_NAME)) {
+    const n = (m[1] ?? "").trim();
+    if (n.length > 0) names.push(n);
+  }
+  return { text: raw.replace(ATTACHMENT_REF, " "), names };
+}
+
+/**
  * 去换行与控制字符、首尾去空白,并按**字符边界**(`Array.from`,多字节 emoji 不截半)
  * 截断到 `maxLen`。空白或空输入返回 `""`。
+ *
+ * 另剥离:附件引用标记、XML/HTML 标签、首部斜杠命令。仅附件无正文时回退到附件
+ * `name=`(文件名),绝不产出 `[attachment id=att_…]` 形态。
  */
 export function sanitizeTitle(raw: string, maxLen: number): string {
-  // 先剥离 XML/HTML 标记标签(skill / 命令调用如 `<skill name="…">`)及残留孤立尖括号,
-  // 避免标记字符泄漏进标题(截断前移除,确保完整标签被整体清掉)。
-  const stripped = raw.replace(MARKUP_TAGS, " ").replace(STRAY_ANGLES, " ");
+  // 先剥附件引用(截断前整体移除,防止 maxLen 切出半截 `att_` id)。
+  const { text: withoutAtt, names } = stripAttachmentRefs(raw);
+  // 再剥 XML/HTML 标记标签(skill / 命令调用如 `<skill name="…">`)及残留孤立尖括号,
+  // 避免标记字符泄漏进标题。
+  const stripped = withoutAtt
+    .replace(MARKUP_TAGS, " ")
+    .replace(STRAY_ANGLES, " ");
   // 控制字符(含换行/制表)折叠为空格,再合并多余空白并去首尾。
-  const collapsed = stripped
+  let collapsed = stripped
     .replace(CONTROL_CHARS, " ")
     .replace(/\s+/g, " ")
     .trim()
     // 剥离首部斜杠命令前缀(`/image_generation 一只赛博朋克` → `一只赛博朋克`):在空白归一后进行,
     // 确保命令名与参数以单空格分隔、前缀能被稳定匹配;带参才剥离,裸命令保持原样。
-    .replace(LEADING_SLASH_COMMAND, "");
+    .replace(LEADING_SLASH_COMMAND, "")
+    .trim();
+  // 仅附件、无用户正文 → 用第一个完整标记的 name 作友好回退(仍走下方长度截断)。
+  if (collapsed.length === 0 && names.length > 0) {
+    collapsed = names[0]!
+      .replace(CONTROL_CHARS, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
   if (collapsed.length === 0) return "";
   const chars = Array.from(collapsed);
   if (maxLen > 0 && chars.length > maxLen) {
@@ -83,8 +128,9 @@ export function sanitizeTitle(raw: string, maxLen: number): string {
 }
 
 /**
- * 启发式标题:取**首条**用户消息文本,经 {@link sanitizeTitle} 清洗截断。
- * 无用户文本则返回 `""`(调用方据此跳过设置,不设空标题)。
+ * 启发式标题:按会话顺序取**首条能产出非空标题**的用户消息文本,经 {@link sanitizeTitle}
+ * 清洗截断。某条用户消息清洗后为空(例如只有附件标记)则跳过、继续下一条;
+ * 全部为空则返回 `""`(调用方据此跳过设置,不设空标题)。
  */
 export function heuristicTitle(
   messages: readonly AgentMessage[],
@@ -93,7 +139,9 @@ export function heuristicTitle(
   for (const m of messages) {
     if (m.role === "user") {
       const text = contentToText(m.content).trim();
-      if (text.length > 0) return sanitizeTitle(text, maxLen);
+      if (text.length === 0) continue;
+      const title = sanitizeTitle(text, maxLen);
+      if (title !== "") return title;
     }
   }
   return "";
