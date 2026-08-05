@@ -73,7 +73,7 @@ export function PiReasoning({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]",
+        "rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--muted-foreground))]",
         className,
       )}
       data-pi-reasoning

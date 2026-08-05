@@ -1923,7 +1923,7 @@ export function PiChat({
       toolbar={toolbar}
       rows={3}
       placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
-      className="rounded-3xl border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 px-4 py-3 shadow-lg backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+      className="rounded-[12px] border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3.5 py-3.5 shadow-none"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
@@ -2040,7 +2040,7 @@ export function PiChat({
         <div
           data-pi-queue-notice
           role="status"
-          className="mb-1 rounded-lg bg-[hsl(var(--muted))] px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]"
+          className="mb-1 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-3 py-1.5 text-xs text-[hsl(var(--muted-foreground))]"
         >
           {queueNotice}
         </div>
@@ -2050,7 +2050,7 @@ export function PiChat({
         <div
           data-pi-catalog-notice
           role="status"
-          className="mb-1 rounded-lg bg-[hsl(var(--destructive))]/10 px-3 py-1.5 text-xs text-[hsl(var(--destructive))]"
+          className="mb-1 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-3 py-1.5 text-xs text-[hsl(var(--foreground))]"
         >
           {catalogNotice}
         </div>
@@ -2170,7 +2170,7 @@ export function PiChat({
         })}
       >
         <div
-          className={cn(lay.content, "space-y-4 px-3 pt-3 md:px-0")}
+          className={cn(lay.content, "space-y-7 px-4 pb-2 pt-10 md:px-0")}
           data-pi-chat-messages
           style={{ paddingBottom: dockHeight + 16 }}
         >
@@ -2269,9 +2269,9 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pointer-events-none absolute inset-x-0 bottom-0 p-4"
+        className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-[hsl(var(--border))] bg-[hsl(var(--canvas))] px-4 pb-5 pt-3 md:px-12"
       >
-        <div className={cn("pointer-events-auto px-3 pb-2 md:px-0", lay.content)}>
+        <div className={cn("pointer-events-auto", lay.content)}>
           {inputWithWidgets}
           {/* 内核自有会话用量条(非 webext slot):随输入 dock 底部固定,置于输入框下方,
               与输入框同宽同居中(共用 lay.content),不增列高、不溢出;与顶部 webext
@@ -2279,7 +2279,7 @@ export function PiChat({
           {showSessionStats && controls !== undefined ? (
             <div
               data-pi-session-stats-region
-              className="mt-1.5 rounded-2xl bg-[hsl(var(--background))]/80 backdrop-blur-md supports-[backdrop-filter]:bg-[hsl(var(--background))]/65"
+              className="mt-1.5 rounded-[var(--radius)] bg-[hsl(var(--surface))]"
             >
               <PiSessionStats controls={controls} />
             </div>
@@ -2293,7 +2293,7 @@ export function PiChat({
   const tree = (
     <div
       className={cn(
-        "relative flex h-full w-full px-1 text-[hsl(var(--foreground))]",
+        "relative flex h-full w-full text-[hsl(var(--foreground))]",
         className,
       )}
       ref={panelResizeTreeRef}

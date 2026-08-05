@@ -218,7 +218,7 @@ describe("AgentSourcePicker — source list", () => {
     expect(screen.getByText("has avatar url")).toBeTruthy();
   });
 
-  it("默认只展示 9 个源,其余折叠;「显示全部」展开、「收起」收回", async () => {
+  it("默认只展示 3 个源,其余折叠;「显示全部」展开、「收起」收回", async () => {
     // 12 个源 → 默认渲染前 9,底部出现展开按钮。
     const many: ListAgentSourcesResponse = {
       sources: Array.from({ length: 12 }, (_, i) => ({
@@ -238,8 +238,8 @@ describe("AgentSourcePicker — source list", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText("Source 0")).toBeTruthy());
-    // 默认只 9 个。
-    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
+    // 默认只展示 3 个推荐源。
+    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(3);
     const more = document.querySelector("[data-agent-source-list-more]")!;
     expect(more.getAttribute("aria-expanded")).toBe("false");
     // 显示全部 → 12 个。
@@ -248,12 +248,12 @@ describe("AgentSourcePicker — source list", () => {
       expect(document.querySelectorAll("[data-agent-source-item]").length).toBe(12),
     );
     expect(more.getAttribute("aria-expanded")).toBe("true");
-    // 收起 → 回到 9。
+    // 收起 → 回到 3。
     fireEvent.click(more);
-    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
+    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(3);
   });
 
-  it("源不足 9 个 → 不显示「显示全部」按钮", async () => {
+  it("源不足 3 个 → 不显示「显示全部」按钮", async () => {
     render(
       <AgentSourcePicker
         onSubmit={() => {}}

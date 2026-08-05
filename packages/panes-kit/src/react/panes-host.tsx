@@ -1628,12 +1628,12 @@ export function PanesHost({
         data-panes-tabs
         style={{
           display: "flex",
-          minHeight: 28,
+          minHeight: 34,
           alignItems: "center",
           gap: 1,
           padding: "2px 4px",
           borderBottom: "1px solid hsl(var(--border))",
-          background: "hsl(var(--muted) / .12)",
+          background: "hsl(var(--surface-subtle))",
         }}
       >
         {onRequestClose !== undefined ? (
@@ -1643,7 +1643,7 @@ export function PanesHost({
             aria-label="收起 Pane 侧栏"
             title="收起 Pane 侧栏"
             onClick={onRequestClose}
-            style={{ ...buttonStyle, display: "grid", placeItems: "center", border: "1px solid hsl(var(--border))", padding: "4px" }}
+            style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "4px" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -1668,11 +1668,11 @@ export function PanesHost({
                   display: "flex",
                   flex: "0 1 auto",
                   minWidth: 0,
-                  maxWidth: 120,
+                  maxWidth: 148,
                   alignItems: "center",
                   borderRadius: 4,
                   border: "none",
-                  background: selected ? "hsl(var(--muted))" : "transparent",
+                  background: selected ? "hsl(var(--surface))" : "transparent",
                   boxShadow: "none",
                 }}>
                 <button type="button" role="tab" aria-selected={selected} aria-controls={`pane-view-${instance.instanceId}`}
@@ -1691,6 +1691,7 @@ export function PanesHost({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     padding: "4px 4px 4px 8px",
+                    minHeight: 28,
                     lineHeight: 1.2,
                     fontSize: 12,
                     whiteSpace: "nowrap",

@@ -268,10 +268,10 @@ export function ToolHeader({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs",
+            "inline-flex items-center gap-1 rounded-[var(--radius)] border px-2 py-0.5 text-xs",
             isError
-              ? "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
-              : "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]",
+              ? "border-[hsl(var(--destructive))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground))]"
+              : "border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--muted-foreground))]",
           )}
           data-pi-tool-status
         >
@@ -347,7 +347,7 @@ function JsonBlock({
   return (
     <pre
       className={cn(
-        "overflow-x-auto whitespace-pre-wrap break-words rounded-[var(--radius)] bg-[hsl(var(--muted))] p-2 text-xs",
+        "overflow-x-auto whitespace-pre-wrap break-words rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] p-2 text-xs",
         className,
       )}
     >
@@ -565,7 +565,7 @@ export function PiToolPart({
   return (
     <Card
       className={cn(
-        "overflow-hidden",
+        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] shadow-none",
         isError && "border-[hsl(var(--destructive))]",
         className,
       )}

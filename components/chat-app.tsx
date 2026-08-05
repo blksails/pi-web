@@ -604,7 +604,7 @@ function SessionView({
   const t = useI18n();
   // desktop-directory-picker:会话内「切换源」dialog picker 同样注入桌面原生目录选择能力。
   const desktopPickDirectory = useDesktopPickDirectory();
-  // 侧栏折叠(整条左栏):折叠后不渲染 sidebar 槽,对话区吃满横向空间(类 ChatGPT/Grok)。
+  // 侧栏折叠:折叠后保留 72px icon rail,会话内容隐去,点击折叠按钮恢复完整侧栏。
   // localStorage 持久化;SSR 安全:初值 false,挂载后读取偏好。
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState<boolean>(false);
   React.useEffect(() => {
@@ -966,12 +966,23 @@ function SessionView({
           : {})}
       />
     );
-    // 折叠整条左栏:不提供 sidebar 槽 → PiChat 不渲染 aside,对话区吃满宽度。
-    // 展开入口(浮钮)在 SessionView 内、PiChat 之上渲染(见 return)。
-    if (sidebarCollapsed) return {};
+    const agentName = deriveSourceTitle(create.source) ?? "Agent";
+    const agentSource = create.source === "." ? create.cwd : create.source;
     // 会话栏自身仅控制会话栏；Pane 开关独立置于应用右上。
     const sidebarTools = (
-      <div className="flex shrink-0 items-center px-0.5 pt-0.5">
+      <div className="flex shrink-0 items-center justify-between gap-1 px-0 pt-0">
+        <button
+          type="button"
+          data-switch-source
+          onClick={() => setPickerOpen(true)}
+          aria-label="切换 Agent"
+          title="切换 Agent"
+          className="inline-flex min-h-[30px] items-center gap-1 rounded-[var(--radius)] px-1.5 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+        >
+          <span className="inline-grid h-5 w-5 place-items-center font-mono text-[11px] text-[hsl(var(--foreground))]">A</span>
+          <span>Agent</span>
+          <span aria-hidden="true" className="text-[hsl(var(--muted-foreground))]">⌄</span>
+        </button>
         {buildTimeExtension === undefined && create.source.length > 0 ? (
           <button
             type="button"
@@ -979,7 +990,7 @@ function SessionView({
             onClick={() => setWebextReloadNonce(Date.now())}
             aria-label="刷新扩展"
             title="刷新扩展"
-            className="inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
           >
             ↻
           </button>
@@ -990,11 +1001,28 @@ function SessionView({
           onClick={toggleSidebar}
           aria-label={t("chatApp.collapseSidebar")}
           title={t("chatApp.collapseSidebar")}
-          className="ml-auto inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
         >
           <PanelToggleIcon />
         </button>
       </div>
+    );
+    const currentAgent = (
+      <button
+        type="button"
+        onClick={() => setPickerOpen(true)}
+        title={agentSource}
+        className="group flex min-w-0 items-center gap-2 rounded-[var(--radius)] px-0 py-0 text-left"
+      >
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] text-xs font-semibold text-[hsl(var(--primary-foreground))]">
+          {agentName.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <strong className="truncate text-sm font-semibold tracking-tight">{agentName}</strong>
+          <span className="truncate text-[11px] text-[hsl(var(--muted-foreground))]">{agentSource}</span>
+        </span>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]" aria-hidden="true">⌄</span>
+      </button>
     );
     // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
     // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 launcherRailEnabled() 门控),因主流 e2e
@@ -1002,13 +1030,13 @@ function SessionView({
     // 已移除(冗余,统一由侧栏「新建聊天」承担);日志面板可见性由 /settings 的「显示日志面板」
     // 设置项(logging.outputs.panelVisible)控制,账户区不再放开关。
     const accountBtnClass =
-      "inline-flex shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]";
+      "inline-flex shrink-0 items-center justify-center rounded-[var(--radius)] border border-transparent px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]";
     const accountBar = (
       <div
         data-launcher-account
         className="flex shrink-0 flex-col gap-1 border-t border-[hsl(var(--border))] px-2 pb-2 pt-2"
       >
-        {/* 新建会话/切换源:仅 rail 关闭态提供(rail 开启时冗余,由侧栏「新建聊天」承担)。 */}
+        {/* 新建会话:切换源入口已收敛至左栏顶部当前 Agent。 */}
         {!launcherRailEnabled() ? (
           <div className="flex items-center gap-1">
             <button
@@ -1018,14 +1046,6 @@ function SessionView({
               className={`${accountBtnClass} flex-1`}
             >
               {t("chatApp.newSession")}
-            </button>
-            <button
-              type="button"
-              onClick={onReset}
-              data-switch-source
-              className={`${accountBtnClass} flex-1`}
-            >
-              {t("chatApp.switchSource")}
             </button>
           </div>
         ) : null}
@@ -1064,17 +1084,80 @@ function SessionView({
     const launcherContribution = resolveSlot(extension, "launcherRail");
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
     // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
+    if (sidebarCollapsed)
+      return sessionListSlots(
+        <div className="flex h-full w-[72px] flex-col items-center overflow-visible border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-2 py-5">
+          <button
+            type="button"
+            data-sidebar-expand
+            onClick={toggleSidebar}
+            aria-label={t("chatApp.expandSidebar")}
+            title={t("chatApp.expandSidebar")}
+            className="mt-2 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+          >
+            <PanelToggleIcon />
+          </button>
+          <button
+            type="button"
+            data-switch-source
+            onClick={() => {
+              toggleSidebar();
+              setPickerOpen(true);
+            }}
+            aria-label={agentName}
+            title={`${agentName} · ${agentSource}`}
+            className="mt-3 flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] text-xs font-semibold text-[hsl(var(--primary-foreground))]"
+          >
+            {agentName.slice(0, 1).toUpperCase()}
+          </button>
+          <LauncherRail
+            compact
+            onNewChat={() => setPickerOpen(true)}
+            onCompactActivate={toggleSidebar}
+            onResume={onResumeSession}
+            onLaunchSource={onLaunchSource}
+            listSessions={piClient.listSessions}
+            listFavorites={piClient.listFavorites}
+            setFavorites={piClient.setFavorites}
+            favoritesRefreshSignal={favoritesSignal}
+            {...(launcherContribution !== undefined
+              ? { webextSlot: <SlotHost ext={extension} slot="launcherRail" /> }
+              : {})}
+            className="mt-3"
+          />
+          <div className="mt-auto flex flex-col items-center gap-1 border-t border-[hsl(var(--border))] pt-3">
+            <a
+              href="/settings"
+              data-settings-link
+              onClick={toggleSidebar}
+              aria-label={t("chatApp.settings")}
+              title={t("chatApp.settings")}
+              className="flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+            >
+              S
+            </a>
+            <span onClick={toggleSidebar}>
+              <LocaleToggleButton />
+            </span>
+            <span onClick={toggleSidebar}>
+              <ThemeToggleButton />
+            </span>
+          </div>
+        </div>,
+      );
     if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
-        <div className="flex h-full flex-col">
+        <div className="flex h-full w-60 flex-col gap-4 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-4 pb-3 pt-5">
           {sidebarTools}
+          {currentAgent}
           <div className="min-h-0 flex-1">{panel}</div>
           {accountBar}
         </div>,
       );
     return sessionListSlots(
-      <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)]">
+      <div className="flex h-full w-60 flex-col gap-4 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-4 pb-3 pt-5">
         {sidebarTools}
+        {currentAgent}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
           onResume={onResumeSession}
@@ -1097,6 +1180,7 @@ function SessionView({
   }, [
     session.sessionId,
     resumeId,
+    create.source,
     create.cwd,
     piClient,
     onResumeSession,
@@ -1187,19 +1271,6 @@ function SessionView({
             }
           : {})}
       >
-        {/* 侧栏折叠态:浮于对话区左上角的展开钮(侧栏已不渲染,须在此提供展开入口)。 */}
-        {sidebarCollapsed ? (
-          <button
-            type="button"
-            data-sidebar-expand
-            onClick={toggleSidebar}
-            aria-label={t("chatApp.expandSidebar")}
-            title={t("chatApp.expandSidebar")}
-            className="absolute left-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-          >
-            <PanelToggleIcon />
-          </button>
-        ) : null}
         {hasSidePanel && !sidePanelOpen ? (
           <button
             type="button"
@@ -1208,7 +1279,7 @@ function SessionView({
             aria-expanded={false}
             aria-label={t("chatApp.showPaneSidebar")}
             title={t("chatApp.showPaneSidebar")}
-            className="absolute right-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+            className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
           >
             <PanelRightIcon />
           </button>
@@ -1286,7 +1357,7 @@ function SessionView({
         />
       </div>
       {/* sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源→新建会话。 */}
-      {launcherRailEnabled() && pickerOpen ? (
+      {pickerOpen ? (
         <AgentSourcePicker
           variant="dialog"
           onClose={() => setPickerOpen(false)}

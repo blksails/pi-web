@@ -42,14 +42,14 @@ export function EmptyState({
 }: EmptyStateProps): React.JSX.Element {
   return (
     <div
-      className={cn("w-full max-w-3xl", className)}
+      className={cn("w-full max-w-4xl", className)}
       data-pi-empty-state
     >
-      <div className="mb-8 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight text-[hsl(var(--foreground))]">
+      <div className="mb-8">
+        <h1 className="text-2xl font-medium tracking-tight text-[hsl(var(--foreground))]">
           {title}
         </h1>
-        <p className="mt-3 text-base text-[hsl(var(--muted-foreground))]">
+        <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
           {subtitle}
         </p>
       </div>

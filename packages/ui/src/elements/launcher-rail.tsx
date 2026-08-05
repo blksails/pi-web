@@ -86,6 +86,10 @@ export interface LauncherRailProps {
   readonly searchPlaceholder?: string;
   readonly searchEmptyLabel?: string;
   readonly favoritesTitle?: string;
+  /** 收起态仅保留图标与浮出式搜索/收藏入口。 */
+  readonly compact?: boolean;
+  /** 收起态点击任一入口先展开侧栏,再交由入口继续处理。 */
+  readonly onCompactActivate?: () => void;
 }
 
 type SearchStatus = "idle" | "loading" | "error";
@@ -104,6 +108,8 @@ export function LauncherRail({
   searchLabel,
   searchPlaceholder,
   searchEmptyLabel,
+  compact = false,
+  onCompactActivate,
 }: LauncherRailProps): React.JSX.Element {
   const t = useI18n();
   const newChatText = newChatLabel ?? t("launcherRail.newChat");
@@ -176,32 +182,42 @@ export function LauncherRail({
       });
   };
 
-  const rowClass =
-    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--accent))]";
+  const rowClass = compact
+    ? "flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
+    : "flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]";
   const iconClass =
     "flex w-5 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]";
 
   return (
     <nav
       data-launcher-rail
-      className={`flex shrink-0 flex-col gap-0.5 ${className ?? ""}`}
+      className={`${compact ? "relative flex shrink-0 flex-col items-center gap-1" : "flex shrink-0 flex-col gap-0.5"} ${className ?? ""}`}
     >
       {/* 搜索入口 */}
       <button
         type="button"
         data-launcher-search
         aria-expanded={searchOpen}
-        onClick={() => setSearchOpen((v) => !v)}
+        onClick={() => {
+          if (compact) onCompactActivate?.();
+          else setSearchOpen((v) => !v);
+        }}
+        title={compact ? searchText : undefined}
         className={rowClass}
       >
         <span aria-hidden className={iconClass}>
           <Search className="h-4 w-4" />
         </span>
-        <span>{searchText}</span>
+        <span className={compact ? "sr-only" : undefined}>{searchText}</span>
       </button>
 
       {searchOpen ? (
-        <div data-launcher-search-panel className="flex flex-col gap-1 px-1 pb-1">
+        <div
+          data-launcher-search-panel
+          className={compact
+            ? "absolute left-[calc(100%+8px)] top-0 z-40 flex w-64 flex-col gap-1 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-2 shadow-lg"
+            : "flex flex-col gap-1 px-1 pb-1"}
+        >
           <input
             autoFocus
             type="text"
@@ -212,7 +228,7 @@ export function LauncherRail({
             }}
             placeholder={searchPlaceholderText}
             data-launcher-search-input
-            className="rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+            className="rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--surface))] px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
           />
           {query.trim().length > 0 ? (
             searchStatus === "loading" ? (
@@ -244,7 +260,7 @@ export function LauncherRail({
                         onResume(s.sessionId);
                         closeSearch();
                       }}
-                      className="w-full truncate rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-[hsl(var(--accent))]"
+                      className="w-full truncate rounded-[var(--radius)] px-2.5 py-1.5 text-left text-sm hover:bg-[hsl(var(--surface-subtle))]"
                     >
                       {s.name ?? s.sessionId}
                     </button>
@@ -260,41 +276,53 @@ export function LauncherRail({
       <button
         type="button"
         data-launcher-new-chat
-        onClick={onNewChat}
+        onClick={() => {
+          if (compact) onCompactActivate?.();
+          onNewChat();
+        }}
+        title={compact ? newChatText : undefined}
         className={rowClass}
       >
         <span aria-hidden className={iconClass}>
           <SquarePen className="h-4 w-4" />
         </span>
-        <span>{newChatText}</span>
+        <span className={compact ? "sr-only" : undefined}>{newChatText}</span>
       </button>
 
       {/* 收藏锚点:无标签,自然跟随在新建聊天下方(无收藏则不占位) */}
       {favorites.length > 0 ? (
-        <div data-launcher-favorites className="flex flex-col gap-0.5">
+        <div data-launcher-favorites className={compact ? "flex flex-col gap-1" : "flex flex-col gap-0.5"}>
           {favorites.map((f) => (
             <div
               key={f.source}
-              className="group relative flex items-center rounded-lg transition-colors hover:bg-[hsl(var(--accent))]"
+              className="group relative flex items-center rounded-[var(--radius)] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
             >
               <button
                 type="button"
                 data-launcher-favorite
                 data-source={f.source}
-                onClick={() => onLaunchSource(f.source)}
-                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"
+                onClick={() => {
+                  if (compact) onCompactActivate?.();
+                  onLaunchSource(f.source);
+                }}
+                title={compact ? f.title ?? f.name : undefined}
+                className={compact
+                  ? "flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-left text-sm"
+                  : "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"}
               >
                 <span className={iconClass}>
                   <FavoriteAvatar favorite={f} />
                 </span>
-                <span className="truncate">{f.title ?? f.name}</span>
+                <span className={compact ? "sr-only" : "truncate"}>{f.title ?? f.name}</span>
               </button>
               <button
                 type="button"
                 data-launcher-favorite-remove
                 aria-label={`${t("launcherRail.removeFavorite")} ${f.title ?? f.name}`}
                 onClick={() => removeFavorite(f.source)}
-                className="absolute right-1.5 flex h-6 w-6 items-center justify-center rounded-md text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--background))] hover:text-[hsl(var(--foreground))] group-hover:opacity-100"
+                className={compact
+                  ? "hidden"
+                  : "absolute right-1.5 flex h-6 w-6 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--background))] hover:text-[hsl(var(--foreground))] group-hover:opacity-100"}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -305,7 +333,7 @@ export function LauncherRail({
 
       {/* webext 贡献槽(无贡献不占位;渲染失败经 error boundary 隔离) */}
       {webextSlot !== undefined && webextSlot !== null ? (
-        <div data-launcher-webext-slot className="mt-1">
+        <div data-launcher-webext-slot className={compact ? "hidden" : "mt-1"}>
           <ExtErrorBoundary>{webextSlot}</ExtErrorBoundary>
         </div>
       ) : null}

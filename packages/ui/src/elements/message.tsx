@@ -4,8 +4,8 @@
  *
  * 无状态展示元件:不接 pi 数据逻辑,仅负责消息布局、本地分支控件触发与本地操作
  * (复制 / 反馈),由装配层(PiChat)注入 `children`(part 渲染结果)与分支接线。
- * - `role === "user"`:右对齐浅灰圆角气泡。
- * - 其它(assistant 等):左对齐,头像(默认 Sparkles 方块)+ 无气泡裸文本,
+ * - `role === "user"`:右对齐黑底白字气泡。
+ * - 其它(assistant 等):左对齐,头像(默认 Sparkles 方块)+ 浅色内容面,
  *   下方渲染操作行(复制 / 赞 / 踩)。
  * - 可选 `branch`(来自 useBranches.branchOf,`{ entryId, index, total }`):仅当
  *   `branch.total > 1` 时渲染 "‹ N/M ›" 分支控件(Req 8.1);点击调 `onPrev`/`onNext`
@@ -116,7 +116,7 @@ export function Message({
   const Actions = messageActions ?? DefaultMessageActions;
 
   if (isUser) {
-    // 用户:右对齐浅灰圆角气泡。
+    // 用户:右对齐黑底白字气泡;黑底不下沉到 assistant/tool 内容。
     return (
       <div
         className={cn("flex flex-col items-end gap-1", className)}
@@ -124,7 +124,7 @@ export function Message({
         data-pi-message-role={role}
       >
         <div
-          className="max-w-[88%] rounded-2xl bg-[hsl(var(--muted))] px-3.5 py-2.5 text-sm text-[hsl(var(--foreground))] sm:max-w-[80%] sm:px-4"
+          className="max-w-[76%] rounded-[var(--radius)] bg-[hsl(var(--primary))] px-3.5 py-2.5 text-sm text-[hsl(var(--primary-foreground))] sm:max-w-[680px] sm:px-4"
           data-pi-message-content
         >
           {children}
@@ -140,7 +140,7 @@ export function Message({
     );
   }
 
-  // 助手等:左对齐,头像 + 无气泡裸文本 + 操作行 + 分支控件。
+  // 助手等:左对齐,浅色内容面 + 左侧状态线 + 操作行 + 分支控件。
   return (
     <div
       className={cn("flex items-start gap-3", className)}
@@ -148,15 +148,15 @@ export function Message({
       data-pi-message-role={role}
     >
       <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"
+      className="hidden"
         data-pi-message-avatar
         aria-hidden="true"
       >
         {avatar ?? <Sparkles className="h-4 w-4" />}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex min-w-0 max-w-[840px] flex-1 flex-col gap-1">
         <div
-          className="text-sm leading-relaxed text-[hsl(var(--foreground))]"
+          className="rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface))] px-3.5 py-3 text-sm leading-relaxed text-[hsl(var(--foreground))]"
           data-pi-message-content
         >
           {children}

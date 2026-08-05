@@ -5,7 +5,7 @@
  * follow-up(跟进)分组待投递条目及 pending 合计计数。队列为空(合计 0)时返回 null,不占布局。
  *
  * 稳定标记(供 e2e / 验收断言):容器 `data-pi-queue`、计数 `data-pi-queue-count`。
- * 样式复用补全浮层的贴边卡片风格(rounded / border / shadow)。
+ * 样式贴输入 dock 上缘,不另造漂浮卡片。
  */
 import * as React from "react";
 import { cn } from "../lib/cn.js";
@@ -65,7 +65,7 @@ export function PiQueuePanel({
     <div
       data-pi-queue=""
       className={cn(
-        "mb-1 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-sm",
+        "mb-1 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))]",
         className,
       )}
     >

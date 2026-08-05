@@ -478,10 +478,10 @@ export function SessionListPanel(
               onClick={() => onResume(item.sessionId)}
               title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
-                "block min-w-0 flex-1 truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
+                "block min-w-0 flex-1 truncate rounded-[var(--radius)] border-l-2 border-transparent px-2 py-2 text-left transition-colors focus-visible:outline-none",
                 isActive
-                  ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
-                  : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
+                  ? "border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-subtle))] focus-visible:bg-[hsl(var(--surface-subtle))]",
               )}
             >
               {titleOf(item)}
@@ -586,7 +586,7 @@ export function SessionListPanel(
                     data-pi-session-list-resume={pending.sessionId}
                     data-active=""
                     onClick={() => onResume(pending.sessionId)}
-                    className="block w-full truncate rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
+                    className="block w-full truncate rounded-[var(--radius)] border-l-2 border-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] px-2 py-2 text-left font-medium text-[hsl(var(--foreground))] transition-colors focus-visible:outline-none"
                   >
                     {pending.title !== undefined && pending.title.length > 0 ? (
                       pending.title

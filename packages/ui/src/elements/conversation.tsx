@@ -107,7 +107,7 @@ export function Conversation({
         <div
           aria-hidden="true"
           data-pi-conversation-fade
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[hsl(var(--background))] to-transparent"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-[hsl(var(--canvas))]"
         />
       ) : null}
 
@@ -125,7 +125,7 @@ export function Conversation({
                     type="button"
                     variant="secondary"
                     size="icon"
-                    className="pointer-events-auto h-8 w-8 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-md"
+                    className="pointer-events-auto h-8 w-8 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-none"
                     aria-label="定位用户输入"
                     aria-haspopup="menu"
                     aria-expanded={navigationOpen}
@@ -176,7 +176,7 @@ export function Conversation({
                     type="button"
                     variant="secondary"
                     size="icon"
-                    className="pointer-events-auto h-8 w-8 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--popover))] shadow-md"
+                    className="pointer-events-auto h-8 w-8 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] shadow-none"
                     aria-label={scrollLabel}
                     onClick={scrollToBottom}
                     data-pi-conversation-to-bottom
