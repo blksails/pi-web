@@ -138,7 +138,7 @@ export function ConversationImageGallery({
               style={{ maxHeight: "min(56dvh, 520px)" }}
             />
             <div
-              className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-white/25 bg-black/35 p-1 text-white shadow-lg backdrop-blur-md"
+              className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface)/0.86)] p-1 text-[hsl(var(--foreground))] shadow-lg backdrop-blur-md"
               data-pi-conversation-image-pill
             >
               {applicable.map((action) => {
@@ -147,7 +147,7 @@ export function ConversationImageGallery({
                   <button
                     key={action.id}
                     type="button"
-                    className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                     aria-label={action.label}
                     title={action.label}
                     disabled={busy !== undefined}
@@ -166,7 +166,7 @@ export function ConversationImageGallery({
               {!applicable.some((action) => action.id === "download") ? (
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                   aria-label="下载"
                   title="下载"
                   disabled={busy !== undefined}
@@ -183,7 +183,7 @@ export function ConversationImageGallery({
               !applicable.some((action) => action.id === "download-all") ? (
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                   aria-label="下载全部"
                   title="下载全部"
                   disabled={busy !== undefined}
