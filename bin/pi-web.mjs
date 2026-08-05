@@ -13,7 +13,7 @@
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { dirname, join, resolve, isAbsolute } from "node:path";
+import { basename, dirname, extname, join, resolve, isAbsolute } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { get as httpGet } from "node:http";
@@ -42,7 +42,7 @@ function looksLikeGitSource(source) {
 /**
  * 已知子命令名(spec cli-package-commands,Req 1.2, 1.6;`add` 归 spec cli-component-add;
  * `build` 归 spec cli-agent-build 任务 4.1,Req 1.1)。
- * @typedef {"add" | "build" | "create" | "install" | "uninstall" | "list" | "update" | "publish"} SubcommandName
+ * @typedef {"add" | "build" | "create" | "install" | "uninstall" | "list" | "update" | "publish" | "run"} SubcommandName
  */
 export const SUBCOMMAND_NAMES = /** @type {const} */ ([
   "add",
@@ -53,6 +53,7 @@ export const SUBCOMMAND_NAMES = /** @type {const} */ ([
   "list",
   "update",
   "publish",
+  "run",
 ]);
 
 /**
@@ -206,6 +207,64 @@ const SUBCOMMAND_SPECS = {
   -h, --help            显示本帮助并退出
 `,
   },
+  run: {
+    summary: "用提示词启动实例并自动创建会话、上传附件、发送首条消息",
+    options: {
+      source: { type: "string" },
+      model: { type: "string", short: "m" },
+      provider: { type: "string" },
+      "aigc-model": { type: "string" },
+      "aigc-size": { type: "string" },
+      attachment: { type: "string", multiple: true },
+      attachments: { type: "string", multiple: true },
+      port: { type: "string", short: "p" },
+      host: { type: "string" },
+      cwd: { type: "string" },
+      "agent-dir": { type: "string" },
+      open: { type: "boolean", default: false },
+      stub: { type: "boolean", default: false },
+      trust: { type: "boolean", default: false },
+      help: { type: "boolean", short: "h", default: false },
+    },
+    usage: `用法: pi-web run <prompt> [options]
+
+用一条提示词拉起 pi-web 实例,自动建会话、上传附件并发出首条消息。
+就绪后默认保持服务运行;配合 --open 打开浏览器进入该会话页。
+
+参数:
+  <prompt>              首条用户消息(必填)
+
+选项:
+      --source <dir>    agent source(本地目录或 git 来源;默认当前目录)
+  -m, --model <id>      对话模型 id(写入 PI_WEB_DEFAULT_MODEL,并在会话创建时覆盖)
+      --provider <name> 对话 provider 名(写入 PI_WEB_DEFAULT_PROVIDER;与 --model 同时给出时还会 setModel)
+      --aigc-model <id> 图像工具默认模型(会话偏好 aigc.model,如 gpt-image-2-cf)
+      --aigc-size <size> 图像输出尺寸偏好 aigc.size(如 auto/1024x1024;省略时若设了 --aigc-model 则默认 auto,避免卡在 UI 选尺寸)
+      --attachment <path>
+                        附件路径(可重复;支持 @path 前缀)
+      --attachments <path> [path...]
+                        一个或多个附件(逗号分隔或空格分隔;支持 @path)
+  -p, --port <n>        监听端口(默认 ${DEFAULT_PORT})
+      --host <h>        绑定主机(默认 ${DEFAULT_HOST})
+      --cwd <dir>       会话工作目录(默认当前目录)
+      --agent-dir <dir> pi 配置目录(默认 ~/.pi/agent)
+      --open            就绪并完成首条消息后用默认浏览器打开会话页
+      --stub            以确定性 stub agent 运行(离线冒烟)
+      --trust           显式信任 agent source 的 .pi/ 扩展
+  -h, --help            显示本帮助并退出
+
+示例:
+  pi-web run '画一只猫' --source ./examples/aigc-canvas-agent --open
+  pi-web run '参考图片生成新设计,保持风格,移除水印' \\
+    --source ./aigc-agent -m qwen3.8-max --provider dashscope-token-plan \\
+    --aigc-model gpt-image-2-cf \\
+    --attachments @images/1.jpg @images/2.jpg --open
+
+输出约定:
+  stdout  本轮 assistant 文本(流式 text-delta;可管道)
+  stderr  阶段日志 / 后端 PILOG / 会话 URL
+`,
+  },
 };
 
 /** @returns {name is SubcommandName} */
@@ -238,6 +297,105 @@ function parseSubcommandArgs(name, rest) {
 }
 
 /**
+ * 展开 `run` 子命令的附件参数:把
+ *   `--attachments @a.jpg @b.jpg` / `--attachments a,b` / 重复 `--attachment`
+ * 统一成可被 `parseArgs({ multiple: true })` 吃掉的重复 `--attachment` 形态。
+ * 纯函数,供单测覆盖。
+ * @param {readonly string[]} rest
+ * @returns {string[]}
+ */
+export function expandRunAttachmentArgv(rest) {
+  /** @type {string[]} */
+  const out = [];
+  for (let i = 0; i < rest.length; i++) {
+    const tok = rest[i];
+    if (tok === "--attachments" || tok === "--attachment") {
+      i += 1;
+      /** @type {string[]} */
+      const paths = [];
+      while (i < rest.length && !rest[i].startsWith("-")) {
+        const raw = rest[i];
+        for (const part of raw.split(",")) {
+          const t = part.trim();
+          if (t.length > 0) paths.push(t);
+        }
+        i += 1;
+      }
+      i -= 1; // for-loop 会再 +1
+      if (paths.length === 0) {
+        // 保留原 flag,交给 parseArgs 报「缺值」
+        out.push("--attachment");
+      } else {
+        for (const p of paths) {
+          out.push("--attachment", p);
+        }
+      }
+      continue;
+    }
+    out.push(tok);
+  }
+  return out;
+}
+
+/** 去掉可选的 `@` 附件前缀(shell 友好写法)。 */
+export function stripAttachmentAtPrefix(pathLike) {
+  return pathLike.startsWith("@") ? pathLike.slice(1) : pathLike;
+}
+
+/**
+ * 把 `run` 子命令的 parseArgs 结果变成结构化 run-task 意图。
+ * @param {{ values: Record<string, unknown>, positionals: string[] }} parsed
+ */
+function buildRunTaskIntent(parsed) {
+  const { values, positionals } = parsed;
+  if (positionals.length === 0) {
+    throw new CliUsageError("run: 缺少提示词 <prompt>(运行 `pi-web run --help` 查看用法)");
+  }
+  if (positionals.length > 1) {
+    throw new CliUsageError(
+      `run: 只接受一个位置参数 <prompt>,收到 ${positionals.length} 个;` +
+        `附件请用 --attachment / --attachments(运行 \`pi-web run --help\`)`,
+    );
+  }
+
+  let port;
+  if (values.port !== undefined) {
+    port = Number(values.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new CliUsageError(`run: --port 取值非法: "${values.port}"(应为 1-65535 的整数)`);
+    }
+  }
+
+  /** @type {string[]} */
+  const rawAttachments = Array.isArray(values.attachment) ? values.attachment : [];
+  const attachments = rawAttachments.map((p) => stripAttachmentAtPrefix(String(p)));
+
+  return {
+    intent: "run-task",
+    prompt: positionals[0],
+    source: values.source,
+    model: values.model,
+    provider: values.provider,
+    aigcModel: values["aigc-model"],
+    // 未显式给 size、但给了 aigc-model 时默认 auto,避免 image_* 在 hasUI 下卡在 select。
+    aigcSize:
+      values["aigc-size"] ??
+      (typeof values["aigc-model"] === "string" && values["aigc-model"].length > 0
+        ? "auto"
+        : undefined),
+    attachments,
+    port,
+    host: values.host,
+    cwd: values.cwd,
+    agentDir: values["agent-dir"],
+    open: Boolean(values.open),
+    stub: Boolean(values.stub),
+    trust: Boolean(values.trust),
+    watch: false,
+  };
+}
+
+/**
  * 解析 argv 为结构化选项。未知/非法选项抛 CliUsageError(Req 5.3);
  * --help/-h、--version/-v 经 intent 短路(Req 5.1, 5.2)。
  *
@@ -260,6 +418,16 @@ export function parseCliArgs(argv) {
   const first = argv[0];
   if (first !== undefined && isSubcommandName(first)) {
     const rest = argv.slice(1);
+    // `run` 在壳层完整解析为 run-task 意图(不走 dist/cli-commands 包管理分发),
+    // 以便复用 launch() + HTTP 编排,与 create/install 等包管理子命令分流。
+    if (first === "run") {
+      const expanded = expandRunAttachmentArgv(rest);
+      const parsed = parseSubcommandArgs("run", expanded);
+      if (parsed.values.help) {
+        return { intent: "help", subcommand: "run" };
+      }
+      return buildRunTaskIntent(parsed);
+    }
     const parsed = parseSubcommandArgs(first, rest);
     if (parsed.values.help) {
       return { intent: "help", subcommand: first };
@@ -361,6 +529,13 @@ export function buildEnv(opts, baseCwd, baseEnv) {
   if (opts.watch && !looksLikeGitSource(rawSource)) {
     env.PI_WEB_WATCH = "1";
     env.PI_RUNNER_HOT_RELOAD_PATHS = source;
+  }
+  // run-task / 显式默认模型:覆盖 settings.json 的 defaultModel / defaultProvider。
+  if (typeof opts.model === "string" && opts.model.length > 0) {
+    env.PI_WEB_DEFAULT_MODEL = opts.model;
+  }
+  if (typeof opts.provider === "string" && opts.provider.length > 0) {
+    env.PI_WEB_DEFAULT_PROVIDER = opts.provider;
   }
   return env;
 }
@@ -613,9 +788,20 @@ export function resolveFirstExistingCandidate(candidates, existsFn = existsSync)
 
 /**
  * 启动并监管 standalone server(Req 3.x, 4.4, 1.4)。
+ * @param {object} opts
+ * @param {string} opts.serverJs
+ * @param {string} opts.host
+ * @param {number} opts.port
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} opts.env
+ * @param {boolean} [opts.open]
+ * @param {() => void} [opts.onStarted]  子进程 spawn 后立刻回调(GC 等)
+ * @param {(info: { host: string, port: number, url: string }) => Promise<{ url?: string } | void> | { url?: string } | void} [opts.onReady]
+ *   就绪后、打开浏览器前的异步钩子(如 `run` 建会话/传附件/发消息)。可返回 `{ url }` 覆盖浏览器目标。
+ * @param {boolean} [opts.serverLogsToStderr=false]
+ *   true 时把后端子进程 stdout/stderr 转发到本进程 stderr,腾出 stdout 给 `run` 的 assistant 正文。
  * @returns {Promise<number>} 子进程退出码
  */
-export async function launch({ serverJs, host, port, env, open, onStarted }) {
+export async function launch({ serverJs, host, port, env, open, onStarted, onReady, serverLogsToStderr }) {
   if (!existsSync(serverJs)) {
     console.error(
       `[pi-web] 未找到自包含产物 ${serverJs}\n` +
@@ -633,7 +819,8 @@ export async function launch({ serverJs, host, port, env, open, onStarted }) {
     return 1;
   }
   if (chosen !== port) {
-    console.log(`[pi-web] 端口 ${port} 被占用,自动改用 ${chosen}。`);
+    // 阶段信息走 stderr:与 run 的 stdout 正文契约一致,默认 start 也不混入管道。
+    process.stderr.write(`[pi-web] 端口 ${port} 被占用,自动改用 ${chosen}。\n`);
     port = chosen;
     env = { ...env, PORT: String(port) };
   }
@@ -642,8 +829,20 @@ export async function launch({ serverJs, host, port, env, open, onStarted }) {
   const child = spawn(process.execPath, [serverJs], {
     cwd: distRoot,
     env,
-    stdio: "inherit",
+    // run 任务:管道并转发到 stderr,避免 PILOG 污染 assistant stdout。
+    stdio: serverLogsToStderr ? ["inherit", "pipe", "pipe"] : "inherit",
   });
+  if (serverLogsToStderr) {
+    const forward = (chunk) => {
+      try {
+        process.stderr.write(chunk);
+      } catch {
+        // ignore
+      }
+    };
+    child.stdout?.on("data", forward);
+    child.stderr?.on("data", forward);
+  }
 
   // 后端已拉起。此后才允许触发运行时回收(Req 5.5:GC 不得阻塞后端拉起)。
   onStarted?.();
@@ -669,14 +868,29 @@ export async function launch({ serverJs, host, port, env, open, onStarted }) {
 
   const url = `http://${displayHostOf(host)}:${port}`;
   waitForReady(host, port, { get aborted() { return exited; } })
-    .then(() => {
+    .then(async () => {
       if (exited) return;
-      console.log(`\n[pi-web] 就绪 → ${url}`);
-      if (open) openBrowser(url);
+      process.stderr.write(`\n[pi-web] 就绪 → ${url}\n`);
+      let openTarget = url;
+      if (onReady) {
+        try {
+          const result = await onReady({ host: displayHostOf(host), port, url });
+          if (result && typeof result.url === "string" && result.url.length > 0) {
+            openTarget = result.url;
+          }
+        } catch (err) {
+          process.stderr.write(
+            `[pi-web] 任务引导失败: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      }
+      if (open) openBrowser(openTarget);
     })
     .catch((err) => {
       // 端口占用等导致子进程早退或就绪超时(Req 3.4):若子进程已退,退出码透传即可。
-      if (!exited) console.error(`[pi-web] ${err.message}(端口 ${port} 可能被占用)`);
+      if (!exited) {
+        process.stderr.write(`[pi-web] ${err.message}(端口 ${port} 可能被占用)\n`);
+      }
     });
 
   return exitPromise;
@@ -686,10 +900,11 @@ const SUBCOMMAND_LIST_TEXT = SUBCOMMAND_NAMES.map(
   (name) => `  ${name.padEnd(11)} ${SUBCOMMAND_SPECS[name].summary}`,
 ).join("\n");
 
-const HELP = `pi-web — 启动一个本地 pi-web 实例,或调用包管理子命令
+const HELP = `pi-web — 启动一个本地 pi-web 实例,或调用包管理 / 任务子命令
 
 用法:
   pi-web [source] [options]
+  pi-web run <prompt> [options]
   pi-web <subcommand> [options]
 
 参数:
@@ -714,7 +929,384 @@ ${SUBCOMMAND_LIST_TEXT}
 示例:
   pi-web                       # 用当前目录作为 agent source
   pi-web ./examples/hello-agent -p 8080 --open
+  pi-web run '参考图片生成新设计' --source ./aigc-agent \\
+    -m qwen-3.8-max --provider dashscope-token-plan \\
+    --attachments @images/1.jpg @images/2.jpg --open
 `;
+
+/** 常见扩展名 → MIME(附件上传用;未知回落 octet-stream)。 */
+const MIME_BY_EXT = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".wav": "audio/wav",
+  ".mp3": "audio/mpeg",
+};
+
+export function guessMimeFromPath(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
+
+/** 阶段进度 → stderr,避免污染可管道的 stdout 正文。 */
+function runStatus(msg) {
+  process.stderr.write(`[pi-web] ${msg}\n`);
+}
+
+/**
+ * 解析会话 SSE,把 assistant `text-delta` 写到 stdout;遇到 `finish`/`error`/`abort` 结束本轮。
+ * 长连接在回合结束后由调用方 abort。
+ *
+ * @param {ReadableStream<Uint8Array>} body
+ * @param {object} [opts]
+ * @param {(s: string) => void} [opts.writeText]  默认 process.stdout.write
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<{ text: string, finishReason: "finish" | "error" | "abort" | "end" | "signal" }>}
+ */
+export async function pipeAssistantSseToStdout(body, opts = {}) {
+  const writeText = opts.writeText ?? ((s) => process.stdout.write(s));
+  // text-end 后若无后续 tool/text 活动,视为本轮可结束。
+  // AIGC 常先吐一句规划再调 image_* 工具:text-end→tool 间隔可能 >500ms,默认放宽到 15s。
+  // stub 挂 extension-ui 时用更短的 softCompleteMs(见 control 分支)。
+  const softCompleteMs = typeof opts.softCompleteMs === "number" ? opts.softCompleteMs : 15_000;
+  const extensionUiSoftMs =
+    typeof opts.extensionUiSoftMs === "number" ? opts.extensionUiSoftMs : 400;
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  /** @type {string[]} */
+  const textParts = [];
+  /** @type {"finish" | "error" | "abort" | "end" | "signal" | "text-end"} */
+  let finishReason = "end";
+  let done = false;
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let softTimer;
+
+  const stop = (reason) => {
+    if (done) return;
+    done = true;
+    finishReason = reason;
+    if (softTimer !== undefined) clearTimeout(softTimer);
+    try {
+      reader.cancel();
+    } catch {
+      // ignore
+    }
+  };
+
+  const armSoftComplete = (ms = softCompleteMs) => {
+    if (ms <= 0) return;
+    if (softTimer !== undefined) clearTimeout(softTimer);
+    softTimer = setTimeout(() => stop("text-end"), ms);
+  };
+  const clearSoft = () => {
+    if (softTimer !== undefined) {
+      clearTimeout(softTimer);
+      softTimer = undefined;
+    }
+  };
+
+  const onAbort = () => stop("signal");
+  if (opts.signal) {
+    if (opts.signal.aborted) onAbort();
+    else opts.signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  try {
+    while (!done) {
+      const { done: rd, value } = await reader.read();
+      if (rd) break;
+      buf += decoder.decode(value, { stream: true });
+      let sep;
+      while ((sep = buf.indexOf("\n\n")) !== -1) {
+        const rawEvent = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const lines = rawEvent.split(/\r?\n/);
+        let eventName = "message";
+        /** @type {string[]} */
+        const dataLines = [];
+        for (const line of lines) {
+          if (line.startsWith(":") || line.length === 0) continue;
+          if (line.startsWith("event:")) eventName = line.slice(6).trim();
+          else if (line.startsWith("data:")) dataLines.push(line.slice(5).replace(/^\s/, ""));
+        }
+        if (dataLines.length === 0) continue;
+        let data;
+        try {
+          data = JSON.parse(dataLines.join("\n"));
+        } catch {
+          continue;
+        }
+        const kind = data?.kind ?? eventName;
+        if (kind === "control") {
+          // extension-ui 等 CLI 无法应答:若已有正文则尽快结束本轮 stdout。
+          const control = data?.payload?.control;
+          if (
+            (control === "extension-ui" || control === "extension_ui_request") &&
+            textParts.length > 0
+          ) {
+            armSoftComplete(extensionUiSoftMs);
+          }
+          continue;
+        }
+        if (kind !== "uiMessageChunk") continue;
+        const chunk = data.chunk ?? data;
+        const type = chunk?.type;
+        if (type === "text-delta" && typeof chunk.delta === "string") {
+          clearSoft();
+          textParts.push(chunk.delta);
+          writeText(chunk.delta);
+        } else if (type === "text-end") {
+          armSoftComplete(softCompleteMs);
+        } else if (
+          type === "tool-input-start" ||
+          type === "tool-input-delta" ||
+          type === "tool-input-available" ||
+          type === "tool-output-available" ||
+          type === "tool-output-error" ||
+          type === "start-step" ||
+          type === "start"
+        ) {
+          // 工具回合进行中:取消 text-end 软结束,等 finish 或下一轮 text。
+          clearSoft();
+        } else if (type === "finish") {
+          stop("finish");
+          break;
+        } else if (type === "error") {
+          const errText = typeof chunk.errorText === "string" ? chunk.errorText : "stream error";
+          runStatus(`assistant error: ${errText}`);
+          stop("error");
+          break;
+        } else if (type === "abort") {
+          stop("abort");
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    if (opts.signal?.aborted || finishReason === "signal" || finishReason === "text-end" || finishReason === "finish") {
+      // soft/hard stop 经 cancel 触发的读错误:忽略
+    } else {
+      throw err;
+    }
+  } finally {
+    clearSoft();
+    if (opts.signal) opts.signal.removeEventListener("abort", onAbort);
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+
+  if (textParts.length > 0) writeText("\n");
+  return { text: textParts.join(""), finishReason };
+}
+
+/**
+ * 服务就绪后编排:建会话 → (可选 setModel) → 上传附件 → 先挂 SSE → 发首条消息 →
+ * 把本轮 assistant 文本流式写到 **stdout**(阶段日志在 stderr)。
+ * 返回会话页 URL,供 --open 直达 `/session/:id`(UI 走 resume + 历史,不另建空会话)。
+ *
+ * @param {object} opts
+ * @param {string} opts.baseUrl  如 http://127.0.0.1:3000
+ * @param {string} opts.source
+ * @param {string} [opts.cwd]
+ * @param {string} opts.prompt
+ * @param {string} [opts.model]
+ * @param {string} [opts.provider]
+ * @param {string} [opts.aigcModel]  图像工具会话偏好 `aigc.model`(如 gpt-image-2-cf)
+ * @param {string} [opts.aigcSize]   图像工具会话偏好 `aigc.size`(如 auto)
+ * @param {readonly string[]} [opts.attachments]  已剥 @ 的本地路径(相对 baseCwd 或绝对)
+ * @param {string} [opts.baseCwd]
+ * @param {boolean} [opts.trust]
+ * @param {boolean} [opts.printAssistant=true]  是否把 text-delta 打到 stdout
+ * @param {(s: string) => void} [opts.writeText]
+ * @param {typeof fetch} [opts.fetchImpl]
+ * @returns {Promise<{ sessionId: string, url: string, assistantText: string }>}
+ */
+export async function bootstrapRunTask(opts) {
+  const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const baseUrl = opts.baseUrl.replace(/\/$/, "");
+  const api = `${baseUrl}/api`;
+  const baseCwd = opts.baseCwd ?? process.cwd();
+  const printAssistant = opts.printAssistant !== false;
+
+  const createBody = {
+    source: opts.source,
+    ...(opts.cwd ? { cwd: opts.cwd } : {}),
+    ...(opts.model ? { model: opts.model } : {}),
+    ...(opts.trust ? { trust: true } : {}),
+  };
+  const createRes = await fetchImpl(`${api}/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(createBody),
+  });
+  if (!createRes.ok) {
+    const detail = await createRes.text().catch(() => "");
+    throw new Error(`创建会话失败 HTTP ${createRes.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+  }
+  const created = await createRes.json();
+  const sessionId = created?.sessionId;
+  if (typeof sessionId !== "string" || sessionId.length === 0) {
+    throw new Error("创建会话响应缺少 sessionId");
+  }
+  runStatus(`会话已创建 → ${sessionId}`);
+
+  if (opts.provider && opts.model) {
+    const modelRes = await fetchImpl(`${api}/sessions/${encodeURIComponent(sessionId)}/models`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ provider: opts.provider, modelId: opts.model }),
+    });
+    if (!modelRes.ok) {
+      const detail = await modelRes.text().catch(() => "");
+      runStatus(
+        `切换模型失败 HTTP ${modelRes.status}${detail ? `: ${detail.slice(0, 200)}` : ""}` +
+          `(已继续发送消息,会话仍可能使用默认模型)`,
+      );
+    } else {
+      runStatus(`对话模型已切换 → ${opts.provider}/${opts.model}`);
+    }
+  }
+
+  // 图像工具偏好:会话 KV `aigc.model` / `aigc.size`。
+  // ★ size 很关键:image_edit 在 hasUI 时会对缺省 size 调 ext.ui.select 并一直等待用户点选,
+  // 浏览器若没弹窗/用户没注意,就会「只有 tool start、永远无 tool end」(0% CPU、无外连)。
+  /** @type {Array<[string, string]>} */
+  const aigcPrefs = [];
+  if (typeof opts.aigcModel === "string" && opts.aigcModel.length > 0) {
+    aigcPrefs.push(["aigc.model", opts.aigcModel]);
+  }
+  if (typeof opts.aigcSize === "string" && opts.aigcSize.length > 0) {
+    aigcPrefs.push(["aigc.size", opts.aigcSize]);
+  }
+  for (const [key, value] of aigcPrefs) {
+    const stateRes = await fetchImpl(`${api}/sessions/${encodeURIComponent(sessionId)}/state`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ key, value, op: "set" }),
+    });
+    if (!stateRes.ok) {
+      const detail = await stateRes.text().catch(() => "");
+      runStatus(
+        `设置 ${key} 失败 HTTP ${stateRes.status}${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+      );
+    } else {
+      runStatus(`图像偏好 → ${key}=${value}`);
+    }
+  }
+
+  /** @type {string[]} */
+  const attachmentIds = [];
+  const attachmentPaths = opts.attachments ?? [];
+  for (const raw of attachmentPaths) {
+    const abs = isAbsolute(raw) ? raw : resolve(baseCwd, raw);
+    if (!existsSync(abs)) {
+      throw new Error(`附件不存在: ${raw}(解析为 ${abs})`);
+    }
+    const bytes = readFileSync(abs);
+    const mime = guessMimeFromPath(abs);
+    const name = basename(abs);
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: mime }), name);
+    const upRes = await fetchImpl(
+      `${api}/sessions/${encodeURIComponent(sessionId)}/attachments`,
+      {
+        method: "POST",
+        body: form,
+        headers: { accept: "application/json" },
+      },
+    );
+    if (!upRes.ok) {
+      const detail = await upRes.text().catch(() => "");
+      throw new Error(
+        `上传附件失败 ${name} HTTP ${upRes.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`,
+      );
+    }
+    const up = await upRes.json();
+    const id = up?.attachment?.id;
+    if (typeof id !== "string" || id.length === 0) {
+      throw new Error(`上传附件 ${name} 响应缺少 attachment.id`);
+    }
+    attachmentIds.push(id);
+    runStatus(`附件已上传 → ${name} (${id})`);
+  }
+
+  // 先挂 SSE,再 POST messages,避免首帧在无订阅者时丢失(见 HTTP API 竞态约定)。
+  const streamAbort = new AbortController();
+  const streamFetch = fetchImpl(`${api}/sessions/${encodeURIComponent(sessionId)}/stream`, {
+    method: "GET",
+    headers: { accept: "text/event-stream" },
+    signal: streamAbort.signal,
+  });
+
+  // 给流一点建立时间(热路径通常 <100ms)。
+  await new Promise((r) => setTimeout(r, 80));
+
+  // ★ 只发 attachmentIds(服务端 injectAttachmentRefs → [attachment id=att_…])。
+  // 不把多图 base64 塞进 vision `images`:aigc-agent 设计是「工具抄 att_、不见像素」;
+  // 4 张 ~3MB 原图 base64 进 prompt 会撑爆回合(实测回合秒 finish、无 toolCall)。
+  const msgBody = {
+    message: opts.prompt,
+    ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+  };
+  const msgRes = await fetchImpl(`${api}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(msgBody),
+  });
+  if (!msgRes.ok) {
+    streamAbort.abort();
+    const detail = await msgRes.text().catch(() => "");
+    throw new Error(`发送消息失败 HTTP ${msgRes.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+  }
+  runStatus(`首条消息已发送`);
+
+  /** @type {string} */
+  let assistantText = "";
+  try {
+    const streamRes = await streamFetch;
+    if (!streamRes.ok || !streamRes.body) {
+      runStatus(`SSE 不可用 HTTP ${streamRes.status};跳过 stdout 正文`);
+    } else if (printAssistant) {
+      runStatus(`assistant 输出 ↓ (stdout)`);
+      const piped = await pipeAssistantSseToStdout(streamRes.body, {
+        signal: streamAbort.signal,
+        ...(opts.writeText ? { writeText: opts.writeText } : {}),
+      });
+      assistantText = piped.text;
+      runStatus(`assistant 结束 (${piped.finishReason})`);
+    } else {
+      // 仍 drain 到 finish,避免无订阅语义漂移;不写 stdout。
+      await pipeAssistantSseToStdout(streamRes.body, {
+        signal: streamAbort.signal,
+        writeText: () => {},
+      });
+    }
+  } catch (err) {
+    if (!streamAbort.signal.aborted) {
+      runStatus(`读取 SSE 失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  } finally {
+    streamAbort.abort();
+  }
+
+  const sessionUrl = `${baseUrl}/session/${encodeURIComponent(sessionId)}`;
+  runStatus(`会话页 → ${sessionUrl}`);
+  return { sessionId, url: sessionUrl, assistantText };
+}
 
 /** 解包失败的判别式错误码 → 用户下一步该做什么。文案与 payload/unpack.mjs 的 describeErrorCode 同源。 */
 const RUNTIME_ERROR_HINTS = {
@@ -854,10 +1446,24 @@ export async function main(argv = process.argv.slice(2)) {
   if (opts.intent === "subcommand") {
     return runSubcommandFromDist(opts.name, opts.argv);
   }
+
+  // ── 默认 run 与 run-task 共用启动路径 ──────────────────────────────────
+  const isRunTask = opts.intent === "run-task";
   if (opts.watch && opts.source && looksLikeGitSource(opts.source)) {
     console.warn("[pi-web] --watch 仅适用于本地目录 source,git 来源已跳过文件监视。");
   }
-  const env = buildEnv(opts, process.cwd(), process.env);
+  // run-task 的 source 在 --source 上;缺省当前目录。复用 buildEnv 的绝对化逻辑。
+  const launchOpts = isRunTask
+    ? {
+        ...opts,
+        intent: "run",
+        source: opts.source,
+        open: opts.open,
+        stub: opts.stub,
+        watch: false,
+      }
+    : opts;
+  const env = buildEnv(launchOpts, process.cwd(), process.env);
 
   let resolved;
   try {
@@ -877,6 +1483,28 @@ export async function main(argv = process.argv.slice(2)) {
     env,
     open: opts.open,
     onStarted: () => scheduleRuntimeGc(resolved.runtime),
+    // run:后端日志进 stderr,stdout 专留给 assistant 文本(可管道)。
+    ...(isRunTask ? { serverLogsToStderr: true } : {}),
+    ...(isRunTask
+      ? {
+          onReady: async ({ url }) => {
+            const result = await bootstrapRunTask({
+              baseUrl: url,
+              source: env.PI_WEB_DEFAULT_SOURCE,
+              cwd: env.PI_WEB_DEFAULT_CWD,
+              prompt: opts.prompt,
+              model: opts.model,
+              provider: opts.provider,
+              aigcModel: opts.aigcModel,
+              aigcSize: opts.aigcSize,
+              attachments: opts.attachments,
+              baseCwd: process.cwd(),
+              trust: opts.trust,
+            });
+            return { url: result.url };
+          },
+        }
+      : {}),
   });
 }
 

@@ -123,9 +123,12 @@ const ROUTES: readonly ImageRoute[] = [
 export const IMAGE_EDIT_ROUTES: readonly ImageRoute[] = ROUTES;
 export const IMAGE_EDIT_DEFAULT_MODEL = DEFAULT_MODEL;
 export const IMAGE_EDIT_MEDIA_FIELDS: readonly string[] = [
-  // `images` 是**数组**字段:编排器的 mediaFields 解析支持 string | string[],逐项解析为 data URI。
-  // 取代原先的 "image" + "reference_images" 两个字段(首项主图、其余参考图)。
+  // 新契约 `images[]` + 旧契约 `image`/`reference_images` 都列上:
+  // runImageTool 会先 normalizeImageEditMediaArgs 双向补齐,再逐字段 resolve att_ → data URI。
+  // 只列一侧时,LLM 若按另一侧 systemPrompt 传参会解析不到附件。
   "images",
+  "image",
+  "reference_images",
   "mask",
 ];
 

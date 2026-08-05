@@ -32,9 +32,9 @@ describe("parseCliArgs — 子命令判别(Req 1.1, 1.2)", () => {
     expect(o.argv).toEqual(["my-agent", "--kind", "plugin"]);
   });
 
-  it("SUBCOMMAND_NAMES 恰好含 8 个子命令名(6 个归 cli-package-commands + add 归 cli-component-add + build 归 cli-agent-build)", () => {
+  it("SUBCOMMAND_NAMES 含包管理/构建子命令 + run 任务子命令", () => {
     expect([...SUBCOMMAND_NAMES].sort()).toEqual(
-      ["add", "build", "create", "install", "list", "publish", "uninstall", "update"].sort(),
+      ["add", "build", "create", "install", "list", "publish", "run", "uninstall", "update"].sort(),
     );
   });
 
@@ -72,7 +72,7 @@ describe("parseCliArgs — 顶层与子命令帮助(Req 1.3, 1.4)", () => {
       const code = await main(["--help"]);
       expect(code).toBe(0);
       const out = chunks.join("");
-      for (const name of ["create", "install", "uninstall", "list", "update", "publish"]) {
+      for (const name of ["create", "install", "uninstall", "list", "update", "publish", "run"]) {
         expect(out).toContain(name);
       }
     } finally {

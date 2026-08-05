@@ -142,9 +142,42 @@ function joinText(content: readonly ContentItem[]): string {
  * 仅匹配 `[attachment id=… type=… name=…]` 这一稳定形态,不误伤用户输入的普通方括号文本。
  */
 const ATTACHMENT_REF_RE = /\[attachment id=\S+ type=\S+ name=[^\]]*\]\n?/g;
+/** 捕获组: id / mime / name —— 用于把文本标记还原为 file part(历史回显)。 */
+const ATTACHMENT_REF_PARSE_RE =
+  /\[attachment id=(att_[^\s\]]+) type=([^\s\]]+) name=([^\]]*)\]/g;
 function stripAttachmentRefs(text: string): string {
   if (!text.includes("[attachment id=")) return text;
   return text.replace(ATTACHMENT_REF_RE, "").replace(/^\n+/, "");
+}
+
+/** 从 user 文本标记解析附件元数据(顺序与 inject 一致)。 */
+function parseAttachmentRefs(
+  text: string,
+): ReadonlyArray<{ id: string; mimeType: string; name: string }> {
+  if (!text.includes("[attachment id=")) return [];
+  const out: Array<{ id: string; mimeType: string; name: string }> = [];
+  const re = new RegExp(ATTACHMENT_REF_PARSE_RE.source, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    out.push({ id: m[1]!, mimeType: m[2]!, name: m[3] ?? "" });
+  }
+  return out;
+}
+
+/** 文本标记 → file part(attachmentId + 分发路径;baseUrl 前缀与 imagePart 一致)。 */
+function filePartsFromAttachmentRefs(
+  text: string,
+  baseUrl: string,
+): UIPart[] {
+  return parseAttachmentRefs(text).map((ref) => {
+    return {
+      type: "file",
+      mediaType: ref.mimeType,
+      filename: ref.name,
+      url: resolveDisplayUrl(baseUrl, `/attachments/${ref.id}/raw`),
+      attachmentId: ref.id,
+    } as unknown as UIPart;
+  });
 }
 
 /**
@@ -174,22 +207,33 @@ function collapseSkillExpansion(text: string): string {
   return args.length > 0 ? `/skill:${name} ${args}` : `/skill:${name}`;
 }
 
-/** user 消息内容 → UI parts(text / file);剥离附件引用占位符(见 stripAttachmentRefs)。 */
+/**
+ * user 消息内容 → UI parts(text / file)。
+ * 附件文本标记先还原为 file part(可显示缩略图),再剥离占位符只留用户原文
+ * (与发送当下「图+文」一致;仅 strip 不还原时 CLI/attachmentIds 路径刷新后会丢图)。
+ */
 function userParts(content: unknown, baseUrl: string): UIPart[] {
   if (typeof content === "string") {
-    // 先折叠 skill 展开块(与发送当下短命令一致),再剥离附件占位符。
-    const text = stripAttachmentRefs(collapseSkillExpansion(content));
-    // 纯附件消息(占位符剥离后无真实文本)→ 不产生空 text part。
-    if (content.includes("[attachment id=") && text === "") return [];
-    return [{ type: "text", text, state: "done" } as UIPart];
+    const collapsed = collapseSkillExpansion(content);
+    const files = filePartsFromAttachmentRefs(collapsed, baseUrl);
+    const text = stripAttachmentRefs(collapsed);
+    const parts: UIPart[] = [...files];
+    // 纯附件消息(剥离后无真实文本)→ 只保留 file parts,不塞空 text。
+    if (!(collapsed.includes("[attachment id=") && text === "")) {
+      parts.push({ type: "text", text, state: "done" } as UIPart);
+    }
+    return parts;
   }
   if (!Array.isArray(content)) return [];
   const parts: UIPart[] = [];
   for (const raw of content as ContentItem[]) {
     if (raw.type === "text") {
       const original = String(raw.text ?? "");
-      const text = stripAttachmentRefs(collapseSkillExpansion(original));
-      // 纯附件 text item(占位符剥离后无真实文本)→ 跳过,避免空 text part;
+      const collapsed = collapseSkillExpansion(original);
+      const files = filePartsFromAttachmentRefs(collapsed, baseUrl);
+      parts.push(...files);
+      const text = stripAttachmentRefs(collapsed);
+      // 纯附件 text item(占位符剥离后无真实文本)→ 跳过空 text part;
       // 不含占位符的(含原本就空的)保持既有行为,原样产出。
       if (original.includes("[attachment id=") && text === "") continue;
       parts.push({ type: "text", text, state: "done" } as UIPart);
