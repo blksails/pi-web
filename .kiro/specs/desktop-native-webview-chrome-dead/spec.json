@@ -1,7 +1,7 @@
 {
   "feature_name": "desktop-native-webview-chrome-dead",
   "created_at": "2026-08-05T04:26:29Z",
-  "updated_at": "2026-08-05T04:26:29Z",
+  "updated_at": "2026-08-05T08:05:00Z",
   "language": "zh",
   "phase": "requirements-generated",
   "approvals": {
@@ -19,5 +19,5 @@
     }
   },
   "ready_for_implementation": false,
-  "blocked_on": "需要 macOS 视图层次证据（NSView 树 dump 或 Xcode View Debugger），当前会话截图能力失效，design 阶段无法开展"
+  "evidence_note": "Req 1/2 已满足：NSView 树 + 宿主 DOM 读数齐备，三个候选中两个排除、一个成立（宿主不重绘）。design 阻塞解除。"
 }

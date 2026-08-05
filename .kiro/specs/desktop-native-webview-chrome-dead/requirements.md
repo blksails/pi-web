@@ -193,3 +193,64 @@ TaoView                  frame=[0,   0, 1200, 800]  layer=[0,   0, 1200, 800]
 用截图像素反推坐标**误差会累积到超过结论本身**：窗口尺寸、标题栏高度、缩放系数三者
 各有误差，叠起来足以把「差 10px」和「不差」混为一谈。中途窗口被移动后彻底失效。
 凡是能从 DOM / 视图树直接读到的数值，一律不要用像素反推。
+
+---
+
+## 判定：三个候选全部有结论（2026-08-05，宿主 DOM 读数）
+
+release 构建开启 `devtools` feature 后，直接在**打包版、native 载体**的宿主 WebView
+控制台量得：
+
+```json
+{"n":1,"box":[1139,0,575,29],"kids":6,"carrier":"tauri-webview","vw":1718,"vh":910}
+```
+
+- chrome 元素**存在且唯一**（`n=1`）
+- 盒模型 `[1139, 0, 575, 29]` —— x/y/宽/高全部正确，与内容槽上下相邻不重叠
+- **6 个子节点**（收起 / 关闭×N / 更多 / 新开 / 刷新 / 切换器）全在
+- `carrier="tauri-webview"` —— 确认是 native 形态，不是回退态
+
+### Requirement 2 的三条判定
+
+| 候选 | 判定 | 依据 |
+|------|------|------|
+| 2.2 子视图绘制层超出布局范围 | **排除** | NSView 树里每个视图 `layer` 与 `frame` 逐字相同 |
+| 2.3 子视图吞掉该区域点击 | **排除** | chrome 带内 `hitTest` 命中的是**宿主**，点击确实到达宿主 |
+| 2.1 宿主不重绘该区域 | **成立（唯一幸存）** | DOM 正确、几何正确、图层正确、命中正确，而该区域在屏幕上为空 |
+
+### 因此结论
+
+**宿主 WebView 的 DOM、布局、几何、图层、命中测试全部正确，唯独该区域不出现在屏幕上。**
+问题在 WKWebView 的绘制/合成，不在本仓任何 JS/TS/Rust 逻辑内——也因此，任何不触及
+渲染层的改动都不可能修好它（见下方 PR #26 的核对）。
+
+### 顺带核对：PR #26 与本缺陷无关
+
+有说法称 PR #26（`feat: add agic video studio agent workflow`）解决了本问题。核对不成立：
+
+```
+desktop/ 目录       改动 0 个文件
+native_layout.rs    0
+pane_relay.rs       0
+panes-host.tsx      0
+tauri-runtime.ts    0
+```
+
+194 个改动文件中 121 个在 `examples/`；panes-kit 只新增了 `browser-policy.ts`
+（URL 归一化 + origin 白名单）及其测试。而本缺陷的判据开关
+`PI_WEB_NATIVE_CHILD_WEBVIEWS` 只在 `desktop/src-tauri/src/window.rs` 读取，
+该 PR 未触及该文件，**不可能改变这一行为**。
+
+### 视觉证据
+
+`va-native-on-chrome-missing.png` —— 打包版 native 形态：右侧面板只有内容，
+顶部 29px 的 chrome 带为空。对照组（`PI_WEB_NATIVE_CHILD_WEBVIEWS=0`）下
+同一位置显示完整的「会话信息 / 搜图 / 素材 / 画布 / 日志」标签与四个按钮。
+
+### 下一步（design 阶段可以开始了）
+
+Requirement 1 与 2 已满足，阻塞解除。design 需要在以下方向中选型：
+
+1. **强制重绘**：几何变更后主动让宿主 WebView 失效该区域（`setNeedsDisplay:` / 触发 layout）
+2. **规避重叠时序**：child 的 `set_bounds` / `show` 与宿主绘制的顺序调整
+3. **上游**：向 wry / Tauri 报告并跟进；期间以 `PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 承受
