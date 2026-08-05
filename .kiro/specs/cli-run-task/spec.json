@@ -1,0 +1,23 @@
+{
+  "feature_name": "cli-run-task",
+  "created_at": "2026-08-05T08:29:48Z",
+  "updated_at": "2026-08-05T08:35:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": true,
+      "approved": true
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true,
+  "notes": "Goal-driven fast-track: 用户目标明确授权端到端完成并测试；闸门落盘为 approved 以允许实施与验收。"
+}

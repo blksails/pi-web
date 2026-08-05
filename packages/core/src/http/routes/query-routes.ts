@@ -35,6 +35,76 @@ function attachmentIdOf(value: Record<string, unknown>): string | undefined {
 }
 
 /**
+ * 解析 server 注入的附件文本标记:
+ * `[attachment id=att_… type=<mime> name=<name>]`
+ * (与 `injectAttachmentRefs` / `buildAttachmentRefs` 同形)。
+ */
+const ATTACHMENT_REF_LINE_RE =
+  /\[attachment id=(att_[^\s\]]+) type=([^\s\]]+) name=([^\]]*)\]/g;
+
+/**
+ * 用户消息历史:把文本里的附件引用标记展开为 `image` content 项(带 attachmentId),
+ * 并剥离标记只留用户原文。这样后续 `refreshHistoryAttachmentUrls` 能补 displayUrl,
+ * 前端 `agentMessagesToUiMessages` 能渲染为 file part——否则 CLI/`attachmentIds` 路径
+ * 的用户气泡刷新后只剩纯文本,看起来「对话没有附件引用」。
+ */
+export function expandUserAttachmentTextRefs(
+  messages: readonly unknown[],
+): unknown[] {
+  return messages.map((msg) => {
+    if (!isRecord(msg) || msg["role"] !== "user") return msg;
+    const content = msg["content"];
+
+    const expandText = (
+      text: string,
+    ): { images: Record<string, unknown>[]; text: string } => {
+      const images: Record<string, unknown>[] = [];
+      let m: RegExpExecArray | null;
+      const re = new RegExp(ATTACHMENT_REF_LINE_RE.source, "g");
+      while ((m = re.exec(text)) !== null) {
+        images.push({
+          type: "image",
+          attachmentId: m[1],
+          mimeType: m[2],
+          name: m[3] ?? "",
+        });
+      }
+      const cleaned = text
+        .replace(ATTACHMENT_REF_LINE_RE, "")
+        .replace(/^\n+/, "");
+      return { images, text: cleaned };
+    };
+
+    if (typeof content === "string") {
+      const { images, text } = expandText(content);
+      if (images.length === 0) return msg;
+      const parts: unknown[] = [...images];
+      if (text.length > 0) parts.push({ type: "text", text });
+      return { ...msg, content: parts };
+    }
+
+    if (!Array.isArray(content)) return msg;
+    const next: unknown[] = [];
+    let changed = false;
+    for (const item of content) {
+      if (!isRecord(item) || item["type"] !== "text" || typeof item["text"] !== "string") {
+        next.push(item);
+        continue;
+      }
+      const { images, text } = expandText(item["text"]);
+      if (images.length === 0) {
+        next.push(item);
+        continue;
+      }
+      changed = true;
+      next.push(...images);
+      if (text.length > 0) next.push({ ...item, text });
+    }
+    return changed ? { ...msg, content: next } : msg;
+  });
+}
+
+/**
  * 历史消息只保存 attachmentId 时，补一条新的签名 URL。
  * 原 URL 可能已过期；不在当前会话名下的附件不签发，避免跨会话泄露。
  */
@@ -170,14 +240,16 @@ export function makeMessagesQueryHandler(
       const res = await session.getMessages();
       const extracted = dataOrError<{ messages: unknown[] }>(res);
       if (!extracted.ok) return extracted.response;
+      // 先展开 user 文本附件标记为 image content(带 attachmentId),再补签名 displayUrl。
+      const expanded = expandUserAttachmentTextRefs(extracted.data.messages);
       const messages =
         attachmentStore !== undefined
           ? await refreshHistoryAttachmentUrls(
-              extracted.data.messages,
+              expanded,
               ctx.sessionId ?? "",
               attachmentStore,
             )
-          : extracted.data.messages;
+          : expanded;
       return jsonResponse(200, { messages });
     } catch (err) {
       return mapEngineError(err);
