@@ -2096,8 +2096,7 @@ export function PiChat({
     hasAmbientStatuses || (showSessionStats && controls !== undefined) ? (
       <div
         className={cn(
-          "pi-liquid-glass sticky top-0 z-20 mx-auto flex min-h-8 items-center gap-2 border-b px-4 py-1",
-          lay.content,
+          "pi-liquid-glass sticky top-0 z-20 flex min-h-8 w-full items-center gap-2 border-b px-4 py-1",
         )}
         data-pi-top-status-bar
       >
