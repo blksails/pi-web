@@ -130,7 +130,7 @@ struct LayoutState {
 }
 
 /// 槽位诊断开关（Req 3.5：不重新编译即可开启）。
-fn pane_layout_debug_enabled() -> bool {
+pub fn pane_layout_debug_enabled() -> bool {
     matches!(
         std::env::var("PI_WEB_PANE_LAYOUT_DEBUG").ok().as_deref().map(str::trim),
         Some("1" | "true" | "yes" | "on")
@@ -607,6 +607,19 @@ impl NativeWebviewLayoutManager {
                     if !overlay_top {
                         let _ = view.set_focus();
                     }
+                }
+            }
+        }
+        // ★ 子 WebView 的 bounds/可见性变更后，让宿主重绘（spec
+        //   desktop-native-webview-chrome-dead 方案 A）。宿主被 child 覆盖过的区域在 child
+        //   让开后可能没被标脏 —— 这正是「几何对、图层对、命中对，却不显示」的形态。
+        //   只在槽真变化时做，拖拽已有 bounds_near 去抖，不会每帧刷。
+        #[cfg(target_os = "macos")]
+        if slot_changed {
+            if let Ok(ptr) = window.ns_window() {
+                let ok = unsafe { crate::view_tree::force_host_redraw(ptr) };
+                if !ok && pane_layout_debug_enabled() {
+                    eprintln!("[panes] 宿主重绘请求失败：未找到铺满全窗的宿主视图");
                 }
             }
         }

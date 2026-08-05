@@ -383,6 +383,36 @@ fn main() {
             install_signal_handlers(&handle);
             // ★ 先建窗加载随包加载页，再做任何后端动作 → 任何分支都不出现空白窗口（Req 1.4）。
             window::create_main_window_for_runtime(&handle, server_origin.clone())?;
+            // 诊断态自动弹 devtools（spec desktop-native-webview-chrome-dead，Req 1）。
+            //
+            // ★ 排查已推进到「需要读宿主 WebView 自身的 DOM 盒模型」——浏览器（iframe 载体）
+            //   里量到的一切正常，缺的是同一份 DOM 在 native 载体下的读数，而那只能在打包的
+            //   桌面 WebView 里取。靠右键菜单太依赖手动操作，此处直接开。
+            //   只在 PI_WEB_PANE_LAYOUT_DEBUG=1 时生效，平时不打扰。
+            //   ★ 宿主是窗口下的**子 webview**，不是 WebviewWindow —— `get_webview_window`
+            //     找不到它（第一版就栽在这，诊断如实报了「找不到」才没白跑一趟）。
+            if native_layout::pane_layout_debug_enabled() {
+                match handle.get_window(window::MAIN_WINDOW_LABEL) {
+                    Some(win) => {
+                        let found = win
+                            .webviews()
+                            .into_iter()
+                            .find(|v| v.label() == window::HOST_WEBVIEW_LABEL);
+                        match found {
+                            Some(v) => {
+                                v.open_devtools();
+                                eprintln!("[panes] 已打开 devtools（宿主 webview）");
+                            }
+                            None => eprintln!(
+                                "[panes] devtools 未打开：窗口下没有 {} —— 现有 {:?}",
+                                window::HOST_WEBVIEW_LABEL,
+                                win.webviews().iter().map(|v| v.label().to_string()).collect::<Vec<_>>(),
+                            ),
+                        }
+                    }
+                    None => eprintln!("[panes] devtools 未打开：找不到主窗口"),
+                }
+            }
             // 拉起含阻塞的就绪轮询（最长 60s），必须离开主线程，否则窗口无法绘制。
             tauri::async_runtime::spawn_blocking(move || launch(&handle));
             Ok(())

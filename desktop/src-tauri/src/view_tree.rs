@@ -135,6 +135,52 @@ fn walk(view: &NSView, depth: usize, content: &NSView, ch: f64, out: &mut Vec<Vi
     }
 }
 
+/// 让宿主 WebView 重新绘制（spec desktop-native-webview-chrome-dead，方案 A）。
+///
+/// ## 为什么需要
+///
+/// 宿主是铺满窗口的不透明 WebView，子 pane WebView 是它的**兄弟**。子视图的
+/// `set_bounds` / `show` 会让 AppKit 重排兄弟层级，而宿主被 child 覆盖过的区域在
+/// child 让开后可能没有被标脏——这正是本缺陷「几何对、图层对、命中对，却不显示」的形态。
+///
+/// ## 只做一件事
+///
+/// 对宿主视图（content 视图下第一个铺满全窗的子视图）请求重绘。**不改任何几何**，
+/// 不碰子视图，也不改可见性——诊断与修复都不该动被观测对象之外的东西。
+///
+/// 返回是否找到了宿主视图。找不到时返回 `false` 而非静默成功——
+/// 与 Req 1.5 同源：拿不到就明说。
+///
+/// # Safety
+/// `ns_window` 必须是 `tauri::Window::ns_window()` 返回的有效指针。
+pub unsafe fn force_host_redraw(ns_window: *mut std::ffi::c_void) -> bool {
+    if ns_window.is_null() {
+        return false;
+    }
+    let window: &NSWindow = unsafe { &*(ns_window as *const NSWindow) };
+    let Some(content) = window.contentView() else {
+        return false;
+    };
+    let cb = content.bounds();
+    // 宿主 = content 下铺满全窗的那个子视图（pane 与 overlay 都只占局部）。
+    for sub in content.subviews().iter() {
+        let f = sub.frame();
+        let full = (f.size.width - cb.size.width).abs() < 1.0
+            && (f.size.height - cb.size.height).abs() < 1.0
+            && f.origin.x.abs() < 1.0
+            && f.origin.y.abs() < 1.0;
+        if full {
+            sub.setNeedsDisplay(true);
+            // 子层同样标脏：WKWebView 的实际内容在其后代里，只标顶层可能不下传。
+            for inner in sub.subviews().iter() {
+                inner.setNeedsDisplay(true);
+            }
+            return true;
+        }
+    }
+    false
+}
+
 /// 对给定窗口取一次只读快照。
 ///
 /// `probes` 是左上原点坐标下的探针点；每个点会做一次 `hitTest`，用于回答
