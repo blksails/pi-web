@@ -2096,7 +2096,7 @@ export function PiChat({
     hasAmbientStatuses || (showSessionStats && controls !== undefined) ? (
       <div
         className={cn(
-          "mx-auto flex min-h-8 items-center gap-2 border-b border-[hsl(var(--border)/0.45)] bg-[hsl(var(--canvas)/0.38)] px-4 py-1 backdrop-blur-md",
+          "pi-liquid-glass sticky top-0 z-20 mx-auto flex min-h-8 items-center gap-2 border-b px-4 py-1",
           lay.content,
         )}
         data-pi-top-status-bar
@@ -2183,6 +2183,7 @@ export function PiChat({
           }];
         })}
       >
+        {extensionStatusBar}
         <div
           className={cn(lay.content, "space-y-7 px-4 pb-2 pt-10 md:px-0")}
           data-pi-chat-messages
@@ -2285,14 +2286,9 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-5 pt-3 md:px-12"
+        className="pi-liquid-glass pointer-events-none absolute inset-x-0 bottom-0 border-t px-4 pb-5 pt-3 md:px-12"
       >
-        <div
-          className={cn(
-            "pointer-events-auto mx-auto rounded-[16px] border border-[hsl(var(--border)/0.55)] bg-[hsl(var(--canvas)/0.42)] px-3 py-3 shadow-[0_8px_30px_hsl(var(--foreground)/0.04)] backdrop-blur-md",
-            lay.content,
-          )}
-        >
+        <div className={cn("pointer-events-auto", lay.content)}>
           {inputWithWidgets}
         </div>
       </div>
@@ -2373,8 +2369,6 @@ export function PiChat({
             <SlotHost ext={extension} slot="headerRight" state={webextState} />
           </header>
         ) : null}
-
-        {extensionStatusBar}
 
         {/* Tier1 保留插槽:扩展状态栏(与 ambient StatusBar 共存)+ 工具条。 */}
         <ExtSlotRegion ext={extension} slot="statusBar" />
