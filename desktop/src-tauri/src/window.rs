@@ -26,10 +26,11 @@ pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 ///
 /// ## ★ 不要试图用这个开关「修好」pane
 ///
-/// - **原生 child WebView（默认）**：chrome 曾恒空白不可点——根因是宿主 WKWebView
-///   不重绘被 child 让开的区域（几何/句柄/NSView/hitTest/DOM 六路候选全被机械证据排除）。
-///   `native_layout` 在槽变化后调 `view_tree::force_host_redraw`（方案 A）后，已经真机
-///   三判据验证：chrome 与 pane 内容同帧可见且可点。见 spec
+/// - **原生 child WebView（默认）**：chrome 曾恒空白不可点。绘制半边已修——宿主
+///   WKWebView 不重绘被 child 让开的区域，`native_layout` 槽变化后调
+///   `view_tree::force_host_redraw`（方案 A），真机验证 chrome 与 pane 内容同帧可见。
+///   **点击半边未修**：chrome 带按钮（+/刷新）点击零响应，事件未达宿主 DOM——
+///   静态 NSView hitTest 命中宿主但真实事件路由不通，判别待做。见 spec
 ///   `desktop-native-webview-chrome-dead` 的 design.md「判定」节。
 /// - **旧浮层（`=0`）**：pane 内容不是 iframe，而是**独立顶层 WebviewWindow**，位置由
 ///   「宿主窗口屏幕坐标 + DOM 槽矩形」算出。真机实测会飘到屏幕角落（用户报「奇怪的悬浮块」），
