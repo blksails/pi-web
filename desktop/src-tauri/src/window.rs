@@ -22,14 +22,34 @@ use url::Url;
 pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 
-/// Child WebView 为默认载体；仅显式关闭时回退旧浮层，供故障排查。
+/// 原生 child WebView 载体的开关。**默认关闭**（走 iframe 载体）。
+///
+/// ## 为什么默认关掉（spec desktop-native-webview-chrome-dead）
+///
+/// 开启时 pane chrome（tab 栏与新开/刷新/切换器按钮）**既不可见也不可点**，而 tab 栏是
+/// 切换与新开 pane 的唯一入口——用户被锁在首个 pane 里，无法经 UI 恢复。这不是小瑕疵，
+/// 是功能不可用。
+///
+/// 排查已把六个候选逐一用机械证据排除：槽位几何正确（`(717,29,479x771)`）、NSView 的
+/// `frame` 与 `layer` 逐字相同、chrome 带内的 `hitTest` 命中的是宿主、宿主 DOM 的
+/// `[data-panes-chrome]` 盒模型 `[1139,0,575,29]` 且 6 个子节点俱全。**DOM、布局、几何、
+/// 图层、命中测试全部正确，唯独该区域不出现在屏幕上**——问题在 WKWebView 的绘制/合成层，
+/// 不在本仓任何 JS/TS/Rust 逻辑内。
+///
+/// 既然真因在上游且短期不可控，就不该让用户承受一个功能不可用的默认值。iframe 载体功能
+/// 完整（chrome 正常渲染、可交互），代价是性能与视觉略逊于原生子 WebView。
+///
+/// ## 想开回来
+///
+/// `PI_WEB_NATIVE_CHILD_WEBVIEWS=1`（或 `true`/`yes`/`on`）。留着是为了继续排查上游问题，
+/// 以及在该问题修复后能一键切回——**不要**在默认值上再做判断，直接改这里的语义即可。
 pub fn native_child_webviews_enabled() -> bool {
-    !matches!(
+    matches!(
         std::env::var("PI_WEB_NATIVE_CHILD_WEBVIEWS")
             .ok()
             .as_deref()
             .map(str::trim),
-        Some("0" | "false" | "no" | "off")
+        Some("1" | "true" | "yes" | "on")
     )
 }
 
@@ -59,6 +79,17 @@ pub fn decide_navigation(raw_url: &str, server_origin: Option<&str>) -> Navigati
         || raw_url.starts_with("http://tauri.localhost")
         || raw_url.starts_with("https://tauri.localhost")
     {
+        return NavigationDecision::Allow;
+    }
+    // iframe 载体的 pane 文档：`srcdoc` 的内容由**父文档**（即我们自己的页面）提供，
+    // 不涉及任何外部来源，必须放行。
+    //
+    // ★ 实测踩过：桌面版切到 iframe 载体后，日志里刷 `[desktop] 拒绝导航: about:srcdoc`，
+    //   表现是「tab 栏在、点了也打不开面板」—— pane 文档从未加载。因为 wry 的
+    //   `on_navigation` 对**子框架**的导航同样回调，而这里此前只认 tauri:// 与回环 origin，
+    //   about: 一律落到外链判定被 Deny。
+    //   `about:blank` 同理（iframe 的初始文档），放行不引入任何外部内容。
+    if raw_url == "about:srcdoc" || raw_url == "about:blank" {
         return NavigationDecision::Allow;
     }
     // 本应用的回环 UI：放行（它正是我们导航过去的目标）。
@@ -207,6 +238,18 @@ mod tests {
     use super::*;
 
     const ORIGIN: &str = "http://127.0.0.1:34810";
+
+    #[test]
+    fn iframe_srcdoc_and_blank_are_allowed() {
+        // ★ 这条锁的是一个真机故障：切到 iframe 载体后 pane 文档走 about:srcdoc 加载，
+        //   而 wry 的 on_navigation 对子框架同样回调 —— 此前被判 Block，表现为
+        //   「tab 栏在、点了也打不开面板」，日志里刷 `拒绝导航: about:srcdoc`。
+        assert_eq!(decide_navigation("about:srcdoc", None), Allow);
+        assert_eq!(decide_navigation("about:blank", Some(ORIGIN)), Allow);
+        // 放行只限这两个字面量：其余 about: 仍按原规则拒绝，别把整个 scheme 开成白名单。
+        assert_eq!(decide_navigation("about:config", None), Block);
+        assert_eq!(decide_navigation("about:srcdoc#x", None), Block);
+    }
 
     #[test]
     fn bundled_pages_are_allowed() {
