@@ -35,6 +35,7 @@ import {
 } from "./model.js";
 import { runWorkflow, type WorkflowHandlers, type WorkflowCheckpoint } from "./workflow.js";
 import { renderAttachmentImagesToMp4, type AttachmentVideoRenderRequest } from "./renderer.js";
+import { applyAttachmentVfxToMp4, type VfxSpec } from "./effects.js";
 import { getSessionState } from "@blksails/pi-web-tool-kit";
 
 type ExtensionAPI = Parameters<PaneExtensionFactory>[0];
@@ -213,6 +214,12 @@ const VideoRenderParameters = Type.Object({
   ]), { minItems: 0, maxItems: 63 }),
 });
 
+const VideoVfxParameters = Type.Object({
+  video_attachment_id: Type.String({ description: "源视频 attachment id" }),
+  output_name: Type.Optional(Type.String({ description: "输出 MP4 文件名" })),
+  spec: Type.Any({ description: "带 schemaVersion/id/layers 的 VfxSpec" }),
+});
+
 function videoWorkflowHandlers(holder: { value: VideoStudioState }): WorkflowHandlers {
   return {
     "video.read": () => ({ output: holder.value }),
@@ -249,6 +256,31 @@ async function runVideoWorkflow(state: VideoStudioState, value: unknown) {
 }
 
 function registerVideoStudioAgentTools(pi: ExtensionAPI, handle: SurfaceHandle<VideoStudioState>): void {
+  pi.registerTool({
+    name: "video_vfx",
+    label: "合成视频特效",
+    description: "对视频 attachment 应用经 schema 校验的多层 VFX，产出真实 MP4 并回流项目；失败不改变项目。",
+    parameters: VideoVfxParameters,
+    async execute(_toolCallId, params) {
+      const a = argsObject(params);
+      try {
+        const result = await applyAttachmentVfxToMp4(
+          textArg(a, "video_attachment_id") ?? "",
+          textArg(a, "output_name") ?? "video-vfx.mp4",
+          a.spec as VfxSpec,
+          getAttachmentToolContext(),
+        );
+        handle.update((state) => setTimelineOutputAsset(state, { attachmentId: result.attachmentId, previewUrl: result.displayUrl }));
+        return toolResult(`已应用 ${result.appliedLayers.length} 层特效并回流 ${result.attachmentId}。`, {
+          attachmentId: result.attachmentId,
+          displayUrl: result.displayUrl,
+          appliedLayers: result.appliedLayers,
+        });
+      } catch (error) {
+        return toolResult("视频特效失败，项目状态未变更。", { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    },
+  });
   pi.registerTool({
     name: "video_render",
     label: "渲染视频",

@@ -36,5 +36,6 @@
 
 - 当前 POC 已支持图片 attachment → `localPath` → FFmpeg → `putOutput` 的端到端回流；`video_render` Agent 工具可将成功产物写入当前项目导出资产。
 - 当前测试使用 fake attachment port 验证回流；真实远端对象存储、浏览器预览与大文件流式落库仍待单独验收。
-- 未实现音轨、字幕、VFX 多层合成、增量渲染及逐帧预览。
+- `video_vfx` 已接入四层 VFX POC：调色、暗角、形状层、文字层；尚未覆盖音轨、字幕、时域粒子/运动模糊、增量渲染及逐帧预览。
+- POC 仍按完整 MP4 字节回流，生产级大文件应升级流式或分片落库。
 - 旧 FFmpeg 的滤镜能力不足以证明多种电影级转场；本轮只证明 Adapter 边界与真实文件产出。
