@@ -172,7 +172,7 @@ describe("AgentSourcePicker — source list", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("列表项渲染 title(优先于 name)与 description,不渲染头像", async () => {
+  it("列表项渲染 title(优先于 name)、description 与图片/首字母 avatar", async () => {
     const rich: ListAgentSourcesResponse = {
       sources: [
         {
@@ -208,12 +208,15 @@ describe("AgentSourcePicker — source list", () => {
     const titles = container.querySelectorAll("[data-agent-source-title]");
     expect(titles[0]!.textContent).toBe("Image Agent");
     expect(titles[1]!.textContent).toBe("Zeta"); // 无 title 回退 name
-    expect(container.querySelectorAll("[data-agent-source-avatar]")).toHaveLength(0);
+    const avatars = container.querySelectorAll("[data-agent-source-avatar]");
+    expect(avatars[0]!.tagName).toBe("IMG");
+    expect(avatars[0]!.getAttribute("src")).toBe("https://example.com/a.png");
+    expect(avatars[1]!.textContent).toBe("Z");
     // 描述展示。
     expect(screen.getByText("has avatar url")).toBeTruthy();
   });
 
-  it("默认只展示 3 个源,其余折叠;「显示全部」展开、「收起」收回", async () => {
+  it("默认只展示 9 个源,其余折叠;「显示全部」展开、「收起」收回", async () => {
     // 12 个源 → 默认渲染前 9,底部出现展开按钮。
     const many: ListAgentSourcesResponse = {
       sources: Array.from({ length: 12 }, (_, i) => ({
@@ -233,8 +236,8 @@ describe("AgentSourcePicker — source list", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText("Source 0")).toBeTruthy());
-    // 默认只展示 3 个推荐源。
-    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(3);
+    // 默认只展示 9 个推荐源。
+    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
     const more = document.querySelector("[data-agent-source-list-more]")!;
     expect(more.getAttribute("aria-expanded")).toBe("false");
     // 显示全部 → 12 个。
@@ -243,9 +246,9 @@ describe("AgentSourcePicker — source list", () => {
       expect(document.querySelectorAll("[data-agent-source-item]").length).toBe(12),
     );
     expect(more.getAttribute("aria-expanded")).toBe("true");
-    // 收起 → 回到 3。
+    // 收起 → 回到 9。
     fireEvent.click(more);
-    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(3);
+    expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
   });
 
   it("源不足 3 个 → 不显示「显示全部」按钮", async () => {

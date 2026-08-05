@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { Bot } from "lucide-react";
 import type {
   AgentSourceItem,
   ListAgentSourcesRequest,
@@ -111,6 +110,45 @@ function useAgentSourceList(
   return { status, items };
 }
 
+/** avatar 是否为可直接渲染的图片地址(URL / data-URI)。 */
+function isImageAvatar(avatar: string): boolean {
+  return (
+    avatar.startsWith("http://") ||
+    avatar.startsWith("https://") ||
+    avatar.startsWith("data:")
+  );
+}
+
+/** 源头像:图片地址→<img>;短文本/emoji→文字;缺省→标题/名称首字母。 */
+function SourceAvatar({
+  item,
+}: {
+  readonly item: AgentSourceItem;
+}): React.JSX.Element {
+  const label = item.title ?? item.name;
+  const base =
+    "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[hsl(var(--muted))] text-sm font-medium text-[hsl(var(--muted-foreground))]";
+  if (item.avatar !== undefined && isImageAvatar(item.avatar)) {
+    return (
+      <img
+        src={item.avatar}
+        alt=""
+        data-agent-source-avatar
+        className="h-9 w-9 shrink-0 rounded-md object-cover"
+      />
+    );
+  }
+  const glyph =
+    item.avatar !== undefined && item.avatar.length > 0
+      ? item.avatar
+      : (label.trim()[0] ?? "?").toUpperCase();
+  return (
+    <span data-agent-source-avatar className={base} aria-hidden>
+      {glyph}
+    </span>
+  );
+}
+
 export function AgentSourcePicker({
   onSubmit,
   defaultSource,
@@ -142,7 +180,7 @@ export function AgentSourcePicker({
     refreshSignal,
   );
   // 选择器只展示推荐来源;完整来源库仍由「显示全部」入口展开。
-  const COLLAPSE_LIMIT = 3;
+  const COLLAPSE_LIMIT = 9;
   const [expanded, setExpanded] = React.useState(false);
   const hasMore = items.length > COLLAPSE_LIMIT;
   const visibleItems =
@@ -174,9 +212,9 @@ export function AgentSourcePicker({
   };
 
   // 宽屏容器:源列表以卡片网格铺开;无列表(仅手输)时收窄更聚焦。
-  const innerWidth = showList ? "max-w-3xl" : "max-w-lg";
+  const innerWidth = showList ? "max-w-4xl" : "max-w-lg";
   const inner = (
-    <div className={`flex w-full ${innerWidth} flex-col gap-3`}>
+    <div className={`flex w-full ${innerWidth} flex-col gap-4`}>
       {isDialog ? (
         <div className="flex items-start justify-between gap-4 px-1 pb-1">
           <div>
@@ -189,7 +227,7 @@ export function AgentSourcePicker({
         {showList ? (
           <section
             data-agent-source-list
-            className="flex flex-col gap-2 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-3 text-[hsl(var(--foreground))] shadow-none"
+            className="flex flex-col gap-2 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 text-[hsl(var(--card-foreground))] shadow-sm"
           >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <span>{t("agentSourcePicker.listTitle")}</span>
@@ -224,7 +262,7 @@ export function AgentSourcePicker({
               </p>
             ) : (
               // 宽屏卡片网格:窄屏 1 列,渐进到 2/3 列;默认只展示前 9 个,其余折叠。
-              <ul className="flex max-h-[48vh] flex-col gap-1 overflow-y-auto">
+              <ul className="grid max-h-[60vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                 {visibleItems.map((item) => {
                   const isFav = favoriteSources?.has(item.source) ?? false;
                   // picker-runnable-state:缺省(undefined)视为可运行,仅显式 false 才禁用
@@ -239,17 +277,14 @@ export function AgentSourcePicker({
                         data-source={item.source}
                         data-unavailable={unavailable ? "true" : "false"}
                         onClick={() => submit(item.source)}
-                        className={`flex min-h-[56px] w-full flex-row items-center gap-2 rounded-[var(--radius)] border border-transparent px-2 py-2 text-left transition-colors disabled:opacity-50 ${
+                        className={`flex h-full w-full flex-col gap-2 rounded-lg border p-3 text-left transition-colors disabled:opacity-50 ${
                           unavailable
                             ? "border-[hsl(var(--destructive))]/40 bg-[hsl(var(--destructive))]/5"
-                            : "bg-transparent hover:border-transparent hover:bg-[hsl(var(--surface-subtle))]"
+                            : "border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))] hover:bg-[hsl(var(--accent))]"
                         }`}
                       >
-                        <span className="flex min-w-0 flex-[0_0_260px] items-center gap-2">
-                          <Bot
-                            className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]"
-                            aria-hidden="true"
-                          />
+                        <span className="flex items-center gap-2">
+                          <SourceAvatar item={item} />
                           <span className="flex min-w-0 flex-1 flex-col">
                             <span
                               data-agent-source-title
@@ -257,13 +292,13 @@ export function AgentSourcePicker({
                             >
                               {item.title ?? item.name}
                             </span>
-                            <span className="mt-0.5 w-fit text-[10px] uppercase tracking-[0.08em] text-[hsl(var(--muted-foreground))]">
+                            <span className="mt-0.5 w-fit rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 text-[10px] uppercase text-[hsl(var(--muted-foreground))]">
                               {item.mode}
                             </span>
                           </span>
                         </span>
                         {item.description !== undefined ? (
-                          <span className="min-w-0 flex-[1.6] line-clamp-1 text-xs text-[hsl(var(--muted-foreground))]">
+                          <span className="line-clamp-3 text-xs text-[hsl(var(--muted-foreground))]">
                             {item.description}
                           </span>
                         ) : null}
