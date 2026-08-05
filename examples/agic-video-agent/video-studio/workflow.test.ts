@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   runWorkflow,
+  invalidateWorkflowCheckpoint,
   validateWorkflowSpec,
   WORKFLOW_SCHEMA_VERSION,
   type WorkflowCache,
@@ -114,4 +115,30 @@ test("cache, subworkflow, and step budget are resumable runtime concerns", async
   ], { id: "budget-test", budget: { maxSteps: 1 } }), handlers);
   assert.equal(budgeted.status, "failed");
   assert.match(budgeted.error ?? "", /步骤预算/);
+});
+
+test("impact invalidation clears only changed node and transitive downstream", async () => {
+  const calls: string[] = [];
+  const handlers: WorkflowHandlers = {
+    a: () => { calls.push("a"); return { output: "a" }; },
+    b: () => { calls.push("b"); return { output: "b" }; },
+    c: () => { calls.push("c"); return { output: "c" }; },
+    independent: () => { calls.push("independent"); return { output: "independent" }; },
+  };
+  const workflow = spec([
+    { id: "a", kind: "task", dependencies: [], operation: "a" },
+    { id: "b", kind: "task", dependencies: ["a"], operation: "b" },
+    { id: "c", kind: "task", dependencies: ["b"], operation: "c" },
+    { id: "independent", kind: "task", dependencies: [], operation: "independent" },
+  ], { id: "invalidation-test", maxParallel: 2 });
+  const first = await runWorkflow(workflow, handlers);
+  assert.equal(first.status, "succeeded");
+  const invalidated = invalidateWorkflowCheckpoint(workflow, first.checkpoint, ["b"]);
+  assert.equal(invalidated.ok, true);
+  assert.deepEqual(invalidated.affectedNodeIds, ["b", "c"]);
+  assert.deepEqual(invalidated.checkpoint?.completedNodeIds, ["a", "independent"]);
+
+  const resumed = await runWorkflow(workflow, handlers, { checkpoint: invalidated.checkpoint });
+  assert.equal(resumed.status, "succeeded");
+  assert.deepEqual(calls, ["a", "independent", "b", "c", "b", "c"]);
 });

@@ -16,8 +16,10 @@
 - 视频 Surface 已覆盖简报、镜头草案、排队/生成/暂停/继续/重试/回滚、实时工具回流、预览与导出请求。
 - VideoProject 已具 schemaVersion、Scene/Shot/Transition/Continuity、稳定 ID 与归一化；LLM 修改只能经 VideoTransaction。
 - Workflow Runtime 已覆盖 DAG、并行、分支跳过、重试、Checkpoint 暂停/恢复、缓存、子工作流与步骤/成本预算。
+- Workflow Runtime 已支持按变更节点递归失效下游，仅重算受影响节点。
 - VideoAnalysis 已覆盖技术、时间线、视觉、叙事、生成五域，并要求 evidence、confidence、unresolved 与人工 correction。
 - `video_workflow` / `video_analyze` / `video_render` / `video_vfx` 已接入 Agent Surface；失败工作流/渲染不提交本地暂态修改，暂停返回 checkpoint，成功渲染/特效回流 MP4 attachment。
+- `video_evaluate` 已接入只读质量报告，区分结构证据、MP4 解码证据与未复核语义 warning。
 
 ## 相关模块与 symbol
 
@@ -36,7 +38,7 @@
 - `iteration_gate.py`：退出码 0。
 - `preflight.py --strict`：退出码 0；无 blocker。
 - `pnpm -C examples/agic-video-agent typecheck`：本轮新增代码无错误；全包仍受既有 workspace 缺失 `clsx`、`tailwind-merge`、Radix、`lucide-react` 阻断。
-- `pnpm -C examples/agic-video-agent test`：22/22 通过，含真实八镜头 MP4 解码、图片 attachment 回流与四层 VFX POC。
+- `pnpm -C examples/agic-video-agent test`：25/25 通过，含真实八镜头 MP4 解码、图片 attachment 回流、四层 VFX POC 与质量评估。
 - `node --import jiti/register media-tools/test/ffmpeg.selfcheck.ts`：通过，本机 ffmpeg → data URI → attachment 回流链路通过。
 - `pnpm -C examples/agic-video-agent build`：受上述既有缺失前端依赖阻断，未生成新构建产物。
 - `pnpm exec vitest run test/webext-registry-agic-video.test.ts`：1/1 通过。
@@ -74,7 +76,7 @@
 ## 下一项已批准工作
 
 - 把至少 3 类转场做成真实非降级效果，并扩展 VFX 到音轨/字幕/时域层；当前 FFmpeg 旧版能力不足，须保留降级标记。
-- 增加质量评估、增量失效范围、浏览器 Pane 预览与第二组素材复现验收。
+- 将质量评估与增量失效接入浏览器 Pane 预览，并完成第二组素材复现验收。
 
 ## 本轮 delta
 

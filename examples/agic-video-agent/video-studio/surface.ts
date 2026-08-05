@@ -33,9 +33,10 @@ import {
   type VideoShotStatus,
   type VideoStudioState,
 } from "./model.js";
-import { runWorkflow, type WorkflowHandlers, type WorkflowCheckpoint } from "./workflow.js";
+import { invalidateWorkflowCheckpoint, runWorkflow, type WorkflowHandlers, type WorkflowCheckpoint } from "./workflow.js";
 import { renderAttachmentImagesToMp4, type AttachmentVideoRenderRequest } from "./renderer.js";
 import { applyAttachmentVfxToMp4, type VfxSpec } from "./effects.js";
+import { evaluateRenderedVideo, evaluateVideoProject } from "./evaluation.js";
 import { getSessionState } from "@blksails/pi-web-tool-kit";
 
 type ExtensionAPI = Parameters<PaneExtensionFactory>[0];
@@ -188,6 +189,7 @@ const VideoWorkflowParameters = Type.Object({
   max_parallel: Type.Optional(Type.Integer({ minimum: 1, maximum: 32 })),
   pause: Type.Optional(Type.Boolean({ description: "在下一个可执行节点前暂停" })),
   pause_after: Type.Optional(Type.Integer({ minimum: 1, description: "完成指定数量节点后暂停并返回 checkpoint" })),
+  invalidate_node_ids: Type.Optional(Type.Array(Type.String(), { description: "单节点修改后需要失效的节点；Runtime 会递归清理下游" })),
 });
 
 const VideoAnalysisParameters = Type.Object({
@@ -220,6 +222,10 @@ const VideoVfxParameters = Type.Object({
   spec: Type.Any({ description: "带 schemaVersion/id/layers 的 VfxSpec" }),
 });
 
+const VideoEvaluationParameters = Type.Object({
+  artifact_attachment_id: Type.Optional(Type.String({ description: "可选 MP4 attachment id；提供后执行真实解码检查" })),
+});
+
 function videoWorkflowHandlers(holder: { value: VideoStudioState }): WorkflowHandlers {
   return {
     "video.read": () => ({ output: holder.value }),
@@ -243,9 +249,18 @@ async function runVideoWorkflow(state: VideoStudioState, value: unknown) {
   const holder = { value: normalizeVideoStudioState(state) };
   let completed = 0;
   const pauseAfter = numberArg(a, "pause_after");
+  const requestedInvalidation = Array.isArray(a.invalidate_node_ids)
+    ? a.invalidate_node_ids.filter((id): id is string => typeof id === "string")
+    : [];
+  let checkpoint = a.checkpoint as WorkflowCheckpoint | undefined;
+  if (checkpoint !== undefined && requestedInvalidation.length > 0) {
+    const invalidation = invalidateWorkflowCheckpoint(a.workflow, checkpoint, requestedInvalidation);
+    if (!invalidation.ok || invalidation.checkpoint === undefined) throw new Error(invalidation.errors.join("；"));
+    checkpoint = invalidation.checkpoint;
+  }
   const result = await runWorkflow(a.workflow, videoWorkflowHandlers(holder), {
     runId: textArg(a, "run_id"),
-    checkpoint: a.checkpoint as WorkflowCheckpoint | undefined,
+    checkpoint,
     maxParallel: numberArg(a, "max_parallel"),
     shouldPause: () => a.pause === true || (pauseAfter !== undefined && completed >= pauseAfter),
     onEvent: (event) => {
@@ -256,6 +271,28 @@ async function runVideoWorkflow(state: VideoStudioState, value: unknown) {
 }
 
 function registerVideoStudioAgentTools(pi: ExtensionAPI, handle: SurfaceHandle<VideoStudioState>): void {
+  pi.registerTool({
+    name: "video_evaluate",
+    label: "评估视频质量",
+    description: "返回带证据的技术/时间线/连续性/叙事/生成/MP4 解码质量报告，不修改项目状态。",
+    parameters: VideoEvaluationParameters,
+    async execute(_toolCallId, params) {
+      const project = currentState().project;
+      if (project === null) return toolResult("当前没有可评估的视频项目。", { ok: false, code: "project_missing" });
+      try {
+        const artifactId = textArg(argsObject(params), "artifact_attachment_id");
+        const report = artifactId === undefined
+          ? evaluateVideoProject(project)
+          : await (async () => {
+            const attachment = await getAttachmentToolContext().resolve(artifactId);
+            return evaluateRenderedVideo(project, artifactId, await attachment.localPath());
+          })();
+        return toolResult(`质量评估完成：${report.status}（${report.overallScore}）。`, { report });
+      } catch (error) {
+        return toolResult("质量评估失败，项目状态未变更。", { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    },
+  });
   pi.registerTool({
     name: "video_vfx",
     label: "合成视频特效",

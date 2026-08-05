@@ -30,7 +30,13 @@
 ## 验证入口
 
 - `examples/agic-video-agent/video-studio/renderer.test.ts`
+- `examples/agic-video-agent/video-studio/effects.test.ts`
+- `examples/agic-video-agent/video-studio/evaluation.test.ts`
 - `node --import jiti/register media-tools/test/ffmpeg.selfcheck.ts`
+
+## 质量证据
+
+`video_evaluate` 只读返回结构化报告：项目结构、时间线、连续性、生成完成度与 MP4 解码可验证；叙事/视觉语义未由模型复核时只给 warning，不伪造 pass。真实 MP4 的 artifact check 以 FFmpeg 解码退出码为证据。
 
 ## 已知限制
 

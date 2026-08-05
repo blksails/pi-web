@@ -112,6 +112,13 @@ export interface WorkflowValidationResult {
   readonly errors: readonly string[];
 }
 
+export interface WorkflowInvalidationResult {
+  readonly ok: boolean;
+  readonly checkpoint?: WorkflowCheckpoint;
+  readonly affectedNodeIds: readonly string[];
+  readonly errors: readonly string[];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -177,6 +184,51 @@ export function validateWorkflowSpec(value: unknown): WorkflowValidationResult {
     }
   }
   return errors.length === 0 ? { ok: true, spec: value as unknown as WorkflowSpec, errors: [] } : { ok: false, errors };
+}
+
+export function invalidateWorkflowCheckpoint(
+  specValue: unknown,
+  checkpoint: WorkflowCheckpoint,
+  changedNodeIds: readonly string[],
+): WorkflowInvalidationResult {
+  const validation = validateWorkflowSpec(specValue);
+  if (!validation.ok || validation.spec === undefined) return { ok: false, affectedNodeIds: [], errors: validation.errors };
+  const spec = validation.spec;
+  if (checkpoint.workflowId !== spec.id || checkpoint.schemaVersion !== WORKFLOW_SCHEMA_VERSION) return { ok: false, affectedNodeIds: [], errors: ["Checkpoint 与工作流不匹配"] };
+  const ids = new Set(spec.nodes.map((node) => node.id));
+  const unknown = changedNodeIds.filter((id) => !ids.has(id));
+  if (unknown.length > 0) return { ok: false, affectedNodeIds: [], errors: [`待失效节点不存在：${unknown.join(", ")}`] };
+  const affected = new Set(changedNodeIds);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const node of spec.nodes) {
+      if (!affected.has(node.id) && node.dependencies.some((dependency) => affected.has(dependency))) {
+        affected.add(node.id);
+        expanded = true;
+      }
+    }
+  }
+  const nodeStates = { ...checkpoint.nodeStates };
+  const attempts = { ...checkpoint.attempts };
+  const outputs = { ...checkpoint.outputs };
+  for (const id of affected) {
+    nodeStates[id] = "pending";
+    delete attempts[id];
+    delete outputs[id];
+  }
+  return {
+    ok: true,
+    affectedNodeIds: [...affected],
+    errors: [],
+    checkpoint: {
+      ...checkpoint,
+      completedNodeIds: checkpoint.completedNodeIds.filter((id) => !affected.has(id)),
+      nodeStates,
+      attempts,
+      outputs,
+    },
+  };
 }
 
 function checkpointFor(
