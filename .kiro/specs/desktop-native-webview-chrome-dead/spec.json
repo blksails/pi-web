@@ -1,23 +1,23 @@
 {
   "feature_name": "desktop-native-webview-chrome-dead",
   "created_at": "2026-08-05T04:26:29Z",
-  "updated_at": "2026-08-05T08:05:00Z",
+  "updated_at": "2026-08-05T12:56:00Z",
   "language": "zh",
-  "phase": "requirements-generated",
+  "phase": "implementation",
   "approvals": {
     "requirements": {
       "generated": true,
-      "approved": false
+      "approved": true
     },
     "design": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     },
     "tasks": {
-      "generated": false,
-      "approved": false
+      "generated": true,
+      "approved": true
     }
   },
-  "ready_for_implementation": false,
-  "evidence_note": "Req 1/2 已满足：NSView 树 + 宿主 DOM 读数齐备，三个候选中两个排除、一个成立（宿主不重绘）。design 阻塞解除。"
+  "ready_for_implementation": true,
+  "evidence_note": "方案 A 三条视觉判据全部通过（判据1/2 截图取证，判据3 由用户实机点击确认 chrome 可交互，2026-08-05）——按 design 判定规则记「方案 A 有效」。归因对照包降级为可选项。"
 }

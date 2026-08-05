@@ -26,16 +26,15 @@ pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 ///
 /// ## ★ 不要试图用这个开关「修好」pane
 ///
-/// 两条载体**当前都有已知缺陷**，翻转默认值只是把一个坏掉的换成另一个坏掉的：
-///
-/// - **原生 child WebView（默认）**：pane chrome（tab 栏与按钮）不可见也不可点。
-///   六个候选已用机械证据排除（几何 `(717,29,479x771)` 正确、NSView 的 `frame` 与 `layer`
-///   逐字相同、chrome 带内 `hitTest` 命中宿主、宿主 DOM 盒模型 `[1139,0,575,29]` 且 6 个
-///   子节点俱全），只剩「宿主 WebView 不重绘该区域」——在 WKWebView 合成层，不在本仓逻辑内。
-///   见 spec `desktop-native-webview-chrome-dead`。
+/// - **原生 child WebView（默认）**：chrome 曾恒空白不可点——根因是宿主 WKWebView
+///   不重绘被 child 让开的区域（几何/句柄/NSView/hitTest/DOM 六路候选全被机械证据排除）。
+///   `native_layout` 在槽变化后调 `view_tree::force_host_redraw`（方案 A）后，已经真机
+///   三判据验证：chrome 与 pane 内容同帧可见且可点。见 spec
+///   `desktop-native-webview-chrome-dead` 的 design.md「判定」节。
 /// - **旧浮层（`=0`）**：pane 内容不是 iframe，而是**独立顶层 WebviewWindow**，位置由
 ///   「宿主窗口屏幕坐标 + DOM 槽矩形」算出。真机实测会飘到屏幕角落（用户报「奇怪的悬浮块」），
-///   表现为「tab 点了打不开面板」——其实开了，只是开到别处。
+///   表现为「tab 点了打不开面板」——其实开了，只是开到别处。**此缺陷未修**，该形态
+///   仅供故障排查，不要当规避手段。
 ///
 /// 曾经把默认值翻到 `=0` 试图规避前者，**是错的**：那只是换了个坏法。已改回。
 pub fn native_child_webviews_enabled() -> bool {
