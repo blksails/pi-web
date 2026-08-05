@@ -33,12 +33,22 @@ export interface DesktopPasswordIdentityProviderOptions {
   readonly capabilitiesClient: DesktopCapabilitiesClient;
   /** 进程内凭据权威(与会话 spawn、既有 /auth/* 端点共用同一实例)。 */
   readonly authState: AuthSessionState;
+  /** Best-effort notification after the process credential changes. */
+  readonly onCredentialChanged?: (credential: string | undefined) => void;
 }
 
 export function createDesktopPasswordIdentityProvider(
   opts: DesktopPasswordIdentityProviderOptions,
 ): IdentityProvider {
-  const { loginClient, capabilitiesClient, authState } = opts;
+  const { loginClient, capabilitiesClient, authState, onCredentialChanged } = opts;
+
+  function notifyCredentialChanged(credential: string | undefined): void {
+    try {
+      onCredentialChanged?.(credential);
+    } catch {
+      // Runner notification must not turn a successful login/logout into failure.
+    }
+  }
 
   /**
    * 最近一次成功 `loadStatic()` 得到的身份,与 `authState` 的凭据**同生共死**。
@@ -115,6 +125,8 @@ export function createDesktopPasswordIdentityProvider(
         return { ok: false, reason: "capabilities-failed" };
       }
 
+      notifyCredentialChanged(login.credential);
+
       if (snapshot.tenant === undefined) {
         // 授予加载成功但没有 tenant:身份缺失,展示层无从显示「我是谁」。
         // 按 Req 4.3 这是「单项缺失 → 降级」,故仍算登录成功,只是 state 为 anonymous 的
@@ -136,6 +148,7 @@ export function createDesktopPasswordIdentityProvider(
       authState.clear();
       capabilitiesClient.clearCache();
       forget();
+      notifyCredentialChanged(undefined);
     },
   };
 }

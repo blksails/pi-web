@@ -31,6 +31,7 @@ export * from "./transport/rest-dto.js";
 export * from "./transport/completion-dto.js";
 export * from "./transport/slash-completion.js";
 export * from "./transport/runner-ready.js";
+export * from "./transport/credential-refresh.js";
 
 // agent-routes 层(agent 声明式 HTTP routes:声明 DTO + 三个自建 JSONL 帧)
 export * from "./agent-routes/frames.js";

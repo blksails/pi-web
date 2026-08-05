@@ -1248,6 +1248,11 @@ function buildSingleton(): HandlerSingleton {
           loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
           capabilitiesClient: desktopCapabilitiesClient,
           authState: authSessionState,
+          onCredentialChanged: (credential) =>
+            manager.broadcastRunnerFrame({
+              type: "piweb_credential_refresh",
+              credential: credential ?? null,
+            }),
         })
       : undefined;
 
