@@ -21,6 +21,9 @@ mod shell_token;
 mod startup_error;
 mod types;
 mod unpack_runtime;
+/// macOS 视图层次诊断（spec desktop-native-webview-chrome-dead，Req 1）。仅 macOS 编译。
+#[cfg(target_os = "macos")]
+mod view_tree;
 mod window;
 
 use resolve_artifact::{discover_cli_entry, resolve_artifact, ResolveDeps, SERVER_JS_ENV};

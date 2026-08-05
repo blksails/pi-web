@@ -69,6 +69,19 @@ signal-hook = "0.3"
 # 同一 crate 声明以保证跨平台可编译，但未经真实验证（同 design.md Open Question 5）。
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
+# 视图层次诊断（spec desktop-native-webview-chrome-dead，Req 1）。
+#
+# ★ 为什么非要下到 AppKit 这一层：pane chrome 在启用原生子 WebView 时不可见也不可点，
+#   而 Rust 侧能观测的一切都正常 —— 槽算得对、下发对、句柄 bounds 读回也对
+#   （377 个样本 dy 恒为 0），且没有任何句柄压在 chrome 那 29px 上。剩下的解释
+#   （宿主不重绘 / CALayer 超出 frame / NSView 吞点击）**都在 wry 的 API 之下**，
+#   只有 NSView 树本身能分辨。
+#
+# 版本跟随 tauri 2.11.5 已锁定的传递依赖，不引入新的解析分支。
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSView", "NSWindow", "NSResponder", "NSGraphics"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSString", "NSArray"] }
+objc2-quartz-core = { version = "0.3", features = ["CALayer", "objc2-core-foundation"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["windows-native"] }

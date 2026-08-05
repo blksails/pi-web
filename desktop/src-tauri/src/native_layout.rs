@@ -494,6 +494,58 @@ impl NativeWebviewLayoutManager {
                 eprintln!("[panes] 句柄 label={} bounds={:?}", view.label(), b);
             }
         }
+        // ★ NSView 树快照：只在**首次**有可见内容槽时打印一次（spec
+        //   desktop-native-webview-chrome-dead，Req 1）。句柄 bounds 已证明布局侧一切正常，
+        //   剩下的三个候选（宿主不重绘 / CALayer 超出 frame / NSView 吞点击）只有视图树能分辨。
+        //   打一次就够——树是稳定的，每帧刷屏反而淹掉证据。
+        // ★ 触发时机踩过一次坑：初版设成「首次出现可见内容槽」就 dump，结果树里只有宿主
+        //   一个 WryWebView —— 那一刻子 WebView 还没挂上去，读数回答不了「谁盖住 chrome」。
+        //   现在改成前若干次槽变化都打，并带上当前 pane 记录数，便于确认是不是「已挂上」那一帧。
+        #[cfg(target_os = "macos")]
+        if pane_layout_debug_enabled() && slot.is_some() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static DUMPS: AtomicUsize = AtomicUsize::new(0);
+            if DUMPS.fetch_add(1, Ordering::SeqCst) < 6 {
+                if let Some(b) = slot {
+                    // 探针：chrome 带内左右各一点 + 内容区一点作对照。
+                    let probes = [
+                        (b.x + 12.0, 8.0),
+                        (b.x + b.width - 24.0, 8.0),
+                        (b.x + 12.0, b.y + 40.0),
+                    ];
+                    match window.ns_window() {
+                        Ok(ptr) => match unsafe { crate::view_tree::snapshot(ptr, &probes) } {
+                            Some(snap) => {
+                                eprintln!(
+                                    "[panes] 视图树#{} content={:?} 槽=({:.1},{:.1},{:.1}x{:.1}) pane记录={} 视图数={}",
+                                    DUMPS.load(Ordering::SeqCst),
+                                    snap.content_size, b.x, b.y, b.width, b.height,
+                                    panes.len(),
+                                    snap.nodes.len(),
+                                );
+                                for n in &snap.nodes {
+                                    eprintln!(
+                                        "[panes]   {:indent$}{} frame={:?} layer={:?} hidden={} alpha={:.2} opaque={}",
+                                        "", n.class, n.frame, n.layer_frame, n.hidden, n.alpha, n.opaque,
+                                        indent = n.depth * 2,
+                                    );
+                                }
+                                for h in &snap.hit_tests {
+                                    eprintln!(
+                                        "[panes]   命中 {:?} → {}",
+                                        h.point,
+                                        h.class.as_deref().unwrap_or("(无视图接收)")
+                                    );
+                                }
+                            }
+                            None => eprintln!("[panes] 视图树快照失败：contentView 不可得"),
+                        },
+                        // Req 1.5：本平台拿不到就明说，不静默输出空结果。
+                        Err(e) => eprintln!("[panes] 视图树快照不可用：{e}"),
+                    }
+                }
+            }
+        }
         // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
         let mut raise_top = host_changed;

@@ -128,3 +128,68 @@ Linux 侧 wry 走 WebKitGTK（`webkit2gtk 2.0.2` + `gtk 0.18.2`），子 WebView
 本 spec 停在 requirements 阶段：design 需要先有 Requirement 1 的视图层次证据，而取证依赖
 真机视觉操作。上一轮会话中截图能力在取数后失效（`SCContentFilter failure`，屏幕未锁），
 诊断态 `.app` 已存档，能力恢复后可直接续跑。
+
+---
+
+## 取证进展（2026-08-05，NSView 树 + 浏览器 DOM）
+
+### 已取得的证据
+
+**① NSView 树**（`view_tree.rs`，`PI_WEB_PANE_LAYOUT_DEBUG=1` 时前 6 次槽变化各打一次）：
+
+```
+content=[1200, 800]  槽=(717, 29, 479x771)  pane记录=4  视图数=13
+
+TaoView                  frame=[0,   0, 1200, 800]  layer=[0,   0, 1200, 800]
+  WryWebView(宿主)       frame=[0,   0, 1200, 800]  layer=[0,   0, 1200, 800]  opaque=true
+    WKFlippedView        frame=[0,   0, 1200, 800]  layer=[0,   0, 1200, 800]
+  WryWebView(overlay)    frame=[-880, 791, 320, 240] layer=同 frame  hidden=true
+  WryWebView(pane) ×3    frame=[717, 29, 479, 771]  layer=同 frame  hidden=true
+  WryWebView(pane) ×1    frame=[717, 29, 479, 771]  layer=同 frame  hidden=false
+```
+
+**② 命中测试**：
+
+```
+[729,   8] → 宿主 WryWebView      ← chrome 带内
+[1172,  8] → 宿主 WryWebView      ← chrome 带内
+[729,  69] → pane WryWebView      ← 内容区（对照）
+```
+
+**③ 浏览器（iframe 载体）不复现**——同一后端、同一会话，用 DevTools 读 DOM：
+
+```
+[data-panes-host]         x=1312  w=479  h=906   carrier=iframe
+[data-panes-chrome]       x=1312  y=0    w=479  h=29   children=6
+[data-panes-content-well] x=1312  y=29   w=479  h=877  iframes=4
+```
+
+六个按钮各有真实坐标（收起/关闭×3/更多/新开/刷新/切换器），chrome 正常渲染。
+
+### 因此再排除两个候选（累计六个）
+
+| # | 候选 | 判据 | 结论 |
+|---|------|------|------|
+| 5 | child 的 `CALayer` 超出 `frame` | **每个视图 `layer` 与 `frame` 逐字相同** | 推翻 |
+| 6 | child 的 `NSView` 吞掉 chrome 带的点击 | chrome 带内命中的是**宿主**，点击确实到达宿主 | 推翻 |
+
+### 剩下的唯一候选
+
+**宿主 WebView 不重绘/不响应 chrome 所在的那 29px** —— 几何对、图层对、命中对、宿主收得到点击，
+而 chrome 依然不可见不可点，且**仅在启用原生子 WebView 时**如此。
+
+### 下一步该取的证据
+
+桌面版**宿主自身**的 DOM 盒模型：`[data-panes-chrome]` 在 native 载体下的 `getBoundingClientRect()`。
+浏览器（iframe 载体）已证明正常，缺的是同一份 DOM 在 native 载体下的读数。取法二选一：
+
+1. release 构建开启 devtools 特性，直接在桌面 WebView 上 Inspect；
+2. 走 pane relay 往宿主 realm 注入一段只读量测脚本，把盒模型回传到 stderr。
+
+方案 1 更直接；方案 2 不需要额外构建配置但要动通道。
+
+### 本轮的一个方法教训
+
+用截图像素反推坐标**误差会累积到超过结论本身**：窗口尺寸、标题栏高度、缩放系数三者
+各有误差，叠起来足以把「差 10px」和「不差」混为一谈。中途窗口被移动后彻底失效。
+凡是能从 DOM / 视图树直接读到的数值，一律不要用像素反推。
