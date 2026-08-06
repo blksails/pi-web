@@ -462,6 +462,9 @@ pub async fn pane_webview_window_create(
     width: f64,
     height: f64,
     visible: bool,
+    // 底层 pane chrome boot（tabs 边车）。宿主每次 create 传入；与页面 HTML 是否预 wrap 无关，
+    // WebView2/WK 在每次导航都会再执行 initialization_script。
+    chrome_boot: Option<String>,
 ) -> Result<(), String> {
     require_host(window.label())?;
     require_pane_label(&label)?;
@@ -472,9 +475,11 @@ pub async fn pane_webview_window_create(
     if !matches!(url.scheme(), "http" | "https") {
         return Err("PANE_WEBVIEW_INVALID_URL".to_string());
     }
+    let label_js =
+        serde_json::to_string(&label).map_err(|error| error.to_string())?;
+    let boot = chrome_boot.unwrap_or_default();
     let init_script = format!(
-        "Object.defineProperty(window,'__PI_TAURI_PANE_LABEL__',{{value:{},configurable:false}});",
-        serde_json::to_string(&label).map_err(|error| error.to_string())?,
+        "Object.defineProperty(window,'__PI_TAURI_PANE_LABEL__',{{value:{label_js},configurable:false}});{boot}"
     );
     if native_child_webviews_enabled() {
         #[cfg(feature = "unstable")]

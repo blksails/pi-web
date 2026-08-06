@@ -1,6 +1,7 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { PaneDocument } from "../contract.js";
 import type { PaneViewAdapter } from "../host-ports.js";
+import { paneChromeBootScript } from "../pane-chrome.js";
 import {
   createTauriPaneViewAdapter,
   TAURI_PANE_RELAY_BIND_COMMAND,
@@ -10,6 +11,9 @@ import {
   type TauriPaneWebview,
 } from "./tauri.js";
 import { installTauriPaneBootstrap } from "./tauri-bootstrap.js";
+
+// 注意：paneChromeBootScript 仅 createGlobalTauriPaneViewAdapter（宿主）使用。
+// 勿在模块顶层求值，否则 guest bootstrap 会 tree-shake 不掉整份 chrome。
 
 const INSTANCE_HASH_KEY = "pi-pane-instance";
 const PANE_LABEL_PREFIX = "pane-";
@@ -601,10 +605,18 @@ export function installGlobalTauriPaneBootstrap(target: Window = window): void {
   }
 }
 
-export function tauriPaneDocumentUrl(document: PaneDocument, instanceId: string): string {
+export function tauriPaneDocumentUrl(
+  document: PaneDocument,
+  instanceId: string,
+  paneId?: string,
+): string {
   if (document.kind === "inline") throw new Error("Tauri native Pane requires a URL-backed HTML document");
   const url = new URL(document.src, globalThis.document.baseURI);
   url.searchParams.set(INSTANCE_HASH_KEY, instanceId);
+  // chrome 边车读此参发 pane:ready（warm 池 navigate 复用时 init 脚本无 paneId）
+  if (paneId !== undefined && paneId.length > 0) {
+    url.searchParams.set("pi-pane-id", paneId);
+  }
   url.hash = `${INSTANCE_HASH_KEY}=${encodeURIComponent(instanceId)}`;
   return url.href;
 }
@@ -686,6 +698,7 @@ export function createGlobalTauriPaneViewAdapter(
       width: 320,
       height: 240,
       visible: false,
+      chromeBoot: paneChromeBootScript(),
     });
   };
   const fillWarmPool = (): Promise<void> => {
@@ -877,6 +890,8 @@ export function createGlobalTauriPaneViewAdapter(
           width: preload.width,
           height: preload.height,
           visible: shown,
+          // 底层 chrome：与页面 src/srcDoc 无关，每个 native realm 自带同步 tabs。
+          chromeBoot: paneChromeBootScript(),
         });
       } catch (error) {
         releaseCreate(instanceId);

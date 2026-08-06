@@ -260,7 +260,7 @@ describe("PanesHost multi-open UI", () => {
     // 预热池命中 → pane-warm-N；未命中 → pane-editor-native-N。
     expect(editorCreate.label).toMatch(/^pane-(warm|editor-native)-\d+$/);
     expect(editorCreate.url).toBe(
-      "https://panes.example/editor.html?pi-pane-instance=editor-native#pi-pane-instance=editor-native",
+      "https://panes.example/editor.html?pi-pane-instance=editor-native&pi-pane-id=editor#pi-pane-instance=editor-native",
     );
     expect(editorCreate.visible).toBe(false);
     expect(editorCreate).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });

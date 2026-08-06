@@ -80,8 +80,12 @@ export {
   PANE_CHROME_SCRIPT_FILE,
   injectPaneChromeHtml,
   injectPaneChromeExternal,
+  paneChromeBootScript,
   paneChromeScriptSource,
+  stripPaneChrome,
+  withDefaultPaneChrome,
   wrapPaneDocument,
+  wrapPaneDocumentForHost,
 } from "./pane-chrome.js";
 export type {
   PaneChromeWorkspaceSignal,

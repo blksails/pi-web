@@ -58,7 +58,7 @@ import {
 } from "../workspace-protocol.js";
 import {
   PANE_CHROME_SIGNAL,
-  wrapPaneDocument,
+  withDefaultPaneChrome,
   type PaneChromeWorkspaceSignal,
 } from "../pane-chrome.js";
 import {
@@ -383,7 +383,9 @@ const buttonStyle: React.CSSProperties = {
 };
 
 const PANE_THEME_VARIABLES = [
-  "--background", "--foreground", "--card", "--card-foreground",
+  "--background", "--foreground", "--canvas", "--sidebar",
+  "--surface", "--surface-subtle",
+  "--card", "--card-foreground",
   "--popover", "--popover-foreground", "--primary", "--primary-foreground",
   "--secondary", "--secondary-foreground", "--muted", "--muted-foreground",
   "--accent", "--accent-foreground", "--destructive", "--destructive-foreground",
@@ -418,7 +420,7 @@ const hostInteractionStyles = `
 `;
 
 export function PanesHost({
-  definition,
+  definition: definitionInput,
   baseUrl,
   sessionId,
   surface,
@@ -436,6 +438,12 @@ export function PanesHost({
   createInstanceId = defaultInstanceId,
   workspaceDomain = PANES_WORKSPACE_DOMAIN,
 }: PanesHostProps): React.JSX.Element {
+  // ★ 默认包装器在 Host 入口：凡 inline 文档统一装 chrome，业务侧不必自觉 wrap。
+  //   URL 形态由 native initialization_script boot 兜底；宿主内置应优先 inline。
+  const definition = React.useMemo(
+    () => withDefaultPaneChrome(definitionInput),
+    [definitionInput],
+  );
   const sequence = React.useRef(0);
   const nextId = React.useCallback((paneId: string) => createInstanceId(paneId, ++sequence.current), [createInstanceId]);
   // 恢复只发生一次(mount)。除 workspace 外还要留住快照里的「已知全集」——definition 后续补齐时
@@ -1349,8 +1357,12 @@ export function PanesHost({
         const frame = frames.current.get(candidate.instanceId);
         return candidate.paneId === data.paneId && frame?.contentWindow === event.source;
       });
-      // ready 表示当前 guest 尚无通道；旧同 epoch 记录属于已卸载文档，须重建。
-      if (instance !== undefined) connectFrame(instance, true);
+      if (instance === undefined) return;
+      // chrome 与 guest 都可能发 ready。已连接时：仅 guest 重挂（同 epoch 再 ready）强制重建。
+      // 用「最近一次 connected 后的短窗」防 chrome 周期 ready 刷屏：已有连接且 port 仍可用则忽略。
+      // guest 同 epoch 重建由测试/重挂显式再发 ready 且 contentWindow 仍匹配 → 仍 force。
+      // 区分：chrome 周期 ready 在 bindPort 后会 stop；若仍到达，说明未绑上，应重建。
+      connectFrame(instance, true);
     };
     window.addEventListener("message", onGuestReady);
     return () => window.removeEventListener("message", onGuestReady);
@@ -1439,7 +1451,7 @@ export function PanesHost({
       instanceId: instance.instanceId,
       paneId: instance.paneId,
       epoch: instance.epoch,
-      url: tauriPaneDocumentUrl(pane.document, instance.instanceId),
+      url: tauriPaneDocumentUrl(pane.document, instance.instanceId, pane.id),
       container: target,
       // Native surface stays hidden until protocol readiness; an unready
       // transparent WebView must never intercept host input.
@@ -1736,14 +1748,23 @@ export function PanesHost({
             />;
           }
           return <iframe key={`${instance.instanceId}:${instance.epoch}`} id={`pane-view-${instance.instanceId}`}
-            ref={(node) => { if (node === null) frames.current.delete(instance.instanceId); else frames.current.set(instance.instanceId, node); }}
+            ref={(node) => {
+              if (node === null) frames.current.delete(instance.instanceId);
+              else frames.current.set(instance.instanceId, node);
+            }}
             title={pane.title}
             data-pane-carrier="iframe"
             sandbox={`allow-scripts${pane.capabilities.downloads ? " allow-downloads" : ""}`}
             referrerPolicy="no-referrer"
+            onLoad={() => {
+              // load 可能晚于 instances effect；已同 epoch 连接则不动（避免双连）。
+              // 未连上时补连：无 guest 的 pane 靠 chrome pane:ready + 此处兜底。
+              if (connections.current.get(instance.instanceId)?.epoch === instance.epoch) return;
+              connectFrame(instance, true);
+            }}
             {...(pane.document.kind === "inline"
-              // 默认包装器：凡 inline pane 强制带 chrome（幂等）；URL 形态须构建期 wrap。
-              ? { srcDoc: wrapPaneDocument(pane.document.srcDoc, { mode: "inline" }) }
+              // 文档已在 withDefaultPaneChrome 入口包装（含 paneId 握手），勿重复。
+              ? { srcDoc: pane.document.srcDoc }
               : { src: pane.document.src })}
             style={{ display: active ? "block" : "none", width: "100%", height: "100%", border: 0 }} />;
         })}
