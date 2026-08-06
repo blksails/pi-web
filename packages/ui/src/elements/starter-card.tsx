@@ -30,7 +30,7 @@ export function StarterCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-4 text-center text-sm text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        "min-h-10 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-2 text-left text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
       data-pi-starter-card

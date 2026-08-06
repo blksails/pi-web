@@ -55,6 +55,9 @@ type AnyPart = UIMessage["parts"][number];
 export type ToolRenderer = ComponentType<{
   readonly part: AnyPart;
   readonly message: UIMessage;
+  /** 宿主统一渲染媒体成品动作；工具卡与会话图片共用此契约。 */
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }>;
 export type DataPartRenderer = ComponentType<{
   readonly part: AnyPart;
@@ -189,7 +192,7 @@ export interface WebExtension {
    * 发生在领域侧(canvas-ui)。
    */
   readonly canvasPlugins?: readonly CanvasPluginBundle[];
-  /** 对话流 AIGC 成品图动作；宿主统一渲染毛玻璃操作条。 */
+  /** 媒体成品动作；宿主统一渲染图片/工具结果操作条。 */
   readonly conversationImageActions?: readonly ConversationImageAction[];
   /**
    * 该 agent 贡献的 pane 定义。与宿主内置 pane 集合在会话装载期合并(内置在前、本键在后),

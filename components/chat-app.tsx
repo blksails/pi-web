@@ -39,7 +39,7 @@ import {
 } from "@/lib/app/runtime-features.js";
 import { ChatReasoning } from "./chat-reasoning.js";
 import { LoggingConfigLoader } from "./logging-config-loader.js";
-import { LoginControl } from "./auth/login-control.js";
+import { AccountBar } from "./auth/account-bar.js";
 import {
   IdentityStateProvider,
   identityListKey,
@@ -71,8 +71,13 @@ function PanelToggleIcon(): React.JSX.Element {
   );
 }
 
-/** 右侧 Pane 完全收起时的展开图标。 */
-function PanelRightIcon(): React.JSX.Element {
+/** 侧栏折叠箭头：方向始终指向下一步动作。ui-redesign:图标 16px。 */
+function PanelArrowIcon({
+  direction,
+}: {
+  readonly direction: "left" | "right";
+}): React.JSX.Element {
+  const right = direction === "right";
   return (
     <svg
       className="h-4 w-4"
@@ -84,8 +89,53 @@ function PanelRightIcon(): React.JSX.Element {
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <line x1="15" y1="4" x2="15" y2="20" />
+      <path d={right ? "M9 6 15 12 9 18" : "M15 6 9 12 15 18"} />
+      <path d={right ? "M4 12h11" : "M20 12H9"} />
+    </svg>
+  );
+}
+
+function SwitchAgentIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M4 7h13l-3-3" />
+      <path d="m17 7-3 3" />
+      <path d="M20 17H7l3 3" />
+      <path d="m7 17 3-3" />
+    </svg>
+  );
+}
+
+function SettingsIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 4h-7" />
+      <path d="M10 4H3" />
+      <path d="M21 12h-9" />
+      <path d="M8 12H3" />
+      <path d="M21 20h-5" />
+      <path d="M12 20H3" />
+      <path d="M14 2v4" />
+      <path d="M8 10v4" />
+      <path d="M16 18v4" />
     </svg>
   );
 }
@@ -373,8 +423,27 @@ function deriveSourceTitle(source: string): string | undefined {
   return base.length > 0 ? base : undefined;
 }
 
+/** 比较 source 路径/id(Windows 斜杠与尾斜杠不敏感)。 */
+function sameAgentSource(a: string, b: string): boolean {
+  const norm = (s: string): string =>
+    s.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return norm(a) === norm(b);
+}
+
+/** 侧栏/标题展示名:元数据 title > name > 路径末段。 */
+function displayAgentLabel(
+  meta: Pick<AgentSourceItem, "title" | "name"> | null | undefined,
+  source: string,
+): string {
+  const titled = meta?.title?.trim();
+  if (titled !== undefined && titled.length > 0) return titled;
+  const named = meta?.name?.trim();
+  if (named !== undefined && named.length > 0) return named;
+  return deriveSourceTitle(source) ?? "Agent";
+}
+
 export function ChatApp(props: ChatAppProps): React.JSX.Element {
-  // IdentityStateProvider:LoginControl 与 agent-sources 刷新共享同一身份态(不可各挂 useIdentity)。
+  // IdentityStateProvider:AccountBar 与 agent-sources 刷新共享同一身份态(不可各挂 useIdentity)。
   // IdentityGate:登录门禁。★ 它**只在登录确实可用时**才拦(云端未配置 → 直接放行),
   // 判定见 auth/login-page.tsx 顶部表格 —— 拦错会把纯本地用法整个废掉。
   return (
@@ -394,7 +463,7 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // 与 SessionListPanel 同构的注入式接线——组件不持接线,便于测试。
   const pickerClient = React.useMemo(() => createPiClient("/api"), []);
 
-  // desktop-hybrid-agent-sources:身份变化后重拉 /agent-sources(与 LoginControl 同 Provider)。
+  // desktop-hybrid-agent-sources:身份变化后重拉 /agent-sources(与 AccountBar 同 Provider)。
   const identity = useIdentity();
   const authListIdentity = identityListKey(identity.state);
   const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
@@ -604,8 +673,8 @@ function SessionView({
   const t = useI18n();
   // desktop-directory-picker:会话内「切换源」dialog picker 同样注入桌面原生目录选择能力。
   const desktopPickDirectory = useDesktopPickDirectory();
-  // 侧栏折叠(整条左栏):折叠后不渲染 sidebar 槽,对话区吃满横向空间(类 ChatGPT/Grok)。
-  // localStorage 持久化;SSR 安全:初值 false,挂载后读取偏好。
+  // 侧栏折叠:折叠后保留 w-14 icon rail;展开态 240px(ui-redesign 232-248)。
+  // localStorage 持久化;SSR 安全:初值 false,挂载后读偏好。
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState<boolean>(false);
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -910,6 +979,47 @@ function SessionView({
     // 收藏在写操作后经 setSessionFavoriteIds 就地更新;列表刷新时一并重拉以纠偏。
   }, [piClient, sessionListRefreshKey]);
 
+  // 当前 agent 展示名:拉 /agent-sources 命中项的 title ?? name(与选择器同源),路径末段落底。
+  const [currentSourceMeta, setCurrentSourceMeta] =
+    React.useState<AgentSourceItem | null>(null);
+  React.useEffect(() => {
+    const source = create.source;
+    if (source.length === 0 || source === ".") {
+      setCurrentSourceMeta(null);
+      return;
+    }
+    let live = true;
+    void (async () => {
+      try {
+        let cursor: string | undefined;
+        for (let page = 0; page < 8; page++) {
+          const res = await piClient.listAgentSources({
+            limit: 100,
+            ...(cursor !== undefined ? { cursor } : {}),
+          });
+          if (!live) return;
+          const hit = res.sources.find(
+            (item) =>
+              sameAgentSource(item.source, source) ||
+              sameAgentSource(item.id, source),
+          );
+          if (hit !== undefined) {
+            setCurrentSourceMeta(hit);
+            return;
+          }
+          if (res.nextCursor === undefined || res.nextCursor.length === 0) break;
+          cursor = res.nextCursor;
+        }
+        if (live) setCurrentSourceMeta(null);
+      } catch {
+        if (live) setCurrentSourceMeta(null);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [piClient, create.source, agentSourcesRefreshKey]);
+
   const onDeleteSession = React.useCallback(
     async (id: string): Promise<void> => {
       await piClient.deleteSessionHistory(id);
@@ -966,119 +1076,164 @@ function SessionView({
           : {})}
       />
     );
-    // 折叠整条左栏:不提供 sidebar 槽 → PiChat 不渲染 aside,对话区吃满宽度。
-    // 展开入口(浮钮)在 SessionView 内、PiChat 之上渲染(见 return)。
-    if (sidebarCollapsed) return {};
-    // 会话栏自身仅控制会话栏；Pane 开关独立置于应用右上。
-    const sidebarTools = (
-      <div className="flex shrink-0 items-center px-0.5 pt-0.5">
-        {buildTimeExtension === undefined && create.source.length > 0 ? (
-          <button
-            type="button"
-            data-webext-reload
-            onClick={() => setWebextReloadNonce(Date.now())}
-            aria-label="刷新扩展"
-            title="刷新扩展"
-            className="inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-          >
-            ↻
-          </button>
-        ) : null}
+    const agentName = displayAgentLabel(currentSourceMeta, create.source);
+    const agentSource = create.source === "." ? create.cwd : create.source;
+    // ui-redesign §5.2 / prototype `.proto-current-agent`:
+    // 名 15/600、路径 11 mono、图标 16 + 命中 32、控件半径 7、块间呼吸 gap。
+    const iconBtnClass =
+      "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]";
+    const currentAgent = (
+      <div
+        data-sidebar-agent-header
+        className="flex shrink-0 items-center gap-2"
+      >
+        <button
+          type="button"
+          data-current-agent
+          data-switch-source
+          onClick={() => setPickerOpen(true)}
+          aria-label={`切换 Agent · ${agentName}`}
+          title={`${agentName} · ${agentSource}`}
+          className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-[7px] px-1.5 py-1.5 text-left transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))]">
+            <SwitchAgentIcon />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <strong className="truncate text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[hsl(var(--foreground))] group-hover:underline group-hover:underline-offset-[3px]">
+              {agentName}
+            </strong>
+            <span className="truncate font-mono text-[11px] leading-tight text-[hsl(var(--muted-foreground))]">
+              {agentSource}
+            </span>
+          </span>
+        </button>
         <button
           type="button"
           data-sidebar-collapse
           onClick={toggleSidebar}
           aria-label={t("chatApp.collapseSidebar")}
           title={t("chatApp.collapseSidebar")}
-          className="ml-auto inline-flex items-center justify-center rounded-md p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+          className={iconBtnClass}
         >
-          <PanelToggleIcon />
+          <PanelArrowIcon direction="left" />
         </button>
       </div>
     );
-    // 无 head 设计:原顶部导航栏(pi-web/session/新建会话/切换源/设置/语言/主题)整体撤除,
-    // 全局控件下沉到侧栏底部「账户区」。恒渲染(不随 launcherRailEnabled() 门控),因主流 e2e
-    // 跑在 rail 关闭态且依赖 data-settings-link / data-pi-theme-toggle 等。原「新建会话/切换源」
-    // 已移除(冗余,统一由侧栏「新建聊天」承担);日志面板可见性由 /settings 的「显示日志面板」
-    // 设置项(logging.outputs.panelVisible)控制,账户区不再放开关。
-    const accountBtnClass =
-      "inline-flex shrink-0 items-center justify-center rounded-md border border-[hsl(var(--border))] px-2 py-1 text-xs text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]";
-    const accountBar = (
-      <div
-        data-launcher-account
-        className="flex shrink-0 flex-col gap-1 border-t border-[hsl(var(--border))] px-2 pb-2 pt-2"
-      >
-        {/* 新建会话/切换源:仅 rail 关闭态提供(rail 开启时冗余,由侧栏「新建聊天」承担)。 */}
-        {!launcherRailEnabled() ? (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onNewByAgentSource}
-              data-new-session
-              className={`${accountBtnClass} flex-1`}
-            >
-              {t("chatApp.newSession")}
-            </button>
-            <button
-              type="button"
-              onClick={onReset}
-              data-switch-source
-              className={`${accountBtnClass} flex-1`}
-            >
-              {t("chatApp.switchSource")}
-            </button>
-          </div>
-        ) : null}
-        <div className="flex items-center gap-1">
-          <a
-            href="/settings"
-            data-settings-link
-            className={accountBtnClass}
-            onClick={() => {
-              // 进设置前记回跳点（含 replaceState 后的 /session/:id）。
-              // RR 拦截同 origin <a> 做 SPA 切换 → host 卸载 → document presence destroy。
-              try {
-                sessionStorage.setItem(
-                  "pi-web:settings-return",
-                  window.location.pathname + window.location.search,
-                );
-              } catch {
-                // ignore
-              }
-            }}
-          >
-            {t("chatApp.settings")}
-          </a>
-          <span className="ml-auto flex items-center gap-1">
-            {/* desktop-cloud-login:登录入口/登录态(云端登录未启用时不渲染)。 */}
-            <LoginControl />
-            <LocaleToggleButton />
-            <ThemeToggleButton />
-          </span>
-        </div>
-      </div>
-    );
+    // 底部账户:ChatGPT 式 头像+全名+设置;主题/语言/登出进弹层。
+    const accountBar = <AccountBar />;
     // 启动导航区(sidebar-launcher-rail):固定置于会话列表之上,列表在其下独立滚动。
     // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
     // SlotHost 自带 error boundary 隔离(Req 5.4)。
     const launcherContribution = resolveSlot(extension, "launcherRail");
-    // 侧栏定宽 + 上限:长会话标题不得撑开左栏(标题行由 SessionListPanel truncate)。
-    // w-64 / max-w-64 与 launcher 开/关两支路共用,避免无 rail 时 aside 随内容无限变宽。
-    const sidebarShellClass =
-      "flex h-full w-64 max-w-64 min-w-0 flex-col overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)]";
+    const sessionNavigation = (
+      <LauncherRail
+        onNewChat={onNewByAgentSource}
+        onResume={onResumeSession}
+        onLaunchSource={onLaunchSource}
+        listSessions={piClient.listSessions}
+        listFavorites={piClient.listFavorites}
+        setFavorites={piClient.setFavorites}
+        showFavorites={false}
+        className="gap-1"
+      />
+    );
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
     // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
+    if (sidebarCollapsed)
+      return sessionListSlots(
+        <div
+          data-sidebar-collapsed-rail
+          title={t("chatApp.expandSidebar")}
+          className="flex h-full w-14 cursor-ew-resize flex-col items-center overflow-visible border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] px-2 py-5"
+          onClick={(e) => {
+            // 仅空白区展开;icon/按钮/浮层内点击不触发展开。
+            const el = e.target as HTMLElement;
+            if (
+              el.closest(
+                "button, a, input, textarea, select, [role='button'], [data-launcher-search-panel], [data-account-menu]",
+              )
+            ) {
+              return;
+            }
+            toggleSidebar();
+          }}
+        >
+          <button
+            type="button"
+            data-sidebar-expand
+            onClick={toggleSidebar}
+            aria-label={t("chatApp.expandSidebar")}
+            title={t("chatApp.expandSidebar")}
+            className="mt-2 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+          >
+            <PanelArrowIcon direction="right" />
+          </button>
+          <button
+            type="button"
+            data-switch-source
+            onClick={() => setPickerOpen(true)}
+            aria-label={agentName}
+            title={`${agentName} · ${agentSource}`}
+            className="mt-3 flex h-9 w-9 cursor-pointer items-center justify-center rounded-[var(--radius)] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+          >
+            <SwitchAgentIcon />
+          </button>
+          <LauncherRail
+            compact
+            onNewChat={() => setPickerOpen(true)}
+            onResume={onResumeSession}
+            onLaunchSource={onLaunchSource}
+            listSessions={piClient.listSessions}
+            listFavorites={piClient.listFavorites}
+            setFavorites={piClient.setFavorites}
+            favoritesRefreshSignal={favoritesSignal}
+            {...(launcherContribution !== undefined
+              ? { webextSlot: <SlotHost ext={extension} slot="launcherRail" /> }
+              : {})}
+            className="mt-3 cursor-pointer"
+          />
+          {/* 中部空白:可点展开 + 双向箭头光标 */}
+          <div
+            data-sidebar-expand-hit
+            className="min-h-4 w-full flex-1 cursor-ew-resize"
+            aria-hidden
+          />
+          <div className="mt-auto flex flex-col items-center gap-1 border-t border-[hsl(var(--border))] pt-3">
+            <a
+              href="/settings"
+              data-settings-link
+              aria-label={t("chatApp.settings")}
+              title={t("chatApp.settings")}
+              className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-[var(--radius)] text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+            >
+              <SettingsIcon />
+            </a>
+            <span className="cursor-pointer">
+              <LocaleToggleButton />
+            </span>
+            <span className="cursor-pointer">
+              <ThemeToggleButton />
+            </span>
+          </div>
+        </div>,
+      );
+    // 侧栏内边距:右 0 贴分隔线;左 6px 给侧线/hover 余量;上下 8px。块间距 10px。
     if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
-        <div className={sidebarShellClass}>
-          {sidebarTools}
-          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden">{panel}</div>
+        <div className="flex h-full w-[240px] flex-col gap-2.5 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] py-2 pl-1.5 pr-0">
+          {currentAgent}
+          {sessionNavigation}
+          <div className="h-px shrink-0 bg-[hsl(var(--border))]" />
+          <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {panel}
+          </div>
           {accountBar}
         </div>,
       );
     return sessionListSlots(
-      <div className={`${sidebarShellClass} gap-0.5`}>
-        {sidebarTools}
+      <div className="flex h-full w-[240px] flex-col gap-2.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] py-2 pl-1.5 pr-0">
+        {currentAgent}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
           onResume={onResumeSession}
@@ -1092,7 +1247,7 @@ function SessionView({
             : {})}
         />
         <div className="mx-1 my-1.5 h-px shrink-0 bg-[hsl(var(--border))]" />
-        <div className="pi-scrollbar-ghost min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {panel}
         </div>
         {accountBar}
@@ -1101,6 +1256,7 @@ function SessionView({
   }, [
     session.sessionId,
     resumeId,
+    create.source,
     create.cwd,
     piClient,
     onResumeSession,
@@ -1109,6 +1265,7 @@ function SessionView({
     onLaunchSource,
     extension,
     sessionFavoriteIds,
+    currentSourceMeta,
     onDeleteSession,
     onRenameSession,
     onToggleSessionFavorite,
@@ -1191,19 +1348,6 @@ function SessionView({
             }
           : {})}
       >
-        {/* 侧栏折叠态:浮于对话区左上角的展开钮(侧栏已不渲染,须在此提供展开入口)。 */}
-        {sidebarCollapsed ? (
-          <button
-            type="button"
-            data-sidebar-expand
-            onClick={toggleSidebar}
-            aria-label={t("chatApp.expandSidebar")}
-            title={t("chatApp.expandSidebar")}
-            className="absolute left-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
-          >
-            <PanelToggleIcon />
-          </button>
-        ) : null}
         {hasSidePanel && !sidePanelOpen ? (
           <button
             type="button"
@@ -1212,9 +1356,9 @@ function SessionView({
             aria-expanded={false}
             aria-label={t("chatApp.showPaneSidebar")}
             title={t("chatApp.showPaneSidebar")}
-            className="absolute right-2 top-2 z-30 inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))]/80 p-1 text-[hsl(var(--muted-foreground))] shadow-sm backdrop-blur transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+            className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
           >
-            <PanelRightIcon />
+            <PanelToggleIcon />
           </button>
         ) : null}
         {/* Tier5 空态声明式配置(config.empty)→ PiChat props,与上方 theme/layout 同构。
@@ -1290,7 +1434,7 @@ function SessionView({
         />
       </div>
       {/* sidebar-launcher-rail:会话内悬浮源选择器对话框。导航区「新建聊天」调出;选中源→新建会话。 */}
-      {launcherRailEnabled() && pickerOpen ? (
+      {pickerOpen ? (
         <AgentSourcePicker
           variant="dialog"
           onClose={() => setPickerOpen(false)}

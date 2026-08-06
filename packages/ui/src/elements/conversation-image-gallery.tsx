@@ -3,9 +3,12 @@
 import * as React from "react";
 import {
   Download,
+  ExternalLink,
+  ImagePlus,
   Images,
   Palette,
   Sparkles,
+  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import type {
@@ -24,8 +27,11 @@ export interface ConversationImageGalleryProps {
 const ICONS: Readonly<Record<string, LucideIcon>> = {
   download: Download,
   images: Images,
+  "image-plus": ImagePlus,
+  "external-link": ExternalLink,
   palette: Palette,
   sparkles: Sparkles,
+  "wand-sparkles": WandSparkles,
 };
 
 function safeFilename(asset: ConversationImageAsset, index: number): string {
@@ -100,7 +106,9 @@ export function ConversationImageGallery({
   return (
     <div
       className={cn(
-        "grid max-w-full gap-2",
+        "grid w-fit max-w-full gap-3",
+        assets.length === 1 && "max-w-[min(100%,420px)]",
+        assets.length > 1 && "sm:max-w-[840px]",
         assets.length > 1 && "sm:grid-cols-2",
         className,
       )}
@@ -119,7 +127,7 @@ export function ConversationImageGallery({
         return (
           <figure
             key={asset.id}
-            className="group relative m-0 flex min-h-0 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-transparent"
+            className="group relative m-0 flex min-h-0 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]"
             data-pi-conversation-image
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- SDK 组件须支持 blob/data/签名 URL。 */}
@@ -127,10 +135,11 @@ export function ConversationImageGallery({
               src={asset.url}
               alt={asset.filename ?? "AIGC 生成图片"}
               className="block h-auto max-w-full object-contain"
-              style={{ maxHeight: "min(56dvh, 560px)" }}
+              // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
+              style={{ maxHeight: "40dvh" }}
             />
             <div
-              className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-white/25 bg-black/35 p-1 text-white shadow-lg backdrop-blur-md"
+              className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface)/0.86)] p-1 text-[hsl(var(--foreground))] shadow-lg backdrop-blur-md"
               data-pi-conversation-image-pill
             >
               {applicable.map((action) => {
@@ -139,7 +148,7 @@ export function ConversationImageGallery({
                   <button
                     key={action.id}
                     type="button"
-                    className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                    className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                     aria-label={action.label}
                     title={action.label}
                     disabled={busy !== undefined}
@@ -155,24 +164,27 @@ export function ConversationImageGallery({
                   </button>
                 );
               })}
-              <button
-                type="button"
-                className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
-                aria-label="下载"
-                title="下载"
-                disabled={busy !== undefined}
-                onClick={() =>
-                  run(`${asset.id}:download`, () => downloadConversationImage(asset, index))
-                }
-                data-image-action="download"
-              >
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                <span>下载</span>
-              </button>
-              {index === 0 && assets.length > 1 ? (
+              {!applicable.some((action) => action.id === "download") ? (
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:opacity-50"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
+                  aria-label="下载"
+                  title="下载"
+                  disabled={busy !== undefined}
+                  onClick={() =>
+                    run(`${asset.id}:download`, () => downloadConversationImage(asset, index))
+                  }
+                  data-image-action="download"
+                >
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>下载</span>
+                </button>
+              ) : null}
+              {index === 0 && assets.length > 1 &&
+              !applicable.some((action) => action.id === "download-all") ? (
+                <button
+                  type="button"
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                   aria-label="下载全部"
                   title="下载全部"
                   disabled={busy !== undefined}

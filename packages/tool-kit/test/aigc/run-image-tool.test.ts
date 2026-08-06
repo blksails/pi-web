@@ -132,6 +132,7 @@ describe("runImageTool", () => {
     expect(d.assets?.[0]?.attachmentId).toMatch(/^att_/);
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("生成成功");
+    expect(text.split("\n", 1)[0]).not.toContain("att_");
     expect(text).toContain("![");
   });
 

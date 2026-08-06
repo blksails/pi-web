@@ -7,57 +7,119 @@
 
 :root {
   --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
+  --foreground: 0 0% 9%;
+  --canvas: 0 0% 100%;
+  --sidebar: 0 0% 100%;
+  --surface: 0 0% 100%;
+  --surface-subtle: 0 0% 96.5%;
   --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
+  --card-foreground: 0 0% 9%;
   --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 10% 3.9%;
-  --radius: 0.5rem;
-  /* 工具卡 JSON 同步高亮 token 配色(亮主题)。 */
-  --pi-json-key: 221 70% 48%;
-  --pi-json-string: 142 45% 36%;
-  --pi-json-number: 24 75% 45%;
-  --pi-json-bool: 280 55% 52%;
+  --popover-foreground: 0 0% 9%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 95.7%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96.5%;
+  --muted-foreground: 0 0% 44.7%;
+  --accent: 0 0% 94.9%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 0% 9%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 0 0% 88.2%;
+  --input: 0 0% 88.2%;
+  --ring: 0 0% 9%;
+  --radius: 0.4375rem;
+  /* 工具结果不使用彩色语法高亮,以灰阶保持与用户消息的层级区别。 */
+  --pi-json-key: 0 0% 18%;
+  --pi-json-string: 0 0% 30%;
+  --pi-json-number: 0 0% 38%;
+  --pi-json-bool: 0 0% 24%;
+}
+
+/*
+ * UI 尺寸章程：12px 仅用于元信息/次级箭头，14px 用于紧凑工具栏，16px 用于标准
+ * 导航与按钮，20px 以上只用于空态或主视觉。底部输入栏统一 32px 控件高，避免
+ * model/skill/语音/联网/附件各自生长成不同尺寸。
+ */
+[data-pi-prompt-input-toolbar] {
+  align-items: center;
+  gap: 8px;
+}
+/* 扩展自定义 pill（promptToolbar）彼此与宿主控件统一留白 */
+[data-pi-prompt-input-toolbar] [data-pi-ext-prompt-toolbar],
+[data-pi-prompt-input-toolbar] [data-aigc-prompt-toolbar] {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add],
+[data-pi-prompt-input-toolbar] [data-pi-model-trigger],
+[data-pi-prompt-input-toolbar] [data-pi-speech-button],
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle],
+[data-pi-prompt-input-toolbar] [data-pi-skill-pill] > button {
+  min-height: 32px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add],
+[data-pi-prompt-input-toolbar] [data-pi-speech-button],
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle] {
+  width: 32px;
+}
+[data-pi-prompt-input-toolbar] [data-pi-attachments-add] svg,
+[data-pi-prompt-input-toolbar] [data-pi-model-trigger] svg,
+[data-pi-prompt-input-toolbar] [data-pi-speech-button] svg,
+[data-pi-prompt-input-toolbar] [data-pi-web-search-toggle] svg,
+[data-pi-prompt-input-toolbar] [data-pi-skill-pill] svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 液体玻璃层：透光、微饱和，随滚动内容显出下层色彩。 */
+.pi-liquid-glass {
+  background:
+    linear-gradient(
+      112deg,
+      hsl(var(--canvas) / 0.46),
+      hsl(var(--surface) / 0.22) 48%,
+      hsl(var(--muted) / 0.3)
+    );
+  border-color: hsl(var(--border) / 0.5);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--background) / 0.62),
+    0 -10px 30px hsl(var(--foreground) / 0.035);
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
-  /* 工具卡 JSON 同步高亮 token 配色(暗主题,提亮)。 */
-  --pi-json-key: 213 90% 72%;
-  --pi-json-string: 142 50% 62%;
-  --pi-json-number: 28 85% 66%;
-  --pi-json-bool: 280 70% 76%;
+  --background: 0 0% 4.3%;
+  --foreground: 0 0% 96%;
+  --canvas: 0 0% 7.8%;
+  --sidebar: 0 0% 6.3%;
+  --surface: 0 0% 11.4%;
+  --surface-subtle: 0 0% 14.1%;
+  --card: 0 0% 11.4%;
+  --card-foreground: 0 0% 96%;
+  --popover: 0 0% 11.4%;
+  --popover-foreground: 0 0% 96%;
+  --primary: 0 0% 96%;
+  --primary-foreground: 0 0% 7%;
+  --secondary: 0 0% 14.1%;
+  --secondary-foreground: 0 0% 96%;
+  --muted: 0 0% 14.1%;
+  --muted-foreground: 0 0% 63.5%;
+  --accent: 0 0% 16.5%;
+  --accent-foreground: 0 0% 96%;
+  --destructive: 0 0% 96%;
+  --destructive-foreground: 0 0% 7%;
+  --border: 0 0% 22%;
+  --input: 0 0% 22%;
+  --ring: 0 0% 96%;
+  --pi-json-key: 0 0% 96%;
+  --pi-json-string: 0 0% 80%;
+  --pi-json-number: 0 0% 70%;
+  --pi-json-bool: 0 0% 88%;
 }
 
 /* 工具卡 JSON 同步高亮 token(由 PiToolPart 的 highlightJson 生成 span)。 */
@@ -76,6 +138,16 @@
 }
 .pi-json-punct {
   color: hsl(var(--muted-foreground));
+}
+
+/* 用户气泡内的 Response 自带 foreground 类,必须继承气泡反色,避免黑底黑字。 */
+[data-pi-message-role="user"] [data-pi-message-content] [data-pi-response],
+[data-pi-message-role="user"] [data-pi-message-content] [data-pi-response] * {
+  color: hsl(var(--primary-foreground));
+}
+[data-pi-message-role="user"] [data-pi-message-content] a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* 细滚动条:替换原生粗滚动条,配色走主题 token,亮/暗自适应(prompt-input textarea 等)。 */

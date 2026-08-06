@@ -43,12 +43,12 @@ export interface LayoutClassNames {
   readonly hasAside: boolean;
 }
 
-/** `centered` 等价于现行版面(max-w-3xl 居中)。 */
+/** `centered` 等价于现行版面(max-w-5xl 居中)。 */
 const PRESETS: Record<LayoutPreset, LayoutClassNames> = {
-  centered: { root: "", content: "mx-auto w-full max-w-3xl", hasAside: false },
+  centered: { root: "", content: "mx-auto w-full max-w-5xl", hasAside: false },
   wide: { root: "", content: "mx-auto w-full max-w-5xl", hasAside: false },
-  full: { root: "", content: "w-full px-4", hasAside: false },
-  split: { root: "", content: "mx-auto w-full max-w-3xl", hasAside: true },
+  full: { root: "", content: "w-full", hasAside: false },
+  split: { root: "", content: "mx-auto w-full max-w-5xl", hasAside: true },
 };
 
 /** 解析布局预设;缺省回退 `centered`(Req 7.3)。 */

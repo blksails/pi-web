@@ -53,7 +53,7 @@ export const Response = React.memo(function Response({
   return (
     <div
       className={cn(
-        "prose prose-sm max-w-none text-[hsl(var(--foreground))]",
+        "prose prose-sm max-w-none leading-7 text-[hsl(var(--foreground))] [&_p]:my-0 [&_p+p]:mt-3 [&_ul]:my-3 [&_ol]:my-3 [&_li+li]:mt-1 [&_blockquote]:my-3 [&_pre]:my-3 [&_h1]:mb-3 [&_h2]:mb-2 [&_h3]:mb-2",
         className,
       )}
       data-pi-response

@@ -30,6 +30,7 @@ import {
 import { ChatError } from "../elements/chat-error.js";
 import { useI18n } from "../i18n/index.js";
 import type { TranslateFn } from "../i18n/index.js";
+import type { ConversationImageAction } from "@blksails/pi-web-kit";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -45,6 +46,9 @@ export interface PartRendererProps {
   /** 工具 part 的整卡渲染实现;默认 PiToolPart。可由 components.ToolPart 覆盖。
    *  优先级低于按工具名注册的渲染器(registry)。 */
   readonly toolPart?: React.ComponentType<PiToolPartProps>;
+  /** 工具结果上的媒体动作；与会话图片使用同一扩展契约。 */
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }
 
 function isToolPart(part: AnyPart): part is ToolPart {
@@ -131,6 +135,8 @@ export function PartRenderer({
   markdown,
   reasoning,
   toolPart,
+  imageActions,
+  publishPaneEvent,
 }: PartRendererProps): React.JSX.Element | null {
   const t = useI18n();
   const mask = useMaskPaths();
@@ -155,12 +161,26 @@ export function PartRenderer({
     // 解析优先级:注册表(按工具名,含 webext 扩展) > 宿主 components.ToolPart > 默认 PiToolPart。
     const Custom = registry.resolveToolRenderer(name);
     if (Custom !== undefined) {
-      return <Custom part={part} message={message} />;
+      return (
+        <Custom
+          part={part}
+          message={message}
+          imageActions={imageActions}
+          publishPaneEvent={publishPaneEvent}
+        />
+      );
     }
     // 注:PiToolPart(及 components.ToolPart 覆盖,均为 PiToolPartProps)不接受 markdown——
     // 工具字符串输出固定走 Response 富渲染;markdown 覆盖仅作用于 text 分支。
     const ToolComp = toolPart ?? PiToolPart;
-    return <ToolComp part={part} message={message} />;
+    return (
+      <ToolComp
+        part={part}
+        message={message}
+        imageActions={imageActions}
+        publishPaneEvent={publishPaneEvent}
+      />
+    );
   }
 
   // data-pi-error:历史回放里 stopReason==="error" 的 assistant 消息(见
@@ -252,7 +272,7 @@ export function PartRenderer({
           src={url}
           alt={alt}
           data-pi-message-image
-          className="max-h-80 max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
+          className="max-h-[40dvh] max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
         />
       );
     }

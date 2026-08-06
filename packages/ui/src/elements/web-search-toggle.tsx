@@ -54,7 +54,7 @@ export function WebSearchToggle({
       aria-pressed={enabled}
       disabled={disabled}
       onClick={handleClick}
-      className={cn(enabled && "text-[hsl(var(--primary))]", className)}
+      className={cn("h-8 w-8", enabled && "text-[hsl(var(--primary))]", className)}
       data-pi-web-search-toggle
       data-enabled={enabled ? "true" : "false"}
     >
