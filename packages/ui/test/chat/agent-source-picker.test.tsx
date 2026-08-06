@@ -208,11 +208,9 @@ describe("AgentSourcePicker — source list", () => {
     const titles = container.querySelectorAll("[data-agent-source-title]");
     expect(titles[0]!.textContent).toBe("Image Agent");
     expect(titles[1]!.textContent).toBe("Zeta"); // 无 title 回退 name
-    // 图片 avatar 渲染为 <img>。
     const avatars = container.querySelectorAll("[data-agent-source-avatar]");
     expect(avatars[0]!.tagName).toBe("IMG");
     expect(avatars[0]!.getAttribute("src")).toBe("https://example.com/a.png");
-    // 无 avatar → 首字母兜底(Zeta → Z)。
     expect(avatars[1]!.textContent).toBe("Z");
     // 描述展示。
     expect(screen.getByText("has avatar url")).toBeTruthy();
@@ -238,7 +236,7 @@ describe("AgentSourcePicker — source list", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText("Source 0")).toBeTruthy());
-    // 默认只 9 个。
+    // 默认只展示 9 个推荐源。
     expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
     const more = document.querySelector("[data-agent-source-list-more]")!;
     expect(more.getAttribute("aria-expanded")).toBe("false");
@@ -253,7 +251,7 @@ describe("AgentSourcePicker — source list", () => {
     expect(document.querySelectorAll("[data-agent-source-item]")).toHaveLength(9);
   });
 
-  it("源不足 9 个 → 不显示「显示全部」按钮", async () => {
+  it("源不足 3 个 → 不显示「显示全部」按钮", async () => {
     render(
       <AgentSourcePicker
         onSubmit={() => {}}

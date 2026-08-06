@@ -22,6 +22,7 @@ export type IconSlot =
   | "removeAttachment"
   | "model"
   | "modelCheck"
+  | "skill"
   | "speech"
   | "webSearch"
   | "copy"

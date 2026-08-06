@@ -16,8 +16,8 @@ const execFile = promisify(execFileCallback);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const FFMPEG = process.env.PI_WEB_FFMPEG_BIN ?? "ffmpeg";
 const TOOLKIT_PATH = path.join(ROOT, "packages", "tool-kit", "src", "runtime.ts");
-const MEDIA_RUNTIME_PATH = path.join(ROOT, "examples", "agic-video-agent", "media-tools", "src", "runtime.ts");
-const SURFACE_PATH = path.join(ROOT, "examples", "agic-video-agent", "video-studio", "surface.ts");
+const MEDIA_RUNTIME_PATH = path.join(ROOT, "examples", "aigc-agent", "media-tools", "src", "runtime.ts");
+const SURFACE_PATH = path.join(ROOT, "examples", "aigc-agent", "video-studio", "surface.ts");
 
 const SESSION_ID = process.env.PI_WEB_STUB_SESSION_ID ?? "video-studio-e2e";
 const tools = new Map();

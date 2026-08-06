@@ -22,7 +22,11 @@ import { LoginForm } from "./login-form.js";
 const BTN =
   "inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent";
 
-export function LoginControl(): React.JSX.Element | null {
+export function LoginControl({
+  className,
+}: {
+  readonly className?: string;
+} = {}): React.JSX.Element | null {
   const identity = useIdentity();
   const [formOpen, setFormOpen] = React.useState(false);
 
@@ -64,10 +68,13 @@ export function LoginControl(): React.JSX.Element | null {
   // 已认证:身份 + 登出(+ 需重登时的内联表单)。
   const displayName = tenantDisplayName(state.tenant);
   return (
-    <div className="flex min-w-0 max-w-full items-center gap-1" data-testid="login-status">
+    <div
+      className={`flex min-w-0 max-w-full items-center gap-1.5 ${className ?? ""}`}
+      data-testid="login-status"
+    >
       {/* 展示名优先,退回 userId(UUID)。云端未提供 profiles.name 时行为与之前一致。 */}
       <span
-        className="min-w-0 max-w-32 truncate whitespace-nowrap text-xs text-muted-foreground"
+        className="min-w-0 flex-1 truncate whitespace-nowrap text-xs text-muted-foreground"
         data-testid="login-user"
         title={state.tenant.userId}
         aria-label={displayName}

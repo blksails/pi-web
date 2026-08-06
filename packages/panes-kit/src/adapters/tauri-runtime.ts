@@ -1,6 +1,7 @@
 import { createLogger } from "@blksails/pi-web-logger";
 import type { PaneDocument } from "../contract.js";
 import type { PaneViewAdapter } from "../host-ports.js";
+import { paneChromeBootScript } from "../pane-chrome.js";
 import {
   createTauriPaneViewAdapter,
   TAURI_PANE_RELAY_BIND_COMMAND,
@@ -11,13 +12,13 @@ import {
 } from "./tauri.js";
 import { installTauriPaneBootstrap } from "./tauri-bootstrap.js";
 
+// 注意：paneChromeBootScript 仅 createGlobalTauriPaneViewAdapter（宿主）使用。
+// 勿在模块顶层求值，否则 guest bootstrap 会 tree-shake 不掉整份 chrome。
+
 const INSTANCE_HASH_KEY = "pi-pane-instance";
 const PANE_LABEL_PREFIX = "pane-";
 const BOOTSTRAP_MARKER = Symbol.for("pi-web.pane.tauri-bootstrap");
 const HOST_ADAPTER_MARKER = Symbol.for("pi-web.pane.tauri-host-adapter");
-const HOST_OVERLAY_MARKER = Symbol.for("pi-web.pane.tauri-host-overlay");
-const OVERLAY_INSTANCE_ID = "panes-overlay-menu";
-const OVERLAY_LABEL = "pane-overlay-menu";
 const TAURI_PANE_HOST_LAYOUT_EVENT = "pane-host-layout";
 
 /**
@@ -140,42 +141,10 @@ type TauriWindow = Window & {
   readonly __PI_TAURI_PANE_LABEL__?: string;
   readonly [BOOTSTRAP_MARKER]?: () => void;
   readonly [HOST_ADAPTER_MARKER]?: PaneViewAdapter<TauriPaneMountTarget>;
-  readonly [HOST_OVERLAY_MARKER]?: TauriPaneOverlayController;
 };
 
-export interface TauriPaneOverlayItem {
-  readonly id: string;
-  readonly label: string;
-  readonly meta?: string;
-  readonly disabled?: boolean;
-  readonly selected?: boolean;
-}
 
-export interface TauriPaneOverlayOpenOptions {
-  readonly title: string;
-  readonly items: readonly TauriPaneOverlayItem[];
-  /**
-   * 侧栏 content-well（或与 content webview 同槽的元素）。
-   * overlay child 的位置/大小与之贴合；内部蒙版铺满该槽。
-   */
-  readonly cover: Element;
-  /** 菜单卡片在槽内的对齐（相对槽，非整窗）。 */
-  readonly placement?: "anchor-end" | "center";
-  /** 可选：用于主题采样；缺省用 cover。 */
-  readonly anchor?: Element;
-  readonly onSelect: (id: string) => void;
-  /** 菜单关闭（选中、取消、遮罩）时回调。 */
-  readonly onClose?: () => void;
-}
 
-export interface TauriPaneOverlayController {
-  open(options: TauriPaneOverlayOpenOptions): Promise<void>;
-  close(): void;
-  /**
-   * 启动时预建隐藏 overlay child（空 shell）。首开只 configure+show，免冷创建延迟。
-   */
-  warm(): Promise<void>;
-}
 
 interface PaneScreenBounds {
   readonly x: number;
@@ -361,7 +330,7 @@ export function isTauriNativePaneLayout(target: Window = window): Promise<boolea
 
 /**
  * 由 content-well 元素量取并上报 native 槽位几何。
- * host 铺满窗口；child 只盖本矩形，tabs/resize 留在 host。
+ * host 铺满窗口；child 只盖本矩形。tabs 已迁入 pane 内边车，井应满铺 host。
  *
  * **单路 rAF 合并**：拖拽时 ResizeObserver + 显式 sync 事件会叠两层；
  * 同帧多次调用只发一次 IPC，且几何未变（≤0.5px）则跳过，避免过度插帧。
@@ -636,328 +605,22 @@ export function installGlobalTauriPaneBootstrap(target: Window = window): void {
   }
 }
 
-export function tauriPaneDocumentUrl(document: PaneDocument, instanceId: string): string {
+export function tauriPaneDocumentUrl(
+  document: PaneDocument,
+  instanceId: string,
+  paneId?: string,
+): string {
   if (document.kind === "inline") throw new Error("Tauri native Pane requires a URL-backed HTML document");
   const url = new URL(document.src, globalThis.document.baseURI);
   url.searchParams.set(INSTANCE_HASH_KEY, instanceId);
+  // chrome 边车读此参发 pane:ready（warm 池 navigate 复用时 init 脚本无 paneId）
+  if (paneId !== undefined && paneId.length > 0) {
+    url.searchParams.set("pi-pane-id", paneId);
+  }
   url.hash = `${INSTANCE_HASH_KEY}=${encodeURIComponent(instanceId)}`;
   return url.href;
 }
 
-/** 桌面端共享原生弹层；添加 Pane 与收起标签菜单复用同一 WebView。 */
-export function createGlobalTauriPaneOverlay(
-  target: Window = window,
-): TauriPaneOverlayController | undefined {
-  const paneWindow = target as TauriWindow;
-  const runtime = tauriRuntime(target);
-  if (runtime === undefined || !isTauriPaneRuntime(target)) return undefined;
-  const existing = paneWindow[HOST_OVERLAY_MARKER];
-  if (existing !== undefined) return existing;
-  let token = 0;
-  let shownToken = 0;
-  let shellReady = false;
-  let warmPromise: Promise<void> | undefined;
-  let current: TauriPaneOverlayOpenOptions | undefined;
-  let boundsRevision = 0;
-  let follow: FrameBoundsObserver | undefined;
-  let unlistenMoved: (() => void) | undefined;
-  let unlistenResized: (() => void) | undefined;
-  let hostOrigin = { x: 0, y: 0 };
-  let hostScale = 1;
-  // ★ innerPosition 是否真取到过。取到过就**绝不**用 window.screenX/screenY——
-  //   macOS 原生 child WKWebView 里 screenX/screenY 的坐标空间与 Tauri 不一致
-  //   （多显示器实测偏差数百 px），据它拼的「屏幕坐标」再被 Rust 减 inner_position
-  //   后，overlay 菜单会落到窗口外（点「+」无任何可见反应的根因）。
-  //   用 innerPosition 时数学严格闭环：local = (origin/scale + rect) - origin/scale = rect。
-  let hostOriginValid = false;
-  const hostOriginLogical = (axis: "x" | "y"): number | undefined =>
-    hostOriginValid ? hostOrigin[axis] / hostScale : undefined;
-  const stopFollowing = (): void => {
-    follow?.dispose();
-    follow = undefined;
-    unlistenMoved?.();
-    unlistenMoved = undefined;
-    unlistenResized?.();
-    unlistenResized = undefined;
-  };
-  const hide = (): void => {
-    const closing = current;
-    current = undefined;
-    stopFollowing();
-    void runtime.core.invoke("pane_webview_window_control", {
-      label: OVERLAY_LABEL,
-      action: "hide",
-    }).catch(() => undefined);
-    closing?.onClose?.();
-  };
-  const raiseOverlay = (): Promise<unknown> =>
-    runtime.core.invoke("pane_webview_window_control", {
-      label: OVERLAY_LABEL,
-      action: "show",
-    }).then(() => runtime.core.invoke("pane_webview_window_control", {
-      label: OVERLAY_LABEL,
-      action: "focus",
-    }));
-  const listenerReady = runtime.event.listen(TAURI_PANE_RELAY_HOST_EVENT, ({ payload }) => {
-    const envelope = payload as {
-      readonly instanceId?: unknown;
-      readonly message?: {
-        readonly type?: unknown;
-        readonly token?: unknown;
-        readonly value?: unknown;
-      };
-    };
-    if (envelope.instanceId !== OVERLAY_INSTANCE_ID) return;
-    const msgToken = envelope.message?.token;
-    // warm shell ready (token 0)
-    if (envelope.message?.type === "pane:overlay-ready" && msgToken === 0) {
-      shellReady = true;
-      return;
-    }
-    if (msgToken !== token) return;
-    if (envelope.message?.type === "pane:overlay-ready") {
-      if (shownToken === token) return;
-      shownToken = token;
-      // 立刻抬起 + 短延迟再 focus，压过 content 抢焦。
-      void raiseOverlay()
-        .then(() => new Promise((r) => setTimeout(r, 40)))
-        .then(() => (shownToken === token && current !== undefined ? raiseOverlay() : undefined))
-        .then(() => new Promise((r) => setTimeout(r, 160)))
-        .then(() => (shownToken === token && current !== undefined ? raiseOverlay() : undefined))
-        .catch(() => undefined);
-      return;
-    }
-    if (envelope.message?.type === "pane:overlay-select") {
-      const selected = current?.onSelect;
-      const value = envelope.message.value;
-      hide();
-      if (typeof value === "string") selected?.(value);
-      return;
-    }
-    if (envelope.message?.type === "pane:overlay-close") hide();
-  });
-  void runtime.event.listen(TAURI_PANE_HOST_LAYOUT_EVENT, () => follow?.sync())
-    .catch(() => undefined);
-
-  const shellUrl = (): string => {
-    const url = new URL("/pane-overlay.html", target.location.href);
-    url.searchParams.set("instanceId", OVERLAY_INSTANCE_ID);
-    url.searchParams.set("token", "0");
-    url.searchParams.set("title", "");
-    url.searchParams.set("items", "[]");
-    return url.href;
-  };
-
-  /**
-   * 只确保隐藏壳已建（BIND+CREATE token=0 空壳）；resolve 快，供 open 串行导航。
-   * 拆开是为了消除「warm 建壳」与「open navigate」对同一 label 的并发 create 竞态。
-   */
-  let shellPromise: Promise<void> | undefined;
-  const ensureShellCreated = (): Promise<void> => {
-    if (shellPromise !== undefined) return shellPromise;
-    shellPromise = (async () => {
-      await listenerReady;
-      try {
-        const hostWindow = runtime.window.getCurrentWindow();
-        const [origin, scaleFactor] = await Promise.all([
-          hostWindow.innerPosition(),
-          hostWindow.scaleFactor(),
-        ]);
-        hostOrigin = origin;
-        hostScale = scaleFactor;
-        hostOriginValid = true;
-      } catch {
-        // open 时再刷 metrics
-      }
-      const parkOriginX = hostOriginLogical("x")
-        ?? (Number.isFinite(target.screenX) ? target.screenX : 0);
-      const parkOriginY = hostOriginLogical("y")
-        ?? (Number.isFinite(target.screenY) ? target.screenY : 0);
-      const x = parkOriginX - 200;
-      const y = parkOriginY - 200;
-      await runtime.core.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
-        instanceId: OVERLAY_INSTANCE_ID,
-        epoch: 0,
-        label: OVERLAY_LABEL,
-      });
-      await runtime.core.invoke("pane_webview_window_create", {
-        label: OVERLAY_LABEL,
-        url: shellUrl(),
-        x,
-        y,
-        width: 320,
-        height: 240,
-        visible: false,
-      });
-    })().catch((err) => {
-      shellPromise = undefined;
-      throw err;
-    });
-    return shellPromise;
-  };
-
-  /**
-   * 预热只建隐藏壳，拉起 WebView2 进程；**open 一律 navigate 带参**，
-   * 不走 to_guest configure（子 webview 事件监听/epoch 易静默失败 → 菜单永不 show）。
-   */
-  const ensureWarm = (): Promise<void> => {
-    if (warmPromise !== undefined) return warmPromise;
-    if (shellReady) return Promise.resolve();
-    warmPromise = (async () => {
-      await ensureShellCreated();
-      // 最多等 1.5s 记 shellReady；超时仍算 warm 完成（open 会 navigate 复用 label）。
-      const deadline = Date.now() + 1_500;
-      while (!shellReady && Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 50));
-      }
-    })().catch((err) => {
-      warmPromise = undefined;
-      throw err;
-    });
-    return warmPromise;
-  };
-
-  const controller: TauriPaneOverlayController = {
-    warm: () => ensureWarm().catch(() => undefined),
-    async open(options) {
-      stopFollowing();
-      current = options;
-      const currentToken = ++token;
-      shownToken = 0;
-      await listenerReady;
-      // 先确保壳已建（无并发 create 竞态）；失败不挡 open（下面 create/navigate 自建）。
-      await ensureShellCreated().catch(() => undefined);
-      const hostWindow = runtime.window.getCurrentWindow();
-      try {
-        const [origin, scaleFactor] = await Promise.all([
-          hostWindow.innerPosition(),
-          hostWindow.scaleFactor(),
-        ]);
-        hostOrigin = origin;
-        hostScale = scaleFactor;
-        hostOriginValid = true;
-      } catch {
-        // keep last
-      }
-      // 槽位 = 侧栏 content-well：与 content child webview 同位置同大小。
-      // ★ origin 优先取 Tauri innerPosition（见 hostOriginValid 注释）；screenX 只作
-      //   innerPosition 从未取到时的最后兜底。
-      const screenBounds = (): PaneScreenBounds => {
-        const rect = options.cover.getBoundingClientRect();
-        const originX = hostOriginLogical("x")
-          ?? (Number.isFinite(target.screenX) ? target.screenX : 0);
-        const originY = hostOriginLogical("y")
-          ?? (Number.isFinite(target.screenY) ? target.screenY : 0);
-        return {
-          x: originX + rect.left,
-          y: originY + rect.top,
-          width: Math.max(48, rect.width),
-          height: Math.max(48, rect.height),
-        };
-      };
-      const initialBounds = screenBounds();
-      const themeEl = options.anchor ?? options.cover;
-      const style = getComputedStyle(themeEl);
-      const theme = {
-        colorScheme: style.colorScheme,
-        background: style.getPropertyValue("--popover").trim()
-          || style.getPropertyValue("--background").trim(),
-        foreground: style.getPropertyValue("--popover-foreground").trim()
-          || style.getPropertyValue("--foreground").trim(),
-        border: style.getPropertyValue("--border").trim(),
-        accent: style.getPropertyValue("--accent").trim(),
-        muted: style.getPropertyValue("--muted-foreground").trim(),
-      };
-      // 绑定 epoch=0：guest 上行 ready 亦 epoch 0；会话号在 message.token。
-      await runtime.core.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
-        instanceId: OVERLAY_INSTANCE_ID,
-        epoch: 0,
-        label: OVERLAY_LABEL,
-      });
-
-      // URL 带参 navigate；同次 Rust 调用即 show，勿再等 guest ready 才显（首击/切 tab 会丢 z-order）。
-      const url = new URL("/pane-overlay.html", target.location.href);
-      url.searchParams.set("instanceId", OVERLAY_INSTANCE_ID);
-      url.searchParams.set("token", String(currentToken));
-      url.searchParams.set("title", options.title);
-      url.searchParams.set("items", JSON.stringify(options.items));
-      url.searchParams.set("placement", options.placement ?? "center");
-      url.searchParams.set("theme", JSON.stringify(theme));
-      await runtime.core.invoke("pane_webview_window_create", {
-        label: OVERLAY_LABEL,
-        url: url.href,
-        x: initialBounds.x,
-        y: initialBounds.y,
-        width: initialBounds.width,
-        height: initialBounds.height,
-        visible: true,
-      });
-
-      const setBounds = (bounds: PaneScreenBounds): Promise<void> => runtime.core.invoke(
-        "pane_webview_window_control",
-        {
-          label: OVERLAY_LABEL,
-          action: "set-bounds",
-          ...bounds,
-          scaleFactor: hostScale,
-          revision: ++boundsRevision,
-        },
-      ).then(() => undefined);
-      follow = observeFrameBounds({
-        target,
-        observed: options.cover,
-        measure: screenBounds,
-        apply: setBounds,
-        isActive: () => current === options,
-      });
-      follow.sync();
-      const refreshMetrics = async (): Promise<void> => {
-        try {
-          const [origin, scaleFactor] = await Promise.all([
-            hostWindow.innerPosition(),
-            hostWindow.scaleFactor(),
-          ]);
-          hostOrigin = origin;
-          hostScale = scaleFactor;
-          hostOriginValid = true;
-        } catch {
-          // ignore
-        }
-        follow?.sync();
-      };
-      void hostWindow.onMoved?.(() => {
-        follow?.sync();
-        void refreshMetrics().catch(() => undefined);
-      }).then((off) => {
-        if (current !== options) off();
-        else unlistenMoved = off;
-      });
-      void hostWindow.onResized?.(() => {
-        follow?.sync();
-        void refreshMetrics().catch(() => undefined);
-      }).then((off) => {
-        if (current !== options) off();
-        else unlistenResized = off;
-      });
-
-      // ready 丢失时的兜底：1.2s 后若仍未 show 且仍是本次 open，强制 raise 一次。
-      void (async () => {
-        await new Promise((r) => setTimeout(r, 1_200));
-        if (current !== options || shownToken === currentToken) return;
-        shownToken = currentToken;
-        await raiseOverlay().catch(() => undefined);
-      })();
-    },
-    close: hide,
-  };
-  Object.defineProperty(paneWindow, HOST_OVERLAY_MARKER, {
-    configurable: true,
-    value: controller,
-  });
-  // 创建 controller 即后台 warm，不阻塞 UI。
-  void controller.warm();
-  return controller;
-}
 
 function observeBounds(
   container: HTMLElement,
@@ -1035,6 +698,7 @@ export function createGlobalTauriPaneViewAdapter(
       width: 320,
       height: 240,
       visible: false,
+      chromeBoot: paneChromeBootScript(),
     });
   };
   const fillWarmPool = (): Promise<void> => {
@@ -1226,6 +890,8 @@ export function createGlobalTauriPaneViewAdapter(
           width: preload.width,
           height: preload.height,
           visible: shown,
+          // 底层 chrome：与页面 src/srcDoc 无关，每个 native realm 自带同步 tabs。
+          chromeBoot: paneChromeBootScript(),
         });
       } catch (error) {
         releaseCreate(instanceId);

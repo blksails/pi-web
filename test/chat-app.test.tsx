@@ -23,8 +23,7 @@ vi.mock("@blksails/pi-web-ui", async () => ({
     .AgentSourcePicker,
   PiChat: (props: Record<string, unknown>): React.JSX.Element => {
     piChatSpy(props);
-    // 无 head 设计后,全局控件(设置/日志开关/语言/主题 + rail 关闭态的新建会话/切换源)
-    // 下沉到侧栏账户区,经 slots.sidebar 注入。忠实渲染该槽,测试才能触达这些控件。
+    // 侧栏导航由宿主注入;mock 保留新建入口的行为契约。
     const slots = props.slots as { sidebar?: React.ReactNode } | undefined;
     return <div data-test-pi-chat>{slots?.sidebar}</div>;
   },
@@ -37,7 +36,9 @@ vi.mock("@blksails/pi-web-ui", async () => ({
   // webext 声明 → undefined(走 rail 关闭分支,与生产语义一致)。
   resolveSlot: (): undefined => undefined,
   SlotHost: (): null => null,
-  LauncherRail: (): React.JSX.Element => <div data-test-launcher-rail />,
+  LauncherRail: ({ onNewChat }: { readonly onNewChat: () => void }): React.JSX.Element => (
+    <button data-test-launcher-rail data-new-session onClick={onNewChat} />
+  ),
   useI18n: () => (key: string) => key,
   useLocale: () => ({ locale: "zh", setLocale: () => {} }),
 }));
@@ -129,15 +130,15 @@ describe("ChatApp (session-active) renders the default rich chat UI", () => {
   });
 
   // new-by-agent-source(任务 2.1)
-  it("点击「切换源」退回 agent 源选择器 (2.1/2.2)", async () => {
+  it("点击「切换源」打开 agent 源选择器 (2.1/2.2)", async () => {
     await startSession();
     expect(document.querySelector("[data-session-active]")).not.toBeNull();
     const switchBtn = document.querySelector("[data-switch-source]");
     expect(switchBtn).not.toBeNull();
     fireEvent.click(switchBtn as Element);
-    // 退回选择器:picker 出现、会话态消失。
+    // 选择器以内嵌弹窗出现，当前会话保持挂载。
     expect(document.querySelector("[data-agent-source-picker]")).not.toBeNull();
-    expect(document.querySelector("[data-session-active]")).toBeNull();
+    expect(document.querySelector("[data-session-active]")).not.toBeNull();
   });
 
   it("点击 New session 同源新建:仍停留会话(不回选择器)且 SessionView 重挂 (1.1)", async () => {

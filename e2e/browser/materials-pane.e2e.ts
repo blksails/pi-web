@@ -31,6 +31,29 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
     expect.objectContaining({ name: "materials-library", methods: expect.arrayContaining(["GET"]) }),
     expect.objectContaining({ name: "material-status", methods: ["GET"] }),
   ]));
+  await page.route("**/agent-routes/material-status*", async (route) => {
+    const ids = (new URL(route.request().url()).searchParams.get("ids") ?? "")
+      .split(",")
+      .filter(Boolean);
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: ids.map((id) => ({
+          attachmentId: id,
+          materialId: id.replace(/^material:/, ""),
+          status: "done",
+          records: [{
+            account: "E2E广告账户",
+            accountId: "act-e2e",
+            advertiserId: 901,
+            uploader: "e2e@example.com",
+            uploadedAt: "2026-08-05T03:04:00.000Z",
+            status: "done",
+          }],
+        })),
+      }),
+    });
+  });
   const assets = await page.request.get(`/api/sessions/${sessionId}/agent-routes/assets-list`);
   expect(assets.ok()).toBeTruthy();
   expect((await assets.json()).items).toEqual([
@@ -90,6 +113,14 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
   await expect(assetName).toHaveText("企业示例素材");
   await expect(assetName).toHaveCSS("border-radius", "999px");
   await expect(assetName).toHaveCSS("backdrop-filter", /blur\(9px\)/);
+  const distributionBadge = directoryAsset.locator(".distribution-badge");
+  await expect(distributionBadge).toBeVisible();
+  await distributionBadge.hover();
+  const distributionTooltip = materials.getByRole("tooltip");
+  await expect(distributionTooltip).toContainText("E2E广告账户");
+  await expect(distributionTooltip).toContainText("act-e2e");
+  await expect(distributionTooltip).toContainText("e2e@example.com");
+  await expect(distributionTooltip).toHaveText(/26-08-05 \d{2}:\d{2}/);
   const rootFolderRow = materials.locator(".tree-row").filter({ hasText: "企业目录" }).first();
   const folderActions = rootFolderRow.getByRole("button", { name: "企业目录目录操作" });
   await expect(folderActions).toHaveCSS("width", "0px");
@@ -224,15 +255,11 @@ test("独立素材 Pane：会话素材库与素材目录并列、预览、分页
     }));
   });
   await expect(materials.getByText("已加入当前会话素材库")).toBeVisible();
-  await expect(
-    materials.locator("[data-materials-library] .asset-name", {
-      hasText: "企业示例素材",
-    }),
-  ).toBeVisible();
   const importedAssets = materials.locator("[data-materials-library] .asset-card", {
     hasText: "企业示例素材",
   });
   const importedCount = await importedAssets.count();
+  await expect(importedAssets.last().locator(".asset-name")).toBeVisible();
   const importedAsset = importedAssets.last();
   await importedAsset.getByRole("button", { name: "素材菜单" }).click();
   await materials.getByRole("button", { name: "删除", exact: true }).click();

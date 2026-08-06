@@ -48,7 +48,7 @@ describe("ConversationImageGallery", () => {
       />,
     );
     const image = screen.getByRole("img", { name: "one.png" });
-    expect(image).toHaveStyle({ maxHeight: "min(56dvh, 560px)" });
+    expect(image).toHaveStyle({ maxHeight: "40dvh" });
     expect(image).toHaveClass("object-contain");
     expect(document.querySelectorAll("[data-image-action='canvas:open']")).toHaveLength(1);
     expect(document.querySelector("[data-pi-conversation-image-pill]"))

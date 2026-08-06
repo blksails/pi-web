@@ -2,4 +2,3 @@ packages:
   - 'packages/*'
   - 'desktop'
   - 'examples/aigc-agent'
-  - 'examples/agic-video-agent'

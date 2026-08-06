@@ -5,7 +5,7 @@
  *   第一版走 React 宿主，断言「几何未送达则 actions 不含 show」——**是重言式**：
  *   把门控整个删掉照样 17/17 绿，因为握手压根没走完，show 本就不会发生。
  *   第二版补齐握手，卡在「`pane_layout_is_native` 为真时内容 pane 在 jsdom 下不被创建」
- *   （relayListeners 已就绪、overlay-ready 已发，`created` 仍为 0）。
+ *   （relayListeners 已就绪、载体 ready 已发，`created` 仍为 0）。
  *
  *   所以这次改为把判定抽成纯函数再穷举。判据的有效性以「删掉任一条件都有用例变红」
  *   为准，下面每条都按这个标准挑过。

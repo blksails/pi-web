@@ -398,10 +398,10 @@ export function Attachments({
           type="button"
           aria-label={addLabel}
           onClick={() => inputRef.current?.click()}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           data-pi-attachments-add
         >
-          <AttachIcon className="h-4 w-4" aria-hidden="true" />
+          <AttachIcon className="h-3.5 w-3.5" aria-hidden="true" />
           <input
             ref={inputRef}
             type="file"

@@ -34,6 +34,7 @@ export * from "./transport/runner-ready.js";
 // ai-gateway 会话模型清单的反向拉取帧对(spec ai-gateway-catalog-coldstart)
 export * from "./transport/gateway-models.js";
 export * from "./transport/credential-refresh.js";
+export * from "./transport/tool-pill.js";
 
 // agent-routes 层(agent 声明式 HTTP routes:声明 DTO + 三个自建 JSONL 帧)
 export * from "./agent-routes/frames.js";

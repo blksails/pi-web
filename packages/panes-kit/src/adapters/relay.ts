@@ -89,6 +89,9 @@ export function createPaneGuestRealmBridge(options: PaneGuestRealmBridgeOptions)
   let currentEpoch = 0;
   let currentPort: MessagePort | undefined;
   let disposed = false;
+  // 宿主 bind 时常先 push signals 再发 connected；IPC 顺序下 signal 可能早到。
+  // 通道未立前按信封缓冲，否则边车 chrome 永远收不到首份 tabs 快照（顶栏空白）。
+  const pendingToPage: PaneRelayEnvelope[] = [];
 
   const onWindowMessage = (event: MessageEvent<unknown>): void => {
     if (event.source !== options.window || messageType(event.data) !== "pane:ready") return;
@@ -110,14 +113,25 @@ export function createPaneGuestRealmBridge(options: PaneGuestRealmBridgeOptions)
           options.sendToHost({ instanceId: options.instanceId, epoch, message: data });
         };
         options.window.postMessage(raw.message, "*", [channel.port2]);
+        // 先把 connected 交给页面拿 port，再灌缓冲（含 pi.workspace 快照）。
+        const queued = pendingToPage.splice(0);
+        for (const envelope of queued) {
+          if (envelope.epoch !== epoch && envelope.epoch !== 0) continue;
+          currentPort.postMessage(envelope.message);
+        }
         return;
       }
-      if (raw.epoch !== currentEpoch || currentPort === undefined) return;
+      if (raw.epoch !== 0 && currentPort !== undefined && raw.epoch !== currentEpoch) return;
+      if (currentPort === undefined) {
+        pendingToPage.push(raw);
+        return;
+      }
       currentPort.postMessage(raw.message);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      pendingToPage.length = 0;
       options.window.removeEventListener("message", onWindowMessage);
       currentPort?.close();
       currentPort = undefined;

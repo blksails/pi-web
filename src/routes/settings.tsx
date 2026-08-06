@@ -12,7 +12,6 @@ import * as React from "react";
 import { Link } from "react-router";
 import { SettingsShell, useI18n } from "@blksails/pi-web-ui";
 import { registerConfigPanels } from "@/lib/settings/register-panels";
-import { ResourceManager } from "@/components/resource-manager";
 
 registerConfigPanels();
 
@@ -49,7 +48,6 @@ export function SettingsRoute(): React.JSX.Element {
         </Link>
       </header>
       <SettingsShell />
-      <ResourceManager />
     </main>
   );
 }

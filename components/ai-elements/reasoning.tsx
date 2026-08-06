@@ -182,10 +182,12 @@ export const ReasoningTrigger = React.memo(function ReasoningTrigger({
       {children ?? (
         <>
           <BrainIcon className="h-4 w-4 shrink-0" />
-          {isStreaming || durationSec === 0 ? (
+          {isStreaming ? (
             <span>{t("aiReasoning.thinking")}</span>
-          ) : (
+          ) : durationSec > 0 ? (
             <span>{t("aiReasoning.thoughtFor", { sec: durationSec })}</span>
+          ) : (
+            <span>{t("aiReasoning.completed")}</span>
           )}
           <ChevronDownIcon
             className={cn(

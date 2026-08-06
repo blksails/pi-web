@@ -20,11 +20,16 @@
  * 字符串型 output 经 Response 富渲染。
  */
 import * as React from "react";
-import { ChevronDown, ChevronRight, Loader2, Square, Timer, Wrench } from "lucide-react";
+import { Braces, ChevronDown, ChevronRight, Loader2, Square, Timer } from "lucide-react";
 import type { UIMessage } from "ai";
-import { Card } from "../ui/card.js";
+import type {
+  ConversationImageAction,
+  ConversationImageAsset,
+} from "@blksails/pi-web-kit";
+import type { ToolPill } from "@blksails/pi-web-protocol";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
+import { ConversationImageGallery } from "../elements/conversation-image-gallery.js";
 import { useI18n } from "../i18n/index.js";
 import { useTurnAbort } from "../chat/turn-abort-context.js";
 import {
@@ -242,7 +247,7 @@ export function ToolHeader({
       onClick={onToggle}
       onKeyDown={onKeyDown}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        "flex w-full cursor-pointer items-center gap-2 px-0 py-1.5 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
     >
@@ -251,7 +256,7 @@ export function ToolHeader({
       ) : (
         <ChevronRight className="h-4 w-4" aria-hidden="true" />
       )}
-      <Wrench className="h-4 w-4 opacity-70" aria-hidden="true" />
+      <Braces className="h-4 w-4 opacity-70" aria-hidden="true" />
       <span className="font-medium" data-pi-tool-name-label>
         {name}
       </span>
@@ -268,10 +273,10 @@ export function ToolHeader({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs",
+            "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-2 py-0.5 text-[11px] font-medium",
             isError
-              ? "bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]"
-              : "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]",
+              ? "text-[hsl(var(--destructive))]"
+              : "text-[hsl(var(--muted-foreground))]",
           )}
           data-pi-tool-status
         >
@@ -324,7 +329,7 @@ export function ToolContent({
     <div
       id={id}
       className={cn(
-        "border-t border-[hsl(var(--border))] px-3 py-2",
+        "px-0 pb-3 pl-6 pt-1",
         isError && "text-[hsl(var(--destructive))]",
         className,
       )}
@@ -335,7 +340,7 @@ export function ToolContent({
   );
 }
 
-/** 同步 JSON 代码块:轻量 token 高亮 + 代码块外观(muted 背景/圆角),保留缩进与完整文本。 */
+/** 同步 JSON 代码块:仅结构化详情保留轻量背景,避免普通工具输出再套卡片。 */
 function JsonBlock({
   value,
   className,
@@ -347,7 +352,7 @@ function JsonBlock({
   return (
     <pre
       className={cn(
-        "overflow-x-auto whitespace-pre-wrap break-words rounded-[var(--radius)] bg-[hsl(var(--muted))] p-2 text-xs",
+        "overflow-x-auto whitespace-pre-wrap break-words rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] p-2 text-xs",
         className,
       )}
     >
@@ -359,6 +364,98 @@ function JsonBlock({
 export interface ToolInputProps {
   readonly input: unknown;
   readonly className?: string;
+}
+
+// ---------------------------------------------------------------------------
+// pill 系统(ui-redesign:details.pills → 工具卡 pill 行)
+// ---------------------------------------------------------------------------
+
+/** 从工具结果 details.pills 抽 pill(运行期轻校验,宽容未知字段)。 */
+export function toolPillsOf(output: unknown): ToolPill[] | undefined {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) {
+    return undefined;
+  }
+  const details = (output as { details?: unknown }).details;
+  if (details === null || typeof details !== "object") return undefined;
+  const pills = (details as { pills?: unknown }).pills;
+  if (!Array.isArray(pills)) return undefined;
+  const out: ToolPill[] = [];
+  for (const p of pills) {
+    if (p === null || typeof p !== "object") continue;
+    const o = p as Record<string, unknown>;
+    if (typeof o.label !== "string" || o.label.length === 0) continue;
+    out.push({
+      label: o.label,
+      ...(typeof o.action === "string"
+        ? { action: o.action as ToolPill["action"] }
+        : {}),
+      ...(typeof o.src === "string" ? { src: o.src } : {}),
+      ...(typeof o.copyText === "string" ? { copyText: o.copyText } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** 取字节强制下载;失败回落新开页。 */
+async function downloadUrl(src: string): Promise<void> {
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = src.split("/").pop()?.split("?")[0] ?? "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    window.open(src, "_blank", "noreferrer");
+  }
+}
+
+/** 内置 pill 动作分发;未知 action → 惰性展示(无副作用,不抛错)。 */
+function runToolPill(pill: ToolPill): void {
+  switch (pill.action) {
+    case "download":
+      if (pill.src !== undefined) void downloadUrl(pill.src);
+      break;
+    case "open":
+      if (pill.src !== undefined) window.open(pill.src, "_blank", "noreferrer");
+      break;
+    case "copy":
+      void navigator.clipboard
+        ?.writeText(pill.copyText ?? pill.src ?? pill.label)
+        .catch(() => undefined);
+      break;
+    default:
+      break;
+  }
+}
+
+/** 工具卡 pill 行:把 details.pills 渲染为动作 pill(样式对齐 ConversationImageGallery 的 pill)。 */
+export function ToolPillRow({
+  pills,
+}: {
+  readonly pills: readonly ToolPill[];
+}): React.JSX.Element | null {
+  if (pills.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5" data-pi-tool-pills>
+      {pills.map((p, i) => (
+        <button
+          key={`${i}-${p.label}`}
+          type="button"
+          data-pi-tool-pill
+          onClick={() => runToolPill(p)}
+          title={p.src}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface))] px-2.5 text-xs text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 /** 工具入参:同步 JSON 代码块。 */
@@ -423,6 +520,43 @@ function attIdFromUrl(url: string): string | undefined {
   return /\/attachments\/(att_[^/?#]+)/.exec(url)?.[1];
 }
 
+function imageAssetsFromDetails(value: unknown): ConversationImageAsset[] {
+  if (typeof value !== "object" || value === null) return [];
+  const assets = (value as { assets?: unknown }).assets;
+  if (!Array.isArray(assets)) return [];
+  return assets.flatMap((item, index) => {
+    if (typeof item !== "object" || item === null) return [];
+    const asset = item as {
+      attachmentId?: unknown;
+      displayUrl?: unknown;
+      mimeType?: unknown;
+      name?: unknown;
+    };
+    if (
+      typeof asset.displayUrl !== "string" ||
+      asset.displayUrl.trim() === "" ||
+      (typeof asset.mimeType === "string" && !asset.mimeType.startsWith("image/"))
+    ) {
+      return [];
+    }
+    const attachmentId =
+      typeof asset.attachmentId === "string" && asset.attachmentId !== ""
+        ? asset.attachmentId
+        : attIdFromUrl(asset.displayUrl);
+    return [{
+      id: attachmentId ?? `${asset.displayUrl}:${index}`,
+      url: asset.displayUrl,
+      mediaType: typeof asset.mimeType === "string" && asset.mimeType !== ""
+        ? asset.mimeType
+        : "image/*",
+      ...(typeof asset.name === "string" && asset.name !== ""
+        ? { filename: asset.name }
+        : {}),
+      ...(attachmentId !== undefined ? { attachmentId } : {}),
+    } satisfies ConversationImageAsset];
+  });
+}
+
 /** 把工具文本分离为「其余文本」与「图片列表」——图片改原生 `<img>` 块渲染,不进 markdown 段落。 */
 function splitToolText(raw: string): {
   text: string;
@@ -438,6 +572,17 @@ function splitToolText(raw: string): {
   return { text, images };
 }
 
+/** 旧工具结果可能把附件 id 写进 headline；只清理可见文案，不动 details/assets。 */
+function sanitizeToolText(raw: string): string {
+  return raw
+    .replace(/\battachment\s*ids?\s*[:：]?\s*/gi, "")
+    .replace(/\batt_[A-Za-z0-9_-]+\b/g, "")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]{2,}/g, " ").trim())
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
 /**
  * 按输出值类型生成默认渲染节点:
  *  - 字符串 → Response 富渲染;
@@ -449,42 +594,62 @@ function splitToolText(raw: string): {
  */
 function DefaultOutputNode({
   output,
+  imageActions,
+  publishPaneEvent,
 }: {
   readonly output: unknown;
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }): React.ReactNode {
   const mask = useMaskPaths();
   const maskDeep = useMaskPathsDeep();
   if (output === undefined) return null;
   if (typeof output === "string") {
-    return <Response>{mask(output)}</Response>;
+    return <Response>{sanitizeToolText(mask(output))}</Response>;
   }
   const raw = textFromToolContent(output);
   if (raw !== undefined) {
     const { text, images } = splitToolText(mask(raw));
-    const details =
+    const outputDetails =
       !Array.isArray(output) &&
       (output as { details?: unknown } | null)?.details !== undefined
-        ? maskDeep((output as { details?: unknown }).details)
+        ? (output as { details?: unknown }).details
         : undefined;
+    const detailAssets = imageAssetsFromDetails(outputDetails);
+    const visualAssets = detailAssets.length > 0
+      ? detailAssets
+      : images.map((image, index) => {
+          const attachmentId = attIdFromUrl(image.src);
+          return {
+            id: attachmentId ?? `${image.src}:${index}`,
+            url: image.src,
+            filename: image.alt || undefined,
+            mediaType: "image/*",
+            ...(attachmentId !== undefined ? { attachmentId } : {}),
+          } satisfies ConversationImageAsset;
+        });
+    const details =
+      outputDetails !== undefined
+        ? maskDeep(outputDetails)
+        : undefined;
+    // details.pills → 工具卡 pill 行(ui-redesign pill 系统):label/src/copyText 走
+    // 展示脱敏(mask),与 details 一致;未知 action 由 ToolPillRow 惰性化。
+    const pills = toolPillsOf(output)?.map((p) => ({
+      ...p,
+      label: mask(p.label),
+      ...(p.src !== undefined ? { src: mask(p.src) } : {}),
+      ...(p.copyText !== undefined ? { copyText: mask(p.copyText) } : {}),
+    }));
     return (
-      <div className="space-y-2">
-        {text !== "" ? <Response>{text}</Response> : null}
-        {images.length > 0 ? (
-          <div className="flex flex-wrap gap-2" data-pi-tool-images>
-            {images.map((img, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`${i}-${img.src.slice(0, 32)}`}
-                src={img.src}
-                alt={img.alt}
-                loading="lazy"
-                {...(attIdFromUrl(img.src) !== undefined
-                  ? { "data-att-id": attIdFromUrl(img.src) }
-                  : {})}
-                className="max-h-64 max-w-full rounded-md border border-[hsl(var(--border))] object-contain"
-              />
-            ))}
-          </div>
+      <div className="space-y-3">
+        {text !== "" ? <Response>{sanitizeToolText(text)}</Response> : null}
+        {visualAssets.length > 0 ? (
+          <ConversationImageGallery
+            assets={visualAssets}
+            actions={imageActions}
+            publishPaneEvent={publishPaneEvent}
+            className="[&_[data-pi-conversation-image]]:bg-[hsl(var(--surface-subtle))]"
+          />
         ) : null}
         {details !== undefined ? (
           <details className="text-[11px]">
@@ -494,6 +659,7 @@ function DefaultOutputNode({
             <JsonBlock value={details} className="mt-1" />
           </details>
         ) : null}
+        {pills !== undefined ? <ToolPillRow pills={pills} /> : null}
       </div>
     );
   }
@@ -510,12 +676,16 @@ export interface PiToolPartProps {
   /** 显式展开值;未提供时按状态推导(end/error 展开,start/update 折叠)。 */
   readonly defaultOpen?: boolean;
   readonly className?: string;
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }
 
 export function PiToolPart({
   part,
   defaultOpen,
   className,
+  imageActions,
+  publishPaneEvent,
 }: PiToolPartProps): React.JSX.Element {
   const phase = phaseOf(part);
   const name = toolNameOf(part);
@@ -546,6 +716,8 @@ export function PiToolPart({
             output={
               part.state === "output-available" ? part.output : undefined
             }
+            imageActions={imageActions}
+            publishPaneEvent={publishPaneEvent}
           />
         }
       />
@@ -563,10 +735,11 @@ export function PiToolPart({
   }
 
   return (
-    <Card
+    <div
       className={cn(
-        "overflow-hidden",
-        isError && "border-[hsl(var(--destructive))]",
+        // ui-redesign §5.3:工具卡 =「左侧状态线 + 浅灰 surface」;错误时状态线转 destructive。
+        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))]",
+        isError && "border-l-[hsl(var(--destructive))] text-[hsl(var(--destructive))]",
         className,
       )}
       data-pi-tool
@@ -585,6 +758,6 @@ export function PiToolPart({
       <ToolContent id={contentId} open={open} isError={isError}>
         {detail}
       </ToolContent>
-    </Card>
+    </div>
   );
 }

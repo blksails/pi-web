@@ -162,7 +162,7 @@ pub unsafe fn force_host_redraw(ns_window: *mut std::ffi::c_void) -> bool {
         return false;
     };
     let cb = content.bounds();
-    // 宿主 = content 下铺满全窗的那个子视图（pane 与 overlay 都只占局部）。
+    // 宿主 = content 下铺满全窗的那个子视图（pane 都只占局部）。
     for sub in content.subviews().iter() {
         let f = sub.frame();
         let full = (f.size.width - cb.size.width).abs() < 1.0

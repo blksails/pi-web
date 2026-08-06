@@ -326,9 +326,7 @@ function buildImageResult(
 ): ExecuteResult {
   const headline = opts.preview
     ? `图像已生成:${assets.length} 张,正在保存…`
-    : `生成成功:${assets.length} 张图像已保存 (${assets
-        .map((a) => a.attachmentId)
-        .join(", ")})。`;
+    : `生成成功:${assets.length} 张图像已保存。`;
   const summaryLines = [headline, ...assets.map((a) => `![${a.name}](${a.displayUrl})`)];
   return {
     content: [{ type: "text", text: summaryLines.join("\n") }],
@@ -340,6 +338,12 @@ function buildImageResult(
         displayUrl: a.displayUrl,
         mimeType: a.mimeType,
         name: a.name,
+      })),
+      // ui-redesign pill 系统:每资产一个「下载」pill,agent/宿主可自定义。
+      pills: assets.map((a) => ({
+        label: a.name || "下载",
+        action: "download",
+        src: a.displayUrl,
       })),
     },
   };

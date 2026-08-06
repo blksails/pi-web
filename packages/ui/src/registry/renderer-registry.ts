@@ -15,6 +15,7 @@
  */
 import type { ComponentType } from "react";
 import type { UIMessage } from "ai";
+import type { ConversationImageAction } from "@blksails/pi-web-kit";
 
 type AnyPart = UIMessage["parts"][number];
 type ToolPart = Extract<AnyPart, { type: `tool-${string}` }> | Extract<AnyPart, { type: "dynamic-tool" }>;
@@ -23,6 +24,8 @@ type DataPart = Extract<AnyPart, { type: `data-${string}` }>;
 export type ToolRenderer = ComponentType<{
   readonly part: ToolPart;
   readonly message: UIMessage;
+  readonly imageActions?: readonly ConversationImageAction[];
+  readonly publishPaneEvent?: (topic: string, payload?: unknown) => void;
 }>;
 export type DataPartRenderer = ComponentType<{
   readonly part: DataPart;

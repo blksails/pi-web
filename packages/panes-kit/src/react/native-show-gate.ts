@@ -8,7 +8,7 @@
  *
  * 但它原本埋在一个 async 闭包里，只能靠渲染整个 `PanesHost` 才能触发——而在 jsdom 下
  * `pane_layout_is_native` 为真时内容 pane 根本不会被创建（实测：relayListeners 已就绪、
- * overlay-ready 已发，`created` 仍为 0），握手走不完就到不了 show 那一步。结果是
+ * `created` 仍为 0），握手走不完就到不了 show 那一步。结果是
  * 「不 show」这个断言**因为别的原因**成立，成了一条测不到东西的重言式（初版就是这样，
  * 把门控整个删掉照样跑绿，红对照当场抓出）。
  *

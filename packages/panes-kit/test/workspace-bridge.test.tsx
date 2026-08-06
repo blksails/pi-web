@@ -96,7 +96,7 @@ describe("PanesHost workspace bridge", () => {
       expect(report.instances).toHaveLength(2);
     });
 
-    // close by paneId → 关掉该 pane 首个实例。
+    // close by paneId → park（收进更多），不销毁实例。
     act(() => fake.push({
       revision: 3,
       ops: [
@@ -104,7 +104,7 @@ describe("PanesHost workspace bridge", () => {
         { opId: 7, type: "close", paneId: "editor" },
       ],
     }));
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(1);
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(2);
     await waitFor(() => expect(lastReport(fake.runs).appliedOpId).toBe(7));
   });
 

@@ -1,6 +1,6 @@
 import { test, expect, type FrameLocator, type Page } from "@playwright/test";
 
-const SOURCE = "./examples/agic-video-agent";
+const SOURCE = "./examples/aigc-agent";
 
 async function selectSource(page: Page): Promise<void> {
   await page.goto("/");
@@ -14,7 +14,7 @@ function videoFrame(page: Page): FrameLocator {
   return page.frameLocator('iframe[title="视频工作室"]');
 }
 
-test("agic-video-agent: 方案→镜头历史→FFmpeg 媒体→视频轨道与音轨合成", async ({ page }) => {
+test("aigc-agent: 方案→镜头历史→FFmpeg 媒体→视频轨道与音轨合成", async ({ page }) => {
   test.setTimeout(120_000);
   await selectSource(page);
   const frame = videoFrame(page);

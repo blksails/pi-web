@@ -167,7 +167,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(aside().style.position).toBe("");
   });
 
-  it("拖拽越界 → 取配置上限与容器 70% 较小值", () => {
+  it("拖拽越界 → 取配置上限、容器 70%、会话列下限让位后的较小值", () => {
     const onChange = vi.fn();
     render(
       <PiChat
@@ -185,12 +185,13 @@ describe("panelRight 连续宽度(全受控)", () => {
       right: 1000, left: 0, width: 1000, top: 0, bottom: 0, height: 0, x: 0, y: 0,
       toJSON: () => ({}),
     } as DOMRect);
-    // clientX=100 → 原始宽 900；配置 max 800，容器 70%=700 → 钳制 700。
+    // clientX=100 → 原始宽 900；配置 max 800，容器 70%=700 → 再留会话列下限 480
+    // (无左栏，roomForPanel=1000−0−480) → 520。
     fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 520 });
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 100 });
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 100 });
     act(() => idleFrame?.());
-    expect(onChange).toHaveBeenCalledWith(700);
+    expect(onChange).toHaveBeenCalledWith(520);
   });
 
   it("窄容器中 70% 保护线优先于配置下限", () => {

@@ -106,6 +106,24 @@ describe("PiRpcProcess — exit / crash rejection (Req 6.2, 6.5)", () => {
     expect(proc.health().alive).toBe(false);
     expect(proc.health().exitCode).toBe(7);
   });
+
+  it("rejects a late send after child exit without crashing the host", async () => {
+    const proc = track(
+      new PiRpcProcess(
+        nodeSpec([
+          "-e",
+          "process.stdin.resume(); setTimeout(()=>process.exit(7),50);",
+        ]),
+      ),
+    );
+    const exitInfo = new Promise<{ code: number | null; signal: string | null }>((resolve) =>
+      proc.onExit(resolve),
+    );
+
+    await expect(exitInfo).resolves.toEqual({ code: 7, signal: null });
+    expect(() => proc.send("late write")).toThrow(ChannelClosedError);
+    expect(proc.health().alive).toBe(false);
+  });
 });
 
 describe("PiRpcProcess — close() clean exit (Req 6.3, 6.4, 6.6)", () => {

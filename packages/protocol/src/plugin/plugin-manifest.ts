@@ -66,6 +66,13 @@ export const PluginWebSchema = z.object({
 });
 export type PluginWeb = z.infer<typeof PluginWebSchema>;
 
+/** Agent 原生资源治理元数据；服务端据当前 userId 判定发布者/管理者编辑权。 */
+export const ResourceAccessSchema = z.object({
+  publisherId: z.string().min(1).optional(),
+  managerIds: z.array(z.string().min(1)).default([]),
+});
+export type ResourceAccess = z.infer<typeof ResourceAccessSchema>;
+
 /**
  * 两层契约锚点:声明哪些 pi 工具名由本包 webext 接管渲染。
  * 供校验/文档用(pi registerTool(name) ↔ webext renderers.tools[name]),非运行时强约束。
@@ -139,6 +146,8 @@ export const PiWebManifestSchema = z.object({
   description: z.string().optional(),
   pi: PluginPiResourcesSchema.optional(),
   web: PluginWebSchema.optional(),
+  /** kind=agent 时可选；plugin 资源不使用此字段。 */
+  resourceAccess: ResourceAccessSchema.optional(),
   /**
    * 通用文件白名单(glob,相对包根;spec: publish-agent-entry-and-bundle,R2.3)。
    * 命中文件**进 bundle 但不进完整性引用集合** —— 与 webext dist 中的非 manifest 文件同档。

@@ -179,7 +179,7 @@ export function AgentSourcePicker({
     listAgentSources,
     refreshSignal,
   );
-  // 默认只展示前 COLLAPSE_LIMIT 个源卡片,其余折叠在「显示全部」之后。
+  // 选择器只展示推荐来源;完整来源库仍由「显示全部」入口展开。
   const COLLAPSE_LIMIT = 9;
   const [expanded, setExpanded] = React.useState(false);
   const hasMore = items.length > COLLAPSE_LIMIT;
@@ -215,6 +215,15 @@ export function AgentSourcePicker({
   const innerWidth = showList ? "max-w-4xl" : "max-w-lg";
   const inner = (
     <div className={`flex w-full ${innerWidth} flex-col gap-4`}>
+      {isDialog ? (
+        <div className="flex items-start justify-between gap-4 px-1 pb-1">
+          <div>
+            <h1 className="text-base font-semibold tracking-tight">切换 Agent</h1>
+            <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">选择推荐来源，或加载本地 Agent。</p>
+          </div>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[hsl(var(--muted-foreground))]">source</span>
+        </div>
+      ) : null}
         {showList ? (
           <section
             data-agent-source-list
@@ -333,7 +342,7 @@ export function AgentSourcePicker({
                 data-agent-source-list-more
                 aria-expanded={expanded}
                 onClick={() => setExpanded((v) => !v)}
-                className="mt-1 self-start rounded-md px-2 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--foreground))]"
+                className="mt-1 self-start rounded-[var(--radius)] px-2 py-1 text-xs font-medium text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
               >
                 {expanded
                   ? t("agentSourcePicker.collapse")
@@ -348,7 +357,7 @@ export function AgentSourcePicker({
 
         <form
           onSubmit={onFormSubmit}
-          className="flex w-full flex-col gap-4 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6 text-[hsl(var(--card-foreground))] shadow-sm"
+          className="flex w-full flex-col gap-4 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-4 text-[hsl(var(--foreground))] shadow-none"
         >
           <div className="space-y-1">
             <h1 className="text-lg font-semibold">
@@ -372,7 +381,7 @@ export function AgentSourcePicker({
               placeholder={t("agentSourcePicker.inputPlaceholder")}
               disabled={loading}
               data-agent-source-input
-              className="rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
+              className="rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--canvas))] px-3 py-2 outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]"
             />
           </label>
 
@@ -383,7 +392,7 @@ export function AgentSourcePicker({
               disabled={loading || browsing}
               data-agent-source-browse
               onClick={() => void onBrowse()}
-              className="inline-flex w-fit items-center justify-center rounded-md border border-[hsl(var(--border))] px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+              className="inline-flex w-fit items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] px-3 py-1.5 text-sm font-medium disabled:opacity-50"
             >
               {t("agentSourcePicker.browseDirectory")}
             </button>
@@ -393,7 +402,7 @@ export function AgentSourcePicker({
             <p
               role="alert"
               data-agent-source-error
-              className="rounded-md border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-3 py-2 text-sm text-[hsl(var(--destructive))]"
+              className="rounded-[var(--radius)] border border-[hsl(var(--destructive))] bg-[hsl(var(--destructive))]/10 px-3 py-2 text-sm text-[hsl(var(--destructive))]"
             >
               {error}
             </p>
@@ -404,7 +413,7 @@ export function AgentSourcePicker({
               type="submit"
               disabled={loading}
               data-agent-source-submit
-              className="inline-flex items-center justify-center rounded-md bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
+              className="inline-flex items-center justify-center rounded-[var(--radius)] bg-[hsl(var(--primary))] px-4 py-2 text-sm font-medium text-[hsl(var(--primary-foreground))] disabled:opacity-50"
             >
               {loading
                 ? t("agentSourcePicker.creating")
@@ -417,7 +426,7 @@ export function AgentSourcePicker({
                 disabled={loading}
                 data-agent-source-default
                 onClick={() => submit("")}
-                className="inline-flex items-center justify-center rounded-md border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="inline-flex items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {t("agentSourcePicker.useDefault")}
               </button>
@@ -449,7 +458,7 @@ export function AgentSourcePicker({
         <DialogContent
           data-agent-source-picker
           data-agent-source-dialog
-          className="max-h-[85vh] w-[92vw] max-w-4xl gap-2 overflow-auto border-0 bg-transparent p-0 shadow-none"
+          className="max-h-[90vh] w-[720px] !max-w-[92vw] gap-0 overflow-auto rounded-[12px] border border-[hsl(var(--foreground))] bg-[hsl(var(--surface))] p-4 shadow-[8px_8px_0_hsl(var(--foreground))]"
         >
           {/* inner 自带可见的卡片与标题;此处提供无障碍所需的对话框标题(视觉隐藏)。 */}
           <DialogHeader className="sr-only">

@@ -24,6 +24,11 @@ describe("PiChat 装配(富)", () => {
     vi.clearAllMocks();
   });
 
+  it("未启用 Agent resources 时不渲染技能 pill", () => {
+    render(<PiChat session={mockSession()} controls={mockControls()} />);
+    expect(screen.queryByRole("button", { name: "技能" })).not.toBeInTheDocument();
+  });
+
   it("渲染富界面:输入区(textarea)、发送按钮、联网开关、附件入口", () => {
     render(<PiChat session={mockSession()} controls={mockControls()} />);
     // 富 PromptInput textarea (Req 1.1)

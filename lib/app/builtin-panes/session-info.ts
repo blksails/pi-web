@@ -26,7 +26,8 @@ export function sessionInfoPane(): PaneDefinitionInput | undefined {
   return {
     id: SESSION_INFO_PANE_ID,
     title: "会话信息",
-    document: { kind: "html", src: `/pane-${DOCUMENT_KEY}.html` },
+    // inline：PanesHost 入口 withDefaultPaneChrome 强制装 tabs；勿用裸 public URL。
+    document: { kind: "inline", srcDoc },
     // ★ 全空:它什么授权都不需要。这同时是「内置身份不产生额外权限」的活体证据 ——
     // 一个零授权的内置 pane 确实什么都调不动(Req 4.x)。
     capabilities: {},

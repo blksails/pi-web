@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
   DefaultPackageManager,
@@ -15,9 +15,14 @@ import type {
   ResourceManagerOptions,
   ResourceScope,
 } from "./types.js";
+import {
+  assertValidSkillSubmission,
+  buildSkillMarkdown,
+  MAX_SKILL_BYTES,
+} from "./skill-validator.js";
 
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const MAX_RESOURCE_BYTES = 512 * 1024;
+const MAX_RESOURCE_BYTES = MAX_SKILL_BYTES;
 
 interface ResourceRoots {
   readonly skills: string;
@@ -26,8 +31,11 @@ interface ResourceRoots {
 
 interface ParsedMarkdown {
   readonly name?: string;
+  readonly title?: string;
   readonly description?: string;
   readonly argumentHint?: string;
+  readonly sourceTitle?: string;
+  readonly coverImage?: string;
 }
 
 function validateName(name: string): string {
@@ -59,20 +67,57 @@ function assertWithin(root: string, target: string): void {
   }
 }
 
+async function assertNoSymlink(root: string, target: string): Promise<void> {
+  const rootAbs = resolve(root);
+  const targetAbs = resolve(target);
+  const parts = relative(rootAbs, targetAbs).split(sep).filter(Boolean);
+  let current = rootAbs;
+  for (const part of ["", ...parts]) {
+    current = part.length === 0 ? current : join(current, part);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) {
+        throw new Error("Resource path contains a symbolic link.");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      throw error;
+    }
+  }
+}
+
 function parseFrontmatter(text: string): ParsedMarkdown {
-  if (!text.startsWith("---\n")) return {};
-  const end = text.indexOf("\n---", 4);
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized.startsWith("---\n")) return {};
+  const end = normalized.indexOf("\n---", 4);
   if (end < 0) return {};
-  const result: { name?: string; description?: string; argumentHint?: string } = {};
-  for (const line of text.slice(4, end).split("\n")) {
-    const match = /^(name|description|argument-hint):\s*(.*)$/.exec(line);
+  const result: {
+    name?: string;
+    title?: string;
+    description?: string;
+    argumentHint?: string;
+    sourceTitle?: string;
+    coverImage?: string;
+  } = {};
+  for (const line of normalized.slice(4, end).split("\n")) {
+    const match = /^(name|title|description|argument-hint|source-title|cover-image):\s*(.*)$/.exec(line);
     if (match === null) continue;
     const value = match[2]!.trim().replace(/^['"]|['"]$/g, "");
     if (match[1] === "name") result.name = value;
+    else if (match[1] === "title") result.title = value;
     else if (match[1] === "description") result.description = value;
-    else result.argumentHint = value;
+    else if (match[1] === "argument-hint") result.argumentHint = value;
+    else if (match[1] === "source-title") result.sourceTitle = value;
+    else result.coverImage = value;
   }
   return result;
+}
+
+function markdownBody(text: string): string {
+  const normalized = text.replace(/\r\n?/g, "\n");
+  if (!normalized.startsWith("---\n")) return normalized;
+  const end = normalized.indexOf("\n---", 4);
+  if (end < 0) return normalized;
+  return normalized.slice(end + 4).replace(/^\n+/, "").trimEnd();
 }
 
 async function readMarkdown(path: string): Promise<{ readonly text: string; readonly meta: ParsedMarkdown }> {
@@ -110,7 +155,10 @@ async function scanSkillRoot(root: string, scope: ResourceScope): Promise<Manage
       kind: "skill",
       scope,
       name,
+      ...(meta.title !== undefined ? { title: meta.title } : {}),
       description: meta.description ?? text.split("\n").find((line) => line.trim().length > 0 && !line.startsWith("#"))?.trim() ?? "",
+      ...(meta.sourceTitle !== undefined ? { sourceTitle: meta.sourceTitle } : {}),
+      ...(meta.coverImage !== undefined ? { coverImage: meta.coverImage } : {}),
       path,
     });
   }
@@ -137,16 +185,30 @@ async function scanPromptRoot(root: string, scope: ResourceScope): Promise<Manag
       name: basename(path, extname(path)),
       description: meta.description ?? text.split("\n").find((line) => line.trim().length > 0 && !line.startsWith("#"))?.trim() ?? "",
       ...(meta.argumentHint !== undefined ? { argumentHint: meta.argumentHint } : {}),
+      ...(meta.sourceTitle !== undefined ? { sourceTitle: meta.sourceTitle } : {}),
+      ...(meta.coverImage !== undefined ? { coverImage: meta.coverImage } : {}),
       path,
     });
   }
   return resources;
 }
 
-function templateFrontmatter(name: string, description: string, argumentHint: string | undefined): string {
+function templateFrontmatter(
+  name: string,
+  description: string,
+  argumentHint: string | undefined,
+  sourceTitle: string | undefined,
+  coverImage: string | undefined,
+): string {
   const lines = ["---", `name: ${name}`, `description: ${JSON.stringify(description)}`];
   if (argumentHint !== undefined && argumentHint.length > 0) {
     lines.push(`argument-hint: ${JSON.stringify(argumentHint)}`);
+  }
+  if (sourceTitle !== undefined && sourceTitle.length > 0) {
+    lines.push(`source-title: ${JSON.stringify(sourceTitle)}`);
+  }
+  if (coverImage !== undefined && coverImage.length > 0) {
+    lines.push(`cover-image: ${JSON.stringify(coverImage)}`);
   }
   lines.push("---", "");
   return `${lines.join("\n")}\n`;
@@ -202,15 +264,30 @@ export class PiResourceManager implements ResourceManager {
 
   async createSkill(input: CreateSkillInput): Promise<ManagedResource> {
     const name = validateName(input.name);
+    assertValidSkillSubmission(input);
     const root = this.roots(input.scope).skills;
     const filePath = join(root, name, "SKILL.md");
     assertWithin(root, filePath);
+    await assertNoSymlink(root, filePath);
+    const title = input.title?.trim() || undefined;
     const description = input.description?.trim() ?? "";
-    const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description)}\n---\n\n${input.content.trimEnd()}\n`;
+    const content = buildSkillMarkdown({
+      name,
+      ...(title !== undefined ? { title } : {}),
+      description,
+      content: input.content,
+    });
     assertResourceBytes(content);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content, { encoding: "utf8", flag: input.overwrite === true ? "w" : "wx" });
-    return { kind: "skill", scope: input.scope, name, description, path: filePath };
+    return {
+      kind: "skill",
+      scope: input.scope,
+      name,
+      ...(title !== undefined ? { title } : {}),
+      description,
+      path: filePath,
+    };
   }
 
   async createTemplate(input: CreateTemplateInput): Promise<ManagedResource> {
@@ -218,16 +295,60 @@ export class PiResourceManager implements ResourceManager {
     const root = this.roots(input.scope).prompts;
     const filePath = join(root, `${name}.md`);
     assertWithin(root, filePath);
+    await assertNoSymlink(root, filePath);
     const description = input.description?.trim() ?? "";
     await mkdir(dirname(filePath), { recursive: true });
-    const content = `${templateFrontmatter(name, description, input.argumentHint?.trim())}${input.content.trimEnd()}\n`;
+    const sourceTitle = input.sourceTitle?.trim() || undefined;
+    const coverImage = input.coverImage?.trim() || undefined;
+    const content = `${templateFrontmatter(
+      name,
+      description,
+      input.argumentHint?.trim(),
+      sourceTitle,
+      coverImage,
+    )}${input.content.trimEnd()}\n`;
     assertResourceBytes(content);
     await writeFile(
       filePath,
       content,
       { encoding: "utf8", flag: input.overwrite === true ? "w" : "wx" },
     );
-    return { kind: "template", scope: input.scope, name, description, path: filePath };
+    return {
+      kind: "template",
+      scope: input.scope,
+      name,
+      description,
+      ...(input.argumentHint?.trim() ? { argumentHint: input.argumentHint.trim() } : {}),
+      ...(sourceTitle !== undefined ? { sourceTitle } : {}),
+      ...(coverImage !== undefined ? { coverImage } : {}),
+      path: filePath,
+    };
+  }
+
+  async read(
+    kind: ManagedResourceKind,
+    scope: ResourceScope,
+    name: string,
+  ): Promise<import("./types.js").ManagedResourceDocument> {
+    const safeName = validateName(name);
+    const root = kind === "skill" ? this.roots(scope).skills : this.roots(scope).prompts;
+    const filePath = kind === "skill" ? join(root, safeName, "SKILL.md") : join(root, `${safeName}.md`);
+    assertWithin(root, filePath);
+    await assertNoSymlink(root, filePath);
+    const { text, meta } = await readMarkdown(filePath);
+    const description = meta.description ?? "";
+    return {
+      kind,
+      scope,
+      name: safeName,
+      ...(meta.title !== undefined ? { title: meta.title } : {}),
+      description,
+      ...(meta.argumentHint !== undefined ? { argumentHint: meta.argumentHint } : {}),
+      ...(meta.sourceTitle !== undefined ? { sourceTitle: meta.sourceTitle } : {}),
+      ...(meta.coverImage !== undefined ? { coverImage: meta.coverImage } : {}),
+      path: filePath,
+      content: markdownBody(text),
+    };
   }
 
   async remove(kind: ManagedResourceKind, scope: ResourceScope, name: string): Promise<void> {
@@ -235,6 +356,7 @@ export class PiResourceManager implements ResourceManager {
     const root = kind === "skill" ? this.roots(scope).skills : this.roots(scope).prompts;
     const filePath = kind === "skill" ? join(root, safeName, "SKILL.md") : join(root, `${safeName}.md`);
     assertWithin(root, filePath);
+    await assertNoSymlink(root, filePath);
     await rm(kind === "skill" ? dirname(filePath) : filePath, { recursive: kind === "skill", force: false });
   }
 

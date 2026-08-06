@@ -193,15 +193,27 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
       for (const cb of this.stderrListeners) cb(chunk);
     });
 
+    // stdin 的 EPIPE 不会冒泡到 ChildProcess 本身；若不监听，Node 会把它当
+    // 未处理的 EventEmitter error，直接击穿 dev API 进程，前端遂白屏。
+    child.stdin.on("error", (err: Error) => {
+      if (this.child !== child || this.restarting || this.status === "closing" || this.status === "exited") return;
+      rpcLog.error("subprocess stdin error", { message: err.message });
+      this.finalize(
+        null,
+        null,
+        new ChildCrashError(null, null, `RPC child process stdin error: ${err.message}`),
+      );
+    });
+
     // spawn 失败(命令不存在/无法执行)经 error 事件到达(Req 2.4 / 6.5)。
     child.on("error", (err: Error) => {
-      if (this.restarting) return; // 重启中:旧进程的 error 不视为崩溃
+      if (this.child !== child || this.restarting) return; // 重启中或旧实例:不视为当前通道崩溃
       rpcLog.error("subprocess error", { message: err.message });
       this.finalize(null, null, new SpawnError(err.message, err));
     });
 
     child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-      if (this.restarting) return; // 重启中:旧进程退出由 doRestart 处理重生
+      if (this.child !== child || this.restarting) return; // 重启中或旧实例:由 doRestart 处理
       if (code === 0) {
         rpcLog.info("subprocess exit", { code, signal });
       } else {
@@ -315,7 +327,18 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     if (this.status === "exited" || this.status === "closing") {
       throw new ChannelClosedError();
     }
-    this.child.stdin.write(line.endsWith("\n") ? line : `${line}\n`);
+    if (this.child.stdin.destroyed || this.child.stdin.writableEnded) {
+      const error = new ChannelClosedError("RPC child process stdin is closed");
+      this.finalize(null, null, error);
+      throw error;
+    }
+    try {
+      this.child.stdin.write(line.endsWith("\n") ? line : `${line}\n`);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.finalize(null, null, error);
+      throw error;
+    }
   }
 
   /** 注册按行接收回调(Req 1.2)。 */

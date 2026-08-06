@@ -74,6 +74,8 @@ export function mapResourceLoaderOptions(
     noExtensions?: boolean;
     /** 公司级 resources,不改变 pi 的 user/project 默认发现。 */
     companyResourcePaths?: CompanyResourcePaths;
+    /** pi-web 全局内置 prompt templates。 */
+    builtinPromptTemplatePaths?: readonly string[];
   } = {},
 ): MappedResourceLoaderOptions {
   const resourceLoaderOptions: ResourceLoaderOptions = {};
@@ -152,10 +154,11 @@ export function mapResourceLoaderOptions(
     (p) => p.length > 0,
   );
   if (companySkills.length > 0) resourceLoaderOptions.additionalSkillPaths = companySkills;
-  const companyPrompts = (opts.companyResourcePaths?.additionalPromptTemplatePaths ?? []).filter(
-    (p) => p.length > 0,
-  );
-  if (companyPrompts.length > 0) resourceLoaderOptions.additionalPromptTemplatePaths = companyPrompts;
+  const promptPaths = [
+    ...(opts.builtinPromptTemplatePaths ?? []),
+    ...(opts.companyResourcePaths?.additionalPromptTemplatePaths ?? []),
+  ].filter((p) => p.length > 0);
+  if (promptPaths.length > 0) resourceLoaderOptions.additionalPromptTemplatePaths = promptPaths;
   if (def.contextFiles !== undefined) {
     resourceLoaderOptions.agentsFilesOverride = def.contextFiles;
   }
