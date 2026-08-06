@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+﻿// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
@@ -35,7 +35,7 @@ afterEach(() => {
  * 装在 `HTMLIFrameElement.prototype.contentWindow` 的 getter 上,因此对「宿主何时建连」
  * 不敏感 —— 无论挂载即连、load 后连还是收到 ready 才连,都录得到。
  */
-function recordFrameMessages(): {
+function recordFrameMessages(onPort?: (port: MessagePort) => void): {
   readonly posted: Array<{ message: unknown; ports: readonly MessagePort[] }>;
   restore(): void;
 } {
@@ -56,6 +56,9 @@ function recordFrameMessages(): {
           transfer?: readonly MessagePort[],
         ) => {
           posted.push({ message, ports: transfer ?? [] });
+          // 端口随 pane:connected 同宏任务 transfer 出来；立即挂钩才能在缓冲窗内
+          // 收到同段推的 pane:surface/pane:signal（jsdom 跨宏任务即丢）。
+          for (const port of transfer ?? []) onPort?.(port);
         };
       }
       return win;
@@ -69,6 +72,50 @@ function recordFrameMessages(): {
       }
     },
   };
+}
+
+/**
+ * 把录制到的 `pane:connected`（含转移端口）整理成按 instanceId 实时查找的请求器。
+ * 宿主 tabs 已移入 pane 内部边车，UI 行为测试改经 `workspace.*` 请求驱动。
+ * 注意：open 产生的新实例在录制期间才有端口，故须每次请求实时查找，不能缓存 Map。
+ */
+function driveConnections(posted: ReadonlyArray<{ message: unknown; ports: readonly MessagePort[] }>): {
+  readonly request: (instanceId: string, operation: string, payload?: Record<string, unknown>) => Promise<void>;
+} {
+  const portFor = (instanceId: string): MessagePort => {
+    const port = [...posted].reverse().find((entry) =>
+      (entry.message as { instance?: { instanceId?: string } }).instance?.instanceId === instanceId,
+    )?.ports[0];
+    if (port === undefined) throw new Error(`drive: no port for instance ${instanceId}`);
+    return port;
+  };
+  const request = (
+    instanceId: string,
+    operation: string,
+    payload: Record<string, unknown> = {},
+  ): Promise<void> =>
+    act(async () => {
+      const port = portFor(instanceId);
+      // 不设 onmessage：端口收集由 recordFrameMessages 的 onPort 独占，
+      // 否则会覆盖它并吞掉 pane:surface/pane:signal 缓冲。
+      port.postMessage({
+        type: "pane:request",
+        requestId: `${operation}-${Math.random().toString(36).slice(2, 8)}`,
+        operation,
+        ...payload,
+      });
+      // MessageChannel 端口消息在 jsdom 走任务队列，需跨宏任务让 host 侧收到并 flush。
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  return { request };
+}
+
+function framesOf(container: HTMLElement): HTMLIFrameElement[] {
+  return [...container.querySelectorAll("iframe")];
+}
+
+function frameOrder(container: HTMLElement): string[] {
+  return framesOf(container).map((frame) => frame.id);
 }
 
 const definition = definePanes({
@@ -87,22 +134,30 @@ const definition = definePanes({
 });
 
 describe("PanesHost multi-open UI", () => {
-  it("restores opted-in local pane order, duplicates and active tab", () => {
+  it("restores opted-in local pane order, duplicates and active tab", async () => {
     const persistenceKey = "test:panes";
     window.localStorage.setItem(`${persistenceKey}:workspace`, JSON.stringify({
       paneIds: ["editor", "editor"],
       activeIndex: 0,
     }));
     let sequence = 0;
-    const view = render(<PanesHost
-      definition={definition}
-      config={{ interactionMode: "advanced", persistenceKey }}
-      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
-    />);
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(2);
-    expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-selected")).toBe("true");
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={definition}
+        config={{ interactionMode: "advanced", persistenceKey }}
+        createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+      />);
+    } finally {
+      recorder.restore();
+    }
+    expect(framesOf(view.container)).toHaveLength(2);
+    // active tab 已移入 pane 内部边车；宿主仅以 display 区分激活实例。
+    expect(framesOf(view.container).filter((frame) => frame.style.display === "block")).toHaveLength(1);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
+    const drive = driveConnections(recorder.posted);
+    await drive.request("editor-1", "workspace.close", { instanceId: "editor-1" });
     const persisted = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`)!);
     expect(persisted.paneIds).toEqual(["editor"]);
     expect(persisted.instanceIds).toEqual(["editor-2"]);
@@ -199,19 +254,6 @@ describe("PanesHost multi-open UI", () => {
         created.some((c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native")),
       ).toBe(true);
     });
-    // mock 无真实页面 load：补发 overlay warm shell ready（token 0）。
-    await act(async () => {
-      for (const listener of relayListeners) {
-        listener({
-          payload: {
-            instanceId: "panes-overlay-menu",
-            epoch: 0,
-            message: { type: "pane:overlay-ready", token: 0 },
-          },
-        });
-      }
-      await Promise.resolve();
-    });
     const editorCreate = created.find(
       (c) => c.url.includes("editor.html") && c.url.includes("pi-pane-instance=editor-native"),
     )!;
@@ -235,32 +277,8 @@ describe("PanesHost multi-open UI", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(actions).toContain("show"));
-    const beforePalette = actions.length;
-    fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-    // open 热路径会 set-bounds；等 token 升到 1 后再模拟 guest ready。
-    await waitFor(() => {
-      expect(actions.slice(beforePalette)).toContain("set-bounds");
-    });
-    const paletteCreate = created.find((c) => new URL(c.url).searchParams.get("title") === "新开 Pane");
-    expect(paletteCreate?.visible).toBe(true);
-    expect(actions.slice(beforePalette)).not.toContain("hide");
-    await act(async () => {
-      for (const listener of relayListeners) {
-        listener({
-          payload: {
-            instanceId: "panes-overlay-menu",
-            epoch: 0,
-            message: { type: "pane:overlay-ready", token: 1 },
-          },
-        });
-      }
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(actions).toContain("focus"));
-    fireEvent.click(screen.getByRole("button", { name: "刷新当前 Pane" }));
-    await waitFor(() => expect(actions).toContain("reload"));
     expect(view.container.querySelector("iframe")).toBeNull();
-    const createdAfterReloadClick = created.length;
+    const createdAfterReady = created.length;
     expect(closed).toBe(0);
 
     view.rerender(
@@ -273,7 +291,7 @@ describe("PanesHost multi-open UI", () => {
       </StrictMode>,
     );
     await act(async () => Promise.resolve());
-    expect(created.length).toBe(createdAfterReloadClick);
+    expect(created.length).toBe(createdAfterReady);
     expect(closed).toBe(0);
 
     view.rerender(
@@ -311,94 +329,99 @@ describe("PanesHost multi-open UI", () => {
       }],
     });
     const view = render(<PanesHost definition={guest} />);
-    expect(screen.getByRole("tab", { name: /Logs/ }).querySelector("svg")).not.toBeNull();
-    expect(view.container.querySelector("iframe")).not.toBeNull();
+    const frame = view.container.querySelector("iframe")!;
+    expect(frame).not.toBeNull();
+    // 边车 chrome 已随 srcDoc 注入 pane 内部（宿主不再渲染 tabs 图标）。
+    expect(frame.getAttribute("srcdoc")).toContain("pi-pane-chrome");
   });
 
-  it("opens three independent iframe instances and parks a closed tab without reloading it", () => {
+  it("opens three independent iframe instances and parks a closed tab without reloading it", async () => {
     let sequence = 0;
-    const view = render(<PanesHost
-      definition={definition}
-      config={{ interactionMode: "advanced" }}
-      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
-    />);
-    const add = (): void => {
-      fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
-    };
-    add();
-    add();
-    const frames = [...view.container.querySelectorAll("iframe")];
-    expect(frames).toHaveLength(3);
-    expect(new Set(frames.map((frame) => frame.id)).size).toBe(3);
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.trim())).toEqual(["Editor 1", "Editor 2", "Editor 3"]);
-    const firstFrame = frames[0];
-    fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(firstFrame!.style.display).toBe("none");
-    fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
-    expect(view.container.querySelectorAll("iframe")[0]).toBe(firstFrame);
-    expect(screen.getAllByRole("tab")).toHaveLength(3);
-  });
-
-  it("activates on tab click, reorders via drag and recovers from an empty workspace", () => {
-    let sequence = 0;
-    const view = render(<PanesHost
-      definition={definition}
-      config={{ interactionMode: "advanced" }}
-      createInstanceId={(paneId) => `${paneId}-${++sequence}`}
-    />);
-    const add = (): void => {
-      fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
-    };
-    add();
-    add();
-    const controlsOrder = (): string[] =>
-      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-controls") ?? "");
-    // MRU:新打开的排最前,故 editor-3/2/1。
-    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
-
-    // 切换:点第二个 tab(editor-2),选中但不改变顺序(仅新开才置前)
-    fireEvent.click(screen.getAllByRole("tab")[1]!);
-    expect(screen.getAllByRole("tab")[1]!.getAttribute("aria-selected")).toBe("true");
-    expect(controlsOrder()).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
-    const frameById = (id: string): HTMLIFrameElement =>
-      view.container.querySelector<HTMLIFrameElement>(`#pane-view-${id}`)!;
-    expect(frameById("editor-2").style.display).toBe("block");
-    expect(frameById("editor-1").style.display).toBe("none");
-
-    // 拖排:把最后一个 tab(editor-1)拖到第一个之前
-    const wrappers = screen.getAllByRole("tab").map((tab) => tab.parentElement!);
-    fireEvent.dragStart(wrappers[2]!);
-    fireEvent.dragOver(wrappers[0]!);
-    fireEvent.drop(wrappers[0]!);
-    expect(controlsOrder()).toEqual(["pane-view-editor-1", "pane-view-editor-3", "pane-view-editor-2"]);
-
-    // 空态:全部关闭后出现空工作区入口,可重新打开恢复
-    for (let remaining = 3; remaining > 0; remaining -= 1) {
-      fireEvent.click(screen.getAllByRole("button", { name: "关闭 Editor" })[0]!);
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={definition}
+        config={{ interactionMode: "advanced" }}
+        createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+      />);
+      const drive = driveConnections(recorder.posted);
+      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
+      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
+      const frames = framesOf(view.container);
+      expect(frames).toHaveLength(3);
+      expect(new Set(frames.map((frame) => frame.id)).size).toBe(3);
+      // 新开置前（MRU），与旧 tabs 一致。
+      expect(frameOrder(view.container)).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
+      const firstFrame = frames[0]!;
+      // 关闭即 parked：不销毁 iframe，仅隐藏。
+      await drive.request("editor-3", "workspace.close", { instanceId: "editor-3" });
+      expect(framesOf(view.container)).toHaveLength(3);
+      expect(firstFrame.style.display).toBe("none");
+      // 重新打开复用 parked 的实例（同一 DOM 节点）。
+      await drive.request("editor-2", "workspace.open", { paneId: "editor" });
+      expect(framesOf(view.container)).toHaveLength(3);
+      expect(framesOf(view.container)[0]).toBe(firstFrame);
+    } finally {
+      recorder.restore();
     }
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "打开一个 Pane" }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Editor/ }));
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(3);
-    expect(screen.getAllByRole("tab")[0]!.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("refreshes the active pane beside the new-pane control", () => {
-    const view = render(<PanesHost
-      definition={definition}
-      createInstanceId={() => "editor-refresh"}
-    />);
+  it("activates via workspace.activate, closes all to empty state and reopens", async () => {
+    let sequence = 0;
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={definition}
+        config={{ interactionMode: "advanced" }}
+        createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+      />);
+      const drive = driveConnections(recorder.posted);
+      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
+      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
+      // MRU:新打开的排最前,故 editor-3/2/1。
+      expect(frameOrder(view.container)).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
+
+      // 切换:激活 editor-2,选中但不改变顺序(仅新开才置前)
+      await drive.request("editor-3", "workspace.activate", { instanceId: "editor-2" });
+      expect(frameOrder(view.container)).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
+      const frameById = (id: string): HTMLIFrameElement =>
+        view.container.querySelector<HTMLIFrameElement>(`#pane-view-${id}`)!;
+      expect(frameById("editor-2").style.display).toBe("block");
+      expect(frameById("editor-1").style.display).toBe("none");
+
+      // 空态:全部关闭后出现空工作区入口,可重新打开恢复
+      for (const instanceId of ["editor-3", "editor-2", "editor-1"]) {
+        await drive.request("editor-1", "workspace.close", { instanceId });
+      }
+      expect(framesOf(view.container)).toHaveLength(3);
+      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
+      expect(framesOf(view.container)).toHaveLength(3);
+      expect(frameById("editor-3").style.display).toBe("block");
+      expect(frameById("editor-1").style.display).toBe("none");
+    } finally {
+      recorder.restore();
+    }
+  });
+
+  it("refreshes the active pane via workspace.reload", async () => {
+    const recorder = recordFrameMessages();
+    let view: ReturnType<typeof render>;
+    try {
+      view = render(<PanesHost
+        definition={definition}
+        createInstanceId={() => "editor-refresh"}
+      />);
+    } finally {
+      recorder.restore();
+    }
+    const drive = driveConnections(recorder.posted);
     const before = view.container.querySelector("iframe");
-    fireEvent.click(screen.getByRole("button", { name: "刷新当前 Pane" }));
+    await drive.request("editor-refresh", "workspace.reload", {});
     const after = view.container.querySelector("iframe");
     expect(after).not.toBe(before);
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(1);
+    expect(framesOf(view.container)).toHaveLength(1);
   });
 });
 
@@ -458,10 +481,10 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     />);
     recorder.restore();
     const posted = recorder.posted;
-    fireEvent.click(screen.getByRole("button", { name: "收起 Pane 侧栏" }));
-    expect(closeSidebar).toHaveBeenCalledOnce();
     const frame = view.container.querySelector("iframe")!;
     expect(frame.getAttribute("sandbox")).toContain("allow-downloads");
+    // 收起钮在 child 边车内；宿主 content-well 满铺不再渲染顶栏 collapse。
+    expect(view.container.querySelector("[data-pane-sidebar-collapse]")).toBeNull();
     // 宿主挂载即补连(不依赖 onLoad / pane:ready 是否被错过),故此处已有且仅有一条。
     expect(posted).toHaveLength(1);
     expect(posted[0]!.message).toMatchObject({
@@ -480,6 +503,14 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     const port = posted[1]!.ports[0]!;
     const results: Array<{ type?: string; requestId?: string; key?: string; value?: unknown }> = [];
     port.onmessage = ({ data }: MessageEvent) => results.push(data as never);
+    // 边车 workspace.collapse → 宿主 onRequestClose
+    port.postMessage({
+      type: "pane:request",
+      requestId: "collapse-1",
+      operation: "workspace.collapse",
+    });
+    await until(() => closeSidebar.mock.calls.length === 1);
+    expect(closeSidebar).toHaveBeenCalledOnce();
 
     // 已授权 surfaceKey 的镜像在连接建立时即下推。
     await until(() => results.some((message) => message.type === "pane:surface"));
@@ -541,59 +572,53 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     };
     let sequence = 0;
     // 录制必须覆盖「挂载 + 两次新开」的全过程:宿主对每个实例都是挂载即补连。
-    const recorder = recordFrameMessages();
-    let view: ReturnType<typeof render>;
-    try {
-      view = render(<PanesHost
-        definition={canvasDefinition}
-        surface={surface}
-        workspaceDomain={false}
-        createInstanceId={(paneId) => `${paneId}-${++sequence}`}
-      />);
-      const add = (): void => {
-        fireEvent.click(screen.getByRole("button", { name: "新开 Pane" }));
-        fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^Canvas/ }));
-      };
-      add();
-      add();
+      const recorder = recordFrameMessages((port) => {
+        mirrors.set(port, []);
+        ports.push(port);
+        port.onmessage = ({ data }: MessageEvent) => mirrors.get(port)!.push(data as never);
+      });
+      const mirrors = new Map<MessagePort, Array<{ type?: string; key?: string; value?: unknown }>>();
+      const ports: MessagePort[] = [];
+      let view: ReturnType<typeof render>;
+      try {
+        view = render(<PanesHost
+          definition={canvasDefinition}
+          surface={surface}
+          workspaceDomain={false}
+          createInstanceId={(paneId) => `${paneId}-${++sequence}`}
+        />);
+        const drive = driveConnections(recorder.posted);
+        await drive.request("canvas-1", "workspace.open", { paneId: "canvas" });
+        await drive.request("canvas-1", "workspace.open", { paneId: "canvas" });
+        expect(framesOf(view.container)).toHaveLength(3);
+        // 三个实例各拿到一条 pane:connected + 一个**独立**端口(F3:互不串扰)。
+        expect(recorder.posted).toHaveLength(3);
+        expect(new Set(ports).size).toBe(3);
+        expect(listeners.size).toBe(3);
+
+        const mirrorsOf = (index: number): unknown[] => mirrors.get(ports[index]!)!
+          .filter((message) => message.type === "pane:surface" && message.key === "surface:canvas")
+          .map((message) => message.value);
+        await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 1));
+      expect([0, 1, 2].map((index) => mirrorsOf(index)[0])).toEqual([{ revision: 1 }, { revision: 1 }, { revision: 1 }]);
+
+      // 权威更新:三个独立端口各自收到同一镜像。
+      canvasState = { revision: 2 };
+      for (const listener of [...listeners]) listener(canvasState);
+      await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 2));
+
+      // 关闭 tab 后 Pane 后台保活；三个端口仍继续收权威镜像。
+      await drive.request("canvas-1", "workspace.close", { instanceId: "canvas-3" });
+      expect(listeners.size).toBe(3);
+      canvasState = { revision: 3 };
+      for (const listener of [...listeners]) listener(canvasState);
+      await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 3));
+      expect(mirrorsOf(0)[2]).toEqual({ revision: 3 });
+      expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
+      expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
     } finally {
       recorder.restore();
     }
-    expect([...view.container.querySelectorAll("iframe")]).toHaveLength(3);
-    // 三个实例各拿到一条 pane:connected + 一个**独立**端口(F3:互不串扰)。
-    expect(recorder.posted).toHaveLength(3);
-    const mirrors = new Map<number, Array<{ type?: string; key?: string; value?: unknown }>>();
-    const ports: MessagePort[] = [];
-    recorder.posted.forEach((entry, index) => {
-      const port = entry.ports[0]!;
-      ports.push(port);
-      const seen: Array<{ type?: string; key?: string; value?: unknown }> = [];
-      mirrors.set(index, seen);
-      port.onmessage = ({ data }: MessageEvent) => seen.push(data as never);
-    });
-    expect(new Set(ports).size).toBe(3);
-    expect(listeners.size).toBe(3);
-
-    const mirrorsOf = (index: number): unknown[] => mirrors.get(index)!
-      .filter((message) => message.type === "pane:surface" && message.key === "surface:canvas")
-      .map((message) => message.value);
-    await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 1));
-    expect([0, 1, 2].map((index) => mirrorsOf(index)[0])).toEqual([{ revision: 1 }, { revision: 1 }, { revision: 1 }]);
-
-    // 权威更新:三个独立端口各自收到同一镜像。
-    canvasState = { revision: 2 };
-    for (const listener of [...listeners]) listener(canvasState);
-    await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 2));
-
-    // 关闭 tab 后 Pane 后台保活；三个端口仍继续收权威镜像。
-    fireEvent.click(screen.getAllByRole("button", { name: "关闭 Canvas" })[0]!);
-    expect(listeners.size).toBe(3);
-    canvasState = { revision: 3 };
-    for (const listener of [...listeners]) listener(canvasState);
-    await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 3));
-    expect(mirrorsOf(0)[2]).toEqual({ revision: 3 });
-    expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
-    expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
   });
 
   it("★ 宿主具名信号:握手即全量下推、变更只推变的、未变不推(pane:signal)", async () => {
@@ -628,7 +653,7 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     const seen: Array<{ type?: string; name?: string; value?: unknown }> = [];
     port.onmessage = ({ data }: MessageEvent) => seen.push(data as never);
     const signalsSeen = (): Array<{ name?: string; value?: unknown }> =>
-      seen.filter((m) => m.type === "pane:signal");
+      seen.filter((m) => m.type === "pane:signal" && m.name !== "pi.workspace");
 
     // ★ 握手时即下推当前值:pane 首帧就该是对的,而不是先渲染错再纠正
     //   (主题若靠「等下一次变更」,暗色宿主下会先亮一下)。
@@ -700,7 +725,6 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
     ports.get("materials")!.onmessage = ({ data }: MessageEvent) => sourceResults.push(data as never);
     ports.get("canvas")!.onmessage = ({ data }: MessageEvent) => targetMessages.push(data as never);
 
-    fireEvent.click(screen.getByRole("tab", { name: "Materials" }));
     await act(async () => {
       ports.get("materials")!.postMessage({
         type: "pane:request",
@@ -725,7 +749,9 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       payload: { attachmentIds: ["att_1"] },
       source: { instanceId: "materials-1", paneId: "materials" },
     });
-    expect(screen.getByRole("tab", { name: "Canvas" }).getAttribute("aria-selected")).toBe("true");
+    // 事件按宿主映射激活目标 pane：canvas 显示。
+    const canvasFrame = view.container.querySelector<HTMLIFrameElement>("#pane-view-canvas-2")!;
+    expect(canvasFrame.style.display).toBe("block");
 
     view.rerender(<PanesHost
       definition={eventDefinition}
@@ -803,19 +829,18 @@ const fullDefinition = definePanes({
   panes: [syncPane(HOST_PANE_ID, "会话信息"), syncPane("alpha", "Alpha"), syncPane("beta", "Beta")],
 });
 
-const openTabNames = (): string[] =>
-  screen.getAllByRole("tab").map((tab) => tab.textContent?.trim() ?? "");
+const openFrameCount = (container: HTMLElement): number => framesOf(container).length;
 
 describe("PanesHost workspace ↔ definition 同步", () => {
   it("清单在首帧之后才补齐时,声明为初始打开的 pane 被补开", () => {
     const view = render(<PanesHost definition={hostOnlyDefinition} config={{}} />);
     // 首帧:清单里只有内置 pane,回退到 panes[0]。
-    expect(openTabNames()).toEqual(["会话信息"]);
+    expect(openFrameCount(view.container)).toBe(1);
 
     // ★ 时序由 rerender 显式构造 —— 这正是真实场景里 webext 异步到达的那一刻。
     view.rerender(<PanesHost definition={fullDefinition} config={{}} />);
 
-    expect(openTabNames()).toEqual(["会话信息", "Alpha", "Beta"]);
+    expect(openFrameCount(view.container)).toBe(3);
   });
 
   it("可确证被污染的旧格式快照被纠正,并写回带 knownPaneIds 的新快照", () => {
@@ -826,9 +851,9 @@ describe("PanesHost workspace ↔ definition 同步", () => {
       activeIndex: 0,
     }));
 
-    render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
+    const view = render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
 
-    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+    expect(openFrameCount(view.container)).toBe(2);
     // 纠正后写回新格式,故下次进入不会再触发纠正(Req 3.2)。
     const persisted = JSON.parse(window.localStorage.getItem(`${persistenceKey}:workspace`)!);
     expect(persisted.knownPaneIds).toEqual([HOST_PANE_ID, "alpha", "beta"]);
@@ -846,7 +871,7 @@ describe("PanesHost workspace ↔ definition 同步", () => {
     const view = render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
 
     // 用户自己排的顺序(beta 在前)必须原样保留。
-    expect(openTabNames()).toEqual(["Beta", "Alpha"]);
+    expect(frameOrder(view.container)).toEqual(["pane-view-beta-kept", "pane-view-alpha-kept"]);
     // instanceId 也原样复用 —— 桌面形态下这决定 WebView 是否被重建。
     expect(view.container.querySelector('[id="pane-view-beta-kept"]')).not.toBeNull();
   });
@@ -860,18 +885,20 @@ describe("PanesHost workspace ↔ definition 同步", () => {
       activeIndex: 0,
     }));
 
-    render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
+    const view = render(<PanesHost definition={fullDefinition} config={{ persistenceKey }} />);
 
-    expect(openTabNames()).toEqual(["Alpha"]);
-    expect(screen.queryByRole("tab", { name: /Beta/ })).toBeNull();
+    expect(openFrameCount(view.container)).toBe(1);
+    // 未持久化 instanceIds 时按 paneId 生成（带随机后缀）。
+    expect(frameOrder(view.container)[0]!.startsWith("pane-view-alpha")).toBe(true);
   });
 
   it("首帧清单即完整时行为与修复前一致", () => {
     const view = render(<PanesHost definition={fullDefinition} config={{}} />);
-    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+    expect(openFrameCount(view.container)).toBe(2);
 
     // 同一份 definition 再渲染一次不得产生任何变化(reconcile 应返回同一引用而跳过 setState)。
     view.rerender(<PanesHost definition={fullDefinition} config={{}} />);
-    expect(openTabNames()).toEqual(["Alpha", "Beta"]);
+    expect(openFrameCount(view.container)).toBe(2);
   });
 });
+

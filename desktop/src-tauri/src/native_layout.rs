@@ -147,7 +147,7 @@ fn bounds_near(a: PaneBounds, b: PaneBounds) -> bool {
 }
 
 /// 方案 A 的手动触发口（spec desktop-native-webview-chrome-dead）：
-/// pane_relay 的 hide / close / overlay 转换不经 `apply_layout`，但宿主 tab 带的
+/// pane_relay 的 hide / close 转换不经 `apply_layout`，但宿主 tab 带的
 /// 像素已经变了；WKWebView 不会自动把被 child 让开的区域标脏，须同样强制重绘。
 #[cfg(target_os = "macos")]
 pub fn force_host_redraw_for(app: &AppHandle) {
@@ -570,9 +570,6 @@ impl NativeWebviewLayoutManager {
         let mut visibility_flipped = false;
         let mut applied_visibility: Vec<(String, bool)> = Vec::new();
         for (label, recorded_visible, keep_alive, initialized, was_applied_visible) in panes {
-            if label.starts_with("pane-overlay") {
-                continue;
-            }
             let Some(view) = webviews.iter().find(|view| view.label() == label) else {
                 continue;
             };
@@ -619,15 +616,11 @@ impl NativeWebviewLayoutManager {
         if top_label.as_ref() != last_top.as_ref() {
             raise_top = true;
         }
-        let overlay_top = crate::pane_relay::overlay_wants_top();
         if raise_top {
             if let Some(label) = top_label.as_ref() {
                 if let Some(view) = webviews.iter().find(|view| view.label() == label) {
                     let _ = view.show();
-                    // 菜单在顶时 content 只 show 不 focus，避免抢焦关菜单。
-                    if !overlay_top {
-                        let _ = view.set_focus();
-                    }
+                    let _ = view.set_focus();
                 }
             }
         }
@@ -641,17 +634,6 @@ impl NativeWebviewLayoutManager {
                 let ok = unsafe { crate::view_tree::force_host_redraw(ptr) };
                 if !ok && pane_layout_debug_enabled() {
                     eprintln!("[panes] 宿主重绘请求失败：未找到铺满全窗的宿主视图");
-                }
-            }
-        }
-        // 菜单 overlay 打开时：content set_bounds/show 可能抢 z，最后再抬 overlay。
-        // content **保持 show**，只调整叠放，绝不 hide content 去「让路」。
-        if overlay_top {
-            for view in &webviews {
-                let label = view.label();
-                if label.starts_with("pane-overlay") {
-                    let _ = view.show();
-                    let _ = view.set_focus();
                 }
             }
         }

@@ -41,7 +41,6 @@ import {
 } from "../instances.js";
 import { fromMessagePort, type PanePort, type PaneViewHandle } from "../host-ports.js";
 import {
-  createGlobalTauriPaneOverlay,
   createGlobalTauriPaneViewAdapter,
   ensureTauriContentWellMetrics,
   isTauriNativePaneLayout,
@@ -57,6 +56,11 @@ import {
   PanesWorkspaceSnapshotSchema,
   type PaneWorkspaceOp,
 } from "../workspace-protocol.js";
+import {
+  PANE_CHROME_SIGNAL,
+  wrapPaneDocument,
+  type PaneChromeWorkspaceSignal,
+} from "../pane-chrome.js";
 import {
   PI_PANES_WORKSPACE_INTENT_EVENT,
   type PaneWorkspaceHostIntent,
@@ -483,16 +487,7 @@ export function PanesHost({
     () => typeof window === "undefined" ? undefined : createGlobalTauriPaneViewAdapter(window),
     [],
   );
-  const nativeOverlay = React.useMemo(
-    () => typeof window === "undefined" ? undefined : createGlobalTauriPaneOverlay(window),
-    [],
-  );
-  // 挂载即预建隐藏 overlay shell，首点「新开 Pane」免冷创建。
-  React.useEffect(() => {
-    void nativeOverlay?.warm?.();
-  }, [nativeOverlay]);
-
-  // child WebView 只盖 content-well；tabs chrome 留在 host。量井上报 left/top/width/bottom。
+  // child WebView 只盖 content-well；chrome 已移入 pane 内边车。量井上报 left/top/width/bottom。
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     let cancelled = false;
@@ -694,7 +689,7 @@ export function PanesHost({
 
   const restoreNativeVisibility = React.useCallback((): void => {
     const host = hostRoot.current;
-    // 仅侧栏折叠等 chrome 隐藏时 hide content；面积 0 / overlay 打开不关 content。
+    // 仅侧栏折叠等 chrome 隐藏时 hide content；面积 0 不关 content。
     const hostChromeOk = host !== null && !isPanesHostChromeHidden(host);
     const activeId = workspaceRef.current.activeInstanceId;
     const activeMount =
@@ -769,8 +764,6 @@ export function PanesHost({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [config.showCommandPalette, dispatch, parkedInstanceIds, workspace.instances]);
 
-  React.useEffect(() => () => nativeOverlay?.close(), [nativeOverlay, sessionId]);
-
   // ── LLM 工作区遥控桥(workspace-protocol.ts)────────────────────────────────
   // 下行:订阅 surface:<domain> 快照,对 opId 增量应用意图 ops;首帧取基线(不重放
   // 历史),opId 回退(agent 重启)自动再基线。上行:workspace 变化或 appliedOpId 推进
@@ -807,37 +800,57 @@ export function PanesHost({
       type: "activate" | "reload" | "close",
       target: { instanceId?: string; paneId?: string },
     ): void => {
-      setWorkspace((current) => {
-        const hit =
-          target.instanceId !== undefined
-            ? current.instances.find((i) => i.instanceId === target.instanceId)
-            : target.paneId !== undefined
-              ? current.instances.find((i) => i.paneId === target.paneId)
+      const current = workspaceRef.current;
+      const hit =
+        target.instanceId !== undefined
+          ? current.instances.find((i) => i.instanceId === target.instanceId)
+          : target.paneId !== undefined
+            ? current.instances.find((i) => i.paneId === target.paneId)
+            : current.activeInstanceId !== undefined
+              ? current.instances.find((i) => i.instanceId === current.activeInstanceId)
               : undefined;
-        if (hit === undefined) return current;
-        if (type === "close") {
-          closeConnection(hit.instanceId);
-          return reducePaneWorkspace(definition, current, {
-            type: "close",
-            instanceId: hit.instanceId,
-          });
-        }
-        if (type === "activate") {
-          setParkedInstanceIds((parked) => {
-            const next = new Set(parked);
-            next.delete(hit.instanceId);
-            return next;
-          });
-        }
-        const action: PaneWorkspaceAction =
-          type === "activate"
-            ? { type: "activate", instanceId: hit.instanceId }
-            : { type: "reload", instanceId: hit.instanceId };
-        return reducePaneWorkspace(definition, current, action);
-      });
+      if (hit === undefined) return;
+      if (type === "close") {
+        closeConnection(hit.instanceId);
+        dispatch({ type: "close", instanceId: hit.instanceId });
+        return;
+      }
+      if (type === "activate") {
+        // 先 unpark 再 activate，避免嵌套 setState 丢更新
+        setParkedInstanceIds((parked) => {
+          if (!parked.has(hit.instanceId)) return parked;
+          const next = new Set(parked);
+          next.delete(hit.instanceId);
+          return next;
+        });
+        dispatch({ type: "activate", instanceId: hit.instanceId });
+        return;
+      }
+      dispatch({ type: "reload", instanceId: hit.instanceId });
     },
-    [closeConnection, definition],
+    [closeConnection, dispatch],
   );
+
+  /** 边车关闭 = park：保留 iframe/连接以便重开复用，持久化层过滤 parked。 */
+  const parkClose = React.useCallback((instanceId: string): void => {
+    const current = workspaceRef.current;
+    const hit = current.instances.find((instance) => instance.instanceId === instanceId);
+    if (hit === undefined) return;
+    const nextParked = new Set(parkedRef.current);
+    nextParked.add(instanceId);
+    setParkedInstanceIds(nextParked);
+    const nextActive = current.instances.find(
+      (instance) =>
+        instance.instanceId !== instanceId &&
+        !nextParked.has(instance.instanceId),
+    );
+    if (nextActive !== undefined) {
+      dispatch({ type: "activate", instanceId: nextActive.instanceId });
+    }
+  }, [dispatch]);
+
+  /** 供 handleRequest 闭包调用（reloadPane 定义在后）。 */
+  const reloadPaneRef = React.useRef<(instanceId: string) => void>(() => undefined);
 
   /** 与 pane_open / pane_activate 工具同语义；open-or-activate 供侧栏入口。 */
   const applyHostIntent = React.useCallback(
@@ -1028,6 +1041,41 @@ export function PanesHost({
       else await stateAccess.delete(request.key);
       return undefined;
     }
+    if (
+      request.operation === "workspace.open" ||
+      request.operation === "workspace.activate" ||
+      request.operation === "workspace.close" ||
+      request.operation === "workspace.reload" ||
+      request.operation === "workspace.collapse"
+    ) {
+      if (request.operation === "workspace.collapse") {
+        onRequestClose?.();
+        return undefined;
+      }
+      if (request.operation === "workspace.open") {
+        applyOpenPane(request.paneId);
+        return undefined;
+      }
+      if (request.operation === "workspace.close") {
+        // 边车关闭 = park：保留 iframe/连接以便重开复用（与 surface 桥的移除语义区分）。
+        const id = request.instanceId
+          ?? workspaceRef.current.activeInstanceId;
+        if (id !== undefined) parkClose(id);
+        return undefined;
+      }
+      if (request.operation === "workspace.reload") {
+        // 必须走 reloadPane：native 调 handle.reload / 抬 epoch 整页重建
+        const id = request.instanceId
+          ?? workspaceRef.current.activeInstanceId;
+        if (id !== undefined) reloadPaneRef.current(id);
+        return undefined;
+      }
+      applyActivateOrReload("activate", {
+        paneId: request.paneId,
+        instanceId: request.instanceId,
+      });
+      return undefined;
+    }
     if (conversation === undefined) throw new PaneHostError("HOST_UNAVAILABLE", "Conversation is not ready", { retryable: true });
     const options = request.attachmentIds === undefined ? undefined : { attachmentIds: request.attachmentIds };
     if (request.operation === "conversation.stage") {
@@ -1037,7 +1085,7 @@ export function PanesHost({
       conversation.stageUserMessage(request.text, options);
     } else conversation.submitUserMessage(request.text, options);
     return undefined;
-  }, [baseUrl, config.eventTargets, conversation, definition, onEvent, sessionId, sessionLogs, surface, upload]);
+  }, [applyActivateOrReload, applyOpenPane, baseUrl, config.eventTargets, conversation, definition, onEvent, onRequestClose, parkClose, sessionId, sessionLogs, surface, upload]);
 
   const bindSurface = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
     live.surfaceCleanup?.();
@@ -1076,11 +1124,59 @@ export function PanesHost({
     }
   }, [bindSurface, definition]);
 
+  const chromeSignal = React.useCallback((): PaneChromeWorkspaceSignal => {
+    const instances = workspace.instances.map((instance) => {
+      const parked = parkedInstanceIds.has(instance.instanceId);
+      return {
+        instanceId: instance.instanceId,
+        paneId: instance.paneId,
+        state: parked ? ("hidden" as const) : ("open" as const),
+        active:
+          instance.instanceId === workspace.activeInstanceId && !parked,
+      };
+    });
+    const panes = definition.panes.map((pane) => ({
+      paneId: pane.id,
+      title: pane.title,
+      icon: pane.icon,
+      openCount: workspace.instances.filter((instance) => instance.paneId === pane.id).length,
+      // Infinity 不能进 JSON；边车用大数表示不限
+      maxInstances: Number.isFinite(pane.maxInstances) ? pane.maxInstances : 1_000_000_000,
+      allowMultiple: pane.allowMultiple,
+    }));
+    return {
+      activeInstanceId: workspace.activeInstanceId,
+      // 收起钮进 child 边车，宿主不再占顶栏高度 → child 满格。
+      ...(onRequestClose !== undefined ? { canCollapse: true as const } : {}),
+      panes,
+      instances,
+    };
+  }, [definition.panes, onRequestClose, parkedInstanceIds, workspace.activeInstanceId, workspace.instances]);
+
+  // 快照去重：父组件若每帧换 definition 引用，不可对 N 个 WebView 每帧 fan-out（会卡死 UI 线程）。
+  const lastChromeSignalKey = React.useRef<string>("");
+  const broadcastChromeSignal = React.useCallback((force = false): void => {
+    const value = chromeSignal();
+    const key = JSON.stringify(value);
+    if (!force && key === lastChromeSignalKey.current) return;
+    lastChromeSignalKey.current = key;
+    for (const live of connections.current.values()) {
+      live.port.post({ type: "pane:signal", name: PANE_CHROME_SIGNAL, value } satisfies PaneHostMessage);
+    }
+  }, [chromeSignal]);
+
   const pushAllSignals = React.useCallback((port: PanePort): void => {
     for (const [name, value] of Object.entries(signals ?? {})) {
       port.post({ type: "pane:signal", name, value } satisfies PaneHostMessage);
     }
-  }, [signals]);
+    // 新连接必须收到当前 tabs 快照（即使与上次广播 key 相同）。
+    port.post({ type: "pane:signal", name: PANE_CHROME_SIGNAL, value: chromeSignal() } satisfies PaneHostMessage);
+  }, [chromeSignal, signals]);
+
+  // workspace 真实变化 → 向全部已连接 iframe/native WebView 广播同一份 tabs 快照。
+  React.useEffect(() => {
+    broadcastChromeSignal(false);
+  }, [broadcastChromeSignal]);
 
   const lastSignals = React.useRef<Record<string, unknown>>({});
   React.useEffect(() => {
@@ -1141,7 +1237,7 @@ export function PanesHost({
     }));
     bindSurface(live, pane);
     bindState(live, pane);
-    pushAllSignals(port);
+    // 先 connected 再建 MessageChannel，再推 signals；否则首包 pi.workspace 在 guest 被丢。
     sendConnected({
       type: "pane:connected",
       protocol: PANE_PROTOCOL_VERSION,
@@ -1150,6 +1246,22 @@ export function PanesHost({
       interactionMode: config.interactionMode ?? "standard",
       theme: readPaneTheme(hostRoot.current ?? document.documentElement),
     } satisfies PaneHostMessage);
+    pushAllSignals(port);
+    // 边车 chrome 可能晚于 guest 才挂上 port 监听；MessagePort 不重放已投递帧。
+    // 微任务 + 短延迟再推一次 workspace 快照，保证首进 agent 顶栏不空白。
+    const chromeValue = chromeSignal();
+    queueMicrotask(() => {
+      if (connections.current.get(instance.instanceId)?.port !== port) return;
+      port.post({ type: "pane:signal", name: PANE_CHROME_SIGNAL, value: chromeValue } satisfies PaneHostMessage);
+    });
+    window.setTimeout(() => {
+      if (connections.current.get(instance.instanceId)?.port !== port) return;
+      port.post({
+        type: "pane:signal",
+        name: PANE_CHROME_SIGNAL,
+        value: chromeSignal(),
+      } satisfies PaneHostMessage);
+    }, 80);
     const queued = pendingHostEvents.current.get(instance.paneId);
     if (queued !== undefined) {
       pendingHostEvents.current.delete(instance.paneId);
@@ -1162,7 +1274,7 @@ export function PanesHost({
         } satisfies PaneHostMessage);
       }
     }
-  }, [bindState, bindSurface, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
+  }, [bindState, bindSurface, chromeSignal, closeConnection, config.interactionMode, definition, handleRequest, onHostError, pushAllSignals]);
 
   React.useEffect(() => {
     if (hostEvent === undefined || lastHostEventId.current === hostEvent.id) return;
@@ -1456,7 +1568,6 @@ export function PanesHost({
     }
     setPaletteOpen(false);
     setTabMenuOpen(false);
-    nativeOverlay?.close();
   };
 
   const closePane = (instanceId: string): void => {
@@ -1474,7 +1585,7 @@ export function PanesHost({
   };
 
   const reloadPane = (instanceId: string): void => {
-    const instance = workspace.instances.find(
+    const instance = workspaceRef.current.instances.find(
       (candidate) => candidate.instanceId === instanceId,
     );
     if (instance === undefined) return;
@@ -1513,13 +1624,16 @@ export function PanesHost({
           );
           setNativeErrors((current) => new Map(current).set(instanceId, error));
         }, NATIVE_READY_TIMEOUT_MS);
+        // WebView 整页 reload；guest 再 pane:ready → 重绑
         mount.handle.reload();
         return;
       }
     }
+    // iframe：抬 epoch 换文档
     closeConnection(instanceId, false);
     dispatch({ type: "reload", instanceId });
   };
+  reloadPaneRef.current = reloadPane;
 
   const tabInstances = workspace.instances.filter(
     (instance) => !parkedInstanceIds.has(instance.instanceId),
@@ -1541,81 +1655,22 @@ export function PanesHost({
     ? workspace.activeInstanceId
     : undefined;
   /**
-   * 新开 Pane / 更多 tab：
-   * - native：child overlay **贴合 content-well**（与 content webview 同槽），内蒙版+菜单；
-   *   z 高于 content，**不 hide** 侧栏 webview。
-   * - 非 Tauri：DOM 蒙版盖在 content-well 上。
+   * 新开 Pane / 更多 tab：DOM 蒙版盖在 content-well 上。
    */
   const openPaletteMenu = (anchor?: Element): void => {
     setTabMenuOpen(false);
-    const cover = contentWellRef.current;
-    const themeEl = anchor ?? hostRoot.current ?? cover;
-    if (nativeOverlay !== undefined && cover !== null && themeEl !== null) {
-      setPaletteOpen(false);
-      const items = definition.panes.map((pane) => {
-        const openCount = workspace.instances.filter((i) => i.paneId === pane.id).length;
-        const parked = workspace.instances.some(
-          (i) => i.paneId === pane.id && parkedInstanceIds.has(i.instanceId),
-        );
-        const disabled =
-          !parked &&
-          (openCount >= pane.maxInstances ||
-            workspace.instances.length >= definition.maxOpenPanes);
-        return {
-          id: pane.id,
-          label: pane.title,
-          meta: pane.maxInstances === UNLIMITED_PANE_COUNT
-            ? `已开 ${openCount}`
-            : `${openCount}/${pane.maxInstances}`,
-          disabled,
-        };
-      });
-      void nativeOverlay.open({
-        title: "新开 Pane",
-        items,
-        cover,
-        anchor: themeEl,
-        placement: "center",
-        onSelect: (id) => openPane(id),
-      });
-      return;
-    }
     setPaletteOpen(true);
+    void anchor;
   };
   openPaletteRequestRef.current = openPaletteMenu;
   const openHiddenTabsMenu = (anchor: Element): void => {
     setPaletteOpen(false);
-    const cover = contentWellRef.current;
-    if (nativeOverlay !== undefined && cover !== null) {
-      setTabMenuOpen(false);
-      const items = hiddenInstances.map((instance) => {
-        const pane = paneById(definition, instance.paneId);
-        return {
-          id: instance.instanceId,
-          label: pane.title,
-          disabled: false,
-          selected: instance.instanceId === workspace.activeInstanceId,
-        };
-      });
-      void nativeOverlay.open({
-        title: "更多 Pane",
-        items,
-        cover,
-        anchor,
-        placement: "anchor-end",
-        onSelect: (instanceId) => {
-          dispatch({ type: "activate", instanceId });
-          if (nativeErrors.has(instanceId)) reloadPane(instanceId);
-        },
-      });
-      return;
-    }
     setTabMenuOpen(true);
+    void anchor;
   };
   const closeChromeMenus = (): void => {
     setPaletteOpen(false);
     setTabMenuOpen(false);
-    nativeOverlay?.close();
   };
 
   return (
@@ -1624,152 +1679,42 @@ export function PanesHost({
       data-panes-host
       data-panes-carrier={nativeAdapter !== undefined ? "tauri-webview" : "iframe"}
       className={className}
-      style={{ position: "relative", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}
+      style={{ position: "relative", height: "100%", minHeight: 0, background: "hsl(var(--background))", color: "hsl(var(--foreground))" }}
     >
       <style>{hostInteractionStyles}</style>
-      {/* Pane 层 chrome：紧凑扁平 tabs，选中仅底色/字色区分。 */}
-      <header
-        data-panes-chrome
-        data-panes-tabs
-        style={{
-          display: "flex",
-          minHeight: 34,
-          alignItems: "center",
-          gap: 1,
-          padding: "2px 4px",
-          borderBottom: "1px solid hsl(var(--border))",
-          background: "hsl(var(--surface-subtle))",
-        }}
-      >
-        {onRequestClose !== undefined ? (
-          <button
-            type="button"
-            data-pane-sidebar-collapse
-            aria-label="收起 Pane 侧栏"
-            title="收起 Pane 侧栏"
-            onClick={onRequestClose}
-            style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "4px" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <line x1="15" y1="4" x2="15" y2="20" />
-            </svg>
-          </button>
-        ) : null}
-        <nav ref={tabNav} aria-label="Panes" role="tablist" style={{ display: "flex", flex: 1, gap: 4, minWidth: 0, overflow: "hidden" }}>
-          {visibleInstances.map((instance) => {
-            const index = workspace.instances.findIndex(
-              (candidate) => candidate.instanceId === instance.instanceId,
-            );
-            const pane = paneById(definition, instance.paneId);
-            const count = workspace.instances.filter((candidate) => candidate.paneId === instance.paneId);
-            const ordinal = count.findIndex((candidate) => candidate.instanceId === instance.instanceId) + 1;
-            const selected = instance.instanceId === workspace.activeInstanceId;
-            return (
-              <div key={instance.instanceId} role="presentation" data-pane-tab-shell data-pane-tab-selected={selected ? "true" : "false"} draggable={advanced && config.allowTabReorder !== false}
-                onDragStart={() => setDraggedId(instance.instanceId)} onDragOver={(event) => event.preventDefault()}
-                onDrop={() => { if (draggedId !== undefined) dispatch({ type: "move", instanceId: draggedId, beforeInstanceId: instance.instanceId }); setDraggedId(undefined); }}
-                style={{
-                  display: "flex",
-                  flex: "0 1 auto",
-                  minWidth: 0,
-                  maxWidth: 148,
-                  alignItems: "center",
-                  borderRadius: 4,
-                  border: "none",
-                  background: selected ? "hsl(var(--surface))" : "transparent",
-                  boxShadow: "none",
-                }}>
-                <button type="button" role="tab" aria-selected={selected} aria-controls={`pane-view-${instance.instanceId}`}
-                  data-pane-tab
-                  title={`${pane.title} · Alt+${index + 1}`}
-                  onClick={() => {
-                    dispatch({ type: "activate", instanceId: instance.instanceId });
-                    if (nativeErrors.has(instance.instanceId)) {
-                      reloadPane(instance.instanceId);
-                    }
-                  }}
-                  style={{
-                    ...buttonStyle,
-                    flex: 1,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    padding: "4px 4px 4px 8px",
-                    minHeight: 28,
-                    lineHeight: 1.2,
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                    color: selected ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))",
-                    fontWeight: selected ? 500 : 400,
-                  }}>
-                  {pane.icon !== undefined ? <span aria-hidden="true" style={{ display: "inline-grid", marginRight: 4, verticalAlign: -1, opacity: .75 }}><PaneIcon name={pane.icon} /></span> : null}
-                  {pane.title}{count.length > 1 ? ` ${ordinal}` : ""}
-                </button>
-                <button type="button" aria-label={`关闭 ${pane.title}`} title="关闭 Pane" onClick={() => closePane(instance.instanceId)}
-                  data-pane-icon-button
-                  style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "2px 5px", color: "hsl(var(--muted-foreground))" }}>
-                  <X size={12} aria-hidden />
-                </button>
-              </div>
-            );
-          })}
-        </nav>
-        {hiddenInstances.length > 0 ? (
-          <button
-            type="button"
-            aria-label="更多 Pane"
-            title={`${hiddenInstances.length} 个 Pane 已收起`}
-            aria-haspopup="menu"
-            aria-expanded={tabMenuOpen}
-            onClick={(event) => openHiddenTabsMenu(event.currentTarget)}
-            data-pane-icon-button
-            style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "4px" }}
-          >
-            <MoreHorizontal size={15} aria-hidden />
-          </button>
-        ) : null}
-        <button type="button" aria-label="新开 Pane" title="新开 Pane" onClick={(event) => openPaletteMenu(event.currentTarget)}
-          data-pane-icon-button
-          style={{ ...buttonStyle, display: "grid", placeItems: "center", padding: "4px" }}>
-          <Plus size={15} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="刷新当前 Pane"
-          title="刷新当前 Pane"
-          disabled={activeTabInstanceId === undefined}
-          onClick={() => {
-            if (activeTabInstanceId !== undefined) {
-              reloadPane(activeTabInstanceId);
-            }
-          }}
-          data-pane-icon-button
+      {hostError !== undefined ? (
+        <div
+          role="alert"
+          data-pane-host-error={hostError.code}
           style={{
-            ...buttonStyle,
-            display: "grid",
-            placeItems: "center",
-            padding: "4px",
-            opacity: activeTabInstanceId === undefined ? .4 : 1,
+            position: "absolute",
+            zIndex: 20,
+            left: 0,
+            right: 0,
+            top: 0,
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 8,
+            padding: "7px 10px",
+            background: "hsl(var(--destructive) / .1)",
+            color: "hsl(var(--destructive))",
+            fontSize: 12,
           }}
         >
-          <RefreshCw size={14} aria-hidden />
-        </button>
-        {config.showCommandPalette !== false ? <button type="button" aria-label="打开 Pane 切换器" title="Ctrl/Cmd+K" onClick={(event) => openPaletteMenu(event.currentTarget)}
-          data-pane-icon-button
-          style={{ ...buttonStyle, display: "grid", placeItems: "center", border: "1px solid hsl(var(--border))", padding: "4px" }}>
-          <Command size={14} aria-hidden />
-        </button> : null}
-      </header>
-      {hostError !== undefined ? <div role="alert" data-pane-host-error={hostError.code} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "7px 10px", background: "hsl(var(--destructive) / .1)", color: "hsl(var(--destructive))", fontSize: 12 }}><span>{hostError.message}</span><button type="button" aria-label="关闭错误提示" onClick={() => setHostError(undefined)} style={{ ...buttonStyle, display: "grid", placeItems: "center" }}><X size={14} aria-hidden /></button></div> : null}
+          <span>{hostError.message}</span>
+          <button type="button" aria-label="关闭错误提示" onClick={() => setHostError(undefined)} style={{ ...buttonStyle, display: "grid", placeItems: "center" }}>
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      ) : null}
       {/*
-        content-well：iframe 直接填井；native child 叠在井上（Rust 按井几何 set_bounds）。
-        结构与 iframe 一致，仅载体不同。
+        content-well 满铺 host：chrome 在 child 文档内，native child 叠满井 = 满格高度。
+        宿主不再渲染顶栏 tabs（会从井高里偷像素）。
       */}
       <div
         ref={setContentWell}
         data-panes-content-well
-        style={{ position: "relative", flex: 1, minHeight: 0 }}
+        style={{ position: "absolute", inset: 0 }}
       >
         {tabInstances.length === 0 ? <div style={{ height: "100%", display: "grid", placeItems: "center", color: "hsl(var(--muted-foreground))" }}><button type="button" onClick={(event) => openPaletteMenu(event.currentTarget)} style={{ ...buttonStyle, border: "1px solid hsl(var(--border))", padding: "8px 12px" }}>打开一个 Pane</button></div> : null}
         {workspace.instances.map((instance) => {
@@ -1796,7 +1741,10 @@ export function PanesHost({
             data-pane-carrier="iframe"
             sandbox={`allow-scripts${pane.capabilities.downloads ? " allow-downloads" : ""}`}
             referrerPolicy="no-referrer"
-            {...(pane.document.kind === "inline" ? { srcDoc: pane.document.srcDoc } : { src: pane.document.src })}
+            {...(pane.document.kind === "inline"
+              // 默认包装器：凡 inline pane 强制带 chrome（幂等）；URL 形态须构建期 wrap。
+              ? { srcDoc: wrapPaneDocument(pane.document.srcDoc, { mode: "inline" }) }
+              : { src: pane.document.src })}
             style={{ display: active ? "block" : "none", width: "100%", height: "100%", border: 0 }} />;
         })}
         {/* 非 native：更多 tab 蒙版贴 content-well */}
@@ -1863,7 +1811,7 @@ export function PanesHost({
             </div>
           </div>
         ) : null}
-        {/* 非 native：新开 Pane 蒙版贴 content-well（与 native overlay 槽一致） */}
+        {/* 新开 Pane 蒙版贴 content-well */}
         {paletteOpen ? (
           <div
             role="dialog"
