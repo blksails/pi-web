@@ -300,7 +300,7 @@ describe("command routes", () => {
         if (id !== "att_img") throw new Error("missing");
         return {
           stream: Readable.from([Buffer.from(png)]),
-          meta: { mimeType: "image/png" },
+          meta: { mimeType: "image/png", size: 4 },
         };
       },
     };
@@ -341,7 +341,7 @@ describe("command routes", () => {
           : undefined,
       getReadStream: async () => ({
         stream: Readable.from([Buffer.from(png)]),
-        meta: { mimeType: "image/png" },
+        meta: { mimeType: "image/png", size: 4 },
       }),
     };
     // 注册 attachment completion provider,使 @attachment: 在提交期改写为标记
@@ -374,7 +374,7 @@ describe("command routes", () => {
           : undefined,
       getReadStream: async () => ({
         stream: Readable.from([Buffer.from("%PDF")]),
-        meta: { mimeType: "application/pdf" },
+        meta: { mimeType: "application/pdf", size: 3 },
       }),
     };
     const { handler, session } = setup({ attachmentStore: store });
@@ -404,7 +404,7 @@ describe("command routes", () => {
           : undefined,
       getReadStream: async () => ({
         stream: Readable.from([Buffer.from(png)]),
-        meta: { mimeType: "image/png" },
+        meta: { mimeType: "image/png", size: 4 },
       }),
     };
     const clientImage = {

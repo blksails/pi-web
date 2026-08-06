@@ -17,6 +17,7 @@ import {
   UiRpcRequestSchema,
   CommandExecutePayloadSchema,
 } from "@blksails/pi-web-protocol";
+import type { BlobMeta } from "../../attachment/index.js";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import type { HostCommandRegistry } from "../../commands/host-command-registry.js";
 import { SessionNotFoundError } from "../../session/index.js";
@@ -90,7 +91,7 @@ export interface AttachmentMetaSource {
    */
   getReadStream?(
     id: string,
-  ): Promise<{ stream: NodeJS.ReadableStream; meta: { mimeType: string } }>;
+  ): Promise<{ stream: NodeJS.ReadableStream; meta: BlobMeta }>;
 }
 
 /**
