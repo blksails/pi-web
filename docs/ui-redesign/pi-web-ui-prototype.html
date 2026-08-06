@@ -1,0 +1,817 @@
+<div id="pi-web-redesign-prototype">
+  <style>
+    #pi-web-redesign-prototype {
+      --bg: #ffffff;
+      --canvas: #ffffff;
+      --sidebar: #ffffff;
+      --surface: #ffffff;
+      --surface-subtle: #f6f6f6;
+      --text: #171717;
+      --muted: #727272;
+      --line: #e1e1e1;
+      --accent: #171717;
+      --accent-foreground: #ffffff;
+      --accent-soft: #f1f1f1;
+      --danger: #171717;
+      --warning: #6c6c6c;
+      --chrome: #171717;
+      --chrome-text: #f7f7f7;
+      --radius-panel: 12px;
+      --radius-control: 8px;
+      --radius-inner: 6px;
+      box-sizing: border-box;
+      min-width: 320px;
+      max-width: none;
+      container-type: inline-size;
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      border: 0;
+      border-radius: 0;
+      overflow: hidden;
+      font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    #pi-web-redesign-prototype *,
+    #pi-web-redesign-prototype *::before,
+    #pi-web-redesign-prototype *::after { box-sizing: border-box; }
+
+    #pi-web-redesign-prototype button,
+    #pi-web-redesign-prototype input,
+    #pi-web-redesign-prototype textarea { font: inherit; }
+
+    #pi-web-redesign-prototype button {
+      color: inherit;
+      border: 0;
+      cursor: pointer;
+    }
+
+    #pi-web-redesign-prototype button:focus-visible,
+    #pi-web-redesign-prototype input:focus-visible,
+    #pi-web-redesign-prototype textarea:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    #pi-web-redesign-prototype .proto-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 52px;
+      padding: 9px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--chrome);
+      color: var(--accent-foreground);
+    }
+
+    #pi-web-redesign-prototype .proto-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: max-content;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    #pi-web-redesign-prototype .proto-brand > span:last-child { display: flex; flex-direction: column; gap: 1px; }
+    #pi-web-redesign-prototype .proto-toolbar .proto-kicker { color: #8d8d8d; }
+
+    #pi-web-redesign-prototype .proto-mark {
+      display: grid;
+      width: 30px;
+      height: 28px;
+      place-items: center;
+      border-radius: 2px;
+      color: var(--chrome);
+      background: var(--chrome-text);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    #pi-web-redesign-prototype .proto-actions,
+    #pi-web-redesign-prototype .proto-switcher,
+    #pi-web-redesign-prototype .proto-button-row,
+    #pi-web-redesign-prototype .proto-inline,
+    #pi-web-redesign-prototype .proto-toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    #pi-web-redesign-prototype .proto-switcher {
+      flex: 1;
+      justify-content: center;
+    }
+
+    #pi-web-redesign-prototype .proto-button,
+    #pi-web-redesign-prototype .proto-tab {
+      min-height: 32px;
+      padding: 5px 10px;
+      border-radius: var(--radius-control);
+      background: transparent;
+      color: var(--muted);
+      transition: background 180ms ease, color 180ms ease, transform 180ms ease;
+    }
+
+    #pi-web-redesign-prototype .proto-button:hover,
+    #pi-web-redesign-prototype .proto-tab:hover { background: var(--surface-subtle); color: var(--text); }
+
+    #pi-web-redesign-prototype .proto-toolbar .proto-button,
+    #pi-web-redesign-prototype .proto-toolbar .proto-tab { color: #bdbdbd; }
+
+    #pi-web-redesign-prototype .proto-toolbar .proto-button:hover,
+    #pi-web-redesign-prototype .proto-toolbar .proto-tab:hover { background: #292929; color: #ffffff; }
+
+    #pi-web-redesign-prototype .proto-button:active,
+    #pi-web-redesign-prototype .proto-tab:active { transform: translateY(1px); }
+
+    #pi-web-redesign-prototype .proto-button.primary {
+      color: var(--chrome-text);
+      background: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    #pi-web-redesign-prototype .proto-new-button { display: flex; width: 100%; min-height: 42px; align-items: center; justify-content: flex-start; gap: 6px; }
+
+    #pi-web-redesign-prototype .proto-button.danger { color: var(--danger); }
+
+    #pi-web-redesign-prototype .proto-tab[aria-selected="true"] {
+      color: var(--text);
+      background: var(--surface-subtle);
+      box-shadow: inset 0 -2px 0 var(--chrome-text);
+    }
+
+    #pi-web-redesign-prototype .proto-toolbar .proto-tab[aria-selected="true"] {
+      color: #ffffff;
+      background: #202020;
+      box-shadow: inset 0 -2px 0 #ffffff;
+    }
+
+    #pi-web-redesign-prototype .proto-shell {
+      display: grid;
+      grid-template-columns: 244px minmax(0, 1fr) 360px;
+      min-height: 780px;
+      background: var(--canvas);
+    }
+
+    #pi-web-redesign-prototype .proto-shell.no-panel { grid-template-columns: 244px minmax(0, 1fr); }
+    #pi-web-redesign-prototype .proto-shell.no-panel .proto-pane { display: none; }
+    #pi-web-redesign-prototype .proto-shell { transition: grid-template-columns 220ms ease; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-shell,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-shell { grid-template-columns: 72px minmax(0, 1fr); }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-shell:not(.no-panel),
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-shell:not(.no-panel) { grid-template-columns: 72px minmax(0, 1fr) 360px; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-shell.no-panel,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-shell.no-panel { grid-template-columns: 72px minmax(0, 1fr); }
+    #pi-web-redesign-prototype.is-auto-collapsed.is-auto-expanded .proto-shell,
+    #pi-web-redesign-prototype.is-auto-collapsed.is-auto-expanded .proto-shell.no-panel { grid-template-columns: 244px minmax(0, 1fr); }
+    #pi-web-redesign-prototype.is-auto-collapsed.is-auto-expanded .proto-shell:not(.no-panel) { grid-template-columns: 244px minmax(0, 1fr) 360px; }
+
+    #pi-web-redesign-prototype .proto-sidebar {
+      display: flex;
+      min-width: 0;
+      position: relative;
+      flex-direction: column;
+      gap: 16px;
+      padding: 20px 16px 14px;
+      border-right: 1px solid var(--line);
+      background: var(--sidebar);
+    }
+
+    #pi-web-redesign-prototype .proto-sidebar-head,
+    #pi-web-redesign-prototype .proto-context,
+    #pi-web-redesign-prototype .proto-pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    #pi-web-redesign-prototype .proto-sidebar-head { padding: 0 2px 2px; }
+    #pi-web-redesign-prototype .proto-sidebar-head { flex-direction: column; align-items: stretch; gap: 12px; }
+    #pi-web-redesign-prototype .proto-sidebar-tools { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    #pi-web-redesign-prototype .proto-current-agent { display: flex; width: 100%; min-width: 0; align-items: center; gap: 9px; padding: 0; border: 0; color: inherit; text-align: left; background: transparent; }
+    #pi-web-redesign-prototype .proto-current-agent-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+    #pi-web-redesign-prototype .proto-current-agent-copy strong { font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+    #pi-web-redesign-prototype .proto-current-agent-copy span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-current-agent-caret { margin-left: auto; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    #pi-web-redesign-prototype .proto-current-agent:hover .proto-current-agent-copy strong { text-decoration: underline; text-underline-offset: 3px; }
+    #pi-web-redesign-prototype .proto-agent-switcher { display: flex; min-width: 0; align-items: center; gap: 8px; flex: 1; }
+    #pi-web-redesign-prototype .proto-agent-current { display: flex; min-width: 0; align-items: center; gap: 9px; }
+    #pi-web-redesign-prototype .proto-agent-current-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+    #pi-web-redesign-prototype .proto-agent-current-copy strong { overflow: hidden; font-size: 15px; font-weight: 600; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-agent-current-copy span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-agent-switch-button { display: inline-flex; min-height: 30px; align-items: center; gap: 4px; padding: 5px 7px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 12px; }
+    #pi-web-redesign-prototype .proto-agent-switch-button:hover { border-color: var(--text); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-agent-switch-mark { display: inline-grid; width: 20px; height: 20px; place-items: center; color: var(--text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+    #pi-web-redesign-prototype .proto-agent-switch-caret { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    #pi-web-redesign-prototype .proto-agent-menu { position: absolute; top: 96px; left: 12px; right: 12px; z-index: 10; padding: 7px; border: 1px solid var(--text); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 28px rgba(0,0,0,.12); }
+    #pi-web-redesign-prototype .proto-agent-menu[hidden] { display: none; }
+    #pi-web-redesign-prototype .proto-agent-menu-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px 7px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; }
+    #pi-web-redesign-prototype .proto-agent-option { display: flex; width: 100%; min-width: 0; align-items: center; gap: 8px; padding: 8px; border-radius: 7px; text-align: left; background: transparent; }
+    #pi-web-redesign-prototype .proto-agent-option:hover,
+    #pi-web-redesign-prototype .proto-agent-option.active { background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-agent-option-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+    #pi-web-redesign-prototype .proto-agent-option-copy strong,
+    #pi-web-redesign-prototype .proto-agent-option-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-agent-option-copy strong { font-size: 12px; font-weight: 500; }
+    #pi-web-redesign-prototype .proto-agent-option-copy span { color: var(--muted); font-size: 11px; }
+    #pi-web-redesign-prototype .proto-agent-menu-footer { display: flex; gap: 5px; margin-top: 5px; padding-top: 6px; border-top: 1px solid var(--line); }
+    #pi-web-redesign-prototype .proto-agent-menu-footer .proto-button { flex: 1; padding-inline: 6px; font-size: 11px; }
+    #pi-web-redesign-prototype .proto-sidebar-toggle { width: 30px; min-height: 30px; padding: 4px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    #pi-web-redesign-prototype .proto-sidebar-toggle:hover { color: var(--text); background: var(--surface-subtle); }
+
+    #pi-web-redesign-prototype .proto-kicker {
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+
+    #pi-web-redesign-prototype .proto-search {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-control);
+      background: var(--surface);
+      color: var(--muted);
+    }
+
+    #pi-web-redesign-prototype .proto-search input,
+    #pi-web-redesign-prototype .proto-source-input,
+    #pi-web-redesign-prototype .proto-settings-input {
+      min-width: 0;
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+    }
+
+    #pi-web-redesign-prototype .proto-nav-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-height: 34px;
+      padding: 6px 9px;
+      border-radius: var(--radius-control);
+      background: transparent;
+      text-align: left;
+    }
+
+    #pi-web-redesign-prototype .proto-nav-link:hover,
+    #pi-web-redesign-prototype .proto-nav-link.active { background: var(--surface); }
+
+    #pi-web-redesign-prototype .proto-nav-link.active {
+      box-shadow: inset 2px 0 0 var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    #pi-web-redesign-prototype .proto-divider { height: 1px; background: var(--line); }
+
+    #pi-web-redesign-prototype .proto-session-list {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 3px;
+      overflow: auto;
+    }
+
+    #pi-web-redesign-prototype .proto-section-label {
+      padding: 2px 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    #pi-web-redesign-prototype .proto-session {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+      padding: 7px 8px;
+      border-radius: var(--radius-control);
+      background: transparent;
+      text-align: left;
+    }
+
+    #pi-web-redesign-prototype .proto-session:hover { background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-session.active { background: var(--accent-soft); }
+
+    #pi-web-redesign-prototype .proto-session-status {
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 1px;
+      background: var(--muted);
+    }
+
+    #pi-web-redesign-prototype .proto-session-status.working { background: var(--accent); }
+    #pi-web-redesign-prototype .proto-session-status.waiting { background: transparent; border: 1px solid var(--muted); }
+    #pi-web-redesign-prototype .proto-session-status.error { background: transparent; border: 1px solid var(--text); transform: rotate(45deg); }
+
+    #pi-web-redesign-prototype .proto-session-copy { min-width: 0; flex: 1; }
+    #pi-web-redesign-prototype .proto-session-title,
+    #pi-web-redesign-prototype .proto-session-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-session-title { font-size: 13px; }
+    #pi-web-redesign-prototype .proto-session-meta { color: var(--muted); font-size: 11px; }
+
+    #pi-web-redesign-prototype .proto-account {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-top: 8px;
+      border-top: 1px solid var(--line);
+    }
+    #pi-web-redesign-prototype .proto-rail-glyph { display: inline-grid; width: 20px; height: 20px; place-items: center; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-sidebar,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-sidebar { padding-inline: 10px; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-current-agent-copy,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-current-agent-copy,
+    #pi-web-redesign-prototype.is-sidebar-collapsed [data-sidebar-copy],
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) [data-sidebar-copy],
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-search input,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-search input,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-section-label,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-section-label,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-current-agent-caret,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-current-agent-caret { display: none; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-current-copy,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-current-copy,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-session-copy,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-session-copy,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-switch-label,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-switch-label { display: none; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-current,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-current { display: none; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-sidebar-tools,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-sidebar-tools { justify-content: center; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-switch-button,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-switch-button { width: 30px; justify-content: center; padding-inline: 0; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-switch-caret,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-switch-caret { display: none; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-agent-menu,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-agent-menu { top: 12px; left: 62px; right: auto; width: 226px; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-sidebar-head,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-sidebar-head { align-items: stretch; gap: 6px; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-session,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-session { justify-content: center; padding-inline: 0; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-search,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-search { justify-content: center; padding-inline: 0; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-account .proto-nav-link,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-account .proto-nav-link,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-account .proto-inline,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-account .proto-inline { justify-content: center; }
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-new-button,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-new-button,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-search,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-search,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-session,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-session,
+    #pi-web-redesign-prototype.is-sidebar-collapsed .proto-account .proto-button,
+    #pi-web-redesign-prototype.is-auto-collapsed:not(.is-auto-expanded) .proto-account .proto-button { border-color: transparent; background: transparent; }
+
+    #pi-web-redesign-prototype .proto-main {
+      display: flex;
+      min-width: 0;
+      position: relative;
+      flex-direction: column;
+    }
+    #pi-web-redesign-prototype .proto-pane-launcher { position: absolute; top: 14px; right: 18px; z-index: 2; display: inline-grid; width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 7px; border-color: var(--line); color: var(--text); background: var(--surface); }
+    #pi-web-redesign-prototype .proto-shell:not(.no-panel) .proto-pane-launcher { display: none; }
+    #pi-web-redesign-prototype .proto-pane-launch-icon { width: 16px; height: 16px; }
+
+    #pi-web-redesign-prototype .proto-context {
+      min-height: 76px;
+      padding: 16px 48px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    #pi-web-redesign-prototype .proto-context-title { min-width: 0; }
+    #pi-web-redesign-prototype .proto-context-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-context-title span { color: var(--muted); font-size: 11px; }
+
+    #pi-web-redesign-prototype .proto-message-scroll {
+      display: flex;
+      min-height: 0;
+      flex: 1;
+      flex-direction: column;
+      gap: 28px;
+      overflow: auto;
+      padding: 38px max(28px, 6vw) 30px;
+    }
+
+    #pi-web-redesign-prototype .proto-message { width: min(100%, 840px); max-width: 840px; min-width: 0; overflow-wrap: anywhere; }
+    #pi-web-redesign-prototype .proto-message.user { align-self: flex-end; width: min(76%, 680px); max-width: 680px; }
+    #pi-web-redesign-prototype .proto-message.user .proto-message-body { color: var(--accent-foreground); background: var(--accent); border-color: var(--accent); }
+    #pi-web-redesign-prototype .proto-message-body {
+      padding: 12px 14px;
+      border-radius: var(--radius-control);
+      background: var(--surface);
+      border: 1px solid var(--line);
+    }
+
+    #pi-web-redesign-prototype .proto-message.assistant .proto-message-body { border-left: 2px solid var(--accent); }
+    #pi-web-redesign-prototype .proto-message-meta { margin-bottom: 5px; color: var(--muted); font-size: 11px; }
+    #pi-web-redesign-prototype .proto-message-body p { margin: 0 0 8px; }
+    #pi-web-redesign-prototype .proto-message-body p:last-child { margin-bottom: 0; }
+
+    #pi-web-redesign-prototype .proto-tool {
+      margin-top: 9px;
+      padding: 9px 11px;
+      border-left: 2px solid var(--line);
+      background: var(--surface-subtle);
+      border-radius: var(--radius-inner);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    #pi-web-redesign-prototype .proto-tool strong { color: var(--text); }
+    #pi-web-redesign-prototype .proto-code { padding: 11px; border: 1px solid var(--line); border-left: 2px solid var(--accent); border-radius: var(--radius-inner); background: var(--surface-subtle); color: var(--text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; overflow: auto; }
+    #pi-web-redesign-prototype .proto-asset-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: dense; gap: 8px; margin-top: 12px; }
+    #pi-web-redesign-prototype .proto-asset { min-width: 0; padding: 6px; border: 1px solid var(--line); border-radius: var(--radius-inner); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-asset-art { display: grid; min-height: 84px; place-items: center; border: 1px solid var(--line); background: var(--canvas); color: var(--muted); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; letter-spacing: .04em; }
+    #pi-web-redesign-prototype .proto-asset-art::before { content: ""; width: 30px; height: 44px; border: 1px solid var(--text); box-shadow: 8px -7px 0 -1px var(--canvas), 8px -7px 0 0 var(--text); }
+    #pi-web-redesign-prototype .proto-asset-art { position: relative; min-height: 116px; overflow: hidden; aspect-ratio: 4 / 5; }
+    #pi-web-redesign-prototype .proto-asset-art::before { position: absolute; width: 44%; height: 66%; border: 0; box-shadow: none; background: var(--text); }
+    #pi-web-redesign-prototype .proto-asset-art::after { content: ""; position: absolute; right: 13%; bottom: 14%; width: 45%; height: 1px; background: var(--text); }
+    #pi-web-redesign-prototype .proto-asset:nth-child(2) .proto-asset-art::before { width: 46%; height: 46%; border-radius: 50%; }
+    #pi-web-redesign-prototype .proto-asset:nth-child(2) .proto-asset-art::after { right: 18%; bottom: 20%; width: 26%; height: 26%; border: 1px solid var(--text); background: transparent; }
+    #pi-web-redesign-prototype .proto-asset:nth-child(3) .proto-asset-art::before { width: 68%; height: 1px; background: var(--text); box-shadow: 0 13px 0 var(--text), 0 26px 0 var(--text); }
+    #pi-web-redesign-prototype .proto-asset:nth-child(3) .proto-asset-art::after { right: 15%; bottom: 15%; width: 16%; height: 16%; border-radius: 50%; background: var(--text); }
+    #pi-web-redesign-prototype .proto-asset:nth-child(4) .proto-asset-art::before { top: 16%; width: 70%; height: 14%; }
+    #pi-web-redesign-prototype .proto-asset:nth-child(4) .proto-asset-art::after { right: 18%; bottom: 16%; width: 42%; height: 42%; background: var(--text); }
+    #pi-web-redesign-prototype .proto-asset span { display: block; margin-top: 5px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+    #pi-web-redesign-prototype .proto-queue {
+      display: none;
+      margin: 0 18px 8px;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-control);
+      background: var(--surface);
+      font-size: 12px;
+    }
+
+    #pi-web-redesign-prototype .proto-queue.show { display: block; }
+    #pi-web-redesign-prototype .proto-queue-row { display: flex; justify-content: space-between; gap: 10px; }
+    #pi-web-redesign-prototype .proto-queue-row + .proto-queue-row { margin-top: 5px; }
+    #pi-web-redesign-prototype .proto-queue-label { color: var(--muted); }
+
+    #pi-web-redesign-prototype .proto-dock {
+      padding: 14px 48px 22px;
+      border-top: 1px solid var(--line);
+      background: var(--canvas);
+    }
+
+    #pi-web-redesign-prototype .proto-prompt {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: min(100%, 1040px);
+      margin: 0 auto;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+    }
+
+    #pi-web-redesign-prototype .proto-shortcuts { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    #pi-web-redesign-prototype .proto-shortcut { min-height: 27px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: 12px; }
+    #pi-web-redesign-prototype .proto-shortcut:hover { color: var(--text); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-prompt textarea { min-height: 48px; resize: vertical; border: 0; outline: 0; background: transparent; color: var(--text); }
+    #pi-web-redesign-prototype .proto-prompt textarea::placeholder { color: var(--muted); }
+    #pi-web-redesign-prototype .proto-prompt-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #pi-web-redesign-prototype .proto-toolbar-row { color: var(--muted); font-size: 12px; }
+
+    #pi-web-redesign-prototype .proto-pane {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      border-left: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    #pi-web-redesign-prototype .proto-pane-chrome { display: flex; min-height: 34px; align-items: center; gap: 3px; padding: 2px 4px; border-bottom: 1px solid var(--line); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-pane-tabs { display: flex; flex: 1; min-width: 0; gap: 4px; overflow: hidden; }
+    #pi-web-redesign-prototype .proto-pane-tab-shell { display: flex; flex: 0 1 auto; min-width: 0; max-width: 148px; align-items: center; border-radius: 4px; }
+    #pi-web-redesign-prototype .proto-pane-tab-shell.active { background: var(--surface); }
+    #pi-web-redesign-prototype .proto-pane-tab { min-width: 0; min-height: 28px; flex: 1; overflow: hidden; padding: 4px 5px 4px 8px; border: 0; color: var(--muted); background: transparent; font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-pane-tab.active { color: var(--text); }
+    #pi-web-redesign-prototype .proto-pane-tab-close,
+    #pi-web-redesign-prototype .proto-pane-icon { display: inline-grid; width: 26px; height: 28px; flex: 0 0 26px; place-items: center; padding: 4px; border-radius: 4px; color: var(--muted); background: transparent; }
+    #pi-web-redesign-prototype .proto-pane-tab-close:hover,
+    #pi-web-redesign-prototype .proto-pane-icon:hover { color: var(--text); background: var(--surface); }
+    #pi-web-redesign-prototype .proto-pane-body { display: flex; flex: 1; flex-direction: column; gap: 12px; padding: 14px; overflow: auto; }
+    #pi-web-redesign-prototype .proto-pane-body [data-pane-view] { display: none; }
+    #pi-web-redesign-prototype .proto-pane-body [data-pane-view].active { display: block; }
+    #pi-web-redesign-prototype .proto-pane-section { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-pane-section h3 { margin: 0 0 6px; font-size: 13px; }
+    #pi-web-redesign-prototype .proto-pane-section p { margin: 0; color: var(--muted); font-size: 12px; }
+    #pi-web-redesign-prototype .proto-file { display: block; width: 100%; padding: 5px 6px; border-radius: var(--radius-inner); background: transparent; text-align: left; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
+    #pi-web-redesign-prototype .proto-file:hover { background: var(--surface); }
+    #pi-web-redesign-prototype .proto-canvas-shell { display: grid; gap: 10px; }
+    #pi-web-redesign-prototype .proto-canvas-board { display: grid; min-height: 250px; place-items: center; border: 1px solid var(--line); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-canvas-poster { position: relative; width: 44%; aspect-ratio: 4 / 5; overflow: hidden; background: var(--text); }
+    #pi-web-redesign-prototype .proto-canvas-poster::before { content: "AIGC"; position: absolute; left: 12%; top: 12%; color: var(--accent-foreground); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11px; letter-spacing: .12em; }
+    #pi-web-redesign-prototype .proto-canvas-poster::after { content: "MONO / 02"; position: absolute; right: 10%; bottom: 10%; color: var(--accent-foreground); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 9px; }
+    #pi-web-redesign-prototype .proto-canvas-rail { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+    #pi-web-redesign-prototype .proto-canvas-thumb { min-height: 54px; border: 1px solid var(--line); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-canvas-thumb.active { border-color: var(--text); box-shadow: inset 0 0 0 2px var(--surface); }
+
+    #pi-web-redesign-prototype .proto-screen { display: none; min-width: 0; flex: 1; flex-direction: column; }
+    #pi-web-redesign-prototype .proto-screen.active { display: flex; }
+
+    #pi-web-redesign-prototype .proto-picker {
+      display: grid;
+      width: min(760px, calc(100% - 36px));
+      margin: auto;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 42px;
+      align-items: start;
+    }
+
+    #pi-web-redesign-prototype .proto-picker-copy { padding-top: 18px; }
+    #pi-web-redesign-prototype .proto-picker-copy h1 { max-width: 12ch; margin: 12px 0 14px; font-size: 36px; line-height: 1.04; letter-spacing: -0.055em; }
+    #pi-web-redesign-prototype .proto-picker-copy p { max-width: 38ch; margin: 0; color: var(--muted); }
+    #pi-web-redesign-prototype .proto-picker-card { padding: 16px; border: 1px solid var(--text); border-radius: var(--radius-panel); background: var(--surface); box-shadow: 8px 8px 0 var(--text); }
+    #pi-web-redesign-prototype .proto-source-row { display: flex; align-items: center; gap: 9px; padding: 9px 7px; border-radius: var(--radius-control); }
+    #pi-web-redesign-prototype .proto-source-row:hover { background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-source-row.active { box-shadow: inset 2px 0 0 var(--text); background: var(--surface-subtle); }
+    #pi-web-redesign-prototype .proto-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border-radius: var(--radius-control); color: var(--accent-foreground); background: var(--accent); font-weight: 700; }
+    #pi-web-redesign-prototype .proto-source-copy { min-width: 0; flex: 1; }
+    #pi-web-redesign-prototype .proto-source-copy strong, #pi-web-redesign-prototype .proto-source-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #pi-web-redesign-prototype .proto-source-copy span { color: var(--muted); font-size: 11px; }
+    #pi-web-redesign-prototype .proto-field { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; color: var(--muted); font-size: 12px; }
+    #pi-web-redesign-prototype .proto-field-box { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 9px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
+    #pi-web-redesign-prototype .proto-picker-actions { display: flex; align-items: center; gap: 7px; margin-top: 14px; }
+
+    #pi-web-redesign-prototype .proto-settings {
+      display: grid;
+      width: min(920px, calc(100% - 36px));
+      margin: 0 auto;
+      grid-template-columns: 170px minmax(0, 1fr);
+      gap: 28px;
+      padding: 28px 0;
+    }
+
+    #pi-web-redesign-prototype .proto-settings-nav { display: flex; flex-direction: column; gap: 3px; }
+    #pi-web-redesign-prototype .proto-settings-nav button { padding: 8px 10px; border-radius: var(--radius-control); background: transparent; text-align: left; }
+    #pi-web-redesign-prototype .proto-settings-nav button.active, #pi-web-redesign-prototype .proto-settings-nav button:hover { background: var(--surface); }
+    #pi-web-redesign-prototype .proto-settings-content { padding: 20px; border: 1px solid var(--text); border-radius: var(--radius-panel); background: var(--surface); box-shadow: 8px 8px 0 var(--text); }
+    #pi-web-redesign-prototype .proto-settings-content h1 { margin: 0; font-size: 22px; letter-spacing: -0.03em; }
+    #pi-web-redesign-prototype .proto-settings-content > p { margin: 5px 0 20px; color: var(--muted); }
+    #pi-web-redesign-prototype .proto-setting-group { padding: 14px 0; border-top: 1px solid var(--line); }
+    #pi-web-redesign-prototype .proto-setting-group h2 { margin: 0 0 10px; font-size: 14px; }
+    #pi-web-redesign-prototype .proto-setting-row { display: grid; grid-template-columns: 1fr 180px; gap: 12px; align-items: center; padding: 8px 0; }
+    #pi-web-redesign-prototype .proto-setting-row label { font-size: 13px; }
+    #pi-web-redesign-prototype .proto-setting-row small { display: block; color: var(--muted); font-size: 11px; }
+    #pi-web-redesign-prototype .proto-settings-input { min-height: 32px; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--canvas); }
+
+    #pi-web-redesign-prototype.is-dark {
+      --bg: #050505;
+      --canvas: #111111;
+      --sidebar: #0b0b0b;
+      --surface: #191919;
+      --surface-subtle: #222222;
+      --text: #f4f4f4;
+      --muted: #a0a0a0;
+      --line: #3b3b3b;
+      --accent: #f4f4f4;
+      --accent-foreground: #101010;
+      --accent-soft: #2b2b2b;
+      --danger: #f4f4f4;
+      --warning: #a0a0a0;
+      --chrome: #000000;
+      --chrome-text: #f4f4f4;
+    }
+
+    #pi-web-redesign-prototype.is-mobile .proto-shell,
+    #pi-web-redesign-prototype.is-mobile .proto-shell.no-panel { grid-template-columns: minmax(0, 1fr); }
+    #pi-web-redesign-prototype.is-mobile .proto-sidebar { display: none; }
+    #pi-web-redesign-prototype.is-mobile .proto-pane { display: none; }
+    #pi-web-redesign-prototype.is-mobile .proto-pane.mobile-open { display: flex; position: absolute; inset: 51px 0 0 0; z-index: 2; }
+    #pi-web-redesign-prototype.is-mobile .proto-shell { position: relative; min-height: 700px; }
+    #pi-web-redesign-prototype.is-mobile .proto-picker { grid-template-columns: 1fr; gap: 8px; }
+    #pi-web-redesign-prototype.is-mobile .proto-picker-copy { padding-top: 0; }
+    #pi-web-redesign-prototype.is-mobile .proto-picker-copy h1 { font-size: 26px; }
+    #pi-web-redesign-prototype.is-mobile .proto-settings { grid-template-columns: 1fr; gap: 14px; }
+    #pi-web-redesign-prototype.is-mobile .proto-settings-nav { display: grid; grid-template-columns: repeat(3, 1fr); }
+    #pi-web-redesign-prototype.is-mobile .proto-setting-row { grid-template-columns: 1fr; gap: 5px; }
+    #pi-web-redesign-prototype.is-mobile .proto-message.user { max-width: 88%; }
+    #pi-web-redesign-prototype.is-mobile .proto-context { padding-inline: 12px; }
+    #pi-web-redesign-prototype.is-mobile .proto-message-scroll { padding-inline: 12px; }
+    #pi-web-redesign-prototype.is-mobile .proto-dock { padding-inline: 10px; }
+
+    @media (max-width: 900px) {
+      #pi-web-redesign-prototype:not(.is-mobile) .proto-shell { grid-template-columns: 220px minmax(0, 1fr); }
+      #pi-web-redesign-prototype:not(.is-mobile) .proto-pane { display: none; }
+      #pi-web-redesign-prototype:not(.is-mobile) .proto-picker { width: min(700px, calc(100% - 28px)); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #pi-web-redesign-prototype *,
+      #pi-web-redesign-prototype *::before,
+      #pi-web-redesign-prototype *::after { transition-duration: 0.01ms !important; }
+    }
+  </style>
+
+  <div class="proto-shell no-panel" data-shell>
+    <aside class="proto-sidebar" aria-label="会话导航">
+      <div class="proto-sidebar-head">
+        <div class="proto-sidebar-tools"><button class="proto-agent-switch-button" data-agent-switch type="button" aria-label="切换 Agent" aria-haspopup="menu" aria-expanded="false"><span class="proto-agent-switch-mark" aria-hidden="true">A</span><span class="proto-agent-switch-label">Agent</span><span class="proto-agent-switch-caret" aria-hidden="true">⌄</span></button><button class="proto-button proto-sidebar-toggle" data-sidebar-toggle type="button" aria-label="收起侧栏" aria-expanded="true">‹</button></div>
+        <div class="proto-agent-current"><span class="proto-avatar" data-current-agent-avatar aria-hidden="true">A</span><span class="proto-agent-current-copy"><span>当前 Agent</span><strong data-current-agent-name>AIGC Studio</strong><span data-current-agent-meta>生图 · Canvas · 素材</span></span></div>
+      </div>
+      <div class="proto-agent-menu" data-agent-menu role="menu" hidden><div class="proto-agent-menu-head"><span>推荐 Agents</span><span>03</span></div><button class="proto-agent-option active" data-agent-option data-agent-name="AIGC Studio" data-agent-meta="生图 · Canvas · 素材" data-agent-avatar="A" role="menuitem" type="button"><span class="proto-avatar">A</span><span class="proto-agent-option-copy"><strong>AIGC Studio</strong><span>生图 · Canvas · 素材 · 搜图</span></span></button><button class="proto-agent-option" data-agent-option data-agent-name="Coding Agent" data-agent-meta="文件 · 命令 · 日志" data-agent-avatar="C" role="menuitem" type="button"><span class="proto-avatar">C</span><span class="proto-agent-option-copy"><strong>Coding Agent</strong><span>文件 · 命令 · 日志 · 扩展</span></span></button><button class="proto-agent-option" data-agent-option data-agent-name="Research Agent" data-agent-meta="搜索 · 资料 · 引用" data-agent-avatar="R" role="menuitem" type="button"><span class="proto-avatar">R</span><span class="proto-agent-option-copy"><strong>Research Agent</strong><span>搜索 · 资料 · 引用 · 总结</span></span></button><div class="proto-agent-menu-footer"><button class="proto-button" data-screen-button="sources" type="button">全部来源</button><button class="proto-button" data-screen-button="sources" type="button">加载本地</button></div></div>
+      <button class="proto-button primary proto-new-button" data-screen-button="new" type="button"><span class="proto-rail-glyph" aria-hidden="true">＋</span><span data-sidebar-copy>新建会话</span></button>
+      <label class="proto-search"><span aria-hidden="true">/</span><input type="search" placeholder="搜索会话" aria-label="搜索会话"></label>
+      <div class="proto-divider"></div>
+      <div class="proto-session-list">
+        <div class="proto-section-label">历史会话 <span class="proto-kicker">07</span></div>
+        <button class="proto-session active" data-screen-button="chat" type="button" title="生成黑白产品海报"><span class="proto-session-status working" aria-label="工作中"></span><span class="proto-session-copy"><span class="proto-session-title">生成黑白产品海报</span><span class="proto-session-meta">刚刚 · AIGC Studio</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="Canvas 二创工作台"><span class="proto-session-status waiting" aria-label="等待输入"></span><span class="proto-session-copy"><span class="proto-session-title">Canvas 二创工作台</span><span class="proto-session-meta">今天 · AIGC Studio</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="搜集可用素材"><span class="proto-session-status" aria-hidden="true"></span><span class="proto-session-copy"><span class="proto-session-title">搜集可用素材</span><span class="proto-session-meta">昨天 · AIGC Studio</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="配置图像 provider"><span class="proto-session-status error" aria-label="异常"></span><span class="proto-session-copy"><span class="proto-session-title">配置图像 provider</span><span class="proto-session-meta">周一 · AIGC Studio</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="安装一个 web extension"><span class="proto-session-status" aria-hidden="true"></span><span class="proto-session-copy"><span class="proto-session-title">安装一个 web extension</span><span class="proto-session-meta">上周 · /work/pi</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="整理项目依赖"><span class="proto-session-status" aria-hidden="true"></span><span class="proto-session-copy"><span class="proto-session-title">整理项目依赖</span><span class="proto-session-meta">上周 · Coding Agent</span></span></button>
+        <button class="proto-session" data-screen-button="chat" type="button" title="研究竞品工作流"><span class="proto-session-status" aria-hidden="true"></span><span class="proto-session-copy"><span class="proto-session-title">研究竞品工作流</span><span class="proto-session-meta">上月 · Research Agent</span></span></button>
+      </div>
+      <div class="proto-account">
+        <button class="proto-nav-link" data-screen-button="settings" type="button"><span class="proto-rail-glyph" aria-hidden="true">S</span><span data-sidebar-copy>设置</span><span class="proto-kicker" data-sidebar-copy>⌘,</span></button>
+        <div class="proto-inline"><button class="proto-button" type="button"><span class="proto-rail-glyph" aria-hidden="true">中</span></button><button class="proto-button" data-theme-toggle type="button"><span class="proto-rail-glyph" aria-hidden="true">T</span><span data-sidebar-copy>主题</span></button><span class="proto-kicker" data-sidebar-copy>本地模式</span></div>
+      </div>
+    </aside>
+
+    <main class="proto-main" data-screen="chat">
+      <section class="proto-screen active" data-screen-panel="chat" aria-label="工作台">
+        <div class="proto-message-scroll" data-message-scroll role="log" aria-live="polite">
+          <article class="proto-message user"><div class="proto-message-meta">你 · 10:42</div><div class="proto-message-body">做一组黑白产品海报，竖版，保留留白。先出四张方向，再把第二张送进 Canvas 做二创。</div></article>
+          <article class="proto-message assistant"><div class="proto-message-meta">AIGC Studio · 正在生成</div><div class="proto-message-body"><p>我会先调用 image_generation 生成四张草图，再把选中结果带入 Canvas。你也可以从右侧打开搜图、素材库或日志。</p><div class="proto-tool"><strong>image_generation · 4 outputs</strong><br>provider: openrouter · mode: poster · ratio: 4:5</div><div class="proto-asset-grid"><div class="proto-asset"><div class="proto-asset-art">01 / TYPE</div><span>mono-poster-01</span></div><div class="proto-asset"><div class="proto-asset-art">02 / SPACE</div><span>mono-poster-02</span></div><div class="proto-asset"><div class="proto-asset-art">03 / GRID</div><span>mono-poster-03</span></div><div class="proto-asset"><div class="proto-asset-art">04 / FORM</div><span>mono-poster-04</span></div></div></div></article>
+          <article class="proto-message assistant"><div class="proto-message-meta">AIGC Studio · 工具结果</div><div class="proto-message-body"><p>第二张已加入当前会话素材，可在 Canvas 中继续扩图、局部重绘、叠加图层；生成结果仍保留 `data-att-id` 引用。</p><div class="proto-code">tool: image_generation → canvas.open<br>asset: att_poster_02 · status: ready</div></div></article>
+          <article class="proto-message user"><div class="proto-message-meta">你 · 10:43</div><div class="proto-message-body">把第二张打开 Canvas，再从素材库找一张纸张纹理。</div></article>
+        </div>
+        <div class="proto-queue" data-queue><div class="proto-queue-row"><span class="proto-queue-label">队列 · 2</span><button class="proto-button" data-queue-toggle type="button">取回</button></div><div class="proto-queue-row"><span class="proto-queue-label">插话</span><span>补齐响应式验收</span></div><div class="proto-queue-row"><span class="proto-queue-label">跟进</span><span>再检查 dark mode</span></div></div>
+        <button class="proto-button proto-pane-launcher" data-panel-toggle type="button" aria-label="打开工具面板" title="打开工具面板" aria-expanded="false"><svg class="proto-pane-launch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="15" y1="4" x2="15" y2="20"></line></svg></button><div class="proto-dock"><div class="proto-prompt"><div class="proto-shortcuts"><button class="proto-shortcut" type="button">生成海报</button><button class="proto-shortcut" type="button">局部重绘</button><button class="proto-shortcut" type="button">扩图</button><button class="proto-shortcut" type="button">搜图</button></div><textarea data-demo-input placeholder="给 Agent 一条消息。Enter 发送，Shift+Enter 换行" aria-label="消息输入"></textarea><div class="proto-prompt-footer"><div class="proto-toolbar-row"><button class="proto-button" type="button">附件</button><button class="proto-button" type="button">模型</button><button class="proto-button" type="button">思考</button><button class="proto-button" type="button">联网</button><button class="proto-button" data-queue-toggle type="button">队列</button></div><div class="proto-button-row"><span class="proto-kicker">4.8k tokens</span><button class="proto-button primary" data-send type="button">发送 ↑</button></div></div></div></div>
+      </section>
+
+      <section class="proto-screen" data-screen-panel="new" aria-label="新会话">
+        <div class="proto-picker">
+          <div class="proto-picker-copy"><div class="proto-kicker">NEW SESSION</div><h1>从推荐 Agent 开始。</h1><p>这里只展示高频入口。全部来源与本地 Agent 放在独立管理页，不让几十个来源挤占会话导航。</p></div>
+          <div class="proto-picker-card"><div class="proto-section-label" style="padding-left:0">推荐 Agents</div><button class="proto-source-row active" type="button"><span class="proto-avatar">A</span><span class="proto-source-copy"><strong>AIGC Studio</strong><span>生图 · 局部重绘 · Canvas · 素材 · 搜图</span></span><span aria-hidden="true">当前</span></button><button class="proto-source-row" type="button"><span class="proto-avatar">C</span><span class="proto-source-copy"><strong>Coding Agent</strong><span>文件 · 命令 · 日志 · web extension</span></span><span aria-hidden="true">选择</span></button><button class="proto-source-row" type="button"><span class="proto-avatar">R</span><span class="proto-source-copy"><strong>Research Agent</strong><span>搜索 · 资料 · 引用 · 长文总结</span></span><span aria-hidden="true">选择</span></button><label class="proto-field"><span>加载本地 Agent</span><span class="proto-field-box"><input class="proto-source-input" value="C:\workcode\aigc-agent" aria-label="本地 Agent 路径"><span class="proto-kicker">路径</span></span></label><div class="proto-button-row" style="margin-top:8px"><button class="proto-button" type="button">浏览文件夹</button><span class="proto-kicker">本地</span></div><div class="proto-picker-actions"><button class="proto-button primary" data-screen-button="chat" type="button">开始会话</button><button class="proto-button" data-screen-button="sources" type="button">查看全部 Agents</button></div></div>
+        </div>
+      </section>
+
+      <section class="proto-screen" data-screen-panel="sources" aria-label="Agent 来源管理">
+        <div class="proto-settings"><nav class="proto-settings-nav" aria-label="Agent 管理导航"><button class="active" type="button">推荐</button><button type="button">本地</button><button type="button">远程</button></nav><section class="proto-settings-content"><h1>全部 Agent 来源</h1><p>数十个来源集中管理。可收藏、设默认，或从本地路径加载新的 Agent。</p><div class="proto-setting-group"><h2>已加载</h2><div class="proto-source-row"><span class="proto-avatar">A</span><span class="proto-source-copy"><strong>AIGC Studio</strong><span>C:\workcode\aigc-agent · 推荐</span></span><span>默认</span></div><div class="proto-source-row"><span class="proto-avatar">C</span><span class="proto-source-copy"><strong>Coding Agent</strong><span>C:\workcode\coding-agent</span></span><span>收藏</span></div><div class="proto-source-row"><span class="proto-avatar">R</span><span class="proto-source-copy"><strong>Research Agent</strong><span>git://research-agent</span></span><span>未收藏</span></div></div><div class="proto-setting-group"><h2>加载本地来源</h2><div class="proto-setting-row"><label>Agent 路径<small>支持本地目录与桌面目录选择</small></label><input class="proto-settings-input" value="C:\workcode\aigc-agent" aria-label="Agent 路径"></div></div><div class="proto-button-row" style="margin-top:12px"><button class="proto-button primary" data-screen-button="chat" type="button">加载并新建会话</button><button class="proto-button" type="button">添加远程 URL</button></div></section></div>
+      </section>
+
+      <section class="proto-screen" data-screen-panel="settings" aria-label="设置">
+        <div class="proto-settings"><nav class="proto-settings-nav" aria-label="设置导航"><button class="active" type="button">模型</button><button type="button">外观</button><button type="button">日志</button><button type="button">扩展</button><button type="button">MCP</button><button type="button">资源</button></nav><section class="proto-settings-content"><h1>通用设置</h1><p>配置默认模型、主题与路径显示方式。保存结果留在当前面板内。</p><div class="proto-setting-group"><h2>模型</h2><div class="proto-setting-row"><label>默认 Provider<small>从已配置目录中选择</small></label><input class="proto-settings-input" value="openrouter" aria-label="默认 Provider"></div><div class="proto-setting-row"><label>默认模型<small>会话未指定模型时使用</small></label><input class="proto-settings-input" value="anthropic/claude-sonnet" aria-label="默认模型"></div><div class="proto-setting-row"><label>思考等级<small>影响 reasoning 输出</small></label><select class="proto-settings-input" aria-label="思考等级"><option>中</option><option>低</option><option>高</option></select></div></div><div class="proto-setting-group"><h2>外观</h2><div class="proto-setting-row"><label>主题<small>默认跟随系统</small></label><select class="proto-settings-input" aria-label="主题"><option>跟随系统</option><option>浅色</option><option>深色</option></select></div><div class="proto-setting-row"><label>路径显示<small>只影响界面，不改历史</small></label><select class="proto-settings-input" aria-label="路径显示"><option>仅最后一级目录</option><option>折叠用户目录</option><option>完整路径</option></select></div></div><div class="proto-button-row" style="margin-top:12px"><button class="proto-button primary" type="button">保存</button><span class="proto-kicker">已保存</span></div></section></div>
+      </section>
+    </main>
+
+    <aside class="proto-pane" data-pane aria-label="Pane 侧栏"><header class="proto-pane-chrome"><button class="proto-pane-icon" data-panel-toggle type="button" aria-label="收起 Pane 侧栏" title="收起 Pane 侧栏"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="15" y1="4" x2="15" y2="20"></line></svg></button><nav class="proto-pane-tabs" role="tablist" aria-label="已打开的 Pane"><div class="proto-pane-tab-shell active"><button class="proto-pane-tab active" data-pane-view-button="files" role="tab" aria-selected="true" type="button">▣ AIGC Studio</button><button class="proto-pane-tab-close" type="button" aria-label="关闭 AIGC Studio" title="关闭 Pane">×</button></div><div class="proto-pane-tab-shell"><button class="proto-pane-tab" data-pane-view-button="logs" role="tab" aria-selected="false" type="button">▤ 日志</button><button class="proto-pane-tab-close" type="button" aria-label="关闭 日志" title="关闭 Pane">×</button></div><div class="proto-pane-tab-shell"><button class="proto-pane-tab" data-pane-view-button="canvas" role="tab" aria-selected="false" type="button">▧ Canvas</button><button class="proto-pane-tab-close" type="button" aria-label="关闭 Canvas" title="关闭 Pane">×</button></div></nav><button class="proto-pane-icon" type="button" aria-label="更多 Pane" title="更多 Pane">···</button><button class="proto-pane-icon" type="button" aria-label="新开 Pane" title="新开 Pane">＋</button><button class="proto-pane-icon" type="button" aria-label="刷新当前 Pane" title="刷新当前 Pane">↻</button><button class="proto-pane-icon" type="button" aria-label="打开 Pane 切换器" title="Ctrl/Cmd+K">⌘</button></header><div class="proto-pane-body"><section class="proto-pane-section active" data-pane-view="files"><h3>当前能力</h3><button class="proto-file" type="button">image_generation · 4 outputs</button><button class="proto-file" type="button">image_edit · inpaint / expand</button><button class="proto-file" type="button">media-tools · video / audio</button><button class="proto-file" type="button">search · materials · canvas</button></section><section class="proto-pane-section active" data-pane-view="files"><h3>当前任务</h3><p>第二张海报已准备进入 Canvas。素材库可按图片、视频、音频筛选，并支持带入对话。</p></section><section class="proto-pane-section" data-pane-view="logs"><h3>日志流</h3><p>10:43:12 info session ready</p><p>10:43:15 info image_generation started</p><p>10:43:19 info renderer updated</p></section><section class="proto-pane-section" data-pane-view="canvas"><div class="proto-canvas-shell"><div class="proto-pane-head" style="padding:0;border:0;min-height:auto"><h3 style="margin:0">Canvas workbench</h3><span class="proto-kicker">poster-02</span></div><div class="proto-canvas-board"><div class="proto-canvas-poster" aria-label="黑白海报画布"></div></div><div class="proto-canvas-rail" aria-label="画布版本"><button class="proto-canvas-thumb active" type="button" aria-label="当前版本"></button><button class="proto-canvas-thumb" type="button" aria-label="版本二"></button><button class="proto-canvas-thumb" type="button" aria-label="版本三"></button><button class="proto-canvas-thumb" type="button" aria-label="新增版本">＋</button></div><p>可继续扩图、局部重绘、叠加素材并带回对话。</p><button class="proto-button primary" type="button">打开画廊</button></div></section></div></aside>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById("pi-web-redesign-prototype");
+      if (!root) return;
+      const shell = root.querySelector("[data-shell]");
+      const pane = root.querySelector("[data-pane]");
+      const queue = root.querySelector("[data-queue]");
+      const setScreen = (name) => {
+        root.querySelectorAll("[data-screen-panel]").forEach((panel) => {
+          panel.classList.toggle("active", panel.getAttribute("data-screen-panel") === name);
+        });
+        root.querySelectorAll("[data-screen-button]").forEach((button) => {
+          const selected = button.getAttribute("data-screen-button") === name;
+          if (button.getAttribute("role") === "tab") button.setAttribute("aria-selected", String(selected));
+          button.classList.toggle("active", selected);
+        });
+      };
+      root.querySelectorAll("[data-screen-button]").forEach((button) => {
+        button.addEventListener("click", () => setScreen(button.getAttribute("data-screen-button")));
+      });
+      const agentMenu = root.querySelector("[data-agent-menu]");
+      const agentSwitch = root.querySelector("[data-agent-switch]");
+      const setAgentMenu = (open) => {
+        if (!agentMenu) return;
+        agentMenu.hidden = !open;
+        agentSwitch?.setAttribute("aria-expanded", String(open));
+      };
+      agentSwitch?.addEventListener("click", () => setAgentMenu(agentMenu?.hidden ?? true));
+      root.querySelectorAll("[data-agent-option]").forEach((option) => option.addEventListener("click", () => {
+        root.querySelectorAll("[data-agent-option]").forEach((item) => item.classList.remove("active"));
+        option.classList.add("active");
+        const currentName = root.querySelector("[data-current-agent-name]");
+        const currentMeta = root.querySelector("[data-current-agent-meta]");
+        const currentAvatar = root.querySelector("[data-current-agent-avatar]");
+        if (currentName) currentName.textContent = option.getAttribute("data-agent-name") || "";
+        if (currentMeta) currentMeta.textContent = option.getAttribute("data-agent-meta") || "";
+        if (currentAvatar) currentAvatar.textContent = option.getAttribute("data-agent-avatar") || "?";
+        setAgentMenu(false);
+      }));
+      root.querySelectorAll("[data-agent-menu] [data-screen-button]").forEach((button) => button.addEventListener("click", () => setAgentMenu(false)));
+      root.addEventListener("click", (event) => {
+        const target = event.target;
+        if (target?.closest && !target.closest("[data-agent-switch]") && !target.closest("[data-agent-menu]")) setAgentMenu(false);
+      });
+      const sidebarToggle = root.querySelector("[data-sidebar-toggle]");
+      const syncSidebarDensity = () => {
+        const compact = root.getBoundingClientRect().width < 680;
+        root.classList.toggle("is-auto-collapsed", compact);
+        if (!compact) root.classList.remove("is-auto-expanded");
+        const collapsed = root.classList.contains("is-sidebar-collapsed") || (compact && !root.classList.contains("is-auto-expanded"));
+        sidebarToggle?.setAttribute("aria-expanded", String(!collapsed));
+        sidebarToggle?.setAttribute("aria-label", collapsed ? "展开侧栏" : "收起侧栏");
+        if (sidebarToggle) sidebarToggle.textContent = collapsed ? "›" : "‹";
+      };
+      sidebarToggle?.addEventListener("click", () => {
+        if (root.classList.contains("is-auto-collapsed")) root.classList.toggle("is-auto-expanded");
+        else root.classList.toggle("is-sidebar-collapsed");
+        syncSidebarDensity();
+      });
+      if (window.ResizeObserver) new ResizeObserver(syncSidebarDensity).observe(root);
+      else window.addEventListener("resize", syncSidebarDensity);
+      syncSidebarDensity();
+      const preserveSidebarRail = () => {
+        const rail = root.classList.contains("is-sidebar-collapsed") || (root.classList.contains("is-auto-collapsed") && !root.classList.contains("is-auto-expanded"));
+        if (!rail) return;
+        root.classList.remove("is-auto-expanded");
+        syncSidebarDensity();
+      };
+      root.querySelectorAll(".proto-sidebar button:not([data-sidebar-toggle])").forEach((button) => button.addEventListener("click", preserveSidebarRail));
+      root.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+        button.addEventListener("click", () => root.classList.toggle("is-dark"));
+      });
+      root.querySelector("[data-mobile-toggle]")?.addEventListener("click", () => root.classList.toggle("is-mobile"));
+      root.querySelectorAll("[data-panel-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+          pane?.classList.toggle("mobile-open");
+          shell?.classList.toggle("no-panel");
+          const visible = pane?.classList.contains("mobile-open") || !shell?.classList.contains("no-panel");
+          root.querySelectorAll("[data-panel-toggle]").forEach((control) => {
+            if (control.closest("[data-pane]")) {
+              control.setAttribute("aria-label", "收起 Pane 侧栏");
+              control.setAttribute("title", "收起 Pane 侧栏");
+            } else {
+              control.setAttribute("aria-label", visible ? "隐藏工具面板" : "打开工具面板");
+              control.setAttribute("title", visible ? "隐藏工具面板" : "打开工具面板");
+              control.setAttribute("aria-expanded", String(visible));
+            }
+          });
+        });
+      });
+      root.querySelectorAll("[data-queue-toggle]").forEach((button) => {
+        button.addEventListener("click", () => queue?.classList.toggle("show"));
+      });
+      const setPaneView = (name) => {
+        root.querySelectorAll("[data-pane-view]").forEach((view) => view.classList.toggle("active", view.getAttribute("data-pane-view") === name));
+        root.querySelectorAll("[data-pane-view-button]").forEach((button) => {
+          const selected = button.getAttribute("data-pane-view-button") === name;
+          button.classList.toggle("active", selected);
+          button.setAttribute("aria-selected", String(selected));
+          button.parentElement?.classList.toggle("active", selected);
+        });
+      };
+      root.querySelectorAll("[data-pane-view-button]").forEach((button) => {
+        button.addEventListener("click", () => setPaneView(button.getAttribute("data-pane-view-button")));
+      });
+      root.querySelectorAll(".proto-source-row").forEach((button) => button.addEventListener("click", () => {
+        root.querySelectorAll(".proto-source-row").forEach((row) => row.classList.remove("active"));
+        button.classList.add("active");
+      }));
+      root.querySelectorAll(".proto-canvas-thumb").forEach((button) => button.addEventListener("click", () => {
+        root.querySelectorAll(".proto-canvas-thumb").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+      }));
+      root.querySelector("[data-send]")?.addEventListener("click", () => {
+        const input = root.querySelector("[data-demo-input]");
+        const text = input?.value.trim();
+        if (!text) return;
+        const stream = root.querySelector("[data-message-scroll]");
+        if (!stream) return;
+        const item = document.createElement("article");
+        item.className = "proto-message user";
+        item.innerHTML = '<div class="proto-message-meta">你 · 刚刚</div><div class="proto-message-body"></div>';
+        item.querySelector(".proto-message-body").textContent = text;
+        stream.appendChild(item);
+        stream.scrollTop = stream.scrollHeight;
+        input.value = "";
+      });
+    })();
+  </script>
+</div>

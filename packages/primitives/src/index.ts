@@ -14,6 +14,9 @@
 // Button(含 CVA 变体函数与 Props 类型)。
 export { Button, buttonVariants } from "./button.js";
 export type { ButtonProps } from "./button.js";
+// Pill — 基座与 Agent WebExtension 共用的紧凑圆角按钮。
+export { Pill } from "./pill.js";
+export type { PillProps } from "./pill.js";
 // Card。
 export { Card } from "./card.js";
 // Input。

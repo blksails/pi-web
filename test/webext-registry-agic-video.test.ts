@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { resolveExtensionForSource } from "../lib/app/webext-registry.js";
 
-describe("agic-video-agent webext video studio contract", () => {
+describe("aigc-agent webext video studio contract", () => {
   it("loads the isolated video studio pane with surface grants", () => {
-    const extension = resolveExtensionForSource("C:\\workcode\\pi-web\\examples\\agic-video-agent");
-    expect(extension?.manifestId).toBe("agic-video-studio");
+    const extension = resolveExtensionForSource("C:\\workcode\\pi-web\\examples\\aigc-agent");
+    expect(extension?.manifestId).toBe("aigc-studio");
     expect(extension?.panes?.panes).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: "video-studio",

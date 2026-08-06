@@ -23,6 +23,7 @@ describe("@blksails/pi-web-ui public exports", () => {
     expect(typeof ui.SubmitButton).toBe("function");
     expect(typeof ui.PromptInput).toBe("function");
     expect(typeof ui.Attachments).toBe("function");
+    expect(ui.Pill).toBeDefined();
     expect(typeof ui.ModelSelector).toBe("function");
     expect(typeof ui.SpeechInput).toBe("function");
     expect(typeof ui.WebSearchToggle).toBe("function");

@@ -27,8 +27,11 @@ describe("chat resource controls", () => {
       "/api/resources?agent=agent-1",
       { credentials: "include" },
     ));
+    const skillPill = screen.getByRole("button", { name: "技能" });
     expect(screen.getAllByRole("button", { name: "技能" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "技能" }));
+    expect(skillPill.className).toContain("rounded-full");
+    expect(skillPill.querySelector("svg")?.classList.contains("lucide-zap")).toBe(true);
+    fireEvent.click(skillPill);
     expect(screen.getByRole("menuitem", { name: /代码审查/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "管理技能" }));
     expect(screen.getByRole("dialog", { name: "管理个人技能" })).toBeTruthy();

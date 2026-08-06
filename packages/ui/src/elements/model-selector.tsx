@@ -14,7 +14,7 @@ import { ChevronsUpDown, Check, Sparkles } from "lucide-react";
 import type { ModelGroup, ModelSelection } from "@blksails/pi-web-react";
 import { useIcon } from "../customization/icons.js";
 import { useI18n } from "../i18n/index.js";
-import { Button } from "../ui/button.js";
+import { Pill } from "@blksails/pi-web-primitives";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover.js";
 import {
   Command,
@@ -128,10 +128,8 @@ export function ModelSelector({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button
+        <Pill
           type="button"
-          variant="outline"
-          size="sm"
           aria-label={triggerLabel}
           aria-busy={busy === true ? true : undefined}
           disabled={disabled}
@@ -144,7 +142,7 @@ export function ModelSelector({
             {triggerText(current, groups, triggerLabel)}
           </span>
           <ModelIcon className="h-3.5 w-3.5 opacity-60" aria-hidden="true" />
-        </Button>
+        </Pill>
       </PopoverTrigger>
 
       <PopoverContent

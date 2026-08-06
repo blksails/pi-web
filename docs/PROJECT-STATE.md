@@ -4,11 +4,11 @@
 
 ## 当前迭代目标
 
-- 已批准并完成 `REQ-20260804-02`：以 `aigc-agent` 为模板新增独立 `agic-video-agent`，交付 workflow-first 首版视频工作室 Pane。
+- 已批准并完成 `REQ-20260804-02`：视频工作室已并入 `aigc-agent`，交付 workflow-first 首版视频工作室 Pane。
 
 ## 已验证代码事实
 
-- `examples/agic-video-agent` 已独立构建；复用 AIGC/媒体工具，并以隔离 iframe 提供视频工作室 UI。
+- `examples/aigc-agent` 已构建；复用 AIGC/媒体工具，并以隔离 iframe 提供视频工作室 UI。
 - CodeGraph `1.5.0` 已就绪；索引含 1,783 个文件、17,763 个节点、34,983 条边。
 - NotebookLM 深研发现 126 个候选来源；以官方材料、论文及官方仓库为主筛选商业与开源代表样本。
 - 研究结论推荐“对话 + 故事板/画布 + 时间线”混合工作室；节点图后置为高级模式，默认自动化等级为 L2。
@@ -16,13 +16,13 @@
 
 ## 相关模块与 symbol
 
-- `examples/agic-video-agent/video-studio/model.ts`：项目/镜头状态机与边界。
-- `examples/agic-video-agent/video-studio/surface.ts`：Agent 单写 Surface、视频工具事件回流与命令白名单。
-- `examples/agic-video-agent/video-studio/guest.tsx`：隔离 Pane UI；`lib/app/webext-registry.ts`：宿主静态注册。
+- `examples/aigc-agent/video-studio/model.ts`：项目/镜头状态机与边界。
+- `examples/aigc-agent/video-studio/surface.ts`：Agent 单写 Surface、视频工具事件回流与命令白名单。
+- `examples/aigc-agent/video-studio/guest.tsx`：隔离 Pane UI；`lib/app/webext-registry.ts`：宿主静态注册。
 
 ## 最近完成与当前 diff
 
-- 最近完成：需求晋级、`agic-video-agent` 模板复制、视频工作室 Pane、宿主注册、构建产物与自动化契约测试。
+- 最近完成：视频工作室并入 `aigc-agent`、草稿自动保存/恢复、宿主注册、构建产物与自动化测试。
 - 当前 diff：工作树已有用户未提交改动；本轮仅在批准范围内新增 Agent 与宿主装载链。
 
 ## 验证状态
@@ -30,9 +30,9 @@
 - `requirements_gate.py assert-task-executable`：退出码 0，`INTAKE-20260804-08` executable。
 - `iteration_gate.py`：退出码 0。
 - `preflight.py --strict`：退出码 0；无 blocker。
-- `pnpm -C examples/agic-video-agent typecheck`：退出码 0。
-- `pnpm -C examples/agic-video-agent test`：3/3 通过。
-- `pnpm -C examples/agic-video-agent build`：退出码 0，生成 `.pi/web/dist/web-extension.mjs`。
+- `pnpm -C examples/aigc-agent typecheck`：退出码 0。
+- `pnpm -C examples/aigc-agent video-studio tests`：25/25 通过。
+- `pnpm -C examples/aigc-agent build`：退出码 0，生成 `.pi/web/dist/web-extension.mjs`。
 - `pnpm exec vitest run test/webext-registry-agic-video.test.ts`：1/1 通过。
 - 根 `pnpm typecheck`：Agent workspace 均通过；根测试引用缺失 `bin/pi-web.mjs`，属既有基线失败。
 - `notebook_gate.py validate-output`：退出码 0；`valid:true`。
@@ -46,7 +46,7 @@
 
 ## 架构边界
 
-- 目标/非目标：首版聚焦简报→镜头→生成→复核→导出；不改写 `examples/aigc-agent`，不实现完整专业 NLE。
+- 目标/非目标：首版聚焦简报→镜头→生成→复核→导出；不实现完整专业 NLE。
 - 锁定决策：NotebookLM 最外层新建独立 Notebook，不以 Notes 代替。
 - 基线依据：当前分支及 CodeGraph `status --json`。
 - 模块与落点：NotebookLM 外部研究空间；本地仅存准入、快照与闭环证据。
@@ -57,7 +57,7 @@
 | Active REQ | 状态 | 代码证据 | 测试/质量证据 |
 | --- | --- | --- | --- |
 | `REQ-20260804-01` | research approved | NotebookLM 调研与 Note | 需求闸、冷闸、Notebook 存在性与来源追踪 |
-| `REQ-20260804-02` | implemented v1 | `examples/agic-video-agent` + 宿主注册 | workspace typecheck、3 项单测、构建、注册契约测试 |
+| `REQ-20260804-02` | implemented v1 | `examples/aigc-agent/video-studio` + 宿主注册 | workspace typecheck、25 项单测、构建、注册契约测试 |
 
 ## Known failed approaches
 
@@ -70,9 +70,9 @@
 
 ## 本轮 delta
 
-- 变更：需求治理、`agic-video-agent`、Pane 构建/宿主注册、锁文件与验证测试。
-- 直接影响：新增独立示例 Agent；既有 `aigc-agent` 行为不变。
-- 验证：准入闸、预检、迭代闸、workspace typecheck、3 项 Node 测试、构建及宿主注册测试均完成。
+- 变更：需求治理、`aigc-agent` 视频工作室、Pane 构建/宿主注册、锁文件与验证测试。
+- 直接影响：视频能力并入既有 AIGC Agent；旧 `agic-video-agent` 目录已删除。
+- 验证：workspace typecheck、25 项 Node 测试、构建及宿主注册测试均完成。
 - 质量：CodeGraph ready；根 typecheck 仍受缺失 `bin/pi-web.mjs` 基线错误阻断。
 - Agent 编排：单一 NotebookLM 冷循环任务，串行执行。
 - 模型路由：complex/frontier/high；NotebookLM 仅作策略研究层。

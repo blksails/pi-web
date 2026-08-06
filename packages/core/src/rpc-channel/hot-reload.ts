@@ -108,7 +108,20 @@ function triggerRestartAll(path?: string): void {
 }
 
 function isSourceFile(filename: string | Buffer | null | undefined): boolean {
-  return filename === null || filename === undefined || /\.(ts|tsx|js|mjs|cjs|json)$/.test(String(filename));
+  if (filename === null || filename === undefined) return true;
+  const value = String(filename).replaceAll("\\", "/");
+  const parts = value.split("/");
+  const basename = parts[parts.length - 1] ?? "";
+  // Agent 目录含 node_modules、Vitest/Vite 缓存与临时编译文件；把这些误判为
+  // 源码会在测试/构建期间反复重启 runner，最终与旧 stdin 写竞争并触发 EPIPE。
+  if (parts.some((part) =>
+    part === "node_modules" || part === ".vite" || part === "coverage" || part === "test-results")) {
+    return false;
+  }
+  if (/^vitest\.config\.ts\.timestamp-/.test(basename) || basename === "results.json") {
+    return false;
+  }
+  return /\.(ts|tsx|js|mjs|cjs|json)$/.test(basename);
 }
 
 function triggerRestartTarget(target: HotReloadTarget, path?: string): void {
