@@ -91,6 +91,15 @@ export const PANE_CSP = buildPaneCsp();
 /** URL 形态的默认策略:文档可寻址,脚本经 `<script src>` 从自身来源加载。 */
 const DEFAULT_URL_CSP = buildPaneCsp({ scriptSrc: ["'self'"] });
 
+/** 转义内联脚本中 HTML 不允许的控制字符，保留脚本运行时字节语义。 */
+export function escapeInlineScriptForHtml(script: string): string {
+  return script
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, (character) =>
+      `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    )
+    .replace(/<\/script/gi, "<\\/script");
+}
+
 /** 把 bundle 与样式拼成自足文档(内联形态)。 */
 export function renderPaneDocument(
   title: string,
@@ -98,8 +107,7 @@ export function renderPaneDocument(
   css: string,
   csp: string = PANE_CSP,
 ): string {
-  // ★ `</script` 出现在 bundle 字面量里会提前闭合标签,整份文档就此损坏 —— 必须转义。
-  const safeScript = script.replace(/<\/script/gi, "<\\/script");
+  const safeScript = escapeInlineScriptForHtml(script);
   return (
     `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">` +
     `<meta name="viewport" content="width=device-width">` +

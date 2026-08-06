@@ -17,6 +17,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { withAgentCompileCache } from "./agent-compile-cache.js";
 import { readDesktopScopedConfig, resolveDesktopConfig } from "./desktop-defaults.js";
 import {
   createPiWebHandler,
@@ -79,6 +80,10 @@ import {
   redactReason,
   type AllowlistConfig,
 } from "@blksails/pi-web-adapters/extensions/index.js";
+import {
+  createPiResourceManager,
+  createResourceRoutes,
+} from "@blksails/pi-web-adapters/resources/index.js";
 import {
   resolveLlmGatewaySecret,
   resolveAiGatewaySecret,
@@ -263,7 +268,9 @@ function makeRealResolver(
   // therefore needs the host environment threaded in as baseEnv — without PATH
   // the OS cannot even locate `node`, and the child fails to spawn (exit
   // code:null/signal:null with no stderr) → onClosed → session deleted → 404.
-  const baseEnv = process.env as Record<string, string>;
+  // 首次 custom agent 启动时由 Node 生成 V8 编译缓存；后续 runner 进程直接复用。
+  // 显式 NODE_COMPILE_CACHE / NODE_DISABLE_COMPILE_CACHE 保持最高优先级。
+  const baseEnv = withAgentCompileCache(process.env, os.homedir());
   // 项目信任策略(C-P1/C-P4):复用 pi 的 ProjectTrustStore(同一 agentDir),叠加 trustedRoots。
   // 决定 custom 模式是否向 runner 传放行信号 → SDK 才加载工作目录下的项目级 `.pi/`
   // (扩展/子代理/技能)。仅值导入被 Next serverExternalPackages 外置的 SDK,不打进 bundle。
@@ -1058,7 +1065,10 @@ function buildSingleton(): HandlerSingleton {
         ...loggingSpawnEnv(),
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
-        // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
+        // 公司级 pi skills/prompts 由 host 明确下发；user/project 默认发现仍由 pi 保留。
+        PI_WEB_COMPANY_SKILLS_DIR: path.join(companyResourceRoot, "skills"),
+        PI_WEB_COMPANY_PROMPTS_DIR: path.join(companyResourceRoot, "prompts"),
+        // ext-tools / auto-title / mcp 这三个既有内置扩展入口**不再下发**:改由 runner 侧自解析
         // (spec runner-self-resolved-builtins)。这消除了「宿主机绝对路径在沙箱内不存在」
         // 的失效面,也使新增内置扩展不必再在此处接线。
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
@@ -1115,6 +1125,16 @@ function buildSingleton(): HandlerSingleton {
     ...(process.env.PI_WEB_EXT_ALLOW_LOCAL === "1" ? { allowLocal: true } : {}),
     ...(process.env.PI_WEB_EXT_ALLOW_NPM === "1" ? { allowAnyNpm: true } : {}),
   };
+  // pi-native resources use three explicit scopes: company (deployment-configured),
+  // agent (<cwd>/.pi), and personal (<agentDir>). The default company root is safe and
+  // empty until populated; deployments can point it at a shared directory.
+  const companyResourceRoot =
+    process.env.PI_WEB_COMPANY_RESOURCES_DIR?.trim() || path.join(config.agentDir, "company");
+  const resourceManager = createPiResourceManager({
+    cwd: config.defaultCwd,
+    agentDir: config.agentDir,
+    companyRoot: companyResourceRoot,
+  });
   const reloadRunner = async (session: {
     restartRunner(): Promise<void>;
   }): Promise<void> => {
@@ -1267,6 +1287,11 @@ function buildSingleton(): HandlerSingleton {
           loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
           capabilitiesClient: desktopCapabilitiesClient,
           authState: authSessionState,
+          onCredentialChanged: (credential) =>
+            manager.broadcastRunnerFrame({
+              type: "piweb_credential_refresh",
+              credential: credential ?? null,
+            }),
         })
       : undefined;
 
@@ -1466,6 +1491,10 @@ function buildSingleton(): HandlerSingleton {
       //   vision-op)迁移到统一端点属后续任务(6.1-6.3),在其落地前旧路径会 404 ——
       //   这是本任务预期内的过渡态,不是遗留缺陷。
       ...composedRoutes,
+      ...createResourceRoutes({
+        manager: resourceManager,
+        ...(extAllowMutate ? { adminPolicy: () => true } : {}),
+      }),
     ],
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.

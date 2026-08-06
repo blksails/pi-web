@@ -15,6 +15,7 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 import type {
   AgentEvent,
   ImageContent,
@@ -129,6 +130,13 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
   private turnActive = false;
   /** 热重载注册的注销函数(未启用时为空操作)。 */
   private hotReloadUnregister?: () => void;
+
+  /** custom agent 源目录；dev 热重载仅在该 agent 被修改时重启本会话。 */
+  get hotReloadPaths(): readonly string[] {
+    const agentIndex = this.spec.args.indexOf("--agent");
+    const entry = agentIndex >= 0 ? this.spec.args[agentIndex + 1] : undefined;
+    return entry === undefined || entry === "" ? [] : [dirname(entry)];
+  }
 
   /**
    * 按给定 SpawnSpec 以 detached:false spawn 子进程并接管 stdio(Req 2.1–2.3)。

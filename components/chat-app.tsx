@@ -46,7 +46,11 @@ import {
   useIdentity,
 } from "./auth/use-identity.js";
 import { IdentityGate } from "./auth/login-page.js";
-import { builtinPaneSource, buildSessionSignals } from "../lib/app/builtin-panes/index.js";
+import {
+  IDENTITY_REVISION_SIGNAL_NAME,
+  builtinPaneSource,
+  buildSessionSignals,
+} from "../lib/app/builtin-panes/index.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
 function PanelToggleIcon(): React.JSX.Element {
@@ -390,12 +394,16 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
   // 与 SessionListPanel 同构的注入式接线——组件不持接线,便于测试。
   const pickerClient = React.useMemo(() => createPiClient("/api"), []);
 
-  // desktop-hybrid-agent-sources:登录/登出后重拉 /agent-sources(与 LoginControl 同 Provider)。
+  // desktop-hybrid-agent-sources:身份变化后重拉 /agent-sources(与 LoginControl 同 Provider)。
   const identity = useIdentity();
   const authListIdentity = identityListKey(identity.state);
   const [agentSourcesRefreshKey, setAgentSourcesRefreshKey] = React.useState(0);
+  const [identityRevision, setIdentityRevision] = React.useState(0);
+  const identityRevisionInitialized = React.useRef(false);
   React.useEffect(() => {
     setAgentSourcesRefreshKey((n) => n + 1);
+    if (identityRevisionInitialized.current) setIdentityRevision((n) => n + 1);
+    else identityRevisionInitialized.current = true;
   }, [authListIdentity]);
 
   // sidebar-launcher-rail:收藏集合(供选择器星标高亮 + 切换)。选择器(session===undefined)
@@ -547,6 +555,7 @@ function ChatAppBody(props: ChatAppProps): React.JSX.Element {
           onNewByAgentSource={onNewByAgentSource}
           onLaunchSource={onSubmit}
           agentSourcesRefreshKey={agentSourcesRefreshKey}
+          identityRevision={identityRevision}
           onAgentSourcesRefresh={() =>
             setAgentSourcesRefreshKey((n) => n + 1)
           }
@@ -566,6 +575,7 @@ function SessionView({
   onNewByAgentSource,
   onLaunchSource,
   agentSourcesRefreshKey: parentAgentSourcesRefreshKey = 0,
+  identityRevision = 0,
   onAgentSourcesRefresh,
   logsPanelVisible,
   logsPanelPosition,
@@ -580,6 +590,8 @@ function SessionView({
   readonly onLaunchSource: (source: string) => void;
   /** 父级登录/登出触发的 agent-sources 刷新信号。 */
   readonly agentSourcesRefreshKey?: number;
+  /** 身份切换后通知已挂载 pane 重取宿主侧数据；不含凭据。 */
+  readonly identityRevision?: number;
   /** install 成功等会话内事件需要再 bump 父级刷新信号。 */
   readonly onAgentSourcesRefresh?: () => void;
   /** Controls LogsPanel visibility per logging config (Req 6.6). */
@@ -681,13 +693,15 @@ function SessionView({
   // 会话事实 → 具名信号。cwd 是**创建请求里的值**;agent 侧解析后可能另有其所(如内置
   // default-agent 的 cwd 由 resolver 设为用户工作目录),故 pane 的字段语义是「请求的工作目录」。
   const paneSignals = React.useMemo(
-    () =>
-      buildSessionSignals({
+    () => ({
+      ...buildSessionSignals({
         sessionId: session.sessionId,
         agentSource: create.source,
         cwd: create.cwd,
       }),
-    [session.sessionId, create.source, create.cwd],
+      [IDENTITY_REVISION_SIGNAL_NAME]: identityRevision,
+    }),
+    [session.sessionId, create.source, create.cwd, identityRevision],
   );
   // ★ 判据须与 PiChat 内部的同名判据**同源**:两项输入(内置来源 / agent 声明键)任一存在
   // 即有面板。不同步会导致「外层容器与内层内容一个显示一个不显示」。

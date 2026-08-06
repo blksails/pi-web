@@ -63,6 +63,26 @@ describe("SessionManager create + deregister", () => {
       }),
     ).toThrow(MissingInputError);
   });
+
+  it("broadcasts host runner frames to active sessions", () => {
+    const { mgr } = manager();
+    const a = new MockChannel();
+    const b = new MockChannel();
+    mgr.createSession({ resolved: makeResolved(), channel: a });
+    mgr.createSession({ resolved: makeResolved(), channel: b });
+
+    mgr.broadcastRunnerFrame({
+      type: "piweb_credential_refresh",
+      credential: "next",
+    });
+
+    expect(a.sent).toContain(
+      JSON.stringify({ type: "piweb_credential_refresh", credential: "next" }),
+    );
+    expect(b.sent).toContain(
+      JSON.stringify({ type: "piweb_credential_refresh", credential: "next" }),
+    );
+  });
 });
 
 describe("SessionManager graceful shutdown (Req 8.x)", () => {

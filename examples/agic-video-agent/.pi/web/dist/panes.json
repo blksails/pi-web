@@ -1,0 +1,183 @@
+{
+  "id": "agic-video-panes",
+  "config": {
+    "panelRatio": "centered",
+    "panelWidth": 620,
+    "minPanelWidth": 320,
+    "maxPanelWidth": 960,
+    "maxPanelWidthRatio": 0.7,
+    "interactionMode": "advanced",
+    "allowTabReorder": true,
+    "showCommandPalette": true,
+    "eventTargets": {
+      "pi.canvas.open-attachments": "canvas"
+    }
+  },
+  "panes": [
+    {
+      "id": "search",
+      "title": "搜图",
+      "icon": "search",
+      "capabilities": {
+        "routes": [
+          {
+            "name": "creative-search",
+            "methods": [
+              "POST"
+            ]
+          }
+        ],
+        "surfaceKeys": [],
+        "surfaceCommands": [],
+        "events": {
+          "publish": [],
+          "subscribe": []
+        },
+        "attachments": "none",
+        "conversation": "none"
+      }
+    },
+    {
+      "id": "materials",
+      "title": "素材",
+      "icon": "images",
+      "capabilities": {
+        "routes": [
+          {
+            "name": "assets-list",
+            "methods": [
+              "GET"
+            ]
+          },
+          {
+            "name": "materials-library",
+            "methods": [
+              "GET",
+              "POST"
+            ]
+          },
+          {
+            "name": "material-status",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "surfaceKeys": [
+          "surface:materials"
+        ],
+        "surfaceCommands": [
+          {
+            "domain": "materials",
+            "actions": [
+              "select",
+              "set-filter",
+              "create-folder",
+              "rename-folder",
+              "move-folder",
+              "delete-folder",
+              "move-items",
+              "rename-item"
+            ]
+          }
+        ],
+        "events": {
+          "publish": [
+            "pi.canvas.open-attachments",
+            "pi.session.locate"
+          ],
+          "subscribe": []
+        },
+        "attachments": "read-write",
+        "conversation": "submit"
+      }
+    },
+    {
+      "id": "canvas",
+      "title": "画布",
+      "icon": "palette",
+      "capabilities": {
+        "routes": [],
+        "surfaceKeys": [
+          "surface:canvas"
+        ],
+        "surfaceCommands": [
+          {
+            "domain": "canvas",
+            "actions": [
+              "sync",
+              "register",
+              "edit",
+              "inpaint",
+              "reference",
+              "variants",
+              "outpaint",
+              "reframe",
+              "delete"
+            ]
+          }
+        ],
+        "events": {
+          "publish": [],
+          "subscribe": [
+            "pi.canvas.open-attachments"
+          ]
+        },
+        "attachments": "read-write",
+        "conversation": "submit"
+      }
+    },
+    {
+      "id": "video-studio",
+      "title": "视频工作室",
+      "icon": "clapperboard",
+      "capabilities": {
+        "routes": [
+          {
+            "name": "video-studio-state",
+            "methods": [
+              "GET"
+            ]
+          }
+        ],
+        "surfaceKeys": [
+          "surface:video-studio"
+        ],
+        "surfaceCommands": [
+          {
+            "domain": "video-studio",
+            "actions": [
+              "create-plan",
+              "update-brief",
+              "update-shot",
+              "queue-shot",
+              "queue-all",
+              "pause-shot",
+              "resume-shot",
+              "retry-shot",
+              "rollback-shot",
+              "select-video",
+              "select-prompt",
+              "delete-prompt-history",
+              "delete-video-history",
+              "add-to-timeline",
+              "remove-from-timeline",
+              "set-audio-track",
+              "trim-audio-track",
+              "clear-audio-track",
+              "clear-timeline",
+              "request-export",
+              "sync"
+            ]
+          }
+        ],
+        "events": {
+          "publish": [],
+          "subscribe": []
+        },
+        "attachments": "none",
+        "conversation": "submit"
+      }
+    }
+  ]
+}

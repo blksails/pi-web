@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { runBuild } from "../server/cli/build/index.js";
 import { createProgressReporter } from "../server/cli/reporter.js";
+import { buildAigcAgent as buildAgicVideoAgent } from "../examples/agic-video-agent/build.js";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -105,6 +106,8 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[built] ${example.dirName} → 经 runBuild 编排`);
   }
+  const agicVideo = await buildAgicVideoAgent();
+  console.log(`[built] agic-video-agent → ${agicVideo.entryOut} (专用 pane/隔离产物构建)`);
 }
 
 void main().catch((err: unknown) => {

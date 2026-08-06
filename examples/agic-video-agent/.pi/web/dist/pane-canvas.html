@@ -1,0 +1,1325 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data: http: https:; media-src blob: data: http: https:; connect-src http: https: ws: ipc: http://ipc.localhost; style-src 'unsafe-inline'; script-src 'self'"><title>画布</title><style>html,body{height:100%;margin:0}#root{height:100%}
+:root{font:13px/1.6 ui-sans-serif,system-ui,"PingFang SC","Microsoft YaHei",sans-serif;color:hsl(var(--foreground,0 0% 9%));background:hsl(var(--background,0 0% 100%));color-scheme:light dark}
+*{box-sizing:border-box}html,body,#root{height:100%;margin:0}button,input{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid hsl(var(--ring,0 0% 9%));outline-offset:2px}
+.pane-layout{height:100%;min-height:0;display:flex;flex-direction:column}
+.toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;border-bottom:1px solid #e2e8f0;background:#fff}
+.pane-header{position:sticky;top:0;z-index:2;flex-wrap:nowrap;background:color-mix(in srgb,#fff 88%,transparent);backdrop-filter:blur(12px)}
+.toolbar>.muted{flex-basis:100%}
+.grow{flex:1;min-width:0}
+input{border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:8px 10px}
+.search-field{display:flex;align-items:center;gap:7px;min-width:0;padding:0 9px;border:1px solid #d7dee9;border-radius:9px;background:#fff;color:#64748b;box-shadow:0 1px 2px rgb(15 23 42/.04)}
+.search-field:focus-within{border-color:hsl(var(--ring,0 0% 9%));box-shadow:0 0 0 3px hsl(var(--ring,0 0% 9%)/.12)}
+.search-field input{width:100%;min-width:0;border:0;padding:7px 0;outline:0;box-shadow:none}
+.button{display:inline-flex;flex:none;align-items:center;height:30px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;padding:5px 9px;cursor:pointer;white-space:nowrap}
+.button:disabled{opacity:.5;cursor:not-allowed}
+.button-primary{border-color:hsl(var(--primary,0 0% 9%));background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}
+.icon-button{display:inline-grid;flex:none;width:30px;height:30px;place-items:center;border:1px solid #d7dee9;border-radius:8px;background:#fff;color:#475569;cursor:pointer;transition:background .15s,color .15s,border-color .15s,transform .15s}
+.icon-button:hover:not(:disabled){border-color:hsl(var(--border,0 0% 89%));background:hsl(var(--accent,0 0% 96%));color:hsl(var(--foreground,0 0% 9%))}.icon-button:active:not(:disabled){transform:scale(.94)}.icon-button:disabled{opacity:.45;cursor:not-allowed}.icon-button.primary{border-color:hsl(var(--primary,0 0% 9%));background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}.icon-button.primary:hover:not(:disabled){background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}
+.spin{animation:pane-spin .75s linear infinite}@keyframes pane-spin{to{transform:rotate(360deg)}}
+.content{padding:12px}.scroll{overflow:auto}
+.center{height:100%;display:grid;place-items:center}.muted{color:#64748b}.error{color:#b91c1c}
+.hint{cursor:help;opacity:.75}
+/* 类型过滤分段控件 + 按天分栏标头 */
+.segs{display:inline-flex;flex:none;padding:2px;border-radius:8px;background:#f1f5f9;gap:2px}
+.seg{border:0;background:none;padding:3px 8px;border-radius:6px;font-size:12px;color:#475569;cursor:pointer;white-space:nowrap}
+.seg:hover{background:#e2e8f0}
+.seg.on{background:#fff;color:#0f172a;box-shadow:0 1px 2px rgb(0 0 0/.12)}
+.day{position:sticky;top:0;z-index:1;padding:4px 2px;font-size:11px;color:#64748b;background:inherit}
+.empty{min-height:160px;display:grid;place-items:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;margin-top:8px}
+.card{margin:0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;overflow:hidden}
+.card img{display:block;width:100%;aspect-ratio:1;object-fit:cover}
+.noimg{display:grid;place-items:center;aspect-ratio:1;color:#94a3b8;background:#f1f5f9}
+figcaption{display:flex;align-items:center;gap:6px;padding:6px 8px;font-size:12px}
+.badge{border-radius:999px;padding:1px 7px;font-size:11px;background:hsl(var(--accent,0 0% 96%));color:hsl(var(--accent-foreground,0 0% 9%))}
+.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#475569}
+.imgbtn{display:block;width:100%;margin:0;padding:0;border:0;background:none;cursor:pointer}
+.imgbtn:disabled{cursor:default;opacity:.7}
+.card.on{outline:2px solid hsl(var(--ring,0 0% 9%));outline-offset:-2px}
+.card[draggable=true]{cursor:grab}
+@media(prefers-color-scheme:dark){:root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
+.toolbar,.card,input,.button,.icon-button,.search-field,.empty{background:#111827;border-color:#334155}
+.noimg{background:#1e293b}.muted,.name{color:#94a3b8}
+.segs{background:#1e293b}.seg{color:#94a3b8}.seg:hover{background:#334155}.seg.on{background:#0f172a;color:#e2e8f0}
+}
+/* 主题层:随宿主 shadcn token 走;宿主未传时 fallback 为黑白灰(去 #2563eb 等蓝色硬编码)。 */
+:root{color:hsl(var(--foreground,0 0% 9%));background:hsl(var(--background,0 0% 100%));color-scheme:light dark}
+button:focus-visible,input:focus-visible{outline:2px solid hsl(var(--ring,0 0% 9%));outline-offset:2px}
+.toolbar,.card,input,.search-field,.empty{border-color:hsl(var(--border,0 0% 89%));background:hsl(var(--background,0 0% 100%))}
+.search-field:focus-within{border-color:hsl(var(--ring,0 0% 9%));box-shadow:0 0 0 3px hsl(var(--ring,0 0% 9%)/.12)}
+.button{border-color:hsl(var(--border,0 0% 89%));background:hsl(var(--background,0 0% 100%))}
+.button-primary{border-color:hsl(var(--primary,0 0% 9%));background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}
+.icon-button{border-color:hsl(var(--border,0 0% 89%));background:hsl(var(--background,0 0% 100%));color:hsl(var(--muted-foreground,0 0% 45%))}
+.icon-button:hover:not(:disabled){border-color:hsl(var(--border,0 0% 89%));background:hsl(var(--accent,0 0% 96%));color:hsl(var(--foreground,0 0% 9%))}
+.icon-button.primary{border-color:hsl(var(--primary,0 0% 9%));background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}
+.icon-button.primary:hover:not(:disabled){background:hsl(var(--primary,0 0% 9%));color:hsl(var(--primary-foreground,0 0% 100%))}
+.segs{background:hsl(var(--accent,0 0% 96%))}.seg{color:hsl(var(--muted-foreground,0 0% 45%))}.seg:hover{background:hsl(var(--border,0 0% 89%))}.seg.on{background:hsl(var(--background,0 0% 100%));color:hsl(var(--foreground,0 0% 9%))}
+.badge{background:hsl(var(--accent,0 0% 96%));color:hsl(var(--accent-foreground,0 0% 9%))}
+.name,.muted,.day{color:hsl(var(--muted-foreground,0 0% 45%))}
+.noimg{color:hsl(var(--muted-foreground,0 0% 45%));background:hsl(var(--muted,0 0% 96%))}
+.card.on{outline:2px solid hsl(var(--ring,0 0% 9%))}
+*,*::before,*::after{box-shadow:none!important}
+.card{border:0;background:transparent;overflow:visible}.card img{border-radius:8px}
+
+:root{font-size:16px;line-height:1.5}
+/**
+ * @blksails/pi-web-ui — shadcn CSS 变量主题层。
+ *
+ * 全部样式 token 经 shadcn CSS 变量定义,无硬编码颜色,使组件继承宿主主题。
+ * 宿主若已声明这些变量(shadcn/ui 约定),组件随宿主主题切换;此处提供默认回退值。
+ */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 3.9%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 240 4.8% 95.9%;
+  --secondary-foreground: 240 5.9% 10%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --accent: 240 4.8% 95.9%;
+  --accent-foreground: 240 5.9% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 240 10% 3.9%;
+  --radius: 0.5rem;
+  /* 工具卡 JSON 同步高亮 token 配色(亮主题)。 */
+  --pi-json-key: 221 70% 48%;
+  --pi-json-string: 142 45% 36%;
+  --pi-json-number: 24 75% 45%;
+  --pi-json-bool: 280 55% 52%;
+}
+
+.dark {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 10% 3.9%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --accent: 240 3.7% 15.9%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 240 4.9% 83.9%;
+  /* 工具卡 JSON 同步高亮 token 配色(暗主题,提亮)。 */
+  --pi-json-key: 213 90% 72%;
+  --pi-json-string: 142 50% 62%;
+  --pi-json-number: 28 85% 66%;
+  --pi-json-bool: 280 70% 76%;
+}
+
+/* 工具卡 JSON 同步高亮 token(由 PiToolPart 的 highlightJson 生成 span)。 */
+.pi-json-key {
+  color: hsl(var(--pi-json-key));
+}
+.pi-json-string {
+  color: hsl(var(--pi-json-string));
+}
+.pi-json-number {
+  color: hsl(var(--pi-json-number));
+}
+.pi-json-bool,
+.pi-json-null {
+  color: hsl(var(--pi-json-bool));
+}
+.pi-json-punct {
+  color: hsl(var(--muted-foreground));
+}
+
+/* 细滚动条:替换原生粗滚动条,配色走主题 token,亮/暗自适应(prompt-input textarea 等)。 */
+.pi-scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+}
+.pi-scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.pi-scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pi-scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
+}
+.pi-scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.55);
+}
+.pi-scrollbar-thin::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 幽灵滚动条:比 thin 更细更透(4px,idle 0.18 / hover 0.4),轨道透明、贴右边,
+   悬停才略显——用于会话列表等需要"几乎无感"滚动条的侧栏。 */
+.pi-scrollbar-ghost {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.18);
+  border-radius: 9999px;
+}
+.pi-scrollbar-ghost:hover::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.4);
+}
+.pi-scrollbar-ghost::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 减少动效偏好:遵从 prefers-reduced-motion,几乎归零动画/过渡时长(a11y 基线,
+   Web Interface Guidelines「Honor prefers-reduced-motion」)。保留极短时长而非 0 以不破坏
+   依赖 transitionend/animationend 的逻辑。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * @blksails/pi-web-canvas-ui — canvas 领域样式(自 packages/ui/src/styles.css 随迁,canvas-ui-m15 Req 2.4)。
+ * 两段原样迁入:工具图 affordance + 棋盘透明底;由 app 装配层 @import 引入。
+ */
+
+/* Canvas 活跃期:对话流工具卡里带 att_ 的生成图可点(→ 进 Canvas 工作台编辑)。悬浮示可点。 */
+[data-canvas-tool-image-clickable] [data-pi-tool-images] img[data-att-id] {
+  cursor: pointer;
+}
+[data-canvas-tool-image-clickable] [data-pi-tool-images] img[data-att-id]:hover {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* 棋盘透明底:Canvas 舞台展示透明图区(16px 方格,主题 muted 半透)。 */
+.canvas-checkerboard {
+  background-image:
+    linear-gradient(45deg, hsl(var(--muted) / 0.4) 25%, transparent 25%),
+    linear-gradient(-45deg, hsl(var(--muted) / 0.4) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, hsl(var(--muted) / 0.4) 75%),
+    linear-gradient(-45deg, transparent 75%, hsl(var(--muted) / 0.4) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+/* Pane 页面统一扁平视觉：层级靠留白与底色，不靠投影。 */
+[data-canvas-workbench] *,
+[data-canvas-gallery] * {
+  box-shadow: none !important;
+}
+
+*, ::before, ::after {
+  --tw-border-spacing-x: 0;
+  --tw-border-spacing-y: 0;
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+  --tw-pan-x:  ;
+  --tw-pan-y:  ;
+  --tw-pinch-zoom:  ;
+  --tw-scroll-snap-strictness: proximity;
+  --tw-gradient-from-position:  ;
+  --tw-gradient-via-position:  ;
+  --tw-gradient-to-position:  ;
+  --tw-ordinal:  ;
+  --tw-slashed-zero:  ;
+  --tw-numeric-figure:  ;
+  --tw-numeric-spacing:  ;
+  --tw-numeric-fraction:  ;
+  --tw-ring-inset:  ;
+  --tw-ring-offset-width: 0px;
+  --tw-ring-offset-color: #fff;
+  --tw-ring-color: rgb(59 130 246 / 0.5);
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+  --tw-blur:  ;
+  --tw-brightness:  ;
+  --tw-contrast:  ;
+  --tw-grayscale:  ;
+  --tw-hue-rotate:  ;
+  --tw-invert:  ;
+  --tw-saturate:  ;
+  --tw-sepia:  ;
+  --tw-drop-shadow:  ;
+  --tw-backdrop-blur:  ;
+  --tw-backdrop-brightness:  ;
+  --tw-backdrop-contrast:  ;
+  --tw-backdrop-grayscale:  ;
+  --tw-backdrop-hue-rotate:  ;
+  --tw-backdrop-invert:  ;
+  --tw-backdrop-opacity:  ;
+  --tw-backdrop-saturate:  ;
+  --tw-backdrop-sepia:  ;
+  --tw-contain-size:  ;
+  --tw-contain-layout:  ;
+  --tw-contain-paint:  ;
+  --tw-contain-style:  ;
+}
+
+::backdrop {
+  --tw-border-spacing-x: 0;
+  --tw-border-spacing-y: 0;
+  --tw-translate-x: 0;
+  --tw-translate-y: 0;
+  --tw-rotate: 0;
+  --tw-skew-x: 0;
+  --tw-skew-y: 0;
+  --tw-scale-x: 1;
+  --tw-scale-y: 1;
+  --tw-pan-x:  ;
+  --tw-pan-y:  ;
+  --tw-pinch-zoom:  ;
+  --tw-scroll-snap-strictness: proximity;
+  --tw-gradient-from-position:  ;
+  --tw-gradient-via-position:  ;
+  --tw-gradient-to-position:  ;
+  --tw-ordinal:  ;
+  --tw-slashed-zero:  ;
+  --tw-numeric-figure:  ;
+  --tw-numeric-spacing:  ;
+  --tw-numeric-fraction:  ;
+  --tw-ring-inset:  ;
+  --tw-ring-offset-width: 0px;
+  --tw-ring-offset-color: #fff;
+  --tw-ring-color: rgb(59 130 246 / 0.5);
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-shadow: 0 0 #0000;
+  --tw-shadow-colored: 0 0 #0000;
+  --tw-blur:  ;
+  --tw-brightness:  ;
+  --tw-contrast:  ;
+  --tw-grayscale:  ;
+  --tw-hue-rotate:  ;
+  --tw-invert:  ;
+  --tw-saturate:  ;
+  --tw-sepia:  ;
+  --tw-drop-shadow:  ;
+  --tw-backdrop-blur:  ;
+  --tw-backdrop-brightness:  ;
+  --tw-backdrop-contrast:  ;
+  --tw-backdrop-grayscale:  ;
+  --tw-backdrop-hue-rotate:  ;
+  --tw-backdrop-invert:  ;
+  --tw-backdrop-opacity:  ;
+  --tw-backdrop-saturate:  ;
+  --tw-backdrop-sepia:  ;
+  --tw-contain-size:  ;
+  --tw-contain-layout:  ;
+  --tw-contain-paint:  ;
+  --tw-contain-style:  ;
+}/*
+! tailwindcss v3.4.19 | MIT License | https://tailwindcss.com
+*//*
+1. Prevent padding and border from affecting element width. (https://github.com/mozdevs/cssremedy/issues/4)
+2. Allow adding a border to an element by just adding a border-width. (https://github.com/tailwindcss/tailwindcss/pull/116)
+*/
+
+*,
+::before,
+::after {
+  box-sizing: border-box; /* 1 */
+  border-width: 0; /* 2 */
+  border-style: solid; /* 2 */
+  border-color: #e5e7eb; /* 2 */
+}
+
+::before,
+::after {
+  --tw-content: '';
+}
+
+/*
+1. Use a consistent sensible line-height in all browsers.
+2. Prevent adjustments of font size after orientation changes in iOS.
+3. Use a more readable tab size.
+4. Use the user's configured `sans` font-family by default.
+5. Use the user's configured `sans` font-feature-settings by default.
+6. Use the user's configured `sans` font-variation-settings by default.
+7. Disable tap highlights on iOS
+*/
+
+html,
+:host {
+  line-height: 1.5; /* 1 */
+  -webkit-text-size-adjust: 100%; /* 2 */
+  -moz-tab-size: 4; /* 3 */
+  tab-size: 4; /* 3 */
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"; /* 4 */
+  font-feature-settings: normal; /* 5 */
+  font-variation-settings: normal; /* 6 */
+  -webkit-tap-highlight-color: transparent; /* 7 */
+}
+
+/*
+1. Remove the margin in all browsers.
+2. Inherit line-height from `html` so users can set them as a class directly on the `html` element.
+*/
+
+body {
+  margin: 0; /* 1 */
+  line-height: inherit; /* 2 */
+}
+
+/*
+1. Add the correct height in Firefox.
+2. Correct the inheritance of border color in Firefox. (https://bugzilla.mozilla.org/show_bug.cgi?id=190655)
+3. Ensure horizontal rules are visible by default.
+*/
+
+hr {
+  height: 0; /* 1 */
+  color: inherit; /* 2 */
+  border-top-width: 1px; /* 3 */
+}
+
+/*
+Add the correct text decoration in Chrome, Edge, and Safari.
+*/
+
+abbr:where([title]) {
+  text-decoration: underline dotted;
+}
+
+/*
+Remove the default font size and weight for headings.
+*/
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/*
+Reset links to optimize for opt-in styling instead of opt-out.
+*/
+
+a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+/*
+Add the correct font weight in Edge and Safari.
+*/
+
+b,
+strong {
+  font-weight: bolder;
+}
+
+/*
+1. Use the user's configured `mono` font-family by default.
+2. Use the user's configured `mono` font-feature-settings by default.
+3. Use the user's configured `mono` font-variation-settings by default.
+4. Correct the odd `em` font sizing in all browsers.
+*/
+
+code,
+kbd,
+samp,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; /* 1 */
+  font-feature-settings: normal; /* 2 */
+  font-variation-settings: normal; /* 3 */
+  font-size: 1em; /* 4 */
+}
+
+/*
+Add the correct font size in all browsers.
+*/
+
+small {
+  font-size: 80%;
+}
+
+/*
+Prevent `sub` and `sup` elements from affecting the line height in all browsers.
+*/
+
+sub,
+sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+sub {
+  bottom: -0.25em;
+}
+
+sup {
+  top: -0.5em;
+}
+
+/*
+1. Remove text indentation from table contents in Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=999088, https://bugs.webkit.org/show_bug.cgi?id=201297)
+2. Correct table border color inheritance in all Chrome and Safari. (https://bugs.chromium.org/p/chromium/issues/detail?id=935729, https://bugs.webkit.org/show_bug.cgi?id=195016)
+3. Remove gaps between table borders by default.
+*/
+
+table {
+  text-indent: 0; /* 1 */
+  border-color: inherit; /* 2 */
+  border-collapse: collapse; /* 3 */
+}
+
+/*
+1. Change the font styles in all browsers.
+2. Remove the margin in Firefox and Safari.
+3. Remove default padding in all browsers.
+*/
+
+button,
+input,
+optgroup,
+select,
+textarea {
+  font-family: inherit; /* 1 */
+  font-feature-settings: inherit; /* 1 */
+  font-variation-settings: inherit; /* 1 */
+  font-size: 100%; /* 1 */
+  font-weight: inherit; /* 1 */
+  line-height: inherit; /* 1 */
+  letter-spacing: inherit; /* 1 */
+  color: inherit; /* 1 */
+  margin: 0; /* 2 */
+  padding: 0; /* 3 */
+}
+
+/*
+Remove the inheritance of text transform in Edge and Firefox.
+*/
+
+button,
+select {
+  text-transform: none;
+}
+
+/*
+1. Correct the inability to style clickable types in iOS and Safari.
+2. Remove default button styles.
+*/
+
+button,
+input:where([type='button']),
+input:where([type='reset']),
+input:where([type='submit']) {
+  -webkit-appearance: button; /* 1 */
+  background-color: transparent; /* 2 */
+  background-image: none; /* 2 */
+}
+
+/*
+Use the modern Firefox focus style for all focusable elements.
+*/
+
+:-moz-focusring {
+  outline: auto;
+}
+
+/*
+Remove the additional `:invalid` styles in Firefox. (https://github.com/mozilla/gecko-dev/blob/2f9eacd9d3d995c937b4251a5557d95d494c9be1/layout/style/res/forms.css#L728-L737)
+*/
+
+:-moz-ui-invalid {
+  box-shadow: none;
+}
+
+/*
+Add the correct vertical alignment in Chrome and Firefox.
+*/
+
+progress {
+  vertical-align: baseline;
+}
+
+/*
+Correct the cursor style of increment and decrement buttons in Safari.
+*/
+
+::-webkit-inner-spin-button,
+::-webkit-outer-spin-button {
+  height: auto;
+}
+
+/*
+1. Correct the odd appearance in Chrome and Safari.
+2. Correct the outline style in Safari.
+*/
+
+[type='search'] {
+  -webkit-appearance: textfield; /* 1 */
+  outline-offset: -2px; /* 2 */
+}
+
+/*
+Remove the inner padding in Chrome and Safari on macOS.
+*/
+
+::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+
+/*
+1. Correct the inability to style clickable types in iOS and Safari.
+2. Change font properties to `inherit` in Safari.
+*/
+
+::-webkit-file-upload-button {
+  -webkit-appearance: button; /* 1 */
+  font: inherit; /* 2 */
+}
+
+/*
+Add the correct display in Chrome and Safari.
+*/
+
+summary {
+  display: list-item;
+}
+
+/*
+Removes the default spacing and border for appropriate elements.
+*/
+
+blockquote,
+dl,
+dd,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+hr,
+figure,
+p,
+pre {
+  margin: 0;
+}
+
+fieldset {
+  margin: 0;
+  padding: 0;
+}
+
+legend {
+  padding: 0;
+}
+
+ol,
+ul,
+menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+Reset default styling for dialogs.
+*/
+dialog {
+  padding: 0;
+}
+
+/*
+Prevent resizing textareas horizontally by default.
+*/
+
+textarea {
+  resize: vertical;
+}
+
+/*
+1. Reset the default placeholder opacity in Firefox. (https://github.com/tailwindlabs/tailwindcss/issues/3300)
+2. Set the default placeholder color to the user's configured gray 400 color.
+*/
+
+input::placeholder,
+textarea::placeholder {
+  opacity: 1; /* 1 */
+  color: #9ca3af; /* 2 */
+}
+
+/*
+Set the default cursor for buttons.
+*/
+
+button,
+[role="button"] {
+  cursor: pointer;
+}
+
+/*
+Make sure disabled buttons don't get the pointer cursor.
+*/
+:disabled {
+  cursor: default;
+}
+
+/*
+1. Make replaced elements `display: block` by default. (https://github.com/mozdevs/cssremedy/issues/14)
+2. Add `vertical-align: middle` to align replaced elements more sensibly by default. (https://github.com/jensimmons/cssremedy/issues/14#issuecomment-634934210)
+   This can trigger a poorly considered lint error in some tools but is included by design.
+*/
+
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block; /* 1 */
+  vertical-align: middle; /* 2 */
+}
+
+/*
+Constrain images and videos to the parent width and preserve their intrinsic aspect ratio. (https://github.com/mozdevs/cssremedy/issues/14)
+*/
+
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Make elements with the HTML hidden attribute stay hidden by default */
+[hidden]:where(:not([hidden="until-found"])) {
+  display: none;
+} .pointer-events-none {
+  pointer-events: none;
+} .pointer-events-auto {
+  pointer-events: auto;
+} .absolute {
+  position: absolute;
+} .relative {
+  position: relative;
+} .inset-0 {
+  inset: 0px;
+} .inset-x-0 {
+  left: 0px;
+  right: 0px;
+} .-bottom-1\.5 {
+  bottom: -0.375rem;
+} .-left-1\.5 {
+  left: -0.375rem;
+} .-right-1\.5 {
+  right: -0.375rem;
+} .-top-1\.5 {
+  top: -0.375rem;
+} .bottom-0 {
+  bottom: 0px;
+} .bottom-0\.5 {
+  bottom: 0.125rem;
+} .bottom-1 {
+  bottom: 0.25rem;
+} .bottom-12 {
+  bottom: 3rem;
+} .bottom-2 {
+  bottom: 0.5rem;
+} .left-0\.5 {
+  left: 0.125rem;
+} .left-1 {
+  left: 0.25rem;
+} .left-1\/2 {
+  left: 50%;
+} .left-2 {
+  left: 0.5rem;
+} .right-0\.5 {
+  right: 0.125rem;
+} .right-2 {
+  right: 0.5rem;
+} .top-0 {
+  top: 0px;
+} .top-0\.5 {
+  top: 0.125rem;
+} .top-1 {
+  top: 0.25rem;
+} .top-1\/2 {
+  top: 50%;
+} .top-11 {
+  top: 2.75rem;
+} .top-2 {
+  top: 0.5rem;
+} .z-10 {
+  z-index: 10;
+} .z-20 {
+  z-index: 20;
+} .z-30 {
+  z-index: 30;
+} .z-40 {
+  z-index: 40;
+} .z-50 {
+  z-index: 50;
+} .z-\[1\] {
+  z-index: 1;
+} .z-\[2\] {
+  z-index: 2;
+} .z-\[3\] {
+  z-index: 3;
+} .z-\[40\] {
+  z-index: 40;
+} .z-\[4\] {
+  z-index: 4;
+} .mx-1 {
+  margin-left: 0.25rem;
+  margin-right: 0.25rem;
+} .mx-auto {
+  margin-left: auto;
+  margin-right: auto;
+} .my-0\.5 {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+} .mb-0\.5 {
+  margin-bottom: 0.125rem;
+} .mb-1 {
+  margin-bottom: 0.25rem;
+} .ml-auto {
+  margin-left: auto;
+} .mr-1 {
+  margin-right: 0.25rem;
+} .mt-1 {
+  margin-top: 0.25rem;
+} .block {
+  display: block;
+} .flex {
+  display: flex;
+} .inline-flex {
+  display: inline-flex;
+} .table {
+  display: table;
+} .grid {
+  display: grid;
+} .hidden {
+  display: none;
+} .aspect-square {
+  aspect-ratio: 1 / 1;
+} .h-20 {
+  height: 5rem;
+} .h-3 {
+  height: 0.75rem;
+} .h-3\.5 {
+  height: 0.875rem;
+} .h-4 {
+  height: 1rem;
+} .h-6 {
+  height: 1.5rem;
+} .h-7 {
+  height: 1.75rem;
+} .h-8 {
+  height: 2rem;
+} .h-9 {
+  height: 2.25rem;
+} .h-full {
+  height: 100%;
+} .h-px {
+  height: 1px;
+} .max-h-56 {
+  max-height: 14rem;
+} .max-h-\[80\%\] {
+  max-height: 80%;
+} .max-h-\[calc\(100\%-4\.5rem\)\] {
+  max-height: calc(100% - 4.5rem);
+} .min-h-0 {
+  min-height: 0px;
+} .min-h-\[60px\] {
+  min-height: 60px;
+} .w-10 {
+  width: 2.5rem;
+} .w-14 {
+  width: 3.5rem;
+} .w-20 {
+  width: 5rem;
+} .w-3 {
+  width: 0.75rem;
+} .w-3\.5 {
+  width: 0.875rem;
+} .w-32 {
+  width: 8rem;
+} .w-36 {
+  width: 9rem;
+} .w-4 {
+  width: 1rem;
+} .w-40 {
+  width: 10rem;
+} .w-44 {
+  width: 11rem;
+} .w-56 {
+  width: 14rem;
+} .w-6 {
+  width: 1.5rem;
+} .w-7 {
+  width: 1.75rem;
+} .w-72 {
+  width: 18rem;
+} .w-8 {
+  width: 2rem;
+} .w-9 {
+  width: 2.25rem;
+} .w-\[68px\] {
+  width: 68px;
+} .w-full {
+  width: 100%;
+} .min-w-0 {
+  min-width: 0px;
+} .min-w-36 {
+  min-width: 9rem;
+} .min-w-\[1\.75rem\] {
+  min-width: 1.75rem;
+} .min-w-\[3rem\] {
+  min-width: 3rem;
+} .min-w-\[8rem\] {
+  min-width: 8rem;
+} .max-w-2xl {
+  max-width: 42rem;
+} .max-w-52 {
+  max-width: 13rem;
+} .max-w-\[200px\] {
+  max-width: 200px;
+} .max-w-\[80\%\] {
+  max-width: 80%;
+} .max-w-xl {
+  max-width: 36rem;
+} .flex-1 {
+  flex: 1 1 0%;
+} .shrink-0 {
+  flex-shrink: 0;
+} .-translate-x-1\/2 {
+  --tw-translate-x: -50%;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+} .-translate-y-1\/2 {
+  --tw-translate-y: -50%;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+} .transform {
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+} @keyframes spin {
+
+  to {
+    transform: rotate(360deg);
+  }
+} .animate-spin {
+  animation: spin 1s linear infinite;
+} .cursor-ew-resize {
+  cursor: ew-resize;
+} .cursor-ns-resize {
+  cursor: ns-resize;
+} .cursor-nwse-resize {
+  cursor: nwse-resize;
+} .cursor-pointer {
+  cursor: pointer;
+} .cursor-text {
+  cursor: text;
+} .select-none {
+  user-select: none;
+} .resize-none {
+  resize: none;
+} .resize {
+  resize: both;
+} .columns-\[160px\] {
+  columns: 160px;
+} .grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+} .grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+} .grid-cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+} .grid-cols-\[repeat\(auto-fill\2c minmax\(160px\2c 1fr\)\)\] {
+  grid-template-columns: repeat(auto-fill,minmax(160px,1fr));
+} .flex-col {
+  flex-direction: column;
+} .flex-wrap {
+  flex-wrap: wrap;
+} .items-center {
+  align-items: center;
+} .justify-center {
+  justify-content: center;
+} .justify-between {
+  justify-content: space-between;
+} .gap-0\.5 {
+  gap: 0.125rem;
+} .gap-1 {
+  gap: 0.25rem;
+} .gap-1\.5 {
+  gap: 0.375rem;
+} .gap-2 {
+  gap: 0.5rem;
+} .gap-3 {
+  gap: 0.75rem;
+} .overflow-hidden {
+  overflow: hidden;
+} .overflow-x-auto {
+  overflow-x: auto;
+} .overflow-y-auto {
+  overflow-y: auto;
+} .truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+} .whitespace-nowrap {
+  white-space: nowrap;
+} .rounded {
+  border-radius: 0.25rem;
+} .rounded-\[3px\] {
+  border-radius: 3px;
+} .rounded-\[var\(--radius\)\] {
+  border-radius: var(--radius);
+} .rounded-full {
+  border-radius: 9999px;
+} .rounded-lg {
+  border-radius: var(--radius);
+} .rounded-md {
+  border-radius: calc(var(--radius) - 2px);
+} .rounded-none {
+  border-radius: 0px;
+} .rounded-sm {
+  border-radius: calc(var(--radius) - 4px);
+} .border {
+  border-width: 1px;
+} .border-t {
+  border-top-width: 1px;
+} .border-dashed {
+  border-style: dashed;
+} .border-\[hsl\(var\(--background\)\)\] {
+  border-color: hsl(var(--background));
+} .border-\[hsl\(var\(--border\)\)\] {
+  border-color: hsl(var(--border));
+} .border-\[hsl\(var\(--input\)\)\] {
+  border-color: hsl(var(--input));
+} .border-\[hsl\(var\(--primary\)\)\] {
+  border-color: hsl(var(--primary));
+} .bg-\[hsl\(var\(--accent\)\)\] {
+  background-color: hsl(var(--accent));
+} .bg-\[hsl\(var\(--background\)\)\] {
+  background-color: hsl(var(--background));
+} .bg-\[hsl\(var\(--background\)\)\]\/75 {
+  background-color: hsl(var(--background) / 0.75);
+} .bg-\[hsl\(var\(--background\)\)\]\/85 {
+  background-color: hsl(var(--background) / 0.85);
+} .bg-\[hsl\(var\(--background\)\)\]\/90 {
+  background-color: hsl(var(--background) / 0.9);
+} .bg-\[hsl\(var\(--border\)\)\] {
+  background-color: hsl(var(--border));
+} .bg-\[hsl\(var\(--card\)\)\] {
+  background-color: hsl(var(--card));
+} .bg-\[hsl\(var\(--destructive\)\)\] {
+  background-color: hsl(var(--destructive));
+} .bg-\[hsl\(var\(--foreground\)\)\] {
+  background-color: hsl(var(--foreground));
+} .bg-\[hsl\(var\(--muted\)\/0\.3\)\] {
+  background-color: hsl(var(--muted)/0.3);
+} .bg-\[hsl\(var\(--muted\)\/0\.4\)\] {
+  background-color: hsl(var(--muted)/0.4);
+} .bg-\[hsl\(var\(--muted\)\/0\.5\)\] {
+  background-color: hsl(var(--muted)/0.5);
+} .bg-\[hsl\(var\(--popover\)\)\] {
+  background-color: hsl(var(--popover));
+} .bg-\[hsl\(var\(--popover\2c var\(--background\)\)\)\] {
+  background-color: hsl(var(--popover,var(--background)));
+} .bg-\[hsl\(var\(--primary\)\)\] {
+  background-color: hsl(var(--primary));
+} .bg-\[hsl\(var\(--secondary\)\)\] {
+  background-color: hsl(var(--secondary));
+} .bg-black\/50 {
+  background-color: rgb(0 0 0 / 0.5);
+} .bg-black\/60 {
+  background-color: rgb(0 0 0 / 0.6);
+} .bg-transparent {
+  background-color: transparent;
+} .bg-gradient-to-b {
+  background-image: linear-gradient(to bottom, var(--tw-gradient-stops));
+} .from-black\/50 {
+  --tw-gradient-from: rgb(0 0 0 / 0.5) var(--tw-gradient-from-position);
+  --tw-gradient-to: rgb(0 0 0 / 0) var(--tw-gradient-to-position);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+} .to-transparent {
+  --tw-gradient-to: transparent var(--tw-gradient-to-position);
+} .object-contain {
+  object-fit: contain;
+} .object-cover {
+  object-fit: cover;
+} .object-fill {
+  object-fit: fill;
+} .p-0 {
+  padding: 0px;
+} .p-1 {
+  padding: 0.25rem;
+} .p-2 {
+  padding: 0.5rem;
+} .p-3 {
+  padding: 0.75rem;
+} .px-0\.5 {
+  padding-left: 0.125rem;
+  padding-right: 0.125rem;
+} .px-1 {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+} .px-1\.5 {
+  padding-left: 0.375rem;
+  padding-right: 0.375rem;
+} .px-14 {
+  padding-left: 3.5rem;
+  padding-right: 3.5rem;
+} .px-2 {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+} .px-2\.5 {
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+} .px-3 {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+} .px-4 {
+  padding-left: 1rem;
+  padding-right: 1rem;
+} .py-0\.5 {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+} .py-1 {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+} .py-1\.5 {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+} .py-2 {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+} .py-6 {
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+} .pb-1 {
+  padding-bottom: 0.25rem;
+} .pl-0\.5 {
+  padding-left: 0.125rem;
+} .pl-2 {
+  padding-left: 0.5rem;
+} .pl-8 {
+  padding-left: 2rem;
+} .pr-1\.5 {
+  padding-right: 0.375rem;
+} .pr-2 {
+  padding-right: 0.5rem;
+} .pt-1\.5 {
+  padding-top: 0.375rem;
+} .text-left {
+  text-align: left;
+} .text-center {
+  text-align: center;
+} .text-\[10px\] {
+  font-size: 10px;
+} .text-\[11px\] {
+  font-size: 11px;
+} .text-\[8px\] {
+  font-size: 8px;
+} .text-\[9px\] {
+  font-size: 9px;
+} .text-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+} .text-xs {
+  font-size: 0.75rem;
+  line-height: 1rem;
+} .font-medium {
+  font-weight: 500;
+} .font-semibold {
+  font-weight: 600;
+} .tabular-nums {
+  --tw-numeric-spacing: tabular-nums;
+  font-variant-numeric: var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction);
+} .leading-none {
+  line-height: 1;
+} .text-\[hsl\(var\(--card-foreground\)\)\] {
+  color: hsl(var(--card-foreground));
+} .text-\[hsl\(var\(--destructive-foreground\)\)\] {
+  color: hsl(var(--destructive-foreground));
+} .text-\[hsl\(var\(--foreground\)\)\] {
+  color: hsl(var(--foreground));
+} .text-\[hsl\(var\(--muted-foreground\)\)\] {
+  color: hsl(var(--muted-foreground));
+} .text-\[hsl\(var\(--popover-foreground\)\)\] {
+  color: hsl(var(--popover-foreground));
+} .text-\[hsl\(var\(--popover-foreground\2c var\(--foreground\)\)\)\] {
+  color: hsl(var(--popover-foreground,var(--foreground)));
+} .text-\[hsl\(var\(--primary\)\)\] {
+  color: hsl(var(--primary));
+} .text-\[hsl\(var\(--primary-foreground\)\)\] {
+  color: hsl(var(--primary-foreground));
+} .text-\[hsl\(var\(--secondary-foreground\)\)\] {
+  color: hsl(var(--secondary-foreground));
+} .text-white {
+  --tw-text-opacity: 1;
+  color: rgb(255 255 255 / var(--tw-text-opacity, 1));
+} .underline-offset-2 {
+  text-underline-offset: 2px;
+} .opacity-30 {
+  opacity: 0.3;
+} .opacity-50 {
+  opacity: 0.5;
+} .opacity-60 {
+  opacity: 0.6;
+} .opacity-70 {
+  opacity: 0.7;
+} .opacity-80 {
+  opacity: 0.8;
+} .shadow {
+  --tw-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --tw-shadow-colored: 0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+} .shadow-lg {
+  --tw-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --tw-shadow-colored: 0 10px 15px -3px var(--tw-shadow-color), 0 4px 6px -4px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+} .shadow-md {
+  --tw-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --tw-shadow-colored: 0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+} .shadow-sm {
+  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+} .outline-none {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+} .outline {
+  outline-style: solid;
+} .outline-dashed {
+  outline-style: dashed;
+} .outline-1 {
+  outline-width: 1px;
+} .outline-\[hsl\(var\(--primary\)\)\] {
+  outline-color: hsl(var(--primary));
+} .ring-2 {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+} .ring-\[hsl\(var\(--primary\)\)\] {
+  --tw-ring-color: hsl(var(--primary));
+} .ring-\[hsl\(var\(--ring\)\)\] {
+  --tw-ring-color: hsl(var(--ring));
+} .blur {
+  --tw-blur: blur(8px);
+  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+} .filter {
+  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
+} .backdrop-blur {
+  --tw-backdrop-blur: blur(8px);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+} .backdrop-blur-sm {
+  --tw-backdrop-blur: blur(4px);
+  -webkit-backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+  backdrop-filter: var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);
+} .transition-\[opacity\2c border-color\2c box-shadow\] {
+  transition-property: opacity,border-color,box-shadow;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+} .transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+} .transition-opacity {
+  transition-property: opacity;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+} .duration-200 {
+  transition-duration: 200ms;
+} .duration-300 {
+  transition-duration: 300ms;
+} .will-change-transform {
+  will-change: transform;
+} .placeholder\:text-\[hsl\(var\(--muted-foreground\)\)\]::placeholder {
+  color: hsl(var(--muted-foreground));
+} .hover\:bg-\[hsl\(var\(--accent\)\)\]:hover {
+  background-color: hsl(var(--accent));
+} .hover\:bg-\[hsl\(var\(--muted\)\)\]:hover {
+  background-color: hsl(var(--muted));
+} .hover\:underline:hover {
+  text-decoration-line: underline;
+} .hover\:opacity-100:hover {
+  opacity: 1;
+} .hover\:opacity-90:hover {
+  opacity: 0.9;
+} .focus\:bg-\[hsl\(var\(--accent\)\)\]:focus {
+  background-color: hsl(var(--accent));
+} .focus\:text-\[hsl\(var\(--accent-foreground\)\)\]:focus {
+  color: hsl(var(--accent-foreground));
+} .focus\:outline-none:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+} .focus\:ring-2:focus {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+} .focus\:ring-\[hsl\(var\(--ring\)\)\]:focus {
+  --tw-ring-color: hsl(var(--ring));
+} .focus-visible\:outline-none:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+} .focus-visible\:ring-1:focus-visible {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+} .focus-visible\:ring-2:focus-visible {
+  --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+  --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+} .focus-visible\:ring-\[hsl\(var\(--ring\)\)\]:focus-visible {
+  --tw-ring-color: hsl(var(--ring));
+} .disabled\:pointer-events-none:disabled {
+  pointer-events: none;
+} .disabled\:cursor-not-allowed:disabled {
+  cursor: not-allowed;
+} .disabled\:opacity-40:disabled {
+  opacity: 0.4;
+} .disabled\:opacity-50:disabled {
+  opacity: 0.5;
+} .group:hover .group-hover\:flex {
+  display: flex;
+} .data-\[disabled\]\:pointer-events-none[data-disabled] {
+  pointer-events: none;
+} .data-\[disabled\]\:opacity-50[data-disabled] {
+  opacity: 0.5;
+} .\[\&\>\*\]\:mb-2>* {
+  margin-bottom: 0.5rem;
+}</style></head><body><div id="root" style="height:100%"></div><script src="./pane-canvas.js"></script></body></html>

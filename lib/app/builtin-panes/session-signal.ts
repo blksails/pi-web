@@ -7,12 +7,15 @@
  *
  * ## 载荷边界
  *
- * 只放会话标识、agent 源、工作目录。**不含凭据、不含 token、不含宿主环境变量**。
+ * 会话信号只放会话标识、agent 源、工作目录；身份信号只放递增版本号。
+ * **不含凭据、不含 token、不含宿主环境变量**。
  * 工作目录对该会话的 agent 本已可见(它就在那里跑),故不构成新增暴露面。
  */
 
 /** 与 guest 侧 `panes/session-info/view.ts` 约定的信号名。 */
 export const SESSION_SIGNAL_NAME = "host:session";
+/** 仅通知 pane 重取当前宿主身份数据；不携带用户或公司标识。 */
+export const IDENTITY_REVISION_SIGNAL_NAME = "host:identityRevision";
 
 export interface SessionSignalFacts {
   readonly sessionId: string;

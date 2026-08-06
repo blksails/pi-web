@@ -1,0 +1,18 @@
+node_modules/
+dist/
+!.pi/web/dist/
+!.pi/web/dist/**
+coverage/
+*.log
+.env
+.env.local
+.DS_Store
+test-results/
+playwright-report/
+*.tsbuildinfo
+**/.pi/schedule-prompts.json
+
+# 本地 agent / 迭代 / 打包运行产物
+/.grok/
+/.iteration/
+/.tmp/

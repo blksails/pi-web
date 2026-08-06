@@ -39,6 +39,7 @@ import {
 // ai-gateway-catalog-coldstart(任务 2.3):会话模型清单的反向拉取(runner 侧)。
 import { registerGatewayModelsPending } from "./gateway-models-wiring.js";
 import {
+  collectCompanyResourcePaths,
   collectExtensionPaths,
   mapResourceLoaderOptions,
   type SystemResourceOverrides,
@@ -48,12 +49,14 @@ import { mapSessionFields, resolveModel, type SessionModel } from "./session-opt
 // 资源类 / 会话类映射已析出;此处原样再导出,使既有
 // `from ".../option-mapper.js"` 的 import 路径零改动。
 export {
+  collectCompanyResourcePaths,
   collectExtensionPaths,
   collectForcedExtensionPaths,
   mapResourceLoaderOptions,
 } from "./resource-options.js";
 export type {
   MappedResourceLoaderOptions,
+  CompanyResourcePaths,
   SystemResourceOverrides,
 } from "./resource-options.js";
 export { isModelRef, mapSessionFields } from "./session-options.js";
@@ -92,6 +95,7 @@ export function buildRuntimeFactory(
     const forcedExtensionPaths = collectExtensionPaths(process.env);
     const { resourceLoaderOptions } = mapResourceLoaderOptions(def, {
       forcedExtensionPaths,
+      companyResourcePaths: collectCompanyResourcePaths(process.env),
       ...(systemResources.noSkills !== undefined ? { noSkills: systemResources.noSkills } : {}),
       ...(systemResources.noExtensions !== undefined
         ? { noExtensions: systemResources.noExtensions }

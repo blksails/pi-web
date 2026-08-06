@@ -143,6 +143,17 @@ export class SessionManager {
     return this.acceptingNew;
   }
 
+  /** Best-effort broadcast of a host control frame to all active runners. */
+  broadcastRunnerFrame(frame: unknown): void {
+    for (const session of this.store.list()) {
+      try {
+        session.sendRunnerFrame(frame);
+      } catch {
+        // A concurrent session close must not block identity switching.
+      }
+    }
+  }
+
   /**
    * SIGTERM 优雅停机(Req 8.x):停止接受新会话,逐一停止全部会话(广播 end + 关通道),
    * 单会话失败被隔离继续;完成后 store 为空且无残留挂起。

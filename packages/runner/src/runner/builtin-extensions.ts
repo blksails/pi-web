@@ -16,7 +16,7 @@
  * **任何形态**(本地 monorepo / 沙箱镜像 / standalone)都是该环境下的有效路径。
  * **零新解析机制**。
  *
- * ## 清单范围(★ 只含 pi-web 自带的三个)
+ * ## 清单范围(★ 只含 pi-web 自带的内置扩展)
  *
  * 不含 sandbox enforcement:其入口**在 agent 包内**(由 source 决定,须传 agentDir,见
  * `../sandbox/entry.ts` 文件头),属 **agent 作用域**扩展,无法也不应从自身模块位置推算。
@@ -31,12 +31,13 @@ import { createLogger } from "@blksails/pi-web-logger";
 import { autoTitleEntryPath } from "@blksails/pi-web-tool-kit/auto-title-entry";
 import { extensionManagerEntryPath } from "@blksails/pi-web-tool-kit/extension-entry";
 import { mcpEntryPath } from "@blksails/pi-web-tool-kit/mcp-entry";
+import { templateManagerEntryPath } from "@blksails/pi-web-tool-kit/template-entry";
 
 const log = createLogger({ namespace: "runner:builtin-extensions" });
 
 /** 一个 pi-web 自带内置扩展的解析说明。 */
 export interface BuiltinExtensionSpec {
-  readonly id: "extension-tools" | "auto-title" | "mcp";
+  readonly id: "extension-tools" | "auto-title" | "mcp" | "template-manager";
   /** 从自身模块位置推算入口绝对路径;解析不到返回 undefined。 */
   readonly resolve: () => string | undefined;
 }
@@ -54,6 +55,7 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   { id: "extension-tools", resolve: extensionManagerEntryPath },
   { id: "auto-title", resolve: autoTitleEntryPath },
   { id: "mcp", resolve: mcpEntryPath },
+  { id: "template-manager", resolve: templateManagerEntryPath },
 ];
 
 /** 诊断出口的最小视图(默认 `process.stderr`;单测注入以捕获)。 */
