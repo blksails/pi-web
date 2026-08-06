@@ -75,6 +75,46 @@
   height: 14px;
 }
 
+/*
+ * 侧栏 launcherRail：webext 入口（如 Canvas）与搜索/新建同构。
+ * Canvas 经 agent external 包加载，常落后 monorepo 源码；用宿主 CSS 锁图标列 24px，
+ * 兼容「首子为 svg」旧 DOM 与「首子为 span.icon-box」新 DOM。
+ */
+[data-launcher-rail] [data-canvas-launcher] {
+  display: flex !important;
+  width: 100%;
+  min-height: 28px;
+  align-items: center;
+  gap: 8px !important; /* gap-2 */
+  padding: 4px 6px !important; /* py-1 px-1.5 */
+  border-radius: 7px !important;
+}
+[data-launcher-rail] [data-canvas-launcher]:hover {
+  background: hsl(var(--surface-subtle));
+}
+/* 旧包：svg 直接挂在 button 下 → 用 padding 扩成 24 占位 */
+[data-launcher-rail] [data-canvas-launcher] > svg:first-child {
+  box-sizing: content-box;
+  width: 14px !important;
+  height: 14px !important;
+  flex: 0 0 auto;
+  padding: 5px;
+  margin: 0;
+}
+/* 新包：首子已是 24 列 */
+[data-launcher-rail] [data-canvas-launcher] > span:first-child:not(:only-child) {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+}
+[data-launcher-rail] [data-canvas-launcher] > span:first-child:not(:only-child) svg {
+  width: 14px;
+  height: 14px;
+}
+
 /* 液体玻璃层：透光、微饱和，随滚动内容显出下层色彩。 */
 .pi-liquid-glass {
   background:
@@ -150,51 +190,99 @@
   text-underline-offset: 2px;
 }
 
+/*
+ * 全局滚动条(Firefox + WebKit,含 Mac Chrome/Safari):
+ * - 轨道 = 主题 --background(亮/暗随 .dark 切换)
+ * - 无上下/左右箭头按钮
+ * - Mac overlay 滚动条仅在滚动时露出,样式仍适用;经典滚动条立刻可见
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) hsl(var(--background));
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+*::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+*::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 9999px;
+  border: 2px solid hsl(var(--background));
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: hsl(var(--muted-foreground) / 0.5);
+}
+*::-webkit-scrollbar-corner {
+  background: hsl(var(--background));
+}
+
 /* 细滚动条:替换原生粗滚动条,配色走主题 token,亮/暗自适应(prompt-input textarea 等)。 */
 .pi-scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.35) hsl(var(--background));
 }
 .pi-scrollbar-thin::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
+.pi-scrollbar-thin::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
 .pi-scrollbar-thin::-webkit-scrollbar-track {
-  background: transparent;
+  background: hsl(var(--background));
 }
 .pi-scrollbar-thin::-webkit-scrollbar-thumb {
   background-color: hsl(var(--muted-foreground) / 0.35);
   border-radius: 9999px;
+  border: 2px solid hsl(var(--background));
+  background-clip: padding-box;
 }
 .pi-scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.55);
 }
 .pi-scrollbar-thin::-webkit-scrollbar-corner {
-  background: transparent;
+  background: hsl(var(--background));
 }
 
-/* 幽灵滚动条:比 thin 更细更透(4px,idle 0.18 / hover 0.4),轨道透明、贴右边,
-   悬停才略显——用于会话列表等需要"几乎无感"滚动条的侧栏。 */
+/* 幽灵滚动条:更细更透,轨道仍贴合主题背景;悬停拇指略显。 */
 .pi-scrollbar-ghost {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.18) hsl(var(--background));
 }
 .pi-scrollbar-ghost::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
+.pi-scrollbar-ghost::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
 .pi-scrollbar-ghost::-webkit-scrollbar-track {
-  background: transparent;
+  background: hsl(var(--background));
 }
 .pi-scrollbar-ghost::-webkit-scrollbar-thumb {
   background-color: hsl(var(--muted-foreground) / 0.18);
   border-radius: 9999px;
+  border: 1px solid hsl(var(--background));
+  background-clip: padding-box;
 }
 .pi-scrollbar-ghost:hover::-webkit-scrollbar-thumb {
   background-color: hsl(var(--muted-foreground) / 0.4);
 }
 .pi-scrollbar-ghost::-webkit-scrollbar-corner {
-  background: transparent;
+  background: hsl(var(--background));
 }
 
 /* 减少动效偏好:遵从 prefers-reduced-motion,几乎归零动画/过渡时长(a11y 基线,

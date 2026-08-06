@@ -65,6 +65,7 @@ export function CanvasLauncher({
   const { open, toggle } = useCanvasOpen();
   if (!on) return null;
   const panesMode = workspacePaneId !== undefined && workspacePaneId.length > 0;
+  // 布局与 LauncherRail 搜索/新建同构(icon 列 24 + gap-2 + py-1)。
   return (
     <button
       type="button"
@@ -76,9 +77,14 @@ export function CanvasLauncher({
         if (panesMode) openOrActivatePaneFromHost(workspacePaneId);
         else toggle();
       }}
-      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-[hsl(var(--accent))]"
+      className="flex min-h-[28px] w-full items-center gap-2 rounded-[7px] px-1.5 py-1 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
     >
-      <Images className="h-4 w-4 shrink-0 text-[hsl(var(--muted-foreground))]" aria-hidden="true" />
+      <span
+        aria-hidden
+        className="flex h-6 w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]"
+      >
+        <Images className="h-3.5 w-3.5" />
+      </span>
       <span>Canvas 画廊</span>
     </button>
   );

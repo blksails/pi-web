@@ -30,7 +30,9 @@ describe("chat resource controls", () => {
     const skillPill = screen.getByRole("button", { name: "技能" });
     expect(screen.getAllByRole("button", { name: "技能" })).toHaveLength(1);
     expect(skillPill.className).toContain("rounded-full");
-    expect(skillPill.querySelector("svg")?.classList.contains("lucide-zap")).toBe(true);
+    expect(skillPill.querySelector("svg")?.classList.contains("lucide-sparkles")).toBe(true);
+    expect(skillPill.className).toContain("bg-[hsl(var(--background))]");
+    expect(skillPill.className).not.toContain("bg-[hsl(var(--muted))]");
     fireEvent.click(skillPill);
     expect(screen.getByRole("menuitem", { name: /代码审查/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "管理技能" }));

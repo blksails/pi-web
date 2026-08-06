@@ -153,12 +153,12 @@ export function LauncherRail({
       });
   };
 
-  // ui-redesign prototype `.proto-nav-link`: min-height 34、padding 6×9、半径 control 7。
+  // 紧凑启动行:左 pad 6、图标列 24、gap 8、半径 7、行高 ~28。
   const rowClass = compact
-    ? "flex h-9 w-9 cursor-pointer items-center justify-center rounded-[7px] text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
-    : "flex min-h-[34px] w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]";
+    ? "flex h-8 w-8 cursor-pointer items-center justify-center rounded-[7px] text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
+    : "flex min-h-[28px] w-full items-center gap-2 rounded-[7px] px-1.5 py-1 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]";
   const iconClass =
-    "flex w-5 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]";
+    "flex h-6 w-6 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]";
 
   return (
     <nav
@@ -175,7 +175,7 @@ export function LauncherRail({
         className={rowClass}
       >
         <span aria-hidden className={iconClass}>
-          <Search className="h-4 w-4" />
+          <Search className="h-3.5 w-3.5" />
         </span>
         <span className={compact ? "sr-only" : undefined}>{searchText}</span>
       </button>
@@ -185,7 +185,7 @@ export function LauncherRail({
           data-launcher-search-panel
           className={compact
             ? "absolute left-[calc(100%+8px)] top-0 z-40 flex w-64 flex-col gap-1 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-2 shadow-lg"
-            : "flex flex-col gap-1 px-1 pb-1"}
+            : "flex flex-col gap-1 px-1.5 pb-1"}
         >
           <input
             autoFocus
@@ -251,7 +251,7 @@ export function LauncherRail({
         className={rowClass}
       >
         <span aria-hidden className={iconClass}>
-          <SquarePen className="h-4 w-4" />
+          <SquarePen className="h-3.5 w-3.5" />
         </span>
         <span className={compact ? "sr-only" : undefined}>{newChatText}</span>
       </button>
@@ -271,11 +271,11 @@ export function LauncherRail({
                 onClick={() => onLaunchSource(f.source)}
                 title={compact ? f.title ?? f.name : undefined}
                 className={compact
-                  ? "flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-left text-sm"
-                  : "flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left text-sm"}
+                  ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-left text-sm"
+                  : "flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1 text-left text-sm"}
               >
                 <span className={iconClass}>
-                  <Bot className="h-4 w-4" aria-hidden="true" />
+                  <Bot className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <span className={compact ? "sr-only" : "truncate"}>{f.title ?? f.name}</span>
               </button>
@@ -295,9 +295,12 @@ export function LauncherRail({
         </div>
       ) : null}
 
-      {/* webext 贡献槽(无贡献不占位;渲染失败经 error boundary 隔离) */}
+      {/* webext 槽:contents 让子按钮与搜索/新建同为 nav 的 flex 子项,避免额外 margin/包层错位 */}
       {webextSlot !== undefined && webextSlot !== null ? (
-        <div data-launcher-webext-slot className={compact ? "hidden" : "mt-1"}>
+        <div
+          data-launcher-webext-slot
+          className={compact ? "hidden" : "contents"}
+        >
           <ExtErrorBoundary>{webextSlot}</ExtErrorBoundary>
         </div>
       ) : null}

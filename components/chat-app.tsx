@@ -53,6 +53,7 @@ import {
 } from "../lib/app/builtin-panes/index.js";
 
 /** 侧栏折叠/展开图标(内联,避免在 app 层引入 lucide 依赖)。 */
+/** Pane 收起态展开钮：与 prototype 右侧分栏符号一致（线在右）。 */
 function PanelToggleIcon(): React.JSX.Element {
   return (
     <svg
@@ -66,7 +67,7 @@ function PanelToggleIcon(): React.JSX.Element {
       aria-hidden="true"
     >
       <rect x="3" y="4" width="18" height="16" rx="2" />
-      <line x1="9" y1="4" x2="9" y2="20" />
+      <line x1="15" y1="4" x2="15" y2="20" />
     </svg>
   );
 }
@@ -1135,7 +1136,7 @@ function SessionView({
         listFavorites={piClient.listFavorites}
         setFavorites={piClient.setFavorites}
         showFavorites={false}
-        className="gap-1"
+        className="gap-0.5"
       />
     );
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
@@ -1218,10 +1219,12 @@ function SessionView({
           </div>
         </div>,
       );
-    // 侧栏内边距:右 0 贴分隔线;左 6px 给侧线/hover 余量;上下 8px。块间距 10px。
+    // 侧栏内边距统一 pl-1.5/pr-0,与 Agent 头 / Launcher 行内 px-1.5 叠成同一左缘。
+    const sidebarShellClass =
+      "flex h-full w-[240px] flex-col gap-2 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] py-2 px-1";
     if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
-        <div className="flex h-full w-[240px] flex-col gap-2.5 overflow-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] py-2 pl-1.5 pr-0">
+        <div className={sidebarShellClass}>
           {currentAgent}
           {sessionNavigation}
           <div className="h-px shrink-0 bg-[hsl(var(--border))]" />
@@ -1232,7 +1235,7 @@ function SessionView({
         </div>,
       );
     return sessionListSlots(
-      <div className="flex h-full w-[240px] flex-col gap-2.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--sidebar))] py-2 pl-1.5 pr-0">
+      <div className={sidebarShellClass}>
         {currentAgent}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
@@ -1245,8 +1248,9 @@ function SessionView({
           {...(launcherContribution !== undefined
             ? { webextSlot: <SlotHost ext={extension} slot="launcherRail" /> }
             : {})}
+          className="gap-0.5"
         />
-        <div className="mx-1 my-1.5 h-px shrink-0 bg-[hsl(var(--border))]" />
+        <div className="h-px shrink-0 bg-[hsl(var(--border))]" />
         <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           {panel}
         </div>
@@ -1356,7 +1360,8 @@ function SessionView({
             aria-expanded={false}
             aria-label={t("chatApp.showPaneSidebar")}
             title={t("chatApp.showPaneSidebar")}
-            className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+            // ui-redesign §5.2/5.6:收起态仅 32 方钮 + surface，与 proto-pane-launcher 对齐。
+            className="absolute right-4 top-4 z-30 inline-flex h-8 w-8 items-center justify-center rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] text-[hsl(var(--foreground))] shadow-sm transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             <PanelToggleIcon />
           </button>

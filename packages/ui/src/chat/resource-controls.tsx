@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Sparkles } from "lucide-react";
+import { Pill } from "@blksails/pi-web-primitives";
 import { cn } from "../lib/cn.js";
 
 export interface ChatResourceConfig {
@@ -112,15 +113,15 @@ export function SkillPill({
   const [manageOpen, setManageOpen] = React.useState(false);
   return (
     <div className="relative" data-pi-skill-pill>
-      <button
+      <Pill
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        active={open}
         onClick={() => setOpen((current) => !current)}
-        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))]/70 px-3 py-0 text-xs text-[hsl(var(--foreground))] hover:bg-[hsl(var(--accent))]"
       >
         <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />技能
-      </button>
+      </Pill>
       {open ? (
         <div role="menu" className="absolute bottom-full left-0 z-40 mb-2 min-w-56 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1 text-[hsl(var(--popover-foreground))] shadow-lg">
           {catalog.skills.length === 0 ? <p className="px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">暂无可用技能</p> : catalog.skills.map((skill) => (

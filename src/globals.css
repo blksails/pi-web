@@ -24,6 +24,14 @@ body {
   overflow: hidden;
 }
 
+html {
+  /* 协助 Mac/系统控件(含滚动条)跟亮暗主题 */
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
