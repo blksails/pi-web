@@ -67,4 +67,6 @@ export type {
   UiRpcAction,
   UiRpcRequest,
   UiRpcResponse,
+  ToolPill,
+  ToolPillAction,
 } from "@blksails/pi-web-protocol";

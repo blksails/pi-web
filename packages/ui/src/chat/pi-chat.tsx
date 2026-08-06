@@ -98,6 +98,12 @@ import {
 /** pane 装载与合并的诊断出口(浏览器 sink → 总线 → 日志面板)。 */
 const log = createLogger({ namespace: "ui:panes" });
 
+/**
+ * 会话列最小宽(ui-redesign):对话区保底,侧栏/右栏可收缩让位,但会话列不被压到不可用。
+ * 拖拽右栏钳制与「窄容器让位」共用此常数。
+ */
+export const CONVERSATION_MIN_PX = 480;
+
 type TauriTitleWindow = Window & {
   readonly __TAURI__?: {
     readonly window?: {
@@ -405,9 +411,10 @@ const EMPTY_STATUSES: UseExtensionUIResult["statuses"] = {};
 const DEFAULT_TOOLBAR_ORDER: ReadonlyArray<ToolbarControl> = [
   "attachments",
   "model",
+  // 技能紧贴模型，再排语音/联网与扩展自定义 pill。
+  "skills",
   "speech",
   "webSearch",
-  "skills",
   "submit",
 ];
 
@@ -862,6 +869,41 @@ export function PiChat({
     },
     [],
   );
+  /**
+   * 右栏拖拽/容器收窄时的 [min,max] 钳制(与历史拖拽语义一致):
+   * - min = min(配置下限, 容器 70%);
+   * - max = max(min, min(配置上限, 70%, 留给右栏的剩余=容器−左栏−会话下限));
+   * 会话列下限优先:右栏不得再大到把会话列压穿,避免横向溢出叠层。
+   */
+  const measurePanelBounds = React.useCallback((): {
+    readonly min: number;
+    readonly max: number;
+  } => {
+    const rect = panelResizeTreeRef.current?.getBoundingClientRect();
+    if (rect === undefined) {
+      return { min: minPanelWidth ?? 240, max: maxPanelWidth ?? 800 };
+    }
+    const availableMax = rect.width * maxPanelWidthRatio;
+    const sidebarEl = panelResizeTreeRef.current?.querySelector(
+      "[data-pi-chat-sidebar]",
+    );
+    const sidebarWidth = sidebarEl?.getBoundingClientRect().width ?? 0;
+    const conversationFloor = Math.min(
+      CONVERSATION_MIN_PX,
+      Math.max(0, rect.width - sidebarWidth),
+    );
+    const roomForPanel = rect.width - sidebarWidth - conversationFloor;
+    const min = Math.min(minPanelWidth ?? 240, availableMax);
+    const max = Math.max(
+      min,
+      Math.min(
+        maxPanelWidth ?? Number.POSITIVE_INFINITY,
+        availableMax,
+        roomForPanel,
+      ),
+    );
+    return { min, max };
+  }, [minPanelWidth, maxPanelWidth, maxPanelWidthRatio]);
   // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交。
   // content-well 几何由 ResizeObserver 单路 rAF 合并上报（见 publishTauriContentWellMetrics），
   // 此处不再额外 dispatch sync，避免「拖拽 rAF + RO + sync」三层插帧。
@@ -885,12 +927,7 @@ export function PiChat({
       }
       const rect = panelResizeTreeRef.current?.getBoundingClientRect();
       if (rect === undefined) return;
-      const availableMax = rect.width * maxPanelWidthRatio;
-      const min = Math.min(minPanelWidth ?? 240, availableMax);
-      const max = Math.max(
-        min,
-        Math.min(maxPanelWidth ?? Number.POSITIVE_INFINITY, availableMax),
-      );
+      const { min, max } = measurePanelBounds();
       const raw = rect.right - e.clientX;
       // 1px 迟滞，边界处不因亚像素/重排来回夹紧而颤动。
       const next = Math.max(min, Math.min(max, raw));
@@ -905,7 +942,7 @@ export function PiChat({
         if (width !== undefined) applyAsideWidthPreview(width);
       });
     },
-    [applyAsideWidthPreview, minPanelWidth, maxPanelWidth, maxPanelWidthRatio],
+    [applyAsideWidthPreview, measurePanelBounds],
   );
   const onPanelResizeDown = React.useCallback(
     (e: React.PointerEvent) => {
@@ -973,6 +1010,43 @@ export function PiChat({
     },
     [applyAsideWidthPreview, onPanelWidthChange],
   );
+
+  // 容器变窄时主动钳右栏,保证会话列 ≥ CONVERSATION_MIN_PX,杜绝横向溢出叠层悬浮。
+  // 树宽为 0(jsdom / 未布局)时不钳,避免误写 0 宽。
+  React.useEffect(() => {
+    if (
+      panelWidth === undefined ||
+      typeof panelWidth !== "number" ||
+      onPanelWidthChange === undefined
+    ) {
+      return;
+    }
+    const tree = panelResizeTreeRef.current;
+    if (tree === null) return;
+    let frame: number | undefined;
+    const clamp = (): void => {
+      if (panelDraggingRef.current) return;
+      const treeW = tree.getBoundingClientRect().width;
+      if (!(treeW > 0)) return;
+      const { min, max } = measurePanelBounds();
+      if (max > 0 && panelWidth > max + 0.5) {
+        onPanelWidthChange(Math.max(min, max));
+      }
+    };
+    const ro = new ResizeObserver(() => {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        clamp();
+      });
+    });
+    ro.observe(tree);
+    clamp();
+    return () => {
+      ro.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [panelWidth, onPanelWidthChange, measurePanelBounds]);
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -1829,7 +1903,7 @@ export function PiChat({
               ext={extension}
               slot="promptToolbar"
               as="span"
-              className="flex items-center gap-1"
+              className="flex items-center gap-2"
               {...(webextState !== undefined ? { state: webextState } : {})}
             />
           ) : null}
@@ -2160,7 +2234,7 @@ export function PiChat({
 
   const conversationBody = (
     <TurnAbortProvider onAbortTurn={abortTurnForTools}>
-    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-[hsl(var(--canvas))]">
       <Conversation
         className="flex-1"
         controlsBottom={dockHeight + 8}
@@ -2298,7 +2372,8 @@ export function PiChat({
   const tree = (
     <div
       className={cn(
-        "relative flex h-full w-full text-[hsl(var(--foreground))]",
+        // overflow-hidden:会话列 min 宽 + 右栏并存时禁止横向溢出叠层「悬浮」。
+        "relative flex h-full w-full overflow-hidden bg-[hsl(var(--canvas))] text-[hsl(var(--foreground))]",
         className,
       )}
       ref={panelResizeTreeRef}
@@ -2320,7 +2395,7 @@ export function PiChat({
       ) : null}
 
       {slots?.sidebar !== undefined ? (
-        <aside className="shrink-0" data-pi-chat-sidebar>
+        <aside className="min-w-0 shrink-0" data-pi-chat-sidebar>
           {slots.sidebar}
         </aside>
       ) : null}
@@ -2334,19 +2409,25 @@ export function PiChat({
       />
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
-          app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。 */}
+          app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。
+          min-w + 不透明 canvas:会话列保底且不与侧栏/右栏叠层透出。 */}
       <div
         ref={panelConversationColumnRef}
-        className="relative isolate flex min-w-0 flex-1 flex-col"
+        className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[hsl(var(--canvas))]"
         data-pi-chat-conversation-column
-        {...(panelConversationWidth !== undefined
-          ? {
-              style: {
+        style={
+          panelConversationWidth !== undefined
+            ? {
                 width: panelConversationWidth,
                 flex: `0 0 ${panelConversationWidth}px`,
-              },
-            }
-          : {})}
+                minWidth: Math.min(CONVERSATION_MIN_PX, panelConversationWidth),
+              }
+            : {
+                // flex 基线 0 + 硬下限:窄容器时由右栏让位(见 measurePanelBounds),不横向撑破。
+                flex: "1 1 0%",
+                minWidth: `min(100%, ${CONVERSATION_MIN_PX}px)`,
+              }
+        }
       >
         {backgroundLayer}
 
@@ -2375,7 +2456,7 @@ export function PiChat({
 
         {isEmpty ? (
           <div
-            className="pi-scrollbar-ghost flex flex-1 flex-col items-center justify-start overflow-y-auto px-4 pb-8 pt-[10vh]"
+            className="pi-scrollbar-ghost flex min-h-0 min-w-0 flex-1 flex-col items-center justify-start overflow-x-hidden overflow-y-auto bg-[hsl(var(--canvas))] px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
             {emptyBody}
@@ -2407,12 +2488,13 @@ export function PiChat({
             // relative:为连续模式拖拽分隔条(absolute left)提供定位上下文。
             // flex-col + min-h-0:为 right 位置日志面板提供有界高度上下文(见下方 logs 区);
             // 仅含 panelRight/artifact 时,子项无 flex-1 仍按内容堆叠(等价原 block 视觉)。
-            "relative hidden min-h-0 shrink-0 lg:flex lg:flex-col",
+            // shrink-0 + 宽度钳制:窄屏不压会话列;拖拽中 absolute 仅临时,松手回文档流。
+            "relative hidden min-h-0 shrink-0 bg-[hsl(var(--background))] lg:flex lg:flex-col",
             // 常显 1px 左边线；可拖宽时 resizer 只作命中层（默认透明）。
             showPanelRight
               ? "border-l border-[hsl(var(--border))]"
               : "overflow-hidden border-0",
-            panelRatioActive || keepPanesHostAlive ? "" : "w-96",
+            panelRatioActive || keepPanesHostAlive ? "" : "w-[360px]",
           )}
           {...(asideWidth !== undefined
             ? {

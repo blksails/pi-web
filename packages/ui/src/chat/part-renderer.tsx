@@ -272,7 +272,7 @@ export function PartRenderer({
           src={url}
           alt={alt}
           data-pi-message-image
-          className="max-h-80 max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
+          className="max-h-[40dvh] max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
         />
       );
     }

@@ -92,12 +92,12 @@ export function PiChatBasic({
       data-pi-chat
     >
       {slots?.sidebar !== undefined ? (
-        <aside className="shrink-0" data-pi-chat-sidebar>
+        <aside className="min-w-0" data-pi-chat-sidebar>
           {slots.sidebar}
         </aside>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-[min(100%,30rem)] flex-1 flex-col">
         {slots?.header !== undefined ? (
           <header data-pi-chat-header>{slots.header}</header>
         ) : null}

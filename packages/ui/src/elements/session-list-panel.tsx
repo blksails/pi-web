@@ -451,14 +451,20 @@ export function SessionListPanel(
         data-pi-session-list-item={item.sessionId}
         data-pi-session-list-item-busy={busy ? "" : undefined}
       >
-        {/* 整行可点击恢复;标题、来源与工作状态归于同一卡片。 */}
-        <div className="group relative flex items-stretch">
-          {hasSource ? (
+        {/* 整行可点击恢复;⋯ 相对本容器(整块 hover 高)垂直居中。 */}
+        <div className="group relative flex min-h-0 items-stretch">
+          {isActive ? (
+            <span
+              aria-hidden="true"
+              data-pi-session-list-item-active-accent=""
+              className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-[hsl(var(--foreground))]"
+            />
+          ) : hasSource ? (
             <span
               data-pi-session-list-item-accent={item.source}
               aria-hidden="true"
               style={{ backgroundColor: sourceAccentColor(item.source) }}
-              className="absolute inset-y-2 left-0 w-0.5 rounded-full"
+              className="absolute inset-y-1.5 left-0 w-0.5 rounded-full"
             />
           ) : null}
           {editing ? (
@@ -478,24 +484,27 @@ export function SessionListPanel(
               onClick={() => onResume(item.sessionId)}
               title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
-                "flex min-w-0 flex-1 flex-col gap-1 rounded-[calc(var(--radius)+2px)] border border-transparent px-3 py-2.5 text-left transition-colors focus-visible:outline-none",
+                // ui-redesign §5.2:低 chrome 行;固定 h 统一有/无来源与状态标签的行高。
+                "flex h-12 min-h-12 w-full min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-[7px] px-2 py-0 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1",
+                canManage && "group-hover:pr-8 group-focus-within:pr-8",
                 isActive
-                  ? "border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
-                  : "text-[hsl(var(--foreground))] hover:border-[hsl(var(--border))] hover:bg-[hsl(var(--surface-subtle)/0.55)] focus-visible:border-[hsl(var(--border))] focus-visible:bg-[hsl(var(--surface-subtle))]",
+                  ? "bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
+                  : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--surface-subtle))]",
               )}
             >
-              <span className="flex min-w-0 items-center justify-between gap-2">
-                <span className="min-w-0 truncate">{titleOf(item)}</span>
+              <span className="flex h-[18px] min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-[13px] leading-[18px]">
+                  {titleOf(item)}
+                </span>
                 {renderActivity(item)}
               </span>
-              {showSource && item.source !== undefined && item.source.length > 0 ? (
-                <span
-                  data-pi-session-list-item-source=""
-                  className="truncate text-[10px] font-normal leading-tight text-[hsl(var(--muted-foreground))]"
-                >
-                  {item.source}
-                </span>
-              ) : null}
+              {/* 副行恒占位:有 source 显示路径,无则空白,保证全表行高一致。 */}
+              <span
+                data-pi-session-list-item-source=""
+                className="block h-[14px] min-w-0 truncate font-mono text-[11px] font-normal leading-[14px] text-[hsl(var(--muted-foreground))]"
+              >
+                {hasSource ? item.source : "\u00a0"}
+              </span>
             </button>
           )}
           {canManage && !editing ? (
@@ -520,8 +529,8 @@ export function SessionListPanel(
         className,
       )}
     >
-      <div className="flex items-center justify-between px-1 pb-0.5">
-        <span className="text-xs font-medium tracking-tight text-[hsl(var(--muted-foreground))]">
+      <div className="flex items-center justify-between px-2 pb-1">
+        <span className="text-[11px] font-semibold tracking-[0.04em] text-[hsl(var(--muted-foreground))]">
           {title}
         </span>
       </div>
@@ -570,13 +579,13 @@ export function SessionListPanel(
                 <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                   {favoritesSectionLabel}
                 </div>
-                <ul className="flex flex-col gap-1">
+                <ul className="flex flex-col gap-[3px]">
                   {favoriteItems.map((item) => renderRow(item))}
                 </ul>
               </div>
             ) : null}
 
-            <ul className="flex flex-col gap-1">
+            <ul className="flex flex-col gap-[3px]">
               {pending !== undefined ? (
                 <li
                   key={pending.sessionId}
@@ -589,15 +598,20 @@ export function SessionListPanel(
                     data-pi-session-list-resume={pending.sessionId}
                     data-active=""
                     onClick={() => onResume(pending.sessionId)}
-                    className="block w-full truncate rounded-[calc(var(--radius)+2px)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] px-3 py-2.5 text-left font-medium text-[hsl(var(--foreground))] transition-colors focus-visible:outline-none"
+                    className="relative flex h-12 min-h-12 w-full flex-col justify-center rounded-[7px] bg-[hsl(var(--surface-subtle))] pl-3 pr-2 text-left font-medium text-[hsl(var(--foreground))] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-[hsl(var(--foreground))] before:content-['']"
                   >
-                    {pending.title !== undefined && pending.title.length > 0 ? (
-                      pending.title
-                    ) : (
-                      <span className="text-[hsl(var(--muted-foreground))]">
-                        {pendingSessionLabel}
-                      </span>
-                    )}
+                    <span className="h-[18px] truncate text-[13px] leading-[18px]">
+                      {pending.title !== undefined && pending.title.length > 0 ? (
+                        pending.title
+                      ) : (
+                        <span className="text-[hsl(var(--muted-foreground))]">
+                          {pendingSessionLabel}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block h-[14px] leading-[14px]" aria-hidden>
+                      {"\u00a0"}
+                    </span>
                   </button>
                 </li>
               ) : null}

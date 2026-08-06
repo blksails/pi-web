@@ -10,6 +10,7 @@
  */
 import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import type { ToolPill } from "@blksails/pi-web-kit";
 import { c } from "./cls.js";
 
 export type ToolPhase = "start" | "update" | "end" | "error";
@@ -75,7 +76,11 @@ export function ToolShell({
 
   return (
     <div
-      className="overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))]"
+      className={c(
+        "toolcard",
+        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] text-[hsl(var(--foreground))]",
+        isError && "border-l-[hsl(var(--destructive))]",
+      )}
       data-pi-tool
       data-pi-tool-phase={phase}
       data-pi-tool-name={name}
@@ -116,6 +121,7 @@ export function ToolShell({
           data-pi-tool-detail
         >
           {children}
+          <ToolPillRow pills={toolPillsOf(part.output)} />
         </div>
       ) : null}
     </div>
@@ -233,6 +239,72 @@ export function extractAssets(output: unknown): Asset[] {
   return out;
 }
 
+// ── pill 系统(ui-redesign:details.pills → 卡内 pill 行)────────────────────
+
+/** 从工具结果 details.pills 抽 pill(运行期轻校验,与 vendor toolPillsOf 同约束)。 */
+export function extractPills(output: unknown): ToolPill[] {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
+  const details = (output as { details?: unknown }).details;
+  if (details === null || typeof details !== "object") return [];
+  const pills = (details as { pills?: unknown }).pills;
+  if (!Array.isArray(pills)) return [];
+  const out: ToolPill[] = [];
+  for (const p of pills) {
+    if (p === null || typeof p !== "object") continue;
+    const o = p as Record<string, unknown>;
+    if (typeof o.label !== "string" || o.label.length === 0) continue;
+    out.push({
+      label: o.label,
+      ...(typeof o.action === "string"
+        ? { action: o.action as ToolPill["action"] }
+        : {}),
+      ...(typeof o.src === "string" ? { src: o.src } : {}),
+      ...(typeof o.copyText === "string" ? { copyText: o.copyText } : {}),
+    });
+  }
+  return out;
+}
+
+/** 内置 pill 动作;未知 action → 惰性展示(无副作用)。 */
+function runPill(p: ToolPill): void {
+  switch (p.action) {
+    case "download":
+      if (p.src !== undefined) void downloadOne(p.src, "");
+      break;
+    case "open":
+      if (p.src !== undefined) window.open(p.src, "_blank", "noreferrer");
+      break;
+    case "copy":
+      void navigator.clipboard
+        ?.writeText(p.copyText ?? p.src ?? p.label)
+        .catch(() => undefined);
+      break;
+    default:
+      break;
+  }
+}
+
+/** 工具卡 pill 行(样式对齐宿主 toolPillRow)。 */
+function ToolPillRow({ pills }: { readonly pills: readonly ToolPill[] }): React.JSX.Element | null {
+  if (pills.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5" data-pi-tool-pills>
+      {pills.map((p, i) => (
+        <button
+          key={`${i}-${p.label}`}
+          type="button"
+          data-pi-tool-pill
+          onClick={() => runPill(p)}
+          title={p.src}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface))] px-2.5 text-xs text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ── 资产单元格 ──────────────────────────────────────────────────────────────
 
 function openInCanvas(attId: string | undefined): void {
@@ -280,6 +352,7 @@ export function MediaCell({ asset }: { readonly asset: Asset }): React.JSX.Eleme
           onClick={() => openInCanvas(asset.attId)}
           style={{
             maxWidth: "100%",
+            maxHeight: "40vh",
             borderRadius: 6,
             display: "block",
             cursor: asset.attId ? "pointer" : "default",

@@ -26,6 +26,7 @@ import type {
   ConversationImageAction,
   ConversationImageAsset,
 } from "@blksails/pi-web-kit";
+import type { ToolPill } from "@blksails/pi-web-protocol";
 import { Response } from "../ui/response.js";
 import { cn } from "../lib/cn.js";
 import { ConversationImageGallery } from "../elements/conversation-image-gallery.js";
@@ -365,6 +366,98 @@ export interface ToolInputProps {
   readonly className?: string;
 }
 
+// ---------------------------------------------------------------------------
+// pill 系统(ui-redesign:details.pills → 工具卡 pill 行)
+// ---------------------------------------------------------------------------
+
+/** 从工具结果 details.pills 抽 pill(运行期轻校验,宽容未知字段)。 */
+export function toolPillsOf(output: unknown): ToolPill[] | undefined {
+  if (output === null || typeof output !== "object" || Array.isArray(output)) {
+    return undefined;
+  }
+  const details = (output as { details?: unknown }).details;
+  if (details === null || typeof details !== "object") return undefined;
+  const pills = (details as { pills?: unknown }).pills;
+  if (!Array.isArray(pills)) return undefined;
+  const out: ToolPill[] = [];
+  for (const p of pills) {
+    if (p === null || typeof p !== "object") continue;
+    const o = p as Record<string, unknown>;
+    if (typeof o.label !== "string" || o.label.length === 0) continue;
+    out.push({
+      label: o.label,
+      ...(typeof o.action === "string"
+        ? { action: o.action as ToolPill["action"] }
+        : {}),
+      ...(typeof o.src === "string" ? { src: o.src } : {}),
+      ...(typeof o.copyText === "string" ? { copyText: o.copyText } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** 取字节强制下载;失败回落新开页。 */
+async function downloadUrl(src: string): Promise<void> {
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = src.split("/").pop()?.split("?")[0] ?? "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch {
+    window.open(src, "_blank", "noreferrer");
+  }
+}
+
+/** 内置 pill 动作分发;未知 action → 惰性展示(无副作用,不抛错)。 */
+function runToolPill(pill: ToolPill): void {
+  switch (pill.action) {
+    case "download":
+      if (pill.src !== undefined) void downloadUrl(pill.src);
+      break;
+    case "open":
+      if (pill.src !== undefined) window.open(pill.src, "_blank", "noreferrer");
+      break;
+    case "copy":
+      void navigator.clipboard
+        ?.writeText(pill.copyText ?? pill.src ?? pill.label)
+        .catch(() => undefined);
+      break;
+    default:
+      break;
+  }
+}
+
+/** 工具卡 pill 行:把 details.pills 渲染为动作 pill(样式对齐 ConversationImageGallery 的 pill)。 */
+export function ToolPillRow({
+  pills,
+}: {
+  readonly pills: readonly ToolPill[];
+}): React.JSX.Element | null {
+  if (pills.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5" data-pi-tool-pills>
+      {pills.map((p, i) => (
+        <button
+          key={`${i}-${p.label}`}
+          type="button"
+          data-pi-tool-pill
+          onClick={() => runToolPill(p)}
+          title={p.src}
+          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface))] px-2.5 text-xs text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** 工具入参:同步 JSON 代码块。 */
 export function ToolInput({
   input,
@@ -539,6 +632,14 @@ function DefaultOutputNode({
       outputDetails !== undefined
         ? maskDeep(outputDetails)
         : undefined;
+    // details.pills → 工具卡 pill 行(ui-redesign pill 系统):label/src/copyText 走
+    // 展示脱敏(mask),与 details 一致;未知 action 由 ToolPillRow 惰性化。
+    const pills = toolPillsOf(output)?.map((p) => ({
+      ...p,
+      label: mask(p.label),
+      ...(p.src !== undefined ? { src: mask(p.src) } : {}),
+      ...(p.copyText !== undefined ? { copyText: mask(p.copyText) } : {}),
+    }));
     return (
       <div className="space-y-3">
         {text !== "" ? <Response>{sanitizeToolText(text)}</Response> : null}
@@ -558,6 +659,7 @@ function DefaultOutputNode({
             <JsonBlock value={details} className="mt-1" />
           </details>
         ) : null}
+        {pills !== undefined ? <ToolPillRow pills={pills} /> : null}
       </div>
     );
   }
@@ -635,8 +737,9 @@ export function PiToolPart({
   return (
     <div
       className={cn(
-        "overflow-hidden",
-        isError && "text-[hsl(var(--destructive))]",
+        // ui-redesign §5.3:工具卡 =「左侧状态线 + 浅灰 surface」;错误时状态线转 destructive。
+        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))]",
+        isError && "border-l-[hsl(var(--destructive))] text-[hsl(var(--destructive))]",
         className,
       )}
       data-pi-tool

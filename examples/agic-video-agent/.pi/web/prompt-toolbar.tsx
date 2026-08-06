@@ -127,7 +127,8 @@ function asSkills(raw: unknown): readonly SkillDef[] {
 // 独立发布形态仍由 styles.css 供全量样式，两路视觉同构。
 const PROMPT_TOOLBAR_CSS = `
 [data-pi-attachments-add]{display:none!important}
-[data-aigc-prompt-toolbar]{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+[data-aigc-prompt-toolbar]{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pw-aigc-studio-topbar,.pw-aigc-studio-tool-params{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
 .pw-aigc-studio-qp{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border:1px solid hsl(var(--border));border-radius:999px;background:hsl(var(--background));color:hsl(var(--muted-foreground));font-size:12px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
 .pw-aigc-studio-qp:hover{background:hsl(var(--muted));color:hsl(var(--foreground))}
 .pw-aigc-studio-qp.pw-aigc-studio-on{border-color:transparent;background:hsl(var(--primary));color:hsl(var(--primary-foreground))}

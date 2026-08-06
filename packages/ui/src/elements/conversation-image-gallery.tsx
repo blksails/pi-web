@@ -135,7 +135,8 @@ export function ConversationImageGallery({
               src={asset.url}
               alt={asset.filename ?? "AIGC 生成图片"}
               className="block h-auto max-w-full object-contain"
-              style={{ maxHeight: "min(56dvh, 520px)" }}
+              // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
+              style={{ maxHeight: "40dvh" }}
             />
             <div
               className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface)/0.86)] p-1 text-[hsl(var(--foreground))] shadow-lg backdrop-blur-md"

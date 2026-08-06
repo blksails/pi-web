@@ -42,7 +42,7 @@ export function EmptyState({
 }: EmptyStateProps): React.JSX.Element {
   return (
     <div
-      className={cn("w-full max-w-4xl", className)}
+      className={cn("w-full min-w-0 max-w-4xl", className)}
       data-pi-empty-state
     >
       <div className="mb-8">

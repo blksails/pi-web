@@ -79,6 +79,11 @@ export function ThemeControls({
   );
 }
 
+/** 读主题切换态;无 Provider 时返回 null。 */
+export function useThemeToggle(): ThemeToggleContextValue | null {
+  return useContext(ThemeToggleContext);
+}
+
 /** 主题切换图标按钮(放在头部与"设置"并排);无 Provider 时不渲染。 */
 export function ThemeToggleButton({
   className,
@@ -86,7 +91,7 @@ export function ThemeToggleButton({
   readonly className?: string;
 }): React.JSX.Element | null {
   const t = useI18n();
-  const ctx = useContext(ThemeToggleContext);
+  const ctx = useThemeToggle();
   if (ctx === null) return null;
   const { isDark, toggle } = ctx;
   return (

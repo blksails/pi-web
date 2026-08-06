@@ -307,6 +307,12 @@ function buildImageResult(
         mimeType: a.mimeType,
         name: a.name,
       })),
+      // ui-redesign pill 系统:每资产一个「下载」pill,agent/宿主可自定义。
+      pills: assets.map((a) => ({
+        label: a.name || "下载",
+        action: "download",
+        src: a.displayUrl,
+      })),
     },
   };
 }

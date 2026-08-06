@@ -44,7 +44,15 @@
  */
 [data-pi-prompt-input-toolbar] {
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+}
+/* 扩展自定义 pill（promptToolbar）彼此与宿主控件统一留白 */
+[data-pi-prompt-input-toolbar] [data-pi-ext-prompt-toolbar],
+[data-pi-prompt-input-toolbar] [data-aigc-prompt-toolbar] {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 [data-pi-prompt-input-toolbar] [data-pi-attachments-add],
 [data-pi-prompt-input-toolbar] [data-pi-model-trigger],

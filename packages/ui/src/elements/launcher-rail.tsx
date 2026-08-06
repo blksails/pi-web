@@ -51,7 +51,9 @@ export interface LauncherRailProps {
   readonly showFavorites?: boolean;
   /** 收起态仅保留图标与浮出式搜索/收藏入口。 */
   readonly compact?: boolean;
-  /** 收起态点击任一入口先展开侧栏,再交由入口继续处理。 */
+  /**
+   * @deprecated 收起态不再经入口展开侧栏;仅展开按钮负责展开。保留 prop 以免破调用方类型。
+   */
   readonly onCompactActivate?: () => void;
 }
 
@@ -73,8 +75,9 @@ export function LauncherRail({
   searchEmptyLabel,
   showFavorites = true,
   compact = false,
-  onCompactActivate,
+  onCompactActivate: _onCompactActivate,
 }: LauncherRailProps): React.JSX.Element {
+  void _onCompactActivate;
   const t = useI18n();
   const newChatText = newChatLabel ?? t("launcherRail.newChat");
   const searchText = searchLabel ?? t("launcherRail.search");
@@ -150,26 +153,24 @@ export function LauncherRail({
       });
   };
 
+  // ui-redesign prototype `.proto-nav-link`: min-height 34、padding 6×9、半径 control 7。
   const rowClass = compact
-    ? "flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
-    : "flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]";
+    ? "flex h-9 w-9 cursor-pointer items-center justify-center rounded-[7px] text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]"
+    : "flex min-h-[34px] w-full items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-left text-sm font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))]";
   const iconClass =
     "flex w-5 shrink-0 items-center justify-center text-[hsl(var(--muted-foreground))]";
 
   return (
     <nav
       data-launcher-rail
-      className={`${compact ? "relative flex shrink-0 flex-col items-center gap-1" : "flex shrink-0 flex-col gap-0.5"} ${className ?? ""}`}
+      className={`${compact ? "relative flex shrink-0 flex-col items-center gap-1.5" : "flex shrink-0 flex-col gap-1"} ${className ?? ""}`}
     >
       {/* 搜索入口 */}
       <button
         type="button"
         data-launcher-search
         aria-expanded={searchOpen}
-        onClick={() => {
-          if (compact) onCompactActivate?.();
-          else setSearchOpen((v) => !v);
-        }}
+        onClick={() => setSearchOpen((v) => !v)}
         title={compact ? searchText : undefined}
         className={rowClass}
       >
@@ -245,10 +246,7 @@ export function LauncherRail({
         type="button"
         data-launcher-new-chat
         data-new-session
-        onClick={() => {
-          if (compact) onCompactActivate?.();
-          onNewChat();
-        }}
+        onClick={() => onNewChat()}
         title={compact ? newChatText : undefined}
         className={rowClass}
       >
@@ -270,10 +268,7 @@ export function LauncherRail({
                 type="button"
                 data-launcher-favorite
                 data-source={f.source}
-                onClick={() => {
-                  if (compact) onCompactActivate?.();
-                  onLaunchSource(f.source);
-                }}
+                onClick={() => onLaunchSource(f.source)}
                 title={compact ? f.title ?? f.name : undefined}
                 className={compact
                   ? "flex h-9 w-9 items-center justify-center rounded-[var(--radius)] text-left text-sm"

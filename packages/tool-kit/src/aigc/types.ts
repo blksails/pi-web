@@ -6,6 +6,7 @@
  * 的交互补全;`ToolExecuteDetails` 是工具 result 的 `details` 判别联合(形态与重构前一致)。
  */
 import type { EndpointBehavior } from "../engine/endpoint-types.js";
+import type { ToolPill } from "@blksails/pi-web-protocol";
 
 /** 归属 provider 标识(UI 以字母徽章表示;工厂盖章)。 */
 export type ImageProviderId =
@@ -54,5 +55,7 @@ export type ToolExecuteDetails =
         mimeType: string;
         name: string;
       }[];
+      /** 工具卡 pill 行(ui-redesign pill 系统):agent 可随结果声明动作 pill。 */
+      pills?: ToolPill[];
     }
   | { ok: false; error: string };
