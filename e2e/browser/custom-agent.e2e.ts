@@ -12,6 +12,11 @@ import { test, expect } from "@playwright/test";
 test("custom agent: streaming reply, tool card, reasoning, inline interaction", async ({
   page,
 }) => {
+  // 默认 showReasoning=false 不渲染思考块;本用例要验 reasoning UI,先打开设置。
+  await page.request.put("/api/config/settings", {
+    data: { values: { showReasoning: true } },
+  });
+
   await page.goto("/");
 
   // Source picker → start the hello-agent session.

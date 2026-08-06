@@ -50,6 +50,7 @@ import {
 } from "../adapters/tauri-runtime.js";
 import type { TauriPaneMountTarget } from "../adapters/tauri.js";
 import { isPanesHostChromeHidden } from "../host-presence.js";
+import { shouldShowNativePane } from "./native-show-gate.js";
 import { PaneLoadingSkeleton } from "./pane-guest.js";
 import {
   PANES_WORKSPACE_DOMAIN,
@@ -1399,10 +1400,14 @@ export function PanesHost({
               }
             }
             if (
-              hostChromeOk &&
-              geometryReady &&
-              workspaceRef.current.activeInstanceId === instance.instanceId &&
-              !parkedRef.current.has(instance.instanceId)
+              shouldShowNativePane({
+                chromeVisible: hostChromeOk,
+                requiresGeometry: needsGeometry,
+                geometry: geometryReady ? "delivered" : "pending",
+                isActiveInstance:
+                  workspaceRef.current.activeInstanceId === instance.instanceId,
+                isParked: parkedRef.current.has(instance.instanceId),
+              })
             ) {
               await Promise.resolve(handle.show());
               setNativeShownKeys((current) =>

@@ -29,6 +29,7 @@ export type {
   SessionEndListener,
   CachedState,
   CreateSessionInput,
+  GatewayModelsResolver,
   PiSessionOptions,
   SessionChannel,
 } from "./session.types.js";

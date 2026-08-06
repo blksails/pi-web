@@ -193,6 +193,13 @@ function resolveExplicitInstance(
  *
  * ★行为与 {@link resolveAiGatewayConfig} 逐字节一致:同一套 env 名、同一套回落
  * 顺序(新名优先、旧名回落)、同一套白名单/超时/TTL 解析函数。
+ *
+ * ★模型 id 精选白名单是唯一的例外:它在 {@link resolveAiGatewayConfig} 时代**尚不存在**
+ * (spec f7084ea8 才引入),故不存在「与旧行为一致」的约束。这里按缺省实例标识派生出
+ * `PI_WEB_GATEWAY_AI_GATEWAY_MODELS` 供其配置——否则存量部署下**没有任何 env 名**能
+ * 提供精选白名单(`allowedOwners` 解析了而 `allowedModelIds` 没有,两条解析路径不对称),
+ * 表现为「配了 `_MODELS` 却毫无反应」这种静默失效。未配置时仍是 `undefined` = 不精选,
+ * 存量部署的字节级兼容不受影响。
  */
 function resolveLegacyDefaultInstance(
   env: NodeJS.ProcessEnv,
@@ -216,11 +223,18 @@ function resolveLegacyDefaultInstance(
       AI_GATEWAY_CATALOG_TTL_MS_ENV,
     ) ?? DEFAULT_CATALOG_TTL_MS;
 
+  // env 名按缺省实例标识派生,与显式实例走同一套规则(`instanceEnvPrefix`),
+  // 使两条路径的配置面在这一项上对齐:`PI_WEB_GATEWAY_AI_GATEWAY_MODELS`。
+  const allowedModelIds = parseModelIdAllowlist(
+    env[`${instanceEnvPrefix(DEFAULT_GATEWAY_INSTANCE_ID)}MODELS`],
+  );
+
   return {
     id: DEFAULT_GATEWAY_INSTANCE_ID,
     baseUrl,
     apiKey,
     allowedOwners: parseProviderAllowlist(env[AI_GATEWAY_PROVIDER_ALLOWLIST_ENV]),
+    ...(allowedModelIds !== undefined ? { allowedModelIds } : {}),
     ttlMs,
     timeoutMs,
   };

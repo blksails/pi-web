@@ -1062,18 +1062,22 @@ function SessionView({
     // webext 槽:仅当扩展为 launcherRail 贡献时才注入节点(否则不占位,Req 5.2);
     // SlotHost 自带 error boundary 隔离(Req 5.4)。
     const launcherContribution = resolveSlot(extension, "launcherRail");
+    // 侧栏定宽 + 上限:长会话标题不得撑开左栏(标题行由 SessionListPanel truncate)。
+    // w-64 / max-w-64 与 launcher 开/关两支路共用,避免无 rail 时 aside 随内容无限变宽。
+    const sidebarShellClass =
+      "flex h-full w-64 max-w-64 min-w-0 flex-col overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)]";
     // 门控开启,或 source 声明了 launcherRail 贡献(如 Canvas)时渲染 LauncherRail——
     // source 声明即意图,免全局门控(保 agent-source 自治;宿主仍中立,不认领域语义)。
     if (!launcherRailEnabled() && launcherContribution === undefined)
       return sessionListSlots(
-        <div className="flex h-full flex-col">
+        <div className={sidebarShellClass}>
           {sidebarTools}
-          <div className="min-h-0 flex-1">{panel}</div>
+          <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden">{panel}</div>
           {accountBar}
         </div>,
       );
     return sessionListSlots(
-      <div className="flex h-full w-64 flex-col gap-0.5 overflow-x-hidden border-r border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.35)]">
+      <div className={`${sidebarShellClass} gap-0.5`}>
         {sidebarTools}
         <LauncherRail
           onNewChat={() => setPickerOpen(true)}
@@ -1088,7 +1092,7 @@ function SessionView({
             : {})}
         />
         <div className="mx-1 my-1.5 h-px shrink-0 bg-[hsl(var(--border))]" />
-        <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="pi-scrollbar-ghost min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
           {panel}
         </div>
         {accountBar}
