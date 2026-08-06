@@ -2234,9 +2234,11 @@ export function PiChat({
 
   const conversationBody = (
     <TurnAbortProvider onAbortTurn={abortTurnForTools}>
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden bg-[hsl(var(--canvas))]">
+    {/* overflow-hidden：勿写 overflow-x-hidden 单独轴——CSS 会把另一轴算成 auto，
+        与 Conversation 视口叠出双滚动条。唯一纵向滚动在 Conversation viewport。 */}
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[hsl(var(--canvas))]">
       <Conversation
-        className="flex-1"
+        className="min-h-0 flex-1"
         controlsBottom={dockHeight + 8}
         controlsClassName={lay.content}
         userMessageNavigation={messages.flatMap((message, index) => {
