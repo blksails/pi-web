@@ -756,12 +756,16 @@ pub fn pane_webview_window_control(
                     let view = find_view()?;
                     if floating {
                         set_overlay_wants_top(false);
-                        return view.hide().map_err(|e| e.to_string());
+                        let r = view.hide().map_err(|e| e.to_string());
+                        crate::native_layout::force_host_redraw_for(&app);
+                        return r;
                     }
                     // tab 切换：记 visible=false 并 hide。勿 apply_layout（会误触其它 pane 的 show 路径）。
                     // hide_all / HostFullscreen 不走此分支，不抹记忆。
                     layout.set_pane_visibility(&label, false)?;
-                    view.hide().map_err(|e| e.to_string())
+                    let r = view.hide().map_err(|e| e.to_string());
+                    crate::native_layout::force_host_redraw_for(&app);
+                    r
                 }
                 "reload" => find_view()?.reload().map_err(|e| e.to_string()),
                 "focus" => find_view()?.set_focus().map_err(|e| e.to_string()),
@@ -771,7 +775,9 @@ pub fn pane_webview_window_control(
                     if !floating {
                         let _ = layout.unregister_pane(&label);
                     }
-                    view.close().map_err(|e| e.to_string())
+                    let r = view.close().map_err(|e| e.to_string());
+                    crate::native_layout::force_host_redraw_for(&app);
+                    r
                 }
                 "set-bounds" => {
                     if let Some(revision) = revision {

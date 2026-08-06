@@ -79,13 +79,20 @@ describe("computeAiGatewaySessionSpawnEnv — 不产出的四种情形", () => {
   });
 
   // 目录从未拉取成功时快照为空(fail-soft)。注册一个没有模型的 provider 无意义。
-  it("目录为空 → 空对象", () => {
+  // ★ 判据按新契约更新(spec ai-gateway-catalog-coldstart,Req 1.1):目录为空**不再**否决
+  //   该实例 —— 那是 stale-while-revalidate 的瞬时状态,不是「不可用」。凭据齐备即下发
+  //   BASE/KEY(声明),MODELS 留空由会话侧拉取补齐。
+  //   把 `if (modelIds.length === 0) return { env: {} }` 还原回去,本例即报红。
+  it("目录为空但凭据齐备 → 仍下发 BASE/KEY,不下发 MODELS(Req 1.1)", () => {
     const r = computeAiGatewaySessionSpawnEnv({
       aiGatewayConfig: CONFIG,
       apiKey: "k",
       catalog: [],
     });
-    expect(r.env).toEqual({});
+    expect(Object.keys(r.env).sort()).toEqual(
+      ["PI_WEB_AI_GATEWAY_SESSION_BASE", "PI_WEB_AI_GATEWAY_SESSION_KEY"].sort(),
+    );
+    expect(r.env.PI_WEB_AI_GATEWAY_SESSION_MODELS).toBeUndefined();
   });
 });
 
@@ -281,7 +288,10 @@ describe("computeAiGatewaySessionsSpawnEnv — 多实例(spec multi-gateway-prov
     expect(r.env["PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_KEY"]).toBe("internal-key");
   });
 
-  it("全部实例均无效(凭据缺失或目录为空)→ 空对象", () => {
+  // ★ 判据按新契约拆分(spec ai-gateway-catalog-coldstart,Req 1.1/4.1):
+  //   「凭据缺失」与「目录为空」不再是同一种结果 —— 前者仍缺席,后者在场但不带 MODELS。
+  //   两者若仍合并为「空对象」,四种成因在诊断上就不可分辨(Req 4.1 的前提)。
+  it("凭据缺失的实例缺席,目录为空的实例仍在场且不带 MODELS(Req 1.1, 4.1)", () => {
     const r = computeAiGatewaySessionsSpawnEnv({
       instances: [
         {
@@ -295,6 +305,29 @@ describe("computeAiGatewaySessionsSpawnEnv — 多实例(spec multi-gateway-prov
           baseUrl: "https://internal.example.com/compat",
           apiKey: "internal-key",
           catalog: [],
+        },
+      ],
+    });
+    // 只有凭据齐备的 blksails-ai 在场
+    expect(r.env.PI_WEB_AI_GATEWAY_SESSIONS).toBe("blksails-ai");
+    expect(r.env.PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_BASE).toBeDefined();
+    expect(r.env.PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_KEY).toBe("internal-key");
+    // 目录为空 → 不下发 MODELS,由会话侧拉取补齐
+    expect(r.env.PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_AI_MODELS).toBeUndefined();
+    // 凭据缺失的实例一个键都不产出
+    expect(
+      Object.keys(r.env).filter((k) => k.includes("CLOUDFLARE")),
+    ).toEqual([]);
+  });
+
+  it("全部实例凭据均缺失 → 空对象(零侵入基线,Req 5.1)", () => {
+    const r = computeAiGatewaySessionsSpawnEnv({
+      instances: [
+        {
+          instanceId: "cloudflare",
+          baseUrl: "https://cf.example.com/compat",
+          apiKey: undefined,
+          catalog: entries("openai/gpt-5.5"),
         },
       ],
     });
@@ -347,5 +380,102 @@ describe("computeAiGatewaySessionsSpawnEnv — 多实例(spec multi-gateway-prov
     expect(infos).toHaveLength(2);
     expect(infos.map((l) => l.data?.instanceId).sort()).toEqual(["blksails-ai", "cloudflare"]);
     expect(JSON.stringify(lines)).not.toContain("super-secret");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// spec ai-gateway-catalog-coldstart 任务 3.1(Req 4.1/4.2):四种「看不到网关模型」的
+// 成因必须**互不相同**且可判别。这四种表象在界面上完全一样,排查时若日志也分不开,
+// 就只能逐个试 —— 本次调查正是吃了这个亏。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("成因可判别(spec ai-gateway-catalog-coldstart,Req 4.1/4.2)", () => {
+  function capture() {
+    const lines: Array<{ msg: string; data?: Record<string, unknown> }> = [];
+    return {
+      lines,
+      logger: {
+        info: (msg: string, data?: Record<string, unknown>) =>
+          lines.push({ msg, ...(data ? { data } : {}) }),
+        warn: (msg: string, data?: Record<string, unknown>) =>
+          lines.push({ msg, ...(data ? { data } : {}) }),
+      },
+    };
+  }
+
+  it("★ 凭据缺失与目录未就绪产出**不同**的记录(此前前者是静默 continue)", () => {
+    const noKey = capture();
+    computeAiGatewaySessionsSpawnEnv({
+      instances: [
+        {
+          instanceId: "cf",
+          baseUrl: "https://cf.example.com/compat",
+          apiKey: undefined,
+          catalog: entries("openai/gpt-5.5"),
+        },
+      ],
+      logger: noKey.logger,
+    });
+
+    const notReady = capture();
+    computeAiGatewaySessionsSpawnEnv({
+      instances: [
+        {
+          instanceId: "cf",
+          baseUrl: "https://cf.example.com/compat",
+          apiKey: "k",
+          catalog: [],
+        },
+      ],
+      logger: notReady.logger,
+    });
+
+    const causeOf = (c: ReturnType<typeof capture>) =>
+      c.lines.map((l) => (l.data as { cause?: string } | undefined)?.cause).filter(Boolean);
+
+    expect(causeOf(noKey)).toEqual(["credential-missing"]);
+    expect(causeOf(notReady)).toEqual(["catalog-not-ready"]);
+    // 判别性本身:两者不可相等
+    expect(causeOf(noKey)).not.toEqual(causeOf(notReady));
+  });
+
+  it("目录已就绪且非空 → 记 delivered(与上面两种再区分)", () => {
+    const c = capture();
+    computeAiGatewaySessionsSpawnEnv({
+      instances: [
+        {
+          instanceId: "cf",
+          baseUrl: "https://cf.example.com/compat",
+          apiKey: "k",
+          catalog: entries("openai/gpt-5.5"),
+        },
+      ],
+      logger: c.logger,
+    });
+    expect(c.lines.map((l) => l.msg)).toContain("ai-gateway session models delivered");
+    expect(
+      c.lines.some((l) => (l.data as { cause?: string } | undefined)?.cause !== undefined),
+    ).toBe(false);
+  });
+
+  it("任何成因的记录都不含凭据(Req 4.2)", () => {
+    const c = capture();
+    computeAiGatewaySessionsSpawnEnv({
+      instances: [
+        {
+          instanceId: "cf",
+          baseUrl: "https://cf.example.com/compat",
+          apiKey: "sk-super-secret-token",
+          catalog: [],
+        },
+        {
+          instanceId: "other",
+          baseUrl: "https://o.example.com/compat",
+          apiKey: undefined,
+          catalog: entries("openai/gpt-5.5"),
+        },
+      ],
+      logger: c.logger,
+    });
+    expect(JSON.stringify(c.lines)).not.toContain("sk-super-secret-token");
   });
 });

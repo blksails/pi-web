@@ -389,8 +389,15 @@ export function SessionListPanel(
    *   `name` 缺省本身就完备表达了「标题尚未设置」,故不为此另设状态字段(避免第二事实源)。
    *   sessionId 仍在 hover 提示里可查。
    */
-  const titleOf = (item: SessionListItemWithSource): string =>
-    item.name !== undefined && item.name.length > 0 ? item.name : untitledLabel;
+  /**
+   * 列表项标题:有名用名,否则「新对话」占位。
+   * 折叠空白/换行 → 单行展示;长串由 CSS `truncate` 截断,完整内容放在 button `title` 悬停提示。
+   */
+  const titleOf = (item: SessionListItemWithSource): string => {
+    const raw =
+      item.name !== undefined && item.name.length > 0 ? item.name : untitledLabel;
+    return raw.replace(/\s+/g, " ").trim();
+  };
 
   /**
    * 会话工作状态指示(spec session-meta-index, Req 7.1-7.3/7.6)。
@@ -449,9 +456,11 @@ export function SessionListPanel(
         key={item.sessionId}
         data-pi-session-list-item={item.sessionId}
         data-pi-session-list-item-busy={busy ? "" : undefined}
+        className="min-w-0"
       >
-        {/* 整行可点击恢复;右侧 hover/聚焦显现 ⋯ 菜单。编辑态时标题位替换为内联输入。 */}
-        <div className="group relative flex items-center gap-0.5">
+        {/* 整行可点击恢复;右侧 hover/聚焦显现 ⋯ 菜单。编辑态时标题位替换为内联输入。
+            min-w-0 贯穿 flex 链,否则长标题会把侧栏撑破 truncate。 */}
+        <div className="group relative flex min-w-0 items-center gap-0.5">
           {hasSource ? (
             <span
               data-pi-session-list-item-accent={item.source}
@@ -467,7 +476,7 @@ export function SessionListPanel(
               initialValue={item.name ?? ""}
               onSubmit={handleRenameSubmit}
               onCancel={() => setEditingId(undefined)}
-              className="flex-1"
+              className="min-w-0 flex-1"
             />
           ) : (
             <button
@@ -478,7 +487,7 @@ export function SessionListPanel(
               onClick={() => onResume(item.sessionId)}
               title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
-                "block min-w-0 flex-1 truncate rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
+                "block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--radius)] px-2 py-2 text-left transition-colors focus-visible:outline-none",
                 isActive
                   ? "bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))]"
                   : "text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))] focus-visible:bg-[hsl(var(--muted))]",
@@ -500,7 +509,7 @@ export function SessionListPanel(
         {showSource && item.source !== undefined && item.source.length > 0 ? (
           <div
             data-pi-session-list-item-source=""
-            className="truncate px-2 text-[10px] leading-tight text-[hsl(var(--muted-foreground))]"
+            className="min-w-0 truncate px-2 text-[10px] leading-tight text-[hsl(var(--muted-foreground))]"
           >
             {item.source}
           </div>
@@ -513,7 +522,8 @@ export function SessionListPanel(
     <div
       data-pi-session-list=""
       className={cn(
-        "flex h-full shrink-0 flex-col gap-2 overflow-hidden text-sm",
+        // min-w-0 + max-w-full:侧栏定宽时子项可 truncate,不向外撑破 max-width。
+        "flex h-full min-w-0 max-w-full shrink-0 flex-col gap-2 overflow-hidden text-sm",
         className,
       )}
     >
@@ -586,10 +596,15 @@ export function SessionListPanel(
                     data-pi-session-list-resume={pending.sessionId}
                     data-active=""
                     onClick={() => onResume(pending.sessionId)}
-                    className="block w-full truncate rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
+                    title={
+                      pending.title !== undefined && pending.title.length > 0
+                        ? pending.title.replace(/\s+/g, " ").trim()
+                        : pendingSessionLabel
+                    }
+                    className="block w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap rounded-[var(--radius)] bg-[hsl(var(--secondary))] px-2 py-2 text-left text-[hsl(var(--secondary-foreground))] transition-colors focus-visible:outline-none"
                   >
                     {pending.title !== undefined && pending.title.length > 0 ? (
-                      pending.title
+                      pending.title.replace(/\s+/g, " ").trim()
                     ) : (
                       <span className="text-[hsl(var(--muted-foreground))]">
                         {pendingSessionLabel}

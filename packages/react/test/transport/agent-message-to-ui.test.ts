@@ -28,7 +28,7 @@ describe("agentMessagesToUiMessages", () => {
     ]);
   });
 
-  it("user string content 含附件引用占位符 → 剥离占位符,只留用户文本", () => {
+  it("user string content 含附件引用占位符 → 还原 file part + 只留用户文本", () => {
     // 复刻 server 端 injectAttachmentRefs 的注入形态:占位符块在前、空行分隔、原文本在后。
     const out = agentMessagesToUiMessages(
       msgs([
@@ -38,13 +38,21 @@ describe("agentMessagesToUiMessages", () => {
             "[attachment id=att_-ELR9OCaib2J8DK4jIbPsg type=image/jpeg name=4A532F59-8139-4DF4-B8C0-A41197503462_1_105_c.jpeg]\n\n看到什么",
         },
       ]),
+      { baseUrl: "/api" },
     );
     expect(out[0]?.parts).toEqual([
+      {
+        type: "file",
+        mediaType: "image/jpeg",
+        filename: "4A532F59-8139-4DF4-B8C0-A41197503462_1_105_c.jpeg",
+        url: "/api/attachments/att_-ELR9OCaib2J8DK4jIbPsg/raw",
+        attachmentId: "att_-ELR9OCaib2J8DK4jIbPsg",
+      },
       { type: "text", text: "看到什么", state: "done" },
     ]);
   });
 
-  it("user string content 多个占位符 + 文本 → 全部剥离,只留文本", () => {
+  it("user string content 多个占位符 + 文本 → 多个 file part + 文本", () => {
     const out = agentMessagesToUiMessages(
       msgs([
         {
@@ -53,13 +61,28 @@ describe("agentMessagesToUiMessages", () => {
             "[attachment id=att_a type=image/png name=a.png]\n[attachment id=att_b type=application/pdf name=b.pdf]\n\n看看这两个",
         },
       ]),
+      { baseUrl: "/api" },
     );
     expect(out[0]?.parts).toEqual([
+      {
+        type: "file",
+        mediaType: "image/png",
+        filename: "a.png",
+        url: "/api/attachments/att_a/raw",
+        attachmentId: "att_a",
+      },
+      {
+        type: "file",
+        mediaType: "application/pdf",
+        filename: "b.pdf",
+        url: "/api/attachments/att_b/raw",
+        attachmentId: "att_b",
+      },
       { type: "text", text: "看看这两个", state: "done" },
     ]);
   });
 
-  it("user string content 纯附件无文本 → 不产生空 text part", () => {
+  it("user string content 纯附件无文本 → 仅 file part,无空 text", () => {
     const out = agentMessagesToUiMessages(
       msgs([
         {
@@ -67,9 +90,18 @@ describe("agentMessagesToUiMessages", () => {
           content: "[attachment id=att_a type=image/png name=a.png]\n\n",
         },
       ]),
+      { baseUrl: "/api" },
     );
     expect(out[0]?.role).toBe("user");
-    expect(out[0]?.parts).toEqual([]);
+    expect(out[0]?.parts).toEqual([
+      {
+        type: "file",
+        mediaType: "image/png",
+        filename: "a.png",
+        url: "/api/attachments/att_a/raw",
+        attachmentId: "att_a",
+      },
+    ]);
   });
 
   it("user string content 无占位符 → 原样保留(不误伤普通方括号文本)", () => {

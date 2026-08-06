@@ -664,6 +664,14 @@ export function createGlobalTauriPaneOverlay(
   let unlistenResized: (() => void) | undefined;
   let hostOrigin = { x: 0, y: 0 };
   let hostScale = 1;
+  // ★ innerPosition 是否真取到过。取到过就**绝不**用 window.screenX/screenY——
+  //   macOS 原生 child WKWebView 里 screenX/screenY 的坐标空间与 Tauri 不一致
+  //   （多显示器实测偏差数百 px），据它拼的「屏幕坐标」再被 Rust 减 inner_position
+  //   后，overlay 菜单会落到窗口外（点「+」无任何可见反应的根因）。
+  //   用 innerPosition 时数学严格闭环：local = (origin/scale + rect) - origin/scale = rect。
+  let hostOriginValid = false;
+  const hostOriginLogical = (axis: "x" | "y"): number | undefined =>
+    hostOriginValid ? hostOrigin[axis] / hostScale : undefined;
   const stopFollowing = (): void => {
     follow?.dispose();
     follow = undefined;
@@ -757,11 +765,16 @@ export function createGlobalTauriPaneOverlay(
         ]);
         hostOrigin = origin;
         hostScale = scaleFactor;
+        hostOriginValid = true;
       } catch {
         // open 时再刷 metrics
       }
-      const x = Number.isFinite(target.screenX) ? target.screenX - 200 : -200;
-      const y = Number.isFinite(target.screenY) ? target.screenY - 200 : -200;
+      const parkOriginX = hostOriginLogical("x")
+        ?? (Number.isFinite(target.screenX) ? target.screenX : 0);
+      const parkOriginY = hostOriginLogical("y")
+        ?? (Number.isFinite(target.screenY) ? target.screenY : 0);
+      const x = parkOriginX - 200;
+      const y = parkOriginY - 200;
       await runtime.core.invoke(TAURI_PANE_RELAY_BIND_COMMAND, {
         instanceId: OVERLAY_INSTANCE_ID,
         epoch: 0,
@@ -822,18 +835,19 @@ export function createGlobalTauriPaneOverlay(
         ]);
         hostOrigin = origin;
         hostScale = scaleFactor;
+        hostOriginValid = true;
       } catch {
         // keep last
       }
       // 槽位 = 侧栏 content-well：与 content child webview 同位置同大小。
+      // ★ origin 优先取 Tauri innerPosition（见 hostOriginValid 注释）；screenX 只作
+      //   innerPosition 从未取到时的最后兜底。
       const screenBounds = (): PaneScreenBounds => {
         const rect = options.cover.getBoundingClientRect();
-        const originX = Number.isFinite(target.screenX)
-          ? target.screenX
-          : hostOrigin.x / hostScale;
-        const originY = Number.isFinite(target.screenY)
-          ? target.screenY
-          : hostOrigin.y / hostScale;
+        const originX = hostOriginLogical("x")
+          ?? (Number.isFinite(target.screenX) ? target.screenX : 0);
+        const originY = hostOriginLogical("y")
+          ?? (Number.isFinite(target.screenY) ? target.screenY : 0);
         return {
           x: originX + rect.left,
           y: originY + rect.top,
@@ -905,6 +919,7 @@ export function createGlobalTauriPaneOverlay(
           ]);
           hostOrigin = origin;
           hostScale = scaleFactor;
+          hostOriginValid = true;
         } catch {
           // ignore
         }
@@ -1181,12 +1196,12 @@ export function createGlobalTauriPaneViewAdapter(
         readonly height: number;
         readonly scaleFactor: number;
       }> => {
-        const browserOriginX = Number.isFinite(target.screenX)
-          ? target.screenX
-          : hostOrigin.x / hostScaleFactor;
-        const browserOriginY = Number.isFinite(target.screenY)
-          ? target.screenY
-          : hostOrigin.y / hostScaleFactor;
+        // ★ 只用 Tauri innerPosition（上面 refreshWindowMetrics 失败会抛，走到这里
+        //   origin 必然有效）。此前优先 window.screenX/screenY——macOS 原生 child
+        //   WKWebView 里其坐标空间与 Tauri 不一致（多显示器偏差数百 px），`=0` 浮层
+        //   窗口「漂到屏幕角落」的根因即此。
+        const browserOriginX = hostOrigin.x / hostScaleFactor;
+        const browserOriginY = hostOrigin.y / hostScaleFactor;
         return Promise.resolve({
           x: browserOriginX + x,
           y: browserOriginY + y,

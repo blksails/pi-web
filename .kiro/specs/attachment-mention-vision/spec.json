@@ -1,0 +1,22 @@
+{
+  "feature_name": "attachment-mention-vision",
+  "created_at": "2026-08-05T11:53:42Z",
+  "updated_at": "2026-08-05T12:43:00Z",
+  "language": "zh",
+  "phase": "implemented",
+  "approvals": {
+    "requirements": {
+      "generated": true,
+      "approved": true
+    },
+    "design": {
+      "generated": false,
+      "approved": false
+    },
+    "tasks": {
+      "generated": true,
+      "approved": true
+    }
+  },
+  "ready_for_implementation": true
+}

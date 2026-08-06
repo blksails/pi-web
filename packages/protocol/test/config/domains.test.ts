@@ -52,6 +52,16 @@ describe("settings 域", () => {
     ).toBe(false);
   });
 
+  it("showReasoning 默认 false,布尔校验", () => {
+    expect(settingsConfigSchema.parse({}).showReasoning).toBe(false);
+    expect(
+      settingsConfigSchema.safeParse({ showReasoning: true }).success,
+    ).toBe(true);
+    expect(
+      settingsConfigSchema.safeParse({ showReasoning: "yes" }).success,
+    ).toBe(false);
+  });
+
   it("保留未知字段", () => {
     const parsed = settingsConfigSchema.parse({ futureKey: 1 });
     expect((parsed as Record<string, unknown>).futureKey).toBe(1);

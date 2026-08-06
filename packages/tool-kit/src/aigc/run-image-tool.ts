@@ -264,6 +264,38 @@ export function checkPayloadLimit(
   );
 }
 
+/**
+ * 统一 image_edit 媒体入参:
+ * - 仅有 `images[]` → 补 `image` + `reference_images`(旧 mediaFields / 旧 buildBody)
+ * - 仅有 `image` → 补 `images[]`(新 mediaFields / 新 buildBody)
+ * 两边都有时以 `images[]` 为准(新契约优先)。
+ */
+export function normalizeImageEditMediaArgs(merged: Record<string, unknown>): void {
+  const imagesArr = Array.isArray(merged.images)
+    ? (merged.images as unknown[]).filter((x): x is string => typeof x === "string" && x.length > 0)
+    : [];
+  const imageSingular =
+    typeof merged.image === "string" && merged.image.length > 0 ? merged.image : undefined;
+  const refArr = Array.isArray(merged.reference_images)
+    ? (merged.reference_images as unknown[]).filter(
+        (x): x is string => typeof x === "string" && x.length > 0,
+      )
+    : [];
+
+  if (imagesArr.length > 0) {
+    merged.images = imagesArr;
+    merged.image = imagesArr[0];
+    if (imagesArr.length > 1) merged.reference_images = imagesArr.slice(1);
+    else delete merged.reference_images;
+    return;
+  }
+  if (imageSingular !== undefined) {
+    merged.images = [imageSingular, ...refArr];
+    merged.image = imageSingular;
+    if (refArr.length > 0) merged.reference_images = refArr;
+  }
+}
+
 /** 对显式 mediaFields(string 或 string[])逐字段解析。 */
 async function resolveMediaFields(
   mediaFields: readonly string[],
@@ -368,6 +400,12 @@ export async function runImageTool(
   const { model: modelArg, ...llmArgs } = params as Record<string, unknown> & { model?: string };
   const merged: Record<string, unknown> = { ...llmArgs };
   if (typeof modelArg === "string" && modelArg !== "") merged.model = modelArg;
+
+  // image_edit 入参契约迁移兼容:
+  // 新 schema 用 `images: string[]`(首项主图);旧 schema / 旧 systemPrompt 用 `image` + `reference_images`。
+  // LLM 常按 systemPrompt 或训练习惯传错字段 → mediaFields 解析不到 att_ → 工具无图/卡 UI。
+  // 在此双向归一化,两种写法都能落到 mediaFields 可解析的字段上。
+  normalizeImageEditMediaArgs(merged);
 
   // 用户偏好一级(aigc-prompt-toolbar Req 4):白名单参数缺省时读会话偏好 `aigc.<param>`。
   // 优先级:LLM 显式 args > 用户偏好 > defaultModel/交互补全。偏好命中即跳过对应追问;

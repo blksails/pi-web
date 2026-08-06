@@ -117,6 +117,35 @@ describe("SessionListPanel × refreshSignal", () => {
     await Promise.resolve();
     expect(listSessions).toHaveBeenCalledTimes(1);
   });
+
+  it("长标题折叠换行并单行截断类,完整文案保留在 title 悬停提示", async () => {
+    const longName =
+      "[attachment id=att_xAp9V\n/Users/hysios/Projects/BlackSail/agents/pi-web/very/long/path\n这张图的主色是什么？";
+    const listSessions = vi.fn(async () =>
+      resp([item({ sessionId: "long-1", name: longName })]),
+    );
+    render(
+      <SessionListPanel
+        listSessions={listSessions}
+        onResume={() => {}}
+        refreshSignal={0}
+      />,
+    );
+    const collapsed = longName.replace(/\s+/g, " ").trim();
+    await waitFor(() => expect(screen.getByText(collapsed)).toBeInTheDocument());
+    const btn = document.querySelector(
+      '[data-pi-session-list-resume="long-1"]',
+    ) as HTMLButtonElement | null;
+    expect(btn).not.toBeNull();
+    expect(btn?.className).toMatch(/overflow-hidden/);
+    expect(btn?.className).toMatch(/text-ellipsis|truncate/);
+    expect(btn?.className).toMatch(/whitespace-nowrap|truncate/);
+    expect(btn?.title).toContain(collapsed);
+    // 面板根节点不向外撑破宿主 max-width。
+    const root = document.querySelector("[data-pi-session-list]");
+    expect(root?.className).toMatch(/max-w-full/);
+    expect(root?.className).toMatch(/min-w-0/);
+  });
 });
 
 describe("SessionListPanel × pendingSession(新建会话乐观占位)", () => {

@@ -45,6 +45,15 @@ export {
   injectAttachmentRefs,
 } from "./reference-injection.js";
 export {
+  collectAttachmentIdsFromText,
+  collectOrderedAttachmentIds,
+  materializeAttachmentImages,
+  materializePromptImages,
+  mergePromptImages,
+  type AttachmentImageSource,
+  type MaterializePromptImagesInput,
+} from "./materialize-prompt-images.js";
+export {
   createAttachmentToolContext,
   AttachmentCapabilityUnavailableError,
   type AttachmentToolContext,

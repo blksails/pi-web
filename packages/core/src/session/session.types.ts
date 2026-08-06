@@ -138,6 +138,24 @@ export interface SessionDescriptor {
 }
 
 /** PiSession 构造选项;`onClosed` 由 SessionManager 注入,进入 stopped 时回调一次。 */
+/**
+ * 反向拉取的应答端口（spec ai-gateway-catalog-coldstart）。
+ *
+ * @param instanceIds runner 侧判定为「清单待补」的实例标识。
+ * @returns 逐实例的**收敛后**模型清单 + 成因。成因不可合并——`timeout`（目录未就绪）与
+ *   `ready` + 空数组（已就绪但收敛后确实为空）是两种不同的事实，合并即让 Req 4.1 的
+ *   可判别性失效。
+ */
+export type GatewayModelsResolver = (
+  instanceIds: readonly string[],
+) => Promise<{
+  readonly instances: ReadonlyArray<{
+    readonly instanceId: string;
+    readonly models: readonly string[];
+  }>;
+  readonly reason: "ready" | "timeout" | "unavailable";
+}>;
+
 export interface PiSessionOptions {
   readonly id: SessionId;
   readonly resolved: ResolvedSource;
@@ -174,6 +192,22 @@ export interface PiSessionOptions {
    * 既有行为零变化(不发帧)。
    */
   readonly initialTitle?: string;
+  /**
+   * ai-gateway 会话模型清单的**反向拉取**应答端口
+   * （spec ai-gateway-catalog-coldstart，任务 2.2，Req 1.1/2.1/3.3/5.3）。
+   *
+   * 存在时：会话处理 runner 上行的 `agent_gateway_models` 请求，调用本端口取得**收敛后**
+   * 的模型清单并回一帧 `piweb_gateway_models_result`。不传 → 不注册该处理器，runner 侧
+   * 请求无人应答（既有 fail-soft：会话照常可用，只是没有网关模型），行为与本 spec
+   * 实施前一致（Req 5.1）。
+   *
+   * ★ 这是一个**端口**而非具体依赖：`GatewayModelCatalog` 住在 adapters 层，core 不得
+   * 反向依赖它（依赖方向守卫）。实现由装配层（`lib/app/pi-handler.ts`）闭包注入。
+   *
+   * ★ 实现方**可以**在此等待目录首次拉取完成（须带超时上限）——该等待落在会话请求的
+   * 应答路径内，与服务端启动/首个请求无关，故不违反 Req 3.1「启动不阻塞」。
+   */
+  readonly gatewayModelsResolver?: GatewayModelsResolver;
   /**
    * 标题变化通知(spec session-meta-index, Req 1.2):处理 `setTitle` extension-ui 请求时触发,
    * 供装配层把标题同步进会话元数据索引(供列表快读)。

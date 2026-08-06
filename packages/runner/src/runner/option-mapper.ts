@@ -36,6 +36,8 @@ import {
   getSharedModelServicesFactory,
   listModelSources,
 } from "./model-source-registrar.js";
+// ai-gateway-catalog-coldstart(任务 2.3):会话模型清单的反向拉取(runner 侧)。
+import { registerGatewayModelsPending } from "./gateway-models-wiring.js";
 import {
   collectCompanyResourcePaths,
   collectExtensionPaths,
@@ -145,6 +147,42 @@ export function buildRuntimeFactory(
       }
       servicesOptions.authStorage = shared.authStorage;
       servicesOptions.modelRegistry = shared.modelRegistry;
+
+      // ai-gateway-catalog-coldstart(任务 2.3,Req 1.1/1.2):装配期目录未就绪的实例此刻
+      // 只注册了**空模型集**占位。登记待补清单 + 补注册出口,由帧通道就绪后向宿主索取
+      // 收敛后的清单并整批覆盖注册。★ 依赖上面的占位注册已把共享 registry 建起来 ——
+      // 没有 registry 就没有可覆盖的对象(见 research.md §5.2)。
+      const gwEntry = resolved.find(
+        ({ registrar }) => registrar.sourceId === AI_GATEWAY_PROVIDER_NAME,
+      );
+      if (gwEntry !== undefined) {
+        const entries = gwEntry.spec as ReadonlyArray<{
+          providerName: string;
+          spec: { pendingCatalog?: boolean; modelIds: readonly string[] };
+        }>;
+        const pendingIds = entries
+          .filter((e) => e.spec.pendingCatalog === true)
+          .map((e) => e.providerName);
+        if (pendingIds.length > 0) {
+          registerGatewayModelsPending(
+            {
+              instanceIds: pendingIds,
+              apply: (updates: ReadonlyArray<{ instanceId: string; models: readonly string[] }>) => {
+                const byId = new Map<string, readonly string[]>(updates.map((u) => [u.instanceId, u.models]));
+                // 整批重放:未被更新的实例沿用原 spec,被更新的换上收敛后的清单。
+                const next = entries.map((e) => {
+                  const models = byId.get(e.providerName);
+                  return models === undefined
+                    ? e
+                    : { ...e, spec: { ...e.spec, modelIds: models, pendingCatalog: false } };
+                });
+                gwEntry.registrar.register(shared.modelRegistry, next as never, runnerLog);
+              },
+            },
+            runnerLog,
+          );
+        }
+      }
     }
     const services: AgentSessionServices = await createAgentSessionServices(servicesOptions);
 
