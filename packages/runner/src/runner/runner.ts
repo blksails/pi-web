@@ -37,6 +37,7 @@ import {
 import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "@blksails/pi-web-core/attachment/backends-config.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
+import { attachGatewayModelsChannel } from "./gateway-models-wiring.js";
 import { installStdinResumeGate } from "./stdin-resume-gate.js";
 import { openOrCreateSession } from "./open-or-create-session.js";
 import { wireSessionBridges } from "./session-bridges.js";
@@ -276,6 +277,12 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const frameChannel = createInboundFrameRouter({
     sessionId: runtime.session.sessionId,
   });
+
+  // ai-gateway-catalog-coldstart(任务 2.3,Req 1.1/1.2):把帧通道交给模型清单反向拉取。
+  // ★ 与 option-mapper 的登记**互不假定先后** —— 会话构造(登记待补清单)与本处(登记通道)
+  //   谁先谁后都可能,故双方各自「登记 + 尝试触发」,由后到的一方发起请求。
+  //   无待补实例(目录已就绪的快路径 / 未启用网关)→ 不发任何帧,行为逐字节不变。
+  attachGatewayModelsChannel(frameChannel, bootLog);
 
   // 会话桥装配:清单与顺序语义见 `session-bridges.ts`(attachment → state → surface →
   // clear-queue → agent-routes → attachment-catalog)。各桥内部实现未变,此处只是把

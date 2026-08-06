@@ -182,6 +182,9 @@ export {
 } from "./path-display/index.js";
 export { usePathDisplaySetting } from "./path-display/use-path-display-setting.js";
 
+// 思考过程展示偏好（settings.showReasoning，默认 false）
+export { useShowReasoningSetting } from "./reasoning/use-show-reasoning-setting.js";
+
 // web-ext(agent-web-extension):宿主 UI 集成(Tier1 区域插槽 / Tier4 artifact / Tier3 贡献点)
 export {
   SlotHost,

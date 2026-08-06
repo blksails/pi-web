@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AgentEventSchema,
   RpcResponseSchema,
+  GatewayModelsRequestFrameSchema,
   RunnerReadyFrameSchema,
 } from "@blksails/pi-web-protocol";
 
@@ -155,7 +156,11 @@ function validateFrame(frame: unknown): boolean {
     RpcResponseSchema.safeParse(frame).success ||
     AgentEventSchema.safeParse(frame).success ||
     // runner-ready-frame:runner 装配后主动上报的就绪通告(boot 期恒出现一帧)。
-    RunnerReadyFrameSchema.safeParse(frame).success
+    RunnerReadyFrameSchema.safeParse(frame).success ||
+    // ai-gateway-catalog-coldstart:模型清单待补时 runner 主动索取(仅在配置了网关且
+    // 装配期未带全清单时出现)。★新增上行帧必须登记在此,否则一旦发出即判协议违规 ——
+    // 这是 runner-ready-frame 留下的教训,漏登记的表现是集成用例莫名报红。
+    GatewayModelsRequestFrameSchema.safeParse(frame).success
   );
 }
 

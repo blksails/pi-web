@@ -16,13 +16,20 @@
     对照包复跑三判据
   - _Requirements: 2.4_
 
-- [ ] 3. 点击死区根因判别（绘制已修，事件不通）
-  - 判别「事件在哪一层丢失」：宿主 DOM 指针探针（P 数组法）配一次**保证送达**的
-    对照点击（中央栏宿主区域，排除首击吞焦点），三种可能——事件被 child NSView
-    拦截 / 被 wry 层拦截 / 到宿主 WebView 但未派发 DOM
-  - 判别成立后出方案 B（候选：槽变化后重排子视图 z 序、事件穿透区域声明、
-    或 child 让开期间临时 hide）
-  - ★ 取证纪律：每次点击前重取窗口几何；「有反应」类读数必须指名元素+预期效果+实见效果
+- [ ] 3. 点击死区根因判别（绘制已修，事件不通）→ **判别闭环，修复已实施，待真机验证**
+  - 判别结果（DOM 指针探针 + 阳性对照，2026-08-05 深夜）：**事件根本没丢**——
+    pointerdown/click 到达「+」BUTTON 并派发；丢的是**点击的可见效果**：原生形态下
+    「+」菜单走 pane-overlay-menu 原生子 WebView，其落位坐标错到窗口外（日志
+    y=1015 > 窗高 932）
+  - 根因：前端以 `window.screenX/screenY` 拼屏幕坐标，macOS 原生 child WKWebView 里
+    该值与 Tauri `inner_position` 不在同一坐标空间（多显示器偏差数百 px）；Rust 再减
+    inner_position → 菜单放到窗外。**同一根因即 `=0` 浮层「奇怪的悬浮块」漂移**
+  - 修复：tauri-runtime.ts 三处 origin 改以 innerPosition 优先/独占（数学闭环
+    local=rect）；判别性测试 overlay-origin-space.test.ts 毒化 screenX，旧红新绿
+    （stash 往返验证）
+  - 早期两条中间结论已作废：①「P=[] 事件不达 DOM」——探针被页面导航清掉后读的死值；
+    ②「click 送不进 chrome 带」——送进了，是菜单开在窗外
+  - 剩余：rebuild10 真机验证（点「+」菜单应出现在按钮下方）
   - _Requirements: 2.4, 6.2_
 
 - [ ] 4. 验证轮发现的两个活缺陷立案（不在本 spec 内修）
@@ -40,6 +47,12 @@
   5 次）：与本 spec 无关，待另立线索。
 
 ## Implementation Notes
+
+- ★ **`pnpm desktop:build` 不重建前端**：它只是 `tauri build`，嵌入的是**既有**的
+  dist.tar.zst 载荷。前端改动必须 `pnpm build`（build:client→server→pack→payload）
+  在前。rebuild10 因此跑的还是旧前端——靠 payload.json 的 digest 对比抓出
+  （新旧 digest 逐字节相同=正控失败），launch 后 runtime 解包目录哈希不变是第二信号。
+  Rust-only 改动（rebuild9）侥幸掩盖了这个坑。
 
 - 2026-08-05：判据 3 由用户实机点击确认（自动化点击因用户占用实机多轮失败；
   其中两次经复盘落在标题栏——窗口移位后未重量几何就点。教训：每次点击前必须

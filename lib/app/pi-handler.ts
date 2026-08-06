@@ -179,6 +179,8 @@ import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 // spec ai-gateway-session-models(任务 2.2):本地分支的网关会话模型下发;多实例序列化见
 // spec multi-gateway-providers 任务 3.6(Req 1.1/1.3)。
 import { computeAiGatewaySessionsSpawnEnv } from "./ai-gateway-session-assembly.js";
+// ai-gateway-catalog-coldstart(任务 2.2):会话侧模型清单反向拉取的宿主应答。
+import { makeGatewayModelsResolver } from "./ai-gateway-models-resolver.js";
 import {
   resolveCloudLoginConfig,
   readDesktopScopedCloudEgressBase,
@@ -830,6 +832,16 @@ function buildSingleton(): HandlerSingleton {
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
     readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
+    // ai-gateway-catalog-coldstart(任务 2.2,Req 1.1/2.1/3.3/5.3):会话侧模型清单的反向
+    // 拉取应答。未启用网关套件 → undefined,不注册处理器,行为逐字节不变(Req 5.1)。
+    ...(gatewayEnabled
+      ? {
+          gatewayModelsResolver: makeGatewayModelsResolver({
+            catalogs: gatewayCatalogs,
+            instances: gatewayInstances,
+          }),
+        }
+      : {}),
   });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。

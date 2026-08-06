@@ -146,6 +146,23 @@ export interface AiGatewaySessionSpec {
   readonly apiKey: string;
   /** 可用模型 id 清单(可含斜杠,如 `anthropic/claude-opus-5`)。 */
   readonly modelIds: readonly string[];
+  /**
+   * 模型清单是否**尚未取得**、须经会话侧拉取补齐(spec ai-gateway-catalog-coldstart,
+   * Req 1.1)。
+   *
+   * ★ 为什么需要这个标记:装配期的目录快照是 stale-while-revalidate,**首次拉取完成前
+   * 恒为空集**。旧判据把「无模型清单」直接当作「该实例未启用」而返回 `undefined`,
+   * 于是服务端重启后、目录就绪前创建的会话,其 runner 里永远没有网关 provider ——
+   * 而部署级目录端点稍后却显示正常(两条取数链不同源)。
+   *
+   * 现在把判据拆成两件事:
+   *  - **是否启用** 由「实例已声明 + 凭据齐备」决定(`baseUrl` + `apiKey`);
+   *  - **模型清单** 可以后到,此时 `modelIds` 为空且本标记为 `true`。
+   *
+   * `true` 的实例仍必须产出 spec —— 否则 `option-mapper.ts` 的 `resolved.length > 0`
+   * 不成立,**共享 `ModelRegistry` 根本不会被构造**,事后拿到清单也无处注册。
+   */
+  readonly pendingCatalog: boolean;
 }
 
 /** 最小日志出口(测试可注入以断言可观测性且不泄露凭据)。 */
@@ -176,8 +193,16 @@ function parseModelIds(raw: string): readonly string[] | undefined {
  * {@link resolveAiGatewaySessionSpecsFromEnv} 的逐实例解析都调用本函数 ——
  * 三件套的读取/校验/清洗规则只应存在一份,避免两侧行为随时间漂移。
  *
- * 任一 env 缺失/空白、模型清单 JSON 非法、或清单为空 → `undefined`(视为该实例未启用)。
- * **不抛** —— 网关配置异常不该让本地会话起不来。
+ * **启用判据 = 实例已声明 + 凭据齐备**(`base` 与 `key` 两个 env)。任一缺失/空白 →
+ * `undefined`(该实例未启用)。**不抛** —— 网关配置异常不该让本地会话起不来。
+ *
+ * ★ 模型清单**不再**参与启用判据(spec ai-gateway-catalog-coldstart,Req 1.1/4.1)。
+ * 清单缺失/空白/JSON 非法/解析后为空,一律产出 `modelIds: []` + `pendingCatalog: true`,
+ * 由会话侧拉取补齐。改这一条的原因见 {@link AiGatewaySessionSpec.pendingCatalog}:
+ * 旧判据下冷启会话的共享 registry 压根不会被构造,补注册无处落脚。
+ *
+ * ★ 两种成因必须保持可区分(Req 4.1):凭据缺失 → `undefined`;目录未就绪 →
+ * `pendingCatalog: true`。合并成同一个返回值会让这两种表象在诊断上不可分辨。
  */
 function resolveSpecFromEnvNames(
   env: NodeJS.ProcessEnv,
@@ -190,13 +215,17 @@ function resolveSpecFromEnvNames(
   const rawModels = env[modelsEnvName]?.trim();
   if (baseUrl === undefined || baseUrl.length === 0) return undefined;
   if (apiKey === undefined || apiKey.length === 0) return undefined;
-  if (rawModels === undefined || rawModels.length === 0) return undefined;
 
-  const modelIds = parseModelIds(rawModels);
-  // 空清单 → 不注册:一个没有模型的 provider 无意义,注册了只会让 find 徒劳失败。
-  if (modelIds === undefined || modelIds.length === 0) return undefined;
+  const modelIds =
+    rawModels === undefined || rawModels.length === 0 ? undefined : parseModelIds(rawModels);
+  const resolved = modelIds !== undefined && modelIds.length > 0 ? modelIds : undefined;
 
-  return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey, modelIds };
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    apiKey,
+    modelIds: resolved ?? [],
+    pendingCatalog: resolved === undefined,
+  };
 }
 
 /**

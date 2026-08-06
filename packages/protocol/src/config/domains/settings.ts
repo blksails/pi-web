@@ -90,9 +90,34 @@ export const settingsConfigSchema = z
           },
         }),
       ),
+    /**
+     * 是否在对话中展示模型思考/reasoning 内容。
+     * 默认 false：不渲染思考块；开启后流式期间可展开查看。
+     */
+    showReasoning: z
+      .boolean()
+      .default(false)
+      .describe(
+        JSON.stringify({
+          label: "显示思考过程",
+          group: "appearance",
+          order: 3,
+          description:
+            "是否在对话中展示模型思考（reasoning）内容。关闭时默认不显示；开启后可在消息流中展开查看。",
+        }),
+      ),
   })
   .passthrough();
 export type SettingsConfig = z.infer<typeof settingsConfigSchema>;
+
+/** 设置缺省：不展示思考内容。 */
+export const DEFAULT_SHOW_REASONING = false;
+
+/** 解析 showReasoning；非法/缺失 → 默认 false。 */
+export function parseShowReasoning(raw: unknown): boolean {
+  if (typeof raw === "boolean") return raw;
+  return DEFAULT_SHOW_REASONING;
+}
 
 export const settingsFormSchema = zodToFormSchema("settings", settingsConfigSchema, {
   title: "通用",

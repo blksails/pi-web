@@ -2298,7 +2298,10 @@ export function PiChat({
       ) : null}
 
       {slots?.sidebar !== undefined ? (
-        <aside className="shrink-0" data-pi-chat-sidebar>
+        <aside
+          className="min-w-0 max-w-64 shrink-0 overflow-hidden"
+          data-pi-chat-sidebar
+        >
           {slots.sidebar}
         </aside>
       ) : null}

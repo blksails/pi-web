@@ -229,10 +229,26 @@ export function registerAiGatewayProvider(
 | 情形 | 处理 |
 |---|---|
 | env 缺失/JSON 非法 | 返回 `undefined`，runner 走 SDK 默认，不抛 |
-| 目录为空（拉取从未成功） | 装配层产出空 env，不注册 |
+| 目录为空（拉取从未成功） | ~~装配层产出空 env，不注册~~ **已被 spec `ai-gateway-catalog-coldstart` 推翻**，见下方注记 |
 | 模型不在 registry | `resolveModel` 抛错，网关来源附来源提示（D5） |
 | 上游 401（选中不可对话变体） | 原样透传上游文案；文档记局限 |
 | `ai-gateway` 与 auth.json 撞名 | 实施期显式核对（Req 3.3）；撞名会静默覆盖 apiKey → 401 |
+
+> **⚠ 取舍修订（2026-08-05，spec `ai-gateway-catalog-coldstart`）**
+>
+> 上表「目录为空（拉取从未成功）→ 装配层产出空 env，不注册」这一条**已不再成立**。
+>
+> 当时把它当作合理取舍，实际后果是：目录快照是 stale-while-revalidate，**首次拉取完成前
+> 恒为空集**，于是服务端重启后、目录就绪前创建的会话，其 runner 里永远没有网关 provider
+> （env 在 spawn 时固定，无补发路径），而部署级目录端点稍后却显示正常——两条取数链不同源，
+> 症状是「设置里有、聊天下拉里没有」，刷新页面无效、只能新建会话。该竞态在真机上被触发过
+> 两次。
+>
+> 现行约定改为：**启用判据 = 实例已声明 + 凭据齐备**（不再看模型清单）。清单缺失时仍下发
+> `BASE`/`KEY`，由 runner 就绪后经 `agent_gateway_models` ↔ `piweb_gateway_models_result`
+> 帧对**反向拉取**补齐。凭据缺失仍不产出——那是另一种成因，两者必须保持可判别。
+>
+> 细节见 `.kiro/specs/ai-gateway-catalog-coldstart/{requirements,design,research}.md`。
 
 ## Testing Strategy
 
