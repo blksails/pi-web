@@ -11,7 +11,8 @@ export function browserPane(): PaneDefinitionInput | undefined {
   return {
     id: BROWSER_PANE_ID,
     title: "浏览器",
-    document: { kind: "html", src: `/pane-${DOCUMENT_KEY}.html` },
+    // inline：PanesHost 入口 withDefaultPaneChrome 强制装 tabs；勿用裸 public URL。
+    document: { kind: "inline", srcDoc },
     // The browser guest has no host route, state, event, attachment, or conversation grant.
     capabilities: {},
     allowMultiple: false,

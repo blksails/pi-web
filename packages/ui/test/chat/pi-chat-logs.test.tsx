@@ -11,7 +11,8 @@ describe("PiChat isolated logs pane", () => {
     );
     expect(container.querySelector("[data-pi-logs-region]")).toBeNull();
     expect(container.querySelector('iframe[title="日志"]')).toBeNull();
-    expect(screen.getByRole("button", { name: "新开 Pane" })).toBeInTheDocument();
+    // 无打开实例时 host content-well 空态入口（tabs chrome 在 child 文档内）。
+    expect(screen.getByRole("button", { name: "打开一个 Pane" })).toBeInTheDocument();
   });
 
   it("opens logs only on demand and uses an HTML Guest iframe", async () => {
@@ -19,16 +20,14 @@ describe("PiChat isolated logs pane", () => {
     const { container } = render(
       <PiChat session={mockSession()} controls={mockControls()} showLogs logsPanelVisible />,
     );
-    await user.click(screen.getByRole("button", { name: "新开 Pane" }));
+    await user.click(screen.getByRole("button", { name: "打开一个 Pane" }));
     await user.click(screen.getByRole("button", { name: /日志/ }));
     const iframe = container.querySelector<HTMLIFrameElement>('iframe[title="日志"]');
     expect(iframe).not.toBeNull();
-    // HTML Guest 形态(`kind: "html"` + src),对应构建期写出的 `public/pane-logs.html`。
-    // 断言原先期望 `data:text/html` —— 那是更早的 inline srcDoc 形态遗留,与本用例标题
-    // (「uses an HTML Guest iframe」)自相矛盾;形态改为 URL 时断言没跟上,而 CI 因
-    // `pnpm -r` 首错即停从未跑到 packages/ui,这处不一致遂长期不可见。
-    expect(iframe?.getAttribute("src")).toBe("/pane-logs.html");
-    expect(iframe?.hasAttribute("srcdoc")).toBe(false);
+    // inline srcDoc + PanesHost 默认 chrome 包装（tabs 条），不再依赖 public/pane-logs.html。
+    expect(iframe?.hasAttribute("srcdoc")).toBe(true);
+    expect(iframe?.getAttribute("srcdoc") ?? "").toContain("data-pi-pane-chrome");
+    expect(iframe?.getAttribute("srcdoc") ?? "").toContain("data-pi-logs-region");
     expect(container.querySelector("[data-pane-carrier=host-view]")).toBeNull();
   });
 

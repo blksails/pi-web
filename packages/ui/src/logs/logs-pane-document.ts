@@ -12,7 +12,8 @@ export const LOGS_PANE_HTML = `<!doctype html>
 <title>日志</title><style>
 :root{color-scheme:light dark}
 *{box-sizing:border-box}html,body{height:100%;margin:0}body{display:flex;flex-direction:column;background:hsl(var(--background,0 0% 100%));color:hsl(var(--foreground,0 0% 9%));font:12px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}
-header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-bottom:1px solid hsl(var(--border,0 0% 89%));flex:none;font-weight:600}
+/* chrome 边车已有底边；header 不再重复画顶部分隔，避免切到日志时多一条线 */
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;border-bottom:none;flex:none;font-weight:600}
 #status{color:hsl(var(--muted-foreground,0 0% 45%));font-weight:400;font-size:11px}#controls{display:flex;gap:6px;padding:7px 10px;border-bottom:1px solid hsl(var(--border,0 0% 89%));flex:none}
 select,input{min-width:0;height:26px;border:1px solid hsl(var(--border,0 0% 89%));border-radius:4px;background:hsl(var(--muted,0 0% 96%));color:inherit;padding:3px 6px;font:inherit}select{width:78px}input{flex:1}
 #list{list-style:none;overflow:auto;flex:1;margin:0;padding:4px 0}.row{display:flex;gap:7px;align-items:baseline;padding:2px 10px}.row:hover{background:hsl(var(--accent,0 0% 96%))}.ts{color:hsl(var(--muted-foreground,0 0% 45%));flex:none}.level{width:38px;flex:none;font-weight:700}.ns{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:hsl(var(--muted-foreground,0 0% 45%));flex:none}.msg{min-width:0;overflow-wrap:anywhere}.debug{color:hsl(var(--muted-foreground,0 0% 45%))}.info{color:hsl(var(--primary,0 0% 9%))}.warn{color:light-dark(#a16207,#fcd34d)}.error{color:hsl(var(--destructive,0 84% 60%))}
@@ -36,13 +37,14 @@ select,input{min-width:0;height:26px;border:1px solid hsl(var(--border,0 0% 89%)
 })();</script></body></html>`;
 
 export interface LogsPaneDocument {
-  readonly kind: "html";
-  readonly src: string;
+  readonly kind: "inline";
+  readonly srcDoc: string;
 }
 
+/** 宿主注入日志 pane：inline 文档，由 PanesHost 默认包装器装 tabs。 */
 export function createLogsPaneDocument(): LogsPaneDocument {
   return {
-    kind: "html",
-    src: "/pane-logs.html",
+    kind: "inline",
+    srcDoc: LOGS_PANE_HTML,
   };
 }

@@ -1,20 +1,25 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src blob: data: http: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>browser</title><style>
-:root{font:13px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f8fafc;color-scheme:light}
+:root{font:13px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:hsl(var(--foreground,0 0% 9%));background:hsl(var(--background,0 0% 100%));color-scheme:light}
 *{box-sizing:border-box}html,body{height:100%;margin:0}#root{height:100%}
 .pane{height:100%;min-height:0;display:flex;flex-direction:column;overflow:auto}
 .pane-body{flex:1;min-height:0;padding:12px;overflow:auto}
 /* 宿主浮层(比例切换器)固定在面板右下角,会盖住 pane 右下角内容 —— pane 侧留出让位内边距,
    不改宿主 chrome。 */
 .pane-body{padding-bottom:56px}
-.muted{color:#64748b}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+/* 浏览器地址栏与 agent toolbar 同构：chrome 底边之下再一条业务分隔 */
+.browser-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 10px;border-bottom:1px solid hsl(var(--border,0 0% 89%));background:hsl(var(--surface,var(--background,0 0% 100%)));flex:none}
+.browser-toolbar input{flex:1;min-width:0;height:28px;border:1px solid hsl(var(--border,0 0% 89%));border-radius:7px;padding:0 8px;background:hsl(var(--background,0 0% 100%));color:inherit}
+.browser-toolbar button{height:28px;padding:0 10px;border:1px solid hsl(var(--border,0 0% 89%));border-radius:7px;background:hsl(var(--background,0 0% 100%));color:inherit;cursor:pointer}
+.browser-status{padding:6px 10px;font-size:12px}
+.browser-content{flex:1;min-height:0;display:flex;flex-direction:column}
+.browser-content iframe{flex:1;min-height:0;width:100%;border:0;background:#fff}
+.muted{color:hsl(var(--muted-foreground,0 0% 45%))}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
 dl.kv{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:baseline}
-dl.kv dt{color:#64748b;white-space:nowrap}
+dl.kv dt{color:hsl(var(--muted-foreground,0 0% 45%));white-space:nowrap}
 dl.kv dd{margin:0;min-width:0;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
-.empty{min-height:120px;display:grid;place-items:center;text-align:center;color:#64748b;border:1px dashed #cbd5e1;border-radius:12px;background:#fff;padding:16px}
+.empty{min-height:120px;display:grid;place-items:center;text-align:center;color:hsl(var(--muted-foreground,0 0% 45%));border:1px dashed hsl(var(--border,0 0% 89%));border-radius:12px;background:hsl(var(--surface,var(--background,0 0% 100%)));padding:16px}
 @media(prefers-color-scheme:dark){
-  :root{color:#e2e8f0;background:#0f172a;color-scheme:dark}
-  .muted,dl.kv dt{color:#94a3b8}
-  .empty{background:#111827;border-color:#334155;color:#94a3b8}
+  :root{color-scheme:dark}
 }
 </style></head><body><div id="root"></div><script>"use strict";(()=>{var b=new Set(["http:","https:"]);function p(t){let e=t.trim();if(e.length===0)return;let n=/^[a-z][a-z\d+.-]*:/i.test(e),r=/^(?:\[[^\]]+\]|[^/?#:]+):\d+(?:[/?#]|$)/.test(e);if(n&&!/^https?:\/\//i.test(e)&&!r)return;let l=/^https?:\/\//i.test(e)?e:`https://${e}`;try{let o=new URL(l);return!b.has(o.protocol)||o.username!==""||o.password!==""?void 0:o}catch{return}}function m(t,e){let n=new Set;for(let r of[t,e])if(!(r===void 0||r.length===0))try{let l=new URL(r);b.has(l.protocol)&&n.add(l.origin)}catch{}return n}function h(t,e){return e.has(t.origin)?!0:t.hostname==="localhost"||t.hostname==="127.0.0.1"||t.hostname==="[::1]"||t.hostname==="::1"}function y(){let t=document.getElementById("root");if(t===null)return;t.innerHTML=`
     <main class="browser-pane pane" data-testid="browser-pane">
