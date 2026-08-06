@@ -133,12 +133,13 @@
     var x=document.createElement('button');
     x.type='button';
     x.className='pi-c-x';
-    x.setAttribute('aria-label','关闭');
-    x.title='关闭 Pane';
+    x.setAttribute('aria-label','收起');
+    x.title='收起到更多（不销毁）';
     x.appendChild(svg(ICON.x,12));
     x.addEventListener('click',function(e){
       e.preventDefault();
       e.stopPropagation();
+      // 宿主 park：进「更多」，不 destroy 实例
       request('workspace.close',{instanceId:inst.instanceId});
     });
     shell.append(main,x);
