@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { runBuild } from "../server/cli/build/index.js";
 import { createProgressReporter } from "../server/cli/reporter.js";
-import { buildAigcAgent } from "../examples/aigc-agent/build.js";
+// jiti 解析：仓库里只有 build.ts；写 build.js 在 CI/Linux 上会 MODULE_NOT_FOUND。
+import { buildAigcAgent } from "../examples/aigc-agent/build.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
