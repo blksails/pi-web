@@ -55,3 +55,17 @@ export function createCustomProviderRegistry(
     };
   }
 }
+
+/**
+ * 展示可见性(provider-visibility-config spec 任务 2.1)的转出面。
+ *
+ * 与本模块头注同一条理由:根 `package.json` 只依赖 `@blksails/pi-web-server`,
+ * `lib/app/pi-handler.ts` 无法 deep-import core 子路径,故经此转出。
+ * `readProviderVisibility` 走 `fs`(属本装配层允许的 IO);`applyProviderVisibility`
+ * 是纯函数,一并从此处转出以免调用方拆成两个 import 源。
+ */
+export { readProviderVisibility } from "@blksails/pi-web-core/model-catalog/custom-provider-source.js";
+export {
+  applyProviderVisibility,
+  type ProviderVisibilityConfig,
+} from "@blksails/pi-web-core/model-catalog/visibility-filter.js";

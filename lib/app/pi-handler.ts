@@ -159,7 +159,11 @@ import {
 // Req 7.2/7.5):经 host-assembly 子路径转出(D0 同惯例) —— 根 package.json 只依赖
 // @blksails/pi-web-server,无法 deep-import core 的子路径;custom-provider-source.ts
 // 走 fs IO,不允许并入零 IO 的 core/server 主 barrel。
-import { createCustomProviderRegistry } from "@blksails/pi-web-server/host-assembly/custom-providers.js";
+import {
+  applyProviderVisibility,
+  createCustomProviderRegistry,
+  readProviderVisibility,
+} from "@blksails/pi-web-server/host-assembly/custom-providers.js";
 // 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全):
 // 供 ModelCatalogService 的 image 命名空间组装(spec model-catalog,任务 3.1)。
 import {
@@ -1444,13 +1448,22 @@ function buildSingleton(): HandlerSingleton {
     //   静默返回空集而非报错(见 config-routes.ts)。
     listModelOptions: (query) => {
       const catalog = makeModelCatalog();
+      // provider-visibility-config 任务 2.1:可见性是**展示层**收敛,故统一套在本出口
+      // 产出之后 —— 上面「零筛选走旧路径、带筛选走 query()」的既有分流(含 Req 10.1
+      // 的字节兼容承诺)原样保留,过滤只作用于两条路各自的结果。
+      // 未配置时 `applyProviderVisibility` 返回入参同一引用,字节兼容因此依然成立。
+      // ★ 每次请求重读配置:保存后须立即生效(Req 5.2)。
+      const visibility = readProviderVisibility(config.agentDir);
       if (query.input === undefined && query.output === undefined) {
-        return catalog.chatOptions();
+        return applyProviderVisibility(catalog.chatOptions(), visibility);
       }
-      return catalog.query({
-        input: query.input as CatalogQuery["input"],
-        output: query.output as CatalogQuery["output"],
-      });
+      return applyProviderVisibility(
+        catalog.query({
+          input: query.input as CatalogQuery["input"],
+          output: query.output as CatalogQuery["output"],
+        }),
+        visibility,
+      );
     },
     resolveSourceSettings: makeSourceSettingsResolver(config),
     onSourceSettingsSaved: (sourceKeyValue, payload) =>
@@ -1590,6 +1603,11 @@ function buildSingleton(): HandlerSingleton {
   const handler = createPiWebHandler({
     manager,
     store,
+    // provider-visibility-config 任务 2.2:会话内模型选择器(GET /sessions/:id/models)
+    // 同样遵守使用者的展示可见性配置,与设置页下拉对齐(Req 6.1/6.2)。
+    // ★ 只收敛"可选清单"的呈现 —— 已被会话选中的模型继续可用,不因隐藏而失败
+    // (Req 2.4/4.7)。每次请求重读配置,保存后立即生效(Req 5.2)。
+    readProviderVisibility: () => readProviderVisibility(config.agentDir),
     // host 命令通道(server 侧执行,结果同步 HTTP 回流)。/clear = agent 上下文清空 +
     // 前端 clear-transcript;/agent 与 /plugin = 按命令名所指类别装/卸/列(spec
     // agent-plugin-commands,取代原 /install)。

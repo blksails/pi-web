@@ -154,6 +154,17 @@ export const zh: Record<string, string> = {
   "config.providerRegistry.sourceBuiltin": "内置注册",
   "config.providerRegistry.sourceCloud": "云端下发",
   "config.providerRegistry.sourceCustom": "使用者自定义",
+  // provider-visibility-config:展示可见性控件。★ 文案要让人分辨"仅隐藏"与"彻底禁用"。
+  "config.providerVisibility.scopeNote":
+    "关闭只影响这里的清单与模型选择器,已有会话与工具照常可用。部署方经环境变量彻底禁用的 provider 不会出现在本清单。",
+  "config.providerVisibility.toggleLabel": "在清单中显示",
+  "config.providerVisibility.hiddenTag": "已隐藏",
+  "config.providerVisibility.filterPlaceholder": "按名称筛选模型",
+  "config.providerVisibility.loadFailed": "模型清单加载失败,已保存的配置不受影响。",
+  "config.providerVisibility.confirmHideProvider":
+    "隐藏后该 provider 及其模型将不在清单与选择器中出现(已有会话仍可用)。确定隐藏吗?",
+  "config.providerVisibility.confirmHideAllModels":
+    "这会勾掉该 provider 的全部模型,它将没有可选模型。确定吗?",
   "config.aigcModelToggles.sessionScopeNote":
     "变更立即影响此处清单与新会话；已打开的会话内 AIGC 工具需新开会话或重启后才会应用。",
   "sessionStats.empty": "暂无统计",
@@ -406,6 +417,17 @@ export const en: Record<string, string> = {
   "config.providerRegistry.sourceBuiltin": "Built-in",
   "config.providerRegistry.sourceCloud": "Cloud-delivered",
   "config.providerRegistry.sourceCustom": "Custom",
+  "config.providerVisibility.scopeNote":
+    "Turning a provider off only affects this list and the model pickers; existing sessions and tools keep working. Providers disabled by the deployment via environment variables never appear here.",
+  "config.providerVisibility.toggleLabel": "Show in list",
+  "config.providerVisibility.hiddenTag": "hidden",
+  "config.providerVisibility.filterPlaceholder": "Filter models by name",
+  "config.providerVisibility.loadFailed":
+    "Failed to load the model list. Your saved configuration is unaffected.",
+  "config.providerVisibility.confirmHideProvider":
+    "Hiding removes this provider and its models from lists and pickers (existing sessions keep working). Hide it?",
+  "config.providerVisibility.confirmHideAllModels":
+    "This unchecks every model of this provider, leaving it with no selectable models. Continue?",
   "config.aigcModelToggles.sessionScopeNote":
     "Changes apply here and to new sessions immediately; an already-open session's AIGC tool needs a new session or restart to pick them up.",
   "sessionStats.empty": "No stats yet",

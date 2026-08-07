@@ -41,6 +41,7 @@ import {
   ModelSelectField,
   NamespaceTogglesField,
   AigcModelTogglesField,
+  ProviderVisibilityField,
   VisionModelSelectField,
 } from "@blksails/pi-web-ui";
 import { ResourceSettingsPanel } from "@/components/resource-manager";
@@ -158,6 +159,10 @@ export function registerConfigPanels(): void {
   registerFieldRendererByKey("logNamespaceToggles", NamespaceTogglesField);
   // AIGC 图像「模型开关」自定义控件（aigcModelToggles widget 键;清单来自 GET /api/aigc/models）。
   registerFieldRendererByKey("aigcModelToggles", AigcModelTogglesField);
+  // provider-visibility-config 任务 3.2:providers 面板的展示可见性控件
+  // (providerVisibility widget 键;清单来自 GET /api/config/models,按 output 两次取数)。
+  // 取代原先在 settings-shell 里按 panel.id 特判挂载的只读汇总。
+  registerFieldRendererByKey("providerVisibility", ProviderVisibilityField);
   // 视觉模型选择(visionModelSelect widget;清单来自 GET /api/vision/models)。
   // ★ 该字段双向:用户在此设,`image_vision` 也会在用户于弹层选过后写回同一字段。
   registerFieldRendererByKey("visionModelSelect", VisionModelSelectField);

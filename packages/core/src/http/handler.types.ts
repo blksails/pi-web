@@ -16,6 +16,7 @@ import type { CompletionProvider } from "../completion/index.js";
 import type { AttachmentMetaSource } from "./routes/command-routes.js";
 import type { AttachmentStore } from "../attachment/index.js";
 import type { HostCommandRegistry } from "../commands/host-command-registry.js";
+import type { ProviderVisibilityConfig } from "../model-catalog/visibility-filter.js";
 import type { SessionMetaIndex } from "../session-meta/types.js";
 
 /** 路由匹配后传给端点处理器的上下文。 */
@@ -114,6 +115,16 @@ export interface PiWebHandlerOptions {
    * 仅经注册即在通用补全端点与前端浮层生效(零端点/协议改动)。
    */
   readonly completionProviders?: readonly CompletionProvider[];
+  /**
+   * 可选:展示可见性配置读取接缝(provider-visibility-config spec,Req 6.1/6.2)。
+   *
+   * 提供时 `GET /sessions/:id/models` 的清单会按使用者的隐藏配置收敛,与设置页
+   * 的模型选择器对齐。**每次请求调用一次**(而非构造期读一次)——配置保存后须立即
+   * 生效(Req 5.2)。缺省不注入 = 清单不做可见性收敛,行为与引入前一致(Req 7.1)。
+   *
+   * ★ 只作用于"可选清单"的呈现;已被会话选中的模型继续可用,不因隐藏而失败。
+   */
+  readonly readProviderVisibility?: () => ProviderVisibilityConfig | undefined;
   /**
    * 可选:主进程附件存储门面(注入既有 `AttachmentStore`)。现由两个消费者共用,
    * 各自只依赖自身所需的最小能力:

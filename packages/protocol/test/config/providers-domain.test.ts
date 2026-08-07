@@ -157,3 +157,66 @@ describe("providersFormSchema — 表单 IR(Req 7.1, 7.7)", () => {
     expect(enabledField?.default).toBe(true);
   });
 });
+
+/**
+ * provider-visibility-config spec 任务 1.2:展示可见性字段。
+ *
+ * 它与条目内的 `enabled` 是两回事 —— `enabled` 只管自定义条目且停用即不进目录;
+ * `visibility` 覆盖全部已注册 provider 且只作用于展示层。
+ */
+describe("providers 配置域 — 展示可见性(provider-visibility-config Req 5.4, 7.5)", () => {
+  it("未提供时缺省为空对象(零侵入:等价于全部可见)", () => {
+    const schema = createProvidersConfigSchema(RESERVED);
+    const parsed = schema.parse({ providers: [validProvider] });
+    expect(parsed.visibility).toEqual({});
+  });
+
+  it("接受按 provider 标识分键的隐藏声明", () => {
+    const schema = createProvidersConfigSchema(RESERVED);
+    const parsed = schema.parse({
+      providers: [],
+      visibility: {
+        sufy: { hidden: true },
+        openrouter: { hiddenModels: ["gpt-4o", "claude-3"] },
+      },
+    });
+    expect(parsed.visibility.sufy?.hidden).toBe(true);
+    expect(parsed.visibility.openrouter?.hiddenModels).toEqual(["gpt-4o", "claude-3"]);
+  });
+
+  it("两个字段皆可缺省(空壳条目合法)", () => {
+    const schema = createProvidersConfigSchema(RESERVED);
+    const parsed = schema.parse({ providers: [], visibility: { openrouter: {} } });
+    expect(parsed.visibility.openrouter).toEqual({});
+  });
+
+  it("拒绝非法形态:hidden 非布尔、hiddenModels 非字符串数组", () => {
+    const schema = createProvidersConfigSchema(RESERVED);
+    expect(() =>
+      schema.parse({ providers: [], visibility: { a: { hidden: "yes" } } }),
+    ).toThrow();
+    expect(() =>
+      schema.parse({ providers: [], visibility: { a: { hiddenModels: [1, 2] } } }),
+    ).toThrow();
+  });
+
+  it("既有自定义 provider 条目的字段与行为不受影响(Req 7.5)", () => {
+    const schema = createProvidersConfigSchema(RESERVED);
+    const parsed = schema.parse({
+      providers: [validProvider],
+      visibility: { "my-provider": { hidden: true } },
+    });
+    expect(parsed.providers[0]?.id).toBe("my-provider");
+    expect(parsed.providers[0]?.enabled).toBe(true);
+    expect(parsed.providers[0]?.models).toEqual([{ id: "model-a", name: "Model A" }]);
+  });
+
+  it("表单 IR 里是打了 widget 标记的静态字段(动态数据由前端 renderer 自取)", () => {
+    const field = providersFormSchema.fields.find((f) => f.key === "visibility");
+    expect(field).toBeDefined();
+    expect(field?.kind).toBe("record");
+    expect(field?.widget).toBe("providerVisibility");
+    // 静态 schema:不得预置任何运行时才知道的选项
+    expect(field?.enumOptions).toBeUndefined();
+  });
+});

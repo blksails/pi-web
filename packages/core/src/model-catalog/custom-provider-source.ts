@@ -34,6 +34,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Modality } from "./modality.js";
+import type {
+  ProviderVisibility,
+  ProviderVisibilityConfig,
+} from "./visibility-filter.js";
 import type { ProviderDefinition, ProviderSource } from "./provider-source.js";
 
 /** providers 配置域的落盘文件名(与 protocol `domains/providers.ts` 头注释一致)。 */
@@ -202,4 +206,53 @@ export function createCustomProviderSource(
     sourceId: CUSTOM_PROVIDER_SOURCE_ID,
     list: () => toProviderDefinitions(readCustomProviderEntries(agentDir)),
   };
+}
+
+/**
+ * 读展示可见性配置(provider-visibility-config spec 任务 2.1/2.2,Req 5.2, 7.4)。
+ *
+ * 与上面的自定义 provider 条目读的是**同一份**磁盘文件 —— 本模块头注反对为同一份
+ * 配置另建第二份数据源,这条同样适用。解析同样宽松 fail-soft:文件缺失 / JSON 损坏 /
+ * 字段形状异常一律退回空配置(= 全部可见),绝不因配置文件脏了就让整个模型目录变空。
+ *
+ * ★ **每次调用都重读磁盘**,不做进程级缓存:Req 5.2 要求保存后对新建会话与新打开的
+ * 选择器立即生效,构造期读一次的形态做不到这一点。读的是一份几 KB 的本地 JSON,
+ * 与既有 `readCustomProviderEntries` 的每次调用即读同一量级。
+ */
+export function readProviderVisibility(agentDir: string): ProviderVisibilityConfig {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(agentDir, CUSTOM_PROVIDERS_CONFIG_FILENAME), "utf8");
+  } catch {
+    return {};
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null) return {};
+  const visibility = (parsed as Record<string, unknown>)["visibility"];
+  if (typeof visibility !== "object" || visibility === null || Array.isArray(visibility)) {
+    return {};
+  }
+
+  const out: Record<string, ProviderVisibility> = {};
+  for (const [providerId, value] of Object.entries(visibility as Record<string, unknown>)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+    const entry = value as Record<string, unknown>;
+    const hidden = entry["hidden"];
+    const hiddenModels = entry["hiddenModels"];
+    const normalized: { hidden?: boolean; hiddenModels?: readonly string[] } = {};
+    if (typeof hidden === "boolean") normalized.hidden = hidden;
+    if (Array.isArray(hiddenModels)) {
+      normalized.hiddenModels = hiddenModels.filter((m): m is string => typeof m === "string");
+    }
+    // 逐字段独立校验、逐条目独立丢弃 —— 单条脏数据不牵连其余 provider。
+    if (normalized.hidden !== undefined || normalized.hiddenModels !== undefined) {
+      out[providerId] = normalized;
+    }
+  }
+  return out;
 }

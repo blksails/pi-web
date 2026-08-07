@@ -14,9 +14,11 @@ import {
 } from "@blksails/pi-web-protocol";
 import { SettingsShell } from "../../src/config/settings-shell.js";
 import {
-  __setProviderRegistryFetchImpl,
-  __resetProviderRegistryFetchImpl,
-} from "../../src/config/provider-registry-summary.js";
+  ProviderVisibilityField,
+  __setProviderVisibilityFetchImpl,
+  __resetProviderVisibilityFetchImpl,
+} from "../../src/config/provider-visibility-field.js";
+import { registerFieldRendererByKey } from "../../src/config/field-registry.js";
 
 function makePanel(
   over: Partial<SettingsPanelDescriptor> = {},
@@ -119,12 +121,12 @@ describe("SettingsShell", () => {
     await waitFor(() => expect(projectLoad).toHaveBeenCalled());
   });
 
-  describe("providers 面板 — 全部 provider 只读清单(Req 7.1)", () => {
+  describe("providers 面板 — 全部 provider 清单(Req 7.1;provider-visibility-config 任务 3.1)", () => {
     afterEach(() => {
-      __resetProviderRegistryFetchImpl();
+      __resetProviderVisibilityFetchImpl();
     });
 
-    it("panel.id === 'providers' 时渲染清单,分别按 output=text/image 取数并合并标明来源", async () => {
+    it("providers 面板经 widget 渲染清单,分别按 output=text/image 取数并合并标明来源", async () => {
       // 两批各贡献互不相交的 provider,证明是**两次**取数合并而非单次(变异判据:
       // 若改回零筛选/单次取数,`newapi`(只在 output=image 那批里)不会出现)。
       const fetchSpy = vi.fn(async (url: string) => {
@@ -144,15 +146,17 @@ describe("SettingsShell", () => {
           { status: 200 },
         );
       });
-      __setProviderRegistryFetchImpl(fetchSpy as unknown as typeof fetch);
+      __setProviderVisibilityFetchImpl(fetchSpy as unknown as typeof fetch);
+      registerFieldRendererByKey("providerVisibility", ProviderVisibilityField);
       const r = createSettingsRegistry();
       r.registerPanel(
         makePanel({ id: "providers", title: "Provider", formSchema: providersFormSchema }),
       );
       render(<SettingsShell registry={r} />);
 
-      // 变异判据:若把 settings-shell.tsx 里 `panel.id === "providers"` 的特判删掉,
-      // 下面这个清单区块整体不会出现。
+      // 变异判据:若 providers 表单里的 `visibility` 字段或其 widget renderer 注册
+      // 任一缺失,下面这个清单区块整体不会出现(原先守的是 settings-shell 的 panel.id
+      // 特判,该特判已被正规 widget 取代 —— 意图不变:providers 面板必须显示三档清单)。
       await waitFor(() => expect(screen.getByText("blksails-ai")).toBeInTheDocument());
       expect(screen.getByText("my-provider")).toBeInTheDocument();
       expect(screen.getByText("newapi")).toBeInTheDocument();

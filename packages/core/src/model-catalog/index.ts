@@ -17,3 +17,13 @@ export {
   type ModelCatalogServiceDeps,
 } from "./service.js";
 export type { GatewayModelEntry, MergeModelCatalog, ModelPrecedence } from "./types.js";
+// 展示可见性过滤(provider-visibility-config spec):纯函数、零 IO,契合本 barrel 的
+// 「零 env / 零 IO」声明。★ 与 service.ts 内部的彻底禁用(PI_WEB_HIDE_PROVIDERS)分属两层,
+// 见 visibility-filter.ts 头注。
+export {
+  applyProviderVisibility,
+  filterVisibleModels,
+  isVisibilityEmpty,
+  type ProviderVisibility,
+  type ProviderVisibilityConfig,
+} from "./visibility-filter.js";

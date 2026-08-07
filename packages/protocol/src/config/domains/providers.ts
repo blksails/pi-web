@@ -90,14 +90,38 @@ const providerEntrySchema = z
   })
   .passthrough();
 
+/**
+ * 单个 provider 的展示可见性(provider-visibility-config spec,Req 5.4, 7.5)。
+ *
+ * ★ 与 `providerEntrySchema.enabled` 是**两回事**:`enabled` 属于自定义 provider 条目,
+ * 停用即其模型不再进目录;本结构覆盖**全部**已注册 provider(含部署方经环境变量载入的
+ * 内置注册档),且语义只到**展示层**为止 —— 被隐藏的 provider 在清单与选择器里消失,
+ * 但已有会话与工具照常可用。彻底禁用仍归 `PI_WEB_HIDE_PROVIDERS`
+ * (multi-gateway-providers Req 5)所有。
+ *
+ * 形态是**稀疏的否定式声明**:只记被隐藏的东西,于是「默认全展示」与「目录新增的
+ * 模型自动可见」成为结构性质而非需维护的同步逻辑。
+ */
+const providerVisibilitySchema = z
+  .object({
+    /** true = 从展示清单中隐藏该 provider。 */
+    hidden: z.boolean().optional(),
+    /** 被勾掉的模型 id;不在此列的一律展示。 */
+    hiddenModels: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
 const providersConfigBaseSchema = z
   .object({
     providers: z.array(providerEntrySchema).default([]),
+    /** 以 provider 标识为键;缺省为空 = 全部可见(Req 7.1 零侵入)。 */
+    visibility: z.record(providerVisibilitySchema).default({}),
   })
   .passthrough();
 
 export type ProviderModelEntry = z.infer<typeof providerModelSchema>;
 export type ProviderEntry = z.infer<typeof providerEntrySchema>;
+export type ProviderVisibilityEntry = z.infer<typeof providerVisibilitySchema>;
 export type ProvidersConfig = z.infer<typeof providersConfigBaseSchema>;
 
 /**
@@ -153,6 +177,20 @@ export const providersFormSchema: FormSchema = {
   domain: "providers",
   title: "自定义 Provider",
   fields: [
+    {
+      // provider-visibility-config spec 任务 1.2/3.1:清单与逐模型勾选都是**运行时**
+      // 数据,而本仓配置 UI 是「静态 schema + 动态 values」—— 前端只 fetch values,
+      // **不消费**后端返回的 formSchema。故此处保持静态、只打 widget 标记,由前端
+      // renderer 自己去统一目录端点取数。★ 在后端 enrich 本字段的 enumOptions 是
+      // 无效的(本仓已实测踩过)。
+      key: "visibility",
+      kind: "record",
+      widget: "providerVisibility",
+      label: "Provider 与模型展示",
+      description:
+        "控制清单里出现哪些 provider 与模型;仅影响展示,不影响已有会话与工具的可用性。",
+      required: false,
+    },
     {
       key: "providers",
       kind: "objectList",

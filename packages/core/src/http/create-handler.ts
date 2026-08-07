@@ -245,7 +245,7 @@ export function createPiWebHandler(opts: PiWebHandlerOptions): PiWebHandler {
     {
       method: "GET",
       path: "/sessions/:id/models",
-      handler: makeModelsHandler(store),
+      handler: makeModelsHandler(store, process.env, opts.readProviderVisibility),
     },
     {
       method: "GET",
