@@ -8,6 +8,7 @@
 
 // 默认拖入聊天组件(富装配)+ 插槽
 export { PiChat, type PiChatProps } from "./chat/pi-chat.js";
+export type { ChatResourceConfig } from "./chat/resource-controls.js";
 // 新建会话的 agent source 选择器。三项能力(源列表 / 收藏 / 浏览目录)全部可选注入 ——
 // 宿主不注入就只渲染手输框,故云端可只接列表、砍掉本地目录与桌面目录选择。
 export {
@@ -181,6 +182,9 @@ export {
   type PathDisplayProviderProps,
 } from "./path-display/index.js";
 export { usePathDisplaySetting } from "./path-display/use-path-display-setting.js";
+
+// 思考过程展示偏好（settings.showReasoning，默认 false）
+export { useShowReasoningSetting } from "./reasoning/use-show-reasoning-setting.js";
 
 // web-ext(agent-web-extension):宿主 UI 集成(Tier1 区域插槽 / Tier4 artifact / Tier3 贡献点)
 export {

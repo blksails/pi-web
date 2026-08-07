@@ -152,6 +152,23 @@ function ConfigPanelView({
   readonly panel: SettingsPanelDescriptor;
   readonly fieldRegistry?: FieldRegistry;
 }): React.JSX.Element {
+  if (panel.customView !== undefined) {
+    return (
+      <section className="flex flex-col gap-4" data-pi-settings-panel={panel.id}>
+        {panel.customView() as React.ReactNode}
+      </section>
+    );
+  }
+  return <ConfigFormPanel panel={panel} fieldRegistry={fieldRegistry} />;
+}
+
+function ConfigFormPanel({
+  panel,
+  fieldRegistry,
+}: {
+  readonly panel: SettingsPanelDescriptor;
+  readonly fieldRegistry?: FieldRegistry;
+}): React.JSX.Element {
   const t = useI18n();
   const { form, loading, loadError, saving, saveError, saved, save, fileSchemas } =
     useConfigDomain(panel);

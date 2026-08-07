@@ -120,7 +120,9 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
     });
   };
 
-  const onHostMessage = ({ data }: MessageEvent<PaneHostMessage>) => {
+  const onHostMessage = (event: MessageEvent<PaneHostMessage>): void => {
+    const data = event.data;
+    if (data === null || typeof data !== "object" || !("type" in data)) return;
     if (data.type === "pane:result") {
       const call = pending.get(data.requestId);
       if (call === undefined) return;
@@ -143,6 +145,21 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
     if (data.type === "pane:signal") {
       signals.set(data.name, data.value);
       for (const listener of signalListeners.get(data.name) ?? []) listener(data.value);
+      // 边车 chrome 可能晚于首包 signal 才 bindPort；MessagePort 不重放。
+      // 缓存到 window 并广播事件，保证首进 agent 顶栏 tabs 能立刻画上。
+      if (data.name === "pi.workspace") {
+        const w = globalThis.window as (Window & {
+          __PI_WORKSPACE_SIGNAL__?: unknown;
+        }) | undefined;
+        if (w !== undefined) {
+          w.__PI_WORKSPACE_SIGNAL__ = data.value;
+          try {
+            w.dispatchEvent(new CustomEvent("pi-workspace", { detail: data.value }));
+          } catch {
+            // ignore
+          }
+        }
+      }
       return;
     }
     if (data.type === "pane:event") {
@@ -158,9 +175,22 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       for (const listener of lifecycleListeners) listener(data.state);
     }
   };
+  const publishHostPort = (p: MessagePort): void => {
+    // 边车 chrome 与 guest 共用同一 port；经全局发布，避免 chrome 与 connect 抢事件口。
+    const w = globalThis.window as (Window & { __PI_PANE_PORT__?: MessagePort }) | undefined;
+    if (w === undefined) return;
+    w.__PI_PANE_PORT__ = p;
+    try {
+      w.dispatchEvent(new CustomEvent("pi-pane-port", { detail: { port: p } }));
+    } catch {
+      // jsdom / 无 CustomEvent 时忽略
+    }
+  };
   const attach = (p: MessagePort): void => {
-    p.onmessage = onHostMessage;
+    // 用 addEventListener 而非 onmessage，避免独占、便于边车并行监听同一 port。
+    p.addEventListener("message", onHostMessage as unknown as EventListener);
     p.start();
+    publishHostPort(p);
   };
   attach(port);
 
@@ -259,9 +289,12 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       call.reject(new PaneHostError("STALE_INSTANCE", "Pane connection was rebound by host", { retryable: true }));
     }
     pending.clear();
-    try { port.close(); } catch { /* 已关闭则忽略 */ }
+    const prev = port;
     port = next;
+    // 先挂新 port 并通知边车，再关旧 port —— 否则 chrome 会拿着已 close 的口。
     attach(port);
+    try { prev.removeEventListener("message", onHostMessage as unknown as EventListener); } catch { /* ignore */ }
+    try { prev.close(); } catch { /* 已关闭则忽略 */ }
   };
 
   return { connection, rebind };

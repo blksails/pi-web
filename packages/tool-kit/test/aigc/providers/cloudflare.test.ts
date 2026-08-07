@@ -175,6 +175,55 @@ describe("buildBody — 图像编辑", () => {
       v.buildBody?.({ prompt: "p", images: ["https://example.com/a.png"] }, ctx),
     ).rejects.toThrow(/至少一张参考图/);
   });
+
+  it("mask 插入 images 第 2 位(主图 → mask → 参考图),并改写 prompt 点明遮罩", async () => {
+    const v = createCloudflareImageEdit(ARGS);
+    const MASK_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5W2n0AAAAASUVORK5CYII=";
+    const body = (await v.buildBody?.(
+      {
+        prompt: "add a hat",
+        images: [
+          `data:image/png;base64,${PNG_B64}`,
+          `data:image/jpeg;base64,${JPEG_B64}`,
+        ],
+        mask: `data:image/png;base64,${MASK_B64}`,
+      },
+      ctx,
+    )) as { input: { images: string[]; prompt: string } };
+
+    expect(body.input.images).toEqual([PNG_B64, MASK_B64, JPEG_B64]);
+    expect(body.input.prompt).toMatch(/second image is a mask/i);
+    expect(body.input.prompt).toContain("add a hat");
+    // 无独立 mask 键(CF 协议只有 images)
+    expect(body.input).not.toHaveProperty("mask");
+  });
+
+  it("无 mask 时 images 顺序与 prompt 保持原样", async () => {
+    const v = createCloudflareImageEdit(ARGS);
+    const body = (await v.buildBody?.(
+      {
+        prompt: "make it blue",
+        images: [`data:image/png;base64,${PNG_B64}`],
+      },
+      ctx,
+    )) as { input: { images: string[]; prompt: string } };
+    expect(body.input.images).toEqual([PNG_B64]);
+    expect(body.input.prompt).toBe("make it blue");
+  });
+
+  it("mask 无法解析时跳过,不插入、不改 prompt", async () => {
+    const v = createCloudflareImageEdit(ARGS);
+    const body = (await v.buildBody?.(
+      {
+        prompt: "p",
+        images: [`data:image/png;base64,${PNG_B64}`],
+        mask: "https://example.com/mask.png",
+      },
+      ctx,
+    )) as { input: { images: string[]; prompt: string } };
+    expect(body.input.images).toEqual([PNG_B64]);
+    expect(body.input.prompt).toBe("p");
+  });
 });
 
 describe("pickResult — 双响应形态(Req 3)", () => {

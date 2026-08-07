@@ -7,6 +7,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./contract": "./src/contract.ts",
+    "./browser-policy": "./src/browser-policy.ts",
     "./workspace-protocol": "./src/workspace-protocol.ts",
     "./react": "./src/react/index.ts",
     "./adapters/*": "./src/adapters/*.ts"

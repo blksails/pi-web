@@ -17,6 +17,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { withAgentCompileCache } from "./agent-compile-cache.js";
 import { readDesktopScopedConfig, resolveDesktopConfig } from "./desktop-defaults.js";
 import {
   createPiWebHandler,
@@ -79,6 +80,11 @@ import {
   redactReason,
   type AllowlistConfig,
 } from "@blksails/pi-web-adapters/extensions/index.js";
+import {
+  createPiResourceManager,
+  createResourceRoutes,
+  type ResourceAgentTarget,
+} from "@blksails/pi-web-adapters/resources/index.js";
 import {
   resolveLlmGatewaySecret,
   resolveAiGatewaySecret,
@@ -179,6 +185,8 @@ import { computeAiGatewaySessionEnv } from "./ai-gateway-assembly.js";
 // spec ai-gateway-session-models(任务 2.2):本地分支的网关会话模型下发;多实例序列化见
 // spec multi-gateway-providers 任务 3.6(Req 1.1/1.3)。
 import { computeAiGatewaySessionsSpawnEnv } from "./ai-gateway-session-assembly.js";
+// ai-gateway-catalog-coldstart(任务 2.2):会话侧模型清单反向拉取的宿主应答。
+import { makeGatewayModelsResolver } from "./ai-gateway-models-resolver.js";
 import {
   resolveCloudLoginConfig,
   readDesktopScopedCloudEgressBase,
@@ -220,6 +228,7 @@ import { makeResumeMetaLoader } from "./resume-meta.js";
 // 会话事件 store 工厂(启动时 prune 元数据索引残留用;与冷恢复 / 列表同源)。
 import { createSessionEntryStore } from "@blksails/pi-web-adapters/session-store-postgres/index.js";
 import { systemResourceArgs } from "./system-resource-args.js";
+import { resolveBuiltinPromptTemplatePaths } from "@blksails/pi-web-server/builtin-prompt-paths.js";
 
 /**
  * Real-mode resolver wrapper.
@@ -251,6 +260,7 @@ function makeRealResolver(
 } {
   const runnerEntry = runnerBootstrapPath();
   const piCliEntry = resolvePiCliEntry();
+  const builtinPromptTemplatePaths = resolveBuiltinPromptTemplatePaths();
   // Pin the pi config dir so the agent process reads ~/.pi/agent/auth.json
   // (credentials from `pi` login) and settings.json (default provider/model,
   // installed packages). assemble-spawn writes this as PI_CODING_AGENT_DIR last,
@@ -261,7 +271,9 @@ function makeRealResolver(
   // therefore needs the host environment threaded in as baseEnv — without PATH
   // the OS cannot even locate `node`, and the child fails to spawn (exit
   // code:null/signal:null with no stderr) → onClosed → session deleted → 404.
-  const baseEnv = process.env as Record<string, string>;
+  // 首次 custom agent 启动时由 Node 生成 V8 编译缓存；后续 runner 进程直接复用。
+  // 显式 NODE_COMPILE_CACHE / NODE_DISABLE_COMPILE_CACHE 保持最高优先级。
+  const baseEnv = withAgentCompileCache(process.env, os.homedir());
   // 项目信任策略(C-P1/C-P4):复用 pi 的 ProjectTrustStore(同一 agentDir),叠加 trustedRoots。
   // 决定 custom 模式是否向 runner 传放行信号 → SDK 才加载工作目录下的项目级 `.pi/`
   // (扩展/子代理/技能)。仅值导入被 Next serverExternalPackages 外置的 SDK,不打进 bundle。
@@ -300,7 +312,7 @@ function makeRealResolver(
         }
       }
       const extraArgs = await systemResourceArgs(agentDir, resourceCwd);
-      return AgentSourceResolver.resolve(source, {
+      const resolved = await AgentSourceResolver.resolve(source, {
         cwd,
         runnerEntry,
         piCliEntry,
@@ -312,6 +324,24 @@ function makeRealResolver(
         ...(extraArgs.length > 0 ? { extraArgs } : {}),
         ...(sourceResolver !== undefined ? { sourceResolver } : {}),
       });
+      // CLI 型 Agent 不经过 runner 的 SDK 资源映射，显式加载全局内置模板。
+      // 自定义 Agent 已由 runner 注入；E2B 传输不消费宿主 spawn args，故不在此伪注入。
+      if (resolved.mode === "cli" && builtinPromptTemplatePaths.length > 0) {
+        return {
+          ...resolved,
+          spawnSpec: {
+            ...resolved.spawnSpec,
+            args: [
+              ...resolved.spawnSpec.args,
+              ...builtinPromptTemplatePaths.flatMap((templatePath) => [
+                "--prompt-template",
+                templatePath,
+              ]),
+            ],
+          },
+        };
+      }
+      return resolved;
     },
   };
 }
@@ -323,6 +353,77 @@ function makeRealResolver(
  */
 function defaultSourcesRoot(): string {
   return path.join(os.homedir(), ".pi-web", "agents");
+}
+
+/** Agent 资源编辑元数据:发布者/管理者由 agent 清单声明，服务端仅以 userId 判权。 */
+function readAgentResourceAccess(agentRoot: string): {
+  readonly publisherId?: string;
+  readonly managerIds: readonly string[];
+} {
+  const candidates = [path.join(agentRoot, "pi-web.json"), path.join(agentRoot, "package.json")];
+  for (const file of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (typeof parsed !== "object" || parsed === null) continue;
+      const root = parsed as Record<string, unknown>;
+      const nested =
+        typeof root["pi-web"] === "object" && root["pi-web"] !== null
+          ? (root["pi-web"] as Record<string, unknown>)
+          : undefined;
+      const access =
+        typeof root.resourceAccess === "object" && root.resourceAccess !== null
+          ? (root.resourceAccess as Record<string, unknown>)
+          : nested !== undefined &&
+              typeof nested.resourceAccess === "object" &&
+              nested.resourceAccess !== null
+            ? (nested.resourceAccess as Record<string, unknown>)
+            : undefined;
+      if (access === undefined) continue;
+      const publisherId =
+        typeof access.publisherId === "string" && access.publisherId.trim().length > 0
+          ? access.publisherId.trim()
+          : undefined;
+      const managerIds = Array.isArray(access.managerIds)
+        ? access.managerIds.filter(
+            (id): id is string => typeof id === "string" && id.trim().length > 0,
+          ).map((id) => id.trim())
+        : [];
+      return { ...(publisherId !== undefined ? { publisherId } : {}), managerIds };
+    } catch {
+      // 清单不存在/损坏时不授予 Agent 编辑权，仍可浏览或复制到个人级。
+    }
+  }
+  return { managerIds: [] };
+}
+
+function resolveLocalAgentTarget(
+  record: {
+    readonly id: string;
+    readonly source: string;
+    readonly name: string;
+    readonly kind: string;
+  },
+): ResourceAgentTarget | undefined {
+  if (record.kind !== "dir") return undefined;
+  const candidate = path.isAbsolute(record.id)
+    ? record.id
+    : path.isAbsolute(record.source)
+      ? record.source
+      : undefined;
+  if (candidate === undefined || !fs.existsSync(candidate)) return undefined;
+  try {
+    if (!fs.statSync(candidate).isDirectory()) return undefined;
+  } catch {
+    return undefined;
+  }
+  const access = readAgentResourceAccess(candidate);
+  return {
+    id: record.id,
+    name: record.name,
+    root: path.resolve(candidate),
+    ...(access.publisherId !== undefined ? { publisherId: access.publisherId } : {}),
+    ...(access.managerIds.length > 0 ? { managerIds: access.managerIds } : {}),
+  };
 }
 
 /**
@@ -830,6 +931,16 @@ function buildSingleton(): HandlerSingleton {
     readinessHandshake: process.env.PI_WEB_DISABLE_READINESS_HANDSHAKE !== "1",
     readyTimeoutMs: readyTimeoutFromEnv(process.env),
     snapshotAuthority: process.env.PI_WEB_DISABLE_SNAPSHOT_AUTHORITY !== "1",
+    // ai-gateway-catalog-coldstart(任务 2.2,Req 1.1/2.1/3.3/5.3):会话侧模型清单的反向
+    // 拉取应答。未启用网关套件 → undefined,不注册处理器,行为逐字节不变(Req 5.1)。
+    ...(gatewayEnabled
+      ? {
+          gatewayModelsResolver: makeGatewayModelsResolver({
+            catalogs: gatewayCatalogs,
+            instances: gatewayInstances,
+          }),
+        }
+      : {}),
   });
 
   // 强制注入:解析 pi-sandbox 入口一次(env 覆盖 > <agentDir>/npm/.../pi-sandbox/index.ts)。
@@ -1046,7 +1157,10 @@ function buildSingleton(): HandlerSingleton {
         ...loggingSpawnEnv(),
         // custom 模式据此在 runner 内强制注入;cli 模式无害(由上面的 -e 生效)。
         ...(sandboxEntry !== undefined ? { PI_WEB_SANDBOX_ENTRY: sandboxEntry } : {}),
-        // ext-tools / auto-title / mcp 三个内置扩展入口**不再下发**:改由 runner 侧自解析
+        // 公司级 pi skills/prompts 由 host 明确下发；user/project 默认发现仍由 pi 保留。
+        PI_WEB_COMPANY_SKILLS_DIR: path.join(companyResourceRoot, "skills"),
+        PI_WEB_COMPANY_PROMPTS_DIR: path.join(companyResourceRoot, "prompts"),
+        // ext-tools / auto-title / mcp 这三个既有内置扩展入口**不再下发**:改由 runner 侧自解析
         // (spec runner-self-resolved-builtins)。这消除了「宿主机绝对路径在沙箱内不存在」
         // 的失效面,也使新增内置扩展不必再在此处接线。
         // 附件目录约定 + 签名 secret 经 spawn env 下发(Req 7.3/7.4),取自主进程 store
@@ -1103,6 +1217,16 @@ function buildSingleton(): HandlerSingleton {
     ...(process.env.PI_WEB_EXT_ALLOW_LOCAL === "1" ? { allowLocal: true } : {}),
     ...(process.env.PI_WEB_EXT_ALLOW_NPM === "1" ? { allowAnyNpm: true } : {}),
   };
+  // pi-native resources use three explicit scopes: company (deployment-configured),
+  // agent (<cwd>/.pi), and personal (<agentDir>). The default company root is safe and
+  // empty until populated; deployments can point it at a shared directory.
+  const companyResourceRoot =
+    process.env.PI_WEB_COMPANY_RESOURCES_DIR?.trim() || path.join(config.agentDir, "company");
+  const resourceManager = createPiResourceManager({
+    cwd: config.defaultCwd,
+    agentDir: config.agentDir,
+    companyRoot: companyResourceRoot,
+  });
   const reloadRunner = async (session: {
     restartRunner(): Promise<void>;
   }): Promise<void> => {
@@ -1255,6 +1379,11 @@ function buildSingleton(): HandlerSingleton {
           loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
           capabilitiesClient: desktopCapabilitiesClient,
           authState: authSessionState,
+          onCredentialChanged: (credential) =>
+            manager.broadcastRunnerFrame({
+              type: "piweb_credential_refresh",
+              credential: credential ?? null,
+            }),
         })
       : undefined;
 
@@ -1408,6 +1537,56 @@ function buildSingleton(): HandlerSingleton {
     .filter((c): c is Extract<HostContribution, { kind: "command" }> => c.kind === "command")
     .map((c) => c.command);
 
+  const defaultResourceAgent = (): ResourceAgentTarget | undefined =>
+    resolveLocalAgentTarget({
+      id: config.defaultCwd,
+      source: config.defaultCwd,
+      name: path.basename(config.defaultCwd) || "当前 Agent",
+      kind: "dir",
+    });
+  const targetFromSourceRecord = (record: Awaited<ReturnType<typeof agentSourcesProvider.list>>[number]): ResourceAgentTarget | undefined => {
+    const direct = resolveLocalAgentTarget(record);
+    if (direct !== undefined) return direct;
+    const installed = createInstalledRegistryIndex({ roots: sourcesScanRoots }).lookup(record.id);
+    return installed === undefined
+      ? undefined
+      : resolveLocalAgentTarget({
+          id: record.id,
+          source: installed.dir,
+          name: record.name,
+          kind: "dir",
+        });
+  };
+  const resolveResourceAgent = async (id: string): Promise<ResourceAgentTarget | undefined> => {
+    if (id === "." || id === config.defaultCwd || id === "builtin:default-agent") {
+      return defaultResourceAgent();
+    }
+    const records = await agentSourcesProvider.list();
+    const direct = records.find((item) => item.id === id || item.source === id);
+    const normalizedLocalId =
+      id.includes("://") || id.startsWith("builtin:")
+        ? undefined
+        : path.resolve(config.defaultCwd, id);
+    const record = direct ?? (normalizedLocalId === undefined
+      ? undefined
+      : records.find((item) => {
+          if (item.kind !== "dir") return false;
+          const candidates = [item.id, item.source];
+          return candidates.some((candidate) => path.resolve(config.defaultCwd, candidate) === normalizedLocalId);
+        }));
+    return record === undefined ? undefined : targetFromSourceRecord(record);
+  };
+  const listResourceAgents = async (): Promise<readonly ResourceAgentTarget[]> => {
+    const targets = new Map<string, ResourceAgentTarget>();
+    const current = defaultResourceAgent();
+    if (current !== undefined) targets.set(current.id, current);
+    for (const record of await agentSourcesProvider.list()) {
+      const target = targetFromSourceRecord(record);
+      if (target !== undefined) targets.set(target.id, target);
+    }
+    return [...targets.values()];
+  };
+
   const handler = createPiWebHandler({
     manager,
     store,
@@ -1454,7 +1633,32 @@ function buildSingleton(): HandlerSingleton {
       //   vision-op)迁移到统一端点属后续任务(6.1-6.3),在其落地前旧路径会 404 ——
       //   这是本任务预期内的过渡态,不是遗留缺陷。
       ...composedRoutes,
+      ...createResourceRoutes({
+        manager: resourceManager,
+        managerForAgent: (agentRoot) =>
+          createPiResourceManager({
+            cwd: agentRoot,
+            agentDir: config.agentDir,
+            companyRoot: companyResourceRoot,
+          }),
+        resolveAgent: async (id) => resolveResourceAgent(id),
+        listAgents: async () => listResourceAgents(),
+      }),
     ],
+    // 资源权限与会话身份共用同一桌面身份端口；未配置云端时保持匿名本地态。
+    authResolver: async () => {
+      const state = await desktopIdentityProvider?.current();
+      if (state?.kind === "authenticated") {
+        return {
+          anonymous: false,
+          userId: state.tenant.userId,
+          tenantId: state.tenant.companyId,
+          companyId: state.tenant.companyId,
+          role: state.tenant.role,
+        };
+      }
+      return { anonymous: true };
+    },
     // The app mounts the handler under `/api/**`; the handler's internal routes
     // are `/sessions/**` and `/config/**`, so strip the `/api` prefix.
     sse: { basePath: "/api" },

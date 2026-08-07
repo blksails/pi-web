@@ -16,7 +16,14 @@ pi-web 的 agent 以**一个 TypeScript/JavaScript 文件**（`index.ts`）为�
 | (b) `(ctx: AgentContext) => AgentDefinition \| Promise<AgentDefinition>` 工厂 | 需要读取运行时环境时使用 |
 | (c) 带 `RUNTIME_FACTORY_BRAND` 标记的 `CreateAgentSessionRuntimeFactory` | 高级用法，绕过归一化层，自建运行时 |
 
-Runner bootstrap（`packages/server/runner-bootstrap.mjs`）通过 jiti 载入 `index.ts`，经 `loadAgentDefinition`（`packages/server/src/runner/agent-loader.ts`）归一化为统一的运行时工厂，再调用 `createAgentSessionRuntime` 构建会话，最后进入 `runRpcMode` 持续处理 RPC 调用。
+Runner bootstrap（`packages/runner/runner-bootstrap.mjs`）先按 agent 源内容哈希生成缓存 ESM bundle（`packages/runner/src/runner/agent-compiler.ts`），再由 `loadAgentDefinition`（`packages/runner/src/runner/agent-loader.ts`）载入并归一化为统一的运行时工厂，随后调用 `createAgentSessionRuntime` 构建会话，最后进入 `runRpcMode` 持续处理 RPC 调用。首启编译一次；后续命中缓存即直接载入。编译失败自动回退 `jiti`。
+
+### Agent 编译缓存
+
+- 缓存目录默认：`~/.pi-web/cache/agent-bundles`；可用 `PI_WEB_AGENT_COMPILE_CACHE_DIR` 覆盖。
+- `PI_WEB_AGENT_PRECOMPILE=0` 可临时关闭 ESM bundle，回退 `jiti`。
+- Node/V8 模块编译缓存另落 `~/.pi-web/cache/node-compile`；可用 `PI_WEB_NODE_COMPILE_CACHE` 或原生 `NODE_COMPILE_CACHE` 覆盖，`NODE_DISABLE_COMPILE_CACHE=1` 关闭。
+- 开发环境自动启用 watcher；Agent 源变更仅在 runner 空闲时重启，重启阶段才重新计算哈希/编译，不在编辑过程中持续编译。`PI_RUNNER_HOT_RELOAD=0` 可关闭。
 
 ---
 
@@ -390,8 +397,8 @@ curl -X POST http://127.0.0.1:3000/api/sessions/<id>/agent-routes/echo \
 **启用方式**：
 
 ```bash
-# 开发模式下开启热重载
-PI_RUNNER_HOT_RELOAD=1 pnpm dev
+# 开发模式默认开启；需要关闭时：
+PI_RUNNER_HOT_RELOAD=0 pnpm dev
 ```
 
 或通过 CLI 的 `--watch` 标志（任何环境均可，不受 `NODE_ENV` 门控）。注意二者监视目标不同：`PI_RUNNER_HOT_RELOAD=1` 默认监视 `packages/tool-kit/src`（适合改工具源码），而 `--watch <source>` 注入 `PI_WEB_WATCH=1` + `PI_RUNNER_HOT_RELOAD_PATHS=<source>`，监视的是你传入的 agent source 目录（适合改 agent 自身的 `index.ts`；git 来源无本地目录会跳过监视）：
@@ -402,10 +409,10 @@ pi-web --watch /path/to/my-agent
 
 **机制**（来源：`packages/server/src/rpc-channel/hot-reload.ts:24`、`bin/pi-web.mjs:138`）：
 
-1. `isHotReloadEnabled()` 检查 `PI_WEB_WATCH=1`（`--watch` 注入）或 `NODE_ENV !== production && PI_RUNNER_HOT_RELOAD=1`。
-2. 启用后，`registerForHotReload(target)` 监视目录：默认 `packages/tool-kit/src`，可经 `PI_RUNNER_HOT_RELOAD_PATHS` 覆盖（`--watch` 即以此把目标改为 agent source 目录）；防抖 200 ms，仅响应 `.ts/.tsx/.js/.mjs/.cjs/.json` 变更。
-3. 源码变更时对所有已注册的 `PiRpcProcess` 调用 `requestRestart()`，runner 在**空闲时**（无待决命令）重启子进程。
-4. 新进程全新 jiti 实例重读源码；会话 id 经 `spawnSpec` 复用，新 runner 从持久化 jsonl **续上对话**，无需用户重新开始会话。
+1. `isHotReloadEnabled()` 检查 `PI_WEB_WATCH=1`、开发环境默认值，或显式 `PI_RUNNER_HOT_RELOAD=1`。
+2. 启用后同时监视 `packages/tool-kit/src` 与每个 custom Agent 自身源目录；防抖 200 ms，仅响应 `.ts/.tsx/.js/.mjs/.cjs/.json` 变更。`PI_RUNNER_HOT_RELOAD_PATHS` 仍可覆盖公共工具目录。
+3. Agent 源变更仅触发对应 `PiRpcProcess` 的 `requestRestart()`；runner 在**空闲时**（无待决命令）重启子进程。
+4. 新进程先命中旧缓存或生成新 ESM bundle，再载入；会话 id 经 `spawnSpec` 复用，新 runner 从持久化 jsonl **续上对话**，无需用户重新开始会话。
 
 **自定义监视目录**：
 
@@ -430,8 +437,9 @@ pi-web 后端进程
          ├─ jiti.import("src/runner/runner.ts")
          └─ runner.ts: main(argv)
               ├─ parseRunnerArgs(argv)    # 解析 --agent / --cwd / --agent-dir 等
-              ├─ loadAgentDefinition(agent, ctx, trust)
-              │    ├─ jiti.import(agentPath)  # 载入 index.ts（形态 a/b/c）
+              ├─ prepareAgentEntry(agent, dirname(agent)) # 仅扫 agent 目录，按内容哈希命中缓存
+              ├─ loadAgentDefinition(agent, ctx, trust, compiledEntry)
+              │    ├─ jiti.import(compiledEntry)  # 缓存不可用时回退 agentPath
               │    └─ buildRuntimeFactory(def) # 归一化为统一运行时工厂
               ├─ createAgentSessionRuntime(factory, {cwd, agentDir, sessionManager})
               ├─ wireAttachmentBridge(runtime)  # attachment-tool-bridge 装配
@@ -486,7 +494,7 @@ pi-web 后端进程
    - `noTools: "all"` — 全关，等价于 `minimalAgentPreset` 的工具姿态。
    - 省略 `noTools` — 保持默认内置工具集。
 6. **（可选）声明扩展面**：需要 HTTP 端点用 `routes`（见「声明式 HTTP routes」），需要 `/` 补全提示用 `slashCompletions`，需要人机共享状态在工具内用 `getSessionState()`。
-7. **开启热重载**（修改 tool-kit 源码时）：设置 `PI_RUNNER_HOT_RELOAD=1`；改 agent 自身 `index.ts` 则用 `pi-web --watch /path/to/my-agent`。改动会在 runner 空闲时自动重启并续上会话，无需手动开新会话。
+7. **开启热重载**：开发环境默认开启；改 agent 自身 `index.ts` 后，空闲 runner 自动重启并在刷新阶段重新编译，无需手动开新会话。生产环境可用 `pi-web --watch /path/to/my-agent` 主动开启；开发时可设 `PI_RUNNER_HOT_RELOAD=0` 关闭默认 watcher。
 
 **常见报错对策**：
 

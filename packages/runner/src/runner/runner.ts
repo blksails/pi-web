@@ -19,10 +19,12 @@ import {
   runRpcMode,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createLogger, initConfigFromEnv } from "@blksails/pi-web-logger";
 import type { AgentContext } from "@blksails/pi-web-core/agent-definition.js";
 import { InvalidAgentDefinitionError, loadAgentDefinition } from "./agent-loader.js";
+import { prepareAgentEntry } from "./agent-compiler.js";
 import { emitSlashCompletions } from "./slash-completions-wiring.js";
 import {
   emitAttachmentProfile,
@@ -37,6 +39,7 @@ import {
 import { ATTACHMENT_BACKENDS_ENV, parseBackendsEnv } from "@blksails/pi-web-core/attachment/backends-config.js";
 import { wireSessionTitlePersistence } from "./session-title-wiring.js";
 import { createInboundFrameRouter, disposeAll } from "./frame-channel/index.js";
+import { attachGatewayModelsChannel } from "./gateway-models-wiring.js";
 import { installStdinResumeGate } from "./stdin-resume-gate.js";
 import { openOrCreateSession } from "./open-or-create-session.js";
 import { wireSessionBridges } from "./session-bridges.js";
@@ -188,10 +191,23 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     logger: createLogger({ namespace: agentNamespace }),
   };
   // 「扩展 → 系统资源」开关透传:custom 模式(shape a/b)据此清空 skills / 关闭系统 extensions。
+  // 仅以 agent 目录为源码根，避免 cwd 指向工作区时扫描整仓；目录内依赖仍由
+  // esbuild bundle，目录外依赖按现有 jiti/module alias 规则解析。
+  const preparedAgent = await prepareAgentEntry(args.agent, dirname(args.agent));
+  if (!preparedAgent.compiled && preparedAgent.reason !== "disabled") {
+    bootLog.warn("agent precompile unavailable; falling back to jiti", {
+      reason: preparedAgent.reason,
+    });
+  } else {
+    bootLog.debug("agent precompile ready", {
+      cacheHit: preparedAgent.cacheHit,
+      compiled: preparedAgent.compiled,
+    });
+  }
   const factory = await loadAgentDefinition(args.agent, ctx, trust, {
     ...(args.noSkills !== undefined ? { noSkills: args.noSkills } : {}),
     ...(args.noExtensions !== undefined ? { noExtensions: args.noExtensions } : {}),
-  });
+  }, preparedAgent.path);
 
   // agent-attachment-profile:装配期白名单校验(Req 2.1/2.2/5.1)。权威在子进程——definition
   // 与拓扑 env 都在这里。未命中(含宿主未声明任何拓扑)抛 InvalidAgentDefinitionError,冒泡到
@@ -276,6 +292,12 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   const frameChannel = createInboundFrameRouter({
     sessionId: runtime.session.sessionId,
   });
+
+  // ai-gateway-catalog-coldstart(任务 2.3,Req 1.1/1.2):把帧通道交给模型清单反向拉取。
+  // ★ 与 option-mapper 的登记**互不假定先后** —— 会话构造(登记待补清单)与本处(登记通道)
+  //   谁先谁后都可能,故双方各自「登记 + 尝试触发」,由后到的一方发起请求。
+  //   无待补实例(目录已就绪的快路径 / 未启用网关)→ 不发任何帧,行为逐字节不变。
+  attachGatewayModelsChannel(frameChannel, bootLog);
 
   // 会话桥装配:清单与顺序语义见 `session-bridges.ts`(attachment → state → surface →
   // clear-queue → agent-routes → attachment-catalog)。各桥内部实现未变,此处只是把

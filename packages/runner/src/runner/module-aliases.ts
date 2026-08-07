@@ -86,6 +86,7 @@ export function buildResolutionAliases(): Record<string, string> {
     ["@blksails/pi-web-tool-kit/extension-entry", "tool-kit/src/extension-tools/entry-path.ts"],
     ["@blksails/pi-web-tool-kit/auto-title-entry", "tool-kit/src/auto-title/entry-path.ts"],
     ["@blksails/pi-web-tool-kit/mcp-entry", "tool-kit/src/mcp/entry-path.ts"],
+    ["@blksails/pi-web-tool-kit/template-entry", "tool-kit/src/template-tools/entry-path.ts"],
     ["@blksails/pi-web-kit", "web-kit/src/index.ts"],
   ];
   for (const [specifier, relativeEntry] of workspacePackages) {

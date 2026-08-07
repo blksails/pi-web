@@ -6,6 +6,7 @@ import {
   bundlePaneEntry,
   buildPaneCsp,
   buildPaneDocument,
+  escapeInlineScriptForHtml,
   PANE_BASE_CSS,
   PANE_CSP,
   renderPaneDocument,
@@ -84,6 +85,14 @@ describe("renderPaneDocument / renderPaneUrlDocument", () => {
     const url = renderPaneUrlDocument("t", "p.js", PANE_BASE_CSS, "default-src 'none'");
     expect(inline).toContain(`content="default-src 'none'"`);
     expect(url).toContain(`content="default-src 'none'"`);
+  });
+
+  it("转义 HTML 禁止的控制字符且保留 JavaScript 字节语义", () => {
+    const script = 'const sentinel = "\x02PILOG\x03";';
+    const safe = escapeInlineScriptForHtml(script);
+    expect(safe).toBe('const sentinel = "\\u0002PILOG\\u0003";');
+    expect(safe).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/);
+    expect(renderPaneDocument("t", script, PANE_BASE_CSS)).toContain(safe);
   });
 });
 

@@ -24,6 +24,19 @@ pi-web 每次新建会话时，由 runner 子进程侧自动发现并加载资�
 
 > **动手验证**：要实测「项目级 `.pi/` 资源（扩展 / 子代理 / 技能）是否被正确加载」及 trust 门控行为，跑探针示例 `examples/pi-probe-agent`——它自带一组项目级 `.pi/` 探针资源（`extensions/agents/skills` 各一），以本目录为 `cwd` 运行后，观察 `pi_probe_ping` 工具、`/pi-probe` 命令与 `pi-probe-subagent` 子代理是否出现即可判定加载结果（不出现多半是 trust 未放行）。跑法与判定表见 `examples/pi-probe-agent/README.md`。
 
+## Skill 提交校验
+
+设置页创建、保存或发布 Skill 时，服务端会在写盘前自动执行同一套校验；资源管理器自身亦会再次校验，避免绕过 REST 路由直接写入不安全内容。校验失败返回 `422 SKILL_VALIDATION_FAILED`，不会创建或覆盖 `SKILL.md`。
+
+阻断项包括：
+
+- 名称、frontmatter、`description`、正文、大小及控制字符格式错误；
+- 覆盖系统/开发者指令、伪造消息边界、要求隐瞒结果等提示注入；
+- `rm -rf`、`git reset --hard`、磁盘/数据库破坏、下载后执行、动态执行；
+- 凭据外传、越界路径、资源目录 symlink 及系统敏感路径访问。
+
+外部进程、网络、编码载荷或凭据词汇等可疑能力不直接阻断，但随成功响应返回警告，设置页显示人工复核提示。该校验为确定性静态扫描，不能替代人工审查；Skill 仍按 pi 资源执行权限治理与项目 trust 策略。
+
 ---
 
 ## 两条安装车道

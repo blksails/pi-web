@@ -75,7 +75,7 @@ describe("identityListKey(纯函数)", () => {
     expect(identityListKey(state)).toBe(expected);
   });
 
-  it("★ 含 userId —— 切号(A→B)必须改变取值,否则列表不刷新,用户看到上一个账号的源", () => {
+  it("★ 含 userId/companyId —— 切用户或公司必须改变取值", () => {
     const a: IdentityUiState = {
       kind: "authenticated",
       tenant: { ...TENANT, userId: "a" },
@@ -87,7 +87,21 @@ describe("identityListKey(纯函数)", () => {
       canExchange: true,
     };
     expect(identityListKey(a)).not.toBe(identityListKey(b));
-    expect(identityListKey(a)).toBe("identity:a");
+    expect(identityListKey(a)).toBe("identity:a:c1");
+  });
+
+  it("同一用户切公司时必须改变取值,以重建持凭据 runner", () => {
+    const companyA: IdentityUiState = {
+      kind: "authenticated",
+      tenant: { ...TENANT, companyId: "company-a" },
+      canExchange: true,
+    };
+    const companyB: IdentityUiState = {
+      kind: "authenticated",
+      tenant: { ...TENANT, companyId: "company-b" },
+      canExchange: true,
+    };
+    expect(identityListKey(companyA)).not.toBe(identityListKey(companyB));
   });
 });
 
@@ -124,7 +138,7 @@ describe("共享 Provider → 身份变化驱动列表刷新", () => {
       screen.getByTestId("do-exchange").click();
     });
     await waitFor(() => expect(screen.getByTestId("kind").textContent).toBe("authenticated"));
-    expect(keys).toContain("identity:u1");
+    expect(keys).toContain("identity:u1:c1");
 
     await act(async () => {
       screen.getByTestId("do-revoke").click();

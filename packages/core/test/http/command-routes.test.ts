@@ -281,7 +281,148 @@ describe("command routes", () => {
     // 引用注入到文本…
     expect(text).toContain("[attachment id=att_a type=image/png name=a.png]");
     // …而 images/vision base64 路径维持现状(仍传 images,不被引用注入替代)。
+    // head-only store 无 getReadStream → 不额外物化,客户端 images 原样转发。
     expect(options.images).toEqual([image]);
+  });
+
+  // ── attachment-mention-vision: native LLM images from store ──────────
+
+  it("attachmentIds image → prompt.images materialised (native, no image_vision)", async () => {
+    const { Readable } = await import("node:stream");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const b64 = Buffer.from(png).toString("base64");
+    const store: AttachmentMetaSource = {
+      head: async (id) =>
+        id === "att_img"
+          ? att({ id: "att_img", name: "shot.png", mimeType: "image/png" })
+          : undefined,
+      getReadStream: async (id) => {
+        if (id !== "att_img") throw new Error("missing");
+        return {
+          stream: Readable.from([Buffer.from(png)]),
+          meta: { mimeType: "image/png", size: 4 },
+        };
+      },
+    };
+    const { handler, session } = setup({ attachmentStore: store });
+    const res = await handler(
+      post("/sessions/sess-1/messages", {
+        message: "what is this",
+        attachmentIds: ["att_img"],
+      }),
+    );
+    expect(res.status).toBe(200);
+    const prompt = session.calls.find((c) => c.method === "prompt");
+    const text = prompt?.args[0] as string;
+    const options = prompt?.args[1] as {
+      images?: { type: string; data: string; mimeType: string }[];
+    };
+    // 文本引用仍在(给 tool 抄 id)
+    expect(text).toContain(
+      "[attachment id=att_img type=image/png name=shot.png]",
+    );
+    expect(text).not.toContain("data:");
+    // native 多模态 images 已物化
+    expect(options.images).toEqual([
+      { type: "image", data: b64, mimeType: "image/png" },
+    ]);
+    // 不经 image_vision:prompt 参数里没有 tool 强制;只是 images 字段
+    expect(JSON.stringify(prompt)).not.toMatch(/image_vision/);
+  });
+
+  it("@attachment mention in message → prompt.images materialised", async () => {
+    const { Readable } = await import("node:stream");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const b64 = Buffer.from(png).toString("base64");
+    const store: AttachmentMetaSource = {
+      head: async (id) =>
+        id === "att_m"
+          ? att({ id: "att_m", name: "m.png", mimeType: "image/png" })
+          : undefined,
+      getReadStream: async () => ({
+        stream: Readable.from([Buffer.from(png)]),
+        meta: { mimeType: "image/png", size: 4 },
+      }),
+    };
+    // 注册 attachment completion provider,使 @attachment: 在提交期改写为标记
+    // (与生产路径一致);物化同时从原文 token 与标记收集 id。
+    const { handler, session } = setup({ attachmentStore: store });
+    await handler(
+      post("/sessions/sess-1/messages", {
+        message: "describe @attachment:att_m please",
+      }),
+    );
+    const prompt = session.calls.find((c) => c.method === "prompt");
+    const options = prompt?.args[1] as {
+      images?: { type: string; data: string; mimeType: string }[];
+    };
+    expect(options.images).toEqual([
+      { type: "image", data: b64, mimeType: "image/png" },
+    ]);
+  });
+
+  it("non-image attachmentIds → no materialised images, text ref remains", async () => {
+    const { Readable } = await import("node:stream");
+    const store: AttachmentMetaSource = {
+      head: async (id) =>
+        id === "att_pdf"
+          ? att({
+              id: "att_pdf",
+              name: "doc.pdf",
+              mimeType: "application/pdf",
+            })
+          : undefined,
+      getReadStream: async () => ({
+        stream: Readable.from([Buffer.from("%PDF")]),
+        meta: { mimeType: "application/pdf", size: 3 },
+      }),
+    };
+    const { handler, session } = setup({ attachmentStore: store });
+    await handler(
+      post("/sessions/sess-1/messages", {
+        message: "read this",
+        attachmentIds: ["att_pdf"],
+      }),
+    );
+    const prompt = session.calls.find((c) => c.method === "prompt");
+    const text = prompt?.args[0] as string;
+    const options = prompt?.args[1] as { images?: unknown[] } | undefined;
+    expect(text).toContain(
+      "[attachment id=att_pdf type=application/pdf name=doc.pdf]",
+    );
+    expect(options?.images).toBeUndefined();
+  });
+
+  it("client images + same attachment data → no duplicate images", async () => {
+    const { Readable } = await import("node:stream");
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const b64 = Buffer.from(png).toString("base64");
+    const store: AttachmentMetaSource = {
+      head: async (id) =>
+        id === "att_a"
+          ? att({ id: "att_a", name: "a.png", mimeType: "image/png" })
+          : undefined,
+      getReadStream: async () => ({
+        stream: Readable.from([Buffer.from(png)]),
+        meta: { mimeType: "image/png", size: 4 },
+      }),
+    };
+    const clientImage = {
+      type: "image" as const,
+      data: b64,
+      mimeType: "image/png",
+    };
+    const { handler, session } = setup({ attachmentStore: store });
+    await handler(
+      post("/sessions/sess-1/messages", {
+        message: "with both",
+        attachmentIds: ["att_a"],
+        images: [clientImage],
+      }),
+    );
+    const prompt = session.calls.find((c) => c.method === "prompt");
+    const options = prompt?.args[1] as { images?: unknown[] };
+    expect(options.images).toEqual([clientImage]);
   });
 
   // ── RpcResponse success:false 传播(pi-clouds #23 遮蔽层)────────────────

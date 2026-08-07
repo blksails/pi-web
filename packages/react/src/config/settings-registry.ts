@@ -78,6 +78,8 @@ export interface SettingsPanelDescriptor extends ConfigDomainIO {
   readonly tabLabel?: string;
   /** 组内 Tab 排序。 */
   readonly tabOrder?: number;
+  /** 非配置表单面板的渲染入口；外壳据此跳过通用 load/save 表单流。 */
+  readonly customView?: () => unknown;
 }
 
 export interface SettingsRegistry {

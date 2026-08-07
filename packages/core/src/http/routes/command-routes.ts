@@ -17,6 +17,7 @@ import {
   UiRpcRequestSchema,
   CommandExecutePayloadSchema,
 } from "@blksails/pi-web-protocol";
+import type { BlobMeta } from "../../attachment/index.js";
 import type { PiSession, SessionStore } from "../../session/index.js";
 import type { HostCommandRegistry } from "../../commands/host-command-registry.js";
 import { SessionNotFoundError } from "../../session/index.js";
@@ -25,6 +26,7 @@ import {
   type CompletionRegistry,
 } from "../../completion/index.js";
 import { injectAttachmentRefs } from "../../attachment-bridge/reference-injection.js";
+import { materializePromptImages } from "../../attachment-bridge/materialize-prompt-images.js";
 import { errorResponse, jsonResponse, mapEngineError } from "../error-map.js";
 import type { RequestContext, RouteHandler } from "../handler.types.js";
 import { validateBody } from "../validate.js";
@@ -72,15 +74,24 @@ function requireSession(store: SessionStore, ctx: RequestContext): PiSession {
 }
 
 /**
- * 主进程附件元数据源(attachment-tool-bridge,Req 8.1)。
+ * 主进程附件元数据/字节源(attachment-tool-bridge + attachment-mention-vision)。
  *
- * `makeMessagesHandler` 运行在主进程,据前端提交的 `attachmentIds` 取 `{id,mimeType,name}`
- * 以构造结构化文本引用标记。仅依赖只读 `head(id)` 访问器,与主进程 `AttachmentStore` 门面
- * 同形(`Pick<AttachmentStore, "head">`),由装配层注入既有主进程 store(勿新造下发)。
+ * `makeMessagesHandler` 运行在主进程:
+ * - `head(id)`:构造结构化文本引用标记(Req 8.1);
+ * - 可选 `getReadStream(id)`:把图像附件物化为 prompt 原生多模态 `images`
+ *   (attachment-mention-vision,native LLM 识图;无此能力则仅文本引用)。
+ * 与主进程 `AttachmentStore` 门面同形子集,由装配层注入既有主进程 store。
  */
 export interface AttachmentMetaSource {
   /** 按公开 id 取描述符(不含字节);不存在返回 `undefined`。 */
   head(id: string): Promise<Attachment | undefined>;
+  /**
+   * 可选:读附件字节流,供图像附件物化为 prompt `images`。
+   * 未提供时 `@` / attachmentIds 路径仅注入文本引用(与历史行为一致)。
+   */
+  getReadStream?(
+    id: string,
+  ): Promise<{ stream: NodeJS.ReadableStream; meta: BlobMeta }>;
 }
 
 /**
@@ -134,11 +145,24 @@ export function makeMessagesHandler(
       // 与下方 images/vision base64 并存,不替代)。
       const attachments = await resolveAttachments(attachmentIds, attachmentStore);
       message = injectAttachmentRefs(message, attachments);
+      // attachment-mention-vision:把 @attachment / attachmentIds 中的图像物化为原生
+      // 多模态 images 喂主模型(native LLM);不经 image_vision 工具。无 getReadStream
+      // 时 fail-soft 为仅文本引用。与客户端 images 按 data 去重。
+      let mergedImages = images;
+      if (attachmentStore !== undefined) {
+        mergedImages = await materializePromptImages({
+          messageText: message,
+          attachmentIds,
+          existingImages: images,
+          sessionId: session.id,
+          store: attachmentStore,
+        });
+      }
       const options: {
         images?: typeof images;
         streamingBehavior?: typeof streamingBehavior;
       } = {};
-      if (images !== undefined) options.images = images;
+      if (mergedImages !== undefined) options.images = mergedImages;
       if (streamingBehavior !== undefined)
         options.streamingBehavior = streamingBehavior;
       return ackOrError(await session.prompt(message, options));

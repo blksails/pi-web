@@ -129,8 +129,8 @@ describe("PiToolPart 四态", () => {
       .getByText("image_generation")
       .closest("[data-pi-tool]")
       ?.querySelector("[data-pi-tool-detail]");
-    // 图片走原生 <img> 块,非 markdown 段落内的 streamdown 包裹。
-    const imgBox = detail?.querySelector("[data-pi-tool-images]");
+    // 图片走 ConversationImageGallery(原生 <img> 块,非 markdown 段落内的 streamdown 包裹)。
+    const imgBox = detail?.querySelector("[data-pi-conversation-images]");
     const img = imgBox?.querySelector("img");
     expect(img?.getAttribute("src")).toBe("/api/attachments/att_x/raw?exp=1");
     expect(img?.getAttribute("alt")).toBe("shiba.png");
@@ -310,5 +310,65 @@ describe("复合子组件可独立渲染", () => {
     render(<ToolOutput output={<span>ok</span>} errorText="bad" />);
     expect(screen.getByText("bad")).toBeInTheDocument();
     expect(screen.queryByText("ok")).toBeNull();
+  });
+});
+
+describe("PiToolPart pill 系统(details.pills)", () => {
+  const pillOutput = {
+    content: [{ type: "text", text: "生成成功:2 张图像已保存" }],
+    details: {
+      ok: true,
+      model: "gpt-5.4-image-2",
+      pills: [
+        { label: "下载 shiba.png", action: "download", src: "/api/attachments/att_x/raw?exp=1" },
+        { label: "复制提示词", action: "copy", copyText: "一只柴犬" },
+        { label: "自定义动作", action: "frobnicate" as string },
+      ],
+    },
+  };
+
+  it("渲染 pills 行与每个 pill 的 label", () => {
+    render(
+      <PiToolPart part={toolEndPart("image_generation", {}, pillOutput)} defaultOpen={true} />,
+    );
+    const detail = screen
+      .getByText("image_generation")
+      .closest("[data-pi-tool]")
+      ?.querySelector("[data-pi-tool-detail]");
+    const pillsBox = detail?.querySelector("[data-pi-tool-pills]");
+    expect(pillsBox).not.toBeNull();
+    const pillEls = pillsBox?.querySelectorAll("[data-pi-tool-pill]") ?? [];
+    expect(pillEls.length).toBe(3);
+    expect(screen.getByText("下载 shiba.png")).toBeInTheDocument();
+    expect(screen.getByText("复制提示词")).toBeInTheDocument();
+    // 未知 action 惰性展示(不抛错、不吞 label)。
+    expect(screen.getByText("自定义动作")).toBeInTheDocument();
+  });
+
+  it("点击 download pill → 走 fetch 字节下载", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(["x"], { type: "image/png" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PiToolPart part={toolEndPart("image_generation", {}, pillOutput)} defaultOpen={true} />,
+    );
+    await userEvent.click(screen.getByText("下载 shiba.png"));
+    expect(fetchMock).toHaveBeenCalledWith("/api/attachments/att_x/raw?exp=1");
+    vi.unstubAllGlobals();
+  });
+
+  it("点击未知 action pill → 无副作用", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(
+      <PiToolPart part={toolEndPart("image_generation", {}, pillOutput)} defaultOpen={true} />,
+    );
+    await userEvent.click(screen.getByText("自定义动作"));
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(vi.mocked(window.fetch)).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+    vi.unstubAllGlobals();
   });
 });

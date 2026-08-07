@@ -79,8 +79,9 @@ export function computeAiGatewaySessionSpawnEnv(input: {
   const modelIds = catalog
     .map((e) => e.model)
     .filter((id) => id.length > 0 && isSessionCapableGatewayModel(id));
-  if (modelIds.length === 0) return { env: {} };
-
+  // ★ 空模型集**不再**否决该实例(spec ai-gateway-catalog-coldstart,Req 1.1);
+  //   与复数版 `computeAiGatewaySessionsSpawnEnv` 保持同一门控 —— 凭据齐备即下发
+  //   BASE/KEY，MODELS 仅在非空时附带，其余由会话侧拉取补齐。
   const serialized = JSON.stringify(modelIds);
   const bytes = Buffer.byteLength(serialized, "utf8");
   if (bytes > MODELS_ENV_WARN_BYTES) {
@@ -104,7 +105,7 @@ export function computeAiGatewaySessionSpawnEnv(input: {
     env: {
       [RUNNER_AI_GATEWAY_BASE_ENV]: baseUrl,
       [RUNNER_AI_GATEWAY_KEY_ENV]: key,
-      [RUNNER_AI_GATEWAY_MODELS_ENV]: serialized,
+      ...(modelIds.length > 0 ? { [RUNNER_AI_GATEWAY_MODELS_ENV]: serialized } : {}),
     },
   };
 }
@@ -162,12 +163,27 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
   const resolved: Resolved[] = [];
   for (const instance of instances) {
     const key = instance.apiKey?.trim();
-    if (key === undefined || key.length === 0) continue;
+    if (key === undefined || key.length === 0) {
+      // ★ 成因可判别(Req 4.1):凭据缺失此前是**静默** continue —— 在界面上与「目录还没
+      //   拉到」「收敛后为空」「实例没声明」长得一模一样,排查时只能逐个试。现在指名记录。
+      //   凭据本身绝不入日志(Req 4.2),这里只记实例标识与成因。
+      logger?.info("ai-gateway session instance skipped", {
+        instanceId: instance.instanceId,
+        cause: "credential-missing",
+      });
+      continue;
+    }
     // ★与单实例版同一判据(Req 4.1):两侧若漂移会出现「列表里看得到、选中却说模型未找到」。
     const modelIds = instance.catalog
       .map((e) => e.model)
       .filter((id) => id.length > 0 && isSessionCapableGatewayModel(id));
-    if (modelIds.length === 0) continue;
+    // ★ 这里**不再**因「模型集为空」跳过该实例(spec ai-gateway-catalog-coldstart,Req 1.1)。
+    //   目录快照是 stale-while-revalidate,首次拉取完成前恒为空集;旧的 `continue` 把这一
+    //   瞬时状态当成「该实例不可用」,于是服务端重启后、目录就绪前创建的会话,其 runner
+    //   里**永远**没有网关 provider(env 在 spawn 时固定,无补发路径),而部署级目录端点
+    //   稍后却显示正常 —— 两条取数链不同源造成的迷惑性缺陷。
+    //   现在凭据齐备即下发 BASE/KEY(声明),模型清单为空则不下发 MODELS,由会话侧拉取补齐。
+    //   ★ 凭据缺失仍在上面 `continue` —— 两种成因必须保持可判别(Req 4.1)。
     resolved.push({
       instanceId: instance.instanceId,
       baseUrl: `${instance.baseUrl.replace(/\/+$/, "")}/v1`,
@@ -189,6 +205,16 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
         threshold: MODELS_ENV_WARN_BYTES,
       });
     }
+    // ★ 装配期就区分两条路径(Req 4.1):清单已带全 = 快路径;清单为空 = 待会话侧拉取补齐。
+    //   合并成一条「delivered: 0」会与「拉到了但收敛后确实为空」混淆,而后者是配置问题、
+    //   前者只是还没到 —— 两者的处置完全不同。
+    if (modelIds.length === 0) {
+      logger?.info("ai-gateway session models pending backfill", {
+        instanceId,
+        cause: "catalog-not-ready",
+      });
+      return;
+    }
     logger?.info("ai-gateway session models delivered", {
       instanceId,
       models: modelIds.length,
@@ -199,13 +225,15 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
   // 恰好一个有效实例且为缺省实例 id → 扁平三件套,逐字节兼容改造前(Req 9.1)。
   if (resolved.length === 1 && resolved[0]!.instanceId === AI_GATEWAY_PROVIDER_NAME) {
     const only = resolved[0]!;
-    const serialized = JSON.stringify(only.modelIds);
     logDelivered(only.instanceId, only.modelIds);
     return {
       env: {
         [RUNNER_AI_GATEWAY_BASE_ENV]: only.baseUrl,
         [RUNNER_AI_GATEWAY_KEY_ENV]: only.apiKey,
-        [RUNNER_AI_GATEWAY_MODELS_ENV]: serialized,
+        // 与多实例形态同规则:空清单不下发 MODELS,由会话侧拉取补齐。
+        ...(only.modelIds.length > 0
+          ? { [RUNNER_AI_GATEWAY_MODELS_ENV]: JSON.stringify(only.modelIds) }
+          : {}),
       },
     };
   }
@@ -219,7 +247,12 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
     const prefix = sessionInstanceEnvPrefix(r.instanceId);
     env[`${prefix}BASE`] = r.baseUrl;
     env[`${prefix}KEY`] = r.apiKey;
-    env[`${prefix}MODELS`] = JSON.stringify(r.modelIds);
+    // 模型集为空 → **不下发** MODELS。runner 侧据此判为 `pendingCatalog`,在就绪后
+    // 主动向宿主索取收敛后的清单(反向拉取)。下发一个空数组会与「目录已就绪但收敛后
+    // 确实为空」混淆,那是另一种成因(Req 4.1)。
+    if (r.modelIds.length > 0) {
+      env[`${prefix}MODELS`] = JSON.stringify(r.modelIds);
+    }
     logDelivered(r.instanceId, r.modelIds);
   }
   return { env };

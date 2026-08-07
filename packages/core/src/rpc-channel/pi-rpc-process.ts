@@ -15,6 +15,7 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { dirname } from "node:path";
 import type {
   AgentEvent,
   ImageContent,
@@ -130,6 +131,13 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
   /** 热重载注册的注销函数(未启用时为空操作)。 */
   private hotReloadUnregister?: () => void;
 
+  /** custom agent 源目录；dev 热重载仅在该 agent 被修改时重启本会话。 */
+  get hotReloadPaths(): readonly string[] {
+    const agentIndex = this.spec.args.indexOf("--agent");
+    const entry = agentIndex >= 0 ? this.spec.args[agentIndex + 1] : undefined;
+    return entry === undefined || entry === "" ? [] : [dirname(entry)];
+  }
+
   /**
    * 按给定 SpawnSpec 以 detached:false spawn 子进程并接管 stdio(Req 2.1–2.3)。
    * spawn 失败经子进程 `error` 事件异步传播(Req 2.4)。
@@ -185,15 +193,27 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
       for (const cb of this.stderrListeners) cb(chunk);
     });
 
+    // stdin 的 EPIPE 不会冒泡到 ChildProcess 本身；若不监听，Node 会把它当
+    // 未处理的 EventEmitter error，直接击穿 dev API 进程，前端遂白屏。
+    child.stdin.on("error", (err: Error) => {
+      if (this.child !== child || this.restarting || this.status === "closing" || this.status === "exited") return;
+      rpcLog.error("subprocess stdin error", { message: err.message });
+      this.finalize(
+        null,
+        null,
+        new ChildCrashError(null, null, `RPC child process stdin error: ${err.message}`),
+      );
+    });
+
     // spawn 失败(命令不存在/无法执行)经 error 事件到达(Req 2.4 / 6.5)。
     child.on("error", (err: Error) => {
-      if (this.restarting) return; // 重启中:旧进程的 error 不视为崩溃
+      if (this.child !== child || this.restarting) return; // 重启中或旧实例:不视为当前通道崩溃
       rpcLog.error("subprocess error", { message: err.message });
       this.finalize(null, null, new SpawnError(err.message, err));
     });
 
     child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-      if (this.restarting) return; // 重启中:旧进程退出由 doRestart 处理重生
+      if (this.child !== child || this.restarting) return; // 重启中或旧实例:由 doRestart 处理
       if (code === 0) {
         rpcLog.info("subprocess exit", { code, signal });
       } else {
@@ -307,7 +327,18 @@ export class PiRpcProcess implements PiRpcChannel, HotReloadTarget {
     if (this.status === "exited" || this.status === "closing") {
       throw new ChannelClosedError();
     }
-    this.child.stdin.write(line.endsWith("\n") ? line : `${line}\n`);
+    if (this.child.stdin.destroyed || this.child.stdin.writableEnded) {
+      const error = new ChannelClosedError("RPC child process stdin is closed");
+      this.finalize(null, null, error);
+      throw error;
+    }
+    try {
+      this.child.stdin.write(line.endsWith("\n") ? line : `${line}\n`);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.finalize(null, null, error);
+      throw error;
+    }
   }
 
   /** 注册按行接收回调(Req 1.2)。 */

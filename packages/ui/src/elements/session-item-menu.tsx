@@ -1,7 +1,8 @@
 /**
  * SessionItemMenu — 会话项右侧操作菜单(session-list-item-actions)。
  *
- * 每个会话项右侧一个 hover/聚焦显现的 `⋯` 触发,展开「重命名 / 删除 / 收藏·取消收藏」菜单:
+ * 每个会话项标题卡片内右上角一个 hover/聚焦显现的 `⋯` 触发(absolute,默认不占宽),
+ * 展开「重命名 / 删除 / 收藏·取消收藏」菜单:
  *  - 触发与菜单交互一律 `stopPropagation`,不冒泡到整行「恢复会话」(Req 1.4);
  *  - 「重命名」经 `onRename` 上抛(由面板切入内联编辑态,Req 3.1);
  *  - 「删除」先弹二次确认(dialog),确认后才经 `onDelete` 上抛(Req 2.1/2.2);
@@ -98,13 +99,16 @@ export function SessionItemMenu(
             onClick={stop}
             onPointerDown={stop}
             className={cn(
-              // 默认隐藏,整行 hover / 组内聚焦 / 自身聚焦 / 菜单展开时显现(Req 1.2)。
-              "shrink-0 rounded-[var(--radius)] px-1.5 py-1 text-xs text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--muted))] focus-visible:opacity-100 focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100 data-[open]:opacity-100",
+              // 叠在整行 hover 区右侧:absolute 不占宽; top-1/2 相对整行垂直居中;
+              // 正圆 + 三点居中;默认隐身,整行 hover/聚焦/展开时显现(Req 1.2)。
+              "pointer-events-none absolute right-1 top-1/2 z-10 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-center text-sm leading-none text-[hsl(var(--muted-foreground))] opacity-0 transition-opacity hover:bg-[hsl(var(--muted))] focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 data-[open]:pointer-events-auto data-[open]:opacity-100",
               className,
             )}
             data-open={menuOpen ? "" : undefined}
           >
-            ⋯
+            <span aria-hidden className="block leading-none tracking-[0.08em]">
+              ···
+            </span>
           </button>
         </PopoverTrigger>
         <PopoverContent

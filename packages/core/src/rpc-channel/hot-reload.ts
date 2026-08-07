@@ -22,14 +22,17 @@ const hotReloadLog = createLogger({ namespace: "session:rpc" });
 export interface HotReloadTarget {
   /** 空闲时重启子进程;忙(有待决命令)时延迟到空闲。已退出则忽略。 */
   requestRestart(): void;
+  /** 当前 custom agent 源目录；仅 dev 热重载使用。 */
+  hotReloadPaths?: readonly string[];
 }
 
-/** dev + 显式开关 才启用。 */
+/** 开发环境默认启用；生产环境仅经显式 `PI_WEB_WATCH=1` 启用。 */
 export function isHotReloadEnabled(): boolean {
   // CLI `pi-web --watch` 经 PI_WEB_WATCH 显式启用:不受 dev 门控限制,在 production
   // standalone 下也生效(仅当用户主动 --watch,不改默认行为)。见 spec pi-web-cli Req 8。
   if (process.env["PI_WEB_WATCH"] === "1") return true;
-  return (
+  if (process.env["PI_RUNNER_HOT_RELOAD"] === "0") return false;
+  return process.env["NODE_ENV"] === "development" || (
     process.env["NODE_ENV"] !== "production" &&
     process.env["PI_RUNNER_HOT_RELOAD"] === "1"
   );
@@ -40,6 +43,8 @@ const DEBOUNCE_MS = 200;
 const targets = new Set<HotReloadTarget>();
 let watchers: FSWatcher[] | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+const targetWatchers = new Map<HotReloadTarget, FSWatcher[]>();
+const targetDebounceTimers = new Map<HotReloadTarget, ReturnType<typeof setTimeout>>();
 
 /** 解析要监视的源码目录(默认 packages/tool-kit/src),按**存在性**过滤。
  *
@@ -73,7 +78,10 @@ export function watchPaths(): string[] {
   } catch {
     // fileURLToPath 抛(Windows 内联路径):仅靠 cwd 候选。
   }
-  return [...candidates].filter((p) => existsSync(p));
+  // 统一分隔符，兼容 Windows 下测试与日志的路径后缀判断；fs.watch 可接受两种形式。
+  return [...candidates]
+    .filter((p) => existsSync(p))
+    .map((p) => p.replaceAll("\\", "/"));
 }
 
 function triggerRestartAll(path?: string): void {
@@ -99,6 +107,73 @@ function triggerRestartAll(path?: string): void {
   if (typeof debounceTimer.unref === "function") debounceTimer.unref();
 }
 
+function isSourceFile(filename: string | Buffer | null | undefined): boolean {
+  if (filename === null || filename === undefined) return true;
+  const value = String(filename).replaceAll("\\", "/");
+  const parts = value.split("/");
+  const basename = parts[parts.length - 1] ?? "";
+  // Agent 目录含 node_modules、Vitest/Vite 缓存与临时编译文件；把这些误判为
+  // 源码会在测试/构建期间反复重启 runner，最终与旧 stdin 写竞争并触发 EPIPE。
+  if (parts.some((part) =>
+    part === "node_modules" || part === ".vite" || part === "coverage" || part === "test-results")) {
+    return false;
+  }
+  if (/^vitest\.config\.ts\.timestamp-/.test(basename) || basename === "results.json") {
+    return false;
+  }
+  return /\.(ts|tsx|js|mjs|cjs|json)$/.test(basename);
+}
+
+function triggerRestartTarget(target: HotReloadTarget, path?: string): void {
+  const previous = targetDebounceTimers.get(target);
+  if (previous !== undefined) clearTimeout(previous);
+  const timer = setTimeout(() => {
+    targetDebounceTimers.delete(target);
+    if (!targets.has(target)) return;
+    hotReloadLog.info("agent hot-reload triggered", {
+      reason: "agent-source-changed",
+      ...(path !== undefined ? { path } : {}),
+    });
+    try {
+      target.requestRestart();
+    } catch {
+      // 单个目标重启失败不影响其它会话。
+    }
+  }, DEBOUNCE_MS);
+  targetDebounceTimers.set(target, timer);
+  if (typeof timer.unref === "function") timer.unref();
+}
+
+function watchTarget(target: HotReloadTarget): void {
+  const dirs = target.hotReloadPaths ?? [];
+  if (dirs.length === 0) return;
+  const targetWatchersForTarget: FSWatcher[] = [];
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    try {
+      const w = watch(dir, { recursive: true }, (_event, filename) => {
+        if (!isSourceFile(filename)) return;
+        triggerRestartTarget(target, filename ? String(filename) : undefined);
+      });
+      w.on("error", () => {});
+      if (typeof w.unref === "function") w.unref();
+      targetWatchersForTarget.push(w);
+      process.stderr.write(`[runner-hot-reload] watching agent ${dir}\n`);
+    } catch {
+      // 目录消失或当前平台不支持 recursive watch 时跳过。
+    }
+  }
+  targetWatchers.set(target, targetWatchersForTarget);
+}
+
+function unwatchTarget(target: HotReloadTarget): void {
+  const timer = targetDebounceTimers.get(target);
+  if (timer !== undefined) clearTimeout(timer);
+  targetDebounceTimers.delete(target);
+  for (const watcher of targetWatchers.get(target) ?? []) watcher.close();
+  targetWatchers.delete(target);
+}
+
 function ensureWatching(): void {
   if (watchers) return;
   watchers = [];
@@ -111,10 +186,7 @@ function ensureWatching(): void {
   for (const dir of dirs) {
     try {
       const w = watch(dir, { recursive: true }, (_event, filename) => {
-        // 只关心源码文件(忽略编辑器临时文件 / 非 ts/js)。
-        if (filename && !/\.(ts|tsx|js|mjs|cjs|json)$/.test(String(filename))) {
-          return;
-        }
+        if (!isSourceFile(filename)) return;
         triggerRestartAll(filename ? String(filename) : undefined);
       });
       w.on("error", () => {
@@ -134,7 +206,9 @@ export function registerForHotReload(target: HotReloadTarget): () => void {
   if (!isHotReloadEnabled()) return () => {};
   ensureWatching();
   targets.add(target);
+  watchTarget(target);
   return () => {
     targets.delete(target);
+    unwatchTarget(target);
   };
 }

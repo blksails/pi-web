@@ -1,7 +1,8 @@
 //! 单窗口多 Webview 原生布局管理。
 //!
 //! 该模块只管理载体：矩形、可见性、保活与销毁；不认识 AIGC/素材等业务词。
-//! 默认启用；仅 `PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 回退旧顶层 WebviewWindow 载体。
+//! 默认启用；`PI_WEB_NATIVE_CHILD_WEBVIEWS=0` 回退旧顶层 WebviewWindow 载体（两者当前
+//! 都有已知缺陷，见 `window.rs::native_child_webviews_enabled` 的注释）。
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -130,7 +131,7 @@ struct LayoutState {
 }
 
 /// 槽位诊断开关（Req 3.5：不重新编译即可开启）。
-fn pane_layout_debug_enabled() -> bool {
+pub fn pane_layout_debug_enabled() -> bool {
     matches!(
         std::env::var("PI_WEB_PANE_LAYOUT_DEBUG").ok().as_deref().map(str::trim),
         Some("1" | "true" | "yes" | "on")
@@ -144,6 +145,20 @@ fn bounds_near(a: PaneBounds, b: PaneBounds) -> bool {
         && (a.width - b.width).abs() < 0.5
         && (a.height - b.height).abs() < 0.5
 }
+
+/// 方案 A 的手动触发口（spec desktop-native-webview-chrome-dead）：
+/// pane_relay 的 hide / close 转换不经 `apply_layout`，但宿主 tab 带的
+/// 像素已经变了；WKWebView 不会自动把被 child 让开的区域标脏，须同样强制重绘。
+#[cfg(target_os = "macos")]
+pub fn force_host_redraw_for(app: &AppHandle) {
+    if let Some(window) = app.get_window(MAIN_WINDOW_LABEL) {
+        if let Ok(ptr) = window.ns_window() {
+            let _ = unsafe { crate::view_tree::force_host_redraw(ptr) };
+        }
+    }
+}
+#[cfg(not(target_os = "macos"))]
+pub fn force_host_redraw_for(_app: &AppHandle) {}
 
 /// 受控的原生布局状态；真实 Webview 句柄仍由 Tauri manager 持有。
 #[derive(Debug, Default)]
@@ -494,14 +509,67 @@ impl NativeWebviewLayoutManager {
                 eprintln!("[panes] 句柄 label={} bounds={:?}", view.label(), b);
             }
         }
+        // ★ NSView 树快照：只在**首次**有可见内容槽时打印一次（spec
+        //   desktop-native-webview-chrome-dead，Req 1）。句柄 bounds 已证明布局侧一切正常，
+        //   剩下的三个候选（宿主不重绘 / CALayer 超出 frame / NSView 吞点击）只有视图树能分辨。
+        //   打一次就够——树是稳定的，每帧刷屏反而淹掉证据。
+        // ★ 触发时机踩过一次坑：初版设成「首次出现可见内容槽」就 dump，结果树里只有宿主
+        //   一个 WryWebView —— 那一刻子 WebView 还没挂上去，读数回答不了「谁盖住 chrome」。
+        //   现在改成前若干次槽变化都打，并带上当前 pane 记录数，便于确认是不是「已挂上」那一帧。
+        #[cfg(target_os = "macos")]
+        if pane_layout_debug_enabled() && slot.is_some() {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static DUMPS: AtomicUsize = AtomicUsize::new(0);
+            if DUMPS.fetch_add(1, Ordering::SeqCst) < 6 {
+                if let Some(b) = slot {
+                    // 探针：chrome 带内左右各一点 + 内容区一点作对照。
+                    let probes = [
+                        (b.x + 12.0, 8.0),
+                        (b.x + b.width - 24.0, 8.0),
+                        (b.x + 12.0, b.y + 40.0),
+                    ];
+                    match window.ns_window() {
+                        Ok(ptr) => match unsafe { crate::view_tree::snapshot(ptr, &probes) } {
+                            Some(snap) => {
+                                eprintln!(
+                                    "[panes] 视图树#{} content={:?} 槽=({:.1},{:.1},{:.1}x{:.1}) pane记录={} 视图数={}",
+                                    DUMPS.load(Ordering::SeqCst),
+                                    snap.content_size, b.x, b.y, b.width, b.height,
+                                    panes.len(),
+                                    snap.nodes.len(),
+                                );
+                                for n in &snap.nodes {
+                                    eprintln!(
+                                        "[panes]   {:indent$}{} frame={:?} layer={:?} hidden={} alpha={:.2} opaque={}",
+                                        "", n.class, n.frame, n.layer_frame, n.hidden, n.alpha, n.opaque,
+                                        indent = n.depth * 2,
+                                    );
+                                }
+                                for h in &snap.hit_tests {
+                                    eprintln!(
+                                        "[panes]   命中 {:?} → {}",
+                                        h.point,
+                                        h.class.as_deref().unwrap_or("(无视图接收)")
+                                    );
+                                }
+                            }
+                            None => eprintln!("[panes] 视图树快照失败：contentView 不可得"),
+                        },
+                        // Req 1.5：本平台拿不到就明说，不静默输出空结果。
+                        Err(e) => eprintln!("[panes] 视图树快照不可用：{e}"),
+                    }
+                }
+            }
+        }
         // Pane 共享右侧槽；仅槽变时 set_bounds，仅可见性/z-order 需要时 show+focus。
         let mut top_label: Option<String> = None;
         let mut raise_top = host_changed;
+        // ★ 任一 pane 实际 show/hide 过（含 hide 路径——它不置 raise_top）。
+        //   方案 A 的重绘触发要覆盖它：两 pane 同槽叠放切换时 slot 不变、hide 不抬 top，
+        //   但宿主 tab 带的像素已经变了，漏触发即回到「带子空白」（真机踩过）。
+        let mut visibility_flipped = false;
         let mut applied_visibility: Vec<(String, bool)> = Vec::new();
         for (label, recorded_visible, keep_alive, initialized, was_applied_visible) in panes {
-            if label.starts_with("pane-overlay") {
-                continue;
-            }
             let Some(view) = webviews.iter().find(|view| view.label() == label) else {
                 continue;
             };
@@ -531,12 +599,14 @@ impl NativeWebviewLayoutManager {
                 if !was_applied_visible {
                     view.show().map_err(|e| e.to_string())?;
                     raise_top = true;
+                    visibility_flipped = true;
                 }
                 top_label = Some(label.clone());
                 applied_visibility.push((label, true));
             } else {
                 if was_applied_visible {
                     view.hide().map_err(|e| e.to_string())?;
+                    visibility_flipped = true;
                 }
                 applied_visibility.push((label, false));
             }
@@ -546,26 +616,24 @@ impl NativeWebviewLayoutManager {
         if top_label.as_ref() != last_top.as_ref() {
             raise_top = true;
         }
-        let overlay_top = crate::pane_relay::overlay_wants_top();
         if raise_top {
             if let Some(label) = top_label.as_ref() {
                 if let Some(view) = webviews.iter().find(|view| view.label() == label) {
                     let _ = view.show();
-                    // 菜单在顶时 content 只 show 不 focus，避免抢焦关菜单。
-                    if !overlay_top {
-                        let _ = view.set_focus();
-                    }
+                    let _ = view.set_focus();
                 }
             }
         }
-        // 菜单 overlay 打开时：content set_bounds/show 可能抢 z，最后再抬 overlay。
-        // content **保持 show**，只调整叠放，绝不 hide content 去「让路」。
-        if overlay_top {
-            for view in &webviews {
-                let label = view.label();
-                if label.starts_with("pane-overlay") {
-                    let _ = view.show();
-                    let _ = view.set_focus();
+        // ★ 子 WebView 的 bounds/可见性变更后，让宿主重绘（spec
+        //   desktop-native-webview-chrome-dead 方案 A）。宿主被 child 覆盖过的区域在 child
+        //   让开后可能没被标脏 —— 这正是「几何对、图层对、命中对，却不显示」的形态。
+        //   只在槽真变化时做，拖拽已有 bounds_near 去抖，不会每帧刷。
+        #[cfg(target_os = "macos")]
+        if slot_changed || raise_top || visibility_flipped {
+            if let Ok(ptr) = window.ns_window() {
+                let ok = unsafe { crate::view_tree::force_host_redraw(ptr) };
+                if !ok && pane_layout_debug_enabled() {
+                    eprintln!("[panes] 宿主重绘请求失败：未找到铺满全窗的宿主视图");
                 }
             }
         }

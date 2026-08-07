@@ -19,9 +19,7 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 // 示例合计 2MB+）一并拖进 jsdom 测试环境，实测直接 V8 OOM、worker 被杀，且该文件会从
 // vitest 汇总里**静默消失**（既不计 passed 也不计 failed）。
 //
-// ★ 未列 `examples/aigc-agent`：该目录不在本仓（`pnpm-workspace.yaml` 里是悬空条目），
-//   静态 import 它会让任何干净检出构建失败（CI 实证 `Cannot find module`）。待该 agent
-//   真正入库或改由运行时解析车道装载后再接。
+import aigcExt from "../../examples/aigc-agent/.pi/web/dist/web-extension.external.mjs";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
@@ -82,6 +80,7 @@ const DECLARATIVE: WebExtension = {
 };
 
 const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
+  { match: "aigc-agent", ext: aigcExt },
   { match: "webext-layout-agent", ext: layoutExt },
   // webext-slots-agent 同时演示 Tier1 全槽 + Tier5 声明式空态配置(config.empty)。
   { match: "webext-slots-agent", ext: slotsExt },
@@ -89,13 +88,10 @@ const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
   { match: "webext-contrib-agent", ext: contribExt },
   { match: "webext-artifact-agent", ext: artifactExt },
   { match: "webext-background-agent", ext: backgroundExt },
-  // aigc-agent:搜图 / 素材 / 画布三 pane；宿主据 `extension.panes` 统一创建 PanesHost。
   // aigc-canvas-agent:Canvas(domain=canvas 的 AAS 实例)——已迁隔离 Pane 形态
   // (isolated-panes Wave 5):panelRight 挂 PanesHost,画廊跑在独立 iframe;promptToolbar 保留。
   // 与 panes-agent 同,本项刻意导入**编译产物**(pane srcDoc 由 build.ts 内联生成),
   // `.pi/web` 不存作者源码——源在 `web/`。
-  // 注:曾有一条 "aigc-agent" 表项在此之前(main 的 e3b10665 已把该 example 移出本仓),
-  // 故原先关于 includes 首命中顺序的提醒不再适用。
   { match: "aigc-canvas-agent", ext: aigcCanvasExt },
   // aigc-canvas-nosurface-agent:贡献 Canvas 面板但 agent 无 canvas surface —— 降级
   // (unavailable / 只读图库)端到端验证 fixture。source 路径含子串 "aigc-canvas-nosurface-agent",

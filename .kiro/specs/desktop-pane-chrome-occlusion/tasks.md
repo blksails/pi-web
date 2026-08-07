@@ -79,8 +79,9 @@
   - _Boundary: 宿主几何门控 — `packages/panes-kit/src/react/panes-host.tsx`, `packages/panes-kit/test/pane-slot-geometry.test.ts`_
   - _Depends: 2.3_
 
-  - ⚠ 未完成部分：「几何未送达 → 不 show」这一新行为**仍无直接断言**。任务 4.1 尝试过并
-    失败：`pane_layout_is_native` 返回 true 时，内容 pane 在 jsdom 下压根不会被创建
+  - ✅ 已补上（任务 4.1）：把判定抽成纯函数 `shouldShowNativePane` 后穷举断言，8 条，
+    红对照双向通过（删几何条件红 2 条、把「与」写成「或」红 4 条）。以下是此前两次失败的记录，
+    保留以免重蹈：`pane_layout_is_native` 返回 true 时，内容 pane 在 jsdom 下压根不会被创建
     （relayListeners 已就绪、overlay-ready 已发，`created` 仍为 0），握手走不完就到不了
     show 那一步。初版还写成了重言式——把门控整个删掉照样跑绿，红对照当场抓出。
     已删除该用例而非留一条假绿。这条缺口由真机视觉验收（4.3）兜底，或另开一个
@@ -88,7 +89,7 @@
 
 - [ ] 4. 回归与验收
 
-- [ ] 4.1 跟手与既有路径回归断言
+- [x] 4.1 跟手与既有路径回归断言
   - 拖拽路径的合并与去重调用次数与改动前一致——**以调用计数断言，不以耗时断言**（耗时在 CI 上不可复现）
   - 网页宿主路径与浮层叠放、焦点表现逐字段不变
   - 观察点：调用计数与改动前基线相等；网页宿主与浮层相关既有用例无新增失败

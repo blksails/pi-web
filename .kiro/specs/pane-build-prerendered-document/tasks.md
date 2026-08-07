@@ -54,7 +54,7 @@
 
 - [ ] 3. 真实 agent 验证
 
-- [ ] 3.1 在 aigc-agent 上补回 logs pane 并重新构建
+- [~] 3.1 在 aigc-agent 上补回 logs pane 并重新构建（★ 前提不成立，不执行）
   - 在该 agent 的 pane 声明中以预渲染形态补回 logs pane（复用其既有的 HTML 常量与变量替换）
   - 重新 `pi-web build`，**直接数** `panes.json` 的条目：应为 4 且含 `logs`
   - 桌面版重新加载该 agent，确认四个 pane 全部可见
@@ -64,9 +64,15 @@
   - _Boundary: 真实 agent 验证 — 写入 `../pi-agents/aigc-agent`（跨仓，改动需单独提交）_
   - _Depends: 2.2_
 
+  - ★ **本任务的前提已被证伪，故不执行。** 立项时我看 `panes.json` 只有 3 条就判定
+    「logs pane 丢失」——错了。宿主消费的是 `web.config.tsx` 导出的声明，那里**显式含
+    logs**（该文件 44-53 行），`panes.json` 只是 `pi-web build` 的 sidecar，不是宿主的
+    事实源。既然没丢，就没有「补回」可做。判别联合与形态分派（任务 1.x/2.x）本身仍然
+    成立且已交付，只是不再由这个场景驱动。
+
 - [ ] 4. 回归
 
-- [ ] 4.1 全量回归与算术核对
+- [x] 4.1 全量回归与算术核对
   - 跑 `pnpm test` **和** `pnpm test:app` 两条；对每个汇总行核对
     `failed + passed + skipped === 总数`，文件数与用例数各算一遍
   - 跑 `pnpm typecheck`（desktop 的 cargo 部分若因本机环境失败，须与 TS 侧分离判断）
@@ -74,3 +80,10 @@
   - _Requirements: 3.1, 3.4_
   - _Boundary: 回归验证（不改代码）— 无写入_
   - _Depends: 3.1_
+
+  - ✅ 2026-08-05 由超集覆盖：`pnpm test` 修掉 `--no-bail` 漏跑后 **16/16 包全跑到**
+    （677 文件 / 6255 用例，每条汇总行 passed+failed+skipped 都等于总数）；
+    `pnpm test:app` 126 passed，2 个既存基线红（`publish-preview`、
+    `webext-slots-runtime.integration`）测试名逐条对上、无新增；根 `tsc` 0 error。
+    本 spec 的产出（`test/cli/build/pane-prerendered-document.test.ts` 等）在
+    `test:app` 面内，已包含在上述运行中。

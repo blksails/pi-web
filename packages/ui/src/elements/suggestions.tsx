@@ -22,7 +22,7 @@ export interface SuggestionsProps {
   /**
    * 布局变体:
    *  - "bubbles"(默认):横向自动换行的小圆角气泡(会话进行中的紧凑建议)。
-   *  - "grid":2 列大圆角卡片网格(空态欢迎页的 starter 提示)。
+ *  - "grid":低 chrome 行式入口(空态欢迎页的 starter 提示)。
    */
   readonly layout?: "bubbles" | "grid";
   readonly className?: string;
@@ -61,7 +61,7 @@ export function Suggestions({
             key={item.id}
             type="button"
             onClick={() => dispatch(item)}
-            className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-4 text-center text-sm text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className="min-h-10 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-2 text-left text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             {item.label}
           </button>
@@ -80,7 +80,7 @@ export function Suggestions({
           key={item.id}
           type="button"
           onClick={() => dispatch(item)}
-          className="inline-flex items-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] px-3 py-1 text-sm text-[hsl(var(--secondary-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          className="inline-flex items-center rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-1.5 text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
         >
           {item.label}
         </button>

@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   BUILTIN_PANE_ID_PREFIX,
+  BROWSER_PANE_ID,
   SESSION_INFO_PANE_ID,
   SESSION_SIGNAL_NAME,
   buildSessionSignals,
@@ -31,10 +32,17 @@ describe("内置 pane 清单", () => {
     // 端到端判据:合并后确有内容、且零拒绝。任一项标识漏前缀或定义非法都会在这里现形。
     expect(merged.rejections).toEqual([]);
     expect(merged.definition?.panes.map((p) => p.id)).toContain(SESSION_INFO_PANE_ID);
+    expect(merged.definition?.panes.map((p) => p.id)).toContain(BROWSER_PANE_ID);
   });
 
   it("会话信息 pane 的 capabilities 为空(内置身份不提权的活体证据)", () => {
     const pane = builtinPanes().find((p) => p.id === SESSION_INFO_PANE_ID);
+    expect(pane).toBeDefined();
+    expect(pane?.capabilities).toEqual({});
+  });
+
+  it("浏览器 pane 不获得宿主能力", () => {
+    const pane = builtinPanes().find((p) => p.id === BROWSER_PANE_ID);
     expect(pane).toBeDefined();
     expect(pane?.capabilities).toEqual({});
   });

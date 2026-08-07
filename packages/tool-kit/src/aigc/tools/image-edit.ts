@@ -185,6 +185,7 @@ export const CLOUDFLARE_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
       label: "GPT Image 2 · Cloudflare",
       description:
         "OpenAI gpt-image-2 editing via Cloudflare AI Gateway (unified billing — no OpenAI key needed). " +
+        "Mask is inserted as the 2nd entry in input.images (no native mask field on CF /ai/run). " +
         "Needs CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_AIG_GATEWAY_ID / CLOUDFLARE_API_TOKEN.",
       providerModel: "openai/gpt-image-2",
     },
@@ -194,7 +195,9 @@ export const CLOUDFLARE_IMAGE_EDIT_ROUTES: readonly ImageRoute[] = [
     {
       model: "gpt-image-1.5-cf",
       label: "GPT Image 1.5 · Cloudflare",
-      description: "OpenAI gpt-image-1.5 editing via Cloudflare AI Gateway. Supports transparent PNG.",
+      description:
+        "OpenAI gpt-image-1.5 editing via Cloudflare AI Gateway. Supports transparent PNG. " +
+        "Mask is inserted as the 2nd entry in input.images.",
       providerModel: "openai/gpt-image-1.5",
     },
     { pricing: { amount: 0.04, currency: "USD", unit: "image" } },

@@ -11,6 +11,10 @@
 export interface AuthContext {
   readonly userId?: string;
   readonly tenantId?: string;
+  /** 当前已审批公司(若身份拥有公司归属)。 */
+  readonly companyId?: string;
+  /** 当前公司内角色；具体角色集合由宿主授权策略解释。 */
+  readonly role?: string;
   readonly anonymous: boolean;
 }
 

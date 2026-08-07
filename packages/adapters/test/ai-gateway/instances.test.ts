@@ -445,4 +445,25 @@ describe("逐实例模型精选白名单 PI_WEB_GATEWAY_<ID>_MODELS", () => {
     expect(inst!.allowedModelIds).toEqual(new Set(["gpt-5.4"]));
     expect(inst!.allowedOwners.size).toBeGreaterThan(0); // 默认归属表仍在
   });
+
+  // ★ 两条解析路径此前不对称:显式实例读 `_MODELS`,存量单实例路径根本不读,于是存量
+  //   部署下**没有任何 env 名**能提供精选白名单——配了也毫无反应(静默失效)。
+  //   判据须钉在「存量路径」上:去掉 resolveLegacyDefaultInstance 里的 `_MODELS` 解析
+  //   即报红(已实测)。
+  it("★ 存量单实例路径同样读 MODELS:缺省实例标识派生出 PI_WEB_GATEWAY_AI_GATEWAY_MODELS", () => {
+    const base = { BLKSAILS_GATEWAY_BASE_URL: "http://gw.legacy:8080" };
+
+    const [withList] = resolveGatewayInstances({
+      ...base,
+      PI_WEB_GATEWAY_AI_GATEWAY_MODELS: " anthropic/claude-opus-5 , openai/gpt-5.6 ",
+    });
+    expect(withList!.id).toBe("ai-gateway"); // 缺省实例标识不因本项改变
+    expect([...(withList!.allowedModelIds ?? [])]).toEqual([
+      "anthropic/claude-opus-5",
+      "openai/gpt-5.6",
+    ]);
+
+    // 未配置 → undefined = 不精选,存量部署行为逐字节不变
+    expect(resolveGatewayInstances(base)[0]!.allowedModelIds).toBeUndefined();
+  });
 });

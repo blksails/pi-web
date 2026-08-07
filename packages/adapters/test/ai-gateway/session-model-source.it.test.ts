@@ -43,6 +43,8 @@ describe("resolveAiGatewaySessionSpecFromEnv", () => {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "cf-token-abc",
       modelIds: ["anthropic/claude-opus-5", "openai/gpt-5.5"],
+      // 装配期已带全清单 = 快路径,无需会话侧拉取。
+      pendingCatalog: false,
     });
   });
 
@@ -53,12 +55,40 @@ describe("resolveAiGatewaySessionSpecFromEnv", () => {
     expect(spec?.baseUrl).toBe("https://gw.example.com/compat/v1");
   });
 
+  // ★ 启用判据 = 声明 + 凭据(spec ai-gateway-catalog-coldstart,Req 1.1/4.1)。
+  //   models 已从该判据中**移出** —— 它缺失只意味着「清单还没到」,不是「未启用」。
   it.each([
     ["base 缺失", RUNNER_AI_GATEWAY_BASE_ENV],
     ["key 缺失", RUNNER_AI_GATEWAY_KEY_ENV],
-    ["models 缺失", RUNNER_AI_GATEWAY_MODELS_ENV],
   ])("%s → undefined(视为未启用)", (_label, key) => {
     expect(resolveAiGatewaySessionSpecFromEnv(envOf({ [key]: undefined }))).toBeUndefined();
+  });
+
+  // ★ 本 spec 的核心判据:冷启时装配层给不出 models,但实例仍须产出 spec ——
+  //   否则 option-mapper 的 `resolved.length > 0` 不成立,共享 ModelRegistry 不会被构造,
+  //   会话侧拉到清单也无处注册。把判据还原为「models 缺失 → undefined」此例即报红。
+  it("models 缺失但凭据齐备 → 仍产出 spec,标记 pendingCatalog(Req 1.1)", () => {
+    const spec = resolveAiGatewaySessionSpecFromEnv(
+      envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: undefined }),
+    );
+    expect(spec).toEqual({
+      baseUrl: "https://gw.example.com/compat/v1",
+      apiKey: "cf-token-abc",
+      modelIds: [],
+      pendingCatalog: true,
+    });
+  });
+
+  // 凭据缺失与目录未就绪必须**可区分**(Req 4.1):前者 undefined,后者 pendingCatalog。
+  it("凭据缺失与目录未就绪产出不同结果(Req 4.1)", () => {
+    const noKey = resolveAiGatewaySessionSpecFromEnv(
+      envOf({ [RUNNER_AI_GATEWAY_KEY_ENV]: undefined }),
+    );
+    const noModels = resolveAiGatewaySessionSpecFromEnv(
+      envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: undefined }),
+    );
+    expect(noKey).toBeUndefined();
+    expect(noModels?.pendingCatalog).toBe(true);
   });
 
   it.each([
@@ -68,35 +98,19 @@ describe("resolveAiGatewaySessionSpecFromEnv", () => {
     expect(resolveAiGatewaySessionSpecFromEnv(envOf({ [key]: "   " }))).toBeUndefined();
   });
 
-  // 配置异常不该打断本地会话路径(与 egress 同惯例:返回 undefined 而非抛)。
-  it("models 非法 JSON → undefined 且不抛", () => {
-    expect(() =>
-      resolveAiGatewaySessionSpecFromEnv(
-        envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: "{不是数组" }),
-      ),
-    ).not.toThrow();
-    expect(
-      resolveAiGatewaySessionSpecFromEnv(
-        envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: "{不是数组" }),
-      ),
-    ).toBeUndefined();
-  });
-
-  it("models 是 JSON 但非数组 → undefined", () => {
-    expect(
-      resolveAiGatewaySessionSpecFromEnv(
-        envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: '{"a":1}' }),
-      ),
-    ).toBeUndefined();
-  });
-
-  // 没有模型的 provider 无意义:注册了只会让 find 徒劳失败。
-  it("models 为空数组 → undefined(不注册空 provider)", () => {
-    expect(
-      resolveAiGatewaySessionSpecFromEnv(
-        envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: "[]" }),
-      ),
-    ).toBeUndefined();
+  // 配置异常不该打断本地会话路径(与 egress 同惯例:不抛)。清单不可用一律落到
+  // pendingCatalog,交由会话侧拉取补齐 —— 与「凭据缺失」保持可区分。
+  it.each([
+    ["非法 JSON", "{不是数组"],
+    ["JSON 但非数组", '{"a":1}'],
+    ["空数组", "[]"],
+    ["数组内全是空白/非字符串", '["", "   ", 42, null]'],
+  ])("models %s → 产出 spec 且 pendingCatalog,不抛", (_label, raw) => {
+    const env = envOf({ [RUNNER_AI_GATEWAY_MODELS_ENV]: raw });
+    expect(() => resolveAiGatewaySessionSpecFromEnv(env)).not.toThrow();
+    const spec = resolveAiGatewaySessionSpecFromEnv(env);
+    expect(spec?.modelIds).toEqual([]);
+    expect(spec?.pendingCatalog).toBe(true);
   });
 
   it("剔除非字符串与空白项", () => {
@@ -135,11 +149,13 @@ describe("resolveAiGatewaySessionSpecsFromEnv", () => {
       baseUrl: "https://cf.example.com/compat/v1",
       apiKey: "cf-key",
       modelIds: ["anthropic/claude-opus-5"],
+      pendingCatalog: false,
     });
     expect(entries[1]?.spec).toEqual({
       baseUrl: "https://blksails.example.com/compat/v1",
       apiKey: "bs-key",
       modelIds: ["openai/gpt-5.5"],
+      pendingCatalog: false,
     });
   });
 
@@ -154,7 +170,10 @@ describe("resolveAiGatewaySessionSpecsFromEnv", () => {
     expect(resolveAiGatewaySessionSpecsFromEnv({})).toEqual([]);
   });
 
-  it("某实例 models 非法(JSON 解析失败)→ 只该实例缺席,其余实例不受影响", () => {
+  // ★ 判据按新契约更新(spec ai-gateway-catalog-coldstart,Req 1.1/4.1):models 非法不再
+  //   使该实例缺席 —— 缺席只保留给「凭据缺失」。清单不可用的实例改为在场且 pendingCatalog,
+  //   否则冷启时共享 registry 不会被构造(见 research.md §5.2)。
+  it("某实例 models 非法 → 该实例仍在场但 pendingCatalog,其余实例不受影响", () => {
     const env: NodeJS.ProcessEnv = {
       [AI_GATEWAY_SESSION_INSTANCES_ENV]: "good,bad",
       PI_WEB_AI_GATEWAY_SESSION_GOOD_BASE: "https://good.example.com/compat/v1",
@@ -165,8 +184,25 @@ describe("resolveAiGatewaySessionSpecsFromEnv", () => {
       PI_WEB_AI_GATEWAY_SESSION_BAD_MODELS: "{不是数组",
     };
     const entries = resolveAiGatewaySessionSpecsFromEnv(env);
-    expect(entries).toHaveLength(1);
-    expect(entries[0]?.providerName).toBe("good");
+    expect(entries.map((e) => e.providerName)).toEqual(["good", "bad"]);
+    expect(entries[0]?.spec.pendingCatalog).toBe(false);
+    expect(entries[0]?.spec.modelIds).toEqual(["openai/gpt-5.5"]);
+    expect(entries[1]?.spec.pendingCatalog).toBe(true);
+    expect(entries[1]?.spec.modelIds).toEqual([]);
+  });
+
+  // 凭据缺失才是「缺席」的唯一成因(Req 4.1 的可判别性依赖这条分界)。
+  it("某实例凭据缺失 → 该实例缺席,其余实例不受影响", () => {
+    const env: NodeJS.ProcessEnv = {
+      [AI_GATEWAY_SESSION_INSTANCES_ENV]: "good,nokey",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_BASE: "https://good.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_KEY: "good-key",
+      PI_WEB_AI_GATEWAY_SESSION_GOOD_MODELS: JSON.stringify(["openai/gpt-5.5"]),
+      PI_WEB_AI_GATEWAY_SESSION_NOKEY_BASE: "https://nokey.example.com/compat/v1",
+      PI_WEB_AI_GATEWAY_SESSION_NOKEY_MODELS: JSON.stringify(["openai/gpt-5.5"]),
+    };
+    const entries = resolveAiGatewaySessionSpecsFromEnv(env);
+    expect(entries.map((e) => e.providerName)).toEqual(["good"]);
   });
 
   it("实例标识清单里含空白项 → 被过滤,不产生空实例", () => {
@@ -274,6 +310,50 @@ describe("isSessionCapableGatewayModel", () => {
   });
 });
 
+// spec ai-gateway-catalog-coldstart 任务 1.3:反向拉取要求「先以空模型集注册占位、
+// 拿到清单后再注册一次」。这依赖两条 pi SDK 行为,均由本组用例实证钉死 ——
+// 它们是**外部契约**,若 SDK 变更则本 spec 的补注册路径失效(design.md Revalidation Triggers)。
+describe("registerAiGatewayProvider — 空集占位与重复注册语义(外部契约,Req 1.1/1.2)", () => {
+  let agentDir2: string;
+  beforeEach(() => {
+    agentDir2 = mkdtempSync(join(tmpdir(), "pi-aigw-coldstart-"));
+  });
+  afterEach(() => {
+    rmSync(agentDir2, { recursive: true, force: true });
+  });
+
+  it("空模型集可注册且不抛(冷启占位:registry 必须先被构造)", () => {
+    const { modelRegistry } = createSharedModelServices(agentDir2);
+    expect(() =>
+      registerAiGatewayProvider(
+        modelRegistry,
+        { baseUrl: "https://gw.test/v1", apiKey: "k", modelIds: [], pendingCatalog: true },
+        undefined,
+        "cf",
+      ),
+    ).not.toThrow();
+    expect(modelRegistry.getAll().filter((m) => m.provider === "cf")).toHaveLength(0);
+  });
+
+  it("★同名重复注册是**覆盖**而非叠加 —— 补注册无需先 unregister", () => {
+    const { modelRegistry } = createSharedModelServices(agentDir2);
+    const spec = (ids: string[]) => ({
+      baseUrl: "https://gw.test/v1",
+      apiKey: "k",
+      modelIds: ids,
+      pendingCatalog: ids.length === 0,
+    });
+    registerAiGatewayProvider(modelRegistry, spec([]), undefined, "cf");
+    registerAiGatewayProvider(modelRegistry, spec(["a/x", "b/y"]), undefined, "cf");
+    expect(modelRegistry.getAll().filter((m) => m.provider === "cf")).toHaveLength(2);
+    // 再注册更少的条目:若是叠加语义这里会是 3
+    registerAiGatewayProvider(modelRegistry, spec(["a/x"]), undefined, "cf");
+    const after = modelRegistry.getAll().filter((m) => m.provider === "cf");
+    expect(after.map((m) => m.id)).toEqual(["a/x"]);
+    expect(modelRegistry.find("cf", "a/x")).toBeDefined();
+  });
+});
+
 describe("registerAiGatewayProvider", () => {
   let agentDir: string;
 
@@ -292,7 +372,7 @@ describe("registerAiGatewayProvider", () => {
     registerAiGatewayProvider(modelRegistry, {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "k",
-      modelIds: ["anthropic/claude-opus-5", "openai/gpt-5.5"],
+      modelIds: ["anthropic/claude-opus-5", "openai/gpt-5.5"], pendingCatalog: false,
     });
     const found = modelRegistry.find(AI_GATEWAY_PROVIDER_NAME, "anthropic/claude-opus-5");
     expect(found).toBeDefined();
@@ -305,7 +385,7 @@ describe("registerAiGatewayProvider", () => {
     registerAiGatewayProvider(modelRegistry, {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "k",
-      modelIds: ["openai/gpt-5.5"],
+      modelIds: ["openai/gpt-5.5"], pendingCatalog: false,
     });
     expect(modelRegistry.find(AI_GATEWAY_PROVIDER_NAME, "nope/nope")).toBeUndefined();
   });
@@ -319,7 +399,7 @@ describe("registerAiGatewayProvider", () => {
     registerAiGatewayProvider(modelRegistry, {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "k",
-      modelIds: ["openai/gpt-5.5", "anthropic/claude-opus-5"],
+      modelIds: ["openai/gpt-5.5", "anthropic/claude-opus-5"], pendingCatalog: false,
     });
     for (const id of ["openai/gpt-5.5", "anthropic/claude-opus-5"]) {
       // compat 是跨 api 的联合类型(openai-completions / responses / anthropic-messages),
@@ -336,7 +416,7 @@ describe("registerAiGatewayProvider", () => {
     registerAiGatewayProvider(modelRegistry, {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "k",
-      modelIds: ["openai/gpt-5.5"],
+      modelIds: ["openai/gpt-5.5"], pendingCatalog: false,
     });
     expect(modelRegistry.find(AI_GATEWAY_PROVIDER_NAME, "openai/gpt-5.5")?.baseUrl).toBe(
       "https://gw.example.com/compat/v1",
@@ -352,7 +432,7 @@ describe("registerAiGatewayProvider", () => {
       {
         baseUrl: "https://gw.example.com/compat/v1",
         apiKey: "super-secret-token",
-        modelIds: ["openai/gpt-5.5", "anthropic/claude-opus-5"],
+        modelIds: ["openai/gpt-5.5", "anthropic/claude-opus-5"], pendingCatalog: false,
       },
       { info: (msg, data) => lines.push({ msg, ...(data ? { data } : {}) }) },
     );
@@ -374,7 +454,7 @@ describe("registerAiGatewayProvider", () => {
       {
         baseUrl: "https://gw.example.com/compat/v1",
         apiKey: "k",
-        modelIds: ["anthropic/claude-opus-5"],
+        modelIds: ["anthropic/claude-opus-5"], pendingCatalog: false,
       },
       { info: (msg, data) => lines.push({ msg, ...(data ? { data } : {}) }) },
       "my-custom-gateway",
@@ -411,7 +491,7 @@ describe("egress 与 ai-gateway 共存(design.md §D2)", () => {
     registerAiGatewayProvider(modelRegistry, {
       baseUrl: "https://gw.example.com/compat/v1",
       apiKey: "cf-token",
-      modelIds: ["anthropic/claude-opus-5"],
+      modelIds: ["anthropic/claude-opus-5"], pendingCatalog: false,
     });
 
     expect(modelRegistry.find("pi-cloud", "cloud-model-a")).toBeDefined();

@@ -29,6 +29,7 @@
     "@blksails/pi-web-logger": "workspace:*",
     "@blksails/pi-web-protocol": "workspace:*",
     "@blksails/pi-web-tool-kit": "workspace:^",
+    "esbuild": "^0.28.1",
     "jiti": "^2.7.0"
   },
   "peerDependencies": {

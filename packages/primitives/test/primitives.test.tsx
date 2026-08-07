@@ -1,5 +1,5 @@
 /**
- * 六组件渲染 smoke + cn 语义锚定(Req 1.1/1.4)。
+ * 七组件渲染 smoke + cn 语义锚定(Req 1.1/1.4)。
  *
  * 迁移为非行为性:组件语义与迁移前 packages/ui/src/ui/* 逐一致——
  * 断言只锚定可挂载性、关键 role 与 design-tokens className(CSS 变量表达,
@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import {
   Button,
+  Pill,
   Card,
   Input,
   Popover,
@@ -23,7 +24,7 @@ import {
   cn,
 } from "../src/index.js";
 
-describe("primitives 六组件渲染 smoke", () => {
+describe("primitives 七组件渲染 smoke", () => {
   it("Button:可挂载,默认 type=button,variant/size 类生效且 className 可合并", () => {
     render(
       <Button variant="outline" size="sm" className="px-9">
@@ -38,6 +39,14 @@ describe("primitives 六组件渲染 smoke", () => {
     // tailwind-merge:调用方 px-9 覆盖 size=sm 的 px-3。
     expect(btn.className).toContain("px-9");
     expect(btn.className).not.toContain("px-3");
+  });
+
+  it("Pill:沿用 outline pill 外观且支持 active", () => {
+    render(<Pill active>技能</Pill>);
+    const pill = screen.getByRole("button", { name: "技能" });
+    expect(pill.className).toContain("rounded-full");
+    expect(pill.className).toContain("h-8");
+    expect(pill.className).toContain("bg-[hsl(var(--primary))]");
   });
 
   it("Card:可挂载,design-tokens 边框/圆角类生效", () => {

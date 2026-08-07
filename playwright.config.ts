@@ -34,6 +34,8 @@ const PORT_INSTALL = PORT_FS + 2;
 // e2e/fixtures/attachment-tool-bridge-stub.mjs)驱动真实附件工具链;不能与默认 stub 共服务器,
 // 故独立端口 + 独立落盘。
 const PORT_ATTACH = PORT_FS + 3;
+// agic-video-agent：专用真实 FFmpeg stub，避免与默认 stub 共服务器。
+const PORT_VIDEO = PORT_FS + 11;
 // desktop-cloud-login(第五套 webServer,任务 7.4):云端登录**已启用**档(设
 // PI_WEB_CLOUD_LOGIN_EGRESS_BASE + MODELS),用于登录/登出/切号/失败 UI 全链。登录态管理
 // 不需真实模型调用(主对话经 egress 由集成测试 7.2 覆盖),故 egress base 指一个不必可达的
@@ -77,6 +79,13 @@ const ATTACHMENT_STUB_PATH = path.join(
   "e2e",
   "fixtures",
   "attachment-tool-bridge-stub.mjs",
+);
+
+const VIDEO_STUB_PATH = path.join(
+  process.cwd(),
+  "e2e",
+  "fixtures",
+  "agic-video-agent-stub.mjs",
 );
 
 const AI_GATEWAY_STUB_PATH = path.join(
@@ -294,6 +303,15 @@ export default defineConfig({
       },
     },
     {
+      // agic-video-agent：真实本机 FFmpeg + 确定性 stub，仅跑视频工作室闭环。
+      name: "video",
+      testMatch: /agic-video-agent\.e2e\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://127.0.0.1:${PORT_VIDEO}`,
+      },
+    },
+    {
       // registry agent 源(spec agent-plugin-commands 任务 4.4):真实可达的假 cloud + registry。
       name: "registry",
       testMatch: /registry-agent-sources\.e2e\.ts/,
@@ -448,6 +466,25 @@ export default defineConfig({
               ),
               PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "http://127.0.0.1:59999/v1",
               PI_WEB_CLOUD_LOGIN_MODELS: JSON.stringify([{ id: "test-model" }]),
+            },
+          },
+          {
+            // agic-video-agent：驱动真实 video surface 与本机 FFmpeg 后处理，不依赖供应商 key。
+            command: `node ${SERVER_ENTRY} --store=video`,
+            port: PORT_VIDEO,
+            stdout: "pipe",
+            stderr: "pipe",
+            reuseExistingServer: true,
+            timeout: 120_000,
+            env: {
+              ...stubEnv,
+              PORT: String(PORT_VIDEO),
+              SESSION_STORE: "fs",
+              SESSION_STORE_ROOT: fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-video-fs-")),
+              PI_WEB_STUB_AGENT_PATH: VIDEO_STUB_PATH,
+              PI_WEB_ATTACHMENT_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "pi-e2e-video-attach-")),
+              PI_WEB_ATTACHMENT_SECRET: "pi-e2e-attachment-stable-secret",
+              PI_WEB_FFMPEG_BIN: process.env.PI_WEB_FFMPEG_BIN ?? "ffmpeg",
             },
           },
           {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import type { AgentDefinition } from "@blksails/pi-web-core/agent-definition.js";
 import {
@@ -6,6 +8,37 @@ import {
   mapResourceLoaderOptions,
   mapSessionFields,
 } from "../../src/runner/option-mapper.js";
+import { resolveBuiltinPromptTemplatePaths } from "../../src/runner/builtin-prompt-paths.js";
+
+describe("pi-web builtin prompt templates", () => {
+  it("provides /skill-create globally", () => {
+    const [promptPath] = resolveBuiltinPromptTemplatePaths();
+    expect(promptPath).toBeDefined();
+    const source = readFileSync(promptPath!, "utf8");
+    expect(source).toContain("name: skill-create");
+    expect(source).toContain("$ARGUMENTS");
+    expect(
+      mapResourceLoaderOptions({}, { builtinPromptTemplatePaths: [promptPath!] })
+        .resourceLoaderOptions.additionalPromptTemplatePaths,
+    ).toEqual([promptPath]);
+  });
+
+  it("is discovered by the real pi resource loader", async () => {
+    const [promptPath] = resolveBuiltinPromptTemplatePaths();
+    const loader = new DefaultResourceLoader({
+      cwd: process.cwd(),
+      agentDir: process.cwd(),
+      additionalPromptTemplatePaths: [promptPath!],
+    });
+    await loader.reload();
+    const prompt = loader.getPrompts().prompts.find((item) => item.name === "skill-create");
+    expect(prompt).toMatchObject({
+      name: "skill-create",
+      argumentHint: "技能目标、使用场景或改进要求",
+    });
+    expect(loader.getPrompts().diagnostics).toEqual([]);
+  });
+});
 
 describe("mapResourceLoaderOptions (resource-class fields, Req 3.1)", () => {
   it("maps systemPrompt string to a systemPromptOverride returning the value", () => {

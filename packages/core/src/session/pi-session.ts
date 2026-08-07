@@ -42,6 +42,8 @@ import type {
 import {
   makeControlFrame,
   makeUiMessageChunkFrame,
+  GatewayModelsRequestFrameSchema,
+  type GatewayModelsResultFrame,
   SlashCompletionsFrameSchema,
   UiRpcResponseSchema,
   StateDownLineSchema,
@@ -98,6 +100,7 @@ import {
   type CachedState,
   DEFAULT_IDLE_MS,
   type FrameListener,
+  type GatewayModelsResolver,
   type PiSessionOptions,
   type SessionChannel,
   type SessionDescriptor,
@@ -252,6 +255,11 @@ export class PiSession {
   private readonly readinessHandshake: boolean;
   private readonly readyTimeoutMs: number;
   /**
+   * ai-gateway 会话模型清单的反向拉取应答端口(spec ai-gateway-catalog-coldstart)。
+   * `undefined` = 未注入 → 不处理 `agent_gateway_models`,行为与本 spec 实施前一致。
+   */
+  private readonly gatewayModelsResolver: GatewayModelsResolver | undefined;
+  /**
    * 权威快照机制开关(session-snapshot-authority)。默认 `false`:不广播/不回放 session-state
    * 帧,完全保留既有行为(单测/legacy 零回归)。生产 app 接线开启(见 pi-handler)。
    * 关 → 开 / 开 → 关 即一步回退(Req 8.2/8.4)。
@@ -312,6 +320,7 @@ export class PiSession {
     this.readinessHandshake = opts.readinessHandshake ?? false;
     this.snapshotAuthority = opts.snapshotAuthority ?? false;
     this.readyTimeoutMs = opts.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+    this.gatewayModelsResolver = opts.gatewayModelsResolver;
 
     // EventEmitter 默认 maxListeners=10,多订阅者场景放宽。
     this.emitter.setMaxListeners(0);
@@ -771,6 +780,30 @@ export class PiSession {
       },
     });
 
+    // ai-gateway-catalog-coldstart(任务 2.2,Req 1.1/2.1/3.3/5.3):runner 发起的模型清单
+    // 索取。★这是本仓首个「runner 发起 + 宿主应答」的关联往返 —— 既有的关联往返
+    // (ui_rpc / attachment catalog)全部是宿主发起,在途表在 runner 侧,不在这里。
+    //
+    // 未注入 resolver → 不注册本处理器:runner 的请求无人应答,会话照常可用(既有
+    // fail-soft),行为与本 spec 实施前逐字节一致(Req 5.1)。
+    if (this.gatewayModelsResolver !== undefined) {
+      const resolver = this.gatewayModelsResolver;
+      add("agent_gateway_models", {
+        schema: GatewayModelsRequestFrameSchema,
+        handle: (data) => {
+          // 不 await:应答内部可能等待目录首拉(带超时),阻塞帧读取会拖住整条 stdin 通道。
+          void resolver(data.instanceIds)
+            .then((result) => {
+              this.sendGatewayModelsResult(data.id, result.instances, result.reason);
+            })
+            .catch(() => {
+              // resolver 抛错不得让会话崩:如实作答「本次给不出」,runner 保持 fail-soft。
+              this.sendGatewayModelsResult(data.id, [], "unavailable");
+            });
+        },
+      });
+    }
+
     // 三个结果帧:按 id 配对在途请求。未知/迟到 id 由 PendingRequests.settle 安全丢弃。
     add("piweb_clear_queue_result", {
       schema: ClearQueueResultLineSchema,
@@ -958,6 +991,31 @@ export class PiSession {
   }
 
   /**
+   * 下发反向拉取的应答帧(spec ai-gateway-catalog-coldstart,任务 2.2)。
+   *
+   * ★ 不走 `assertActive()`:应答可能在等待目录期间到达,若此刻会话已收尾,静默丢弃即可 ——
+   * 抛错只会在 `.catch` 里再触发一次同样的丢弃,没有额外信息。
+   */
+  private sendGatewayModelsResult(
+    id: string,
+    instances: ReadonlyArray<{ instanceId: string; models: readonly string[] }>,
+    reason: "ready" | "timeout" | "unavailable",
+  ): void {
+    if (this._status !== "active") return;
+    const frame: GatewayModelsResultFrame = {
+      type: "piweb_gateway_models_result",
+      id,
+      instances: instances.map((i) => ({ instanceId: i.instanceId, models: [...i.models] })),
+      reason,
+    };
+    try {
+      this.channel.send(JSON.stringify(frame));
+    } catch {
+      // 通道已关闭:与上同理,丢弃。
+    }
+  }
+
+  /**
    * 状态注入桥(state-injection-bridge)写回(UI→agent):把写入/删除作为内部行经 stdin 下发子进程,
    * 由 runner 的 `wireStateBridge` 第二个 stdin 读取器截获改权威态(触发下行帧)。本方法仅发送、不等待;
    * UI 收敛靠下行 `control:"state"` 帧。pi 自身的 stdin 读取器对该行回无害 Unknown-command(已丢弃)。
@@ -972,6 +1030,13 @@ export class PiSession {
           : { type: "piweb_state_set", key, value },
       ),
     );
+  }
+
+  /** Host-only runner control frame; no SSE/UI event is emitted. */
+  sendRunnerFrame(frame: unknown): void {
+    this.assertActive();
+    this.touch();
+    this.channel.send(JSON.stringify(frame));
   }
 
   /**

@@ -145,6 +145,32 @@ export const PaneGuestRequestSchema = z.discriminatedUnion("operation", [
     operation: z.literal("state.delete"),
     key: NonEmptyIdSchema,
   }),
+  // 工作区遥控:边车 chrome(宿主注入、运行于 pane realm 的 UI)向宿主请求 workspace 动作。
+  // 不经 pane capabilities 授权 —— 这些操作改的是**宿主 chrome 的标签状态**(开/激活/关/重载
+  // 实例),授权语义是「宿主注入的 chrome 即可用」,见 authorization.ts。下行快照走 `pane:signal`。
+  RequestBaseSchema.extend({
+    operation: z.literal("workspace.open"),
+    paneId: NonEmptyIdSchema,
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("workspace.activate"),
+    paneId: NonEmptyIdSchema.optional(),
+    instanceId: z.string().max(256).optional(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("workspace.close"),
+    paneId: NonEmptyIdSchema.optional(),
+    instanceId: z.string().max(256).optional(),
+  }),
+  RequestBaseSchema.extend({
+    operation: z.literal("workspace.reload"),
+    paneId: NonEmptyIdSchema.optional(),
+    instanceId: z.string().max(256).optional(),
+  }),
+  // 收起整个右侧 panes 侧栏（宿主 onRequestClose）；边车 chrome 在 canCollapse 时展示。
+  RequestBaseSchema.extend({
+    operation: z.literal("workspace.collapse"),
+  }),
 ]);
 export type PaneGuestRequest = z.infer<typeof PaneGuestRequestSchema>;
 

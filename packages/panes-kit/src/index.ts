@@ -75,6 +75,23 @@ export { createAgentRouteClient } from "./agent-routes.js";
 export type { AgentRouteClientOptions } from "./agent-routes.js";
 export { fromMessagePort } from "./host-ports.js";
 export type { PanePort, PaneViewHandle, PaneViewAdapter } from "./host-ports.js";
+export {
+  PANE_CHROME_SIGNAL,
+  PANE_CHROME_SCRIPT_FILE,
+  injectPaneChromeHtml,
+  injectPaneChromeExternal,
+  paneChromeBootScript,
+  paneChromeScriptSource,
+  stripPaneChrome,
+  withDefaultPaneChrome,
+  wrapPaneDocument,
+  wrapPaneDocumentForHost,
+} from "./pane-chrome.js";
+export type {
+  PaneChromeWorkspaceSignal,
+  WrapPaneDocumentMode,
+  WrapPaneDocumentOptions,
+} from "./pane-chrome.js";
 export { observePaneResizeFrame } from "./resize-frame.js";
 export type { PaneResizeFrame } from "./resize-frame.js";
 export { connectPaneGuest } from "./guest.js";

@@ -44,6 +44,12 @@ export interface MappedResourceLoaderOptions {
   resourceLoaderOptions: ResourceLoaderOptions;
 }
 
+/** Explicit company resource paths forwarded by the host. */
+export interface CompanyResourcePaths {
+  readonly additionalSkillPaths?: readonly string[];
+  readonly additionalPromptTemplatePaths?: readonly string[];
+}
+
 /**
  * pi-web「扩展 → 系统资源」面板开关,由 runner `--no-skills`/`--no-extensions` 透传至此。
  * `true` = 关闭(不载入);`undefined` = 默认载入。二者相互独立。
@@ -66,6 +72,10 @@ export function mapResourceLoaderOptions(
     noSkills?: boolean;
     /** 系统资源开关 `--no-extensions`:`true` → `noExtensions=true`(强制注入路径仍载入)。 */
     noExtensions?: boolean;
+    /** 公司级 resources,不改变 pi 的 user/project 默认发现。 */
+    companyResourcePaths?: CompanyResourcePaths;
+    /** pi-web 全局内置 prompt templates。 */
+    builtinPromptTemplatePaths?: readonly string[];
   } = {},
 ): MappedResourceLoaderOptions {
   const resourceLoaderOptions: ResourceLoaderOptions = {};
@@ -140,6 +150,15 @@ export function mapResourceLoaderOptions(
   if (def.promptTemplates !== undefined) {
     resourceLoaderOptions.promptsOverride = def.promptTemplates;
   }
+  const companySkills = (opts.companyResourcePaths?.additionalSkillPaths ?? []).filter(
+    (p) => p.length > 0,
+  );
+  if (companySkills.length > 0) resourceLoaderOptions.additionalSkillPaths = companySkills;
+  const promptPaths = [
+    ...(opts.builtinPromptTemplatePaths ?? []),
+    ...(opts.companyResourcePaths?.additionalPromptTemplatePaths ?? []),
+  ].filter((p) => p.length > 0);
+  if (promptPaths.length > 0) resourceLoaderOptions.additionalPromptTemplatePaths = promptPaths;
   if (def.contextFiles !== undefined) {
     resourceLoaderOptions.agentsFilesOverride = def.contextFiles;
   }
@@ -190,6 +209,18 @@ export function collectForcedExtensionPaths(env: NodeJS.ProcessEnv): string[] {
     env["PI_WEB_AUTO_TITLE_ENTRY"],
     env["PI_WEB_MCP_ENTRY"],
   ].filter((p): p is string => p !== undefined && p.length > 0);
+}
+
+/** Read explicit company roots from spawn env; absent env means no company resources. */
+export function collectCompanyResourcePaths(env: NodeJS.ProcessEnv): CompanyResourcePaths {
+  const skills = env.PI_WEB_COMPANY_SKILLS_DIR;
+  const prompts = env.PI_WEB_COMPANY_PROMPTS_DIR;
+  return {
+    ...(skills !== undefined && skills.length > 0 ? { additionalSkillPaths: [skills] } : {}),
+    ...(prompts !== undefined && prompts.length > 0
+      ? { additionalPromptTemplatePaths: [prompts] }
+      : {}),
+  };
 }
 
 /**

@@ -23,6 +23,21 @@ pub const MAIN_WINDOW_LABEL: &str = "main";
 pub const HOST_WEBVIEW_LABEL: &str = "main-host";
 
 /// Child WebView 为默认载体；仅显式关闭时回退旧浮层，供故障排查。
+///
+/// ## ★ 不要试图用这个开关「修好」pane
+///
+/// - **原生 child WebView（默认）**：chrome 曾恒空白不可点。绘制半边已修——宿主
+///   WKWebView 不重绘被 child 让开的区域，`native_layout` 槽变化后调
+///   `view_tree::force_host_redraw`（方案 A），真机验证 chrome 与 pane 内容同帧可见。
+///   **点击半边未修**：chrome 带按钮（+/刷新）点击零响应，事件未达宿主 DOM——
+///   静态 NSView hitTest 命中宿主但真实事件路由不通，判别待做。见 spec
+///   `desktop-native-webview-chrome-dead` 的 design.md「判定」节。
+/// - **旧浮层（`=0`）**：pane 内容不是 iframe，而是**独立顶层 WebviewWindow**，位置由
+///   「宿主窗口屏幕坐标 + DOM 槽矩形」算出。真机实测会飘到屏幕角落（用户报「奇怪的悬浮块」），
+///   表现为「tab 点了打不开面板」——其实开了，只是开到别处。**此缺陷未修**，该形态
+///   仅供故障排查，不要当规避手段。
+///
+/// 曾经把默认值翻到 `=0` 试图规避前者，**是错的**：那只是换了个坏法。已改回。
 pub fn native_child_webviews_enabled() -> bool {
     !matches!(
         std::env::var("PI_WEB_NATIVE_CHILD_WEBVIEWS")
@@ -59,6 +74,17 @@ pub fn decide_navigation(raw_url: &str, server_origin: Option<&str>) -> Navigati
         || raw_url.starts_with("http://tauri.localhost")
         || raw_url.starts_with("https://tauri.localhost")
     {
+        return NavigationDecision::Allow;
+    }
+    // iframe 载体的 pane 文档：`srcdoc` 的内容由**父文档**（即我们自己的页面）提供，
+    // 不涉及任何外部来源，必须放行。
+    //
+    // ★ 实测踩过：桌面版切到 iframe 载体后，日志里刷 `[desktop] 拒绝导航: about:srcdoc`，
+    //   表现是「tab 栏在、点了也打不开面板」—— pane 文档从未加载。因为 wry 的
+    //   `on_navigation` 对**子框架**的导航同样回调，而这里此前只认 tauri:// 与回环 origin，
+    //   about: 一律落到外链判定被 Deny。
+    //   `about:blank` 同理（iframe 的初始文档），放行不引入任何外部内容。
+    if raw_url == "about:srcdoc" || raw_url == "about:blank" {
         return NavigationDecision::Allow;
     }
     // 本应用的回环 UI：放行（它正是我们导航过去的目标）。
@@ -207,6 +233,18 @@ mod tests {
     use super::*;
 
     const ORIGIN: &str = "http://127.0.0.1:34810";
+
+    #[test]
+    fn iframe_srcdoc_and_blank_are_allowed() {
+        // ★ 这条锁的是一个真机故障：切到 iframe 载体后 pane 文档走 about:srcdoc 加载，
+        //   而 wry 的 on_navigation 对子框架同样回调 —— 此前被判 Block，表现为
+        //   「tab 栏在、点了也打不开面板」，日志里刷 `拒绝导航: about:srcdoc`。
+        assert_eq!(decide_navigation("about:srcdoc", None), Allow);
+        assert_eq!(decide_navigation("about:blank", Some(ORIGIN)), Allow);
+        // 放行只限这两个字面量：其余 about: 仍按原规则拒绝，别把整个 scheme 开成白名单。
+        assert_eq!(decide_navigation("about:config", None), Block);
+        assert_eq!(decide_navigation("about:srcdoc#x", None), Block);
+    }
 
     #[test]
     fn bundled_pages_are_allowed() {

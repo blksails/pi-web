@@ -4,6 +4,7 @@
  * 新增配置域 = 在此追加一次 registerSettingsPanel(...),设置外壳(<SettingsShell>)零改动。
  * 面板的 load/save 经 /api/config/...(makeConfigDomainIO 或自定义 IO);校验用各域 zod schema。
  */
+import * as React from "react";
 import {
   registerSettingsPanel,
   makeConfigDomainIO,
@@ -42,8 +43,15 @@ import {
   AigcModelTogglesField,
   VisionModelSelectField,
 } from "@blksails/pi-web-ui";
+import { ResourceSettingsPanel } from "@/components/resource-manager";
 
 let registered = false;
+
+const resourcePanelFormSchema = { domain: "resources", fields: [] } as const;
+const resourcePanelIO: ConfigDomainIO = {
+  load: async () => ({}),
+  save: async () => undefined,
+};
 
 /** 经给定 URL 读写表单值的通用 IO(自定义路径,非 /config/:domain)。 */
 function makeUrlIO(url: string, label: string): ConfigDomainIO {
@@ -205,7 +213,7 @@ export function registerConfigPanels(): void {
   registerSettingsPanel({
     id: "cloud",
     title: "云端",
-    order: 8,
+    order: 10,
     icon: "cloud",
     formSchema: cloudFormSchema,
     validate: zodValidator(cloudConfigSchema),
@@ -237,6 +245,27 @@ export function registerConfigPanels(): void {
     ...makeUrlIO("/api/config/mcp", "MCP 配置"),
   });
 
+  // 原生 Skills / Prompt Templates 与 MCP 同级；每个面板内部再切公司、Agent、个人。
+  // 自定义视图不走通用配置表单，故不会再出现独立的「pi 资源管理」页。
+  registerSettingsPanel({
+    id: "skills",
+    title: "Skills",
+    order: 8,
+    icon: "sparkles",
+    formSchema: resourcePanelFormSchema,
+    ...resourcePanelIO,
+    customView: () => React.createElement(ResourceSettingsPanel, { kind: "skill" }),
+  });
+  registerSettingsPanel({
+    id: "templates",
+    title: "提示词模板",
+    order: 9,
+    icon: "layout-template",
+    formSchema: resourcePanelFormSchema,
+    ...resourcePanelIO,
+    customView: () => React.createElement(ResourceSettingsPanel, { kind: "template" }),
+  });
+
   // 自定义 provider(multi-gateway-providers 任务 5.4;Req 7.1, 11.7):写
   // `<agentDir>/providers.json`,经通用 /config/:domain(不像 mcp 那样需要独立探测端点)。
   // ★ 保留名冲突校验(Req 7.6)在此处**故意**用空集构造 —— 真实保留名清单
@@ -250,7 +279,7 @@ export function registerConfigPanels(): void {
   registerSettingsPanel({
     id: "providers",
     title: "Provider",
-    order: 9,
+    order: 11,
     icon: "server",
     formSchema: providersFormSchema,
     validate: secretAwareValidator(createProvidersConfigSchema(new Set<string>())),

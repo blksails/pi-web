@@ -199,6 +199,7 @@ export function SpeechInput({
         disabled={denied}
         onClick={handleClick}
         className={cn(
+          "h-8 w-8",
           recording && "text-[hsl(var(--primary))]",
           className,
         )}

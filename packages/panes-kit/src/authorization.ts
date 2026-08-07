@@ -62,6 +62,17 @@ export function authorizePaneRequest(capabilities: PaneCapabilities, request: Pa
     }
     return;
   }
+  if (
+    request.operation === "workspace.open" ||
+    request.operation === "workspace.activate" ||
+    request.operation === "workspace.close" ||
+    request.operation === "workspace.reload" ||
+    request.operation === "workspace.collapse"
+  ) {
+    // 工作区动作由宿主 chrome 授权:边车 chrome 是宿主注入的 UI,改的是宿主标签状态,
+    // 不落入 pane capabilities 模型(与 route/surface/state 等授权语义不同)。
+    return;
+  }
   if (capabilities.conversation !== "submit") {
     throw new PaneHostError("CAPABILITY_DENIED", "Conversation submit is not granted");
   }

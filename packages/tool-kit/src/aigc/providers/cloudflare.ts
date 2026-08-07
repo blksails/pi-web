@@ -139,6 +139,12 @@ interface CfEditArgs extends CfT2IArgs {
    * 「从哪里读」变了,「往上游发什么」一字未改。
    */
   images?: string[];
+  /**
+   * 可选 B/W / alpha mask。CF `/ai/run` 的 openai/* 编辑协议**没有独立 mask 字段**,
+   * 故在 buildEditBody 中把可解析的 mask **插入** `input.images` 第 2 位
+   * (主图 → mask → 参考图),并在 prompt 中点明「第 2 张是遮罩」。
+   */
+  mask?: string;
 }
 
 // ── data URI → 裸 base64 ─────────────────────────────────────────────────────
@@ -260,6 +266,9 @@ function buildT2IBody(providerModel: string) {
  * 忽略**并按文生图执行,返回 HTTP 200 + 一张与参考图无关的新图。这是最危险的失败模式
  * ——看起来完全成功。故此处在一张图都提取不到时**抛错且不产出请求体**,把伪成功挡在
  * 发请求之前。
+ *
+ * **mask**:CF openai/gpt-image-* 无独立 mask 参数。有 mask 时插入 `images` 第 2 位
+ * (主图 → mask → 其余参考图),并对 prompt 加局部重绘提示,使模型把第 2 张当遮罩。
  */
 function buildEditBody(providerModel: string) {
   return async (args: Record<string, unknown>, _ctx?: BuildBodyContext): Promise<unknown> => {
@@ -272,13 +281,32 @@ function buildEditBody(providerModel: string) {
       const b64 = stripDataUri(uri);
       if (b64) images.push(b64);
     }
+    // mask → 插入 images 第 2 位(主图之后、参考图之前);无法解析则跳过,不挡主图编辑。
+    let maskInserted = false;
+    if (typeof a.mask === "string" && a.mask.length > 0 && images.length > 0) {
+      const maskB64 = stripDataUri(a.mask);
+      if (maskB64) {
+        images.splice(1, 0, maskB64);
+        maskInserted = true;
+      }
+    }
     if (images.length === 0) {
       throw new Error(
         "Cloudflare 图像编辑需要至少一张参考图,但未能从入参解析出任何图像数据。" +
           "(直接发起请求会被网关按文生图执行并返回一张无关的新图,故在此拦截)",
       );
     }
-    return { model: providerModel, input: { ...baseInput(a), images } };
+    const input = baseInput(a);
+    // 有 mask 时点明「第 2 张图是遮罩、白色/透明区域为重绘区」(对齐 dashscope 语义)。
+    // 在 withNegative 之后的正文上加前缀,保留 negative_prompt 并入结果。
+    if (maskInserted) {
+      const body = typeof input.prompt === "string" ? input.prompt : a.prompt;
+      input.prompt =
+        `The second image is a mask for the first image: white or transparent regions ` +
+        `are areas to repaint; black or opaque regions must be preserved. ` +
+        `Apply this edit only to the masked region: ${body}`;
+    }
+    return { model: providerModel, input: { ...input, images } };
   };
 }
 

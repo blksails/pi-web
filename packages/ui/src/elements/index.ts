@@ -27,6 +27,7 @@ export {
   getAttachmentLabel,
 } from "./attachments.js";
 export { ModelSelector, type ModelSelectorProps } from "./model-selector.js";
+export { Pill, type PillProps } from "@blksails/pi-web-primitives";
 export { SpeechInput, type SpeechInputProps } from "./speech-input.js";
 export {
   WebSearchToggle,
