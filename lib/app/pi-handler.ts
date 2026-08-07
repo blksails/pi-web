@@ -95,6 +95,7 @@ import {
   deriveCapabilitiesUrlFromEgressBase,
   deriveLoginUrlFromEgressBase,
   createCloudLoginClient,
+  createCloudDesktopAuthClient,
   resolveShellToken,
   // auth(desktop-cloud-login,任务 6.1):进程内登录态 + 鉴权注入路由。egress-model-source
   // (引 pi SDK)不在此,由 runner option-mapper 子路径直引。
@@ -166,7 +167,8 @@ import {
   AIGC_MODEL_CATALOG,
   AI_GATEWAY_AIGC_CATALOG,
   CLOUDFLARE_AIGC_CATALOG,
-  isCloudflareConfigured,
+  isCloudflareConfiguredAtRuntime,
+  cloudflareSpawnEnvFragment,
 } from "@blksails/pi-web-tool-kit";
 import type { SpawnSpec } from "@blksails/pi-web-protocol";
 import { loadConfig, type AppConfig } from "./config.js";
@@ -740,9 +742,12 @@ function buildSingleton(): HandlerSingleton {
       imageCatalog: AIGC_MODEL_CATALOG,
       gatewayImageCatalog: gatewayEnabled ? AI_GATEWAY_AIGC_CATALOG : undefined,
       // Cloudflare 图像目录(spec cloudflare-aigc-provider,Req 4.2):启用判据用的是
-      // 与 runner 侧 aigcExtension **同一个** isCloudflareConfigured,两处判据不会漂移
-      // ——否则会出现「设置页列得出模型但工具里选不到」的错位。同样每请求求值,env 即时生效。
-      cloudflareImageCatalog: isCloudflareConfigured(process.env)
+      // 与 runner 侧 aigcExtension **同一个** isCloudflareConfiguredAtRuntime
+      // (env + `<agentDir>/aigc.json` 每次 re-read),两处判据不会漂移。
+      cloudflareImageCatalog: isCloudflareConfiguredAtRuntime({
+        env: process.env,
+        agentDir: config.agentDir,
+      })
         ? CLOUDFLARE_AIGC_CATALOG
         : undefined,
       hiddenProviders: parseHiddenProviders(process.env.PI_WEB_HIDE_PROVIDERS),
@@ -1065,6 +1070,10 @@ function buildSingleton(): HandlerSingleton {
       if (aiGatewaySessionEnv.warn !== undefined) {
         llmGatewayLogger.warn(aiGatewaySessionEnv.warn);
       }
+      const cloudflareEnvForE2b = cloudflareSpawnEnvFragment({
+        env: process.env,
+        agentDir: config.agentDir,
+      });
       const e2bSpec: SpawnSpec = {
         ...resolved.spawnSpec,
         env: {
@@ -1072,6 +1081,7 @@ function buildSingleton(): HandlerSingleton {
           ...providerKeysForE2b,
           ...sandboxLlmEnv,
           ...aiGatewaySessionEnv.env,
+          ...cloudflareEnvForE2b,
           // 附件拓扑条件透传(任务 4.2,Req 5.1):全远程拓扑时并入装配期快照
           // (拓扑原文 + 被引凭据,值以快照为权威、不受请求期 env 漂移影响);
           // 否则空对象(零键)——沙箱内附件走既有 fail-closed 降级(Req 5.2)。
@@ -1146,12 +1156,20 @@ function buildSingleton(): HandlerSingleton {
     if (resolved.mode === "cli" && sandboxEntry !== undefined) {
       extraArgs.push("-e", sandboxEntry);
     }
+    // Cloudflare:release 桌面无 .env.local,凭据在 aigc.json;每次 spawn re-read 并入 runner env,
+    // 使 requiredVars / var-resolver 在子进程里能展开 ${CLOUDFLARE_*}(不 bake 进 payload)。
+    // 素材 pane 及其 PI_LABS_WEBAPP_URL 属 aigc-agent 业务仓,宿主不代管。
+    const cloudflareEnv = cloudflareSpawnEnvFragment({
+      env: process.env,
+      agentDir: config.agentDir,
+    });
     const spec: SpawnSpec = {
       ...resolved.spawnSpec,
       args: [...resolved.spawnSpec.args, ...extraArgs],
       env: {
         ...resolved.spawnSpec.env,
         ...config.providerKeys,
+        ...cloudflareEnv,
         // ★ 日志门控下沉到产生端:把已解析的门控下发子进程,关闭时 runner **一行都不产生**
         //   (改造前是子进程照产、主进程解析后全丢)。见 loggingSpawnEnv 的说明。
         ...loggingSpawnEnv(),
@@ -1373,10 +1391,15 @@ function buildSingleton(): HandlerSingleton {
     cloudLoginConfig !== undefined
       ? deriveLoginUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
       : undefined;
+  const cloudDesktopAuth =
+    cloudLoginUrl !== undefined
+      ? createCloudDesktopAuthClient({ loginUrl: cloudLoginUrl })
+      : undefined;
   const desktopIdentityProvider =
     desktopCapabilitiesClient !== undefined && cloudLoginUrl !== undefined
       ? createDesktopPasswordIdentityProvider({
           loginClient: createCloudLoginClient({ loginUrl: cloudLoginUrl }),
+          desktopAuth: cloudDesktopAuth,
           capabilitiesClient: desktopCapabilitiesClient,
           authState: authSessionState,
           onCredentialChanged: (credential) =>
@@ -1498,6 +1521,7 @@ function buildSingleton(): HandlerSingleton {
       : undefined,
     authState: cloudLoginConfig !== undefined ? authSessionState : undefined,
     identityProvider: desktopIdentityProvider,
+    desktopAuthClient: cloudDesktopAuth,
     // 壳凭据取回 token(Req 12)。仅桌面壳注入该 env;为空则该端点不挂载。
     shellToken: resolveShellToken(process.env),
     attachmentStore,
@@ -1574,7 +1598,20 @@ function buildSingleton(): HandlerSingleton {
           const candidates = [item.id, item.source];
           return candidates.some((candidate) => path.resolve(config.defaultCwd, candidate) === normalizedLocalId);
         }));
-    return record === undefined ? undefined : targetFromSourceRecord(record);
+    if (record !== undefined) return targetFromSourceRecord(record);
+    // 对齐会话创建侧契约(resolver.ts):任意绝对路径本地目录均可作为 agent 源加载,
+    // resources 面板若只在扫描根内解析,则桌面版 source-picker 接受的路径必然 422。
+    // 故绝对路径目录(存在即有效)回退为 ResourceAgentTarget;权限仍由 resourceAccess
+    // 清单判定(resolveLocalAgentTarget → readAgentResourceAccess),无清单则只读。
+    if (path.isAbsolute(id)) {
+      return resolveLocalAgentTarget({
+        id,
+        source: id,
+        name: path.basename(id) || "Agent",
+        kind: "dir",
+      });
+    }
+    return undefined;
   };
   const listResourceAgents = async (): Promise<readonly ResourceAgentTarget[]> => {
     const targets = new Map<string, ResourceAgentTarget>();

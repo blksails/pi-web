@@ -133,13 +133,13 @@
     var x=document.createElement('button');
     x.type='button';
     x.className='pi-c-x';
-    x.setAttribute('aria-label','收起');
-    x.title='收起到更多（不销毁）';
+    x.setAttribute('aria-label','关闭');
+    x.title='关闭';
     x.appendChild(svg(ICON.x,12));
     x.addEventListener('click',function(e){
       e.preventDefault();
       e.stopPropagation();
-      // 宿主 park：进「更多」，不 destroy 实例
+      // 宿主真关闭：销毁实例；再开走「新开 Pane」
       request('workspace.close',{instanceId:inst.instanceId});
     });
     shell.append(main,x);
@@ -147,11 +147,8 @@
   }
   function openInstances(){
     if(!state||!state.instances)return [];
+    // 关闭即从快照移除；hidden 仅历史兼容，不再进「更多」
     return state.instances.filter(function(i){return i.state!=='hidden';});
-  }
-  function parkedInstances(){
-    if(!state||!state.instances)return [];
-    return state.instances.filter(function(i){return i.state==='hidden';});
   }
   function splitVisible(open){
     overflowList=[];
@@ -230,11 +227,9 @@
   function fillMoreMenu(){
     menuEl.replaceChildren();
     var overflow=overflowList.slice();
-    var parked=parkedInstances();
-    if(overflow.length===0&&parked.length===0)return;
-    // 溢出 open + 已收起：只列 icon+名字
+    if(overflow.length===0)return;
+    // 仅条宽溢出的 open tabs；已关闭不出现
     overflow.forEach(function(inst){addInstRow(inst);});
-    parked.forEach(function(inst){addInstRow(inst);});
   }
   function request(op,payload){
     // 优先用 guest 发布的共享 port（rebind 安全）
@@ -265,7 +260,7 @@
   }
   function renderMoreBtn(){
     if(!moreEl)return;
-    var show=overflowList.length>0||parkedInstances().length>0;
+    var show=overflowList.length>0;
     moreEl.hidden=!show;
     if(!show&&menuMode==='more')closeMenu();
   }

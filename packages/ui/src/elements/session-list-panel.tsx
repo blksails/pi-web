@@ -448,11 +448,12 @@ export function SessionListPanel(
     return (
       <li
         key={item.sessionId}
+        className="min-w-0"
         data-pi-session-list-item={item.sessionId}
         data-pi-session-list-item-busy={busy ? "" : undefined}
       >
         {/* 整行可点击恢复;⋯ 相对本容器(整块 hover 高)垂直居中。 */}
-        <div className="group relative flex min-h-0 items-stretch">
+        <div className="group relative flex min-h-0 min-w-0 items-stretch">
           {isActive ? (
             <span
               aria-hidden="true"
@@ -544,7 +545,7 @@ export function SessionListPanel(
         </div>
       ) : null}
 
-      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className="pi-scrollbar-ghost min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1">
         {isInitialLoading ? (
           <div
             data-pi-session-list-loading=""
@@ -579,13 +580,13 @@ export function SessionListPanel(
                 <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
                   {favoritesSectionLabel}
                 </div>
-                <ul className="flex flex-col gap-[3px]">
+                <ul className="flex min-w-0 flex-col gap-[3px]">
                   {favoriteItems.map((item) => renderRow(item))}
                 </ul>
               </div>
             ) : null}
 
-            <ul className="flex flex-col gap-[3px]">
+            <ul className="flex min-w-0 flex-col gap-[3px]">
               {pending !== undefined ? (
                 <li
                   key={pending.sessionId}

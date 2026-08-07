@@ -554,8 +554,7 @@ export function PanesHost({
   const advanced = config.interactionMode === "advanced";
 
   // definition 换了要做的两件事,合在同一个 effect 里:
-  //  ① 清理瞬时错误；park 仅剔除「清单里已不存在的 pane」对应实例，禁止整表清空
-  //     （否则 tab 收进「更多」后 definition 引用抖动会把 park 冲掉，表现为真关）。
+  //  ① 清理瞬时错误；并剔除「清单里已不存在的 pane」的残留 park 标记。
   //  ② 把清单里新出现、且声明为初始打开的 pane 补进已打开集合。
   //
   // ★ 为什么必须有 ②:workspace 由 useState 惰性初始化建立,**只在首次 mount 跑一次**。
@@ -815,26 +814,47 @@ export function PanesHost({
     [definition.panes, dispatch, nextId],
   );
 
-  /** 边车 / 遥控 close = park：收进「更多」，不销毁实例与连接。 */
-  const parkClose = React.useCallback((instanceId: string): void => {
+  /**
+   * 真关闭：销毁连接 / native WebView，从 workspace 移除。
+   * 不进「更多」；再次打开只能经新开 Pane 弹层创建新实例。
+   */
+  const hardClose = React.useCallback((instanceId: string): void => {
     const current = workspaceRef.current;
     const hit = current.instances.find((instance) => instance.instanceId === instanceId);
     if (hit === undefined) return;
-    if (parkedRef.current.has(instanceId)) return;
-    const nextParked = new Set(parkedRef.current);
-    nextParked.add(instanceId);
-    // 同步 ref，避免同帧多次 park / open 读到旧集合。
-    parkedRef.current = nextParked;
-    setParkedInstanceIds(nextParked);
-    const nextActive = current.instances.find(
-      (instance) =>
-        instance.instanceId !== instanceId &&
-        !nextParked.has(instance.instanceId),
-    );
-    if (nextActive !== undefined) {
-      dispatch({ type: "activate", instanceId: nextActive.instanceId });
+    const mount = nativeMounts.current.get(instanceId);
+    if (mount !== undefined) {
+      mount.disposed = true;
+      if (mount.disposeTimeout !== undefined) clearTimeout(mount.disposeTimeout);
+      if (mount.readyTimeout !== undefined) clearTimeout(mount.readyTimeout);
+      mount.stopReady?.();
+      mount.handle?.hide();
+      mount.handle?.dispose();
+      nativeMounts.current.delete(instanceId);
     }
-  }, [dispatch]);
+    closeConnection(instanceId, true);
+    if (parkedRef.current.has(instanceId)) {
+      const nextParked = new Set(parkedRef.current);
+      nextParked.delete(instanceId);
+      parkedRef.current = nextParked;
+      setParkedInstanceIds(nextParked);
+    }
+    setNativeReadyKeys((keys) => {
+      const next = new Set([...keys].filter((key) => !key.startsWith(`${instanceId}:`)));
+      return next.size === keys.size ? keys : next;
+    });
+    setNativeShownKeys((keys) => {
+      const next = new Set([...keys].filter((key) => !key.startsWith(`${instanceId}:`)));
+      return next.size === keys.size ? keys : next;
+    });
+    setNativeErrors((errors) => {
+      if (!errors.has(instanceId)) return errors;
+      const next = new Map(errors);
+      next.delete(instanceId);
+      return next;
+    });
+    dispatch({ type: "close", instanceId });
+  }, [closeConnection, dispatch]);
 
   const applyActivateOrReload = React.useCallback(
     (
@@ -852,12 +872,11 @@ export function PanesHost({
               : undefined;
       if (hit === undefined) return;
       if (type === "close") {
-        // 与边车 X 一致：park，不 destroy。
-        parkClose(hit.instanceId);
+        hardClose(hit.instanceId);
         return;
       }
       if (type === "activate") {
-        // 先 unpark 再 activate，避免嵌套 setState 丢更新
+        // 兼容旧 park 快照：若仍在 parked 集合则先放出再激活。
         setParkedInstanceIds((parked) => {
           if (!parked.has(hit.instanceId)) return parked;
           const next = new Set(parked);
@@ -870,7 +889,7 @@ export function PanesHost({
       }
       dispatch({ type: "reload", instanceId: hit.instanceId });
     },
-    [dispatch, parkClose],
+    [dispatch, hardClose],
   );
 
   /** 供 handleRequest 闭包调用（reloadPane 定义在后）。 */
@@ -1081,10 +1100,10 @@ export function PanesHost({
         return undefined;
       }
       if (request.operation === "workspace.close") {
-        // 边车关闭 = park：保留 iframe/连接以便重开复用（与 surface 桥的移除语义区分）。
+        // 边车 X / 遥控 close = 真关闭：销毁实例；仅新开 Pane 可再建。
         const id = request.instanceId
           ?? workspaceRef.current.activeInstanceId;
-        if (id !== undefined) parkClose(id);
+        if (id !== undefined) hardClose(id);
         return undefined;
       }
       if (request.operation === "workspace.reload") {
@@ -1109,7 +1128,7 @@ export function PanesHost({
       conversation.stageUserMessage(request.text, options);
     } else conversation.submitUserMessage(request.text, options);
     return undefined;
-  }, [applyActivateOrReload, applyOpenPane, baseUrl, config.eventTargets, conversation, definition, onEvent, onRequestClose, parkClose, sessionId, sessionLogs, surface, upload]);
+  }, [applyActivateOrReload, applyOpenPane, baseUrl, config.eventTargets, conversation, definition, hardClose, onEvent, onRequestClose, sessionId, sessionLogs, surface, upload]);
 
   const bindSurface = React.useCallback((live: LiveConnection, pane: PaneDefinition): void => {
     live.surfaceCleanup?.();
@@ -1162,7 +1181,7 @@ export function PanesHost({
     const panes = definition.panes.map((pane) => ({
       paneId: pane.id,
       title: pane.title,
-      // 配额只计**未 park** 实例，避免收进「更多」后 + 新开被 maxInstances 误禁用。
+      // 关闭即从 instances 移除；openCount = 当前真实打开数。
       openCount: workspace.instances.filter(
         (instance) =>
           instance.paneId === pane.id &&
@@ -1172,8 +1191,7 @@ export function PanesHost({
       maxInstances: Number.isFinite(pane.maxInstances) ? pane.maxInstances : 1_000_000_000,
       allowMultiple: pane.allowMultiple,
     }));
-    // 边车「更多」依 activeInstanceId 判定当前 tab；park 后若仍指向已隐藏实例，
-    // 用首个 open 实例，避免顶栏无选中态。
+    // 边车依 activeInstanceId 判定当前 tab；若 active 已不在 open 集合则取首个 open。
     const activeOpen =
       workspace.activeInstanceId !== undefined &&
       !parkedInstanceIds.has(workspace.activeInstanceId)
@@ -1610,17 +1628,7 @@ export function PanesHost({
   };
 
   const closePane = (instanceId: string): void => {
-    const nextParked = new Set(parkedInstanceIds);
-    nextParked.add(instanceId);
-    setParkedInstanceIds(nextParked);
-    const next = workspace.instances.find(
-      (instance) =>
-        instance.instanceId !== instanceId &&
-        !nextParked.has(instance.instanceId),
-    );
-    if (next !== undefined) {
-      dispatch({ type: "activate", instanceId: next.instanceId });
-    }
+    hardClose(instanceId);
   };
 
   const reloadPane = (instanceId: string): void => {
@@ -1889,16 +1897,16 @@ export function PanesHost({
             >
               <strong style={{ display: "block", padding: "7px 10px" }}>新开 Pane</strong>
               {definition.panes.map((pane, index) => {
-                const openCount = workspace.instances.filter((instance) => instance.paneId === pane.id).length;
-                const parked = workspace.instances.some(
+                const openCount = workspace.instances.filter(
                   (instance) =>
                     instance.paneId === pane.id &&
-                    parkedInstanceIds.has(instance.instanceId),
-                );
+                    !parkedInstanceIds.has(instance.instanceId),
+                ).length;
                 const disabled =
-                  !parked &&
-                  (openCount >= pane.maxInstances ||
-                    workspace.instances.length >= definition.maxOpenPanes);
+                  openCount >= pane.maxInstances ||
+                  workspace.instances.filter(
+                    (instance) => !parkedInstanceIds.has(instance.instanceId),
+                  ).length >= definition.maxOpenPanes;
                 return (
                   <button
                     key={pane.id}

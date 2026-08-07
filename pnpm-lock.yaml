@@ -394,6 +394,49 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@25.9.3)(jsdom@25.0.1)
 
+  packages/materials-pane:
+    dependencies:
+      '@blksails/pi-web-agent-kit':
+        specifier: '*'
+        version: link:../agent-kit
+      '@blksails/pi-web-panes-kit':
+        specifier: '*'
+        version: link:../panes-kit
+      '@blksails/pi-web-tool-kit':
+        specifier: '*'
+        version: link:../tool-kit
+      '@earendil-works/pi-ai':
+        specifier: '*'
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      '@earendil-works/pi-coding-agent':
+        specifier: '*'
+        version: 0.80.3(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))(ws@8.21.0)(zod@3.25.76)
+      lucide-react:
+        specifier: ^0.470.0
+        version: 0.470.0(react@19.2.7)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.7
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.7(react@19.2.7)
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.21
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.3(@types/react@19.2.17)
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.21)(jsdom@25.0.1)
+
   packages/panes-kit:
     dependencies:
       '@blksails/pi-web-logger':

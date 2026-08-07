@@ -18,7 +18,7 @@ import {
   AI_GATEWAY_IMAGE_EDIT_ROUTES,
   CLOUDFLARE_IMAGE_EDIT_ROUTES,
 } from "./tools/image-edit.js";
-import { isCloudflareConfigured } from "./providers/cloudflare.js";
+import { isCloudflareConfiguredAtRuntime } from "./cloudflare-runtime.js";
 import { getSessionState } from "../session-state.js";
 import { resolveAigcToolSettings } from "./model-config.js";
 import { deriveActiveModels } from "./active-models.js";
@@ -188,7 +188,9 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
   // 判据来自 providers/cloudflare.ts 的单一事实源 —— 宿主侧 `/aigc/models` 目录装配
   // (lib/app/pi-handler.ts)用的是同一个函数,避免两处漂移导致「设置页列得出但工具里
   // 选不到」的错位。
-  const cloudflareEnabled = isCloudflareConfigured(process.env);
+  // release 桌面无 .env.local:凭据在 `<agentDir>/aigc.json`,每次装配 re-read。
+  // 与宿主 /aigc/models 共用 isCloudflareConfiguredAtRuntime 语义。
+  const cloudflareEnabled = isCloudflareConfiguredAtRuntime({ env: process.env });
   const genExtras: ImageRoute[] = [
     ...(aiGatewayEnabled ? AI_GATEWAY_IMAGE_ROUTES : []),
     ...(cloudflareEnabled ? CLOUDFLARE_IMAGE_ROUTES : []),

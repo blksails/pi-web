@@ -38,6 +38,30 @@ fn err(code: &str, message: impl Into<String>) -> UnpackError {
     }
 }
 
+/// 把路径改成 node 能吃的形态（spawn 前必须做）。
+///
+/// ★ Tauri `resource_dir()` 在 Windows 返回 **extended-length path**（`\\?\C:\…`）。Node 的
+///   模块加载器（`resolveMainPath` → `realpathSync`）不认识 `\\?\` 前缀：把带前缀的路径当
+///   主入口传给 node 时，它在解析模块前就崩掉（对盘符 lstat 得 `EISDIR`），stdout 为空，
+///   桌面壳据此报「解包器无任何输出（extract-failed）」。fs 的 `readFile` 等能处理 `\\?\`，
+///   但**主入口 argv 不行** —— 故这里剥掉前缀；`\\?\UNC\` 还原成 `\\server\share`。
+#[cfg(windows)]
+fn node_usable_path(p: &Path) -> PathBuf {
+    let s = p.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        p.to_path_buf()
+    }
+}
+
+#[cfg(not(windows))]
+fn node_usable_path(p: &Path) -> PathBuf {
+    p.to_path_buf()
+}
+
 /// 解析解包器的 stdout（**纯函数**，可脱离进程单测）。
 ///
 /// 取最后一个非空行：node 或其加载的模块偶尔会往 stdout 多写东西，契约只保证**最后一行**
@@ -90,6 +114,7 @@ pub fn parse_ensure_output(stdout: &str) -> Result<EnsureOk, UnpackError> {
 /// 子进程**继承父环境**：`PI_WEB_RUNTIME_ROOT` 由此可达（e2e 靠它把运行时指向临时目录），
 /// `HOME` 也由此可达（解包器据其推导默认运行时根）。切勿 `env_clear`。
 pub fn ensure(node_bin: &Path, payload_dir: &Path) -> Result<EnsureOk, UnpackError> {
+    let payload_dir = node_usable_path(payload_dir);
     let unpacker = payload_dir.join(UNPACKER);
     if !unpacker.is_file() {
         return Err(err(
@@ -124,6 +149,7 @@ pub fn ensure(node_bin: &Path, payload_dir: &Path) -> Result<EnsureOk, UnpackErr
 /// 触发旧运行时目录的回收。**尽力而为、不等待、失败不报**（Req 5.4/5.5）。
 /// 必须在后端进程已拉起之后调用。
 pub fn spawn_gc(node_bin: &Path, payload_dir: &Path, runtime_root: &str, keep_dir: &str) {
+    let payload_dir = node_usable_path(payload_dir);
     let unpacker = payload_dir.join(UNPACKER);
     let spawned = Command::new(node_bin)
         .arg(&unpacker)
@@ -218,6 +244,34 @@ mod tests {
     fn missing_unpacker_reports_payload_missing() {
         let e = ensure(Path::new("/bin/false"), Path::new("/nonexistent-payload")).unwrap_err();
         assert_eq!(e.code, "payload-missing");
+    }
+
+    #[test]
+    fn node_usable_path_strips_verbatim_prefix_on_windows() {
+        // Tauri resource_dir 在 Windows 返回 \\?\ 前缀路径；主入口传给 node 会崩（EISDIR）。
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                node_usable_path(Path::new(r"\\?\C:\Users\a\Local\pi-web\payload")),
+                PathBuf::from(r"C:\Users\a\Local\pi-web\payload")
+            );
+            assert_eq!(
+                node_usable_path(Path::new(r"\\?\UNC\server\share\payload")),
+                PathBuf::from(r"\\server\share\payload")
+            );
+            // 无前缀的普通路径原样通过。
+            assert_eq!(
+                node_usable_path(Path::new(r"C:\Users\a\Local\pi-web\payload")),
+                PathBuf::from(r"C:\Users\a\Local\pi-web\payload")
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(
+                node_usable_path(Path::new("/a/b/payload")),
+                PathBuf::from("/a/b/payload")
+            );
+        }
     }
 
     #[test]

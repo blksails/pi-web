@@ -140,9 +140,21 @@ impl PaneRelayRegistry {
             .get(&envelope.instance_id)
             .ok_or(RelayError::Unbound)?;
         if binding.label != caller_label {
+            relay_trace!(
+                "accept_from_guest LABEL_MISMATCH instance={} caller={} bound_label={}",
+                envelope.instance_id,
+                caller_label,
+                binding.label,
+            );
             return Err(RelayError::LabelMismatch);
         }
         if envelope.epoch != 0 && envelope.epoch != binding.epoch {
+            relay_trace!(
+                "accept_from_guest STALE_EPOCH instance={} epoch={} bound_epoch={}",
+                envelope.instance_id,
+                envelope.epoch,
+                binding.epoch,
+            );
             return Err(RelayError::StaleEpoch);
         }
         Ok(())
@@ -230,6 +242,52 @@ fn require_host(label: &str) -> Result<(), String> {
     }
 }
 
+/// 诊断插桩开关（`PI_WEB_PANE_RELAY_DEBUG=1`）。临时排查 pane readiness，用后即撤。
+///
+/// release 版无 console（`windows_subsystem="windows"`），`eprintln` 不可见；日志落盘到
+/// 系统临时目录 `pi-web-pane-relay.log`，随行追加。Windows GUI 程序不带时钟字符串库，
+/// 时间戳用自启动起的单调毫秒，够判别先后即可。
+fn relay_debug_enabled() -> bool {
+    matches!(
+        std::env::var("PI_WEB_PANE_RELAY_DEBUG").ok().as_deref().map(str::trim),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+fn relay_trace_log(args: std::fmt::Arguments<'_>) {
+    if !relay_debug_enabled() {
+        return;
+    }
+    use std::io::Write;
+    use std::time::{Instant, SystemTime, UNIX_EPOCH};
+    let since_boot_ms = Instant::now()
+        .elapsed()
+        .as_millis();
+    let wall_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let path = std::env::temp_dir().join("pi-web-pane-relay.log");
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(
+            file,
+            "[t+{since_boot_ms}ms wall={wall_secs}] {}",
+            format_args!("{}", args),
+        );
+    }
+}
+
+macro_rules! relay_trace {
+    ($($arg:tt)*) => {
+        relay_trace_log(format_args!($($arg)*));
+    };
+}
+use relay_trace;
+
 fn lock<'a>(
     state: &'a tauri::State<'_, PaneRelayState>,
 ) -> Result<std::sync::MutexGuard<'a, PaneRelayRegistry>, String> {
@@ -248,6 +306,13 @@ pub fn pane_relay_bind(
     label: String,
 ) -> Result<(), String> {
     require_host(window.label())?;
+    relay_trace!(
+        "bind caller={} instance={} epoch={} label={}",
+        window.label(),
+        instance_id,
+        epoch,
+        label,
+    );
     lock(&state)?
         .bind(&instance_id, epoch, &label)
         .map_err(|e| e.to_string())
@@ -288,6 +353,13 @@ pub fn pane_relay_to_host(
     state: tauri::State<'_, PaneRelayState>,
     envelope: RelayEnvelope,
 ) -> Result<(), String> {
+    relay_trace!(
+        "to_host caller={} instance={} epoch={} message={}",
+        webview.label(),
+        envelope.instance_id,
+        envelope.epoch,
+        envelope.message,
+    );
     lock(&state)?
         .accept_from_guest(&envelope, webview.label())
         .map_err(|e| e.to_string())?;
@@ -296,6 +368,12 @@ pub fn pane_relay_to_host(
     } else {
         MAIN_WINDOW_LABEL
     };
+    relay_trace!(
+        "to_host ACCEPT instance={} epoch={} emit_to={}",
+        envelope.instance_id,
+        envelope.epoch,
+        target,
+    );
     app.emit_to(target, HOST_EVENT, &envelope)
         .map_err(|e| e.to_string())
 }
@@ -478,6 +556,13 @@ pub async fn pane_webview_window_create(
     let label_js =
         serde_json::to_string(&label).map_err(|error| error.to_string())?;
     let boot = chrome_boot.unwrap_or_default();
+    relay_trace!(
+        "create label={} url={} native_child={} boot_len={}",
+        label,
+        url,
+        native_child_webviews_enabled(),
+        boot.len(),
+    );
     let init_script = format!(
         "Object.defineProperty(window,'__PI_TAURI_PANE_LABEL__',{{value:{label_js},configurable:false}});{boot}"
     );
@@ -514,6 +599,7 @@ pub async fn pane_webview_window_create(
             {
                 // 复用实例须重新导航，否则可能停在空白页。
                 existing.navigate(url).map_err(|e| e.to_string())?;
+                relay_trace!("create REUSED label={} visible={} slot={:?}", label, visible, slot.is_some());
                 layout.register_pane(label, placement, visible, true)?;
                 let _ = layout.invalidate_applied_bounds();
                 layout.apply_layout(&app)?;
@@ -533,6 +619,7 @@ pub async fn pane_webview_window_create(
                     tauri::LogicalSize::new(placement.width.max(1.0), placement.height.max(1.0)),
                 )
                 .map_err(|e| e.to_string())?;
+            relay_trace!("create ADD_CHILD ok label={} visible={} slot={:?}", label, visible, slot.is_some());
             view.set_auto_resize(false).map_err(|e| e.to_string())?;
             // 先 register 再 layout；visible=false 时仍占位尺寸，ready 后 show 顶起。
             layout.register_pane(label.clone(), placement, visible, true)?;

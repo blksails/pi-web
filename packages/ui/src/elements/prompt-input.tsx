@@ -217,7 +217,8 @@ export function PromptInput({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-[var(--radius)] border border-[hsl(var(--input))] bg-[hsl(var(--background))] p-2",
+        // 对话输入壳：2px 深色边框(主色阶，非浅灰 --input/--border)
+        "flex flex-col gap-2 rounded-[var(--radius)] border-2 border-[hsl(var(--primary))] bg-[hsl(var(--background))] p-2",
         // bash 模式:强调边框 + ring(Req 6.1/6.2);退出后恢复常规(Req 6.3)。
         mode !== undefined &&
           "border-[hsl(var(--ring))] ring-1 ring-[hsl(var(--ring))]",

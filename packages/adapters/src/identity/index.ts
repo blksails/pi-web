@@ -9,6 +9,8 @@ export type {
   IdentityExchangeFailure,
   IdentityExchangeResult,
   IdentityPasswordCredentials,
+  IdentitySmsCredentials,
+  IdentityWechatCredentials,
   IdentityProvider,
   IdentityState,
 } from "./types.js";

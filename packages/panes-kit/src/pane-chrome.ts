@@ -11,7 +11,7 @@
  *
  * ## Tab 状态跨 iframe / WebView 同步（唯一源）
  *
- * - **唯一事实源**：宿主 `PanesHost` 的 workspace（开/关/激活/park）。
+ * - **唯一事实源**：宿主 `PanesHost` 的 workspace（开/关/激活）。
  * - **下行同步**：宿主对**每一个**已连接 realm（iframe 与 native child 一视同仁）
  *   广播 `pane:signal` name=`PANE_CHROME_SIGNAL`（`pi.workspace`），payload 为全量快照。
  *   各边车只是只读视图，**禁止**本地维护独立 tab 列表。
@@ -21,8 +21,8 @@
  *
  * ## 「更多」按钮
  *
- * 显示条件：宽度放不下的 **溢出 open tabs**，或已 park 的 hidden 实例。
- * 弹层列出溢出 + 收起项；全可见且无 park 时隐藏按钮。
+ * 显示条件：宽度放不下的 **溢出 open tabs**（仍打开、仅条上放不下）。
+ * 关闭 tab = 真销毁，不进「更多」；再开只能走「新开 Pane」。
  *
  * ## 与 guest 共用 port
  *
@@ -244,13 +244,13 @@ export function paneChromeScriptSource(): string {
     var x=document.createElement('button');
     x.type='button';
     x.className='pi-c-x';
-    x.setAttribute('aria-label','收起');
-    x.title='收起到更多（不销毁）';
+    x.setAttribute('aria-label','关闭');
+    x.title='关闭';
     x.appendChild(svg(ICON.x,12));
     x.addEventListener('click',function(e){
       e.preventDefault();
       e.stopPropagation();
-      // 宿主 park：进「更多」，不 destroy 实例
+      // 宿主真关闭：销毁实例；再开走「新开 Pane」
       request('workspace.close',{instanceId:inst.instanceId});
     });
     shell.append(main,x);
@@ -258,11 +258,8 @@ export function paneChromeScriptSource(): string {
   }
   function openInstances(){
     if(!state||!state.instances)return [];
+    // 关闭即从快照移除；hidden 仅历史兼容，不再进「更多」
     return state.instances.filter(function(i){return i.state!=='hidden';});
-  }
-  function parkedInstances(){
-    if(!state||!state.instances)return [];
-    return state.instances.filter(function(i){return i.state==='hidden';});
   }
   function splitVisible(open){
     overflowList=[];
@@ -341,11 +338,9 @@ export function paneChromeScriptSource(): string {
   function fillMoreMenu(){
     menuEl.replaceChildren();
     var overflow=overflowList.slice();
-    var parked=parkedInstances();
-    if(overflow.length===0&&parked.length===0)return;
-    // 溢出 open + 已收起：只列 icon+名字
+    if(overflow.length===0)return;
+    // 仅条宽溢出的 open tabs；已关闭不出现
     overflow.forEach(function(inst){addInstRow(inst);});
-    parked.forEach(function(inst){addInstRow(inst);});
   }
   function request(op,payload){
     // 优先用 guest 发布的共享 port（rebind 安全）
@@ -376,7 +371,7 @@ export function paneChromeScriptSource(): string {
   }
   function renderMoreBtn(){
     if(!moreEl)return;
-    var show=overflowList.length>0||parkedInstances().length>0;
+    var show=overflowList.length>0;
     moreEl.hidden=!show;
     if(!show&&menuMode==='more')closeMenu();
   }

@@ -853,6 +853,8 @@ export function PiChat({
   const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
   const panelResizeIdleRef = React.useRef<IdleFrameTask | undefined>(undefined);
   const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  // 窄容器临时钳制预览宽（窗口收窄/最小化恢复途中的过渡态）；容器恢复后解除。
+  const panelClampPreviewRef = React.useRef<number | undefined>(undefined);
   const panelResizeStartXRef = React.useRef<number | undefined>(undefined);
   const panelResizeStartWidthRef = React.useRef<number | undefined>(undefined);
   const panelResizeMovedRef = React.useRef(false);
@@ -1012,6 +1014,9 @@ export function PiChat({
   );
 
   // 容器变窄时主动钳右栏,保证会话列 ≥ CONVERSATION_MIN_PX,杜绝横向溢出叠层悬浮。
+  // ★ 只做**临时视觉**压缩,不写回宿主:钳制写回会把「窗口临时变窄」(最小化/恢复途中的
+  //   过渡尺寸)误持久化为用户新宽度,导致最小化再开后侧栏永久停在最小宽——面板宽度
+  //   本应保持用户拖拽值。容器恢复足够宽时解除压缩,回到受控 panelWidth。
   // 树宽为 0(jsdom / 未布局)时不钳,避免误写 0 宽。
   React.useEffect(() => {
     if (
@@ -1030,7 +1035,15 @@ export function PiChat({
       if (!(treeW > 0)) return;
       const { min, max } = measurePanelBounds();
       if (max > 0 && panelWidth > max + 0.5) {
-        onPanelWidthChange(Math.max(min, max));
+        if (panelClampPreviewRef.current !== max) {
+          panelClampPreviewRef.current = max;
+          applyAsideWidthPreview(max);
+        }
+        return;
+      }
+      if (panelClampPreviewRef.current !== undefined) {
+        panelClampPreviewRef.current = undefined;
+        applyAsideWidthPreview(panelWidth);
       }
     };
     const ro = new ResizeObserver(() => {
@@ -1046,7 +1059,7 @@ export function PiChat({
       ro.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [panelWidth, onPanelWidthChange, measurePanelBounds]);
+  }, [panelWidth, onPanelWidthChange, measurePanelBounds, applyAsideWidthPreview]);
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -1997,7 +2010,7 @@ export function PiChat({
       toolbar={toolbar}
       rows={1}
       placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
-      className="rounded-[12px] border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-2.5 shadow-none"
+      className="rounded-[12px] border-[hsl(var(--chat-input-border))] bg-[hsl(var(--surface))] px-3 py-2.5 shadow-none"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}

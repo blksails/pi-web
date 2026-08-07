@@ -40,4 +40,16 @@ export {
 export {
   isCloudflareConfigured,
   CLOUDFLARE_REQUIRED_ENV,
+  CLOUDFLARE_AIGC_JSON_KEYS,
+  cloudflareEnvFromAigcConfig,
+  mergeCloudflareRuntimeEnv,
 } from "./aigc/providers/cloudflare.js";
+// 运行时 re-read aigc.json → CLOUDFLARE_* bag(release 桌面无 .env.local)。
+export {
+  readAigcConfigFile,
+  resolveCloudflareRuntimeEnv,
+  cloudflareSpawnEnvFragment,
+  isCloudflareConfiguredAtRuntime,
+  type ResolveCloudflareRuntimeEnvOptions,
+  type ReadFileSync,
+} from "./aigc/cloudflare-runtime.js";

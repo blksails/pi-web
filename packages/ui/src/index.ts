@@ -111,6 +111,7 @@ export * from "./config/index.js";
 export { Input, type InputProps } from "./ui/input.js";
 
 // Dialog 原语(shadcn/Radix 封装:焦点捕获 / Esc / 遮罩点击关闭 / aria 对话框语义)
+// 有 chat 主列时遮罩与内容于 chat 侧居中（避开左栏与右 Pane）
 export {
   Dialog,
   DialogTrigger,
@@ -123,6 +124,16 @@ export {
   DialogTitle,
   DialogDescription,
 } from "./ui/dialog.js";
+export {
+  ChatCenteredOverlay,
+  useChatColumnBox,
+  useChatColumnOverlayStyle,
+} from "./ui/chat-centered-overlay.js";
+export {
+  getChatColumnBox,
+  queryChatColumnElement,
+  chatColumnBoxToOverlayStyle,
+} from "./lib/chat-column-box.js";
 
 // server-driven UI(自定义渲染扩展):data-pi-ui 渲染器 + 沙箱解释器 + 组件注册表
 export { PiUiPart } from "./parts/pi-ui-part.js";

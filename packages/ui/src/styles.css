@@ -29,6 +29,8 @@
   --border: 0 0% 88.2%;
   --input: 0 0% 88.2%;
   --ring: 0 0% 9%;
+  /* 对话输入框专属边框色：与统一 --border 解耦，固定深黑。 */
+  --chat-input-border: 0 0% 3.9%;
   --radius: 0.4375rem;
   /* 工具结果不使用彩色语法高亮,以灰阶保持与用户消息的层级区别。 */
   --pi-json-key: 0 0% 18%;
@@ -156,6 +158,8 @@
   --border: 0 0% 22%;
   --input: 0 0% 22%;
   --ring: 0 0% 96%;
+  /* 对话输入框专属边框色：暗色下反色（浅灰白），与亮色主题深黑互补。 */
+  --chat-input-border: 0 0% 96.1%;
   --pi-json-key: 0 0% 96%;
   --pi-json-string: 0 0% 80%;
   --pi-json-number: 0 0% 70%;
@@ -255,10 +259,11 @@
   background: hsl(var(--background));
 }
 
-/* 幽灵滚动条:更细更透,轨道仍贴合主题背景;悬停拇指略显。 */
+/* 幽灵滚动条:更细更透,轨道透明贴合任意容器背景(--sidebar/--canvas 等非 --background
+   容器上不再露出 --background 色条);悬停拇指略显。 */
 .pi-scrollbar-ghost {
   scrollbar-width: thin;
-  scrollbar-color: hsl(var(--muted-foreground) / 0.18) hsl(var(--background));
+  scrollbar-color: hsl(var(--muted-foreground) / 0.18) transparent;
 }
 .pi-scrollbar-ghost::-webkit-scrollbar {
   width: 4px;
@@ -270,19 +275,19 @@
   height: 0;
 }
 .pi-scrollbar-ghost::-webkit-scrollbar-track {
-  background: hsl(var(--background));
+  background: transparent;
 }
 .pi-scrollbar-ghost::-webkit-scrollbar-thumb {
   background-color: hsl(var(--muted-foreground) / 0.18);
   border-radius: 9999px;
-  border: 1px solid hsl(var(--background));
+  border: 1px solid transparent;
   background-clip: padding-box;
 }
 .pi-scrollbar-ghost:hover::-webkit-scrollbar-thumb {
   background-color: hsl(var(--muted-foreground) / 0.4);
 }
 .pi-scrollbar-ghost::-webkit-scrollbar-corner {
-  background: hsl(var(--background));
+  background: transparent;
 }
 
 /* 减少动效偏好:遵从 prefers-reduced-motion,几乎归零动画/过渡时长(a11y 基线,

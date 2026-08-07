@@ -38,6 +38,15 @@ export {
   type CloudLoginFetch,
   type CloudLoginResult,
 } from "./cloud-login-client.js";
+// phone/wechat 桌面登录族
+export {
+  createCloudDesktopAuthClient,
+  type CloudDesktopAuthClient,
+  type CloudDesktopAuthClientOptions,
+  type OtpSendResult,
+  type WechatStartResult,
+  type WechatPollResult,
+} from "./cloud-desktop-auth-client.js";
 // desktop-account-login Req 11/12:桌面壳标记 + 凭据交接端点(壳经受 token 保护的回环端点取)。
 export * from "./desktop-marker.js";
 export {

@@ -42,7 +42,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = resolve(process.env.PI_WEB_DIST ?? join(ROOT, "dist"));
@@ -185,6 +185,10 @@ function packRuntimeDeps() {
     seenDirs.add(real);
 
     for (const [name, src] of listSiblings(dir)) {
+      // pnpm 只为当前平台安装 optionalDependencies（如 esbuild 的 @esbuild/<platform>），
+      // 但会在兄弟目录里给**所有**声明平台建 junction；非本平台的 junction 目标是
+      // dangling 的，`statSync`/`cpSync` 跟随即 ENOENT。跳过即可——运行时用不到。
+      if (!existsSync(src)) continue;
       // 无论是否已 hoist,都要跟进它自己的 .pnpm 目录(可能带来新的传递依赖)。
       let ownSiblings;
       try {
@@ -449,7 +453,16 @@ function collectDataJson(dir, out) {
 function packExamples() {
   const src = join(ROOT, "examples");
   if (!existsSync(src)) return;
-  cpSync(src, join(DIST, "examples"), { recursive: true, dereference: true });
+  // 排除 node_modules：示例的运行依赖由 hoist 后的 `dist/node_modules` 提供，示例目录内
+  // 的 node_modules 是开发态安装物（本机对单个示例单独 install 过会有完整依赖树，
+  // dereference 实体化后可达数 GB），不应进载荷。CI 上 payload 仅 ~9.4MB 即不含它们。
+  const examplesDest = join(DIST, "examples");
+  rmSync(examplesDest, { recursive: true, force: true });
+  cpSync(src, examplesDest, {
+    recursive: true,
+    dereference: true,
+    filter: (src) => basename(src) !== "node_modules",
+  });
 }
 
 /** `--stub` 模式的桩进程;`stubAgentPath()` 默认经 `process.cwd()` 解析。 */
@@ -487,7 +500,17 @@ export function packDist() {
   return { dist: DIST, hoistedCount: hoisted.size, assetCount, pruned };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// ★ 入口守卫必须经 realpath + pathToFileURL 归一后再比：`file://${process.argv[1]}` 在
+// Windows 上永远失配（import.meta.url 是 file:///C:/… 正斜杠，拼接出的是 file://C:\…），
+// 导致本脚本作为命令调用时 main() 不执行、dist/node_modules 全程为空——packDist 白白被 import。
+// 与 payload/unpack.mjs、bin/pi-web.mjs 的守卫同款写法。
+let packDistInvoked = "";
+try {
+  if (process.argv[1]) packDistInvoked = realpathSync(process.argv[1]);
+} catch {
+  packDistInvoked = process.argv[1] ?? "";
+}
+if (import.meta.url === pathToFileURL(packDistInvoked).href) {
   const { dist, hoistedCount, assetCount, pruned } = packDist();
   process.stdout.write(
     `[pack-dist] → ${dist} (hoist ${hoistedCount} 个运行时包, ${assetCount} 个运行时资源)\n`,

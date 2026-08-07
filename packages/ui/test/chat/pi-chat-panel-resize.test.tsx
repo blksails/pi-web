@@ -224,4 +224,56 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(document.querySelector("[data-pi-panel-ratio-switch]")).not.toBeNull();
     expect(document.querySelector("[data-pi-panel-resizer]")).toBeNull();
   });
+
+  it("容器收窄钳制只做临时视觉压缩、不写回宿主；恢复后回到受控宽度", () => {
+    const onChange = vi.fn();
+    const roCallbacks: ResizeObserverCallback[] = [];
+    class MockRO implements ResizeObserver {
+      readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        roCallbacks.push(callback);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): ResizeObserverEntry[] {
+        return [];
+      }
+    }
+    vi.stubGlobal("ResizeObserver", MockRO);
+    try {
+      render(
+        <PiChat
+          session={mockSession()}
+          extension={panelExt}
+          panelWidth={480}
+          onPanelWidthChange={onChange}
+          minPanelWidth={240}
+          maxPanelWidth={800}
+        />,
+      );
+      const tree = document.querySelector("[data-pi-chat-pro]") as HTMLElement;
+      const fireWidth = (width: number): void => {
+        vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+          right: width, left: 0, width, top: 0, bottom: 0, height: 0, x: 0, y: 0,
+          toJSON: () => ({}),
+        } as DOMRect);
+        act(() => {
+          for (const cb of roCallbacks) cb([], MockRO.prototype as ResizeObserver);
+        });
+        act(() => animationFrame?.(0));
+      };
+      // 窄容器(600):availableMax=420 → max=240 < 480 → 临时压到 240,不写回宿主。
+      fireWidth(600);
+      expect(aside().style.width).toBe("240px");
+      expect(onChange).not.toHaveBeenCalled();
+      // 容器恢复(1000):max=520 ≥ 480 → 解除压缩,回到受控 480,仍不写回。
+      fireWidth(1000);
+      expect(aside().style.width).toBe("480px");
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
