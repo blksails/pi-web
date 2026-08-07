@@ -162,6 +162,7 @@ import {
 import {
   applyProviderVisibility,
   createCustomProviderRegistry,
+  readCustomProviderEntries,
   readProviderVisibility,
 } from "@blksails/pi-web-server/host-assembly/custom-providers.js";
 // 图像模型静态目录(self + 网关)经 tool-kit **主入口**(零 pi SDK、零 env 读取,前端安全):
@@ -197,6 +198,11 @@ import {
   computeEgressSpawnEnvFromGrant,
   RUNNER_CREDENTIAL_ENV,
 } from "./auth-egress-assembly.js";
+// spec desktop-aigc-egress 任务 2.1/2.2:网关实例三源合并 + 按登录态惰性求值。
+import {
+  createGrantedGatewayRuntime,
+  toSessionSpawnInstances,
+} from "./gateway-grant-assembly.js";
 // 会话 token TTL 兜底(config.llmGateway 未配置时,ai-gateway token 生命周期仍需一个
 // 保守默认值——沿用 llm-gateway 同一常量,语义详见 llm-gateway-config.ts 注释)。
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "./llm-gateway-config.js";
@@ -679,26 +685,6 @@ function buildSingleton(): HandlerSingleton {
   //   逐实例给出。
   const aiGwConfig = resolveAiGatewayConfig(process.env);
 
-  // 多网关实例装配(spec multi-gateway-providers 任务 3.1/3.3/3.6,
-  // Req 1.1/1.2/1.3/1.5/1.6):`PI_WEB_GATEWAYS` 显式列出 → 按实例解析;仅有存量单实例
-  // 变量 → 合成一个标识沿用 `AI_GATEWAY_PROVIDER_NAME` 的缺省实例,行为与改造前逐字节
-  // 一致;都未配置 → 空数组(套件整体不注册)。每个实例各自持有独立的
-  // `GatewayModelCatalog`(独立目录快照 / TTL / fail-soft)与独立的
-  // `InstanceEnvKeyResolver`(独立凭据解析)——一个实例拉取失败或凭据缺失只影响其
-  // 自身,不牵连其余实例与本地模型(Req 1.5)。
-  const gatewayInstances = resolveGatewayInstances(process.env);
-  const gatewayEnabled = gatewayInstances.length > 0;
-  const gatewayCatalogs = createGatewayCatalogs(gatewayInstances);
-  // 目录服务 / 路由挂载表 / 本地会话 spawn env 三处消费方共用**同一份**按实例聚合的读数
-  // (design.md「三处目录装配点合一」):逐实例取其 `GatewayModelCatalog.get()` 快照后拼接,
-  // 与 `mergeModelCatalog`(任务 3.2)按 `entry.instanceId` 归属 provider 的语义配套。
-  const gatewayChatAggregate = gatewayEnabled
-    ? {
-        get: (): readonly GatewayModelEntry[] =>
-          gatewayInstances.flatMap((inst) => gatewayCatalogs.get(inst.id)?.get() ?? []),
-      }
-    : undefined;
-
   // desktop-cloud-login(任务 6.1,Req 3.1/4.2/7.3):云端登录 egress 装配期配置解析。未配
   // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
   // → fail-fast 抛出。进程内登录态由启动 env(桌面壳经 base_env 播种 PI_WEB_DESKTOP_CREDENTIAL)
@@ -712,6 +698,10 @@ function buildSingleton(): HandlerSingleton {
   // ★ 后两级都只对桌面壳生效:`<agentDir>` 默认 `~/.pi/agent/` 被桌面壳与 `pnpm dev`/npm CLI
   //   共用,桌面版登录写下的 cloud.json 曾因此让 dev 也撞上登录门禁(实测,见
   //   readDesktopScopedCloudEgressBase 的文件内说明)。env 显式值仍对所有宿主有效。
+  //
+  // ★ 声明位置:本段原在网关实例装配**之后**,spec desktop-aigc-egress 任务 2.2 上移至此 ——
+  //   网关实例的合并需要登录态(`authSessionState`)与启用判别(`cloudLoginConfig`),而那是
+  //   同步求值,不能引用尚未声明的绑定。
   const cloudLoginConfig = resolveCloudLoginConfig(
     process.env,
     readDesktopScopedCloudEgressBase(config.agentDir, process.env) ??
@@ -725,6 +715,52 @@ function buildSingleton(): HandlerSingleton {
       authSessionState.set(seededCredential);
     }
   }
+
+  // 多网关实例装配(spec multi-gateway-providers 任务 3.1/3.3/3.6,
+  // Req 1.1/1.2/1.3/1.5/1.6):`PI_WEB_GATEWAYS` 显式列出 → 按实例解析;仅有存量单实例
+  // 变量 → 合成一个标识沿用 `AI_GATEWAY_PROVIDER_NAME` 的缺省实例,行为与改造前逐字节
+  // 一致;都未配置 → 空数组(套件整体不注册)。每个实例各自持有独立的
+  // `GatewayModelCatalog`(独立目录快照 / TTL / fail-soft)与独立的
+  // `InstanceEnvKeyResolver`(独立凭据解析)——一个实例拉取失败或凭据缺失只影响其
+  // 自身,不牵连其余实例与本地模型(Req 1.5)。
+  const envGatewayInstances = resolveGatewayInstances(process.env);
+  const envGatewayCatalogs = createGatewayCatalogs(envGatewayInstances);
+  // spec desktop-aigc-egress 任务 2.2:实例来源由「只有 env」扩展为「env + 云端授予 +
+  // 使用者自填让位」,并且**惰性**求值 —— 登录态是运行期可变的(`AuthSessionState` 由鉴权
+  // 端点写),装配期算死会让登录后永远看不到云端模型、登出后也不失效(Req 4.3/8.4)。
+  // 未登录 / 无授予时 `current()` 退化为纯 env 结果,与本特性引入前逐元素相等(Req 1.2)。
+  //
+  // ★ 闭包引用的 `desktopCapabilitiesClient` 声明在下方:合法且必要 —— 这些取数只在请求期
+  //   /会话创建时执行,那时装配早已完成。`cachedStatic()` 是同步只读缓存,不打网络。
+  const grantedGatewayRuntime = createGrantedGatewayRuntime({
+    fromEnv: envGatewayInstances,
+    envCatalogs: envGatewayCatalogs,
+    getCredential: () => authSessionState.currentCredential(),
+    getGrant: () => desktopCapabilitiesClient?.cachedStatic()?.gateway,
+    getUserConfiguredIds: () =>
+      new Set(readCustomProviderEntries(config.agentDir).map((e) => e.id)),
+  });
+  const gatewayInstances = envGatewayInstances;
+  const gatewayEnabled = envGatewayInstances.length > 0;
+  const gatewayCatalogs = envGatewayCatalogs;
+  // 目录服务 / 路由挂载表 / 本地会话 spawn env 三处消费方共用**同一份**按实例聚合的读数
+  // (design.md「三处目录装配点合一」):逐实例取其 `GatewayModelCatalog.get()` 快照后拼接,
+  // 与 `mergeModelCatalog`(任务 3.2)按 `entry.instanceId` 归属 provider 的语义配套。
+  // ★ 判别项是「env 实例」或「云端授予可能存在」二者之一,而非只看 env(Req 3.1):
+  //   桌面装完即用的形态下 env 一个网关都没有,只在登录后才由授予产生实例。若沿用
+  //   `gatewayEnabled` 作判别,登录用户的目录里永远不会出现网关模型。
+  const gatewayChatAggregate =
+    gatewayEnabled || cloudLoginConfig !== undefined
+      ? {
+          get: (): readonly GatewayModelEntry[] => {
+            const view = grantedGatewayRuntime.current();
+            return view.instances.flatMap(
+              (inst) => view.catalogs.get(inst.id)?.get() ?? [],
+            );
+          },
+        }
+      : undefined;
+
   // 目录组装服务(spec model-catalog,design.md「ModelCatalogService」,任务 3.1,
   // Req 1.1/4.1/4.3/5.1–5.4):chat(merge + hidden 过滤)与 image(静态∪网关,附 source)
   // 的统一取数入口。**每请求构造**以保持 PI_WEB_HIDE_PROVIDERS 的既有请求期求值语义
@@ -1196,13 +1232,13 @@ function buildSingleton(): HandlerSingleton {
         // 凭据经 env 下发,与上面 `config.providerKeys` 同一信任边界、同一形态(design §D1)。
         // `catalog.get()` 是同步快照(stale-while-revalidate,不打网络),契合 spawn spec
         // 的同步构造路径。
+        // spec desktop-aigc-egress 任务 2.2:实例来源改经惰性视图,使**本次会话创建那一刻**
+        // 的登录态生效(Req 4.3)。凭据来源的二选一逻辑在 `toSessionSpawnInstances` 里
+        // (装配层只接线,判断留在可测纯函数)。
         ...computeAiGatewaySessionsSpawnEnv({
-          instances: gatewayInstances.map((inst) => ({
-            instanceId: inst.id,
-            baseUrl: inst.baseUrl,
-            apiKey: resolveGatewayInstanceApiKeySync(inst, process.env),
-            catalog: gatewayCatalogs.get(inst.id)?.get() ?? [],
-          })),
+          instances: toSessionSpawnInstances(grantedGatewayRuntime.current(), (inst) =>
+            resolveGatewayInstanceApiKeySync(inst, process.env),
+          ),
         }).env,
       },
     };

@@ -67,3 +67,13 @@ export {
   type GatewayInstanceConfig,
   type GatewayCatalogAggregatorDeps,
 } from "./instances.js";
+// spec desktop-aigc-egress 任务 1.3:云端授予 → 网关实例(与 env 来源同构,下游无从分辨)。
+export {
+  GRANTED_GATEWAY_INSTANCE_ID,
+  grantedGatewayInstance,
+  toBareGatewayBaseUrl,
+  type GrantedInstanceInput,
+  // 经本包重导出:根应用层(lib/)不直接依赖 `@blksails/pi-web-core`(package.json 无此
+  // 依赖,且此前零引用),那是刻意的包边界。装配层要用这个类型,就从它已依赖的 adapters 取。
+  type CapabilityGatewayGrant,
+} from "./granted-instances.js";

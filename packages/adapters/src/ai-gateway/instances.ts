@@ -45,7 +45,7 @@ import {
   parsePositiveIntOverride,
   parseProviderAllowlist,
 } from "./config.js";
-import { InstanceEnvKeyResolver } from "./key-resolver.js";
+import { InstanceEnvKeyResolver, type KeyResolver } from "./key-resolver.js";
 import type { GatewayCatalogLogger } from "./model-catalog.js";
 import { GatewayModelCatalog } from "./model-catalog.js";
 
@@ -358,9 +358,22 @@ export function createGatewayCatalogs(
   const env = deps.env ?? process.env;
   const catalogs = new Map<ProviderId, GatewayModelCatalog>();
   for (const instance of instances) {
-    const keyResolver = new InstanceEnvKeyResolver(instance.id, env, {
-      legacyFallback: instance.id === DEFAULT_GATEWAY_INSTANCE_ID,
-    });
+    // ★ 凭据来源二选一(spec desktop-aigc-egress 任务 5.2 修复轮)。
+    //
+    // 实例自身带凭据(云端授予来源,值是桌面凭据)→ 直接用;否则才回 env 解析(env 来源
+    // 实例的既有路径)。
+    //
+    // 这一环起初漏了,后果是**目录恒为空**:授予实例的凭据从来不在 env 里,
+    // `InstanceEnvKeyResolver` 必然解析不出,目录拉取因无凭据而失败 —— 于是登录了、
+    // 实例也合成了,模型目录里却一个网关模型都没有。
+    // ⚠ 单测抓不到它:那一层用的是桩 catalog,压根不会真去拉。是 e2e(真 server + 可达
+    //   假 cloud)把它逼出来的。
+    const keyResolver: KeyResolver =
+      instance.apiKey.length > 0
+        ? { resolve: async () => instance.apiKey }
+        : new InstanceEnvKeyResolver(instance.id, env, {
+            legacyFallback: instance.id === DEFAULT_GATEWAY_INSTANCE_ID,
+          });
     catalogs.set(
       instance.id,
       new GatewayModelCatalog({
@@ -368,7 +381,15 @@ export function createGatewayCatalogs(
         ttlMs: instance.ttlMs,
         instanceId: instance.id,
         keyResolver,
-        allowedOwners: instance.allowedOwners,
+        // ★ 空集 = 「不按归属过滤」的哨兵(spec desktop-aigc-egress 任务 1.3)。
+        //
+        // `filterByOwner` 对 `undefined` 放行全部,对**空集则全部滤除** —— 两者语义相反。
+        // env 来源永远走 `parseProviderAllowlist`,而它对空白必回落默认白名单、**永不产出
+        // 空集**,故空集在 env 路径上是不可达值,可以安全地借用为哨兵:既有行为逐字节不变。
+        //
+        // 需要它的是**云端授予**来源的实例:该出口暴露哪些上游归属由网关按账号可见性决定,
+        // 本地无从预知,二次收窄只会把目录滤成空。
+        ...(instance.allowedOwners.size > 0 ? { allowedOwners: instance.allowedOwners } : {}),
         // 模型 id 精选(任务:cloudflare 目录过大时只暴露认可的型号);未配置 = undefined = 不精选。
         ...(instance.allowedModelIds !== undefined
           ? { allowedModelIds: instance.allowedModelIds }

@@ -104,7 +104,7 @@ export async function runEndpoint(
   if (!behavior.async) {
     onProgress?.("submitting" as RunStage);
     const startedAt = Date.now();
-    const response = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal);
+    const response = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal, behavior.mapTransportError);
     log.debug("sync request returned", { url, ms: Date.now() - startedAt });
     const errMsg = behavior.detectError?.(response);
     if (errMsg) throw new Error(errMsg);
@@ -115,7 +115,7 @@ export async function runEndpoint(
   // ── (c) Async submit + poll ──────────────────────────────────────────────
   onProgress?.("submitting" as RunStage);
   const asyncStartedAt = Date.now();
-  const submit = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal);
+  const submit = await callOnce(url, resolvedHeaders, body, behavior.method ?? "POST", effectiveFetch, signal, behavior.mapTransportError);
 
   // submit 即错(HTTP 200 带业务 error,如配额/鉴权失败)→ 立即暴露可读错误,避免对
   // undefined task_id 做无意义轮询、最终以误导性 "timed out" 收场(Req 1.6)。
@@ -324,6 +324,11 @@ async function callOnce(
   method: string,
   fetchFn: typeof fetch,
   signal?: AbortSignal,
+  /**
+   * 传输层失败(非 2xx)的可读化映射(spec desktop-aigc-egress 任务 4.1)。
+   * 可选,缺省时错误文案与本参数引入前逐字节一致。
+   */
+  mapTransportError?: EndpointBehavior["mapTransportError"],
 ): Promise<unknown> {
   // FormData: strip content-type and let the runtime set the multipart boundary.
   const isForm = typeof FormData !== "undefined" && body instanceof FormData;
@@ -349,6 +354,10 @@ async function callOnce(
 
   if (!r.ok) {
     const text = await r.text().catch(() => "");
+    // 传输层失败的可读化(spec desktop-aigc-egress 任务 4.1,Req 7.1/7.2)。未提供映射或
+    // 映射返回 undefined → 沿用原文案,既有行为逐字节不变。
+    const mapped = mapTransportError?.({ status: r.status, url, body: text });
+    if (mapped !== undefined) throw new Error(mapped);
     throw new Error(`${url}: ${r.status} ${text}`);
   }
 

@@ -479,3 +479,35 @@ describe("成因可判别(spec ai-gateway-catalog-coldstart,Req 4.1/4.2)", () =>
     expect(JSON.stringify(c.lines)).not.toContain("sk-super-secret-token");
   });
 });
+
+describe("图像模型清单下发(spec desktop-aigc-egress 任务 3.1)", () => {
+  const base = {
+    instanceId: "blksails-cloud",
+    baseUrl: "https://c.example/api/desktop/egress",
+    apiKey: "desk.cred",
+    catalog: [],
+  };
+
+  it("★ 未声明 → 不下发 IMAGE_MODELS 键(消费方据此回退内置白名单)", () => {
+    const r = computeAiGatewaySessionsSpawnEnv({ instances: [base] });
+    const key = Object.keys(r.env).find((k) => k.endsWith("IMAGE_MODELS"));
+    expect(key).toBeUndefined();
+  });
+
+  it("★ 空数组 → 仍下发(与未声明可分辨),判据是 !== undefined 而非 length > 0", () => {
+    const r = computeAiGatewaySessionsSpawnEnv({
+      instances: [{ ...base, imageModelIds: [] }],
+    });
+    const key = Object.keys(r.env).find((k) => k.endsWith("IMAGE_MODELS"));
+    expect(key).toBeDefined();
+    expect(r.env[key!]).toBe("[]");
+  });
+
+  it("清单原样序列化下发", () => {
+    const r = computeAiGatewaySessionsSpawnEnv({
+      instances: [{ ...base, imageModelIds: ["gpt-image-2"] }],
+    });
+    const key = Object.keys(r.env).find((k) => k.endsWith("IMAGE_MODELS"))!;
+    expect(JSON.parse(r.env[key]!)).toEqual(["gpt-image-2"]);
+  });
+});

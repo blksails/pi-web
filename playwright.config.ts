@@ -268,7 +268,7 @@ export default defineConfig({
       //    (PI_WEB_STUB_AGENT_PATH → model-catalog-stub-agent.mjs)驱动会话侧真实模型源
       //    合成 —— fs server 用默认 stub(写死 AVAILABLE_MODELS,与 providers.json 解耦),
       //    断言必然落空。
-      testIgnore: /(agent-plugin-commands|publish-command|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources|multi-gateway-instances|custom-provider-session-selector)\.e2e\.ts/,
+      testIgnore: /(agent-plugin-commands|publish-command|attachment-tool-bridge|desktop-cloud-login|registry-agent-sources|desktop-aigc-egress|multi-gateway-instances|custom-provider-session-selector)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_FS}`,
@@ -314,7 +314,8 @@ export default defineConfig({
     {
       // registry agent 源(spec agent-plugin-commands 任务 4.4):真实可达的假 cloud + registry。
       name: "registry",
-      testMatch: /registry-agent-sources\.e2e\.ts/,
+      // desktop-aigc-egress(任务 5.2)复用本档:它需要的正是"登录启用 + 可达假 cloud"。
+      testMatch: /(registry-agent-sources|desktop-aigc-egress)\.e2e\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         baseURL: `http://127.0.0.1:${PORT_REGISTRY}`,

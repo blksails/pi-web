@@ -46,6 +46,15 @@ export const RUNNER_AI_GATEWAY_BASE_ENV = "PI_WEB_AI_GATEWAY_SESSION_BASE";
 export const RUNNER_AI_GATEWAY_KEY_ENV = "PI_WEB_AI_GATEWAY_SESSION_KEY";
 /** runner 侧读取的模型 id 清单 env(JSON 字符串数组)。跨进程契约。 */
 export const RUNNER_AI_GATEWAY_MODELS_ENV = "PI_WEB_AI_GATEWAY_SESSION_MODELS";
+/**
+ * 图像模型清单 env(spec desktop-aigc-egress 任务 3.1)。
+ *
+ * 与 {@link RUNNER_AI_GATEWAY_MODELS_ENV} 并列而非复用:两者是不同集合(对话 / 图像),
+ * 来源不同(网关目录 / 云端授予),且**缺席的含义不同** —— 对话清单缺席表示"还没拉到,
+ * 稍后补齐",图像清单缺席表示"云端未声明,回退内置白名单"。
+ */
+export const RUNNER_AI_GATEWAY_IMAGE_MODELS_ENV =
+  "PI_WEB_AI_GATEWAY_SESSION_IMAGE_MODELS";
 
 /**
  * 列出全部会话侧网关实例标识(逗号分隔,即各自的 `providerName`)的 env
@@ -163,6 +172,18 @@ export interface AiGatewaySessionSpec {
    * 不成立,**共享 `ModelRegistry` 根本不会被构造**,事后拿到清单也无处注册。
    */
   readonly pendingCatalog: boolean;
+  /**
+   * 该实例可用的**图像**模型 id 清单(spec desktop-aigc-egress 任务 3.1)。
+   *
+   * 与 {@link modelIds}(对话模型)是**两个独立集合**,来源也不同:对话清单来自网关
+   * `/v1/models` 目录,图像清单来自云端授予的显式声明。二者不可互相推导 —— 一个账号
+   * 能用某个对话模型,不代表能用任何图像模型。
+   *
+   * `undefined` = 云端未声明 → 消费方回退内置图像白名单(与本特性引入前一致);
+   * 空数组 = 明确声明"一个都没有"。这个区别一路从 `CapabilityGatewayGrant.imageModels`
+   * 保持到这里,归一掉就会让"云端还没支持"伪装成"账号没开通"(Req 4.2)。
+   */
+  readonly imageModelIds?: readonly string[];
 }
 
 /** 最小日志出口(测试可注入以断言可观测性且不泄露凭据)。 */
@@ -209,6 +230,7 @@ function resolveSpecFromEnvNames(
   baseEnvName: string,
   keyEnvName: string,
   modelsEnvName: string,
+  imageModelsEnvName?: string,
 ): AiGatewaySessionSpec | undefined {
   const baseUrl = env[baseEnvName]?.trim();
   const apiKey = env[keyEnvName]?.trim();
@@ -220,11 +242,19 @@ function resolveSpecFromEnvNames(
     rawModels === undefined || rawModels.length === 0 ? undefined : parseModelIds(rawModels);
   const resolved = modelIds !== undefined && modelIds.length > 0 ? modelIds : undefined;
 
+  // 图像清单(spec desktop-aigc-egress 任务 3.1)。★ 与对话清单的处理**刻意不同**:
+  // 这里空数组要保留(云端明确声明"没有"),只有 env 键**未出现**才算未声明。对话清单那侧
+  // 把空当作 pendingCatalog,是因为它由目录拉取补齐;图像清单没有补齐路径,归一会丢信息。
+  const rawImage = imageModelsEnvName === undefined ? undefined : env[imageModelsEnvName];
+  const imageModelIds =
+    rawImage === undefined ? undefined : parseModelIds(rawImage.trim()) ?? [];
+
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     apiKey,
     modelIds: resolved ?? [],
     pendingCatalog: resolved === undefined,
+    ...(imageModelIds !== undefined ? { imageModelIds } : {}),
   };
 }
 
@@ -242,6 +272,7 @@ export function resolveAiGatewaySessionSpecFromEnv(
     RUNNER_AI_GATEWAY_BASE_ENV,
     RUNNER_AI_GATEWAY_KEY_ENV,
     RUNNER_AI_GATEWAY_MODELS_ENV,
+    RUNNER_AI_GATEWAY_IMAGE_MODELS_ENV,
   );
 }
 
@@ -303,6 +334,8 @@ export function resolveAiGatewaySessionSpecsFromEnv(
       `${prefix}BASE`,
       `${prefix}KEY`,
       `${prefix}MODELS`,
+      // 图像清单(spec desktop-aigc-egress 任务 3.1):可选,缺席不影响该实例启用。
+      `${prefix}IMAGE_MODELS`,
     );
     if (spec !== undefined) entries.push({ providerName: id, spec });
   }

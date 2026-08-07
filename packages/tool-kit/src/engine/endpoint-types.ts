@@ -106,6 +106,24 @@ export interface EndpointBehavior {
   pickResult?: (response: unknown) => PickedResult;
   /** 从响应检测业务错误,返回可读错误信息(命中即视为失败)。 */
   detectError?: (response: unknown) => string | undefined;
+  /**
+   * 把**传输层失败**(非 2xx)翻译成面向使用者的可读原因
+   * (spec desktop-aigc-egress 任务 4.1,Req 7.1/7.2)。
+   *
+   * 与 {@link detectError} 的分工:后者只在 **HTTP 200 带业务 error 体**时被调用,够不着
+   * 401/403/429 这类响应 —— 而"凭据过期"恰恰走的是 401。缺了本钩子,使用者看到的只有
+   * `<url>: 401 {...}`,无从知道该去重新登录还是该等配额恢复。
+   *
+   * 返回 `undefined` → 沿用默认错误文案(既有行为逐字节不变)。
+   *
+   * ⚠ 实现**不得**把凭据、token 或响应头写进返回文案 —— 它会直接进入会话流展示给使用者。
+   */
+  mapTransportError?: (info: {
+    readonly status: number;
+    readonly url: string;
+    /** 上游响应体文本(可能为空)。 */
+    readonly body: string;
+  }) => string | undefined;
   /** 异步轮询声明;省略则为同步单次请求。 */
   async?: AsyncSpec;
   /**

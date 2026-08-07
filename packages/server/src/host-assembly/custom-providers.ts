@@ -64,7 +64,12 @@ export function createCustomProviderRegistry(
  * `readProviderVisibility` 走 `fs`(属本装配层允许的 IO);`applyProviderVisibility`
  * 是纯函数,一并从此处转出以免调用方拆成两个 import 源。
  */
-export { readProviderVisibility } from "@blksails/pi-web-core/model-catalog/custom-provider-source.js";
+export {
+  readProviderVisibility,
+  // spec desktop-aigc-egress 任务 2.2:装配层需要「使用者自填了哪些 provider 标识」来决定
+  // 网关实例合并时谁让位(Req 6.1)。同样走 fs,同样只能经本装配层转出。
+  readCustomProviderEntries,
+} from "@blksails/pi-web-core/model-catalog/custom-provider-source.js";
 export {
   applyProviderVisibility,
   type ProviderVisibilityConfig,
