@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    // 定时器 + MessageChannel 的类型来自 DOM lib(而非 @types/node),以保持零 devDependency
+    // 之外的类型依赖;代码本身用 `ReturnType<typeof setTimeout>`,故 node 下同样成立。
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["src"]
+}
