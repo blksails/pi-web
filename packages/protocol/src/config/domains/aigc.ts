@@ -9,6 +9,10 @@
  *    自动写回(见 tool-kit `vision/model-preference.ts`)。它与 disabledModels 的
  *    「只读装配期配置」性质不同 —— 修改它的代码路径有两条,别按单向配置理解。
  *  - enablePromptOptimization: 是否开启工具提示词优化(默认关;本期接缝为无改写占位)。
+ *
+ * Cloudflare 图像通路凭据不在此配置:由平台预置 env
+ * `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_AIG_GATEWAY_ID` / `CLOUDFLARE_API_TOKEN`,
+ * 设置面板不再提供这三项输入(旧版经本域落盘的键仍兼容读取,见 tool-kit runtime 回落)。
  */
 import { z } from "zod";
 import { zodToFormSchema } from "../zod-to-form-schema.js";
