@@ -11,13 +11,12 @@
  *
  * 运行:`node --import jiti/register scripts/build-webext-examples.ts`
  */
+import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildWebExtension } from "@blksails/pi-web-kit/build";
 import { runBuild } from "../server/cli/build/index.js";
 import { createProgressReporter } from "../server/cli/reporter.js";
-// jiti 解析：仓库里只有 build.ts；写 build.js 在 CI/Linux 上会 MODULE_NOT_FOUND。
-import { buildAigcAgent } from "../examples/aigc-agent/build.ts";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -107,8 +106,18 @@ async function main(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[built] ${example.dirName} → 经 runBuild 编排`);
   }
-  const aigcAgent = await buildAigcAgent();
-  console.log(`[built] aigc-agent → ${aigcAgent.entryOut} (含视频工作室 pane/隔离产物)`);
+  // aigc-agent 是独立业务仓,根 .gitignore 排除 `/examples/aigc-agent/`。
+  // 干净检出 / CI 无此目录;本地有源码时再动态 import 构建。
+  const aigcBuildTs = resolve(REPO_ROOT, "examples/aigc-agent/build.ts");
+  if (existsSync(aigcBuildTs)) {
+    const { buildAigcAgent } = await import("../examples/aigc-agent/build.ts");
+    const aigcAgent = await buildAigcAgent();
+    // eslint-disable-next-line no-console
+    console.log(`[built] aigc-agent → ${aigcAgent.entryOut} (含视频工作室 pane/隔离产物)`);
+  } else {
+    // eslint-disable-next-line no-console
+    console.log("[skip] aigc-agent (not in tree; gitignored local business agent)");
+  }
 }
 
 void main().catch((err: unknown) => {
