@@ -18,8 +18,6 @@ import backgroundExt from "../../examples/webext-background-agent/.pi/web/web.co
 // 集成车道，只服务同源宿主；若经分派器，打包器会把隔离产物（单个示例即 500KB+，六个
 // 示例合计 2MB+）一并拖进 jsdom 测试环境，实测直接 V8 OOM、worker 被杀，且该文件会从
 // vitest 汇总里**静默消失**（既不计 passed 也不计 failed）。
-//
-import aigcExt from "../../examples/aigc-agent/.pi/web/dist/web-extension.external.mjs";
 import aigcCanvasExt from "../../examples/aigc-canvas-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import panesExt from "../../examples/panes-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import aigcCanvasNoSurfaceExt from "../../examples/aigc-canvas-nosurface-agent/.pi/web/dist/web-extension.same-origin.mjs";
@@ -28,6 +26,14 @@ import loggingDemoExt from "../../examples/logging-demo-agent/.pi/web/web.config
 import stateBridgeExt from "../../examples/state-bridge-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import surfaceDemoExt from "../../examples/surface-demo-agent/.pi/web/dist/web-extension.same-origin.mjs";
 import codeReviewExt from "../../examples/plugin-code-review-agent/.pi/web/web.config";
+
+// aigc-agent 为 gitignored 独立业务仓：干净检出/CI 无源码与 dist。用 glob 可选装载，
+// 本地有产物时注册；CI 跳过，避免硬 import 拖垮 build:dist。
+const aigcExtModules = import.meta.glob<{ default: WebExtension }>(
+  "../../examples/aigc-agent/.pi/web/dist/web-extension.external.mjs",
+  { eager: true },
+);
+const aigcExt = Object.values(aigcExtModules)[0]?.default;
 
 // 纯声明式扩展(零代码):仅靠 config 让宿主把可见效果应用上身。与
 // examples/webext-declarative-agent/.pi/web/manifest.json 保持一致(此处是构建期集成
@@ -80,7 +86,7 @@ const DECLARATIVE: WebExtension = {
 };
 
 const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
-  { match: "aigc-agent", ext: aigcExt },
+  ...(aigcExt !== undefined ? [{ match: "aigc-agent", ext: aigcExt }] : []),
   { match: "webext-layout-agent", ext: layoutExt },
   // webext-slots-agent 同时演示 Tier1 全槽 + Tier5 声明式空态配置(config.empty)。
   { match: "webext-slots-agent", ext: slotsExt },

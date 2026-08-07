@@ -407,12 +407,13 @@ function buildRunTaskIntent(parsed) {
  * 返回一个以 `intent` 为判别字段的联合:`run`(选项扁平展开,与引入本特性前完全一致)、
  * `help`(可带 `subcommand`)、`version`、`subcommand`(携带**未解析的原始 argv 切片**)。
  *
- * ★ 刻意不写精确的 `@returns` 联合类型:`bin/` 不在 tsconfig 的 include 内,本模块对
- * `test/**` 呈现为 `any`。一旦标注精确联合,既有 26 项 `cli-args.test.ts` 断言就必须
- * 先 narrow 才能访问 `.source`/`.port`,即强制改动那些断言 —— 而「既有测试零改动且仍
- * 通过」正是需求 1.1「逐字节一致」的证据本身。实测标注后 tsc 新增 14 处错误。
+ * ★ 刻意不写精确的判别联合:`bin/` 不在 tsconfig 的 include 内,且 `allowJs` 会对
+ * 多分支 return 做结构推断;若让 `intent` 宽成 `string` 或写出精确联合,既有
+ * `cli-*.test.ts` 在未 narrow 时访问 `.source`/`.name`/`.prompt` 就会炸 —— 而
+ * 「既有测试零改动且仍通过」正是需求 1.1 的证据本身。故显式 `@returns {any}`。
  *
  * @param {readonly string[]} argv  process.argv.slice(2)
+ * @returns {any}
  */
 export function parseCliArgs(argv) {
   const first = argv[0];
