@@ -197,6 +197,10 @@ function packRuntimeDeps() {
       }
 
       if (hoisted.has(name)) continue;
+      // pnpm 给**未安装的 optional 平台包**留下断符号链接(如 `@esbuild/<非本平台>`:
+      // 25 个链接只有本平台那个有实体)。`dereference:true` 的拷贝会先 stat 目标 → ENOENT。
+      // 断链既拷不了也不该占住 `hoisted`(否则同名活链会被误跳)。
+      if (!existsSync(src)) continue;
       hoisted.add(name);
       const dest = join(DIST_NM, ...name.split("/"));
       mkdirSync(dirname(dest), { recursive: true });
