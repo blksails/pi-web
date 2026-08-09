@@ -1,8 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { PANE_PROTOCOL_VERSION, connectPaneGuest } from "../src/index.js";
 import { FakeGuestWindow } from "./conformance/fake-guest-window.js";
 
 describe("connectPaneGuest", () => {
+  it("allows slow desktop host startup beyond the legacy 15s window", async () => {
+    vi.useFakeTimers();
+    try {
+      const guestWindow = new FakeGuestWindow();
+      const pending = connectPaneGuest({
+        expectedPaneId: "search",
+        window: guestWindow.asWindow(),
+      });
+      vi.advanceTimersByTime(15_001);
+
+      const channel = new MessageChannel();
+      guestWindow.postMessage({
+        type: "pane:connected",
+        protocol: PANE_PROTOCOL_VERSION,
+        instance: { instanceId: "search-slow-start", paneId: "search", epoch: 1 },
+        grants: {
+          routes: [],
+          surfaceCommands: [],
+          surfaceKeys: [],
+          events: { publish: [], subscribe: [] },
+          attachments: "none",
+          conversation: "none",
+        },
+        interactionMode: "standard",
+      }, "*", [channel.port2]);
+
+      await expect(pending).resolves.toMatchObject({ instanceId: "search-slow-start" });
+      channel.port1.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("Host 漏掉首条 ready 时会重发并完成唯一握手", async () => {
     const guestWindow = new FakeGuestWindow();
     const channel = new MessageChannel();
