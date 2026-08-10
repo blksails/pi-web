@@ -187,7 +187,7 @@ export function productionCsp(): string {
     "style-src 'self' 'unsafe-inline'",
     "connect-src 'self'",
     // artifact:独立 origin sandbox iframe(srcdoc/blob)
-    "frame-src 'self' blob: data:",
+    "frame-src 'self' blob: data: https://open.weixin.qq.com https://pi-cloud.apps.blksails.cn",
     "img-src 'self' data: blob:",
     "object-src 'none'",
     "base-uri 'self'",
