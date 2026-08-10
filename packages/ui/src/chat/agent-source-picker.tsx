@@ -7,6 +7,7 @@ import type {
   ListAgentSourcesResponse,
 } from "@blksails/pi-web-protocol";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog.js";
+import { useChatColumnBox } from "../ui/chat-centered-overlay.js";
 import { useI18n } from "../i18n/index.js";
 
 /**
@@ -165,6 +166,13 @@ export function AgentSourcePicker({
   onBrowseDirectory,
 }: AgentSourcePickerProps): React.JSX.Element {
   const t = useI18n();
+  // 会话内 dialog 悬浮于 chat 列:宽不超 chat 列(遮罩 p-4 内缩),自适应收缩。
+  // chat 列几何由 useChatColumnBox 随 resize/滚动/右栏开合订阅更新;page 形态不使用。
+  const chatBox = useChatColumnBox();
+  const dialogMaxWidth =
+    chatBox !== null && chatBox.width > 0
+      ? `min(720px, 92vw, ${Math.max(0, Math.floor(chatBox.width - 32))}px)`
+      : "min(720px, 92vw)";
   const dialogTitle = dialogTitleProp ?? t("agentSourcePicker.dialogTitle");
   const [value, setValue] = React.useState<string>(defaultSource ?? "");
   // desktop-directory-picker:仅在等待原生对话框期间禁用「浏览」按钮自身(防重入),
@@ -458,7 +466,8 @@ export function AgentSourcePicker({
         <DialogContent
           data-agent-source-picker
           data-agent-source-dialog
-          className="max-h-[90vh] w-[720px] !max-w-[92vw] gap-0 overflow-auto rounded-[12px] border border-[hsl(var(--foreground))] bg-[hsl(var(--surface))] p-4 shadow-[8px_8px_0_hsl(var(--foreground))]"
+          className="max-h-[90vh] w-[720px] gap-0 overflow-auto rounded-[12px] border border-[hsl(var(--foreground))] bg-[hsl(var(--surface))] p-4 shadow-[8px_8px_0_hsl(var(--foreground))]"
+          style={{ maxWidth: dialogMaxWidth }}
         >
           {/* inner 自带可见的卡片与标题;此处提供无障碍所需的对话框标题(视觉隐藏)。 */}
           <DialogHeader className="sr-only">

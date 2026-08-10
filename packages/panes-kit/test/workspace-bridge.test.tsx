@@ -96,7 +96,7 @@ describe("PanesHost workspace bridge", () => {
       expect(report.instances).toHaveLength(2);
     });
 
-    // close by paneId → park（收进更多），不销毁实例。
+    // close by paneId → 真关闭（销毁实例），不再 park。
     act(() => fake.push({
       revision: 3,
       ops: [
@@ -104,8 +104,12 @@ describe("PanesHost workspace bridge", () => {
         { opId: 7, type: "close", paneId: "editor" },
       ],
     }));
-    expect(view.container.querySelectorAll("iframe")).toHaveLength(2);
-    await waitFor(() => expect(lastReport(fake.runs).appliedOpId).toBe(7));
+    expect(view.container.querySelectorAll("iframe")).toHaveLength(1);
+    await waitFor(() => {
+      const report = lastReport(fake.runs);
+      expect(report.appliedOpId).toBe(7);
+      expect(report.instances).toHaveLength(1);
+    });
   });
 
   it("re-baselines when opIds regress (agent restart) instead of replaying stale state", async () => {

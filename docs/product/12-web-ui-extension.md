@@ -386,7 +386,6 @@ export NEXT_PUBLIC_PI_EXTENSION_BASE_URL=http://localhost:5173
 | `panelRatio` | `"centered"` \| `"2:1"` \| `"4:6"` \| `"3:7"` | 右侧面板初始比例，使用离散比例切换器（需配合 `slots.panelRight`） |
 | `panelWidth` | 240–4096 的整数 | 右侧面板初始像素宽度；存在即启用宿主受控的连续拖拽模式 |
 | `minPanelWidth` | 160–4096 的整数 | 连续拖拽最小宽度；必须与 `panelWidth` 同时声明 |
-| `maxPanelWidth` | 240–8192 的整数 | 连续拖拽最大宽度；必须与 `panelWidth` 同时声明 |
 | `theme` | `Record<string, string>` | CSS 变量覆盖（宿主 token 前缀） |
 | `empty.title/subtitle` | string | 空态屏文案 |
 | `empty.starters` | array | 建议项列表 |

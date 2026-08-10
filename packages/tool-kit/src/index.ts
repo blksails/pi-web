@@ -40,7 +40,19 @@ export {
 export {
   isCloudflareConfigured,
   CLOUDFLARE_REQUIRED_ENV,
+  CLOUDFLARE_AIGC_JSON_KEYS,
+  cloudflareEnvFromAigcConfig,
+  mergeCloudflareRuntimeEnv,
 } from "./aigc/providers/cloudflare.js";
+// 运行时 re-read aigc.json → CLOUDFLARE_* bag(release 桌面无 .env.local)。
+export {
+  readAigcConfigFile,
+  resolveCloudflareRuntimeEnv,
+  cloudflareSpawnEnvFragment,
+  isCloudflareConfiguredAtRuntime,
+  type ResolveCloudflareRuntimeEnvOptions,
+  type ReadFileSync,
+} from "./aigc/cloudflare-runtime.js";
 
 // 网关实例(图像侧)的跨进程契约解析(spec desktop-aigc-egress 任务 3.2)。
 // 从**主入口**转出是刻意的:本模块不在顶层读 `process.env`(env 一律由入参传入),

@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 /**
  * Local ambient override for the app's type program only.
  *

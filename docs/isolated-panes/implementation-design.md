@@ -167,7 +167,6 @@ WebExt 通用配置：
 config: {
   panelWidth: 760,
   minPanelWidth: 420,
-  maxPanelWidth: 1280,
 }
 ```
 

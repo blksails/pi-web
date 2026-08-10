@@ -18,7 +18,7 @@ import {
   AI_GATEWAY_IMAGE_EDIT_ROUTES,
   CLOUDFLARE_IMAGE_EDIT_ROUTES,
 } from "./tools/image-edit.js";
-import { isCloudflareConfigured } from "./providers/cloudflare.js";
+import { isCloudflareConfiguredAtRuntime } from "./cloudflare-runtime.js";
 // 网关实例的图像路由(spec desktop-aigc-egress 任务 3.3/3.5)。本模块属 runtime 层,
 // 允许读 env;被调的两个模块自身都不读 env(实例信息经入参传入),故不破坏双入口边界。
 import { resolveGatewayImageInstances } from "./gateway-instances.js";
@@ -192,7 +192,8 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
   // 判据来自 providers/cloudflare.ts 的单一事实源 —— 宿主侧 `/aigc/models` 目录装配
   // (lib/app/pi-handler.ts)用的是同一个函数,避免两处漂移导致「设置页列得出但工具里
   // 选不到」的错位。
-  const cloudflareEnabled = isCloudflareConfigured(process.env);
+  // release 桌面无 .env.local:凭据在 `<agentDir>/aigc.json`,每次装配 re-read。
+  // 与宿主 /aigc/models 共用 isCloudflareConfiguredAtRuntime 语义。
   // 网关实例路由(spec desktop-aigc-egress 任务 3.5,Req 2.1/2.2)。
   //
   // ★ 与上面 `aiGatewayEnabled` 那条**并存而非替代**:后者是存量的单实例 env 形态
@@ -201,6 +202,7 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
   //   会话的登录态下发,桌面装完即用的形态下正是靠它才有图像模型。
   //   两者同时存在时路由键不撞(非缺省实例带 `-<instanceId>` 后缀),故可安全叠加。
   //   零实例 → 两个数组皆空,行为与本 spec 引入前逐字节一致(Req 1.2)。
+  const cloudflareEnabled = isCloudflareConfiguredAtRuntime({ env: process.env });
   const gatewayInstanceRoutes = createGatewayImageRoutesForAll(
     resolveGatewayImageInstances(process.env),
   );

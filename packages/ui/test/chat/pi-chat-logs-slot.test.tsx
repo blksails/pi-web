@@ -19,7 +19,7 @@ describe("PiChat logs slot isolation", () => {
         }}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "新开 Pane" }));
+    await user.click(screen.getByRole("button", { name: "打开一个 Pane" }));
     await user.click(screen.getByRole("button", { name: /日志/ }));
     expect(container.querySelector("[data-testid=ext-logs-slot]")).toBeNull();
     expect(container.querySelector('iframe[title="日志"]')).not.toBeNull();

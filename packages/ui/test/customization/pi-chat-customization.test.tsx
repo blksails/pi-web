@@ -174,7 +174,7 @@ describe("向后兼容回归 (Req 1.1/10.5)", () => {
     expect(document.querySelector("[data-pi-chat-pro]")).not.toBeNull();
     expect(
       document.querySelector("[data-pi-chat-messages]")?.className,
-    ).toContain("max-w-3xl");
+    ).toContain("max-w-5xl");
     expect(screen.getByLabelText("发送")).toBeInTheDocument();
   });
 });

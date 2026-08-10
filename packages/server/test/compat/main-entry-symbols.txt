@@ -91,6 +91,7 @@ WorkspaceKeyError
 WorkspaceLimitError
 WorkspaceSessionMetaIndex
 applyFormToSettings
+applyProviderVisibility
 applyTrust
 assemble
 assertHostContractVersion
@@ -103,6 +104,8 @@ buildBackends
 buildRegistry
 checkVersion
 compareAgentSourceRecords
+collectAttachmentIdsFromText
+collectOrderedAttachmentIds
 compileGlobs
 composeCapabilities
 computePassthroughEnv
@@ -158,6 +161,7 @@ deriveCachePath
 encodeEndFrame
 encodeFrame
 encodeHeartbeat
+filterVisibleModels
 ensureGitSource
 errorResponse
 formatOnlineSourceRef
@@ -171,6 +175,7 @@ isOnlineSourceRef
 isSecretMask
 isSourceKey
 isValidSourceId
+isVisibilityEmpty
 jsonResponse
 makeAfterToolCall
 makeBashHandler
@@ -181,7 +186,10 @@ makeStoredEntryNormalizer
 makeUploadAttachmentHandler
 mapEngineError
 maskSecrets
+materializeAttachmentImages
+materializePromptImages
 mergeCompletions
+mergePromptImages
 mergeSecrets
 mintAttachmentId
 mirrorSessionManagerToStore

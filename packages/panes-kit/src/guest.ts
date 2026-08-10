@@ -12,6 +12,11 @@ import { PANE_PROTOCOL_VERSION } from "./protocol-version.js";
 import { PaneHostError } from "./errors.js";
 import { installGlobalTauriPaneBootstrap } from "./adapters/tauri-runtime.js";
 
+// Desktop child WebViews can start after the agent runner has finished booting.
+// Keep this aligned with the host's native WebView readiness budget.
+const DEFAULT_PANE_HANDSHAKE_TIMEOUT_MS = 30_000;
+const DEFAULT_PANE_REQUEST_TIMEOUT_MS = 15_000;
+
 interface PendingCall {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -307,6 +312,8 @@ export function connectPaneGuest(options: {
   readonly signal?: AbortSignal;
 }): Promise<PaneGuestConnection> {
   const guestWindow = options.window ?? globalThis.window;
+  const handshakeTimeoutMs = options.timeoutMs ?? DEFAULT_PANE_HANDSHAKE_TIMEOUT_MS;
+  const requestTimeoutMs = options.timeoutMs ?? DEFAULT_PANE_REQUEST_TIMEOUT_MS;
   installGlobalTauriPaneBootstrap(guestWindow);
   return new Promise((resolve, reject) => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -338,7 +345,7 @@ export function connectPaneGuest(options: {
         return;
       }
       settleFirst();
-      handle = createConnection(data as PaneConnectedMessage, port, options.timeoutMs ?? 15_000);
+      handle = createConnection(data as PaneConnectedMessage, port, requestTimeoutMs);
       resolve(handle.connection);
     };
     if (options.signal?.aborted === true) {
@@ -348,7 +355,7 @@ export function connectPaneGuest(options: {
     timeout = setTimeout(() => {
       cleanup();
       reject(new PaneHostError("HOST_UNAVAILABLE", "Pane host handshake timed out", { retryable: true }));
-    }, options.timeoutMs ?? 15_000);
+    }, handshakeTimeoutMs);
     options.signal?.addEventListener("abort", onAbort, { once: true });
     guestWindow.addEventListener("message", onConnect);
     const announceReady = (): void => {

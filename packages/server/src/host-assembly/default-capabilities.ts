@@ -35,6 +35,7 @@ import { createAuthRoutes } from "@blksails/pi-web-adapters/auth/auth-routes.js"
 import { createIdentityRoutes } from "@blksails/pi-web-adapters/identity/identity-routes.js";
 import { createShellCredentialRoutes } from "@blksails/pi-web-adapters/auth/shell-credential-route.js";
 import type { IdentityProvider } from "@blksails/pi-web-adapters/identity/types.js";
+import type { CloudDesktopAuthClient } from "@blksails/pi-web-adapters/auth/cloud-desktop-auth-client.js";
 import { createAttachmentRoutes } from "@blksails/pi-web-core/http/routes/attachment-routes.js";
 import { createBashRoutes } from "@blksails/pi-web-core/http/routes/bash-routes.js";
 import { createExtensionRoutes } from "@blksails/pi-web-adapters/extensions/routes.js";
@@ -102,6 +103,8 @@ export interface HostDeps {
    * 新形态而非新领域。
    */
   readonly identityProvider?: IdentityProvider;
+  /** 多方法桌面登录（SMS/WeChat）；与 identityProvider 同挂 auth.session。 */
+  readonly desktopAuthClient?: CloudDesktopAuthClient;
   /**
    * 壳凭据取回 token(spec desktop-account-login Req 12)。仅桌面壳下非空。
    *
@@ -200,7 +203,11 @@ export function defaultCapabilities(deps: HostDeps): readonly HostDescriptor[] {
         asRoutes([
           ...(d.authState !== undefined ? createAuthRoutes({ state: d.authState }) : []),
           ...(d.identityProvider !== undefined
-            ? createIdentityRoutes({ provider: d.identityProvider })
+            ? createIdentityRoutes({
+                provider: d.identityProvider,
+                desktopAuth: d.desktopAuthClient,
+                authState: d.authState,
+              })
             : []),
           ...(d.authState !== undefined && d.shellToken !== undefined
             ? createShellCredentialRoutes({ state: d.authState, token: d.shellToken })

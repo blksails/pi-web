@@ -80,7 +80,10 @@ describe("panelRight 连续宽度(全受控)", () => {
   it("传 panelWidth(number) → aside 宽度为对应 px 且渲染拖拽分隔条", () => {
     render(<PiChat session={mockSession()} extension={panelExt} panelWidth={480} />);
     expect(aside().style.width).toBe("480px");
-    expect(aside().style.maxWidth).toBe("70%");
+    expect(aside().style.maxWidth).toBe("");
+    expect(
+      (document.querySelector("[data-pi-chat-conversation-column]") as HTMLElement).style.minWidth,
+    ).toBe("480px");
     expect(aside().className).toContain("border-l");
     expect(document.querySelector("[data-pi-panel-resizer]")).not.toBeNull();
   });
@@ -88,6 +91,30 @@ describe("panelRight 连续宽度(全受控)", () => {
   it("传 panelWidth(string) → 原样入 style.width", () => {
     render(<PiChat session={mockSession()} extension={panelExt} panelWidth="40vw" />);
     expect(aside().style.width).toBe("40vw");
+  });
+
+  it("wide chat keeps pane width unconstrained by a ratio", () => {
+    const onChange = vi.fn();
+    render(
+      <PiChat
+        session={mockSession()}
+        extension={panelExt}
+        panelWidth={480}
+        onPanelWidthChange={onChange}
+        maxPanelWidth={800}
+      />,
+    );
+    const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
+    const tree = document.querySelector("[data-pi-chat-pro]") as HTMLElement;
+    vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+      right: 2000, left: 0, width: 2000, top: 0, bottom: 0, height: 0, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    fireEvent.pointerDown(resizer, { pointerId: 1, clientX: 1520 });
+    fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 100 });
+    fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 100 });
+    act(() => idleFrame?.());
+    expect(onChange).toHaveBeenCalledWith(1520);
   });
 
   it("连续模式隐藏离散档段控切换器", () => {
@@ -104,7 +131,6 @@ describe("panelRight 连续宽度(全受控)", () => {
         panelWidth={480}
         onPanelWidthChange={onChange}
         minPanelWidth={240}
-        maxPanelWidth={800}
       />,
     );
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
@@ -155,7 +181,6 @@ describe("panelRight 连续宽度(全受控)", () => {
         extension={panelExt}
         panelWidth={700}
         onPanelWidthChange={onChange}
-        maxPanelWidth={800}
       />,
     );
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
@@ -176,7 +201,6 @@ describe("panelRight 连续宽度(全受控)", () => {
         panelWidth={480}
         onPanelWidthChange={onChange}
         minPanelWidth={240}
-        maxPanelWidth={800}
       />,
     );
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;
@@ -200,7 +224,7 @@ describe("panelRight 连续宽度(全受控)", () => {
       <PiChat
         session={mockSession()}
         extension={panelExt}
-        panelWidth={320}
+        panelWidth={240}
         onPanelWidthChange={onChange}
         minPanelWidth={320}
       />,
@@ -215,7 +239,7 @@ describe("panelRight 连续宽度(全受控)", () => {
     fireEvent.pointerMove(resizer, { pointerId: 1, clientX: 0 });
     fireEvent.pointerUp(resizer, { pointerId: 1, clientX: 0 });
     act(() => idleFrame?.());
-    expect(onChange).toHaveBeenCalledWith(280);
+    expect(onChange).toHaveBeenCalledWith(320);
   });
 
   it("不传 panelWidth → 沿用离散档(零回归):aside 走百分比宽、切换器仍在、无分隔条", () => {
@@ -223,5 +247,56 @@ describe("panelRight 连续宽度(全受控)", () => {
     expect(aside().style.width).toBe("33.333%"); // 默认 2:1
     expect(document.querySelector("[data-pi-panel-ratio-switch]")).not.toBeNull();
     expect(document.querySelector("[data-pi-panel-resizer]")).toBeNull();
+  });
+
+  it("容器收窄钳制只做临时视觉压缩、不写回宿主；恢复后回到受控宽度", () => {
+    const onChange = vi.fn();
+    const roCallbacks: ResizeObserverCallback[] = [];
+    class MockRO implements ResizeObserver {
+      readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        roCallbacks.push(callback);
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): ResizeObserverEntry[] {
+        return [];
+      }
+    }
+    vi.stubGlobal("ResizeObserver", MockRO);
+    try {
+      render(
+        <PiChat
+          session={mockSession()}
+          extension={panelExt}
+          panelWidth={480}
+          onPanelWidthChange={onChange}
+          minPanelWidth={240}
+        />,
+      );
+      const tree = document.querySelector("[data-pi-chat-pro]") as HTMLElement;
+      const fireWidth = (width: number): void => {
+        vi.spyOn(tree, "getBoundingClientRect").mockReturnValue({
+          right: width, left: 0, width, top: 0, bottom: 0, height: 0, x: 0, y: 0,
+          toJSON: () => ({}),
+        } as DOMRect);
+        act(() => {
+          for (const cb of roCallbacks) cb([], MockRO.prototype as ResizeObserver);
+        });
+        act(() => animationFrame?.(0));
+      };
+      // 窄容器(600):availableMax=420 → max=240 < 480 → 临时压到 240,不写回宿主。
+      fireWidth(600);
+      expect(aside().style.width).toBe("240px");
+      expect(onChange).not.toHaveBeenCalled();
+      // 容器恢复(1000):max=520 ≥ 480 → 解除压缩,回到受控 480,仍不写回。
+      fireWidth(1000);
+      expect(aside().style.width).toBe("480px");
+      expect(onChange).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

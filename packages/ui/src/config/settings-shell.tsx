@@ -178,7 +178,6 @@ function ConfigFormPanel({
         <h2 className="text-lg font-semibold">{panel.formSchema.title ?? panel.title}</h2>
       </header>
 
-      
       {loading ? (
         <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</p>
       ) : loadError !== undefined ? (

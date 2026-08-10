@@ -87,11 +87,69 @@ export const CLOUDFLARE_REQUIRED_ENV: readonly string[] = [
  * 两处若各写一份,漂移时会出现「设置页列得出模型但工具里选不到」或反之的错位。
  *
  * 纯函数、显式收 env 对象,故不破坏本模块「顶层不读 `process.env`」的双入口纪律。
+ *
+ * 调用方应对 **runtime-resolved** bag 调用(见 {@link resolveCloudflareRuntimeEnv}),
+ * 不要只传 `process.env` 而漏掉 `<agentDir>/aigc.json` 里的运行时凭据。
  */
 export function isCloudflareConfigured(
   env: Record<string, string | undefined> = {},
 ): boolean {
   return CLOUDFLARE_REQUIRED_ENV.every((name) => (env[name] ?? "").trim().length > 0);
+}
+
+/**
+ * aigc.json 中 Cloudflare 凭据字段名(config 域 aigc,运行时读;不 bake 进 payload)。
+ * 设置面板已移除这三项(平台改预置 env),此处仅兼容旧版落盘值;
+ * 执行层仍用 CLOUDFLARE_* 占位符展开。
+ */
+export const CLOUDFLARE_AIGC_JSON_KEYS = {
+  accountId: "cloudflareAccountId",
+  gatewayId: "cloudflareGatewayId",
+  apiToken: "cloudflareApiToken",
+} as const;
+
+/** 从已解析的 aigc.json 对象抽出 CLOUDFLARE_* 映射(仅非空字符串)。 */
+export function cloudflareEnvFromAigcConfig(
+  config: Record<string, unknown> | undefined | null,
+): Record<string, string> {
+  if (config === undefined || config === null) return {};
+  const out: Record<string, string> = {};
+  const map: readonly (readonly [string, string])[] = [
+    [CLOUDFLARE_AIGC_JSON_KEYS.accountId, CLOUDFLARE_CONFIG.accountIdVar],
+    [CLOUDFLARE_AIGC_JSON_KEYS.gatewayId, CLOUDFLARE_CONFIG.gatewayIdVar],
+    [CLOUDFLARE_AIGC_JSON_KEYS.apiToken, CLOUDFLARE_CONFIG.apiTokenVar],
+  ];
+  for (const [jsonKey, envKey] of map) {
+    const raw = config[jsonKey];
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      out[envKey] = raw.trim();
+    }
+  }
+  return out;
+}
+
+/**
+ * 合并运行时 Cloudflare 凭据:显式 `process.env`(或注入 bag)优先,缺省回落 aigc.json。
+ *
+ * - **不**在模块顶层读文件;每次调用 re-read(由调用方传入已读 config 或用 read 助手)。
+ * - 返回新对象,不修改入参。
+ */
+export function mergeCloudflareRuntimeEnv(
+  processEnv: Record<string, string | undefined>,
+  aigcConfig: Record<string, unknown> | undefined | null,
+): Record<string, string | undefined> {
+  const fromFile = cloudflareEnvFromAigcConfig(aigcConfig);
+  const merged: Record<string, string | undefined> = { ...processEnv };
+  for (const name of CLOUDFLARE_REQUIRED_ENV) {
+    const fromEnv = (processEnv[name] ?? "").trim();
+    if (fromEnv.length > 0) {
+      merged[name] = fromEnv;
+      continue;
+    }
+    const fallback = fromFile[name];
+    if (fallback !== undefined) merged[name] = fallback;
+  }
+  return merged;
 }
 
 // ── 响应类型 ──────────────────────────────────────────────────────────────────

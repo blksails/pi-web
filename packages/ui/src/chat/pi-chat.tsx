@@ -307,9 +307,9 @@ export interface PiChatProps {
   readonly onPaneEvent?: (topic: string, payload: unknown) => boolean | void | Promise<boolean | void>;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
-  /** 连续模式拖拽上界(px);最终仍受容器宽度 70% 的宿主保护线约束。 */
+  /** @deprecated 仅为兼容旧 agent 配置保留；右栏上限已按 chat 最小宽度动态计算，不再读取此值。 */
   readonly maxPanelWidth?: number;
-  /** 连续模式拖拽上界占聊天容器比例；缺省 70%。 */
+  /** @deprecated 仅为兼容旧 agent 配置保留；比例上限已移除，不再读取此值。 */
   readonly maxPanelWidthRatio?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
@@ -522,8 +522,6 @@ export function PiChat({
   onPanelOpen,
   onPaneEvent,
   minPanelWidth,
-  maxPanelWidth,
-  maxPanelWidthRatio = 0.7,
   theme,
   toolbarOrder,
   resources,
@@ -853,6 +851,8 @@ export function PiChat({
   const panelResizeFrameRef = React.useRef<number | undefined>(undefined);
   const panelResizeIdleRef = React.useRef<IdleFrameTask | undefined>(undefined);
   const panelPendingWidthRef = React.useRef<number | undefined>(undefined);
+  // 窄容器临时钳制预览宽（窗口收窄/最小化恢复途中的过渡态）；容器恢复后解除。
+  const panelClampPreviewRef = React.useRef<number | undefined>(undefined);
   const panelResizeStartXRef = React.useRef<number | undefined>(undefined);
   const panelResizeStartWidthRef = React.useRef<number | undefined>(undefined);
   const panelResizeMovedRef = React.useRef(false);
@@ -870,10 +870,9 @@ export function PiChat({
     [],
   );
   /**
-   * 右栏拖拽/容器收窄时的 [min,max] 钳制(与历史拖拽语义一致):
-   * - min = min(配置下限, 容器 70%);
-   * - max = max(min, min(配置上限, 70%, 留给右栏的剩余=容器−左栏−会话下限));
-   * 会话列下限优先:右栏不得再大到把会话列压穿,避免横向溢出叠层。
+   * 右栏拖拽/容器收窄时的 [min,max] 钳制:
+   * - 不额外设置右栏固定上限；
+   * - max 仅由容器宽度与「为会话列保留最小宽度」动态计算。
    */
   const measurePanelBounds = React.useCallback((): {
     readonly min: number;
@@ -881,29 +880,18 @@ export function PiChat({
   } => {
     const rect = panelResizeTreeRef.current?.getBoundingClientRect();
     if (rect === undefined) {
-      return { min: minPanelWidth ?? 240, max: maxPanelWidth ?? 800 };
+      return { min: minPanelWidth ?? 240, max: Number.POSITIVE_INFINITY };
     }
-    const availableMax = rect.width * maxPanelWidthRatio;
     const sidebarEl = panelResizeTreeRef.current?.querySelector(
       "[data-pi-chat-sidebar]",
     );
     const sidebarWidth = sidebarEl?.getBoundingClientRect().width ?? 0;
-    const conversationFloor = Math.min(
-      CONVERSATION_MIN_PX,
-      Math.max(0, rect.width - sidebarWidth),
-    );
+    const conversationFloor = CONVERSATION_MIN_PX;
     const roomForPanel = rect.width - sidebarWidth - conversationFloor;
-    const min = Math.min(minPanelWidth ?? 240, availableMax);
-    const max = Math.max(
-      min,
-      Math.min(
-        maxPanelWidth ?? Number.POSITIVE_INFINITY,
-        availableMax,
-        roomForPanel,
-      ),
-    );
+    const min = minPanelWidth ?? 240;
+    const max = Math.max(min, roomForPanel);
     return { min, max };
-  }, [minPanelWidth, maxPanelWidth, maxPanelWidthRatio]);
+  }, [minPanelWidth]);
   // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交。
   // content-well 几何由 ResizeObserver 单路 rAF 合并上报（见 publishTauriContentWellMetrics），
   // 此处不再额外 dispatch sync，避免「拖拽 rAF + RO + sync」三层插帧。
@@ -1012,6 +1000,9 @@ export function PiChat({
   );
 
   // 容器变窄时主动钳右栏,保证会话列 ≥ CONVERSATION_MIN_PX,杜绝横向溢出叠层悬浮。
+  // ★ 只做**临时视觉**压缩,不写回宿主:钳制写回会把「窗口临时变窄」(最小化/恢复途中的
+  //   过渡尺寸)误持久化为用户新宽度,导致最小化再开后侧栏永久停在最小宽——面板宽度
+  //   本应保持用户拖拽值。容器恢复足够宽时解除压缩,回到受控 panelWidth。
   // 树宽为 0(jsdom / 未布局)时不钳,避免误写 0 宽。
   React.useEffect(() => {
     if (
@@ -1030,7 +1021,15 @@ export function PiChat({
       if (!(treeW > 0)) return;
       const { min, max } = measurePanelBounds();
       if (max > 0 && panelWidth > max + 0.5) {
-        onPanelWidthChange(Math.max(min, max));
+        if (panelClampPreviewRef.current !== max) {
+          panelClampPreviewRef.current = max;
+          applyAsideWidthPreview(max);
+        }
+        return;
+      }
+      if (panelClampPreviewRef.current !== undefined) {
+        panelClampPreviewRef.current = undefined;
+        applyAsideWidthPreview(panelWidth);
       }
     };
     const ro = new ResizeObserver(() => {
@@ -1046,7 +1045,7 @@ export function PiChat({
       ro.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [panelWidth, onPanelWidthChange, measurePanelBounds]);
+  }, [panelWidth, onPanelWidthChange, measurePanelBounds, applyAsideWidthPreview]);
 
   const [dockHeight, setDockHeight] = React.useState<number>(0);
   const dockObserverRef = React.useRef<ResizeObserver | null>(null);
@@ -1997,7 +1996,7 @@ export function PiChat({
       toolbar={toolbar}
       rows={1}
       placeholder={readinessPlaceholder ?? placeholder ?? t("chat.placeholder")}
-      className="rounded-[12px] border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 py-2.5 shadow-none"
+      className="rounded-[12px] border-[hsl(var(--chat-input-border))] bg-[hsl(var(--surface))] px-3 py-2.5 shadow-none"
       textareaClassName="px-2 text-base"
       suppressEnterSubmit={commandCapturing}
       ghostSuffix={ghostSuffix}
@@ -2412,7 +2411,7 @@ export function PiChat({
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
           app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。
-          min-w + 不透明 canvas:会话列保底且不与侧栏/右栏叠层透出。 */}
+          min-w + 不透明背景:会话列保底且不与侧栏/右栏叠层透出。 */}
       <div
         ref={panelConversationColumnRef}
         className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[hsl(var(--canvas))]"
@@ -2422,12 +2421,12 @@ export function PiChat({
             ? {
                 width: panelConversationWidth,
                 flex: `0 0 ${panelConversationWidth}px`,
-                minWidth: Math.min(CONVERSATION_MIN_PX, panelConversationWidth),
+                minWidth: CONVERSATION_MIN_PX,
               }
             : {
                 // flex 基线 0 + 硬下限:窄容器时由右栏让位(见 measurePanelBounds),不横向撑破。
                 flex: "1 1 0%",
-                minWidth: `min(100%, ${CONVERSATION_MIN_PX}px)`,
+                minWidth: `${CONVERSATION_MIN_PX}px`,
               }
         }
       >
@@ -2461,6 +2460,7 @@ export function PiChat({
             className="pi-scrollbar-ghost flex min-h-0 min-w-0 flex-1 flex-col items-center justify-start overflow-x-hidden overflow-y-auto bg-[hsl(var(--canvas))] px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
+            {extensionStatusBar}
             {emptyBody}
             {/* Tier1 保留插槽:扩展空态(追加,不替换默认空态)。 */}
             <ExtSlotRegion ext={extension} slot="empty" />
@@ -2502,9 +2502,6 @@ export function PiChat({
             ? {
                 style: {
                   width: asideWidth,
-                  ...(resizablePanel && showPanelRight
-                    ? { maxWidth: `${maxPanelWidthRatio * 100}%` }
-                    : {}),
                   ...(panelDragging
                     ? { position: "absolute" as const, insetBlock: 0, right: 0, zIndex: 20 }
                     : {}),

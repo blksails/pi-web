@@ -335,7 +335,7 @@ describe("PanesHost multi-open UI", () => {
     expect(frame.getAttribute("srcdoc")).toContain("pi-pane-chrome");
   });
 
-  it("opens three independent iframe instances and parks a closed tab without reloading it", async () => {
+  it("opens three independent iframe instances and truly closes a tab (destroy, not park)", async () => {
     let sequence = 0;
     const recorder = recordFrameMessages();
     let view: ReturnType<typeof render>;
@@ -353,15 +353,15 @@ describe("PanesHost multi-open UI", () => {
       expect(new Set(frames.map((frame) => frame.id)).size).toBe(3);
       // 新开置前（MRU），与旧 tabs 一致。
       expect(frameOrder(view.container)).toEqual(["pane-view-editor-3", "pane-view-editor-2", "pane-view-editor-1"]);
-      const firstFrame = frames[0]!;
-      // 关闭即 parked：不销毁 iframe，仅隐藏。
+      // 关闭即销毁 iframe；不再收进「更多」。
       await drive.request("editor-3", "workspace.close", { instanceId: "editor-3" });
-      expect(framesOf(view.container)).toHaveLength(3);
-      expect(firstFrame.style.display).toBe("none");
-      // 重新打开复用 parked 的实例（同一 DOM 节点）。
+      expect(framesOf(view.container)).toHaveLength(2);
+      expect(view.container.querySelector("#pane-view-editor-3")).toBeNull();
+      // 再开创建新实例（新 instanceId），非复用已关 DOM。
       await drive.request("editor-2", "workspace.open", { paneId: "editor" });
       expect(framesOf(view.container)).toHaveLength(3);
-      expect(framesOf(view.container)[0]).toBe(firstFrame);
+      expect(view.container.querySelector("#pane-view-editor-4")).not.toBeNull();
+      expect(frameOrder(view.container)[0]).toBe("pane-view-editor-4");
     } finally {
       recorder.restore();
     }
@@ -391,15 +391,16 @@ describe("PanesHost multi-open UI", () => {
       expect(frameById("editor-2").style.display).toBe("block");
       expect(frameById("editor-1").style.display).toBe("none");
 
-      // 空态:全部关闭后出现空工作区入口,可重新打开恢复
-      for (const instanceId of ["editor-3", "editor-2", "editor-1"]) {
-        await drive.request("editor-1", "workspace.close", { instanceId });
-      }
-      expect(framesOf(view.container)).toHaveLength(3);
-      await drive.request("editor-1", "workspace.open", { paneId: "editor" });
-      expect(framesOf(view.container)).toHaveLength(3);
-      expect(frameById("editor-3").style.display).toBe("block");
-      expect(frameById("editor-1").style.display).toBe("none");
+      // 逐个真关闭（用仍存活实例的 port）；全关后无 iframe。
+      await drive.request("editor-2", "workspace.close", { instanceId: "editor-3" });
+      await drive.request("editor-2", "workspace.close", { instanceId: "editor-1" });
+      await drive.request("editor-2", "workspace.close", { instanceId: "editor-2" });
+      expect(framesOf(view.container)).toHaveLength(0);
+      // 空工作区入口 → 新开 Pane 弹层再建
+      fireEvent.click(screen.getByRole("button", { name: "打开一个 Pane" }));
+      fireEvent.click(screen.getByRole("button", { name: /Editor/i }));
+      await waitFor(() => expect(framesOf(view.container)).toHaveLength(1));
+      expect(view.container.querySelector("#pane-view-editor-4")).not.toBeNull();
     } finally {
       recorder.restore();
     }
@@ -607,15 +608,17 @@ describe("PanesHost guest protocol seam (任务 3.2)", () => {
       for (const listener of [...listeners]) listener(canvasState);
       await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 2));
 
-      // 关闭 tab 后 Pane 后台保活；三个端口仍继续收权威镜像。
+      // 关闭 tab = 真销毁：surface 订阅随之卸下，仅存活实例继续收镜像。
       await drive.request("canvas-1", "workspace.close", { instanceId: "canvas-3" });
-      expect(listeners.size).toBe(3);
+      expect(framesOf(view.container)).toHaveLength(2);
+      expect(listeners.size).toBe(2);
       canvasState = { revision: 3 };
       for (const listener of [...listeners]) listener(canvasState);
-      await until(() => [0, 1, 2].every((index) => mirrorsOf(index).length === 3));
+      await until(() => [0, 1].every((index) => mirrorsOf(index).length === 3));
       expect(mirrorsOf(0)[2]).toEqual({ revision: 3 });
       expect(mirrorsOf(1)[2]).toEqual({ revision: 3 });
-      expect(mirrorsOf(2)[2]).toEqual({ revision: 3 });
+      // 已关实例端口不再追加
+      expect(mirrorsOf(2).length).toBe(2);
     } finally {
       recorder.restore();
     }

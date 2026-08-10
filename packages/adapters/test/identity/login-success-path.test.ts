@@ -156,6 +156,7 @@ describe("★ 登录成功路径 · 端到端(除云端外全真实组件)", () 
       state: "authenticated",
       tenant: { userId: "u-1", companyId: "c-1", role: "member", displayName: "胡余义" },
       canExchange: true,
+      methods: ["password"],
     });
   });
 
@@ -251,7 +252,11 @@ describe("登出与切号(Req 7.1/7.2)", () => {
     const h = harness({ token: issueToken("u-1") });
     await call(routeOf(h, "POST", "/identity/exchange"), CREDS);
     const out = await call(routeOf(h, "DELETE", "/identity"));
-    expect(out.json).toEqual({ state: "anonymous", canExchange: true });
+    expect(out.json).toEqual({
+      state: "anonymous",
+      canExchange: true,
+      methods: ["password"],
+    });
     expect(h.authState.isValid()).toBe(false);
     expect(h.capabilities.cachedStatic()).toBeUndefined();
     const me = await call(routeOf(h, "GET", "/identity"));

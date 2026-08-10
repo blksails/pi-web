@@ -12,7 +12,6 @@ export const config = {
     documentTitle: "Panes 示例 · pi-web",
     panelWidth: 760,
     minPanelWidth: 420,
-    maxPanelWidth: 1280,
     logsPanelPosition: "bottom" as const,
     empty: {
       title: "隔离 Pane 范例",

@@ -1,67 +1,164 @@
 "use client";
 
 /**
- * 账号密码登录表单(spec: desktop-account-login,任务 7.2;Req 2.2/2.3/2.4/3.1/3.2/3.3)。
- *
- * 替换 `desktop-cloud-login` 交付的「粘贴凭据串」输入框 —— 那个形态的问题不是难用,
- * 是**用户手上根本没有凭据串**,也没有任何途径获得它(云端实测只提供账号密码端点,
- * 从无 device 授权流)。
- *
- * 安全:密码只存在于本组件 state 与请求体中,提交后立即清空;不进 URL、不进 localStorage、
- * 不回显。凭据串永不进入渲染层(Req 8.2)。
+ * 多方法登录：密码 / 短信 / 微信。
+ * 设计：黑白灰阶、控件 7px、外层 10px、可见 label、autofill、历史账户。
  */
 import * as React from "react";
 import type { IdentityExchangeReason } from "./use-identity.js";
+import {
+  listLoginAccounts,
+  maskLoginAccount,
+  removeLoginAccount,
+  upsertLoginAccount,
+  type LoginAccountEntry,
+} from "./account-history.js";
 
-const BTN =
-  "inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50";
-const INPUT = "rounded-md border border-border px-2 py-1 text-xs";
-const BTN_PAGE =
-  "inline-flex w-full items-center gap-1 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent disabled:opacity-50";
-const INPUT_PAGE =
-  "w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring";
-
-/** 失败原因 → 用户可读文案。分类的全部意义就在这里:告诉用户该改什么再重试。 */
 const MESSAGE: Readonly<Record<IdentityExchangeReason, string>> = {
   "invalid-credentials": "账号或密码错误",
-  // ★ 与「密码错」分开:这类用户的密码是对的,让他改密码只会反复试同一个正确密码。
   "no-membership": "该账号未加入任何组织,请更换账号或联系管理员开通",
-  "invalid-request": "请填写邮箱与密码",
+  "invalid-request": "请填写完整登录信息",
   "cloud-unreachable": "无法连接云端,请重试",
   "capabilities-failed": "登录未完成:云端授权加载失败,请重试",
   unsupported: "当前环境不支持账号密码登录",
 };
+
+export type LoginMethod = "password" | "sms" | "wechat";
 
 export interface LoginFormProps {
   readonly onSubmit: (
     email: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
-  /** 取消。`layout="page"` 时不渲染取消按钮(无处可返回),但仍会被 Esc 触发。 */
+  readonly onSmsSubmit?: (
+    phone: string,
+    code: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  readonly onSendOtp?: (
+    phone: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason | "rate-limited" }>;
+  readonly onWechatStart?: () => Promise<
+    | {
+        ok: true;
+        state: string;
+        appid: string;
+        redirectUri: string;
+        qrConnectUrl: string;
+      }
+    | { ok: false; reason?: IdentityExchangeReason }
+  >;
+  readonly onWechatPoll?: (
+    state: string,
+  ) => Promise<
+    | { ok: true; status: "pending" | "claimed" | "unknown" | "error"; error?: string }
+    | { ok: true; status: "ready"; credential: string }
+    | { ok: false; reason?: IdentityExchangeReason }
+  >;
+  readonly onWechatExchange?: (
+    state: string,
+    credential: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  readonly methods?: ReadonlyArray<LoginMethod>;
   readonly onCancel: () => void;
   readonly testIdPrefix?: string;
-  /**
-   * `inline`(默认)= 头部控件里的一行;`page` = 独立登录页里的竖排卡片。
-   *
-   * 只改排布与尺寸,**不改任何行为** —— 校验、失败文案、清空规则两种布局完全一致,
-   * 故 login-form 的既有测试对两种布局同样有效。
-   */
   readonly layout?: "inline" | "page";
+}
+
+const METHOD_LABEL: Record<LoginMethod, string> = {
+  password: "密码",
+  sms: "短信",
+  wechat: "微信",
+};
+
+function fieldClass(page: boolean): string {
+  return page
+    ? "w-full rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm text-[hsl(var(--foreground))] outline-none transition-colors placeholder:text-[hsl(var(--muted-foreground))] focus:border-[hsl(var(--ring))] focus:ring-2 focus:ring-[hsl(var(--ring))]"
+    : "w-full min-w-0 rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1.5 text-xs text-[hsl(var(--foreground))] outline-none focus:ring-2 focus:ring-[hsl(var(--ring))]";
+}
+
+function primaryBtnClass(page: boolean): string {
+  return page
+    ? "inline-flex h-10 w-full items-center justify-center rounded-[7px] bg-[hsl(var(--primary))] px-3 text-sm font-medium text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+    : "inline-flex items-center justify-center rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--primary))] px-2 py-1 text-xs text-[hsl(var(--primary-foreground))] disabled:opacity-40";
+}
+
+function ghostBtnClass(page: boolean): string {
+  return page
+    ? "inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-3 text-sm text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] disabled:pointer-events-none disabled:opacity-40"
+    : "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-[7px] border border-[hsl(var(--border))] px-2 py-1 text-xs hover:bg-[hsl(var(--surface-subtle))] disabled:opacity-40";
 }
 
 export function LoginForm(props: LoginFormProps): React.JSX.Element {
   const prefix = props.testIdPrefix ?? "login";
   const page = props.layout === "page";
+  const methods = React.useMemo(
+    () => props.methods ?? (["password", "sms", "wechat"] as LoginMethod[]),
+    [props.methods],
+  );
+
+  const [method, setMethod] = React.useState<LoginMethod>(() =>
+    methods.includes("password") ? "password" : (methods[0] ?? "password"),
+  );
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [code, setCode] = React.useState("");
+  const [countdown, setCountdown] = React.useState(0);
   const [error, setError] = React.useState<string | undefined>(undefined);
   const [busy, setBusy] = React.useState(false);
+  const [otpSent, setOtpSent] = React.useState(false);
+  const [history, setHistory] = React.useState<LoginAccountEntry[]>([]);
+  const [wxUrl, setWxUrl] = React.useState<string | undefined>(undefined);
+  const [wxState, setWxState] = React.useState<string | undefined>(undefined);
+  const [wxStatus, setWxStatus] = React.useState<
+    "idle" | "loading" | "show" | "success" | "error" | "expired"
+  >("idle");
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 密码不 trim:前后空格可能是密码的一部分,擅自裁剪会让合法密码登不上。
-  const canSubmit = email.trim().length > 0 && password.length > 0 && !busy;
+  React.useEffect(() => {
+    if (!methods.includes(method)) {
+      setMethod(methods.includes("password") ? "password" : (methods[0] ?? "password"));
+    }
+  }, [methods, method]);
 
-  const submit = async (): Promise<void> => {
-    if (!canSubmit) {
+  React.useEffect(() => {
+    setHistory(listLoginAccounts());
+  }, []);
+
+  React.useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((c) => (c <= 1 ? 0 : c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
+
+  const stopPoll = React.useCallback(() => {
+    if (pollRef.current !== null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => () => stopPoll(), [stopPoll]);
+
+  const selectMethod = (next: LoginMethod): void => {
+    setError(undefined);
+    if (next !== "wechat") stopPoll();
+    setMethod(next);
+  };
+
+  const applyHistory = (entry: LoginAccountEntry): void => {
+    setError(undefined);
+    if (entry.kind === "email") {
+      setMethod("password");
+      setEmail(entry.value);
+    } else {
+      setMethod("sms");
+      setPhone(entry.value);
+    }
+  };
+
+  const submitPassword = async (): Promise<void> => {
+    if (email.trim().length === 0 || password.length === 0 || busy) {
       setError(MESSAGE["invalid-request"]);
       return;
     }
@@ -70,89 +167,415 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     const result = await props.onSubmit(email.trim(), password);
     setBusy(false);
     if (result.ok) {
-      // 成功即刻清空 —— 密码不在内存里多留一帧。
+      upsertLoginAccount("email", email.trim());
+      setHistory(listLoginAccounts());
       setEmail("");
       setPassword("");
       return;
     }
     setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
-    // 失败时保留邮箱、只清密码:用户十有八九是打错了密码,不该逼他重打邮箱。
     setPassword("");
   };
 
-  const cancel = (): void => {
-    // 取消 → 清空两个字段,且**不发任何请求**(Req 3.3)。
-    setEmail("");
-    setPassword("");
+  const sendOtp = async (): Promise<void> => {
+    if (!props.onSendOtp || phone.trim().length === 0 || countdown > 0 || busy) return;
+    setBusy(true);
     setError(undefined);
-    props.onCancel();
+    const result = await props.onSendOtp(phone.trim());
+    setBusy(false);
+    if (!result.ok) {
+      setError(
+        result.reason === "rate-limited"
+          ? "发送过于频繁，请稍后再试"
+          : result.reason === "cloud-unreachable"
+            ? "无法发送验证码（检查云端/短信通道是否已配置）"
+            : MESSAGE[result.reason === "invalid-request" ? "invalid-request" : "cloud-unreachable"],
+      );
+      return;
+    }
+    setOtpSent(true);
+    setCountdown(60);
   };
 
-  const onKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key === "Enter") void submit();
-    if (e.key === "Escape") cancel();
+  const submitSms = async (): Promise<void> => {
+    if (!props.onSmsSubmit || phone.trim().length === 0 || code.trim().length === 0 || busy) {
+      setError(MESSAGE["invalid-request"]);
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    const result = await props.onSmsSubmit(phone.trim(), code.trim());
+    setBusy(false);
+    if (result.ok) {
+      upsertLoginAccount("phone", phone.trim());
+      setHistory(listLoginAccounts());
+      setCode("");
+      return;
+    }
+    setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
+    setCode("");
   };
 
-  const inputCls = page ? INPUT_PAGE : INPUT;
-  const btnCls = page ? BTN_PAGE : BTN;
+  const startWechat = async (): Promise<void> => {
+    if (!props.onWechatStart || !props.onWechatPoll || !props.onWechatExchange) {
+      setError(MESSAGE.unsupported);
+      return;
+    }
+    stopPoll();
+    setBusy(true);
+    setError(undefined);
+    setWxStatus("loading");
+    const started = await props.onWechatStart();
+    setBusy(false);
+    if (!started.ok) {
+      setWxStatus("error");
+      setError(
+        started.reason === "cloud-unreachable"
+          ? "微信登录未配置或云端不可达"
+          : MESSAGE[started.reason ?? "cloud-unreachable"],
+      );
+      return;
+    }
+    setWxState(started.state);
+    setWxUrl(started.qrConnectUrl);
+    setWxStatus("show");
+    try {
+      window.open(started.qrConnectUrl, "_blank", "noopener,noreferrer,width=480,height=640");
+    } catch {
+      // ignore popup block; user can click link
+    }
+    pollRef.current = setInterval(() => {
+      void (async () => {
+        const polled = await props.onWechatPoll!(started.state);
+        if (!polled.ok) {
+          setWxStatus("error");
+          setError(MESSAGE[polled.reason ?? "cloud-unreachable"]);
+          stopPoll();
+          return;
+        }
+        if (polled.status === "pending") return;
+        if (polled.status === "error") {
+          setWxStatus("error");
+          setError(
+            polled.error === "no-membership"
+              ? MESSAGE["no-membership"]
+              : "微信登录失败，请重试",
+          );
+          stopPoll();
+          return;
+        }
+        if (polled.status === "ready") {
+          stopPoll();
+          setBusy(true);
+          const ex = await props.onWechatExchange!(started.state, polled.credential);
+          setBusy(false);
+          if (!ex.ok) {
+            setWxStatus("error");
+            setError(MESSAGE[ex.reason ?? "cloud-unreachable"]);
+            return;
+          }
+          setWxStatus("success");
+        }
+        if (polled.status === "claimed" || polled.status === "unknown") {
+          setWxStatus("expired");
+          stopPoll();
+        }
+      })();
+    }, 2000);
+  };
+
+  const cancelWechat = (): void => {
+    stopPoll();
+    setWxState(undefined);
+    setWxUrl(undefined);
+    setWxStatus("idle");
+    setError(undefined);
+  };
+
+  const inputCls = fieldClass(page);
+  const primaryCls = primaryBtnClass(page);
+  const ghostCls = ghostBtnClass(page);
+  const labelCls =
+    "mb-1.5 block text-xs font-medium text-[hsl(var(--muted-foreground))]";
+
+  const relevantHistory = history.filter((h) =>
+    method === "password" ? h.kind === "email" : method === "sms" ? h.kind === "phone" : false,
+  );
 
   return (
     <div
-      className={page ? "flex w-full flex-col gap-3" : "flex items-center gap-1"}
+      className={page ? "flex w-full flex-col gap-4" : "flex w-full min-w-[16rem] flex-col gap-2.5"}
       data-testid={`${prefix}-form`}
     >
-      <input
-        type="email"
-        className={inputCls}
-        placeholder="邮箱"
-        value={email}
-        autoComplete="username"
-        data-testid={`${prefix}-email`}
-        onChange={(e) => setEmail(e.target.value)}
-        onKeyDown={onKeyDown}
-        autoFocus
-      />
-      <input
-        type="password"
-        className={inputCls}
-        placeholder="密码"
-        value={password}
-        autoComplete="current-password"
-        data-testid={`${prefix}-password`}
-        onChange={(e) => setPassword(e.target.value)}
-        onKeyDown={onKeyDown}
-      />
-      <button
-        type="button"
-        className={
-          page
-            ? `${btnCls} justify-center bg-primary text-primary-foreground hover:bg-primary/90`
-            : btnCls
-        }
-        data-testid={`${prefix}-submit`}
-        disabled={!canSubmit}
-        onClick={() => void submit()}
-      >
-        {busy ? "登录中…" : "登录"}
-      </button>
-      {/* 独立登录页没有「返回」的去处 —— 渲染一个什么都不通向的取消按钮只会让人困惑。 */}
-      {!page && (
-        <button type="button" className={btnCls} data-testid={`${prefix}-cancel`} onClick={cancel}>
+      {methods.length > 1 ? (
+        <div
+          className="grid gap-1 rounded-[10px] bg-[hsl(var(--surface-subtle))] p-1"
+          style={{ gridTemplateColumns: `repeat(${methods.length}, minmax(0, 1fr))` }}
+          role="tablist"
+          aria-label="登录方式"
+        >
+          {methods.map((m) => {
+            const active = method === m;
+            return (
+              <button
+                key={m}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-testid={`${prefix}-tab-${m}`}
+                className={
+                  active
+                    ? "rounded-[7px] bg-[hsl(var(--background))] px-2 py-2 text-sm font-medium text-[hsl(var(--foreground))] shadow-sm"
+                    : "rounded-[7px] px-2 py-2 text-sm text-[hsl(var(--muted-foreground))] transition-colors hover:text-[hsl(var(--foreground))]"
+                }
+                onClick={() => selectMethod(m)}
+              >
+                {METHOD_LABEL[m]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {relevantHistory.length > 0 ? (
+        <div className="flex flex-col gap-1.5" data-testid={`${prefix}-history`}>
+          <span className="text-xs text-[hsl(var(--muted-foreground))]">最近使用</span>
+          <div className="flex flex-wrap gap-1.5">
+            {relevantHistory.map((h) => (
+              <span
+                key={`${h.kind}:${h.value}`}
+                className="inline-flex max-w-full items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface))] py-0.5 pl-2.5 pr-1 text-xs text-[hsl(var(--foreground))]"
+              >
+                <button
+                  type="button"
+                  className="min-w-0 truncate hover:underline"
+                  onClick={() => applyHistory(h)}
+                >
+                  {maskLoginAccount(h)}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"
+                  aria-label="移除历史账户"
+                  onClick={() => {
+                    removeLoginAccount(h.kind, h.value);
+                    setHistory(listLoginAccounts());
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {method === "password" ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className={labelCls} htmlFor={`${prefix}-email`}>
+              邮箱
+            </label>
+            <input
+              id={`${prefix}-email`}
+              name="username"
+              type="email"
+              className={inputCls}
+              placeholder="name@example.com"
+              value={email}
+              autoComplete="username"
+              inputMode="email"
+              data-testid={`${prefix}-email`}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitPassword();
+                if (e.key === "Escape") props.onCancel();
+              }}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${prefix}-password`}>
+              密码
+            </label>
+            <input
+              id={`${prefix}-password`}
+              name="password"
+              type="password"
+              className={inputCls}
+              placeholder="输入密码"
+              value={password}
+              autoComplete="current-password"
+              data-testid={`${prefix}-password`}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void submitPassword();
+                if (e.key === "Escape") props.onCancel();
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className={primaryCls}
+            data-testid={`${prefix}-submit`}
+            disabled={busy || email.trim().length === 0 || password.length === 0}
+            onClick={() => void submitPassword()}
+          >
+            {busy ? "登录中…" : "登录"}
+          </button>
+        </div>
+      ) : null}
+
+      {method === "sms" ? (
+        <div className="flex flex-col gap-3">
+          <div>
+            <label className={labelCls} htmlFor={`${prefix}-phone`}>
+              手机号
+            </label>
+            <input
+              id={`${prefix}-phone`}
+              name="tel"
+              type="tel"
+              className={inputCls}
+              placeholder="11 位手机号"
+              value={phone}
+              autoComplete="tel"
+              inputMode="tel"
+              data-testid={`${prefix}-phone`}
+              onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ""))}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className={labelCls} htmlFor={`${prefix}-otp`}>
+              验证码
+            </label>
+            <div className="flex gap-2">
+              <input
+                id={`${prefix}-otp`}
+                name="one-time-code"
+                type="text"
+                className={`${inputCls} flex-1`}
+                placeholder={otpSent ? "6 位验证码" : "先获取验证码"}
+                value={code}
+                autoComplete="one-time-code"
+                inputMode="numeric"
+                maxLength={6}
+                data-testid={`${prefix}-otp`}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void submitSms();
+                }}
+              />
+              <button
+                type="button"
+                className={ghostCls}
+                disabled={busy || countdown > 0 || phone.trim().length < 11}
+                data-testid={`${prefix}-send-otp`}
+                onClick={() => void sendOtp()}
+              >
+                {countdown > 0 ? `${countdown}s` : otpSent ? "重新获取" : "获取验证码"}
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            className={primaryCls}
+            data-testid={`${prefix}-sms-submit`}
+            disabled={busy || phone.trim().length === 0 || code.trim().length < 4}
+            onClick={() => void submitSms()}
+          >
+            {busy ? "登录中…" : "登录"}
+          </button>
+        </div>
+      ) : null}
+
+      {method === "wechat" ? (
+        <div
+          className="flex flex-col items-stretch gap-3 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] p-4"
+          data-testid={`${prefix}-wechat`}
+        >
+          <div className="text-center">
+            <p className="text-sm font-medium text-[hsl(var(--foreground))]">微信扫码登录</p>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              {wxStatus === "idle" && "点击下方按钮开始，将打开扫码页"}
+              {wxStatus === "loading" && "正在准备登录会话…"}
+              {wxStatus === "show" && "请在打开的窗口中用微信扫码，完成后自动回到本页"}
+              {wxStatus === "success" && "登录成功"}
+              {wxStatus === "error" && "登录失败，可重试"}
+              {wxStatus === "expired" && "会话已失效，请重新扫码"}
+            </p>
+          </div>
+          {wxUrl ? (
+            <a
+              href={wxUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-center text-xs text-[hsl(var(--foreground))] underline underline-offset-2"
+            >
+              若未自动打开，点此打开扫码页
+            </a>
+          ) : null}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className={`${primaryCls} flex-1`}
+              disabled={busy}
+              onClick={() => void startWechat()}
+            >
+              {wxStatus === "idle" || wxStatus === "error" || wxStatus === "expired"
+                ? "开始扫码"
+                : wxStatus === "loading"
+                  ? "准备中…"
+                  : "重新扫码"}
+            </button>
+            {wxStatus !== "idle" ? (
+              <button type="button" className={ghostCls} onClick={cancelWechat}>
+                取消
+              </button>
+            ) : null}
+          </div>
+          {wxState ? (
+            <span className="sr-only" data-testid={`${prefix}-wechat-state`}>
+              {wxState}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!page ? (
+        <button
+          type="button"
+          className={ghostCls}
+          data-testid={`${prefix}-cancel`}
+          onClick={() => {
+            setEmail("");
+            setPassword("");
+            setPhone("");
+            setCode("");
+            setError(undefined);
+            setOtpSent(false);
+            cancelWechat();
+            props.onCancel();
+          }}
+        >
           取消
         </button>
-      )}
-      {error !== undefined && (
-        <span
+      ) : null}
+
+      {error !== undefined ? (
+        <div
+          role="alert"
           className={
             page
-              ? "rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              : "text-xs text-destructive"
+              ? "rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-3 py-2 text-sm text-[hsl(var(--foreground))]"
+              : "text-xs text-[hsl(var(--muted-foreground))]"
           }
           data-testid={`${prefix}-error`}
         >
           {error}
-        </span>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

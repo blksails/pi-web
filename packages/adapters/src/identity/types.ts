@@ -50,10 +50,7 @@ export type IdentityState =
   | { readonly kind: "anonymous" };
 
 /**
- * 账号密码凭据。v1 只有这一种交换形态(实测确认云端只提供
- * `POST /api/desktop/login { email, password }`,无任何 device 授权端点)。
- *
- * `method` 判别符是为将来留的增量演进位:新增形态即加一个联合分支,不改既有签名。
+ * 账号密码凭据。`method` 判别符支持 password | sms | wechat（同 Supabase 用户体系）。
  */
 export interface IdentityPasswordCredentials {
   readonly method: "password";
@@ -61,8 +58,25 @@ export interface IdentityPasswordCredentials {
   readonly password: string;
 }
 
-/** 可用于交换身份的凭据。v1 = 账号密码。 */
-export type IdentityCredentials = IdentityPasswordCredentials;
+export interface IdentitySmsCredentials {
+  readonly method: "sms";
+  readonly phone: string;
+  readonly code: string;
+}
+
+/** WeChat：桌面扫码完成后用 state 向云端 poll 取桌面凭据。 */
+export interface IdentityWechatCredentials {
+  readonly method: "wechat";
+  readonly state: string;
+  /** 已 poll 到的 credential；有则跳过再 poll。 */
+  readonly credential?: string;
+}
+
+/** 可用于交换身份的凭据。 */
+export type IdentityCredentials =
+  | IdentityPasswordCredentials
+  | IdentitySmsCredentials
+  | IdentityWechatCredentials;
 
 /**
  * 交换失败的类别。

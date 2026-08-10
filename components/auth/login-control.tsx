@@ -38,8 +38,22 @@ export function LoginControl({
   const form = (prefix: string): React.JSX.Element => (
     <LoginForm
       testIdPrefix={prefix}
+      methods={identity.methods}
       onSubmit={async (email, password) => {
         const r = await identity.exchange(email, password);
+        if (r.ok) setFormOpen(false);
+        return r;
+      }}
+      onSmsSubmit={async (phone, code) => {
+        const r = await identity.exchangeSms(phone, code);
+        if (r.ok) setFormOpen(false);
+        return r;
+      }}
+      onSendOtp={(phone) => identity.sendOtp(phone)}
+      onWechatStart={() => identity.startWechat()}
+      onWechatPoll={(state) => identity.pollWechat(state)}
+      onWechatExchange={async (state, credential) => {
+        const r = await identity.exchangeWechat(state, credential);
         if (r.ok) setFormOpen(false);
         return r;
       }}

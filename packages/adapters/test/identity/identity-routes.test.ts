@@ -87,13 +87,18 @@ describe("GET /identity", () => {
     });
     const r = await call(routeOf(routes, "GET", "/identity"));
     expect(r.status).toBe(200);
-    expect(r.json).toEqual({ state: "authenticated", tenant: TENANT, canExchange: true });
+    expect(r.json).toEqual({
+      state: "authenticated",
+      tenant: TENANT,
+      canExchange: true,
+      methods: ["password"],
+    });
   });
 
   it("未登录 → anonymous", async () => {
     const routes = createIdentityRoutes({ provider: fakeProvider({}) });
     const r = await call(routeOf(routes, "GET", "/identity"));
-    expect(r.json).toEqual({ state: "anonymous", canExchange: true });
+    expect(r.json).toEqual({ state: "anonymous", canExchange: true, methods: ["password"] });
   });
 
   it("实现违约抛错 → 仍返回 200 anonymous,不 500(Req 1.6)", async () => {
@@ -116,7 +121,12 @@ describe("★ canExchange 由 exchange 方法存在性派生(design.md D2)", () 
       provider: createSessionIdentityProvider({ resolveTenant: () => TENANT }),
     });
     const r = await call(routeOf(routes, "GET", "/identity"));
-    expect(r.json).toEqual({ state: "authenticated", tenant: TENANT, canExchange: false });
+    expect(r.json).toEqual({
+      state: "authenticated",
+      tenant: TENANT,
+      canExchange: false,
+      methods: ["password"],
+    });
   });
 
   it("不支持交换的实现 POST /identity/exchange → 405(Req 1.4:不是缺陷,是正常态)", async () => {
@@ -185,7 +195,12 @@ describe("POST /identity/exchange — 失败类别 → HTTP 状态(Req 2.3/2.4)"
       password: PASSWORD,
     });
     expect(r.status).toBe(200);
-    expect(r.json).toEqual({ state: "authenticated", tenant: TENANT, canExchange: true });
+    expect(r.json).toEqual({
+      state: "authenticated",
+      tenant: TENANT,
+      canExchange: true,
+      methods: ["password"],
+    });
   });
 });
 
@@ -210,7 +225,7 @@ describe("★ 响应体不含任何敏感材料(Req 8.2)", () => {
       provider: fakeProvider({ state: { kind: "authenticated", tenant: TENANT } }),
     });
     const r = await call(routeOf(routes, "GET", "/identity"));
-    expect(Object.keys(r.json).sort()).toEqual(["canExchange", "state", "tenant"]);
+    expect(Object.keys(r.json).sort()).toEqual(["canExchange", "methods", "state", "tenant"]);
     expect(Object.keys(r.json.tenant as object).sort()).toEqual([
       "companyId",
       "role",
@@ -233,6 +248,6 @@ describe("DELETE /identity(Req 7.1)", () => {
     const r = await call(routeOf(createIdentityRoutes({ provider }), "DELETE", "/identity"));
     expect(revoked).toBe(1);
     expect(r.status).toBe(200);
-    expect(r.json).toEqual({ state: "anonymous", canExchange: true });
+    expect(r.json).toEqual({ state: "anonymous", canExchange: true, methods: ["password"] });
   });
 });

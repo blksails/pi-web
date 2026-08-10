@@ -2,6 +2,7 @@ import * as React from "react";
 import { Sparkles } from "lucide-react";
 import { Pill } from "@blksails/pi-web-primitives";
 import { cn } from "../lib/cn.js";
+import { ChatCenteredOverlay } from "../ui/chat-centered-overlay.js";
 
 export interface ChatResourceConfig {
   /** 当前会话使用的已加载 Agent source id。 */
@@ -224,32 +225,119 @@ function PersonalSkillDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="pi-personal-skill-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-5 shadow-2xl">
+    <ChatCenteredOverlay onBackdrop={onClose} data-testid="personal-skill-overlay">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pi-personal-skill-title"
+        className="max-h-[min(90vh,100%)] w-full max-w-2xl overflow-y-auto rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-5 shadow-2xl"
+        data-pi-personal-skill-dialog=""
+      >
         <header className="flex items-center gap-3">
-          <h2 id="pi-personal-skill-title" className="text-base font-semibold">管理个人技能</h2>
-          <button type="button" className="ml-auto text-sm text-[hsl(var(--muted-foreground))]" onClick={onClose}>关闭</button>
+          <h2 id="pi-personal-skill-title" className="text-base font-semibold">
+            管理个人技能
+          </h2>
+          <button
+            type="button"
+            className="ml-auto text-sm text-[hsl(var(--muted-foreground))]"
+            onClick={onClose}
+          >
+            关闭
+          </button>
         </header>
         <div className="mt-4 grid gap-2">
-          {skills.length === 0 ? <p className="text-sm text-[hsl(var(--muted-foreground))]">暂无个人技能</p> : skills.map((skill) => (
-            <div key={skill.name} className="flex items-center gap-2 rounded border border-[hsl(var(--border))] px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">{skill.title || skill.name}</span>
-              <button type="button" className="text-xs" onClick={() => void edit(skill)}>编辑</button>
-              <button type="button" className="text-xs text-[hsl(var(--destructive))]" onClick={() => void remove(skill)}>删除</button>
-            </div>
-          ))}
+          {skills.length === 0 ? (
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">暂无个人技能</p>
+          ) : (
+            skills.map((skill) => (
+              <div
+                key={skill.name}
+                className="flex items-center gap-2 rounded-[7px] border border-[hsl(var(--border))] px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {skill.title || skill.name}
+                </span>
+                <button type="button" className="text-xs" onClick={() => void edit(skill)}>
+                  编辑
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-[hsl(var(--destructive))]"
+                  onClick={() => void remove(skill)}
+                >
+                  删除
+                </button>
+              </div>
+            ))
+          )}
         </div>
-        <form className="mt-4 grid gap-3 border-t border-[hsl(var(--border))] pt-4" onSubmit={(event) => void save(event)}>
-          <div className="flex items-center gap-2"><h3 className="text-sm font-medium">{editing === undefined ? "新建个人技能" : `编辑 ${editing.name}`}</h3>{editing !== undefined ? <button type="button" className="ml-auto text-xs" onClick={() => { setEditing(undefined); setForm(EMPTY_FORM); }}>取消</button> : null}</div>
-          <input required value={form.name} disabled={editing !== undefined} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="名称" className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm disabled:opacity-60" />
-          <input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} placeholder="显示标题（Skill 元数据）" className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm" />
-          <input required value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="描述（必填，pi 据此发现 Skill）" className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm" />
-          <textarea required value={form.content} onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))} placeholder="Skill 正文" rows={7} className="rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm" />
-          <button type="submit" disabled={saving} className="w-fit rounded-md bg-[hsl(var(--primary))] px-3 py-2 text-sm text-[hsl(var(--primary-foreground))]">{saving ? "保存中…" : "保存"}</button>
+        <form
+          className="mt-4 grid gap-3 border-t border-[hsl(var(--border))] pt-4"
+          onSubmit={(event) => void save(event)}
+        >
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-medium">
+              {editing === undefined ? "新建个人技能" : `编辑 ${editing.name}`}
+            </h3>
+            {editing !== undefined ? (
+              <button
+                type="button"
+                className="ml-auto text-xs"
+                onClick={() => {
+                  setEditing(undefined);
+                  setForm(EMPTY_FORM);
+                }}
+              >
+                取消
+              </button>
+            ) : null}
+          </div>
+          <input
+            required
+            value={form.name}
+            disabled={editing !== undefined}
+            onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+            placeholder="名称"
+            className="rounded-[7px] border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm disabled:opacity-60"
+          />
+          <input
+            value={form.title}
+            onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+            placeholder="显示标题（Skill 元数据）"
+            className="rounded-[7px] border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
+          />
+          <input
+            required
+            value={form.description}
+            onChange={(event) =>
+              setForm((current) => ({ ...current, description: event.target.value }))
+            }
+            placeholder="描述（必填，pi 据此发现 Skill）"
+            className="rounded-[7px] border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
+          />
+          <textarea
+            required
+            value={form.content}
+            onChange={(event) => setForm((current) => ({ ...current, content: event.target.value }))}
+            placeholder="Skill 正文"
+            rows={7}
+            className="rounded-[7px] border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-fit rounded-[7px] bg-[hsl(var(--primary))] px-3 py-2 text-sm text-[hsl(var(--primary-foreground))]"
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
         </form>
-        {message ? <p role="status" className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">{message}</p> : null}
+        {message ? (
+          <p role="status" className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">
+            {message}
+          </p>
+        ) : null}
       </section>
-    </div>
+    </ChatCenteredOverlay>
   );
 }
 

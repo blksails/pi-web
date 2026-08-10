@@ -8,6 +8,7 @@ import * as React from "react";
 import { useI18n, useLocale } from "@blksails/pi-web-ui";
 import { tenantDisplayName, useIdentity } from "./use-identity.js";
 import { LoginForm } from "./login-form.js";
+import { BindPhoneForm } from "./bind-phone-form.js";
 import { useThemeToggle } from "@/src/theme-controls.js";
 
 function initialsOf(name: string): string {
@@ -58,6 +59,7 @@ export function AccountBar({
   const theme = useThemeToggle();
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [formOpen, setFormOpen] = React.useState(false);
+  const [bindPhoneOpen, setBindPhoneOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
@@ -134,8 +136,22 @@ export function AccountBar({
         >
           <LoginForm
             testIdPrefix="login"
+            methods={identity.methods}
             onSubmit={async (email, password) => {
               const r = await identity.exchange(email, password);
+              if (r.ok) setFormOpen(false);
+              return r;
+            }}
+            onSmsSubmit={async (phone, code) => {
+              const r = await identity.exchangeSms(phone, code);
+              if (r.ok) setFormOpen(false);
+              return r;
+            }}
+            onSendOtp={(phone) => identity.sendOtp(phone)}
+            onWechatStart={() => identity.startWechat()}
+            onWechatPoll={(state) => identity.pollWechat(state)}
+            onWechatExchange={async (state, credential) => {
+              const r = await identity.exchangeWechat(state, credential);
               if (r.ok) setFormOpen(false);
               return r;
             }}
@@ -235,6 +251,18 @@ export function AccountBar({
               需重新登录
             </div>
           ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            data-testid="bind-phone-open"
+            className={MENU_ITEM}
+            onClick={() => {
+              setMenuOpen(false);
+              setBindPhoneOpen(true);
+            }}
+          >
+            绑定手机
+          </button>
           {identity.needsReauth && state.canExchange ? (
             <button
               type="button"
@@ -309,13 +337,43 @@ export function AccountBar({
         <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-lg">
           <LoginForm
             testIdPrefix="reauth"
+            methods={identity.methods}
             onSubmit={async (email, password) => {
               const r = await identity.exchange(email, password);
               if (r.ok) setFormOpen(false);
               return r;
             }}
+            onSmsSubmit={async (phone, code) => {
+              const r = await identity.exchangeSms(phone, code);
+              if (r.ok) setFormOpen(false);
+              return r;
+            }}
+            onSendOtp={(phone) => identity.sendOtp(phone)}
+            onWechatStart={() => identity.startWechat()}
+            onWechatPoll={(s) => identity.pollWechat(s)}
+            onWechatExchange={async (s, c) => {
+              const r = await identity.exchangeWechat(s, c);
+              if (r.ok) setFormOpen(false);
+              return r;
+            }}
             onCancel={() => setFormOpen(false)}
           />
+        </div>
+      ) : null}
+
+      {bindPhoneOpen ? (
+        <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-lg">
+          <BindPhoneForm
+            onSend={(phone) => identity.bindPhoneSend(phone)}
+            onVerify={(phone, code) => identity.bindPhoneVerify(phone, code)}
+          />
+          <button
+            type="button"
+            className="mt-2 w-full rounded-[7px] border border-border px-2 py-1 text-xs hover:bg-accent"
+            onClick={() => setBindPhoneOpen(false)}
+          >
+            关闭
+          </button>
         </div>
       ) : null}
     </div>

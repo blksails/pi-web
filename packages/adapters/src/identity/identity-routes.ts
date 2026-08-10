@@ -1,59 +1,49 @@
 /**
- * 身份 HTTP 面(spec: desktop-account-login,任务 5.1;Req 1.3/1.4/2.2-2.5/5.1-5.3/7.1/8.2)。
- *
- *   GET    /identity           → 当前身份投影 IdentityView
- *   POST   /identity/exchange  → 账号密码换身份。400/401/502
- *   DELETE /identity           → 放弃身份(登出)。实现不支持时 405
- *
- * 经 `createPiWebHandler` 的 routes 注入 seam 挂载(与 createAuthRoutes 并列),`/api` 下可达。
- *
- * ## ★ canExchange 是**派生**的,不是实现声明的(design.md D2)
- *
- * 端口用「`exchange` 方法是否存在」表达是否支持交换。UI 隔着 HTTP 看不到方法,故需要一个
- * 布尔投影 —— 但这个布尔**必须由本层从方法存在性算出**,不能让实现在返回值里另行声明。
- * 两个事实源必然会漂移:实现声明 `true` 却没实现方法,类型挡不住,只在用户点「登录」
- * 那一刻炸。派生则永远一致。
- *
- * ## 脱敏纪律(Req 8.2)
- *
- * 响应体只回 {@link IdentityView} —— 没有 credential、没有 password、没有任何授予 token。
- * 密码只出现在请求体的解析过程中,不回显、不入日志。
+ * 身份 HTTP 面：password / SMS / WeChat + OTP send + WeChat start/poll + bind phone。
  */
 import { errorResponse, jsonResponse } from "@blksails/pi-web-core/http/index.js";
 import type { InjectedRoute } from "@blksails/pi-web-core/http/index.js";
 import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
-import type { IdentityExchangeFailure, IdentityProvider, IdentityState } from "./types.js";
+import type { CloudDesktopAuthClient } from "../auth/cloud-desktop-auth-client.js";
+import type { AuthSessionState } from "../auth/auth-session-state.js";
+import type {
+  IdentityCredentials,
+  IdentityExchangeFailure,
+  IdentityProvider,
+  IdentityState,
+} from "./types.js";
 
-/**
- * 身份的 HTTP 投影。
- *
- * `canExchange` 告诉 UI「这里是否该渲染登录表单」—— 它替代了「我是不是桌面」这个问题,
- * 这正是 Req 1.5 要消灭的判断。
- */
 export type IdentityView =
   | {
       readonly state: "authenticated";
       readonly tenant: CapabilityTenant;
       readonly canExchange: boolean;
+      readonly methods?: ReadonlyArray<"password" | "sms" | "wechat">;
     }
-  | { readonly state: "anonymous"; readonly canExchange: boolean };
+  | {
+      readonly state: "anonymous";
+      readonly canExchange: boolean;
+      readonly methods?: ReadonlyArray<"password" | "sms" | "wechat">;
+    };
 
 export interface IdentityRoutesOptions {
   readonly provider: IdentityProvider;
+  /** 多方法云端客户端；提供则挂 OTP / WeChat 路由。 */
+  readonly desktopAuth?: CloudDesktopAuthClient;
+  /** 绑手机需要当前凭据。 */
+  readonly authState?: AuthSessionState;
 }
 
-function toView(state: IdentityState, canExchange: boolean): IdentityView {
+function toView(
+  state: IdentityState,
+  canExchange: boolean,
+  methods: ReadonlyArray<"password" | "sms" | "wechat">,
+): IdentityView {
   return state.kind === "authenticated"
-    ? { state: "authenticated", tenant: state.tenant, canExchange }
-    : { state: "anonymous", canExchange };
+    ? { state: "authenticated", tenant: state.tenant, canExchange, methods }
+    : { state: "anonymous", canExchange, methods };
 }
 
-/**
- * 失败类别 → HTTP 状态。
- *
- * `capabilities-failed` 用 **502** 而非 500:失败源在上游云端而非本地缺陷,且用户
- * 原样重试有可能成功。用 500 会让运维把它当成 pi-web 的 bug 去查。
- */
 function statusOf(reason: IdentityExchangeFailure): number {
   switch (reason) {
     case "invalid-request":
@@ -68,33 +58,61 @@ function statusOf(reason: IdentityExchangeFailure): number {
 }
 
 const MESSAGE: Readonly<Record<IdentityExchangeFailure, string>> = {
-  "invalid-request": "Email and password are required.",
-  "invalid-credentials": "Invalid email or password.",
+  "invalid-request": "Invalid login request.",
+  "invalid-credentials": "Invalid credentials.",
   "no-membership": "This account has no tenant membership.",
   "cloud-unreachable": "Cannot reach the cloud service.",
   "capabilities-failed": "Signed in, but capability grants could not be loaded.",
 };
 
+function parseExchangeBody(raw: unknown): IdentityCredentials | { error: "invalid" } {
+  if (typeof raw !== "object" || raw === null) return { error: "invalid" };
+  const body = raw as Record<string, unknown>;
+  const method = typeof body.method === "string" ? body.method : "password";
+
+  if (method === "password" || method === undefined) {
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || !password) return { error: "invalid" };
+    return { method: "password", email, password };
+  }
+  if (method === "sms") {
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+    const code = typeof body.code === "string" ? body.code.trim() : "";
+    if (!phone || !code) return { error: "invalid" };
+    return { method: "sms", phone, code };
+  }
+  if (method === "wechat") {
+    const state = typeof body.state === "string" ? body.state.trim() : "";
+    const credential =
+      typeof body.credential === "string" ? body.credential.trim() : undefined;
+    if (!state && !credential) return { error: "invalid" };
+    return { method: "wechat", state: state || "from-credential", credential };
+  }
+  return { error: "invalid" };
+}
+
 export function createIdentityRoutes(
   opts: IdentityRoutesOptions,
 ): ReadonlyArray<InjectedRoute> {
-  const { provider } = opts;
-  // 派生一次即固定:端口对象在装配后不会长出新方法。
+  const { provider, desktopAuth, authState } = opts;
   const canExchange = typeof provider.exchange === "function";
+  const methods: Array<"password" | "sms" | "wechat"> = ["password"];
+  if (desktopAuth !== undefined) {
+    methods.push("sms", "wechat");
+  }
 
   const get: InjectedRoute = {
     method: "GET",
     path: "/identity",
     handler: async () => {
-      // current() 契约上不抛;此处仍兜一层,避免第三方实现违约时整个端点 500 ——
-      // 「身份探测失败」对用户的处置与「未登录」相同(Req 1.6)。
       let state: IdentityState;
       try {
         state = await provider.current();
       } catch {
         state = { kind: "anonymous" };
       }
-      return jsonResponse(200, { ...toView(state, canExchange) });
+      return jsonResponse(200, { ...toView(state, canExchange, methods) });
     },
   };
 
@@ -116,30 +134,18 @@ export function createIdentityRoutes(
       } catch {
         return errorResponse(400, "INVALID_REQUEST", "Invalid JSON body.");
       }
-      if (typeof raw !== "object" || raw === null) {
-        return errorResponse(400, "INVALID_REQUEST", MESSAGE["invalid-request"], [
-          "email",
-          "password",
-        ]);
-      }
-      const body = raw as { email?: unknown; password?: unknown; method?: unknown };
-      const email = typeof body.email === "string" ? body.email.trim() : "";
-      // 密码不 trim:前后空格可能是密码本身的一部分。
-      const password = typeof body.password === "string" ? body.password : "";
-      const missing: string[] = [];
-      if (email.length === 0) missing.push("email");
-      if (password.length === 0) missing.push("password");
-      if (missing.length > 0) {
-        return errorResponse(400, "INVALID_REQUEST", MESSAGE["invalid-request"], missing);
+      const parsed = parseExchangeBody(raw);
+      if ("error" in parsed) {
+        return errorResponse(400, "INVALID_REQUEST", MESSAGE["invalid-request"]);
       }
 
-      const result = await provider.exchange({ method: "password", email, password });
+      const result = await provider.exchange(parsed);
       if (!result.ok) {
         return errorResponse(statusOf(result.reason), "EXCHANGE_FAILED", MESSAGE[result.reason], [
           result.reason,
         ]);
       }
-      return jsonResponse(200, { ...toView(result.state, canExchange) });
+      return jsonResponse(200, { ...toView(result.state, canExchange, methods) });
     },
   };
 
@@ -148,7 +154,6 @@ export function createIdentityRoutes(
     path: "/identity",
     handler: async () => {
       if (provider.revoke === undefined) {
-        // 身份来自外部会话的宿主无从「放弃」它 —— 这是正常的,不是缺陷(Req 1.4/6.3)。
         return errorResponse(
           405,
           "REVOKE_UNSUPPORTED",
@@ -156,9 +161,142 @@ export function createIdentityRoutes(
         );
       }
       await provider.revoke();
-      return jsonResponse(200, { ...toView({ kind: "anonymous" }, canExchange) });
+      return jsonResponse(200, { ...toView({ kind: "anonymous" }, canExchange, methods) });
     },
   };
 
-  return [get, exchange, revoke];
+  const routes: InjectedRoute[] = [get, exchange, revoke];
+
+  if (desktopAuth !== undefined) {
+    routes.push({
+      method: "POST",
+      path: "/identity/otp/send",
+      handler: async (ctx) => {
+        let raw: unknown;
+        try {
+          raw = await ctx.req.json();
+        } catch {
+          return errorResponse(400, "INVALID_REQUEST", "Invalid JSON body.");
+        }
+        const phone =
+          typeof raw === "object" &&
+          raw !== null &&
+          typeof (raw as { phone?: unknown }).phone === "string"
+            ? (raw as { phone: string }).phone
+            : "";
+        const result = await desktopAuth.sendOtp(phone);
+        if (!result.ok) {
+          const status =
+            result.reason === "rate-limited"
+              ? 429
+              : result.reason === "invalid-request"
+                ? 400
+                : 502;
+          return errorResponse(status, "OTP_SEND_FAILED", result.reason ?? "failed");
+        }
+        return jsonResponse(200, { ok: true });
+      },
+    });
+
+    routes.push({
+      method: "POST",
+      path: "/identity/wechat/start",
+      handler: async () => {
+        const started = await desktopAuth.startWechat();
+        if (!started.ok) {
+          return errorResponse(502, "WECHAT_START_FAILED", started.reason);
+        }
+        return jsonResponse(200, {
+          state: started.state,
+          appid: started.appid,
+          redirectUri: started.redirectUri,
+          qrConnectUrl: started.qrConnectUrl,
+          expiresAt: started.expiresAt,
+        });
+      },
+    });
+
+    routes.push({
+      method: "GET",
+      path: "/identity/wechat/poll",
+      handler: async (ctx) => {
+        const url = new URL(ctx.req.url);
+        const state = url.searchParams.get("state")?.trim() ?? "";
+        if (!state) {
+          return errorResponse(400, "INVALID_REQUEST", "state required");
+        }
+        const polled = await desktopAuth.pollWechat(state);
+        if (!polled.ok) {
+          return errorResponse(502, "WECHAT_POLL_FAILED", polled.reason);
+        }
+        if (polled.status === "ready") {
+          // 不把 token 回给渲染层之外的调用方以外——exchange 会用 state 再取。
+          // 这里直接返回 status ready，由客户端用 exchange({method:wechat,state}) 落态。
+          // 但 poll 会消耗 token，所以这里需要把 credential 交给 exchange。
+          // 为避免双次 poll 丢 token：ready 时把 credential 一并返回给同源 server 代理的 UI，
+          // 随后 exchange 用 credential 字段。UI 不持久化。
+          return jsonResponse(200, {
+            status: "ready",
+            credential: polled.credential,
+          });
+        }
+        if (polled.status === "error") {
+          return jsonResponse(200, { status: "error", error: polled.error });
+        }
+        return jsonResponse(200, { status: polled.status });
+      },
+    });
+  }
+
+  if (desktopAuth !== undefined && authState !== undefined) {
+    routes.push({
+      method: "POST",
+      path: "/identity/phone/bind/send",
+      handler: async (ctx) => {
+        const cred = authState.currentCredential();
+        if (!cred) return errorResponse(401, "UNAUTHORIZED", "Not logged in.");
+        let raw: unknown;
+        try {
+          raw = await ctx.req.json();
+        } catch {
+          return errorResponse(400, "INVALID_REQUEST", "Invalid JSON body.");
+        }
+        const phone =
+          typeof raw === "object" &&
+          raw !== null &&
+          typeof (raw as { phone?: unknown }).phone === "string"
+            ? (raw as { phone: string }).phone
+            : "";
+        const result = await desktopAuth.bindPhoneSend(cred, phone);
+        if (!result.ok) {
+          return errorResponse(400, "BIND_SEND_FAILED", result.reason ?? "failed");
+        }
+        return jsonResponse(200, { ok: true });
+      },
+    });
+    routes.push({
+      method: "POST",
+      path: "/identity/phone/bind/verify",
+      handler: async (ctx) => {
+        const cred = authState.currentCredential();
+        if (!cred) return errorResponse(401, "UNAUTHORIZED", "Not logged in.");
+        let raw: unknown;
+        try {
+          raw = await ctx.req.json();
+        } catch {
+          return errorResponse(400, "INVALID_REQUEST", "Invalid JSON body.");
+        }
+        const o = raw as { phone?: unknown; code?: unknown };
+        const phone = typeof o.phone === "string" ? o.phone : "";
+        const code = typeof o.code === "string" ? o.code : "";
+        const result = await desktopAuth.bindPhoneVerify(cred, phone, code);
+        if (!result.ok) {
+          return errorResponse(400, "BIND_VERIFY_FAILED", result.reason ?? "failed");
+        }
+        return jsonResponse(200, { ok: true });
+      },
+    });
+  }
+
+  return routes;
 }

@@ -61,13 +61,52 @@ export type IdentityExchangeReason =
   | "capabilities-failed"
   | "unsupported";
 
+export type LoginMethodId = "password" | "sms" | "wechat";
+
 export interface UseIdentityResult {
   readonly state: IdentityUiState;
+  /** 可用登录方式（服务端 methods 投影；缺省 password）。 */
+  readonly methods: ReadonlyArray<LoginMethodId>;
   /** 用账号密码换身份。 */
   readonly exchange: (
     email: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  readonly exchangeSms: (
+    phone: string,
+    code: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  readonly sendOtp: (
+    phone: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason | "rate-limited" }>;
+  readonly startWechat: () => Promise<
+    | {
+        ok: true;
+        state: string;
+        appid: string;
+        redirectUri: string;
+        qrConnectUrl: string;
+      }
+    | { ok: false; reason?: IdentityExchangeReason }
+  >;
+  readonly pollWechat: (
+    state: string,
+  ) => Promise<
+    | { ok: true; status: "pending" | "claimed" | "unknown" | "error"; error?: string }
+    | { ok: true; status: "ready"; credential: string }
+    | { ok: false; reason?: IdentityExchangeReason }
+  >;
+  readonly exchangeWechat: (
+    state: string,
+    credential: string,
+  ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
+  readonly bindPhoneSend: (
+    phone: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
+  readonly bindPhoneVerify: (
+    phone: string,
+    code: string,
+  ) => Promise<{ ok: boolean; error?: string }>;
   /** 放弃身份(登出)。 */
   readonly revoke: () => Promise<void>;
   readonly refresh: () => Promise<void>;
@@ -81,6 +120,7 @@ interface IdentityViewBody {
   readonly state?: unknown;
   readonly tenant?: unknown;
   readonly canExchange?: unknown;
+  readonly methods?: unknown;
 }
 
 const IdentityContext = React.createContext<UseIdentityResult | null>(null);
@@ -149,15 +189,62 @@ function parseView(body: IdentityViewBody): IdentityUiState {
   return { kind: "anonymous", canExchange };
 }
 
+function parseExchangeReason(res: Response, raw: string): IdentityExchangeReason {
+  let reason: IdentityExchangeReason =
+    res.status === 401
+      ? "invalid-credentials"
+      : res.status === 400
+        ? "invalid-request"
+        : res.status === 405
+          ? "unsupported"
+          : "cloud-unreachable";
+  for (const r of [
+    "capabilities-failed",
+    "cloud-unreachable",
+    "invalid-credentials",
+    "no-membership",
+    "invalid-request",
+  ] as const) {
+    if (raw.includes(r)) {
+      reason = r;
+      break;
+    }
+  }
+  return reason;
+}
+
+const ALL_LOGIN_METHODS: ReadonlyArray<LoginMethodId> = ["password", "sms", "wechat"];
+
+function parseMethods(body: IdentityViewBody): LoginMethodId[] {
+  // 服务端未投 methods（旧进程/未重启）时：能交换凭据则默认三法，避免只剩密码页。
+  if (!Array.isArray(body.methods)) {
+    return body.canExchange === true ? [...ALL_LOGIN_METHODS] : ["password"];
+  }
+  const out: LoginMethodId[] = [];
+  for (const m of body.methods) {
+    if (m === "password" || m === "sms" || m === "wechat") out.push(m);
+  }
+  if (out.length === 0) {
+    return body.canExchange === true ? [...ALL_LOGIN_METHODS] : ["password"];
+  }
+  // 仅回 password 且 canExchange：多半是旧路由未挂 SMS/微信；仍展示三法，点后 404 再修云端。
+  if (out.length === 1 && out[0] === "password" && body.canExchange === true) {
+    return [...ALL_LOGIN_METHODS];
+  }
+  return out;
+}
+
 function useIdentityState(): UseIdentityResult {
   const [state, setState] = React.useState<IdentityUiState>({ kind: "loading" });
+  const [methods, setMethods] = React.useState<ReadonlyArray<LoginMethodId>>([
+    ...ALL_LOGIN_METHODS,
+  ]);
   const [needsReauth, setNeedsReauth] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     try {
       const res = await fetch("/api/identity", { method: "GET" });
       if (res.status === 404) {
-        // 能力面未挂载 = 云端未配置。不是错误,是「这里没有登录这回事」(Req 2.5)。
         setState({ kind: "disabled" });
         return;
       }
@@ -165,9 +252,10 @@ function useIdentityState(): UseIdentityResult {
         setState({ kind: "anonymous", canExchange: true });
         return;
       }
-      setState(parseView((await res.json()) as IdentityViewBody));
+      const body = (await res.json()) as IdentityViewBody;
+      setMethods(parseMethods(body));
+      setState(parseView(body));
     } catch {
-      // 探测失败与「未启用」对用户的处置相同:不渲染入口,应用照常可用(Req 1.6)。
       setState({ kind: "disabled" });
     }
   }, []);
@@ -175,6 +263,17 @@ function useIdentityState(): UseIdentityResult {
   React.useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const afterLoginOk = React.useCallback(
+    async (body: IdentityViewBody) => {
+      setState(parseView(body));
+      setMethods(parseMethods(body));
+      setNeedsReauth(false);
+      await getPiWebDesktopBridge()?.syncCredential?.();
+      await refresh();
+    },
+    [refresh],
+  );
 
   const exchange = React.useCallback(
     async (email: string, password: string) => {
@@ -188,55 +287,191 @@ function useIdentityState(): UseIdentityResult {
       } catch {
         return { ok: false, reason: "cloud-unreachable" as const };
       }
-      if (!res.ok) {
-        // 服务端把 reason 放在 errorResponse 的字段位;502 有两种成因,只看状态码不够。
-        let reason: IdentityExchangeReason =
-          res.status === 401
-            ? "invalid-credentials"
-            : res.status === 400
-              ? "invalid-request"
-              : res.status === 405
-                ? "unsupported"
-                : "cloud-unreachable";
-        try {
-          const raw = await res.text();
-          for (const r of [
-            "capabilities-failed",
-            "cloud-unreachable",
-            "invalid-credentials",
-            "no-membership",
-            "invalid-request",
-          ] as const) {
-            if (raw.includes(r)) {
-              reason = r;
-              break;
-            }
-          }
-        } catch {
-          // 读不到响应体就用状态码推出来的那个,不影响主流程。
-        }
-        return { ok: false, reason };
+      const raw = await res.text();
+      if (!res.ok) return { ok: false, reason: parseExchangeReason(res, raw) };
+      try {
+        await afterLoginOk(JSON.parse(raw) as IdentityViewBody);
+      } catch {
+        await refresh();
       }
-      setState(parseView((await res.json()) as IdentityViewBody));
-      setNeedsReauth(false);
-      // 让壳把凭据同步进钥匙串,使登录跨重启保留(Req 12)。
-      // ★ 这个调用**不带凭据** —— 壳自己带 token 向本地 server 取,凭据不经渲染层(Req 12.5)。
-      // best-effort:失败不影响本次会话的登录态,只是下次开应用要重登。
-      await getPiWebDesktopBridge()?.syncCredential?.();
-      await refresh();
       return { ok: true };
     },
-    [refresh],
+    [afterLoginOk, refresh],
   );
+
+  const exchangeSms = React.useCallback(
+    async (phone: string, code: string) => {
+      let res: Response;
+      try {
+        res = await fetch("/api/identity/exchange", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ method: "sms", phone, code }),
+        });
+      } catch {
+        return { ok: false, reason: "cloud-unreachable" as const };
+      }
+      const raw = await res.text();
+      if (!res.ok) return { ok: false, reason: parseExchangeReason(res, raw) };
+      try {
+        await afterLoginOk(JSON.parse(raw) as IdentityViewBody);
+      } catch {
+        await refresh();
+      }
+      return { ok: true };
+    },
+    [afterLoginOk, refresh],
+  );
+
+  const sendOtp = React.useCallback(async (phone: string) => {
+    let res: Response;
+    try {
+      res = await fetch("/api/identity/otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+    } catch {
+      return { ok: false, reason: "cloud-unreachable" as const };
+    }
+    if (res.status === 429) return { ok: false, reason: "rate-limited" as const };
+    if (!res.ok) {
+      const reason: IdentityExchangeReason =
+        res.status === 400 ? "invalid-request" : "cloud-unreachable";
+      return {
+        ok: false,
+        reason,
+      };
+    }
+    return { ok: true };
+  }, []);
+
+  const startWechat = React.useCallback(async () => {
+    let res: Response;
+    try {
+      res = await fetch("/api/identity/wechat/start", { method: "POST" });
+    } catch {
+      return { ok: false as const, reason: "cloud-unreachable" as const };
+    }
+    if (!res.ok) return { ok: false as const, reason: "cloud-unreachable" as const };
+    try {
+      const o = (await res.json()) as {
+        state?: string;
+        appid?: string;
+        redirectUri?: string;
+        qrConnectUrl?: string;
+      };
+      if (
+        typeof o.state === "string" &&
+        typeof o.appid === "string" &&
+        typeof o.redirectUri === "string" &&
+        typeof o.qrConnectUrl === "string"
+      ) {
+        return {
+          ok: true as const,
+          state: o.state,
+          appid: o.appid,
+          redirectUri: o.redirectUri,
+          qrConnectUrl: o.qrConnectUrl,
+        };
+      }
+    } catch {
+      // fallthrough
+    }
+    return { ok: false as const, reason: "cloud-unreachable" as const };
+  }, []);
+
+  const pollWechat = React.useCallback(async (state: string) => {
+    let res: Response;
+    try {
+      res = await fetch(`/api/identity/wechat/poll?state=${encodeURIComponent(state)}`);
+    } catch {
+      return { ok: false as const, reason: "cloud-unreachable" as const };
+    }
+    if (!res.ok) return { ok: false as const, reason: "cloud-unreachable" as const };
+    try {
+      const o = (await res.json()) as {
+        status?: string;
+        credential?: string;
+        error?: string;
+      };
+      if (o.status === "ready" && typeof o.credential === "string") {
+        return { ok: true as const, status: "ready" as const, credential: o.credential };
+      }
+      if (o.status === "pending" || o.status === "claimed" || o.status === "unknown") {
+        const status: "pending" | "claimed" | "unknown" = o.status;
+        return { ok: true as const, status };
+      }
+      if (o.status === "error") {
+        return {
+          ok: true as const,
+          status: "error" as const,
+          error: typeof o.error === "string" ? o.error : "error",
+        };
+      }
+    } catch {
+      // fallthrough
+    }
+    return { ok: false as const, reason: "cloud-unreachable" as const };
+  }, []);
+
+  const exchangeWechat = React.useCallback(
+    async (state: string, credential: string) => {
+      let res: Response;
+      try {
+        res = await fetch("/api/identity/exchange", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ method: "wechat", state, credential }),
+        });
+      } catch {
+        return { ok: false, reason: "cloud-unreachable" as const };
+      }
+      const raw = await res.text();
+      if (!res.ok) return { ok: false, reason: parseExchangeReason(res, raw) };
+      try {
+        await afterLoginOk(JSON.parse(raw) as IdentityViewBody);
+      } catch {
+        await refresh();
+      }
+      return { ok: true };
+    },
+    [afterLoginOk, refresh],
+  );
+
+  const bindPhoneSend = React.useCallback(async (phone: string) => {
+    try {
+      const res = await fetch("/api/identity/phone/bind/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!res.ok) return { ok: false, error: "发送失败" };
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "网络错误" };
+    }
+  }, []);
+
+  const bindPhoneVerify = React.useCallback(async (phone: string, code: string) => {
+    try {
+      const res = await fetch("/api/identity/phone/bind/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone, code }),
+      });
+      if (!res.ok) return { ok: false, error: "验证失败" };
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "网络错误" };
+    }
+  }, []);
 
   const revoke = React.useCallback(async () => {
     try {
       await fetch("/api/identity", { method: "DELETE" });
     } finally {
-      // 登出:销毁全部 pane webview（会话已结束，不可仅隐藏）。
       await getPiWebDesktopBridge()?.destroyPaneWebviews?.();
-      // 登出:同样交给壳同步一次 —— 此时 server 返回 credential:null,壳据此清钥匙串。
-      // 走同一条路径(而非直接 clearCredential),避免「登录一条路、登出另一条路」各自维护。
       await getPiWebDesktopBridge()?.syncCredential?.();
       setNeedsReauth(false);
       await refresh();
@@ -247,5 +482,20 @@ function useIdentityState(): UseIdentityResult {
     setNeedsReauth(true);
   }, []);
 
-  return { state, exchange, revoke, refresh, markSessionAuthFailure, needsReauth };
+  return {
+    state,
+    methods,
+    exchange,
+    exchangeSms,
+    sendOtp,
+    startWechat,
+    pollWechat,
+    exchangeWechat,
+    bindPhoneSend,
+    bindPhoneVerify,
+    revoke,
+    refresh,
+    markSessionAuthFailure,
+    needsReauth,
+  };
 }
