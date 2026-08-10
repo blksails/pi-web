@@ -101,6 +101,7 @@ describe("panelRight 连续宽度(全受控)", () => {
         extension={panelExt}
         panelWidth={480}
         onPanelWidthChange={onChange}
+        maxPanelWidth={800}
       />,
     );
     const resizer = document.querySelector("[data-pi-panel-resizer]") as HTMLElement;

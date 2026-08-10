@@ -72,6 +72,10 @@ export const WebExtConfigSchema = z.object({
   panelWidth: z.number().finite().int().min(240).max(4096).optional(),
   /** 连续拖拽最小宽度；仅与 panelWidth 同时生效。 */
   minPanelWidth: z.number().finite().int().min(160).max(4096).optional(),
+  /** @deprecated 兼容旧 agent 配置；右栏上限按会话列最小宽度动态计算，此值不参与布局。 */
+  maxPanelWidth: z.number().finite().int().optional(),
+  /** @deprecated 兼容旧 agent 配置；比例上限已移除，此值不参与布局。 */
+  maxPanelWidthRatio: z.number().finite().optional(),
   /** 日志面板位置(覆盖宿主全局默认);占 panelRight 的 source 宜声明 `bottom`。 */
   /** 日志面板位置(覆盖宿主全局默认);占 右侧面板 的 source 宜声明 `bottom`。 */
   logsPanelPosition: LogsPanelPositionSchema.optional(),

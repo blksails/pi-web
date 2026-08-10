@@ -37,6 +37,8 @@ describe("WebExtConfig (Tier 5 declarative)", () => {
     expect(WebExtConfigSchema.safeParse({ panelWidth: 760.5 }).success).toBe(false);
     expect(WebExtConfigSchema.safeParse({ minPanelWidth: 420 }).success).toBe(false);
     expect(WebExtConfigSchema.safeParse({ panelWidth: 760, minPanelWidth: 900 }).success).toBe(false);
+    expect(WebExtConfigSchema.safeParse({ panelWidth: 760, maxPanelWidth: 600 }).success).toBe(true);
+    expect(WebExtConfigSchema.safeParse({ panelWidth: 760, maxPanelWidthRatio: 0.5 }).success).toBe(true);
   });
 
   it("re-exports empty config schemas through the descriptor barrel", () => {

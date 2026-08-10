@@ -307,6 +307,10 @@ export interface PiChatProps {
   readonly onPaneEvent?: (topic: string, payload: unknown) => boolean | void | Promise<boolean | void>;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
+  /** @deprecated 仅为兼容旧 agent 配置保留；右栏上限已按 chat 最小宽度动态计算，不再读取此值。 */
+  readonly maxPanelWidth?: number;
+  /** @deprecated 仅为兼容旧 agent 配置保留；比例上限已移除，不再读取此值。 */
+  readonly maxPanelWidthRatio?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
