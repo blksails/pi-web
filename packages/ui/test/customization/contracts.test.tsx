@@ -29,7 +29,7 @@ describe("resolveComponent (Req 5.5/9.2/9.3)", () => {
 describe("layoutClassNames (Req 7.1/7.3/7.4)", () => {
   it("缺省等价 centered", () => {
     expect(layoutClassNames(undefined)).toEqual(layoutClassNames("centered"));
-    expect(layoutClassNames("centered").content).toContain("max-w-3xl");
+    expect(layoutClassNames("centered").content).toContain("max-w-5xl");
     expect(layoutClassNames("centered").hasAside).toBe(false);
   });
   it("wide 更宽", () => {

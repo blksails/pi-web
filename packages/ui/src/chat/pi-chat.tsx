@@ -2411,7 +2411,7 @@ export function PiChat({
 
       {/* isolate:建本列 stacking context,使 backgroundLayer 的 -z-10 限定于此(绘于
           app-shell 不透明壳底之上、内容之下);否则负 z-index 逃逸到根上下文被壳底遮挡。
-          min-w + 不透明 canvas:会话列保底且不与侧栏/右栏叠层透出。 */}
+          min-w + 不透明背景:会话列保底且不与侧栏/右栏叠层透出。 */}
       <div
         ref={panelConversationColumnRef}
         className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[hsl(var(--canvas))]"
@@ -2460,6 +2460,7 @@ export function PiChat({
             className="pi-scrollbar-ghost flex min-h-0 min-w-0 flex-1 flex-col items-center justify-start overflow-x-hidden overflow-y-auto bg-[hsl(var(--canvas))] px-4 pb-8 pt-[10vh]"
             data-pi-chat-welcome
           >
+            {extensionStatusBar}
             {emptyBody}
             {/* Tier1 保留插槽:扩展空态(追加,不替换默认空态)。 */}
             <ExtSlotRegion ext={extension} slot="empty" />

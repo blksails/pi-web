@@ -135,6 +135,7 @@ describe("宿主装载路径渲染 panes(Req 1.1/2.1)", () => {
       ...hostSource,
       definition: definePanes({
         id: "host-builtin",
+        maxOpenPanes: 2,
         initialPaneIds: ["host:probe"],
         panes: [{ id: "host:probe", title: "内置探针", document: DOC, capabilities: {} }],
       }),
@@ -143,6 +144,7 @@ describe("宿主装载路径渲染 panes(Req 1.1/2.1)", () => {
       manifestId: "agent-panes-key",
       panes: definePanes({
         id: "agent",
+        maxOpenPanes: 2,
         initialPaneIds: ["agent:p"],
         panes: [{ id: "agent:p", title: "Agent Pane", document: DOC, capabilities: {} }],
       }),
@@ -155,9 +157,8 @@ describe("宿主装载路径渲染 panes(Req 1.1/2.1)", () => {
     expect(titles).toContain("内置探针");
     expect(titles).toContain("Agent Pane");
     // 顺带钉住 Req 2.5 在 UI 上的体现:初始打开集合里 agent 的在前。
-    const tabs = [...document.querySelectorAll('[role="tab"]')].map((el) => el.textContent ?? "");
-    expect(tabs.findIndex((t) => t.includes("Agent Pane"))).toBeLessThan(
-      tabs.findIndex((t) => t.includes("内置探针")),
-    );
+    // Pane chrome 的 tabs 位于 guest 文档内,宿主只按初始实例顺序挂载 iframe。
+    // 这里验证宿主可观测的顺序,避免跨 iframe 查询造成假阴性。
+    expect(titles).toEqual(["Agent Pane", "内置探针"]);
   });
 });

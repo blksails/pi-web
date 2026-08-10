@@ -389,8 +389,10 @@ export function SessionListPanel(
    *   `name` 缺省本身就完备表达了「标题尚未设置」,故不为此另设状态字段(避免第二事实源)。
    *   sessionId 仍在 hover 提示里可查。
    */
-  const titleOf = (item: SessionListItemWithSource): string =>
-    item.name !== undefined && item.name.length > 0 ? item.name : untitledLabel;
+  const titleOf = (item: SessionListItemWithSource): string => {
+    const title = item.name !== undefined && item.name.length > 0 ? item.name : untitledLabel;
+    return title.replace(/\s+/g, " ").trim() || untitledLabel;
+  };
 
   /**
    * 会话工作状态指示(spec session-meta-index, Req 7.1-7.3/7.6)。
@@ -486,7 +488,7 @@ export function SessionListPanel(
               title={`${titleOf(item)} · ${formatTime(item)} · ${item.cwd} · ${item.sessionId}`}
               className={cn(
                 // ui-redesign §5.2:低 chrome 行;固定 h 统一有/无来源与状态标签的行高。
-                "flex h-12 min-h-12 w-full min-w-0 flex-1 flex-col justify-center gap-0.5 rounded-[7px] px-2 py-0 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1",
+                "flex h-12 min-h-12 w-full min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden rounded-[7px] px-2 py-0 text-left truncate transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1",
                 canManage && "group-hover:pr-8 group-focus-within:pr-8",
                 isActive
                   ? "bg-[hsl(var(--surface-subtle))] font-medium text-[hsl(var(--foreground))]"
@@ -500,12 +502,14 @@ export function SessionListPanel(
                 {renderActivity(item)}
               </span>
               {/* 副行恒占位:有 source 显示路径,无则空白,保证全表行高一致。 */}
-              <span
-                data-pi-session-list-item-source=""
-                className="block h-[14px] min-w-0 truncate font-mono text-[11px] font-normal leading-[14px] text-[hsl(var(--muted-foreground))]"
-              >
-                {hasSource ? item.source : "\u00a0"}
-              </span>
+              {hasSource ? (
+                <span
+                  data-pi-session-list-item-source=""
+                  className="block h-[14px] min-w-0 truncate font-mono text-[10px] font-normal leading-[14px] text-[hsl(var(--muted-foreground))]"
+                >
+                  {item.source}
+                </span>
+              ) : null}
             </button>
           )}
           {canManage && !editing ? (
@@ -526,7 +530,7 @@ export function SessionListPanel(
     <div
       data-pi-session-list=""
       className={cn(
-        "flex h-full shrink-0 flex-col gap-3 overflow-hidden text-sm",
+        "flex h-full min-w-0 max-w-full shrink-0 flex-col gap-3 overflow-hidden text-sm",
         className,
       )}
     >

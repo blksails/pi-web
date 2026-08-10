@@ -85,6 +85,7 @@ export const MODULE_ROSTER: Readonly<Record<string, Layer>> = {
 
   // ── runner:子进程实现 ─────────────────────────────────────
   runner: "runner",
+  "builtin-prompt-paths": "assembly", // server 兼容层转发 runner 的内置 prompt 路径
 
   // ── assembly:组装层,按定义同时引用 core 与 adapters ─────────
   index: "assembly", // 主 barrel
@@ -175,7 +176,7 @@ export const ROSTER_OVERRIDES: Readonly<Record<string, Readonly<Record<string, L
  *   (`../host-contract-version.js`),而磁盘上是 `.ts`。只剥一种会让顶层单文件模块查不到。
  */
 export function moduleNameOf(relPathFromSrc: string): string {
-  const first = relPathFromSrc.split("/")[0] ?? "";
+  const first = relPathFromSrc.replaceAll("\\", "/").split("/")[0] ?? "";
   return first.replace(/\.(ts|js)$/, "");
 }
 

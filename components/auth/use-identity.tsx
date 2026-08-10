@@ -336,9 +336,11 @@ function useIdentityState(): UseIdentityResult {
     }
     if (res.status === 429) return { ok: false, reason: "rate-limited" as const };
     if (!res.ok) {
+      const reason: IdentityExchangeReason =
+        res.status === 400 ? "invalid-request" : "cloud-unreachable";
       return {
         ok: false,
-        reason: (res.status === 400 ? "invalid-request" : "cloud-unreachable") as const,
+        reason,
       };
     }
     return { ok: true };
@@ -397,7 +399,8 @@ function useIdentityState(): UseIdentityResult {
         return { ok: true as const, status: "ready" as const, credential: o.credential };
       }
       if (o.status === "pending" || o.status === "claimed" || o.status === "unknown") {
-        return { ok: true as const, status: o.status };
+        const status: "pending" | "claimed" | "unknown" = o.status;
+        return { ok: true as const, status };
       }
       if (o.status === "error") {
         return {

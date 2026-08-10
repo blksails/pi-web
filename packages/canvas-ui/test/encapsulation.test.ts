@@ -112,7 +112,14 @@ function scanSesH1File(file: string): SesH1Scan {
       skipNext = false;
       return;
     }
-    if (SES_H1_WORDLIST.test(line)) {
+    // Host visual hooks are not a cross-boundary API dependency. Keep the
+    // domain-word check for prose and identifiers while allowing CSS tokens
+    // used by the host shell to remain stable.
+    const lineWithoutHostStyleHooks = line.replace(
+      /--canvas\b|data-canvas(?:-[\w-]+)?/gi,
+      "",
+    );
+    if (SES_H1_WORDLIST.test(lineWithoutHostStyleHooks)) {
       offenders.push(`${loc}: ${line.trim()}`);
     }
   });

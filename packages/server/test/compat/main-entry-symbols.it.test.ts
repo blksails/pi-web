@@ -28,7 +28,7 @@ describe("兼容层主入口 —— 导出符号集合逐字不变", () => {
     const jiti = createJiti(import.meta.url);
     const mod = (await jiti.import(path.join(pkgDir, "src/index.ts"))) as Record<string, unknown>;
     const actual = Object.keys(mod).sort();
-    const expected = fs.readFileSync(baselinePath, "utf8").trim().split("\n");
+    const expected = fs.readFileSync(baselinePath, "utf8").trim().split(/\r?\n/);
 
     const added = actual.filter((s) => !expected.includes(s));
     const removed = expected.filter((s) => !actual.includes(s));
@@ -45,7 +45,7 @@ describe("兼容层主入口 —— 导出符号集合逐字不变", () => {
   });
 
   it("基准文件本身非空且无重复(防基准被清空后本守卫空转)", () => {
-    const lines = fs.readFileSync(baselinePath, "utf8").trim().split("\n");
+    const lines = fs.readFileSync(baselinePath, "utf8").trim().split(/\r?\n/);
     // ★ 一个被清空的基准会让上面那条断言"恒真"——空扫式失效,与真正通过长得一模一样。
     // 阈值随 adapters 提取(任务 5.1)自 300 下调至 200:主入口收窄后基准为 224 个符号。
     // 收窄前的 313 符号基准另存在 main-entry-symbols.before-adapters-extraction.txt。
@@ -65,7 +65,7 @@ describe("兼容层主入口 —— 导出符号集合逐字不变", () => {
   it("移除清单逐一枚举、且其中每个符号确实已不在主入口上", () => {
     const rows = fs
       .readFileSync(removedManifestPath, "utf8")
-      .split("\n")
+      .split(/\r?\n/)
       .filter((l) => l.trim() && !l.startsWith("#"));
     const entries = rows.map((l) => {
       const [mod = "", symbol = "", kind = ""] = l.split("\t");
@@ -84,7 +84,7 @@ describe("兼容层主入口 —— 导出符号集合逐字不变", () => {
     expect(values.length).toBeGreaterThan(50);
     expect(entries.length - values.length).toBeGreaterThan(50);
 
-    const baseline = new Set(fs.readFileSync(baselinePath, "utf8").trim().split("\n"));
+    const baseline = new Set(fs.readFileSync(baselinePath, "utf8").trim().split(/\r?\n/));
     // 只有 value 行能与基准互锁 —— type-only 行在基准里从来没出现过,拿它对基准断言会是重言式。
     const resurrected = values.filter((e) => baseline.has(e.symbol));
     expect(
@@ -98,7 +98,7 @@ describe("兼容层主入口 —— 导出符号集合逐字不变", () => {
       fs
         .readFileSync(path.join(pkgDir, "test/compat/main-entry-symbols.before-adapters-extraction.txt"), "utf8")
         .trim()
-        .split("\n"),
+        .split(/\r?\n/),
     );
     expect(values.filter((e) => !before.has(e.symbol))).toEqual([]);
     expect(before.size).toBeGreaterThan(baseline.size);

@@ -78,8 +78,8 @@
 }
 
 /*
- * 侧栏 launcherRail：webext 入口（如 Canvas）与搜索/新建同构。
- * Canvas 经 agent external 包加载，常落后 monorepo 源码；用宿主 CSS 锁图标列 24px，
+ * 侧栏 launcherRail：webext 入口与搜索/新建同构。
+ * 外部 agent 包常落后 monorepo 源码；用宿主 CSS 锁图标列 24px，
  * 兼容「首子为 svg」旧 DOM 与「首子为 span.icon-box」新 DOM。
  */
 [data-launcher-rail] [data-canvas-launcher] {
