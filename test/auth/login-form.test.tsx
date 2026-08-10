@@ -105,6 +105,37 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
 });
 
 describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
+  it("微信扫码直接内嵌二维码,不主动弹新窗口", async () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const view = render(
+      <LoginForm
+        methods={["wechat"]}
+        onSubmit={async () => ({ ok: true })}
+        onWechatStart={async () => ({
+          ok: true as const,
+          state: "wx-state",
+          appid: "wx-app",
+          redirectUri: "https://cloud.test/api/desktop/wechat/callback",
+          qrConnectUrl: "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
+        })}
+        onWechatPoll={async () => ({ ok: true as const, status: "pending" as const })}
+        onWechatExchange={async () => ({ ok: true })}
+        onCancel={() => {}}
+      />,
+    );
+    await act(async () => {
+      screen.getByTestId("login-wechat-start").click();
+    });
+    const qr = await screen.findByTestId("login-wechat-qr");
+    expect(qr.querySelector("iframe")).toHaveAttribute(
+      "src",
+      "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
+    );
+    expect(open).not.toHaveBeenCalled();
+    view.unmount();
+    open.mockRestore();
+  });
+
   it("★ 取消 → 清空两字段,且**不发任何请求**", async () => {
     let submits = 0;
     let cancelled = 0;

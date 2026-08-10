@@ -239,11 +239,6 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     setWxState(started.state);
     setWxUrl(started.qrConnectUrl);
     setWxStatus("show");
-    try {
-      window.open(started.qrConnectUrl, "_blank", "noopener,noreferrer,width=480,height=640");
-    } catch {
-      // ignore popup block; user can click link
-    }
     pollRef.current = setInterval(() => {
       void (async () => {
         const polled = await props.onWechatPoll!(started.state);
@@ -500,26 +495,39 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
             <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
               {wxStatus === "idle" && "点击下方按钮开始，将打开扫码页"}
               {wxStatus === "loading" && "正在准备登录会话…"}
-              {wxStatus === "show" && "请在打开的窗口中用微信扫码，完成后自动回到本页"}
+              {wxStatus === "show" && "请在下方二维码中用微信扫码，完成后自动登录"}
               {wxStatus === "success" && "登录成功"}
               {wxStatus === "error" && "登录失败，可重试"}
               {wxStatus === "expired" && "会话已失效，请重新扫码"}
             </p>
           </div>
           {wxUrl ? (
-            <a
-              href={wxUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-center text-xs text-[hsl(var(--foreground))] underline underline-offset-2"
+            <div
+              className="overflow-hidden rounded-[7px] border border-[hsl(var(--border))] bg-white"
+              data-testid={`${prefix}-wechat-qr`}
             >
-              若未自动打开，点此打开扫码页
-            </a>
+              <iframe
+                src={wxUrl}
+                title="微信扫码登录"
+                className="h-[360px] w-full border-0 bg-white"
+                loading="eager"
+                referrerPolicy="no-referrer"
+              />
+              <a
+                href={wxUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block border-t border-[hsl(var(--border))] px-3 py-2 text-center text-xs text-[hsl(var(--muted-foreground))] underline underline-offset-2"
+              >
+                二维码无法显示？在新窗口打开
+              </a>
+            </div>
           ) : null}
           <div className="flex gap-2">
             <button
               type="button"
               className={`${primaryCls} flex-1`}
+              data-testid={`${prefix}-wechat-start`}
               disabled={busy}
               onClick={() => void startWechat()}
             >
