@@ -16,6 +16,10 @@ import {
   excludeProviderModels,
 } from "../../config/model-options-filter.js";
 import { enrichWebVisibleCommands } from "../../plugin/enrich-web-visible.js";
+import {
+  filterVisibleModels,
+  type ProviderVisibilityConfig,
+} from "../../model-catalog/visibility-filter.js";
 
 interface HistoryAttachmentStore {
   readonly head: (id: string) => Promise<{ readonly sessionId: string } | undefined>;
@@ -276,12 +280,23 @@ export function makeCommandsHandler(store: SessionStore): RouteHandler {
 export function makeModelsHandler(
   store: SessionStore,
   env: NodeJS.ProcessEnv = process.env,
+  readVisibility?: () => ProviderVisibilityConfig | undefined,
 ): RouteHandler {
   const hidden = parseHiddenProviders(env["PI_WEB_HIDE_PROVIDERS"]);
-  return makeQueryHandler<{ models: ReadonlyArray<{ readonly provider?: unknown }> }>(
+  return makeQueryHandler<{
+    models: ReadonlyArray<{ readonly provider?: unknown; readonly id?: unknown }>;
+  }>(
     store,
     (s) => s.getAvailableModels(),
-    ({ models }) => ({ models: excludeProviderModels(models, hidden) }),
+    ({ models }) => {
+      // 两层依次生效,语义不同不可合并:
+      //  1. hidden(PI_WEB_HIDE_PROVIDERS)—— 部署方的**彻底禁用**,既有语义不动;
+      //  2. visibility —— 使用者的**仅隐藏**,只收敛本清单的呈现。
+      //     已被会话选中的模型继续可用(Req 2.4/4.7):本处只过滤"可选清单",
+      //     不参与会话执行路径。
+      const afterHidden = excludeProviderModels(models, hidden);
+      return { models: filterVisibleModels(afterHidden, readVisibility?.()) };
+    },
   );
 }
 

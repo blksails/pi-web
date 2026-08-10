@@ -516,3 +516,52 @@ describe("egress 与 ai-gateway 共存(design.md §D2)", () => {
     expect(resolveEgressSpecFromEnv(envOf())).toBeUndefined();
   });
 });
+
+describe("图像模型清单(spec desktop-aigc-egress 任务 3.1)", () => {
+  it("★ 未携带图像清单 → imageModelIds 缺席,对话侧解析逐字节不变", () => {
+    const specs = resolveAiGatewaySessionSpecsFromEnv({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/api/desktop/egress/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_MODELS: JSON.stringify(["gpt-5"]),
+    });
+    expect(specs).toHaveLength(1);
+    expect(specs[0]!.spec.modelIds).toEqual(["gpt-5"]);
+    expect(specs[0]!.spec.imageModelIds).toBeUndefined();
+  });
+
+  it("★ 空数组清单被保留(云端明确声明没有),不归一成缺席", () => {
+    const specs = resolveAiGatewaySessionSpecsFromEnv({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_IMAGE_MODELS: "[]",
+    });
+    // 缺席 → 回退内置白名单;空数组 → 一个都不可用。两者必须可分辨。
+    expect(specs[0]!.spec.imageModelIds).toEqual([]);
+  });
+
+  it("携带清单 → 原样解析", () => {
+    const specs = resolveAiGatewaySessionSpecsFromEnv({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_IMAGE_MODELS: JSON.stringify([
+        "gpt-image-2",
+        "qwen-image",
+      ]),
+    });
+    expect(specs[0]!.spec.imageModelIds).toEqual(["gpt-image-2", "qwen-image"]);
+  });
+
+  it("图像清单 JSON 非法 → 视为空清单,不影响该实例启用(fail-soft)", () => {
+    const specs = resolveAiGatewaySessionSpecsFromEnv({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_IMAGE_MODELS: "{not json",
+    });
+    expect(specs).toHaveLength(1);
+    expect(specs[0]!.spec.imageModelIds).toEqual([]);
+  });
+});

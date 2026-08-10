@@ -46,7 +46,7 @@ Guest 不持有 API URL、sessionId、Surface 或上传函数。通用 Host 按�
 
 Canvas Pane 不维护第二套画布状态。它在自己的 iframe 内直接装载 `@blksails/pi-web-canvas-ui/CanvasPanel`，经 Guest SDK 代理 `surface:canvas`、上传和对话能力；Agent 侧装载既有 `canvasSurfaceExtension`。
 
-`web.config.tsx` 声明 `panelWidth/minPanelWidth/maxPanelWidth`。pi-web ChatApp 使用受控状态接入 PiChat 现有连续拖拽分隔条；Pane Host 不实现另一套侧栏拖拽。
+`web.config.tsx` 声明 `panelWidth/minPanelWidth`。pi-web ChatApp 使用受控状态接入 PiChat 现有连续拖拽分隔条；右栏上限按会话列最小宽度动态计算，Pane Host 不实现另一套侧栏拖拽。
 
 ## 构建与运行
 

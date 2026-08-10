@@ -261,7 +261,6 @@ WebExt 通用配置:
 config: {
   panelWidth: 760,
   minPanelWidth: 420,
-  maxPanelWidth: 1280,
 }
 ```
 
@@ -366,7 +365,7 @@ flowchart LR
 
 **Wave 2 · pi-web 接缝(F2 能力与 placement)**
 
-- Agent Routes、Surface、Attachments、Conversation adapters;`panelWidth/minPanelWidth/maxPanelWidth` 接入现有连续拖拽。
+- Agent Routes、Surface、Attachments、Conversation adapters;`panelWidth/minPanelWidth` 接入现有连续拖拽，右栏上限按会话列最小宽度动态计算。
 - 审核门:无 Panes 的 Agent 零行为变化;普通 WebExt 零回归;route 装配窗口有界重试,失效会话返回结构化 `HOST_UNAVAILABLE`,不显示裸 HTTP 404。
 
 **Wave 3 · 一致性范例(F3 范例与现有能力复用)**

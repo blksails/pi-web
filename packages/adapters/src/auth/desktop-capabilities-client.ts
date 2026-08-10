@@ -48,6 +48,7 @@ export type RegisterPublishKeyOutcome =
     };
 import type {
   CapabilityEgressGrant,
+  CapabilityGatewayGrant,
   CapabilityPublishGrant,
   CapabilityTenant,
   CapabilityTokenGrant,
@@ -265,6 +266,45 @@ function parseEgressGrant(
   return { baseUrl, models, expiresAt };
 }
 
+/**
+ * 解析网关接入授予(spec desktop-aigc-egress,Req 1.1/4.2)。
+ *
+ * ★ **`imageModels` 缺失与空数组必须区别对待**,这是本函数唯一容易做错的地方:
+ *   - 字段不存在 / 不是数组 → `undefined` = 云端未声明 → 下游回退内置白名单
+ *     (行为与本特性引入前一致)。
+ *   - 是数组(**含空数组**)→ 原样保留 → 空数组即云端明确声明"这个账号一个图像模型都没有"。
+ *   把空数组归一成 `undefined` 会让"云端还没支持"看起来像"账号没开通",反之则会在
+ *   云端尚未下发该字段时把图像能力整个关掉。两种错都只在真机上才看得出来。
+ *
+ * ⚠ 与 {@link parsePublishGrant} 同一纪律:类型加了字段就**必须**同时加解析器,且必须用
+ *   **真实响应体**测一遍——只用 stub 喂返回值的测试无法发现解析器根本没被写(该函数的
+ *   注释记录了这个真实事故)。
+ */
+function parseGatewayGrant(
+  parsed: unknown,
+  nowS: number,
+): CapabilityGatewayGrant | undefined {
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const g = (parsed as { gateway?: unknown }).gateway;
+  if (typeof g !== "object" || g === null) return undefined;
+  const obj = g as { baseUrl?: unknown; imageModels?: unknown; expiresAt?: unknown };
+  const baseUrl = typeof obj.baseUrl === "string" ? obj.baseUrl.trim() : "";
+  if (baseUrl.length === 0) return undefined;
+  // 见上:非数组 → undefined(未声明);数组 → 保留(空数组是有意义的声明)。
+  const imageModels = Array.isArray(obj.imageModels)
+    ? obj.imageModels.filter(
+        (m): m is string => typeof m === "string" && m.trim().length > 0,
+      ).map((m) => m.trim())
+    : undefined;
+  const expiresAt =
+    typeof obj.expiresAt === "number" && Number.isFinite(obj.expiresAt) && obj.expiresAt > 0
+      ? obj.expiresAt
+      : nowS + 60;
+  return imageModels === undefined
+    ? { baseUrl, expiresAt }
+    : { baseUrl, imageModels, expiresAt };
+}
+
 function parseSourcesTokenGrant(
   parsed: unknown,
   nowS: number,
@@ -445,6 +485,7 @@ export function createDesktopCapabilitiesClient(
       egress: parseEgressGrant(parsed, nowS),
       sources: parseSourcesTokenGrant(parsed, nowS),
       publish: parsePublishGrant(parsed, nowS),
+      gateway: parseGatewayGrant(parsed, nowS),
     };
 
     // 缓存到最早到期的那一项之前;三项皆无则短缓存 60s,避免每次请求都打云端。

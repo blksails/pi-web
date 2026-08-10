@@ -82,3 +82,97 @@ export function createAiGatewayImageEdit(
 ): ImageRoute {
   return createOpenAiCompatImageEdit(AI_GATEWAY_CONFIG, args, extras);
 }
+
+// ── 按实例参数化(spec desktop-aigc-egress 任务 3.3)───────────────────────────
+
+/**
+ * 生成某网关实例的 {@link OpenAiCompatConfig}。
+ *
+ * 与上面那份写死的 {@link AI_GATEWAY_CONFIG} 的三处差别,每一处都是本任务要解决的问题:
+ *
+ * | | 写死版 | 按实例版 |
+ * |---|---|---|
+ * | `baseUrl` | env 占位符,全进程只有一个槽 | 该实例的裸基址 + `/v1`,多实例可并存 |
+ * | `apiKeyVar` | 全局 `BLKSAILS_GATEWAY_API_KEY` | 该实例自己的 KEY env 名 |
+ * | `provider` | 常量 `"cloudflare"`(部署配置写进了代码) | 实例标识 = 实际承接方(Req 5.1/5.2) |
+ *
+ * ⚠ **声明层不读 env**:`baseUrl` 用实例给的字面量(不再是 `${VAR:-default}` 占位符),
+ *   `apiKeyVar` 仍是**变量名**而非值 —— 凭据在执行期由 var-resolver 从 env 取,凭据本身
+ *   一步都不进入声明层。这条是双入口硬约束(`tech.md`),不能为省事改成直接传 key。
+ */
+export function gatewayInstanceImageConfig(input: {
+  /** 实例标识,同时作为展示归属。 */
+  readonly instanceId: string;
+  /** 裸基址(不含 `/v1`)。 */
+  readonly baseUrl: string;
+  /** 承载该实例凭据的 env 变量名。 */
+  readonly apiKeyVar: string;
+}): OpenAiCompatConfig {
+  return {
+    baseUrl: `${input.baseUrl.replace(/\/+$/, "")}/v1`,
+    apiKeyVar: input.apiKeyVar,
+    provider: input.instanceId,
+  };
+}
+
+/**
+ * 网关实例请求失败的可读化(spec desktop-aigc-egress 任务 4.1,Req 7.1/7.2/7.5)。
+ *
+ * 三类必须**可区分**,因为使用者的下一步动作完全不同:
+ *  - **401/403** → 凭据过期或无效 → 去重新登录;
+ *  - **429/402** → 配额或计费问题 → 等待或充值,重新登录没用;
+ *  - 其余 → 上游异常 → 通常是暂态。
+ *
+ * 若不分类,三者在界面上都是 `<url>: 4xx {...}`,使用者只能反复重试。
+ *
+ * ⚠ 文案**不含**凭据:入参里根本没有 key(它在请求头,不在这里),`body` 是上游响应体 ——
+ *   为稳妥仍只取其前若干字符,且不回显任何请求头。
+ */
+export function gatewayTransportErrorMessage(info: {
+  readonly status: number;
+  readonly url: string;
+  readonly body: string;
+  readonly instanceId: string;
+}): string | undefined {
+  const { status, instanceId } = info;
+  if (status === 401 || status === 403) {
+    return `云端出口拒绝了本次请求(${status}):登录凭据已失效或无权访问「${instanceId}」。请重新登录后再试。`;
+  }
+  if (status === 402 || status === 429) {
+    return `云端出口暂时不可用(${status}):「${instanceId}」的配额或计费额度不足。重新登录无助于此,请检查账户额度。`;
+  }
+  if (status >= 500) {
+    return `云端出口上游异常(${status}):「${instanceId}」暂时不可用,请稍后重试。`;
+  }
+  // 其余状态码不接管,沿用默认文案(它带 url 与响应体,便于排查)。
+  return undefined;
+}
+
+/** 用给定实例配置创建文生图路由项。 */
+export function createGatewayInstanceImage(
+  config: OpenAiCompatConfig,
+  args: AiGatewayModelArgs,
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
+  return withGatewayErrorMapping(createOpenAiCompatImage(config, args, extras), config.provider);
+}
+
+/** 用给定实例配置创建图像编辑路由项。 */
+export function createGatewayInstanceImageEdit(
+  config: OpenAiCompatConfig,
+  args: AiGatewayModelArgs,
+  extras: Partial<ImageRoute> = {},
+): ImageRoute {
+  return withGatewayErrorMapping(
+    createOpenAiCompatImageEdit(config, args, extras),
+    config.provider,
+  );
+}
+
+/** 给路由挂上失败分类(不改其余行为)。 */
+function withGatewayErrorMapping(route: ImageRoute, instanceId: string): ImageRoute {
+  return {
+    ...route,
+    mapTransportError: (info) => gatewayTransportErrorMessage({ ...info, instanceId }),
+  };
+}

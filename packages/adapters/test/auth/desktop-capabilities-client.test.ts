@@ -236,3 +236,97 @@ describe("publish 授予", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("gateway 授予(spec desktop-aigc-egress 任务 1.2)", () => {
+  const TENANT = { userId: "u", companyId: "1", role: "m" };
+
+  function clientWith(body: unknown) {
+    return createDesktopCapabilitiesClient({
+      capabilitiesUrl: "https://cloud.example/api/desktop/capabilities",
+      getDesktopCredential: () => "ok.cred",
+      fetchImpl: async () => jsonResponse(200, body),
+    });
+  }
+
+  it("★ 从真实响应体解析出 gateway 授予(照 publish 的前车之鉴:只 stub 返回值测不出解析器缺席)", async () => {
+    const snap = await clientWith({
+      tenant: TENANT,
+      gateway: {
+        baseUrl: "https://cloud.example/api/desktop/egress/v1",
+        expiresAt: 9_999_999_999,
+      },
+    }).loadStatic();
+    expect(snap.gateway).toEqual({
+      baseUrl: "https://cloud.example/api/desktop/egress/v1",
+      expiresAt: 9_999_999_999,
+    });
+  });
+
+  it("★ imageModels 缺失 ≠ 空数组:缺失 → undefined(回退白名单)", async () => {
+    const snap = await clientWith({
+      tenant: TENANT,
+      gateway: { baseUrl: "https://cloud.example/egress/v1", expiresAt: 9_999_999_999 },
+    }).loadStatic();
+    expect(snap.gateway?.imageModels).toBeUndefined();
+  });
+
+  it("★ imageModels 缺失 ≠ 空数组:空数组 → 保留空数组(云端明确声明一个都没有)", async () => {
+    const snap = await clientWith({
+      tenant: TENANT,
+      gateway: {
+        baseUrl: "https://cloud.example/egress/v1",
+        imageModels: [],
+        expiresAt: 9_999_999_999,
+      },
+    }).loadStatic();
+    // 若这里被归一成 undefined,「云端还没支持」就会伪装成「账号已开通全部白名单模型」。
+    expect(snap.gateway?.imageModels).toEqual([]);
+  });
+
+  it("imageModels 逐项过滤空串并 trim,保留其余", async () => {
+    const snap = await clientWith({
+      tenant: TENANT,
+      gateway: {
+        baseUrl: "https://cloud.example/egress/v1",
+        imageModels: [" gpt-image-2 ", "", "   ", "qwen-image", 42, null],
+        expiresAt: 9_999_999_999,
+      },
+    }).loadStatic();
+    expect(snap.gateway?.imageModels).toEqual(["gpt-image-2", "qwen-image"]);
+  });
+
+  it("缺 gateway 字段 → undefined(云端未启用,正常状态)", async () => {
+    const snap = await clientWith({ tenant: TENANT }).loadStatic();
+    expect(snap.gateway).toBeUndefined();
+  });
+
+  it("baseUrl 缺失或空白 → 整体作废(没有地址的出口授予无法使用)", async () => {
+    for (const bad of [undefined, "", "   ", 42]) {
+      const snap = await clientWith({
+        tenant: TENANT,
+        gateway: { baseUrl: bad, expiresAt: 9_999_999_999 },
+      }).loadStatic();
+      expect(snap.gateway, `baseUrl=${JSON.stringify(bad)} 应作废`).toBeUndefined();
+    }
+  });
+
+  it("★ gateway 解析失败只使该字段缺失,不牵连 egress / sources(契约不变式 1)", async () => {
+    const snap = await clientWith({
+      tenant: TENANT,
+      gateway: "not-an-object",
+      egress: {
+        baseUrl: "https://cloud.example/egress/v1",
+        models: ["m1"],
+        expiresAt: 9_999_999_999,
+      },
+      sources: {
+        baseUrl: "https://registry.example",
+        token: "src-tok",
+        expiresAt: 9_999_999_999,
+      },
+    }).loadStatic();
+    expect(snap.gateway).toBeUndefined();
+    expect(snap.egress?.baseUrl).toBe("https://cloud.example/egress/v1");
+    expect(snap.sources?.token).toBe("src-tok");
+  });
+});

@@ -262,3 +262,60 @@ jobs:
             release-assets/**/*.exe
             release-assets/**/*.AppImage
           fail_on_unmatched_files: false
+
+      # ── 镜像到阿里云 OSS(国内下载加速) ──────────────────────────────────
+      # 仅在配置了 OSS_BUCKET 变量时执行:未配的 fork / 他人克隆上整步跳过,不让发布失败。
+      # (判据用 vars 而非 secrets —— secrets 上下文在 step 级 if 里的取值行为不稳,
+      #  vars 是明确支持的;凭据缺失属于配置错误,应当报红而不是静默跳过。)
+      #
+      # ★ 钉 ossutil **v1**:v2 是重写版,`cp` 的参数形态与 v1 不同。此处这条命令行
+      #   是在本机 v1.7.19 上对真实 bucket 实测通过的,不是照文档推的。
+      #   另注:`.../1.7.19/ossutil64` 这个常见下载地址实测 404,只有 zip 包有效。
+      - name: Mirror assets to Aliyun OSS
+        if: ${{ vars.OSS_BUCKET != '' }}
+        env:
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ vars.OSS_ENDPOINT || 'oss-cn-hangzhou.aliyuncs.com' }}
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -o ossutil.zip \
+            https://gosspublic.alicdn.com/ossutil/1.7.19/ossutil-v1.7.19-linux-amd64.zip
+          unzip -q -j ossutil.zip 'ossutil-v1.7.19-linux-amd64/ossutil' -d ossutil-bin
+          chmod +x ossutil-bin/ossutil
+          OSSUTIL="./ossutil-bin/ossutil -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET}"
+
+          # 两份:版本目录不可变、可回溯;latest 供"总是下最新"的链接指向。
+          TAG="${GITHUB_REF_NAME}"
+          for dest in "releases/${TAG}" "releases/latest"; do
+            $OSSUTIL cp -r -f release-assets/ "oss://${OSS_BUCKET}/${dest}/" \
+              --include "*.dmg" --include "*.exe" --include "*.AppImage"
+          done
+
+          echo "已镜像到 oss://${OSS_BUCKET}/releases/${TAG}/ 与 .../latest/"
+          $OSSUTIL ls "oss://${OSS_BUCKET}/releases/${TAG}/"
+
+      # ── 通知官网重建下载页 ────────────────────────────────────────────────
+      # 下载页(/downloads.html)的版本数据是**构建期**固化的:站点是纯静态导出,
+      # 不重新构建就看不到新版本。故在 Release 资产与 OSS 镜像都就绪之后才触发 ——
+      # 顺序不能反,站点构建时会逐资产探测 OSS 是否存在,早触发会把新版判成"无镜像"。
+      - name: Trigger pi-web-site rebuild
+        # 不加 `if: secrets.X != ''` 判据 —— secrets 上下文在 step 级 if 里取值行为不稳,
+        # 配上 continue-on-error 后一旦判据恒 false 就是**静默不执行**,比失败更难发现。
+        # 改为始终执行:token 缺失时 curl 拿到 401,走下面的 warning 分支,日志里看得见。
+        continue-on-error: true
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.DOCS_DEPLOY_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/blksails/pi-web-site/dispatches \
+            -d '{"event_type":"release-published"}')
+          echo "repository_dispatch HTTP status: $code (期望 204)"
+          if [ "$code" != "204" ]; then
+            echo "::warning::触发官网重建失败 ($code)。发布本身已完成,官网下载页需手动重建"
+            echo "::warning::(Actions → Deploy → Run workflow)。检查 DOCS_DEPLOY_TOKEN 是否为"
+            echo "::warning::fine-grained PAT 且含 blksails/pi-web-site 的 Contents:Read and write。"
+            exit 1
+          fi

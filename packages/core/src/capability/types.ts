@@ -106,6 +106,44 @@ export interface CapabilityPublishGrant extends CapabilityTokenGrant {
 }
 
 /**
+ * 网关接入授予(spec desktop-aigc-egress,Req 1.1/4.1)。
+ *
+ * ## 为什么与 {@link CapabilityEgressGrant} 并列,而不是复用它
+ *
+ * 两者都指向同一条云端代理链路,但**基址语义相反**,合用一个字段必然出错:
+ *
+ * - `egress.baseUrl` 是 **pi SDK 的 `baseURL`**,按 OpenAI SDK 约定**含** `/v1`
+ *   (SDK 自己只拼 `/chat/completions`)。
+ * - 本授予的 `baseUrl` 喂给的是网关实例配置,而那一侧的消费方**自己拼 `/v1`**
+ *   (目录聚合拼 `/v1/models`、AIGC provider 拼 `${…}/v1`)。
+ *
+ * 故消费方**必须**先归一为裸基址再使用,否则得到 `/v1/v1/models` 这类地址。归一由
+ * `@blksails/pi-web-adapters` 的 `grantedGatewayInstance` 独占承担 —— 不要在别处
+ * 各自剥一次,那正是这类不变式失守的方式(pi-clouds 侧已就同一问题分出
+ * `gatewayRawBaseUrl` / `gatewayDataPlaneBaseUrl` 两个函数)。
+ *
+ * 此外两者的消费面也不同:`egress` 只喂对话模型注册,本授予还要驱动模型目录聚合与
+ * AIGC 图像路由。
+ */
+export interface CapabilityGatewayGrant extends CapabilityGrantBase {
+  /**
+   * 网关出口根。**可含也可不含** `/v1` —— 消费方一律经归一后使用(见上方说明)。
+   *
+   * ⚠ 这不是网关自身的地址,而是云端代理的地址:请求打到这里,由云端换取网关数据面
+   * 密钥后转发。密钥因此始终不出云端(Req 8.1)。
+   */
+  readonly baseUrl: string;
+  /**
+   * 可选:该账号可用的图像模型 id 清单。
+   *
+   * **缺失 ≠ 空数组**。缺失表示云端未声明,消费方回退内置白名单(与本特性引入前一致);
+   * 空数组表示云端明确声明"一个都没有",消费方应呈现为无可用图像模型。二者混同会让
+   * "云端还没支持"看起来像"这个账号没开通"(Req 4.2)。
+   */
+  readonly imageModels?: ReadonlyArray<string>;
+}
+
+/**
  * 一次能力加载的结果快照。
  *
  * **各字段独立可选**(Req 5.1):任一字段缺失即表示该项能力不可用,消费方**必须**降级到
@@ -116,6 +154,13 @@ export interface CapabilitySnapshot {
   readonly tenant?: CapabilityTenant;
   readonly egress?: CapabilityEgressGrant;
   readonly sources?: CapabilityTokenGrant;
+  /**
+   * 网关接入授予(spec desktop-aigc-egress)。缺席即桌面无网关来源的模型与图像能力,
+   * 行为与本特性引入前一致(Req 1.2)。
+   *
+   * ⚠ 与 `egress` **没有**蕴含关系:拿到对话出口不代表拿到网关接入,反之亦然。
+   */
+  readonly gateway?: CapabilityGatewayGrant;
   /**
    * 发布授予(spec publish-grant-issuance)。
    *

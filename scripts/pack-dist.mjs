@@ -201,6 +201,10 @@ function packRuntimeDeps() {
       }
 
       if (hoisted.has(name)) continue;
+      // pnpm 给**未安装的 optional 平台包**留下断符号链接(如 `@esbuild/<非本平台>`:
+      // 25 个链接只有本平台那个有实体)。`dereference:true` 的拷贝会先 stat 目标 → ENOENT。
+      // 断链既拷不了也不该占住 `hoisted`(否则同名活链会被误跳)。
+      if (!existsSync(src)) continue;
       hoisted.add(name);
       const dest = join(DIST_NM, ...name.split("/"));
       mkdirSync(dirname(dest), { recursive: true });
@@ -453,15 +457,20 @@ function collectDataJson(dir, out) {
 function packExamples() {
   const src = join(ROOT, "examples");
   if (!existsSync(src)) return;
-  // 排除 node_modules：示例的运行依赖由 hoist 后的 `dist/node_modules` 提供，示例目录内
-  // 的 node_modules 是开发态安装物（本机对单个示例单独 install 过会有完整依赖树，
-  // dereference 实体化后可达数 GB），不应进载荷。CI 上 payload 仅 ~9.4MB 即不含它们。
-  const examplesDest = join(DIST, "examples");
-  rmSync(examplesDest, { recursive: true, force: true });
-  cpSync(src, examplesDest, {
+  // `cpSync` 只覆盖不删除:陈旧条目(尤其上一轮拷进来的 `node_modules` 链接)会跨
+  // 重建残留,使下面的 filter 形同虚设。先清目标目录。
+  rmSync(join(DIST, "examples"), { recursive: true, force: true });
+  cpSync(src, join(DIST, "examples"), {
     recursive: true,
     dereference: true,
-    filter: (src) => basename(src) !== "node_modules",
+    // ★ 不拷 example 自己的 `node_modules`:工作区成员 example(如 aigc-agent)的
+    //   `node_modules/**` 全是指向**仓库源树**的符号链接(`cpSync` 的 dereference
+    //   不展开 pnpm 的目录链接,原样进 dist)。分发到用户机后它们必然是坏链接;
+    //   更糟的是 `pack-payload` 的 `follow: true` 会顺着它们展开工作区包的整棵
+    //   依赖树 —— 实测 dist 从 157 MB 膨胀到 4.3 GB。
+    //   运行时 `@blksails/*` 由 `dist/node_modules/@blksails/*`(相对链接,指向
+    //   dist 内已剪枝的 `dist/packages/`)解析,不依赖这里。
+    filter: (entry) => basename(entry) !== "node_modules",
   });
 }
 

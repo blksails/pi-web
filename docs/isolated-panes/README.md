@@ -108,7 +108,7 @@ PanePort 不提供任意 URL、任意 HTTP method、任意宿主函数或远程�
 ### F2 · pi-web 能力与 placement
 
 - Agent Routes、Surface、Attachments、Conversation adapters。
-- `panelWidth/minPanelWidth/maxPanelWidth` 接入现有连续拖拽。
+- `panelWidth/minPanelWidth` 接入现有连续拖拽，右栏上限按会话列最小宽度动态计算。
 - 验收：无 Panes 的 Agent 零行为变化；route 装配窗口有界重试，失效会话返回结构化 `HOST_UNAVAILABLE`。
 
 ### F3 · 范例与现有能力复用

@@ -120,6 +120,13 @@ export interface AiGatewaySessionInstanceInput {
   readonly apiKey: string | undefined;
   /** 该实例已按白名单收敛的目录快照。 */
   readonly catalog: readonly GatewayModelEntry[];
+  /**
+   * 云端声明的图像模型清单(spec desktop-aigc-egress 任务 3.1)。
+   *
+   * `undefined` = 未声明 → 会话侧回退内置图像白名单;空数组 = 明确声明没有。
+   * 两者含义不同,不可归一。
+   */
+  readonly imageModelIds?: readonly string[];
 }
 
 /**
@@ -158,6 +165,8 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
     readonly baseUrl: string;
     readonly apiKey: string;
     readonly modelIds: readonly string[];
+    /** 云端声明的图像清单;`undefined` = 未声明(回退内置白名单)。 */
+    readonly imageModelIds?: readonly string[];
   }
 
   const resolved: Resolved[] = [];
@@ -189,6 +198,9 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
       baseUrl: `${instance.baseUrl.replace(/\/+$/, "")}/v1`,
       apiKey: key,
       modelIds,
+      ...(instance.imageModelIds !== undefined
+        ? { imageModelIds: instance.imageModelIds }
+        : {}),
     });
   }
 
@@ -252,6 +264,12 @@ export function computeAiGatewaySessionsSpawnEnv(input: {
     // 确实为空」混淆,那是另一种成因(Req 4.1)。
     if (r.modelIds.length > 0) {
       env[`${prefix}MODELS`] = JSON.stringify(r.modelIds);
+    }
+    // 图像清单(spec desktop-aigc-egress 任务 3.1)。★ 判据是 `!== undefined` 而**不是**
+    // `.length > 0` —— 与上面的对话清单刻意相反:空数组在这里是有信息的("云端声明该账号
+    // 没有可用图像模型"),下发它才能让消费方区别于"云端未声明 → 回退内置白名单"。
+    if (r.imageModelIds !== undefined) {
+      env[`${prefix}IMAGE_MODELS`] = JSON.stringify(r.imageModelIds);
     }
     logDelivered(r.instanceId, r.modelIds);
   }

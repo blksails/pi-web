@@ -124,3 +124,125 @@ describe("启用组:网关 base URL 已配置", () => {
     expect(process.env.BLKSAILS_GATEWAY_BASE_URL).toBe("http://gw.example:9090");
   });
 });
+
+describe("网关实例路由并入(spec desktop-aigc-egress 任务 3.5)", () => {
+  /** 跨进程实例契约用到的 env 键;每例必须自行清理,否则启用状态泄漏给后续用例(假绿)。 */
+  const INSTANCE_ENV_KEYS = [
+    "PI_WEB_AI_GATEWAY_SESSIONS",
+    "PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE",
+    "PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY",
+    "PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_IMAGE_MODELS",
+  ] as const;
+
+  function clearInstanceEnv(): void {
+    for (const k of INSTANCE_ENV_KEYS) delete process.env[k];
+    delete process.env.BLKSAILS_GATEWAY_BASE_URL;
+    delete process.env.AI_GATEWAY_BASE_URL;
+  }
+
+  /** 在给定 env 下跑一次扩展,取其下发的图像模型清单。 */
+  function modelsWith(env: Record<string, string>): string[] {
+    clearInstanceEnv();
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    try {
+      const { state } = runExtension();
+      return [...((state.get("aigc.models") as string[] | undefined) ?? [])];
+    } finally {
+      clearInstanceEnv();
+      delete (globalThis as Record<string, unknown>)[SESSION_STATE_SEAM_KEY];
+    }
+  }
+
+  it("★ 零实例 → 图像模型集合与本 spec 引入前一致(且非空,排除两边都空的假绿)", () => {
+    const baseline = modelsWith({});
+    expect(baseline.length).toBeGreaterThan(0);
+    // 基线模型仍在,网关条目一个不多。
+    for (const m of BASELINE_MODELS) expect(baseline).toContain(m);
+    expect(baseline.some((m) => m.endsWith("-blksails-cloud"))).toBe(false);
+  });
+
+  it("★ 有实例 → 新增的条目全部带实例后缀(路由键不与既有撞)", () => {
+    const baseline = modelsWith({});
+    const withInstance = modelsWith({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE:
+        "https://c.example/api/desktop/egress/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+    });
+    const added = withInstance.filter((m) => !baseline.includes(m));
+    expect(added.length).toBeGreaterThan(0);
+    expect(added.every((m) => m.endsWith("-blksails-cloud"))).toBe(true);
+    // 既有条目一个都没少(并集而非替换)。
+    for (const m of baseline) expect(withInstance).toContain(m);
+  });
+
+  it("★ 授予声明为空清单 → 一条都不新增(与未声明可分辨)", () => {
+    const baseline = modelsWith({});
+    const withEmpty = modelsWith({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/v1",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_IMAGE_MODELS: "[]",
+    });
+    expect(withEmpty).toEqual(baseline);
+  });
+
+  it("★ 实例凭据缺失 → 不并入(fail-soft,不产生选不动的条目)", () => {
+    const baseline = modelsWith({});
+    const noKey = modelsWith({
+      PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+      PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/v1",
+    });
+    expect(noKey).toEqual(baseline);
+  });
+});
+
+describe("两个图像工具各自的枚举(任务 3.5 补盲)", () => {
+  /**
+   * ★ 本组的由来:上一组只断言了**下发清单** `aigc.models`,而它是
+   * `[...genExtras, ...editExtras]` 的并集 —— 于是"只有 edit 并入、generation 漏并"
+   * 这种缺陷能完全瞒过它(判别力探针实测:删掉 generation 那一行,上一组仍全绿)。
+   * 真机上那会表现为"能改图、不能生图"。故这里分别按工具断言。
+   */
+  function toolsWith(env: Record<string, string>): Record<string, string> {
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith("PI_WEB_AI_GATEWAY_SESSION")) delete process.env[k];
+    }
+    delete process.env.BLKSAILS_GATEWAY_BASE_URL;
+    delete process.env.AI_GATEWAY_BASE_URL;
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    try {
+      const { tools } = runExtension();
+      const out: Record<string, string> = {};
+      for (const t of tools) out[t.name] = JSON.stringify(t.parameters);
+      return out;
+    } finally {
+      for (const k of Object.keys(env)) delete process.env[k];
+      delete (globalThis as Record<string, unknown>)[SESSION_STATE_SEAM_KEY];
+    }
+  }
+
+  const INSTANCE_ENV = {
+    PI_WEB_AI_GATEWAY_SESSIONS: "blksails-cloud",
+    PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_BASE: "https://c.example/api/desktop/egress/v1",
+    PI_WEB_AI_GATEWAY_SESSION_BLKSAILS_CLOUD_KEY: "desk.cred",
+  };
+
+  it("★ image_generation 的模型枚举含实例条目", () => {
+    const params = toolsWith(INSTANCE_ENV)["image_generation"];
+    expect(params).toBeDefined();
+    expect(params).toContain("-blksails-cloud");
+  });
+
+  it("★ image_edit 的模型枚举含实例条目", () => {
+    const params = toolsWith(INSTANCE_ENV)["image_edit"];
+    expect(params).toBeDefined();
+    expect(params).toContain("-blksails-cloud");
+  });
+
+  it("零实例时两个工具的枚举都不含实例条目", () => {
+    const t = toolsWith({});
+    expect(t["image_generation"]).not.toContain("-blksails-cloud");
+    expect(t["image_edit"]).not.toContain("-blksails-cloud");
+  });
+});

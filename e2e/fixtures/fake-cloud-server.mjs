@@ -181,6 +181,33 @@ const server = createServer((req, res) => {
         token: SOURCES_TOKEN,
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
       },
+      // 网关接入授予(spec desktop-aigc-egress 任务 5.2)。
+      //
+      // ★ baseUrl **含 `/v1`**,与真实云端一致 —— 这正是本 spec 头号风险的输入形态:
+      //   消费方必须剥成裸基址,否则拼出 `/v1/v1/...`。夹具刻意保持这个形态,好让 e2e
+      //   真的能撞上该缺陷,而不是喂一个已经归一过的地址替实现把关。
+      gateway: {
+        baseUrl: `http://127.0.0.1:${PORT}/api/desktop/egress/v1`,
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      },
+    });
+  }
+
+  // ── 网关数据面(spec desktop-aigc-egress 任务 5.2)──────────────────────────
+  //
+  // 模拟云端出口代理:pi-web 侧的目录聚合器会打 `${裸基址}/v1/models`。这里同时充当
+  // 「代理」与「上游网关」—— e2e 关心的是 pi-web 侧拼址是否正确、授予是否被采纳,
+  // 换 sk-gw 那一段属 pi-clouds 职责,不在本仓验证范围。
+  //
+  // ★ 认证:云端出口认的是**桌面凭据**(不是 sk-gw)。这里照此校验,使「本地出示的是
+  //   桌面凭据」这一不变式在 e2e 里也被真正验到。
+  if (req.method === "GET" && url.pathname === "/api/desktop/egress/v1/models") {
+    if (bearer(req) !== DESKTOP_TOKEN) return json(res, 401, { error: "unauthorized" });
+    return json(res, 200, {
+      data: [
+        { id: "fake-cloud-chat-model", owned_by: "fake-upstream" },
+        { id: "fake-cloud-chat-model-2", owned_by: "fake-upstream" },
+      ],
     });
   }
 

@@ -127,7 +127,7 @@ describe("ChatApp × panelRight controlled width", () => {
     stubLoggingConfig({ outputs: {} });
     await startSession("C:/workcode/pi-web/examples/panes-agent");
     let props = piChatSpy.mock.calls[piChatSpy.mock.calls.length - 1]?.[0];
-    expect(props).toMatchObject({ panelWidth: 760, minPanelWidth: 420, maxPanelWidth: 1280 });
+    expect(props).toMatchObject({ panelWidth: 760, minPanelWidth: 420 });
     await act(async () => {
       (props?.onPanelWidthChange as ((width: number) => void) | undefined)?.(900);
     });

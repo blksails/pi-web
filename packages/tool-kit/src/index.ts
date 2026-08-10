@@ -53,3 +53,20 @@ export {
   type ResolveCloudflareRuntimeEnvOptions,
   type ReadFileSync,
 } from "./aigc/cloudflare-runtime.js";
+
+// 网关实例(图像侧)的跨进程契约解析(spec desktop-aigc-egress 任务 3.2)。
+// 从**主入口**转出是刻意的:本模块不在顶层读 `process.env`(env 一律由入参传入),
+// 故属声明层安全。契约互锁测试要同时 import 它与适配层那份解析器,需要一个稳定入口。
+export {
+  resolveGatewayImageInstances,
+  type GatewayImageInstance,
+} from "./aigc/gateway-instances.js";
+// 按实例生成的图像路由(spec desktop-aigc-egress 任务 3.3)。同样是纯声明层:
+// 基址与凭据**变量名**都来自入参,不读 env、不含 pi SDK。
+export {
+  createGatewayImageRoutes,
+  createGatewayImageRoutesForAll,
+  selectGatewayImageModels,
+  GATEWAY_IMAGE_MODEL_WHITELIST,
+  type GatewayImageRouteSet,
+} from "./aigc/gateway-image-routes.js";

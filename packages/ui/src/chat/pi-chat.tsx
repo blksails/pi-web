@@ -307,10 +307,6 @@ export interface PiChatProps {
   readonly onPaneEvent?: (topic: string, payload: unknown) => boolean | void | Promise<boolean | void>;
   /** 连续模式拖拽下界(px),缺省 240。 */
   readonly minPanelWidth?: number;
-  /** 连续模式拖拽上界(px);最终仍受容器宽度 70% 的宿主保护线约束。 */
-  readonly maxPanelWidth?: number;
-  /** 连续模式拖拽上界占聊天容器比例；缺省 70%。 */
-  readonly maxPanelWidthRatio?: number;
   /** 主题模式;提供时内部包裹 ThemeProvider(Req 2)。 */
   readonly theme?: ThemeMode;
   /** 工具条控件顺序(Req 6.2);缺省用默认顺序。 */
@@ -522,8 +518,6 @@ export function PiChat({
   onPanelOpen,
   onPaneEvent,
   minPanelWidth,
-  maxPanelWidth,
-  maxPanelWidthRatio = 0.7,
   theme,
   toolbarOrder,
   resources,
@@ -872,10 +866,9 @@ export function PiChat({
     [],
   );
   /**
-   * 右栏拖拽/容器收窄时的 [min,max] 钳制(与历史拖拽语义一致):
-   * - min = min(配置下限, 容器 70%);
-   * - max = max(min, min(配置上限, 70%, 留给右栏的剩余=容器−左栏−会话下限));
-   * 会话列下限优先:右栏不得再大到把会话列压穿,避免横向溢出叠层。
+   * 右栏拖拽/容器收窄时的 [min,max] 钳制:
+   * - 不额外设置右栏固定上限；
+   * - max 仅由容器宽度与「为会话列保留最小宽度」动态计算。
    */
   const measurePanelBounds = React.useCallback((): {
     readonly min: number;
@@ -883,29 +876,18 @@ export function PiChat({
   } => {
     const rect = panelResizeTreeRef.current?.getBoundingClientRect();
     if (rect === undefined) {
-      return { min: minPanelWidth ?? 240, max: maxPanelWidth ?? 800 };
+      return { min: minPanelWidth ?? 240, max: Number.POSITIVE_INFINITY };
     }
-    const availableMax = rect.width * maxPanelWidthRatio;
     const sidebarEl = panelResizeTreeRef.current?.querySelector(
       "[data-pi-chat-sidebar]",
     );
     const sidebarWidth = sidebarEl?.getBoundingClientRect().width ?? 0;
-    const conversationFloor = Math.min(
-      CONVERSATION_MIN_PX,
-      Math.max(0, rect.width - sidebarWidth),
-    );
+    const conversationFloor = CONVERSATION_MIN_PX;
     const roomForPanel = rect.width - sidebarWidth - conversationFloor;
-    const min = Math.min(minPanelWidth ?? 240, availableMax);
-    const max = Math.max(
-      min,
-      Math.min(
-        maxPanelWidth ?? Number.POSITIVE_INFINITY,
-        availableMax,
-        roomForPanel,
-      ),
-    );
+    const min = minPanelWidth ?? 240;
+    const max = Math.max(min, roomForPanel);
     return { min, max };
-  }, [minPanelWidth, maxPanelWidth, maxPanelWidthRatio]);
+  }, [minPanelWidth]);
   // 拖拽中只预览侧栏宽；对话列按下时冻结，松手后一次提交。
   // content-well 几何由 ResizeObserver 单路 rAF 合并上报（见 publishTauriContentWellMetrics），
   // 此处不再额外 dispatch sync，避免「拖拽 rAF + RO + sync」三层插帧。
@@ -2435,12 +2417,12 @@ export function PiChat({
             ? {
                 width: panelConversationWidth,
                 flex: `0 0 ${panelConversationWidth}px`,
-                minWidth: Math.min(CONVERSATION_MIN_PX, panelConversationWidth),
+                minWidth: CONVERSATION_MIN_PX,
               }
             : {
                 // flex 基线 0 + 硬下限:窄容器时由右栏让位(见 measurePanelBounds),不横向撑破。
                 flex: "1 1 0%",
-                minWidth: `min(100%, ${CONVERSATION_MIN_PX}px)`,
+                minWidth: `${CONVERSATION_MIN_PX}px`,
               }
         }
       >
@@ -2515,9 +2497,6 @@ export function PiChat({
             ? {
                 style: {
                   width: asideWidth,
-                  ...(resizablePanel && showPanelRight
-                    ? { maxWidth: `${maxPanelWidthRatio * 100}%` }
-                    : {}),
                   ...(panelDragging
                     ? { position: "absolute" as const, insetBlock: 0, right: 0, zIndex: 20 }
                     : {}),

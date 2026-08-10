@@ -16,7 +16,6 @@ import type { FieldRegistry } from "./field-registry.js";
 import { Button } from "../ui/button.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
-import { ProviderRegistrySummary } from "./provider-registry-summary.js";
 
 export interface SettingsShellProps {
   readonly registry?: SettingsRegistry;
@@ -178,18 +177,6 @@ function ConfigFormPanel({
       <header>
         <h2 className="text-lg font-semibold">{panel.formSchema.title ?? panel.title}</h2>
       </header>
-
-      {/*
-       * providers 面板专属:Req 7.1「列出全部 provider,并标明每个来自内置注册、云端下发
-       * 还是使用者自定义」——下方 `<SchemaForm>` 渲染的 `providersFormSchema.providers`
-       * 字段只是**使用者自定义**这一档(可增删的 objectList),没有能力展示部署方已配置的
-       * 网关实例 / 本地 provider(那些不经这个表单产生,压根不在这份表单的数据模型里)。
-       * 要把三档放进同一份清单,只能取自已把三者聚合到同一命名空间的统一目录端点,
-       * 与该表单的 load/save 数据流无关,故没有做成 FormSchema 字段(没有可回写的
-       * 数据语义),而是作为面板专属的只读附加区块。按 panel.id 特判——本文件头注释
-       * 「新增配置域无需改本组件」这条对**这一处**不成立,已在此明确记录例外。
-       */}
-      {panel.id === "providers" ? <ProviderRegistrySummary /> : null}
 
       {loading ? (
         <p className="text-sm text-[hsl(var(--muted-foreground))]">{t("common.loading")}</p>

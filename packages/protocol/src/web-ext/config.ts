@@ -72,10 +72,6 @@ export const WebExtConfigSchema = z.object({
   panelWidth: z.number().finite().int().min(240).max(4096).optional(),
   /** 连续拖拽最小宽度；仅与 panelWidth 同时生效。 */
   minPanelWidth: z.number().finite().int().min(160).max(4096).optional(),
-  /** 连续拖拽最大宽度；仅与 panelWidth 同时生效。 */
-  maxPanelWidth: z.number().finite().int().min(240).max(8192).optional(),
-  /** 连续拖拽最大宽度占聊天容器比例；缺省由宿主取 0.7。 */
-  maxPanelWidthRatio: z.number().finite().min(0.1).max(1).optional(),
   /** 日志面板位置(覆盖宿主全局默认);占 panelRight 的 source 宜声明 `bottom`。 */
   /** 日志面板位置(覆盖宿主全局默认);占 右侧面板 的 source 宜声明 `bottom`。 */
   logsPanelPosition: LogsPanelPositionSchema.optional(),
@@ -86,18 +82,12 @@ export const WebExtConfigSchema = z.object({
    */
   documentTitle: z.string().optional(),
 }).superRefine((config, ctx) => {
-  if (config.panelWidth === undefined && (config.minPanelWidth !== undefined || config.maxPanelWidth !== undefined || config.maxPanelWidthRatio !== undefined)) {
+  if (config.panelWidth === undefined && config.minPanelWidth !== undefined) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth is required when width bounds are declared" });
     return;
   }
-  if (config.minPanelWidth !== undefined && config.maxPanelWidth !== undefined && config.minPanelWidth > config.maxPanelWidth) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxPanelWidth"], message: "maxPanelWidth must be >= minPanelWidth" });
-  }
   if (config.panelWidth !== undefined && config.minPanelWidth !== undefined && config.panelWidth < config.minPanelWidth) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth must be >= minPanelWidth" });
-  }
-  if (config.panelWidth !== undefined && config.maxPanelWidth !== undefined && config.panelWidth > config.maxPanelWidth) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["panelWidth"], message: "panelWidth must be <= maxPanelWidth" });
   }
 });
 export type WebExtConfig = z.infer<typeof WebExtConfigSchema>;

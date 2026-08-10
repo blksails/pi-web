@@ -1413,12 +1413,6 @@ function SessionView({
                 ...(extension?.config?.minPanelWidth !== undefined
                   ? { minPanelWidth: extension.config.minPanelWidth }
                   : {}),
-                ...(extension?.config?.maxPanelWidth !== undefined
-                  ? { maxPanelWidth: extension.config.maxPanelWidth }
-                  : {}),
-                ...(extension?.config?.maxPanelWidthRatio !== undefined
-                  ? { maxPanelWidthRatio: extension.config.maxPanelWidthRatio }
-                  : {}),
               }
             : {})}
           {...(extension?.config?.empty?.title !== undefined

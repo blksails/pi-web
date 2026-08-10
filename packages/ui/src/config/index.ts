@@ -39,10 +39,14 @@ export {
   __setVisionModelsFetchImpl,
   __resetVisionModelsCache,
 } from "./fields/vision-model-select-field.js";
-export {
-  ProviderRegistrySummary,
-  __setProviderRegistryFetchImpl,
-  __resetProviderRegistryFetchImpl,
-} from "./provider-registry-summary.js";
 export { SchemaForm, type SchemaFormProps } from "./schema-form.js";
 export { SettingsShell, type SettingsShellProps } from "./settings-shell.js";
+// provider-visibility-config 任务 3.1:providers 面板的展示可见性控件(widget renderer)。
+// 取代原先按 panel.id 特判挂载的只读汇总 —— 同一份清单不再有两套取数实现。
+export {
+  ProviderVisibilityField,
+  __setProviderVisibilityFetchImpl,
+  __resetProviderVisibilityFetchImpl,
+  type ProviderVisibilityMap,
+  type ProviderVisibilityValue,
+} from "./provider-visibility-field.js";
