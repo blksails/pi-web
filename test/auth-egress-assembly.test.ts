@@ -29,6 +29,18 @@ describe("resolveCloudLoginConfig", () => {
     });
   });
 
+  it("生产壳屏蔽 loopback,仅打包 e2e 显式放行 mock 云端", () => {
+    const env = {
+      PI_WEB_DESKTOP_RELEASE: "1",
+      PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "http://127.0.0.1:4100/api/desktop/egress/v1",
+    };
+    expect(resolveCloudLoginConfig(env, "https://pi-cloud.example/api/desktop/egress/v1")?.egressBaseUrl)
+      .toBe("https://pi-cloud.example/api/desktop/egress/v1");
+    expect(
+      resolveCloudLoginConfig({ ...env, PI_WEB_DESKTOP_RELEASE_E2E: "1" })?.egressBaseUrl,
+    ).toBe("http://127.0.0.1:4100/api/desktop/egress/v1");
+  });
+
   it("解析模型清单(字符串 id 与对象混合)", () => {
     const cfg = resolveCloudLoginConfig({
       PI_WEB_CLOUD_LOGIN_EGRESS_BASE: "https://egress/v1",
