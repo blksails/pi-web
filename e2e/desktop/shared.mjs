@@ -397,8 +397,8 @@ export async function runSessionViaBrowser(port, replyToken, { screenshotPath, l
     // 未登录进不了主界面。烟雾走**完整的真实登录链路**(表单 → 本地服务端 → mock 云端
     // → 凭据 → capabilities → 授予),而不是绕过它 —— 链路上任何一环断了这里都会红。
     if (login !== undefined) {
-      await page.waitForSelector("[data-testid=login-email]", { timeout: 20_000 });
-      await page.fill("[data-testid=login-email]", login.email);
+      await page.waitForSelector('[data-login-field="identifier"]', { timeout: 20_000 });
+      await page.fill('[data-login-field="identifier"]', login.email);
       await page.fill("[data-testid=login-password]", login.password);
       await page.click("[data-testid=login-submit]");
       // 登录成功后门禁才放行,主界面随之挂载。

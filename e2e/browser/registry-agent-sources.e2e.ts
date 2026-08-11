@@ -25,7 +25,7 @@ function fakeCloudBase(baseURL: string): string {
 async function login(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/");
   await expect(page.getByTestId("login-page")).toBeVisible();
-  await page.getByTestId("login-email").fill("dev@example.com");
+  await page.locator('[data-login-field="identifier"]').fill("dev@example.com");
   await page.getByTestId("login-password").fill("whatever");
   await page.getByTestId("login-submit").click();
   await expect(page.getByTestId("login-page")).toBeHidden();
