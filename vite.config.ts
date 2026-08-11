@@ -71,7 +71,16 @@ function repairStaticPaneAssets(): Plugin {
             `$1./${path.basename(scriptFile)}$2`,
           );
           rewritten = rewritten.replace(scriptTag[0], rewrittenTag);
-          bundle[scriptFile] ??= { type: "asset", fileName: scriptFile, source: script };
+          bundle[scriptFile] ??= {
+            type: "asset",
+            fileName: scriptFile,
+            source: script,
+            name: scriptFile,
+            names: [scriptFile],
+            originalFileName: null,
+            originalFileNames: [],
+            needsCodeReference: false,
+          };
         }
         output.source = rewritten;
       }

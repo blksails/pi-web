@@ -45,6 +45,11 @@
       "deb": {
         "depends": []
       }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     }
   }
 }
