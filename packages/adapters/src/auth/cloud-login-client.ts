@@ -45,7 +45,7 @@ export type CloudLoginFetch = (
   init: {
     readonly method: string;
     readonly headers: Record<string, string>;
-    readonly body: string;
+    readonly body?: string;
     readonly signal?: AbortSignal;
   },
 ) => Promise<{

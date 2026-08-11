@@ -27,7 +27,7 @@ export type LoginMethod = "password" | "sms" | "wechat";
 
 export interface LoginFormProps {
   readonly onSubmit: (
-    phone: string,
+    identifier: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
   readonly onSmsSubmit?: (
@@ -100,6 +100,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     methods.includes("password") ? "password" : (methods[0] ?? "password"),
   );
   const [password, setPassword] = React.useState("");
+  const [identifier, setIdentifier] = React.useState("");
   const [phone, setPhone] = React.useState("");
   const [code, setCode] = React.useState("");
   const [countdown, setCountdown] = React.useState(0);
@@ -229,24 +230,27 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
 
   const applyHistory = (entry: LoginAccountEntry): void => {
     setError(undefined);
-    if (entry.kind === "phone") {
+    if (method === "password") {
+      setIdentifier(entry.value);
+    } else if (entry.kind === "phone") {
       setPhone(entry.value);
     }
   };
 
   const submitPassword = async (): Promise<void> => {
-    if (phone.trim().length === 0 || password.length === 0 || busy) {
+    const account = identifier.trim();
+    if (account.length === 0 || password.length === 0 || busy) {
       setError(MESSAGE["invalid-request"]);
       return;
     }
     setBusy(true);
     setError(undefined);
-    const result = await props.onSubmit(phone.trim(), password);
+    const result = await props.onSubmit(account, password);
     setBusy(false);
     if (result.ok) {
-      upsertLoginAccount("phone", phone.trim());
+      upsertLoginAccount(account.includes("@") ? "email" : "phone", account);
       setHistory(listLoginAccounts());
-      setPhone("");
+      setIdentifier("");
       setPassword("");
       return;
     }
@@ -300,7 +304,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     "mb-1.5 block text-xs font-medium text-[hsl(var(--muted-foreground))]";
 
   const relevantHistory = history.filter((h) =>
-    method === "password" || method === "sms" ? h.kind === "phone" : false,
+    method === "password" ? true : method === "sms" ? h.kind === "phone" : false,
   );
 
   return (
@@ -374,20 +378,21 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
       {method === "password" ? (
         <div className="flex flex-col gap-3">
           <div>
-            <label className={labelCls} htmlFor={`${prefix}-phone`}>
-              手机号
+            <label className={labelCls} htmlFor={`${prefix}-identifier`}>
+              邮箱或手机号
             </label>
             <input
-              id={`${prefix}-phone`}
-              name="tel"
-              type="tel"
+              id={`${prefix}-identifier`}
+              name="username"
+              type="text"
               className={inputCls}
-              placeholder="11 位手机号"
-              value={phone}
-              autoComplete="tel"
-              inputMode="tel"
+              placeholder="输入邮箱或手机号"
+              value={identifier}
+              autoComplete="username"
+              data-login-field="identifier"
+              inputMode="email"
               data-testid={`${prefix}-phone`}
-              onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ""))}
+              onChange={(e) => setIdentifier(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void submitPassword();
                 if (e.key === "Escape") props.onCancel();
@@ -419,7 +424,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
             type="button"
             className={primaryCls}
             data-testid={`${prefix}-submit`}
-            disabled={busy || phone.trim().length === 0 || password.length === 0}
+            disabled={busy || identifier.trim().length === 0 || password.length === 0}
             onClick={() => void submitPassword()}
           >
             {busy ? "登录中…" : "登录"}
@@ -515,9 +520,10 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
               <iframe
                 src={wxUrl}
                 title="微信扫码登录"
-                className="h-[360px] w-full border-0 bg-white"
+                className="block h-[360px] w-full overflow-hidden border-0 bg-white"
                 loading="eager"
                 referrerPolicy="no-referrer"
+                scrolling="no"
               />
             </div>
           ) : null}
@@ -536,6 +542,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
           data-testid={`${prefix}-cancel`}
           onClick={() => {
             setPassword("");
+            setIdentifier("");
             setPhone("");
             setCode("");
             setError(undefined);

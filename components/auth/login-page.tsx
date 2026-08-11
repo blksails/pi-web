@@ -29,7 +29,7 @@ export function LoginPage(): React.JSX.Element {
           layout="page"
           testIdPrefix="login"
           methods={identity.methods}
-          onSubmit={(phone, password) => identity.exchange(phone, password)}
+          onSubmit={(identifier, password) => identity.exchange(identifier, password)}
           onSmsSubmit={(phone, code) => identity.exchangeSms(phone, code)}
           onSendOtp={(phone) => identity.sendOtp(phone)}
           onWechatStart={() => identity.startWechat()}

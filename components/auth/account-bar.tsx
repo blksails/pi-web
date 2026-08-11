@@ -139,8 +139,8 @@ export function AccountBar({
           <LoginForm
             testIdPrefix="login"
             methods={identity.methods}
-            onSubmit={async (phone, password) => {
-              const r = await identity.exchange(phone, password);
+            onSubmit={async (identifier, password) => {
+              const r = await identity.exchange(identifier, password);
               if (r.ok) setFormOpen(false);
               return r;
             }}
@@ -340,8 +340,8 @@ export function AccountBar({
           <LoginForm
             testIdPrefix="reauth"
             methods={identity.methods}
-            onSubmit={async (phone, password) => {
-              const r = await identity.exchange(phone, password);
+            onSubmit={async (identifier, password) => {
+              const r = await identity.exchange(identifier, password);
               if (r.ok) setFormOpen(false);
               return r;
             }}

@@ -17,10 +17,11 @@ import { IdentityStateProvider } from "../../components/auth/use-identity.js";
 const TENANT = { userId: "u1", companyId: "c1", role: "member" };
 
 describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
-  it("手机号密码输入项是掩码", () => {
+  it("邮箱或手机号密码输入项类型正确", () => {
     render(<LoginForm onSubmit={async () => ({ ok: true })} onCancel={() => {}} />);
     expect(screen.getByTestId("login-password").getAttribute("type")).toBe("password");
-    expect(screen.getByTestId("login-phone").getAttribute("type")).toBe("tel");
+    expect(screen.getByTestId("login-phone").getAttribute("type")).toBe("text");
+    expect(screen.getByTestId("login-phone")).toHaveAttribute("data-login-field", "identifier");
   });
 
   it.each([
@@ -53,7 +54,7 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
     expect(calls).toBe(0);
   });
 
-  it("两项齐全 → 可提交,手机号被 trim 而 password 原样传出", async () => {
+  it("两项齐全 → 可提交,账号被 trim 而 password 原样传出", async () => {
     const seen: Array<[string, string]> = [];
     render(
       <LoginForm
@@ -71,6 +72,27 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
     });
     // 密码前后空格可能是密码的一部分 —— 擅自 trim 会让合法密码登不上。
     expect(seen).toEqual([["13800138000", " pw "]]);
+  });
+
+  it("邮箱账号 → 原样交给 onSubmit", async () => {
+    const seen: Array<[string, string]> = [];
+    render(
+      <LoginForm
+        onSubmit={async (identifier, password) => {
+          seen.push([identifier, password]);
+          return { ok: true };
+        }}
+        onCancel={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByTestId("login-phone"), {
+      target: { value: "  user@example.com  " },
+    });
+    fireEvent.change(screen.getByTestId("login-password"), { target: { value: "pw" } });
+    await act(async () => {
+      screen.getByTestId("login-submit").click();
+    });
+    expect(seen).toEqual([["user@example.com", "pw"]]);
   });
 
   it("提交中禁止重复提交", async () => {
@@ -144,12 +166,41 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
       "src",
       "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
     );
+    expect(qr.querySelector("iframe")).toHaveAttribute("scrolling", "no");
     expect(open).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /开始扫码|重新扫码/ })).toBeNull();
     expect(screen.queryByTestId("login-cancel")).toBeNull();
     expect(start).toHaveBeenCalledOnce();
     view.unmount();
     open.mockRestore();
+  });
+
+  it("微信轮询 ready → 立即交换凭据并显示成功", async () => {
+    const exchange = vi.fn(async () => ({ ok: true as const }));
+    render(
+      <LoginForm
+        methods={["wechat"]}
+        onSubmit={async () => ({ ok: true })}
+        onWechatStart={async () => ({
+          ok: true as const,
+          state: "wx-state",
+          appid: "wx-app",
+          redirectUri: "https://cloud.test/api/desktop/wechat/callback",
+          qrConnectUrl: "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
+        })}
+        onWechatPoll={async () => ({
+          ok: true as const,
+          status: "ready" as const,
+          credential: "wx-credential",
+        })}
+        onWechatExchange={exchange}
+        onCancel={() => {}}
+      />,
+    );
+    await waitFor(() => {
+      expect(exchange).toHaveBeenCalledWith("wx-state", "wx-credential");
+      expect(screen.getByText("登录成功")).toBeTruthy();
+    }, { timeout: 3000 });
   });
 
   it("★ 取消 → 清空两字段,且**不发任何请求**", async () => {

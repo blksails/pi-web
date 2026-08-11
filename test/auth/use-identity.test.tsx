@@ -233,7 +233,7 @@ describe("四态判定", () => {
 });
 
 describe("exchange 请求形状与失败分类", () => {
-  it("POST /api/identity/exchange,体含 method/phone/password", async () => {
+  it("手机密码 POST /api/identity/exchange,体含 method/phone/password", async () => {
     render(
       <IdentityStateProvider>
         <Probe onKey={() => {}} />
@@ -247,6 +247,33 @@ describe("exchange 请求形状与失败分类", () => {
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
       method: "password",
       phone: "13800138000",
+      password: "pw",
+    });
+  });
+
+  it("邮箱密码 POST /api/identity/exchange,体含 method/email/password", async () => {
+    function EmailProbe(): React.JSX.Element {
+      const identity = useIdentity();
+      return (
+        <button
+          type="button"
+          data-testid="do-email-exchange"
+          onClick={() => void identity.exchange(" user@example.com ", "pw")}
+        />
+      );
+    }
+    render(
+      <IdentityStateProvider>
+        <EmailProbe />
+      </IdentityStateProvider>,
+    );
+    await act(async () => {
+      screen.getByTestId("do-email-exchange").click();
+    });
+    const post = calls.find((c) => c.url.includes("/exchange"));
+    expect(JSON.parse(post?.body ?? "{}")).toEqual({
+      method: "password",
+      email: "user@example.com",
       password: "pw",
     });
   });

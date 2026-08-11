@@ -93,12 +93,13 @@ export function createCloudDesktopAuthClient(
         ...init.headers,
       };
       if (init.body !== undefined) headers["content-type"] = "application/json";
-      const res = await fetchImpl(url, {
+      const requestInit: Parameters<CloudLoginFetch>[1] = {
         method: init.method,
         headers,
-        body: init.body ?? "",
         signal: controller.signal,
-      });
+        ...(init.body !== undefined ? { body: init.body } : {}),
+      };
+      const res = await fetchImpl(url, requestInit);
       return { status: res.status, text: await res.text() };
     } catch {
       return undefined;

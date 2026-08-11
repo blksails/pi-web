@@ -47,6 +47,7 @@ function harness(opts: {
   loadThrows?: boolean;
   loadFailsOnce?: boolean;
   desktopLogin?: CloudLoginResult;
+  wechat?: CloudLoginResult;
   onCredentialChanged?: (credential: string | undefined) => void;
 }): Harness {
   const calls = {
@@ -98,22 +99,25 @@ function harness(opts: {
     },
   };
 
-  const desktopAuth: CloudDesktopAuthClient | undefined = opts.desktopLogin
+  const desktopAuth: CloudDesktopAuthClient | undefined = opts.desktopLogin || opts.wechat
     ? {
         async login(input) {
           calls.loginInputs.push(input);
-          return opts.desktopLogin!;
+          return opts.desktopLogin ?? { ok: false, reason: "invalid-request" };
         },
         async sendOtp() {
           return { ok: true };
         },
         async verifyOtp() {
-          return opts.desktopLogin!;
+          return opts.desktopLogin ?? { ok: false, reason: "invalid-request" };
         },
         async startWechat() {
           return { ok: false, reason: "invalid-request" as const };
         },
         async pollWechat() {
+          if (opts.wechat?.ok) {
+            return { ok: true as const, status: "ready" as const, credential: opts.wechat.credential };
+          }
           return { ok: false, reason: "invalid-request" as const };
         },
         async bindPhoneSend() {
@@ -174,6 +178,20 @@ describe("DesktopPasswordIdentityProvider — 交换成功", () => {
     const h = harness({ desktopLogin: { ok: true, credential: credentialFor("u-phone") } });
     await h.provider.exchange!(PHONE_PW);
     expect(h.calls.loginInputs).toEqual([{ phone: "13800138000", password: "pw" }]);
+  });
+
+  it("微信轮询拿到 credential → 完成能力加载与登录态落盘", async () => {
+    const credential = credentialFor("u-wechat");
+    const h = harness({
+      desktopLogin: { ok: true, credential },
+      wechat: { ok: true, credential },
+    });
+    const r = await h.provider.exchange!({
+      method: "wechat",
+      state: "pi-web:state",
+    });
+    expect(r).toEqual({ ok: true, state: { kind: "authenticated", tenant: TENANT_A } });
+    expect(h.calls.loadStaticCreds).toEqual([credential]);
   });
 });
 

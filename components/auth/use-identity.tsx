@@ -67,9 +67,9 @@ export interface UseIdentityResult {
   readonly state: IdentityUiState;
   /** 可用登录方式（服务端 methods 投影；缺省 password）。 */
   readonly methods: ReadonlyArray<LoginMethodId>;
-  /** 用手机号密码换身份。 */
+  /** 用邮箱或手机号密码换身份。 */
   readonly exchange: (
-    phone: string,
+    identifier: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
   readonly exchangeSms: (
@@ -276,13 +276,18 @@ function useIdentityState(): UseIdentityResult {
   );
 
   const exchange = React.useCallback(
-    async (phone: string, password: string) => {
+    async (identifier: string, password: string) => {
       let res: Response;
       try {
+        const account = identifier.trim();
         res = await fetch("/api/identity/exchange", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ method: "password", phone, password }),
+          body: JSON.stringify({
+            method: "password",
+            ...(account.includes("@") ? { email: account } : { phone: account }),
+            password,
+          }),
         });
       } catch {
         return { ok: false, reason: "cloud-unreachable" as const };
