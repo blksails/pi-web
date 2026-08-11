@@ -156,8 +156,11 @@ export function resolveCloudLoginConfig(
   const configuredEnvBase = env[CLOUD_LOGIN_EGRESS_BASE_ENV]?.trim();
   // packaged desktop still loads the project env for provider/model settings,
   // but must not let a dev-only localhost cloud override the baked production cloud.
+  // Packaged e2e explicitly opts into a local mock; production keeps this guard.
+  const allowLoopbackForPackagedE2e = env.PI_WEB_DESKTOP_RELEASE_E2E === "1";
   const envBase =
     env[DESKTOP_RELEASE_ENV] === "1" &&
+    !allowLoopbackForPackagedE2e &&
     configuredEnvBase !== undefined &&
     isLoopbackCloudOverride(configuredEnvBase)
       ? undefined

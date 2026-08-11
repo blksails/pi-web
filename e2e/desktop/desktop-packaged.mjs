@@ -88,6 +88,7 @@ async function main() {
       PI_WEB_DEFAULT_SOURCE: join(ROOT, "examples", "hello-agent"),
       PI_WEB_DEFAULT_CWD: ROOT,
       PI_WEB_RUNTIME_ROOT: runtime.dir,
+      PI_WEB_DESKTOP_RELEASE_E2E: "1",
       // 显式指向 mock 云端,压过随包固化的默认地址(env 优先级最高)。
       PI_WEB_CLOUD_LOGIN_EGRESS_BASE: cloud.egressBase,
     },
