@@ -116,6 +116,19 @@ pub fn build_child_env(
     env
 }
 
+/// 桌面壳 cwd 与随包 server cwd 分离；把用户项目的 env 文件交给 Node 在启动前加载。
+/// 不读值、不写日志，且不存在的文件静默跳过。
+fn env_file_paths(base_env: &BTreeMap<String, String>) -> Vec<PathBuf> {
+    let Some(cwd) = base_env.get("PI_WEB_DEFAULT_CWD") else {
+        return Vec::new();
+    };
+    [".env", ".env.local"]
+        .into_iter()
+        .map(|name| PathBuf::from(cwd).join(name))
+        .filter(|path| path.is_file())
+        .collect()
+}
+
 /// 通配/未指定主机映射为可导航的回环地址。
 fn display_host(host: &str) -> &str {
     probe_host(host)
@@ -162,9 +175,13 @@ impl ServerSupervisor {
             // （带可读 stderr），而非静默错误。
             .unwrap_or_else(|| PathBuf::from("."));
         let env = build_child_env(&opts.base_env, &opts.host, port, &opts.node_bin);
+        let env_files = env_file_paths(&opts.base_env);
 
         let mut cmd = Command::new(&opts.node_bin);
         // 继承父进程环境（HOME/PATH 等为 server 与 pi runner 所必需），再覆盖/剥除特定键。
+        for env_file in env_files {
+            cmd.arg(format!("--env-file-if-exists={}", env_file.display()));
+        }
         cmd.arg(&opts.server_js)
             .current_dir(&cwd)
             .envs(&env)

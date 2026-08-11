@@ -85,8 +85,17 @@ const DECLARATIVE: WebExtension = {
   },
 };
 
-const REGISTRY: ReadonlyArray<{ match: string; ext: WebExtension }> = [
-  ...(aigcExt !== undefined ? [{ match: "aigc-agent", ext: aigcExt }] : []),
+type RegistryEntry = {
+  readonly match: string;
+  readonly ext: WebExtension;
+  /** 本地仓库内置源须按路径末段匹配，不能误伤同名外部 agent。 */
+  readonly pathSuffix?: boolean;
+};
+
+const REGISTRY: ReadonlyArray<RegistryEntry> = [
+  ...(aigcExt !== undefined
+    ? [{ match: "examples/aigc-agent", ext: aigcExt, pathSuffix: true }]
+    : []),
   { match: "webext-layout-agent", ext: layoutExt },
   // webext-slots-agent 同时演示 Tier1 全槽 + Tier5 声明式空态配置(config.empty)。
   { match: "webext-slots-agent", ext: slotsExt },
@@ -138,5 +147,10 @@ export function resolveExtensionForSource(
   source: string | undefined,
 ): WebExtension | undefined {
   if (source === undefined) return undefined;
-  return REGISTRY.find((e) => source.includes(e.match))?.ext;
+  const normalized = source.replaceAll("\\", "/").replace(/\/+$/, "");
+  return REGISTRY.find((e) =>
+    e.pathSuffix
+      ? normalized === e.match || normalized.endsWith(`/${e.match}`)
+      : normalized.includes(e.match),
+  )?.ext;
 }

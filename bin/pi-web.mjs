@@ -10,7 +10,7 @@
  * source 省略时默认当前工作目录。纯函数 `parseCliArgs` / `buildEnv` 被导出以便单测;
  * 副作用(spawn / open)集中在 `main()`,仅在作为程序入口执行时触发。
  */
-import { parseArgs } from "node:util";
+import { parseArgs, parseEnv } from "node:util";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, extname, join, resolve, isAbsolute } from "node:path";
@@ -32,6 +32,39 @@ export class CliUsageError extends Error {
     super(message);
     this.name = "CliUsageError";
   }
+}
+
+/**
+ * Load caller-side env files before spawning the relocated standalone server.
+ * The child runs from `dist/`, so the server-side loader cannot see the user's
+ * `.env` / `.env.local` in the invocation directory.
+ *
+ * @param {string} [cwd]
+ * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} [targetEnv]
+ * @returns {readonly string[]}
+ */
+export function loadEnvFiles(cwd = process.cwd(), targetEnv = process.env) {
+  const merged = {};
+  const loaded = [];
+  for (const name of [".env", ".env.local"]) {
+    let raw;
+    try {
+      raw = readFileSync(join(cwd, name), "utf8");
+    } catch {
+      continue;
+    }
+    try {
+      Object.assign(merged, parseEnv(raw));
+    } catch {
+      process.stderr.write(`[pi-web] ${name} 解析失败,已跳过\n`);
+      continue;
+    }
+    loaded.push(name);
+  }
+  for (const [key, value] of Object.entries(merged)) {
+    if (targetEnv[key] === undefined) targetEnv[key] = value;
+  }
+  return loaded;
 }
 
 /** source 是否为 git 形态(不可当本地路径绝对化)。 */
@@ -1464,6 +1497,9 @@ export async function main(argv = process.argv.slice(2)) {
         watch: false,
       }
     : opts;
+  // standalone child cwd = dist/; caller-side provider credentials must be
+  // loaded before `buildEnv()` snapshots process.env for the child.
+  loadEnvFiles(process.cwd());
   const env = buildEnv(launchOpts, process.cwd(), process.env);
 
   let resolved;

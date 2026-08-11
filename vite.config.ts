@@ -1,5 +1,7 @@
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -19,9 +21,66 @@ import path from "node:path";
  */
 const r = (p: string): string => path.resolve(__dirname, p);
 
+/**
+ * Vite hashes pane HTML imported by static webexts, but does not follow the
+ * HTML's sibling `<script src="pane-*.js">`.  Copy and rewrite each pair so
+ * native WebViews never receive the SPA fallback instead of the guest script.
+ */
+function repairStaticPaneAssets(): Plugin {
+  const scriptByHtml = new Map<string, string>();
+  const examplesRoot = r("examples");
+  if (existsSync(examplesRoot)) {
+    for (const entry of readdirSync(examplesRoot, { recursive: true })) {
+      const relative = String(entry).replaceAll("\\", "/");
+      const match = /(?:^|\/)\.pi\/web\/dist\/(pane-[^/]+)\.html$/.exec(relative);
+      if (match === null) continue;
+      const htmlPath = path.join(examplesRoot, ...relative.split("/"));
+      const scriptPath = path.join(path.dirname(htmlPath), `${match[1]}.js`);
+      if (!existsSync(scriptPath)) continue;
+      scriptByHtml.set(readFileSync(htmlPath, "utf8"), readFileSync(scriptPath, "utf8"));
+    }
+  }
+
+  return {
+    name: "pi-web-repair-static-pane-assets",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      for (const [fileName, output] of Object.entries(bundle)) {
+        if (
+          output.type !== "asset" ||
+          !fileName.startsWith("assets/pane-") ||
+          !fileName.endsWith(".html")
+        ) continue;
+        const html = typeof output.source === "string"
+          ? output.source
+          : new TextDecoder().decode(output.source);
+        const scriptMatch = /<script\s+[^>]*src=["'](?:\.\/)?(pane-[^"']+\.js)["'][^>]*>/i.exec(html);
+        const scriptTag = scriptMatch?.[1] === "pane-chrome.js" ? null : scriptMatch;
+        const hasChrome = /src=["'](?:\.\/)?pane-chrome\.js["']/i.test(html);
+        if (scriptTag === null && !hasChrome) continue;
+        let rewritten = html.replace(
+          /(src=["'])\.\/pane-chrome\.js(["'])/g,
+          "$1../pane-chrome.js$2",
+        );
+        if (scriptTag !== null) {
+          const script = scriptByHtml.get(html);
+          if (script === undefined) continue;
+          const scriptFile = `${fileName.slice(0, -5)}.js`;
+          const rewrittenTag = scriptTag[0].replace(
+            /((?:src=["']))(?:\.\/)?pane-[^"']+\.js(["'])/i,
+            `$1./${path.basename(scriptFile)}$2`,
+          );
+          rewritten = rewritten.replace(scriptTag[0], rewrittenTag);
+          bundle[scriptFile] ??= { type: "asset", fileName: scriptFile, source: script };
+        }
+        output.source = rewritten;
+      }
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), repairStaticPaneAssets()],
   // `public/` 原样拷入 `dist/client/`(含 Tier4 隔离表面的 webext-artifact/artifact.html)。
   publicDir: r("public"),
   resolve: {

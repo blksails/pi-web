@@ -36,6 +36,7 @@ export {
   type CloudLoginClientOptions,
   type CloudLoginFailure,
   type CloudLoginFetch,
+  type CloudLoginInput,
   type CloudLoginResult,
 } from "./cloud-login-client.js";
 // phone/wechat 桌面登录族

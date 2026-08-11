@@ -10,6 +10,7 @@ import { tenantDisplayName, useIdentity } from "./use-identity.js";
 import { LoginForm } from "./login-form.js";
 import { BindPhoneForm } from "./bind-phone-form.js";
 import { useThemeToggle } from "@/src/theme-controls.js";
+import { navigateSpa } from "@/lib/app/spa-navigation.js";
 
 function initialsOf(name: string): string {
   const t = name.trim();
@@ -81,7 +82,7 @@ export function AccountBar({
   }, [menuOpen]);
 
   const { state } = identity;
-  const goSettings = (): void => {
+  const goSettings = (event: React.MouseEvent<HTMLAnchorElement>): void => {
     try {
       sessionStorage.setItem(
         "pi-web:settings-return",
@@ -90,6 +91,7 @@ export function AccountBar({
     } catch {
       // ignore
     }
+    navigateSpa(event, "/settings");
   };
 
   const settingsBtn = (
@@ -137,8 +139,8 @@ export function AccountBar({
           <LoginForm
             testIdPrefix="login"
             methods={identity.methods}
-            onSubmit={async (email, password) => {
-              const r = await identity.exchange(email, password);
+            onSubmit={async (identifier, password) => {
+              const r = await identity.exchange(identifier, password);
               if (r.ok) setFormOpen(false);
               return r;
             }}
@@ -228,7 +230,7 @@ export function AccountBar({
         <div
           role="menu"
           data-account-menu
-          className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 overflow-hidden rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1.5 text-[hsl(var(--popover-foreground))] shadow-lg"
+          className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 overflow-hidden rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1.5 text-[hsl(var(--popover-foreground))] shadow-[0_12px_30px_hsl(var(--foreground)/0.14)]"
         >
           <div className="mb-1 flex items-center gap-2.5 rounded-[7px] px-2.5 py-2">
             <Avatar label={displayName} />
@@ -334,12 +336,12 @@ export function AccountBar({
       ) : null}
 
       {formOpen && state.canExchange ? (
-        <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-lg">
+        <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-[0_12px_30px_hsl(var(--foreground)/0.14)]">
           <LoginForm
             testIdPrefix="reauth"
             methods={identity.methods}
-            onSubmit={async (email, password) => {
-              const r = await identity.exchange(email, password);
+            onSubmit={async (identifier, password) => {
+              const r = await identity.exchange(identifier, password);
               if (r.ok) setFormOpen(false);
               return r;
             }}
@@ -362,7 +364,7 @@ export function AccountBar({
       ) : null}
 
       {bindPhoneOpen ? (
-        <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-lg">
+        <div className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-3 shadow-[0_12px_30px_hsl(var(--foreground)/0.14)]">
           <BindPhoneForm
             onSend={(phone) => identity.bindPhoneSend(phone)}
             onVerify={(phone, code) => identity.bindPhoneVerify(phone, code)}

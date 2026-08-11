@@ -1407,7 +1407,7 @@ function buildSingleton(): HandlerSingleton {
   //   (配置来自 `<agentDir>/cloud.json`),只读 env 会让 capabilities 客户端恒为 undefined,
   //   进而线上源解析插件不注入、选中线上源报 500。此坑由打包态真机烟雾发现(Req 8.3)。
   const capabilitiesUrl =
-    resolveDesktopCapabilitiesUrl(process.env) ??
+    resolveDesktopCapabilitiesUrl(process.env, cloudLoginConfig?.egressBaseUrl) ??
     (cloudLoginConfig !== undefined
       ? deriveCapabilitiesUrlFromEgressBase(cloudLoginConfig.egressBaseUrl)
       : undefined);

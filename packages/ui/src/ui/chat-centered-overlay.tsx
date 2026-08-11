@@ -57,7 +57,7 @@ export function ChatCenteredOverlay(props: {
   const node = (
     <div
       className={cn(
-        "flex items-center justify-center bg-black/40 p-4",
+        "flex items-center justify-center bg-[hsl(var(--foreground)/0.32)] p-4",
         props.zIndexClassName ?? "z-[70]",
         props.className,
       )}

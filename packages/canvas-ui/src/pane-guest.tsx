@@ -56,7 +56,7 @@ export function CanvasPaneGuest(): React.JSX.Element {
   const conversation = React.useMemo<ConversationAccess>(
     () => ({
       submitUserMessage(text, options) {
-        void guest.submitUserMessage(text, options);
+        return guest.submitUserMessage(text, options);
       },
     }),
     [guest],

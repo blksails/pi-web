@@ -6,7 +6,7 @@
  *
  * ## 外部契约(实测确认,2026-07-27;本仓不拥有、不可改)
  *
- *   POST {loginUrl}  { email, password }
+ *   POST {loginUrl}  { email OR phone, password }
  *     200 → { token }        ← ★ 字段名是 `token`,不是 `credential`
  *     400 → "email and password required"
  *     401 → "Invalid login credentials"
@@ -45,7 +45,7 @@ export type CloudLoginFetch = (
   init: {
     readonly method: string;
     readonly headers: Record<string, string>;
-    readonly body: string;
+    readonly body?: string;
     readonly signal?: AbortSignal;
   },
 ) => Promise<{
@@ -72,6 +72,12 @@ export interface CloudLoginClientOptions {
   readonly timeoutMs?: number;
 }
 
+export interface CloudLoginInput {
+  readonly email?: string;
+  readonly phone?: string;
+  readonly password: string;
+}
+
 export interface CloudLoginClient {
   /**
    * 用账号密码换取桌面凭据。
@@ -79,10 +85,7 @@ export interface CloudLoginClient {
    * @throws **不抛**。一切失败经 `{ ok:false, reason }` 表达 —— 调用方(身份实现)
    *         需要按类别分流出不同的用户文案,异常无法承载这个分类。
    */
-  login(input: {
-    readonly email: string;
-    readonly password: string;
-  }): Promise<CloudLoginResult>;
+  login(input: CloudLoginInput): Promise<CloudLoginResult>;
 }
 
 export function createCloudLoginClient(opts: CloudLoginClientOptions): CloudLoginClient {
@@ -93,10 +96,11 @@ export function createCloudLoginClient(opts: CloudLoginClientOptions): CloudLogi
 
   return {
     async login(input): Promise<CloudLoginResult> {
-      const email = input.email.trim();
+      const email = input.email?.trim();
+      const phone = input.phone?.trim();
       // 密码**不** trim:前后空格可能是密码的一部分,擅自裁剪会让合法密码登不上。
       const password = input.password;
-      if (email.length === 0 || password.length === 0) {
+      if ((!email && !phone) || (email && phone) || password.length === 0) {
         return { ok: false, reason: "invalid-request" };
       }
 
@@ -118,7 +122,7 @@ export function createCloudLoginClient(opts: CloudLoginClientOptions): CloudLogi
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           // ★ 请求体在此处构造后即刻交出,不留引用、不进日志。
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify(email ? { email, password } : { phone, password }),
           signal: controller.signal,
         });
         status = res.status;

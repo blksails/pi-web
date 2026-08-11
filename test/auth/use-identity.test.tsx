@@ -117,7 +117,7 @@ function Probe(props: { readonly onKey: (k: string) => void }): React.JSX.Elemen
       <button
         type="button"
         data-testid="do-exchange"
-        onClick={() => void identity.exchange("a@b.c", "pw")}
+        onClick={() => void identity.exchange("13800138000", "pw")}
       />
       <button type="button" data-testid="do-revoke" onClick={() => void identity.revoke()} />
     </div>
@@ -158,7 +158,7 @@ describe("共享 Provider → 身份变化驱动列表刷新", () => {
           <button
             type="button"
             data-testid="go"
-            onClick={() => void a.exchange("a@b.c", "pw")}
+            onClick={() => void a.exchange("13800138000", "pw")}
           />
         </>
       );
@@ -233,7 +233,7 @@ describe("四态判定", () => {
 });
 
 describe("exchange 请求形状与失败分类", () => {
-  it("POST /api/identity/exchange,体含 method/email/password", async () => {
+  it("手机密码 POST /api/identity/exchange,体含 method/phone/password", async () => {
     render(
       <IdentityStateProvider>
         <Probe onKey={() => {}} />
@@ -246,7 +246,34 @@ describe("exchange 请求形状与失败分类", () => {
     expect(post?.method).toBe("POST");
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
       method: "password",
-      email: "a@b.c",
+      phone: "13800138000",
+      password: "pw",
+    });
+  });
+
+  it("邮箱密码 POST /api/identity/exchange,体含 method/email/password", async () => {
+    function EmailProbe(): React.JSX.Element {
+      const identity = useIdentity();
+      return (
+        <button
+          type="button"
+          data-testid="do-email-exchange"
+          onClick={() => void identity.exchange(" user@example.com ", "pw")}
+        />
+      );
+    }
+    render(
+      <IdentityStateProvider>
+        <EmailProbe />
+      </IdentityStateProvider>,
+    );
+    await act(async () => {
+      screen.getByTestId("do-email-exchange").click();
+    });
+    const post = calls.find((c) => c.url.includes("/exchange"));
+    expect(JSON.parse(post?.body ?? "{}")).toEqual({
+      method: "password",
+      email: "user@example.com",
       password: "pw",
     });
   });
@@ -266,7 +293,7 @@ describe("exchange 请求形状与失败分类", () => {
           type="button"
           data-testid="go"
           onClick={() => {
-            void identity.exchange("a@b.c", "pw").then((r) => {
+            void identity.exchange("13800138000", "pw").then((r) => {
               got = r.reason;
             });
           }}

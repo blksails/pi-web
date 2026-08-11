@@ -230,7 +230,7 @@ function PersonalSkillDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="pi-personal-skill-title"
-        className="max-h-[min(90vh,100%)] w-full max-w-2xl overflow-y-auto rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-5 shadow-2xl"
+        className="max-h-[min(90vh,100%)] w-full max-w-2xl overflow-y-auto rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface,var(--background)))] p-5 shadow-[0_16px_48px_hsl(var(--foreground)/0.16)]"
         data-pi-personal-skill-dialog=""
       >
         <header className="flex items-center gap-3">
@@ -239,7 +239,7 @@ function PersonalSkillDialog({
           </h2>
           <button
             type="button"
-            className="ml-auto text-sm text-[hsl(var(--muted-foreground))]"
+            className="ml-auto flex h-8 items-center justify-center rounded-[7px] px-2 text-sm text-[hsl(var(--muted-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
             onClick={onClose}
           >
             关闭

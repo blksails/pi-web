@@ -7,6 +7,7 @@ import {
   CLOUD_LOGIN_REQUEST_TIMEOUT_MS,
   type CloudLoginFailure,
   type CloudLoginFetch,
+  type CloudLoginInput,
   type CloudLoginResult,
 } from "./cloud-login-client.js";
 
@@ -53,10 +54,7 @@ function siblingUrl(loginUrl: string, suffix: string): string {
 }
 
 export interface CloudDesktopAuthClient {
-  login(input: {
-    readonly email: string;
-    readonly password: string;
-  }): Promise<CloudLoginResult>;
+  login(input: CloudLoginInput): Promise<CloudLoginResult>;
   sendOtp(phone: string): Promise<OtpSendResult>;
   verifyOtp(phone: string, code: string): Promise<CloudLoginResult>;
   startWechat(): Promise<WechatStartResult>;
@@ -95,12 +93,13 @@ export function createCloudDesktopAuthClient(
         ...init.headers,
       };
       if (init.body !== undefined) headers["content-type"] = "application/json";
-      const res = await fetchImpl(url, {
+      const requestInit: Parameters<CloudLoginFetch>[1] = {
         method: init.method,
         headers,
-        body: init.body ?? "",
         signal: controller.signal,
-      });
+        ...(init.body !== undefined ? { body: init.body } : {}),
+      };
+      const res = await fetchImpl(url, requestInit);
       return { status: res.status, text: await res.text() };
     } catch {
       return undefined;
@@ -133,12 +132,15 @@ export function createCloudDesktopAuthClient(
 
   return {
     async login(input) {
-      const email = input.email.trim();
+      const email = input.email?.trim();
+      const phone = input.phone?.trim();
       const password = input.password;
-      if (!email || !password) return { ok: false, reason: "invalid-request" };
+      if ((!email && !phone) || (email && phone) || !password) {
+        return { ok: false, reason: "invalid-request" };
+      }
       const res = await request(loginUrl, {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(email ? { email, password } : { phone, password }),
       });
       if (!res) {
         logger.warn("cloud login request failed");

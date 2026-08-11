@@ -112,6 +112,12 @@ function settleWindow<T>(p: Promise<T>, ms = RUN_SETTLE_MS): Promise<unknown> {
   return Promise.race([p, new Promise((resolve) => setTimeout(resolve, ms))]);
 }
 
+function describeCanvasError(error: unknown): string {
+  if (error instanceof Error && error.message.trim() !== "") return error.message;
+  if (typeof error === "string" && error.trim() !== "") return error;
+  return "生成请求提交失败";
+}
+
 // ── 舞台工具装配(4.2 注册表驱动:工具本体在 canvas-kit builtin/,此处只留装配策略)──
 
 /** 移动工具 id(领域策略锚:双击复位视图/舞台 grab 光标归属)。 */
@@ -569,6 +575,24 @@ export function CanvasWorkbench({
     syncSignal,
     domain: DOMAIN,
   });
+  const [submitError, setSubmitError] = React.useState<string>();
+  const submitCanvasOp = React.useCallback(
+    async (op: SurfaceOp): Promise<boolean> => {
+      try {
+        const result = await bridge.submitOp(op);
+        if (!result.ok) {
+          setSubmitError(result.error.message);
+          return false;
+        }
+        setSubmitError(undefined);
+        return true;
+      } catch (error) {
+        setSubmitError(describeCanvasError(error));
+        return false;
+      }
+    },
+    [bridge],
+  );
   const [prompt, setPrompt] = React.useState("");
   const [model, setModel] = React.useState<string>("");
   // 视觉模型偏好(Req 3.2):`""` = 未设定 → 解读载荷不带 model → 工具弹层选择(Req 3.4)。
@@ -897,7 +921,7 @@ export function CanvasWorkbench({
     if (bridge.opChannel !== "prompt") return;
     setBusy(true);
     try {
-      await bridge.submitOp(
+      await submitCanvasOp(
         buildVisionOp({
           imageId: current.attachmentId,
           question: prompt,
@@ -908,11 +932,12 @@ export function CanvasWorkbench({
     } finally {
       setBusy(false);
     }
-  }, [bridge, current.attachmentId, prompt, visionModel]);
+  }, [current.attachmentId, prompt, submitCanvasOp, visionModel]);
 
   /** 主生成:按决策发对应 A 档动作;掩码/标注产物先经上传接缝落 att_。 */
   const generate = React.useCallback(async (): Promise<void> => {
     if (!available || surface === undefined) return;
+    setSubmitError(undefined);
     setBusy(true);
     try {
       // 标注拍平 → 批注参考图 att_(标注即指令,并入 reference_images 首位)。
@@ -1007,9 +1032,10 @@ export function CanvasWorkbench({
               : "向外自然延展画面内容,与原图风格/光影无缝衔接",
         };
         if (bridge.opChannel === "prompt") {
-          void bridge.submitOp(
+          const submitted = await submitCanvasOp(
             buildSurfaceOp({ action: "outpaint", args }, { maskId: maskUp.attachmentId }),
           );
+          if (!submitted) return;
         } else {
           await settleWindow(
             surface.run(DOMAIN, "outpaint", { ...args, mask: maskUp.attachmentId }),
@@ -1040,7 +1066,8 @@ export function CanvasWorkbench({
           // 走对话流(A 方案):LLM 调 image_edit,操作回流对话历史。
           // ⚠回贴暂不随此路径启动:工具产物经轮末 sync 收编,快照资产无 derivedFrom=基图
           // 锚点,waitForNewDerivedAsset 匹配不到(误配风险大于收益);恢复待工具结果 meta 带血缘。
-          void bridge.submitOp(buildSurfaceOp(decision, { maskId }));
+          const submitted = await submitCanvasOp(buildSurfaceOp(decision, { maskId }));
+          if (!submitted) return;
           consumeSent(true);
           return;
         }
@@ -1068,17 +1095,20 @@ export function CanvasWorkbench({
 
       if (bridge.opChannel === "prompt") {
         // 走对话流(A 方案默认):组装 image_edit 指令为用户消息,LLM 调工具执行。
-        void bridge.submitOp(buildSurfaceOp(decision));
+        const submitted = await submitCanvasOp(buildSurfaceOp(decision));
+        if (!submitted) return;
         if (decision.action === "reference") consumeSent(false);
         return;
       }
       // 回退:旁路 surface 命令(不过 LLM;兼容未接 Prompt 通道的宿主/测试)。
       await settleWindow(surface.run(DOMAIN, decision.action, decision.args));
       if (decision.action === "reference") consumeSent(false);
+    } catch (error) {
+      setSubmitError(describeCanvasError(error));
     } finally {
       setBusy(false);
     }
-  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, bridge, kernel]);
+  }, [available, surface, refs, annotations, strokes, expand, upload, canvasFactory, current, baseUrl, sessionId, prompt, model, variantsN, ratioSize, imageLoader, bridge, kernel, submitCanvasOp]);
 
   /** 版本条选中 → 切工作图 + 复用其参数(预填表单 + 通知宿主)。 */
   const selectAsset = React.useCallback(
@@ -1859,6 +1889,15 @@ export function CanvasWorkbench({
         ) : bridge.opChannel === "command" ? (
           <div data-canvas-degrade="command" className="text-xs text-[hsl(var(--muted-foreground))]">
             操作不进入对话(LLM 不在环)
+          </div>
+        ) : null}
+        {submitError !== undefined ? (
+          <div
+            data-canvas-submit-error
+            role="alert"
+            className="text-xs text-[hsl(var(--destructive))]"
+          >
+            {submitError}
           </div>
         ) : null}
         <Popover open={refOpen} onOpenChange={setRefOpen}>

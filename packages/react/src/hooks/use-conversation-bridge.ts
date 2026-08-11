@@ -90,9 +90,9 @@ export function useConversationBridge(
   // Prompt 通道统一提交口:conversation 优先、别名兜底(6.2)。仅供 submitOp 的纯文本操作
   // 提交使用;别名不承载 attachmentIds,故 bringToConversation 不走此口(严格要求 conversation)。
   const submitViaPrompt = useCallback(
-    (text: string, attachmentIds?: readonly string[]): boolean => {
+    async (text: string, attachmentIds?: readonly string[]): Promise<boolean> => {
       if (conversation !== undefined) {
-        conversation.submitUserMessage(
+        await conversation.submitUserMessage(
           text,
           attachmentIds !== undefined ? { attachmentIds } : undefined,
         );
@@ -111,7 +111,8 @@ export function useConversationBridge(
     async (op: SurfaceOp): Promise<SubmitOpResult> => {
       // prompt 态:渲染为结构化用户消息经 Prompt 通道提交(2.4 / C3-1)。
       if (conversation !== undefined || onSubmitPrompt !== undefined) {
-        submitViaPrompt(renderSurfaceOp(op));
+        const submitted = await submitViaPrompt(renderSurfaceOp(op));
+        if (!submitted) return unavailableResult("conversation bridge has no available op channel");
         return { ok: true, channel: "prompt" };
       }
       // command 态:有 fallback 走控制面降级(2.5),无 fallback 可观察失败(2.6)。

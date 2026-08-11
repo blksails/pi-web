@@ -35,7 +35,7 @@ export const DialogOverlay = React.forwardRef<
     <DialogPrimitive.Overlay
       ref={ref}
       className={cn(
-        "z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out",
+        "z-50 bg-[hsl(var(--foreground)/0.32)] data-[state=open]:animate-in data-[state=closed]:animate-out",
         // 无 chat 列时仍用 inset-0 类；有列时用 inline style 覆盖
         box === null && "fixed inset-0",
         className,
@@ -72,7 +72,7 @@ export const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "z-50 grid w-full max-w-lg gap-4 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-6 text-[hsl(var(--foreground))] shadow-lg",
+          "z-50 grid w-full max-w-lg gap-4 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface,var(--background)))] p-6 text-[hsl(var(--foreground))] shadow-[0_16px_48px_hsl(var(--foreground)/0.16)]",
           // 有 chat 列时不用 tailwind 的 left-1/2 top-1/2（改用 box 中心）
           box === null && "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
           className,
@@ -82,7 +82,7 @@ export const DialogContent = React.forwardRef<
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-[7px] text-[hsl(var(--muted-foreground))] opacity-80 transition-colors hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           aria-label="Close"
         >
           <X className="h-4 w-4" />

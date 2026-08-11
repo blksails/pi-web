@@ -21,6 +21,7 @@ import {
   DESKTOP_MARKER_ENV,
   type EgressModel,
 } from "@blksails/pi-web-adapters/auth/index.js";
+import { DESKTOP_RELEASE_ENV } from "./cloud-defaults.js";
 
 /** 服务端配置 env(启用判别 = base)。 */
 export const CLOUD_LOGIN_EGRESS_BASE_ENV = "PI_WEB_CLOUD_LOGIN_EGRESS_BASE";
@@ -62,6 +63,21 @@ export class CloudLoginConfigError extends Error {
 
 function stripTrailingSlashes(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function isLoopbackCloudOverride(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "[::1]" ||
+        url.hostname === "::1")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function parseModels(raw: string | undefined): ReadonlyArray<EgressModel> {
@@ -137,7 +153,15 @@ export function resolveCloudLoginConfig(
    */
   fallbackEgressBase?: string,
 ): CloudLoginConfig | undefined {
-  const envBase = env[CLOUD_LOGIN_EGRESS_BASE_ENV]?.trim();
+  const configuredEnvBase = env[CLOUD_LOGIN_EGRESS_BASE_ENV]?.trim();
+  // packaged desktop still loads the project env for provider/model settings,
+  // but must not let a dev-only localhost cloud override the baked production cloud.
+  const envBase =
+    env[DESKTOP_RELEASE_ENV] === "1" &&
+    configuredEnvBase !== undefined &&
+    isLoopbackCloudOverride(configuredEnvBase)
+      ? undefined
+      : configuredEnvBase;
   const rawBase =
     envBase !== undefined && envBase.length > 0 ? envBase : fallbackEgressBase?.trim();
   if (rawBase === undefined || rawBase.length === 0) return undefined;

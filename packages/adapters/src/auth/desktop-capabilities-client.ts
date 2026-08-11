@@ -394,10 +394,13 @@ export function deriveLoginUrlFromEgressBase(egressBaseUrl: string): string | un
  */
 export function resolveDesktopCapabilitiesUrl(
   env: NodeJS.ProcessEnv,
+  resolvedEgressBaseUrl?: string,
 ): string | undefined {
   const explicit = env.PI_WEB_CLOUD_CAPABILITIES_URL?.trim();
   if (explicit !== undefined && explicit.length > 0) return explicit.replace(/\/+$/, "");
-  const egress = env.PI_WEB_CLOUD_LOGIN_EGRESS_BASE?.trim();
+  // 登录装配已完成环境覆盖净化；能力端点必须复用该结果，不能再次读取
+  // `.env.local` 中可能存在的开发回环地址。
+  const egress = (resolvedEgressBaseUrl ?? env.PI_WEB_CLOUD_LOGIN_EGRESS_BASE)?.trim();
   if (egress === undefined || egress.length === 0) return undefined;
   return deriveCapabilitiesUrlFromEgressBase(egress);
 }

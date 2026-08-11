@@ -147,6 +147,22 @@ describe("useConversationBridge — submitOp prompt 态渲染语义(3.4 / 2.4)",
     // 纯文本提交,不携带 attachmentIds
     expect(opts).toBeUndefined();
   });
+
+  it("等待异步 conversation 提交,并把提交失败交给调用方处理", async () => {
+    const submitUserMessage = vi.fn<ConversationAccess["submitUserMessage"]>(
+      async () => {
+        throw new Error("pane disconnected");
+      },
+    );
+    const { result } = renderHook(() =>
+      useConversationBridge({ conversation: { submitUserMessage } }),
+    );
+
+    await expect(act(() => result.current.submitOp(SAMPLE_OP))).rejects.toThrow(
+      "pane disconnected",
+    );
+    expect(submitUserMessage).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("useConversationBridge — submitOp command 态降级(2.5 / 2.6)", () => {

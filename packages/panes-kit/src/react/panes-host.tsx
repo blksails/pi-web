@@ -94,7 +94,7 @@ export type PanesSessionLogs = (
 
 export interface PanesConversationAccess {
   stageUserMessage?(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
-  submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): void;
+  submitUserMessage(text: string, options?: { readonly attachmentIds?: readonly string[] }): void | Promise<void>;
 }
 
 export interface PanesHostConfig {
@@ -461,6 +461,7 @@ export function PanesHost({
   parkedRef.current = parkedInstanceIds;
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [tabMenuOpen, setTabMenuOpen] = React.useState(false);
+  const chromeReturnFocusRef = React.useRef<HTMLElement | null>(null);
   // 新开 Pane / 更多 tab 弹层挂在 chrome 区，不 hide content webview（用户要底下 pane 保持可见）。
   const [draggedId, setDraggedId] = React.useState<string>();
   const [hostError, setHostError] = React.useState<PaneHostError>();
@@ -1126,7 +1127,7 @@ export function PanesHost({
         throw new PaneHostError("HOST_UNAVAILABLE", "Conversation draft is not ready", { retryable: true });
       }
       conversation.stageUserMessage(request.text, options);
-    } else conversation.submitUserMessage(request.text, options);
+    } else await conversation.submitUserMessage(request.text, options);
     return undefined;
   }, [applyActivateOrReload, applyOpenPane, baseUrl, config.eventTargets, conversation, definition, hardClose, onEvent, onRequestClose, sessionId, sessionLogs, surface, upload]);
 
@@ -1623,8 +1624,7 @@ export function PanesHost({
     } else {
       dispatch({ type: "open", paneId, instanceId: nextId(paneId) });
     }
-    setPaletteOpen(false);
-    setTabMenuOpen(false);
+    closeChromeMenus();
   };
 
   const closePane = (instanceId: string): void => {
@@ -1705,20 +1705,44 @@ export function PanesHost({
    * 新开 Pane / 更多 tab：DOM 蒙版盖在 content-well 上。
    */
   const openPaletteMenu = (anchor?: Element): void => {
+    const active = typeof document !== "undefined" && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    chromeReturnFocusRef.current =
+      anchor instanceof HTMLElement && anchor !== hostRoot.current ? anchor : active;
     setTabMenuOpen(false);
     setPaletteOpen(true);
-    void anchor;
   };
   openPaletteRequestRef.current = openPaletteMenu;
   const openHiddenTabsMenu = (anchor: Element): void => {
+    chromeReturnFocusRef.current = anchor instanceof HTMLElement ? anchor : null;
     setPaletteOpen(false);
     setTabMenuOpen(true);
-    void anchor;
   };
   const closeChromeMenus = (): void => {
     setPaletteOpen(false);
     setTabMenuOpen(false);
+    const target = chromeReturnFocusRef.current;
+    chromeReturnFocusRef.current = null;
+    if (target !== null) {
+      requestAnimationFrame(() => target.focus());
+    }
   };
+
+  React.useEffect(() => {
+    if (!paletteOpen && !tabMenuOpen) return undefined;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeChromeMenus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const firstItem = hostRoot.current?.querySelector<HTMLElement>(
+      '[data-pane-palette-item]:not(:disabled)',
+    );
+    firstItem?.focus();
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [paletteOpen, tabMenuOpen]);
 
   return (
     <section
@@ -1808,7 +1832,7 @@ export function PanesHost({
           <div
             role="presentation"
             onMouseDown={closeChromeMenus}
-            style={{ position: "absolute", inset: 0, zIndex: 40, background: "rgb(0 0 0 / .32)" }}
+            style={{ position: "absolute", inset: 0, zIndex: 40, background: "hsl(var(--foreground) / .32)" }}
           >
             <div
               role="menu"
@@ -1822,9 +1846,9 @@ export function PanesHost({
                 minWidth: 180,
                 padding: 4,
                 border: "1px solid hsl(var(--border))",
-                borderRadius: 9,
+                borderRadius: 10,
                 background: "hsl(var(--popover))",
-                boxShadow: "0 12px 30px rgb(0 0 0 / .16)",
+                boxShadow: "0 12px 30px hsl(var(--foreground) / .14)",
               }}
             >
               {hiddenInstances.map((instance) => {
@@ -1881,7 +1905,7 @@ export function PanesHost({
               display: "grid",
               placeItems: "start center",
               paddingTop: 48,
-              background: "rgb(0 0 0 / .32)",
+              background: "hsl(var(--foreground) / .32)",
             }}
           >
             <div
@@ -1890,9 +1914,9 @@ export function PanesHost({
                 width: "min(320px, calc(100% - 24px))",
                 padding: 8,
                 border: "1px solid hsl(var(--border))",
-                borderRadius: 12,
+                borderRadius: 10,
                 background: "hsl(var(--popover, var(--background)))",
-                boxShadow: "0 18px 45px rgb(0 0 0 / .18)",
+                boxShadow: "0 16px 48px hsl(var(--foreground) / .16)",
               }}
             >
               <strong style={{ display: "block", padding: "7px 10px" }}>新开 Pane</strong>

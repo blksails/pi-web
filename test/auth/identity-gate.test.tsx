@@ -74,7 +74,7 @@ describe("拦的路径", () => {
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeTruthy());
     expect(screen.queryByTestId(MAIN)).toBeNull();
     // 登录页里是账号密码表单,不是粘贴框。
-    expect(screen.getByTestId("login-email")).toBeTruthy();
+    expect(screen.getByTestId("login-phone")).toBeTruthy();
     expect(screen.getByTestId("login-password")).toBeTruthy();
   });
 

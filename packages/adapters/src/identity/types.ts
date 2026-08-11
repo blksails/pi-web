@@ -52,11 +52,21 @@ export type IdentityState =
 /**
  * 账号密码凭据。`method` 判别符支持 password | sms | wechat（同 Supabase 用户体系）。
  */
-export interface IdentityPasswordCredentials {
+export interface IdentityEmailPasswordCredentials {
   readonly method: "password";
   readonly email: string;
   readonly password: string;
 }
+
+export interface IdentityPhonePasswordCredentials {
+  readonly method: "password";
+  readonly phone: string;
+  readonly password: string;
+}
+
+export type IdentityPasswordCredentials =
+  | IdentityEmailPasswordCredentials
+  | IdentityPhonePasswordCredentials;
 
 export interface IdentitySmsCredentials {
   readonly method: "sms";
@@ -95,7 +105,7 @@ export type IdentityExchangeFailure =
    * 输入同一个正确的密码。他该做的是换账号,或找管理员开通归属。
    */
   | "no-membership"
-  /** 入参不合法(邮箱或密码为空)。请求根本没有发出或被云端以 400 拒绝。 */
+  /** 入参不合法(手机号/邮箱或密码为空)。请求根本没有发出或被云端以 400 拒绝。 */
   | "invalid-request"
   /** 云端不可达、超时,或响应形状非预期。用户可原样重试。 */
   | "cloud-unreachable"
