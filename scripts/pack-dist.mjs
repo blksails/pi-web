@@ -78,7 +78,8 @@ const RUNTIME_PACKAGES = [
  */
 export const PACKAGE_ROOT_FILES = ["ui/tailwind-preset.ts"];
 
-/** 从 `packages/server` 起解析(pnpm 把 pi SDK 嵌套在此,不在 app 根)。 */
+/** 从实际声明运行时依赖的 workspace 包起解析(pnpm 不把 `pg` hoist 到 app 根)。 */
+const requireFromAdapters = createRequire(join(ROOT, "packages/adapters/package.json"));
 const requireFromServer = createRequire(join(ROOT, "packages/server/package.json"));
 const requireFromRoot = createRequire(join(ROOT, "package.json"));
 
@@ -91,6 +92,7 @@ const requireFromRoot = createRequire(join(ROOT, "package.json"));
  * 故优先按 pnpm 的已知安装位置直接探路径。
  */
 const NM_BASES = [
+  join(ROOT, "packages/adapters/node_modules"),
   join(ROOT, "packages/server/node_modules"),
   join(ROOT, "node_modules"),
 ];
@@ -100,7 +102,7 @@ function tryRealpath(spec) {
     const p = join(base, ...spec.split("/"));
     if (existsSync(join(p, "package.json"))) return p;
   }
-  for (const req of [requireFromServer, requireFromRoot]) {
+  for (const req of [requireFromAdapters, requireFromServer, requireFromRoot]) {
     try {
       return dirname(req.resolve(`${spec}/package.json`));
     } catch {
