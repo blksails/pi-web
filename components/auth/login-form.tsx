@@ -23,6 +23,14 @@ const MESSAGE: Readonly<Record<IdentityExchangeReason, string>> = {
   unsupported: "当前环境不支持账号密码登录",
 };
 
+function wechatErrorMessage(error: string | undefined): string {
+  if (error === "no-membership") return MESSAGE["no-membership"];
+  if (error === "invalid-state") return "登录状态已失效，请重新扫码";
+  if (error === "wechat-token") return "微信授权交换失败，请重新扫码";
+  if (error === "wechat-no-user") return "微信账号未完成云端注册，请联系管理员";
+  return "微信登录失败，请重试";
+}
+
 export type LoginMethod = "password" | "sms" | "wechat";
 
 export interface LoginFormProps {
@@ -187,11 +195,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
           if (polled.status === "pending") return;
           if (polled.status === "error") {
             setWxStatus("error");
-            setError(
-              polled.error === "no-membership"
-                ? MESSAGE["no-membership"]
-                : "微信登录失败，请重试",
-            );
+            setError(wechatErrorMessage(polled.error));
             stopPoll();
             return;
           }
