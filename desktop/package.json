@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web-desktop",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "pi-web 桌面版 — Tauri 薄壳，复用 standalone 自包含产物",
   "scripts": {

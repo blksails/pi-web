@@ -114,6 +114,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     "idle" | "loading" | "show" | "success" | "error" | "expired"
   >("idle");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollInFlightRef = React.useRef(false);
   const wechatAutoStartedRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -172,40 +173,46 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     setWxUrl(started.qrConnectUrl);
     setWxStatus("show");
     pollRef.current = setInterval(() => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       void (async () => {
-        const polled = await props.onWechatPoll!(started.state);
-        if (!polled.ok) {
-          setWxStatus("error");
-          setError(MESSAGE[polled.reason ?? "cloud-unreachable"]);
-          stopPoll();
-          return;
-        }
-        if (polled.status === "pending") return;
-        if (polled.status === "error") {
-          setWxStatus("error");
-          setError(
-            polled.error === "no-membership"
-              ? MESSAGE["no-membership"]
-              : "微信登录失败，请重试",
-          );
-          stopPoll();
-          return;
-        }
-        if (polled.status === "ready") {
-          stopPoll();
-          setBusy(true);
-          const ex = await props.onWechatExchange!(started.state, polled.credential);
-          setBusy(false);
-          if (!ex.ok) {
+        try {
+          const polled = await props.onWechatPoll!(started.state);
+          if (!polled.ok) {
             setWxStatus("error");
-            setError(MESSAGE[ex.reason ?? "cloud-unreachable"]);
+            setError(MESSAGE[polled.reason ?? "cloud-unreachable"]);
+            stopPoll();
             return;
           }
-          setWxStatus("success");
-        }
-        if (polled.status === "claimed" || polled.status === "unknown") {
-          setWxStatus("expired");
-          stopPoll();
+          if (polled.status === "pending") return;
+          if (polled.status === "error") {
+            setWxStatus("error");
+            setError(
+              polled.error === "no-membership"
+                ? MESSAGE["no-membership"]
+                : "微信登录失败，请重试",
+            );
+            stopPoll();
+            return;
+          }
+          if (polled.status === "ready") {
+            stopPoll();
+            setBusy(true);
+            const ex = await props.onWechatExchange!(started.state, polled.credential);
+            setBusy(false);
+            if (!ex.ok) {
+              setWxStatus("error");
+              setError(MESSAGE[ex.reason ?? "cloud-unreachable"]);
+              return;
+            }
+            setWxStatus("success");
+          }
+          if (polled.status === "claimed" || polled.status === "unknown") {
+            setWxStatus("expired");
+            stopPoll();
+          }
+        } finally {
+          pollInFlightRef.current = false;
         }
       })();
     }, 2000);
@@ -503,14 +510,15 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
         >
           <div className="text-center">
             <p className="text-sm font-medium text-[hsl(var(--foreground))]">微信扫码登录</p>
-            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {wxStatus === "idle" && "正在准备二维码…"}
-              {wxStatus === "loading" && "正在准备登录会话…"}
-              {wxStatus === "show" && "请在下方二维码中用微信扫码，完成后自动登录"}
-              {wxStatus === "success" && "登录成功"}
-              {wxStatus === "error" && "登录失败，可重试"}
-              {wxStatus === "expired" && "会话已失效，请重新扫码"}
-            </p>
+            {wxStatus !== "show" ? (
+              <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+                {wxStatus === "idle" && "正在准备二维码…"}
+                {wxStatus === "loading" && "正在准备登录会话…"}
+                {wxStatus === "success" && "登录成功"}
+                {wxStatus === "error" && "登录失败，可重试"}
+                {wxStatus === "expired" && "会话已失效，请重新扫码"}
+              </p>
+            ) : null}
           </div>
           {wxUrl ? (
             <div

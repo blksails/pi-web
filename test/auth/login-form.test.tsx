@@ -169,6 +169,7 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
     expect(qr.querySelector("iframe")).toHaveAttribute("scrolling", "no");
     expect(open).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /开始扫码|重新扫码/ })).toBeNull();
+    expect(screen.queryByText("请在下方二维码中用微信扫码，完成后自动登录")).toBeNull();
     expect(screen.queryByTestId("login-cancel")).toBeNull();
     expect(start).toHaveBeenCalledOnce();
     view.unmount();
