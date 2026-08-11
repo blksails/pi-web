@@ -6,7 +6,7 @@
  * 不会迫使打包器评估整包客户端组件。
  *
  * 另：安装 document 级 PanesHost presence（唯一闸门）。`/settings` 等无 host 路由
- * 卸掉 `[data-panes-host]` 即 destroy 侧栏 webview，业务页零 hide 调用。
+ * 卸掉 `[data-panes-host]` 只 hide 侧栏 webview，保活当前会话；显式退出时再 destroy。
  */
 import { useEffect, type ReactNode } from "react";
 import { useLocation } from "react-router";
@@ -32,7 +32,7 @@ function PathDisplayFromSettings({
 
 /**
  * 根级 presence：document 观察 host 增删。
- * 任意路由变更后再 sweep 一次——设置页无 host 时 hide+destroy，业务页零代码。
+ * 任意路由变更后再 sweep 一次——设置页无 host 时 hide，业务页零代码。
  */
 function PanesHostPresenceRoot({
   children,

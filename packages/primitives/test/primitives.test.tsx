@@ -83,7 +83,7 @@ describe("primitives 七组件渲染 smoke", () => {
     const content = screen.getByText("浮层内容");
     expect(content).toBeTruthy();
     expect(content.className).toContain("z-50");
-    expect(content.className).toContain("rounded-[var(--radius)]");
+    expect(content.className).toContain("rounded-[10px]");
   });
 
   it("Select:Trigger 以 combobox role 可挂载,含 chevron 图标与 tokens 类", () => {

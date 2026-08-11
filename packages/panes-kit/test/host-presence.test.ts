@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  isPanesHostChromeHidden,
   isPanesHostElementVisible,
   observePanesHostPresence,
   type PanesHostPresenceBackend,
@@ -66,10 +67,20 @@ describe("isPanesHostElementVisible", () => {
     el.setAttribute("data-panes-host", "");
     expect(isPanesHostElementVisible(el)).toBe(false);
   });
+
+  it("Radix modal 的祖先 aria-hidden 不影响视觉可见性", () => {
+    const app = document.createElement("main");
+    app.setAttribute("aria-hidden", "true");
+    const el = hostEl();
+    app.appendChild(el);
+    document.body.appendChild(app);
+    expect(isPanesHostChromeHidden(el)).toBe(false);
+    expect(isPanesHostElementVisible(el)).toBe(true);
+  });
 });
 
 describe("observeAllPanesHostsInDocument", () => {
-  it("host 从 document 移除时 hide+destroy（设置路由场景）", async () => {
+  it("host 从 document 移除时仅 hide（设置路由仍保活会话）", async () => {
     const el = hostEl();
     const backend: PanesHostPresenceBackend = {
       hideAll: vi.fn(() => Promise.resolve()),
@@ -81,11 +92,11 @@ describe("observeAllPanesHostsInDocument", () => {
     await vi.waitFor(() => expect(backend.restoreVisible).toHaveBeenCalled());
     el.remove();
     await vi.waitFor(() => expect(backend.hideAll).toHaveBeenCalled(), { timeout: 1000 });
-    await vi.waitFor(() => expect(backend.destroyAll).toHaveBeenCalled(), { timeout: 1000 });
+    expect(backend.destroyAll).not.toHaveBeenCalled();
     off();
   });
 
-  it("无 host 冷装时即 destroy（设置页整页进入）", async () => {
+  it("无 host 冷装时仅 hide（避免误销毁会话）", async () => {
     const backend: PanesHostPresenceBackend = {
       hideAll: vi.fn(() => Promise.resolve()),
       destroyAll: vi.fn(() => Promise.resolve()),
@@ -93,14 +104,15 @@ describe("observeAllPanesHostsInDocument", () => {
     };
     const { observeAllPanesHostsInDocument } = await import("../src/host-presence.js");
     const off = observeAllPanesHostsInDocument(document, { backend });
-    await vi.waitFor(() => expect(backend.destroyAll).toHaveBeenCalled());
+    await vi.waitFor(() => expect(backend.hideAll).toHaveBeenCalled());
+    expect(backend.destroyAll).not.toHaveBeenCalled();
     expect(backend.restoreVisible).not.toHaveBeenCalled();
     off();
   });
 });
 
 describe("observePanesHostPresence", () => {
-  it("初始可见时 restore，卸载时 destroy", async () => {
+  it("初始可见时 restore，卸载时 hide 保活", async () => {
     const el = hostEl();
     const backend: PanesHostPresenceBackend = {
       hideAll: vi.fn(),
@@ -112,7 +124,8 @@ describe("observePanesHostPresence", () => {
       expect(backend.restoreVisible).toHaveBeenCalled();
     });
     off();
-    expect(backend.destroyAll).toHaveBeenCalled();
+    expect(backend.hideAll).toHaveBeenCalled();
+    expect(backend.destroyAll).not.toHaveBeenCalled();
   });
 
   it("折叠标记变化时 hide", async () => {

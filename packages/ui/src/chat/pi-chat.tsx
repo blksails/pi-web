@@ -1329,6 +1329,17 @@ export function PiChat({
   const agentPaneConfig = (rawAgentPanes as { readonly config?: unknown } | undefined)?.config as
     | React.ComponentProps<typeof PanesHost>["config"]
     | undefined;
+  // 设置页是同一会话内的 SPA 路由：PanesHost 会暂时卸载，再挂载时用稳定实例 id
+  // 复用 desktop webview/iframe。agent 显式给 persistenceKey 时保留其命名空间。
+  const effectivePaneConfig = React.useMemo(() => {
+    if (sessionId === undefined || agentPaneConfig?.persistenceKey !== undefined) {
+      return agentPaneConfig;
+    }
+    return {
+      ...(agentPaneConfig ?? {}),
+      persistenceKey: `pi-web:session:${encodeURIComponent(sessionId)}:panes`,
+    };
+  }, [agentPaneConfig, sessionId]);
   // 拒绝记录在**会话装载期**上报,不推迟到用户点开 pane(Req 3.4)。
   const paneRejections = paneMerge?.rejections;
   React.useEffect(() => {
@@ -1817,8 +1828,9 @@ export function PiChat({
   // centered 收起 panelRight(对话居中);artifact 永不被比例收起。
   const showPanelRight = hasPanelRight && panelRatio !== "centered";
   // native child 生命周期只由 PanesHost 上 observePanesHostPresence 驱动
-  // （挂载/可见 → restore，收起 → hide，卸载 → destroy），PiChat 不主动 hide。
-  // 有 panes 时 aside 保持挂载（宽 0 / 不可见），PanesHost 不卸载 → webview 只隐藏不销毁。
+  // （挂载/可见 → restore，收起/路由卸载 → hide），PiChat 不主动 hide。
+  // 有 panes 时 aside 保持挂载（宽 0 / 不可见），PanesHost 不卸载 → webview 只隐藏不销毁；
+  // 显式退出会话仍由 ChatApp 的退出路径 destroy。
   const keepPanesHostAlive = panesDefinition !== undefined;
   const showAside =
     showPanelRight || hasArtifactAside || keepPanesHostAlive;
@@ -2579,7 +2591,7 @@ export function PiChat({
                   // ★ 轮末同步信号与流式预览图以**具名信号**并入 —— pane 接口没有这两个专有 prop。
                   // 少任何一项都是静默失效面:轮末同步缺失曾表现为「LLM 生了图,画廊不更新」。
                   signals={hostPaneSignals}
-                  {...(agentPaneConfig !== undefined ? { config: agentPaneConfig } : {})}
+                  {...(effectivePaneConfig !== undefined ? { config: effectivePaneConfig } : {})}
                   onHostError={(error) => {
                     log.error("pane host error", { code: error.code, message: error.message });
                   }}

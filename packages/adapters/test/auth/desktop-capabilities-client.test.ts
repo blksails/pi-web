@@ -37,6 +37,18 @@ describe("deriveCapabilitiesUrlFromEgressBase / resolveDesktopCapabilitiesUrl", 
     ).toBe("https://x.example/cap");
   });
 
+  it("使用已解析的 egress，避免开发回环地址污染生产能力端点", () => {
+    expect(
+      resolveDesktopCapabilitiesUrl(
+        {
+          PI_WEB_CLOUD_LOGIN_EGRESS_BASE:
+            "http://127.0.0.1:4100/api/desktop/egress/v1",
+        },
+        "https://pi-cloud.apps.blksails.cn/api/desktop/egress/v1",
+      ),
+    ).toBe("https://pi-cloud.apps.blksails.cn/api/desktop/capabilities");
+  });
+
   it("未配置 → undefined", () => {
     expect(resolveDesktopCapabilitiesUrl({})).toBeUndefined();
   });

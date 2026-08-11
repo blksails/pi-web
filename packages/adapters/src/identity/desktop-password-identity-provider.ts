@@ -8,7 +8,10 @@
 import type { AuthSessionState } from "../auth/auth-session-state.js";
 import type { CloudLoginClient } from "../auth/cloud-login-client.js";
 import type { CloudDesktopAuthClient } from "../auth/cloud-desktop-auth-client.js";
-import type { DesktopCapabilitiesClient } from "../auth/desktop-capabilities-client.js";
+import {
+  CapabilitiesLoadError,
+  type DesktopCapabilitiesClient,
+} from "../auth/desktop-capabilities-client.js";
 import { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-version.js";
 import type { CapabilityTenant } from "@blksails/pi-web-core/capability/types.js";
 import type {
@@ -78,10 +81,11 @@ export function createDesktopPasswordIdentityProvider(
       let credential: string | undefined;
 
       if (credentials.method === "password") {
-        const login = await (desktopAuth ?? loginClient).login({
-          email: credentials.email,
-          password: credentials.password,
-        });
+        const login = await (desktopAuth ?? loginClient).login(
+          "phone" in credentials
+            ? { phone: credentials.phone, password: credentials.password }
+            : { email: credentials.email, password: credentials.password },
+        );
         if (!login.ok) return { ok: false, reason: login.reason };
         credential = login.credential;
       } else if (credentials.method === "sms") {
@@ -113,7 +117,7 @@ export function createDesktopPasswordIdentityProvider(
 
       let snapshot: Awaited<ReturnType<DesktopCapabilitiesClient["loadStatic"]>>;
       try {
-        snapshot = await capabilitiesClient.loadStatic(credential);
+        snapshot = await loadCapabilitiesForLogin(capabilitiesClient, credential);
       } catch {
         capabilitiesClient.clearCache();
         return { ok: false, reason: "capabilities-failed" };
@@ -148,6 +152,25 @@ export function createDesktopPasswordIdentityProvider(
       notifyCredentialChanged(undefined);
     },
   };
+}
+
+/** 登录刚拿到新凭据时,云端能力端点偶发 5xx/网络抖动可安全重试一次。 */
+async function loadCapabilitiesForLogin(
+  client: DesktopCapabilitiesClient,
+  credential: string,
+): Promise<Awaited<ReturnType<DesktopCapabilitiesClient["loadStatic"]>>> {
+  try {
+    return await client.loadStatic(credential);
+  } catch (error) {
+    if (
+      !(error instanceof CapabilitiesLoadError) ||
+      (error.kind !== "network" && error.kind !== "bad-status")
+    ) {
+      throw error;
+    }
+    client.clearCache();
+    return client.loadStatic(credential);
+  }
 }
 
 function tenantFromAuthSnapshot(authState: AuthSessionState): CapabilityTenant | undefined {

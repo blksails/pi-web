@@ -10,6 +10,7 @@ import { AuthSessionState } from "../../src/auth/auth-session-state.js";
 import { CapabilitiesLoadError } from "../../src/auth/desktop-capabilities-client.js";
 import type { DesktopCapabilitiesClient } from "../../src/auth/desktop-capabilities-client.js";
 import type { CloudLoginClient, CloudLoginResult } from "../../src/auth/cloud-login-client.js";
+import type { CloudDesktopAuthClient } from "../../src/auth/cloud-desktop-auth-client.js";
 import type { StaticCapabilitySnapshot } from "@blksails/pi-web-core/capability/types.js";
 import { createDesktopPasswordIdentityProvider } from "../../src/identity/desktop-password-identity-provider.js";
 import { createSessionIdentityProvider } from "../../src/identity/session-identity-provider.js";
@@ -32,17 +33,30 @@ const TENANT_B = { userId: "u-b", companyId: "c2", role: "admin" };
 interface Harness {
   readonly provider: ReturnType<typeof createDesktopPasswordIdentityProvider>;
   readonly authState: AuthSessionState;
-  readonly calls: { setCount: number; clearCacheCount: number; loadStaticCreds: string[] };
+  readonly calls: {
+    setCount: number;
+    clearCacheCount: number;
+    loadStaticCreds: string[];
+    loginInputs: unknown[];
+  };
 }
 
 function harness(opts: {
   login?: CloudLoginResult;
   snapshot?: StaticCapabilitySnapshot | (() => StaticCapabilitySnapshot);
   loadThrows?: boolean;
+  loadFailsOnce?: boolean;
+  desktopLogin?: CloudLoginResult;
   onCredentialChanged?: (credential: string | undefined) => void;
 }): Harness {
-  const calls = { setCount: 0, clearCacheCount: 0, loadStaticCreds: [] as string[] };
+  const calls = {
+    setCount: 0,
+    clearCacheCount: 0,
+    loadStaticCreds: [] as string[],
+    loginInputs: [] as unknown[],
+  };
   const authState = new AuthSessionState({ now: () => NOW });
+  let transientFailureConsumed = false;
   const realSet = authState.set.bind(authState);
   authState.set = (c: string) => {
     calls.setCount += 1;
@@ -50,7 +64,8 @@ function harness(opts: {
   };
 
   const loginClient: CloudLoginClient = {
-    async login() {
+    async login(input) {
+      calls.loginInputs.push(input);
       return opts.login ?? { ok: true, credential: credentialFor("u-a") };
     },
   };
@@ -58,7 +73,8 @@ function harness(opts: {
   const capabilitiesClient: DesktopCapabilitiesClient = {
     async loadStatic(credential?: string) {
       calls.loadStaticCreds.push(credential ?? "<from-state>");
-      if (opts.loadThrows === true) {
+      if (opts.loadThrows === true || (opts.loadFailsOnce === true && !transientFailureConsumed)) {
+        transientFailureConsumed = true;
         throw new CapabilitiesLoadError("bad-status", "boom");
       }
       const s = opts.snapshot ?? { tenant: TENANT_A };
@@ -82,9 +98,37 @@ function harness(opts: {
     },
   };
 
+  const desktopAuth: CloudDesktopAuthClient | undefined = opts.desktopLogin
+    ? {
+        async login(input) {
+          calls.loginInputs.push(input);
+          return opts.desktopLogin!;
+        },
+        async sendOtp() {
+          return { ok: true };
+        },
+        async verifyOtp() {
+          return opts.desktopLogin!;
+        },
+        async startWechat() {
+          return { ok: false, reason: "invalid-request" as const };
+        },
+        async pollWechat() {
+          return { ok: false, reason: "invalid-request" as const };
+        },
+        async bindPhoneSend() {
+          return { ok: true };
+        },
+        async bindPhoneVerify() {
+          return { ok: true };
+        },
+      }
+    : undefined;
+
   return {
     provider: createDesktopPasswordIdentityProvider({
       loginClient,
+      desktopAuth,
       capabilitiesClient,
       authState,
       onCredentialChanged: opts.onCredentialChanged,
@@ -95,6 +139,8 @@ function harness(opts: {
 }
 
 const PW = { method: "password", email: "a@example.com", password: "pw" } as const;
+
+const PHONE_PW = { method: "password", phone: "13800138000", password: "pw" } as const;
 
 describe("DesktopPasswordIdentityProvider — 交换成功", () => {
   it("登录 → 取授予 → 落凭据,返回 tenant", async () => {
@@ -123,9 +169,31 @@ describe("DesktopPasswordIdentityProvider — 交换成功", () => {
     await h.provider.current();
     expect(h.calls.loadStaticCreds.length).toBe(before);
   });
+
+  it("手机号密码登录 → 把 phone 传给云端登录客户端", async () => {
+    const h = harness({ desktopLogin: { ok: true, credential: credentialFor("u-phone") } });
+    await h.provider.exchange!(PHONE_PW);
+    expect(h.calls.loginInputs).toEqual([{ phone: "13800138000", password: "pw" }]);
+  });
 });
 
 describe("★ DesktopPasswordIdentityProvider — 授予失败不进已登录态(Req 4.2)", () => {
+  it("短信换身份遇能力端点瞬态失败 → 重试一次后完成登录", async () => {
+    const credential = credentialFor("u-sms");
+    const h = harness({
+      desktopLogin: { ok: true, credential },
+      loadFailsOnce: true,
+    });
+    const r = await h.provider.exchange!({
+      method: "sms",
+      phone: "18775167632",
+      code: "123456",
+    });
+    expect(r).toEqual({ ok: true, state: { kind: "authenticated", tenant: TENANT_A } });
+    expect(h.calls.loadStaticCreds).toEqual([credential, credential]);
+    expect(h.calls.setCount).toBe(1);
+  });
+
   it("loadStatic 抛 → capabilities-failed,且 authState.set 从未被调用", async () => {
     const h = harness({ loadThrows: true });
     const r = await h.provider.exchange!(PW);

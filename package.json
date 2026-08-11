@@ -1,6 +1,6 @@
 {
   "name": "@blksails/pi-web",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "packageManager": "pnpm@9.12.0",
   "pnpm": {
     "supportedArchitectures": {
@@ -70,7 +70,7 @@
     "build:webext-examples": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-webext-examples.ts",
     "build:builtin-panes": "node --import ./node_modules/.pnpm/jiti@2.7.0/node_modules/jiti/lib/jiti-register.mjs scripts/build-builtin-panes.ts"
   },
-  "dependencies": {
+  "devDependencies": {
     "@earendil-works/pi-ai": "^0.80.3",
     "@earendil-works/pi-coding-agent": "^0.80.3",
     "@ai-sdk/react": "^2.0.0",
@@ -93,9 +93,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^8.2.0",
-    "tailwindcss": "^3.4.17"
-  },
-  "devDependencies": {
     "@playwright/test": "^1.49.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
@@ -108,6 +105,7 @@
     "jiti": "^2.7.0",
     "jsdom": "^25.0.1",
     "tar": "^7.5.19",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^6",
     "vitest": "^2.1.8"

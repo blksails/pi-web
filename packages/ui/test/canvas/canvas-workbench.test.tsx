@@ -316,6 +316,57 @@ describe("CanvasWorkbench", () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it("局部重绘:掩码上传后等待 conversation 提交,消息含 mask 引用", async () => {
+    const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
+    const upload = vi.fn(fakeUpload);
+    const submitUserMessage = vi.fn(async () => undefined);
+    render(
+      <CanvasWorkbench
+        surface={fakeSurface(true, run)}
+        asset={asset("att_src")}
+        assets={[asset("att_src")]}
+        onClose={() => undefined}
+        upload={upload}
+        baseUrl="/api"
+        sessionId="s1"
+        canvasFactory={fakeCanvasFactory()}
+        conversation={{ submitUserMessage }}
+      />,
+    );
+
+    const image = document.querySelector("[data-canvas-workbench-image]") as HTMLImageElement;
+    Object.defineProperties(image, {
+      naturalWidth: { configurable: true, value: 100 },
+      naturalHeight: { configurable: true, value: 100 },
+    });
+    fireEvent.load(image);
+    await waitFor(() => expect(document.querySelector("[data-canvas-mask-overlay]")).toBeTruthy());
+
+    const overlay = document.querySelector("[data-canvas-mask-overlay]") as HTMLCanvasElement;
+    Object.defineProperty(overlay, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100 }),
+    });
+    fireEvent.click(document.querySelector('[data-canvas-tool="mask"]')!);
+    fireEvent.pointerDown(overlay, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(overlay, { pointerId: 1, clientX: 30, clientY: 30 });
+    fireEvent.pointerUp(overlay, { pointerId: 1, clientX: 30, clientY: 30 });
+    await waitFor(() =>
+      expect(document.querySelector("[data-canvas-generate]")?.getAttribute("data-canvas-action")).toBe("inpaint"),
+    );
+
+    fireEvent.change(document.querySelector("[data-canvas-prompt]")!, {
+      target: { value: "换成蓝天" },
+    });
+    fireEvent.click(document.querySelector("[data-canvas-generate]")!);
+    await waitFor(() => expect(submitUserMessage).toHaveBeenCalledTimes(1));
+    const firstCall = submitUserMessage.mock.calls[0] as unknown as readonly unknown[] | undefined;
+    const text = String(firstCall?.[0] ?? "");
+    expect(text).toContain("🎨 局部重绘 · 换成蓝天");
+    expect(text).toContain("mask: att_new");
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("图层:⊕ 加层 → 浮条出现 → 拍平 → 上传 + register(op:flatten,derivedFrom=底图)→ 清层", async () => {
     const run = vi.fn(async (d: string, a: string) => ({ domain: d, action: a, ok: true }));
     const upload = vi.fn(fakeUpload);

@@ -1,13 +1,14 @@
 /**
  * PanesHost 元素存在性/可见性 → 侧栏 native webview 生命周期（**唯一**公共闸门）。
  *
- * - 未挂载（disconnect / unmount / 路由切走）→ destroy 全部 content pane webview
+ * - 未挂载（disconnect / unmount / 路由切走）→ hide 全部 content pane webview（保活）
  * - 已挂载但不可见（收起侧栏、opacity/display、祖先折叠）→ hide 全部（保活）
  * - 已挂载且可见 → restore（workspace + 重采几何）
  *
  * ## 为何设置页也会被盖住？
  * `/settings` 是**完整 SPA 路由**（不是浮层）：切过去时会话树卸载，`[data-panes-host]`
- * 从 document 消失。正确反应是 **missing→destroy**，不是在 settings.tsx 里主动 hide。
+ * 从 document 消失。正确反应是 **missing→hide**；会话未退出时不得销毁 iframe/webview。
+ * 真正退出会话时，由会话业务显式调用 destroy。
  *
  * ## 收敛安装点
  * 用 `installDocumentPanesHostPresence()` 在应用根装**一次** document 级观察：
@@ -80,7 +81,9 @@ export function isPanesHostChromeHidden(
   const win = options.target ?? el.ownerDocument.defaultView ?? window;
   let node: Element | null = el;
   while (node !== null) {
-    if (node.getAttribute("aria-hidden") === "true") return true;
+    // Radix Dialog 仅给 portal 外的 app 根设置 aria-hidden；这不代表视觉隐藏。
+    // 只认 host 自身，避免打开 modal 时把 Pane 误判为不可见。
+    if (node === el && node.getAttribute("aria-hidden") === "true") return true;
     if (node.getAttribute("data-pi-panel-collapsed") === "true") return true;
     if (node.getAttribute("data-pi-panel-open") === "false") return true;
     const style = win.getComputedStyle(node);
@@ -128,7 +131,7 @@ function resolveState(
 }
 
 /**
- * 监控单个 PanesHost 根节点。返回 dispose；dispose 时按 **missing** 销毁 webview。
+ * 监控单个 PanesHost 根节点。返回 dispose；dispose 时按 **missing** 隐藏 webview，保留实例。
  */
 export function observePanesHostPresence(
   host: Element,
@@ -146,9 +149,8 @@ export function observePanesHostPresence(
     last = state;
     options.onStateChange?.(state);
     if (state === "missing") {
-      // hide 立刻腾屏 + destroy 回收（并行，互不阻塞）；设置页卸 host 走此支。
+      // 路由暂时卸载 host 只 hide，保留当前会话的 iframe/webview；destroy 由显式退出会话负责。
       void Promise.resolve(backend.hideAll()).catch(() => undefined);
-      void Promise.resolve(backend.destroyAll()).catch(() => undefined);
       return;
     }
     if (state === "hidden") {
@@ -227,7 +229,7 @@ export function observePanesHostPresence(
     io?.disconnect();
     mo?.disconnect();
     target.removeEventListener("resize", schedule);
-    // 元素卸载 = missing → 销毁（force，无视 disposed 短路）
+    // 元素卸载 = missing → 隐藏并保活（force，无视 disposed 短路）
     apply("missing", true);
     disposed = true;
   };
@@ -237,7 +239,7 @@ export function observePanesHostPresence(
  * 在 document 内查找 `[data-panes-host]` 并绑定监控（可选多实例，各自独立）。
  * 返回总 dispose。
  *
- * 路由切到无 host 的页（如 `/settings`）时，host 节点从树移除 → unbind → destroy。
+ * 路由切到无 host 的页（如 `/settings`）时，host 节点从树移除 → unbind → hide。
  */
 export function observeAllPanesHostsInDocument(
   doc: Document = document,
@@ -258,7 +260,7 @@ export function observeAllPanesHostsInDocument(
     disposers.delete(el);
   };
 
-  /** 扫离线 host + 无 host 时强制 hide/destroy（防整页跳转漏 dispose）。 */
+  /** 扫离线 host + 无 host 时强制 hide（防 SPA 跳转漏扫，但保活当前会话）。 */
   const sweep = (): void => {
     for (const el of [...disposers.keys()]) {
       if (!el.isConnected) unbind(el);
@@ -266,15 +268,13 @@ export function observeAllPanesHostsInDocument(
     doc.querySelectorAll(HOST_SELECTOR).forEach(bind);
     if (doc.querySelector(HOST_SELECTOR) === null) {
       void Promise.resolve(backend.hideAll()).catch(() => undefined);
-      void Promise.resolve(backend.destroyAll()).catch(() => undefined);
     }
   };
 
   doc.querySelectorAll(HOST_SELECTOR).forEach(bind);
-  // 冷进设置页 / 无 host：清孤儿 child。
+  // 冷进无 host：仅隐藏，避免尚未退出的会话失去可复用 webview。
   if (doc.querySelector(HOST_SELECTOR) === null) {
     void Promise.resolve(backend.hideAll()).catch(() => undefined);
-    void Promise.resolve(backend.destroyAll()).catch(() => undefined);
   }
 
   const mo =
@@ -318,9 +318,9 @@ let documentPresenceOff: (() => void) | undefined;
 
 /**
  * 在应用入口装一次（如 `Providers`）。此后任意路由挂/卸 `[data-panes-host]`
- * 都由本闸处理 hide/destroy/restore；业务页勿再调 hide_all。
+ * 都由本闸处理 hide/restore；destroy 仍由显式会话终止路径负责。
  *
- * 另导出 `notifyPanesHostPresenceSweep` 供路由变更后主动扫（无 host → hide+destroy）。
+ * 另导出 `notifyPanesHostPresenceSweep` 供路由变更后主动扫（无 host → hide）。
  */
 export function installDocumentPanesHostPresence(
   doc: Document = document,
@@ -336,7 +336,7 @@ export function installDocumentPanesHostPresence(
   };
 }
 
-/** 路由 pathname 变化后调用：无 `[data-panes-host]` 则 hide+destroy。 */
+/** 路由 pathname 变化后调用：无 `[data-panes-host]` 则 hide，保活当前会话。 */
 export function notifyPanesHostPresenceSweep(
   doc: Document = document,
   target: Window = window,
@@ -344,5 +344,4 @@ export function notifyPanesHostPresenceSweep(
   if (doc.querySelector(HOST_SELECTOR) !== null) return;
   const backend = createDefaultPanesHostPresenceBackend(target);
   void Promise.resolve(backend.hideAll()).catch(() => undefined);
-  void Promise.resolve(backend.destroyAll()).catch(() => undefined);
 }

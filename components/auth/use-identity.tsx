@@ -3,7 +3,7 @@
 /**
  * 身份状态投影(spec: desktop-account-login,任务 7.1;Req 1.5/1.6/5.1-5.3/7.1)。
  *
- * 读 `GET /api/identity` 得四态;提供 `exchange(email,password)` / `revoke()` / `refresh()`。
+ * 读 `GET /api/identity` 得四态;提供 `exchange(phone,password)` / `revoke()` / `refresh()`。
  *
  * ## ★ 渲染层不得知道自己跑在哪种宿主上(Req 1.5)
  *
@@ -67,9 +67,9 @@ export interface UseIdentityResult {
   readonly state: IdentityUiState;
   /** 可用登录方式（服务端 methods 投影；缺省 password）。 */
   readonly methods: ReadonlyArray<LoginMethodId>;
-  /** 用账号密码换身份。 */
+  /** 用手机号密码换身份。 */
   readonly exchange: (
-    email: string,
+    phone: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
   readonly exchangeSms: (
@@ -276,13 +276,13 @@ function useIdentityState(): UseIdentityResult {
   );
 
   const exchange = React.useCallback(
-    async (email: string, password: string) => {
+    async (phone: string, password: string) => {
       let res: Response;
       try {
         res = await fetch("/api/identity/exchange", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ method: "password", email, password }),
+          body: JSON.stringify({ method: "password", phone, password }),
         });
       } catch {
         return { ok: false, reason: "cloud-unreachable" as const };

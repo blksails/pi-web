@@ -100,6 +100,10 @@ fn dev_api_port() -> Option<u16> {
 ///   `PI_WEB_AGENT_DIR`）必须继续成立，本函数不得、也未触碰该键。
 fn base_env() -> BTreeMap<String, String> {
     let mut env = BTreeMap::new();
+    if is_packaged() {
+        // 生产安装包不得把开发机 `.env.local` 的 loopback 云端地址带入 server。
+        env.insert("PI_WEB_DESKTOP_RELEASE".into(), "1".into());
+    }
     if let Ok(src) = std::env::var("PI_WEB_DEFAULT_SOURCE") {
         if !src.trim().is_empty() {
             env.insert("PI_WEB_DEFAULT_SOURCE".into(), src);

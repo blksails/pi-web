@@ -26,6 +26,9 @@ export { DESKTOP_MARKER_ENV };
 /** 构建期覆盖固化默认值用的 env 键(读取发生在打包时,不是运行时)。 */
 export const BAKED_CLOUD_EGRESS_BASE_ENV = "PI_WEB_BAKED_CLOUD_EGRESS_BASE";
 
+/** Tauri 安装包标记；开发桌面仍可使用本地 cloud 覆盖。 */
+export const DESKTOP_RELEASE_ENV = "PI_WEB_DESKTOP_RELEASE";
+
 /**
  * 编译进产物的默认云端出口地址。
  *

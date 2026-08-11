@@ -72,9 +72,12 @@ function parseExchangeBody(raw: unknown): IdentityCredentials | { error: "invali
 
   if (method === "password" || method === undefined) {
     const email = typeof body.email === "string" ? body.email.trim() : "";
+    const phone = typeof body.phone === "string" ? body.phone.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    if (!email || !password) return { error: "invalid" };
-    return { method: "password", email, password };
+    if ((!email && !phone) || (email && phone) || !password) return { error: "invalid" };
+    return email
+      ? { method: "password", email, password }
+      : { method: "password", phone, password };
   }
   if (method === "sms") {
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";

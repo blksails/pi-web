@@ -39,8 +39,8 @@ export function LoginControl({
     <LoginForm
       testIdPrefix={prefix}
       methods={identity.methods}
-      onSubmit={async (email, password) => {
-        const r = await identity.exchange(email, password);
+      onSubmit={async (phone, password) => {
+        const r = await identity.exchange(phone, password);
         if (r.ok) setFormOpen(false);
         return r;
       }}

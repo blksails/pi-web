@@ -32,6 +32,7 @@ import { toRpcSlashCommand } from "@/lib/app/plugin-command/to-rpc-command.js";
 import { ThemeToggleButton, LocaleToggleButton } from "@/src/theme-controls.js";
 import { resolveExtensionForSource } from "@/lib/app/webext-registry.js";
 import { getPiWebDesktopBridge } from "@/lib/app/desktop-bridge.js";
+import { navigateSpa } from "@/lib/app/spa-navigation.js";
 import { useRuntimeWebext } from "@/lib/app/webext-load-client.js";
 import {
   getRuntimeFeatures,
@@ -1204,6 +1205,7 @@ function SessionView({
             <a
               href="/settings"
               data-settings-link
+              onClick={(event) => navigateSpa(event, "/settings")}
               aria-label={t("chatApp.settings")}
               title={t("chatApp.settings")}
               className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-[var(--radius)] text-xs text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--surface-subtle))] hover:text-[hsl(var(--foreground))]"

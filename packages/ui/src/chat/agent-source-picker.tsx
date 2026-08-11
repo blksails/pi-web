@@ -365,7 +365,7 @@ export function AgentSourcePicker({
 
         <form
           onSubmit={onFormSubmit}
-          className="flex w-full flex-col gap-4 rounded-[12px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-4 text-[hsl(var(--foreground))] shadow-none"
+          className="flex w-full flex-col gap-4 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-4 text-[hsl(var(--foreground))] shadow-none"
         >
           <div className="space-y-1">
             <h1 className="text-lg font-semibold">
@@ -466,7 +466,7 @@ export function AgentSourcePicker({
         <DialogContent
           data-agent-source-picker
           data-agent-source-dialog
-          className="max-h-[90vh] w-[720px] gap-0 overflow-auto rounded-[12px] border border-[hsl(var(--foreground))] bg-[hsl(var(--surface))] p-4 shadow-[8px_8px_0_hsl(var(--foreground))]"
+          className="max-h-[90vh] w-[720px] gap-0 overflow-auto rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-4 shadow-[0_16px_48px_hsl(var(--foreground)/0.16)]"
           style={{ maxWidth: dialogMaxWidth }}
         >
           {/* inner 自带可见的卡片与标题;此处提供无障碍所需的对话框标题(视觉隐藏)。 */}

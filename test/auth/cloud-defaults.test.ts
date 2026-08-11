@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   BAKED_CLOUD_EGRESS_BASE,
   DESKTOP_MARKER_ENV,
+  DESKTOP_RELEASE_ENV,
   resolveBakedCloudEgressBase,
 } from "@/lib/app/cloud-defaults";
 import {
@@ -44,6 +45,29 @@ describe("resolveBakedCloudEgressBase — 只对桌面壳生效", () => {
 
 describe("★ 三级优先级:env > 用户配置 > 固化默认值", () => {
   const desktop = { [DESKTOP_MARKER_ENV]: "1" };
+
+  it("打包桌面忽略开发用 loopback env,回落生产默认地址", () => {
+    const c = resolveCloudLoginConfig(
+      {
+        ...desktop,
+        [DESKTOP_RELEASE_ENV]: "1",
+        [CLOUD_LOGIN_EGRESS_BASE_ENV]: "http://127.0.0.1:4100/api/desktop/egress/v1",
+      },
+      resolveBakedCloudEgressBase(desktop),
+    );
+    expect(c?.egressBaseUrl).toBe(BAKED_CLOUD_EGRESS_BASE.replace(/\/+$/, ""));
+  });
+
+  it("开发桌面仅有通用壳标记时仍允许 loopback cloud", () => {
+    const c = resolveCloudLoginConfig(
+      {
+        ...desktop,
+        [CLOUD_LOGIN_EGRESS_BASE_ENV]: "http://127.0.0.1:4100/api/desktop/egress/v1",
+      },
+      BAKED_CLOUD_EGRESS_BASE,
+    );
+    expect(c?.egressBaseUrl).toBe("http://127.0.0.1:4100/api/desktop/egress/v1");
+  });
 
   it("三者齐全 → 用 env", () => {
     const baked = resolveBakedCloudEgressBase({ ...desktop });

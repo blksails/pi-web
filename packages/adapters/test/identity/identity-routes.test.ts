@@ -11,6 +11,7 @@ import { HOST_CONTRACT_VERSION } from "@blksails/pi-web-core/host-contract-versi
 import { createIdentityRoutes } from "../../src/identity/identity-routes.js";
 import type {
   IdentityExchangeFailure,
+  IdentityCredentials,
   IdentityProvider,
   IdentityState,
 } from "../../src/identity/types.js";
@@ -59,6 +60,7 @@ function fakeProvider(opts: {
   withExchange?: boolean;
   withRevoke?: boolean;
   currentThrows?: boolean;
+  onExchange?: (credentials: IdentityCredentials) => void;
 }): IdentityProvider {
   const p: {
     contractVersion: typeof HOST_CONTRACT_VERSION;
@@ -73,8 +75,10 @@ function fakeProvider(opts: {
     },
   };
   if (opts.withExchange !== false) {
-    p.exchange = async () =>
-      opts.exchangeResult ?? { ok: true, state: { kind: "authenticated", tenant: TENANT } };
+    p.exchange = async (credentials) => {
+      opts.onExchange?.(credentials);
+      return opts.exchangeResult ?? { ok: true, state: { kind: "authenticated", tenant: TENANT } };
+    };
   }
   if (opts.withRevoke !== false) p.revoke = async () => {};
   return p as IdentityProvider;
@@ -160,6 +164,20 @@ describe("POST /identity/exchange — 入参校验(Req 2.2)", () => {
     const routes = createIdentityRoutes({ provider: fakeProvider({}) });
     const r = await call(routeOf(routes, "POST", "/identity/exchange"), body);
     expect(r.status).toBe(400);
+  });
+
+  it("手机号密码 → 转成 phone 凭据交给 provider", async () => {
+    let seen: IdentityCredentials | undefined;
+    const routes = createIdentityRoutes({
+      provider: fakeProvider({ onExchange: (credentials) => (seen = credentials) }),
+    });
+    const r = await call(routeOf(routes, "POST", "/identity/exchange"), {
+      method: "password",
+      phone: "  13800138000  ",
+      password: PASSWORD,
+    });
+    expect(r.status).toBe(200);
+    expect(seen).toEqual({ method: "password", phone: "13800138000", password: PASSWORD });
   });
 
   it("请求体不是 JSON → 400", async () => {

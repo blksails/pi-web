@@ -27,7 +27,7 @@ export type LoginMethod = "password" | "sms" | "wechat";
 
 export interface LoginFormProps {
   readonly onSubmit: (
-    email: string,
+    phone: string,
     password: string,
   ) => Promise<{ ok: boolean; reason?: IdentityExchangeReason }>;
   readonly onSmsSubmit?: (
@@ -99,7 +99,6 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
   const [method, setMethod] = React.useState<LoginMethod>(() =>
     methods.includes("password") ? "password" : (methods[0] ?? "password"),
   );
-  const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [phone, setPhone] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -114,6 +113,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     "idle" | "loading" | "show" | "success" | "error" | "expired"
   >("idle");
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const wechatAutoStartedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!methods.includes(method)) {
@@ -140,83 +140,14 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
 
   React.useEffect(() => () => stopPoll(), [stopPoll]);
 
-  const selectMethod = (next: LoginMethod): void => {
-    setError(undefined);
-    if (next !== "wechat") stopPoll();
-    setMethod(next);
-  };
+  const resetWechat = React.useCallback((): void => {
+    stopPoll();
+    setWxState(undefined);
+    setWxUrl(undefined);
+    setWxStatus("idle");
+  }, [stopPoll]);
 
-  const applyHistory = (entry: LoginAccountEntry): void => {
-    setError(undefined);
-    if (entry.kind === "email") {
-      setMethod("password");
-      setEmail(entry.value);
-    } else {
-      setMethod("sms");
-      setPhone(entry.value);
-    }
-  };
-
-  const submitPassword = async (): Promise<void> => {
-    if (email.trim().length === 0 || password.length === 0 || busy) {
-      setError(MESSAGE["invalid-request"]);
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    const result = await props.onSubmit(email.trim(), password);
-    setBusy(false);
-    if (result.ok) {
-      upsertLoginAccount("email", email.trim());
-      setHistory(listLoginAccounts());
-      setEmail("");
-      setPassword("");
-      return;
-    }
-    setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
-    setPassword("");
-  };
-
-  const sendOtp = async (): Promise<void> => {
-    if (!props.onSendOtp || phone.trim().length === 0 || countdown > 0 || busy) return;
-    setBusy(true);
-    setError(undefined);
-    const result = await props.onSendOtp(phone.trim());
-    setBusy(false);
-    if (!result.ok) {
-      setError(
-        result.reason === "rate-limited"
-          ? "发送过于频繁，请稍后再试"
-          : result.reason === "cloud-unreachable"
-            ? "无法发送验证码（检查云端/短信通道是否已配置）"
-            : MESSAGE[result.reason === "invalid-request" ? "invalid-request" : "cloud-unreachable"],
-      );
-      return;
-    }
-    setOtpSent(true);
-    setCountdown(60);
-  };
-
-  const submitSms = async (): Promise<void> => {
-    if (!props.onSmsSubmit || phone.trim().length === 0 || code.trim().length === 0 || busy) {
-      setError(MESSAGE["invalid-request"]);
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    const result = await props.onSmsSubmit(phone.trim(), code.trim());
-    setBusy(false);
-    if (result.ok) {
-      upsertLoginAccount("phone", phone.trim());
-      setHistory(listLoginAccounts());
-      setCode("");
-      return;
-    }
-    setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
-    setCode("");
-  };
-
-  const startWechat = async (): Promise<void> => {
+  const startWechat = React.useCallback(async (): Promise<void> => {
     if (!props.onWechatStart || !props.onWechatPoll || !props.onWechatExchange) {
       setError(MESSAGE.unsupported);
       return;
@@ -277,14 +208,89 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
         }
       })();
     }, 2000);
+  }, [props.onWechatExchange, props.onWechatPoll, props.onWechatStart, stopPoll]);
+
+  React.useEffect(() => {
+    if (method === "wechat") {
+      if (wechatAutoStartedRef.current) return;
+      wechatAutoStartedRef.current = true;
+      void startWechat();
+    } else {
+      wechatAutoStartedRef.current = false;
+      resetWechat();
+    }
+  }, [method, resetWechat, startWechat]);
+
+  const selectMethod = (next: LoginMethod): void => {
+    setError(undefined);
+    if (next !== "wechat") resetWechat();
+    setMethod(next);
   };
 
-  const cancelWechat = (): void => {
-    stopPoll();
-    setWxState(undefined);
-    setWxUrl(undefined);
-    setWxStatus("idle");
+  const applyHistory = (entry: LoginAccountEntry): void => {
     setError(undefined);
+    if (entry.kind === "phone") {
+      setPhone(entry.value);
+    }
+  };
+
+  const submitPassword = async (): Promise<void> => {
+    if (phone.trim().length === 0 || password.length === 0 || busy) {
+      setError(MESSAGE["invalid-request"]);
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    const result = await props.onSubmit(phone.trim(), password);
+    setBusy(false);
+    if (result.ok) {
+      upsertLoginAccount("phone", phone.trim());
+      setHistory(listLoginAccounts());
+      setPhone("");
+      setPassword("");
+      return;
+    }
+    setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
+    setPassword("");
+  };
+
+  const sendOtp = async (): Promise<void> => {
+    if (!props.onSendOtp || phone.trim().length === 0 || countdown > 0 || busy) return;
+    setBusy(true);
+    setError(undefined);
+    const result = await props.onSendOtp(phone.trim());
+    setBusy(false);
+    if (!result.ok) {
+      setError(
+        result.reason === "rate-limited"
+          ? "发送过于频繁，请稍后再试"
+          : result.reason === "cloud-unreachable"
+            ? "无法发送验证码（检查云端/短信通道是否已配置）"
+            : MESSAGE[result.reason === "invalid-request" ? "invalid-request" : "cloud-unreachable"],
+      );
+      return;
+    }
+    setOtpSent(true);
+    setCountdown(60);
+  };
+
+  const submitSms = async (): Promise<void> => {
+    if (!props.onSmsSubmit || phone.trim().length === 0 || code.trim().length === 0 || busy) {
+      setError(MESSAGE["invalid-request"]);
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    const result = await props.onSmsSubmit(phone.trim(), code.trim());
+    setBusy(false);
+    if (result.ok) {
+      upsertLoginAccount("phone", phone.trim());
+      setHistory(listLoginAccounts());
+      setCode("");
+      return;
+    }
+    setError(MESSAGE[result.reason ?? "cloud-unreachable"]);
+    setCode("");
   };
 
   const inputCls = fieldClass(page);
@@ -294,7 +300,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
     "mb-1.5 block text-xs font-medium text-[hsl(var(--muted-foreground))]";
 
   const relevantHistory = history.filter((h) =>
-    method === "password" ? h.kind === "email" : method === "sms" ? h.kind === "phone" : false,
+    method === "password" || method === "sms" ? h.kind === "phone" : false,
   );
 
   return (
@@ -368,20 +374,20 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
       {method === "password" ? (
         <div className="flex flex-col gap-3">
           <div>
-            <label className={labelCls} htmlFor={`${prefix}-email`}>
-              邮箱
+            <label className={labelCls} htmlFor={`${prefix}-phone`}>
+              手机号
             </label>
             <input
-              id={`${prefix}-email`}
-              name="username"
-              type="email"
+              id={`${prefix}-phone`}
+              name="tel"
+              type="tel"
               className={inputCls}
-              placeholder="name@example.com"
-              value={email}
-              autoComplete="username"
-              inputMode="email"
-              data-testid={`${prefix}-email`}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="11 位手机号"
+              value={phone}
+              autoComplete="tel"
+              inputMode="tel"
+              data-testid={`${prefix}-phone`}
+              onChange={(e) => setPhone(e.target.value.replace(/[^\d+]/g, ""))}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void submitPassword();
                 if (e.key === "Escape") props.onCancel();
@@ -413,7 +419,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
             type="button"
             className={primaryCls}
             data-testid={`${prefix}-submit`}
-            disabled={busy || email.trim().length === 0 || password.length === 0}
+            disabled={busy || phone.trim().length === 0 || password.length === 0}
             onClick={() => void submitPassword()}
           >
             {busy ? "登录中…" : "登录"}
@@ -493,7 +499,7 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
           <div className="text-center">
             <p className="text-sm font-medium text-[hsl(var(--foreground))]">微信扫码登录</p>
             <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {wxStatus === "idle" && "点击下方按钮开始，将打开扫码页"}
+              {wxStatus === "idle" && "正在准备二维码…"}
               {wxStatus === "loading" && "正在准备登录会话…"}
               {wxStatus === "show" && "请在下方二维码中用微信扫码，完成后自动登录"}
               {wxStatus === "success" && "登录成功"}
@@ -513,36 +519,8 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
                 loading="eager"
                 referrerPolicy="no-referrer"
               />
-              <a
-                href={wxUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block border-t border-[hsl(var(--border))] px-3 py-2 text-center text-xs text-[hsl(var(--muted-foreground))] underline underline-offset-2"
-              >
-                二维码无法显示？在新窗口打开
-              </a>
             </div>
           ) : null}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`${primaryCls} flex-1`}
-              data-testid={`${prefix}-wechat-start`}
-              disabled={busy}
-              onClick={() => void startWechat()}
-            >
-              {wxStatus === "idle" || wxStatus === "error" || wxStatus === "expired"
-                ? "开始扫码"
-                : wxStatus === "loading"
-                  ? "准备中…"
-                  : "重新扫码"}
-            </button>
-            {wxStatus !== "idle" ? (
-              <button type="button" className={ghostCls} onClick={cancelWechat}>
-                取消
-              </button>
-            ) : null}
-          </div>
           {wxState ? (
             <span className="sr-only" data-testid={`${prefix}-wechat-state`}>
               {wxState}
@@ -551,19 +529,17 @@ export function LoginForm(props: LoginFormProps): React.JSX.Element {
         </div>
       ) : null}
 
-      {!page ? (
+      {!page && method !== "wechat" ? (
         <button
           type="button"
           className={ghostCls}
           data-testid={`${prefix}-cancel`}
           onClick={() => {
-            setEmail("");
             setPassword("");
             setPhone("");
             setCode("");
             setError(undefined);
             setOtpSent(false);
-            cancelWechat();
             props.onCancel();
           }}
         >

@@ -15,6 +15,7 @@ import {
 
 const LOGIN_URL = "https://cloud.example/api/desktop/login";
 const EMAIL = "user@example.com";
+const PHONE = "13800138000";
 const PASSWORD = "s3cr3t-p@ssw0rd-unique-marker";
 
 function clientWith(fetchImpl: CloudLoginFetch, timeoutMs = 50): ReturnType<typeof createCloudLoginClient> {
@@ -64,6 +65,15 @@ describe("成功路径", () => {
     }).login({ email: `  ${EMAIL}  `, password: "  pw with spaces  " });
     // ★ 密码前后空格可能是密码的一部分,擅自 trim 会让合法密码登不上。
     expect(JSON.parse(seenBody)).toEqual({ email: EMAIL, password: "  pw with spaces  " });
+  });
+
+  it("请求体支持 JSON { phone, password },手机号被 trim", async () => {
+    let seenBody = "";
+    await clientWith(async (_u, init) => {
+      seenBody = init.body;
+      return { status: 200, text: async () => JSON.stringify({ token: "c" }) };
+    }).login({ phone: `  ${PHONE}  `, password: PASSWORD });
+    expect(JSON.parse(seenBody)).toEqual({ phone: PHONE, password: PASSWORD });
   });
 });
 

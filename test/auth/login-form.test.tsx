@@ -17,18 +17,18 @@ import { IdentityStateProvider } from "../../components/auth/use-identity.js";
 const TENANT = { userId: "u1", companyId: "c1", role: "member" };
 
 describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
-  it("密码输入项是掩码", () => {
+  it("手机号密码输入项是掩码", () => {
     render(<LoginForm onSubmit={async () => ({ ok: true })} onCancel={() => {}} />);
     expect(screen.getByTestId("login-password").getAttribute("type")).toBe("password");
-    expect(screen.getByTestId("login-email").getAttribute("type")).toBe("email");
+    expect(screen.getByTestId("login-phone").getAttribute("type")).toBe("tel");
   });
 
   it.each([
     ["两者皆空", "", ""],
-    ["只填邮箱", "a@b.c", ""],
+    ["只填手机号", "13800138000", ""],
     ["只填密码", "", "pw"],
-    ["邮箱只有空白", "   ", "pw"],
-  ])("%s → 提交按钮禁用,且点击不触发 onSubmit", async (_n, email, password) => {
+    ["手机号只有空白", "   ", "pw"],
+  ])("%s → 提交按钮禁用,且点击不触发 onSubmit", async (_n, phone, password) => {
     let calls = 0;
     render(
       <LoginForm
@@ -39,8 +39,8 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
         onCancel={() => {}}
       />,
     );
-    if (email.length > 0) {
-      fireEvent.change(screen.getByTestId("login-email"), { target: { value: email } });
+    if (phone.length > 0) {
+      fireEvent.change(screen.getByTestId("login-phone"), { target: { value: phone } });
     }
     if (password.length > 0) {
       fireEvent.change(screen.getByTestId("login-password"), { target: { value: password } });
@@ -53,24 +53,24 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
     expect(calls).toBe(0);
   });
 
-  it("两项齐全 → 可提交,email 被 trim 而 password 原样传出", async () => {
+  it("两项齐全 → 可提交,手机号被 trim 而 password 原样传出", async () => {
     const seen: Array<[string, string]> = [];
     render(
       <LoginForm
-        onSubmit={async (e, p) => {
-          seen.push([e, p]);
+        onSubmit={async (p, password) => {
+          seen.push([p, password]);
           return { ok: true };
         }}
         onCancel={() => {}}
       />,
     );
-    fireEvent.change(screen.getByTestId("login-email"), { target: { value: "  a@b.c  " } });
+    fireEvent.change(screen.getByTestId("login-phone"), { target: { value: "  13800138000  " } });
     fireEvent.change(screen.getByTestId("login-password"), { target: { value: " pw " } });
     await act(async () => {
       screen.getByTestId("login-submit").click();
     });
     // 密码前后空格可能是密码的一部分 —— 擅自 trim 会让合法密码登不上。
-    expect(seen).toEqual([["a@b.c", " pw "]]);
+    expect(seen).toEqual([["13800138000", " pw "]]);
   });
 
   it("提交中禁止重复提交", async () => {
@@ -88,7 +88,7 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
         onCancel={() => {}}
       />,
     );
-    fireEvent.change(screen.getByTestId("login-email"), { target: { value: "a@b.c" } });
+    fireEvent.change(screen.getByTestId("login-phone"), { target: { value: "13800138000" } });
     fireEvent.change(screen.getByTestId("login-password"), { target: { value: "pw" } });
     await act(async () => {
       screen.getByTestId("login-submit").click();
@@ -105,33 +105,49 @@ describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
 });
 
 describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
+  it("密码登录沿用手机号,移除底部切换链接", async () => {
+    const onSubmit = vi.fn(async () => ({ ok: true as const }));
+    render(<LoginForm onSubmit={onSubmit} onCancel={() => {}} />);
+    fireEvent.change(screen.getByTestId("login-phone"), {
+      target: { value: "13800138000" },
+    });
+    fireEvent.change(screen.getByTestId("login-password"), { target: { value: "pw" } });
+    expect(screen.queryByTestId("login-switch-sms")).toBeNull();
+    expect(screen.queryByTestId("login-switch-password")).toBeNull();
+    await act(async () => {
+      screen.getByTestId("login-submit").click();
+    });
+    expect(onSubmit).toHaveBeenCalledWith("13800138000", "pw");
+  });
+
   it("微信扫码直接内嵌二维码,不主动弹新窗口", async () => {
     const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    const start = vi.fn(async () => ({
+      ok: true as const,
+      state: "wx-state",
+      appid: "wx-app",
+      redirectUri: "https://cloud.test/api/desktop/wechat/callback",
+      qrConnectUrl: "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
+    }));
     const view = render(
       <LoginForm
         methods={["wechat"]}
         onSubmit={async () => ({ ok: true })}
-        onWechatStart={async () => ({
-          ok: true as const,
-          state: "wx-state",
-          appid: "wx-app",
-          redirectUri: "https://cloud.test/api/desktop/wechat/callback",
-          qrConnectUrl: "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
-        })}
+        onWechatStart={start}
         onWechatPoll={async () => ({ ok: true as const, status: "pending" as const })}
         onWechatExchange={async () => ({ ok: true })}
         onCancel={() => {}}
       />,
     );
-    await act(async () => {
-      screen.getByTestId("login-wechat-start").click();
-    });
     const qr = await screen.findByTestId("login-wechat-qr");
     expect(qr.querySelector("iframe")).toHaveAttribute(
       "src",
       "https://open.weixin.qq.com/connect/qrconnect?state=wx-state",
     );
     expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /开始扫码|重新扫码/ })).toBeNull();
+    expect(screen.queryByTestId("login-cancel")).toBeNull();
+    expect(start).toHaveBeenCalledOnce();
     view.unmount();
     open.mockRestore();
   });
@@ -150,14 +166,14 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
         }}
       />,
     );
-    fireEvent.change(screen.getByTestId("login-email"), { target: { value: "a@b.c" } });
+    fireEvent.change(screen.getByTestId("login-phone"), { target: { value: "13800138000" } });
     fireEvent.change(screen.getByTestId("login-password"), { target: { value: "pw" } });
     await act(async () => {
       screen.getByTestId("login-cancel").click();
     });
     expect(submits).toBe(0);
     expect(cancelled).toBe(1);
-    expect((screen.getByTestId("login-email") as HTMLInputElement).value).toBe("");
+    expect((screen.getByTestId("login-phone") as HTMLInputElement).value).toBe("");
     expect((screen.getByTestId("login-password") as HTMLInputElement).value).toBe("");
   });
 
@@ -170,7 +186,7 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
     render(
       <LoginForm onSubmit={async () => ({ ok: false, reason })} onCancel={() => {}} />,
     );
-    fireEvent.change(screen.getByTestId("login-email"), { target: { value: "a@b.c" } });
+    fireEvent.change(screen.getByTestId("login-phone"), { target: { value: "13800138000" } });
     fireEvent.change(screen.getByTestId("login-password"), { target: { value: "pw" } });
     await act(async () => {
       screen.getByTestId("login-submit").click();
@@ -178,14 +194,14 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
     await waitFor(() => expect(screen.getByTestId("login-error").textContent).toBe(text));
   });
 
-  it("失败后保留邮箱、只清密码(用户十有八九是打错了密码)", async () => {
+  it("失败后保留手机号、只清密码(用户十有八九是打错了密码)", async () => {
     render(
       <LoginForm
         onSubmit={async () => ({ ok: false, reason: "invalid-credentials" as const })}
         onCancel={() => {}}
       />,
     );
-    fireEvent.change(screen.getByTestId("login-email"), { target: { value: "a@b.c" } });
+    fireEvent.change(screen.getByTestId("login-phone"), { target: { value: "13800138000" } });
     fireEvent.change(screen.getByTestId("login-password"), { target: { value: "wrong" } });
     await act(async () => {
       screen.getByTestId("login-submit").click();
@@ -193,7 +209,7 @@ describe("LoginForm — 取消与失败文案(Req 2.3/2.4/3.3)", () => {
     await waitFor(() =>
       expect((screen.getByTestId("login-password") as HTMLInputElement).value).toBe(""),
     );
-    expect((screen.getByTestId("login-email") as HTMLInputElement).value).toBe("a@b.c");
+    expect((screen.getByTestId("login-phone") as HTMLInputElement).value).toBe("13800138000");
   });
 });
 
@@ -236,8 +252,8 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     await act(async () => {
       screen.getByTestId("login-open").click();
     });
-    // Req 3.4:主路径不再是粘贴凭据串 —— 表单里应有 email/password 两项。
-    expect(screen.getByTestId("login-email")).toBeTruthy();
+    // Req 3.4:主路径不再是粘贴凭据串 —— 表单里应有 phone/password 两项。
+    expect(screen.getByTestId("login-phone")).toBeTruthy();
     expect(screen.getByTestId("login-password")).toBeTruthy();
   });
 

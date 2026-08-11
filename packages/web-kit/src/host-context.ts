@@ -59,7 +59,7 @@ export interface ConversationAccess {
   submitUserMessage(
     text: string,
     opts?: { readonly attachmentIds?: readonly string[] },
-  ): void;
+  ): void | Promise<void>;
 }
 
 export interface WebExtHostContext {

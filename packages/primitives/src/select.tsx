@@ -44,7 +44,7 @@ export const SelectContent = React.forwardRef<
         ref={ref}
         position={position}
         className={cn(
-          "relative z-50 min-w-[8rem] overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-md",
+          "relative z-50 min-w-[8rem] overflow-hidden rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] text-[hsl(var(--popover-foreground))] shadow-[0_12px_30px_hsl(var(--foreground)/0.14)]",
           className,
         )}
         {...props}
