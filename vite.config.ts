@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 /**
@@ -19,6 +20,7 @@ import path from "node:path";
  * Vite 原样保留为原生运行时 import。若把 URL 写成字面量,`/* @vite-ignore *\/` 不生效,
  * Rollup 仍会静态解析并在构建期报 `failed to resolve import`。
  */
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const r = (p: string): string => path.resolve(__dirname, p);
 
 /**
@@ -27,24 +29,23 @@ const r = (p: string): string => path.resolve(__dirname, p);
  * native WebViews never receive the SPA fallback instead of the guest script.
  */
 function repairStaticPaneAssets(): Plugin {
-  const scriptByHtml = new Map<string, string>();
-  const examplesRoot = r("examples");
-  if (existsSync(examplesRoot)) {
-    for (const entry of readdirSync(examplesRoot, { recursive: true })) {
-      const relative = String(entry).replaceAll("\\", "/");
-      const match = /(?:^|\/)\.pi\/web\/dist\/(pane-[^/]+)\.html$/.exec(relative);
-      if (match === null) continue;
-      const htmlPath = path.join(examplesRoot, ...relative.split("/"));
-      const scriptPath = path.join(path.dirname(htmlPath), `${match[1]}.js`);
-      if (!existsSync(scriptPath)) continue;
-      scriptByHtml.set(readFileSync(htmlPath, "utf8"), readFileSync(scriptPath, "utf8"));
-    }
-  }
-
   return {
     name: "pi-web-repair-static-pane-assets",
     apply: "build",
     generateBundle(_options, bundle) {
+      const scriptByHtml = new Map<string, string>();
+      const examplesRoot = r("examples");
+      if (existsSync(examplesRoot)) {
+        for (const entry of readdirSync(examplesRoot, { recursive: true })) {
+          const relative = String(entry).replaceAll("\\", "/");
+          const match = /(?:^|\/)\.pi\/web\/dist\/(pane-[^/]+)\.html$/.exec(relative);
+          if (match === null) continue;
+          const htmlPath = path.join(examplesRoot, ...relative.split("/"));
+          const scriptPath = path.join(path.dirname(htmlPath), `${match[1]}.js`);
+          if (!existsSync(scriptPath)) continue;
+          scriptByHtml.set(readFileSync(htmlPath, "utf8"), readFileSync(scriptPath, "utf8"));
+        }
+      }
       for (const [fileName, output] of Object.entries(bundle)) {
         if (
           output.type !== "asset" ||
