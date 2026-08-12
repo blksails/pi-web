@@ -301,7 +301,8 @@ jobs:
       # 不重新构建就看不到新版本。故在 Release 资产与 OSS 镜像都就绪之后才触发 ——
       # 顺序不能反,站点构建时会逐资产探测 OSS 是否存在,早触发会把新版判成"无镜像"。
       - name: Trigger pi-web-site rebuild
-        # 始终执行:token 缺失/失效时须让 Release job 失败,否则官网静默停留旧版本。
+        # 本次先独立发布桌面包；官网 token 待后续修复，不阻断 Release。
+        continue-on-error: true
         run: |
           code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
             -H "Authorization: Bearer ${{ secrets.DOCS_DEPLOY_TOKEN }}" \
