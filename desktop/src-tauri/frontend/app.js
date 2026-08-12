@@ -39,4 +39,14 @@ $("btn-quit").addEventListener("click", () => {
 });
 
 // 宿主经 emit("startup-error", {title, detail}) 切到错误态。
-window.__TAURI__?.event?.listen("startup-error", (e) => showError(e.payload));
+// 事件可能早于本页 listener 到达，故 listener 建好后再补读一次留存状态。
+const startupEvent = window.__TAURI__?.event?.listen("startup-error", (e) => showError(e.payload));
+void (async () => {
+  try {
+    await startupEvent;
+    const status = await invoke()?.("startup_status");
+    if (status) showError(status);
+  } catch (error) {
+    console.error("[desktop] 启动状态读取失败", error);
+  }
+})();

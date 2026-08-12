@@ -305,7 +305,7 @@ See [12 · Web UI Extension](./12-web-ui-extension.md).
 
 ### payload / shared runtime (first-launch unpack)
 
-The **bundled compressed payload** mechanism for the CLI/desktop builds: `dist/` is not shipped raw with the package but is instead compressed by `scripts/pack-payload.mjs` into `payload/dist.tar.zst` (zstd level 19, measured at roughly 9.4MB) + `payload/payload.json`; the unpacker `payload/unpack.mjs` is bundled by `scripts/build-unpacker.mjs`, with esbuild inlining tar into a roughly 115KB zero-dependency single file. On first launch it unpacks into the **shared runtime directory** `~/.pi/web/runtime/<version>-<digest>/` (overridable via `PI_WEB_RUNTIME_ROOT`), with a concurrency lock/heartbeat, GC that retains the most recent N old runtimes, and discriminated error codes (`payload-missing`/`payload-corrupt`/`zstd-unsupported`/`runtime-root-unwritable`/`disk-full`/`lock-timeout`/`extract-failed`).
+The **bundled compressed payload** mechanism for the CLI/desktop builds: `dist/` is not shipped raw with the package but is instead compressed by `scripts/pack-payload.mjs` into `payload/dist.tar.zst` (zstd level 19, measured at roughly 9.4MB) + `payload/payload.json`; the unpacker `payload/unpack.mjs` is bundled by `scripts/build-unpacker.mjs`, with esbuild inlining tar into a roughly 115KB zero-dependency single file. On first launch it unpacks into the **shared runtime directory** `~/.pi/web/runtime/<version>-<digest>/` (overridable via `PI_WEB_RUNTIME_ROOT`), with a concurrency lock/heartbeat, GC that retains the most recent N old runtimes, and discriminated error codes (`payload-missing`/`payload-corrupt`/`zstd-unsupported`/`runtime-root-unwritable`/`disk-full`/`lock-timeout`/`extract-timeout`/`extract-failed`).
 
 See [18 · CLI](./18-cli.md), [20 · Desktop (Tauri)](./20-desktop-tauri.md), and [23 · Troubleshooting & FAQ](./23-troubleshooting-faq.md).
 
@@ -462,7 +462,7 @@ See [08 · Agent Development](./08-agent-development.md) and [24 · HTTP API Ref
 
 ### Tauri desktop shell (Tauri v2)
 
-pi-web's **second delivery form** (`desktop/src-tauri`, a Rust crate, Tauri 2.x). Three installer forms: `dmg` (macOS), `nsis` (Windows), and `appimage` (Linux). It ships with the **Node sidecar** v22.22.0 + the **shared runtime payload** unpacked on first launch, with the three run modes (packaged/dev/unpackaged). The backend entry the shell spawns is the same `dist/server.mjs`, into which it injects `PORT`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN` and **deliberately does not inject** `PI_WEB_AGENT_DIR` (so sessions default to `~/.pi/agent`, shared with the CLI).
+pi-web's **second delivery form** (`desktop/src-tauri`, a Rust crate, Tauri 2.x). Three installer forms: `dmg` (macOS), `nsis` (Windows), and `appimage` (Linux). It ships with the **Node sidecar** v22.22.0 + the **shared runtime payload** unpacked on first launch, with the three run modes (packaged/dev/unpackaged). The backend entry the shell spawns is the same `dist/server.mjs`, into which it injects `PORT`/`HOST`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN` (`HOST` is the actual bind key; `HOSTNAME` remains for CLI/legacy-runner compatibility) and **deliberately does not inject** `PI_WEB_AGENT_DIR` (so sessions default to `~/.pi/agent`, shared with the CLI).
 
 See [20 · Desktop (Tauri)](./20-desktop-tauri.md).
 

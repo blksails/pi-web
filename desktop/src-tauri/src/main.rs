@@ -51,10 +51,18 @@ const DEFAULT_START_PORT: u16 = 31415;
 /// 启动失败时推给错误页的事件名（页面只呈现文案，不解析错误类型）。
 const STARTUP_ERROR_EVENT: &str = "startup-error";
 
+#[derive(Debug, Clone, serde::Serialize)]
+struct StartupErrorPayload {
+    title: String,
+    detail: String,
+}
+
 /// 应用全局状态：受监管的 server + 其 origin（供导航放行判据）。
 struct AppState {
     supervisor: Mutex<ServerSupervisor>,
     server_origin: ServerOrigin,
+    /// 事件可能早于 loading 页 listener 到达；留存最近一次错误供页面补读。
+    startup_error: Mutex<Option<StartupErrorPayload>>,
     /// 防止退出流程重入。
     quitting: Mutex<bool>,
 }
@@ -141,18 +149,32 @@ fn describe_resolve_error(err: &ResolveError) -> String {
 
 /// 把错误文案推给随包错误页。
 fn show_startup_error(app: &AppHandle, title: &str, detail: &str) {
+    let payload = StartupErrorPayload {
+        title: title.to_string(),
+        detail: detail.to_string(),
+    };
+    if let Ok(mut state) = app.state::<AppState>().startup_error.lock() {
+        *state = Some(payload.clone());
+    }
     if let Err(e) = app.emit(
         STARTUP_ERROR_EVENT,
-        serde_json::json!({ "title": title, "detail": detail }),
+        &payload,
     ) {
         eprintln!("[desktop] 呈现启动错误失败: {e}");
     }
     eprintln!("[desktop] 启动失败: {title}\n{detail}");
 }
 
+fn clear_startup_error(app: &AppHandle) {
+    if let Ok(mut state) = app.state::<AppState>().startup_error.lock() {
+        *state = None;
+    }
+}
+
 /// 一次完整的启动尝试。失败时呈现可重试的错误页，不 panic。
 fn launch(app: &AppHandle) {
     let state = app.state::<AppState>();
+    clear_startup_error(app);
     let mode = runtime_mode::resolve_from_env(is_packaged());
 
     // dev：加载已运行的开发服务器，不拉起 standalone（保留前端热更新，Req 1.1）。
@@ -201,7 +223,11 @@ fn launch(app: &AppHandle) {
     let (server_js, runtime) = match paths.server_source {
         ServerSource::Direct(path) => (path, None),
         ServerSource::Payload { payload_dir } => {
-            match unpack_runtime::ensure(&paths.node_bin, &payload_dir) {
+            match unpack_runtime::ensure(
+                &paths.node_bin,
+                &payload_dir,
+                unpack_runtime::UNPACK_TIMEOUT_MS,
+            ) {
                 Ok(ok) => {
                     if ok.unpacked {
                         eprintln!("[desktop] 首次启动，已解包运行时 → {}", ok.runtime_dir);
@@ -261,6 +287,12 @@ fn launch(app: &AppHandle) {
             show_startup_error(app, &text.title, &text.detail);
         }
     }
+}
+
+/// 读取最近一次启动错误，避免快速失败时事件先于页面 listener 到达而丢失。
+#[tauri::command]
+fn startup_status(state: tauri::State<'_, AppState>) -> Option<StartupErrorPayload> {
+    state.startup_error.lock().ok().and_then(|state| state.clone())
 }
 
 /// 错误页「重试」：重跑完整拉起流程（Req 3.5）。
@@ -356,6 +388,7 @@ fn main() {
         .manage(AppState {
             supervisor: Mutex::new(ServerSupervisor::new()),
             server_origin: server_origin.clone(),
+            startup_error: Mutex::new(None),
             quitting: Mutex::new(false),
         })
         .manage(pane_relay::PaneRelayState::default())
@@ -378,6 +411,7 @@ fn main() {
             native_layout::pane_layout_set_metrics,
             native_layout::pane_layout_is_native,
             native_layout::pane_layout_debug_state,
+            startup_status,
             retry,
             quit
         ])

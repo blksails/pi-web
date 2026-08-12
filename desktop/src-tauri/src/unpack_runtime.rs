@@ -17,10 +17,15 @@
 
 use crate::types::UnpackError;
 use std::path::{Path, PathBuf};
+use std::io::Read;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 /// 解包器在载荷目录中的文件名。
 const UNPACKER: &str = "unpack.mjs";
+/// 解包不可无限等待：杀软/权限/损坏载荷卡住时，必须回到可重试错误页。
+pub const UNPACK_TIMEOUT_MS: u64 = 60_000;
+const UNPACK_POLL: Duration = Duration::from_millis(50);
 
 /// 解包成功的落点。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +118,11 @@ pub fn parse_ensure_output(stdout: &str) -> Result<EnsureOk, UnpackError> {
 ///
 /// 子进程**继承父环境**：`PI_WEB_RUNTIME_ROOT` 由此可达（e2e 靠它把运行时指向临时目录），
 /// `HOME` 也由此可达（解包器据其推导默认运行时根）。切勿 `env_clear`。
-pub fn ensure(node_bin: &Path, payload_dir: &Path) -> Result<EnsureOk, UnpackError> {
+pub fn ensure(
+    node_bin: &Path,
+    payload_dir: &Path,
+    timeout_ms: u64,
+) -> Result<EnsureOk, UnpackError> {
     let payload_dir = node_usable_path(payload_dir);
     let unpacker = payload_dir.join(UNPACKER);
     if !unpacker.is_file() {
@@ -123,7 +132,7 @@ pub fn ensure(node_bin: &Path, payload_dir: &Path) -> Result<EnsureOk, UnpackErr
         ));
     }
 
-    let output = Command::new(node_bin)
+    let mut child = Command::new(node_bin)
         .arg(&unpacker)
         .arg("--payload-dir")
         .arg(payload_dir)
@@ -131,16 +140,47 @@ pub fn ensure(node_bin: &Path, payload_dir: &Path) -> Result<EnsureOk, UnpackErr
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .output()
+        .spawn()
         .map_err(|e| err("extract-failed", format!("无法执行解包器：{e}")))?;
 
+    let Some(mut stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(err("extract-failed", "解包器 stdout 管道创建失败"));
+    };
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err(
+                    "extract-timeout",
+                    format!("解包器在 {timeout_ms}ms 内未完成"),
+                ));
+            }
+            Ok(None) => std::thread::sleep(UNPACK_POLL),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(err("extract-failed", format!("读取解包器状态失败：{e}")));
+            }
+        }
+    };
+
+    let mut stdout_bytes = Vec::new();
+    stdout
+        .read_to_end(&mut stdout_bytes)
+        .map_err(|e| err("extract-failed", format!("读取解包器输出失败：{e}")))?;
+
     // 退出码非 0 时 stdout 仍应带一行 {"ok":false,...}；先解析，拿不到再退回通用错误。
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&stdout_bytes);
     match parse_ensure_output(&stdout) {
-        Ok(ok) if output.status.success() => Ok(ok),
+        Ok(ok) if status.success() => Ok(ok),
         Ok(_) => Err(err(
             "extract-failed",
-            format!("解包器报告成功但退出码为 {:?}", output.status.code()),
+            format!("解包器报告成功但退出码为 {:?}", status.code()),
         )),
         Err(e) => Err(e),
     }
@@ -177,6 +217,9 @@ pub fn describe_unpack_error(err: &UnpackError) -> String {
         "payload-missing" | "payload-corrupt" => "随包运行时载荷缺失或已损坏。请重新安装应用。",
         "zstd-unsupported" => "随包 Node 运行时不支持 zstd 解压。应用可能已损坏，请重新安装。",
         "lock-timeout" => "等待其他进程完成运行时解包超时。请确认没有其他实例卡住，然后重试。",
+        "extract-timeout" => {
+            "解包运行时超时。请重试；若反复发生，请检查杀毒软件、目录权限与磁盘空间。"
+        }
         _ => "解包运行时失败。",
     };
     // 机器码必须出现在文案里:`payload-missing` 与 `payload-corrupt` 共用同一句 hint,
@@ -242,8 +285,28 @@ mod tests {
 
     #[test]
     fn missing_unpacker_reports_payload_missing() {
-        let e = ensure(Path::new("/bin/false"), Path::new("/nonexistent-payload")).unwrap_err();
+        let e = ensure(
+            Path::new("/bin/false"),
+            Path::new("/nonexistent-payload"),
+            UNPACK_TIMEOUT_MS,
+        )
+        .unwrap_err();
         assert_eq!(e.code, "payload-missing");
+    }
+
+    #[test]
+    fn hanging_unpacker_is_bounded() {
+        let dir = std::env::temp_dir().join(format!("pi-web-unpack-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(UNPACKER), "setInterval(() => {}, 1000);").unwrap();
+
+        let started = Instant::now();
+        let e = ensure(Path::new("node"), &dir, 100).unwrap_err();
+        assert_eq!(e.code, "extract-timeout");
+        // Windows 回收被 kill 的 Node 子进程可能需要数秒；关键判据是远小于生产 60s。
+        assert!(started.elapsed() < Duration::from_secs(10));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -283,6 +346,7 @@ mod tests {
             "payload-corrupt",
             "zstd-unsupported",
             "lock-timeout",
+            "extract-timeout",
             "extract-failed",
         ] {
             let text = describe_unpack_error(&UnpackError {

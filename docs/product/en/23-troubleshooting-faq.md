@@ -138,6 +138,7 @@ Once the build finishes, `dist/server.mjs` (which must live at the artifact root
 | `payload-corrupt` | packaged payload corrupted | reinstall `@blksails/pi-web` |
 | `zstd-unsupported` | Node version too old to decompress zstd | upgrade to **Node >= 22.15.0** |
 | `lock-timeout` | timed out waiting for another process to unpack | confirm no other instance is stuck, clear locks under `~/.pi/web/runtime`, and retry |
+| `extract-timeout` | unpacker did not finish within the bounded timeout | retry; if repeated, check antivirus, directory permissions, and disk space |
 | `extract-failed` | unpacker produced no valid output (fallback) | reinstall; if it still fails, attach the full error and file a report |
 
 **Self-help quick reference**:
@@ -169,6 +170,7 @@ rm -rf ~/.pi/web/runtime && pi-web <source>
 | `payload-missing` / `payload-corrupt` | packaged runtime payload missing or corrupted | reinstall the app |
 | `zstd-unsupported` | packaged Node does not support zstd decompression | the app may be corrupted; reinstall |
 | `lock-timeout` | timed out waiting for another process to unpack | confirm no other instance is stuck, then retry |
+| `extract-timeout` | unpacker did not finish within the bounded timeout | retry; if repeated, check antivirus, directory permissions, and disk space |
 | `extract-failed` | unpacker output invalid / missing fields (fallback) | reinstall the app |
 
 **Remedy**: Most codes point to "reinstall" or "switch to a writable runtime root". The desktop shell injects `PI_WEB_NODE_BIN` (the absolute path to the packaged node) into the backend child process, and deliberately **does not inject** `PI_WEB_AGENT_DIR` (so sessions default to `~/.pi/agent`, shared with the CLI). See [20-desktop-tauri.md](20-desktop-tauri.md) for desktop packaging/distribution and run modes.
@@ -401,7 +403,7 @@ git worktree remove ../pi-web-attach
 | session stuck on "connecting to agent…" | dev frontend/backend out of sync deadlocks the readiness handshake; fully restart dev |
 | production blank page / webext not loading | production CSP forbids `unsafe-eval` + sha256-allows the import map; don't use eval, don't rewrite inline scripts |
 | CLI reports "dist/server.mjs not found" | run `pnpm build:dist` first; or set `PI_WEB_DIST_DIR` |
-| npm first-launch unpack fails | check the error code (zstd→upgrade Node 22.15+ / disk-full / lock-timeout / switch `PI_WEB_RUNTIME_ROOT`) |
+| npm first-launch unpack fails | check the error code (zstd→upgrade Node 22.15+ / disk-full / lock-timeout / extract-timeout / switch `PI_WEB_RUNTIME_ROOT`) |
 | desktop app first-launch unpack fails | same discriminant codes; mostly reinstall or switch to a writable runtime root, see [20](20-desktop-tauri.md) |
 | custom provider 401 | `models.json` location (`~/.pi/agent/`), `baseUrl`+`apiKey` required, DashScope key hits the right endpoint |
 | iPhone JPEG "empty model name" | whether `normalizeImageDataUri` (`run-image-tool.ts:204`) is on the chain; custom tools must call it explicitly |

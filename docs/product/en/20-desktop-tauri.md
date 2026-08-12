@@ -140,6 +140,7 @@ An unpack failure always lands on the shell's retryable error page (never a sile
 | `runtime-root-unwritable` | Runtime directory not writable | Check permissions, or set `PI_WEB_RUNTIME_ROOT` |
 | `disk-full` | Insufficient disk space | Free up disk and retry |
 | `lock-timeout` | Timed out waiting for another process to unpack | Confirm no instance is stuck, then retry |
+| `extract-timeout` | Unpacker did not finish within the bounded timeout | Retry; if repeated, check antivirus, directory permissions, and disk space |
 | `extract-failed` | Unpacker did not run per contract (empty output / non-JSON / missing field) | Generic failure |
 
 > These same error codes also appear in the desktop first-launch section of [23 Troubleshooting / FAQ](./23-troubleshooting-faq.md), with step-by-step self-recovery for each.
@@ -183,7 +184,8 @@ The eviction criteria are deliberately conservative and multi-conditional (`sele
 | Key | Value | Purpose |
 | --- | --- | --- |
 | `PORT` | the chosen free port | backend listen |
-| `HOSTNAME` | `127.0.0.1` | backend bind |
+| `HOST` | `127.0.0.1` | actual backend bind key read by `server/index.ts` |
+| `HOSTNAME` | `127.0.0.1` | compatibility key for the CLI/legacy runner |
 | `PI_WEB_AUTOSTART` | `1` | tells the backend to auto-start a session (same injector as the CLI — see [06 Configuration · PI_WEB_AUTOSTART](./06-configuration.md); the CLI is not the only source) |
 | `PI_WEB_NODE_BIN` | absolute path of the bundled node | **so the pi runner grandchild reuses the same bundled node** |
 
@@ -245,7 +247,7 @@ Input env read by the desktop shell (`grep PI_WEB_ desktop/src-tauri/src`):
 | `PI_WEB_DEFAULT_CWD` | current directory | default cwd in the backend base env | `main.rs:63` |
 | `PI_WEB_DESKTOP_STUB_PICK_DIR` | unset | e2e: skip the native dialog and return this path | `dialog.rs:21` |
 
-The shell **injects into the backend** `PORT`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`; it **deliberately does not inject** `PI_WEB_AGENT_DIR` (see §20.6). For the full env list, see the desktop grouping in [06 Configuration Reference](./06-configuration.md).
+The shell **injects into the backend** `PORT`/`HOST`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`; it **deliberately does not inject** `PI_WEB_AGENT_DIR` (see §20.6). For the full env list, see the desktop grouping in [06 Configuration Reference](./06-configuration.md).
 
 ---
 

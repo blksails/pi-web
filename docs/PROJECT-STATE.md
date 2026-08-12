@@ -79,6 +79,14 @@
 - Worker 回收：不派写代码 Worker；研究串行执行。
 - Token：未作 A/B，不宣称节省。
 
+## 桌面端启动白屏排查交接（2026-08-12）
+
+- 结论：Windows 首次“约 60 秒后错误页”对应本地后端 `GET /` 就绪超时；重开与 macOS 白屏大概率由启动错误事件过早发送、页面未能收到而放大。
+- 次级原因：旧壳仅注入 `HOSTNAME`，而 `server/index.ts` 读取 `HOST`；外层若已有 `HOST`，可造成后端监听地址与桌面探测地址不一致。
+- 资源/权限：磁盘不足或用户运行时目录不可写仍须排除，但应优先呈现 `disk-full` / `runtime-root-unwritable`；不要求管理员安装，默认写入用户目录。
+- 本轮修复：解包超时、启动错误留存与补读、`HOST` 注入、对应权限与回归测试。
+- 详细原因排序、验证顺序及 macOS 原生 WebView 隔离试验见 [桌面端启动白屏原因与交接](desktop-startup-white-screen-handoff.md)。
+
 ## MOMA 视频生成接入交接（2026-08-12）
 
 > 本节记录 `feat/moma-video-generation` 最新交付；父仓与 `examples/aigc-agent` 为两个独立 Git 仓库。

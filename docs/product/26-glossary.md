@@ -305,7 +305,7 @@ Kiro 是 pi-web 项目采用的**规格驱动开发（Spec-Driven Development）
 
 ### payload / 共享运行时（首启解包）
 
-CLI/桌面版的**随包压缩载荷**机制：`dist/` 不随包裸分发，改由 `scripts/pack-payload.mjs` 压成 `payload/dist.tar.zst`（zstd 级别 19，实测约 9.4MB）+ `payload/payload.json`；解包器 `payload/unpack.mjs` 由 `scripts/build-unpacker.mjs` 用 esbuild 内联 tar 打成约 115KB 零依赖单文件。首次启动解包到**共享运行时目录** `~/.pi/web/runtime/<version>-<digest>/`（`PI_WEB_RUNTIME_ROOT` 可覆盖），含并发锁/心跳、GC 保留最近 N 个旧运行时、判别式错误码（`payload-missing`/`payload-corrupt`/`zstd-unsupported`/`runtime-root-unwritable`/`disk-full`/`lock-timeout`/`extract-failed`）。
+CLI/桌面版的**随包压缩载荷**机制：`dist/` 不随包裸分发，改由 `scripts/pack-payload.mjs` 压成 `payload/dist.tar.zst`（zstd 级别 19，实测约 9.4MB）+ `payload/payload.json`；解包器 `payload/unpack.mjs` 由 `scripts/build-unpacker.mjs` 用 esbuild 内联 tar 打成约 115KB 零依赖单文件。首次启动解包到**共享运行时目录** `~/.pi/web/runtime/<version>-<digest>/`（`PI_WEB_RUNTIME_ROOT` 可覆盖），含并发锁/心跳、GC 保留最近 N 个旧运行时、判别式错误码（`payload-missing`/`payload-corrupt`/`zstd-unsupported`/`runtime-root-unwritable`/`disk-full`/`lock-timeout`/`extract-timeout`/`extract-failed`）。
 
 详见 [18 · CLI](./18-cli.md)、[20 · 桌面版（Tauri）](./20-desktop-tauri.md)、[23 · 故障排查](./23-troubleshooting-faq.md)。
 
@@ -462,7 +462,7 @@ pi-web「两条正交通信平面」中的**第二条**（与聊天流平面正�
 
 ### Tauri 桌面壳（Tauri v2）
 
-pi-web 的**第二种交付形态**（`desktop/src-tauri`，Rust crate，Tauri 2.x）。安装包三形态：`dmg`（macOS）、`nsis`（Windows）、`appimage`（Linux）。随 **Node sidecar** v22.22.0 + **共享运行时 payload** 首启解包，运行模式三态（packaged/dev/unpackaged）。壳 spawn 的后端入口是同一个 `dist/server.mjs`，注入 `PORT`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`，**刻意不注入** `PI_WEB_AGENT_DIR`（使会话默认落 `~/.pi/agent`、与 CLI 共享）。
+pi-web 的**第二种交付形态**（`desktop/src-tauri`，Rust crate，Tauri 2.x）。安装包三形态：`dmg`（macOS）、`nsis`（Windows）、`appimage`（Linux）。随 **Node sidecar** v22.22.0 + **共享运行时 payload** 首启解包，运行模式三态（packaged/dev/unpackaged）。壳 spawn 的后端入口是同一个 `dist/server.mjs`，注入 `PORT`/`HOST`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`（`HOST` 实际绑定，`HOSTNAME` 兼容 CLI/旧 runner），**刻意不注入** `PI_WEB_AGENT_DIR`（使会话默认落 `~/.pi/agent`、与 CLI 共享）。
 
 详见 [20 · 桌面版（Tauri）](./20-desktop-tauri.md)。
 

@@ -343,7 +343,7 @@ The desktop shell (`desktop/src-tauri`, Tauri v2) is pi-web's second delivery fo
 
 **Env the shell injects into the backend subprocess** (`desktop/src-tauri/src/server_supervisor.rs:75-95`):
 
-- Injects `PORT` / `HOSTNAME` / `PI_WEB_AUTOSTART=1` / `PI_WEB_NODE_BIN` (the absolute path of the bundled node, reused by the pi runner grandchild process).
+- Injects `PORT` / `HOST` / `HOSTNAME` / `PI_WEB_AUTOSTART=1` / `PI_WEB_NODE_BIN` (`HOST` is the actual bind key; `HOSTNAME` remains for CLI/legacy-runner compatibility; `PI_WEB_NODE_BIN` is the absolute path of the bundled node, reused by the pi runner grandchild process).
 - **Deliberately does not inject `PI_WEB_AGENT_DIR`** (Req 5.5): so the desktop version's sessions default to `~/.pi/agent`, sharing the same agent directory as the CLI; it is passed through only when the user has explicitly set it in the outer env.
 
 ---

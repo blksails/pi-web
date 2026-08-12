@@ -169,6 +169,7 @@ rm -rf ~/.pi/web/runtime && pi-web <source>
 | `payload-missing` / `payload-corrupt` | 随包运行时载荷缺失或损坏 | 重新安装应用 |
 | `zstd-unsupported` | 随包 Node 不支持 zstd 解压 | 应用可能已损坏，重新安装 |
 | `lock-timeout` | 等待其它进程解包超时 | 确认没有另一个实例卡住，然后重试 |
+| `extract-timeout` | 解包器在限定时间内未完成 | 重试；反复发生时检查杀软、目录权限与磁盘空间 |
 | `extract-failed` | 解包器输出无效/缺字段（兜底） | 重新安装应用 |
 
 **对策**：多数码指向「重新安装」或「换可写运行时根」。桌面壳会向后端子进程注入 `PI_WEB_NODE_BIN`（随包 node 绝对路径），并刻意**不注入** `PI_WEB_AGENT_DIR`（使会话默认落 `~/.pi/agent`，与 CLI 共享）。桌面版打包/分发与运行模式详见 [20-desktop-tauri.md](20-desktop-tauri.md)。
@@ -401,7 +402,7 @@ git worktree remove ../pi-web-attach
 | 会话卡「正在连接 agent…」 | dev 前后端新旧不一致致就绪握手死锁；完整重启 dev |
 | 生产白屏 / webext 不加载 | 生产 CSP 禁 `unsafe-eval` + import map sha256 放行；勿用 eval、勿改写内联脚本 |
 | CLI 报「未找到 dist/server.mjs」 | 先 `pnpm build:dist`；或设 `PI_WEB_DIST_DIR` |
-| npm 首启解包失败 | 看错误码（zstd→升 Node 22.15+ / disk-full / lock-timeout / 换 `PI_WEB_RUNTIME_ROOT`） |
+| npm 首启解包失败 | 看错误码（zstd→升 Node 22.15+ / disk-full / lock-timeout / extract-timeout / 换 `PI_WEB_RUNTIME_ROOT`） |
 | 桌面 App 首启解包失败 | 同一套判别码；多为重装或换可写运行时根，见 [20](20-desktop-tauri.md) |
 | 自定义 provider 401 | `models.json` 位置（`~/.pi/agent/`）、`baseUrl`+`apiKey` 必填、DashScope key 走对端点 |
 | iPhone JPEG「空 model 名」 | `normalizeImageDataUri`（`run-image-tool.ts:204`）是否在链上；自定义工具需显式调 |

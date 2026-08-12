@@ -136,6 +136,7 @@ Rust **只消费 `code`，从不解析人类可读的 `message`**（`parse_ensur
 | `runtime-root-unwritable` | 运行时目录不可写 | 检查权限，或设 `PI_WEB_RUNTIME_ROOT` |
 | `disk-full` | 磁盘空间不足 | 清理磁盘后重试 |
 | `lock-timeout` | 等其他进程解包超时 | 确认无实例卡住后重试 |
+| `extract-timeout` | 解包器在限定时间内未完成 | 重试；反复发生时检查杀软、目录权限与磁盘空间 |
 | `extract-failed` | 解包器未按契约跑起来（空输出/非 JSON/缺字段） | 通用失败 |
 
 > 这些错误码同样出现在 [23 故障排查 / FAQ](./23-troubleshooting-faq.md) 的桌面版首启小节，含逐条自救步骤。
@@ -179,7 +180,8 @@ node unpack.mjs --gc --runtime-root <root> --keep <当前运行时目录>
 | 键 | 值 | 用途 |
 | --- | --- | --- |
 | `PORT` | 选定的空闲端口 | 后端监听 |
-| `HOSTNAME` | `127.0.0.1` | 后端绑定 |
+| `HOST` | `127.0.0.1` | `server/index.ts` 实际读取的后端绑定地址 |
+| `HOSTNAME` | `127.0.0.1` | CLI/旧 runner 兼容键 |
 | `PI_WEB_AUTOSTART` | `1` | 令后端自动起会话（与 CLI 同一注入方——见 [06 配置 · PI_WEB_AUTOSTART](./06-configuration.md)，不止 CLI 一个来源） |
 | `PI_WEB_NODE_BIN` | 随包 node 绝对路径 | **供 pi runner 孙进程复用同一个随包 node** |
 
@@ -241,7 +243,7 @@ node unpack.mjs --gc --runtime-root <root> --keep <当前运行时目录>
 | `PI_WEB_DEFAULT_CWD` | 当前目录 | 后端 base env 默认 cwd | `main.rs:63` |
 | `PI_WEB_DESKTOP_STUB_PICK_DIR` | 未设 | e2e：跳过原生对话框返回该路径 | `dialog.rs:21` |
 
-壳**向后端注入** `PORT`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`；**刻意不注入** `PI_WEB_AGENT_DIR`（见 §20.6）。完整 env 清单参见 [06 配置参考](./06-configuration.md) 的桌面版分组。
+壳**向后端注入** `PORT`/`HOST`/`HOSTNAME`/`PI_WEB_AUTOSTART=1`/`PI_WEB_NODE_BIN`；**刻意不注入** `PI_WEB_AGENT_DIR`（见 §20.6）。完整 env 清单参见 [06 配置参考](./06-configuration.md) 的桌面版分组。
 
 ---
 

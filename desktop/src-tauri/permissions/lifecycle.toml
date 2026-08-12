@@ -8,3 +8,8 @@ commands.allow = ["retry"]
 identifier = "allow-quit"
 description = "允许错误页退出应用"
 commands.allow = ["quit"]
+
+[[permission]]
+identifier = "allow-startup-status"
+description = "允许启动页补读最近一次启动错误"
+commands.allow = ["startup_status"]

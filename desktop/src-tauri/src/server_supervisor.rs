@@ -34,7 +34,7 @@ pub struct ServerStartOptions {
     pub node_bin: PathBuf,
     pub host: String,
     pub start_port: u16,
-    /// 基础环境（默认源、默认 cwd 等）。`PORT`/`HOSTNAME`/`PI_WEB_NODE_BIN` 由本模块覆盖。
+    /// 基础环境（默认源、默认 cwd 等）。`PORT`/`HOST`/`HOSTNAME`/`PI_WEB_NODE_BIN` 由本模块覆盖。
     pub base_env: BTreeMap<String, String>,
     /// 就绪总超时；生产用 `READY_TIMEOUT_MS`，测试可缩短。
     pub ready_timeout_ms: u64,
@@ -84,6 +84,8 @@ pub fn build_child_env(
         env.remove(k);
     }
     env.insert("PORT".into(), port.to_string());
+    // server/index.ts 读取 HOST；HOSTNAME 继续保留给 CLI/旧 runner 兼容面。
+    env.insert("HOST".into(), host.to_string());
     env.insert("HOSTNAME".into(), host.to_string());
     env.insert("PI_WEB_AUTOSTART".into(), "1".into());
     // ★ 「我是桌面壳」的自述。随包固化的云端默认地址**只**在此标记下生效
@@ -385,6 +387,7 @@ mod tests {
         base.insert("PI_WEB_DEFAULT_SOURCE".into(), "/x/agent".into());
         let env = build_child_env(&base, "127.0.0.1", 4321, Path::new("/A.app/Contents/MacOS/node"));
         assert_eq!(env.get("PORT").map(String::as_str), Some("4321"));
+        assert_eq!(env.get("HOST").map(String::as_str), Some("127.0.0.1"));
         assert_eq!(env.get("HOSTNAME").map(String::as_str), Some("127.0.0.1"));
         assert_eq!(env.get("PI_WEB_AUTOSTART").map(String::as_str), Some("1"));
         assert_eq!(
@@ -561,7 +564,7 @@ mod tests {
         let script = write_script(
             "ok",
             "import http from 'node:http';\
-             http.createServer((_q,s)=>{s.writeHead(200);s.end('ok')}).listen(process.env.PORT, '127.0.0.1');",
+             http.createServer((_q,s)=>{s.writeHead(200);s.end('ok')}).listen(process.env.PORT, process.env.HOST);",
         );
         let mut sup = ServerSupervisor::new();
         let mut opts = ServerStartOptions::new(script, node_bin(), "127.0.0.1".into(), 45230);

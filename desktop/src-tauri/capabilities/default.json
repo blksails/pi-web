@@ -20,6 +20,7 @@
     "allow-pick-directory",
     "allow-retry",
     "allow-quit",
+    "allow-startup-status",
     "allow-store-credential",
     "allow-load-credential",
     "allow-clear-credential",

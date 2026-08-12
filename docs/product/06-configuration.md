@@ -338,7 +338,7 @@ Bang(`!`)shell 命令允许在聊天输入框直接执行 shell 命令：`!cmd` 
 
 **壳向后端子进程注入的 env**（`desktop/src-tauri/src/server_supervisor.rs:75-95`）：
 
-- 注入 `PORT` / `HOSTNAME` / `PI_WEB_AUTOSTART=1` / `PI_WEB_NODE_BIN`（随包 node 绝对路径，供 pi runner 孙进程复用）。
+- 注入 `PORT` / `HOST` / `HOSTNAME` / `PI_WEB_AUTOSTART=1` / `PI_WEB_NODE_BIN`（`HOST` 为实际绑定键，`HOSTNAME` 供 CLI/旧 runner 兼容；`PI_WEB_NODE_BIN` 为随包 node 绝对路径，供 pi runner 孙进程复用）。
 - **刻意不注入 `PI_WEB_AGENT_DIR`**（Req 5.5）：使桌面版会话默认落 `~/.pi/agent`，与 CLI 共享同一 agent 目录；仅当用户已在外层 env 显式设置时才透传。
 
 ### 桌面生产登录与素材 MCP
