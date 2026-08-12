@@ -117,6 +117,8 @@ export interface ModelCatalogServiceDeps {
    * provider,`query()` 的输出与该来源不存在时一致(零侵入,Req 10.1 的自然延伸)。
    */
   readonly customProviders?: ProviderRegistry<CustomProviderModel>;
+  /** Additional modality-aware catalog entries that are not chat or image routes. */
+  readonly additionalCatalog?: readonly CatalogModel[];
   /**
    * 注入 logger 的 sink(仅测试用;multi-gateway-providers 任务 8.1,Req 10.3);
    * 未注入时使用默认 sink(node: stderr / browser: bus)。诊断日志用命名空间
@@ -317,6 +319,7 @@ export function createModelCatalogService(
     cloudflareImageCatalog,
     hiddenProviders,
     customProviders,
+    additionalCatalog,
     loggerSink,
   } = deps;
 
@@ -508,10 +511,14 @@ export function createModelCatalogService(
     const customModels = applyHidden
       ? customRaw.filter((m) => !hiddenProviders.has(m.provider))
       : customRaw;
+    const additionalRaw = additionalCatalog ?? [];
+    const additionalModels = applyHidden
+      ? additionalRaw.filter((m) => !hiddenProviders.has(m.provider))
+      : additionalRaw;
 
     const filter = { input: q.input, output: q.output };
-    const models = [...chatModels, ...imageModels, ...customModels].filter((m) =>
-      matchesFilter(m, filter),
+    const models = [...chatModels, ...imageModels, ...customModels, ...additionalModels].filter(
+      (m) => matchesFilter(m, filter),
     );
     const providers = [...new Set(models.map((m) => m.provider))].sort();
 
@@ -528,6 +535,7 @@ export function createModelCatalogService(
         { ns: "chat", models: chatRaw.models.map(toChatCatalogModel) },
         { ns: "image", models: imageProjected },
         { ns: "custom", models: customRaw },
+        { ns: "external", models: additionalRaw },
       ],
       filter,
       applyHidden,

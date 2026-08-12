@@ -100,6 +100,17 @@ describe("config injection + secret safety", () => {
     } as unknown as NodeJS.ProcessEnv);
     expect(cfg.providerKeys.DASHSCOPE_TOKEN_PLAN_API_KEY).toBe(secret);
   });
+
+  it("passes MOMA credentials and endpoint through to the agent subprocess", () => {
+    const cfg = loadConfig({
+      MOMA_API_KEY: "moma-test-key",
+      MOMA_BASE_URL: "https://moma.example.com/v1",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.providerKeys).toEqual({
+      MOMA_API_KEY: "moma-test-key",
+      MOMA_BASE_URL: "https://moma.example.com/v1",
+    });
+  });
 });
 
 describe("POST /api/sessions → create → stream → messages (forwarded to handler)", () => {

@@ -124,6 +124,12 @@ import {
   type GatewayModelEntry,
   type GatewayInstanceConfig,
 } from "@blksails/pi-web-adapters/ai-gateway/index.js";
+import {
+  MOMA_AIGC_CATALOG,
+  MOMA_PROVIDER_ID,
+  resolveMomaConfig,
+  createMomaModelCatalog,
+} from "@blksails/pi-web-adapters/moma/index.js";
 import { createDesktopPasswordIdentityProvider } from "@blksails/pi-web-adapters/identity/index.js";
 import {
   E2bTransport,
@@ -686,6 +692,8 @@ function buildSingleton(): HandlerSingleton {
   //   取 baseUrl/timeoutMs/providerAllowlist——那些一律改由下面的 `gatewayInstances`
   //   逐实例给出。
   const aiGwConfig = resolveAiGatewayConfig(process.env);
+  const momaConfig = resolveMomaConfig(process.env);
+  const momaCatalog = momaConfig === undefined ? undefined : createMomaModelCatalog(momaConfig);
 
   // desktop-cloud-login(任务 6.1,Req 3.1/4.2/7.3):云端登录 egress 装配期配置解析。未配
   // PI_WEB_CLOUD_LOGIN_EGRESS_BASE → undefined(功能关闭、无登录入口,行为与今日一致);非法
@@ -745,6 +753,7 @@ function buildSingleton(): HandlerSingleton {
   const gatewayInstances = envGatewayInstances;
   const gatewayEnabled = envGatewayInstances.length > 0;
   const gatewayCatalogs = envGatewayCatalogs;
+  const genericGatewayChatEnabled = gatewayEnabled || cloudLoginConfig !== undefined;
   // 目录服务 / 路由挂载表 / 本地会话 spawn env 三处消费方共用**同一份**按实例聚合的读数
   // (design.md「三处目录装配点合一」):逐实例取其 `GatewayModelCatalog.get()` 快照后拼接,
   // 与 `mergeModelCatalog`(任务 3.2)按 `entry.instanceId` 归属 provider 的语义配套。
@@ -752,13 +761,14 @@ function buildSingleton(): HandlerSingleton {
   //   桌面装完即用的形态下 env 一个网关都没有,只在登录后才由授予产生实例。若沿用
   //   `gatewayEnabled` 作判别,登录用户的目录里永远不会出现网关模型。
   const gatewayChatAggregate =
-    gatewayEnabled || cloudLoginConfig !== undefined
+    genericGatewayChatEnabled || momaCatalog !== undefined
       ? {
           get: (): readonly GatewayModelEntry[] => {
             const view = grantedGatewayRuntime.current();
-            return view.instances.flatMap(
+            const genericEntries = view.instances.flatMap(
               (inst) => view.catalogs.get(inst.id)?.get() ?? [],
             );
+            return [...genericEntries, ...(momaCatalog?.get() ?? [])];
           },
         }
       : undefined;
@@ -781,6 +791,8 @@ function buildSingleton(): HandlerSingleton {
       modelPrecedence: aiGwConfig?.modelPrecedence,
       imageCatalog: AIGC_MODEL_CATALOG,
       gatewayImageCatalog: gatewayEnabled ? AI_GATEWAY_AIGC_CATALOG : undefined,
+      // MOMA 的视频模型属于统一模态目录,不伪装成 core image route 或 chat model。
+      additionalCatalog: momaConfig === undefined ? undefined : MOMA_AIGC_CATALOG,
       // Cloudflare 图像目录(spec cloudflare-aigc-provider,Req 4.2):启用判据用的是
       // 与 runner 侧 aigcExtension **同一个** isCloudflareConfiguredAtRuntime
       // (env + `<agentDir>/aigc.json` 每次 re-read),两处判据不会漂移。
@@ -1254,9 +1266,23 @@ function buildSingleton(): HandlerSingleton {
         // 的登录态生效(Req 4.3)。凭据来源的二选一逻辑在 `toSessionSpawnInstances` 里
         // (装配层只接线,判断留在可测纯函数)。
         ...computeAiGatewaySessionsSpawnEnv({
-          instances: toSessionSpawnInstances(grantedGatewayRuntime.current(), (inst) =>
-            resolveGatewayInstanceApiKeySync(inst, process.env),
-          ),
+          instances: (() => {
+            const generic = toSessionSpawnInstances(grantedGatewayRuntime.current(), (inst) =>
+              resolveGatewayInstanceApiKeySync(inst, process.env),
+            );
+            if (momaConfig === undefined || generic.some((inst) => inst.instanceId === MOMA_PROVIDER_ID)) {
+              return generic;
+            }
+            return [
+              ...generic,
+              {
+                instanceId: MOMA_PROVIDER_ID,
+                baseUrl: momaConfig.baseUrl,
+                apiKey: momaConfig.apiKey,
+                catalog: momaCatalog?.get() ?? [],
+              },
+            ];
+          })(),
         }).env,
       },
     };

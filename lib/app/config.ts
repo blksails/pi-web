@@ -79,6 +79,10 @@ const PROVIDER_KEY_NAMES = [
   // 的 gpt-image-2(NewAPI)/gpt-image-2-sufy 等路由在沙箱内无凭据,与本地行为不对称。
   "NEWAPI_API_KEY",
   "SUFY_API_KEY",
+  // MOMA's media extensions read both values in the runner; the provider adapter
+  // itself uses the same values in the host to build the Kimi session provider.
+  "MOMA_API_KEY",
+  "MOMA_BASE_URL",
 ] as const;
 
 function isTruthy(v: string | undefined): boolean {

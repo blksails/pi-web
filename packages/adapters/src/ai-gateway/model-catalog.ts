@@ -363,7 +363,7 @@ export function mergeModelCatalog(
         // 不变。会话侧 registry 注册名(session-model-source.ts)须与此同源。
         provider: g.instanceId,
         id: g.model,
-        name: g.model,
+        name: declared.name ?? g.model,
         source: "ai-gateway" as const,
         channel: g.ownedBy,
         availability: "session" as const,

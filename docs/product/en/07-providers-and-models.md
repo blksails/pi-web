@@ -139,6 +139,27 @@ If the output includes the models under `my-gateway`, the configuration succeede
 
 > **Don't see your custom model?** It's usually because the config is in the wrong location or a required field is missing—see the troubleshooting checklist at [23-troubleshooting-faq.md · 4.1 Custom provider auth 401](./23-troubleshooting-faq.md#41-custom-provider-auth-401).
 
+### 3.4 MOMA (Kimi chat + native video routes)
+
+MOMA is a first-class environment provider rather than a `models.json` entry. Set both
+`MOMA_BASE_URL` and `MOMA_API_KEY`; the server normalizes either the MOMA host, the
+OpenAI-compatible `/v1` root, or a full `/v1/chat/completions` URL. The chat model is
+registered under provider `moma` with the live catalog id `kimi/kimi-k3` and displayed
+as `Kimi-K3`.
+
+```bash
+MOMA_BASE_URL=https://moma.cmecloud.cn/v1
+MOMA_API_KEY=...
+```
+
+The MOMA video models are kept out of `ModelRegistry` and the core image route table.
+The media extension consumes them through native asynchronous routes and persists the
+returned MP4 as an attachment:
+`minimax/minimax-h3` (`MiniMax-H3`) uses `/v2/video_generation`, while
+`gdmz/doubao-seedance-2.0` (`AICC-doubao-seedance-2.0`) uses the Seedance task route.
+The native host is derived from `MOMA_BASE_URL` at agent boot; no second user-facing
+URL is required.
+
 ---
 
 ## 4. Model Dropdown on the Settings Page: Data Source and Filtering

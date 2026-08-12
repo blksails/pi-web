@@ -19,6 +19,8 @@ import type { ModelOption, ModelOptions } from "../config/model-options.types.js
 export interface GatewayModelEntry {
   /** `/v1/models` 的 id。 */
   readonly model: string;
+  /** Optional provider-supplied display label; falls back to `model` when absent. */
+  readonly name?: string;
   /** `owned_by` → UI 徽章分组。 */
   readonly ownedBy: string;
   /**

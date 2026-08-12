@@ -153,6 +153,62 @@ describe("ModelCatalogService — 图像目录并入(source 标记)", () => {
   });
 });
 
+describe("ModelCatalogService — additional modality catalog", () => {
+  it("returns video entries for output=video without putting them in chatOptions", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(),
+      additionalCatalog: [
+        {
+          provider: "moma",
+          id: "minimax/minimax-h3",
+          name: "MiniMax-H3",
+          input: ["text", "image"],
+          output: ["video"],
+          source: "moma",
+          availability: "catalog",
+        },
+      ],
+    });
+
+    expect(svc.chatOptions().models.some((model) => model.provider === "moma")).toBe(false);
+    expect(svc.query({ output: "video" })).toEqual({
+      providers: ["moma"],
+      models: [
+        {
+          provider: "moma",
+          id: "minimax/minimax-h3",
+          name: "MiniMax-H3",
+          input: ["text", "image"],
+          output: ["video"],
+          source: "moma",
+          availability: "catalog",
+        },
+      ],
+    });
+  });
+
+  it("applies the hidden-provider gate to additional entries", () => {
+    const svc = createModelCatalogService({
+      listSelfChat: () => SELF_CHAT,
+      imageCatalog: IMAGE_CATALOG,
+      hiddenProviders: new Set(["moma"]),
+      additionalCatalog: [
+        {
+          provider: "moma",
+          id: "gdmz/doubao-seedance-2.0",
+          name: "AICC-doubao-seedance-2.0",
+          input: ["text"],
+          output: ["video"],
+          source: "moma",
+        },
+      ],
+    });
+    expect(svc.query({ output: "video" })).toEqual({ providers: [], models: [] });
+  });
+});
+
 describe("ModelCatalogService — 注入 gateway 时 chat 经 mergeModelCatalog 聚合", () => {
   it("providers=self-only,网关条目 provider=ai-gateway 且附 channel/availability;同 id 跨归属不吞并", () => {
     const svc = createModelCatalogService({

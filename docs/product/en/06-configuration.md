@@ -95,6 +95,8 @@ These keys only need to be filled in when you want to **override or supplement**
 | `SUFY_API_KEY` | (unset) | sufy (Qiniu) gateway (gpt-image / Gemini 3.1 Flash Lite); see `providers/sufy.ts:37` |
 | `DASHSCOPE_API_KEY` | (unset) | Alibaba Cloud DashScope (Qwen-Image editing, token plan); see `providers/dashscope.ts:40` |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1` | token plan endpoint override; see `tools/image-generation.ts:40` (placeholder default of the form `${VAR:-default}`) |
+| `MOMA_API_KEY` | (unset) | MOMA credential for the Kimi chat provider and MOMA AIGC catalog |
+| `MOMA_BASE_URL` | (unset) | MOMA host, `/v1`, or full `/v1/chat/completions` URL; normalized at startup |
 
 > The model routing, cost, and gateway gotchas of the AIGC tools are covered in [11 · AIGC and Vision Tools](./11-aigc-and-vision-tools.md).
 

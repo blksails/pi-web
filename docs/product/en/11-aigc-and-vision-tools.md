@@ -80,7 +80,13 @@ At startup the image tools check the `requiredVars` declared by each route; when
 | `OPENROUTER_PROXY` | OpenRouter request proxy (optional, `${VAR}` placeholder; direct connection if unset) | Set when access must go through a proxy |
 | `DASHSCOPE_API_KEY` | The official DashScope route and the token plan route **read their key from the same variable name** | Required when using DashScope / token plan models |
 | `DASHSCOPE_TOKENPLAN_BASE_URL` | token plan endpoint base (optional, defaults to `https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1`) | Set to override the token plan domain |
+| `MOMA_API_KEY` | MOMA credential | Required by the MOMA chat provider and any MOMA video route |
+| `MOMA_BASE_URL` | MOMA host, `/v1`, or full `/v1/chat/completions` URL | Required with `MOMA_API_KEY`; normalized by the host |
 | `PI_WEB_VISION_MODEL` | default vision model for `image_vision`, in `provider/modelId` form | Set to configure a default vision model |
+
+MOMA video routes derive their native host from `MOMA_BASE_URL` and use asynchronous
+submit/poll semantics. If the account has not been granted native video access, the
+tool reports the upstream 404/401/403 instead of returning a fake media result.
 
 > **DashScope dual-key trap**: the official `dashscope.aliyuncs.com` routes (`wan2.7-image-pro` / `qwen-image-edit-max`) and the token plan routes (`*-bailian`) both read their key from `DASHSCOPE_API_KEY`, but the two key sets are **not interchangeable**—a token plan key against the official endpoint returns 401, and vice versa. A single process can only hold one value, so it is one or the other. On a 401 or "channel does not exist", see [23 · Troubleshooting FAQ](./23-troubleshooting-faq.md#4-provider--model-issues).
 
