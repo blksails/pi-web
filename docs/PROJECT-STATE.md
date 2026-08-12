@@ -78,3 +78,53 @@
 - 模型路由：complex/frontier/high；NotebookLM 仅作策略研究层。
 - Worker 回收：不派写代码 Worker；研究串行执行。
 - Token：未作 A/B，不宣称节省。
+
+## MOMA 视频生成接入交接（2026-08-12）
+
+> 本节记录 `feat/moma-video-generation` 最新交付；父仓与 `examples/aigc-agent` 为两个独立 Git 仓库。
+
+### 分支与提交
+
+| 仓库 | 分支 | 提交 |
+| --- | --- | --- |
+| `pi-web` | `feat/moma-video-generation` | `84bf9501` |
+| `aigc-agent` | `feat/moma-video-generation` | `54b6dfc` |
+
+两分支均已推送 `origin`。父仓 `.gitignore` 刻意排除 `examples/aigc-agent`，故媒体实现须在子仓同步维护。
+
+### 已交付
+
+- 父仓新增 MOMA 配置解析、Kimi-K3 聊天目录与统一视频模态目录；视频模型不注册为聊天模型。
+- 子仓接入 MiniMax-H3、Seedance 2.0 的 T2V / I2V / R2V 异步媒体路由，并复用现有轮询、附件落库链。
+- 配置入口：`MOMA_BASE_URL`、`MOMA_API_KEY`；`MOMA_BASE_URL` 可填主机、`/v1` 或完整 `/v1/chat/completions` 地址。
+- 子仓启动时从 `MOMA_BASE_URL` 推导原生媒体主机；无需新增用户配置项。
+
+### 路由契约
+
+| 模型 | 提交 | 轮询 |
+| --- | --- | --- |
+| `minimax/minimax-h3` | `POST /v2/video_generation`（原生 body `MiniMax-H3`） | `GET /v2/query/video_generation/{task_id}` |
+| `gdmz/doubao-seedance-2.0` | `POST /api/v3/contents/generations/tasks` | `GET /api/v3/contents/generations/tasks/{task_id}` |
+
+H3 路由按 [MiniMax 官方视频 API](https://platform.minimax.io/docs/guides/video-generation) 接线；两者均为 10 秒轮询、30 分钟超时。
+
+### 验证回执
+
+以下均已通过：
+
+```text
+pnpm --dir examples/aigc-agent/media-tools typecheck
+pnpm --dir examples/aigc-agent exec vitest run --root . --config ../../../packages/adapters/vitest.config.ts test/moma-video.test.ts
+pnpm --dir packages/adapters test -- test/moma/config.test.ts
+pnpm --dir packages/server test -- test/model-catalog/service.test.ts
+pnpm exec vitest run test/route.integration.test.ts
+pnpm typecheck
+pnpm build:server
+```
+
+### 已知阻塞与接手动作
+
+- 当前 MOMA 实例 `GET /v1/models` 可用；H3 / Seedance 原生视频候选路由实测均返 `404`。代码会明确报告“原生接口未开放”，不伪造媒体结果。
+- 因未取得 MOMA 视频原生接口的账号级文档/授权，暂不宣称真机视频生成已通。
+- 接手后先确认账号的视频 entitlement、原生媒体 host、提交/轮询路径及 body；若原生 host 不同，再把 `MOMA_MEDIA_BASE_URL` 加入父仓 passthrough，并同步更新子仓推导逻辑、契约测试与 live smoke。
+- 工作树中仍有既有临时文件与构建产物改动，未纳入上述提交；勿用清理/重置命令覆盖。
