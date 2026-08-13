@@ -212,18 +212,41 @@ function parseTenant(parsed: unknown): CapabilityTenant | undefined {
   if (obj.userId.length === 0 || obj.companyId.length === 0) return undefined;
   // displayName 可选:云端 `profiles.name`。取不到就不带 —— 展示层退回 userId,
   // **不**因为缺一个展示用的名字而让整个身份不可用。
-  const raw = (t as { displayName?: unknown; name?: unknown });
-  const display =
-    typeof raw.displayName === "string" && raw.displayName.trim().length > 0
-      ? raw.displayName.trim()
-      : typeof raw.name === "string" && raw.name.trim().length > 0
-        ? raw.name.trim()
-        : undefined;
+  const raw = t as {
+    displayName?: unknown;
+    name?: unknown;
+    username?: unknown;
+    nickname?: unknown;
+    fullName?: unknown;
+    email?: unknown;
+    phone?: unknown;
+    avatarUrl?: unknown;
+    avatar_url?: unknown;
+    companyName?: unknown;
+    company_name?: unknown;
+  };
+  const text = (value: unknown): string | undefined =>
+    typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+  const display = text(raw.displayName) ?? text(raw.name);
+  const username = text(raw.username);
+  const nickname = text(raw.nickname);
+  const fullName = text(raw.fullName);
+  const email = text(raw.email);
+  const phone = text(raw.phone);
+  const avatarUrl = text(raw.avatarUrl) ?? text(raw.avatar_url);
+  const companyName = text(raw.companyName) ?? text(raw.company_name);
   return {
     userId: obj.userId,
     companyId: obj.companyId,
     role: obj.role,
     ...(display !== undefined ? { displayName: display } : {}),
+    ...(username !== undefined ? { username } : {}),
+    ...(nickname !== undefined ? { nickname } : {}),
+    ...(fullName !== undefined ? { fullName } : {}),
+    ...(email !== undefined ? { email } : {}),
+    ...(phone !== undefined ? { phone } : {}),
+    ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+    ...(companyName !== undefined ? { companyName } : {}),
   };
 }
 

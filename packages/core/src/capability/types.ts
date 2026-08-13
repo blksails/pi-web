@@ -52,9 +52,9 @@ export interface CapabilityGrantBase {
 /**
  * 租户身份。前三字段皆必填:身份是完整的或根本没有,半个身份无法用于鉴权。
  *
- * `displayName` 是**可选**增量(契约 §1 允许加可选成员,不升版本):它只用于展示,
- * 不参与任何鉴权判定。故意与三个必填字段区别对待 —— 一个宿主拿不到人类可读名字
- * 是常事(旧版云端、未填资料的账号),不该因此让整个身份不可用。
+ * 资料字段皆为**可选**增量(契约 §1 允许加可选成员,不升版本):只用于展示,
+ * 不参与任何鉴权判定。故意与三个必填字段区别对待 —— 旧版云端、未填资料的账号
+ * 仍可正常鉴权与运行。
  */
 export interface CapabilityTenant {
   readonly userId: string;
@@ -67,6 +67,16 @@ export interface CapabilityTenant {
    * 身份的权威标识始终是 `userId`。
    */
   readonly displayName?: string;
+  /** pi-labs 同源资料字段；展示层按 username → nickname → fullName → email → phone 回退。 */
+  readonly username?: string;
+  readonly nickname?: string;
+  readonly fullName?: string;
+  readonly email?: string;
+  readonly phone?: string;
+  /** 头像存储 URL；加载失败时展示层回退文字头像。 */
+  readonly avatarUrl?: string;
+  /** 当前 company 的人类可读名称；绝不以 companyId 代替。 */
+  readonly companyName?: string;
 }
 
 /**

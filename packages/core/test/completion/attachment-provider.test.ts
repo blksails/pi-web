@@ -174,7 +174,7 @@ describe("AttachmentCompletionProvider", () => {
       expect(item?.previewUrl).toBe("/attachments/att_img/raw?exp=1&sig=abc");
     });
 
-    it("非图片附件 → 无 previewUrl", async () => {
+    it("非媒体附件 → 无 previewUrl", async () => {
       const p = createAttachmentProvider(
         makeStore([att({ id: "att_pdf", name: "doc.pdf", mimeType: "application/pdf" })], {
           presign: true,
@@ -182,6 +182,31 @@ describe("AttachmentCompletionProvider", () => {
       );
       const [item] = await p.complete({ query: "", ctx: CTX });
       expect(item?.previewUrl).toBeUndefined();
+    });
+
+    it("视频/音频附件 + presignUrl → 候选带媒体类型与 previewUrl", async () => {
+      const p = createAttachmentProvider(
+        makeStore(
+          [
+            att({ id: "att_video", name: "clip.mp4", mimeType: "video/mp4" }),
+            att({ id: "att_audio", name: "voice.mp3", mimeType: "audio/mpeg" }),
+          ],
+          { presign: true },
+        ),
+      );
+      const items = await p.complete({ query: "", ctx: CTX });
+      expect(items).toEqual([
+        expect.objectContaining({
+          id: "att_video",
+          mediaType: "video/mp4",
+          previewUrl: "/attachments/att_video/raw?exp=1&sig=abc",
+        }),
+        expect.objectContaining({
+          id: "att_audio",
+          mediaType: "audio/mpeg",
+          previewUrl: "/attachments/att_audio/raw?exp=1&sig=abc",
+        }),
+      ]);
     });
 
     it("presignUrl 能力缺失 → 图片附件也无 previewUrl(退化)", async () => {

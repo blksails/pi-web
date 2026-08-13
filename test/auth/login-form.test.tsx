@@ -14,7 +14,7 @@ import { LoginForm } from "../../components/auth/login-form.js";
 import { LoginControl } from "../../components/auth/login-control.js";
 import { IdentityStateProvider } from "../../components/auth/use-identity.js";
 
-const TENANT = { userId: "u1", companyId: "c1", role: "member" };
+const TENANT = { userId: "u1", companyId: "c1", role: "member", companyName: "Acme" };
 
 describe("LoginForm — 输入与提交(Req 3.1/3.2)", () => {
   it("邮箱或手机号密码输入项类型正确", () => {
@@ -320,6 +320,20 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-user").getAttribute("title")).toBe(TENANT.userId);
   });
 
+  it("username 优先于其它资料字段,并支持 pi-labs 回退链", async () => {
+    mount({
+      state: "authenticated",
+      tenant: {
+        ...TENANT,
+        username: " user-name ",
+        nickname: "昵称",
+        fullName: "全名",
+      },
+      canExchange: true,
+    });
+    await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("user-name"));
+  });
+
   it("长展示名单行省略，完整名称保留于可访问名称且不挤压登出按钮", async () => {
     const name = "这是一个很长很长的宿主用户展示名称";
     mount({
@@ -340,10 +354,11 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     );
   });
 
-  it("authenticated → 展示 tenant.userId 与 companyId(Req 5.1/5.2)", async () => {
+  it("authenticated → 展示 tenant.userId 与公司名称(不显示 companyId)", async () => {
     mount({ state: "authenticated", tenant: TENANT, canExchange: true });
     await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("u1"));
-    expect(screen.getByTestId("login-company").textContent).toBe("@c1");
+    expect(screen.getByTestId("login-company").textContent).toBe("Acme");
+    expect(screen.getByTestId("login-company").textContent).not.toContain("c1");
     expect(screen.getByTestId("logout")).toBeTruthy();
   });
 

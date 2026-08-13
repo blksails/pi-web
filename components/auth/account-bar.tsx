@@ -28,20 +28,35 @@ function initialsOf(name: string): string {
 
 function Avatar({
   label,
+  src,
   className,
 }: {
   readonly label: string;
+  readonly src?: string;
   readonly className?: string;
 }): React.JSX.Element {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => setFailed(false), [src]);
+  const imageSrc = src?.trim();
   return (
     <span
       aria-hidden
       className={
         className ??
-        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--foreground))] text-[11px] font-semibold text-[hsl(var(--background))]"
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[hsl(var(--foreground))] text-[11px] font-semibold text-[hsl(var(--background))]"
       }
     >
-      {initialsOf(label)}
+      {imageSrc !== undefined && imageSrc.length > 0 && !failed ? (
+        // eslint-disable-next-line @next/next/no-img-element -- avatar URL comes from cloud profile/storage.
+        <img
+          src={imageSrc}
+          alt=""
+          className="h-full w-full rounded-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        initialsOf(label)
+      )}
     </span>
   );
 }
@@ -186,8 +201,7 @@ export function AccountBar({
 
   // authenticated
   const displayName = tenantDisplayName(state.tenant);
-  const company =
-    state.tenant.companyId.length > 0 ? state.tenant.companyId : undefined;
+  const company = state.tenant.companyName?.trim() || undefined;
 
   return (
     <div
@@ -204,7 +218,7 @@ export function AccountBar({
         onClick={() => setMenuOpen((v) => !v)}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[10px] px-1.5 py-1.5 text-left transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
       >
-        <Avatar label={displayName} />
+        <Avatar label={displayName} src={state.tenant.avatarUrl} />
         <span className="flex min-w-0 flex-1 flex-col gap-0">
           <span
             data-testid="login-user"
@@ -233,7 +247,7 @@ export function AccountBar({
           className="absolute bottom-[calc(100%+6px)] left-1.5 right-1.5 z-50 overflow-hidden rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1.5 text-[hsl(var(--popover-foreground))] shadow-[0_12px_30px_hsl(var(--foreground)/0.14)]"
         >
           <div className="mb-1 flex items-center gap-2.5 rounded-[7px] px-2.5 py-2">
-            <Avatar label={displayName} />
+            <Avatar label={displayName} src={state.tenant.avatarUrl} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{displayName}</div>
               {company !== undefined ? (

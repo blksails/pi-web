@@ -793,7 +793,11 @@ export function PiChat({
     onMaterialized: (attachmentId, attachment, displayUrl) => {
       setMentionPreviews((prev) => {
         const next = new Map(prev);
-        next.set(attachmentId, { name: attachment.name, previewUrl: displayUrl });
+        next.set(attachmentId, {
+          name: attachment.name,
+          previewUrl: displayUrl,
+          mediaType: attachment.mimeType,
+        });
         return next;
       });
     },
@@ -824,6 +828,7 @@ export function PiChat({
         next.set(item.id, {
           name: item.label,
           ...(item.previewUrl !== undefined ? { previewUrl: item.previewUrl } : {}),
+          ...(item.mediaType !== undefined ? { mediaType: item.mediaType } : {}),
         });
         return next;
       });
@@ -2143,12 +2148,30 @@ export function PiChat({
       {/* Tier1 保留插槽:编辑器上方配件(追加,不替换 Widgets)。 */}
       <ExtSlotRegion ext={extension} slot="accessoryAboveEditor" />
       <Widgets widgets={widgetItems} placement="aboveEditor" />
-      {/* attachment-mention-preview:被 `@` 引用附件的缩略图预览条(输入框上方)。 */}
-      <PiMentionPreviews
-        value={input}
-        previews={mentionPreviews}
-        onRemove={onRemoveMention}
-      />
+      {/* 附件统一浮在输入框上方:注册附件引用与本地上传附件共用 pill 区。 */}
+      {attachments.items.length > 0 || scanAttachmentMentions(input).length > 0 || rejected.length > 0 ? (
+        <div
+          data-pi-composer-attachments
+          className="mb-2 flex flex-wrap items-center gap-1.5 rounded-[10px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-1.5"
+        >
+          <PiMentionPreviews
+            value={input}
+            previews={mentionPreviews}
+            onRemove={onRemoveMention}
+            className="mb-0"
+          />
+          {AttachC !== null ? (
+            <AttachC
+              variant="inline"
+              items={attachments.items}
+              supported={attachments.supported}
+              onAdd={onAddAttachments}
+              onRemove={attachments.remove}
+              rejected={rejected}
+            />
+          ) : null}
+        </div>
+      ) : null}
       {resources !== undefined && messages.length === 0 ? (
         <PromptTemplateCards config={resources} onSelect={setInput} />
       ) : null}
@@ -2181,7 +2204,9 @@ export function PiChat({
     hasAmbientStatuses || (showSessionStats && controls !== undefined) ? (
       <div
         className={cn(
-          "pi-liquid-glass sticky top-0 z-20 flex min-h-8 w-full items-center gap-2 border-b px-4 py-1",
+          // PanesHost 的边车 chrome 固定 34px；统计条与它共用几何契约，避免聊天列
+          // 顶部比右侧 pane 多出一层高度。
+          "sticky top-0 z-20 box-border flex h-[34px] min-h-[34px] w-full shrink-0 items-center gap-2 border-b bg-[hsl(var(--surface))] px-4 py-0",
         )}
         data-pi-top-status-bar
       >
@@ -2190,7 +2215,10 @@ export function PiChat({
         ) : null}
         {showSessionStats && controls !== undefined ? (
           <div data-pi-session-stats-region className="ml-auto shrink-0">
-            <PiSessionStats controls={controls} className="px-0 py-0 text-[11px]" />
+            <PiSessionStats
+              controls={controls}
+              className="h-full items-center px-0 py-0 text-[11px]"
+            />
           </div>
         ) : null}
       </div>
@@ -2372,7 +2400,7 @@ export function PiChat({
       <div
         ref={dockRef}
         data-pi-input-dock
-        className="pi-liquid-glass pointer-events-none absolute inset-x-0 bottom-0 border-t px-4 pb-5 pt-3 md:px-12"
+        className="pointer-events-none absolute inset-x-0 bottom-0 border-t bg-[hsl(var(--surface))] px-4 pb-5 pt-3 md:px-12"
       >
         <div className={cn("pointer-events-auto", lay.content)}>
           {inputWithWidgets}

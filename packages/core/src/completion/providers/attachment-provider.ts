@@ -31,7 +31,7 @@ export interface AttachmentLister {
   head(id: string): Promise<Attachment | undefined>;
   /**
    * 可选:签发某附件的分发展示 URL(根相对 `/attachments/:id/raw?exp&sig`)。
-   * 提供时,图片类附件候选携带 `previewUrl` 供补全浮层渲染缩略图(attachment-mention-preview)。
+   * 提供时,图片/视频/音频类附件候选携带 `previewUrl` 供补全浮层预览(attachment-mention-preview)。
    */
   presignUrl?(id: string): Promise<string>;
 }
@@ -86,10 +86,13 @@ export function createAttachmentProvider(
       const items: CompletionItem[] = [];
       for (const att of attachments) {
         if (!nameMatches(att.name, query)) continue;
-        // 图片类附件:签发展示 URL 作缩略图预览(attachment-mention-preview);
-        // 签发失败 / 非图片 / 无 presignUrl 能力 → 不带 previewUrl(浮层退化为纯文本行)。
+        // 媒体附件:签发展示 URL 作缩略图/播放预览(attachment-mention-preview);
+        // 签发失败 / 非媒体 / 无 presignUrl 能力 → 不带 previewUrl(浮层退化为纯文本行)。
         let previewUrl: string | undefined;
-        if (store.presignUrl !== undefined && att.mimeType.startsWith("image/")) {
+        if (
+          store.presignUrl !== undefined &&
+          /^(image|video|audio)\//.test(att.mimeType)
+        ) {
           try {
             previewUrl = await store.presignUrl(att.id);
           } catch {
@@ -107,6 +110,7 @@ export function createAttachmentProvider(
             kind: ATTACHMENT_KIND,
             id: att.id,
           }),
+          mediaType: att.mimeType,
           ...(previewUrl !== undefined ? { previewUrl } : {}),
         });
       }

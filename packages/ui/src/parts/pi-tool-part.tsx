@@ -247,7 +247,7 @@ export function ToolHeader({
       onClick={onToggle}
       onKeyDown={onKeyDown}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-2 px-0 py-1.5 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        "flex min-h-9 w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
     >
@@ -273,7 +273,7 @@ export function ToolHeader({
         ) : null}
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))] px-2 py-0.5 text-[11px] font-medium",
+            "inline-flex items-center gap-1 text-[11px] font-medium",
             isError
               ? "text-[hsl(var(--destructive))]"
               : "text-[hsl(var(--muted-foreground))]",
@@ -297,7 +297,7 @@ export function ToolHeader({
               e.stopPropagation(); // 不要顺带触发外层的折叠
               abortTurn?.();
             }}
-            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--destructive))] hover:text-[hsl(var(--destructive-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             <Square className="h-2.5 w-2.5 fill-current" aria-hidden="true" />
           </button>
@@ -329,7 +329,7 @@ export function ToolContent({
     <div
       id={id}
       className={cn(
-        "px-0 pb-3 pl-6 pt-1",
+        "px-3 pb-3 pl-9 pt-0",
         isError && "text-[hsl(var(--destructive))]",
         className,
       )}
@@ -352,7 +352,7 @@ function JsonBlock({
   return (
     <pre
       className={cn(
-        "overflow-x-auto whitespace-pre-wrap break-words rounded-[var(--radius)] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] p-2 text-xs",
+        "max-h-[min(40dvh,28rem)] overflow-auto whitespace-pre-wrap break-words rounded-[4px] border border-[hsl(var(--border))] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))] p-3 text-xs leading-relaxed",
         className,
       )}
     >
@@ -433,7 +433,7 @@ function runToolPill(pill: ToolPill): void {
   }
 }
 
-/** 工具卡 pill 行:把 details.pills 渲染为动作 pill(样式对齐 ConversationImageGallery 的 pill)。 */
+/** 工具动作行：保留协议里的 pills 语义，但使用普通控件形状，避免动作堆成装饰性胶囊。 */
 export function ToolPillRow({
   pills,
 }: {
@@ -441,7 +441,10 @@ export function ToolPillRow({
 }): React.JSX.Element | null {
   if (pills.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5" data-pi-tool-pills>
+    <div
+      className="flex flex-wrap items-center gap-1.5 border-t border-[hsl(var(--border))] pt-2"
+      data-pi-tool-pills
+    >
       {pills.map((p, i) => (
         <button
           key={`${i}-${p.label}`}
@@ -449,7 +452,7 @@ export function ToolPillRow({
           data-pi-tool-pill
           onClick={() => runToolPill(p)}
           title={p.src}
-          className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface))] px-2.5 text-xs text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          className="inline-flex min-h-8 items-center gap-1.5 rounded-[7px] border border-[hsl(var(--border))] bg-[hsl(var(--surface))] px-2.5 text-xs text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
         >
           {p.label}
         </button>
@@ -652,11 +655,11 @@ function DefaultOutputNode({
           />
         ) : null}
         {details !== undefined ? (
-          <details className="text-[11px]">
-            <summary className="cursor-pointer select-none text-[hsl(var(--muted-foreground))]">
-              详情
+          <details className="border-t border-[hsl(var(--border))] pt-2 text-[11px]">
+            <summary className="cursor-pointer select-none font-medium text-[hsl(var(--muted-foreground))]">
+              查看生成参数与结果
             </summary>
-            <JsonBlock value={details} className="mt-1" />
+            <JsonBlock value={details} className="mt-2" />
           </details>
         ) : null}
         {pills !== undefined ? <ToolPillRow pills={pills} /> : null}
@@ -738,7 +741,7 @@ export function PiToolPart({
     <div
       className={cn(
         // ui-redesign §5.3:工具卡 =「左侧状态线 + 浅灰 surface」;错误时状态线转 destructive。
-        "overflow-hidden border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))]",
+        "overflow-hidden rounded-[4px] border-l-2 border-l-[hsl(var(--primary))] bg-[hsl(var(--surface-subtle))]",
         isError && "border-l-[hsl(var(--destructive))] text-[hsl(var(--destructive))]",
         className,
       )}

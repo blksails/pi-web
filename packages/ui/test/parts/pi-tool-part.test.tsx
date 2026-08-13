@@ -110,7 +110,7 @@ describe("PiToolPart 四态", () => {
     // 结构化 details 收进可折叠「详情」,不喧宾夺主。
     const disclosure = detail?.querySelector("details");
     expect(disclosure).not.toBeNull();
-    expect(disclosure?.querySelector("summary")?.textContent).toBe("详情");
+    expect(disclosure?.querySelector("summary")?.textContent).toBe("查看生成参数与结果");
   });
 
   it("content 内 ![](url) 抽成原生 <img> 块渲染(不进 Streamdown 段落,避免 div-in-p)", () => {

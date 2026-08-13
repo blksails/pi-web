@@ -324,9 +324,9 @@ GET /sessions/:id/completion?trigger=@&q=<查询>  → { items, groups }
 
 ### 9.5 被引附件的预览 chip（PiMentionPreviews）
 
-选中 `@` 附件候选后，输入框里只留一段裸 token `@attachment:<id>`——用户看不出到底引用了哪张图。`PiMentionPreviews`（`packages/ui/src/completion/pi-mention-previews.tsx:54`）补上这条可视反馈：它扫描当前输入值里的 `@attachment:<id>` token（`scanAttachmentMentions`，同文件 `:35`，去重保序），为每个渲染一枚 chip——缩略图 + 附件名 + 移除按钮。这是「@ 引附件」闭环里用户唯一的可视回执。
+选中 `@` 附件候选后，输入框里只留一段裸 token `@attachment:<id>`——用户看不出到底引用了哪份附件。`PiMentionPreviews`（`packages/ui/src/completion/pi-mention-previews.tsx`）补上这条可视反馈：它扫描当前输入值里的 `@attachment:<id>` token（`scanAttachmentMentions`，同文件，去重保序），为每个渲染一枚 pill——媒体缩略图/类型图标 + 附件名 + 移除按钮；图片放大、视频/音频悬浮播放。这是「@ 引附件」闭环里用户唯一的可视回执。
 
-- **预览数据来自选中一刻**：装配层在补全弹层的 `onAccept` 回调里捕获候选的 `{ label, previewUrl }`，以 `id → MentionPreview` 存进 state（`packages/ui/src/chat/pi-chat.tsx:522-532`），再经 `previews` prop 传入组件（`pi-chat.tsx:1378`）。候选的 `previewUrl` 由 `GET /completion` 产出，形如根相对的 `/attachments/:id/raw?exp=…&sig=…`；客户端 `getCompletion` 按 `baseUrl` 前缀成可达 URL（`packages/react/src/client/pi-client.ts:328-338`），与 §4.2 的分发读路径同源、同样受 HMAC 签名鉴权。
+- **预览数据来自选中一刻**：装配层在补全弹层的 `onAccept` 回调里捕获候选的 `{ label, previewUrl, mediaType }`，以 `id → MentionPreview` 存进 state，再经 `previews` prop 传入组件。候选的 `previewUrl` 由 `GET /completion` 产出，形如根相对的 `/attachments/:id/raw?exp=…&sig=…`；客户端 `getCompletion` 按 `baseUrl` 前缀成可达 URL，与 §4.2 的分发读路径同源、同样受 HMAC 签名鉴权。
 - **无预览退化**：手动键入或刷新后的 token 未经补全选中、`previews` 里查无此 id，退化为「仅名字 / id」的无图 chip（`pi-mention-previews.tsx:71,78`），仍能标记出引用了哪个附件。
 - **移除**：点 chip 上的 `×` 触发 `onRemove(id)`，装配层用 `removeAttachmentMention(value, id)`（同文件 `:49`）从输入值删去对应 token（连带其后紧邻的一个空白）。
 - **纯展示、不改协议**：组件不发请求、不物化 base64（三条不变式原样成立）；DOM 打 `data-pi-mention-previews`（容器）与 `data-pi-mention-preview=<id>`（每枚 chip）标记，供 e2e 定位。
@@ -348,7 +348,7 @@ GET /sessions/:id/completion?trigger=@&q=<查询>  → { items, groups }
 | `PI_WEB_ATTACHMENT_SECRET` 未设，存在 runner 子进程 | 子进程产出的签名 URL 在主进程 401（secret 不一致）；必须显式设置 |
 | 子进程 env 缺 `PI_WEB_ATTACHMENT_DIR` | `createChildAttachmentStore()` 返回 `undefined`，`ctx.available === false`，tool 安全降级 |
 | 上传文件超 25 MiB | `413 PAYLOAD_TOO_LARGE`（`DEFAULT_MAX_UPLOAD_BYTES` 可覆盖） |
-| vision 路径非图片 | `useAttachments.add()` 仅接受 `image/*`，其余记入 `rejected` |
+| 视觉内容与非媒体附件 | `toImageContents()` 仅输出 `image/*`；视频、音频及其它本地附件仍以 `file` part 上传与展示 |
 | tool result 含内联 base64 | `afterToolCall`（`base64-gate.ts`）默认剥为文本引用，设 `details.keepInlineImages=true` 则保留 |
 | 孤儿对象 GC / 内容哈希去重 | 接口已留缝（`key=id` 本切片不去重），规划中（未实现） |
 

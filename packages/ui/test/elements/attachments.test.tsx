@@ -12,7 +12,7 @@ import {
  * Attachments 无状态展示元件测试(Req 3.1/3.3/3.4/3.5、11.4)。
  *
  * 无状态:props 接收附件项列表、supported、onAdd/onRemove 与 rejected 提示。
- * 实际图片过滤/编码在 useAttachments(task 2.2),本元件只负责 UI 与透传 files。
+ * 实际上传/编码在 useAttachments,本元件只负责 UI 与透传 files。
  */
 const item = (over: Partial<PendingAttachment> = {}): PendingAttachment => ({
   id: "att-1",
@@ -107,7 +107,7 @@ describe("Attachments 附件展示与拖拽/粘贴", () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
-  it("展示 rejected 非图片的'暂不支持'提示 (Req 3.4)", () => {
+  it("展示 rejected 提示并保持错误语义红色 (Req 3.4)", () => {
     render(
       <Attachments
         items={[]}
@@ -117,7 +117,9 @@ describe("Attachments 附件展示与拖拽/粘贴", () => {
         onRemove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/暂不支持该类型附件/)).toBeInTheDocument();
+    expect(screen.getByText(/暂不支持该类型附件/)).toHaveClass(
+      "text-[hsl(var(--destructive))]",
+    );
     expect(screen.getByText(/notes\.txt/)).toBeInTheDocument();
   });
 
@@ -193,7 +195,7 @@ describe("Attachments 呈现增强(Req 12)", () => {
     },
   );
 
-  it("panel/compact 向后兼容:默认 variant 仍渲染 dropzone 与缩略图 (Req 12.3)", () => {
+  it("panel 向后兼容:默认 variant 仍渲染 dropzone 与缩略图 (Req 12.3)", () => {
     render(
       <Attachments items={[item()]} supported onAdd={vi.fn()} onRemove={vi.fn()} />,
     );
@@ -201,6 +203,22 @@ describe("Attachments 呈现增强(Req 12)", () => {
     expect(
       screen.getByRole("img", { name: /pic\.png/i }),
     ).toHaveAttribute("src", "data:image/png;base64,AAAA");
+  });
+
+  it("compact 仅渲染居中的添加按钮,不再把附件 chip 放进工具条 (Req 12.3)", () => {
+    const { container } = render(
+      <Attachments
+        items={[item()]}
+        supported
+        variant="compact"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const button = container.querySelector("[data-pi-attachments-add]");
+    expect(button).not.toBeNull();
+    expect(button).toHaveClass("items-center", "justify-center", "p-0");
+    expect(container.querySelector("[data-pi-attachment-chip]")).toBeNull();
   });
 
   it("展示变体(inline)在 supported=false 时仍展示已有附件 (Req 12.3)", () => {
@@ -243,6 +261,31 @@ describe("Attachments 呈现增强(Req 12)", () => {
     expect(screen.queryByTestId("pi-attachment-preview")).not.toBeInTheDocument();
   });
 
+  it("视频缩略图 hover 显示可播放预览 (Req 12.2)", () => {
+    render(
+      <Attachments
+        items={[
+          item({
+            id: "video-1",
+            name: "clip.mp4",
+            mimeType: "video/mp4",
+            dataUrl: "data:video/mp4;base64,AAAA",
+          }),
+        ]}
+        supported
+        variant="inline"
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    const thumb = screen.getByLabelText("预览 clip.mp4");
+    expect(thumb.querySelector("video")).not.toBeNull();
+    fireEvent.mouseEnter(thumb);
+    const preview = screen.getByTestId("pi-attachment-preview");
+    expect(preview.querySelector("video[controls]")).not.toBeNull();
+    expect(preview.querySelector("video[autoplay]")).not.toBeNull();
+  });
+
   it("hoverPreview=false 时不开启预览 (Req 12.2)", () => {
     render(
       <Attachments
@@ -278,21 +321,26 @@ describe("Attachments 呈现增强(Req 12)", () => {
     expect(onRemove).toHaveBeenCalledWith("v1");
   });
 
-  it("不改 Req 3 边界:非图片仍走 rejected 提示且不入列 (Req 12.5)", () => {
+  it("文件类附件进入 pill,无媒体源时以文件图标降级 (Req 12.5)", () => {
     render(
       <Attachments
-        items={[]}
+        items={[
+          item({
+            id: "file-1",
+            name: "notes.txt",
+            mimeType: "text/plain",
+            dataUrl: "data:text/plain;base64,SGk=",
+          }),
+        ]}
         supported
-        rejected={["notes.txt"]}
+        variant="inline"
         onAdd={vi.fn()}
         onRemove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/暂不支持该类型附件/)).toBeInTheDocument();
-    // 未入列:无附件 chip
-    expect(
-      document.querySelector("[data-pi-attachment-chip]"),
-    ).toBeNull();
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByText("文件")).toBeInTheDocument();
+    expect(document.querySelector("[data-pi-attachment-chip]")).not.toBeNull();
   });
 });
 

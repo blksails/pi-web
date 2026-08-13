@@ -1,9 +1,9 @@
 /**
- * useAttachments — 待发送图片附件状态(来源无关:拖拽/粘贴/选择)。
+ * useAttachments — 待发送附件状态(来源无关:拖拽/粘贴/选择)。
  *
- * 仅接受图片类型(`image/*`),非图片记入返回的 `rejected` 并提示(Req 3.4)。
+ * 接受图片、视频、音频及其它本地文件；非媒体文件仍保留文件引用，展示层以类型图标降级。
  * 维护内存态列表(`PendingAttachment`),提供 remove/clear 与 toImageContents 输出。
- * 当会话/agent 不支持图片输入时由上层经 options 置 supported=false(Req 3.5):此时
+ * 当会话/agent 不支持附件输入时由上层经 options 置 supported=false(Req 3.5):此时
  * add 不入列,全部文件记入 rejected。
  *
  * 上传摄入(Req 5.1/5.4/5.5/5.6/2.4):`add()` 异步——先以本地预览 dataUrl 入列并置
@@ -12,7 +12,7 @@
  * (`displayUrl`),失败置 `status="error"`。仅 `status="ready"` 且带 server 铸造的
  * `attachmentId` 才视为可提交的已落库引用(`referenceIds()`);前端不自造正式 id。
  *
- * 不变量:仅 `image/*` 进入 items;`toImageContents` 产出的 `data` 为裸 base64
+ * 不变量:`toImageContents` 仅输出 `image/*`;其 `data` 为裸 base64
  * (无 data URL 前缀),对齐 `@blksails/pi-web-protocol` 的 ImageContent schema
  * ({ type: "image", data: string, mimeType: string })。vision 维持现状:发图仍走
  * base64(`toImageContents()`),不内联进列表项展示。
@@ -33,7 +33,7 @@ export interface PendingAttachment {
   readonly id: string;
   readonly name: string;
   readonly mimeType: string;
-  /** 完整 data URL(`data:<mime>;base64,<...>`),用于上传前本地预览缩略图。 */
+  /** 完整 data URL(`data:<mime>;base64,<...>`),用于上传前本地预览与图片消息。 */
   readonly dataUrl: string;
   /**
    * 上传状态:uploading(进行中)/ ready(已落库)/ error(失败)。
@@ -58,7 +58,7 @@ export type UploadAttachmentFn = (
 ) => Promise<UploadAttachmentResponse>;
 
 export interface UseAttachmentsOptions {
-  /** 当前会话/agent 是否支持图片输入;默认 true。由上层依据能力决定。 */
+  /** 当前会话/agent 是否支持附件输入;默认 true。由上层依据能力决定。 */
   readonly supported?: boolean;
   /** http-api 基址(如 `/api`),传给上传函数。上传所需,缺省为 ""。 */
   readonly baseUrl?: string;
@@ -70,11 +70,11 @@ export interface UseAttachmentsOptions {
 
 export interface UseAttachmentsResult {
   readonly items: ReadonlyArray<PendingAttachment>;
-  /** 当前会话/agent 是否支持图片输入。 */
+  /** 当前会话/agent 是否支持附件输入。 */
   readonly supported: boolean;
   /**
-   * 仅 `image/*` 进入 items(以 uploading 态入列并异步上传);非图片(或 supported=false
-   * 时全部)文件名进 rejected。Promise 在「入列 + 触发上传」后即 resolve,状态机后续
+   * supported=true 时所有本地文件进入 items(以 uploading 态入列并异步上传);supported=false
+   * 时文件名进 rejected。Promise 在「入列 + 触发上传」后即 resolve,状态机后续
    * 经 setItems 推进至 ready/error。
    */
   add(files: FileList | File[]): Promise<{ rejected: string[] }>;
@@ -220,22 +220,15 @@ export function useAttachments(
   const add = useCallback(
     async (files: FileList | File[]): Promise<{ rejected: string[] }> => {
       const list = toFileArray(files);
-      // 不支持图片输入时:不入列,全部记为 rejected(Req 3.5)。
+      // 不支持附件输入时:不入列,全部记为 rejected(Req 3.5)。
       if (!supported) {
         return { rejected: list.map((f) => f.name) };
       }
 
       const rejected: string[] = [];
-      const accepted: File[] = [];
-      for (const file of list) {
-        if (isImage(file)) {
-          accepted.push(file);
-        } else {
-          rejected.push(file.name);
-        }
-      }
+      const accepted = list;
 
-      // 先压缩,再读本地预览 dataUrl,以 uploading 态入列(Req 5.4),并记录待上传 File。
+      // 图片先压缩,再读本地预览 dataUrl;其它文件直接读原文件,以 uploading 态入列。
       //
       // ★压缩结果必须**同时**用于预览与上传(spec upload-image-compression Req 1.6):
       // 若只把 readAsDataUrl 的入参换成压缩版、却把原 file 继续交给上传,就会出现
@@ -248,7 +241,7 @@ export function useAttachments(
         accepted,
         ATTACHMENT_PREPARE_CONCURRENCY,
         async (file): Promise<{ entry: PendingAttachment; file: File }> => {
-          const source = await compressImage(file);
+          const source = isImage(file) ? await compressImage(file) : file;
           const dataUrl = await readAsDataUrl(source);
           const entry: PendingAttachment = {
             id: nextId(),
@@ -291,11 +284,13 @@ export function useAttachments(
   itemsRef.current = items;
 
   const toImageContents = useCallback((): ImageContent[] => {
-    return itemsRef.current.map((it) => ({
-      type: "image",
-      data: base64FromDataUrl(it.dataUrl),
-      mimeType: it.mimeType,
-    }));
+    return itemsRef.current
+      .filter((it) => it.mimeType.startsWith("image/"))
+      .map((it) => ({
+        type: "image",
+        data: base64FromDataUrl(it.dataUrl),
+        mimeType: it.mimeType,
+      }));
   }, []);
 
   const toFileParts = useCallback((): FileUIPart[] => {

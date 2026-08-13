@@ -13,6 +13,7 @@
  */
 import * as React from "react";
 import type { CompletionItem } from "@blksails/pi-web-protocol";
+import { File, FileAudio, FileVideo } from "lucide-react";
 import { cn } from "../lib/cn.js";
 import {
   useCompletion,
@@ -44,6 +45,63 @@ export interface PiCompletionPopoverProps {
    */
   readonly onAccept?: (item: CompletionItem) => void;
   readonly className?: string;
+}
+
+function CompletionPreview({
+  item,
+}: {
+  readonly item: CompletionItem;
+}): React.JSX.Element | null {
+  if (item.previewUrl === undefined) return null;
+  const mime = item.mediaType?.toLowerCase() ?? "";
+  if (mime.startsWith("video/")) {
+    return (
+      <video
+        src={item.previewUrl}
+        muted
+        playsInline
+        preload="metadata"
+        aria-label={item.label}
+        data-pi-completion-preview
+        className="h-8 w-8 shrink-0 rounded-sm border border-[hsl(var(--border))] object-cover"
+      />
+    );
+  }
+  if (mime.startsWith("audio/")) {
+    return (
+      <span
+        role="img"
+        aria-label={item.label}
+        data-pi-completion-preview
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
+      >
+        <FileAudio className="h-4 w-4" aria-hidden="true" />
+      </span>
+    );
+  }
+  if (mime !== "" && !mime.startsWith("image/")) {
+    return (
+      <span
+        role="img"
+        aria-label={item.label}
+        data-pi-completion-preview
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))]"
+      >
+        <File className="h-4 w-4" aria-hidden="true" />
+      </span>
+    );
+  }
+  // 兼容旧候选:有 previewUrl 但未携带 mediaType 时按图片渲染。
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image
+    <img
+      src={item.previewUrl}
+      alt=""
+      loading="lazy"
+      data-pi-completion-preview
+      className="h-8 w-8 shrink-0 rounded-sm border border-[hsl(var(--border))] object-cover"
+    />
+  );
 }
 
 export function PiCompletionPopover({
@@ -234,17 +292,8 @@ export function PiCompletionPopover({
                     {...(isActive ? { "data-active": "true" } : {})}
                   >
                     <span className="flex items-center gap-2">
-                      {/* attachment-mention-preview:图片附件候选的缩略图。 */}
-                      {item.previewUrl !== undefined ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image
-                        <img
-                          src={item.previewUrl}
-                          alt=""
-                          loading="lazy"
-                          data-pi-completion-preview
-                          className="h-8 w-8 shrink-0 rounded-sm border border-[hsl(var(--border))] object-cover"
-                        />
-                      ) : null}
+                      {/* attachment-mention-preview:媒体候选的缩略图/类型图标。 */}
+                      <CompletionPreview item={item} />
                       <span className="min-w-0 truncate">{item.label}</span>
                       {item.detail !== undefined ? (
                         <span className="ml-1 shrink-0 text-xs text-[hsl(var(--muted-foreground))]">

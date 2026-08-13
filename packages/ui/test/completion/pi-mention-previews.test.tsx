@@ -64,6 +64,43 @@ describe("PiMentionPreviews", () => {
     expect(xChip?.textContent).toContain("att_x");
   });
 
+  it("视频/音频引用 → 缩略图或图标,hover 出现可播放预览", () => {
+    const { container } = render(
+      <PiMentionPreviews
+        value="@attachment:att_video @attachment:att_audio"
+        previews={previewsOf({
+          att_video: {
+            name: "clip.mp4",
+            mediaType: "video/mp4",
+            previewUrl: "/api/attachments/att_video/raw",
+          },
+          att_audio: {
+            name: "voice.mp3",
+            mediaType: "audio/mpeg",
+            previewUrl: "/api/attachments/att_audio/raw",
+          },
+        })}
+      />,
+    );
+    const videoThumb = container.querySelector(
+      '[data-pi-mention-preview="att_video"] [data-pi-mention-preview-thumb]',
+    );
+    expect(videoThumb?.querySelector("video")).not.toBeNull();
+    fireEvent.mouseEnter(videoThumb!);
+    expect(
+      container.querySelector("[data-pi-mention-preview-popup] video[controls]"),
+    ).not.toBeNull();
+    fireEvent.mouseLeave(videoThumb!);
+
+    const audioThumb = container.querySelector(
+      '[data-pi-mention-preview="att_audio"] [data-pi-mention-preview-thumb]',
+    );
+    fireEvent.mouseEnter(audioThumb!);
+    expect(
+      container.querySelector("[data-pi-mention-preview-popup] audio[controls]"),
+    ).not.toBeNull();
+  });
+
   it("点移除按钮 → onRemove(id)", () => {
     const onRemove = vi.fn();
     const { container } = render(

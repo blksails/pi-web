@@ -72,7 +72,33 @@ describe("PartRenderer 分派", () => {
     ).toBe("image");
   });
 
-  it("file(非 image,如 pdf)→ 仍返回 null,不渲染 <img>", () => {
+  it("file(video/*)→ 渲染带 controls 的 <video>", () => {
+    const { container } = render(
+      <PartRenderer
+        part={filePart("/api/attachments/att_v/raw", "video/mp4", "clip.mp4")}
+        message={msg}
+      />,
+    );
+    const video = container.querySelector("video[data-pi-message-video]");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute("src", "/api/attachments/att_v/raw");
+    expect(video).toHaveAttribute("controls");
+  });
+
+  it("file(audio/*)→ 渲染带 controls 的 <audio>", () => {
+    const { container } = render(
+      <PartRenderer
+        part={filePart("/api/attachments/att_a/raw", "audio/mpeg", "voice.mp3")}
+        message={msg}
+      />,
+    );
+    const audio = container.querySelector("audio[data-pi-message-audio]");
+    expect(audio).not.toBeNull();
+    expect(audio).toHaveAttribute("src", "/api/attachments/att_a/raw");
+    expect(audio).toHaveAttribute("controls");
+  });
+
+  it("file(非媒体,如 pdf)→ 仍返回 null", () => {
     const { container } = render(
       <PartRenderer
         part={filePart("/api/attachments/att_x/raw", "application/pdf", "a.pdf")}

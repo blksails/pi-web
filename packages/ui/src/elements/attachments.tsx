@@ -1,17 +1,17 @@
 /**
  * Attachments — 无状态的附件展示与拖拽/粘贴/选择入口(含呈现增强)。
  *
- * 本元件不持有任何附件状态或编码逻辑(实际图片过滤/base64 编码在 `useAttachments`)。
+ * 本元件不持有任何附件状态或编码逻辑(上传与预览数据在 `useAttachments`)。
  * 它负责展示与本地交互:
  *  - 展示待发送/已发送附件:缩略图、文件名、可读类型标签、移除按钮(Req 3.1/3.3、12.1)。
  *    缩略图/悬浮预览就绪后用网络展示 URL(`displayUrl`),上传中回退本地预览 `dataUrl`(Req 5.2)。
  *  - 对上传中(`status="uploading"`)呈现进行态、失败(`status="error"`)呈现错误标记(Req 5.4/5.5)。
  *  - dropzone:拖拽 drop、粘贴 paste、点击选择(file input)→ 调 `onAdd(files)`(Req 3.1)。
- *  - 展示上层 `useAttachments.add` 返回的 `rejected` 非图片文件名,提示"暂不支持该类型附件";
- *    不入列、不阻断已有图片或文本的发送(Req 3.4、12.5)。
- *  - 悬停/键盘聚焦图片缩略图 → 放大预览浮层(自定义轻量浮层,非 radix-hover-card,Req 12.2)。
+ *  - 展示上层 `useAttachments.add` 返回的 `rejected` 文件名,提示错误语义。
+ *  - 悬停/键盘聚焦媒体缩略图 → 图片放大、视频/音频播放浮层(自定义轻量浮层,Req 12.2)。
  *  - 无可用缩略图时以该类别占位图标降级,仍保留文件名与移除(Req 12.4)。
- *  - 布局变体 panel/compact/inline/grid/list(Req 12.3);panel/compact 行为与历史完全一致(向后兼容)。
+ *  - 布局变体 panel/compact/inline/grid/list(Req 12.3);compact 只保留添加入口,
+ *    待发送附件统一由上层置于输入框上方的 inline 展示带。
  *  - panel/compact 在 `supported=false` 时隐藏附件入口(Req 3.5);inline/grid/list 为纯展示变体,
  *    不含 add 入口,故不受 `supported` 影响。
  *
@@ -35,7 +35,7 @@ import { useIcon } from "../customization/icons.js";
 import { cn } from "../lib/cn.js";
 import { useI18n } from "../i18n/index.js";
 
-/** 附件媒体类别(本期入列恒为 image,其余为未来非图片留口)。 */
+/** 附件媒体类别。 */
 export type MediaCategory = "image" | "video" | "audio" | "file";
 
 const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp", "ico"];
@@ -109,18 +109,18 @@ const THUMB_DIM: Record<ThumbSize, string> = {
 export interface AttachmentsProps {
   /** 待发送/已发送附件项(来自 useAttachments.items 或消息附件)。 */
   readonly items: ReadonlyArray<PendingAttachment>;
-  /** 当前会话/agent 是否支持图片输入;false 时隐藏 panel/compact 附件入口(Req 3.5)。 */
+  /** 当前会话/agent 是否支持附件输入;false 时隐藏 panel/compact 附件入口(Req 3.5)。 */
   readonly supported: boolean;
-  /** 新增附件回调,透传原始 files(由上层 useAttachments.add 过滤/编码)(Req 3.1)。 */
+  /** 新增附件回调,透传原始 files(由上层 useAttachments.add 编码/上传)(Req 3.1)。 */
   readonly onAdd: (files: FileList | File[]) => void;
   /** 移除某附件回调(Req 3.3)。 */
   readonly onRemove: (id: string) => void;
-  /** 上层拒收的非图片文件名;非空时展示"暂不支持"提示(Req 3.4)。 */
+  /** 上层拒收的文件名;非空时以红色错误语义提示(Req 3.4)。 */
   readonly rejected?: ReadonlyArray<string>;
   /**
    * 布局变体(Req 12.3):
    *  - "panel"(默认):虚线 dropzone(拖拽/粘贴/点击)+ chips,适合独立附件区。
-   *  - "compact":paperclip 图标按钮(点击选择)+ chips,适合嵌入输入框工具条。
+   *  - "compact":paperclip 图标按钮(点击选择),适合嵌入输入框工具条。
    *  - "inline":仅紧凑徽章排(无入口),适合输入区已选附件内联展示。
    *  - "grid":缩略图网格(无入口),适合消息内多图。
    *  - "list":带类型标签的行(无入口),适合元信息呈现。
@@ -145,10 +145,10 @@ function filesFrom(list: FileList | null | undefined): FileList | null {
 }
 
 /**
- * 缩略图/预览图片源:就绪后优先用 server 返回的网络展示 URL(`displayUrl`),
+ * 缩略图/预览媒体源:就绪后优先用 server 返回的网络展示 URL(`displayUrl`),
  * 上传中(尚无 displayUrl)回退本地预览 `dataUrl`(Req 5.2/5.4,design.md 行 443)。
  */
-function imageSrc(att: PendingAttachment): string {
+function mediaSrc(att: PendingAttachment): string {
   return att.displayUrl ?? att.dataUrl;
 }
 
@@ -194,8 +194,8 @@ function StatusOverlay({
 /**
  * 附件缩略图 + 占位图标 + 悬停预览浮层(Req 12.2/12.4)+ 上传状态覆盖(Req 5.4/5.5)。
  * 自定义轻量浮层:受控 hovered 态 + 绝对定位预览层;指针 enter/leave 与键盘 focus/blur 双触发,
- * 移开/失焦关闭。预览图仅在 hovered 时条件渲染,避免默认态出现第二个同名 `img`。
- * 图片源就绪后用网络展示 URL(displayUrl),上传中回退本地 dataUrl(Req 5.2)。
+ * 移开/失焦关闭。媒体预览仅在 hovered 时条件渲染。
+ * 源就绪后用网络展示 URL(displayUrl),上传中回退本地 dataUrl(Req 5.2)。
  */
 function AttachmentThumb({
   att,
@@ -208,9 +208,11 @@ function AttachmentThumb({
 }): React.JSX.Element {
   const t = useI18n();
   const cat = getMediaCategory(att);
-  const src = imageSrc(att);
+  const src = mediaSrc(att);
   const hasImage = cat === "image" && Boolean(src);
-  const previewable = hoverPreview && hasImage;
+  const hasVideo = cat === "video" && Boolean(src);
+  const hasAudio = cat === "audio" && Boolean(src);
+  const previewable = hoverPreview && (hasImage || hasVideo || hasAudio);
   const [hovered, setHovered] = React.useState(false);
   const Icon = categoryIcon(cat);
   const dim = THUMB_DIM[size];
@@ -239,6 +241,15 @@ function AttachmentThumb({
           alt={att.name}
           className={cn(dim, "rounded-[calc(var(--radius)-2px)] object-cover")}
         />
+      ) : hasVideo ? (
+        <video
+          src={src}
+          muted
+          playsInline
+          preload="metadata"
+          aria-label={att.name}
+          className={cn(dim, "rounded-[calc(var(--radius)-2px)] object-cover")}
+        />
       ) : (
         <span
           role="img"
@@ -257,13 +268,26 @@ function AttachmentThumb({
           role="tooltip"
           data-testid="pi-attachment-preview"
           data-pi-attachment-preview
-          className="absolute bottom-full left-0 z-50 mb-2 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1 shadow-md"
+          // 与缩略图直接相接,避免 hover 经过空隙时触发 mouseleave 导致播放器消失。
+          className="absolute bottom-full left-0 z-50 rounded-[var(--radius)] border border-[hsl(var(--border))] bg-[hsl(var(--popover))] p-1 shadow-md"
         >
-          <img
-            src={src}
-            alt={t("attachments.previewAlt").replace("{name}", att.name)}
-            className="max-h-48 max-w-[12rem] rounded-[calc(var(--radius)-2px)] object-contain"
-          />
+          {hasImage ? (
+            <img
+              src={src}
+              alt={t("attachments.previewAlt").replace("{name}", att.name)}
+              className="max-h-48 max-w-[12rem] rounded-[calc(var(--radius)-2px)] object-contain"
+            />
+          ) : hasVideo ? (
+            <video
+              src={src}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-48 max-w-[16rem] rounded-[calc(var(--radius)-2px)]"
+            />
+          ) : (
+            <audio src={src} controls autoPlay className="max-w-[16rem]" />
+          )}
         </span>
       ) : null}
     </span>
@@ -386,7 +410,7 @@ export function Attachments({
     </span>
   ) : null;
 
-  // compact:paperclip 图标按钮(点击选择)+ chips,嵌入输入框工具条用。
+  // compact:仅保留 paperclip 添加入口；附件 chips 由上层置于输入框上方。
   if (variant === "compact") {
     return (
       <div
@@ -398,14 +422,13 @@ export function Attachments({
           type="button"
           aria-label={addLabel}
           onClick={() => inputRef.current?.click()}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-0 leading-none text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           data-pi-attachments-add
         >
-          <AttachIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          <AttachIcon className="block h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <input
             ref={inputRef}
             type="file"
-            accept="image/*"
             multiple
             aria-label={addLabel}
             onChange={handleChange}
@@ -413,21 +436,6 @@ export function Attachments({
             data-pi-attachments-input
           />
         </button>
-        {items.map((it) => (
-          <span
-            key={it.id}
-            className="relative inline-flex items-center gap-1.5 rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] py-1 pl-1 pr-2 text-xs text-[hsl(var(--foreground))]"
-            data-pi-attachment-chip
-          >
-            <AttachmentThumb att={it} size="sm" hoverPreview={hoverPreview} />
-            <span className="max-w-[8rem] truncate" title={it.name}>
-              {it.name}
-            </span>
-            <TypeLabel att={it} />
-            <RemoveButton att={it} onRemove={onRemove} removeLabel={removeLabel} />
-          </span>
-        ))}
-        {rejectedNode}
       </div>
     );
   }
@@ -588,7 +596,6 @@ export function Attachments({
         <input
           ref={inputRef}
           type="file"
-          accept="image/*"
           multiple
           aria-label={addLabel}
           onChange={handleChange}

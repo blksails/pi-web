@@ -213,7 +213,11 @@ describe("PiCompletionPopover 键盘导航", () => {
 });
 
 // ── attachment-mention-preview + 分组标题本地化 ──────────────────────────────
-function attachmentItem(id: string, previewUrl?: string): CompletionItem {
+function attachmentItem(
+  id: string,
+  previewUrl?: string,
+  mediaType?: string,
+): CompletionItem {
   return {
     id,
     kind: "attachment",
@@ -221,6 +225,7 @@ function attachmentItem(id: string, previewUrl?: string): CompletionItem {
     insertText: `@attachment:${id}`,
     detail: "image/png · 1 KB",
     ...(previewUrl !== undefined ? { previewUrl } : {}),
+    ...(mediaType !== undefined ? { mediaType } : {}),
   } as CompletionItem;
 }
 
@@ -238,6 +243,11 @@ describe("PiCompletionPopover 分组标题本地化 + 附件缩略图", () => {
   it("带 previewUrl 的附件候选渲染缩略图 img;无则不渲染", async () => {
     const client = makeClient([
       attachmentItem("cat.png", "/api/attachments/att_1/raw?exp=1&sig=x"),
+      attachmentItem(
+        "clip.mp4",
+        "/api/attachments/att_2/raw?exp=1&sig=x",
+        "video/mp4",
+      ),
       attachmentItem("doc.pdf"),
     ]);
     const { container } = await renderOpen(client);
@@ -245,6 +255,12 @@ describe("PiCompletionPopover 分组标题本地化 + 附件缩略图", () => {
     const imgs = container.querySelectorAll("img[data-pi-completion-preview]");
     expect(imgs.length).toBe(1);
     expect(imgs[0]?.getAttribute("src")).toBe("/api/attachments/att_1/raw?exp=1&sig=x");
+    const video = container.querySelector("video[data-pi-completion-preview]");
+    expect(video).not.toBeNull();
+    expect(video).toHaveAttribute(
+      "src",
+      "/api/attachments/att_2/raw?exp=1&sig=x",
+    );
   });
 
   it("未知 kind → 分组标题回退原 kind 文本(不显示裸 i18n key)", async () => {

@@ -248,9 +248,8 @@ export function PartRenderer({
     return <DefaultDataPart part={part} />;
   }
 
-  // file(image):用户消息里发送的图片在历史回放时为 file part(见 agent-message-to-ui
-  // 的 userParts → imageUrl),此前本层 return null 故不显示。仅渲染 image/* 媒体;
-  // 非图片 file 与 step-start / source 等仍返回 null,行为不变。
+  // file:用户消息里发送的附件在历史回放时为 file part(见 agent-message-to-ui
+  // 的 userParts → imageUrl)。图片、视频、音频可直接回放;其它文件仍由上层下载入口处理。
   if (part.type === "file") {
     const filePart = part as {
       type: "file";
@@ -261,18 +260,43 @@ export function PartRenderer({
     const url = typeof filePart.url === "string" ? filePart.url : "";
     const mediaType =
       typeof filePart.mediaType === "string" ? filePart.mediaType : "";
-    if (url !== "" && mediaType.startsWith("image/")) {
-      const alt =
-        typeof filePart.filename === "string" && filePart.filename !== ""
-          ? filePart.filename
-          : t("partRenderer.imageAlt");
+    if (url === "") return null;
+    const label =
+      typeof filePart.filename === "string" && filePart.filename !== ""
+        ? filePart.filename
+        : t("partRenderer.imageAlt");
+    if (mediaType.startsWith("image/")) {
       return (
         // eslint-disable-next-line @next/next/no-img-element -- ui 包不依赖 next/image;与 attachments.tsx 一致
         <img
           src={url}
-          alt={alt}
+          alt={label}
           data-pi-message-image
           className="max-h-[40dvh] max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))] object-contain"
+        />
+      );
+    }
+    if (mediaType.startsWith("video/")) {
+      return (
+        <video
+          src={url}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label={label}
+          data-pi-message-video
+          className="max-h-[40dvh] max-w-full rounded-[var(--radius)] border border-[hsl(var(--border))]"
+        />
+      );
+    }
+    if (mediaType.startsWith("audio/")) {
+      return (
+        <audio
+          src={url}
+          controls
+          aria-label={label}
+          data-pi-message-audio
+          className="max-w-full"
         />
       );
     }

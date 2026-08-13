@@ -127,19 +127,21 @@ export function ConversationImageGallery({
         return (
           <figure
             key={asset.id}
-            className="group relative m-0 flex min-h-0 max-w-full items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]"
+            className="group m-0 flex min-h-0 max-w-full flex-col overflow-hidden rounded-[4px] border border-[hsl(var(--border))] bg-[hsl(var(--surface-subtle))]"
             data-pi-conversation-image
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- SDK 组件须支持 blob/data/签名 URL。 */}
-            <img
-              src={asset.url}
-              alt={asset.filename ?? "AIGC 生成图片"}
-              className="block h-auto max-w-full object-contain"
-              // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
-              style={{ maxHeight: "40dvh" }}
-            />
+            <div className="flex aspect-[4/3] min-h-0 w-full items-center justify-center bg-[hsl(var(--surface-subtle))]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- SDK 组件须支持 blob/data/签名 URL。 */}
+              <img
+                src={asset.url}
+                alt={asset.filename ?? "AIGC 生成图片"}
+                className="block h-full w-full object-contain"
+                // ui-redesign:图片最大不超过屏幕高度 2/5(40dvh)。
+                style={{ maxHeight: "40dvh" }}
+              />
+            </div>
             <div
-              className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-full border border-[hsl(var(--border)/0.8)] bg-[hsl(var(--surface)/0.86)] p-1 text-[hsl(var(--foreground))] shadow-lg backdrop-blur-md"
+              className="flex max-w-full flex-wrap items-center gap-1 border-t border-[hsl(var(--border))] bg-[hsl(var(--surface))] p-1.5 text-[hsl(var(--foreground))]"
               data-pi-conversation-image-pill
             >
               {applicable.map((action) => {
@@ -148,7 +150,7 @@ export function ConversationImageGallery({
                   <button
                     key={action.id}
                     type="button"
-                    className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
+                    className="inline-flex min-h-8 items-center gap-1.5 rounded-[7px] px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                     aria-label={action.label}
                     title={action.label}
                     disabled={busy !== undefined}
@@ -167,7 +169,7 @@ export function ConversationImageGallery({
               {!applicable.some((action) => action.id === "download") ? (
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-[7px] px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                   aria-label="下载"
                   title="下载"
                   disabled={busy !== undefined}
@@ -184,7 +186,7 @@ export function ConversationImageGallery({
               !applicable.some((action) => action.id === "download-all") ? (
                 <button
                   type="button"
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-[7px] px-2 text-xs hover:bg-[hsl(var(--surface-subtle))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50"
                   aria-label="下载全部"
                   title="下载全部"
                   disabled={busy !== undefined}

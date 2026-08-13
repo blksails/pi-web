@@ -233,19 +233,29 @@ describe("useAttachments", () => {
     expect(result.current.referenceIds!()).toEqual(["att_ok"]);
   });
 
-  it("rejects non-image files by name and does not add them", async () => {
+  it("accepts mixed local files and keeps vision payload image-only", async () => {
     const { result } = renderHook(() => useAttachments(okOptions()));
     let rejected: string[] = [];
     await act(async () => {
       const res = await result.current.add([
         makeFile("doc.pdf", "application/pdf", [1, 2, 3]),
+        makeFile("clip.mp4", "video/mp4", [0, 1, 2]),
         makeFile("ok.png", "image/png", PNG_BYTES),
       ]);
       rejected = res.rejected;
     });
-    expect(rejected).toEqual(["doc.pdf"]);
-    expect(result.current.items).toHaveLength(1);
-    expect(result.current.items[0]?.name).toBe("ok.png");
+    expect(rejected).toEqual([]);
+    await waitFor(() =>
+      expect(result.current.items.every((item) => item.status === "ready")).toBe(
+        true,
+      ),
+    );
+    expect(result.current.items.map((item) => item.name)).toEqual([
+      "doc.pdf",
+      "clip.mp4",
+      "ok.png",
+    ]);
+    expect(result.current.toImageContents()).toHaveLength(1);
   });
 
   it("remove drops a single attachment by id", async () => {

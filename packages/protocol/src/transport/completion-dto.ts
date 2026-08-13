@@ -24,11 +24,13 @@ export const CompletionItemSchema = z.object({
   score: z.number().optional(),
   sortText: z.string().optional(),
   /**
-   * 可选缩略图 URL(attachment-mention-preview):图片类附件候选携带其分发展示 URL,
-   * 前端补全浮层据此渲染缩略图。server 产出为根相对 `/attachments/:id/raw?exp&sig`,
+   * 可选缩略图/播放 URL(attachment-mention-preview):媒体类附件候选携带其分发展示 URL,
+   * 前端补全浮层据此渲染缩略图或播放器。server 产出为根相对 `/attachments/:id/raw?exp&sig`,
    * 客户端 `getCompletion` 前缀 baseUrl 后可达(与附件展示 URL 同策略)。
    */
   previewUrl: z.string().optional(),
+  /** 媒体 MIME 类型,供附件引用 pill 选择图片/视频/音频预览器。 */
+  mediaType: z.string().optional(),
 });
 export type CompletionItem = z.infer<typeof CompletionItemSchema>;
 

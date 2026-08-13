@@ -21,24 +21,43 @@
 import * as React from "react";
 import { getPiWebDesktopBridge } from "@/lib/app/desktop-bridge.js";
 
-/** 身份三字段(镜像契约 `CapabilityTenant`)。 */
+/** 身份必填三字段 + 可选资料投影(镜像契约 `CapabilityTenant`)。 */
 export interface IdentityTenant {
   readonly userId: string;
   readonly companyId: string;
   readonly role: string;
-  /** 人类可读用户名(云端 `profiles.name`)。缺失时展示层退回 `userId`。 */
+  /** 人类可读资料；展示层按 username → nickname → fullName 等顺序回退。 */
   readonly displayName?: string;
+  readonly username?: string;
+  readonly nickname?: string;
+  readonly fullName?: string;
+  readonly email?: string;
+  readonly phone?: string;
+  readonly avatarUrl?: string;
+  readonly companyName?: string;
 }
 
 /**
- * 展示用名字:有 `displayName` 用它,否则退回 `userId`。
+ * 展示用名字：沿用 pi-labs 的资料回退链。
  *
  * 纯函数,便于单测。★ 只用于展示 —— 身份的权威标识始终是 `userId`,
  * `displayName` 可重名、可为空、可被用户随时改,不得用于任何判定。
  */
 export function tenantDisplayName(tenant: IdentityTenant): string {
-  const n = tenant.displayName?.trim();
-  return n !== undefined && n.length > 0 ? n : tenant.userId;
+  const candidates = [
+    tenant.username,
+    tenant.nickname,
+    tenant.fullName,
+    tenant.displayName,
+    tenant.email,
+  ];
+  for (const value of candidates) {
+    const n = value?.trim();
+    if (n !== undefined && n.length > 0) return n;
+  }
+  const phone = tenant.phone?.trim();
+  if (phone !== undefined && phone.length > 0) return `··${phone.slice(-4)}`;
+  return tenant.userId;
 }
 
 export type IdentityUiState =
@@ -165,19 +184,45 @@ function parseView(body: IdentityViewBody): IdentityUiState {
         companyId?: unknown;
         role?: unknown;
         displayName?: unknown;
+        username?: unknown;
+        nickname?: unknown;
+        fullName?: unknown;
+        email?: unknown;
+        phone?: unknown;
+        avatarUrl?: unknown;
+        avatar_url?: unknown;
+        companyName?: unknown;
+        company_name?: unknown;
       };
       if (typeof o.userId === "string") {
         // role/companyId 缺失时退回空串而非丢弃整个身份 —— Req 5.3「展示可得的最小
         // 身份信息,不得展示空白或错误」。
+        const text = (value: unknown): string | undefined =>
+          typeof value === "string" && value.trim().length > 0
+            ? value.trim()
+            : undefined;
+        const displayName = text(o.displayName);
+        const username = text(o.username);
+        const nickname = text(o.nickname);
+        const fullName = text(o.fullName);
+        const email = text(o.email);
+        const phone = text(o.phone);
+        const avatarUrl = text(o.avatarUrl) ?? text(o.avatar_url);
+        const companyName = text(o.companyName) ?? text(o.company_name);
         return {
           kind: "authenticated",
           tenant: {
             userId: o.userId,
             companyId: typeof o.companyId === "string" ? o.companyId : "",
             role: typeof o.role === "string" ? o.role : "",
-            ...(typeof o.displayName === "string" && o.displayName.trim().length > 0
-              ? { displayName: o.displayName.trim() }
-              : {}),
+            ...(displayName !== undefined ? { displayName } : {}),
+            ...(username !== undefined ? { username } : {}),
+            ...(nickname !== undefined ? { nickname } : {}),
+            ...(fullName !== undefined ? { fullName } : {}),
+            ...(email !== undefined ? { email } : {}),
+            ...(phone !== undefined ? { phone } : {}),
+            ...(avatarUrl !== undefined ? { avatarUrl } : {}),
+            ...(companyName !== undefined ? { companyName } : {}),
           },
           canExchange,
         };

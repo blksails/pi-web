@@ -86,7 +86,7 @@ export function LoginControl({
       className={`flex min-w-0 max-w-full items-center gap-1.5 ${className ?? ""}`}
       data-testid="login-status"
     >
-      {/* 展示名优先,退回 userId(UUID)。云端未提供 profiles.name 时行为与之前一致。 */}
+      {/* 展示名优先,退回 userId(UUID)。公司名只显示云端查得的 companyName。 */}
       <span
         className="min-w-0 flex-1 truncate whitespace-nowrap text-xs text-muted-foreground"
         data-testid="login-user"
@@ -95,9 +95,9 @@ export function LoginControl({
       >
         {displayName}
       </span>
-      {state.tenant.companyId.length > 0 && (
+      {state.tenant.companyName?.trim() && (
         <span className="max-w-24 shrink truncate whitespace-nowrap text-xs text-muted-foreground/70" data-testid="login-company">
-          @{state.tenant.companyId}
+          {state.tenant.companyName}
         </span>
       )}
       {identity.needsReauth && (

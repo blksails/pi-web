@@ -55,7 +55,7 @@ export function PiSessionStats({
     return (
       <div
         className={cn(
-          "px-3 py-1 text-xs text-[hsl(var(--muted-foreground))]",
+          "flex h-full items-center px-3 py-0 text-xs text-[hsl(var(--muted-foreground))]",
           className,
         )}
         data-pi-session-stats
@@ -68,7 +68,7 @@ export function PiSessionStats({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-3 py-1 text-xs text-[hsl(var(--muted-foreground))]",
+        "flex h-full flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-0 text-xs text-[hsl(var(--muted-foreground))]",
         className,
       )}
       data-pi-session-stats

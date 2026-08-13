@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe("ConversationImageGallery", () => {
-  it("以适中 contain 容器与毛玻璃 pill 展示，动作去重并发布 Canvas 事件", async () => {
+  it("以固定比例 contain 容器与下方动作行展示，动作去重并发布 Canvas 事件", async () => {
     const user = userEvent.setup();
     const publish = vi.fn();
     const run = vi.fn(({ asset, publishPaneEvent }) => {
@@ -52,7 +52,7 @@ describe("ConversationImageGallery", () => {
     expect(image).toHaveClass("object-contain");
     expect(document.querySelectorAll("[data-image-action='canvas:open']")).toHaveLength(1);
     expect(document.querySelector("[data-pi-conversation-image-pill]"))
-      .toHaveClass("backdrop-blur-md");
+      .toHaveClass("border-t");
 
     await user.click(screen.getByRole("button", { name: "在画布中打开" }));
     expect(run).toHaveBeenCalledTimes(1);
