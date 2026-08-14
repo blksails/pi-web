@@ -11,6 +11,8 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import {
   IdentityStateProvider,
   identityListKey,
+  tenantDisplayName,
+  tenantVisibleCompany,
   useIdentity,
   type IdentityUiState,
 } from "../../components/auth/use-identity.js";
@@ -102,6 +104,29 @@ describe("identityListKey(纯函数)", () => {
       canExchange: true,
     };
     expect(identityListKey(companyA)).not.toBe(identityListKey(companyB));
+  });
+});
+
+describe("tenantDisplayName · pi-labs 链", () => {
+  it("username → nickname → fullName → email → 手机尾号", () => {
+    const base = { userId: "u1", companyId: "3", role: "admin" } as const;
+    expect(tenantDisplayName({ ...base, username: "杰阔", nickname: "jxk2yk", fullName: "Jxk" })).toBe("杰阔");
+    expect(tenantDisplayName({ ...base, nickname: "jxk2yk", fullName: "Jxk", email: "a@b.c" })).toBe("jxk2yk");
+    expect(tenantDisplayName({ ...base, fullName: "Jxk", email: "a@b.c" })).toBe("Jxk");
+    expect(tenantDisplayName({ ...base, email: "a@b.c", phone: "18775167632" })).toBe("a@b.c");
+    expect(tenantDisplayName({ ...base, phone: "18775167632" })).toBe("··7632");
+  });
+});
+
+describe("tenantVisibleCompany", () => {
+  it("有公司名且 source 非 pilabs → 展示", () => {
+    expect(tenantVisibleCompany({ ...TENANT, companyName: "黑帆", companySource: "pi-clouds" })).toBe("黑帆");
+    expect(tenantVisibleCompany({ ...TENANT, companyName: "未标来源" })).toBe("未标来源");
+  });
+
+  it("source=pilabs → 不展示(个人公司)", () => {
+    expect(tenantVisibleCompany({ ...TENANT, companyName: "我的公司", companySource: "pilabs" })).toBeUndefined();
+    expect(tenantVisibleCompany({ ...TENANT, companyName: "我的公司", companySource: "PiLabs" })).toBeUndefined();
   });
 });
 

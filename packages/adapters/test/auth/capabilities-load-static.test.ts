@@ -115,6 +115,26 @@ describe("loadStatic — 单项缺失只使该字段缺失,不整体失败(Req 4
     expect(snap.tenant?.displayName).toBe("张三");
   });
 
+  it("tenant 透出 username/avatarUrl/companySource", async () => {
+    const snap = await clientWith(
+      respond(200, {
+        tenant: {
+          ...FULL_BODY.tenant,
+          username: " hysios ",
+          avatar_url: "https://cdn.example/a.png",
+          companyName: "黑帆",
+          company_source: "pi-clouds",
+        },
+      }),
+    ).loadStatic();
+    expect(snap.tenant).toMatchObject({
+      username: "hysios",
+      avatarUrl: "https://cdn.example/a.png",
+      companyName: "黑帆",
+      companySource: "pi-clouds",
+    });
+  });
+
   it("tenant 用 name 作字段名 → 同样解出(兼容读位)", async () => {
     const snap = await clientWith(
       respond(200, { tenant: { ...FULL_BODY.tenant, name: "李四" } }),

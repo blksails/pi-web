@@ -20,6 +20,7 @@ import type {
   IdentityProvider,
   IdentityState,
 } from "./types.js";
+import { enrichCapabilityTenant } from "./profile-enrich.js";
 
 export interface DesktopPasswordIdentityProviderOptions {
   /** 密码登录客户端；可与 desktopAuth 并存（优先 desktopAuth）。 */
@@ -68,7 +69,7 @@ export function createDesktopPasswordIdentityProvider(
         try {
           const snapshot = await capabilitiesClient.loadStatic();
           if (snapshot.tenant === undefined) return { kind: "anonymous" };
-          cachedTenant = snapshot.tenant;
+          cachedTenant = await enrichCapabilityTenant(snapshot.tenant);
           cachedFor = cred;
         } catch {
           return { kind: "anonymous" };
@@ -135,14 +136,14 @@ export function createDesktopPasswordIdentityProvider(
       if (snapshot.tenant === undefined) {
         const fallback = tenantFromAuthSnapshot(authState);
         if (fallback === undefined) return { ok: true, state: { kind: "anonymous" } };
-        cachedTenant = fallback;
+        cachedTenant = await enrichCapabilityTenant(fallback);
         cachedFor = credential;
-        return { ok: true, state: { kind: "authenticated", tenant: fallback } };
+        return { ok: true, state: { kind: "authenticated", tenant: cachedTenant } };
       }
 
-      cachedTenant = snapshot.tenant;
+      cachedTenant = await enrichCapabilityTenant(snapshot.tenant);
       cachedFor = credential;
-      return { ok: true, state: { kind: "authenticated", tenant: snapshot.tenant } };
+      return { ok: true, state: { kind: "authenticated", tenant: cachedTenant } };
     },
 
     async revoke(): Promise<void> {

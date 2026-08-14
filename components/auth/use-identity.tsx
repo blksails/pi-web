@@ -35,22 +35,17 @@ export interface IdentityTenant {
   readonly phone?: string;
   readonly avatarUrl?: string;
   readonly companyName?: string;
+  readonly companySource?: string;
 }
 
 /**
- * 展示用名字：沿用 pi-labs 的资料回退链。
+ * 展示用名字：与 pi-labs `displayName` 同链。
+ * username → nickname → fullName → email → 手机尾号。
  *
- * 纯函数,便于单测。★ 只用于展示 —— 身份的权威标识始终是 `userId`,
- * `displayName` 可重名、可为空、可被用户随时改,不得用于任何判定。
+ * 纯函数,便于单测。★ 只用于展示 —— 身份的权威标识始终是 `userId`。
  */
 export function tenantDisplayName(tenant: IdentityTenant): string {
-  const candidates = [
-    tenant.username,
-    tenant.nickname,
-    tenant.fullName,
-    tenant.displayName,
-    tenant.email,
-  ];
+  const candidates = [tenant.username, tenant.nickname, tenant.fullName, tenant.email];
   for (const value of candidates) {
     const n = value?.trim();
     if (n !== undefined && n.length > 0) return n;
@@ -58,6 +53,16 @@ export function tenantDisplayName(tenant: IdentityTenant): string {
   const phone = tenant.phone?.trim();
   if (phone !== undefined && phone.length > 0) return `··${phone.slice(-4)}`;
   return tenant.userId;
+}
+
+/**
+ * 账户区公司名：有名字且 `companies.source !== "pilabs"` 才展示。
+ * pilabs 自动开的个人公司不占用户名下一行。
+ */
+export function tenantVisibleCompany(tenant: IdentityTenant): string | undefined {
+  const name = tenant.companyName?.trim();
+  if (name === undefined || name.length === 0) return undefined;
+  return tenant.companySource?.trim().toLowerCase() === "pilabs" ? undefined : name;
 }
 
 export type IdentityUiState =
@@ -193,6 +198,8 @@ function parseView(body: IdentityViewBody): IdentityUiState {
         avatar_url?: unknown;
         companyName?: unknown;
         company_name?: unknown;
+        companySource?: unknown;
+        company_source?: unknown;
       };
       if (typeof o.userId === "string") {
         // role/companyId 缺失时退回空串而非丢弃整个身份 —— Req 5.3「展示可得的最小
@@ -209,6 +216,7 @@ function parseView(body: IdentityViewBody): IdentityUiState {
         const phone = text(o.phone);
         const avatarUrl = text(o.avatarUrl) ?? text(o.avatar_url);
         const companyName = text(o.companyName) ?? text(o.company_name);
+        const companySource = text(o.companySource) ?? text(o.company_source);
         return {
           kind: "authenticated",
           tenant: {
@@ -223,6 +231,7 @@ function parseView(body: IdentityViewBody): IdentityUiState {
             ...(phone !== undefined ? { phone } : {}),
             ...(avatarUrl !== undefined ? { avatarUrl } : {}),
             ...(companyName !== undefined ? { companyName } : {}),
+            ...(companySource !== undefined ? { companySource } : {}),
           },
           canExchange,
         };

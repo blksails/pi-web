@@ -224,6 +224,8 @@ function parseTenant(parsed: unknown): CapabilityTenant | undefined {
     avatar_url?: unknown;
     companyName?: unknown;
     company_name?: unknown;
+    companySource?: unknown;
+    company_source?: unknown;
   };
   const text = (value: unknown): string | undefined =>
     typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
@@ -235,6 +237,7 @@ function parseTenant(parsed: unknown): CapabilityTenant | undefined {
   const phone = text(raw.phone);
   const avatarUrl = text(raw.avatarUrl) ?? text(raw.avatar_url);
   const companyName = text(raw.companyName) ?? text(raw.company_name);
+  const companySource = text(raw.companySource) ?? text(raw.company_source);
   return {
     userId: obj.userId,
     companyId: obj.companyId,
@@ -247,6 +250,7 @@ function parseTenant(parsed: unknown): CapabilityTenant | undefined {
     ...(phone !== undefined ? { phone } : {}),
     ...(avatarUrl !== undefined ? { avatarUrl } : {}),
     ...(companyName !== undefined ? { companyName } : {}),
+    ...(companySource !== undefined ? { companySource } : {}),
   };
 }
 

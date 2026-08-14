@@ -309,10 +309,10 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-password")).toBeTruthy();
   });
 
-  it("★ 有 displayName(云端 profiles.name)→ 展示名字而非 UUID", async () => {
+  it("★ 有 username → 展示名字而非 UUID", async () => {
     mount({
       state: "authenticated",
-      tenant: { ...TENANT, displayName: "张三" },
+      tenant: { ...TENANT, username: "张三", displayName: "折叠名" },
       canExchange: true,
     });
     await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("张三"));
@@ -320,7 +320,7 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-user").getAttribute("title")).toBe(TENANT.userId);
   });
 
-  it("username 优先于其它资料字段,并支持 pi-labs 回退链", async () => {
+  it("username 优先于 nickname / fullName", async () => {
     mount({
       state: "authenticated",
       tenant: {
@@ -338,7 +338,7 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     const name = "这是一个很长很长的宿主用户展示名称";
     mount({
       state: "authenticated",
-      tenant: { ...TENANT, displayName: name },
+      tenant: { ...TENANT, username: name },
       canExchange: true,
     });
     const user = await screen.findByTestId("login-user");
@@ -360,6 +360,16 @@ describe("LoginControl — 据身份状态分支渲染(Req 1.5/2.5/3.4/5.1/5.2)"
     expect(screen.getByTestId("login-company").textContent).toBe("Acme");
     expect(screen.getByTestId("login-company").textContent).not.toContain("c1");
     expect(screen.getByTestId("logout")).toBeTruthy();
+  });
+
+  it("companySource=pilabs → 不渲染公司名", async () => {
+    mount({
+      state: "authenticated",
+      tenant: { ...TENANT, companySource: "pilabs" },
+      canExchange: true,
+    });
+    await waitFor(() => expect(screen.getByTestId("login-user").textContent).toBe("u1"));
+    expect(screen.queryByTestId("login-company")).toBeNull();
   });
 
   it("companyId 缺失 → 不渲染公司标签,但用户名仍在(Req 5.3)", async () => {

@@ -77,6 +77,8 @@ export interface CapabilityTenant {
   readonly avatarUrl?: string;
   /** 当前 company 的人类可读名称；绝不以 companyId 代替。 */
   readonly companyName?: string;
+  /** `companies.source`；`pilabs` 的个人公司不在账户区展示公司名。 */
+  readonly companySource?: string;
 }
 
 /**

@@ -6,7 +6,7 @@
  */
 import * as React from "react";
 import { useI18n, useLocale } from "@blksails/pi-web-ui";
-import { tenantDisplayName, useIdentity } from "./use-identity.js";
+import { tenantDisplayName, tenantVisibleCompany, useIdentity } from "./use-identity.js";
 import { LoginForm } from "./login-form.js";
 import { BindPhoneForm } from "./bind-phone-form.js";
 import { useThemeToggle } from "@/src/theme-controls.js";
@@ -201,7 +201,7 @@ export function AccountBar({
 
   // authenticated
   const displayName = tenantDisplayName(state.tenant);
-  const company = state.tenant.companyName?.trim() || undefined;
+  const company = tenantVisibleCompany(state.tenant);
 
   return (
     <div

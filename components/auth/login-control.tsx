@@ -16,7 +16,7 @@
  * 字符串的解读,前者是云端对「你是谁」的权威表态。
  */
 import * as React from "react";
-import { tenantDisplayName, useIdentity } from "./use-identity.js";
+import { tenantDisplayName, tenantVisibleCompany, useIdentity } from "./use-identity.js";
 import { LoginForm } from "./login-form.js";
 
 const BTN =
@@ -81,12 +81,13 @@ export function LoginControl({
 
   // 已认证:身份 + 登出(+ 需重登时的内联表单)。
   const displayName = tenantDisplayName(state.tenant);
+  const company = tenantVisibleCompany(state.tenant);
   return (
     <div
       className={`flex min-w-0 max-w-full items-center gap-1.5 ${className ?? ""}`}
       data-testid="login-status"
     >
-      {/* 展示名优先,退回 userId(UUID)。公司名只显示云端查得的 companyName。 */}
+      {/* 展示名优先,退回 userId(UUID)。公司名只在 source≠pilabs 时显示。 */}
       <span
         className="min-w-0 flex-1 truncate whitespace-nowrap text-xs text-muted-foreground"
         data-testid="login-user"
@@ -95,11 +96,11 @@ export function LoginControl({
       >
         {displayName}
       </span>
-      {state.tenant.companyName?.trim() && (
+      {company !== undefined ? (
         <span className="max-w-24 shrink truncate whitespace-nowrap text-xs text-muted-foreground/70" data-testid="login-company">
-          {state.tenant.companyName}
+          {company}
         </span>
-      )}
+      ) : null}
       {identity.needsReauth && (
         <>
           <span className="text-xs text-destructive" data-testid="login-needs-reauth">
