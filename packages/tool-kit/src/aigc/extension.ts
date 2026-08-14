@@ -18,6 +18,7 @@ import {
   AI_GATEWAY_IMAGE_EDIT_ROUTES,
   CLOUDFLARE_IMAGE_EDIT_ROUTES,
 } from "./tools/image-edit.js";
+import { registerImageFitSize } from "./tools/image-fit-size.js";
 import { isCloudflareConfiguredAtRuntime } from "./cloudflare-runtime.js";
 // 网关实例的图像路由(spec desktop-aigc-egress 任务 3.3/3.5)。本模块属 runtime 层,
 // 允许读 env;被调的两个模块自身都不读 env(实例信息经入参传入),故不破坏双入口边界。
@@ -33,9 +34,9 @@ import {
 } from "./model-catalog.js";
 import { normalizeLegacyProviderId } from "@blksails/pi-web-protocol";
 import type { ImageRoute } from "./types.js";
+import { SIZE_OPTIONS } from "./size-options.js";
 
-/** 尺寸档位(与两工具 requiredParams 的 size 选项一致;auto = 交由工具默认行为)。 */
-export const SIZE_OPTIONS: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
+export { SIZE_OPTIONS } from "./size-options.js";
 
 /**
  * 装配期清单下发(aigc-prompt-toolbar Req 2.2/3.1):把「生成∪编辑」模型并集与尺寸档位
@@ -232,6 +233,7 @@ export function makeAigcExtension(options: AigcExtensionOptions = {}): Extension
       excludedProviders,
       extraRoutes: editExtraRoutes,
     });
+    registerImageFitSize(pi);
     const publishExtraRoutes: readonly ImageRoute[] = [...genExtras, ...editExtras];
     publishAigcCatalog(
       effectiveDisabledModels,

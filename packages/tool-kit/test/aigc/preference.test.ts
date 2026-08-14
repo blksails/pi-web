@@ -260,7 +260,7 @@ describe("aigc-prompt-toolbar 偏好级", () => {
     expect(sets).toContainEqual(["aigc.model", ROUTE_MODEL]);
   });
 
-  it("装配期清单下发:aigc.models = gen∪edit 并集,aigc.sizes 四档(Req 2.2/3.1)", () => {
+  it("装配期清单下发:aigc.models = gen∪edit 并集,aigc.sizes 与 SIZE_OPTIONS 同源(Req 2.2/3.1)", () => {
     const { state, sets } = makeFakeState();
     const g = globalThis as Record<string, unknown>;
     g[SESSION_STATE_SEAM_KEY] = state;

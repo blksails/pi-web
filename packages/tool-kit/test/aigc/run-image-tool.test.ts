@@ -136,6 +136,46 @@ describe("runImageTool", () => {
     expect(text).toContain("![");
   });
 
+  it("1080x1920 非 16 步进 → 模型收 576*1024", async () => {
+    const urls = ["https://dash/img1.png"];
+    const ctx = makeMockCtx();
+    const fetchImpl = makeSyncFetch(urls);
+    await runImageTool(
+      { prompt: "x", size: "1080x1920" },
+      makeExtNoUI(),
+      undefined,
+      undefined,
+      { ...SYNC_OPTS, deps: { getCtx: () => ctx, fetchImpl } },
+    );
+    const init = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      parameters?: { size?: string };
+    };
+    expect(body.parameters?.size).toBe("576*1024");
+  });
+
+  it("custom 哨兵不发给模型", async () => {
+    const urls = ["https://dash/img1.png"];
+    const ctx = makeMockCtx();
+    const fetchImpl = makeSyncFetch(urls);
+    await runImageTool(
+      { prompt: "x", size: "custom" },
+      makeExtNoUI(),
+      undefined,
+      undefined,
+      { ...SYNC_OPTS, deps: { getCtx: () => ctx, fetchImpl } },
+    );
+    const init = (fetchImpl as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    const body = JSON.parse(String(init?.body ?? "{}")) as {
+      parameters?: { size?: string };
+    };
+    expect(body.parameters?.size).toBe("1024*1024");
+  });
+
   it("model 省略 → 回退 defaultModel", async () => {
     const ctx = makeMockCtx();
     const result = await runImageTool(

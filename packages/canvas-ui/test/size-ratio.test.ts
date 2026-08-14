@@ -10,6 +10,11 @@ describe("sizeHint", () => {
     expect(sizeHint("1536x1024")).toBe("宽屏 3:2");
     expect(sizeHint("1024x1536")).toBe("竖屏 2:3");
     expect(sizeHint("1920x1080")).toBe("宽屏 16:9");
+    expect(sizeHint("1280x720")).toBe("宽屏 16:9");
+    expect(sizeHint("720x1280")).toBe("竖屏 9:16");
+    expect(sizeHint("1328x1328")).toBe("方形 1:1");
+    expect(sizeHint("1080x1920")).toBe("竖屏 9:16");
+    expect(sizeHint("800x800")).toBe("方形 1:1");
   });
 
   it("大小写 x / 全角 × 均可解析", () => {
@@ -17,8 +22,9 @@ describe("sizeHint", () => {
     expect(sizeHint("1536×1024")).toBe("宽屏 3:2");
   });
 
-  it("auto → 自适应;非法 → undefined", () => {
+  it("auto → 自适应;custom → 自定义;非法 → undefined", () => {
     expect(sizeHint("auto")).toBe("自适应");
+    expect(sizeHint("custom")).toBe("自定义");
     expect(sizeHint("blah")).toBeUndefined();
     expect(sizeHint("0x1024")).toBeUndefined();
     expect(sizeHint("1024x")).toBeUndefined();

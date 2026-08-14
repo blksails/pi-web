@@ -11,16 +11,17 @@
  */
 import { deriveActiveModels } from "../active-models.js";
 import { resolveAigcToolSettings } from "../model-config.js";
+import { DASHSCOPE_SIZE_OPTIONS, DEFAULT_SIZE_OPTIONS } from "../size-options.js";
 import type {
   CanvasCapability,
   CanvasCapabilityModel,
   CanvasCapabilitySize,
 } from "./schema.js";
 
-/** dashscope 系尺寸族(wan/qwen)。 */
-const DASHSCOPE_SIZES: readonly string[] = ["1024x1024", "1280x720", "720x1280"];
+/** dashscope 系尺寸族(wan/qwen)——与 pi-labs SIZE_OPTIONS 对齐。 */
+const DASHSCOPE_SIZES: readonly string[] = DASHSCOPE_SIZE_OPTIONS;
 /** 其余系(newapi/sufy/openrouter,gpt/gemini)尺寸族。 */
-const DEFAULT_SIZES: readonly string[] = ["1024x1024", "1536x1024", "1024x1536"];
+const DEFAULT_SIZES: readonly string[] = DEFAULT_SIZE_OPTIONS;
 
 /** 全局三档 = 现 workbench RATIO_OPTIONS 守恒(模型未选时 UI 零变)。 */
 const GLOBAL_SIZES: readonly CanvasCapabilitySize[] = [

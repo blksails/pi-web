@@ -12,13 +12,16 @@
 |---|---|---|---|---|
 | `image_generation` | Tool | Text-to-image | `prompt` | `gpt-image-2` |
 | `image_edit` | Tool | Image editing (inpaint / whole-image rewrite) | `image`, `prompt` | `gpt-image-2` |
+| `image_fit_size` | Tool | Crop/scale an existing image to an exact WxH (non-16-step fallback) | `image`, `size` | — |
 | `image_vision` | Tool | Image understanding (answer questions about an image) | `question` | reads `PI_WEB_VISION_MODEL` |
 | `/img_vision` | Command | Run recognition against the "most recent image" in the session | command argument is the question | same as above |
 
 Registration functions and aggregation factories:
 
-- `registerImageGeneration(pi)` at `packages/tool-kit/src/aigc/tools/image-generation.ts:178` and `registerImageEdit(pi)` at `image-edit.ts:186`, aggregated as `aigcExtension` (`packages/tool-kit/src/aigc/extension.ts:75`).
-- `registerImageVision(pi, run)` at `packages/tool-kit/src/vision/tools/image-vision.ts:69` and `registerImgVisionCommand(pi, run)` at `command.ts:37`, aggregated as `visionExtension` (`packages/tool-kit/src/vision/extension.ts:71`).
+- `registerImageGeneration(pi)`, `registerImageEdit(pi)`, and `registerImageFitSize(pi)` aggregated as `aigcExtension`.
+- `registerImageVision(pi, run)` and `registerImgVisionCommand(pi, run)` aggregated as `visionExtension`.
+
+**Non-16-step sizes** (e.g. `1080x1920`): models require multiples of 16. `runImageTool` first snaps via `planGenSize` (1080×1920 → 576×1024), then cover-crops back to the user target after persist. The same logic is exposed as the built-in `image_fit_size` tool. Quick settings support `custom` + W×H inputs; the stored preference is exact pixels, never the literal `custom`.
 
 ---
 

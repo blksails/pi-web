@@ -40,6 +40,7 @@ import {
   EMPTY_EXCLUDED_PROVIDERS,
   type RegisterImageToolOptions,
 } from "../model-config.js";
+import { SIZE_OPTIONS } from "../size-options.js";
 
 // token plan(阿里云百炼)图像编辑 —— 走 DashScope 原生 messages/content + 同一 multimodal 端点。
 const TOKEN_PLAN_MULTIMODAL_URL =
@@ -210,7 +211,7 @@ const REQUIRED_PARAMS: readonly InteractionParam[] = [
     param: "size",
     via: "select",
     title: "选择输出尺寸",
-    options: ["1024x1024", "1536x1024", "1024x1536", "auto"],
+    options: [...SIZE_OPTIONS],
     fallback: "auto",
   },
   {
@@ -268,8 +269,10 @@ const PARAMETER_FIELDS = {
   size: Type.Optional(
     Type.String({
       description:
-        "Output image size, e.g. 1024x1024 (model-dependent). " +
-        "OMIT unless the user explicitly requests a specific size or aspect ratio in the conversation — " +
+        "Output image size as WxH (e.g. 1024x1024 / 1080x1920) or a ratio (9:16). " +
+        "Sizes that are not multiples of 16 are generated at a legal size then cropped to the exact target. " +
+        "Pass the user's exact size — do NOT snap it yourself, and never pass the literal word custom. " +
+        "OMIT unless the user explicitly requests a specific size or aspect ratio — " +
         "when omitted, the user's preferred size (set in the UI) or the model default applies. " +
         "Do NOT infer a size from the subject matter.",
     }),

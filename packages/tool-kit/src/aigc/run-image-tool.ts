@@ -37,6 +37,8 @@ import {
   type PersistedAsset,
 } from "../attachment/persist.js";
 import type { ImageRoute, InteractionParam, ToolExecuteDetails } from "./types.js";
+import { formatSize, planModelAndTargetSize, sizeEq, type Size } from "./size-fit.js";
+import { fitDataUriToTarget } from "./fit-image.js";
 
 // 执行层日志(node-only;走 stderr sentinel)。命名空间 toolkit:tool —— provider 返回 / persist 耗时。
 const log = createLogger({ namespace: "toolkit:tool" });
@@ -318,6 +320,35 @@ async function resolveMediaFields(
 
 // ── 结果组装 ───────────────────────────────────────────────────────────────────
 
+async function fitPersistedAssets(
+  assets: PersistedAsset[],
+  target: Size,
+  ctx: AttachmentToolContext,
+): Promise<PersistedAsset[]> {
+  const out: PersistedAsset[] = [];
+  for (const asset of assets) {
+    try {
+      const dataUri = await resolveInputToDataUri(asset.attachmentId, ctx);
+      const fitted = await fitDataUriToTarget(dataUri, target);
+      if (fitted === undefined) {
+        out.push(asset);
+        continue;
+      }
+      const name = `${asset.name.replace(/\.[^.]+$/, "")}-${formatSize(target)}.jpg`;
+      const ref = await ctx.putOutput({ bytes: fitted.bytes, name, mimeType: fitted.mimeType });
+      out.push({
+        attachmentId: ref.attachmentId,
+        displayUrl: ref.displayUrl,
+        mimeType: ref.mimeType,
+        name: ref.name,
+      });
+    } catch {
+      out.push(asset);
+    }
+  }
+  return out;
+}
+
 /** 组装成功结果(content:文本 + markdown 图;details:ok/model/assets)。形态与重构前一致。 */
 function buildImageResult(
   assets: PersistedAsset[],
@@ -444,6 +475,22 @@ export async function runImageTool(
   );
   delete merged.model;
 
+  // 尺寸:用户目标可任意 W×H(含 1080x1920);发给模型的必须 16 步进。
+  // 仅当 snap 改变了尺寸才后裁(合法档如 1024x1024 不重编码)。
+  // `custom` 是 UI 哨兵,不得发给模型。
+  let outputTarget: Size | undefined;
+  if (typeof merged.size === "string") {
+    if (merged.size.trim().toLowerCase() === "custom") {
+      delete merged.size;
+    } else {
+      const plan = planModelAndTargetSize(merged.size);
+      if (plan !== undefined) {
+        merged.size = formatSize(plan.modelSize);
+        if (!sizeEq(plan.modelSize, plan.targetSize)) outputTarget = plan.targetSize;
+      }
+    }
+  }
+
   // 降级:requiredVars。
   const varCheck = checkRequiredVars(route.requiredVars);
   if (!varCheck.ok) {
@@ -546,7 +593,7 @@ export async function runImageTool(
       deps?.fetchImpl ??
       (((u: string | URL, i?: RequestInit) =>
         proxyFetch(u, i, persistProxyUrl)) as unknown as typeof fetch);
-    const assets = await persistPicked(picked, ctx, {
+    let assets = await persistPicked(picked, ctx, {
       fetchImpl: persistFetch,
       // 取消信号(spec aigc-tool-abort,Req 1.2):此前落盘段收不到 signal,用户点停止后
       // 要干等最多 30s 超时。这是整条链路上唯一停不掉的一段。
@@ -566,6 +613,11 @@ export async function runImageTool(
       const error = `provider 未返回有效图像产物 (kind=${picked.kind})`;
       log.warn("no assets persisted", { tool: toolName, kind: picked.kind });
       return errResult(`生成失败:${error}`);
+    }
+
+    if (outputTarget !== undefined) {
+      const fitted = await fitPersistedAssets(assets, outputTarget, ctx);
+      if (fitted.length > 0) assets = fitted;
     }
 
     return buildImageResult(assets, route.model);

@@ -22,7 +22,15 @@ vi.mock("../../src/aigc/model-config.js", async (orig) => {
 
 import { buildCanvasCapability } from "../../src/aigc/canvas/capability.js";
 
-const DASHSCOPE_SIZES = ["1024x1024", "1280x720", "720x1280"];
+const DASHSCOPE_SIZES = [
+  "1024x1024",
+  "1280x720",
+  "720x1280",
+  "1328x1328",
+  "832x1216",
+  "800x800",
+  "1080x1920",
+];
 const DEFAULT_SIZES = ["1024x1024", "1536x1024", "1024x1536"];
 
 describe("buildCanvasCapability", () => {

@@ -35,7 +35,20 @@ const FALLBACK_MODELS: readonly string[] = [
   "wan2.6-t2i",
   "wanx2.1-t2i-turbo",
 ];
-const FALLBACK_SIZES: readonly string[] = ["1024x1024", "1536x1024", "1024x1536", "auto"];
+/** 与 tool-kit `SIZE_OPTIONS` 对齐(pi-labs 全量 + gpt 档 + auto)。 */
+const FALLBACK_SIZES: readonly string[] = [
+  "1024x1024",
+  "1280x720",
+  "720x1280",
+  "1328x1328",
+  "832x1216",
+  "800x800",
+  "1080x1920",
+  "1536x1024",
+  "1024x1536",
+  "custom",
+  "auto",
+];
 
 /** Radix Select 不接受空字符串 item value;以哨兵表示「默认」(= 不设偏好)。 */
 const DEFAULT_SENTINEL = "__default__";
@@ -109,6 +122,7 @@ function gcd(a: number, b: number): number {
  */
 export function sizeHint(size: string): string | undefined {
   if (size === "auto") return "自适应";
+  if (size === "custom") return "自定义";
   const m = /^(\d+)\s*[x×]\s*(\d+)$/i.exec(size);
   if (m === null) return undefined;
   const w = Number(m[1]);
@@ -153,6 +167,10 @@ interface PrefSelectProps {
    * 与 hint 配合可对调突出关系:主项显方向描述、副标弱化像素尺寸。
    */
   readonly primary?: (value: string) => string | undefined;
+  /** 覆盖 Select 当前值(自定义尺寸时停在 custom,不跳回匹配的 preset)。 */
+  readonly valueOverride?: string;
+  /** 选项变更钩子;返回 false 则不写 KV(如 custom 哨兵由父级处理)。 */
+  readonly onPicked?: (value: string) => boolean | void;
 }
 
 /** 单个偏好选择器:回显 KV 当前值,变更写 KV + localStorage。 */
@@ -168,6 +186,8 @@ function PrefSelect({
   providers,
   hint,
   primary,
+  valueOverride,
+  onPicked,
 }: PrefSelectProps): React.JSX.Element {
   const current = useStateKey(state, `aigc.${prefKey}`);
   // 当前值不在清单里(如追问写回了清单外模型)仍需可回显:并入 items。
@@ -176,13 +196,14 @@ function PrefSelect({
     [current, options],
   );
   const onChange = (v: string): void => {
+    if (onPicked?.(v) === false) return;
     const next = v === DEFAULT_SENTINEL ? undefined : v;
     if (next === undefined) void state.delete(`aigc.${prefKey}`);
     else void state.set(`aigc.${prefKey}`, next);
     lsSet(prefKey, next);
   };
   return (
-    <Select value={current ?? DEFAULT_SENTINEL} onValueChange={onChange}>
+    <Select value={valueOverride ?? current ?? DEFAULT_SENTINEL} onValueChange={onChange}>
       <SelectTrigger
         {...{ [dataAttr]: "" }}
         aria-label={ariaLabel}
@@ -255,6 +276,17 @@ export function AigcQuickSettings({
   const sizes = useCatalogKeySafe(state, "aigc.sizes", FALLBACK_SIZES);
   const modelLabels = useLabelMapSafe(state, "aigc.modelLabels");
   const modelProviders = useLabelMapSafe(state, "aigc.modelProviders");
+  const sizeCurrent = useStateKeySafe(state, "aigc.size");
+  const [sizeCustom, setSizeCustom] = React.useState(false);
+  const presetSet = React.useMemo(
+    () => new Set(sizes.filter((s) => s !== "custom" && s !== "auto")),
+    [sizes],
+  );
+  const nonPresetSize =
+    sizeCurrent !== undefined &&
+    /^\d+\s*[x×*]\s*\d+$/i.test(sizeCurrent) &&
+    !presetSet.has(sizeCurrent);
+  const customOpen = sizeCustom || sizeCurrent === "custom" || nonPresetSize;
   if (state === undefined) return null;
 
   return (
@@ -280,6 +312,92 @@ export function AigcQuickSettings({
         widthClass="w-36"
         primary={sizeHint}
         hint={sizePixels}
+        valueOverride={customOpen ? "custom" : undefined}
+        onPicked={(v) => {
+          if (v === "custom") {
+            setSizeCustom(true);
+            return false;
+          }
+          setSizeCustom(false);
+        }}
+      />
+      <CustomSizeFields state={state} presets={sizes} forceOpen={customOpen} />
+    </span>
+  );
+}
+
+function CustomSizeFields({
+  state,
+  presets,
+  forceOpen,
+}: {
+  readonly state: WebExtStateAccess;
+  readonly presets: readonly string[];
+  readonly forceOpen: boolean;
+}): React.JSX.Element | null {
+  const current = useStateKey(state, "aigc.size");
+  const presetSet = React.useMemo(
+    () => new Set(presets.filter((s) => s !== "custom" && s !== "auto")),
+    [presets],
+  );
+  const parsed = current !== undefined ? /^(\d+)\s*[x×*]\s*(\d+)$/i.exec(current) : null;
+  const customOpen =
+    forceOpen ||
+    current === "custom" ||
+    (parsed !== null && current !== undefined && !presetSet.has(current));
+  const [w, setW] = React.useState(parsed?.[1] ?? "1080");
+  const [h, setH] = React.useState(parsed?.[2] ?? "1920");
+  React.useEffect(() => {
+    const next = current !== undefined ? /^(\d+)\s*[x×*]\s*(\d+)$/i.exec(current) : null;
+    if (next) {
+      setW(next[1] ?? "1080");
+      setH(next[2] ?? "1920");
+    }
+  }, [current]);
+  React.useEffect(() => {
+    if (!customOpen) return;
+    if (current !== undefined && current !== "custom") return;
+    const next = "1080x1920";
+    void state.set("aigc.size", next);
+    lsSet("size", next);
+  }, [customOpen, current, state]);
+  if (!customOpen) return null;
+  const commit = (): void => {
+    const nw = Number(w);
+    const nh = Number(h);
+    if (!Number.isFinite(nw) || !Number.isFinite(nh) || nw < 1 || nh < 1) return;
+    const next = `${Math.round(nw)}x${Math.round(nh)}`;
+    void state.set("aigc.size", next);
+    lsSet("size", next);
+  };
+  return (
+    <span className="flex items-center gap-0.5" data-aigc-custom-size>
+      <input
+        type="number"
+        min={1}
+        max={4096}
+        aria-label="自定义宽度"
+        value={w}
+        onChange={(e) => setW(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        className="h-8 w-14 rounded-md border border-[hsl(var(--border))] bg-transparent px-1 text-xs"
+      />
+      <span className="text-[10px] text-[hsl(var(--muted-foreground))]">×</span>
+      <input
+        type="number"
+        min={1}
+        max={4096}
+        aria-label="自定义高度"
+        value={h}
+        onChange={(e) => setH(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+        }}
+        className="h-8 w-14 rounded-md border border-[hsl(var(--border))] bg-transparent px-1 text-xs"
       />
     </span>
   );
@@ -307,6 +425,18 @@ function useLabelMap(
     }
     return {};
   }, [raw]);
+}
+
+const NOOP_STATE: WebExtStateAccess = {
+  get: () => undefined,
+  subscribe: () => () => {},
+  set: async () => {},
+  delete: async () => {},
+};
+
+/** useStateKey 的 state 可缺失版(缺失时恒 undefined,保持 hooks 顺序稳定)。 */
+function useStateKeySafe(state: WebExtStateAccess | undefined, key: string): string | undefined {
+  return useStateKey(state ?? NOOP_STATE, key);
 }
 
 /** useLabelMap 的 state 可缺失版(缺失时恒空对象,保持 hooks 顺序稳定)。 */

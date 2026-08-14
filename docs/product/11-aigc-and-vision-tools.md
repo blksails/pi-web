@@ -12,13 +12,16 @@
 |---|---|---|---|---|
 | `image_generation` | 工具 | 文生图（text-to-image） | `prompt` | `gpt-image-2` |
 | `image_edit` | 工具 | 图像编辑（inpaint / 整图改写） | `image`, `prompt` | `gpt-image-2` |
+| `image_fit_size` | 工具 | 把已有图精确裁到目标 W×H（非 16 步进兜底） | `image`, `size` | — |
 | `image_vision` | 工具 | 图像理解（看图回答问题） | `question` | 读 `PI_WEB_VISION_MODEL` |
 | `/img_vision` | 命令 | 对会话内「最近一张图」发起识别 | 命令参数即提问 | 同上 |
 
 注册函数与聚合工厂：
 
-- `packages/tool-kit/src/aigc/tools/image-generation.ts:178` 的 `registerImageGeneration(pi)`、`image-edit.ts:186` 的 `registerImageEdit(pi)`，聚合为 `aigcExtension`（`packages/tool-kit/src/aigc/extension.ts:75`）。
+- `packages/tool-kit/src/aigc/tools/image-generation.ts` 的 `registerImageGeneration(pi)`、`image-edit.ts` 的 `registerImageEdit(pi)`、`image-fit-size.ts` 的 `registerImageFitSize(pi)`，聚合为 `aigcExtension`（`packages/tool-kit/src/aigc/extension.ts`）。
 - `packages/tool-kit/src/vision/tools/image-vision.ts:69` 的 `registerImageVision(pi, run)`、`command.ts:37` 的 `registerImgVisionCommand(pi, run)`，聚合为 `visionExtension`（`packages/tool-kit/src/vision/extension.ts:71`）。
+
+**非 16 步进尺寸**（如 `1080x1920`）：模型只收 16 倍数。`runImageTool` 先按 `planGenSize` 缩到合法档（1080×1920 → 576×1024），落盘后再 cover 回用户目标。同一套逻辑封装为内置工具 `image_fit_size`（`image` + `size`），agent 也可单独调用。快捷设置支持 `custom` + W×H 输入，写入的仍是精确像素，不是字面量 `custom`。
 
 ---
 

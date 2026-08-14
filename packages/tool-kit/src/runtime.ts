@@ -11,7 +11,7 @@
  *  - Image normalize:  `normalizeImageDataUri`
  *  - Attachment seam:  `getAttachmentToolContext`, `SEAM_KEY`
  *  - Attachment store: `persistPicked`, `previewAssetsFromPicked`, `resolveInputToDataUri`, `PersistedAsset`
- *  - AIGC extension:   `aigcExtension`, `registerImageGeneration`, `registerImageEdit`
+ *  - AIGC extension:   `aigcExtension`, `registerImageGeneration`, `registerImageEdit`, `registerImageFitSize`
  *  - Image tool orchestrator (复用):`runImageTool`, `buildModelsDescription`, `optionalModelEnum`
  *  - Memory extension: `memoryExtension`, `createMemoryStore`, file/supabase stores
  *  - Structured user prompt: `askUserQuestionTool`
@@ -91,6 +91,7 @@ export { aigcExtension, makeAigcExtension } from "./aigc/extension.js";
 export type { AigcExtensionOptions } from "./aigc/extension.js";
 export { registerImageGeneration } from "./aigc/tools/image-generation.js";
 export { registerImageEdit } from "./aigc/tools/image-edit.js";
+export { registerImageFitSize } from "./aigc/tools/image-fit-size.js";
 
 // ── aigc-canvas surface(domain="canvas" 的 AAS 实例;画廊 = attachment 物化视图)──────
 export {
