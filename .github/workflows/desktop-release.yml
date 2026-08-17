@@ -287,9 +287,15 @@ jobs:
           OSSUTIL="./ossutil-bin/ossutil -e ${OSS_ENDPOINT} -i ${OSS_ACCESS_KEY_ID} -k ${OSS_ACCESS_KEY_SECRET}"
 
           # 两份:版本目录不可变、可回溯;latest 供"总是下最新"的链接指向。
+          # ★ 先拍平:artifact 里带 tauri 的 dmg/nsis/appimage 子目录,直接 cp -r
+          #   会把路径变成 releases/<tag>/dmg/<file>,官网按扁平路径探测就会全员
+          #   退回 GitHub。拍平后 URL 稳定为 releases/<tag>/<filename>。
           TAG="${GITHUB_REF_NAME}"
+          mkdir -p oss-flat
+          find release-assets -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' \) \
+            -exec cp -f {} oss-flat/ \;
           for dest in "releases/${TAG}" "releases/latest"; do
-            $OSSUTIL cp -r -f release-assets/ "oss://${OSS_BUCKET}/${dest}/" \
+            $OSSUTIL cp -r -f oss-flat/ "oss://${OSS_BUCKET}/${dest}/" \
               --include "*.dmg" --include "*.exe" --include "*.AppImage"
           done
 
