@@ -9,7 +9,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { PanePort, PaneViewHandle } from "../../src/host-ports.js";
-import type { PaneRelayEnvelope } from "../../src/adapters/relay.js";
+import {
+  decodePaneRelayEnvelope,
+  encodePaneRelayEnvelope,
+  type PaneRelayEnvelope,
+} from "../../src/adapters/relay.js";
 import {
   createTauriPaneViewAdapter,
   paneWebviewLabel,
@@ -223,6 +227,28 @@ describe("installTauriPaneBootstrap lifecycle", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("Tauri binary relay", () => {
+  it("round-trips attachment bytes through JSON serialization", () => {
+    const envelope: PaneRelayEnvelope = {
+      instanceId: "video-1",
+      epoch: 2,
+      message: {
+        type: "pane:request",
+        requestId: "upload-1",
+        operation: "attachment.put",
+        name: "media.png",
+        mimeType: "image/png",
+        bytes: new Uint8Array([0, 1, 255]).buffer,
+      },
+    };
+    const encoded = encodePaneRelayEnvelope(envelope);
+    const serialized = JSON.parse(JSON.stringify(encoded)) as PaneRelayEnvelope;
+    const decoded = decodePaneRelayEnvelope(serialized);
+    const bytes = (decoded.message as { bytes: ArrayBuffer }).bytes;
+    expect(Array.from(new Uint8Array(bytes))).toEqual([0, 1, 255]);
   });
 });
 

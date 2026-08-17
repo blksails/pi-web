@@ -35,28 +35,25 @@ export interface SessionMirror {
 type AppendFn = (...args: unknown[]) => unknown;
 
 /**
- * 开始把 `sm` 的写入镜像到 `store`。先把会话头部写入 store,再 patch append* 方法。
+ * 开始把 `sm` 的写入镜像到 `store`。快照已有 entries 后立即 patch append* 方法。
  * 返回的 {@link SessionMirror} 可用于 `flush()` 等待镜像队列清空。
  */
-export async function mirrorSessionManagerToStore(
+export function mirrorSessionManagerToStore(
   sm: SessionManager,
   store: SessionEntryStore,
   onError: (err: unknown) => void = () => {},
-): Promise<SessionMirror> {
+): SessionMirror {
   const sessionId = sm.getSessionId();
-  const header = sm.getHeader();
-  if (header) {
-    try {
-      await store.create(header as unknown as SessionHeader);
-    } catch (err) {
-      onError(err);
-    }
-  }
-
   let chain: Promise<unknown> = Promise.resolve();
   const enqueue = (entry: SessionEntry): void => {
     chain = chain.then(() => store.append(sessionId, entry)).catch(onError);
   };
+
+  const header = sm.getHeader();
+  if (header) {
+    chain = chain.then(() => store.create(header as unknown as SessionHeader)).catch(onError);
+  }
+  for (const entry of sm.getEntries()) enqueue(entry as unknown as SessionEntry);
 
   const target = sm as unknown as Record<string, AppendFn>;
   for (const name of APPEND_METHODS) {

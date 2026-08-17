@@ -22,6 +22,7 @@
 import { TAURI_PANE_RELAY_TO_HOST_COMMAND } from "./tauri.js";
 import {
   createPaneGuestRealmBridge,
+  encodePaneRelayEnvelope,
   type PaneRelayEnvelope,
 } from "./relay.js";
 
@@ -94,7 +95,9 @@ export function installTauriPaneBootstrap(options: {
         sendReady();
         return;
       }
-      void options.invoke(TAURI_PANE_RELAY_TO_HOST_COMMAND, { envelope }).catch(() => undefined);
+      void options.invoke(TAURI_PANE_RELAY_TO_HOST_COMMAND, {
+        envelope: encodePaneRelayEnvelope(envelope),
+      }).catch(() => undefined);
     },
   });
   const off = options.onRelayMessage((envelope) => {

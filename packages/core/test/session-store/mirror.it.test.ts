@@ -63,4 +63,16 @@ describe("mirrorSessionManagerToStore — SM 写入镜像到 store", () => {
     await mirror.flush();
     store.close();
   });
+
+  it("装配前已有 entry 亦会补写", async () => {
+    const sm = SessionManager.inMemory("/proj");
+    const store = new SqliteSessionEntryStore(":memory:");
+    sm.appendCustomEntry("piweb.session", { source: "/proj/agent.ts" });
+
+    const mirror = mirrorSessionManagerToStore(sm, store);
+    await mirror.flush();
+
+    expect(await collect(store.read(sm.getSessionId()))).toHaveLength(1);
+    store.close();
+  });
 });

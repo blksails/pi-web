@@ -8,7 +8,7 @@
  *    Electron preload 亦可复用):在 Guest Realm 内重建「window 握手 + MessageChannel」,
  *    `connectPaneGuest` 零改动(Req 9.1)。
  *
- * 信封只包路由标识,`message` 原样透传——中继不解析、不改写协议消息(Req 9.3)。
+ * 信封只包路由标识；Tauri JSON 中继对附件字节做可逆编码。
  * 编译需要 DOM lib(MessageChannel/MessagePort)。
  */
 import type { PanePort } from "../host-ports.js";
@@ -18,6 +18,63 @@ export interface PaneRelayEnvelope {
   /** 绑定的实例 epoch;`pane:ready` 发生在握手前,以 0 表示未绑定。 */
   readonly epoch: number;
   readonly message: unknown;
+}
+
+/**
+ * Tauri invoke 走 JSON 序列化，ArrayBuffer 会丢失。仅对附件上传请求做
+ * 可逆编码；浏览器 MessagePort 路径仍保留原生 ArrayBuffer。
+ */
+function isAttachmentPutMessage(value: unknown): value is {
+  readonly type: "pane:request";
+  readonly operation: "attachment.put";
+  readonly bytes: unknown;
+} {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { readonly type?: unknown; readonly operation?: unknown; readonly bytes?: unknown };
+  return candidate.type === "pane:request" && candidate.operation === "attachment.put" && "bytes" in candidate;
+}
+
+function bytesToRelayValue(value: unknown): unknown {
+  if (value instanceof ArrayBuffer) return Array.from(new Uint8Array(value));
+  if (ArrayBuffer.isView(value)) {
+    return Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+  }
+  return value;
+}
+
+function relayValueToBytes(value: unknown): ArrayBuffer | undefined {
+  if (value instanceof ArrayBuffer) return value;
+  if (Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255)) {
+    return Uint8Array.from(value).buffer;
+  }
+  // JSON.stringify(Uint8Array) 可能产生数字键对象，兼容该序列化形态。
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => /^\d+$/.test(key))
+      .sort(([a], [b]) => Number(a) - Number(b));
+    if (entries.length > 0 && entries.every(([, item]) => Number.isInteger(item) && Number(item) >= 0 && Number(item) <= 255)) {
+      return Uint8Array.from(entries.map(([, item]) => Number(item))).buffer;
+    }
+  }
+  return undefined;
+}
+
+/** 将 pane 信封编码为可经 Tauri invoke 传输的 JSON 形态。 */
+export function encodePaneRelayEnvelope(envelope: PaneRelayEnvelope): PaneRelayEnvelope {
+  if (!isAttachmentPutMessage(envelope.message)) return envelope;
+  return {
+    ...envelope,
+    message: { ...envelope.message, bytes: bytesToRelayValue(envelope.message.bytes) },
+  };
+}
+
+/** 将 Tauri relay 收到的附件字节还原为协议要求的 ArrayBuffer。 */
+export function decodePaneRelayEnvelope(envelope: PaneRelayEnvelope): PaneRelayEnvelope {
+  if (!isAttachmentPutMessage(envelope.message)) return envelope;
+  const bytes = relayValueToBytes(envelope.message.bytes);
+  return bytes === undefined
+    ? envelope
+    : { ...envelope, message: { ...envelope.message, bytes } };
 }
 
 export function isPaneRelayEnvelope(value: unknown): value is PaneRelayEnvelope {
@@ -51,7 +108,7 @@ export function createRelayPanePort(options: RelayPanePortOptions): PanePort {
         if (closed || !isPaneRelayEnvelope(raw) || raw.instanceId !== options.instanceId) return;
         // pane:ready 无 epoch(握手前),放行;其余须精确匹配绑定 epoch。
         if (raw.epoch !== options.epoch && messageType(raw.message) !== "pane:ready") return;
-        listener(raw.message);
+        listener(decodePaneRelayEnvelope(raw).message);
       });
       subscriptions.add(unsubscribe);
       return () => {

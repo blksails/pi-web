@@ -142,6 +142,20 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     ...(args.model !== undefined ? { model: args.model } : {}),
   });
 
+  // `runner_ready` 是传输就绪：子进程已成功载入 runner，并可让父进程把早到帧缓冲在 stdin
+  // 管道中。Agent 预编译、runtime 与可选扩展继续后台装配；若其失败，仍走既有进程退出错误链。
+  let readyAnnounced = false;
+  const announceReady = (): void => {
+    if (readyAnnounced) return;
+    readyAnnounced = true;
+    try {
+      process.stdout.write('{"type":"runner_ready"}\n');
+    } catch (err) {
+      process.stderr.write(`runner: ready send error: ${String(err)}\n`);
+    }
+  };
+  announceReady();
+
   // 未识别的 CLI 开关:解析器刻意放行(调用方可能比 runner 新),但必须可见 ——
   // 静默吞掉会让拼错的开关无声退回默认行为。同时写 stderr,因为日志默认关闭时
   // bootLog 不产生任何输出,而这条恰恰是「我明明传了参数却没生效」的唯一线索。
@@ -230,29 +244,8 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     sessionId,
   );
 
-  // 可选:把会话镜像到配置的 SessionEntryStore(sqlite/postgres)。fs 由 pi 原生负责,
-  // 不镜像(否则双写同一文件)。镜像是 best-effort 旁路,初始化失败不影响 agent。
-  const storeConfig = sessionStoreConfigFromEnv();
-  if (storeConfig.kind !== "fs") {
-    try {
-      // ★ 动态 import 取装配缝:store 的**选型工厂**属 adapters,与 runner 同层,
-      //   静态 import 就是一条反向依赖(守卫会拦)。同 model-sources 的处理。
-      // ★ 拆包后写成包级 specifier:兼容层**不在**本包的依赖声明里(那会是一条反向的
-      //   包依赖),由宿主在运行期提供 —— 见 composeModelSources 的长注释。
-      const { createSessionEntryStore } = await import(
-        "@blksails/pi-web-server/host-assembly/session-store.js"
-      );
-      const store = await createSessionEntryStore(storeConfig);
-      await mirrorSessionManagerToStore(sessionManager, store, (err) =>
-        reportBootFailure("session-store mirror error", err),
-      );
-    } catch (err) {
-      reportBootFailure(`failed to init session store (${storeConfig.kind})`, err);
-    }
-  }
-
   // 仅新建会话时写入 pi-web 创建元数据(source/cwd/model),供主进程冷恢复读取(custom 模式)。
-  // 放在 mirror 装配之后,使 sqlite/postgres 后端也镜像到这条 custom entry;fs 由 pi 原生写。
+  // fs 由 pi 原生写；非 fs 镜像随后以已有 entries 快照补写此条元数据。
   if (isNewSession) {
     try {
       sessionManager.appendCustomEntry("piweb.session", {
@@ -263,6 +256,25 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
     } catch (err) {
       reportBootFailure("failed to write piweb.session metadata", err);
     }
+  }
+
+  // 非 fs SessionEntryStore 是旁路持久化，绝不可占用 runner 启动关键路径。
+  // 镜像会快照既有 entries 后立即挂钩 append*，故异步建连前后的写入均保序补写。
+  const storeConfig = sessionStoreConfigFromEnv();
+  if (storeConfig.kind !== "fs") {
+    void (async () => {
+      try {
+        const { createSessionEntryStore } = await import(
+          "@blksails/pi-web-server/host-assembly/session-store.js"
+        );
+        const store = await createSessionEntryStore(storeConfig);
+        mirrorSessionManagerToStore(sessionManager, store, (err) =>
+          reportBootFailure("session-store mirror error", err),
+        );
+      } catch (err) {
+        reportBootFailure(`failed to init session store (${storeConfig.kind})`, err);
+      }
+    })();
   }
 
   const runtime = await createAgentSessionRuntime(factory, {
@@ -329,11 +341,12 @@ export async function startRunner(args: RunnerArgs): Promise<never> {
   // stdin 恢复门 + 就绪帧(spec runner-ready-frame):frame-channel 挂载即 pause 了 stdin
   // (早到行缓冲不丢,Req 1.2),这里在**所有** data 读取器(frame-channel + 可选的
   // attachment-catalog)挂载完成后取 baseline —— 此后新增的 data 监听器只会是 pi
-  // runRpcMode 末尾的读取器。侦测到它(或兜底超时)即 resume + 发 runner_ready 帧
-  // (Req 1.3/2.1);显式 pause 是粘性的,pi 只 on("data") 不 resume,恢复义务在此。
+  // runRpcMode 末尾的读取器。ready 已在预编译成功后发出；侦测到读取器(或兜底超时)
+  // 仅负责 resume。显式 pause 是粘性的,pi 只 on("data")
+  // 不 resume,恢复义务在此。
   const resumeGate = installStdinResumeGate({
     stdin: process.stdin,
-    sendReady: () => frameChannel.send({ type: "runner_ready" }),
+    sendReady: announceReady,
     stderr: process.stderr,
   });
 

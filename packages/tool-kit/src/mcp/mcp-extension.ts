@@ -3,12 +3,10 @@
  *
  * spec: builtin-mcp-client,任务 2.4;Req 1.3, 1.5, 3.1, 3.2, 4.4, 5.1。
  *
- * 装配期一次性完成:读配置 → 取启用条目 → 并发连接 → 适配并注册工具。
- * `ExtensionFactory` 允许返回 Promise(SDK 明确支持异步初始化),故连接可 await 完成后再注册,
- * 无需变通。
+ * 会话运行后静默连接，成功后动态注册工具。
  *
  * 设计要点:
- * - **永不阻塞会话**(Req 1.5):全流程 try/catch 吞错;单个 server 失败只损失其自身能力。
+ * - **永不阻塞会话**(Req 1.5):扩展装配立即返回；MCP 连接与失败均不阻塞会话。
  * - **配置在装配期读取**(Req 4.4):改动在下次新建会话生效,与 aigcExtension 一致。
  * - **resources / prompts 经桥接工具暴露**(Req 3.2):pi 侧无独立的资源/提示词载体,故把
  *   MCP 的 resources/prompts 能力包装成工具,使 agent 能够列出与读取 —— 这是"在会话中可被
@@ -107,6 +105,20 @@ export async function runMcpExtension(
 }
 
 /**
+ * 将可选 MCP 置于下一事件循环执行；runner 已完成就绪握手后才会发起连接。
+ * Pi SDK 支持会话初始化后动态 registerTool，因此连接成功仍能服务当前会话。
+ */
+export function deferMcpExtension(
+  pi: ExtensionAPI,
+  deps: McpExtensionDeps,
+  schedule: (task: () => void) => void = (task) => setTimeout(task, 0),
+): void {
+  schedule(() => {
+    void runMcpExtension(pi, deps);
+  });
+}
+
+/**
  * 把一个已连接 server 的 resources / prompts 能力包装为桥接工具(Req 3.2)。
  * 传入的 `call` 是通用的 MCP 请求入口。
  */
@@ -200,11 +212,11 @@ export function createBridgeTools(
 }
 
 /** default export:注入真实依赖(读磁盘配置 + 真实连接)。 */
-export default async function mcpExtension(pi: ExtensionAPI): Promise<void> {
+export default function mcpExtension(pi: ExtensionAPI): void {
   const manager = new McpClientManager();
   const outcomeTools = new Map<string, McpConnectOutcome>();
 
-  await runMcpExtension(pi, {
+  deferMcpExtension(pi, {
     loadServers: async () => {
       const config = await loadMcpConfig();
       if (config.unrecognizedServers.length > 0) {

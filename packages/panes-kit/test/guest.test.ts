@@ -35,6 +35,47 @@ describe("connectPaneGuest", () => {
       vi.useRealTimers();
     }
   });
+
+  it("gives agent-backed surface commands a longer request budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const guestWindow = new FakeGuestWindow();
+      const pending = connectPaneGuest({
+        expectedPaneId: "video-studio",
+        window: guestWindow.asWindow(),
+      });
+      const channel = new MessageChannel();
+      guestWindow.postMessage({
+        type: "pane:connected",
+        protocol: PANE_PROTOCOL_VERSION,
+        instance: { instanceId: "video-slow-command", paneId: "video-studio", epoch: 1 },
+        grants: {
+          routes: [],
+          surfaceCommands: [{ domain: "video-studio", actions: ["intent"] }],
+          surfaceKeys: [],
+          events: { publish: [], subscribe: [] },
+          attachments: "none",
+          conversation: "none",
+        },
+        interactionMode: "standard",
+      }, "*", [channel.port2]);
+      const connection = await pending;
+      const result = connection.surface.run("video-studio", "intent", { name: "video_storyboard_plan" })
+        .then(() => undefined, (error: unknown) => error);
+      let settled = false;
+      void result.then(() => { settled = true; });
+      vi.advanceTimersByTime(15_001);
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      vi.advanceTimersByTime(44_999);
+      await expect(result).resolves.toMatchObject({ code: "REQUEST_TIMEOUT" });
+      connection.close();
+      channel.port1.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("Host 漏掉首条 ready 时会重发并完成唯一握手", async () => {
     const guestWindow = new FakeGuestWindow();
     const channel = new MessageChannel();

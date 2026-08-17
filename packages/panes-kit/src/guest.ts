@@ -16,6 +16,10 @@ import { installGlobalTauriPaneBootstrap } from "./adapters/tauri-runtime.js";
 // Keep this aligned with the host's native WebView readiness budget.
 const DEFAULT_PANE_HANDSHAKE_TIMEOUT_MS = 30_000;
 const DEFAULT_PANE_REQUEST_TIMEOUT_MS = 15_000;
+// Surface commands may include persistence plus a state projection. Keep the
+// ordinary RPC budget short, but give these agent-backed commands enough room
+// to finish before reporting a transport failure to the pane.
+const DEFAULT_PANE_SURFACE_REQUEST_TIMEOUT_MS = 60_000;
 
 interface PendingCall {
   resolve(value: unknown): void;
@@ -91,7 +95,12 @@ function errorFromData(error: PaneErrorData): PaneHostError {
  * 故连接对象持有**可变** port,由 `connectPaneGuest` 的常驻握手监听器在收到新的
  * `pane:connected` 时换绑。缓存的状态/信号一律保留 —— 宿主重连后会重推,保留只会更早可用。
  */
-function createConnection(message: PaneConnectedMessage, initialPort: MessagePort, timeoutMs: number): {
+function createConnection(
+  message: PaneConnectedMessage,
+  initialPort: MessagePort,
+  timeoutMs: number,
+  surfaceTimeoutMs: number,
+): {
   readonly connection: PaneGuestConnection;
   readonly rebind: (port: MessagePort) => void;
 } {
@@ -120,7 +129,7 @@ function createConnection(message: PaneConnectedMessage, initialPort: MessagePor
       const timer = setTimeout(() => {
         pending.delete(requestId);
         reject(new PaneHostError("REQUEST_TIMEOUT", "Pane request timed out", { retryable: true }));
-      }, timeoutMs);
+      }, operation === "surface.run" ? surfaceTimeoutMs : timeoutMs);
       pending.set(requestId, { resolve: (value) => resolve(value as T), reject, timer });
     });
   };
@@ -314,6 +323,7 @@ export function connectPaneGuest(options: {
   const guestWindow = options.window ?? globalThis.window;
   const handshakeTimeoutMs = options.timeoutMs ?? DEFAULT_PANE_HANDSHAKE_TIMEOUT_MS;
   const requestTimeoutMs = options.timeoutMs ?? DEFAULT_PANE_REQUEST_TIMEOUT_MS;
+  const surfaceTimeoutMs = options.timeoutMs ?? DEFAULT_PANE_SURFACE_REQUEST_TIMEOUT_MS;
   installGlobalTauriPaneBootstrap(guestWindow);
   return new Promise((resolve, reject) => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -345,7 +355,7 @@ export function connectPaneGuest(options: {
         return;
       }
       settleFirst();
-      handle = createConnection(data as PaneConnectedMessage, port, requestTimeoutMs);
+      handle = createConnection(data as PaneConnectedMessage, port, requestTimeoutMs, surfaceTimeoutMs);
       resolve(handle.connection);
     };
     if (options.signal?.aborted === true) {

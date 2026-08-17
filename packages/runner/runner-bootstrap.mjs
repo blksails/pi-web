@@ -30,7 +30,10 @@ const runnerPkgDir = dirname(here);
 // Root jiti at the runner package dir: resolves jiti's own deps, the pi SDK
 // (@earendil-works/pi-coding-agent, @blksails/pi-web-agent-kit, @earendil-works/pi-ai)
 // and the runner TS against the runner package, never the agent's cwd.
-const jiti = createJiti(here);
+// 工作区源码会在同一秒内热改多次；jiti 的持久缓存可滞后于这类改动，令新会话继续执行
+// 旧 runner。正式安装包路径不匹配，仍复用缓存。
+const isWorkspaceRunner = /[\\/]packages[\\/]runner$/.test(runnerPkgDir);
+const jiti = createJiti(here, { cache: !isWorkspaceRunner });
 
 const runnerTs = join(runnerPkgDir, "src", "runner", "runner.ts");
 

@@ -4,7 +4,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { McpServerConfig } from "@blksails/pi-web-protocol";
-import { runMcpExtension, createBridgeTools } from "../../src/mcp/mcp-extension.js";
+import { deferMcpExtension, runMcpExtension, createBridgeTools } from "../../src/mcp/mcp-extension.js";
 import type { McpConnectOutcome } from "../../src/mcp/client-manager.js";
 
 /** 最小 ExtensionAPI 替身:只收集注册的工具。 */
@@ -86,6 +86,28 @@ describe("runMcpExtension — 降级不阻塞会话(Req 1.5)", () => {
         callToolFor: () => undefined,
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("MCP 连接延后至会话装配后", async () => {
+    const { pi } = fakePi();
+    const connectAll = vi.fn(async () => []);
+    let deferred: (() => void) | undefined;
+
+    deferMcpExtension(
+      pi,
+      {
+        loadServers: async () => [server("slow")],
+        connectAll,
+        callToolFor: () => undefined,
+      },
+      (task) => {
+        deferred = task;
+      },
+    );
+
+    expect(connectAll).not.toHaveBeenCalled();
+    deferred?.();
+    await vi.waitFor(() => expect(connectAll).toHaveBeenCalledOnce());
   });
 
   it("空配置 → 不连接、不注册", async () => {
